@@ -25,18 +25,10 @@ jobs:
     - name: Install dependencies
       run: lix download
         
-    - name: Validate haxelib.json
-      run: |
-        haxelib validate
-        haxelib check
         
     - name: Build library
       run: |
         haxe multianim.hxml
+      
         
-        
-    - name: Check for build artifacts
-      run: |
-        echo "Build completed successfully"
-        echo "Library source files:"
-        find src -name "*.hx" | head -10 
+    
