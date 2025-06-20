@@ -1,9 +1,9 @@
 package screens;
 
-import wt.base.MacroUtils;
-import wt.ui.UIElement;
-import wt.multianim.MultiAnimBuilder;
-using wt.base.BitUtils;
+import bh.base.MacroUtils;
+import bh.ui.UIElement;
+import bh.multianim.MultiAnimBuilder;
+using bh.base.BitUtils;
 
 @:nullSafety
 class YesNoDialogScreen extends DualButtonDialogBaseScreen {

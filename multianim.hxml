@@ -2,8 +2,8 @@
 -lib heaps
 -lib tweenxcore
 -cp src 
-wt.ui.screens.ScreenManager
---macro wt.base.AtlasMacroInit.init()
+bh.ui.screens.ScreenManager
+--macro bh.base.AtlasMacroInit.init()
 
 
 

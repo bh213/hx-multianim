@@ -1,11 +1,11 @@
 package screens;
 
-import wt.ui.UIElement;
-import wt.multianim.MultiAnimBuilder;
-import wt.ui.UIMultiAnimButton;
-import wt.ui.screens.UIScreen;
+import bh.ui.UIElement;
+import bh.multianim.MultiAnimBuilder;
+import bh.ui.UIMultiAnimButton;
+import bh.ui.screens.UIScreen;
 
-using wt.base.BitUtils;
+using bh.base.BitUtils;
 
 @:nullSafety
 class DualButtonDialogBaseScreen extends UIScreenBase {
