@@ -1,5 +1,4 @@
 
-https://chevyray.itch.io/pixel-fonts
 
 FIX: 
 ===================================
@@ -48,7 +47,7 @@ animate <path> by distance {
 
 
 
-v2.1
+next major release
 ===================================
 * generic components support
 * bit expression - support for any bit and all bits (e.g. grid direction)
@@ -58,7 +57,7 @@ v2.1
 * animSM can mark loop as forever to skip inf loop check
 
 
-v2.5
+next major release
 ===================================
 * tilegroup support:  ninepatch 
 * tilegroup REPEAT - extract into single func
@@ -67,7 +66,7 @@ v2.5
 * named/optional parameters for filters
 
 
-V3.0
+next major release
 ========================
  # multianim:
 * subelements - handle nested subelements, keep state, don't query each time
@@ -91,12 +90,13 @@ V3.0
 
 
 
-V4:
+next major release
 ========================
 * setting editor
 
 
-NO:
+will not implement:
+===================
 * affine transformation on node?
 * object to store builder with name/params for rebuilds? (done?)
 
