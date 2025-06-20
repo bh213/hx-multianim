@@ -1,14 +1,61 @@
+# hx-multianim
+
+A Haxe library for creating animations and pixel art UI elements using the Heaps framework. This library provides a custom language for defining state animations and programmable UI components.
+
+## Getting Started - Work in progress
+
+### Prerequisites
+
+Before using hx-multianim, you need to install the following tools:
+
+#### Install Haxe
+Download and install Haxe from [haxe.org](https://haxe.org/download/):
+
+#### Install Lix (Recommended)
+Lix is the modern package manager for Haxe projects. Install it:
+```bash
+npm install -g lix
+```
+### Quick Start
+
+1. **Add to your project**:
+   ```hxml
+   -lib hx-multianim
+   -lib heaps
+   -lib hxparse
+   ```
+
+2. **Create a simple animation**:
+   ```haxe
+   // Your animation definition file (.manim)
+   #player programmable(direction:[left,right]=right) {
+     @(direction=>left) bitmap("player_left.png"): 0,0
+     @(direction=>right) bitmap("player_right.png"): 0,0
+   }
+   ```
+
+3. **Use in your Haxe code**:
+   ```haxe
+   import wt.MultiAnim;
+   
+   class Main {
+     static function main() {
+       var multianim = new MultiAnim();
+       // Load and use your animations
+     }
+   }
+   ```
+
+---
+
 State animations
 =================================
 
-State animation is animation that can be in different states and have different animation  running.
+State animation is animation that can be in different states and have different animation running.
 
 For example, animation can have animation named `running` with state `direction(l,r)`. When `l` is set, animation displays running to the left, when `r` state is set, animation is running to the right.
 
 Animation can have extraPoints - these are points where other animations or code interacts with sprites. They can represent impact points, source of bullets, particle effect source etc.
-
-
-
 
 ### Example:
 ```
@@ -17,10 +64,9 @@ allowedExtraPoints: [fire, targeting]
 states: direction(l, r)
 center: 32,48
 
-
 animation {
     name: idle
-    fps:4
+    fps: 4
     playlist {
         loop untilCommand {
             sheet "marine_$$direction$$_idle"
@@ -33,29 +79,27 @@ animation {
 Animation has the following fields:
 
 * `name` - must be unique and is required
-* `fps` - default frames per setting for playlist. Each frame can have delay override using `duration`
+* `fps` - default frames per second for playlist. Each frame can have delay override using `duration`
 * `playlist` list of frames and other commands
 * `center` - center point for this animation. This applies to all the frames in playlist for specific animation name
 * `extraPoints` - points of interest for this animation (e.g. particle effects, explosions, wounds,...)
 * `loop` - looping for the whole playlist, supports all `loop` options.
-
 
 ### Playlist
 
 * `loop: yes` - loops forever
 * `loop: untilCommand` - loops until there is a command in command queue
 * `loop: <number>` - loops a <number> of times, can be used to create multiple events (e.g. random)
-* `file: "<filename>" - loads and plays file (should be single frame png image)
-* `event <name> random  x,y,radius` - fires random event with point that is at most <radius> away from (x,y)
-* `event <name> trigger`  - fires event with specific <name>
+* `file: "<filename>"` - loads and plays file (should be single frame png image)
+* `event <name> random x,y,radius` - fires random event with point that is at most <radius> away from (x,y)
+* `event <name> trigger` - fires event with specific <name>
 * `event <name> x,y` - fires point event with (x,y)
-* `command` - executes next command if queue is not empty - 
+* `command` - executes next command if queue is not empty
 * `goto <name>` - switches to another animation `<name>`. Can be used for transitions.
 * `sheet: "myanimation" frames: 1..2 duration: 25ms` - creates playlist animation from atlas sheet (starting at frame 1 and ending at frame 2, each frame taking 25ms)
 * `sheet: "myanimation"` - uses default `fps` setting and takes all frames with the name `myanimation` from the atlas sheet.
 
 ### Conditionals based on state
-
 
 ```
 animation @(direction=>l) @(color=>red) {
@@ -64,14 +108,12 @@ animation @(direction=>l) @(color=>red) {
 ```
 Only applied when `direction=>l` and `color=>red`
 
-
 ```
- @(direction=>l) extrapoints { 
-        fire : -2, -2
-    }
+@(direction=>l) extrapoints { 
+    fire : -2, -2
+}
 ```    
 Only provides extrapoints when `direction=>l`.
-
 
 ### Commands - programming interface
 
@@ -86,8 +128,7 @@ Commands
 * SwitchState(seconds) - switch to another animation name
 * CommandEvent - trigger event
 * Callback - execute callback
-* Visible - set sprite visiblility
-
+* Visible - set sprite visibility
 
 Multi anim
 =================================
@@ -105,7 +146,7 @@ Short form looks like this:
 ```
 Long form looks like this:
 ```
-#name  @optionalConditional shortcuts element(params) {
+#name @optionalConditional shortcuts element(params) {
   pos: xy
   alpha: percentage
   layer: index
@@ -122,68 +163,61 @@ Long form looks like this:
 }
 ```
 
-Short form is for adding elements such as bitmaps and text without being to verbose. Long form support adding children and inline properties, such as `pos`.
+Short form is for adding elements such as bitmaps and text without being too verbose. Long form supports adding children and inline properties, such as `pos`.
 
-
-
-
-
-##### Example:
+### Example:
 ```
 #panel programmable(width:uint=180, height:uint=30, mode:[idle,pressed]=pressed) {
      @(mode=>idle) alpha(0.1) ninepatch("ui", "Droppanel_3x3_idle", $width, $height): 0,0
      @(mode=>pressed) ninepatch("ui", "Droppanel_3x3_pressed", $width, $height): 0,0
-     
 }
 ```
 
-In this example programmable in the long form with name `panel` is created. Programmable is element that has parameters that affect rendering. `#panel` programmable accepts `width` and `height` parameters, both unsigned integers with default values of `180` and `30`. In addition it has `mode` parameter with is enum and can accept either `idle` or `pressed` values. Default value is `pressed`. If value of parameter is not provided, default is used. Defaults can also be used by designer to show element when it is not yet hooked up to the code.
+In this example programmable in the long form with name `panel` is created. Programmable is element that has parameters that affect rendering. `#panel` programmable accepts `width` and `height` parameters, both unsigned integers with default values of `180` and `30`. In addition it has `mode` parameter which is enum and can accept either `idle` or `pressed` values. Default value is `pressed`. If value of parameter is not provided, default is used. Defaults can also be used by designer to show element when it is not yet hooked up to the code.
 
 `panel` programmable has two short-form children (both `ninepatch`). First one has conditional `@(mode=>idle)` which means that this child will only be built when `mode` equals `idle`. The other one only gets built when `mode` is `pressed`.
 `ninepatch` element uses atlas sheet named `ui`, sprite name in sheet named `Droppanel_3x3_idle` for first child and `Droppanel_3x3_pressed` for the second one. `$width` and `$height` are expressions referencing input parameters. Expressions can also include `+`, `-`, `*` and `/`, so height could be set to `$height + 13` for example.
-`xy` coordinates follow after `:`.  
+`xy` coordinates follow after `:`.
 
 Long form of child definition which can include subchildren also exists
 ```
-      @(status=>pressed, disabled=>false) ninepatch("ui", "droppanel-mid-pressed", $itemWidth+4, 20) {
-          pos:-2,0;
-          alpha:0.1;
-          blendMode: alphaAdd;
-          point: 33,22
-      } 
+@(status=>pressed, disabled=>false) ninepatch("ui", "droppanel-mid-pressed", $itemWidth+4, 20) {
+    pos:-2,0;
+    alpha:0.1;
+    blendMode: alphaAdd;
+    point: 33,22
+}
 ```
 Long form supports subchildren and the following fields:
 `pos` - same as `xy` in the short form. See `xy`.
-`grid: sizex, sizey`: specifies grid cooridinates for itself and its' children
-`hex: pointy|flat(sizex, sizey)`: specifies grid cooridinates for itself and its' children
+`grid: sizex, sizey`: specifies grid coordinates for itself and its children
+`hex: pointy|flat(sizex, sizey)`: specifies grid coordinates for itself and its children
 `scale: value` - scale for this element and children
 `alpha: value` - alpha (opacity) of this element and children
-`blendMode: none|alpha|add|alphaAdd|softAdd|multiply|alphaMultiply|erase|screen|sub|max|min` - see [Heaps docs]( https://heaps.io/api/h2d/BlendMode.html) for more details
+`blendMode: none|alpha|add|alphaAdd|softAdd|multiply|alphaMultiply|erase|screen|sub|max|min` - see [Heaps docs](https://heaps.io/api/h2d/BlendMode.html) for more details
 `layer:index` for immediate children of `layers` and `programmable`, z-order index `layer` can be set.
 `filter: <filter>` applies filter to itself and children
-
-
 
 # List of supported nodes
 
 ## bitmap
-* `bitmap(tileSurce, [center])`  - displays image file from filename or atlas sheet, optionally centering it
-
-
+* `bitmap(tileSource, [center])` - displays image file from filename or atlas sheet, optionally centering it
 
 ## stateanim
-* `stateanim("filename", "state", direction"=>"l")`  - create state animation from filename, with specific file and state
+* `stateanim("filename", "state", direction"=>"l")` - create state animation from filename, with specific file and state
+
 ## flow (wip)
 * `flow([optional params])` - creates a h2d.Flow (https://github.com/HeapsIO/heaps/wiki/Flow)
 Optional params:
 * `maxWidth:<int>`, `maxHeight:<int>`
 * `minWidth:<int>`, `minHeight:<int>`
-* `lineHeight`,  `colWidth`
+* `lineHeight`, `colWidth`
 * `layout`: `vertical` | `horizontal` | `stack`
 * `paddingTop`, `paddingBottom`, `paddingLeft`, `paddingRight`, `padding`
 * `debug`: `true` | `false`
 * `horizontalSpacing:<int>`
 * `verticalSpacing:<int>`
+
 ## point
 * `point` - creates a point, not displayed, for positioning items
 
@@ -194,19 +228,17 @@ Example: _creates point with offset 200,450_
 ## apply
 By using `apply` node you can conditionally apply basic settings to node:
 
-The following code applys glow filter to `ninepatch` object when `state` is `selected`:
+The following code applies glow filter to `ninepatch` object when `state` is `selected`:
 
 ```
-  ninepatch("cards", "card-base-patch9", 150,200) {
-    
-    @(state=>selected) apply { 
-      filter:glow(color:white, alpha:0.9, radius:15, smoothColor:true)
-    }
+ninepatch("cards", "card-base-patch9", 150,200) {
+  @(state=>selected) apply { 
+    filter:glow(color:white, alpha:0.9, radius:15, smoothColor:true)
   }
+}
 ```  
 
 `filter`, `scale`, `alpha` and `blendMode` are supported in `apply`
-
 
 ## text
 * `text(fontname, text, textcolor[, align, maxWidth], options)` - creates text with font, text content and text color. Align can be `center`, `left` and `right`.
@@ -219,7 +251,6 @@ Options can be:
 `dropShadowAlpha` - float
 `html` - bool - use h2d.HtmlText (use <br/> instead of \n for line breaks)
 
-
 Example:
 ```
 @(status=>hover, disabled=>false) text(dd, $buttonText, 0xffffff12, center, 200): 0,10
@@ -227,8 +258,9 @@ Example:
 
 ## tilegroup 
 * `tilegroup` - tilegroup is optimized element that allows (at the moment) the following children: `bitmap`, `point`, `repeat` and `pixels`. It is intended to construct objects such as hp bars that can have 10s or even 100s of elements and would be very slow if added as separate elements. `tilegroup` is converted into single drawable object and drawn at once. See Examples #14. `programmable` can be marked as tilegroup by using the following construct `#name programmable tileGroup(...)`.
+
 ## programmable
-* `programmable` - used to create instance of all children belonging to this programmable. Must have a unqiure name. This is core of the multianim library.
+* `programmable` - used to create instance of all children belonging to this programmable. Must have a unique name. This is core of the multianim library.
 
 Example:
 ```
@@ -239,23 +271,23 @@ Example:
 ```
 
 ## repeatable
-* `repeatablze($varname, grid(repeats, dx:{valx}, dy:{valy}))` - creates `repeats` number of its children. All values are expressions. `$varName` is required and children can reference current count (starts at 0) by referencing `$varName`.  `repeatable($repCount, grid($count+10, dy:10, ))` would access repeat index with `$repcount`, increase it by 10 and increase y position of element by 10 for each iteration.
-NOTE: `dx` and `dy` are optional, but at least on has to be specified.
+* `repeatable($varname, grid(repeats, dx:{valx}, dy:{valy}))` - creates `repeats` number of its children. All values are expressions. `$varName` is required and children can reference current count (starts at 0) by referencing `$varName`. `repeatable($repCount, grid($count+10, dy:10, ))` would access repeat index with `$repcount`, increase it by 10 and increase y position of element by 10 for each iteration.
+NOTE: `dx` and `dy` are optional, but at least one has to be specified.
 
 `repeatable` also supports layouts iterator (see demo examples #13) which will iterate through all layouts. Use `layout(layout, layoutname)`.
 
 example:
 ```
-      repeatable($items, grid(0, $cellHeight,$cells)) {
-        interactive(114 , $cellHeight, $items);
-        text(pikzel, callback("itemName", $items), 0xffffff12, center, 120): -4,4
-        @(images=>placeholder) placeholder(tile(15, 15), callback("test")):5,3
-        @(images=>tile) bitmap(callback("itemImage", $items), center):5,3
-      }
-```      
+repeatable($items, grid(0, $cellHeight,$cells)) {
+  interactive(114 , $cellHeight, $items);
+  text(pikzel, callback("itemName", $items), 0xffffff12, center, 120): -4,4
+  @(images=>placeholder) placeholder(tile(15, 15), callback("test")):5,3
+  @(images=>tile) bitmap(callback("itemImage", $items), center):5,3
+}
+```
+
 ## ninepatch
-* `ninepatch(sheet, tilename, width, height)` - draws 9patch from atlas2 (it has to have `split` with 4 values 
-provided in sprite sheet (atlas))
+* `ninepatch(sheet, tilename, width, height)` - draws 9patch from atlas2 (it has to have `split` with 4 values provided in sprite sheet (atlas))
 
 example:
 ```
@@ -263,20 +295,18 @@ ninepatch("ui", "Droppanel_3x3_idle", 114, $cells * $cellHeight + 6 ): 0,0
 ```
 
 ## layers
-*  `layers()` - enables children of this node to use `layer` property to change z-direction.  Special `layer(index)` can be used to specify layer index in short form. `layer:index` is available in the long form.
+* `layers()` - enables children of this node to use `layer` property to change z-direction. Special `layer(index)` can be used to specify layer index in short form. `layer:index` is available in the long form.
 
 example:
 ```
-  layers() 
-    {
-      
-      @(cornerDirections=>2) layer(2) bitmap("png/Corner_090.png", center): 0,0
-    }
+layers() {
+  @(cornerDirections=>2) layer(2) bitmap("png/Corner_090.png", center): 0,0
+}
 ```
 
 ## placeholder
 * `placeholder(name, [onNoData], [source])` - uses callback to get object to insert. If callback doesn't exist yet, tile of size sizex * sizey is returned.
-* onNoData can be `error`,  `nothing` or tileSource. In case `error` is set, exception will be thrown if there is no data provided for the source. Nothing just inserts empty h2d.Object.
+* onNoData can be `error`, `nothing` or tileSource. In case `error` is set, exception will be thrown if there is no data provided for the source. Nothing just inserts empty h2d.Object.
 example:
 ```
 placeholder(tile(15, 15), callback("test")):8,5
@@ -284,10 +314,11 @@ placeholder(tile(15, 15), callback("test")):8,5
 Possible sources:
 * `callback("test")` - callback receives name
 * `callback("test", $i)` - callback receives name and index (e.g. for dropdowns)
-* `builderParameter("animCommands")` - built from programmable parameters, usually when embadding custom objects into multianim.
+* `builderParameter("animCommands")` - built from programmable parameters, usually when embedding custom objects into multianim.
+
 ## reference
 * `reference($reference [, <params>])` - references another programmable node by `reference` and outputs by name. 
-* `reference(external(externalName), $reference, [,<params<]))` - loads reference from external multianim that was imported by `import file as externalName`.
+* `reference(external(externalName), $reference, [,<params>])` - loads reference from external multianim that was imported by `import file as externalName`.
 example:
 ```
 reference($dialogBase) {
@@ -295,11 +326,11 @@ reference($dialogBase) {
 }
 ```
 * It can also reference non-programmable nodes, in that case parameters cannot be specified.
+
 ## settings
 * `settings(key1=>value1,key2=>value2,... )` - emits setting value to the build, value can only be used by code (e.g. dropdown)
 
 Example:
-
 ```
 settings(transitionTimer=>0.2)
 ```
@@ -328,18 +359,18 @@ List of supported fonts:
 `tileSource` can be `sheet(sheet, name)`, `file(filename)` or `generated(cross(width, height))`. 
 `sheet(sheet, name)` loads tile from atlas sheet named `sheet`, using tile named `name`
 `file(filename)` loads tile from file.
-`generated(cross(width, height[, color]))` generates image of rectange with cross with specified dimensions.
+`generated(cross(width, height[, color]))` generates image of rectangle with cross with specified dimensions.
 `generated(solid(color, height[, color]))` generates image with solid color
 
 File and sheet loading directories are application specific.
 
 ## filters
-* `replacePalette(file, sourceIndex, dstIndex)` - applies color replacement using 2d pallete named `file`.  Colors from rows `sourceIndex` will be replaces with colors in `dstIndex`. Colors not matching will be passed through.
+* `replacePalette(file, sourceIndex, dstIndex)` - applies color replacement using 2d palette named `file`. Colors from rows `sourceIndex` will be replaced with colors in `dstIndex`. Colors not matching will be passed through.
 * `outline(size, color)` - creates an outline
 * `saturate(value)` - saturates colors with value (0-1.0)
 * `brightness(value)` - brightens the colors with value (0-1.0)
 * `blur(radius, gain)` - blurs
-* `pixelOutline(knockout, color, knockoutStr)` or `pixelOutline(inlineColor, color, innterColor)`
+* `pixelOutline(knockout, color, knockoutStr)` or `pixelOutline(inlineColor, color, innerColor)`
 * `dropShadow(distance:float, angle:float, color:<color>, alpha:float, radius:float, gain:float, quality:float])`
 * `glow(color, alpha[, radius, gain, quality])`
 
@@ -348,22 +379,21 @@ xy position can be defined in multiple ways, usually by setting `pos` property i
 * offset coordinates `x,y` - for example: `30, 20`
 * `hex(q, r, s)` - requires `hex` coordinate system to be defined. Center of the hex with these coordinates
 * `hexCorner(index, scale)` - requires `hex` coordinate system to be defined. Creates position in specific corner of hex scaled from center. Scale 0.0 is center of hex, 1.0 is on the corner, 0.5 is halfway between center and corner. Example: `pos: hexCorner(2, 0.7)`
-* `hexEdge (index, scale)` - requires `hex` coordinate system to be defined.  Scale 0.0 is center of hex, 1.0 is on the edge of the hex, 0.5 is halfway between center and edge. Example: `hexEdge(5, 1.2)`
+* `hexEdge(index, scale)` - requires `hex` coordinate system to be defined. Scale 0.0 is center of hex, 1.0 is on the edge of the hex, 0.5 is halfway between center and edge. Example: `hexEdge(5, 1.2)`
 * `grid(x,y)` - requires `grid` coordinate system to be defined, calculates x * gridwidth, y * gridheight. Example: `grid($x, 2)`
 * `;` - 0,0 offset
-* `layout(layoutName [, index])` - takes coordiantes from `#layout` named `layoutName`.
+* `layout(layoutName [, index])` - takes coordinates from `#layout` named `layoutName`.
 
 # References
 Referencing programmable parameters is possible in some nodes. Reference uses `$`. For example, programmable `int` parameters can be referenced as `$i` and can be used to construct expressions such as `$i * 10 + 7`
 Useful for `repeatable(dx, dy, $count)` for various HP/mana/energy bars. Properties that support references support expressions as well.
 
-
 # programmable parameter types
  
  * enum: `name:[value1, value2]`, example: `status: [hover, pressed, disabled, normal]` or with default `status: [hover, pressed, disabled, normal] = normal`
  * range: `name:num..num`, example: `count:1..5` or with default `count:1..5 = 5`
- * int: `count:int` - any integer , example `count:7` or `count:-1` or with default `delta:int = 0`
- * uint: `count:int` - any positive integer, example `count:7` or with default `count:uint = 5`
+ * int: `count:int` - any integer, example `count:7` or `count:-1` or with default `delta:int = 0`
+ * uint: `count:uint` - any positive integer, example `count:7` or with default `count:uint = 5`
  * flags: `mask:flags(bits)` - number of bits, example: `mask:flags(6)`
  * string: `name="myname"`, string always have default value
  * hex direction: `dir:hexdirection` - 0..5
@@ -380,10 +410,10 @@ external name (`helpers` in example above) can be used to reference programmable
 Works with palettes. Layouts will work as well.
 
 # Conditionals
-Conditions are defind by `@(...)` structure and can be specified once per element. Specify parameters that must be used for node to be built. Multiple nodes might be built. Use `parameter=>*` to match all.
+Conditions are defined by `@(...)` structure and can be specified once per element. Specify parameters that must be used for node to be built. Multiple nodes might be built. Use `parameter=>*` to match all.
 * `@()` or `@if(...)` - match all provided
 * `@(!param=>'value')` - match when `param` is not `value`
-* `@ifstrict(...)` - must match all provided paramters from programmable. Missing parameters will NOT match.
+* `@ifstrict(...)` - must match all provided parameters from programmable. Missing parameters will NOT match.
 examples:
 
 ```
@@ -404,34 +434,30 @@ Range matches (for numbers):
 multi enum match:
 `@(key => [value1, value2])` matches when `key` is either `value1` or `value2`. Works with numbers as well.
 
-
-
-
 # expressions
 * `+` - addition
 * `-` - subtraction
-  `*` - multiplication
-  `/` - division
-  `%` - modulo (integer only)
- `div` - integer division, behaves the same as `/` with integers
+* `*` - multiplication
+* `/` - division
+* `%` - modulo (integer only)
+* `div` - integer division, behaves the same as `/` with integers
 References and parentheses are supported.
 
-Haxe style interpolated string are supported  
+Haxe style interpolated strings are supported  
 ```haxe
 'Nice to meet you ${$name}, have a nice day'
 ```
 
-`callback(name)` and `callback(name, index)` are available as expression - this requires code support. Callback enable code to insert text and tiles and prebuilt `h2d.Object`s into the elements.
-`builderParam(name)` is also available and also required code support. Builder params will enable `placehoder` to insert h2d.Object into the elements (e.g. checkboxes into panel with text, giving designer an ability to move checkbox around).
+`callback(name)` and `callback(name, index)` are available as expression - this requires code support. Callback enables code to insert text and tiles and prebuilt `h2d.Object`s into the elements.
+`builderParam(name)` is also available and also requires code support. Builder params will enable `placeholder` to insert h2d.Object into the elements (e.g. checkboxes into panel with text, giving designer an ability to move checkbox around).
 
 expression examples: 
 - `$items + 5`
 - `$width * 2 + 5`
 - `($index % 5) * 25`
 - `($index div 5) * 25`
-- `callback("test") * 3 ` - callback must return int
+- `callback("test") * 3` - callback must return int
 - `placeholder(generated(cross(20, 20)), builderParameter("button2")):130,0`
-
 
 ## Updatable text
 To enable updating text from code, text/htmltext nodes have to be marked as `(updatable)`, for example: 
@@ -439,6 +465,7 @@ To enable updating text from code, text/htmltext nodes have to be marked as `(up
 ```
 #selectedName(updatable) text(pikzel, callback("selectedName"), 0xffffff12, center, 120): -4,6
 ```
+
 ## Updatable tile
 To enable updating tile(=bitmap) from code, nodes have to be marked as `(updatable)`, for example: 
 
@@ -446,21 +473,19 @@ To enable updating tile(=bitmap) from code, nodes have to be marked as `(updatab
 #bitmapToUpdate(updatable) bitmap(generated(color(20, 20, red)), left, top):10,80
 ```
 
-
 # Layouts
-Layouts are root only elements (same as `programmable`, `palette` and `paths`).Layouts are used by the code to position elements on screen. Layouts don't specific in which coordinate system they are defined, usually they are to be treated as offsets. Layout sequence can, for example, be used to position buttons in multipe rows.
+Layouts are root only elements (same as `programmable`, `palette` and `paths`). Layouts are used by the code to position elements on screen. Layouts don't specify in which coordinate system they are defined, usually they are to be treated as offsets. Layout sequence can, for example, be used to position buttons in multiple rows.
 
 Usage:
 ```
 relativeLayouts {
   
-
 }
 ```
 
 ### nodes:
 `grid: x,y {...}` - sets grid mode for layouts
-`offset: x,y {...}`  sets offset for layouts (value added to all x and y coordinates)
+`offset: x,y {...}` sets offset for layouts (value added to all x and y coordinates)
 `hex:pointy(30,20) {...}` - sets hex coordinate system for all layouts members
 
 ### layout child nodes
@@ -475,10 +500,10 @@ List of points, for positioning multiple elements (e.g. buttons, checkboxes)
         point: 450,20
         point: 10,20
         point: 10,20
-  }
+}
 ```
 
-Generated points, format `#name  sequence($varName: from..to) point: xy`	
+Generated points, format `#name sequence($varName: from..to) point: xy`	
 
 This example produces points (10,10), (20,10), (30,10) and (40,10)
 ```
@@ -489,7 +514,7 @@ See demo examples #13 for usage of layouts as repeatable iterator
 
 # Palettes
 
-Palettes are collection of colors that can be accessed by index. 2d palletes have colors organized in a grid, with rows represeting either different coloring scheme or brightness/darkness.
+Palettes are collection of colors that can be accessed by index. 2d palettes have colors organized in a grid, with rows representing either different coloring scheme or brightness/darkness.
 
 example, normal palette:
 ```
@@ -497,7 +522,7 @@ example, normal palette:
   white 0xf12  0x332 0xfff
 }
 ```
-It has 4 colors which can be access by index values of 0..3.
+It has 4 colors which can be accessed by index values of 0..3.
 
 example, 2d palette:
 ```
@@ -516,15 +541,12 @@ Palette can also be loaded from image file. These are always 2d palettes.
 
 See demo examples #7 for palette usage example.
 
-
-
 # Components
 ## ScrollList
 
 Settings:
 `scrollSpeed` - up/down scroll speed in pixels per second
 `height` - returned height of an image list
-
 
 ## Dropdown
 Settings:
