@@ -7,16 +7,17 @@ This document lists the libraries, assets, and code used in the hx-multianim pro
 ### Haxe Libraries
 
 ### deepnight/gameBase
-- **License**: 
 - **Source**: https://github.com/deepnight/gameBase
-- **Description**: A lightweight and simple base structure for games, using Heaps framework and Haxe language.
 - **Usage**: Used some code from the gameBase library, some filters/shaders
 
 ### Yanrishatum/heeps
-- **License**: MIT
 - **Source**: https://github.com/Yanrishatum/heeps
-- **Description**: An "advanced" Heaps extension library.
 - **Usage**: Used animation.hx as a starting point for the animation system.
+
+
+### https://github.com/Simn/hxparse
+- **Source**: https://github.com/Simn/hxparse
+- **Usage**: This library uses a lightly modified forked version of hxparse.
 
 
 
