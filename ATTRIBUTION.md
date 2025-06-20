@@ -23,6 +23,10 @@ This document lists the libraries, assets, and code used in the hx-multianim pro
 
 ## Fonts and Assets
 
+### m3x6.ttf
+https://managore.itch.io/m3x6
+by Daniel Linssen
+
 *Note: Add any fonts, images, sounds, or other assets used in your project here*
 
 ## Code Snippets and Examples

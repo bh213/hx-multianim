@@ -1,0 +1,1 @@
+haxe multianim.hxml -hl build\hl-manim.hl -D message.reporting=pretty -D resourcesPath=.\res

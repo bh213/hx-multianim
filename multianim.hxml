@@ -1,7 +1,8 @@
 -lib hxparse
 -lib heaps
 -lib tweenxcore
--cp src
+-cp src 
+wt.ui.screens.ScreenManager
 --macro wt.base.AtlasMacroInit.init()
 
 

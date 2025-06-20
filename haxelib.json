@@ -5,7 +5,7 @@
     "description": "animations and pixel art UI for Heaps framework",
     "version": "1.2.0",
     "classPath": "src/",
-    "releasenote": "constructed stateAnim",
+    "releasenote": "",
     "contributors": ["bh213"],
     "dependencies": { 
         "heaps":"",
