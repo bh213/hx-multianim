@@ -1,6 +1,5 @@
 package wt.multianim;
 
-import hl.Profile.Symbol;
 import wt.base.Particles;
 import haxe.macro.MacroStringTools;
 import wt.base.MacroUtils;

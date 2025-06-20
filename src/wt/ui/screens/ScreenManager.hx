@@ -6,7 +6,12 @@ import wt.ui.controllers.UIController;
 import wt.ui.screens.UIScreen;
 import wt.base.ResourceLoader;
 import byte.ByteData;
+#if hl
 import sys.io.File;
+#end
+#if js
+import haxe.Http;
+#end
 using wt.base.Atlas2;
 
 
@@ -51,9 +56,38 @@ class ScreenManager {
   
 		loader.loadHXDResourceImpl = filename -> return hxd.Res.load(filename);
 		loader.loadAnimSMImpl = filename -> {
-			final byteData = ByteData.ofBytes(File.getBytes(filename)); 
+			var byteData:ByteData;
+			#if hl
+			byteData = ByteData.ofBytes(File.getBytes(filename)); 
+			#elseif js
+			// For JavaScript target, load via HTTP request
+			var http = new haxe.Http(filename);
+			var loaded = false;
+			var errorMsg:Null<String> = null;
+			
+			http.onBytes = function(bytes:haxe.io.Bytes) {
+				byteData = ByteData.ofBytes(bytes);
+				loaded = true;
+			}
+			
+			http.onError = function(msg:String) {
+				errorMsg = msg;
+				loaded = true;
+			}
+			
+			http.request(false); // Synchronous request
+			
+			if (errorMsg != null) {
+				throw 'Failed to load file $filename: $errorMsg';
+			}
+			
+			if (!loaded || byteData == null) {
+				throw 'File not loaded: $filename';
+			}
+			#else
+			throw 'loadAnimSMImpl not implemented for this target - filename: $filename';
+			#end
 			return AnimParser.parseFile(byteData, loader);
-
 		}
 		loader.loadFontImpl = filename -> wt.base.FontManager.getFontByName(filename);
 
