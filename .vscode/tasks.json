@@ -1,0 +1,25 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+            "type": "haxe",
+            "args": "active configuration",
+            "presentation": {
+				"echo": true,
+				"reveal": "never",
+				"focus": false,
+				"panel": "dedicated",
+				"showReuseMessage": true,
+				"clear": true,
+				"revealProblems":"always",
+
+				
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "label": "haxe: active configuration"
+        }
+	]
+}

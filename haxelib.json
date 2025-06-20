@@ -1,0 +1,15 @@
+{
+    "name": "hx-multianim",
+    "url": "https://github.com/bh213/hx-multianim",
+    "tags": [],
+    "description": "animations and pixel art UI for Heaps framework",
+    "version": "1.2.0",
+    "classPath": "src/",
+    "releasenote": "constructed stateAnim",
+    "contributors": ["bh213"],
+    "dependencies": { 
+        "heaps":"",
+        "hxparse":""
+      
+    }
+  }

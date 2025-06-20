@@ -1,0 +1,3 @@
+# @install: lix --silent download "gh://github.com/shohei909/tweenx#5f3265253f0835509246361b6e08c19240a02152" into tweenx/0.0.0/github/5f3265253f0835509246361b6e08c19240a02152
+-cp ${HAXE_LIBCACHE}/tweenx/0.0.0/github/5f3265253f0835509246361b6e08c19240a02152/src/tweenxcore
+-D tweenx=0.0.0
