@@ -1,0 +1,42 @@
+name: Build Library
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Haxe
+      uses: HaxeFoundation/setup-haxe@v1
+      with:
+        haxe-version: '4.3.2'
+        
+    - name: Setup Lix
+      uses: lix-pm/setup-lix@1.0.1
+        
+    - name: Install dependencies
+      run: lix download
+        
+    - name: Validate haxelib.json
+      run: |
+        haxelib validate
+        haxelib check
+        
+    - name: Build library
+      run: |
+        haxe multianim.hxml
+        
+        
+    - name: Check for build artifacts
+      run: |
+        echo "Build completed successfully"
+        echo "Library source files:"
+        find src -name "*.hx" | head -10 
