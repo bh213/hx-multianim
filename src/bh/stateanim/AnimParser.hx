@@ -541,7 +541,6 @@ class AnimParser extends hxparse.Parser<hxparse.LexerTokenSource<APToken>, APTok
 					if (ret.fps != null) syntaxError("fps already set");
 					ret.fps = Std.parseInt(number);
 					if (ret.fps <= 0) syntaxError("fps must be greater than 0");
-				case [APIdentifier(_, APLoop, AITString), ]:
 				case [APIdentifier(_, APExtrapoints, AITString), APCurlyOpen]:				
 					if (extraPoints.count() > 0) syntaxError("extraPoints already defined");
 					parseExtraPoints(statesDefinitions, animationStates, extraPoints, allowedExtraPoints);
