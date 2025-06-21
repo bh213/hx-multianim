@@ -1,6 +1,6 @@
 # hx-multianim
 
-A Haxe library for creating animations and pixel art UI elements using the Heaps framework. This library provides a custom language for defining state animations and programmable UI components.
+A Haxe library for creating animations and pixel art UI elements using the [Heaps](https://heaps.io/) framework. This library provides a custom language for defining state animations and programmable UI components.
 
 ## Getting Started - Work in progress
 
@@ -12,7 +12,7 @@ Before using hx-multianim, you need to install the following tools:
 Download and install Haxe from [haxe.org](https://haxe.org/download/):
 
 #### Install Lix (Recommended)
-Lix is the modern package manager for Haxe projects. Install it:
+[Lix](https://www.npmjs.com/package/lix) is the modern package manager for Haxe projects. Install it:
 ```bash
 npm install -g lix
 ```
