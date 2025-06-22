@@ -1,4 +1,5 @@
 package bh.ui.screens;
+import hxd.fs.BytesFileSystem.BytesFileEntry;
 import hxd.res.Resource;
 import bh.multianim.MultiAnimBuilder;
 import bh.stateanim.AnimParser;
@@ -6,6 +7,7 @@ import bh.ui.controllers.UIController;
 import bh.ui.screens.UIScreen;
 import bh.base.ResourceLoader;
 import byte.ByteData;
+import haxe.io.Bytes;
 #if hl
 import sys.io.File;
 #end
@@ -14,6 +16,12 @@ import haxe.Http;
 #end
 using bh.base.Atlas2;
 
+#if js
+@:native("FileLoader")
+extern class FileLoader {
+    public static function load(url:String):js.lib.ArrayBuffer;
+}
+#end
 
 private enum ScreenManagerMode {
     None;
@@ -41,61 +49,98 @@ class ScreenManager {
         this.loader = loader ?? createLoader();
         this.window = hxd.Window.getInstance();
         this.handler = new ControllerEventHandler(app.s2d, window, this);
+        
+        
     }
 
 
     static function createLoader() {
         final loader = new bh.base.ResourceLoader.CachingResourceLoader();
-		loader.loadSheet2Impl = sheetName ->{
-            return hxd.Res.load('${sheetName}.atlas2').toAtlas2();
+		
+		loader.loadSheet2Impl = sheetName -> {
+			#if hl
+			return hxd.Res.load('${sheetName}.atlas2').toAtlas2();
+			#elseif js
+			var resourceName = '${sheetName}.atlas2';
+			if (hxd.Res.loader.exists(resourceName)) {
+				return hxd.Res.load(resourceName).toAtlas2();
+			} else {
+				var bytes = FileLoader.load(resourceName);
+				var resource = hxd.res.Any.fromBytes(resourceName, Bytes.ofData(bytes));
+				return resource.toAtlas2();
+			}
+			#else
+			throw 'loadSheet2Impl not implemented for this target';
+			#end
 		};
 
-        loader.loadSheetImpl = sheetName-> {
-            return hxd.Res.loader.loadCache('${sheetName}.atlas', hxd.res.Atlas);
+        loader.loadSheetImpl = sheetName -> {
+			#if hl
+			return hxd.Res.loader.loadCache('${sheetName}.atlas', hxd.res.Atlas);
+			#elseif js
+			var resourceName = '${sheetName}.atlas';
+			if (hxd.Res.loader.exists(resourceName)) {  
+				return hxd.Res.loader.loadCache(resourceName, hxd.res.Atlas);
+			} else {
+				var bytes = FileLoader.load(resourceName);
+				var resource = hxd.res.Any.fromBytes(resourceName,  Bytes.ofData(bytes));
+				return resource.to(hxd.res.Atlas);
+			}
+			#else
+			throw 'loadSheetImpl not implemented for this target';
+			#end
         };
   
-		loader.loadHXDResourceImpl = filename -> return hxd.Res.load(filename);
+		loader.loadHXDResourceImpl = filename -> {
+			#if hl
+			return hxd.Res.load(filename);
+			#elseif js
+			if (hxd.Res.loader.exists(filename)) {
+				return hxd.Res.load(filename);
+			} else {
+				var bytes = FileLoader.load(filename);
+				return hxd.res.Any.fromBytes(filename,  Bytes.ofData(bytes));
+			}
+			#else
+			throw 'loadHXDResourceImpl not implemented for this target';
+			#end
+		};
+  
 		loader.loadAnimSMImpl = filename -> {
 			var byteData:ByteData;
 			#if hl
 			byteData = ByteData.ofBytes(File.getBytes(filename)); 
 			#elseif js
-			// For JavaScript target, load via HTTP request
-			var http = new haxe.Http(filename);
-			var loaded = false;
-			var errorMsg:Null<String> = null;
-			
-			http.onBytes = function(bytes:haxe.io.Bytes) {
-				byteData = ByteData.ofBytes(bytes);
-				loaded = true;
-			}
-			
-			http.onError = function(msg:String) {
-				errorMsg = msg;
-				loaded = true;
-			}
-			
-			http.request(false); // Synchronous request
-			
-			if (errorMsg != null) {
-				throw 'Failed to load file $filename: $errorMsg';
-			}
-			
-			if (!loaded || byteData == null) {
-				throw 'File not loaded: $filename';
-			}
+			// Use external JavaScript class to load file
+			var bytes = FileLoader.load(filename);
+			byteData = ByteData.ofBytes(Bytes.ofData(bytes));
 			#else
 			throw 'loadAnimSMImpl not implemented for this target - filename: $filename';
 			#end
 			return AnimParser.parseFile(byteData, loader);
 		}
+		
 		loader.loadFontImpl = filename -> bh.base.FontManager.getFontByName(filename);
 
         loader.loadMultiAnimImpl = s -> {
-            var r = hxd.Res.load(s);
-            if (r == null) throw 'failed to load multianim ${s}';
-            final byteData = ByteData.ofBytes(r.entry.getBytes()); 
-            return MultiAnimBuilder.load(byteData, loader, s);
+			var byteData:ByteData;
+			#if hl
+			var r = hxd.Res.load(s);
+			if (r == null) throw 'failed to load multianim ${s}';
+			byteData = ByteData.ofBytes(r.entry.getBytes()); 
+			#elseif js
+			if (hxd.Res.loader.exists(s)) {
+				var r = hxd.Res.load(s);
+				if (r == null) throw 'failed to load multianim ${s}';
+				byteData = ByteData.ofBytes(r.entry.getBytes());
+			} else {
+				var bytes = FileLoader.load(s);
+				byteData = ByteData.ofBytes(Bytes.ofData(bytes));
+			}
+			#else
+			throw 'loadMultiAnimImpl not implemented for this target';
+			#end
+			return MultiAnimBuilder.load(byteData, loader, s);
         }
 
         return loader;
