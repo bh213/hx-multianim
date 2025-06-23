@@ -131,7 +131,9 @@ class Atlas2 extends hxd.res.Resource.Resource {
 						index = Std.parseInt(v);
 						if( index < 0 ) index = 0;
 					default:
+						#if MULTIANIM_TRACE
 						trace("Unknown prop " + prop[0]);
+						#end
 					}
 				}
 

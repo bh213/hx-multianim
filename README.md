@@ -48,6 +48,16 @@ npm install -g lix
 
 ---
 
+## Trace Support
+
+The library includes comprehensive debug tracing that can be controlled using conditional compilation. To enable debug traces, add the `MULTIANIM_TRACE` flag to your HXML file:
+
+```hxml
+-D MULTIANIM_TRACE
+```
+
+---
+
 State animations
 =================================
 

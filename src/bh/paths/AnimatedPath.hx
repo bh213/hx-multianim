@@ -111,7 +111,9 @@ class AnimatedPath {
 		
                 var newIndexedParams:Map<String, ResolvedIndexParameters> = [];
                 newIndexedParams.set("angle", ValueF(hxd.Math.radToDeg(this.angleRad)));    
+                #if MULTIANIM_TRACE
                 trace(newIndexedParams);
+                #end
                 
                 newIndexedParams.set("x", ValueF(currentPoint.x));
                 newIndexedParams.set("y", ValueF(currentPoint.y));

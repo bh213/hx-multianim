@@ -175,7 +175,9 @@ class ScreenManager {
 
         var built = loader.loadMultiAnim(resource.entry.path);
         if (built == null) throw 'failed to load multianim ${resource.name}';
+        #if MULTIANIM_TRACE
         trace('Built ${resource.entry.name} with reload $enableReload');
+        #end
         builders.set(resource, built);
         return built;
         
@@ -191,7 +193,9 @@ class ScreenManager {
         try {
             for (key => value in oldBuilders) {
                 if (resource != null && key != resource) continue;
+                #if MULTIANIM_TRACE
                 trace('rebuild $key => $value');
+                #end
                 buildFromResource(key, true); // TODO: enable reload
             }
         }
@@ -215,7 +219,9 @@ class ScreenManager {
             reloadedScreenNames.push(name);
         }
         updateScreenMode(this.mode);
+        #if MULTIANIM_TRACE
         trace('reloaded ${reloadedScreenNames.join(",")}');
+        #end
     }
 
 

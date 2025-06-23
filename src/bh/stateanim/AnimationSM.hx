@@ -217,7 +217,9 @@ class AnimationSM extends Drawable {
 		final selectedState = animationStates[animState];
 		if (selectedState == null)
 			throw 'animState ${animState} not found';
+		#if MULTIANIM_TRACE
 		trace(selectedState.extraPoints);
+		#end
 		return selectedState.extraPoints.get(extraPointName);
 	}
 
@@ -298,7 +300,9 @@ class AnimationSM extends Drawable {
 			statesCount++;
 			if (statesCount > 50)
 				if (statesCount > 1000) throw 'more than 1000 states, something is wrong.';
-				else  trace('more than 50 state changes: ${statesCount}');
+				else {
+					trace('more than 50 state changes: ${statesCount}');
+				}
 				
 			switch currentState {
 				case AF_FRAME(frame):

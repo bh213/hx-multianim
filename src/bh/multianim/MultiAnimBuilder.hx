@@ -297,7 +297,9 @@ class MultiAnimBuilder {
 				return [for(v in array) resolveAsString(v)];
 			case RVArrayReference(refArr):
 				final arrayVal = indexedParams.get(refArr);
+				#if MULTIANIM_TRACE
 				trace(indexedParams);
+				#end
 				switch arrayVal {
 					case ArrayString(strArray): return strArray;
 					default: throw 'array reference ${refArr} is not an array but ${arrayVal}';
@@ -794,7 +796,9 @@ class MultiAnimBuilder {
 									iterPos.add(cast pt.x, cast pt.y);
 								case ArrayIterator(valueVariableName, array):	
 									indexedParams.set(valueVariableName, StringValue(arrayIterator[count]));
+									#if MULTIANIM_TRACE
 									trace('$count = arrayIterator[count] ${arrayIterator[count]}');
+									#end
 							}
 							buildTileGroup(childNode, tileGroup, iterPos, gridCoordinateSystem, hexCoordinateSystem, builderParams);
 						}
@@ -1046,7 +1050,9 @@ class MultiAnimBuilder {
 					builder;
 				} else this;
 				
+				#if MULTIANIM_TRACE
 				trace('build reference ${reference} with parameters ${parameters} and builderParams ${builderParams} and indexedParams ${indexedParams}');
+				#end
 
 				var result = builder.buildWithParameters(reference, parameters, builderParams, indexedParams);
 				var object = result?.object;
