@@ -281,12 +281,12 @@ class ScreenManager {
                         removedScreens = [oldSingle];
 					case Single(single):
                         if (single != oldSingle) {
-                            removedScreens = [single];
+                            removedScreens = [oldSingle];
                             addedScreens = [single=>layerMid];
                         }
 					case MasterAndSingle(master, single):
                         if (single != oldSingle) {
-                            removedScreens = [single];
+                            removedScreens = [oldSingle];
                             addedScreens = [single=>layerMid];
                         }
                         if (master == oldSingle) throw 'Single -> MasterAndSingle: switching single with master';
