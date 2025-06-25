@@ -194,7 +194,7 @@ class ScreenManager {
             for (key => value in oldBuilders) {
                 if (resource != null && key != resource) continue;
                 #if MULTIANIM_TRACE
-                trace('rebuild $key => $value');
+                trace('rebuild $key');  // don't trace $value, js gets stack overflow
                 #end
                 buildFromResource(key, true); // TODO: enable reload
             }
