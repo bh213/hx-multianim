@@ -168,6 +168,13 @@ class ScreenManager {
         }
 	}
 
+
+    public function buildFromResourceName(resourceName:String, enableReload:Bool):MultiAnimBuilder {
+        final resource = this.loader.loadHXDResource(resourceName);
+        return buildFromResource(resource, enableReload);
+    }
+
+
     public function buildFromResource(resource:hxd.res.Resource, enableReload:Bool):MultiAnimBuilder {
         var built = builders.get(resource);
         if (built != null) return built;

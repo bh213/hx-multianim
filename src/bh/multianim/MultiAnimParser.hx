@@ -1,7 +1,6 @@
 package bh.multianim;
 
 import bh.base.Particles;
-import haxe.macro.MacroStringTools;
 import bh.base.MacroUtils;
 import bh.base.filters.PixelOutline.PixelOutlineFilterMode;
 import bh.base.Point;
@@ -9,7 +8,6 @@ import bh.multianim.layouts.MultiAnimLayouts;
 import bh.base.PixelLine;
 import bh.stateanim.AnimationSM;
 import h2d.ScaleGrid;
-import bh.stateanim.AnimParser.AnimationStateSelector;
 import bh.base.Hex;
 import bh.base.Hex.HexLayout;
 import hxparse.Unexpected;
