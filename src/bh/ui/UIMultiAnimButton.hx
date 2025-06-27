@@ -16,7 +16,7 @@ class UIStandardMultiAnimButton implements UIElement implements UIElementDisabla
     var status(default, set):StandardUIElementStates = SUINormal;
     var root:h2d.Object;
     var currentButtonObject:Null<h2d.Object>;
-	public var disabled(default, set):Bool;
+	public var disabled(default, set):Bool = false;
     
     public var requestRedraw = true;
 

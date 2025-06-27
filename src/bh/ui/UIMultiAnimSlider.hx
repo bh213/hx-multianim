@@ -11,15 +11,22 @@ import bh.ui.UIElement;
 
 class UIStandardMultiAnimSlider implements UIElement implements UIElementDisablable implements StandardUIElementEvents implements UIElementNumberValue implements UIElementSyncRedraw{
     var status(default, set):StandardUIElementStates = SUINormal;
-    var currentResult:Null<BuilderResult>;
+    var currentResult:Null<BuilderResult> = null;
     var root:h2d.Object;
     public var requestRedraw(default, null):Bool = true;
-	public var disabled(default, set):Bool;
+	public var disabled(default, set):Bool = false;
     var builder:MultiAnimBuilder;
     var currentValue:Int;
     final size:Int;
     final buildName:String;
-
+    
+    function new(builder:MultiAnimBuilder, name:String, size:Int, initialValue:Int) {
+        this.root = new h2d.Object();
+        this.builder = builder;
+        this.buildName = name;
+        this.currentValue = initialValue;
+        this.size = size;
+    }
 
     public function clear() {
         this.currentResult = null;
@@ -53,13 +60,7 @@ class UIStandardMultiAnimSlider implements UIElement implements UIElementDisabla
         if (result.object == null) throw 'build #${name} with status=>${status} size=>${size}, value=>${value}, disabled=>${disabled} returned null object';
         return result;
     }
-    function new(builder:MultiAnimBuilder, name:String, size:Int, initialValue:Int) {
-        this.root = new h2d.Object();
-        this.builder = builder;
-        this.buildName = name;
-        this.currentValue = initialValue;
-        this.size = size;
-    }
+
 
     public function doRedraw() {
         this.requestRedraw = false;

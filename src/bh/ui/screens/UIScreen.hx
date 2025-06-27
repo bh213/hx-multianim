@@ -386,7 +386,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
                 if (layerIndex == index) return enumLayer;
             }
         }
-        throw 'layer not found for object $obj';
+        throw 'layer not found for object $obj. layers ${this.layers}';
     }
     
 }

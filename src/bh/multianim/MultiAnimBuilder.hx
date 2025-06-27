@@ -1719,7 +1719,7 @@ class MultiAnimBuilder {
 			final gridCoordinateSystem = MultiAnimParser.getGridCoordinateSystem(node);
 			final hexCoordinateSystem = MultiAnimParser.getHexCoordinateSystem(node);
 
-			var result = new MultiAnimMultiResult(allCombos);
+			var result = new MultiAnimMultiResult(name, allCombos);
 			for (i in 0...totalStates) {
 				final comboParams:Map<String, ResolvedIndexParameters> = [];
 				var ci = i;
