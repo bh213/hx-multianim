@@ -1,4 +1,5 @@
 package bh.ui.screens;
+import hxparse.ParserError;
 import hxd.fs.BytesFileSystem.BytesFileEntry;
 import hxd.res.Resource;
 import bh.multianim.MultiAnimBuilder;
@@ -192,10 +193,8 @@ class ScreenManager {
 
 
 
-    public function reload(?resource:hxd.res.Resource) {
-        
+    public function reload(?resource:hxd.res.Resource = null, throwOnError:Bool = true):{success:Bool, error:Null<String>, file:Null<String>, pmin:Int, pmax:Int} {
         final oldBuilders = builders.copy();
-
         builders.clear();
         try {
             for (key => value in oldBuilders) {
@@ -210,11 +209,27 @@ class ScreenManager {
             trace(e);
             loader.clearCache();
             builders = oldBuilders;
-            throw e;
+            if (throwOnError) throw e;
+
+            if (Std.isOfType(e, ParserError)) {
+                final parserError = cast(e, ParserError);
+                return {
+                    success: false,
+                    error: parserError.toString(),
+                    file: parserError.pos.psource,
+                    pmin: parserError.pos.pmin,
+                    pmax: parserError.pos.pmax,
+                }
+            }
+
+            return {
+                success: false,
+                error: e.toString(),
+                file: null,
+                pmin: 0,
+                pmax: 0,
+            }
         }
-
-
-        
 
         var reloadedScreenNames = [];
         
@@ -229,6 +244,13 @@ class ScreenManager {
         #if MULTIANIM_TRACE
         trace('reloaded ${reloadedScreenNames.join(",")}');
         #end
+        return {
+            success: true,
+            error: null,
+            file: null,
+            pmin: 0,
+            pmax: 0,
+        }
     }
 
 
