@@ -175,10 +175,11 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
         return UIStandardMultiAnimSlider.create(providedBuilder, sliderBuildName, size, initialValue);
     }
 
-    function addCheckbox(providedBuilder, settings:ResolvedSettings, checked = false) {
-        validateSettings(settings, ["checkboxBuildName"], "checkbox");
+    function addCheckbox(providedBuilder, settings:ResolvedSettings, checked:Null<Bool> = null) {
+        validateSettings(settings, ["checkboxBuildName", "initialValue"], "checkbox");
         final checkboxBuildName = getSettings(settings, "checkboxBuildName", "checkbox");
-        return UIStandardMultiCheckbox.create(providedBuilder, checkboxBuildName, checked);
+        final checkBoxInitialValue = getBoolSettings(settings, "initialValue", checked ?? false);
+        return UIStandardMultiCheckbox.create(providedBuilder, checkboxBuildName, checkBoxInitialValue);
     }
 
 

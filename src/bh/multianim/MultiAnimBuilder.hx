@@ -1670,7 +1670,7 @@ class MultiAnimBuilder {
 
 			final node = multiParserResult?.nodes?.get(name);
 			if (node == null) {
-				throw 'buildWithComboParameters ${allCombos}: could not build ${name}';
+				throw 'buildWithComboParameters ${allCombos}: could not build ${name} with parameters ${inputParameters} and builderParameters ${builderParams}';
 			}
 			if (inputParameters.count() + allCombos.length == 0) {
 				throw 'parameters are required';

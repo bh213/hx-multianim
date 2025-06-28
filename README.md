@@ -199,14 +199,14 @@ Long form of child definition which can include subchildren also exists
 }
 ```
 Long form supports subchildren and the following fields:
-`pos` - same as `xy` in the short form. See `xy`.
-`grid: sizex, sizey`: specifies grid coordinates for itself and its children
-`hex: pointy|flat(sizex, sizey)`: specifies grid coordinates for itself and its children
-`scale: value` - scale for this element and children
-`alpha: value` - alpha (opacity) of this element and children
-`blendMode: none|alpha|add|alphaAdd|softAdd|multiply|alphaMultiply|erase|screen|sub|max|min` - see [Heaps docs](https://heaps.io/api/h2d/BlendMode.html) for more details
-`layer:index` for immediate children of `layers` and `programmable`, z-order index `layer` can be set.
-`filter: <filter>` applies filter to itself and children
+* `pos` - same as `xy` in the short form. See `xy`.
+* `grid: sizex, sizey` - specifies grid coordinates for itself and its children
+* `hex: pointy|flat(sizex, sizey)` - specifies grid coordinates for itself and its children
+* `scale: value` - scale for this element and children
+* `alpha: value` - alpha (opacity) of this element and children
+* `blendMode: none|alpha|add|alphaAdd|softAdd|multiply|alphaMultiply|erase|screen|sub|max|min` - see [Heaps docs](https://heaps.io/api/h2d/BlendMode.html) for more details
+* `layer:index` - for immediate children of `layers` and `programmable`, z-order index `layer` can be set.
+* `filter: <filter>` - applies filter to itself and children
 
 # List of supported nodes
 
@@ -218,12 +218,20 @@ Long form supports subchildren and the following fields:
 
 ## flow (wip)
 * `flow([optional params])` - creates a h2d.Flow (https://github.com/HeapsIO/heaps/wiki/Flow)
+
 Optional params:
-* `maxWidth:<int>`, `maxHeight:<int>`
-* `minWidth:<int>`, `minHeight:<int>`
-* `lineHeight`, `colWidth`
+* `maxWidth:<int>`
+* `maxHeight:<int>`
+* `minWidth:<int>`
+* `minHeight:<int>`
+* `lineHeight`
+* `colWidth`
 * `layout`: `vertical` | `horizontal` | `stack`
-* `paddingTop`, `paddingBottom`, `paddingLeft`, `paddingRight`, `padding`
+* `paddingTop`
+* `paddingBottom`
+* `paddingLeft`
+* `paddingRight`
+* `padding`
 * `debug`: `true` | `false`
 * `horizontalSpacing:<int>`
 * `verticalSpacing:<int>`
@@ -252,14 +260,15 @@ ninepatch("cards", "card-base-patch9", 150,200) {
 
 ## text
 * `text(fontname, text, textcolor[, align, maxWidth], options)` - creates text with font, text content and text color. Align can be `center`, `left` and `right`.
+
 Options can be:
-`letterSpacing` - float
-`lineSpacing` - float
-`lineBreak` - bool - enables line breaks
-`dropShadowXY` - float, float
-`dropShadowColor` - color
-`dropShadowAlpha` - float
-`html` - bool - use h2d.HtmlText (use <br/> instead of \n for line breaks)
+* `letterSpacing` - float
+* `lineSpacing` - float
+* `lineBreak` - bool - enables line breaks
+* `dropShadowXY` - float, float
+* `dropShadowColor` - color
+* `dropShadowAlpha` - float
+* `html` - bool - use h2d.HtmlText (use <br/> instead of \n for line breaks)
 
 Example:
 ```
@@ -282,6 +291,7 @@ Example:
 
 ## repeatable
 * `repeatable($varname, grid(repeats, dx:{valx}, dy:{valy}))` - creates `repeats` number of its children. All values are expressions. `$varName` is required and children can reference current count (starts at 0) by referencing `$varName`. `repeatable($repCount, grid($count+10, dy:10, ))` would access repeat index with `$repcount`, increase it by 10 and increase y position of element by 10 for each iteration.
+
 NOTE: `dx` and `dy` are optional, but at least one has to be specified.
 
 `repeatable` also supports layouts iterator (see demo examples #13) which will iterate through all layouts. Use `layout(layout, layoutname)`.
@@ -316,11 +326,14 @@ layers() {
 
 ## placeholder
 * `placeholder(name, [onNoData], [source])` - uses callback to get object to insert. If callback doesn't exist yet, tile of size sizex * sizey is returned.
+
 * onNoData can be `error`, `nothing` or tileSource. In case `error` is set, exception will be thrown if there is no data provided for the source. Nothing just inserts empty h2d.Object.
+
 example:
 ```
 placeholder(tile(15, 15), callback("test")):8,5
 ```
+
 Possible sources:
 * `callback("test")` - callback receives name
 * `callback("test", $i)` - callback receives name and index (e.g. for dropdowns)
@@ -329,12 +342,14 @@ Possible sources:
 ## reference
 * `reference($reference [, <params>])` - references another programmable node by `reference` and outputs by name. 
 * `reference(external(externalName), $reference, [,<params>])` - loads reference from external multianim that was imported by `import file as externalName`.
+
 example:
 ```
 reference($dialogBase) {
   #dialogText(updatable) text(dd, "This is a text message", ffffff00, center, 400): 50,50;
 }
 ```
+
 * It can also reference non-programmable nodes, in that case parameters cannot be specified.
 
 ## settings
@@ -347,30 +362,29 @@ settings(transitionTimer=>0.2)
 
 ### Fonts
 List of supported fonts:
-```
-"f3x5"
-"m3x6"
-"pixeled6"
-"pikzel"
-"cnc_inet_12"
-"m5x7"
-"f7x5"
-"f5x5"
-"default_heaps"
-"m6x11"
-"dd_thin"
-"dd"
-"pixellari"
-"dhkp"
-"hh"
-```
+* "f3x5"
+* "m3x6"
+* "pixeled6"
+* "pikzel"
+* "cnc_inet_12"
+* "m5x7"
+* "f7x5"
+* "f5x5"
+* "default_heaps"
+* "m6x11"
+* "dd_thin"
+* "dd"
+* "pixellari"
+* "dhkp"
+* "hh"
 
 ## tile source
 `tileSource` can be `sheet(sheet, name)`, `file(filename)` or `generated(cross(width, height))`. 
-`sheet(sheet, name)` loads tile from atlas sheet named `sheet`, using tile named `name`
-`file(filename)` loads tile from file.
-`generated(cross(width, height[, color]))` generates image of rectangle with cross with specified dimensions.
-`generated(solid(color, height[, color]))` generates image with solid color
+
+* `sheet(sheet, name)` loads tile from atlas sheet named `sheet`, using tile named `name`
+* `file(filename)` loads tile from file.
+* `generated(cross(width, height[, color]))` generates image of rectangle with cross with specified dimensions.
+* `generated(solid(color, height[, color]))` generates image with solid color
 
 File and sheet loading directories are application specific.
 
@@ -386,6 +400,7 @@ File and sheet loading directories are application specific.
 
 ## xy 
 xy position can be defined in multiple ways, usually by setting `pos` property in the long form or directly in the short form `#mypoint point:20,30`
+
 * offset coordinates `x,y` - for example: `30, 20`
 * `hex(q, r, s)` - requires `hex` coordinate system to be defined. Center of the hex with these coordinates
 * `hexCorner(index, scale)` - requires `hex` coordinate system to be defined. Creates position in specific corner of hex scaled from center. Scale 0.0 is center of hex, 1.0 is on the corner, 0.5 is halfway between center and corner. Example: `pos: hexCorner(2, 0.7)`
@@ -400,16 +415,16 @@ Useful for `repeatable(dx, dy, $count)` for various HP/mana/energy bars. Propert
 
 # programmable parameter types
  
- * enum: `name:[value1, value2]`, example: `status: [hover, pressed, disabled, normal]` or with default `status: [hover, pressed, disabled, normal] = normal`
- * range: `name:num..num`, example: `count:1..5` or with default `count:1..5 = 5`
- * int: `count:int` - any integer, example `count:7` or `count:-1` or with default `delta:int = 0`
- * uint: `count:uint` - any positive integer, example `count:7` or with default `count:uint = 5`
- * flags: `mask:flags(bits)` - number of bits, example: `mask:flags(6)`
- * string: `name="myname"`, string always have default value
- * hex direction: `dir:hexdirection` - 0..5
- * grid direction: `dir:griddirection`: 0..7
- * bool: true/false or 0/1, example `disabled: true`
- * color: `color:<color>` - 32bit color, example `color: 0xff0000ff` or `color: #f0f` or `red`
+* enum: `name:[value1, value2]`, example: `status: [hover, pressed, disabled, normal]` or with default `status: [hover, pressed, disabled, normal] = normal`
+* range: `name:num..num`, example: `count:1..5` or with default `count:1..5 = 5`
+* int: `count:int` - any integer, example `count:7` or `count:-1` or with default `delta:int = 0`
+* uint: `count:uint` - any positive integer, example `count:7` or with default `count:uint = 5`
+* flags: `mask:flags(bits)` - number of bits, example: `mask:flags(6)`
+* string: `name="myname"`, string always have default value
+* hex direction: `dir:hexdirection` - 0..5
+* grid direction: `dir:griddirection`: 0..7
+* bool: true/false or 0/1, example `disabled: true`
+* color: `color:<color>` - 32bit color, example `color: 0xff0000ff` or `color: #f0f` or `red`
  
 # Imports
 Multianims can be imported by the following construct:
@@ -421,9 +436,11 @@ Works with palettes. Layouts will work as well.
 
 # Conditionals
 Conditions are defined by `@(...)` structure and can be specified once per element. Specify parameters that must be used for node to be built. Multiple nodes might be built. Use `parameter=>*` to match all.
+
 * `@()` or `@if(...)` - match all provided
 * `@(!param=>'value')` - match when `param` is not `value`
 * `@ifstrict(...)` - must match all provided parameters from programmable. Missing parameters will NOT match.
+
 examples:
 
 ```
@@ -437,12 +454,12 @@ examples:
 `@ifstrict(mode=>idle)` will match nothing as `width` & `height` are not provided. For `@ifstrict` to work in this case use: `@ifstrict(mode=>idle, width=>*, height=>*)`
 
 Range matches (for numbers):
-`@(key => greaterThan 30)` matches when `key` is 30 or more
-`@(key => lessThan 30)` matches when `key` is 30 or less
-`@(key => between 10..30)` matches when `key` is between inclusive 10 and 30
+* `@(key => greaterThan 30)` matches when `key` is 30 or more
+* `@(key => lessThan 30)` matches when `key` is 30 or less
+* `@(key => between 10..30)` matches when `key` is between inclusive 10 and 30
 
 multi enum match:
-`@(key => [value1, value2])` matches when `key` is either `value1` or `value2`. Works with numbers as well.
+* `@(key => [value1, value2])` matches when `key` is either `value1` or `value2`. Works with numbers as well.
 
 # expressions
 * `+` - addition
@@ -451,6 +468,7 @@ multi enum match:
 * `/` - division
 * `%` - modulo (integer only)
 * `div` - integer division, behaves the same as `/` with integers
+
 References and parentheses are supported.
 
 Haxe style interpolated strings are supported  
@@ -462,12 +480,12 @@ Haxe style interpolated strings are supported
 `builderParam(name)` is also available and also requires code support. Builder params will enable `placeholder` to insert h2d.Object into the elements (e.g. checkboxes into panel with text, giving designer an ability to move checkbox around).
 
 expression examples: 
-- `$items + 5`
-- `$width * 2 + 5`
-- `($index % 5) * 25`
-- `($index div 5) * 25`
-- `callback("test") * 3` - callback must return int
-- `placeholder(generated(cross(20, 20)), builderParameter("button2")):130,0`
+* `$items + 5`
+* `$width * 2 + 5`
+* `($index % 5) * 25`
+* `($index div 5) * 25`
+* `callback("test") * 3` - callback must return int
+* `placeholder(generated(cross(20, 20)), builderParameter("button2")):130,0`
 
 ## Updatable text
 To enable updating text from code, text/htmltext nodes have to be marked as `(updatable)`, for example: 
@@ -494,13 +512,13 @@ relativeLayouts {
 ```
 
 ### nodes:
-`grid: x,y {...}` - sets grid mode for layouts
-`offset: x,y {...}` sets offset for layouts (value added to all x and y coordinates)
-`hex:pointy(30,20) {...}` - sets hex coordinate system for all layouts members
+* `grid: x,y {...}` - sets grid mode for layouts
+* `offset: x,y {...}` sets offset for layouts (value added to all x and y coordinates)
+* `hex:pointy(30,20) {...}` - sets hex coordinate system for all layouts members
 
 ### layout child nodes
 
-`#endpoint point: 600,10` - single point node, for example for setting "End turn" button
+* `#endpoint point: 600,10` - single point node, for example for setting "End turn" button
 
 List of points, for positioning multiple elements (e.g. buttons, checkboxes)
 
@@ -555,9 +573,9 @@ See demo examples #7 for palette usage example.
 ## ScrollList
 
 Settings:
-`scrollSpeed` - up/down scroll speed in pixels per second
-`height` - returned height of an image list
+* `scrollSpeed` - up/down scroll speed in pixels per second
+* `height` - returned height of an image list
 
 ## Dropdown
 Settings:
-`transitionTimer` - time to transition between open & closed
+* `transitionTimer` - time to transition between open & closed
