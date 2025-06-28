@@ -151,28 +151,39 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
         }
     }
 
-    function addButton(providedBuilder, text:String, settings:ResolvedSettings):UIStandardMultiAnimButton {
+    function validateSettings(settings:ResolvedSettings, allowedSettings:Array<String>, elementName:String) {
+        if (settings == null) return;
+        for (key in settings.keys()) {
+            if (!allowedSettings.contains(key)) {
+                throw 'Unknown setting "$key" for ${elementName}';
+            }
         
+        }
+    }
+
+    function addButton(providedBuilder, text:String, settings:ResolvedSettings):UIStandardMultiAnimButton {
+        validateSettings(settings, ["buildName", "text"], "button");
         final buttonBuildName = getSettings(settings, "buildName", "button");
         final buttonText = getSettings(settings, "text", text);
         return UIStandardMultiAnimButton.create(providedBuilder, buttonBuildName, buttonText);
     }
 
     function addSlider(providedBuilder, settings:ResolvedSettings, initialValue:Int = 0) {
-        
+        validateSettings(settings, ["buildName", "size"], "slider");
         final sliderBuildName = getSettings(settings, "buildName", "slider");
         final size = getIntSettings(settings, "size", 200);
         return UIStandardMultiAnimSlider.create(providedBuilder, sliderBuildName, size, initialValue);
     }
 
     function addCheckbox(providedBuilder, settings:ResolvedSettings, checked = false) {
+        validateSettings(settings, ["checkboxBuildName"], "checkbox");
         final checkboxBuildName = getSettings(settings, "checkboxBuildName", "checkbox");
         return UIStandardMultiCheckbox.create(providedBuilder, checkboxBuildName, checked);
     }
 
 
     function addRadio(providedBuilder, settings:ResolvedSettings, items:Array<UIElementListItem>, vertical:Bool, selectedIndex:Int = 0) {
-         
+        validateSettings(settings, ["radioBuildName", "singleRadioButtonBuilderName"], "radio");
         final radioBuildName = getSettings(settings, "radioBuildName", vertical ? "radioButtonsVertical" : "radioButtonsHorizontal");
         final singleRadioButtonBuilderName = getSettings(settings, "singleRadioButtonBuilderName", "radio");
         return UIMultiAnimRadioButtons.create(providedBuilder, radioBuildName, singleRadioButtonBuilderName, items, 0);
@@ -180,7 +191,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 
     // TODO: needs work
     function addCheckboxWithText(providedBuilder:MultiAnimBuilder, settings:ResolvedSettings, label:String, checked:Bool) {
-        
+        validateSettings(settings, ["buildName", "textColor", "font"], "checkboxWithText");
         var checkbox;
         final checkboxWithNameBuildName = getSettings(settings, "buildName", "checkboxWithText");
         final textColor = getIntSettings(settings, "textColor", 0xFFFFFFFF);
@@ -198,6 +209,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
     }
 
     function addScrollableList(builder:MultiAnimBuilder, width, height, items, settings:ResolvedSettings, initialIndex ):UIMultiAnimScrollableList {
+        validateSettings(settings, ["scrollableListBuilder", "width", "height", "topClearance", "itemBuilder"], "scrollableList");
         final panelBuildName = getSettings(settings, "scrollableListBuilder", "list-panel");
         final finalWidth = getIntSettings(settings, "width", width);
         final finalHeight = getIntSettings(settings, "height", height);
@@ -208,6 +220,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
     }
 
     function addDropdown(providedBuilder, items, settings:ResolvedSettings, initialIndex = 0) {
+        validateSettings(settings, ["dropdownBuildName", "autoOpen", "autoCloseOnLeave", "closeOnOutsideClick"], "dropdown");
         final dropdownBuildName = getSettings(settings, "dropdownBuildName", "dropdown");
         final autoOpen = getBoolSettings(settings, "autoOpen", true);
         final autoCloseOnLeave = getBoolSettings(settings, "autoCloseOnLeave", true);
