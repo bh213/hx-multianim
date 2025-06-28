@@ -50,7 +50,6 @@ class UIMultiAnimScrollableList implements UIElement implements StandardUIElemen
 	var lastClickIndex = -1;
 	var topClearance = 0;
 
-
 	function new(builder:MultiAnimBuilder, itemBuilder:UIElementItemBuilder, panelName:String, width:Int, height:Int, items, topClearance, initialIndex = 0) {
 		this.panelBuilder = builder;
 		this.panelName = panelName;
@@ -67,7 +66,6 @@ class UIMultiAnimScrollableList implements UIElement implements StandardUIElemen
 		buildItems();
 	}
 
-
 	public function clear() {
 		this.selectedItem = null;
 		this.hoverItem = null;
@@ -75,7 +73,6 @@ class UIMultiAnimScrollableList implements UIElement implements StandardUIElemen
 		this.scrollbar = null;
 		this.interactives = [];
 	}
-
 
 	public static function create(builder:MultiAnimBuilder, itemBuilder, panelName:String, width:Int, height:Int, items, topClearance, initialIndex) {
 		return new UIMultiAnimScrollableList(builder, itemBuilder, panelName, width, height, items, topClearance, initialIndex);

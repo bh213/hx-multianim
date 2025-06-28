@@ -3,11 +3,8 @@ package bh.ui;
 import bh.ui.screens.ScreenManager;
 import bh.ui.controllers.UIController;
 
-
-
 @:nullSafety
 class ControllerEventHandler {
-    
 	final screenManager:ScreenManager;
 	final scene:h2d.Scene;
 	final window:hxd.Window;
@@ -20,23 +17,18 @@ class ControllerEventHandler {
 	}
 
 	inline function getControllers():Array<UIController> {
-		return Lambda.map(screenManager.activeScreenControllers, x->x.getController());
+		return Lambda.map(screenManager.activeScreenControllers, x -> x.getController());
 	}
 
-
-
 	public function handleEvents(event:hxd.Event):Void {
-		
-
 		final mousePoint = new h2d.col.Point(scene.mouseX, scene.mouseY);
 		final eventWrapper:EventWrapper = {
-			sourceEvent:event,
-			mousePoint:mousePoint,
-			scene:scene
+			sourceEvent: event,
+			mousePoint: mousePoint,
+			scene: scene
 		}
 
 		for (stage => controller in getControllers()) {
-		
 			switch event.kind {
 				case EPush:
 					controller.handleClick(mousePoint, event.button, false, eventWrapper);

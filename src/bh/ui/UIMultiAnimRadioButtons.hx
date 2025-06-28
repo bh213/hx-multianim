@@ -19,7 +19,6 @@ class UIMultiAnimRadioButtons implements UIElement implements UIElementDisablabl
 	final builderResult:BuilderResult;
 	var allowUnselected = false;
 
-
 	public function new(builder:MultiAnimBuilder, radioButtonsBuildName, singleRadioButtonBuilderName, items, selectedIndex) {
 		this.builder = builder;
 		this.items = items;
@@ -28,7 +27,6 @@ class UIMultiAnimRadioButtons implements UIElement implements UIElementDisablabl
 		this.builderResult = builder.buildWithParameters(radioButtonsBuildName, ["count" => items.length], {callback: builderCallback});
 		setSelectedIndex(selectedIndex);
 	}
-
 
 	public function set_disabled(value:Bool):Bool {
 		Lambda.iter(checkboxes, x -> x.disabled = value);
