@@ -12,9 +12,9 @@ import bh.ui.UIElement.UIElementEvents;
 // var allStates = hover, pressed, disabled, normal, selected
 class UIMultiAnimScrollableList implements UIElement implements StandardUIElementEvents implements UIElementSyncRedraw implements UIElementUpdatable
 		implements UIElementListValue {
-	final itemBuilder:UIElementItemBuilder;
-	final panelBuilder:MultiAnimBuilder;
-	final panelName:String;
+	final itemBuilder:UIElementBuilder;
+	final panelBuilder:UIElementBuilder;
+	final scrollbarBuilder:UIElementBuilder;
 
 	final root:h2d.Object;
 	final mask:h2d.Mask;
@@ -50,10 +50,10 @@ class UIMultiAnimScrollableList implements UIElement implements StandardUIElemen
 	var lastClickIndex = -1;
 	var topClearance = 0;
 
-	function new(builder:MultiAnimBuilder, itemBuilder:UIElementItemBuilder, panelName:String, width:Int, height:Int, items, topClearance, initialIndex = 0) {
-		this.panelBuilder = builder;
-		this.panelName = panelName;
+	function new(panelBuilder:UIElementBuilder, itemBuilder:UIElementBuilder, scrollbarBuilder:UIElementBuilder, width:Int, height:Int, items, topClearance, initialIndex = 0) {
+		this.panelBuilder = panelBuilder;
 		this.itemBuilder = itemBuilder;
+		this.scrollbarBuilder = scrollbarBuilder;
 		this.root = new h2d.Object();
 
 		this.items = items;
@@ -74,17 +74,19 @@ class UIMultiAnimScrollableList implements UIElement implements StandardUIElemen
 		this.interactives = [];
 	}
 
-	public static function create(builder:MultiAnimBuilder, itemBuilder, panelName:String, width:Int, height:Int, items, topClearance, initialIndex) {
-		return new UIMultiAnimScrollableList(builder, itemBuilder, panelName, width, height, items, topClearance, initialIndex);
+	public static function createWithSingleBuilder(builder:MultiAnimBuilder, panelBuilderName:String, itemBuilderName:String, scrollbarBuilderName:String, width:Int, height:Int, items, topClearance, initialIndex) {
+		return new UIMultiAnimScrollableList(builder.createElementBuilder(panelBuilderName), builder.createElementBuilder(itemBuilderName), builder.createElementBuilder(scrollbarBuilderName), width, height, items, topClearance, initialIndex);
+	}
+
+	public static function create(builder:UIElementBuilder, itemBuilder:UIElementBuilder, scrollbarBuilder:UIElementBuilder, width:Int, height:Int, items, topClearance, initialIndex) {
+		return new UIMultiAnimScrollableList(builder, itemBuilder, scrollbarBuilder, width, height, items, topClearance, initialIndex);
 	}
 
 	function buildPanel() {
-		var builtPanel = panelBuilder.buildWithParameters(panelName, ["width" => width, "height" => height, "topClearance" => topClearance],
+		var builtPanel = this.panelBuilder.builder.buildWithParameters(this.panelBuilder.name, ["width" => width, "height" => height, "topClearance" => topClearance],
 			{placeholderObjects: ["mask" => PVObject(mask)]});
 		root.removeChildren();
-
 		root.addChild(builtPanel.object);
-
 		return builtPanel;
 	}
 
@@ -121,7 +123,7 @@ class UIMultiAnimScrollableList implements UIElement implements StandardUIElemen
 			this.scrollbar.remove();
 		if (this.height < totalHeight) { // show scrollbar
 
-			final buildResult = panelBuilder.buildWithParameters("scrollbar", [
+			final buildResult = this.scrollbarBuilder.builder.buildWithParameters(this.scrollbarBuilder.name, [
 				"panelHeight" => '${height}',
 				"scrollableHeight" => '${totalHeight}',
 				"scrollPosition" => '${this.mask.scrollY}'

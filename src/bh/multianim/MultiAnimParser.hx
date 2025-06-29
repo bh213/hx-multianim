@@ -258,7 +258,7 @@ class MultiAnimUnexpected<Token> extends Unexpected<Token> {
 }
 
 class MultiAnimLexer extends hxparse.Lexer implements hxparse.RuleBuilder {
-	static var buf:StringBuf;
+	static var buf:StringBuf = null;
 	static var keywords = @:mapping(2, true) MPKeywords;
 	static var integerDigits = '([0-9](_?[0-9])*)+';
 	static var integer = '([1-9](_?[0-9])*)|0';
@@ -713,7 +713,10 @@ typedef Node = {
 	children:Array<Node>,
 	conditionals: NodeConditionalValues,
 	uniqueNodeName:String,
-	settings:Null<Map<String, ReferencableValue>>
+	settings:Null<Map<String, ReferencableValue>>,
+	#if MULTIANIM_TRACE	
+	parserPos:String
+	#end
 }
 
 typedef MultiAnimResult = {
@@ -2010,7 +2013,9 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 		var scale:Null<ReferencableValue> = null;
 		var conditional = NoConditional;
 		
-		
+		#if MULTIANIM_TRACE
+		final parserPos = stream.curPos();
+		#end
 		switch stream {
 			case [MPAt]:
 				var atLestOneInline = 0;
@@ -2054,7 +2059,7 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 		}
 		 
 
-		final gridCoordinateSystem = getGridCoordinateSystem(parent);
+		final gridCoordinateSystem = getGridCoordinateSystem(parent);	// TODO: remove or check if this is supposed to be used
 		final hexCoordinateSystem = getHexCoordinateSystem(parent);
 		var nameString = updatableNameType.getNameString();
 
@@ -2075,7 +2080,10 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 				children:[],
 				conditionals:conditional,
 				uniqueNodeName: generateUniqueName(uniqueId, nameString, Std.string(type)),
-				settings: null
+				settings: null,
+				#if MULTIANIM_TRACE
+				parserPos:parserPos.format(this.input)
+				#end
 			};
 		}
 

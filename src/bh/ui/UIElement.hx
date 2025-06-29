@@ -1,5 +1,6 @@
 package bh.ui;
 
+import bh.multianim.MultiAnimBuilder;
 import bh.multianim.MultiAnimMultiResult;
 import bh.ui.UIMultiAnimDropdown;
 import h2d.col.Point;
@@ -122,10 +123,6 @@ interface UIElementDisablable {
 
 interface UIElementSelectable {
 	var selected(default, set):Bool;
-}
-
-interface UIElementItemBuilder {
-	function buildItem(index:Int, item:UIElementListItem, itemWidth:Int, itemHeight:Int):MultiAnimMultiResult;
 }
 
 interface UIElementUpdatable {
