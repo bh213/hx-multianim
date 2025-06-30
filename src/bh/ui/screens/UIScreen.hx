@@ -225,12 +225,14 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 
 
 
-    function addScrollableListWithSingleBuilder(builder:MultiAnimBuilder, panelBuilderName:String, itemBuilderName:String, scrollbarBuilderName:String, items, settings:ResolvedSettings, initialIndex:Int = 0, width:Int = 100, height:Int = 100):UIMultiAnimScrollableList {
-        return addScrollableList(builder.createElementBuilder(panelBuilderName), builder.createElementBuilder(itemBuilderName), builder.createElementBuilder(scrollbarBuilderName), items, settings, initialIndex, width, height);
+	// TODO: hardcoded dimensions
+    function addScrollableListWithSingleBuilder(builder:MultiAnimBuilder, panelBuilderName:String, itemBuilderName:String, scrollbarBuilderName:String, scrollbarInPanelName:String, items, settings:ResolvedSettings, initialIndex:Int = 0, width:Int = 100, height:Int = 100):UIMultiAnimScrollableList {
+        return addScrollableList(builder.createElementBuilder(panelBuilderName), builder.createElementBuilder(itemBuilderName), builder.createElementBuilder(scrollbarBuilderName), scrollbarInPanelName, items, settings, initialIndex, width, height);
     }
 
-	function addScrollableList(panelBuilder:UIElementBuilder, itemBuilder:UIElementBuilder, scrollbarBuilder:UIElementBuilder, items, settings:ResolvedSettings, initialIndex:Int = 0, width:Int = 100, height:Int = 100):UIMultiAnimScrollableList {
-		validateSettings(settings, ["panelBuilder", "itemBuilder", "width", "height", "topClearance"], "scrollableList");
+	// TODO: hardcoded dimensions
+	function addScrollableList(panelBuilder:UIElementBuilder, itemBuilder:UIElementBuilder, scrollbarBuilder:UIElementBuilder, scrollbarInPanelName:String, items, settings:ResolvedSettings, initialIndex:Int = 0, width:Int = 100, height:Int = 100):UIMultiAnimScrollableList {
+		validateSettings(settings, ["panelBuilder", "itemBuilder", "scrollbarBuilder", "scrollbarInPanelName", "width", "height", "topClearance", "scrollSpeed"], "scrollableList");
 		
 		if (hasSettings(settings, "panelBuilder")) {
 			panelBuilder = panelBuilder.withUpdatedName(getSettings(settings, "panelBuilder", ""));
@@ -238,19 +240,25 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
         if (hasSettings(settings, "itemBuilder")) {
             itemBuilder = itemBuilder.withUpdatedName(getSettings(settings, "itemBuilder", ""));
         }
+		if (hasSettings(settings, "scrollbarBuilder")) {
+			scrollbarBuilder = scrollbarBuilder.withUpdatedName(getSettings(settings, "scrollbarBuilder", ""));
+		}
+		if (hasSettings(settings, "scrollbarInPanelName")) {
+			scrollbarInPanelName = getSettings(settings, "scrollbarInPanelName", "scrollbar");
+		}
 		final finalWidth = getIntSettings(settings, "width", width);
 		final finalHeight = getIntSettings(settings, "height", height);
 		final topClearance = getIntSettings(settings, "topClearance", 0);
-		return UIMultiAnimScrollableList.create(panelBuilder, itemBuilder, scrollbarBuilder, finalWidth, finalHeight, items, topClearance, initialIndex);
+		return UIMultiAnimScrollableList.create(panelBuilder, itemBuilder, scrollbarBuilder, scrollbarInPanelName, finalWidth, finalHeight, items, topClearance, initialIndex);
 	}
 
 
 
-	 function addDropdownWithSingleBuilder(builder:MultiAnimBuilder, dropdownBuilderName:String, panelBuilderName:String, panelListItemBuilderName:String, scrollbarBuilderName:String, items, settings:ResolvedSettings, initialIndex = 0) {
-		return addDropdown(builder.createElementBuilder(dropdownBuilderName), builder.createElementBuilder(panelBuilderName), builder.createElementBuilder(panelListItemBuilderName), builder.createElementBuilder(scrollbarBuilderName), items, settings, initialIndex);
+	 function addDropdownWithSingleBuilder(builder:MultiAnimBuilder, dropdownBuilderName:String, panelBuilderName:String, panelListItemBuilderName:String, scrollbarBuilderName:String, scrollbarInPanelName:String, items, settings:ResolvedSettings, initialIndex = 0) {
+		return addDropdown(builder.createElementBuilder(dropdownBuilderName), builder.createElementBuilder(panelBuilderName), builder.createElementBuilder(panelListItemBuilderName), builder.createElementBuilder(scrollbarBuilderName), scrollbarInPanelName, items, settings, initialIndex);
 	}
 
-	function addDropdown(dropdownBuilder:UIElementBuilder, panelBuilder:UIElementBuilder, itemBuilder:UIElementBuilder,  scrollbarBuilder:UIElementBuilder, items, settings:ResolvedSettings, initialIndex = 0) {
+	function addDropdown(dropdownBuilder:UIElementBuilder, panelBuilder:UIElementBuilder, itemBuilder:UIElementBuilder,  scrollbarBuilder:UIElementBuilder, scrollbarInPanelName:String, items, settings:ResolvedSettings, initialIndex = 0) {
 		validateSettings(settings, ["panelBuilder", "itemBuilder", "dropdownBuilder", "autoOpen", "autoCloseOnLeave", "closeOnOutsideClick"], "dropdown");
 
         if (hasSettings(settings, "panelBuilder")) {
@@ -262,12 +270,15 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
         if (hasSettings(settings, "dropdownBuilder")) {
             dropdownBuilder = dropdownBuilder.withUpdatedName(getSettings(settings, "dropdownBuilder", ""));
         }
+		if (hasSettings(settings, "scrollbarInPanelName")) {
+			scrollbarInPanelName = getSettings(settings, "scrollbarInPanelName", scrollbarInPanelName);
+		}
 
 		final autoOpen = getBoolSettings(settings, "autoOpen", true);
 		final autoCloseOnLeave = getBoolSettings(settings, "autoCloseOnLeave", true);
 		final closeOnOutsideClick = getBoolSettings(settings, "closeOnOutsideClick", true);
         
-		var panel = addScrollableList(panelBuilder, itemBuilder, scrollbarBuilder, items, settings, initialIndex);
+		var panel = addScrollableList(panelBuilder, itemBuilder, scrollbarBuilder, scrollbarInPanelName, items, settings, initialIndex);
 		final retVal = UIStandardMultiAnimDropdown.createWithPrebuiltPanel(dropdownBuilder, panel, items, initialIndex);
 
 		retVal.autoOpen = autoOpen;

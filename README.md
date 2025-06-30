@@ -623,8 +623,14 @@ See demo examples #7 for palette usage example.
 ## ScrollList
 
 Settings:
+* `panelBuilder` - builder for the panel
+* `itemBuilder` - builder for the items
+* `scrollbarBuilder` - builder for the scrollbar
+
+* `width` - width of the scroll list
+* `height` - height of the scroll list
+* `topClearance` - clearance from the top of the screen
 * `scrollSpeed` - up/down scroll speed in pixels per second
-* `height` - returned height of an image list
 
 ## Dropdown
 Settings:
