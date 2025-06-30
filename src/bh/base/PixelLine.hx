@@ -5,15 +5,14 @@ import hxd.BitmapData;
 
 class PixelLines extends h2d.Bitmap {
 	var data:BitmapData;
-	var centerX:Float;
-	var centerY:Float;
+	var centerX:Float = 0;
+	var centerY:Float = 0;
 
 	public function new(width:Int, height:Int, ?parent:h2d.Object) {
 		super(null, parent);
 		this.data = new BitmapData(width, height);
 		this.width = width;
 		this.height = height;
-		updateBitmap();
 	}
 
 	public function clear() {
@@ -29,10 +28,10 @@ class PixelLines extends h2d.Bitmap {
 	public function rect(x, y, width, height, colorARGB) {
         // TODO: handle overlap in case of alpha?
 		data.lock();
-		data.line(x, y, x + width, y, colorARGB);
-		data.line(x, y, x, y + height, colorARGB);
-		data.line(x + width, y, x + width, y + height, colorARGB);
-		data.line(x, y + height, x + width, y + height, colorARGB);
+		data.line(x, y, x + width - 1, y, colorARGB);
+		data.line(x, y, x, y + height - 1, colorARGB);
+		data.line(x + width - 1, y, x + width - 1, y + height - 1, colorARGB);
+		data.line(x, y + height - 1, x + width - 1, y + height - 1, colorARGB);
 	}
 
 	public function filledRect(x:Int, y:Int, width:Int, height:Int, colorARGB) {

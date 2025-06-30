@@ -535,12 +535,10 @@ class MultiAnimBuilder {
 	function generatePlaceholderBitmap(type:ResolvedGeneratedTileType) {
 		return switch type {
 			case Cross(w, h, color):
-				var pl = new PixelLines(w, h);
-
-				pl.filledRect(0, 0, w - 1, h - 1, 0xFF808080);
-				pl.rect(0, 0, w - 1, h - 1, color);
-				pl.line(0, 0, w - 1, h - 1, color);
-				pl.line(0, h - 1, w, 0 - 1, color);
+				final pl = new PixelLines(w, h);
+				pl.rect(0, 0, w, h, color);
+				 pl.line(0, 0, w - 1, h - 1, color);
+				 pl.line(0, h - 1, w - 1,  0, color);
 				pl.updateBitmap();
 				pl.tile;
 
