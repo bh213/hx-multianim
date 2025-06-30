@@ -58,6 +58,31 @@ The library includes comprehensive debug tracing that can be controlled using co
 
 ---
 
+## Macro-Based UI Construction
+
+The library uses macros to map `.manim` file elements to Haxe code. Builder parameters in `.manim` files (using `builderParameter("name")`) are mapped to named arguments in the macro build:
+
+`.manim file`
+```
+// In your .manim file
+#ui programmable() {
+  placeholder(generated(cross(200, 20)), builderParameter("button")) {
+      settings(buildName=>button_custom)
+  }
+}
+```
+
+`Haxe code`
+```haxe
+var ui = MacroUtils.macroBuildWithParameters(buttonBuilder, "ui", [], [
+    button=>addButton(buttonBuilder, "Click Me!"),
+]);
+```
+
+The `builderParameter("button")` in the `.manim` file corresponds to the `button=>addButton(...)` mapping in the Haxe code.
+
+---
+
 State animations
 =================================
 
@@ -97,7 +122,7 @@ Animation has the following fields:
 
 ### Playlist
 
-* `loop: yes` - loops forever
+* `loop: yes` | `loop` - loops forever
 * `loop: untilCommand` - loops until there is a command in command queue
 * `loop: <number>` - loops a <number> of times, can be used to create multiple events (e.g. random)
 * `file: "<filename>"` - loads and plays file (should be single frame png image)
@@ -108,6 +133,7 @@ Animation has the following fields:
 * `goto <name>` - switches to another animation `<name>`. Can be used for transitions.
 * `sheet: "myanimation" frames: 1..2 duration: 25ms` - creates playlist animation from atlas sheet (starting at frame 1 and ending at frame 2, each frame taking 25ms)
 * `sheet: "myanimation"` - uses default `fps` setting and takes all frames with the name `myanimation` from the atlas sheet.
+* `sheet: "myanimation_$$state$$_name"` - uses state variable interpolation in sheet names
 
 ### Conditionals based on state
 
@@ -360,6 +386,14 @@ Example:
 settings(transitionTimer=>0.2)
 ```
 
+Settings can also be used inside placeholders to override builder names or provide configuration:
+
+```
+placeholder(generated(cross(200, 20)), builderParameter("button")) {
+    settings(buildName=>button_custom) // override builder name
+}
+```
+
 ### Fonts
 List of supported fonts:
 * "f3x5"
@@ -492,6 +526,22 @@ To enable updating text from code, text/htmltext nodes have to be marked as `(up
 
 ```
 #selectedName(updatable) text(pikzel, callback("selectedName"), 0xffffff12, center, 120): -4,6
+```
+
+Updatable text nodes are referenced by name in code and updated in response to UI events:
+
+`.manim file`
+```
+#ui programmable() {
+     
+      #ButtonVal(updatable) text(dd, "This will get updated", #ffffff00): 5, 10
+```      
+
+`Haxe code`
+```haxe
+// ... build the "ui" MultiAnimBuilder using e.g. MacroUtils.macroBuildWithParameters
+this.updatableText = ui.builderResults.getUpdatable("buttonVal");
+this.updatableText.updateText("Button Clicked!");
 ```
 
 ## Updatable tile
