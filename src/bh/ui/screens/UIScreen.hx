@@ -177,11 +177,17 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		}
 	}
 
-	function addButton(providedBuilder, text:String, settings:ResolvedSettings):UIStandardMultiAnimButton {
-		validateSettings(settings, ["buildName", "text"], "button");
-		final buttonBuildName = getSettings(settings, "buildName", "button");
+	function addButtonWithSingleBuilder(builder:MultiAnimBuilder, buttonBuilderName:String, settings:ResolvedSettings, text:String):UIStandardMultiAnimButton {
+		return addButton(builder.createElementBuilder(buttonBuilderName), text, settings);
+	}
+
+	function addButton(builder:UIElementBuilder, text:String, settings:ResolvedSettings):UIStandardMultiAnimButton {
+		validateSettings(settings, ["builderName", "text"], "button");
+		if (hasSettings(settings, "builderName")) {
+			builder = builder.withUpdatedName(getSettings(settings, "builderName", "button"));
+		}
 		final buttonText = getSettings(settings, "text", text);
-		return UIStandardMultiAnimButton.create(providedBuilder, buttonBuildName, buttonText);
+		return UIStandardMultiAnimButton.create(builder.builder, builder.name, buttonText);
 	}
 
 	function addSlider(providedBuilder, settings:ResolvedSettings, initialValue:Int = 0) {

@@ -12,7 +12,7 @@ class UIElementBuilder {
 		this.name = name;
 		this.builder = builder;
 		if (!builder.hasNode(name)) {
-			throw 'builder does not have node $name';
+			throw 'builder does not have node $name, builder: ${builder.sourceName}';
 		}
 	}
 

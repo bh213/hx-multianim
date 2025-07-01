@@ -248,6 +248,7 @@ private typedef StoredBuilderState = {
 @:allow(bh.multianim.MultiAnimParser)
 class MultiAnimBuilder {
 	final resourceLoader:bh.base.ResourceLoader;
+	public final sourceName:String;
 	var multiParserResult:MultiAnimResult;
 
 	var indexedParams:Map<String, ResolvedIndexParameters> = [];
@@ -255,9 +256,16 @@ class MultiAnimBuilder {
 	var currentNode:Null<Node> = null;
 	var stateStack:Array<StoredBuilderState> = [];
 
-	private function new(data, resourceLoader) {
+
+
+	public function toString():String {
+		return 'MultiAnimBuilder( multiParserResult: ${multiParserResult.nodes.keys()}, indexedParams: ${indexedParams}, builderParams: ${builderParams}, currentNode: ${currentNode}, stateStack: ${stateStack.length} items)';
+	}
+
+	private function new(data, resourceLoader, sourceName) {
 		this.multiParserResult = data;
 		this.resourceLoader = resourceLoader;
+		this.sourceName = sourceName;
 	}
 
 	public function createElementBuilder(name:String) {
@@ -267,7 +275,7 @@ class MultiAnimBuilder {
 	function popBuilderState() {
 		final state = stateStack.pop();
 		if (state == null)
-			throw 'builder state stack is empty';
+			throw 'builder state stack is empty, sourceName: ${sourceName}';
 
 		this.indexedParams = state.indexedParams;
 		this.builderParams = state.builderParams;
@@ -287,7 +295,7 @@ class MultiAnimBuilder {
 
 	public static function load(byteData, resourceLoader, sourceName) {
 		var parsed = MultiAnimParser.parseFile(byteData, sourceName, resourceLoader);
-		return new MultiAnimBuilder(parsed, resourceLoader);
+		return new MultiAnimBuilder(parsed, resourceLoader, sourceName);
 	}
 
 	function resolveAsArrayElement(v:ReferencableValue):Dynamic {
