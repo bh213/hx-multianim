@@ -550,8 +550,8 @@ class MultiAnimBuilder {
 	function loadTileSource(tileSource):h2d.Tile {
 		final tile = switch tileSource {
 			case TSFile(filename): resourceLoader.loadTile(resolveAsString(filename));
-			case TSSheet(sheet, name): loadTileImpl(sheet, resolveAsString(name)).tile;
-			case TSSheetWithIndex(sheet, name, index): loadTileImpl(sheet, resolveAsString(name), resolveAsInteger(index)).tile;
+			case TSSheet(sheet, name): loadTileImpl(resolveAsString(sheet), resolveAsString(name)).tile;
+			case TSSheetWithIndex(sheet, name, index): loadTileImpl(resolveAsString(sheet), resolveAsString(name), resolveAsInteger(index)).tile;
 			case TSGenerated(type):
 				var resolvedType:ResolvedGeneratedTileType = switch type {
 					case Cross(width, height, color): Cross(resolveAsInteger(width), resolveAsInteger(height), resolveAsColorInteger(color));

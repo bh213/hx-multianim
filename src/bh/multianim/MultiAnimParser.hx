@@ -616,8 +616,8 @@ enum GeneratedTileType {
 
 enum TileSource {
 	TSFile(filename:ReferencableValue);
-	TSSheet(sheet:String, name:ReferencableValue);
-	TSSheetWithIndex(sheet:String, name:ReferencableValue, index:ReferencableValue);
+	TSSheet(sheet:ReferencableValue, name:ReferencableValue);
+	TSSheetWithIndex(sheet:ReferencableValue, name:ReferencableValue, index:ReferencableValue);
 	TSGenerated(type:GeneratedTileType);
 }
 
@@ -1962,7 +1962,7 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 	
 	function tryParseTileSource() {
 		return switch stream {
-			case [MPIdentifier(_, MPSheet, ITString), MPOpen, MPIdentifier(sheet, _, ITString|ITQuotedString), MPComma, name = parseStringOrReference()]:
+			case [MPIdentifier(_, MPSheet, ITString), MPOpen, sheet = parseStringOrReference(), MPComma, name = parseStringOrReference()]:
 				switch stream {
 					case [MPClosed]:TSSheet(sheet, name);
 					case [MPComma, index = parseIntegerOrReference(), MPClosed]:TSSheetWithIndex(sheet, name, index);
