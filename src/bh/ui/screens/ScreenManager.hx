@@ -1,9 +1,13 @@
 package bh.ui.screens;
 
 import hxparse.ParserError;
+import hxparse.Unexpected;
 import hxd.fs.BytesFileSystem.BytesFileEntry;
 import hxd.res.Resource;
 import bh.multianim.MultiAnimBuilder;
+import bh.multianim.MultiAnimParser.InvalidSyntax;
+import bh.multianim.MultiAnimParser.MultiAnimUnexpected;
+import bh.multianim.MultiAnimParser.MPToken;
 import bh.stateanim.AnimParser;
 import bh.ui.controllers.UIController;
 import bh.ui.screens.UIScreen;
@@ -193,8 +197,8 @@ class ScreenManager {
 		success:Bool,
 		error:Null<String>,
 		file:Null<String>,
-		pmin:Int,
-		pmax:Int
+		pmin:Null<Int>,
+		pmax:Null<Int>
 	} {
 		final oldBuilders = builders.copy();
 		builders.clear();
@@ -214,14 +218,25 @@ class ScreenManager {
 			if (throwOnError)
 				throw e;
 
-			if (Std.isOfType(e, ParserError)) {
-				final parserError = cast(e, ParserError);
+			if (Std.isOfType(e, InvalidSyntax)) {
+				final invalidSyntax = cast(e, InvalidSyntax);
 				return {
 					success: false,
-					error: parserError.toString(),
-					file: parserError.pos.psource,
-					pmin: parserError.pos.pmin,
-					pmax: parserError.pos.pmax,
+					error: invalidSyntax.toString(),
+					file: invalidSyntax.pos.psource,
+					pmin: invalidSyntax.pos.pmin,
+					pmax: invalidSyntax.pos.pmax,
+				}
+			}
+
+			if (Std.isOfType(e, MultiAnimUnexpected)) {
+				final multiAnimUnexpected = cast(e, MultiAnimUnexpected<Dynamic>);
+				return {
+					success: false,
+					error: multiAnimUnexpected.toString(),
+					file: multiAnimUnexpected.pos.psource,
+					pmin: multiAnimUnexpected.pos.pmin,
+					pmax: multiAnimUnexpected.pos.pmax,
 				}
 			}
 
@@ -229,8 +244,8 @@ class ScreenManager {
 				success: false,
 				error: e.toString(),
 				file: null,
-				pmin: 0,
-				pmax: 0,
+				pmin: null,
+				pmax: null,
 			}
 		}
 
@@ -251,8 +266,8 @@ class ScreenManager {
 			success: true,
 			error: null,
 			file: null,
-			pmin: 0,
-			pmax: 0,
+			pmin: null,
+			pmax: null,
 		}
 	}
 
