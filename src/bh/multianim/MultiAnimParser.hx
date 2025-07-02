@@ -508,6 +508,12 @@ enum ReferencableValue {
 	EBinop(op:RvOp, e1:ReferencableValue, e2:ReferencableValue);
 }
 
+enum TextAlignWidth {
+	TAWAuto;
+	TAWValue(value:Int);
+	TAWGrid;
+}
+
 enum HorizontalAlign {
 	Left;
 	Right;
@@ -637,7 +643,7 @@ typedef TextDef = {
 	var text:ReferencableValue;
 	var color:ReferencableValue;
 	var halign:Null<HorizontalAlign>;
-	var textAlignWidth:Null<Int>;
+	var textAlignWidth: TextAlignWidth;
 	var letterSpacing:Float;
 	var lineSpacing:Float;
 	var lineBreak:Bool;
@@ -2228,7 +2234,7 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 			case [MPIdentifier(_, MPText, ITString), MPOpen, fontname = parseStringOrReference(), MPComma, text = parseStringOrReference(), MPComma, color = parseColorOrReference()]:
 
 				
-				var maxWidth:Null<Int> = null;
+				var textAlighWidth:TextAlignWidth = TAWAuto;
 				var isParsingDone = false;
 				var results:Map<String, Dynamic> = [];
 				var halign = null;
@@ -2239,8 +2245,15 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 						if (halign != null) {
 							switch stream {
 								case [MPComma]:
-									maxWidth = tryParseInteger();
-									if (maxWidth == null) hasComma = true;
+									switch stream {
+										case [MPIdentifier(_, MPGrid, ITString)]:
+											textAlighWidth = TAWGrid;
+										case _: 
+											final maxWidth = tryParseInteger();
+											if (maxWidth == null) hasComma = true;
+											else textAlighWidth = TAWValue(maxWidth);
+									}
+								
 								case [MPClosed]: isParsingDone = true;
 							}
 	
@@ -2292,7 +2305,7 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 					 text: text,
 					 color: color,
 					 halign: halign,
-					 textAlignWidth: maxWidth,
+					 textAlignWidth: textAlighWidth,
 					 letterSpacing: MacroUtils.optionsGetPresentOrDefault(letterSpacing, results, 0.),
 					 lineSpacing: MacroUtils.optionsGetPresentOrDefault(lineSpacing, results, 0.),
 					 lineBreak: MacroUtils.optionsGetPresentOrDefault(lineBreak, results, true),

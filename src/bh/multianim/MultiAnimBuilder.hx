@@ -976,12 +976,16 @@ class MultiAnimBuilder {
 					case Center: Center;
 				}
 				if (textDef.textAlignWidth != null) {
-					t.maxWidth = textDef.textAlignWidth;
-				} else {
-					if (gridCoordinateSystem != null)
-						t.maxWidth = gridCoordinateSystem.spacingX;
-				}
-
+					switch textDef.textAlignWidth {
+						case TAWValue(value):
+								t.maxWidth = value;
+						case TAWGrid:
+							if (gridCoordinateSystem != null)
+								t.maxWidth = gridCoordinateSystem.spacingX;
+						case TAWAuto:
+							t.maxWidth = null;
+					}
+				} 
 				t.letterSpacing = textDef.letterSpacing;
 				t.lineSpacing = textDef.lineSpacing;
 				t.lineBreak = textDef.lineBreak;
