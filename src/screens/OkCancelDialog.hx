@@ -39,10 +39,10 @@ class OkCancelDialog extends UIScreenBase {
 		]);
 		
 		addBuilderResult(dialog.builderResults);
+
 		this.okButton = dialog.ok;
 		this.cancelButton = dialog.cancel;
 		this.dialogText = dialog.builderResults.getUpdatable("dialogText");
-		dialogText.updateText(initialDialogText);
 	}
 
 	public function onScreenEvent(event:UIScreenEvent, source:UIElement) {
