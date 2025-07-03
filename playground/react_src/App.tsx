@@ -605,7 +605,7 @@ function App() {
             <div className="p-3 bg-gray-700 border border-gray-600 rounded h-20 overflow-y-auto overflow-x-hidden">
               <p className="text-xs text-gray-300 leading-relaxed mb-2">{description}</p>
               <a 
-                href={`https://github.com/bh213/hx-multianim-playground/blob/main/src/screens/${getScreenHaxeFile(selectedScreen)}`}
+                href={`https://github.com/bh213/hx-multianim/blob/main/playground/src/screens/${getScreenHaxeFile(selectedScreen)}`}
                 target="_blank" 
                 rel="noopener noreferrer"
                 className="text-xs text-blue-400 hover:text-blue-300 transition-colors"

@@ -50,10 +50,9 @@ This demo showcases the capabilities of the hx-multianim library, which provides
 
 ## Installation
 
-1. Clone this repository:
+1. Navigate to the playground directory in the hx-multianim repository:
 ```bash
-git clone https://github.com/bh213/hx-multianim-playground.git
-cd hx-multianim-playground
+cd playground
 ```
 
 2. Install dependencies using lix:
@@ -159,7 +158,7 @@ The demo includes various fonts for testing the font rendering system. See [ATTR
 
 ## Contributing
 
-This is a demo project for the hx-multianim library. For contributions to the core library, please visit the [hx-multianim repository](https://github.com/bh213/hx-multianim).
+This playground is part of the hx-multianim library repository. For contributions to the core library, please visit the [hx-multianim repository](https://github.com/bh213/hx-multianim).
 
 ## Related Projects
 
