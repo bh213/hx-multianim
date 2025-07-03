@@ -1,0 +1,8 @@
+version: 0.1
+
+relativeLayouts {
+  #fontNames sequence($i: 1..40) point: 100, 20+20 * $i
+  #fonts sequence($i: 1..40) point: 200, 20+20 * $i
+}
+
+
