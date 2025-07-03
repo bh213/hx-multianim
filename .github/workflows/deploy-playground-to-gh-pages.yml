@@ -1,6 +1,6 @@
 name: Deploy playgroundto GitHub Pages
 
-on: 
+on:
   push:
     branches: [ main ]
   
@@ -46,5 +46,5 @@ jobs:
       uses: peaceiris/actions-gh-pages@v3
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
-        publish_dir: ./dist
+        publish_dir: ./playground/dist
         publish_branch: gh-pages 
