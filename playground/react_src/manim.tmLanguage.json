@@ -1,0 +1,103 @@
+{
+	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+	"name": "MultiAnim",
+	"patterns": [
+		{
+			"include": "#strings"
+		},
+		{
+			"name": "comment.line.double-slash",
+			"match": "//.*$"
+		},
+		{
+			"name": "variable.name",
+			"match": "\\$[A-Za-z][A-Za-z0-9]*"
+		},
+		{
+			"name": "entity.name.tag",
+			"match": "#[A-Za-z][A-Za-z0-9\\-]*\\b"
+		},
+		{
+			"begin": "(@|@if|@ifstrict)\\(",
+			"beginCaptures": {
+			  "0": {
+				"name": "keyword.control.at-sign"
+			  }
+			},
+			"end": "\\)",
+			"endCaptures": {
+			  "0": {
+				"name": "keyword.control.parenthesis"
+			  }
+			},
+			"name": "meta.condition-block",
+			"contentName": "meta.condition-content",
+			"patterns": [
+			  {
+				"match": "\\b([A-Za-z_][A-Za-z0-9_]*)\\s*=>",
+				"name": "meta.condition-pair",
+				"captures": {
+				  "1": {
+					"name": "variable.other.key"
+				  },
+				  "0": {
+					"name": "keyword.other"
+				  }
+				}
+			  },
+			  {
+				"match": "([A-Za-z_][A-Za-z0-9_]*)",
+				"name": "constant.other.value"
+			  },
+			  {
+				"match": ",",
+				"name": "punctuation.separator.comma"
+			  }
+			]
+		  },
+		  {
+			"name": "entity.name.method",
+			"match": "\\b@[A-Za-z][A-Za-z0-9]*\\b"
+
+		},
+		{
+			"include": "#keywords"
+		}
+
+
+	],
+	"repository": {
+		"keywords": {
+			"patterns": [
+			{
+				"name": "entity.name.class",
+				"match": "\\b(animatedPath|particles|programmable|stateanim|flow|apply|text|tilegroup|repeatable|ninepatch|layers|placeholder|reference|bitmap|point|interactive|pixels|relativeLayouts|palettes|paths)\\b"
+			},
+			{
+				"name": "keyword",
+				"match": "\\b(external|path|debug|version|nothing|list|line|flat|pointy|layer|layout|callback|builderParam|tileSource|sheet|file|generated|hex|hexCorner|hexEdge|grid|settings|pos|alpha|blendMode|scale|updatable|cross|function|gridWidth|gridHeight|center|left|right|top|bottom|offset|construct|palette|position|import|filter)\\b"
+			},
+			{
+				"name": "entity.name.type",
+				"match": "\\b(int|uint|flags|string|hexdirection|griddirection|bool|color)\\b"
+			},
+			{
+				"name": "entity.name.type",
+				"match": "\\b(int|uint|flags|string|hexdirection|griddirection|bool|color)\\b"
+			}
+		]
+		},
+		"strings": {
+			"name": "string.quoted.double",
+			"begin": "\"",
+			"end": "\"",
+			"patterns": [
+				{
+					"name": "constant.character.escape.multianim",
+					"match": "\\\\."
+				}
+			]
+		}
+	},
+	"scopeName": "source.multianim"
+}

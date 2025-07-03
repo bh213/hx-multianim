@@ -1,0 +1,28 @@
+# Build outputs
+build/
+dist/
+*.js.map
+*.hl
+
+# Node.js
+node_modules/
+
+# IDE files
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temporary files
+.tmp/
+temp/
+public/playground.js
+public/playground.js.map
+

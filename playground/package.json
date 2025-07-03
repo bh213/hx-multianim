@@ -1,0 +1,57 @@
+{
+  "name": "hx-multianim-playground",
+  "version": "1.0.0",
+  "description": "Interactive playground for hx-multianim library",
+  "type": "module",
+  "main": "index.html",
+  "scripts": {
+    "build": "haxe playground.hxml",
+    "watch": "nodemon --watch src --watch res --ext hx,manim,js,html,css --exec \"npm run build\"",
+    "serve": "http-server . -p 8080 -c-1", 
+    "dev": "npm run build && concurrently \"npm run watch\" \"npm run react:dev\"",
+    "clean": "rimraf build dist",
+    "prebuild": "npm run clean",
+    "react:dev": "vite",
+    "react:build": "tsc && vite build",
+    "react:preview": "vite preview",
+    "full:dev": "concurrently \"npm run build\" \"npm run react:dev\"",
+    "full:build": "npm run build && npm run react:build && cp -r public/* dist/"
+  },
+  "keywords": [
+    "haxe",
+    "heaps",
+    "animation",
+    "playground",
+    "webgl",
+    "react",
+    "typescript"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@monaco-editor/react": "^4.7.0",
+    "@tailwindcss/vite": "^4.1.10",
+    "loadjs": "^4.3.0",
+    "monaco-editor": "^0.52.2",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@types/loadjs": "^4.0.4",
+    "@types/react": "^18.2.43",
+    "@types/react-dom": "^18.2.17",
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.21",
+    "concurrently": "^8.2.2",
+    "http-server": "^14.1.1",
+    "nodemon": "^3.0.2",
+    "postcss": "^8.5.6",
+    "rimraf": "^5.0.5",
+    "tailwindcss": "^4.1.10",
+    "typescript": "^5.2.2",
+    "vite": "^5.0.8"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}

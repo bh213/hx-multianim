@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>hx-multianim demo</title>
+    <style>
+        body { 
+            margin: 0; 
+            padding: 0; 
+            background-color: #1e1e1e; 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #ffffff;
+            overflow: hidden;
+        }
+        
+        .container {
+            display: flex;
+            height: 100vh;
+            width: 100vw;
+        }
+        
+        .left-panel {
+            width: 40%;
+            background-color: #2d2d2d;
+            border-right: 1px solid #404040;
+            display: flex;
+            flex-direction: column;
+            padding: 10px;
+        }
+        
+        .right-panel {
+            width: 60%;
+            background-color: #000000;
+            position: relative;
+        }
+        
+        .combo-container {
+            margin-bottom: 10px;
+        }
+        
+        .combo-label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 14px;
+            font-weight: bold;
+            color: #cccccc;
+        }
+        
+        .example-combo {
+            width: 100%;
+            padding: 8px;
+            background-color: #3d3d3d;
+            border: 1px solid #555555;
+            color: #ffffff;
+            font-size: 14px;
+            border-radius: 4px;
+        }
+        
+        .example-combo:focus {
+            outline: none;
+            border-color: #0078d4;
+        }
+        
+        .screen-selector-container {
+            margin-bottom: 10px;
+        }
+        
+        .screen-selector {
+            width: 100%;
+            padding: 8px;
+            background-color: #3d3d3d;
+            border: 1px solid #555555;
+            color: #ffffff;
+            font-size: 14px;
+            border-radius: 4px;
+        }
+        
+        .screen-selector:focus {
+            outline: none;
+            border-color: #0078d4;
+        }
+        
+        .description-container {
+            margin-bottom: 15px;
+            padding: 10px;
+            background-color: #1e1e1e;
+            border: 1px solid #404040;
+            border-radius: 4px;
+            display: none;
+        }
+        
+        .description-text {
+            font-size: 12px;
+            line-height: 1.4;
+            color: #cccccc;
+            margin: 0;
+        }
+        
+        .editor-controls {
+            margin-bottom: 10px;
+        }
+        
+        .editor-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+        
+        .editor-buttons {
+            display: flex;
+            gap: 8px;
+        }
+        
+        .editor-help {
+            margin-bottom: 5px;
+            color: #888888;
+            font-size: 11px;
+        }
+        
+        .apply-button {
+            padding: 4px 8px;
+            background-color: #0078d4;
+            border: 1px solid #0078d4;
+            color: #ffffff;
+            font-size: 12px;
+            border-radius: 3px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        
+        .apply-button:hover {
+            background-color: #106ebe;
+        }
+        
+        .apply-button:active {
+            background-color: #005a9e;
+        }
+        
+        .unsaved-indicator {
+            padding: 5px 8px;
+            background-color: #ff6b35;
+            border: 1px solid #ff6b35;
+            color: #ffffff;
+            font-size: 11px;
+            border-radius: 3px;
+            margin-bottom: 5px;
+        }
+        
+        .text-area-label {
+            margin-bottom: 5px;
+            font-size: 14px;
+            font-weight: bold;
+            color: #cccccc;
+        }
+        
+        .editor-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+        
+        .code-editor {
+            flex: 1;
+            display: flex;
+            background-color: #1e1e1e;
+            border: 1px solid #555555;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        
+        .line-numbers {
+            background-color: #2d2d2d;
+            color: #888888;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 12px;
+            padding: 10px 5px 10px 10px;
+            border-right: 1px solid #404040;
+            min-width: 40px;
+            text-align: right;
+            user-select: none;
+            overflow-y: hidden;
+        }
+        
+        .line-number {
+            line-height: 1.4;
+            margin-bottom: 2px;
+            padding-right: 8px;
+        }
+        
+        .code-textarea {
+            flex: 1;
+            background-color: #1e1e1e;
+            border: none;
+            color: #d4d4d4;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 12px;
+            padding: 10px;
+            resize: none;
+            outline: none;
+            line-height: 1.4;
+            tab-size: 2;
+        }
+        
+        .code-textarea:disabled {
+            background-color: #2d2d2d;
+            color: #888888;
+            cursor: not-allowed;
+        }
+        
+        .code-textarea::placeholder {
+            color: #888888;
+        }
+        
+        /* Syntax highlighting colors for better readability */
+        .code-textarea::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        .code-textarea::-webkit-scrollbar-track {
+            background: #1e1e1e;
+        }
+        
+        .code-textarea::-webkit-scrollbar-thumb {
+            background: #555555;
+            border-radius: 4px;
+        }
+        
+        .code-textarea::-webkit-scrollbar-thumb:hover {
+            background: #777777;
+        }
+        
+        canvas#webgl { 
+            width: 100%; 
+            height: 100%; 
+            display: block;
+        }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./src/main.tsx"></script>
+  </body>
+</html>

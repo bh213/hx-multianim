@@ -1,0 +1,48 @@
+{
+	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+	"name": "anim",
+	"patterns": [
+		{
+			"include": "#strings"
+		},
+		{
+			"name": "comment.line.double-slash",
+			"match": "//.*$"
+		},
+		{
+			"include": "#keywords"
+		}
+
+
+	],
+	"repository": {
+		"keywords": {
+			"patterns": [
+			{
+				"name": "entity.name.class",
+				"match": "\\b(sheet|allowedExtraPoints|states|center)\\b"
+			},
+			{
+				"name": "keyword",
+				"match": "\\b(animation)\\b"
+			},
+			{
+				"name": "entity.name.type",
+				"match": "\\b(name|fps|playlist|sheet|extrapoints|playlist|loop|event|goto|hit|random|trigger|command|frames|untilCommand|duration|file)\\b"
+			}
+		]
+		},
+		"strings": {
+			"name": "string.quoted.double",
+			"begin": "\"",
+			"end": "\"",
+			"patterns": [
+				{
+					"name": "constant.character.escape.multianim",
+					"match": "\\\\."
+				}
+			]
+		}
+	},
+	"scopeName": "source.anim"
+}

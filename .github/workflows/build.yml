@@ -1,8 +1,6 @@
-name: Build Library
+name: Make sure hx-multianim builds
 
 on:
-  push:
-    branches: [ main ]
   pull_request:
     branches: [ main ]
   

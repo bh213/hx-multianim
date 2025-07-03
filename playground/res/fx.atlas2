@@ -1,0 +1,26 @@
+fx-0.png
+size: 3, 5
+format: RGBA8888
+filter: Linear,Linear
+repeat: none
+missile/particle
+  rotate: false
+  xy: 0, 2
+  size: 3, 3
+  orig: 3, 3
+  offset: 0, 0
+  index: 1
+missile/particle
+  rotate: false
+  xy: 1, 0
+  size: 2, 2
+  orig: 2, 2
+  offset: 0, 0
+  index: 2
+missile/particle
+  rotate: false
+  xy: 0, 0
+  size: 1, 1
+  orig: 1, 1
+  offset: 0, 0
+  index: 3

@@ -1,0 +1,50 @@
+name: Deploy playgroundto GitHub Pages
+
+on:
+  push:
+    branches: [ main ]
+  
+permissions:
+  contents: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: playground
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Setup Haxe
+      uses: krdlab/setup-haxe@v1
+      with:
+        haxe-version: '4.3.2'
+    
+    - name: Setup Lix
+      uses: lix-pm/setup-lix@5d98ddc5d00ee5ebf9bd3095dc36b1c9fb50a98f # latest version
+          
+    - name: Install dependencies
+      run: lix download
+
+    - name: Build for GitHub Pages
+      run: npm run full:build
+
+        
+    - name: Deploy to GitHub Pages
+      if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+      uses: peaceiris/actions-gh-pages@v3
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./dist
+        publish_branch: gh-pages 
