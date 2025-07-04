@@ -2,7 +2,7 @@ import { Screen, ManimFile, AnimFile } from './types';
 import { getFileContent, updateFileContent, fileExists } from './fileLoader';
 
 // Default configuration - single source of truth
-const DEFAULT_SCREEN = 'stateAnim';
+const DEFAULT_SCREEN = 'paths';
 
 /**
  * PlaygroundLoader - Combined file and manim loader for the hx-multianim playground
@@ -453,6 +453,6 @@ export class PlaygroundLoader {
     }
 
     public static getDefaultScreen(): string {
-        return DEFAULT_SCREEN;
+        return 'paths';
     }
 } 

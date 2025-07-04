@@ -6,7 +6,7 @@ import { updateFileContent } from './fileLoader';
 import './index.css'
 
 // Default configuration - single source of truth from Haxe backend
-const DEFAULT_SCREEN = 'stateAnim'; // fallback default
+const DEFAULT_SCREEN = 'paths'; // fallback default
 
 interface ReloadError {
   message: string;
@@ -574,6 +574,11 @@ function App() {
       document.removeEventListener('mouseup', handleMouseUp);
     };
   }, [filePanelWidth, editorPanelWidth]);
+
+  useEffect(() => {
+    if (!window.PlaygroundMain) window.PlaygroundMain = {} as any;
+    window.PlaygroundMain.defaultScreen = 'paths';
+  }, []);
 
   return (
     <div className="flex h-screen w-screen bg-gray-900 text-white">
