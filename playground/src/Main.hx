@@ -14,7 +14,7 @@ using bh.base.Atlas2;
 
 @:expose("PlaygroundMain")
 class Main extends hxd.App {
-	public static var defaultScreen:String = "button";
+	public static var defaultScreen:String = "stateAnim";
 	public static var instance:Main = null;
 	var errorText:h2d.Text;
 
@@ -142,11 +142,12 @@ class Main extends hxd.App {
 		// screenManager.gotoScreen(NormalStage, "room1");
 		
 
-		final window = hxd.Window.getInstance();
-
-		window.displayMode = Windowed;
+		 final window = hxd.Window.getInstance();
+		 window.resize(1280, 720);
+		// window.displayMode = Windowed;
 		s2d.scaleMode = AutoZoom(1280, 720, true);
-		window.resize(1280, 720);
+		
+		//window.resize(1280, 720);
 
 		// window.currentMonitorIndex = 1;
 		window.addEventTarget(event -> {

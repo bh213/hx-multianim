@@ -298,7 +298,7 @@ class StateAnimScreen extends UIScreenBase {
 			dialog.load();
 			this.screenManager.modalDialog(dialog, this, "fileChange");
 		}
-		this.speedSlider = UIStandardMultiAnimSlider.create(builder, "slider", 200, 50);
+	
 
 		var res = MacroUtils.macroBuildWithParameters(stateAnimBuilder, "ui", [], [
 			pause=>addCheckbox(stdBuilder, true),
@@ -306,7 +306,7 @@ class StateAnimScreen extends UIScreenBase {
 			animStates=>addCheckbox(stdBuilder, true),
 			animCommands=>addCheckbox(stdBuilder, true),
 			load=>loaderButton,
-			speedSlider => this.speedSlider
+			speedSlider => addSlider(stdBuilder,  0),
 		]);
 		var ui = res.builderResults;
 		addBuilderResult(ui);
@@ -314,6 +314,7 @@ class StateAnimScreen extends UIScreenBase {
 		this.showBoundsCheckbox = res.bounds;
 		this.animStatesCheckbox = res.animStates;
 		this.animCommandCheckbox = res.animCommands;
+		this.speedSlider = res.speedSlider;
 
 		this.spriteRoot = ui.getUpdatable("sprite");
 		this.spriteStatus = ui.getUpdatable("spriteText");
