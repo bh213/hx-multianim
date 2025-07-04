@@ -55,7 +55,7 @@ relativeLayouts {
       #statusText(updatable) text(pixellari, "status",  #ffa0a080, left, 400, html:true): 10,90
       #commandsText(updatable) text(pixellari, "status",  #ffa0a080, left, 400, html:true): 10,90
 
-      #sprite point:550,300
+      #sprite point:256,256
       placeholder(generated(cross(150, 20)), builderParameter("speedSlider")) {
             pos: 120, 600
             text(dd, "Anim. speed", #ffffffff): -110, 0

@@ -1753,7 +1753,10 @@ class MultiAnimBuilder {
 					case PPTFlags(bits): [for (i in 0...bits) '$i}'];
 					case PPTEnum(values): values;
 					case PPTBool: ["0", "1"];
-					case PPTRange(from, to): [for (i in from...to) '$i}'];
+					case PPTRange(from, to): 
+						if (Math.abs(from - to) > 50)
+							trace('WARNING: range ${from}..${to} is very large');
+						[for (i in from...to) '$i}'];
 					case PPTInt: throw 'Prop "${prop}" is int and cannot be used as combo';
 					case PPTUnsignedInt: throw 'Prop "${prop}" is uint and cannot be used as combo';
 					case PPTString: throw 'Prop "${prop}" is string and cannot be used as combo';

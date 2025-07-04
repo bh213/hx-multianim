@@ -15,6 +15,7 @@ class AtlasTestScreen extends UIScreenBase {
 		loadAtlasTiles("crew2", 0);
 		loadAtlasTiles("ui", 1);
 		loadAtlasTiles("fx", 2);
+		loadAtlasTiles("ui-new", 3);
 	}
 
 	function loadAtlasTiles(sheetName:String, indexY:Int) {
