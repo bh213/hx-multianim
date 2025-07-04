@@ -395,3 +395,13 @@ enum AnimationFrameCondition {
 	AFC_COUNT(repeatCount:Int);
 	AFC_UNTIL_COMMAND;
 }
+
+ function animationFrameStateToString(frame:AnimationFrameState):String {
+	return switch frame {
+		case AF_FRAME(frame): 'Frame("${frame.tile.getTexture().name}", ${frame.width} x ${frame.height})';
+		case AF_LOOP(destIndex, condition): 'Loop(${destIndex}, ${condition})';
+		case AF_EVENT(event): 'Event(${event})';
+		case AF_CHAGE_STATE(state): 'ChangeState(${state})';
+		case AF_EXITPOINT: 'ExitPoint';
+	}
+}

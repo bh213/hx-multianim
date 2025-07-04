@@ -6,7 +6,7 @@ import { updateFileContent } from './fileLoader';
 import './index.css'
 
 // Default configuration - single source of truth from Haxe backend
-const DEFAULT_SCREEN = 'stateanim'; // fallback default
+const DEFAULT_SCREEN = 'stateAnim'; // fallback default
 
 interface ReloadError {
   message: string;

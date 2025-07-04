@@ -2,7 +2,7 @@ import { Screen, ManimFile, AnimFile } from './types';
 import { getFileContent, updateFileContent, fileExists } from './fileLoader';
 
 // Default configuration - single source of truth
-const DEFAULT_SCREEN = 'button';
+const DEFAULT_SCREEN = 'stateAnim';
 
 /**
  * PlaygroundLoader - Combined file and manim loader for the hx-multianim playground
