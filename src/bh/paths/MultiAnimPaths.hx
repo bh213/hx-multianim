@@ -25,9 +25,6 @@ class MultiAnimPaths {
 		this.builder = builder;
 	}
 
-
-
-
 	public function getPath(name:String, ?startPoint:FPoint, ?startAngle:Float, ?endPoint:FPoint):Path {
 		final oldIndexed = builder.indexedParams;
 		

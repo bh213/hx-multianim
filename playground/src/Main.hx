@@ -14,7 +14,7 @@ using bh.base.Atlas2;
 
 @:expose("PlaygroundMain")
 class Main extends hxd.App {
-	public static var defaultScreen:String = "stateAnim";
+	public static var defaultScreen:String = "paths";
 	public static var instance:Main = null;
 	var errorText:h2d.Text;
 
