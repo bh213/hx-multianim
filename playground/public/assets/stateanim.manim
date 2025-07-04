@@ -2,16 +2,16 @@ version: 0.1
 
 
 relativeLayouts {
-    #statusBar point:3,680
-    #smAnimCenter point:600,300
+    #statusBar point:1000,2
+    
     #checkboxes list {
         point: 3,3
         point: 400,300
         point: 400,400
         point: 10,20
     }
-    #statesDropdowns sequence($i:0..30) point: $i*150+350, 52
-    #animStates sequence($i:1..30) point: 1070, 720-$i*30 + 5
+    #statesDropdowns sequence($i:0..30) point: $i*150+60, 2
+    #animStates sequence($i:0..30) point: 10+(($i % 6)*200), 700 - 30*($i div 6)
 
 }
 
@@ -19,8 +19,8 @@ relativeLayouts {
 #ui programmable() {
       
       point {
-            pos:500, 120
-            grid:1,30
+            pos:10, 40
+            grid:1,20
             #pauseCheckbox point {
                   pos: grid(0,0)
                   text(dd, "Pause", white): 30, 5
@@ -35,30 +35,33 @@ relativeLayouts {
                   pos: grid(0,2)
                   
                   placeholder(generated(cross(20, 20)), builderParameter("animStates"));
-                  text(pixellari, "Show states", white);
+                  text(pixellari, "Show states", white):30,5;
             }
             #animCommandsCheckbox point {
                   pos: grid(0,3)
-                  text(dd, "Show states", #ddd): 30, 5
+                  text(dd, "Show commands", #ddd): 30, 5
                   placeholder(generated(cross(20, 20)), builderParameter("animCommands"));
             }
 
             
       }
       
-      placeholder(generated(cross(20, 20)), builderParameter("load")):50,50;
+      placeholder(generated(cross(20, 20)), builderParameter("load")):780,0;
       
-      text(dd, "States", #ffffffff, html:true): 290, 58
+      text(dd, "States", #ffffffff, html:true): 2, 10
       
 
-      #spriteText(updatable) text(pixellari, "sprite", #ffffff00, center, 100, html:true): 500,350
-      #statusText(updatable) text(pixellari, "status",  #ffa0a080, left, 400, html:true): 10,90
-      #commandsText(updatable) text(pixellari, "status",  #ffa0a080, left, 400, html:true): 10,90
+      #spriteText(updatable) text(pixellari, "sprite", #ffffff00, center, 100, html:true): 1280/2,720/2
 
-      #sprite point:256,256
+      text(m6x11, "Current frames",  white, left, 400, html:true): 10,140
+      #currentStatesText(updatable) text(pixellari, "status",  #ffa0a080, left, 400, html:true): 10,160
+      text(m6x11, "Commands",  white, left, 400): 1000,40
+      #commandsText(updatable) text(pixellari, "status",  #ffa0a080, left, 400, html:true): 1000,60
+
+      #sprite point:1280/2,720/2
       placeholder(generated(cross(150, 20)), builderParameter("speedSlider")) {
-            pos: 120, 600
-            text(dd, "Anim. speed", #ffffffff): -110, 0
+            pos: 300, 60
+            text(dd, "Anim. speed", #ffffffff): 0, -20
       }
       text(pixellari, "R - reload sprinte<br/>1-8 set sprite scaling<br/>CTRL while clicking on state - crate 5 items",  #fffffff0, html:true) {
             pos:  500,470

@@ -187,11 +187,16 @@ class StateAnimScreen extends UIScreenBase {
 		// eventsFlow.removeChildren();
 
 		var s = "";
-		for (cmd in animSM.commands) {
-				s+= '${cmd}\n';
-				
+		if (animSM.commands.length > 0) {
+			for (cmd in animSM.commands) {
+					s+= '${cmd}\n';
+					
+			}
+		} else {
+			s = "no commands";
 		}
 		commandsText.updateText(s);
+
 
 		pointGraphics.clear();
 
@@ -245,7 +250,7 @@ class StateAnimScreen extends UIScreenBase {
 					default: "";
 				}
 
-				s += '${startColor}${Std.string(index).rpad(" ", 3)}  ${state} ${cnt == -1 ?"":'${cnt}'} ${endColor}${duration}<br/>';
+				s += '${startColor}${Std.string(index).rpad(" ", 3)}  ${animationFrameStateToString(state)} ${cnt == -1 ?"":'${cnt}'} ${endColor}${duration}<br/>';
 			}
 			statesText.updateText('${c.name} - ${animSM.currentStateIndex}<br/>${s}');
 		} else {
@@ -318,7 +323,7 @@ class StateAnimScreen extends UIScreenBase {
 
 		this.spriteRoot = ui.getUpdatable("sprite");
 		this.spriteStatus = ui.getUpdatable("spriteText");
-		this.statesText = ui.getUpdatable("statusText");
+		this.statesText = ui.getUpdatable("currentStatesText");
 		this.commandsText = ui.getUpdatable("commandsText");
 
 		this.animCommandCheckbox.onToggle = (checked ->  commandsText.setVisibility(checked));
