@@ -163,7 +163,7 @@ paths {
       speed:500
       loop: false
       emit: cone(5,5, $angle+180, 1)
-      tiles:  sheet("fx", "particle/smoke-2") 
+      tiles:  sheet("fx", "missile/particle") 
   }
 
     0.1: attachParticles("test") {
@@ -172,6 +172,6 @@ paths {
       loop: false
       speed:500
       emit: cone(5,5, $angle+90, 1)
-      tiles:  sheet("fx", "particle/smoke-2") 
+      tiles:  sheet("fx", "missile/particle") 
   }
 }
