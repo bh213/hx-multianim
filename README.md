@@ -471,6 +471,101 @@ xy position can be defined in multiple ways, usually by setting `pos` property i
 Referencing programmable parameters is possible in some nodes. Reference uses `$`. For example, programmable `int` parameters can be referenced as `$i` and can be used to construct expressions such as `$i * 10 + 7`
 Useful for `repeatable(dx, dy, $count)` for various HP/mana/energy bars. Properties that support references support expressions as well.
 
+# Paths
+Paths are root-level elements that define animated paths for objects to follow. Paths support various commands including lines, curves, and smooth transitions.
+
+## Path Syntax
+Paths are defined using the `paths` block:
+
+```
+paths {
+  #pathName path {
+    // path commands here
+  }
+}
+```
+
+## Path Commands
+
+### Line Commands
+* `line(coordinateMode, x, y)` - Draw a line to the specified coordinates
+* `line(x, y)` - Draw a line to coordinates (default relative mode)
+
+**Coordinate Modes:**
+* `absolute` - Use absolute coordinates
+* `relative` - Use relative coordinates (offset from current position)
+* Default is `relative` when no mode is specified
+
+**Examples:**
+```
+line(absolute, 100, 50)    // Absolute coordinates
+line(relative, 50, 25)     // Relative coordinates
+line(100, 50)              // Default relative coordinates
+```
+
+### Bezier Curve Commands
+* `bezier(coordinateMode, x1, y1, x2, y2)` - Quadratic Bezier curve (2 control points)
+* `bezier(coordinateMode, x1, y1, x2, y2, x3, y3)` - Cubic Bezier curve (3 control points)
+* `bezier(x1, y1, x2, y2)` - Default relative quadratic Bezier
+* `bezier(x1, y1, x2, y2, x3, y3)` - Default relative cubic Bezier
+
+**Smoothing Options:**
+* `smoothing: auto` - Automatic smoothing (50% of control point distance)
+* `smoothing: none` - No smoothing
+* `smoothing: 20` - Custom smoothing distance
+
+**Examples:**
+```
+// Quadratic Bezier curves
+bezier(absolute, 200, 100, 150, 50)                    // No smoothing
+bezier(relative, 100, 50, 75, 25, smoothing: auto)     // Auto smoothing
+bezier(100, 50, 75, 25, smoothing: 20)                 // Custom smoothing
+
+// Cubic Bezier curves
+bezier(absolute, 400, 200, 350, 100, 300, 150)         // No smoothing
+bezier(relative, 100, 50, 75, 25, 50, 75, smoothing: none)  // No smoothing
+bezier(100, 50, 75, 25, 50, 75, smoothing: 30)         // Custom smoothing
+```
+
+### Other Path Commands
+* `forward(distance)` - Move forward in current direction
+* `turn(degrees)` - Turn by specified degrees
+* `arc(radius, angleDelta)` - Draw an arc
+* `checkpoint(name)` - Define a checkpoint for path navigation
+
+## Complete Path Example
+```
+paths {
+  #testPath path {
+    line(absolute, 30, 30)
+    line(absolute, 200, 150)
+    arc(100, 70)
+    forward(100)
+    checkpoint(test)
+    bezier(absolute, 150, 400, 100, 300, smoothing: auto)
+    bezier(absolute, 500, 200, 600, 600, smoothing: 30)
+    line(absolute, 10, 600)
+  }
+  
+  #complexPath path {
+    line(relative, 100, 50)
+    bezier(absolute, 200, 100, 150, 50)
+    bezier(100, 50, 75, 25, smoothing: 20)
+    bezier(absolute, 400, 200, 350, 100, 300, 150)
+    bezier(relative, 100, 50, 75, 25, 50, 75, smoothing: none)
+  }
+}
+```
+
+## Smoothing Behavior
+When smoothing is enabled, the system automatically adds control points to ensure smooth angle transitions between path segments:
+
+* **Auto smoothing** (`smoothing: auto`) - Uses 50% of the distance to the control point
+* **Custom distance** (`smoothing: 20`) - Uses the specified distance in pixels
+* **No smoothing** (`smoothing: none`) - No additional control points added
+
+Smoothing is particularly useful for creating fluid animations where objects follow complex paths without sharp direction changes.
+
 # programmable parameter types
  
 * enum: `name:[value1, value2]`, example: `status: [hover, pressed, disabled, normal]` or with default `status: [hover, pressed, disabled, normal] = normal`
