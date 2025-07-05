@@ -12,8 +12,8 @@ enum PathType {
 	Checkpoint(name:String);
 	Line;
 	Arc(center:FPoint, startAngle:Float, radius:Float, angleDelta:Float);
-	Bezier2(control:FPoint);
-	Bezier3(control1:FPoint, control2:FPoint);
+	Bezier3(control1:FPoint, control2:FPoint, control3:FPoint);
+	Bezier4(control1:FPoint, control2:FPoint, control3:FPoint, control4:FPoint);
 }
 
 @:nullSafety
@@ -109,20 +109,48 @@ class MultiAnimPaths {
 				case Checkpoint(name):
 					singlePaths.push(new SinglePath(point, point, Checkpoint(name)));
 
-				case Bezier2To(end, control):
+				case Bezier2To(end, control, smoothing):
 					var end = resolveCoordinate(end);
 					var control = resolveCoordinate(control);
-					singlePaths.push(new SinglePath(point, end, Bezier2(control)));
-					// For quadratic bezier, the tangent at the end point is from control point to end point
+					
+					var pxDistance = getSmoothingDistance(smoothing, point, control);
+					if (pxDistance > 0) {
+						// Calculate PX (additional control point) to ensure smooth angle transition
+						// PX should be positioned so that the tangent at the start point matches the current angle
+						var px = new FPoint(
+							point.x + pxDistance * Math.cos(angle),
+							point.y + pxDistance * Math.sin(angle)
+						);
+						
+						singlePaths.push(new SinglePath(point, end, Bezier3(px, control, end)));
+					} else {
+						// No smoothing - use original bezier2 as bezier3 with control point at start
+						singlePaths.push(new SinglePath(point, end, Bezier3(point, control, end)));
+					}
+					// For cubic bezier, the tangent at the end point is from control to end point
 					angle = hxd.Math.atan2(end.y - control.y, end.x - control.x);
 					point = end;
 
-				case Bezier3To(end, control1, control2):
+				case Bezier3To(end, control1, control2, smoothing):
 					var end = resolveCoordinate(end);
 					var control1 = resolveCoordinate(control1);
 					var control2 = resolveCoordinate(control2);
-					singlePaths.push(new SinglePath(point, end, Bezier3(control1, control2)));
-					// For cubic bezier, the tangent at the end point is from control2 to end point
+					
+					var pxDistance = getSmoothingDistance(smoothing, point, control1);
+					if (pxDistance > 0) {
+						// Calculate PX (additional control point) to ensure smooth angle transition
+						// PX should be positioned so that the tangent at the start point matches the current angle
+						var px = new FPoint(
+							point.x + pxDistance * Math.cos(angle),
+							point.y + pxDistance * Math.sin(angle)
+						);
+						
+						singlePaths.push(new SinglePath(point, end, Bezier4(px, control1, control2, end)));
+					} else {
+						// No smoothing - use original bezier3 as bezier4 with control point at start
+						singlePaths.push(new SinglePath(point, end, Bezier4(point, control1, control2, end)));
+					}
+					// For quartic bezier, the tangent at the end point is from control2 to end point
 					angle = hxd.Math.atan2(end.y - control2.y, end.x - control2.x);
 					point = end;
 			}
@@ -130,6 +158,20 @@ class MultiAnimPaths {
 
 		builder.indexedParams = oldIndexed;
 		return new Path(singlePaths);
+	}
+
+	private function getSmoothingDistance(smoothing:Null<bh.multianim.MultiAnimParser.SmoothingType>, start:FPoint, control:FPoint):Float {
+		if (smoothing == null) {
+			// Auto smoothing - use 50% of distance to control point
+			return hxd.Math.distance(start.x - control.x, start.y - control.y) * 0.5;
+		}
+		
+		return switch smoothing {
+			case STNone: 0.0;
+			case STAuto: hxd.Math.distance(start.x - control.x, start.y - control.y) * 0.5;
+			case STDistance(value): 
+				builder.resolveAsNumber(value);
+		}
 	}
 }	
 	
@@ -235,12 +277,14 @@ private class SinglePath {
 					center.x + radius * Math.cos(currentAngle),
 					center.y + radius * Math.sin(currentAngle)
 				);
-			case Bezier2(control1):
-				return new FPoint(rate.bezier2(start.x, control1.x, end.x),
-					rate.bezier2(start.y, control1.y, end.y));
-			case Bezier3(control1, control2):
-				return new FPoint(rate.bezier3(start.x, control1.x, control2.x, end.x),
-					rate.bezier3(start.y, control1.y, control2.y, end.y));
+			case Bezier3(control1, control2, control3):
+				var xValues = [start.x, control1.x, control2.x, end.x];
+				var yValues = [start.y, control1.y, control2.y, end.y];
+				return new FPoint(rate.bezier(xValues), rate.bezier(yValues));
+			case Bezier4(control1, control2, control3, control4):
+				var xValues = [start.x, control1.x, control2.x, control3.x, end.x];
+				var yValues = [start.y, control1.y, control2.y, control3.y, end.y];
+				return new FPoint(rate.bezier(xValues), rate.bezier(yValues));
 		}
 	}
 	public function toPixelArray():Array<FPoint> {
@@ -253,6 +297,12 @@ private class SinglePath {
 				// Calculate steps based on arc length: approximately 1 point per pixel
 				// For very small arcs, ensure at least 3 points for smooth rendering
 				var steps = hxd.Math.imax(3, cast arcLength);
+				[for(i in 0...steps) getPoint(1.0*i/steps)];
+			case Bezier3(control1, control2, control3):
+				var steps = hxd.Math.imax(8, cast length() / 4);
+				[for(i in 0...steps) getPoint(1.0*i/steps)];
+			case Bezier4(control1, control2, control3, control4):
+				var steps = hxd.Math.imax(12, cast length() / 4);
 				[for(i in 0...steps) getPoint(1.0*i/steps)];
 			default:
 				var steps = hxd.Math.imax(2, cast length() / 4);
@@ -279,10 +329,10 @@ private class SinglePath {
 			case Arc(center, startAngle, radius, angleDelta):
 				var angleDeltaRad = hxd.Math.degToRad(angleDelta);
 				radius * Math.abs(angleDeltaRad);
-			case Bezier2(control):
-				estimate(4);
-			case Bezier3(control1, control2):
+			case Bezier3(control1, control2, control3):
 				estimate(8);
+			case Bezier4(control1, control2, control3, control4):
+				estimate(12);
 			case Checkpoint(_): 0;
 		}
 	}

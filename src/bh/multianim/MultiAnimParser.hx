@@ -163,6 +163,7 @@ enum MPKeywords {
 	MPDiv;
 	MPExternal;
 	MPArray;
+	MPSmoothing;
 }
 
 enum PlaceholderTypes {
@@ -563,13 +564,19 @@ enum AnimatedPathsAction {
 typedef AnimatedPathDef = Array<AnimatedPathTimedAction>;
 
 @:nullSafety
+enum SmoothingType {
+	STNone;
+	STAuto;
+	STDistance(value:ReferencableValue);
+}
+
 enum ParsedPaths {
 	LineTo(end:Coordinates);
 	Forward(distance:ReferencableValue);
 	TurnDegrees(angleDelta:ReferencableValue);
 	Checkpoint(checkpointName:String);
-	Bezier2To(end:Coordinates, control:Coordinates);
-	Bezier3To(end:Coordinates, control1:Coordinates, control2:Coordinates);
+	Bezier2To(end:Coordinates, control:Coordinates, smoothing:Null<SmoothingType>);
+	Bezier3To(end:Coordinates, control1:Coordinates, control2:Coordinates, smoothing:Null<SmoothingType>);
 	Arc(radius:ReferencableValue, angleDelta:ReferencableValue);
 }
 
@@ -2811,12 +2818,33 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 						pathsArr.push(Checkpoint(name));
 						
 					case [MPIdentifier(_, MPBezier, ITString), MPOpen, end = parseXY(), MPComma, control1 = parseXY()]:
+						
+						
+						// Check for optional smoothing parameter
 						switch stream {
-							case [MPComma, control2 = parseXY(), MPClosed]:
-								pathsArr.push(Bezier3To(end, control1, control2));
 							case [MPClosed]:
-								pathsArr.push(Bezier2To(end, control1));
-							case _: syntaxError("expected XY or )");
+								pathsArr.push(Bezier2To(end, control1, null));
+							case [MPComma]:
+								final smoothing = parseSmoothing();
+								if (smoothing != null) {
+									switch stream {
+										case [MPClosed]:
+											pathsArr.push(Bezier2To(end, control1, smoothing));
+										case _: syntaxError("expected )");
+									}
+								} else {
+									final control2 = parseXY();
+									switch stream {
+										case [MPClosed]:
+											pathsArr.push(Bezier3To(end, control1, control2, null));
+										case [MPComma, smoothing2 = parseSmoothing(), MPClosed]:
+													pathsArr.push(Bezier3To(end, control1, control2, smoothing2));
+										
+										case _: syntaxError("expected ) or smoothing");
+									}
+								}
+								
+						
 						}
 					case [MPCurlyClosed]: break;
 					case _: syntaxError("expected line, arc, bezier, or }");
@@ -2874,6 +2902,23 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 					retVal.push({at:Rate(rate), action:action});
 				case _: syntaxError("<at>: <command> or }");
 			}
+		}
+	}
+
+	function parseSmoothing():Null<SmoothingType> {
+		return switch stream {
+			case [MPIdentifier("smoothing", _, ITString), MPColon]:
+				switch stream {
+					case [MPIdentifier("auto", _, ITString)]:
+						 STAuto;
+					case [MPIdentifier("none", _, ITString)]:
+						 STNone;
+					default:
+						final value = parseFloatOrReference();
+						STDistance(value);
+
+					}
+			case _: null;
 		}
 	}
 
