@@ -10,9 +10,9 @@ paths {
     arc(100, 70)
     forward(100)
     checkpoint(test)
-    bezier(200,400, 100, 300)
-    bezier(500,200, 600, 600)
-    line (1200,600) 
+    bezier(150,400, 100, 300, smoothing: auto)
+    bezier(500,200, 600, 600, smoothing: 30)
+    line (10,600) 
   }
   #line2 path {
     
