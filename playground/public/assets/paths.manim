@@ -5,33 +5,31 @@ version: 0.1
 
 paths {
   #line1 path {
-    line (30,30) 
-    line (200,150) 
-    arc(100, 70)
-    forward(100)
-    checkpoint(test)
-    bezier(150,400, 100, 300, smoothing: auto)
-    bezier(500,200, 600, 600, smoothing: 30)
-    line (10,600) 
+    
+    
+    line(relative, 100,100)
+    
+    arc(100, -90)
+    forward(20)
+    arc(100, 180) 
+    bezier(relative, -100,0, 50,200, smoothing:auto)
+    
+    arc(100, -180)
+    arc(100, 180)
   }
   #line2 path {
-    
-    turn(10)
-    forward(100)
-    turn(10)
-    forward(100)
-    turn(10)
-    forward(100)
-    turn(90)
-    forward(20)
-    turn(90)
-    forward(20)
-    turn(90)
-    forward(20)
-    
+turn(0)
+forward(80)
+turn(144)
+forward(80)
+turn(144)
+forward(80)
+turn(144)
+forward(80)
+turn(144)
+forward(80)
   }
-
-    #line3 path {
+  #line3 path {
     forward(100)
     turn(45)
     forward(30)
@@ -47,19 +45,31 @@ paths {
     forward(30)
     turn(45)
     forward(300)
-    
   }
-
-    #lineX path {
-    line ($endX,$startY)  
-    line ($endX,$endY)  
-    line ($startX,$endY)  
-    line ($startX,$startY)  
-    line ($endX,$endY)  
-    
+  #lineX path {
+    line(absolute, $endX,$startY)
+    line(absolute, $endX,$endY)
+    line(absolute, $startX,$endY)
+    line(absolute, $startX,$startY)
+    line(absolute, $endX,$endY)
   }
-
-
+  #testModes path {
+    line(relative, 100, 50)
+    line(absolute, 200, 100)
+    line(300, 150) // default relative
+    bezier(relative, 100, 50, 75, 25)
+    bezier(absolute, 200, 100, 150, 50)
+    bezier(100, 50, 75, 25) // default relative
+    bezier(absolute, 300, 150, 250, 75, smoothing: auto)
+    bezier(relative, 100, 50, 75, 25, smoothing: none)
+    bezier(100, 50, 75, 25, smoothing: 20)
+    bezier(absolute, 400, 200, 350, 100, 300, 150)
+    bezier(relative, 100, 50, 75, 25, 50, 75)
+    bezier(100, 50, 75, 25, 50, 75)
+    bezier(absolute, 500, 250, 450, 125, 400, 200, smoothing: auto)
+    bezier(relative, 100, 50, 75, 25, 50, 75, smoothing: none)
+    bezier(100, 50, 75, 25, 50, 75, smoothing: 30)
+  }
 }
 
 

@@ -564,6 +564,12 @@ enum AnimatedPathsAction {
 typedef AnimatedPathDef = Array<AnimatedPathTimedAction>;
 
 @:nullSafety
+enum PathCoordinateMode {
+	PCMAbsolute;
+	PCMRelative;
+}
+
+@:nullSafety
 enum SmoothingType {
 	STNone;
 	STAuto;
@@ -571,12 +577,12 @@ enum SmoothingType {
 }
 
 enum ParsedPaths {
-	LineTo(end:Coordinates);
+	LineTo(end:Coordinates, mode:Null<PathCoordinateMode>);
 	Forward(distance:ReferencableValue);
 	TurnDegrees(angleDelta:ReferencableValue);
 	Checkpoint(checkpointName:String);
-	Bezier2To(end:Coordinates, control:Coordinates, smoothing:Null<SmoothingType>);
-	Bezier3To(end:Coordinates, control1:Coordinates, control2:Coordinates, smoothing:Null<SmoothingType>);
+	Bezier2To(end:Coordinates, control:Coordinates, mode:Null<PathCoordinateMode>, smoothing:Null<SmoothingType>);
+	Bezier3To(end:Coordinates, control1:Coordinates, control2:Coordinates, mode:Null<PathCoordinateMode>, smoothing:Null<SmoothingType>);
 	Arc(radius:ReferencableValue, angleDelta:ReferencableValue);
 }
 
@@ -2812,40 +2818,52 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 					case [MPIdentifier(_, MPArc, ITString), MPOpen, radius = parseIntegerOrReference(), MPComma, angleDelta = parseIntegerOrReference(), MPClosed]:
 						pathsArr.push(Arc(radius, angleDelta));
 
-					case [MPIdentifier(_, MPLine, ITString), MPOpen, end = parseXY(), MPClosed]:
-						pathsArr.push(LineTo(end));
+					case [MPIdentifier(_, MPLine, ITString), MPOpen]:
+						final coordinateMode = parseCoordinateMode();
+						switch stream {
+							case [end = parseXY(), MPClosed]:
+								pathsArr.push(LineTo(end, coordinateMode));
+							case _: syntaxError("expected absolute/relative, or coordinates");
+						} 
+						
 					case [MPIdentifier(_, MPCheckpoint, ITString), MPOpen, MPIdentifier(name, _, ITString|ITQuotedString) , MPClosed]:
 						pathsArr.push(Checkpoint(name));
 						
-					case [MPIdentifier(_, MPBezier, ITString), MPOpen, end = parseXY(), MPComma, control1 = parseXY()]:
+					case [MPIdentifier(_, MPBezier, ITString), MPOpen, ]:
+						final coordinateMode = parseCoordinateMode();
 						
 						
-						// Check for optional smoothing parameter
 						switch stream {
-							case [MPClosed]:
-								pathsArr.push(Bezier2To(end, control1, null));
-							case [MPComma]:
-								final smoothing = parseSmoothing();
-								if (smoothing != null) {
-									switch stream {
-										case [MPClosed]:
-											pathsArr.push(Bezier2To(end, control1, smoothing));
-										case _: syntaxError("expected )");
-									}
-								} else {
-									final control2 = parseXY();
-									switch stream {
-										case [MPClosed]:
-											pathsArr.push(Bezier3To(end, control1, control2, null));
-										case [MPComma, smoothing2 = parseSmoothing(), MPClosed]:
-													pathsArr.push(Bezier3To(end, control1, control2, smoothing2));
+							case [end = parseXY(), MPComma, control1 = parseXY()]:
+								switch stream {
+									case [MPClosed]:
+										pathsArr.push(Bezier2To(end, control1, coordinateMode, null));
+									case [MPComma]:
+										final smoothing = parseSmoothing();
+										if (smoothing != null) {
+											switch stream {
+												case [MPClosed]:
+													pathsArr.push(Bezier2To(end, control1, coordinateMode, smoothing));
+												case _: syntaxError("expected )");
+											}
+										} else {
+											final control2 = parseXY();
+											switch stream {
+												case [MPClosed]:
+													pathsArr.push(Bezier3To(end, control1, control2, coordinateMode, null));
+												case [MPComma, smoothing2 = parseSmoothing(), MPClosed]:
+															pathsArr.push(Bezier3To(end, control1, control2, coordinateMode, smoothing2));
+												
+												case _: syntaxError("expected ) or smoothing");
+											}
+										}
 										
-										case _: syntaxError("expected ) or smoothing");
-									}
-								}
 								
-						
+								}
+							case _: syntaxError("expected absolute/relative, or coordinates");
 						}
+						// Check for optional smoothing parameter
+		
 					case [MPCurlyClosed]: break;
 					case _: syntaxError("expected line, arc, bezier, or }");
 				}
@@ -2902,6 +2920,16 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 					retVal.push({at:Rate(rate), action:action});
 				case _: syntaxError("<at>: <command> or }");
 			}
+		}
+	}
+
+	function parseCoordinateMode():Null<PathCoordinateMode> {
+		return switch stream {
+			case [MPIdentifier("absolute", _, ITString), MPComma]:
+				PCMAbsolute;
+			case [MPIdentifier("relative", _, ITString), MPComma]:
+				PCMRelative;
+			case _: null;
 		}
 	}
 
