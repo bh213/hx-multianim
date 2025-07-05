@@ -6,9 +6,9 @@ version: 0.1
 paths {
   #line1 path {
     line (30,30) 
-    line (30,100) 
-    line (100,30) 
-    line (400,102) 
+    line (200,150) 
+    arc(100, 70)
+    forward(100)
     checkpoint(test)
     bezier(200,400, 100, 300)
     bezier(500,200, 600, 600)

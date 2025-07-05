@@ -131,6 +131,7 @@ enum MPKeywords {
 	MPLine;
 	MPForward;
 	MPTurn;
+	MPArc;
 	MPBezier;
 	MPCheckpoint;
 	MPList;
@@ -569,6 +570,7 @@ enum ParsedPaths {
 	Checkpoint(checkpointName:String);
 	Bezier2To(end:Coordinates, control:Coordinates);
 	Bezier3To(end:Coordinates, control1:Coordinates, control2:Coordinates);
+	Arc(radius:ReferencableValue, angleDelta:ReferencableValue);
 }
 
 @:nullSafety
@@ -2800,6 +2802,9 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 					case [MPIdentifier(_, MPTurn, ITString), MPOpen, angle = parseIntegerOrReference(), MPClosed]:
 						pathsArr.push(TurnDegrees(angle));
 
+					case [MPIdentifier(_, MPArc, ITString), MPOpen, radius = parseIntegerOrReference(), MPComma, angleDelta = parseIntegerOrReference(), MPClosed]:
+						pathsArr.push(Arc(radius, angleDelta));
+
 					case [MPIdentifier(_, MPLine, ITString), MPOpen, end = parseXY(), MPClosed]:
 						pathsArr.push(LineTo(end));
 					case [MPIdentifier(_, MPCheckpoint, ITString), MPOpen, MPIdentifier(name, _, ITString|ITQuotedString) , MPClosed]:
@@ -2814,7 +2819,7 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 							case _: syntaxError("expected XY or )");
 						}
 					case [MPCurlyClosed]: break;
-					case _: syntaxError("expected line or bezier or }");
+					case _: syntaxError("expected line, arc, bezier, or }");
 				}
 			}
 			paths.set(name, pathsArr);
