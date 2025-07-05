@@ -1558,6 +1558,7 @@ class MultiAnimBuilder {
 					}
 					var resolvedAction:AnimatePathCommands = switch action.action {
 						case ChangeSpeed(speed): ChangeSpeed(resolveAsNumber(speed));
+						case Accelerate(acceleration, duration): Accelerate(resolveAsNumber(acceleration), resolveAsNumber(duration));
 						case Event(eventName): Event(Event(eventName));
 						case AttachParticles(particlesName, particlesTemplate, particlesDef):
 							AttachParticles(particlesName, particlesDef);

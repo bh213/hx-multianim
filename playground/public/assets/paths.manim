@@ -165,8 +165,8 @@ forward(80)
 
 
 #panim animatedPath {
-  0.1: changeSpeed 100
-  0.3: changeSpeed 1000
+  
+  0.05: accelerate (200, 5000)
   0.1: attachParticles("test") {
       count:30
       relative: true
