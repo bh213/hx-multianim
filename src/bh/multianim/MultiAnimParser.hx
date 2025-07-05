@@ -553,6 +553,7 @@ class AnimatedPathTimedAction {
 @:nullSafety
 enum AnimatedPathsAction {
 	ChangeSpeed(speed:ReferencableValue);
+    Accelerate(acceleration:ReferencableValue, duration:ReferencableValue);
     Event(eventName:String);
     AttachParticles(particlesName:String, particlesTemplate:String, particlesDef:ParticlesDef);
     RemoveParticles(particlesName:String);
@@ -2877,6 +2878,8 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 		return switch stream {
 			case [MPIdentifier("changeSpeed", _, ITString),  speed = parseFloatOrReference()]:
 				 ChangeSpeed(speed);
+			case [MPIdentifier("accelerate", _, ITString), MPOpen, acceleration = parseFloatOrReference(), MPComma, duration = parseFloatOrReference(), MPClosed]:
+				 Accelerate(acceleration, duration);
 			case [MPIdentifier("event", _,  ITString), MPOpen, MPIdentifier(eventName, _, ITString|ITQuotedString), MPClosed]:
 				 Event(eventName);
 			case [MPIdentifier("attachParticles", _,  ITString), MPOpen, MPIdentifier(particlesName, _, ITString|ITQuotedString)]:
@@ -2899,7 +2902,7 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 			case [MPIdentifier("changeAnimState", _, ITString), MPOpen, MPIdentifier(state, _, ITString|ITQuotedString), MPClosed]:
 				 ChangeAnimSMState(state);
 
-			case _: syntaxError("expected changeSpeed or event or attachParticles or removeParticles or changeAnimState");
+			case _: syntaxError("expected changeSpeed or event or attachParticles or removeParticles or changeAnimState or accelerate");
 		}
 	}
 
