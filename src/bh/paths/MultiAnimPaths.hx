@@ -66,11 +66,15 @@ class MultiAnimPaths {
 
 		for (path in def) {
 			switch path {
-				case LineTo(end):
+				case LineTo(end, mode):
 					var end = resolveCoordinate(end);
-					singlePaths.push(new SinglePath(point, end, Line));
-					angle = hxd.Math.atan2(end.y - point.y, end.x - point.x);
-					point = end;
+					var finalEnd = switch(mode) {
+						case PCMAbsolute: end;
+						case PCMRelative|null: new FPoint(point.x + end.x, point.y + end.y);
+					};
+					singlePaths.push(new SinglePath(point, finalEnd, Line));
+					angle = hxd.Math.atan2(finalEnd.y - point.y, finalEnd.x - point.x);
+					point = finalEnd;
 
 				case Forward(distance):
 					var distance = resolveNumber(distance);
@@ -87,7 +91,7 @@ class MultiAnimPaths {
 					var angleDeltaRad = hxd.Math.degToRad(angleDeltaF);
 
 					// Perpendicular direction: +90° for CCW, -90° for CW
-					var perpAngle = angle + (angleDeltaF > 0 ? Math.PI / 2 : -Math.PI / 2);
+					var perpAngle = hxd.Math.angle(angle + (angleDeltaF > 0 ? Math.PI / 2 : -Math.PI / 2));
 					var centerX = point.x + radius * Math.cos(perpAngle);
 					var centerY = point.y + radius * Math.sin(perpAngle);
 					var center = new FPoint(centerX, centerY);
@@ -103,17 +107,25 @@ class MultiAnimPaths {
 					singlePaths.push(new SinglePath(point, end, Arc(center, startAngle, radius, angleDeltaF)));
 
 					// Update direction for next segment
-					angle += angleDeltaRad;
+					angle = hxd.Math.angle(angle + angleDeltaRad);
 					point = end;
 
 				case Checkpoint(name):
 					singlePaths.push(new SinglePath(point, point, Checkpoint(name)));
 
-				case Bezier2To(end, control, smoothing):
+				case Bezier2To(end, control, mode, smoothing):
 					var end = resolveCoordinate(end);
 					var control = resolveCoordinate(control);
+					var finalEnd = switch(mode) {
+						case PCMAbsolute: end;
+						case PCMRelative|null: new FPoint(point.x + end.x, point.y + end.y);
+					};
+					var finalControl = switch(mode) {
+						case PCMAbsolute: control;
+						case PCMRelative|null: new FPoint(point.x + control.x, point.y + control.y);
+					};
 					
-					var pxDistance = getSmoothingDistance(smoothing, point, control);
+					var pxDistance = getSmoothingDistance(smoothing, point, finalControl);
 					if (pxDistance > 0) {
 						// Calculate PX (additional control point) to ensure smooth angle transition
 						// PX should be positioned so that the tangent at the start point matches the current angle
@@ -122,21 +134,33 @@ class MultiAnimPaths {
 							point.y + pxDistance * Math.sin(angle)
 						);
 						
-						singlePaths.push(new SinglePath(point, end, Bezier3(px, control, end)));
+						singlePaths.push(new SinglePath(point, finalEnd, Bezier3(px, finalControl, finalEnd)));
 					} else {
 						// No smoothing - use original bezier2 as bezier3 with control point at start
-						singlePaths.push(new SinglePath(point, end, Bezier3(point, control, end)));
+						singlePaths.push(new SinglePath(point, finalEnd, Bezier3(point, finalControl, finalEnd)));
 					}
 					// For cubic bezier, the tangent at the end point is from control to end point
-					angle = hxd.Math.atan2(end.y - control.y, end.x - control.x);
-					point = end;
+					angle = hxd.Math.atan2(finalEnd.y - finalControl.y, finalEnd.x - finalControl.x);
+					point = finalEnd;
 
-				case Bezier3To(end, control1, control2, smoothing):
+				case Bezier3To(end, control1, control2, mode, smoothing):
 					var end = resolveCoordinate(end);
 					var control1 = resolveCoordinate(control1);
 					var control2 = resolveCoordinate(control2);
+					var finalEnd = switch(mode) {
+						case PCMAbsolute: end;
+						case PCMRelative|null: new FPoint(point.x + end.x, point.y + end.y);
+					};
+					var finalControl1 = switch(mode) {
+						case PCMAbsolute: control1;
+						case PCMRelative|null: new FPoint(point.x + control1.x, point.y + control1.y);
+					};
+					var finalControl2 = switch(mode) {
+						case PCMAbsolute: control2;
+						case PCMRelative|null: new FPoint(point.x + control2.x, point.y + control2.y);
+					};
 					
-					var pxDistance = getSmoothingDistance(smoothing, point, control1);
+					var pxDistance = getSmoothingDistance(smoothing, point, finalControl1);
 					if (pxDistance > 0) {
 						// Calculate PX (additional control point) to ensure smooth angle transition
 						// PX should be positioned so that the tangent at the start point matches the current angle
@@ -145,14 +169,14 @@ class MultiAnimPaths {
 							point.y + pxDistance * Math.sin(angle)
 						);
 						
-						singlePaths.push(new SinglePath(point, end, Bezier4(px, control1, control2, end)));
+						singlePaths.push(new SinglePath(point, finalEnd, Bezier4(px, finalControl1, finalControl2, finalEnd)));
 					} else {
 						// No smoothing - use original bezier3 as bezier4 with control point at start
-						singlePaths.push(new SinglePath(point, end, Bezier4(point, control1, control2, end)));
+						singlePaths.push(new SinglePath(point, finalEnd, Bezier4(point, finalControl1, finalControl2, finalEnd)));
 					}
 					// For quartic bezier, the tangent at the end point is from control2 to end point
-					angle = hxd.Math.atan2(end.y - control2.y, end.x - control2.x);
-					point = end;
+					angle = hxd.Math.atan2(finalEnd.y - finalControl2.y, finalEnd.x - finalControl2.x);
+					point = finalEnd;
 			}
 		}
 
