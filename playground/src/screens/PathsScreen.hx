@@ -163,10 +163,10 @@ class PathsScreen extends UIScreenBase {
 	
 	function getPath(index:Int){
 		return switch (index) {
-			case 0: this.paths.getPath("line1", this.startPoint, this.angle, this.endPoint);
-			case 1: this.paths.getPath("line2", this.startPoint, this.angle, this.endPoint);
-			case 2: this.paths.getPath("line3", this.startPoint, this.angle, this.endPoint);
-			case 3: this.paths.getPath("lineX", this.startPoint, this.angle, this.endPoint);
+			case 0: this.paths.getPath("line1",  this.startPoint, this.endPoint);
+			case 1: this.paths.getPath("line2",  this.startPoint, this.endPoint);
+			case 2: this.paths.getPath("line3",  this.startPoint, this.endPoint);
+			case 3: this.paths.getPath("lineX",  this.startPoint, this.endPoint);
 			default: throw "Unknown path index $index";
 		}
 		

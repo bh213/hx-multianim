@@ -25,6 +25,12 @@ using bh.base.MapTools;
 using StringTools;
 using bh.base.ColorUtils;
 
+// Place this after imports, before any class definitions
+private enum ComputedShape {
+	Line(x1:Int, y1:Int, x2:Int, y2:Int, color:Int);
+	Rect(x:Int, y:Int, w:Int, h:Int, color:Int, filled:Bool);
+}
+
 @:nullSafety
 @:allow(bh.multianim.BuilderResult)
 class Updatable {
@@ -544,7 +550,7 @@ class MultiAnimBuilder {
 		return switch type {
 			case Cross(w, h, color):
 				final pl = new PixelLines(w, h);
-				pl.rect(0, 0, w, h, color);
+				pl.rect(0, 0, w - 1, h - 1, color);
 				 pl.line(0, 0, w - 1, h - 1, color);
 				 pl.line(0, h - 1, w - 1,  0, color);
 				pl.updateBitmap();
@@ -698,40 +704,50 @@ class MultiAnimBuilder {
 	}
 
 	function drawPixles(shapes:Array<PixelShapes>, gridCoordinateSystem, hexCoordinateSystem) {
-		final bounds = new h2d.col.Bounds();
+		var computedShapes:Array<ComputedShape> = [];
+		var bounds = new h2d.col.IBounds();
 		for (s in shapes) {
 			switch s {
 				case LINE(line):
-					final startPos = calculatePosition(line.start, gridCoordinateSystem, hexCoordinateSystem);
-					bounds.addPos(startPos.x, startPos.y);
-					final endPos = calculatePosition(line.end, gridCoordinateSystem, hexCoordinateSystem);
-					bounds.addPos(endPos.x, endPos.y);
+					var startPos = calculatePosition(line.start, gridCoordinateSystem, hexCoordinateSystem);
+					var endPos = calculatePosition(line.end, gridCoordinateSystem, hexCoordinateSystem);
+					var x1 = Math.round(startPos.x);
+					var y1 = Math.round(startPos.y);
+					var x2 = Math.round(endPos.x);
+					var y2 = Math.round(endPos.y);
+					computedShapes.push(ComputedShape.Line(x1, y1, x2, y2, resolveAsColorInteger(line.color).addAlphaIfNotPresent()));
+					bounds.addPos(x1, y1);
+					bounds.addPos(x2, y2);
 				case RECT(rect) | FILLED_RECT(rect):
-					final startPos = calculatePosition(rect.start, gridCoordinateSystem, hexCoordinateSystem);
-					bounds.addPos(startPos.x, startPos.y);
-					bounds.addPos(startPos.x + resolveAsInteger(rect.width), startPos.y + resolveAsInteger(rect.height));
+					var filled = switch s { case FILLED_RECT(_): true; default: false; };
+					var start = calculatePosition(rect.start, gridCoordinateSystem, hexCoordinateSystem);
+					var x = Math.round(start.x);
+					var y = Math.round(start.y);
+					var w = resolveAsInteger(rect.width);
+					var h = resolveAsInteger(rect.height);
+					computedShapes.push(ComputedShape.Rect(x, y, w, h, resolveAsColorInteger(rect.color).addAlphaIfNotPresent(), filled));
+					bounds.addPos(x, y);
+					bounds.addPos(x + w+1, y + h+1);
 			}
 		}
-		var pl = new PixelLines(Std.int(Math.max(Math.ceil(bounds.width), 1)) + 1, Std.int(Math.max(Math.ceil(bounds.height), 1) + 1));
-		final minX = Std.int(bounds.xMin);
-		final minY = Std.int(bounds.yMin);
-
-		for (s in shapes) {
-			switch s {
-				case LINE(line):
-					final startPos = calculatePosition(line.start, gridCoordinateSystem, hexCoordinateSystem);
-					final endPos = calculatePosition(line.end, gridCoordinateSystem, hexCoordinateSystem);
-					pl.line(Std.int(startPos.x - minX), Std.int(startPos.y - minY), Std.int(endPos.x - minX), Std.int(endPos.y - minY),
-						resolveAsColorInteger(line.color).addAlphaIfNotPresent());
-				case RECT(rect):
-					final start = calculatePosition(rect.start, gridCoordinateSystem, hexCoordinateSystem);
-
-					pl.rect(Std.int(start.x - minX), Std.int(start.y - minY), resolveAsInteger(rect.width), resolveAsInteger(rect.height),
-						resolveAsColorInteger(rect.color).addAlphaIfNotPresent());
-				case FILLED_RECT(rect):
-					final start = calculatePosition(rect.start, gridCoordinateSystem, hexCoordinateSystem);
-					pl.filledRect(Std.int(start.x - minX), Std.int(start.y - minY), resolveAsInteger(rect.width), resolveAsInteger(rect.height),
-						resolveAsColorInteger(rect.color).addAlphaIfNotPresent());
+		var minX:Int = bounds.xMin;
+		var minY:Int = bounds.yMin;
+		var maxX:Int = bounds.xMax;
+		var maxY:Int = bounds.yMax;
+		var width:Int = bounds.width +1;
+		var height:Int = bounds.height + 1;
+		trace('bounds ${bounds}');
+		trace('minX $minX minY $minY maxX $maxX maxY $maxY');
+		var pl = new PixelLines(width,height);
+		for (shape in computedShapes) {
+			switch (shape) {
+				case ComputedShape.Line(x1, y1, x2, y2, color):
+					pl.line(x1 - minX, y1 - minY, x2 - minX, y2 - minY, color);
+				case ComputedShape.Rect(x, y, w, h, color, filled):
+					if (filled)
+						pl.filledRect(x - minX, y - minY, w, h, color);
+					else
+						pl.rect(x - minX, y - minY, w, h, color);
 			}
 		}
 		pl.updateBitmap();
@@ -777,7 +793,6 @@ class MultiAnimBuilder {
 			case POINT:
 				null;
 			case REPEAT(varName, repeatType):
-				// trace('repeat $varName $repeatType ${node.pos}');
 				var dx = 0;
 				var dy = 0;
 				var repeatCount = 0;
@@ -828,7 +843,6 @@ class MultiAnimBuilder {
 				null;
 			case PIXELS(shapes):
 				final pixelsResult = drawPixles(shapes, gridCoordinateSystem, hexCoordinateSystem);
-				currentPos.add(pixelsResult.minX, pixelsResult.minY);
 				pixelsResult.pixelLines.tile;
 			default: throw 'unsupported node ${node.uniqueNodeName} ${node.type} in tileGroup mode';
 		}

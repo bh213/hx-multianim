@@ -2,7 +2,7 @@ import { Screen, ManimFile, AnimFile } from './types';
 import { getFileContent, updateFileContent, fileExists } from './fileLoader';
 
 // Default configuration - single source of truth
-const DEFAULT_SCREEN = 'paths';
+const DEFAULT_SCREEN = 'pixels';
 
 /**
  * PlaygroundLoader - Combined file and manim loader for the hx-multianim playground
@@ -39,6 +39,12 @@ export class PlaygroundLoader {
             displayName: 'Particles',
             description: 'Particle system examples with various particle effects, explosions, trails, and dynamic particle animations.',
             manimFile: 'particles.manim'
+        },
+        { 
+            name: 'pixels', 
+            displayName: 'Pixels',
+            description: 'Pixel art and static pixel demo screen.',
+            manimFile: 'pixels.manim'
         },
         { 
             name: 'components', 
@@ -155,6 +161,12 @@ export class PlaygroundLoader {
             filename: 'particles.manim', 
             displayName: 'Particles',
             description: 'Particle system examples with various particle effects, explosions, trails, and dynamic particle animations.',
+            content: null
+        },
+        { 
+            filename: 'pixels.manim', 
+            displayName: 'Pixels',
+            description: 'Pixel art and static pixel demo screen.',
             content: null
         },
         { 

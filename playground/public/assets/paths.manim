@@ -47,11 +47,11 @@ forward(80)
     forward(300)
   }
   #lineX path {
-    line(absolute, $endX,$startY)
-    line(absolute, $endX,$endY)
-    line(absolute, $startX,$endY)
-    line(absolute, $startX,$startY)
-    line(absolute, $endX,$endY)
+    line(absolute, 100,100)
+    line(absolute, 500,0)
+    line(absolute, 0,500)
+    line(absolute, 0,0)
+    
   }
   #testModes path {
     line(relative, 100, 50)

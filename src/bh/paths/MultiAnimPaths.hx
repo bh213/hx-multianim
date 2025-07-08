@@ -26,24 +26,9 @@ class MultiAnimPaths {
 		this.builder = builder;
 	}
 
-	public function getPath(name:String, ?startPoint:FPoint, ?startAngle:Float, ?endPoint:FPoint):Path {
+	public function getPath(name:String, ?startPoint:FPoint, ?endPoint:FPoint):Path {
 		final oldIndexed = builder.indexedParams;
-		
-		var newIndexedParams:Map<String, ResolvedIndexParameters> = [];
-		if (startPoint != null) {
-			newIndexedParams.set("startX", ValueF(startPoint.x));
-			newIndexedParams.set("startY", ValueF(startPoint.y));
-		}
-		if (endPoint != null) {
-			newIndexedParams.set("endX", ValueF(endPoint.x));
-			newIndexedParams.set("endY", ValueF(endPoint.y));
-		}
-		if (startAngle != null) {
-			newIndexedParams.set("startAngle", ValueF(startAngle));
-		}
-
-
-		builder.indexedParams = newIndexedParams;
+		builder.indexedParams = [];
 		
 		var gridCoordinateSystem:Null<GridCoordinateSystem> = null;
 		var hexCoordinateSystem:Null<HexCoordinateSystem> = null;
@@ -60,9 +45,10 @@ class MultiAnimPaths {
 		if (def == null)
 			throw 'path not found: $name';
 
+		var baseStart = startPoint != null ? startPoint : new FPoint(0, 0);
 		var singlePaths:Array<SinglePath> = [];
-		var point = startPoint ?? new FPoint(0, 0);
-		var angle:Float = startAngle != null ? hxd.Math.degToRad(startAngle) : 0.;
+		var point = new FPoint(0, 0);
+		var angle:Float = 0.;
 
 		for (path in def) {
 			switch path {
@@ -208,6 +194,7 @@ class Path {
 	final singlePaths:Array<SinglePath>;
 	final checkpoints:Map<String, Float> = [];
 	public final totalLength:Float;
+	public final endpoint:FPoint;
 
 	public function new(singlePaths:Array<SinglePath>) {
 		this.singlePaths = singlePaths;
@@ -235,6 +222,13 @@ class Path {
 			} 
 		}
 		this.singlePaths = this.singlePaths.filter(x-> !x.path.match(Checkpoint(_)));
+
+		// Set endpoint as the end of the last SinglePath, or (0,0) if none
+		if (this.singlePaths.length > 0) {
+			this.endpoint = this.singlePaths[this.singlePaths.length - 1].getEndpoint();
+		} else {
+			this.endpoint = new FPoint(0, 0);
+		}
 	}
 
 	public inline function getCheckpoint(name:String):Float {
@@ -271,6 +265,9 @@ class Path {
 		throw 'rate out of range: $rate';
 	}
 
+	public function getEndpoint():FPoint {
+		return endpoint;
+	}
 }
 
 @:allow(bh.paths.MultiAnimPaths)
@@ -359,5 +356,9 @@ private class SinglePath {
 				estimate(12);
 			case Checkpoint(_): 0;
 		}
+	}
+
+	public function getEndpoint():FPoint {
+		return end;
 	}
 }
