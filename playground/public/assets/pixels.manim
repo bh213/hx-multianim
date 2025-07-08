@@ -1,0 +1,42 @@
+version: 0.1
+
+#ui programmable() {
+    text(pixellari, "Pixel-perfect primitives demo", #ffffff00, center, 100): 300, 30
+    // Square example
+    pixels (
+        rect 0,0, 20,20, #00f
+    ): 50, 80
+    text(pixellari, "Square (20x20)", #00f, left, 200): 80, 80
+
+    // Hex example (drawn with lines)
+    pixels (
+        line 10,0, 20,10, #0f0
+        line 20,10, 20,30, #0f0
+        line 20,30, 10,40, #0f0
+        line 10,40, 0,30, #0f0
+        line 0,30, 0,10, #0f0
+        line 0,10, 10,0, #0f0
+    ): 300, 80
+    text(pixellari, "Hexagon (approx)", #0f0, left, 200): 330, 80
+
+    // Cross example
+    pixels (
+        line -10,0, 10,0, #f00
+        line 0,-10, 0,10, #f00
+    ): 550, 80
+    text(pixellari, "Cross (20x20)", #f00, left, 200): 580, 80
+
+    // Pixel-perfect grid test
+    repeatable($i, grid(10, dx:2)) {
+        pixels (
+            rect 0,0, 1,1, #fff
+        ): 50 + $i*2, 150
+    }
+    text(pixellari, "Pixel grid: should be 10 white squares, 1px each, spaced 2px apart", #fff, left, 600): 80, 150
+
+    // Pixel-perfect alignment test
+    pixels (
+        rect 0,0, 1,1, #ff0
+    ): 200, 200
+    text(pixellari, "Single yellow pixel at (200,200)", #ff0, left, 200): 210, 200
+} 

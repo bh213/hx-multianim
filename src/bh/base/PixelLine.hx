@@ -4,7 +4,7 @@ import h2d.Bitmap;
 import hxd.BitmapData;
 
 class PixelLines extends h2d.Bitmap {
-	var data:BitmapData;
+	public var data:BitmapData;
 	var centerX:Float = 0;
 	var centerY:Float = 0;
 
@@ -20,12 +20,12 @@ class PixelLines extends h2d.Bitmap {
 		data.clear(0);
 	}
 
-	public function line(x0, y0, x1, y1, colorARGB) {
+	public function line(x0:Int, y0:Int, x1:Int, y1:Int, colorARGB:Int) {
 		data.lock();
 		data.line(x0, y0, x1, y1, colorARGB);
 	}
 
-	public function rect(x, y, width, height, colorARGB) {
+	public function rect(x:Int, y:Int, width:Int, height:Int, colorARGB:Int) {
         // TODO: handle overlap in case of alpha?
 		data.lock();
 		data.line(x, y, x + width - 1, y, colorARGB);
@@ -34,7 +34,7 @@ class PixelLines extends h2d.Bitmap {
 		data.line(x, y + height - 1, x + width - 1, y + height - 1, colorARGB);
 	}
 
-	public function filledRect(x:Int, y:Int, width:Int, height:Int, colorARGB) {
+	public function filledRect(x:Int, y:Int, width:Int, height:Int, colorARGB:Int) {
 		data.lock();
 		data.fill(x, y, width, height, colorARGB);
 	}

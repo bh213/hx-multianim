@@ -14,7 +14,7 @@ using bh.base.Atlas2;
 
 @:expose("PlaygroundMain")
 class Main extends hxd.App {
-	public static var defaultScreen:String = "paths";
+	private static inline var DEFAULT_SCREEN = "pixels";
 	public static var instance:Main = null;
 	var errorText:h2d.Text;
 
@@ -131,6 +131,7 @@ class Main extends hxd.App {
 
 		screenManager.addScreen("paths", new PathsScreen(screenManager));
 		screenManager.addScreen("particles", new ParticlesScreen(screenManager));
+		screenManager.addScreen("pixels", new PixelsScreen(screenManager));
 		screenManager.addScreen("fonts", new FontsScreen(screenManager));
 		screenManager.addScreen("atlasTest", new screens.AtlasTestScreen(screenManager));
 		
@@ -167,7 +168,7 @@ class Main extends hxd.App {
 		
 		engine.backgroundColor = 0x507050;
 		// Default screen - synchronized with React frontend
-		reload(defaultScreen);
+		reload(DEFAULT_SCREEN);
 	}
 
 	#if js

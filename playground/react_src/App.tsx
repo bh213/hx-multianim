@@ -577,7 +577,7 @@ function App() {
 
   useEffect(() => {
     if (!window.PlaygroundMain) window.PlaygroundMain = {} as any;
-    window.PlaygroundMain.defaultScreen = 'paths';
+    window.PlaygroundMain.defaultScreen = 'pixels';
   }, []);
 
   return (
