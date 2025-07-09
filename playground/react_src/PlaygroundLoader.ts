@@ -465,6 +465,6 @@ export class PlaygroundLoader {
     }
 
     public static getDefaultScreen(): string {
-        return 'paths';
+        return DEFAULT_SCREEN;
     }
 } 

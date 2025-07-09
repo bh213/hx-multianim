@@ -257,6 +257,73 @@ function App() {
     };
   }, [loader]);
 
+  function validateManimContent() {
+    if (selectedScreen) {
+      try {
+        const result = loader.reloadPlayground(selectedScreen);
+        if (result && result.__nativeException) {
+          const error = result.__nativeException;
+          const errorInfo = {
+            message: error.message || error.toString?.() || 'Unknown error occurred',
+            pos: error.value?.pos,
+            token: error.value?.token
+          };
+          setReloadError(errorInfo);
+        } else if (result && result.value && result.value.__nativeException) {
+          const error = result.value.__nativeException;
+          const errorInfo = {
+            message: error.message || error.toString?.() || 'Unknown error occurred',
+            pos: error.value?.pos,
+            token: error.value?.token
+          };
+          setReloadError(errorInfo);
+        } else if (result && result.error) {
+          const errorInfo = {
+            message: result.error || 'Unknown error occurred',
+            pos: result.pos,
+            token: result.token
+          };
+          setReloadError(errorInfo);
+        } else if (result && !result.success) {
+          const errorInfo = {
+            message: result.error || 'Operation failed',
+            pos: result.pos,
+            token: result.token
+          };
+          setReloadError(errorInfo);
+        } else {
+          setReloadError(null);
+        }
+      } catch (error) {
+        let errorMessage = 'Unknown error occurred';
+        try {
+          if (error instanceof Error) {
+            errorMessage = error.message;
+          } else if (typeof error === 'string') {
+            errorMessage = error;
+          } else if (error && typeof error === 'object') {
+            const haxeError = error as any;
+            if (haxeError.message) {
+              errorMessage = haxeError.message;
+            } else if (haxeError.toString) {
+              errorMessage = haxeError.toString();
+            } else {
+              errorMessage = 'Error occurred';
+            }
+          }
+        } catch (serializeError) {
+          errorMessage = 'Error occurred (could not serialize)';
+        }
+        const errorInfo = {
+          message: errorMessage,
+          pos: undefined,
+          token: undefined
+        };
+        setReloadError(errorInfo);
+      }
+    }
+  }
+
   // Initialize with correct file when loader is ready
   useEffect(() => {
     if (loader.manimFiles.length > 0 && selectedScreen) {
@@ -271,6 +338,7 @@ function App() {
           loader.currentFile = screen.manimFile;
           loader.currentExample = screen.manimFile;
           setHasUnsavedChanges(false);
+          validateManimContent();
         }
       }
     }
@@ -291,6 +359,7 @@ function App() {
         loader.currentFile = screen.manimFile;
         loader.currentExample = screen.manimFile;
         setHasUnsavedChanges(false);
+        validateManimContent();
       }
     }
   }, [selectedScreen, loader]);
@@ -579,6 +648,43 @@ function App() {
     if (!window.PlaygroundMain) window.PlaygroundMain = {} as any;
     window.PlaygroundMain.defaultScreen = 'pixels';
   }, []);
+
+  useEffect(() => {
+    if (manimContent && selectedScreen) {
+      validateManimContent();
+    }
+  }, [manimContent, selectedScreen]);
+
+  useEffect(() => {
+    function handleGlobalError(event: ErrorEvent) {
+      if (event.error && event.error.message && event.error.message.includes('unexpected MP')) {
+        // Try to extract line/char info from the error message
+        const match = event.error.message.match(/at ([^:]+):(\d+): characters (\d+)-(\d+)/);
+        let pos;
+        if (match) {
+          // match[2] = line, match[3] = start char, match[4] = end char
+          const line = parseInt(match[2], 10);
+          const startChar = parseInt(match[3], 10);
+          const endChar = parseInt(match[4], 10);
+          // Calculate pmin and pmax as character offsets in the file
+          const lines = manimContent.split('\n');
+          let pmin = 0;
+          for (let i = 0; i < line - 1; i++) pmin += lines[i].length + 1; // +1 for newline
+          pmin += startChar;
+          let pmax = pmin + (endChar - startChar);
+          pos = { psource: '', pmin, pmax };
+        }
+        setReloadError({
+          message: event.error.message,
+          pos,
+          token: undefined
+        });
+        setActiveTab('console');
+      }
+    }
+    window.addEventListener('error', handleGlobalError);
+    return () => window.removeEventListener('error', handleGlobalError);
+  }, [manimContent]);
 
   return (
     <div className="flex h-screen w-screen bg-gray-900 text-white">

@@ -3,6 +3,7 @@
 FIX: 
 ===================================
 error on root objects setting position - especially #name pixels(...): 100, 100 <- 100,100 is ignored
+repeatable grid: scale ignored for dy/dy?
 fix html/implement text
 dynamicToParamValue - fix passing 0x, # and similar
 write examples of all pos transforms, especially root nodes and builderResult.offset

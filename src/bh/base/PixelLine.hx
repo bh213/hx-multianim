@@ -39,6 +39,11 @@ class PixelLines extends h2d.Bitmap {
 		data.fill(x, y, width, height, colorARGB);
 	}
 
+	public function pixel(x:Int, y:Int, colorARGB:Int) {
+		data.lock();
+		data.setPixel(x, y, colorARGB);
+	}
+
 	public function updateBitmap() {
 		data.unlock();
 		final pixels = data.getPixels();

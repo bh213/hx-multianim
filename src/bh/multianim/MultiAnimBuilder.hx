@@ -29,6 +29,7 @@ using bh.base.ColorUtils;
 private enum ComputedShape {
 	Line(x1:Int, y1:Int, x2:Int, y2:Int, color:Int);
 	Rect(x:Int, y:Int, w:Int, h:Int, color:Int, filled:Bool);
+	Pixel(x:Int, y:Int, color:Int);
 }
 
 @:nullSafety
@@ -681,6 +682,10 @@ class MultiAnimBuilder {
 				if (gridCoordinateSystem == null)
 					throw 'gridCoordinateSystem is null';
 				gridCoordinateSystem.resolveAsGrid(resolveAsInteger(gridX), resolveAsInteger(gridY));
+			case SELECTED_GRID_POSITION_WITH_OFFSET(gridX, gridY, offsetX, offsetY):
+				if (gridCoordinateSystem == null)
+					throw 'gridCoordinateSystem is null';
+				gridCoordinateSystem.resolveAsGrid(resolveAsInteger(gridX), resolveAsInteger(gridY), resolveAsInteger(offsetX), resolveAsInteger(offsetY));
 			case SELECTED_HEX_EDGE(direction, factor):
 				if (hexCoordinateSystem == null)
 					throw 'hexCoordinateSystem is null';
@@ -728,6 +733,12 @@ class MultiAnimBuilder {
 					computedShapes.push(ComputedShape.Rect(x, y, w, h, resolveAsColorInteger(rect.color).addAlphaIfNotPresent(), filled));
 					bounds.addPos(x, y);
 					bounds.addPos(x + w+1, y + h+1);
+				case PIXEL(pixel):
+					var pos = calculatePosition(pixel.pos, gridCoordinateSystem, hexCoordinateSystem);
+					var x = Math.round(pos.x);
+					var y = Math.round(pos.y);
+					computedShapes.push(ComputedShape.Pixel(x, y, resolveAsColorInteger(pixel.color).addAlphaIfNotPresent()));
+					bounds.addPos(x, y);
 			}
 		}
 		var minX:Int = bounds.xMin;
@@ -736,8 +747,6 @@ class MultiAnimBuilder {
 		var maxY:Int = bounds.yMax;
 		var width:Int = bounds.width +1;
 		var height:Int = bounds.height + 1;
-		trace('bounds ${bounds}');
-		trace('minX $minX minY $minY maxX $maxX maxY $maxY');
 		var pl = new PixelLines(width,height);
 		for (shape in computedShapes) {
 			switch (shape) {
@@ -748,6 +757,8 @@ class MultiAnimBuilder {
 						pl.filledRect(x - minX, y - minY, w, h, color);
 					else
 						pl.rect(x - minX, y - minY, w, h, color);
+				case ComputedShape.Pixel(x, y, color):
+					pl.pixel(x - minX, y - minY, color);
 			}
 		}
 		pl.updateBitmap();
@@ -811,6 +822,13 @@ class MultiAnimBuilder {
 					case ArrayIterator(variableName, arrayName):
 						arrayIterator = resolveAsArray(RVArrayReference(arrayName));
 						repeatCount = arrayIterator.length;
+					case RangeIterator(start, end, step):
+						final start = resolveAsInteger(start);
+						final end = resolveAsInteger(end);
+						final step = resolveAsInteger(step);
+						repeatCount = Math.ceil((end - start) / step);
+						dx = 0;
+						dy = 0;
 				}
 
 				if (indexedParams.exists(node.updatableName.getNameString()))
@@ -829,6 +847,8 @@ class MultiAnimBuilder {
 							case LayoutIterator(_):
 								var pt = iterator.next();
 								iterPos.add(cast pt.x, cast pt.y);
+							case RangeIterator(_, _, _):
+								
 							case ArrayIterator(valueVariableName, array):
 								indexedParams.set(valueVariableName, StringValue(arrayIterator[count]));
 								#if MULTIANIM_TRACE
@@ -1156,6 +1176,13 @@ class MultiAnimBuilder {
 					case ArrayIterator(variableName, arrayName):
 						arrayIterator = resolveAsArray(RVArrayReference(arrayName));
 						repeatCount = arrayIterator.length;
+					case RangeIterator(start, end, step):
+						final start = resolveAsInteger(start);
+						final end = resolveAsInteger(end);
+						final step = resolveAsInteger(step);
+						repeatCount = Math.ceil((end - start) / step);
+						dx = 0;
+						dy = 0;
 				}
 
 				if (indexedParams.exists(node.updatableName.getNameString()))
@@ -1181,6 +1208,8 @@ class MultiAnimBuilder {
 								var pt = iterator.next();
 								addPosition(obj, pt.x, pt.y);
 							case ArrayIterator(valueVariableName, array):
+							case RangeIterator(_, _, _):
+								
 						}
 					}
 				}
