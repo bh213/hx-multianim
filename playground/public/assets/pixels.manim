@@ -1,42 +1,195 @@
 version: 0.1
 
 #ui programmable() {
-    text(pixellari, "Pixel-perfect primitives demo", #ffffff00, center, 100): 300, 30
-    // Square example
-    pixels (
-        rect 0,0, 20,20, #00f
-    ): 50, 80
-    text(pixellari, "Square (20x20)", #00f, left, 200): 80, 80
+    grid: 200, 250
+    pos:30,-150
+    hex:pointy(10, 10)
 
-    // Hex example (drawn with lines)
-    pixels (
-        line 10,0, 20,10, #0f0
-        line 20,10, 20,30, #0f0
-        line 20,30, 10,40, #0f0
-        line 10,40, 0,30, #0f0
-        line 0,30, 0,10, #0f0
-        line 0,10, 10,0, #0f0
-    ): 300, 80
-    text(pixellari, "Hexagon (approx)", #0f0, left, 200): 330, 80
-
-    // Cross example
-    pixels (
-        line -10,0, 10,0, #f00
-        line 0,-10, 0,10, #f00
-    ): 550, 80
-    text(pixellari, "Cross (20x20)", #f00, left, 200): 580, 80
-
-    // Pixel-perfect grid test
-    repeatable($i, grid(10, dx:2)) {
+    // Squares (20x20)
+    point {
+        pos: grid(0, 1)
         pixels (
-            rect 0,0, 1,1, #fff
-        ): 50 + $i*2, 150
+            rect 0,0, 20,20, #00f
+            rect 1,1, 9,9, #f0f
+            rect 10,1, 9,9, #0f0
+            rect 1,10, 9,9, #0ff
+            rect 10,10, 9,9, #fff
+        ) {
+            scale: 5
+            pos: 0, 0
+        }
+        text(pixellari, "Squares (20x20), scale 5", #00f, left, grid): 0, -40
     }
-    text(pixellari, "Pixel grid: should be 10 white squares, 1px each, spaced 2px apart", #fff, left, 600): 80, 150
 
-    // Pixel-perfect alignment test
-    pixels (
-        rect 0,0, 1,1, #ff0
-    ): 200, 200
-    text(pixellari, "Single yellow pixel at (200,200)", #ff0, left, 200): 210, 200
+    // Single pixels (red, green, blue)
+    point {
+        pos: grid(1, 1)
+        pixels (
+            pixel 0,0, #f00
+            pixel 1,1, #0f0
+            pixel 2,2, #00f
+        ) {
+            scale: 8
+            pos: 0, 0
+        }
+        text(pixellari, "3 pixels, scale 8", #fff, left, grid): 0, -40
+    }
+
+    // Hexagon using hexCorner
+    point {
+        pos: grid(2, 1)
+        pixels (
+            line hexCorner(0, 1.1), hexCorner(1, 1.1), #f00
+            line hexCorner(1, 1.1), hexCorner(2, 1.1), #0f0
+            line hexCorner(2, 1.1), hexCorner(3, 1.1), #00f
+            line hexCorner(3, 1.1), hexCorner(4, 1.1), #ff0
+            line hexCorner(4, 1.1), hexCorner(5, 1.1), #f0f
+            line hexCorner(5, 1.1), hexCorner(0, 1.1), #fff
+        ) {
+            scale: 4
+            pos: 0, 0
+        }
+        text(pixellari, "Hexagon using hexCorner, scale 4", #0f0, left, grid): 0, -40
+    }
+
+    // Cross (20x20)
+    point {
+        pos: grid(3, 1)
+        pixels (
+            line -10,0, 10,0, #f00
+            line 0,-10, 0,10, #f00
+            pixel 0,0, #fff
+        ) {
+            scale: 4
+            pos: 20, 20
+        }
+        text(pixellari, "Cross (20x20) with white center pixel, scale 4", #f00, left, grid): 0, -40
+    }
+
+    // Single yellow pixel
+    point {
+        pos: grid(4, 1)
+        pixels (
+            pixel 0,0, #ff0
+        ) {
+            scale: 16
+            pos: 0, 0
+        }
+        text(pixellari, "Single yellow pixel, scale 16", #ff0, left, grid): 0, -40
+    }
+
+    // Diagonal lines (1px)
+    point {
+        pos: grid(0, 2)
+        pixels (
+            line 0,0, 20,20, #f00
+            line 1,0, 21,20, #ff0
+        ) {
+            scale: 4
+            pos: 0, 0
+        }
+        text(pixellari, "2 diagonal lines (1px), scale 4", #ff0, left, grid): 0, -40
+    }
+
+    
+    point {
+        pos: grid(1, 2)
+        pixels (
+            rect 0,0, 1,40, #fff
+            rect 0,0, 40,1, #fff
+            rect 39,0, 1,40, #fff
+            rect 0,39, 40,1, #fff
+        ) {
+            scale: 4
+            pos: 0, 0
+        }
+        text(pixellari, "1px border at edges (40x40)", #fff, left, grid): 0, -40
+    }
+
+    
+    point {
+        pos: grid(2, 2)
+        repeatable($i, grid(10, dx:10, dy:10)) {
+            pixels (
+                rect 0,0, 5,5, #fff
+            ) {
+                scale: 2
+                pos:0,20
+                
+            }
+        }
+        text(pixellari, "Pixel grid: 10 white squares, 5x5 spaced 10px diagonally", #fff, left, grid): 0, -40
+    }
+
+    // Checkerboard 4x4 (1px)
+    point {
+        pos: grid(3, 2)
+        // White squares
+        repeatable($y, range(1, 10)) {
+            repeatable($x, range(1,10)) {
+                pixels (
+                    rect 0,0, 5,5, #fff
+                ) {
+                    scale: 2
+                    pos: $x*15, $y*15
+                }
+            }
+        }
+        
+        text(pixellari, "Checkerboard 4x4 (1px)", #fff, left, grid): 0, -40
+    }
+
+    // Overlapping pixels: red over blue
+    point {
+        pos: grid(4, 2)
+        pixels (
+            rect 0,0, 1,1, #00f
+        ) {
+            scale: 8
+            pos: 0, 0
+        }
+        pixels (
+            rect 0,0, 1,1, #f00
+        ) {
+            scale: 8
+            pos: 0, 0
+        }
+        text(pixellari, "Overlapping pixels: red over blue", #f00, left, grid): 0, -40
+    }
+
+    // Line arrays: vertical/horizontal, 1px wide, 10px apart
+    point {
+        pos: grid(5, 2)
+        repeatable($i, grid(10, dx:10)) {
+            pixels (
+                rect 0,0, 1,20, #0ff
+            ) {
+                scale: 4
+                pos: $i, 0
+            }
+        }
+        repeatable($i, grid(10, dy:10)) {
+            pixels (
+                rect 0,0, 20,1, #0ff
+            ) {
+                scale: 4
+                pos: 0, $i
+            }
+        }
+        text(pixellari, "Line arrays: vertical/horizontal, 1px wide, 10px apart", #0ff, left, grid): 0, -40
+    }
+
+    // Pixel staircase (1x1 px, offset 10px)
+    point {
+        pos: grid(0, 3)
+        repeatable($i, grid(10, dx:10, dy:10)) {
+            pixels (
+                pixel 0,0, #ff0
+            ) {
+                scale: 10
+                pos: $i, $i
+            }
+        }
+        text(pixellari, "Pixel staircase (1x1 px, offset 10px)", #ff0, left, grid): 0, -40
+    }
 } 

@@ -340,11 +340,30 @@ Example:
 ```
 
 ## repeatable
-* `repeatable($varname, grid(repeats, dx:{valx}, dy:{valy}))` - creates `repeats` number of its children. All values are expressions. `$varName` is required and children can reference current count (starts at 0) by referencing `$varName`. `repeatable($repCount, grid($count+10, dy:10, ))` would access repeat index with `$repcount`, increase it by 10 and increase y position of element by 10 for each iteration.
+* `repeatable($varname, grid(repeatCount, dx, dy))` - creates `repeatCount` number of its children, offsetting each by `dx` and `dy` (either one or both). `$varname` is required and children can reference the current count (starts at 0) by referencing `$varname`. Example: `repeatable($i, grid(5, dx:10, dy:0))` will repeat 5 times, increasing x by 10 each time.
+* `repeatable($varname, layout(layoutName))` - iterates through all points in the named layout. Example: `repeatable($i, layout("mainScreen")) { ... }`.
+* `repeatable($varname, array(arrayName))` - iterates through all elements of the named array, setting `$varname` to the current value.
+* `repeatable($varname, range(start, end[, step]))` - iterates from `start` (inclusive) to `end` (exclusive) by `step` (default 1). Example: `repeatable($i, range(0, 5))` will repeat for $i = 0, 1, 2, 3, 4.
 
-NOTE: `dx` and `dy` are optional, but at least one has to be specified.
+Example (range):
+```
+repeatable($i, range(0, 3)) {
+  text(pikzel, 'Index: $i', #fff, left, 100): $i*20, 0
+}
+```
 
-`repeatable` also supports layouts iterator (see demo examples #13) which will iterate through all layouts. Use `layout(layout, layoutname)`.
+Example (grid):
+```
+repeatable($i, grid(10, dx:10)) {
+  pixels (
+    rect 0,0, 5, 5, #fff
+  );
+}
+```
+
+NOTE: `dx` and `dy` are optional for grid, but at least one has to be specified.
+
+`repeatable` also supports layouts iterator (see demo examples #13) which will iterate through all layouts. Use `layout(layoutName)`.
 
 example:
 ```
@@ -463,7 +482,8 @@ xy position can be defined in multiple ways, usually by setting `pos` property i
 * `hex(q, r, s)` - requires `hex` coordinate system to be defined. Center of the hex with these coordinates
 * `hexCorner(index, scale)` - requires `hex` coordinate system to be defined. Creates position in specific corner of hex scaled from center. Scale 0.0 is center of hex, 1.0 is on the corner, 0.5 is halfway between center and corner. Example: `pos: hexCorner(2, 0.7)`
 * `hexEdge(index, scale)` - requires `hex` coordinate system to be defined. Scale 0.0 is center of hex, 1.0 is on the edge of the hex, 0.5 is halfway between center and edge. Example: `hexEdge(5, 1.2)`
-* `grid(x,y)` - requires `grid` coordinate system to be defined, calculates x * gridwidth, y * gridheight. Example: `grid($x, 2)`
+* `grid(x,y[, offsetX, offsetY])` - requires `grid` coordinate system to be defined, calculates x * gridwidth, y * gridheight. Example: `grid($x, 2)`. `offsetX` and `offsetY` are optional and can be used to offset the position by a certain amount.
+
 * `;` - 0,0 offset
 * `layout(layoutName [, index])` - takes coordinates from `#layout` named `layoutName`.
 
@@ -754,3 +774,25 @@ Settings:
 ## Dropdown
 Settings:
 * `transitionTimer` - time to transition between open & closed
+
+## pixels
+* `pixels (...)` - draws pixel-perfect primitives. Supported commands inside the block:
+  * `line x1, y1, x2, y2, color` - draws a line
+  * `rect x, y, width, height, color` - draws a rectangle
+  * `filledRect x, y, width, height, color` - draws a filled rectangle
+  * `pixel x, y, color` - draws a single pixel at (x, y) with the specified color
+
+**Example:**
+```
+pixels (
+    pixel 5,5, #f00
+    pixel 7,7, #0f0
+    pixel 9,9, #00f
+    line 0,0, 10,10, #fff
+    rect 2,2, 8,8, #0ff
+    filledRect 3,3, 6,6, #ff0
+) {
+    scale: 8
+    pos: 200, 80
+}
+```

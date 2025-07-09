@@ -13,6 +13,7 @@ enum Coordinates {
     LAYOUT(layoutName:String, index:ReferencableValue);
 	SELECTED_HEX_POSITION(hex:Hex);
 	SELECTED_GRID_POSITION(gridX:ReferencableValue, gridY:ReferencableValue);
+	SELECTED_GRID_POSITION_WITH_OFFSET(gridX:ReferencableValue, gridY:ReferencableValue, offsetX:ReferencableValue, offsetY:ReferencableValue);
 	SELECTED_HEX_EDGE(direction:ReferencableValue, factor:ReferencableValue);
 	SELECTED_HEX_CORNER(count:ReferencableValue, factor:ReferencableValue);
 }
@@ -29,8 +30,8 @@ typedef GridCoordinateSystem = {
 }
 
 
-function resolveAsGrid(system:GridCoordinateSystem, gridX:Int, gridY:Int):FPoint {
-    return {x:system.spacingX * gridX, y:system.spacingY * gridY};
+function resolveAsGrid(system:GridCoordinateSystem, gridX:Int, gridY:Int, offsetX:Int = 0, offsetY:Int = 0):FPoint {
+    return {x:system.spacingX * gridX + offsetX, y:system.spacingY * gridY + offsetY};
 }   
 
 class HexCoordinateSystemHelper {

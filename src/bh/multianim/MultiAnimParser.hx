@@ -138,6 +138,7 @@ enum MPKeywords {
 	MPSequence;
 	MPRect;
 	MPFilledRect;
+	MPPixel;
 	MPFlags;
 	MPError;
 	MPNothing;
@@ -163,6 +164,7 @@ enum MPKeywords {
 	MPDiv;
 	MPExternal;
 	MPArray;
+	MPRange;
 	MPSmoothing;
 }
 
@@ -415,6 +417,7 @@ enum PixelShapes {
 	LINE(line:PixelLine);
 	RECT(rect:PixelRect);
 	FILLED_RECT(rect:PixelRect);
+	PIXEL(pixel:PixelPixel);
 }
 
 @:NotNull
@@ -431,6 +434,12 @@ typedef PixelRect = {
 	height:ReferencableValue,
 	color:ReferencableValue
 
+}
+
+@:NotNull
+typedef PixelPixel = {
+	pos:Coordinates,
+	color:ReferencableValue
 }
 
 enum DefinitionType {
@@ -629,6 +638,7 @@ enum RepeatType {
 	GridIterator(dx:ReferencableValue, dy:ReferencableValue, repeatCount:ReferencableValue);
 	LayoutIterator(layoutName:String);
 	ArrayIterator(valueVariableName:String, arrayName:String);
+	RangeIterator(start:ReferencableValue, end:ReferencableValue, step:ReferencableValue);
 }
 
 enum GeneratedTileType {
@@ -1225,8 +1235,14 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 	function parseXY():Coordinates {
 		try {
 			switch stream {
-				case [MPIdentifier(_, MPGrid, ITString), MPOpen, x = parseIntegerOrReference(), MPComma, y = parseIntegerOrReference(), MPClosed]:
-					return SELECTED_GRID_POSITION(x,y);
+				case [MPIdentifier(_, MPGrid, ITString), MPOpen, x = parseIntegerOrReference(), MPComma, y = parseIntegerOrReference()]:
+					switch stream {
+						case [MPComma, offsetX = parseIntegerOrReference(), MPComma, offsetY = parseIntegerOrReference(), MPClosed]:
+							return SELECTED_GRID_POSITION_WITH_OFFSET(x,y, offsetX, offsetY);
+						case [MPClosed]:
+							return SELECTED_GRID_POSITION(x,y);
+						case _: throw unexpectedError("Expected , offsetX, offsetY or )");
+					}
 				case [MPIdentifier(_, MPHex, ITString), MPOpen, q = parseInteger(), MPComma, r = parseInteger(), MPComma, s = parseInteger(), MPComma, MPClosed]:
 					
 					if (q + r + s != 0) syntaxError("q + r + s must be 0");
@@ -1935,7 +1951,8 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 						height: height,
 						color: color
 					}));
-
+				case [MPIdentifier(_, MPPixel, ITString), pos = parseXY(), MPComma, color = parseColorOrReference()]:
+					shapes.push(PIXEL({ pos: pos, color: color }));
 			}
 		}
 	}
@@ -2549,6 +2566,15 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 					case [MPIdentifier(_, MPArray, ITString), MPOpen, MPIdentifier(valueVariableName, _, ITString | ITReference), MPComma,  MPIdentifier(arrayName, _, ITReference | ITString), MPClosed]:
 						if (currentDefinitions.exists(valueVariableName)) syntaxError('repeatable array iterator value variable name "${valueVariableName}" is already a parameter.');
 						createNodeResponse(REPEAT(varName, ArrayIterator( valueVariableName, arrayName)));
+					case [MPIdentifier(_, MPRange, ITString), MPOpen, start = parseIntegerOrReference(), MPComma, end = parseIntegerOrReference() ]:
+						switch stream {
+							case [MPClosed]:
+								createNodeResponse(REPEAT(varName, RangeIterator(start, end, RVInteger(1))));
+							case [MPComma, step = parseIntegerOrReference(), MPClosed]:
+								createNodeResponse(REPEAT(varName, RangeIterator(start, end, step)));
+							case _: syntaxError("expected )");
+						}
+
 					case _: syntaxError("unknown repeatable iterator, expected grid(dx, dy, repeatCount) | layout(layoutName, layout)| array(arrayName)");
 				}
 				switch stream {
