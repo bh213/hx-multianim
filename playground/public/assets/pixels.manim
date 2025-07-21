@@ -1,6 +1,11 @@
 version: 0.1
 
 #ui programmable() {
+    // 0,0 -> 10,10 rect
+    pixels (
+            rect 0,0, 10,10, #fff
+        ):-30, 150
+
     grid: 200, 250
     pos:30,-150
     hex:pointy(10, 10)

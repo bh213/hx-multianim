@@ -96,22 +96,22 @@ class UIStandardMultiAnimSlider implements UIElement implements UIElementDisabla
 		if (this.disabled)
 			return;
 		// trace('${event}, ${isDragging}');
-		final isDragging = wrapper.control.draggable.isDragging();
+		final isDragging = wrapper.control.captureEvents.isCapturing();
 		switch wrapper.event {
 			case OnPush(button):
 				currentValue = calculatePos(wrapper.eventPos);
 				triggerOnChange(currentValue, wrapper);
 				this.status = SUIPressed;
 				if (!isDragging)
-					wrapper.control.draggable.startDrag();
+					wrapper.control.captureEvents.startCapture();
 
 			case OnRelease(button):
 				this.status = SUINormal;
 				if (isDragging)
-					wrapper.control.draggable.stopDrag();
+					wrapper.control.captureEvents.stopCapture();
 			case OnReleaseOutside(_) | OnPushOutside(_):
 				if (isDragging)
-					wrapper.control.draggable.stopDrag();
+					wrapper.control.captureEvents.stopCapture();
 			case OnEnter:
 				this.status = SUIHover;
 			case OnLeave:

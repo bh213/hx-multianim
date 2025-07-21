@@ -21,7 +21,7 @@ enum LayersEnum {
 interface UIScreen {
 	function getElements(type:SubElementsType):Array<UIElement>;
 	function update(dt:Float):Void;
-	function addElement(element:UIElement, ?layer:LayersEnum):UIElement;
+	function addElement(element:UIElement, layer:Null<LayersEnum>):UIElement;
 	function removeElement(element:UIElement):UIElement;
 	function addBuilderResult(r:BuilderResult, layer:LayersEnum = DefaultLayer):BuilderResult;
 	function addObjectToLayer(object:h2d.Object, ?layerName:LayersEnum):h2d.Object;
@@ -221,7 +221,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 
 		final factory = (settings) -> {
 			checkbox = addCheckbox(providedBuilder, settings, checked);
-			addElement(checkbox);
+			addElement(checkbox, null);
 			return checkbox.getObject();
 		}
 		var built = providedBuilder.buildWithParameters(checkboxWithNameBuildName, ["textColor" => textColor, "title" => label, "font" => font],
@@ -330,7 +330,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		return r;
 	}
 
-	public function addElement(element:UIElement, ?layer:LayersEnum) {
+	public function addElement(element:UIElement, layer:Null<LayersEnum>) {
 		elements.push(element);
 		if (Std.isOfType(element, UIElementCustomAddToLayer)) {
 			final customElement:UIElementCustomAddToLayer = cast(element, UIElementCustomAddToLayer);

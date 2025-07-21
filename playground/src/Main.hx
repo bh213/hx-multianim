@@ -14,7 +14,7 @@ using bh.base.Atlas2;
 
 @:expose("PlaygroundMain")
 class Main extends hxd.App {
-	private static inline var DEFAULT_SCREEN = "pixels";
+	private static inline var DEFAULT_SCREEN = "draggable";
 	public static var instance:Main = null;
 	var errorText:h2d.Text;
 
@@ -134,6 +134,7 @@ class Main extends hxd.App {
 		screenManager.addScreen("pixels", new PixelsScreen(screenManager));
 		screenManager.addScreen("fonts", new FontsScreen(screenManager));
 		screenManager.addScreen("atlasTest", new screens.AtlasTestScreen(screenManager));
+		screenManager.addScreen("draggable", new screens.DraggableTestScreen(screenManager));
 		
 	
 		

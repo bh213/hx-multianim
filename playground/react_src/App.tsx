@@ -6,7 +6,7 @@ import { updateFileContent } from './fileLoader';
 import './index.css'
 
 // Default configuration - single source of truth from Haxe backend
-const DEFAULT_SCREEN = 'paths'; // fallback default
+export const DEFAULT_SCREEN = 'draggable'; // fallback default
 
 interface ReloadError {
   message: string;
@@ -187,7 +187,8 @@ function App() {
     'stateAnim': 'StateAnimScreen.hx',
     'dialogStart': 'DialogStartScreen.hx',
     'settings': 'SettingsScreen.hx',
-    'atlasTest': 'AtlasTestScreen.hx'
+    'atlasTest': 'AtlasTestScreen.hx',
+    'draggable': 'DraggableTestScreen.hx'
   } as { [key: string]: string }), []);
 
   const getScreenHaxeFile = React.useCallback((screenName: string): string => {
@@ -646,7 +647,7 @@ function App() {
 
   useEffect(() => {
     if (!window.PlaygroundMain) window.PlaygroundMain = {} as any;
-    window.PlaygroundMain.defaultScreen = 'pixels';
+    window.PlaygroundMain.defaultScreen = DEFAULT_SCREEN;
   }, []);
 
   useEffect(() => {

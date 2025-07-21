@@ -9,6 +9,7 @@ import h2d.col.Bounds;
 @:nullSafety
 enum MultiAnimObjectData {
 	MAInteractive(width:Int, height:Int, identifier:String);
+    MADraggable(width:Int, height:Int);
 }
 
 @:nullSafety
@@ -25,7 +26,16 @@ class MAObject extends h2d.Object {
                 if (debug) {
                     var bitmap = new h2d.Bitmap(Tile.fromColor(0xFFFF8000, width, height, 0.5), this);
                     var text = new h2d.Text(FontManager.getFontByName("default"), bitmap);
-                    text.text = '${identifier}';
+                    text.text = 'interactive ${identifier}';
+                    text.textAlign = Center;
+                    text.y = height/2 - text.textHeight/2;
+                    text.maxWidth = width;
+                }
+            case MADraggable(width, height):
+                if (debug) {
+                    var bitmap = new h2d.Bitmap(Tile.fromColor(0xFFFF8000, width, height, 0.5), this);
+                    var text = new h2d.Text(FontManager.getFontByName("default"), bitmap);
+                    text.text = 'draggable';
                     text.textAlign = Center;
                     text.y = height/2 - text.textHeight/2;
                     text.maxWidth = width;
@@ -40,6 +50,8 @@ class MAObject extends h2d.Object {
         switch multiAnimType {
             case MAInteractive(width, height, identifier):
                 addBounds(relativeTo, out, 0, 0, width, height);
+            case MADraggable(width, height):
+                
         }
     }
 }

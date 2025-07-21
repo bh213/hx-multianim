@@ -1,5 +1,6 @@
 package bh.multianim;
 
+import h2d.Tile;
 import bh.ui.UIElementBuilder;
 import h2d.HtmlText;
 import bh.paths.AnimatedPath;
@@ -1237,6 +1238,13 @@ class MultiAnimBuilder {
 				var obj = new MAObject(MAInteractive(resolveAsInteger(width), resolveAsInteger(height), resolveAsString(id)), debug);
 				internalResults.interactives.push(obj);
 				HeapsObject(obj);
+
+			case RECT(width, height, color):
+				
+				final resolvedColor = resolveAsColorInteger(color).addAlphaIfNotPresent();
+				var bitmap = new h2d.Bitmap(Tile.fromColor(resolvedColor, resolveAsInteger(width), resolveAsInteger(height),1.0));
+				
+				HeapsObject(bitmap);
 
 			case TILEGROUP:
 				final tg = new TileGroup();
