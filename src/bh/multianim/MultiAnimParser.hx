@@ -706,6 +706,8 @@ enum NodeType {
 	NINEPATCH(sheet:String, tilename:String, width:ReferencableValue, height:ReferencableValue);
 	INTERACTIVE(width:ReferencableValue, height:ReferencableValue, id:ReferencableValue, debug:Bool);
 	PALETTE(paletteType:PaletteType);
+	RECT(width:ReferencableValue, height:ReferencableValue, color:ReferencableValue);
+	
 
 }
 
@@ -2468,6 +2470,14 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 				
 			case [MPIdentifier(_, MPPixels, ITString), MPOpen, pixelShapes = parseShapes()]:
 				createNodeResponse(PIXELS(pixelShapes));
+			
+			case [MPIdentifier(_, MPRect, ITString), MPOpen, width = parseIntegerOrReference(), MPComma, height = parseIntegerOrReference(), MPComma, color = parseColorOrReference()]:
+
+				switch stream {
+					case [MPClosed]: 
+					case _: unexpectedError("expected ,filled or )");
+				}
+				createNodeResponse(RECT(width, height, color));
 			
 			case [MPIdentifier(_, MPReference, ITString), MPOpen]:
 				 var externalReference = null;

@@ -1,8 +1,9 @@
 import { Screen, ManimFile, AnimFile } from './types';
 import { getFileContent, updateFileContent, fileExists } from './fileLoader';
+import { DEFAULT_SCREEN } from './App';
 
-// Default configuration - single source of truth
-const DEFAULT_SCREEN = 'pixels';
+
+
 
 /**
  * PlaygroundLoader - Combined file and manim loader for the hx-multianim playground
@@ -99,6 +100,12 @@ export class PlaygroundLoader {
             displayName: 'Atlas Test',
             description: 'Atlas texture testing screen demonstrating sprite sheet loading, grid layouts, and atlas-based animations.',
             manimFile: 'atlas-test.manim'
+        },
+        { 
+            name: 'draggable', 
+            displayName: 'Draggable Test',
+            description: 'Drag and drop functionality demonstration with free dragging, bounds-constrained dragging, and zone-restricted dropping.',
+            manimFile: 'draggable.manim'
         }
     ];
     
@@ -197,6 +204,12 @@ export class PlaygroundLoader {
             filename: 'std.manim', 
             displayName: 'Standard Library',
             description: 'Standard library components and utilities for hx-multianim including common animations, effects, and helper functions.',
+            content: null
+        },
+        { 
+            filename: 'draggable.manim', 
+            displayName: 'Draggable Test',
+            description: 'Drag and drop functionality demonstration with free dragging, bounds-constrained dragging, and zone-restricted dropping.',
             content: null
         },
         { 

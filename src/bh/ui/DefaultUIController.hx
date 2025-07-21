@@ -14,8 +14,8 @@ class DefaultUIController extends bh.ui.controllers.UIControllerBase {
 	}
 
 	function getEventElement(pos):Null<UIElement> {
-		if (controllable.draggable.target != null)
-			return controllable.draggable.target;
+		if (controllable.captureEvents.target != null)
+			return controllable.captureEvents.target;
 		for (element in integration.getElements(SETReceiveEvents)) {
 			if (element.containsPoint(pos))
 				return element;

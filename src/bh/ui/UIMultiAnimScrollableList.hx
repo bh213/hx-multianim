@@ -167,6 +167,10 @@ class UIMultiAnimScrollableList implements UIElement implements StandardUIElemen
 				if (ident == null)
 					throw 'could not parse interactive id ${identifier}';
 				return ident;
+			case MADraggable(width, height):
+				// For draggable objects, we can use a default ID or throw an error
+				// Since scrollable lists typically don't use draggable objects, we'll throw an error
+				throw 'Draggable objects are not supported in scrollable lists';
 		}
 	}
 
