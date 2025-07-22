@@ -1,6 +1,5 @@
 -lib hxparse
 -lib heaps
--lib tweenxcore
 -cp src 
 bh.ui.screens.ScreenManager
 --macro bh.base.AtlasMacroInit.init()

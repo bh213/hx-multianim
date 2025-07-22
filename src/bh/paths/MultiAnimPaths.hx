@@ -1,12 +1,11 @@
-	package bh.paths;
+		package bh.paths;
 
 import bh.multianim.CoordinateSystems;
 import bh.multianim.CoordinateSystems.Coordinates;
 import bh.multianim.MultiAnimParser;
 import bh.multianim.MultiAnimBuilder;
 import bh.base.FPoint;
-
-using tweenxcore.Tools;
+using bh.base.TweenUtils;
 
 enum PathType {
 	Checkpoint(name:String);

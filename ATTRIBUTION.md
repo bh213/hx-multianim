@@ -19,6 +19,11 @@ This document lists the libraries, assets, and code used in the hx-multianim pro
 - **Source**: https://github.com/Simn/hxparse
 - **Usage**: This library uses a lightly modified forked version of hxparse.
 
+### https://github.com/shohei909/tweenx
+- **Source**: https://github.com/shohei909/tweenx
+- **Usage**: Taken lerp/bezier functions as tweenex library currently results in a warning.
+
+
 
 
 ## Fonts and Assets

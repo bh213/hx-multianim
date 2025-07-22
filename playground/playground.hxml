@@ -1,7 +1,5 @@
 -lib hxparse
 -lib heaps
-
--lib tweenxcore
 -lib hx-multianim
 -cp src
 -main Main
