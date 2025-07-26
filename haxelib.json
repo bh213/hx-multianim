@@ -3,7 +3,7 @@
     "url": "https://github.com/bh213/hx-multianim",
     "tags": [],
     "description": "animations and pixel art UI for Heaps framework",
-    "version": "0.10.0",
+    "version": "0.11.0",
     "classPath": "src/",
     "releasenote": "",
     "contributors": ["bh213"],
