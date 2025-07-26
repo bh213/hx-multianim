@@ -8,7 +8,7 @@ animation {
     fps:10
     loop
     playlist {
-            sheet: "Arrow_dir0"m
+            sheet: "Arrow_dir0"
     }
     extrapoints {
         point: 0,0

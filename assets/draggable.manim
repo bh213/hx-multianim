@@ -1,0 +1,17 @@
+version: 0.1
+
+
+
+
+
+#ui programmable() {
+    // Title
+    text(dd, "Draggable Test Screen", #ffffff, center, 800): 0, 30
+    
+    // Drop zones
+    rect(180, 180, #ffffff): 300, 300
+    text(dd, "Drop Zone", #000000, center, 80): 400, 185
+    
+    rect(100, 60, red): 100, 100
+    text(dd, "Zone 2", #ffffff, center, 100): 500, 185
+} 
