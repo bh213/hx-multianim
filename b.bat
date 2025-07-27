@@ -1,1 +1,1 @@
-haxe multianim.hxml -hl build\hl-manim.hl -D message.reporting=pretty -D resourcesPath=.\res
+haxe hx-multianim.hxml -hl build\hl-manim.hl -D message.reporting=pretty -D resourcesPath=.\playground\res
