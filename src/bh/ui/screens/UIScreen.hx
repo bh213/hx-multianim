@@ -210,6 +210,12 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		final singleRadioButtonBuilderName = getSettings(settings, "singleRadioButtonBuilderName", "radio");
 		return UIMultiAnimRadioButtons.create(providedBuilder, radioBuildName, singleRadioButtonBuilderName, items, 0);
 	}
+	
+	function addText(textValue:String, fontName = "default", ?layer:LayersEnum) {
+		final textObj = new h2d.Text(bh.base.FontManager.getFontByName(fontName));
+		textObj.text = textValue;
+		return addObjectToLayer(textObj, layer);
+	}
 
 	// TODO: needs work
 	function addCheckboxWithText(providedBuilder:MultiAnimBuilder, settings:ResolvedSettings, label:String, checked:Bool) {
