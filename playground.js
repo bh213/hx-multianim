@@ -11068,11 +11068,18 @@ bh_multianim_MultiAnimParser.prototype = $extend(hxparse_Parser_$hxparse_$LexerT
 				var _g = this.peek(0);
 				switch(_g._hx_index) {
 				case 13:
-					var _g1 = _g.numberType;
-					var str = _g.s;
-					this.last = this.token.elt;
-					this.token = this.token.next;
-					s = str;
+					var _g1 = _g.s;
+					if(_g.numberType._hx_index == 2) {
+						var str = _g1;
+						this.last = this.token.elt;
+						this.token = this.token.next;
+						s = "0x" + str;
+					} else {
+						var str = _g1;
+						this.last = this.token.elt;
+						this.token = this.token.next;
+						s = str;
+					}
 					break;
 				case 14:
 					var _g1 = _g.keyword;
@@ -11082,23 +11089,29 @@ bh_multianim_MultiAnimParser.prototype = $extend(hxparse_Parser_$hxparse_$LexerT
 					this.token = this.token.next;
 					s = str;
 					break;
-				default:
-					if(this.peek(0)._hx_index == 22) {
+				case 22:
+					this.last = this.token.elt;
+					this.token = this.token.next;
+					var _g = this.peek(0);
+					if(_g._hx_index == 13) {
+						var str = _g.s;
+						var numType = _g.numberType;
 						this.last = this.token.elt;
 						this.token = this.token.next;
-						var _g = this.peek(0);
-						if(_g._hx_index == 13) {
-							var _g1 = _g.numberType;
-							var str = _g.s;
-							this.last = this.token.elt;
-							this.token = this.token.next;
+						switch(numType._hx_index) {
+						case 0:case 1:
 							s = "-" + str;
-						} else {
-							throw haxe_Exception.thrown(new hxparse_Unexpected(this.peek(0),this.stream.curPos()));
+							break;
+						case 2:
+							s = "-0x" + str;
+							break;
 						}
 					} else {
-						throw haxe_Exception.thrown(new hxparse_NoMatch(this.stream.curPos(),this.peek(0)));
+						throw haxe_Exception.thrown(new hxparse_Unexpected(this.peek(0),this.stream.curPos()));
 					}
+					break;
+				default:
+					throw haxe_Exception.thrown(new hxparse_NoMatch(this.stream.curPos(),this.peek(0)));
 				}
 				param.defaultValue = bh_multianim_MultiAnimParser.dynamicValueToIndex(param.name,param.type,s,function(s) {
 					return _gthis.syntaxError(s);
