@@ -142,6 +142,7 @@ abstract class UIControllerBase implements UIController {
 	}
 
 	public function handleMouseWheel(mousePoint:Point, wheelDelta:Float, eventWrapper:EventWrapper) {
+		integration.onMouseWheel(wheelDelta);
 		final element = getEventElement(mousePoint);
 		if (element == null)
 			return;

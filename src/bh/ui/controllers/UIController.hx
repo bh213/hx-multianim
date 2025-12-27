@@ -21,6 +21,7 @@ interface UIControllerScreenIntegration {
 	function onScreenEvent(event:UIScreenEvent, source:Null<UIElement>):Void;
 	function getElements(type:SubElementsType):Array<UIElement>;
 	function onMouseMove(pos:Point):Void;
+	function onMouseWheel(delta:Float):Void;
 }
 
 @:allow(bh.ui.screens.UIScreenBase)

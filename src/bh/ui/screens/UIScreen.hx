@@ -105,6 +105,8 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 
 	public function onMouseMove(pos:h2d.col.Point):Void {}
 
+	public function onMouseWheel(delta:Float):Void {}
+
 	public function update(dt:Float):Void {
 		controller.update(dt);
 		for (obj => v in postCustomAddToLayer) {
