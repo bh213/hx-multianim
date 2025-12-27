@@ -1593,8 +1593,11 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 							case [MPIdentifier(str, _, _)]: str;
 							case [MPNumber(str, NTHexInteger)]: '0x' + str;
 							case [MPNumber(str, _)]: str;
-							case [MPMinus, MPNumber(str, NTHexInteger)]: '-0x' + str;
-							case [MPMinus, MPNumber(str, _)]: '-' + str;
+							case [MPMinus, MPNumber(str, numType)]: 
+								switch (numType) {
+									case NTInteger|NTFloat: '-' + str;
+									case NTHexInteger: '-0x' + str;
+								}
 						}
 						param.defaultValue = dynamicValueToIndex(param.name, param.type, s, s->syntaxError(s));
 
