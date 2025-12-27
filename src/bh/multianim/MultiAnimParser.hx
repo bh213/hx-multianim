@@ -1385,7 +1385,6 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 			return dynValue;
 		}
 		else if (Std.isOfType(dynValue, String)) {
-			
 			switch (tryStringToBool(dynValue)) {
 				case true: return 1;
 				case false: return 0;
@@ -1591,7 +1590,10 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 						param.defaultValue = ArrayString(parseStringArray());
 					default:
 						final s = switch stream {
-							case [MPIdentifier(str, _, _)| MPNumber(str, _)]: str;
+							case [MPIdentifier(str, _, _)]: str;
+							case [MPNumber(str, NTHexInteger)]: '0x' + str;
+							case [MPNumber(str, _)]: str;
+							case [MPMinus, MPNumber(str, NTHexInteger)]: '-0x' + str;
 							case [MPMinus, MPNumber(str, _)]: '-' + str;
 						}
 						param.defaultValue = dynamicValueToIndex(param.name, param.type, s, s->syntaxError(s));
