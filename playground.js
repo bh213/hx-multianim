@@ -30315,6 +30315,7 @@ bh_ui_controllers_UIControllerBase.prototype = {
 		this.handleEvent(element,release ? bh_ui_UIElementEvents.OnRelease(button) : bh_ui_UIElementEvents.OnPush(button),mousePoint);
 	}
 	,handleMouseWheel: function(mousePoint,wheelDelta,eventWrapper) {
+		this.integration.onMouseWheel(wheelDelta);
 		var element = this.getEventElement(mousePoint);
 		if(element == null) {
 			return;
@@ -32483,6 +32484,8 @@ bh_ui_screens_UIScreenBase.prototype = {
 	,onClear: function() {
 	}
 	,onMouseMove: function(pos) {
+	}
+	,onMouseWheel: function(delta) {
 	}
 	,update: function(dt) {
 		this.get_controller().update(dt);
