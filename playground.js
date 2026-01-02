@@ -30302,6 +30302,9 @@ bh_ui_controllers_UIControllerBase.prototype = {
 	}
 	,handleClick: function(mousePoint,button,release,eventWrapper) {
 		var element = this.getEventElement(mousePoint);
+		if(this.integration.onMouseClick(mousePoint,button,release) == false) {
+			return;
+		}
 		var triggeredElements = this.controllable.outsideClick.triggerOutsideEvents(element);
 		var _g = 0;
 		while(_g < triggeredElements.length) {
@@ -30315,7 +30318,9 @@ bh_ui_controllers_UIControllerBase.prototype = {
 		this.handleEvent(element,release ? bh_ui_UIElementEvents.OnRelease(button) : bh_ui_UIElementEvents.OnPush(button),mousePoint);
 	}
 	,handleMouseWheel: function(mousePoint,wheelDelta,eventWrapper) {
-		this.integration.onMouseWheel(wheelDelta);
+		if(this.integration.onMouseWheel(wheelDelta) == false) {
+			return;
+		}
 		var element = this.getEventElement(mousePoint);
 		if(element == null) {
 			return;
@@ -30323,7 +30328,9 @@ bh_ui_controllers_UIControllerBase.prototype = {
 		this.handleEvent(element,bh_ui_UIElementEvents.OnWheel(wheelDelta),mousePoint);
 	}
 	,handleMove: function(mousePoint,eventWrapper) {
-		this.integration.onMouseMove(mousePoint);
+		if(this.integration.onMouseMove(mousePoint) == false) {
+			return;
+		}
 		var element = this.getEventElement(mousePoint);
 		if(element != null) {
 			this.handleEvent(element,bh_ui_UIElementEvents.OnMouseMove,mousePoint);
@@ -30370,6 +30377,9 @@ bh_ui_controllers_UIControllerBase.prototype = {
 	,lifecycleEvent: function(event) {
 	}
 	,handleKey: function(keyCode,release,mousePoint,eventWrapper) {
+		if(this.integration.onKey(keyCode,release) == false) {
+			return;
+		}
 		var element = this.getEventElement(mousePoint);
 		this.onScreenEvent(bh_ui_UIScreenEvent.UIKeyPress(keyCode,release),null);
 		if(element == null) {
@@ -32484,8 +32494,16 @@ bh_ui_screens_UIScreenBase.prototype = {
 	,onClear: function() {
 	}
 	,onMouseMove: function(pos) {
+		return true;
+	}
+	,onMouseClick: function(pos,button,release) {
+		return true;
 	}
 	,onMouseWheel: function(delta) {
+		return true;
+	}
+	,onKey: function(keyCode,release) {
+		return true;
 	}
 	,update: function(dt) {
 		this.get_controller().update(dt);
