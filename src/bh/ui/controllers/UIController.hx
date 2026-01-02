@@ -1,10 +1,7 @@
 package bh.ui.controllers;
 
-import bh.ui.screens.ScreenManager;
 import bh.ui.UIElement;
 import h2d.col.Point;
-import h2d.Object;
-import h2d.col.Bounds;
 
 enum UIControllerLifecycleEvent {
 	LifecycleControllerStarted;
@@ -20,8 +17,10 @@ enum UIControllerResult {
 interface UIControllerScreenIntegration {
 	function onScreenEvent(event:UIScreenEvent, source:Null<UIElement>):Void;
 	function getElements(type:SubElementsType):Array<UIElement>;
-	function onMouseMove(pos:Point):Void;
-	function onMouseWheel(delta:Float):Void;
+	function onKey(keyCode:Int, release:Bool):Bool;
+	function onMouseMove(pos:Point):Bool;
+	function onMouseWheel(delta:Float):Bool;
+	function onMouseClick(pos:Point, button:Int, release:Bool):Bool;
 }
 
 @:allow(bh.ui.screens.UIScreenBase)

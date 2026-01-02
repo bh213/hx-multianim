@@ -131,7 +131,7 @@ abstract class UIControllerBase implements UIController {
 
 	public function handleClick(mousePoint:Point, button:Int, release:Bool, eventWrapper:EventWrapper) {
 		final element = getEventElement(mousePoint);
-
+		if (integration.onMouseClick(mousePoint, button, release) == false) return;
 		final triggeredElements = controllable.outsideClick.triggerOutsideEvents(element);
 		for (value in triggeredElements) {
 			handleEvent(value, release ? OnReleaseOutside(button) : OnPushOutside(button), mousePoint);
@@ -142,7 +142,7 @@ abstract class UIControllerBase implements UIController {
 	}
 
 	public function handleMouseWheel(mousePoint:Point, wheelDelta:Float, eventWrapper:EventWrapper) {
-		integration.onMouseWheel(wheelDelta);
+		if (integration.onMouseWheel(wheelDelta) == false) return;
 		final element = getEventElement(mousePoint);
 		if (element == null)
 			return;
@@ -152,7 +152,7 @@ abstract class UIControllerBase implements UIController {
 	abstract function getEventElement(pos:Point):Null<UIElement>;
 
 	public function handleMove(mousePoint:Point, eventWrapper:EventWrapper) {
-		integration.onMouseMove(mousePoint);
+		if (integration.onMouseMove(mousePoint) == false) return;
 		final element = getEventElement(mousePoint);
 
 		if (element != null)
@@ -203,6 +203,7 @@ abstract class UIControllerBase implements UIController {
 	}
 
 	public function handleKey(keyCode:Int, release:Bool, mousePoint:Point, eventWrapper:EventWrapper) {
+		if (integration.onKey(keyCode, release) == false) return;
 		final element = getEventElement(mousePoint);
 		onScreenEvent(UIKeyPress(keyCode, release), null);
 		if (element == null)
