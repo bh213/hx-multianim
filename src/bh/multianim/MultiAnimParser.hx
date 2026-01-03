@@ -150,6 +150,11 @@ enum MPKeywords {
 	MPIf;
 	MPIfStrict;
 	MPInteractive;
+	MPPolygon;
+	MPGraphics;
+	MPCircle;
+	MPEllipse;
+	MPRoundRect;
 	MPInt;
 	MPFloat;
 	MPColor;
@@ -418,6 +423,25 @@ enum PixelShapes {
 	RECT(rect:PixelRect);
 	FILLED_RECT(rect:PixelRect);
 	PIXEL(pixel:PixelPixel);
+}
+
+enum GraphicsStyle {
+	GSFilled;
+	GSLineWidth(width:ReferencableValue);
+}
+
+enum GraphicsElement {
+	GERect(color:ReferencableValue, style:GraphicsStyle, width:ReferencableValue, height:ReferencableValue);
+	GEPolygon(color:ReferencableValue, style:GraphicsStyle, points:Array<{x:ReferencableValue, y:ReferencableValue}>);
+	GECircle(color:ReferencableValue, style:GraphicsStyle, radius:ReferencableValue);
+	GEEllipse(color:ReferencableValue, style:GraphicsStyle, width:ReferencableValue, height:ReferencableValue);
+	GEArc(color:ReferencableValue, style:GraphicsStyle, radius:ReferencableValue, startAngle:ReferencableValue, arcAngle:ReferencableValue);
+	GERoundRect(color:ReferencableValue, style:GraphicsStyle, width:ReferencableValue, height:ReferencableValue, radius:ReferencableValue);
+}
+
+typedef PositionedGraphicsElement = {
+	var element:GraphicsElement;
+	var pos:Coordinates;
 }
 
 @:NotNull
@@ -711,7 +735,7 @@ enum NodeType {
 	NINEPATCH(sheet:String, tilename:String, width:ReferencableValue, height:ReferencableValue);
 	INTERACTIVE(width:ReferencableValue, height:ReferencableValue, id:ReferencableValue, debug:Bool);
 	PALETTE(paletteType:PaletteType);
-	RECT(width:ReferencableValue, height:ReferencableValue, color:ReferencableValue);
+	GRAPHICS(elements:Array<PositionedGraphicsElement>);
 	
 
 }
@@ -1979,6 +2003,199 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 		}
 	}
 
+	function parseGraphicsStyleRequired():GraphicsStyle {
+		return switch stream {
+			case [MPIdentifier("filled", _, ITString|ITQuotedString), MPComma]:
+				GSFilled;
+			case [lw = parseFloatOrReference(), MPComma]:
+				GSLineWidth(lw);
+			case _: unexpectedError("expected filled or line width");
+		}
+	}
+
+	function parseGraphicsElements() {
+		var elements:Array<PositionedGraphicsElement> = [];
+		while (true) {
+			var element = switch stream {
+				case [MPIdentifier(_, MPRect, ITString)]:
+					parseGraphicsRectElement();
+				case [MPIdentifier(_, MPPolygon, ITString)]:
+					parseGraphicsPolygonElement();
+				case [MPIdentifier(_, MPCircle, ITString)]:
+					parseGraphicsCircleElement();
+				case [MPIdentifier(_, MPEllipse, ITString)]:
+					parseGraphicsEllipseElement();
+				case [MPIdentifier(_, MPArc, ITString)]:
+					parseGraphicsArcElement();
+				case [MPIdentifier(_, MPRoundRect, ITString)]:
+					parseGraphicsRoundRectElement();
+				case [MPClosed]:
+					return elements;
+				case [MPComma]:
+					continue;
+				case _: unexpectedError("expected graphics element or )");
+			}
+
+			var pos = switch stream {
+				case [MPSemiColon]:
+					ZERO;
+				case [MPColon, p = parseXY()]:
+					p;
+				case _: unexpectedError("expected ; or :xy after graphics element");
+			}
+
+			elements.push({element: element, pos: pos});
+		}
+	}
+
+	function parseGraphicsRectElement():GraphicsElement {
+		return switch stream {
+			case [MPOpen, color = parseColorOrReference(), MPComma]:
+				final style = parseGraphicsStyleRequired();
+
+
+				var width = parseIntegerOrReference();
+				switch stream {
+					case [MPComma]:
+					case _: unexpectedError("expected , after width");
+				}
+
+				var height = parseIntegerOrReference();
+
+				switch stream {
+					case [MPClosed]:
+					case _: unexpectedError("expected ) after rect");
+				}
+
+				GERect(color, style, width, height);
+			case _: unexpectedError("expected rect(color, filled|lineWidth, width, height)");
+		}
+	}
+
+	function parseGraphicsPolygonElement():GraphicsElement {
+		return switch stream {
+			case [MPOpen, color = parseColorOrReference(), MPComma]:
+				var style = parseGraphicsStyleRequired();
+				var points:Array<{x:ReferencableValue, y:ReferencableValue}> = [];
+
+				while (true) {
+					switch stream {
+						case [x = parseFloatOrReference(), MPComma, y = parseFloatOrReference()]:
+							points.push({x: x, y: y});
+							switch stream {
+								case [MPComma]:
+									continue;
+								case [MPClosed]:
+									break;
+								case _: unexpectedError("expected , or ) after polygon point");
+							}
+						case [MPClosed]:
+							break;
+						case _: unexpectedError("expected point or ) in polygon");
+					}
+					break;
+				}
+
+				if (points.length < 3) syntaxError("polygon requires at least 3 points");
+
+				GEPolygon(color, style, points);
+			case _: unexpectedError("expected polygon(color, lineWidth|filled, points...)");
+		}
+	}
+
+	function parseGraphicsCircleElement():GraphicsElement {
+		return switch stream {
+			case [MPOpen, color = parseColorOrReference(), MPComma]:
+				final style = parseGraphicsStyleRequired();
+				eatComma();
+				var radius = parseFloatOrReference();
+
+				switch stream {
+					case [MPClosed]:
+					case _: unexpectedError("expected ) after circle");
+				}
+				GECircle(color, style, radius);
+			case _: unexpectedError("expected circle(color[, filled|lineWidth], radius)");
+		}
+	}
+
+	function parseGraphicsEllipseElement():GraphicsElement {
+		return switch stream {
+			case [MPOpen, color = parseColorOrReference(), MPComma]:
+				final style = parseGraphicsStyleRequired();
+				var width:ReferencableValue = null;
+				var height:ReferencableValue = null;
+
+				switch stream {
+					case [w = parseFloatOrReference(), MPComma, h = parseFloatOrReference()]:
+						width = w;
+						height = h;
+					case _: unexpectedError("expected width and height after style");
+				}
+			
+				switch stream {
+					case [MPClosed]:
+					case _: unexpectedError("expected ) after ellipse");
+				}
+
+				GEEllipse(color, style, width, height);
+			case _: unexpectedError("expected ellipse(color[, filled|lineWidth], width, height)");
+		}
+	}
+
+	function parseGraphicsArcElement():GraphicsElement {
+		return switch stream {
+			case [MPOpen, color = parseColorOrReference(), MPComma]:
+				final style = parseGraphicsStyleRequired();
+				
+				var radius:ReferencableValue = null;
+				var startAngle:ReferencableValue = null;
+				var arcAngle:ReferencableValue = null;
+
+								
+				switch stream {
+					case [r = parseFloatOrReference(), MPComma, sa = parseFloatOrReference(), MPComma, aa = parseFloatOrReference(), MPClosed]:
+						radius = r;
+						startAngle = sa;
+						arcAngle = aa;
+					case _: unexpectedError("expected radius, startAngle, arcAngle after style");
+				}
+
+				
+				GEArc(color, style, radius, startAngle, arcAngle);
+			case _: unexpectedError("expected arc(color, style, radius, startAngle, arcAngle)");
+		}
+	}
+
+	
+
+	function parseGraphicsRoundRectElement():GraphicsElement {
+		return switch stream {
+			case [MPOpen, color = parseColorOrReference(), MPComma]:
+				final style = parseGraphicsStyleRequired();
+				var width:ReferencableValue = null;
+				var height:ReferencableValue = null;
+				var radius:ReferencableValue = null;
+
+				switch stream {
+					case [w = parseFloatOrReference(), MPComma, h = parseFloatOrReference(), MPComma, r = parseFloatOrReference()]:
+						width = w;
+						height = h;
+						radius = r;
+					case _: unexpectedError("line width, or width after color");
+				}
+
+				switch stream {
+					case [MPClosed]:
+					case _: unexpectedError("expected ) after roundrect");
+				}
+
+
+				GERoundRect(color, style, width, height, radius);
+			case _: unexpectedError("expected roundrect(color[, filled|lineWidth], width, height, radius)");
+		}
+	}
+
 	function parseFlowOrientation():h2d.Flow.FlowLayout {
 		return switch stream {
 			case [MPIdentifier("horizontal", _, ITString|ITQuotedString)]: Horizontal;
@@ -2490,14 +2707,28 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 				
 			case [MPIdentifier(_, MPPixels, ITString), MPOpen, pixelShapes = parseShapes()]:
 				createNodeResponse(PIXELS(pixelShapes));
-			
-			case [MPIdentifier(_, MPRect, ITString), MPOpen, width = parseIntegerOrReference(), MPComma, height = parseIntegerOrReference(), MPComma, color = parseColorOrReference()]:
 
-				switch stream {
-					case [MPClosed]: 
-					case _: unexpectedError("expected ,filled or )");
-				}
-				createNodeResponse(RECT(width, height, color));
+			case [MPIdentifier(_, MPRect, ITString)]:
+				createNodeResponse(GRAPHICS([{element: parseGraphicsRectElement(), pos: ZERO}]));
+
+			case [MPIdentifier(_, MPPolygon, ITString)]:
+				createNodeResponse(GRAPHICS([{element: parseGraphicsPolygonElement(), pos: ZERO}]));
+
+			case [MPIdentifier(_, MPCircle, ITString)]:
+				createNodeResponse(GRAPHICS([{element: parseGraphicsCircleElement(), pos: ZERO}]));
+
+			case [MPIdentifier(_, MPEllipse, ITString)]:
+				createNodeResponse(GRAPHICS([{element: parseGraphicsEllipseElement(), pos: ZERO}]));
+
+			case [MPIdentifier(_, MPArc, ITString)]:
+				createNodeResponse(GRAPHICS([{element: parseGraphicsArcElement(), pos: ZERO}]));
+
+
+			case [MPIdentifier(_, MPRoundRect, ITString)]:
+				createNodeResponse(GRAPHICS([{element: parseGraphicsRoundRectElement(), pos: ZERO}]));
+
+			case [MPIdentifier(_, MPGraphics, ITString), MPOpen, elements = parseGraphicsElements()]:
+				createNodeResponse(GRAPHICS(elements));
 			
 			case [MPIdentifier(_, MPReference, ITString), MPOpen]:
 				 var externalReference = null;

@@ -778,6 +778,102 @@ class MultiAnimBuilder {
 		return {pixelLines: pl, minX: minX, minY: minY};
 	}
 
+	function drawGraphicsElements(g:h2d.Graphics, elements:Array<PositionedGraphicsElement>, gridCoordinateSystem, hexCoordinateSystem) {
+		for (item in elements) {
+			final elementPos = calculatePosition(item.pos, gridCoordinateSystem, hexCoordinateSystem).toPoint();
+			g.lineStyle();
+			switch item.element {
+				case GERect(color, style, width, height):
+					var resolvedColor = resolveAsColorInteger(color).addAlphaIfNotPresent();
+					switch style {
+						case GSFilled:
+							g.beginFill(resolvedColor);
+							g.drawRect(elementPos.x, elementPos.y, resolveAsNumber(width), resolveAsNumber(height));
+							g.endFill();
+						case GSLineWidth(lw):
+							g.lineStyle(resolveAsNumber(lw), resolvedColor);
+							g.drawRect(elementPos.x, elementPos.y, resolveAsNumber(width), resolveAsNumber(height));
+							g.lineStyle();
+					}
+				case GEPolygon(color, style, points):
+					var resolvedColor = resolveAsColorInteger(color).addAlphaIfNotPresent();
+					switch style {
+						case GSFilled:
+							g.beginFill(resolvedColor);
+						case GSLineWidth(lw):
+							g.lineStyle(resolveAsNumber(lw), resolvedColor);
+					}
+
+					if (points.length > 0) {
+						var first = points[0];
+						var fx = resolveAsNumber(first.x) + elementPos.x;
+						var fy = resolveAsNumber(first.y) + elementPos.y;
+						g.moveTo(fx, fy);
+						for (i in 1...points.length) {
+							var p = points[i];
+							g.lineTo(resolveAsNumber(p.x) + elementPos.x, resolveAsNumber(p.y) + elementPos.y);
+						}
+						g.lineTo(fx, fy);
+					}
+
+					switch style {
+						case GSFilled: g.endFill();
+						case GSLineWidth(_): g.lineStyle();
+					}
+				case GECircle(color, style, radius):
+					var resolvedColor = resolveAsColorInteger(color).addAlphaIfNotPresent();
+					switch style {
+						case GSFilled:
+							g.beginFill(resolvedColor);
+							g.drawCircle(elementPos.x, elementPos.y, resolveAsNumber(radius));
+							g.endFill();
+						case GSLineWidth(lw):
+							g.lineStyle(resolveAsNumber(lw), resolvedColor);
+							g.drawCircle(elementPos.x, elementPos.y, resolveAsNumber(radius));
+							g.lineStyle();
+					}
+				case GEEllipse(color, style, width, height):
+					var resolvedColor = resolveAsColorInteger(color).addAlphaIfNotPresent();
+					switch style {
+						case GSFilled:
+							g.beginFill(resolvedColor);
+							g.drawEllipse(elementPos.x, elementPos.y, resolveAsNumber(width), resolveAsNumber(height));
+							g.endFill();
+						case GSLineWidth(lw):
+							g.lineStyle(resolveAsNumber(lw), resolvedColor);
+							g.drawEllipse(elementPos.x, elementPos.y, resolveAsNumber(width), resolveAsNumber(height));
+							g.lineStyle();
+					}
+				case GEArc(color, style, radius, startAngle, arcAngle):
+					var resolvedColor = resolveAsColorInteger(color).addAlphaIfNotPresent();
+					switch style {
+						case GSLineWidth(lw):
+							g.lineStyle(resolveAsNumber(lw), resolvedColor);
+							g.drawPie(elementPos.x, elementPos.y, resolveAsNumber(radius), hxd.Math.degToRad(resolveAsNumber(startAngle)), hxd.Math.degToRad(resolveAsNumber(arcAngle)));
+							g.lineStyle();
+						case GSFilled:
+							// Arc doesn't support filled, treat as line
+							g.lineStyle(1.0, resolvedColor);
+							g.drawPie(elementPos.x, elementPos.y, resolveAsNumber(radius), hxd.Math.degToRad(resolveAsNumber(startAngle)), hxd.Math.degToRad(resolveAsNumber(arcAngle)));
+							g.lineStyle();
+					}
+				case GERoundRect(color, style, width, height, radius):
+					var resolvedColor = resolveAsColorInteger(color).addAlphaIfNotPresent();
+					var rad = resolveAsNumber(radius);
+					switch style {
+						case GSFilled:
+							g.beginFill(resolvedColor);
+							g.drawRoundedRect(elementPos.x, elementPos.y, resolveAsNumber(width), resolveAsNumber(height), rad);
+							g.endFill();
+						case GSLineWidth(lw):
+							g.lineStyle(resolveAsNumber(lw), resolvedColor);
+							g.drawRoundedRect(elementPos.x, elementPos.y, resolveAsNumber(width), resolveAsNumber(height), rad);
+							g.lineStyle();
+					}
+			}
+		}
+	}
+
 	function buildTileGroup(node:Node, tileGroup:h2d.TileGroup, currentPos:Point, gridCoordinateSystem:GridCoordinateSystem,
 			hexCoordinateSystem:HexCoordinateSystem, builderParams:BuilderParameters):Void {
 		if (isMatch(node, indexedParams) == false)
@@ -1251,12 +1347,10 @@ class MultiAnimBuilder {
 				internalResults.interactives.push(obj);
 				HeapsObject(obj);
 
-			case RECT(width, height, color):
-				
-				final resolvedColor = resolveAsColorInteger(color).addAlphaIfNotPresent();
-				var bitmap = new h2d.Bitmap(Tile.fromColor(resolvedColor, resolveAsInteger(width), resolveAsInteger(height),1.0));
-				
-				HeapsObject(bitmap);
+			case GRAPHICS(elements):
+				var g = new h2d.Graphics();
+				drawGraphicsElements(g, elements, gridCoordinateSystem, hexCoordinateSystem);
+				HeapsObject(g);
 
 			case TILEGROUP:
 				final tg = new TileGroup();

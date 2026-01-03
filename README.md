@@ -796,3 +796,108 @@ pixels (
     pos: 200, 80
 }
 ```
+
+## graphics
+* `graphics (...)` - creates vector graphics using Heaps h2d.Graphics. Each element can have an optional position specified after the element using `:x,y` or `;` for default (0,0).
+
+### Graphics Elements
+
+All graphics elements follow the pattern: `elementType(color, style, ...params)` where:
+- `color` - The color of the shape (required, first parameter)
+- `style` - Either `filled` for filled shapes or a number for line width (required, second parameter)
+- Additional parameters vary by element type
+
+#### rect
+* `rect(color, style, width, height)` - Draw a rectangle
+
+**Styles:**
+* `filled` - Filled rectangle
+* `<number>` - Stroked rectangle with specified line width
+
+**Examples:**
+```
+graphics (
+    rect(#ff0000, filled, 100, 50);              // Filled red rectangle at (0,0)
+    rect(#00ff00, 2, 80, 40):20,20               // Green outlined rectangle with 2px line at (20,20)
+)
+```
+
+#### circle
+* `circle(color, style, radius)` - Draw a circle
+
+**Examples:**
+```
+graphics (
+    circle(#0000ff, filled, 30);                 // Filled blue circle at (0,0)
+    circle(#ff00ff, 1.5, 25):100,100            // Magenta outlined circle at (100,100)
+)
+```
+
+#### ellipse
+* `ellipse(color, style, width, height)` - Draw an ellipse
+
+**Examples:**
+```
+graphics (
+    ellipse(#ffff00, filled, 80, 40);           // Filled yellow ellipse at (0,0)
+    ellipse(#00ffff, 2, 60, 30):50,50          // Cyan outlined ellipse at (50,50)
+)
+```
+
+#### arc
+* `arc(color, style, radius, startAngle, arcAngle)` - Draw an arc
+  * `startAngle` - Starting angle in degrees
+  * `arcAngle` - Arc angle in degrees (positive = clockwise)
+
+**Examples:**
+```
+graphics (
+    arc(#ff0000, 2, 50, 0, 90);                 // Red quarter-circle arc with 2px line
+    arc(#0000ff, filled, 40, 45, 180):100,50   // Blue filled arc starting at 45°
+)
+```
+
+#### roundrect
+* `roundrect(color, style, width, height, radius)` - Draw a rectangle with rounded corners
+  * `radius` - Corner radius in pixels
+
+**Examples:**
+```
+graphics (
+    roundrect(#ffaa00, filled, 100, 60, 10);    // Filled orange rounded rectangle
+    roundrect(#aa00ff, 2, 80, 40, 15):120,80   // Purple outlined rounded rectangle
+)
+```
+
+#### polygon
+* `polygon(color, style, x1, y1, x2, y2, ...)` - Draw a polygon with any number of points
+  * Minimum 3 points required
+  * Points are specified as x,y coordinate pairs
+
+**Examples:**
+```
+graphics (
+    polygon(#ff0000, filled, 0,0, 50,0, 25,50);              // Red filled triangle
+    polygon(#0000ff, 2, 10,10, 60,10, 80,40, 40,60, 10,40):100,50  // Blue outlined pentagon
+)
+```
+
+### Complete Graphics Example
+```
+graphics (
+    rect(#ff0000, filled, 100, 50);              // Filled red rectangle at origin
+    circle(#00ff00, 2, 30):120,25                // Green circle outline at (120,25)
+    ellipse(#0000ff, filled, 80, 40):200,25      // Blue filled ellipse
+    arc(#ffff00, 1.5, 40, 0, 180):300,50        // Yellow arc
+    pie(#ff00ff, 45, 90, 120):400,50            // Magenta pie slice
+    pie(#00ffff, 45, 0, 90, 20):500,50          // Cyan donut segment
+    roundrect(#ff8800, filled, 80, 50, 10):50,120  // Orange rounded rectangle
+    polygon(#8800ff, filled, 0,0, 40,0, 40,40, 0,40):150,120  // Purple square
+)
+```
+
+### Position Syntax
+Each graphics element must be followed by either:
+* `;` - Element positioned at (0,0) relative to the graphics object
+* `:x,y` - Element positioned at (x,y) relative to the graphics object
+
