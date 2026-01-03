@@ -4314,6 +4314,10 @@ bh_multianim_MultiAnimBuilder.prototype = {
 				return this.resolveAsInteger(e1) % this.resolveAsInteger(e2) | 0;
 			}
 			break;
+		case 14:
+			var op = v.op;
+			var e = v.e;
+			return -this.resolveAsInteger(e);
 		}
 	}
 	,resolveAsNumber: function(v) {
@@ -4447,6 +4451,10 @@ bh_multianim_MultiAnimBuilder.prototype = {
 				return this.resolveAsNumber(e1) % this.resolveAsNumber(e2);
 			}
 			break;
+		case 14:
+			var op = v.op;
+			var e = v.e;
+			return -this.resolveAsNumber(e);
 		}
 	}
 	,resolveAsString: function(v) {
@@ -4561,6 +4569,10 @@ bh_multianim_MultiAnimBuilder.prototype = {
 				throw haxe_Exception.thrown("op " + Std.string(op) + " not supported on strings");
 			}
 			break;
+		case 14:
+			var op = v.op;
+			var e = v.e;
+			return "-" + this.resolveAsString(e);
 		}
 	}
 	,generatePlaceholderBitmap: function(type) {
@@ -5223,7 +5235,7 @@ bh_multianim_MultiAnimBuilder.prototype = {
 						var valueVariableName = repeatType.valueVariableName;
 						var array = repeatType.arrayName;
 						this.indexedParams.h[valueVariableName] = bh_multianim_ResolvedIndexParameters.StringValue(arrayIterator[count]);
-						haxe_Log.trace("" + count + " = arrayIterator[count] " + arrayIterator[count],{ fileName : "../src/bh/multianim/MultiAnimBuilder.hx", lineNumber : 856, className : "bh.multianim.MultiAnimBuilder", methodName : "buildTileGroup"});
+						haxe_Log.trace("" + count + " = arrayIterator[count] " + arrayIterator[count],{ fileName : "../src/bh/multianim/MultiAnimBuilder.hx", lineNumber : 868, className : "bh.multianim.MultiAnimBuilder", methodName : "buildTileGroup"});
 						break;
 					case 3:
 						var _g8 = repeatType.start;
@@ -5690,7 +5702,7 @@ bh_multianim_MultiAnimBuilder.prototype = {
 			} else {
 				builder = this;
 			}
-			haxe_Log.trace("build reference " + reference + " with parameters " + (parameters == null ? "null" : haxe_ds_StringMap.stringify(parameters.h)) + " and builderParams " + Std.string(builderParams) + " and indexedParams " + (this.indexedParams == null ? "null" : haxe_ds_StringMap.stringify(this.indexedParams.h)),{ fileName : "../src/bh/multianim/MultiAnimBuilder.hx", lineNumber : 1115, className : "bh.multianim.MultiAnimBuilder", methodName : "build"});
+			haxe_Log.trace("build reference " + reference + " with parameters " + (parameters == null ? "null" : haxe_ds_StringMap.stringify(parameters.h)) + " and builderParams " + Std.string(builderParams) + " and indexedParams " + (this.indexedParams == null ? "null" : haxe_ds_StringMap.stringify(this.indexedParams.h)),{ fileName : "../src/bh/multianim/MultiAnimBuilder.hx", lineNumber : 1127, className : "bh.multianim.MultiAnimBuilder", methodName : "build"});
 			var result = builder.buildWithParameters(reference,parameters,builderParams,this.indexedParams);
 			var object = result != null ? result.object : null;
 			if(object == null) {
@@ -6529,7 +6541,7 @@ bh_multianim_MultiAnimBuilder.prototype = {
 		var node = tmp != null ? tmp.nodes.h[name] : null;
 		if(node == null) {
 			var error = "buildWithParameters " + (inputParameters == null ? "null" : haxe_ds_StringMap.stringify(inputParameters.h)) + ": could find element \"" + name + "\" to build";
-			haxe_Log.trace(error,{ fileName : "../src/bh/multianim/MultiAnimBuilder.hx", lineNumber : 1745, className : "bh.multianim.MultiAnimBuilder", methodName : "buildWithParameters"});
+			haxe_Log.trace(error,{ fileName : "../src/bh/multianim/MultiAnimBuilder.hx", lineNumber : 1757, className : "bh.multianim.MultiAnimBuilder", methodName : "buildWithParameters"});
 			this.popBuilderState();
 			throw haxe_Exception.thrown(error);
 		}
@@ -6626,7 +6638,7 @@ bh_multianim_MultiAnimBuilder.prototype = {
 					var from = _g1.from;
 					var to = _g1.to;
 					if(Math.abs(from - to) > 50) {
-						haxe_Log.trace("WARNING: range " + from + ".." + to + " is very large",{ fileName : "../src/bh/multianim/MultiAnimBuilder.hx", lineNumber : 1810, className : "bh.multianim.MultiAnimBuilder", methodName : "buildWithComboParameters"});
+						haxe_Log.trace("WARNING: range " + from + ".." + to + " is very large",{ fileName : "../src/bh/multianim/MultiAnimBuilder.hx", lineNumber : 1822, className : "bh.multianim.MultiAnimBuilder", methodName : "buildWithComboParameters"});
 					}
 					var _g7 = [];
 					var _g8 = from;
@@ -6658,7 +6670,7 @@ bh_multianim_MultiAnimBuilder.prototype = {
 				comboNames.push(prop);
 				comboCounts.push(allValues.length);
 				if(totalStates > 32) {
-					haxe_Log.trace("more than 100 combination for build all",{ fileName : "../src/bh/multianim/MultiAnimBuilder.hx", lineNumber : 1825, className : "bh.multianim.MultiAnimBuilder", methodName : "buildWithComboParameters"});
+					haxe_Log.trace("more than 100 combination for build all",{ fileName : "../src/bh/multianim/MultiAnimBuilder.hx", lineNumber : 1837, className : "bh.multianim.MultiAnimBuilder", methodName : "buildWithComboParameters"});
 				} else if(totalStates > 1000) {
 					throw haxe_Exception.thrown("more than 1000 combinations for buildAll");
 				}
@@ -8146,6 +8158,11 @@ var bh_multianim_DefinitionType = $hxEnums["bh.multianim.DefinitionType"] = { __
 };
 bh_multianim_DefinitionType.__constructs__ = [bh_multianim_DefinitionType.PPTHexDirecton,bh_multianim_DefinitionType.PPTGridDirection,bh_multianim_DefinitionType.PPTFlags,bh_multianim_DefinitionType.PPTEnum,bh_multianim_DefinitionType.PPTRange,bh_multianim_DefinitionType.PPTInt,bh_multianim_DefinitionType.PPTFloat,bh_multianim_DefinitionType.PPTBool,bh_multianim_DefinitionType.PPTUnsignedInt,bh_multianim_DefinitionType.PPTString,bh_multianim_DefinitionType.PPTColor,bh_multianim_DefinitionType.PPTArray];
 bh_multianim_DefinitionType.__empty_constructs__ = [bh_multianim_DefinitionType.PPTHexDirecton,bh_multianim_DefinitionType.PPTGridDirection,bh_multianim_DefinitionType.PPTInt,bh_multianim_DefinitionType.PPTFloat,bh_multianim_DefinitionType.PPTBool,bh_multianim_DefinitionType.PPTUnsignedInt,bh_multianim_DefinitionType.PPTString,bh_multianim_DefinitionType.PPTColor,bh_multianim_DefinitionType.PPTArray];
+var bh_multianim_RvUnaryOp = $hxEnums["bh.multianim.RvUnaryOp"] = { __ename__:true,__constructs__:null
+	,OpNeg: {_hx_name:"OpNeg",_hx_index:0,__enum__:"bh.multianim.RvUnaryOp",toString:$estr}
+};
+bh_multianim_RvUnaryOp.__constructs__ = [bh_multianim_RvUnaryOp.OpNeg];
+bh_multianim_RvUnaryOp.__empty_constructs__ = [bh_multianim_RvUnaryOp.OpNeg];
 var bh_multianim_RvOp = $hxEnums["bh.multianim.RvOp"] = { __ename__:true,__constructs__:null
 	,OpAdd: {_hx_name:"OpAdd",_hx_index:0,__enum__:"bh.multianim.RvOp",toString:$estr}
 	,OpMul: {_hx_name:"OpMul",_hx_index:1,__enum__:"bh.multianim.RvOp",toString:$estr}
@@ -8199,8 +8216,9 @@ var bh_multianim_ReferencableValue = $hxEnums["bh.multianim.ReferencableValue"] 
 	,RVColorXY: ($_=function(externalReference,palette,x,y) { return {_hx_index:11,externalReference:externalReference,palette:palette,x:x,y:y,__enum__:"bh.multianim.ReferencableValue",toString:$estr}; },$_._hx_name="RVColorXY",$_.__params__ = ["externalReference","palette","x","y"],$_)
 	,RVColor: ($_=function(externalReference,palette,index) { return {_hx_index:12,externalReference:externalReference,palette:palette,index:index,__enum__:"bh.multianim.ReferencableValue",toString:$estr}; },$_._hx_name="RVColor",$_.__params__ = ["externalReference","palette","index"],$_)
 	,EBinop: ($_=function(op,e1,e2) { return {_hx_index:13,op:op,e1:e1,e2:e2,__enum__:"bh.multianim.ReferencableValue",toString:$estr}; },$_._hx_name="EBinop",$_.__params__ = ["op","e1","e2"],$_)
+	,EUnaryOp: ($_=function(op,e) { return {_hx_index:14,op:op,e:e,__enum__:"bh.multianim.ReferencableValue",toString:$estr}; },$_._hx_name="EUnaryOp",$_.__params__ = ["op","e"],$_)
 };
-bh_multianim_ReferencableValue.__constructs__ = [bh_multianim_ReferencableValue.RVElementOfArray,bh_multianim_ReferencableValue.RVString,bh_multianim_ReferencableValue.RVInteger,bh_multianim_ReferencableValue.RVArray,bh_multianim_ReferencableValue.RVArrayReference,bh_multianim_ReferencableValue.RVFloat,bh_multianim_ReferencableValue.RVReference,bh_multianim_ReferencableValue.RVFunction,bh_multianim_ReferencableValue.RVParenthesis,bh_multianim_ReferencableValue.RVCallbacksWithIndex,bh_multianim_ReferencableValue.RVCallbacks,bh_multianim_ReferencableValue.RVColorXY,bh_multianim_ReferencableValue.RVColor,bh_multianim_ReferencableValue.EBinop];
+bh_multianim_ReferencableValue.__constructs__ = [bh_multianim_ReferencableValue.RVElementOfArray,bh_multianim_ReferencableValue.RVString,bh_multianim_ReferencableValue.RVInteger,bh_multianim_ReferencableValue.RVArray,bh_multianim_ReferencableValue.RVArrayReference,bh_multianim_ReferencableValue.RVFloat,bh_multianim_ReferencableValue.RVReference,bh_multianim_ReferencableValue.RVFunction,bh_multianim_ReferencableValue.RVParenthesis,bh_multianim_ReferencableValue.RVCallbacksWithIndex,bh_multianim_ReferencableValue.RVCallbacks,bh_multianim_ReferencableValue.RVColorXY,bh_multianim_ReferencableValue.RVColor,bh_multianim_ReferencableValue.EBinop,bh_multianim_ReferencableValue.EUnaryOp];
 bh_multianim_ReferencableValue.__empty_constructs__ = [];
 var bh_multianim_TextAlignWidth = $hxEnums["bh.multianim.TextAlignWidth"] = { __ename__:true,__constructs__:null
 	,TAWAuto: {_hx_name:"TAWAuto",_hx_index:0,__enum__:"bh.multianim.TextAlignWidth",toString:$estr}
@@ -8448,7 +8466,7 @@ bh_multianim_MultiAnimParser.parseFile = function(input,sourceName,resourceLoade
 			throw haxe_Exception.thrown(new bh_multianim_MultiAnimUnexpected(ue.token,ue.pos,ue.toString(),input));
 		} else {
 			var e = _g1;
-			haxe_Log.trace(e,{ fileName : "../src/bh/multianim/MultiAnimParser.hx", lineNumber : 793, className : "bh.multianim.MultiAnimParser", methodName : "parseFile"});
+			haxe_Log.trace(e,{ fileName : "../src/bh/multianim/MultiAnimParser.hx", lineNumber : 798, className : "bh.multianim.MultiAnimParser", methodName : "parseFile"});
 			throw haxe_Exception.thrown(e);
 		}
 	}
@@ -8818,12 +8836,12 @@ bh_multianim_MultiAnimParser.__super__ = hxparse_Parser_$hxparse_$LexerTokenSour
 bh_multianim_MultiAnimParser.prototype = $extend(hxparse_Parser_$hxparse_$LexerTokenSource_$bh_$multianim_$MPToken_$bh_$multianim_$MPToken.prototype,{
 	unexpectedError: function(message) {
 		var error = new bh_multianim_MultiAnimUnexpected(this.peek(0),this.stream.curPos(),message,this.input);
-		haxe_Log.trace(error,{ fileName : "../src/bh/multianim/MultiAnimParser.hx", lineNumber : 803, className : "bh.multianim.MultiAnimParser", methodName : "unexpectedError"});
+		haxe_Log.trace(error,{ fileName : "../src/bh/multianim/MultiAnimParser.hx", lineNumber : 808, className : "bh.multianim.MultiAnimParser", methodName : "unexpectedError"});
 		throw haxe_Exception.thrown(error);
 	}
 	,syntaxError: function(error,pos) {
 		var error1 = new bh_multianim_InvalidSyntax(error,pos == null ? this.stream.curPos() : pos,this.input);
-		haxe_Log.trace(error1,{ fileName : "../src/bh/multianim/MultiAnimParser.hx", lineNumber : 810, className : "bh.multianim.MultiAnimParser", methodName : "syntaxError"});
+		haxe_Log.trace(error1,{ fileName : "../src/bh/multianim/MultiAnimParser.hx", lineNumber : 815, className : "bh.multianim.MultiAnimParser", methodName : "syntaxError"});
 		throw haxe_Exception.thrown(error1);
 	}
 	,stringToInt: function(n) {
@@ -9577,10 +9595,12 @@ bh_multianim_MultiAnimParser.prototype = $extend(hxparse_Parser_$hxparse_$LexerT
 					this.token = this.token.next;
 					return this.parseNextIntExpression(bh_multianim_ReferencableValue.RVInteger(-this.stringToInt(n)));
 				default:
-					throw haxe_Exception.thrown(new hxparse_Unexpected(this.peek(0),this.stream.curPos()));
+					var e = this.parseIntegerOrReference();
+					return this.parseNextIntExpression(bh_multianim_ReferencableValue.EUnaryOp(bh_multianim_RvUnaryOp.OpNeg,e));
 				}
 			} else {
-				throw haxe_Exception.thrown(new hxparse_Unexpected(this.peek(0),this.stream.curPos()));
+				var e = this.parseIntegerOrReference();
+				return this.parseNextIntExpression(bh_multianim_ReferencableValue.EUnaryOp(bh_multianim_RvUnaryOp.OpNeg,e));
 			}
 			break;
 		default:
@@ -9745,10 +9765,12 @@ bh_multianim_MultiAnimParser.prototype = $extend(hxparse_Parser_$hxparse_$LexerT
 					this.token = this.token.next;
 					return this.parseNextFloatExpression(bh_multianim_ReferencableValue.RVFloat(-this.stringToFloat(n)));
 				default:
-					throw haxe_Exception.thrown(new hxparse_Unexpected(this.peek(0),this.stream.curPos()));
+					var e = this.parseFloatOrReference();
+					return this.parseNextFloatExpression(bh_multianim_ReferencableValue.EUnaryOp(bh_multianim_RvUnaryOp.OpNeg,e));
 				}
 			} else {
-				throw haxe_Exception.thrown(new hxparse_Unexpected(this.peek(0),this.stream.curPos()));
+				var e = this.parseFloatOrReference();
+				return this.parseNextFloatExpression(bh_multianim_ReferencableValue.EUnaryOp(bh_multianim_RvUnaryOp.OpNeg,e));
 			}
 			break;
 		default:
