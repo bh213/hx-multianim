@@ -432,6 +432,10 @@ class MultiAnimBuilder {
 					case OpMod: Std.int(resolveAsInteger(e1) % resolveAsInteger(e2));
 					case OpIntegerDiv: Std.int(resolveAsInteger(e1) / resolveAsInteger(e2));
 				}
+			case EUnaryOp(op, e):
+				switch op {
+					case OpNeg: -resolveAsInteger(e);
+				}
 		}
 	}
 
@@ -490,6 +494,10 @@ class MultiAnimBuilder {
 					case OpMod: resolveAsNumber(e1) % resolveAsNumber(e2);
 					case OpIntegerDiv: Std.int(resolveAsInteger(e1) / resolveAsInteger(e2));
 				}
+			case EUnaryOp(op, e):
+				switch op {
+					case OpNeg: -resolveAsNumber(e);
+				}
 		}
 	}
 
@@ -544,6 +552,10 @@ class MultiAnimBuilder {
 					case OpAdd:
 						return resolveAsString(e1) + resolveAsString(e2);
 					default: throw 'op ${op} not supported on strings';
+				}
+			case EUnaryOp(op, e): 
+				switch op {
+					case OpNeg: return '-' + resolveAsString(e);
 				}
 		}
 	}

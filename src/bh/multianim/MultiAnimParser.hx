@@ -463,6 +463,10 @@ typedef Definition = {
 	defaultValue:Null<ResolvedIndexParameters>
 }
 
+enum RvUnaryOp {
+	OpNeg;
+}
+
 enum RvOp {
 	OpAdd;
 	OpMul;
@@ -517,6 +521,7 @@ enum ReferencableValue {
 	RVColorXY(externalReference:Null<String>, palette:String, x:ReferencableValue, y:ReferencableValue);
 	RVColor(externalReference:Null<String>, palette:String, index:ReferencableValue);
 	EBinop(op:RvOp, e1:ReferencableValue, e2:ReferencableValue);
+	EUnaryOp(op:RvUnaryOp, e:ReferencableValue);
 }
 
 enum TextAlignWidth {
@@ -1124,8 +1129,13 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 
 			case [MPIdentifier(_, MPCallback, ITString)]: parseCallback(VTInt);
 			case [MPIdentifier(_, MPFunction, ITString), MPOpen]: RVFunction(parseFunction());
-			case [MPMinus, MPNumber(n, NTInteger|NTHexInteger)]:
-				parseNextIntExpression(RVInteger(-stringToInt(n)));
+			case [MPMinus]:
+				switch stream {
+					case [MPNumber(n, NTInteger|NTHexInteger)]:
+						parseNextIntExpression(RVInteger(-stringToInt(n)));
+					case [e = parseIntegerOrReference()]:
+						parseNextIntExpression(EUnaryOp(OpNeg, e));
+				}
 			case [MPNumber(n, NTInteger|NTHexInteger)]:
 				parseNextIntExpression(RVInteger(stringToInt(n)));
 			case [MPIdentifier(s, _ , ITReference)]:
@@ -1149,8 +1159,13 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 
 			case [MPIdentifier(_, MPCallback, ITString)]: parseCallback(VTFloat);
 			case [MPIdentifier(_, MPFunction, ITString), MPOpen]: RVFunction(parseFunction());
-			case [MPMinus, MPNumber(n, NTInteger|NTFloat)]:
-				parseNextFloatExpression(RVFloat(-stringToFloat(n)));
+			case [MPMinus]:
+				switch stream {
+					case [MPNumber(n, NTInteger|NTFloat)]:
+						parseNextFloatExpression(RVFloat(-stringToFloat(n)));
+					case [e = parseFloatOrReference()]:
+						parseNextFloatExpression(EUnaryOp(OpNeg, e));
+				}
 			case [MPNumber(n, NTInteger|NTFloat)]:
 				parseNextFloatExpression(RVFloat(stringToFloat(n)));
 			case [MPIdentifier(s, _ , ITReference)]:
