@@ -320,6 +320,8 @@ class MultiAnimBuilder {
 					case null: throw throw 'array reference ${arrayRef}[$indexRef] does not exist';
 					default: throw 'element of array reference ${arrayRef}[$indexRef] is not an array but ${arrayRef}';
 				}
+				case RVTernary(condition, ifTrue, ifFalse):
+					return if (resolveAsBool(condition)) resolveAsArrayElement(ifTrue) else resolveAsArrayElement(ifFalse);
 			default:
 				throw 'expected array element but got ${v}';
 		}
@@ -338,12 +340,15 @@ class MultiAnimBuilder {
 					case ArrayString(strArray): return strArray;
 					default: throw 'array reference ${refArr} is not an array but ${arrayVal}';
 				}
+			case RVTernary(condition, ifTrue, ifFalse):
+				return if (resolveAsBool(condition)) resolveAsArray(ifTrue) else resolveAsArray(ifFalse);
 			default:
 				throw 'expected array but got ${v}';
 		}
 	}
 
 	function resolveAsColorInteger(v:ReferenceableValue):Int {
+		trace('xxxx', v);
 		function getBuilderWithExternal(externalReference:String) {
 			if (externalReference == null)
 				return this;
@@ -365,6 +370,9 @@ class MultiAnimBuilder {
 				palette.getColorByIndex(resolveAsInteger(index));
 			case RVReference(_): resolveAsInteger(v);
 
+			case RVTernary(condition, ifTrue, ifFalse):
+				return if (resolveAsBool(condition)) resolveAsColorInteger(ifTrue) else resolveAsColorInteger(ifFalse);
+
 			default: throw 'expected color to resolve, got $v';
 		}
 	}
@@ -377,6 +385,40 @@ class MultiAnimBuilder {
 		return switch functionType {
 			case RVFGridWidth: gridCoordinateSystem.spacingX;
 			case RVFGridHeight: gridCoordinateSystem.spacingY;
+		}
+	}
+
+	function resolveAsBool(v:ReferenceableValue):Bool {
+		return switch v {
+			case EBinop(op, e1, e2):
+				switch op {
+					case OpEq: 
+						resolveAsString(e1) == resolveAsString(e2);
+					case OpNotEq:
+						resolveAsString(e1) != resolveAsString(e2);
+					case OpLess:
+						// Try numeric comparison first, fall back to string
+						try {
+							resolveAsNumber(e1) < resolveAsNumber(e2);
+						} catch (e) {
+							resolveAsString(e1) < resolveAsString(e2);
+						}
+					case OpGreater:
+						// Try numeric comparison first, fall back to string
+						try {
+							resolveAsNumber(e1) > resolveAsNumber(e2);
+						} catch (e) {
+							resolveAsString(e1) > resolveAsString(e2);
+						}
+					case _: resolveAsInteger(v) != 0;
+				}
+			case RVTernary(condition, ifTrue, ifFalse):
+				if (resolveAsBool(condition)) resolveAsBool(ifTrue) else resolveAsBool(ifFalse);
+			case RVString(s):
+				final boolValue = MultiAnimParser.tryStringToBool(s);
+				if (boolValue != null) return boolValue;
+				return MultiAnimParser.dynamicToInt(s, err -> throw err) != 0;
+			case _: return resolveAsInteger(v) != 0;
 		}
 	}
 
@@ -412,6 +454,8 @@ class MultiAnimBuilder {
 				}
 			case RVParenthesis(e): resolveAsInteger(e);
 			case RVFunction(functionType): resolveRVFunction(functionType);
+			case RVTernary(condition, ifTrue, ifFalse):
+				return if (resolveAsBool(condition)) resolveAsInteger(ifTrue) else resolveAsInteger(ifFalse);
 
 			case RVCallbacks(name, defaultValue):
 				final input = Name(resolveAsString(name));
@@ -431,6 +475,10 @@ class MultiAnimBuilder {
 					case OpDiv: Std.int(resolveAsInteger(e1) / resolveAsInteger(e2));
 					case OpMod: Std.int(resolveAsInteger(e1) % resolveAsInteger(e2));
 					case OpIntegerDiv: Std.int(resolveAsInteger(e1) / resolveAsInteger(e2));
+					case OpEq: resolveAsInteger(e1) == resolveAsInteger(e2) ? 1 : 0;
+					case OpNotEq: resolveAsInteger(e1) != resolveAsInteger(e2) ? 1 : 0;
+					case OpLess: resolveAsInteger(e1) < resolveAsInteger(e2) ? 1 : 0;
+					case OpGreater: resolveAsInteger(e1) > resolveAsInteger(e2) ? 1 : 0;
 				}
 			case EUnaryOp(op, e):
 				switch op {
@@ -461,6 +509,8 @@ class MultiAnimBuilder {
 				}
 			case RVParenthesis(e): resolveAsNumber(e);
 			case RVFunction(functionType): resolveRVFunction(functionType);
+			case RVTernary(condition, ifTrue, ifFalse):
+				return if (resolveAsBool(condition)) resolveAsNumber(ifTrue) else resolveAsNumber(ifFalse);
 			case RVCallbacks(name, defaultValue):
 				final input = Name(resolveAsString(name));
 				final result = builderParams.callback(input);
@@ -493,6 +543,10 @@ class MultiAnimBuilder {
 					case OpDiv: resolveAsNumber(e1) / resolveAsNumber(e2);
 					case OpMod: resolveAsNumber(e1) % resolveAsNumber(e2);
 					case OpIntegerDiv: Std.int(resolveAsInteger(e1) / resolveAsInteger(e2));
+					case OpEq: resolveAsNumber(e1) == resolveAsNumber(e2) ? 1 : 0;
+					case OpNotEq: resolveAsNumber(e1) != resolveAsNumber(e2) ? 1 : 0;
+					case OpLess: resolveAsNumber(e1) < resolveAsNumber(e2) ? 1 : 0;
+					case OpGreater: resolveAsNumber(e1) > resolveAsNumber(e2) ? 1 : 0;
 				}
 			case EUnaryOp(op, e):
 				switch op {
@@ -551,8 +605,18 @@ class MultiAnimBuilder {
 			case EBinop(op, e1, e2): switch op {
 					case OpAdd:
 						return resolveAsString(e1) + resolveAsString(e2);
+					case OpEq:
+						return resolveAsString(e1) == resolveAsString(e2) ? "1" : "0";
+					case OpNotEq:
+						return resolveAsString(e1) != resolveAsString(e2) ? "1" : "0";
+					case OpLess:
+						return resolveAsString(e1) < resolveAsString(e2) ? "1" : "0";
+					case OpGreater:
+						return resolveAsString(e1) > resolveAsString(e2) ? "1" : "0";
 					default: throw 'op ${op} not supported on strings';
 				}
+			case RVTernary(condition, ifTrue, ifFalse):
+				return if (resolveAsBool(condition)) resolveAsString(ifTrue) else resolveAsString(ifFalse);
 			case EUnaryOp(op, e): 
 				switch op {
 					case OpNeg: return '-' + resolveAsString(e);
@@ -1451,7 +1515,7 @@ class MultiAnimBuilder {
 				for (f in filters)
 					ret.add(buildFilter(f));
 				ret;
-			case FilterOutline(size, color): new h2d.filter.Outline(size, color);
+			case FilterOutline(size, color): new h2d.filter.Outline(resolveAsNumber(size), resolveAsColorInteger(color));
 			case FilterPaletteReplace(paletteName, sourceRow, replacementRow):
 				var palette = getPalette(paletteName);
 				var srcRow = resolveAsInteger(sourceRow);
@@ -1463,24 +1527,28 @@ class MultiAnimBuilder {
 			case FilterSaturate(v):
 				var m = new h3d.Matrix();
 				m.identity();
-				m.colorSaturate(v);
+				m.colorSaturate(resolveAsNumber(v));
 				new h2d.filter.ColorMatrix(m);
 			case FilterBrightness(v):
 				var m = new h3d.Matrix();
 				m.identity();
-				m.colorLightness(v);
+				m.colorLightness(resolveAsNumber(v));
 
 				new h2d.filter.ColorMatrix(m);
 			case FilterGlow(color, alpha, radius, gain, quality, smoothColor, knockout):
-				final f = new h2d.filter.Glow(color, alpha, radius, gain, quality, smoothColor);
+				final f = new h2d.filter.Glow(resolveAsColorInteger(color), resolveAsNumber(alpha), resolveAsNumber(radius), resolveAsNumber(gain), resolveAsNumber(quality), smoothColor);
 				f.knockout = knockout;
 				f;
 			case FilterBlur(radius, gain, quality, linear):
-				new h2d.filter.Blur(radius, gain, quality, linear);
+				new h2d.filter.Blur(resolveAsNumber(radius), resolveAsNumber(gain), resolveAsNumber(quality), resolveAsNumber(linear));
 			case FilterDropShadow(distance, angle, color, alpha, radius, gain, quality, smoothColor):
-				new h2d.filter.DropShadow(distance, angle, color, alpha, radius, gain, quality, smoothColor);
+				new h2d.filter.DropShadow(resolveAsNumber(distance), hxd.Math.degToRad(resolveAsNumber(angle)), resolveAsColorInteger(color), resolveAsNumber(alpha), resolveAsNumber(radius), resolveAsNumber(gain), resolveAsNumber(quality), smoothColor);
 			case FilterPixelOutline(mode, smoothColor):
-				new PixelOutline(mode, smoothColor);
+				final resolvedMode = switch mode {
+					case POKnockout(color, knockout): Knockout(resolveAsColorInteger(color), resolveAsNumber(knockout));
+					case POInlineColor(color, inlineColor): InlineColor(resolveAsColorInteger(color), resolveAsColorInteger(inlineColor));
+				};
+				new PixelOutline(resolvedMode, smoothColor);
 		}
 	}
 

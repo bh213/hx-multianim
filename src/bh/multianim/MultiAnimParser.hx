@@ -63,6 +63,7 @@ enum MPToken {
 	MPComma;
 	MPAt;
 	MPExclamation;
+	MPQuestion;
 	MPColon;
 	MPDoubleDot;
 	MPSemiColon;
@@ -77,6 +78,10 @@ enum MPToken {
 	MPSlash;
 	MPMinus;
 	MPEquals;
+	MPLessThan;
+	MPGreaterThan;
+	MPNotEquals;
+	MPDoubleEquals;
 	MPInterpolation(type:MPInterpolationEnum);
 }
 
@@ -290,6 +295,7 @@ class MultiAnimLexer extends hxparse.Lexer implements hxparse.RuleBuilder {
 			return MPIdentifier(str, keywords.get(str.toLowerCase()), ITName);
 		},
 		"\\!" => MPExclamation,
+		"\\?" => MPQuestion,
 		"$[a-zA-Z0-9_]+" => {
 			var str = lexer.current;
 			str = str.substr(1);
@@ -311,7 +317,11 @@ class MultiAnimLexer extends hxparse.Lexer implements hxparse.RuleBuilder {
 		"," => MPComma,
 		"=>" => MPArrow,
 		":" => MPColon,
+		"!=" => MPNotEquals,
+		"==" => MPDoubleEquals,
 		"=" => MPEquals,
+		"<" => MPLessThan,
+		">" => MPGreaterThan,
 		";" => MPSemiColon,
 		"[\n\r]" => lexer.token(tok),
 		"//[^\n\r]*" => lexer.token(tok),
@@ -498,12 +508,10 @@ enum RvOp {
 	OpDiv;
 	OpIntegerDiv;
 	OpMod;
-}
-
-
-enum ReferenceableValueFunction { // Requires access to Node
-	RVFGridWidth;
-	RVFGridHeight;
+	OpEq;
+	OpNotEq;
+	OpLess;
+	OpGreater;
 }
 
 
@@ -529,6 +537,10 @@ enum ConditionalValues {
 
 }
 
+enum ReferenceableValueFunction {
+	RVFGridWidth;
+	RVFGridHeight;
+}
 
 enum ReferenceableValue {
 	RVElementOfArray(arrayRef:String, index:ReferenceableValue);
@@ -544,6 +556,7 @@ enum ReferenceableValue {
 	RVCallbacks(name:ReferenceableValue, defaultValue:ReferenceableValue);
 	RVColorXY(externalReference:Null<String>, palette:String, x:ReferenceableValue, y:ReferenceableValue);
 	RVColor(externalReference:Null<String>, palette:String, index:ReferenceableValue);
+	RVTernary(condition:ReferenceableValue, ifTrue:ReferenceableValue, ifFalse:ReferenceableValue);
 	EBinop(op:RvOp, e1:ReferenceableValue, e2:ReferenceableValue);
 	EUnaryOp(op:RvUnaryOp, e:ReferenceableValue);
 }
@@ -748,16 +761,22 @@ enum NodeConditionalValues {
 enum FilterType {
 	FilterNone;
 	FilterGroup(filters:Array<FilterType>);
-	FilterOutline(s:Float, color:Int);
-	FilterSaturate(v:Float);
-	FilterBrightness(v:Float);
-	FilterGlow(color:Int, alpha:Float, radius:Float, gain:Float, quality:Float, smoothColor:Bool, knockout:Bool);
-	FilterBlur(radius:Float, gain:Float, quality:Float, linear:Float);
-	FilterDropShadow(distance:Float, angle:Float, color:Int, alpha:Float, radius:Float, gain:Float, quality:Float, smoothColor:Bool);
-	FilterPixelOutline(mode:PixelOutlineFilterMode, smoothColor:Bool);
+	FilterOutline(s:ReferenceableValue, color:ReferenceableValue);
+	FilterSaturate(v:ReferenceableValue);
+	FilterBrightness(v:ReferenceableValue);
+	FilterGlow(color:ReferenceableValue, alpha:ReferenceableValue, radius:ReferenceableValue, gain:ReferenceableValue, quality:ReferenceableValue, smoothColor:Bool, knockout:Bool);
+	FilterBlur(radius:ReferenceableValue, gain:ReferenceableValue, quality:ReferenceableValue, linear:ReferenceableValue);
+	FilterDropShadow(distance:ReferenceableValue, angle:ReferenceableValue, color:ReferenceableValue, alpha:ReferenceableValue, radius:ReferenceableValue, gain:ReferenceableValue, quality:ReferenceableValue, smoothColor:Bool);
+	FilterPixelOutline(mode:PixelOutlineModeDef, smoothColor:Bool);
 	FilterPaletteReplace(paletteName:String, sourceRow:ReferenceableValue, replacementRow:ReferenceableValue);
 	FilterColorListReplace(sourceColors:Array<ReferenceableValue>, replacementColors:Array<ReferenceableValue>);
 
+}
+
+// Used to keep pixelOutline parameters referenceable until build time
+enum PixelOutlineModeDef {
+	POKnockout(color:ReferenceableValue, knockout:ReferenceableValue);
+	POInlineColor(color:ReferenceableValue, inlineColor:ReferenceableValue);
 }
 
 @:nullSafety
@@ -860,6 +879,22 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 	}
 
 
+	function tryParseIntegerOrStringForComparison():ReferenceableValue {
+		// For comparisons, allow string literals even in integer context
+		return switch peek(0) {
+			case MPIdentifier(_, _, ITQuotedString): parseStringOrReference();
+			case _: parseIntegerOrReference();
+		}
+	}
+
+	function tryParseFloatOrStringForComparison():ReferenceableValue {
+		// For comparisons, allow string literals even in float context
+		return switch peek(0) {
+			case MPIdentifier(_, _, ITQuotedString): parseStringOrReference();
+			case _: parseFloatOrReference();
+		}
+	}
+
 	function parseNextIntExpression(e1:ReferenceableValue):ReferenceableValue {
 		return switch stream {
 			case [MPPlus, e2 = parseIntegerOrReference()]:
@@ -874,6 +909,14 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 				binop(e1, OpMod, e2);
 			case [MPIdentifier(_, MPDiv, ITString), e2 = parseIntegerOrReference()]:
 				binop(e1, OpIntegerDiv, e2);
+			case [MPDoubleEquals]:
+				binop(e1, OpEq, tryParseIntegerOrStringForComparison());
+			case [MPNotEquals]:
+				binop(e1, OpNotEq, tryParseIntegerOrStringForComparison());
+			case [MPLessThan]:
+				binop(e1, OpLess, tryParseIntegerOrStringForComparison());
+			case [MPGreaterThan]:
+				binop(e1, OpGreater, tryParseIntegerOrStringForComparison());
 			case _:
 				e1;
 		}
@@ -893,7 +936,14 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 				binop(e1, OpMod, e2);
 			case [MPIdentifier(_, MPDiv, ITString), e2 = parseIntegerOrReference()]:
 				binop(e1, OpIntegerDiv, e2);
-	
+			case [MPDoubleEquals]:
+				binop(e1, OpEq, tryParseFloatOrStringForComparison());
+			case [MPNotEquals]:
+				binop(e1, OpNotEq, tryParseFloatOrStringForComparison());
+			case [MPLessThan]:
+				binop(e1, OpLess, tryParseFloatOrStringForComparison());
+			case [MPGreaterThan]:
+				binop(e1, OpGreater, tryParseFloatOrStringForComparison());
 			case _:
 				e1;
 		}
@@ -903,6 +953,14 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 		return switch stream {
 			case [MPPlus, e2 = parseStringOrReference()]:
 				binop(e1, OpAdd, e2);
+			case [MPDoubleEquals, e2 = parseStringOrReference()]:
+				binop(e1, OpEq, e2);
+			case [MPNotEquals, e2 = parseStringOrReference()]:
+				binop(e1, OpNotEq, e2);
+			case [MPLessThan, e2 = parseStringOrReference()]:
+				binop(e1, OpLess, e2);
+			case [MPGreaterThan, e2 = parseStringOrReference()]:
+				binop(e1, OpGreater, e2);
 			case _:
 				e1;
 		}
@@ -1025,6 +1083,8 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 
 	function parseColorOrReference() {
 		return switch stream {
+			case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseColorOrReference(), MPColon, ifFalse = parseColorOrReference()]:
+				RVTernary(condition, ifTrue, ifFalse);
 			case [MPIdentifier(_, MPPalette, ITString), MPOpen]:
 				
 			var externalReference = switch stream {
@@ -1148,8 +1208,76 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 		}
 	}
 
-	function parseIntegerOrReference() {
+	function parseNextAnythingExpression(e1:ReferenceableValue):ReferenceableValue {
+		// Handle all binary operators - works with any types
 		return switch stream {
+			case [MPPlus, e2 = parseAnything()]:
+				binop(e1, OpAdd, e2);
+			case [MPMinus, e2 = parseAnything()]:
+				binop(e1, OpSub, e2);
+			case [MPStar, e2 = parseAnything()]:
+				binop(e1, OpMul, e2);
+			case [MPSlash, e2 = parseAnything()]:
+				binop(e1, OpDiv, e2);
+			case [MPPercent, e2 = parseAnything()]:
+				binop(e1, OpMod, e2);
+			case [MPIdentifier(_, MPDiv, ITString), e2 = parseAnything()]:
+				binop(e1, OpIntegerDiv, e2);
+			case [MPDoubleEquals]:
+				binop(e1, OpEq, tryParseIntegerOrStringForComparison());
+			case [MPNotEquals]:
+				binop(e1, OpNotEq, tryParseIntegerOrStringForComparison());
+			case [MPLessThan]:
+				binop(e1, OpLess, tryParseIntegerOrStringForComparison());
+			case [MPGreaterThan]:
+				binop(e1, OpGreater, tryParseIntegerOrStringForComparison());
+			case _:
+				e1;
+		}
+	}
+
+	function parseAnything():ReferenceableValue {
+		// Parse any type of value - tries int/float first, then falls back to string
+		// This is useful for conditions where we want maximum flexibility
+		return switch stream {
+			case [MPIdentifier(_, MPCallback, ITString)]: 
+				parseCallback(VTString); // Callbacks can return any type
+			case [MPIdentifier(_, MPFunction, ITString), MPOpen]: 
+				RVFunction(parseFunction());
+			case [MPMinus]:
+				switch stream {
+					case [MPNumber(n, NTInteger|NTHexInteger)]:
+						parseNextAnythingExpression(RVInteger(-stringToInt(n)));
+					case [MPNumber(n, NTFloat)]:
+						parseNextAnythingExpression(RVFloat(-stringToFloat(n)));
+					case [e = parseAnything()]:
+						parseNextAnythingExpression(EUnaryOp(OpNeg, e));
+				}
+			case [MPNumber(n, NTInteger|NTHexInteger)]:
+				parseNextAnythingExpression(RVInteger(stringToInt(n)));
+			case [MPNumber(n, NTFloat)]:
+				parseNextAnythingExpression(RVFloat(stringToFloat(n)));
+			case [MPIdentifier(s, _ , ITReference)]:
+				switch stream {
+					case [MPBracketOpen, index = parseAnything(), MPBracketClosed]:
+						parseNextAnythingExpression(RVElementOfArray(s, index));
+					case _:
+						parseNextAnythingExpression(RVReference(s));
+				}
+			case [MPIdentifier(s, _, ITQuotedString|ITString|ITName)]:
+				parseNextAnythingExpression(RVString(s));
+			case [MPOpen, e = parseAnything(), MPClosed]:
+				parseNextAnythingExpression(RVParenthesis(e));
+			case _: syntaxError('expected value or expression, got ${peek(0)}');
+		}
+	}
+
+	function parseIntegerOrReference() {
+		
+		return switch stream {
+			case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseIntegerOrReference(), MPColon, ifFalse = parseIntegerOrReference()]:
+				trace('buga');
+				parseNextIntExpression(RVTernary(condition, ifTrue, ifFalse));
 
 			case [MPIdentifier(_, MPCallback, ITString)]: parseCallback(VTInt);
 			case [MPIdentifier(_, MPFunction, ITString), MPOpen]: RVFunction(parseFunction());
@@ -1181,6 +1309,9 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 	function parseFloatOrReference() {
 		return switch stream {
 
+case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseFloatOrReference(), MPColon, ifFalse = parseFloatOrReference()]:
+				parseNextFloatExpression(RVTernary(condition, ifTrue, ifFalse));
+
 			case [MPIdentifier(_, MPCallback, ITString)]: parseCallback(VTFloat);
 			case [MPIdentifier(_, MPFunction, ITString), MPOpen]: RVFunction(parseFunction());
 			case [MPMinus]:
@@ -1209,6 +1340,8 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 	function parseStringOrReference(?interpolated) {
 //		 trace('PARSE NODES: ${peek(0)}');
 		return switch stream {
+			case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseStringOrReference(), MPColon, ifFalse = parseStringOrReference()]:
+				parseNextStringExpression(RVTernary(condition, ifTrue, ifFalse));
 			case [MPIdentifier(_, MPCallback, ITString)]: parseCallback(VTString);
 			case [MPMinus, MPNumber(s, _)]:
 				parseNextStringExpression(RVString('-' + s));
@@ -1376,7 +1509,7 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 
 	}
 
-	static function tryStringToBool(val:String) {
+	public static function tryStringToBool(val:String) {
 		if (val == null) return null;
 		return switch val.toLowerCase() {
 			case "true"|"yes"|"1": true;
@@ -1417,7 +1550,7 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 		}
 	}
 
-	static function dynamicToInt(dynValue:Dynamic, err:String->Dynamic):Int {
+	public static function dynamicToInt(dynValue:Dynamic, err:String->Dynamic):Int {
 
 
 		if (Std.isOfType(dynValue, Int)) {
@@ -2962,9 +3095,9 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 					eatComma();
 				}
 				FilterGroup(filters);
-			case [MPIdentifier("outline", _ , ITString), MPOpen, size = parseFloat(), MPComma, color = parseColor(), MPClosed]: 
+			case [MPIdentifier("outline", _ , ITString), MPOpen, size = parseFloatOrReference(), MPComma, color = parseColorOrReference(), MPClosed]: 
 				FilterOutline(size, color);
-			case [MPIdentifier("saturate", _ , ITString), MPOpen, value = parseFloat(), MPClosed]: 
+			case [MPIdentifier("saturate", _ , ITString), MPOpen, value = parseFloatOrReference(), MPClosed]: 
 				FilterSaturate(value);
 			case [MPIdentifier("replacePalette", _ , ITString), MPOpen, MPIdentifier(paletteName, _ , ITString|ITQuotedString),  MPComma, sourceRow = parseIntegerOrReference(), MPComma, replacementRow = parseIntegerOrReference(), MPClosed]: 
 				FilterPaletteReplace(paletteName, sourceRow, replacementRow);
@@ -2976,18 +3109,18 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 						FilterColorListReplace(sources, replacements);
 					case _: unexpectedError("expected [color1, color2, ...], [replacement1, replacement2, ...])");
 				}
-			case [MPIdentifier("brightness", _ , ITString), MPOpen, value = parseFloat(), MPClosed]: 
+			case [MPIdentifier("brightness", _ , ITString), MPOpen, value = parseFloatOrReference(), MPClosed]: 
 				FilterBrightness(value);
-			case [MPIdentifier("blur", _ , ITString), MPOpen, radius = parseFloat(), MPComma, gain = parseFloat(), MPClosed]: 
-				var quality = 1.;
-				var linear = 0.0;
+			case [MPIdentifier("blur", _ , ITString), MPOpen, radius = parseFloatOrReference(), MPComma, gain = parseFloatOrReference(), MPClosed]: 
+				var quality = RVFloat(1.);
+				var linear = RVFloat(0.0);
 				FilterBlur(radius, gain, quality, linear);
 			case [MPIdentifier("pixelOutline", _ , ITString), MPOpen]: 
 				var mode = switch stream {
-					case [MPIdentifier("knockout", _ , ITString|ITQuotedString), MPComma, color = parseColor(), MPComma, knockout=parseFloat()]: 
-						Knockout(color, knockout);
-					case [MPIdentifier("inlineColor", _ , ITString|ITQuotedString), MPComma, color = parseColor(), MPComma, inlineColor = parseColor()]: 
-						InlineColor(color, inlineColor);
+					case [MPIdentifier("knockout", _ , ITString|ITQuotedString), MPComma, color = parseColorOrReference(), MPComma, knockout = parseFloatOrReference()]: 
+						POKnockout(color, knockout);
+					case [MPIdentifier("inlineColor", _ , ITString|ITQuotedString), MPComma, color = parseColorOrReference(), MPComma, inlineColor = parseColorOrReference()]: 
+						POInlineColor(color, inlineColor);
 				}
 				final smoothColor = switch stream {
 					case [MPIdentifier("smoothColor", _, ITString)]: true;
@@ -2998,25 +3131,25 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 				FilterPixelOutline(mode, smoothColor );
 			case [MPIdentifier("glow", _ , ITString), MPOpen]: 
 				var once = createOnceParser();
-				
-				var radius:Null<Float> = null;
-				var gain:Null<Float> = null;
-				var quality:Null<Float> = null;
+			
+				var radius:Null<ReferenceableValue> = null;
+				var gain:Null<ReferenceableValue> = null;
+				var quality:Null<ReferenceableValue> = null;
 				var smoothColor:Null<Bool> = null;
 				var knockout:Null<Bool> = null;
-				var color:Null<Int> = null;
-				var alpha:Null<Float> = null;
+				var color:Null<ReferenceableValue> = null;
+				var alpha:Null<ReferenceableValue> = null;
 
 				var results = parseOptionalParams([
-					ParseFloat(MacroUtils.identToString(alpha)), 
-					ParseFloat(MacroUtils.identToString(radius)), 
-					ParseFloat(MacroUtils.identToString(gain)),
-					ParseFloat(MacroUtils.identToString(quality)),
+					ParseFloatOrReference(MacroUtils.identToString(alpha)), 
+					ParseFloatOrReference(MacroUtils.identToString(radius)), 
+					ParseFloatOrReference(MacroUtils.identToString(gain)),
+					ParseFloatOrReference(MacroUtils.identToString(quality)),
 
 					ParseBool(MacroUtils.identToString(smoothColor)),
 					ParseBool(MacroUtils.identToString(knockout)),
-					ParseColor(MacroUtils.identToString(color)),
-					
+					ParseCustom(MacroUtils.identToString(color), parseColorOrReference),
+				
 					], once);
 
 					switch stream {
@@ -3024,11 +3157,11 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 						case _: unexpectedError("glow expected )");
 					}
 				return FilterGlow(
-					MacroUtils.optionsGetPresentOrDefault(color, results, 0xFFFFFFFF), 
-					MacroUtils.optionsGetPresentOrDefault(alpha, results, 1.),
-					MacroUtils.optionsGetPresentOrDefault(radius, results, 1.),
-					MacroUtils.optionsGetPresentOrDefault(gain, results, 1.),
-					MacroUtils.optionsGetPresentOrDefault(quality, results, 1.),
+					MacroUtils.optionsGetPresentOrDefault(color, results, RVInteger(0xFFFFFFFF)), 
+					MacroUtils.optionsGetPresentOrDefault(alpha, results, RVFloat(1.)),
+					MacroUtils.optionsGetPresentOrDefault(radius, results, RVFloat(1.)),
+					MacroUtils.optionsGetPresentOrDefault(gain, results, RVFloat(1.)),
+					MacroUtils.optionsGetPresentOrDefault(quality, results, RVFloat(1.)),
 					MacroUtils.optionsGetPresentOrDefault(smoothColor, results, false),
 					MacroUtils.optionsGetPresentOrDefault(knockout, results, false)
 					);
@@ -3036,41 +3169,41 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 				
 			case [MPIdentifier("dropShadow", _ , ITString), MPOpen]: 
 				var once = createOnceParser();
-				var distance:Null<Float> = null;
-				var angle:Null<Float> = null;
-				var alpha:Null<Float> = null;
-				var radius:Null<Float> = null;
-				var quality:Null<Float> = null;
-				var color:Null<Int> = null;
-				var gain:Null<Float> = null;
+				var distance:Null<ReferenceableValue> = null;
+				var angle:Null<ReferenceableValue> = null;
+				var alpha:Null<ReferenceableValue> = null;
+				var radius:Null<ReferenceableValue> = null;
+				var quality:Null<ReferenceableValue> = null;
+				var color:Null<ReferenceableValue> = null;
+				var gain:Null<ReferenceableValue> = null;
 				var smoothColor:Null<Bool> = null;
 			
 
-				var results = parseOptionalParams([ParseFloat(MacroUtils.identToString(distance)), 
-												ParseFloat(MacroUtils.identToString(angle)),
-												ParseFloat(MacroUtils.identToString(alpha)), 
-												ParseFloat(MacroUtils.identToString(radius)),
-												ParseColor(MacroUtils.identToString(color)),
-												ParseFloat(MacroUtils.identToString(gain)),
-												ParseFloat(MacroUtils.identToString(quality)),
-												ParseBool(MacroUtils.identToString(smoothColor)),
-												
-												], once);
+			var results = parseOptionalParams([ParseFloatOrReference(MacroUtils.identToString(distance)), 
+											ParseFloatOrReference(MacroUtils.identToString(angle)),
+											ParseFloatOrReference(MacroUtils.identToString(alpha)), 
+											ParseFloatOrReference(MacroUtils.identToString(radius)),
+											ParseCustom(MacroUtils.identToString(color), parseColorOrReference),
+											ParseFloatOrReference(MacroUtils.identToString(gain)),
+											ParseFloatOrReference(MacroUtils.identToString(quality)),
+											ParseBool(MacroUtils.identToString(smoothColor)),
+											
+											], once);
 			
 
-				switch stream {
-					case [MPClosed]:
-					case _: unexpectedError("dropShadow expected )");
-				}
-				
-				return FilterDropShadow(
-					MacroUtils.optionsGetPresentOrDefault(distance, results, 4.0), 
-					hxd.Math.degToRad(MacroUtils.optionsGetPresentOrDefault(angle, results, 90.0)),
-					MacroUtils.optionsGetPresentOrDefault(color, results, 0), 
-					MacroUtils.optionsGetPresentOrDefault(alpha, results, 1.),
-					MacroUtils.optionsGetPresentOrDefault(radius, results, 1.), 
-					MacroUtils.optionsGetPresentOrDefault(gain, results, 1.), 
-					MacroUtils.optionsGetPresentOrDefault(quality, results, 1.), 
+			switch stream {
+				case [MPClosed]:
+				case _: unexpectedError("dropShadow expected )");
+			}
+			
+			return FilterDropShadow(
+				MacroUtils.optionsGetPresentOrDefault(distance, results, RVFloat(4.0)), 
+				MacroUtils.optionsGetPresentOrDefault(angle, results, RVFloat(90.0)),
+				MacroUtils.optionsGetPresentOrDefault(color, results, RVInteger(0)), 
+				MacroUtils.optionsGetPresentOrDefault(alpha, results, RVFloat(1.)),
+				MacroUtils.optionsGetPresentOrDefault(radius, results, RVFloat(1.)), 
+				MacroUtils.optionsGetPresentOrDefault(gain, results, RVFloat(1.)), 
+				MacroUtils.optionsGetPresentOrDefault(quality, results, RVFloat(1.)),
 					MacroUtils.optionsGetPresentOrDefault(smoothColor, results, false));
 				
 		}
