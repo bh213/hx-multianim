@@ -180,9 +180,9 @@ enum PlaceholderTypes {
 }
 
 enum PlaceholderReplacementSource {
-	PRSCallback(name:ReferencableValue);
-	PRSCallbackWithIndex(name:ReferencableValue, index:ReferencableValue);
-	PRSBuilderParameterSource(name:ReferencableValue);
+	PRSCallback(name:ReferenceableValue);
+	PRSCallbackWithIndex(name:ReferenceableValue, index:ReferenceableValue);
+	PRSBuilderParameterSource(name:ReferenceableValue);
 }
 
 @:using(bh.multianim.MultiAnimParser)
@@ -427,16 +427,16 @@ enum PixelShapes {
 
 enum GraphicsStyle {
 	GSFilled;
-	GSLineWidth(width:ReferencableValue);
+	GSLineWidth(width:ReferenceableValue);
 }
 
 enum GraphicsElement {
-	GERect(color:ReferencableValue, style:GraphicsStyle, width:ReferencableValue, height:ReferencableValue);
-	GEPolygon(color:ReferencableValue, style:GraphicsStyle, points:Array<{x:ReferencableValue, y:ReferencableValue}>);
-	GECircle(color:ReferencableValue, style:GraphicsStyle, radius:ReferencableValue);
-	GEEllipse(color:ReferencableValue, style:GraphicsStyle, width:ReferencableValue, height:ReferencableValue);
-	GEArc(color:ReferencableValue, style:GraphicsStyle, radius:ReferencableValue, startAngle:ReferencableValue, arcAngle:ReferencableValue);
-	GERoundRect(color:ReferencableValue, style:GraphicsStyle, width:ReferencableValue, height:ReferencableValue, radius:ReferencableValue);
+	GERect(color:ReferenceableValue, style:GraphicsStyle, width:ReferenceableValue, height:ReferenceableValue);
+	GEPolygon(color:ReferenceableValue, style:GraphicsStyle, points:Array<{x:ReferenceableValue, y:ReferenceableValue}>);
+	GECircle(color:ReferenceableValue, style:GraphicsStyle, radius:ReferenceableValue);
+	GEEllipse(color:ReferenceableValue, style:GraphicsStyle, width:ReferenceableValue, height:ReferenceableValue);
+	GEArc(color:ReferenceableValue, style:GraphicsStyle, radius:ReferenceableValue, startAngle:ReferenceableValue, arcAngle:ReferenceableValue);
+	GERoundRect(color:ReferenceableValue, style:GraphicsStyle, width:ReferenceableValue, height:ReferenceableValue, radius:ReferenceableValue);
 }
 
 typedef PositionedGraphicsElement = {
@@ -448,22 +448,22 @@ typedef PositionedGraphicsElement = {
 typedef PixelLine = {
 	start:Coordinates,
 	end:Coordinates,
-	color:ReferencableValue
+	color:ReferenceableValue
 }
 
 @:NotNull
 typedef PixelRect = {
 	start:Coordinates,
-	width:ReferencableValue,
-	height:ReferencableValue,
-	color:ReferencableValue
+	width:ReferenceableValue,
+	height:ReferenceableValue,
+	color:ReferenceableValue
 
 }
 
 @:NotNull
 typedef PixelPixel = {
 	pos:Coordinates,
-	color:ReferencableValue
+	color:ReferenceableValue
 }
 
 enum DefinitionType {
@@ -501,7 +501,7 @@ enum RvOp {
 }
 
 
-enum ReferencableValueFunction { // Requires access to Node
+enum ReferenceableValueFunction { // Requires access to Node
 	RVFGridWidth;
 	RVFGridHeight;
 }
@@ -530,22 +530,22 @@ enum ConditionalValues {
 }
 
 
-enum ReferencableValue {
-	RVElementOfArray(arrayRef:String, index:ReferencableValue);
+enum ReferenceableValue {
+	RVElementOfArray(arrayRef:String, index:ReferenceableValue);
 	RVString(s:String);
 	RVInteger(i:Int);
-	RVArray(refArr:Array<ReferencableValue>);
+	RVArray(refArr:Array<ReferenceableValue>);
 	RVArrayReference(refArr:String);
 	RVFloat(f:Float);
 	RVReference(ref:String);
-	RVFunction(functionType:ReferencableValueFunction);
-	RVParenthesis(e:ReferencableValue);
-	RVCallbacksWithIndex(name:ReferencableValue, index:ReferencableValue, defaultValue:ReferencableValue);
-	RVCallbacks(name:ReferencableValue, defaultValue:ReferencableValue);
-	RVColorXY(externalReference:Null<String>, palette:String, x:ReferencableValue, y:ReferencableValue);
-	RVColor(externalReference:Null<String>, palette:String, index:ReferencableValue);
-	EBinop(op:RvOp, e1:ReferencableValue, e2:ReferencableValue);
-	EUnaryOp(op:RvUnaryOp, e:ReferencableValue);
+	RVFunction(functionType:ReferenceableValueFunction);
+	RVParenthesis(e:ReferenceableValue);
+	RVCallbacksWithIndex(name:ReferenceableValue, index:ReferenceableValue, defaultValue:ReferenceableValue);
+	RVCallbacks(name:ReferenceableValue, defaultValue:ReferenceableValue);
+	RVColorXY(externalReference:Null<String>, palette:String, x:ReferenceableValue, y:ReferenceableValue);
+	RVColor(externalReference:Null<String>, palette:String, index:ReferenceableValue);
+	EBinop(op:RvOp, e1:ReferenceableValue, e2:ReferenceableValue);
+	EUnaryOp(op:RvUnaryOp, e:ReferenceableValue);
 }
 
 enum TextAlignWidth {
@@ -578,7 +578,7 @@ private enum LayoutsParsingState {
 typedef LayoutsDef = Map<String, Layout>;
 
 enum AnimatedPathTime {
-	Rate(float:ReferencableValue);
+	Rate(float:ReferenceableValue);
 	Checkpoint(checkpointName:String);
 }
 
@@ -590,8 +590,8 @@ class AnimatedPathTimedAction {
 
 @:nullSafety
 enum AnimatedPathsAction {
-	ChangeSpeed(speed:ReferencableValue);
-    Accelerate(acceleration:ReferencableValue, duration:ReferencableValue);
+	ChangeSpeed(speed:ReferenceableValue);
+    Accelerate(acceleration:ReferenceableValue, duration:ReferenceableValue);
     Event(eventName:String);
     AttachParticles(particlesName:String, particlesTemplate:String, particlesDef:ParticlesDef);
     RemoveParticles(particlesName:String);
@@ -612,17 +612,17 @@ enum PathCoordinateMode {
 enum SmoothingType {
 	STNone;
 	STAuto;
-	STDistance(value:ReferencableValue);
+	STDistance(value:ReferenceableValue);
 }
 
 enum ParsedPaths {
 	LineTo(end:Coordinates, mode:Null<PathCoordinateMode>);
-	Forward(distance:ReferencableValue);
-	TurnDegrees(angleDelta:ReferencableValue);
+	Forward(distance:ReferenceableValue);
+	TurnDegrees(angleDelta:ReferenceableValue);
 	Checkpoint(checkpointName:String);
 	Bezier2To(end:Coordinates, control:Coordinates, mode:Null<PathCoordinateMode>, smoothing:Null<SmoothingType>);
 	Bezier3To(end:Coordinates, control1:Coordinates, control2:Coordinates, mode:Null<PathCoordinateMode>, smoothing:Null<SmoothingType>);
-	Arc(radius:ReferencableValue, angleDelta:ReferencableValue);
+	Arc(radius:ReferenceableValue, angleDelta:ReferenceableValue);
 }
 
 @:nullSafety
@@ -630,73 +630,73 @@ typedef PathsDef = Map<String, Array<ParsedPaths>>;
 
 
 enum ParticlesEmitMode {
-	Point(emitDistance:ReferencableValue,  emitDistanceRandom:ReferencableValue);
-	Cone(emitDistance:ReferencableValue, emitDistanceRandom:ReferencableValue, emitConeAngle:ReferencableValue, emitConeAngleRandom:ReferencableValue);
-	Box(width:ReferencableValue, height:ReferencableValue, emitConeAngle:ReferencableValue, emitConeAngleRandom:ReferencableValue);
+	Point(emitDistance:ReferenceableValue,  emitDistanceRandom:ReferenceableValue);
+	Cone(emitDistance:ReferenceableValue, emitDistanceRandom:ReferenceableValue, emitConeAngle:ReferenceableValue, emitConeAngleRandom:ReferenceableValue);
+	Box(width:ReferenceableValue, height:ReferenceableValue, emitConeAngle:ReferenceableValue, emitConeAngleRandom:ReferenceableValue);
 }
 
 @:nullSafety
 typedef ParticlesDef = {
-	var count:Null<ReferencableValue>;
+	var count:Null<ReferenceableValue>;
 	var loop:Null<Bool>;
 	var relative:Null<Bool>;
-	var emitDelay:Null<ReferencableValue>;
-	var emitSync:Null<ReferencableValue>;
-	var maxLife:Null<ReferencableValue>;
-	var lifeRandom:Null<ReferencableValue>;
-	var size:Null<ReferencableValue>;
-	var sizeRandom:Null<ReferencableValue>;
+	var emitDelay:Null<ReferenceableValue>;
+	var emitSync:Null<ReferenceableValue>;
+	var maxLife:Null<ReferenceableValue>;
+	var lifeRandom:Null<ReferenceableValue>;
+	var size:Null<ReferenceableValue>;
+	var sizeRandom:Null<ReferenceableValue>;
 	var blendMode:Null<h2d.BlendMode>;
-	var speed:Null<ReferencableValue>;
-	var speedRandom:Null<ReferencableValue>;
-	var speedIncrease:Null<ReferencableValue>;
-	var gravity:Null<ReferencableValue>;
-	var gravityAngle:Null<ReferencableValue>;
-	var fadeIn:Null<ReferencableValue>;
-	var fadeOut:Null<ReferencableValue>;
-	var fadePower:Null<ReferencableValue>;
+	var speed:Null<ReferenceableValue>;
+	var speedRandom:Null<ReferenceableValue>;
+	var speedIncrease:Null<ReferenceableValue>;
+	var gravity:Null<ReferenceableValue>;
+	var gravityAngle:Null<ReferenceableValue>;
+	var fadeIn:Null<ReferenceableValue>;
+	var fadeOut:Null<ReferenceableValue>;
+	var fadePower:Null<ReferenceableValue>;
 	var tiles:Array<TileSource>;
 	var emit:ParticlesEmitMode;
-	var rotationInitial:Null<ReferencableValue>;
-	var rotationSpeed:Null<ReferencableValue>;
-	var rotationSpeedRandom:Null<ReferencableValue>;
+	var rotationInitial:Null<ReferenceableValue>;
+	var rotationSpeed:Null<ReferenceableValue>;
+	var rotationSpeedRandom:Null<ReferenceableValue>;
 	var rotateAuto:Null<Bool>;
 }
 
 enum RepeatType {
-	GridIterator(dx:ReferencableValue, dy:ReferencableValue, repeatCount:ReferencableValue);
+	GridIterator(dx:ReferenceableValue, dy:ReferenceableValue, repeatCount:ReferenceableValue);
 	LayoutIterator(layoutName:String);
 	ArrayIterator(valueVariableName:String, arrayName:String);
-	RangeIterator(start:ReferencableValue, end:ReferencableValue, step:ReferencableValue);
+	RangeIterator(start:ReferenceableValue, end:ReferenceableValue, step:ReferenceableValue);
 }
 
 enum GeneratedTileType {
-	Cross(width:ReferencableValue, height:ReferencableValue, color:ReferencableValue);
-	SolidColor(width:ReferencableValue, height:ReferencableValue, color:ReferencableValue);
+	Cross(width:ReferenceableValue, height:ReferenceableValue, color:ReferenceableValue);
+	SolidColor(width:ReferenceableValue, height:ReferenceableValue, color:ReferenceableValue);
 }
 
 enum TileSource {
-	TSFile(filename:ReferencableValue);
-	TSSheet(sheet:ReferencableValue, name:ReferencableValue);
-	TSSheetWithIndex(sheet:ReferencableValue, name:ReferencableValue, index:ReferencableValue);
+	TSFile(filename:ReferenceableValue);
+	TSSheet(sheet:ReferenceableValue, name:ReferenceableValue);
+	TSSheetWithIndex(sheet:ReferenceableValue, name:ReferenceableValue, index:ReferenceableValue);
 	TSGenerated(type:GeneratedTileType);
 }
 
 enum PaletteType {
-	PaletteColors(colors:Array<ReferencableValue>);
-	PaletteColors2D(colors:Array<ReferencableValue>, width:Int);
-	PaletteImageFile(filename:ReferencableValue);
+	PaletteColors(colors:Array<ReferenceableValue>);
+	PaletteColors2D(colors:Array<ReferenceableValue>, width:Int);
+	PaletteImageFile(filename:ReferenceableValue);
 }
 
 enum StateAnimConstruct {
-	IndexedSheet(sheet:String, name:ReferencableValue, fps:ReferencableValue, loop: Bool, center:Bool);
+	IndexedSheet(sheet:String, name:ReferenceableValue, fps:ReferenceableValue, loop: Bool, center:Bool);
 }
 
 @:nullSafety
 typedef TextDef = {
-	var fontName:ReferencableValue;
-	var text:ReferencableValue;
-	var color:ReferencableValue;
+	var fontName:ReferenceableValue;
+	var text:ReferenceableValue;
+	var color:ReferenceableValue;
 	var halign:Null<HorizontalAlign>;
 	var textAlignWidth: TextAlignWidth;
 	var letterSpacing:Float;
@@ -710,15 +710,15 @@ typedef TextDef = {
 
 @:nullSafety
 enum NodeType {
-	FLOW(maxWidth:Null<ReferencableValue>, maxHeight:Null<ReferencableValue>, minWidth:Null<ReferencableValue>, minHeight:Null<ReferencableValue>,
-		lineHeight:Null<ReferencableValue>, colWidth:Null<ReferencableValue>, layout:Null<h2d.Flow.FlowLayout>,
-		paddingTop:Null<ReferencableValue>,paddingBottom:Null<ReferencableValue>, paddingLeft:Null<ReferencableValue>, paddingRight:Null<ReferencableValue>,
-		horizontalSpacing:Null<ReferencableValue>, verticalSpacing:Null<ReferencableValue>, debug:Bool
+	FLOW(maxWidth:Null<ReferenceableValue>, maxHeight:Null<ReferenceableValue>, minWidth:Null<ReferenceableValue>, minHeight:Null<ReferenceableValue>,
+		lineHeight:Null<ReferenceableValue>, colWidth:Null<ReferenceableValue>, layout:Null<h2d.Flow.FlowLayout>,
+		paddingTop:Null<ReferenceableValue>,paddingBottom:Null<ReferenceableValue>, paddingLeft:Null<ReferenceableValue>, paddingRight:Null<ReferenceableValue>,
+		horizontalSpacing:Null<ReferenceableValue>, verticalSpacing:Null<ReferenceableValue>, debug:Bool
 		);
 	BITMAP(tileSource:TileSource, hAlign:HorizontalAlign, vAligh:VerticalAlign);
 	POINT;
-	STATEANIM(filename:String, initialState:ReferencableValue, selector:Map<String, ReferencableValue>);
-	STATEANIM_CONSTRUCT(initialState:ReferencableValue, construct:Map<String, StateAnimConstruct>);
+	STATEANIM(filename:String, initialState:ReferenceableValue, selector:Map<String, ReferenceableValue>);
+	STATEANIM_CONSTRUCT(initialState:ReferenceableValue, construct:Map<String, StateAnimConstruct>);
 	PIXELS(shapes:Array<PixelShapes>);
 	TEXT(textDef:TextDef);
 	PROGRAMMABLE(isTileGroup:Bool, parameters:ParametersDefinitions);
@@ -730,10 +730,10 @@ enum NodeType {
 	APPLY;
 	LAYERS;
 	REPEAT(varName:String, repeatType:RepeatType);
-	REFERENCE(externalReference:Null<String>, programmableReference:String, parameters:Map<String, ReferencableValue>);
+	REFERENCE(externalReference:Null<String>, programmableReference:String, parameters:Map<String, ReferenceableValue>);
 	PLACEHOLDER(type:PlaceholderTypes, replacementSource:PlaceholderReplacementSource);
-	NINEPATCH(sheet:String, tilename:String, width:ReferencableValue, height:ReferencableValue);
-	INTERACTIVE(width:ReferencableValue, height:ReferencableValue, id:ReferencableValue, debug:Bool);
+	NINEPATCH(sheet:String, tilename:String, width:ReferenceableValue, height:ReferenceableValue);
+	INTERACTIVE(width:ReferenceableValue, height:ReferenceableValue, id:ReferenceableValue, debug:Bool);
 	PALETTE(paletteType:PaletteType);
 	GRAPHICS(elements:Array<PositionedGraphicsElement>);
 	
@@ -755,8 +755,8 @@ enum FilterType {
 	FilterBlur(radius:Float, gain:Float, quality:Float, linear:Float);
 	FilterDropShadow(distance:Float, angle:Float, color:Int, alpha:Float, radius:Float, gain:Float, quality:Float, smoothColor:Bool);
 	FilterPixelOutline(mode:PixelOutlineFilterMode, smoothColor:Bool);
-	FilterPaletteReplace(paletteName:String, sourceRow:ReferencableValue, replacementRow:ReferencableValue);
-	FilterColorListReplace(sourceColors:Array<ReferencableValue>, replacementColors:Array<ReferencableValue>);
+	FilterPaletteReplace(paletteName:String, sourceRow:ReferenceableValue, replacementRow:ReferenceableValue);
+	FilterColorListReplace(sourceColors:Array<ReferenceableValue>, replacementColors:Array<ReferenceableValue>);
 
 }
 
@@ -766,8 +766,8 @@ typedef Node = {
 	pos:Coordinates,
 	gridCoordinateSystem:Null<GridCoordinateSystem>,
 	hexCoordinateSystem:Null<HexCoordinateSystem>,
-	scale: Null<ReferencableValue>,
-	alpha: Null<ReferencableValue>,
+	scale: Null<ReferenceableValue>,
+	alpha: Null<ReferenceableValue>,
 	layer:Null<Int>,
 	filter: Null<FilterType>,
 	blendMode: Null<h2d.BlendMode>,
@@ -776,7 +776,7 @@ typedef Node = {
 	children:Array<Node>,
 	conditionals: NodeConditionalValues,
 	uniqueNodeName:String,
-	settings:Null<Map<String, ReferencableValue>>,
+	settings:Null<Map<String, ReferenceableValue>>,
 	#if MULTIANIM_TRACE	
 	parserPos:String
 	#end
@@ -860,7 +860,7 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 	}
 
 
-	function parseNextIntExpression(e1:ReferencableValue):ReferencableValue {
+	function parseNextIntExpression(e1:ReferenceableValue):ReferenceableValue {
 		return switch stream {
 			case [MPPlus, e2 = parseIntegerOrReference()]:
 				binop(e1, OpAdd, e2);
@@ -879,7 +879,7 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 		}
 	}
 
-	function parseNextFloatExpression(e1:ReferencableValue):ReferencableValue {
+	function parseNextFloatExpression(e1:ReferenceableValue):ReferenceableValue {
 		return switch stream {
 			case [MPPlus, e2 = parseFloatOrReference()]:
 				binop(e1, OpAdd, e2);
@@ -899,7 +899,7 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 		}
 	}
 
-	function parseNextStringExpression(e1:ReferencableValue):ReferencableValue {
+	function parseNextStringExpression(e1:ReferenceableValue):ReferenceableValue {
 		return switch stream {
 			case [MPPlus, e2 = parseStringOrReference()]:
 				binop(e1, OpAdd, e2);
@@ -909,7 +909,7 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 	}
 
 
-	function parseStringInterpolated():ReferencableValue {
+	function parseStringInterpolated():ReferenceableValue {
 		
 		return switch stream {
 				case [MPInterpolation(MPICode(prefix))]:
@@ -932,7 +932,7 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 		
 	}
 
-	function binop(e1:ReferencableValue, op:RvOp, e2:ReferencableValue) {
+	function binop(e1:ReferenceableValue, op:RvOp, e2:ReferenceableValue) {
 		return switch [e2, op] {
 			case [EBinop(op2 = OpAdd | OpSub, e3, e4), OpMul ]:
 				// precedence
@@ -979,7 +979,7 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 
 	}
 	
-	function parseArrayOrReference():Array<ReferencableValue> {
+	function parseArrayOrReference():Array<ReferenceableValue> {
 		switch stream {
 			case [MPBracketOpen]:
 				var array = this.parseSeparated(x-> x.match(MPComma), parseStringOrReference.bind(false));
@@ -1063,7 +1063,7 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 	}
 
 	function parseColorsList(endSymbol) {
-		var colors:Array<ReferencableValue> = [];
+		var colors:Array<ReferenceableValue> = [];
 		while (true) {
 			eatComma();
 			if (peek(0) == endSymbol) {
@@ -1140,7 +1140,7 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 
 	}
 
-	function parseFunction():ReferencableValueFunction {
+	function parseFunction():ReferenceableValueFunction {
 		return switch stream {
 			case [MPIdentifier("gridWidth", _, ITString), MPClosed]: RVFGridWidth;
 			case [MPIdentifier("gridHeight", _, ITString), MPClosed]:RVFGridHeight;
@@ -1728,12 +1728,12 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 		return parameter;
 	}
 
-	function parseReferenceParameters(defined:ParametersDefinitions):Map<String, ReferencableValue> {
+	function parseReferenceParameters(defined:ParametersDefinitions):Map<String, ReferenceableValue> {
 
 		function error(s:String):Dynamic {
 			return syntaxError(s);
 		}
-		final parameterValues:Map<String, ReferencableValue> = [];
+		final parameterValues:Map<String, ReferenceableValue> = [];
 		while (true) {
 			
 			switch stream {
@@ -2076,7 +2076,7 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 		return switch stream {
 			case [MPOpen, color = parseColorOrReference(), MPComma]:
 				var style = parseGraphicsStyleRequired();
-				var points:Array<{x:ReferencableValue, y:ReferencableValue}> = [];
+				var points:Array<{x:ReferenceableValue, y:ReferenceableValue}> = [];
 
 				while (true) {
 					switch stream {
@@ -2123,8 +2123,8 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 		return switch stream {
 			case [MPOpen, color = parseColorOrReference(), MPComma]:
 				final style = parseGraphicsStyleRequired();
-				var width:ReferencableValue = null;
-				var height:ReferencableValue = null;
+				var width:ReferenceableValue = null;
+				var height:ReferenceableValue = null;
 
 				switch stream {
 					case [w = parseFloatOrReference(), MPComma, h = parseFloatOrReference()]:
@@ -2148,9 +2148,9 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 			case [MPOpen, color = parseColorOrReference(), MPComma]:
 				final style = parseGraphicsStyleRequired();
 				
-				var radius:ReferencableValue = null;
-				var startAngle:ReferencableValue = null;
-				var arcAngle:ReferencableValue = null;
+				var radius:ReferenceableValue = null;
+				var startAngle:ReferenceableValue = null;
+				var arcAngle:ReferenceableValue = null;
 
 								
 				switch stream {
@@ -2173,9 +2173,9 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 		return switch stream {
 			case [MPOpen, color = parseColorOrReference(), MPComma]:
 				final style = parseGraphicsStyleRequired();
-				var width:ReferencableValue = null;
-				var height:ReferencableValue = null;
-				var radius:ReferencableValue = null;
+				var width:ReferenceableValue = null;
+				var height:ReferenceableValue = null;
+				var radius:ReferenceableValue = null;
 
 				switch stream {
 					case [w = parseFloatOrReference(), MPComma, h = parseFloatOrReference(), MPComma, r = parseFloatOrReference()]:
@@ -2287,8 +2287,8 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 		var allowChildren = true;
 		final onceInline = createOnceParser();
 		var layerIndex = -1;
-		var alpha:Null<ReferencableValue> = null;
-		var scale:Null<ReferencableValue> = null;
+		var alpha:Null<ReferenceableValue> = null;
+		var scale:Null<ReferenceableValue> = null;
 		var conditional = NoConditional;
 		
 		#if MULTIANIM_TRACE
@@ -2405,7 +2405,7 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 
 				switch stream {
 					case [MPOpen, MPIdentifier(filename,_, ITString|ITQuotedString), MPComma, initialState = parseStringOrReference()]:
-						var selector:Map<String, ReferencableValue> = [];
+						var selector:Map<String, ReferenceableValue> = [];
 						while (true) {
 							switch stream {
 								case [MPClosed]: break;
@@ -2428,21 +2428,21 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 
 				
 
-				var maxWidth:Null<ReferencableValue> = null;
-				var maxHeight:Null<ReferencableValue> = null;
-				var minWidth:Null<ReferencableValue> = null;
-				var minHeight:Null<ReferencableValue> = null;
+				var maxWidth:Null<ReferenceableValue> = null;
+				var maxHeight:Null<ReferenceableValue> = null;
+				var minWidth:Null<ReferenceableValue> = null;
+				var minHeight:Null<ReferenceableValue> = null;
 				
-				var lineHeight:Null<ReferencableValue> = null;
-				var colWidth:Null<ReferencableValue> = null;
+				var lineHeight:Null<ReferenceableValue> = null;
+				var colWidth:Null<ReferenceableValue> = null;
 				var layout:Null<h2d.Flow.FlowLayout> = null;
 				
-				var paddingLeft:Null<ReferencableValue> = null;
-				var paddingRight:Null<ReferencableValue> = null;
-				var paddingTop:Null<ReferencableValue> = null;
-				var paddingBottom:Null<ReferencableValue> = null;
-				var horizontalSpacing:Null<ReferencableValue> = null;
-				var verticalSpacing:Null<ReferencableValue> = null;
+				var paddingLeft:Null<ReferenceableValue> = null;
+				var paddingRight:Null<ReferenceableValue> = null;
+				var paddingTop:Null<ReferenceableValue> = null;
+				var paddingBottom:Null<ReferenceableValue> = null;
+				var horizontalSpacing:Null<ReferenceableValue> = null;
+				var verticalSpacing:Null<ReferenceableValue> = null;
 				var debug:Bool = false;
 
 
@@ -2752,7 +2752,7 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 				if (programmable == null) syntaxError('programmable "$programmableReference" could not be found in ${externalReference}. It has to be defined BEFORE referencing it.');
 					switch programmable.type {
 						case PROGRAMMABLE(isTileGroup, parameters):
-							final params:Map<String, ReferencableValue> = switch stream {
+							final params:Map<String, ReferenceableValue> = switch stream {
 								case [MPComma]:
 									parseReferenceParameters(parameters);
 								case [MPClosed]: [];
@@ -2806,8 +2806,8 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 				var response = switch stream {
 					case [MPIdentifier(_, MPGrid, ITString), MPOpen, repeatCount = parseIntegerOrReference(), MPComma ]:
 						var once = createOnceParser();
-						var dx:Null<ReferencableValue> = null;
-						var dy:Null<ReferencableValue> = null;
+						var dx:Null<ReferenceableValue> = null;
+						var dy:Null<ReferenceableValue> = null;
 
 						var results = parseOptionalParams([
 							ParseIntegerOrReference(MacroUtils.identToString(dx)), 

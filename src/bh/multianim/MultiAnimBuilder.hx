@@ -306,7 +306,7 @@ class MultiAnimBuilder {
 		return new MultiAnimBuilder(parsed, resourceLoader, sourceName);
 	}
 
-	function resolveAsArrayElement(v:ReferencableValue):Dynamic {
+	function resolveAsArrayElement(v:ReferenceableValue):Dynamic {
 		switch v {
 			case RVElementOfArray(arrayRef, indexRef):
 				final arrayVal = indexedParams.get(arrayRef);
@@ -325,7 +325,7 @@ class MultiAnimBuilder {
 		}
 	}
 
-	function resolveAsArray(v:ReferencableValue):Dynamic {
+	function resolveAsArray(v:ReferenceableValue):Dynamic {
 		switch v {
 			case RVArray(array):
 				return [for (v in array) resolveAsString(v)];
@@ -343,7 +343,7 @@ class MultiAnimBuilder {
 		}
 	}
 
-	function resolveAsColorInteger(v:ReferencableValue):Int {
+	function resolveAsColorInteger(v:ReferenceableValue):Int {
 		function getBuilderWithExternal(externalReference:String) {
 			if (externalReference == null)
 				return this;
@@ -369,7 +369,7 @@ class MultiAnimBuilder {
 		}
 	}
 
-	function resolveRVFunction(functionType:ReferencableValueFunction):Int {
+	function resolveRVFunction(functionType:ReferenceableValueFunction):Int {
 		final gridCoordinateSystem = MultiAnimParser.getGridCoordinateSystem(this.currentNode);
 		if (gridCoordinateSystem == null)
 			throw 'cannot resolve $functionType as there is no grid defined';
@@ -380,7 +380,7 @@ class MultiAnimBuilder {
 		}
 	}
 
-	function resolveAsInteger(v:ReferencableValue) {
+	function resolveAsInteger(v:ReferenceableValue) {
 		function handleCallback(result, input:CallbackRequest, defaultValue) {
 			return switch result {
 				case CBRInteger(val): val;
@@ -439,7 +439,7 @@ class MultiAnimBuilder {
 		}
 	}
 
-	function resolveAsNumber(v:ReferencableValue):Float {
+	function resolveAsNumber(v:ReferenceableValue):Float {
 		return switch v {
 			case RVElementOfArray(array, index): resolveAsArrayElement(v);
 			case RVArray(refArray): throw 'RVArray not supported';
@@ -501,7 +501,7 @@ class MultiAnimBuilder {
 		}
 	}
 
-	function resolveAsString(v:ReferencableValue):String {
+	function resolveAsString(v:ReferenceableValue):String {
 		function handleCallback(result, input:CallbackRequest, defaultValue) {
 			return switch result {
 				case CBRInteger(val): '${val}';
@@ -1392,7 +1392,7 @@ class MultiAnimBuilder {
 	}
 
 	function resolveSettings(node:Node):ResolvedSettings {
-		var currentSettings:Null<Map<String, ReferencableValue>> = null;
+		var currentSettings:Null<Map<String, ReferenceableValue>> = null;
 		var current = node;
 		while (current != null) {
 			if (current.settings != null) {
@@ -1439,7 +1439,7 @@ class MultiAnimBuilder {
 			object.filter = buildFilter(node.filter);
 	}
 
-	function resolveColorList(colors:Array<ReferencableValue>) {
+	function resolveColorList(colors:Array<ReferenceableValue>) {
 		return [for (value in colors) resolveAsColorInteger(value)];
 	}
 
@@ -1768,7 +1768,7 @@ class MultiAnimBuilder {
 			return type;
 		}
 
-		function resolveReferencableValue(ref:ReferencableValue, type):Dynamic {
+		function resolveReferenceableValue(ref:ReferenceableValue, type):Dynamic {
 			return switch type {
 				case null: throw 'type is null';
 				case PPTHexDirecton: resolveAsInteger(ref);
@@ -1801,10 +1801,10 @@ class MultiAnimBuilder {
 			for (key => value in input) {
 				if (Std.isOfType(value, ResolvedIndexParameters)) {
 					retVal.set(key, value);
-				} else if (Std.isOfType(value, ReferencableValue)) {
-					final ref:ReferencableValue = value;
+				} else if (Std.isOfType(value, ReferenceableValue)) {
+					final ref:ReferenceableValue = value;
 					final type = getDefsType(key, value);
-					final resolved = resolveReferencableValue(ref, type);
+					final resolved = resolveReferenceableValue(ref, type);
 					retVal.set(key, MultiAnimParser.dynamicValueToIndex(key, type, resolved, s -> throw s));
 				} else {
 					final type = getDefsType(key, value);
@@ -1817,10 +1817,10 @@ class MultiAnimBuilder {
 					throw 'extra input "$key=>$value" already exists in input';
 				if (Std.isOfType(value, ResolvedIndexParameters)) {
 					retVal.set(key, value);
-				} else if (Std.isOfType(value, ReferencableValue)) {
-					final ref:ReferencableValue = cast value;
+				} else if (Std.isOfType(value, ReferenceableValue)) {
+					final ref:ReferenceableValue = cast value;
 					final type = getDefsType(key, value);
-					final resolved = resolveReferencableValue(ref, type);
+					final resolved = resolveReferenceableValue(ref, type);
 					retVal.set(key, MultiAnimParser.dynamicValueToIndex(key, type, resolved, s -> throw s));
 				} else {
 					final type = getDefsType(key, value);
