@@ -466,14 +466,69 @@ List of supported fonts:
 File and sheet loading directories are application specific.
 
 ## filters
-* `replacePalette(file, sourceIndex, dstIndex)` - applies color replacement using 2d palette named `file`. Colors from rows `sourceIndex` will be replaced with colors in `dstIndex`. Colors not matching will be passed through.
-* `outline(size, color)` - creates an outline
-* `saturate(value)` - saturates colors with value (0-1.0)
-* `brightness(value)` - brightens the colors with value (0-1.0)
-* `blur(radius, gain)` - blurs
-* `pixelOutline(knockout, color, knockoutStr)` or `pixelOutline(inlineColor, color, innerColor)`
-* `dropShadow(distance:float, angle:float, color:<color>, alpha:float, radius:float, gain:float, quality:float])`
-* `glow(color, alpha[, radius, gain, quality])`
+
+Filters can be applied to any visual element. Most numeric parameters support referenceable values and expressions, allowing dynamic filter configurations based on programmable parameters.
+
+**Available Filters:**
+
+* `replacePalette(paletteName, sourceRow, replacementRow)` - Applies color replacement using 2D palette named `paletteName`. Colors from row `sourceRow` will be replaced with colors in row `replacementRow`. Colors not matching will be passed through. `sourceRow` and `replacementRow` support references.
+
+* `replaceColor([sourceColors...], [replacementColors...])` - Replaces specific colors with other colors. Both arrays support color references and expressions.
+
+* `outline(size, color)` - Creates an outline around the element. Both `size` and `color` support references and expressions.
+
+* `saturate(value)` - Adjusts color saturation (0.0 = grayscale, 1.0 = normal, >1.0 = oversaturated). Supports references.
+
+* `brightness(value)` - Adjusts brightness (0.0 = black, 1.0 = normal, >1.0 = brighter). Supports references.
+
+* `blur(radius, gain, [quality], [linear])` - Applies blur effect. `radius`, `gain`, `quality`, and `linear` all support references.
+
+* `pixelOutline(knockout, color, knockoutStrength)` - Creates a pixel-perfect outline in knockout mode. `color` and `knockoutStrength` support references.
+  
+* `pixelOutline(inlineColor, outlineColor, inlineColor)` - Creates a pixel-perfect outline with inline coloring. Both colors support references.
+
+* `dropShadow(distance, angle, color, alpha, radius, gain, quality)` - Creates a drop shadow. All numeric parameters and `color` support references. `angle` is in degrees.
+
+* `glow(color, alpha, [radius], [gain], [quality], [smoothColor], [knockout])` - Creates a glow effect. `color`, `alpha`, `radius`, `gain`, and `quality` support references. `smoothColor` and `knockout` are boolean flags.
+
+* `group(filter1, filter2, ...)` - Groups multiple filters together.
+
+**Referenceable Parameters:**
+
+Most numeric filter parameters and colors support:
+- References to programmable parameters: `$owner`, `$index`, etc.
+- Arithmetic expressions: `$value * 2 + 10`
+- Ternary operators: `?($condition) trueValue : falseValue`
+- Palette color references: `palette(paletteFile, $index)`
+- Callbacks: `callback("colorName")`
+
+**Examples:**
+
+```
+// Simple static filter
+filter: outline(2, red)
+
+// Using programmable parameters with ternary operator
+#castle programmable(owner:[Player, Enemy]) {
+  filter: pixelOutline(knockout, ?($owner == "Player") #0f0 : #f00, 0.9)
+  bitmap(file("castle.png")): 0,0
+}
+
+// Using expressions with references
+#healthBar programmable(health:int=100) {
+  filter: saturate(?($health < 30) 0.3 : 1.0)
+  bitmap(file("health.png")): 0,0
+}
+
+// Multiple filters with group
+filter: group(
+  outline(?($selected) 2 : 0, yellow),
+  brightness(?($active) 1.2 : 0.8)
+)
+
+// Dynamic glow color from palette
+filter: glow(palette(colors, $index), 1.0, radius: 4)
+```
 
 ## xy 
 xy position can be defined in multiple ways, usually by setting `pos` property in the long form or directly in the short form `#mypoint point:20,30`
@@ -642,7 +697,43 @@ multi enum match:
 * `%` - modulo (integer only)
 * `div` - integer division, behaves the same as `/` with integers
 
-References and parentheses are supported.
+## Ternary Operator
+
+The ternary operator `?(condition) valueIfTrue : valueIfFalse` allows conditional expressions. The condition is wrapped in parentheses.
+
+**Syntax:**
+```
+?(condition) trueValue : falseValue
+```
+
+**Comparison Operators:**
+* `==` - equality
+* `!=` - inequality
+* `<` - less than
+* `>` - greater than
+
+**Examples:**
+```
+// Simple numeric ternary
+alpha: ?($enabled) 1.0 : 0.5
+
+// String comparison
+color: ?($owner == "Player") #00ff00 : #ff0000
+
+// Numeric comparison
+scale: ?($health < 30) 0.8 : 1.0
+
+// In filters
+filter: pixelOutline(knockout, ?($team == "ally") blue : red, 0.9)
+
+// Nested ternaries
+value: ?($score > 100) 3 : ?($score > 50) 2 : 1
+
+// With expressions
+width: ?($count > 5) $count * 20 : $count * 30
+```
+
+References and parentheses are supported in all expressions.
 
 Haxe style interpolated strings are supported  
 ```haxe
