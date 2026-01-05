@@ -1250,8 +1250,16 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 						parseNextAnythingExpression(RVInteger(-stringToInt(n)));
 					case [MPNumber(n, NTFloat)]:
 						parseNextAnythingExpression(RVFloat(-stringToFloat(n)));
-					case [e = parseAnything()]:
-						parseNextAnythingExpression(EUnaryOp(OpNeg, e));
+					case [MPIdentifier(s, _ , ITReference)]:
+						switch stream {
+							case [MPBracketOpen, index = parseAnything(), MPBracketClosed]:
+								parseNextAnythingExpression(EUnaryOp(OpNeg, RVElementOfArray(s, index)));
+							case _:
+								parseNextAnythingExpression(EUnaryOp(OpNeg, RVReference(s)));
+						}
+					case [MPOpen, e = parseAnything(), MPClosed]:
+						parseNextAnythingExpression(EUnaryOp(OpNeg, RVParenthesis(e)));
+					case _: syntaxError('expected value after unary minus');
 				}
 			case [MPNumber(n, NTInteger|NTHexInteger)]:
 				parseNextAnythingExpression(RVInteger(stringToInt(n)));
@@ -1285,8 +1293,16 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 				switch stream {
 					case [MPNumber(n, NTInteger|NTHexInteger)]:
 						parseNextIntExpression(RVInteger(-stringToInt(n)));
-					case [e = parseIntegerOrReference()]:
-						parseNextIntExpression(EUnaryOp(OpNeg, e));
+					case [MPIdentifier(s, _ , ITReference)]:
+						switch stream {
+							case [MPBracketOpen, index = parseIntegerOrReference(), MPBracketClosed]:
+								parseNextIntExpression(EUnaryOp(OpNeg, RVElementOfArray(s, index)));
+							case _:
+								parseNextIntExpression(EUnaryOp(OpNeg, RVReference(s)));
+						}
+					case [MPOpen, e = parseIntegerOrReference(), MPClosed]:
+						parseNextIntExpression(EUnaryOp(OpNeg, RVParenthesis(e)));
+					case _: syntaxError('expected value after unary minus');
 				}
 			case [MPNumber(n, NTInteger|NTHexInteger)]:
 				parseNextIntExpression(RVInteger(stringToInt(n)));
@@ -1318,8 +1334,16 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 				switch stream {
 					case [MPNumber(n, NTInteger|NTFloat)]:
 						parseNextFloatExpression(RVFloat(-stringToFloat(n)));
-					case [e = parseFloatOrReference()]:
-						parseNextFloatExpression(EUnaryOp(OpNeg, e));
+					case [MPIdentifier(s, _ , ITReference)]:
+						switch stream {
+							case [MPBracketOpen, index = parseFloatOrReference(), MPBracketClosed]:
+								parseNextFloatExpression(EUnaryOp(OpNeg, RVElementOfArray(s, index)));
+							case _:
+								parseNextFloatExpression(EUnaryOp(OpNeg, RVReference(s)));
+						}
+					case [MPOpen, e = parseFloatOrReference(), MPClosed]:
+						parseNextFloatExpression(EUnaryOp(OpNeg, RVParenthesis(e)));
+					case _: syntaxError('expected value after unary minus');
 				}
 			case [MPNumber(n, NTInteger|NTFloat)]:
 				parseNextFloatExpression(RVFloat(stringToFloat(n)));

@@ -348,7 +348,6 @@ class MultiAnimBuilder {
 	}
 
 	function resolveAsColorInteger(v:ReferenceableValue):Int {
-		trace('xxxx', v);
 		function getBuilderWithExternal(externalReference:String) {
 			if (externalReference == null)
 				return this;

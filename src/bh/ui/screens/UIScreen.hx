@@ -105,7 +105,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 
 	public function onMouseMove(pos:h2d.col.Point):Bool { return true;}
 	public function onMouseClick(pos:h2d.col.Point, button:Int, release:Bool):Bool {return true;}
-	public function onMouseWheel(delta:Float):Bool { return true;}
+	public function onMouseWheel(pos:h2d.col.Point, delta:Float):Bool { return true;}
 	public function onKey(keyCode:Int, release:Bool):Bool { return true;}
 
 	public function update(dt:Float):Void {
