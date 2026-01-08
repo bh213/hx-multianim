@@ -162,6 +162,7 @@ enum MPKeywords {
 	MPRoundRect;
 	MPInt;
 	MPFloat;
+	MPString;
 	MPColor;
 	MPUInt;
 	MPBool;
@@ -1176,6 +1177,9 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 				return (r << 16) | (g << 8) | b;
 			}
 			return colorVal;
+		} else {
+			// parse as integer
+			return Std.parseInt(s);
 		}
 		
 		return null;
@@ -1859,7 +1863,10 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 				parameter.type = PPTBool;
 			case [MPIdentifier(_, MPArray, ITString)]: 
 				parameter.type = PPTArray;
-			
+			case [MPIdentifier(_, MPString, ITString)]: 
+						parameter.type = PPTString;
+						parameter.defaultValue = StringValue("");
+
 			case [MPBracketOpen]: 
 				var enumNames = [];
 				while(true) {
