@@ -255,7 +255,18 @@ class ScreenManager {
 
 		for (name => screen in configuredScreens) {
 			screen.clear();
-			screen.load();
+			try {
+				screen.load();
+			} catch (e) {
+				trace('Failed to reload screen ${name}: ${e}');
+				return {
+					success: false,
+					error: e.toString(),
+					file: null,
+					pmin: null,
+					pmax: null,
+				}
+			}
 			reloadedScreenNames.push(name);
 		}
 		updateScreenMode(this.mode);
