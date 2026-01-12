@@ -1033,6 +1033,116 @@ class MultiAnimBuilder {
 				indexedParams.remove(varName);
 				skipChildren = true;
 				null;
+			case REPEAT2D(varNameX, varNameY, repeatTypeX, repeatTypeY):
+				var xRepeatCount = 0;
+				var yRepeatCount = 0;
+				var xDx = 0;
+				var xDy = 0;
+				var yDx = 0;
+				var yDy = 0;
+				var xLayoutName:Null<String> = null;
+				var yLayoutName:Null<String> = null;
+				var xArrayIterator:Array<String> = [];
+				var yArrayIterator:Array<String> = [];
+				var xValueVariableName:Null<String> = null;
+				var yValueVariableName:Null<String> = null;
+				var layouts:Null<MultiAnimLayouts> = null;
+				function getLayoutsIfNeeded() {
+					if (layouts == null) layouts = getLayouts();
+					return layouts;
+				}
+
+				switch repeatTypeX {
+					case GridIterator(dirX, dirY, repeats):
+						xRepeatCount = resolveAsInteger(repeats);
+						xDx = dirX == null ? 0 : resolveAsInteger(dirX);
+						xDy = dirY == null ? 0 : resolveAsInteger(dirY);
+					case LayoutIterator(layoutName):
+						final l = getLayoutsIfNeeded();
+						xRepeatCount = l.getLayoutSequenceLengthByLayoutName(layoutName);
+						xLayoutName = layoutName;
+					case ArrayIterator(variableName, arrayName):
+						xArrayIterator = resolveAsArray(RVArrayReference(arrayName));
+						xRepeatCount = xArrayIterator.length;
+						xValueVariableName = variableName;
+					case RangeIterator(start, end, step):
+						final start = resolveAsInteger(start);
+						final end = resolveAsInteger(end);
+						final step = resolveAsInteger(step);
+						xRepeatCount = Math.ceil((end - start) / step);
+						xDx = 0;
+						xDy = 0;
+				}
+
+				switch repeatTypeY {
+					case GridIterator(dirX, dirY, repeats):
+						yRepeatCount = resolveAsInteger(repeats);
+						yDx = dirX == null ? 0 : resolveAsInteger(dirX);
+						yDy = dirY == null ? 0 : resolveAsInteger(dirY);
+					case LayoutIterator(layoutName):
+						final l = getLayoutsIfNeeded();
+						yRepeatCount = l.getLayoutSequenceLengthByLayoutName(layoutName);
+						yLayoutName = layoutName;
+					case ArrayIterator(variableName, arrayName):
+						yArrayIterator = resolveAsArray(RVArrayReference(arrayName));
+						yRepeatCount = yArrayIterator.length;
+						yValueVariableName = variableName;
+					case RangeIterator(start, end, step):
+						final start = resolveAsInteger(start);
+						final end = resolveAsInteger(end);
+						final step = resolveAsInteger(step);
+						yRepeatCount = Math.ceil((end - start) / step);
+						yDx = 0;
+						yDy = 0;
+				}
+
+				if (indexedParams.exists(varNameX) || indexedParams.exists(varNameY))
+					throw 'cannot use repeatable2d index param "$varNameX" or "$varNameY" as it is already defined';
+				var yIterator = yLayoutName == null ? null : getLayoutsIfNeeded().getIterator(yLayoutName);
+				for (yCount in 0...yRepeatCount) {
+					var yOffsetX = 0;
+					var yOffsetY = 0;
+					switch repeatTypeY {
+						case GridIterator(_, _, _):
+							yOffsetX = yDx * yCount;
+							yOffsetY = yDy * yCount;
+						case LayoutIterator(_):
+							var pt = yIterator.next();
+							yOffsetX = cast pt.x;
+							yOffsetY = cast pt.y;
+						case RangeIterator(_, _, _):
+						case ArrayIterator(_, _):
+					}
+					var xIterator = xLayoutName == null ? null : getLayoutsIfNeeded().getIterator(xLayoutName);
+					for (xCount in 0...xRepeatCount) {
+						var xOffsetX = 0;
+						var xOffsetY = 0;
+						switch repeatTypeX {
+							case GridIterator(_, _, _):
+								xOffsetX = xDx * xCount;
+								xOffsetY = xDy * xCount;
+							case LayoutIterator(_):
+								var pt = xIterator.next();
+								xOffsetX = cast pt.x;
+								xOffsetY = cast pt.y;
+							case RangeIterator(_, _, _):
+							case ArrayIterator(_, _):
+						}
+						for (childNode in node.children) {
+							indexedParams.set(varNameX, Value(xCount));
+							indexedParams.set(varNameY, Value(yCount));
+							if (xValueVariableName != null) indexedParams.set(xValueVariableName, StringValue(xArrayIterator[xCount]));
+							if (yValueVariableName != null) indexedParams.set(yValueVariableName, StringValue(yArrayIterator[yCount]));
+							var iterPos = currentPos.clone();
+							iterPos.add(xOffsetX + yOffsetX, xOffsetY + yOffsetY);
+							buildTileGroup(childNode, tileGroup, iterPos, gridCoordinateSystem, hexCoordinateSystem, builderParams);
+						}
+					}
+				}
+				indexedParams.remove(varNameX);
+				indexedParams.remove(varNameY);
+				skipChildren = true;
+				null;
 			case PIXELS(shapes):
 				final pixelsResult = drawPixles(shapes, gridCoordinateSystem, hexCoordinateSystem);
 				pixelsResult.pixelLines.tile;
@@ -1387,6 +1497,123 @@ class MultiAnimBuilder {
 				}
 
 				indexedParams.remove(varName);
+				skipChildren = true;
+				HeapsObject(object);
+
+			case REPEAT2D(varNameX, varNameY, repeatTypeX, repeatTypeY):
+				var object = new h2d.Object();
+				var xRepeatCount = 0;
+				var yRepeatCount = 0;
+				var xDx = 0;
+				var xDy = 0;
+				var yDx = 0;
+				var yDy = 0;
+				var xLayoutName:Null<String> = null;
+				var yLayoutName:Null<String> = null;
+				var xArrayIterator:Array<String> = [];
+				var yArrayIterator:Array<String> = [];
+				var xValueVariableName:Null<String> = null;
+				var yValueVariableName:Null<String> = null;
+				var layouts:Null<MultiAnimLayouts> = null;
+				function getLayoutsIfNeeded() {
+					if (layouts == null) layouts = getLayouts();
+					return layouts;
+				}
+
+				switch repeatTypeX {
+					case GridIterator(dirX, dirY, repeats):
+						xRepeatCount = resolveAsInteger(repeats);
+						xDx = dirX == null ? 0 : resolveAsInteger(dirX);
+						xDy = dirY == null ? 0 : resolveAsInteger(dirY);
+					case LayoutIterator(layoutName):
+						final l = getLayoutsIfNeeded();
+						xRepeatCount = l.getLayoutSequenceLengthByLayoutName(layoutName);
+						xLayoutName = layoutName;
+					case ArrayIterator(variableName, arrayName):
+						xArrayIterator = resolveAsArray(RVArrayReference(arrayName));
+						xRepeatCount = xArrayIterator.length;
+						xValueVariableName = variableName;
+					case RangeIterator(start, end, step):
+						final start = resolveAsInteger(start);
+						final end = resolveAsInteger(end);
+						final step = resolveAsInteger(step);
+						xRepeatCount = Math.ceil((end - start) / step);
+						xDx = 0;
+						xDy = 0;
+				}
+
+				switch repeatTypeY {
+					case GridIterator(dirX, dirY, repeats):
+						yRepeatCount = resolveAsInteger(repeats);
+						yDx = dirX == null ? 0 : resolveAsInteger(dirX);
+						yDy = dirY == null ? 0 : resolveAsInteger(dirY);
+					case LayoutIterator(layoutName):
+						final l = getLayoutsIfNeeded();
+						yRepeatCount = l.getLayoutSequenceLengthByLayoutName(layoutName);
+						yLayoutName = layoutName;
+					case ArrayIterator(variableName, arrayName):
+						yArrayIterator = resolveAsArray(RVArrayReference(arrayName));
+						yRepeatCount = yArrayIterator.length;
+						yValueVariableName = variableName;
+					case RangeIterator(start, end, step):
+						final start = resolveAsInteger(start);
+						final end = resolveAsInteger(end);
+						final step = resolveAsInteger(step);
+						yRepeatCount = Math.ceil((end - start) / step);
+						yDx = 0;
+						yDy = 0;
+				}
+
+				if (indexedParams.exists(varNameX) || indexedParams.exists(varNameY))
+					throw 'cannot use repeatable2d index param "$varNameX" or "$varNameY" as it is already defined';
+				var yIterator = yLayoutName == null ? null : getLayoutsIfNeeded().getIterator(yLayoutName);
+				for (yCount in 0...yRepeatCount) {
+					final gridCoordinateSystem = MultiAnimParser.getGridCoordinateSystem(node);
+					final hexCoordinateSystem = MultiAnimParser.getHexCoordinateSystem(node);
+					var yOffsetX = 0.0;
+					var yOffsetY = 0.0;
+					switch repeatTypeY {
+						case GridIterator(_, _, _):
+							yOffsetX = yDx * yCount;
+							yOffsetY = yDy * yCount;
+						case LayoutIterator(_):
+							var pt = yIterator.next();
+							yOffsetX = pt.x;
+							yOffsetY = pt.y;
+						case RangeIterator(_, _, _):
+						case ArrayIterator(_, _):
+					}
+					var xIterator = xLayoutName == null ? null : getLayoutsIfNeeded().getIterator(xLayoutName);
+					for (xCount in 0...xRepeatCount) {
+						var xOffsetX = 0.0;
+						var xOffsetY = 0.0;
+						switch repeatTypeX {
+							case GridIterator(_, _, _):
+								xOffsetX = xDx * xCount;
+								xOffsetY = xDy * xCount;
+							case LayoutIterator(_):
+								var pt = xIterator.next();
+								xOffsetX = pt.x;
+								xOffsetY = pt.y;
+							case RangeIterator(_, _, _):
+							case ArrayIterator(_, _):
+						}
+						for (childNode in node.children) {
+							indexedParams.set(varNameX, Value(xCount));
+							indexedParams.set(varNameY, Value(yCount));
+							if (xValueVariableName != null) indexedParams.set(xValueVariableName, StringValue(xArrayIterator[xCount]));
+							if (yValueVariableName != null) indexedParams.set(yValueVariableName, StringValue(yArrayIterator[yCount]));
+
+							var obj = build(childNode, ObjectMode(object), gridCoordinateSystem, hexCoordinateSystem, internalResults, builderParams);
+							if (obj == null)
+								continue;
+							addPosition(obj, xOffsetX + yOffsetX, xOffsetY + yOffsetY);
+						}
+					}
+				}
+
+				indexedParams.remove(varNameX);
+				indexedParams.remove(varNameY);
 				skipChildren = true;
 				HeapsObject(object);
 

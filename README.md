@@ -344,6 +344,7 @@ Example:
 * `repeatable($varname, layout(layoutName))` - iterates through all points in the named layout. Example: `repeatable($i, layout("mainScreen")) { ... }`.
 * `repeatable($varname, array(arrayName))` - iterates through all elements of the named array, setting `$varname` to the current value.
 * `repeatable($varname, range(start, end[, step]))` - iterates from `start` (inclusive) to `end` (exclusive) by `step` (default 1). Example: `repeatable($i, range(0, 5))` will repeat for $i = 0, 1, 2, 3, 4.
+* `repeatable2d($x, $y, <iteratorX>, <iteratorY>)` - nested repeatable that walks all x options for each y value (x is inner loop). Any repeatable iterator can be used for x and y: `grid`, `layout`, `array`, or `range`.
 
 Example (range):
 ```
@@ -358,6 +359,13 @@ repeatable($i, grid(10, dx:10)) {
   pixels (
     rect 0,0, 5, 5, #fff
   );
+}
+```
+
+Example (repeatable2d):
+```
+repeatable2d($x, $y, grid(3, dx:10), grid(2, dy:20)) {
+  bitmap("cell.png"): 0,0
 }
 ```
 

@@ -102,6 +102,7 @@ enum MPKeywords {
 	MPHexDirection;
 	MPGridDirection;
 	MPRepeatable;
+	MPRepeatable2D;
 	MPHexGrid;
 	MPOffset;
 	MPGrid;
@@ -744,6 +745,7 @@ enum NodeType {
 	APPLY;
 	LAYERS;
 	REPEAT(varName:String, repeatType:RepeatType);
+	REPEAT2D(varNameX:String, varNameY:String, repeatTypeX:RepeatType, repeatTypeY:RepeatType);
 	REFERENCE(externalReference:Null<String>, programmableReference:String, parameters:Map<String, ReferenceableValue>);
 	PLACEHOLDER(type:PlaceholderTypes, replacementSource:PlaceholderReplacementSource);
 	NINEPATCH(sheet:String, tilename:String, width:ReferenceableValue, height:ReferenceableValue);
@@ -2963,6 +2965,91 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 				}
 				createNodeResponse(INTERACTIVE(width, height, id, debug));
 				
+
+			case [MPIdentifier(_, MPRepeatable2D, ITString), MPOpen,  MPIdentifier(varNameX, _, ITReference | ITString), MPComma, MPIdentifier(varNameY, _, ITReference | ITString), MPComma]:
+				
+				if (currentDefinitions.exists(varNameX)) syntaxError('repeatable2d name "${varNameX}" is already a parameter.');
+				if (currentDefinitions.exists(varNameY)) syntaxError('repeatable2d name "${varNameY}" is already a parameter.');
+				var repeatTypeX = switch stream {
+					case [MPIdentifier(_, MPGrid, ITString), MPOpen, repeatCount = parseIntegerOrReference(), MPComma ]:
+						var once = createOnceParser();
+						var dx:Null<ReferenceableValue> = null;
+						var dy:Null<ReferenceableValue> = null;
+
+						var results = parseOptionalParams([
+							ParseIntegerOrReference(MacroUtils.identToString(dx)), 
+							ParseIntegerOrReference(MacroUtils.identToString(dy))
+						], once);
+						switch stream {
+						   case [MPClosed]:
+						   case _: syntaxError("expected )");
+						}
+						MacroUtils.optionsSetIfNotNull(dx, results);
+						MacroUtils.optionsSetIfNotNull(dy, results);
+						if (dx == null && dy == null) syntaxError('grid repeatable needs at least dx or dy or both');
+						GridIterator(dx, dy, repeatCount);
+					case [MPIdentifier(_, MPLayout, ITString), MPOpen, MPIdentifier(layout, _, ITQuotedString|ITString), MPComma, MPIdentifier(layoutName, _, ITQuotedString|ITString), MPClosed]:
+						postParsedActions.push(PPAVerifyRelativeLayout(layoutName, stream.curPos()));
+						LayoutIterator(layoutName);
+					case [MPIdentifier(_, MPArray, ITString), MPOpen, MPIdentifier(valueVariableName, _, ITString | ITReference), MPComma,  MPIdentifier(arrayName, _, ITReference | ITString), MPClosed]:
+						if (currentDefinitions.exists(valueVariableName)) syntaxError('repeatable2d array iterator value variable name "${valueVariableName}" is already a parameter.');
+						ArrayIterator(valueVariableName, arrayName);
+					case [MPIdentifier(_, MPRange, ITString), MPOpen, start = parseIntegerOrReference(), MPComma, end = parseIntegerOrReference() ]:
+						switch stream {
+							case [MPClosed]:
+								RangeIterator(start, end, RVInteger(1));
+							case [MPComma, step = parseIntegerOrReference(), MPClosed]:
+								RangeIterator(start, end, step);
+							case _: syntaxError("expected )");
+						}
+
+					case _: syntaxError("unknown repeatable iterator, expected grid(dx, dy, repeatCount) | layout(layoutName, layout)| array(arrayName)");
+				}
+				switch stream {
+					case [MPComma]:
+					case _: syntaxError("expected ,");
+				}
+				var repeatTypeY = switch stream {
+					case [MPIdentifier(_, MPGrid, ITString), MPOpen, repeatCount = parseIntegerOrReference(), MPComma ]:
+						var once = createOnceParser();
+						var dx:Null<ReferenceableValue> = null;
+						var dy:Null<ReferenceableValue> = null;
+
+						var results = parseOptionalParams([
+							ParseIntegerOrReference(MacroUtils.identToString(dx)), 
+							ParseIntegerOrReference(MacroUtils.identToString(dy))
+						], once);
+						switch stream {
+						   case [MPClosed]:
+						   case _: syntaxError("expected )");
+						}
+						MacroUtils.optionsSetIfNotNull(dx, results);
+						MacroUtils.optionsSetIfNotNull(dy, results);
+						if (dx == null && dy == null) syntaxError('grid repeatable needs at least dx or dy or both');
+						GridIterator(dx, dy, repeatCount);
+					case [MPIdentifier(_, MPLayout, ITString), MPOpen, MPIdentifier(layout, _, ITQuotedString|ITString), MPComma, MPIdentifier(layoutName, _, ITQuotedString|ITString), MPClosed]:
+						postParsedActions.push(PPAVerifyRelativeLayout(layoutName, stream.curPos()));
+						LayoutIterator(layoutName);
+					case [MPIdentifier(_, MPArray, ITString), MPOpen, MPIdentifier(valueVariableName, _, ITString | ITReference), MPComma,  MPIdentifier(arrayName, _, ITReference | ITString), MPClosed]:
+						if (currentDefinitions.exists(valueVariableName)) syntaxError('repeatable2d array iterator value variable name "${valueVariableName}" is already a parameter.');
+						ArrayIterator(valueVariableName, arrayName);
+					case [MPIdentifier(_, MPRange, ITString), MPOpen, start = parseIntegerOrReference(), MPComma, end = parseIntegerOrReference() ]:
+						switch stream {
+							case [MPClosed]:
+								RangeIterator(start, end, RVInteger(1));
+							case [MPComma, step = parseIntegerOrReference(), MPClosed]:
+								RangeIterator(start, end, step);
+							case _: syntaxError("expected )");
+						}
+
+					case _: syntaxError("unknown repeatable iterator, expected grid(dx, dy, repeatCount) | layout(layoutName, layout)| array(arrayName)");
+				}
+				switch stream {
+					case [MPClosed]:
+					case _: syntaxError("expected )");
+				}
+
+				createNodeResponse(REPEAT2D(varNameX, varNameY, repeatTypeX, repeatTypeY));
 
 			case [MPIdentifier(_, MPRepeatable, ITString), MPOpen,  MPIdentifier(varName, _, ITReference | ITString), MPComma]:
 				
