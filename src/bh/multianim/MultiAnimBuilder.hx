@@ -113,13 +113,17 @@ class BuilderResolvedSettings {
 		this.settings = settings;
 	}
 
-	public function getOrDefault(settingName:String, defaultString:String):String {
+	public function getStringOrDefault(settingName:String, defaultString:String):String {
 		if (settings == null)
 			return defaultString;
 		final r = settings[settingName];
 		if (r == null)
-			throw 'expected string setting ${settingName} to present was not';
-		return r;
+			return defaultString;
+		return switch r {
+			case RSVString(s): s;
+			case RSVInt(i): '$i';
+			case RSVFloat(f): '$f';
+		};
 	}
 
 	public function getStringOrException(settingName:String):String {
@@ -128,7 +132,37 @@ class BuilderResolvedSettings {
 		final r = settings[settingName];
 		if (r == null)
 			throw 'expected string setting ${settingName} to present but was not';
-		return r;
+		return switch r {
+			case RSVString(s): s;
+			case RSVInt(i): '$i';
+			case RSVFloat(f): '$f';
+		};
+	}
+
+	public function getIntOrException(settingName:String):Int {
+		if (settings == null)
+			throw 'settings not found, was looking for $settingName';
+		var r = settings[settingName];
+		if (r == null)
+			throw 'expected int setting ${settingName} to present but was not';
+		return switch r {
+			case RSVInt(i): i;
+			case RSVFloat(f): throw 'expected int setting ${settingName} to valid int number but was float $f';
+			case RSVString(s): throw 'expected int setting ${settingName} to valid int number but was string $s';
+		};
+	}
+
+	public function getIntOrDefault(settingName:String, defaultValue:Int):Int {
+		if (settings == null)
+			throw 'settings not found, was looking for $settingName';
+		var r = settings[settingName];
+		if (r == null)
+			return defaultValue;
+		return switch r {
+			case RSVInt(i): i;
+			case RSVFloat(f): throw 'expected int setting ${settingName} to valid int number but was float $f';
+			case RSVString(s): throw 'expected int setting ${settingName} to valid int number but was string $s';
+		};
 	}
 
 	public function getFloatOrException(settingName:String):Float {
@@ -137,10 +171,11 @@ class BuilderResolvedSettings {
 		var r = settings[settingName];
 		if (r == null)
 			throw 'expected float setting ${settingName} to present but was not';
-		var f = Std.parseFloat(r);
-		if (f != Math.NaN)
-			return f;
-		throw 'expected float setting ${settingName} to valid float number but was $r';
+		return switch r {
+			case RSVFloat(f): f;
+			case RSVInt(i): cast i;
+			case RSVString(s): throw 'expected float setting ${settingName} to valid float number but was string $s';
+		};
 	}
 
 	public function getFloatOrDefault(settingName:String, defaultValue:Float):Float {
@@ -149,10 +184,11 @@ class BuilderResolvedSettings {
 		var r = settings[settingName];
 		if (r == null)
 			return defaultValue;
-		var f = Std.parseFloat(r);
-		if (f != Math.NaN)
-			return f;
-		throw 'expected float setting ${settingName} to valid float number but was $r';
+		return switch r {
+			case RSVFloat(f): f;
+			case RSVInt(i): cast i;
+			case RSVString(s): throw 'expected float setting ${settingName} to valid float number but was string $s';
+		};
 	}
 }
 
@@ -590,7 +626,7 @@ class MultiAnimBuilder {
 					case Index(_, value): return value;
 					default: throw 'invalid reference value ${ref}, expected string got ${val}';
 				}
-			case RVParenthesis(e): throw 'not supported ${v}';
+			case RVParenthesis(e): return resolveAsString(e);
 			case RVFunction(functionType): '${resolveAsInteger(v)}';
 			case RVCallbacks(name, defaultValue):
 				final input = Name(resolveAsString(name));
@@ -1718,7 +1754,7 @@ class MultiAnimBuilder {
 	}
 
 	function resolveSettings(node:Node):ResolvedSettings {
-		var currentSettings:Null<Map<String, ReferenceableValue>> = null;
+		var currentSettings:Null<Map<String, ParsedSettingValue>> = null;
 		var current = node;
 		while (current != null) {
 			if (current.settings != null) {
@@ -1736,8 +1772,12 @@ class MultiAnimBuilder {
 
 		if (currentSettings != null) {
 			final retSettings:ResolvedSettings = [];
-			for (key => value in currentSettings) {
-				retSettings[key] = resolveAsString(value);
+			for (key => settingValue in currentSettings) {
+				retSettings[key] = switch settingValue.type {
+					case SVTInt: RSVInt(resolveAsInteger(settingValue.value));
+					case SVTFloat: RSVFloat(resolveAsNumber(settingValue.value));
+					case SVTString: RSVString(resolveAsString(settingValue.value));
+				}
 			}
 			return retSettings;
 		} else

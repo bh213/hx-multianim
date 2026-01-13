@@ -91,7 +91,7 @@ The library uses macros to map `.manim` file elements to Haxe code. Builder para
 // In your .manim file
 #ui programmable() {
   placeholder(generated(cross(200, 20)), builderParameter("button")) {
-      settings(buildName=>button_custom)
+      settings{buildName=>button_custom}
   }
 }
 ```
@@ -430,18 +430,26 @@ reference($dialogBase) {
 * It can also reference non-programmable nodes, in that case parameters cannot be specified.
 
 ## settings
-* `settings(key1=>value1,key2=>value2,... )` - emits setting value to the build, value can only be used by code (e.g. dropdown)
+* `settings{key1=>value1, key2=>value2, ...}` - emits setting values to the build. Values can be expressions or references to programmable parameters.
 
 Example:
 ```
-settings(transitionTimer=>0.2)
+settings{transitionTimer=>0.2}
 ```
 
 Settings can also be used inside placeholders to override builder names or provide configuration:
 
 ```
 placeholder(generated(cross(200, 20)), builderParameter("button")) {
-    settings(buildName=>button_custom) // override builder name
+    settings{buildName=>button_custom} // override builder name
+}
+```
+
+Settings values support full expressions and can reference programmable parameters:
+
+```
+placeholder(generated(cross(200, 20)), builderParameter("item")) {
+    settings{height=>$itemHeight, width=>200 + $padding}
 }
 ```
 

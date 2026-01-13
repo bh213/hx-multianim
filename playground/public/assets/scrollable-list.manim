@@ -8,7 +8,7 @@ version: 0.1
      
      placeholder(generated(cross(200, 150)), builderParameter("scrollableList")) {
             pos: 10,80
-            settings(panelBuilder=>list-panel, itemBuilder=>list-item-120) // use standard list components
+            settings{panelBuilder=>list-panel, itemBuilder=>list-item-120} // use standard list components
       }
 
       

@@ -198,7 +198,24 @@ enum UpdatableNameType {
 	UNTUpdatable(name:String);
 }
 
-typedef ResolvedSettings = Null<Map<String, String>>;
+enum SettingValueType {
+	SVTString;
+	SVTInt;
+	SVTFloat;
+}
+
+typedef ParsedSettingValue = {
+	var type:SettingValueType;
+	var value:ReferenceableValue;
+}
+
+enum SettingValue {
+	RSVString(s:String);
+	RSVInt(i:Int);
+	RSVFloat(f:Float);
+}
+
+typedef ResolvedSettings = Null<Map<String, SettingValue>>;
 
 @:using(bh.multianim.MultiAnimParser)
 typedef NamedBuildResult = {
@@ -798,7 +815,7 @@ typedef Node = {
 	children:Array<Node>,
 	conditionals: NodeConditionalValues,
 	uniqueNodeName:String,
-	settings:Null<Map<String, ReferenceableValue>>,
+	settings:Null<Map<String, ParsedSettingValue>>,
 	#if MULTIANIM_TRACE	
 	parserPos:String
 	#end
@@ -2851,52 +2868,75 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 				}
 				createNodeResponse(LAYERS);
 
-			case [MPIdentifier(_, MPSettings, ITString), MPOpen]:
-				if (parent == null) syntaxError('settings must have a parent');
-				if (parent.settings == null) parent.settings = [];
-				
-				while (true) {
-					switch stream {
-						case [MPIdentifier(key, _, _), MPArrow ]: 
-							final value = parseStringOrReference();
-							if (parent.settings.exists(key)) syntaxError('setting ${key} already defined');
-							parent.settings[key] = value;
-						case _: unexpectedError("Expected name->value");
-					}
-					switch stream {
-						case [MPComma]:
-						case [MPClosed]: break;
-						case _: unexpectedError("Expected , or )");
-					}
-				}
-				return null;
-				
-			case [MPIdentifier(_, MPPixels, ITString), MPOpen, pixelShapes = parseShapes()]:
-				createNodeResponse(PIXELS(pixelShapes));
-
-			case [MPIdentifier(_, MPRect, ITString)]:
-				createNodeResponse(GRAPHICS([{element: parseGraphicsRectElement(), pos: ZERO}]));
-
-			case [MPIdentifier(_, MPPolygon, ITString)]:
-				createNodeResponse(GRAPHICS([{element: parseGraphicsPolygonElement(), pos: ZERO}]));
-
-			case [MPIdentifier(_, MPCircle, ITString)]:
-				createNodeResponse(GRAPHICS([{element: parseGraphicsCircleElement(), pos: ZERO}]));
-
-			case [MPIdentifier(_, MPEllipse, ITString)]:
-				createNodeResponse(GRAPHICS([{element: parseGraphicsEllipseElement(), pos: ZERO}]));
-
-			case [MPIdentifier(_, MPArc, ITString)]:
-				createNodeResponse(GRAPHICS([{element: parseGraphicsArcElement(), pos: ZERO}]));
-
-
-			case [MPIdentifier(_, MPRoundRect, ITString)]:
-				createNodeResponse(GRAPHICS([{element: parseGraphicsRoundRectElement(), pos: ZERO}]));
-
-			case [MPIdentifier(_, MPGraphics, ITString), MPOpen, elements = parseGraphicsElements()]:
-				createNodeResponse(GRAPHICS(elements));
+		case [MPIdentifier(_, MPSettings, ITString), MPCurlyOpen]:
+			if (parent == null) syntaxError('settings must have a parent');
+			if (parent.settings == null) parent.settings = [];
 			
-			case [MPIdentifier(_, MPReference, ITString), MPOpen]:
+			while (true) {
+				switch stream {
+					case [MPIdentifier(key, _, _)]:
+						// Now check if it's typed (key:type=>value) or untyped (key=>value)
+						switch stream {
+							case [MPColon]:
+								// Match the type keyword and arrow together
+								switch stream {
+									case [MPIdentifier(_, MPInt, ITString), MPArrow]:
+										final value = parseIntegerOrReference();
+										if (parent.settings.exists(key)) syntaxError('setting ${key} already defined');
+										parent.settings[key] = {type: SVTInt, value: value};
+									case [MPIdentifier(_, MPFloat, ITString), MPArrow]:
+										final value = parseFloatOrReference();
+										if (parent.settings.exists(key)) syntaxError('setting ${key} already defined');
+										parent.settings[key] = {type: SVTFloat, value: value};
+									case [MPIdentifier(_, MPString, ITString), MPArrow]:
+										final value = parseStringOrReference();
+										if (parent.settings.exists(key)) syntaxError('setting ${key} already defined');
+										parent.settings[key] = {type: SVTString, value: value};
+									case _: unexpectedError("Expected int=>value, float=>value, or string=>value after :");
+								}
+							case [MPArrow]:
+								// Untyped setting: key => value (defaults to string)
+								final value = parseStringOrReference();
+								if (parent.settings.exists(key)) syntaxError('setting ${key} already defined');
+								parent.settings[key] = {type: SVTString, value: value};
+							case _: unexpectedError("Expected :type=> or => after setting key");
+						}
+					case _: unexpectedError("Expected setting key identifier");
+				}
+				switch stream {
+					case [MPComma]:
+					case [MPCurlyClosed]: break;
+					case _: unexpectedError("Expected , or }");
+				}
+			}
+				return null;
+			
+		
+	case [MPIdentifier(_, MPPixels, ITString), MPOpen, pixelShapes = parseShapes()]:
+		createNodeResponse(PIXELS(pixelShapes));
+
+	case [MPIdentifier(_, MPRect, ITString)]:
+		createNodeResponse(GRAPHICS([{element: parseGraphicsRectElement(), pos: ZERO}]));
+
+	case [MPIdentifier(_, MPPolygon, ITString)]:
+		createNodeResponse(GRAPHICS([{element: parseGraphicsPolygonElement(), pos: ZERO}]));
+
+	case [MPIdentifier(_, MPCircle, ITString)]:
+		createNodeResponse(GRAPHICS([{element: parseGraphicsCircleElement(), pos: ZERO}]));
+
+	case [MPIdentifier(_, MPEllipse, ITString)]:
+		createNodeResponse(GRAPHICS([{element: parseGraphicsEllipseElement(), pos: ZERO}]));
+
+	case [MPIdentifier(_, MPArc, ITString)]:
+		createNodeResponse(GRAPHICS([{element: parseGraphicsArcElement(), pos: ZERO}]));
+
+	case [MPIdentifier(_, MPRoundRect, ITString)]:
+		createNodeResponse(GRAPHICS([{element: parseGraphicsRoundRectElement(), pos: ZERO}]));
+
+	case [MPIdentifier(_, MPGraphics, ITString), MPOpen, elements = parseGraphicsElements()]:
+		createNodeResponse(GRAPHICS(elements));
+		
+	case [MPIdentifier(_, MPReference, ITString), MPOpen]:
 				 var externalReference = null;
 				 var importedBuilder = null;
 				 switch stream {

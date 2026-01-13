@@ -8,7 +8,7 @@ version: 0.1
       point {
         pos: 50,250
         placeholder(generated(cross(20, 20)), builderParameter("button1")) {
-          settings(text=>"override specific placeholder")
+          settings{text=>"override specific placeholder"}
           
         }
         placeholder(generated(cross(20, 20)), builderParameter("button2")):250,0

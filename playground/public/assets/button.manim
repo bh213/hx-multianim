@@ -29,7 +29,7 @@ version: 0.1
       #buttonVal(updatable) text(dd, "Click the button!", #ffffff00): 10,50
      
      placeholder(generated(cross(200, 20)), builderParameter("button")) {
-            settings(builderName=>button_custom) // override builder name (will use button2 programmable from std)
+            settings{builderName=>button_custom} // override builder name (will use button2 programmable from std)
       }
 
       placeholder(generated(cross(200, 20)), builderParameter("disableCheckbox")) {

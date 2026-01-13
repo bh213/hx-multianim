@@ -5,6 +5,7 @@ import bh.ui.UIMultiAnimCheckbox.UIStandardMultiCheckbox;
 import bh.ui.UIMultiAnimSlider.UIStandardMultiAnimSlider;
 import bh.ui.UIMultiAnimButton.UIStandardMultiAnimButton;
 import bh.multianim.MultiAnimParser.ResolvedSettings;
+import bh.multianim.MultiAnimParser.SettingValue;
 import bh.ui.UIElement;
 import bh.multianim.MultiAnimBuilder;
 import bh.stateanim.AnimParser;
@@ -142,7 +143,11 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		final val = settings.get(settingName);
 		if (val == null)
 			return defaultValue;
-		return val;
+		return switch (val) {
+			case RSVString(s): s;
+			case RSVInt(i): '$i';
+			case RSVFloat(f): '$f';
+		};
 	}
 
 	function getIntSettings(settings:ResolvedSettings, settingName:String, defaultValue:Int) {
@@ -151,10 +156,15 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		final val = settings.get(settingName);
 		if (val == null)
 			return defaultValue;
-		var intVal = Std.parseInt(val);
-		if (intVal == null)
-			throw 'could not parse setting "$val" as integer';
-		return intVal;
+		return switch (val) {
+			case RSVInt(i): i;
+			case RSVFloat(f): Std.int(f);
+			case RSVString(s):
+				var intVal = Std.parseInt(s);
+				if (intVal == null)
+					throw 'could not parse setting "$s" as integer';
+				intVal;
+		};
 	}
 
 	function getBoolSettings(settings:ResolvedSettings, settingName:String, defaultValue:Bool) {
@@ -163,11 +173,16 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		final val = settings.get(settingName);
 		if (val == null)
 			return defaultValue;
-		return switch (val.toLowerCase()) {
+		final strVal = switch (val) {
+			case RSVString(s): s;
+			case RSVInt(i): '$i';
+			case RSVFloat(f): '$f';
+		};
+		return switch (strVal.toLowerCase()) {
 			case "true" | "1" | "yes": true;
 			case "false" | "0" | "no": false;
-			default: throw 'could not parse setting "$val" as bool';
-		}
+			default: throw 'could not parse setting "$strVal" as bool';
+		};
 	}
 
 	function validateSettings(settings:ResolvedSettings, allowedSettings:Array<String>, elementName:String) {
