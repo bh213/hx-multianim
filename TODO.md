@@ -2,11 +2,9 @@
 
 FIX: 
 ===================================
-error on root objects setting position - especially #name pixels(...): 100, 100 <- 100,100 is ignored
 repeatable grid: scale ignored for dy/dy?
 repeatable: inline array with $index, $value?
 fix html/implement text
-write examples of all pos transforms, especially root nodes and builderResult.offset
 fix double reload issue
 hex coordinate system offset support 
 

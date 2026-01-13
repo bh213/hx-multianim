@@ -202,7 +202,6 @@ class BuilderResult {
 	public var layouts:Map<String, MultiAnimLayouts>;
 	public var palettes:Map<String, Palette>;
 	public var rootSettings:BuilderResolvedSettings;
-	public var offset:bh.base.FPoint;
 	public var gridCoordinateSystem:Null<GridCoordinateSystem>;
 	public var hexCoordinateSystem:Null<HexCoordinateSystem>;
 
@@ -1454,7 +1453,6 @@ class MultiAnimBuilder {
 				var object = result?.object;
 				if (object == null)
 					throw 'could not build placeholder reference ${reference}';
-				object.setPosition(result.offset.x, result.offset.y);
 				HeapsObject(object);
 
 			case POINT:
@@ -1942,15 +1940,25 @@ class MultiAnimBuilder {
 			}
 		}
 
+		// Wrap in holder object if there's an offset
+		
+		final finalObject = if (retRoot.x != 0 || retRoot.y != 0) {
+			final holder = new h2d.Object();
+			holder.addChild(retRoot);
+			retRoot.setPosition(retRoot.x, retRoot.y);
+			holder;
+		} else {
+			retRoot;
+		}
+		
 		return {
-			object: retRoot,
+			object: finalObject,
 			names: internalResults.names,
 			name: name,
 			interactives: internalResults.interactives,
 			layouts: [],
 			palettes: [],
 			rootSettings: new BuilderResolvedSettings(resolveSettings(rootNode)),
-			offset: new bh.base.FPoint(retRoot.x, retRoot.y),
 			hexCoordinateSystem: hexCoordinateSystem,
 			gridCoordinateSystem: gridCoordinateSystem
 		};
