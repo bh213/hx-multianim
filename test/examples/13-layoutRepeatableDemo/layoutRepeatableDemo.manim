@@ -1,0 +1,28 @@
+version: 0.1
+
+relativeLayouts {
+  grid: 21, 31 {
+    #repeatableTest list {
+      point: 10,20
+      point: 30,20
+      point: 45,35
+      point: 70,60
+      point: 100,90
+      point: 100,110
+      point: 80,120
+      point: 20,120
+    }
+  }
+}
+
+#layoutRepeatableDemo programmable() {
+  pos:10,60
+  grid:250,150
+
+  @alpha(0.1) bitmap(generated(color(function(gridWidth), function(gridHeight),gray)));
+  @alpha(0.9) text(dd, "#13: layout repeatable", white, left, 200);
+  repeatable($index, layout("mainScreen", "repeatableTest")) {
+    pos: 0, 0
+    bitmap(generated(color(10, 15, red)));
+  }
+}

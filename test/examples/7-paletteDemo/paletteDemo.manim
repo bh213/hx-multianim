@@ -1,0 +1,20 @@
+version: 0.1
+
+#file palette(file:"main-palette.png")
+
+#paletteDemo programmable() {
+  pos:10,60
+  grid:250,150
+
+  bitmap(generated(color(function(gridWidth), function(gridHeight),black)));
+
+  @alpha(0.9) text(dd, "#7: palette", white, left, 200);
+
+  repeatable($row, grid(3, dy:25)) {
+    repeatable($index, grid(16, dx:12)) {
+      pos: 5, 20
+      bitmap(generated(color(10, 15, palette(file, $index, $row))));
+    }
+  }
+}
+

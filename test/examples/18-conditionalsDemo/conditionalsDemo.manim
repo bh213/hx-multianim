@@ -1,0 +1,49 @@
+version: 0.1
+
+#conditionalsDemo1 programmable(param1:[top, middle, bottom]) {
+  @(param1=>top) text(pixeled6,  $param1, #FFF, left):0,0
+  @(param1=>middle) text(pixeled6,  $param1, #FFF, left):0,10
+  @(param1=>bottom) text(pixeled6,  $param1, #FFF, left):0,20
+}
+
+#conditionalsDemo2 programmable(param1:[A, B, C]) {
+  @(param1=>A) text(pixeled6,  $param1, #FFF, left):0,0
+  @(param1=>B) text(pixeled6,  $param1, #FFF, left):0,10
+  @(param1=>C) text(pixeled6,  $param1, #FFF, left):0,20
+  @(param1=>!C) text(pixeled6,  "!C", #FFF, left):0,30
+}
+
+#conditionalsDemo3 programmable(param1:[A, B], param2:[X,Y]) {
+  @(param1=>A) text(pixeled6,  $param1+$param2, #FFF, left):0,0
+  @(param1=>B) text(pixeled6,  $param1+$param2, #FFF, left):0,10
+  @(param2=>X) text(pixeled6,  $param1+$param2, #FFF, left):0,20
+  @(param2=>Y) text(pixeled6,  $param1+$param2, #FFF, left):0,30
+  @(param1=>A, param2=>X) text(pixeled6,  $param1+$param2, #FFF, left):0,40
+}
+
+#main point {
+  pos: 0, 0
+  // Block 1: conditionalsDemo1
+  point {
+    pos: 20, 20
+    reference($conditionalsDemo1, param1=>top): 0,0
+    reference($conditionalsDemo1, param1=>middle): 0,20
+    reference($conditionalsDemo1, param1=>bottom): 0,40
+  }
+
+  // Block 2: conditionalsDemo2
+  point {
+    pos: 80, 20
+    reference($conditionalsDemo2, param1=>A): 10,0
+    reference($conditionalsDemo2, param1=>B): 20,0
+    reference($conditionalsDemo2, param1=>C): 30,0
+  }
+
+  // Block 3: conditionalsDemo3
+  point {
+    pos: 140, 20
+    reference($conditionalsDemo3, param1=>A, param2=>X): 10,0
+    reference($conditionalsDemo3, param1=>B, param2=>X): 40,0
+    reference($conditionalsDemo3, param1=>A, param2=>Y): 70,0
+  }
+}

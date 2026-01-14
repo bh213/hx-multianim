@@ -1,0 +1,17 @@
+version: 0.1
+
+#bitmapAlignDemo programmable() {
+  @alpha(0.9) text(dd, "#11: bitmap align", white, left, 200);
+  bitmap(generated(color(100, 1, white)), left, top):0,50
+
+  bitmap(generated(color(20, 20, red)), left, top):0,50
+  bitmap(generated(color(20, 20, red)), left, center):40,50
+  bitmap(generated(color(20, 20, red)), left, bottom):80,50
+
+  bitmap(generated(color(1, 100, white)), left, top):150,20
+
+  bitmap(generated(color(20, 20, red)), left, top):150,20
+  bitmap(generated(color(20, 20, red)), center, top):150,60
+  bitmap(generated(color(20, 20, red)), right, top):150,100
+}
+

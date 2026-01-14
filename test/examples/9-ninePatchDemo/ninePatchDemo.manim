@@ -1,0 +1,18 @@
+version: 0.1
+
+#ninePatchDemo programmable() {
+  pos:10,60
+  grid:250,150
+
+  @alpha(0.5) bitmap(generated(color(function(gridWidth), function(gridHeight),blue)));
+  @alpha(0.9) text(dd, "#9: 9-patch", white, left, 200);
+
+  ninepatch("ui", "Window_3x3_idle", 30, 30): 10,20
+  ninepatch("ui", "Window_3x3_idle", 30, 60): 50,20
+  ninepatch("ui", "Window_3x3_idle", 60, 60): 100,20
+}
+
+#main point {
+  pos: 0, 0
+  reference($ninePatchDemo):0,0
+}

@@ -1,0 +1,18 @@
+version: 0.1
+
+#referenceDemo programmable(width:int, height:int, shape:[rect, triangle], c1:color=white) {
+  @(shape=>rect) bitmap(generated(color($width, $height, $c1)));
+  @(shape=>triangle)  pixels (
+            line 0,0, 0, $height, #f00
+            line 0,$height, $width, $height, #f00
+            line $width,$height, 0, 0, #f00
+          );
+}
+
+#main point {
+  pos: 0, 0
+  reference($referenceDemo, width=>10, height=>10, shape=>rect): 0,0;
+  reference($referenceDemo, width=>30, height=>30, shape=>triangle): 0, 30;
+  reference($referenceDemo, width=>50, height=>20, shape=>triangle): 50, 0;
+  reference($referenceDemo, width=>30, height=>30, shape=>triangle): 50, 30;
+}

@@ -2,3 +2,5 @@ res/.tmp/cache.dat
 build
 res/.tmp/
 
+test/screenshots/
+.claude/settings.local.json

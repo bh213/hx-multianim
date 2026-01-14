@@ -1,0 +1,18 @@
+version: 0.1
+
+
+#flowDemo programmable() {
+  pos:10,60
+  grid:250,150
+
+  @alpha(0.3) bitmap(generated(color(function(gridWidth), function(gridHeight),orange)));
+  flow(maxWidth:200, maxHeight:100, minWidth:200, minHeight:100, layout:vertical, padding:0, debug:1) {
+    text(dd, "test left", red, left);
+    text(m3x6, "test center", blue, center);
+    text(pixeled6, "test right", 0xF00, right);
+  }
+  @alpha(0.9) text(dd, "#6: flow", white, left, 200);
+  @scale(2) text(dd, "WIP", red, center, 200):-100,40
+}
+
+

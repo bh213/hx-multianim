@@ -1,0 +1,14 @@
+version: 0.1
+
+
+#divModDemo programmable() {
+  pos:10,60
+  grid:250,150
+
+  @alpha(0.1) bitmap(generated(color(function(gridWidth), function(gridHeight),white)));
+  @alpha(0.9) text(dd, "#16: div/mod", white, left, 200);
+  repeatable($index, grid(25, dx:0)) {
+    pos: 5, 20
+    bitmap(generated(color(10, 15, red))): ($index %5)*20, ($index div 5) * 25
+  }
+}

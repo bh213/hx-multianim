@@ -1,0 +1,12 @@
+version: 0.1
+
+#updatableDemo programmable() {
+  pos:10,60
+  grid:250,150
+
+  @alpha(0.1) bitmap(generated(color(function(gridWidth), function(gridHeight),yellow)));
+  @alpha(0.9) text(dd, "#12: updatable from code", white, left, 200);
+
+  #textToUpdate(updatable) text(dd, "This is a test text message", #ffffff00): 10,30
+  #bitmapToUpdate(updatable) bitmap(generated(color(20, 20, red)), left, top):10,80
+}

@@ -1,0 +1,13 @@
+version: 0.1
+
+#stateAnimConstructDemo programmable() {
+  pos:10,60
+  grid:250,150
+
+  @alpha(0.1) bitmap(generated(color(function(gridWidth), function(gridHeight),white)));
+  @alpha(0.9) text(dd, "#15: stateAnim construct", white, left, 200);
+  stateAnim construct("state1",
+    "state1" => sheet "crew2", marine_r_shooting_u, 10, loop
+    "state2" => sheet "crew2", marine_l_dead, 10
+  ):50,50
+}

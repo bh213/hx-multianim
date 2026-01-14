@@ -1,0 +1,18 @@
+# hx-multianim Test Configuration
+# Run tests with: haxe test-hx-multianim.hxml
+#
+# This configuration builds and runs unit tests for the hx-multianim library
+
+-lib hxparse
+-lib heaps
+-lib utest
+-lib hldx
+
+-cp test/src
+-p src
+-main bh.test.TestApp
+-debug
+-D resourcesPath=test/res
+-D windowSize=1280x720
+-hl build/hl-test.hl
+--cmd hl build/hl-test.hl
