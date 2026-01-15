@@ -698,8 +698,8 @@ examples:
 `@ifstrict(mode=>idle)` will match nothing as `width` & `height` are not provided. For `@ifstrict` to work in this case use: `@ifstrict(mode=>idle, width=>*, height=>*)`
 
 Range matches (for numbers):
-* `@(key => greaterThan 30)` matches when `key` is 30 or more
-* `@(key => lessThan 30)` matches when `key` is 30 or less
+* `@(key => greaterThanOrEqual 30)` matches when `key` is 30 or more
+* `@(key => lessThanOrEqual 30)` matches when `key` is 30 or less
 * `@(key => between 10..30)` matches when `key` is between inclusive 10 and 30
 
 multi enum match:
@@ -964,6 +964,18 @@ graphics (
 )
 ```
 
+#### line
+* `line(color, lineWidth, x1, y1, x2, y2)` - Draw a line from (x1, y1) to (x2, y2)
+  * `lineWidth` - Width of the line in pixels
+
+**Examples:**
+```
+graphics (
+    line(#ff0000, 2, 0, 0, 100, 50);           // Red line from origin to (100,50)
+    line(#00ff00, 1, 10, 10, 90, 90):50,50     // Green diagonal line offset to (50,50)
+)
+```
+
 #### roundrect
 * `roundrect(color, style, width, height, radius)` - Draw a rectangle with rounded corners
   * `radius` - Corner radius in pixels
@@ -996,8 +1008,7 @@ graphics (
     circle(#00ff00, 2, 30):120,25                // Green circle outline at (120,25)
     ellipse(#0000ff, filled, 80, 40):200,25      // Blue filled ellipse
     arc(#ffff00, 1.5, 40, 0, 180):300,50        // Yellow arc
-    pie(#ff00ff, 45, 90, 120):400,50            // Magenta pie slice
-    pie(#00ffff, 45, 0, 90, 20):500,50          // Cyan donut segment
+    line(#ff00ff, 2, 0, 0, 100, 50):400,50      // Magenta line from (0,0) to (100,50)
     roundrect(#ff8800, filled, 80, 50, 10):50,120  // Orange rounded rectangle
     polygon(#8800ff, filled, 0,0, 40,0, 40,40, 0,40):150,120  // Purple square
 )

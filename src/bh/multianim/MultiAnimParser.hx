@@ -466,6 +466,7 @@ enum GraphicsElement {
 	GEEllipse(color:ReferenceableValue, style:GraphicsStyle, width:ReferenceableValue, height:ReferenceableValue);
 	GEArc(color:ReferenceableValue, style:GraphicsStyle, radius:ReferenceableValue, startAngle:ReferenceableValue, arcAngle:ReferenceableValue);
 	GERoundRect(color:ReferenceableValue, style:GraphicsStyle, width:ReferenceableValue, height:ReferenceableValue, radius:ReferenceableValue);
+	GELine(color:ReferenceableValue, lineWidth:ReferenceableValue, x1:ReferenceableValue, y1:ReferenceableValue, x2:ReferenceableValue, y2:ReferenceableValue);
 }
 
 typedef PositionedGraphicsElement = {
@@ -2036,10 +2037,10 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 								}
 							}
 							dynamicToConditionalParam(bitValue, type);
-						case [MPIdentifier("greaterThan", _, ITString), val = parseInteger()]:
+						case [MPIdentifier("greaterThanOrEqual", _, ITString), val = parseInteger()]:
 							validateIntTypes(name, type, val);
 							CoRange(val, null);
-						case [MPIdentifier("lessThan", _, ITString), val = parseInteger()]:
+						case [MPIdentifier("lessThanOrEqual", _, ITString), val = parseInteger()]:
 							
 							validateIntTypes(name, type, val);
 							CoRange(null, val);
@@ -2212,6 +2213,8 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 					parseGraphicsArcElement();
 				case [MPIdentifier(_, MPRoundRect, ITString)]:
 					parseGraphicsRoundRectElement();
+				case [MPIdentifier(_, MPLine, ITString)]:
+					parseGraphicsLineElement();
 				case [MPClosed]:
 					return elements;
 				case [MPComma]:
@@ -2376,6 +2379,16 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 
 				GERoundRect(color, style, width, height, radius);
 			case _: unexpectedError("expected roundrect(color[, filled|lineWidth], width, height, radius)");
+		}
+	}
+
+	function parseGraphicsLineElement():GraphicsElement {
+		return switch stream {
+			case [MPOpen, color = parseColorOrReference(), MPComma, lineWidth = parseFloatOrReference(), MPComma,
+				  x1 = parseFloatOrReference(), MPComma, y1 = parseFloatOrReference(), MPComma,
+				  x2 = parseFloatOrReference(), MPComma, y2 = parseFloatOrReference(), MPClosed]:
+				GELine(color, lineWidth, x1, y1, x2, y2);
+			case _: unexpectedError("expected line(color, lineWidth, x1, y1, x2, y2)");
 		}
 	}
 

@@ -968,6 +968,12 @@ class MultiAnimBuilder {
 							g.drawRoundedRect(elementPos.x, elementPos.y, resolveAsNumber(width), resolveAsNumber(height), rad);
 							g.lineStyle();
 					}
+				case GELine(color, lineWidth, x1, y1, x2, y2):
+					var resolvedColor = resolveAsColorInteger(color).addAlphaIfNotPresent();
+					g.lineStyle(resolveAsNumber(lineWidth), resolvedColor);
+					g.moveTo(elementPos.x + resolveAsNumber(x1), elementPos.y + resolveAsNumber(y1));
+					g.lineTo(elementPos.x + resolveAsNumber(x2), elementPos.y + resolveAsNumber(y2));
+					g.lineStyle();
 			}
 		}
 	}

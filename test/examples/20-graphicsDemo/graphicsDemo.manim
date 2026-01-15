@@ -71,6 +71,16 @@ version: 0.1
       @alpha(0.7) text(pixeled6, "arc", white, left, 100): -15, 20
     }
 
+    // Line
+    point {
+      pos: 200, 20
+      graphics (
+        // Diagonal line
+        line(#0ff, 2, -15, -10, 15, 10);
+      );
+      @alpha(0.7) text(pixeled6, "line", white, left, 100): -12, 15
+    }
+
     // Combination
     point {
       pos: 140, 80
