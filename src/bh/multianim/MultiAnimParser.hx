@@ -833,7 +833,7 @@ private enum PostParsedActions {
 }
 
 class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, MPToken> implements hxparse.ParserBuilder {
-	final version = "0.1";
+	final version = "0.3";
 	public static final defaultLayoutNodeName = "#defaultLayout";
 	public static final defaultPathNodeName = "#defaultPaths";
 	final resourceLoader:bh.base.ResourceLoader;

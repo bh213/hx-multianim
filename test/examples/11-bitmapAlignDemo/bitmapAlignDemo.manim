@@ -1,4 +1,4 @@
-version: 0.1
+version: 0.3
 
 #bitmapAlignDemo programmable() {
   @alpha(0.9) text(dd, "#11: bitmap align", white, left, 200);

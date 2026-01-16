@@ -1,4 +1,4 @@
-version: 0.1
+version: 0.3
 
 #referenceDemo programmable(width:int, height:int, shape:[rect, triangle], c1:color=white) {
   @(shape=>rect) bitmap(generated(color($width, $height, $c1)));

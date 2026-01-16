@@ -1,4 +1,4 @@
-version: 0.1
+version: 0.3
 
 #conditionalsDemo1 programmable(param1:[top, middle, bottom]) {
   @(param1=>top) text(pixeled6,  $param1, #FFF, left):0,0
