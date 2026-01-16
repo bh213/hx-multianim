@@ -60,7 +60,7 @@ class VisualTestBase extends utest.Test {
 	 * Build a manim file and add it to the scene
 	 */
 	public function buildAndAddToScene(animFilePath:String, name:String):Dynamic {
-		
+
 		// Clear existing children from scene
 		s2d.removeChildren();
 
@@ -83,6 +83,8 @@ class VisualTestBase extends utest.Test {
 				throw 'Error: Failed to build element "$name" from $animFilePath';
 			}
 			s2d.addChild(built.object);
+			// Set 4x scale on root for higher resolution rendering
+			built.object.setScale(4.0);
 			return built;
 		} catch (e:Dynamic) {
 			trace('Error building animation from $animFilePath: $e');

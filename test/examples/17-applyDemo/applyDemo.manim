@@ -18,10 +18,11 @@ version: 0.3
 
 #applyDemo programmable() {
   point { // example 17: apply
+
     @alpha(0.9) text(dd, "#17: apply", white, left, 200);
 
     point {
-      pos:10,10
+      pos:5,5
       reference($applyDemoRef, state=>alpha):30,10
       @alpha(0.9) text(dd, "state=>alpha", white, left, 200):80,15
       reference($applyDemoRef, state=>filter):0,20

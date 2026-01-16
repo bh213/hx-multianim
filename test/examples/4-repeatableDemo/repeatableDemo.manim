@@ -2,7 +2,7 @@ version: 0.3
 
 
 #repeatableDemo programmable() {
-  pos:10,60
+  pos:5,5
   grid:250,150
 
   @alpha(0.3) bitmap(generated(color(function(gridWidth), function(gridHeight),gray)));
