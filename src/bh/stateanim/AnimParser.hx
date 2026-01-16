@@ -772,7 +772,7 @@ class AnimParser extends hxparse.Parser<hxparse.LexerTokenSource<APToken>, APTok
 		function replaceState(input:String, stateSelector:AnimationStateSelector) {
 			var result = input;
 			for (key => value in stateSelector) {
-				result = input.replace('$$$$${key}$$$$', value);
+				result = result.replace('$$$$${key}$$$$', value);
 			}
 			return result;
 		}
