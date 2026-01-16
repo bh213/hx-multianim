@@ -121,7 +121,7 @@ class ScreenManager {
 			#else
 			throw 'loadAnimSMImpl not implemented for this target - filename: $filename';
 			#end
-			return AnimParser.parseFile(byteData, loader);
+			return AnimParser.parseFile(byteData, filename, loader);
 		}
 
 		loader.loadFontImpl = filename -> bh.base.FontManager.getFontByName(filename);

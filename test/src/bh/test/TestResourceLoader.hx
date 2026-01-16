@@ -34,7 +34,7 @@ class TestResourceLoader {
 			if (debugMode) trace('Loading stateanim: ${filename}');
 			final byteData = hxd.Res.load(filename).entry.getBytes();
 			if (debugMode) trace('Loaded ${byteData.length} bytes for ${filename}');
-			return AnimParser.parseFile(ByteData.ofBytes(byteData), loader);
+			return AnimParser.parseFile(ByteData.ofBytes(byteData), filename, loader);
 		}
 
 		loader.loadMultiAnimImpl = resourceFilename -> {
