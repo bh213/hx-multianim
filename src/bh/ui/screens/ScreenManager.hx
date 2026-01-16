@@ -49,6 +49,7 @@ class ScreenManager {
 	final window:hxd.Window;
 	final app:hxd.App;
 	final configuredScreens:Map<String, UIScreen> = [];
+	final failedScreens:Map<String, String> = [];
 	var builders:Map<hxd.res.Resource, MultiAnimBuilder> = [];
 
 	public function new(app:hxd.App, ?loader) {
@@ -257,7 +258,9 @@ class ScreenManager {
 			screen.clear();
 			try {
 				screen.load();
+				failedScreens.remove(name);
 			} catch (e) {
+				failedScreens[name] = e.toString();
 				trace('Failed to reload screen ${name}: ${e}');
 				return {
 					success: false,
@@ -286,6 +289,13 @@ class ScreenManager {
 		if (configuredScreens.exists(name))
 			throw 'screen ${name} already exists';
 		configuredScreens[name] = screen;
+		try {
+			screen.load();
+			failedScreens.remove(name);
+		} catch (e) {
+			failedScreens[name] = e.toString();
+			trace('Failed to load screen ${name}: ${e}');
+		}
 		return screen;
 	}
 
@@ -296,11 +306,47 @@ class ScreenManager {
 		return screen;
 	}
 
+	public function isScreenFailed(screen:UIScreen):Bool {
+		return getScreenFailedError(screen) != null;
+	}
+
+	public function getScreenFailedError(screen:UIScreen):Null<String> {
+		for (name => s in configuredScreens) {
+			if (s == screen) {
+				return failedScreens.get(name);
+			}
+		}
+		return null;
+	}
+
+	function assertScreenNotFailed(screen:UIScreen) {
+		final error = getScreenFailedError(screen);
+		if (error != null) {
+			for (name => s in configuredScreens) {
+				if (s == screen) {
+					throw 'cannot activate failed screen "${name}": ${error}';
+				}
+			}
+		}
+	}
+
 	public function modalDialog(dialog:UIScreen, caller:UIScreen, dialogName:String) {
 		updateScreenMode(Dialog(dialog, caller, mode, dialogName));
 	}
 
 	public function updateScreenMode(newScreenMode:ScreenManagerMode) {
+		// Validate that no failed screens are being activated
+		switch newScreenMode {
+			case None:
+			case Single(single):
+				assertScreenNotFailed(single);
+			case MasterAndSingle(master, single):
+				assertScreenNotFailed(master);
+				assertScreenNotFailed(single);
+			case Dialog(dialog, caller, previousMode, dialogName):
+				assertScreenNotFailed(dialog);
+		}
+
 		function addScreen(newScreen, layer) {
 			app.s2d.add(newScreen.getSceneRoot(), layer);
 			this.activeScreens.push(newScreen);
