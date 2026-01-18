@@ -19,7 +19,7 @@ interface UIControllerScreenIntegration {
 	function getElements(type:SubElementsType):Array<UIElement>;
 	function onKey(keyCode:Int, release:Bool):Bool;
 	function onMouseMove(pos:Point):Bool;
-	function onMouseWheel(delta:Float):Bool;
+	function onMouseWheel(pos:Point, delta:Float):Bool;
 	function onMouseClick(pos:Point, button:Int, release:Bool):Bool;
 }
 

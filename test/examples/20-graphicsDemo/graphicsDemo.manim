@@ -1,0 +1,100 @@
+version: 0.3
+
+#graphicsDemo programmable() {
+  grid:250,150
+
+  @alpha(0.3) bitmap(generated(color(function(gridWidth), function(gridHeight),#333)));
+  @alpha(0.9) text(dd, "#20: graphics", white, left, 200);
+
+  point {
+    pos:10,20
+    // Filled shapes
+    point {
+      pos: 20, 20
+      graphics (
+        // Filled rectangle
+        rect(#f00, filled, 30, 20): -15, -10
+      );
+      @alpha(0.7) text(pixeled6, "rect", white, left, 100): -15, 15
+    }
+
+    point {
+      pos: 70, 20
+      graphics (
+        // Filled circle
+        circle(#0f0, filled, 15): 0, 0
+      );
+      @alpha(0.7) text(pixeled6, "circle", white, left, 100): -15, 20
+    }
+
+    point {
+      pos: 120, 20
+      graphics (
+        // Rounded rectangle
+        roundRect(#00f, filled, 30, 20, 5): -15, -10
+      );
+      @alpha(0.7) text(pixeled6, "roundRect", white, left, 100): -15, 15
+    }
+
+    // Outlined shapes
+    point {
+      pos: 170, 20
+      graphics (
+        // Circle outline
+        circle(#ff0, 2, 12): 0, 0
+      );
+      @alpha(0.7) text(pixeled6, "outline", white, left, 100): -12, 20
+    }
+
+    // Polygon
+    point {
+      pos: 30, 70
+      graphics (
+        // Triangle
+        polygon(#f0f, filled,
+          0, -15,
+          13, 15,
+          -13, 15
+        );
+      );
+      @alpha(0.7) text(pixeled6, "polygon", white, left, 100): -13, 20
+    }
+
+    // Arc
+    point {
+      pos: 80, 70
+      graphics (
+        // Pac-man shape
+        arc(#ff0, filled, 15, 45, 270): 0, 0
+      );
+      @alpha(0.7) text(pixeled6, "arc", white, left, 100): -15, 20
+    }
+
+    // Line
+    point {
+      pos: 200, 20
+      graphics (
+        // Diagonal line
+        line(#0ff, 2, -15, -10, 15, 10);
+      );
+      @alpha(0.7) text(pixeled6, "line", white, left, 100): -12, 15
+    }
+
+    // Combination
+    point {
+      pos: 140, 80
+      graphics (
+        // Body
+        rect(#888, filled, 20, 30): -10, -30
+        // Head
+        circle(#aaa, filled, 10): 0, -35
+        // Eyes
+        circle(#000, filled, 2): -4, -37
+        circle(#000, filled, 2): 4, -37
+        // Smile arc
+        arc(#000, 1, 5, 0, 180): 0, -32
+      ):0,30
+      @alpha(0.7) text(pixeled6, "combined", white, left, 100): -10, 35
+    }
+  }
+}

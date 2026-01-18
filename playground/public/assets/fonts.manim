@@ -1,4 +1,4 @@
-version: 0.1
+version: 0.3
 
 relativeLayouts {
   #fontNames sequence($i: 1..40) point: 100, 20+20 * $i

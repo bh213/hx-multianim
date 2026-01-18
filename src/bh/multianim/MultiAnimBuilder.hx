@@ -113,13 +113,17 @@ class BuilderResolvedSettings {
 		this.settings = settings;
 	}
 
-	public function getOrDefault(settingName:String, defaultString:String):String {
+	public function getStringOrDefault(settingName:String, defaultString:String):String {
 		if (settings == null)
 			return defaultString;
 		final r = settings[settingName];
 		if (r == null)
-			throw 'expected string setting ${settingName} to present was not';
-		return r;
+			return defaultString;
+		return switch r {
+			case RSVString(s): s;
+			case RSVInt(i): '$i';
+			case RSVFloat(f): '$f';
+		};
 	}
 
 	public function getStringOrException(settingName:String):String {
@@ -128,7 +132,37 @@ class BuilderResolvedSettings {
 		final r = settings[settingName];
 		if (r == null)
 			throw 'expected string setting ${settingName} to present but was not';
-		return r;
+		return switch r {
+			case RSVString(s): s;
+			case RSVInt(i): '$i';
+			case RSVFloat(f): '$f';
+		};
+	}
+
+	public function getIntOrException(settingName:String):Int {
+		if (settings == null)
+			throw 'settings not found, was looking for $settingName';
+		var r = settings[settingName];
+		if (r == null)
+			throw 'expected int setting ${settingName} to present but was not';
+		return switch r {
+			case RSVInt(i): i;
+			case RSVFloat(f): throw 'expected int setting ${settingName} to valid int number but was float $f';
+			case RSVString(s): throw 'expected int setting ${settingName} to valid int number but was string $s';
+		};
+	}
+
+	public function getIntOrDefault(settingName:String, defaultValue:Int):Int {
+		if (settings == null)
+			throw 'settings not found, was looking for $settingName';
+		var r = settings[settingName];
+		if (r == null)
+			return defaultValue;
+		return switch r {
+			case RSVInt(i): i;
+			case RSVFloat(f): throw 'expected int setting ${settingName} to valid int number but was float $f';
+			case RSVString(s): throw 'expected int setting ${settingName} to valid int number but was string $s';
+		};
 	}
 
 	public function getFloatOrException(settingName:String):Float {
@@ -137,10 +171,11 @@ class BuilderResolvedSettings {
 		var r = settings[settingName];
 		if (r == null)
 			throw 'expected float setting ${settingName} to present but was not';
-		var f = Std.parseFloat(r);
-		if (f != Math.NaN)
-			return f;
-		throw 'expected float setting ${settingName} to valid float number but was $r';
+		return switch r {
+			case RSVFloat(f): f;
+			case RSVInt(i): cast i;
+			case RSVString(s): throw 'expected float setting ${settingName} to valid float number but was string $s';
+		};
 	}
 
 	public function getFloatOrDefault(settingName:String, defaultValue:Float):Float {
@@ -149,10 +184,11 @@ class BuilderResolvedSettings {
 		var r = settings[settingName];
 		if (r == null)
 			return defaultValue;
-		var f = Std.parseFloat(r);
-		if (f != Math.NaN)
-			return f;
-		throw 'expected float setting ${settingName} to valid float number but was $r';
+		return switch r {
+			case RSVFloat(f): f;
+			case RSVInt(i): cast i;
+			case RSVString(s): throw 'expected float setting ${settingName} to valid float number but was string $s';
+		};
 	}
 }
 
@@ -166,7 +202,6 @@ class BuilderResult {
 	public var layouts:Map<String, MultiAnimLayouts>;
 	public var palettes:Map<String, Palette>;
 	public var rootSettings:BuilderResolvedSettings;
-	public var offset:bh.base.FPoint;
 	public var gridCoordinateSystem:Null<GridCoordinateSystem>;
 	public var hexCoordinateSystem:Null<HexCoordinateSystem>;
 
@@ -306,7 +341,7 @@ class MultiAnimBuilder {
 		return new MultiAnimBuilder(parsed, resourceLoader, sourceName);
 	}
 
-	function resolveAsArrayElement(v:ReferencableValue):Dynamic {
+	function resolveAsArrayElement(v:ReferenceableValue):Dynamic {
 		switch v {
 			case RVElementOfArray(arrayRef, indexRef):
 				final arrayVal = indexedParams.get(arrayRef);
@@ -320,12 +355,14 @@ class MultiAnimBuilder {
 					case null: throw throw 'array reference ${arrayRef}[$indexRef] does not exist';
 					default: throw 'element of array reference ${arrayRef}[$indexRef] is not an array but ${arrayRef}';
 				}
+				case RVTernary(condition, ifTrue, ifFalse):
+					return if (resolveAsBool(condition)) resolveAsArrayElement(ifTrue) else resolveAsArrayElement(ifFalse);
 			default:
 				throw 'expected array element but got ${v}';
 		}
 	}
 
-	function resolveAsArray(v:ReferencableValue):Dynamic {
+	function resolveAsArray(v:ReferenceableValue):Dynamic {
 		switch v {
 			case RVArray(array):
 				return [for (v in array) resolveAsString(v)];
@@ -338,12 +375,14 @@ class MultiAnimBuilder {
 					case ArrayString(strArray): return strArray;
 					default: throw 'array reference ${refArr} is not an array but ${arrayVal}';
 				}
+			case RVTernary(condition, ifTrue, ifFalse):
+				return if (resolveAsBool(condition)) resolveAsArray(ifTrue) else resolveAsArray(ifFalse);
 			default:
 				throw 'expected array but got ${v}';
 		}
 	}
 
-	function resolveAsColorInteger(v:ReferencableValue):Int {
+	function resolveAsColorInteger(v:ReferenceableValue):Int {
 		function getBuilderWithExternal(externalReference:String) {
 			if (externalReference == null)
 				return this;
@@ -365,11 +404,14 @@ class MultiAnimBuilder {
 				palette.getColorByIndex(resolveAsInteger(index));
 			case RVReference(_): resolveAsInteger(v);
 
+			case RVTernary(condition, ifTrue, ifFalse):
+				return if (resolveAsBool(condition)) resolveAsColorInteger(ifTrue) else resolveAsColorInteger(ifFalse);
+
 			default: throw 'expected color to resolve, got $v';
 		}
 	}
 
-	function resolveRVFunction(functionType:ReferencableValueFunction):Int {
+	function resolveRVFunction(functionType:ReferenceableValueFunction):Int {
 		final gridCoordinateSystem = MultiAnimParser.getGridCoordinateSystem(this.currentNode);
 		if (gridCoordinateSystem == null)
 			throw 'cannot resolve $functionType as there is no grid defined';
@@ -380,7 +422,41 @@ class MultiAnimBuilder {
 		}
 	}
 
-	function resolveAsInteger(v:ReferencableValue) {
+	function resolveAsBool(v:ReferenceableValue):Bool {
+		return switch v {
+			case EBinop(op, e1, e2):
+				switch op {
+					case OpEq: 
+						resolveAsString(e1) == resolveAsString(e2);
+					case OpNotEq:
+						resolveAsString(e1) != resolveAsString(e2);
+					case OpLess:
+						// Try numeric comparison first, fall back to string
+						try {
+							resolveAsNumber(e1) < resolveAsNumber(e2);
+						} catch (e) {
+							resolveAsString(e1) < resolveAsString(e2);
+						}
+					case OpGreater:
+						// Try numeric comparison first, fall back to string
+						try {
+							resolveAsNumber(e1) > resolveAsNumber(e2);
+						} catch (e) {
+							resolveAsString(e1) > resolveAsString(e2);
+						}
+					case _: resolveAsInteger(v) != 0;
+				}
+			case RVTernary(condition, ifTrue, ifFalse):
+				if (resolveAsBool(condition)) resolveAsBool(ifTrue) else resolveAsBool(ifFalse);
+			case RVString(s):
+				final boolValue = MultiAnimParser.tryStringToBool(s);
+				if (boolValue != null) return boolValue;
+				return MultiAnimParser.dynamicToInt(s, err -> throw err) != 0;
+			case _: return resolveAsInteger(v) != 0;
+		}
+	}
+
+	function resolveAsInteger(v:ReferenceableValue) {
 		function handleCallback(result, input:CallbackRequest, defaultValue) {
 			return switch result {
 				case CBRInteger(val): val;
@@ -412,6 +488,8 @@ class MultiAnimBuilder {
 				}
 			case RVParenthesis(e): resolveAsInteger(e);
 			case RVFunction(functionType): resolveRVFunction(functionType);
+			case RVTernary(condition, ifTrue, ifFalse):
+				return if (resolveAsBool(condition)) resolveAsInteger(ifTrue) else resolveAsInteger(ifFalse);
 
 			case RVCallbacks(name, defaultValue):
 				final input = Name(resolveAsString(name));
@@ -431,6 +509,10 @@ class MultiAnimBuilder {
 					case OpDiv: Std.int(resolveAsInteger(e1) / resolveAsInteger(e2));
 					case OpMod: Std.int(resolveAsInteger(e1) % resolveAsInteger(e2));
 					case OpIntegerDiv: Std.int(resolveAsInteger(e1) / resolveAsInteger(e2));
+					case OpEq: resolveAsInteger(e1) == resolveAsInteger(e2) ? 1 : 0;
+					case OpNotEq: resolveAsInteger(e1) != resolveAsInteger(e2) ? 1 : 0;
+					case OpLess: resolveAsInteger(e1) < resolveAsInteger(e2) ? 1 : 0;
+					case OpGreater: resolveAsInteger(e1) > resolveAsInteger(e2) ? 1 : 0;
 				}
 			case EUnaryOp(op, e):
 				switch op {
@@ -439,7 +521,7 @@ class MultiAnimBuilder {
 		}
 	}
 
-	function resolveAsNumber(v:ReferencableValue):Float {
+	function resolveAsNumber(v:ReferenceableValue):Float {
 		return switch v {
 			case RVElementOfArray(array, index): resolveAsArrayElement(v);
 			case RVArray(refArray): throw 'RVArray not supported';
@@ -461,6 +543,8 @@ class MultiAnimBuilder {
 				}
 			case RVParenthesis(e): resolveAsNumber(e);
 			case RVFunction(functionType): resolveRVFunction(functionType);
+			case RVTernary(condition, ifTrue, ifFalse):
+				return if (resolveAsBool(condition)) resolveAsNumber(ifTrue) else resolveAsNumber(ifFalse);
 			case RVCallbacks(name, defaultValue):
 				final input = Name(resolveAsString(name));
 				final result = builderParams.callback(input);
@@ -493,6 +577,10 @@ class MultiAnimBuilder {
 					case OpDiv: resolveAsNumber(e1) / resolveAsNumber(e2);
 					case OpMod: resolveAsNumber(e1) % resolveAsNumber(e2);
 					case OpIntegerDiv: Std.int(resolveAsInteger(e1) / resolveAsInteger(e2));
+					case OpEq: resolveAsNumber(e1) == resolveAsNumber(e2) ? 1 : 0;
+					case OpNotEq: resolveAsNumber(e1) != resolveAsNumber(e2) ? 1 : 0;
+					case OpLess: resolveAsNumber(e1) < resolveAsNumber(e2) ? 1 : 0;
+					case OpGreater: resolveAsNumber(e1) > resolveAsNumber(e2) ? 1 : 0;
 				}
 			case EUnaryOp(op, e):
 				switch op {
@@ -501,7 +589,7 @@ class MultiAnimBuilder {
 		}
 	}
 
-	function resolveAsString(v:ReferencableValue):String {
+	function resolveAsString(v:ReferenceableValue):String {
 		function handleCallback(result, input:CallbackRequest, defaultValue) {
 			return switch result {
 				case CBRInteger(val): '${val}';
@@ -537,7 +625,7 @@ class MultiAnimBuilder {
 					case Index(_, value): return value;
 					default: throw 'invalid reference value ${ref}, expected string got ${val}';
 				}
-			case RVParenthesis(e): throw 'not supported ${v}';
+			case RVParenthesis(e): return resolveAsString(e);
 			case RVFunction(functionType): '${resolveAsInteger(v)}';
 			case RVCallbacks(name, defaultValue):
 				final input = Name(resolveAsString(name));
@@ -551,8 +639,18 @@ class MultiAnimBuilder {
 			case EBinop(op, e1, e2): switch op {
 					case OpAdd:
 						return resolveAsString(e1) + resolveAsString(e2);
+					case OpEq:
+						return resolveAsString(e1) == resolveAsString(e2) ? "1" : "0";
+					case OpNotEq:
+						return resolveAsString(e1) != resolveAsString(e2) ? "1" : "0";
+					case OpLess:
+						return resolveAsString(e1) < resolveAsString(e2) ? "1" : "0";
+					case OpGreater:
+						return resolveAsString(e1) > resolveAsString(e2) ? "1" : "0";
 					default: throw 'op ${op} not supported on strings';
 				}
+			case RVTernary(condition, ifTrue, ifFalse):
+				return if (resolveAsBool(condition)) resolveAsString(ifTrue) else resolveAsString(ifFalse);
 			case EUnaryOp(op, e): 
 				switch op {
 					case OpNeg: return '-' + resolveAsString(e);
@@ -778,6 +876,108 @@ class MultiAnimBuilder {
 		return {pixelLines: pl, minX: minX, minY: minY};
 	}
 
+	function drawGraphicsElements(g:h2d.Graphics, elements:Array<PositionedGraphicsElement>, gridCoordinateSystem, hexCoordinateSystem) {
+		for (item in elements) {
+			final elementPos = calculatePosition(item.pos, gridCoordinateSystem, hexCoordinateSystem).toPoint();
+			g.lineStyle();
+			switch item.element {
+				case GERect(color, style, width, height):
+					var resolvedColor = resolveAsColorInteger(color).addAlphaIfNotPresent();
+					switch style {
+						case GSFilled:
+							g.beginFill(resolvedColor);
+							g.drawRect(elementPos.x, elementPos.y, resolveAsNumber(width), resolveAsNumber(height));
+							g.endFill();
+						case GSLineWidth(lw):
+							g.lineStyle(resolveAsNumber(lw), resolvedColor);
+							g.drawRect(elementPos.x, elementPos.y, resolveAsNumber(width), resolveAsNumber(height));
+							g.lineStyle();
+					}
+				case GEPolygon(color, style, points):
+					var resolvedColor = resolveAsColorInteger(color).addAlphaIfNotPresent();
+					switch style {
+						case GSFilled:
+							g.beginFill(resolvedColor);
+						case GSLineWidth(lw):
+							g.lineStyle(resolveAsNumber(lw), resolvedColor);
+					}
+
+					if (points.length > 0) {
+						var first = points[0];
+						var fx = resolveAsNumber(first.x) + elementPos.x;
+						var fy = resolveAsNumber(first.y) + elementPos.y;
+						g.moveTo(fx, fy);
+						for (i in 1...points.length) {
+							var p = points[i];
+							g.lineTo(resolveAsNumber(p.x) + elementPos.x, resolveAsNumber(p.y) + elementPos.y);
+						}
+						g.lineTo(fx, fy);
+					}
+
+					switch style {
+						case GSFilled: g.endFill();
+						case GSLineWidth(_): g.lineStyle();
+					}
+				case GECircle(color, style, radius):
+					var resolvedColor = resolveAsColorInteger(color).addAlphaIfNotPresent();
+					switch style {
+						case GSFilled:
+							g.beginFill(resolvedColor);
+							g.drawCircle(elementPos.x, elementPos.y, resolveAsNumber(radius));
+							g.endFill();
+						case GSLineWidth(lw):
+							g.lineStyle(resolveAsNumber(lw), resolvedColor);
+							g.drawCircle(elementPos.x, elementPos.y, resolveAsNumber(radius));
+							g.lineStyle();
+					}
+				case GEEllipse(color, style, width, height):
+					var resolvedColor = resolveAsColorInteger(color).addAlphaIfNotPresent();
+					switch style {
+						case GSFilled:
+							g.beginFill(resolvedColor);
+							g.drawEllipse(elementPos.x, elementPos.y, resolveAsNumber(width), resolveAsNumber(height));
+							g.endFill();
+						case GSLineWidth(lw):
+							g.lineStyle(resolveAsNumber(lw), resolvedColor);
+							g.drawEllipse(elementPos.x, elementPos.y, resolveAsNumber(width), resolveAsNumber(height));
+							g.lineStyle();
+					}
+				case GEArc(color, style, radius, startAngle, arcAngle):
+					var resolvedColor = resolveAsColorInteger(color).addAlphaIfNotPresent();
+					switch style {
+						case GSLineWidth(lw):
+							g.lineStyle(resolveAsNumber(lw), resolvedColor);
+							g.drawPie(elementPos.x, elementPos.y, resolveAsNumber(radius), hxd.Math.degToRad(resolveAsNumber(startAngle)), hxd.Math.degToRad(resolveAsNumber(arcAngle)));
+							g.lineStyle();
+						case GSFilled:
+							// Arc doesn't support filled, treat as line
+							g.lineStyle(1.0, resolvedColor);
+							g.drawPie(elementPos.x, elementPos.y, resolveAsNumber(radius), hxd.Math.degToRad(resolveAsNumber(startAngle)), hxd.Math.degToRad(resolveAsNumber(arcAngle)));
+							g.lineStyle();
+					}
+				case GERoundRect(color, style, width, height, radius):
+					var resolvedColor = resolveAsColorInteger(color).addAlphaIfNotPresent();
+					var rad = resolveAsNumber(radius);
+					switch style {
+						case GSFilled:
+							g.beginFill(resolvedColor);
+							g.drawRoundedRect(elementPos.x, elementPos.y, resolveAsNumber(width), resolveAsNumber(height), rad);
+							g.endFill();
+						case GSLineWidth(lw):
+							g.lineStyle(resolveAsNumber(lw), resolvedColor);
+							g.drawRoundedRect(elementPos.x, elementPos.y, resolveAsNumber(width), resolveAsNumber(height), rad);
+							g.lineStyle();
+					}
+				case GELine(color, lineWidth, x1, y1, x2, y2):
+					var resolvedColor = resolveAsColorInteger(color).addAlphaIfNotPresent();
+					g.lineStyle(resolveAsNumber(lineWidth), resolvedColor);
+					g.moveTo(elementPos.x + resolveAsNumber(x1), elementPos.y + resolveAsNumber(y1));
+					g.lineTo(elementPos.x + resolveAsNumber(x2), elementPos.y + resolveAsNumber(y2));
+					g.lineStyle();
+			}
+		}
+	}
+
 	function buildTileGroup(node:Node, tileGroup:h2d.TileGroup, currentPos:Point, gridCoordinateSystem:GridCoordinateSystem,
 			hexCoordinateSystem:HexCoordinateSystem, builderParams:BuilderParameters):Void {
 		if (isMatch(node, indexedParams) == false)
@@ -822,6 +1022,8 @@ class MultiAnimBuilder {
 				var repeatCount = 0;
 				var iterator = null;
 				var arrayIterator:Array<String> = [];
+				var rangeStart = 0;
+				var rangeStep = 1;
 
 				switch repeatType {
 					case GridIterator(dirX, dirY, repeats):
@@ -836,10 +1038,10 @@ class MultiAnimBuilder {
 						arrayIterator = resolveAsArray(RVArrayReference(arrayName));
 						repeatCount = arrayIterator.length;
 					case RangeIterator(start, end, step):
-						final start = resolveAsInteger(start);
-						final end = resolveAsInteger(end);
-						final step = resolveAsInteger(step);
-						repeatCount = Math.ceil((end - start) / step);
+						rangeStart = resolveAsInteger(start);
+						final rangeEnd = resolveAsInteger(end);
+						rangeStep = resolveAsInteger(step);
+						repeatCount = Math.ceil((rangeEnd - rangeStart) / rangeStep);
 						dx = 0;
 						dy = 0;
 				}
@@ -847,10 +1049,14 @@ class MultiAnimBuilder {
 				if (indexedParams.exists(node.updatableName.getNameString()))
 					throw 'cannot use repeatable index param "$varName" as it is already defined';
 				for (count in 0...repeatCount) {
+					final resolvedIndex = switch repeatType {
+						case RangeIterator(_, _, _): rangeStart + count * rangeStep;
+						case _: count;
+					};
 					final gridCoordinateSystem = MultiAnimParser.getGridCoordinateSystem(node);
 					final hexCoordinateSystem = MultiAnimParser.getHexCoordinateSystem(node);
 					for (childNode in node.children) {
-						indexedParams.set(varName, Value(count));
+						indexedParams.set(varName, Value(resolvedIndex));
 						// var repeaterPos = calculatePosition(node.pos, gridCoordinateSystem, hexCoordinateSystem).toPoint();
 
 						var iterPos = currentPos.clone();
@@ -872,6 +1078,128 @@ class MultiAnimBuilder {
 					}
 				}
 				indexedParams.remove(varName);
+				skipChildren = true;
+				null;
+			case REPEAT2D(varNameX, varNameY, repeatTypeX, repeatTypeY):
+				var xRepeatCount = 0;
+				var yRepeatCount = 0;
+				var xDx = 0;
+				var xDy = 0;
+				var yDx = 0;
+				var yDy = 0;
+				var xLayoutName:Null<String> = null;
+				var yLayoutName:Null<String> = null;
+				var xArrayIterator:Array<String> = [];
+				var yArrayIterator:Array<String> = [];
+				var xValueVariableName:Null<String> = null;
+				var yValueVariableName:Null<String> = null;
+				var xRangeStart = 0;
+				var xRangeStep = 1;
+				var yRangeStart = 0;
+				var yRangeStep = 1;
+				var layouts:Null<MultiAnimLayouts> = null;
+				function getLayoutsIfNeeded() {
+					if (layouts == null) layouts = getLayouts();
+					return layouts;
+				}
+
+				switch repeatTypeX {
+					case GridIterator(dirX, dirY, repeats):
+						xRepeatCount = resolveAsInteger(repeats);
+						xDx = dirX == null ? 0 : resolveAsInteger(dirX);
+						xDy = dirY == null ? 0 : resolveAsInteger(dirY);
+					case LayoutIterator(layoutName):
+						final l = getLayoutsIfNeeded();
+						xRepeatCount = l.getLayoutSequenceLengthByLayoutName(layoutName);
+						xLayoutName = layoutName;
+					case ArrayIterator(variableName, arrayName):
+						xArrayIterator = resolveAsArray(RVArrayReference(arrayName));
+						xRepeatCount = xArrayIterator.length;
+						xValueVariableName = variableName;
+					case RangeIterator(start, end, step):
+						xRangeStart = resolveAsInteger(start);
+						final rangeEnd = resolveAsInteger(end);
+						xRangeStep = resolveAsInteger(step);
+						xRepeatCount = Math.ceil((rangeEnd - xRangeStart) / xRangeStep);
+						xDx = 0;
+						xDy = 0;
+				}
+
+				switch repeatTypeY {
+					case GridIterator(dirX, dirY, repeats):
+						yRepeatCount = resolveAsInteger(repeats);
+						yDx = dirX == null ? 0 : resolveAsInteger(dirX);
+						yDy = dirY == null ? 0 : resolveAsInteger(dirY);
+					case LayoutIterator(layoutName):
+						final l = getLayoutsIfNeeded();
+						yRepeatCount = l.getLayoutSequenceLengthByLayoutName(layoutName);
+						yLayoutName = layoutName;
+					case ArrayIterator(variableName, arrayName):
+						yArrayIterator = resolveAsArray(RVArrayReference(arrayName));
+						yRepeatCount = yArrayIterator.length;
+						yValueVariableName = variableName;
+					case RangeIterator(start, end, step):
+						yRangeStart = resolveAsInteger(start);
+						final rangeEnd = resolveAsInteger(end);
+						yRangeStep = resolveAsInteger(step);
+						yRepeatCount = Math.ceil((rangeEnd - yRangeStart) / yRangeStep);
+						yDx = 0;
+						yDy = 0;
+				}
+
+				if (indexedParams.exists(varNameX) || indexedParams.exists(varNameY))
+					throw 'cannot use repeatable2d index param "$varNameX" or "$varNameY" as it is already defined';
+				var yIterator = yLayoutName == null ? null : getLayoutsIfNeeded().getIterator(yLayoutName);
+				for (yCount in 0...yRepeatCount) {
+					final resolvedY = switch repeatTypeY {
+						case RangeIterator(_, _, _): yRangeStart + yCount * yRangeStep;
+						case _: yCount;
+					};
+					var yOffsetX = 0;
+					var yOffsetY = 0;
+					switch repeatTypeY {
+						case GridIterator(_, _, _):
+							yOffsetX = yDx * yCount;
+							yOffsetY = yDy * yCount;
+						case LayoutIterator(_):
+							var pt = yIterator.next();
+							yOffsetX = cast pt.x;
+							yOffsetY = cast pt.y;
+						case RangeIterator(_, _, _):
+						case ArrayIterator(_, _):
+					}
+					var xIterator = xLayoutName == null ? null : getLayoutsIfNeeded().getIterator(xLayoutName);
+					for (xCount in 0...xRepeatCount) {
+						final resolvedX = switch repeatTypeX {
+							case RangeIterator(_, _, _): xRangeStart + xCount * xRangeStep;
+							case _: xCount;
+						};
+						var xOffsetX = 0;
+						var xOffsetY = 0;
+						switch repeatTypeX {
+							case GridIterator(_, _, _):
+								xOffsetX = xDx * xCount;
+								xOffsetY = xDy * xCount;
+							case LayoutIterator(_):
+								var pt = xIterator.next();
+								xOffsetX = cast pt.x;
+								xOffsetY = cast pt.y;
+							case RangeIterator(_, _, _):
+							case ArrayIterator(_, _):
+						}
+						for (childNode in node.children) {
+							indexedParams.set(varNameX, Value(resolvedX));
+							indexedParams.set(varNameY, Value(resolvedY));
+							if (xValueVariableName != null) indexedParams.set(xValueVariableName, StringValue(xArrayIterator[xCount]));
+							if (yValueVariableName != null) indexedParams.set(yValueVariableName, StringValue(yArrayIterator[yCount]));
+							var iterPos = currentPos.clone();
+							iterPos.add(xOffsetX + yOffsetX, xOffsetY + yOffsetY);
+							buildTileGroup(childNode, tileGroup, iterPos, gridCoordinateSystem, hexCoordinateSystem, builderParams);
+						}
+					}
+				}
+				indexedParams.remove(varNameX);
+				indexedParams.remove(varNameY);
 				skipChildren = true;
 				null;
 			case PIXELS(shapes):
@@ -1131,7 +1459,6 @@ class MultiAnimBuilder {
 				var object = result?.object;
 				if (object == null)
 					throw 'could not build placeholder reference ${reference}';
-				object.setPosition(result.offset.x, result.offset.y);
 				HeapsObject(object);
 
 			case POINT:
@@ -1176,6 +1503,8 @@ class MultiAnimBuilder {
 				var repeatCount = 0;
 				var iterator = null;
 				var arrayIterator:Array<String> = [];
+				var rangeStart = 0;
+				var rangeStep = 1;
 
 				switch repeatType {
 					case GridIterator(dirX, dirY, repeats):
@@ -1190,10 +1519,10 @@ class MultiAnimBuilder {
 						arrayIterator = resolveAsArray(RVArrayReference(arrayName));
 						repeatCount = arrayIterator.length;
 					case RangeIterator(start, end, step):
-						final start = resolveAsInteger(start);
-						final end = resolveAsInteger(end);
-						final step = resolveAsInteger(step);
-						repeatCount = Math.ceil((end - start) / step);
+						rangeStart = resolveAsInteger(start);
+						final rangeEnd = resolveAsInteger(end);
+						rangeStep = resolveAsInteger(step);
+						repeatCount = Math.ceil((rangeEnd - rangeStart) / rangeStep);
 						dx = 0;
 						dy = 0;
 				}
@@ -1201,10 +1530,14 @@ class MultiAnimBuilder {
 				if (indexedParams.exists(node.updatableName.getNameString()))
 					throw 'cannot use repeatable index param "$varName" as it is already defined';
 				for (count in 0...repeatCount) {
+					final resolvedIndex = switch repeatType {
+						case RangeIterator(_, _, _): rangeStart + count * rangeStep;
+						case _: count;
+					};
 					final gridCoordinateSystem = MultiAnimParser.getGridCoordinateSystem(node);
 					final hexCoordinateSystem = MultiAnimParser.getHexCoordinateSystem(node);
 					for (childNode in node.children) {
-						indexedParams.set(varName, Value(count));
+						indexedParams.set(varName, Value(resolvedIndex));
 						switch repeatType {
 							case ArrayIterator(valueVariableName, arrayName):
 								indexedParams.set(valueVariableName, StringValue(arrayIterator[count]));
@@ -1231,6 +1564,135 @@ class MultiAnimBuilder {
 				skipChildren = true;
 				HeapsObject(object);
 
+			case REPEAT2D(varNameX, varNameY, repeatTypeX, repeatTypeY):
+				var object = new h2d.Object();
+				var xRepeatCount = 0;
+				var yRepeatCount = 0;
+				var xDx = 0;
+				var xDy = 0;
+				var yDx = 0;
+				var yDy = 0;
+				var xLayoutName:Null<String> = null;
+				var yLayoutName:Null<String> = null;
+				var xArrayIterator:Array<String> = [];
+				var yArrayIterator:Array<String> = [];
+				var xValueVariableName:Null<String> = null;
+				var yValueVariableName:Null<String> = null;
+				var xRangeStart = 0;
+				var xRangeStep = 1;
+				var yRangeStart = 0;
+				var yRangeStep = 1;
+				var layouts:Null<MultiAnimLayouts> = null;
+				function getLayoutsIfNeeded() {
+					if (layouts == null) layouts = getLayouts();
+					return layouts;
+				}
+
+				switch repeatTypeX {
+					case GridIterator(dirX, dirY, repeats):
+						xRepeatCount = resolveAsInteger(repeats);
+						xDx = dirX == null ? 0 : resolveAsInteger(dirX);
+						xDy = dirY == null ? 0 : resolveAsInteger(dirY);
+					case LayoutIterator(layoutName):
+						final l = getLayoutsIfNeeded();
+						xRepeatCount = l.getLayoutSequenceLengthByLayoutName(layoutName);
+						xLayoutName = layoutName;
+					case ArrayIterator(variableName, arrayName):
+						xArrayIterator = resolveAsArray(RVArrayReference(arrayName));
+						xRepeatCount = xArrayIterator.length;
+						xValueVariableName = variableName;
+					case RangeIterator(start, end, step):
+						xRangeStart = resolveAsInteger(start);
+						final rangeEnd = resolveAsInteger(end);
+						xRangeStep = resolveAsInteger(step);
+						xRepeatCount = Math.ceil((rangeEnd - xRangeStart) / xRangeStep);
+						xDx = 0;
+						xDy = 0;
+				}
+
+				switch repeatTypeY {
+					case GridIterator(dirX, dirY, repeats):
+						yRepeatCount = resolveAsInteger(repeats);
+						yDx = dirX == null ? 0 : resolveAsInteger(dirX);
+						yDy = dirY == null ? 0 : resolveAsInteger(dirY);
+					case LayoutIterator(layoutName):
+						final l = getLayoutsIfNeeded();
+						yRepeatCount = l.getLayoutSequenceLengthByLayoutName(layoutName);
+						yLayoutName = layoutName;
+					case ArrayIterator(variableName, arrayName):
+						yArrayIterator = resolveAsArray(RVArrayReference(arrayName));
+						yRepeatCount = yArrayIterator.length;
+						yValueVariableName = variableName;
+					case RangeIterator(start, end, step):
+						yRangeStart = resolveAsInteger(start);
+						final rangeEnd = resolveAsInteger(end);
+						yRangeStep = resolveAsInteger(step);
+						yRepeatCount = Math.ceil((rangeEnd - yRangeStart) / yRangeStep);
+						yDx = 0;
+						yDy = 0;
+				}
+
+				if (indexedParams.exists(varNameX) || indexedParams.exists(varNameY))
+					throw 'cannot use repeatable2d index param "$varNameX" or "$varNameY" as it is already defined';
+				var yIterator = yLayoutName == null ? null : getLayoutsIfNeeded().getIterator(yLayoutName);
+				for (yCount in 0...yRepeatCount) {
+					final resolvedY = switch repeatTypeY {
+						case RangeIterator(_, _, _): yRangeStart + yCount * yRangeStep;
+						case _: yCount;
+					};
+					final gridCoordinateSystem = MultiAnimParser.getGridCoordinateSystem(node);
+					final hexCoordinateSystem = MultiAnimParser.getHexCoordinateSystem(node);
+					var yOffsetX = 0.0;
+					var yOffsetY = 0.0;
+					switch repeatTypeY {
+						case GridIterator(_, _, _):
+							yOffsetX = yDx * yCount;
+							yOffsetY = yDy * yCount;
+						case LayoutIterator(_):
+							var pt = yIterator.next();
+							yOffsetX = pt.x;
+							yOffsetY = pt.y;
+						case RangeIterator(_, _, _):
+						case ArrayIterator(_, _):
+					}
+					var xIterator = xLayoutName == null ? null : getLayoutsIfNeeded().getIterator(xLayoutName);
+					for (xCount in 0...xRepeatCount) {
+						final resolvedX = switch repeatTypeX {
+							case RangeIterator(_, _, _): xRangeStart + xCount * xRangeStep;
+							case _: xCount;
+						};
+						var xOffsetX = 0.0;
+						var xOffsetY = 0.0;
+						switch repeatTypeX {
+							case GridIterator(_, _, _):
+								xOffsetX = xDx * xCount;
+								xOffsetY = xDy * xCount;
+							case LayoutIterator(_):
+								var pt = xIterator.next();
+								xOffsetX = pt.x;
+								xOffsetY = pt.y;
+							case RangeIterator(_, _, _):
+							case ArrayIterator(_, _):
+						}
+						for (childNode in node.children) {
+							indexedParams.set(varNameX, Value(resolvedX));
+							indexedParams.set(varNameY, Value(resolvedY));
+							if (xValueVariableName != null) indexedParams.set(xValueVariableName, StringValue(xArrayIterator[xCount]));
+							if (yValueVariableName != null) indexedParams.set(yValueVariableName, StringValue(yArrayIterator[yCount]));
+
+							var obj = build(childNode, ObjectMode(object), gridCoordinateSystem, hexCoordinateSystem, internalResults, builderParams);
+							if (obj == null)
+								continue;
+							addPosition(obj, xOffsetX + yOffsetX, xOffsetY + yOffsetY);
+						}
+					}
+				}
+
+				indexedParams.remove(varNameX);
+				indexedParams.remove(varNameY);
+				skipChildren = true;
+				HeapsObject(object);
+
 			case APPLY:
 				if (current == null)
 					throw 'apply not allowed as root node';
@@ -1251,12 +1713,10 @@ class MultiAnimBuilder {
 				internalResults.interactives.push(obj);
 				HeapsObject(obj);
 
-			case RECT(width, height, color):
-				
-				final resolvedColor = resolveAsColorInteger(color).addAlphaIfNotPresent();
-				var bitmap = new h2d.Bitmap(Tile.fromColor(resolvedColor, resolveAsInteger(width), resolveAsInteger(height),1.0));
-				
-				HeapsObject(bitmap);
+			case GRAPHICS(elements):
+				var g = new h2d.Graphics();
+				drawGraphicsElements(g, elements, gridCoordinateSystem, hexCoordinateSystem);
+				HeapsObject(g);
 
 			case TILEGROUP:
 				final tg = new TileGroup();
@@ -1298,7 +1758,7 @@ class MultiAnimBuilder {
 	}
 
 	function resolveSettings(node:Node):ResolvedSettings {
-		var currentSettings:Null<Map<String, ReferencableValue>> = null;
+		var currentSettings:Null<Map<String, ParsedSettingValue>> = null;
 		var current = node;
 		while (current != null) {
 			if (current.settings != null) {
@@ -1316,8 +1776,12 @@ class MultiAnimBuilder {
 
 		if (currentSettings != null) {
 			final retSettings:ResolvedSettings = [];
-			for (key => value in currentSettings) {
-				retSettings[key] = resolveAsString(value);
+			for (key => settingValue in currentSettings) {
+				retSettings[key] = switch settingValue.type {
+					case SVTInt: RSVInt(resolveAsInteger(settingValue.value));
+					case SVTFloat: RSVFloat(resolveAsNumber(settingValue.value));
+					case SVTString: RSVString(resolveAsString(settingValue.value));
+				}
 			}
 			return retSettings;
 		} else
@@ -1345,7 +1809,7 @@ class MultiAnimBuilder {
 			object.filter = buildFilter(node.filter);
 	}
 
-	function resolveColorList(colors:Array<ReferencableValue>) {
+	function resolveColorList(colors:Array<ReferenceableValue>) {
 		return [for (value in colors) resolveAsColorInteger(value)];
 	}
 
@@ -1357,7 +1821,7 @@ class MultiAnimBuilder {
 				for (f in filters)
 					ret.add(buildFilter(f));
 				ret;
-			case FilterOutline(size, color): new h2d.filter.Outline(size, color);
+			case FilterOutline(size, color): new h2d.filter.Outline(resolveAsNumber(size), resolveAsColorInteger(color));
 			case FilterPaletteReplace(paletteName, sourceRow, replacementRow):
 				var palette = getPalette(paletteName);
 				var srcRow = resolveAsInteger(sourceRow);
@@ -1369,24 +1833,28 @@ class MultiAnimBuilder {
 			case FilterSaturate(v):
 				var m = new h3d.Matrix();
 				m.identity();
-				m.colorSaturate(v);
+				m.colorSaturate(resolveAsNumber(v));
 				new h2d.filter.ColorMatrix(m);
 			case FilterBrightness(v):
 				var m = new h3d.Matrix();
 				m.identity();
-				m.colorLightness(v);
+				m.colorLightness(resolveAsNumber(v));
 
 				new h2d.filter.ColorMatrix(m);
 			case FilterGlow(color, alpha, radius, gain, quality, smoothColor, knockout):
-				final f = new h2d.filter.Glow(color, alpha, radius, gain, quality, smoothColor);
+				final f = new h2d.filter.Glow(resolveAsColorInteger(color), resolveAsNumber(alpha), resolveAsNumber(radius), resolveAsNumber(gain), resolveAsNumber(quality), smoothColor);
 				f.knockout = knockout;
 				f;
 			case FilterBlur(radius, gain, quality, linear):
-				new h2d.filter.Blur(radius, gain, quality, linear);
+				new h2d.filter.Blur(resolveAsNumber(radius), resolveAsNumber(gain), resolveAsNumber(quality), resolveAsNumber(linear));
 			case FilterDropShadow(distance, angle, color, alpha, radius, gain, quality, smoothColor):
-				new h2d.filter.DropShadow(distance, angle, color, alpha, radius, gain, quality, smoothColor);
+				new h2d.filter.DropShadow(resolveAsNumber(distance), hxd.Math.degToRad(resolveAsNumber(angle)), resolveAsColorInteger(color), resolveAsNumber(alpha), resolveAsNumber(radius), resolveAsNumber(gain), resolveAsNumber(quality), smoothColor);
 			case FilterPixelOutline(mode, smoothColor):
-				new PixelOutline(mode, smoothColor);
+				final resolvedMode = switch mode {
+					case POKnockout(color, knockout): Knockout(resolveAsColorInteger(color), resolveAsNumber(knockout));
+					case POInlineColor(color, inlineColor): InlineColor(resolveAsColorInteger(color), resolveAsColorInteger(inlineColor));
+				};
+				new PixelOutline(resolvedMode, smoothColor);
 		}
 	}
 
@@ -1478,15 +1946,25 @@ class MultiAnimBuilder {
 			}
 		}
 
+		// Wrap in holder object if there's an offset
+		
+		final finalObject = if (retRoot.x != 0 || retRoot.y != 0) {
+			final holder = new h2d.Object();
+			holder.addChild(retRoot);
+			retRoot.setPosition(retRoot.x, retRoot.y);
+			holder;
+		} else {
+			retRoot;
+		}
+		
 		return {
-			object: retRoot,
+			object: finalObject,
 			names: internalResults.names,
 			name: name,
 			interactives: internalResults.interactives,
 			layouts: [],
 			palettes: [],
 			rootSettings: new BuilderResolvedSettings(resolveSettings(rootNode)),
-			offset: new bh.base.FPoint(retRoot.x, retRoot.y),
 			hexCoordinateSystem: hexCoordinateSystem,
 			gridCoordinateSystem: gridCoordinateSystem
 		};
@@ -1674,7 +2152,7 @@ class MultiAnimBuilder {
 			return type;
 		}
 
-		function resolveReferencableValue(ref:ReferencableValue, type):Dynamic {
+		function resolveReferenceableValue(ref:ReferenceableValue, type):Dynamic {
 			return switch type {
 				case null: throw 'type is null';
 				case PPTHexDirecton: resolveAsInteger(ref);
@@ -1707,10 +2185,10 @@ class MultiAnimBuilder {
 			for (key => value in input) {
 				if (Std.isOfType(value, ResolvedIndexParameters)) {
 					retVal.set(key, value);
-				} else if (Std.isOfType(value, ReferencableValue)) {
-					final ref:ReferencableValue = value;
+				} else if (Std.isOfType(value, ReferenceableValue)) {
+					final ref:ReferenceableValue = value;
 					final type = getDefsType(key, value);
-					final resolved = resolveReferencableValue(ref, type);
+					final resolved = resolveReferenceableValue(ref, type);
 					retVal.set(key, MultiAnimParser.dynamicValueToIndex(key, type, resolved, s -> throw s));
 				} else {
 					final type = getDefsType(key, value);
@@ -1723,10 +2201,10 @@ class MultiAnimBuilder {
 					throw 'extra input "$key=>$value" already exists in input';
 				if (Std.isOfType(value, ResolvedIndexParameters)) {
 					retVal.set(key, value);
-				} else if (Std.isOfType(value, ReferencableValue)) {
-					final ref:ReferencableValue = cast value;
+				} else if (Std.isOfType(value, ReferenceableValue)) {
+					final ref:ReferenceableValue = cast value;
 					final type = getDefsType(key, value);
-					final resolved = resolveReferencableValue(ref, type);
+					final resolved = resolveReferenceableValue(ref, type);
 					retVal.set(key, MultiAnimParser.dynamicValueToIndex(key, type, resolved, s -> throw s));
 				} else {
 					final type = getDefsType(key, value);

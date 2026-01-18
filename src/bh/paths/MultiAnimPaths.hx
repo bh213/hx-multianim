@@ -36,7 +36,7 @@ class MultiAnimPaths {
 			return builder.calculatePosition(pos, gridCoordinateSystem, hexCoordinateSystem);
 		}
 
-		inline function resolveNumber(value:ReferencableValue):Float {
+		inline function resolveNumber(value:ReferenceableValue):Float {
 			return builder.resolveAsNumber(value);
 		}
 

@@ -1,0 +1,20 @@
+version: 0.3
+
+#hexGridPixels programmable() {
+  pos:5,5
+  hex:pointy(40, 40)
+  grid:250,150
+
+  @alpha(0.7) bitmap(generated(color(function(gridWidth), function(gridHeight), #777)));
+  pixels (
+    line hexCorner(0, 1.1), hexCorner(1, 1.1), #f00
+    line hexCorner(1, 1.1), hexCorner(2, 1.1), #0f0
+    line hexCorner(2, 1.1), hexCorner(3, 1.1), #00f
+    line hexCorner(3, 1.1), hexCorner(4, 1.1), #ff0
+    line hexCorner(4, 1.1), hexCorner(5, 1.1), #f0f
+    line hexCorner(5, 1.1), hexCorner(0, 1.1), #fff
+  ):100,50
+  @alpha(0.9) text(dd, "#1: hex grid + pixels", white, left, 200);
+}
+
+
