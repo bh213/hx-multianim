@@ -59,6 +59,7 @@ enum APKeywords {
 	APDuration;
 	APRandom;
 	APFrames;
+	APMetadata;
 }
 
  
@@ -117,12 +118,84 @@ class AnimLexer extends hxparse.Lexer implements hxparse.RuleBuilder {
 	];
 }
 
+enum MetadataValue {
+	MVInt(i:Int);
+	MVString(s:String);
+}
+
+typedef MetadataEntry = {
+	var states:AnimationStateSelector;
+	var value:MetadataValue;
+}
+
 typedef LoadedAnimation = {
 	var sheet:String;
 	var states:Map<String, Array<String>>;
 	var allowedExtraPoints:Array<String>;
 	var ?center:Point;
+	var ?metadata:AnimMetadata;
 	var animations:Array<AnimationState>;
+}
+
+class AnimMetadata {
+	final metadata:Map<String, Array<MetadataEntry>>;
+
+	public function new(metadata:Map<String, Array<MetadataEntry>>) {
+		this.metadata = metadata;
+	}
+
+	function findBestMatch(key:String, stateSelector:Null<AnimationStateSelector>):Null<MetadataValue> {
+		if (metadata == null) return null;
+		final entries = metadata[key];
+		if (entries == null) return null;
+
+		var bestScore = -1;
+		var best:Null<MetadataEntry> = null;
+		for (entry in entries) {
+			final score = stateSelector != null ? AnimParser.countStateMatch(entry.states, stateSelector) : 0;
+			if (score > bestScore) {
+				best = entry;
+				bestScore = score;
+			}
+		}
+		return best != null ? best.value : null;
+	}
+
+	public function getIntOrDefault(key:String, defaultValue:Int, ?stateSelector:AnimationStateSelector):Int {
+		final value = findBestMatch(key, stateSelector);
+		if (value == null) return defaultValue;
+		return switch value {
+			case MVInt(i): i;
+			case MVString(s): throw 'expected int for metadata key ${key} but was string $s';
+		};
+	}
+
+	public function getIntOrException(key:String, ?stateSelector:AnimationStateSelector):Int {
+		final value = findBestMatch(key, stateSelector);
+		if (value == null) throw 'metadata key ${key} not found';
+		return switch value {
+			case MVInt(i): i;
+			case MVString(s): throw 'expected int for metadata key ${key} but was string $s';
+		};
+	}
+
+	public function getStringOrDefault(key:String, defaultValue:String, ?stateSelector:AnimationStateSelector):String {
+		final value = findBestMatch(key, stateSelector);
+		if (value == null) return defaultValue;
+		return switch value {
+			case MVString(s): s;
+			case MVInt(i): '$i';
+		};
+	}
+
+	public function getStringOrException(key:String, ?stateSelector:AnimationStateSelector):String {
+		final value = findBestMatch(key, stateSelector);
+		if (value == null) throw 'metadata key ${key} not found';
+		return switch value {
+			case MVString(s): s;
+			case MVInt(i): '$i';
+		};
+	}
 }
 
 @:using(AnimParser.ExtraPointsHelper)
@@ -215,6 +288,7 @@ class AnimParser extends hxparse.Parser<hxparse.LexerTokenSource<APToken>, APTok
 	var definedStatesIndexes:Array<String> = []; // Provides state to index mapping
 	var sheetName:String;
 	var center:Null<Point> = null;
+	var metadata:Map<String, Array<MetadataEntry>> = [];
 	var cache:Map<String, Array<{name:String, states:Array<AnimationFrameState>, extraPoints:Map<String, h2d.col.IPoint>}>>=[];
 	final resourceLoader:bh.base.ResourceLoader;
 
@@ -246,7 +320,7 @@ class AnimParser extends hxparse.Parser<hxparse.LexerTokenSource<APToken>, APTok
 		}
 	}
 
-	static function countStateMatch(match:AnimationStateSelector, selector:AnimationStateSelector) {
+	public static function countStateMatch(match:AnimationStateSelector, selector:AnimationStateSelector) {
 		var retVal = 0;
 		for (key => value in selector) {
 			if (match.exists(key)) {
@@ -430,6 +504,11 @@ class AnimParser extends hxparse.Parser<hxparse.LexerTokenSource<APToken>, APTok
 					if (center != null) syntaxError("center already defined");
 					center = c;
 
+				case [APIdentifier(_, APMetadata, AITString), APCurlyOpen]:
+					if (animationParsingStarted) syntaxError("metadata must be defined before animations");
+					if (metadata.count() > 0) syntaxError("metadata already defined");
+					parseMetadata();
+
 				case [APIdentifier(_, APAnimation, AITString), animationStates = parseStates([]), APCurlyOpen]:
 					animationParsingStarted = true;
 					for (key => value in animationStates) {
@@ -500,7 +579,32 @@ class AnimParser extends hxparse.Parser<hxparse.LexerTokenSource<APToken>, APTok
 			states: definedStates,
 			allowedExtraPoints: allowedExtraPoints,
 			center: center,
+			metadata: metadata.count() > 0 ? new AnimMetadata(metadata) : null,
 			animations: animations,
+		}
+	}
+
+	function parseMetadata() {
+		while (true) {
+			switch stream {
+				case [APNewLine]:
+				case [APCurlyClosed]: break;
+				case [states = parseStates([]), APIdentifier(key, _, AITString), APColon, APNumber(numStr)]:
+					var entry:MetadataEntry = {states: states, value: MVInt(Std.parseInt(numStr))};
+					if (metadata.exists(key)) {
+						metadata[key].push(entry);
+					} else {
+						metadata[key] = [entry];
+					}
+				case [states = parseStates([]), APIdentifier(key, _, AITString), APColon, APIdentifier(strVal, _, AITQuotedString)]:
+					var entry:MetadataEntry = {states: states, value: MVString(strVal)};
+					if (metadata.exists(key)) {
+						metadata[key].push(entry);
+					} else {
+						metadata[key] = [entry];
+					}
+				case _: unexpectedError("Expected [state selector] key: value in metadata block");
+			}
 		}
 	}
 
