@@ -3,14 +3,28 @@ version: 0.3
 relativeLayouts {
   grid: 21, 31 {
     #repeatableTest list {
-      point: 10,20
-      point: 30,20
-      point: 45,35
-      point: 70,60
-      point: 100,90
-      point: 100,110
-      point: 80,120
-      point: 20,120
+      // Left eye
+      point: 60,30
+      point: 65,25
+      point: 75,25
+      point: 80,30
+      point: 75,35
+      point: 65,35
+      // Right eye
+      point: 120,30
+      point: 125,25
+      point: 135,25
+      point: 140,30
+      point: 135,35
+      point: 125,35
+      // Smile curve
+      point: 50,70
+      point: 60,85
+      point: 80,95
+      point: 100,100
+      point: 120,95
+      point: 140,85
+      point: 150,70
     }
   }
 }
@@ -23,6 +37,6 @@ relativeLayouts {
   @alpha(0.9) text(dd, "#13: layout repeatable", white, left, 200);
   repeatable($index, layout("mainScreen", "repeatableTest")) {
     pos: 0, 0
-    bitmap(generated(color(10, 15, red)));
+    bitmap(generated(color(5, 5, red)));
   }
 }

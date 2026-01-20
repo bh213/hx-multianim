@@ -182,4 +182,20 @@ class AllExamplesTest extends VisualTestBase {
 		this.referenceDir = "test/examples/21-repeatable2dDemo";
 		buildRenderScreenshotAndCompare("test/examples/21-repeatable2dDemo/repeatable2dDemo.manim", "repeatable2dDemo", async, 1280, 720);
 	}
+
+	// Example 23: tiles/stateanim iteration
+	@Test
+	public function test23_TilesIteration(async:utest.Async) {
+		this.testName = "tilesIteration";
+		this.referenceDir = "test/examples/23-tilesIteration";
+		buildRenderScreenshotAndCompare("test/examples/23-tilesIteration/tilesIteration.manim", "tilesIteration", async, 1280, 720);
+	}
+
+	// Example 24: atlas demo - tiles with bounding rects
+	@Test
+	public function test24_AtlasDemo(async:utest.Async) {
+		this.testName = "atlasDemo";
+		this.referenceDir = "test/examples/24-atlasDemo";
+		buildRenderScreenshotAndCompare("test/examples/24-atlasDemo/atlasDemo.manim", "atlasDemo", async, 1280, 720);
+	}
 }

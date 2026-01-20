@@ -7,7 +7,7 @@ repeatable: inline array with $index, $value?
 fix html/implement text
 fix double reload issue
 hex coordinate system offset support 
-
+fix conditional not working with repeatable vars - e.g @(index greaterOrEqual 3)
 
 NEXT
 ===================================

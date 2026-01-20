@@ -178,6 +178,7 @@ enum MPKeywords {
 	MPArray;
 	MPRange;
 	MPSmoothing;
+	MPTiles;
 }
 
 enum PlaceholderTypes {
@@ -542,6 +543,7 @@ enum ResolvedIndexParameters {
 	Flag(f:Int);
 	StringValue(s:String);
 	ArrayString(strArray:Array<String>);
+	TileSourceValue(tileSource:TileSource);
 }
 
 
@@ -701,6 +703,10 @@ enum RepeatType {
 	LayoutIterator(layoutName:String);
 	ArrayIterator(valueVariableName:String, arrayName:String);
 	RangeIterator(start:ReferenceableValue, end:ReferenceableValue, step:ReferenceableValue);
+	StateAnimIterator(bitmapVarName:String, animFilename:String, animationName:ReferenceableValue, selector:Map<String, ReferenceableValue>);
+	// tiles($bitmap, "sheetname") - exposes $bitmap, $tilename, $index
+	// tiles($bitmap, "sheetname", "tileprefix") - exposes $bitmap, $index (filters to tiles matching prefix)
+	TilesIterator(bitmapVarName:String, tilenameVarName:Null<String>, sheetName:String, tileFilter:Null<String>);
 }
 
 enum GeneratedTileType {
@@ -713,6 +719,8 @@ enum TileSource {
 	TSSheet(sheet:ReferenceableValue, name:ReferenceableValue);
 	TSSheetWithIndex(sheet:ReferenceableValue, name:ReferenceableValue, index:ReferenceableValue);
 	TSGenerated(type:GeneratedTileType);
+	TSTile(tile:h2d.Tile); // Used for iterator-provided tiles (e.g., from stateanim iterator)
+	TSReference(varName:String); // Reference to a TileSource variable (e.g., $bitmap from stateanim iterator)
 }
 
 enum PaletteType {
@@ -1451,7 +1459,44 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 				return sign * stringToFloat(n);
 			case _: return syntaxError('expected number, got ${peek(0)}');
 		}
-		
+
+	}
+
+	// Parse stateanim selector: key=>value pairs until )
+	// Returns the selector map
+	function parseStateAnimSelector():Map<String, ReferenceableValue> {
+		var selector:Map<String, ReferenceableValue> = [];
+		while (true) {
+			switch stream {
+				case [MPClosed]: break;
+				case [MPComma, MPIdentifier(key, _, ITString|ITQuotedString) | MPNumber(key, _), MPArrow, value = parseStringOrReference()]:
+					if (selector.exists(key)) syntaxError('${key} already set');
+					selector.set(key, value);
+			}
+		}
+		return selector;
+	}
+
+	// Parse tiles iterator variants after "tiles($bitmap, "
+	// Returns TilesIterator with appropriate parameters
+	function parseTilesIteratorArgs(bitmapVarName:String, currentDefinitions:ParametersDefinitions):RepeatType {
+		switch stream {
+			// tiles($bitmap, $tilename, "sheetname") - tilename var is ITString or ITReference
+			case [MPIdentifier(tilenameVarName, _, ITString | ITReference), MPComma, MPIdentifier(sheetName, _, ITQuotedString), MPClosed]:
+				if (currentDefinitions.exists(tilenameVarName)) syntaxError('tiles iterator tilename variable name "${tilenameVarName}" is already a parameter.');
+				return TilesIterator(bitmapVarName, tilenameVarName, sheetName, null);
+			// tiles($bitmap, "sheetname"...) - sheetname is ITQuotedString, need nested switch for , vs )
+			case [MPIdentifier(sheetName, _, ITQuotedString)]:
+				switch stream {
+					case [MPComma, MPIdentifier(tileFilter, _, ITQuotedString), MPClosed]:
+						return TilesIterator(bitmapVarName, null, sheetName, tileFilter);
+					case [MPClosed]:
+						return TilesIterator(bitmapVarName, null, sheetName, null);
+					case _: syntaxError("expected tiles($bitmap, \"sheetname\", \"tilename\") or tiles($bitmap, \"sheetname\")");
+				}
+			case _: syntaxError("expected tiles($bitmap, $tilename, \"sheetname\") or tiles($bitmap, \"sheetname\", \"tilename\") or tiles($bitmap, \"sheetname\")");
+		}
+		return null; // unreachable
 	}
 
 	function parseXY():Coordinates {
@@ -2441,19 +2486,19 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 					case [MPClosed]:TSSheet(sheet, name);
 					case [MPComma, index = parseIntegerOrReference(), MPClosed]:TSSheetWithIndex(sheet, name, index);
 				}
-				
-			case [MPIdentifier(_, MPFile, ITString), MPOpen, filename = parseStringOrReference(), MPClosed]: 
+
+			case [MPIdentifier(_, MPFile, ITString), MPOpen, filename = parseStringOrReference(), MPClosed]:
 				TSFile(filename);
-			case [MPIdentifier(_, MPGenerated, ITString), MPOpen ]: 
+			case [MPIdentifier(_, MPGenerated, ITString), MPOpen ]:
 				switch stream {
-					case [MPIdentifier("cross", _ , ITString), MPOpen, width = parseIntegerOrReference(), MPComma, height = parseIntegerOrReference()]: 
+					case [MPIdentifier("cross", _ , ITString), MPOpen, width = parseIntegerOrReference(), MPComma, height = parseIntegerOrReference()]:
 						final color = switch stream {
 							case [MPComma, color = parseColorOrReference(), MPClosed, MPClosed]:
 							case [MPClosed, MPClosed]:RVInteger(0xFFFFFFFF);
 
 						}
 						TSGenerated(Cross(width, height, color));
-					case [MPIdentifier("color", _ , ITString), MPOpen, width = parseIntegerOrReference(), MPComma, height = parseIntegerOrReference()]: 
+					case [MPIdentifier("color", _ , ITString), MPOpen, width = parseIntegerOrReference(), MPComma, height = parseIntegerOrReference()]:
 						final color = switch stream {
 							case [MPComma, color = parseColorOrReference(), MPClosed, MPClosed]: color;
 							case [MPClosed, MPClosed]:RVInteger(0xFFFFFFFF);
@@ -2463,7 +2508,10 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 					case _: unexpectedError('expected cross(width, height[, color] or color(width, height[, color]');
 				}
 
-				
+			// Reference to a TileSource variable (e.g., $bitmap from stateanim/tiles iterator)
+			case [MPIdentifier(varName, _, ITReference)]:
+				TSReference(varName);
+
 			case _: null;
 		}
 	}
@@ -3055,8 +3103,14 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 								RangeIterator(start, end, step);
 							case _: syntaxError("expected )");
 						}
+					case [MPIdentifier(_, MPStateanim, ITString), MPOpen, MPIdentifier(bitmapVarName, _, ITString | ITReference), MPComma, MPIdentifier(animFilename, _, ITQuotedString), MPComma, animationName = parseStringOrReference()]:
+						if (currentDefinitions.exists(bitmapVarName)) syntaxError('repeatable2d stateanim iterator bitmap variable name "${bitmapVarName}" is already a parameter.');
+						StateAnimIterator(bitmapVarName, animFilename, animationName, parseStateAnimSelector());
+					case [MPIdentifier(_, MPTiles, ITString), MPOpen, MPIdentifier(bitmapVarName, _, ITString | ITReference), MPComma]:
+						if (currentDefinitions.exists(bitmapVarName)) syntaxError('repeatable2d tiles iterator bitmap variable name "${bitmapVarName}" is already a parameter.');
+						parseTilesIteratorArgs(bitmapVarName, currentDefinitions);
 
-					case _: syntaxError("unknown repeatable iterator, expected grid(dx, dy, repeatCount) | layout(layoutName, layout)| array(arrayName)");
+					case _: syntaxError("unknown repeatable iterator, expected grid(...) | layout(...) | array(...) | range(...) | stateanim(...) | tiles(...)");
 				}
 				switch stream {
 					case [MPComma]:
@@ -3094,8 +3148,14 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 								RangeIterator(start, end, step);
 							case _: syntaxError("expected )");
 						}
+					case [MPIdentifier(_, MPStateanim, ITString), MPOpen, MPIdentifier(bitmapVarName, _, ITString | ITReference), MPComma, MPIdentifier(animFilename, _, ITQuotedString), MPComma, animationName = parseStringOrReference()]:
+						if (currentDefinitions.exists(bitmapVarName)) syntaxError('repeatable2d stateanim iterator bitmap variable name "${bitmapVarName}" is already a parameter.');
+						StateAnimIterator(bitmapVarName, animFilename, animationName, parseStateAnimSelector());
+					case [MPIdentifier(_, MPTiles, ITString), MPOpen, MPIdentifier(bitmapVarName, _, ITString | ITReference), MPComma]:
+						if (currentDefinitions.exists(bitmapVarName)) syntaxError('repeatable2d tiles iterator bitmap variable name "${bitmapVarName}" is already a parameter.');
+						parseTilesIteratorArgs(bitmapVarName, currentDefinitions);
 
-					case _: syntaxError("unknown repeatable iterator, expected grid(dx, dy, repeatCount) | layout(layoutName, layout)| array(arrayName)");
+					case _: syntaxError("unknown repeatable iterator, expected grid(...) | layout(...) | array(...) | range(...) | stateanim(...) | tiles(...)");
 				}
 				switch stream {
 					case [MPClosed]:
@@ -3139,15 +3199,21 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 								createNodeResponse(REPEAT(varName, RangeIterator(start, end, step)));
 							case _: syntaxError("expected )");
 						}
+					case [MPIdentifier(_, MPStateanim, ITString), MPOpen, MPIdentifier(bitmapVarName, _, ITString | ITReference), MPComma, MPIdentifier(animFilename, _, ITQuotedString), MPComma, animationName = parseStringOrReference()]:
+						if (currentDefinitions.exists(bitmapVarName)) syntaxError('repeatable stateanim iterator bitmap variable name "${bitmapVarName}" is already a parameter.');
+						createNodeResponse(REPEAT(varName, StateAnimIterator(bitmapVarName, animFilename, animationName, parseStateAnimSelector())));
+					case [MPIdentifier(_, MPTiles, ITString), MPOpen, MPIdentifier(bitmapVarName, _, ITString | ITReference), MPComma]:
+						if (currentDefinitions.exists(bitmapVarName)) syntaxError('repeatable tiles iterator bitmap variable name "${bitmapVarName}" is already a parameter.');
+						createNodeResponse(REPEAT(varName, parseTilesIteratorArgs(bitmapVarName, currentDefinitions)));
 
-					case _: syntaxError("unknown repeatable iterator, expected grid(dx, dy, repeatCount) | layout(layoutName, layout)| array(arrayName)");
+					case _: syntaxError("unknown repeatable iterator, expected grid(...) | layout(...) | array(...) | range(...) | stateanim(...) | tiles(...)");
 				}
 				switch stream {
 					case [MPClosed]:
 					case _: syntaxError("expected )");
 				}
 
-				
+
 				response;
 
 			case _: unexpectedError("expected valid node type");

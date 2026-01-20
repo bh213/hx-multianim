@@ -1,0 +1,46 @@
+version: 0.3
+
+#atlasDemo programmable() {
+  pos:5,5
+  grid:220,130
+
+  @alpha(0.1) bitmap(generated(color(function(gridWidth), function(gridHeight), white)));
+  @alpha(0.9) text(dd, "#24: atlas demo", white, left, 200);
+
+  // Row 1: Alignment demo - tiles at same Y (50), spaced 70px apart
+  
+  // Center alignment: position (27,50) is center of tile
+  text(dd, "center", white, left, 60): 15, 20
+  bitmap(sheet("demo", "tile-center"), center): 27, 50
+  rect(#FF69B4, filled, 6, 6): 27-3, 50-3
+  
+
+  // Top-left alignment: position (85,38) is top-left corner of tile
+  text(dd, "top-left", white, left, 60): 72, 20
+  bitmap(sheet("demo", "tile-topleft"), left, top): 85, 38
+  rect(#FF69B4, filled, 6, 6): 83-3, 38-3
+  
+
+  // Bottom-right alignment: position (179,62) is bottom-right corner of tile
+  text(dd, "bot-right", white, left, 60): 129, 20
+  bitmap(sheet("demo", "tile-bottomright"), right, bottom): 179, 62
+  rect(#FF69B4, filled, 6, 6): 179-3, 62-3
+
+  // Row 2: Indexed tiles 0-3 and ninepatch
+  text(dd, "idx 0-3", white, left, 50): 15, 75
+  bitmap(sheet("demo", "indexed-tile", 0), left, top): 15, 90
+  rect(#FF69B4, 1, 26, 26): 14, 89
+
+  bitmap(sheet("demo", "indexed-tile", 1), left, top): 45, 90
+  rect(#FF69B4, 1, 26, 26): 44, 89
+
+  bitmap(sheet("demo", "indexed-tile", 2), left, top): 75, 90
+  rect(#FF69B4, 1, 26, 26): 74, 89
+
+  bitmap(sheet("demo", "indexed-tile", 3), left, top): 105, 90
+  rect(#FF69B4, 1, 26, 26): 104, 89
+
+  text(dd, "9patch", white, left, 50): 140, 75
+  ninepatch("demo", "ninepatch-demo", 48, 48): 140, 90
+  rect(#FF69B4, 1, 50, 50): 139, 89
+}

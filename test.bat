@@ -160,6 +160,18 @@ if exist "%ROOT%test\screenshots\repeatable2dDemo_actual.png" (
     echo   21 - repeatable2dDemo
 )
 
+REM Example 23: tiles/stateanim iteration
+if exist "%ROOT%test\screenshots\tilesIteration_actual.png" (
+    copy /Y "%ROOT%test\screenshots\tilesIteration_actual.png" "%ROOT%test\examples\23-tilesIteration\reference.png" >nul
+    echo   23 - tilesIteration
+)
+
+REM Example 24: atlas demo
+if exist "%ROOT%test\screenshots\atlasDemo_actual.png" (
+    copy /Y "%ROOT%test\screenshots\atlasDemo_actual.png" "%ROOT%test\examples\24-atlasDemo\reference.png" >nul
+    echo   24 - atlasDemo
+)
+
 echo.
 echo Reference images updated. Re-run 'test.bat run' to verify tests pass.
 goto :eof

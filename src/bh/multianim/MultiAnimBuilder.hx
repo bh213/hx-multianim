@@ -7,6 +7,7 @@ import bh.paths.AnimatedPath;
 import bh.paths.AnimatedPath.AnimatePathCommands;
 import bh.paths.MultiAnimPaths.Path;
 import bh.stateanim.AnimationSM;
+import bh.stateanim.AnimationSM.AnimationFrameState;
 import bh.base.FPoint;
 import bh.base.Point;
 import h2d.TileGroup;
@@ -382,6 +383,26 @@ class MultiAnimBuilder {
 		}
 	}
 
+	function collectStateAnimFrames(animFilename:String, animationName:String, selector:Map<String, String>):Array<TileSource> {
+		final animParser = resourceLoader.loadAnimParser(animFilename);
+		final animSM = animParser.createAnimSM(selector);
+		final descriptor = animSM.animationStates.get(animationName);
+		if (descriptor == null) {
+			throw 'animation "${animationName}" not found in "${animFilename}"';
+		}
+		var result:Array<TileSource> = [];
+		for (state in descriptor.states) {
+			switch state {
+				case AF_FRAME(frame):
+					if (frame.tile != null) {
+						result.push(TSTile(frame.tile));
+					}
+				case _: // Skip non-frame states (loops, events, etc.)
+			}
+		}
+		return result;
+	}
+
 	function resolveAsColorInteger(v:ReferenceableValue):Int {
 		function getBuilderWithExternal(externalReference:String) {
 			if (externalReference == null)
@@ -685,6 +706,16 @@ class MultiAnimBuilder {
 				}
 
 				resourceLoader.getOrCreatePlaceholder(resolvedType, (resolvedType) -> generatePlaceholderBitmap(resolvedType));
+			case TSTile(tile): tile;
+			case TSReference(varName):
+				// Resolve tile source from indexed params (e.g., $bitmap from stateanim/tiles iterator)
+				final param = indexedParams.get(varName);
+				if (param == null)
+					throw 'TileSource reference "$varName" not found in indexed params';
+				switch param {
+					case TileSourceValue(ts): loadTileSource(ts);
+					case _: throw 'TileSource reference "$varName" is not a TileSourceValue, got: $param';
+				}
 		}
 
 		if (tile == null)
@@ -1024,6 +1055,8 @@ class MultiAnimBuilder {
 				var arrayIterator:Array<String> = [];
 				var rangeStart = 0;
 				var rangeStep = 1;
+				var tileSourceIterator:Array<TileSource> = [];
+				var tilenameIterator:Array<String> = [];
 
 				switch repeatType {
 					case GridIterator(dirX, dirY, repeats):
@@ -1044,6 +1077,33 @@ class MultiAnimBuilder {
 						repeatCount = Math.ceil((rangeEnd - rangeStart) / rangeStep);
 						dx = 0;
 						dy = 0;
+					case StateAnimIterator(bitmapVarName, animFilename, animationName, selectorRefs):
+						final selector = [for (k => v in selectorRefs) k => resolveAsString(v)];
+						final animName = resolveAsString(animationName);
+						tileSourceIterator = collectStateAnimFrames(animFilename, animName, selector);
+						repeatCount = tileSourceIterator.length;
+					case TilesIterator(bitmapVarName, tilenameVarName, sheetName, tileFilter):
+						final sheet = resourceLoader.loadSheet2(sheetName);
+						if (tileFilter != null) {
+							// Filter mode: iterate over frames for specific tilename (exact match)
+							// tileFilter must be an exact tile name/key in the atlas (e.g., "Arrow_dir0")
+							final frames = sheet.getAnim(tileFilter);
+							if (frames == null) {
+								throw 'Tile "${tileFilter}" not found in sheet "${sheetName}". The tile filter must be an exact tile name (key) in the atlas.';
+							}
+							for (frame in frames) {
+								if (frame != null && frame.tile != null) {
+									tileSourceIterator.push(TSTile(frame.tile));
+								}
+							}
+						} else {
+							// Full iteration: all tiles in sheet
+							for (tileName in sheet.getContents().keys()) {
+								tileSourceIterator.push(TSSheet(RVString(sheetName), RVString(tileName)));
+								tilenameIterator.push(tileName);
+							}
+						}
+						repeatCount = tileSourceIterator.length;
 				}
 
 				if (indexedParams.exists(node.updatableName.getNameString()))
@@ -1067,17 +1127,31 @@ class MultiAnimBuilder {
 								var pt = iterator.next();
 								iterPos.add(cast pt.x, cast pt.y);
 							case RangeIterator(_, _, _):
-								
+
 							case ArrayIterator(valueVariableName, array):
 								indexedParams.set(valueVariableName, StringValue(arrayIterator[count]));
 								#if MULTIANIM_TRACE
 								trace('$count = arrayIterator[count] ${arrayIterator[count]}');
 								#end
+							case StateAnimIterator(bitmapVarName, _, _, _):
+								indexedParams.set(bitmapVarName, TileSourceValue(tileSourceIterator[count]));
+							case TilesIterator(bitmapVarName, tilenameVarName, _, _):
+								indexedParams.set(bitmapVarName, TileSourceValue(tileSourceIterator[count]));
+								if (tilenameVarName != null && count < tilenameIterator.length)
+									indexedParams.set(tilenameVarName, StringValue(tilenameIterator[count]));
 						}
 						buildTileGroup(childNode, tileGroup, iterPos, gridCoordinateSystem, hexCoordinateSystem, builderParams);
 					}
 				}
 				indexedParams.remove(varName);
+				switch repeatType {
+					case StateAnimIterator(bitmapVarName, _, _, _):
+						indexedParams.remove(bitmapVarName);
+					case TilesIterator(bitmapVarName, tilenameVarName, _, _):
+						indexedParams.remove(bitmapVarName);
+						if (tilenameVarName != null) indexedParams.remove(tilenameVarName);
+					case _:
+				}
 				skipChildren = true;
 				null;
 			case REPEAT2D(varNameX, varNameY, repeatTypeX, repeatTypeY):
@@ -1123,6 +1197,10 @@ class MultiAnimBuilder {
 						xRepeatCount = Math.ceil((rangeEnd - xRangeStart) / xRangeStep);
 						xDx = 0;
 						xDy = 0;
+					case StateAnimIterator(_, _, _, _):
+						throw 'StateAnimIterator not supported in REPEAT2D';
+					case TilesIterator(_, _, _, _):
+						throw 'TilesIterator not supported in REPEAT2D';
 				}
 
 				switch repeatTypeY {
@@ -1145,6 +1223,10 @@ class MultiAnimBuilder {
 						yRepeatCount = Math.ceil((rangeEnd - yRangeStart) / yRangeStep);
 						yDx = 0;
 						yDy = 0;
+					case StateAnimIterator(_, _, _, _):
+						throw 'StateAnimIterator not supported in REPEAT2D';
+					case TilesIterator(_, _, _, _):
+						throw 'TilesIterator not supported in REPEAT2D';
 				}
 
 				if (indexedParams.exists(varNameX) || indexedParams.exists(varNameY))
@@ -1167,6 +1249,8 @@ class MultiAnimBuilder {
 							yOffsetY = cast pt.y;
 						case RangeIterator(_, _, _):
 						case ArrayIterator(_, _):
+						case StateAnimIterator(_, _, _, _):
+						case TilesIterator(_, _, _, _):
 					}
 					var xIterator = xLayoutName == null ? null : getLayoutsIfNeeded().getIterator(xLayoutName);
 					for (xCount in 0...xRepeatCount) {
@@ -1186,6 +1270,8 @@ class MultiAnimBuilder {
 								xOffsetY = cast pt.y;
 							case RangeIterator(_, _, _):
 							case ArrayIterator(_, _):
+							case StateAnimIterator(_, _, _, _):
+							case TilesIterator(_, _, _, _):
 						}
 						for (childNode in node.children) {
 							indexedParams.set(varNameX, Value(resolvedX));
@@ -1505,6 +1591,8 @@ class MultiAnimBuilder {
 				var arrayIterator:Array<String> = [];
 				var rangeStart = 0;
 				var rangeStep = 1;
+				var tileSourceIterator:Array<TileSource> = [];
+				var tilenameIterator:Array<String> = [];
 
 				switch repeatType {
 					case GridIterator(dirX, dirY, repeats):
@@ -1525,6 +1613,33 @@ class MultiAnimBuilder {
 						repeatCount = Math.ceil((rangeEnd - rangeStart) / rangeStep);
 						dx = 0;
 						dy = 0;
+					case StateAnimIterator(bitmapVarName, animFilename, animationName, selectorRefs):
+						final selector = [for (k => v in selectorRefs) k => resolveAsString(v)];
+						final animName = resolveAsString(animationName);
+						tileSourceIterator = collectStateAnimFrames(animFilename, animName, selector);
+						repeatCount = tileSourceIterator.length;
+					case TilesIterator(bitmapVarName, tilenameVarName, sheetName, tileFilter):
+						final sheet = resourceLoader.loadSheet2(sheetName);
+						if (tileFilter != null) {
+							// Filter mode: iterate over frames for specific tilename (exact match)
+							// tileFilter must be an exact tile name/key in the atlas (e.g., "Arrow_dir0")
+							final frames = sheet.getAnim(tileFilter);
+							if (frames == null) {
+								throw 'Tile "${tileFilter}" not found in sheet "${sheetName}". The tile filter must be an exact tile name (key) in the atlas.';
+							}
+							for (frame in frames) {
+								if (frame != null && frame.tile != null) {
+									tileSourceIterator.push(TSTile(frame.tile));
+								}
+							}
+						} else {
+							// Full iteration: all tiles in sheet
+							for (tileName in sheet.getContents().keys()) {
+								tileSourceIterator.push(TSSheet(RVString(sheetName), RVString(tileName)));
+								tilenameIterator.push(tileName);
+							}
+						}
+						repeatCount = tileSourceIterator.length;
 				}
 
 				if (indexedParams.exists(node.updatableName.getNameString()))
@@ -1541,6 +1656,12 @@ class MultiAnimBuilder {
 						switch repeatType {
 							case ArrayIterator(valueVariableName, arrayName):
 								indexedParams.set(valueVariableName, StringValue(arrayIterator[count]));
+							case StateAnimIterator(bitmapVarName, _, _, _):
+								indexedParams.set(bitmapVarName, TileSourceValue(tileSourceIterator[count]));
+							case TilesIterator(bitmapVarName, tilenameVarName, _, _):
+								indexedParams.set(bitmapVarName, TileSourceValue(tileSourceIterator[count]));
+								if (tilenameVarName != null && count < tilenameIterator.length)
+									indexedParams.set(tilenameVarName, StringValue(tilenameIterator[count]));
 							default:
 						}
 
@@ -1555,12 +1676,21 @@ class MultiAnimBuilder {
 								addPosition(obj, pt.x, pt.y);
 							case ArrayIterator(valueVariableName, array):
 							case RangeIterator(_, _, _):
-								
+							case StateAnimIterator(_, _, _, _):
+							case TilesIterator(_, _, _, _):
 						}
 					}
 				}
 
 				indexedParams.remove(varName);
+				switch repeatType {
+					case StateAnimIterator(bitmapVarName, _, _, _):
+						indexedParams.remove(bitmapVarName);
+					case TilesIterator(bitmapVarName, tilenameVarName, _, _):
+						indexedParams.remove(bitmapVarName);
+						if (tilenameVarName != null) indexedParams.remove(tilenameVarName);
+					case _:
+				}
 				skipChildren = true;
 				HeapsObject(object);
 
@@ -1608,6 +1738,10 @@ class MultiAnimBuilder {
 						xRepeatCount = Math.ceil((rangeEnd - xRangeStart) / xRangeStep);
 						xDx = 0;
 						xDy = 0;
+					case StateAnimIterator(_, _, _, _):
+						throw 'StateAnimIterator not supported in REPEAT2D';
+					case TilesIterator(_, _, _, _):
+						throw 'TilesIterator not supported in REPEAT2D';
 				}
 
 				switch repeatTypeY {
@@ -1630,6 +1764,10 @@ class MultiAnimBuilder {
 						yRepeatCount = Math.ceil((rangeEnd - yRangeStart) / yRangeStep);
 						yDx = 0;
 						yDy = 0;
+					case StateAnimIterator(_, _, _, _):
+						throw 'StateAnimIterator not supported in REPEAT2D';
+					case TilesIterator(_, _, _, _):
+						throw 'TilesIterator not supported in REPEAT2D';
 				}
 
 				if (indexedParams.exists(varNameX) || indexedParams.exists(varNameY))
@@ -1654,6 +1792,8 @@ class MultiAnimBuilder {
 							yOffsetY = pt.y;
 						case RangeIterator(_, _, _):
 						case ArrayIterator(_, _):
+						case StateAnimIterator(_, _, _, _):
+						case TilesIterator(_, _, _, _):
 					}
 					var xIterator = xLayoutName == null ? null : getLayoutsIfNeeded().getIterator(xLayoutName);
 					for (xCount in 0...xRepeatCount) {
@@ -1673,6 +1813,8 @@ class MultiAnimBuilder {
 								xOffsetY = pt.y;
 							case RangeIterator(_, _, _):
 							case ArrayIterator(_, _):
+							case StateAnimIterator(_, _, _, _):
+							case TilesIterator(_, _, _, _):
 						}
 						for (childNode in node.children) {
 							indexedParams.set(varNameX, Value(resolvedX));

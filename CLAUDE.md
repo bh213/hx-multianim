@@ -45,7 +45,28 @@ Playground runs at `http://localhost:3000`.
 ## Parser Pattern Matching (Important!)
 
 When working with hxparse:
-- Pattern matching only matches on the **first element** of a case pattern
+- Pattern matching only matches on the **first element** of a case pattern, which is ok as long as you don't want to switch on later tokens.
+    ok:
+      switch stream {
+            case [Token1, Token2, Token3]
+            case _:
+      }
+
+    not ok:
+      switch stream {
+            case [Token1, Token2, Token3]
+            case [Token1, Token4]:
+      }
+      Second case will not be considered. 
+    Should use:
+      switch stream {
+            case [Token1]:
+                switch stream {
+                    case [Token2, Token3]:
+                    case [Token4]:
+                }
+      }
+
 - Use nested `switch` statements for multi-token matching
 - For `[Token1, Token2, Token3]`, create separate switches for each token
 - Reference: https://github.com/Simn/hxparse
