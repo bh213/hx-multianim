@@ -171,10 +171,31 @@ repeatable($varname, array(arrayName))
 repeatable($varname, range(start, end[, step]))
 ```
 
+**Stateanim iterator:**
+Iterates over all frames of an animation from a `.anim` file. Exposes `$bitmap` (the tile source) and `$index`.
+```
+repeatable($index, stateanim($bitmap, "filename.anim", "animationName", stateKey=>stateValue))
+```
+
+**Tiles iterator:**
+Iterates over tiles from an atlas sheet. Has two variants:
+
+1. **Full iteration** - all tiles in sheet, exposes `$bitmap`, `$tilename`, and `$index`:
+```
+repeatable($index, tiles($bitmap, $tilename, "sheetName"))
+```
+
+2. **Filtered by tile name** - only frames of a specific tile, exposes `$bitmap` and `$index`:
+```
+repeatable($index, tiles($bitmap, "sheetName", "exactTileName"))
+```
+
 **2D repeatable:**
 ```
 repeatable2d($x, $y, <iteratorX>, <iteratorY>)
 ```
+
+Note: `stateanim` and `tiles` iterators are not supported in `repeatable2d`.
 
 **Examples:**
 ```
@@ -188,6 +209,22 @@ repeatable($i, grid(10, dx:10)) {
 
 repeatable2d($x, $y, grid(3, dx:10), grid(2, dy:20)) {
   bitmap("cell.png"): 0,0
+}
+
+// Iterate over animation frames from .anim file
+repeatable($index, stateanim($bitmap, "marine.anim", "idle", direction=>r)) {
+  bitmap($bitmap): $index * 70, 0
+  text(dd, ""+$index, yellow, left, 50): $index * 70, 60
+}
+
+// Iterate over all tiles in an atlas sheet
+repeatable($index, tiles($bitmap, $tilename, "crew2")) {
+  bitmap($bitmap): ($index % 8) * 35, ($index div 8) * 20
+}
+
+// Iterate over frames of a specific tile in an atlas
+repeatable($index, tiles($bitmap, "crew2", "Arrow_dir0")) {
+  bitmap($bitmap): $index * 35, 0
 }
 ```
 
