@@ -393,7 +393,7 @@ class MultiAnimBuilder {
 		var result:Array<TileSource> = [];
 		for (state in descriptor.states) {
 			switch state {
-				case AF_FRAME(frame):
+				case Frame(frame):
 					if (frame.tile != null) {
 						result.push(TSTile(frame.tile));
 					}
@@ -1568,9 +1568,9 @@ class MultiAnimBuilder {
 								}
 							}
 
-							var astates = [for (a in anim) AF_FRAME(a.cloneWithDuration(1.0 / resolveAsNumber(fps)))];
+							var astates = [for (a in anim) Frame(a.cloneWithDuration(1.0 / resolveAsNumber(fps)))];
 							if (loop)
-								astates.push(AF_LOOP(0, FOREVER));
+								astates.push(Loop(0, Forever));
 
 							animSM.addAnimationState(key, astates, []);
 					}

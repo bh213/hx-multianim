@@ -644,16 +644,16 @@ class AnimParser extends hxparse.Parser<hxparse.LexerTokenSource<APToken>, APTok
 					ret.name = name;
 				case [APIdentifier(_, APLoop, AITString)]:
 					switch stream {
-						case [APNewLine]: ret.loop = FOREVER;
+						case [APNewLine]: ret.loop = Forever;
 						case [APColon ]:
 							switch stream {
-								case [APIdentifier("true"|"yes", _)]: ret.loop = FOREVER; 
-								case [APIdentifier("false"|"no", _)]: ret.loop = null; 
-								case [APIdentifier(_, APUntilCommand, AITString)]: ret.loop = AFC_UNTIL_COMMAND;
-								case [APNumber(number)]: 
+								case [APIdentifier("true"|"yes", _)]: ret.loop = Forever;
+								case [APIdentifier("false"|"no", _)]: ret.loop = null;
+								case [APIdentifier(_, APUntilCommand, AITString)]: ret.loop = UntilCommand;
+								case [APNumber(number)]:
 									var cnt = Std.parseInt(number);
 									if (cnt <= 0) syntaxError("loop counter must be greater than 0");
-									ret.loop = AFC_COUNT(cnt);
+									ret.loop = Count(cnt);
 								case _: syntaxError('unknown bool value ${peek(0)}');
 							}
 						case _: unexpectedError();
@@ -697,15 +697,15 @@ class AnimParser extends hxparse.Parser<hxparse.LexerTokenSource<APToken>, APTok
 			switch stream {
 				case [APNewLine]: 
 				case [APIdentifier(_, APLoop, AITString)]:
-					var condition:AnimationFrameCondition = FOREVER;
+					var condition:AnimationFrameCondition = Forever;
 					switch stream {
 						case [APCurlyOpen]:
-						case [APNumber(loopCountStr), APCurlyOpen]: 
+						case [APNumber(loopCountStr), APCurlyOpen]:
 							var loopCount = Std.parseInt(loopCountStr);
 							if (loopCount <= 0) throw 'loop count must be greater than 0';
-							condition = AFC_COUNT(loopCount);
-						case [APIdentifier(_, APUntilCommand, AITString), APCurlyOpen]: 
-							condition = AFC_UNTIL_COMMAND;
+							condition = Count(loopCount);
+						case [APIdentifier(_, APUntilCommand, AITString), APCurlyOpen]:
+							condition = UntilCommand;
 						case _: syntaxError("invalid loop, count:Int, untilCommand or { expected");
 					}
 					var loopFrames = parseFrames([], true);
@@ -724,11 +724,11 @@ class AnimParser extends hxparse.Parser<hxparse.LexerTokenSource<APToken>, APTok
 					switch stream {
 						case [APIdentifier(_, APRandom, AITString), p = parseCoordinates(), APComma, APNumber(randomRadius)]:
 							final r = Std.parseInt(randomRadius);
-							anims.push(PlaylistEvent(RANDOM_POINT_EVENT(eventName, new h2d.col.IPoint(p.x, p.y), r)));
+							anims.push(PlaylistEvent(RandomPointEvent(eventName, new h2d.col.IPoint(p.x, p.y), r)));
 						case [APNewLine|APSemiColon]:
-							anims.push(PlaylistEvent(TRIGGER(eventName)));
-						case [p = parseCoordinates()]:							
-						 	anims.push(PlaylistEvent(POINT_EVENT(eventName, new h2d.col.IPoint(p.x, p.y))));
+							anims.push(PlaylistEvent(Trigger(eventName)));
+						case [p = parseCoordinates()]:
+							anims.push(PlaylistEvent(PointEvent(eventName, new h2d.col.IPoint(p.x, p.y))));
 						case _: unexpectedError();
 					}
 					
@@ -888,7 +888,7 @@ class AnimParser extends hxparse.Parser<hxparse.LexerTokenSource<APToken>, APTok
 				tile.dx = -center.x;
 				tile.dy = -center.y;
 			}
-			return AF_FRAME(new AnimationFrame(tile, duration,0,0,tile.iwidth,tile.iheight));
+			return Frame(new AnimationFrame(tile, duration,0,0,tile.iwidth,tile.iheight));
 		}
 
 		function AFtoFrame(f:AnimationFrame, duration:Float):AnimationFrameState {
@@ -897,7 +897,7 @@ class AnimParser extends hxparse.Parser<hxparse.LexerTokenSource<APToken>, APTok
 				f.tile.dy = (f.height-f.tile.height) - f.offsety - center.y;
 
 			}
-			return AF_FRAME(f.cloneWithDuration(duration));
+			return Frame(f.cloneWithDuration(duration));
 		}
 		function commandsToDebugString(anims:Array<AnimationFrameState>, markIndex:Int) {
 			final buf = new StringBuf();
@@ -913,16 +913,16 @@ class AnimParser extends hxparse.Parser<hxparse.LexerTokenSource<APToken>, APTok
 		function isInfiniteLoop(anims:Array<AnimationFrameState>, from:Int, to:Int):Bool {
 			for(index in from...to) {
 				switch anims[index] {
-					case AF_EXITPOINT: return false;
+					case ExitPoint: return false;
 					default:
 				}
 			}
 			switch anims[to] {
-				case AF_LOOP(destIndex, condition):
+				case Loop(destIndex, condition):
 					return switch condition {
-						case FOREVER: true;
-						case AFC_COUNT(repeatCount): false;
-						case AFC_UNTIL_COMMAND: false;
+						case Forever: true;
+						case Count(repeatCount): false;
+						case UntilCommand: false;
 					}
 				default: throw 'expected loop';
 			}
@@ -960,28 +960,26 @@ class AnimParser extends hxparse.Parser<hxparse.LexerTokenSource<APToken>, APTok
 					var d = overrideDuration == null ? duration : overrideDuration / 1000.0;
 					retVal.push(tileToFrame(resourceLoader.loadTile(filename), d));
 				case AnimExitPoint:
-					retVal.push(AF_EXITPOINT);
+					retVal.push(ExitPoint);
 				case PlaylistEvent(playlistEvent):
-					retVal.push(AF_EVENT(playlistEvent));
-				case ChangeState(newState): 
+					retVal.push(Event(playlistEvent));
+				case ChangeState(newState):
 					if (!animationNames.contains(newState)) throw 'invalid goto ${newState}';
-					retVal.push(AF_CHAGE_STATE(newState));
-				case Loop(anims2, condition): 
+					retVal.push(AnimationFrameState.ChangeState(newState));
+				case Loop(anims2, condition):
 					var startIndex = retVal.length;
-					
 					var loopStates = createStates(anims2, anim, stateSelector, level + 1);
 					retVal = retVal.concat(loopStates);
-					retVal.push(AF_LOOP(startIndex, condition));
+					retVal.push(AnimationFrameState.Loop(startIndex, condition));
 					if (isInfiniteLoop(retVal, startIndex, retVal.length-1)) throw('infinite loop detected in ${anim.name}, states:${stateSelector}, \n${commandsToDebugString(retVal, retVal.length-1)}');
 			}
 		}
 
 		if (anim.loop != null && level == 0) {
-			
-			// if (retVal.length > 0 && retVal[retVal.length-1].match(AF_LOOP(_,_))) {
+			// if (retVal.length > 0 && retVal[retVal.length-1].match(Loop(_,_))) {
 			// 	throw 'animation level loop and ending playlist loop detected';
 			// }
-			retVal.push(AF_LOOP(0, anim.loop));
+			retVal.push(AnimationFrameState.Loop(0, anim.loop));
 			if (isInfiniteLoop(retVal, 0, retVal.length-1)) throw('infinite loop detected in ${anim.name}, states:${stateSelector}\n${commandsToDebugString(retVal, retVal.length-1)}');
 		}
 		return retVal;

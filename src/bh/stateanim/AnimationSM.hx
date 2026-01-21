@@ -5,13 +5,13 @@ import h2d.Drawable;
 import h2d.RenderContext;
 
 enum AnimationCommandEvent {
-	TRIGGER(data:Dynamic);
+	Trigger(data:Dynamic);
 }
 
 enum AnimationPlaylistEvent {
-	TRIGGER(data:Dynamic);
-	POINT_EVENT(name:String, point:h2d.col.IPoint);
-	RANDOM_POINT_EVENT(name:String, point:h2d.col.IPoint, randomRadius:Float);
+	Trigger(data:Dynamic);
+	PointEvent(name:String, point:h2d.col.IPoint);
+	RandomPointEvent(name:String, point:h2d.col.IPoint, randomRadius:Float);
 }
 
 enum CommandTrigger {
@@ -20,10 +20,9 @@ enum CommandTrigger {
 	ExecuteNowAndSkipEvents;
 }
 
-
 enum AnimationEvent {
-	TRIGGER(data:Dynamic);
-	POINT_EVENT(name:String, point:h2d.col.IPoint);
+	Trigger(data:Dynamic);
+	PointEvent(name:String, point:h2d.col.IPoint);
 }
 
 @:nullSafety
@@ -34,7 +33,6 @@ enum AnimationCommand {
 	Callback(callback:() -> Void);
 	Visible(value:Bool);
 }
-
 
 @:nullSafety
 typedef AnimationDescriptor = {
@@ -47,12 +45,13 @@ typedef AnimationDescriptor = {
 class AnimationFrame {
 	public final tile:h2d.Tile;
 	// Offset for trimmed tiles
-	public final offsetx : Int;
-	public final offsety : Int;
+	public final offsetx:Int;
+	public final offsety:Int;
 
 	// width & height for trimmed tiles
-	public final width : Int;
-	public final height : Int;
+	public final width:Int;
+	public final height:Int;
+
 	/**
 		Frame display duration in seconds.
 	**/
@@ -70,6 +69,7 @@ class AnimationFrame {
 	public function cloneWithDuration(newDuration:Float) {
 		return new AnimationFrame(tile, newDuration, offsetx, offsety, width, height);
 	}
+
 	public function cloneWithNewTile(newTile:h2d.Tile) {
 		return new AnimationFrame(newTile, duration, offsetx, offsety, width, height);
 	}
@@ -82,7 +82,9 @@ class AnimationSM extends Drawable {
 	var speed = 1.0;
 	var elapsedTime:Float;
 	var wait:Float;
+
 	public var currentStateIndex(default, null):Int;
+
 	var currentFrame:Null<AnimationFrame>;
 
 	public var playWhenHidden:Bool = false;
@@ -122,37 +124,36 @@ class AnimationSM extends Drawable {
 		parser.load(stateSelector, this);
 		this.currentFrame = null;
 		var oldwait = wait;
-		wait = 0; 
+		wait = 0;
 		handleCurrent(hxd.Math.EPSILON);
 		wait = oldwait;
 	}
 
 	override function getBoundsRec(relativeTo:h2d.Object, out:h2d.col.Bounds, forSize:Bool) {
-
 		super.getBoundsRec(relativeTo, out, forSize);
-		if( currentFrame != null ) {
-				var y = -(currentFrame.height-currentFrame.tile.height) + currentFrame.offsety + currentFrame.tile.dy;
-				addBounds(relativeTo, out, currentFrame.tile.dx - currentFrame.offsetx, y, currentFrame.width, currentFrame.height);
+		if (currentFrame != null) {
+			var y = -(currentFrame.height - currentFrame.tile.height) + currentFrame.offsety + currentFrame.tile.dy;
+			addBounds(relativeTo, out, currentFrame.tile.dx - currentFrame.offsetx, y, currentFrame.width, currentFrame.height);
 		}
 	}
 
 	public function hasCommand():Bool {
-				if(wait <= 0) {
-					var cmd = commands.first();
-					return switch cmd {
-						case null: false;
-						case Delay(time):
-							wait += time;
-							commands.pop();
-							false;
-						default: true;
-					}
-				} else {
-					return false;
-				}
+		if (wait <= 0) {
+			var cmd = commands.first();
+			return switch cmd {
+				case null: false;
+				case Delay(time):
+					wait += time;
+					commands.pop();
+					false;
+				default: true;
+			}
+		} else {
+			return false;
+		}
 	}
 
-		/**
+	/**
 		Clears command buffer, optionally executes callbacks & events of deleted commands
 
 		If `executeCommands` is 'true' callbacks & events are immediately executed
@@ -174,9 +175,8 @@ class AnimationSM extends Drawable {
 		commands.clear();
 		wait = 0;
 		elapsedTime = 0;
-		//current = null;
+		// current = null;
 	}
-
 
 	public function addCommand(command:AnimationCommand, trigger:CommandTrigger):Void {
 		switch trigger {
@@ -189,14 +189,15 @@ class AnimationSM extends Drawable {
 				clearCommands(false);
 				commands.add(command);
 		}
-		
 	}
 
 	function executeCommand(cmd:AnimationCommand):Bool {
 		switch cmd {
-			case Delay(time): 
-				if (wait <= 0) wait = time;
-				else wait += time;
+			case Delay(time):
+				if (wait <= 0)
+					wait = time;
+				else
+					wait += time;
 				return time <= 0;
 			case SwitchState(name):
 				playAnim(name);
@@ -224,8 +225,10 @@ class AnimationSM extends Drawable {
 	}
 
 	public function getExtraPointNames() {
-		if (current == null) return[];
-		else return [for (s in current.extraPoints.keys()) s];
+		if (current == null)
+			return [];
+		else
+			return [for (s in current.extraPoints.keys()) s];
 	}
 
 	public function getExtraPoint(name:String) {
@@ -251,21 +254,23 @@ class AnimationSM extends Drawable {
 		var state = animationStates.get(name);
 		if (state != null) {
 			current = state;
-			if (wait < 0) wait = 0;
+			if (wait < 0)
+				wait = 0;
 			elapsedTime = 0;
 			paused = false;
 			currentStateIndex = 0;
-			currentFrame = null;	// Mark that we want to get first frame
+			currentFrame = null; // Mark that we want to get first frame
 			handleCurrent(hxd.Math.EPSILON);
 		} else
 			throw 'unknown animation ${name}';
 	}
 
 	function isEnd() {
-		if (this.current == null) return false;
+		if (this.current == null)
+			return false;
 		return this.currentStateIndex == this.current.states.length;
 	}
-	
+
 	function handleCurrent(delta:Float) {
 		if (current == null)
 			performNextCommand();
@@ -276,81 +281,87 @@ class AnimationSM extends Drawable {
 
 		elapsedTime += delta;
 		wait -= delta < 0 ? 0 : delta;
-		
+
 		// if (hasCommand()) {
 		// 	performNextCommand();
 		// }
 
 		var statesCount = 0;
 		while (true) {
+			if (isEnd()) {
+				if (hasCommand())
+					performNextCommand();
+			}
+
+			if (currentFrame != null && elapsedTime < currentFrame.duration)
+				return; // waiting for next frame
+			if (currentFrame != null && !isEnd())
+				currentStateIndex++;
 
 			if (isEnd()) {
-				if (hasCommand()) performNextCommand();
-			}
-			
-			if (currentFrame != null && elapsedTime < currentFrame.duration) return; // waiting for next frame
-			if (currentFrame != null && !isEnd()) currentStateIndex++;
-			
-			if (isEnd()) {
-				if (hasCommand()) performNextCommand();
+				if (hasCommand())
+					performNextCommand();
 				return;
 			}
 
-			var currentState = current.states[currentStateIndex];	
+			var currentState = current.states[currentStateIndex];
 			statesCount++;
 			if (statesCount > 50)
-				if (statesCount > 1000) throw 'more than 1000 states, something is wrong.';
+				if (statesCount > 1000)
+					throw 'more than 1000 states, something is wrong.';
 				else {
 					trace('more than 50 state changes: ${statesCount}');
 				}
-				
-			switch currentState {
-				case AF_FRAME(frame):
-					if (currentFrame != null) elapsedTime -= frame.duration; 
-					currentFrame = frame;
-					if (elapsedTime < frame.duration) return;
 
-				case AF_LOOP(destIndex, condition):
+			switch currentState {
+				case Frame(frame):
+					if (currentFrame != null)
+						elapsedTime -= frame.duration;
+					currentFrame = frame;
+					if (elapsedTime < frame.duration)
+						return;
+
+				case Loop(destIndex, condition):
 					switch condition {
-						case FOREVER: currentStateIndex = destIndex - 1;
-						case AFC_UNTIL_COMMAND:
+						case Forever: currentStateIndex = destIndex - 1;
+						case UntilCommand:
 							if (!hasCommand()) {
-								currentStateIndex = destIndex - 1; 
+								currentStateIndex = destIndex - 1;
 							}
-						case AFC_COUNT(repeatCount):
+						case Count(repeatCount):
 							var value = current.statesCounters[currentStateIndex];
-							if (value == -1) value = repeatCount;
+							if (value == -1)
+								value = repeatCount;
 							if (value > 0) {
 								current.statesCounters[currentStateIndex] = value - 1;
-								currentStateIndex = destIndex - 1; 
-							}  else {
+								currentStateIndex = destIndex - 1;
+							} else {
 								current.statesCounters[currentStateIndex] = repeatCount;
 							}
 					}
 
-				case AF_EVENT(event):
+				case Event(event):
 					switch event {
-						case TRIGGER(name): onAnimationEvent(TRIGGER(name));
-						case POINT_EVENT(name, point): onAnimationEvent(POINT_EVENT(name, point));
-						case RANDOM_POINT_EVENT(name, point, randomRadius):
-							final randomAngle = Math.random() * 2*Math.PI;
+						case Trigger(name): onAnimationEvent(Trigger(name));
+						case PointEvent(name, point): onAnimationEvent(PointEvent(name, point));
+						case RandomPointEvent(name, point, randomRadius):
+							final randomAngle = Math.random() * 2 * Math.PI;
 							final r = Math.random() * randomRadius;
 							var randomPoint = point.clone();
 							randomPoint.x += Std.int(r * Math.cos(randomAngle));
 							randomPoint.y += Std.int(r * Math.sin(randomAngle));
-							 
-							onAnimationEvent(POINT_EVENT(name, randomPoint));
+
+							onAnimationEvent(PointEvent(name, randomPoint));
 					}
-					
-				case AF_CHAGE_STATE(state):
+
+				case ChangeState(state):
 					playAnim(state, 0);
 					return;
-				case AF_EXITPOINT:
+				case ExitPoint:
 					if (hasCommand()) {
 						performNextCommand();
 						return;
 					}
-					
 			}
 		}
 	}
@@ -378,30 +389,28 @@ class AnimationSM extends Drawable {
 	public dynamic function onCommandEvent(event:AnimationCommandEvent) {}
 
 	public dynamic function onAnimationEvent(event:AnimationEvent) {}
-
-
 }
 
 enum AnimationFrameState {
-	AF_FRAME(frame:AnimationFrame);
-	AF_LOOP(destIndex:Int, condition:AnimationFrameCondition);
-	AF_EVENT(event:AnimationPlaylistEvent);
-	AF_CHAGE_STATE(state:String);
-	AF_EXITPOINT; // exit animation if there is command waiting
+	Frame(frame:AnimationFrame);
+	Loop(destIndex:Int, condition:AnimationFrameCondition);
+	Event(event:AnimationPlaylistEvent);
+	ChangeState(state:String);
+	ExitPoint; // exit animation if there is command waiting
 }
 
 enum AnimationFrameCondition {
-	FOREVER;
-	AFC_COUNT(repeatCount:Int);
-	AFC_UNTIL_COMMAND;
+	Forever;
+	Count(repeatCount:Int);
+	UntilCommand;
 }
 
- function animationFrameStateToString(frame:AnimationFrameState):String {
+function animationFrameStateToString(frame:AnimationFrameState):String {
 	return switch frame {
-		case AF_FRAME(frame): 'Frame("${frame.tile.getTexture().name}", ${frame.width} x ${frame.height})';
-		case AF_LOOP(destIndex, condition): 'Loop(${destIndex}, ${condition})';
-		case AF_EVENT(event): 'Event(${event})';
-		case AF_CHAGE_STATE(state): 'ChangeState(${state})';
-		case AF_EXITPOINT: 'ExitPoint';
+		case Frame(frame): 'Frame("${frame.tile.getTexture().name}", ${frame.width} x ${frame.height})';
+		case Loop(destIndex, condition): 'Loop(${destIndex}, ${condition})';
+		case Event(event): 'Event(${event})';
+		case ChangeState(state): 'ChangeState(${state})';
+		case ExitPoint: 'ExitPoint';
 	}
 }
