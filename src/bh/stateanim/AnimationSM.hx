@@ -42,6 +42,7 @@ typedef AnimationDescriptor = {
 	final extraPoints:Map<String, h2d.col.IPoint>;
 };
 
+@:nullSafety
 class AnimationFrame {
 	public final tile:h2d.Tile;
 	// Offset for trimmed tiles
@@ -77,6 +78,9 @@ class AnimationFrame {
 
 @:nullSafety
 class AnimationSM extends Drawable {
+	static inline final STATE_WARNING_THRESHOLD = 50;
+	static inline final STATE_ERROR_THRESHOLD = 1000;
+
 	public var paused:Bool = false;
 
 	var speed = 1.0;
@@ -101,24 +105,6 @@ class AnimationSM extends Drawable {
 		currentSelector = selector;
 	}
 
-	public function clone(newStateSelector:AnimationStateSelector, parser:AnimParser, cloneCommands = false, cloneState = false, cloneStatIndex = false) {
-		var cloned = new AnimationSM(newStateSelector, null);
-		cloned.animationStates = this.animationStates.copy();
-		cloned.speed = this.speed;
-		if (cloneCommands) {
-			cloned.wait = this.wait;
-			cloned.commands = Lambda.list(this.commands);
-		}
-		if (cloneState) {
-			cloned.currentFrame = this.currentFrame;
-			cloned.current = this.current;
-		}
-		if (cloneStatIndex) {
-			cloned.currentStateIndex = this.currentStateIndex;
-		}
-		parser.load(newStateSelector, cloned);
-	}
-
 	function loadState(stateSelector:AnimationStateSelector, parser:AnimParser) {
 		this.animationStates.clear();
 		parser.load(stateSelector, this);
@@ -137,7 +123,13 @@ class AnimationSM extends Drawable {
 		}
 	}
 
-	public function hasCommand():Bool {
+	/**
+		Checks if a non-delay command is available for execution.
+		Note: This method has side effects - it consumes any pending Delay commands
+		and updates the wait timer. Use when you need to check command availability
+		as part of animation state processing.
+	**/
+	public function consumeDelaysAndCheckCommand():Bool {
 		if (wait <= 0) {
 			var cmd = commands.first();
 			return switch cmd {
@@ -214,7 +206,7 @@ class AnimationSM extends Drawable {
 		}
 	}
 
-	public function getExtraPointForAnim(extraPointName:String, animState:String) {
+	public function getExtraPointForAnim(extraPointName:String, animState:String):Null<h2d.col.IPoint> {
 		final selectedState = animationStates[animState];
 		if (selectedState == null)
 			throw 'animState ${animState} not found';
@@ -224,14 +216,14 @@ class AnimationSM extends Drawable {
 		return selectedState.extraPoints.get(extraPointName);
 	}
 
-	public function getExtraPointNames() {
+	public function getExtraPointNames():Array<String> {
 		if (current == null)
 			return [];
 		else
 			return [for (s in current.extraPoints.keys()) s];
 	}
 
-	public function getExtraPoint(name:String) {
+	public function getExtraPoint(name:String):Null<h2d.col.IPoint> {
 		if (current == null)
 			return null;
 		return current.extraPoints.get(name);
@@ -282,14 +274,14 @@ class AnimationSM extends Drawable {
 		elapsedTime += delta;
 		wait -= delta < 0 ? 0 : delta;
 
-		// if (hasCommand()) {
+		// if (consumeDelaysAndCheckCommand()) {
 		// 	performNextCommand();
 		// }
 
 		var statesCount = 0;
 		while (true) {
 			if (isEnd()) {
-				if (hasCommand())
+				if (consumeDelaysAndCheckCommand())
 					performNextCommand();
 			}
 
@@ -299,18 +291,18 @@ class AnimationSM extends Drawable {
 				currentStateIndex++;
 
 			if (isEnd()) {
-				if (hasCommand())
+				if (consumeDelaysAndCheckCommand())
 					performNextCommand();
 				return;
 			}
 
 			var currentState = current.states[currentStateIndex];
 			statesCount++;
-			if (statesCount > 50)
-				if (statesCount > 1000)
-					throw 'more than 1000 states, something is wrong.';
+			if (statesCount > STATE_WARNING_THRESHOLD)
+				if (statesCount > STATE_ERROR_THRESHOLD)
+					throw 'more than ${STATE_ERROR_THRESHOLD} states, something is wrong.';
 				else {
-					trace('more than 50 state changes: ${statesCount}');
+					trace('more than ${STATE_WARNING_THRESHOLD} state changes: ${statesCount}');
 				}
 
 			switch currentState {
@@ -325,7 +317,7 @@ class AnimationSM extends Drawable {
 					switch condition {
 						case Forever: currentStateIndex = destIndex - 1;
 						case UntilCommand:
-							if (!hasCommand()) {
+							if (!consumeDelaysAndCheckCommand()) {
 								currentStateIndex = destIndex - 1;
 							}
 						case Count(repeatCount):
@@ -358,7 +350,7 @@ class AnimationSM extends Drawable {
 					playAnim(state, 0);
 					return;
 				case ExitPoint:
-					if (hasCommand()) {
+					if (consumeDelaysAndCheckCommand()) {
 						performNextCommand();
 						return;
 					}
@@ -373,7 +365,7 @@ class AnimationSM extends Drawable {
 	}
 
 	override function draw(ctx:RenderContext) {
-		if (currentFrame != null && currentFrame.tile != null) {
+		if (currentFrame != null) {
 			emitTile(ctx, currentFrame.tile);
 		}
 	}
