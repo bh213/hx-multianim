@@ -20,13 +20,10 @@ metadata {
 animation {
     name: animationName
     fps: 20
-    loop: untilCommand | yes | <number>
+    loop: yes | <number>
     playlist {
         sheet: "sprite_$$state$$_name"
-        loop <count> { ... }
         event <name> trigger | random x,y,radius | x,y
-        command
-        goto <animName>
     }
     extrapoints {
         @(state=>value) pointName: x,y
@@ -52,10 +49,9 @@ metadata {
 animation {
     name: idle
     fps: 4
+    loop: yes
     playlist {
-        loop untilCommand {
-            sheet "marine_$$direction$$_idle"
-        }
+        sheet: "marine_$$direction$$_idle"
     }
     extrapoints {
         @(direction=>l) targeting: -1, -12
@@ -178,14 +174,14 @@ animation {
 
 * `name` - Unique animation name (required)
 * `fps` - Default frames per second for playlist
-* `loop` - Looping behavior for the whole playlist
-* `playlist` - List of frames and commands
+* `loop` - Looping behavior: `yes` (forever), `<number>` (loop N times), or omit for no loop
+* `playlist` - List of frames and events
 * `center` - Center point for this specific animation
 * `extrapoints` - Points of interest (e.g., particle effects, bullets)
 
 ---
 
-## Playlist Commands
+## Playlist Elements
 
 ### Sheet Frame
 
@@ -209,18 +205,6 @@ file: "filename.png" duration: 100ms
 
 Loads and plays a single frame PNG image.
 
-### Loop
-
-```anim
-loop { ... }
-loop 3 { ... }
-loop untilCommand { ... }
-```
-
-* `loop` or `loop: yes` - loops forever
-* `loop: <number>` - loops specified number of times
-* `loop: untilCommand` - loops until command queue has entry
-
 ### Events
 
 ```anim
@@ -232,22 +216,6 @@ event <name> random x,y,radius
 * `trigger` - fires event with specific name
 * `x,y` - fires point event at coordinates
 * `random x,y,radius` - fires event at random point within radius of (x,y)
-
-### Command
-
-```anim
-command
-```
-
-Executes next command from the command queue if not empty.
-
-### Goto
-
-```anim
-goto <animationName>
-```
-
-Switches to another animation. Can be used for transitions.
 
 ---
 
@@ -293,26 +261,6 @@ Only provides the extrapoint when the state matches.
 
 ---
 
-## Commands - Programming Interface
-
-Commands control animation behavior from code.
-
-### Command Triggers
-
-* `NEXT_COMMAND_ON_ANIM_END` - on end of animation, end of loop, or `command` playlist command
-* `NEXT_COMMAND_WAIT_TIMER` - execute after specified time (ignores animation end)
-* `NEXT_COMMAND_NOW` - execute immediately
-
-### Available Commands
-
-* `Delay(seconds)` - wait for specific time before next command
-* `SwitchState(stateName)` - switch to another animation name
-* `CommandEvent` - trigger an event
-* `Callback` - execute a callback function
-* `Visible` - set sprite visibility
-
----
-
 ## State Variable Interpolation
 
 Use `$$stateName$$` in sheet names to dynamically insert state values:
@@ -351,10 +299,9 @@ metadata {
 animation {
     name: idle
     fps: 4
+    loop: yes
     playlist {
-        loop untilCommand {
-            sheet: "marine_$$direction$$_idle"
-        }
+        sheet: "marine_$$direction$$_idle"
     }
     extrapoints {
         @(direction=>l) targeting: -1, -12
@@ -389,7 +336,6 @@ animation @(direction=>l) {
     fps: 12
     playlist {
         sheet: "marine_l_special"
-        goto idle
     }
 }
 
@@ -398,7 +344,6 @@ animation @(direction=>r) {
     fps: 12
     playlist {
         sheet: "marine_r_special"
-        goto idle
     }
 }
 ```
@@ -431,16 +376,25 @@ scene.addChild(animSM);
 animSM.setScale(3.0);
 ```
 
-### Controlling Animations with Commands
+### Playing Animations
 
 ```haxe
-// Switch to a specific animation immediately
-animSM.addCommand(SwitchState("idle"), ExecuteNow);
+// Play a specific animation
+animSM.play("idle");
 
-// Queue multiple commands
-animSM.addCommand(SwitchState("walk"), Queued);
-animSM.addCommand(Delay(2.0), Queued);
-animSM.addCommand(SwitchState("fire-up"), Queued);
+// Play an animation and do something when it finishes
+animSM.play("fire-up");
+animSM.onFinished = () -> {
+    animSM.play("idle");
+};
+
+// Check if animation has finished
+if (animSM.isFinished()) {
+    animSM.play("walk");
+}
+
+// Get current animation name
+var currentAnim = animSM.getCurrentAnimName();
 ```
 
 ### Handling Animation Events
@@ -448,9 +402,9 @@ animSM.addCommand(SwitchState("fire-up"), Queued);
 ```haxe
 animSM.onAnimationEvent = (event) -> {
     switch event {
-        case TRIGGER(name):
+        case Trigger(name):
             trace('Event triggered: $name');
-        case POINT_EVENT(name, point):
+        case PointEvent(name, point):
             var globalPoint = animSM.localToGlobal(point.toPoint());
             // Spawn effect at globalPoint
     }
@@ -478,4 +432,16 @@ stateSelector.set("direction", "r");
 
 // Recreate animation with new state
 animSM = parsed.createAnimSM(stateSelector);
+```
+
+### Manual Animation Update
+
+```haxe
+// Create externally driven animation
+var animSM = parsed.createAnimSM(stateSelector, true); // externallyDriven = true
+
+// In your game loop, manually update the animation
+function update(dt:Float) {
+    animSM.update(dt);
+}
 ```

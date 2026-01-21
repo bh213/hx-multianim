@@ -1,4 +1,5 @@
 package bh.stateanim;
+
 import hxparse.Unexpected;
 import bh.base.Atlas2;
 import bh.base.ResourceLoader;
@@ -6,14 +7,13 @@ import haxe.io.Bytes;
 import bh.stateanim.AnimationSM;
 import hxparse.ParserError;
 import bh.base.Point;
+
 using StringTools;
 using bh.base.MapTools;
-
 
 // HELP: https://github.com/darmie/wrenparse/blob/e5b903afffba852c40b195d8558a3c11f46e79f6/src/wrenparse/WrenParser.hx
 // https://github.com/chipshort/PseudoCode/blob/03dd511375b7ee6a5df1062bcdc21ce4e84aab37/src/pseudocode/PseudoParser.hx
 // https://github.com/Aidan63/ptrparser/blob/94d07c0b8a20da7f56dad6cd9ee786b6feb7cfc6/src/PtrParser.hx
-
 
 enum APIdentifierType {
 	AITString;
@@ -39,7 +39,7 @@ enum APToken {
 	APAt;
 	APArrow;
 }
-  
+
 enum APKeywords {
 	APSheet;
 	APFile;
@@ -52,9 +52,6 @@ enum APKeywords {
 	APAnimation;
 	APName;
 	APFps;
-	APGoto;
-	APCommand;
-	APUntilCommand;
 	APEvent;
 	APDuration;
 	APRandom;
@@ -62,11 +59,9 @@ enum APKeywords {
 	APMetadata;
 }
 
- 
-
 class AnimLexer extends hxparse.Lexer implements hxparse.RuleBuilder {
 	static var buf:StringBuf = null;
-	static var keywords = @:mapping(2,true) APKeywords;
+	static var keywords = @:mapping(2, true) APKeywords;
 	static var integer = '([1-9](_?[0-9])*)|0';
 	static public var tok = @:rule [
 		integer => APNumber(lexer.current),
@@ -78,7 +73,7 @@ class AnimLexer extends hxparse.Lexer implements hxparse.RuleBuilder {
 		},
 		"\\[" => APBracketOpen,
 		"\\]" => APBracketClosed,
-		"\\.\\."=>APDoubleDot,
+		"\\.\\." => APDoubleDot,
 		"\\(" => APOpen,
 		"\\)" => APClosed,
 		"\\{" => APCurlyOpen,
@@ -145,9 +140,11 @@ class AnimMetadata {
 	}
 
 	function findBestMatch(key:String, stateSelector:Null<AnimationStateSelector>):Null<MetadataValue> {
-		if (metadata == null) return null;
+		if (metadata == null)
+			return null;
 		final entries = metadata[key];
-		if (entries == null) return null;
+		if (entries == null)
+			return null;
 
 		var bestScore = -1;
 		var best:Null<MetadataEntry> = null;
@@ -163,7 +160,8 @@ class AnimMetadata {
 
 	public function getIntOrDefault(key:String, defaultValue:Int, ?stateSelector:AnimationStateSelector):Int {
 		final value = findBestMatch(key, stateSelector);
-		if (value == null) return defaultValue;
+		if (value == null)
+			return defaultValue;
 		return switch value {
 			case MVInt(i): i;
 			case MVString(s): throw 'expected int for metadata key ${key} but was string $s';
@@ -172,7 +170,8 @@ class AnimMetadata {
 
 	public function getIntOrException(key:String, ?stateSelector:AnimationStateSelector):Int {
 		final value = findBestMatch(key, stateSelector);
-		if (value == null) throw 'metadata key ${key} not found';
+		if (value == null)
+			throw 'metadata key ${key} not found';
 		return switch value {
 			case MVInt(i): i;
 			case MVString(s): throw 'expected int for metadata key ${key} but was string $s';
@@ -181,7 +180,8 @@ class AnimMetadata {
 
 	public function getStringOrDefault(key:String, defaultValue:String, ?stateSelector:AnimationStateSelector):String {
 		final value = findBestMatch(key, stateSelector);
-		if (value == null) return defaultValue;
+		if (value == null)
+			return defaultValue;
 		return switch value {
 			case MVString(s): s;
 			case MVInt(i): '$i';
@@ -190,7 +190,8 @@ class AnimMetadata {
 
 	public function getStringOrException(key:String, ?stateSelector:AnimationStateSelector):String {
 		final value = findBestMatch(key, stateSelector);
-		if (value == null) throw 'metadata key ${key} not found';
+		if (value == null)
+			throw 'metadata key ${key} not found';
 		return switch value {
 			case MVString(s): s;
 			case MVInt(i): '$i';
@@ -206,15 +207,11 @@ typedef ExtraPoints = {
 }
 
 enum AnimPlaylistFrames {
-	SheetFrameAnim(name:String, durationMilliseconds: Null<Int>);
-	SheetFrameAnimWithIndex(name:String, from:Null<Int>, to:Null<Int>, durationMilliseconds: Null<Int>);
-	FileSingleFrame(filename:String, durationMilliseconds: Null<Int>);
-	Loop(frames:Array<AnimPlaylistFrames>, condition:AnimationFrameCondition);
-	ChangeState(newState:String);
-	AnimExitPoint;
+	SheetFrameAnim(name:String, durationMilliseconds:Null<Int>);
+	SheetFrameAnimWithIndex(name:String, from:Null<Int>, to:Null<Int>, durationMilliseconds:Null<Int>);
+	FileSingleFrame(filename:String, durationMilliseconds:Null<Int>);
 	PlaylistEvent(playlistEvent:AnimationPlaylistEvent);
 }
-
 
 typedef Playlist = {
 	var states:AnimationStateSelector;
@@ -222,12 +219,11 @@ typedef Playlist = {
 	var ?visited:Bool;
 }
 
-
 typedef AnimationState = {
 	var name:String;
 	var states:AnimationStateSelector;
 	var fps:Null<Int>;
-	var loop:Null<AnimationFrameCondition>;
+	var loop:Null<Int>; // -1 = forever, null = no loop, N = loop N times
 	var extraPoint:Map<String, Array<ExtraPoints>>;
 	var playlist:Array<Playlist>;
 	var ?visited:Bool;
@@ -238,6 +234,7 @@ class ExtraPointsHelper {
 		return new h2d.col.IPoint(pt.point.x, pt.point.y);
 	}
 }
+
 class AnimUnexpected<Token> extends Unexpected<Token> {
 	final message:String;
 	final input:byte.ByteData;
@@ -278,9 +275,7 @@ interface AnimParserResult {
 	function createAnimSM(stateSelector:AnimationStateSelector):AnimationSM;
 }
 
-
-class AnimParser extends hxparse.Parser<hxparse.LexerTokenSource<APToken>, APToken> implements hxparse.ParserBuilder implements AnimParserResult{
-
+class AnimParser extends hxparse.Parser<hxparse.LexerTokenSource<APToken>, APToken> implements hxparse.ParserBuilder implements AnimParserResult {
 	var animations:Array<AnimationState> = [];
 	var animationNames = [];
 	var allowedExtraPoints:Array<String> = [];
@@ -289,33 +284,40 @@ class AnimParser extends hxparse.Parser<hxparse.LexerTokenSource<APToken>, APTok
 	var sheetName:String;
 	var center:Null<Point> = null;
 	var metadata:Map<String, Array<MetadataEntry>> = [];
-	var cache:Map<String, Array<{name:String, states:Array<AnimationFrameState>, extraPoints:Map<String, h2d.col.IPoint>}>>=[];
+	var cache:Map<String, Array<{name:String, states:Array<AnimationFrameState>, loopCount:Int, extraPoints:Map<String, h2d.col.IPoint>}>> = [];
 	final resourceLoader:bh.base.ResourceLoader;
 
 	var input:byte.ByteData;
 
 	static function validateState(definedStates:Map<String, Array<String>>, name:String, value:String) {
-		if (!definedStates.exists(name)) throw 'state ${name} not defined';
-		if (definedStates[name].contains(value) == false) throw 'state ${name} does not allow value:${value}';
+		if (!definedStates.exists(name))
+			throw 'state ${name} not defined';
+		if (definedStates[name].contains(value) == false)
+			throw 'state ${name} does not allow value:${value}';
 	}
 
 	static function validateStateSelector(definedStates:Map<String, Array<String>>, selector:AnimationStateSelector) {
-		if (definedStates.count() != selector.count()) throw 'invalid selector ${selector} for defined states ${definedStates}';
+		if (definedStates.count() != selector.count())
+			throw 'invalid selector ${selector} for defined states ${definedStates}';
 		for (key => value in definedStates) {
-			if (selector.exists(key) == false)	throw 'key not defined: ${key}';
-			if (value.contains(selector[key]) == false)	throw 'unknown state value ${value} not defined for key: ${key}: ${definedStates}';
+			if (selector.exists(key) == false)
+				throw 'key not defined: ${key}';
+			if (value.contains(selector[key]) == false)
+				throw 'unknown state value ${value} not defined for key: ${key}: ${definedStates}';
 		}
 
 		for (key => value in selector) {
-			if (definedStates.exists(key) == false)	throw 'unknown state key: ${key}';
-			if (definedStates[key].contains(value) == false)	throw 'unknown state value ${value} not defined for key: ${key}: ${definedStates}';
+			if (definedStates.exists(key) == false)
+				throw 'unknown state key: ${key}';
+			if (definedStates[key].contains(value) == false)
+				throw 'unknown state value ${value} not defined for key: ${key}: ${definedStates}';
 		}
 	}
 
 	function parserValidateState(animStates:Map<String, Array<String>>, name:String, value:String) {
 		try {
 			validateState(animStates, name, value);
-		} catch(e) {
+		} catch (e) {
 			syntaxError(e.message);
 		}
 	}
@@ -324,25 +326,30 @@ class AnimParser extends hxparse.Parser<hxparse.LexerTokenSource<APToken>, APTok
 		var retVal = 0;
 		for (key => value in selector) {
 			if (match.exists(key)) {
-				if (match[key] == value) retVal++;
-				else retVal -= 10000;
-			} 
-		} 
+				if (match[key] == value)
+					retVal++;
+				else
+					retVal -= 10000;
+			}
+		}
 		return retVal;
 	}
 
 	static function matchSelectorExact(selector1:AnimationStateSelector, selector2:AnimationStateSelector) {
-		if (selector1.count() != selector2.count()) return false;
+		if (selector1.count() != selector2.count())
+			return false;
 
 		for (key => value in selector1) {
-			if (!selector2.exists(key)) return false;
-			if (selector2.get(key) != value) return false;
-		} 
+			if (!selector2.exists(key))
+				return false;
+			if (selector2.get(key) != value)
+				return false;
+		}
 		return true;
 	}
 
 	function createAllStates(statesDefinitions:Map<String, Array<String>>) {
-		var totalStates  = 1;
+		var totalStates = 1;
 		var stateValuesCount = [];
 		var stateKeys = [];
 		var retVal = [];
@@ -360,14 +367,12 @@ class AnimParser extends hxparse.Parser<hxparse.LexerTokenSource<APToken>, APTok
 				var key = stateKeys[ki];
 				x.set(key, statesDefinitions[key][vi]);
 			}
-			// trace(selectorToHex(x));
-			// trace(hexToSelector(selectorToHex(x)));
 			retVal.push(x);
 		}
 		return retVal;
 	}
 
-	public static function findPlaylist(stateSelector:AnimationStateSelector, animation:AnimationState, definedStates:Map<String, Array<String>>){
+	public static function findPlaylist(stateSelector:AnimationStateSelector, animation:AnimationState, definedStates:Map<String, Array<String>>) {
 		validateStateSelector(definedStates, stateSelector);
 		var bestScore = -1;
 		var best2Score = -1;
@@ -386,18 +391,21 @@ class AnimParser extends hxparse.Parser<hxparse.LexerTokenSource<APToken>, APTok
 				best2Score = bestScore;
 			}
 		}
-		if (best != null && best2Score == bestScore) throw 'ambiguous playlist: ${animation.name} ${best.states} ${best2.states} selector: ${stateSelector}';
+		if (best != null && best2Score == bestScore)
+			throw 'ambiguous playlist: ${animation.name} ${best.states} ${best2.states} selector: ${stateSelector}';
 		return best;
 	}
 
-	public static function findExtraPoint(extraPointName:String, stateSelector:AnimationStateSelector, animation:AnimationState, definedStates:Map<String, Array<String>>){
+	public static function findExtraPoint(extraPointName:String, stateSelector:AnimationStateSelector, animation:AnimationState,
+			definedStates:Map<String, Array<String>>) {
 		validateStateSelector(definedStates, stateSelector);
 		var bestScore = -1;
 		var best2Score = -1;
 		var best:Null<ExtraPoints> = null;
 		var best2:Null<ExtraPoints> = null;
 		final allExtraPoints = animation.extraPoint.get(extraPointName);
-		if (allExtraPoints == null) return null;
+		if (allExtraPoints == null)
+			return null;
 
 		for (p in allExtraPoints) {
 			final count = countStateMatch(p.states, stateSelector);
@@ -410,26 +418,27 @@ class AnimParser extends hxparse.Parser<hxparse.LexerTokenSource<APToken>, APTok
 				best2 = best;
 				best = p;
 				best2Score = bestScore;
-				
 			}
 		}
 
-		if (best != null && best2Score == bestScore) throw 'ambiguous extraPoint: ${extraPointName} ${best.states} ${best2.states} selector: ${stateSelector}';
+		if (best != null && best2Score == bestScore)
+			throw 'ambiguous extraPoint: ${extraPointName} ${best.states} ${best2.states} selector: ${stateSelector}';
 		return best;
 	}
 
-	public static function findAnimation(name:String, stateSelector:AnimationStateSelector, definedStates, animations){
+	public static function findAnimation(name:String, stateSelector:AnimationStateSelector, definedStates, animations) {
 		validateStateSelector(definedStates, stateSelector);
 		return findAnimationInternal(name, stateSelector, animations);
 	}
 
-	public static function findAnimationInternal(name:String, stateSelector:AnimationStateSelector, animations:Array<AnimationState>){
+	public static function findAnimationInternal(name:String, stateSelector:AnimationStateSelector, animations:Array<AnimationState>) {
 		var bestScore = -1;
 		var best:Null<AnimationState> = null;
 		for (a in animations) {
-			if (name != a.name) continue;
+			if (name != a.name)
+				continue;
 			var count = countStateMatch(a.states, stateSelector);
-			
+
 			if (count > bestScore) {
 				best = a;
 				bestScore = count;
@@ -437,21 +446,23 @@ class AnimParser extends hxparse.Parser<hxparse.LexerTokenSource<APToken>, APTok
 				throw 'ambiguous animation: ${a.name}:${a.states}, ${best.name}:${best.states}';
 			}
 		}
-//		trace('${stateSelector}, ${bestScore}');
 		return best;
 	}
 
 	function checkForUnreachableState(parentState:AnimationStateSelector, childState:AnimationStateSelector) {
 		for (key => value in childState) {
-			if (!parentState.exists(key)) continue;
-			if (parentState[key] != value) syntaxError('unreachable state ${childState}, limited by ${parentState}');
-			else syntaxError('useless state limit ${childState}, limited by ${parentState}');
+			if (!parentState.exists(key))
+				continue;
+			if (parentState[key] != value)
+				syntaxError('unreachable state ${childState}, limited by ${parentState}');
+			else
+				syntaxError('useless state limit ${childState}, limited by ${parentState}');
 		}
 		return true;
 	}
 
 	function syntaxError(error, ?pos):Dynamic {
-		final error = new InvalidSyntax(error, pos == null ? stream.curPos(): pos, input);
+		final error = new InvalidSyntax(error, pos == null ? stream.curPos() : pos, input);
 		trace(error);
 		throw error;
 	}
@@ -486,27 +497,35 @@ class AnimParser extends hxparse.Parser<hxparse.LexerTokenSource<APToken>, APTok
 	function parse():LoadedAnimation {
 		var animationParsingStarted = false;
 		while (true) {
-
 			switch stream {
-				case [APIdentifier(_, APSheet, AITString), APColon, APIdentifier(value, _, AITString|AITQuotedString), APNewLine]:
-					if (animationParsingStarted) syntaxError("sheet must be defined before animations");
-					if (sheetName != null) syntaxError("sheet already defined");
+				case [APIdentifier(_, APSheet, AITString), APColon, APIdentifier(value, _, AITString | AITQuotedString), APNewLine]:
+					if (animationParsingStarted)
+						syntaxError("sheet must be defined before animations");
+					if (sheetName != null)
+						syntaxError("sheet already defined");
 					sheetName = value;
 				case [APIdentifier(_, APStates, AITString), APColon, s = parseAllStates([])]:
-					if (animationParsingStarted) syntaxError("states must be defined before animations");
-					if (definedStates.count() > 0) syntaxError("states already defined");
+					if (animationParsingStarted)
+						syntaxError("states must be defined before animations");
+					if (definedStates.count() > 0)
+						syntaxError("states already defined");
 					definedStates = s;
 				case [APIdentifier(_, APAllowedExtraPoints, AITString), APColon, APBracketOpen, list = parseListUntilBracket()]:
-					if (animationParsingStarted) syntaxError("allowedExtraPoints must be defined before animations");
-					if (allowedExtraPoints.length > 0) syntaxError("allowedExtraPoints already defined");
-						allowedExtraPoints = list;
+					if (animationParsingStarted)
+						syntaxError("allowedExtraPoints must be defined before animations");
+					if (allowedExtraPoints.length > 0)
+						syntaxError("allowedExtraPoints already defined");
+					allowedExtraPoints = list;
 				case [APIdentifier(_, APCenter, AITString), APColon, c = parseCoordinates()]:
-					if (center != null) syntaxError("center already defined");
+					if (center != null)
+						syntaxError("center already defined");
 					center = c;
 
 				case [APIdentifier(_, APMetadata, AITString), APCurlyOpen]:
-					if (animationParsingStarted) syntaxError("metadata must be defined before animations");
-					if (metadata.count() > 0) syntaxError("metadata already defined");
+					if (animationParsingStarted)
+						syntaxError("metadata must be defined before animations");
+					if (metadata.count() > 0)
+						syntaxError("metadata already defined");
 					parseMetadata();
 
 				case [APIdentifier(_, APAnimation, AITString), animationStates = parseStates([]), APCurlyOpen]:
@@ -517,7 +536,8 @@ class AnimParser extends hxparse.Parser<hxparse.LexerTokenSource<APToken>, APTok
 					final startOfAnim = this.curPos();
 					var parsedAnim = parseAnimation(definedStates, animationStates, allowedExtraPoints);
 
-					if (parsedAnim.fps == null) syntaxError("fps expected", startOfAnim);
+					if (parsedAnim.fps == null)
+						syntaxError("fps expected", startOfAnim);
 					var anim:AnimationState = {
 						states: animationStates,
 						name: parsedAnim.name,
@@ -529,10 +549,10 @@ class AnimParser extends hxparse.Parser<hxparse.LexerTokenSource<APToken>, APTok
 					animations.push(anim);
 
 				case [APEof]:
-//					trace('EOF');
 					break;
 				case [APNewLine]: // skip newlines
-				case _: unexpected();
+				case _:
+					unexpected();
 			}
 		}
 
@@ -543,34 +563,39 @@ class AnimParser extends hxparse.Parser<hxparse.LexerTokenSource<APToken>, APTok
 		if (allStates.length > 50) {
 			trace('Warning: large number of states in AnimParser: ${allStates.length}}');
 		}
-		
+
 		for (state in allStates) {
 			for (name in animationNames) {
 				var anim = findAnimationInternal(name, state, animations);
-				if (anim == null) syntaxError('no animation ${name} defined for states ${state}');
-				else anim.visited = true;
-			
+				if (anim == null)
+					syntaxError('no animation ${name} defined for states ${state}');
+				else
+					anim.visited = true;
+
 				for (ePoint in allowedExtraPoints) {
 					var p = findExtraPoint(ePoint, state, anim, definedStates);
-					if (p != null) p.visited = true;
+					if (p != null)
+						p.visited = true;
 				}
-			
-				var playlist = findPlaylist(state, anim, definedStates);
-				if (playlist == null) throw 'no playlist for ${state}, id ${anim.name}';
 
+				var playlist = findPlaylist(state, anim, definedStates);
+				if (playlist == null)
+					throw 'no playlist for ${state}, id ${anim.name}';
 			}
 		}
-		
 
 		for (anim in animations) {
-			if (anim.visited == false) throw 'animation ${anim.name} not reachable';
+			if (anim.visited == false)
+				throw 'animation ${anim.name} not reachable';
 			for (ek => ev in anim.extraPoint) {
 				for (ePoint in ev) {
-					if (ePoint.visited == false) throw 'Extra point ${ek} in anim ${anim.name} not reachable ${ePoint.states}';
+					if (ePoint.visited == false)
+						throw 'Extra point ${ek} in anim ${anim.name} not reachable ${ePoint.states}';
 				}
 
 				for (pl in anim.playlist) {
-					if (pl.visited == false) throw 'Playlist in anim ${anim.name} not reachable ${pl.states}';
+					if (pl.visited == false)
+						throw 'Playlist in anim ${anim.name} not reachable ${pl.states}';
 				}
 			}
 		}
@@ -588,7 +613,8 @@ class AnimParser extends hxparse.Parser<hxparse.LexerTokenSource<APToken>, APTok
 		while (true) {
 			switch stream {
 				case [APNewLine]:
-				case [APCurlyClosed]: break;
+				case [APCurlyClosed]:
+					break;
 				case [states = parseStates([]), APIdentifier(key, _, AITString), APColon, APNumber(numStr)]:
 					var entry:MetadataEntry = {states: states, value: MVInt(Std.parseInt(numStr))};
 					if (metadata.exists(key)) {
@@ -603,70 +629,83 @@ class AnimParser extends hxparse.Parser<hxparse.LexerTokenSource<APToken>, APTok
 					} else {
 						metadata[key] = [entry];
 					}
-				case _: unexpectedError("Expected [state selector] key: value in metadata block");
+				case _:
+					unexpectedError("Expected [state selector] key: value in metadata block");
 			}
 		}
 	}
 
 	public function parseExtraPoints(statesDefinitions, animationStates, extraPoints:Map<String, Array<ExtraPoints>>, allowedExtraPoints:Array<String>) {
-				while (true) {
-					switch stream {
-						case [APNewLine]: 
-						case [APCurlyClosed]: break;
-						case [states = parseStates([]), APIdentifier(pointName, _), APColon,  c = parseCoordinates()]:
-							
-							if (allowedExtraPoints.contains(pointName) == false) syntaxError('extraPoint ${pointName} not declared in allowedExtraPoints');
-							for (key => value in states) {
-								parserValidateState(statesDefinitions, key, value);
-							}
-							checkForUnreachableState(animationStates, states);
-							
-							var p = {states: states, point: c};
-							if (extraPoints.exists(pointName)) 
-							{
-								extraPoints[pointName].push(p);
-							} else {
-								extraPoints.set(pointName, [p]);
-							}
-						case _: unexpectedError();
+		while (true) {
+			switch stream {
+				case [APNewLine]:
+				case [APCurlyClosed]:
+					break;
+				case [states = parseStates([]), APIdentifier(pointName, _), APColon, c = parseCoordinates()]:
+
+					if (allowedExtraPoints.contains(pointName) == false)
+						syntaxError('extraPoint ${pointName} not declared in allowedExtraPoints');
+					for (key => value in states) {
+						parserValidateState(statesDefinitions, key, value);
 					}
-				}
+					checkForUnreachableState(animationStates, states);
+
+					var p = {states: states, point: c};
+					if (extraPoints.exists(pointName)) {
+						extraPoints[pointName].push(p);
+					} else {
+						extraPoints.set(pointName, [p]);
+					}
+				case _:
+					unexpectedError();
+			}
+		}
 	}
 
 	public function parseAnimation(statesDefinitions, animationStates, allowedExtraPoints) {
 		var extraPoints:Map<String, Array<ExtraPoints>> = [];
-		var ret = {loop: null, name:null, fps:null, extraPoints:extraPoints, playlist:[]};
+		var ret = {loop: null, name: null, fps: null, extraPoints: extraPoints, playlist: []};
 
 		while (true) {
 			switch stream {
-				case [APIdentifier(_, APName, AITString), APColon, APIdentifier(name, _, AITString|AITQuotedString)|APNumber(name)]:
-					if (!animationNames.contains(name)) animationNames.push(name);
+				case [APIdentifier(_, APName, AITString), APColon, APIdentifier(name, _, AITString | AITQuotedString) | APNumber(name)]:
+					if (!animationNames.contains(name))
+						animationNames.push(name);
 					ret.name = name;
 				case [APIdentifier(_, APLoop, AITString)]:
 					switch stream {
-						case [APNewLine]: ret.loop = Forever;
-						case [APColon ]:
+						case [APNewLine]:
+							ret.loop = -1; // forever
+						case [APColon]:
 							switch stream {
-								case [APIdentifier("true"|"yes", _)]: ret.loop = Forever;
-								case [APIdentifier("false"|"no", _)]: ret.loop = null;
-								case [APIdentifier(_, APUntilCommand, AITString)]: ret.loop = UntilCommand;
+								case [APIdentifier("true" | "yes", _)]:
+									ret.loop = -1; // forever
+								case [APIdentifier("false" | "no", _)]:
+									ret.loop = null;
 								case [APNumber(number)]:
 									var cnt = Std.parseInt(number);
-									if (cnt <= 0) syntaxError("loop counter must be greater than 0");
-									ret.loop = Count(cnt);
-								case _: syntaxError('unknown bool value ${peek(0)}');
+									if (cnt <= 0)
+										syntaxError("loop counter must be greater than 0");
+									ret.loop = cnt;
+								case _:
+									syntaxError('unknown loop value ${peek(0)}');
 							}
-						case _: unexpectedError();
+						case _:
+							unexpectedError();
 					}
-					
+
 				case [APIdentifier(_, APFps, AITString), APColon, APNumber(number)]:
-					if (ret.fps != null) syntaxError("fps already set");
+					if (ret.fps != null)
+						syntaxError("fps already set");
 					ret.fps = Std.parseInt(number);
-					if (ret.fps <= 0) syntaxError("fps must be greater than 0");
-				case [APIdentifier(_, APExtrapoints, AITString), APCurlyOpen]:				
-					if (extraPoints.count() > 0) syntaxError("extraPoints already defined");
+					if (ret.fps <= 0)
+						syntaxError("fps must be greater than 0");
+				case [APIdentifier(_, APExtrapoints, AITString), APCurlyOpen]:
+					if (extraPoints.count() > 0)
+						syntaxError("extraPoints already defined");
 					parseExtraPoints(statesDefinitions, animationStates, extraPoints, allowedExtraPoints);
-					if (extraPoints.count() == 0) syntaxError("extraPoints must not be empty");
+					if (extraPoints.count() == 0)
+						syntaxError("extraPoints must not be empty");
 
 				case [APIdentifier(_, APPlaylist, AITString), playlistStates = parseStates([]), APCurlyOpen]:
 					var playlist:Playlist = {anims: [], states: playlistStates};
@@ -679,99 +718,87 @@ class AnimParser extends hxparse.Parser<hxparse.LexerTokenSource<APToken>, APTok
 					ret.playlist.push(playlist);
 
 				case [APNewLine]: // skip newlines
-				
-				case [APCurlyClosed]: break;
-				case _: unexpectedError();
+
+				case [APCurlyClosed]:
+					break;
+				case _:
+					unexpectedError();
 			}
 		}
 
-		if (ret.name == null) syntaxError("name not defined");
-		if (ret.playlist.length == 0) syntaxError("animation requires playlist");
-		
+		if (ret.name == null)
+			syntaxError("name not defined");
+		if (ret.playlist.length == 0)
+			syntaxError("animation requires playlist");
+
 		return ret;
 	}
 
-	function parseFrames(anims:Array<AnimPlaylistFrames>, isLoop = false):Array<AnimPlaylistFrames> {
+	function parseFrames(anims:Array<AnimPlaylistFrames>):Array<AnimPlaylistFrames> {
 		var exit = false;
 		while (!exit) {
 			switch stream {
-				case [APNewLine]: 
-				case [APIdentifier(_, APLoop, AITString)]:
-					var condition:AnimationFrameCondition = Forever;
-					switch stream {
-						case [APCurlyOpen]:
-						case [APNumber(loopCountStr), APCurlyOpen]:
-							var loopCount = Std.parseInt(loopCountStr);
-							if (loopCount <= 0) throw 'loop count must be greater than 0';
-							condition = Count(loopCount);
-						case [APIdentifier(_, APUntilCommand, AITString), APCurlyOpen]:
-							condition = UntilCommand;
-						case _: syntaxError("invalid loop, count:Int, untilCommand or { expected");
-					}
-					var loopFrames = parseFrames([], true);
-					anims.push(Loop(loopFrames, condition));
-					
-				case [APIdentifier(_, APFile, AITString), APColon, APIdentifier(frameFilename, _, AITQuotedString)]: 
+				case [APNewLine]:
+				case [APIdentifier(_, APFile, AITString), APColon, APIdentifier(frameFilename, _, AITQuotedString)]:
 					var duration:Null<Int> = null;
-							switch stream {
-								case [APIdentifier(_, APDuration, AITString),  d = parseDuration()]:
-									duration = d;
-								case _:
-							}
-							anims.push(FileSingleFrame(frameFilename, duration));
-					
+					switch stream {
+						case [APIdentifier(_, APDuration, AITString), d = parseDuration()]:
+							duration = d;
+						case _:
+					}
+					anims.push(FileSingleFrame(frameFilename, duration));
+
 				case [APIdentifier(_, APEvent, AITString), APIdentifier(eventName, _)]:
 					switch stream {
 						case [APIdentifier(_, APRandom, AITString), p = parseCoordinates(), APComma, APNumber(randomRadius)]:
 							final r = Std.parseInt(randomRadius);
 							anims.push(PlaylistEvent(RandomPointEvent(eventName, new h2d.col.IPoint(p.x, p.y), r)));
-						case [APNewLine|APSemiColon]:
+						case [APNewLine | APSemiColon]:
 							anims.push(PlaylistEvent(Trigger(eventName)));
 						case [p = parseCoordinates()]:
 							anims.push(PlaylistEvent(PointEvent(eventName, new h2d.col.IPoint(p.x, p.y))));
-						case _: unexpectedError();
+						case _:
+							unexpectedError();
 					}
-					
-				case [APIdentifier(_, APCommand, AITString)]:
-					anims.push(AnimExitPoint);
-				case [APIdentifier(_, APGoto, AITString), APIdentifier(stateName, _)]:
-					anims.push(ChangeState(stateName));
-				case [APIdentifier(_, APSheet, AITString),APColon, APIdentifier(frameName, _, AITString|AITQuotedString)]:
+
+				case [APIdentifier(_, APSheet, AITString), APColon, APIdentifier(frameName, _, AITString | AITQuotedString)]:
 					{
-					var start = null;
-					var end = null;
-					var duration:Null<Int> = null;
-					switch stream {
-					 	case [APComma]:
-					 	case _: 
+						var start = null;
+						var end = null;
+						var duration:Null<Int> = null;
+						switch stream {
+							case [APComma]:
+							case _:
+						}
+
+						switch stream {
+							case [APIdentifier(_, APFrames, AITString), APColon, APNumber(startIndex), APDoubleDot, APNumber(endIndex)]:
+								var start = Std.parseInt(startIndex);
+								var end = Std.parseInt(endIndex);
+
+								switch stream {
+									case [APIdentifier(_, APDuration, AITString), APColon, d = parseDuration()]:
+										duration = d;
+									case [APComma, APIdentifier(_, APDuration, AITString), APColon, d = parseDuration()]:
+										duration = d;
+									case _:
+								}
+
+							case [APNewLine]:
+							case [APCurlyClosed]:
+								exit = true;
+							case _:
+								unexpectedError();
+						}
+						if (start == null && end == null)
+							anims.push(SheetFrameAnim(frameName, duration));
+						else
+							anims.push(SheetFrameAnimWithIndex(frameName, start, end, duration));
 					}
-
-					switch stream {
-						case [APIdentifier(_, APFrames, AITString), APColon, APNumber(startIndex), APDoubleDot, APNumber(endIndex)]:
-							var start = Std.parseInt(startIndex);
-							var end = Std.parseInt(endIndex);
-
-							switch stream {
-								case [APIdentifier(_, APDuration, AITString), APColon, d = parseDuration()]:
-									duration = d;
-								case [APComma, APIdentifier(_, APDuration, AITString), APColon, d = parseDuration()]:
-									duration = d;
-								case _:
-							}
-
-						case [APNewLine]:
-						case [APCurlyClosed]:
-							exit = true;
-						case _: unexpectedError();
-
-					}
-					if (start == null && end == null) anims.push(SheetFrameAnim(frameName, duration));
-					else anims.push(SheetFrameAnimWithIndex(frameName, start, end, duration));
-
-				}
-				case [APCurlyClosed]: 
+				case [APCurlyClosed]:
 					exit = true;
-				case _: unexpectedError();
+				case _:
+					unexpectedError();
 			}
 		}
 		return anims;
@@ -781,7 +808,8 @@ class AnimParser extends hxparse.Parser<hxparse.LexerTokenSource<APToken>, APTok
 		switch stream {
 			case [APNumber(x), APComma, APNumber(y)]:
 				return {x: Std.parseInt(x), y: Std.parseInt(y)}
-			case _: unexpectedError();
+			case _:
+				unexpectedError();
 		}
 		return null;
 	}
@@ -796,27 +824,30 @@ class AnimParser extends hxparse.Parser<hxparse.LexerTokenSource<APToken>, APTok
 	public function parseAllStates(animStates:Map<String, Array<String>>) {
 		switch stream {
 			case [APIdentifier(stateName, _), APOpen, list = parseList([])]:
-				if (animStates.exists(stateName)) syntaxError('State ${stateName} already defined');
+				if (animStates.exists(stateName))
+					syntaxError('State ${stateName} already defined');
 				animStates.set(stateName, list);
 				switch stream {
-					case [APComma]: parseAllStates(animStates);
+					case [APComma]:
+						parseAllStates(animStates);
 					case [APNewLine]:
 				}
 
-			case _: unexpectedError();
+			case _:
+				unexpectedError();
 		}
 		return animStates;
 	}
 
 	public function parseStates(states:AnimationStateSelector) {
 		while (true) {
-				switch stream {
-					case [APAt, APOpen, APIdentifier(stateName, _, AITString | AITQuotedString), APArrow, (APIdentifier(stateValue, _, AITString | AITQuotedString) | APNumber(stateValue)), APClosed]:
-						states.set(stateName, stateValue);
-					case [APNewLine]:
-					case _: return states;
-				}
-				
+			switch stream {
+				case [APAt, APOpen, APIdentifier(stateName, _, AITString | AITQuotedString), APArrow, (APIdentifier(stateValue, _, AITString | AITQuotedString) | APNumber(stateValue)), APClosed]:
+					states.set(stateName, stateValue);
+				case [APNewLine]:
+				case _:
+					return states;
+			}
 		}
 	}
 
@@ -825,54 +856,59 @@ class AnimParser extends hxparse.Parser<hxparse.LexerTokenSource<APToken>, APTok
 			case [APIdentifier(ident, _) | APNumber(ident)]:
 				list.push(ident);
 				switch stream {
-					case [APComma]: parseList(list);
-					case [APClosed]: return list;
+					case [APComma]:
+						parseList(list);
+					case [APClosed]:
+						return list;
 				}
 
-			case _: unexpectedError();
+			case _:
+				unexpectedError();
 		}
 		return list;
 	}
 
 	function parseDuration():Null<Int> {
-	
 		switch stream {
 			case [APNumber(duration), APIdentifier("ms", _)]:
 				final d = Std.parseInt(duration);
-				if (d <= 0) return syntaxError("duration must be greater than 0");
+				if (d <= 0)
+					return syntaxError("duration must be greater than 0");
 				return d;
 			case [APIdentifier(durationStr, _, AITString)]:
 				if (durationStr.endsWith("ms")) {
-					
-					final d = Std.parseInt(durationStr.substring(0, durationStr.length -2));
-					if (d <= 0) syntaxError("duration must be greater than 0");
+					final d = Std.parseInt(durationStr.substring(0, durationStr.length - 2));
+					if (d <= 0)
+						syntaxError("duration must be greater than 0");
 					return d;
-	
-				} else return syntaxError('expected <int>ms got ${durationStr}');
-			case _: return null;
+				} else
+					return syntaxError('expected <int>ms got ${durationStr}');
+			case _:
+				return null;
 		}
 	}
-	
+
 	public function parseListUntilBracket() {
 		var list = [];
 		while (true) {
 			switch stream {
 				case [APIdentifier(ident, _)]:
-					if (list.contains(ident)) syntaxError('extra point ${ident} already defined');
+					if (list.contains(ident))
+						syntaxError('extra point ${ident} already defined');
 					list.push(ident);
-				switch stream {
-					case [APComma]: 
-					case [APBracketClosed]: return list;
+					switch stream {
+						case [APComma]:
+						case [APBracketClosed]:
+							return list;
 					}
-				case _: unexpectedError();
+				case _:
+					unexpectedError();
 			}
 		}
 		return list;
 	}
 
-
-	function createStates(anims:Array<AnimPlaylistFrames>, anim:AnimationState, stateSelector:AnimationStateSelector, level:Int):Array<AnimationFrameState> {
-		
+	function createStates(anims:Array<AnimPlaylistFrames>, anim:AnimationState, stateSelector:AnimationStateSelector):Array<AnimationFrameState> {
 		function replaceState(input:String, stateSelector:AnimationStateSelector) {
 			var result = input;
 			for (key => value in stateSelector) {
@@ -881,127 +917,83 @@ class AnimParser extends hxparse.Parser<hxparse.LexerTokenSource<APToken>, APTok
 			return result;
 		}
 
-
-
 		function tileToFrame(tile:h2d.Tile, duration:Float):AnimationFrameState {
 			if (center != null) {
 				tile.dx = -center.x;
 				tile.dy = -center.y;
 			}
-			return Frame(new AnimationFrame(tile, duration,0,0,tile.iwidth,tile.iheight));
+			return Frame(new AnimationFrame(tile, duration, 0, 0, tile.iwidth, tile.iheight));
 		}
 
 		function AFtoFrame(f:AnimationFrame, duration:Float):AnimationFrameState {
 			if (center != null) {
 				f.tile.dx = f.offsetx - center.x;
-				f.tile.dy = (f.height-f.tile.height) - f.offsety - center.y;
-
+				f.tile.dy = (f.height - f.tile.height) - f.offsety - center.y;
 			}
 			return Frame(f.cloneWithDuration(duration));
 		}
-		function commandsToDebugString(anims:Array<AnimationFrameState>, markIndex:Int) {
-			final buf = new StringBuf();
-			for (index in 0...anims.length) {
-				
-				buf.add('${index}: ${anims[index]}');
-				if (index == markIndex) buf.add('\t\t\t<----- HERE');
-				buf.add('\n');
-			}
-			return buf.toString();
-		}
-
-		function isInfiniteLoop(anims:Array<AnimationFrameState>, from:Int, to:Int):Bool {
-			for(index in from...to) {
-				switch anims[index] {
-					case ExitPoint: return false;
-					default:
-				}
-			}
-			switch anims[to] {
-				case Loop(destIndex, condition):
-					return switch condition {
-						case Forever: true;
-						case Count(repeatCount): false;
-						case UntilCommand: false;
-					}
-				default: throw 'expected loop';
-			}
-			return true;
-		}
 
 		var retVal = [];
-		final duration = 1.0/anim.fps;
+		final duration = 1.0 / anim.fps;
 		for (frames in anims) {
 			switch frames {
 				case SheetFrameAnim(name, overrideDuration):
 					final expandedName = replaceState(name, stateSelector);
 					final sheet = resourceLoader.loadSheet2(sheetName);
-					if (sheet == null) throw 'sheet ${sheetName} not found';
+					if (sheet == null)
+						throw 'sheet ${sheetName} not found';
 					final loadedTiles = sheet.getAnim(expandedName);
-					if (loadedTiles == null) throw 'tiles ${name}->${expandedName} not found';
+					if (loadedTiles == null)
+						throw 'tiles ${name}->${expandedName} not found';
 					var tiles = sheet.getAnim(expandedName);
-					var d = overrideDuration == null ? duration : overrideDuration/1000.0;
+					var d = overrideDuration == null ? duration : overrideDuration / 1000.0;
 					retVal = retVal.concat(Lambda.map(tiles, t -> AFtoFrame(t, d)));
 				case SheetFrameAnimWithIndex(name, from, to, overrideDuration):
 					final sheet = resourceLoader.loadSheet2(sheetName);
-					if (sheet == null) throw 'sheet ${sheetName} not found';
+					if (sheet == null)
+						throw 'sheet ${sheetName} not found';
 					final expandedName = replaceState(name, stateSelector);
 					final animTiles = sheet.getAnim(expandedName);
-			
-					if (animTiles == null) throw 'tiles ${name}->${expandedName} not found';
-					var d = overrideDuration == null ? duration : overrideDuration/1000.0;
+
+					if (animTiles == null)
+						throw 'tiles ${name}->${expandedName} not found';
+					var d = overrideDuration == null ? duration : overrideDuration / 1000.0;
 					for (i in 0...animTiles.length) {
-						if ((from == null || i >= from) && (to == null || i <= to )) {
+						if ((from == null || i >= from) && (to == null || i <= to)) {
 							retVal.push(AFtoFrame(animTiles[i], d));
 						}
-
 					}
-				case FileSingleFrame(filename, overrideDuration): 
+				case FileSingleFrame(filename, overrideDuration):
 					var d = overrideDuration == null ? duration : overrideDuration / 1000.0;
 					retVal.push(tileToFrame(resourceLoader.loadTile(filename), d));
-				case AnimExitPoint:
-					retVal.push(ExitPoint);
 				case PlaylistEvent(playlistEvent):
 					retVal.push(Event(playlistEvent));
-				case ChangeState(newState):
-					if (!animationNames.contains(newState)) throw 'invalid goto ${newState}';
-					retVal.push(AnimationFrameState.ChangeState(newState));
-				case Loop(anims2, condition):
-					var startIndex = retVal.length;
-					var loopStates = createStates(anims2, anim, stateSelector, level + 1);
-					retVal = retVal.concat(loopStates);
-					retVal.push(AnimationFrameState.Loop(startIndex, condition));
-					if (isInfiniteLoop(retVal, startIndex, retVal.length-1)) throw('infinite loop detected in ${anim.name}, states:${stateSelector}, \n${commandsToDebugString(retVal, retVal.length-1)}');
 			}
 		}
 
-		if (anim.loop != null && level == 0) {
-			// if (retVal.length > 0 && retVal[retVal.length-1].match(Loop(_,_))) {
-			// 	throw 'animation level loop and ending playlist loop detected';
-			// }
-			retVal.push(AnimationFrameState.Loop(0, anim.loop));
-			if (isInfiniteLoop(retVal, 0, retVal.length-1)) throw('infinite loop detected in ${anim.name}, states:${stateSelector}\n${commandsToDebugString(retVal, retVal.length-1)}');
-		}
 		return retVal;
 	}
 
 	function selectorToHex(selector:AnimationStateSelector) {
-		if (selector.count() == 0) return "";
-		var indexes = Bytes.alloc(definedStatesIndexes.length); 
+		if (selector.count() == 0)
+			return "";
+		var indexes = Bytes.alloc(definedStatesIndexes.length);
 		indexes.fill(0, indexes.length, 255);
-		
+
 		for (key => value in selector) {
 			final idx = definedStatesIndexes.indexOf(key);
-			if (idx == -1) throw 'invalid selector key ${key}';
+			if (idx == -1)
+				throw 'invalid selector key ${key}';
 			final value = definedStates[key].indexOf(value);
 			indexes.set(idx, value);
 		}
 		return indexes.toHex();
 	}
+
 	function hexToSelector(hex:String) {
-		
 		var selector:AnimationStateSelector = [];
-		if (hex.length == 0) return selector;
+		if (hex.length == 0)
+			return selector;
 		var indexes = Bytes.ofHex(hex);
 
 		for (i in 0...indexes.length) {
@@ -1009,36 +1001,41 @@ class AnimParser extends hxparse.Parser<hxparse.LexerTokenSource<APToken>, APTok
 			final byteValue = indexes.get(i);
 			selector.set(key, definedStates[key][byteValue]);
 		}
-		return selector;		
+		return selector;
 	}
 
-	public function load(stateSelector:AnimationStateSelector, animSM:AnimationSM){
+	public function load(stateSelector:AnimationStateSelector, animSM:AnimationSM) {
 		var hex = selectorToHex(stateSelector);
 		if (!cache.exists(hex)) {
-
 			var cacheArray = [];
 			for (name in animationNames) {
 				final anim = findAnimation(name, stateSelector, definedStates, animations);
-				if (anim == null) throw 'null anim ${name}';
+				if (anim == null)
+					throw 'null anim ${name}';
 				final playlist = findPlaylist(stateSelector, anim, definedStates);
-				if (playlist == null) throw 'null playlist for anim ${name}';
-				
-				var states = createStates(playlist.anims, anim, stateSelector, 0);
+				if (playlist == null)
+					throw 'null playlist for anim ${name}';
+
+				var states = createStates(playlist.anims, anim, stateSelector);
 
 				final extraPoints = new Map<String, h2d.col.IPoint>();
-				for(pointName in allowedExtraPoints) {
+				for (pointName in allowedExtraPoints) {
 					var pt = findExtraPoint(pointName, stateSelector, anim, definedStates);
-					if (pt != null) extraPoints.set(pointName, pt.toPoint());
+					if (pt != null)
+						extraPoints.set(pointName, pt.toPoint());
 				}
-				cacheArray.push({name:name, states:states, extraPoints:extraPoints});
-				
+
+				// Convert loop: -1 = forever, null = 0 (no loop), N = N times
+				final loopCount = anim.loop == null ? 0 : anim.loop;
+
+				cacheArray.push({name: name, states: states, loopCount: loopCount, extraPoints: extraPoints});
 			}
 			cache.set(hex, cacheArray);
 		}
-		
+
 		final cacheEntries = cache.get(hex);
 		for (e in cacheEntries) {
-			animSM.addAnimationState(e.name, e.states, e.extraPoints);
+			animSM.addAnimationState(e.name, e.states, e.loopCount, e.extraPoints);
 		}
 	}
 
@@ -1047,5 +1044,4 @@ class AnimParser extends hxparse.Parser<hxparse.LexerTokenSource<APToken>, APTok
 		load(stateSelector, animSM);
 		return animSM;
 	}
-
 }

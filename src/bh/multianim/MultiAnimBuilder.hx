@@ -1553,7 +1553,7 @@ class MultiAnimBuilder {
 			case STATEANIM(filename, initialState, selectorReferences):
 				var selector = [for (k => v in selectorReferences) k => resolveAsString(v)];
 				var animSM = resourceLoader.createAnimSM(filename, selector);
-				animSM.addCommand(SwitchState(resolveAsString(initialState)), ExecuteNow);
+				animSM.play(resolveAsString(initialState));
 
 				StateAnim(animSM);
 			case STATEANIM_CONSTRUCT(initialState, construct):
@@ -1570,17 +1570,16 @@ class MultiAnimBuilder {
 							}
 
 							var animStates = [for (a in anim) Frame(a.cloneWithDuration(1.0 / resolveAsNumber(fps)))];
-							if (loop)
-								animStates.push(Loop(0, Forever));
+							var loopCount = loop ? -1 : 0; // -1 = forever, 0 = no loop
 
-							animSM.addAnimationState(key, animStates, []);
+							animSM.addAnimationState(key, animStates, loopCount, new Map());
 					}
 				}
 				final initialStateResolved = resolveAsString(initialState);
 				if (animSM.animationStates.exists(initialStateResolved) == false)
 					throw 'initialState ${initialStateResolved} does not exist in constructed stateanim';
 
-				animSM.addCommand(SwitchState(initialStateResolved), ExecuteNow);
+				animSM.play(initialStateResolved);
 
 				StateAnim(animSM);
 			case REPEAT(varName, repeatType):

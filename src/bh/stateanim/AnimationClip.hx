@@ -5,18 +5,17 @@ import h2d.Drawable;
 import h2d.RenderContext;
 
 /**
-	A basic frame-based animation that plays a list of frames with specified durations.
-	Each frame has a tile and a duration. The animation advances through frames based on elapsed time.
-	Completely externally driven via the `update(dt)` method - caller controls all timing and looping.
+	An animation clip - a sequence of frames with durations and events.
+	Completely externally driven via the `update(dt)` method.
 **/
 @:nullSafety
-class BasicAnim extends Drawable {
+class AnimationClip extends Drawable {
 	var elapsedTime:Float = 0;
 	var frames:Array<AnimationFrame>;
 	var currentFrameIndex:Int = 0;
 
 	/**
-		Creates a new BasicAnim with the given frames.
+		Creates a new AnimationClip with the given frames.
 		@param frames Array of AnimationFrame objects to play.
 	**/
 	public function new(frames:Array<AnimationFrame>, ?parent:h2d.Object) {
