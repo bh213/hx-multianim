@@ -6,6 +6,7 @@ import h2d.HtmlText;
 import bh.paths.AnimatedPath;
 import bh.paths.AnimatedPath.AnimatePathCommands;
 import bh.paths.MultiAnimPaths.Path;
+import bh.stateanim.AnimationFrame;
 import bh.stateanim.AnimationSM;
 import bh.stateanim.AnimationSM.AnimationFrameState;
 import bh.base.FPoint;
@@ -246,7 +247,7 @@ enum CallbackResult {
 	CBRFloat(val:Float);
 	CBRString(val:String);
 	CBRObject(val:h2d.Object);
-	CBRNoResult; // for default behaviour, e.g. for example of PLACEHOLDER
+	CBRNoResult; // for default behaviors, e.g. for example of PLACEHOLDER
 }
 
 enum PlaceholderValues {
@@ -850,7 +851,7 @@ class MultiAnimBuilder {
 		return pos;
 	}
 
-	function drawPixles(shapes:Array<PixelShapes>, gridCoordinateSystem, hexCoordinateSystem) {
+	function drawPixels(shapes:Array<PixelShapes>, gridCoordinateSystem, hexCoordinateSystem) {
 		var computedShapes:Array<ComputedShape> = [];
 		var bounds = new h2d.col.IBounds();
 		for (s in shapes) {
@@ -1020,7 +1021,7 @@ class MultiAnimBuilder {
 		var skipChildren = false;
 		var tileGroupTile = switch node.type {
 			// case NINEPATCH(sheet, tilename, width, height):
-			// 	var sg = load9Pathch(sheet, tilename);
+			// 	var sg = load9Patch(sheet, tilename);
 
 			// 	sg.width = resolveAsNumber(width);
 			// 	sg.height = resolveAsNumber(height);
@@ -1028,11 +1029,11 @@ class MultiAnimBuilder {
 			// 	sg.tileBorders = true;
 			// 	sg.ignoreScale = false;
 			// 	NinePatch(sg);
-			case BITMAP(tileSource, hAlign, vAligh):
+			case BITMAP(tileSource, hAlign, vAlign):
 				var tile = loadTileSource(tileSource);
 				var height = tile.height;
 				var width = tile.width;
-				var dh = switch vAligh {
+				var dh = switch vAlign {
 					case Top: 0.;
 					case Center: -(height * .5);
 					case Bottom: -height;
@@ -1289,7 +1290,7 @@ class MultiAnimBuilder {
 				skipChildren = true;
 				null;
 			case PIXELS(shapes):
-				final pixelsResult = drawPixles(shapes, gridCoordinateSystem, hexCoordinateSystem);
+				final pixelsResult = drawPixels(shapes, gridCoordinateSystem, hexCoordinateSystem);
 				pixelsResult.pixelLines.tile;
 			default: throw 'unsupported node ${node.uniqueNodeName} ${node.type} in tileGroup mode';
 		}
@@ -1395,7 +1396,7 @@ class MultiAnimBuilder {
 				selectedBuildMode = LayersMode(l);
 				HeapsLayers(l);
 			case NINEPATCH(sheet, tilename, width, height):
-				var sg = load9Pathch(sheet, tilename);
+				var sg = load9Patch(sheet, tilename);
 
 				sg.width = resolveAsNumber(width);
 				sg.height = resolveAsNumber(height);
@@ -1403,12 +1404,12 @@ class MultiAnimBuilder {
 				sg.tileBorders = true;
 				sg.ignoreScale = false;
 				NinePatch(sg);
-			case BITMAP(tileSource, hAlign, vAligh):
+			case BITMAP(tileSource, hAlign, vAlign):
 				var tile = loadTileSource(tileSource);
 
 				var height = tile.height;
 				var width = tile.width;
-				var dh = switch vAligh {
+				var dh = switch vAlign {
 					case Top: 0.;
 					case Center: -(height * .5);
 					case Bottom: -height;
@@ -1568,11 +1569,11 @@ class MultiAnimBuilder {
 								}
 							}
 
-							var astates = [for (a in anim) Frame(a.cloneWithDuration(1.0 / resolveAsNumber(fps)))];
+							var animStates = [for (a in anim) Frame(a.cloneWithDuration(1.0 / resolveAsNumber(fps)))];
 							if (loop)
-								astates.push(Loop(0, Forever));
+								animStates.push(Loop(0, Forever));
 
-							animSM.addAnimationState(key, astates, []);
+							animSM.addAnimationState(key, animStates, []);
 					}
 				}
 				final initialStateResolved = resolveAsString(initialState);
@@ -1847,7 +1848,7 @@ class MultiAnimBuilder {
 				throw 'invalid state, programmable should not be build';
 
 			case PIXELS(shapes):
-				final pixelsResult = drawPixles(shapes, gridCoordinateSystem, hexCoordinateSystem);
+				final pixelsResult = drawPixels(shapes, gridCoordinateSystem, hexCoordinateSystem);
 				pixelsResult.pixelLines.setPosition(pixelsResult.minX, pixelsResult.minY);
 				Pixels(pixelsResult.pixelLines);
 			case INTERACTIVE(width, height, id, debug):
@@ -2297,7 +2298,7 @@ class MultiAnimBuilder {
 		function resolveReferenceableValue(ref:ReferenceableValue, type):Dynamic {
 			return switch type {
 				case null: throw 'type is null';
-				case PPTHexDirecton: resolveAsInteger(ref);
+				case PPTHexDirection: resolveAsInteger(ref);
 				case PPTGridDirection: resolveAsInteger(ref);
 				case PPTFlags(_): resolveAsInteger(ref);
 				case PPTEnum(_): resolveAsString(ref);
@@ -2386,7 +2387,6 @@ class MultiAnimBuilder {
 		this.builderParams = builderParams;
 
 		var retVal = startBuild(name, node, MultiAnimParser.getGridCoordinateSystem(node), MultiAnimParser.getHexCoordinateSystem(node), builderParams);
-		// root.ysort(0);
 		popBuilderState();
 		return retVal;
 	}
@@ -2432,7 +2432,7 @@ class MultiAnimBuilder {
 					throw 'Duplicate combo "${prop}"';
 				var def = definitions[prop];
 				var allValues = switch def.type {
-					case PPTHexDirecton: [for (i in 0...6) '$i}'];
+					case PPTHexDirection: [for (i in 0...6) '$i}'];
 					case PPTGridDirection: [for (i in 0...8) '$i}'];
 					case PPTFlags(bits): [for (i in 0...bits) '$i}'];
 					case PPTEnum(values): values;
@@ -2516,7 +2516,7 @@ class MultiAnimBuilder {
 		return tile;
 	}
 
-	function load9Pathch(sheet, tilename) {
+	function load9Patch(sheet, tilename) {
 		final sheet = resourceLoader.loadSheet2(sheet);
 		if (sheet == null)
 			throw 'sheet ${sheet} could not be loaded';

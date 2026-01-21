@@ -498,7 +498,7 @@ typedef PixelPixel = {
 }
 
 enum DefinitionType {
-	PPTHexDirecton;
+	PPTHexDirection;
 	PPTGridDirection;
 	PPTFlags(bits:Int);
 	PPTEnum(values:Array<String>);
@@ -756,7 +756,7 @@ enum NodeType {
 		paddingTop:Null<ReferenceableValue>,paddingBottom:Null<ReferenceableValue>, paddingLeft:Null<ReferenceableValue>, paddingRight:Null<ReferenceableValue>,
 		horizontalSpacing:Null<ReferenceableValue>, verticalSpacing:Null<ReferenceableValue>, debug:Bool
 		);
-	BITMAP(tileSource:TileSource, hAlign:HorizontalAlign, vAligh:VerticalAlign);
+	BITMAP(tileSource:TileSource, hAlign:HorizontalAlign, vAlign:VerticalAlign);
 	POINT;
 	STATEANIM(filename:String, initialState:ReferenceableValue, selector:Map<String, ReferenceableValue>);
 	STATEANIM_CONSTRUCT(initialState:ReferenceableValue, construct:Map<String, StateAnimConstruct>);
@@ -1316,7 +1316,6 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 		
 		return switch stream {
 			case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseIntegerOrReference(), MPColon, ifFalse = parseIntegerOrReference()]:
-				trace('buga');
 				parseNextIntExpression(RVTernary(condition, ifTrue, ifFalse));
 
 			case [MPIdentifier(_, MPCallback, ITString)]: parseCallback(VTInt);
@@ -1736,7 +1735,7 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 		} 
 
 		return switch type {
-			case PPTHexDirecton:
+			case PPTHexDirection:
 				CoValue(dynamicToInt(inputValue, err));
 			case PPTBool:
 				CoValue(dynamicToInt(inputValue, err));
@@ -1777,7 +1776,7 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 	static function dynamicValueToIndex(name:String, type:DefinitionType, value:Dynamic, error:String->Dynamic) {
 
 		switch type {
-			case PPTHexDirecton:
+			case PPTHexDirection:
 				var dir = dynamicToInt(value, error);
 				if (dir < 0 || dir >= 6) error('hexdirection must be 0...5');
 				return Value(dir);
@@ -1876,7 +1875,7 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 
 		var parameter:Definition = {
 			name: null,
-			type: PPTHexDirecton,
+			type: PPTHexDirection,
 			defaultValue: null
 		};
 		switch stream {
@@ -1895,7 +1894,7 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 				switch stream {
 					case [MPIdentifier(hexDirection, MPHexDirection, _)]:
 						parameter.name = hexDirection;
-						parameter.type = PPTHexDirecton;
+						parameter.type = PPTHexDirection;
 						parseDefaultParameterValue(parameter);
 						return parameter;
 					case [MPIdentifier(gridDirection, MPGridDirection, _)]:
@@ -1911,7 +1910,7 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 		switch stream {
 
 			case [MPIdentifier(_, MPHexDirection, ITString)]: 
-				parameter.type = PPTHexDirecton;
+				parameter.type = PPTHexDirection;
 			case [MPNumber(from, NTInteger), MPDoubleDot, MPNumber(to, NTInteger)]: 
 				parameter.type = PPTRange(stringToInt(from), stringToInt(to));
 			case [MPIdentifier(_, MPFlags, ITString), MPOpen, bits = parseInteger(), MPClosed]: 
@@ -1989,7 +1988,7 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 						case _:
 							var type = paramDefinitions.type;
 							var value = switch type {
-								case PPTHexDirecton:  parseIntegerOrReference();
+								case PPTHexDirection:  parseIntegerOrReference();
 								case PPTGridDirection: parseIntegerOrReference();
 								case PPTFlags(bits): parseIntegerOrReference();
 								case PPTEnum(values): parseStringOrReference();
@@ -2024,12 +2023,12 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 
 		function validateIntTypes(name:String, type:DefinitionType, value:Dynamic) {
 			switch type {
-				case PPTHexDirecton:
+				case PPTHexDirection:
 					var i = dynamicToInt(value, s->syntaxError(s));
 					if (i < 0 || i > 5) syntaxError('conditional $name: hexdirection must be 0...5, was $value');
 				case PPTGridDirection:
 						var i = dynamicToInt(value, s->syntaxError(s));
-						if (i < 0 ||  i > 3) syntaxError('conditional $name: gridDrection must be 0...3, was $value');
+						if (i < 0 ||  i > 3) syntaxError('conditional $name: gridDirection must be 0...3, was $value');
 				case PPTFlags(bits):
 
 
@@ -2750,7 +2749,7 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 			case [MPIdentifier(_, MPText, ITString), MPOpen, fontname = parseStringOrReference(), MPComma, text = parseStringOrReference(), MPComma, color = parseColorOrReference()]:
 
 				
-				var textAlighWidth:TextAlignWidth = TAWAuto;
+				var textAlignWidth:TextAlignWidth = TAWAuto;
 				var isParsingDone = false;
 				var results:Map<String, Dynamic> = [];
 				var halign = null;
@@ -2763,11 +2762,11 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 								case [MPComma]:
 									switch stream {
 										case [MPIdentifier(_, MPGrid, ITString)]:
-											textAlighWidth = TAWGrid;
+											textAlignWidth = TAWGrid;
 										case _: 
 											final maxWidth = tryParseInteger();
 											if (maxWidth == null) hasComma = true;
-											else textAlighWidth = TAWValue(maxWidth);
+											else textAlignWidth = TAWValue(maxWidth);
 									}
 								
 								case [MPClosed]: isParsingDone = true;
@@ -2821,7 +2820,7 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 					 text: text,
 					 color: color,
 					 halign: halign,
-					 textAlignWidth: textAlighWidth,
+					 textAlignWidth: textAlignWidth,
 					 letterSpacing: MacroUtils.optionsGetPresentOrDefault(letterSpacing, results, 0.),
 					 lineSpacing: MacroUtils.optionsGetPresentOrDefault(lineSpacing, results, 0.),
 					 lineBreak: MacroUtils.optionsGetPresentOrDefault(lineBreak, results, true),
@@ -3289,7 +3288,7 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 		return null;
 	}
 	
-	function parseGridCoordianteSystem() {
+	function parseGridCoordinateSystem() {
 		var size = parseSize();
 		eatSemicolon();
 		return {
@@ -3298,7 +3297,7 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 		}
 	}
 
-	function parseHexCoordianteSystem() {
+	function parseHexCoordinateSystem() {
 		return switch stream {
 			case [orientation = parseOrientation(), MPOpen, width = parseFloat(), MPComma, height = parseFloat(), MPClosed]:
 				final hexLayout = new HexLayout(orientation, new h2d.col.Point(width, height), new h2d.col.Point());
@@ -3825,10 +3824,10 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 					}
 					
 				case [MPNewLine]:
-				case [MPIdentifier(propName, MPGrid, ITString), MPColon, system = parseGridCoordianteSystem(), MPCurlyOpen]: 
+				case [MPIdentifier(propName, MPGrid, ITString), MPColon, system = parseGridCoordinateSystem(), MPCurlyOpen]: 
 					parsingStates.push(LPSGrid);
 					grids.push(system);
-				case [MPIdentifier(propName, MPHexGrid, ITString), MPColon, system = parseHexCoordianteSystem(), MPCurlyOpen]: 
+				case [MPIdentifier(propName, MPHexGrid, ITString), MPColon, system = parseHexCoordinateSystem(), MPCurlyOpen]: 
 					parsingStates.push(LPSHex);
 					hexes.push(system);
 				case [MPIdentifier(propName, MPOffset, ITString), MPColon, size = parseSize(), MPCurlyOpen]: 
@@ -3863,11 +3862,11 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 				case [MPIdentifier(propName, MPGrid , ITString), MPColon]:
 						if (node == null) syntaxError('grid coordinate system not supported on root elements');
 						once.parsed(propName);
-						node.gridCoordinateSystem = parseGridCoordianteSystem();
+						node.gridCoordinateSystem = parseGridCoordinateSystem();
 				case [MPIdentifier(propName, MPHex , ITString), MPColon]:
 						if (node == null) syntaxError('hex coordinate system not supported on root elements');
 						once.parsed(propName);
-						node.hexCoordinateSystem = parseHexCoordianteSystem();
+						node.hexCoordinateSystem = parseHexCoordinateSystem();
 						
 		
 				case [MPIdentifier(propName, MPScale , ITString), MPColon, f = parseFloatOrReference()]:
@@ -4021,8 +4020,8 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 	function parse():MultiAnimResult {
 		switch stream {
 			case [MPIdentifier(_, MPVersion, ITString), MPColon, MPNumber(fileVersion, NTInteger|NTFloat)]:
-				if (fileVersion != version) syntaxError('verson ${version} expected, got ${fileVersion}');
-			case _: syntaxError('verson expected, got ${peek(0)}');
+				if (fileVersion != version) syntaxError('version ${version} expected, got ${fileVersion}');
+			case _: syntaxError('version expected, got ${peek(0)}');
 		}
 		
 		parseNodes(null, [], createOnceParser(), 654321);

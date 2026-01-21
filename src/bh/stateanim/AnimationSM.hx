@@ -1,7 +1,8 @@
 package bh.stateanim;
 
+import bh.stateanim.AnimationFrame;
+import bh.stateanim.BasicAnim;
 import bh.stateanim.AnimParser.AnimationStateSelector;
-import h2d.Drawable;
 import h2d.RenderContext;
 
 enum AnimationCommandEvent {
@@ -42,46 +43,23 @@ typedef AnimationDescriptor = {
 	final extraPoints:Map<String, h2d.col.IPoint>;
 };
 
+/**
+	State machine animation that uses BasicAnim for rendering.
+	Handles complex animation states including loops, events, state changes, and exit points.
+	The state machine controls which frame is displayed, BasicAnim handles the actual drawing.
+**/
 @:nullSafety
-class AnimationFrame {
-	public final tile:h2d.Tile;
-	// Offset for trimmed tiles
-	public final offsetx:Int;
-	public final offsety:Int;
-
-	// width & height for trimmed tiles
-	public final width:Int;
-	public final height:Int;
-
-	/**
-		Frame display duration in seconds.
-	**/
-	public final duration:Float;
-
-	public function new(tile:h2d.Tile, duration:Float, offsetx, offsety, width, height) {
-		this.tile = tile;
-		this.duration = duration;
-		this.offsetx = offsetx;
-		this.offsety = offsety;
-		this.width = width;
-		this.height = height;
-	}
-
-	public function cloneWithDuration(newDuration:Float) {
-		return new AnimationFrame(tile, newDuration, offsetx, offsety, width, height);
-	}
-
-	public function cloneWithNewTile(newTile:h2d.Tile) {
-		return new AnimationFrame(newTile, duration, offsetx, offsety, width, height);
-	}
-}
-
-@:nullSafety
-class AnimationSM extends Drawable {
+class AnimationSM extends h2d.Object {
 	static inline final STATE_WARNING_THRESHOLD = 50;
 	static inline final STATE_ERROR_THRESHOLD = 1000;
 
 	public var paused:Bool = false;
+
+	/**
+		When true, animation is driven externally via `updateExternally()` instead of
+		automatically advancing via `sync()`. In this mode, call `updateExternally(dt)` manually.
+	**/
+	public var externallyDriven:Bool;
 
 	var speed = 1.0;
 	var elapsedTime:Float;
@@ -89,7 +67,10 @@ class AnimationSM extends Drawable {
 
 	public var currentStateIndex(default, null):Int;
 
-	var currentFrame:Null<AnimationFrame>;
+	/**
+		The BasicAnim used for rendering frames.
+	**/
+	public var anim(default, null):BasicAnim;
 
 	public var playWhenHidden:Bool = false;
 	public var animationStates:Map<String, AnimationDescriptor> = new Map();
@@ -97,30 +78,25 @@ class AnimationSM extends Drawable {
 	public var current(default, null):Null<AnimationDescriptor>;
 	public var currentSelector:AnimationStateSelector;
 
-	public function new(selector:AnimationStateSelector, ?parent:h2d.Object) {
-		super(parent);
+	public function new(selector:AnimationStateSelector, ?externallyDriven:Bool = false) {
+		super(null);
 		this.elapsedTime = 0;
 		this.wait = 0;
 		this.currentStateIndex = 0;
 		currentSelector = selector;
+		this.externallyDriven = externallyDriven ?? false;
+		// Create BasicAnim as child for rendering
+		this.anim = new BasicAnim([], this);
 	}
 
 	function loadState(stateSelector:AnimationStateSelector, parser:AnimParser) {
 		this.animationStates.clear();
 		parser.load(stateSelector, this);
-		this.currentFrame = null;
-		var oldwait = wait;
+		anim.setFrames([]);
+		var oldWait = wait;
 		wait = 0;
 		handleCurrent(hxd.Math.EPSILON);
-		wait = oldwait;
-	}
-
-	override function getBoundsRec(relativeTo:h2d.Object, out:h2d.col.Bounds, forSize:Bool) {
-		super.getBoundsRec(relativeTo, out, forSize);
-		if (currentFrame != null) {
-			var y = -(currentFrame.height - currentFrame.tile.height) + currentFrame.offsety + currentFrame.tile.dy;
-			addBounds(relativeTo, out, currentFrame.tile.dx - currentFrame.offsetx, y, currentFrame.width, currentFrame.height);
-		}
+		wait = oldWait;
 	}
 
 	/**
@@ -167,7 +143,6 @@ class AnimationSM extends Drawable {
 		commands.clear();
 		wait = 0;
 		elapsedTime = 0;
-		// current = null;
 	}
 
 	public function addCommand(command:AnimationCommand, trigger:CommandTrigger):Void {
@@ -251,7 +226,7 @@ class AnimationSM extends Drawable {
 			elapsedTime = 0;
 			paused = false;
 			currentStateIndex = 0;
-			currentFrame = null; // Mark that we want to get first frame
+			anim.setFrames([]); // Clear frames, will be set by state machine
 			handleCurrent(hxd.Math.EPSILON);
 		} else
 			throw 'unknown animation ${name}';
@@ -261,6 +236,18 @@ class AnimationSM extends Drawable {
 		if (this.current == null)
 			return false;
 		return this.currentStateIndex == this.current.states.length;
+	}
+
+	/**
+		Returns the current frame being displayed, or null if none.
+	**/
+	public function getCurrentFrame():Null<AnimationFrame> {
+		return anim.getCurrentFrame();
+	}
+
+	function setCurrentFrame(frame:AnimationFrame):Void {
+		// Set the frame in BasicAnim by replacing its frames array with single frame
+		anim.setFrames([frame]);
 	}
 
 	function handleCurrent(delta:Float) {
@@ -274,11 +261,8 @@ class AnimationSM extends Drawable {
 		elapsedTime += delta;
 		wait -= delta < 0 ? 0 : delta;
 
-		// if (consumeDelaysAndCheckCommand()) {
-		// 	performNextCommand();
-		// }
-
 		var statesCount = 0;
+		var currentFrame = anim.getCurrentFrame();
 		while (true) {
 			if (isEnd()) {
 				if (consumeDelaysAndCheckCommand())
@@ -310,6 +294,7 @@ class AnimationSM extends Drawable {
 					if (currentFrame != null)
 						elapsedTime -= frame.duration;
 					currentFrame = frame;
+					setCurrentFrame(frame);
 					if (elapsedTime < frame.duration)
 						return;
 
@@ -359,15 +344,20 @@ class AnimationSM extends Drawable {
 	}
 
 	override function sync(ctx:RenderContext) {
-		final animDelta = ctx.elapsedTime * speed;
-		handleCurrent(animDelta);
+		if (!externallyDriven) {
+			final animDelta = ctx.elapsedTime * speed;
+			handleCurrent(animDelta);
+		}
 		super.sync(ctx);
 	}
 
-	override function draw(ctx:RenderContext) {
-		if (currentFrame != null) {
-			emitTile(ctx, currentFrame.tile);
-		}
+	/**
+		Manually advances the animation by the given delta time.
+		Use this when `externallyDriven` is true.
+		@param dt Delta time in seconds.
+	**/
+	public function updateExternally(dt:Float):Void {
+		handleCurrent(dt * speed);
 	}
 
 	function performNextCommand():Void {

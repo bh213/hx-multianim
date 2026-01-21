@@ -2,7 +2,7 @@ package bh.base;
 
 // https://www.codeandweb.com/texturepacker/documentation/custom-exporter#preparations-before-creating-your-own-exporter
 import h2d.ScaleGrid;
-import bh.stateanim.AnimationSM.AnimationFrame;
+import bh.stateanim.AnimationFrame;
 
 class Atlas2 extends hxd.res.Resource.Resource {
 
@@ -49,7 +49,7 @@ class Atlas2 extends hxd.res.Resource.Resource {
 			var cont = getContents().keys();
 			name = cont.next();
 			if( cont.hasNext() )
-				throw "Altas has several items in it " + Lambda.array( contents );
+				throw "Atlas has several items in it " + Lambda.array( contents );
 		}
 		var c = getContents().get(name);
 		if( c == null )

@@ -386,7 +386,7 @@ class AnimParser extends hxparse.Parser<hxparse.LexerTokenSource<APToken>, APTok
 				best2Score = bestScore;
 			}
 		}
-		if (best != null && best2Score == bestScore) throw 'ambigious playlist: ${animation.name} ${best.states} ${best2.states} selector: ${stateSelector}';
+		if (best != null && best2Score == bestScore) throw 'ambiguous playlist: ${animation.name} ${best.states} ${best2.states} selector: ${stateSelector}';
 		return best;
 	}
 
@@ -414,7 +414,7 @@ class AnimParser extends hxparse.Parser<hxparse.LexerTokenSource<APToken>, APTok
 			}
 		}
 
-		if (best != null && best2Score == bestScore) throw 'ambigious extraPoint: ${extraPointName} ${best.states} ${best2.states} selector: ${stateSelector}';
+		if (best != null && best2Score == bestScore) throw 'ambiguous extraPoint: ${extraPointName} ${best.states} ${best2.states} selector: ${stateSelector}';
 		return best;
 	}
 
@@ -434,7 +434,7 @@ class AnimParser extends hxparse.Parser<hxparse.LexerTokenSource<APToken>, APTok
 				best = a;
 				bestScore = count;
 			} else if (bestScore == count) {
-				throw 'ambigious animation: ${a.name}:${a.states}, ${best.name}:${best.states}';
+				throw 'ambiguous animation: ${a.name}:${a.states}, ${best.name}:${best.states}';
 			}
 		}
 //		trace('${stateSelector}, ${bestScore}');
@@ -550,8 +550,8 @@ class AnimParser extends hxparse.Parser<hxparse.LexerTokenSource<APToken>, APTok
 				if (anim == null) syntaxError('no animation ${name} defined for states ${state}');
 				else anim.visited = true;
 			
-				for (epoint in allowedExtraPoints) {
-					var p = findExtraPoint(epoint, state, anim, definedStates);
+				for (ePoint in allowedExtraPoints) {
+					var p = findExtraPoint(ePoint, state, anim, definedStates);
 					if (p != null) p.visited = true;
 				}
 			
@@ -565,8 +565,8 @@ class AnimParser extends hxparse.Parser<hxparse.LexerTokenSource<APToken>, APTok
 		for (anim in animations) {
 			if (anim.visited == false) throw 'animation ${anim.name} not reachable';
 			for (ek => ev in anim.extraPoint) {
-				for (epoint in ev) {
-					if (epoint.visited == false) throw 'Extra point ${ek} in anim ${anim.name} not reachable ${epoint.states}';
+				for (ePoint in ev) {
+					if (ePoint.visited == false) throw 'Extra point ${ek} in anim ${anim.name} not reachable ${ePoint.states}';
 				}
 
 				for (pl in anim.playlist) {
