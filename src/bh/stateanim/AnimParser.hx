@@ -272,6 +272,7 @@ typedef AnimationStateSelector = Map<String, String>;
 
 interface AnimParserResult {
 	var definedStates(default, never):Map<String, Array<String>>;
+	var metadata(default, never):Null<AnimMetadata>;
 	function createAnimSM(stateSelector:AnimationStateSelector):AnimationSM;
 }
 
@@ -283,7 +284,8 @@ class AnimParser extends hxparse.Parser<hxparse.LexerTokenSource<APToken>, APTok
 	var definedStatesIndexes:Array<String> = []; // Provides state to index mapping
 	var sheetName:String;
 	var center:Null<Point> = null;
-	var metadata:Map<String, Array<MetadataEntry>> = [];
+	var metadataMap:Map<String, Array<MetadataEntry>> = [];
+	public var metadata(default, null):Null<AnimMetadata> = null;
 	var cache:Map<String, Array<{name:String, states:Array<AnimationFrameState>, loopCount:Int, extraPoints:Map<String, h2d.col.IPoint>}>> = [];
 	final resourceLoader:bh.base.ResourceLoader;
 
@@ -524,7 +526,7 @@ class AnimParser extends hxparse.Parser<hxparse.LexerTokenSource<APToken>, APTok
 				case [APIdentifier(_, APMetadata, AITString), APCurlyOpen]:
 					if (animationParsingStarted)
 						syntaxError("metadata must be defined before animations");
-					if (metadata.count() > 0)
+					if (metadataMap.count() > 0)
 						syntaxError("metadata already defined");
 					parseMetadata();
 
@@ -599,12 +601,15 @@ class AnimParser extends hxparse.Parser<hxparse.LexerTokenSource<APToken>, APTok
 				}
 			}
 		}
+		// Set the public metadata property
+		this.metadata = metadataMap.count() > 0 ? new AnimMetadata(metadataMap) : null;
+
 		return {
 			sheet: sheetName,
 			states: definedStates,
 			allowedExtraPoints: allowedExtraPoints,
 			center: center,
-			metadata: metadata.count() > 0 ? new AnimMetadata(metadata) : null,
+			metadata: this.metadata,
 			animations: animations,
 		}
 	}
@@ -617,17 +622,17 @@ class AnimParser extends hxparse.Parser<hxparse.LexerTokenSource<APToken>, APTok
 					break;
 				case [states = parseStates([]), APIdentifier(key, _, AITString), APColon, APNumber(numStr)]:
 					var entry:MetadataEntry = {states: states, value: MVInt(Std.parseInt(numStr))};
-					if (metadata.exists(key)) {
-						metadata[key].push(entry);
+					if (metadataMap.exists(key)) {
+						metadataMap[key].push(entry);
 					} else {
-						metadata[key] = [entry];
+						metadataMap[key] = [entry];
 					}
 				case [states = parseStates([]), APIdentifier(key, _, AITString), APColon, APIdentifier(strVal, _, AITQuotedString)]:
 					var entry:MetadataEntry = {states: states, value: MVString(strVal)};
-					if (metadata.exists(key)) {
-						metadata[key].push(entry);
+					if (metadataMap.exists(key)) {
+						metadataMap[key].push(entry);
 					} else {
-						metadata[key] = [entry];
+						metadataMap[key] = [entry];
 					}
 				case _:
 					unexpectedError("Expected [state selector] key: value in metadata block");
