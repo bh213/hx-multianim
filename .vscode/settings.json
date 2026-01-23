@@ -12,6 +12,7 @@
         "panel": "dedicated",
         "clear": true
     },
-    "haxe.enableServerView": true
+    "haxe.enableServerView": true,
+    "window.title": "${rootName}"
 }
 
