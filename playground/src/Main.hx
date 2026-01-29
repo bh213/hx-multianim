@@ -176,13 +176,15 @@ class Main extends hxd.App {
 	static function createJSLoader() {
 		final loader = new bh.base.ResourceLoader.CachingResourceLoader();
 
-		function isManimOrAnim(filename:String):Bool {
+		// Determines loading priority: JS first for editable files (.manim/.anim),
+		// Haxe resources first for static assets (atlas, tiles, etc.)
+		function shouldLoadFromJSFirst(filename:String):Bool {
 			return StringTools.endsWith(filename, ".manim") || StringTools.endsWith(filename, ".anim");
 		}
 
 		loader.loadSheet2Impl = sheetName -> {
 			var resourceName = '${sheetName}.atlas2';
-			if (isManimOrAnim(resourceName)) {
+			if (shouldLoadFromJSFirst(resourceName)) {
 				// JS first, then Haxe
 				try {
 					var bytes = FileLoader.load(resourceName);
@@ -213,7 +215,7 @@ class Main extends hxd.App {
 
 		loader.loadSheetImpl = sheetName -> {
 			var resourceName = '${sheetName}.atlas';
-			if (isManimOrAnim(resourceName)) {
+			if (shouldLoadFromJSFirst(resourceName)) {
 				// JS first, then Haxe
 				try {
 					var bytes = FileLoader.load(resourceName);
@@ -243,7 +245,7 @@ class Main extends hxd.App {
 		};
 
 		loader.loadHXDResourceImpl = filename -> {
-			if (isManimOrAnim(filename)) {
+			if (shouldLoadFromJSFirst(filename)) {
 				// JS first, then Haxe
 				try {
 					var bytes = FileLoader.load(filename);
@@ -272,7 +274,7 @@ class Main extends hxd.App {
 
 		loader.loadAnimSMImpl = filename -> {
 			// Always JS first for .anim/.manim
-			if (isManimOrAnim(filename)) {
+			if (shouldLoadFromJSFirst(filename)) {
 				try {
 					var bytes = FileLoader.load(filename);
 					var byteData = byte.ByteData.ofBytes(haxe.io.Bytes.ofData(bytes));
@@ -301,7 +303,7 @@ class Main extends hxd.App {
 		loader.loadFontImpl = filename -> bh.base.FontManager.getFontByName(filename);
 
 		loader.loadMultiAnimImpl = s -> {
-			if (isManimOrAnim(s)) {
+			if (shouldLoadFromJSFirst(s)) {
 				// JS first, then Haxe
 				try {
 					var bytes = FileLoader.load(s);
@@ -337,7 +339,7 @@ class Main extends hxd.App {
 		};
 
 		loader.loadTileImpl = filename -> {
-			if (isManimOrAnim(filename)) {
+			if (shouldLoadFromJSFirst(filename)) {
 				// JS first, then Haxe
 				try {
 					var bytes = FileLoader.load(filename);

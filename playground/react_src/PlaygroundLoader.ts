@@ -465,9 +465,15 @@ export class PlaygroundLoader {
         const manimFile = this.manimFiles.find(file => file.filename === filename);
         if (manimFile) {
             manimFile.content = content;
-            // Also update the file map
-            updateFileContent(filename, content);
         }
+
+        const animFile = this.animFiles.find(file => file.filename === filename);
+        if (animFile) {
+            animFile.content = content;
+        }
+
+        // Update the file map
+        updateFileContent(filename, content);
     }
     
     // Public method to dispose the playground

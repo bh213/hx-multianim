@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { PlaygroundLoader } from './PlaygroundLoader';
 import { Screen, ManimFile, AnimFile } from './types';
 import CodeEditor from './CodeEditor';
@@ -7,6 +7,9 @@ import './index.css'
 
 // Default configuration - single source of truth from Haxe backend
 export const DEFAULT_SCREEN = 'draggable'; // fallback default
+
+// Auto-save debounce delay in milliseconds
+const AUTO_SAVE_DELAY = 1500;
 
 interface ReloadError {
   message: string;
@@ -26,6 +29,36 @@ interface ConsoleEntry {
 
 type TabType = 'playground' | 'console' | 'info';
 
+const MAX_CONSOLE_ENTRIES = 1000;
+
+// LocalStorage helpers for persisting editor state
+const STORAGE_PREFIX = 'playground_';
+
+const getStoredContent = (filename: string): string | null => {
+  try {
+    return localStorage.getItem(`${STORAGE_PREFIX}${filename}`);
+  } catch (e) {
+    console.warn('Failed to read from localStorage:', e);
+    return null;
+  }
+};
+
+const setStoredContent = (filename: string, content: string): void => {
+  try {
+    localStorage.setItem(`${STORAGE_PREFIX}${filename}`, content);
+  } catch (e) {
+    console.warn('Failed to write to localStorage:', e);
+  }
+};
+
+const clearStoredContent = (filename: string): void => {
+  try {
+    localStorage.removeItem(`${STORAGE_PREFIX}${filename}`);
+  } catch (e) {
+    console.warn('Failed to remove from localStorage:', e);
+  }
+};
+
 function App() {
   const [selectedScreen, setSelectedScreen] = useState<string>(DEFAULT_SCREEN);
   const [selectedManimFile, setSelectedManimFile] = useState<string>('');
@@ -36,7 +69,10 @@ function App() {
   const [reloadError, setReloadError] = useState<ReloadError | null>(null);
   const [syncOffer, setSyncOffer] = useState<{file: string, screen: string} | null>(null);
   const [autoSync, setAutoSync] = useState<boolean>(true);
+  const [autoSave, setAutoSave] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
   const [loader] = useState(() => new PlaygroundLoader());
+  const autoSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   // Panel widths for resizable layout
   const [filePanelWidth, setFilePanelWidth] = useState<number>(250);
@@ -88,11 +124,15 @@ function App() {
         return String(arg);
       }).join(' ');
       
-      setConsoleEntries(prev => [...prev, {
-        type,
-        message,
-        timestamp: new Date()
-      }]);
+      setConsoleEntries(prev => {
+        const newEntries = [...prev, {
+          type,
+          message,
+          timestamp: new Date()
+        }];
+        // Limit entries to prevent memory leak
+        return newEntries.slice(-MAX_CONSOLE_ENTRIES);
+      });
 
 
     };
@@ -258,7 +298,7 @@ function App() {
     };
   }, [loader]);
 
-  function validateManimContent() {
+  const validateManimContent = React.useCallback(() => {
     if (selectedScreen) {
       try {
         const result = loader.reloadPlayground(selectedScreen);
@@ -323,7 +363,7 @@ function App() {
         setReloadError(errorInfo);
       }
     }
-  }
+  }, [selectedScreen, loader]);
 
   // Initialize with correct file when loader is ready
   useEffect(() => {
@@ -419,7 +459,13 @@ function App() {
     const screenName = event.target.value;
     setSelectedScreen(screenName);
     setSyncOffer(null); // Clear any pending sync offer
-    loader.reloadPlayground(screenName);
+    setIsLoading(true);
+    try {
+      loader.reloadPlayground(screenName);
+    } finally {
+      // Use setTimeout to allow the UI to render the loading state
+      setTimeout(() => setIsLoading(false), 100);
+    }
   };
 
   // Memoized file lookup maps for faster file finding
@@ -442,19 +488,24 @@ function App() {
   const handleManimFileChange = React.useCallback((event: React.ChangeEvent<HTMLSelectElement>) => {
     const filename = event.target.value;
     setSelectedManimFile(filename);
-    
+
     if (filename) {
+      // Check localStorage for saved content first
+      const storedContent = getStoredContent(filename);
+
       // Check if it's a manim file or anim file
       if (filename.endsWith('.manim')) {
         const manimFile = manimFileMap.get(filename);
         if (manimFile) {
-          setManimContent(manimFile.content || '');
+          const contentToLoad = storedContent || manimFile.content || '';
+          const hasLocalChanges = storedContent !== null && storedContent !== manimFile.content;
+          setManimContent(contentToLoad);
           setDescription(manimFile.description);
           setShowDescription(true);
           loader.currentFile = filename;
           loader.currentExample = filename;
-          setHasUnsavedChanges(false);
-          
+          setHasUnsavedChanges(hasLocalChanges);
+
           // Check if we should offer to sync the screen
           checkScreenSync(filename);
         }
@@ -462,12 +513,14 @@ function App() {
         // For anim files, load the content and make it available to the playground
         const animFile = animFileMap.get(filename);
         if (animFile) {
-          setManimContent(animFile.content || '');
+          const contentToLoad = storedContent || animFile.content || '';
+          const hasLocalChanges = storedContent !== null && storedContent !== animFile.content;
+          setManimContent(contentToLoad);
           setDescription('Animation file - content loaded and available to playground');
           setShowDescription(true);
           loader.currentFile = filename;
           loader.currentExample = filename;
-          setHasUnsavedChanges(false);
+          setHasUnsavedChanges(hasLocalChanges);
           setSyncOffer(null); // No screen sync for anim files
         }
       }
@@ -485,22 +538,62 @@ function App() {
   const handleEditorChange = React.useCallback((content: string) => {
     setManimContent(content);
     setHasUnsavedChanges(true);
+    // Persist to localStorage for recovery
+    if (selectedManimFile) {
+      setStoredContent(selectedManimFile, content);
+    }
     // Don't clear errors automatically - let user see the error while fixing it
-  }, []);
+  }, [selectedManimFile]);
 
-  const handleApplyChanges = () => {
+  // Auto-save effect with debounce
+  useEffect(() => {
+    if (!autoSave || !hasUnsavedChanges || !selectedManimFile) {
+      return;
+    }
+
+    // Clear existing timeout
+    if (autoSaveTimeoutRef.current) {
+      clearTimeout(autoSaveTimeoutRef.current);
+    }
+
+    // Set new timeout for debounced auto-save
+    autoSaveTimeoutRef.current = setTimeout(() => {
+      // Trigger save
+      if (selectedManimFile && manimContent) {
+        loader.updateContent(selectedManimFile, manimContent);
+        updateFileContent(selectedManimFile, manimContent);
+        setHasUnsavedChanges(false);
+        // Clear localStorage since changes are now applied
+        clearStoredContent(selectedManimFile);
+
+        if (selectedScreen) {
+          loader.reloadPlayground(selectedScreen);
+        }
+      }
+    }, AUTO_SAVE_DELAY);
+
+    return () => {
+      if (autoSaveTimeoutRef.current) {
+        clearTimeout(autoSaveTimeoutRef.current);
+      }
+    };
+  }, [autoSave, hasUnsavedChanges, manimContent, selectedManimFile, selectedScreen, loader]);
+
+  const handleApplyChanges = React.useCallback(() => {
     const fileToSave = ensureFileSelected();
-    
+
     if (fileToSave) {
       // Update both the loader and the file map
       loader.updateContent(fileToSave, manimContent);
       updateFileContent(fileToSave, manimContent);
       setHasUnsavedChanges(false);
-      
+      // Clear localStorage since changes are now applied
+      clearStoredContent(fileToSave);
+
       if (selectedScreen) {
         try {
           const result = loader.reloadPlayground(selectedScreen);
-          
+
           // Check for errors in the result
           if (result && result.__nativeException) {
             const error = result.__nativeException;
@@ -537,7 +630,7 @@ function App() {
           }
         } catch (error) {
           let errorMessage = 'Unknown error occurred';
-          
+
           try {
             if (error instanceof Error) {
               errorMessage = error.message;
@@ -557,7 +650,7 @@ function App() {
           } catch (serializeError) {
             errorMessage = 'Error occurred (could not serialize)';
           }
-          
+
           const errorInfo: ReloadError = {
             message: errorMessage,
             pos: undefined,
@@ -567,25 +660,31 @@ function App() {
         }
       }
     }
-  };
-
-  // Create a stable reference to the save handler
-  const saveHandler = React.useCallback(() => {
-    handleApplyChanges();
   }, [selectedManimFile, manimContent, selectedScreen, loader]);
+
+  // Use handleApplyChanges directly as the save handler
+  const saveHandler = handleApplyChanges;
 
   // Calculate error line and column from position - memoized to avoid recalculation on every render
   const errorLineInfo = React.useMemo(() => {
     if (!reloadError?.pos) return null;
-    
+
     const { pmin, pmax } = reloadError.pos;
     const content = manimContent;
-    
+
+    // Handle edge cases
+    if (pmin < 0 || content.length === 0) {
+      return { line: 1, column: 1, start: 0, end: Math.max(0, pmax) };
+    }
+
+    // Clamp pmin to content bounds
+    const clampedPmin = Math.min(pmin, content.length);
+
     // Find the line number by counting newlines before the error position
     let line = 1;
     let column = 1;
-    
-    for (let i = 0; i < pmin && i < content.length; i++) {
+
+    for (let i = 0; i < clampedPmin; i++) {
       if (content[i] === '\n') {
         line++;
         column = 1;
@@ -593,7 +692,7 @@ function App() {
         column++;
       }
     }
-    
+
     return { line, column, start: pmin, end: pmax };
   }, [reloadError?.pos, manimContent]);
 
@@ -701,6 +800,7 @@ function App() {
               Screen:
             </label>
             <select
+              id="screen-selector"
               className="w-full p-2 bg-gray-700 border border-gray-600 text-white text-xs rounded focus:outline-none focus:border-blue-500"
               value={selectedScreen}
               onChange={handleScreenChange}
@@ -790,6 +890,15 @@ function App() {
                 />
                 <span>Auto sync screen</span>
               </label>
+              <label className="flex items-center space-x-2 text-xs text-gray-300">
+                <input
+                  type="checkbox"
+                  checked={autoSave}
+                  onChange={(e) => setAutoSave(e.target.checked)}
+                  className="w-3 h-3 text-green-600 bg-gray-700 border-gray-600 rounded focus:ring-green-500 focus:ring-1"
+                />
+                <span>Auto-save</span>
+              </label>
             </div>
             {hasUnsavedChanges && (
               <button 
@@ -836,7 +945,7 @@ function App() {
           <CodeEditor
             value={manimContent}
             onChange={handleEditorChange}
-            language="haxe-manim"
+            language={selectedManimFile?.endsWith('.anim') ? 'haxe-anim' : 'haxe-manim'}
             disabled={!selectedManimFile}
             placeholder="Select a manim file to load its content here..."
             onSave={saveHandler}
@@ -925,13 +1034,22 @@ function App() {
         
         <div className="flex-1 flex min-h-0">
           {/* Playground Panel */}
-          <div 
-            className={`${activeTab === 'playground' ? 'flex-1' : 'w-0'} transition-all duration-300 overflow-hidden flex flex-col h-full`}
+          <div
+            className={`${activeTab === 'playground' ? 'flex-1' : 'w-0'} transition-all duration-300 overflow-hidden flex flex-col h-full relative`}
             style={{ width: activeTab === 'playground' ? playgroundWidth : 0 }}
           >
             <div className="w-full h-full flex-1 min-h-0">
               <canvas id="webgl" className="w-full h-full block"></canvas>
             </div>
+            {/* Loading overlay */}
+            {isLoading && (
+              <div className="absolute inset-0 bg-gray-900/70 flex items-center justify-center z-10">
+                <div className="flex flex-col items-center">
+                  <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-2"></div>
+                  <span className="text-gray-300 text-sm">Loading...</span>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Playground/Console Resizer */}

@@ -61,7 +61,7 @@ const convertTextMateToMonaco = (grammar: any) => {
 };
 
 const CodeEditor = forwardRef<HTMLDivElement, CodeEditorProps>(
-  ({ value, onChange, language = 'text', disabled = false, placeholder, onSave, errorLine, errorColumn, errorStart, errorEnd }, ref) => {
+  ({ value, onChange, language = 'haxe-manim', disabled = false, placeholder, onSave, errorLine, errorColumn, errorStart, errorEnd }, ref) => {
     const editorRef = useRef<any>(null);
     const saveHandlerRef = useRef<() => void>();
     const errorDecorationRef = useRef<string[]>([]);
@@ -149,7 +149,139 @@ const CodeEditor = forwardRef<HTMLDivElement, CodeEditorProps>(
       monaco.languages.setMonarchTokensProvider('haxe-manim', {
         tokenizer: manimTokenizer
       });
-      
+
+      // Register code snippets for manim language
+      monaco.languages.registerCompletionItemProvider('haxe-manim', {
+        provideCompletionItems: (model: any, position: any) => {
+          const word = model.getWordUntilPosition(position);
+          const range = {
+            startLineNumber: position.lineNumber,
+            endLineNumber: position.lineNumber,
+            startColumn: word.startColumn,
+            endColumn: word.endColumn
+          };
+
+          const snippets = [
+            {
+              label: 'programmable',
+              kind: monaco.languages.CompletionItemKind.Snippet,
+              insertText: '#${1:name} programmable(${2:param}:${3:type}=${4:default}) {\n  ${5:element}(${6:params}): ${7:0,0}\n}',
+              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              documentation: 'Create a new programmable element',
+              detail: 'Programmable template'
+            },
+            {
+              label: 'bitmap',
+              kind: monaco.languages.CompletionItemKind.Snippet,
+              insertText: 'bitmap(${1:source}): ${2:0,0}',
+              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              documentation: 'Display an image',
+              detail: 'Bitmap element'
+            },
+            {
+              label: 'text',
+              kind: monaco.languages.CompletionItemKind.Snippet,
+              insertText: 'text(${1:font}, "${2:text}", ${3:0xFFFFFF}): ${4:0,0}',
+              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              documentation: 'Display text with font and color',
+              detail: 'Text element'
+            },
+            {
+              label: 'ninepatch',
+              kind: monaco.languages.CompletionItemKind.Snippet,
+              insertText: 'ninepatch(${1:sheet}, ${2:tile}, ${3:width}, ${4:height}): ${5:0,0}',
+              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              documentation: '9-patch scalable element',
+              detail: 'Ninepatch element'
+            },
+            {
+              label: 'button',
+              kind: monaco.languages.CompletionItemKind.Snippet,
+              insertText: '#${1:buttonName} programmable(state:[normal,hover,pressed]=normal) {\n  @(state=>normal) bitmap(${2:normalSprite}): 0,0\n  @(state=>hover) bitmap(${3:hoverSprite}): 0,0\n  @(state=>pressed) bitmap(${4:pressedSprite}): 0,0\n}',
+              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              documentation: 'Create a button with hover/pressed states',
+              detail: 'Button pattern'
+            },
+            {
+              label: 'checkbox',
+              kind: monaco.languages.CompletionItemKind.Snippet,
+              insertText: '#${1:checkboxName} programmable(checked:bool=false) {\n  @(checked=>false) bitmap(${2:uncheckedSprite}): 0,0\n  @(checked=>true) bitmap(${3:checkedSprite}): 0,0\n}',
+              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              documentation: 'Create a checkbox component',
+              detail: 'Checkbox pattern'
+            },
+            {
+              label: 'slider',
+              kind: monaco.languages.CompletionItemKind.Snippet,
+              insertText: '#${1:sliderName} programmable(value:int=50, min:int=0, max:int=100) {\n  ninepatch(${2:sheet}, ${3:trackTile}, 200, 10): 0,0\n  bitmap(${4:handleSprite}): $value*2,0\n}',
+              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              documentation: 'Create a slider component',
+              detail: 'Slider pattern'
+            },
+            {
+              label: 'placeholder',
+              kind: monaco.languages.CompletionItemKind.Snippet,
+              insertText: 'placeholder(${1:32,32}, ${2:source}): ${3:0,0}',
+              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              documentation: 'Dynamic placeholder element',
+              detail: 'Placeholder element'
+            },
+            {
+              label: 'reference',
+              kind: monaco.languages.CompletionItemKind.Snippet,
+              insertText: 'reference($${1:ref}): ${2:0,0}',
+              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              documentation: 'Reference another programmable',
+              detail: 'Reference element'
+            },
+            {
+              label: 'layers',
+              kind: monaco.languages.CompletionItemKind.Snippet,
+              insertText: 'layers() {\n  ${1:element}: 0,0\n}',
+              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              documentation: 'Z-ordering container',
+              detail: 'Layers container'
+            },
+            {
+              label: 'repeatable',
+              kind: monaco.languages.CompletionItemKind.Snippet,
+              insertText: 'repeatable($${1:var}, ${2:iterator}) {\n  ${3:element}: grid($${1:var}, 0)\n}',
+              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              documentation: 'Loop elements',
+              detail: 'Repeatable element'
+            },
+            {
+              label: 'conditional',
+              kind: monaco.languages.CompletionItemKind.Snippet,
+              insertText: '@(${1:param}=>${2:value}) ${3:element}: ${4:0,0}',
+              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              documentation: 'Conditional element display',
+              detail: 'Conditional'
+            },
+            {
+              label: 'outline',
+              kind: monaco.languages.CompletionItemKind.Snippet,
+              insertText: 'outline(${1:color}, ${2:size})',
+              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              documentation: 'Add outline filter',
+              detail: 'Outline filter'
+            },
+            {
+              label: 'glow',
+              kind: monaco.languages.CompletionItemKind.Snippet,
+              insertText: 'glow(${1:color}, ${2:size}, ${3:strength})',
+              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              documentation: 'Add glow filter',
+              detail: 'Glow filter'
+            }
+          ];
+
+          return {
+            suggestions: snippets.map(s => ({ ...s, range }))
+          };
+        }
+      });
+
       // Add the save action with Ctrl+S keybinding
       editor.addAction({
         id: 'save-file',
@@ -211,7 +343,7 @@ const CodeEditor = forwardRef<HTMLDivElement, CodeEditorProps>(
         `}</style>
         <Editor
           height="100%"
-          defaultLanguage={getLanguage()}
+          language={language}
           value={value}
           onChange={handleEditorChange}
           onMount={handleEditorDidMount}
