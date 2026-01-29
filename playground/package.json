@@ -6,16 +6,16 @@
   "main": "index.html",
   "scripts": {
     "build": "haxe playground.hxml",
-    "watch": "nodemon --watch src --watch res --watch ../src --ext hx,manim --exec \"npm run build\"",
-    "serve": "http-server . -p 8080 -c-1", 
-    "dev": "npm run build && concurrently \"npm run watch\" \"npm run react:dev\"",
-    "clean": "rimraf build dist",
-    "prebuild": "npm run clean",
+    "build:haxe": "haxe playground.hxml",
+    "watch": "nodemon --watch src --watch res --watch ../src --ext hx,manim --exec \"npm run build:haxe\"",
+    "serve": "http-server . -p 8080 -c-1",
+    "dev": "npm run build:haxe && concurrently \"npm run watch\" \"npm run react:dev\"",
+    "clean": "rimraf build dist public/playground.js public/playground.js.map",
     "react:dev": "vite",
     "react:build": "tsc && vite build",
     "react:preview": "vite preview",
-    "full:dev": "concurrently \"npm run build\" \"npm run react:dev\"",
-    "full:build": "npm run build && npm run react:build && cp -r public/* dist/"
+    "full:dev": "concurrently \"npm run build:haxe\" \"npm run react:dev\"",
+    "full:build": "npm run build && npm run react:build && shx cp -r public/* dist/"
   },
   "keywords": [
     "haxe",
@@ -47,6 +47,7 @@
     "nodemon": "^3.0.2",
     "postcss": "^8.5.6",
     "rimraf": "^5.0.5",
+    "shx": "^0.3.4",
     "tailwindcss": "^4.1.10",
     "typescript": "^5.2.2",
     "vite": "^5.0.8"

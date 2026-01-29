@@ -225,6 +225,7 @@ function App() {
     'fonts': 'FontsScreen.hx',
     'room1': 'Room1Screen.hx',
     'stateAnim': 'StateAnimScreen.hx',
+    'animViewer': 'AnimViewerScreen.hx',
     'dialogStart': 'DialogStartScreen.hx',
     'settings': 'SettingsScreen.hx',
     'atlasTest': 'AtlasTestScreen.hx',
@@ -510,18 +511,24 @@ function App() {
           checkScreenSync(filename);
         }
       } else if (filename.endsWith('.anim')) {
-        // For anim files, load the content and make it available to the playground
+        // For anim files, load the content and switch to animViewer screen
         const animFile = animFileMap.get(filename);
         if (animFile) {
           const contentToLoad = storedContent || animFile.content || '';
           const hasLocalChanges = storedContent !== null && storedContent !== animFile.content;
           setManimContent(contentToLoad);
-          setDescription('Animation file - content loaded and available to playground');
+          setDescription('Animation file - viewing all animations in animViewer screen');
           setShowDescription(true);
           loader.currentFile = filename;
           loader.currentExample = filename;
           setHasUnsavedChanges(hasLocalChanges);
           setSyncOffer(null); // No screen sync for anim files
+
+          // Switch to animViewer screen for .anim files
+          if (selectedScreen !== 'animViewer') {
+            setSelectedScreen('animViewer');
+            loader.reloadPlayground('animViewer');
+          }
         }
       }
     } else {

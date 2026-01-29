@@ -121,6 +121,7 @@ class Main extends hxd.App {
 		screenManager.addScreen("scrollableList", new screens.ScrollableListTestScreen(screenManager));
 		screenManager.addScreen("dialogStart", new DialogStartScreen(screenManager));
 		screenManager.addScreen("stateAnim", new screens.StateAnimScreen(screenManager));
+		screenManager.addScreen("animViewer", new screens.AnimViewerScreen(screenManager));
 		#if hl
 		screenManager.addScreen("settings", new SettingsScreen(screenManager));
 		#end
