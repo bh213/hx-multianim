@@ -113,7 +113,7 @@ relativeLayouts {
 
       placeholder(generated(cross(200, 20)), builderParameter("scroll1")) {
             pos:400,100 
-            settings{height=>200, topClearance=>60}   
+            settings{height:int=>200, topClearance:int=>60}   
       }
       placeholder(generated(cross(200, 20)), builderParameter("scroll2")):550,100;
       placeholder(generated(cross(200, 20)), builderParameter("scroll3")):700,100;

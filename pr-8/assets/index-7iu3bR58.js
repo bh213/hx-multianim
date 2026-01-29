@@ -229,7 +229,7 @@ relativeLayouts {
 
       placeholder(generated(cross(200, 20)), builderParameter("scroll1")) {
             pos:400,100 
-            settings{height=>200, topClearance=>60}   
+            settings{height:int=>200, topClearance:int=>60}   
       }
       placeholder(generated(cross(200, 20)), builderParameter("scroll2")):550,100;
       placeholder(generated(cross(200, 20)), builderParameter("scroll3")):700,100;
@@ -1609,7 +1609,7 @@ relativeLayouts {
       @(panel=>open) bitmap(sheet("ui", "icon_drop_open")):108,17
       #selectedName(updatable) text(m6x11, callback("selectedName"), 0xffffff12, center, 120): -4,6
       // @(images=>placeholder) placeholder(generated(cross(15, 15)), callback("test")):8,5
-      settings{transitionTimer=>.2}
+      settings{transitionTimer:float=>.2}
 }
 
 
@@ -1635,7 +1635,7 @@ relativeLayouts {
         @(images=>placeholder) placeholder(generated(cross(15, 15)), callback("test")):5,3
         @(images=>tile) bitmap(file($tile), center):5,3
         interactive($itemWidth , 20, $index);
-        settings{height=>20}
+        settings{height:int=>20}
 }
 
 #list-panel programmable(width:uint=200, height:uint=200, topClearance:uint = 0) {
@@ -1648,7 +1648,7 @@ relativeLayouts {
 #scrollbar programmable(panelHeight:uint=100, scrollableHeight:uint=200, scrollPosition:uint = 0) {
 
 ninepatch("ui", "scrollbar-1", 4, $panelHeight * $panelHeight / $scrollableHeight): 0, $scrollPosition*$panelHeight/$scrollableHeight
-  settings{scrollSpeed=>250}
+  settings{scrollSpeed:int=>250}
 }
 
 
@@ -2076,4 +2076,4 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
         margin-top: 10px;
       ">Retry</button>
     `,document.body.appendChild(n)}waitForHaxeApp(){Is.ready("playground.js",()=>{console.log("playground.js is ready and executed"),this.waitForPlaygroundMain()})}waitForPlaygroundMain(){typeof window.PlaygroundMain<"u"&&window.PlaygroundMain.instance?(console.log("Haxe application initialized successfully"),window.playgroundLoader&&window.playgroundLoader.mainApp===null&&(window.playgroundLoader.mainApp=window.PlaygroundMain.instance)):setTimeout(()=>this.waitForPlaygroundMain(),100)}start(){document.readyState==="loading"?document.addEventListener("DOMContentLoaded",()=>this.waitForReactApp()):this.waitForReactApp()}isScriptLoaded(){return this.isLoaded}getRetryCount(){return this.retryCount}}const ud=new Mm({maxRetries:5,retryDelay:2e3,timeout:1e4});ud.start();window.haxeLoader=ud;El.createRoot(document.getElementById("root")).render(v.jsx(de.StrictMode,{children:v.jsx(zm,{})}));
-//# sourceMappingURL=index-BkLHyU3j.js.map
+//# sourceMappingURL=index-7iu3bR58.js.map
