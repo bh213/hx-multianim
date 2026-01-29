@@ -278,7 +278,7 @@ class Main extends hxd.App {
 				try {
 					var bytes = FileLoader.load(filename);
 					var byteData = byte.ByteData.ofBytes(haxe.io.Bytes.ofData(bytes));
-					return bh.stateanim.AnimParser.parseFile(byteData, loader);
+					return bh.stateanim.AnimParser.parseFile(byteData, filename, loader);
 				} catch (e) {
 					throw 'loadAnimSMImpl failed for filename: $filename - ${e}';
 				}
@@ -287,12 +287,12 @@ class Main extends hxd.App {
 				if (hxd.Res.loader.exists(filename)) {
 					var resource = hxd.Res.load(filename);
 					var byteData = byte.ByteData.ofBytes(resource.entry.getBytes());
-					return bh.stateanim.AnimParser.parseFile(byteData, loader);
+					return bh.stateanim.AnimParser.parseFile(byteData, filename, loader);
 				} else {
 					try {
 						var bytes = FileLoader.load(filename);
 						var byteData = byte.ByteData.ofBytes(haxe.io.Bytes.ofData(bytes));
-						return bh.stateanim.AnimParser.parseFile(byteData, loader);
+						return bh.stateanim.AnimParser.parseFile(byteData, filename, loader);
 					} catch (e) {
 						throw 'loadAnimSMImpl failed for filename: $filename - ${e}';
 					}
