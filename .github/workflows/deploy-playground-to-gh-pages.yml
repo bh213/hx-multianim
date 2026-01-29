@@ -44,6 +44,7 @@ jobs:
           ${{ runner.os }}-lix-
 
     - name: Install Lix dependencies
+      working-directory: playground
       run: lix download
 
     - name: Build for GitHub Pages
