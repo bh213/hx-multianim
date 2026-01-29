@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { PlaygroundLoader } from './PlaygroundLoader';
 import { Screen, ManimFile, AnimFile } from './types';
 import CodeEditor from './CodeEditor';

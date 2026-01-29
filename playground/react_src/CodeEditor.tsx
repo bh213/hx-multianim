@@ -306,18 +306,6 @@ const CodeEditor = forwardRef<HTMLDivElement, CodeEditorProps>(
       }
     };
 
-    // Determine the language based on the content or file type
-    const getLanguage = () => {
-      if (language === 'typescript') {
-        // Check if this looks like Haxe code
-        if (value.includes('class') || value.includes('function') || value.includes('var')) {
-          // You can add more sophisticated detection here
-          return 'haxe-manim'; // Default to manim for now
-        }
-      }
-      return language;
-    };
-
     return (
       <div 
         ref={ref}
