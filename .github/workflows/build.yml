@@ -31,6 +31,8 @@ jobs:
     - name: Install dependencies
       run: lix download
 
+    - name: Create build directory
+      run: mkdir -p build
 
     - name: Build library for hashlink
       run: |

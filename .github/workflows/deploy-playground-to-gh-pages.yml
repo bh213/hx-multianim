@@ -13,9 +13,6 @@ permissions:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: playground
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -28,6 +25,7 @@ jobs:
         cache-dependency-path: playground/package-lock.json
 
     - name: Install npm dependencies
+      working-directory: playground
       run: npm ci
 
     - name: Setup Haxe
@@ -50,9 +48,11 @@ jobs:
       run: lix download
 
     - name: Build for GitHub Pages
+      working-directory: playground
       run: npm run full:build
 
     - name: Verify build output
+      working-directory: playground
       run: |
         test -f public/playground.js || (echo "ERROR: playground.js not found" && exit 1)
         test -d dist || (echo "ERROR: dist directory not found" && exit 1)
@@ -69,7 +69,7 @@ jobs:
 
     # Deploy PR to /pr-<number>/ subdirectory for preview
     - name: Deploy PR Preview
-      if: github.event_name == 'pull_request'
+      if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
       uses: peaceiris/actions-gh-pages@v3
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -78,7 +78,7 @@ jobs:
         destination_dir: pr-${{ github.event.pull_request.number }}
 
     - name: Comment PR with preview URL
-      if: github.event_name == 'pull_request'
+      if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
       uses: actions/github-script@v7
       with:
         script: |
@@ -99,7 +99,7 @@ jobs:
             comment.body.includes('Preview deployment')
           );
 
-          const body = `## 🚀 Preview deployment
+          const body = `## Preview deployment
 
           Your changes have been deployed to a preview environment:
 
