@@ -99,13 +99,15 @@ jobs:
             comment.body.includes('Preview deployment')
           );
 
-          const body = `## Preview deployment
-
-          Your changes have been deployed to a preview environment:
-
-          **Preview URL:** ${previewUrl}
-
-          This preview will be updated with each new commit to this PR.`;
+          const body = [
+            '## Preview deployment',
+            '',
+            'Your changes have been deployed to a preview environment:',
+            '',
+            `**Preview URL:** ${previewUrl}`,
+            '',
+            'This preview will be updated with each new commit to this PR.'
+          ].join('\n');
 
           if (botComment) {
             await github.rest.issues.updateComment({
