@@ -5,10 +5,10 @@ center: 64,64
 
 animation {
     name: dir0
-    fps:10
-    loop
+    fps: 10
+    loop: yes
     playlist {
-            sheet: "Arrow_dir0"
+        sheet: "Arrow_dir0"
     }
     extrapoints {
         point: 0,0
@@ -19,10 +19,10 @@ animation {
 
 animation {
     name: dir1
-    fps:10
-    loop
+    fps: 10
+    loop: yes
     playlist {
-            sheet: "Arrow_dir1"
+        sheet: "Arrow_dir1"
     }
     extrapoints {
         point: 0,0
@@ -33,10 +33,10 @@ animation {
 
 animation {
     name: dir2
-    fps:10
-    loop
+    fps: 10
+    loop: yes
     playlist {
-            sheet: "Arrow_dir2"
+        sheet: "Arrow_dir2"
     }
     extrapoints {
         point: 0,0
@@ -47,10 +47,10 @@ animation {
 
 animation {
     name: dir3
-    fps:10
-    loop
+    fps: 10
+    loop: yes
     playlist {
-            sheet: "Arrow_dir3"
+        sheet: "Arrow_dir3"
     }
     extrapoints {
         point: 0,0
@@ -60,10 +60,10 @@ animation {
 
 animation {
     name: dir4
-    fps:10
-    loop
+    fps: 10
+    loop: yes
     playlist {
-            sheet: "Arrow_dir4"
+        sheet: "Arrow_dir4"
     }
     extrapoints {
         point: 0,0
@@ -73,10 +73,10 @@ animation {
 
 animation {
     name: dir5
-    fps:10
-    loop
+    fps: 10
+    loop: yes
     playlist {
-            sheet: "Arrow_dir5"
+        sheet: "Arrow_dir5"
     }
     extrapoints {
         point: 0,0

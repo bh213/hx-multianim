@@ -101,11 +101,17 @@ export class PlaygroundLoader {
             description: 'Atlas texture testing screen demonstrating sprite sheet loading, grid layouts, and atlas-based animations.',
             manimFile: 'atlas-test.manim'
         },
-        { 
-            name: 'draggable', 
+        {
+            name: 'draggable',
             displayName: 'Draggable Test',
             description: 'Drag and drop functionality demonstration with free dragging, bounds-constrained dragging, and zone-restricted dropping.',
             manimFile: 'draggable.manim'
+        },
+        {
+            name: 'animViewer',
+            displayName: 'Animation Viewer',
+            description: 'Animation viewer for .anim files. Displays all animations from the selected .anim file in a grid layout.',
+            manimFile: 'animviewer.manim'
         }
     ];
     
@@ -212,10 +218,16 @@ export class PlaygroundLoader {
             description: 'Drag and drop functionality demonstration with free dragging, bounds-constrained dragging, and zone-restricted dropping.',
             content: null
         },
-        { 
-            filename: 'atlas-test.manim', 
+        {
+            filename: 'atlas-test.manim',
             displayName: 'Atlas Test',
             description: 'Atlas texture testing screen demonstrating sprite sheet loading, grid layouts, and atlas-based animations.',
+            content: null
+        },
+        {
+            filename: 'animviewer.manim',
+            displayName: 'Animation Viewer',
+            description: 'Animation viewer UI layout for displaying .anim files in a grid layout.',
             content: null
         }
     ];
