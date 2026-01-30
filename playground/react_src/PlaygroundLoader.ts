@@ -36,15 +36,9 @@ export class PlaygroundLoader {
             manimFile: 'slider.manim'
         },
         {
-            name: 'particles',
-            displayName: 'Particles',
-            description: 'Particle system examples with various particle effects, explosions, trails, and dynamic particle animations.',
-            manimFile: 'particles.manim'
-        },
-        {
             name: 'particlesAdvanced',
-            displayName: 'Particles Advanced',
-            description: 'Advanced particle system examples demonstrating color gradients, force fields, bounds modes, trails, and various emission patterns.',
+            displayName: 'Particles',
+            description: 'Particle system examples demonstrating color gradients, force fields, bounds modes, trails, and various emission patterns.',
             manimFile: 'particles-advanced.manim'
         },
         {
@@ -171,15 +165,9 @@ export class PlaygroundLoader {
             content: null
         },
         {
-            filename: 'particles.manim',
-            displayName: 'Particles',
-            description: 'Particle system examples with various particle effects, explosions, trails, and dynamic particle animations.',
-            content: null
-        },
-        {
             filename: 'particles-advanced.manim',
-            displayName: 'Particles Advanced',
-            description: 'Advanced particle system examples demonstrating color gradients, force fields, bounds modes, trails, and various emission patterns.',
+            displayName: 'Particles',
+            description: 'Particle system examples demonstrating color gradients, force fields, bounds modes, trails, and various emission patterns.',
             content: null
         },
         {

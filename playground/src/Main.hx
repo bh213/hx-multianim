@@ -130,7 +130,6 @@ class Main extends hxd.App {
 		screenManager.addScreen("examples1", new Examples1Screen(screenManager));
 
 		screenManager.addScreen("paths", new PathsScreen(screenManager));
-		screenManager.addScreen("particles", new ParticlesScreen(screenManager));
 		screenManager.addScreen("particlesAdvanced", new ParticlesAdvancedScreen(screenManager));
 		screenManager.addScreen("pixels", new PixelsScreen(screenManager));
 		screenManager.addScreen("fonts", new FontsScreen(screenManager));

@@ -20,21 +20,41 @@ class ParticlesAdvancedScreen extends UIScreenBase {
 	var particles:Null<bh.base.Particles>;
 	var updatable:Null<Updatable>;
 	var effectNameText:Null<Updatable>;
-	var nextButton:Null<UIStandardMultiAnimButton>;
+	var effectButtons:Array<UIStandardMultiAnimButton> = [];
 
-	static var effectNames:Array<String> = ["fire", "smoke", "sparkles", "vortex", "explosion", "rain", "magicTrail", "confetti", "plasma"];
+	public static var effectNames:Array<String> = ["fire", "smoke", "sparkles", "vortex", "explosion", "rain", "magicTrail", "confetti", "plasma"];
 
 	public function load() {
 		this.builder = this.screenManager.buildFromResourceName("std.manim", false);
 		this.particlesBuilder = this.screenManager.buildFromResourceName("particles-advanced.manim", false);
 
 		var ui = MacroUtils.macroBuildWithParameters(particlesBuilder, "ui", [], [
-			nextButton => addButtonWithSingleBuilder(builder, "button", "Next Effect"),
+			fireBtn => addButtonWithSingleBuilder(builder, "button", "Fire"),
+			smokeBtn => addButtonWithSingleBuilder(builder, "button", "Smoke"),
+			sparklesBtn => addButtonWithSingleBuilder(builder, "button", "Sparkles"),
+			vortexBtn => addButtonWithSingleBuilder(builder, "button", "Vortex"),
+			explosionBtn => addButtonWithSingleBuilder(builder, "button", "Explosion"),
+			rainBtn => addButtonWithSingleBuilder(builder, "button", "Rain"),
+			magicTrailBtn => addButtonWithSingleBuilder(builder, "button", "Magic"),
+			confettiBtn => addButtonWithSingleBuilder(builder, "button", "Confetti"),
+			plasmaBtn => addButtonWithSingleBuilder(builder, "button", "Plasma"),
 		]);
 
 		this.updatable = ui.builderResults.getUpdatable("particles1");
 		this.effectNameText = ui.builderResults.getUpdatable("effectName");
-		this.nextButton = ui.nextButton;
+
+		// Store buttons for event handling
+		effectButtons = [
+			ui.fireBtn,
+			ui.smokeBtn,
+			ui.sparklesBtn,
+			ui.vortexBtn,
+			ui.explosionBtn,
+			ui.rainBtn,
+			ui.magicTrailBtn,
+			ui.confettiBtn,
+			ui.plasmaBtn
+		];
 
 		// Start with fire effect
 		showEffect(0);
@@ -55,8 +75,12 @@ class ParticlesAdvancedScreen extends UIScreenBase {
 		// Update the effect name text
 		if (effectNameText == null) throw 'Invalid effectNameText';
 
-		effectNameText.updateText('Effect: $effectName (${currentEffectIndex + 1}/${effectNames.length})');
+		effectNameText.updateText('Effect: $effectName');
 
+		// Update button states - disable the selected one
+		for (i in 0...effectButtons.length) {
+			effectButtons[i].disabled = (i == currentEffectIndex);
+		}
 	}
 
 	public override function update(dt:Float) {
@@ -66,10 +90,12 @@ class ParticlesAdvancedScreen extends UIScreenBase {
 	public function onScreenEvent(event:UIScreenEvent, source:UIElement) {
 		switch event {
 			case UIClick:
-				if (source == nextButton) {
-					// Cycle to next effect
-					var nextIndex = (currentEffectIndex + 1) % effectNames.length;
-					showEffect(nextIndex);
+				// Check which button was clicked
+				for (i in 0...effectButtons.length) {
+					if (source == effectButtons[i]) {
+						showEffect(i);
+						return;
+					}
 				}
 			default:
 		}
