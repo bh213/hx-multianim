@@ -7,10 +7,10 @@ version: 0.3
   @alpha(0.3) bitmap(generated(color(function(gridWidth), function(gridHeight),green)));
   @alpha(0.9) text(dd, "#2: text", white, left, 160);
 
-  text(dd, "test left", red, left, 200):0,20;
+  text(dd, "test left", #FF0000, left, 200):0,20;
   text(m3x6, "test center", blue, center, 200):0,20;
   text(pixeled6, "test right", 0xF00, right, 200):0,20;
-  text(pixellari, "The quick brown fox jumps over the lazy dog", 0xF00, right, 200):0,40;
+  text(pixellari, "The quick brown fox jumps over the lazy dog", #F00, right, 200):0,40;
 }
 
 

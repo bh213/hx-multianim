@@ -35,13 +35,19 @@ export class PlaygroundLoader {
             description: 'Slider component test screen with interactive slider controls and screen selection functionality.',
             manimFile: 'slider.manim'
         },
-        { 
-            name: 'particles', 
+        {
+            name: 'particles',
             displayName: 'Particles',
             description: 'Particle system examples with various particle effects, explosions, trails, and dynamic particle animations.',
             manimFile: 'particles.manim'
         },
-        { 
+        {
+            name: 'particlesAdvanced',
+            displayName: 'Particles Advanced',
+            description: 'Advanced particle system examples demonstrating color gradients, force fields, bounds modes, trails, and various emission patterns.',
+            manimFile: 'particles-advanced.manim'
+        },
+        {
             name: 'pixels', 
             displayName: 'Pixels',
             description: 'Pixel art and static pixel demo screen.',
@@ -164,13 +170,19 @@ export class PlaygroundLoader {
             description: 'Font rendering demonstrations with various font types, sizes, and text effects including SDF (Signed Distance Field) fonts.',
             content: null
         },
-        { 
-            filename: 'particles.manim', 
+        {
+            filename: 'particles.manim',
             displayName: 'Particles',
             description: 'Particle system examples with various particle effects, explosions, trails, and dynamic particle animations.',
             content: null
         },
-        { 
+        {
+            filename: 'particles-advanced.manim',
+            displayName: 'Particles Advanced',
+            description: 'Advanced particle system examples demonstrating color gradients, force fields, bounds modes, trails, and various emission patterns.',
+            content: null
+        },
+        {
             filename: 'pixels.manim', 
             displayName: 'Pixels',
             description: 'Pixel art and static pixel demo screen.',

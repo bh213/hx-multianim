@@ -14,6 +14,9 @@ import bh.ui.screens.UIScreen;
 import bh.stateanim.AnimParser;
 import bh.stateanim.AnimParser.AnimationStateSelector;
 import bh.stateanim.AnimationSM;
+import bh.stateanim.AnimationSM.AnimationFrameState;
+import bh.stateanim.AnimationSM.AnimationEvent;
+import bh.stateanim.AnimationSM.animationFrameStateToString;
 import h2d.Graphics;
 import hxd.Key;
 
@@ -83,7 +86,7 @@ class StateAnimScreen extends UIScreenBase {
 
 		try {
 			var parsed = screenManager.loader.loadAnimParser(filename);
-		
+
 			if (reinit) {
 				animSMStateSelector = [];
 				for (k => v in parsed.definedStates) {
@@ -94,12 +97,12 @@ class StateAnimScreen extends UIScreenBase {
 			animSM = initAnim(parsed, animSMStateSelector);
 
 			if (animSM.animationStates.exists("idle")) {
-				animSM.addCommand(SwitchState("idle"), Queued);
+				animSM.play("idle");
 			} else {
 				var val = animSM.animationStates.keyValueIterator().next();
-				animSM.addCommand(SwitchState(val.key), Queued);
+				animSM.play(val.key);
 			}
-			
+
 
 			removeGroupElements(groupNameAnimStates);
 
@@ -107,27 +110,14 @@ class StateAnimScreen extends UIScreenBase {
 			for (key => value in animSM.animationStates) {
 				var button = addElementWithIterator(UIStandardMultiAnimButton.create(builder, "button", '${key}'), animStatesIterator, groupNameAnimStates);
 				button.onClick = () -> {
-					if (ctrl) 
-					{
-						final count = 5;
-						for (i in 0...count) {
-							animSM.addCommand(SwitchState(key), Queued);	
-						}
-						 
-					}
-					else animSM.addCommand(SwitchState(key), ExecuteNow);
+					animSM.play(key);
 				}
 			}
 
-			var button = addElementWithIterator(UIStandardMultiAnimButton.create(builder, "button", 'delay'), animStatesIterator, groupNameAnimStates);
-			button.onClick = () -> animSM.addCommand(Delay(1.0), Queued);	
-
-
-
 			animSM.onAnimationEvent = (event) -> {
 				switch event {
-					case TRIGGER(name):
-					case POINT_EVENT(name, point):
+					case Trigger(data):
+					case PointEvent(name, point):
 						final globalpt = animSM.localToGlobal(point.toPoint());
 						addPointsElement(CIRCLE(globalpt.x, globalpt.y, 5, green, time + 3));
 				}
@@ -184,18 +174,14 @@ class StateAnimScreen extends UIScreenBase {
 		if (animSM == null)
 			return;
 		animSM.speed = speed;
-		// eventsFlow.removeChildren();
 
-		var s = "";
-		if (animSM.commands.length > 0) {
-			for (cmd in animSM.commands) {
-					s+= '${cmd}\n';
-					
-			}
+		// Show current animation status
+		var s = animSM.getCurrentAnimName();
+		if (s != null) {
+			commandsText.updateText('Playing: $s');
 		} else {
-			s = "no commands";
+			commandsText.updateText("no animation");
 		}
-		commandsText.updateText(s);
 
 
 		pointGraphics.clear();
@@ -205,9 +191,8 @@ class StateAnimScreen extends UIScreenBase {
 			createRect(bounds.x, bounds.y, bounds.width, bounds.height);
 		}
 
-		if (animSM.currentFrame != null) {
-			final currentFrame = animSM.currentFrame;
-
+		var currentFrame = animSM.getCurrentFrame();
+		if (currentFrame != null) {
 			spriteStatus.updateText('${currentFrame.width}x${currentFrame.height}, scale ${spriteScale} speed ${speed}');
 		} else
 			spriteStatus.updateText('no frame');
@@ -242,15 +227,14 @@ class StateAnimScreen extends UIScreenBase {
 		if (c != null) {
 			var s = "";
 			for (index => state in c.states) {
-				var cnt = c.statesCounters[index];
 				final startColor = index == animSM.currentStateIndex ? '<font color="#ffffff">' : "";
 				final endColor = index == animSM.currentStateIndex ? "</font>" : "";
 				var duration = switch state {
-					case AF_FRAME(frame): '${frame.duration * 1000.0}ms';
+					case Frame(frame): '${frame.duration * 1000.0}ms';
 					default: "";
 				}
 
-				s += '${startColor}${Std.string(index).rpad(" ", 3)}  ${animationFrameStateToString(state)} ${cnt == -1 ?"":'${cnt}'} ${endColor}${duration}<br/>';
+				s += '${startColor}${Std.string(index).rpad(" ", 3)}  ${animationFrameStateToString(state)} ${endColor}${duration}<br/>';
 			}
 			statesText.updateText('${c.name} - ${animSM.currentStateIndex}<br/>${s}');
 		} else {
@@ -287,14 +271,14 @@ class StateAnimScreen extends UIScreenBase {
 		this.stdBuilder = this.screenManager.buildFromResourceName("std.manim", false);
 		this.stateAnimLayouts = stateAnimBuilder.getLayouts();
 
-		
-	
+
+
 
 		var loaderButton = UIStandardMultiAnimButton.create(this.stdBuilder, "button", 'Load');
 		loaderButton.onClick = () -> {
 			var files = [
 				"arrows.anim",
-				"dice.anim", 
+				"dice.anim",
 				"marine.anim",
 				"shield.anim",
 				"turret.anim"
@@ -303,7 +287,7 @@ class StateAnimScreen extends UIScreenBase {
 			dialog.load();
 			this.screenManager.modalDialog(dialog, this, "fileChange");
 		}
-	
+
 
 		var res = MacroUtils.macroBuildWithParameters(stateAnimBuilder, "ui", [], [
 			pause=>addCheckbox(stdBuilder, true),
@@ -383,7 +367,7 @@ class StateAnimScreen extends UIScreenBase {
 						}
 				}
 			case UICustomEvent(eventName, data):
-				
+
 
 		}
 	}

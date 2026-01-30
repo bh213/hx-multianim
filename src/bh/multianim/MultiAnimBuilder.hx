@@ -23,6 +23,10 @@ import bh.base.PixelLine;
 import h2d.Object;
 import bh.multianim.MultiAnimParser;
 import bh.base.ResourceLoader;
+import bh.base.Particles.ForceField;
+import bh.base.Particles.BoundsMode;
+import bh.base.Particles.SubEmitTrigger;
+import bh.base.Particles.CurvePoint;
 
 using bh.base.MapTools;
 using StringTools;
@@ -41,7 +45,7 @@ class Updatable {
 	final updatables:Array<NamedBuildResult>;
 	var lastObject:Null<h2d.Object> = null;
 
-	function new(updatables) {
+	function new(updatables:Array<NamedBuildResult>) {
 		if (updatables == null || updatables.length == 0)
 			throw 'empty updatable';
 		this.updatables = updatables;
@@ -53,14 +57,14 @@ class Updatable {
 		}
 	}
 
-	public function updateText(newText, throwIfAnyFails = true) {
+	public function updateText(newText:String, throwIfAnyFails = true) {
 		for (v in updatables) {
 			switch v.object {
 				case HeapsText(t):
 					t.text = newText;
 				default:
 					if (throwIfAnyFails)
-						throw 'invalid updateText ${v.object}';
+						throw 'invalid updateText: expected HeapsText but got ${v.object}';
 			}
 		}
 	}
@@ -72,39 +76,41 @@ class Updatable {
 					b.tile = newTile;
 				default:
 					if (throwIfAnyFails)
-						throw 'invalid updateTile ${v.object}';
+						throw 'invalid updateTile: expected HeapsBitmap but got ${v.object}';
 			}
 		}
 	}
 
-	public function setObject(newObject:h2d.Object, throwIfFails = true) {
+	public function setObject(newObject:h2d.Object) {
 		if (updatables.length != 1)
 			throw 'setObject needs exactly one updatable';
 		if (lastObject == newObject)
 			return; // nothing to do
-		for (v in updatables) {
-			if (lastObject != null)
-				lastObject.remove();
 
-			final parent = v.object.toh2dObject();
-			parent.addChild(newObject);
+		if (lastObject != null) {
+			lastObject.remove();
+			lastObject = null;
 		}
+
+		final parent = updatables[0].object.toh2dObject();
+		parent.addChild(newObject);
+		lastObject = newObject;
 	}
 
-	public function addObject(newObject:h2d.Object, throwIfFails = true) {
+	public function addObject(newObject:h2d.Object) {
 		if (updatables.length != 1)
 			throw 'addObject needs exactly one updatable';
 
-		for (v in updatables) {
-			final parent = v.object.toh2dObject();
-			parent.addChild(newObject);
-		}
+		final parent = updatables[0].object.toh2dObject();
+		parent.addChild(newObject);
+		lastObject = newObject;
 	}
 
 	public function clearObjects() {
 		for (v in updatables) {
 			v.object.toh2dObject().removeChildren();
 		}
+		lastObject = null;
 	}
 }
 
@@ -2198,14 +2204,130 @@ class MultiAnimBuilder {
 		if (particlesDef.rotateAuto != null)
 			group.rotAuto = particlesDef.rotateAuto;
 
+		// Animation repeat
+		if (particlesDef.animationRepeat != null)
+			group.animationRepeat = resolveAsNumber(particlesDef.animationRepeat);
+
+		// Color interpolation
+		if (particlesDef.colorStart != null) {
+			group.colorEnabled = true;
+			group.colorStart = resolveAsInteger(particlesDef.colorStart);
+		}
+		if (particlesDef.colorEnd != null) {
+			group.colorEnabled = true;
+			group.colorEnd = resolveAsInteger(particlesDef.colorEnd);
+		}
+		if (particlesDef.colorMid != null)
+			group.colorMid = resolveAsInteger(particlesDef.colorMid);
+		if (particlesDef.colorMidPos != null)
+			group.colorMidPos = resolveAsNumber(particlesDef.colorMidPos);
+
+		// Force fields
+		if (particlesDef.forceFields != null) {
+			group.forceFields = [];
+			var forceFieldsArray:Array<ParticleForceFieldDef> = particlesDef.forceFields;
+			for (ff in forceFieldsArray) {
+				var converted:ForceField = switch ff {
+					case FFAttractor(x, y, strength, radius):
+						Attractor(resolveAsNumber(x), resolveAsNumber(y), resolveAsNumber(strength), resolveAsNumber(radius));
+					case FFRepulsor(x, y, strength, radius):
+						Repulsor(resolveAsNumber(x), resolveAsNumber(y), resolveAsNumber(strength), resolveAsNumber(radius));
+					case FFVortex(x, y, strength, radius):
+						Vortex(resolveAsNumber(x), resolveAsNumber(y), resolveAsNumber(strength), resolveAsNumber(radius));
+					case FFWind(vx, vy):
+						Wind(resolveAsNumber(vx), resolveAsNumber(vy));
+					case FFTurbulence(strength, scale, speed):
+						Turbulence(resolveAsNumber(strength), resolveAsNumber(scale), resolveAsNumber(speed));
+				};
+				group.forceFields.push(converted);
+			}
+		}
+
+		// Velocity curve
+		if (particlesDef.velocityCurve != null) {
+			group.velocityCurve = [];
+			var velocityCurveArray:Array<ParticleCurvePoint> = particlesDef.velocityCurve;
+			for (cp in velocityCurveArray) {
+				group.velocityCurve.push({time: resolveAsNumber(cp.time), value: resolveAsNumber(cp.value)});
+			}
+		}
+
+		// Size curve
+		if (particlesDef.sizeCurve != null) {
+			group.sizeCurve = [];
+			var sizeCurveArray:Array<ParticleCurvePoint> = particlesDef.sizeCurve;
+			for (cp in sizeCurveArray) {
+				group.sizeCurve.push({time: resolveAsNumber(cp.time), value: resolveAsNumber(cp.value)});
+			}
+		}
+
+		// Trails
+		if (particlesDef.trailEnabled != null)
+			group.trailEnabled = particlesDef.trailEnabled;
+		if (particlesDef.trailLength != null)
+			group.trailLength = resolveAsInteger(particlesDef.trailLength);
+		if (particlesDef.trailFadeOut != null)
+			group.trailFadeOut = particlesDef.trailFadeOut;
+
+		// Bounds/collision
+		if (particlesDef.boundsMode != null) {
+			group.boundsMode = switch (particlesDef.boundsMode:ParticleBoundsModeDef) {
+				case BMNone: BoundsMode.None;
+				case BMKill: BoundsMode.Kill;
+				case BMBounce(damping): BoundsMode.Bounce(resolveAsNumber(damping));
+				case BMWrap: BoundsMode.Wrap;
+			};
+		}
+		if (particlesDef.boundsMinX != null)
+			group.boundsMinX = resolveAsNumber(particlesDef.boundsMinX);
+		if (particlesDef.boundsMaxX != null)
+			group.boundsMaxX = resolveAsNumber(particlesDef.boundsMaxX);
+		if (particlesDef.boundsMinY != null)
+			group.boundsMinY = resolveAsNumber(particlesDef.boundsMinY);
+		if (particlesDef.boundsMaxY != null)
+			group.boundsMaxY = resolveAsNumber(particlesDef.boundsMaxY);
+
+		// Sub-emitters
+		if (particlesDef.subEmitters != null) {
+			group.subEmitters = [];
+			var subEmittersArray:Array<ParticleSubEmitterDef> = particlesDef.subEmitters;
+			for (se in subEmittersArray) {
+				var trigger:SubEmitTrigger = switch se.trigger {
+					case SETOnBirth: OnBirth;
+					case SETOnDeath: OnDeath;
+					case SETOnCollision: OnCollision;
+					case SETOnInterval(interval): OnInterval(resolveAsNumber(interval));
+				};
+				group.subEmitters.push({
+					groupId: se.groupId,
+					trigger: trigger,
+					probability: resolveAsNumber(se.probability),
+					inheritVelocity: se.inheritVelocity != null ? resolveAsNumber(se.inheritVelocity) : 0.0,
+					offsetX: se.offsetX != null ? resolveAsNumber(se.offsetX) : 0.0,
+					offsetY: se.offsetY != null ? resolveAsNumber(se.offsetY) : 0.0
+				});
+			}
+		}
+
+		// Emit mode
 		switch particlesDef.emit {
 			case Point(emitDistance, emitDistanceRandom):
-				group.emitMode = Point(resolveAsNumber(emitDistance), resolveAsNumber(emitDistanceRandom));
+				group.emitMode = bh.base.PartEmitMode.Point(resolveAsNumber(emitDistance), resolveAsNumber(emitDistanceRandom));
 			case Cone(emitDistance, emitDistanceRandom, emitConeAngle, emitConeAngleRandom):
-				group.emitMode = Cone(resolveAsNumber(emitDistance), resolveAsNumber(emitDistanceRandom), hxd.Math.degToRad(resolveAsNumber(emitConeAngle)),
+				group.emitMode = bh.base.PartEmitMode.Cone(resolveAsNumber(emitDistance), resolveAsNumber(emitDistanceRandom), hxd.Math.degToRad(resolveAsNumber(emitConeAngle)),
 					hxd.Math.degToRad(resolveAsNumber(emitConeAngleRandom)));
 			case Box(width, height, emitConeAngle, emitConeAngleRandom):
-				group.emitMode = Box(resolveAsNumber(width), resolveAsNumber(height), hxd.Math.degToRad(resolveAsNumber(emitConeAngle)),
+				group.emitMode = bh.base.PartEmitMode.Box(resolveAsNumber(width), resolveAsNumber(height), hxd.Math.degToRad(resolveAsNumber(emitConeAngle)),
+					hxd.Math.degToRad(resolveAsNumber(emitConeAngleRandom)));
+			case Circle(radius, radiusRandom, emitConeAngle, emitConeAngleRandom):
+				group.emitMode = bh.base.PartEmitMode.Circle(resolveAsNumber(radius), resolveAsNumber(radiusRandom), hxd.Math.degToRad(resolveAsNumber(emitConeAngle)),
+					hxd.Math.degToRad(resolveAsNumber(emitConeAngleRandom)));
+			case Path(points, emitConeAngle, emitConeAngleRandom):
+				var resolvedPoints:Array<{x:Float, y:Float}> = [];
+				for (p in points) {
+					resolvedPoints.push({x: resolveAsNumber(p.x), y: resolveAsNumber(p.y)});
+				}
+				group.emitMode = bh.base.PartEmitMode.Path(resolvedPoints, hxd.Math.degToRad(resolveAsNumber(emitConeAngle)),
 					hxd.Math.degToRad(resolveAsNumber(emitConeAngleRandom)));
 		}
 

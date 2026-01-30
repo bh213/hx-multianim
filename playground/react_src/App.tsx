@@ -179,6 +179,7 @@ function App() {
     'checkbox': 'CheckboxTestScreen.hx',
     'slider': 'SliderTestScreen.hx',
     'particles': 'ParticlesScreen.hx',
+    'particlesAdvanced': 'ParticlesAdvancedScreen.hx',
     'components': 'ComponentsTestScreen.hx',
     'examples1': 'Examples1Screen.hx',
     'paths': 'PathsScreen.hx',
@@ -650,11 +651,9 @@ function App() {
     window.PlaygroundMain.defaultScreen = DEFAULT_SCREEN;
   }, []);
 
-  useEffect(() => {
-    if (manimContent && selectedScreen) {
-      validateManimContent();
-    }
-  }, [manimContent, selectedScreen]);
+  // Removed: useEffect that triggered validateManimContent on every manimContent change.
+  // Reload now only happens on Ctrl+S / Apply Changes (via handleApplyChanges)
+  // or when switching screens (via the selectedScreen effect above).
 
   useEffect(() => {
     function handleGlobalError(event: ErrorEvent) {

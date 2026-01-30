@@ -34,13 +34,9 @@ by Daniel Linssen
 
 *Note: Add any fonts, images, sounds, or other assets used in your project here*
 
-## Code Snippets and Examples
 
-*Note: Add any code snippets, examples, or algorithms adapted from other sources here*
-
-## Inspiration and References
-
-*Note: Add any projects, papers, or resources that inspired your work here*
+### Some particle textures
+https://jellyfish0.itch.io/
 
 ---
 

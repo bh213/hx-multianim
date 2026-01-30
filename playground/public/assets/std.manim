@@ -229,7 +229,7 @@ version: 0.3
         @(images=>placeholder) placeholder(generated(cross(15, 15)), callback("test")):5,3
         @(images=>tile) bitmap(file($tile), center):5,3
         interactive($itemWidth , 20, $index);
-        settings{height=>20}
+        settings{height:float=>20}
 }
 
 #list-panel programmable(width:uint=200, height:uint=200, topClearance:uint = 0) {
@@ -242,7 +242,7 @@ version: 0.3
 #scrollbar programmable(panelHeight:uint=100, scrollableHeight:uint=200, scrollPosition:uint = 0) {
 
 ninepatch("ui", "scrollbar-1", 4, $panelHeight * $panelHeight / $scrollableHeight): 0, $scrollPosition*$panelHeight/$scrollableHeight
-  settings{scrollSpeed=>250}
+  settings{scrollSpeed:float=>250}
 }
 
 

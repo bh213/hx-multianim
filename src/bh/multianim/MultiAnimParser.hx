@@ -665,9 +665,52 @@ typedef PathsDef = Map<String, Array<ParsedPaths>>;
 
 
 enum ParticlesEmitMode {
-	Point(emitDistance:ReferenceableValue,  emitDistanceRandom:ReferenceableValue);
+	Point(emitDistance:ReferenceableValue, emitDistanceRandom:ReferenceableValue);
 	Cone(emitDistance:ReferenceableValue, emitDistanceRandom:ReferenceableValue, emitConeAngle:ReferenceableValue, emitConeAngleRandom:ReferenceableValue);
 	Box(width:ReferenceableValue, height:ReferenceableValue, emitConeAngle:ReferenceableValue, emitConeAngleRandom:ReferenceableValue);
+	Path(points:Array<{x:ReferenceableValue, y:ReferenceableValue}>, emitConeAngle:ReferenceableValue, emitConeAngleRandom:ReferenceableValue);
+	Circle(radius:ReferenceableValue, radiusRandom:ReferenceableValue, emitConeAngle:ReferenceableValue, emitConeAngleRandom:ReferenceableValue);
+}
+
+// Force field types for particles
+enum ParticleForceFieldDef {
+	FFAttractor(x:ReferenceableValue, y:ReferenceableValue, strength:ReferenceableValue, radius:ReferenceableValue);
+	FFRepulsor(x:ReferenceableValue, y:ReferenceableValue, strength:ReferenceableValue, radius:ReferenceableValue);
+	FFVortex(x:ReferenceableValue, y:ReferenceableValue, strength:ReferenceableValue, radius:ReferenceableValue);
+	FFWind(vx:ReferenceableValue, vy:ReferenceableValue);
+	FFTurbulence(strength:ReferenceableValue, scale:ReferenceableValue, speed:ReferenceableValue);
+}
+
+// Curve point for velocity/size over lifetime
+typedef ParticleCurvePoint = {
+	var time:ReferenceableValue;
+	var value:ReferenceableValue;
+}
+
+// Bounds mode for particle collision
+enum ParticleBoundsModeDef {
+	BMNone;
+	BMKill;
+	BMBounce(damping:ReferenceableValue);
+	BMWrap;
+}
+
+// Sub-emitter trigger types
+enum ParticleSubEmitTriggerDef {
+	SETOnBirth;
+	SETOnDeath;
+	SETOnCollision;
+	SETOnInterval(interval:ReferenceableValue);
+}
+
+// Sub-emitter configuration
+typedef ParticleSubEmitterDef = {
+	var groupId:String;
+	var trigger:ParticleSubEmitTriggerDef;
+	var probability:ReferenceableValue;
+	var inheritVelocity:Null<ReferenceableValue>;
+	var offsetX:Null<ReferenceableValue>;
+	var offsetY:Null<ReferenceableValue>;
 }
 
 @:nullSafety
@@ -696,6 +739,30 @@ typedef ParticlesDef = {
 	var rotationSpeed:Null<ReferenceableValue>;
 	var rotationSpeedRandom:Null<ReferenceableValue>;
 	var rotateAuto:Null<Bool>;
+	// Color interpolation
+	var colorStart:Null<ReferenceableValue>;
+	var colorEnd:Null<ReferenceableValue>;
+	var colorMid:Null<ReferenceableValue>;
+	var colorMidPos:Null<ReferenceableValue>;
+	// Force fields
+	var forceFields:Null<Array<ParticleForceFieldDef>>;
+	// Curves
+	var velocityCurve:Null<Array<ParticleCurvePoint>>;
+	var sizeCurve:Null<Array<ParticleCurvePoint>>;
+	// Trails
+	var trailEnabled:Null<Bool>;
+	var trailLength:Null<ReferenceableValue>;
+	var trailFadeOut:Null<Bool>;
+	// Bounds/collision
+	var boundsMode:Null<ParticleBoundsModeDef>;
+	var boundsMinX:Null<ReferenceableValue>;
+	var boundsMaxX:Null<ReferenceableValue>;
+	var boundsMinY:Null<ReferenceableValue>;
+	var boundsMaxY:Null<ReferenceableValue>;
+	// Sub-emitters
+	var subEmitters:Null<Array<ParticleSubEmitterDef>>;
+	// Animation
+	var animationRepeat:Null<ReferenceableValue>;
 }
 
 enum RepeatType {
@@ -3615,10 +3682,179 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 				Point(emitDistance, emitDistanceRandom);
 			case [MPIdentifier("cone", _, ITString), MPOpen, emitDistance = parseFloatOrReference(), MPComma, emitDistanceRandom = parseFloatOrReference(), MPComma, emitConeAngle = parseFloatOrReference(), MPComma, emitConeAngleRandom = parseFloatOrReference(), MPClosed]:
 				Cone(emitDistance, emitDistanceRandom, emitConeAngle, emitConeAngleRandom);
-			case [MPIdentifier("box", _, ITString), MPOpen, width = parseFloatOrReference(), MPComma, height = parseFloatOrReference(),MPComma, emitConeAngle = parseFloatOrReference(), MPComma, emitConeAngleRandom = parseFloatOrReference(), MPClosed]:
-				 Box(width, height, emitConeAngle, emitConeAngleRandom);
-			case _: syntaxError("expected point, cone or box");
+			case [MPIdentifier("box", _, ITString), MPOpen, width = parseFloatOrReference(), MPComma, height = parseFloatOrReference(), MPComma, emitConeAngle = parseFloatOrReference(), MPComma, emitConeAngleRandom = parseFloatOrReference(), MPClosed]:
+				Box(width, height, emitConeAngle, emitConeAngleRandom);
+			case [MPIdentifier("circle", _, ITString), MPOpen, radius = parseFloatOrReference(), MPComma, radiusRandom = parseFloatOrReference(), MPComma, emitConeAngle = parseFloatOrReference(), MPComma, emitConeAngleRandom = parseFloatOrReference(), MPClosed]:
+				Circle(radius, radiusRandom, emitConeAngle, emitConeAngleRandom);
+			case [MPIdentifier("path", _, ITString), MPOpen]:
+				var points:Array<{x:ReferenceableValue, y:ReferenceableValue}> = [];
+				// Parse path points: path([(x1,y1), (x2,y2), ...], angle, angleRandom)
+				switch stream {
+					case [MPBracketOpen]:
+						while (true) {
+							switch stream {
+								case [MPOpen, px = parseFloatOrReference(), MPComma, py = parseFloatOrReference(), MPClosed]:
+									points.push({x: px, y: py});
+									switch stream {
+										case [MPComma]: continue;
+										case [MPBracketClosed]: break;
+										case _: syntaxError("expected , or ]");
+									}
+								case [MPBracketClosed]: break;
+								case _: syntaxError("expected (x, y) or ]");
+							}
+						}
+					case _: syntaxError("expected [");
+				}
+				switch stream {
+					case [MPComma, emitConeAngle = parseFloatOrReference(), MPComma, emitConeAngleRandom = parseFloatOrReference(), MPClosed]:
+						Path(points, emitConeAngle, emitConeAngleRandom);
+					case _: syntaxError("expected , angle, angleRandom)");
+				}
+			case _: syntaxError("expected point, cone, box, circle or path");
 		}
+	}
+
+	function parseForceFields():Array<ParticleForceFieldDef> {
+		var fields:Array<ParticleForceFieldDef> = [];
+		switch stream {
+			case [MPBracketOpen]:
+				while (true) {
+					var field = parseForceField();
+					if (field != null) {
+						fields.push(field);
+						switch stream {
+							case [MPComma]: continue;
+							case [MPBracketClosed]: break;
+							case _: syntaxError("expected , or ]");
+						}
+					} else {
+						switch stream {
+							case [MPBracketClosed]: break;
+							case _: syntaxError("expected force field or ]");
+						}
+					}
+				}
+			case _: syntaxError("expected [");
+		}
+		return fields;
+	}
+
+	function parseForceField():ParticleForceFieldDef {
+		return switch stream {
+			case [MPIdentifier("attractor", _, ITString), MPOpen, x = parseFloatOrReference(), MPComma, y = parseFloatOrReference(), MPComma, strength = parseFloatOrReference(), MPComma, radius = parseFloatOrReference(), MPClosed]:
+				FFAttractor(x, y, strength, radius);
+			case [MPIdentifier("repulsor", _, ITString), MPOpen, x = parseFloatOrReference(), MPComma, y = parseFloatOrReference(), MPComma, strength = parseFloatOrReference(), MPComma, radius = parseFloatOrReference(), MPClosed]:
+				FFRepulsor(x, y, strength, radius);
+			case [MPIdentifier("vortex", _, ITString), MPOpen, x = parseFloatOrReference(), MPComma, y = parseFloatOrReference(), MPComma, strength = parseFloatOrReference(), MPComma, radius = parseFloatOrReference(), MPClosed]:
+				FFVortex(x, y, strength, radius);
+			case [MPIdentifier("wind", _, ITString), MPOpen, vx = parseFloatOrReference(), MPComma, vy = parseFloatOrReference(), MPClosed]:
+				FFWind(vx, vy);
+			case [MPIdentifier("turbulence", _, ITString), MPOpen, strength = parseFloatOrReference(), MPComma, scale = parseFloatOrReference(), MPComma, speed = parseFloatOrReference(), MPClosed]:
+				FFTurbulence(strength, scale, speed);
+			case _: null;
+		};
+	}
+
+	function parseCurvePoints():Array<ParticleCurvePoint> {
+		var points:Array<ParticleCurvePoint> = [];
+		switch stream {
+			case [MPBracketOpen]:
+				while (true) {
+					switch stream {
+						case [MPOpen, time = parseFloatOrReference(), MPComma, value = parseFloatOrReference(), MPClosed]:
+							points.push({time: time, value: value});
+							switch stream {
+								case [MPComma]: continue;
+								case [MPBracketClosed]: break;
+								case _: syntaxError("expected , or ]");
+							}
+						case [MPBracketClosed]: break;
+						case _: syntaxError("expected (time, value) or ]");
+					}
+				}
+			case _: syntaxError("expected [");
+		}
+		return points;
+	}
+
+	function parseBoundsMode():ParticleBoundsModeDef {
+		return switch stream {
+			case [MPIdentifier("none", _, ITString)]: BMNone;
+			case [MPIdentifier("kill", _, ITString)]: BMKill;
+			case [MPIdentifier("bounce", _, ITString), MPOpen, damping = parseFloatOrReference(), MPClosed]: BMBounce(damping);
+			case [MPIdentifier("wrap", _, ITString)]: BMWrap;
+			case _: syntaxError("expected none, kill, bounce(damping) or wrap");
+		};
+	}
+
+	function parseSubEmitters():Array<ParticleSubEmitterDef> {
+		var emitters:Array<ParticleSubEmitterDef> = [];
+		switch stream {
+			case [MPBracketOpen]:
+				while (true) {
+					var emitter = parseSubEmitter();
+					if (emitter != null) {
+						emitters.push(emitter);
+						switch stream {
+							case [MPComma]: continue;
+							case [MPBracketClosed]: break;
+							case _: syntaxError("expected , or ]");
+						}
+					} else {
+						switch stream {
+							case [MPBracketClosed]: break;
+							case _: syntaxError("expected sub-emitter or ]");
+						}
+					}
+				}
+			case _: syntaxError("expected [");
+		}
+		return emitters;
+	}
+
+	function parseSubEmitter():ParticleSubEmitterDef {
+		return switch stream {
+			case [MPCurlyOpen]:
+				var groupId:String = null;
+				var trigger:ParticleSubEmitTriggerDef = null;
+				var probability:ReferenceableValue = RVFloat(1.0);
+				var inheritVelocity:Null<ReferenceableValue> = null;
+				var offsetX:Null<ReferenceableValue> = null;
+				var offsetY:Null<ReferenceableValue> = null;
+
+				while (true) {
+					switch stream {
+						case [MPIdentifier("group", _, ITString), MPColon, MPIdentifier(gid, _, ITString | ITQuotedString)]:
+							groupId = gid;
+						case [MPIdentifier("trigger", _, ITString), MPColon]:
+							trigger = switch stream {
+								case [MPIdentifier("onBirth", _, ITString)]: SETOnBirth;
+								case [MPIdentifier("onDeath", _, ITString)]: SETOnDeath;
+								case [MPIdentifier("onCollision", _, ITString)]: SETOnCollision;
+								case [MPIdentifier("onInterval", _, ITString), MPOpen, interval = parseFloatOrReference(), MPClosed]: SETOnInterval(interval);
+								case _: syntaxError("expected onBirth, onDeath, onCollision or onInterval(interval)");
+							};
+						case [MPIdentifier("probability", _, ITString), MPColon, p = parseFloatOrReference()]:
+							probability = p;
+						case [MPIdentifier("inheritVelocity", _, ITString), MPColon, iv = parseFloatOrReference()]:
+							inheritVelocity = iv;
+						case [MPIdentifier("offsetX", _, ITString), MPColon, ox = parseFloatOrReference()]:
+							offsetX = ox;
+						case [MPIdentifier("offsetY", _, ITString), MPColon, oy = parseFloatOrReference()]:
+							offsetY = oy;
+						case [MPCurlyClosed]:
+							break;
+						case _: syntaxError("expected group, trigger, probability, inheritVelocity, offsetX, offsetY or }");
+					}
+				}
+
+				if (groupId == null) syntaxError("sub-emitter requires group");
+				if (trigger == null) syntaxError("sub-emitter requires trigger");
+
+				{groupId: groupId, trigger: trigger, probability: probability, inheritVelocity: inheritVelocity, offsetX: offsetX, offsetY: offsetY};
+			case _: null;
+		};
 	}
 
 	function validateParticles(particlesDefs:ParticlesDef, pos) {
@@ -3652,67 +3888,145 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 			rotationSpeed:null,
 			rotationSpeedRandom:null,
 			rotateAuto:null,
+			// Color interpolation
+			colorStart:null,
+			colorEnd:null,
+			colorMid:null,
+			colorMidPos:null,
+			// Force fields
+			forceFields:null,
+			// Curves
+			velocityCurve:null,
+			sizeCurve:null,
+			// Trails
+			trailEnabled:null,
+			trailLength:null,
+			trailFadeOut:null,
+			// Bounds
+			boundsMode:null,
+			boundsMinX:null,
+			boundsMaxX:null,
+			boundsMinY:null,
+			boundsMaxY:null,
+			// Sub-emitters
+			subEmitters:null,
+			// Animation
+			animationRepeat:null,
 		};
 	}
 
 	function updateParticlesFromTemplate(template:ParticlesDef, particlesDef:ParticlesDef):Void {
-		
-		particlesDef.count =  particlesDef.count ?? template.count;
-		particlesDef.emitDelay =  particlesDef.emitDelay ?? template.emitDelay;
-		particlesDef.emitSync =  particlesDef.emitSync ?? template.emitSync;
-		particlesDef.maxLife =  particlesDef.maxLife ?? template.maxLife;
-		particlesDef.lifeRandom =  particlesDef.lifeRandom ?? template.lifeRandom;
-		particlesDef.size =  particlesDef.size ?? template.size;
-		particlesDef.sizeRandom =  particlesDef.sizeRandom ?? template.sizeRandom;
-		particlesDef.speed =  particlesDef.speed ?? template.speed;
-		particlesDef.speedRandom =  particlesDef.speedRandom ?? template.speedRandom;
-		particlesDef.speedIncrease =  particlesDef.speedIncrease ?? template.speedIncrease;
-		particlesDef.loop =  particlesDef.loop ?? template.loop;
-		particlesDef.relative =  particlesDef.relative ?? template.relative;
-		particlesDef.tiles =  particlesDef.tiles ?? template.tiles;
-		particlesDef.gravity =  particlesDef.gravity ?? template.gravity;
-		particlesDef.gravityAngle =  particlesDef.gravityAngle ?? template.gravityAngle;
-		particlesDef.fadeIn =  particlesDef.fadeIn ?? template.fadeIn;
-		particlesDef.fadeOut =  particlesDef.fadeOut ?? template.fadeOut;
-		particlesDef.fadePower =  particlesDef.fadePower ?? template.fadePower;
-		particlesDef.blendMode =  particlesDef.blendMode ?? template.blendMode;
-		particlesDef.emit =  particlesDef.emit ?? template.emit;
-		particlesDef.rotationInitial =  particlesDef.rotationInitial ?? template.rotationInitial;
-		particlesDef.rotationSpeed =  particlesDef.rotationSpeed ?? template.rotationSpeed;
-		particlesDef.rotationSpeedRandom =  particlesDef.rotationSpeedRandom ?? template.rotationSpeedRandom;
-		particlesDef.rotateAuto =  particlesDef.rotateAuto ?? template.rotateAuto;
-	
+		particlesDef.count = particlesDef.count ?? template.count;
+		particlesDef.emitDelay = particlesDef.emitDelay ?? template.emitDelay;
+		particlesDef.emitSync = particlesDef.emitSync ?? template.emitSync;
+		particlesDef.maxLife = particlesDef.maxLife ?? template.maxLife;
+		particlesDef.lifeRandom = particlesDef.lifeRandom ?? template.lifeRandom;
+		particlesDef.size = particlesDef.size ?? template.size;
+		particlesDef.sizeRandom = particlesDef.sizeRandom ?? template.sizeRandom;
+		particlesDef.speed = particlesDef.speed ?? template.speed;
+		particlesDef.speedRandom = particlesDef.speedRandom ?? template.speedRandom;
+		particlesDef.speedIncrease = particlesDef.speedIncrease ?? template.speedIncrease;
+		particlesDef.loop = particlesDef.loop ?? template.loop;
+		particlesDef.relative = particlesDef.relative ?? template.relative;
+		particlesDef.tiles = particlesDef.tiles ?? template.tiles;
+		particlesDef.gravity = particlesDef.gravity ?? template.gravity;
+		particlesDef.gravityAngle = particlesDef.gravityAngle ?? template.gravityAngle;
+		particlesDef.fadeIn = particlesDef.fadeIn ?? template.fadeIn;
+		particlesDef.fadeOut = particlesDef.fadeOut ?? template.fadeOut;
+		particlesDef.fadePower = particlesDef.fadePower ?? template.fadePower;
+		particlesDef.blendMode = particlesDef.blendMode ?? template.blendMode;
+		particlesDef.emit = particlesDef.emit ?? template.emit;
+		particlesDef.rotationInitial = particlesDef.rotationInitial ?? template.rotationInitial;
+		particlesDef.rotationSpeed = particlesDef.rotationSpeed ?? template.rotationSpeed;
+		particlesDef.rotationSpeedRandom = particlesDef.rotationSpeedRandom ?? template.rotationSpeedRandom;
+		particlesDef.rotateAuto = particlesDef.rotateAuto ?? template.rotateAuto;
+		// Color interpolation
+		particlesDef.colorStart = particlesDef.colorStart ?? template.colorStart;
+		particlesDef.colorEnd = particlesDef.colorEnd ?? template.colorEnd;
+		particlesDef.colorMid = particlesDef.colorMid ?? template.colorMid;
+		particlesDef.colorMidPos = particlesDef.colorMidPos ?? template.colorMidPos;
+		// Force fields
+		particlesDef.forceFields = particlesDef.forceFields ?? template.forceFields;
+		// Curves
+		particlesDef.velocityCurve = particlesDef.velocityCurve ?? template.velocityCurve;
+		particlesDef.sizeCurve = particlesDef.sizeCurve ?? template.sizeCurve;
+		// Trails
+		particlesDef.trailEnabled = particlesDef.trailEnabled ?? template.trailEnabled;
+		particlesDef.trailLength = particlesDef.trailLength ?? template.trailLength;
+		particlesDef.trailFadeOut = particlesDef.trailFadeOut ?? template.trailFadeOut;
+		// Bounds
+		particlesDef.boundsMode = particlesDef.boundsMode ?? template.boundsMode;
+		particlesDef.boundsMinX = particlesDef.boundsMinX ?? template.boundsMinX;
+		particlesDef.boundsMaxX = particlesDef.boundsMaxX ?? template.boundsMaxX;
+		particlesDef.boundsMinY = particlesDef.boundsMinY ?? template.boundsMinY;
+		particlesDef.boundsMaxY = particlesDef.boundsMaxY ?? template.boundsMaxY;
+		// Sub-emitters
+		particlesDef.subEmitters = particlesDef.subEmitters ?? template.subEmitters;
+		// Animation
+		particlesDef.animationRepeat = particlesDef.animationRepeat ?? template.animationRepeat;
 	}
  	
 	function parseParticles():ParticlesDef {
 
 		var retVal = createEmptyParticlesDef();
 		final once = createOnceParser();
-		var results = parseOptionalParams([ParseIntegerOrReference(MacroUtils.identToString(count)), 
-											ParseFloatOrReference(MacroUtils.identToString(emitDelay)), 
-											ParseFloatOrReference(MacroUtils.identToString(emitSync)), 
-											ParseFloatOrReference(MacroUtils.identToString(maxLife)), 
-											ParseFloatOrReference(MacroUtils.identToString(lifeRandom)), 
-											ParseFloatOrReference(MacroUtils.identToString(size)), 
-											ParseFloatOrReference(MacroUtils.identToString(sizeRandom)), 
-											ParseFloatOrReference(MacroUtils.identToString(speed)), 
-											ParseFloatOrReference(MacroUtils.identToString(speedRandom)), 
-											ParseFloatOrReference(MacroUtils.identToString(speedIncrease)), 
-											ParseFloatOrReference(MacroUtils.identToString(gravity)), 
-											ParseFloatOrReference(MacroUtils.identToString(gravityAngle)), 
-											ParseFloatOrReference(MacroUtils.identToString(fadeIn)), 
-											ParseFloatOrReference(MacroUtils.identToString(fadeOut)), 
-											
-											ParseFloatOrReference(MacroUtils.identToString(rotationSpeed)), 
-											ParseFloatOrReference(MacroUtils.identToString(rotationSpeedRandom)), 
-											ParseFloatOrReference(MacroUtils.identToString(rotationInitial)), 
-											ParseBool(MacroUtils.identToString(rotateAuto)), 
-											
-											ParseBool(MacroUtils.identToString(loop)), 
-											ParseBool(MacroUtils.identToString(relative)), 
+		var results = parseOptionalParams([ParseIntegerOrReference(MacroUtils.identToString(count)),
+											ParseFloatOrReference(MacroUtils.identToString(emitDelay)),
+											ParseFloatOrReference(MacroUtils.identToString(emitSync)),
+											ParseFloatOrReference(MacroUtils.identToString(maxLife)),
+											ParseFloatOrReference(MacroUtils.identToString(lifeRandom)),
+											ParseFloatOrReference(MacroUtils.identToString(size)),
+											ParseFloatOrReference(MacroUtils.identToString(sizeRandom)),
+											ParseFloatOrReference(MacroUtils.identToString(speed)),
+											ParseFloatOrReference(MacroUtils.identToString(speedRandom)),
+											ParseFloatOrReference(MacroUtils.identToString(speedIncrease)),
+											ParseFloatOrReference(MacroUtils.identToString(gravity)),
+											ParseFloatOrReference(MacroUtils.identToString(gravityAngle)),
+											ParseFloatOrReference(MacroUtils.identToString(fadeIn)),
+											ParseFloatOrReference(MacroUtils.identToString(fadeOut)),
+											ParseFloatOrReference(MacroUtils.identToString(fadePower)),
+
+											ParseFloatOrReference(MacroUtils.identToString(rotationSpeed)),
+											ParseFloatOrReference(MacroUtils.identToString(rotationSpeedRandom)),
+											ParseFloatOrReference(MacroUtils.identToString(rotationInitial)),
+											ParseBool(MacroUtils.identToString(rotateAuto)),
+
+											ParseBool(MacroUtils.identToString(loop)),
+											ParseBool(MacroUtils.identToString(relative)),
 											ParseCustom(MacroUtils.identToString(tiles), parseTileSources),
 											ParseCustom(MacroUtils.identToString(blendMode), tryParseBlendMode),
-											ParseCustom(MacroUtils.identToString(emit), parseParticlesEmitMode)
+											ParseCustom(MacroUtils.identToString(emit), parseParticlesEmitMode),
+
+											// Color interpolation
+											ParseColor(MacroUtils.identToString(colorStart)),
+											ParseColor(MacroUtils.identToString(colorEnd)),
+											ParseColor(MacroUtils.identToString(colorMid)),
+											ParseFloatOrReference(MacroUtils.identToString(colorMidPos)),
+
+											// Force fields
+											ParseCustom(MacroUtils.identToString(forceFields), parseForceFields),
+
+											// Curves
+											ParseCustom(MacroUtils.identToString(velocityCurve), parseCurvePoints),
+											ParseCustom(MacroUtils.identToString(sizeCurve), parseCurvePoints),
+
+											// Trails
+											ParseBool(MacroUtils.identToString(trailEnabled)),
+											ParseIntegerOrReference(MacroUtils.identToString(trailLength)),
+											ParseBool(MacroUtils.identToString(trailFadeOut)),
+
+											// Bounds/collision
+											ParseCustom(MacroUtils.identToString(boundsMode), parseBoundsMode),
+											ParseFloatOrReference(MacroUtils.identToString(boundsMinX)),
+											ParseFloatOrReference(MacroUtils.identToString(boundsMaxX)),
+											ParseFloatOrReference(MacroUtils.identToString(boundsMinY)),
+											ParseFloatOrReference(MacroUtils.identToString(boundsMaxY)),
+
+											// Sub-emitters
+											ParseCustom(MacroUtils.identToString(subEmitters), parseSubEmitters),
+
+											// Animation
+											ParseFloatOrReference(MacroUtils.identToString(animationRepeat))
 										], once);
 
 		switch stream {
@@ -3744,9 +4058,32 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 		MacroUtils.optionsSetIfNotNull(retVal.loop, results);
 		MacroUtils.optionsSetIfNotNull(retVal.relative, results);
 		MacroUtils.optionsSetIfNotNull(retVal.blendMode, results);
-				
+		// Color interpolation
+		MacroUtils.optionsSetIfNotNull(retVal.colorStart, results);
+		MacroUtils.optionsSetIfNotNull(retVal.colorEnd, results);
+		MacroUtils.optionsSetIfNotNull(retVal.colorMid, results);
+		MacroUtils.optionsSetIfNotNull(retVal.colorMidPos, results);
+		// Force fields
+		MacroUtils.optionsSetIfNotNull(retVal.forceFields, results);
+		// Curves
+		MacroUtils.optionsSetIfNotNull(retVal.velocityCurve, results);
+		MacroUtils.optionsSetIfNotNull(retVal.sizeCurve, results);
+		// Trails
+		MacroUtils.optionsSetIfNotNull(retVal.trailEnabled, results);
+		MacroUtils.optionsSetIfNotNull(retVal.trailLength, results);
+		MacroUtils.optionsSetIfNotNull(retVal.trailFadeOut, results);
+		// Bounds
+		MacroUtils.optionsSetIfNotNull(retVal.boundsMode, results);
+		MacroUtils.optionsSetIfNotNull(retVal.boundsMinX, results);
+		MacroUtils.optionsSetIfNotNull(retVal.boundsMaxX, results);
+		MacroUtils.optionsSetIfNotNull(retVal.boundsMinY, results);
+		MacroUtils.optionsSetIfNotNull(retVal.boundsMaxY, results);
+		// Sub-emitters
+		MacroUtils.optionsSetIfNotNull(retVal.subEmitters, results);
+		// Animation
+		MacroUtils.optionsSetIfNotNull(retVal.animationRepeat, results);
+
 		return retVal;
-		
 	}
 
 	function parseLayouts():LayoutsDef {
@@ -3992,7 +4329,7 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 				case ParseFloatOrReference(_): parseFloatOrReference();
 				case ParseBool(_): parseBool();
 				case ParseCustom(_, parse): parse();
-				case ParseColor(_): parseColor();
+				case ParseColor(_): parseColorOrReference();
 			}
 		}
 
