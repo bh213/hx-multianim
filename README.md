@@ -4,7 +4,7 @@ A Haxe library for creating animations and pixel art UI elements using the [Heap
 
 ## Documentation
 
-- **[.manim Format Reference](docs/manim.md)** - UI elements, programmables, layouts, and graphics
+- **[.manim Format Reference](docs/manim.md)** - UI elements, programmables, layouts, graphics, and particles
 - **[.anim Format Reference](docs/anim.md)** - State animations with playlists and extra points
 
 ## Interactive Playground

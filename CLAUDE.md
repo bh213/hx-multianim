@@ -139,6 +139,7 @@ animation {
 | `repeatable($var, iterator)` | Loop elements |
 | `graphics(...)` | Vector graphics |
 | `pixels(...)` | Pixel primitives |
+| `particles {...}` | Particle effects |
 
 ### Conditionals
 
@@ -166,6 +167,41 @@ animation {
 ### Filters
 
 `outline`, `glow`, `blur`, `saturate`, `brightness`, `dropShadow`, `replacePalette`, `replaceColor`, `pixelOutline`, `group`
+
+### Particles Quick Reference
+
+```manim
+#effectName particles {
+    count: 100
+    emit: point(0, 0) | cone(dist, distRand, angle, angleRand) | box(w, h, angle, angleRand) | circle(r, rRand, angle, angleRand)
+    tiles: file("particle.png")
+    loop: true
+    maxLife: 2.0
+    speed: 50
+    speedRandom: 0.3
+    gravity: 100
+    gravityAngle: 90
+    size: 0.5
+    sizeRandom: 0.2
+    blendMode: add | alpha
+    fadeIn: 0.1
+    fadeOut: 0.8
+    colorStart: #FF4400
+    colorMid: #FFAA00
+    colorMidPos: 0.4
+    colorEnd: #FFFF88
+    sizeCurve: [(0, 0.5), (0.5, 1.2), (1.0, 0.2)]
+    velocityCurve: [(0, 1.0), (1.0, 0.3)]
+    forceFields: [turbulence(30, 0.02, 2.0), wind(10, 0), vortex(0, 0, 100, 150), attractor(0, 0, 50, 100), repulsor(0, 0, 80, 120)]
+    boundsMode: kill | bounce(0.6) | wrap
+    boundsMinX: -100
+    boundsMaxX: 300
+    rotationSpeed: 90
+    rotateAuto: true
+}
+```
+
+See `docs/manim.md` for full particles documentation.
 
 ## UI Elements Notes
 
@@ -230,8 +266,8 @@ Enable debug traces by adding to HXML:
 
 ### Next Features
 - Conditionals ELSE support
-- Particle system (loop, animSM, events)
 - Animation paths with easing & events
+- Particle sub-emitters (partially implemented)
 
 ## Playground
 

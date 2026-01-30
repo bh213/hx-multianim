@@ -507,6 +507,304 @@ graphics (
 
 ---
 
+## Particles
+
+Particle systems for visual effects like fire, smoke, explosions, and magic effects.
+
+### Basic Syntax
+
+```
+#effectName particles {
+    count: 100
+    emit: point(0, 0)
+    tiles: file("particle.png")
+    loop: true
+    maxLife: 2.0
+    speed: 50
+}
+```
+
+### Required Properties
+
+| Property | Description |
+|----------|-------------|
+| `emit` | Emission mode (see Emission Modes below) |
+| `tiles` | Particle tile source(s) |
+
+### Core Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `count` | int | 100 | Maximum particles alive at once |
+| `loop` | bool | true | Continuously emit particles |
+| `maxLife` | float | 1.0 | Particle lifetime in seconds |
+| `lifeRandom` | float | 0 | Random lifetime variation (0-1) |
+
+### Movement Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `speed` | float | 50 | Initial particle velocity |
+| `speedRandom` | float | 0 | Random speed variation (0-1) |
+| `speedIncrease` | float | 0 | Speed change over time (-1 to 1) |
+| `gravity` | float | 0 | Gravity strength |
+| `gravityAngle` | float | 90 | Gravity direction in degrees (90 = down) |
+
+### Size Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `size` | float | 1.0 | Initial particle scale |
+| `sizeRandom` | float | 0 | Random size variation (0-1) |
+
+### Rotation Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `rotationInitial` | float | 0 | Initial rotation range in degrees |
+| `rotationSpeed` | float | 0 | Rotation speed in degrees/sec |
+| `rotationSpeedRandom` | float | 0 | Random rotation speed variation |
+| `rotateAuto` | bool | false | Auto-rotate to match velocity direction |
+
+### Fade Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `fadeIn` | float | 0.2 | Fade-in time (0-1 normalized) |
+| `fadeOut` | float | 0.8 | Fade-out start time (0-1 normalized) |
+| `fadePower` | float | 1.0 | Fade curve exponent |
+
+### Emission Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `emitSync` | float | 0 | Synchronization (0=spread, 1=burst) |
+| `emitDelay` | float | 0 | Fixed delay before emission |
+
+### Rendering Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `blendMode` | enum | alpha | `alpha`, `add`, `multiply`, etc. |
+| `animationRepeat` | float | 1 | Animation loops (0=random frame) |
+
+### Emission Modes
+
+```
+emit: point(distance, distanceRandom)
+emit: cone(distance, distanceRandom, angle, angleRandom)
+emit: box(width, height, angle, angleRandom)
+emit: circle(radius, radiusRandom, angle, angleRandom)
+```
+
+**Angles are in degrees.** -90 = up, 0 = right, 90 = down, 180 = left.
+
+**Examples:**
+```
+// Point emission in all directions
+emit: point(0, 20)
+
+// Cone upward with 30° spread
+emit: cone(0, 10, -90, 30)
+
+// Box area with downward emission
+emit: box(200, 10, 90, 10)
+
+// Circle edge with outward emission (angle 0,0 = radial)
+emit: circle(50, 10, 0, 0)
+```
+
+### Color Interpolation
+
+Particles can transition through colors over their lifetime.
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `colorStart` | color | Color at birth |
+| `colorEnd` | color | Color at death |
+| `colorMid` | color | Optional middle color |
+| `colorMidPos` | float | Position of middle color (0-1) |
+
+**Example:**
+```
+// Fire gradient: orange -> yellow -> white
+colorStart: #FF4400
+colorMid: #FFAA00
+colorMidPos: 0.4
+colorEnd: #FFFF88
+```
+
+### Force Fields
+
+Apply physics forces to particles. Multiple force fields can be combined.
+
+```
+forceFields: [force1, force2, ...]
+```
+
+**Force Types:**
+
+| Force | Syntax | Description |
+|-------|--------|-------------|
+| Attractor | `attractor(x, y, strength, radius)` | Pulls particles toward point |
+| Repulsor | `repulsor(x, y, strength, radius)` | Pushes particles from point |
+| Vortex | `vortex(x, y, strength, radius)` | Spins particles around point |
+| Wind | `wind(vx, vy)` | Constant directional force |
+| Turbulence | `turbulence(strength, scale, speed)` | Noise-based displacement |
+
+**Examples:**
+```
+// Swirling vortex with center attractor
+forceFields: [vortex(0, 0, 200, 200), attractor(0, 0, 50, 180)]
+
+// Rising smoke with wind and turbulence
+forceFields: [turbulence(20, 0.015, 1.0), wind(15, 0)]
+
+// Plasma with repulsor
+forceFields: [repulsor(0, 0, 100, 120), turbulence(15, 0.02, 2.0)]
+```
+
+### Curves
+
+Define how values change over particle lifetime using curve points `(time, value)`.
+
+| Property | Description |
+|----------|-------------|
+| `sizeCurve` | Size multiplier over lifetime |
+| `velocityCurve` | Velocity multiplier over lifetime |
+
+**Syntax:**
+```
+sizeCurve: [(time1, value1), (time2, value2), ...]
+velocityCurve: [(time1, value1), (time2, value2), ...]
+```
+
+Time is normalized (0.0 = birth, 1.0 = death). Values are multipliers.
+
+**Examples:**
+```
+// Grow then shrink
+sizeCurve: [(0, 0.5), (0.3, 1.2), (1.0, 0.2)]
+
+// Slow down over time
+velocityCurve: [(0, 1.0), (0.2, 0.5), (1.0, 0.1)]
+
+// Pulsing size
+sizeCurve: [(0, 0.5), (0.25, 1.2), (0.5, 0.8), (0.75, 1.1), (1.0, 0.3)]
+```
+
+### Bounds Modes
+
+Control particle behavior at boundaries.
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `boundsMode` | enum | `kill`, `bounce(damping)`, `wrap` |
+| `boundsMinX` | float | Left boundary |
+| `boundsMaxX` | float | Right boundary |
+| `boundsMinY` | float | Top boundary |
+| `boundsMaxY` | float | Bottom boundary |
+
+**Examples:**
+```
+// Kill particles at bounds
+boundsMode: kill
+boundsMinX: -100
+boundsMaxX: 300
+boundsMinY: -50
+boundsMaxY: 250
+
+// Bounce with energy loss
+boundsMode: bounce(0.6)
+
+// Wrap around (for rain, etc.)
+boundsMode: wrap
+```
+
+### Multiple Tiles
+
+Use multiple tile sources for variety. Particles randomly select from available tiles.
+
+```
+tiles: file("spark.png") file("flare.png")
+tiles: file("star.png") file("dot.png") file("ring.png")
+```
+
+**Note:** Tile images should be similar in size for consistent appearance.
+
+### Complete Examples
+
+**Fire Effect:**
+```
+#fire particles {
+    count: 100
+    emit: cone(0, 10, -90, 30)
+    maxLife: 2.0
+    lifeRandom: 0.3
+    speed: 80
+    speedRandom: 0.3
+    tiles: file("circle_soft.png")
+    loop: true
+    size: 0.8
+    sizeRandom: 0.4
+    emitSync: 0.2
+    blendMode: add
+    fadeIn: 0.1
+    fadeOut: 0.6
+    fadePower: 1.5
+    colorStart: #FF4400
+    colorMid: #FFAA00
+    colorMidPos: 0.4
+    colorEnd: #FFFF88
+    sizeCurve: [(0, 0.5), (0.3, 1.2), (1.0, 0.2)]
+    forceFields: [turbulence(30, 0.02, 2.0)]
+}
+```
+
+**Rain Effect:**
+```
+#rain particles {
+    count: 200
+    emit: box(500, 10, 100, 5)
+    maxLife: 1.5
+    lifeRandom: 0.2
+    speed: 400
+    speedRandom: 0.15
+    tiles: file("spark.png")
+    loop: true
+    size: 0.2
+    blendMode: alpha
+    fadeIn: 0.1
+    fadeOut: 0.9
+    colorStart: #AACCFF
+    colorEnd: #6688CC
+    gravity: 100
+    gravityAngle: 90
+    boundsMode: wrap
+    boundsMinX: -50
+    boundsMaxX: 450
+    boundsMinY: -20
+    boundsMaxY: 350
+    rotateAuto: true
+}
+```
+
+### Using Particles in Haxe
+
+```haxe
+// Load and create particles
+var builder = MultiAnimBuilder.load(fileContent, loader, "effects.manim");
+var particles = builder.createParticles("fire");
+scene.addChild(particles);
+
+// Use with updatable placeholder
+var ui = MacroUtils.macroBuildWithParameters(builder, "ui", [], []);
+var updatable = ui.builderResults.getUpdatable("particlesSlot");
+updatable.setObject(particles);
+```
+
+---
+
 ## Tile Sources
 
 * `sheet(sheet, name)` - from atlas sheet
