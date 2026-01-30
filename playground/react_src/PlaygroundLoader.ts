@@ -35,13 +35,13 @@ export class PlaygroundLoader {
             description: 'Slider component test screen with interactive slider controls and screen selection functionality.',
             manimFile: 'slider.manim'
         },
-        { 
-            name: 'particles', 
+        {
+            name: 'particlesAdvanced',
             displayName: 'Particles',
-            description: 'Particle system examples with various particle effects, explosions, trails, and dynamic particle animations.',
-            manimFile: 'particles.manim'
+            description: 'Particle system examples demonstrating color gradients, force fields, bounds modes, trails, and various emission patterns.',
+            manimFile: 'particles-advanced.manim'
         },
-        { 
+        {
             name: 'pixels', 
             displayName: 'Pixels',
             description: 'Pixel art and static pixel demo screen.',
@@ -101,11 +101,17 @@ export class PlaygroundLoader {
             description: 'Atlas texture testing screen demonstrating sprite sheet loading, grid layouts, and atlas-based animations.',
             manimFile: 'atlas-test.manim'
         },
-        { 
-            name: 'draggable', 
+        {
+            name: 'draggable',
             displayName: 'Draggable Test',
             description: 'Drag and drop functionality demonstration with free dragging, bounds-constrained dragging, and zone-restricted dropping.',
             manimFile: 'draggable.manim'
+        },
+        {
+            name: 'animViewer',
+            displayName: 'Animation Viewer',
+            description: 'Animation viewer for .anim files. Displays all animations from the selected .anim file in a grid layout.',
+            manimFile: 'animviewer.manim'
         }
     ];
     
@@ -164,13 +170,13 @@ export class PlaygroundLoader {
             description: 'Font rendering demonstrations with various font types, sizes, and text effects including SDF (Signed Distance Field) fonts.',
             content: null
         },
-        { 
-            filename: 'particles.manim', 
+        {
+            filename: 'particles-advanced.manim',
             displayName: 'Particles',
-            description: 'Particle system examples with various particle effects, explosions, trails, and dynamic particle animations.',
+            description: 'Particle system examples demonstrating color gradients, force fields, bounds modes, trails, and various emission patterns.',
             content: null
         },
-        { 
+        {
             filename: 'pixels.manim', 
             displayName: 'Pixels',
             description: 'Pixel art and static pixel demo screen.',
@@ -212,10 +218,16 @@ export class PlaygroundLoader {
             description: 'Drag and drop functionality demonstration with free dragging, bounds-constrained dragging, and zone-restricted dropping.',
             content: null
         },
-        { 
-            filename: 'atlas-test.manim', 
+        {
+            filename: 'atlas-test.manim',
             displayName: 'Atlas Test',
             description: 'Atlas texture testing screen demonstrating sprite sheet loading, grid layouts, and atlas-based animations.',
+            content: null
+        },
+        {
+            filename: 'animviewer.manim',
+            displayName: 'Animation Viewer',
+            description: 'Animation viewer UI layout for displaying .anim files in a grid layout.',
             content: null
         }
     ];

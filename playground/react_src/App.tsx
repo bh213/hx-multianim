@@ -179,6 +179,7 @@ function App() {
     'checkbox': 'CheckboxTestScreen.hx',
     'slider': 'SliderTestScreen.hx',
     'particles': 'ParticlesScreen.hx',
+    'particlesAdvanced': 'ParticlesAdvancedScreen.hx',
     'components': 'ComponentsTestScreen.hx',
     'examples1': 'Examples1Screen.hx',
     'paths': 'PathsScreen.hx',
@@ -459,16 +460,20 @@ function App() {
           checkScreenSync(filename);
         }
       } else if (filename.endsWith('.anim')) {
-        // For anim files, load the content and make it available to the playground
+        // For anim files, load the content and switch to animViewer screen
         const animFile = animFileMap.get(filename);
         if (animFile) {
           setManimContent(animFile.content || '');
-          setDescription('Animation file - content loaded and available to playground');
+          setDescription('Animation file - viewing in Animation Viewer');
           setShowDescription(true);
           loader.currentFile = filename;
           loader.currentExample = filename;
           setHasUnsavedChanges(false);
-          setSyncOffer(null); // No screen sync for anim files
+          setSyncOffer(null);
+
+          // Auto-switch to animViewer screen for .anim files
+          setSelectedScreen('animViewer');
+          loader.reloadPlayground('animViewer');
         }
       }
     } else {
@@ -650,11 +655,9 @@ function App() {
     window.PlaygroundMain.defaultScreen = DEFAULT_SCREEN;
   }, []);
 
-  useEffect(() => {
-    if (manimContent && selectedScreen) {
-      validateManimContent();
-    }
-  }, [manimContent, selectedScreen]);
+  // Removed: useEffect that triggered validateManimContent on every manimContent change.
+  // Reload now only happens on Ctrl+S / Apply Changes (via handleApplyChanges)
+  // or when switching screens (via the selectedScreen effect above).
 
   useEffect(() => {
     function handleGlobalError(event: ErrorEvent) {

@@ -1,0 +1,30 @@
+version: 0.3
+
+
+
+#bitmapDemo programmable() {
+  pos:5,5
+  grid:250,150
+
+  @alpha(0.3) bitmap(generated(color(function(gridWidth), function(gridHeight),blue)));
+  @alpha(0.9) text(dd, "#3: bitmap", white, left, 160);
+
+  bitmap(sheet("crew2", "marine_l_killed",0), center):50,30
+  bitmap(sheet("crew2", "marine_l_killed",1), center):80,30
+  bitmap(sheet("crew2", "marine_l_killed",2), center):110,30
+  bitmap(sheet("crew2", "marine_l_killed",3), center):140,30
+
+  point {
+    pos: 80,60
+
+    scale:2;
+    bitmap(sheet("crew2", "marine_r_shooting_d"), center);
+    @alpha(0.5) bitmap(sheet("crew2", "marine_r_shooting_d"), center):-5,0;
+    @alpha(0.3) bitmap(sheet("crew2", "marine_r_shooting_d"), center):-10,0;
+  }
+}
+
+#main point {
+  pos: 0, 0
+  reference($bitmapDemo):0,0
+}

@@ -8,8 +8,6 @@ import bh.base.Particles;
 import bh.multianim.MultiAnimParser.BuiltHeapsComponent;
 import bh.multianim.MultiAnimParser.ParticlesDef;
 import bh.paths.MultiAnimPaths.Path;
-import bh.stateanim.AnimationSM.AnimationCommand.SwitchState;
-import bh.stateanim.AnimationSM.CommandTrigger.ExecuteNow;
 
 
 enum AnimatePathEvents {
@@ -143,8 +141,8 @@ class AnimatedPath {
                         case ChangeAnimSMState(state):
                 switch object {
                     case StateAnim(a):
-                        a.addCommand(SwitchState(state), ExecuteNow);
- 
+                        a.play(state);
+
                     default:
                         // No-op for non-StateAnim objects
                 }

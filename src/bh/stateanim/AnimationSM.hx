@@ -1,407 +1,277 @@
 package bh.stateanim;
 
+import bh.stateanim.AnimationFrame;
+import bh.stateanim.AnimationClip;
 import bh.stateanim.AnimParser.AnimationStateSelector;
-import h2d.Drawable;
 import h2d.RenderContext;
 
-enum AnimationCommandEvent {
-	TRIGGER(data:Dynamic);
-}
-
+/**
+	Event types that can be triggered during animation playback.
+**/
 enum AnimationPlaylistEvent {
-	TRIGGER(data:Dynamic);
-	POINT_EVENT(name:String, point:h2d.col.IPoint);
-	RANDOM_POINT_EVENT(name:String, point:h2d.col.IPoint, randomRadius:Float);
+	Trigger(data:Dynamic);
+	PointEvent(name:String, point:h2d.col.IPoint);
+	RandomPointEvent(name:String, point:h2d.col.IPoint, randomRadius:Float);
 }
 
-enum CommandTrigger {
-	Queued;
-	ExecuteNow;
-	ExecuteNowAndSkipEvents;
-}
-
-
+/**
+	Events emitted by AnimationSM during playback.
+**/
 enum AnimationEvent {
-	TRIGGER(data:Dynamic);
-	POINT_EVENT(name:String, point:h2d.col.IPoint);
+	Trigger(data:Dynamic);
+	PointEvent(name:String, point:h2d.col.IPoint);
 }
 
-@:nullSafety
-enum AnimationCommand {
-	Delay(time:Float);
-	SwitchState(name:String);
-	CommandEvent(event:AnimationCommandEvent);
-	Callback(callback:() -> Void);
-	Visible(value:Bool);
-}
-
-
+/**
+	Descriptor for a single animation clip with its states and metadata.
+**/
 @:nullSafety
 typedef AnimationDescriptor = {
 	final name:String;
 	final states:Array<AnimationFrameState>;
-	final statesCounters:Array<Int>;
+	final loopCount:Int; // -1 = forever, 0 = no loop, N = loop N times
 	final extraPoints:Map<String, h2d.col.IPoint>;
 };
 
-class AnimationFrame {
-	public final tile:h2d.Tile;
-	// Offset for trimmed tiles
-	public final offsetx : Int;
-	public final offsety : Int;
-
-	// width & height for trimmed tiles
-	public final width : Int;
-	public final height : Int;
-	/**
-		Frame display duration in seconds.
-	**/
-	public final duration:Float;
-
-	public function new(tile:h2d.Tile, duration:Float, offsetx, offsety, width, height) {
-		this.tile = tile;
-		this.duration = duration;
-		this.offsetx = offsetx;
-		this.offsety = offsety;
-		this.width = width;
-		this.height = height;
-	}
-
-	public function cloneWithDuration(newDuration:Float) {
-		return new AnimationFrame(tile, newDuration, offsetx, offsety, width, height);
-	}
-	public function cloneWithNewTile(newTile:h2d.Tile) {
-		return new AnimationFrame(newTile, duration, offsetx, offsety, width, height);
-	}
-}
-
+/**
+	State machine animation that uses AnimationClip for rendering.
+	Plays named animations with events and loop support.
+	Game logic drives animation switching via play().
+**/
 @:nullSafety
-class AnimationSM extends Drawable {
+class AnimationSM extends h2d.Object {
 	public var paused:Bool = false;
 
-	var speed = 1.0;
-	var elapsedTime:Float;
-	var wait:Float;
-	public var currentStateIndex(default, null):Int;
-	var currentFrame:Null<AnimationFrame>;
+	/**
+		When true, animation is driven externally via `update()` instead of
+		automatically advancing via `sync()`.
+	**/
+	public var externallyDriven:Bool;
+
+	var speed:Float = 1.0;
+	var elapsedTime:Float = 0;
+
+	public var currentStateIndex(default, null):Int = 0;
+
+	/**
+		The AnimationClip used for rendering frames.
+	**/
+	public var clip(default, null):AnimationClip;
 
 	public var playWhenHidden:Bool = false;
 	public var animationStates:Map<String, AnimationDescriptor> = new Map();
-	public var commands(default, null):List<AnimationCommand> = new List();
 	public var current(default, null):Null<AnimationDescriptor>;
 	public var currentSelector:AnimationStateSelector;
 
-	public function new(selector:AnimationStateSelector, ?parent:h2d.Object) {
-		super(parent);
-		this.elapsedTime = 0;
-		this.wait = 0;
-		this.currentStateIndex = 0;
-		currentSelector = selector;
-	}
+	// Loop tracking
+	var loopsRemaining:Int = 0;
 
-	public function clone(newStateSelector:AnimationStateSelector, parser:AnimParser, cloneCommands = false, cloneState = false, cloneStatIndex = false) {
-		var cloned = new AnimationSM(newStateSelector, null);
-		cloned.animationStates = this.animationStates.copy();
-		cloned.speed = this.speed;
-		if (cloneCommands) {
-			cloned.wait = this.wait;
-			cloned.commands = Lambda.list(this.commands);
-		}
-		if (cloneState) {
-			cloned.currentFrame = this.currentFrame;
-			cloned.current = this.current;
-		}
-		if (cloneStatIndex) {
-			cloned.currentStateIndex = this.currentStateIndex;
-		}
-		parser.load(newStateSelector, cloned);
+	public function new(selector:AnimationStateSelector, ?externallyDriven:Bool = false) {
+		super(null);
+		currentSelector = selector;
+		this.externallyDriven = externallyDriven ?? false;
+		this.clip = new AnimationClip([], this);
 	}
 
 	function loadState(stateSelector:AnimationStateSelector, parser:AnimParser) {
 		this.animationStates.clear();
 		parser.load(stateSelector, this);
-		this.currentFrame = null;
-		var oldwait = wait;
-		wait = 0; 
-		handleCurrent(hxd.Math.EPSILON);
-		wait = oldwait;
+		clip.setFrames([]);
 	}
 
-	override function getBoundsRec(relativeTo:h2d.Object, out:h2d.col.Bounds, forSize:Bool) {
-
-		super.getBoundsRec(relativeTo, out, forSize);
-		if( currentFrame != null ) {
-				var y = -(currentFrame.height-currentFrame.tile.height) + currentFrame.offsety + currentFrame.tile.dy;
-				addBounds(relativeTo, out, currentFrame.tile.dx - currentFrame.offsetx, y, currentFrame.width, currentFrame.height);
-		}
-	}
-
-	public function hasCommand():Bool {
-				if(wait <= 0) {
-					var cmd = commands.first();
-					return switch cmd {
-						case null: false;
-						case Delay(time):
-							wait += time;
-							commands.pop();
-							false;
-						default: true;
-					}
-				} else {
-					return false;
-				}
-	}
-
-		/**
-		Clears command buffer, optionally executes callbacks & events of deleted commands
-
-		If `executeCommands` is 'true' callbacks & events are immediately executed
-	**/
-	function clearCommands(executeEvents = true):Void {
-		if (executeEvents) {
-			for (command in commands) {
-				switch command {
-					case Delay(time):
-					case SwitchState(name):
-					case CommandEvent(event):
-						onCommandEvent(event);
-					case Callback(callback):
-						callback();
-					case Visible(value):
-				}
-			}
-		}
-		commands.clear();
-		wait = 0;
-		elapsedTime = 0;
-		//current = null;
-	}
-
-
-	public function addCommand(command:AnimationCommand, trigger:CommandTrigger):Void {
-		switch trigger {
-			case Queued:
-				commands.add(command);
-			case ExecuteNow:
-				clearCommands(true);
-				commands.add(command);
-			case ExecuteNowAndSkipEvents:
-				clearCommands(false);
-				commands.add(command);
-		}
-		
-	}
-
-	function executeCommand(cmd:AnimationCommand):Bool {
-		switch cmd {
-			case Delay(time): 
-				if (wait <= 0) wait = time;
-				else wait += time;
-				return time <= 0;
-			case SwitchState(name):
-				playAnim(name);
-				return false;
-			case CommandEvent(event):
-				onCommandEvent(event);
-				return true;
-			case Callback(callback):
-				callback();
-				return true;
-			case Visible(value):
-				this.visible = value;
-				return true;
-		}
-	}
-
-	public function getExtraPointForAnim(extraPointName:String, animState:String) {
+	public function getExtraPointForAnim(extraPointName:String, animState:String):Null<h2d.col.IPoint> {
 		final selectedState = animationStates[animState];
 		if (selectedState == null)
 			throw 'animState ${animState} not found';
-		#if MULTIANIM_TRACE
-		trace(selectedState.extraPoints);
-		#end
 		return selectedState.extraPoints.get(extraPointName);
 	}
 
-	public function getExtraPointNames() {
-		if (current == null) return[];
-		else return [for (s in current.extraPoints.keys()) s];
+	public function getExtraPointNames():Array<String> {
+		if (current == null)
+			return [];
+		else
+			return [for (s in current.extraPoints.keys()) s];
 	}
 
-	public function getExtraPoint(name:String) {
+	public function getExtraPoint(name:String):Null<h2d.col.IPoint> {
 		if (current == null)
 			return null;
 		return current.extraPoints.get(name);
 	}
 
-	public function addAnimationState(name:String, states, extraPoints) {
+	public function addAnimationState(name:String, states:Array<AnimationFrameState>, loopCount:Int, extraPoints:Map<String, h2d.col.IPoint>) {
 		if (animationStates.exists(name))
 			throw 'animation state ${name} already exists';
 
 		var animDesc:AnimationDescriptor = {
 			name: name,
 			states: states,
-			statesCounters: [for (i in 0...states.length) -1],
+			loopCount: loopCount,
 			extraPoints: extraPoints
 		};
 		animationStates.set(name, animDesc);
 	}
 
-	function playAnim(name:String, ?atFrame:Int):Void {
+	/**
+		Play an animation by name.
+	**/
+	public function play(name:String):Void {
 		var state = animationStates.get(name);
-		if (state != null) {
-			current = state;
-			if (wait < 0) wait = 0;
-			elapsedTime = 0;
-			paused = false;
-			currentStateIndex = 0;
-			currentFrame = null;	// Mark that we want to get first frame
-			handleCurrent(hxd.Math.EPSILON);
-		} else
+		if (state == null)
 			throw 'unknown animation ${name}';
+
+		current = state;
+		elapsedTime = 0;
+		paused = false;
+		currentStateIndex = 0;
+		loopsRemaining = state.loopCount;
+		clip.setFrames([]);
+		handleCurrent(hxd.Math.EPSILON);
 	}
 
-	function isEnd() {
-		if (this.current == null) return false;
-		return this.currentStateIndex == this.current.states.length;
-	}
-	
-	function handleCurrent(delta:Float) {
+	/**
+		Returns true if the current animation has finished (not looping or loops exhausted).
+	**/
+	public function isFinished():Bool {
 		if (current == null)
-			performNextCommand();
+			return true;
+		if (current.loopCount == -1)
+			return false; // loops forever
+		return currentStateIndex >= current.states.length && loopsRemaining <= 0;
+	}
+
+	/**
+		Returns the current animation name, or null if none.
+	**/
+	public function getCurrentAnimName():Null<String> {
+		return current != null ? current.name : null;
+	}
+
+	function isEnd():Bool {
+		if (current == null)
+			return false;
+		return currentStateIndex >= current.states.length;
+	}
+
+	/**
+		Returns the current frame being displayed, or null if none.
+	**/
+	public function getCurrentFrame():Null<AnimationFrame> {
+		return clip.getCurrentFrame();
+	}
+
+	function setCurrentFrame(frame:AnimationFrame):Void {
+		clip.setFrames([frame]);
+	}
+
+	function handleCurrent(delta:Float):Void {
 		if (current == null)
 			return;
 		if (paused || (!visible && !playWhenHidden))
 			return;
 
 		elapsedTime += delta;
-		wait -= delta < 0 ? 0 : delta;
-		
-		// if (hasCommand()) {
-		// 	performNextCommand();
-		// }
 
-		var statesCount = 0;
-		while (true) {
+		var currentFrame = clip.getCurrentFrame();
+		var iterations = 0;
+		final maxIterations = 1000;
 
-			if (isEnd()) {
-				if (hasCommand()) performNextCommand();
-			}
-			
-			if (currentFrame != null && elapsedTime < currentFrame.duration) return; // waiting for next frame
-			if (currentFrame != null && !isEnd()) currentStateIndex++;
-			
-			if (isEnd()) {
-				if (hasCommand()) performNextCommand();
+		while (iterations < maxIterations) {
+			iterations++;
+
+			// Check if waiting for frame duration
+			if (currentFrame != null && elapsedTime < currentFrame.duration)
 				return;
+
+			// Advance state if we have a frame
+			if (currentFrame != null && !isEnd())
+				currentStateIndex++;
+
+			// Handle end of states
+			if (isEnd()) {
+				if (current.loopCount == -1 || loopsRemaining > 0) {
+					// Loop back to start
+					if (loopsRemaining > 0)
+						loopsRemaining--;
+					currentStateIndex = 0;
+				} else {
+					// Animation finished
+					onFinished();
+					return;
+				}
 			}
 
-			var currentState = current.states[currentStateIndex];	
-			statesCount++;
-			if (statesCount > 50)
-				if (statesCount > 1000) throw 'more than 1000 states, something is wrong.';
-				else {
-					trace('more than 50 state changes: ${statesCount}');
-				}
-				
+			var currentState = current.states[currentStateIndex];
+
 			switch currentState {
-				case AF_FRAME(frame):
-					if (currentFrame != null) elapsedTime -= frame.duration; 
+				case Frame(frame):
+					if (currentFrame != null)
+						elapsedTime -= currentFrame.duration;
 					currentFrame = frame;
-					if (elapsedTime < frame.duration) return;
+					setCurrentFrame(frame);
+					if (elapsedTime < frame.duration)
+						return;
 
-				case AF_LOOP(destIndex, condition):
-					switch condition {
-						case FOREVER: currentStateIndex = destIndex - 1;
-						case AFC_UNTIL_COMMAND:
-							if (!hasCommand()) {
-								currentStateIndex = destIndex - 1; 
-							}
-						case AFC_COUNT(repeatCount):
-							var value = current.statesCounters[currentStateIndex];
-							if (value == -1) value = repeatCount;
-							if (value > 0) {
-								current.statesCounters[currentStateIndex] = value - 1;
-								currentStateIndex = destIndex - 1; 
-							}  else {
-								current.statesCounters[currentStateIndex] = repeatCount;
-							}
-					}
-
-				case AF_EVENT(event):
+				case Event(event):
 					switch event {
-						case TRIGGER(name): onAnimationEvent(TRIGGER(name));
-						case POINT_EVENT(name, point): onAnimationEvent(POINT_EVENT(name, point));
-						case RANDOM_POINT_EVENT(name, point, randomRadius):
-							final randomAngle = Math.random() * 2*Math.PI;
+						case Trigger(name):
+							onAnimationEvent(Trigger(name));
+						case PointEvent(name, point):
+							onAnimationEvent(PointEvent(name, point));
+						case RandomPointEvent(name, point, randomRadius):
+							final randomAngle = Math.random() * 2 * Math.PI;
 							final r = Math.random() * randomRadius;
 							var randomPoint = point.clone();
 							randomPoint.x += Std.int(r * Math.cos(randomAngle));
 							randomPoint.y += Std.int(r * Math.sin(randomAngle));
-							 
-							onAnimationEvent(POINT_EVENT(name, randomPoint));
+							onAnimationEvent(PointEvent(name, randomPoint));
 					}
-					
-				case AF_CHAGE_STATE(state):
-					playAnim(state, 0);
-					return;
-				case AF_EXITPOINT:
-					if (hasCommand()) {
-						performNextCommand();
-						return;
-					}
-					
 			}
 		}
+
+		if (iterations >= maxIterations)
+			throw 'animation loop detected in ${current.name}';
 	}
 
 	override function sync(ctx:RenderContext) {
-		final animDelta = ctx.elapsedTime * speed;
-		handleCurrent(animDelta);
+		if (!externallyDriven) {
+			final animDelta = ctx.elapsedTime * speed;
+			handleCurrent(animDelta);
+		}
 		super.sync(ctx);
 	}
 
-	override function draw(ctx:RenderContext) {
-		if (currentFrame != null && currentFrame.tile != null) {
-			emitTile(ctx, currentFrame.tile);
-		}
+	/**
+		Manually advances the animation by the given delta time.
+		Use this when `externallyDriven` is true.
+		@param dt Delta time in seconds.
+	**/
+	public function update(dt:Float):Void {
+		handleCurrent(dt * speed);
 	}
 
-	function performNextCommand():Void {
-		var readNext:Bool;
-		do {
-			var cmd = commands.pop();
-			readNext = cmd != null && executeCommand(cmd);
-		} while (readNext);
-	}
+	/**
+		Called when animation finishes (non-looping or loops exhausted).
+	**/
+	public dynamic function onFinished():Void {}
 
-	public dynamic function onCommandEvent(event:AnimationCommandEvent) {}
-
-	public dynamic function onAnimationEvent(event:AnimationEvent) {}
-
-
+	/**
+		Called when an animation event is triggered.
+	**/
+	public dynamic function onAnimationEvent(event:AnimationEvent):Void {}
 }
 
+/**
+	States in an animation - either a frame or an event.
+**/
 enum AnimationFrameState {
-	AF_FRAME(frame:AnimationFrame);
-	AF_LOOP(destIndex:Int, condition:AnimationFrameCondition);
-	AF_EVENT(event:AnimationPlaylistEvent);
-	AF_CHAGE_STATE(state:String);
-	AF_EXITPOINT; // exit animation if there is command waiting
+	Frame(frame:AnimationFrame);
+	Event(event:AnimationPlaylistEvent);
 }
 
-enum AnimationFrameCondition {
-	FOREVER;
-	AFC_COUNT(repeatCount:Int);
-	AFC_UNTIL_COMMAND;
-}
-
- function animationFrameStateToString(frame:AnimationFrameState):String {
+function animationFrameStateToString(frame:AnimationFrameState):String {
 	return switch frame {
-		case AF_FRAME(frame): 'Frame("${frame.tile.getTexture().name}", ${frame.width} x ${frame.height})';
-		case AF_LOOP(destIndex, condition): 'Loop(${destIndex}, ${condition})';
-		case AF_EVENT(event): 'Event(${event})';
-		case AF_CHAGE_STATE(state): 'ChangeState(${state})';
-		case AF_EXITPOINT: 'ExitPoint';
+		case Frame(frame): 'Frame("${frame.tile.getTexture().name}", ${frame.width} x ${frame.height})';
+		case Event(event): 'Event(${event})';
 	}
 }

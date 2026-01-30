@@ -9,13 +9,13 @@ import bh.base.Hex;
 
 enum Coordinates {
 	ZERO;
-	OFFSET(x:ReferencableValue, y:ReferencableValue);
-    LAYOUT(layoutName:String, index:ReferencableValue);
+	OFFSET(x:ReferenceableValue, y:ReferenceableValue);
+    LAYOUT(layoutName:String, index:ReferenceableValue);
 	SELECTED_HEX_POSITION(hex:Hex);
-	SELECTED_GRID_POSITION(gridX:ReferencableValue, gridY:ReferencableValue);
-	SELECTED_GRID_POSITION_WITH_OFFSET(gridX:ReferencableValue, gridY:ReferencableValue, offsetX:ReferencableValue, offsetY:ReferencableValue);
-	SELECTED_HEX_EDGE(direction:ReferencableValue, factor:ReferencableValue);
-	SELECTED_HEX_CORNER(count:ReferencableValue, factor:ReferencableValue);
+	SELECTED_GRID_POSITION(gridX:ReferenceableValue, gridY:ReferenceableValue);
+	SELECTED_GRID_POSITION_WITH_OFFSET(gridX:ReferenceableValue, gridY:ReferenceableValue, offsetX:ReferenceableValue, offsetY:ReferenceableValue);
+	SELECTED_HEX_EDGE(direction:ReferenceableValue, factor:ReferenceableValue);
+	SELECTED_HEX_CORNER(count:ReferenceableValue, factor:ReferenceableValue);
 }
 
 @:using(bh.multianim.CoordinateSystems.HexCoordinateSystemHelper)

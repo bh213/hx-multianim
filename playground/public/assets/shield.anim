@@ -6,16 +6,14 @@ center: 32,48
 
 animation {
     name: idle_0
-    fps:4
-    loop
+    fps: 4
+    loop: yes
     playlist {
-        loop untilCommand {
-            sheet: "shield_$$direction$$_layer0"
-        }
+        sheet: "shield_$$direction$$_layer0"
     }
     extrapoints {
         line_TR: 8, -16
-        line_TL: -8, -16 
+        line_TL: -8, -16
         line_BR: 7, -1
         line_BL: -7, -1
     }
@@ -24,18 +22,18 @@ animation {
 
 animation {
     name: impact
-    fps:10
-    loop
-     playlist {
+    fps: 10
+    loop: yes
+    playlist {
         sheet: "shield_$$direction$$_layer2_impact fast"
     }
 }
 
 animation {
     name: idle_1
-    fps:10
-    loop
-     playlist {
+    fps: 10
+    loop: yes
+    playlist {
         sheet: "shield_$$direction$$_layer1"
     }
 }

@@ -4,49 +4,43 @@ center: 32,48
 
 animation {
     name: explode
-    fps:16
+    fps: 16
     playlist {
-        
         sheet: "Turret_Explode_SW"
-        goto destoyed
     }
 }
 
 animation {
     name: hit
-    fps:10
+    fps: 10
+    loop: yes
     playlist {
-        loop untilCommand {
-            sheet: "Turret_Idle_SW_A" frames: 2..6
-        }
+        sheet: "Turret_Idle_SW_A" frames: 2..6
     }
 }
 
 animation {
     name: idle
-    fps:14
+    fps: 14
+    loop: yes
     playlist {
-        loop untilCommand {
-            sheet: "Turret_Idle_SW_B"
-        }
+        sheet: "Turret_Idle_SW_B"
     }
 }
 
 animation {
     name: shoot
-    fps:16
+    fps: 16
+    loop: yes
     playlist {
-        loop untilCommand {
-            sheet: "Turret_Shoot_SW"
-        }
+        sheet: "Turret_Shoot_SW"
     }
 }
 
 animation {
-    name: destoyed
-    fps:1
+    name: destroyed
+    fps: 1
     playlist {
         sheet: "Turret_Destroyed_SW"
     }
 }
-

@@ -1,0 +1,27 @@
+version: 0.3
+
+
+#tertiaryOpDemo programmable() {
+  pos:5,5
+  grid:250,150
+
+  @alpha(0.3) bitmap(generated(color(function(gridWidth), function(gridHeight),yellow)));
+  @alpha(0.9) text(dd, "#19: tertiary op", white, left, 200);
+
+  repeatable($index, grid(6, dx:16, dy:0)) {
+    pos: 0, 20
+    text(dd, $index, ?($index == 3) #0f0 : #f00, left, 200):0,20;
+    text(dd, $index, ?($index > 3) #0f0 : #f00, left, 200):0,40;
+    text(dd, $index, ?($index < 3) #0f0 : #f00, left, 200):0,60;
+    text(dd, $index, ?($index != 3) #0f0 : #f00, left, 200):0,80;
+    text(dd, ?($index != 3) "T" : "F", white, left, 200):0,100;
+  }
+  point {
+    pos: 100, 20
+    text(dd, "x eq 3", white, left, 200):0, 20;
+    text(dd, "x > 3", white, left, 200):0,40;
+    text(dd, "x < 3", white, left, 200):0,60;
+    text(dd, "x != 3", white, left, 200):0,80;
+    text(dd, "text x != 3", white, left, 200):0, 100
+  }
+}

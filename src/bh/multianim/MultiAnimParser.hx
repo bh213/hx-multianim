@@ -63,6 +63,7 @@ enum MPToken {
 	MPComma;
 	MPAt;
 	MPExclamation;
+	MPQuestion;
 	MPColon;
 	MPDoubleDot;
 	MPSemiColon;
@@ -77,6 +78,10 @@ enum MPToken {
 	MPSlash;
 	MPMinus;
 	MPEquals;
+	MPLessThan;
+	MPGreaterThan;
+	MPNotEquals;
+	MPDoubleEquals;
 	MPInterpolation(type:MPInterpolationEnum);
 }
 
@@ -97,6 +102,7 @@ enum MPKeywords {
 	MPHexDirection;
 	MPGridDirection;
 	MPRepeatable;
+	MPRepeatable2D;
 	MPHexGrid;
 	MPOffset;
 	MPGrid;
@@ -150,8 +156,14 @@ enum MPKeywords {
 	MPIf;
 	MPIfStrict;
 	MPInteractive;
+	MPPolygon;
+	MPGraphics;
+	MPCircle;
+	MPEllipse;
+	MPRoundRect;
 	MPInt;
 	MPFloat;
+	MPString;
 	MPColor;
 	MPUInt;
 	MPBool;
@@ -166,6 +178,7 @@ enum MPKeywords {
 	MPArray;
 	MPRange;
 	MPSmoothing;
+	MPTiles;
 }
 
 enum PlaceholderTypes {
@@ -175,9 +188,9 @@ enum PlaceholderTypes {
 }
 
 enum PlaceholderReplacementSource {
-	PRSCallback(name:ReferencableValue);
-	PRSCallbackWithIndex(name:ReferencableValue, index:ReferencableValue);
-	PRSBuilderParameterSource(name:ReferencableValue);
+	PRSCallback(name:ReferenceableValue);
+	PRSCallbackWithIndex(name:ReferenceableValue, index:ReferenceableValue);
+	PRSBuilderParameterSource(name:ReferenceableValue);
 }
 
 @:using(bh.multianim.MultiAnimParser)
@@ -186,7 +199,24 @@ enum UpdatableNameType {
 	UNTUpdatable(name:String);
 }
 
-typedef ResolvedSettings = Null<Map<String, String>>;
+enum SettingValueType {
+	SVTString;
+	SVTInt;
+	SVTFloat;
+}
+
+typedef ParsedSettingValue = {
+	var type:SettingValueType;
+	var value:ReferenceableValue;
+}
+
+enum SettingValue {
+	RSVString(s:String);
+	RSVInt(i:Int);
+	RSVFloat(f:Float);
+}
+
+typedef ResolvedSettings = Null<Map<String, SettingValue>>;
 
 @:using(bh.multianim.MultiAnimParser)
 typedef NamedBuildResult = {
@@ -285,6 +315,7 @@ class MultiAnimLexer extends hxparse.Lexer implements hxparse.RuleBuilder {
 			return MPIdentifier(str, keywords.get(str.toLowerCase()), ITName);
 		},
 		"\\!" => MPExclamation,
+		"\\?" => MPQuestion,
 		"$[a-zA-Z0-9_]+" => {
 			var str = lexer.current;
 			str = str.substr(1);
@@ -306,7 +337,11 @@ class MultiAnimLexer extends hxparse.Lexer implements hxparse.RuleBuilder {
 		"," => MPComma,
 		"=>" => MPArrow,
 		":" => MPColon,
+		"!=" => MPNotEquals,
+		"==" => MPDoubleEquals,
 		"=" => MPEquals,
+		"<" => MPLessThan,
+		">" => MPGreaterThan,
 		";" => MPSemiColon,
 		"[\n\r]" => lexer.token(tok),
 		"//[^\n\r]*" => lexer.token(tok),
@@ -420,30 +455,50 @@ enum PixelShapes {
 	PIXEL(pixel:PixelPixel);
 }
 
+enum GraphicsStyle {
+	GSFilled;
+	GSLineWidth(width:ReferenceableValue);
+}
+
+enum GraphicsElement {
+	GERect(color:ReferenceableValue, style:GraphicsStyle, width:ReferenceableValue, height:ReferenceableValue);
+	GEPolygon(color:ReferenceableValue, style:GraphicsStyle, points:Array<{x:ReferenceableValue, y:ReferenceableValue}>);
+	GECircle(color:ReferenceableValue, style:GraphicsStyle, radius:ReferenceableValue);
+	GEEllipse(color:ReferenceableValue, style:GraphicsStyle, width:ReferenceableValue, height:ReferenceableValue);
+	GEArc(color:ReferenceableValue, style:GraphicsStyle, radius:ReferenceableValue, startAngle:ReferenceableValue, arcAngle:ReferenceableValue);
+	GERoundRect(color:ReferenceableValue, style:GraphicsStyle, width:ReferenceableValue, height:ReferenceableValue, radius:ReferenceableValue);
+	GELine(color:ReferenceableValue, lineWidth:ReferenceableValue, x1:ReferenceableValue, y1:ReferenceableValue, x2:ReferenceableValue, y2:ReferenceableValue);
+}
+
+typedef PositionedGraphicsElement = {
+	var element:GraphicsElement;
+	var pos:Coordinates;
+}
+
 @:NotNull
 typedef PixelLine = {
 	start:Coordinates,
 	end:Coordinates,
-	color:ReferencableValue
+	color:ReferenceableValue
 }
 
 @:NotNull
 typedef PixelRect = {
 	start:Coordinates,
-	width:ReferencableValue,
-	height:ReferencableValue,
-	color:ReferencableValue
+	width:ReferenceableValue,
+	height:ReferenceableValue,
+	color:ReferenceableValue
 
 }
 
 @:NotNull
 typedef PixelPixel = {
 	pos:Coordinates,
-	color:ReferencableValue
+	color:ReferenceableValue
 }
 
 enum DefinitionType {
-	PPTHexDirecton;
+	PPTHexDirection;
 	PPTGridDirection;
 	PPTFlags(bits:Int);
 	PPTEnum(values:Array<String>);
@@ -474,12 +529,10 @@ enum RvOp {
 	OpDiv;
 	OpIntegerDiv;
 	OpMod;
-}
-
-
-enum ReferencableValueFunction { // Requires access to Node
-	RVFGridWidth;
-	RVFGridHeight;
+	OpEq;
+	OpNotEq;
+	OpLess;
+	OpGreater;
 }
 
 
@@ -490,6 +543,7 @@ enum ResolvedIndexParameters {
 	Flag(f:Int);
 	StringValue(s:String);
 	ArrayString(strArray:Array<String>);
+	TileSourceValue(tileSource:TileSource);
 }
 
 
@@ -505,23 +559,28 @@ enum ConditionalValues {
 
 }
 
+enum ReferenceableValueFunction {
+	RVFGridWidth;
+	RVFGridHeight;
+}
 
-enum ReferencableValue {
-	RVElementOfArray(arrayRef:String, index:ReferencableValue);
+enum ReferenceableValue {
+	RVElementOfArray(arrayRef:String, index:ReferenceableValue);
 	RVString(s:String);
 	RVInteger(i:Int);
-	RVArray(refArr:Array<ReferencableValue>);
+	RVArray(refArr:Array<ReferenceableValue>);
 	RVArrayReference(refArr:String);
 	RVFloat(f:Float);
 	RVReference(ref:String);
-	RVFunction(functionType:ReferencableValueFunction);
-	RVParenthesis(e:ReferencableValue);
-	RVCallbacksWithIndex(name:ReferencableValue, index:ReferencableValue, defaultValue:ReferencableValue);
-	RVCallbacks(name:ReferencableValue, defaultValue:ReferencableValue);
-	RVColorXY(externalReference:Null<String>, palette:String, x:ReferencableValue, y:ReferencableValue);
-	RVColor(externalReference:Null<String>, palette:String, index:ReferencableValue);
-	EBinop(op:RvOp, e1:ReferencableValue, e2:ReferencableValue);
-	EUnaryOp(op:RvUnaryOp, e:ReferencableValue);
+	RVFunction(functionType:ReferenceableValueFunction);
+	RVParenthesis(e:ReferenceableValue);
+	RVCallbacksWithIndex(name:ReferenceableValue, index:ReferenceableValue, defaultValue:ReferenceableValue);
+	RVCallbacks(name:ReferenceableValue, defaultValue:ReferenceableValue);
+	RVColorXY(externalReference:Null<String>, palette:String, x:ReferenceableValue, y:ReferenceableValue);
+	RVColor(externalReference:Null<String>, palette:String, index:ReferenceableValue);
+	RVTernary(condition:ReferenceableValue, ifTrue:ReferenceableValue, ifFalse:ReferenceableValue);
+	EBinop(op:RvOp, e1:ReferenceableValue, e2:ReferenceableValue);
+	EUnaryOp(op:RvUnaryOp, e:ReferenceableValue);
 }
 
 enum TextAlignWidth {
@@ -554,7 +613,7 @@ private enum LayoutsParsingState {
 typedef LayoutsDef = Map<String, Layout>;
 
 enum AnimatedPathTime {
-	Rate(float:ReferencableValue);
+	Rate(float:ReferenceableValue);
 	Checkpoint(checkpointName:String);
 }
 
@@ -566,8 +625,8 @@ class AnimatedPathTimedAction {
 
 @:nullSafety
 enum AnimatedPathsAction {
-	ChangeSpeed(speed:ReferencableValue);
-    Accelerate(acceleration:ReferencableValue, duration:ReferencableValue);
+	ChangeSpeed(speed:ReferenceableValue);
+    Accelerate(acceleration:ReferenceableValue, duration:ReferenceableValue);
     Event(eventName:String);
     AttachParticles(particlesName:String, particlesTemplate:String, particlesDef:ParticlesDef);
     RemoveParticles(particlesName:String);
@@ -588,17 +647,17 @@ enum PathCoordinateMode {
 enum SmoothingType {
 	STNone;
 	STAuto;
-	STDistance(value:ReferencableValue);
+	STDistance(value:ReferenceableValue);
 }
 
 enum ParsedPaths {
 	LineTo(end:Coordinates, mode:Null<PathCoordinateMode>);
-	Forward(distance:ReferencableValue);
-	TurnDegrees(angleDelta:ReferencableValue);
+	Forward(distance:ReferenceableValue);
+	TurnDegrees(angleDelta:ReferenceableValue);
 	Checkpoint(checkpointName:String);
 	Bezier2To(end:Coordinates, control:Coordinates, mode:Null<PathCoordinateMode>, smoothing:Null<SmoothingType>);
 	Bezier3To(end:Coordinates, control1:Coordinates, control2:Coordinates, mode:Null<PathCoordinateMode>, smoothing:Null<SmoothingType>);
-	Arc(radius:ReferencableValue, angleDelta:ReferencableValue);
+	Arc(radius:ReferenceableValue, angleDelta:ReferenceableValue);
 }
 
 @:nullSafety
@@ -606,73 +665,146 @@ typedef PathsDef = Map<String, Array<ParsedPaths>>;
 
 
 enum ParticlesEmitMode {
-	Point(emitDistance:ReferencableValue,  emitDistanceRandom:ReferencableValue);
-	Cone(emitDistance:ReferencableValue, emitDistanceRandom:ReferencableValue, emitConeAngle:ReferencableValue, emitConeAngleRandom:ReferencableValue);
-	Box(width:ReferencableValue, height:ReferencableValue, emitConeAngle:ReferencableValue, emitConeAngleRandom:ReferencableValue);
+	Point(emitDistance:ReferenceableValue, emitDistanceRandom:ReferenceableValue);
+	Cone(emitDistance:ReferenceableValue, emitDistanceRandom:ReferenceableValue, emitConeAngle:ReferenceableValue, emitConeAngleRandom:ReferenceableValue);
+	Box(width:ReferenceableValue, height:ReferenceableValue, emitConeAngle:ReferenceableValue, emitConeAngleRandom:ReferenceableValue);
+	Path(points:Array<{x:ReferenceableValue, y:ReferenceableValue}>, emitConeAngle:ReferenceableValue, emitConeAngleRandom:ReferenceableValue);
+	Circle(radius:ReferenceableValue, radiusRandom:ReferenceableValue, emitConeAngle:ReferenceableValue, emitConeAngleRandom:ReferenceableValue);
+}
+
+// Force field types for particles
+enum ParticleForceFieldDef {
+	FFAttractor(x:ReferenceableValue, y:ReferenceableValue, strength:ReferenceableValue, radius:ReferenceableValue);
+	FFRepulsor(x:ReferenceableValue, y:ReferenceableValue, strength:ReferenceableValue, radius:ReferenceableValue);
+	FFVortex(x:ReferenceableValue, y:ReferenceableValue, strength:ReferenceableValue, radius:ReferenceableValue);
+	FFWind(vx:ReferenceableValue, vy:ReferenceableValue);
+	FFTurbulence(strength:ReferenceableValue, scale:ReferenceableValue, speed:ReferenceableValue);
+}
+
+// Curve point for velocity/size over lifetime
+typedef ParticleCurvePoint = {
+	var time:ReferenceableValue;
+	var value:ReferenceableValue;
+}
+
+// Bounds mode for particle collision
+enum ParticleBoundsModeDef {
+	BMNone;
+	BMKill;
+	BMBounce(damping:ReferenceableValue);
+	BMWrap;
+}
+
+// Sub-emitter trigger types
+enum ParticleSubEmitTriggerDef {
+	SETOnBirth;
+	SETOnDeath;
+	SETOnCollision;
+	SETOnInterval(interval:ReferenceableValue);
+}
+
+// Sub-emitter configuration
+typedef ParticleSubEmitterDef = {
+	var groupId:String;
+	var trigger:ParticleSubEmitTriggerDef;
+	var probability:ReferenceableValue;
+	var inheritVelocity:Null<ReferenceableValue>;
+	var offsetX:Null<ReferenceableValue>;
+	var offsetY:Null<ReferenceableValue>;
 }
 
 @:nullSafety
 typedef ParticlesDef = {
-	var count:Null<ReferencableValue>;
+	var count:Null<ReferenceableValue>;
 	var loop:Null<Bool>;
 	var relative:Null<Bool>;
-	var emitDelay:Null<ReferencableValue>;
-	var emitSync:Null<ReferencableValue>;
-	var maxLife:Null<ReferencableValue>;
-	var lifeRandom:Null<ReferencableValue>;
-	var size:Null<ReferencableValue>;
-	var sizeRandom:Null<ReferencableValue>;
+	var emitDelay:Null<ReferenceableValue>;
+	var emitSync:Null<ReferenceableValue>;
+	var maxLife:Null<ReferenceableValue>;
+	var lifeRandom:Null<ReferenceableValue>;
+	var size:Null<ReferenceableValue>;
+	var sizeRandom:Null<ReferenceableValue>;
 	var blendMode:Null<h2d.BlendMode>;
-	var speed:Null<ReferencableValue>;
-	var speedRandom:Null<ReferencableValue>;
-	var speedIncrease:Null<ReferencableValue>;
-	var gravity:Null<ReferencableValue>;
-	var gravityAngle:Null<ReferencableValue>;
-	var fadeIn:Null<ReferencableValue>;
-	var fadeOut:Null<ReferencableValue>;
-	var fadePower:Null<ReferencableValue>;
+	var speed:Null<ReferenceableValue>;
+	var speedRandom:Null<ReferenceableValue>;
+	var speedIncrease:Null<ReferenceableValue>;
+	var gravity:Null<ReferenceableValue>;
+	var gravityAngle:Null<ReferenceableValue>;
+	var fadeIn:Null<ReferenceableValue>;
+	var fadeOut:Null<ReferenceableValue>;
+	var fadePower:Null<ReferenceableValue>;
 	var tiles:Array<TileSource>;
 	var emit:ParticlesEmitMode;
-	var rotationInitial:Null<ReferencableValue>;
-	var rotationSpeed:Null<ReferencableValue>;
-	var rotationSpeedRandom:Null<ReferencableValue>;
+	var rotationInitial:Null<ReferenceableValue>;
+	var rotationSpeed:Null<ReferenceableValue>;
+	var rotationSpeedRandom:Null<ReferenceableValue>;
 	var rotateAuto:Null<Bool>;
+	// Color interpolation
+	var colorStart:Null<ReferenceableValue>;
+	var colorEnd:Null<ReferenceableValue>;
+	var colorMid:Null<ReferenceableValue>;
+	var colorMidPos:Null<ReferenceableValue>;
+	// Force fields
+	var forceFields:Null<Array<ParticleForceFieldDef>>;
+	// Curves
+	var velocityCurve:Null<Array<ParticleCurvePoint>>;
+	var sizeCurve:Null<Array<ParticleCurvePoint>>;
+	// Trails
+	var trailEnabled:Null<Bool>;
+	var trailLength:Null<ReferenceableValue>;
+	var trailFadeOut:Null<Bool>;
+	// Bounds/collision
+	var boundsMode:Null<ParticleBoundsModeDef>;
+	var boundsMinX:Null<ReferenceableValue>;
+	var boundsMaxX:Null<ReferenceableValue>;
+	var boundsMinY:Null<ReferenceableValue>;
+	var boundsMaxY:Null<ReferenceableValue>;
+	// Sub-emitters
+	var subEmitters:Null<Array<ParticleSubEmitterDef>>;
+	// Animation
+	var animationRepeat:Null<ReferenceableValue>;
 }
 
 enum RepeatType {
-	GridIterator(dx:ReferencableValue, dy:ReferencableValue, repeatCount:ReferencableValue);
+	GridIterator(dx:ReferenceableValue, dy:ReferenceableValue, repeatCount:ReferenceableValue);
 	LayoutIterator(layoutName:String);
 	ArrayIterator(valueVariableName:String, arrayName:String);
-	RangeIterator(start:ReferencableValue, end:ReferencableValue, step:ReferencableValue);
+	RangeIterator(start:ReferenceableValue, end:ReferenceableValue, step:ReferenceableValue);
+	StateAnimIterator(bitmapVarName:String, animFilename:String, animationName:ReferenceableValue, selector:Map<String, ReferenceableValue>);
+	// tiles($bitmap, "sheetname") - exposes $bitmap, $tilename, $index
+	// tiles($bitmap, "sheetname", "tileprefix") - exposes $bitmap, $index (filters to tiles matching prefix)
+	TilesIterator(bitmapVarName:String, tilenameVarName:Null<String>, sheetName:String, tileFilter:Null<String>);
 }
 
 enum GeneratedTileType {
-	Cross(width:ReferencableValue, height:ReferencableValue, color:ReferencableValue);
-	SolidColor(width:ReferencableValue, height:ReferencableValue, color:ReferencableValue);
+	Cross(width:ReferenceableValue, height:ReferenceableValue, color:ReferenceableValue);
+	SolidColor(width:ReferenceableValue, height:ReferenceableValue, color:ReferenceableValue);
 }
 
 enum TileSource {
-	TSFile(filename:ReferencableValue);
-	TSSheet(sheet:ReferencableValue, name:ReferencableValue);
-	TSSheetWithIndex(sheet:ReferencableValue, name:ReferencableValue, index:ReferencableValue);
+	TSFile(filename:ReferenceableValue);
+	TSSheet(sheet:ReferenceableValue, name:ReferenceableValue);
+	TSSheetWithIndex(sheet:ReferenceableValue, name:ReferenceableValue, index:ReferenceableValue);
 	TSGenerated(type:GeneratedTileType);
+	TSTile(tile:h2d.Tile); // Used for iterator-provided tiles (e.g., from stateanim iterator)
+	TSReference(varName:String); // Reference to a TileSource variable (e.g., $bitmap from stateanim iterator)
 }
 
 enum PaletteType {
-	PaletteColors(colors:Array<ReferencableValue>);
-	PaletteColors2D(colors:Array<ReferencableValue>, width:Int);
-	PaletteImageFile(filename:ReferencableValue);
+	PaletteColors(colors:Array<ReferenceableValue>);
+	PaletteColors2D(colors:Array<ReferenceableValue>, width:Int);
+	PaletteImageFile(filename:ReferenceableValue);
 }
 
 enum StateAnimConstruct {
-	IndexedSheet(sheet:String, name:ReferencableValue, fps:ReferencableValue, loop: Bool, center:Bool);
+	IndexedSheet(sheet:String, name:ReferenceableValue, fps:ReferenceableValue, loop: Bool, center:Bool);
 }
 
 @:nullSafety
 typedef TextDef = {
-	var fontName:ReferencableValue;
-	var text:ReferencableValue;
-	var color:ReferencableValue;
+	var fontName:ReferenceableValue;
+	var text:ReferenceableValue;
+	var color:ReferenceableValue;
 	var halign:Null<HorizontalAlign>;
 	var textAlignWidth: TextAlignWidth;
 	var letterSpacing:Float;
@@ -686,15 +818,15 @@ typedef TextDef = {
 
 @:nullSafety
 enum NodeType {
-	FLOW(maxWidth:Null<ReferencableValue>, maxHeight:Null<ReferencableValue>, minWidth:Null<ReferencableValue>, minHeight:Null<ReferencableValue>,
-		lineHeight:Null<ReferencableValue>, colWidth:Null<ReferencableValue>, layout:Null<h2d.Flow.FlowLayout>,
-		paddingTop:Null<ReferencableValue>,paddingBottom:Null<ReferencableValue>, paddingLeft:Null<ReferencableValue>, paddingRight:Null<ReferencableValue>,
-		horizontalSpacing:Null<ReferencableValue>, verticalSpacing:Null<ReferencableValue>, debug:Bool
+	FLOW(maxWidth:Null<ReferenceableValue>, maxHeight:Null<ReferenceableValue>, minWidth:Null<ReferenceableValue>, minHeight:Null<ReferenceableValue>,
+		lineHeight:Null<ReferenceableValue>, colWidth:Null<ReferenceableValue>, layout:Null<h2d.Flow.FlowLayout>,
+		paddingTop:Null<ReferenceableValue>,paddingBottom:Null<ReferenceableValue>, paddingLeft:Null<ReferenceableValue>, paddingRight:Null<ReferenceableValue>,
+		horizontalSpacing:Null<ReferenceableValue>, verticalSpacing:Null<ReferenceableValue>, debug:Bool
 		);
-	BITMAP(tileSource:TileSource, hAlign:HorizontalAlign, vAligh:VerticalAlign);
+	BITMAP(tileSource:TileSource, hAlign:HorizontalAlign, vAlign:VerticalAlign);
 	POINT;
-	STATEANIM(filename:String, initialState:ReferencableValue, selector:Map<String, ReferencableValue>);
-	STATEANIM_CONSTRUCT(initialState:ReferencableValue, construct:Map<String, StateAnimConstruct>);
+	STATEANIM(filename:String, initialState:ReferenceableValue, selector:Map<String, ReferenceableValue>);
+	STATEANIM_CONSTRUCT(initialState:ReferenceableValue, construct:Map<String, StateAnimConstruct>);
 	PIXELS(shapes:Array<PixelShapes>);
 	TEXT(textDef:TextDef);
 	PROGRAMMABLE(isTileGroup:Bool, parameters:ParametersDefinitions);
@@ -706,12 +838,13 @@ enum NodeType {
 	APPLY;
 	LAYERS;
 	REPEAT(varName:String, repeatType:RepeatType);
-	REFERENCE(externalReference:Null<String>, programmableReference:String, parameters:Map<String, ReferencableValue>);
+	REPEAT2D(varNameX:String, varNameY:String, repeatTypeX:RepeatType, repeatTypeY:RepeatType);
+	REFERENCE(externalReference:Null<String>, programmableReference:String, parameters:Map<String, ReferenceableValue>);
 	PLACEHOLDER(type:PlaceholderTypes, replacementSource:PlaceholderReplacementSource);
-	NINEPATCH(sheet:String, tilename:String, width:ReferencableValue, height:ReferencableValue);
-	INTERACTIVE(width:ReferencableValue, height:ReferencableValue, id:ReferencableValue, debug:Bool);
+	NINEPATCH(sheet:String, tilename:String, width:ReferenceableValue, height:ReferenceableValue);
+	INTERACTIVE(width:ReferenceableValue, height:ReferenceableValue, id:ReferenceableValue, debug:Bool);
 	PALETTE(paletteType:PaletteType);
-	RECT(width:ReferencableValue, height:ReferencableValue, color:ReferencableValue);
+	GRAPHICS(elements:Array<PositionedGraphicsElement>);
 	
 
 }
@@ -724,16 +857,22 @@ enum NodeConditionalValues {
 enum FilterType {
 	FilterNone;
 	FilterGroup(filters:Array<FilterType>);
-	FilterOutline(s:Float, color:Int);
-	FilterSaturate(v:Float);
-	FilterBrightness(v:Float);
-	FilterGlow(color:Int, alpha:Float, radius:Float, gain:Float, quality:Float, smoothColor:Bool, knockout:Bool);
-	FilterBlur(radius:Float, gain:Float, quality:Float, linear:Float);
-	FilterDropShadow(distance:Float, angle:Float, color:Int, alpha:Float, radius:Float, gain:Float, quality:Float, smoothColor:Bool);
-	FilterPixelOutline(mode:PixelOutlineFilterMode, smoothColor:Bool);
-	FilterPaletteReplace(paletteName:String, sourceRow:ReferencableValue, replacementRow:ReferencableValue);
-	FilterColorListReplace(sourceColors:Array<ReferencableValue>, replacementColors:Array<ReferencableValue>);
+	FilterOutline(s:ReferenceableValue, color:ReferenceableValue);
+	FilterSaturate(v:ReferenceableValue);
+	FilterBrightness(v:ReferenceableValue);
+	FilterGlow(color:ReferenceableValue, alpha:ReferenceableValue, radius:ReferenceableValue, gain:ReferenceableValue, quality:ReferenceableValue, smoothColor:Bool, knockout:Bool);
+	FilterBlur(radius:ReferenceableValue, gain:ReferenceableValue, quality:ReferenceableValue, linear:ReferenceableValue);
+	FilterDropShadow(distance:ReferenceableValue, angle:ReferenceableValue, color:ReferenceableValue, alpha:ReferenceableValue, radius:ReferenceableValue, gain:ReferenceableValue, quality:ReferenceableValue, smoothColor:Bool);
+	FilterPixelOutline(mode:PixelOutlineModeDef, smoothColor:Bool);
+	FilterPaletteReplace(paletteName:String, sourceRow:ReferenceableValue, replacementRow:ReferenceableValue);
+	FilterColorListReplace(sourceColors:Array<ReferenceableValue>, replacementColors:Array<ReferenceableValue>);
 
+}
+
+// Used to keep pixelOutline parameters referenceable until build time
+enum PixelOutlineModeDef {
+	POKnockout(color:ReferenceableValue, knockout:ReferenceableValue);
+	POInlineColor(color:ReferenceableValue, inlineColor:ReferenceableValue);
 }
 
 @:nullSafety
@@ -742,8 +881,8 @@ typedef Node = {
 	pos:Coordinates,
 	gridCoordinateSystem:Null<GridCoordinateSystem>,
 	hexCoordinateSystem:Null<HexCoordinateSystem>,
-	scale: Null<ReferencableValue>,
-	alpha: Null<ReferencableValue>,
+	scale: Null<ReferenceableValue>,
+	alpha: Null<ReferenceableValue>,
 	layer:Null<Int>,
 	filter: Null<FilterType>,
 	blendMode: Null<h2d.BlendMode>,
@@ -752,7 +891,7 @@ typedef Node = {
 	children:Array<Node>,
 	conditionals: NodeConditionalValues,
 	uniqueNodeName:String,
-	settings:Null<Map<String, ReferencableValue>>,
+	settings:Null<Map<String, ParsedSettingValue>>,
 	#if MULTIANIM_TRACE	
 	parserPos:String
 	#end
@@ -769,7 +908,7 @@ private enum PostParsedActions {
 }
 
 class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, MPToken> implements hxparse.ParserBuilder {
-	final version = "0.1";
+	final version = "0.3";
 	public static final defaultLayoutNodeName = "#defaultLayout";
 	public static final defaultPathNodeName = "#defaultPaths";
 	final resourceLoader:bh.base.ResourceLoader;
@@ -836,7 +975,23 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 	}
 
 
-	function parseNextIntExpression(e1:ReferencableValue):ReferencableValue {
+	function tryParseIntegerOrStringForComparison():ReferenceableValue {
+		// For comparisons, allow string literals even in integer context
+		return switch peek(0) {
+			case MPIdentifier(_, _, ITQuotedString): parseStringOrReference();
+			case _: parseIntegerOrReference();
+		}
+	}
+
+	function tryParseFloatOrStringForComparison():ReferenceableValue {
+		// For comparisons, allow string literals even in float context
+		return switch peek(0) {
+			case MPIdentifier(_, _, ITQuotedString): parseStringOrReference();
+			case _: parseFloatOrReference();
+		}
+	}
+
+	function parseNextIntExpression(e1:ReferenceableValue):ReferenceableValue {
 		return switch stream {
 			case [MPPlus, e2 = parseIntegerOrReference()]:
 				binop(e1, OpAdd, e2);
@@ -850,12 +1005,20 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 				binop(e1, OpMod, e2);
 			case [MPIdentifier(_, MPDiv, ITString), e2 = parseIntegerOrReference()]:
 				binop(e1, OpIntegerDiv, e2);
+			case [MPDoubleEquals]:
+				binop(e1, OpEq, tryParseIntegerOrStringForComparison());
+			case [MPNotEquals]:
+				binop(e1, OpNotEq, tryParseIntegerOrStringForComparison());
+			case [MPLessThan]:
+				binop(e1, OpLess, tryParseIntegerOrStringForComparison());
+			case [MPGreaterThan]:
+				binop(e1, OpGreater, tryParseIntegerOrStringForComparison());
 			case _:
 				e1;
 		}
 	}
 
-	function parseNextFloatExpression(e1:ReferencableValue):ReferencableValue {
+	function parseNextFloatExpression(e1:ReferenceableValue):ReferenceableValue {
 		return switch stream {
 			case [MPPlus, e2 = parseFloatOrReference()]:
 				binop(e1, OpAdd, e2);
@@ -869,23 +1032,38 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 				binop(e1, OpMod, e2);
 			case [MPIdentifier(_, MPDiv, ITString), e2 = parseIntegerOrReference()]:
 				binop(e1, OpIntegerDiv, e2);
-	
+			case [MPDoubleEquals]:
+				binop(e1, OpEq, tryParseFloatOrStringForComparison());
+			case [MPNotEquals]:
+				binop(e1, OpNotEq, tryParseFloatOrStringForComparison());
+			case [MPLessThan]:
+				binop(e1, OpLess, tryParseFloatOrStringForComparison());
+			case [MPGreaterThan]:
+				binop(e1, OpGreater, tryParseFloatOrStringForComparison());
 			case _:
 				e1;
 		}
 	}
 
-	function parseNextStringExpression(e1:ReferencableValue):ReferencableValue {
+	function parseNextStringExpression(e1:ReferenceableValue):ReferenceableValue {
 		return switch stream {
 			case [MPPlus, e2 = parseStringOrReference()]:
 				binop(e1, OpAdd, e2);
+			case [MPDoubleEquals, e2 = parseStringOrReference()]:
+				binop(e1, OpEq, e2);
+			case [MPNotEquals, e2 = parseStringOrReference()]:
+				binop(e1, OpNotEq, e2);
+			case [MPLessThan, e2 = parseStringOrReference()]:
+				binop(e1, OpLess, e2);
+			case [MPGreaterThan, e2 = parseStringOrReference()]:
+				binop(e1, OpGreater, e2);
 			case _:
 				e1;
 		}
 	}
 
 
-	function parseStringInterpolated():ReferencableValue {
+	function parseStringInterpolated():ReferenceableValue {
 		
 		return switch stream {
 				case [MPInterpolation(MPICode(prefix))]:
@@ -908,7 +1086,7 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 		
 	}
 
-	function binop(e1:ReferencableValue, op:RvOp, e2:ReferencableValue) {
+	function binop(e1:ReferenceableValue, op:RvOp, e2:ReferenceableValue) {
 		return switch [e2, op] {
 			case [EBinop(op2 = OpAdd | OpSub, e3, e4), OpMul ]:
 				// precedence
@@ -955,7 +1133,7 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 
 	}
 	
-	function parseArrayOrReference():Array<ReferencableValue> {
+	function parseArrayOrReference():Array<ReferenceableValue> {
 		switch stream {
 			case [MPBracketOpen]:
 				var array = this.parseSeparated(x-> x.match(MPComma), parseStringOrReference.bind(false));
@@ -1001,6 +1179,8 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 
 	function parseColorOrReference() {
 		return switch stream {
+			case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseColorOrReference(), MPColon, ifFalse = parseColorOrReference()]:
+				RVTernary(condition, ifTrue, ifFalse);
 			case [MPIdentifier(_, MPPalette, ITString), MPOpen]:
 				
 			var externalReference = switch stream {
@@ -1039,7 +1219,7 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 	}
 
 	function parseColorsList(endSymbol) {
-		var colors:Array<ReferencableValue> = [];
+		var colors:Array<ReferenceableValue> = [];
 		while (true) {
 			eatComma();
 			if (peek(0) == endSymbol) {
@@ -1092,6 +1272,9 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 				return (r << 16) | (g << 8) | b;
 			}
 			return colorVal;
+		} else {
+			// parse as integer
+			return Std.parseInt(s);
 		}
 		
 		return null;
@@ -1116,7 +1299,7 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 
 	}
 
-	function parseFunction():ReferencableValueFunction {
+	function parseFunction():ReferenceableValueFunction {
 		return switch stream {
 			case [MPIdentifier("gridWidth", _, ITString), MPClosed]: RVFGridWidth;
 			case [MPIdentifier("gridHeight", _, ITString), MPClosed]:RVFGridHeight;
@@ -1124,8 +1307,83 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 		}
 	}
 
-	function parseIntegerOrReference() {
+	function parseNextAnythingExpression(e1:ReferenceableValue):ReferenceableValue {
+		// Handle all binary operators - works with any types
 		return switch stream {
+			case [MPPlus, e2 = parseAnything()]:
+				binop(e1, OpAdd, e2);
+			case [MPMinus, e2 = parseAnything()]:
+				binop(e1, OpSub, e2);
+			case [MPStar, e2 = parseAnything()]:
+				binop(e1, OpMul, e2);
+			case [MPSlash, e2 = parseAnything()]:
+				binop(e1, OpDiv, e2);
+			case [MPPercent, e2 = parseAnything()]:
+				binop(e1, OpMod, e2);
+			case [MPIdentifier(_, MPDiv, ITString), e2 = parseAnything()]:
+				binop(e1, OpIntegerDiv, e2);
+			case [MPDoubleEquals]:
+				binop(e1, OpEq, tryParseIntegerOrStringForComparison());
+			case [MPNotEquals]:
+				binop(e1, OpNotEq, tryParseIntegerOrStringForComparison());
+			case [MPLessThan]:
+				binop(e1, OpLess, tryParseIntegerOrStringForComparison());
+			case [MPGreaterThan]:
+				binop(e1, OpGreater, tryParseIntegerOrStringForComparison());
+			case _:
+				e1;
+		}
+	}
+
+	function parseAnything():ReferenceableValue {
+		// Parse any type of value - tries int/float first, then falls back to string
+		// This is useful for conditions where we want maximum flexibility
+		return switch stream {
+			case [MPIdentifier(_, MPCallback, ITString)]: 
+				parseCallback(VTString); // Callbacks can return any type
+			case [MPIdentifier(_, MPFunction, ITString), MPOpen]: 
+				RVFunction(parseFunction());
+			case [MPMinus]:
+				switch stream {
+					case [MPNumber(n, NTInteger|NTHexInteger)]:
+						parseNextAnythingExpression(RVInteger(-stringToInt(n)));
+					case [MPNumber(n, NTFloat)]:
+						parseNextAnythingExpression(RVFloat(-stringToFloat(n)));
+					case [MPIdentifier(s, _ , ITReference)]:
+						switch stream {
+							case [MPBracketOpen, index = parseAnything(), MPBracketClosed]:
+								parseNextAnythingExpression(EUnaryOp(OpNeg, RVElementOfArray(s, index)));
+							case _:
+								parseNextAnythingExpression(EUnaryOp(OpNeg, RVReference(s)));
+						}
+					case [MPOpen, e = parseAnything(), MPClosed]:
+						parseNextAnythingExpression(EUnaryOp(OpNeg, RVParenthesis(e)));
+					case _: syntaxError('expected value after unary minus');
+				}
+			case [MPNumber(n, NTInteger|NTHexInteger)]:
+				parseNextAnythingExpression(RVInteger(stringToInt(n)));
+			case [MPNumber(n, NTFloat)]:
+				parseNextAnythingExpression(RVFloat(stringToFloat(n)));
+			case [MPIdentifier(s, _ , ITReference)]:
+				switch stream {
+					case [MPBracketOpen, index = parseAnything(), MPBracketClosed]:
+						parseNextAnythingExpression(RVElementOfArray(s, index));
+					case _:
+						parseNextAnythingExpression(RVReference(s));
+				}
+			case [MPIdentifier(s, _, ITQuotedString|ITString|ITName)]:
+				parseNextAnythingExpression(RVString(s));
+			case [MPOpen, e = parseAnything(), MPClosed]:
+				parseNextAnythingExpression(RVParenthesis(e));
+			case _: syntaxError('expected value or expression, got ${peek(0)}');
+		}
+	}
+
+	function parseIntegerOrReference() {
+		
+		return switch stream {
+			case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseIntegerOrReference(), MPColon, ifFalse = parseIntegerOrReference()]:
+				parseNextIntExpression(RVTernary(condition, ifTrue, ifFalse));
 
 			case [MPIdentifier(_, MPCallback, ITString)]: parseCallback(VTInt);
 			case [MPIdentifier(_, MPFunction, ITString), MPOpen]: RVFunction(parseFunction());
@@ -1133,8 +1391,16 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 				switch stream {
 					case [MPNumber(n, NTInteger|NTHexInteger)]:
 						parseNextIntExpression(RVInteger(-stringToInt(n)));
-					case [e = parseIntegerOrReference()]:
-						parseNextIntExpression(EUnaryOp(OpNeg, e));
+					case [MPIdentifier(s, _ , ITReference)]:
+						switch stream {
+							case [MPBracketOpen, index = parseIntegerOrReference(), MPBracketClosed]:
+								parseNextIntExpression(EUnaryOp(OpNeg, RVElementOfArray(s, index)));
+							case _:
+								parseNextIntExpression(EUnaryOp(OpNeg, RVReference(s)));
+						}
+					case [MPOpen, e = parseIntegerOrReference(), MPClosed]:
+						parseNextIntExpression(EUnaryOp(OpNeg, RVParenthesis(e)));
+					case _: syntaxError('expected value after unary minus');
 				}
 			case [MPNumber(n, NTInteger|NTHexInteger)]:
 				parseNextIntExpression(RVInteger(stringToInt(n)));
@@ -1157,14 +1423,25 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 	function parseFloatOrReference() {
 		return switch stream {
 
+case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseFloatOrReference(), MPColon, ifFalse = parseFloatOrReference()]:
+				parseNextFloatExpression(RVTernary(condition, ifTrue, ifFalse));
+
 			case [MPIdentifier(_, MPCallback, ITString)]: parseCallback(VTFloat);
 			case [MPIdentifier(_, MPFunction, ITString), MPOpen]: RVFunction(parseFunction());
 			case [MPMinus]:
 				switch stream {
 					case [MPNumber(n, NTInteger|NTFloat)]:
 						parseNextFloatExpression(RVFloat(-stringToFloat(n)));
-					case [e = parseFloatOrReference()]:
-						parseNextFloatExpression(EUnaryOp(OpNeg, e));
+					case [MPIdentifier(s, _ , ITReference)]:
+						switch stream {
+							case [MPBracketOpen, index = parseFloatOrReference(), MPBracketClosed]:
+								parseNextFloatExpression(EUnaryOp(OpNeg, RVElementOfArray(s, index)));
+							case _:
+								parseNextFloatExpression(EUnaryOp(OpNeg, RVReference(s)));
+						}
+					case [MPOpen, e = parseFloatOrReference(), MPClosed]:
+						parseNextFloatExpression(EUnaryOp(OpNeg, RVParenthesis(e)));
+					case _: syntaxError('expected value after unary minus');
 				}
 			case [MPNumber(n, NTInteger|NTFloat)]:
 				parseNextFloatExpression(RVFloat(stringToFloat(n)));
@@ -1185,6 +1462,8 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 	function parseStringOrReference(?interpolated) {
 //		 trace('PARSE NODES: ${peek(0)}');
 		return switch stream {
+			case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseStringOrReference(), MPColon, ifFalse = parseStringOrReference()]:
+				parseNextStringExpression(RVTernary(condition, ifTrue, ifFalse));
 			case [MPIdentifier(_, MPCallback, ITString)]: parseCallback(VTString);
 			case [MPMinus, MPNumber(s, _)]:
 				parseNextStringExpression(RVString('-' + s));
@@ -1246,7 +1525,44 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 				return sign * stringToFloat(n);
 			case _: return syntaxError('expected number, got ${peek(0)}');
 		}
-		
+
+	}
+
+	// Parse stateanim selector: key=>value pairs until )
+	// Returns the selector map
+	function parseStateAnimSelector():Map<String, ReferenceableValue> {
+		var selector:Map<String, ReferenceableValue> = [];
+		while (true) {
+			switch stream {
+				case [MPClosed]: break;
+				case [MPComma, MPIdentifier(key, _, ITString|ITQuotedString) | MPNumber(key, _), MPArrow, value = parseStringOrReference()]:
+					if (selector.exists(key)) syntaxError('${key} already set');
+					selector.set(key, value);
+			}
+		}
+		return selector;
+	}
+
+	// Parse tiles iterator variants after "tiles($bitmap, "
+	// Returns TilesIterator with appropriate parameters
+	function parseTilesIteratorArgs(bitmapVarName:String, currentDefinitions:ParametersDefinitions):RepeatType {
+		switch stream {
+			// tiles($bitmap, $tilename, "sheetname") - tilename var is ITString or ITReference
+			case [MPIdentifier(tilenameVarName, _, ITString | ITReference), MPComma, MPIdentifier(sheetName, _, ITQuotedString), MPClosed]:
+				if (currentDefinitions.exists(tilenameVarName)) syntaxError('tiles iterator tilename variable name "${tilenameVarName}" is already a parameter.');
+				return TilesIterator(bitmapVarName, tilenameVarName, sheetName, null);
+			// tiles($bitmap, "sheetname"...) - sheetname is ITQuotedString, need nested switch for , vs )
+			case [MPIdentifier(sheetName, _, ITQuotedString)]:
+				switch stream {
+					case [MPComma, MPIdentifier(tileFilter, _, ITQuotedString), MPClosed]:
+						return TilesIterator(bitmapVarName, null, sheetName, tileFilter);
+					case [MPClosed]:
+						return TilesIterator(bitmapVarName, null, sheetName, null);
+					case _: syntaxError("expected tiles($bitmap, \"sheetname\", \"tilename\") or tiles($bitmap, \"sheetname\")");
+				}
+			case _: syntaxError("expected tiles($bitmap, $tilename, \"sheetname\") or tiles($bitmap, \"sheetname\", \"tilename\") or tiles($bitmap, \"sheetname\")");
+		}
+		return null; // unreachable
 	}
 
 	function parseXY():Coordinates {
@@ -1352,7 +1668,7 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 
 	}
 
-	static function tryStringToBool(val:String) {
+	public static function tryStringToBool(val:String) {
 		if (val == null) return null;
 		return switch val.toLowerCase() {
 			case "true"|"yes"|"1": true;
@@ -1393,7 +1709,7 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 		}
 	}
 
-	static function dynamicToInt(dynValue:Dynamic, err:String->Dynamic):Int {
+	public static function dynamicToInt(dynValue:Dynamic, err:String->Dynamic):Int {
 
 
 		if (Std.isOfType(dynValue, Int)) {
@@ -1486,7 +1802,7 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 		} 
 
 		return switch type {
-			case PPTHexDirecton:
+			case PPTHexDirection:
 				CoValue(dynamicToInt(inputValue, err));
 			case PPTBool:
 				CoValue(dynamicToInt(inputValue, err));
@@ -1527,7 +1843,7 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 	static function dynamicValueToIndex(name:String, type:DefinitionType, value:Dynamic, error:String->Dynamic) {
 
 		switch type {
-			case PPTHexDirecton:
+			case PPTHexDirection:
 				var dir = dynamicToInt(value, error);
 				if (dir < 0 || dir >= 6) error('hexdirection must be 0...5');
 				return Value(dir);
@@ -1626,7 +1942,7 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 
 		var parameter:Definition = {
 			name: null,
-			type: PPTHexDirecton,
+			type: PPTHexDirection,
 			defaultValue: null
 		};
 		switch stream {
@@ -1645,7 +1961,7 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 				switch stream {
 					case [MPIdentifier(hexDirection, MPHexDirection, _)]:
 						parameter.name = hexDirection;
-						parameter.type = PPTHexDirecton;
+						parameter.type = PPTHexDirection;
 						parseDefaultParameterValue(parameter);
 						return parameter;
 					case [MPIdentifier(gridDirection, MPGridDirection, _)]:
@@ -1661,7 +1977,7 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 		switch stream {
 
 			case [MPIdentifier(_, MPHexDirection, ITString)]: 
-				parameter.type = PPTHexDirecton;
+				parameter.type = PPTHexDirection;
 			case [MPNumber(from, NTInteger), MPDoubleDot, MPNumber(to, NTInteger)]: 
 				parameter.type = PPTRange(stringToInt(from), stringToInt(to));
 			case [MPIdentifier(_, MPFlags, ITString), MPOpen, bits = parseInteger(), MPClosed]: 
@@ -1678,7 +1994,10 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 				parameter.type = PPTBool;
 			case [MPIdentifier(_, MPArray, ITString)]: 
 				parameter.type = PPTArray;
-			
+			case [MPIdentifier(_, MPString, ITString)]: 
+						parameter.type = PPTString;
+						parameter.defaultValue = StringValue("");
+
 			case [MPBracketOpen]: 
 				var enumNames = [];
 				while(true) {
@@ -1704,12 +2023,12 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 		return parameter;
 	}
 
-	function parseReferenceParameters(defined:ParametersDefinitions):Map<String, ReferencableValue> {
+	function parseReferenceParameters(defined:ParametersDefinitions):Map<String, ReferenceableValue> {
 
 		function error(s:String):Dynamic {
 			return syntaxError(s);
 		}
-		final parameterValues:Map<String, ReferencableValue> = [];
+		final parameterValues:Map<String, ReferenceableValue> = [];
 		while (true) {
 			
 			switch stream {
@@ -1736,7 +2055,7 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 						case _:
 							var type = paramDefinitions.type;
 							var value = switch type {
-								case PPTHexDirecton:  parseIntegerOrReference();
+								case PPTHexDirection:  parseIntegerOrReference();
 								case PPTGridDirection: parseIntegerOrReference();
 								case PPTFlags(bits): parseIntegerOrReference();
 								case PPTEnum(values): parseStringOrReference();
@@ -1771,12 +2090,12 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 
 		function validateIntTypes(name:String, type:DefinitionType, value:Dynamic) {
 			switch type {
-				case PPTHexDirecton:
+				case PPTHexDirection:
 					var i = dynamicToInt(value, s->syntaxError(s));
 					if (i < 0 || i > 5) syntaxError('conditional $name: hexdirection must be 0...5, was $value');
 				case PPTGridDirection:
 						var i = dynamicToInt(value, s->syntaxError(s));
-						if (i < 0 ||  i > 3) syntaxError('conditional $name: gridDrection must be 0...3, was $value');
+						if (i < 0 ||  i > 3) syntaxError('conditional $name: gridDirection must be 0...3, was $value');
 				case PPTFlags(bits):
 
 
@@ -1829,10 +2148,10 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 								}
 							}
 							dynamicToConditionalParam(bitValue, type);
-						case [MPIdentifier("greaterThan", _, ITString), val = parseInteger()]:
+						case [MPIdentifier("greaterThanOrEqual", _, ITString), val = parseInteger()]:
 							validateIntTypes(name, type, val);
 							CoRange(val, null);
-						case [MPIdentifier("lessThan", _, ITString), val = parseInteger()]:
+						case [MPIdentifier("lessThanOrEqual", _, ITString), val = parseInteger()]:
 							
 							validateIntTypes(name, type, val);
 							CoRange(null, val);
@@ -1979,6 +2298,211 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 		}
 	}
 
+	function parseGraphicsStyleRequired():GraphicsStyle {
+		return switch stream {
+			case [MPIdentifier("filled", _, ITString|ITQuotedString), MPComma]:
+				GSFilled;
+			case [lw = parseFloatOrReference(), MPComma]:
+				GSLineWidth(lw);
+			case _: unexpectedError("expected filled or line width");
+		}
+	}
+
+	function parseGraphicsElements() {
+		var elements:Array<PositionedGraphicsElement> = [];
+		while (true) {
+			var element = switch stream {
+				case [MPIdentifier(_, MPRect, ITString)]:
+					parseGraphicsRectElement();
+				case [MPIdentifier(_, MPPolygon, ITString)]:
+					parseGraphicsPolygonElement();
+				case [MPIdentifier(_, MPCircle, ITString)]:
+					parseGraphicsCircleElement();
+				case [MPIdentifier(_, MPEllipse, ITString)]:
+					parseGraphicsEllipseElement();
+				case [MPIdentifier(_, MPArc, ITString)]:
+					parseGraphicsArcElement();
+				case [MPIdentifier(_, MPRoundRect, ITString)]:
+					parseGraphicsRoundRectElement();
+				case [MPIdentifier(_, MPLine, ITString)]:
+					parseGraphicsLineElement();
+				case [MPClosed]:
+					return elements;
+				case [MPComma]:
+					continue;
+				case _: unexpectedError("expected graphics element or )");
+			}
+
+			var pos = switch stream {
+				case [MPSemiColon]:
+					ZERO;
+				case [MPColon, p = parseXY()]:
+					p;
+				case _: unexpectedError("expected ; or :xy after graphics element");
+			}
+
+			elements.push({element: element, pos: pos});
+		}
+	}
+
+	function parseGraphicsRectElement():GraphicsElement {
+		return switch stream {
+			case [MPOpen, color = parseColorOrReference(), MPComma]:
+				final style = parseGraphicsStyleRequired();
+
+
+				var width = parseIntegerOrReference();
+				switch stream {
+					case [MPComma]:
+					case _: unexpectedError("expected , after width");
+				}
+
+				var height = parseIntegerOrReference();
+
+				switch stream {
+					case [MPClosed]:
+					case _: unexpectedError("expected ) after rect");
+				}
+
+				GERect(color, style, width, height);
+			case _: unexpectedError("expected rect(color, filled|lineWidth, width, height)");
+		}
+	}
+
+	function parseGraphicsPolygonElement():GraphicsElement {
+		return switch stream {
+			case [MPOpen, color = parseColorOrReference(), MPComma]:
+				var style = parseGraphicsStyleRequired();
+				var points:Array<{x:ReferenceableValue, y:ReferenceableValue}> = [];
+
+				while (true) {
+					switch stream {
+						case [x = parseFloatOrReference(), MPComma, y = parseFloatOrReference()]:
+							points.push({x: x, y: y});
+							switch stream {
+								case [MPComma]:
+									continue;
+								case [MPClosed]:
+									break;
+								case _: unexpectedError("expected , or ) after polygon point");
+							}
+						case [MPClosed]:
+							break;
+						case _: unexpectedError("expected point or ) in polygon");
+					}
+					break;
+				}
+
+				if (points.length < 3) syntaxError("polygon requires at least 3 points");
+
+				GEPolygon(color, style, points);
+			case _: unexpectedError("expected polygon(color, lineWidth|filled, points...)");
+		}
+	}
+
+	function parseGraphicsCircleElement():GraphicsElement {
+		return switch stream {
+			case [MPOpen, color = parseColorOrReference(), MPComma]:
+				final style = parseGraphicsStyleRequired();
+				eatComma();
+				var radius = parseFloatOrReference();
+
+				switch stream {
+					case [MPClosed]:
+					case _: unexpectedError("expected ) after circle");
+				}
+				GECircle(color, style, radius);
+			case _: unexpectedError("expected circle(color[, filled|lineWidth], radius)");
+		}
+	}
+
+	function parseGraphicsEllipseElement():GraphicsElement {
+		return switch stream {
+			case [MPOpen, color = parseColorOrReference(), MPComma]:
+				final style = parseGraphicsStyleRequired();
+				var width:ReferenceableValue = null;
+				var height:ReferenceableValue = null;
+
+				switch stream {
+					case [w = parseFloatOrReference(), MPComma, h = parseFloatOrReference()]:
+						width = w;
+						height = h;
+					case _: unexpectedError("expected width and height after style");
+				}
+			
+				switch stream {
+					case [MPClosed]:
+					case _: unexpectedError("expected ) after ellipse");
+				}
+
+				GEEllipse(color, style, width, height);
+			case _: unexpectedError("expected ellipse(color[, filled|lineWidth], width, height)");
+		}
+	}
+
+	function parseGraphicsArcElement():GraphicsElement {
+		return switch stream {
+			case [MPOpen, color = parseColorOrReference(), MPComma]:
+				final style = parseGraphicsStyleRequired();
+				
+				var radius:ReferenceableValue = null;
+				var startAngle:ReferenceableValue = null;
+				var arcAngle:ReferenceableValue = null;
+
+								
+				switch stream {
+					case [r = parseFloatOrReference(), MPComma, sa = parseFloatOrReference(), MPComma, aa = parseFloatOrReference(), MPClosed]:
+						radius = r;
+						startAngle = sa;
+						arcAngle = aa;
+					case _: unexpectedError("expected radius, startAngle, arcAngle after style");
+				}
+
+				
+				GEArc(color, style, radius, startAngle, arcAngle);
+			case _: unexpectedError("expected arc(color, style, radius, startAngle, arcAngle)");
+		}
+	}
+
+	
+
+	function parseGraphicsRoundRectElement():GraphicsElement {
+		return switch stream {
+			case [MPOpen, color = parseColorOrReference(), MPComma]:
+				final style = parseGraphicsStyleRequired();
+				var width:ReferenceableValue = null;
+				var height:ReferenceableValue = null;
+				var radius:ReferenceableValue = null;
+
+				switch stream {
+					case [w = parseFloatOrReference(), MPComma, h = parseFloatOrReference(), MPComma, r = parseFloatOrReference()]:
+						width = w;
+						height = h;
+						radius = r;
+					case _: unexpectedError("line width, or width after color");
+				}
+
+				switch stream {
+					case [MPClosed]:
+					case _: unexpectedError("expected ) after roundrect");
+				}
+
+
+				GERoundRect(color, style, width, height, radius);
+			case _: unexpectedError("expected roundrect(color[, filled|lineWidth], width, height, radius)");
+		}
+	}
+
+	function parseGraphicsLineElement():GraphicsElement {
+		return switch stream {
+			case [MPOpen, color = parseColorOrReference(), MPComma, lineWidth = parseFloatOrReference(), MPComma,
+				  x1 = parseFloatOrReference(), MPComma, y1 = parseFloatOrReference(), MPComma,
+				  x2 = parseFloatOrReference(), MPComma, y2 = parseFloatOrReference(), MPClosed]:
+				GELine(color, lineWidth, x1, y1, x2, y2);
+			case _: unexpectedError("expected line(color, lineWidth, x1, y1, x2, y2)");
+		}
+	}
+
 	function parseFlowOrientation():h2d.Flow.FlowLayout {
 		return switch stream {
 			case [MPIdentifier("horizontal", _, ITString|ITQuotedString)]: Horizontal;
@@ -2028,19 +2552,19 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 					case [MPClosed]:TSSheet(sheet, name);
 					case [MPComma, index = parseIntegerOrReference(), MPClosed]:TSSheetWithIndex(sheet, name, index);
 				}
-				
-			case [MPIdentifier(_, MPFile, ITString), MPOpen, filename = parseStringOrReference(), MPClosed]: 
+
+			case [MPIdentifier(_, MPFile, ITString), MPOpen, filename = parseStringOrReference(), MPClosed]:
 				TSFile(filename);
-			case [MPIdentifier(_, MPGenerated, ITString), MPOpen ]: 
+			case [MPIdentifier(_, MPGenerated, ITString), MPOpen ]:
 				switch stream {
-					case [MPIdentifier("cross", _ , ITString), MPOpen, width = parseIntegerOrReference(), MPComma, height = parseIntegerOrReference()]: 
+					case [MPIdentifier("cross", _ , ITString), MPOpen, width = parseIntegerOrReference(), MPComma, height = parseIntegerOrReference()]:
 						final color = switch stream {
 							case [MPComma, color = parseColorOrReference(), MPClosed, MPClosed]:
 							case [MPClosed, MPClosed]:RVInteger(0xFFFFFFFF);
 
 						}
 						TSGenerated(Cross(width, height, color));
-					case [MPIdentifier("color", _ , ITString), MPOpen, width = parseIntegerOrReference(), MPComma, height = parseIntegerOrReference()]: 
+					case [MPIdentifier("color", _ , ITString), MPOpen, width = parseIntegerOrReference(), MPComma, height = parseIntegerOrReference()]:
 						final color = switch stream {
 							case [MPComma, color = parseColorOrReference(), MPClosed, MPClosed]: color;
 							case [MPClosed, MPClosed]:RVInteger(0xFFFFFFFF);
@@ -2050,7 +2574,10 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 					case _: unexpectedError('expected cross(width, height[, color] or color(width, height[, color]');
 				}
 
-				
+			// Reference to a TileSource variable (e.g., $bitmap from stateanim/tiles iterator)
+			case [MPIdentifier(varName, _, ITReference)]:
+				TSReference(varName);
+
 			case _: null;
 		}
 	}
@@ -2070,8 +2597,8 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 		var allowChildren = true;
 		final onceInline = createOnceParser();
 		var layerIndex = -1;
-		var alpha:Null<ReferencableValue> = null;
-		var scale:Null<ReferencableValue> = null;
+		var alpha:Null<ReferenceableValue> = null;
+		var scale:Null<ReferenceableValue> = null;
 		var conditional = NoConditional;
 		
 		#if MULTIANIM_TRACE
@@ -2188,7 +2715,7 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 
 				switch stream {
 					case [MPOpen, MPIdentifier(filename,_, ITString|ITQuotedString), MPComma, initialState = parseStringOrReference()]:
-						var selector:Map<String, ReferencableValue> = [];
+						var selector:Map<String, ReferenceableValue> = [];
 						while (true) {
 							switch stream {
 								case [MPClosed]: break;
@@ -2211,21 +2738,21 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 
 				
 
-				var maxWidth:Null<ReferencableValue> = null;
-				var maxHeight:Null<ReferencableValue> = null;
-				var minWidth:Null<ReferencableValue> = null;
-				var minHeight:Null<ReferencableValue> = null;
+				var maxWidth:Null<ReferenceableValue> = null;
+				var maxHeight:Null<ReferenceableValue> = null;
+				var minWidth:Null<ReferenceableValue> = null;
+				var minHeight:Null<ReferenceableValue> = null;
 				
-				var lineHeight:Null<ReferencableValue> = null;
-				var colWidth:Null<ReferencableValue> = null;
+				var lineHeight:Null<ReferenceableValue> = null;
+				var colWidth:Null<ReferenceableValue> = null;
 				var layout:Null<h2d.Flow.FlowLayout> = null;
 				
-				var paddingLeft:Null<ReferencableValue> = null;
-				var paddingRight:Null<ReferencableValue> = null;
-				var paddingTop:Null<ReferencableValue> = null;
-				var paddingBottom:Null<ReferencableValue> = null;
-				var horizontalSpacing:Null<ReferencableValue> = null;
-				var verticalSpacing:Null<ReferencableValue> = null;
+				var paddingLeft:Null<ReferenceableValue> = null;
+				var paddingRight:Null<ReferenceableValue> = null;
+				var paddingTop:Null<ReferenceableValue> = null;
+				var paddingBottom:Null<ReferenceableValue> = null;
+				var horizontalSpacing:Null<ReferenceableValue> = null;
+				var verticalSpacing:Null<ReferenceableValue> = null;
 				var debug:Bool = false;
 
 
@@ -2289,7 +2816,7 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 			case [MPIdentifier(_, MPText, ITString), MPOpen, fontname = parseStringOrReference(), MPComma, text = parseStringOrReference(), MPComma, color = parseColorOrReference()]:
 
 				
-				var textAlighWidth:TextAlignWidth = TAWAuto;
+				var textAlignWidth:TextAlignWidth = TAWAuto;
 				var isParsingDone = false;
 				var results:Map<String, Dynamic> = [];
 				var halign = null;
@@ -2302,11 +2829,11 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 								case [MPComma]:
 									switch stream {
 										case [MPIdentifier(_, MPGrid, ITString)]:
-											textAlighWidth = TAWGrid;
+											textAlignWidth = TAWGrid;
 										case _: 
 											final maxWidth = tryParseInteger();
 											if (maxWidth == null) hasComma = true;
-											else textAlighWidth = TAWValue(maxWidth);
+											else textAlignWidth = TAWValue(maxWidth);
 									}
 								
 								case [MPClosed]: isParsingDone = true;
@@ -2360,7 +2887,7 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 					 text: text,
 					 color: color,
 					 halign: halign,
-					 textAlignWidth: textAlighWidth,
+					 textAlignWidth: textAlignWidth,
 					 letterSpacing: MacroUtils.optionsGetPresentOrDefault(letterSpacing, results, 0.),
 					 lineSpacing: MacroUtils.optionsGetPresentOrDefault(lineSpacing, results, 0.),
 					 lineBreak: MacroUtils.optionsGetPresentOrDefault(lineBreak, results, true),
@@ -2468,38 +2995,75 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 				}
 				createNodeResponse(LAYERS);
 
-			case [MPIdentifier(_, MPSettings, ITString), MPOpen]:
-				if (parent == null) syntaxError('settings must have a parent');
-				if (parent.settings == null) parent.settings = [];
-				
-				while (true) {
-					switch stream {
-						case [MPIdentifier(key, _, _), MPArrow ]: 
-							final value = parseStringOrReference();
-							if (parent.settings.exists(key)) syntaxError('setting ${key} already defined');
-							parent.settings[key] = value;
-						case _: unexpectedError("Expected name->value");
-					}
-					switch stream {
-						case [MPComma]:
-						case [MPClosed]: break;
-						case _: unexpectedError("Expected , or )");
-					}
-				}
-				return null;
-				
-			case [MPIdentifier(_, MPPixels, ITString), MPOpen, pixelShapes = parseShapes()]:
-				createNodeResponse(PIXELS(pixelShapes));
+		case [MPIdentifier(_, MPSettings, ITString), MPCurlyOpen]:
+			if (parent == null) syntaxError('settings must have a parent');
+			if (parent.settings == null) parent.settings = [];
 			
-			case [MPIdentifier(_, MPRect, ITString), MPOpen, width = parseIntegerOrReference(), MPComma, height = parseIntegerOrReference(), MPComma, color = parseColorOrReference()]:
-
+			while (true) {
 				switch stream {
-					case [MPClosed]: 
-					case _: unexpectedError("expected ,filled or )");
+					case [MPIdentifier(key, _, _)]:
+						// Now check if it's typed (key:type=>value) or untyped (key=>value)
+						switch stream {
+							case [MPColon]:
+								// Match the type keyword and arrow together
+								switch stream {
+									case [MPIdentifier(_, MPInt, ITString), MPArrow]:
+										final value = parseIntegerOrReference();
+										if (parent.settings.exists(key)) syntaxError('setting ${key} already defined');
+										parent.settings[key] = {type: SVTInt, value: value};
+									case [MPIdentifier(_, MPFloat, ITString), MPArrow]:
+										final value = parseFloatOrReference();
+										if (parent.settings.exists(key)) syntaxError('setting ${key} already defined');
+										parent.settings[key] = {type: SVTFloat, value: value};
+									case [MPIdentifier(_, MPString, ITString), MPArrow]:
+										final value = parseStringOrReference();
+										if (parent.settings.exists(key)) syntaxError('setting ${key} already defined');
+										parent.settings[key] = {type: SVTString, value: value};
+									case _: unexpectedError("Expected int=>value, float=>value, or string=>value after :");
+								}
+							case [MPArrow]:
+								// Untyped setting: key => value (defaults to string)
+								final value = parseStringOrReference();
+								if (parent.settings.exists(key)) syntaxError('setting ${key} already defined');
+								parent.settings[key] = {type: SVTString, value: value};
+							case _: unexpectedError("Expected :type=> or => after setting key");
+						}
+					case _: unexpectedError("Expected setting key identifier");
 				}
-				createNodeResponse(RECT(width, height, color));
+				switch stream {
+					case [MPComma]:
+					case [MPCurlyClosed]: break;
+					case _: unexpectedError("Expected , or }");
+				}
+			}
+				return null;
 			
-			case [MPIdentifier(_, MPReference, ITString), MPOpen]:
+		
+	case [MPIdentifier(_, MPPixels, ITString), MPOpen, pixelShapes = parseShapes()]:
+		createNodeResponse(PIXELS(pixelShapes));
+
+	case [MPIdentifier(_, MPRect, ITString)]:
+		createNodeResponse(GRAPHICS([{element: parseGraphicsRectElement(), pos: ZERO}]));
+
+	case [MPIdentifier(_, MPPolygon, ITString)]:
+		createNodeResponse(GRAPHICS([{element: parseGraphicsPolygonElement(), pos: ZERO}]));
+
+	case [MPIdentifier(_, MPCircle, ITString)]:
+		createNodeResponse(GRAPHICS([{element: parseGraphicsCircleElement(), pos: ZERO}]));
+
+	case [MPIdentifier(_, MPEllipse, ITString)]:
+		createNodeResponse(GRAPHICS([{element: parseGraphicsEllipseElement(), pos: ZERO}]));
+
+	case [MPIdentifier(_, MPArc, ITString)]:
+		createNodeResponse(GRAPHICS([{element: parseGraphicsArcElement(), pos: ZERO}]));
+
+	case [MPIdentifier(_, MPRoundRect, ITString)]:
+		createNodeResponse(GRAPHICS([{element: parseGraphicsRoundRectElement(), pos: ZERO}]));
+
+	case [MPIdentifier(_, MPGraphics, ITString), MPOpen, elements = parseGraphicsElements()]:
+		createNodeResponse(GRAPHICS(elements));
+		
+	case [MPIdentifier(_, MPReference, ITString), MPOpen]:
 				 var externalReference = null;
 				 var importedBuilder = null;
 				 switch stream {
@@ -2521,7 +3085,7 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 				if (programmable == null) syntaxError('programmable "$programmableReference" could not be found in ${externalReference}. It has to be defined BEFORE referencing it.');
 					switch programmable.type {
 						case PROGRAMMABLE(isTileGroup, parameters):
-							final params:Map<String, ReferencableValue> = switch stream {
+							final params:Map<String, ReferenceableValue> = switch stream {
 								case [MPComma]:
 									parseReferenceParameters(parameters);
 								case [MPClosed]: [];
@@ -2569,14 +3133,111 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 				createNodeResponse(INTERACTIVE(width, height, id, debug));
 				
 
+			case [MPIdentifier(_, MPRepeatable2D, ITString), MPOpen,  MPIdentifier(varNameX, _, ITReference | ITString), MPComma, MPIdentifier(varNameY, _, ITReference | ITString), MPComma]:
+				
+				if (currentDefinitions.exists(varNameX)) syntaxError('repeatable2d name "${varNameX}" is already a parameter.');
+				if (currentDefinitions.exists(varNameY)) syntaxError('repeatable2d name "${varNameY}" is already a parameter.');
+				var repeatTypeX = switch stream {
+					case [MPIdentifier(_, MPGrid, ITString), MPOpen, repeatCount = parseIntegerOrReference(), MPComma ]:
+						var once = createOnceParser();
+						var dx:Null<ReferenceableValue> = null;
+						var dy:Null<ReferenceableValue> = null;
+
+						var results = parseOptionalParams([
+							ParseIntegerOrReference(MacroUtils.identToString(dx)), 
+							ParseIntegerOrReference(MacroUtils.identToString(dy))
+						], once);
+						switch stream {
+						   case [MPClosed]:
+						   case _: syntaxError("expected )");
+						}
+						MacroUtils.optionsSetIfNotNull(dx, results);
+						MacroUtils.optionsSetIfNotNull(dy, results);
+						if (dx == null && dy == null) syntaxError('grid repeatable needs at least dx or dy or both');
+						GridIterator(dx, dy, repeatCount);
+					case [MPIdentifier(_, MPLayout, ITString), MPOpen, MPIdentifier(layout, _, ITQuotedString|ITString), MPComma, MPIdentifier(layoutName, _, ITQuotedString|ITString), MPClosed]:
+						postParsedActions.push(PPAVerifyRelativeLayout(layoutName, stream.curPos()));
+						LayoutIterator(layoutName);
+					case [MPIdentifier(_, MPArray, ITString), MPOpen, MPIdentifier(valueVariableName, _, ITString | ITReference), MPComma,  MPIdentifier(arrayName, _, ITReference | ITString), MPClosed]:
+						if (currentDefinitions.exists(valueVariableName)) syntaxError('repeatable2d array iterator value variable name "${valueVariableName}" is already a parameter.');
+						ArrayIterator(valueVariableName, arrayName);
+					case [MPIdentifier(_, MPRange, ITString), MPOpen, start = parseIntegerOrReference(), MPComma, end = parseIntegerOrReference() ]:
+						switch stream {
+							case [MPClosed]:
+								RangeIterator(start, end, RVInteger(1));
+							case [MPComma, step = parseIntegerOrReference(), MPClosed]:
+								RangeIterator(start, end, step);
+							case _: syntaxError("expected )");
+						}
+					case [MPIdentifier(_, MPStateanim, ITString), MPOpen, MPIdentifier(bitmapVarName, _, ITString | ITReference), MPComma, MPIdentifier(animFilename, _, ITQuotedString), MPComma, animationName = parseStringOrReference()]:
+						if (currentDefinitions.exists(bitmapVarName)) syntaxError('repeatable2d stateanim iterator bitmap variable name "${bitmapVarName}" is already a parameter.');
+						StateAnimIterator(bitmapVarName, animFilename, animationName, parseStateAnimSelector());
+					case [MPIdentifier(_, MPTiles, ITString), MPOpen, MPIdentifier(bitmapVarName, _, ITString | ITReference), MPComma]:
+						if (currentDefinitions.exists(bitmapVarName)) syntaxError('repeatable2d tiles iterator bitmap variable name "${bitmapVarName}" is already a parameter.');
+						parseTilesIteratorArgs(bitmapVarName, currentDefinitions);
+
+					case _: syntaxError("unknown repeatable iterator, expected grid(...) | layout(...) | array(...) | range(...) | stateanim(...) | tiles(...)");
+				}
+				switch stream {
+					case [MPComma]:
+					case _: syntaxError("expected ,");
+				}
+				var repeatTypeY = switch stream {
+					case [MPIdentifier(_, MPGrid, ITString), MPOpen, repeatCount = parseIntegerOrReference(), MPComma ]:
+						var once = createOnceParser();
+						var dx:Null<ReferenceableValue> = null;
+						var dy:Null<ReferenceableValue> = null;
+
+						var results = parseOptionalParams([
+							ParseIntegerOrReference(MacroUtils.identToString(dx)), 
+							ParseIntegerOrReference(MacroUtils.identToString(dy))
+						], once);
+						switch stream {
+						   case [MPClosed]:
+						   case _: syntaxError("expected )");
+						}
+						MacroUtils.optionsSetIfNotNull(dx, results);
+						MacroUtils.optionsSetIfNotNull(dy, results);
+						if (dx == null && dy == null) syntaxError('grid repeatable needs at least dx or dy or both');
+						GridIterator(dx, dy, repeatCount);
+					case [MPIdentifier(_, MPLayout, ITString), MPOpen, MPIdentifier(layout, _, ITQuotedString|ITString), MPComma, MPIdentifier(layoutName, _, ITQuotedString|ITString), MPClosed]:
+						postParsedActions.push(PPAVerifyRelativeLayout(layoutName, stream.curPos()));
+						LayoutIterator(layoutName);
+					case [MPIdentifier(_, MPArray, ITString), MPOpen, MPIdentifier(valueVariableName, _, ITString | ITReference), MPComma,  MPIdentifier(arrayName, _, ITReference | ITString), MPClosed]:
+						if (currentDefinitions.exists(valueVariableName)) syntaxError('repeatable2d array iterator value variable name "${valueVariableName}" is already a parameter.');
+						ArrayIterator(valueVariableName, arrayName);
+					case [MPIdentifier(_, MPRange, ITString), MPOpen, start = parseIntegerOrReference(), MPComma, end = parseIntegerOrReference() ]:
+						switch stream {
+							case [MPClosed]:
+								RangeIterator(start, end, RVInteger(1));
+							case [MPComma, step = parseIntegerOrReference(), MPClosed]:
+								RangeIterator(start, end, step);
+							case _: syntaxError("expected )");
+						}
+					case [MPIdentifier(_, MPStateanim, ITString), MPOpen, MPIdentifier(bitmapVarName, _, ITString | ITReference), MPComma, MPIdentifier(animFilename, _, ITQuotedString), MPComma, animationName = parseStringOrReference()]:
+						if (currentDefinitions.exists(bitmapVarName)) syntaxError('repeatable2d stateanim iterator bitmap variable name "${bitmapVarName}" is already a parameter.');
+						StateAnimIterator(bitmapVarName, animFilename, animationName, parseStateAnimSelector());
+					case [MPIdentifier(_, MPTiles, ITString), MPOpen, MPIdentifier(bitmapVarName, _, ITString | ITReference), MPComma]:
+						if (currentDefinitions.exists(bitmapVarName)) syntaxError('repeatable2d tiles iterator bitmap variable name "${bitmapVarName}" is already a parameter.');
+						parseTilesIteratorArgs(bitmapVarName, currentDefinitions);
+
+					case _: syntaxError("unknown repeatable iterator, expected grid(...) | layout(...) | array(...) | range(...) | stateanim(...) | tiles(...)");
+				}
+				switch stream {
+					case [MPClosed]:
+					case _: syntaxError("expected )");
+				}
+
+				createNodeResponse(REPEAT2D(varNameX, varNameY, repeatTypeX, repeatTypeY));
+
 			case [MPIdentifier(_, MPRepeatable, ITString), MPOpen,  MPIdentifier(varName, _, ITReference | ITString), MPComma]:
 				
 				if (currentDefinitions.exists(nameString)) syntaxError('repeatable name "${varName}" is already a parameter.');
 				var response = switch stream {
 					case [MPIdentifier(_, MPGrid, ITString), MPOpen, repeatCount = parseIntegerOrReference(), MPComma ]:
 						var once = createOnceParser();
-						var dx:Null<ReferencableValue> = null;
-						var dy:Null<ReferencableValue> = null;
+						var dx:Null<ReferenceableValue> = null;
+						var dy:Null<ReferenceableValue> = null;
 
 						var results = parseOptionalParams([
 							ParseIntegerOrReference(MacroUtils.identToString(dx)), 
@@ -2604,15 +3265,21 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 								createNodeResponse(REPEAT(varName, RangeIterator(start, end, step)));
 							case _: syntaxError("expected )");
 						}
+					case [MPIdentifier(_, MPStateanim, ITString), MPOpen, MPIdentifier(bitmapVarName, _, ITString | ITReference), MPComma, MPIdentifier(animFilename, _, ITQuotedString), MPComma, animationName = parseStringOrReference()]:
+						if (currentDefinitions.exists(bitmapVarName)) syntaxError('repeatable stateanim iterator bitmap variable name "${bitmapVarName}" is already a parameter.');
+						createNodeResponse(REPEAT(varName, StateAnimIterator(bitmapVarName, animFilename, animationName, parseStateAnimSelector())));
+					case [MPIdentifier(_, MPTiles, ITString), MPOpen, MPIdentifier(bitmapVarName, _, ITString | ITReference), MPComma]:
+						if (currentDefinitions.exists(bitmapVarName)) syntaxError('repeatable tiles iterator bitmap variable name "${bitmapVarName}" is already a parameter.');
+						createNodeResponse(REPEAT(varName, parseTilesIteratorArgs(bitmapVarName, currentDefinitions)));
 
-					case _: syntaxError("unknown repeatable iterator, expected grid(dx, dy, repeatCount) | layout(layoutName, layout)| array(arrayName)");
+					case _: syntaxError("unknown repeatable iterator, expected grid(...) | layout(...) | array(...) | range(...) | stateanim(...) | tiles(...)");
 				}
 				switch stream {
 					case [MPClosed]:
 					case _: syntaxError("expected )");
 				}
 
-				
+
 				response;
 
 			case _: unexpectedError("expected valid node type");
@@ -2688,7 +3355,7 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 		return null;
 	}
 	
-	function parseGridCoordianteSystem() {
+	function parseGridCoordinateSystem() {
 		var size = parseSize();
 		eatSemicolon();
 		return {
@@ -2697,7 +3364,7 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 		}
 	}
 
-	function parseHexCoordianteSystem() {
+	function parseHexCoordinateSystem() {
 		return switch stream {
 			case [orientation = parseOrientation(), MPOpen, width = parseFloat(), MPComma, height = parseFloat(), MPClosed]:
 				final hexLayout = new HexLayout(orientation, new h2d.col.Point(width, height), new h2d.col.Point());
@@ -2731,9 +3398,9 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 					eatComma();
 				}
 				FilterGroup(filters);
-			case [MPIdentifier("outline", _ , ITString), MPOpen, size = parseFloat(), MPComma, color = parseColor(), MPClosed]: 
+			case [MPIdentifier("outline", _ , ITString), MPOpen, size = parseFloatOrReference(), MPComma, color = parseColorOrReference(), MPClosed]: 
 				FilterOutline(size, color);
-			case [MPIdentifier("saturate", _ , ITString), MPOpen, value = parseFloat(), MPClosed]: 
+			case [MPIdentifier("saturate", _ , ITString), MPOpen, value = parseFloatOrReference(), MPClosed]: 
 				FilterSaturate(value);
 			case [MPIdentifier("replacePalette", _ , ITString), MPOpen, MPIdentifier(paletteName, _ , ITString|ITQuotedString),  MPComma, sourceRow = parseIntegerOrReference(), MPComma, replacementRow = parseIntegerOrReference(), MPClosed]: 
 				FilterPaletteReplace(paletteName, sourceRow, replacementRow);
@@ -2745,18 +3412,18 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 						FilterColorListReplace(sources, replacements);
 					case _: unexpectedError("expected [color1, color2, ...], [replacement1, replacement2, ...])");
 				}
-			case [MPIdentifier("brightness", _ , ITString), MPOpen, value = parseFloat(), MPClosed]: 
+			case [MPIdentifier("brightness", _ , ITString), MPOpen, value = parseFloatOrReference(), MPClosed]: 
 				FilterBrightness(value);
-			case [MPIdentifier("blur", _ , ITString), MPOpen, radius = parseFloat(), MPComma, gain = parseFloat(), MPClosed]: 
-				var quality = 1.;
-				var linear = 0.0;
+			case [MPIdentifier("blur", _ , ITString), MPOpen, radius = parseFloatOrReference(), MPComma, gain = parseFloatOrReference(), MPClosed]: 
+				var quality = RVFloat(1.);
+				var linear = RVFloat(0.0);
 				FilterBlur(radius, gain, quality, linear);
 			case [MPIdentifier("pixelOutline", _ , ITString), MPOpen]: 
 				var mode = switch stream {
-					case [MPIdentifier("knockout", _ , ITString|ITQuotedString), MPComma, color = parseColor(), MPComma, knockout=parseFloat()]: 
-						Knockout(color, knockout);
-					case [MPIdentifier("inlineColor", _ , ITString|ITQuotedString), MPComma, color = parseColor(), MPComma, inlineColor = parseColor()]: 
-						InlineColor(color, inlineColor);
+					case [MPIdentifier("knockout", _ , ITString|ITQuotedString), MPComma, color = parseColorOrReference(), MPComma, knockout = parseFloatOrReference()]: 
+						POKnockout(color, knockout);
+					case [MPIdentifier("inlineColor", _ , ITString|ITQuotedString), MPComma, color = parseColorOrReference(), MPComma, inlineColor = parseColorOrReference()]: 
+						POInlineColor(color, inlineColor);
 				}
 				final smoothColor = switch stream {
 					case [MPIdentifier("smoothColor", _, ITString)]: true;
@@ -2767,25 +3434,25 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 				FilterPixelOutline(mode, smoothColor );
 			case [MPIdentifier("glow", _ , ITString), MPOpen]: 
 				var once = createOnceParser();
-				
-				var radius:Null<Float> = null;
-				var gain:Null<Float> = null;
-				var quality:Null<Float> = null;
+			
+				var radius:Null<ReferenceableValue> = null;
+				var gain:Null<ReferenceableValue> = null;
+				var quality:Null<ReferenceableValue> = null;
 				var smoothColor:Null<Bool> = null;
 				var knockout:Null<Bool> = null;
-				var color:Null<Int> = null;
-				var alpha:Null<Float> = null;
+				var color:Null<ReferenceableValue> = null;
+				var alpha:Null<ReferenceableValue> = null;
 
 				var results = parseOptionalParams([
-					ParseFloat(MacroUtils.identToString(alpha)), 
-					ParseFloat(MacroUtils.identToString(radius)), 
-					ParseFloat(MacroUtils.identToString(gain)),
-					ParseFloat(MacroUtils.identToString(quality)),
+					ParseFloatOrReference(MacroUtils.identToString(alpha)), 
+					ParseFloatOrReference(MacroUtils.identToString(radius)), 
+					ParseFloatOrReference(MacroUtils.identToString(gain)),
+					ParseFloatOrReference(MacroUtils.identToString(quality)),
 
 					ParseBool(MacroUtils.identToString(smoothColor)),
 					ParseBool(MacroUtils.identToString(knockout)),
-					ParseColor(MacroUtils.identToString(color)),
-					
+					ParseCustom(MacroUtils.identToString(color), parseColorOrReference),
+				
 					], once);
 
 					switch stream {
@@ -2793,11 +3460,11 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 						case _: unexpectedError("glow expected )");
 					}
 				return FilterGlow(
-					MacroUtils.optionsGetPresentOrDefault(color, results, 0xFFFFFFFF), 
-					MacroUtils.optionsGetPresentOrDefault(alpha, results, 1.),
-					MacroUtils.optionsGetPresentOrDefault(radius, results, 1.),
-					MacroUtils.optionsGetPresentOrDefault(gain, results, 1.),
-					MacroUtils.optionsGetPresentOrDefault(quality, results, 1.),
+					MacroUtils.optionsGetPresentOrDefault(color, results, RVInteger(0xFFFFFFFF)), 
+					MacroUtils.optionsGetPresentOrDefault(alpha, results, RVFloat(1.)),
+					MacroUtils.optionsGetPresentOrDefault(radius, results, RVFloat(1.)),
+					MacroUtils.optionsGetPresentOrDefault(gain, results, RVFloat(1.)),
+					MacroUtils.optionsGetPresentOrDefault(quality, results, RVFloat(1.)),
 					MacroUtils.optionsGetPresentOrDefault(smoothColor, results, false),
 					MacroUtils.optionsGetPresentOrDefault(knockout, results, false)
 					);
@@ -2805,41 +3472,41 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 				
 			case [MPIdentifier("dropShadow", _ , ITString), MPOpen]: 
 				var once = createOnceParser();
-				var distance:Null<Float> = null;
-				var angle:Null<Float> = null;
-				var alpha:Null<Float> = null;
-				var radius:Null<Float> = null;
-				var quality:Null<Float> = null;
-				var color:Null<Int> = null;
-				var gain:Null<Float> = null;
+				var distance:Null<ReferenceableValue> = null;
+				var angle:Null<ReferenceableValue> = null;
+				var alpha:Null<ReferenceableValue> = null;
+				var radius:Null<ReferenceableValue> = null;
+				var quality:Null<ReferenceableValue> = null;
+				var color:Null<ReferenceableValue> = null;
+				var gain:Null<ReferenceableValue> = null;
 				var smoothColor:Null<Bool> = null;
 			
 
-				var results = parseOptionalParams([ParseFloat(MacroUtils.identToString(distance)), 
-												ParseFloat(MacroUtils.identToString(angle)),
-												ParseFloat(MacroUtils.identToString(alpha)), 
-												ParseFloat(MacroUtils.identToString(radius)),
-												ParseColor(MacroUtils.identToString(color)),
-												ParseFloat(MacroUtils.identToString(gain)),
-												ParseFloat(MacroUtils.identToString(quality)),
-												ParseBool(MacroUtils.identToString(smoothColor)),
-												
-												], once);
+			var results = parseOptionalParams([ParseFloatOrReference(MacroUtils.identToString(distance)), 
+											ParseFloatOrReference(MacroUtils.identToString(angle)),
+											ParseFloatOrReference(MacroUtils.identToString(alpha)), 
+											ParseFloatOrReference(MacroUtils.identToString(radius)),
+											ParseCustom(MacroUtils.identToString(color), parseColorOrReference),
+											ParseFloatOrReference(MacroUtils.identToString(gain)),
+											ParseFloatOrReference(MacroUtils.identToString(quality)),
+											ParseBool(MacroUtils.identToString(smoothColor)),
+											
+											], once);
 			
 
-				switch stream {
-					case [MPClosed]:
-					case _: unexpectedError("dropShadow expected )");
-				}
-				
-				return FilterDropShadow(
-					MacroUtils.optionsGetPresentOrDefault(distance, results, 4.0), 
-					hxd.Math.degToRad(MacroUtils.optionsGetPresentOrDefault(angle, results, 90.0)),
-					MacroUtils.optionsGetPresentOrDefault(color, results, 0), 
-					MacroUtils.optionsGetPresentOrDefault(alpha, results, 1.),
-					MacroUtils.optionsGetPresentOrDefault(radius, results, 1.), 
-					MacroUtils.optionsGetPresentOrDefault(gain, results, 1.), 
-					MacroUtils.optionsGetPresentOrDefault(quality, results, 1.), 
+			switch stream {
+				case [MPClosed]:
+				case _: unexpectedError("dropShadow expected )");
+			}
+			
+			return FilterDropShadow(
+				MacroUtils.optionsGetPresentOrDefault(distance, results, RVFloat(4.0)), 
+				MacroUtils.optionsGetPresentOrDefault(angle, results, RVFloat(90.0)),
+				MacroUtils.optionsGetPresentOrDefault(color, results, RVInteger(0)), 
+				MacroUtils.optionsGetPresentOrDefault(alpha, results, RVFloat(1.)),
+				MacroUtils.optionsGetPresentOrDefault(radius, results, RVFloat(1.)), 
+				MacroUtils.optionsGetPresentOrDefault(gain, results, RVFloat(1.)), 
+				MacroUtils.optionsGetPresentOrDefault(quality, results, RVFloat(1.)),
 					MacroUtils.optionsGetPresentOrDefault(smoothColor, results, false));
 				
 		}
@@ -3015,10 +3682,179 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 				Point(emitDistance, emitDistanceRandom);
 			case [MPIdentifier("cone", _, ITString), MPOpen, emitDistance = parseFloatOrReference(), MPComma, emitDistanceRandom = parseFloatOrReference(), MPComma, emitConeAngle = parseFloatOrReference(), MPComma, emitConeAngleRandom = parseFloatOrReference(), MPClosed]:
 				Cone(emitDistance, emitDistanceRandom, emitConeAngle, emitConeAngleRandom);
-			case [MPIdentifier("box", _, ITString), MPOpen, width = parseFloatOrReference(), MPComma, height = parseFloatOrReference(),MPComma, emitConeAngle = parseFloatOrReference(), MPComma, emitConeAngleRandom = parseFloatOrReference(), MPClosed]:
-				 Box(width, height, emitConeAngle, emitConeAngleRandom);
-			case _: syntaxError("expected point, cone or box");
+			case [MPIdentifier("box", _, ITString), MPOpen, width = parseFloatOrReference(), MPComma, height = parseFloatOrReference(), MPComma, emitConeAngle = parseFloatOrReference(), MPComma, emitConeAngleRandom = parseFloatOrReference(), MPClosed]:
+				Box(width, height, emitConeAngle, emitConeAngleRandom);
+			case [MPIdentifier("circle", _, ITString), MPOpen, radius = parseFloatOrReference(), MPComma, radiusRandom = parseFloatOrReference(), MPComma, emitConeAngle = parseFloatOrReference(), MPComma, emitConeAngleRandom = parseFloatOrReference(), MPClosed]:
+				Circle(radius, radiusRandom, emitConeAngle, emitConeAngleRandom);
+			case [MPIdentifier("path", _, ITString), MPOpen]:
+				var points:Array<{x:ReferenceableValue, y:ReferenceableValue}> = [];
+				// Parse path points: path([(x1,y1), (x2,y2), ...], angle, angleRandom)
+				switch stream {
+					case [MPBracketOpen]:
+						while (true) {
+							switch stream {
+								case [MPOpen, px = parseFloatOrReference(), MPComma, py = parseFloatOrReference(), MPClosed]:
+									points.push({x: px, y: py});
+									switch stream {
+										case [MPComma]: continue;
+										case [MPBracketClosed]: break;
+										case _: syntaxError("expected , or ]");
+									}
+								case [MPBracketClosed]: break;
+								case _: syntaxError("expected (x, y) or ]");
+							}
+						}
+					case _: syntaxError("expected [");
+				}
+				switch stream {
+					case [MPComma, emitConeAngle = parseFloatOrReference(), MPComma, emitConeAngleRandom = parseFloatOrReference(), MPClosed]:
+						Path(points, emitConeAngle, emitConeAngleRandom);
+					case _: syntaxError("expected , angle, angleRandom)");
+				}
+			case _: syntaxError("expected point, cone, box, circle or path");
 		}
+	}
+
+	function parseForceFields():Array<ParticleForceFieldDef> {
+		var fields:Array<ParticleForceFieldDef> = [];
+		switch stream {
+			case [MPBracketOpen]:
+				while (true) {
+					var field = parseForceField();
+					if (field != null) {
+						fields.push(field);
+						switch stream {
+							case [MPComma]: continue;
+							case [MPBracketClosed]: break;
+							case _: syntaxError("expected , or ]");
+						}
+					} else {
+						switch stream {
+							case [MPBracketClosed]: break;
+							case _: syntaxError("expected force field or ]");
+						}
+					}
+				}
+			case _: syntaxError("expected [");
+		}
+		return fields;
+	}
+
+	function parseForceField():ParticleForceFieldDef {
+		return switch stream {
+			case [MPIdentifier("attractor", _, ITString), MPOpen, x = parseFloatOrReference(), MPComma, y = parseFloatOrReference(), MPComma, strength = parseFloatOrReference(), MPComma, radius = parseFloatOrReference(), MPClosed]:
+				FFAttractor(x, y, strength, radius);
+			case [MPIdentifier("repulsor", _, ITString), MPOpen, x = parseFloatOrReference(), MPComma, y = parseFloatOrReference(), MPComma, strength = parseFloatOrReference(), MPComma, radius = parseFloatOrReference(), MPClosed]:
+				FFRepulsor(x, y, strength, radius);
+			case [MPIdentifier("vortex", _, ITString), MPOpen, x = parseFloatOrReference(), MPComma, y = parseFloatOrReference(), MPComma, strength = parseFloatOrReference(), MPComma, radius = parseFloatOrReference(), MPClosed]:
+				FFVortex(x, y, strength, radius);
+			case [MPIdentifier("wind", _, ITString), MPOpen, vx = parseFloatOrReference(), MPComma, vy = parseFloatOrReference(), MPClosed]:
+				FFWind(vx, vy);
+			case [MPIdentifier("turbulence", _, ITString), MPOpen, strength = parseFloatOrReference(), MPComma, scale = parseFloatOrReference(), MPComma, speed = parseFloatOrReference(), MPClosed]:
+				FFTurbulence(strength, scale, speed);
+			case _: null;
+		};
+	}
+
+	function parseCurvePoints():Array<ParticleCurvePoint> {
+		var points:Array<ParticleCurvePoint> = [];
+		switch stream {
+			case [MPBracketOpen]:
+				while (true) {
+					switch stream {
+						case [MPOpen, time = parseFloatOrReference(), MPComma, value = parseFloatOrReference(), MPClosed]:
+							points.push({time: time, value: value});
+							switch stream {
+								case [MPComma]: continue;
+								case [MPBracketClosed]: break;
+								case _: syntaxError("expected , or ]");
+							}
+						case [MPBracketClosed]: break;
+						case _: syntaxError("expected (time, value) or ]");
+					}
+				}
+			case _: syntaxError("expected [");
+		}
+		return points;
+	}
+
+	function parseBoundsMode():ParticleBoundsModeDef {
+		return switch stream {
+			case [MPIdentifier("none", _, ITString)]: BMNone;
+			case [MPIdentifier("kill", _, ITString)]: BMKill;
+			case [MPIdentifier("bounce", _, ITString), MPOpen, damping = parseFloatOrReference(), MPClosed]: BMBounce(damping);
+			case [MPIdentifier("wrap", _, ITString)]: BMWrap;
+			case _: syntaxError("expected none, kill, bounce(damping) or wrap");
+		};
+	}
+
+	function parseSubEmitters():Array<ParticleSubEmitterDef> {
+		var emitters:Array<ParticleSubEmitterDef> = [];
+		switch stream {
+			case [MPBracketOpen]:
+				while (true) {
+					var emitter = parseSubEmitter();
+					if (emitter != null) {
+						emitters.push(emitter);
+						switch stream {
+							case [MPComma]: continue;
+							case [MPBracketClosed]: break;
+							case _: syntaxError("expected , or ]");
+						}
+					} else {
+						switch stream {
+							case [MPBracketClosed]: break;
+							case _: syntaxError("expected sub-emitter or ]");
+						}
+					}
+				}
+			case _: syntaxError("expected [");
+		}
+		return emitters;
+	}
+
+	function parseSubEmitter():ParticleSubEmitterDef {
+		return switch stream {
+			case [MPCurlyOpen]:
+				var groupId:String = null;
+				var trigger:ParticleSubEmitTriggerDef = null;
+				var probability:ReferenceableValue = RVFloat(1.0);
+				var inheritVelocity:Null<ReferenceableValue> = null;
+				var offsetX:Null<ReferenceableValue> = null;
+				var offsetY:Null<ReferenceableValue> = null;
+
+				while (true) {
+					switch stream {
+						case [MPIdentifier("group", _, ITString), MPColon, MPIdentifier(gid, _, ITString | ITQuotedString)]:
+							groupId = gid;
+						case [MPIdentifier("trigger", _, ITString), MPColon]:
+							trigger = switch stream {
+								case [MPIdentifier("onBirth", _, ITString)]: SETOnBirth;
+								case [MPIdentifier("onDeath", _, ITString)]: SETOnDeath;
+								case [MPIdentifier("onCollision", _, ITString)]: SETOnCollision;
+								case [MPIdentifier("onInterval", _, ITString), MPOpen, interval = parseFloatOrReference(), MPClosed]: SETOnInterval(interval);
+								case _: syntaxError("expected onBirth, onDeath, onCollision or onInterval(interval)");
+							};
+						case [MPIdentifier("probability", _, ITString), MPColon, p = parseFloatOrReference()]:
+							probability = p;
+						case [MPIdentifier("inheritVelocity", _, ITString), MPColon, iv = parseFloatOrReference()]:
+							inheritVelocity = iv;
+						case [MPIdentifier("offsetX", _, ITString), MPColon, ox = parseFloatOrReference()]:
+							offsetX = ox;
+						case [MPIdentifier("offsetY", _, ITString), MPColon, oy = parseFloatOrReference()]:
+							offsetY = oy;
+						case [MPCurlyClosed]:
+							break;
+						case _: syntaxError("expected group, trigger, probability, inheritVelocity, offsetX, offsetY or }");
+					}
+				}
+
+				if (groupId == null) syntaxError("sub-emitter requires group");
+				if (trigger == null) syntaxError("sub-emitter requires trigger");
+
+				{groupId: groupId, trigger: trigger, probability: probability, inheritVelocity: inheritVelocity, offsetX: offsetX, offsetY: offsetY};
+			case _: null;
+		};
 	}
 
 	function validateParticles(particlesDefs:ParticlesDef, pos) {
@@ -3052,67 +3888,145 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 			rotationSpeed:null,
 			rotationSpeedRandom:null,
 			rotateAuto:null,
+			// Color interpolation
+			colorStart:null,
+			colorEnd:null,
+			colorMid:null,
+			colorMidPos:null,
+			// Force fields
+			forceFields:null,
+			// Curves
+			velocityCurve:null,
+			sizeCurve:null,
+			// Trails
+			trailEnabled:null,
+			trailLength:null,
+			trailFadeOut:null,
+			// Bounds
+			boundsMode:null,
+			boundsMinX:null,
+			boundsMaxX:null,
+			boundsMinY:null,
+			boundsMaxY:null,
+			// Sub-emitters
+			subEmitters:null,
+			// Animation
+			animationRepeat:null,
 		};
 	}
 
 	function updateParticlesFromTemplate(template:ParticlesDef, particlesDef:ParticlesDef):Void {
-		
-		particlesDef.count =  particlesDef.count ?? template.count;
-		particlesDef.emitDelay =  particlesDef.emitDelay ?? template.emitDelay;
-		particlesDef.emitSync =  particlesDef.emitSync ?? template.emitSync;
-		particlesDef.maxLife =  particlesDef.maxLife ?? template.maxLife;
-		particlesDef.lifeRandom =  particlesDef.lifeRandom ?? template.lifeRandom;
-		particlesDef.size =  particlesDef.size ?? template.size;
-		particlesDef.sizeRandom =  particlesDef.sizeRandom ?? template.sizeRandom;
-		particlesDef.speed =  particlesDef.speed ?? template.speed;
-		particlesDef.speedRandom =  particlesDef.speedRandom ?? template.speedRandom;
-		particlesDef.speedIncrease =  particlesDef.speedIncrease ?? template.speedIncrease;
-		particlesDef.loop =  particlesDef.loop ?? template.loop;
-		particlesDef.relative =  particlesDef.relative ?? template.relative;
-		particlesDef.tiles =  particlesDef.tiles ?? template.tiles;
-		particlesDef.gravity =  particlesDef.gravity ?? template.gravity;
-		particlesDef.gravityAngle =  particlesDef.gravityAngle ?? template.gravityAngle;
-		particlesDef.fadeIn =  particlesDef.fadeIn ?? template.fadeIn;
-		particlesDef.fadeOut =  particlesDef.fadeOut ?? template.fadeOut;
-		particlesDef.fadePower =  particlesDef.fadePower ?? template.fadePower;
-		particlesDef.blendMode =  particlesDef.blendMode ?? template.blendMode;
-		particlesDef.emit =  particlesDef.emit ?? template.emit;
-		particlesDef.rotationInitial =  particlesDef.rotationInitial ?? template.rotationInitial;
-		particlesDef.rotationSpeed =  particlesDef.rotationSpeed ?? template.rotationSpeed;
-		particlesDef.rotationSpeedRandom =  particlesDef.rotationSpeedRandom ?? template.rotationSpeedRandom;
-		particlesDef.rotateAuto =  particlesDef.rotateAuto ?? template.rotateAuto;
-	
+		particlesDef.count = particlesDef.count ?? template.count;
+		particlesDef.emitDelay = particlesDef.emitDelay ?? template.emitDelay;
+		particlesDef.emitSync = particlesDef.emitSync ?? template.emitSync;
+		particlesDef.maxLife = particlesDef.maxLife ?? template.maxLife;
+		particlesDef.lifeRandom = particlesDef.lifeRandom ?? template.lifeRandom;
+		particlesDef.size = particlesDef.size ?? template.size;
+		particlesDef.sizeRandom = particlesDef.sizeRandom ?? template.sizeRandom;
+		particlesDef.speed = particlesDef.speed ?? template.speed;
+		particlesDef.speedRandom = particlesDef.speedRandom ?? template.speedRandom;
+		particlesDef.speedIncrease = particlesDef.speedIncrease ?? template.speedIncrease;
+		particlesDef.loop = particlesDef.loop ?? template.loop;
+		particlesDef.relative = particlesDef.relative ?? template.relative;
+		particlesDef.tiles = particlesDef.tiles ?? template.tiles;
+		particlesDef.gravity = particlesDef.gravity ?? template.gravity;
+		particlesDef.gravityAngle = particlesDef.gravityAngle ?? template.gravityAngle;
+		particlesDef.fadeIn = particlesDef.fadeIn ?? template.fadeIn;
+		particlesDef.fadeOut = particlesDef.fadeOut ?? template.fadeOut;
+		particlesDef.fadePower = particlesDef.fadePower ?? template.fadePower;
+		particlesDef.blendMode = particlesDef.blendMode ?? template.blendMode;
+		particlesDef.emit = particlesDef.emit ?? template.emit;
+		particlesDef.rotationInitial = particlesDef.rotationInitial ?? template.rotationInitial;
+		particlesDef.rotationSpeed = particlesDef.rotationSpeed ?? template.rotationSpeed;
+		particlesDef.rotationSpeedRandom = particlesDef.rotationSpeedRandom ?? template.rotationSpeedRandom;
+		particlesDef.rotateAuto = particlesDef.rotateAuto ?? template.rotateAuto;
+		// Color interpolation
+		particlesDef.colorStart = particlesDef.colorStart ?? template.colorStart;
+		particlesDef.colorEnd = particlesDef.colorEnd ?? template.colorEnd;
+		particlesDef.colorMid = particlesDef.colorMid ?? template.colorMid;
+		particlesDef.colorMidPos = particlesDef.colorMidPos ?? template.colorMidPos;
+		// Force fields
+		particlesDef.forceFields = particlesDef.forceFields ?? template.forceFields;
+		// Curves
+		particlesDef.velocityCurve = particlesDef.velocityCurve ?? template.velocityCurve;
+		particlesDef.sizeCurve = particlesDef.sizeCurve ?? template.sizeCurve;
+		// Trails
+		particlesDef.trailEnabled = particlesDef.trailEnabled ?? template.trailEnabled;
+		particlesDef.trailLength = particlesDef.trailLength ?? template.trailLength;
+		particlesDef.trailFadeOut = particlesDef.trailFadeOut ?? template.trailFadeOut;
+		// Bounds
+		particlesDef.boundsMode = particlesDef.boundsMode ?? template.boundsMode;
+		particlesDef.boundsMinX = particlesDef.boundsMinX ?? template.boundsMinX;
+		particlesDef.boundsMaxX = particlesDef.boundsMaxX ?? template.boundsMaxX;
+		particlesDef.boundsMinY = particlesDef.boundsMinY ?? template.boundsMinY;
+		particlesDef.boundsMaxY = particlesDef.boundsMaxY ?? template.boundsMaxY;
+		// Sub-emitters
+		particlesDef.subEmitters = particlesDef.subEmitters ?? template.subEmitters;
+		// Animation
+		particlesDef.animationRepeat = particlesDef.animationRepeat ?? template.animationRepeat;
 	}
  	
 	function parseParticles():ParticlesDef {
 
 		var retVal = createEmptyParticlesDef();
 		final once = createOnceParser();
-		var results = parseOptionalParams([ParseIntegerOrReference(MacroUtils.identToString(count)), 
-											ParseFloatOrReference(MacroUtils.identToString(emitDelay)), 
-											ParseFloatOrReference(MacroUtils.identToString(emitSync)), 
-											ParseFloatOrReference(MacroUtils.identToString(maxLife)), 
-											ParseFloatOrReference(MacroUtils.identToString(lifeRandom)), 
-											ParseFloatOrReference(MacroUtils.identToString(size)), 
-											ParseFloatOrReference(MacroUtils.identToString(sizeRandom)), 
-											ParseFloatOrReference(MacroUtils.identToString(speed)), 
-											ParseFloatOrReference(MacroUtils.identToString(speedRandom)), 
-											ParseFloatOrReference(MacroUtils.identToString(speedIncrease)), 
-											ParseFloatOrReference(MacroUtils.identToString(gravity)), 
-											ParseFloatOrReference(MacroUtils.identToString(gravityAngle)), 
-											ParseFloatOrReference(MacroUtils.identToString(fadeIn)), 
-											ParseFloatOrReference(MacroUtils.identToString(fadeOut)), 
-											
-											ParseFloatOrReference(MacroUtils.identToString(rotationSpeed)), 
-											ParseFloatOrReference(MacroUtils.identToString(rotationSpeedRandom)), 
-											ParseFloatOrReference(MacroUtils.identToString(rotationInitial)), 
-											ParseBool(MacroUtils.identToString(rotateAuto)), 
-											
-											ParseBool(MacroUtils.identToString(loop)), 
-											ParseBool(MacroUtils.identToString(relative)), 
+		var results = parseOptionalParams([ParseIntegerOrReference(MacroUtils.identToString(count)),
+											ParseFloatOrReference(MacroUtils.identToString(emitDelay)),
+											ParseFloatOrReference(MacroUtils.identToString(emitSync)),
+											ParseFloatOrReference(MacroUtils.identToString(maxLife)),
+											ParseFloatOrReference(MacroUtils.identToString(lifeRandom)),
+											ParseFloatOrReference(MacroUtils.identToString(size)),
+											ParseFloatOrReference(MacroUtils.identToString(sizeRandom)),
+											ParseFloatOrReference(MacroUtils.identToString(speed)),
+											ParseFloatOrReference(MacroUtils.identToString(speedRandom)),
+											ParseFloatOrReference(MacroUtils.identToString(speedIncrease)),
+											ParseFloatOrReference(MacroUtils.identToString(gravity)),
+											ParseFloatOrReference(MacroUtils.identToString(gravityAngle)),
+											ParseFloatOrReference(MacroUtils.identToString(fadeIn)),
+											ParseFloatOrReference(MacroUtils.identToString(fadeOut)),
+											ParseFloatOrReference(MacroUtils.identToString(fadePower)),
+
+											ParseFloatOrReference(MacroUtils.identToString(rotationSpeed)),
+											ParseFloatOrReference(MacroUtils.identToString(rotationSpeedRandom)),
+											ParseFloatOrReference(MacroUtils.identToString(rotationInitial)),
+											ParseBool(MacroUtils.identToString(rotateAuto)),
+
+											ParseBool(MacroUtils.identToString(loop)),
+											ParseBool(MacroUtils.identToString(relative)),
 											ParseCustom(MacroUtils.identToString(tiles), parseTileSources),
 											ParseCustom(MacroUtils.identToString(blendMode), tryParseBlendMode),
-											ParseCustom(MacroUtils.identToString(emit), parseParticlesEmitMode)
+											ParseCustom(MacroUtils.identToString(emit), parseParticlesEmitMode),
+
+											// Color interpolation
+											ParseColor(MacroUtils.identToString(colorStart)),
+											ParseColor(MacroUtils.identToString(colorEnd)),
+											ParseColor(MacroUtils.identToString(colorMid)),
+											ParseFloatOrReference(MacroUtils.identToString(colorMidPos)),
+
+											// Force fields
+											ParseCustom(MacroUtils.identToString(forceFields), parseForceFields),
+
+											// Curves
+											ParseCustom(MacroUtils.identToString(velocityCurve), parseCurvePoints),
+											ParseCustom(MacroUtils.identToString(sizeCurve), parseCurvePoints),
+
+											// Trails
+											ParseBool(MacroUtils.identToString(trailEnabled)),
+											ParseIntegerOrReference(MacroUtils.identToString(trailLength)),
+											ParseBool(MacroUtils.identToString(trailFadeOut)),
+
+											// Bounds/collision
+											ParseCustom(MacroUtils.identToString(boundsMode), parseBoundsMode),
+											ParseFloatOrReference(MacroUtils.identToString(boundsMinX)),
+											ParseFloatOrReference(MacroUtils.identToString(boundsMaxX)),
+											ParseFloatOrReference(MacroUtils.identToString(boundsMinY)),
+											ParseFloatOrReference(MacroUtils.identToString(boundsMaxY)),
+
+											// Sub-emitters
+											ParseCustom(MacroUtils.identToString(subEmitters), parseSubEmitters),
+
+											// Animation
+											ParseFloatOrReference(MacroUtils.identToString(animationRepeat))
 										], once);
 
 		switch stream {
@@ -3144,9 +4058,32 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 		MacroUtils.optionsSetIfNotNull(retVal.loop, results);
 		MacroUtils.optionsSetIfNotNull(retVal.relative, results);
 		MacroUtils.optionsSetIfNotNull(retVal.blendMode, results);
-				
+		// Color interpolation
+		MacroUtils.optionsSetIfNotNull(retVal.colorStart, results);
+		MacroUtils.optionsSetIfNotNull(retVal.colorEnd, results);
+		MacroUtils.optionsSetIfNotNull(retVal.colorMid, results);
+		MacroUtils.optionsSetIfNotNull(retVal.colorMidPos, results);
+		// Force fields
+		MacroUtils.optionsSetIfNotNull(retVal.forceFields, results);
+		// Curves
+		MacroUtils.optionsSetIfNotNull(retVal.velocityCurve, results);
+		MacroUtils.optionsSetIfNotNull(retVal.sizeCurve, results);
+		// Trails
+		MacroUtils.optionsSetIfNotNull(retVal.trailEnabled, results);
+		MacroUtils.optionsSetIfNotNull(retVal.trailLength, results);
+		MacroUtils.optionsSetIfNotNull(retVal.trailFadeOut, results);
+		// Bounds
+		MacroUtils.optionsSetIfNotNull(retVal.boundsMode, results);
+		MacroUtils.optionsSetIfNotNull(retVal.boundsMinX, results);
+		MacroUtils.optionsSetIfNotNull(retVal.boundsMaxX, results);
+		MacroUtils.optionsSetIfNotNull(retVal.boundsMinY, results);
+		MacroUtils.optionsSetIfNotNull(retVal.boundsMaxY, results);
+		// Sub-emitters
+		MacroUtils.optionsSetIfNotNull(retVal.subEmitters, results);
+		// Animation
+		MacroUtils.optionsSetIfNotNull(retVal.animationRepeat, results);
+
 		return retVal;
-		
 	}
 
 	function parseLayouts():LayoutsDef {
@@ -3224,10 +4161,10 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 					}
 					
 				case [MPNewLine]:
-				case [MPIdentifier(propName, MPGrid, ITString), MPColon, system = parseGridCoordianteSystem(), MPCurlyOpen]: 
+				case [MPIdentifier(propName, MPGrid, ITString), MPColon, system = parseGridCoordinateSystem(), MPCurlyOpen]: 
 					parsingStates.push(LPSGrid);
 					grids.push(system);
-				case [MPIdentifier(propName, MPHexGrid, ITString), MPColon, system = parseHexCoordianteSystem(), MPCurlyOpen]: 
+				case [MPIdentifier(propName, MPHexGrid, ITString), MPColon, system = parseHexCoordinateSystem(), MPCurlyOpen]: 
 					parsingStates.push(LPSHex);
 					hexes.push(system);
 				case [MPIdentifier(propName, MPOffset, ITString), MPColon, size = parseSize(), MPCurlyOpen]: 
@@ -3262,11 +4199,11 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 				case [MPIdentifier(propName, MPGrid , ITString), MPColon]:
 						if (node == null) syntaxError('grid coordinate system not supported on root elements');
 						once.parsed(propName);
-						node.gridCoordinateSystem = parseGridCoordianteSystem();
+						node.gridCoordinateSystem = parseGridCoordinateSystem();
 				case [MPIdentifier(propName, MPHex , ITString), MPColon]:
 						if (node == null) syntaxError('hex coordinate system not supported on root elements');
 						once.parsed(propName);
-						node.hexCoordinateSystem = parseHexCoordianteSystem();
+						node.hexCoordinateSystem = parseHexCoordinateSystem();
 						
 		
 				case [MPIdentifier(propName, MPScale , ITString), MPColon, f = parseFloatOrReference()]:
@@ -3392,7 +4329,7 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 				case ParseFloatOrReference(_): parseFloatOrReference();
 				case ParseBool(_): parseBool();
 				case ParseCustom(_, parse): parse();
-				case ParseColor(_): parseColor();
+				case ParseColor(_): parseColorOrReference();
 			}
 		}
 
@@ -3420,8 +4357,8 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 	function parse():MultiAnimResult {
 		switch stream {
 			case [MPIdentifier(_, MPVersion, ITString), MPColon, MPNumber(fileVersion, NTInteger|NTFloat)]:
-				if (fileVersion != version) syntaxError('verson ${version} expected, got ${fileVersion}');
-			case _: syntaxError('verson expected, got ${peek(0)}');
+				if (fileVersion != version) syntaxError('version ${version} expected, got ${fileVersion}');
+			case _: syntaxError('version expected, got ${peek(0)}');
 		}
 		
 		parseNodes(null, [], createOnceParser(), 654321);

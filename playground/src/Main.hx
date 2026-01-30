@@ -121,6 +121,7 @@ class Main extends hxd.App {
 		screenManager.addScreen("scrollableList", new screens.ScrollableListTestScreen(screenManager));
 		screenManager.addScreen("dialogStart", new DialogStartScreen(screenManager));
 		screenManager.addScreen("stateAnim", new screens.StateAnimScreen(screenManager));
+		screenManager.addScreen("animViewer", new screens.AnimViewerScreen(screenManager));
 		#if hl
 		screenManager.addScreen("settings", new SettingsScreen(screenManager));
 		#end
@@ -130,7 +131,7 @@ class Main extends hxd.App {
 		screenManager.addScreen("examples1", new Examples1Screen(screenManager));
 
 		screenManager.addScreen("paths", new PathsScreen(screenManager));
-		screenManager.addScreen("particles", new ParticlesScreen(screenManager));
+		screenManager.addScreen("particlesAdvanced", new ParticlesAdvancedScreen(screenManager));
 		screenManager.addScreen("pixels", new PixelsScreen(screenManager));
 		screenManager.addScreen("fonts", new FontsScreen(screenManager));
 		screenManager.addScreen("atlasTest", new screens.AtlasTestScreen(screenManager));
@@ -276,7 +277,7 @@ class Main extends hxd.App {
 				try {
 					var bytes = FileLoader.load(filename);
 					var byteData = byte.ByteData.ofBytes(haxe.io.Bytes.ofData(bytes));
-					return bh.stateanim.AnimParser.parseFile(byteData, loader);
+					return bh.stateanim.AnimParser.parseFile(byteData, filename, loader);
 				} catch (e) {
 					throw 'loadAnimSMImpl failed for filename: $filename - ${e}';
 				}
@@ -285,12 +286,12 @@ class Main extends hxd.App {
 				if (hxd.Res.loader.exists(filename)) {
 					var resource = hxd.Res.load(filename);
 					var byteData = byte.ByteData.ofBytes(resource.entry.getBytes());
-					return bh.stateanim.AnimParser.parseFile(byteData, loader);
+					return bh.stateanim.AnimParser.parseFile(byteData, filename, loader);
 				} else {
 					try {
 						var bytes = FileLoader.load(filename);
 						var byteData = byte.ByteData.ofBytes(haxe.io.Bytes.ofData(bytes));
-						return bh.stateanim.AnimParser.parseFile(byteData, loader);
+						return bh.stateanim.AnimParser.parseFile(byteData, filename, loader);
 					} catch (e) {
 						throw 'loadAnimSMImpl failed for filename: $filename - ${e}';
 					}
