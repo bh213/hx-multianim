@@ -7,12 +7,11 @@ center: 32,48
 animation {
     name: idle
     fps:4
+    loop: yes
     playlist {
-        loop untilCommand {
-            sheet: "marine_$$direction$$_idle"
-        }
+        sheet: "marine_$$direction$$_idle"
     }
-    extrapoints  { 
+    extrapoints  {
            @(direction=>l) targeting : -1, -12
            @(direction=>r) targeting : 5, -12
     }
@@ -25,7 +24,7 @@ animation {
      playlist {
         sheet: "marine_r_shooting_u"
     }
-    extrapoints { 
+    extrapoints {
         fire: 5, -19
     }
 }
@@ -37,7 +36,7 @@ animation {
     playlist {
         sheet: marine_l_shooting_d
     }
-    extrapoints { 
+    extrapoints {
         fire : -2, -2
     }
 }
@@ -48,7 +47,7 @@ animation {
     playlist {
         sheet: marine_l_shooting_u
     }
-    extrapoints { 
+    extrapoints {
         fire : -10, -8
     }
 }
@@ -59,7 +58,7 @@ animation {
     playlist {
         sheet: marine_r_shooting_d
     }
-    extrapoints { 
+    extrapoints {
         fire: 10, -8
     }
 }
@@ -70,7 +69,7 @@ animation {
     playlist {
         sheet: marine_r_shooting
     }
-    extrapoints { 
+    extrapoints {
         fire : 12, -12
     }
 }
@@ -81,7 +80,7 @@ animation {
     playlist {
         sheet: marine_l_shooting
     }
-    extrapoints { 
+    extrapoints {
         fire : -7,-3
     }
 }
@@ -92,7 +91,7 @@ animation {
     playlist {
         sheet: marine_l_shooting_uu
     }
-    extrapoints { 
+    extrapoints {
         fire : -7,-11
     }
 }
@@ -103,7 +102,7 @@ animation {
     playlist {
         sheet: marine_r_shooting_dd
     }
-    extrapoints { 
+    extrapoints {
         fire : 7,-6
     }
 }
@@ -111,12 +110,10 @@ animation {
 animation {
     name: hit
     fps:20
-    loop: untilCommand
+    loop: yes
     playlist {
         sheet: marine_$$direction$$_hit
-        loop 3 {
-            event hit random 0,-10, 10
-        }
+        event hit random 0,-10, 10
     }
 }
 
@@ -126,26 +123,24 @@ animation {
     fps:20
     playlist {
         sheet: marine_$$direction$$_killed
-        goto dead
     }
 }
 
 animation {
     name: dead
     fps:1
-    loop: untilCommand
+    loop: yes
     playlist {
-    sheet: marine_$$direction$$_dead
+        sheet: marine_$$direction$$_dead
     }
 }
 
 animation {
     name: stand
     fps:1
-    loop
+    loop: yes
     playlist {
         sheet: marine_$$direction$$_standing
-        command
     }
 }
 
@@ -155,11 +150,7 @@ animation {
     name: dodge
     fps:4
     playlist {
-        sheet: marine_$$direction$$_dodging_$$direction$$ frames: 0..0 duration: 1500 ms
-        loop untilCommand {
-            sheet: marine_$$direction$$_dodging_$$direction$$ frames:1..2 duration:15ms
-        }
-        sheet: marine_$$direction$$_dodging_$$direction$$ frames: 3..3
+        sheet: marine_$$direction$$_dodging_$$direction$$ frames: 0..3
     }
 }
 

@@ -1,4 +1,4 @@
-version: 0.1
+version: 0.3
 
 
 #ui programmable() {
@@ -7,7 +7,7 @@ version: 0.1
       #checkboxVal(updatable) text(dd, "clickCheckbox", #ffffff00): 10,50
      
      placeholder(generated(cross(200, 20)), builderParameter("checkbox")) {
-            settings(checkboxBuildName=>checkbox2) // override builder name (will use checkbox2 programmable from std)
+            settings{checkboxBuildName=>checkbox2} // override builder name (will use checkbox2 programmable from std)
       }
 
       
