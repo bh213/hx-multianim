@@ -1,5 +1,6 @@
 package bh.test;
 
+import bh.base.FontManager;
 import bh.base.ResourceLoader;
 import bh.stateanim.AnimParser;
 import byte.ByteData;
@@ -47,11 +48,9 @@ class TestResourceLoader {
 			return bh.multianim.MultiAnimBuilder.load(fileContent, loader, fullPath);
 		}
 
-		loader.loadFontImpl = filename -> {
-			if (debugMode) trace('Loading font: ${filename}');
-			// For now, return default font for all test requests
-			// Could be extended to use FontManager if needed
-			return hxd.res.DefaultFont.get();
+		loader.loadFontImpl = fontName -> {
+			if (debugMode) trace('Loading font: ${fontName}');
+			return FontManager.getFontByName(fontName);
 		}
 
 		return loader;

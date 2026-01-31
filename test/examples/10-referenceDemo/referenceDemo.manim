@@ -2,17 +2,21 @@ version: 0.3
 
 #referenceDemoItem programmable(width:int, height:int, shape:[rect, triangle], c1:color=white) {
   @(shape=>rect) bitmap(generated(color($width, $height, $c1)));
-  @(shape=>triangle)  pixels (
-            line 0,0, 0, $height, #f00
-            line 0,$height, $width, $height, #f00
-            line $width,$height, 0, 0, #f00
-          );
+  @(shape=>triangle) pixels (
+    line 0,0, 0, $height, #f00
+    line 0,$height, $width, $height, #f00
+    line $width,$height, 0, 0, #f00
+  );
 }
 
-#referenceDemo point {
-  pos: 5, 5
-  reference($referenceDemoItem, width=>10, height=>10, shape=>rect): 0,0;
-  reference($referenceDemoItem, width=>30, height=>30, shape=>triangle): 0, 30;
-  reference($referenceDemoItem, width=>50, height=>20, shape=>triangle): 50, 0;
-  reference($referenceDemoItem, width=>30, height=>30, shape=>triangle): 50, 30;
+#referenceDemo programmable() {
+  pos: 0, 0
+  grid: 1280, 720
+
+  @alpha(0.3) bitmap(generated(color(1280, 720, #555)));
+
+  reference($referenceDemoItem, width=>160, height=>160, shape=>rect): 80,120;
+  reference($referenceDemoItem, width=>320, height=>320, shape=>triangle): 80, 360;
+  reference($referenceDemoItem, width=>500, height=>200, shape=>triangle): 500, 120;
+  reference($referenceDemoItem, width=>320, height=>320, shape=>triangle): 700, 360;
 }

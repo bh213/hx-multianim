@@ -500,7 +500,7 @@ class MultiAnimBuilder {
 			case RVArray(refArray): throw 'RVArray not supported';
 			case RVArrayReference(refArray): throw 'RVArrayReference not supported';
 			case RVInteger(i): return i;
-			case RVFloat(_) | RVString(_): throw 'should be an integer';
+			case RVFloat(_) | RVString(_): throw '${v} should be an integer';
 			case RVColorXY(_, _, _) | RVColor(_, _): resolveAsColorInteger(v);
 			case RVReference(ref):
 				if (!indexedParams.exists(ref)) {
@@ -698,7 +698,52 @@ class MultiAnimBuilder {
 
 			case SolidColor(w, h, color):
 				h2d.Tile.fromColor(color.addAlphaIfNotPresent(), w, h);
+
+			case SolidColorWithText(w, h, bgColor, text, textColor, fontName):
+				// Create a solid color tile with centered text using font rendering
+				generateTileWithText(w, h, bgColor.addAlphaIfNotPresent(), text, textColor.addAlphaIfNotPresent(), fontName);
 		}
+	}
+
+	/**
+	 * Generate a tile with text using font-based rendering.
+	 * Uses h2d.Object.drawTo to render to a texture.
+	 */
+	function generateTileWithText(w:Int, h:Int, bgColor:Int, text:String, textColor:Int, fontName:String):h2d.Tile {
+		// Load the font
+		final font = resourceLoader.loadFont(fontName);
+
+		// Create container for background + text
+		final container = new h2d.Object();
+
+		// Add background
+		final bg = new h2d.Bitmap(h2d.Tile.fromColor(bgColor, w, h), container);
+
+		// Create and configure text
+		final textObj = new h2d.Text(font, container);
+		textObj.text = text;
+		textObj.textColor = textColor & 0xFFFFFF;
+		textObj.maxWidth = w;
+		textObj.textAlign = Center;
+
+		// Center text vertically (use integer position for deterministic rendering)
+		final textHeight = textObj.textHeight;
+		textObj.x = 0;
+		textObj.y = Math.floor((h - textHeight) / 2);
+
+		// Render to texture using drawTo
+		final texture = new h3d.mat.Texture(w, h, [Target]);
+		container.drawTo(texture);
+
+		// Capture pixels from texture
+		final pixels = texture.capturePixels();
+
+		// Clean up
+		container.remove();
+		texture.dispose();
+
+		// Create tile from pixels
+		return h2d.Tile.fromPixels(pixels);
 	}
 
 	function loadTileSource(tileSource):h2d.Tile {
@@ -710,6 +755,7 @@ class MultiAnimBuilder {
 				var resolvedType:ResolvedGeneratedTileType = switch type {
 					case Cross(width, height, color): Cross(resolveAsInteger(width), resolveAsInteger(height), resolveAsColorInteger(color));
 					case SolidColor(width, height, color): SolidColor(resolveAsInteger(width), resolveAsInteger(height), resolveAsColorInteger(color));
+					case SolidColorWithText(width, height, color, text, textColor, font): SolidColorWithText(resolveAsInteger(width), resolveAsInteger(height), resolveAsColorInteger(color), resolveAsString(text), resolveAsColorInteger(textColor), resolveAsString(font));
 				}
 
 				resourceLoader.getOrCreatePlaceholder(resolvedType, (resolvedType) -> generatePlaceholderBitmap(resolvedType));
@@ -941,13 +987,13 @@ class MultiAnimBuilder {
 					}
 
 					if (points.length > 0) {
-						var first = points[0];
-						var fx = resolveAsNumber(first.x) + elementPos.x;
-						var fy = resolveAsNumber(first.y) + elementPos.y;
+						var firstPos = calculatePosition(points[0], gridCoordinateSystem, hexCoordinateSystem);
+						var fx = firstPos.x + elementPos.x;
+						var fy = firstPos.y + elementPos.y;
 						g.moveTo(fx, fy);
 						for (i in 1...points.length) {
-							var p = points[i];
-							g.lineTo(resolveAsNumber(p.x) + elementPos.x, resolveAsNumber(p.y) + elementPos.y);
+							var pos = calculatePosition(points[i], gridCoordinateSystem, hexCoordinateSystem);
+							g.lineTo(pos.x + elementPos.x, pos.y + elementPos.y);
 						}
 						g.lineTo(fx, fy);
 					}
@@ -1006,11 +1052,13 @@ class MultiAnimBuilder {
 							g.drawRoundedRect(elementPos.x, elementPos.y, resolveAsNumber(width), resolveAsNumber(height), rad);
 							g.lineStyle();
 					}
-				case GELine(color, lineWidth, x1, y1, x2, y2):
+				case GELine(color, lineWidth, start, end):
 					var resolvedColor = resolveAsColorInteger(color).addAlphaIfNotPresent();
+					var startPos = calculatePosition(start, gridCoordinateSystem, hexCoordinateSystem);
+					var endPos = calculatePosition(end, gridCoordinateSystem, hexCoordinateSystem);
 					g.lineStyle(resolveAsNumber(lineWidth), resolvedColor);
-					g.moveTo(elementPos.x + resolveAsNumber(x1), elementPos.y + resolveAsNumber(y1));
-					g.lineTo(elementPos.x + resolveAsNumber(x2), elementPos.y + resolveAsNumber(y2));
+					g.moveTo(elementPos.x + startPos.x, elementPos.y + startPos.y);
+					g.lineTo(elementPos.x + endPos.x, elementPos.y + endPos.y);
 					g.lineStyle();
 			}
 		}
@@ -1444,12 +1492,15 @@ class MultiAnimBuilder {
 					case Center: Center;
 				}
 				if (textDef.textAlignWidth != null) {
+					// When text has scale applied, maxWidth needs to be divided by scale
+					// so that alignment (center/right) is calculated correctly before scaling
+					final scaleAdjust = if (node.scale != null) resolveAsNumber(node.scale) else 1.0;
 					switch textDef.textAlignWidth {
 						case TAWValue(value):
-								t.maxWidth = value;
+								t.maxWidth = value / scaleAdjust;
 						case TAWGrid:
 							if (gridCoordinateSystem != null)
-								t.maxWidth = gridCoordinateSystem.spacingX;
+								t.maxWidth = gridCoordinateSystem.spacingX / scaleAdjust;
 						case TAWAuto:
 							t.maxWidth = null;
 					}
@@ -1494,6 +1545,7 @@ class MultiAnimBuilder {
 			case PARTICLES(particlesDef):
 				Particles(createParticleImpl(particlesDef, node.uniqueNodeName));
 			case PALETTE(_): throw 'palette not allowed as non-root node';
+			case AUTOTILE(_): throw 'autotile not allowed as non-root node';
 
 			case PLACEHOLDER(type, source):
 				var settings = resolveSettings(node);
@@ -2401,6 +2453,150 @@ class MultiAnimBuilder {
 			default:
 				throw 'paths is of unexpected type ${node.type}';
 		}
+	}
+
+	/**
+	 * Build a TileGroup from autotile definition based on a binary grid.
+	 * @param name The name of the autotile definition in the .manim file
+	 * @param grid 2D array of 0/1 values where 1 = terrain present
+	 * @return h2d.TileGroup populated with the correct autotiles
+	 */
+	public function buildAutotile(name:String, grid:Array<Array<Int>>):h2d.TileGroup {
+		var node = multiParserResult?.nodes.get(name);
+		if (node == null)
+			throw 'could not get autotile node #${name}';
+		switch node.type {
+			case AUTOTILE(autotileDef):
+				return buildAutotileImpl(autotileDef, grid, null);
+			default:
+				throw '$name has to be autotile';
+		}
+	}
+
+	/**
+	 * Build a TileGroup from autotile definition with elevation data.
+	 * @param name The name of the autotile definition in the .manim file
+	 * @param grid 2D array of elevation levels (0 = empty, 1+ = terrain at that elevation)
+	 * @param baseY Base Y position for rendering
+	 * @return h2d.TileGroup populated with the correct autotiles and depth
+	 */
+	public function buildAutotileElevation(name:String, grid:Array<Array<Int>>, baseY:Float):h2d.TileGroup {
+		var node = multiParserResult?.nodes.get(name);
+		if (node == null)
+			throw 'could not get autotile node #${name}';
+		switch node.type {
+			case AUTOTILE(autotileDef):
+				return buildAutotileImpl(autotileDef, grid, baseY);
+			default:
+				throw '$name has to be autotile';
+		}
+	}
+
+	private function buildAutotileImpl(autotileDef:AutotileDef, grid:Array<Array<Int>>, ?elevationBaseY:Null<Float>):h2d.TileGroup {
+		final tileGroup = new h2d.TileGroup();
+		final tiles = loadAutotileTiles(autotileDef);
+		final tileSize = resolveAsInteger(autotileDef.tileSize);
+		final depth = autotileDef.depth != null ? resolveAsInteger(autotileDef.depth) : 0;
+		final mapping = autotileDef.mapping;
+
+		final height = grid.length;
+		if (height == 0)
+			return tileGroup;
+		final width = grid[0].length;
+
+		for (y in 0...height) {
+			for (x in 0...width) {
+				if (grid[y][x] == 0)
+					continue;
+
+				final mask8 = bh.base.Autotile.getNeighborMask8(grid, x, y);
+				var tileIndex = switch autotileDef.format {
+					case Simple13: bh.base.Autotile.getSimple13Index(mask8);
+					case Cross: bh.base.Autotile.getCrossIndex(mask8);
+					case Blob47: bh.base.Autotile.getBlob47Index(mask8);
+				};
+
+				// Apply custom mapping if provided
+				if (mapping != null && tileIndex < mapping.length) {
+					tileIndex = mapping[tileIndex];
+				}
+
+				if (tileIndex >= 0 && tileIndex < tiles.length) {
+					final tile = tiles[tileIndex];
+					final renderX = x * tileSize;
+					var renderY = y * tileSize;
+
+					// Handle elevation depth rendering
+					if (elevationBaseY != null && depth > 0) {
+						// Render depth/wall below the tile for edge tiles
+						final hasS = (mask8 & bh.base.Autotile.S) == 0;
+						if (hasS && tileIndex < tiles.length) {
+							// This is a south-facing edge, render wall depth below
+							for (d in 0...Std.int(depth / tileSize) + 1) {
+								tileGroup.add(renderX, renderY + tileSize + d * tileSize, tile);
+							}
+						}
+					}
+
+					tileGroup.add(renderX, renderY, tile);
+				}
+			}
+		}
+
+		return tileGroup;
+	}
+
+	private function loadAutotileTiles(autotileDef:AutotileDef):Array<h2d.Tile> {
+		final tileSize = resolveAsInteger(autotileDef.tileSize);
+
+		return switch autotileDef.source {
+			case ATSAtlas(sheet, prefix):
+				final atlas = resourceLoader.loadSheet2(resolveAsString(sheet));
+				final prefixStr = resolveAsString(prefix);
+				final tileCount = switch autotileDef.format {
+					case Simple13: 13;
+					case Cross: 13;
+					case Blob47: 47;
+				};
+				[for (i in 0...tileCount) atlas.get(prefixStr + Std.string(i)).tile];
+
+			case ATSAtlasRegion(sheet, region):
+				// For region-based loading, we need to load the sheet's image file directly
+				// This requires the sheet to have a loadable tile resource
+				final sheetName = resolveAsString(sheet);
+				final baseTile = resourceLoader.loadTile(sheetName);
+				final rx = resolveAsInteger(region[0]);
+				final ry = resolveAsInteger(region[1]);
+				final rw = resolveAsInteger(region[2]);
+				final rh = resolveAsInteger(region[3]);
+				final tilesPerRow = Std.int(rw / tileSize);
+				final tileCount = switch autotileDef.format {
+					case Simple13: 13;
+					case Cross: 13;
+					case Blob47: 47;
+				};
+				[
+					for (i in 0...tileCount)
+						baseTile.sub(rx + (i % tilesPerRow) * tileSize, ry + Std.int(i / tilesPerRow) * tileSize, tileSize, tileSize)
+				];
+
+			case ATSFile(filename):
+				final baseTile = resourceLoader.loadTile(resolveAsString(filename));
+				final tilesPerRow = Std.int(baseTile.width / tileSize);
+				final tileCount = switch autotileDef.format {
+					case Simple13: 13;
+					case Cross: 13;
+					case Blob47: 47;
+				};
+				[
+					for (i in 0...tileCount)
+						baseTile.sub((i % tilesPerRow) * tileSize, Std.int(i / tilesPerRow) * tileSize, tileSize, tileSize)
+				];
+
+			case ATSTiles(tiles):
+				// Explicit tile list - load each tile source directly
+				[for (ts in tiles) loadTileSource(ts)];
+		};
 	}
 
 	function updateIndexedParamsFromDynamicMap(node: Node, input:Map<String, Dynamic>, definitions:ParametersDefinitions,

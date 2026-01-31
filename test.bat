@@ -1,23 +1,42 @@
 @echo off
 REM Test utility script for hx-multianim
-REM Usage: test.bat [run|gen-refs]
+REM Usage: test.bat [run|gen-refs|report|rr] [-v|-verbose]
 
 setlocal
 set "ROOT=%~dp0"
+set "VERBOSE=0"
 
-if "%1"=="" goto run
-if /i "%1"=="run" goto run
-if /i "%1"=="gen-refs" goto gen_refs
-if /i "%1"=="report" goto report
+REM Check for verbose flag in any position
+for %%a in (%*) do (
+    if /i "%%a"=="-v" set "VERBOSE=1"
+    if /i "%%a"=="-verbose" set "VERBOSE=1"
+)
 
-echo Unknown command: %1
-echo Usage: test.bat [run^|gen-refs^|report]
+REM Get command (first non-flag argument)
+set "CMD="
+for %%a in (%*) do (
+    if not "%%a"=="-v" if not "%%a"=="-verbose" (
+        if not defined CMD set "CMD=%%a"
+    )
+)
+
+if "%CMD%"=="" goto run
+if /i "%CMD%"=="run" goto run
+if /i "%CMD%"=="gen-refs" goto gen_refs
+if /i "%CMD%"=="report" goto report
+if /i "%CMD%"=="rr" goto rr
+
+echo Unknown command: %CMD%
+echo Usage: test.bat [run^|gen-refs^|report^|rr] [-v^|-verbose]
 goto :eof
 
 :run
-echo Running tests...
 pushd "%ROOT%" >nul
-haxe test-hx-multianim.hxml
+if "%VERBOSE%"=="1" (
+    haxe test-hx-multianim-verbose.hxml
+) else (
+    for /f "tokens=*" %%i in ('haxe test-hx-multianim.hxml 2^>^&1 ^| findstr /i "Error FAILURE failures: results: warnings:"') do @echo %%i
+)
 popd >nul
 goto :eof
 
@@ -172,6 +191,36 @@ if exist "%ROOT%test\screenshots\atlasDemo_actual.png" (
     echo   24 - atlasDemo
 )
 
+REM Example 25: autotile demo
+if exist "%ROOT%test\screenshots\autotileDemo_actual.png" (
+    copy /Y "%ROOT%test\screenshots\autotileDemo_actual.png" "%ROOT%test\examples\25-autotileDemo\reference.png" >nul
+    echo   25 - autotileDemo
+)
+
+REM Example 26: autotile cross
+if exist "%ROOT%test\screenshots\autotileCross_actual.png" (
+    copy /Y "%ROOT%test\screenshots\autotileCross_actual.png" "%ROOT%test\examples\26-autotileCross\reference.png" >nul
+    echo   26 - autotileCross
+)
+
+REM Example 27: autotile blob47
+if exist "%ROOT%test\screenshots\autotileBlob47_actual.png" (
+    copy /Y "%ROOT%test\screenshots\autotileBlob47_actual.png" "%ROOT%test\examples\27-autotileBlob47\reference.png" >nul
+    echo   27 - autotileBlob47
+)
+
+REM Example 28: font showcase
+if exist "%ROOT%test\screenshots\fontShowcase_actual.png" (
+    copy /Y "%ROOT%test\screenshots\fontShowcase_actual.png" "%ROOT%test\examples\28-fontShowcase\reference.png" >nul
+    echo   28 - fontShowcase
+)
+
+REM Example 29: scale position demo
+if exist "%ROOT%test\screenshots\scalePositionDemo_actual.png" (
+    copy /Y "%ROOT%test\screenshots\scalePositionDemo_actual.png" "%ROOT%test\examples\29-scalePositionDemo\reference.png" >nul
+    echo   29 - scalePositionDemo
+)
+
 echo.
 echo Reference images updated. Re-run 'test.bat run' to verify tests pass.
 goto :eof
@@ -184,5 +233,27 @@ if not exist "%REPORT%" (
     goto :eof
 )
 echo Opening report: %REPORT%
+start "" "%REPORT%"
+goto :eof
+
+:rr
+set "REPORT=%ROOT%test\screenshots\index.html"
+if exist "%REPORT%" (
+    del "%REPORT%"
+    if "%VERBOSE%"=="1" echo Deleted old report.
+)
+pushd "%ROOT%" >nul
+if "%VERBOSE%"=="1" (
+    cmd /c haxe test-hx-multianim-verbose.hxml
+) else (
+    for /f "tokens=*" %%i in ('cmd /c haxe test-hx-multianim.hxml 2^>^&1 ^| findstr /i "Error FAILURE failures: results: warnings:"') do @echo %%i
+)
+popd >nul
+echo.
+if not exist "%REPORT%" (
+    echo Report not found: %REPORT%
+    goto :eof
+)
+if "%VERBOSE%"=="1" echo Opening report: %REPORT%
 start "" "%REPORT%"
 goto :eof

@@ -13,6 +13,7 @@ import bh.stateanim.AnimParser;
 enum ResolvedGeneratedTileType {
     Cross(width:Int, height:Int, color:Int);
 	SolidColor(width:Int, height:Int, color:Int);
+	SolidColorWithText(width:Int, height:Int, color:Int, text:String, textColor:Int, font:String);
 }
 
 interface ResourceLoader {

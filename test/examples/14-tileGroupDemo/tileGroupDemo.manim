@@ -1,42 +1,41 @@
 version: 0.3
 
 #tileGroupDemo programmable() {
-  pos:5,5
-  grid:250,150
+  pos: 0, 0
+  grid: 1280, 720
 
-  @alpha(0.1) bitmap(generated(color(function(gridWidth), function(gridHeight),black)));
-  @alpha(0.9) text(dd, "#14: tileGroup", white, left, 200);
+  @alpha(0.1) bitmap(generated(color(1280, 720, black)));
   point {
-    pos:1, 1
-    bitmap(generated(color(20, 20, white)), left, top):0,50
-    bitmap(generated(color(20, 20, white)), left, center):40,50
-    bitmap(generated(color(20, 20, white)), left, bottom):80,50
+    pos: 4, 4
+    bitmap(generated(color(80, 80, white)), left, top):0,200
+    bitmap(generated(color(80, 80, white)), left, center):160,200
+    bitmap(generated(color(80, 80, white)), left, bottom):320,200
   }
 
   tileGroup {
-    bitmap(generated(color(20, 20, red)), left, top):0,50
-    bitmap(generated(color(20, 20, red)), left, center):40,50
-    bitmap(generated(color(20, 20, red)), left, bottom):80,50
+    bitmap(generated(color(80, 80, red)), left, top):0,200
+    bitmap(generated(color(80, 80, red)), left, center):160,200
+    bitmap(generated(color(80, 80, red)), left, bottom):320,200
   }
 
   tileGroup {
-    pos:30,30
-    bitmap(generated(color(20, 20, blue)), left, top):0,50
-    bitmap(generated(color(20, 20, blue)), left, center):40,50
-    bitmap(generated(color(20, 20, blue)), left, bottom):80,50
+    pos: 120, 120
+    bitmap(generated(color(80, 80, blue)), left, top):0,200
+    bitmap(generated(color(80, 80, blue)), left, center):160,200
+    bitmap(generated(color(80, 80, blue)), left, bottom):320,200
   }
 
-  bitmap(generated(color(30, 30, white)), left, top):120,120
+  bitmap(generated(color(120, 120, white)), left, top):480,480
   tileGroup {
-    pos:100,100
-    repeatable($index, grid(5, dx:5, dy:1)) {
-      @alpha(1.0 - $index/5.0) scale(0.5) bitmap(generated(color(20, 20, white)), left, bottom):0,0
+    pos: 400, 400
+    repeatable($index, grid(5, dx: 20, dy: 1)) {
+      @alpha(1.0 - $index/5.0) scale(2) bitmap(generated(color(20, 20, white)), left, bottom):0,0
     }
   }
 
   tileGroup {
-    pos:120,120
+    pos: 480, 480
     pixels (
-      rect -1,-1, 31,31, red);
+      rect -4,-4, 124,124, red);
   }
 }

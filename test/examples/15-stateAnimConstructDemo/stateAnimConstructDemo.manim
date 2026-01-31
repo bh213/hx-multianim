@@ -1,18 +1,15 @@
 version: 0.3
 
 #stateAnimConstructDemo programmable() {
-  pos:5,5
-  grid:250,150
+  pos: 0, 0
+  grid: 1280, 720
 
-  @alpha(0.1) bitmap(generated(color(function(gridWidth), function(gridHeight),white)));
-  @alpha(0.9) text(dd, "#15: stateAnim construct", white, left, 230);
+  @alpha(0.1) bitmap(generated(color(1280, 720, white)));
 
-  text(dd, "state1", white, left, 50): 20, 30
-  stateAnim construct("state2",
+  @scale(2) text(dd, "state1", white, left, 200): 80, 120
+  @scale(4) stateAnim construct("state2",
     "state1" => sheet "demo", indexed-tile, 10, loop
     "state2" => sheet "demo", tile-center, 10
-  ): 20, 50
-  rect(#FF69B4, 1, 26, 26): 19, 49
-  
-  
+  ): 200, 300
+  rect(#FF69B4, 4, 104, 104): 196, 296
 }

@@ -1,49 +1,203 @@
 version: 0.3
 
-#conditionalsDemo1 programmable(param1:[top, middle, bottom]) {
-  @(param1=>top) text(pixeled6,  $param1, #FFF, left):0,0
-  @(param1=>middle) text(pixeled6,  $param1, #FFF, left):0,10
-  @(param1=>bottom) text(pixeled6,  $param1, #FFF, left):0,20
-}
-
-#conditionalsDemo2 programmable(param1:[A, B, C]) {
-  @(param1=>A) text(pixeled6,  $param1, #FFF, left):0,0
-  @(param1=>B) text(pixeled6,  $param1, #FFF, left):0,10
-  @(param1=>C) text(pixeled6,  $param1, #FFF, left):0,20
-  @(param1=>!C) text(pixeled6,  "!C", #FFF, left):0,30
-}
-
-#conditionalsDemo3 programmable(param1:[A, B], param2:[X,Y]) {
-  @(param1=>A) text(pixeled6,  $param1+$param2, #FFF, left):0,0
-  @(param1=>B) text(pixeled6,  $param1+$param2, #FFF, left):0,10
-  @(param2=>X) text(pixeled6,  $param1+$param2, #FFF, left):0,20
-  @(param2=>Y) text(pixeled6,  $param1+$param2, #FFF, left):0,30
-  @(param1=>A, param2=>X) text(pixeled6,  $param1+$param2, #FFF, left):0,40
-}
-
-#main point {
+// =============================================================================
+// Demo 1: Basic enum matching with @(param=>value)
+// =============================================================================
+#enumDemo programmable(state:[idle, active, error]) {
   pos: 0, 0
-  // Block 1: conditionalsDemo1
+  @(state=>idle) bitmap(generated(color(60, 30, #666)));
+  @(state=>active) bitmap(generated(color(60, 30, #060)));
+  @(state=>error) bitmap(generated(color(60, 30, #600)));
+  text(m3x6, "STATE", white, center, 60):0,10;
+}
+
+// =============================================================================
+// Demo 2: Negation with @(param=>!value) - matches when NOT equal
+// =============================================================================
+#notDemo programmable(mode:[on, off]) {
+  pos: 0, 0
+  @(mode=>on) bitmap(generated(color(60, 30, #060)));
+  @(mode=>off) bitmap(generated(color(60, 30, #333)));
+  @(mode=>!off) text(m3x6, "ON", #8f8, center, 60):0,8;
+  @(mode=>!on) text(m3x6, "OFF", #888, center, 60):0,8;
+}
+
+// =============================================================================
+// Demo 3: Multiple values with @(param=>[v1,v2])
+// =============================================================================
+#multiDemo programmable(level:[low, medium, high, critical]) {
+  pos: 0, 0
+  @(level=>[low,medium]) bitmap(generated(color(80, 30, #036)));
+  @(level=>[high,critical]) bitmap(generated(color(80, 30, #630)));
+  @(level=>[low,medium]) text(m3x6, "SAFE", #8ff, center, 80):0,8;
+  @(level=>[high,critical]) text(m3x6, "WARN", #ff8, center, 80):0,8;
+}
+
+// =============================================================================
+// Demo 4: Combined conditions @(param1=>val1, param2=>val2)
+// =============================================================================
+#combinedDemo programmable(x:[A, B], y:[X, Y]) {
+  pos: 0, 0
+  @(x=>A, y=>X) bitmap(generated(color(50, 30, #600)));
+  @(x=>A, y=>Y) bitmap(generated(color(50, 30, #060)));
+  @(x=>B, y=>X) bitmap(generated(color(50, 30, #006)));
+  @(x=>B, y=>Y) bitmap(generated(color(50, 30, #660)));
+  text(m3x6, "X/Y", white, center, 50):0,10;
+}
+
+// =============================================================================
+// Demo 5: Range conditions - Temperature example (ice/water/steam)
+// Celsius: ice < 0, water 0-100, steam > 100
+// =============================================================================
+#tempDemo programmable(temp:-50..150) {
+  pos: 0, 0
+  // Ice: temp < 0
+  @(temp=>lessThanOrEqual -1) bitmap(generated(color(70, 40, #48f)));
+  @(temp=>lessThanOrEqual -1) text(m3x6, "ICE", white, center, 70):0,12;
+  // Water: 0 <= temp <= 100
+  @(temp=>between 0..100) bitmap(generated(color(70, 40, #06a)));
+  @(temp=>between 0..100) text(m3x6, "WATER", white, center, 70):0,12;
+  // Steam: temp > 100
+  @(temp=>greaterThanOrEqual 101) bitmap(generated(color(70, 40, #888)));
+  @(temp=>greaterThanOrEqual 101) text(m3x6, "STEAM", white, center, 70):0,12;
+}
+
+// =============================================================================
+// Demo 6: @ifstrict - must match ALL provided parameters
+// If not all params in condition are provided, NO match (shows red X)
+// =============================================================================
+#strictDemo programmable(a:[X, Y], b:[P, Q]) {
+  pos: 0, 0
+  // Default: red background with X (no match)
+  bitmap(generated(color(50, 30, #600)));
+  text(m3x6, "X", #f88, center, 50):0,8;
+  // Only shows when BOTH a AND b match the condition
+  @ifstrict(a=>X, b=>P) bitmap(generated(color(50, 30, #080)));
+  @ifstrict(a=>X, b=>P) text(m3x6, "XP", #8f8, center, 50):0,8;
+  @ifstrict(a=>X, b=>Q) bitmap(generated(color(50, 30, #060)));
+  @ifstrict(a=>X, b=>Q) text(m3x6, "XQ", #8f8, center, 50):0,8;
+  @ifstrict(a=>Y, b=>P) bitmap(generated(color(50, 30, #060)));
+  @ifstrict(a=>Y, b=>P) text(m3x6, "YP", #8f8, center, 50):0,8;
+  @ifstrict(a=>Y, b=>Q) bitmap(generated(color(50, 30, #060)));
+  @ifstrict(a=>Y, b=>Q) text(m3x6, "YQ", #8f8, center, 50):0,8;
+}
+
+// =============================================================================
+// Main: Display all demos with descriptions
+// =============================================================================
+#main programmable() {
+  pos: 0, 0
+  grid: 1280, 720
+
+  @alpha(0.3) bitmap(generated(color(1280, 720, #222)));
+
+  // Title
+  @scale(2) text(m3x6, "Conditionals Demo", white, left, 400):40,20;
+
+  // --- Row 1: Enum matching ---
   point {
-    pos: 20, 20
-    reference($conditionalsDemo1, param1=>top): 0,0
-    reference($conditionalsDemo1, param1=>middle): 0,20
-    reference($conditionalsDemo1, param1=>bottom): 0,40
+    pos: 40, 60
+    text(m3x6, "@(param=>value) - exact match", #888, left, 300):0,0;
+    reference($enumDemo, state=>idle):0,12;
+    reference($enumDemo, state=>active):70,12;
+    reference($enumDemo, state=>error):140,12;
   }
 
-  // Block 2: conditionalsDemo2
+  // --- Row 2: Negation ---
   point {
-    pos: 80, 20
-    reference($conditionalsDemo2, param1=>A): 10,0
-    reference($conditionalsDemo2, param1=>B): 20,0
-    reference($conditionalsDemo2, param1=>C): 30,0
+    pos: 40, 120
+    text(m3x6, "@(param=>!value) - not equal", #888, left, 300):0,0;
+    reference($notDemo, mode=>on):0,12;
+    reference($notDemo, mode=>off):70,12;
   }
 
-  // Block 3: conditionalsDemo3
+  // --- Row 3: Multiple values ---
   point {
-    pos: 140, 20
-    reference($conditionalsDemo3, param1=>A, param2=>X): 10,0
-    reference($conditionalsDemo3, param1=>B, param2=>X): 40,0
-    reference($conditionalsDemo3, param1=>A, param2=>Y): 70,0
+    pos: 40, 180
+    text(m3x6, "@(param=>[v1,v2]) - match any", #888, left, 300):0,0;
+    reference($multiDemo, level=>low):0,12;
+    reference($multiDemo, level=>medium):90,12;
+    reference($multiDemo, level=>high):180,12;
+    reference($multiDemo, level=>critical):270,12;
   }
+
+  // --- Row 4: Combined ---
+  point {
+    pos: 40, 240
+    text(m3x6, "@(p1=>v1, p2=>v2) - AND logic", #888, left, 300):0,0;
+    reference($combinedDemo, x=>A, y=>X):0,12;
+    reference($combinedDemo, x=>A, y=>Y):60,12;
+    reference($combinedDemo, x=>B, y=>X):120,12;
+    reference($combinedDemo, x=>B, y=>Y):180,12;
+  }
+
+  // --- Row 5: Range conditions (temperature) ---
+  point {
+    pos: 40, 300
+    text(m3x6, "Range: lessThan/greaterThan/between", #888, left, 350):0,0;
+    reference($tempDemo, temp=>-20):0,12;
+    reference($tempDemo, temp=>50):80,12;
+    reference($tempDemo, temp=>120):160,12;
+  }
+
+  // --- Row 6: @ifstrict ---
+  point {
+    pos: 40, 360
+    text(m3x6, "@ifstrict - must match ALL (red X = no match)", #888, left, 400):0,0;
+    // Full matches - green
+    reference($strictDemo, a=>X, b=>P):0,12;
+    reference($strictDemo, a=>X, b=>Q):60,12;
+    reference($strictDemo, a=>Y, b=>P):120,12;
+    reference($strictDemo, a=>Y, b=>Q):180,12;
+    // Partial params - no match, shows red X
+    reference($strictDemo, a=>X):250,12;
+    reference($strictDemo, b=>P):310,12;
+  }
+
+  // --- Right side: Syntax reference ---
+  point {
+    pos: 520, 60
+    bitmap(generated(color(360, 380, #1a1a1a)));
+    @scale(2) text(m3x6, "Syntax Reference", #ff8, left, 340):10,10;
+
+    // Basic conditionals
+    text(m3x6, "@(param=>value)", #8ff, left, 340):10,35;
+    text(m3x6, "  Match exact enum value", #666, left, 340):10,45;
+
+    text(m3x6, "@(param=>!value)", #8ff, left, 340):10,60;
+    text(m3x6, "  Match when NOT equal", #666, left, 340):10,70;
+
+    text(m3x6, "@(param=>[a,b,c])", #8ff, left, 340):10,85;
+    text(m3x6, "  Match any value in list", #666, left, 340):10,95;
+
+    text(m3x6, "@(p1=>v1, p2=>v2)", #8ff, left, 340):10,110;
+    text(m3x6, "  Match if ANY condition true", #666, left, 340):10,120;
+
+    text(m3x6, "@ifstrict(p1=>v1, p2=>v2)", #8ff, left, 340):10,135;
+    text(m3x6, "  Match only if ALL true", #666, left, 340):10,145;
+
+    // Range conditionals
+    @scale(2) text(m3x6, "Range Conditions", #ff8, left, 340):10,170;
+
+    text(m3x6, "@(key=>greaterThanOrEqual 30)", #8ff, left, 340):10,195;
+    text(m3x6, "  Match when key >= 30", #666, left, 340):10,205;
+
+    text(m3x6, "@(key=>lessThanOrEqual 30)", #8ff, left, 340):10,220;
+    text(m3x6, "  Match when key <= 30", #666, left, 340):10,230;
+
+    text(m3x6, "@(key=>between 10..30)", #8ff, left, 340):10,245;
+    text(m3x6, "  Match when 10 <= key <= 30", #666, left, 340):10,255;
+
+    // Parameter types
+    @scale(2) text(m3x6, "Parameter Types", #ff8, left, 340):10,280;
+
+    text(m3x6, "param:[a,b,c]", #8ff, left, 340):10,305;
+    text(m3x6, "  Enum with fixed values", #666, left, 340):10,315;
+
+    text(m3x6, "param:-50..150", #8ff, left, 340):10,330;
+    text(m3x6, "  Range of integers", #666, left, 340):10,340;
+  }
+
+  // Footer
+  text(m3x6, "Conditionals control which elements render based on parameter values", #555, left, 600):40,450;
 }

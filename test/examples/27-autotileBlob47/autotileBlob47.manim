@@ -1,0 +1,147 @@
+version: 0.3
+
+// =============================================================================
+// AUTOTILE BLOB47 FORMAT TEST - Tests buildAutotile() with blob47 format
+// =============================================================================
+// Blob47 uses 47 unique tiles for full 8-direction neighbor combinations.
+// This test only shows the first 13 tiles visually but tests all 47.
+// Full 1280x720 layout
+// =============================================================================
+
+#blob47Test autotile {
+    format: blob47
+    tileSize: 16
+    tiles:
+        // 47 tiles for all edge/corner combinations
+        // Row 1: tiles 0-9
+        generated(colorWithText(16, 16, 0x444444, "0", white, dd))     // 0: isolated
+        generated(colorWithText(16, 16, 0xFF4444, "1", white, dd))     // 1: N only
+        generated(colorWithText(16, 16, 0xFF5555, "2", white, dd))     // 2: E only
+        generated(colorWithText(16, 16, 0xFF6666, "3", white, dd))     // 3: N+E
+        generated(colorWithText(16, 16, 0xFF7777, "4", white, dd))     // 4: N+NE+E
+        generated(colorWithText(16, 16, 0xFF8888, "5", white, dd))     // 5: S only
+        generated(colorWithText(16, 16, 0xFF9999, "6", white, dd))     // 6: N+S
+        generated(colorWithText(16, 16, 0xFFAAAA, "7", black, dd))     // 7: E+S
+        generated(colorWithText(16, 16, 0xFFBBBB, "8", black, dd))     // 8: N+E+S
+        generated(colorWithText(16, 16, 0xFFCCCC, "9", black, dd))     // 9: N+NE+E+S
+        // Row 2: tiles 10-19
+        generated(colorWithText(16, 16, 0xFFDDDD, "10", black, dd))    // 10: E+SE+S
+        generated(colorWithText(16, 16, 0xFFEEEE, "11", black, dd))    // 11: N+E+SE+S
+        generated(colorWithText(16, 16, 0xFFFFFF, "12", black, dd))    // 12: N+NE+E+SE+S
+        generated(colorWithText(16, 16, 0x4444FF, "13", white, dd))    // 13: W only
+        generated(colorWithText(16, 16, 0x5555FF, "14", white, dd))    // 14: N+W
+        generated(colorWithText(16, 16, 0x6666FF, "15", white, dd))    // 15: E+W
+        generated(colorWithText(16, 16, 0x7777FF, "16", white, dd))    // 16: N+E+W
+        generated(colorWithText(16, 16, 0x8888FF, "17", white, dd))    // 17: N+NE+E+W
+        generated(colorWithText(16, 16, 0x9999FF, "18", white, dd))    // 18: S+W
+        generated(colorWithText(16, 16, 0xAAAAFF, "19", white, dd))    // 19: N+S+W
+        // Row 3: tiles 20-29
+        generated(colorWithText(16, 16, 0xBBBBFF, "20", black, dd))    // 20: E+S+W
+        generated(colorWithText(16, 16, 0x44FF44, "21", black, dd))    // 21: N+E+S+W (center) - GREEN
+        generated(colorWithText(16, 16, 0xDDDDFF, "22", black, dd))    // 22: N+NE+E+S+W
+        generated(colorWithText(16, 16, 0xEEEEFF, "23", black, dd))    // 23: E+SE+S+W
+        generated(colorWithText(16, 16, 0x44FFAA, "24", black, dd))    // 24: N+E+SE+S+W
+        generated(colorWithText(16, 16, 0x44FFCC, "25", black, dd))    // 25: N+NE+E+SE+S+W
+        generated(colorWithText(16, 16, 0xFFFF44, "26", black, dd))    // 26: S+SW+W
+        generated(colorWithText(16, 16, 0xFFFF66, "27", black, dd))    // 27: N+S+SW+W
+        generated(colorWithText(16, 16, 0xFFFF88, "28", black, dd))    // 28: E+S+SW+W
+        generated(colorWithText(16, 16, 0xFFFFAA, "29", black, dd))    // 29: N+E+S+SW+W
+        // Row 4: tiles 30-39
+        generated(colorWithText(16, 16, 0xFFFFCC, "30", black, dd))    // 30: N+NE+E+S+SW+W
+        generated(colorWithText(16, 16, 0xFFFFEE, "31", black, dd))    // 31: E+SE+S+SW+W
+        generated(colorWithText(16, 16, 0xAAFFAA, "32", black, dd))    // 32: N+E+SE+S+SW+W
+        generated(colorWithText(16, 16, 0xBBFFBB, "33", black, dd))    // 33: N+NE+E+SE+S+SW+W
+        generated(colorWithText(16, 16, 0xFF44FF, "34", white, dd))    // 34: N+W+NW
+        generated(colorWithText(16, 16, 0xFF66FF, "35", white, dd))    // 35: N+E+W+NW
+        generated(colorWithText(16, 16, 0xFF88FF, "36", white, dd))    // 36: N+NE+E+W+NW
+        generated(colorWithText(16, 16, 0xFFAAFF, "37", black, dd))    // 37: N+S+W+NW
+        generated(colorWithText(16, 16, 0xFFCCFF, "38", black, dd))    // 38: N+E+S+W+NW
+        generated(colorWithText(16, 16, 0xFFEEFF, "39", black, dd))    // 39: N+NE+E+S+W+NW
+        // Row 5: tiles 40-46
+        generated(colorWithText(16, 16, 0xCCFFCC, "40", black, dd))    // 40: N+E+SE+S+W+NW
+        generated(colorWithText(16, 16, 0xDDFFDD, "41", black, dd))    // 41: N+NE+E+SE+S+W+NW
+        generated(colorWithText(16, 16, 0x44FFFF, "42", black, dd))    // 42: N+S+SW+W+NW
+        generated(colorWithText(16, 16, 0x66FFFF, "43", black, dd))    // 43: N+E+S+SW+W+NW
+        generated(colorWithText(16, 16, 0x88FFFF, "44", black, dd))    // 44: N+NE+E+S+SW+W+NW
+        generated(colorWithText(16, 16, 0xAAFFFF, "45", black, dd))    // 45: N+E+SE+S+SW+W+NW
+        generated(colorWithText(16, 16, 0x00FF00, "46", black, dd))    // 46: all neighbors - bright green
+}
+
+// Visual demo element - shows subset of tiles
+#autotileBlob47 programmable() {
+    pos: 0, 0
+    grid: 1280, 720
+
+    @alpha(0.1) bitmap(generated(color(1280, 720, black)));
+
+    // Show key tiles
+    text(dd, "Tile Catalog (blob47 - 47 tiles total):", 0xAAAAFF, left, 400):20,60
+
+    text(dd, "Key tiles:", 0x888888, left, 100):20,100
+    text(dd, "0=isolated  21=center  46=all neighbors", 0xCCCCCC, left, 400):120,100
+    point {
+        pos: 120, 130
+        bitmap(generated(colorWithText(16, 16, 0x444444, "0", white, dd))):0,0     // isolated
+        bitmap(generated(colorWithText(16, 16, 0x44FF44, "21", black, dd))):30,0   // center
+        bitmap(generated(colorWithText(16, 16, 0x00FF00, "46", black, dd))):60,0   // all neighbors
+    }
+
+    // First 10 tiles
+    text(dd, "Tiles 0-9 (basic edges):", 0x888888, left, 200):20,200
+    point {
+        pos: 20, 230
+        bitmap(generated(colorWithText(16, 16, 0x444444, "0", white, dd))):0,0
+        bitmap(generated(colorWithText(16, 16, 0xFF4444, "1", white, dd))):20,0
+        bitmap(generated(colorWithText(16, 16, 0xFF5555, "2", white, dd))):40,0
+        bitmap(generated(colorWithText(16, 16, 0xFF6666, "3", white, dd))):60,0
+        bitmap(generated(colorWithText(16, 16, 0xFF7777, "4", white, dd))):80,0
+        bitmap(generated(colorWithText(16, 16, 0xFF8888, "5", white, dd))):100,0
+        bitmap(generated(colorWithText(16, 16, 0xFF9999, "6", white, dd))):120,0
+        bitmap(generated(colorWithText(16, 16, 0xFFAAAA, "7", black, dd))):140,0
+        bitmap(generated(colorWithText(16, 16, 0xFFBBBB, "8", black, dd))):160,0
+        bitmap(generated(colorWithText(16, 16, 0xFFCCCC, "9", black, dd))):180,0
+    }
+
+    // Tiles 10-19
+    text(dd, "Tiles 10-19:", 0x888888, left, 100):20,280
+    point {
+        pos: 120, 280
+        bitmap(generated(colorWithText(16, 16, 0xFFDDDD, "10", black, dd))):0,0
+        bitmap(generated(colorWithText(16, 16, 0xFFEEEE, "11", black, dd))):20,0
+        bitmap(generated(colorWithText(16, 16, 0xFFFFFF, "12", black, dd))):40,0
+        bitmap(generated(colorWithText(16, 16, 0x4444FF, "13", white, dd))):60,0
+        bitmap(generated(colorWithText(16, 16, 0x5555FF, "14", white, dd))):80,0
+        bitmap(generated(colorWithText(16, 16, 0x6666FF, "15", white, dd))):100,0
+        bitmap(generated(colorWithText(16, 16, 0x7777FF, "16", white, dd))):120,0
+        bitmap(generated(colorWithText(16, 16, 0x8888FF, "17", white, dd))):140,0
+        bitmap(generated(colorWithText(16, 16, 0x9999FF, "18", white, dd))):160,0
+        bitmap(generated(colorWithText(16, 16, 0xAAAAFF, "19", white, dd))):180,0
+    }
+
+    // Tiles 20-29
+    text(dd, "Tiles 20-29:", 0x888888, left, 100):20,330
+    point {
+        pos: 120, 330
+        bitmap(generated(colorWithText(16, 16, 0xBBBBFF, "20", black, dd))):0,0
+        bitmap(generated(colorWithText(16, 16, 0x44FF44, "21", black, dd))):20,0
+        bitmap(generated(colorWithText(16, 16, 0xDDDDFF, "22", black, dd))):40,0
+        bitmap(generated(colorWithText(16, 16, 0xEEEEFF, "23", black, dd))):60,0
+        bitmap(generated(colorWithText(16, 16, 0x44FFAA, "24", black, dd))):80,0
+        bitmap(generated(colorWithText(16, 16, 0x44FFCC, "25", black, dd))):100,0
+        bitmap(generated(colorWithText(16, 16, 0xFFFF44, "26", black, dd))):120,0
+        bitmap(generated(colorWithText(16, 16, 0xFFFF66, "27", black, dd))):140,0
+        bitmap(generated(colorWithText(16, 16, 0xFFFF88, "28", black, dd))):160,0
+        bitmap(generated(colorWithText(16, 16, 0xFFFFAA, "29", black, dd))):180,0
+    }
+
+    // Legend
+    text(dd, "Legend:", 0xAAAAFF, left, 100):20,420
+    text(dd, "Gray = isolated tile (no neighbors)", 0x888888, left, 400):100,420
+    text(dd, "Red gradient = increasing cardinal neighbors", 0xFF8888, left, 400):100,440
+    text(dd, "Blue gradient = west-side combinations", 0x8888FF, left, 400):100,460
+    text(dd, "Green = center/all neighbors", 0x44FF44, left, 400):100,480
+
+    text(dd, "buildAutotile() terrain rendered at right >>>", 0xFFFF88, left, 400):20,540
+
+    text(dd, "The autotile terrain is built from code using builder.buildAutotile()", 0x888888, left, 600):20,620
+}

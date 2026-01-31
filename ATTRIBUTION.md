@@ -35,6 +35,13 @@ by Daniel Linssen
 *Note: Add any fonts, images, sounds, or other assets used in your project here*
 
 
+### 3x5 font
+https://alasseearfalas.itch.io/another-tiny-pixel-font-mono-3x5
+The license on this is CC0, so take it and do whatever you want with it. :)
+
+### peaberry-pixel-font
+https://emhuo.itch.io/peaberry-pixel-font
+
 ### Some particle textures
 https://jellyfish0.itch.io/
 

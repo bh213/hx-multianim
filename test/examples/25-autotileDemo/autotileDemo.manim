@@ -1,0 +1,113 @@
+version: 0.3
+
+// =============================================================================
+// AUTOTILE DEMO - Tests buildAutotile() functionality with labeled tiles
+// =============================================================================
+// This file defines autotiles that are used from code via buildAutotile().
+// Each tile has a text label showing its index for easy debugging/remapping.
+// Full 1280x720 layout
+// =============================================================================
+
+// Simple13 format autotile with labeled generated tiles
+// Each tile shows its index number so you can verify correct tile selection
+#simple13Test autotile {
+    format: simple13
+    tileSize: 16
+    tiles:
+        // Row 0: NW(0), N(1), NE(2) - edges with no top neighbor
+        generated(colorWithText(16, 16, 0xFF4444, "0", white, "m3x6"))     // 0: NW corner - red
+        generated(colorWithText(16, 16, 0xFF6666, "1", white, "m3x6"))     // 1: N edge - red-orange
+        generated(colorWithText(16, 16, 0xFF8888, "2", white, "m3x6"))     // 2: NE corner - light red
+        // Row 1: W(3), C(4), E(5) - middle row
+        generated(colorWithText(16, 16, 0xFFAAAA, "3", black, "m3x6"))     // 3: W edge - pink
+        generated(colorWithText(16, 16, 0x44FF44, "4", black, "m3x6"))     // 4: Center - bright green
+        generated(colorWithText(16, 16, 0xFFCCCC, "5", black, "m3x6"))     // 5: E edge - light pink
+        // Row 2: SW(6), S(7), SE(8) - edges with no bottom neighbor
+        generated(colorWithText(16, 16, 0xFFDDDD, "6", black, "m3x6"))     // 6: SW corner - very light pink
+        generated(colorWithText(16, 16, 0xFFEEEE, "7", black, "m3x6"))     // 7: S edge - almost white
+        generated(colorWithText(16, 16, 0xFFFFFF, "8", black, "m3x6"))     // 8: SE corner - white
+        // Inner corners (9-12): for diagonal gaps in otherwise surrounded tiles
+        generated(colorWithText(16, 16, 0x44AAFF, "9", white, "m3x6"))     // 9: inner NE - blue
+        generated(colorWithText(16, 16, 0x4488FF, "10", white, "m3x6"))    // 10: inner NW - darker blue
+        generated(colorWithText(16, 16, 0x4466FF, "11", white, "m3x6"))    // 11: inner SE - even darker blue
+        generated(colorWithText(16, 16, 0x4444FF, "12", white, "m3x6"))    // 12: inner SW - dark blue
+}
+
+// A second autotile for testing - different color scheme with labels
+#simple13Test2 autotile {
+    format: simple13
+    tileSize: 16
+    tiles:
+        // Orange gradient for outer tiles
+        generated(colorWithText(16, 16, 0xFF8800, "0", white, "m3x6"))     // 0: NW
+        generated(colorWithText(16, 16, 0xFF9900, "1", white, "m3x6"))     // 1: N
+        generated(colorWithText(16, 16, 0xFFAA00, "2", white, "m3x6"))     // 2: NE
+        generated(colorWithText(16, 16, 0xFFBB00, "3", black, "m3x6"))     // 3: W
+        generated(colorWithText(16, 16, 0x00FF00, "4", black, "m3x6"))     // 4: C - green center
+        generated(colorWithText(16, 16, 0xFFDD00, "5", black, "m3x6"))     // 5: E
+        generated(colorWithText(16, 16, 0xFFEE00, "6", black, "m3x6"))     // 6: SW
+        generated(colorWithText(16, 16, 0xFFFF00, "7", black, "m3x6"))     // 7: S
+        generated(colorWithText(16, 16, 0xFFFF44, "8", black, "m3x6"))     // 8: SE
+        // Purple inner corners
+        generated(colorWithText(16, 16, 0xAA44FF, "9", white, "m3x6"))     // 9: inner NE
+        generated(colorWithText(16, 16, 0x8844FF, "10", white, "m3x6"))    // 10: inner NW
+        generated(colorWithText(16, 16, 0x6644FF, "11", white, "m3x6"))    // 11: inner SE
+        generated(colorWithText(16, 16, 0x4444FF, "12", white, "m3x6"))    // 12: inner SW
+}
+
+// =============================================================================
+// Visual demo element - shows tile catalog and explains the format
+// =============================================================================
+#autotileDemo programmable() {
+    pos: 0, 0
+    grid: 1280, 720
+
+    // Background
+    @alpha(0.1) bitmap(generated(color(1280, 720, black)));
+
+    // Tile Catalog - 3x3 outer tiles (indices 0-8)
+    text(dd, "Tile Catalog (simple13):", 0xAAAAFF, left, 300):20,60
+
+    // Outer tiles label
+    text(dd, "Outer (0-8):", 0x888888, left, 100):20,100
+
+    point {
+        pos: 140, 100
+        // Row 0: NW, N, NE (with text labels in tiles)
+        bitmap(generated(colorWithText(16, 16, 0xFF4444, "0", white, "m3x6"))):0,0
+        bitmap(generated(colorWithText(16, 16, 0xFF6666, "1", white, "m3x6"))):20,0
+        bitmap(generated(colorWithText(16, 16, 0xFF8888, "2", white, "m3x6"))):40,0
+        // Row 1: W, C, E
+        bitmap(generated(colorWithText(16, 16, 0xFFAAAA, "3", black, "m3x6"))):0,20
+        bitmap(generated(colorWithText(16, 16, 0x44FF44, "4", black, "m3x6"))):20,20
+        bitmap(generated(colorWithText(16, 16, 0xFFCCCC, "5", black, "m3x6"))):40,20
+        // Row 2: SW, S, SE
+        bitmap(generated(colorWithText(16, 16, 0xFFDDDD, "6", black, "m3x6"))):0,40
+        bitmap(generated(colorWithText(16, 16, 0xFFEEEE, "7", black, "m3x6"))):20,40
+        bitmap(generated(colorWithText(16, 16, 0xFFFFFF, "8", black, "m3x6"))):40,40
+    }
+
+    // Inner corners (indices 9-12)
+    text(dd, "Inner (9-12):", 0x888888, left, 100):20,200
+
+    point {
+        pos: 140, 200
+        bitmap(generated(colorWithText(16, 16, 0x44AAFF, "9", white, "m3x6"))):0,0
+        bitmap(generated(colorWithText(16, 16, 0x4488FF, "10", white, "m3x6"))):20,0
+        bitmap(generated(colorWithText(16, 16, 0x4466FF, "11", white, "m3x6"))):40,0
+        bitmap(generated(colorWithText(16, 16, 0x4444FF, "12", white, "m3x6"))):60,0
+    }
+
+    // Legend explaining neighbor pattern
+    text(dd, "Legend:", 0xAAAAFF, left, 100):20,280
+    text(dd, "Red/Pink = edge tiles (missing neighbor on one side)", 0xFF8888, left, 500):100,280
+    text(dd, "Green = center tile (all 4 cardinal neighbors present)", 0x44FF44, left, 500):100,300
+    text(dd, "Blue = inner corner tiles (diagonal gap in surrounded area)", 0x4488FF, left, 500):100,320
+
+    // Note about buildAutotile test - the terrain is placed by code
+    text(dd, "buildAutotile() terrain rendered at right >>>", 0xFFFF88, left, 400):20,400
+
+    // Instructions
+    text(dd, "The autotile terrain is built from code using builder.buildAutotile()", 0x888888, left, 600):20,500
+    text(dd, "Grid pattern: 5x4 rectangle with cut corners", 0x888888, left, 400):20,520
+}
