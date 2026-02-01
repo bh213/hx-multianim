@@ -61,7 +61,7 @@ version: 0.3
         sheet("terrain", "grass_inner_se") sheet("terrain", "grass_inner_sw")
 }
 
-// Generated tiles: For testing/prototyping without assets
+// Generated tiles: For testing/prototyping without assets (manual method)
 #generatedDemo autotile {
     format: simple13
     tileSize: 16
@@ -79,6 +79,33 @@ version: 0.3
         generated(color(16, 16, 0x77DD77))   // 10: inner NW
         generated(color(16, 16, 0x88EE88))   // 11: inner SE
         generated(color(16, 16, 0x99FF99))   // 12: inner SW
+}
+
+// ============================================================================
+// DEMO TILES: Auto-generated tiles with edge visualization
+// ============================================================================
+// The demo: syntax automatically generates tiles that show edge/fill visualization.
+// Great for testing autotile logic without actual assets.
+
+// Simple13 demo - generates 13 tiles with edge borders
+#demoSimple13 autotile {
+    format: simple13
+    tileSize: 16
+    demo: 0xFF4444, 0x44FF44    // edge color (red), fill color (green)
+}
+
+// Cross demo - generates 13 tiles for isometric elevation
+#demoCross autotile {
+    format: cross
+    tileSize: 16
+    demo: 0x4444FF, 0xFFFF44    // edge color (blue), fill color (yellow)
+}
+
+// Blob47 demo - generates all 47 tiles for full autotiling
+#demoBlob47 autotile {
+    format: blob47
+    tileSize: 16
+    demo: 0xFF8800, 0x0088FF    // edge color (orange), fill color (blue)
 }
 
 // ============================================================================
