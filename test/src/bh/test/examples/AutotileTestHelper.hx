@@ -102,6 +102,51 @@ class AutotileTestHelper {
 	}
 
 	/**
+	 * Build combined test with multiple autotiles: programmable element + multiple autotile terrains.
+	 * Useful for comparing labeled tiles with demo mode tiles side by side.
+	 */
+	public function buildCombinedAutotileTestMultiple(animFilePath:String, elementName:String,
+			autotiles:Array<{name:String, grid:Array<Array<Int>>, x:Float, y:Float}>,
+			async:utest.Async, ?sizeX:Int, ?sizeY:Int, ?threshold:Float, ?scale:Float):Void {
+		testBase.clearScene();
+
+		if (scale == null) scale = 4.0;
+
+		// Build the visual demo element
+		var result = testBase.buildAndAddToScene(animFilePath, elementName, scale);
+		Assert.notNull(result, 'Failed to build element "$elementName" from $animFilePath');
+
+		// Build all autotile terrains
+		var allBuilt = true;
+		for (autotile in autotiles) {
+			var tileGroup = buildAutotileAndAddToScene(animFilePath, autotile.name, autotile.grid, autotile.x, autotile.y, scale);
+			if (tileGroup == null) {
+				Assert.notNull(tileGroup, 'Failed to build autotile "${autotile.name}" from $animFilePath');
+				allBuilt = false;
+			}
+		}
+
+		if (result != null && allBuilt) {
+			testBase.waitForUpdate(function(dt:Float) {
+				var actualPath = testBase.getActualImagePath();
+				var referencePath = testBase.getReferenceImagePath();
+
+				var success = testBase.screenshot(actualPath, sizeX, sizeY);
+				Assert.isTrue(success, 'Screenshot should be created at $actualPath');
+
+				if (success) {
+					var match = testBase.compareImages(actualPath, referencePath, threshold);
+					Assert.isTrue(match, 'Screenshot should match reference image');
+				}
+
+				async.done();
+			});
+		} else {
+			async.done();
+		}
+	}
+
+	/**
 	 * Build autotile-only test (no programmable element).
 	 * Just renders the autotile terrain and compares with reference.
 	 */
@@ -199,5 +244,83 @@ class AutotileTestHelper {
 		[1, 1, 0, 0, 1, 1],
 		[1, 1, 1, 1, 1, 1],
 		[0, 1, 1, 1, 1, 0]
+	];
+
+	/**
+	 * Island terrain (grass) - small island shape
+	 * Grid pattern (7x5):
+	 *   0 0 1 1 1 0 0
+	 *   0 1 1 1 1 1 0
+	 *   1 1 1 1 1 1 1
+	 *   0 1 1 1 1 1 0
+	 *   0 0 1 1 1 0 0
+	 */
+	public static var ISLAND_GRID = [
+		[0, 0, 1, 1, 1, 0, 0],
+		[0, 1, 1, 1, 1, 1, 0],
+		[1, 1, 1, 1, 1, 1, 1],
+		[0, 1, 1, 1, 1, 1, 0],
+		[0, 0, 1, 1, 1, 0, 0]
+	];
+
+	/**
+	 * Sea terrain (water) - surrounds the island
+	 * Grid pattern (7x5) - inverted island with border
+	 *   1 1 1 1 1 1 1
+	 *   1 1 0 0 0 1 1
+	 *   1 0 0 0 0 0 1
+	 *   1 1 0 0 0 1 1
+	 *   1 1 1 1 1 1 1
+	 */
+	public static var SEA_GRID = [
+		[1, 1, 1, 1, 1, 1, 1],
+		[1, 1, 0, 0, 0, 1, 1],
+		[1, 0, 0, 0, 0, 0, 1],
+		[1, 1, 0, 0, 0, 1, 1],
+		[1, 1, 1, 1, 1, 1, 1]
+	];
+
+	/**
+	 * Large complex terrain for blob47 testing (12x10)
+	 * Tests all tile types including inner corners with holes and peninsulas
+	 * Grid pattern:
+	 *   0 0 1 1 1 1 1 1 1 1 0 0
+	 *   0 1 1 1 1 1 1 1 1 1 1 0
+	 *   1 1 1 1 0 0 1 1 1 1 1 1
+	 *   1 1 1 0 0 0 0 1 1 1 1 1
+	 *   1 1 1 0 0 0 0 1 1 0 1 1
+	 *   1 1 1 1 0 0 1 1 0 0 0 1
+	 *   1 1 1 1 1 1 1 1 0 0 0 1
+	 *   0 1 1 1 1 1 1 1 1 0 1 1
+	 *   0 0 1 1 1 1 1 1 1 1 1 0
+	 *   0 0 0 1 1 1 1 1 1 0 0 0
+	 */
+	public static var LARGE_BLOB47_GRID = [
+		[0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0],
+		[0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
+		[1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1],
+		[1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1],
+		[1, 1, 1, 0, 0, 0, 0, 1, 1, 0, 1, 1],
+		[1, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0, 1],
+		[1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1],
+		[0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1],
+		[0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
+		[0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0]
+	];
+
+	/**
+	 * Large sea terrain for blob47 - surrounds the large island (12x10)
+	 */
+	public static var LARGE_SEA_GRID = [
+		[1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1],
+		[1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+		[0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0],
+		[0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0],
+		[0, 0, 0, 1, 1, 1, 1, 0, 0, 1, 0, 0],
+		[0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1, 0],
+		[0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0],
+		[1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0],
+		[1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+		[1, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 1]
 	];
 }

@@ -189,6 +189,7 @@ enum MPKeywords {
 	MPSimple13;
 	MPCross;
 	MPBlob47;
+	MPDemo;
 }
 
 enum PlaceholderTypes {
@@ -786,10 +787,17 @@ enum RepeatType {
 	TilesIterator(bitmapVarName:String, tilenameVarName:Null<String>, sheetName:String, tileFilter:Null<String>);
 }
 
+// Selector for which tile to get from an autotile
+enum AutotileTileSelector {
+	ByIndex(index:ReferenceableValue);     // Select by tile index (0-46 for blob47)
+	ByEdges(edges:Int);                    // Select by edge bitmask (N|E|S|W|NE|SE|SW|NW)
+}
+
 enum GeneratedTileType {
 	Cross(width:ReferenceableValue, height:ReferenceableValue, color:ReferenceableValue);
 	SolidColor(width:ReferenceableValue, height:ReferenceableValue, color:ReferenceableValue);
 	SolidColorWithText(width:ReferenceableValue, height:ReferenceableValue, color:ReferenceableValue, text:ReferenceableValue, textColor:ReferenceableValue, font:ReferenceableValue);
+	AutotileRef(autotileName:ReferenceableValue, selector:AutotileTileSelector);
 }
 
 enum TileSource {
@@ -819,6 +827,7 @@ enum AutotileSource {
 	ATSAtlasRegion(sheet:ReferenceableValue, region:Array<ReferenceableValue>);
 	ATSFile(filename:ReferenceableValue);
 	ATSTiles(tiles:Array<TileSource>);  // explicit tile list for full control
+	ATSDemo(edgeColor:ReferenceableValue, fillColor:ReferenceableValue);  // auto-generated demo tiles
 }
 
 @:nullSafety
@@ -1257,12 +1266,65 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 		while (true) {
 			eatComma();
 			if (peek(0) == endSymbol) {
-				junk(); 
+				junk();
 				break;
 			}
 			colors.push(parseColorOrReference());
 		}
 		return colors;
+	}
+
+	/**
+	 * Parse autotile tile selector: either an index (number) or edge flags (N+E+S+W+NE+SE+SW+NW)
+	 * Edge flags use + to combine (e.g., N+E+S for a tile with north, east, south neighbors).
+	 */
+	function parseAutotileTileSelector():AutotileTileSelector {
+		// Try to parse as edge flags first (identifiers like N, E, S, W, etc.)
+		return switch peek(0) {
+			case MPIdentifier(id, _, ITString) if (isEdgeFlag(id)):
+				// Parse edge flags combined with +
+				var edges = 0;
+				while (true) {
+					switch stream {
+						case [MPIdentifier(flagId, _, ITString)]:
+							final flag = parseEdgeFlag(flagId);
+							if (flag == null) unexpectedError('unknown edge flag: $flagId');
+							edges |= flag;
+						case _: unexpectedError('expected edge flag (N, E, S, W, NE, SE, SW, NW)');
+					}
+					// Check for + (combine flags)
+					switch peek(0) {
+						case MPPlus: junk(); // consume +
+						case _: break;
+					}
+				}
+				ByEdges(edges);
+			case _:
+				// Parse as index
+				ByIndex(parseIntegerOrReference());
+		};
+	}
+
+	function isEdgeFlag(id:String):Bool {
+		return switch id.toUpperCase() {
+			case "N" | "NE" | "E" | "SE" | "S" | "SW" | "W" | "NW": true;
+			case _: false;
+		};
+	}
+
+	function parseEdgeFlag(id:String):Null<Int> {
+		// Using same bit values as bh.base.Autotile
+		return switch id.toUpperCase() {
+			case "N": 1;
+			case "NE": 2;
+			case "E": 4;
+			case "SE": 8;
+			case "S": 16;
+			case "SW": 32;
+			case "W": 64;
+			case "NW": 128;
+			case _: null;
+		};
 	}
 
 	static function tryStringToColor(s:String):Null<Int> {
@@ -2630,7 +2692,15 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 					// colorWithText(width, height, bgColor, "text", textColor, font) - solid color with centered text
 					case [MPIdentifier("colorWithText", _ , ITString), MPOpen, width = parseIntegerOrReference(), MPComma, height = parseIntegerOrReference(), MPComma, color = parseColorOrReference(), MPComma, text = parseStringOrReference(), MPComma, textColor = parseColorOrReference(), MPComma, font = parseStringOrReference(), MPClosed, MPClosed]:
 						TSGenerated(SolidColorWithText(width, height, color, text, textColor, font));
-					case _: unexpectedError('expected cross(width, height[, color]), color(width, height[, color]), or colorWithText(width, height, bgColor, "text", textColor, font)');
+					// autotile("autotileName", index) OR autotile("autotileName", N|E|S|W) - reference autotile definition
+					case [MPIdentifier("autotile", _ , ITString), MPOpen, autotileName = parseStringOrReference(), MPComma]:
+						final selector = parseAutotileTileSelector();
+						switch stream {
+							case [MPClosed, MPClosed]:
+							case _: unexpectedError('expected ) after autotile selector');
+						}
+						TSGenerated(AutotileRef(autotileName, selector));
+					case _: unexpectedError('expected cross(...), color(...), colorWithText(...), or autotile(name, index|edges)');
 				}
 
 			// Reference to a TileSource variable (e.g., $bitmap from stateanim/tiles iterator)
@@ -4214,6 +4284,11 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 					once.parsed("source");
 					source = ATSTiles(parseTileSources());
 
+				// demo: edgeColor, fillColor (auto-generated demo tiles)
+				case [MPIdentifier(_, MPDemo, ITString), MPColon, edgeColor = parseColorOrReference(), MPComma, fillColor = parseColorOrReference()]:
+					once.parsed("source");
+					source = ATSDemo(edgeColor, fillColor);
+
 				// tileSize: 16
 				case [MPIdentifier("tileSize", _, ITString), MPColon, size = parseIntegerOrReference()]:
 					once.parsed("tileSize");
@@ -4242,12 +4317,12 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 					}
 
 				case [MPCurlyClosed]: break;
-				case _: unexpectedError("expected format:, sheet:, file:, tiles:, tileSize:, depth:, mapping:, or }");
+				case _: unexpectedError("expected format:, sheet:, file:, tiles:, demo:, tileSize:, depth:, mapping:, or }");
 			}
 		}
 
 		if (format == null) syntaxError('autotile requires format: (simple13, cross, or blob47)');
-		if (source == null) syntaxError('autotile requires source (sheet:, file:, or tiles:)');
+		if (source == null) syntaxError('autotile requires source (sheet:, file:, tiles:, or demo:)');
 		if (tileSize == null) syntaxError('autotile requires tileSize:');
 
 		return {

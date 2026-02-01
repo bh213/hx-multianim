@@ -221,6 +221,12 @@ if exist "%ROOT%test\screenshots\scalePositionDemo_actual.png" (
     echo   29 - scalePositionDemo
 )
 
+REM Example 30: autotile demo syntax
+if exist "%ROOT%test\screenshots\autotileDemoSyntax_actual.png" (
+    copy /Y "%ROOT%test\screenshots\autotileDemoSyntax_actual.png" "%ROOT%test\examples\30-autotileDemoSyntax\reference.png" >nul
+    echo   30 - autotileDemoSyntax
+)
+
 echo.
 echo Reference images updated. Re-run 'test.bat run' to verify tests pass.
 goto :eof

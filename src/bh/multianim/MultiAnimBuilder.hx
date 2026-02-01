@@ -702,7 +702,53 @@ class MultiAnimBuilder {
 			case SolidColorWithText(w, h, bgColor, text, textColor, fontName):
 				// Create a solid color tile with centered text using font rendering
 				generateTileWithText(w, h, bgColor.addAlphaIfNotPresent(), text, textColor.addAlphaIfNotPresent(), fontName);
+
+			case AutotileRef(format, tileIndex, tileSize, edgeColor, fillColor):
+				// Generate autotile demo tile with diagonal corners
+				generateAutotileDemoTile(format, tileIndex, tileSize, edgeColor.addAlphaIfNotPresent(), fillColor.addAlphaIfNotPresent());
 		}
+	}
+
+	/**
+	 * Resolve an autotile reference by looking up the autotile definition.
+	 * Gets format, tileSize, edgeColor, fillColor from the definition's demo: source.
+	 * Converts the selector (index or edges) to a tile index.
+	 */
+	function resolveAutotileRef(autotileName:ReferenceableValue, selector:AutotileTileSelector):ResolvedGeneratedTileType {
+		final name = resolveAsString(autotileName);
+		final node = multiParserResult?.nodes.get(name);
+		if (node == null)
+			throw 'autotile reference: could not find autotile "$name"';
+
+		final autotileDef:AutotileDef = switch node.type {
+			case AUTOTILE(def): def;
+			default: throw 'autotile reference: "$name" is not an autotile definition';
+		};
+
+		// Get demo colors from the autotile source
+		final demoColors = switch autotileDef.source {
+			case ATSDemo(edgeColor, fillColor): {edge: edgeColor, fill: fillColor};
+			default: throw 'autotile reference: "$name" must use demo: source syntax';
+		};
+
+		final format = autotileDef.format;
+		final tileSize = resolveAsInteger(autotileDef.tileSize);
+		final edgeColor = resolveAsColorInteger(demoColors.edge);
+		final fillColor = resolveAsColorInteger(demoColors.fill);
+
+		// Convert selector to tile index
+		final tileIndex = switch selector {
+			case ByIndex(index): resolveAsInteger(index);
+			case ByEdges(edges):
+				// Convert edge mask to tile index using the appropriate format
+				switch format {
+					case Simple13: bh.base.Autotile.getSimple13Index(edges);
+					case Cross: bh.base.Autotile.getCrossIndex(edges);
+					case Blob47: bh.base.Autotile.getBlob47Index(edges);
+				};
+		};
+
+		return AutotileRef(format, tileIndex, tileSize, edgeColor, fillColor);
 	}
 
 	/**
@@ -756,6 +802,7 @@ class MultiAnimBuilder {
 					case Cross(width, height, color): Cross(resolveAsInteger(width), resolveAsInteger(height), resolveAsColorInteger(color));
 					case SolidColor(width, height, color): SolidColor(resolveAsInteger(width), resolveAsInteger(height), resolveAsColorInteger(color));
 					case SolidColorWithText(width, height, color, text, textColor, font): SolidColorWithText(resolveAsInteger(width), resolveAsInteger(height), resolveAsColorInteger(color), resolveAsString(text), resolveAsColorInteger(textColor), resolveAsString(font));
+					case AutotileRef(autotileName, selector): resolveAutotileRef(autotileName, selector);
 				}
 
 				resourceLoader.getOrCreatePlaceholder(resolvedType, (resolvedType) -> generatePlaceholderBitmap(resolvedType));
@@ -2596,6 +2643,213 @@ class MultiAnimBuilder {
 			case ATSTiles(tiles):
 				// Explicit tile list - load each tile source directly
 				[for (ts in tiles) loadTileSource(ts)];
+
+			case ATSDemo(edgeColor, fillColor):
+				// Auto-generated demo tiles based on format
+				final edge = resolveAsColorInteger(edgeColor).addAlphaIfNotPresent();
+				final fill = resolveAsColorInteger(fillColor).addAlphaIfNotPresent();
+				final tileCount = switch autotileDef.format {
+					case Simple13: 13;
+					case Cross: 13;
+					case Blob47: 47;
+				};
+				[for (i in 0...tileCount) generateAutotileDemoTile(autotileDef.format, i, tileSize, edge, fill)];
+		};
+	}
+
+	/**
+	 * Generate a single demo tile for autotiling visualization.
+	 * Draws tiles with edge/fill colors showing which edges connect to neighbors.
+	 * Outer corners get diagonal triangles for smoother appearance.
+	 */
+	private function generateAutotileDemoTile(format:AutotileFormat, tileIndex:Int, tileSize:Int, edgeColor:Int, fillColor:Int):h2d.Tile {
+		final borderWidth = Std.int(Math.max(1, tileSize / 8));
+		final cornerSize = Std.int(Math.max(2, tileSize / 2)); // Size of diagonal corner cut
+		final pl = new PixelLines(tileSize, tileSize);
+
+		// Fill entire tile with fill color
+		pl.filledRect(0, 0, tileSize, tileSize, fillColor);
+
+		// Get edge configuration for this tile index
+		final edges = getAutotileEdges(format, tileIndex);
+
+		// Draw borders on edges where there's no neighbor (edge = true means draw border)
+		if (edges.n)
+			pl.filledRect(0, 0, tileSize, borderWidth, edgeColor);
+		if (edges.s)
+			pl.filledRect(0, tileSize - borderWidth, tileSize, borderWidth, edgeColor);
+		if (edges.w)
+			pl.filledRect(0, 0, borderWidth, tileSize, edgeColor);
+		if (edges.e)
+			pl.filledRect(tileSize - borderWidth, 0, borderWidth, tileSize, edgeColor);
+
+		// Draw outer corner triangles (diagonal cut) where two adjacent edges meet
+		if (edges.n && edges.w) {
+			// NW outer corner - triangle from (0,cornerSize) to (cornerSize,0)
+			for (i in 0...cornerSize) {
+				final lineLen = cornerSize - i;
+				pl.filledRect(0, i, lineLen, 1, edgeColor);
+			}
+		}
+		if (edges.n && edges.e) {
+			// NE outer corner - triangle from (tileSize-cornerSize,0) to (tileSize,cornerSize)
+			for (i in 0...cornerSize) {
+				final lineLen = cornerSize - i;
+				pl.filledRect(tileSize - lineLen, i, lineLen, 1, edgeColor);
+			}
+		}
+		if (edges.s && edges.w) {
+			// SW outer corner - triangle from (0,tileSize-cornerSize) to (cornerSize,tileSize)
+			for (i in 0...cornerSize) {
+				final lineLen = cornerSize - i;
+				pl.filledRect(0, tileSize - 1 - i, lineLen, 1, edgeColor);
+			}
+		}
+		if (edges.s && edges.e) {
+			// SE outer corner - triangle from (tileSize-cornerSize,tileSize) to (tileSize,tileSize-cornerSize)
+			for (i in 0...cornerSize) {
+				final lineLen = cornerSize - i;
+				pl.filledRect(tileSize - lineLen, tileSize - 1 - i, lineLen, 1, edgeColor);
+			}
+		}
+
+		// Draw inner corners (small corner notches for diagonal-missing tiles)
+		if (edges.innerNE)
+			pl.filledRect(tileSize - borderWidth, 0, borderWidth, borderWidth, edgeColor);
+		if (edges.innerNW)
+			pl.filledRect(0, 0, borderWidth, borderWidth, edgeColor);
+		if (edges.innerSE)
+			pl.filledRect(tileSize - borderWidth, tileSize - borderWidth, borderWidth, borderWidth, edgeColor);
+		if (edges.innerSW)
+			pl.filledRect(0, tileSize - borderWidth, borderWidth, borderWidth, edgeColor);
+
+		pl.updateBitmap();
+		return pl.tile;
+	}
+
+	/**
+	 * Get edge configuration for a tile index in a given format.
+	 * Returns which edges/corners should have borders drawn.
+	 */
+	private function getAutotileEdges(format:AutotileFormat, tileIndex:Int):{n:Bool, s:Bool, e:Bool, w:Bool, innerNE:Bool, innerNW:Bool, innerSE:Bool, innerSW:Bool} {
+		return switch format {
+			case Simple13: getSimple13Edges(tileIndex);
+			case Cross: getCrossEdges(tileIndex);
+			case Blob47: getBlob47Edges(tileIndex);
+		};
+	}
+
+	/**
+	 * Simple13 edge configuration.
+	 * Layout: 0=NW 1=N 2=NE / 3=W 4=C 5=E / 6=SW 7=S 8=SE / 9-12=inner corners
+	 */
+	private function getSimple13Edges(idx:Int):{n:Bool, s:Bool, e:Bool, w:Bool, innerNE:Bool, innerNW:Bool, innerSE:Bool, innerSW:Bool} {
+		return switch idx {
+			case 0: {n: true, s: false, e: false, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // NW corner
+			case 1: {n: true, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // N edge
+			case 2: {n: true, s: false, e: true, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // NE corner
+			case 3: {n: false, s: false, e: false, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // W edge
+			case 4: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // Center
+			case 5: {n: false, s: false, e: true, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // E edge
+			case 6: {n: false, s: true, e: false, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // SW corner
+			case 7: {n: false, s: true, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // S edge
+			case 8: {n: false, s: true, e: true, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // SE corner
+			case 9: {n: false, s: false, e: false, w: false, innerNE: true, innerNW: false, innerSE: false, innerSW: false}; // inner-NE
+			case 10: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: true, innerSE: false, innerSW: false}; // inner-NW
+			case 11: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: true, innerSW: false}; // inner-SE
+			case 12: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: true}; // inner-SW
+			default: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false};
+		};
+	}
+
+	/**
+	 * Cross format edge configuration.
+	 * Layout: 0=N 1=W 2=C 3=E 4=S / 5=NW 6=NE 7=SW 8=SE outer / 9-12=inner corners
+	 */
+	private function getCrossEdges(idx:Int):{n:Bool, s:Bool, e:Bool, w:Bool, innerNE:Bool, innerNW:Bool, innerSE:Bool, innerSW:Bool} {
+		return switch idx {
+			case 0: {n: true, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // N edge
+			case 1: {n: false, s: false, e: false, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // W edge
+			case 2: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // Center
+			case 3: {n: false, s: false, e: true, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // E edge
+			case 4: {n: false, s: true, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // S edge
+			case 5: {n: true, s: false, e: false, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // NW outer corner
+			case 6: {n: true, s: false, e: true, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // NE outer corner
+			case 7: {n: false, s: true, e: false, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // SW outer corner
+			case 8: {n: false, s: true, e: true, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // SE outer corner
+			case 9: {n: false, s: false, e: false, w: false, innerNE: true, innerNW: false, innerSE: false, innerSW: false}; // inner-NE
+			case 10: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: true, innerSE: false, innerSW: false}; // inner-NW
+			case 11: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: true, innerSW: false}; // inner-SE
+			case 12: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: true}; // inner-SW
+			default: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false};
+		};
+	}
+
+	/**
+	 * Blob47 edge configuration based on the reduced mask mapping.
+	 * Maps each of the 47 tiles to its edge/corner configuration.
+	 * Inner corners are drawn where diagonal is MISSING (not present).
+	 * Comments show which neighbors ARE present.
+	 */
+	private function getBlob47Edges(idx:Int):{n:Bool, s:Bool, e:Bool, w:Bool, innerNE:Bool, innerNW:Bool, innerSE:Bool, innerSW:Bool} {
+		return switch idx {
+			// No cardinals - isolated or single edges (no inner corners possible)
+			case 0: {n: true, s: true, e: true, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};     // isolated
+			case 1: {n: false, s: true, e: true, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};    // N only
+			case 2: {n: true, s: true, e: false, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};    // E only
+			case 5: {n: true, s: false, e: true, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};    // S only
+			case 13: {n: true, s: true, e: true, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false};   // W only
+
+			// Two adjacent cardinals - outer corners (no inner corners)
+			case 3: {n: false, s: true, e: false, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};   // N+E (corner)
+			case 4: {n: false, s: true, e: false, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};   // N+NE+E
+			case 7: {n: true, s: false, e: false, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};   // E+S (corner)
+			case 10: {n: true, s: false, e: false, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // E+SE+S
+			case 14: {n: false, s: true, e: true, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // N+W (corner)
+			case 18: {n: true, s: false, e: true, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // S+W (corner)
+			case 26: {n: true, s: false, e: true, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // S+SW+W
+			case 34: {n: false, s: true, e: true, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // N+W+NW
+
+			// Two opposite cardinals - edges (no inner corners)
+			case 6: {n: false, s: false, e: true, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};   // N+S
+			case 15: {n: true, s: true, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // E+W
+			case 19: {n: false, s: false, e: true, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // N+S+W
+			case 27: {n: false, s: false, e: true, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // N+S+SW+W
+			case 37: {n: false, s: false, e: true, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // N+S+W+NW
+			case 42: {n: false, s: false, e: true, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // N+S+SW+W+NW
+
+			// Three cardinals - T-shapes (no inner corners in missing direction)
+			case 8: {n: false, s: false, e: false, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // N+E+S
+			case 9: {n: false, s: false, e: false, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // N+NE+E+S
+			case 11: {n: false, s: false, e: false, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // N+E+SE+S
+			case 12: {n: false, s: false, e: false, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // N+NE+E+SE+S
+			case 16: {n: false, s: true, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // N+E+W
+			case 17: {n: false, s: true, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // N+NE+E+W
+			case 20: {n: true, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // E+S+W
+			case 23: {n: true, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // E+SE+S+W
+			case 28: {n: true, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // E+S+SW+W
+			case 31: {n: true, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // E+SE+S+SW+W
+			case 35: {n: false, s: true, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // N+E+W+NW
+			case 36: {n: false, s: true, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // N+NE+E+W+NW
+
+			// All four cardinals - inner corners where diagonals are MISSING
+			case 21: {n: false, s: false, e: false, w: false, innerNE: true, innerNW: true, innerSE: true, innerSW: true};    // N+E+S+W (all diagonals missing)
+			case 22: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: true, innerSE: true, innerSW: true};   // N+NE+E+S+W (NE present)
+			case 24: {n: false, s: false, e: false, w: false, innerNE: true, innerNW: true, innerSE: false, innerSW: true};   // N+E+SE+S+W (SE present)
+			case 25: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: true, innerSE: false, innerSW: true};  // N+NE+E+SE+S+W (NE+SE present)
+			case 29: {n: false, s: false, e: false, w: false, innerNE: true, innerNW: true, innerSE: true, innerSW: false};   // N+E+S+SW+W (SW present)
+			case 30: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: true, innerSE: true, innerSW: false};  // N+NE+E+S+SW+W (NE+SW present)
+			case 32: {n: false, s: false, e: false, w: false, innerNE: true, innerNW: true, innerSE: false, innerSW: false};  // N+E+SE+S+SW+W (SE+SW present)
+			case 33: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: true, innerSE: false, innerSW: false}; // N+NE+E+SE+S+SW+W (NE+SE+SW present)
+			case 38: {n: false, s: false, e: false, w: false, innerNE: true, innerNW: false, innerSE: true, innerSW: true};   // N+E+S+W+NW (NW present)
+			case 39: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: true, innerSW: true};  // N+NE+E+S+W+NW (NE+NW present)
+			case 40: {n: false, s: false, e: false, w: false, innerNE: true, innerNW: false, innerSE: false, innerSW: true};  // N+E+SE+S+W+NW (SE+NW present)
+			case 41: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: true}; // N+NE+E+SE+S+W+NW (NE+SE+NW present)
+			case 43: {n: false, s: false, e: false, w: false, innerNE: true, innerNW: false, innerSE: true, innerSW: false};  // N+E+S+SW+W+NW (SW+NW present)
+			case 44: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: true, innerSW: false}; // N+NE+E+S+SW+W+NW (NE+SW+NW present)
+			case 45: {n: false, s: false, e: false, w: false, innerNE: true, innerNW: false, innerSE: false, innerSW: false}; // N+E+SE+S+SW+W+NW (SE+SW+NW present)
+			case 46: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // all neighbors (none missing)
+			default: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false};
 		};
 	}
 

@@ -227,12 +227,14 @@ class AllExamplesTest extends VisualTestBase {
 		this.testTitle = "#25: autotile simple13";
 		this.referenceDir = "test/examples/25-autotileDemo";
 
-		autotileHelper.buildCombinedAutotileTest(
+		autotileHelper.buildCombinedAutotileTestMultiple(
 			"test/examples/25-autotileDemo/autotileDemo.manim",
 			"autotileDemo",
-			"simple13Test",
-			AutotileTestHelper.SIMPLE_RECT_GRID,
-			800.0, 100.0,
+			[
+				{name: "simple13Test", grid: AutotileTestHelper.SIMPLE_RECT_GRID, x: 800.0, y: 100.0},
+				{name: "simple13Sea", grid: AutotileTestHelper.SEA_GRID, x: 800.0, y: 300.0},
+				{name: "simple13Grass", grid: AutotileTestHelper.ISLAND_GRID, x: 800.0, y: 300.0}
+			],
 			async,
 			1280, 720,
 			0.98,
@@ -247,12 +249,14 @@ class AllExamplesTest extends VisualTestBase {
 		this.testTitle = "#26: autotile cross";
 		this.referenceDir = "test/examples/26-autotileCross";
 
-		autotileHelper.buildCombinedAutotileTest(
+		autotileHelper.buildCombinedAutotileTestMultiple(
 			"test/examples/26-autotileCross/autotileCross.manim",
 			"autotileCross",
-			"crossTest",
-			AutotileTestHelper.SIMPLE_RECT_GRID,
-			800.0, 100.0,
+			[
+				{name: "crossTest", grid: AutotileTestHelper.SIMPLE_RECT_GRID, x: 800.0, y: 100.0},
+				{name: "crossSea", grid: AutotileTestHelper.SEA_GRID, x: 800.0, y: 300.0},
+				{name: "crossGrass", grid: AutotileTestHelper.ISLAND_GRID, x: 800.0, y: 300.0}
+			],
 			async,
 			1280, 720,
 			0.98,
@@ -267,16 +271,17 @@ class AllExamplesTest extends VisualTestBase {
 		this.testTitle = "#27: autotile blob47";
 		this.referenceDir = "test/examples/27-autotileBlob47";
 
-		autotileHelper.buildCombinedAutotileTest(
+		autotileHelper.buildCombinedAutotileTestMultiple(
 			"test/examples/27-autotileBlob47/autotileBlob47.manim",
 			"autotileBlob47",
-			"blob47Test",
-			AutotileTestHelper.SIMPLE_RECT_GRID,
-			800.0, 100.0,
+			[
+				{name: "blob47Water", grid: AutotileTestHelper.LARGE_SEA_GRID, x: 900.0, y: 350.0},
+				{name: "blob47Grass", grid: AutotileTestHelper.LARGE_BLOB47_GRID, x: 900.0, y: 350.0}
+			],
 			async,
 			1280, 720,
 			0.98,
-			1.0
+			2.0
 		);
 	}
 
@@ -296,5 +301,26 @@ class AllExamplesTest extends VisualTestBase {
 		this.testTitle = "#29: scale position demo";
 		this.referenceDir = "test/examples/29-scalePositionDemo";
 		buildRenderScreenshotAndCompare("test/examples/29-scalePositionDemo/scalePositionDemo.manim", "scalePositionDemo", async, 1280, 720, 1.0);
+	}
+
+	// Example 30: autotile demo syntax - tests the new demo: source syntax
+	@Test
+	public function test30_AutotileDemoSyntax(async:utest.Async) {
+		this.testName = "autotileDemoSyntax";
+		this.testTitle = "#30: autotile demo syntax";
+		this.referenceDir = "test/examples/30-autotileDemoSyntax";
+
+		// Test simple13 with demo syntax - also tests cross and blob47 via the same manim file
+		autotileHelper.buildCombinedAutotileTest(
+			"test/examples/30-autotileDemoSyntax/autotileDemoSyntax.manim",
+			"autotileDemoSyntax",
+			"simple13Demo",
+			AutotileTestHelper.SIMPLE_RECT_GRID,
+			400.0, 100.0,
+			async,
+			1280, 720,
+			0.98,
+			1.0
+		);
 	}
 }

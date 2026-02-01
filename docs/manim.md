@@ -810,7 +810,13 @@ updatable.setObject(particles);
 * `sheet(sheet, name)` - from atlas sheet
 * `file(filename)` - from file
 * `generated(cross(width, height[, color]))` - generated cross
-* `generated(solid(color, width, height))` - solid color
+* `generated(color(width, height, color))` - solid color
+* `generated(colorWithText(width, height, color, text, textColor, font))` - solid color with text
+* `generated(autotile("name", selector))` - demo tile from autotile definition
+  - By index: `autotile("grassTerrain", 0)` - select tile by index (0-12 for simple13, 0-46 for blob47)
+  - By edges: `autotile("grassTerrain", N+E+S+W)` - select tile by neighbor flags
+  - Edge flags: `N`, `E`, `S`, `W` (cardinals), `NE`, `SE`, `SW`, `NW` (corners)
+  - Requires autotile with `demo: edgeColor, fillColor` defined
 
 ---
 

@@ -3,6 +3,7 @@ package bh.base;
 import bh.multianim.MultiAnimBuilder;
 import bh.multianim.MultiAnimParser.GeneratedTileType;
 import bh.multianim.MultiAnimParser.PlaceholderTypes;
+import bh.multianim.MultiAnimParser.AutotileFormat;
 import h2d.Font;
 import bh.stateanim.AnimationSM;
 import bh.stateanim.AnimParser.AnimationStateSelector;
@@ -14,6 +15,7 @@ enum ResolvedGeneratedTileType {
     Cross(width:Int, height:Int, color:Int);
 	SolidColor(width:Int, height:Int, color:Int);
 	SolidColorWithText(width:Int, height:Int, color:Int, text:String, textColor:Int, font:String);
+	AutotileRef(format:AutotileFormat, tileIndex:Int, tileSize:Int, edgeColor:Int, fillColor:Int);
 }
 
 interface ResourceLoader {

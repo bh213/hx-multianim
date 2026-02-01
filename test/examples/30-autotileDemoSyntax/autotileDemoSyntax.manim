@@ -1,0 +1,60 @@
+version: 0.3
+
+// =============================================================================
+// AUTOTILE DEMO SYNTAX TEST - Tests the new demo: source syntax
+// =============================================================================
+// The demo: syntax auto-generates tiles for prototyping without actual assets.
+// Format: demo: edgeColor, fillColor
+// =============================================================================
+
+// Simple13 with demo tiles
+#simple13Demo autotile {
+    format: simple13
+    tileSize: 16
+    demo: 0xFF4444, 0x44FF44    // red edges, green fill
+}
+
+// Cross with demo tiles
+#crossDemo autotile {
+    format: cross
+    tileSize: 16
+    demo: 0x4444FF, 0xFFFF44    // blue edges, yellow fill
+}
+
+// Blob47 with demo tiles
+#blob47Demo autotile {
+    format: blob47
+    tileSize: 16
+    demo: 0xFF8800, 0x0088FF    // orange edges, blue fill
+}
+
+// Visual demo programmable
+#autotileDemoSyntax programmable() {
+    pos: 0, 0
+    grid: 1280, 720
+
+    @alpha(0.1) bitmap(generated(color(1280, 720, black)));
+
+    text(dd, "Autotile Demo Syntax Test", 0xFFFFFF, left, 400):20,20
+    text(dd, "Testing: demo: edgeColor, fillColor", 0xAAAAFF, left, 400):20,50
+
+    // Simple13 section
+    text(dd, "Simple13 (demo: 0xFF4444, 0x44FF44):", 0xFF8888, left, 400):20,100
+    text(dd, "Red edges, green fill - 13 tiles auto-generated", 0x888888, left, 400):20,120
+    text(dd, "Terrain built with buildAutotile() >>>", 0xFFFF88, left, 400):20,150
+
+    // Cross section
+    text(dd, "Cross (demo: 0x4444FF, 0xFFFF44):", 0x8888FF, left, 400):20,280
+    text(dd, "Blue edges, yellow fill - 13 tiles auto-generated", 0x888888, left, 400):20,300
+    text(dd, "Terrain built with buildAutotile() >>>", 0xFFFF88, left, 400):20,330
+
+    // Blob47 section
+    text(dd, "Blob47 (demo: 0xFF8800, 0x0088FF):", 0xFFAA44, left, 400):20,460
+    text(dd, "Orange edges, blue fill - 47 tiles auto-generated", 0x888888, left, 400):20,480
+    text(dd, "Terrain built with buildAutotile() >>>", 0xFFFF88, left, 400):20,510
+
+    // Explanation
+    text(dd, "The demo: syntax generates abstract tiles showing edge/corner configurations.", 0xAAAAAA, left, 600):20,620
+    text(dd, "Edges are drawn where tiles don't connect to neighbors.", 0xAAAAAA, left, 600):20,640
+    text(dd, "Inner corners show where diagonal neighbors are missing.", 0xAAAAAA, left, 600):20,660
+}

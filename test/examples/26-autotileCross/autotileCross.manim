@@ -30,6 +30,20 @@ version: 0.3
         generated(colorWithText(16, 16, 0x4444FF, "12", white, dd))    // 12: inner SW
 }
 
+// Demo mode: grass terrain with edge visualization
+#crossGrass autotile {
+    format: cross
+    tileSize: 16
+    demo: 0x228822, 0x44AA44    // dark green edges, grass green fill
+}
+
+// Demo mode: sea/water terrain
+#crossSea autotile {
+    format: cross
+    tileSize: 16
+    demo: 0x224488, 0x4488CC    // dark blue edges, sea blue fill
+}
+
 // Visual demo element
 #autotileCross programmable() {
     pos: 0, 0

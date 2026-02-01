@@ -55,6 +55,20 @@ version: 0.3
         generated(colorWithText(16, 16, 0x4444FF, "12", white, "m3x6"))    // 12: inner SW
 }
 
+// Demo mode: grass terrain with edge visualization
+#simple13Grass autotile {
+    format: simple13
+    tileSize: 16
+    demo: 0x228822, 0x44AA44    // dark green edges, grass green fill
+}
+
+// Demo mode: sea/water terrain
+#simple13Sea autotile {
+    format: simple13
+    tileSize: 16
+    demo: 0x224488, 0x4488CC    // dark blue edges, sea blue fill
+}
+
 // =============================================================================
 // Visual demo element - shows tile catalog and explains the format
 // =============================================================================

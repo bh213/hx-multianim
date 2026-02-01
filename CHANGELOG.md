@@ -12,6 +12,11 @@
 - **Autotile system** - New root-level element for procedural terrain generation
   - Formats: `simple13` (13 tiles), `cross` (isometric), `blob47` (47-tile full coverage)
   - Neighbor-based tile selection with inner/outer corner handling
+  - Demo mode with `demo: edgeColor, fillColor` for placeholder tile visualization
+- **Autotile reference syntax** - Reference autotile demo tiles in generated() expressions
+  - By index: `generated(autotile("autotileName", 0))` - select tile by index
+  - By edges: `generated(autotile("autotileName", N+E+S+W))` - select tile by neighbor flags
+  - Edge flags: `N`, `E`, `S`, `W` (cardinals), `NE`, `SE`, `SW`, `NW` (corners)
 - **Font management** - `FontManager.registerFont()` with optional X/Y offset for positioning normalization
 - **Graphics coordinates** - `line()` and `polygon()` now support all coordinate types (hexCorner, hexEdge, grid, layout)
 - **New fonts** - f3x5, m3x6, pixeled6, pixellari, peaberry-white, peaberry-white-outline
