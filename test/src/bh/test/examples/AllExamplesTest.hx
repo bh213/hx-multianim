@@ -231,14 +231,14 @@ class AllExamplesTest extends VisualTestBase {
 			"test/examples/25-autotileDemo/autotileDemo.manim",
 			"autotileDemo",
 			[
-				{name: "simple13Test", grid: AutotileTestHelper.SIMPLE_RECT_GRID, x: 800.0, y: 100.0},
-				{name: "simple13Sea", grid: AutotileTestHelper.SEA_GRID, x: 800.0, y: 300.0},
-				{name: "simple13Grass", grid: AutotileTestHelper.ISLAND_GRID, x: 800.0, y: 300.0}
+				// Positions match manim file (multiply by scale 4.0)
+				{name: "simple13Colored", grid: AutotileTestHelper.SIMPLE_RECT_GRID, x: 80.0, y: 456.0, background: false},
+				{name: "simple13Water", grid: AutotileTestHelper.SIMPLE_RECT_GRID, x: 520.0, y: 456.0, background: true}
 			],
 			async,
 			1280, 720,
 			0.98,
-			1.0
+			4.0
 		);
 	}
 
@@ -253,14 +253,14 @@ class AllExamplesTest extends VisualTestBase {
 			"test/examples/26-autotileCross/autotileCross.manim",
 			"autotileCross",
 			[
-				{name: "crossTest", grid: AutotileTestHelper.SIMPLE_RECT_GRID, x: 800.0, y: 100.0},
-				{name: "crossSea", grid: AutotileTestHelper.SEA_GRID, x: 800.0, y: 300.0},
-				{name: "crossGrass", grid: AutotileTestHelper.ISLAND_GRID, x: 800.0, y: 300.0}
+				// Positions match manim file (multiply by scale 4.0)
+				{name: "crossColored", grid: AutotileTestHelper.SIMPLE_RECT_GRID, x: 80.0, y: 456.0, background: false},
+				{name: "crossWater", grid: AutotileTestHelper.SIMPLE_RECT_GRID, x: 520.0, y: 456.0, background: true}
 			],
 			async,
 			1280, 720,
 			0.98,
-			1.0
+			4.0
 		);
 	}
 
@@ -275,8 +275,9 @@ class AllExamplesTest extends VisualTestBase {
 			"test/examples/27-autotileBlob47/autotileBlob47.manim",
 			"autotileBlob47",
 			[
-				{name: "blob47Water", grid: AutotileTestHelper.LARGE_SEA_GRID, x: 900.0, y: 350.0},
-				{name: "blob47Grass", grid: AutotileTestHelper.LARGE_BLOB47_GRID, x: 900.0, y: 350.0}
+				// Positions match updatables in manim file (multiply by scale 2.0)
+				{name: "blob47Colored", grid: AutotileTestHelper.LARGE_SEA_GRID, x: 40.0, y: 400.0, background: false},
+				{name: "blob47Water", grid: AutotileTestHelper.LARGE_SEA_GRID, x: 500.0, y: 400.0, background: true}
 			],
 			async,
 			1280, 720,

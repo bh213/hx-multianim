@@ -3,99 +3,114 @@ version: 0.3
 // =============================================================================
 // AUTOTILE CROSS FORMAT TEST - Tests buildAutotile() with cross format
 // =============================================================================
-// Cross format is used for isometric elevation tiles with depth.
-// Layout: N, W, C, E, S edges + 4 outer corners + 4 inner corners = 13 tiles
-// Full 1280x720 layout
+// Cross format: N, W, C, E, S edges + 4 outer corners + 4 inner corners = 13 tiles
 // =============================================================================
 
-#crossTest autotile {
+// Demo autotile - water terrain (black/white)
+#crossWater autotile {
+    format: cross
+    tileSize: 16
+    demo: black, #EEE
+}
+
+// Colorful autotile with index numbers - for debugging which tile is used where
+#crossColored autotile {
     format: cross
     tileSize: 16
     tiles:
-        // Edges (indices 0-4)
-        generated(colorWithText(16, 16, 0xFF4444, "0", white, dd))     // 0: N edge - red
-        generated(colorWithText(16, 16, 0xFF6666, "1", white, dd))     // 1: W edge
-        generated(colorWithText(16, 16, 0x44FF44, "2", black, dd))     // 2: Center - green
-        generated(colorWithText(16, 16, 0xFF8888, "3", white, dd))     // 3: E edge
-        generated(colorWithText(16, 16, 0xFFAAAA, "4", black, dd))     // 4: S edge
-        // Outer corners (indices 5-8)
-        generated(colorWithText(16, 16, 0xFFCC00, "5", black, dd))     // 5: NW outer - yellow
-        generated(colorWithText(16, 16, 0xFFDD00, "6", black, dd))     // 6: NE outer
-        generated(colorWithText(16, 16, 0xFFEE00, "7", black, dd))     // 7: SW outer
-        generated(colorWithText(16, 16, 0xFFFF00, "8", black, dd))     // 8: SE outer
-        // Inner corners (indices 9-12)
-        generated(colorWithText(16, 16, 0x44AAFF, "9", white, dd))     // 9: inner NE - blue
-        generated(colorWithText(16, 16, 0x4488FF, "10", white, dd))    // 10: inner NW
-        generated(colorWithText(16, 16, 0x4466FF, "11", white, dd))    // 11: inner SE
-        generated(colorWithText(16, 16, 0x4444FF, "12", white, dd))    // 12: inner SW
+        // Edges (indices 0-4) - red gradient
+        generated(colorWithText(16, 16, 0xFF4444, "0", white, f3x5))     // 0: N edge
+        generated(colorWithText(16, 16, 0xFF6666, "1", white, f3x5))     // 1: W edge
+        generated(colorWithText(16, 16, 0x44FF44, "2", black, f3x5))     // 2: Center - green
+        generated(colorWithText(16, 16, 0xFF8888, "3", white, f3x5))     // 3: E edge
+        generated(colorWithText(16, 16, 0xFFAAAA, "4", black, f3x5))     // 4: S edge
+        // Outer corners (indices 5-8) - yellow
+        generated(colorWithText(16, 16, 0xFFCC00, "5", black, f3x5))     // 5: NW outer
+        generated(colorWithText(16, 16, 0xFFDD00, "6", black, f3x5))     // 6: NE outer
+        generated(colorWithText(16, 16, 0xFFEE00, "7", black, f3x5))     // 7: SW outer
+        generated(colorWithText(16, 16, 0xFFFF00, "8", black, f3x5))     // 8: SE outer
+        // Inner corners (indices 9-12) - blue
+        generated(colorWithText(16, 16, 0x44AAFF, "9", white, f3x5))     // 9: inner NE
+        generated(colorWithText(16, 16, 0x4488FF, "10", white, f3x5))    // 10: inner NW
+        generated(colorWithText(16, 16, 0x4466FF, "11", white, f3x5))    // 11: inner SE
+        generated(colorWithText(16, 16, 0x4444FF, "12", white, f3x5))    // 12: inner SW
 }
 
-// Demo mode: grass terrain with edge visualization
-#crossGrass autotile {
-    format: cross
-    tileSize: 16
-    demo: 0x228822, 0x44AA44    // dark green edges, grass green fill
-}
-
-// Demo mode: sea/water terrain
-#crossSea autotile {
-    format: cross
-    tileSize: 16
-    demo: 0x224488, 0x4488CC    // dark blue edges, sea blue fill
-}
-
-// Visual demo element
+// Visual demo - shows all 13 tiles organized by type
 #autotileCross programmable() {
     pos: 0, 0
     grid: 1280, 720
 
     @alpha(0.1) bitmap(generated(color(1280, 720, black)));
 
-    // Tile Catalog for cross format
-    text(dd, "Tile Catalog (cross format):", 0xAAAAFF, left, 300):20,60
-
-    // Edges in cross pattern
-    text(dd, "Edges (0-4):", 0x888888, left, 100):20,100
+    // === EDGES (0-4) ===
     point {
-        pos: 140, 100
-        //     N (0)
-        //  W(1) C(2) E(3)
-        //     S (4)
-        bitmap(generated(colorWithText(16, 16, 0xFF4444, "0", white, dd))):20,0   // N
-        bitmap(generated(colorWithText(16, 16, 0xFF6666, "1", white, dd))):0,20   // W
-        bitmap(generated(colorWithText(16, 16, 0x44FF44, "2", black, dd))):20,20  // C
-        bitmap(generated(colorWithText(16, 16, 0xFF8888, "3", white, dd))):40,20  // E
-        bitmap(generated(colorWithText(16, 16, 0xFFAAAA, "4", black, dd))):20,40  // S
+        pos: 10, 20
+        text(f3x5, "Edges:", 0xFF6666, left);
+        // Colored tiles (direct bitmaps)
+        bitmap(generated(colorWithText(16, 16, 0xFF4444, "0", white, f3x5))):50,0
+        bitmap(generated(colorWithText(16, 16, 0xFF6666, "1", white, f3x5))):68,0
+        bitmap(generated(colorWithText(16, 16, 0x44FF44, "2", black, f3x5))):86,0
+        bitmap(generated(colorWithText(16, 16, 0xFF8888, "3", white, f3x5))):104,0
+        bitmap(generated(colorWithText(16, 16, 0xFFAAAA, "4", black, f3x5))):122,0
+        // B/W tiles (demo mode)
+        bitmap(generated(autotile("crossWater", 0))):150,0
+        bitmap(generated(autotile("crossWater", 1))):168,0
+        bitmap(generated(autotile("crossWater", 2))):186,0
+        bitmap(generated(autotile("crossWater", 3))):204,0
+        bitmap(generated(autotile("crossWater", 4))):222,0
+        // Labels
+        text(f3x5, "0:N", 0x888888, left):248,0
+        text(f3x5, "1:W", 0x888888, left):248,6
+        text(f3x5, "2:C", 0x44FF44, left):270,0
+        text(f3x5, "3:E", 0x888888, left):270,6
+        text(f3x5, "4:S", 0x888888, left):292,0
     }
 
-    // Outer corners
-    text(dd, "Outer (5-8):", 0x888888, left, 100):20,200
+    // === OUTER CORNERS (5-8) ===
     point {
-        pos: 140, 200
-        bitmap(generated(colorWithText(16, 16, 0xFFCC00, "5", black, dd))):0,0
-        bitmap(generated(colorWithText(16, 16, 0xFFDD00, "6", black, dd))):20,0
-        bitmap(generated(colorWithText(16, 16, 0xFFEE00, "7", black, dd))):40,0
-        bitmap(generated(colorWithText(16, 16, 0xFFFF00, "8", black, dd))):60,0
+        pos: 10, 42
+        text(f3x5, "Outer:", 0xFFDD00, left);
+        // Colored tiles
+        bitmap(generated(colorWithText(16, 16, 0xFFCC00, "5", black, f3x5))):50,0
+        bitmap(generated(colorWithText(16, 16, 0xFFDD00, "6", black, f3x5))):68,0
+        bitmap(generated(colorWithText(16, 16, 0xFFEE00, "7", black, f3x5))):86,0
+        bitmap(generated(colorWithText(16, 16, 0xFFFF00, "8", black, f3x5))):104,0
+        // B/W tiles
+        bitmap(generated(autotile("crossWater", 5))):132,0
+        bitmap(generated(autotile("crossWater", 6))):150,0
+        bitmap(generated(autotile("crossWater", 7))):168,0
+        bitmap(generated(autotile("crossWater", 8))):186,0
+        // Labels
+        text(f3x5, "5:oNW  6:oNE  7:oSW  8:oSE", 0x888888, left):214,6
     }
 
-    // Inner corners
-    text(dd, "Inner (9-12):", 0x888888, left, 100):20,260
+    // === INNER CORNERS (9-12) ===
     point {
-        pos: 140, 260
-        bitmap(generated(colorWithText(16, 16, 0x44AAFF, "9", white, dd))):0,0
-        bitmap(generated(colorWithText(16, 16, 0x4488FF, "10", white, dd))):20,0
-        bitmap(generated(colorWithText(16, 16, 0x4466FF, "11", white, dd))):40,0
-        bitmap(generated(colorWithText(16, 16, 0x4444FF, "12", white, dd))):60,0
+        pos: 10, 64
+        text(f3x5, "Inner:", 0x4488FF, left);
+        // Colored tiles
+        bitmap(generated(colorWithText(16, 16, 0x44AAFF, "9", white, f3x5))):50,0
+        bitmap(generated(colorWithText(16, 16, 0x4488FF, "10", white, f3x5))):68,0
+        bitmap(generated(colorWithText(16, 16, 0x4466FF, "11", white, f3x5))):86,0
+        bitmap(generated(colorWithText(16, 16, 0x4444FF, "12", white, f3x5))):104,0
+        // B/W tiles
+        bitmap(generated(autotile("crossWater", 9))):132,0
+        bitmap(generated(autotile("crossWater", 10))):150,0
+        bitmap(generated(autotile("crossWater", 11))):168,0
+        bitmap(generated(autotile("crossWater", 12))):186,0
+        // Labels
+        text(f3x5, "9:iNE  10:iNW  11:iSE  12:iSW", 0x888888, left):214,6
     }
 
-    // Legend
-    text(dd, "Legend:", 0xAAAAFF, left, 100):20,340
-    text(dd, "Red = edge tiles (N/W/E/S borders)", 0xFF8888, left, 400):100,340
-    text(dd, "Green = center tile (surrounded)", 0x44FF44, left, 400):100,360
-    text(dd, "Yellow = outer corner tiles", 0xFFDD00, left, 400):100,380
-    text(dd, "Blue = inner corner tiles", 0x4488FF, left, 400):100,400
+    // === LEGEND ===
+    point {
+        pos: 10, 90
+        text(f3x5, "Red=edges, Green=center, Yellow=outer corners, Blue=inner corners", 0x666666, left);
+    }
 
-    text(dd, "buildAutotile() terrain rendered at right >>>", 0xFFFF88, left, 400):20,480
-
-    text(dd, "The autotile terrain is built from code using builder.buildAutotile()", 0x888888, left, 600):20,560
+    // Map positions (used by test code, multiply by scale 4.0)
+    // mapColored: 20,114 -> x=80, y=456 at scale 4.0
+    // mapWater: 130,114 -> x=520, y=456 at scale 4.0 (with black background)
+    bitmap(generated(color(90, 70, black))):130,114
 }

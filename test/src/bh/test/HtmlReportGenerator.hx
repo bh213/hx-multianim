@@ -198,10 +198,11 @@ class HtmlReportGenerator {
 		html.add('            display: flex;\n');
 		html.add('        }\n');
 		html.add('        .image-overlay img {\n');
-		html.add('            width: 100vw;\n');
-		html.add('            height: 100vh;\n');
+		html.add('            max-width: 100vw;\n');
+		html.add('            max-height: 100vh;\n');
 		html.add('            object-fit: contain;\n');
 		html.add('            border: none;\n');
+		html.add('            background: white;\n');
 		html.add('        }\n');
 		html.add('        .overlay-close-hint {\n');
 		html.add('            position: fixed;\n');
@@ -314,9 +315,6 @@ class HtmlReportGenerator {
 		html.add('</html>\n');
 
 		File.saveContent(reportPath, html.toString());
-		#if VERBOSE
-		trace('HTML report generated: ${reportPath}');
-		#end
 	}
 
 	private static function makeRelativePath(path:String):String {

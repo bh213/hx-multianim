@@ -106,7 +106,7 @@ class AutotileTestHelper {
 	 * Useful for comparing labeled tiles with demo mode tiles side by side.
 	 */
 	public function buildCombinedAutotileTestMultiple(animFilePath:String, elementName:String,
-			autotiles:Array<{name:String, grid:Array<Array<Int>>, x:Float, y:Float}>,
+			autotiles:Array<{name:String, grid:Array<Array<Int>>, x:Float, y:Float, ?background:Bool}>,
 			async:utest.Async, ?sizeX:Int, ?sizeY:Int, ?threshold:Float, ?scale:Float):Void {
 		testBase.clearScene();
 
@@ -119,6 +119,17 @@ class AutotileTestHelper {
 		// Build all autotile terrains
 		var allBuilt = true;
 		for (autotile in autotiles) {
+			// Add black background if requested
+			if (autotile.background == true) {
+				var gridWidth = autotile.grid[0].length;
+				var gridHeight = autotile.grid.length;
+				var tileSize = 16; // Default tile size
+				var bgWidth = Std.int(gridWidth * tileSize * scale);
+				var bgHeight = Std.int(gridHeight * tileSize * scale);
+				var bg = new h2d.Bitmap(h2d.Tile.fromColor(0x000000, bgWidth, bgHeight), s2d);
+				bg.x = autotile.x;
+				bg.y = autotile.y;
+			}
 			var tileGroup = buildAutotileAndAddToScene(animFilePath, autotile.name, autotile.grid, autotile.x, autotile.y, scale);
 			if (tileGroup == null) {
 				Assert.notNull(tileGroup, 'Failed to build autotile "${autotile.name}" from $animFilePath');

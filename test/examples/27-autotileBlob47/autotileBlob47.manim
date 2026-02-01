@@ -7,18 +7,73 @@ version: 0.3
 // Each tile shown with demo graphics, labeled with index and edge flags.
 // =============================================================================
 
-// Demo autotile - grass terrain
-#blob47Grass autotile {
-    format: blob47
-    tileSize: 16
-    demo: 0x228822, 0x44AA44    // dark green edges, grass green fill
-}
 
 // Demo autotile - water terrain
 #blob47Water autotile {
     format: blob47
     tileSize: 16
-    demo: 0x224488, 0x4488CC    // dark blue edges, sea blue fill
+    demo: black, #EEE    // dark blue edges, sea blue fill
+}
+
+// Colorful autotile with index numbers - for debugging which tile is used where
+#blob47Colored autotile {
+    format: blob47
+    tileSize: 16
+    tiles:
+        // 0: isolated (no neighbors)
+        generated(colorWithText(16, 16, 0x808080, "0", white, f3x5))
+        // 1-8: cardinal neighbors only
+        generated(colorWithText(16, 16, 0xFF4444, "1", white, f3x5))     // N
+        generated(colorWithText(16, 16, 0xFF5555, "2", white, f3x5))     // E
+        generated(colorWithText(16, 16, 0xFF6666, "3", white, f3x5))     // NE
+        generated(colorWithText(16, 16, 0xFF7777, "4", black, f3x5))     // N+ne+E
+        generated(colorWithText(16, 16, 0xFF8888, "5", black, f3x5))     // S
+        generated(colorWithText(16, 16, 0xFF9999, "6", black, f3x5))     // NS
+        generated(colorWithText(16, 16, 0xFFAAAA, "7", black, f3x5))     // ES
+        generated(colorWithText(16, 16, 0xFFBBBB, "8", black, f3x5))     // NES
+        // 9-20: more combinations
+        generated(colorWithText(16, 16, 0xFFCC00, "9", black, f3x5))     // +ne
+        generated(colorWithText(16, 16, 0xFFDD00, "10", black, f3x5))    // +se
+        generated(colorWithText(16, 16, 0xFFEE00, "11", black, f3x5))    // +se
+        generated(colorWithText(16, 16, 0xFFFF00, "12", black, f3x5))    // +ne+se
+        generated(colorWithText(16, 16, 0xCCFF00, "13", black, f3x5))    // W
+        generated(colorWithText(16, 16, 0xAAFF00, "14", black, f3x5))    // NW
+        generated(colorWithText(16, 16, 0x88FF00, "15", black, f3x5))    // EW
+        generated(colorWithText(16, 16, 0x66FF00, "16", black, f3x5))    // NEW
+        generated(colorWithText(16, 16, 0x44FF00, "17", black, f3x5))    // +ne
+        generated(colorWithText(16, 16, 0x22FF00, "18", black, f3x5))    // SW
+        generated(colorWithText(16, 16, 0x00FF00, "19", black, f3x5))    // NSW
+        generated(colorWithText(16, 16, 0x00FF22, "20", black, f3x5))    // ESW
+        // 21: center (all cardinals)
+        generated(colorWithText(16, 16, 0x00FF44, "21", black, f3x5))    // NESW
+        // 22-33: more corner combinations
+        generated(colorWithText(16, 16, 0x00FF66, "22", black, f3x5))
+        generated(colorWithText(16, 16, 0x00FF88, "23", black, f3x5))
+        generated(colorWithText(16, 16, 0x00FFAA, "24", black, f3x5))
+        generated(colorWithText(16, 16, 0x00FFCC, "25", black, f3x5))
+        generated(colorWithText(16, 16, 0x00FFEE, "26", black, f3x5))
+        generated(colorWithText(16, 16, 0x00EEFF, "27", black, f3x5))
+        generated(colorWithText(16, 16, 0x00CCFF, "28", black, f3x5))
+        generated(colorWithText(16, 16, 0x00AAFF, "29", black, f3x5))
+        generated(colorWithText(16, 16, 0x0088FF, "30", white, f3x5))
+        generated(colorWithText(16, 16, 0x0066FF, "31", white, f3x5))
+        generated(colorWithText(16, 16, 0x0044FF, "32", white, f3x5))
+        generated(colorWithText(16, 16, 0x0022FF, "33", white, f3x5))
+        // 34-45: nw corner combinations
+        generated(colorWithText(16, 16, 0x2200FF, "34", white, f3x5))
+        generated(colorWithText(16, 16, 0x4400FF, "35", white, f3x5))
+        generated(colorWithText(16, 16, 0x6600FF, "36", white, f3x5))
+        generated(colorWithText(16, 16, 0x8800FF, "37", white, f3x5))
+        generated(colorWithText(16, 16, 0xAA00FF, "38", white, f3x5))
+        generated(colorWithText(16, 16, 0xCC00FF, "39", white, f3x5))
+        generated(colorWithText(16, 16, 0xEE00FF, "40", white, f3x5))
+        generated(colorWithText(16, 16, 0xFF00EE, "41", white, f3x5))
+        generated(colorWithText(16, 16, 0xFF00CC, "42", white, f3x5))
+        generated(colorWithText(16, 16, 0xFF00AA, "43", white, f3x5))
+        generated(colorWithText(16, 16, 0xFF0088, "44", white, f3x5))
+        generated(colorWithText(16, 16, 0xFF0066, "45", white, f3x5))
+        // 46: all neighbors (full tile)
+        generated(colorWithText(16, 16, 0x44FF44, "46", black, f3x5))
 }
 
 // Visual demo - shows ALL 47 tiles with index and edge labels
@@ -28,176 +83,225 @@ version: 0.3
 
     @alpha(0.1) bitmap(generated(color(1280, 720, black)));
 
-    // Title
-    text(dd, "Blob47 - All 47 Tiles (index: edges)", 0xAAAAFF, left, 600):20,15
-
-    // Grass demo tiles - 10 columns, 5 rows
+    // Grass demo tiles - 10 columns, 5 rows (30% closer spacing: 35->25)
     // Row 0: tiles 0-9
     point {
         pos: 20, 40
         // Tile + label pairs (tile 16px, spacing ~55px for text)
-        bitmap(generated(autotile("blob47Grass", 0))):0,0
-        text(dd, "0:-", 0x888888, left, 50):0,18
+        text(f3x5, "0", 0x888888, right, 10):-12,6
+        bitmap(generated(autotile("blob47Water", 0))):0,0
+        text(f3x5, "-", 0x888888, left, 50):0,18
 
-        bitmap(generated(autotile("blob47Grass", 1))):55,0
-        text(dd, "1:N", 0x888888, left, 50):55,18
+        text(f3x5, "1", 0x888888, right, 10):43,6
+        bitmap(generated(autotile("blob47Water", 1))):55,0
+        text(f3x5, "N", 0x888888, left, 50):55,18
 
-        bitmap(generated(autotile("blob47Grass", 2))):110,0
-        text(dd, "2:E", 0x888888, left, 50):110,18
+        text(f3x5, "2", 0x888888, right, 10):98,6
+        bitmap(generated(autotile("blob47Water", 2))):110,0
+        text(f3x5, "E", 0x888888, left, 50):110,18
 
-        bitmap(generated(autotile("blob47Grass", 3))):165,0
-        text(dd, "3:NE", 0x888888, left, 50):165,18
+        text(f3x5, "3", 0x888888, right, 10):153,6
+        bitmap(generated(autotile("blob47Water", 3))):165,0
+        text(f3x5, "NE", 0x888888, left, 50):165,18
 
-        bitmap(generated(autotile("blob47Grass", 4))):220,0
-        text(dd, "4:N+ne+E", 0x666666, left, 50):220,18
+        text(f3x5, "4", 0x666666, right, 10):208,6
+        bitmap(generated(autotile("blob47Water", 4))):220,0
+        text(f3x5, "N+ne+E", 0x666666, left, 50):220,18
 
-        bitmap(generated(autotile("blob47Grass", 5))):275,0
-        text(dd, "5:S", 0x888888, left, 50):275,18
+        text(f3x5, "5", 0x888888, right, 10):263,6
+        bitmap(generated(autotile("blob47Water", 5))):275,0
+        text(f3x5, "S", 0x888888, left, 50):275,18
 
-        bitmap(generated(autotile("blob47Grass", 6))):330,0
-        text(dd, "6:NS", 0x888888, left, 50):330,18
+        text(f3x5, "6", 0x888888, right, 10):318,6
+        bitmap(generated(autotile("blob47Water", 6))):330,0
+        text(f3x5, "NS", 0x888888, left, 50):330,18
 
-        bitmap(generated(autotile("blob47Grass", 7))):385,0
-        text(dd, "7:ES", 0x888888, left, 50):385,18
+        text(f3x5, "7", 0x888888, right, 10):373,6
+        bitmap(generated(autotile("blob47Water", 7))):385,0
+        text(f3x5, "ES", 0x888888, left, 50):385,18
 
-        bitmap(generated(autotile("blob47Grass", 8))):440,0
-        text(dd, "8:NES", 0x888888, left, 50):440,18
+        text(f3x5, "8", 0x888888, right, 10):428,6
+        bitmap(generated(autotile("blob47Water", 8))):440,0
+        text(f3x5, "NES", 0x888888, left, 50):440,18
 
-        bitmap(generated(autotile("blob47Grass", 9))):495,0
-        text(dd, "9:+ne", 0x666666, left, 50):495,18
+        text(f3x5, "9", 0x666666, right, 10):483,6
+        bitmap(generated(autotile("blob47Water", 9))):495,0
+        text(f3x5, "+ne", 0x666666, left, 50):495,18
     }
 
     // Row 1: tiles 10-19
     point {
-        pos: 20, 75
-        bitmap(generated(autotile("blob47Grass", 10))):0,0
-        text(dd, "10:+se", 0x666666, left, 50):0,18
+        pos: 20, 65
+        text(f3x5, "10", 0x666666, right, 10):-12,6
+        bitmap(generated(autotile("blob47Water", 10))):0,0
+        text(f3x5, "+se", 0x666666, left, 50):0,18
 
-        bitmap(generated(autotile("blob47Grass", 11))):55,0
-        text(dd, "11:+se", 0x666666, left, 50):55,18
+        text(f3x5, "11", 0x666666, right, 10):43,6
+        bitmap(generated(autotile("blob47Water", 11))):55,0
+        text(f3x5, "+se", 0x666666, left, 50):55,18
 
-        bitmap(generated(autotile("blob47Grass", 12))):110,0
-        text(dd, "12:+ne+se", 0x666666, left, 50):110,18
+        text(f3x5, "12", 0x666666, right, 10):98,6
+        bitmap(generated(autotile("blob47Water", 12))):110,0
+        text(f3x5, "+ne+se", 0x666666, left, 50):110,18
 
-        bitmap(generated(autotile("blob47Grass", 13))):165,0
-        text(dd, "13:W", 0x888888, left, 50):165,18
+        text(f3x5, "13", 0x888888, right, 10):153,6
+        bitmap(generated(autotile("blob47Water", 13))):165,0
+        text(f3x5, "W", 0x888888, left, 50):165,18
 
-        bitmap(generated(autotile("blob47Grass", 14))):220,0
-        text(dd, "14:NW", 0x888888, left, 50):220,18
+        text(f3x5, "14", 0x888888, right, 10):208,6
+        bitmap(generated(autotile("blob47Water", 14))):220,0
+        text(f3x5, "NW", 0x888888, left, 50):220,18
 
-        bitmap(generated(autotile("blob47Grass", 15))):275,0
-        text(dd, "15:EW", 0x888888, left, 50):275,18
+        text(f3x5, "15", 0x888888, right, 10):263,6
+        bitmap(generated(autotile("blob47Water", 15))):275,0
+        text(f3x5, "EW", 0x888888, left, 50):275,18
 
-        bitmap(generated(autotile("blob47Grass", 16))):330,0
-        text(dd, "16:NEW", 0x888888, left, 50):330,18
+        text(f3x5, "16", 0x888888, right, 10):318,6
+        bitmap(generated(autotile("blob47Water", 16))):330,0
+        text(f3x5, "NEW", 0x888888, left, 50):330,18
 
-        bitmap(generated(autotile("blob47Grass", 17))):385,0
-        text(dd, "17:+ne", 0x666666, left, 50):385,18
+        text(f3x5, "17", 0x666666, right, 10):373,6
+        bitmap(generated(autotile("blob47Water", 17))):385,0
+        text(f3x5, "+ne", 0x666666, left, 50):385,18
 
-        bitmap(generated(autotile("blob47Grass", 18))):440,0
-        text(dd, "18:SW", 0x888888, left, 50):440,18
+        text(f3x5, "18", 0x888888, right, 10):428,6
+        bitmap(generated(autotile("blob47Water", 18))):440,0
+        text(f3x5, "SW", 0x888888, left, 50):440,18
 
-        bitmap(generated(autotile("blob47Grass", 19))):495,0
-        text(dd, "19:NSW", 0x888888, left, 50):495,18
+        text(f3x5, "19", 0x888888, right, 10):483,6
+        bitmap(generated(autotile("blob47Water", 19))):495,0
+        text(f3x5, "NSW", 0x888888, left, 50):495,18
     }
 
     // Row 2: tiles 20-29
     point {
-        pos: 20, 110
-        bitmap(generated(autotile("blob47Grass", 20))):0,0
-        text(dd, "20:ESW", 0x888888, left, 50):0,18
+        pos: 20, 90
+        text(f3x5, "20", 0x888888, right, 10):-12,6
+        bitmap(generated(autotile("blob47Water", 20))):0,0
+        text(f3x5, "ESW", 0x888888, left, 50):0,18
 
-        bitmap(generated(autotile("blob47Grass", 21))):55,0
-        text(dd, "21:NESW", 0x44FF44, left, 50):55,18
+        text(f3x5, "21", 0x44FF44, right, 10):43,6
+        bitmap(generated(autotile("blob47Water", 21))):55,0
+        text(f3x5, "NESW", 0x44FF44, left, 50):55,18
 
-        bitmap(generated(autotile("blob47Grass", 22))):110,0
-        text(dd, "22:+ne", 0x666666, left, 50):110,18
+        text(f3x5, "22", 0x666666, right, 10):98,6
+        bitmap(generated(autotile("blob47Water", 22))):110,0
+        text(f3x5, "+ne", 0x666666, left, 50):110,18
 
-        bitmap(generated(autotile("blob47Grass", 23))):165,0
-        text(dd, "23:+se", 0x666666, left, 50):165,18
+        text(f3x5, "23", 0x666666, right, 10):153,6
+        bitmap(generated(autotile("blob47Water", 23))):165,0
+        text(f3x5, "+se", 0x666666, left, 50):165,18
 
-        bitmap(generated(autotile("blob47Grass", 24))):220,0
-        text(dd, "24:+se", 0x666666, left, 50):220,18
+        text(f3x5, "24", 0x666666, right, 10):208,6
+        bitmap(generated(autotile("blob47Water", 24))):220,0
+        text(f3x5, "+se", 0x666666, left, 50):220,18
 
-        bitmap(generated(autotile("blob47Grass", 25))):275,0
-        text(dd, "25:+ne+se", 0x666666, left, 50):275,18
+        text(f3x5, "25", 0x666666, right, 10):263,6
+        bitmap(generated(autotile("blob47Water", 25))):275,0
+        text(f3x5, "+ne+se", 0x666666, left, 50):275,18
 
-        bitmap(generated(autotile("blob47Grass", 26))):330,0
-        text(dd, "26:+sw", 0x666666, left, 50):330,18
+        text(f3x5, "26", 0x666666, right, 10):318,6
+        bitmap(generated(autotile("blob47Water", 26))):330,0
+        text(f3x5, "+sw", 0x666666, left, 50):330,18
 
-        bitmap(generated(autotile("blob47Grass", 27))):385,0
-        text(dd, "27:+sw", 0x666666, left, 50):385,18
+        text(f3x5, "27", 0x666666, right, 10):373,6
+        bitmap(generated(autotile("blob47Water", 27))):385,0
+        text(f3x5, "+sw", 0x666666, left, 50):385,18
 
-        bitmap(generated(autotile("blob47Grass", 28))):440,0
-        text(dd, "28:+sw", 0x666666, left, 50):440,18
+        text(f3x5, "28", 0x666666, right, 10):428,6
+        bitmap(generated(autotile("blob47Water", 28))):440,0
+        text(f3x5, "+sw", 0x666666, left, 50):440,18
 
-        bitmap(generated(autotile("blob47Grass", 29))):495,0
-        text(dd, "29:+sw", 0x666666, left, 50):495,18
+        text(f3x5, "29", 0x666666, right, 10):483,6
+        bitmap(generated(autotile("blob47Water", 29))):495,0
+        text(f3x5, "+sw", 0x666666, left, 50):495,18
     }
 
     // Row 3: tiles 30-39
     point {
-        pos: 20, 145
-        bitmap(generated(autotile("blob47Grass", 30))):0,0
-        text(dd, "30:+ne+sw", 0x666666, left, 50):0,18
+        pos: 20, 115
+        text(f3x5, "30", 0x666666, right, 10):-12,6
+        bitmap(generated(autotile("blob47Water", 30))):0,0
+        text(f3x5, "+ne+sw", 0x666666, left, 50):0,18
 
-        bitmap(generated(autotile("blob47Grass", 31))):55,0
-        text(dd, "31:+se+sw", 0x666666, left, 50):55,18
+        text(f3x5, "31", 0x666666, right, 10):43,6
+        bitmap(generated(autotile("blob47Water", 31))):55,0
+        text(f3x5, "+se+sw", 0x666666, left, 50):55,18
 
-        bitmap(generated(autotile("blob47Grass", 32))):110,0
-        text(dd, "32:+se+sw", 0x666666, left, 50):110,18
+        text(f3x5, "32", 0x666666, right, 10):98,6
+        bitmap(generated(autotile("blob47Water", 32))):110,0
+        text(f3x5, "+se+sw", 0x666666, left, 50):110,18
 
-        bitmap(generated(autotile("blob47Grass", 33))):165,0
-        text(dd, "33:all-nw", 0x666666, left, 50):165,18
+        text(f3x5, "33", 0x666666, right, 10):153,6
+        bitmap(generated(autotile("blob47Water", 33))):165,0
+        text(f3x5, "all-nw", 0x666666, left, 50):165,18
 
-        bitmap(generated(autotile("blob47Grass", 34))):220,0
-        text(dd, "34:+nw", 0x666666, left, 50):220,18
+        text(f3x5, "34", 0x666666, right, 10):208,6
+        bitmap(generated(autotile("blob47Water", 34))):220,0
+        text(f3x5, "+nw", 0x666666, left, 50):220,18
 
-        bitmap(generated(autotile("blob47Grass", 35))):275,0
-        text(dd, "35:+nw", 0x666666, left, 50):275,18
+        text(f3x5, "35", 0x666666, right, 10):263,6
+        bitmap(generated(autotile("blob47Water", 35))):275,0
+        text(f3x5, "+nw", 0x666666, left, 50):275,18
 
-        bitmap(generated(autotile("blob47Grass", 36))):330,0
-        text(dd, "36:+ne+nw", 0x666666, left, 50):330,18
+        text(f3x5, "36", 0x666666, right, 10):318,6
+        bitmap(generated(autotile("blob47Water", 36))):330,0
+        text(f3x5, "+ne+nw", 0x666666, left, 50):330,18
 
-        bitmap(generated(autotile("blob47Grass", 37))):385,0
-        text(dd, "37:+nw", 0x666666, left, 50):385,18
+        text(f3x5, "37", 0x666666, right, 10):373,6
+        bitmap(generated(autotile("blob47Water", 37))):385,0
+        text(f3x5, "+nw", 0x666666, left, 50):385,18
 
-        bitmap(generated(autotile("blob47Grass", 38))):440,0
-        text(dd, "38:+nw", 0x666666, left, 50):440,18
+        text(f3x5, "38", 0x666666, right, 10):428,6
+        bitmap(generated(autotile("blob47Water", 38))):440,0
+        text(f3x5, "+nw", 0x666666, left, 50):440,18
 
-        bitmap(generated(autotile("blob47Grass", 39))):495,0
-        text(dd, "39:+ne+nw", 0x666666, left, 50):495,18
+        text(f3x5, "39", 0x666666, right, 10):483,6
+        bitmap(generated(autotile("blob47Water", 39))):495,0
+        text(f3x5, "+ne+nw", 0x666666, left, 50):495,18
     }
 
     // Row 4: tiles 40-46
     point {
-        pos: 20, 180
-        bitmap(generated(autotile("blob47Grass", 40))):0,0
-        text(dd, "40:+se+nw", 0x666666, left, 50):0,18
+        pos: 20, 140
+        text(f3x5, "40", 0x666666, right, 10):-12,6
+        bitmap(generated(autotile("blob47Water", 40))):0,0
+        text(f3x5, "+se+nw", 0x666666, left, 50):0,18
 
-        bitmap(generated(autotile("blob47Grass", 41))):55,0
-        text(dd, "41:all-sw", 0x666666, left, 50):55,18
+        text(f3x5, "41", 0x666666, right, 10):43,6
+        bitmap(generated(autotile("blob47Water", 41))):55,0
+        text(f3x5, "all-sw", 0x666666, left, 50):55,18
 
-        bitmap(generated(autotile("blob47Grass", 42))):110,0
-        text(dd, "42:+sw+nw", 0x666666, left, 50):110,18
+        text(f3x5, "42", 0x666666, right, 10):98,6
+        bitmap(generated(autotile("blob47Water", 42))):110,0
+        text(f3x5, "+sw+nw", 0x666666, left, 50):110,18
 
-        bitmap(generated(autotile("blob47Grass", 43))):165,0
-        text(dd, "43:+sw+nw", 0x666666, left, 50):165,18
+        text(f3x5, "43", 0x666666, right, 10):153,6
+        bitmap(generated(autotile("blob47Water", 43))):165,0
+        text(f3x5, "+sw+nw", 0x666666, left, 50):165,18
 
-        bitmap(generated(autotile("blob47Grass", 44))):220,0
-        text(dd, "44:all-se", 0x666666, left, 50):220,18
+        text(f3x5, "44", 0x666666, right, 10):208,6
+        bitmap(generated(autotile("blob47Water", 44))):220,0
+        text(f3x5, "all-se", 0x666666, left, 50):220,18
 
-        bitmap(generated(autotile("blob47Grass", 45))):275,0
-        text(dd, "45:all-ne", 0x666666, left, 50):275,18
+        text(f3x5, "45", 0x666666, right, 10):263,6
+        bitmap(generated(autotile("blob47Water", 45))):275,0
+        text(f3x5, "all-ne", 0x666666, left, 50):275,18
 
-        bitmap(generated(autotile("blob47Grass", 46))):330,0
-        text(dd, "46:ALL", 0x00FF00, left, 50):330,18
+        text(f3x5, "46", 0x00FF00, right, 10):318,6
+        bitmap(generated(autotile("blob47Water", 46))):330,0
+        text(f3x5, "ALL", 0x00FF00, left, 50):330,18
     }
 
     // Legend
     point {
-        pos: 10, 220
-        text(dd, "Legend: NESW=cardinals, ne/se/sw/nw=corners, ALL=full tile", 0x666666, left);
-        text(dd, "21=center (NESW only), 46=all 8 neighbors", 0x888888, left):0,15
+        pos: 10, 175
+        text(f3x5, "Legend: NESW=cardinals, ne/se/sw/nw=corners, ALL=full tile", 0x666666, left);
+        text(f3x5, "21=center (NESW only), 46=all 8 neighbors", 0x888888, left):0,8
     }
+
+    // Map positions (used by test code, multiply by scale 2.0)
+    // mapColored: 20,200 -> x=40, y=400 at scale 2.0
+    // mapWater: 250,200 -> x=500, y=400 at scale 2.0 (with black background)
+    bitmap(generated(color(200, 170, black))):250,200
 }
