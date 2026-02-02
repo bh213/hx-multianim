@@ -324,4 +324,22 @@ class AllExamplesTest extends VisualTestBase {
 			1.0
 		);
 	}
+
+	// Example 31: forgotten plains terrain - real tileset autotile
+	@Test
+	public function test31_ForgottenPlainsTerrain(async:utest.Async) {
+		this.testName = "forgottenPlainsTerrain";
+		this.testTitle = "#31: forgotten plains terrain";
+		this.referenceDir = "test/examples/31-forgottenPlainsTerrain";
+
+		// Test autotile only, no programmable element
+		autotileHelper.buildAutotileOnlyTest(
+			"test/examples/31-forgottenPlainsTerrain/forgottenPlainsTerrain.manim",
+			"grassTerrain",
+			AutotileTestHelper.COMPLEX_GRID,
+			100.0, 100.0,
+			async,
+			1280, 720
+		);
+	}
 }

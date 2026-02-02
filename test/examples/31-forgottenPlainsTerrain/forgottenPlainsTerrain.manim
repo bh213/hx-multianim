@@ -1,0 +1,41 @@
+version: 0.3
+
+// =============================================================================
+// FORGOTTEN PLAINS TERRAIN - Real tileset autotile
+// =============================================================================
+// Uses Minifantasy_ForgottenPlainsTiles.png with region and mapping
+//
+// Tileset: Minifantasy - Forgotten Plains by Krishna Palacio
+// https://krishna-palacio.itch.io/minifantasy-forgotten-plains
+// =============================================================================
+
+// Grass terrain autotile from Minifantasy tileset
+// Region [0,0,16,24] = 2x3 grid of 8x8 tiles (indices 0-5)
+// Tiles: 0=grass, 1=dirt, 2=grass, 3=dirt/grass, 4=grass, 5=dirt
+#grassTerrain autotile {
+    format: simple13
+    tileSize: 8
+    file: "Tileset/Minifantasy_ForgottenPlainsTiles.png"
+    region: [0, 0, 16, 24]
+    mapping: [
+        1,    // 0: NW corner - dirt
+        3,    // 1: N edge - dirt/grass
+        1,    // 2: NE corner - dirt
+        3,    // 3: W edge - dirt/grass
+        0,    // 4: Center - grass
+        3,    // 5: E edge - dirt/grass
+        1,    // 6: SW corner - dirt
+        3,    // 7: S edge - dirt/grass
+        1,    // 8: SE corner - dirt
+        0,    // 9: iNE inner corner - grass
+        0,    // 10: iNW inner corner - grass
+        0,    // 11: iSE inner corner - grass
+        0     // 12: iSW inner corner - grass
+    ]
+}
+
+// Visual demo element (empty - map rendered by test code)
+#forgottenPlainsTerrain programmable() {
+    pos: 0, 0
+    grid: 1280, 720
+}

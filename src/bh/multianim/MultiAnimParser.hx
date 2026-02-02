@@ -837,6 +837,7 @@ typedef AutotileDef = {
 	var tileSize:ReferenceableValue;
 	var ?depth:Null<ReferenceableValue>;  // for isometric elevation
 	var ?mapping:Null<Array<Int>>;        // custom index mapping
+	var ?region:Null<Array<ReferenceableValue>>;  // optional region [x, y, w, h] for file source
 }
 
 enum StateAnimConstruct {
@@ -4230,6 +4231,7 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 		var tileSize:Null<ReferenceableValue> = null;
 		var depth:Null<ReferenceableValue> = null;
 		var mapping:Null<Array<Int>> = null;
+		var region:Null<Array<ReferenceableValue>> = null;
 
 		final once = createOnceParser();
 
@@ -4316,8 +4318,26 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 						}
 					}
 
+				// region: [x, y, w, h] - optional region for file source (tile indices relative to this region)
+				case [MPIdentifier(_, MPRegion, ITString), MPColon, MPBracketOpen]:
+					once.parsed("region");
+					region = [];
+					while (true) {
+						switch stream {
+							case [val = parseIntegerOrReference()]:
+								region.push(val);
+								switch stream {
+									case [MPComma]: continue;
+									case [MPBracketClosed]: break;
+								}
+							case [MPBracketClosed]: break;
+							case _: unexpectedError("expected integer or ]");
+						}
+					}
+					if (region.length != 4) syntaxError('region must have exactly 4 values [x, y, w, h]');
+
 				case [MPCurlyClosed]: break;
-				case _: unexpectedError("expected format:, sheet:, file:, tiles:, demo:, tileSize:, depth:, mapping:, or }");
+				case _: unexpectedError("expected format:, sheet:, file:, tiles:, demo:, tileSize:, depth:, mapping:, region:, or }");
 			}
 		}
 
@@ -4330,7 +4350,8 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 			source: source,
 			tileSize: tileSize,
 			depth: depth,
-			mapping: mapping
+			mapping: mapping,
+			region: region
 		};
 	}
 

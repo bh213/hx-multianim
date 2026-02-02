@@ -227,6 +227,12 @@ if exist "%ROOT%test\screenshots\autotileDemoSyntax_actual.png" (
     echo   30 - autotileDemoSyntax
 )
 
+REM Example 31: forgotten plains terrain
+if exist "%ROOT%test\screenshots\forgottenPlainsTerrain_actual.png" (
+    copy /Y "%ROOT%test\screenshots\forgottenPlainsTerrain_actual.png" "%ROOT%test\examples\31-forgottenPlainsTerrain\reference.png" >nul
+    echo   31 - forgottenPlainsTerrain
+)
+
 echo.
 echo Reference images updated. Re-run 'test.bat run' to verify tests pass.
 goto :eof

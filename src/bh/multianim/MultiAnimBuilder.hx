@@ -2544,7 +2544,12 @@ class MultiAnimBuilder {
 		final tiles = loadAutotileTiles(autotileDef);
 		final tileSize = resolveAsInteger(autotileDef.tileSize);
 		final depth = autotileDef.depth != null ? resolveAsInteger(autotileDef.depth) : 0;
-		final mapping = autotileDef.mapping;
+		// For ATSFile with mapping, the mapping is applied during tile loading, so don't apply it here
+		final mappingAppliedDuringLoading = switch autotileDef.source {
+			case ATSFile(_): autotileDef.mapping != null;
+			default: false;
+		};
+		final mapping = mappingAppliedDuringLoading ? null : autotileDef.mapping;
 
 		final height = grid.length;
 		if (height == 0)
@@ -2629,16 +2634,36 @@ class MultiAnimBuilder {
 
 			case ATSFile(filename):
 				final baseTile = resourceLoader.loadTile(resolveAsString(filename));
-				final tilesPerRow = Std.int(baseTile.width / tileSize);
 				final tileCount = switch autotileDef.format {
 					case Simple13: 13;
 					case Cross: 13;
 					case Blob47: 47;
 				};
-				[
-					for (i in 0...tileCount)
-						baseTile.sub((i % tilesPerRow) * tileSize, Std.int(i / tilesPerRow) * tileSize, tileSize, tileSize)
-				];
+
+				// If region is provided, extract tiles from that region only
+				// Region format: [offsetX, offsetY, width, height]
+				// Tile indices in mapping are relative to the region
+				final regionX = autotileDef.region != null ? resolveAsInteger(autotileDef.region[0]) : 0;
+				final regionY = autotileDef.region != null ? resolveAsInteger(autotileDef.region[1]) : 0;
+				final regionW = autotileDef.region != null ? resolveAsInteger(autotileDef.region[2]) : Std.int(baseTile.width);
+				final tilesPerRow = Std.int(regionW / tileSize);
+
+				// If mapping is provided, load tiles from mapped positions
+				if (autotileDef.mapping != null) {
+					[for (i in 0...tileCount) baseTile.sub(
+						regionX + (autotileDef.mapping[i] % tilesPerRow) * tileSize,
+						regionY + Std.int(autotileDef.mapping[i] / tilesPerRow) * tileSize,
+						tileSize, tileSize
+					)];
+				}
+				else {
+					// Sequential tile extraction from the region
+					[for (i in 0...tileCount) baseTile.sub(
+						regionX + (i % tilesPerRow) * tileSize,
+						regionY + Std.int(i / tilesPerRow) * tileSize,
+						tileSize, tileSize
+					)];
+				}
 
 			case ATSTiles(tiles):
 				// Explicit tile list - load each tile source directly
