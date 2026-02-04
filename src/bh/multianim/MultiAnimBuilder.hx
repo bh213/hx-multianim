@@ -732,10 +732,12 @@ class MultiAnimBuilder {
 
 		final format = autotileDef.format;
 
-		// Convert selector to tile index
+		// Convert selector to tile index (and keep edge mask for potential fallback)
+		var edgeMask:Null<Int> = null;
 		final tileIndex = switch selector {
 			case ByIndex(index): resolveAsInteger(index);
 			case ByEdges(edges):
+				edgeMask = edges;
 				// Convert edge mask to tile index using the appropriate format
 				switch format {
 					case Cross: bh.base.Autotile.getCrossIndex(edges);
@@ -752,9 +754,14 @@ class MultiAnimBuilder {
 				AutotileRef(format, tileIndex, tileSize, edgeColorInt, fillColorInt);
 
 			case ATSTiles(tiles):
-				if (tileIndex < 0 || tileIndex >= tiles.length)
+				// Use fallback for blob47 if tile is missing
+				var actualIndex = tileIndex;
+				if (format == Blob47 && actualIndex >= tiles.length) {
+					actualIndex = bh.base.Autotile.applyBlob47Fallback(tileIndex, tiles.length);
+				}
+				if (actualIndex < 0 || actualIndex >= tiles.length)
 					throw 'autotile reference: tile index $tileIndex out of bounds for "$name" (has ${tiles.length} tiles)';
-				final tile = loadTileSource(tiles[tileIndex]);
+				final tile = loadTileSource(tiles[actualIndex]);
 				PreloadedTile(tile);
 
 			case ATSFile(filename):
@@ -778,9 +785,14 @@ class MultiAnimBuilder {
 				// Apply mapping if present (remap the tile index)
 				var mappedIndex = tileIndex;
 				if (autotileDef.mapping != null) {
-					if (tileIndex < 0 || tileIndex >= autotileDef.mapping.length)
-						throw 'autotile reference: tile index $tileIndex out of bounds for mapping (has ${autotileDef.mapping.length} entries)';
-					mappedIndex = autotileDef.mapping[tileIndex];
+					var actualIndex = tileIndex;
+					// For blob47 with allowPartialMapping, apply fallback for missing tiles
+					if (format == Blob47 && autotileDef.allowPartialMapping && !autotileDef.mapping.exists(actualIndex)) {
+						actualIndex = bh.base.Autotile.applyBlob47FallbackWithMap(tileIndex, autotileDef.mapping);
+					}
+					if (!autotileDef.mapping.exists(actualIndex))
+						throw 'autotile reference: tile index $tileIndex not found in mapping';
+					mappedIndex = autotileDef.mapping.get(actualIndex);
 				}
 
 				// Calculate tile position within the region
@@ -801,9 +813,14 @@ class MultiAnimBuilder {
 				// Apply mapping if present
 				var mappedIndex = tileIndex;
 				if (autotileDef.mapping != null) {
-					if (tileIndex < 0 || tileIndex >= autotileDef.mapping.length)
-						throw 'autotile reference: tile index $tileIndex out of bounds for mapping (has ${autotileDef.mapping.length} entries)';
-					mappedIndex = autotileDef.mapping[tileIndex];
+					var actualIndex = tileIndex;
+					// For blob47 with allowPartialMapping, apply fallback for missing tiles
+					if (format == Blob47 && autotileDef.allowPartialMapping && !autotileDef.mapping.exists(actualIndex)) {
+						actualIndex = bh.base.Autotile.applyBlob47FallbackWithMap(tileIndex, autotileDef.mapping);
+					}
+					if (!autotileDef.mapping.exists(actualIndex))
+						throw 'autotile reference: tile index $tileIndex not found in mapping';
+					mappedIndex = autotileDef.mapping.get(actualIndex);
 				}
 
 				// Load tile from atlas with prefix and index
@@ -2630,12 +2647,19 @@ class MultiAnimBuilder {
 				final mask8 = bh.base.Autotile.getNeighborMask8(grid, x, y);
 				var tileIndex = switch autotileDef.format {
 					case Cross: bh.base.Autotile.getCrossIndex(mask8);
-					case Blob47: bh.base.Autotile.getBlob47Index(mask8);
+					case Blob47: bh.base.Autotile.getBlob47IndexWithFallback(mask8, tiles.length);
 				};
 
-				// Apply custom mapping if provided
-				if (mapping != null && tileIndex < mapping.length) {
-					tileIndex = mapping[tileIndex];
+				// Apply custom mapping if provided (Map<Int, Int>)
+				if (mapping != null) {
+					var actualIndex = tileIndex;
+					// For blob47 with allowPartialMapping, apply fallback for missing tiles
+					if (autotileDef.format == Blob47 && autotileDef.allowPartialMapping && !mapping.exists(actualIndex)) {
+						actualIndex = bh.base.Autotile.applyBlob47FallbackWithMap(tileIndex, mapping);
+					}
+					if (mapping.exists(actualIndex)) {
+						tileIndex = mapping.get(actualIndex);
+					}
 				}
 
 				if (tileIndex >= 0 && tileIndex < tiles.length) {
@@ -2710,13 +2734,29 @@ class MultiAnimBuilder {
 				final regionW = autotileDef.region != null ? resolveAsInteger(autotileDef.region[2]) : Std.int(baseTile.width);
 				final tilesPerRow = Std.int(regionW / tileSize);
 
-				// If mapping is provided, load tiles from mapped positions
+				// If mapping is provided (Map<Int, Int>), load tiles from mapped positions
+				// For allowPartialMapping, missing tiles will be filled with a placeholder and resolved at render time
 				if (autotileDef.mapping != null) {
-					[for (i in 0...tileCount) baseTile.sub(
-						regionX + (autotileDef.mapping[i] % tilesPerRow) * tileSize,
-						regionY + Std.int(autotileDef.mapping[i] / tilesPerRow) * tileSize,
-						tileSize, tileSize
-					)];
+					final result = new Array<h2d.Tile>();
+					for (i in 0...tileCount) {
+						// Get the mapped tileset index, using fallback for missing blob47 tiles
+						var mappedIdx = 0;
+						if (autotileDef.mapping.exists(i)) {
+							mappedIdx = autotileDef.mapping.get(i);
+						} else if (autotileDef.format == Blob47 && autotileDef.allowPartialMapping) {
+							// Find fallback tile and use its mapping
+							final fallbackIdx = bh.base.Autotile.applyBlob47FallbackWithMap(i, autotileDef.mapping);
+							mappedIdx = autotileDef.mapping.exists(fallbackIdx) ? autotileDef.mapping.get(fallbackIdx) : 0;
+						} else {
+							throw 'autotile: tile index $i not found in mapping';
+						}
+						result.push(baseTile.sub(
+							regionX + (mappedIdx % tilesPerRow) * tileSize,
+							regionY + Std.int(mappedIdx / tilesPerRow) * tileSize,
+							tileSize, tileSize
+						));
+					}
+					result;
 				}
 				else {
 					// Sequential tile extraction from the region

@@ -173,6 +173,13 @@ class Autotile {
 	private static var blob47LUT:Array<Int> = null;
 
 	/**
+	 * Blob47 fallback lookup table. For each tile index, gives the next simpler tile
+	 * (same cardinal directions but with one fewer corner).
+	 * Used when a tileset doesn't have all 47 tiles.
+	 */
+	private static var blob47FallbackLUT:Array<Int> = null;
+
+	/**
 	 * Get Blob47 tile index from 8-direction neighbor mask.
 	 * Uses a lookup table to map 256 possible combinations to 47 unique tiles.
 	 *
@@ -187,6 +194,74 @@ class Autotile {
 	}
 
 	/**
+	 * Get Blob47 tile index with fallback for missing tiles.
+	 * If the ideal tile index >= maxTiles, falls back to a simpler tile
+	 * by progressively removing corner requirements.
+	 *
+	 * @param mask8 8-direction neighbor bitmask
+	 * @param maxTiles Number of available tiles (e.g., 16 for a minimal set)
+	 * @return Tile index that is guaranteed to be < maxTiles
+	 */
+	public static function getBlob47IndexWithFallback(mask8:Int, maxTiles:Int):Int {
+		if (blob47LUT == null) {
+			initBlob47LUT();
+		}
+		return applyBlob47Fallback(blob47LUT[mask8], maxTiles);
+	}
+
+	/**
+	 * Apply fallback to a blob47 tile index.
+	 * If tileIndex >= maxTiles, falls back to simpler tiles until one exists.
+	 *
+	 * @param tileIndex The original tile index (0-46)
+	 * @param maxTiles Number of available tiles
+	 * @return Tile index that is guaranteed to be < maxTiles
+	 */
+	public static function applyBlob47Fallback(tileIndex:Int, maxTiles:Int):Int {
+		if (blob47FallbackLUT == null) {
+			initBlob47FallbackLUT();
+		}
+
+		// Keep falling back until we find a tile that exists
+		while (tileIndex >= maxTiles && tileIndex > 0) {
+			tileIndex = blob47FallbackLUT[tileIndex];
+		}
+
+		// Final safety: if still out of range, use tile 0 (isolated)
+		if (tileIndex >= maxTiles) {
+			return 0;
+		}
+
+		return tileIndex;
+	}
+
+	/**
+	 * Apply fallback to a blob47 tile index using a Map for defined tiles.
+	 * If tileIndex is not in the map, falls back to simpler tiles until one exists.
+	 *
+	 * @param tileIndex The original tile index (0-46)
+	 * @param mapping Map of defined tile indices
+	 * @return Tile index that exists in the mapping
+	 */
+	public static function applyBlob47FallbackWithMap(tileIndex:Int, mapping:Map<Int, Int>):Int {
+		if (blob47FallbackLUT == null) {
+			initBlob47FallbackLUT();
+		}
+
+		// Keep falling back until we find a tile that exists in the mapping
+		while (!mapping.exists(tileIndex) && tileIndex > 0) {
+			tileIndex = blob47FallbackLUT[tileIndex];
+		}
+
+		// Final safety: if still not found, use tile 0 (isolated)
+		if (!mapping.exists(tileIndex)) {
+			return 0;
+		}
+
+		return tileIndex;
+	}
+
+	/**
 	 * Initialize the Blob47 lookup table.
 	 * Maps all 256 possible 8-neighbor combinations to 47 unique tile indices.
 	 */
@@ -197,6 +272,70 @@ class Autotile {
 		for (i in 0...256) {
 			blob47LUT[i] = calculateBlob47Tile(i);
 		}
+	}
+
+	/**
+	 * Initialize the Blob47 fallback lookup table.
+	 * Each entry maps a tile index to its fallback (same cardinals, fewer corners).
+	 * Fallback chain removes corners in order: NW -> SW -> SE -> NE.
+	 */
+	private static function initBlob47FallbackLUT():Void {
+		blob47FallbackLUT = new Array<Int>();
+		blob47FallbackLUT.resize(47);
+
+		// Tile 0: isolated - no fallback (base case)
+		blob47FallbackLUT[0] = 0;
+
+		// Tiles 1-5: single cardinal, no corners possible - fall back to 0
+		blob47FallbackLUT[1] = 0; // N only -> isolated
+		blob47FallbackLUT[2] = 0; // E only -> isolated
+		blob47FallbackLUT[3] = 0; // N+E (no corner) -> E only? Actually better to go to simpler
+		blob47FallbackLUT[4] = 3; // N+NE+E -> N+E
+		blob47FallbackLUT[5] = 0; // S only -> isolated
+		blob47FallbackLUT[6] = 1; // N+S -> N only
+		blob47FallbackLUT[7] = 2; // E+S -> E only
+		blob47FallbackLUT[8] = 3; // N+E+S -> N+E
+		blob47FallbackLUT[9] = 8; // N+NE+E+S -> N+E+S
+		blob47FallbackLUT[10] = 7; // E+SE+S -> E+S
+		blob47FallbackLUT[11] = 8; // N+E+SE+S -> N+E+S
+		blob47FallbackLUT[12] = 9; // N+NE+E+SE+S -> N+NE+E+S (remove SE)
+
+		blob47FallbackLUT[13] = 0; // W only -> isolated
+		blob47FallbackLUT[14] = 1; // N+W -> N only
+		blob47FallbackLUT[15] = 2; // E+W -> E only
+		blob47FallbackLUT[16] = 3; // N+E+W -> N+E
+		blob47FallbackLUT[17] = 16; // N+NE+E+W -> N+E+W
+		blob47FallbackLUT[18] = 5; // S+W -> S only
+		blob47FallbackLUT[19] = 6; // N+S+W -> N+S
+		blob47FallbackLUT[20] = 7; // E+S+W -> E+S
+		blob47FallbackLUT[21] = 8; // N+E+S+W (center, no corners) -> N+E+S
+		blob47FallbackLUT[22] = 21; // N+NE+E+S+W -> center
+		blob47FallbackLUT[23] = 20; // E+SE+S+W -> E+S+W
+		blob47FallbackLUT[24] = 21; // N+E+SE+S+W -> center
+		blob47FallbackLUT[25] = 22; // N+NE+E+SE+S+W -> N+NE+E+S+W (remove SE)
+
+		blob47FallbackLUT[26] = 18; // S+SW+W -> S+W
+		blob47FallbackLUT[27] = 19; // N+S+SW+W -> N+S+W
+		blob47FallbackLUT[28] = 20; // E+S+SW+W -> E+S+W
+		blob47FallbackLUT[29] = 21; // N+E+S+SW+W -> center
+		blob47FallbackLUT[30] = 22; // N+NE+E+S+SW+W -> N+NE+E+S+W (remove SW)
+		blob47FallbackLUT[31] = 23; // E+SE+S+SW+W -> E+SE+S+W (remove SW)
+		blob47FallbackLUT[32] = 24; // N+E+SE+S+SW+W -> N+E+SE+S+W (remove SW)
+		blob47FallbackLUT[33] = 25; // N+NE+E+SE+S+SW+W -> N+NE+E+SE+S+W (remove SW)
+
+		blob47FallbackLUT[34] = 14; // N+W+NW -> N+W
+		blob47FallbackLUT[35] = 16; // N+E+W+NW -> N+E+W
+		blob47FallbackLUT[36] = 17; // N+NE+E+W+NW -> N+NE+E+W (remove NW)
+		blob47FallbackLUT[37] = 19; // N+S+W+NW -> N+S+W
+		blob47FallbackLUT[38] = 21; // N+E+S+W+NW -> center
+		blob47FallbackLUT[39] = 22; // N+NE+E+S+W+NW -> N+NE+E+S+W (remove NW)
+		blob47FallbackLUT[40] = 24; // N+E+SE+S+W+NW -> N+E+SE+S+W (remove NW)
+		blob47FallbackLUT[41] = 25; // N+NE+E+SE+S+W+NW -> N+NE+E+SE+S+W (remove NW)
+		blob47FallbackLUT[42] = 27; // N+S+SW+W+NW -> N+S+SW+W (remove NW)
+		blob47FallbackLUT[43] = 29; // N+E+S+SW+W+NW -> N+E+S+SW+W (remove NW)
+		blob47FallbackLUT[44] = 30; // N+NE+E+S+SW+W+NW -> N+NE+E+S+SW+W (remove NW)
+		blob47FallbackLUT[45] = 32; // N+E+SE+S+SW+W+NW -> N+E+SE+S+SW+W (remove NW)
+		blob47FallbackLUT[46] = 41; // all neighbors -> remove NW
 	}
 
 	/**

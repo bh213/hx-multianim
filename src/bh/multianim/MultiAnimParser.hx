@@ -834,8 +834,9 @@ typedef AutotileDef = {
 	var source:AutotileSource;
 	var tileSize:ReferenceableValue;
 	var ?depth:Null<ReferenceableValue>;  // for isometric elevation
-	var ?mapping:Null<Array<Int>>;        // custom index mapping
+	var ?mapping:Null<Map<Int, Int>>;     // custom index mapping: blob47Index -> tilesetIndex
 	var ?region:Null<Array<ReferenceableValue>>;  // optional region [x, y, w, h] for file source
+	var ?allowPartialMapping:Bool;        // blob47 only: if true, missing tiles use fallback instead of error
 }
 
 enum StateAnimConstruct {
@@ -4228,8 +4229,9 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 		var source:Null<AutotileSource> = null;
 		var tileSize:Null<ReferenceableValue> = null;
 		var depth:Null<ReferenceableValue> = null;
-		var mapping:Null<Array<Int>> = null;
+		var mapping:Null<Map<Int, Int>> = null;
 		var region:Null<Array<ReferenceableValue>> = null;
+		var allowPartialMapping:Bool = false;
 
 		final once = createOnceParser();
 
@@ -4297,22 +4299,44 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 					once.parsed("depth");
 					depth = d;
 
-				// mapping: [0, 1, 2, ...]
+				// mapping: [1, 2, 3, 7:12] - sequential values or explicit source:target pairs
+				// Plain number N at position i means: blob47 tile i -> tileset tile N
+				// Explicit N:M means: blob47 tile N -> tileset tile M
 				case [MPIdentifier(_, MPMapping, ITString), MPColon, MPBracketOpen]:
 					once.parsed("mapping");
-					mapping = [];
+					mapping = new Map<Int, Int>();
+					var sequentialIndex = 0;
 					while (true) {
 						switch stream {
-							case [idx = parseInteger()]:
-								mapping.push(idx);
+							case [sourceIdx = parseInteger()]:
+								// Check if this is source:target format
+								switch stream {
+									case [MPColon, targetIdx = parseInteger()]:
+										// Explicit mapping: sourceIdx -> targetIdx
+										if (mapping.exists(sourceIdx))
+											syntaxError('duplicate mapping for tile $sourceIdx');
+										mapping.set(sourceIdx, targetIdx);
+									case _:
+										// Sequential: position -> value
+										if (mapping.exists(sequentialIndex))
+											syntaxError('duplicate mapping for tile $sequentialIndex');
+										mapping.set(sequentialIndex, sourceIdx);
+										sequentialIndex++;
+								}
 								switch stream {
 									case [MPComma]: continue;
 									case [MPBracketClosed]: break;
+									case _: unexpectedError("expected , or ]");
 								}
 							case [MPBracketClosed]: break;
 							case _: unexpectedError("expected integer or ]");
 						}
 					}
+
+				// allowPartialMapping: true - for blob47, missing tiles use fallback
+				case [MPIdentifier("allowPartialMapping", _, ITString), MPColon]:
+					once.parsed("allowPartialMapping");
+					allowPartialMapping = parseBool();
 
 				// region: [x, y, w, h] - optional region for file source (tile indices relative to this region)
 				case [MPIdentifier(_, MPRegion, ITString), MPColon, MPBracketOpen]:
@@ -4333,7 +4357,7 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 					if (region.length != 4) syntaxError('region must have exactly 4 values [x, y, w, h]');
 
 				case [MPCurlyClosed]: break;
-				case _: unexpectedError("expected format:, sheet:, file:, tiles:, demo:, tileSize:, depth:, mapping:, region:, or }");
+				case _: unexpectedError("expected format:, sheet:, file:, tiles:, demo:, tileSize:, depth:, mapping:, region:, allowPartialMapping:, or }");
 			}
 		}
 
@@ -4341,13 +4365,18 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 		if (source == null) syntaxError('autotile requires source (sheet:, file:, tiles:, or demo:)');
 		if (tileSize == null) syntaxError('autotile requires tileSize:');
 
+		// allowPartialMapping only valid for blob47
+		if (allowPartialMapping && format != Blob47)
+			syntaxError('allowPartialMapping is only valid for blob47 format');
+
 		return {
 			format: format,
 			source: source,
 			tileSize: tileSize,
 			depth: depth,
 			mapping: mapping,
-			region: region
+			region: region,
+			allowPartialMapping: allowPartialMapping
 		};
 	}
 

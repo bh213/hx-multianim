@@ -325,4 +325,29 @@ class AllExamplesTest extends VisualTestBase {
 			4.0
 		);
 	}
+
+	// Example 32: blob47 fallback - blob47 with partial tileset
+	@Test
+	public function test32_Blob47Fallback(async:utest.Async) {
+		this.testName = "blob47Fallback";
+		this.testTitle = "#32: blob47 fallback";
+		this.referenceDir = "test/examples/32-blob47Fallback";
+
+		// Test blob47 with partial tileset - missing tiles use fallback
+		// Positions: manim has backgrounds at (10,152) and (160,152), scale 2.0
+		autotileHelper.buildCombinedAutotileTestMultiple(
+			"test/examples/32-blob47Fallback/blob47Fallback.manim",
+			"blob47Fallback",
+			[
+				// Demo tiles (left map)
+				{name: "blob47Demo", grid: AutotileTestHelper.LARGE_SEA_GRID, x: 20.0, y: 304.0, background: false},
+				// Forgotten Plains tiles with fallback (right map)
+				{name: "blob47Grass", grid: AutotileTestHelper.LARGE_SEA_GRID, x: 320.0, y: 304.0, background: false}
+			],
+			async,
+			1280, 720,
+			0.98,
+			2.0
+		);
+	}
 }

@@ -227,6 +227,12 @@ if exist "%ROOT%test\screenshots\forgottenPlainsTerrain_actual.png" (
     echo   31 - forgottenPlainsTerrain
 )
 
+REM Example 32: blob47 fallback
+if exist "%ROOT%test\screenshots\blob47Fallback_actual.png" (
+    copy /Y "%ROOT%test\screenshots\blob47Fallback_actual.png" "%ROOT%test\examples\32-blob47Fallback\reference.png" >nul
+    echo   32 - blob47Fallback
+)
+
 echo.
 echo Reference images updated. Re-run 'test.bat run' to verify tests pass.
 goto :eof
