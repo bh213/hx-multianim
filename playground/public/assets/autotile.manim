@@ -4,10 +4,10 @@ version: 0.3
 // Autotiles are root-level elements used for procedural terrain generation.
 // They are built using MultiAnimBuilder.buildAutotile(name, grid) which returns a TileGroup.
 
-// Simple13 format: 3x3 grid + 4 inner corners (13 tiles total)
-// Tile layout in atlas: 0=NW, 1=N, 2=NE, 3=W, 4=C, 5=E, 6=SW, 7=S, 8=SE, 9-12=inner corners
+// Cross format: 13 tiles for standard terrain
+// Tile layout: 0=N, 1=W, 2=C, 3=E, 4=S, 5-8=outer corners, 9-12=inner corners
 #grassPath autotile {
-    format: simple13
+    format: cross
     sheet: "terrain"
     prefix: "grass_"
     tileSize: 16
@@ -33,7 +33,7 @@ version: 0.3
 
 // With custom mapping: Remap tile indices if your tileset uses a different order
 #customTerrain autotile {
-    format: simple13
+    format: cross
     sheet: "terrain"
     prefix: "custom_"
     tileSize: 16
@@ -42,39 +42,42 @@ version: 0.3
 
 // Region-based: Extract tiles from a specific region of an image
 #regionTerrain autotile {
-    format: simple13
+    format: cross
     sheet: "tileset.png"
     region: [0, 64, 64, 64]
     tileSize: 16
 }
 
-// Explicit tiles: Full control over each tile source (NEW)
+// Explicit tiles: Full control over each tile source
 // Each tile can be from different sheets, files, or generated
+// Cross layout: 0=N, 1=W, 2=C, 3=E, 4=S, 5=NW, 6=NE, 7=SW, 8=SE, 9-12=inner
 #explicitTiles autotile {
-    format: simple13
+    format: cross
     tileSize: 16
     tiles:
-        sheet("terrain", "grass_nw") sheet("terrain", "grass_n") sheet("terrain", "grass_ne")
-        sheet("terrain", "grass_w")  sheet("terrain", "grass_c") sheet("terrain", "grass_e")
-        sheet("terrain", "grass_sw") sheet("terrain", "grass_s") sheet("terrain", "grass_se")
+        sheet("terrain", "grass_n") sheet("terrain", "grass_w") sheet("terrain", "grass_c")
+        sheet("terrain", "grass_e") sheet("terrain", "grass_s")
+        sheet("terrain", "grass_nw") sheet("terrain", "grass_ne")
+        sheet("terrain", "grass_sw") sheet("terrain", "grass_se")
         sheet("terrain", "grass_inner_ne") sheet("terrain", "grass_inner_nw")
         sheet("terrain", "grass_inner_se") sheet("terrain", "grass_inner_sw")
 }
 
 // Generated tiles: For testing/prototyping without assets (manual method)
+// Cross layout: 0=N, 1=W, 2=C, 3=E, 4=S, 5=NW, 6=NE, 7=SW, 8=SE, 9-12=inner
 #generatedDemo autotile {
-    format: simple13
+    format: cross
     tileSize: 16
     tiles:
-        generated(color(16, 16, 0xFF8844))   // 0: NW
-        generated(color(16, 16, 0xFF9955))   // 1: N
-        generated(color(16, 16, 0xFFAA66))   // 2: NE
-        generated(color(16, 16, 0xFFBB77))   // 3: W
-        generated(color(16, 16, 0x44AA44))   // 4: C (center - green)
-        generated(color(16, 16, 0xFFDD99))   // 5: E
-        generated(color(16, 16, 0xFFEEAA))   // 6: SW
-        generated(color(16, 16, 0xFFFFBB))   // 7: S
-        generated(color(16, 16, 0xEEEECC))   // 8: SE
+        generated(color(16, 16, 0xFF9955))   // 0: N edge
+        generated(color(16, 16, 0xFFBB77))   // 1: W edge
+        generated(color(16, 16, 0x44AA44))   // 2: C (center - green)
+        generated(color(16, 16, 0xFFDD99))   // 3: E edge
+        generated(color(16, 16, 0xFFFFBB))   // 4: S edge
+        generated(color(16, 16, 0xFF8844))   // 5: NW outer corner
+        generated(color(16, 16, 0xFFAA66))   // 6: NE outer corner
+        generated(color(16, 16, 0xFFEEAA))   // 7: SW outer corner
+        generated(color(16, 16, 0xEEEECC))   // 8: SE outer corner
         generated(color(16, 16, 0x66CC66))   // 9: inner NE
         generated(color(16, 16, 0x77DD77))   // 10: inner NW
         generated(color(16, 16, 0x88EE88))   // 11: inner SE
@@ -87,14 +90,7 @@ version: 0.3
 // The demo: syntax automatically generates tiles that show edge/fill visualization.
 // Great for testing autotile logic without actual assets.
 
-// Simple13 demo - generates 13 tiles with edge borders
-#demoSimple13 autotile {
-    format: simple13
-    tileSize: 16
-    demo: 0xFF4444, 0x44FF44    // edge color (red), fill color (green)
-}
-
-// Cross demo - generates 13 tiles for isometric elevation
+// Cross demo - generates 13 tiles for standard terrain
 #demoCross autotile {
     format: cross
     tileSize: 16

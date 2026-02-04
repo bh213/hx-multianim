@@ -45,7 +45,7 @@ https://emhuo.itch.io/peaberry-pixel-font
 ### Some particle textures
 https://jellyfish0.itch.io/
 
-### Minifantasy - Forgotten Plains
+### Minifantasy - Forgotten Plains (free)
 https://krishna-palacio.itch.io/minifantasy-forgotten-plains
 by Krishna Palacio
 Used for autotile test examples.

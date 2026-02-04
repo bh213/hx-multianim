@@ -10,7 +10,7 @@
   - Range conditions: `greaterThanOrEqual`, `lessThanOrEqual`, `between`
   - `@ifstrict` - requires ALL parameters to match (partial params = no match)
 - **Autotile system** - New root-level element for procedural terrain generation
-  - Formats: `simple13` (13 tiles), `cross` (isometric), `blob47` (47-tile full coverage)
+  - Formats: `cross` (13 tiles), `blob47` (47-tile full coverage)
   - Neighbor-based tile selection with inner/outer corner handling
   - Demo mode with `demo: edgeColor, fillColor` for placeholder tile visualization
 - **Autotile reference syntax** - Reference autotile demo tiles in generated() expressions

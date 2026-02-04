@@ -504,7 +504,7 @@ class MultiAnimBuilder {
 			case RVColorXY(_, _, _) | RVColor(_, _): resolveAsColorInteger(v);
 			case RVReference(ref):
 				if (!indexedParams.exists(ref)) {
-					throw 'reference ${ref} does not exist';
+					throw 'reference ${ref} does not exist, available ${indexedParams}';
 				}
 
 				final val = indexedParams.get(ref);
@@ -560,7 +560,7 @@ class MultiAnimBuilder {
 			case RVColorXY(_, _, _) | RVColor(_, _): throw 'reference is a color but needs to be float';
 			case RVReference(ref):
 				if (!indexedParams.exists(ref))
-					throw 'reference ${ref} does not exist';
+					throw 'reference ${ref} does not exist (resolveAsNumber), available ${indexedParams}';
 
 				final val = indexedParams.get(ref);
 				switch val {
@@ -644,7 +644,7 @@ class MultiAnimBuilder {
 
 			case RVReference(ref):
 				if (!indexedParams.exists(ref))
-					throw 'reference ${ref} does not exist';
+					throw 'reference ${ref} does not exist (resolveAsString), available ${indexedParams}';
 
 				final val:ResolvedIndexParameters = indexedParams.get(ref);
 				switch val {
@@ -706,12 +706,17 @@ class MultiAnimBuilder {
 			case AutotileRef(format, tileIndex, tileSize, edgeColor, fillColor):
 				// Generate autotile demo tile with diagonal corners
 				generateAutotileDemoTile(format, tileIndex, tileSize, edgeColor.addAlphaIfNotPresent(), fillColor.addAlphaIfNotPresent());
+
+			case PreloadedTile(tile):
+				// Return the pre-loaded tile directly
+				tile;
 		}
 	}
 
 	/**
 	 * Resolve an autotile reference by looking up the autotile definition.
-	 * Gets format, tileSize, edgeColor, fillColor from the definition's demo: source.
+	 * For demo: source - gets format, tileSize, edgeColor, fillColor from the definition.
+	 * For tiles: source - loads the tile at the specified index.
 	 * Converts the selector (index or edges) to a tile index.
 	 */
 	function resolveAutotileRef(autotileName:ReferenceableValue, selector:AutotileTileSelector):ResolvedGeneratedTileType {
@@ -725,16 +730,7 @@ class MultiAnimBuilder {
 			default: throw 'autotile reference: "$name" is not an autotile definition';
 		};
 
-		// Get demo colors from the autotile source
-		final demoColors = switch autotileDef.source {
-			case ATSDemo(edgeColor, fillColor): {edge: edgeColor, fill: fillColor};
-			default: throw 'autotile reference: "$name" must use demo: source syntax';
-		};
-
 		final format = autotileDef.format;
-		final tileSize = resolveAsInteger(autotileDef.tileSize);
-		final edgeColor = resolveAsColorInteger(demoColors.edge);
-		final fillColor = resolveAsColorInteger(demoColors.fill);
 
 		// Convert selector to tile index
 		final tileIndex = switch selector {
@@ -742,13 +738,83 @@ class MultiAnimBuilder {
 			case ByEdges(edges):
 				// Convert edge mask to tile index using the appropriate format
 				switch format {
-					case Simple13: bh.base.Autotile.getSimple13Index(edges);
 					case Cross: bh.base.Autotile.getCrossIndex(edges);
 					case Blob47: bh.base.Autotile.getBlob47Index(edges);
 				};
 		};
 
-		return AutotileRef(format, tileIndex, tileSize, edgeColor, fillColor);
+		// Handle different source types
+		return switch autotileDef.source {
+			case ATSDemo(edgeColor, fillColor):
+				final tileSize = resolveAsInteger(autotileDef.tileSize);
+				final edgeColorInt = resolveAsColorInteger(edgeColor);
+				final fillColorInt = resolveAsColorInteger(fillColor);
+				AutotileRef(format, tileIndex, tileSize, edgeColorInt, fillColorInt);
+
+			case ATSTiles(tiles):
+				if (tileIndex < 0 || tileIndex >= tiles.length)
+					throw 'autotile reference: tile index $tileIndex out of bounds for "$name" (has ${tiles.length} tiles)';
+				final tile = loadTileSource(tiles[tileIndex]);
+				PreloadedTile(tile);
+
+			case ATSFile(filename):
+				// Load tile from file, apply region and mapping if present
+				final tileSize = resolveAsInteger(autotileDef.tileSize);
+				final baseTile = resourceLoader.loadTile(resolveAsString(filename));
+
+				// Apply region if present (extract sub-region from the tileset)
+				var regionTile = baseTile;
+				var regionX = 0;
+				var regionY = 0;
+				if (autotileDef.region != null) {
+					final r = autotileDef.region;
+					regionX = resolveAsInteger(r[0]);
+					regionY = resolveAsInteger(r[1]);
+					final regionW = resolveAsInteger(r[2]);
+					final regionH = resolveAsInteger(r[3]);
+					regionTile = baseTile.sub(regionX, regionY, regionW, regionH);
+				}
+
+				// Apply mapping if present (remap the tile index)
+				var mappedIndex = tileIndex;
+				if (autotileDef.mapping != null) {
+					if (tileIndex < 0 || tileIndex >= autotileDef.mapping.length)
+						throw 'autotile reference: tile index $tileIndex out of bounds for mapping (has ${autotileDef.mapping.length} entries)';
+					mappedIndex = autotileDef.mapping[tileIndex];
+				}
+
+				// Calculate tile position within the region
+				final cols = Std.int(regionTile.width / tileSize);
+				final tileX = (mappedIndex % cols) * tileSize;
+				final tileY = Std.int(mappedIndex / cols) * tileSize;
+
+				// Extract the specific tile
+				final tile = regionTile.sub(tileX, tileY, tileSize, tileSize);
+				PreloadedTile(tile);
+
+			case ATSAtlas(sheet, prefix):
+				// Load tile from atlas using sheet and prefix
+				final tileSize = resolveAsInteger(autotileDef.tileSize);
+				final sheetName = resolveAsString(sheet);
+				final prefixStr = resolveAsString(prefix);
+
+				// Apply mapping if present
+				var mappedIndex = tileIndex;
+				if (autotileDef.mapping != null) {
+					if (tileIndex < 0 || tileIndex >= autotileDef.mapping.length)
+						throw 'autotile reference: tile index $tileIndex out of bounds for mapping (has ${autotileDef.mapping.length} entries)';
+					mappedIndex = autotileDef.mapping[tileIndex];
+				}
+
+				// Load tile from atlas with prefix and index
+				final tileName = prefixStr + mappedIndex;
+				final tile = loadTileImpl(sheetName, tileName).tile;
+				PreloadedTile(tile);
+
+			case ATSAtlasRegion(sheet, region):
+				// Atlas region-based autotiles not yet supported for generated(autotile(...)) syntax
+				throw 'autotile reference: "$name" uses sheet region - use tiles: or demo: syntax instead';
+		};
 	}
 
 	/**
@@ -2563,7 +2629,6 @@ class MultiAnimBuilder {
 
 				final mask8 = bh.base.Autotile.getNeighborMask8(grid, x, y);
 				var tileIndex = switch autotileDef.format {
-					case Simple13: bh.base.Autotile.getSimple13Index(mask8);
 					case Cross: bh.base.Autotile.getCrossIndex(mask8);
 					case Blob47: bh.base.Autotile.getBlob47Index(mask8);
 				};
@@ -2606,7 +2671,6 @@ class MultiAnimBuilder {
 				final atlas = resourceLoader.loadSheet2(resolveAsString(sheet));
 				final prefixStr = resolveAsString(prefix);
 				final tileCount = switch autotileDef.format {
-					case Simple13: 13;
 					case Cross: 13;
 					case Blob47: 47;
 				};
@@ -2623,7 +2687,6 @@ class MultiAnimBuilder {
 				final rh = resolveAsInteger(region[3]);
 				final tilesPerRow = Std.int(rw / tileSize);
 				final tileCount = switch autotileDef.format {
-					case Simple13: 13;
 					case Cross: 13;
 					case Blob47: 47;
 				};
@@ -2635,7 +2698,6 @@ class MultiAnimBuilder {
 			case ATSFile(filename):
 				final baseTile = resourceLoader.loadTile(resolveAsString(filename));
 				final tileCount = switch autotileDef.format {
-					case Simple13: 13;
 					case Cross: 13;
 					case Blob47: 47;
 				};
@@ -2674,7 +2736,6 @@ class MultiAnimBuilder {
 				final edge = resolveAsColorInteger(edgeColor).addAlphaIfNotPresent();
 				final fill = resolveAsColorInteger(fillColor).addAlphaIfNotPresent();
 				final tileCount = switch autotileDef.format {
-					case Simple13: 13;
 					case Cross: 13;
 					case Blob47: 47;
 				};
@@ -2738,15 +2799,37 @@ class MultiAnimBuilder {
 			}
 		}
 
-		// Draw inner corners (small corner notches for diagonal-missing tiles)
-		if (edges.innerNE)
-			pl.filledRect(tileSize - borderWidth, 0, borderWidth, borderWidth, edgeColor);
-		if (edges.innerNW)
-			pl.filledRect(0, 0, borderWidth, borderWidth, edgeColor);
-		if (edges.innerSE)
-			pl.filledRect(tileSize - borderWidth, tileSize - borderWidth, borderWidth, borderWidth, edgeColor);
-		if (edges.innerSW)
-			pl.filledRect(0, tileSize - borderWidth, borderWidth, borderWidth, edgeColor);
+		// Draw inner corners (triangular notches for diagonal-missing tiles)
+		// Inner corners are the opposite of outer corners - they cut into the fill
+		final innerCornerSize = Std.int(Math.max(2, tileSize / 4)); // Smaller than outer corners
+		if (edges.innerNE) {
+			// Inner NE corner - triangle at top-right cutting into fill
+			for (i in 0...innerCornerSize) {
+				final lineLen = innerCornerSize - i;
+				pl.filledRect(tileSize - lineLen, i, lineLen, 1, edgeColor);
+			}
+		}
+		if (edges.innerNW) {
+			// Inner NW corner - triangle at top-left cutting into fill
+			for (i in 0...innerCornerSize) {
+				final lineLen = innerCornerSize - i;
+				pl.filledRect(0, i, lineLen, 1, edgeColor);
+			}
+		}
+		if (edges.innerSE) {
+			// Inner SE corner - triangle at bottom-right cutting into fill
+			for (i in 0...innerCornerSize) {
+				final lineLen = innerCornerSize - i;
+				pl.filledRect(tileSize - lineLen, tileSize - 1 - i, lineLen, 1, edgeColor);
+			}
+		}
+		if (edges.innerSW) {
+			// Inner SW corner - triangle at bottom-left cutting into fill
+			for (i in 0...innerCornerSize) {
+				final lineLen = innerCornerSize - i;
+				pl.filledRect(0, tileSize - 1 - i, lineLen, 1, edgeColor);
+			}
+		}
 
 		pl.updateBitmap();
 		return pl.tile;
@@ -2758,32 +2841,8 @@ class MultiAnimBuilder {
 	 */
 	private function getAutotileEdges(format:AutotileFormat, tileIndex:Int):{n:Bool, s:Bool, e:Bool, w:Bool, innerNE:Bool, innerNW:Bool, innerSE:Bool, innerSW:Bool} {
 		return switch format {
-			case Simple13: getSimple13Edges(tileIndex);
 			case Cross: getCrossEdges(tileIndex);
 			case Blob47: getBlob47Edges(tileIndex);
-		};
-	}
-
-	/**
-	 * Simple13 edge configuration.
-	 * Layout: 0=NW 1=N 2=NE / 3=W 4=C 5=E / 6=SW 7=S 8=SE / 9-12=inner corners
-	 */
-	private function getSimple13Edges(idx:Int):{n:Bool, s:Bool, e:Bool, w:Bool, innerNE:Bool, innerNW:Bool, innerSE:Bool, innerSW:Bool} {
-		return switch idx {
-			case 0: {n: true, s: false, e: false, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // NW corner
-			case 1: {n: true, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // N edge
-			case 2: {n: true, s: false, e: true, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // NE corner
-			case 3: {n: false, s: false, e: false, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // W edge
-			case 4: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // Center
-			case 5: {n: false, s: false, e: true, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // E edge
-			case 6: {n: false, s: true, e: false, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // SW corner
-			case 7: {n: false, s: true, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // S edge
-			case 8: {n: false, s: true, e: true, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // SE corner
-			case 9: {n: false, s: false, e: false, w: false, innerNE: true, innerNW: false, innerSE: false, innerSW: false}; // inner-NE
-			case 10: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: true, innerSE: false, innerSW: false}; // inner-NW
-			case 11: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: true, innerSW: false}; // inner-SE
-			case 12: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: true}; // inner-SW
-			default: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false};
 		};
 	}
 

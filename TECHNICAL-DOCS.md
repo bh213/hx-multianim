@@ -42,15 +42,14 @@ Autotile is a root-level manim element for procedural terrain generation. It def
 
 ### Supported Formats
 
-- **simple13**: 3x3 grid + 4 inner corners (13 tiles). Tile indices: 0=NW, 1=N, 2=NE, 3=W, 4=C, 5=E, 6=SW, 7=S, 8=SE, 9-12=inner corners
-- **cross**: Cross layout for isometric elevation with depth rendering. Tile indices: 0=N, 1=W, 2=C, 3=E, 4=S, 5-8=outer corners, 9-12=inner corners
+- **cross**: Cross layout for standard terrain (13 tiles). Tile indices: 0=N, 1=W, 2=C, 3=E, 4=S, 5-8=outer corners, 9-12=inner corners
 - **blob47**: Full 47-tile autotile with all edge/corner combinations using 8-direction neighbor detection
 
 ### DSL Syntax
 
 ```
 #myTerrain autotile {
-    format: simple13          // simple13 | cross | blob47
+    format: cross             // cross | blob47
     sheet: "terrain"          // atlas name
     prefix: "grass_"          // tile prefix (tiles named grass_0 to grass_12)
     tileSize: 16              // tile size in pixels
@@ -58,7 +57,7 @@ Autotile is a root-level manim element for procedural terrain generation. It def
 
 // Or with image file instead of atlas:
 #myTerrain autotile {
-    format: simple13
+    format: cross
     file: "terrain.png"       // image file with tiles in grid layout
     tileSize: 16
     depth: 8                  // optional: isometric depth for elevation
@@ -90,6 +89,5 @@ var elevation = builder.buildAutotileElevation("elevation", grid, 0);
 
 The `bh.base.Autotile` utility class provides:
 - `getNeighborMask8(grid, x, y)` - 8-direction neighbor bitmask (N=1, NE=2, E=4, SE=8, S=16, SW=32, W=64, NW=128)
-- `getSimple13Index(mask)` - Map neighbor mask to simple13 tile index
 - `getCrossIndex(mask)` - Map neighbor mask to cross format tile index
 - `getBlob47Index(mask)` - Map neighbor mask to blob47 tile index

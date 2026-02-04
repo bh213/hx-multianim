@@ -16,6 +16,7 @@ enum ResolvedGeneratedTileType {
 	SolidColor(width:Int, height:Int, color:Int);
 	SolidColorWithText(width:Int, height:Int, color:Int, text:String, textColor:Int, font:String);
 	AutotileRef(format:AutotileFormat, tileIndex:Int, tileSize:Int, edgeColor:Int, fillColor:Int);
+	PreloadedTile(tile:h2d.Tile);
 }
 
 interface ResourceLoader {

@@ -191,12 +191,6 @@ if exist "%ROOT%test\screenshots\atlasDemo_actual.png" (
     echo   24 - atlasDemo
 )
 
-REM Example 25: autotile demo
-if exist "%ROOT%test\screenshots\autotileDemo_actual.png" (
-    copy /Y "%ROOT%test\screenshots\autotileDemo_actual.png" "%ROOT%test\examples\25-autotileDemo\reference.png" >nul
-    echo   25 - autotileDemo
-)
-
 REM Example 26: autotile cross
 if exist "%ROOT%test\screenshots\autotileCross_actual.png" (
     copy /Y "%ROOT%test\screenshots\autotileCross_actual.png" "%ROOT%test\examples\26-autotileCross\reference.png" >nul

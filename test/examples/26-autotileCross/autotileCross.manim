@@ -47,70 +47,51 @@ version: 0.3
     point {
         pos: 10, 20
         text(f3x5, "Edges:", 0xFF6666, left);
-        // Colored tiles (direct bitmaps)
-        bitmap(generated(colorWithText(16, 16, 0xFF4444, "0", white, f3x5))):50,0
-        bitmap(generated(colorWithText(16, 16, 0xFF6666, "1", white, f3x5))):68,0
-        bitmap(generated(colorWithText(16, 16, 0x44FF44, "2", black, f3x5))):86,0
-        bitmap(generated(colorWithText(16, 16, 0xFF8888, "3", white, f3x5))):104,0
-        bitmap(generated(colorWithText(16, 16, 0xFFAAAA, "4", black, f3x5))):122,0
-        // B/W tiles (demo mode)
-        bitmap(generated(autotile("crossWater", 0))):150,0
-        bitmap(generated(autotile("crossWater", 1))):168,0
-        bitmap(generated(autotile("crossWater", 2))):186,0
-        bitmap(generated(autotile("crossWater", 3))):204,0
-        bitmap(generated(autotile("crossWater", 4))):222,0
-        // Labels
-        text(f3x5, "0:N", 0x888888, left):248,0
-        text(f3x5, "1:W", 0x888888, left):248,6
-        text(f3x5, "2:C", 0x44FF44, left):270,0
-        text(f3x5, "3:E", 0x888888, left):270,6
-        text(f3x5, "4:S", 0x888888, left):292,0
+    }
+    // Colored + demo tile pairs (2px gap between tiles, 40px between pairs)
+    repeatable($i, range(0, 5)) {
+        point {
+            pos: 66 + $i * 40, 20
+            bitmap(generated(autotile("crossColored", $i))):-18,0
+            bitmap(generated(autotile("crossWater", $i))):0,0
+        }
     }
 
     // === OUTER CORNERS (5-8) ===
     point {
         pos: 10, 42
         text(f3x5, "Outer:", 0xFFDD00, left);
-        // Colored tiles
-        bitmap(generated(colorWithText(16, 16, 0xFFCC00, "5", black, f3x5))):50,0
-        bitmap(generated(colorWithText(16, 16, 0xFFDD00, "6", black, f3x5))):68,0
-        bitmap(generated(colorWithText(16, 16, 0xFFEE00, "7", black, f3x5))):86,0
-        bitmap(generated(colorWithText(16, 16, 0xFFFF00, "8", black, f3x5))):104,0
-        // B/W tiles
-        bitmap(generated(autotile("crossWater", 5))):132,0
-        bitmap(generated(autotile("crossWater", 6))):150,0
-        bitmap(generated(autotile("crossWater", 7))):168,0
-        bitmap(generated(autotile("crossWater", 8))):186,0
-        // Labels
-        text(f3x5, "5:oNW  6:oNE  7:oSW  8:oSE", 0x888888, left):214,6
+    }
+    repeatable($i, range(5, 9)) {
+        point {
+            pos: 66 + ($i - 5) * 40, 42
+            bitmap(generated(autotile("crossColored", $i))):-18,0
+            bitmap(generated(autotile("crossWater", $i))):0,0
+        }
     }
 
     // === INNER CORNERS (9-12) ===
     point {
         pos: 10, 64
         text(f3x5, "Inner:", 0x4488FF, left);
-        // Colored tiles
-        bitmap(generated(colorWithText(16, 16, 0x44AAFF, "9", white, f3x5))):50,0
-        bitmap(generated(colorWithText(16, 16, 0x4488FF, "10", white, f3x5))):68,0
-        bitmap(generated(colorWithText(16, 16, 0x4466FF, "11", white, f3x5))):86,0
-        bitmap(generated(colorWithText(16, 16, 0x4444FF, "12", white, f3x5))):104,0
-        // B/W tiles
-        bitmap(generated(autotile("crossWater", 9))):132,0
-        bitmap(generated(autotile("crossWater", 10))):150,0
-        bitmap(generated(autotile("crossWater", 11))):168,0
-        bitmap(generated(autotile("crossWater", 12))):186,0
-        // Labels
-        text(f3x5, "9:iNE  10:iNW  11:iSE  12:iSW", 0x888888, left):214,6
+    }
+    repeatable($i, range(9, 13)) {
+        point {
+            pos: 66 + ($i - 9) * 40, 64
+            bitmap(generated(autotile("crossColored", $i))):-18,0
+            bitmap(generated(autotile("crossWater", $i))):0,0
+        }
     }
 
     // === LEGEND ===
     point {
-        pos: 10, 90
+        pos: 10, 82
         text(f3x5, "Red=edges, Green=center, Yellow=outer corners, Blue=inner corners", 0x666666, left);
     }
 
     // Map positions (used by test code, multiply by scale 4.0)
-    // mapColored: 20,114 -> x=80, y=456 at scale 4.0
-    // mapWater: 130,114 -> x=520, y=456 at scale 4.0 (with black background)
-    bitmap(generated(color(90, 70, black))):130,114
+    // mapColored: 20,94 -> x=80, y=376 at scale 4.0
+    // mapWater: 130,94 -> x=520, y=376 at scale 4.0 (with black background)
+    // 5x5 map at 16px tiles = 80x80
+    bitmap(generated(color(80, 80, black))):130,94
 }

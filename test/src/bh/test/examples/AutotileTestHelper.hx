@@ -194,14 +194,16 @@ class AutotileTestHelper {
 
 	/**
 	 * Simple rectangular terrain grid - tests all outer edge tiles (0-8)
-	 * Grid pattern (5x4):
+	 * Grid pattern (5x5):
 	 *   0 1 1 1 0
+	 *   1 1 1 1 1
 	 *   1 1 1 1 1
 	 *   1 1 1 1 1
 	 *   0 1 1 1 0
 	 */
 	public static var SIMPLE_RECT_GRID = [
 		[0, 1, 1, 1, 0],
+		[1, 1, 1, 1, 1],
 		[1, 1, 1, 1, 1],
 		[1, 1, 1, 1, 1],
 		[0, 1, 1, 1, 0]
@@ -241,7 +243,7 @@ class AutotileTestHelper {
 	];
 
 	/**
-	 * Complex terrain with inner corners - tests all 13 simple13 tiles
+	 * Complex terrain with inner corners - tests all 13 cross format tiles
 	 * Grid pattern (6x5):
 	 *   0 1 1 1 1 0
 	 *   1 1 1 1 1 1
@@ -255,6 +257,27 @@ class AutotileTestHelper {
 		[1, 1, 0, 0, 1, 1],
 		[1, 1, 1, 1, 1, 1],
 		[0, 1, 1, 1, 1, 0]
+	];
+
+	/**
+	 * 7x7 terrain with cross-shaped hole in middle - tests all inner corners
+	 * Grid pattern (7x7):
+	 *   0 1 1 1 1 1 0
+	 *   1 1 1 1 1 1 1
+	 *   1 1 1 0 1 1 1
+	 *   1 1 0 0 0 1 1
+	 *   1 1 1 0 1 1 1
+	 *   1 1 1 1 1 1 1
+	 *   0 1 1 1 1 1 0
+	 */
+	public static var CROSS_HOLE_GRID = [
+		[0, 1, 1, 1, 1, 1, 0],
+		[1, 1, 1, 1, 1, 1, 1],
+		[1, 1, 1, 0, 1, 1, 1],
+		[1, 1, 0, 0, 0, 1, 1],
+		[1, 1, 1, 0, 1, 1, 1],
+		[1, 1, 1, 1, 1, 1, 1],
+		[0, 1, 1, 1, 1, 1, 0]
 	];
 
 	/**
@@ -320,18 +343,34 @@ class AutotileTestHelper {
 	];
 
 	/**
-	 * Large sea terrain for blob47 - surrounds the large island (12x10)
+	 * Comprehensive blob47 test grid (16x12) - designed to produce all 47 unique tiles.
+	 * Includes: isolated tiles, all edge combinations, all corner combinations,
+	 * diagonal strips, checkerboard patterns, and fully surrounded tiles.
 	 */
 	public static var LARGE_SEA_GRID = [
-		[1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1],
-		[1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-		[0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0],
-		[0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0],
-		[0, 0, 0, 1, 1, 1, 1, 0, 0, 1, 0, 0],
-		[0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1, 0],
-		[0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0],
-		[1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0],
-		[1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-		[1, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 1]
+		// Row 0: isolated tiles and single edges
+		[1, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 1, 1, 0, 0],
+		// Row 1: more edge patterns
+		[0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 0],
+		// Row 2: L-shapes for outer corners
+		[1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1],
+		// Row 3: complex patterns
+		[1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, 1],
+		// Row 4: diagonal for inner corners
+		[0, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1],
+		// Row 5: checkerboard area
+		[0, 0, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1],
+		// Row 6: more patterns
+		[1, 0, 0, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 0],
+		// Row 7: wide area
+		[1, 1, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 0],
+		// Row 8: thin strips
+		[0, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1, 1, 1, 1],
+		// Row 9: corner patterns
+		[0, 0, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0, 1, 1, 1, 1],
+		// Row 10: more edges
+		[1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 1],
+		// Row 11: bottom edge patterns
+		[1, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1]
 	];
 }

@@ -220,28 +220,6 @@ class AllExamplesTest extends VisualTestBase {
 		buildRenderScreenshotAndCompare("test/examples/24-atlasDemo/atlasDemo.manim", "atlasDemo", async, 1280, 720, 1.0);
 	}
 
-	// Example 25: autotile simple13 format - tests buildAutotile() with simple13
-	@Test
-	public function test25_AutotileDemo(async:utest.Async) {
-		this.testName = "autotileDemo";
-		this.testTitle = "#25: autotile simple13";
-		this.referenceDir = "test/examples/25-autotileDemo";
-
-		autotileHelper.buildCombinedAutotileTestMultiple(
-			"test/examples/25-autotileDemo/autotileDemo.manim",
-			"autotileDemo",
-			[
-				// Positions match manim file (multiply by scale 4.0)
-				{name: "simple13Colored", grid: AutotileTestHelper.SIMPLE_RECT_GRID, x: 80.0, y: 456.0, background: false},
-				{name: "simple13Water", grid: AutotileTestHelper.SIMPLE_RECT_GRID, x: 520.0, y: 456.0, background: true}
-			],
-			async,
-			1280, 720,
-			0.98,
-			4.0
-		);
-	}
-
 	// Example 26: autotile cross format - tests buildAutotile() with cross format
 	@Test
 	public function test26_AutotileCross(async:utest.Async) {
@@ -254,8 +232,8 @@ class AllExamplesTest extends VisualTestBase {
 			"autotileCross",
 			[
 				// Positions match manim file (multiply by scale 4.0)
-				{name: "crossColored", grid: AutotileTestHelper.SIMPLE_RECT_GRID, x: 80.0, y: 456.0, background: false},
-				{name: "crossWater", grid: AutotileTestHelper.SIMPLE_RECT_GRID, x: 520.0, y: 456.0, background: true}
+				{name: "crossColored", grid: AutotileTestHelper.SIMPLE_RECT_GRID, x: 80.0, y: 376.0, background: false},
+				{name: "crossWater", grid: AutotileTestHelper.SIMPLE_RECT_GRID, x: 520.0, y: 376.0, background: true}
 			],
 			async,
 			1280, 720,
@@ -276,8 +254,8 @@ class AllExamplesTest extends VisualTestBase {
 			"autotileBlob47",
 			[
 				// Positions match updatables in manim file (multiply by scale 2.0)
-				{name: "blob47Colored", grid: AutotileTestHelper.LARGE_SEA_GRID, x: 40.0, y: 400.0, background: false},
-				{name: "blob47Water", grid: AutotileTestHelper.LARGE_SEA_GRID, x: 500.0, y: 400.0, background: true}
+				{name: "blob47Colored", grid: AutotileTestHelper.LARGE_SEA_GRID, x: 40.0, y: 326.0, background: false},
+				{name: "blob47Water", grid: AutotileTestHelper.LARGE_SEA_GRID, x: 684.0, y: 326.0, background: true}
 			],
 			async,
 			1280, 720,
@@ -311,11 +289,11 @@ class AllExamplesTest extends VisualTestBase {
 		this.testTitle = "#30: autotile demo syntax";
 		this.referenceDir = "test/examples/30-autotileDemoSyntax";
 
-		// Test simple13 with demo syntax - also tests cross and blob47 via the same manim file
+		// Test cross format with demo syntax - also tests blob47 via the same manim file
 		autotileHelper.buildCombinedAutotileTest(
 			"test/examples/30-autotileDemoSyntax/autotileDemoSyntax.manim",
 			"autotileDemoSyntax",
-			"simple13Demo",
+			"simple13Demo",  // kept as "simple13Demo" for backwards compatibility
 			AutotileTestHelper.SIMPLE_RECT_GRID,
 			400.0, 100.0,
 			async,
@@ -332,14 +310,19 @@ class AllExamplesTest extends VisualTestBase {
 		this.testTitle = "#31: forgotten plains terrain";
 		this.referenceDir = "test/examples/31-forgottenPlainsTerrain";
 
-		// Test autotile only, no programmable element
-		autotileHelper.buildAutotileOnlyTest(
+		// Test combined: programmable element showing all 13 tiles + autotile terrain
+		autotileHelper.buildCombinedAutotileTestMultiple(
 			"test/examples/31-forgottenPlainsTerrain/forgottenPlainsTerrain.manim",
-			"grassTerrain",
-			AutotileTestHelper.COMPLEX_GRID,
-			100.0, 100.0,
+			"forgottenPlainsTerrain",
+			[
+				// Autotile terrain positioned at bottom (7x7 grid with cross hole)
+				{name: "grassTerrain", grid: AutotileTestHelper.CROSS_HOLE_GRID, x: 40.0, y: 360.0, background: false},
+				{name: "grassDemo", grid: AutotileTestHelper.CROSS_HOLE_GRID, x: 320.0, y: 360.0, background: false}
+			],
 			async,
-			1280, 720
+			1280, 720,
+			0.98,
+			4.0
 		);
 	}
 }

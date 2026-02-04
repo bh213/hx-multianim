@@ -12,6 +12,8 @@ typedef TestResult = {
 	var passed:Bool;
 	var similarity:Float;
 	var ?errorMessage:String;
+	var ?manimPath:String;
+	var ?manimContent:String;
 }
 
 class HtmlReportGenerator {
@@ -19,13 +21,38 @@ class HtmlReportGenerator {
 	private static var reportPath:String = "test/screenshots/index.html";
 
 	public static function addResult(testName:String, referencePath:String, actualPath:String, passed:Bool, similarity:Float, ?errorMessage:String):Void {
+		// Find manim file in the same directory as reference
+		var manimPath:String = null;
+		var manimContent:String = null;
+
+		if (referencePath != null && referencePath.endsWith("/reference.png")) {
+			var dir = referencePath.substring(0, referencePath.length - "/reference.png".length);
+			// Find .manim file in directory
+			if (FileSystem.exists(dir) && FileSystem.isDirectory(dir)) {
+				for (file in FileSystem.readDirectory(dir)) {
+					if (file.endsWith(".manim")) {
+						manimPath = dir + "/" + file;
+						// Read manim content
+						try {
+							manimContent = File.getContent(manimPath);
+						} catch (e:Dynamic) {
+							manimContent = null;
+						}
+						break;
+					}
+				}
+			}
+		}
+
 		results.push({
 			testName: testName,
 			referencePath: referencePath,
 			actualPath: actualPath,
 			passed: passed,
 			similarity: similarity,
-			errorMessage: errorMessage
+			errorMessage: errorMessage,
+			manimPath: manimPath,
+			manimContent: manimContent
 		});
 	}
 
@@ -212,6 +239,71 @@ class HtmlReportGenerator {
 		html.add('            font-size: 14px;\n');
 		html.add('            opacity: 0.7;\n');
 		html.add('        }\n');
+		html.add('        /* Manim link styles */\n');
+		html.add('        .manim-link {\n');
+		html.add('            color: #1976D2;\n');
+		html.add('            text-decoration: none;\n');
+		html.add('            margin-left: 15px;\n');
+		html.add('            font-size: 14px;\n');
+		html.add('            cursor: pointer;\n');
+		html.add('        }\n');
+		html.add('        .manim-link:hover {\n');
+		html.add('            text-decoration: underline;\n');
+		html.add('        }\n');
+		html.add('        /* Manim overlay styles */\n');
+		html.add('        .manim-overlay {\n');
+		html.add('            display: none;\n');
+		html.add('            position: fixed;\n');
+		html.add('            top: 0;\n');
+		html.add('            left: 0;\n');
+		html.add('            width: 100%;\n');
+		html.add('            height: 100%;\n');
+		html.add('            background: #1e1e1e;\n');
+		html.add('            z-index: 1000;\n');
+		html.add('            overflow: auto;\n');
+		html.add('        }\n');
+		html.add('        .manim-overlay.active {\n');
+		html.add('            display: block;\n');
+		html.add('        }\n');
+		html.add('        .manim-overlay-header {\n');
+		html.add('            position: fixed;\n');
+		html.add('            top: 0;\n');
+		html.add('            left: 0;\n');
+		html.add('            right: 0;\n');
+		html.add('            background: #333;\n');
+		html.add('            padding: 10px 20px;\n');
+		html.add('            display: flex;\n');
+		html.add('            justify-content: space-between;\n');
+		html.add('            align-items: center;\n');
+		html.add('            z-index: 1001;\n');
+		html.add('        }\n');
+		html.add('        .manim-overlay-title {\n');
+		html.add('            color: #fff;\n');
+		html.add('            font-size: 16px;\n');
+		html.add('            font-family: monospace;\n');
+		html.add('        }\n');
+		html.add('        .manim-overlay-close {\n');
+		html.add('            color: #fff;\n');
+		html.add('            background: #555;\n');
+		html.add('            border: none;\n');
+		html.add('            padding: 5px 15px;\n');
+		html.add('            border-radius: 3px;\n');
+		html.add('            cursor: pointer;\n');
+		html.add('            font-size: 14px;\n');
+		html.add('        }\n');
+		html.add('        .manim-overlay-close:hover {\n');
+		html.add('            background: #666;\n');
+		html.add('        }\n');
+		html.add('        .manim-content {\n');
+		html.add('            margin-top: 50px;\n');
+		html.add('            padding: 20px;\n');
+		html.add('            color: #d4d4d4;\n');
+		html.add('            font-family: Consolas, Monaco, monospace;\n');
+		html.add('            font-size: 14px;\n');
+		html.add('            line-height: 1.5;\n');
+		html.add('            white-space: pre;\n');
+		html.add('            tab-size: 4;\n');
+		html.add('        }\n');
 		html.add('    </style>\n');
 		html.add('</head>\n');
 		html.add('<body>\n');
@@ -253,7 +345,14 @@ class HtmlReportGenerator {
 			html.add('    <div class="test-result ${statusClass}" id="test-${result.testName}">\n');
 			html.add('        <div class="test-header">\n');
 			html.add('            <div class="test-name">${result.testName}</div>\n');
-			html.add('            <div class="test-status ${statusClass}">${statusText}</div>\n');
+			html.add('            <div>\n');
+			html.add('                <span class="test-status ${statusClass}">${statusText}</span>\n');
+			// Add manim link if we have manim content
+			if (result.manimPath != null && result.manimContent != null) {
+				var manimFileName = haxe.io.Path.withoutDirectory(result.manimPath);
+				html.add('                <a class="manim-link" onclick="showManim(\'${result.testName}\')">${manimFileName}</a>\n');
+			}
+			html.add('            </div>\n');
 			html.add('        </div>\n');
 			html.add('        <div class="similarity">Similarity: ${similarityPercent}%</div>\n');
 
@@ -297,8 +396,37 @@ class HtmlReportGenerator {
 		html.add('        <img id="overlayImage" src="" alt="Full size">\n');
 		html.add('    </div>\n');
 
-		// JavaScript for image overlay
+		// Manim overlay element
+		html.add('    <div class="manim-overlay" id="manimOverlay">\n');
+		html.add('        <div class="manim-overlay-header">\n');
+		html.add('            <span class="manim-overlay-title" id="manimTitle"></span>\n');
+		html.add('            <button class="manim-overlay-close" onclick="hideManim()">Close (Esc)</button>\n');
+		html.add('        </div>\n');
+		html.add('        <pre class="manim-content" id="manimContent"></pre>\n');
+		html.add('    </div>\n');
+
+		// Hidden script data for manim contents
+		html.add('    <script id="manimData" type="application/json">\n');
+		var manimMap = new StringBuf();
+		manimMap.add('{');
+		var first = true;
+		for (result in results) {
+			if (result.manimPath != null && result.manimContent != null) {
+				if (!first) manimMap.add(',');
+				first = false;
+				var manimFileName = haxe.io.Path.withoutDirectory(result.manimPath);
+				// Escape the content for JSON
+				var escapedContent = result.manimContent.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t');
+				manimMap.add('"${result.testName}":{"file":"${manimFileName}","content":"${escapedContent}"}');
+			}
+		}
+		manimMap.add('}');
+		html.add('${manimMap.toString()}\n');
+		html.add('    </script>\n');
+
+		// JavaScript for image overlay and manim overlay
 		html.add('    <script>\n');
+		html.add('        var manimData = JSON.parse(document.getElementById("manimData").textContent);\n');
 		html.add('        function showOverlay(src) {\n');
 		html.add('            document.getElementById("overlayImage").src = src;\n');
 		html.add('            document.getElementById("imageOverlay").classList.add("active");\n');
@@ -306,8 +434,22 @@ class HtmlReportGenerator {
 		html.add('        function hideOverlay() {\n');
 		html.add('            document.getElementById("imageOverlay").classList.remove("active");\n');
 		html.add('        }\n');
+		html.add('        function showManim(testName) {\n');
+		html.add('            var data = manimData[testName];\n');
+		html.add('            if (data) {\n');
+		html.add('                document.getElementById("manimTitle").textContent = data.file;\n');
+		html.add('                document.getElementById("manimContent").textContent = data.content;\n');
+		html.add('                document.getElementById("manimOverlay").classList.add("active");\n');
+		html.add('            }\n');
+		html.add('        }\n');
+		html.add('        function hideManim() {\n');
+		html.add('            document.getElementById("manimOverlay").classList.remove("active");\n');
+		html.add('        }\n');
 		html.add('        document.addEventListener("keydown", function(e) {\n');
-		html.add('            if (e.key === "Escape") hideOverlay();\n');
+		html.add('            if (e.key === "Escape") {\n');
+		html.add('                hideOverlay();\n');
+		html.add('                hideManim();\n');
+		html.add('            }\n');
 		html.add('        });\n');
 		html.add('    </script>\n');
 

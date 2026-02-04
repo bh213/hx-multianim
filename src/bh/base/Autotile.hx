@@ -3,9 +3,8 @@ package bh.base;
 /**
  * Utility class for autotile terrain generation.
  *
- * Supports three formats:
- * - Simple13: 3x3 grid + 4 inner corners (13 tiles)
- * - Cross: Cross layout + corners for elevation with depth
+ * Supports two formats:
+ * - Cross: Cross layout + corners for elevation with depth (13 tiles)
  * - Blob47: Full 47-tile autotile with all edge/corner combinations
  *
  * Neighbor bit flags (8-direction):
@@ -103,72 +102,6 @@ class Autotile {
 			mask |= W4; // W
 
 		return mask;
-	}
-
-	/**
-	 * Get Simple13 tile index from neighbor mask.
-	 *
-	 * Layout (indices 0-12):
-	 * ```
-	 * 0=NW  1=N   2=NE
-	 * 3=W   4=C   5=E
-	 * 6=SW  7=S   8=SE
-	 * 9=inner-NE  10=inner-NW  11=inner-SE  12=inner-SW
-	 * ```
-	 *
-	 * @param mask8 8-direction neighbor bitmask
-	 * @return Tile index 0-12
-	 */
-	public static function getSimple13Index(mask8:Int):Int {
-		final hasN = (mask8 & N) != 0;
-		final hasE = (mask8 & E) != 0;
-		final hasS = (mask8 & S) != 0;
-		final hasW = (mask8 & W) != 0;
-		final hasNE = (mask8 & NE) != 0;
-		final hasSE = (mask8 & SE) != 0;
-		final hasSW = (mask8 & SW) != 0;
-		final hasNW = (mask8 & NW) != 0;
-
-		// Check for inner corners first (all 4 cardinal neighbors present, but diagonal missing)
-		if (hasN && hasE && hasS && hasW) {
-			// Inner corner cases - check which diagonal is missing
-			if (!hasNE)
-				return 9; // inner-NE
-			if (!hasNW)
-				return 10; // inner-NW
-			if (!hasSE)
-				return 11; // inner-SE
-			if (!hasSW)
-				return 12; // inner-SW
-			// All neighbors present - center
-			return 4;
-		}
-
-		// Edge and outer corner cases
-		// Top row
-		if (!hasN && !hasW)
-			return 0; // NW corner
-		if (!hasN && hasW && hasE)
-			return 1; // N edge
-		if (!hasN && !hasE)
-			return 2; // NE corner
-
-		// Middle row
-		if (hasN && hasS && !hasW)
-			return 3; // W edge
-		if (hasN && hasS && !hasE)
-			return 5; // E edge
-
-		// Bottom row
-		if (!hasS && !hasW)
-			return 6; // SW corner
-		if (!hasS && hasW && hasE)
-			return 7; // S edge
-		if (!hasS && !hasE)
-			return 8; // SE corner
-
-		// Default to center
-		return 4;
 	}
 
 	/**

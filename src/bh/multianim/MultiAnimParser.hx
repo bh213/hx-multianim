@@ -186,7 +186,6 @@ enum MPKeywords {
 	MPRegion;
 	MPDepth;
 	MPMapping;
-	MPSimple13;
 	MPCross;
 	MPBlob47;
 	MPDemo;
@@ -817,7 +816,6 @@ enum PaletteType {
 
 // Autotile formats for terrain generation
 enum AutotileFormat {
-	Simple13;   // 3x3 grid + 4 inner corners (13 tiles)
 	Cross;      // Cross layout + corners for elevation (with depth)
 	Blob47;     // Full 47-tile autotile with all edge/corner combinations
 }
@@ -4237,17 +4235,15 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 
 		while (true) {
 			switch stream {
-				// format: simple13 | cross | blob47
+				// format: cross | blob47
 				case [MPIdentifier(_, MPFormat, ITString), MPColon]:
 					once.parsed("format");
 					switch stream {
-						case [MPIdentifier(_, MPSimple13, ITString)]:
-							format = Simple13;
 						case [MPIdentifier(_, MPCross, ITString)]:
 							format = Cross;
 						case [MPIdentifier(_, MPBlob47, ITString)]:
 							format = Blob47;
-						case _: unexpectedError("expected simple13, cross, or blob47");
+						case _: unexpectedError("expected cross or blob47");
 					}
 
 				// sheet: "name", prefix: "tile_"  OR  sheet: "name", region: [x, y, w, h]
@@ -4341,7 +4337,7 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 			}
 		}
 
-		if (format == null) syntaxError('autotile requires format: (simple13, cross, or blob47)');
+		if (format == null) syntaxError('autotile requires format: (cross or blob47)');
 		if (source == null) syntaxError('autotile requires source (sheet:, file:, tiles:, or demo:)');
 		if (tileSize == null) syntaxError('autotile requires tileSize:');
 

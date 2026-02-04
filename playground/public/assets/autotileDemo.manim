@@ -1,7 +1,7 @@
 version: 0.3
 
 // =============================================================================
-// AUTOTILE DEMO - Simple13 Format Visualization
+// AUTOTILE DEMO - Cross Format Visualization
 // =============================================================================
 // This demo shows all 13 tiles and how they should be configured.
 // Red = no neighbor expected (empty)
@@ -9,22 +9,22 @@ version: 0.3
 // =============================================================================
 
 // Demo using explicit generated tiles with color-coded edges
+// Cross layout: 0=N, 1=W, 2=C, 3=E, 4=S, 5=NW, 6=NE, 7=SW, 8=SE, 9-12=inner
 #demoGenerated autotile {
-    format: simple13
+    format: cross
     tileSize: 16
     tiles:
-        // Row 0: NW(0), N(1), NE(2) - top row corners and edge
-        generated(color(16, 16, 0xFF8844))    // 0: NW corner - red N,W / blue S,E
-        generated(color(16, 16, 0xFF9955))    // 1: N edge - red N / blue S,E,W
-        generated(color(16, 16, 0xFFAA66))    // 2: NE corner - red N,E / blue S,W
-        // Row 1: W(3), C(4), E(5) - middle row
-        generated(color(16, 16, 0xFFBB77))    // 3: W edge - red W / blue N,S,E
-        generated(color(16, 16, 0x44AA44))    // 4: Center - blue all (fully surrounded)
-        generated(color(16, 16, 0xFFDD99))    // 5: E edge - red E / blue N,S,W
-        // Row 2: SW(6), S(7), SE(8) - bottom row corners and edge
-        generated(color(16, 16, 0xFFEEAA))    // 6: SW corner - red S,W / blue N,E
-        generated(color(16, 16, 0xFFFFBB))    // 7: S edge - red S / blue N,E,W
-        generated(color(16, 16, 0xEEEECC))    // 8: SE corner - red S,E / blue N,W
+        // Edges (0-4)
+        generated(color(16, 16, 0xFF9955))    // 0: N edge
+        generated(color(16, 16, 0xFFBB77))    // 1: W edge
+        generated(color(16, 16, 0x44AA44))    // 2: Center - green (fully surrounded)
+        generated(color(16, 16, 0xFFDD99))    // 3: E edge
+        generated(color(16, 16, 0xFFFFBB))    // 4: S edge
+        // Outer corners (5-8)
+        generated(color(16, 16, 0xFF8844))    // 5: NW outer corner
+        generated(color(16, 16, 0xFFAA66))    // 6: NE outer corner
+        generated(color(16, 16, 0xFFEEAA))    // 7: SW outer corner
+        generated(color(16, 16, 0xEEEECC))    // 8: SE outer corner
         // Inner corners (9-12): for L-shaped terrain
         generated(color(16, 16, 0x66CC66))    // 9: inner NE - missing NE diagonal
         generated(color(16, 16, 0x77DD77))    // 10: inner NW - missing NW diagonal
@@ -44,52 +44,49 @@ version: 0.3
     @alpha(0.1) bitmap(generated(color(function(gridWidth), function(gridHeight), black)));
 
     // Title
-    text(dd, "AUTOTILE SIMPLE13 FORMAT", white, left, 400):5,5
+    text(dd, "AUTOTILE CROSS FORMAT", white, left, 400):5,5
 
     // ==========================================================================
     // TILE CATALOG - Show all 13 tiles with indices
     // ==========================================================================
     text(dd, "TILE CATALOG:", 0xAAAAFF, left, 200):5,30
 
-    // Outer tiles (3x3 grid layout) - indices 0-8
-    // Row labels
-    text(dd, "Outer:", 0x888888, left, 50):5,55
+    // Cross format edges (0-4)
+    text(dd, "Edges:", 0x888888, left, 50):5,55
 
-    // Row 0: NW, N, NE
     point {
         pos: 60, 50
-        bitmap(generated(color(20, 20, 0xFF8844))):0,0    // 0: NW
-        text(dd, "0", white, center, 20):10,22
-        bitmap(generated(color(20, 20, 0xFF9955))):25,0   // 1: N
-        text(dd, "1", white, center, 20):35,22
-        bitmap(generated(color(20, 20, 0xFFAA66))):50,0   // 2: NE
-        text(dd, "2", white, center, 20):60,22
+        bitmap(generated(color(20, 20, 0xFF9955))):0,0    // 0: N
+        text(dd, "0:N", white, center, 30):10,22
+        bitmap(generated(color(20, 20, 0xFFBB77))):35,0   // 1: W
+        text(dd, "1:W", white, center, 30):45,22
+        bitmap(generated(color(20, 20, 0x44AA44))):70,0   // 2: C
+        text(dd, "2:C", white, center, 30):80,22
+        bitmap(generated(color(20, 20, 0xFFDD99))):105,0  // 3: E
+        text(dd, "3:E", white, center, 30):115,22
+        bitmap(generated(color(20, 20, 0xFFFFBB))):140,0  // 4: S
+        text(dd, "4:S", white, center, 30):150,22
     }
-    // Row 1: W, C, E
+
+    // Outer corners (5-8)
+    text(dd, "Outer:", 0x888888, left, 50):5,95
+
     point {
-        pos: 60, 80
-        bitmap(generated(color(20, 20, 0xFFBB77))):0,0    // 3: W
-        text(dd, "3", white, center, 20):10,22
-        bitmap(generated(color(20, 20, 0x44AA44))):25,0   // 4: C
-        text(dd, "4", white, center, 20):35,22
-        bitmap(generated(color(20, 20, 0xFFDD99))):50,0   // 5: E
-        text(dd, "5", white, center, 20):60,22
-    }
-    // Row 2: SW, S, SE
-    point {
-        pos: 60, 110
-        bitmap(generated(color(20, 20, 0xFFEEAA))):0,0    // 6: SW
-        text(dd, "6", white, center, 20):10,22
-        bitmap(generated(color(20, 20, 0xFFFFBB))):25,0   // 7: S
-        text(dd, "7", white, center, 20):35,22
-        bitmap(generated(color(20, 20, 0xEEEECC))):50,0   // 8: SE
-        text(dd, "8", white, center, 20):60,22
+        pos: 60, 90
+        bitmap(generated(color(20, 20, 0xFF8844))):0,0    // 5: NW outer
+        text(dd, "5:NW", white, center, 35):10,22
+        bitmap(generated(color(20, 20, 0xFFAA66))):40,0   // 6: NE outer
+        text(dd, "6:NE", white, center, 35):50,22
+        bitmap(generated(color(20, 20, 0xFFEEAA))):80,0   // 7: SW outer
+        text(dd, "7:SW", white, center, 35):90,22
+        bitmap(generated(color(20, 20, 0xEEEECC))):120,0  // 8: SE outer
+        text(dd, "8:SE", white, center, 35):130,22
     }
 
     // Inner corners - indices 9-12
-    text(dd, "Inner:", 0x888888, left, 50):5,145
+    text(dd, "Inner:", 0x888888, left, 50):5,135
     point {
-        pos: 60, 140
+        pos: 60, 130
         bitmap(generated(color(20, 20, 0x66CC66))):0,0    // 9: inner NE
         text(dd, "9", white, center, 20):10,22
         bitmap(generated(color(20, 20, 0x77DD77))):25,0   // 10: inner NW
@@ -103,62 +100,15 @@ version: 0.3
     // ==========================================================================
     // NEIGHBOR EXPECTATIONS - Red/Blue indicators
     // ==========================================================================
-    text(dd, "NEIGHBOR PATTERN:", 0xAAAAFF, left, 200):5,180
+    text(dd, "NEIGHBOR PATTERN:", 0xAAAAFF, left, 200):5,170
 
     // Legend
     point {
-        pos: 5, 200
+        pos: 5, 190
         bitmap(generated(color(12, 12, 0xFF4444))):0,0
         text(dd, "= No neighbor (red)", 0xFFAAAA, left, 150):15,0
         bitmap(generated(color(12, 12, 0x4444FF))):0,15
         text(dd, "= Has neighbor (blue)", 0xAAAAFF, left, 150):15,15
-    }
-
-    // Show neighbor pattern for key tiles
-    // Tile 0 (NW corner): no N, no W, has S, has E
-    point {
-        pos: 5, 245
-        text(dd, "0:NW", 0xFFFFFF, left, 40):0,12
-        // 3x3 indicator grid
-        bitmap(generated(color(8, 8, 0x333333))):45,0   // NW pos
-        bitmap(generated(color(8, 8, 0xFF4444))):55,0   // N - red (no)
-        bitmap(generated(color(8, 8, 0x333333))):65,0   // NE pos
-        bitmap(generated(color(8, 8, 0xFF4444))):45,10  // W - red (no)
-        bitmap(generated(color(8, 8, 0xFF8844))):55,10  // center (tile)
-        bitmap(generated(color(8, 8, 0x4444FF))):65,10  // E - blue (yes)
-        bitmap(generated(color(8, 8, 0x333333))):45,20  // SW pos
-        bitmap(generated(color(8, 8, 0x4444FF))):55,20  // S - blue (yes)
-        bitmap(generated(color(8, 8, 0x333333))):65,20  // SE pos
-    }
-
-    // Tile 4 (Center): has all neighbors
-    point {
-        pos: 85, 245
-        text(dd, "4:C", 0xFFFFFF, left, 40):0,12
-        bitmap(generated(color(8, 8, 0x333333))):40,0
-        bitmap(generated(color(8, 8, 0x4444FF))):50,0   // N - blue
-        bitmap(generated(color(8, 8, 0x333333))):60,0
-        bitmap(generated(color(8, 8, 0x4444FF))):40,10  // W - blue
-        bitmap(generated(color(8, 8, 0x44AA44))):50,10  // center
-        bitmap(generated(color(8, 8, 0x4444FF))):60,10  // E - blue
-        bitmap(generated(color(8, 8, 0x333333))):40,20
-        bitmap(generated(color(8, 8, 0x4444FF))):50,20  // S - blue
-        bitmap(generated(color(8, 8, 0x333333))):60,20
-    }
-
-    // Tile 8 (SE corner): has N, has W, no S, no E
-    point {
-        pos: 160, 245
-        text(dd, "8:SE", 0xFFFFFF, left, 40):0,12
-        bitmap(generated(color(8, 8, 0x333333))):45,0
-        bitmap(generated(color(8, 8, 0x4444FF))):55,0   // N - blue
-        bitmap(generated(color(8, 8, 0x333333))):65,0
-        bitmap(generated(color(8, 8, 0x4444FF))):45,10  // W - blue
-        bitmap(generated(color(8, 8, 0xEEEECC))):55,10  // center
-        bitmap(generated(color(8, 8, 0xFF4444))):65,10  // E - red
-        bitmap(generated(color(8, 8, 0x333333))):45,20
-        bitmap(generated(color(8, 8, 0xFF4444))):55,20  // S - red
-        bitmap(generated(color(8, 8, 0x333333))):65,20
     }
 
     // ==========================================================================
@@ -175,32 +125,32 @@ version: 0.3
 
     point {
         pos: 250, 55
-        // Row 0:     empty, NW(0), N(1),  NE(2), empty
+        // Row 0:     empty, NW(5), N(0),  NE(6), empty
         bitmap(generated(color(20, 20, 0x222222))):0,0     // empty
-        bitmap(generated(color(20, 20, 0xFF8844))):22,0    // 0: NW
-        bitmap(generated(color(20, 20, 0xFF9955))):44,0    // 1: N
-        bitmap(generated(color(20, 20, 0xFFAA66))):66,0    // 2: NE
+        bitmap(generated(color(20, 20, 0xFF8844))):22,0    // 5: NW outer
+        bitmap(generated(color(20, 20, 0xFF9955))):44,0    // 0: N
+        bitmap(generated(color(20, 20, 0xFFAA66))):66,0    // 6: NE outer
         bitmap(generated(color(20, 20, 0x222222))):88,0    // empty
 
-        // Row 1:     W(3),  C(4),  C(4),  C(4),  E(5)
-        bitmap(generated(color(20, 20, 0xFFBB77))):0,22    // 3: W
-        bitmap(generated(color(20, 20, 0x44AA44))):22,22   // 4: C
-        bitmap(generated(color(20, 20, 0x44AA44))):44,22   // 4: C
-        bitmap(generated(color(20, 20, 0x44AA44))):66,22   // 4: C
-        bitmap(generated(color(20, 20, 0xFFDD99))):88,22   // 5: E
+        // Row 1:     W(1),  C(2),  C(2),  C(2),  E(3)
+        bitmap(generated(color(20, 20, 0xFFBB77))):0,22    // 1: W
+        bitmap(generated(color(20, 20, 0x44AA44))):22,22   // 2: C
+        bitmap(generated(color(20, 20, 0x44AA44))):44,22   // 2: C
+        bitmap(generated(color(20, 20, 0x44AA44))):66,22   // 2: C
+        bitmap(generated(color(20, 20, 0xFFDD99))):88,22   // 3: E
 
-        // Row 2:     W(3),  C(4),  C(4),  C(4),  E(5)
-        bitmap(generated(color(20, 20, 0xFFBB77))):0,44    // 3: W
-        bitmap(generated(color(20, 20, 0x44AA44))):22,44   // 4: C
-        bitmap(generated(color(20, 20, 0x44AA44))):44,44   // 4: C
-        bitmap(generated(color(20, 20, 0x44AA44))):66,44   // 4: C
-        bitmap(generated(color(20, 20, 0xFFDD99))):88,44   // 5: E
+        // Row 2:     W(1),  C(2),  C(2),  C(2),  E(3)
+        bitmap(generated(color(20, 20, 0xFFBB77))):0,44    // 1: W
+        bitmap(generated(color(20, 20, 0x44AA44))):22,44   // 2: C
+        bitmap(generated(color(20, 20, 0x44AA44))):44,44   // 2: C
+        bitmap(generated(color(20, 20, 0x44AA44))):66,44   // 2: C
+        bitmap(generated(color(20, 20, 0xFFDD99))):88,44   // 3: E
 
-        // Row 3:     empty, SW(6), S(7),  SE(8), empty
+        // Row 3:     empty, SW(7), S(4),  SE(8), empty
         bitmap(generated(color(20, 20, 0x222222))):0,66    // empty
-        bitmap(generated(color(20, 20, 0xFFEEAA))):22,66   // 6: SW
-        bitmap(generated(color(20, 20, 0xFFFFBB))):44,66   // 7: S
-        bitmap(generated(color(20, 20, 0xEEEECC))):66,66   // 8: SE
+        bitmap(generated(color(20, 20, 0xFFEEAA))):22,66   // 7: SW outer
+        bitmap(generated(color(20, 20, 0xFFFFBB))):44,66   // 4: S
+        bitmap(generated(color(20, 20, 0xEEEECC))):66,66   // 8: SE outer
         bitmap(generated(color(20, 20, 0x222222))):88,66   // empty
     }
 
@@ -223,20 +173,20 @@ version: 0.3
     //   0 1 1
     point {
         pos: 250, 255
-        // Row 0: C(4), inner-NE(9), empty
-        bitmap(generated(color(20, 20, 0x44AA44))):0,0     // 4: C
+        // Row 0: C(2), inner-NE(9), empty
+        bitmap(generated(color(20, 20, 0x44AA44))):0,0     // 2: C
         bitmap(generated(color(20, 20, 0x66CC66))):22,0    // 9: inner NE (missing NE diagonal)
         bitmap(generated(color(20, 20, 0x222222))):44,0    // empty
 
-        // Row 1: C(4), C(4), C(4)
-        bitmap(generated(color(20, 20, 0x44AA44))):0,22    // 4: C
-        bitmap(generated(color(20, 20, 0x44AA44))):22,22   // 4: C
-        bitmap(generated(color(20, 20, 0x44AA44))):44,22   // 4: C
+        // Row 1: C(2), C(2), C(2)
+        bitmap(generated(color(20, 20, 0x44AA44))):0,22    // 2: C
+        bitmap(generated(color(20, 20, 0x44AA44))):22,22   // 2: C
+        bitmap(generated(color(20, 20, 0x44AA44))):44,22   // 2: C
 
-        // Row 2: empty, inner-SW(12), C(4)
+        // Row 2: empty, inner-SW(12), C(2)
         bitmap(generated(color(20, 20, 0x222222))):0,44    // empty
         bitmap(generated(color(20, 20, 0x99FF99))):22,44   // 12: inner SW
-        bitmap(generated(color(20, 20, 0x44AA44))):44,44   // 4: C
+        bitmap(generated(color(20, 20, 0x44AA44))):44,44   // 2: C
     }
 
     text(dd, "Inner corners fill", 0x888888, left, 200):250,325
