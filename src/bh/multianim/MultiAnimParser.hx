@@ -797,6 +797,7 @@ enum GeneratedTileType {
 	SolidColor(width:ReferenceableValue, height:ReferenceableValue, color:ReferenceableValue);
 	SolidColorWithText(width:ReferenceableValue, height:ReferenceableValue, color:ReferenceableValue, text:ReferenceableValue, textColor:ReferenceableValue, font:ReferenceableValue);
 	AutotileRef(autotileName:ReferenceableValue, selector:AutotileTileSelector);
+	AutotileRegionSheet(autotileName:ReferenceableValue, scale:ReferenceableValue, font:ReferenceableValue, fontColor:ReferenceableValue);  // Shows entire region with numbered grid overlay
 }
 
 enum TileSource {
@@ -2700,7 +2701,10 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 							case _: unexpectedError('expected ) after autotile selector');
 						}
 						TSGenerated(AutotileRef(autotileName, selector));
-					case _: unexpectedError('expected cross(...), color(...), colorWithText(...), or autotile(name, index|edges)');
+					// autotileRegionSheet("autotileName", scale, "font", fontColor) - shows entire region with numbered grid overlay
+					case [MPIdentifier("autotileRegionSheet", _ , ITString), MPOpen, autotileName = parseStringOrReference(), MPComma, scale = parseIntegerOrReference(), MPComma, font = parseStringOrReference(), MPComma, fontColor = parseColorOrReference(), MPClosed, MPClosed]:
+						TSGenerated(AutotileRegionSheet(autotileName, scale, font, fontColor));
+					case _: unexpectedError('expected cross(...), color(...), colorWithText(...), autotile(name, index|edges), or autotileRegionSheet(name, scale, font, fontColor)');
 				}
 
 			// Reference to a TileSource variable (e.g., $bitmap from stateanim/tiles iterator)

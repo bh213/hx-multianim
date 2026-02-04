@@ -707,6 +707,10 @@ class MultiAnimBuilder {
 				// Generate autotile demo tile with diagonal corners
 				generateAutotileDemoTile(format, tileIndex, tileSize, edgeColor.addAlphaIfNotPresent(), fillColor.addAlphaIfNotPresent());
 
+			case AutotileRegionSheet(baseTile, regionX, regionY, regionW, regionH, tileSize, tileCount, scale, font, fontColor):
+				// Generate a visual tile sheet showing the region with numbered grid overlay
+				generateAutotileRegionSheetTile(baseTile, regionX, regionY, regionW, regionH, tileSize, tileCount, scale, font, fontColor);
+
 			case PreloadedTile(tile):
 				// Return the pre-loaded tile directly
 				tile;
@@ -835,6 +839,66 @@ class MultiAnimBuilder {
 	}
 
 	/**
+	 * Resolve autotileRegionSheet - displays the entire region of an autotile with numbered grid overlay.
+	 * Only works with autotiles that have a region defined.
+	 * @param scale Scale factor for the tiles (font is not scaled)
+	 * @param font Font name for the tile numbers
+	 * @param fontColor Color for the tile numbers
+	 */
+	function resolveAutotileRegionSheet(autotileName:ReferenceableValue, scale:ReferenceableValue, font:ReferenceableValue, fontColor:ReferenceableValue):ResolvedGeneratedTileType {
+		final name = resolveAsString(autotileName);
+		final scaleVal = resolveAsInteger(scale);
+		final fontName = resolveAsString(font);
+		final fontColorVal = resolveAsColorInteger(fontColor);
+
+		final node = multiParserResult?.nodes.get(name);
+		if (node == null)
+			throw 'autotileRegionSheet: could not find autotile "$name"';
+
+		final autotileDef:AutotileDef = switch node.type {
+			case AUTOTILE(def): def;
+			default: throw 'autotileRegionSheet: "$name" is not an autotile definition';
+		};
+
+		final tileSize = resolveAsInteger(autotileDef.tileSize);
+		final tileCount = switch autotileDef.format {
+			case Cross: 13;
+			case Blob47: 47;
+		};
+
+		// Handle different source types to get the base tile and region
+		return switch autotileDef.source {
+			case ATSFile(filename):
+				final baseTile = resourceLoader.loadTile(resolveAsString(filename));
+				if (autotileDef.region == null)
+					throw 'autotileRegionSheet: autotile "$name" has no region defined';
+				final r = autotileDef.region;
+				final regionX = resolveAsInteger(r[0]);
+				final regionY = resolveAsInteger(r[1]);
+				final regionW = resolveAsInteger(r[2]);
+				final regionH = resolveAsInteger(r[3]);
+				AutotileRegionSheet(baseTile, regionX, regionY, regionW, regionH, tileSize, tileCount, scaleVal, fontName, fontColorVal);
+
+			case ATSAtlasRegion(sheet, region):
+				final baseTile = resourceLoader.loadTile(resolveAsString(sheet));
+				final regionX = resolveAsInteger(region[0]);
+				final regionY = resolveAsInteger(region[1]);
+				final regionW = resolveAsInteger(region[2]);
+				final regionH = resolveAsInteger(region[3]);
+				AutotileRegionSheet(baseTile, regionX, regionY, regionW, regionH, tileSize, tileCount, scaleVal, fontName, fontColorVal);
+
+			case ATSDemo(_, _):
+				throw 'autotileRegionSheet: autotile "$name" uses demo source - no region to display';
+
+			case ATSTiles(_):
+				throw 'autotileRegionSheet: autotile "$name" uses explicit tiles - no region to display';
+
+			case ATSAtlas(_, _):
+				throw 'autotileRegionSheet: autotile "$name" uses atlas prefix - no region to display';
+		};
+	}
+
+	/**
 	 * Generate a tile with text using font-based rendering.
 	 * Uses h2d.Object.drawTo to render to a texture.
 	 */
@@ -875,6 +939,95 @@ class MultiAnimBuilder {
 		return h2d.Tile.fromPixels(pixels);
 	}
 
+	/**
+	 * Generate a visual tile showing the autotile region with numbered grid overlay.
+	 * Displays the complete region and draws tile indices over each tile position.
+	 * @param scale Scale factor for the tiles (font is not scaled)
+	 * @param fontName Font name for the tile numbers
+	 * @param fontColor Color for the tile numbers
+	 */
+	function generateAutotileRegionSheetTile(baseTile:h2d.Tile, regionX:Int, regionY:Int, regionW:Int, regionH:Int, tileSize:Int, tileCount:Int, scale:Int, fontName:String, fontColor:Int):h2d.Tile {
+		// Calculate scaled dimensions
+		final scaledW = regionW * scale;
+		final scaledH = regionH * scale;
+		final scaledTileSize = tileSize * scale;
+
+		// Create container for the region + grid overlay
+		final container = new h2d.Object();
+
+		// Extract and display the region (scaled)
+		final regionTile = baseTile.sub(regionX, regionY, regionW, regionH);
+		final regionBitmap = new h2d.Bitmap(regionTile, container);
+		regionBitmap.scaleX = scale;
+		regionBitmap.scaleY = scale;
+
+		// Calculate grid dimensions
+		final cols = Std.int(regionW / tileSize);
+		final rows = Std.int(regionH / tileSize);
+
+		// Draw grid lines using PixelLines (at scaled size)
+		final pl = new PixelLines(scaledW, scaledH);
+		final gridColor = 0xFFFFFFFF;  // White grid lines
+
+		// Draw vertical grid lines
+		for (col in 0...cols + 1) {
+			final x = col * scaledTileSize;
+			if (x < scaledW) {
+				pl.line(x, 0, x, scaledH - 1, gridColor);
+			}
+		}
+
+		// Draw horizontal grid lines
+		for (row in 0...rows + 1) {
+			final y = row * scaledTileSize;
+			if (y < scaledH) {
+				pl.line(0, y, scaledW - 1, y, gridColor);
+			}
+		}
+
+		pl.updateBitmap();
+		new h2d.Bitmap(pl.tile, container);
+
+		// Add tile numbers using specified font (not scaled)
+		final font = resourceLoader.loadFont(fontName);
+		final fontColorRGB = fontColor & 0xFFFFFF;
+		final totalTilesInRegion = cols * rows;
+		for (i in 0...totalTilesInRegion) {
+			final col = i % cols;
+			final row = Std.int(i / cols);
+			final x = col * scaledTileSize + 1;
+			final y = row * scaledTileSize + 1;
+			final numStr = Std.string(i);
+
+			// Shadow text (black, offset by 1 pixel)
+			final shadowText = new h2d.Text(font, container);
+			shadowText.text = numStr;
+			shadowText.textColor = 0x000000;
+			shadowText.x = x + 1;
+			shadowText.y = y + 1;
+
+			// Main text (using specified font color)
+			final mainText = new h2d.Text(font, container);
+			mainText.text = numStr;
+			mainText.textColor = fontColorRGB;
+			mainText.x = x;
+			mainText.y = y;
+		}
+
+		// Render container to texture (at scaled size)
+		final texture = new h3d.mat.Texture(scaledW, scaledH, [Target]);
+		container.drawTo(texture);
+
+		// Capture pixels from texture
+		final pixels = texture.capturePixels();
+
+		// Clean up
+		container.remove();
+		texture.dispose();
+
+		return h2d.Tile.fromPixels(pixels);
+	}
+
 	function loadTileSource(tileSource):h2d.Tile {
 		final tile = switch tileSource {
 			case TSFile(filename): resourceLoader.loadTile(resolveAsString(filename));
@@ -886,6 +1039,7 @@ class MultiAnimBuilder {
 					case SolidColor(width, height, color): SolidColor(resolveAsInteger(width), resolveAsInteger(height), resolveAsColorInteger(color));
 					case SolidColorWithText(width, height, color, text, textColor, font): SolidColorWithText(resolveAsInteger(width), resolveAsInteger(height), resolveAsColorInteger(color), resolveAsString(text), resolveAsColorInteger(textColor), resolveAsString(font));
 					case AutotileRef(autotileName, selector): resolveAutotileRef(autotileName, selector);
+					case AutotileRegionSheet(autotileName, scale, font, fontColor): resolveAutotileRegionSheet(autotileName, scale, font, fontColor);
 				}
 
 				resourceLoader.getOrCreatePlaceholder(resolvedType, (resolvedType) -> generatePlaceholderBitmap(resolvedType));

@@ -1,8 +1,13 @@
 # Changelog
 
-## [Unreleased]
+## [0.4]
 
 ### Added
+- **Autotile region sheet visualization** - New `autotileRegionSheet` generated tile type for debugging autotile tilesets
+  - Displays the complete region of an autotile with a numbered grid overlay
+  - Helps visually identify which tile index corresponds to which visual tile in the source image
+  - Syntax: `generated(autotileRegionSheet("autotileName", scale, "font", fontColor))`
+  - Scales tiles but keeps font at original size for readability on small tiles (e.g., 8x8)
 - **Negative range parameters** - Range definitions now support negative numbers (e.g., `param:-50..150`)
 - **Conditionals demo** - Comprehensive demo showing all conditional features:
   - `@(param=>value)` exact match, `@(param=>!value)` negation

@@ -88,4 +88,9 @@ version: 0.3
     // Map backgrounds positioned for test code
     bitmap(generated(color(136, 104, black))):10,152
     bitmap(generated(color(136, 104, black))):160,152
+
+    // Region sheet visualization - shows the tileset region with numbered grid
+    // autotileRegionSheet(autotileName, scale, font, fontColor) - scale tiles but not font
+    text(f3x5, "Region Sheet (blob47Grass):", 0x888888, left):320,142
+    bitmap(generated(autotileRegionSheet("blob47Grass", 4, "f3x5", white))):320,152
 }
