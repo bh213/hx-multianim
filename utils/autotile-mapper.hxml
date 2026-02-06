@@ -5,5 +5,5 @@
 -cp src
 -main AutotileMapper
 -D message.reporting=pretty
--D resourcesPath=res
+-D resourcesPath=../test/res
 -hl build/autotile-mapper.hl

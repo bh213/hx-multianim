@@ -3,10 +3,6 @@ package screens;
 import bh.ui.UIElement;
 import bh.ui.UIMultiAnimDropdown;
 import bh.multianim.MultiAnimBuilder;
-import bh.multianim.MultiAnimBuilder;
-import bh.ui.UIMultiAnimSlider;
-import bh.ui.UIMultiAnimCheckbox;
-import bh.ui.UIMultiAnimButton;
 import bh.ui.*;
 import bh.ui.screens.UIScreen;
 using bh.base.BitUtils;
@@ -42,7 +38,7 @@ class SettingsScreen extends UIScreenBase {
 			
 			var availResolutions = window.getDisplaySettings();
 			var items:Array<UIElementListItem> = availResolutions.map(x-> cast {name:'${x.width}x${x.height}', data: x});
-			this.resolutions = addElementWithIterator(UIStandardMultiAnimDropdown.create(stdBuilder, "dropdown", "list-panel", "list-item-120", items), resolutionIterator);
+			this.resolutions = addElementWithIterator(UIStandardMultiAnimDropdown.createWithSingleBuilder(stdBuilder, items), resolutionIterator);
 			this.resolutions.onItemChanged = (newIndex, items) -> {
 				var newItem = cast items[newIndex];
 				window.resize(newItem.data.width, newItem.data.height);
@@ -50,7 +46,7 @@ class SettingsScreen extends UIScreenBase {
 			}
 		
 			var colors:Array<UIElementListItem> = [{name:"Black", data:0}, {name:"White", data:0xFFFFFF}, {name:"gray", data:0x808080}, {name:"silver", data:0xC0C0C0}, {name:"green-ish", data:0x507050}];
-			this.backgrounds = addElementWithIterator(UIStandardMultiAnimDropdown.create(stdBuilder, "dropdown", "list-panel", "list-item-120", colors), resolutionIterator);
+			this.backgrounds = addElementWithIterator(UIStandardMultiAnimDropdown.createWithSingleBuilder(stdBuilder, colors), resolutionIterator);
 			this.backgrounds.onItemChanged = (newIndex, items) -> {
 				screenManager.app.engine.backgroundColor = items[newIndex].data;
 				
@@ -58,7 +54,7 @@ class SettingsScreen extends UIScreenBase {
 			}
 
 			var monitors:Array<UIElementListItem> = cast hxd.Window.getMonitors().map(x->{name:'${x.name}', data:x});
-			var monitorsDD = addElementWithIterator(UIStandardMultiAnimDropdown.create(stdBuilder, "dropdown", "list-panel", "list-item-120", monitors), resolutionIterator);
+			var monitorsDD = addElementWithIterator(UIStandardMultiAnimDropdown.createWithSingleBuilder(stdBuilder, monitors), resolutionIterator);
 			
 			monitorsDD.onItemChanged = (newIndex, items) -> {
 				var window = hxd.Window.getInstance();

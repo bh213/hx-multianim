@@ -865,7 +865,7 @@ enum NodeType {
 	FLOW(maxWidth:Null<ReferenceableValue>, maxHeight:Null<ReferenceableValue>, minWidth:Null<ReferenceableValue>, minHeight:Null<ReferenceableValue>,
 		lineHeight:Null<ReferenceableValue>, colWidth:Null<ReferenceableValue>, layout:Null<h2d.Flow.FlowLayout>,
 		paddingTop:Null<ReferenceableValue>,paddingBottom:Null<ReferenceableValue>, paddingLeft:Null<ReferenceableValue>, paddingRight:Null<ReferenceableValue>,
-		horizontalSpacing:Null<ReferenceableValue>, verticalSpacing:Null<ReferenceableValue>, debug:Bool
+		horizontalSpacing:Null<ReferenceableValue>, verticalSpacing:Null<ReferenceableValue>, debug:Bool, multiline:Bool
 		);
 	BITMAP(tileSource:TileSource, hAlign:HorizontalAlign, vAlign:VerticalAlign);
 	POINT;
@@ -2887,11 +2887,12 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 				var horizontalSpacing:Null<ReferenceableValue> = null;
 				var verticalSpacing:Null<ReferenceableValue> = null;
 				var debug:Bool = false;
+				var multiline:Bool = false;
 
 
-				var results = parseOptionalParams([ParseIntegerOrReference(MacroUtils.identToString(maxWidth)), 
+				var results = parseOptionalParams([ParseIntegerOrReference(MacroUtils.identToString(maxWidth)),
 												   ParseIntegerOrReference(MacroUtils.identToString(maxHeight)),
-												   ParseIntegerOrReference(MacroUtils.identToString(minWidth)), 
+												   ParseIntegerOrReference(MacroUtils.identToString(minWidth)),
 												   ParseIntegerOrReference(MacroUtils.identToString(minHeight)),
 												   ParseIntegerOrReference(MacroUtils.identToString(lineHeight)),
 												   ParseIntegerOrReference(MacroUtils.identToString(colWidth)),
@@ -2904,6 +2905,7 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 												   ParseIntegerOrReference(MacroUtils.identToString(verticalSpacing)),
 												   ParseIntegerOrReference("padding"),
 												   ParseCustom(MacroUtils.identToString(debug), parseBool),
+												   ParseCustom(MacroUtils.identToString(multiline), parseBool),
 												], once);
 
 				switch stream {
@@ -2919,7 +2921,8 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 				MacroUtils.optionsSetIfNotNull(lineHeight, results);
 				MacroUtils.optionsSetIfNotNull(colWidth, results);
 				MacroUtils.optionsSetIfNotNull(debug, results);
-				
+				MacroUtils.optionsSetIfNotNull(multiline, results);
+
 				layout = results[MacroUtils.identToString(layout)];
 				if (results.exists("padding")) {
 					final val = results["padding"];
@@ -2937,7 +2940,7 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 				MacroUtils.optionsSetIfNotNull(verticalSpacing, results);
 				
 
-				createNodeResponse(FLOW(maxWidth, maxHeight, minWidth, minHeight, lineHeight, colWidth, layout, paddingTop, paddingBottom, paddingLeft, paddingRight, horizontalSpacing, verticalSpacing, debug));
+				createNodeResponse(FLOW(maxWidth, maxHeight, minWidth, minHeight, lineHeight, colWidth, layout, paddingTop, paddingBottom, paddingLeft, paddingRight, horizontalSpacing, verticalSpacing, debug, multiline));
 				
 			case [MPIdentifier(_, MPPoint, ITString)]:
 				switch stream {
@@ -3431,7 +3434,7 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 			case [MPColon, p = parseXY()]:
 				eatSemicolon();
 				var isFlow = parent != null && switch parent.type {
-					case FLOW(_,_,_,_,_,_,_,_,_,_,_,_): true;
+					case FLOW(_,_,_,_,_,_,_,_,_,_,_,_,_): true;
 					default: false;
 				}
 
@@ -4317,11 +4320,13 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 								switch stream {
 									case [MPColon, targetIdx = parseInteger()]:
 										// Explicit mapping: sourceIdx -> targetIdx
+										trace('  PARSER mapping explicit: $sourceIdx:$targetIdx');
 										if (mapping.exists(sourceIdx))
 											syntaxError('duplicate mapping for tile $sourceIdx');
 										mapping.set(sourceIdx, targetIdx);
 									case _:
 										// Sequential: position -> value
+										trace('  PARSER mapping sequential: [$sequentialIndex] = $sourceIdx');
 										if (mapping.exists(sequentialIndex))
 											syntaxError('duplicate mapping for tile $sequentialIndex');
 										mapping.set(sequentialIndex, sourceIdx);

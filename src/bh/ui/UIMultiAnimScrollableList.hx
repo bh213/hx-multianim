@@ -10,7 +10,7 @@ import h2d.col.Point;
 import bh.ui.UIElement.UIElementEvents;
 
 // var allStates = hover, pressed, disabled, normal, selected
-class UIMultiAnimScrollableList implements UIElement implements StandardUIElementEvents implements UIElementSyncRedraw implements UIElementUpdatable
+class UIMultiAnimScrollableList implements UIElement implements UIElementDisablable implements StandardUIElementEvents implements UIElementSyncRedraw implements UIElementUpdatable
 		implements UIElementListValue {
 	final itemBuilder:UIElementBuilder;
 	final panelBuilder:UIElementBuilder;
@@ -25,6 +25,7 @@ class UIMultiAnimScrollableList implements UIElement implements StandardUIElemen
 	var interactives:Array<MAObject> = [];
 
 	public var requestRedraw = true;
+	public var disabled(default, set):Bool = false;
 
 	var width:Int;
 	var height:Int;
@@ -212,7 +213,17 @@ class UIMultiAnimScrollableList implements UIElement implements StandardUIElemen
 		}
 	}
 
+	public function set_disabled(value:Bool):Bool {
+		if (this.disabled != value) {
+			this.disabled = value;
+			this.requestRedraw = true;
+		}
+		return value;
+	}
+
 	public function onEvent(wrapper:UIElementEventWrapper) {
+		if (this.disabled)
+			return;
 		final time = haxe.Timer.stamp();
 		var obj = findInteractiveIndex(wrapper.eventPos);
 		final newIndex = obj == null ? null : parseInteractiveId(obj);

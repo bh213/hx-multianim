@@ -7,14 +7,12 @@ REM   run-autotile-mapper.bat ..\test\examples\32-blob47Fallback\blob47Fallback.
 
 cd /d "%~dp0"
 
-if not exist build\autotile-mapper.hl (
-    echo Building autotile-mapper...
-    haxe autotile-mapper.hxml
-    if errorlevel 1 (
-        echo Build failed!
-        pause
-        exit /b 1
-    )
+echo Building autotile-mapper...
+haxe autotile-mapper.hxml
+if errorlevel 1 (
+    echo Build failed!
+    pause
+    exit /b 1
 )
 
 if "%~1"=="" (

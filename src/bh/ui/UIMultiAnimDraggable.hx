@@ -3,7 +3,6 @@ package bh.ui;
 import bh.base.MAObject;
 import h2d.Object;
 import h2d.col.Point;
-import h2d.col.Bounds;
 import bh.ui.UIElement;
 
 /**
@@ -45,7 +44,7 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 	var dragOffset:Point;
 
 	var draggableButtons:Array<Int> = [0];
-	var draggingButtton:Int = -1;
+	var draggingButton:Int = -1;
 
 	// Delegate callbacks
 	public var onDragStart:Null<DragStartDelegate> = null;
@@ -74,9 +73,7 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 	}
 
 	public function containsPoint(pos:Point):Bool {
-		trace('Draggable containsPoint: ${pos.x}, ${pos.y}, ${root.getBounds().width} ${target.getBounds().width}');
 		return root.getBounds().contains(pos);
-		
 	}
 
 	public function clear() {
@@ -99,21 +96,20 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 						return;
 					}
 
-					draggingButtton = button;
+					draggingButton = button;
 
 					isDragging = true;
 					dragOffset = new Point(target.x - wrapper.eventPos.x, target.y - wrapper.eventPos.y);
 					wrapper.control.captureEvents.startCapture();
+					if (onDragEvent != null) {
+						onDragEvent(DragStart, wrapper.eventPos, wrapper);
+					}
 				}
 
 			case OnRelease(button):
-				if (button == draggingButtton && isDragging) {
-					if (!isDragging)
-						return;
-
-					// Stop dragging
+				if (button == draggingButton && isDragging) {
 					isDragging = false;
-					draggingButtton = -1;
+					draggingButton = -1;
 
 					if (onDragEvent != null) {
 						onDragEvent(DragEnd, wrapper.eventPos, wrapper);
@@ -134,6 +130,9 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 					}
 
 					target.setPosition(newPos.x, newPos.y);
+					if (onDragEvent != null) {
+						onDragEvent(DragMove, wrapper.eventPos, wrapper);
+					}
 				}
 			default:
 		}

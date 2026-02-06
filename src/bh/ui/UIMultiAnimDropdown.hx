@@ -97,13 +97,20 @@ class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisab
 	}
 
 	public static function createWithPrebuiltPanel(builder:UIElementBuilder, panel:UIMultiAnimScrollableList, items, initialIndex = 0) {
-		// TODO: if (panel.getObject().parent == null) throw 'panel must be added to the scene before being passed to createWithPrebuiltPanel';
-		return new UIStandardMultiAnimDropdown(builder, panel, items, panel.currentItemIndex);
+		return new UIStandardMultiAnimDropdown(builder, panel, items, initialIndex);
 	}
 
-	public static function create(builder:UIElementBuilder, panelBuilder:UIElementBuilder, panelListItemBuilder:UIElementBuilder, scrollbarBuilder:UIElementBuilder, scrollbarInPanelName:String, items, initialIndex = 0) {
-		var panel = buildPanel(panelBuilder, panelListItemBuilder, scrollbarBuilder, scrollbarInPanelName, items, initialIndex);
+	public static function create(builder:UIElementBuilder, panelBuilder:UIElementBuilder, panelListItemBuilder:UIElementBuilder, scrollbarBuilder:UIElementBuilder, scrollbarInPanelName:String, items, initialIndex = 0, panelWidth = 120, panelHeight = 300) {
+		var panel = buildPanel(panelBuilder, panelListItemBuilder, scrollbarBuilder, scrollbarInPanelName, items, initialIndex, panelWidth, panelHeight);
 		return new UIStandardMultiAnimDropdown(builder, panel, items, initialIndex);
+	}
+
+	/**
+	 * Convenience factory that takes a single MultiAnimBuilder and component names.
+	 * Uses standard component names by default (dropdown, list-panel, list-item-120, scrollbar).
+	 */
+	public static function createWithSingleBuilder(builder:MultiAnimBuilder, items:Array<UIElementListItem>, initialIndex = 0, dropdownName = "dropdown", panelName = "list-panel", itemName = "list-item-120", scrollbarName = "scrollbar", scrollbarInPanelName = "scrollbar", panelWidth = 120, panelHeight = 300) {
+		return create(builder.createElementBuilder(dropdownName), builder.createElementBuilder(panelName), builder.createElementBuilder(itemName), builder.createElementBuilder(scrollbarName), scrollbarInPanelName, items, initialIndex, panelWidth, panelHeight);
 	}
 
 	function callback(input:CallbackRequest):CallbackResult {
@@ -125,9 +132,8 @@ class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisab
 		return CBRNoResult;
 	}
 
-	static function buildPanel(builder:UIElementBuilder, panelListItemBuilder:UIElementBuilder, scrollbarBuilder:UIElementBuilder, scrollbarInPanelName:String, items, initialIndex) {
-		return UIMultiAnimScrollableList.create(builder, panelListItemBuilder, scrollbarBuilder, scrollbarInPanelName, 120, 300, items, 0,    // TODO: width, height
-			initialIndex); // TODO: dimensions, initial index
+	static function buildPanel(builder:UIElementBuilder, panelListItemBuilder:UIElementBuilder, scrollbarBuilder:UIElementBuilder, scrollbarInPanelName:String, items, initialIndex, panelWidth = 120, panelHeight = 300) {
+		return UIMultiAnimScrollableList.create(builder, panelListItemBuilder, scrollbarBuilder, scrollbarInPanelName, panelWidth, panelHeight, items, 0, initialIndex);
 	}
 
 	function onPanelItemChanged(newIndex, items, wrapper) {
@@ -234,8 +240,10 @@ class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisab
 	}
 
 	function set_status(value:StandardUIElementStates):StandardUIElementStates {
-		this.status = value;
-		this.requestRedraw = true;
+		if (this.status != value) {
+			this.status = value;
+			this.requestRedraw = true;
+		}
 		return value;
 	}
 

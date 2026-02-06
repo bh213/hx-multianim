@@ -1700,7 +1700,7 @@ class MultiAnimBuilder {
 
 		final builtObject:BuiltHeapsComponent = switch node.type {
 			case FLOW(maxWidth, maxHeight, minWidth, minHeight, lineHeight, colWidth, layout, paddingTop, paddingBottom, paddingLeft, paddingRight,
-				horizontalSpacing, verticalSpacing, debug):
+				horizontalSpacing, verticalSpacing, debug, multiline):
 				var f = new h2d.Flow();
 
 				if (maxWidth != null)
@@ -1734,6 +1734,7 @@ class MultiAnimBuilder {
 					f.verticalSpacing = resolveAsInteger(verticalSpacing);
 
 				f.debug = debug;
+				f.multiline = multiline;
 				f.overflow = Limit;
 
 				HeapsFlow(f);
