@@ -12,14 +12,14 @@ version: 0.3
 }
 
 // =============================================================================
-// Demo 2: Negation with @(param=>!value) - matches when NOT equal
+// Demo 2: Negation with @(param != value) - matches when NOT equal
 // =============================================================================
 #notDemo programmable(mode:[on, off]) {
   pos: 0, 0
   @(mode=>on) bitmap(generated(color(60, 30, #060)));
   @(mode=>off) bitmap(generated(color(60, 30, #333)));
-  @(mode=>!off) text(m3x6, "ON", #8f8, center, 60):0,8;
-  @(mode=>!on) text(m3x6, "OFF", #888, center, 60):0,8;
+  @(mode != off) text(m3x6, "ON", #8f8, center, 60):0,8;
+  @(mode != on) text(m3x6, "OFF", #888, center, 60):0,8;
 }
 
 // =============================================================================
@@ -52,14 +52,14 @@ version: 0.3
 #tempDemo programmable(temp:-50..150) {
   pos: 0, 0
   // Ice: temp < 0
-  @(temp=>lessThanOrEqual -1) bitmap(generated(color(70, 40, #48f)));
-  @(temp=>lessThanOrEqual -1) text(m3x6, "ICE", white, center, 70):0,12;
+  @(temp <= -1) bitmap(generated(color(70, 40, #48f)));
+  @(temp <= -1) text(m3x6, "ICE", white, center, 70):0,12;
   // Water: 0 <= temp <= 100
-  @(temp=>between 0..100) bitmap(generated(color(70, 40, #06a)));
-  @(temp=>between 0..100) text(m3x6, "WATER", white, center, 70):0,12;
+  @(temp => 0..100) bitmap(generated(color(70, 40, #06a)));
+  @(temp => 0..100) text(m3x6, "WATER", white, center, 70):0,12;
   // Steam: temp > 100
-  @(temp=>greaterThanOrEqual 101) bitmap(generated(color(70, 40, #888)));
-  @(temp=>greaterThanOrEqual 101) text(m3x6, "STEAM", white, center, 70):0,12;
+  @(temp >= 101) bitmap(generated(color(70, 40, #888)));
+  @(temp >= 101) text(m3x6, "STEAM", white, center, 70):0,12;
 }
 
 // =============================================================================
@@ -106,7 +106,7 @@ version: 0.3
   // --- Row 2: Negation ---
   point {
     pos: 40, 120
-    text(m3x6, "@(param=>!value) - not equal", #888, left, 300):0,0;
+    text(m3x6, "@(param != value) - not equal", #888, left, 300):0,0;
     reference($notDemo, mode=>on):0,12;
     reference($notDemo, mode=>off):70,12;
   }
@@ -134,7 +134,7 @@ version: 0.3
   // --- Row 5: Range conditions (temperature) ---
   point {
     pos: 40, 300
-    text(m3x6, "Range: lessThan/greaterThan/between", #888, left, 350):0,0;
+    text(m3x6, "Range: >= <= > < and N..N", #888, left, 350):0,0;
     reference($tempDemo, temp=>-20):0,12;
     reference($tempDemo, temp=>50):80,12;
     reference($tempDemo, temp=>120):160,12;
@@ -164,7 +164,7 @@ version: 0.3
     text(m3x6, "@(param=>value)", #8ff, left, 340):10,35;
     text(m3x6, "  Match exact enum value", #666, left, 340):10,45;
 
-    text(m3x6, "@(param=>!value)", #8ff, left, 340):10,60;
+    text(m3x6, "@(param != value)", #8ff, left, 340):10,60;
     text(m3x6, "  Match when NOT equal", #666, left, 340):10,70;
 
     text(m3x6, "@(param=>[a,b,c])", #8ff, left, 340):10,85;
@@ -179,13 +179,13 @@ version: 0.3
     // Range conditionals
     @scale(2) text(m3x6, "Range Conditions", #ff8, left, 340):10,170;
 
-    text(m3x6, "@(key=>greaterThanOrEqual 30)", #8ff, left, 340):10,195;
+    text(m3x6, "@(key >= 30)", #8ff, left, 340):10,195;
     text(m3x6, "  Match when key >= 30", #666, left, 340):10,205;
 
-    text(m3x6, "@(key=>lessThanOrEqual 30)", #8ff, left, 340):10,220;
+    text(m3x6, "@(key <= 30)", #8ff, left, 340):10,220;
     text(m3x6, "  Match when key <= 30", #666, left, 340):10,230;
 
-    text(m3x6, "@(key=>between 10..30)", #8ff, left, 340):10,245;
+    text(m3x6, "@(key => 10..30)", #8ff, left, 340):10,245;
     text(m3x6, "  Match when 10 <= key <= 30", #666, left, 340):10,255;
 
     // Parameter types

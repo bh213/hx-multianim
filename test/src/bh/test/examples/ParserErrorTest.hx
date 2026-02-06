@@ -455,4 +455,146 @@ class ParserErrorTest extends utest.Test {
 		Assert.isTrue(error.indexOf("already defined") >= 0,
 			'Error should mention param already defined, got: $error');
 	}
+
+	// ===== Symbolic conditional operator tests =====
+
+	@Test
+	public function testSymbolicGreaterEquals() {
+		var success = parseExpectingSuccess('
+			#test programmable(val:0..100=50) {
+				@(val >= 30) bitmap(generated(color(10, 10, #f00))): 0,0
+			}
+		');
+		Assert.isTrue(success, "@(val >= 30) should parse successfully");
+	}
+
+	@Test
+	public function testSymbolicLessEquals() {
+		var success = parseExpectingSuccess('
+			#test programmable(val:0..100=50) {
+				@(val <= 30) bitmap(generated(color(10, 10, #f00))): 0,0
+			}
+		');
+		Assert.isTrue(success, "@(val <= 30) should parse successfully");
+	}
+
+	@Test
+	public function testSymbolicGreaterThan() {
+		var success = parseExpectingSuccess('
+			#test programmable(val:0..100=50) {
+				@(val > 30) bitmap(generated(color(10, 10, #f00))): 0,0
+			}
+		');
+		Assert.isTrue(success, "@(val > 30) should parse successfully");
+	}
+
+	@Test
+	public function testSymbolicLessThan() {
+		var success = parseExpectingSuccess('
+			#test programmable(val:0..100=50) {
+				@(val < 30) bitmap(generated(color(10, 10, #f00))): 0,0
+			}
+		');
+		Assert.isTrue(success, "@(val < 30) should parse successfully");
+	}
+
+	@Test
+	public function testSymbolicNotEquals() {
+		var success = parseExpectingSuccess('
+			#test programmable(mode:[on,off]=on) {
+				@(mode != off) bitmap(generated(color(10, 10, #f00))): 0,0
+			}
+		');
+		Assert.isTrue(success, "@(mode != off) should parse successfully");
+	}
+
+	@Test
+	public function testBareRangeAfterArrow() {
+		var success = parseExpectingSuccess('
+			#test programmable(val:0..100=50) {
+				@(val => 10..30) bitmap(generated(color(10, 10, #f00))): 0,0
+			}
+		');
+		Assert.isTrue(success, "@(val => 10..30) bare range should parse successfully");
+	}
+
+	@Test
+	public function testNegativeValueSymbolic() {
+		var success = parseExpectingSuccess('
+			#test programmable(val:-50..150=50) {
+				@(val <= -1) bitmap(generated(color(10, 10, #f00))): 0,0
+			}
+		');
+		Assert.isTrue(success, "@(val <= -1) with negative should parse successfully");
+	}
+
+	@Test
+	public function testNegativeBareRange() {
+		var success = parseExpectingSuccess('
+			#test programmable(val:-50..150=50) {
+				@(val => -10..100) bitmap(generated(color(10, 10, #f00))): 0,0
+			}
+		');
+		Assert.isTrue(success, "@(val => -10..100) negative bare range should parse successfully");
+	}
+
+	@Test
+	public function testBackwardCompatGreaterThanOrEqual() {
+		var success = parseExpectingSuccess('
+			#test programmable(val:0..100=50) {
+				@(val => greaterThanOrEqual 30) bitmap(generated(color(10, 10, #f00))): 0,0
+			}
+		');
+		Assert.isTrue(success, "Old greaterThanOrEqual syntax should still work");
+	}
+
+	@Test
+	public function testBackwardCompatLessThanOrEqual() {
+		var success = parseExpectingSuccess('
+			#test programmable(val:0..100=50) {
+				@(val => lessThanOrEqual 30) bitmap(generated(color(10, 10, #f00))): 0,0
+			}
+		');
+		Assert.isTrue(success, "Old lessThanOrEqual syntax should still work");
+	}
+
+	@Test
+	public function testBackwardCompatBetween() {
+		var success = parseExpectingSuccess('
+			#test programmable(val:0..100=50) {
+				@(val => between 10..30) bitmap(generated(color(10, 10, #f00))): 0,0
+			}
+		');
+		Assert.isTrue(success, "Old between syntax should still work");
+	}
+
+	@Test
+	public function testBackwardCompatNegateArrow() {
+		var success = parseExpectingSuccess('
+			#test programmable(mode:[on,off]=on) {
+				@(mode => !off) bitmap(generated(color(10, 10, #f00))): 0,0
+			}
+		');
+		Assert.isTrue(success, "Old @(param => !value) negate syntax should still work");
+	}
+
+	@Test
+	public function testSymbolicWithCombinedConditions() {
+		var success = parseExpectingSuccess('
+			#test programmable(hp:0..100=50, mode:[attack,defend]=attack) {
+				@(hp >= 30, mode => attack) bitmap(generated(color(10, 10, #f00))): 0,0
+			}
+		');
+		Assert.isTrue(success, "Mixed symbolic and arrow conditions should parse successfully");
+	}
+
+	@Test
+	public function testNotEqualsWithArray() {
+		var success = parseExpectingSuccess('
+			#test programmable(mode:[a,b,c,d]=a) {
+				@(mode != [a, b]) bitmap(generated(color(10, 10, #f00))): 0,0
+			}
+		');
+		Assert.isTrue(success, "@(mode != [a, b]) should parse successfully");
+	}
 }

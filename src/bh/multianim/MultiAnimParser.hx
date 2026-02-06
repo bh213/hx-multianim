@@ -575,7 +575,7 @@ enum ResolvedIndexParameters {
 
 enum ConditionalValues {
 	CoEnums(a:Array<String>);
-	CoRange(fromInclusive:Null<Float>, toInclusive:Null<Float>);
+	CoRange(from:Null<Float>, to:Null<Float>, fromExclusive:Bool, toExclusive:Bool);
 	CoIndex(idx:Int, value:String);
 	CoValue(val:Int);
 	CoFlag(f:Int);
@@ -2276,95 +2276,138 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 			}
 		}
 
-
-		while (true) {
-			
-			switch stream {
-				case [MPIdentifier(name, _, ITString|ITQuotedString), MPArrow]:
-
-				var negate = switch stream {
+		function parseConditionalSingleValue(name:String, type:DefinitionType, negate:Bool):ConditionalValues {
+			// backward compat: @(param => !value)
+			if (!negate) {
+				negate = switch stream {
 					case [MPExclamation]: true;
 					case _: false;
 				}
-	
+			}
+
+			var value = switch stream {
+				case [MPIdentifier(_, MPBit, ITString), MPBracketOpen]:
+					var bitValue = 0;
+					while (true) {
+						switch stream {
+							case [MPNumber(value, NTInteger)]:
+								final bitNumber = stringToInt(value);
+								bitValue |= 1 << bitNumber;
+						}
+						eatComma();
+						switch stream {
+							case [MPBracketClosed]: break;
+							case _:
+						}
+					}
+					dynamicToConditionalParam(bitValue, type);
+				case [MPIdentifier("greaterThanOrEqual", _, ITString), val = parseInteger()]:
+					validateIntTypes(name, type, val);
+					CoRange(val, null, false, false);
+				case [MPIdentifier("lessThanOrEqual", _, ITString), val = parseInteger()]:
+					validateIntTypes(name, type, val);
+					CoRange(null, val, false, false);
+				case [MPIdentifier("between", _, ITString), val1 = parseInteger(), MPDoubleDot, val2 = parseInteger()]:
+					validateIntTypes(name, type, val1);
+					validateIntTypes(name, type, val2);
+					CoRange(val1, val2, false, false);
+				case [MPIdentifier(value, _, ITString|ITQuotedString)]:
+					dynamicToConditionalParam(value, type);
+				case [MPIdentifier(value, _, ITName)]:
+					dynamicToConditionalParam("#"+value, type);
+				case [MPNumber(value, NTInteger|NTFloat)]:
+					// check for bare range: N1..N2
+					var rangeResult = switch stream {
+						case [MPDoubleDot]:
+							var val2 = parseInteger();
+							var val1:Dynamic = value;
+							validateIntTypes(name, type, val1);
+							validateIntTypes(name, type, val2);
+							CoRange(stringToInt(value), val2, false, false);
+						case _: null;
+					}
+					if (rangeResult != null) rangeResult; else dynamicToConditionalParam(value, type);
+				case [MPNumber(value, NTHexInteger)]:
+					dynamicToConditionalParam("0x"+value, type);
+				case [MPMinus, MPNumber(value, _)]:
+					// check for bare negative range: -N1..N2
+					var rangeResult = switch stream {
+						case [MPDoubleDot]:
+							var val2 = parseInteger();
+							var val1:Dynamic = '-'+value;
+							validateIntTypes(name, type, val1);
+							validateIntTypes(name, type, val2);
+							CoRange(-stringToInt(value), val2, false, false);
+						case _: null;
+					}
+					if (rangeResult != null) rangeResult; else dynamicToConditionalParam('-'+value, type);
+				case [MPStar]:
+					CoAny;
+				case [MPBracketOpen]:
+					final values:Array<String> = [];
+					while (true) {
+						switch stream {
+							case [MPBracketClosed]: break;
+							case [MPIdentifier(value, _, ITString|ITQuotedString)|MPNumber(value, NTInteger)]:
+								values.push(value);
+							case [MPMinus, MPNumber(value, NTInteger)]:
+								values.push("-"+value);
+						}
+						eatComma();
+					}
+
+					for (s in values) {
+						validateIntTypes(name, type, s);
+					}
+
+					switch type {
+						case PPTEnum(defValues):
+							for (s in values) {
+								if (!defValues.contains(s)) syntaxError('conditional $name: enum value $s not in $defValues');
+							}
+						default:
+					}
+					CoEnums(values);
+			}
+			if (negate) value = CoNot(value);
+			return value;
+		}
+
+		while (true) {
+
+			switch stream {
+				case [MPIdentifier(name, _, ITString|ITQuotedString)]:
+
 					final paramDefinitions = defined.get(name);
 					if (paramDefinitions == null) syntaxError('conditional parameter $name does not have definition in $defined');
 					if (parameterValues.exists(name)) syntaxError('conditional parameter ${name} already defined');
-					
+
 					final type = paramDefinitions.type;
-					
+
 					var value = switch stream {
-						case [MPIdentifier(_, MPBit, ITString), MPBracketOpen]:
-							var bitValue = 0;
-							while (true) {
-								switch stream {
-									case [MPNumber(value, NTInteger)]:
-										final bitNumber = stringToInt(value);
-										bitValue |= 1 << bitNumber;
-								}
-								eatComma();
-								switch stream {
-									case [MPBracketClosed]: break;
-									case _: 
-								}
-							}
-							dynamicToConditionalParam(bitValue, type);
-						case [MPIdentifier("greaterThanOrEqual", _, ITString), val = parseInteger()]:
+						case [MPGreaterEquals]:
+							var val = parseInteger();
 							validateIntTypes(name, type, val);
-							CoRange(val, null);
-						case [MPIdentifier("lessThanOrEqual", _, ITString), val = parseInteger()]:
-							
+							CoRange(val, null, false, false);
+						case [MPLessEquals]:
+							var val = parseInteger();
 							validateIntTypes(name, type, val);
-							CoRange(null, val);
-						case [MPIdentifier("between", _, ITString), val1 = parseInteger(), MPDoubleDot, val2 = parseInteger()]:
-							
-							validateIntTypes(name, type, val1);
-							validateIntTypes(name, type, val2);
-							CoRange(val1, val2);
-						case [MPIdentifier(value, _, ITString|ITQuotedString)]:
-							dynamicToConditionalParam(value, type);
-						case [MPIdentifier(value, _, ITName)]:
-							dynamicToConditionalParam("#"+value, type);
-						case [MPNumber(value, NTInteger|NTFloat)]:
-							dynamicToConditionalParam(value, type);
-						case [MPNumber(value, NTHexInteger)]:
-							dynamicToConditionalParam("0x"+value, type);
-						case [MPMinus, MPNumber(value,_)]:
-							dynamicToConditionalParam('-'+value, type);
-						case [MPStar]:
-							CoAny;
-						case [MPBracketOpen]:
-							final values:Array<String> = [];
-							while (true) {
-								switch stream {
-									case [MPBracketClosed]: break;
-									case [MPIdentifier(value, _, ITString|ITQuotedString)|MPNumber(value, NTInteger)]:
-										values.push(value);
-									 case [MPMinus, MPNumber(value, NTInteger)]:
-										values.push("-"+value);
-								}
-								eatComma();
-							}
-
-
-							for (s in values) {
-								validateIntTypes(name, type, s);
-							}
-
-							switch type {
-								case PPTEnum(defValues):
-									for (s in values) {
-										if (!defValues.contains(s)) syntaxError('conditional $name: enum value $s not in $defValues');
-									}
-								default:
-							}
-							CoEnums(values);
-
+							CoRange(null, val, false, false);
+						case [MPGreaterThan]:
+							var val = parseInteger();
+							validateIntTypes(name, type, val);
+							CoRange(val, null, true, false);
+						case [MPLessThan]:
+							var val = parseInteger();
+							validateIntTypes(name, type, val);
+							CoRange(null, val, false, true);
+						case [MPNotEquals]:
+							parseConditionalSingleValue(name, type, true);
+						case [MPArrow]:
+							parseConditionalSingleValue(name, type, false);
 					}
-					if (negate) value = CoNot(value);
 					parameterValues.set(name, value);
-					
-					
+
 				case _: unexpectedError("expected parameters");
 			}
 

@@ -1108,12 +1108,14 @@ class MultiAnimBuilder {
 						if (!a.contains(s)) return false;
 					default: throw 'invalid param types ${currentValue}, ${condValue}' + currentNodePos();
 				}
-			case CoRange(fromInclusive, toInclusive):
+			case CoRange(from, to, fromExclusive, toExclusive):
 				switch currentValue {
 					case Value(val):
-						if ((fromInclusive != null && val < fromInclusive) || (toInclusive != null && val > toInclusive)) return false;
+						if (from != null && (fromExclusive ? val <= from : val < from)) return false;
+						if (to != null && (toExclusive ? val >= to : val > to)) return false;
 					case ValueF(val):
-						if ((fromInclusive != null && val < fromInclusive) || (toInclusive != null && val > toInclusive)) return false;
+						if (from != null && (fromExclusive ? val <= from : val < from)) return false;
+						if (to != null && (toExclusive ? val >= to : val > to)) return false;
 					default: throw 'invalid param types ${currentValue}, ${condValue}' + currentNodePos();
 				}
 

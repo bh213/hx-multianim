@@ -1,18 +1,21 @@
 version: 0.3
 
+// Scrollable List Test
+// Demonstrates a scrollable list with item selection.
+// Uses list-panel and list-item-120 components from std.manim.
+// List items and scroll behavior are configured in ScrollableListTestScreen.hx.
 
 #ui programmable() {
-      pos:100,300
-      
-      #listVal(updatable) text(dd, "Select an item from the list!", #ffffff00): 10,50
-     
-     placeholder(generated(cross(200, 150)), builderParameter("scrollableList")) {
-            pos: 10,80
-            settings{panelBuilder=>list-panel, itemBuilder=>list-item-120} // use standard list components
+      pos: 100, 300
+
+      text(dd, "Scrollable List Demo", #ffffffcc): 10, -30
+
+      // Selected item display
+      #listVal(updatable) text(dd, "Select an item from the list!", #ffffffaa): 10, 50
+
+      // Scrollable list placeholder
+      placeholder(generated(cross(200, 150)), builderParameter("scrollableList")) {
+            pos: 10, 80
+            settings{panelBuilder=>list-panel, itemBuilder=>list-item-120}
       }
-
-      
-      
 }
-
-

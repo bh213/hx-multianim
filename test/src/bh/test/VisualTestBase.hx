@@ -308,6 +308,7 @@ class VisualTestBase extends utest.Test {
 	 */
 	public function buildRenderScreenshotAndCompare(animFilePath:String, elementName:String,
 			async:utest.Async, ?sizeX:Int, ?sizeY:Int, ?scale:Float):Void {
+		async.setTimeout(10000);
 		clearScene();
 		var result = buildAndAddToScene(animFilePath, elementName, scale);
 

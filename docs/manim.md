@@ -384,13 +384,15 @@ filter: group(outline(?($selected) 2 : 0, yellow), brightness(?($active) 1.2 : 0
 Conditions are defined by `@(...)` and can be specified once per element.
 
 * `@()` or `@if(...)` - match all provided
-* `@(!param=>'value')` - match when param is NOT value
+* `@(param != value)` - match when param is NOT value
 * `@ifstrict(...)` - must match all provided parameters
 
-**Range matches:**
-* `@(key => greaterThanOrEqual 30)`
-* `@(key => lessThanOrEqual 30)`
-* `@(key => between 10..30)`
+**Comparison operators:**
+* `@(key >= 30)` - greater than or equal
+* `@(key <= 30)` - less than or equal
+* `@(key > 30)` - strictly greater than
+* `@(key < 30)` - strictly less than
+* `@(key => 10..30)` - range match (10 <= key <= 30)
 
 **Multi enum match:**
 * `@(key => [value1, value2])`

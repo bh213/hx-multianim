@@ -145,9 +145,13 @@ animation {
 
 ```manim
 @(param=>value)           # Match when param equals value
-@(!param=>value)          # Match when param NOT equals value
+@(param != value)         # Match when param NOT equals value
 @(param=>[v1,v2])         # Match multiple values
-@(param=>greaterThanOrEqual 30)  # Range comparisons
+@(param >= 30)            # Greater than or equal
+@(param <= 30)            # Less than or equal
+@(param > 30)             # Strictly greater than
+@(param < 30)             # Strictly less than
+@(param => 10..30)        # Range match (10 <= param <= 30)
 ```
 
 ### Expressions

@@ -1,31 +1,26 @@
 version: 0.3
 
+// Settings Screen
+// Demonstrates display settings: fullscreen toggle, resolution picker,
+// background color, and monitor selection.
+// Components are added programmatically via the #resolution layout iterator.
+
 relativeLayouts {
-    
   #resolution list {
-        point: 30,120
-        point: 30,160
-        point: 30,320
-        point: 30,420
+        point: 30, 120
+        point: 30, 160
+        point: 30, 320
+        point: 30, 420
   }
-
-    #mainDropDown sequence($i:0..30) point: 10 + $i * 120, 100
-    #buttons sequence($i:0..30) point: 10 + $i * 200, 500
-    #scrollableList sequence($i:1..30) point: 1280 - $i * 150, 100
-    #checkboxes sequence($i:0..30) point: 700 , 500 + 30 * $i
-  
 }
-
 
 #ui programmable() {
-      text(dd, "Fullscreen", #ffffff00): 60,125
-      #resolution(updatable) text(dd, "Resolution", #ffffff00): 160,166
+      text(dd, "Display Settings", #ffffffcc): 30, 30
 
+      // Labels for each setting row
+      text(dd, "Fullscreen", #ffffffaa): 60, 125
+      #resolution(updatable) text(dd, "Resolution", #ffffffaa): 160, 166
+
+      text(dd, "Background Color", #ffffffaa): 60, 285
+      text(dd, "Monitor", #ffffffaa): 60, 385
 }
-
-
-      
-
-
-
-    

@@ -58,12 +58,12 @@ version: 0.3
   graphics (
     rect(#444, 1, 70, 40): 0, 0
   ): 0, 0;
-  @(temp=>lessThanOrEqual -1) bitmap(generated(color(70, 40, #48f))):0,0;
-  @else(temp=>between 0..100) bitmap(generated(color(70, 40, #06a))):2,2;
+  @(temp <= -1) bitmap(generated(color(70, 40, #48f))):0,0;
+  @else(temp => 0..100) bitmap(generated(color(70, 40, #06a))):2,2;
   @else bitmap(generated(color(70, 40, #888))):4,4;
 
-  @(temp=>lessThanOrEqual -1) text(m3x6, "ICE", white, center, 70):0,12;
-  @else(temp=>between 0..100) text(m3x6, "WATER", white, center, 70):0,14;
+  @(temp <= -1) text(m3x6, "ICE", white, center, 70):0,12;
+  @else(temp => 0..100) text(m3x6, "WATER", white, center, 70):0,14;
   @else text(m3x6, "STEAM", white, center, 70):0,16;
 }
 

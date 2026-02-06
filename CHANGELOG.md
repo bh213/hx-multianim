@@ -9,10 +9,20 @@
   - Syntax: `generated(autotileRegionSheet("autotileName", scale, "font", fontColor))`
   - Scales tiles but keeps font at original size for readability on small tiles (e.g., 8x8)
 - **Negative range parameters** - Range definitions now support negative numbers (e.g., `param:-50..150`)
+- **Symbolic conditional operators** - New concise syntax for conditional comparisons:
+  - `@(param >= N)`, `@(param <= N)`, `@(param > N)`, `@(param < N)` - comparison operators
+  - `@(param != value)` - not-equals operator
+  - `@(param => N1..N2)` - bare range syntax (replaces `between` keyword)
+  - Old keyword syntax (`greaterThanOrEqual`, `lessThanOrEqual`, `between`, `=>!`) still supported
+- **@else / @default conditionals** - New conditional constructs for fallback logic:
+  - `@else` — matches when no prior sibling's `@()` condition matched
+  - `@else(conditions)` — like `@else` but with additional conditions
+  - `@default` — always matches when no prior sibling matched (unconditional fallback)
+  - Parser validates proper ordering (must follow a sibling with `@()` conditional)
 - **Conditionals demo** - Comprehensive demo showing all conditional features:
-  - `@(param=>value)` exact match, `@(param=>!value)` negation
+  - `@(param=>value)` exact match, `@(param != value)` negation
   - `@(param=>[v1,v2])` multiple values, `@(p1=>v1, p2=>v2)` combined conditions
-  - Range conditions: `greaterThanOrEqual`, `lessThanOrEqual`, `between`
+  - Range conditions: `>=`, `<=`, `>`, `<`, `N..N`
   - `@ifstrict` - requires ALL parameters to match (partial params = no match)
 - **Autotile system** - New root-level element for procedural terrain generation
   - Formats: `cross` (13 tiles), `blob47` (47-tile full coverage)
@@ -26,6 +36,14 @@
 - **Graphics coordinates** - `line()` and `polygon()` now support all coordinate types (hexCorner, hexEdge, grid, layout)
 - **New fonts** - f3x5, m3x6, pixeled6, pixellari, peaberry-white, peaberry-white-outline
 - **Test infrastructure** - HTML report generator with visual diffs, improved test runner
+
+### Playground
+- **Layout overhaul** - Canvas and console are now both always visible (vertical split), replacing the old tabbed layout
+- **Triple-reload fix** - Selecting a screen no longer triggers 3 redundant reloads; consolidated to a single useEffect
+- **Error handling** - Extracted shared error parsing into `errorUtils.ts`, removing ~100 lines of duplication
+- **Data consolidation** - Single `SCREEN_DATA` array as source of truth for screens and manim files
+- **Dead code cleanup** - Removed ~150 lines of unused CSS, dead DOM references, debug console.logs, unused interface
+- **Example files improved** - Cleaned up all 8 weak/minimal .manim examples: added titles, descriptive comments, fixed invisible text colors (`#ffffff00` → `#ffffffaa`), removed commented-out code and unused layouts
 
 ### Fixed
 - **GridDirection conditional validation** - Fixed `gridDirection` parameter validation in conditionals accepting only 0-3 instead of full 0-7 range (8 directions)
