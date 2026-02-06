@@ -350,4 +350,13 @@ class AllExamplesTest extends VisualTestBase {
 			2.0
 		);
 	}
+
+	// Example 33: @else and @default conditionals
+	@Test
+	public function test33_ElseDefaultDemo(async:utest.Async) {
+		this.testName = "elseDefaultDemo";
+		this.testTitle = "#33: @else and @default";
+		this.referenceDir = "test/examples/33-elseDefaultDemo";
+		buildRenderScreenshotAndCompare("test/examples/33-elseDefaultDemo/elseDefaultDemo.manim", "elseDefaultDemo", async, 1280, 720);
+	}
 }

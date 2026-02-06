@@ -1,0 +1,150 @@
+version: 0.3
+
+// =============================================================================
+// Demo 1: Basic @else - binary toggle
+// =============================================================================
+#elseBasic programmable(mode:[on, off]) {
+  pos: 0, 0
+  @(mode=>on) bitmap(generated(color(60, 30, #060)));
+  @else bitmap(generated(color(60, 30, #600)));
+  @(mode=>on) text(m3x6, "ON", #8f8, center, 60):0,8;
+  @else text(m3x6, "OFF", #f88, center, 60):0,8;
+}
+
+// =============================================================================
+// Demo 2: @else with condition (else-if chain)
+// =============================================================================
+#elseIfDemo programmable(level:[low, medium, high, critical]) {
+  pos: 0, 0
+  @(level=>low) bitmap(generated(color(80, 30, #036)));
+  @else(level=>medium) bitmap(generated(color(80, 30, #063)));
+  @else(level=>high) bitmap(generated(color(80, 30, #630)));
+  @else bitmap(generated(color(80, 30, #600)));
+
+  @(level=>low) text(m3x6, "LOW", #8ff, center, 80):0,8;
+  @else(level=>medium) text(m3x6, "MED", #8f8, center, 80):0,8;
+  @else(level=>high) text(m3x6, "HIGH", #ff8, center, 80):0,8;
+  @else text(m3x6, "CRIT", #f88, center, 80):0,8;
+}
+
+// =============================================================================
+// Demo 3: @default - catch-all for unmatched states
+// =============================================================================
+#defaultDemo programmable(state:[idle, hover, pressed, disabled]) {
+  pos: 0, 0
+  @(state=>idle) bitmap(generated(color(70, 30, #333)));
+  @(state=>hover) bitmap(generated(color(70, 30, #063)));
+  @default bitmap(generated(color(70, 30, #600)));
+
+  @(state=>idle) text(m3x6, "IDLE", #888, center, 70):0,8;
+  @(state=>hover) text(m3x6, "HOVER", #8f8, center, 70):0,8;
+  @default text(m3x6, "OTHER", #f88, center, 70):0,8;
+}
+
+// =============================================================================
+// Demo 4: @else with range conditions
+// =============================================================================
+#elseRangeDemo programmable(temp:-50..150) {
+  pos: 0, 0
+  @(temp=>lessThanOrEqual -1) bitmap(generated(color(70, 40, #48f)));
+  @else(temp=>between 0..100) bitmap(generated(color(70, 40, #06a)));
+  @else bitmap(generated(color(70, 40, #888)));
+
+  @(temp=>lessThanOrEqual -1) text(m3x6, "ICE", white, center, 70):0,12;
+  @else(temp=>between 0..100) text(m3x6, "WATER", white, center, 70):0,12;
+  @else text(m3x6, "STEAM", white, center, 70):0,12;
+}
+
+// =============================================================================
+// Demo 5: @else in repeatable
+// =============================================================================
+#elseRepeatDemo programmable() {
+  pos: 0, 0
+  repeatable($i, range(0, 5)) {
+    @($i=>greaterThanOrEqual 3) bitmap(generated(color(30, 20, #060))):$i*40,0;
+    @else bitmap(generated(color(30, 20, #600))):$i*40,0;
+    @($i=>greaterThanOrEqual 3) text(f3x5, "Y", #8f8, center, 30):$i*40,5;
+    @else text(f3x5, "N", #f88, center, 30):$i*40,5;
+  }
+}
+
+// =============================================================================
+// Main: Display all demos
+// =============================================================================
+#elseDefaultDemo programmable() {
+  pos: 0, 0
+  grid: 1280, 720
+
+  @alpha(0.3) bitmap(generated(color(1280, 720, #222)));
+
+  // Title
+  @scale(2) text(m3x6, "@else and @default Demo", white, left, 400):40,20;
+
+  // --- Row 1: Basic @else ---
+  point {
+    pos: 40, 60
+    text(m3x6, "@else - basic toggle", #888, left, 300):0,0;
+    reference($elseBasic, mode=>on):0,14;
+    reference($elseBasic, mode=>off):70,14;
+  }
+
+  // --- Row 2: @else with conditions (else-if chain) ---
+  point {
+    pos: 40, 120
+    text(m3x6, "@else(cond) - else-if chain", #888, left, 300):0,0;
+    reference($elseIfDemo, level=>low):0,14;
+    reference($elseIfDemo, level=>medium):90,14;
+    reference($elseIfDemo, level=>high):180,14;
+    reference($elseIfDemo, level=>critical):270,14;
+  }
+
+  // --- Row 3: @default - catch-all ---
+  point {
+    pos: 40, 180
+    text(m3x6, "@default - catches unmatched states", #888, left, 400):0,0;
+    reference($defaultDemo, state=>idle):0,14;
+    reference($defaultDemo, state=>hover):80,14;
+    reference($defaultDemo, state=>pressed):160,14;
+    reference($defaultDemo, state=>disabled):240,14;
+  }
+
+  // --- Row 4: @else with range ---
+  point {
+    pos: 40, 240
+    text(m3x6, "@else(range) - temperature example", #888, left, 400):0,0;
+    reference($elseRangeDemo, temp=>-20):0,14;
+    reference($elseRangeDemo, temp=>50):80,14;
+    reference($elseRangeDemo, temp=>120):160,14;
+  }
+
+  // --- Row 5: @else in repeatable ---
+  point {
+    pos: 40, 310
+    text(m3x6, "@else in repeatable (i >= 3)", #888, left, 400):0,0;
+    reference($elseRepeatDemo):0,14;
+  }
+
+  // --- Right side: Syntax reference ---
+  point {
+    pos: 520, 60
+    bitmap(generated(color(360, 300, #1a1a1a)));
+    @scale(2) text(m3x6, "New Syntax", #ff8, left, 340):10,10;
+
+    text(m3x6, "@(param=>value) element", #8ff, left, 340):10,35;
+    text(m3x6, "@else element", #8ff, left, 340):10,50;
+    text(m3x6, "  Renders if previous @() did NOT match", #666, left, 340):10,60;
+
+    text(m3x6, "@(param=>value) element", #8ff, left, 340):10,80;
+    text(m3x6, "@else(param=>other) element", #8ff, left, 340):10,95;
+    text(m3x6, "@else element", #8ff, left, 340):10,110;
+    text(m3x6, "  Chained else-if / else", #666, left, 340):10,120;
+
+    text(m3x6, "@(param=>val1) element", #8ff, left, 340):10,145;
+    text(m3x6, "@(param=>val2) element", #8ff, left, 340):10,160;
+    text(m3x6, "@default element", #8ff, left, 340):10,175;
+    text(m3x6, "  Renders if NO @() sibling matched", #666, left, 340):10,185;
+  }
+
+  // Footer
+  text(m3x6, "@else chains if/else-if/else, @default catches all unmatched like switch/default", #555, left, 700):40,370;
+}

@@ -189,6 +189,9 @@ enum MPKeywords {
 	MPCross;
 	MPBlob47;
 	MPDemo;
+	// Conditional keywords
+	MPElse;
+	MPDefault;
 }
 
 enum PlaceholderTypes {
@@ -895,6 +898,8 @@ enum NodeType {
 
 enum NodeConditionalValues {
 	Conditional(values:Map<String, ConditionalValues>, strict:Bool);
+	ConditionalElse(values:Null<Map<String, ConditionalValues>>);
+	ConditionalDefault;
 	NoConditional;
 }
 
@@ -2769,16 +2774,40 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 						case [MPIdentifier(s, MPScale, ITString), MPOpen, sc = parseFloatOrReference(), MPClosed]:
 							onceInline.parsed(s);
 							scale = sc;
+						case [MPIdentifier(_, MPElse, ITString)]:
+							onceInline.parsed("conditional");
+							switch stream {
+								case [MPOpen]:
+									conditional = ConditionalElse(parseConditionalParameters(currentDefinitions, false));
+								case _:
+									conditional = ConditionalElse(null);
+							}
+						case [MPIdentifier(_, MPDefault, ITString)]:
+							onceInline.parsed("conditional");
+							conditional = ConditionalDefault;
 						case _: break;
 					}
 					atLestOneInline++;
-					
-			
+
+
 				}
 				if (atLestOneInline == 0) syntaxError('at least one conditional or inline property is required when using @');
-			case _: 
+			case _:
 		}
-		 
+
+		// Validate @else/@default placement: must have a preceding sibling with a conditional
+		switch conditional {
+			case ConditionalElse(_) | ConditionalDefault:
+				if (parent == null) syntaxError('@else/@default cannot be used on root elements');
+				if (parent.children.length == 0) syntaxError('@else/@default requires a preceding sibling with a @() conditional');
+				var prevSibling = parent.children[parent.children.length - 1];
+				switch prevSibling.conditionals {
+					case NoConditional:
+						syntaxError('@else/@default requires a preceding sibling with a @() conditional, but the previous sibling has no conditional');
+					case _: // OK - preceding sibling has Conditional, ConditionalElse, or ConditionalDefault
+				}
+			case _:
+		}
 
 		final gridCoordinateSystem = getGridCoordinateSystem(parent);	// TODO: remove or check if this is supposed to be used
 		final hexCoordinateSystem = getHexCoordinateSystem(parent);

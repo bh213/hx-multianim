@@ -1074,76 +1074,135 @@ class MultiAnimBuilder {
 		return t;
 	}
 
-	function isMatch(node:Node, indexedParams:Map<String, ResolvedIndexParameters>) {
-		function match(condValue, currentValue) {
-			switch condValue {
-				case CoNot(condValue):
-					return !match(condValue, currentValue);
-				case CoEnums(a):
-					switch currentValue {
-						case Index(idx, v):
-							if (!a.contains(v)) return false;
-						case Value(val):
-							if (!a.contains(Std.string(val))) return false;
-						case StringValue(s):
-							if (!a.contains(s)) return false;
-						default: throw 'invalid param types ${currentValue}, ${condValue}' + currentNodePos();
-					}
-				case CoRange(fromInclusive, toInclusive):
-					switch currentValue {
-						case Value(val):
-							if ((fromInclusive != null && val < fromInclusive) || (toInclusive != null && val > toInclusive)) return false;
-						case ValueF(val):
-							if ((fromInclusive != null && val < fromInclusive) || (toInclusive != null && val > toInclusive)) return false;
-						default: throw 'invalid param types ${currentValue}, ${condValue}' + currentNodePos();
-					}
+	function matchSingleCondition(condValue:ConditionalValues, currentValue:ResolvedIndexParameters):Bool {
+		switch condValue {
+			case CoNot(inner):
+				return !matchSingleCondition(inner, currentValue);
+			case CoEnums(a):
+				switch currentValue {
+					case Index(idx, v):
+						if (!a.contains(v)) return false;
+					case Value(val):
+						if (!a.contains(Std.string(val))) return false;
+					case StringValue(s):
+						if (!a.contains(s)) return false;
+					default: throw 'invalid param types ${currentValue}, ${condValue}' + currentNodePos();
+				}
+			case CoRange(fromInclusive, toInclusive):
+				switch currentValue {
+					case Value(val):
+						if ((fromInclusive != null && val < fromInclusive) || (toInclusive != null && val > toInclusive)) return false;
+					case ValueF(val):
+						if ((fromInclusive != null && val < fromInclusive) || (toInclusive != null && val > toInclusive)) return false;
+					default: throw 'invalid param types ${currentValue}, ${condValue}' + currentNodePos();
+				}
 
-				case CoIndex(idx, value):
-					switch currentValue {
-						case Index(i, value): if (idx != i) return false;
-						case StringValue(s): if (s != value) return false;
-						default: throw 'invalid param types ${currentValue}, ${condValue}' + currentNodePos();
-					}
-				case CoValue(val):
-					switch currentValue {
-						case Value(iVal): if (val != iVal) return false;
-						default: throw 'invalid param types ${currentValue}, ${condValue}' + currentNodePos();
-					}
-				case CoFlag(f):
-					switch currentValue {
-						case Flag(i): if (f & i != f) return false;
-						default: throw 'invalid param types ${currentValue}, ${condValue}' + currentNodePos();
-					}
-				case CoAny:
-				case CoStringValue(s):
-					switch currentValue {
-						case Index(idx, value): if (value != s) return false;
-						case StringValue(sv): if (s != sv) return false;
-						default: throw 'invalid param types ${currentValue}, ${condValue}' + currentNodePos();
-					}
-			}
-			return true;
+			case CoIndex(idx, value):
+				switch currentValue {
+					case Index(i, value): if (idx != i) return false;
+					case StringValue(s): if (s != value) return false;
+					default: throw 'invalid param types ${currentValue}, ${condValue}' + currentNodePos();
+				}
+			case CoValue(val):
+				switch currentValue {
+					case Value(iVal): if (val != iVal) return false;
+					default: throw 'invalid param types ${currentValue}, ${condValue}' + currentNodePos();
+				}
+			case CoFlag(f):
+				switch currentValue {
+					case Flag(i): if (f & i != f) return false;
+					default: throw 'invalid param types ${currentValue}, ${condValue}' + currentNodePos();
+				}
+			case CoAny:
+			case CoStringValue(s):
+				switch currentValue {
+					case Index(idx, value): if (value != s) return false;
+					case StringValue(sv): if (s != sv) return false;
+					default: throw 'invalid param types ${currentValue}, ${condValue}' + currentNodePos();
+				}
 		}
+		return true;
+	}
 
+	function matchConditions(conditions:Map<String, ConditionalValues>, strict:Bool, indexedParams:Map<String, ResolvedIndexParameters>):Bool {
+		for (key => value in conditions) {
+			if (indexedParams[key] == null)
+				return false;
+		}
+		for (currentName => currentValue in indexedParams) {
+			final condValue = conditions[currentName];
+			if (condValue == null)
+				if (strict)
+					return false
+				else
+					continue;
+			if (!matchSingleCondition(condValue, currentValue))
+				return false;
+		}
+		return true;
+	}
+
+	function isMatch(node:Node, indexedParams:Map<String, ResolvedIndexParameters>) {
 		return switch node.conditionals {
 			case Conditional(conditions, strict):
-				for (key => value in conditions) {
-					if (indexedParams[key] == null)
-						return false; // If there is no provided param for conditional, defaults are included in indexedParams
-				}
-				for (currentName => currentValue in indexedParams) {
-					final condValue = conditions[currentName];
-					if (condValue == null)
-						if (strict)
-							return false
-						else
-							continue; // if there is no conditional matching the params, reject in strict mode
-					if (!match(condValue, currentValue))
-						return false;
-				}
-				return true;
+				matchConditions(conditions, strict, indexedParams);
+			case ConditionalElse(_) | ConditionalDefault:
+				true; // Pre-filtered by resolveConditionalChildren
 			case NoConditional: return true;
 		}
+	}
+
+	// Resolves @else/@default chains: returns only the children that should be built
+	// given the current indexedParams state. Regular Conditional and NoConditional nodes
+	// are always included (their isMatch check happens later in build/buildTileGroup).
+	// ConditionalElse and ConditionalDefault are filtered here based on chain logic.
+	function resolveConditionalChildren(children:Array<Node>):Array<Node> {
+		var result:Array<Node> = [];
+		var prevSiblingMatched = false;
+		var anyConditionalSiblingMatched = false;
+
+		for (childNode in children) {
+			switch childNode.conditionals {
+				case Conditional(conditions, strict):
+					var matched = matchConditions(conditions, strict, indexedParams);
+					prevSiblingMatched = matched;
+					if (matched) anyConditionalSiblingMatched = true;
+					result.push(childNode);
+
+				case ConditionalElse(extraConditions):
+					if (!prevSiblingMatched) {
+						if (extraConditions == null) {
+							// Bare @else - always matches when previous didn't
+							prevSiblingMatched = true;
+							anyConditionalSiblingMatched = true;
+							result.push(childNode);
+						} else {
+							// @else(cond) - "else if", check additional conditions
+							var matched = matchConditions(extraConditions, false, indexedParams);
+							prevSiblingMatched = matched;
+							if (matched) anyConditionalSiblingMatched = true;
+							if (matched) result.push(childNode);
+						}
+					} else {
+						// Previous sibling matched - skip this @else
+						prevSiblingMatched = true;
+					}
+
+				case ConditionalDefault:
+					if (!anyConditionalSiblingMatched) {
+						result.push(childNode);
+					}
+					// Reset tracking for next conditional group
+					anyConditionalSiblingMatched = false;
+
+				case NoConditional:
+					// Unconditional node - always build, reset tracking
+					prevSiblingMatched = false;
+					anyConditionalSiblingMatched = false;
+					result.push(childNode);
+			}
+		}
+		return result;
 	}
 
 	function addPosition(obj:h2d.Object, x, y) {
@@ -1462,10 +1521,20 @@ class MultiAnimBuilder {
 					};
 					final gridCoordinateSystem = MultiAnimParser.getGridCoordinateSystem(node);
 					final hexCoordinateSystem = MultiAnimParser.getHexCoordinateSystem(node);
-					for (childNode in node.children) {
-						indexedParams.set(varName, Value(resolvedIndex));
-						// var repeaterPos = calculatePosition(node.pos, gridCoordinateSystem, hexCoordinateSystem).toPoint();
-
+					// Set indexed params before resolving conditional children
+					indexedParams.set(varName, Value(resolvedIndex));
+					switch repeatType {
+						case ArrayIterator(valueVariableName, array):
+							indexedParams.set(valueVariableName, StringValue(arrayIterator[count]));
+						case StateAnimIterator(bitmapVarName, _, _, _):
+							indexedParams.set(bitmapVarName, TileSourceValue(tileSourceIterator[count]));
+						case TilesIterator(bitmapVarName, tilenameVarName, _, _):
+							indexedParams.set(bitmapVarName, TileSourceValue(tileSourceIterator[count]));
+							if (tilenameVarName != null && count < tilenameIterator.length)
+								indexedParams.set(tilenameVarName, StringValue(tilenameIterator[count]));
+						default:
+					}
+					for (childNode in resolveConditionalChildren(node.children)) {
 						var iterPos = currentPos.clone();
 						switch repeatType {
 							case GridIterator(_, _, _):
@@ -1473,19 +1542,7 @@ class MultiAnimBuilder {
 							case LayoutIterator(_):
 								var pt = iterator.next();
 								iterPos.add(cast pt.x, cast pt.y);
-							case RangeIterator(_, _, _):
-
-							case ArrayIterator(valueVariableName, array):
-								indexedParams.set(valueVariableName, StringValue(arrayIterator[count]));
-								#if MULTIANIM_TRACE
-								trace('$count = arrayIterator[count] ${arrayIterator[count]}');
-								#end
-							case StateAnimIterator(bitmapVarName, _, _, _):
-								indexedParams.set(bitmapVarName, TileSourceValue(tileSourceIterator[count]));
-							case TilesIterator(bitmapVarName, tilenameVarName, _, _):
-								indexedParams.set(bitmapVarName, TileSourceValue(tileSourceIterator[count]));
-								if (tilenameVarName != null && count < tilenameIterator.length)
-									indexedParams.set(tilenameVarName, StringValue(tilenameIterator[count]));
+							default:
 						}
 						buildTileGroup(childNode, tileGroup, iterPos, gridCoordinateSystem, hexCoordinateSystem, builderParams);
 					}
@@ -1620,11 +1677,12 @@ class MultiAnimBuilder {
 							case StateAnimIterator(_, _, _, _):
 							case TilesIterator(_, _, _, _):
 						}
-						for (childNode in node.children) {
-							indexedParams.set(varNameX, Value(resolvedX));
-							indexedParams.set(varNameY, Value(resolvedY));
-							if (xValueVariableName != null) indexedParams.set(xValueVariableName, StringValue(xArrayIterator[xCount]));
-							if (yValueVariableName != null) indexedParams.set(yValueVariableName, StringValue(yArrayIterator[yCount]));
+						// Set indexed params before resolving conditional children
+						indexedParams.set(varNameX, Value(resolvedX));
+						indexedParams.set(varNameY, Value(resolvedY));
+						if (xValueVariableName != null) indexedParams.set(xValueVariableName, StringValue(xArrayIterator[xCount]));
+						if (yValueVariableName != null) indexedParams.set(yValueVariableName, StringValue(yArrayIterator[yCount]));
+						for (childNode in resolveConditionalChildren(node.children)) {
 							var iterPos = currentPos.clone();
 							iterPos.add(xOffsetX + yOffsetX, xOffsetY + yOffsetY);
 							buildTileGroup(childNode, tileGroup, iterPos, gridCoordinateSystem, hexCoordinateSystem, builderParams);
@@ -1645,7 +1703,7 @@ class MultiAnimBuilder {
 
 		if (!skipChildren) { // for repeatable, as children were already processed
 
-			for (childNode in node.children) {
+			for (childNode in resolveConditionalChildren(node.children)) {
 				buildTileGroup(childNode, tileGroup, currentPos.clone(), MultiAnimParser.getGridCoordinateSystem(childNode),
 					MultiAnimParser.getHexCoordinateSystem(childNode), builderParams);
 			}
@@ -2002,20 +2060,20 @@ class MultiAnimBuilder {
 					};
 					final gridCoordinateSystem = MultiAnimParser.getGridCoordinateSystem(node);
 					final hexCoordinateSystem = MultiAnimParser.getHexCoordinateSystem(node);
-					for (childNode in node.children) {
-						indexedParams.set(varName, Value(resolvedIndex));
-						switch repeatType {
-							case ArrayIterator(valueVariableName, arrayName):
-								indexedParams.set(valueVariableName, StringValue(arrayIterator[count]));
-							case StateAnimIterator(bitmapVarName, _, _, _):
-								indexedParams.set(bitmapVarName, TileSourceValue(tileSourceIterator[count]));
-							case TilesIterator(bitmapVarName, tilenameVarName, _, _):
-								indexedParams.set(bitmapVarName, TileSourceValue(tileSourceIterator[count]));
-								if (tilenameVarName != null && count < tilenameIterator.length)
-									indexedParams.set(tilenameVarName, StringValue(tilenameIterator[count]));
-							default:
-						}
-
+					// Set indexed params before resolving conditional children
+					indexedParams.set(varName, Value(resolvedIndex));
+					switch repeatType {
+						case ArrayIterator(valueVariableName, arrayName):
+							indexedParams.set(valueVariableName, StringValue(arrayIterator[count]));
+						case StateAnimIterator(bitmapVarName, _, _, _):
+							indexedParams.set(bitmapVarName, TileSourceValue(tileSourceIterator[count]));
+						case TilesIterator(bitmapVarName, tilenameVarName, _, _):
+							indexedParams.set(bitmapVarName, TileSourceValue(tileSourceIterator[count]));
+							if (tilenameVarName != null && count < tilenameIterator.length)
+								indexedParams.set(tilenameVarName, StringValue(tilenameIterator[count]));
+						default:
+					}
+					for (childNode in resolveConditionalChildren(node.children)) {
 						var obj = build(childNode, ObjectMode(object), gridCoordinateSystem, hexCoordinateSystem, internalResults, builderParams);
 						if (obj == null)
 							continue;
@@ -2167,12 +2225,12 @@ class MultiAnimBuilder {
 							case StateAnimIterator(_, _, _, _):
 							case TilesIterator(_, _, _, _):
 						}
-						for (childNode in node.children) {
-							indexedParams.set(varNameX, Value(resolvedX));
-							indexedParams.set(varNameY, Value(resolvedY));
-							if (xValueVariableName != null) indexedParams.set(xValueVariableName, StringValue(xArrayIterator[xCount]));
-							if (yValueVariableName != null) indexedParams.set(yValueVariableName, StringValue(yArrayIterator[yCount]));
-
+						// Set indexed params before resolving conditional children
+						indexedParams.set(varNameX, Value(resolvedX));
+						indexedParams.set(varNameY, Value(resolvedY));
+						if (xValueVariableName != null) indexedParams.set(xValueVariableName, StringValue(xArrayIterator[xCount]));
+						if (yValueVariableName != null) indexedParams.set(yValueVariableName, StringValue(yArrayIterator[yCount]));
+						for (childNode in resolveConditionalChildren(node.children)) {
 							var obj = build(childNode, ObjectMode(object), gridCoordinateSystem, hexCoordinateSystem, internalResults, builderParams);
 							if (obj == null)
 								continue;
@@ -2242,7 +2300,7 @@ class MultiAnimBuilder {
 			selectedBuildMode = ObjectMode(object);
 
 		if (!skipChildren) { // for repeatable, as children were already processed
-			for (childNode in node.children) {
+			for (childNode in resolveConditionalChildren(node.children)) {
 				build(childNode, selectedBuildMode, MultiAnimParser.getGridCoordinateSystem(childNode), MultiAnimParser.getHexCoordinateSystem(childNode),
 					internalResults, builderParams);
 			}
