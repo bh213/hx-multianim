@@ -5,6 +5,7 @@ import h2d.Scene;
 import utest.Runner;
 import utest.ui.Report;
 import bh.test.VisualTestBase;
+import bh.base.FontManager;
 
 class TestApp extends hxd.App {
 	private var testRunner:Runner;
@@ -15,6 +16,17 @@ class TestApp extends hxd.App {
 	override function init() {
 		// Initialize Heaps resource system
 		hxd.Res.initLocal();
+
+		// Register fonts used by tests
+		// Note: -white suffix indicates fonts with hardcoded white color
+		// Y offsets normalize positioning so text at (0,0) starts at top-left
+		FontManager.registerFont("dd", hxd.Res.fonts.digitaldisco.toFont(), 0, -1);
+		FontManager.registerFont("pixeled6", hxd.Res.fonts.pixeled_6.toFont(), 0, -4);
+		FontManager.registerFont("m3x6", hxd.Res.fonts.m3x6.toFont(), 0, -5);
+		FontManager.registerFont("pixellari", hxd.Res.fonts.pixellari.toFont());
+		FontManager.registerFont("f3x5", hxd.Res.fonts.f3x5.toFont());
+		FontManager.registerFont("peaberry-white", hxd.Res.fonts.WhitePeaberry.toFont());
+		FontManager.registerFont("peaberry-white-outline", hxd.Res.fonts.WhitePeaberryOutline.toFont(), 0, -5);
 
 		// Set app instance for tests to use
 		VisualTestBase.appInstance = this;
@@ -67,7 +79,9 @@ class TestApp extends hxd.App {
 	}
 
 	static function main() {
+		#if VERBOSE
 		trace("Starting test app...");
+		#end
 		new TestApp();
 	}
 }

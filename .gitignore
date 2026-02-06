@@ -4,3 +4,6 @@ res/.tmp/
 
 test/screenshots/
 .claude/settings.local.json
+test/res/.tmp
+node_modules/
+

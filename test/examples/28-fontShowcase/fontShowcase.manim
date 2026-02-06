@@ -1,0 +1,204 @@
+version: 0.3
+
+// =============================================================================
+// FONT SHOWCASE - Display all registered fonts scaled up with pixel grids
+// =============================================================================
+// Each font is scaled to fill the box height
+// Grid lines represent actual font pixels
+// Full 1280x720 layout
+// =============================================================================
+
+#fontShowcase programmable() {
+    pos: 0, 0
+    grid: 1280, 720
+
+    // Dark background
+    bitmap(generated(color(1280, 720, #222)));
+
+    // =========================================================================
+    // m3x6 font - 6px tall, scale 10x = 60px, grid every 10px
+    // =========================================================================
+    point {
+        pos: 40, 80
+        // White background 400x70
+        bitmap(generated(color(400, 70, white)));
+        // Horizontal grid lines
+        graphics(
+            line(#CCC, 1, 0, 0, 400, 0);
+            line(#CCC, 1, 0, 10, 400, 10);
+            line(#CCC, 1, 0, 20, 400, 20);
+            line(#CCC, 1, 0, 30, 400, 30);
+            line(#CCC, 1, 0, 40, 400, 40);
+            line(#CCC, 1, 0, 50, 400, 50);
+            line(#CCC, 1, 0, 60, 400, 60);
+            line(#CCC, 1, 0, 70, 400, 70);
+        );
+        // Scaled text - 10x, positioned at top
+        @scale(10) text(f3x5, "20HP/Ag0Wx", black, left, 400):0,0;
+        // Label below box
+        text(dd, "f3x5 (10px @ 5x)", #666, left, 300):5,75;
+    }
+
+    // =========================================================================
+    // pixeled6 font - ~6px tall, scale 10x = 60px
+    // =========================================================================
+    point {
+        pos: 500, 80
+        bitmap(generated(color(400, 70, white)));
+        graphics(
+            line(#CCC, 1, 0, 0, 400, 0);
+            line(#CCC, 1, 0, 10, 400, 10);
+            line(#CCC, 1, 0, 20, 400, 20);
+            line(#CCC, 1, 0, 30, 400, 30);
+            line(#CCC, 1, 0, 40, 400, 40);
+            line(#CCC, 1, 0, 50, 400, 50);
+            line(#CCC, 1, 0, 60, 400, 60);
+            line(#CCC, 1, 0, 70, 400, 70);
+        );
+        @scale(10) text(pixeled6, "Ag0Wx", black, left, 400):0,0;
+        text(dd, "pixeled6 (6px @ 10x)", #666, left, 300):5,75;
+    }
+
+    // =========================================================================
+    // pixellari font - ~12px tall, scale 5x = 60px, grid every 5px
+    // =========================================================================
+    point {
+        pos: 40, 200
+        bitmap(generated(color(400, 70, white)));
+        graphics(
+            line(#CCC, 1, 0, 0, 400, 0);
+            line(#CCC, 1, 0, 5, 400, 5);
+            line(#CCC, 1, 0, 10, 400, 10);
+            line(#CCC, 1, 0, 15, 400, 15);
+            line(#CCC, 1, 0, 20, 400, 20);
+            line(#CCC, 1, 0, 25, 400, 25);
+            line(#CCC, 1, 0, 30, 400, 30);
+            line(#CCC, 1, 0, 35, 400, 35);
+            line(#CCC, 1, 0, 40, 400, 40);
+            line(#CCC, 1, 0, 45, 400, 45);
+            line(#CCC, 1, 0, 50, 400, 50);
+            line(#CCC, 1, 0, 55, 400, 55);
+            line(#CCC, 1, 0, 60, 400, 60);
+            line(#CCC, 1, 0, 65, 400, 65);
+            line(#CCC, 1, 0, 70, 400, 70);
+        );
+        @scale(5) text(pixellari, "Ag0Wx", black, left, 400):0,0;
+        text(dd, "pixellari (12px @ 5x)", #666, left, 300):5,75;
+    }
+
+    // =========================================================================
+    // dd (digitaldisco) font - ~12px tall, scale 5x = 60px
+    // =========================================================================
+    point {
+        pos: 500, 200
+        bitmap(generated(color(400, 70, white)));
+        graphics(
+            line(#CCC, 1, 0, 0, 400, 0);
+            line(#CCC, 1, 0, 5, 400, 5);
+            line(#CCC, 1, 0, 10, 400, 10);
+            line(#CCC, 1, 0, 15, 400, 15);
+            line(#CCC, 1, 0, 20, 400, 20);
+            line(#CCC, 1, 0, 25, 400, 25);
+            line(#CCC, 1, 0, 30, 400, 30);
+            line(#CCC, 1, 0, 35, 400, 35);
+            line(#CCC, 1, 0, 40, 400, 40);
+            line(#CCC, 1, 0, 45, 400, 45);
+            line(#CCC, 1, 0, 50, 400, 50);
+            line(#CCC, 1, 0, 55, 400, 55);
+            line(#CCC, 1, 0, 60, 400, 60);
+            line(#CCC, 1, 0, 65, 400, 65);
+            line(#CCC, 1, 0, 70, 400, 70);
+        );
+        @scale(5) text(dd, "20HP/Ag0Wx", black, left, 400):0,5;
+        text(dd, "dd (12px @ 5x)", #666, left, 300):5,75;
+    }
+
+    // =========================================================================
+    // Additional samples with different characters - peaberry numbers
+    // =========================================================================
+    point {
+        pos: 40, 320
+        bitmap(generated(color(800, 56, black)));
+        graphics(
+            line(#DDD, 1, 0, 0, 800, 0);
+            line(#DDD, 1, 0, 8, 800, 8);
+            line(#DDD, 1, 0, 16, 800, 16);
+            line(#DDD, 1, 0, 24, 800, 24);
+            line(#DDD, 1, 0, 32, 800, 32);
+            line(#DDD, 1, 0, 40, 800, 40);
+            line(#DDD, 1, 0, 48, 800, 48);
+            line(#DDD, 1, 0, 56, 800, 56);
+        );
+        @scale(3) text(peaberry-white-outline, "0123456789 ABCDEF", white, left, 800):0,0;
+        text(dd, "peaberry-white-outline digits & hex @ 3x", white, left, 400):5,60;
+    }
+
+    // =========================================================================
+    // Additional samples - pixeled6 alphabet
+    // =========================================================================
+    point {
+        pos: 40, 430
+        bitmap(generated(color(1000, 56, white)));
+        graphics(
+            line(#DDD, 1, 0, 0, 1000, 0);
+            line(#DDD, 1, 0, 8, 1000, 8);
+            line(#DDD, 1, 0, 16, 1000, 16);
+            line(#DDD, 1, 0, 24, 1000, 24);
+            line(#DDD, 1, 0, 32, 1000, 32);
+            line(#DDD, 1, 0, 40, 1000, 40);
+            line(#DDD, 1, 0, 48, 1000, 48);
+            line(#DDD, 1, 0, 56, 1000, 56);
+        );
+        @scale(8) text(pixeled6, "The quick brown fox", black, left, 1000):0,0;
+        text(dd, "pixeled6 sentence @ 8x", #666, left, 300):5,60;
+    }
+
+    // =========================================================================
+    // Additional samples - dd sentence
+    // =========================================================================
+    point {
+        pos: 40, 540
+        bitmap(generated(color(1000, 65, white)));
+        graphics(
+            line(#DDD, 1, 0, 0, 1000, 0);
+            line(#DDD, 1, 0, 5, 1000, 5);
+            line(#DDD, 1, 0, 10, 1000, 10);
+            line(#DDD, 1, 0, 15, 1000, 15);
+            line(#DDD, 1, 0, 20, 1000, 20);
+            line(#DDD, 1, 0, 25, 1000, 25);
+            line(#DDD, 1, 0, 30, 1000, 30);
+            line(#DDD, 1, 0, 35, 1000, 35);
+            line(#DDD, 1, 0, 40, 1000, 40);
+            line(#DDD, 1, 0, 45, 1000, 45);
+            line(#DDD, 1, 0, 50, 1000, 50);
+            line(#DDD, 1, 0, 55, 1000, 55);
+            line(#DDD, 1, 0, 60, 1000, 60);
+            line(#DDD, 1, 0, 65, 1000, 65);
+        );
+        @scale(5) text(dd, "The quick brown fox jumps", black, left, 1000):0,0;
+        text(dd, "dd sentence @ 5x", #666, left, 300):5,70;
+    }
+
+    // =========================================================================
+    // m3x6 font - 6px tall, scale 10x = 60px
+    // =========================================================================
+    point {
+        pos: 960, 80
+        bitmap(generated(color(280, 70, white)));
+        graphics(
+            line(#CCC, 1, 0, 0, 280, 0);
+            line(#CCC, 1, 0, 10, 280, 10);
+            line(#CCC, 1, 0, 20, 280, 20);
+            line(#CCC, 1, 0, 30, 280, 30);
+            line(#CCC, 1, 0, 40, 280, 40);
+            line(#CCC, 1, 0, 50, 280, 50);
+            line(#CCC, 1, 0, 60, 280, 60);
+            line(#CCC, 1, 0, 70, 280, 70);
+        );
+        @scale(10) text(m3x6, "Ag0Wx", black, left, 280):0,0;
+        text(dd, "m3x6 (6px @ 10x)", #666, left, 300):5,75;
+    }
+
+    // Info
+    text(peaberry-white-outline, "Grid lines = 1 font pixel. Scale factor shown in labels.", #888, left, 800):40,650;
+}

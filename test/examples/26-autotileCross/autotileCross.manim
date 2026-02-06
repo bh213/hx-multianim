@@ -1,0 +1,97 @@
+version: 0.3
+
+// =============================================================================
+// AUTOTILE CROSS FORMAT TEST - Tests buildAutotile() with cross format
+// =============================================================================
+// Cross format: N, W, C, E, S edges + 4 outer corners + 4 inner corners = 13 tiles
+// =============================================================================
+
+// Demo autotile - water terrain (black/white)
+#crossWater autotile {
+    format: cross
+    tileSize: 16
+    demo: black, #EEE
+}
+
+// Colorful autotile with index numbers - for debugging which tile is used where
+#crossColored autotile {
+    format: cross
+    tileSize: 16
+    tiles:
+        // Edges (indices 0-4) - red gradient
+        generated(colorWithText(16, 16, 0xFF4444, "0", white, f3x5))     // 0: N edge
+        generated(colorWithText(16, 16, 0xFF6666, "1", white, f3x5))     // 1: W edge
+        generated(colorWithText(16, 16, 0x44FF44, "2", black, f3x5))     // 2: Center - green
+        generated(colorWithText(16, 16, 0xFF8888, "3", white, f3x5))     // 3: E edge
+        generated(colorWithText(16, 16, 0xFFAAAA, "4", black, f3x5))     // 4: S edge
+        // Outer corners (indices 5-8) - yellow
+        generated(colorWithText(16, 16, 0xFFCC00, "5", black, f3x5))     // 5: NW outer
+        generated(colorWithText(16, 16, 0xFFDD00, "6", black, f3x5))     // 6: NE outer
+        generated(colorWithText(16, 16, 0xFFEE00, "7", black, f3x5))     // 7: SW outer
+        generated(colorWithText(16, 16, 0xFFFF00, "8", black, f3x5))     // 8: SE outer
+        // Inner corners (indices 9-12) - blue
+        generated(colorWithText(16, 16, 0x44AAFF, "9", white, f3x5))     // 9: inner NE
+        generated(colorWithText(16, 16, 0x4488FF, "10", white, f3x5))    // 10: inner NW
+        generated(colorWithText(16, 16, 0x4466FF, "11", white, f3x5))    // 11: inner SE
+        generated(colorWithText(16, 16, 0x4444FF, "12", white, f3x5))    // 12: inner SW
+}
+
+// Visual demo - shows all 13 tiles organized by type
+#autotileCross programmable() {
+    pos: 0, 0
+    grid: 1280, 720
+
+    @alpha(0.1) bitmap(generated(color(1280, 720, black)));
+
+    // === EDGES (0-4) ===
+    point {
+        pos: 10, 20
+        text(f3x5, "Edges:", 0xFF6666, left);
+    }
+    // Colored + demo tile pairs (2px gap between tiles, 40px between pairs)
+    repeatable($i, range(0, 5)) {
+        point {
+            pos: 66 + $i * 40, 20
+            bitmap(generated(autotile("crossColored", $i))):-18,0
+            bitmap(generated(autotile("crossWater", $i))):0,0
+        }
+    }
+
+    // === OUTER CORNERS (5-8) ===
+    point {
+        pos: 10, 42
+        text(f3x5, "Outer:", 0xFFDD00, left);
+    }
+    repeatable($i, range(5, 9)) {
+        point {
+            pos: 66 + ($i - 5) * 40, 42
+            bitmap(generated(autotile("crossColored", $i))):-18,0
+            bitmap(generated(autotile("crossWater", $i))):0,0
+        }
+    }
+
+    // === INNER CORNERS (9-12) ===
+    point {
+        pos: 10, 64
+        text(f3x5, "Inner:", 0x4488FF, left);
+    }
+    repeatable($i, range(9, 13)) {
+        point {
+            pos: 66 + ($i - 9) * 40, 64
+            bitmap(generated(autotile("crossColored", $i))):-18,0
+            bitmap(generated(autotile("crossWater", $i))):0,0
+        }
+    }
+
+    // === LEGEND ===
+    point {
+        pos: 10, 82
+        text(f3x5, "Red=edges, Green=center, Yellow=outer corners, Blue=inner corners", 0x666666, left);
+    }
+
+    // Map positions (used by test code, multiply by scale 4.0)
+    // mapColored: 20,94 -> x=80, y=376 at scale 4.0
+    // mapWater: 130,94 -> x=520, y=376 at scale 4.0 (with black background)
+    // 5x5 map at 16px tiles = 80x80
+    bitmap(generated(color(80, 80, black))):130,94
+}

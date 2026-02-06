@@ -3,22 +3,21 @@ version: 0.3
 #file palette(file:"main-palette.png")
 
 #layersDemo programmable() {
-  pos:5,5
-  grid:250,150
+  pos: 0, 0
+  grid: 1280, 720
 
-  bitmap(generated(color(function(gridWidth), function(gridHeight),gray)));
-  @alpha(0.9) text(dd, "#8: layers", white, left, 200);
+  bitmap(generated(color(1280, 720, gray)));
 
   layers {
-    pos:30,30
-    @layer(3) bitmap(generated(color(30, 30, palette(file, 10, 0))));
-    @layer(2) bitmap(generated(color(30, 30, palette(file, 11, 0)))):10,10;
-    @layer(1) bitmap(generated(color(30, 30, palette(file, 12, 0)))):20,20
+    pos: 120, 120
+    @layer(3) bitmap(generated(color(120, 120, palette(file, 10, 0))));
+    @layer(2) bitmap(generated(color(120, 120, palette(file, 11, 0)))):40,40;
+    @layer(1) bitmap(generated(color(120, 120, palette(file, 12, 0)))):80,80
   }
   layers {
-    pos:90, 30
-    @layer(1) bitmap(generated(color(30, 30, palette(file, 10, 0))));
-    @layer(2) bitmap(generated(color(30, 30, palette(file, 11, 0)))):10,10;
-    @layer(3) bitmap(generated(color(30, 30, palette(file, 12, 0)))):20,20
+    pos: 360, 120
+    @layer(1) bitmap(generated(color(120, 120, palette(file, 10, 0))));
+    @layer(2) bitmap(generated(color(120, 120, palette(file, 11, 0)))):40,40;
+    @layer(3) bitmap(generated(color(120, 120, palette(file, 12, 0)))):80,80
   }
 }

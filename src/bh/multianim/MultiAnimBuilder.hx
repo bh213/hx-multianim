@@ -27,6 +27,7 @@ import bh.base.Particles.ForceField;
 import bh.base.Particles.BoundsMode;
 import bh.base.Particles.SubEmitTrigger;
 import bh.base.Particles.CurvePoint;
+import bh.base.MacroUtils;
 
 using bh.base.MapTools;
 using StringTools;
@@ -307,7 +308,14 @@ class MultiAnimBuilder {
 	var currentNode:Null<Node> = null;
 	var stateStack:Array<StoredBuilderState> = [];
 
-
+	/** Returns position string for error messages when MULTIANIM_TRACE is enabled */
+	inline function currentNodePos():String {
+		#if MULTIANIM_TRACE
+		return if (currentNode != null) ' at ${currentNode.parserPos}' else '';
+		#else
+		return '';
+		#end
+	}
 
 	public function toString():String {
 		return 'MultiAnimBuilder( multiParserResult: ${multiParserResult.nodes.keys()}, indexedParams: ${indexedParams}, builderParams: ${builderParams}, currentNode: ${currentNode}, stateStack: ${stateStack.length} items)';
@@ -358,15 +366,15 @@ class MultiAnimBuilder {
 					case ArrayString(arrayVal):
 						var index = resolveAsInteger(indexRef);
 						if (index < 0 || index >= arrayVal.length)
-							throw 'index out of bounds ${index} for array ${arrayVal.toString()}';
+							throw 'index out of bounds ${index} for array ${arrayVal.toString()}' + currentNodePos();
 						return arrayVal[index];
-					case null: throw throw 'array reference ${arrayRef}[$indexRef] does not exist';
-					default: throw 'element of array reference ${arrayRef}[$indexRef] is not an array but ${arrayRef}';
+					case null: throw 'array reference ${arrayRef}[$indexRef] does not exist' + currentNodePos();
+					default: throw 'element of array reference ${arrayRef}[$indexRef] is not an array but ${arrayRef}' + currentNodePos();
 				}
 				case RVTernary(condition, ifTrue, ifFalse):
 					return if (resolveAsBool(condition)) resolveAsArrayElement(ifTrue) else resolveAsArrayElement(ifFalse);
 			default:
-				throw 'expected array element but got ${v}';
+				throw 'expected array element but got ${v}' + currentNodePos();
 		}
 	}
 
@@ -381,12 +389,12 @@ class MultiAnimBuilder {
 				#end
 				switch arrayVal {
 					case ArrayString(strArray): return strArray;
-					default: throw 'array reference ${refArr} is not an array but ${arrayVal}';
+					default: throw 'array reference ${refArr} is not an array but ${arrayVal}' + currentNodePos();
 				}
 			case RVTernary(condition, ifTrue, ifFalse):
 				return if (resolveAsBool(condition)) resolveAsArray(ifTrue) else resolveAsArray(ifFalse);
 			default:
-				throw 'expected array but got ${v}';
+				throw 'expected array but got ${v}' + currentNodePos();
 		}
 	}
 
@@ -395,7 +403,7 @@ class MultiAnimBuilder {
 		final animSM = animParser.createAnimSM(selector);
 		final descriptor = animSM.animationStates.get(animationName);
 		if (descriptor == null) {
-			throw 'animation "${animationName}" not found in "${animFilename}"';
+			throw 'animation "${animationName}" not found in "${animFilename}"' + currentNodePos();
 		}
 		var result:Array<TileSource> = [];
 		for (state in descriptor.states) {
@@ -416,7 +424,7 @@ class MultiAnimBuilder {
 				return this;
 			var builder = multiParserResult?.imports?.get(externalReference);
 			if (builder == null)
-				throw 'could not find builder for external reference ${externalReference}';
+				throw 'could not find builder for external reference ${externalReference}' + currentNodePos();
 			return builder;
 		}
 
@@ -435,14 +443,14 @@ class MultiAnimBuilder {
 			case RVTernary(condition, ifTrue, ifFalse):
 				return if (resolveAsBool(condition)) resolveAsColorInteger(ifTrue) else resolveAsColorInteger(ifFalse);
 
-			default: throw 'expected color to resolve, got $v';
+			default: throw 'expected color to resolve, got $v' + currentNodePos();
 		}
 	}
 
 	function resolveRVFunction(functionType:ReferenceableValueFunction):Int {
 		final gridCoordinateSystem = MultiAnimParser.getGridCoordinateSystem(this.currentNode);
 		if (gridCoordinateSystem == null)
-			throw 'cannot resolve $functionType as there is no grid defined';
+			throw 'cannot resolve $functionType as there is no grid defined' + currentNodePos();
 
 		return switch functionType {
 			case RVFGridWidth: gridCoordinateSystem.spacingX;
@@ -489,30 +497,30 @@ class MultiAnimBuilder {
 			return switch result {
 				case CBRInteger(val): val;
 				case CBRNoResult:
-					if (defaultValue != null) resolveAsInteger(defaultValue); else throw 'no default value for $input';
+					if (defaultValue != null) resolveAsInteger(defaultValue); else throw 'no default value for $input' + currentNodePos();
 
-				case _: throw 'callback should return int but was ${result} for $input';
+				case _: throw 'callback should return int but was ${result} for $input' + currentNodePos();
 			}
 		}
 
 		return switch v {
 			case RVElementOfArray(array, index): resolveAsArrayElement(v);
-			case RVArray(refArray): throw 'RVArray not supported';
-			case RVArrayReference(refArray): throw 'RVArrayReference not supported';
+			case RVArray(refArray): throw 'RVArray not supported' + currentNodePos();
+			case RVArrayReference(refArray): throw 'RVArrayReference not supported' + currentNodePos();
 			case RVInteger(i): return i;
-			case RVFloat(_) | RVString(_): throw 'should be an integer';
+			case RVFloat(_) | RVString(_): throw '${v} should be an integer' + currentNodePos();
 			case RVColorXY(_, _, _) | RVColor(_, _): resolveAsColorInteger(v);
 			case RVReference(ref):
 				if (!indexedParams.exists(ref)) {
-					throw 'reference ${ref} does not exist';
+					throw 'reference ${ref} does not exist, available ${indexedParams}' + currentNodePos();
 				}
 
 				final val = indexedParams.get(ref);
 				switch val {
 					case Value(val): return val;
 					case StringValue(s): stringToInt(s);
-					case null: throw 'reference ${ref} is null';
-					default: throw 'reference ${ref} is not a value but ${val}';
+					case null: throw 'reference ${ref} is null' + currentNodePos();
+					default: throw 'reference ${ref} is not a value but ${val}' + currentNodePos();
 				}
 			case RVParenthesis(e): resolveAsInteger(e);
 			case RVFunction(functionType): resolveRVFunction(functionType);
@@ -552,22 +560,22 @@ class MultiAnimBuilder {
 	function resolveAsNumber(v:ReferenceableValue):Float {
 		return switch v {
 			case RVElementOfArray(array, index): resolveAsArrayElement(v);
-			case RVArray(refArray): throw 'RVArray not supported';
-			case RVArrayReference(refArray): throw 'RVArrayReference not supported';
+			case RVArray(refArray): throw 'RVArray not supported' + currentNodePos();
+			case RVArrayReference(refArray): throw 'RVArrayReference not supported' + currentNodePos();
 			case RVInteger(i): i;
 			case RVFloat(f): f;
-			case RVString(_): throw 'should be an integer or float';
-			case RVColorXY(_, _, _) | RVColor(_, _): throw 'reference is a color but needs to be float';
+			case RVString(_): throw 'should be an integer or float' + currentNodePos();
+			case RVColorXY(_, _, _) | RVColor(_, _): throw 'reference is a color but needs to be float' + currentNodePos();
 			case RVReference(ref):
 				if (!indexedParams.exists(ref))
-					throw 'reference ${ref} does not exist';
+					throw 'reference ${ref} does not exist (resolveAsNumber), available ${indexedParams}' + currentNodePos();
 
 				final val = indexedParams.get(ref);
 				switch val {
 					case Value(val): return val;
 					case ValueF(val): return val;
-					case null: throw 'reference ${ref} is null';
-					default: throw 'reference ${ref} is not a value but ${val}';
+					case null: throw 'reference ${ref} is null' + currentNodePos();
+					default: throw 'reference ${ref} is not a value but ${val}' + currentNodePos();
 				}
 			case RVParenthesis(e): resolveAsNumber(e);
 			case RVFunction(functionType): resolveRVFunction(functionType);
@@ -579,22 +587,22 @@ class MultiAnimBuilder {
 
 				switch result {
 					case CBRInteger(val): cast(val, Float);
-					case CBRString(val): throw 'callback should return number but was ${val}';
+					case CBRString(val): throw 'callback should return number but was ${val}' + currentNodePos();
 					case CBRFloat(val): val;
-					case CBRObject(_): throw 'callback should return number but was CBRObject for $input';
+					case CBRObject(_): throw 'callback should return number but was CBRObject for $input' + currentNodePos();
 					case CBRNoResult: resolveAsNumber(defaultValue);
-					case null: throw 'callback should return number but was null for $input';
+					case null: throw 'callback should return number but was null for $input' + currentNodePos();
 				}
 			case RVCallbacksWithIndex(name, idx, defaultValue):
 				final input = NameWithIndex(resolveAsString(name), resolveAsInteger(idx));
 				final result = builderParams.callback(input);
 				switch result {
 					case CBRInteger(val): cast(val, Float);
-					case CBRString(val): throw 'callback should return number but was ${result} for $input';
+					case CBRString(val): throw 'callback should return number but was ${result} for $input' + currentNodePos();
 					case CBRFloat(val): val;
 					case CBRNoResult: resolveAsNumber(defaultValue);
-					case CBRObject(_): throw 'callback should return number but was CBRObject $result for $input';
-					case null: throw 'callback should return number but was null';
+					case CBRObject(_): throw 'callback should return number but was CBRObject $result for $input' + currentNodePos();
+					case null: throw 'callback should return number but was null' + currentNodePos();
 				}
 
 			case EBinop(op, e1, e2):
@@ -623,18 +631,18 @@ class MultiAnimBuilder {
 				case CBRInteger(val): '${val}';
 				case CBRFloat(val): '${val}';
 				case CBRString(val): val;
-				case CBRObject(_): throw 'callback should return string but was CBRObject for $input';
+				case CBRObject(_): throw 'callback should return string but was CBRObject for $input' + currentNodePos();
 				case CBRNoResult:
-					if (defaultValue != null) resolveAsString(defaultValue); else throw 'no default value for $input';
-				case null: throw 'callback should return string but was null for $input';
+					if (defaultValue != null) resolveAsString(defaultValue); else throw 'no default value for $input' + currentNodePos();
+				case null: throw 'callback should return string but was null for $input' + currentNodePos();
 			}
 		}
 
 		return switch v {
 			case RVElementOfArray(array, index):
 				resolveAsArrayElement(v);
-			case RVArray(refArray): throw 'RVArray not supported';
-			case RVArrayReference(refArray): throw 'RVArrayReference not supported';
+			case RVArray(refArray): throw 'RVArray not supported' + currentNodePos();
+			case RVArrayReference(refArray): throw 'RVArrayReference not supported' + currentNodePos();
 			case RVInteger(i): return '${i}';
 			case RVFloat(f): return '${f}';
 			case RVString(s): return s;
@@ -644,14 +652,14 @@ class MultiAnimBuilder {
 
 			case RVReference(ref):
 				if (!indexedParams.exists(ref))
-					throw 'reference ${ref} does not exist';
+					throw 'reference ${ref} does not exist (resolveAsString), available ${indexedParams}' + currentNodePos();
 
 				final val:ResolvedIndexParameters = indexedParams.get(ref);
 				switch val {
 					case Value(val): return '${val}';
 					case StringValue(s): return s;
 					case Index(_, value): return value;
-					default: throw 'invalid reference value ${ref}, expected string got ${val}';
+					default: throw 'invalid reference value ${ref}, expected string got ${val}' + currentNodePos();
 				}
 			case RVParenthesis(e): return resolveAsString(e);
 			case RVFunction(functionType): '${resolveAsInteger(v)}';
@@ -675,7 +683,7 @@ class MultiAnimBuilder {
 						return resolveAsString(e1) < resolveAsString(e2) ? "1" : "0";
 					case OpGreater:
 						return resolveAsString(e1) > resolveAsString(e2) ? "1" : "0";
-					default: throw 'op ${op} not supported on strings';
+					default: throw 'op ${op} not supported on strings' + currentNodePos();
 				}
 			case RVTernary(condition, ifTrue, ifFalse):
 				return if (resolveAsBool(condition)) resolveAsString(ifTrue) else resolveAsString(ifFalse);
@@ -698,7 +706,334 @@ class MultiAnimBuilder {
 
 			case SolidColor(w, h, color):
 				h2d.Tile.fromColor(color.addAlphaIfNotPresent(), w, h);
+
+			case SolidColorWithText(w, h, bgColor, text, textColor, fontName):
+				// Create a solid color tile with centered text using font rendering
+				generateTileWithText(w, h, bgColor.addAlphaIfNotPresent(), text, textColor.addAlphaIfNotPresent(), fontName);
+
+			case AutotileRef(format, tileIndex, tileSize, edgeColor, fillColor):
+				// Generate autotile demo tile with diagonal corners
+				generateAutotileDemoTile(format, tileIndex, tileSize, edgeColor.addAlphaIfNotPresent(), fillColor.addAlphaIfNotPresent());
+
+			case AutotileRegionSheet(baseTile, regionX, regionY, regionW, regionH, tileSize, tileCount, scale, font, fontColor):
+				// Generate a visual tile sheet showing the region with numbered grid overlay
+				generateAutotileRegionSheetTile(baseTile, regionX, regionY, regionW, regionH, tileSize, tileCount, scale, font, fontColor);
+
+			case PreloadedTile(tile):
+				// Return the pre-loaded tile directly
+				tile;
 		}
+	}
+
+	/**
+	 * Resolve an autotile reference by looking up the autotile definition.
+	 * For demo: source - gets format, tileSize, edgeColor, fillColor from the definition.
+	 * For tiles: source - loads the tile at the specified index.
+	 * Converts the selector (index or edges) to a tile index.
+	 */
+	function resolveAutotileRef(autotileName:ReferenceableValue, selector:AutotileTileSelector):ResolvedGeneratedTileType {
+		final name = resolveAsString(autotileName);
+		final node = multiParserResult?.nodes.get(name);
+		if (node == null)
+			throw 'autotile reference: could not find autotile "$name"' + currentNodePos();
+
+		final autotileDef:AutotileDef = switch node.type {
+			case AUTOTILE(def): def;
+			default: throw 'autotile reference: "$name" is not an autotile definition' + MacroUtils.nodePos(node);
+		};
+
+		final format = autotileDef.format;
+
+		// Convert selector to tile index (and keep edge mask for potential fallback)
+		var edgeMask:Null<Int> = null;
+		final tileIndex = switch selector {
+			case ByIndex(index): resolveAsInteger(index);
+			case ByEdges(edges):
+				edgeMask = edges;
+				// Convert edge mask to tile index using the appropriate format
+				switch format {
+					case Cross: bh.base.Autotile.getCrossIndex(edges);
+					case Blob47: bh.base.Autotile.getBlob47Index(edges);
+				};
+		};
+
+		// Handle different source types
+		return switch autotileDef.source {
+			case ATSDemo(edgeColor, fillColor):
+				final tileSize = resolveAsInteger(autotileDef.tileSize);
+				final edgeColorInt = resolveAsColorInteger(edgeColor);
+				final fillColorInt = resolveAsColorInteger(fillColor);
+				AutotileRef(format, tileIndex, tileSize, edgeColorInt, fillColorInt);
+
+			case ATSTiles(tiles):
+				// Use fallback for blob47 if tile is missing
+				var actualIndex = tileIndex;
+				if (format == Blob47 && actualIndex >= tiles.length) {
+					actualIndex = bh.base.Autotile.applyBlob47Fallback(tileIndex, tiles.length);
+				}
+				if (actualIndex < 0 || actualIndex >= tiles.length)
+					throw 'autotile reference: tile index $tileIndex out of bounds for "$name" (has ${tiles.length} tiles)' + MacroUtils.nodePos(node);
+				final tile = loadTileSource(tiles[actualIndex]);
+				PreloadedTile(tile);
+
+			case ATSFile(filename):
+				// Load tile from file, apply region and mapping if present
+				final tileSize = resolveAsInteger(autotileDef.tileSize);
+				final baseTile = resourceLoader.loadTile(resolveAsString(filename));
+
+				// Apply region if present (extract sub-region from the tileset)
+				var regionTile = baseTile;
+				var regionX = 0;
+				var regionY = 0;
+				if (autotileDef.region != null) {
+					final r = autotileDef.region;
+					regionX = resolveAsInteger(r[0]);
+					regionY = resolveAsInteger(r[1]);
+					final regionW = resolveAsInteger(r[2]);
+					final regionH = resolveAsInteger(r[3]);
+					regionTile = baseTile.sub(regionX, regionY, regionW, regionH);
+				}
+
+				// Apply mapping if present (remap the tile index)
+				var mappedIndex = tileIndex;
+				if (autotileDef.mapping != null) {
+					var actualIndex = tileIndex;
+					// For blob47 with allowPartialMapping, apply fallback for missing tiles
+					if (format == Blob47 && autotileDef.allowPartialMapping && !autotileDef.mapping.exists(actualIndex)) {
+						actualIndex = bh.base.Autotile.applyBlob47FallbackWithMap(tileIndex, autotileDef.mapping);
+					}
+					if (!autotileDef.mapping.exists(actualIndex))
+						throw 'autotile reference: tile index $tileIndex not found in mapping' + MacroUtils.nodePos(node);
+					mappedIndex = autotileDef.mapping.get(actualIndex);
+				}
+
+				// Calculate tile position within the region
+				final cols = Std.int(regionTile.width / tileSize);
+				final tileX = (mappedIndex % cols) * tileSize;
+				final tileY = Std.int(mappedIndex / cols) * tileSize;
+
+				// Extract the specific tile
+				final tile = regionTile.sub(tileX, tileY, tileSize, tileSize);
+				PreloadedTile(tile);
+
+			case ATSAtlas(sheet, prefix):
+				// Load tile from atlas using sheet and prefix
+				final tileSize = resolveAsInteger(autotileDef.tileSize);
+				final sheetName = resolveAsString(sheet);
+				final prefixStr = resolveAsString(prefix);
+
+				// Apply mapping if present
+				var mappedIndex = tileIndex;
+				if (autotileDef.mapping != null) {
+					var actualIndex = tileIndex;
+					// For blob47 with allowPartialMapping, apply fallback for missing tiles
+					if (format == Blob47 && autotileDef.allowPartialMapping && !autotileDef.mapping.exists(actualIndex)) {
+						actualIndex = bh.base.Autotile.applyBlob47FallbackWithMap(tileIndex, autotileDef.mapping);
+					}
+					if (!autotileDef.mapping.exists(actualIndex))
+						throw 'autotile reference: tile index $tileIndex not found in mapping' + MacroUtils.nodePos(node);
+					mappedIndex = autotileDef.mapping.get(actualIndex);
+				}
+
+				// Load tile from atlas with prefix and index
+				final tileName = prefixStr + mappedIndex;
+				final tile = loadTileImpl(sheetName, tileName).tile;
+				PreloadedTile(tile);
+
+			case ATSAtlasRegion(sheet, region):
+				// Atlas region-based autotiles not yet supported for generated(autotile(...)) syntax
+				throw 'autotile reference: "$name" uses sheet region - use tiles: or demo: syntax instead' + MacroUtils.nodePos(node);
+		};
+	}
+
+	/**
+	 * Resolve autotileRegionSheet - displays the entire region of an autotile with numbered grid overlay.
+	 * Only works with autotiles that have a region defined.
+	 * @param scale Scale factor for the tiles (font is not scaled)
+	 * @param font Font name for the tile numbers
+	 * @param fontColor Color for the tile numbers
+	 */
+	function resolveAutotileRegionSheet(autotileName:ReferenceableValue, scale:ReferenceableValue, font:ReferenceableValue, fontColor:ReferenceableValue):ResolvedGeneratedTileType {
+		final name = resolveAsString(autotileName);
+		final scaleVal = resolveAsInteger(scale);
+		final fontName = resolveAsString(font);
+		final fontColorVal = resolveAsColorInteger(fontColor);
+
+		final node = multiParserResult?.nodes.get(name);
+		if (node == null)
+			throw 'autotileRegionSheet: could not find autotile "$name"' + currentNodePos();
+
+		final autotileDef:AutotileDef = switch node.type {
+			case AUTOTILE(def): def;
+			default: throw 'autotileRegionSheet: "$name" is not an autotile definition' + MacroUtils.nodePos(node);
+		};
+
+		final tileSize = resolveAsInteger(autotileDef.tileSize);
+		final tileCount = switch autotileDef.format {
+			case Cross: 13;
+			case Blob47: 47;
+		};
+
+		// Handle different source types to get the base tile and region
+		return switch autotileDef.source {
+			case ATSFile(filename):
+				final baseTile = resourceLoader.loadTile(resolveAsString(filename));
+				if (autotileDef.region == null)
+					throw 'autotileRegionSheet: autotile "$name" has no region defined' + MacroUtils.nodePos(node);
+				final r = autotileDef.region;
+				final regionX = resolveAsInteger(r[0]);
+				final regionY = resolveAsInteger(r[1]);
+				final regionW = resolveAsInteger(r[2]);
+				final regionH = resolveAsInteger(r[3]);
+				AutotileRegionSheet(baseTile, regionX, regionY, regionW, regionH, tileSize, tileCount, scaleVal, fontName, fontColorVal);
+
+			case ATSAtlasRegion(sheet, region):
+				final baseTile = resourceLoader.loadTile(resolveAsString(sheet));
+				final regionX = resolveAsInteger(region[0]);
+				final regionY = resolveAsInteger(region[1]);
+				final regionW = resolveAsInteger(region[2]);
+				final regionH = resolveAsInteger(region[3]);
+				AutotileRegionSheet(baseTile, regionX, regionY, regionW, regionH, tileSize, tileCount, scaleVal, fontName, fontColorVal);
+
+			case ATSDemo(_, _):
+				throw 'autotileRegionSheet: autotile "$name" uses demo source - no region to display' + MacroUtils.nodePos(node);
+
+			case ATSTiles(_):
+				throw 'autotileRegionSheet: autotile "$name" uses explicit tiles - no region to display' + MacroUtils.nodePos(node);
+
+			case ATSAtlas(_, _):
+				throw 'autotileRegionSheet: autotile "$name" uses atlas prefix - no region to display' + MacroUtils.nodePos(node);
+		};
+	}
+
+	/**
+	 * Generate a tile with text using font-based rendering.
+	 * Uses h2d.Object.drawTo to render to a texture.
+	 */
+	function generateTileWithText(w:Int, h:Int, bgColor:Int, text:String, textColor:Int, fontName:String):h2d.Tile {
+		// Load the font
+		final font = resourceLoader.loadFont(fontName);
+
+		// Create container for background + text
+		final container = new h2d.Object();
+
+		// Add background
+		final bg = new h2d.Bitmap(h2d.Tile.fromColor(bgColor, w, h), container);
+
+		// Create and configure text
+		final textObj = new h2d.Text(font, container);
+		textObj.text = text;
+		textObj.textColor = textColor & 0xFFFFFF;
+		textObj.maxWidth = w;
+		textObj.textAlign = Center;
+
+		// Center text vertically (use integer position for deterministic rendering)
+		final textHeight = textObj.textHeight;
+		textObj.x = 0;
+		textObj.y = Math.floor((h - textHeight) / 2);
+
+		// Render to texture using drawTo
+		final texture = new h3d.mat.Texture(w, h, [Target]);
+		container.drawTo(texture);
+
+		// Capture pixels from texture
+		final pixels = texture.capturePixels();
+
+		// Clean up
+		container.remove();
+		texture.dispose();
+
+		// Create tile from pixels
+		return h2d.Tile.fromPixels(pixels);
+	}
+
+	/**
+	 * Generate a visual tile showing the autotile region with numbered grid overlay.
+	 * Displays the complete region and draws tile indices over each tile position.
+	 * @param scale Scale factor for the tiles (font is not scaled)
+	 * @param fontName Font name for the tile numbers
+	 * @param fontColor Color for the tile numbers
+	 */
+	function generateAutotileRegionSheetTile(baseTile:h2d.Tile, regionX:Int, regionY:Int, regionW:Int, regionH:Int, tileSize:Int, tileCount:Int, scale:Int, fontName:String, fontColor:Int):h2d.Tile {
+		// Calculate scaled dimensions
+		final scaledW = regionW * scale;
+		final scaledH = regionH * scale;
+		final scaledTileSize = tileSize * scale;
+
+		// Create container for the region + grid overlay
+		final container = new h2d.Object();
+
+		// Extract and display the region (scaled)
+		final regionTile = baseTile.sub(regionX, regionY, regionW, regionH);
+		final regionBitmap = new h2d.Bitmap(regionTile, container);
+		regionBitmap.scaleX = scale;
+		regionBitmap.scaleY = scale;
+
+		// Calculate grid dimensions
+		final cols = Std.int(regionW / tileSize);
+		final rows = Std.int(regionH / tileSize);
+
+		// Draw grid lines using PixelLines (at scaled size)
+		final pl = new PixelLines(scaledW, scaledH);
+		final gridColor = 0xFFFFFFFF;  // White grid lines
+
+		// Draw vertical grid lines
+		for (col in 0...cols + 1) {
+			final x = col * scaledTileSize;
+			if (x < scaledW) {
+				pl.line(x, 0, x, scaledH - 1, gridColor);
+			}
+		}
+
+		// Draw horizontal grid lines
+		for (row in 0...rows + 1) {
+			final y = row * scaledTileSize;
+			if (y < scaledH) {
+				pl.line(0, y, scaledW - 1, y, gridColor);
+			}
+		}
+
+		pl.updateBitmap();
+		new h2d.Bitmap(pl.tile, container);
+
+		// Add tile numbers using specified font (not scaled)
+		final font = resourceLoader.loadFont(fontName);
+		final fontColorRGB = fontColor & 0xFFFFFF;
+		final totalTilesInRegion = cols * rows;
+		for (i in 0...totalTilesInRegion) {
+			final col = i % cols;
+			final row = Std.int(i / cols);
+			final x = col * scaledTileSize + 1;
+			final y = row * scaledTileSize + 1;
+			final numStr = Std.string(i);
+
+			// Shadow text (black, offset by 1 pixel)
+			final shadowText = new h2d.Text(font, container);
+			shadowText.text = numStr;
+			shadowText.textColor = 0x000000;
+			shadowText.x = x + 1;
+			shadowText.y = y + 1;
+
+			// Main text (using specified font color)
+			final mainText = new h2d.Text(font, container);
+			mainText.text = numStr;
+			mainText.textColor = fontColorRGB;
+			mainText.x = x;
+			mainText.y = y;
+		}
+
+		// Render container to texture (at scaled size)
+		final texture = new h3d.mat.Texture(scaledW, scaledH, [Target]);
+		container.drawTo(texture);
+
+		// Capture pixels from texture
+		final pixels = texture.capturePixels();
+
+		// Clean up
+		container.remove();
+		texture.dispose();
+
+		return h2d.Tile.fromPixels(pixels);
 	}
 
 	function loadTileSource(tileSource):h2d.Tile {
@@ -710,6 +1045,9 @@ class MultiAnimBuilder {
 				var resolvedType:ResolvedGeneratedTileType = switch type {
 					case Cross(width, height, color): Cross(resolveAsInteger(width), resolveAsInteger(height), resolveAsColorInteger(color));
 					case SolidColor(width, height, color): SolidColor(resolveAsInteger(width), resolveAsInteger(height), resolveAsColorInteger(color));
+					case SolidColorWithText(width, height, color, text, textColor, font): SolidColorWithText(resolveAsInteger(width), resolveAsInteger(height), resolveAsColorInteger(color), resolveAsString(text), resolveAsColorInteger(textColor), resolveAsString(font));
+					case AutotileRef(autotileName, selector): resolveAutotileRef(autotileName, selector);
+					case AutotileRegionSheet(autotileName, scale, font, fontColor): resolveAutotileRegionSheet(autotileName, scale, font, fontColor);
 				}
 
 				resourceLoader.getOrCreatePlaceholder(resolvedType, (resolvedType) -> generatePlaceholderBitmap(resolvedType));
@@ -718,15 +1056,15 @@ class MultiAnimBuilder {
 				// Resolve tile source from indexed params (e.g., $bitmap from stateanim/tiles iterator)
 				final param = indexedParams.get(varName);
 				if (param == null)
-					throw 'TileSource reference "$varName" not found in indexed params';
+					throw 'TileSource reference "$varName" not found in indexed params' + currentNodePos();
 				switch param {
 					case TileSourceValue(ts): loadTileSource(ts);
-					case _: throw 'TileSource reference "$varName" is not a TileSourceValue, got: $param';
+					case _: throw 'TileSource reference "$varName" is not a TileSourceValue, got: $param' + currentNodePos();
 				}
 		}
 
 		if (tile == null)
-			throw 'could not load tile $tileSource';
+			throw 'could not load tile $tileSource' + currentNodePos();
 		return tile;
 	}
 
@@ -749,7 +1087,7 @@ class MultiAnimBuilder {
 							if (!a.contains(Std.string(val))) return false;
 						case StringValue(s):
 							if (!a.contains(s)) return false;
-						default: throw 'invalid param types ${currentValue}, ${condValue}';
+						default: throw 'invalid param types ${currentValue}, ${condValue}' + currentNodePos();
 					}
 				case CoRange(fromInclusive, toInclusive):
 					switch currentValue {
@@ -757,31 +1095,31 @@ class MultiAnimBuilder {
 							if ((fromInclusive != null && val < fromInclusive) || (toInclusive != null && val > toInclusive)) return false;
 						case ValueF(val):
 							if ((fromInclusive != null && val < fromInclusive) || (toInclusive != null && val > toInclusive)) return false;
-						default: throw 'invalid param types ${currentValue}, ${condValue}';
+						default: throw 'invalid param types ${currentValue}, ${condValue}' + currentNodePos();
 					}
 
 				case CoIndex(idx, value):
 					switch currentValue {
 						case Index(i, value): if (idx != i) return false;
 						case StringValue(s): if (s != value) return false;
-						default: throw 'invalid param types ${currentValue}, ${condValue}';
+						default: throw 'invalid param types ${currentValue}, ${condValue}' + currentNodePos();
 					}
 				case CoValue(val):
 					switch currentValue {
 						case Value(iVal): if (val != iVal) return false;
-						default: throw 'invalid param types ${currentValue}, ${condValue}';
+						default: throw 'invalid param types ${currentValue}, ${condValue}' + currentNodePos();
 					}
 				case CoFlag(f):
 					switch currentValue {
 						case Flag(i): if (f & i != f) return false;
-						default: throw 'invalid param types ${currentValue}, ${condValue}';
+						default: throw 'invalid param types ${currentValue}, ${condValue}' + currentNodePos();
 					}
 				case CoAny:
 				case CoStringValue(s):
 					switch currentValue {
 						case Index(idx, value): if (value != s) return false;
 						case StringValue(sv): if (s != sv) return false;
-						default: throw 'invalid param types ${currentValue}, ${condValue}';
+						default: throw 'invalid param types ${currentValue}, ${condValue}' + currentNodePos();
 					}
 			}
 			return true;
@@ -829,23 +1167,23 @@ class MultiAnimBuilder {
 				returnPosition(resolveAsNumber(x), resolveAsNumber(y));
 			case SELECTED_GRID_POSITION(gridX, gridY):
 				if (gridCoordinateSystem == null)
-					throw 'gridCoordinateSystem is null';
+					throw 'gridCoordinateSystem is null' + currentNodePos();
 				gridCoordinateSystem.resolveAsGrid(resolveAsInteger(gridX), resolveAsInteger(gridY));
 			case SELECTED_GRID_POSITION_WITH_OFFSET(gridX, gridY, offsetX, offsetY):
 				if (gridCoordinateSystem == null)
-					throw 'gridCoordinateSystem is null';
+					throw 'gridCoordinateSystem is null' + currentNodePos();
 				gridCoordinateSystem.resolveAsGrid(resolveAsInteger(gridX), resolveAsInteger(gridY), resolveAsInteger(offsetX), resolveAsInteger(offsetY));
 			case SELECTED_HEX_EDGE(direction, factor):
 				if (hexCoordinateSystem == null)
-					throw 'hexCoordinateSystem is null';
+					throw 'hexCoordinateSystem is null' + currentNodePos();
 				hexCoordinateSystem.resolveAsHexEdge(resolveAsInteger(direction), resolveAsNumber(factor));
 			case SELECTED_HEX_POSITION(hex):
 				if (hexCoordinateSystem == null)
-					throw 'hexCoordinateSystem is null';
+					throw 'hexCoordinateSystem is null' + currentNodePos();
 				hexCoordinateSystem.resolveAsHexPosition(hex);
 			case SELECTED_HEX_CORNER(count, factor):
 				if (hexCoordinateSystem == null)
-					throw 'hexCoordinateSystem is null';
+					throw 'hexCoordinateSystem is null' + currentNodePos();
 				hexCoordinateSystem.resolveAsHexCorner(resolveAsInteger(count), resolveAsNumber(factor));
 			case LAYOUT(layoutName, index):
 				var idx = 0;
@@ -941,13 +1279,13 @@ class MultiAnimBuilder {
 					}
 
 					if (points.length > 0) {
-						var first = points[0];
-						var fx = resolveAsNumber(first.x) + elementPos.x;
-						var fy = resolveAsNumber(first.y) + elementPos.y;
+						var firstPos = calculatePosition(points[0], gridCoordinateSystem, hexCoordinateSystem);
+						var fx = firstPos.x + elementPos.x;
+						var fy = firstPos.y + elementPos.y;
 						g.moveTo(fx, fy);
 						for (i in 1...points.length) {
-							var p = points[i];
-							g.lineTo(resolveAsNumber(p.x) + elementPos.x, resolveAsNumber(p.y) + elementPos.y);
+							var pos = calculatePosition(points[i], gridCoordinateSystem, hexCoordinateSystem);
+							g.lineTo(pos.x + elementPos.x, pos.y + elementPos.y);
 						}
 						g.lineTo(fx, fy);
 					}
@@ -1006,11 +1344,13 @@ class MultiAnimBuilder {
 							g.drawRoundedRect(elementPos.x, elementPos.y, resolveAsNumber(width), resolveAsNumber(height), rad);
 							g.lineStyle();
 					}
-				case GELine(color, lineWidth, x1, y1, x2, y2):
+				case GELine(color, lineWidth, start, end):
 					var resolvedColor = resolveAsColorInteger(color).addAlphaIfNotPresent();
+					var startPos = calculatePosition(start, gridCoordinateSystem, hexCoordinateSystem);
+					var endPos = calculatePosition(end, gridCoordinateSystem, hexCoordinateSystem);
 					g.lineStyle(resolveAsNumber(lineWidth), resolvedColor);
-					g.moveTo(elementPos.x + resolveAsNumber(x1), elementPos.y + resolveAsNumber(y1));
-					g.lineTo(elementPos.x + resolveAsNumber(x2), elementPos.y + resolveAsNumber(y2));
+					g.moveTo(elementPos.x + startPos.x, elementPos.y + startPos.y);
+					g.lineTo(elementPos.x + endPos.x, elementPos.y + endPos.y);
 					g.lineStyle();
 			}
 		}
@@ -1096,7 +1436,7 @@ class MultiAnimBuilder {
 							// tileFilter must be an exact tile name/key in the atlas (e.g., "Arrow_dir0")
 							final frames = sheet.getAnim(tileFilter);
 							if (frames == null) {
-								throw 'Tile "${tileFilter}" not found in sheet "${sheetName}". The tile filter must be an exact tile name (key) in the atlas.';
+								throw 'Tile "${tileFilter}" not found in sheet "${sheetName}". The tile filter must be an exact tile name (key) in the atlas.' + MacroUtils.nodePos(node);
 							}
 							for (frame in frames) {
 								if (frame != null && frame.tile != null) {
@@ -1114,7 +1454,7 @@ class MultiAnimBuilder {
 				}
 
 				if (indexedParams.exists(node.updatableName.getNameString()))
-					throw 'cannot use repeatable index param "$varName" as it is already defined';
+					throw 'cannot use repeatable index param "$varName" as it is already defined' + MacroUtils.nodePos(node);
 				for (count in 0...repeatCount) {
 					final resolvedIndex = switch repeatType {
 						case RangeIterator(_, _, _): rangeStart + count * rangeStep;
@@ -1205,9 +1545,9 @@ class MultiAnimBuilder {
 						xDx = 0;
 						xDy = 0;
 					case StateAnimIterator(_, _, _, _):
-						throw 'StateAnimIterator not supported in REPEAT2D';
+						throw 'StateAnimIterator not supported in REPEAT2D' + MacroUtils.nodePos(node);
 					case TilesIterator(_, _, _, _):
-						throw 'TilesIterator not supported in REPEAT2D';
+						throw 'TilesIterator not supported in REPEAT2D' + MacroUtils.nodePos(node);
 				}
 
 				switch repeatTypeY {
@@ -1231,13 +1571,13 @@ class MultiAnimBuilder {
 						yDx = 0;
 						yDy = 0;
 					case StateAnimIterator(_, _, _, _):
-						throw 'StateAnimIterator not supported in REPEAT2D';
+						throw 'StateAnimIterator not supported in REPEAT2D' + MacroUtils.nodePos(node);
 					case TilesIterator(_, _, _, _):
-						throw 'TilesIterator not supported in REPEAT2D';
+						throw 'TilesIterator not supported in REPEAT2D' + MacroUtils.nodePos(node);
 				}
 
 				if (indexedParams.exists(varNameX) || indexedParams.exists(varNameY))
-					throw 'cannot use repeatable2d index param "$varNameX" or "$varNameY" as it is already defined';
+					throw 'cannot use repeatable2d index param "$varNameX" or "$varNameY" as it is already defined' + MacroUtils.nodePos(node);
 				var yIterator = yLayoutName == null ? null : getLayoutsIfNeeded().getIterator(yLayoutName);
 				for (yCount in 0...yRepeatCount) {
 					final resolvedY = switch repeatTypeY {
@@ -1298,7 +1638,7 @@ class MultiAnimBuilder {
 			case PIXELS(shapes):
 				final pixelsResult = drawPixels(shapes, gridCoordinateSystem, hexCoordinateSystem);
 				pixelsResult.pixelLines.tile;
-			default: throw 'unsupported node ${node.uniqueNodeName} ${node.type} in tileGroup mode';
+			default: throw 'unsupported node ${node.uniqueNodeName} ${node.type} in tileGroup mode' + MacroUtils.nodePos(node);
 		}
 
 		addToTileGroup(node, currentPos, tileGroupTile, tileGroup);
@@ -1317,9 +1657,9 @@ class MultiAnimBuilder {
 			final scale = node.scale == null ? 1.0 : resolveAsNumber(node.scale);
 			tileGroup.setDefaultColor(0xFFFFFF, node.alpha != null ? resolveAsNumber(node.alpha) : 1.0);
 			if (node.filter != null && node.filter != FilterNone)
-				throw 'groupTile does not support filters for ${node.type}';
+				throw 'tileGroup does not support filters for ${node.type}' + MacroUtils.nodePos(node);
 			if (node.blendMode != null && node.blendMode != Alpha)
-				throw 'groupTile does not support blendMode other than Alpha for ${node.type}';
+				throw 'tileGroup does not support blendMode other than Alpha for ${node.type}' + MacroUtils.nodePos(node);
 			tileGroup.addTransform(currentPos.x, currentPos.y, scale, scale, 0, tileGroupTile);
 		}
 	}
@@ -1352,7 +1692,7 @@ class MultiAnimBuilder {
 				if (layersParent != null)
 					layersParent.add(toAdd, node.layer);
 				else
-					throw 'No layers parent for ${node.uniqueNodeName}-${node.type}';
+					throw 'No layers parent for ${node.uniqueNodeName}-${node.type}' + MacroUtils.nodePos(node);
 			} else if (current != null)
 				current.addChild(toAdd);
 			// else do not add as this is root node
@@ -1444,12 +1784,15 @@ class MultiAnimBuilder {
 					case Center: Center;
 				}
 				if (textDef.textAlignWidth != null) {
+					// When text has scale applied, maxWidth needs to be divided by scale
+					// so that alignment (center/right) is calculated correctly before scaling
+					final scaleAdjust = if (node.scale != null) resolveAsNumber(node.scale) else 1.0;
 					switch textDef.textAlignWidth {
 						case TAWValue(value):
-								t.maxWidth = value;
+								t.maxWidth = value / scaleAdjust;
 						case TAWGrid:
 							if (gridCoordinateSystem != null)
-								t.maxWidth = gridCoordinateSystem.spacingX;
+								t.maxWidth = gridCoordinateSystem.spacingX / scaleAdjust;
 						case TAWAuto:
 							t.maxWidth = null;
 					}
@@ -1488,12 +1831,13 @@ class MultiAnimBuilder {
 			// 	if (textAlignWidth != null) t.maxWidth = textAlignWidth;
 			// 	HeapsText(t);
 
-			case RELATIVE_LAYOUTS(_): throw 'layouts not allowed as non-root node';
-			case ANIMATED_PATH(_): throw 'animatedPath not allowed as non-root node';
-			case PATHS(_): throw 'paths not allowed as non-root node';
+			case RELATIVE_LAYOUTS(_): throw 'layouts not allowed as non-root node' + MacroUtils.nodePos(node);
+			case ANIMATED_PATH(_): throw 'animatedPath not allowed as non-root node' + MacroUtils.nodePos(node);
+			case PATHS(_): throw 'paths not allowed as non-root node' + MacroUtils.nodePos(node);
 			case PARTICLES(particlesDef):
 				Particles(createParticleImpl(particlesDef, node.uniqueNodeName));
-			case PALETTE(_): throw 'palette not allowed as non-root node';
+			case PALETTE(_): throw 'palette not allowed as non-root node' + MacroUtils.nodePos(node);
+			case AUTOTILE(_): throw 'autotile not allowed as non-root node' + MacroUtils.nodePos(node);
 
 			case PLACEHOLDER(type, source):
 				var settings = resolveSettings(node);
@@ -1502,7 +1846,7 @@ class MultiAnimBuilder {
 					return switch result {
 						case CBRObject(val): val;
 						case CBRNoResult: null;
-						default: throw 'expected h2d.object but got $result';
+						default: throw 'expected h2d.object but got $result' + currentNodePos();
 						case null: null;
 					}
 				}
@@ -1530,7 +1874,7 @@ class MultiAnimBuilder {
 							final tile = loadTileSource(source);
 							HeapsBitmap(new h2d.Bitmap(tile));
 						case PHNothing: HeapsObject(new h2d.Object());
-						case PHError: throw 'placeholder ${node.updatableName}, type ${node.type} configured in error mode, no input from $source';
+						case PHError: throw 'placeholder ${node.updatableName}, type ${node.type} configured in error mode, no input from $source' + MacroUtils.nodePos(node);
 					}
 				} else {
 					HeapsObject(callbackResultH2dObject);
@@ -1540,7 +1884,7 @@ class MultiAnimBuilder {
 				var builder = if (externalReference != null) {
 					var builder = multiParserResult?.imports?.get(externalReference);
 					if (builder == null)
-						throw 'could not find builder for external reference ${externalReference}';
+						throw 'could not find builder for external reference ${externalReference}' + MacroUtils.nodePos(node);
 					builder;
 				} else this;
 
@@ -1551,7 +1895,7 @@ class MultiAnimBuilder {
 				var result = builder.buildWithParameters(reference, parameters, builderParams, indexedParams);
 				var object = result?.object;
 				if (object == null)
-					throw 'could not build placeholder reference ${reference}';
+					throw 'could not build placeholder reference ${reference}' + MacroUtils.nodePos(node);
 				HeapsObject(object);
 
 			case POINT:
@@ -1583,7 +1927,7 @@ class MultiAnimBuilder {
 				}
 				final initialStateResolved = resolveAsString(initialState);
 				if (animSM.animationStates.exists(initialStateResolved) == false)
-					throw 'initialState ${initialStateResolved} does not exist in constructed stateanim';
+					throw 'initialState ${initialStateResolved} does not exist in constructed stateanim' + MacroUtils.nodePos(node);
 
 				animSM.play(initialStateResolved);
 
@@ -1631,7 +1975,7 @@ class MultiAnimBuilder {
 							// tileFilter must be an exact tile name/key in the atlas (e.g., "Arrow_dir0")
 							final frames = sheet.getAnim(tileFilter);
 							if (frames == null) {
-								throw 'Tile "${tileFilter}" not found in sheet "${sheetName}". The tile filter must be an exact tile name (key) in the atlas.';
+								throw 'Tile "${tileFilter}" not found in sheet "${sheetName}". The tile filter must be an exact tile name (key) in the atlas.' + MacroUtils.nodePos(node);
 							}
 							for (frame in frames) {
 								if (frame != null && frame.tile != null) {
@@ -1649,7 +1993,7 @@ class MultiAnimBuilder {
 				}
 
 				if (indexedParams.exists(node.updatableName.getNameString()))
-					throw 'cannot use repeatable index param "$varName" as it is already defined';
+					throw 'cannot use repeatable index param "$varName" as it is already defined' + MacroUtils.nodePos(node);
 				for (count in 0...repeatCount) {
 					final resolvedIndex = switch repeatType {
 						case RangeIterator(_, _, _): rangeStart + count * rangeStep;
@@ -1745,9 +2089,9 @@ class MultiAnimBuilder {
 						xDx = 0;
 						xDy = 0;
 					case StateAnimIterator(_, _, _, _):
-						throw 'StateAnimIterator not supported in REPEAT2D';
+						throw 'StateAnimIterator not supported in REPEAT2D' + MacroUtils.nodePos(node);
 					case TilesIterator(_, _, _, _):
-						throw 'TilesIterator not supported in REPEAT2D';
+						throw 'TilesIterator not supported in REPEAT2D' + MacroUtils.nodePos(node);
 				}
 
 				switch repeatTypeY {
@@ -1771,13 +2115,13 @@ class MultiAnimBuilder {
 						yDx = 0;
 						yDy = 0;
 					case StateAnimIterator(_, _, _, _):
-						throw 'StateAnimIterator not supported in REPEAT2D';
+						throw 'StateAnimIterator not supported in REPEAT2D' + MacroUtils.nodePos(node);
 					case TilesIterator(_, _, _, _):
-						throw 'TilesIterator not supported in REPEAT2D';
+						throw 'TilesIterator not supported in REPEAT2D' + MacroUtils.nodePos(node);
 				}
 
 				if (indexedParams.exists(varNameX) || indexedParams.exists(varNameY))
-					throw 'cannot use repeatable2d index param "$varNameX" or "$varNameY" as it is already defined';
+					throw 'cannot use repeatable2d index param "$varNameX" or "$varNameY" as it is already defined' + MacroUtils.nodePos(node);
 				var yIterator = yLayoutName == null ? null : getLayoutsIfNeeded().getIterator(yLayoutName);
 				for (yCount in 0...yRepeatCount) {
 					final resolvedY = switch repeatTypeY {
@@ -1843,14 +2187,14 @@ class MultiAnimBuilder {
 
 			case APPLY:
 				if (current == null)
-					throw 'apply not allowed as root node';
+					throw 'apply not allowed as root node' + MacroUtils.nodePos(node);
 				var pos = calculatePosition(node.pos, MultiAnimParser.getGridCoordinateSystem(node), MultiAnimParser.getHexCoordinateSystem(node));
 				addPosition(current, pos.x, pos.y);
 				applyExtendedFormProperties(current, node);
 				return null;
 
 			case PROGRAMMABLE(_, _):
-				throw 'invalid state, programmable should not be build';
+				throw 'invalid state, programmable should not be built' + MacroUtils.nodePos(node);
 
 			case PIXELS(shapes):
 				final pixelsResult = drawPixels(shapes, gridCoordinateSystem, hexCoordinateSystem);
@@ -2027,7 +2371,7 @@ class MultiAnimBuilder {
 				return d;
 			default:
 				if (throwIfNotProgrammable)
-					throw 'buildWithParameters require programmable node, was ${node.type}';
+					throw 'buildWithParameters require programmable node, was ${node.type}' + MacroUtils.nodePos(node);
 				else
 					return [];
 		}
@@ -2043,7 +2387,6 @@ class MultiAnimBuilder {
 				isProgrammable = true;
 				isTileGroup = isTG;
 			default:
-				false;
 		};
 
 		var retRoot:h2d.Object;
@@ -2125,7 +2468,7 @@ class MultiAnimBuilder {
 	function buildPalettes(name:String):Palette {
 		var node = multiParserResult?.nodes.get(name);
 		if (node == null)
-			throw 'could not get palette node #${name}';
+			throw 'could not get palette node #${name}' + currentNodePos();
 		return switch node.type {
 			case PALETTE(paletteType):
 				return switch paletteType {
@@ -2135,12 +2478,12 @@ class MultiAnimBuilder {
 						var filenameResolved = resolveAsString(filename);
 						var res = resourceLoader.loadHXDResource(filenameResolved);
 						if (res == null)
-							throw 'could not load palette image $filename';
+							throw 'could not load palette image $filename' + MacroUtils.nodePos(node);
 						var pixels = res.toImage().getPixels();
 						var pixelArray = pixels.toVector().toArray();
 						new Palette(pixelArray, pixels.width);
 				}
-			default: throw '$name has to be palette';
+			default: throw '$name has to be palette' + MacroUtils.nodePos(node);
 		}
 	}
 
@@ -2177,13 +2520,13 @@ class MultiAnimBuilder {
 		if (particlesDef.fadeIn != null) {
 			final f = resolveAsNumber(particlesDef.fadeIn);
 			if (f < 0 || f > 1.0)
-				throw 'fadeIn must be between 0 and 1';
+				throw 'fadeIn must be between 0 and 1' + currentNodePos();
 			group.fadeIn = f;
 		}
 		if (particlesDef.fadeOut != null) {
 			final f = resolveAsNumber(particlesDef.fadeOut);
 			if (f < 0 || f > 1.0)
-				throw 'fadeOut must be between 0 and 1';
+				throw 'fadeOut must be between 0 and 1' + currentNodePos();
 			group.fadeOut = resolveAsNumber(particlesDef.fadeOut);
 		}
 		if (particlesDef.fadePower != null)
@@ -2338,20 +2681,20 @@ class MultiAnimBuilder {
 	public function createParticles(name:String, ?builderParams:BuilderParameters):bh.base.Particles {
 		var node = multiParserResult?.nodes.get(name);
 		if (node == null)
-			throw 'could not get particles node #${name}';
+			throw 'could not get particles node #${name}' + currentNodePos();
 		switch node.type {
 			case PARTICLES(particlesDef):
 				return createParticleImpl(particlesDef, node.uniqueNodeName);
 
 			default:
-				throw '$name has to be particles';
+				throw '$name has to be particles' + MacroUtils.nodePos(node);
 		}
 	}
 
 	public function createAnimatedPath(name:String, path:Path, initialSpeed:Float, positionMode:AnimatedPathPositionMode, object:BuiltHeapsComponent) {
 		var node = multiParserResult?.nodes.get(name);
 		if (node == null)
-			throw 'could not get animatedPath node #${name}';
+			throw 'could not get animatedPath node #${name}' + currentNodePos();
 		switch node.type {
 			case ANIMATED_PATH(pathDef):
 				var retVal = new bh.paths.AnimatedPath(path, initialSpeed, object, positionMode, this);
@@ -2375,19 +2718,19 @@ class MultiAnimBuilder {
 				return retVal;
 
 			default:
-				throw '$name has to be animatedPath';
+				throw '$name has to be animatedPath' + MacroUtils.nodePos(node);
 		}
 	}
 
 	public function getLayouts(?builderParams:BuilderParameters):MultiAnimLayouts {
 		var node = multiParserResult?.nodes.get(MultiAnimParser.defaultLayoutNodeName);
 		if (node == null)
-			throw 'relativeLayouts does not exist';
+			throw 'relativeLayouts does not exist' + currentNodePos();
 		switch node.type {
 			case RELATIVE_LAYOUTS(layoutsDef):
 				return new MultiAnimLayouts(layoutsDef, this);
 			default:
-				throw 'relativeLayouts is of unexpected type ${node.type}';
+				throw 'relativeLayouts is of unexpected type ${node.type}' + MacroUtils.nodePos(node);
 		}
 	}
 
@@ -2399,8 +2742,400 @@ class MultiAnimBuilder {
 			case PATHS(pathsDef):
 				return new bh.paths.MultiAnimPaths(pathsDef, this);
 			default:
-				throw 'paths is of unexpected type ${node.type}';
+				throw 'paths is of unexpected type ${node.type}' + MacroUtils.nodePos(node);
 		}
+	}
+
+	/**
+	 * Build a TileGroup from autotile definition based on a binary grid.
+	 * @param name The name of the autotile definition in the .manim file
+	 * @param grid 2D array of 0/1 values where 1 = terrain present
+	 * @return h2d.TileGroup populated with the correct autotiles
+	 */
+	public function buildAutotile(name:String, grid:Array<Array<Int>>):h2d.TileGroup {
+		var node = multiParserResult?.nodes.get(name);
+		if (node == null)
+			throw 'could not get autotile node #${name}' + currentNodePos();
+		switch node.type {
+			case AUTOTILE(autotileDef):
+				return buildAutotileImpl(autotileDef, grid, null);
+			default:
+				throw '$name has to be autotile' + MacroUtils.nodePos(node);
+		}
+	}
+
+	/**
+	 * Build a TileGroup from autotile definition with elevation data.
+	 * @param name The name of the autotile definition in the .manim file
+	 * @param grid 2D array of elevation levels (0 = empty, 1+ = terrain at that elevation)
+	 * @param baseY Base Y position for rendering
+	 * @return h2d.TileGroup populated with the correct autotiles and depth
+	 */
+	public function buildAutotileElevation(name:String, grid:Array<Array<Int>>, baseY:Float):h2d.TileGroup {
+		var node = multiParserResult?.nodes.get(name);
+		if (node == null)
+			throw 'could not get autotile node #${name}' + currentNodePos();
+		switch node.type {
+			case AUTOTILE(autotileDef):
+				return buildAutotileImpl(autotileDef, grid, baseY);
+			default:
+				throw '$name has to be autotile' + MacroUtils.nodePos(node);
+		}
+	}
+
+	private function buildAutotileImpl(autotileDef:AutotileDef, grid:Array<Array<Int>>, ?elevationBaseY:Null<Float>):h2d.TileGroup {
+		final tileGroup = new h2d.TileGroup();
+		final tiles = loadAutotileTiles(autotileDef);
+		final tileSize = resolveAsInteger(autotileDef.tileSize);
+		final depth = autotileDef.depth != null ? resolveAsInteger(autotileDef.depth) : 0;
+		// For ATSFile with mapping, the mapping is applied during tile loading, so don't apply it here
+		final mappingAppliedDuringLoading = switch autotileDef.source {
+			case ATSFile(_): autotileDef.mapping != null;
+			default: false;
+		};
+		final mapping = mappingAppliedDuringLoading ? null : autotileDef.mapping;
+
+		final height = grid.length;
+		if (height == 0)
+			return tileGroup;
+		final width = grid[0].length;
+
+		for (y in 0...height) {
+			for (x in 0...width) {
+				if (grid[y][x] == 0)
+					continue;
+
+				final mask8 = bh.base.Autotile.getNeighborMask8(grid, x, y);
+				var tileIndex = switch autotileDef.format {
+					case Cross: bh.base.Autotile.getCrossIndex(mask8);
+					case Blob47: bh.base.Autotile.getBlob47IndexWithFallback(mask8, tiles.length);
+				};
+
+				// Apply custom mapping if provided (Map<Int, Int>)
+				if (mapping != null) {
+					var actualIndex = tileIndex;
+					// For blob47 with allowPartialMapping, apply fallback for missing tiles
+					if (autotileDef.format == Blob47 && autotileDef.allowPartialMapping && !mapping.exists(actualIndex)) {
+						actualIndex = bh.base.Autotile.applyBlob47FallbackWithMap(tileIndex, mapping);
+					}
+					if (mapping.exists(actualIndex)) {
+						tileIndex = mapping.get(actualIndex);
+					}
+				}
+
+				if (tileIndex >= 0 && tileIndex < tiles.length) {
+					final tile = tiles[tileIndex];
+					final renderX = x * tileSize;
+					var renderY = y * tileSize;
+
+					// Handle elevation depth rendering
+					if (elevationBaseY != null && depth > 0) {
+						// Render depth/wall below the tile for edge tiles
+						final hasS = (mask8 & bh.base.Autotile.S) == 0;
+						if (hasS && tileIndex < tiles.length) {
+							// This is a south-facing edge, render wall depth below
+							for (d in 0...Std.int(depth / tileSize) + 1) {
+								tileGroup.add(renderX, renderY + tileSize + d * tileSize, tile);
+							}
+						}
+					}
+
+					tileGroup.add(renderX, renderY, tile);
+				}
+			}
+		}
+
+		return tileGroup;
+	}
+
+	private function loadAutotileTiles(autotileDef:AutotileDef):Array<h2d.Tile> {
+		final tileSize = resolveAsInteger(autotileDef.tileSize);
+
+		return switch autotileDef.source {
+			case ATSAtlas(sheet, prefix):
+				final atlas = resourceLoader.loadSheet2(resolveAsString(sheet));
+				final prefixStr = resolveAsString(prefix);
+				final tileCount = switch autotileDef.format {
+					case Cross: 13;
+					case Blob47: 47;
+				};
+				[for (i in 0...tileCount) atlas.get(prefixStr + Std.string(i)).tile];
+
+			case ATSAtlasRegion(sheet, region):
+				// For region-based loading, we need to load the sheet's image file directly
+				// This requires the sheet to have a loadable tile resource
+				final sheetName = resolveAsString(sheet);
+				final baseTile = resourceLoader.loadTile(sheetName);
+				final rx = resolveAsInteger(region[0]);
+				final ry = resolveAsInteger(region[1]);
+				final rw = resolveAsInteger(region[2]);
+				final rh = resolveAsInteger(region[3]);
+				final tilesPerRow = Std.int(rw / tileSize);
+				final tileCount = switch autotileDef.format {
+					case Cross: 13;
+					case Blob47: 47;
+				};
+				[
+					for (i in 0...tileCount)
+						baseTile.sub(rx + (i % tilesPerRow) * tileSize, ry + Std.int(i / tilesPerRow) * tileSize, tileSize, tileSize)
+				];
+
+			case ATSFile(filename):
+				final baseTile = resourceLoader.loadTile(resolveAsString(filename));
+				final tileCount = switch autotileDef.format {
+					case Cross: 13;
+					case Blob47: 47;
+				};
+
+				// If region is provided, extract tiles from that region only
+				// Region format: [offsetX, offsetY, width, height]
+				// Tile indices in mapping are relative to the region
+				final regionX = autotileDef.region != null ? resolveAsInteger(autotileDef.region[0]) : 0;
+				final regionY = autotileDef.region != null ? resolveAsInteger(autotileDef.region[1]) : 0;
+				final regionW = autotileDef.region != null ? resolveAsInteger(autotileDef.region[2]) : Std.int(baseTile.width);
+				final tilesPerRow = Std.int(regionW / tileSize);
+
+				// If mapping is provided (Map<Int, Int>), load tiles from mapped positions
+				// For allowPartialMapping, missing tiles will be filled with a placeholder and resolved at render time
+				if (autotileDef.mapping != null) {
+					final result = new Array<h2d.Tile>();
+					for (i in 0...tileCount) {
+						// Get the mapped tileset index, using fallback for missing blob47 tiles
+						var mappedIdx = 0;
+						if (autotileDef.mapping.exists(i)) {
+							mappedIdx = autotileDef.mapping.get(i);
+						} else if (autotileDef.format == Blob47 && autotileDef.allowPartialMapping) {
+							// Find fallback tile and use its mapping
+							final fallbackIdx = bh.base.Autotile.applyBlob47FallbackWithMap(i, autotileDef.mapping);
+							mappedIdx = autotileDef.mapping.exists(fallbackIdx) ? autotileDef.mapping.get(fallbackIdx) : 0;
+						} else {
+							throw 'autotile: tile index $i not found in mapping' + currentNodePos();
+						}
+						result.push(baseTile.sub(
+							regionX + (mappedIdx % tilesPerRow) * tileSize,
+							regionY + Std.int(mappedIdx / tilesPerRow) * tileSize,
+							tileSize, tileSize
+						));
+					}
+					result;
+				}
+				else {
+					// Sequential tile extraction from the region
+					[for (i in 0...tileCount) baseTile.sub(
+						regionX + (i % tilesPerRow) * tileSize,
+						regionY + Std.int(i / tilesPerRow) * tileSize,
+						tileSize, tileSize
+					)];
+				}
+
+			case ATSTiles(tiles):
+				// Explicit tile list - load each tile source directly
+				[for (ts in tiles) loadTileSource(ts)];
+
+			case ATSDemo(edgeColor, fillColor):
+				// Auto-generated demo tiles based on format
+				final edge = resolveAsColorInteger(edgeColor).addAlphaIfNotPresent();
+				final fill = resolveAsColorInteger(fillColor).addAlphaIfNotPresent();
+				final tileCount = switch autotileDef.format {
+					case Cross: 13;
+					case Blob47: 47;
+				};
+				[for (i in 0...tileCount) generateAutotileDemoTile(autotileDef.format, i, tileSize, edge, fill)];
+		};
+	}
+
+	/**
+	 * Generate a single demo tile for autotiling visualization.
+	 * Draws tiles with edge/fill colors showing which edges connect to neighbors.
+	 * Outer corners get diagonal triangles for smoother appearance.
+	 */
+	private function generateAutotileDemoTile(format:AutotileFormat, tileIndex:Int, tileSize:Int, edgeColor:Int, fillColor:Int):h2d.Tile {
+		final borderWidth = Std.int(Math.max(1, tileSize / 8));
+		final cornerSize = Std.int(Math.max(2, tileSize / 2)); // Size of diagonal corner cut
+		final pl = new PixelLines(tileSize, tileSize);
+
+		// Fill entire tile with fill color
+		pl.filledRect(0, 0, tileSize, tileSize, fillColor);
+
+		// Get edge configuration for this tile index
+		final edges = getAutotileEdges(format, tileIndex);
+
+		// Draw borders on edges where there's no neighbor (edge = true means draw border)
+		if (edges.n)
+			pl.filledRect(0, 0, tileSize, borderWidth, edgeColor);
+		if (edges.s)
+			pl.filledRect(0, tileSize - borderWidth, tileSize, borderWidth, edgeColor);
+		if (edges.w)
+			pl.filledRect(0, 0, borderWidth, tileSize, edgeColor);
+		if (edges.e)
+			pl.filledRect(tileSize - borderWidth, 0, borderWidth, tileSize, edgeColor);
+
+		// Draw outer corner triangles (diagonal cut) where two adjacent edges meet
+		if (edges.n && edges.w) {
+			// NW outer corner - triangle from (0,cornerSize) to (cornerSize,0)
+			for (i in 0...cornerSize) {
+				final lineLen = cornerSize - i;
+				pl.filledRect(0, i, lineLen, 1, edgeColor);
+			}
+		}
+		if (edges.n && edges.e) {
+			// NE outer corner - triangle from (tileSize-cornerSize,0) to (tileSize,cornerSize)
+			for (i in 0...cornerSize) {
+				final lineLen = cornerSize - i;
+				pl.filledRect(tileSize - lineLen, i, lineLen, 1, edgeColor);
+			}
+		}
+		if (edges.s && edges.w) {
+			// SW outer corner - triangle from (0,tileSize-cornerSize) to (cornerSize,tileSize)
+			for (i in 0...cornerSize) {
+				final lineLen = cornerSize - i;
+				pl.filledRect(0, tileSize - 1 - i, lineLen, 1, edgeColor);
+			}
+		}
+		if (edges.s && edges.e) {
+			// SE outer corner - triangle from (tileSize-cornerSize,tileSize) to (tileSize,tileSize-cornerSize)
+			for (i in 0...cornerSize) {
+				final lineLen = cornerSize - i;
+				pl.filledRect(tileSize - lineLen, tileSize - 1 - i, lineLen, 1, edgeColor);
+			}
+		}
+
+		// Draw inner corners (triangular notches for diagonal-missing tiles)
+		// Inner corners are the opposite of outer corners - they cut into the fill
+		final innerCornerSize = Std.int(Math.max(2, tileSize / 4)); // Smaller than outer corners
+		if (edges.innerNE) {
+			// Inner NE corner - triangle at top-right cutting into fill
+			for (i in 0...innerCornerSize) {
+				final lineLen = innerCornerSize - i;
+				pl.filledRect(tileSize - lineLen, i, lineLen, 1, edgeColor);
+			}
+		}
+		if (edges.innerNW) {
+			// Inner NW corner - triangle at top-left cutting into fill
+			for (i in 0...innerCornerSize) {
+				final lineLen = innerCornerSize - i;
+				pl.filledRect(0, i, lineLen, 1, edgeColor);
+			}
+		}
+		if (edges.innerSE) {
+			// Inner SE corner - triangle at bottom-right cutting into fill
+			for (i in 0...innerCornerSize) {
+				final lineLen = innerCornerSize - i;
+				pl.filledRect(tileSize - lineLen, tileSize - 1 - i, lineLen, 1, edgeColor);
+			}
+		}
+		if (edges.innerSW) {
+			// Inner SW corner - triangle at bottom-left cutting into fill
+			for (i in 0...innerCornerSize) {
+				final lineLen = innerCornerSize - i;
+				pl.filledRect(0, tileSize - 1 - i, lineLen, 1, edgeColor);
+			}
+		}
+
+		pl.updateBitmap();
+		return pl.tile;
+	}
+
+	/**
+	 * Get edge configuration for a tile index in a given format.
+	 * Returns which edges/corners should have borders drawn.
+	 */
+	private function getAutotileEdges(format:AutotileFormat, tileIndex:Int):{n:Bool, s:Bool, e:Bool, w:Bool, innerNE:Bool, innerNW:Bool, innerSE:Bool, innerSW:Bool} {
+		return switch format {
+			case Cross: getCrossEdges(tileIndex);
+			case Blob47: getBlob47Edges(tileIndex);
+		};
+	}
+
+	/**
+	 * Cross format edge configuration.
+	 * Layout: 0=N 1=W 2=C 3=E 4=S / 5=NW 6=NE 7=SW 8=SE outer / 9-12=inner corners
+	 */
+	private function getCrossEdges(idx:Int):{n:Bool, s:Bool, e:Bool, w:Bool, innerNE:Bool, innerNW:Bool, innerSE:Bool, innerSW:Bool} {
+		return switch idx {
+			case 0: {n: true, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // N edge
+			case 1: {n: false, s: false, e: false, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // W edge
+			case 2: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // Center
+			case 3: {n: false, s: false, e: true, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // E edge
+			case 4: {n: false, s: true, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // S edge
+			case 5: {n: true, s: false, e: false, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // NW outer corner
+			case 6: {n: true, s: false, e: true, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // NE outer corner
+			case 7: {n: false, s: true, e: false, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // SW outer corner
+			case 8: {n: false, s: true, e: true, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // SE outer corner
+			case 9: {n: false, s: false, e: false, w: false, innerNE: true, innerNW: false, innerSE: false, innerSW: false}; // inner-NE
+			case 10: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: true, innerSE: false, innerSW: false}; // inner-NW
+			case 11: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: true, innerSW: false}; // inner-SE
+			case 12: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: true}; // inner-SW
+			default: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false};
+		};
+	}
+
+	/**
+	 * Blob47 edge configuration based on the reduced mask mapping.
+	 * Maps each of the 47 tiles to its edge/corner configuration.
+	 * Inner corners are drawn where diagonal is MISSING (not present).
+	 * Comments show which neighbors ARE present.
+	 */
+	private function getBlob47Edges(idx:Int):{n:Bool, s:Bool, e:Bool, w:Bool, innerNE:Bool, innerNW:Bool, innerSE:Bool, innerSW:Bool} {
+		return switch idx {
+			// No cardinals - isolated or single edges (no inner corners possible)
+			case 0: {n: true, s: true, e: true, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};     // isolated
+			case 1: {n: false, s: true, e: true, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};    // N only
+			case 2: {n: true, s: true, e: false, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};    // E only
+			case 5: {n: true, s: false, e: true, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};    // S only
+			case 13: {n: true, s: true, e: true, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false};   // W only
+
+			// Two adjacent cardinals - outer corners (no inner corners)
+			case 3: {n: false, s: true, e: false, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};   // N+E (corner)
+			case 4: {n: false, s: true, e: false, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};   // N+NE+E
+			case 7: {n: true, s: false, e: false, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};   // E+S (corner)
+			case 10: {n: true, s: false, e: false, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // E+SE+S
+			case 14: {n: false, s: true, e: true, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // N+W (corner)
+			case 18: {n: true, s: false, e: true, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // S+W (corner)
+			case 26: {n: true, s: false, e: true, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // S+SW+W
+			case 34: {n: false, s: true, e: true, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // N+W+NW
+
+			// Two opposite cardinals - edges (no inner corners)
+			case 6: {n: false, s: false, e: true, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};   // N+S
+			case 15: {n: true, s: true, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // E+W
+			case 19: {n: false, s: false, e: true, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // N+S+W
+			case 27: {n: false, s: false, e: true, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // N+S+SW+W
+			case 37: {n: false, s: false, e: true, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // N+S+W+NW
+			case 42: {n: false, s: false, e: true, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // N+S+SW+W+NW
+
+			// Three cardinals - T-shapes (no inner corners in missing direction)
+			case 8: {n: false, s: false, e: false, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // N+E+S
+			case 9: {n: false, s: false, e: false, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // N+NE+E+S
+			case 11: {n: false, s: false, e: false, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // N+E+SE+S
+			case 12: {n: false, s: false, e: false, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // N+NE+E+SE+S
+			case 16: {n: false, s: true, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // N+E+W
+			case 17: {n: false, s: true, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // N+NE+E+W
+			case 20: {n: true, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // E+S+W
+			case 23: {n: true, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // E+SE+S+W
+			case 28: {n: true, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // E+S+SW+W
+			case 31: {n: true, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // E+SE+S+SW+W
+			case 35: {n: false, s: true, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // N+E+W+NW
+			case 36: {n: false, s: true, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // N+NE+E+W+NW
+
+			// All four cardinals - inner corners where diagonals are MISSING
+			case 21: {n: false, s: false, e: false, w: false, innerNE: true, innerNW: true, innerSE: true, innerSW: true};    // N+E+S+W (all diagonals missing)
+			case 22: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: true, innerSE: true, innerSW: true};   // N+NE+E+S+W (NE present)
+			case 24: {n: false, s: false, e: false, w: false, innerNE: true, innerNW: true, innerSE: false, innerSW: true};   // N+E+SE+S+W (SE present)
+			case 25: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: true, innerSE: false, innerSW: true};  // N+NE+E+SE+S+W (NE+SE present)
+			case 29: {n: false, s: false, e: false, w: false, innerNE: true, innerNW: true, innerSE: true, innerSW: false};   // N+E+S+SW+W (SW present)
+			case 30: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: true, innerSE: true, innerSW: false};  // N+NE+E+S+SW+W (NE+SW present)
+			case 32: {n: false, s: false, e: false, w: false, innerNE: true, innerNW: true, innerSE: false, innerSW: false};  // N+E+SE+S+SW+W (SE+SW present)
+			case 33: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: true, innerSE: false, innerSW: false}; // N+NE+E+SE+S+SW+W (NE+SE+SW present)
+			case 38: {n: false, s: false, e: false, w: false, innerNE: true, innerNW: false, innerSE: true, innerSW: true};   // N+E+S+W+NW (NW present)
+			case 39: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: true, innerSW: true};  // N+NE+E+S+W+NW (NE+NW present)
+			case 40: {n: false, s: false, e: false, w: false, innerNE: true, innerNW: false, innerSE: false, innerSW: true};  // N+E+SE+S+W+NW (SE+NW present)
+			case 41: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: true}; // N+NE+E+SE+S+W+NW (NE+SE+NW present)
+			case 43: {n: false, s: false, e: false, w: false, innerNE: true, innerNW: false, innerSE: true, innerSW: false};  // N+E+S+SW+W+NW (SW+NW present)
+			case 44: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: true, innerSW: false}; // N+NE+E+S+SW+W+NW (NE+SW+NW present)
+			case 45: {n: false, s: false, e: false, w: false, innerNE: true, innerNW: false, innerSE: false, innerSW: false}; // N+E+SE+S+SW+W+NW (SE+SW+NW present)
+			case 46: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // all neighbors (none missing)
+			default: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false};
+		};
 	}
 
 	function updateIndexedParamsFromDynamicMap(node: Node, input:Map<String, Dynamic>, definitions:ParametersDefinitions,
@@ -2408,17 +3143,13 @@ class MultiAnimBuilder {
 		inline function getDefsType(key:String, value:Dynamic) {
 			final type = definitions.get(key)?.type;
 			if (type == null)
-				#if MULTIANIM_TRACE
-				throw '$key=>$value does not have matching ParametersDefinitions ${definitions.toString()} (or type is null) at ${node.parserPos} for node ${node.uniqueNodeName}';
-				#else
-				throw '$key=>$value does not have matching ParametersDefinitions ${definitions.toString()} (or type is null)';
-				#end
+				throw '$key=>$value does not have matching ParametersDefinitions ${definitions.toString()} (or type is null)' + MacroUtils.nodePos(node);
 			return type;
 		}
 
 		function resolveReferenceableValue(ref:ReferenceableValue, type):Dynamic {
 			return switch type {
-				case null: throw 'type is null';
+				case null: throw 'type is null' + MacroUtils.nodePos(node);
 				case PPTHexDirection: resolveAsInteger(ref);
 				case PPTGridDirection: resolveAsInteger(ref);
 				case PPTFlags(_): resolveAsInteger(ref);
@@ -2462,7 +3193,7 @@ class MultiAnimBuilder {
 		if (extraInput != null) {
 			for (key => value in extraInput) {
 				if (retVal.exists(key))
-					throw 'extra input "$key=>$value" already exists in input';
+					throw 'extra input "$key=>$value" already exists in input' + MacroUtils.nodePos(node);
 				if (Std.isOfType(value, ResolvedIndexParameters)) {
 					retVal.set(key, value);
 				} else if (Std.isOfType(value, ReferenceableValue)) {
@@ -2526,14 +3257,10 @@ class MultiAnimBuilder {
 
 			final node = multiParserResult?.nodes?.get(name);
 			if (node == null) {
-				throw 'buildWithComboParameters ${allCombos}: could not build ${name} with parameters ${inputParameters} and builderParameters ${builderParams}';
+				throw 'buildWithComboParameters ${allCombos}: could not build ${name} with parameters ${inputParameters} and builderParameters ${builderParams}' + currentNodePos();
 			}
 			if (inputParameters.count() + allCombos.length == 0) {
-				#if MULTIANIM_TRACE
-				throw 'parameters are required for buildWithComboParameters ${name} at ${node.parserPos}';
-				#else
-				throw 'parameters are required for buildWithComboParameters ${name}';
-				#end
+				throw 'parameters are required for buildWithComboParameters ${name}' + MacroUtils.nodePos(node);
 			}
 
 			final definitions = getProgrammableParameterDefinitions(node, true);
@@ -2546,11 +3273,11 @@ class MultiAnimBuilder {
 
 			for (prop in allCombos) {
 				if (!definitions.exists(prop))
-					throw 'definition for "${prop}" does not exist';
+					throw 'definition for "${prop}" does not exist' + MacroUtils.nodePos(node);
 				if (inputParameters.exists(prop))
-					throw 'Prop "${prop}" set both as parameter and combo';
+					throw 'Prop "${prop}" set both as parameter and combo' + MacroUtils.nodePos(node);
 				if (allOptions.exists(prop))
-					throw 'Duplicate combo "${prop}"';
+					throw 'Duplicate combo "${prop}"' + MacroUtils.nodePos(node);
 				var def = definitions[prop];
 				var allValues = switch def.type {
 					case PPTHexDirection: [for (i in 0...6) '$i}'];
@@ -2558,16 +3285,16 @@ class MultiAnimBuilder {
 					case PPTFlags(bits): [for (i in 0...bits) '$i}'];
 					case PPTEnum(values): values;
 					case PPTBool: ["0", "1"];
-					case PPTRange(from, to): 
+					case PPTRange(from, to):
 						if (Math.abs(from - to) > 50)
 							trace('WARNING: range ${from}..${to} is very large');
 						[for (i in from...to) '$i}'];
-					case PPTInt: throw 'Prop "${prop}" is int and cannot be used as combo';
-					case PPTUnsignedInt: throw 'Prop "${prop}" is uint and cannot be used as combo';
-					case PPTString: throw 'Prop "${prop}" is string and cannot be used as combo';
-					case PPTColor: throw 'Prop "${prop}" is color and cannot be used as combo';
-					case PPTFloat: throw 'Prop "${prop}" is float and cannot be used as combo';
-					case PPTArray: throw 'Prop "${prop}" is array and cannot be used as combo';
+					case PPTInt: throw 'Prop "${prop}" is int and cannot be used as combo' + MacroUtils.nodePos(node);
+					case PPTUnsignedInt: throw 'Prop "${prop}" is uint and cannot be used as combo' + MacroUtils.nodePos(node);
+					case PPTString: throw 'Prop "${prop}" is string and cannot be used as combo' + MacroUtils.nodePos(node);
+					case PPTColor: throw 'Prop "${prop}" is color and cannot be used as combo' + MacroUtils.nodePos(node);
+					case PPTFloat: throw 'Prop "${prop}" is float and cannot be used as combo' + MacroUtils.nodePos(node);
+					case PPTArray: throw 'Prop "${prop}" is array and cannot be used as combo' + MacroUtils.nodePos(node);
 				}
 				allOptions.set(prop, allValues);
 				totalStates *= allValues.length;
@@ -2577,7 +3304,7 @@ class MultiAnimBuilder {
 				if (totalStates > 32)
 					trace('more than 100 combination for build all');
 				else if (totalStates > 1000)
-					throw 'more than 1000 combinations for buildAll';
+					throw 'more than 1000 combinations for buildAll' + MacroUtils.nodePos(node);
 			}
 			final gridCoordinateSystem = MultiAnimParser.getGridCoordinateSystem(node);
 			final hexCoordinateSystem = MultiAnimParser.getHexCoordinateSystem(node);
@@ -2602,7 +3329,7 @@ class MultiAnimBuilder {
 							case StringValue(s):
 								s;
 							default:
-								throw 'comboParams [${combo}] is not string';
+								throw 'comboParams [${combo}] is not string' + MacroUtils.nodePos(node);
 						}
 					}
 				]);
@@ -2618,19 +3345,19 @@ class MultiAnimBuilder {
 	function loadTileImpl(sheet, tilename, ?index:Int) {
 		final sheet = resourceLoader.loadSheet2(sheet);
 		if (sheet == null)
-			throw 'sheet ${sheet} could not be loaded';
+			throw 'sheet ${sheet} could not be loaded' + currentNodePos();
 
 		final tile = if (index != null) {
 			final arr = sheet.getAnim(tilename);
 			if (arr == null)
-				throw 'tile ${tilename}, index $index sheet ${sheet} could not be loaded';
+				throw 'tile ${tilename}, index $index sheet ${sheet} could not be loaded' + currentNodePos();
 			if (index < 0 || index >= arr.length)
-				throw 'tile $tilename from sheet $sheet does not have tile index $index, should be [0, ${arr.length - 1}]';
+				throw 'tile $tilename from sheet $sheet does not have tile index $index, should be [0, ${arr.length - 1}]' + currentNodePos();
 			arr[index];
 		} else {
 			final t = sheet.get(tilename);
 			if (t == null)
-				throw 'tile ${tilename} in sheet ${sheet} could not be loaded';
+				throw 'tile ${tilename} in sheet ${sheet} could not be loaded' + currentNodePos();
 			t;
 		}
 
@@ -2640,11 +3367,11 @@ class MultiAnimBuilder {
 	function load9Patch(sheet, tilename) {
 		final sheet = resourceLoader.loadSheet2(sheet);
 		if (sheet == null)
-			throw 'sheet ${sheet} could not be loaded';
+			throw 'sheet ${sheet} could not be loaded' + currentNodePos();
 
 		final ninePatch = sheet.getNinePatch(tilename);
 		if (ninePatch == null)
-			throw 'tile ${tilename} in sheet ${sheet} could not be loaded';
+			throw 'tile ${tilename} in sheet ${sheet} could not be loaded' + currentNodePos();
 		return ninePatch;
 	}
 }

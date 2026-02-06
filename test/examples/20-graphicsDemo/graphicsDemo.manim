@@ -1,100 +1,100 @@
 version: 0.3
 
 #graphicsDemo programmable() {
-  grid:250,150
+  pos: 0, 0
+  grid: 1280, 720
 
-  @alpha(0.3) bitmap(generated(color(function(gridWidth), function(gridHeight),#333)));
-  @alpha(0.9) text(dd, "#20: graphics", white, left, 200);
+  @alpha(0.3) bitmap(generated(color(1280, 720, #333)));
 
   point {
-    pos:10,20
+    pos: 40, 80
     // Filled shapes
     point {
-      pos: 20, 20
+      pos: 80, 80
       graphics (
         // Filled rectangle
-        rect(#f00, filled, 30, 20): -15, -10
+        rect(#f00, filled, 120, 80): -60, -40
       );
-      @alpha(0.7) text(pixeled6, "rect", white, left, 100): -15, 15
+      @alpha(0.7) text(dd, "rect", white, left, 200): -60, 60
     }
 
     point {
-      pos: 70, 20
+      pos: 280, 80
       graphics (
         // Filled circle
-        circle(#0f0, filled, 15): 0, 0
+        circle(#0f0, filled, 60): 0, 0
       );
-      @alpha(0.7) text(pixeled6, "circle", white, left, 100): -15, 20
+      @alpha(0.7) text(dd, "circle", white, left, 200): -60, 80
     }
 
     point {
-      pos: 120, 20
+      pos: 480, 80
       graphics (
         // Rounded rectangle
-        roundRect(#00f, filled, 30, 20, 5): -15, -10
+        roundRect(#00f, filled, 120, 80, 20): -60, -40
       );
-      @alpha(0.7) text(pixeled6, "roundRect", white, left, 100): -15, 15
+      @alpha(0.7) text(dd, "roundRect", white, left, 200): -60, 60
     }
 
     // Outlined shapes
     point {
-      pos: 170, 20
+      pos: 680, 80
       graphics (
         // Circle outline
-        circle(#ff0, 2, 12): 0, 0
+        circle(#ff0, 4, 48): 0, 0
       );
-      @alpha(0.7) text(pixeled6, "outline", white, left, 100): -12, 20
+      @alpha(0.7) text(dd, "outline", white, left, 200): -48, 80
     }
 
     // Polygon
     point {
-      pos: 30, 70
+      pos: 120, 280
       graphics (
         // Triangle
         polygon(#f0f, filled,
-          0, -15,
-          13, 15,
-          -13, 15
+          0, -60,
+          52, 60,
+          -52, 60
         );
       );
-      @alpha(0.7) text(pixeled6, "polygon", white, left, 100): -13, 20
+      @alpha(0.7) text(dd, "polygon", white, left, 200): -52, 80
     }
 
     // Arc
     point {
-      pos: 80, 70
+      pos: 320, 280
       graphics (
         // Pac-man shape
-        arc(#ff0, filled, 15, 45, 270): 0, 0
+        arc(#ff0, filled, 60, 45, 270): 0, 0
       );
-      @alpha(0.7) text(pixeled6, "arc", white, left, 100): -15, 20
+      @alpha(0.7) text(dd, "arc", white, left, 200): -60, 80
     }
 
     // Line
     point {
-      pos: 200, 20
+      pos: 800, 80
       graphics (
         // Diagonal line
-        line(#0ff, 2, -15, -10, 15, 10);
+        line(#0ff, 4, -60, -40, 60, 40);
       );
-      @alpha(0.7) text(pixeled6, "line", white, left, 100): -12, 15
+      @alpha(0.7) text(dd, "line", white, left, 200): -48, 60
     }
 
     // Combination
     point {
-      pos: 140, 80
+      pos: 560, 320
       graphics (
         // Body
-        rect(#888, filled, 20, 30): -10, -30
+        rect(#888, filled, 80, 120): -40, -120
         // Head
-        circle(#aaa, filled, 10): 0, -35
+        circle(#aaa, filled, 40): 0, -140
         // Eyes
-        circle(#000, filled, 2): -4, -37
-        circle(#000, filled, 2): 4, -37
+        circle(#000, filled, 8): -16, -148
+        circle(#000, filled, 8): 16, -148
         // Smile arc
-        arc(#000, 1, 5, 0, 180): 0, -32
-      ):0,30
-      @alpha(0.7) text(pixeled6, "combined", white, left, 100): -10, 35
+        arc(#000, 4, 20, 0, 180): 0, -128
+      ):0,120
+      @alpha(0.7) text(dd, "combined", white, left, 200): -40, 140
     }
   }
 }

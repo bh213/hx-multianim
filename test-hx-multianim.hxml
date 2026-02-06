@@ -14,5 +14,6 @@
 -debug
 -D resourcesPath=test/res
 -D windowSize=1280x720
+-D MULTIANIM_TRACE
 -hl build/hl-test.hl
 --cmd hl build/hl-test.hl

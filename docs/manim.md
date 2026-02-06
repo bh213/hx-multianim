@@ -432,6 +432,165 @@ Collections of colors accessed by index.
 
 ---
 
+## Autotile
+
+Root-level element for procedural terrain/tileset generation. Autotiles automatically select the correct tile variant based on neighboring tiles.
+
+### Basic Syntax
+
+```
+#name autotile {
+    format: cross | blob47
+    tileSize: <int>
+    <source>
+    [optional properties]
+}
+```
+
+### Formats
+
+| Format | Tiles | Description |
+|--------|-------|-------------|
+| `cross` | 13 | Cardinal directions + corners (N, E, S, W, C, outer corners, inner corners) |
+| `blob47` | 47 | Full 8-directional coverage with all edge/corner combinations |
+
+### Source Types
+
+One source type is required:
+
+**Atlas with prefix:**
+```
+sheet: "sheetName", prefix: "tile_"
+```
+Loads tiles named `tile_0`, `tile_1`, etc. from atlas.
+
+**Atlas with region:**
+```
+sheet: "sheetName", region: [x, y, width, height]
+```
+Extracts tiles from a rectangular region of the atlas. **Requires `mapping:`** since region tiles are rarely in autotile index order.
+
+**Image file:**
+```
+file: "filename.png"
+```
+Loads tiles from an image file. Use with `region:` to specify tile area. **Requires `mapping:`** when using a region.
+
+**Explicit tiles:**
+```
+tiles: sheet("atlas", "tile1") sheet("atlas", "tile2") generated(color(16,16,red)) ...
+```
+List of explicit tile sources for full control.
+
+**Demo (auto-generated):**
+```
+demo: edgeColor, fillColor
+```
+Generates placeholder tiles for prototyping. Shows edge/fill colors to visualize tile variants.
+
+### Optional Properties
+
+| Property | Description |
+|----------|-------------|
+| `region: [x, y, w, h]` | For file source: extract tiles from this region only |
+| `depth: <int>` | Isometric elevation depth |
+| `mapping: [...]` | Remap tile indices (see below) |
+| `allowPartialMapping: true` | For blob47: missing tiles use fallback instead of error |
+
+### Mapping
+
+Maps autotile indices to tileset indices. **Required for region-based sources** because tileset artists rarely arrange tiles in autotile index order.
+
+Autotile indices encode which neighbors are present:
+- **cross format**: 0-12, encoding cardinal directions and corners
+- **blob47 format**: 0-46, encoding all 8-directional neighbor combinations
+
+Two mapping formats:
+
+**Sequential:** Position in array = autotile index, value = tileset index
+```
+mapping: [4, 7, 3, 6]  // autotile 0->4, 1->7, 2->3, 3->6
+```
+
+**Explicit:** `autotileIndex:tilesetIndex` pairs (recommended for partial mapping)
+```
+mapping: [0:4, 1:7, 5:1, 13:5]
+```
+
+### Partial Mapping (blob47)
+
+Full blob47 coverage requires 47 distinct tiles, but many tilesets only provide a subset (typically 13-20 tiles for basic terrain). Use `allowPartialMapping: true` to enable automatic fallback:
+
+```
+allowPartialMapping: true
+mapping: [
+    0:4,    // isolated tile
+    1:7,    // N neighbor only
+    // ... only map tiles that exist in your tileset
+]
+```
+
+**Fallback behavior:** When a blob47 index isn't mapped, the system finds a simpler tile that still looks correct:
+- Unmapped corner combinations fall back to edge-only tiles
+- Complex patterns fall back to simpler patterns with the same cardinal edges
+- This allows a 15-tile tileset to work with the full 47-tile system
+
+See [test/examples/32-blob47Fallback/](../test/examples/32-blob47Fallback/) for a working example with the Forgotten Plains tileset.
+
+### Examples
+
+**Demo autotile for prototyping:**
+```
+#terrainDemo autotile {
+    format: blob47
+    tileSize: 16
+    demo: 0x66AA44, 0x886644    // green edges, brown fill
+}
+```
+See [test/examples/31-autotile/](../test/examples/31-autotile/) for cross and blob47 demo examples.
+
+**Tileset with region and partial mapping:**
+```
+#grassTerrain autotile {
+    format: blob47
+    tileSize: 8
+    file: "tileset.png"
+    region: [56, 24, 24, 40]
+    allowPartialMapping: true
+    mapping: [
+        0:4,    // isolated tile
+        1:7,    // N neighbor
+        5:1,    // S neighbor
+        13:5,   // W neighbor
+        21:4    // all neighbors (center)
+        // unmapped tiles use fallback
+    ]
+}
+```
+See [test/examples/32-blob47Fallback/](../test/examples/32-blob47Fallback/) for a complete partial mapping example.
+
+### Using Autotile Tiles
+
+Reference autotile tiles in `generated()` expressions:
+
+```
+// By index (0-12 for cross, 0-46 for blob47)
+bitmap(generated(autotile("terrainDemo", 0)))
+
+// By edge flags (N, E, S, W, NE, SE, SW, NW)
+bitmap(generated(autotile("terrainDemo", N|E|S|W)))
+```
+
+### Debugging with Region Sheet
+
+Visualize the tileset region with numbered grid:
+
+```
+bitmap(generated(autotileRegionSheet("grassTerrain", 4, "f3x5", white)))
+```
+
+---
+
 ## Paths
 
 Paths define animated paths for objects to follow.
@@ -808,9 +967,22 @@ updatable.setObject(particles);
 ## Tile Sources
 
 * `sheet(sheet, name)` - from atlas sheet
+* `sheet(sheet, name, index)` - from atlas sheet with specific frame index (for multi-frame tiles)
 * `file(filename)` - from file
+* `$varname` - reference to a tile source variable (e.g., `$bitmap` from stateanim/tiles iterators)
 * `generated(cross(width, height[, color]))` - generated cross
-* `generated(solid(color, width, height))` - solid color
+* `generated(color(width, height, color))` - solid color
+* `generated(colorWithText(width, height, color, text, textColor, font))` - solid color with text
+* `generated(autotile("name", selector))` - demo tile from autotile definition
+  - By index: `autotile("grassTerrain", 0)` - select tile by index (0-12 for cross, 0-46 for blob47)
+  - By edges: `autotile("grassTerrain", N+E+S+W)` - select tile by neighbor flags
+  - Edge flags: `N`, `E`, `S`, `W` (cardinals), `NE`, `SE`, `SW`, `NW` (corners)
+  - Requires autotile with `demo: edgeColor, fillColor` defined
+* `generated(autotileRegionSheet("name", scale, "font", fontColor))` - visualization of autotile region with numbered grid
+  - Displays the complete region of an autotile with tile indices overlaid
+  - Useful for debugging and identifying which tile index corresponds to which visual
+  - `scale` - scale factor for tiles (font remains at original size for readability)
+  - Requires autotile with `region` defined (file source or atlas region)
 
 ---
 

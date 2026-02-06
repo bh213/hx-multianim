@@ -1,0 +1,5 @@
+# Verbose test configuration - includes all trace output
+# Run with: test.bat run -v
+
+test-hx-multianim.hxml
+-D VERBOSE

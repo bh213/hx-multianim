@@ -1,46 +1,45 @@
 version: 0.3
 
 #atlasDemo programmable() {
-  pos:5,5
-  grid:220,130
+  pos: 0, 0
+  grid: 1280, 720
 
-  @alpha(0.1) bitmap(generated(color(function(gridWidth), function(gridHeight), white)));
-  @alpha(0.9) text(dd, "#24: atlas demo", white, left, 200);
+  @alpha(0.1) bitmap(generated(color(1280, 720, white)));
 
-  // Row 1: Alignment demo - tiles at same Y (50), spaced 70px apart
-  
-  // Center alignment: position (27,50) is center of tile
-  text(dd, "center", white, left, 60): 15, 20
-  bitmap(sheet("demo", "tile-center"), center): 27, 50
-  rect(#FF69B4, filled, 6, 6): 27-3, 50-3
-  
+  // Row 1: Alignment demo - tiles at same Y (200), spaced apart
 
-  // Top-left alignment: position (85,38) is top-left corner of tile
-  text(dd, "top-left", white, left, 60): 72, 20
-  bitmap(sheet("demo", "tile-topleft"), left, top): 85, 38
-  rect(#FF69B4, filled, 6, 6): 83-3, 38-3
-  
+  // Center alignment: position is center of tile
+  text(dd, "center", white, left, 200): 60, 80
+  @scale(4) bitmap(sheet("demo", "tile-center"), center): 108, 200
+  rect(#FF69B4, filled, 24, 24): 108-12, 200-12
 
-  // Bottom-right alignment: position (179,62) is bottom-right corner of tile
-  text(dd, "bot-right", white, left, 60): 129, 20
-  bitmap(sheet("demo", "tile-bottomright"), right, bottom): 179, 62
-  rect(#FF69B4, filled, 6, 6): 179-3, 62-3
+
+  // Top-left alignment: position is top-left corner of tile
+  text(dd, "top-left", white, left, 200): 288, 80
+  @scale(4) bitmap(sheet("demo", "tile-topleft"), left, top): 340, 152
+  rect(#FF69B4, filled, 24, 24): 340-12, 152-12
+
+
+  // Bottom-right alignment: position is bottom-right corner of tile
+  text(dd, "bot-right", white, left, 200): 516, 80
+  @scale(4) bitmap(sheet("demo", "tile-bottomright"), right, bottom): 716, 248
+  rect(#FF69B4, filled, 24, 24): 716-12, 248-12
 
   // Row 2: Indexed tiles 0-3 and ninepatch
-  text(dd, "idx 0-3", white, left, 50): 15, 75
-  bitmap(sheet("demo", "indexed-tile", 0), left, top): 15, 90
-  rect(#FF69B4, 1, 26, 26): 14, 89
+  text(dd, "idx 0-3", white, left, 200): 60, 300
+  @scale(4) bitmap(sheet("demo", "indexed-tile", 0), left, top): 60, 360
+  rect(#FF69B4, 4, 104, 104): 56, 356
 
-  bitmap(sheet("demo", "indexed-tile", 1), left, top): 45, 90
-  rect(#FF69B4, 1, 26, 26): 44, 89
+  @scale(4) bitmap(sheet("demo", "indexed-tile", 1), left, top): 180, 360
+  rect(#FF69B4, 4, 104, 104): 176, 356
 
-  bitmap(sheet("demo", "indexed-tile", 2), left, top): 75, 90
-  rect(#FF69B4, 1, 26, 26): 74, 89
+  @scale(4) bitmap(sheet("demo", "indexed-tile", 2), left, top): 300, 360
+  rect(#FF69B4, 4, 104, 104): 296, 356
 
-  bitmap(sheet("demo", "indexed-tile", 3), left, top): 105, 90
-  rect(#FF69B4, 1, 26, 26): 104, 89
+  @scale(4) bitmap(sheet("demo", "indexed-tile", 3), left, top): 420, 360
+  rect(#FF69B4, 4, 104, 104): 416, 356
 
-  text(dd, "9patch", white, left, 50): 140, 75
-  ninepatch("demo", "ninepatch-demo", 48, 48): 140, 90
-  rect(#FF69B4, 1, 50, 50): 139, 89
+  text(dd, "9patch", white, left, 200): 560, 300
+  ninepatch("demo", "ninepatch-demo", 192, 192): 560, 360
+  rect(#FF69B4, 4, 200, 200): 556, 356
 }

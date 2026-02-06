@@ -3,17 +3,20 @@ version: 0.3
 #file palette(file:"main-palette.png")
 
 #stateAnimDemo programmable() {
-  pos:5,5
-  grid:250,150
+  pos: 0, 0
+  grid: 1280, 720
 
-  @alpha(0.3) bitmap(generated(color(function(gridWidth), function(gridHeight),yellow)));
-  stateanim("marine.anim", "idle", "direction"=>"l"):50,50
-  @alpha(0.5) stateanim("marine.anim", "idle", direction=>"l"):100,50
-  stateanim("marine.anim", "idle", direction=>r){
-    pos: 150, 50
+  @alpha(0.3) bitmap(generated(color(1280, 720, yellow)));
+  @scale(6) stateanim("marine.anim", "idle", "direction"=>"l"):200,300
+  stateanim("marine.anim", "idle", direction=>"l") {
+    scale: 6
+    alpha: 0.5
+    pos: 550, 300
+  }
+  @scale(6) stateanim("marine.anim", "idle", direction=>r){
+    pos: 900, 300
     filter:replacePalette(file, 0, 1)
   }
-  @alpha(0.9) text(dd, "#5: stateanim", white, left, 200);
 }
 
 #main point {

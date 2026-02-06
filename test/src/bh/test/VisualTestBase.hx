@@ -13,9 +13,17 @@ import bh.multianim.MultiAnimBuilder;
 class VisualTestBase extends utest.Test {
 	private var referenceDir:String;
 	private var testName:String;
+	private var testTitle:String; // Human-readable title like "#1: hex grid + pixels"
 	private var s2d:Scene;
 	private var updateWaiter:Null<Float -> Void>;
 	public static var appInstance:hxd.App;
+
+	// Verbose output - only trace info/debug messages when enabled
+	private static inline function verbose(msg:String):Void {
+		#if VERBOSE
+		trace(msg);
+		#end
+	}
 
 	public function new(testName:String, s2d:Scene) {
 		super();
@@ -58,11 +66,14 @@ class VisualTestBase extends utest.Test {
 
 	/**
 	 * Build a manim file and add it to the scene
+	 * @param scale Optional scale factor (default 4.0 for higher resolution rendering)
 	 */
-	public function buildAndAddToScene(animFilePath:String, name:String):Dynamic {
+	public function buildAndAddToScene(animFilePath:String, name:String, ?scale:Float):Dynamic {
 
 		// Clear existing children from scene
 		s2d.removeChildren();
+
+		if (scale == null) scale = 4.0;
 
 		try {
 			// Load file as ByteData
@@ -78,17 +89,37 @@ class VisualTestBase extends utest.Test {
 
 			// Build with empty parameters
 			var built = builder.buildWithParameters(name, new Map());
-			trace ('Built element "$name" from $animFilePath: $built');
+			verbose('Built element "$name" from $animFilePath: $built');
 			if (built == null) {
 				throw 'Error: Failed to build element "$name" from $animFilePath';
 			}
 			s2d.addChild(built.object);
-			// Set 4x scale on root for higher resolution rendering
-			built.object.setScale(4.0);
+			built.object.setScale(scale);
+
+			// Add title text overlay if testTitle is set
+			if (testTitle != null && testTitle.length > 0) {
+				addTitleOverlay();
+			}
+
 			return built;
 		} catch (e:Dynamic) {
 			trace('Error building animation from $animFilePath: $e');
 			return null;
+		}
+	}
+
+	/**
+	 * Add a title text overlay to the scene
+	 */
+	private function addTitleOverlay():Void {
+		var loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+		var font = loader.loadFont("dd");
+		if (font != null) {
+			var text = new h2d.Text(font, s2d);
+			text.text = testTitle;
+			text.textColor = 0xFFFFFF;
+			text.setPosition(20, 20);
+			text.alpha = 0.9;
 		}
 	}
 	
@@ -137,7 +168,7 @@ class VisualTestBase extends utest.Test {
 
 		if (!empty) {
 			File.saveBytes(outputFile, pixels.toPNG());
-			trace('Screenshot saved: $outputFile');
+			verbose('Screenshot saved: $outputFile');
 		}
 		e.popTarget();
 		renderTexture.dispose();
@@ -147,14 +178,18 @@ class VisualTestBase extends utest.Test {
 
 	/**
 	 * Compare two PNG images by calculating similarity
-	 * Returns true if images are similar enough (> 95% match)
+	 * Returns true if images are similar enough (> threshold match)
+	 * @param actual Path to actual image
+	 * @param reference Path to reference image
+	 * @param threshold Optional similarity threshold (default 0.9999 = 99.99%)
 	 */
-	public function compareImages(actual:String, reference:String):Bool {
+	public function compareImages(actual:String, reference:String, ?threshold:Float):Bool {
+		if (threshold == null) threshold = 0.9999;
 		var similarity = 1.0;
 		var passed = true;
 
 		if (!sys.FileSystem.exists(reference)) {
-			trace('Info: Reference image not found: $reference (would generate on first run)');
+			verbose('Info: Reference image not found: $reference (would generate on first run)');
 			passed = true; // Pass if no reference exists (generate it)
 			similarity = 1.0;
 		} else if (!sys.FileSystem.exists(actual)) {
@@ -191,8 +226,8 @@ class VisualTestBase extends utest.Test {
 					}
 
 					similarity = matchingPixels / totalPixels;
-					trace('Image similarity: ${Math.round(similarity * 10000) / 100}%');
-					passed = similarity > 0.9999; // 99.9% match threshold
+					verbose('Image similarity: ${Math.round(similarity * 10000) / 100}%');
+					passed = similarity > threshold;
 				}
 			} catch (e:Dynamic) {
 				trace('Error comparing images: $e');
@@ -246,11 +281,12 @@ class VisualTestBase extends utest.Test {
 	/**
 	 * Build animation, wait for next frame, then take screenshot
 	 * Returns immediately but screenshot will be taken after next update
+	 * @param scale Optional scale factor (default 4.0)
 	 */
 	public function buildRenderAndScreenshot(animFilePath:String, elementName:String, outputFile:String,
-			?sizeX:Int, ?sizeY:Int):Void {
+			?sizeX:Int, ?sizeY:Int, ?scale:Float):Void {
 		clearScene();
-		var result = buildAndAddToScene(animFilePath, elementName);
+		var result = buildAndAddToScene(animFilePath, elementName, scale);
 
 		// Queue screenshot for next update
 		if (result != null) {
@@ -268,11 +304,12 @@ class VisualTestBase extends utest.Test {
 	/**
 	 * Build, render, screenshot, and compare with reference - async version
 	 * Uses utest async to properly wait for screenshot to complete
+	 * @param scale Optional scale factor (default 4.0)
 	 */
 	public function buildRenderScreenshotAndCompare(animFilePath:String, elementName:String,
-			async:utest.Async, ?sizeX:Int, ?sizeY:Int):Void {
+			async:utest.Async, ?sizeX:Int, ?sizeY:Int, ?scale:Float):Void {
 		clearScene();
-		var result = buildAndAddToScene(animFilePath, elementName);
+		var result = buildAndAddToScene(animFilePath, elementName, scale);
 
 		Assert.notNull(result, 'Failed to build element "$elementName" from $animFilePath');
 
@@ -298,4 +335,5 @@ class VisualTestBase extends utest.Test {
 			async.done();
 		}
 	}
+
 }

@@ -179,6 +179,16 @@ enum MPKeywords {
 	MPRange;
 	MPSmoothing;
 	MPTiles;
+	// Autotile keywords
+	MPAutotile;
+	MPFormat;
+	MPPrefix;
+	MPRegion;
+	MPDepth;
+	MPMapping;
+	MPCross;
+	MPBlob47;
+	MPDemo;
 }
 
 enum PlaceholderTypes {
@@ -462,12 +472,12 @@ enum GraphicsStyle {
 
 enum GraphicsElement {
 	GERect(color:ReferenceableValue, style:GraphicsStyle, width:ReferenceableValue, height:ReferenceableValue);
-	GEPolygon(color:ReferenceableValue, style:GraphicsStyle, points:Array<{x:ReferenceableValue, y:ReferenceableValue}>);
+	GEPolygon(color:ReferenceableValue, style:GraphicsStyle, points:Array<Coordinates>);
 	GECircle(color:ReferenceableValue, style:GraphicsStyle, radius:ReferenceableValue);
 	GEEllipse(color:ReferenceableValue, style:GraphicsStyle, width:ReferenceableValue, height:ReferenceableValue);
 	GEArc(color:ReferenceableValue, style:GraphicsStyle, radius:ReferenceableValue, startAngle:ReferenceableValue, arcAngle:ReferenceableValue);
 	GERoundRect(color:ReferenceableValue, style:GraphicsStyle, width:ReferenceableValue, height:ReferenceableValue, radius:ReferenceableValue);
-	GELine(color:ReferenceableValue, lineWidth:ReferenceableValue, x1:ReferenceableValue, y1:ReferenceableValue, x2:ReferenceableValue, y2:ReferenceableValue);
+	GELine(color:ReferenceableValue, lineWidth:ReferenceableValue, start:Coordinates, end:Coordinates);
 }
 
 typedef PositionedGraphicsElement = {
@@ -776,9 +786,18 @@ enum RepeatType {
 	TilesIterator(bitmapVarName:String, tilenameVarName:Null<String>, sheetName:String, tileFilter:Null<String>);
 }
 
+// Selector for which tile to get from an autotile
+enum AutotileTileSelector {
+	ByIndex(index:ReferenceableValue);     // Select by tile index (0-46 for blob47)
+	ByEdges(edges:Int);                    // Select by edge bitmask (N|E|S|W|NE|SE|SW|NW)
+}
+
 enum GeneratedTileType {
 	Cross(width:ReferenceableValue, height:ReferenceableValue, color:ReferenceableValue);
 	SolidColor(width:ReferenceableValue, height:ReferenceableValue, color:ReferenceableValue);
+	SolidColorWithText(width:ReferenceableValue, height:ReferenceableValue, color:ReferenceableValue, text:ReferenceableValue, textColor:ReferenceableValue, font:ReferenceableValue);
+	AutotileRef(autotileName:ReferenceableValue, selector:AutotileTileSelector);
+	AutotileRegionSheet(autotileName:ReferenceableValue, scale:ReferenceableValue, font:ReferenceableValue, fontColor:ReferenceableValue);  // Shows entire region with numbered grid overlay
 }
 
 enum TileSource {
@@ -794,6 +813,31 @@ enum PaletteType {
 	PaletteColors(colors:Array<ReferenceableValue>);
 	PaletteColors2D(colors:Array<ReferenceableValue>, width:Int);
 	PaletteImageFile(filename:ReferenceableValue);
+}
+
+// Autotile formats for terrain generation
+enum AutotileFormat {
+	Cross;      // Cross layout + corners for elevation (with depth)
+	Blob47;     // Full 47-tile autotile with all edge/corner combinations
+}
+
+enum AutotileSource {
+	ATSAtlas(sheet:ReferenceableValue, prefix:ReferenceableValue);
+	ATSAtlasRegion(sheet:ReferenceableValue, region:Array<ReferenceableValue>);
+	ATSFile(filename:ReferenceableValue);
+	ATSTiles(tiles:Array<TileSource>);  // explicit tile list for full control
+	ATSDemo(edgeColor:ReferenceableValue, fillColor:ReferenceableValue);  // auto-generated demo tiles
+}
+
+@:nullSafety
+typedef AutotileDef = {
+	var format:AutotileFormat;
+	var source:AutotileSource;
+	var tileSize:ReferenceableValue;
+	var ?depth:Null<ReferenceableValue>;  // for isometric elevation
+	var ?mapping:Null<Map<Int, Int>>;     // custom index mapping: blob47Index -> tilesetIndex
+	var ?region:Null<Array<ReferenceableValue>>;  // optional region [x, y, w, h] for file source
+	var ?allowPartialMapping:Bool;        // blob47 only: if true, missing tiles use fallback instead of error
 }
 
 enum StateAnimConstruct {
@@ -845,7 +889,7 @@ enum NodeType {
 	INTERACTIVE(width:ReferenceableValue, height:ReferenceableValue, id:ReferenceableValue, debug:Bool);
 	PALETTE(paletteType:PaletteType);
 	GRAPHICS(elements:Array<PositionedGraphicsElement>);
-	
+	AUTOTILE(autotileDef:AutotileDef);
 
 }
 
@@ -1223,12 +1267,65 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 		while (true) {
 			eatComma();
 			if (peek(0) == endSymbol) {
-				junk(); 
+				junk();
 				break;
 			}
 			colors.push(parseColorOrReference());
 		}
 		return colors;
+	}
+
+	/**
+	 * Parse autotile tile selector: either an index (number) or edge flags (N+E+S+W+NE+SE+SW+NW)
+	 * Edge flags use + to combine (e.g., N+E+S for a tile with north, east, south neighbors).
+	 */
+	function parseAutotileTileSelector():AutotileTileSelector {
+		// Try to parse as edge flags first (identifiers like N, E, S, W, etc.)
+		return switch peek(0) {
+			case MPIdentifier(id, _, ITString) if (isEdgeFlag(id)):
+				// Parse edge flags combined with +
+				var edges = 0;
+				while (true) {
+					switch stream {
+						case [MPIdentifier(flagId, _, ITString)]:
+							final flag = parseEdgeFlag(flagId);
+							if (flag == null) unexpectedError('unknown edge flag: $flagId');
+							edges |= flag;
+						case _: unexpectedError('expected edge flag (N, E, S, W, NE, SE, SW, NW)');
+					}
+					// Check for + (combine flags)
+					switch peek(0) {
+						case MPPlus: junk(); // consume +
+						case _: break;
+					}
+				}
+				ByEdges(edges);
+			case _:
+				// Parse as index
+				ByIndex(parseIntegerOrReference());
+		};
+	}
+
+	function isEdgeFlag(id:String):Bool {
+		return switch id.toUpperCase() {
+			case "N" | "NE" | "E" | "SE" | "S" | "SW" | "W" | "NW": true;
+			case _: false;
+		};
+	}
+
+	function parseEdgeFlag(id:String):Null<Int> {
+		// Using same bit values as bh.base.Autotile
+		return switch id.toUpperCase() {
+			case "N": 1;
+			case "NE": 2;
+			case "E": 4;
+			case "SE": 8;
+			case "S": 16;
+			case "SW": 32;
+			case "W": 64;
+			case "NW": 128;
+			case _: null;
+		};
 	}
 
 	static function tryStringToColor(s:String):Null<Int> {
@@ -1467,7 +1564,15 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 			case [MPIdentifier(_, MPCallback, ITString)]: parseCallback(VTString);
 			case [MPMinus, MPNumber(s, _)]:
 				parseNextStringExpression(RVString('-' + s));
-			case [MPNumber(s, _)|MPIdentifier(s, _, ITQuotedString|ITString)]:
+			case [MPNumber(s, _)]:
+				// Check if followed by identifier for fontnames like "3x5"
+				switch stream {
+					case [MPIdentifier(s2, _, ITString)]:
+						parseNextStringExpression(RVString(s + s2));
+					case _:
+						parseNextStringExpression(RVString(s));
+				}
+			case [MPIdentifier(s, _, ITQuotedString|ITString)]:
 				parseNextStringExpression(RVString(s));
 			case [MPIdentifier(s, _ , ITReference)]:
 				switch stream {
@@ -1662,7 +1767,7 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 		switch stream {
 			case [MPIdentifier(_, MPPointy, ITString)]: return POINTY;
 			case [MPIdentifier(_, MPFlat, ITString)]: return FLAT;
-			case _: syntaxError("pointy or edge expected");
+			case _: syntaxError("pointy or flat expected");
 		}
 		return null;
 
@@ -1978,8 +2083,24 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 
 			case [MPIdentifier(_, MPHexDirection, ITString)]: 
 				parameter.type = PPTHexDirection;
-			case [MPNumber(from, NTInteger), MPDoubleDot, MPNumber(to, NTInteger)]: 
-				parameter.type = PPTRange(stringToInt(from), stringToInt(to));
+			case [MPNumber(from, NTInteger), MPDoubleDot]:
+				// Range starting with positive number
+				switch stream {
+					case [MPNumber(to, NTInteger)]:
+						parameter.type = PPTRange(stringToInt(from), stringToInt(to));
+					case [MPMinus, MPNumber(to, NTInteger)]:
+						// positive..negative range (e.g., 50..-10)
+						parameter.type = PPTRange(stringToInt(from), -stringToInt(to));
+				}
+			case [MPMinus, MPNumber(from, NTInteger), MPDoubleDot]:
+				// Range starting with negative number (e.g., -50..150)
+				switch stream {
+					case [MPNumber(to, NTInteger)]:
+						parameter.type = PPTRange(-stringToInt(from), stringToInt(to));
+					case [MPMinus, MPNumber(to, NTInteger)]:
+						// negative..negative range (e.g., -50..-10)
+						parameter.type = PPTRange(-stringToInt(from), -stringToInt(to));
+				}
 			case [MPIdentifier(_, MPFlags, ITString), MPOpen, bits = parseInteger(), MPClosed]: 
 					parameter.type = PPTFlags(bits);
 			case [MPIdentifier(_, MPInt, ITString)]: 
@@ -2373,12 +2494,14 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 		return switch stream {
 			case [MPOpen, color = parseColorOrReference(), MPComma]:
 				var style = parseGraphicsStyleRequired();
-				var points:Array<{x:ReferenceableValue, y:ReferenceableValue}> = [];
+				var points:Array<Coordinates> = [];
 
 				while (true) {
 					switch stream {
-						case [x = parseFloatOrReference(), MPComma, y = parseFloatOrReference()]:
-							points.push({x: x, y: y});
+						case [MPClosed]:
+							break;
+						case _:
+							points.push(parseXY());
 							switch stream {
 								case [MPComma]:
 									continue;
@@ -2386,9 +2509,6 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 									break;
 								case _: unexpectedError("expected , or ) after polygon point");
 							}
-						case [MPClosed]:
-							break;
-						case _: unexpectedError("expected point or ) in polygon");
 					}
 					break;
 				}
@@ -2496,9 +2616,8 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 	function parseGraphicsLineElement():GraphicsElement {
 		return switch stream {
 			case [MPOpen, color = parseColorOrReference(), MPComma, lineWidth = parseFloatOrReference(), MPComma,
-				  x1 = parseFloatOrReference(), MPComma, y1 = parseFloatOrReference(), MPComma,
-				  x2 = parseFloatOrReference(), MPComma, y2 = parseFloatOrReference(), MPClosed]:
-				GELine(color, lineWidth, x1, y1, x2, y2);
+				  start = parseXY(), MPComma, end = parseXY(), MPClosed]:
+				GELine(color, lineWidth, start, end);
 			case _: unexpectedError("expected line(color, lineWidth, x1, y1, x2, y2)");
 		}
 	}
@@ -2571,7 +2690,21 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 
 						}
 						TSGenerated(SolidColor(width, height, color));
-					case _: unexpectedError('expected cross(width, height[, color] or color(width, height[, color]');
+					// colorWithText(width, height, bgColor, "text", textColor, font) - solid color with centered text
+					case [MPIdentifier("colorWithText", _ , ITString), MPOpen, width = parseIntegerOrReference(), MPComma, height = parseIntegerOrReference(), MPComma, color = parseColorOrReference(), MPComma, text = parseStringOrReference(), MPComma, textColor = parseColorOrReference(), MPComma, font = parseStringOrReference(), MPClosed, MPClosed]:
+						TSGenerated(SolidColorWithText(width, height, color, text, textColor, font));
+					// autotile("autotileName", index) OR autotile("autotileName", N|E|S|W) - reference autotile definition
+					case [MPIdentifier("autotile", _ , ITString), MPOpen, autotileName = parseStringOrReference(), MPComma]:
+						final selector = parseAutotileTileSelector();
+						switch stream {
+							case [MPClosed, MPClosed]:
+							case _: unexpectedError('expected ) after autotile selector');
+						}
+						TSGenerated(AutotileRef(autotileName, selector));
+					// autotileRegionSheet("autotileName", scale, "font", fontColor) - shows entire region with numbered grid overlay
+					case [MPIdentifier("autotileRegionSheet", _ , ITString), MPOpen, autotileName = parseStringOrReference(), MPComma, scale = parseIntegerOrReference(), MPComma, font = parseStringOrReference(), MPComma, fontColor = parseColorOrReference(), MPClosed, MPClosed]:
+						TSGenerated(AutotileRegionSheet(autotileName, scale, font, fontColor));
+					case _: unexpectedError('expected cross(...), color(...), colorWithText(...), autotile(name, index|edges), or autotileRegionSheet(name, scale, font, fontColor)');
 				}
 
 			// Reference to a TileSource variable (e.g., $bitmap from stateanim/tiles iterator)
@@ -2988,6 +3121,12 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 				}
 				
 				return createNodeResponse(PALETTE(paletteType)); // return here skips extended syntax parsing
+			case [MPIdentifier(_, MPAutotile, ITString), MPCurlyOpen]:
+				if (nameString == null) syntaxError('autotile requires #name');
+				if (parent != null) syntaxError('autotile nodes must be root node');
+
+				final autotileDef = parseAutotile();
+				return createNodeResponse(AUTOTILE(autotileDef)); // return here skips extended syntax parsing
 			case [MPIdentifier(_, MPLayers, ITString)]:
 				switch stream {
 					case [MPOpen, MPClosed]: true;
@@ -3044,6 +3183,9 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 
 	case [MPIdentifier(_, MPRect, ITString)]:
 		createNodeResponse(GRAPHICS([{element: parseGraphicsRectElement(), pos: ZERO}]));
+
+	case [MPIdentifier(_, MPLine, ITString)]:
+		createNodeResponse(GRAPHICS([{element: parseGraphicsLineElement(), pos: ZERO}]));
 
 	case [MPIdentifier(_, MPPolygon, ITString)]:
 		createNodeResponse(GRAPHICS([{element: parseGraphicsPolygonElement(), pos: ZERO}]));
@@ -4084,6 +4226,162 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 		MacroUtils.optionsSetIfNotNull(retVal.animationRepeat, results);
 
 		return retVal;
+	}
+
+	function parseAutotile():AutotileDef {
+		var format:Null<AutotileFormat> = null;
+		var source:Null<AutotileSource> = null;
+		var tileSize:Null<ReferenceableValue> = null;
+		var depth:Null<ReferenceableValue> = null;
+		var mapping:Null<Map<Int, Int>> = null;
+		var region:Null<Array<ReferenceableValue>> = null;
+		var allowPartialMapping:Bool = false;
+
+		final once = createOnceParser();
+
+		while (true) {
+			switch stream {
+				// format: cross | blob47
+				case [MPIdentifier(_, MPFormat, ITString), MPColon]:
+					once.parsed("format");
+					switch stream {
+						case [MPIdentifier(_, MPCross, ITString)]:
+							format = Cross;
+						case [MPIdentifier(_, MPBlob47, ITString)]:
+							format = Blob47;
+						case _: unexpectedError("expected cross or blob47");
+					}
+
+				// sheet: "name", prefix: "tile_"  OR  sheet: "name", region: [x, y, w, h]
+				// Note: hxparse only matches first token, so we need nested switch
+				case [MPIdentifier(_, MPSheet, ITString), MPColon, sheet = parseStringOrReference(), MPComma]:
+					once.parsed("source");
+					switch stream {
+						case [MPIdentifier(_, MPPrefix, ITString), MPColon, prefix = parseStringOrReference()]:
+							source = ATSAtlas(sheet, prefix);
+						case [MPIdentifier(_, MPRegion, ITString), MPColon, MPBracketOpen]:
+							final region:Array<ReferenceableValue> = [];
+							while (true) {
+								switch stream {
+									case [val = parseIntegerOrReference()]:
+										region.push(val);
+										switch stream {
+											case [MPComma]: continue;
+											case [MPBracketClosed]: break;
+										}
+									case [MPBracketClosed]: break;
+									case _: unexpectedError("expected integer or ]");
+								}
+							}
+							if (region.length != 4) syntaxError('region must have exactly 4 values [x, y, w, h]');
+							source = ATSAtlasRegion(sheet, region);
+						case _: unexpectedError("expected prefix: or region: after sheet:");
+					}
+
+				// file: "filename.png"
+				case [MPIdentifier(_, MPFile, ITString), MPColon, filename = parseStringOrReference()]:
+					once.parsed("source");
+					source = ATSFile(filename);
+
+				// tiles: sheet("a","b") sheet("a","c") generated(color(16,16,red)) ...
+				case [MPIdentifier(_, MPTiles, ITString), MPColon]:
+					once.parsed("source");
+					source = ATSTiles(parseTileSources());
+
+				// demo: edgeColor, fillColor (auto-generated demo tiles)
+				case [MPIdentifier(_, MPDemo, ITString), MPColon, edgeColor = parseColorOrReference(), MPComma, fillColor = parseColorOrReference()]:
+					once.parsed("source");
+					source = ATSDemo(edgeColor, fillColor);
+
+				// tileSize: 16
+				case [MPIdentifier("tileSize", _, ITString), MPColon, size = parseIntegerOrReference()]:
+					once.parsed("tileSize");
+					tileSize = size;
+
+				// depth: 16 (for isometric elevation)
+				case [MPIdentifier(_, MPDepth, ITString), MPColon, d = parseIntegerOrReference()]:
+					once.parsed("depth");
+					depth = d;
+
+				// mapping: [1, 2, 3, 7:12] - sequential values or explicit source:target pairs
+				// Plain number N at position i means: blob47 tile i -> tileset tile N
+				// Explicit N:M means: blob47 tile N -> tileset tile M
+				case [MPIdentifier(_, MPMapping, ITString), MPColon, MPBracketOpen]:
+					once.parsed("mapping");
+					mapping = new Map<Int, Int>();
+					var sequentialIndex = 0;
+					while (true) {
+						switch stream {
+							case [sourceIdx = parseInteger()]:
+								// Check if this is source:target format
+								switch stream {
+									case [MPColon, targetIdx = parseInteger()]:
+										// Explicit mapping: sourceIdx -> targetIdx
+										if (mapping.exists(sourceIdx))
+											syntaxError('duplicate mapping for tile $sourceIdx');
+										mapping.set(sourceIdx, targetIdx);
+									case _:
+										// Sequential: position -> value
+										if (mapping.exists(sequentialIndex))
+											syntaxError('duplicate mapping for tile $sequentialIndex');
+										mapping.set(sequentialIndex, sourceIdx);
+										sequentialIndex++;
+								}
+								switch stream {
+									case [MPComma]: continue;
+									case [MPBracketClosed]: break;
+									case _: unexpectedError("expected , or ]");
+								}
+							case [MPBracketClosed]: break;
+							case _: unexpectedError("expected integer or ]");
+						}
+					}
+
+				// allowPartialMapping: true - for blob47, missing tiles use fallback
+				case [MPIdentifier("allowPartialMapping", _, ITString), MPColon]:
+					once.parsed("allowPartialMapping");
+					allowPartialMapping = parseBool();
+
+				// region: [x, y, w, h] - optional region for file source (tile indices relative to this region)
+				case [MPIdentifier(_, MPRegion, ITString), MPColon, MPBracketOpen]:
+					once.parsed("region");
+					region = [];
+					while (true) {
+						switch stream {
+							case [val = parseIntegerOrReference()]:
+								region.push(val);
+								switch stream {
+									case [MPComma]: continue;
+									case [MPBracketClosed]: break;
+								}
+							case [MPBracketClosed]: break;
+							case _: unexpectedError("expected integer or ]");
+						}
+					}
+					if (region.length != 4) syntaxError('region must have exactly 4 values [x, y, w, h]');
+
+				case [MPCurlyClosed]: break;
+				case _: unexpectedError("expected format:, sheet:, file:, tiles:, demo:, tileSize:, depth:, mapping:, region:, allowPartialMapping:, or }");
+			}
+		}
+
+		if (format == null) syntaxError('autotile requires format: (cross or blob47)');
+		if (source == null) syntaxError('autotile requires source (sheet:, file:, tiles:, or demo:)');
+		if (tileSize == null) syntaxError('autotile requires tileSize:');
+
+		// allowPartialMapping only valid for blob47
+		if (allowPartialMapping && format != Blob47)
+			syntaxError('allowPartialMapping is only valid for blob47 format');
+
+		return {
+			format: format,
+			source: source,
+			tileSize: tileSize,
+			depth: depth,
+			mapping: mapping,
+			region: region,
+			allowPartialMapping: allowPartialMapping
+		};
 	}
 
 	function parseLayouts():LayoutsDef {

@@ -1,0 +1,9 @@
+-lib hxparse
+-lib heaps
+-lib hldx
+-cp ../src
+-cp src
+-main AutotileMapper
+-D message.reporting=pretty
+-D resourcesPath=res
+-hl build/autotile-mapper.hl
