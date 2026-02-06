@@ -8,7 +8,7 @@ This document is intended to provide a high-level overview of the technical aspe
 ## UIElements
 
 ## Dropdown
-dropdown control consists of closed-like button and scollable panel (called panel). dropdown control moves panel to different layer and keeps position in sync with PositionLinkObject.
+dropdown control consists of closed-like button and scrollable panel (called panel). dropdown control moves panel to different layer and keeps position in sync with PositionLinkObject.
 
 ## Elements handling by UIScreen
 If elements are not showing or reacting to events check if they have been added to UIScreen's elements.
