@@ -14,8 +14,17 @@ import bh.multianim.MultiAnimParser.NodeType;
 import bh.multianim.MultiAnimParser.ReferenceableValue;
 import bh.base.ResourceLoader;
 import bh.base.Autotile;
+import bh.base.FontManager;
+import bh.base.MacroUtils;
+import bh.multianim.MultiAnimBuilder;
+import bh.ui.screens.ScreenManager;
+import bh.ui.screens.UIScreen;
+import bh.ui.UIElement;
+import bh.ui.UIMultiAnimButton;
+import bh.ui.UIMultiAnimSlider;
 
 using StringTools;
+using bh.base.Atlas2;
 
 class AutotileMapper extends hxd.App {
 	// CLI arguments (parsed in main before App construction)
@@ -43,11 +52,8 @@ class AutotileMapper extends hxd.App {
 	var regionDisplay:h2d.Object;
 	var blob47Display:h2d.Object;
 	var demoPreview:h2d.Object;
-	var statusText:Text;
+	var ratioPreview:h2d.Object;
 	var exportText:Text;
-
-	// Calculated layout positions
-	var regionSheetHeight:Int;
 
 	// Selection state
 	var selectedRegionTile:Int = -1;
@@ -55,20 +61,51 @@ class AutotileMapper extends hxd.App {
 	var hoveredRegionTile:Int = -1;
 	var hoveredBlob47Tile:Int = -1;
 
-	// Display settings
-	static inline var REGION_TILE_SCALE = 4;
-	static inline var BLOB47_TILE_SCALE = 8;
+	// Drag and drop state
+	var dragRegionTileIdx:Int = -1;
+	var dragBitmap:Null<Bitmap> = null;
+	var dragOverlay:Null<Graphics> = null;
+
+	// Cross-highlight overlays
+	var demoHighlight:Null<Graphics> = null;
+	var regionHighlight:Null<Graphics> = null;
+	var blob47Highlight:Null<Graphics> = null;
+	var demoCellBlob47:Array<{x:Int, y:Int, blob47Idx:Int}> = [];
+	var hoveredDemoBlob47:Int = -1;
+
+	// Blob47 cell positions for grouped layout (tile index -> pixel position)
+	var blob47CellPos:Array<{x:Float, y:Float}> = [];
+	var blob47CellWidth:Float = 0;
+	var blob47CellHeight:Float = 0;
+
+	// Blob47 grouped layout: rows of {label, tiles}
+	static var blob47Layout:Array<{label:String, tiles:Array<Int>}> = [
+		{label: "1 card", tiles: [0, 1, 2, 5, 13]},
+		{label: "2 opp", tiles: [6, 15]},
+		{label: "2 adj", tiles: [3, 4, 7, 10, 18, 26, 14, 34]},
+		{label: "N+E+S", tiles: [8, 9, 11, 12]},
+		{label: "N+E+W", tiles: [16, 17, 35, 36]},
+		{label: "E+S+W", tiles: [20, 23, 28, 31]},
+		{label: "N+S+W", tiles: [19, 27, 37, 42]},
+		{label: "NESW", tiles: [21, 22, 24, 25, 29, 30, 32, 33, 38, 39, 40, 41, 43, 44, 45, 46]},
+	];
+
+	// Display settings (mutable for zoom sliders, public for macro access)
+	public var regionTileScale:Int = 4;
+	public var blob47TileScale:Int = 8;
+	public var demoPreviewScale:Int = 2;
 	static inline var TILE_SPACING = 2;
-	static inline var REGION_START_X = 20;
-	static inline var REGION_START_Y = 80;
-	static inline var BLOB47_TILES_PER_ROW = 12;
+	static inline var PAIR_SPACING = 10; // Gap between blob47 pairs (between mapped tile and next demo tile)
+
 
 	// 3x3 subtile analysis settings (edge-middle-edge ratio, should sum to 100)
-	var subtileEdgeRatio:Int = 25; // % for edge bands (N, S, E, W)
+	public var subtileEdgeRatio:Int = 25; // % for edge bands (N, S, E, W)
 	var subtileMiddleRatio:Int = 50; // % for middle (remaining after edges)
 
-	// Resource loader
+	// Resource loader and screen manager
 	var resourceLoader:CachingResourceLoader;
+	var screenManager:ScreenManager;
+	var toolbarScreen:AutotileToolbarScreen;
 
 	override function init() {
 		// Copy static args parsed in main()
@@ -86,11 +123,34 @@ class AutotileMapper extends hxd.App {
 
 		resourceLoader = createResourceLoader();
 
+		// Initialize Heaps resource system (needed for atlas2, fonts)
+		hxd.Res.initLocal();
+
+		// Register fonts for std.manim UI components
+		FontManager.registerFont("dd", hxd.Res.fonts.digitaldisco.toFont(), 0, -1);
+		FontManager.registerFont("m6x11", hxd.Res.fonts.m6x11.toFont());
+
 		try {
 			loadAndParseManim();
-			buildUI();
 		} catch (e) {
 			showError('Error: ${e}');
+			return;
+		}
+
+		// Set up ScreenManager with our resource loader (searches working dir for .manim files)
+		// Must be created before buildUI() so containers from .manim are available
+		screenManager = new ScreenManager(this, resourceLoader);
+		toolbarScreen = new AutotileToolbarScreen(screenManager, this);
+		screenManager.addScreen("toolbar", toolbarScreen);
+		if (screenManager.isScreenFailed(toolbarScreen)) {
+			trace('Toolbar screen failed: ${screenManager.getScreenFailedError(toolbarScreen)}');
+		}
+		screenManager.updateScreenMode(Single(toolbarScreen));
+
+		try {
+			buildUI();
+		} catch (e) {
+			showError('Error building UI: ${e}');
 			return;
 		}
 
@@ -110,21 +170,34 @@ class AutotileMapper extends hxd.App {
 					clearMapping();
 				case EKeyDown if (event.keyCode == Key.R):
 					reloadManim();
-				case EKeyDown if (event.keyCode == Key.NUMBER_1):
-					setSubtileRatio(10);
-				case EKeyDown if (event.keyCode == Key.NUMBER_2):
-					setSubtileRatio(20);
-				case EKeyDown if (event.keyCode == Key.NUMBER_3):
-					setSubtileRatio(25);
-				case EKeyDown if (event.keyCode == Key.NUMBER_4):
-					setSubtileRatio(30);
-				case EKeyDown if (event.keyCode == Key.NUMBER_5):
-					setSubtileRatio(35);
+				case EMove:
+					if (dragRegionTileIdx >= 0) {
+						updateDrag(event.relX, event.relY);
+					}
+				case ERelease:
+					if (dragRegionTileIdx >= 0) {
+						endDrag(event.relX, event.relY);
+					}
+				case EReleaseOutside:
+					cancelDrag();
+				case EWheel:
+					handleMouseWheel(event.relX, event.relY, event.wheelDelta);
 				default:
 			}
 		});
 
 		engine.backgroundColor = 0x303030;
+	}
+
+	override function update(dt:Float) {
+		if (screenManager != null) {
+			try {
+				screenManager.update(dt);
+			} catch (e) {
+				trace('ScreenManager update error: $e');
+				screenManager = null;
+			}
+		}
 	}
 
 	static function parseArguments() {
@@ -187,6 +260,26 @@ class AutotileMapper extends hxd.App {
 				throw 'Failed to load resource: $filename';
 			}
 			return hxd.res.Any.fromBytes(filename, bytes);
+		};
+
+		loader.loadSheet2Impl = sheetName -> {
+			return hxd.Res.load('${sheetName}.atlas2').toAtlas2();
+		};
+
+		loader.loadMultiAnimImpl = resourceFilename -> {
+			// Try search paths first, then hxd.Res
+			final bytes = tryLoadFile(resourceFilename);
+			if (bytes != null) {
+				final byteData = byte.ByteData.ofBytes(bytes);
+				return MultiAnimBuilder.load(byteData, loader, resourceFilename);
+			}
+			// Fallback to hxd.Res
+			final resBytes = hxd.Res.load(resourceFilename).entry.getBytes();
+			return MultiAnimBuilder.load(byte.ByteData.ofBytes(resBytes), loader, resourceFilename);
+		};
+
+		loader.loadFontImpl = fontName -> {
+			return FontManager.getFontByName(fontName);
 		};
 
 		return loader;
@@ -280,13 +373,24 @@ class AutotileMapper extends hxd.App {
 		// Copy existing mapping or create empty
 		currentMapping = new Map<Int, Int>();
 		autoDetectedTiles = new Map<Int, Bool>();
+		var outOfRange = 0;
 		if (autotileDef.mapping != null) {
+			trace('Loading mappings from file:');
 			for (k => v in autotileDef.mapping) {
-				currentMapping.set(k, v);
+				trace('  blob47[$k] -> region[$v]');
+				if (v >= totalTiles) {
+					trace('    ^^^ OUT OF RANGE (max ${totalTiles - 1}), skipping');
+					outOfRange++;
+				} else {
+					currentMapping.set(k, v);
+				}
 			}
 		}
 
-		trace('Loaded autotile "$autotileName": ${totalTiles} tiles in region, ${Lambda.count(currentMapping)} mappings defined');
+		trace('Loaded autotile "$autotileName": ${totalTiles} tiles in region (${tilesPerRow}x${tilesPerCol}), ${Lambda.count(currentMapping)} mappings loaded');
+		if (outOfRange > 0) {
+			trace('WARNING: $outOfRange mappings skipped (region tile index out of range 0-${totalTiles - 1})');
+		}
 	}
 
 	function resolveInt(v:ReferenceableValue):Int {
@@ -304,32 +408,11 @@ class AutotileMapper extends hxd.App {
 	}
 
 	function buildUI() {
-		// Title
-		final titleText = new Text(hxd.res.DefaultFont.get(), s2d);
-		titleText.text = 'Autotile Mapper: $autotileName ($manimFile)';
-		titleText.setScale(1.5);
-		titleText.setPosition(10, 10);
-
-		// Instructions (top right)
-		final helpText = new Text(hxd.res.DefaultFont.get(), s2d);
-		helpText.text = "[A] Autodetect  [E] Export  [C] Clear  [R] Reload  [1-5] Ratio  [Q] Quit  |  Click region, then blob47 to map";
-		helpText.textColor = 0xAAAAAA;
-		helpText.textAlign = Right;
-		helpText.setPosition(2550, 10);
-
-		// Status text
-		statusText = new Text(hxd.res.DefaultFont.get(), s2d);
-		statusText.textColor = 0x88FF88;
-		statusText.setPosition(10, 35);
-
-		// Region tiles display
+		// Build all display sections (content goes into containers positioned by .manim)
 		buildRegionDisplay();
-
-		// Blob47 tiles display (positioned below region)
 		buildBlob47Display();
-
-		// Demo preview (bottom right)
 		buildDemoPreview();
+		buildRatioPreview();
 
 		// Export preview area (hidden for now)
 		exportText = new Text(hxd.res.DefaultFont.get(), s2d);
@@ -338,25 +421,18 @@ class AutotileMapper extends hxd.App {
 		exportText.visible = false;
 	}
 
+
 	function buildRegionDisplay() {
 		if (regionDisplay != null) regionDisplay.remove();
+		final container = if (toolbarScreen != null) toolbarScreen.regionContainer else null;
 
-		regionDisplay = new h2d.Object(s2d);
-		regionDisplay.setPosition(REGION_START_X, REGION_START_Y);
+		final scaledTileSize = tileSize * regionTileScale;
 
-		// Label
-		final label = new Text(hxd.res.DefaultFont.get(), regionDisplay);
-		label.text = 'Region Sheet (${totalTiles} tiles, ${tilesPerRow}x${tilesPerCol}):';
-		label.setPosition(0, -20);
+		regionDisplay = new h2d.Object(container != null ? container : s2d);
 
 		// Display full region as single scaled bitmap
 		final regionBmp = new Bitmap(regionSheetTile, regionDisplay);
-		regionBmp.setScale(REGION_TILE_SCALE);
-
-		final scaledTileSize = tileSize * REGION_TILE_SCALE;
-
-		// Calculate region sheet height for positioning elements below
-		regionSheetHeight = tilesPerCol * scaledTileSize;
+		regionBmp.setScale(regionTileScale);
 
 		// Overlay tile numbers and interactive areas
 		for (i in 0...totalTiles) {
@@ -380,19 +456,24 @@ class AutotileMapper extends hxd.App {
 			inter.onOver = _ -> {
 				hoveredRegionTile = idx;
 				updateStatus();
+				updateCrossHighlight();
 			};
 			inter.onOut = _ -> {
 				if (hoveredRegionTile == idx) hoveredRegionTile = -1;
 				updateStatus();
-			};
-			inter.onClick = _ -> {
-				selectedRegionTile = idx;
-				selectedBlob47Tile = -1;
-				updateStatus();
-				updateHighlights();
+				updateCrossHighlight();
 			};
 			inter.onPush = e -> {
-				if (e.button == 1) {
+				if (e.button == 0) {
+					// Left-click: start drag
+					selectedRegionTile = idx;
+					selectedBlob47Tile = -1;
+					updateStatus();
+					updateHighlights();
+					updateRatioPreview();
+					final absPos = regionDisplay.localToGlobal(new h2d.col.Point(tx + scaledTileSize * 0.5, ty + scaledTileSize * 0.5));
+					startDrag(idx, absPos.x, absPos.y);
+				} else if (e.button == 1) {
 					// Right-click to remove any blob47 mappings using this region tile
 					var removed = false;
 					for (blob47Idx => regionIdx in currentMapping) {
@@ -411,122 +492,287 @@ class AutotileMapper extends hxd.App {
 			};
 		}
 
-		// Highlight graphics for selection
-		final highlightGfx = new Graphics(regionDisplay);
-		highlightGfx.name = "regionHighlight";
+		regionHighlight = new Graphics(regionDisplay);
 	}
 
 	function buildBlob47Display() {
 		if (blob47Display != null) blob47Display.remove();
+		final container = if (toolbarScreen != null) toolbarScreen.blob47Container else null;
 
-		blob47Display = new h2d.Object(s2d);
-		// Position below the region sheet with some margin
-		final blob47StartY = REGION_START_Y + regionSheetHeight + 40;
-		blob47Display.setPosition(REGION_START_X, blob47StartY);
+		blob47Display = new h2d.Object(container != null ? container : s2d);
 
-		// Label
-		final label = new Text(hxd.res.DefaultFont.get(), blob47Display);
-		label.text = "Blob47 Tiles (0-46) - Click to assign selected region tile:";
-		label.setPosition(0, -20);
+		final scaledTileSize = tileSize * blob47TileScale;
+		final pairGap = 20;
+		final separatorWidth = 2;
+		final cellWidth = scaledTileSize * 2 + pairGap + PAIR_SPACING;
+		final cellHeight = scaledTileSize + 20 + TILE_SPACING;
+		blob47CellWidth = cellWidth;
+		blob47CellHeight = cellHeight;
 
-		// Each cell shows: demo tile (left) + mapped tile (right) + index label below
-		final scaledTileSize = tileSize * BLOB47_TILE_SCALE;
-		final pairGap = 12; // Gap between demo tile and mapped tile
-		final cellWidth = scaledTileSize * 2 + pairGap + TILE_SPACING; // demo + gap + mapped + spacing
-		final cellHeight = scaledTileSize + 16 + TILE_SPACING; // tile + label height + spacing
+		// Row label width
+		final labelColWidth = 70;
 
-		for (i in 0...47) {
-			final tx = (i % BLOB47_TILES_PER_ROW) * cellWidth;
-			final ty = Std.int(i / BLOB47_TILES_PER_ROW) * cellHeight;
+		// Build cells in grouped layout
+		blob47CellPos = [];
+		blob47CellPos.resize(47);
 
-			// Background showing mapping status
-			final bg = new Graphics(blob47Display);
-			bg.setPosition(tx, ty);
-			drawTileBackground(bg, i, cellWidth - TILE_SPACING, scaledTileSize);
+		var curY:Float = 0;
+		for (group in blob47Layout) {
+			// Row label
+			final rowLabel = new Text(hxd.res.DefaultFont.get(), blob47Display);
+			rowLabel.text = group.label;
+			rowLabel.textColor = 0x888888;
+			rowLabel.setPosition(0, curY + Std.int(scaledTileSize / 2) - 5);
 
-			// Show demo tile shape (left side)
-			final demoTile = generateDemoTile(i);
-			final demoBmp = new Bitmap(demoTile, blob47Display);
-			demoBmp.setScale(BLOB47_TILE_SCALE);
-			demoBmp.setPosition(tx, ty);
+			// Place tiles in this row
+			for (col in 0...group.tiles.length) {
+				final i = group.tiles[col];
+				final tx = labelColWidth + col * cellWidth;
+				final ty = curY;
 
-			// If mapped, show the mapped tile on the right
-			if (currentMapping.exists(i)) {
-				final mappedIdx = currentMapping.get(i);
-				if (mappedIdx >= 0 && mappedIdx < regionTiles.length) {
-					final mappedBmp = new Bitmap(regionTiles[mappedIdx], blob47Display);
-					mappedBmp.setScale(BLOB47_TILE_SCALE);
-					mappedBmp.setPosition(tx + scaledTileSize + pairGap, ty);
-				}
+				blob47CellPos[i] = {x: tx, y: ty};
+
+				buildBlob47Cell(i, tx, ty, scaledTileSize, cellWidth, pairGap, separatorWidth);
 			}
 
-			// Index and mapping label (below tiles)
-			final indexLabel = new Text(hxd.res.DefaultFont.get(), blob47Display);
-			final mappingText = currentMapping.exists(i) ? ' > ${currentMapping.get(i)}' : "";
-			indexLabel.text = '$i$mappingText';
-			indexLabel.textColor = currentMapping.exists(i) ? 0x88FF88 : 0x888888;
-			indexLabel.dropShadow = {dx: 1, dy: 1, color: 0, alpha: 1};
-			indexLabel.setPosition(tx, ty + scaledTileSize + 2);
+			curY += cellHeight;
+		}
 
-			// Interactive overlay
-			final inter = new Interactive(cellWidth - TILE_SPACING, scaledTileSize, blob47Display);
-			inter.enableRightButton = true;
-			inter.setPosition(tx, ty);
-			final idx = i;
-			inter.onOver = _ -> {
-				hoveredBlob47Tile = idx;
+		blob47Highlight = new Graphics(blob47Display);
+	}
+
+	function buildBlob47Cell(i:Int, tx:Float, ty:Float, scaledTileSize:Int, cellWidth:Float, pairGap:Int, separatorWidth:Int) {
+		// Background
+		final bg = new Graphics(blob47Display);
+		bg.setPosition(tx, ty);
+		drawTileBackground(bg, i, cellWidth - PAIR_SPACING, scaledTileSize);
+
+		// Demo tile (left)
+		final demoTile = generateDemoTile(i);
+		final demoBmp = new Bitmap(demoTile, blob47Display);
+		demoBmp.setScale(blob47TileScale);
+		demoBmp.setPosition(tx, ty);
+
+		final demoBorder = new Graphics(blob47Display);
+		demoBorder.setPosition(tx, ty);
+		demoBorder.lineStyle(1, 0x666688);
+		demoBorder.drawRect(0, 0, scaledTileSize, scaledTileSize);
+
+		// Separator
+		final sepX = tx + scaledTileSize + Std.int((pairGap - separatorWidth) / 2);
+		final separator = new Graphics(blob47Display);
+		separator.setPosition(sepX, ty);
+		separator.beginFill(0x666666);
+		separator.drawRect(0, 2, separatorWidth, scaledTileSize - 4);
+		separator.endFill();
+
+		// Arrow
+		final arrow = new Text(hxd.res.DefaultFont.get(), blob47Display);
+		arrow.text = ">";
+		arrow.textColor = 0x888888;
+		arrow.setPosition(tx + scaledTileSize + 4, ty + Std.int(scaledTileSize / 2) - 3);
+
+		// Right side: mapped tile, fallback, or empty
+		final mappedX = tx + scaledTileSize + pairGap;
+		if (currentMapping.exists(i)) {
+			final mappedIdx = currentMapping.get(i);
+			if (mappedIdx >= 0 && mappedIdx < regionTiles.length) {
+				final mappedBmp = new Bitmap(regionTiles[mappedIdx], blob47Display);
+				mappedBmp.setScale(blob47TileScale);
+				mappedBmp.setPosition(mappedX, ty);
+				final mappedBorder = new Graphics(blob47Display);
+				mappedBorder.setPosition(mappedX, ty);
+				mappedBorder.lineStyle(1, 0x88AA88);
+				mappedBorder.drawRect(0, 0, scaledTileSize, scaledTileSize);
+			} else {
+				final errGfx = new Graphics(blob47Display);
+				errGfx.setPosition(mappedX, ty);
+				errGfx.beginFill(0x660000);
+				errGfx.drawRect(0, 0, scaledTileSize, scaledTileSize);
+				errGfx.endFill();
+				final errText = new Text(hxd.res.DefaultFont.get(), blob47Display);
+				errText.text = "OOB";
+				errText.textColor = 0xFF4444;
+				errText.setPosition(mappedX + 2, ty + Std.int(scaledTileSize / 2) - 6);
+			}
+		} else {
+			final fallbackIdx = Autotile.applyBlob47FallbackWithMap(i, currentMapping);
+			if (fallbackIdx != i && currentMapping.exists(fallbackIdx)) {
+				final fallbackRegionIdx = currentMapping.get(fallbackIdx);
+				if (fallbackRegionIdx >= 0 && fallbackRegionIdx < regionTiles.length) {
+					final fallbackBmp = new Bitmap(regionTiles[fallbackRegionIdx], blob47Display);
+					fallbackBmp.setScale(blob47TileScale);
+					fallbackBmp.setPosition(mappedX, ty);
+					fallbackBmp.alpha = 0.5;
+					final fbBorder = new Graphics(blob47Display);
+					fbBorder.setPosition(mappedX, ty);
+					fbBorder.lineStyle(1, 0x888844);
+					fbBorder.drawRect(0, 0, scaledTileSize, scaledTileSize);
+					final fbLabel = new Text(hxd.res.DefaultFont.get(), blob47Display);
+					fbLabel.text = '~$fallbackIdx';
+					fbLabel.textColor = 0xAAAA66;
+					fbLabel.dropShadow = {dx: 1, dy: 1, color: 0, alpha: 1};
+					fbLabel.setPosition(mappedX + 2, ty + Std.int(scaledTileSize / 2) - 6);
+				} else {
+					final emptyGfx = new Graphics(blob47Display);
+					emptyGfx.setPosition(mappedX, ty);
+					emptyGfx.lineStyle(1, 0x884444);
+					emptyGfx.drawRect(0, 0, scaledTileSize, scaledTileSize);
+					final qMark = new Text(hxd.res.DefaultFont.get(), blob47Display);
+					qMark.text = "?";
+					qMark.textColor = 0xCC4444;
+					qMark.setPosition(mappedX + Std.int(scaledTileSize / 2) - 3, ty + Std.int(scaledTileSize / 2) - 6);
+				}
+			} else {
+				final emptyGfx = new Graphics(blob47Display);
+				emptyGfx.setPosition(mappedX, ty);
+				emptyGfx.lineStyle(1, 0x884444);
+				emptyGfx.drawRect(0, 0, scaledTileSize, scaledTileSize);
+				emptyGfx.lineStyle(2, 0xCC4444);
+				emptyGfx.moveTo(4, 4);
+				emptyGfx.lineTo(scaledTileSize - 4, scaledTileSize - 4);
+				emptyGfx.moveTo(scaledTileSize - 4, 4);
+				emptyGfx.lineTo(4, scaledTileSize - 4);
+				final qMark = new Text(hxd.res.DefaultFont.get(), blob47Display);
+				qMark.text = "?";
+				qMark.textColor = 0xCC4444;
+				qMark.setPosition(mappedX + Std.int(scaledTileSize / 2) - 3, ty + Std.int(scaledTileSize / 2) - 6);
+			}
+		}
+
+		// Index label
+		final indexLabel = new Text(hxd.res.DefaultFont.get(), blob47Display);
+		if (currentMapping.exists(i)) {
+			indexLabel.text = '$i > ${currentMapping.get(i)}';
+			indexLabel.textColor = 0x88FF88;
+		} else {
+			final fallbackIdx = Autotile.applyBlob47FallbackWithMap(i, currentMapping);
+			if (fallbackIdx != i && currentMapping.exists(fallbackIdx)) {
+				indexLabel.text = '$i ~> $fallbackIdx';
+				indexLabel.textColor = 0xFFAA44;
+			} else {
+				indexLabel.text = '$i (empty)';
+				indexLabel.textColor = 0xCC4444;
+			}
+		}
+		indexLabel.dropShadow = {dx: 1, dy: 1, color: 0, alpha: 1};
+		indexLabel.setPosition(tx, ty + scaledTileSize + 2);
+
+		// Interactive overlay
+		final inter = new Interactive(cellWidth - PAIR_SPACING, scaledTileSize, blob47Display);
+		inter.enableRightButton = true;
+		inter.setPosition(tx, ty);
+		final idx = i;
+		inter.onOver = _ -> {
+			hoveredBlob47Tile = idx;
+			updateStatus();
+			updateCrossHighlight();
+		};
+		inter.onOut = _ -> {
+			if (hoveredBlob47Tile == idx) hoveredBlob47Tile = -1;
+			updateStatus();
+			updateCrossHighlight();
+		};
+		inter.onClick = _ -> {
+			if (selectedRegionTile >= 0) {
+				currentMapping.set(idx, selectedRegionTile);
+				selectedBlob47Tile = idx;
 				updateStatus();
-			};
-			inter.onOut = _ -> {
-				if (hoveredBlob47Tile == idx) hoveredBlob47Tile = -1;
+				rebuildBlob47Display();
+				updateExportPreview();
+			} else {
+				selectedBlob47Tile = idx;
+				if (currentMapping.exists(idx)) {
+					selectedRegionTile = currentMapping.get(idx);
+				}
 				updateStatus();
-			};
-			inter.onClick = _ -> {
-				if (selectedRegionTile >= 0) {
-					// Map the selected region tile to this blob47 index
-					currentMapping.set(idx, selectedRegionTile);
-					selectedBlob47Tile = idx;
-					updateStatus();
+				updateHighlights();
+			}
+		};
+		inter.onPush = e -> {
+			if (e.button == 1) {
+				if (currentMapping.exists(idx)) {
+					currentMapping.remove(idx);
+					autoDetectedTiles.remove(idx);
 					rebuildBlob47Display();
 					updateExportPreview();
-				} else {
-					// Select this blob47 tile to see what it maps to
-					selectedBlob47Tile = idx;
-					if (currentMapping.exists(idx)) {
-						selectedRegionTile = currentMapping.get(idx);
-					}
 					updateStatus();
-					updateHighlights();
 				}
-			};
-			inter.onPush = e -> {
-				if (e.button == 1) {
-					// Right-click to remove mapping
-					if (currentMapping.exists(idx)) {
-						currentMapping.remove(idx);
-						autoDetectedTiles.remove(idx);
-						rebuildBlob47Display();
-						updateExportPreview();
-						updateStatus();
-					}
-				}
-			};
-		}
+			}
+		};
 	}
 
 	function rebuildBlob47Display() {
 		buildBlob47Display();
-		updateDemoPreview();
+		buildDemoPreview();
+	}
+
+	public function setRegionZoom(scale:Int) {
+		regionTileScale = Std.int(Math.max(1, scale));
+		buildRegionDisplay();
+		buildDemoPreview();
+		buildRatioPreview();
+	}
+
+	public function setBlob47Zoom(scale:Int) {
+		blob47TileScale = Std.int(Math.max(1, scale));
+		buildBlob47Display();
+	}
+
+	public function setDemoZoom(scale:Int) {
+		demoPreviewScale = Std.int(Math.max(1, scale));
+		buildDemoPreview();
+		buildRatioPreview();
+	}
+
+	function handleMouseWheel(mouseX:Float, mouseY:Float, delta:Float) {
+		final step = if (delta > 0) -1 else 1;
+
+		// Check which container the mouse is over using container absolute positions
+		if (toolbarScreen == null) return;
+
+		function isOverContainer(container:h2d.Object):Bool {
+			if (container == null) return false;
+			final localPt = container.globalToLocal(new h2d.col.Point(mouseX, mouseY));
+			return localPt.x >= 0 && localPt.y >= 0;
+		}
+
+		if (isOverContainer(toolbarScreen.blob47Container)) {
+			final newScale = Std.int(Math.max(1, Math.min(16, blob47TileScale + step)));
+			if (newScale != blob47TileScale) {
+				setBlob47Zoom(newScale);
+				syncSliders();
+			}
+		} else if (isOverContainer(toolbarScreen.demoContainer)) {
+			final newScale = Std.int(Math.max(1, Math.min(16, demoPreviewScale + step)));
+			if (newScale != demoPreviewScale) {
+				setDemoZoom(newScale);
+				syncSliders();
+			}
+		} else if (isOverContainer(toolbarScreen.regionContainer)) {
+			final newScale = Std.int(Math.max(1, Math.min(16, regionTileScale + step)));
+			if (newScale != regionTileScale) {
+				setRegionZoom(newScale);
+				syncSliders();
+			}
+		}
+	}
+
+	function syncSliders() {
+		if (toolbarScreen == null) return;
+		if (toolbarScreen.regionZoomSlider != null)
+			toolbarScreen.regionZoomSlider.setIntValue(AutotileToolbarScreen.scaleToSlider(regionTileScale));
+		if (toolbarScreen.blob47ZoomSlider != null)
+			toolbarScreen.blob47ZoomSlider.setIntValue(AutotileToolbarScreen.scaleToSlider(blob47TileScale));
+		if (toolbarScreen.demoZoomSlider != null)
+			toolbarScreen.demoZoomSlider.setIntValue(AutotileToolbarScreen.scaleToSlider(demoPreviewScale));
 	}
 
 	function buildDemoPreview() {
-		demoPreview = new h2d.Object(s2d);
-		demoPreview.setPosition(1800, 800);
+		if (demoPreview != null) demoPreview.remove();
+		final container = if (toolbarScreen != null) toolbarScreen.demoContainer else null;
 
-		// Label
-		final label = new Text(hxd.res.DefaultFont.get(), demoPreview);
-		label.text = "Demo Map (blob47 pattern):";
-		label.setPosition(0, -20);
+		demoPreview = new h2d.Object(container != null ? container : s2d);
 
 		updateDemoPreview();
 	}
@@ -534,16 +780,16 @@ class AutotileMapper extends hxd.App {
 	function updateDemoPreview() {
 		if (demoPreview == null) return;
 
-		// Remove old children except label
-		while (demoPreview.numChildren > 1) {
-			demoPreview.getChildAt(1).remove();
+		// Remove all old children
+		while (demoPreview.numChildren > 0) {
+			demoPreview.getChildAt(0).remove();
 		}
+		demoHighlight = null;
 
 		// LARGE_SEA_GRID - Comprehensive blob47 test grid (16x12)
 		// Designed to produce all 47 unique tiles.
 		// 1 = terrain, 0 = empty
-		final previewScale = 2;
-		final previewTileSize = tileSize * previewScale;
+		final previewTileSize = tileSize * demoPreviewScale;
 
 		final terrainMap:Array<Array<Int>> = [
 			[1, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 1, 1, 0, 0],
@@ -563,6 +809,7 @@ class AutotileMapper extends hxd.App {
 		final mapHeight = terrainMap.length;
 		final mapWidth = terrainMap[0].length;
 
+		demoCellBlob47 = [];
 		for (row in 0...mapHeight) {
 			for (col in 0...mapWidth) {
 				if (terrainMap[row][col] == 0) continue; // Skip empty cells
@@ -573,7 +820,9 @@ class AutotileMapper extends hxd.App {
 				final tx = col * previewTileSize;
 				final ty = row * previewTileSize;
 
-				// Get the tile to display - mapped tile or demo tile
+				demoCellBlob47.push({x: tx, y: ty, blob47Idx: blob47Idx});
+
+				// Get the tile to display - mapped tile, fallback, or demo tile
 				var tileToDraw:Tile;
 				if (currentMapping.exists(blob47Idx)) {
 					final mappedIdx = currentMapping.get(blob47Idx);
@@ -583,12 +832,153 @@ class AutotileMapper extends hxd.App {
 						tileToDraw = generateDemoTile(blob47Idx);
 					}
 				} else {
-					tileToDraw = generateDemoTile(blob47Idx);
+					// Try fallback
+					final fallbackIdx = Autotile.applyBlob47FallbackWithMap(blob47Idx, currentMapping);
+					if (fallbackIdx != blob47Idx && currentMapping.exists(fallbackIdx)) {
+						final mappedIdx = currentMapping.get(fallbackIdx);
+						if (mappedIdx >= 0 && mappedIdx < regionTiles.length) {
+							tileToDraw = regionTiles[mappedIdx];
+						} else {
+							tileToDraw = generateDemoTile(blob47Idx);
+						}
+					} else {
+						tileToDraw = generateDemoTile(blob47Idx);
+					}
 				}
 
 				final bmp = new Bitmap(tileToDraw, demoPreview);
-				bmp.setScale(previewScale);
+				bmp.setScale(demoPreviewScale);
 				bmp.setPosition(tx, ty);
+			}
+		}
+
+		// Create highlight overlay on top
+		demoHighlight = new Graphics(demoPreview);
+
+		// Add interactives for hover on demo map cells
+		for (cell in demoCellBlob47) {
+			final inter = new Interactive(previewTileSize, previewTileSize, demoPreview);
+			inter.setPosition(cell.x, cell.y);
+			final b47 = cell.blob47Idx;
+			inter.onOver = _ -> {
+				hoveredDemoBlob47 = b47;
+				updateStatus();
+				updateCrossHighlight();
+			};
+			inter.onOut = _ -> {
+				if (hoveredDemoBlob47 == b47) hoveredDemoBlob47 = -1;
+				updateStatus();
+				updateCrossHighlight();
+			};
+		}
+
+		updateCrossHighlight();
+	}
+
+	// Highlight color constants
+	static inline var COLOR_WHITE = 0xFFFFFF; // Expected tile (the one that should be used)
+	static inline var COLOR_BLUE = 0x4488FF; // Actually selected (fallback result)
+	static inline var COLOR_ORANGE = 0xFF8800; // Skipped in fallback chain (missing)
+	static inline var COLOR_YELLOW = 0xFFFF00; // Default highlight (direct match, non-demo hover)
+
+	function updateCrossHighlight() {
+		// Color-coded blob47 highlights: tile -> color
+		var blob47Colors = new Map<Int, Int>();
+		var regionColors = new Map<Int, Int>();
+		// Fallback chain for demo hover
+		var activeFallbackChain:Null<{result:Int, skipped:Array<Int>}> = null;
+		var activeBlob47:Int = -1;
+
+		if (hoveredDemoBlob47 >= 0 || hoveredBlob47Tile >= 0) {
+			activeBlob47 = if (hoveredDemoBlob47 >= 0) hoveredDemoBlob47 else hoveredBlob47Tile;
+			if (currentMapping.exists(activeBlob47)) {
+				// Directly mapped - white
+				blob47Colors.set(activeBlob47, COLOR_WHITE);
+				regionColors.set(currentMapping.get(activeBlob47), COLOR_WHITE);
+			} else {
+				// Get fallback chain
+				final chain = Autotile.getBlob47FallbackChain(activeBlob47, currentMapping);
+				activeFallbackChain = chain;
+				// White = expected tile
+				blob47Colors.set(activeBlob47, COLOR_WHITE);
+				// Orange = skipped (missing) tiles in chain
+				for (skipped in chain.skipped) {
+					blob47Colors.set(skipped, COLOR_ORANGE);
+				}
+				// Blue = actually selected fallback
+				if (chain.result != activeBlob47 && currentMapping.exists(chain.result)) {
+					blob47Colors.set(chain.result, COLOR_BLUE);
+					regionColors.set(currentMapping.get(chain.result), COLOR_BLUE);
+				}
+			}
+		} else if (hoveredRegionTile >= 0) {
+			regionColors.set(hoveredRegionTile, COLOR_YELLOW);
+			for (b47 => regionIdx in currentMapping) {
+				if (regionIdx == hoveredRegionTile) blob47Colors.set(b47, COLOR_YELLOW);
+			}
+		} else if (selectedBlob47Tile >= 0) {
+			blob47Colors.set(selectedBlob47Tile, COLOR_YELLOW);
+			if (currentMapping.exists(selectedBlob47Tile))
+				regionColors.set(currentMapping.get(selectedBlob47Tile), COLOR_YELLOW);
+		}
+
+		// Demo map highlight
+		if (demoHighlight != null) {
+			demoHighlight.clear();
+			if (activeBlob47 >= 0) {
+				final previewTileSize = tileSize * demoPreviewScale;
+				for (cell in demoCellBlob47) {
+					if (cell.blob47Idx == activeBlob47) {
+						// This is the hovered tile's type - white outline
+						demoHighlight.lineStyle(2, COLOR_WHITE);
+						demoHighlight.drawRect(cell.x, cell.y, previewTileSize, previewTileSize);
+					} else if (activeFallbackChain != null) {
+						// Check if this cell uses the fallback result
+						if (!currentMapping.exists(cell.blob47Idx)) {
+							final cellChain = Autotile.getBlob47FallbackChain(cell.blob47Idx, currentMapping);
+							if (cellChain.result == activeFallbackChain.result && currentMapping.exists(cellChain.result)) {
+								demoHighlight.lineStyle(1, COLOR_BLUE);
+								demoHighlight.drawRect(cell.x, cell.y, previewTileSize, previewTileSize);
+							}
+						}
+					}
+				}
+			} else if (Lambda.count(blob47Colors) > 0) {
+				final previewTileSize = tileSize * demoPreviewScale;
+				for (cell in demoCellBlob47) {
+					if (blob47Colors.exists(cell.blob47Idx)) {
+						demoHighlight.lineStyle(2, blob47Colors.get(cell.blob47Idx));
+						demoHighlight.drawRect(cell.x, cell.y, previewTileSize, previewTileSize);
+					}
+				}
+			}
+		}
+
+		// Region highlight
+		if (regionHighlight != null) {
+			regionHighlight.clear();
+			if (Lambda.count(regionColors) > 0) {
+				final scaledTileSize = tileSize * regionTileScale;
+				for (regionIdx => color in regionColors) {
+					regionHighlight.lineStyle(2, color);
+					final col = regionIdx % tilesPerRow;
+					final row = Std.int(regionIdx / tilesPerRow);
+					regionHighlight.drawRect(col * scaledTileSize, row * scaledTileSize, scaledTileSize, scaledTileSize);
+				}
+			}
+		}
+
+		// Blob47 highlight
+		if (blob47Highlight != null) {
+			blob47Highlight.clear();
+			if (Lambda.count(blob47Colors) > 0) {
+				final scaledTileSize = tileSize * blob47TileScale;
+				for (b47 => color in blob47Colors) {
+					if (b47 < 0 || b47 >= blob47CellPos.length || blob47CellPos[b47] == null) continue;
+					blob47Highlight.lineStyle(2, color);
+					final pos = blob47CellPos[b47];
+					blob47Highlight.drawRect(pos.x, pos.y, blob47CellWidth - PAIR_SPACING, scaledTileSize);
+				}
 			}
 		}
 	}
@@ -601,14 +991,18 @@ class AutotileMapper extends hxd.App {
 	}
 
 	function drawTileBackground(g:Graphics, blob47Idx:Int, width:Float, height:Float) {
+		// Alternating background tint for every other pair
+		final isOddPair = (blob47Idx % 2) == 1;
+		final tintOffset = if (isOddPair) 0x0C else 0;
+
 		if (currentMapping.exists(blob47Idx)) {
 			if (autoDetectedTiles.exists(blob47Idx)) {
-				g.beginFill(0x442244); // Purple/pink background for auto-detected
+				g.beginFill(0x442244 + tintOffset * 0x010101); // Purple/pink background for auto-detected
 			} else {
-				g.beginFill(0x225522); // Green for manual
+				g.beginFill(0x225522 + tintOffset * 0x010101); // Green for manual
 			}
 		} else {
-			g.beginFill(0x444444);
+			g.beginFill(if (isOddPair) 0x505050 else 0x3A3A3A);
 		}
 		g.drawRect(0, 0, width, height + 16); // +16 for label space
 		g.endFill();
@@ -737,12 +1131,25 @@ class AutotileMapper extends hxd.App {
 		};
 	}
 
+	function setStatus(text:String, ?color:Int) {
+		if (toolbarScreen != null) {
+			toolbarScreen.updateNamedText("statusLabel", text);
+		}
+	}
+
 	function updateStatus() {
 		var status = "";
 		if (selectedRegionTile >= 0) {
 			status += 'Selected region tile: $selectedRegionTile  ';
 		}
-		if (hoveredBlob47Tile >= 0) {
+		if (hoveredDemoBlob47 >= 0) {
+			status += 'Demo tile: blob47[$hoveredDemoBlob47] (${describeBlob47(hoveredDemoBlob47)})';
+			if (currentMapping.exists(hoveredDemoBlob47)) {
+				status += ' -> region[${currentMapping.get(hoveredDemoBlob47)}]';
+			} else {
+				status += ' (unmapped)';
+			}
+		} else if (hoveredBlob47Tile >= 0) {
 			status += 'Hover blob47: $hoveredBlob47Tile';
 			if (currentMapping.exists(hoveredBlob47Tile)) {
 				status += ' -> ${currentMapping.get(hoveredBlob47Tile)}';
@@ -751,11 +1158,104 @@ class AutotileMapper extends hxd.App {
 		if (hoveredRegionTile >= 0) {
 			status += 'Hover region: $hoveredRegionTile';
 		}
-		statusText.text = status;
+		setStatus(status);
 	}
 
 	function updateHighlights() {
 		// Could add visual highlights for selected tiles
+	}
+
+	function startDrag(regionIdx:Int, startX:Float, startY:Float) {
+		cancelDrag();
+		dragRegionTileIdx = regionIdx;
+
+		// Create floating tile bitmap that follows cursor
+		dragBitmap = new Bitmap(regionTiles[regionIdx], s2d);
+		dragBitmap.setScale(regionTileScale);
+		dragBitmap.alpha = 0.7;
+		dragBitmap.setPosition(startX - tileSize * regionTileScale * 0.5, startY - tileSize * regionTileScale * 0.5);
+
+		// Highlight overlay to show valid drop targets
+		dragOverlay = new Graphics(s2d);
+		updateDragHighlight();
+	}
+
+	function updateDrag(mouseX:Float, mouseY:Float) {
+		if (dragBitmap == null) return;
+		dragBitmap.setPosition(mouseX - tileSize * regionTileScale * 0.5, mouseY - tileSize * regionTileScale * 0.5);
+		updateDragHighlight(getBlob47IndexAtScreenPos(mouseX, mouseY));
+	}
+
+	function endDrag(mouseX:Float, mouseY:Float) {
+		if (dragRegionTileIdx < 0) return;
+
+		// Check if mouse is over a blob47 tile slot
+		final blob47Idx = getBlob47IndexAtScreenPos(mouseX, mouseY);
+		if (blob47Idx >= 0) {
+			currentMapping.set(blob47Idx, dragRegionTileIdx);
+			autoDetectedTiles.remove(blob47Idx);
+			selectedRegionTile = dragRegionTileIdx;
+			selectedBlob47Tile = blob47Idx;
+			rebuildBlob47Display();
+			updateExportPreview();
+			updateStatus();
+		}
+
+		cancelDrag();
+	}
+
+	function cancelDrag() {
+		dragRegionTileIdx = -1;
+		if (dragBitmap != null) {
+			dragBitmap.remove();
+			dragBitmap = null;
+		}
+		if (dragOverlay != null) {
+			dragOverlay.remove();
+			dragOverlay = null;
+		}
+	}
+
+	function updateDragHighlight(hoveredIdx:Int = -1) {
+		if (dragOverlay == null || blob47Display == null) return;
+		dragOverlay.clear();
+
+		final scaledTileSize = tileSize * blob47TileScale;
+
+		for (i in 0...47) {
+			if (i >= blob47CellPos.length || blob47CellPos[i] == null) continue;
+			final pos = blob47CellPos[i];
+			final absPos = blob47Display.localToGlobal(new h2d.col.Point(pos.x, pos.y));
+
+			if (i == hoveredIdx) {
+				dragOverlay.beginFill(0x44FF44, 0.2);
+				dragOverlay.lineStyle(3, 0x44FF44, 1.0);
+				dragOverlay.drawRect(absPos.x, absPos.y, blob47CellWidth - PAIR_SPACING, scaledTileSize);
+				dragOverlay.endFill();
+			} else if (!currentMapping.exists(i)) {
+				dragOverlay.lineStyle(1, 0x44FF44, 0.3);
+				dragOverlay.drawRect(absPos.x, absPos.y, blob47CellWidth - PAIR_SPACING, scaledTileSize);
+			}
+		}
+	}
+
+	function getBlob47IndexAtScreenPos(screenX:Float, screenY:Float):Int {
+		if (blob47Display == null) return -1;
+
+		final scaledTileSize = tileSize * blob47TileScale;
+		final localPt = blob47Display.globalToLocal(new h2d.col.Point(screenX, screenY));
+		final lx = localPt.x;
+		final ly = localPt.y;
+
+		// Search through cell positions to find which tile the cursor is over
+		for (i in 0...47) {
+			if (i >= blob47CellPos.length || blob47CellPos[i] == null) continue;
+			final pos = blob47CellPos[i];
+			if (lx >= pos.x && lx < pos.x + blob47CellWidth - PAIR_SPACING && ly >= pos.y && ly < pos.y + scaledTileSize) {
+				return i;
+			}
+		}
+		return -1;
 	}
 
 	function updateExportPreview() {
@@ -775,10 +1275,9 @@ class AutotileMapper extends hxd.App {
 		exportText.text = preview;
 	}
 
-	function autodetect() {
-		trace("Running autodetection with LAB k-means clustering...");
-		statusText.text = "Autodetecting...";
-		statusText.textColor = 0xFFFF88;
+	public function autodetect() {
+		trace("Running autodetection with edge/center spatial color analysis...");
+		setStatus("Autodetecting...");
 
 		// Analyze each region tile using 3x3 subtile grid
 		final subtileProfiles:Array<SubtileProfile> = [];
@@ -786,80 +1285,76 @@ class AutotileMapper extends hxd.App {
 			subtileProfiles.push(analyzeSubtiles(regionTiles[i]));
 		}
 
-		// Collect all colors from manual mappings (not auto-detected) to train k-means
-		// Filter out very dark colors (likely transparent/background)
-		var referenceColors:Array<LabColor> = [];
+		// Use edge/center ratio to spatially split colors into edge-zone and center-zone sets
+		// Edge zones: subtile indices 0(NW), 1(N), 2(NE), 3(W), 5(E), 6(SW), 7(S), 8(SE) - the 8 border zones
+		// Center zone: subtile index 4(C) - the center zone
+		final edgeIndices = [0, 1, 2, 3, 5, 6, 7, 8];
+		final centerIndex = 4;
+
+		var edgeZoneColors:Array<LabColor> = [];
+		var centerZoneColors:Array<LabColor> = [];
+
+		// Determine which tiles to use for training: manual mappings first, all tiles as fallback
+		var trainingProfiles:Array<SubtileProfile> = [];
 
 		for (blob47Idx => regionIdx in currentMapping) {
 			if (autoDetectedTiles.exists(blob47Idx)) continue; // Skip auto-detected
 			if (regionIdx >= 0 && regionIdx < subtileProfiles.length) {
-				final profile = subtileProfiles[regionIdx];
-				// Add all 9 subtile colors, filtering out near-black
-				for (c in profile.subtiles) {
-					if (c.l > 5) { // Filter out very dark colors
-						referenceColors.push(c);
-					}
-				}
+				trainingProfiles.push(subtileProfiles[regionIdx]);
 			}
 		}
 
-		trace('Reference colors from manual mappings: ${referenceColors.length}');
+		trace('Training profiles from manual mappings: ${trainingProfiles.length}');
 
-		// If not enough reference colors, use all tiles' colors for clustering
-		if (referenceColors.length < 4) {
-			trace("Not enough manual mapping colors, using all region tiles for k-means");
+		final totalPixels = tileSize * tileSize;
+		if (trainingProfiles.length < 2) {
+			trace("Not enough manual mappings, using all non-empty region tiles");
 			for (profile in subtileProfiles) {
-				for (c in profile.subtiles) {
-					if (c.l > 5) { // Filter out very dark colors
-						referenceColors.push(c);
-					}
-				}
+				if (profile.opaquePixelCount >= totalPixels / 2) trainingProfiles.push(profile);
 			}
 		}
 
-		trace('Total colors for k-means: ${referenceColors.length}');
+		// Collect edge and center colors separately based on spatial position
+		for (profile in trainingProfiles) {
+			// Skip empty/mostly-transparent tiles
+			if (profile.opaquePixelCount < totalPixels / 2) continue;
 
-		// Run k-means to find the two main colors
-		final clusters = kMeansCluster2(referenceColors);
-
-		// Determine which is edge vs fill by checking center subtile colors
-		// The center subtile (index 4) should be fill color in most tiles
-		var centerColorSum0 = 0.0;
-		var centerColorSum1 = 0.0;
-		var centerCount = 0;
-		for (profile in subtileProfiles) {
-			// Skip empty tiles
-			var maxL = 0.0;
-			for (st in profile.subtiles) if (st.l > maxL) maxL = st.l;
-			if (maxL < 5) continue;
-
-			final centerColor = profile.subtiles[4]; // Center subtile
-			centerColorSum0 += labDistance(centerColor, clusters.cluster0);
-			centerColorSum1 += labDistance(centerColor, clusters.cluster1);
-			centerCount++;
+			for (ei in edgeIndices) {
+				final c = profile.subtiles[ei];
+				if (c.l > 5) edgeZoneColors.push(c);
+			}
+			final cc = profile.subtiles[centerIndex];
+			if (cc.l > 5) centerZoneColors.push(cc);
 		}
 
-		// The color closer to center subtiles is the fill color
-		var edgeColor:LabColor;
-		var fillColor:LabColor;
-		if (centerCount > 0 && centerColorSum0 > centerColorSum1) {
-			// cluster1 is closer to centers, so it's fill
-			edgeColor = clusters.cluster0;
-			fillColor = clusters.cluster1;
-		} else {
-			// cluster0 is closer to centers, so it's fill
-			edgeColor = clusters.cluster1;
-			fillColor = clusters.cluster0;
+		trace('Spatial split - Edge zone colors: ${edgeZoneColors.length}, Center zone colors: ${centerZoneColors.length}');
+
+		if (edgeZoneColors.length < 2 || centerZoneColors.length < 2) {
+			setStatus("Not enough color data - need more non-empty tiles");
+			return;
 		}
 
-		// Check if clusters are too similar (k-means failed)
+		// Compute initial centroids from spatial zones
+		var edgeColor = averageLabColor(edgeZoneColors);
+		var fillColor = averageLabColor(centerZoneColors);
+
+		// Remove outliers: discard colors that are > 2 standard deviations from their centroid
+		edgeZoneColors = removeLabOutliers(edgeZoneColors, edgeColor, 2.0);
+		centerZoneColors = removeLabOutliers(centerZoneColors, fillColor, 2.0);
+
+		// Recompute centroids after outlier removal
+		edgeColor = averageLabColor(edgeZoneColors);
+		fillColor = averageLabColor(centerZoneColors);
+
+		trace('After outlier removal - Edge colors: ${edgeZoneColors.length}, Center colors: ${centerZoneColors.length}');
+
+		// Check if clusters are too similar
 		final clusterDist = labDistance(edgeColor, fillColor);
-		trace('K-means clusters - Edge: L=${Std.int(edgeColor.l)} a=${Std.int(edgeColor.a)} b=${Std.int(edgeColor.b)}, Fill: L=${Std.int(fillColor.l)} a=${Std.int(fillColor.a)} b=${Std.int(fillColor.b)}, Distance: $clusterDist');
+		trace('Spatial clusters - Edge: L=${Std.int(edgeColor.l)} a=${Std.int(edgeColor.a)} b=${Std.int(edgeColor.b)}, Fill: L=${Std.int(fillColor.l)} a=${Std.int(fillColor.a)} b=${Std.int(fillColor.b)}, Distance: $clusterDist');
 
 		if (clusterDist < 10) {
-			trace("Warning: Clusters too similar, autodetect may not work well. Try setting more manual mappings.");
-			statusText.text = "Clusters too similar - set more manual mappings first";
-			statusText.textColor = 0xFF8888;
+			trace("Warning: Edge and fill colors too similar, autodetect may not work well. Try adjusting edge/center ratio or setting more manual mappings.");
+			setStatus("Edge/fill colors too similar - adjust ratio or set more manual mappings");
 			return;
 		}
 
@@ -899,100 +1394,135 @@ class AutotileMapper extends hxd.App {
 		}
 
 		var autoCount = 0;
+		var emptyTileCount = 0;
 
-		// Count patterns generated from region tiles for diagnostics
-		var regionPatternCounts = new Map<Int, Int>();
+		// Score each region tile against each blob47 pattern.
+		// For each blob47 tile, determine expected fill/edge for each of the 9 subtile zones
+		// and 4 corner zones, then score how well each region tile matches.
 
-		// Track which patterns have already been assigned to prevent duplicates
-		var assignedPatterns = new Map<Int, Bool>();
+		// Build expected classification for each blob47 tile
+		// For each subtile zone and corner, whether it should be fill (1) or edge (0)
+		var blob47Expected:Array<{subtiles:Array<Int>, corners:Array<Int>}> = [];
+		for (i in 0...47) {
+			final edges = getBlob47Edges(i);
+			// Subtile indices: 0=NW, 1=N, 2=NE, 3=W, 4=C, 5=E, 6=SW, 7=S, 8=SE
+			// Center is always fill
+			// Cardinal edges: fill if neighbor present, edge if not
+			// Corners: fill if both adjacent cardinals AND diagonal present
+			final n = edges.n;
+			final s = edges.s;
+			final e = edges.e;
+			final w = edges.w;
+			// Corner subtile is fill only when both adjacent cardinals are present AND diagonal is present
+			final nwFill = n && w && edges.innerNW;
+			final neFill = n && e && edges.innerNE;
+			final swFill = s && w && edges.innerSW;
+			final seFill = s && e && edges.innerSE;
 
-		// Go over each unassigned region tile and try to find a blob47 match
+			blob47Expected.push({
+				subtiles: [
+					nwFill ? 1 : 0, // 0: NW
+					n ? 1 : 0, // 1: N
+					neFill ? 1 : 0, // 2: NE
+					w ? 1 : 0, // 3: W
+					1, // 4: Center - always fill
+					e ? 1 : 0, // 5: E
+					swFill ? 1 : 0, // 6: SW
+					s ? 1 : 0, // 7: S
+					seFill ? 1 : 0 // 8: SE
+				],
+				corners: [
+					// Inner corners: 1 if there's a notch (edge color in corner when both cardinals present)
+					// 0 if no notch (either filled or cardinals not both present)
+					(n && w && !edges.innerNW) ? 1 : 0, // NW corner notch
+					(n && e && !edges.innerNE) ? 1 : 0, // NE corner notch
+					(s && w && !edges.innerSW) ? 1 : 0, // SW corner notch
+					(s && e && !edges.innerSE) ? 1 : 0 // SE corner notch
+				]
+			});
+		}
+
+		// For each region tile, compute match scores against all blob47 patterns
+		// Collect all (regionIdx, blob47Idx, score) triples, then greedily assign best matches
+		var candidates:Array<{regionIdx:Int, blob47Idx:Int, score:Float}> = [];
+
+		final totalPixelsPerTile = tileSize * tileSize;
 		for (regionIdx in 0...subtileProfiles.length) {
 			if (usedRegionTiles.exists(regionIdx)) continue;
 
 			final profile = subtileProfiles[regionIdx];
 
-			// Skip empty/transparent tiles (all subtiles have very low luminance)
-			var maxLuminance = 0.0;
-			for (st in profile.subtiles) {
-				if (st.l > maxLuminance) maxLuminance = st.l;
-			}
-			if (maxLuminance < 5) {
-				// This tile is empty/transparent, count it but skip processing
-				regionPatternCounts.set(-1, (regionPatternCounts.exists(-1) ? regionPatternCounts.get(-1) : 0) + 1);
+			// Skip empty/transparent tiles (less than 50% opaque pixels)
+			if (profile.opaquePixelCount < totalPixelsPerTile / 2) {
+				emptyTileCount++;
 				continue;
 			}
 
-			// Classify each subtile: 0=edge, 1=fill
-			// Subtile indices: 0=NW, 1=N, 2=NE, 3=W, 4=C, 5=E, 6=SW, 7=S, 8=SE
-			var classes:Array<Int> = [];
-			for (st in profile.subtiles) {
-				classes.push(classifyColor(st, edgeColor, fillColor));
-			}
+			// Classify each subtile using soft scoring (distance ratio)
+			for (blob47Idx in 0...47) {
+				if (currentMapping.exists(blob47Idx)) continue;
 
-			// Determine cardinal direction neighbors based on edge subtiles
-			// N edge (index 1): if fill, has N neighbor
-			// S edge (index 7): if fill, has S neighbor
-			// E edge (index 5): if fill, has E neighbor
-			// W edge (index 3): if fill, has W neighbor
-			final hasN = classes[1] == 1;
-			final hasS = classes[7] == 1;
-			final hasE = classes[5] == 1;
-			final hasW = classes[3] == 1;
+				final expected = blob47Expected[blob47Idx];
+				var score = 0.0;
 
-			// Determine inner corners from corner subtiles
-			// Inner corner exists when cardinal neighbors are present but corner pixel is edge color
-			final hasInnerNE = hasN && hasE && classifyColor(profile.neCorner, edgeColor, fillColor) == 0;
-			final hasInnerNW = hasN && hasW && classifyColor(profile.nwCorner, edgeColor, fillColor) == 0;
-			final hasInnerSE = hasS && hasE && classifyColor(profile.seCorner, edgeColor, fillColor) == 0;
-			final hasInnerSW = hasS && hasW && classifyColor(profile.swCorner, edgeColor, fillColor) == 0;
-
-			// Build pattern - for blob47, inner corner bits are SET when corner IS present (no notch)
-			var pattern = 0;
-			if (hasN) pattern |= 1;
-			if (hasS) pattern |= 2;
-			if (hasE) pattern |= 4;
-			if (hasW) pattern |= 8;
-			// Inner corners: bit is set if corner IS filled (neighbor diagonal present)
-			if (hasN && hasE && !hasInnerNE) pattern |= 16; // NE filled = no inner corner notch
-			if (hasN && hasW && !hasInnerNW) pattern |= 32;
-			if (hasS && hasE && !hasInnerSE) pattern |= 64;
-			if (hasS && hasW && !hasInnerSW) pattern |= 128;
-
-			// Count this pattern
-			regionPatternCounts.set(pattern, (regionPatternCounts.exists(pattern) ? regionPatternCounts.get(pattern) : 0) + 1);
-
-			// Find matching blob47 tile(s) - only assign if this pattern hasn't been used yet
-			if (patternToBlob47.exists(pattern) && !assignedPatterns.exists(pattern)) {
-				final candidates = patternToBlob47.get(pattern);
-				for (blob47Idx in candidates) {
-					if (currentMapping.exists(blob47Idx)) continue;
-
-					currentMapping.set(blob47Idx, regionIdx);
-					autoDetectedTiles.set(blob47Idx, true);
-					usedRegionTiles.set(regionIdx, true);
-					assignedPatterns.set(pattern, true); // Mark this pattern as used
-					trace('Automap: region[$regionIdx] -> blob47[$blob47Idx] (pattern=$pattern N:$hasN S:$hasS E:$hasE W:$hasW)');
-					autoCount++;
-					break; // One region tile per blob47
-				}
-			}
-		}
-
-		// Count missing blob47 patterns
-		var missingCount = 0;
-		for (pattern => blob47Indices in patternToBlob47) {
-			if (!regionPatternCounts.exists(pattern)) {
-				for (idx in blob47Indices) {
-					if (!currentMapping.exists(idx)) {
-						missingCount++;
+				// Score subtile zones (9 zones)
+				// Use distance to expected color + penalty when closer to wrong color
+				for (si in 0...9) {
+					final st = profile.subtiles[si];
+					final distEdge = labDistance(st, edgeColor);
+					final distFill = labDistance(st, fillColor);
+					if (expected.subtiles[si] == 1) {
+						// Expected fill: penalize if closer to edge than fill
+						score += distFill;
+						if (distFill > distEdge) score += (distFill - distEdge);
+					} else {
+						// Expected edge: penalize if closer to fill (center) than edge
+						score += distEdge;
+						if (distEdge > distFill) score += (distEdge - distFill);
 					}
 				}
+
+				// Score corner zones (4 corners) - weighted higher for inner corner detection
+				final cornerColors = [profile.nwCorner, profile.neCorner, profile.swCorner, profile.seCorner];
+				for (ci in 0...4) {
+					final cc = cornerColors[ci];
+					final distEdge = labDistance(cc, edgeColor);
+					final distFill = labDistance(cc, fillColor);
+					if (expected.corners[ci] == 1) {
+						// Expected notch (edge color in corner): penalize if closer to fill
+						score += distEdge * 2;
+						if (distEdge > distFill) score += (distEdge - distFill) * 2;
+					} else {
+						// No notch expected - should be fill: penalize if closer to edge
+						score += distFill * 2;
+						if (distFill > distEdge) score += (distFill - distEdge) * 2;
+					}
+				}
+
+				candidates.push({regionIdx: regionIdx, blob47Idx: blob47Idx, score: score});
 			}
 		}
 
-		// Count empty tiles (skipped due to low luminance)
-		var emptyTileCount = regionPatternCounts.exists(-1) ? regionPatternCounts.get(-1) : 0;
+		// Sort by score (lower is better)
+		candidates.sort((a, b) -> a.score < b.score ? -1 : a.score > b.score ? 1 : 0);
+
+		// Greedily assign: best score first, skip if either side already assigned
+		for (c in candidates) {
+			if (currentMapping.exists(c.blob47Idx)) continue;
+			if (usedRegionTiles.exists(c.regionIdx)) continue;
+
+			currentMapping.set(c.blob47Idx, c.regionIdx);
+			autoDetectedTiles.set(c.blob47Idx, true);
+			usedRegionTiles.set(c.regionIdx, true);
+			trace('Automap: region[${c.regionIdx}] -> blob47[${c.blob47Idx}] (score=${Std.int(c.score)})');
+			autoCount++;
+		}
+
+		// Count still-missing blob47 tiles
+		var missingCount = 0;
+		for (i in 0...47) {
+			if (!currentMapping.exists(i)) missingCount++;
+		}
 
 		rebuildBlob47Display();
 		updateExportPreview();
@@ -1000,11 +1530,9 @@ class AutotileMapper extends hxd.App {
 		// Build status message
 		final totalMapped = Lambda.count(currentMapping);
 		if (missingCount > 0) {
-			statusText.text = 'Autodetected $autoCount tiles ($totalMapped/47 total). $missingCount patterns not found in region ($emptyTileCount empty tiles).';
-			statusText.textColor = 0xFFAA44; // Orange warning
+			setStatus('Autodetected $autoCount tiles ($totalMapped/47 total). $missingCount patterns not found in region ($emptyTileCount empty tiles).');
 		} else {
-			statusText.text = 'Autodetected $autoCount tiles ($totalMapped/47 total mapped)';
-			statusText.textColor = 0x66FF66; // Green success
+			setStatus('Autodetected $autoCount tiles ($totalMapped/47 total mapped)');
 		}
 	}
 
@@ -1165,6 +1693,26 @@ class AutotileMapper extends hxd.App {
 		return {l: l / colors.length, a: a / colors.length, b: b / colors.length};
 	}
 
+	// Remove colors that are more than nStdDev standard deviations from the centroid
+	function removeLabOutliers(colors:Array<LabColor>, centroid:LabColor, nStdDev:Float):Array<LabColor> {
+		if (colors.length < 3) return colors;
+
+		// Compute standard deviation of distances
+		var sumDist = 0.0;
+		var sumDist2 = 0.0;
+		for (c in colors) {
+			final d = labDistance(c, centroid);
+			sumDist += d;
+			sumDist2 += d * d;
+		}
+		final meanDist = sumDist / colors.length;
+		final variance = sumDist2 / colors.length - meanDist * meanDist;
+		final stdDev = Math.sqrt(Math.max(0, variance));
+		final threshold = meanDist + nStdDev * stdDev;
+
+		return [for (c in colors) if (labDistance(c, centroid) <= threshold) c];
+	}
+
 	// K-means clustering with k=2 to find edge and fill colors
 	function kMeansCluster2(colors:Array<LabColor>, maxIterations:Int = 20):{cluster0:LabColor, cluster1:LabColor} {
 		if (colors.length < 2) {
@@ -1225,10 +1773,10 @@ class AutotileMapper extends hxd.App {
 		final w = Std.int(tile.width);
 		final h = Std.int(tile.height);
 
-		// Calculate subtile boundaries based on ratio
-		final edgeSize = subtileEdgeRatio / 100.0;
-		final xEdge = Std.int(w * edgeSize);
-		final yEdge = Std.int(h * edgeSize);
+		// Use pixel-snapped edge size
+		final edgePx = getEdgePx();
+		final xEdge = edgePx;
+		final yEdge = edgePx;
 		final xMid = w - 2 * xEdge;
 		final yMid = h - 2 * yEdge;
 
@@ -1244,9 +1792,14 @@ class AutotileMapper extends hxd.App {
 		var swCornerColors:Array<Int> = [];
 		var seCornerColors:Array<Int> = [];
 
+		var opaqueCount = 0;
 		for (y in 0...h) {
 			for (x in 0...w) {
-				final color = pixels.getPixel(x, y) & 0xFFFFFF;
+				final rawPixel = pixels.getPixel(x, y);
+				final alpha = (rawPixel >>> 24) & 0xFF;
+				if (alpha == 0) continue; // Skip fully transparent pixels
+				opaqueCount++;
+				final color = rawPixel & 0xFFFFFF;
 
 				// Determine which subtile (0-8)
 				var sx = if (x < xBounds[1]) 0 else if (x < xBounds[2]) 1 else 2;
@@ -1254,11 +1807,11 @@ class AutotileMapper extends hxd.App {
 				final idx = sy * 3 + sx;
 				subtileColors[idx].push(color);
 
-				// Corner pixels (2x2 in each corner)
-				if (x < 2 && y < 2) nwCornerColors.push(color);
-				if (x >= w - 2 && y < 2) neCornerColors.push(color);
-				if (x < 2 && y >= h - 2) swCornerColors.push(color);
-				if (x >= w - 2 && y >= h - 2) seCornerColors.push(color);
+				// Corner pixels (edgePx x edgePx in each corner)
+				if (x < xEdge && y < yEdge) nwCornerColors.push(color);
+				if (x >= w - xEdge && y < yEdge) neCornerColors.push(color);
+				if (x < xEdge && y >= h - yEdge) swCornerColors.push(color);
+				if (x >= w - xEdge && y >= h - yEdge) seCornerColors.push(color);
 			}
 		}
 
@@ -1274,7 +1827,8 @@ class AutotileMapper extends hxd.App {
 			nwCorner: rgbToLab(averageColor(nwCornerColors)),
 			neCorner: rgbToLab(averageColor(neCornerColors)),
 			swCorner: rgbToLab(averageColor(swCornerColors)),
-			seCorner: rgbToLab(averageColor(seCornerColors))
+			seCorner: rgbToLab(averageColor(seCornerColors)),
+			opaquePixelCount: opaqueCount
 		};
 	}
 
@@ -1316,22 +1870,47 @@ class AutotileMapper extends hxd.App {
 		return score;
 	}
 
-	function exportMapping() {
-		trace("\n========== EXPORT MAPPING ==========");
-		trace("mapping: [");
-
+	public function exportMapping() {
 		final keys = [for (k in currentMapping.keys()) k];
 		keys.sort((a, b) -> a - b);
 
-		for (k in keys) {
-			final desc = describeBlob47(k);
-			trace('    $k:${currentMapping.get(k)},    // $k: $desc');
+		// Build full autotile definition as single string
+		final buf = new StringBuf();
+		buf.add('#$autotileName autotile {\n');
+		buf.add('    format: blob47\n');
+		buf.add('    tileSize: $tileSize\n');
+		switch autotileDef.source {
+			case ATSFile(filename):
+				buf.add('    file: "${resolveString(filename)}"\n');
+			default:
 		}
-		trace("]");
-		trace("=====================================\n");
+		final region = autotileDef.region;
+		buf.add('    region: [${resolveInt(region[0])}, ${resolveInt(region[1])}, ${resolveInt(region[2])}, ${resolveInt(region[3])}]\n');
+		buf.add('    allowPartialMapping: true\n');
+		buf.add('    mapping: [\n');
 
-		statusText.text = "Mapping exported to console";
-		statusText.textColor = 0x88FF88;
+		var outOfRange = 0;
+		for (k in keys) {
+			final regionIdx = currentMapping.get(k);
+			final desc = describeBlob47(k);
+			final comma = k == keys[keys.length - 1] ? "" : ",";
+			if (regionIdx >= totalTiles) {
+				buf.add('     $k:$regionIdx$comma    // $k: $desc  *** OUT OF RANGE ***\n');
+				outOfRange++;
+			} else {
+				buf.add('     $k:$regionIdx$comma    // $k: $desc\n');
+			}
+		}
+		buf.add(' ]\n');
+		buf.add('}\n');
+
+		trace(buf.toString());
+
+		if (outOfRange > 0) {
+			setStatus('WARNING: $outOfRange mappings have region tile indices out of range (max ${totalTiles - 1})!');
+		} else {
+			setStatus("Mapping exported to console (${keys.length}/${47} mapped)");
+		}
 	}
 
 	function describeBlob47(idx:Int):String {
@@ -1356,7 +1935,7 @@ class AutotileMapper extends hxd.App {
 		return if (parts.length == 0) "isolated" else "has " + parts.join("+");
 	}
 
-	function clearMapping() {
+	public function clearMapping() {
 		// First clear only removes auto-detected, second clears all
 		if (Lambda.count(autoDetectedTiles) > 0) {
 			// Clear only auto-detected mappings
@@ -1364,31 +1943,117 @@ class AutotileMapper extends hxd.App {
 				currentMapping.remove(blob47Idx);
 			}
 			autoDetectedTiles.clear();
-			statusText.text = "Auto-detected mappings cleared";
-			statusText.textColor = 0xFFAA88;
+			setStatus("Auto-detected mappings cleared");
 		} else {
 			// Clear all mappings
 			currentMapping.clear();
-			statusText.text = "All mappings cleared";
-			statusText.textColor = 0xFF8888;
+			setStatus("All mappings cleared");
 		}
 		rebuildBlob47Display();
 		updateExportPreview();
 	}
 
-	function setSubtileRatio(edgePercent:Int) {
-		subtileEdgeRatio = edgePercent;
-		subtileMiddleRatio = 100 - 2 * edgePercent;
-		statusText.text = 'Subtile ratio: $subtileEdgeRatio-$subtileMiddleRatio-$subtileEdgeRatio (press A to re-autodetect)';
-		statusText.textColor = 0x88AAFF;
+	function buildRatioPreview() {
+		if (ratioPreview != null) ratioPreview.remove();
+		final container = if (toolbarScreen != null) toolbarScreen.ratioContainer else null;
+
+		ratioPreview = new h2d.Object(container != null ? container : s2d);
+
+		updateRatioPreview();
 	}
 
-	function reloadManim() {
+	function updateRatioPreview() {
+		if (ratioPreview == null) return;
+
+		// Remove all old children
+		while (ratioPreview.numChildren > 0) {
+			ratioPreview.getChildAt(0).remove();
+		}
+
+		final previewScale = 8;
+		final previewSize = tileSize * previewScale;
+
+		// Show the selected tile or a placeholder
+		if (selectedRegionTile >= 0 && selectedRegionTile < regionTiles.length) {
+			final bmp = new Bitmap(regionTiles[selectedRegionTile], ratioPreview);
+			bmp.setScale(previewScale);
+		} else {
+			// Gray placeholder
+			final placeholder = new Graphics(ratioPreview);
+			placeholder.beginFill(0x555555);
+			placeholder.drawRect(0, 0, previewSize, previewSize);
+			placeholder.endFill();
+
+			final hint = new Text(hxd.res.DefaultFont.get(), ratioPreview);
+			hint.text = "Select a region tile";
+			hint.textColor = 0x888888;
+			hint.setPosition(4, previewSize / 2 - 6);
+		}
+
+		// Draw 3x3 grid overlay showing edge/center ratio (pixel-snapped)
+		final gridGfx = new Graphics(ratioPreview);
+
+		final edgePx = getEdgePx() * previewScale;
+		final midPx = previewSize - 2 * edgePx;
+
+		// Vertical lines
+		gridGfx.lineStyle(2, 0xFF4444, 0.7);
+		gridGfx.moveTo(edgePx, 0);
+		gridGfx.lineTo(edgePx, previewSize);
+		gridGfx.moveTo(edgePx + midPx, 0);
+		gridGfx.lineTo(edgePx + midPx, previewSize);
+
+		// Horizontal lines
+		gridGfx.moveTo(0, edgePx);
+		gridGfx.lineTo(previewSize, edgePx);
+		gridGfx.moveTo(0, edgePx + midPx);
+		gridGfx.lineTo(previewSize, edgePx + midPx);
+
+		// Outer border
+		gridGfx.lineStyle(1, 0xAAAAAA, 0.5);
+		gridGfx.drawRect(0, 0, previewSize, previewSize);
+
+		// Zone labels (NW, N, NE, W, C, E, SW, S, SE)
+		final zoneNames = ["NW", "N", "NE", "W", "C", "E", "SW", "S", "SE"];
+		final zoneX = [edgePx / 2, edgePx + midPx / 2, edgePx + midPx + edgePx / 2];
+		final zoneY = [edgePx / 2, edgePx + midPx / 2, edgePx + midPx + edgePx / 2];
+		for (zi in 0...9) {
+			final zx = zoneX[zi % 3];
+			final zy = zoneY[Std.int(zi / 3)];
+			final zt = new Text(hxd.res.DefaultFont.get(), ratioPreview);
+			zt.text = zoneNames[zi];
+			zt.textColor = 0xFFFF44;
+			zt.dropShadow = {dx: 1, dy: 1, color: 0, alpha: 1};
+			zt.setPosition(Std.int(zx) - 4, Std.int(zy) - 6);
+		}
+
+		// Update ratio label via .manim updatable element
+		if (toolbarScreen != null) {
+			final snappedEdge = getEdgePx();
+			toolbarScreen.updateNamedText("ratioLabel", 'Edge/Center: ${snappedEdge}px-${tileSize - 2 * snappedEdge}px-${snappedEdge}px');
+		}
+	}
+
+	public function setSubtileRatio(edgePercent:Int) {
+		// Snap to closest pixel boundary
+		final edgePx = Math.round(tileSize * edgePercent / 100.0);
+		final snappedPx = Std.int(Math.max(1, Math.min(edgePx, Std.int(tileSize / 2) - 1)));
+		subtileEdgeRatio = Std.int(Math.round(snappedPx * 100.0 / tileSize));
+		subtileMiddleRatio = 100 - 2 * subtileEdgeRatio;
+		updateRatioPreview();
+		setStatus('Edge: ${snappedPx}px / Center: ${tileSize - 2 * snappedPx}px (${subtileEdgeRatio}-${subtileMiddleRatio}-${subtileEdgeRatio}%)  Press A to re-autodetect');
+	}
+
+	// Get the snapped edge pixel size for the current ratio
+	function getEdgePx():Int {
+		return Std.int(Math.max(1, Math.round(tileSize * subtileEdgeRatio / 100.0)));
+	}
+
+	public function reloadManim() {
 		try {
 			loadAndParseManim();
 			buildUI();
-			statusText.text = "Reloaded";
-			statusText.textColor = 0x88FF88;
+			setStatus("Reloaded");
 		} catch (e) {
 			showError('Reload error: $e');
 		}
@@ -1439,7 +2104,9 @@ typedef SubtileProfile = {
 	nwCorner:LabColor,
 	neCorner:LabColor,
 	swCorner:LabColor,
-	seCorner:LabColor
+	seCorner:LabColor,
+	// Number of opaque (alpha > 0) pixels in the tile
+	opaquePixelCount:Int
 };
 
 typedef LabColor = {
@@ -1447,3 +2114,119 @@ typedef LabColor = {
 	a:Float, // Green-Red -128 to 127
 	b:Float // Blue-Yellow -128 to 127
 };
+
+// Toolbar screen using std.manim UI components
+class AutotileToolbarScreen extends UIScreenBase {
+	final mapper:AutotileMapper;
+
+	var autodetectBtn:UIStandardMultiAnimButton;
+	var exportBtn:UIStandardMultiAnimButton;
+	var clearBtn:UIStandardMultiAnimButton;
+	var reloadBtn:UIStandardMultiAnimButton;
+
+	// Sliders (positioned by .manim layout)
+	public var regionZoomSlider:UIStandardMultiAnimSlider;
+	public var blob47ZoomSlider:UIStandardMultiAnimSlider;
+	public var demoZoomSlider:UIStandardMultiAnimSlider;
+	public var ratioSlider:UIStandardMultiAnimSlider;
+
+	// Container objects for dynamic content (positioned by .manim layout)
+	public var regionContainer:h2d.Object;
+	public var blob47Container:h2d.Object;
+	public var demoContainer:h2d.Object;
+	public var ratioContainer:h2d.Object;
+
+	// Builder result for accessing updatable elements
+	var uiBuilderResult:bh.multianim.BuilderResult;
+
+	// Convert slider value (0-100) to scale (1-16)
+	static function sliderToScale(v:Int):Int {
+		return Std.int(Math.max(1, 1 + v * 15 / 100));
+	}
+
+	// Convert scale (1-16) to slider value (0-100)
+	public static function scaleToSlider(s:Int):Int {
+		return Std.int((s - 1) * 100 / 15);
+	}
+
+	// Convert ratio slider (0-100) to edge percent (5-45)
+	static function sliderToRatio(v:Int):Int {
+		return Std.int(5 + v * 40 / 100);
+	}
+
+	static function ratioToSlider(r:Int):Int {
+		return Std.int((r - 5) * 100 / 40);
+	}
+
+	public function new(screenManager:ScreenManager, mapper:AutotileMapper) {
+		super(screenManager);
+		this.mapper = mapper;
+	}
+
+	public function load():Void {
+		final stdBuilder = screenManager.buildFromResourceName("std.manim", false);
+		final uiBuilder = screenManager.buildFromResourceName("autotile-mapper-ui.manim", false);
+
+		// Pre-create container objects for dynamic content (passed as h2d.Object to .manim placeholders)
+		regionContainer = new h2d.Object();
+		blob47Container = new h2d.Object();
+		demoContainer = new h2d.Object();
+		ratioContainer = new h2d.Object();
+
+		// Build UI from .manim definition, mapping placeholders to controls
+		var ui = MacroUtils.macroBuildWithParameters(uiBuilder, "mapperUI", [], [
+			autodetectBtn => addButtonWithSingleBuilder(stdBuilder, "button", "Autodetect"),
+			exportBtn => addButtonWithSingleBuilder(stdBuilder, "button", "Export"),
+			clearBtn => addButtonWithSingleBuilder(stdBuilder, "button", "Clear"),
+			reloadBtn => addButtonWithSingleBuilder(stdBuilder, "button", "Reload"),
+			regionZoomSlider => addSlider(stdBuilder, scaleToSlider(mapper.regionTileScale)),
+			blob47ZoomSlider => addSlider(stdBuilder, scaleToSlider(mapper.blob47TileScale)),
+			demoZoomSlider => addSlider(stdBuilder, scaleToSlider(mapper.demoPreviewScale)),
+			ratioSlider => addSlider(stdBuilder, ratioToSlider(mapper.subtileEdgeRatio)),
+			regionContainer => regionContainer,
+			blob47Container => blob47Container,
+			demoContainer => demoContainer,
+			ratioContainer => ratioContainer,
+		]);
+
+		this.autodetectBtn = ui.autodetectBtn;
+		this.exportBtn = ui.exportBtn;
+		this.clearBtn = ui.clearBtn;
+		this.reloadBtn = ui.reloadBtn;
+		this.regionZoomSlider = ui.regionZoomSlider;
+		this.blob47ZoomSlider = ui.blob47ZoomSlider;
+		this.demoZoomSlider = ui.demoZoomSlider;
+		this.ratioSlider = ui.ratioSlider;
+
+		// Wire up button callbacks
+		autodetectBtn.onClick = () -> mapper.autodetect();
+		exportBtn.onClick = () -> mapper.exportMapping();
+		clearBtn.onClick = () -> mapper.clearMapping();
+		reloadBtn.onClick = () -> mapper.reloadManim();
+
+		uiBuilderResult = addBuilderResult(ui.builderResults);
+		trace("AutotileToolbarScreen.load() done, elements: " + elements.length);
+	}
+
+	public function updateNamedText(name:String, text:String) {
+		if (uiBuilderResult != null) {
+			uiBuilderResult.getUpdatable(name).updateText(text);
+		}
+	}
+
+	public function onScreenEvent(event:UIScreenEvent, source:Null<UIElement>) {
+		switch event {
+			case UIChangeValue(value):
+				if (source == ratioSlider) {
+					mapper.setSubtileRatio(sliderToRatio(value));
+				} else if (source == regionZoomSlider) {
+					mapper.setRegionZoom(sliderToScale(value));
+				} else if (source == blob47ZoomSlider) {
+					mapper.setBlob47Zoom(sliderToScale(value));
+				} else if (source == demoZoomSlider) {
+					mapper.setDemoZoom(sliderToScale(value));
+				}
+			default:
+		}
+	}
+}

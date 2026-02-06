@@ -10,28 +10,34 @@ version: 0.3
     region: [8, 8, 80, 96]
     allowPartialMapping: true
     mapping: [
-        0:4,    // 0: isolated -> center tile (best visual)
-        1:7,    // 1: has N neighbor -> S edge (connects up, border down)
-        2:3,    // 2: has E neighbor -> W edge (connects right, border left)
-        3:6,    // 3: has N+E -> SW outer corner
-        4:6,    // 4: has N+NE+E -> SW outer (same, no distinct corner tile)
-        5:1,    // 5: has S neighbor -> N edge (connects down, border up)
-        6:4,    // 6: has N+S -> center (vertical strip)
-        7:0,    // 7: has E+S -> NW outer corner
-        8:3,    // 8: has N+E+S -> W edge (open west)
-        9:3,    // 9: has N+NE+E+S -> W edge
-        10:0,   // 10: has E+SE+S -> NW outer
-        11:3,   // 11: has N+E+SE+S -> W edge
-        12:3,   // 12: has N+NE+E+SE+S -> W edge
-        13:5,   // 13: has W neighbor -> E edge (connects left, border right)
-        14:8,   // 14: has N+W -> SE outer corner
-        15:4,   // 15: has E+W -> center (horizontal strip)
-        16:7,   // 16: has N+E+W -> S edge (open south)
-        17:7,   // 17: has N+NE+E+W -> S edge
-        18:2,   // 18: has S+W -> NE outer corner
-        19:5,   // 19: has N+S+W -> E edge (open east)
-        20:1,   // 20: has E+S+W -> N edge (open north)
-        21:4    // 21: has N+E+S+W -> center
-        // Tiles 22-46 not mapped - will use fallback!
-    ]
+      0:4,    // 0: isolated
+     1:115,    // 1: has N
+     2:86,    // 2: has E
+     3:116,    // 3: has N+E
+     4:46,    // 4: has N+NE+E
+     5:95,    // 5: has S
+     7:96,    // 7: has E+S
+     8:106,    // 8: has N+E+S
+     10:26,    // 10: has E+SE+S
+     12:36,    // 12: has N+NE+E+SE+S
+     13:88,    // 13: has W
+     14:118,    // 14: has N+W
+     16:117,    // 16: has N+E+W
+     19:108,    // 19: has N+S+W
+     20:87,    // 20: has E+S+W
+     21:107,    // 21: has N+E+S+W
+     26:98,    // 26: has S+SW+W
+     30:58,    // 30: has N+NE+E+S+SW+W
+     31:27,    // 31: has E+SE+S+SW+W
+     33:56,    // 33: has N+NE+E+SE+S+SW+W
+     34:48,    // 34: has N+W+NW
+     36:47,    // 36: has N+NE+E+W+NW
+     39:112,    // 39: has N+NE+E+S+W+NW
+     40:68,    // 40: has N+E+SE+S+W+NW
+     41:66,    // 41: has N+NE+E+SE+S+W+NW
+     42:38,    // 42: has N+S+SW+W+NW
+     44:67,    // 44: has N+NE+E+S+SW+W+NW
+     45:57,    // 45: has N+E+SE+S+SW+W+NW
+     46:8    // 46: has N+NE+E+SE+S+SW+W+NW
+ ]
 }

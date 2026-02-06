@@ -172,6 +172,9 @@ class Autotile {
 	 */
 	private static var blob47LUT:Array<Int> = null;
 
+	/** Reverse lookup: tile index (0-46) -> reduced 8-bit mask */
+	private static var blob47ReverseLUT:Array<Int> = null;
+
 	/**
 	 * Blob47 fallback lookup table. For each tile index, gives the next simpler tile
 	 * (same cardinal directions but with one fewer corner).
@@ -244,21 +247,204 @@ class Autotile {
 	 * @return Tile index that exists in the mapping
 	 */
 	public static function applyBlob47FallbackWithMap(tileIndex:Int, mapping:Map<Int, Int>):Int {
-		if (blob47FallbackLUT == null) {
-			initBlob47FallbackLUT();
+		if (blob47LUT == null) initBlob47LUT();
+
+		final mask = blob47ReverseLUT[tileIndex];
+		final allCardinals = mask & (N | E | S | W);
+		final cardinalBits:Array<Int> = [];
+		if ((allCardinals & N) != 0) cardinalBits.push(N);
+		if ((allCardinals & E) != 0) cardinalBits.push(E);
+		if ((allCardinals & S) != 0) cardinalBits.push(S);
+		if ((allCardinals & W) != 0) cardinalBits.push(W);
+
+		// Phase 1: Same cardinals, try all corner subsets (prefer most corners)
+		final result = findBestCornerMatch(allCardinals, tileIndex, mapping);
+		if (result >= 0) return result;
+
+		// Phase 2: Remove cardinals progressively (1, then 2, etc.)
+		for (removeCount in 1...cardinalBits.length) {
+			final best = tryReducedCardinals(cardinalBits, removeCount, tileIndex, mapping);
+			if (best >= 0) return best;
 		}
 
-		// Keep falling back until we find a tile that exists in the mapping
-		while (!mapping.exists(tileIndex) && tileIndex > 0) {
-			tileIndex = blob47FallbackLUT[tileIndex];
-		}
-
-		// Final safety: if still not found, use tile 0 (isolated)
-		if (!mapping.exists(tileIndex)) {
-			return 0;
-		}
+		// Phase 3: Full tile or empty tile
+		if (tileIndex != 46 && mapping.exists(46)) return 46;
+		if (tileIndex != 0 && mapping.exists(0)) return 0;
 
 		return tileIndex;
+	}
+
+	/**
+	 * Get the full fallback chain for a blob47 tile.
+	 * Returns {result: actual fallback tile, skipped: tiles tried but not mapped (in order of priority)}.
+	 * If the tile is directly mapped, result == tileIndex and skipped is empty.
+	 */
+	public static function getBlob47FallbackChain(tileIndex:Int, mapping:Map<Int, Int>):{result:Int, skipped:Array<Int>} {
+		if (blob47LUT == null) initBlob47LUT();
+		if (mapping.exists(tileIndex)) return {result: tileIndex, skipped: []};
+
+		final skipped:Array<Int> = [];
+		final mask = blob47ReverseLUT[tileIndex];
+		final allCardinals = mask & (N | E | S | W);
+		final cardinalBits:Array<Int> = [];
+		if ((allCardinals & N) != 0) cardinalBits.push(N);
+		if ((allCardinals & E) != 0) cardinalBits.push(E);
+		if ((allCardinals & S) != 0) cardinalBits.push(S);
+		if ((allCardinals & W) != 0) cardinalBits.push(W);
+
+		// Phase 1: Same cardinals, all corner subsets sorted by corner count desc
+		final phase1 = getSortedCornerSubsets(allCardinals, tileIndex);
+		for (candidate in phase1) {
+			if (mapping.exists(candidate)) return {result: candidate, skipped: skipped};
+			skipped.push(candidate);
+		}
+
+		// Phase 2: Remove cardinals progressively
+		for (removeCount in 1...cardinalBits.length) {
+			final phase2 = getSortedReducedCardinalCandidates(cardinalBits, removeCount, tileIndex);
+			for (candidate in phase2) {
+				if (mapping.exists(candidate)) return {result: candidate, skipped: skipped};
+				if (skipped.indexOf(candidate) < 0) skipped.push(candidate);
+			}
+		}
+
+		// Phase 3: Full tile or empty tile
+		if (tileIndex != 46) {
+			if (mapping.exists(46)) return {result: 46, skipped: skipped};
+			if (skipped.indexOf(46) < 0) skipped.push(46);
+		}
+		if (tileIndex != 0) {
+			if (mapping.exists(0)) return {result: 0, skipped: skipped};
+			if (skipped.indexOf(0) < 0) skipped.push(0);
+		}
+
+		return {result: tileIndex, skipped: skipped};
+	}
+
+	/** Get all unique candidate tiles for given cardinals + corner subsets, sorted by descending corner count */
+	private static function getSortedCornerSubsets(cardinals:Int, skipTile:Int):Array<Int> {
+		final cornerBits:Array<Int> = [];
+		if ((cardinals & N) != 0 && (cardinals & E) != 0) cornerBits.push(NE);
+		if ((cardinals & S) != 0 && (cardinals & E) != 0) cornerBits.push(SE);
+		if ((cardinals & S) != 0 && (cardinals & W) != 0) cornerBits.push(SW);
+		if ((cardinals & N) != 0 && (cardinals & W) != 0) cornerBits.push(NW);
+
+		final numCorners = cornerBits.length;
+		final candidates:Array<{tile:Int, corners:Int}> = [];
+		final seen = new Map<Int, Bool>();
+
+		for (subset in 0...(1 << numCorners)) {
+			var tryMask = cardinals;
+			var count = 0;
+			for (ci in 0...numCorners) {
+				if ((subset & (1 << ci)) != 0) { tryMask |= cornerBits[ci]; count++; }
+			}
+			final tryTile = blob47LUT[tryMask];
+			if (tryTile != skipTile && !seen.exists(tryTile)) {
+				seen.set(tryTile, true);
+				candidates.push({tile: tryTile, corners: count});
+			}
+		}
+		// Sort by descending corner count (most corners first = best match)
+		candidates.sort((a, b) -> b.corners - a.corners);
+		return [for (c in candidates) c.tile];
+	}
+
+	/** Get candidate tiles for reduced cardinal sets, sorted by score (cardinals*10 + corners) desc */
+	private static function getSortedReducedCardinalCandidates(cardinalBits:Array<Int>, removeCount:Int, skipTile:Int):Array<Int> {
+		final candidates:Array<{tile:Int, score:Int}> = [];
+		final seen = new Map<Int, Bool>();
+
+		combineRemovals(cardinalBits, cardinalBits.length, removeCount, 0, 0, removeMask -> {
+			var keepCardinals = 0;
+			for (b in cardinalBits) {
+				if ((b & removeMask) == 0) keepCardinals |= b;
+			}
+			final subCandidates = getSortedCornerSubsets(keepCardinals, skipTile);
+			for (candidate in subCandidates) {
+				if (!seen.exists(candidate)) {
+					seen.set(candidate, true);
+					final rmask = blob47ReverseLUT[candidate];
+					var corners = 0;
+					if ((rmask & NE) != 0) corners++;
+					if ((rmask & SE) != 0) corners++;
+					if ((rmask & SW) != 0) corners++;
+					if ((rmask & NW) != 0) corners++;
+					final score = (cardinalBits.length - removeCount) * 10 + corners;
+					candidates.push({tile: candidate, score: score});
+				}
+			}
+		});
+		candidates.sort((a, b) -> b.score - a.score);
+		return [for (c in candidates) c.tile];
+	}
+
+	/** Try all corner subsets for given cardinals, return mapped tile with most corners, or -1 */
+	private static function findBestCornerMatch(cardinals:Int, skipTile:Int, mapping:Map<Int, Int>):Int {
+		final cornerBits:Array<Int> = [];
+		if ((cardinals & N) != 0 && (cardinals & E) != 0) cornerBits.push(NE);
+		if ((cardinals & S) != 0 && (cardinals & E) != 0) cornerBits.push(SE);
+		if ((cardinals & S) != 0 && (cardinals & W) != 0) cornerBits.push(SW);
+		if ((cardinals & N) != 0 && (cardinals & W) != 0) cornerBits.push(NW);
+
+		final numCorners = cornerBits.length;
+		var bestTile = -1;
+		var bestCount = -1;
+
+		for (subset in 0...(1 << numCorners)) {
+			var tryMask = cardinals;
+			var count = 0;
+			for (ci in 0...numCorners) {
+				if ((subset & (1 << ci)) != 0) {
+					tryMask |= cornerBits[ci];
+					count++;
+				}
+			}
+			final tryTile = blob47LUT[tryMask];
+			if (tryTile != skipTile && mapping.exists(tryTile) && count > bestCount) {
+				bestCount = count;
+				bestTile = tryTile;
+			}
+		}
+		return bestTile;
+	}
+
+	/** Try removing removeCount cardinals, for each try all corner subsets */
+	private static function tryReducedCardinals(cardinalBits:Array<Int>, removeCount:Int, skipTile:Int, mapping:Map<Int, Int>):Int {
+		var bestTile = -1;
+		var bestScore = -1; // cardinals remaining * 10 + corners
+
+		combineRemovals(cardinalBits, cardinalBits.length, removeCount, 0, 0, removeMask -> {
+			final reduced = (N | E | S | W) & ~removeMask;
+			// Only keep cardinals that were in the original
+			var keepCardinals = 0;
+			for (b in cardinalBits) {
+				if ((b & removeMask) == 0) keepCardinals |= b;
+			}
+			final result = findBestCornerMatch(keepCardinals, skipTile, mapping);
+			if (result >= 0) {
+				final rmask = blob47ReverseLUT[result];
+				var corners = 0;
+				if ((rmask & NE) != 0) corners++;
+				if ((rmask & SE) != 0) corners++;
+				if ((rmask & SW) != 0) corners++;
+				if ((rmask & NW) != 0) corners++;
+				final score = (cardinalBits.length - removeCount) * 10 + corners;
+				if (score > bestScore) {
+					bestScore = score;
+					bestTile = result;
+				}
+			}
+		});
+
+		return bestTile;
+	}
+
+	private static function combineRemovals(bits:Array<Int>, n:Int, k:Int, start:Int, mask:Int, cb:(Int) -> Void):Void {
+		if (k == 0) { cb(mask); return; }
+		for (i in start...n) {
+			combineRemovals(bits, n, k - 1, i + 1, mask | bits[i], cb);
+		}
 	}
 
 	/**
@@ -272,6 +458,15 @@ class Autotile {
 		for (i in 0...256) {
 			blob47LUT[i] = calculateBlob47Tile(i);
 		}
+
+		// Build reverse LUT: tile index (0-46) -> reduced mask
+		// Use the switch table from calculateBlob47Tile directly
+		blob47ReverseLUT = [
+			0, 1, 4, 5, 7, 16, 17, 20, 21, 23, 28, 29, 31,        // 0-12
+			64, 65, 68, 69, 71, 80, 81, 84, 85, 87, 92, 93, 95,    // 13-25
+			112, 113, 116, 117, 119, 124, 125, 127,                  // 26-33
+			193, 197, 199, 209, 213, 215, 221, 223, 241, 245, 247, 253, 255 // 34-46
+		];
 	}
 
 	/**
