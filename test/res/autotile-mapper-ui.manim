@@ -2,6 +2,9 @@ version: 0.3
 
 // AutotileMapper UI - full layout definition using flow
 #mapperUI programmable() {
+    // Status bar - positioned absolutely so hover text doesn't reflow the layout
+    #statusLabel(updatable) text(dd, "Ready", #88ff88ff): 10, 45
+
     // Top-level vertical flow for the whole UI
     flow(layout:vertical, padding:10, verticalSpacing:5) {
 
@@ -12,9 +15,6 @@ version: 0.3
             placeholder(generated(cross(200, 30)), builderParameter("clearBtn"));
             placeholder(generated(cross(200, 30)), builderParameter("reloadBtn"));
         }
-
-        // Status bar
-        #statusLabel(updatable) text(dd, "Ready", #88ff88ff);
 
         // Two-column layout (multiline: wraps if too wide)
         flow(layout:horizontal, horizontalSpacing:30, multiline:true, maxWidth:2540) {
