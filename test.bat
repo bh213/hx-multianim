@@ -31,6 +31,7 @@ echo Usage: test.bat [run^|gen-refs^|report^|rr] [-v^|-verbose]
 goto :eof
 
 :run
+echo [96m--- TEST BEGIN ---[0m
 pushd "%ROOT%" >nul
 if "%VERBOSE%"=="1" (
     haxe test-hx-multianim-verbose.hxml
@@ -38,6 +39,7 @@ if "%VERBOSE%"=="1" (
     for /f "tokens=*" %%i in ('haxe test-hx-multianim.hxml 2^>^&1 ^| findstr /i "Error FAILURE failures: results: warnings:"') do @echo %%i
 )
 popd >nul
+echo [96m--- TEST END ---[0m
 goto :eof
 
 :gen_refs
@@ -161,10 +163,10 @@ if exist "%ROOT%test\screenshots\conditionalsDemo_actual.png" (
     echo   18 - conditionalsDemo
 )
 
-REM Example 19: tertiary op
-if exist "%ROOT%test\screenshots\tertiaryOpDemo_actual.png" (
-    copy /Y "%ROOT%test\screenshots\tertiaryOpDemo_actual.png" "%ROOT%test\examples\19-tertiaryOpDemo\reference.png" >nul
-    echo   19 - tertiaryOpDemo
+REM Example 19: ternary op
+if exist "%ROOT%test\screenshots\ternaryOpDemo_actual.png" (
+    copy /Y "%ROOT%test\screenshots\ternaryOpDemo_actual.png" "%ROOT%test\examples\19-ternaryOpDemo\reference.png" >nul
+    echo   19 - ternaryOpDemo
 )
 
 REM Example 20: graphics
@@ -233,6 +235,18 @@ if exist "%ROOT%test\screenshots\blob47Fallback_actual.png" (
     echo   32 - blob47Fallback
 )
 
+REM Example 33: @else and @default conditionals
+if exist "%ROOT%test\screenshots\elseDefaultDemo_actual.png" (
+    copy /Y "%ROOT%test\screenshots\elseDefaultDemo_actual.png" "%ROOT%test\examples\33-elseDefaultDemo\reference.png" >nul
+    echo   33 - elseDefaultDemo
+)
+
+REM Example 34: named filter params
+if exist "%ROOT%test\screenshots\namedFilterParams_actual.png" (
+    copy /Y "%ROOT%test\screenshots\namedFilterParams_actual.png" "%ROOT%test\examples\34-namedFilterParams\reference.png" >nul
+    echo   34 - namedFilterParams
+)
+
 echo.
 echo Reference images updated. Re-run 'test.bat run' to verify tests pass.
 goto :eof
@@ -254,6 +268,7 @@ if exist "%REPORT%" (
     del "%REPORT%"
     if "%VERBOSE%"=="1" echo Deleted old report.
 )
+echo [96m--- TEST BEGIN ---[0m
 pushd "%ROOT%" >nul
 if "%VERBOSE%"=="1" (
     cmd /c haxe test-hx-multianim-verbose.hxml
@@ -261,6 +276,7 @@ if "%VERBOSE%"=="1" (
     for /f "tokens=*" %%i in ('cmd /c haxe test-hx-multianim.hxml 2^>^&1 ^| findstr /i "Error FAILURE failures: results: warnings:"') do @echo %%i
 )
 popd >nul
+echo [96m--- TEST END ---[0m
 echo.
 if not exist "%REPORT%" (
     echo Report not found: %REPORT%

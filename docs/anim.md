@@ -445,3 +445,22 @@ function update(dt:Float) {
     animSM.update(dt);
 }
 ```
+
+---
+
+## Inline Construction via .manim (stateAnim construct)
+
+For simple state animations that don't need the full `.anim` file format, you can define animations inline in `.manim` files using `stateAnim construct`. This creates an `AnimationSM` directly from sheet references without a separate `.anim` file.
+
+```manim
+stateAnim construct("initialState",
+  "state1" => sheet "sheetName", tileName, fps, loop
+  "state2" => sheet "sheetName", tileName, fps
+)
+```
+
+See [docs/manim.md](manim.md#stateanim-construct) for full syntax details.
+
+**When to use `.anim` vs `construct`:**
+* Use `.anim` files for complex animations with events, extra points, metadata, state interpolation (`$$state$$`), and playlist features
+* Use `construct` for simple ad-hoc animations with a few states that only need sheet, FPS, and loop settings

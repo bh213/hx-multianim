@@ -480,6 +480,18 @@ class MultiAnimBuilder {
 						} catch (e) {
 							resolveAsString(e1) > resolveAsString(e2);
 						}
+					case OpLessEq:
+						try {
+							resolveAsNumber(e1) <= resolveAsNumber(e2);
+						} catch (e) {
+							resolveAsString(e1) <= resolveAsString(e2);
+						}
+					case OpGreaterEq:
+						try {
+							resolveAsNumber(e1) >= resolveAsNumber(e2);
+						} catch (e) {
+							resolveAsString(e1) >= resolveAsString(e2);
+						}
 					case _: resolveAsInteger(v) != 0;
 				}
 			case RVTernary(condition, ifTrue, ifFalse):
@@ -549,6 +561,8 @@ class MultiAnimBuilder {
 					case OpNotEq: resolveAsInteger(e1) != resolveAsInteger(e2) ? 1 : 0;
 					case OpLess: resolveAsInteger(e1) < resolveAsInteger(e2) ? 1 : 0;
 					case OpGreater: resolveAsInteger(e1) > resolveAsInteger(e2) ? 1 : 0;
+					case OpLessEq: resolveAsInteger(e1) <= resolveAsInteger(e2) ? 1 : 0;
+					case OpGreaterEq: resolveAsInteger(e1) >= resolveAsInteger(e2) ? 1 : 0;
 				}
 			case EUnaryOp(op, e):
 				switch op {
@@ -617,6 +631,8 @@ class MultiAnimBuilder {
 					case OpNotEq: resolveAsNumber(e1) != resolveAsNumber(e2) ? 1 : 0;
 					case OpLess: resolveAsNumber(e1) < resolveAsNumber(e2) ? 1 : 0;
 					case OpGreater: resolveAsNumber(e1) > resolveAsNumber(e2) ? 1 : 0;
+					case OpLessEq: resolveAsNumber(e1) <= resolveAsNumber(e2) ? 1 : 0;
+					case OpGreaterEq: resolveAsNumber(e1) >= resolveAsNumber(e2) ? 1 : 0;
 				}
 			case EUnaryOp(op, e):
 				switch op {
@@ -683,6 +699,10 @@ class MultiAnimBuilder {
 						return resolveAsString(e1) < resolveAsString(e2) ? "1" : "0";
 					case OpGreater:
 						return resolveAsString(e1) > resolveAsString(e2) ? "1" : "0";
+					case OpLessEq:
+						return resolveAsString(e1) <= resolveAsString(e2) ? "1" : "0";
+					case OpGreaterEq:
+						return resolveAsString(e1) >= resolveAsString(e2) ? "1" : "0";
 					default: throw 'op ${op} not supported on strings' + currentNodePos();
 				}
 			case RVTernary(condition, ifTrue, ifFalse):
@@ -2465,7 +2485,7 @@ class MultiAnimBuilder {
 			final pos = calculatePosition(rootNode.pos, gridCoordinateSystem, hexCoordinateSystem);
 			addPosition(root, pos.x, pos.y);
 
-			for (child in rootNode.children) {
+			for (child in resolveConditionalChildren(rootNode.children)) {
 				buildTileGroup(child, root, new Point(0, 0), gridCoordinateSystem, hexCoordinateSystem, builderParams);
 			}
 		} else if (isProgrammable) {
@@ -2478,7 +2498,7 @@ class MultiAnimBuilder {
 			final pos = calculatePosition(rootNode.pos, gridCoordinateSystem, hexCoordinateSystem);
 			addPosition(root, pos.x, pos.y);
 
-			for (child in rootNode.children) {
+			for (child in resolveConditionalChildren(rootNode.children)) {
 				build(child, LayersMode(root), gridCoordinateSystem, hexCoordinateSystem, internalResults, builderParams);
 			}
 		} else { // non-programmable
@@ -2491,7 +2511,7 @@ class MultiAnimBuilder {
 			final pos = calculatePosition(rootNode.pos, gridCoordinateSystem, hexCoordinateSystem);
 			addPosition(root, pos.x, pos.y);
 
-			for (child in rootNode.children) {
+			for (child in resolveConditionalChildren(rootNode.children)) {
 				build(child, ObjectMode(root), gridCoordinateSystem, hexCoordinateSystem, internalResults, builderParams);
 			}
 		}

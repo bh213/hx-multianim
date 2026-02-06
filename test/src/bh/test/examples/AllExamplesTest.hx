@@ -175,13 +175,13 @@ class AllExamplesTest extends VisualTestBase {
 		buildRenderScreenshotAndCompare("test/examples/18-conditionalsDemo/conditionalsDemo.manim", "main", async, 1280, 720, 1.0);
 	}
 
-	// Example 19: tertiary op
+	// Example 19: ternary op
 	@Test
-	public function test19_TertiaryOpDemo(async:utest.Async) {
-		this.testName = "tertiaryOpDemo";
-		this.testTitle = "#19: tertiary op";
-		this.referenceDir = "test/examples/19-tertiaryOpDemo";
-		buildRenderScreenshotAndCompare("test/examples/19-tertiaryOpDemo/tertiaryOpDemo.manim", "tertiaryOpDemo", async, 1280, 720, 1.0);
+	public function test19_TernaryOpDemo(async:utest.Async) {
+		this.testName = "ternaryOpDemo";
+		this.testTitle = "#19: ternary op";
+		this.referenceDir = "test/examples/19-ternaryOpDemo";
+		buildRenderScreenshotAndCompare("test/examples/19-ternaryOpDemo/ternaryOpDemo.manim", "ternaryOpDemo", async, 1280, 720, 1.0);
 	}
 
 	// Example 20: graphics
@@ -357,6 +357,15 @@ class AllExamplesTest extends VisualTestBase {
 		this.testName = "elseDefaultDemo";
 		this.testTitle = "#33: @else and @default";
 		this.referenceDir = "test/examples/33-elseDefaultDemo";
-		buildRenderScreenshotAndCompare("test/examples/33-elseDefaultDemo/elseDefaultDemo.manim", "elseDefaultDemo", async, 1280, 720);
+		buildRenderScreenshotAndCompare("test/examples/33-elseDefaultDemo/elseDefaultDemo.manim", "elseDefaultDemo", async, 1280, 720, 1.0);
+	}
+
+	// Example 34: named filter params + block comments
+	@Test
+	public function test34_NamedFilterParams(async:utest.Async) {
+		this.testName = "namedFilterParams";
+		this.testTitle = "#34: named filter params";
+		this.referenceDir = "test/examples/34-namedFilterParams";
+		buildRenderScreenshotAndCompare("test/examples/34-namedFilterParams/namedFilterParams.manim", "namedFilterParams", async, 1280, 720, 1.0);
 	}
 }

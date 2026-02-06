@@ -85,6 +85,10 @@ class AnimLexer extends hxparse.Lexer implements hxparse.RuleBuilder {
 		"=>" => APArrow,
 		"[\n\r]" => APNewLine,
 		"//[^\n\r]*" => lexer.token(tok),
+		"/\\*" => {
+			lexer.token(blockComment);
+			lexer.token(tok);
+		},
 		"[ \t]" => lexer.token(tok),
 		'"' => {
 			buf = new StringBuf();
@@ -110,6 +114,12 @@ class AnimLexer extends hxparse.Lexer implements hxparse.RuleBuilder {
 			buf.add(lexer.current);
 			lexer.token(string);
 		}
+	];
+
+	static var blockComment = @:rule [
+		"\\*/" => lexer.curPos().pmin,
+		"[^\\*]+" => lexer.token(blockComment),
+		"\\*" => lexer.token(blockComment),
 	];
 }
 
@@ -780,6 +790,8 @@ class AnimParser extends hxparse.Parser<hxparse.LexerTokenSource<APToken>, APTok
 							case [APIdentifier(_, APFrames, AITString), APColon, APNumber(startIndex), APDoubleDot, APNumber(endIndex)]:
 								var start = Std.parseInt(startIndex);
 								var end = Std.parseInt(endIndex);
+								if (start < 0) syntaxError('frame index must be non-negative, was $startIndex');
+								if (end < 0) syntaxError('frame index must be non-negative, was $endIndex');
 
 								switch stream {
 									case [APIdentifier(_, APDuration, AITString), APColon, d = parseDuration()]:

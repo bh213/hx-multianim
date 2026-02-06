@@ -1,17 +1,162 @@
 version: 0.3
 
+// Colored box for flow items
+#flowBox programmable(w:uint=40, h:uint=20, color:color=#448) {
+  pos: 0, 0
+  bitmap(generated(color($w, $h, $color)));
+}
+
 #flowDemo programmable() {
   pos: 0, 0
-  grid: 1280, 720
 
-  @alpha(0.3) bitmap(generated(color(1280, 720, orange)));
-  point {
-    pos: 20, 80
-    flow(maxWidth:800, maxHeight:400, minWidth:800, minHeight:400, layout:vertical, padding:0, debug:1) {
-      text(dd, "test left", red, left);
-      text(m3x6, "test center", blue, center);
-      text(pixeled6, "test right", 0xF00, right);
+  @scale(2) point {
+    pos: 5, 5
+
+    // --- Row 1: Vertical / Horizontal / Stack ---
+    point {
+      pos: 0, 0
+      text(m3x6, "vertical", #888, left, 200);
+      point {
+        pos: 0, 10
+        flow(minWidth:50, layout:vertical, padding:2, debug:true) {
+          reference($flowBox, w=>40, h=>15, color=>#844);
+          reference($flowBox, w=>40, h=>15, color=>#484);
+          reference($flowBox, w=>40, h=>15, color=>#448);
+        }
+      }
+    }
+
+    point {
+      pos: 65, 0
+      text(m3x6, "horizontal", #888, left, 200);
+      point {
+        pos: 0, 10
+        flow(minHeight:25, layout:horizontal, padding:2, debug:true) {
+          reference($flowBox, w=>30, h=>15, color=>#844);
+          reference($flowBox, w=>30, h=>15, color=>#484);
+          reference($flowBox, w=>30, h=>15, color=>#448);
+        }
+      }
+    }
+
+    point {
+      pos: 175, 0
+      text(m3x6, "stack", #888, left, 200);
+      point {
+        pos: 0, 10
+        flow(minWidth:50, minHeight:50, layout:stack, padding:2, debug:true) {
+          reference($flowBox, w=>50, h=>50, color=>#844);
+          reference($flowBox, w=>30, h=>30, color=>#484);
+          reference($flowBox, w=>10, h=>10, color=>#448);
+        }
+      }
+    }
+
+    // --- Row 2: Spacing ---
+    point {
+      pos: 0, 70
+      text(m3x6, "horiz + spacing:4", #888, left, 250);
+      point {
+        pos: 0, 10
+        flow(layout:horizontal, horizontalSpacing:4, padding:2, debug:true) {
+          reference($flowBox, w=>25, h=>15, color=>#844);
+          reference($flowBox, w=>25, h=>15, color=>#484);
+          reference($flowBox, w=>25, h=>15, color=>#448);
+        }
+      }
+    }
+
+    point {
+      pos: 110, 70
+      text(m3x6, "vert + spacing:4", #888, left, 250);
+      point {
+        pos: 0, 10
+        flow(minWidth:50, layout:vertical, verticalSpacing:4, padding:2, debug:true) {
+          reference($flowBox, w=>40, h=>12, color=>#844);
+          reference($flowBox, w=>40, h=>12, color=>#484);
+          reference($flowBox, w=>40, h=>12, color=>#448);
+        }
+      }
+    }
+
+    // --- Row 3: Multiline / Padding ---
+    point {
+      pos: 0, 140
+      text(m3x6, "multiline (maxW:80)", #888, left, 300);
+      point {
+        pos: 0, 10
+        flow(maxWidth:80, layout:horizontal, multiline:true, padding:2, horizontalSpacing:2, verticalSpacing:2, debug:true) {
+          reference($flowBox, w=>30, h=>15, color=>#844);
+          reference($flowBox, w=>30, h=>15, color=>#484);
+          reference($flowBox, w=>30, h=>15, color=>#448);
+          reference($flowBox, w=>30, h=>15, color=>#884);
+          reference($flowBox, w=>30, h=>15, color=>#488);
+        }
+      }
+    }
+
+    point {
+      pos: 110, 140
+      text(m3x6, "padding:8", #888, left, 200);
+      point {
+        pos: 0, 10
+        flow(minWidth:60, layout:vertical, padding:8, debug:true) {
+          reference($flowBox, w=>40, h=>12, color=>#844);
+          reference($flowBox, w=>40, h=>12, color=>#484);
+        }
+      }
+    }
+
+    point {
+      pos: 200, 140
+      text(m3x6, "padL:10 padT:4", #888, left, 200);
+      point {
+        pos: 0, 10
+        flow(minWidth:70, layout:vertical, paddingLeft:10, paddingTop:4, debug:true) {
+          reference($flowBox, w=>40, h=>12, color=>#844);
+          reference($flowBox, w=>40, h=>12, color=>#484);
+        }
+      }
+    }
+
+    // --- Row 4: Mixed sizes / Text ---
+    point {
+      pos: 0, 210
+      text(m3x6, "horiz mixed", #888, left, 250);
+      point {
+        pos: 0, 10
+        flow(layout:horizontal, horizontalSpacing:2, padding:2, debug:true) {
+          reference($flowBox, w=>20, h=>30, color=>#844);
+          reference($flowBox, w=>40, h=>15, color=>#484);
+          reference($flowBox, w=>15, h=>25, color=>#448);
+        }
+      }
+    }
+
+    point {
+      pos: 110, 210
+      text(m3x6, "vert mixed", #888, left, 250);
+      point {
+        pos: 0, 10
+        flow(minWidth:60, layout:vertical, verticalSpacing:2, padding:2, debug:true) {
+          reference($flowBox, w=>50, h=>10, color=>#844);
+          reference($flowBox, w=>30, h=>15, color=>#484);
+          reference($flowBox, w=>45, h=>8, color=>#448);
+        }
+      }
+    }
+
+    point {
+      pos: 200, 210
+      text(m3x6, "text in flow", #888, left, 200);
+      point {
+        pos: 0, 10
+        flow(minWidth:80, layout:vertical, verticalSpacing:2, padding:4, debug:true) {
+          text(m3x6, "line 1", #f88, left);
+          text(m3x6, "line 2", #8f8, left);
+          text(m3x6, "line 3", #88f, left);
+        }
+      }
     }
   }
-  @scale(4) text(dd, "WIP", red, center, 400):400,160
 }

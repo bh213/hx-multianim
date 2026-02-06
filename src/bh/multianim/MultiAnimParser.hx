@@ -80,6 +80,8 @@ enum MPToken {
 	MPEquals;
 	MPLessThan;
 	MPGreaterThan;
+	MPLessEquals;
+	MPGreaterEquals;
 	MPNotEquals;
 	MPDoubleEquals;
 	MPInterpolation(type:MPInterpolationEnum);
@@ -353,13 +355,19 @@ class MultiAnimLexer extends hxparse.Lexer implements hxparse.RuleBuilder {
 		"!=" => MPNotEquals,
 		"==" => MPDoubleEquals,
 		"=" => MPEquals,
+		"<=" => MPLessEquals,
+		">=" => MPGreaterEquals,
 		"<" => MPLessThan,
 		">" => MPGreaterThan,
 		";" => MPSemiColon,
 		"[\n\r]" => lexer.token(tok),
 		"//[^\n\r]*" => lexer.token(tok),
+		"/\\*" => {
+			lexer.token(blockComment);
+			lexer.token(tok);
+		},
 		"[ \t]" => lexer.token(tok),
-		
+
 		'"' => {
 			buf = new StringBuf();
 			lexer.token(string);
@@ -438,8 +446,11 @@ class MultiAnimLexer extends hxparse.Lexer implements hxparse.RuleBuilder {
 		}
 	];
 
-
-
+	public static var blockComment = @:rule [
+		"\\*/" => lexer.curPos().pmin,
+		"[^\\*]+" => lexer.token(blockComment),
+		"\\*" => lexer.token(blockComment),
+	];
 }
 
 @:nullSafety
@@ -546,6 +557,8 @@ enum RvOp {
 	OpNotEq;
 	OpLess;
 	OpGreater;
+	OpLessEq;
+	OpGreaterEq;
 }
 
 
@@ -983,7 +996,9 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 		} catch(ue:hxparse.Unexpected<Any>) {
 			throw new MultiAnimUnexpected(ue.token, ue.pos, ue.toString(), input);
 		} catch (e) {
+			#if MULTIANIM_TRACE
 			trace(e);
+			#end
 			throw e;
 		}
 		
@@ -993,14 +1008,18 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 		//throw '${peek(0)}, ${peek(1)}, ${peek(2)}';
 
 		final error = new MultiAnimUnexpected(peek(0), stream.curPos(), message, input);
+		#if MULTIANIM_TRACE
 		trace(error);
+		#end
 		throw error;
 		
 	}
 
 	function syntaxError(error, ?pos):Dynamic {
 		final error = new InvalidSyntax(error, pos == null ? stream.curPos(): pos, input);
+		#if MULTIANIM_TRACE
 		trace(error);
+		#end
 		throw error;
 
 	}
@@ -1062,6 +1081,10 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 				binop(e1, OpLess, tryParseIntegerOrStringForComparison());
 			case [MPGreaterThan]:
 				binop(e1, OpGreater, tryParseIntegerOrStringForComparison());
+			case [MPLessEquals]:
+				binop(e1, OpLessEq, tryParseIntegerOrStringForComparison());
+			case [MPGreaterEquals]:
+				binop(e1, OpGreaterEq, tryParseIntegerOrStringForComparison());
 			case _:
 				e1;
 		}
@@ -1089,6 +1112,10 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 				binop(e1, OpLess, tryParseFloatOrStringForComparison());
 			case [MPGreaterThan]:
 				binop(e1, OpGreater, tryParseFloatOrStringForComparison());
+			case [MPLessEquals]:
+				binop(e1, OpLessEq, tryParseFloatOrStringForComparison());
+			case [MPGreaterEquals]:
+				binop(e1, OpGreaterEq, tryParseFloatOrStringForComparison());
 			case _:
 				e1;
 		}
@@ -1106,6 +1133,10 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 				binop(e1, OpLess, e2);
 			case [MPGreaterThan, e2 = parseStringOrReference()]:
 				binop(e1, OpGreater, e2);
+			case [MPLessEquals, e2 = parseStringOrReference()]:
+				binop(e1, OpLessEq, e2);
+			case [MPGreaterEquals, e2 = parseStringOrReference()]:
+				binop(e1, OpGreaterEq, e2);
 			case _:
 				e1;
 		}
@@ -1432,6 +1463,10 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 				binop(e1, OpLess, tryParseIntegerOrStringForComparison());
 			case [MPGreaterThan]:
 				binop(e1, OpGreater, tryParseIntegerOrStringForComparison());
+			case [MPLessEquals]:
+				binop(e1, OpLessEq, tryParseIntegerOrStringForComparison());
+			case [MPGreaterEquals]:
+				binop(e1, OpGreaterEq, tryParseIntegerOrStringForComparison());
 			case _:
 				e1;
 		}
@@ -1975,8 +2010,8 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 						
 					case Value(i):
 
-						if (i > 0) return Value(0);
-						else if (i == 0) return Value(1);
+						if (i > 0) return Value(1);
+						else if (i == 0) return Value(0);
 						error('invalid bool from int ${value}');
 					default: return Value(dynamicToInt(value, error-> throw('invalid bool from ${value} ' + error)));
 				}
@@ -2221,7 +2256,7 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 					if (i < 0 || i > 5) syntaxError('conditional $name: hexdirection must be 0...5, was $value');
 				case PPTGridDirection:
 						var i = dynamicToInt(value, s->syntaxError(s));
-						if (i < 0 ||  i > 3) syntaxError('conditional $name: gridDirection must be 0...3, was $value');
+						if (i < 0 ||  i > 7) syntaxError('conditional $name: gridDirection must be 0...7, was $value');
 				case PPTFlags(bits):
 
 
@@ -3508,7 +3543,18 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 		}
 	}
 
-	
+	/** Returns true if the next tokens look like a named parameter (identifier followed by colon). */
+	function isNamedParamNext():Bool {
+		return switch peek(0) {
+			case MPIdentifier(_, _, ITString):
+				switch peek(1) {
+					case MPColon: true;
+					case _: false;
+				}
+			case _: false;
+		}
+	}
+
 	function createOnceParser() {
 		return new OncePropertyParser(name-> syntaxError('$name already defined'));
 	}
@@ -3572,26 +3618,104 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 					eatComma();
 				}
 				FilterGroup(filters);
-			case [MPIdentifier("outline", _ , ITString), MPOpen, size = parseFloatOrReference(), MPComma, color = parseColorOrReference(), MPClosed]: 
-				FilterOutline(size, color);
-			case [MPIdentifier("saturate", _ , ITString), MPOpen, value = parseFloatOrReference(), MPClosed]: 
-				FilterSaturate(value);
-			case [MPIdentifier("replacePalette", _ , ITString), MPOpen, MPIdentifier(paletteName, _ , ITString|ITQuotedString),  MPComma, sourceRow = parseIntegerOrReference(), MPComma, replacementRow = parseIntegerOrReference(), MPClosed]: 
+			case [MPIdentifier("outline", _ , ITString), MPOpen]:
+				if (isNamedParamNext()) {
+					var once = createOnceParser();
+					var size:Null<ReferenceableValue> = null;
+					var color:Null<ReferenceableValue> = null;
+					var results = parseOptionalParams([
+						ParseFloatOrReference(MacroUtils.identToString(size)),
+						ParseCustom(MacroUtils.identToString(color), parseColorOrReference),
+					], once);
+					switch stream {
+						case [MPClosed]:
+						case _: unexpectedError("outline expected )");
+					}
+					FilterOutline(
+						MacroUtils.optionsGetPresentOrDefault(size, results, RVFloat(1.)),
+						MacroUtils.optionsGetPresentOrDefault(color, results, RVInteger(0xFF000000))
+					);
+				} else {
+					var size = parseFloatOrReference();
+					switch stream { case [MPComma]: }
+					var color = parseColorOrReference();
+					switch stream { case [MPClosed]: }
+					FilterOutline(size, color);
+				}
+			case [MPIdentifier("saturate", _ , ITString), MPOpen]:
+				if (isNamedParamNext()) {
+					var once = createOnceParser();
+					var value:Null<ReferenceableValue> = null;
+					var results = parseOptionalParams([
+						ParseFloatOrReference(MacroUtils.identToString(value)),
+					], once);
+					switch stream {
+						case [MPClosed]:
+						case _: unexpectedError("saturate expected )");
+					}
+					FilterSaturate(MacroUtils.optionsGetPresentOrDefault(value, results, RVFloat(1.)));
+				} else {
+					var value = parseFloatOrReference();
+					switch stream { case [MPClosed]: }
+					FilterSaturate(value);
+				}
+			case [MPIdentifier("replacePalette", _ , ITString), MPOpen, MPIdentifier(paletteName, _ , ITString|ITQuotedString),  MPComma, sourceRow = parseIntegerOrReference(), MPComma, replacementRow = parseIntegerOrReference(), MPClosed]:
 				FilterPaletteReplace(paletteName, sourceRow, replacementRow);
-			case [MPIdentifier("replaceColor", _ , ITString), MPOpen, MPBracketOpen]: 
+			case [MPIdentifier("replaceColor", _ , ITString), MPOpen, MPBracketOpen]:
 				var sources = parseColorsList(MPBracketClosed);
 				eatComma();
 				switch stream {
-					case [MPBracketOpen, replacements = parseColorsList(MPBracketClosed), MPClosed]: 
+					case [MPBracketOpen, replacements = parseColorsList(MPBracketClosed), MPClosed]:
 						FilterColorListReplace(sources, replacements);
 					case _: unexpectedError("expected [color1, color2, ...], [replacement1, replacement2, ...])");
 				}
-			case [MPIdentifier("brightness", _ , ITString), MPOpen, value = parseFloatOrReference(), MPClosed]: 
-				FilterBrightness(value);
-			case [MPIdentifier("blur", _ , ITString), MPOpen, radius = parseFloatOrReference(), MPComma, gain = parseFloatOrReference(), MPClosed]: 
-				var quality = RVFloat(1.);
-				var linear = RVFloat(0.0);
-				FilterBlur(radius, gain, quality, linear);
+			case [MPIdentifier("brightness", _ , ITString), MPOpen]:
+				if (isNamedParamNext()) {
+					var once = createOnceParser();
+					var value:Null<ReferenceableValue> = null;
+					var results = parseOptionalParams([
+						ParseFloatOrReference(MacroUtils.identToString(value)),
+					], once);
+					switch stream {
+						case [MPClosed]:
+						case _: unexpectedError("brightness expected )");
+					}
+					FilterBrightness(MacroUtils.optionsGetPresentOrDefault(value, results, RVFloat(1.)));
+				} else {
+					var value = parseFloatOrReference();
+					switch stream { case [MPClosed]: }
+					FilterBrightness(value);
+				}
+			case [MPIdentifier("blur", _ , ITString), MPOpen]:
+				if (isNamedParamNext()) {
+					var once = createOnceParser();
+					var radius:Null<ReferenceableValue> = null;
+					var gain:Null<ReferenceableValue> = null;
+					var quality:Null<ReferenceableValue> = null;
+					var linear:Null<ReferenceableValue> = null;
+					var results = parseOptionalParams([
+						ParseFloatOrReference(MacroUtils.identToString(radius)),
+						ParseFloatOrReference(MacroUtils.identToString(gain)),
+						ParseFloatOrReference(MacroUtils.identToString(quality)),
+						ParseFloatOrReference(MacroUtils.identToString(linear)),
+					], once);
+					switch stream {
+						case [MPClosed]:
+						case _: unexpectedError("blur expected )");
+					}
+					FilterBlur(
+						MacroUtils.optionsGetPresentOrDefault(radius, results, RVFloat(1.)),
+						MacroUtils.optionsGetPresentOrDefault(gain, results, RVFloat(1.)),
+						MacroUtils.optionsGetPresentOrDefault(quality, results, RVFloat(1.)),
+						MacroUtils.optionsGetPresentOrDefault(linear, results, RVFloat(0.0))
+					);
+				} else {
+					var radius = parseFloatOrReference();
+					switch stream { case [MPComma]: }
+					var gain = parseFloatOrReference();
+					switch stream { case [MPClosed]: }
+					FilterBlur(radius, gain, RVFloat(1.), RVFloat(0.0));
+				}
 			case [MPIdentifier("pixelOutline", _ , ITString), MPOpen]: 
 				var mode = switch stream {
 					case [MPIdentifier("knockout", _ , ITString|ITQuotedString), MPComma, color = parseColorOrReference(), MPComma, knockout = parseFloatOrReference()]: 
@@ -3600,12 +3724,16 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 						POInlineColor(color, inlineColor);
 				}
 				final smoothColor = switch stream {
-					case [MPIdentifier("smoothColor", _, ITString)]: true;
+					case [MPComma]:
+						switch stream {
+							case [MPIdentifier("smoothColor", _, ITString), MPClosed]: true;
+							case _: unexpectedError("expected smoothColor)");
+						}
 					case [MPClosed]: false;
-					case _: unexpectedError("expected smoothColor or )");
+					case _: unexpectedError("expected , smoothColor or )");
 
 				}
-				FilterPixelOutline(mode, smoothColor );
+				FilterPixelOutline(mode, smoothColor);
 			case [MPIdentifier("glow", _ , ITString), MPOpen]: 
 				var once = createOnceParser();
 			
@@ -4690,7 +4818,7 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 		switch stream {
 			case [MPIdentifier(_, MPVersion, ITString), MPColon, MPNumber(fileVersion, NTInteger|NTFloat)]:
 				if (fileVersion != version) syntaxError('version ${version} expected, got ${fileVersion}');
-			case _: syntaxError('version expected, got ${peek(0)}');
+			case _: syntaxError('Missing version declaration. Files must start with \'version: ${version}\'');
 		}
 		
 		parseNodes(null, [], createOnceParser(), 654321);

@@ -34,6 +34,33 @@ There are two ways you can declare elements: short form and long form.
 
 Short form is for adding elements such as bitmaps and text without being too verbose. Long form supports adding children and inline properties.
 
+### Shorthand Prefixes: alpha() and scale()
+
+In short form, `alpha(value)` and `scale(value)` can be used as inline prefixes before an element, as an alternative to the long-form `alpha:` and `scale:` properties:
+
+```
+// Shorthand prefix form (short form only)
+@alpha(0.5) bitmap(generated(color(1280, 720, blue)));
+@scale(5) ninepatch("ui", "Window_3x3_idle", 60, 60): 40, 100
+
+// Can be combined with conditionals
+@(mode=>idle) alpha(0.1) ninepatch("ui", "Droppanel_3x3_idle", $width, $height): 0,0
+
+// Supports expressions with parameter references
+@alpha(1.0 - $index/5.0) scale(4) bitmap(sheet("crew2", "marine_r_shooting_d")):120,320
+```
+
+These are equivalent to setting `alpha:` and `scale:` in the long form:
+```
+// Long form equivalent
+ninepatch("ui", "Window_3x3_idle", 60, 60) {
+    pos: 40, 100
+    scale: 5
+}
+```
+
+The prefix form is more concise for single elements that don't need children or other long-form properties.
+
 ### Example
 ```
 #panel programmable(width:uint=180, height:uint=30, mode:[idle,pressed]=pressed) {
@@ -72,8 +99,37 @@ bitmap(tileSource, [center])
 Creates a state animation from a `.anim` file.
 
 ```
-stateanim("filename", "state", "direction"=>"l")
+stateanim("filename", "initialState", "direction"=>"l")
 ```
+
+### stateanim construct
+Creates a state animation inline without requiring a separate `.anim` file. Each state maps to a sheet animation with FPS and optional flags.
+
+```
+stateAnim construct("initialState",
+  "state1" => sheet "sheetName", tileName, fps, loop
+  "state2" => sheet "sheetName", tileName, fps
+)
+```
+
+**Parameters per state:**
+* `sheet "sheetName"` - atlas sheet to load tiles from (required)
+* `tileName` - animation tile name in the atlas (required)
+* `fps` - frames per second (required)
+* `loop` - if present, animation loops forever; if omitted, plays once
+* `center` - if present, tiles are centered
+
+The first argument is the initial state to play on creation.
+
+**Example:**
+```
+@scale(4) stateAnim construct("state2",
+  "state1" => sheet "demo", indexed-tile, 10, loop
+  "state2" => sheet "demo", tile-center, 10
+): 200, 300
+```
+
+This creates a two-state animation: `state1` plays the `indexed-tile` animation from the `demo` atlas at 10 FPS looping, and `state2` plays `tile-center` at 10 FPS once. The animation starts in `state2`.
 
 ### flow
 Creates an h2d.Flow layout container.
@@ -318,7 +374,7 @@ filter: group(outline(?($selected) 2 : 0, yellow), brightness(?($active) 1.2 : 0
 * `string`: `name="myname"` (always has default)
 * `hexdirection`: `dir:hexdirection` (0..5)
 * `griddirection`: `dir:griddirection` (0..7)
-* `bool`: `true`/`false` or `0`/`1`
+* `bool`: `true`/`false`, `yes`/`no`, or `0`/`1`
 * `color`: `color:<color>`, e.g., `color:#f0f` or `red`
 
 ---
@@ -338,6 +394,36 @@ Conditions are defined by `@(...)` and can be specified once per element.
 
 **Multi enum match:**
 * `@(key => [value1, value2])`
+
+**Wildcard match:**
+* `@(key => *)` - matches any value of the parameter
+
+The wildcard `*` is useful when a condition must constrain some parameters but accept any value for others. This commonly appears in disabled/fallback states:
+
+```
+#button programmable(status:[hover, pressed, normal], disabled:[true, false]) {
+    @(status=>hover) ninepatch("ui", "button-hover", 200, 30)
+    @(status=>*, disabled=>true) ninepatch("ui", "button-disabled", 200, 30)
+}
+```
+
+In the example above, the disabled style applies regardless of the `status` value, as long as `disabled` is `true`.
+
+### Conditional Chains: @else and @default
+
+Elements can use `@else` and `@default` to form conditional chains, similar to if/else-if/else:
+
+* `@else` - matches when the preceding sibling's `@()` condition did not match
+* `@else(conditions)` - matches when the preceding sibling didn't match AND the given conditions match
+* `@default` - matches when no preceding sibling in the chain matched (catch-all)
+
+```
+@(status=>hover) text(dd, "Hovered", white)
+@else(status=>pressed) text(dd, "Pressed", yellow)
+@default text(dd, "Normal", gray)
+```
+
+`@else` and `@default` must follow a sibling that has a `@()` conditional. They cannot be used on root elements.
 
 ---
 

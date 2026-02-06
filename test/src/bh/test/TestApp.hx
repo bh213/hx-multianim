@@ -38,6 +38,7 @@ class TestApp extends hxd.App {
 
 		// Add test cases with scene reference
 		testRunner.addCase(new bh.test.examples.AllExamplesTest(s2d));
+		testRunner.addCase(new bh.test.examples.ParserErrorTest());
 
 		Report.create(testRunner);
 	}
@@ -65,8 +66,8 @@ class TestApp extends hxd.App {
 		}
 		
 			// Exit after enough frames to let all update callbacks finish
-			// With 21 examples + existing tests, we need more frames
-			if (frameCount >= 30) {
+			// With 33 visual examples + parser error tests, we need enough frames
+			if (frameCount >= 50) {
 				// Generate visual HTML report before exiting
 				HtmlReportGenerator.generateReport();
 				Sys.exit(0);

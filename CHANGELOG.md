@@ -28,6 +28,8 @@
 - **Test infrastructure** - HTML report generator with visual diffs, improved test runner
 
 ### Fixed
+- **GridDirection conditional validation** - Fixed `gridDirection` parameter validation in conditionals accepting only 0-3 instead of full 0-7 range (8 directions)
+- **Anim parser negative frame indices** - Added validation to reject negative frame indices in `.anim` playlist `frames:` ranges
 - **Text alignment with scale** - Center/right alignment now works correctly at any scale factor
 - **Graphics line parsing** - `GELine` and `GEPolygon` use `Coordinates` type instead of individual floats
 
