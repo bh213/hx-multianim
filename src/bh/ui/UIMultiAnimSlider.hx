@@ -110,6 +110,7 @@ class UIStandardMultiAnimSlider implements UIElement implements UIElementDisabla
 				if (isDragging)
 					wrapper.control.captureEvents.stopCapture();
 			case OnReleaseOutside(_) | OnPushOutside(_):
+				this.status = SUINormal;
 				if (isDragging)
 					wrapper.control.captureEvents.stopCapture();
 			case OnEnter:
@@ -136,7 +137,7 @@ class UIStandardMultiAnimSlider implements UIElement implements UIElementDisabla
 	public dynamic function onChange(value:Int, wrapper:UIElementEventWrapper) {}
 
 	public function setIntValue(v:Int) {
-		currentValue = v; // TODO: fix update & bounds
+		currentValue = Std.int(hxd.Math.clamp(v, 0, 100));
 		this.requestRedraw = true;
 	}
 

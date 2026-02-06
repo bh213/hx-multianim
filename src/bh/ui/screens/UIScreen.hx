@@ -39,6 +39,7 @@ interface UIScreen {
 @:nullSafety
 abstract class UIScreenBase implements UIScreen implements UIControllerScreenIntegration {
 	var elements:Array<UIElement> = [];
+	var subElementProviders:Array<UIElementSubElements> = [];
 	var controllersStack:Array<UIController> = [];
 	var controller(get, never):UIController;
 	final root:h2d.Layers;
@@ -94,6 +95,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		}
 		groups.clear();
 		elements = [];
+		subElementProviders = [];
 		getSceneRoot().removeChildren();
 		onClear();
 	}
@@ -122,11 +124,8 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 
 	public function getElements(type:SubElementsType):Array<UIElement> {
 		var retVal = elements.copy();
-		for (element in elements) {
-			if (Std.isOfType(element, UIElementSubElements)) {
-				final subElements = (cast(element, UIElementSubElements)).getSubElements(type);
-				retVal = retVal.concat(subElements);
-			}
+		for (provider in subElementProviders) {
+			retVal = retVal.concat(provider.getSubElements(type));
 		}
 		return retVal;
 	}
@@ -255,12 +254,10 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 
 
 
-	// TODO: hardcoded dimensions
     function addScrollableListWithSingleBuilder(builder:MultiAnimBuilder, panelBuilderName:String, itemBuilderName:String, scrollbarBuilderName:String, scrollbarInPanelName:String, items, settings:ResolvedSettings, initialIndex:Int = 0, width:Int = 100, height:Int = 100):UIMultiAnimScrollableList {
         return addScrollableList(builder.createElementBuilder(panelBuilderName), builder.createElementBuilder(itemBuilderName), builder.createElementBuilder(scrollbarBuilderName), scrollbarInPanelName, items, settings, initialIndex, width, height);
     }
 
-	// TODO: hardcoded dimensions
 	function addScrollableList(panelBuilder:UIElementBuilder, itemBuilder:UIElementBuilder, scrollbarBuilder:UIElementBuilder, scrollbarInPanelName:String, items, settings:ResolvedSettings, initialIndex:Int = 0, width:Int = 100, height:Int = 100):UIMultiAnimScrollableList {
 		validateSettings(settings, ["panelBuilder", "itemBuilder", "scrollbarBuilder", "scrollbarInPanelName", "width", "height", "topClearance", "scrollSpeed"], "scrollableList");
 		
@@ -289,7 +286,13 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	}
 
 	function addDropdown(dropdownBuilder:UIElementBuilder, panelBuilder:UIElementBuilder, itemBuilder:UIElementBuilder,  scrollbarBuilder:UIElementBuilder, scrollbarInPanelName:String, items, settings:ResolvedSettings, initialIndex = 0) {
-		validateSettings(settings, ["panelBuilder", "itemBuilder", "dropdownBuilder", "autoOpen", "autoCloseOnLeave", "closeOnOutsideClick"], "dropdown");
+		validateSettings(settings, [
+			// dropdown settings
+			"dropdownBuilder", "autoOpen", "autoCloseOnLeave", "closeOnOutsideClick",
+			// scrollable list settings (passed through)
+			"panelBuilder", "itemBuilder", "scrollbarBuilder", "scrollbarInPanelName",
+			"width", "height", "topClearance", "scrollSpeed"
+		], "dropdown");
 
         if (hasSettings(settings, "panelBuilder")) {
 			panelBuilder = panelBuilder.withUpdatedName(getSettings(settings, "panelBuilder", ""));
@@ -300,6 +303,9 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
         if (hasSettings(settings, "dropdownBuilder")) {
             dropdownBuilder = dropdownBuilder.withUpdatedName(getSettings(settings, "dropdownBuilder", ""));
         }
+		if (hasSettings(settings, "scrollbarBuilder")) {
+			scrollbarBuilder = scrollbarBuilder.withUpdatedName(getSettings(settings, "scrollbarBuilder", ""));
+		}
 		if (hasSettings(settings, "scrollbarInPanelName")) {
 			scrollbarInPanelName = getSettings(settings, "scrollbarInPanelName", scrollbarInPanelName);
 		}
@@ -307,8 +313,11 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		final autoOpen = getBoolSettings(settings, "autoOpen", true);
 		final autoCloseOnLeave = getBoolSettings(settings, "autoCloseOnLeave", true);
 		final closeOnOutsideClick = getBoolSettings(settings, "closeOnOutsideClick", true);
-        
-		var panel = addScrollableList(panelBuilder, itemBuilder, scrollbarBuilder, scrollbarInPanelName, items, settings, initialIndex);
+		final panelWidth = getIntSettings(settings, "width", 120);
+		final panelHeight = getIntSettings(settings, "height", 300);
+		final topClearance = getIntSettings(settings, "topClearance", 0);
+
+		var panel = UIMultiAnimScrollableList.create(panelBuilder, itemBuilder, scrollbarBuilder, scrollbarInPanelName, panelWidth, panelHeight, items, topClearance, initialIndex);
 		final retVal = UIStandardMultiAnimDropdown.createWithPrebuiltPanel(dropdownBuilder, panel, items, initialIndex);
 
 		retVal.autoOpen = autoOpen;
@@ -356,6 +365,9 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 
 	public function addElement(element:UIElement, layer:Null<LayersEnum>) {
 		elements.push(element);
+		if (Std.isOfType(element, UIElementSubElements)) {
+			subElementProviders.push(cast(element, UIElementSubElements));
+		}
 		if (Std.isOfType(element, UIElementCustomAddToLayer)) {
 			final customElement:UIElementCustomAddToLayer = cast(element, UIElementCustomAddToLayer);
 			final result = customElement.customAddToLayer(layer, this, false);
@@ -372,6 +384,23 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 			addObjectToLayer(element.getObject(), layer);
 		}
 		return element;
+	}
+
+	/**
+	 * Sends the current state of a UI element as an event to onScreenEvent.
+	 * Call after adding elements to sync initial state with application logic.
+	 */
+	function syncInitialState(element:UIElement) {
+		if (Std.isOfType(element, UIElementNumberValue)) {
+			final numEl = cast(element, UIElementNumberValue);
+			onScreenEvent(UIChangeValue(numEl.getIntValue()), element);
+		} else if (Std.isOfType(element, UIElementListValue)) {
+			final listEl = cast(element, UIElementListValue);
+			onScreenEvent(UIChangeItem(listEl.getSelectedIndex(), listEl.getList()), element);
+		} else if (Std.isOfType(element, UIElementSelectable)) {
+			final selEl = cast(element, UIElementSelectable);
+			onScreenEvent(UIToggle(selEl.selected), element);
+		}
 	}
 
 	function getGroup(groupName:String):Array<UIElement> {
@@ -410,7 +439,9 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		element.getObject().remove();
 		element.clear();
 		elements.remove(element);
-
+		if (Std.isOfType(element, UIElementSubElements)) {
+			subElementProviders.remove(cast(element, UIElementSubElements));
+		}
 		return element;
 	}
 
