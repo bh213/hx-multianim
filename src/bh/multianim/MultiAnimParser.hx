@@ -191,9 +191,12 @@ enum MPKeywords {
 	MPCross;
 	MPBlob47;
 	MPDemo;
+	// Atlas2 inline
+	MPAtlas2;
 	// Conditional keywords
 	MPElse;
 	MPDefault;
+	MPTint;
 }
 
 enum PlaceholderTypes {
@@ -856,6 +859,32 @@ typedef AutotileDef = {
 	var ?allowPartialMapping:Bool;        // blob47 only: if true, missing tiles use fallback instead of error
 }
 
+enum Atlas2Source {
+	A2SFile(filename:ReferenceableValue);
+	A2SSheet(sheetName:ReferenceableValue);
+}
+
+@:nullSafety
+typedef Atlas2EntryDef = {
+	var name:String;
+	var x:Int;
+	var y:Int;
+	var w:Int;
+	var h:Int;
+	var ?offsetX:Null<Int>;
+	var ?offsetY:Null<Int>;
+	var ?origW:Null<Int>;
+	var ?origH:Null<Int>;
+	var ?split:Null<Array<Int>>;
+	var ?index:Null<Int>;
+}
+
+@:nullSafety
+typedef Atlas2Def = {
+	var source:Atlas2Source;
+	var entries:Array<Atlas2EntryDef>;
+}
+
 enum StateAnimConstruct {
 	IndexedSheet(sheet:String, name:ReferenceableValue, fps:ReferenceableValue, loop: Bool, center:Bool);
 }
@@ -906,6 +935,7 @@ enum NodeType {
 	PALETTE(paletteType:PaletteType);
 	GRAPHICS(elements:Array<PositionedGraphicsElement>);
 	AUTOTILE(autotileDef:AutotileDef);
+	ATLAS2(atlas2Def:Atlas2Def);
 
 }
 
@@ -945,6 +975,7 @@ typedef Node = {
 	hexCoordinateSystem:Null<HexCoordinateSystem>,
 	scale: Null<ReferenceableValue>,
 	alpha: Null<ReferenceableValue>,
+	tint: Null<ReferenceableValue>,
 	layer:Null<Int>,
 	filter: Null<FilterType>,
 	blendMode: Null<h2d.BlendMode>,
@@ -2815,6 +2846,7 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 		var layerIndex = -1;
 		var alpha:Null<ReferenceableValue> = null;
 		var scale:Null<ReferenceableValue> = null;
+		var tint:Null<ReferenceableValue> = null;
 		var conditional = NoConditional;
 		
 		#if MULTIANIM_TRACE
@@ -2849,6 +2881,9 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 						case [MPIdentifier(s, MPAlpha, ITString), MPOpen, a = parseFloatOrReference(), MPClosed]:
 							onceInline.parsed(s);
 							alpha = a;
+						case [MPIdentifier(s, MPTint, ITString), MPOpen, t = parseColorOrReference(), MPClosed]:
+							onceInline.parsed(s);
+							tint = t;
 						case [MPIdentifier(s, MPScale, ITString), MPOpen, sc = parseFloatOrReference(), MPClosed]:
 							onceInline.parsed(s);
 							scale = sc;
@@ -2897,6 +2932,7 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 				pos:ZERO,
 				scale: scale,
 				alpha: alpha,
+				tint: tint,
 				layer:layerIndex,
 				gridCoordinateSystem:null,
 				hexCoordinateSystem:null,
@@ -3237,6 +3273,12 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 
 				final autotileDef = parseAutotile();
 				return createNodeResponse(AUTOTILE(autotileDef)); // return here skips extended syntax parsing
+			case [MPIdentifier(_, MPAtlas2, ITString)]:
+				if (nameString == null) syntaxError('atlas2 requires #name');
+				if (parent != null) syntaxError('atlas2 nodes must be root node');
+
+				final atlas2Def = parseAtlas2();
+				return createNodeResponse(ATLAS2(atlas2Def)); // return here skips extended syntax parsing
 			case [MPIdentifier(_, MPLayers, ITString)]:
 				switch stream {
 					case [MPOpen, MPClosed]: true;
@@ -4589,6 +4631,90 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 		};
 	}
 
+	function parseAtlas2():Atlas2Def {
+		// Parse source: atlas2("file.png") { ... } or atlas2(sheet("name")) { ... }
+		var source:Null<Atlas2Source> = null;
+
+		switch stream {
+			case [MPOpen]:
+				switch stream {
+					case [MPIdentifier(_, MPSheet, ITString), MPOpen, sheetName = parseStringOrReference(), MPClosed, MPClosed]:
+						source = A2SSheet(sheetName);
+					case [filename = parseStringOrReference(), MPClosed]:
+						source = A2SFile(filename);
+					case _: unexpectedError('expected "filename" or sheet("name")');
+				}
+			case _: unexpectedError("expected (");
+		}
+
+		// Expect opening brace
+		switch stream {
+			case [MPCurlyOpen]:
+			case _: unexpectedError("expected {");
+		}
+
+		// Parse tile entries
+		var entries:Array<Atlas2EntryDef> = [];
+
+		while (true) {
+			switch stream {
+				case [MPCurlyClosed]: break;
+				case [MPSemiColon]:
+				case [MPIdentifier(name, _, ITString|ITQuotedString), MPColon, x = parseInteger(), MPComma, y = parseInteger(), MPComma, w = parseInteger(), MPComma, h = parseInteger()]:
+					var offsetX:Null<Int> = null;
+					var offsetY:Null<Int> = null;
+					var origW:Null<Int> = null;
+					var origH:Null<Int> = null;
+					var split:Null<Array<Int>> = null;
+					var index:Null<Int> = null;
+
+					// Parse optional properties after the required x, y, w, h
+					while (true) {
+						switch stream {
+							case [MPComma]:
+								switch stream {
+									case [MPIdentifier(_, MPOffset, ITString), MPColon, ox = parseInteger(), MPComma, oy = parseInteger()]:
+										offsetX = ox;
+										offsetY = oy;
+									case [MPIdentifier("orig", _, ITString), MPColon, ow = parseInteger(), MPComma, oh = parseInteger()]:
+										origW = ow;
+										origH = oh;
+									case [MPIdentifier("split", _, ITString), MPColon, s0 = parseInteger(), MPComma, s1 = parseInteger(), MPComma, s2 = parseInteger(), MPComma, s3 = parseInteger()]:
+										split = [s0, s1, s2, s3];
+									case [MPIdentifier("index", _, ITString), MPColon, idx = parseInteger()]:
+										index = idx;
+									case _: unexpectedError("expected offset:, orig:, split:, or index:");
+								}
+							case _: break;
+						}
+					}
+
+					entries.push({
+						name: name,
+						x: x,
+						y: y,
+						w: w,
+						h: h,
+						offsetX: offsetX,
+						offsetY: offsetY,
+						origW: origW,
+						origH: origH,
+						split: split,
+						index: index
+					});
+				case _: unexpectedError("expected tile entry (name: x, y, w, h) or }");
+			}
+		}
+
+		if (entries.length == 0) syntaxError('atlas2 requires at least one tile entry');
+		if (source == null) syntaxError('atlas2 requires source');
+
+		return {
+			source: source,
+			entries: entries
+		};
+	}
+
 	function parseLayouts():LayoutsDef {
 
 		var layouts:LayoutsDef = [];
@@ -4721,6 +4847,10 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 					if (node == null) syntaxError('alpha not supported on root elements');
 					once.parsed(propName);
 					node.alpha = f;
+				case [MPIdentifier(propName, MPTint , ITString), MPColon, c = parseColorOrReference()]:
+					if (node == null) syntaxError('tint not supported on root elements');
+					once.parsed(propName);
+					node.tint = c;
 				case [MPIdentifier(propName, MPLayer , ITString), MPColon, layerIndex = parseInteger()]:
 					if (node == null) syntaxError('layer not supported on root elements');
 					else {

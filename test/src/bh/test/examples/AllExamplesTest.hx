@@ -368,4 +368,13 @@ class AllExamplesTest extends VisualTestBase {
 		this.referenceDir = "test/examples/34-namedFilterParams";
 		buildRenderScreenshotAndCompare("test/examples/34-namedFilterParams/namedFilterParams.manim", "namedFilterParams", async, 1280, 720, 1.0);
 	}
+
+	// Example 35: inline atlas2 definitions
+	@Test
+	public function test35_InlineAtlas2Demo(async:utest.Async) {
+		this.testName = "inlineAtlas2Demo";
+		this.testTitle = "#35: inline atlas2";
+		this.referenceDir = "test/examples/35-inlineAtlas2Demo";
+		buildRenderScreenshotAndCompare("test/examples/35-inlineAtlas2Demo/inlineAtlas2Demo.manim", "inlineAtlas2Demo", async, 1280, 720, 1.0);
+	}
 }

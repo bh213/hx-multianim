@@ -247,6 +247,12 @@ if exist "%ROOT%test\screenshots\namedFilterParams_actual.png" (
     echo   34 - namedFilterParams
 )
 
+REM Example 35: inline atlas2
+if exist "%ROOT%test\screenshots\inlineAtlas2Demo_actual.png" (
+    copy /Y "%ROOT%test\screenshots\inlineAtlas2Demo_actual.png" "%ROOT%test\examples\35-inlineAtlas2Demo\reference.png" >nul
+    echo   35 - inlineAtlas2Demo
+)
+
 echo.
 echo Reference images updated. Re-run 'test.bat run' to verify tests pass.
 goto :eof

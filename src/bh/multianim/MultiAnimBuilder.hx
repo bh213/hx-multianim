@@ -28,6 +28,9 @@ import bh.base.Particles.BoundsMode;
 import bh.base.Particles.SubEmitTrigger;
 import bh.base.Particles.CurvePoint;
 import bh.base.MacroUtils;
+import bh.base.Atlas2.IAtlas2;
+import bh.base.Atlas2.InlineAtlas2;
+import bh.base.Atlas2.AtlasEntry;
 
 using bh.base.MapTools;
 using StringTools;
@@ -307,6 +310,7 @@ class MultiAnimBuilder {
 	var builderParams:BuilderParameters = {};
 	var currentNode:Null<Node> = null;
 	var stateStack:Array<StoredBuilderState> = [];
+	var inlineAtlases:Map<String, IAtlas2> = [];
 
 	/** Returns position string for error messages when MULTIANIM_TRACE is enabled */
 	inline function currentNodePos():String {
@@ -1511,7 +1515,7 @@ class MultiAnimBuilder {
 						tileSourceIterator = collectStateAnimFrames(animFilename, animName, selector);
 						repeatCount = tileSourceIterator.length;
 					case TilesIterator(bitmapVarName, tilenameVarName, sheetName, tileFilter):
-						final sheet = resourceLoader.loadSheet2(sheetName);
+						final sheet = getOrLoadSheet(sheetName);
 						if (tileFilter != null) {
 							// Filter mode: iterate over frames for specific tilename (exact match)
 							// tileFilter must be an exact tile name/key in the atlas (e.g., "Arrow_dir0")
@@ -1919,6 +1923,7 @@ class MultiAnimBuilder {
 				Particles(createParticleImpl(particlesDef, node.uniqueNodeName));
 			case PALETTE(_): throw 'palette not allowed as non-root node' + MacroUtils.nodePos(node);
 			case AUTOTILE(_): throw 'autotile not allowed as non-root node' + MacroUtils.nodePos(node);
+			case ATLAS2(_): throw 'atlas2 is a definition node, not a renderable element' + MacroUtils.nodePos(node);
 
 			case PLACEHOLDER(type, source):
 				var settings = resolveSettings(node);
@@ -1992,7 +1997,7 @@ class MultiAnimBuilder {
 				for (key => value in construct) {
 					switch value {
 						case IndexedSheet(sheet, animName, fps, loop, center):
-							final loadedSheet = resourceLoader.loadSheet2(sheet);
+							final loadedSheet = getOrLoadSheet(sheet);
 							final anim = loadedSheet.getAnim(resolveAsString(animName));
 							if (center) {
 								for (i in 0...anim.length) {
@@ -2050,7 +2055,7 @@ class MultiAnimBuilder {
 						tileSourceIterator = collectStateAnimFrames(animFilename, animName, selector);
 						repeatCount = tileSourceIterator.length;
 					case TilesIterator(bitmapVarName, tilenameVarName, sheetName, tileFilter):
-						final sheet = resourceLoader.loadSheet2(sheetName);
+						final sheet = getOrLoadSheet(sheetName);
 						if (tileFilter != null) {
 							// Filter mode: iterate over frames for specific tilename (exact match)
 							// tileFilter must be an exact tile name/key in the atlas (e.g., "Arrow_dir0")
@@ -2380,6 +2385,11 @@ class MultiAnimBuilder {
 			object.blendMode = node.blendMode;
 		if (node.filter != null)
 			object.filter = buildFilter(node.filter);
+		if (node.tint != null) {
+			var d = Std.downcast(object, h2d.Drawable);
+			if (d != null)
+				d.color.setColor(resolveAsColorInteger(node.tint));
+		}
 	}
 
 	function resolveColorList(colors:Array<ReferenceableValue>) {
@@ -2934,7 +2944,7 @@ class MultiAnimBuilder {
 
 		return switch autotileDef.source {
 			case ATSAtlas(sheet, prefix):
-				final atlas = resourceLoader.loadSheet2(resolveAsString(sheet));
+				final atlas = getOrLoadSheet(resolveAsString(sheet));
 				final prefixStr = resolveAsString(prefix);
 				final tileCount = switch autotileDef.format {
 					case Cross: 13;
@@ -3424,7 +3434,7 @@ class MultiAnimBuilder {
 	}
 
 	function loadTileImpl(sheet, tilename, ?index:Int) {
-		final sheet = resourceLoader.loadSheet2(sheet);
+		final sheet = getOrLoadSheet(sheet);
 		if (sheet == null)
 			throw 'sheet ${sheet} could not be loaded' + currentNodePos();
 
@@ -3446,7 +3456,7 @@ class MultiAnimBuilder {
 	}
 
 	function load9Patch(sheet, tilename) {
-		final sheet = resourceLoader.loadSheet2(sheet);
+		final sheet = getOrLoadSheet(sheet);
 		if (sheet == null)
 			throw 'sheet ${sheet} could not be loaded' + currentNodePos();
 
@@ -3454,5 +3464,71 @@ class MultiAnimBuilder {
 		if (ninePatch == null)
 			throw 'tile ${tilename} in sheet ${sheet} could not be loaded' + currentNodePos();
 		return ninePatch;
+	}
+
+	function getOrLoadSheet(sheetName:String):IAtlas2 {
+		// Check inline atlas2 definitions first
+		var inlineAtlas = inlineAtlases.get(sheetName);
+		if (inlineAtlas != null)
+			return inlineAtlas;
+
+		// Try to resolve from parsed ATLAS2 node
+		inlineAtlas = resolveInlineAtlas(sheetName);
+		if (inlineAtlas != null)
+			return inlineAtlas;
+
+		// Fall back to resource loader
+		return resourceLoader.loadSheet2(sheetName);
+	}
+
+	function resolveInlineAtlas(name:String):Null<IAtlas2> {
+		final node = multiParserResult?.nodes?.get(name);
+		if (node == null) return null;
+
+		switch node.type {
+			case ATLAS2(atlas2Def):
+				// Load source tile
+				final sourceTile:h2d.Tile = switch atlas2Def.source {
+					case A2SFile(filename):
+						resourceLoader.loadTile(resolveAsString(filename));
+					case A2SSheet(sheetName):
+						final sheet = resourceLoader.loadSheet2(resolveAsString(sheetName));
+						if (sheet == null)
+							throw 'atlas2: could not load sheet "${resolveAsString(sheetName)}"' + currentNodePos();
+						sheet.getSourceTile();
+				}
+
+				if (sourceTile == null)
+					throw 'atlas2 "$name": could not load source tile' + currentNodePos();
+
+				// Build contents map from entries
+				final contents:Map<String, Array<AtlasEntry>> = [];
+				for (entry in atlas2Def.entries) {
+					final t = sourceTile.sub(entry.x, entry.y, entry.w, entry.h, 0, 0);
+					final idx = entry.index != null ? entry.index : 0;
+					final offsetX = entry.offsetX != null ? entry.offsetX : 0;
+					final offsetY = entry.offsetY != null ? entry.offsetY : 0;
+					final origW = entry.origW != null ? entry.origW : entry.w;
+					final origH = entry.origH != null ? entry.origH : entry.h;
+					final split:Array<Int> = entry.split != null ? entry.split : [];
+
+					var tl = contents.get(entry.name);
+					if (tl == null) {
+						tl = [];
+						contents.set(entry.name, tl);
+					}
+					tl[idx] = { t: t, width: origW, height: origH, offsetX: offsetX, offsetY: offsetY, split: split };
+				}
+
+				// Remove leading null if index started at 1
+				for (tl in contents)
+					if (tl.length > 1 && tl[0] == null) tl.shift();
+
+				final inlineAtlas = new InlineAtlas2(contents);
+				inlineAtlases.set(name, inlineAtlas);
+				return inlineAtlas;
+			default:
+				return null;
+		}
 	}
 }

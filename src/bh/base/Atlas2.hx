@@ -4,9 +4,68 @@ package bh.base;
 import h2d.ScaleGrid;
 import bh.stateanim.AnimationFrame;
 
-class Atlas2 extends hxd.res.Resource.Resource {
+typedef AtlasEntry = { t : h2d.Tile, width : Int, height : Int, offsetX: Int, offsetY:Int, split:Array<Int> };
 
-	var contents : Map<String,Array<{ t : h2d.Tile, width : Int, height : Int, offsetX: Int, offsetY:Int, split:Array<Int> }>>;
+interface IAtlas2 {
+	function get(name:String):AnimationFrame;
+	function getAnim(?name:String):Array<AnimationFrame>;
+	function getNinePatch(name:String):ScaleGrid;
+	function getContents():Map<String, Array<AtlasEntry>>;
+}
+
+class InlineAtlas2 implements IAtlas2 {
+	var contents:Map<String, Array<AtlasEntry>>;
+
+	public function new(contents:Map<String, Array<AtlasEntry>>) {
+		this.contents = contents;
+	}
+
+	static function toAnimationFrame(content:AtlasEntry):AnimationFrame {
+		return new AnimationFrame(content.t, 0, content.offsetX, content.offsetY, content.width, content.height);
+	}
+
+	public function get(name:String):AnimationFrame {
+		var c = contents.get(name);
+		if (c == null) return null;
+		var t = c[0];
+		if (t == null) return null;
+		return toAnimationFrame(t);
+	}
+
+	public function getAnim(?name:String):Array<AnimationFrame> {
+		if (name == null) {
+			var cont = contents.keys();
+			name = cont.next();
+			if (cont.hasNext())
+				throw "Atlas has several items in it";
+		}
+		var c = contents.get(name);
+		if (c == null) return null;
+		return [for (t in c) if (t == null) null else toAnimationFrame(t)];
+	}
+
+	public function getNinePatch(name:String):ScaleGrid {
+		var c = contents.get(name);
+		if (c == null) return null;
+		var t = c[0];
+		if (t == null) return null;
+		var splitLen = t.split.length;
+		if (splitLen > 0) {
+			if (splitLen != 4) throw '${name} has invalid 9-patch: ${t.split}';
+			return new ScaleGrid(t.t, t.split[0], t.split[2], t.split[1], t.split[3]);
+		}
+		throw '${name} is not a 9-patch';
+	}
+
+	public function getContents():Map<String, Array<AtlasEntry>> {
+		return contents;
+	}
+}
+
+class Atlas2 extends hxd.res.Resource.Resource implements IAtlas2 {
+
+	var contents : Map<String,Array<AtlasEntry>>;
+	var sourceTiles : Array<h2d.Tile>;
 
     function toAnimationFrame(content) {
         return  new AnimationFrame(content.t, 0, content.offsetX, content.offsetY, content.width, content.height);
@@ -15,7 +74,11 @@ class Atlas2 extends hxd.res.Resource.Resource {
 	 public static function toAtlas2(resource:hxd.res.Any) {
 		return hxd.Res.loader.loadCache(resource.entry.path, bh.base.Atlas2);
 	 }
-	
+
+	public function getSourceTile():h2d.Tile {
+		getContents();
+		return sourceTiles != null && sourceTiles.length > 0 ? sourceTiles[0] : null;
+	}
 
 	public function get( name : String) : AnimationFrame {
 		var c = getContents().get(name);
@@ -63,6 +126,7 @@ class Atlas2 extends hxd.res.Resource.Resource {
 			return contents;
 
 		contents = new Map();
+		sourceTiles = [];
 		var lines = entry.getText().split("\n");
 
 		var basePath = entry.path.split("/");
@@ -74,6 +138,7 @@ class Atlas2 extends hxd.res.Resource.Resource {
 			if ( line == "" ) continue;
             final tileFilename = basePath + line;
 			var tileFile = hxd.res.Loader.currentInstance.load(tileFilename).toTile();
+			sourceTiles.push(tileFile);
 			while( lines.length > 0 ) {
 				if( lines[0].indexOf(":") < 0 ) break;
 				var line = StringTools.trim(lines.shift()).split(": ");
