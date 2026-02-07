@@ -253,6 +253,12 @@ if exist "%ROOT%test\screenshots\inlineAtlas2Demo_actual.png" (
     echo   35 - inlineAtlas2Demo
 )
 
+REM Example 36: mask
+if exist "%ROOT%test\screenshots\maskDemo_actual.png" (
+    copy /Y "%ROOT%test\screenshots\maskDemo_actual.png" "%ROOT%test\examples\36-maskDemo\reference.png" >nul
+    echo   36 - maskDemo
+)
+
 echo.
 echo Reference images updated. Re-run 'test.bat run' to verify tests pass.
 goto :eof

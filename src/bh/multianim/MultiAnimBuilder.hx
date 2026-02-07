@@ -16,6 +16,7 @@ import bh.base.filters.ReplacePaletteShader;
 import bh.base.Palette;
 import bh.base.filters.PixelOutline;
 import h2d.Layers;
+import h2d.Mask;
 import bh.multianim.layouts.MultiAnimLayouts;
 import bh.base.MAObject;
 import bh.multianim.CoordinateSystems;
@@ -1826,6 +1827,11 @@ class MultiAnimBuilder {
 				final l = new Layers(current);
 				selectedBuildMode = LayersMode(l);
 				HeapsLayers(l);
+			case MASK(width, height):
+				final w = Math.round(resolveAsNumber(width));
+				final h = Math.round(resolveAsNumber(height));
+				final m = new Mask(w, h);
+				HeapsMask(m);
 			case NINEPATCH(sheet, tilename, width, height):
 				var sg = load9Patch(sheet, tilename);
 

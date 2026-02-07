@@ -119,6 +119,7 @@ enum MPKeywords {
 	MPRelativeLayouts;
 	MPLayout;
 	MPLayers;
+	MPMask;
 	MPPalette;
 	MPLayer;
 	MPSettings;
@@ -275,6 +276,7 @@ function toh2dObject(builtHeapsComponent:BuiltHeapsComponent):h2d.Object {
 		case NinePatch(s): s;
 		case HeapsFlow(f): f;
 		case HeapsLayers(layers): layers;
+		case HeapsMask(m): m;
 		case Particles(p): p;
 	}
 }
@@ -289,6 +291,7 @@ enum BuiltHeapsComponent {
 	NinePatch(s:h2d.ScaleGrid);
 	HeapsFlow(f:h2d.Flow);
 	HeapsLayers(f:h2d.Layers);
+	HeapsMask(m:h2d.Mask);
 	Particles(p:bh.base.Particles);
 }
 
@@ -926,6 +929,7 @@ enum NodeType {
 	PARTICLES(particles:ParticlesDef);
 	APPLY;
 	LAYERS;
+	MASK(width:ReferenceableValue, height:ReferenceableValue);
 	REPEAT(varName:String, repeatType:RepeatType);
 	REPEAT2D(varNameX:String, varNameY:String, repeatTypeX:RepeatType, repeatTypeY:RepeatType);
 	REFERENCE(externalReference:Null<String>, programmableReference:String, parameters:Map<String, ReferenceableValue>);
@@ -3285,6 +3289,8 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 					case _:
 				}
 				createNodeResponse(LAYERS);
+			case [MPIdentifier(_, MPMask, ITString), MPOpen, w = parseIntegerOrReference(), MPComma, h = parseIntegerOrReference(), MPClosed]:
+				createNodeResponse(MASK(w, h));
 
 		case [MPIdentifier(_, MPSettings, ITString), MPCurlyOpen]:
 			if (parent == null) syntaxError('settings must have a parent');

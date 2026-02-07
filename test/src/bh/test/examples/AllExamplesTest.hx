@@ -377,4 +377,13 @@ class AllExamplesTest extends VisualTestBase {
 		this.referenceDir = "test/examples/35-inlineAtlas2Demo";
 		buildRenderScreenshotAndCompare("test/examples/35-inlineAtlas2Demo/inlineAtlas2Demo.manim", "inlineAtlas2Demo", async, 1280, 720, 1.0);
 	}
+
+	// Example 36: mask
+	@Test
+	public function test36_MaskDemo(async:utest.Async) {
+		this.testName = "maskDemo";
+		this.testTitle = "#36: mask";
+		this.referenceDir = "test/examples/36-maskDemo";
+		buildRenderScreenshotAndCompare("test/examples/36-maskDemo/maskDemo.manim", "maskDemo", async, 1280, 720, 1.0);
+	}
 }
