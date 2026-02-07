@@ -1,4 +1,7 @@
+# Main goals
 
+- allow code generation - programmable should be able to be generated in haxe macro with haxe code. Make sure all functionality is aligned with this goal. There should be update programmable functionality down the line as well
+- some tools/testing might be split into separate repos. Most likely candidates are utils/  and playground.
 
 FIX:
 ===================================
@@ -7,6 +10,7 @@ repeatable grid: scale ignored for dy/dy?
     - Grid's spacingX/spacingY is NOT applied to dx/dy values
     - If you have grid(32,32) and repeatable grid(1,0,5), dx=1 is treated as 1 pixel, not 32 pixels
     - See MultiAnimBuilder.hx:1409-1412
+    - grid is not supposed to mean grid coordinate system but that it moves in x,y direction by grid cells
 
 repeatable: inline array with $index, $value?
     - UNCLEAR: ArrayIterator exists with $index support
@@ -33,6 +37,12 @@ fix conditional not working with repeatable vars - e.g @(index greaterOrEqual 3)
     - Parser recognizes greaterThanOrEqual (MultiAnimParser.hx:2272)
     - Repeatable variables added to indexedParams during iteration
     - Bug may be timing - conditionals parsed/evaluated before repeatable sets the var
+
+ add inline atlas/atlas2 definitions in manim files
+
+ add data support in manim files, stuff like key/value, string, int, float, array, ability to get by name, maybe index, probably expression support. Maybe sort of programmable that just return data
+
+
 
 NEXT
 ===================================

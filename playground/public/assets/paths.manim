@@ -151,9 +151,11 @@ forward(80)
 
     point {
       pos: 640, 320
-      #ref1 placeholder(generated(cross(10, 10)), builderParameter("xxx")) {
+      #ref1 point {
+        bitmap(generated(cross(10, 10)));
         text(pixellari, "ref #1", yellow);
-        #ref2 placeholder(generated(cross(10, 10)), builderParameter("xxx")) {
+        #ref2 point {
+          bitmap(generated(cross(10, 10)));
           text(pixellari, "ref #2", green);
           scale: 0.5
           pos:100,100

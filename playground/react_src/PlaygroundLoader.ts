@@ -76,7 +76,8 @@ export class PlaygroundLoader {
                 filename: f.filename,
                 displayName: f.displayName,
                 description: f.description,
-                content: null as string | null
+                content: null as string | null,
+                isLibrary: true
             }))
         ];
 

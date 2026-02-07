@@ -192,21 +192,20 @@ class PathsScreen extends UIScreenBase {
 
 	}
 
+	var updateErrorLogged:Bool = false;
+
 	public override function update(dt:Float) {
-		super.update(dt);
+		try {
+			super.update(dt);
+		} catch (e:Dynamic) {
+			if (!updateErrorLogged) {
+				trace('PathsScreen update error: $e');
+				updateErrorLogged = true;
+			}
+		}
 		for (path in animatedPaths) {
 			path.update(dt);
 		}
-		
-		//if (anim != null) {
-			//anim.update(dt);
-			
-			//var rate = anim.getAsRate();
-			//var pt = this.lines[0].getPoint(rate);
-			//animObj.setPosition(0,0);
-			//animObj.setPosition(pt.x, pt.y);
-	
-		// }
 	}
 	public function onScreenEvent(event:UIScreenEvent, source:UIElement) {
 		

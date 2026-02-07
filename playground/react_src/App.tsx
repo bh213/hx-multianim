@@ -416,25 +416,51 @@ function App() {
 
   useEffect(() => {
     function handleGlobalError(event: ErrorEvent) {
-      if (event.error && event.error.message && event.error.message.includes('unexpected MP')) {
-        const match = event.error.message.match(/at ([^:]+):(\d+): characters (\d+)-(\d+)/);
-        let pos;
-        if (match) {
-          const line = parseInt(match[2], 10);
-          const startChar = parseInt(match[3], 10);
-          const endChar = parseInt(match[4], 10);
-          const lines = manimContent.split('\n');
-          let pmin = 0;
-          for (let i = 0; i < line - 1; i++) pmin += lines[i].length + 1;
-          pmin += startChar;
-          let pmax = pmin + (endChar - startChar);
-          pos = { psource: '', pmin, pmax };
-        }
-        setReloadError({ message: event.error.message, pos, token: undefined });
+      const message = event.error?.message || event.message || 'Unknown error';
+
+      // Try to extract position info for manim parser errors
+      const match = message.match(/at ([^:]+):(\d+): characters (\d+)-(\d+)/);
+      let pos;
+      if (match) {
+        const line = parseInt(match[2], 10);
+        const startChar = parseInt(match[3], 10);
+        const endChar = parseInt(match[4], 10);
+        const lines = manimContent.split('\n');
+        let pmin = 0;
+        for (let i = 0; i < line - 1; i++) pmin += lines[i].length + 1;
+        pmin += startChar;
+        let pmax = pmin + (endChar - startChar);
+        pos = { psource: '', pmin, pmax };
       }
+
+      // Show parser errors in the editor header
+      if (pos) {
+        setReloadError({ message, pos, token: undefined });
+      }
+
+      // Log all uncaught errors to the app console
+      setConsoleEntries(prev => [...prev, {
+        type: 'error',
+        message,
+        timestamp: new Date()
+      }]);
     }
+
+    function handleUnhandledRejection(event: PromiseRejectionEvent) {
+      const message = event.reason?.message || String(event.reason) || 'Unhandled promise rejection';
+      setConsoleEntries(prev => [...prev, {
+        type: 'error',
+        message,
+        timestamp: new Date()
+      }]);
+    }
+
     window.addEventListener('error', handleGlobalError);
-    return () => window.removeEventListener('error', handleGlobalError);
+    window.addEventListener('unhandledrejection', handleUnhandledRejection);
+    return () => {
+      window.removeEventListener('error', handleGlobalError);
+      window.removeEventListener('unhandledrejection', handleUnhandledRejection);
+    };
   }, [manimContent]);
 
   return (
@@ -481,7 +507,7 @@ function App() {
         <div className="flex-1 p-3 min-h-0">
           <div className="text-xs text-gray-400 mb-2 font-medium">Files</div>
           <div className="space-y-0.5 scrollable" style={{ maxHeight: 'calc(100vh - 250px)' }}>
-            {loader.manimFiles.map((file: ManimFile) => (
+            {loader.manimFiles.filter((f: ManimFile) => !f.isLibrary).map((file: ManimFile) => (
               <div
                 key={file.filename}
                 className={`px-2 py-1.5 rounded cursor-pointer text-xs ${
@@ -494,8 +520,27 @@ function App() {
                 {file.filename}
               </div>
             ))}
+            {loader.manimFiles.some((f: ManimFile) => f.isLibrary) && (
+              <div className="border-t border-gray-600 my-1 pt-1">
+                <div className="text-xs text-gray-500 px-2 py-0.5 mb-0.5">Library</div>
+                {loader.manimFiles.filter((f: ManimFile) => f.isLibrary).map((file: ManimFile) => (
+                  <div
+                    key={file.filename}
+                    className={`px-2 py-1.5 rounded cursor-pointer text-xs italic ${
+                      selectedManimFile === file.filename
+                        ? 'bg-blue-600 text-white'
+                        : 'text-gray-500 hover:bg-gray-700'
+                    }`}
+                    onClick={() => handleManimFileChange({ target: { value: file.filename } } as any)}
+                  >
+                    {file.filename}
+                  </div>
+                ))}
+              </div>
+            )}
             {loader.animFiles.length > 0 && (
               <div className="border-t border-gray-600 my-1 pt-1">
+                <div className="text-xs text-gray-500 px-2 py-0.5 mb-0.5">Animations</div>
                 {loader.animFiles.map((file: AnimFile) => (
                   <div
                     key={file.filename}

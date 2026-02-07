@@ -38,7 +38,16 @@ enum APToken {
 	APDoubleDot;
 	APAt;
 	APArrow;
+	APNotEquals;
 }
+
+enum AnimConditionalValue {
+	ACVSingle(value:String);
+	ACVMulti(values:Array<String>);
+	ACVNot(inner:AnimConditionalValue);
+}
+
+typedef AnimConditionalSelector = Map<String, AnimConditionalValue>;
 
 enum APKeywords {
 	APSheet;
@@ -82,6 +91,7 @@ class AnimLexer extends hxparse.Lexer implements hxparse.RuleBuilder {
 		"\\@" => APAt,
 		":" => APColon,
 		";" => APSemiColon,
+		"!=" => APNotEquals,
 		"=>" => APArrow,
 		"[\n\r]" => APNewLine,
 		"//[^\n\r]*" => lexer.token(tok),
@@ -129,7 +139,7 @@ enum MetadataValue {
 }
 
 typedef MetadataEntry = {
-	var states:AnimationStateSelector;
+	var states:AnimConditionalSelector;
 	var value:MetadataValue;
 }
 
@@ -211,7 +221,7 @@ class AnimMetadata {
 
 @:using(AnimParser.ExtraPointsHelper)
 typedef ExtraPoints = {
-	var states:AnimationStateSelector;
+	var states:AnimConditionalSelector;
 	var point:Point;
 	var ?visited:Bool;
 }
@@ -224,14 +234,14 @@ enum AnimPlaylistFrames {
 }
 
 typedef Playlist = {
-	var states:AnimationStateSelector;
+	var states:AnimConditionalSelector;
 	var anims:Array<AnimPlaylistFrames>;
 	var ?visited:Bool;
 }
 
 typedef AnimationState = {
 	var name:String;
-	var states:AnimationStateSelector;
+	var states:AnimConditionalSelector;
 	var fps:Null<Int>;
 	var loop:Null<Int>; // -1 = forever, null = no loop, N = loop N times
 	var extraPoint:Map<String, Array<ExtraPoints>>;
@@ -334,11 +344,31 @@ class AnimParser extends hxparse.Parser<hxparse.LexerTokenSource<APToken>, APTok
 		}
 	}
 
-	public static function countStateMatch(match:AnimationStateSelector, selector:AnimationStateSelector) {
+	function parserValidateConditionalState(animStates:Map<String, Array<String>>, name:String, value:AnimConditionalValue) {
+		switch value {
+			case ACVSingle(v):
+				parserValidateState(animStates, name, v);
+			case ACVMulti(values):
+				for (v in values)
+					parserValidateState(animStates, name, v);
+			case ACVNot(inner):
+				parserValidateConditionalState(animStates, name, inner);
+		}
+	}
+
+	public static function matchConditionalValue(condValue:AnimConditionalValue, runtimeValue:String):Bool {
+		return switch condValue {
+			case ACVSingle(v): v == runtimeValue;
+			case ACVMulti(vs): vs.contains(runtimeValue);
+			case ACVNot(inner): !matchConditionalValue(inner, runtimeValue);
+		};
+	}
+
+	public static function countStateMatch(match:AnimConditionalSelector, selector:AnimationStateSelector) {
 		var retVal = 0;
 		for (key => value in selector) {
 			if (match.exists(key)) {
-				if (match[key] == value)
+				if (matchConditionalValue(match[key], value))
 					retVal++;
 				else
 					retVal -= 10000;
@@ -461,14 +491,21 @@ class AnimParser extends hxparse.Parser<hxparse.LexerTokenSource<APToken>, APTok
 		return best;
 	}
 
-	function checkForUnreachableState(parentState:AnimationStateSelector, childState:AnimationStateSelector) {
-		for (key => value in childState) {
+	function checkForUnreachableState(parentState:AnimConditionalSelector, childState:AnimConditionalSelector) {
+		for (key => childValue in childState) {
 			if (!parentState.exists(key))
 				continue;
-			if (parentState[key] != value)
-				syntaxError('unreachable state ${childState}, limited by ${parentState}');
-			else
-				syntaxError('useless state limit ${childState}, limited by ${parentState}');
+			final parentValue = parentState[key];
+			// Only check simple single-value cases for unreachable detection
+			switch [parentValue, childValue] {
+				case [ACVSingle(pv), ACVSingle(cv)]:
+					if (pv != cv)
+						syntaxError('unreachable state ${childState}, limited by ${parentState}');
+					else
+						syntaxError('useless state limit ${childState}, limited by ${parentState}');
+				case _:
+					// Complex conditionals: skip unreachable check
+			}
 		}
 		return true;
 	}
@@ -543,7 +580,7 @@ class AnimParser extends hxparse.Parser<hxparse.LexerTokenSource<APToken>, APTok
 				case [APIdentifier(_, APAnimation, AITString), animationStates = parseStates([]), APCurlyOpen]:
 					animationParsingStarted = true;
 					for (key => value in animationStates) {
-						parserValidateState(definedStates, key, value);
+						parserValidateConditionalState(definedStates, key, value);
 					}
 					final startOfAnim = this.curPos();
 					var parsedAnim = parseAnimation(definedStates, animationStates, allowedExtraPoints);
@@ -661,7 +698,7 @@ class AnimParser extends hxparse.Parser<hxparse.LexerTokenSource<APToken>, APTok
 					if (allowedExtraPoints.contains(pointName) == false)
 						syntaxError('extraPoint ${pointName} not declared in allowedExtraPoints');
 					for (key => value in states) {
-						parserValidateState(statesDefinitions, key, value);
+						parserValidateConditionalState(statesDefinitions, key, value);
 					}
 					checkForUnreachableState(animationStates, states);
 
@@ -725,7 +762,7 @@ class AnimParser extends hxparse.Parser<hxparse.LexerTokenSource<APToken>, APTok
 				case [APIdentifier(_, APPlaylist, AITString), playlistStates = parseStates([]), APCurlyOpen]:
 					var playlist:Playlist = {anims: [], states: playlistStates};
 					for (key => value in playlistStates) {
-						parserValidateState(statesDefinitions, key, value);
+						parserValidateConditionalState(statesDefinitions, key, value);
 					}
 					checkForUnreachableState(animationStates, playlistStates);
 
@@ -856,16 +893,81 @@ class AnimParser extends hxparse.Parser<hxparse.LexerTokenSource<APToken>, APTok
 		return animStates;
 	}
 
-	public function parseStates(states:AnimationStateSelector) {
+	public function parseStates(states:AnimConditionalSelector) {
 		while (true) {
 			switch stream {
-				case [APAt, APOpen, APIdentifier(stateName, _, AITString | AITQuotedString), APArrow, (APIdentifier(stateValue, _, AITString | AITQuotedString) | APNumber(stateValue)), APClosed]:
-					states.set(stateName, stateValue);
+				case [APAt, APOpen]:
+					parseConditionalState(states);
 				case [APNewLine]:
 				case _:
 					return states;
 			}
 		}
+	}
+
+	function parseConditionalState(states:AnimConditionalSelector) {
+		// Parse state name
+		var stateName:String;
+		switch stream {
+			case [APIdentifier(name, _, AITString | AITQuotedString)]:
+				stateName = name;
+			case _:
+				unexpectedError("Expected state name");
+				return;
+		}
+
+		// Parse operator: => or !=
+		var negated = false;
+		switch stream {
+			case [APArrow]:
+			case [APNotEquals]:
+				negated = true;
+			case _:
+				unexpectedError("Expected => or !=");
+				return;
+		}
+
+		// Parse value: single or [multi]
+		var condValue:AnimConditionalValue;
+		switch stream {
+			case [APBracketOpen]:
+				condValue = ACVMulti(parseConditionalValueList([]));
+			case [APIdentifier(value, _, AITString | AITQuotedString) | APNumber(value)]:
+				condValue = ACVSingle(value);
+			case _:
+				unexpectedError("Expected value or [values]");
+				return;
+		}
+
+		if (negated)
+			condValue = ACVNot(condValue);
+
+		// Parse closing )
+		switch stream {
+			case [APClosed]:
+			case _:
+				unexpectedError("Expected )");
+		}
+
+		states.set(stateName, condValue);
+	}
+
+	function parseConditionalValueList(values:Array<String>):Array<String> {
+		switch stream {
+			case [APIdentifier(v, _) | APNumber(v)]:
+				values.push(v);
+				switch stream {
+					case [APComma]:
+						return parseConditionalValueList(values);
+					case [APBracketClosed]:
+						return values;
+					case _:
+						unexpectedError("Expected , or ]");
+				}
+			case _:
+				unexpectedError("Expected value in list");
+		}
+		return values;
 	}
 
 	public function parseList(list:Array<String>) {

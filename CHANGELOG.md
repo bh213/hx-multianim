@@ -3,6 +3,11 @@
 ## [0.4]
 
 ### Added
+- **.anim conditionals: negation and multi-value** - Ported subset of .manim conditional system to .anim
+  - `@(state != value)` - negation: match when state does NOT equal value
+  - `@(state=>[v1,v2])` - multi-value: match when state is any of the listed values
+  - `@(state != [v1,v2])` - negated multi-value: match when state is NOT any of the listed values
+  - Works on animations, playlists, extrapoints, and metadata
 - **Autotile region sheet visualization** - New `autotileRegionSheet` generated tile type for debugging autotile tilesets
   - Displays the complete region of an autotile with a numbered grid overlay
   - Helps visually identify which tile index corresponds to which visual tile in the source image

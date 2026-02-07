@@ -39,6 +39,7 @@ class TestApp extends hxd.App {
 		// Add test cases with scene reference
 		testRunner.addCase(new bh.test.examples.AllExamplesTest(s2d));
 		testRunner.addCase(new bh.test.examples.ParserErrorTest());
+		testRunner.addCase(new bh.test.examples.AnimParserTest());
 
 		Report.create(testRunner);
 	}

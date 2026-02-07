@@ -235,7 +235,16 @@ extrapoints {
 
 ## Conditionals Based on State
 
-Conditionals filter which animation or extrapoint applies based on state values.
+Conditionals filter which animation, playlist, extrapoint, or metadata entry applies based on state values.
+
+### Basic syntax
+
+```anim
+@(state=>value)             // Match when state equals value
+@(state != value)           // Negation: match when state does NOT equal value
+@(state=>[v1,v2,v3])       // Multi-value: match when state is any of v1, v2, v3
+@(state != [v1,v2])         // Negated multi-value: match when state is NOT v1 or v2
+```
 
 ### Animation-level conditionals
 
@@ -244,9 +253,14 @@ animation @(direction=>l) @(color=>red) {
     name: attack
     ...
 }
+
+animation @(direction != l) {
+    name: special
+    ...
+}
 ```
 
-Only applied when `direction=>l` AND `color=>red`.
+Only applied when the state conditions match. Multiple `@()` blocks on the same element are combined with AND logic.
 
 ### Extrapoint conditionals
 
@@ -254,10 +268,31 @@ Only applied when `direction=>l` AND `color=>red`.
 extrapoints {
     @(direction=>l) fire: -2, -2
     @(direction=>r) fire: 2, -2
+    @(direction=>[l,r]) targeting: 0, -12
 }
 ```
 
 Only provides the extrapoint when the state matches.
+
+### Metadata conditionals
+
+```anim
+metadata {
+    @(direction=>l) fireOffsetX: -5
+    @(direction != l) fireOffsetX: 5
+}
+```
+
+### Playlist conditionals
+
+```anim
+playlist @(direction=>l) {
+    sheet: "marine_l_walk"
+}
+playlist @(direction=>r) {
+    sheet: "marine_r_walk"
+}
+```
 
 ---
 

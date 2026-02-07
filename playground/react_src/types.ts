@@ -10,6 +10,7 @@ export interface ManimFile {
     displayName: string;
     description: string;
     content: string | null;
+    isLibrary?: boolean;
 }
 
 export interface AnimFile {

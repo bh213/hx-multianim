@@ -93,26 +93,23 @@ allowedExtraPoints: [point1, point2]
 animation {
     name: animationName
     fps: 20
-    loop: untilCommand | yes | <number>
+    loop: yes | <number>
     playlist {
         sheet: "sprite_$$state$$_name"
-        loop <count> { ... }
         event <name> trigger | random x,y,radius | x,y
-        command
-        goto <animName>
     }
     extrapoints {
         @(state=>value) pointName: x,y
+        @(state != value) pointName: x,y
+        @(state=>[v1,v2]) pointName: x,y
     }
 }
 ```
 
 **Key `.anim` features:**
 - `$$stateName$$` - State variable interpolation in sheet names
-- `loop untilCommand` - Loop until command queue has entry
 - `extrapoints` - Named points for effects/interactions (bullets, particles, etc.)
-- `goto` - Transition to another animation
-- `command` - Execute next command from queue
+- Conditionals: `@(state=>value)`, `@(state != value)` negation, `@(state=>[v1,v2])` multi-value, `@(state != [v1,v2])` negated multi-value
 
 ## .manim Language Quick Reference
 
@@ -269,7 +266,6 @@ Enable debug traces by adding to HXML:
 - Hex coordinate system offset support
 
 ### Next Features
-- Conditionals ELSE support
 - Animation paths with easing & events
 - Particle sub-emitters (partially implemented)
 
