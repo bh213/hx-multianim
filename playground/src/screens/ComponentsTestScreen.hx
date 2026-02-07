@@ -136,7 +136,6 @@ class ComponentsTestScreen extends UIScreenBase {
 	}
 
 	public function onScreenEvent(event:UIScreenEvent, source:UIElement) {
-		trace(event, source);
 			switch event {
 				case UIClick:
 					if (source == reset) {

@@ -203,7 +203,7 @@ version: 0.3
       @(panel=>open) bitmap(sheet("ui", "icon_drop_open")):108,17
       #selectedName(updatable) text(m6x11, callback("selectedName"), 0xffffff12, center, 120): -4,6
       // @(images=>placeholder) placeholder(generated(cross(15, 15)), callback("test")):8,5
-      settings{transitionTimer=>.2}
+      settings{transitionTimer:float=>.2}
 }
 
 

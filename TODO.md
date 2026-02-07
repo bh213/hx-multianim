@@ -5,6 +5,10 @@
 
 FIX:
 ===================================
+
+
+Components: allow setting various components via settings 
+
 repeatable grid: scale ignored for dy/dy?
     - VALID BUG: GridIterator uses resolveAsInteger(dirX/dirY) directly
     - Grid's spacingX/spacingY is NOT applied to dx/dy values
@@ -38,19 +42,9 @@ fix conditional not working with repeatable vars - e.g @(index greaterOrEqual 3)
     - Repeatable variables added to indexedParams during iteration
     - Bug may be timing - conditionals parsed/evaluated before repeatable sets the var
 
- add inline atlas/atlas2 definitions in manim files
-
+ 
  add data support in manim files, stuff like key/value, string, int, float, array, ability to get by name, maybe index, probably expression support. Maybe sort of programmable that just return data
 
-
-
-NEXT
-===================================
-conditionals ELSE??
-    - NOT IMPLEMENTED
-    - Current system only supports @(condition) for true case
-    - No else branch or fallback mechanism
-    - Would require parser changes and new Node field
 
 particles:
     loop/non-loop support

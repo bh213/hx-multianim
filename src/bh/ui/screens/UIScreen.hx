@@ -112,7 +112,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	public function onKey(keyCode:Int, release:Bool):Bool { return true;}
 
 	public function update(dt:Float):Void {
-		controller.update(dt);
+		// controller.update(dt) is already called by ScreenManager.update() before screen.update()
 		for (obj => v in postCustomAddToLayer) {
 			var insertedLayer = findLayerFromObject(obj);
 			if (insertedLayer == null)

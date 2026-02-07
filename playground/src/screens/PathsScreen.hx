@@ -192,17 +192,8 @@ class PathsScreen extends UIScreenBase {
 
 	}
 
-	var updateErrorLogged:Bool = false;
-
 	public override function update(dt:Float) {
-		try {
-			super.update(dt);
-		} catch (e:Dynamic) {
-			if (!updateErrorLogged) {
-				trace('PathsScreen update error: $e');
-				updateErrorLogged = true;
-			}
-		}
+		super.update(dt);
 		for (path in animatedPaths) {
 			path.update(dt);
 		}

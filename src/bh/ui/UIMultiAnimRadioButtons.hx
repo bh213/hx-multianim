@@ -47,7 +47,7 @@ class UIMultiAnimRadioButtons implements UIElement implements UIElementDisablabl
 					throw 'invalid callback ${request}';
 
 			default:
-				throw 'unsuported callback ${request}';
+				throw 'unsupported callback ${request}';
 		}
 	}
 
