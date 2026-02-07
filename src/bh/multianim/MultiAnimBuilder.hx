@@ -2394,7 +2394,7 @@ class MultiAnimBuilder {
 		if (node.tint != null) {
 			var d = Std.downcast(object, h2d.Drawable);
 			if (d != null)
-				d.color.setColor(resolveAsColorInteger(node.tint));
+				d.color.setColor(resolveAsColorInteger(node.tint).addAlphaIfNotPresent());
 		}
 	}
 

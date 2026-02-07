@@ -259,6 +259,12 @@ if exist "%ROOT%test\screenshots\maskDemo_actual.png" (
     echo   36 - maskDemo
 )
 
+REM Example 37: tint
+if exist "%ROOT%test\screenshots\tintDemo_actual.png" (
+    copy /Y "%ROOT%test\screenshots\tintDemo_actual.png" "%ROOT%test\examples\37-tintDemo\reference.png" >nul
+    echo   37 - tintDemo
+)
+
 echo.
 echo Reference images updated. Re-run 'test.bat run' to verify tests pass.
 goto :eof

@@ -386,4 +386,13 @@ class AllExamplesTest extends VisualTestBase {
 		this.referenceDir = "test/examples/36-maskDemo";
 		buildRenderScreenshotAndCompare("test/examples/36-maskDemo/maskDemo.manim", "maskDemo", async, 1280, 720, 1.0);
 	}
+
+	// Example 37: tint
+	@Test
+	public function test37_TintDemo(async:utest.Async) {
+		this.testName = "tintDemo";
+		this.testTitle = "#37: tint";
+		this.referenceDir = "test/examples/37-tintDemo";
+		buildRenderScreenshotAndCompare("test/examples/37-tintDemo/tintDemo.manim", "tintDemo", async, 1280, 720, 1.0);
+	}
 }
