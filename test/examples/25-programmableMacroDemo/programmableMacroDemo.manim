@@ -1,0 +1,9 @@
+version: 0.3
+
+#macroHealthBar programmable(hp:uint=100, maxHp:uint=100, status:[normal, poisoned, dead], label="HP") {
+  @alpha(0.3) bitmap(generated(color(200, 30, gray)));
+  @(status=>normal) ninepatch("ui", "bar-fill", $hp * 2, 20): 0,0
+  @(status=>poisoned) ninepatch("ui", "bar-poison", $hp * 2, 20): 0,0
+  @(status=>dead) text(dd, "DEAD", red): 50,5
+  text(dd, $label + ": " + $hp + "/" + $maxHp, white, center, 200): 0,5
+}
