@@ -1,0 +1,45 @@
+version: 0.3
+
+
+ #button_custom  programmable(status:[hover, pressed,normal], disabled:[true, false], buttonText="Button") {
+      //filter:pixelOutline(knockout, blue, 0.3)
+      //filter:replacePalette(file, 0, 1)
+      
+      //bitmap(sheet("crew2", "marine_r_shooting_d")):30,130;
+      //filter:glow(red, 0.3, 1, 1, 1, smoothColor)
+      //filter:glow(red, 0.3, 1, 1, 1, smoothColor)
+      //filter:dropShadow(4, 1.6, #F3F, 0.9, 50, 3.05)
+      //filter:pixelOutline(knockout, blue, 0.3)
+      //filter:pixelOutline(inlineColor, red, yellow)
+      @(status=>normal, disabled=>false) ninepatch("ui", "button-idle", 200, 30):     0,1
+      @(status=>hover, disabled=>false) ninepatch("ui", "button-hover", 200, 30):     0,0
+      @(status=>pressed, disabled=>false) ninepatch("ui", "button-pressed", 200, 30): 0,0
+      @(status=>*, disabled=>true) ninepatch("ui", "button-disabled", 200, 30):       0,0
+      
+      @(status=>hover, disabled=>false) text(dd, $buttonText, 0xffffff12, center, 200): 0,10
+      @(status=>pressed, disabled=>false) text(dd, $buttonText, 0xffffff12, center, 200): 0,10
+      @(status=>normal, disabled=>false) text(dd, $buttonText, 0xffffff12, center, 200): 0,10
+      @(status=>*, disabled=>true) text(dd, $buttonText, 0xffffff12, center, 200): 0,10
+ }
+
+
+#ui programmable() {
+      pos:100,300
+      
+      #buttonVal(updatable) text(dd, "Click the button!", #ffffff00): 10,50
+     
+     placeholder(generated(cross(200, 20)), builderParameter("button")) {
+            settings{builderName=>button_custom} // override builder name (will use button2 programmable from std)
+      }
+
+      placeholder(generated(cross(200, 20)), builderParameter("disableCheckbox")) {
+            pos: 10,100
+      }
+      text(dd, "Disabled Checkbox", #ffffff00): 30,100
+
+      
+      
+}
+
+
+ 
