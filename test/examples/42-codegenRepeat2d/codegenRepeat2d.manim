@@ -1,0 +1,21 @@
+version: 0.3
+
+#codegenRepeat2d programmable(cols:uint=3, rows:uint=2) {
+  // Static 3x2 grid
+  repeatable2d($x, $y, grid(3, dx: 50), grid(2, dy: 30)) {
+    pos: 10, 10
+    ninepatch("ui", "button-idle", 40, 20): 0, 0
+  }
+
+  // Range x Range
+  repeatable2d($rx, $ry, range(0, 3), range(0, 2)) {
+    pos: 10, 90
+    text(dd, ""+$rx+"/"+$ry, white, left, 200): $rx * 50, $ry * 25
+  }
+
+  // Param-dependent: cols x rows
+  repeatable2d($cx, $cy, grid($cols, dx: 40), grid($rows, dy: 25)) {
+    pos: 10, 160
+    ninepatch("ui", "button-disabled", 30, 16): 0, 0
+  }
+}

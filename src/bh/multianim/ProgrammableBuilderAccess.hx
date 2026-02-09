@@ -6,6 +6,7 @@ import h2d.Font;
 import bh.base.ResourceLoader;
 import bh.base.Atlas2.IAtlas2;
 import bh.multianim.MultiAnimBuilder.BuilderResult;
+import bh.multianim.MultiAnimParser.TileSource;
 
 /**
  * Runtime access layer for generated programmable classes.
@@ -69,5 +70,50 @@ class ProgrammableBuilderAccess {
 	/** Build a sub-programmable via the builder (for REFERENCE nodes) */
 	public function buildReference(name:String, parameters:Map<String, Dynamic>):BuilderResult {
 		return builder.buildWithParameters(name, parameters);
+	}
+
+	/** Get all tiles from a sheet, optionally filtered by tile name prefix.
+	 *  Used by generated code for TilesIterator. */
+	public function getSheetTiles(sheetName:String, tileFilter:Null<String>):Array<Tile> {
+		final sheet = getSheet(sheetName);
+		final result:Array<Tile> = [];
+		if (tileFilter != null) {
+			final frames = sheet.getAnim(tileFilter);
+			if (frames != null) {
+				for (frame in frames) {
+					if (frame != null && frame.tile != null)
+						result.push(frame.tile);
+				}
+			}
+		} else {
+			for (tileName in sheet.getContents().keys()) {
+				final frame = sheet.get(tileName);
+				if (frame != null)
+					result.push(frame.tile);
+			}
+		}
+		return result;
+	}
+
+	/** Get tiles for all frames of a state animation.
+	 *  Used by generated code for StateAnimIterator. */
+	public function getStateAnimTiles(animFilename:String, animationName:String, selector:Map<String, String>):Array<Tile> {
+		final tiles = @:privateAccess builder.collectStateAnimFrames(animFilename, animationName, selector);
+		final result:Array<Tile> = [];
+		for (ts in tiles) {
+			switch (ts) {
+				case TSTile(tile):
+					result.push(tile);
+				case TSSheet(sheet, name):
+					final sheetStr = @:privateAccess builder.resolveAsString(sheet);
+					final nameStr = @:privateAccess builder.resolveAsString(name);
+					final atlas = getSheet(sheetStr);
+					final frame = atlas.get(nameStr);
+					if (frame != null)
+						result.push(frame.tile);
+				default:
+			}
+		}
+		return result;
 	}
 }
