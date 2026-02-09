@@ -1,5 +1,6 @@
 package bh.multianim;
 
+import bh.multianim.MacroCompatTypes;
 import h2d.Tile;
 import bh.ui.UIElementBuilder;
 import h2d.HtmlText;
@@ -302,6 +303,7 @@ private typedef StoredBuilderState = {
 @:allow(bh.paths.MultiAnimPaths)
 @:allow(bh.paths.AnimatedPath)
 @:allow(bh.multianim.MultiAnimParser)
+@:allow(bh.multianim.ProgrammableBuilderAccess)
 class MultiAnimBuilder {
 	final resourceLoader:bh.base.ResourceLoader;
 	public final sourceName:String;
@@ -1743,7 +1745,7 @@ class MultiAnimBuilder {
 			tileGroup.setDefaultColor(0xFFFFFF, node.alpha != null ? resolveAsNumber(node.alpha) : 1.0);
 			if (node.filter != null && node.filter != FilterNone)
 				throw 'tileGroup does not support filters for ${node.type}' + MacroUtils.nodePos(node);
-			if (node.blendMode != null && node.blendMode != Alpha)
+			if (node.blendMode != null && node.blendMode != MBAlpha)
 				throw 'tileGroup does not support blendMode other than Alpha for ${node.type}' + MacroUtils.nodePos(node);
 			tileGroup.addTransform(currentPos.x, currentPos.y, scale, scale, 0, tileGroupTile);
 		}
@@ -1802,7 +1804,7 @@ class MultiAnimBuilder {
 				if (colWidth != null)
 					f.colWidth = resolveAsInteger(colWidth);
 				if (layout != null)
-					f.layout = layout;
+					f.layout = MacroCompatConvert.toH2dFlowLayout(layout);
 
 				if (paddingTop != null)
 					f.paddingTop = resolveAsInteger(paddingTop);
@@ -2388,7 +2390,7 @@ class MultiAnimBuilder {
 		if (node.alpha != null)
 			object.alpha = resolveAsNumber(node.alpha);
 		if (node.blendMode != null)
-			object.blendMode = node.blendMode;
+			object.blendMode = MacroCompatConvert.toH2dBlendMode(node.blendMode);
 		if (node.filter != null)
 			object.filter = buildFilter(node.filter);
 		if (node.tint != null) {
@@ -2629,7 +2631,7 @@ class MultiAnimBuilder {
 		if (particlesDef.fadePower != null)
 			group.fadePower = resolveAsNumber(particlesDef.fadePower);
 		if (particlesDef.blendMode != null)
-			group.blendMode = particlesDef.blendMode;
+			group.blendMode = MacroCompatConvert.toH2dBlendMode(particlesDef.blendMode);
 		if (particlesDef.loop != null)
 			group.emitLoop = particlesDef.loop;
 		if (particlesDef.relative != null)

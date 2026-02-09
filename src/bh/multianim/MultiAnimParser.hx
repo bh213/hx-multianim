@@ -1,20 +1,24 @@
 package bh.multianim;
 
-import bh.base.Particles;
+import bh.multianim.MacroCompatTypes;
 import bh.base.MacroUtils;
-import bh.base.filters.PixelOutline.PixelOutlineFilterMode;
 import bh.base.Point;
-import bh.multianim.layouts.MultiAnimLayouts;
-import bh.base.PixelLine;
-import bh.stateanim.AnimationSM;
-import h2d.ScaleGrid;
 import bh.base.Hex;
 import bh.base.Hex.HexLayout;
 import hxparse.Unexpected;
 import hxparse.ParserError;
 import bh.multianim.CoordinateSystems;
+import bh.multianim.layouts.LayoutTypes;
 using StringTools;
 using bh.base.ColorUtils;
+#if !macro
+import bh.base.Particles;
+import bh.base.filters.PixelOutline.PixelOutlineFilterMode;
+import bh.multianim.layouts.MultiAnimLayouts;
+import bh.base.PixelLine;
+import bh.stateanim.AnimationSM;
+import h2d.ScaleGrid;
+#end
 
 enum OptionalParametersParsing {
 	ParseInteger(name:String);
@@ -237,6 +241,14 @@ enum SettingValue {
 
 typedef ResolvedSettings = Null<Map<String, SettingValue>>;
 
+function getNameString(updatableNameType:UpdatableNameType) {
+	return switch updatableNameType {
+		case UNTObject(name): name;
+		case UNTUpdatable(name): name;
+	}
+}
+
+#if !macro
 @:using(bh.multianim.MultiAnimParser)
 typedef NamedBuildResult = {
 	var type:UpdatableNameType;
@@ -258,14 +270,6 @@ function asStateAnim(NamedBuildResult:NamedBuildResult) {
 	};
 }
 
-
-function getNameString(updatableNameType:UpdatableNameType) {
-	return switch updatableNameType {
-		case UNTObject(name): name;
-		case UNTUpdatable(name): name;
-	}
-}
-
 function toh2dObject(builtHeapsComponent:BuiltHeapsComponent):h2d.Object {
 	return switch builtHeapsComponent {
 		case HeapsObject(obj): obj;
@@ -280,7 +284,9 @@ function toh2dObject(builtHeapsComponent:BuiltHeapsComponent):h2d.Object {
 		case Particles(p): p;
 	}
 }
+#end
 
+#if !macro
 @:using(bh.multianim.MultiAnimParser)
 enum BuiltHeapsComponent {
 	HeapsObject(obj:h2d.Object);
@@ -294,6 +300,7 @@ enum BuiltHeapsComponent {
 	HeapsMask(m:h2d.Mask);
 	Particles(p:bh.base.Particles);
 }
+#end
 
 
 class MultiAnimUnexpected<Token> extends Unexpected<Token> {
@@ -312,6 +319,7 @@ class MultiAnimUnexpected<Token> extends Unexpected<Token> {
 	}
 }
 
+#if !macro
 class MultiAnimLexer extends hxparse.Lexer implements hxparse.RuleBuilder {
 	static var buf:StringBuf = null;
 	static var keywords = @:mapping(2, true) MPKeywords;
@@ -458,6 +466,7 @@ class MultiAnimLexer extends hxparse.Lexer implements hxparse.RuleBuilder {
 		"\\*" => lexer.token(blockComment),
 	];
 }
+#end
 
 @:nullSafety
 class InvalidSyntax extends ParserError {
@@ -756,7 +765,7 @@ typedef ParticlesDef = {
 	var lifeRandom:Null<ReferenceableValue>;
 	var size:Null<ReferenceableValue>;
 	var sizeRandom:Null<ReferenceableValue>;
-	var blendMode:Null<h2d.BlendMode>;
+	var blendMode:Null<MacroBlendMode>;
 	var speed:Null<ReferenceableValue>;
 	var speedRandom:Null<ReferenceableValue>;
 	var speedIncrease:Null<ReferenceableValue>;
@@ -827,7 +836,9 @@ enum TileSource {
 	TSSheet(sheet:ReferenceableValue, name:ReferenceableValue);
 	TSSheetWithIndex(sheet:ReferenceableValue, name:ReferenceableValue, index:ReferenceableValue);
 	TSGenerated(type:GeneratedTileType);
+	#if !macro
 	TSTile(tile:h2d.Tile); // Used for iterator-provided tiles (e.g., from stateanim iterator)
+	#end
 	TSReference(varName:String); // Reference to a TileSource variable (e.g., $bitmap from stateanim iterator)
 }
 
@@ -911,7 +922,7 @@ typedef TextDef = {
 @:nullSafety
 enum NodeType {
 	FLOW(maxWidth:Null<ReferenceableValue>, maxHeight:Null<ReferenceableValue>, minWidth:Null<ReferenceableValue>, minHeight:Null<ReferenceableValue>,
-		lineHeight:Null<ReferenceableValue>, colWidth:Null<ReferenceableValue>, layout:Null<h2d.Flow.FlowLayout>,
+		lineHeight:Null<ReferenceableValue>, colWidth:Null<ReferenceableValue>, layout:Null<MacroFlowLayout>,
 		paddingTop:Null<ReferenceableValue>,paddingBottom:Null<ReferenceableValue>, paddingLeft:Null<ReferenceableValue>, paddingRight:Null<ReferenceableValue>,
 		horizontalSpacing:Null<ReferenceableValue>, verticalSpacing:Null<ReferenceableValue>, debug:Bool, multiline:Bool
 		);
@@ -982,7 +993,7 @@ typedef Node = {
 	tint: Null<ReferenceableValue>,
 	layer:Null<Int>,
 	filter: Null<FilterType>,
-	blendMode: Null<h2d.BlendMode>,
+	blendMode: Null<MacroBlendMode>,
 	updatableName:UpdatableNameType,
 	type:NodeType,
 	children:Array<Node>,
@@ -996,7 +1007,7 @@ typedef Node = {
 
 typedef MultiAnimResult = {
 	var nodes: Map<String, Node>;
-	var imports:Map<String, MultiAnimBuilder>;
+	var imports:Map<String, Dynamic>;
 }
 
 private enum PostParsedActions {
@@ -1004,19 +1015,19 @@ private enum PostParsedActions {
 	PPAUpdateAndVerifyParticlesTemplate(particleTemplate:String, particlesDef:ParticlesDef, pos:hxparse.Position);
 }
 
+#if !macro
 class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, MPToken> implements hxparse.ParserBuilder {
 	final version = "0.3";
 	public static final defaultLayoutNodeName = "#defaultLayout";
 	public static final defaultPathNodeName = "#defaultPaths";
 	final resourceLoader:bh.base.ResourceLoader;
-
 	var imports:Map<String, MultiAnimBuilder> = [];
 	var nodes:Map<String, Node> = [];
 	var input:byte.ByteData;
 	var postParsedActions:Array<PostParsedActions> = [];
 
 
-	function new(input:byte.ByteData, sourceName, resourceLoader) {
+	function new(input:byte.ByteData, sourceName, resourceLoader:bh.base.ResourceLoader) {
 		this.input = input;
 		this.resourceLoader = resourceLoader;
 		var lexer = new MultiAnimLexer(input, sourceName);
@@ -1036,7 +1047,18 @@ class MultiAnimParser extends hxparse.Parser<hxparse.LexerTokenSource<MPToken>, 
 			#end
 			throw e;
 		}
-		
+
+	}
+
+	public static function parseFileNoImports(input:byte.ByteData, sourceName:String):MultiAnimResult {
+		try {
+			var p = new MultiAnimParser(input, sourceName, null);
+			return p.parse();
+		} catch(ue:hxparse.Unexpected<Any>) {
+			throw new MultiAnimUnexpected(ue.token, ue.pos, ue.toString(), input);
+		} catch (e) {
+			throw e;
+		}
 	}
 
 	function unexpectedError(?message:String):Dynamic {
@@ -2740,11 +2762,11 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 		}
 	}
 
-	function parseFlowOrientation():h2d.Flow.FlowLayout {
+	function parseFlowOrientation():MacroFlowLayout {
 		return switch stream {
-			case [MPIdentifier("horizontal", _, ITString|ITQuotedString)]: Horizontal;
-			case [MPIdentifier("vertical", _, ITString|ITQuotedString)]: Vertical;
-			case [MPIdentifier("stack", _, ITString|ITQuotedString)]: Stack;
+			case [MPIdentifier("horizontal", _, ITString|ITQuotedString)]: MFLHorizontal;
+			case [MPIdentifier("vertical", _, ITString|ITQuotedString)]: MFLVertical;
+			case [MPIdentifier("stack", _, ITString|ITQuotedString)]: MFLStack;
 		}
 	}
 	function parseHAlign():Null<HorizontalAlign> {
@@ -3025,7 +3047,7 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 				
 				var lineHeight:Null<ReferenceableValue> = null;
 				var colWidth:Null<ReferenceableValue> = null;
-				var layout:Null<h2d.Flow.FlowLayout> = null;
+				var layout:Null<MacroFlowLayout> = null;
 				
 				var paddingLeft:Null<ReferenceableValue> = null;
 				var paddingRight:Null<ReferenceableValue> = null;
@@ -3678,7 +3700,7 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 	function parseHexCoordinateSystem() {
 		return switch stream {
 			case [orientation = parseOrientation(), MPOpen, width = parseFloat(), MPComma, height = parseFloat(), MPClosed]:
-				final hexLayout = new HexLayout(orientation, new h2d.col.Point(width, height), new h2d.col.Point());
+					final hexLayout = new HexLayout(orientation, new h2d.col.Point(width, height), new h2d.col.Point());
 				eatSemicolon();
 				{hexLayout:hexLayout}
 			
@@ -4817,10 +4839,13 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 			switch stream {
 				case [MPIdentifier(_, MPImport , ITString),  MPIdentifier(file, _, ITString|ITQuotedString),  MPIdentifier("as", _, ITString), MPIdentifier(importName, _, ITString|ITQuotedString)]:
 					eatSemicolon();
-					final loadedFile = resourceLoader.loadMultiAnim(file); // TODO: check for cycles
-					if (loadedFile == null) syntaxError('could not load multiAnim file ${file}');
-
-					imports.set(importName, loadedFile);
+						if (resourceLoader != null) {
+						final loadedFile = resourceLoader.loadMultiAnim(file); // TODO: check for cycles
+						if (loadedFile == null) syntaxError('could not load multiAnim file ${file}');
+						imports.set(importName, loadedFile);
+					} else {
+						syntaxError('import directives are not supported without a resource loader');
+					}
 				case [MPIdentifier(propName, MPPosition , ITString)|MPIdentifier(propName, MPPos, ITString )]:
 					if (node == null) syntaxError('position not supported on root elements');
 					once.parsed(propName);
@@ -4911,32 +4936,32 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 
 	}
 
-	function tryParseBlendMode():Null<h2d.BlendMode> {
+	function tryParseBlendMode():Null<MacroBlendMode> {
 		return switch stream {
 			case [MPIdentifier("none", _ , ITString)]:
-				h2d.BlendMode.None;
+				MBNone;
 			case [MPIdentifier("alpha", _ , ITString)]:
-				h2d.BlendMode.Alpha;
+				MBAlpha;
 			case [MPIdentifier("add", _ , ITString)]:
-				h2d.BlendMode.Add;
+				MBAdd;
 			case [MPIdentifier("alphaAdd", _ , ITString)]:
-				h2d.BlendMode.AlphaAdd;
+				MBAlphaAdd;
 			case [MPIdentifier("softAdd", _ , ITString)]:
-				h2d.BlendMode.SoftAdd;
+				MBSoftAdd;
 			case [MPIdentifier("multiply", _ , ITString)]:
-				h2d.BlendMode.Multiply;
+				MBMultiply;
 			case [MPIdentifier("alphaMultiply", _ , ITString)]:
-				h2d.BlendMode.AlphaMultiply;
+				MBAlphaMultiply;
 			case [MPIdentifier("erase", _ , ITString)]:
-				h2d.BlendMode.Erase;
+				MBErase;
 			case [MPIdentifier("screen", _ , ITString)]:
-				h2d.BlendMode.Screen;
+				MBScreen;
 			case [MPIdentifier("sub", _ , ITString)]:
-				h2d.BlendMode.Sub;
+				MBSub;
 			case [MPIdentifier("max", _ , ITString)]:
-				h2d.BlendMode.Max;
+				MBMax;
 			case [MPIdentifier("min", _ , ITString)]:
-				h2d.BlendMode.Min;
+				MBMin;
 			case _: null;
 		}
 	}
@@ -5039,3 +5064,4 @@ case [MPQuestion, MPOpen, condition = parseAnything(), MPClosed, ifTrue = parseF
 
 
 }
+#end

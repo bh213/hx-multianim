@@ -8,6 +8,11 @@ import bh.test.VisualTestBase;
 import bh.base.FontManager;
 
 class TestApp extends hxd.App {
+	// Force compilation of @:build macro generated classes
+	static var _forceBuild1:Any = (null : bh.test.ButtonProgrammable);
+	static var _forceBuild2:Any = (null : bh.test.HealthbarProgrammable);
+	static var _forceBuild3:Any = (null : bh.test.DialogProgrammable);
+
 	private var testRunner:Runner;
 	private var frameCount:Int = 0;
 	private var updateSubscribers:Array<Float -> Void> = [];
@@ -40,6 +45,7 @@ class TestApp extends hxd.App {
 		testRunner.addCase(new bh.test.examples.AllExamplesTest(s2d));
 		testRunner.addCase(new bh.test.examples.ParserErrorTest());
 		testRunner.addCase(new bh.test.examples.AnimParserTest());
+		testRunner.addCase(new bh.test.examples.ProgrammableCodeGenTest(s2d));
 
 		Report.create(testRunner);
 	}
