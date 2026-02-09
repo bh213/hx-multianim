@@ -8,25 +8,7 @@ import bh.multianim.MultiAnimParser.ResolvedIndexParameters;
 import bh.multianim.CoordinateSystems.Coordinates;
 import bh.multianim.CoordinateSystems.GridCoordinateSystem;
 import bh.multianim.CoordinateSystems.HexCoordinateSystem;
-
-enum LayoutContent {
-	LayoutPoint(pos:Coordinates);
-}
-
-enum LayoutsType {
-	Single(content:LayoutContent);
-	List(list:Array<LayoutContent>);
-    Sequence(varName:String, from:Int, to:Int, content:LayoutContent);
-}
-
-@:nullSafety
-typedef Layout = {
-	name:String,
-	type:LayoutsType,
-    grid:Null<GridCoordinateSystem>,
-	hex:Null<HexCoordinateSystem>,
-	offset:Point
-};
+import bh.multianim.layouts.LayoutTypes;
 
 @:nullSafety
 @:allow(bh.multianim.layouts.MultiAnimLayouts)
@@ -35,18 +17,18 @@ class LayoutPointIterator {
     final length:Int;
     final layout:Layout;
     final animLayout:MultiAnimLayouts;
-  
+
     function new(layout, animLayout) {
       this.animLayout = animLayout;
       this.layout = layout;
       this.index = 0;
       this.length = animLayout.getLayoutSequenceLength(layout);
     }
-  
+
     public function hasNext() {
       return index < length;
     }
-  
+
     public function next() {
       return animLayout.getPointFromLayout(layout, index++);
     }
@@ -60,7 +42,7 @@ class MultiAnimLayouts {
     public function new(layoutsDef, builder) {
         this.layoutsDef = layoutsDef;
         this.builder = builder;
-    
+
     }
 
     inline function getLayout(name:String) {
@@ -102,26 +84,26 @@ class MultiAnimLayouts {
     public function getIterator(name:String):Iterator<FPoint> {
         return new LayoutPointIterator(getLayout(name), this);
     }
-    
+
     public function getPointFromLayout(l:Layout, index:Int, ?builderParams:BuilderParameters):FPoint {
         if (index < 0) throw 'index < 0 for layout ${l.name}';
         return switch l.type {
             case Single(content):
-                resolve(l.grid, l.hex, l.offset, content, "i", index, builderParams); 
+                resolve(l.grid, l.hex, l.offset, content, "i", index, builderParams);
             case List(list):
                 if (list.length <= index) throw 'cannot get layout "${l.name}" point at $index because list is only ${list.length} long';
                 resolve(l.grid, l.hex, l.offset,list[index], "i", 0, builderParams);
             case Sequence(variable, from, to, content):
                 if (index > to - from) throw 'index > to - from for layout ${l.name}';
-                resolve(l.grid, l.hex, l.offset, content, variable, from + index, builderParams); 
+                resolve(l.grid, l.hex, l.offset, content, variable, from + index, builderParams);
         }
     }
 
     public function getPoint(name:String, index:Int = 0):FPoint {
-        
+
         final l = getLayout(name);
         return getPointFromLayout(l, index);
-       
+
     }
 
 }

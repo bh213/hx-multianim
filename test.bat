@@ -265,6 +265,33 @@ if exist "%ROOT%test\screenshots\tintDemo_actual.png" (
     echo   37 - tintDemo
 )
 
+REM Example 38: codegen button (builder = reference, macro compares against it)
+if exist "%ROOT%test\screenshots\codegenButton_actual.png" (
+    if not exist "%ROOT%test\examples\38-codegenButton\" (
+        mkdir "%ROOT%test\examples\38-codegenButton\"
+    )
+    copy /Y "%ROOT%test\screenshots\codegenButton_actual.png" "%ROOT%test\examples\38-codegenButton\reference.png" >nul
+    echo   38 - codegenButton (builder + macro)
+)
+
+REM Example 39: codegen healthbar (builder = reference, macro compares against it)
+if exist "%ROOT%test\screenshots\codegenHealthbar_actual.png" (
+    if not exist "%ROOT%test\examples\39-codegenHealthbar\" (
+        mkdir "%ROOT%test\examples\39-codegenHealthbar\"
+    )
+    copy /Y "%ROOT%test\screenshots\codegenHealthbar_actual.png" "%ROOT%test\examples\39-codegenHealthbar\reference.png" >nul
+    echo   39 - codegenHealthbar (builder + macro)
+)
+
+REM Example 40: codegen dialog (builder = reference, macro compares against it)
+if exist "%ROOT%test\screenshots\codegenDialog_actual.png" (
+    if not exist "%ROOT%test\examples\40-codegenDialog\" (
+        mkdir "%ROOT%test\examples\40-codegenDialog\"
+    )
+    copy /Y "%ROOT%test\screenshots\codegenDialog_actual.png" "%ROOT%test\examples\40-codegenDialog\reference.png" >nul
+    echo   40 - codegenDialog (builder + macro)
+)
+
 echo.
 echo Reference images updated. Re-run 'test.bat run' to verify tests pass.
 goto :eof
