@@ -17,6 +17,10 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	static final BUTTON_MANIM = "test/examples/38-codegenButton/codegenButton.manim";
 	static final HEALTHBAR_MANIM = "test/examples/39-codegenHealthbar/codegenHealthbar.manim";
 	static final DIALOG_MANIM = "test/examples/40-codegenDialog/codegenDialog.manim";
+	static final REPEAT_MANIM = "test/examples/41-codegenRepeat/codegenRepeat.manim";
+	static final REPEAT2D_MANIM = "test/examples/42-codegenRepeat2d/codegenRepeat2d.manim";
+	static final LAYOUT_MANIM = "test/examples/43-codegenLayout/codegenLayout.manim";
+	static final TILESITER_MANIM = "test/examples/44-codegenTilesIter/codegenTilesIter.manim";
 
 	public function new(s2d:Scene) {
 		super("programmableCodeGen", s2d);
@@ -209,6 +213,187 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		}, async);
 	}
 
+	// ==================== Repeat: unit tests ====================
+
+	@Test
+	public function testRepeatCreate():Void {
+		final ba = loadAccess(REPEAT_MANIM);
+		final rpt = bh.test.RepeatProgrammable.create(ba.access);
+		Assert.notNull(rpt.root, "RepeatProgrammable should have a root object");
+		Assert.isTrue(rpt.root.numChildren > 0, "Root should have children");
+	}
+
+	@Test
+	public function testRepeatChildCount():Void {
+		final ba = loadAccess(REPEAT_MANIM);
+		final rpt = bh.test.RepeatProgrammable.create(ba.access);
+		// With default count=5, the param-dependent repeat should have 5 visible iteration containers
+		var totalChildren = countAllDescendants(rpt.root);
+		Assert.isTrue(totalChildren > 10, "Should have many descendant objects from unrolled repeats");
+	}
+
+	@Test
+	public function testRepeatSetCount():Void {
+		final ba = loadAccess(REPEAT_MANIM);
+		final rpt = bh.test.RepeatProgrammable.create(ba.access);
+
+		// Reduce count — some pool items should become hidden
+		rpt.setCount(2);
+		var visCount = countVisibleDescendants(rpt.root);
+		final count2 = visCount;
+
+		// Increase count — more pool items should become visible
+		rpt.setCount(4);
+		visCount = countVisibleDescendants(rpt.root);
+		Assert.isTrue(visCount > count2, "More visible descendants with higher count");
+	}
+
+	// ==================== Repeat: visual ====================
+
+	@Test
+	public function test41_CodegenRepeatBuilder(async:utest.Async):Void {
+		this.testName = "codegenRepeat";
+		this.testTitle = "#41: codegen repeat (builder)";
+		this.referenceDir = "test/examples/41-codegenRepeat";
+		buildRenderScreenshotAndCompare(REPEAT_MANIM, "codegenRepeat", async, 1280, 720);
+	}
+
+	@Test
+	public function test41_CodegenRepeatMacro(async:utest.Async):Void {
+		this.testName = "codegenRepeat_macro";
+		this.testTitle = "#41: codegen repeat (macro)";
+		this.referenceDir = "test/examples/41-codegenRepeat";
+		macroRenderScreenshotAndCompare(function() {
+			final ba = loadAccess(REPEAT_MANIM);
+			return bh.test.RepeatProgrammable.create(ba.access).root;
+		}, async);
+	}
+
+	// ==================== Repeat2D: unit tests ====================
+
+	@Test
+	public function testRepeat2dCreate():Void {
+		final ba = loadAccess(REPEAT2D_MANIM);
+		final rpt2d = bh.test.Repeat2dProgrammable.create(ba.access);
+		Assert.notNull(rpt2d.root, "Repeat2dProgrammable should have a root object");
+		Assert.isTrue(rpt2d.root.numChildren > 0, "Root should have children");
+	}
+
+	@Test
+	public function testRepeat2dSetCols():Void {
+		final ba = loadAccess(REPEAT2D_MANIM);
+		final rpt2d = bh.test.Repeat2dProgrammable.create(ba.access);
+
+		// Reduce cols — some pool items should become hidden
+		rpt2d.setCols(1);
+		final count1 = countVisibleDescendants(rpt2d.root);
+
+		rpt2d.setCols(3);
+		final count3 = countVisibleDescendants(rpt2d.root);
+		Assert.isTrue(count3 > count1, "More visible descendants with more cols");
+	}
+
+	// ==================== Repeat2D: visual ====================
+
+	@Test
+	public function test42_CodegenRepeat2dBuilder(async:utest.Async):Void {
+		this.testName = "codegenRepeat2d";
+		this.testTitle = "#42: codegen repeat2d (builder)";
+		this.referenceDir = "test/examples/42-codegenRepeat2d";
+		buildRenderScreenshotAndCompare(REPEAT2D_MANIM, "codegenRepeat2d", async, 1280, 720);
+	}
+
+	@Test
+	public function test42_CodegenRepeat2dMacro(async:utest.Async):Void {
+		this.testName = "codegenRepeat2d_macro";
+		this.testTitle = "#42: codegen repeat2d (macro)";
+		this.referenceDir = "test/examples/42-codegenRepeat2d";
+		macroRenderScreenshotAndCompare(function() {
+			final ba = loadAccess(REPEAT2D_MANIM);
+			return bh.test.Repeat2dProgrammable.create(ba.access).root;
+		}, async);
+	}
+
+	// ==================== Layout: unit tests ====================
+
+	@Test
+	public function testLayoutCreate():Void {
+		final ba = loadAccess(LAYOUT_MANIM);
+		final lay = bh.test.LayoutProgrammable.create(ba.access);
+		Assert.notNull(lay.root, "LayoutProgrammable should have a root object");
+		Assert.isTrue(lay.root.numChildren > 0, "Root should have children");
+	}
+
+	@Test
+	public function testLayoutChildCount():Void {
+		final ba = loadAccess(LAYOUT_MANIM);
+		final lay = bh.test.LayoutProgrammable.create(ba.access);
+		// 5 list points + 4 sequence points = 9 ninepatch elements, each in containers
+		var totalChildren = countAllDescendants(lay.root);
+		Assert.isTrue(totalChildren >= 9, "Should have at least 9 descendant objects from layout repeats");
+	}
+
+	// ==================== Layout: visual ====================
+
+	@Test
+	public function test43_CodegenLayoutBuilder(async:utest.Async):Void {
+		this.testName = "codegenLayout";
+		this.testTitle = "#43: codegen layout (builder)";
+		this.referenceDir = "test/examples/43-codegenLayout";
+		buildRenderScreenshotAndCompare(LAYOUT_MANIM, "codegenLayout", async, 1280, 720);
+	}
+
+	@Test
+	public function test43_CodegenLayoutMacro(async:utest.Async):Void {
+		this.testName = "codegenLayout_macro";
+		this.testTitle = "#43: codegen layout (macro)";
+		this.referenceDir = "test/examples/43-codegenLayout";
+		macroRenderScreenshotAndCompare(function() {
+			final ba = loadAccess(LAYOUT_MANIM);
+			return bh.test.LayoutProgrammable.create(ba.access).root;
+		}, async);
+	}
+
+	// ==================== TilesIter: unit tests ====================
+
+	@Test
+	public function testTilesIterCreate():Void {
+		final ba = loadAccess(TILESITER_MANIM);
+		final ti = bh.test.TilesIterProgrammable.create(ba.access);
+		Assert.notNull(ti.root, "TilesIterProgrammable should have a root object");
+		Assert.isTrue(ti.root.numChildren > 0, "Root should have children");
+	}
+
+	@Test
+	public function testTilesIterHasBitmaps():Void {
+		final ba = loadAccess(TILESITER_MANIM);
+		final ti = bh.test.TilesIterProgrammable.create(ba.access);
+		// Should have bitmap children from both tiles and stateanim iterators
+		var totalChildren = countAllDescendants(ti.root);
+		Assert.isTrue(totalChildren >= 2, "Should have descendant objects from runtime iterators");
+	}
+
+	// ==================== TilesIter: visual ====================
+
+	@Test
+	public function test44_CodegenTilesIterBuilder(async:utest.Async):Void {
+		this.testName = "codegenTilesIter";
+		this.testTitle = "#44: codegen tiles iter (builder)";
+		this.referenceDir = "test/examples/44-codegenTilesIter";
+		buildRenderScreenshotAndCompare(TILESITER_MANIM, "codegenTilesIter", async, 1280, 720);
+	}
+
+	@Test
+	public function test44_CodegenTilesIterMacro(async:utest.Async):Void {
+		this.testName = "codegenTilesIter_macro";
+		this.testTitle = "#44: codegen tiles iter (macro)";
+		this.referenceDir = "test/examples/44-codegenTilesIter";
+		macroRenderScreenshotAndCompare(function() {
+			final ba = loadAccess(TILESITER_MANIM);
+			return bh.test.TilesIterProgrammable.create(ba.access).root;
+		}, async);
+	}
+
 	// ==================== Shared macro render helper ====================
 
 	function macroRenderScreenshotAndCompare(createRoot:() -> h2d.Object, async:utest.Async):Void {
@@ -256,5 +441,25 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 			}
 		}
 		return null;
+	}
+
+	static function countAllDescendants(obj:h2d.Object):Int {
+		var count = obj.numChildren;
+		for (i in 0...obj.numChildren) {
+			count += countAllDescendants(obj.getChildAt(i));
+		}
+		return count;
+	}
+
+	static function countVisibleDescendants(obj:h2d.Object):Int {
+		var count = 0;
+		for (i in 0...obj.numChildren) {
+			final child = obj.getChildAt(i);
+			if (child.visible) {
+				count++;
+				count += countVisibleDescendants(child);
+			}
+		}
+		return count;
 	}
 }

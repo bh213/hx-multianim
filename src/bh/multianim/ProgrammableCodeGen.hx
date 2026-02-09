@@ -7,6 +7,7 @@ import haxe.macro.Type;
 import bh.multianim.MultiAnimParser;
 import bh.multianim.CoordinateSystems;
 import bh.multianim.MacroCompatTypes.MacroFlowLayout;
+import bh.multianim.layouts.LayoutTypes.LayoutContent;
 
 using StringTools;
 
@@ -35,6 +36,15 @@ class ProgrammableCodeGen {
 	// Maps param name -> generated enum abstract type path (for enum/bool params)
 	static var paramEnumTypes:Map<String, {typePath:String, typeName:String}> = new Map();
 
+	// Loop variable substitutions: during repeat unrolling, maps loop var name -> current iteration value
+	static var loopVarSubstitutions:Map<String, Int> = new Map();
+
+	// Repeat pool entries: for param-dependent repeats, tracks which pool containers to show/hide
+	static var repeatPoolEntries:Array<{containerField:String, iterIndex:Int, countParamRefs:Array<String>, countExpr:Expr}> = [];
+
+	// All parsed nodes from the .manim file (for looking up layouts etc.)
+	static var allParsedNodes:Map<String, Node> = new Map();
+
 	// The local class info for generating return types
 	static var localClassPack:Array<String> = [];
 	static var localClassName:String = "";
@@ -51,11 +61,15 @@ class ProgrammableCodeGen {
 		paramDefs = new Map();
 		paramNames = [];
 		paramEnumTypes = new Map();
+		loopVarSubstitutions = new Map();
+		repeatPoolEntries = [];
+		allParsedNodes = new Map();
 
 		// Parse .manim file via subprocess (classes with @:autoBuild can't work in macro context)
 		final nodes = parseViaSubprocess(manimPath);
 		if (nodes == null)
 			return null;
+		allParsedNodes = nodes;
 
 		// Find the programmable node
 		final node = nodes.get(programmableName);
@@ -233,6 +247,19 @@ class ProgrammableCodeGen {
 			final fieldRef = macro $p{["this", entry.fieldName]};
 			visExprs.push(macro $fieldRef.visible = ${entry.condition});
 		}
+		// Pool-based repeat visibility: show/hide based on count param
+		for (entry in repeatPoolEntries) {
+			final fieldRef = macro $p{["this", entry.containerField]};
+			if (entry.iterIndex == -1) {
+				// 2D pool: countExpr is already a boolean (ix < countX && iy < countY)
+				visExprs.push(macro $fieldRef.visible = ${entry.countExpr});
+			} else {
+				// 1D pool: show if iterIndex < count
+				final idx = entry.iterIndex;
+				final countE = entry.countExpr;
+				visExprs.push(macro $fieldRef.visible = ($v{idx} < $countE));
+			}
+		}
 		if (visExprs.length == 0)
 			visExprs.push(macro {});
 		fields.push(makeMethod("_applyVisibility", visExprs, [], macro :Void, [APrivate], pos));
@@ -319,6 +346,17 @@ class ProgrammableCodeGen {
 	}
 
 	static function processNode(node:Node, parentField:String, fields:Array<Field>, ctorExprs:Array<Expr>, siblings:Array<{node:Node, fieldName:String}>, pos:Position):Void {
+		// Handle REPEAT/REPEAT2D specially — they unroll or pool children
+		switch (node.type) {
+			case REPEAT(varName, repeatType):
+				processRepeat(node, varName, repeatType, parentField, fields, ctorExprs, siblings, pos);
+				return;
+			case REPEAT2D(varNameX, varNameY, repeatTypeX, repeatTypeY):
+				processRepeat2D(node, varNameX, varNameY, repeatTypeX, repeatTypeY, parentField, fields, ctorExprs, siblings, pos);
+				return;
+			default:
+		}
+
 		final fieldName = "_e" + (elementCounter++);
 		final createResult = generateCreateExpr(node, fieldName, pos);
 		if (createResult == null)
@@ -396,6 +434,636 @@ class ProgrammableCodeGen {
 		}
 	}
 
+	// ==================== Repeat Processing ====================
+
+	/** Try to resolve a ReferenceableValue as a compile-time integer constant */
+	static function tryResolveStaticInt(rv:ReferenceableValue):Null<Int> {
+		if (rv == null) return null;
+		return switch (rv) {
+			case RVInteger(i): i;
+			case RVFloat(f): Math.round(f);
+			default: null;
+		};
+	}
+
+	/** Resolve repeat iterator info: returns {count, dx, dy, rangeStart, rangeStep} or null if param-dependent */
+	static function resolveRepeatInfo(repeatType:RepeatType):{staticCount:Null<Int>, dx:Int, dy:Int, rangeStart:Int, rangeStep:Int, countRV:Null<ReferenceableValue>} {
+		return switch (repeatType) {
+			case GridIterator(dirX, dirY, repeats):
+				final count = tryResolveStaticInt(repeats);
+				final dxVal = dirX != null ? tryResolveStaticInt(dirX) : 0;
+				final dyVal = dirY != null ? tryResolveStaticInt(dirY) : 0;
+				{staticCount: count, dx: dxVal != null ? dxVal : 0, dy: dyVal != null ? dyVal : 0, rangeStart: 0, rangeStep: 1, countRV: count == null ? repeats : null};
+			case RangeIterator(start, end, step):
+				final s = tryResolveStaticInt(start);
+				final e = tryResolveStaticInt(end);
+				final st = tryResolveStaticInt(step);
+				if (s != null && e != null && st != null) {
+					{staticCount: Math.ceil((e - s) / st), dx: 0, dy: 0, rangeStart: s, rangeStep: st, countRV: null};
+				} else {
+					{staticCount: null, dx: 0, dy: 0, rangeStart: s != null ? s : 0, rangeStep: st != null ? st : 1, countRV: end};
+				}
+			default:
+				// LayoutIterator, ArrayIterator, etc. — not supported yet in codegen
+				null;
+		};
+	}
+
+	/** Process a REPEAT node: unroll for static count, or pool for param-dependent count */
+	static function processRepeat(node:Node, varName:String, repeatType:RepeatType, parentField:String, fields:Array<Field>, ctorExprs:Array<Expr>, siblings:Array<{node:Node, fieldName:String}>, pos:Position):Void {
+		// Handle LayoutIterator and runtime iterators (TilesIterator, StateAnimIterator, ArrayIterator) specially
+		switch (repeatType) {
+			case LayoutIterator(layoutName):
+				processLayoutRepeat(node, varName, layoutName, parentField, fields, ctorExprs, siblings, pos);
+				return;
+			case TilesIterator(bitmapVarName, tilenameVarName, sheetName, tileFilter):
+				processRuntimeRepeat(node, varName, repeatType, parentField, fields, ctorExprs, siblings, pos);
+				return;
+			case StateAnimIterator(bitmapVarName, animFilename, animationName, selector):
+				processRuntimeRepeat(node, varName, repeatType, parentField, fields, ctorExprs, siblings, pos);
+				return;
+			case ArrayIterator(valueVariableName, arrayName):
+				processRuntimeRepeat(node, varName, repeatType, parentField, fields, ctorExprs, siblings, pos);
+				return;
+			default:
+		}
+
+		final info = resolveRepeatInfo(repeatType);
+		if (info == null) {
+			processRepeatFallback(node, parentField, fields, ctorExprs, siblings, pos);
+			return;
+		}
+
+		// Create the repeat container
+		final containerName = "_e" + (elementCounter++);
+		fields.push(makeField(containerName, FVar(macro :h2d.Object, null), [APrivate], pos));
+		ctorExprs.push(macro $p{["this", containerName]} = new h2d.Object());
+
+		// Position the container
+		final posExpr = generatePositionExpr(node.pos, containerName, pos);
+		if (posExpr != null)
+			ctorExprs.push(posExpr);
+
+		// Add to parent
+		final parentRef = macro $p{["this", parentField]};
+		ctorExprs.push(macro $parentRef.addChild($p{["this", containerName]}));
+
+		// Visibility for the container itself
+		final visCond = generateVisibilityCondition(node, siblings, containerName, pos);
+		if (visCond != null)
+			visibilityEntries.push({fieldName: containerName, condition: visCond});
+		siblings.push({node: node, fieldName: containerName});
+
+		if (info.staticCount != null) {
+			// Static unroll: generate children N times with loop var substituted
+			unrollRepeatChildren(node, varName, info.staticCount, info.dx, info.dy, info.rangeStart, info.rangeStep, containerName, fields, ctorExprs, pos);
+		} else {
+			// Param-dependent: determine max from param default, pre-allocate pool
+			final countParamRefs = collectParamRefs(info.countRV);
+			final maxCount = resolveMaxCount(info.countRV);
+			poolRepeatChildren(node, varName, maxCount, info.dx, info.dy, info.rangeStart, info.rangeStep, containerName, fields, ctorExprs, countParamRefs, info.countRV, repeatType, pos);
+		}
+	}
+
+	/** Resolve max pool size from a param-dependent count expression */
+	static function resolveMaxCount(countRV:ReferenceableValue):Int {
+		if (countRV == null) return 10;
+		switch (countRV) {
+			case RVReference(ref):
+				// Use the param's default value as the max
+				final def = paramDefs.get(ref);
+				if (def != null && def.defaultValue != null) {
+					return switch (def.defaultValue) {
+						case Value(v): v;
+						case Index(idx, _): idx;
+						default: 10;
+					};
+				}
+			default:
+		}
+		return 10;
+	}
+
+	/** Unroll repeat children: generate N copies with loop var substituted to literal values */
+	static function unrollRepeatChildren(node:Node, varName:String, count:Int, dx:Int, dy:Int, rangeStart:Int, rangeStep:Int, containerField:String, fields:Array<Field>, ctorExprs:Array<Expr>, pos:Position):Void {
+		if (node.children == null) return;
+
+		for (i in 0...count) {
+			final resolvedIndex = rangeStart + i * rangeStep;
+			// Set loop var substitution
+			loopVarSubstitutions.set(varName, resolvedIndex);
+
+			// Create an iteration container for grid offset
+			if (dx != 0 || dy != 0) {
+				final iterContainerName = "_e" + (elementCounter++);
+				fields.push(makeField(iterContainerName, FVar(macro :h2d.Object, null), [APrivate], pos));
+				ctorExprs.push(macro $p{["this", iterContainerName]} = new h2d.Object());
+				final offsetX:Float = dx * i;
+				final offsetY:Float = dy * i;
+				ctorExprs.push(macro $p{["this", iterContainerName]}.setPosition($v{offsetX}, $v{offsetY}));
+				ctorExprs.push(macro $p{["this", containerField]}.addChild($p{["this", iterContainerName]}));
+
+				// Process children into the iteration container
+				processChildren(node.children, iterContainerName, fields, ctorExprs, [], pos);
+			} else {
+				// No grid offset — process children directly into the main container
+				processChildren(node.children, containerField, fields, ctorExprs, [], pos);
+			}
+
+			loopVarSubstitutions.remove(varName);
+		}
+	}
+
+	/** Pool-based repeat: pre-allocate maxCount iteration containers, show/hide based on count param */
+	static function poolRepeatChildren(node:Node, varName:String, maxCount:Int, dx:Int, dy:Int, rangeStart:Int, rangeStep:Int, containerField:String, fields:Array<Field>, ctorExprs:Array<Expr>, countParamRefs:Array<String>, countRV:ReferenceableValue, repeatType:RepeatType, pos:Position):Void {
+		if (node.children == null) return;
+
+		// Generate the count expression: for GridIterator it's the count directly, for RangeIterator it needs calculation
+		final countExpr:Expr = switch (repeatType) {
+			case RangeIterator(start, end, step):
+				final endExpr = rvToExpr(end);
+				final startExpr = rvToExpr(start);
+				final stepExpr = rvToExpr(step);
+				macro Math.ceil(($endExpr - $startExpr) / $stepExpr);
+			case GridIterator(_, _, repeats):
+				rvToExpr(repeats);
+			default:
+				rvToExpr(countRV);
+		};
+
+		for (i in 0...maxCount) {
+			final resolvedIndex = rangeStart + i * rangeStep;
+			loopVarSubstitutions.set(varName, resolvedIndex);
+
+			// Create an iteration container
+			final iterContainerName = "_e" + (elementCounter++);
+			fields.push(makeField(iterContainerName, FVar(macro :h2d.Object, null), [APrivate], pos));
+			ctorExprs.push(macro $p{["this", iterContainerName]} = new h2d.Object());
+
+			// Grid offset
+			if (dx != 0 || dy != 0) {
+				final offsetX:Float = dx * i;
+				final offsetY:Float = dy * i;
+				ctorExprs.push(macro $p{["this", iterContainerName]}.setPosition($v{offsetX}, $v{offsetY}));
+			}
+
+			ctorExprs.push(macro $p{["this", containerField]}.addChild($p{["this", iterContainerName]}));
+
+			// Add visibility entry: show only if i < count
+			final iterIdx = i;
+			repeatPoolEntries.push({
+				containerField: iterContainerName,
+				iterIndex: iterIdx,
+				countParamRefs: countParamRefs,
+				countExpr: countExpr,
+			});
+
+			// Process children into the iteration container
+			processChildren(node.children, iterContainerName, fields, ctorExprs, [], pos);
+
+			loopVarSubstitutions.remove(varName);
+		}
+	}
+
+	/** Process LayoutIterator: resolve layout points at compile time from parsed AST */
+	static function processLayoutRepeat(node:Node, varName:String, layoutName:String, parentField:String, fields:Array<Field>, ctorExprs:Array<Expr>,
+			siblings:Array<{node:Node, fieldName:String}>, pos:Position):Void {
+		// Look up the #defaultLayout node from allParsedNodes
+		final layoutNode = allParsedNodes.get("#defaultLayout");
+		if (layoutNode == null) {
+			Context.warning('ProgrammableCodeGen: no relativeLayouts found for layout "$layoutName", using fallback', Context.currentPos());
+			processRepeatFallback(node, parentField, fields, ctorExprs, siblings, pos);
+			return;
+		}
+
+		// Extract layouts definition
+		final layoutsDef = switch (layoutNode.type) {
+			case RELATIVE_LAYOUTS(ld): ld;
+			default:
+				Context.warning('ProgrammableCodeGen: unexpected layout node type', Context.currentPos());
+				processRepeatFallback(node, parentField, fields, ctorExprs, siblings, pos);
+				return;
+		};
+
+		final layout = layoutsDef.get(layoutName);
+		if (layout == null) {
+			Context.warning('ProgrammableCodeGen: layout "$layoutName" not found', Context.currentPos());
+			processRepeatFallback(node, parentField, fields, ctorExprs, siblings, pos);
+			return;
+		}
+
+		// Create the repeat container
+		final containerName = "_e" + (elementCounter++);
+		fields.push(makeField(containerName, FVar(macro :h2d.Object, null), [APrivate], pos));
+		ctorExprs.push(macro $p{["this", containerName]} = new h2d.Object());
+
+		final posExpr = generatePositionExpr(node.pos, containerName, pos);
+		if (posExpr != null)
+			ctorExprs.push(posExpr);
+
+		final parentRef = macro $p{["this", parentField]};
+		ctorExprs.push(macro $parentRef.addChild($p{["this", containerName]}));
+
+		final visCond = generateVisibilityCondition(node, siblings, containerName, pos);
+		if (visCond != null)
+			visibilityEntries.push({fieldName: containerName, condition: visCond});
+		siblings.push({node: node, fieldName: containerName});
+
+		// Resolve layout points and unroll
+		switch (layout.type) {
+			case List(list):
+				final offsetX:Float = layout.offset != null ? layout.offset.x : 0;
+				final offsetY:Float = layout.offset != null ? layout.offset.y : 0;
+				for (i in 0...list.length) {
+					loopVarSubstitutions.set(varName, i);
+					final pt = resolveLayoutPoint(list[i], layout, i);
+					if (pt != null) {
+						final px:Float = pt.x + offsetX;
+						final py:Float = pt.y + offsetY;
+						if (px != 0 || py != 0) {
+							final iterContainerName = "_e" + (elementCounter++);
+							fields.push(makeField(iterContainerName, FVar(macro :h2d.Object, null), [APrivate], pos));
+							ctorExprs.push(macro $p{["this", iterContainerName]} = new h2d.Object());
+							ctorExprs.push(macro $p{["this", iterContainerName]}.setPosition($v{px}, $v{py}));
+							ctorExprs.push(macro $p{["this", containerName]}.addChild($p{["this", iterContainerName]}));
+							processChildren(node.children, iterContainerName, fields, ctorExprs, [], pos);
+						} else {
+							processChildren(node.children, containerName, fields, ctorExprs, [], pos);
+						}
+					} else {
+						processChildren(node.children, containerName, fields, ctorExprs, [], pos);
+					}
+					loopVarSubstitutions.remove(varName);
+				}
+
+			case Single(content):
+				loopVarSubstitutions.set(varName, 0);
+				final offsetX:Float = layout.offset != null ? layout.offset.x : 0;
+				final offsetY:Float = layout.offset != null ? layout.offset.y : 0;
+				final pt = resolveLayoutPoint(content, layout, 0);
+				if (pt != null) {
+					final px:Float = pt.x + offsetX;
+					final py:Float = pt.y + offsetY;
+					if (px != 0 || py != 0) {
+						final iterContainerName = "_e" + (elementCounter++);
+						fields.push(makeField(iterContainerName, FVar(macro :h2d.Object, null), [APrivate], pos));
+						ctorExprs.push(macro $p{["this", iterContainerName]} = new h2d.Object());
+						ctorExprs.push(macro $p{["this", iterContainerName]}.setPosition($v{px}, $v{py}));
+						ctorExprs.push(macro $p{["this", containerName]}.addChild($p{["this", iterContainerName]}));
+						processChildren(node.children, iterContainerName, fields, ctorExprs, [], pos);
+					} else {
+						processChildren(node.children, containerName, fields, ctorExprs, [], pos);
+					}
+				} else {
+					processChildren(node.children, containerName, fields, ctorExprs, [], pos);
+				}
+				loopVarSubstitutions.remove(varName);
+
+			case Sequence(seqVarName, from, to, content):
+				final offsetX:Float = layout.offset != null ? layout.offset.x : 0;
+				final offsetY:Float = layout.offset != null ? layout.offset.y : 0;
+				for (i in from...(to + 1)) {
+					loopVarSubstitutions.set(varName, i - from);
+					loopVarSubstitutions.set(seqVarName, i);
+					final pt = resolveLayoutPointSequence(content, layout, seqVarName, i);
+					if (pt != null) {
+						final px:Float = pt.x + offsetX;
+						final py:Float = pt.y + offsetY;
+						if (px != 0 || py != 0) {
+							final iterContainerName = "_e" + (elementCounter++);
+							fields.push(makeField(iterContainerName, FVar(macro :h2d.Object, null), [APrivate], pos));
+							ctorExprs.push(macro $p{["this", iterContainerName]} = new h2d.Object());
+							ctorExprs.push(macro $p{["this", iterContainerName]}.setPosition($v{px}, $v{py}));
+							ctorExprs.push(macro $p{["this", containerName]}.addChild($p{["this", iterContainerName]}));
+							processChildren(node.children, iterContainerName, fields, ctorExprs, [], pos);
+						} else {
+							processChildren(node.children, containerName, fields, ctorExprs, [], pos);
+						}
+					} else {
+						processChildren(node.children, containerName, fields, ctorExprs, [], pos);
+					}
+					loopVarSubstitutions.remove(varName);
+					loopVarSubstitutions.remove(seqVarName);
+				}
+		}
+	}
+
+	/** Resolve a LayoutPoint coordinate to an {x, y} at macro time */
+	static function resolveLayoutPoint(content:LayoutContent, layout:Layout, index:Int):Null<{x:Float, y:Float}> {
+		return switch (content) {
+			case LayoutPoint(coords):
+				resolveCoordinatesStatic(coords, layout, index);
+		};
+	}
+
+	/** Resolve a LayoutPoint coordinate for Sequence layouts */
+	static function resolveLayoutPointSequence(content:LayoutContent, layout:Layout, seqVarName:String, seqIndex:Int):Null<{x:Float, y:Float}> {
+		return switch (content) {
+			case LayoutPoint(coords):
+				resolveCoordinatesStatic(coords, layout, seqIndex);
+		};
+	}
+
+	/** Statically resolve a Coordinates value at macro time */
+	static function resolveCoordinatesStatic(coords:Coordinates, layout:Layout, index:Int):Null<{x:Float, y:Float}> {
+		return switch (coords) {
+			case ZERO: {x: 0.0, y: 0.0};
+			case OFFSET(x, y):
+				final xVal = resolveRVStatic(x);
+				final yVal = resolveRVStatic(y);
+				if (xVal != null && yVal != null) {
+					{x: xVal, y: yVal};
+				} else {
+					null;
+				}
+			case SELECTED_GRID_POSITION(gridX, gridY):
+				final gx = resolveRVStatic(gridX);
+				final gy = resolveRVStatic(gridY);
+				if (gx != null && gy != null && layout.grid != null) {
+					{x: layout.grid.spacingX * gx, y: layout.grid.spacingY * gy};
+				} else {
+					null;
+				}
+			case SELECTED_GRID_POSITION_WITH_OFFSET(gridX, gridY, offsetX, offsetY):
+				final gx = resolveRVStatic(gridX);
+				final gy = resolveRVStatic(gridY);
+				final ox = resolveRVStatic(offsetX);
+				final oy = resolveRVStatic(offsetY);
+				if (gx != null && gy != null && ox != null && oy != null && layout.grid != null) {
+					{x: layout.grid.spacingX * gx + ox, y: layout.grid.spacingY * gy + oy};
+				} else {
+					null;
+				}
+			default: null;
+		};
+	}
+
+	/** Try to resolve a ReferenceableValue as a static Float (resolving loop var substitutions) */
+	static function resolveRVStatic(rv:ReferenceableValue):Null<Float> {
+		if (rv == null) return null;
+		return switch (rv) {
+			case RVInteger(i): cast(i, Float);
+			case RVFloat(f): f;
+			case RVReference(ref):
+				if (loopVarSubstitutions.exists(ref))
+					cast(loopVarSubstitutions.get(ref), Float)
+				else
+					null;
+			case EBinop(op, e1, e2):
+				final left = resolveRVStatic(e1);
+				final right = resolveRVStatic(e2);
+				if (left != null && right != null) {
+					switch (op) {
+						case OpAdd: left + right;
+						case OpSub: left - right;
+						case OpMul: left * right;
+						case OpDiv: left / right;
+						case OpMod: left % right;
+						default: null;
+					};
+				} else {
+					null;
+				}
+			case RVParenthesis(e): resolveRVStatic(e);
+			case EUnaryOp(_, e):
+				final inner = resolveRVStatic(e);
+				if (inner != null) -inner else null;
+			default: null;
+		};
+	}
+
+	/** Process runtime iterators (TilesIterator, StateAnimIterator, ArrayIterator) via builder delegation.
+	 *  These iterators need runtime data (sheet contents, .anim files, array values),
+	 *  so we generate a runtime loop in the constructor. */
+	static function processRuntimeRepeat(node:Node, varName:String, repeatType:RepeatType, parentField:String, fields:Array<Field>, ctorExprs:Array<Expr>,
+			siblings:Array<{node:Node, fieldName:String}>, pos:Position):Void {
+		// Create a container for the repeat
+		final containerName = "_e" + (elementCounter++);
+		fields.push(makeField(containerName, FVar(macro :h2d.Object, null), [APrivate], pos));
+		ctorExprs.push(macro $p{["this", containerName]} = new h2d.Object());
+
+		final posExpr = generatePositionExpr(node.pos, containerName, pos);
+		if (posExpr != null)
+			ctorExprs.push(posExpr);
+
+		final parentRef = macro $p{["this", parentField]};
+		ctorExprs.push(macro $parentRef.addChild($p{["this", containerName]}));
+
+		final visCond = generateVisibilityCondition(node, siblings, containerName, pos);
+		if (visCond != null)
+			visibilityEntries.push({fieldName: containerName, condition: visCond});
+		siblings.push({node: node, fieldName: containerName});
+
+		// For runtime iterators, delegate to builder at construction time.
+		// We build the entire subtree via the builder and attach it.
+		final containerRef = macro $p{["this", containerName]};
+
+		switch (repeatType) {
+			case TilesIterator(bitmapVarName, tilenameVarName, sheetName, tileFilter):
+				final sheetStr = sheetName;
+				final filterExpr:Expr = tileFilter != null ? macro $v{tileFilter} : macro null;
+				ctorExprs.push(macro {
+					final tiles = access.getSheetTiles($v{sheetStr}, $filterExpr);
+					for (i in 0...tiles.length) {
+						final bmp = new h2d.Bitmap(tiles[i]);
+						$containerRef.addChild(bmp);
+					}
+				});
+
+			case StateAnimIterator(bitmapVarName, animFilename, animationName, selectorRefs):
+				final fileStr = animFilename;
+				// Build selector map at macro time as literal pairs
+				final selectorPairs:Array<Expr> = [];
+				for (k => v in selectorRefs) {
+					final keyStr = k;
+					final valExpr = rvToExpr(v);
+					selectorPairs.push(macro $v{keyStr} => Std.string($valExpr));
+				}
+				final selectorMapExpr:Expr = if (selectorPairs.length == 0) macro new Map() else {
+					expr: EArrayDecl(selectorPairs),
+					pos: pos,
+				};
+				final animNameExpr = rvToExpr(animationName);
+				ctorExprs.push(macro {
+					final tiles = access.getStateAnimTiles($v{fileStr}, Std.string($animNameExpr), $selectorMapExpr);
+					for (i in 0...tiles.length) {
+						final bmp = new h2d.Bitmap(tiles[i]);
+						$containerRef.addChild(bmp);
+					}
+				});
+
+			case ArrayIterator(valueVariableName, arrayName):
+				// Arrays are stored as params — we can access the array param at runtime
+				final arrayField = "_" + arrayName;
+				final arrayRef = macro $p{["this", arrayField]};
+				ctorExprs.push(macro {
+					// Array iteration: create a child per element, delegating to builder
+					final arr:Array<Dynamic> = $arrayRef;
+					if (arr != null) {
+						for (i in 0...arr.length) {
+							final obj = new h2d.Object();
+							$containerRef.addChild(obj);
+						}
+					}
+				});
+
+			default:
+		}
+	}
+
+	/** Fallback for unsupported repeat iterator types — empty container */
+	static function processRepeatFallback(node:Node, parentField:String, fields:Array<Field>, ctorExprs:Array<Expr>, siblings:Array<{node:Node, fieldName:String}>, pos:Position):Void {
+		final fieldName = "_e" + (elementCounter++);
+		fields.push(makeField(fieldName, FVar(macro :h2d.Object, null), [APrivate], pos));
+		ctorExprs.push(macro $p{["this", fieldName]} = new h2d.Object());
+		final parentRef = macro $p{["this", parentField]};
+		ctorExprs.push(macro $parentRef.addChild($p{["this", fieldName]}));
+		siblings.push({node: node, fieldName: fieldName});
+	}
+
+	/** Process a REPEAT2D node */
+	static function processRepeat2D(node:Node, varNameX:String, varNameY:String, repeatTypeX:RepeatType, repeatTypeY:RepeatType, parentField:String, fields:Array<Field>, ctorExprs:Array<Expr>, siblings:Array<{node:Node, fieldName:String}>, pos:Position):Void {
+		final infoX = resolveRepeatInfo(repeatTypeX);
+		final infoY = resolveRepeatInfo(repeatTypeY);
+		if (infoX == null || infoY == null) {
+			processRepeatFallback(node, parentField, fields, ctorExprs, siblings, pos);
+			return;
+		}
+
+		// Create the 2D repeat container
+		final containerName = "_e" + (elementCounter++);
+		fields.push(makeField(containerName, FVar(macro :h2d.Object, null), [APrivate], pos));
+		ctorExprs.push(macro $p{["this", containerName]} = new h2d.Object());
+
+		final posExpr = generatePositionExpr(node.pos, containerName, pos);
+		if (posExpr != null)
+			ctorExprs.push(posExpr);
+
+		final parentRef = macro $p{["this", parentField]};
+		ctorExprs.push(macro $parentRef.addChild($p{["this", containerName]}));
+
+		final visCond = generateVisibilityCondition(node, siblings, containerName, pos);
+		if (visCond != null)
+			visibilityEntries.push({fieldName: containerName, condition: visCond});
+		siblings.push({node: node, fieldName: containerName});
+
+		if (infoX.staticCount != null && infoY.staticCount != null) {
+			// Both axes static: fully unroll
+			unrollRepeat2DChildren(node, varNameX, varNameY, infoX, infoY, containerName, fields, ctorExprs, pos);
+		} else {
+			// At least one axis is param-dependent: pool
+			poolRepeat2DChildren(node, varNameX, varNameY, infoX, infoY, repeatTypeX, repeatTypeY, containerName, fields, ctorExprs, pos);
+		}
+	}
+
+	/** Unroll 2D repeat: static countX * countY copies */
+	static function unrollRepeat2DChildren(node:Node, varNameX:String, varNameY:String, infoX:{staticCount:Null<Int>, dx:Int, dy:Int, rangeStart:Int, rangeStep:Int, countRV:Null<ReferenceableValue>}, infoY:{staticCount:Null<Int>, dx:Int, dy:Int, rangeStart:Int, rangeStep:Int, countRV:Null<ReferenceableValue>}, containerField:String, fields:Array<Field>, ctorExprs:Array<Expr>, pos:Position):Void {
+		if (node.children == null) return;
+
+		for (iy in 0...infoY.staticCount) {
+			final resolvedY = infoY.rangeStart + iy * infoY.rangeStep;
+			loopVarSubstitutions.set(varNameY, resolvedY);
+
+			for (ix in 0...infoX.staticCount) {
+				final resolvedX = infoX.rangeStart + ix * infoX.rangeStep;
+				loopVarSubstitutions.set(varNameX, resolvedX);
+
+				final totalDx:Float = infoX.dx * ix + infoY.dx * iy;
+				final totalDy:Float = infoX.dy * ix + infoY.dy * iy;
+
+				if (totalDx != 0 || totalDy != 0) {
+					final iterContainerName = "_e" + (elementCounter++);
+					fields.push(makeField(iterContainerName, FVar(macro :h2d.Object, null), [APrivate], pos));
+					ctorExprs.push(macro $p{["this", iterContainerName]} = new h2d.Object());
+					ctorExprs.push(macro $p{["this", iterContainerName]}.setPosition($v{totalDx}, $v{totalDy}));
+					ctorExprs.push(macro $p{["this", containerField]}.addChild($p{["this", iterContainerName]}));
+					processChildren(node.children, iterContainerName, fields, ctorExprs, [], pos);
+				} else {
+					processChildren(node.children, containerField, fields, ctorExprs, [], pos);
+				}
+
+				loopVarSubstitutions.remove(varNameX);
+			}
+			loopVarSubstitutions.remove(varNameY);
+		}
+	}
+
+	/** Pool-based 2D repeat: pre-allocate maxX * maxY iteration containers */
+	static function poolRepeat2DChildren(node:Node, varNameX:String, varNameY:String, infoX:{staticCount:Null<Int>, dx:Int, dy:Int, rangeStart:Int, rangeStep:Int, countRV:Null<ReferenceableValue>}, infoY:{staticCount:Null<Int>, dx:Int, dy:Int, rangeStart:Int, rangeStep:Int, countRV:Null<ReferenceableValue>}, repeatTypeX:RepeatType, repeatTypeY:RepeatType, containerField:String, fields:Array<Field>, ctorExprs:Array<Expr>, pos:Position):Void {
+		if (node.children == null) return;
+
+		final maxX = infoX.staticCount != null ? infoX.staticCount : resolveMaxCount(infoX.countRV);
+		final maxY = infoY.staticCount != null ? infoY.staticCount : resolveMaxCount(infoY.countRV);
+
+		final countXExpr:Expr = if (infoX.staticCount != null) macro $v{infoX.staticCount} else switch (repeatTypeX) {
+			case RangeIterator(start, end, step):
+				final endExpr = rvToExpr(end);
+				final startExpr = rvToExpr(start);
+				final stepExpr = rvToExpr(step);
+				macro Math.ceil(($endExpr - $startExpr) / $stepExpr);
+			case GridIterator(_, _, repeats): rvToExpr(repeats);
+			default: macro $v{maxX};
+		};
+
+		final countYExpr:Expr = if (infoY.staticCount != null) macro $v{infoY.staticCount} else switch (repeatTypeY) {
+			case RangeIterator(start, end, step):
+				final endExpr = rvToExpr(end);
+				final startExpr = rvToExpr(start);
+				final stepExpr = rvToExpr(step);
+				macro Math.ceil(($endExpr - $startExpr) / $stepExpr);
+			case GridIterator(_, _, repeats): rvToExpr(repeats);
+			default: macro $v{maxY};
+		};
+
+		// Collect param refs for both axes
+		var allCountParamRefs:Array<String> = [];
+		if (infoX.countRV != null)
+			for (r in collectParamRefs(infoX.countRV))
+				if (!allCountParamRefs.contains(r))
+					allCountParamRefs.push(r);
+		if (infoY.countRV != null)
+			for (r in collectParamRefs(infoY.countRV))
+				if (!allCountParamRefs.contains(r))
+					allCountParamRefs.push(r);
+
+		for (iy in 0...maxY) {
+			final resolvedY = infoY.rangeStart + iy * infoY.rangeStep;
+			loopVarSubstitutions.set(varNameY, resolvedY);
+
+			for (ix in 0...maxX) {
+				final resolvedX = infoX.rangeStart + ix * infoX.rangeStep;
+				loopVarSubstitutions.set(varNameX, resolvedX);
+
+				final iterContainerName = "_e" + (elementCounter++);
+				fields.push(makeField(iterContainerName, FVar(macro :h2d.Object, null), [APrivate], pos));
+				ctorExprs.push(macro $p{["this", iterContainerName]} = new h2d.Object());
+
+				final totalDx:Float = infoX.dx * ix + infoY.dx * iy;
+				final totalDy:Float = infoX.dy * ix + infoY.dy * iy;
+				if (totalDx != 0 || totalDy != 0) {
+					ctorExprs.push(macro $p{["this", iterContainerName]}.setPosition($v{totalDx}, $v{totalDy}));
+				}
+
+				ctorExprs.push(macro $p{["this", containerField]}.addChild($p{["this", iterContainerName]}));
+
+				// Visibility: show if ix < countX && iy < countY
+				final ixVal = ix;
+				final iyVal = iy;
+				repeatPoolEntries.push({
+					containerField: iterContainerName,
+					iterIndex: -1, // special: use 2D check
+					countParamRefs: allCountParamRefs,
+					countExpr: macro($v{ixVal} < $countXExpr && $v{iyVal} < $countYExpr),
+				});
+
+				processChildren(node.children, iterContainerName, fields, ctorExprs, [], pos);
+
+				loopVarSubstitutions.remove(varNameX);
+			}
+			loopVarSubstitutions.remove(varNameY);
+		}
+	}
+
 	// ==================== Node Creation ====================
 
 	static function generateCreateExpr(node:Node, fieldName:String, pos:Position):Null<CreateResult> {
@@ -461,12 +1129,9 @@ class ProgrammableCodeGen {
 					exprUpdates: [],
 				};
 
-			case REPEAT(_, _) | REPEAT2D(_, _, _, _): {
-					fieldType: macro :h2d.Object,
-					createExprs: [macro $p{["this", fieldName]} = new h2d.Object()],
-					isContainer: true,
-					exprUpdates: [],
-				};
+			case REPEAT(_, _) | REPEAT2D(_, _, _, _):
+				// Should not be reached — processNode handles REPEAT/REPEAT2D directly
+				null;
 
 			case GRAPHICS(_) | PIXELS(_) | PARTICLES(_): {
 					fieldType: macro :h2d.Object,
@@ -807,7 +1472,13 @@ class ProgrammableCodeGen {
 			case RVString(s):
 				macro $v{s};
 			case RVReference(ref):
-				macro $p{["this", "_" + ref]};
+				// Check loop variable substitutions first (for repeat unrolling)
+				if (loopVarSubstitutions.exists(ref)) {
+					final val = loopVarSubstitutions.get(ref);
+					macro $v{val};
+				} else {
+					macro $p{["this", "_" + ref]};
+				}
 			case EBinop(op, e1, e2):
 				final left = rvToExpr(e1);
 				final right = rvToExpr(e2);
@@ -857,7 +1528,7 @@ class ProgrammableCodeGen {
 
 		switch (rv) {
 			case RVReference(ref):
-				if (paramDefs.exists(ref) && !refs.contains(ref))
+				if (paramDefs.exists(ref) && !loopVarSubstitutions.exists(ref) && !refs.contains(ref))
 					refs.push(ref);
 			case EBinop(_op, e1, e2):
 				collectParamRefsImpl(e1, refs);

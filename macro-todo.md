@@ -18,22 +18,23 @@ What the `@:build(ProgrammableCodeGen.build(...))` macro supports vs what's miss
 - **Static create()** — factory with typed params (Bool for bool, inline constants for enums), reordered (required first)
 - **Setters** — `setXxx(v)` per param, updates visibility + expressions in-place
 
-## Stub — Empty h2d.Object() Placeholder
+## Partially Working
 
 ### REPEAT / REPEAT2D
-Iterates children N times with positioning. Builder supports:
-- **GridIterator** — offset per iteration (dx, dy)
+Iterates children N times with positioning. **Supported iterators:**
+- **GridIterator** — offset per iteration (dx, dy) — static count: compile-time unroll; param-dependent: pool with show/hide
+- **RangeIterator** — numeric range (start..end, step) — static: compile-time unroll; param-dependent: pool
+
+**Not yet supported iterators (fallback to empty placeholder):**
 - **LayoutIterator** — positions from layout points
 - **ArrayIterator** — iterate array parameter values
-- **RangeIterator** — numeric range (0..N)
 - **StateAnimIterator** — iterate animation frames
 - **TilesIterator** — iterate sprite sheet tiles
 
-For codegen, two approaches:
-1. **Static count** (literal in .manim): unroll at compile time — generate N copies of child elements with index substituted. Each copy gets its own fields. Simple, fast, no runtime overhead.
-2. **Param-dependent count** (`$param`): pre-allocate a pool up to some max, show/hide based on current count. Or fall back to builder delegation at runtime.
-
-REPEAT2D is the same but two axes (X iterator + Y iterator).
+Implementation details:
+- **Static count**: unrolled at compile time — N copies of children with loop variable substituted to literal. Zero runtime overhead.
+- **Param-dependent count**: pre-allocated pool up to max (from param default value). `_applyVisibility()` shows/hides pool items based on current count. Efficient updates — no object creation/deletion, only visibility toggling.
+- **REPEAT2D**: same approach for both axes. Static x Static → fully unrolled. Mixed → pool for param-dependent axis.
 
 ### REFERENCE
 Delegates to another programmable with parameters. Builder calls `buildWithParameters(name, params)`.
@@ -114,12 +115,12 @@ When positions use `$param` references (e.g., `$w - 70, $h - 30`), the codegen s
 3. **Position expression updates** — important for correctness when params change positions
 4. **GRAPHICS** — direct draw call generation
 5. **PIXELS** — similar to graphics
-6. **REPEAT (static count)** — compile-time unrolling
+6. **REPEAT LayoutIterator/ArrayIterator** — needs layout data or array resolution at compile time
 7. **Grid/Hex positioning** — needs context propagation
 8. **Layout positioning** — needs layout data at compile time
 9. **REFERENCE** — delegation to builder or other generated class
 10. **PLACEHOLDER** — callback-based, needs API design
-11. **REPEAT (dynamic count)** — pool-based or builder fallback
+11. **REPEAT StateAnimIterator/TilesIterator** — needs asset access at compile time
 12. **PARTICLES** — delegate to runtime helper
 
 ## Efficiency Improvements
