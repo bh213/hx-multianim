@@ -8,10 +8,11 @@ import bh.test.VisualTestBase;
 /**
  * Tests for the @:build(ProgrammableCodeGen.buildAll()) generated classes.
  * All programmables are consolidated into MultiProgrammable with @:manim fields.
- * Each programmable has two visual tests using the same .manim file:
- *   - Builder: renders via MultiAnimBuilder (standard path)
- *   - Macro: renders via the compile-time generated companion class
- * Both compare against the same reference image.
+ * Visual tests use builderAndMacroScreenshotAndCompare() to produce 3-image comparisons:
+ *   - Reference image
+ *   - Builder (runtime) rendering
+ *   - Macro (compile-time) rendering
+ * Both builder and macro are compared against reference; test fails if either fails.
  */
 class ProgrammableCodeGenTest extends VisualTestBase {
 	static final BUTTON_MANIM = "test/examples/38-codegenButton/codegenButton.manim";
@@ -21,6 +22,9 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	static final REPEAT2D_MANIM = "test/examples/42-codegenRepeat2d/codegenRepeat2d.manim";
 	static final LAYOUT_MANIM = "test/examples/43-codegenLayout/codegenLayout.manim";
 	static final TILESITER_MANIM = "test/examples/44-codegenTilesIter/codegenTilesIter.manim";
+	static final TINT_MANIM = "test/examples/37-tintDemo/tintDemo.manim";
+	static final GRAPHICS_MANIM = "test/examples/46-codegenGraphics/codegenGraphics.manim";
+	static final REFERENCE_MANIM = "test/examples/47-codegenReference/codegenReference.manim";
 
 	public function new(s2d:Scene) {
 		super("programmableCodeGen", s2d);
@@ -70,25 +74,17 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 			Assert.equals("Changed", textEl2.text);
 	}
 
-	// ==================== Button: visual ====================
+	// ==================== Button: visual (3-image) ====================
 
 	@Test
-	public function test38_CodegenButtonBuilder(async:utest.Async):Void {
+	public function test38_CodegenButton(async:utest.Async):Void {
 		this.testName = "codegenButton";
-		this.testTitle = "#38: codegen button (builder)";
+		this.testTitle = "#38: codegen button";
 		this.referenceDir = "test/examples/38-codegenButton";
-		buildRenderScreenshotAndCompare(BUTTON_MANIM, "codegenButton", async, 1280, 720);
-	}
-
-	@Test
-	public function test38_CodegenButtonMacro(async:utest.Async):Void {
-		this.testName = "codegenButton_macro";
-		this.testTitle = "#38: codegen button (builder)";
-		this.referenceDir = "test/examples/38-codegenButton";
-		macroRenderScreenshotAndCompare(function() {
+		builderAndMacroScreenshotAndCompare(BUTTON_MANIM, "codegenButton", function() {
 			final builder = loadBuilder(BUTTON_MANIM);
 			return bh.test.MultiProgrammable_Button.create(builder).root;
-		}, async);
+		}, async, 1280, 720);
 	}
 
 	// ==================== Healthbar: unit tests ====================
@@ -131,25 +127,17 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		Assert.isTrue(visibleCount > 0, "Should have visible children at low health");
 	}
 
-	// ==================== Healthbar: visual ====================
+	// ==================== Healthbar: visual (3-image) ====================
 
 	@Test
-	public function test39_CodegenHealthbarBuilder(async:utest.Async):Void {
+	public function test39_CodegenHealthbar(async:utest.Async):Void {
 		this.testName = "codegenHealthbar";
-		this.testTitle = "#39: codegen healthbar (builder)";
+		this.testTitle = "#39: codegen healthbar";
 		this.referenceDir = "test/examples/39-codegenHealthbar";
-		buildRenderScreenshotAndCompare(HEALTHBAR_MANIM, "codegenHealthbar", async, 1280, 720);
-	}
-
-	@Test
-	public function test39_CodegenHealthbarMacro(async:utest.Async):Void {
-		this.testName = "codegenHealthbar_macro";
-		this.testTitle = "#39: codegen healthbar (builder)";
-		this.referenceDir = "test/examples/39-codegenHealthbar";
-		macroRenderScreenshotAndCompare(function() {
+		builderAndMacroScreenshotAndCompare(HEALTHBAR_MANIM, "codegenHealthbar", function() {
 			final builder = loadBuilder(HEALTHBAR_MANIM);
 			return bh.test.MultiProgrammable_Healthbar.create(builder).root;
-		}, async);
+		}, async, 1280, 720);
 	}
 
 	// ==================== Dialog: unit tests ====================
@@ -191,25 +179,17 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		Assert.isTrue(countVisibleChildren(dlg.root) > 0, "Visible in disabled style");
 	}
 
-	// ==================== Dialog: visual ====================
+	// ==================== Dialog: visual (3-image) ====================
 
 	@Test
-	public function test40_CodegenDialogBuilder(async:utest.Async):Void {
+	public function test40_CodegenDialog(async:utest.Async):Void {
 		this.testName = "codegenDialog";
-		this.testTitle = "#40: codegen dialog (builder)";
+		this.testTitle = "#40: codegen dialog";
 		this.referenceDir = "test/examples/40-codegenDialog";
-		buildRenderScreenshotAndCompare(DIALOG_MANIM, "codegenDialog", async, 1280, 720);
-	}
-
-	@Test
-	public function test40_CodegenDialogMacro(async:utest.Async):Void {
-		this.testName = "codegenDialog_macro";
-		this.testTitle = "#40: codegen dialog (builder)";
-		this.referenceDir = "test/examples/40-codegenDialog";
-		macroRenderScreenshotAndCompare(function() {
+		builderAndMacroScreenshotAndCompare(DIALOG_MANIM, "codegenDialog", function() {
 			final builder = loadBuilder(DIALOG_MANIM);
 			return bh.test.MultiProgrammable_Dialog.create(builder).root;
-		}, async);
+		}, async, 1280, 720);
 	}
 
 	// ==================== Repeat: unit tests ====================
@@ -247,25 +227,17 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		Assert.isTrue(visCount > count2, "More visible descendants with higher count");
 	}
 
-	// ==================== Repeat: visual ====================
+	// ==================== Repeat: visual (3-image) ====================
 
 	@Test
-	public function test41_CodegenRepeatBuilder(async:utest.Async):Void {
+	public function test41_CodegenRepeat(async:utest.Async):Void {
 		this.testName = "codegenRepeat";
-		this.testTitle = "#41: codegen repeat (builder)";
+		this.testTitle = "#41: codegen repeat";
 		this.referenceDir = "test/examples/41-codegenRepeat";
-		buildRenderScreenshotAndCompare(REPEAT_MANIM, "codegenRepeat", async, 1280, 720);
-	}
-
-	@Test
-	public function test41_CodegenRepeatMacro(async:utest.Async):Void {
-		this.testName = "codegenRepeat_macro";
-		this.testTitle = "#41: codegen repeat (builder)";
-		this.referenceDir = "test/examples/41-codegenRepeat";
-		macroRenderScreenshotAndCompare(function() {
+		builderAndMacroScreenshotAndCompare(REPEAT_MANIM, "codegenRepeat", function() {
 			final builder = loadBuilder(REPEAT_MANIM);
 			return bh.test.MultiProgrammable_Repeat.create(builder).root;
-		}, async);
+		}, async, 1280, 720);
 	}
 
 	// ==================== Repeat2D: unit tests ====================
@@ -292,25 +264,17 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		Assert.isTrue(count3 > count1, "More visible descendants with more cols");
 	}
 
-	// ==================== Repeat2D: visual ====================
+	// ==================== Repeat2D: visual (3-image) ====================
 
 	@Test
-	public function test42_CodegenRepeat2dBuilder(async:utest.Async):Void {
+	public function test42_CodegenRepeat2d(async:utest.Async):Void {
 		this.testName = "codegenRepeat2d";
-		this.testTitle = "#42: codegen repeat2d (builder)";
+		this.testTitle = "#42: codegen repeat2d";
 		this.referenceDir = "test/examples/42-codegenRepeat2d";
-		buildRenderScreenshotAndCompare(REPEAT2D_MANIM, "codegenRepeat2d", async, 1280, 720);
-	}
-
-	@Test
-	public function test42_CodegenRepeat2dMacro(async:utest.Async):Void {
-		this.testName = "codegenRepeat2d_macro";
-		this.testTitle = "#42: codegen repeat2d (builder)";
-		this.referenceDir = "test/examples/42-codegenRepeat2d";
-		macroRenderScreenshotAndCompare(function() {
+		builderAndMacroScreenshotAndCompare(REPEAT2D_MANIM, "codegenRepeat2d", function() {
 			final builder = loadBuilder(REPEAT2D_MANIM);
 			return bh.test.MultiProgrammable_Repeat2d.create(builder).root;
-		}, async);
+		}, async, 1280, 720);
 	}
 
 	// ==================== Layout: unit tests ====================
@@ -332,25 +296,17 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		Assert.isTrue(totalChildren >= 9, "Should have at least 9 descendant objects from layout repeats");
 	}
 
-	// ==================== Layout: visual ====================
+	// ==================== Layout: visual (3-image) ====================
 
 	@Test
-	public function test43_CodegenLayoutBuilder(async:utest.Async):Void {
+	public function test43_CodegenLayout(async:utest.Async):Void {
 		this.testName = "codegenLayout";
-		this.testTitle = "#43: codegen layout (builder)";
+		this.testTitle = "#43: codegen layout";
 		this.referenceDir = "test/examples/43-codegenLayout";
-		buildRenderScreenshotAndCompare(LAYOUT_MANIM, "codegenLayout", async, 1280, 720);
-	}
-
-	@Test
-	public function test43_CodegenLayoutMacro(async:utest.Async):Void {
-		this.testName = "codegenLayout_macro";
-		this.testTitle = "#43: codegen layout (builder)";
-		this.referenceDir = "test/examples/43-codegenLayout";
-		macroRenderScreenshotAndCompare(function() {
+		builderAndMacroScreenshotAndCompare(LAYOUT_MANIM, "codegenLayout", function() {
 			final builder = loadBuilder(LAYOUT_MANIM);
 			return bh.test.MultiProgrammable_Layout.create(builder).root;
-		}, async);
+		}, async, 1280, 720);
 	}
 
 	// ==================== TilesIter: unit tests ====================
@@ -372,25 +328,56 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		Assert.isTrue(totalChildren >= 2, "Should have descendant objects from runtime iterators");
 	}
 
-	// ==================== TilesIter: visual ====================
+	// ==================== TilesIter: visual (3-image) ====================
 
 	@Test
-	public function test44_CodegenTilesIterBuilder(async:utest.Async):Void {
+	public function test44_CodegenTilesIter(async:utest.Async):Void {
 		this.testName = "codegenTilesIter";
-		this.testTitle = "#44: codegen tiles iter (builder)";
+		this.testTitle = "#44: codegen tiles iter";
 		this.referenceDir = "test/examples/44-codegenTilesIter";
-		buildRenderScreenshotAndCompare(TILESITER_MANIM, "codegenTilesIter", async, 1280, 720);
-	}
-
-	@Test
-	public function test44_CodegenTilesIterMacro(async:utest.Async):Void {
-		this.testName = "codegenTilesIter_macro";
-		this.testTitle = "#44: codegen tiles iter (builder)";
-		this.referenceDir = "test/examples/44-codegenTilesIter";
-		macroRenderScreenshotAndCompare(function() {
+		builderAndMacroScreenshotAndCompare(TILESITER_MANIM, "codegenTilesIter", function() {
 			final builder = loadBuilder(TILESITER_MANIM);
 			return bh.test.MultiProgrammable_TilesIter.create(builder).root;
-		}, async);
+		}, async, 1280, 720);
+	}
+
+	// ==================== Tint (reuses #37 tintDemo): visual (3-image) ====================
+
+	@Test
+	public function test37_TintDemo(async:utest.Async):Void {
+		this.testName = "tintDemo";
+		this.testTitle = "#37: tint";
+		this.referenceDir = "test/examples/37-tintDemo";
+		builderAndMacroScreenshotAndCompare(TINT_MANIM, "tintDemo", function() {
+			final builder = loadBuilder(TINT_MANIM);
+			return bh.test.MultiProgrammable_Tint.create(builder).root;
+		}, async, 1280, 720);
+	}
+
+	// ==================== Graphics: visual (3-image) ====================
+
+	@Test
+	public function test46_CodegenGraphics(async:utest.Async):Void {
+		this.testName = "codegenGraphics";
+		this.testTitle = "#46: codegen graphics";
+		this.referenceDir = "test/examples/46-codegenGraphics";
+		builderAndMacroScreenshotAndCompare(GRAPHICS_MANIM, "codegenGraphics", function() {
+			final builder = loadBuilder(GRAPHICS_MANIM);
+			return bh.test.MultiProgrammable_Graphics.create(builder).root;
+		}, async, 1280, 720);
+	}
+
+	// ==================== Reference: visual (3-image) ====================
+
+	@Test
+	public function test47_CodegenReference(async:utest.Async):Void {
+		this.testName = "codegenReference";
+		this.testTitle = "#47: codegen reference";
+		this.referenceDir = "test/examples/47-codegenReference";
+		builderAndMacroScreenshotAndCompare(REFERENCE_MANIM, "codegenReference", function() {
+			final builder = loadBuilder(REFERENCE_MANIM);
+			return bh.test.MultiProgrammable_Reference.create(builder).root;
+		}, async, 1280, 720);
 	}
 
 	// ==================== MultiProgrammable factory: unit tests ====================
@@ -420,47 +407,6 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		final textEl = findTextChild(hb.root);
 		if (textEl != null)
 			Assert.equals("50", textEl.text);
-	}
-
-	// ==================== Shared macro render helper ====================
-
-	function macroRenderScreenshotAndCompare(createRoot:() -> h2d.Object, async:utest.Async):Void {
-		async.setTimeout(10000);
-		clearScene();
-
-		var root:h2d.Object = null;
-		try {
-			root = createRoot();
-		} catch (e:Dynamic) {
-			Assert.fail('Macro createRoot() threw: $e');
-			async.done();
-			return;
-		}
-
-		root.setScale(4.0);
-		s2d.addChild(root);
-
-		if (testTitle != null && testTitle.length > 0) {
-			addTitleOverlay();
-		}
-
-		waitForUpdate(function(dt:Float) {
-			try {
-				final actualPath = getActualImagePath();
-				final referencePath = getReferenceImagePath();
-
-				var success = screenshot(actualPath, 1280, 720);
-				Assert.isTrue(success, 'Screenshot should be created at $actualPath');
-
-				if (success) {
-					var match = compareImages(actualPath, referencePath, 0.99);
-					Assert.isTrue(match, 'Macro output should match reference image');
-				}
-			} catch (e:Dynamic) {
-				Assert.fail('Macro screenshot/compare threw: $e');
-			}
-			async.done();
-		});
 	}
 
 	// ==================== Helpers ====================

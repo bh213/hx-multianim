@@ -478,6 +478,45 @@ class ProgrammableCodeGen {
 			ctorExprs.push(macro $fieldRef.alpha = $alphaExpr);
 		}
 
+		// Tint
+		if (node.tint != null) {
+			final tintExpr = rvToExpr(node.tint);
+			final fieldRef = macro $p{["this", fieldName]};
+			ctorExprs.push(macro {
+				final _obj = $fieldRef;
+				if (Std.isOfType(_obj, h2d.Drawable)) {
+					final d:h2d.Drawable = cast _obj;
+					var c:Int = $tintExpr;
+					if (c >>> 24 == 0) c |= 0xFF000000;
+					d.color.setColor(c);
+				}
+			});
+		}
+
+		// Filters
+		if (node.filter != null) {
+			final filterExpr = generateFilterExpr(node.filter, pos);
+			if (filterExpr != null) {
+				final fieldRef = macro $p{["this", fieldName]};
+				ctorExprs.push(macro $fieldRef.filter = $filterExpr);
+			}
+		}
+
+		// Position expression updates: if position has $param references, add to expressionUpdates
+		if (node.pos != null) {
+			final posParamRefs = collectPositionParamRefs(node.pos);
+			if (posParamRefs.length > 0) {
+				final posUpdate = generatePositionExpr(node.pos, fieldName, pos);
+				if (posUpdate != null) {
+					expressionUpdates.push({
+						fieldName: fieldName,
+						updateExpr: posUpdate,
+						paramRefs: posParamRefs,
+					});
+				}
+			}
+		}
+
 		// Add to parent
 		final parentRef = macro $p{["this", parentField]};
 		final fieldRef = macro $p{["this", fieldName]};
@@ -1304,18 +1343,17 @@ class ProgrammableCodeGen {
 					exprUpdates: [],
 				};
 
-			case REFERENCE(_, _, _): {
-					fieldType: macro :h2d.Object,
-					createExprs: [macro $p{["this", fieldName]} = new h2d.Object()],
-					isContainer: false,
-					exprUpdates: [],
-				};
+			case REFERENCE(externalReference, programmableRef, parameters):
+				generateReferenceCreate(node, fieldName, externalReference, programmableRef, parameters, pos);
 
 			case REPEAT(_, _) | REPEAT2D(_, _, _, _):
 				// Should not be reached — processNode handles REPEAT/REPEAT2D directly
 				null;
 
-			case GRAPHICS(_) | PIXELS(_) | PARTICLES(_): {
+			case GRAPHICS(elements):
+				generateGraphicsCreate(node, fieldName, elements, pos);
+
+			case PIXELS(_) | PARTICLES(_): {
 					fieldType: macro :h2d.Object,
 					createExprs: [macro $p{["this", fieldName]} = new h2d.Object()],
 					isContainer: false,
@@ -1324,6 +1362,323 @@ class ProgrammableCodeGen {
 
 			default: null;
 		};
+	}
+
+	// ==================== Reference ====================
+
+	static function generateReferenceCreate(node:Node, fieldName:String, externalReference:Null<String>,
+			programmableRef:String, parameters:Map<String, ReferenceableValue>, pos:Position):CreateResult {
+		final fieldRef = macro $p{["this", fieldName]};
+		final createExprs:Array<Expr> = [];
+		final refNameExpr:Expr = macro $v{programmableRef};
+
+		// Build parameter map at runtime: new Map<String,Dynamic>()
+		final mapBuildExprs:Array<Expr> = [macro final _refParams = new Map<String, Dynamic>()];
+		if (parameters != null) {
+			for (key => val in parameters) {
+				final keyExpr:Expr = macro $v{key};
+				final valExpr = rvToExpr(val);
+				mapBuildExprs.push(macro _refParams.set($keyExpr, $valExpr));
+			}
+		}
+		mapBuildExprs.push(macro {
+			final _result = this.buildReference($refNameExpr, _refParams);
+			$fieldRef = _result != null ? _result.object : new h2d.Object();
+		});
+
+		createExprs.push(macro $b{mapBuildExprs});
+
+		return {
+			fieldType: macro :h2d.Object,
+			createExprs: createExprs,
+			isContainer: false,
+			exprUpdates: [],
+		};
+	}
+
+	// ==================== Graphics ====================
+
+	static function generateGraphicsCreate(node:Node, fieldName:String, elements:Array<PositionedGraphicsElement>, pos:Position):CreateResult {
+		final fieldRef = macro $p{["this", fieldName]};
+		final createExprs:Array<Expr> = [macro $fieldRef = new h2d.Graphics()];
+
+		// Generate draw calls for each element
+		for (item in elements) {
+			final drawExprs = generateGraphicsElementExprs(fieldRef, item.element, item.pos);
+			for (de in drawExprs)
+				createExprs.push(de);
+		}
+
+		return {
+			fieldType: macro :h2d.Graphics,
+			createExprs: createExprs,
+			isContainer: false,
+			exprUpdates: [],
+		};
+	}
+
+	static function generateGraphicsElementExprs(gRef:Expr, element:GraphicsElement, elementPos:Coordinates):Array<Expr> {
+		final exprs:Array<Expr> = [];
+
+		// Resolve element position offset
+		var posXExpr:Expr = macro 0.0;
+		var posYExpr:Expr = macro 0.0;
+		switch (elementPos) {
+			case OFFSET(x, y):
+				posXExpr = rvToExpr(x);
+				posYExpr = rvToExpr(y);
+			case ZERO | null:
+			default:
+		}
+
+		// Reset line style before each element
+		exprs.push(macro {
+			final _g:h2d.Graphics = cast $gRef;
+			_g.lineStyle();
+		});
+
+		switch (element) {
+			case GERect(color, style, width, height):
+				final cExpr = rvToExpr(color);
+				final wExpr = rvToExpr(width);
+				final hExpr = rvToExpr(height);
+				switch (style) {
+					case GSFilled:
+						exprs.push(macro {
+							final _g:h2d.Graphics = cast $gRef;
+							var c:Int = $cExpr;
+							if (c >>> 24 == 0) c |= 0xFF000000;
+							_g.beginFill(c);
+							_g.drawRect($posXExpr, $posYExpr, $wExpr, $hExpr);
+							_g.endFill();
+						});
+					case GSLineWidth(lw):
+						final lwExpr = rvToExpr(lw);
+						exprs.push(macro {
+							final _g:h2d.Graphics = cast $gRef;
+							var c:Int = $cExpr;
+							if (c >>> 24 == 0) c |= 0xFF000000;
+							_g.lineStyle($lwExpr, c);
+							_g.drawRect($posXExpr, $posYExpr, $wExpr, $hExpr);
+							_g.lineStyle();
+						});
+				}
+
+			case GECircle(color, style, radius):
+				final cExpr = rvToExpr(color);
+				final rExpr = rvToExpr(radius);
+				switch (style) {
+					case GSFilled:
+						exprs.push(macro {
+							final _g:h2d.Graphics = cast $gRef;
+							var c:Int = $cExpr;
+							if (c >>> 24 == 0) c |= 0xFF000000;
+							_g.beginFill(c);
+							_g.drawCircle($posXExpr, $posYExpr, $rExpr);
+							_g.endFill();
+						});
+					case GSLineWidth(lw):
+						final lwExpr = rvToExpr(lw);
+						exprs.push(macro {
+							final _g:h2d.Graphics = cast $gRef;
+							var c:Int = $cExpr;
+							if (c >>> 24 == 0) c |= 0xFF000000;
+							_g.lineStyle($lwExpr, c);
+							_g.drawCircle($posXExpr, $posYExpr, $rExpr);
+							_g.lineStyle();
+						});
+				}
+
+			case GEEllipse(color, style, width, height):
+				final cExpr = rvToExpr(color);
+				final wExpr = rvToExpr(width);
+				final hExpr = rvToExpr(height);
+				switch (style) {
+					case GSFilled:
+						exprs.push(macro {
+							final _g:h2d.Graphics = cast $gRef;
+							var c:Int = $cExpr;
+							if (c >>> 24 == 0) c |= 0xFF000000;
+							_g.beginFill(c);
+							_g.drawEllipse($posXExpr, $posYExpr, $wExpr, $hExpr);
+							_g.endFill();
+						});
+					case GSLineWidth(lw):
+						final lwExpr = rvToExpr(lw);
+						exprs.push(macro {
+							final _g:h2d.Graphics = cast $gRef;
+							var c:Int = $cExpr;
+							if (c >>> 24 == 0) c |= 0xFF000000;
+							_g.lineStyle($lwExpr, c);
+							_g.drawEllipse($posXExpr, $posYExpr, $wExpr, $hExpr);
+							_g.lineStyle();
+						});
+				}
+
+			case GERoundRect(color, style, width, height, radius):
+				final cExpr = rvToExpr(color);
+				final wExpr = rvToExpr(width);
+				final hExpr = rvToExpr(height);
+				final radExpr = rvToExpr(radius);
+				switch (style) {
+					case GSFilled:
+						exprs.push(macro {
+							final _g:h2d.Graphics = cast $gRef;
+							var c:Int = $cExpr;
+							if (c >>> 24 == 0) c |= 0xFF000000;
+							_g.beginFill(c);
+							_g.drawRoundedRect($posXExpr, $posYExpr, $wExpr, $hExpr, $radExpr);
+							_g.endFill();
+						});
+					case GSLineWidth(lw):
+						final lwExpr = rvToExpr(lw);
+						exprs.push(macro {
+							final _g:h2d.Graphics = cast $gRef;
+							var c:Int = $cExpr;
+							if (c >>> 24 == 0) c |= 0xFF000000;
+							_g.lineStyle($lwExpr, c);
+							_g.drawRoundedRect($posXExpr, $posYExpr, $wExpr, $hExpr, $radExpr);
+							_g.lineStyle();
+						});
+				}
+
+			case GEArc(color, style, radius, startAngle, arcAngle):
+				final cExpr = rvToExpr(color);
+				final rExpr = rvToExpr(radius);
+				final saExpr = rvToExpr(startAngle);
+				final aaExpr = rvToExpr(arcAngle);
+				switch (style) {
+					case GSLineWidth(lw):
+						final lwExpr = rvToExpr(lw);
+						exprs.push(macro {
+							final _g:h2d.Graphics = cast $gRef;
+							var c:Int = $cExpr;
+							if (c >>> 24 == 0) c |= 0xFF000000;
+							_g.lineStyle($lwExpr, c);
+							_g.drawPie($posXExpr, $posYExpr, $rExpr, hxd.Math.degToRad($saExpr), hxd.Math.degToRad($aaExpr));
+							_g.lineStyle();
+						});
+					case GSFilled:
+						exprs.push(macro {
+							final _g:h2d.Graphics = cast $gRef;
+							var c:Int = $cExpr;
+							if (c >>> 24 == 0) c |= 0xFF000000;
+							_g.lineStyle(1.0, c);
+							_g.drawPie($posXExpr, $posYExpr, $rExpr, hxd.Math.degToRad($saExpr), hxd.Math.degToRad($aaExpr));
+							_g.lineStyle();
+						});
+				}
+
+			case GELine(color, lineWidth, start, end):
+				final cExpr = rvToExpr(color);
+				final lwExpr = rvToExpr(lineWidth);
+				var sxExpr:Expr = macro 0.0;
+				var syExpr:Expr = macro 0.0;
+				var exExpr:Expr = macro 0.0;
+				var eyExpr:Expr = macro 0.0;
+				switch (start) {
+					case OFFSET(x, y):
+						sxExpr = rvToExpr(x);
+						syExpr = rvToExpr(y);
+					default:
+				}
+				switch (end) {
+					case OFFSET(x, y):
+						exExpr = rvToExpr(x);
+						eyExpr = rvToExpr(y);
+					default:
+				}
+				exprs.push(macro {
+					final _g:h2d.Graphics = cast $gRef;
+					var c:Int = $cExpr;
+					if (c >>> 24 == 0) c |= 0xFF000000;
+					_g.lineStyle($lwExpr, c);
+					_g.moveTo($posXExpr + $sxExpr, $posYExpr + $syExpr);
+					_g.lineTo($posXExpr + $exExpr, $posYExpr + $eyExpr);
+					_g.lineStyle();
+				});
+
+			case GEPolygon(color, style, points):
+				final cExpr = rvToExpr(color);
+				// Build polygon point arrays at compile time
+				final xExprs:Array<Expr> = [];
+				final yExprs:Array<Expr> = [];
+				for (p in points) {
+					switch (p) {
+						case OFFSET(x, y):
+							xExprs.push(rvToExpr(x));
+							yExprs.push(rvToExpr(y));
+						case ZERO | null:
+							xExprs.push(macro 0.0);
+							yExprs.push(macro 0.0);
+						default:
+							xExprs.push(macro 0.0);
+							yExprs.push(macro 0.0);
+					}
+				}
+				if (xExprs.length > 0) {
+					final polyExprs:Array<Expr> = [];
+					polyExprs.push(macro {
+						var c:Int = $cExpr;
+						if (c >>> 24 == 0) c |= 0xFF000000;
+					});
+
+					switch (style) {
+						case GSFilled:
+							polyExprs.push(macro {
+								final _g:h2d.Graphics = cast $gRef;
+								_g.beginFill(c);
+							});
+						case GSLineWidth(lw):
+							final lwExpr = rvToExpr(lw);
+							polyExprs.push(macro {
+								final _g:h2d.Graphics = cast $gRef;
+								_g.lineStyle($lwExpr, c);
+							});
+					}
+
+					// moveTo first point
+					final fx = xExprs[0];
+					final fy = yExprs[0];
+					polyExprs.push(macro {
+						final _g:h2d.Graphics = cast $gRef;
+						_g.moveTo($posXExpr + $fx, $posYExpr + $fy);
+					});
+
+					// lineTo remaining points
+					for (i in 1...xExprs.length) {
+						final px = xExprs[i];
+						final py = yExprs[i];
+						polyExprs.push(macro {
+							final _g:h2d.Graphics = cast $gRef;
+							_g.lineTo($posXExpr + $px, $posYExpr + $py);
+						});
+					}
+
+					// Close polygon
+					polyExprs.push(macro {
+						final _g:h2d.Graphics = cast $gRef;
+						_g.lineTo($posXExpr + $fx, $posYExpr + $fy);
+					});
+
+					switch (style) {
+						case GSFilled:
+							polyExprs.push(macro {
+								final _g:h2d.Graphics = cast $gRef;
+								_g.endFill();
+							});
+						case GSLineWidth(_):
+							polyExprs.push(macro {
+								final _g:h2d.Graphics = cast $gRef;
+								_g.lineStyle();
+							});
+					}
+
+					exprs.push(macro $b{polyExprs});
+				}
+		}
+
+		return exprs;
 	}
 
 	static function generateBitmapCreate(node:Node, fieldName:String, tileSource:TileSource, hAlign:HorizontalAlign, vAlign:VerticalAlign, pos:Position):CreateResult {
@@ -1753,6 +2108,30 @@ class ProgrammableCodeGen {
 				final nameExpr = rvToExpr(name);
 				final indexExpr = rvToExpr(index);
 				macro this.loadTileWithIndex($sheetExpr, $nameExpr, $indexExpr);
+			case TSGenerated(genType):
+				switch (genType) {
+					case SolidColor(w, h, color):
+						final wExpr = rvToExpr(w);
+						final hExpr = rvToExpr(h);
+						final cExpr = rvToExpr(color);
+						macro {
+							var c:Int = $cExpr;
+							if (c >>> 24 == 0) c |= 0xFF000000;
+							h2d.Tile.fromColor(c, $wExpr, $hExpr);
+						};
+					case Cross(w, h, color):
+						// Cross: solid color with diagonal lines — approximate as solid color
+						final wExpr = rvToExpr(w);
+						final hExpr = rvToExpr(h);
+						final cExpr = rvToExpr(color);
+						macro {
+							var c:Int = $cExpr;
+							if (c >>> 24 == 0) c |= 0xFF000000;
+							h2d.Tile.fromColor(c, $wExpr, $hExpr);
+						};
+					default:
+						macro this.loadTileFile("placeholder.png");
+				};
 			default:
 				macro this.loadTileFile("placeholder.png");
 		};
@@ -1772,6 +2151,109 @@ class ProgrammableCodeGen {
 				final yExpr = rvToExpr(y);
 				macro $fieldRef.setPosition($xExpr, $yExpr);
 			default: null;
+		};
+	}
+
+	/** Collect param refs from a Coordinates value */
+	static function collectPositionParamRefs(coords:Coordinates):Array<String> {
+		if (coords == null) return [];
+		return switch (coords) {
+			case OFFSET(x, y):
+				final refs:Array<String> = [];
+				collectParamRefsImpl(x, refs);
+				collectParamRefsImpl(y, refs);
+				refs;
+			default: [];
+		};
+	}
+
+	// ==================== Filters ====================
+
+	static function generateFilterExpr(filter:FilterType, pos:Position):Null<Expr> {
+		return switch (filter) {
+			case FilterNone: null;
+			case FilterGroup(filters):
+				final addExprs:Array<Expr> = [macro final _fg = new h2d.filter.Group()];
+				for (f in filters) {
+					final fe = generateFilterExpr(f, pos);
+					if (fe != null)
+						addExprs.push(macro _fg.add($fe));
+				}
+				addExprs.push(macro _fg);
+				macro $b{addExprs};
+			case FilterOutline(size, color):
+				final sExpr = rvToExpr(size);
+				final cExpr = rvToExpr(color);
+				macro new h2d.filter.Outline($sExpr, $cExpr);
+			case FilterSaturate(v):
+				final vExpr = rvToExpr(v);
+				macro {
+					final m = new h3d.Matrix();
+					m.identity();
+					m.colorSaturate($vExpr);
+					new h2d.filter.ColorMatrix(m);
+				};
+			case FilterBrightness(v):
+				final vExpr = rvToExpr(v);
+				macro {
+					final m = new h3d.Matrix();
+					m.identity();
+					m.colorLightness($vExpr);
+					new h2d.filter.ColorMatrix(m);
+				};
+			case FilterGlow(color, alpha, radius, gain, quality, smoothColor, knockout):
+				final cExpr = rvToExpr(color);
+				final aExpr = rvToExpr(alpha);
+				final rExpr = rvToExpr(radius);
+				final gExpr = rvToExpr(gain);
+				final qExpr = rvToExpr(quality);
+				if (knockout) {
+					macro {
+						final f = new h2d.filter.Glow($cExpr, $aExpr, $rExpr, $gExpr, $qExpr, $v{smoothColor});
+						f.knockout = true;
+						f;
+					};
+				} else {
+					macro new h2d.filter.Glow($cExpr, $aExpr, $rExpr, $gExpr, $qExpr, $v{smoothColor});
+				}
+			case FilterBlur(radius, gain, quality, linear):
+				final rExpr = rvToExpr(radius);
+				final gExpr = rvToExpr(gain);
+				final qExpr = rvToExpr(quality);
+				final lExpr = rvToExpr(linear);
+				macro new h2d.filter.Blur($rExpr, $gExpr, $qExpr, $lExpr);
+			case FilterDropShadow(distance, angle, color, alpha, radius, gain, quality, smoothColor):
+				final dExpr = rvToExpr(distance);
+				final aExpr = rvToExpr(angle);
+				final cExpr = rvToExpr(color);
+				final alExpr = rvToExpr(alpha);
+				final rExpr = rvToExpr(radius);
+				final gExpr = rvToExpr(gain);
+				final qExpr = rvToExpr(quality);
+				macro new h2d.filter.DropShadow($dExpr, hxd.Math.degToRad($aExpr), $cExpr, $alExpr, $rExpr, $gExpr, $qExpr, $v{smoothColor});
+			case FilterPixelOutline(mode, smoothColor):
+				switch (mode) {
+					case POKnockout(color, knockout):
+						final cExpr = rvToExpr(color);
+						final kExpr = rvToExpr(knockout);
+						macro bh.base.filters.PixelOutline.create(bh.base.filters.PixelOutline.PixelOutlineMode.Knockout($cExpr, $kExpr), $v{smoothColor});
+					case POInlineColor(color, inlineColor):
+						final cExpr = rvToExpr(color);
+						final icExpr = rvToExpr(inlineColor);
+						macro bh.base.filters.PixelOutline.create(bh.base.filters.PixelOutline.PixelOutlineMode.InlineColor($cExpr, $icExpr), $v{smoothColor});
+				}
+			case FilterPaletteReplace(paletteName, sourceRow, replacementRow):
+				// Palette replace needs runtime builder — fall back to null
+				null;
+			case FilterColorListReplace(sourceColors, replacementColors):
+				// Color list replace — generate arrays of resolved colors
+				final srcExprs:Array<Expr> = [];
+				for (c in sourceColors) srcExprs.push(rvToExpr(c));
+				final dstExprs:Array<Expr> = [];
+				for (c in replacementColors) dstExprs.push(rvToExpr(c));
+				final srcArr:Expr = {expr: EArrayDecl(srcExprs), pos: pos};
+				final dstArr:Expr = {expr: EArrayDecl(dstExprs), pos: pos};
+				macro bh.base.filters.ReplacePaletteShader.createAsColorsFilter($srcArr, $dstArr);
 		};
 	}
 
