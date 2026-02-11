@@ -448,6 +448,7 @@ class ScreenManager {
 			for (screen in removedScreens) {
 				screen.getController().lifecycleEvent(LifecycleControllerFinished);
 				this.activeScreenControllers.remove(screen);
+				screen.onScreenEvent(UILeaving, null);
 				screen.onScreenEvent(UIOnControllerEvent(Leaving), null);
 				removeScreen(screen);
 			}
@@ -455,6 +456,7 @@ class ScreenManager {
 			for (screen => layerIndex in addedScreens) {
 				final controller = screen.getController();
 				addScreen(screen, layerIndex);
+				screen.onScreenEvent(UIEntering, null);
 				screen.onScreenEvent(UIOnControllerEvent(Entering), null);
 				controller.lifecycleEvent(LifecycleControllerStarted);
 				if (overrideActiveScreenControllers == null) {
