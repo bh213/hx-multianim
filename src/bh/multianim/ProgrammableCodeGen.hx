@@ -457,7 +457,7 @@ class ProgrammableCodeGen {
 			ctorExprs.push(expr);
 
 		// Position
-		final posExpr = generatePositionExpr(node.pos, fieldName, pos);
+		final posExpr = generatePositionExpr(node.pos, fieldName, pos, node);
 		if (posExpr != null)
 			ctorExprs.push(posExpr);
 
@@ -483,7 +483,7 @@ class ProgrammableCodeGen {
 		if (node.tint != null) {
 			final tintExpr = rvToExpr(node.tint);
 			final fieldRef = macro $p{["this", fieldName]};
-			ctorExprs.push(macro {
+			final tintUpdateExpr = macro {
 				final _obj = $fieldRef;
 				if (Std.isOfType(_obj, h2d.Drawable)) {
 					final d:h2d.Drawable = cast _obj;
@@ -491,7 +491,18 @@ class ProgrammableCodeGen {
 					if (c >>> 24 == 0) c |= 0xFF000000;
 					d.color.setColor(c);
 				}
-			});
+			};
+			ctorExprs.push(tintUpdateExpr);
+
+			// Tint expression updates: if tint has $param references, update on setter calls
+			final tintRefs = collectParamRefs(node.tint);
+			if (tintRefs.length > 0) {
+				expressionUpdates.push({
+					fieldName: fieldName,
+					updateExpr: tintUpdateExpr,
+					paramRefs: tintRefs,
+				});
+			}
 		}
 
 		// Filters
@@ -500,6 +511,16 @@ class ProgrammableCodeGen {
 			if (filterExpr != null) {
 				final fieldRef = macro $p{["this", fieldName]};
 				ctorExprs.push(macro $fieldRef.filter = $filterExpr);
+
+				// Filter expression updates: if filter has $param references, update on setter calls
+				final filterRefs = collectFilterParamRefs(node.filter);
+				if (filterRefs.length > 0) {
+					expressionUpdates.push({
+						fieldName: fieldName,
+						updateExpr: macro $fieldRef.filter = $filterExpr,
+						paramRefs: filterRefs,
+					});
+				}
 			}
 		}
 
@@ -507,7 +528,7 @@ class ProgrammableCodeGen {
 		if (node.pos != null) {
 			final posParamRefs = collectPositionParamRefs(node.pos);
 			if (posParamRefs.length > 0) {
-				final posUpdate = generatePositionExpr(node.pos, fieldName, pos);
+				final posUpdate = generatePositionExpr(node.pos, fieldName, pos, node);
 				if (posUpdate != null) {
 					expressionUpdates.push({
 						fieldName: fieldName,
@@ -629,7 +650,7 @@ class ProgrammableCodeGen {
 		ctorExprs.push(macro $p{["this", containerName]} = new h2d.Object());
 
 		// Position the container
-		final posExpr = generatePositionExpr(node.pos, containerName, pos);
+		final posExpr = generatePositionExpr(node.pos, containerName, pos, node);
 		if (posExpr != null)
 			ctorExprs.push(posExpr);
 
@@ -786,7 +807,7 @@ class ProgrammableCodeGen {
 		fields.push(makeField(containerName, FVar(macro :h2d.Object, null), [APrivate], pos));
 		ctorExprs.push(macro $p{["this", containerName]} = new h2d.Object());
 
-		final posExpr = generatePositionExpr(node.pos, containerName, pos);
+		final posExpr = generatePositionExpr(node.pos, containerName, pos, node);
 		if (posExpr != null)
 			ctorExprs.push(posExpr);
 
@@ -971,7 +992,7 @@ class ProgrammableCodeGen {
 		fields.push(makeField(containerName, FVar(macro :h2d.Object, null), [APrivate], pos));
 		ctorExprs.push(macro $p{["this", containerName]} = new h2d.Object());
 
-		final posExpr = generatePositionExpr(node.pos, containerName, pos);
+		final posExpr = generatePositionExpr(node.pos, containerName, pos, node);
 		if (posExpr != null)
 			ctorExprs.push(posExpr);
 
@@ -1157,7 +1178,7 @@ class ProgrammableCodeGen {
 		fields.push(makeField(containerName, FVar(macro :h2d.Object, null), [APrivate], pos));
 		ctorExprs.push(macro $p{["this", containerName]} = new h2d.Object());
 
-		final posExpr = generatePositionExpr(node.pos, containerName, pos);
+		final posExpr = generatePositionExpr(node.pos, containerName, pos, node);
 		if (posExpr != null)
 			ctorExprs.push(posExpr);
 
@@ -1337,12 +1358,8 @@ class ProgrammableCodeGen {
 					exprUpdates: [],
 				};
 
-			case PLACEHOLDER(_, _): {
-					fieldType: macro :h2d.Object,
-					createExprs: [macro $p{["this", fieldName]} = new h2d.Object()],
-					isContainer: true,
-					exprUpdates: [],
-				};
+			case PLACEHOLDER(type, source):
+				generatePlaceholderCreate(node, fieldName, type, source, pos);
 
 			case REFERENCE(externalReference, programmableRef, parameters):
 				generateReferenceCreate(node, fieldName, externalReference, programmableRef, parameters, pos);
@@ -1393,6 +1410,51 @@ class ProgrammableCodeGen {
 			fieldType: macro :h2d.Object,
 			createExprs: createExprs,
 			isContainer: false,
+			exprUpdates: [],
+		};
+	}
+
+	// ==================== Placeholder ====================
+
+	static function generatePlaceholderCreate(node:Node, fieldName:String, type:MultiAnimParser.PlaceholderTypes,
+			source:MultiAnimParser.PlaceholderReplacementSource, pos:Position):CreateResult {
+		final fieldRef = macro $p{["this", fieldName]};
+		final createExprs:Array<Expr> = [];
+
+		// Generate the callback/source resolution call
+		final callExpr:Expr = switch (source) {
+			case PRSCallback(callbackName):
+				final nameExpr = rvToExpr(callbackName);
+				macro this.buildPlaceholderViaCallback($nameExpr);
+			case PRSCallbackWithIndex(callbackName, index):
+				final nameExpr = rvToExpr(callbackName);
+				final idxExpr = rvToExpr(index);
+				macro this.buildPlaceholderViaCallbackWithIndex($nameExpr, $idxExpr);
+			case PRSBuilderParameterSource(callbackName):
+				final nameExpr = rvToExpr(callbackName);
+				macro this.buildPlaceholderViaSource($nameExpr);
+		};
+
+		// Generate fallback expression based on placeholder type
+		final fallbackExpr:Expr = switch (type) {
+			case PHTileSource(tileSource):
+				final tileExpr = tileSourceToExpr(tileSource);
+				macro new h2d.Bitmap($tileExpr);
+			case PHNothing:
+				macro new h2d.Object();
+			case PHError:
+				macro new h2d.Object();
+		};
+
+		createExprs.push(macro {
+			final _phResult = $callExpr;
+			$fieldRef = _phResult != null ? _phResult : $fallbackExpr;
+		});
+
+		return {
+			fieldType: macro :h2d.Object,
+			createExprs: createExprs,
+			isContainer: true,
 			exprUpdates: [],
 		};
 	}
@@ -1744,10 +1806,15 @@ class ProgrammableCodeGen {
 			case Left: createExprs.push(macro $fieldRef.textAlign = Left);
 		}
 
-		// maxWidth
+		// maxWidth — divide by scale to match builder behavior (alignment is calculated pre-scale)
 		switch (textDef.textAlignWidth) {
 			case TAWValue(value):
-				createExprs.push(macro $fieldRef.maxWidth = $v{value});
+				final scaleAdjust:Float = if (node.scale != null) {
+					final s = resolveRVStatic(node.scale);
+					if (s != null) s else 1.0;
+				} else 1.0;
+				final adjustedWidth:Float = value / scaleAdjust;
+				createExprs.push(macro $fieldRef.maxWidth = $v{adjustedWidth});
 			default:
 		}
 
@@ -1756,8 +1823,7 @@ class ProgrammableCodeGen {
 			createExprs.push(macro $fieldRef.letterSpacing = $v{textDef.letterSpacing});
 		if (textDef.lineSpacing != 0)
 			createExprs.push(macro $fieldRef.lineSpacing = $v{textDef.lineSpacing});
-		if (textDef.lineBreak)
-			createExprs.push(macro $fieldRef.lineBreak = true);
+		createExprs.push(macro $fieldRef.lineBreak = $v{textDef.lineBreak});
 
 		if (textDef.dropShadowXY != null) {
 			final dx:Float = textDef.dropShadowXY.x;
@@ -2140,7 +2206,7 @@ class ProgrammableCodeGen {
 
 	// ==================== Position ====================
 
-	static function generatePositionExpr(coords:Coordinates, fieldName:String, pos:Position):Null<Expr> {
+	static function generatePositionExpr(coords:Coordinates, fieldName:String, pos:Position, ?node:MultiAnimParser.Node):Null<Expr> {
 		if (coords == null)
 			return null;
 		final fieldRef = macro $p{["this", fieldName]};
@@ -2151,7 +2217,67 @@ class ProgrammableCodeGen {
 				final xExpr = rvToExpr(x);
 				final yExpr = rvToExpr(y);
 				macro $fieldRef.setPosition($xExpr, $yExpr);
-			default: null;
+			case SELECTED_GRID_POSITION(gridX, gridY):
+				final grid = getGridFromLayout();
+				if (grid != null) {
+					final gxExpr = rvToExpr(gridX);
+					final gyExpr = rvToExpr(gridY);
+					final sx:Int = grid.spacingX;
+					final sy:Int = grid.spacingY;
+					macro $fieldRef.setPosition($gxExpr * $v{sx}, $gyExpr * $v{sy});
+				} else null;
+			case SELECTED_GRID_POSITION_WITH_OFFSET(gridX, gridY, offsetX, offsetY):
+				final grid = getGridFromLayout();
+				if (grid != null) {
+					final gxExpr = rvToExpr(gridX);
+					final gyExpr = rvToExpr(gridY);
+					final oxExpr = rvToExpr(offsetX);
+					final oyExpr = rvToExpr(offsetY);
+					final sx:Int = grid.spacingX;
+					final sy:Int = grid.spacingY;
+					macro $fieldRef.setPosition($gxExpr * $v{sx} + $oxExpr, $gyExpr * $v{sy} + $oyExpr);
+				} else null;
+			case SELECTED_HEX_POSITION(hex):
+				final hexLayout = getHexLayoutForNode(node);
+				if (hexLayout != null) {
+					final pt = hexLayout.hexToPixel(hex);
+					macro $fieldRef.setPosition($v{pt.x}, $v{pt.y});
+				} else null;
+			case SELECTED_HEX_CORNER(count, factor):
+				final hexLayout = getHexLayoutForNode(node);
+				if (hexLayout != null) {
+					final c = resolveRVStatic(count);
+					final f = resolveRVStatic(factor);
+					if (c != null && f != null) {
+						final pt = hexLayout.polygonCorner(bh.base.Hex.zero(), Std.int(c), f);
+						macro $fieldRef.setPosition($v{pt.x}, $v{pt.y});
+					} else {
+						Context.warning('ProgrammableCodeGen: param-dependent hexCorner not yet supported', pos);
+						null;
+					}
+				} else null;
+			case SELECTED_HEX_EDGE(direction, factor):
+				final hexLayout = getHexLayoutForNode(node);
+				if (hexLayout != null) {
+					final d = resolveRVStatic(direction);
+					final f = resolveRVStatic(factor);
+					if (d != null && f != null) {
+						final pt = hexLayout.polygonEdge(bh.base.Hex.zero(), Std.int(d), f);
+						macro $fieldRef.setPosition($v{pt.x}, $v{pt.y});
+					} else {
+						Context.warning('ProgrammableCodeGen: param-dependent hexEdge not yet supported', pos);
+						null;
+					}
+				} else null;
+			case LAYOUT(layoutName, index):
+				final idx = resolveRVStatic(index);
+				if (idx != null) {
+					final pt = resolveLayoutPosition(layoutName, Std.int(idx));
+					if (pt != null)
+						macro $fieldRef.setPosition($v{pt.x}, $v{pt.y})
+					else
+						null;
+				} else null;
 		};
 	}
 
@@ -2164,11 +2290,173 @@ class ProgrammableCodeGen {
 				collectParamRefsImpl(x, refs);
 				collectParamRefsImpl(y, refs);
 				refs;
+			case SELECTED_GRID_POSITION(gridX, gridY):
+				final refs:Array<String> = [];
+				collectParamRefsImpl(gridX, refs);
+				collectParamRefsImpl(gridY, refs);
+				refs;
+			case SELECTED_GRID_POSITION_WITH_OFFSET(gridX, gridY, offsetX, offsetY):
+				final refs:Array<String> = [];
+				collectParamRefsImpl(gridX, refs);
+				collectParamRefsImpl(gridY, refs);
+				collectParamRefsImpl(offsetX, refs);
+				collectParamRefsImpl(offsetY, refs);
+				refs;
+			case SELECTED_HEX_CORNER(count, factor):
+				final refs:Array<String> = [];
+				collectParamRefsImpl(count, refs);
+				collectParamRefsImpl(factor, refs);
+				refs;
+			case SELECTED_HEX_EDGE(direction, factor):
+				final refs:Array<String> = [];
+				collectParamRefsImpl(direction, refs);
+				collectParamRefsImpl(factor, refs);
+				refs;
+			case LAYOUT(_, index):
+				final refs:Array<String> = [];
+				collectParamRefsImpl(index, refs);
+				refs;
 			default: [];
 		};
 	}
 
+	/** Get grid coordinate system from #defaultLayout */
+	static function getGridFromLayout():Null<CoordinateSystems.GridCoordinateSystem> {
+		final layoutNode = allParsedNodes.get("#defaultLayout");
+		if (layoutNode == null) return null;
+		return switch (layoutNode.type) {
+			case RELATIVE_LAYOUTS(ld):
+				var result:Null<CoordinateSystems.GridCoordinateSystem> = null;
+				for (_ => layout in ld) {
+					if (layout.grid != null) {
+						result = layout.grid;
+						break;
+					}
+				}
+				result;
+			default: null;
+		};
+	}
+
+	/** Get hex layout for a node — first traverses parent chain, then falls back to #defaultLayout */
+	static function getHexLayoutForNode(?node:MultiAnimParser.Node):Null<bh.base.Hex.HexLayout> {
+		// First try the node's parent chain (handles inline hex: pointy/flat on parent elements)
+		// Inlined from MultiAnimParser.getHexCoordinateSystem — can't call runtime functions from macro
+		var n = node;
+		while (n != null) {
+			if (n.hexCoordinateSystem != null)
+				return n.hexCoordinateSystem.hexLayout;
+			n = n.parent;
+		}
+		// Fall back to #defaultLayout
+		final layoutNode = allParsedNodes.get("#defaultLayout");
+		if (layoutNode == null) return null;
+		return switch (layoutNode.type) {
+			case RELATIVE_LAYOUTS(ld):
+				var result:Null<bh.base.Hex.HexLayout> = null;
+				for (_ => layout in ld) {
+					if (layout.hex != null) {
+						result = layout.hex.hexLayout;
+						break;
+					}
+				}
+				result;
+			default: null;
+		};
+	}
+
+	/** Resolve a layout position by name and index at macro time */
+	static function resolveLayoutPosition(layoutName:String, index:Int):Null<{x:Float, y:Float}> {
+		final layoutNode = allParsedNodes.get("#defaultLayout");
+		if (layoutNode == null) return null;
+		final layoutsDef = switch (layoutNode.type) {
+			case RELATIVE_LAYOUTS(ld): ld;
+			default: return null;
+		};
+		final layout = layoutsDef.get(layoutName);
+		if (layout == null) return null;
+
+		final offsetX:Float = layout.offset != null ? layout.offset.x : 0;
+		final offsetY:Float = layout.offset != null ? layout.offset.y : 0;
+
+		final pt:Null<{x:Float, y:Float}> = switch (layout.type) {
+			case Single(content):
+				resolveLayoutPoint(content, layout, 0);
+			case List(list):
+				if (index >= 0 && index < list.length)
+					resolveLayoutPoint(list[index], layout, index)
+				else
+					null;
+			case Sequence(_, from, to, content):
+				if (index >= from && index <= to)
+					resolveLayoutPoint(content, layout, index)
+				else
+					null;
+		};
+
+		if (pt != null) {
+			return {x: pt.x + offsetX, y: pt.y + offsetY};
+		}
+		return null;
+	}
+
 	// ==================== Filters ====================
+
+	/** Collect param refs from a FilterType value */
+	static function collectFilterParamRefs(filter:FilterType):Array<String> {
+		final refs:Array<String> = [];
+		collectFilterParamRefsImpl(filter, refs);
+		return refs;
+	}
+
+	static function collectFilterParamRefsImpl(filter:FilterType, refs:Array<String>):Void {
+		switch (filter) {
+			case FilterNone:
+			case FilterGroup(filters):
+				for (f in filters) collectFilterParamRefsImpl(f, refs);
+			case FilterOutline(size, color):
+				collectParamRefsImpl(size, refs);
+				collectParamRefsImpl(color, refs);
+			case FilterSaturate(v):
+				collectParamRefsImpl(v, refs);
+			case FilterBrightness(v):
+				collectParamRefsImpl(v, refs);
+			case FilterGlow(color, alpha, radius, gain, quality, _, _):
+				collectParamRefsImpl(color, refs);
+				collectParamRefsImpl(alpha, refs);
+				collectParamRefsImpl(radius, refs);
+				collectParamRefsImpl(gain, refs);
+				collectParamRefsImpl(quality, refs);
+			case FilterBlur(radius, gain, quality, linear):
+				collectParamRefsImpl(radius, refs);
+				collectParamRefsImpl(gain, refs);
+				collectParamRefsImpl(quality, refs);
+				collectParamRefsImpl(linear, refs);
+			case FilterDropShadow(distance, angle, color, alpha, radius, gain, quality, _):
+				collectParamRefsImpl(distance, refs);
+				collectParamRefsImpl(angle, refs);
+				collectParamRefsImpl(color, refs);
+				collectParamRefsImpl(alpha, refs);
+				collectParamRefsImpl(radius, refs);
+				collectParamRefsImpl(gain, refs);
+				collectParamRefsImpl(quality, refs);
+			case FilterPixelOutline(mode, _):
+				switch (mode) {
+					case POKnockout(color, knockout):
+						collectParamRefsImpl(color, refs);
+						collectParamRefsImpl(knockout, refs);
+					case POInlineColor(color, inlineColor):
+						collectParamRefsImpl(color, refs);
+						collectParamRefsImpl(inlineColor, refs);
+				}
+			case FilterPaletteReplace(_, sourceRow, replacementRow):
+				collectParamRefsImpl(sourceRow, refs);
+				collectParamRefsImpl(replacementRow, refs);
+			case FilterColorListReplace(sourceColors, replacementColors):
+				for (c in sourceColors) collectParamRefsImpl(c, refs);
+				for (c in replacementColors) collectParamRefsImpl(c, refs);
+		}
+	}
 
 	static function generateFilterExpr(filter:FilterType, pos:Position):Null<Expr> {
 		return switch (filter) {

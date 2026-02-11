@@ -1,0 +1,20 @@
+version: 0.3
+
+#codegenFilterParam programmable(outlineColor:color=#FF0000, blurRadius:int=2, tintColor:color=#00FF00) {
+  bitmap(generated(color(60, 60, #4488FF))) {
+    filter: outline(size: 2, color: $outlineColor)
+    pos: 20, 20
+  }
+
+  bitmap(generated(color(60, 60, #44FF88))) {
+    filter: blur(radius: $blurRadius, gain: 1.0)
+    pos: 120, 20
+  }
+
+  @tint($tintColor) bitmap(generated(color(60, 60, #FFFFFF))): 220, 20
+
+  bitmap(generated(color(60, 60, #FF4488))) {
+    filter: outline(size: 3, color: #00FF00)
+    pos: 320, 20
+  }
+}

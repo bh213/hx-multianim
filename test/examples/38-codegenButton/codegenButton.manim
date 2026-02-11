@@ -1,13 +1,13 @@
 version: 0.3
 
 #codegenButton programmable(status:[hover, pressed, normal]=normal, disabled:[true, false]=false, buttonText="Button") {
-      @(status=>normal, disabled=>false) ninepatch("ui", "button-idle", 200, 30):     0,1
-      @(status=>hover, disabled=>false) ninepatch("ui", "button-hover", 200, 30):     0,0
-      @(status=>pressed, disabled=>false) ninepatch("ui", "button-pressed", 200, 30): 0,0
-      @(status=>*, disabled=>true) ninepatch("ui", "button-disabled", 200, 30):       0,0
+      @(status=>normal, disabled=>false) ninepatch("ui", "button-idle", 200, 30):     10,21
+      @(status=>hover, disabled=>false) ninepatch("ui", "button-hover", 200, 30):     10,20
+      @(status=>pressed, disabled=>false) ninepatch("ui", "button-pressed", 200, 30): 10,20
+      @(status=>*, disabled=>true) ninepatch("ui", "button-disabled", 200, 30):       10,20
 
-      @(status=>hover, disabled=>false) text(dd, $buttonText, 0xffffff12, center, 200): 0,10
-      @(status=>pressed, disabled=>false) text(dd, $buttonText, 0xffffff12, center, 200): 0,10
-      @(status=>normal, disabled=>false) text(dd, $buttonText, 0xffffff12, center, 200): 0,10
-      @(status=>*, disabled=>true) text(dd, $buttonText, 0xffffff12, center, 200): 0,10
+      @(status=>hover, disabled=>false) text(dd, $buttonText, 0xffffff12, center, 200): 10,30
+      @(status=>pressed, disabled=>false) text(dd, $buttonText, 0xffffff12, center, 200): 10,30
+      @(status=>normal, disabled=>false) text(dd, $buttonText, 0xffffff12, center, 200): 10,30
+      @(status=>*, disabled=>true) text(dd, $buttonText, 0xffffff12, center, 200): 10,30
 }

@@ -2,10 +2,10 @@ version: 0.3
 
 #codegenGraphics programmable() {
   graphics (
-    rect(#f00, filled, 120, 80): 20, 20
-    circle(#0f0, filled, 50): 250, 60
-    roundRect(#00f, filled, 120, 80, 15): 350, 20
-    circle(#ff0, 3, 40): 550, 60
-    line(#0ff, 3, -40, -30, 40, 30): 650, 60
+    rect(#f00, filled, 55, 35): 10, 10
+    circle(#0f0, filled, 22): 115, 28
+    roundRect(#00f, filled, 55, 35, 7): 155, 10
+    circle(#ff0, 3, 18): 245, 28
+    line(#0ff, 3, -18, -14, 18, 14): 290, 28
   );
 }

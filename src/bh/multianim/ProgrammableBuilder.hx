@@ -6,6 +6,9 @@ import h2d.Font;
 import bh.base.ResourceLoader;
 import bh.base.Atlas2.IAtlas2;
 import bh.multianim.MultiAnimBuilder.BuilderResult;
+import bh.multianim.MultiAnimBuilder.CallbackRequest;
+import bh.multianim.MultiAnimBuilder.CallbackResult;
+import bh.multianim.MultiAnimBuilder.PlaceholderValues;
 import bh.multianim.MultiAnimParser.TileSource;
 
 /**
@@ -127,5 +130,43 @@ class ProgrammableBuilder {
 			}
 		}
 		return result;
+	}
+
+	/** Build a placeholder via builder callback (for PLACEHOLDER nodes with PRSCallback source) */
+	public function buildPlaceholderViaCallback(name:String):Null<h2d.Object> {
+		final builder:MultiAnimBuilder = _builder;
+		final callback = @:privateAccess builder.builderParams.callback;
+		if (callback == null) return null;
+		return extractObject(callback(Placeholder(name)));
+	}
+
+	/** Build a placeholder via builder callback with index (for PRSCallbackWithIndex source) */
+	public function buildPlaceholderViaCallbackWithIndex(name:String, index:Int):Null<h2d.Object> {
+		final builder:MultiAnimBuilder = _builder;
+		final callback = @:privateAccess builder.builderParams.callback;
+		if (callback == null) return null;
+		return extractObject(callback(PlaceholderWithIndex(name, index)));
+	}
+
+	/** Build a placeholder via builder parameter source (for PRSBuilderParameterSource) */
+	public function buildPlaceholderViaSource(name:String):Null<h2d.Object> {
+		final builder:MultiAnimBuilder = _builder;
+		final phObjects = @:privateAccess builder.builderParams.placeholderObjects;
+		if (phObjects == null) return null;
+		final param = phObjects.get(name);
+		return switch param {
+			case null: null;
+			case PVObject(obj): obj;
+			case PVFactory(factoryMethod): factoryMethod(null);
+		};
+	}
+
+	static function extractObject(result:CallbackResult):Null<h2d.Object> {
+		return switch result {
+			case CBRObject(val): val;
+			case CBRNoResult: null;
+			case null: null;
+			default: null;
+		};
 	}
 }

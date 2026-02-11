@@ -25,6 +25,10 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	static final TINT_MANIM = "test/examples/37-tintDemo/tintDemo.manim";
 	static final GRAPHICS_MANIM = "test/examples/46-codegenGraphics/codegenGraphics.manim";
 	static final REFERENCE_MANIM = "test/examples/47-codegenReference/codegenReference.manim";
+	static final FILTERPARAM_MANIM = "test/examples/48-codegenFilterParam/codegenFilterParam.manim";
+	static final GRIDPOS_MANIM = "test/examples/49-codegenGridPos/codegenGridPos.manim";
+	static final HEXPOS_MANIM = "test/examples/50-codegenHexPos/codegenHexPos.manim";
+	static final TEXTOPTS_MANIM = "test/examples/51-codegenTextOpts/codegenTextOpts.manim";
 
 	public function new(s2d:Scene) {
 		super("programmableCodeGen", s2d);
@@ -378,6 +382,141 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 			final builder = loadBuilder(REFERENCE_MANIM);
 			return bh.test.MultiProgrammable_Reference.create(builder).root;
 		}, async, 1280, 720);
+	}
+
+	// ==================== FilterParam: unit tests ====================
+
+	@Test
+	public function testFilterParamCreate():Void {
+		final builder = loadBuilder(FILTERPARAM_MANIM);
+		final fp = bh.test.MultiProgrammable_FilterParam.create(builder);
+		Assert.notNull(fp.root, "FilterParam should have a root object");
+		Assert.isTrue(fp.root.numChildren > 0, "Root should have children");
+	}
+
+	@Test
+	public function testFilterParamSetOutlineColor():Void {
+		final builder = loadBuilder(FILTERPARAM_MANIM);
+		final fp = bh.test.MultiProgrammable_FilterParam.create(builder);
+
+		// Verify filter exists on first child (outline)
+		final firstChild = fp.root.getChildAt(0);
+		Assert.notNull(firstChild.filter, "First child should have an outline filter");
+
+		// Change outline color — filter should update
+		fp.setOutlineColor(0x00FF00);
+		Assert.notNull(firstChild.filter, "Filter should still exist after color change");
+	}
+
+	@Test
+	public function testFilterParamSetTintColor():Void {
+		final builder = loadBuilder(FILTERPARAM_MANIM);
+		final fp = bh.test.MultiProgrammable_FilterParam.create(builder);
+
+		// Change tint color — tint should update
+		fp.setTintColor(0xFF0000);
+		// Just verify it doesn't crash — visual correctness verified by screenshot
+		Assert.isTrue(fp.root.numChildren > 0, "Should still have children after tint change");
+	}
+
+	// ==================== FilterParam: visual (3-image) ====================
+
+	@Test
+	public function test48_CodegenFilterParam(async:utest.Async):Void {
+		this.testName = "codegenFilterParam";
+		this.testTitle = "#48: codegen filter param";
+		this.referenceDir = "test/examples/48-codegenFilterParam";
+		builderAndMacroScreenshotAndCompare(FILTERPARAM_MANIM, "codegenFilterParam", function() {
+			final builder = loadBuilder(FILTERPARAM_MANIM);
+			return bh.test.MultiProgrammable_FilterParam.create(builder).root;
+		}, async, 1280, 720);
+	}
+
+	// ==================== GridPos: unit tests ====================
+
+	@Test
+	public function testGridPosCreate():Void {
+		final builder = loadBuilder(GRIDPOS_MANIM);
+		final gp = bh.test.MultiProgrammable_GridPos.create(builder);
+		Assert.notNull(gp.root, "GridPos should have a root object");
+		Assert.isTrue(gp.root.numChildren > 0, "Root should have children");
+	}
+
+	@Test
+	public function testGridPosChildCount():Void {
+		final builder = loadBuilder(GRIDPOS_MANIM);
+		final gp = bh.test.MultiProgrammable_GridPos.create(builder);
+		// 4 posLayout points + 3 colLayout points = 7 bitmaps
+		var totalChildren = countAllDescendants(gp.root);
+		Assert.isTrue(totalChildren >= 7, "Should have at least 7 descendant objects from layout repeats");
+	}
+
+	// ==================== GridPos: visual (3-image) ====================
+
+	@Test
+	public function test49_CodegenGridPos(async:utest.Async):Void {
+		this.testName = "codegenGridPos";
+		this.testTitle = "#49: codegen grid pos";
+		this.referenceDir = "test/examples/49-codegenGridPos";
+		builderAndMacroScreenshotAndCompare(GRIDPOS_MANIM, "codegenGridPos", function() {
+			final builder = loadBuilder(GRIDPOS_MANIM);
+			return bh.test.MultiProgrammable_GridPos.create(builder).root;
+		}, async, 1280, 720);
+	}
+
+	// ==================== HexPos: unit tests ====================
+
+	@Test
+	public function testHexPosCreate():Void {
+		final builder = loadBuilder(HEXPOS_MANIM);
+		final hp = bh.test.MultiProgrammable_HexPos.create(builder);
+		Assert.notNull(hp.root, "HexPos should have a root object");
+		Assert.isTrue(hp.root.numChildren > 0, "Root should have children");
+	}
+
+	@Test
+	public function testHexPosChildCount():Void {
+		final builder = loadBuilder(HEXPOS_MANIM);
+		final hp = bh.test.MultiProgrammable_HexPos.create(builder);
+		// 2 hex groups x (6 corners + 6 edges) = 24 bitmaps
+		var totalChildren = countAllDescendants(hp.root);
+		Assert.isTrue(totalChildren >= 24, "Should have at least 24 descendant objects from hex positioning");
+	}
+
+	// ==================== HexPos: visual (3-image) ====================
+
+	@Test
+	public function test50_CodegenHexPos(async:utest.Async):Void {
+		this.testName = "codegenHexPos";
+		this.testTitle = "#50: codegen hex pos";
+		this.referenceDir = "test/examples/50-codegenHexPos";
+		builderAndMacroScreenshotAndCompare(HEXPOS_MANIM, "codegenHexPos", function() {
+			final builder = loadBuilder(HEXPOS_MANIM);
+			return bh.test.MultiProgrammable_HexPos.create(builder).root;
+		}, async, 1280, 720, 1.0);
+	}
+
+	// ==================== TextOpts: unit tests ====================
+
+	@Test
+	public function testTextOptsCreate():Void {
+		final builder = loadBuilder(TEXTOPTS_MANIM);
+		final to = bh.test.MultiProgrammable_TextOpts.create(builder);
+		Assert.notNull(to.root, "TextOpts should have a root object");
+		Assert.isTrue(to.root.numChildren > 0, "Root should have children");
+	}
+
+	// ==================== TextOpts: visual (3-image) ====================
+
+	@Test
+	public function test51_CodegenTextOpts(async:utest.Async):Void {
+		this.testName = "codegenTextOpts";
+		this.testTitle = "#51: codegen text opts";
+		this.referenceDir = "test/examples/51-codegenTextOpts";
+		builderAndMacroScreenshotAndCompare(TEXTOPTS_MANIM, "codegenTextOpts", function() {
+			final builder = loadBuilder(TEXTOPTS_MANIM);
+			return bh.test.MultiProgrammable_TextOpts.create(builder).root;
+		}, async, 1280, 720, 1.0);
 	}
 
 	// ==================== MultiProgrammable factory: unit tests ====================
