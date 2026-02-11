@@ -1990,6 +1990,18 @@ class MultiAnimBuilder {
 				var object = result?.object;
 				if (object == null)
 					throw 'could not build placeholder reference ${reference}' + MacroUtils.nodePos(node);
+
+				// When the referenced programmable has a non-zero pos, buildWithParameters wraps it:
+				// holder(0,0) → retRoot(posX,posY) → children
+				// Reference children should be added to retRoot so they inherit the position offset,
+				// not to the holder which is at (0,0).
+				if (object.numChildren == 1) {
+					final inner = object.getChildAt(0);
+					if (inner.x != 0 || inner.y != 0) {
+						selectedBuildMode = ObjectMode(inner);
+					}
+				}
+
 				HeapsObject(object);
 
 			case POINT:

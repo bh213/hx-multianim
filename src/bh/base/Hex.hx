@@ -447,6 +447,11 @@ class HexLayout
         return new HexLayout(this.orientation, size, origin);
     }
 
+    /** Factory to create a HexLayout from raw floats, usable from outside the module */
+    public static function createFromFloats(orientation:HexOrientation, sizeX:Float, sizeY:Float, originX:Float = 0, originY:Float = 0):HexLayout {
+        return new HexLayout(orientation, new Point(sizeX, sizeY), new Point(originX, originY));
+    }
+
 
     public function hexToPixel(h:Hex):Point
     {

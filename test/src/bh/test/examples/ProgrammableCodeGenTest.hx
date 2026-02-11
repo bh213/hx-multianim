@@ -351,7 +351,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		builderAndMacroScreenshotAndCompare(TINT_MANIM, "tintDemo", function() {
 			final builder = loadBuilder(TINT_MANIM);
 			return bh.test.MultiProgrammable_Tint.create(builder).root;
-		}, async, 1280, 720);
+		}, async, 1280, 720, 1.0);
 	}
 
 	// ==================== Graphics: visual (3-image) ====================

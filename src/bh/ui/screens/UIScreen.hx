@@ -380,7 +380,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 					postCustomAddToLayer.set(element.getObject(), customElement);
 			}
 		}
-		if (layer != null) {
+		if (layer != null && element.getObject().parent == null) {
 			addObjectToLayer(element.getObject(), layer);
 		}
 		return element;

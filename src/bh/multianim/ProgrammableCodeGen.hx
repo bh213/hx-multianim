@@ -5,6 +5,7 @@ import haxe.macro.Context;
 import haxe.macro.Expr;
 import haxe.macro.Type;
 import bh.multianim.MultiAnimParser;
+import bh.multianim.MultiAnimParser.MultiAnimResult;
 import bh.multianim.CoordinateSystems;
 import bh.multianim.MacroCompatTypes.MacroFlowLayout;
 import bh.multianim.layouts.LayoutTypes.LayoutContent;
@@ -282,7 +283,7 @@ class ProgrammableCodeGen {
 			return null;
 		};
 
-		final nodes:Map<String, Node> = try {
+		final result:MultiAnimResult = try {
 			MacroManimParser.parseFile(content, manimPath);
 		} catch (e:Dynamic) {
 			Context.fatalError('ProgrammableCodeGen: parse error in "$manimPath": $e', Context.currentPos());
@@ -290,8 +291,8 @@ class ProgrammableCodeGen {
 		};
 
 		// Cache for reuse
-		parsedCache.set(manimPath, nodes);
-		return nodes;
+		parsedCache.set(manimPath, result.nodes);
+		return result.nodes;
 	}
 
 	// ==================== Field Generation ====================

@@ -3,7 +3,6 @@
 #
 # This configuration builds and runs unit tests for the hx-multianim library
 
--lib hxparse
 -lib heaps
 -lib utest
 -lib hldx

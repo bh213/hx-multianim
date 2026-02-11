@@ -1,7 +1,5 @@
 package bh.ui.screens;
 
-import hxparse.ParserError;
-import hxparse.Unexpected;
 import hxd.fs.BytesFileSystem.BytesFileEntry;
 import hxd.res.Resource;
 import bh.multianim.MultiAnimBuilder;
@@ -198,8 +196,8 @@ class ScreenManager {
 		success:Bool,
 		error:Null<String>,
 		file:Null<String>,
-		pmin:Null<Int>,
-		pmax:Null<Int>
+		line:Null<Int>,
+		col:Null<Int>
 	} {
 		final oldBuilders = builders.copy();
 		builders.clear();
@@ -225,8 +223,8 @@ class ScreenManager {
 					success: false,
 					error: invalidSyntax.toString(),
 					file: invalidSyntax.pos.psource,
-					pmin: invalidSyntax.pos.pmin,
-					pmax: invalidSyntax.pos.pmax,
+					line: invalidSyntax.pos.line,
+					col: invalidSyntax.pos.col,
 				}
 			}
 
@@ -236,8 +234,8 @@ class ScreenManager {
 					success: false,
 					error: multiAnimUnexpected.toString(),
 					file: multiAnimUnexpected.pos.psource,
-					pmin: multiAnimUnexpected.pos.pmin,
-					pmax: multiAnimUnexpected.pos.pmax,
+					line: multiAnimUnexpected.pos.line,
+					col: multiAnimUnexpected.pos.col,
 				}
 			}
 
@@ -245,8 +243,8 @@ class ScreenManager {
 				success: false,
 				error: e.toString(),
 				file: null,
-				pmin: null,
-				pmax: null,
+				line: null,
+				col: null,
 			}
 		}
 
@@ -266,8 +264,8 @@ class ScreenManager {
 					success: false,
 					error: e.toString(),
 					file: null,
-					pmin: null,
-					pmax: null,
+					line: null,
+					col: null,
 				}
 			}
 			reloadedScreenNames.push(name);
@@ -280,8 +278,8 @@ class ScreenManager {
 			success: true,
 			error: null,
 			file: null,
-			pmin: null,
-			pmax: null,
+			line: null,
+			col: null,
 		}
 	}
 

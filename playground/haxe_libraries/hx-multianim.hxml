@@ -1,6 +1,5 @@
 # @install: lix --silent download "gh://github.com/bh213/hx-multianim#ad60c00ec6b764b4fb3049185663538d02ff5df7" into hx-multianim/0.10.0/github/ad60c00ec6b764b4fb3049185663538d02ff5df7
 -lib heaps
--lib hxparse
 # -cp ${HAXE_LIBCACHE}/hx-multianim/0.10.0/github/ad60c00ec6b764b4fb3049185663538d02ff5df7/src/
 -cp ../src
 -D hx-multianim=0.10.0
