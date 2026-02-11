@@ -236,8 +236,19 @@ class VisualTestBase extends utest.Test {
 			}
 		}
 
+		// Extract test number from referenceDir (format: "test/examples/N-testName")
+		var displayName = testName;
+		if (referenceDir != null) {
+			var dirName = haxe.io.Path.withoutDirectory(referenceDir);
+			var dashIdx = dirName.indexOf("-");
+			if (dashIdx > 0) {
+				var num = dirName.substring(0, dashIdx);
+				displayName = '#$num: $testName';
+			}
+		}
+
 		// Add to HTML report
-		HtmlReportGenerator.addResult(testName, reference, actual, passed, similarity);
+		HtmlReportGenerator.addResult(displayName, reference, actual, passed, similarity);
 
 		// Continuously update the HTML report as results come in
 		HtmlReportGenerator.generateReport();

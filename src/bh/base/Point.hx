@@ -16,9 +16,11 @@ class Point {
 		return this;
 	}
 
+	#if !macro
 	public inline function toh2dPoint() {
 		return new h2d.col.IPoint(x, y);
 	}
+	#end
 	
 	public function clone() {
 		return new Point(x, y);

@@ -8,6 +8,7 @@ import bh.multianim.MultiAnimParser;
 import bh.multianim.CoordinateSystems;
 import bh.multianim.MacroCompatTypes.MacroFlowLayout;
 import bh.multianim.layouts.LayoutTypes.LayoutContent;
+import bh.multianim.layouts.LayoutTypes.Layout;
 
 using StringTools;
 
@@ -39,6 +40,9 @@ class ProgrammableCodeGen {
 	// Loop variable substitutions: during repeat unrolling, maps loop var name -> current iteration value
 	static var loopVarSubstitutions:Map<String, Int> = new Map();
 
+	// Runtime loop variable mappings: maps manim var name -> runtime Haxe identifier name (for runtime iterators)
+	static var runtimeLoopVars:Map<String, String> = new Map();
+
 	// Repeat pool entries: for param-dependent repeats, tracks which pool containers to show/hide
 	static var repeatPoolEntries:Array<{containerField:String, iterIndex:Int, countParamRefs:Array<String>, countExpr:Expr}> = [];
 
@@ -62,6 +66,7 @@ class ProgrammableCodeGen {
 		paramNames = [];
 		paramEnumTypes = new Map();
 		loopVarSubstitutions = new Map();
+		runtimeLoopVars = new Map();
 		repeatPoolEntries = [];
 		allParsedNodes = new Map();
 
@@ -140,67 +145,16 @@ class ProgrammableCodeGen {
 		if (parsedCache.exists(manimPath))
 			return parsedCache.get(manimPath);
 
-		final cwd = Sys.getCwd();
-		final tmpFile = cwd + "build/.manim_ast_cache.bin";
-
-		// Ensure build dir exists
-		if (!sys.FileSystem.exists(cwd + "build"))
-			sys.FileSystem.createDirectory(cwd + "build");
-
-		// Compile to HL, then run (eval target is incompatible with heaps)
-		final hlBinary = cwd + "build/.manim_serializer.hl";
-
-		// Only recompile serializer if it doesn't exist yet
-		if (!sys.FileSystem.exists(hlBinary)) {
-			final args:Array<String> = [];
-			final libDir = cwd + "haxe_libraries/";
-			final excludeLibs = ["utest.hxml"];
-			if (sys.FileSystem.exists(libDir)) {
-				for (file in sys.FileSystem.readDirectory(libDir)) {
-					if (StringTools.endsWith(file, ".hxml") && !excludeLibs.contains(file)) {
-						args.push(libDir + file);
-					}
-				}
-			} else {
-				args.push("-lib");
-				args.push("hxparse");
-				args.push("-lib");
-				args.push("heaps");
-			}
-			args.push("-cp");
-			args.push(cwd + "src");
-			args.push("-D");
-			args.push("resourcesPath=" + cwd + "test/res");
-			args.push("-main");
-			args.push("bh.multianim.ProgrammableASTSerializer");
-			args.push("-hl");
-			args.push(hlBinary);
-
-			final compileExit = Sys.command("haxe", args);
-			if (compileExit != 0) {
-				Context.fatalError('ProgrammableCodeGen: failed to compile serializer (exit code $compileExit)', Context.currentPos());
-				return null;
-			}
-		}
-
-		// Run the HL binary to parse the .manim file
-		final runExit = Sys.command("hl", [hlBinary, manimPath, tmpFile]);
-		if (runExit != 0) {
-			Context.fatalError('ProgrammableCodeGen: serializer failed for "$manimPath" (exit code $runExit)', Context.currentPos());
-			return null;
-		}
-
-		// Read and deserialize
-		final serialized = try sys.io.File.getContent(tmpFile) catch (e:Dynamic) {
-			Context.fatalError('ProgrammableCodeGen: could not read serialized AST from "$tmpFile": $e', Context.currentPos());
+		// Read .manim file content and parse inline (no subprocess needed)
+		final content = try sys.io.File.getContent(manimPath) catch (e:Dynamic) {
+			Context.fatalError('ProgrammableCodeGen: could not read "$manimPath": $e', Context.currentPos());
 			return null;
 		};
 
 		final nodes:Map<String, Node> = try {
-			final u = new haxe.Unserializer(serialized);
-			u.unserialize();
+			MacroManimParser.parseFile(content, manimPath);
 		} catch (e:Dynamic) {
-			Context.fatalError('ProgrammableCodeGen: could not deserialize AST: $e', Context.currentPos());
+			Context.fatalError('ProgrammableCodeGen: parse error in "$manimPath": $e', Context.currentPos());
 			return null;
 		};
 
@@ -854,25 +808,51 @@ class ProgrammableCodeGen {
 			visibilityEntries.push({fieldName: containerName, condition: visCond});
 		siblings.push({node: node, fieldName: containerName});
 
-		// For runtime iterators, delegate to builder at construction time.
-		// We build the entire subtree via the builder and attach it.
 		final containerRef = macro $p{["this", containerName]};
 
+		// Set up runtime loop var mapping so rvToExpr generates runtime references
+		runtimeLoopVars.set(varName, "_rt_i");
+
+		// Build loop body expressions from child nodes
+		final loopBodyExprs:Array<Expr> = [];
+		if (node.children != null) {
+			for (child in node.children) {
+				generateRuntimeChildExprs(child, repeatType, containerRef, loopBodyExprs, pos);
+			}
+		}
+
+		runtimeLoopVars.remove(varName);
+
+		// Remove bitmap var from runtimeLoopVars (was set by generateRuntimeChildExprs indirectly — clean up)
+		switch (repeatType) {
+			case TilesIterator(bitmapVarName, tilenameVarName, _, _):
+				runtimeLoopVars.remove(bitmapVarName);
+				if (tilenameVarName != null) runtimeLoopVars.remove(tilenameVarName);
+			case StateAnimIterator(bitmapVarName, _, _, _):
+				runtimeLoopVars.remove(bitmapVarName);
+			default:
+		}
+
+		// Build the loop body block
+		final loopBody:Expr = if (loopBodyExprs.length == 1)
+			loopBodyExprs[0]
+		else
+			{expr: EBlock(loopBodyExprs), pos: pos};
+
+		// Generate the tile-fetching code + loop
 		switch (repeatType) {
 			case TilesIterator(bitmapVarName, tilenameVarName, sheetName, tileFilter):
 				final sheetStr = sheetName;
 				final filterExpr:Expr = tileFilter != null ? macro $v{tileFilter} : macro null;
 				ctorExprs.push(macro {
-					final tiles = access.getSheetTiles($v{sheetStr}, $filterExpr);
-					for (i in 0...tiles.length) {
-						final bmp = new h2d.Bitmap(tiles[i]);
-						$containerRef.addChild(bmp);
+					final _rt_tiles = access.getSheetTiles($v{sheetStr}, $filterExpr);
+					for (_rt_i in 0..._rt_tiles.length) {
+						$loopBody;
 					}
 				});
 
 			case StateAnimIterator(bitmapVarName, animFilename, animationName, selectorRefs):
 				final fileStr = animFilename;
-				// Build selector map at macro time as literal pairs
 				final selectorPairs:Array<Expr> = [];
 				for (k => v in selectorRefs) {
 					final keyStr = k;
@@ -885,29 +865,96 @@ class ProgrammableCodeGen {
 				};
 				final animNameExpr = rvToExpr(animationName);
 				ctorExprs.push(macro {
-					final tiles = access.getStateAnimTiles($v{fileStr}, Std.string($animNameExpr), $selectorMapExpr);
-					for (i in 0...tiles.length) {
-						final bmp = new h2d.Bitmap(tiles[i]);
-						$containerRef.addChild(bmp);
+					final _rt_tiles = access.getStateAnimTiles($v{fileStr}, Std.string($animNameExpr), $selectorMapExpr);
+					for (_rt_i in 0..._rt_tiles.length) {
+						$loopBody;
 					}
 				});
 
 			case ArrayIterator(valueVariableName, arrayName):
-				// Arrays are stored as params — we can access the array param at runtime
 				final arrayField = "_" + arrayName;
 				final arrayRef = macro $p{["this", arrayField]};
 				ctorExprs.push(macro {
-					// Array iteration: create a child per element, delegating to builder
 					final arr:Array<Dynamic> = $arrayRef;
 					if (arr != null) {
-						for (i in 0...arr.length) {
-							final obj = new h2d.Object();
-							$containerRef.addChild(obj);
+						for (_rt_i in 0...arr.length) {
+							$loopBody;
 						}
 					}
 				});
 
 			default:
+		}
+	}
+
+	/** Generate runtime loop body expressions for a single child node of a runtime iterator.
+	 *  For bitmap children, creates a bitmap from the tile array and positions it. */
+	static function generateRuntimeChildExprs(child:Node, repeatType:RepeatType, containerRef:Expr, bodyExprs:Array<Expr>, pos:Position):Void {
+		switch (child.type) {
+			case BITMAP(tileSource, hAlign, vAlign):
+				final bitmapExpr:Expr = switch (tileSource) {
+					case TSReference(_):
+						macro _rt_tiles[_rt_i];
+					default:
+						tileSourceToExpr(tileSource);
+				};
+				// Collect all statements into a single block so _rt_bmp is in scope
+				final stmts:Array<Expr> = [];
+				// Reset tile dx/dy to match builder's TileGroup behavior
+				stmts.push(macro final _rt_tile = $bitmapExpr);
+				stmts.push(macro _rt_tile.dx = 0);
+				stmts.push(macro _rt_tile.dy = 0);
+				stmts.push(macro final _rt_bmp = new h2d.Bitmap(_rt_tile));
+				stmts.push(macro $containerRef.addChild(_rt_bmp));
+				if (child.pos != null) {
+					switch (child.pos) {
+						case OFFSET(x, y):
+							final xExpr = rvToExpr(x);
+							final yExpr = rvToExpr(y);
+							stmts.push(macro _rt_bmp.setPosition($xExpr, $yExpr));
+						default:
+					}
+				}
+				if (child.scale != null) {
+					final scaleExpr = rvToExpr(child.scale);
+					stmts.push(macro _rt_bmp.scaleX = $scaleExpr);
+					stmts.push(macro _rt_bmp.scaleY = $scaleExpr);
+				}
+				if (child.alpha != null) {
+					final alphaExpr = rvToExpr(child.alpha);
+					stmts.push(macro _rt_bmp.alpha = $alphaExpr);
+				}
+				bodyExprs.push({expr: EBlock(stmts), pos: pos});
+
+			case POINT:
+				final ptStmts:Array<Expr> = [];
+				ptStmts.push(macro final _rt_obj = new h2d.Object());
+				ptStmts.push(macro $containerRef.addChild(_rt_obj));
+				if (child.pos != null) {
+					switch (child.pos) {
+						case OFFSET(x, y):
+							final xExpr = rvToExpr(x);
+							final yExpr = rvToExpr(y);
+							ptStmts.push(macro _rt_obj.setPosition($xExpr, $yExpr));
+						default:
+					}
+				}
+				// Recurse into point's children with _rt_obj as parent
+				if (child.children != null) {
+					for (grandchild in child.children) {
+						final innerStmts:Array<Expr> = [];
+						generateRuntimeChildExprs(grandchild, repeatType, macro _rt_obj, innerStmts, pos);
+						for (s in innerStmts)
+							ptStmts.push(s);
+					}
+				}
+				bodyExprs.push({expr: EBlock(ptStmts), pos: pos});
+
+			default:
+				bodyExprs.push(macro {
+					final _rt_obj = new h2d.Object();
+					$containerRef.addChild(_rt_obj);
+				});
 		}
 	}
 
@@ -1476,6 +1523,9 @@ class ProgrammableCodeGen {
 				if (loopVarSubstitutions.exists(ref)) {
 					final val = loopVarSubstitutions.get(ref);
 					macro $v{val};
+				} else if (runtimeLoopVars.exists(ref)) {
+					final rtName = runtimeLoopVars.get(ref);
+					macro $i{rtName};
 				} else {
 					macro $p{["this", "_" + ref]};
 				}
