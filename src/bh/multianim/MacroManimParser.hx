@@ -1,6 +1,5 @@
 package bh.multianim;
 
-#if macro
 import bh.multianim.MultiAnimParser;
 import bh.multianim.CoordinateSystems;
 import bh.multianim.MacroCompatTypes.MacroBlendMode;
@@ -224,6 +223,32 @@ private class MacroLexer {
 				return new Token(TQuotedString(buf.toString()), startLine, startCol);
 			}
 
+			// Single-quoted string: '...'
+			if (c == "'".code) {
+				pos++;
+				var buf = new StringBuf();
+				while (pos < len) {
+					final sc = src.charCodeAt(pos);
+					if (sc == '\\'.code && pos + 1 < len) {
+						final sc2 = src.charCodeAt(pos + 1);
+						if (sc2 == "'".code) { buf.addChar("'".code); pos += 2; continue; }
+						if (sc2 == '\\'.code) { buf.addChar('\\'.code); pos += 2; continue; }
+						if (sc2 == 'n'.code) { buf.addChar('\n'.code); pos += 2; continue; }
+						buf.addChar('\\'.code);
+						pos++;
+						continue;
+					}
+					if (sc == "'".code) {
+						pos++;
+						break;
+					}
+					if (sc == '\n'.code) { line++; lineStart = pos + 1; }
+					buf.addChar(sc);
+					pos++;
+				}
+				return new Token(TQuotedString(buf.toString()), startLine, startCol);
+			}
+
 			// #name
 			if (c == '#'.code) {
 				pos++;
@@ -281,15 +306,21 @@ class MacroManimParser {
 	var tpos:Int;
 	var sourceName:String;
 	var nodes:Map<String, Node>;
+	var imports:Map<String, Dynamic>;
+	var resourceLoader:Dynamic;
 	var uniqueCounter:Int;
+	var currentName:Null<String>;
 
 	static final defaultLayoutNodeName = "#defaultLayout";
+	static final defaultPathNodeName = "#defaultPaths";
 
-	function new(tokens:Array<Token>, sourceName:String) {
+	function new(tokens:Array<Token>, sourceName:String, ?resourceLoader:Dynamic) {
 		this.tokens = tokens;
 		this.tpos = 0;
 		this.sourceName = sourceName;
 		this.nodes = new Map();
+		this.imports = new Map();
+		this.resourceLoader = resourceLoader;
 		this.uniqueCounter = 654321;
 	}
 
@@ -314,6 +345,15 @@ class MacroManimParser {
 		if (!Type.enumEq(t, type))
 			error('expected $type, got $t');
 		advance();
+	}
+
+	function expectKeyword(keyword:String):Void {
+		switch (peek()) {
+			case TIdentifier(s) if (isKeyword(s, keyword)):
+				advance();
+			default:
+				error('expected "$keyword", got ${peek()}');
+		}
 	}
 
 	function match(type:MacroTokenType):Bool {
@@ -351,7 +391,7 @@ class MacroManimParser {
 	// ---- Keyword lookup ----
 
 	static function isKeyword(s:String, kw:String):Bool {
-		return s.toLowerCase() == kw;
+		return s.toLowerCase() == kw.toLowerCase();
 	}
 
 	// ---- Integer/Float parsing helpers ----
@@ -668,13 +708,24 @@ class MacroManimParser {
 				advance();
 				return parseNextAnythingExpression(RVString(s));
 			case TName(s):
+				// TName is #xxx - try as color first (#f00, #FF0000, etc.)
+				final c = tryStringToColor("#" + s);
 				advance();
+				if (c != null) return parseNextAnythingExpression(RVInteger(c));
 				return parseNextAnythingExpression(RVString(s));
 			case TOpen:
 				advance();
 				final e = parseAnything();
 				expect(TClosed);
 				return parseNextAnythingExpression(RVParenthesis(e));
+			case TBracketOpen:
+				advance();
+				final arr:Array<ReferenceableValue> = [];
+				while (!match(TBracketClosed)) {
+					if (arr.length > 0) expect(TComma);
+					arr.push(parseAnything());
+				}
+				return RVArray(arr);
 			default:
 				return error('expected value or expression, got ${peek()}');
 		}
@@ -801,7 +852,7 @@ class MacroManimParser {
 		}
 	}
 
-	static function tryStringToColor(s:String):Null<Int> {
+	public static function tryStringToColor(s:String):Null<Int> {
 		if (s == null) return null;
 		var color = switch (s.toLowerCase()) {
 			case "maroon": 0x800000;
@@ -1066,8 +1117,55 @@ class MacroManimParser {
 				if (match(TComma)) color = parseColorOrReference();
 				expect(TClosed);
 				return SolidColor(w, h, color);
+			case TIdentifier(s) if (isKeyword(s, "colorwithtext")):
+				advance();
+				expect(TOpen);
+				final w = parseIntegerOrReference();
+				expect(TComma);
+				final h = parseIntegerOrReference();
+				expect(TComma);
+				final color = parseColorOrReference();
+				expect(TComma);
+				final text = parseAnything();
+				expect(TComma);
+				final textColor = parseColorOrReference();
+				expect(TComma);
+				final font = parseStringOrReference();
+				expect(TClosed);
+				return SolidColorWithText(w, h, color, text, textColor, font);
+			case TIdentifier(s) if (isKeyword(s, "autotile")):
+				advance();
+				expect(TOpen);
+				final name = parseStringOrReference();
+				expect(TComma);
+				final selector = parseAutotileTileSelector();
+				expect(TClosed);
+				return AutotileRef(name, selector);
+			case TIdentifier(s) if (isKeyword(s, "autotileregionsheet")):
+				advance();
+				expect(TOpen);
+				final name = parseStringOrReference();
+				expect(TComma);
+				final atScale = parseAnything();
+				expect(TComma);
+				final font = parseStringOrReference();
+				expect(TComma);
+				final fontColor = parseColorOrReference();
+				expect(TClosed);
+				return AutotileRegionSheet(name, atScale, font, fontColor);
 			default:
 				return error("unknown generated tile type");
+		}
+	}
+
+	function parseAutotileTileSelector():AutotileTileSelector {
+		// Try integer index first
+		switch (peek()) {
+			case TInteger(_), TReference(_):
+				return ByIndex(parseIntegerOrReference());
+			default:
+				// TODO: ByEdges parsing if needed
+				return ByIndex(parseIntegerOrReference());
 		}
 	}
 
@@ -1139,22 +1237,31 @@ class MacroManimParser {
 			case TBracketOpen:
 				advance();
 				var enumNames:Array<String> = [];
+				var lastWasComma = true; // start true to allow first value
 				while (true) {
 					switch (peek()) {
 						case TBracketClosed:
 							advance();
 							break;
 						case TComma:
+							if (lastWasComma) error("double comma in enum definition");
 							advance();
+							lastWasComma = true;
 						case TIdentifier(s):
 							advance();
+							if (enumNames.indexOf(s) >= 0) error('enum value "$s" already defined');
 							enumNames.push(s);
+							lastWasComma = false;
 						case TQuotedString(s):
 							advance();
+							if (enumNames.indexOf(s) >= 0) error('enum value "$s" already defined');
 							enumNames.push(s);
+							lastWasComma = false;
 						case TInteger(s) | TFloat(s):
 							advance();
+							if (enumNames.indexOf(s) >= 0) error('enum value "$s" already defined');
 							enumNames.push(s);
+							lastWasComma = false;
 						default:
 							error('unexpected token in enum definition: ${peek()}');
 					}
@@ -1258,7 +1365,13 @@ class MacroManimParser {
 		var arr:Array<String> = [];
 		while (!match(TBracketClosed)) {
 			if (arr.length > 0) expect(TComma);
-			arr.push(expectIdentifierOrString());
+			switch (peek()) {
+				case TInteger(n) | TFloat(n):
+					advance();
+					arr.push(n);
+				default:
+					arr.push(expectIdentifierOrString());
+			}
 		}
 		return arr;
 	}
@@ -1272,6 +1385,10 @@ class MacroManimParser {
 			if (result.keys().hasNext()) expect(TComma);
 
 			final paramName = expectIdentifierOrString();
+
+			// Validate parameter
+			if (!defs.exists(paramName)) error('conditional parameter "$paramName" does not have definition');
+			if (result.exists(paramName)) error('conditional parameter "$paramName" already defined');
 
 			// Check for comparison operators
 			switch (peek()) {
@@ -1328,23 +1445,60 @@ class MacroManimParser {
 								enums.push(expectIdentifierOrString());
 							}
 							result.set(paramName, CoEnums(enums));
-						default:
-							// Could be a range: from..to
-							final val = parseConditionalValue();
-							// Check for range
-							if (match(TDoubleDot)) {
-								final to = parseConditionalValue();
-								final fromF = resolveCondToFloat(val);
-								final toF = resolveCondToFloat(to);
-								result.set(paramName, CoRange(fromF, toF, false, false));
+						case TExclamation:
+							// Backward compat: @(param => !value) negate syntax
+							advance();
+							final val = expectIdentifierOrString();
+							final paramDef = defs.get(paramName);
+							if (paramDef != null) {
+								final cv = stringToConditional(val, paramDef.type);
+								result.set(paramName, CoNot(cv));
 							} else {
-								final paramDef = defs.get(paramName);
-								if (paramDef != null) {
-									final cv = stringToConditional(val, paramDef.type);
-									result.set(paramName, cv);
-								} else {
-									result.set(paramName, CoStringValue(val));
-								}
+								result.set(paramName, CoNot(CoStringValue(val)));
+							}
+						default:
+							// Check for backward compat keywords
+							switch (peek()) {
+								case TIdentifier(s) if (isKeyword(s, "greaterthanorequal")):
+									advance();
+									final val = parseAnything();
+									result.set(paramName, CoRange(resolveToFloat(val), null, false, false));
+								case TIdentifier(s) if (isKeyword(s, "lessthanorequal")):
+									advance();
+									final val = parseAnything();
+									result.set(paramName, CoRange(null, resolveToFloat(val), false, false));
+								case TIdentifier(s) if (isKeyword(s, "bit")):
+									advance();
+									expect(TBracketOpen);
+									final bitIndex = parseInteger();
+									expect(TBracketClosed);
+									result.set(paramName, CoFlag(1 << bitIndex));
+								case TIdentifier(s) if (isKeyword(s, "between")):
+									advance();
+									final from = parseConditionalValue();
+									expect(TDoubleDot);
+									final to = parseConditionalValue();
+									final fromF = resolveCondToFloat(from);
+									final toF = resolveCondToFloat(to);
+									result.set(paramName, CoRange(fromF, toF, false, false));
+								default:
+									// Could be a range: from..to
+									final val = parseConditionalValue();
+									// Check for range
+									if (match(TDoubleDot)) {
+										final to = parseConditionalValue();
+										final fromF = resolveCondToFloat(val);
+										final toF = resolveCondToFloat(to);
+										result.set(paramName, CoRange(fromF, toF, false, false));
+									} else {
+										final paramDef = defs.get(paramName);
+										if (paramDef != null) {
+											final cv = stringToConditional(val, paramDef.type);
+											result.set(paramName, cv);
+										} else {
+											result.set(paramName, CoStringValue(val));
+										}
+									}
 							}
 					}
 				default:
@@ -1489,10 +1643,14 @@ class MacroManimParser {
 				advance();
 				expect(TOpen);
 				if (isNamedParamNext()) {
-					final size = parseNamedFloatParam("size", RVFloat(1.));
-					final color = parseNamedColorParam("color", RVInteger(0xFF000000));
-					expect(TClosed);
-					return FilterOutline(size, color);
+					final results = parseOptionalParams([
+						ParseFloatOrReference("size"),
+						ParseCustom("color", parseColorOrReference),
+					]);
+					return FilterOutline(
+						cast results.get("size") ?? RVFloat(1.),
+						cast results.get("color") ?? RVInteger(0xFF000000)
+					);
 				}
 				final size = parseFloatOrReference();
 				expect(TComma);
@@ -1502,23 +1660,165 @@ class MacroManimParser {
 			case TIdentifier(s) if (isKeyword(s, "saturate")):
 				advance();
 				expect(TOpen);
+				if (isNamedParamNext()) {
+					final results = parseOptionalParams([
+						ParseFloatOrReference("value"),
+					]);
+					return FilterSaturate(cast results.get("value") ?? RVFloat(1.));
+				}
 				final value = parseFloatOrReference();
 				expect(TClosed);
 				return FilterSaturate(value);
 			case TIdentifier(s) if (isKeyword(s, "brightness")):
 				advance();
 				expect(TOpen);
+				if (isNamedParamNext()) {
+					final results = parseOptionalParams([
+						ParseFloatOrReference("value"),
+					]);
+					return FilterBrightness(cast results.get("value") ?? RVFloat(1.));
+				}
 				final value = parseFloatOrReference();
 				expect(TClosed);
 				return FilterBrightness(value);
 			case TIdentifier(s) if (isKeyword(s, "blur")):
 				advance();
 				expect(TOpen);
+				if (isNamedParamNext()) {
+					final results = parseOptionalParams([
+						ParseFloatOrReference("radius"),
+						ParseFloatOrReference("gain"),
+						ParseFloatOrReference("quality"),
+						ParseFloatOrReference("linear"),
+					]);
+					return FilterBlur(
+						cast results.get("radius") ?? RVFloat(1.),
+						cast results.get("gain") ?? RVFloat(1.),
+						cast results.get("quality") ?? RVFloat(1.),
+						cast results.get("linear") ?? RVFloat(0.)
+					);
+				}
 				final radius = parseFloatOrReference();
 				expect(TComma);
 				final gain = parseFloatOrReference();
+				var quality = RVFloat(1.);
+				var linear = RVFloat(0.);
+				if (match(TComma)) {
+					quality = parseFloatOrReference();
+					if (match(TComma)) linear = parseFloatOrReference();
+				}
 				expect(TClosed);
-				return FilterBlur(radius, gain, RVFloat(1.), RVFloat(0.0));
+				return FilterBlur(radius, gain, quality, linear);
+			case TIdentifier(s) if (isKeyword(s, "glow")):
+				advance();
+				expect(TOpen);
+				if (isNamedParamNext()) {
+					final results = parseOptionalParams([
+						ParseFloatOrReference("alpha"),
+						ParseFloatOrReference("radius"),
+						ParseFloatOrReference("gain"),
+						ParseFloatOrReference("quality"),
+						ParseBool("smoothColor"),
+						ParseBool("knockout"),
+						ParseCustom("color", parseColorOrReference),
+					]);
+					return FilterGlow(
+						cast results.get("color") ?? RVInteger(0xFFFFFF),
+						cast results.get("alpha") ?? RVFloat(1.),
+						cast results.get("radius") ?? RVFloat(1.),
+						cast results.get("gain") ?? RVFloat(1.),
+						cast results.get("quality") ?? RVFloat(1.),
+						results.exists("smoothColor") ? cast(results.get("smoothColor"), Bool) : false,
+						results.exists("knockout") ? cast(results.get("knockout"), Bool) : false
+					);
+				}
+				final color = parseColorOrReference();
+				expect(TComma);
+				final alpha = parseFloatOrReference();
+				expect(TComma);
+				final radius = parseFloatOrReference();
+				var gain = RVFloat(1.);
+				var quality = RVFloat(1.);
+				var smoothColor = false;
+				var knockout = false;
+				if (match(TComma)) gain = parseFloatOrReference();
+				if (match(TComma)) quality = parseFloatOrReference();
+				expect(TClosed);
+				return FilterGlow(color, alpha, radius, gain, quality, smoothColor, knockout);
+			case TIdentifier(s) if (isKeyword(s, "dropshadow")):
+				advance();
+				expect(TOpen);
+				if (isNamedParamNext()) {
+					final results = parseOptionalParams([
+						ParseFloatOrReference("distance"),
+						ParseFloatOrReference("angle"),
+						ParseFloatOrReference("alpha"),
+						ParseFloatOrReference("radius"),
+						ParseCustom("color", parseColorOrReference),
+						ParseFloatOrReference("gain"),
+						ParseFloatOrReference("quality"),
+						ParseBool("smoothColor"),
+					]);
+					return FilterDropShadow(
+						cast results.get("distance") ?? RVFloat(1.),
+						cast results.get("angle") ?? RVFloat(0.785),
+						cast results.get("color") ?? RVInteger(0),
+						cast results.get("alpha") ?? RVFloat(1.),
+						cast results.get("radius") ?? RVFloat(1.),
+						cast results.get("gain") ?? RVFloat(1.),
+						cast results.get("quality") ?? RVFloat(1.),
+						results.exists("smoothColor") ? cast(results.get("smoothColor"), Bool) : false
+					);
+				}
+				final distance = parseFloatOrReference();
+				expect(TComma);
+				final angle = parseFloatOrReference();
+				expect(TComma);
+				final color = parseColorOrReference();
+				expect(TComma);
+				final alpha = parseFloatOrReference();
+				var radius = RVFloat(1.);
+				var gain = RVFloat(1.);
+				var quality = RVFloat(1.);
+				var smoothColor = false;
+				if (match(TComma)) radius = parseFloatOrReference();
+				if (match(TComma)) gain = parseFloatOrReference();
+				if (match(TComma)) quality = parseFloatOrReference();
+				expect(TClosed);
+				return FilterDropShadow(distance, angle, color, alpha, radius, gain, quality, smoothColor);
+			case TIdentifier(s) if (isKeyword(s, "pixeloutline")):
+				advance();
+				expect(TOpen);
+				var mode:PixelOutlineModeDef;
+				switch (peek()) {
+					case TIdentifier(s2) if (isKeyword(s2, "knockout")):
+						advance();
+						expect(TComma);
+						final color = parseColorOrReference();
+						expect(TComma);
+						final knockoutVal = parseFloatOrReference();
+						mode = POKnockout(color, knockoutVal);
+					case TIdentifier(s2) if (isKeyword(s2, "inlinecolor")):
+						advance();
+						expect(TComma);
+						final color = parseColorOrReference();
+						expect(TComma);
+						final inlineColor = parseColorOrReference();
+						mode = POInlineColor(color, inlineColor);
+					default:
+						return error("expected knockout or inlineColor in pixelOutline");
+				}
+				var smoothColor = false;
+				if (match(TComma)) {
+					switch (peek()) {
+						case TIdentifier(s2) if (isKeyword(s2, "smoothcolor")):
+							advance();
+							smoothColor = true;
+						default:
+					}
+				}
+				expect(TClosed);
+				return FilterPixelOutline(mode, smoothColor);
 			case TIdentifier(s) if (isKeyword(s, "replacepalette")):
 				advance();
 				expect(TOpen);
@@ -1598,57 +1898,170 @@ class MacroManimParser {
 	function parseLayouts():LayoutsDef {
 		var layouts:LayoutsDef = new Map();
 		var offsets:Array<bh.base.Point> = [new bh.base.Point(0, 0)];
+		var currentGrid:Null<GridCoordinateSystem> = null;
+		var currentHex:Null<HexCoordinateSystem> = null;
 
 		while (true) {
 			switch (peek()) {
-				case TName(name):
+				case TIdentifier(s) if (isKeyword(s, "grid")):
 					advance();
-					// Try single point first
-					final content = parseLayoutContent();
-					if (content != null) {
-						eatSemicolon();
-						layouts.set(name, {name: name, type: Single(content), grid: null, hex: null, offset: foldOffsets(offsets)});
-						continue;
-					}
-					// sequence or list
-					switch (peek()) {
-						case TIdentifier(s) if (isKeyword(s, "sequence")):
-							advance();
-							expect(TOpen);
-							final varName = expectReferenceOrIdentifier();
-							expect(TColon);
-							final from = parseInteger();
-							expect(TDoubleDot);
-							final to = parseInteger();
-							expect(TClosed);
-							final lc = parseLayoutContent();
-							if (lc == null) error("layout content expected");
-							eatSemicolon();
-							layouts.set(name, {name: name, type: Sequence(varName, from, to, lc), grid: null, hex: null, offset: foldOffsets(offsets)});
-						case TIdentifier(s) if (isKeyword(s, "list")):
-							advance();
-							expect(TCurlyOpen);
-							var contentList:Array<LayoutContent> = [];
-							while (true) {
-								final lc = parseLayoutContent();
-								if (lc != null) {
-									eatSemicolon();
-									contentList.push(lc);
-								} else {
-									break;
-								}
-							}
-							expect(TCurlyClosed);
-							layouts.set(name, {name: name, type: List(contentList), grid: null, hex: null, offset: foldOffsets(offsets)});
-						default:
-							error("expected sequence, list, or point");
-					}
+					expect(TColon);
+					final spacingX = parseInteger();
+					expect(TComma);
+					final spacingY = parseInteger();
+					eatSemicolon();
+					expect(TCurlyOpen);
+					currentGrid = {spacingX: spacingX, spacingY: spacingY};
+					currentHex = null;
+					parseLayoutEntries(layouts, offsets, currentGrid, currentHex);
+					currentGrid = null;
+				case TIdentifier(s) if (isKeyword(s, "hexgrid")):
+					advance();
+					expect(TColon);
+					final orientation = parseHexOrientation();
+					expect(TOpen);
+					final w = parseFloat_();
+					expect(TComma);
+					final h = parseFloat_();
+					expect(TClosed);
+					eatSemicolon();
+					expect(TCurlyOpen);
+					currentHex = {hexLayout: HexLayout.createFromFloats(orientation, w, h)};
+					currentGrid = null;
+					parseLayoutEntries(layouts, offsets, currentGrid, currentHex);
+					currentHex = null;
+				case TIdentifier(s) if (isKeyword(s, "offset")):
+					advance();
+					expect(TColon);
+					final ox = parseInteger();
+					expect(TComma);
+					final oy = parseInteger();
+					eatSemicolon();
+					expect(TCurlyOpen);
+					offsets.push(new bh.base.Point(ox, oy));
+					parseLayoutEntries(layouts, offsets, currentGrid, currentHex);
+					offsets.pop();
+				case TName(_):
+					parseLayoutEntry(layouts, offsets, currentGrid, currentHex);
 				case TCurlyClosed:
 					advance();
 					return layouts;
 				default:
 					error('unexpected token in layouts: ${peek()}');
 			}
+		}
+	}
+
+	function parseHexOrientation():bh.base.Hex.HexOrientation {
+		switch (peek()) {
+			case TIdentifier(s) if (isKeyword(s, "flat")):
+				advance();
+				return FLAT;
+			case TIdentifier(s) if (isKeyword(s, "pointy")):
+				advance();
+				return POINTY;
+			default:
+				error("expected flat or pointy");
+				return FLAT; // unreachable
+		}
+	}
+
+	function parseLayoutEntries(layouts:LayoutsDef, offsets:Array<bh.base.Point>,
+			grid:Null<GridCoordinateSystem>, hex:Null<HexCoordinateSystem>):Void {
+		while (true) {
+			switch (peek()) {
+				case TName(_):
+					parseLayoutEntry(layouts, offsets, grid, hex);
+				case TIdentifier(s) if (isKeyword(s, "grid")):
+					advance();
+					expect(TColon);
+					final spacingX = parseInteger();
+					expect(TComma);
+					final spacingY = parseInteger();
+					eatSemicolon();
+					expect(TCurlyOpen);
+					final nestedGrid:GridCoordinateSystem = {spacingX: spacingX, spacingY: spacingY};
+					parseLayoutEntries(layouts, offsets, nestedGrid, null);
+				case TIdentifier(s) if (isKeyword(s, "hexgrid")):
+					advance();
+					expect(TColon);
+					final orientation = parseHexOrientation();
+					expect(TOpen);
+					final w = parseFloat_();
+					expect(TComma);
+					final h = parseFloat_();
+					expect(TClosed);
+					eatSemicolon();
+					expect(TCurlyOpen);
+					final nestedHex:HexCoordinateSystem = {hexLayout: HexLayout.createFromFloats(orientation, w, h)};
+					parseLayoutEntries(layouts, offsets, null, nestedHex);
+				case TIdentifier(s) if (isKeyword(s, "offset")):
+					advance();
+					expect(TColon);
+					final ox = parseInteger();
+					expect(TComma);
+					final oy = parseInteger();
+					eatSemicolon();
+					expect(TCurlyOpen);
+					offsets.push(new bh.base.Point(ox, oy));
+					parseLayoutEntries(layouts, offsets, grid, hex);
+					offsets.pop();
+				case TCurlyClosed:
+					advance();
+					return;
+				default:
+					error('unexpected token in layout entries: ${peek()}');
+			}
+		}
+	}
+
+	function parseLayoutEntry(layouts:LayoutsDef, offsets:Array<bh.base.Point>,
+			grid:Null<GridCoordinateSystem>, hex:Null<HexCoordinateSystem>):Void {
+		switch (peek()) {
+			case TName(name):
+				advance();
+				// Try single point first
+				final content = parseLayoutContent();
+				if (content != null) {
+					eatSemicolon();
+					layouts.set(name, {name: name, type: Single(content), grid: grid, hex: hex, offset: foldOffsets(offsets)});
+					return;
+				}
+				// sequence or list
+				switch (peek()) {
+					case TIdentifier(s) if (isKeyword(s, "sequence")):
+						advance();
+						expect(TOpen);
+						final varName = expectReferenceOrIdentifier();
+						expect(TColon);
+						final from = parseInteger();
+						expect(TDoubleDot);
+						final to = parseInteger();
+						expect(TClosed);
+						final lc = parseLayoutContent();
+						if (lc == null) error("layout content expected");
+						eatSemicolon();
+						layouts.set(name, {name: name, type: Sequence(varName, from, to, lc), grid: grid, hex: hex, offset: foldOffsets(offsets)});
+					case TIdentifier(s) if (isKeyword(s, "list")):
+						advance();
+						expect(TCurlyOpen);
+						var contentList:Array<LayoutContent> = [];
+						while (true) {
+							final lc = parseLayoutContent();
+							if (lc != null) {
+								eatSemicolon();
+								contentList.push(lc);
+							} else {
+								break;
+							}
+						}
+						expect(TCurlyClosed);
+						layouts.set(name, {name: name, type: List(contentList), grid: grid, hex: hex, offset: foldOffsets(offsets)});
+					default:
+						error("expected sequence, list, or point");
+				}
+			default:
+				error('expected layout name (#name), got ${peek()}');
 		}
 	}
 
@@ -1767,7 +2180,7 @@ class MacroManimParser {
 				if (parent == null) error("@else/@default cannot be used on root elements");
 				if (parent.children.length == 0) error("@else/@default requires a preceding sibling with a @() conditional");
 				switch (parent.children[parent.children.length - 1].conditionals) {
-					case NoConditional: error("@else/@default requires preceding sibling with conditional");
+					case NoConditional: error("@else/@default: previous sibling has no conditional");
 					default:
 				}
 			default:
@@ -2064,19 +2477,30 @@ class MacroManimParser {
 
 			case TIdentifier(s) if (isKeyword(s, "stateanim")):
 				advance();
-				expect(TOpen);
-				final filename = expectIdentifierOrString();
-				expect(TComma);
-				final initialState = parseStringOrReference();
-				var selector:Map<String, ReferenceableValue> = new Map();
-				while (match(TComma)) {
-					final key = expectIdentifierOrString();
-					expect(TArrow);
-					final val = parseStringOrReference();
-					selector.set(key, val);
+				// Check if construct variant (stateAnim construct(...))
+				switch (peek()) {
+					case TIdentifier(s2) if (isKeyword(s2, "construct")):
+						advance();
+						expect(TOpen);
+						final initialState = parseStringOrReference();
+						eatComma();
+						final constructs = parseStateAnimConstruct();
+						createNode(STATEANIM_CONSTRUCT(initialState, constructs), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+					default:
+						expect(TOpen);
+						final filename = expectIdentifierOrString();
+						expect(TComma);
+						final initialState = parseStringOrReference();
+						var selector:Map<String, ReferenceableValue> = new Map();
+						while (match(TComma)) {
+							final key = expectIdentifierOrString();
+							expect(TArrow);
+							final val = parseStringOrReference();
+							selector.set(key, val);
+						}
+						expect(TClosed);
+						createNode(STATEANIM(filename, initialState, selector), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
 				}
-				expect(TClosed);
-				createNode(STATEANIM(filename, initialState, selector), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
 
 			case TIdentifier(s) if (isKeyword(s, "tilegroup")):
 				advance();
@@ -2087,6 +2511,152 @@ class MacroManimParser {
 				expect(TOpen);
 				final elements = parseGraphicsElements();
 				createNode(GRAPHICS(elements), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+
+			case TIdentifier(s) if (isKeyword(s, "palette")):
+				advance();
+				if (currentName == null) error("palette requires a #name");
+				if (parent != null) error("palette must be a root node");
+				// Three forms: palette { colors }, palette(2d:width) { colors }, palette(file:filename)
+				final paletteNode:Node = switch (peek()) {
+					case TOpen:
+						advance();
+						switch (peek()) {
+							case TIdentifier(s2) if (isKeyword(s2, "2d")):
+								advance();
+								expect(TColon);
+								final width = parseInteger();
+								expect(TClosed);
+								expect(TCurlyOpen);
+								final colors = parseColorsList(TCurlyClosed);
+								createNode(PALETTE(PaletteColors2D(colors, width)), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+							case TIdentifier(s2) if (isKeyword(s2, "file")):
+								advance();
+								expect(TColon);
+								final filename = parseStringOrReference();
+								expect(TClosed);
+								createNode(PALETTE(PaletteImageFile(filename)), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+							default:
+								error("expected 2d or file in palette()");
+						}
+					case TCurlyOpen:
+						advance();
+						final colors = parseColorsList(TCurlyClosed);
+						createNode(PALETTE(PaletteColors(colors)), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+					default:
+						error("expected { or ( after palette");
+				};
+				return paletteNode;
+
+			case TIdentifier(s) if (isKeyword(s, "pixels")):
+				advance();
+				expect(TOpen);
+				final shapes = parsePixelShapes();
+				createNode(PIXELS(shapes), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+
+			case TIdentifier(s) if (isKeyword(s, "paths")):
+				advance();
+				if (currentName == null) currentName = "paths";
+				if (parent != null) error("paths must be a root node");
+				expect(TCurlyOpen);
+				final pathsDef = parsePaths();
+				final n = createNode(PATHS(pathsDef), parent, conditional, scale, alpha, tint, layerIndex, switch (updatableName) {
+					case UNTObject(_): UNTObject(defaultPathNodeName);
+					case UNTUpdatable(_): UNTUpdatable(defaultPathNodeName);
+				});
+				return n;
+
+			case TIdentifier(s) if (isKeyword(s, "animated_path") || isKeyword(s, "animatedPath") || isKeyword(s, "animatedpath")):
+				advance();
+				if (currentName == null) error("animated_path requires a #name");
+				if (parent != null) error("animated_path must be a root node");
+				expect(TCurlyOpen);
+				final apDef = parseAnimatedPath();
+				final n = createNode(ANIMATED_PATH(apDef), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+				return n;
+
+			case TIdentifier(s) if (isKeyword(s, "autotile")):
+				advance();
+				if (currentName == null) error("autotile requires a #name");
+				if (parent != null) error("autotile must be a root node");
+				expect(TCurlyOpen);
+				final atDef = parseAutotile();
+				final n = createNode(AUTOTILE(atDef), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+				return n;
+
+			case TIdentifier(s) if (isKeyword(s, "atlas2")):
+				advance();
+				if (currentName == null) error("atlas2 requires a #name");
+				if (parent != null) error("atlas2 must be a root node");
+				final a2Def = parseAtlas2();
+				final n = createNode(ATLAS2(a2Def), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+				return n;
+
+			// Standalone graphics shortcuts: rect(), line(), circle(), polygon(), ellipse(), roundrect()
+			case TIdentifier(s) if (isKeyword(s, "rect") || isKeyword(s, "circle") || isKeyword(s, "line")
+				|| isKeyword(s, "polygon") || isKeyword(s, "ellipse") || isKeyword(s, "roundrect") || isKeyword(s, "arc")):
+				advance();
+				// These are shorthand for graphics(shape(...))
+				// parseGraphics* functions call parseOptionalElementPos() which would consume the node position.
+				// We use element.pos as the node position instead.
+				final element = switch (s.toLowerCase()) {
+					case "rect": parseGraphicsRect();
+					case "circle": parseGraphicsCircle();
+					case "line": parseGraphicsLine();
+					case "polygon": parseGraphicsPolygon();
+					case "ellipse": parseGraphicsEllipse();
+					case "roundrect": parseGraphicsRoundRect();
+					case "arc": parseGraphicsArc();
+					default: error('unexpected graphics shorthand: $s'); null;
+				};
+				// Extract the element position as node position, reset element pos to ZERO
+				final nodePos = element.pos;
+				element.pos = ZERO;
+				final n = createNode(GRAPHICS([element]), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+				n.pos = nodePos;
+				eatSemicolon();
+				return n;
+
+			case TIdentifier(s) if (isKeyword(s, "settings")):
+				advance();
+				expect(TCurlyOpen);
+				if (parent == null) error("settings must have a parent");
+				if (parent.settings == null) parent.settings = new Map();
+				while (!match(TCurlyClosed)) {
+					final key = expectIdentifierOrString();
+					switch (peek()) {
+						case TColon:
+							advance();
+							// Typed: key:type=>value
+							final typeName = expectIdentifierOrString();
+							expect(TArrow);
+							switch (typeName.toLowerCase()) {
+								case "int":
+									final value = parseIntegerOrReference();
+									if (parent.settings.exists(key)) error('setting $key already defined');
+									parent.settings.set(key, {type: SVTInt, value: value});
+								case "float":
+									final value = parseFloatOrReference();
+									if (parent.settings.exists(key)) error('setting $key already defined');
+									parent.settings.set(key, {type: SVTFloat, value: value});
+								case "string":
+									final value = parseStringOrReference();
+									if (parent.settings.exists(key)) error('setting $key already defined');
+									parent.settings.set(key, {type: SVTString, value: value});
+								default:
+									error('expected int, float, or string after : in settings');
+							}
+						case TArrow:
+							advance();
+							// Untyped: key=>value (defaults to string)
+							final value = parseStringOrReference();
+							if (parent.settings.exists(key)) error('setting $key already defined');
+							parent.settings.set(key, {type: SVTString, value: value});
+						default:
+							error('expected :type=> or => after setting key');
+					}
+					eatComma();
+				}
+				return null;
 
 			default:
 				error('expected valid node type, got ${peek()}');
@@ -2278,6 +2848,30 @@ class MacroManimParser {
 					p.tiles = parseTileSources();
 				case "emit":
 					p.emit = parseEmitMode();
+				case "sizecurve":
+					p.sizeCurve = parseCurvePoints();
+				case "velocitycurve":
+					p.velocityCurve = parseCurvePoints();
+				case "forcefields":
+					p.forceFields = parseForceFields();
+				case "boundsmode":
+					p.boundsMode = parseBoundsMode();
+				case "boundsminx":
+					p.boundsMinX = parseFloatOrReference();
+				case "boundsmaxx":
+					p.boundsMaxX = parseFloatOrReference();
+				case "boundsminy":
+					p.boundsMinY = parseFloatOrReference();
+				case "boundsmaxy":
+					p.boundsMaxY = parseFloatOrReference();
+				case "trailenabled":
+					p.trailEnabled = parseBool();
+				case "traillength":
+					p.trailLength = parseFloatOrReference();
+				case "trailfadeout":
+					p.trailFadeOut = parseBool();
+				case "subemitters":
+					p.subEmitters = parseSubEmitters();
 				default:
 					// Skip unknown params
 					parseStringOrReference();
@@ -2291,14 +2885,10 @@ class MacroManimParser {
 		var tiles:Array<TileSource> = [];
 		while (true) {
 			switch (peek()) {
-				case TIdentifier(s) if (isKeyword(s, "file")):
-					advance();
-					expect(TOpen);
-					tiles.push(TSFile(parseStringOrReference()));
-					expect(TClosed);
-				case TReference(s):
-					advance();
-					tiles.push(TSReference(s));
+				case TIdentifier(s) if (isKeyword(s, "file") || isKeyword(s, "generated") || isKeyword(s, "sheet")):
+					tiles.push(parseTileSource());
+				case TReference(_):
+					tiles.push(parseTileSource());
 				default:
 					break;
 			}
@@ -2357,6 +2947,156 @@ class MacroManimParser {
 		}
 	}
 
+	// ===================== Particle Curves & Force Fields =====================
+
+	function parseCurvePoints():Array<ParticleCurvePoint> {
+		expect(TBracketOpen);
+		var points:Array<ParticleCurvePoint> = [];
+		while (!match(TBracketClosed)) {
+			if (points.length > 0) expect(TComma);
+			expect(TOpen);
+			final time = parseFloatOrReference();
+			expect(TComma);
+			final value = parseFloatOrReference();
+			expect(TClosed);
+			points.push({time: time, value: value});
+		}
+		return points;
+	}
+
+	function parseForceFields():Array<ParticleForceFieldDef> {
+		expect(TBracketOpen);
+		var fields:Array<ParticleForceFieldDef> = [];
+		while (!match(TBracketClosed)) {
+			if (fields.length > 0) expect(TComma);
+			switch (peek()) {
+				case TIdentifier(s) if (isKeyword(s, "turbulence")):
+					advance();
+					expect(TOpen);
+					final strength = parseFloatOrReference();
+					expect(TComma);
+					final scale = parseFloatOrReference();
+					expect(TComma);
+					final speed = parseFloatOrReference();
+					expect(TClosed);
+					fields.push(FFTurbulence(strength, scale, speed));
+				case TIdentifier(s) if (isKeyword(s, "wind")):
+					advance();
+					expect(TOpen);
+					final vx = parseFloatOrReference();
+					expect(TComma);
+					final vy = parseFloatOrReference();
+					expect(TClosed);
+					fields.push(FFWind(vx, vy));
+				case TIdentifier(s) if (isKeyword(s, "vortex")):
+					advance();
+					expect(TOpen);
+					final x = parseFloatOrReference();
+					expect(TComma);
+					final y = parseFloatOrReference();
+					expect(TComma);
+					final strength = parseFloatOrReference();
+					expect(TComma);
+					final radius = parseFloatOrReference();
+					expect(TClosed);
+					fields.push(FFVortex(x, y, strength, radius));
+				case TIdentifier(s) if (isKeyword(s, "attractor")):
+					advance();
+					expect(TOpen);
+					final x = parseFloatOrReference();
+					expect(TComma);
+					final y = parseFloatOrReference();
+					expect(TComma);
+					final strength = parseFloatOrReference();
+					expect(TComma);
+					final radius = parseFloatOrReference();
+					expect(TClosed);
+					fields.push(FFAttractor(x, y, strength, radius));
+				case TIdentifier(s) if (isKeyword(s, "repulsor")):
+					advance();
+					expect(TOpen);
+					final x = parseFloatOrReference();
+					expect(TComma);
+					final y = parseFloatOrReference();
+					expect(TComma);
+					final strength = parseFloatOrReference();
+					expect(TComma);
+					final radius = parseFloatOrReference();
+					expect(TClosed);
+					fields.push(FFRepulsor(x, y, strength, radius));
+				default:
+					error('unknown force field type: ${peek()}');
+			}
+		}
+		return fields;
+	}
+
+	function parseBoundsMode():ParticleBoundsModeDef {
+		switch (peek()) {
+			case TIdentifier(s) if (isKeyword(s, "kill")):
+				advance();
+				return BMKill;
+			case TIdentifier(s) if (isKeyword(s, "wrap")):
+				advance();
+				return BMWrap;
+			case TIdentifier(s) if (isKeyword(s, "bounce")):
+				advance();
+				expect(TOpen);
+				final damping = parseFloatOrReference();
+				expect(TClosed);
+				return BMBounce(damping);
+			case TIdentifier(s) if (isKeyword(s, "none")):
+				advance();
+				return BMNone;
+			default:
+				return error('unknown bounds mode: ${peek()}');
+		}
+	}
+
+	function parseSubEmitters():Array<ParticleSubEmitterDef> {
+		expect(TBracketOpen);
+		var emitters:Array<ParticleSubEmitterDef> = [];
+		while (!match(TBracketClosed)) {
+			if (emitters.length > 0) expect(TComma);
+			expect(TCurlyOpen);
+			var groupId:String = null;
+			var trigger:ParticleSubEmitTriggerDef = null;
+			var probability:ReferenceableValue = RVFloat(1.0);
+			var inheritVelocity:Null<ReferenceableValue> = null;
+			var offsetX:Null<ReferenceableValue> = null;
+			var offsetY:Null<ReferenceableValue> = null;
+			while (!match(TCurlyClosed)) {
+				final name = expectIdentifierOrString();
+				expect(TColon);
+				switch (name.toLowerCase()) {
+					case "groupid": groupId = expectIdentifierOrString();
+					case "trigger":
+						final t = expectIdentifierOrString();
+						trigger = switch (t.toLowerCase()) {
+							case "onbirth": SETOnBirth;
+							case "ondeath": SETOnDeath;
+							case "oncollision": SETOnCollision;
+							case "oninterval":
+								expect(TOpen);
+								final interval = parseFloatOrReference();
+								expect(TClosed);
+								SETOnInterval(interval);
+							default: error('unknown sub-emitter trigger: $t');
+						};
+					case "probability": probability = parseFloatOrReference();
+					case "inheritvelocity": inheritVelocity = parseFloatOrReference();
+					case "offsetx": offsetX = parseFloatOrReference();
+					case "offsety": offsetY = parseFloatOrReference();
+					default: parseStringOrReference(); // skip unknown
+				}
+				eatSemicolon();
+			}
+			emitters.push({groupId: groupId, trigger: trigger, probability: probability,
+				inheritVelocity: inheritVelocity, offsetX: offsetX, offsetY: offsetY});
+		}
+		return emitters;
+	}
+
 	// ===================== Reference Parameters =====================
 
 	function parseReferenceParams():Map<String, ReferenceableValue> {
@@ -2368,7 +3108,7 @@ class MacroManimParser {
 				case TIdentifier(name):
 					advance();
 					expect(TArrow);
-					params.set(name, parseStringOrReference());
+					params.set(name, parseAnything());
 					eatComma();
 				default:
 					return params;
@@ -2417,6 +3157,22 @@ class MacroManimParser {
 					final h = parseInteger();
 					eatSemicolon();
 					node.gridCoordinateSystem = {spacingX: w, spacingY: h};
+				case TIdentifier(s) if (isKeyword(s, "hex")):
+					if (isPropertyColon()) {
+						advance();
+						expect(TColon);
+						if (node == null) error("hex not supported on root");
+						final orientation = parseHexOrientation();
+						expect(TOpen);
+						final w = parseFloat_();
+						expect(TComma);
+						final h = parseFloat_();
+						expect(TClosed);
+						eatSemicolon();
+						node.hexCoordinateSystem = {hexLayout: HexLayout.createFromFloats(orientation, w, h)};
+					} else {
+						parseChildNode(node, defs);
+					}
 				case TIdentifier(s) if (isKeyword(s, "scale")):
 					// Check if this is "scale: value" (property) or used as node
 					if (isPropertyColon()) {
@@ -2476,9 +3232,33 @@ class MacroManimParser {
 					if (bm == null) error("unknown blend mode");
 					node.blendMode = bm;
 					eatSemicolon();
+				case TIdentifier(s) if (isKeyword(s, "import")):
+					advance();
+					final file = expectIdentifierOrString();
+					expectKeyword("as");
+					final importName = expectIdentifierOrString();
+					eatSemicolon();
+					if (resourceLoader != null) {
+						final loadedFile:Dynamic = resourceLoader.loadMultiAnim(file);
+						if (loadedFile == null) error('could not load multiAnim file $file');
+						imports.set(importName, loadedFile);
+					}
 				case TName(name):
 					advance();
-					final newNode = parseNode(UNTObject(name), node, defs);
+					currentName = name;
+					// Check for (updatable) modifier
+					var nameType:UpdatableNameType = UNTObject(name);
+					if (match(TOpen)) {
+						switch (peek()) {
+							case TIdentifier(s) if (isKeyword(s, "updatable")):
+								advance();
+								nameType = UNTUpdatable(name);
+							default:
+						}
+						expect(TClosed);
+					}
+					final newNode = parseNode(nameType, node, defs);
+					currentName = null;
 					if (newNode != null) {
 						if (node == null) addNode(name, newNode);
 						else node.children.push(newNode);
@@ -2544,7 +3324,7 @@ class MacroManimParser {
 
 	// ===================== Main Entry Points =====================
 
-	function parse():Map<String, Node> {
+	function parse():MultiAnimResult {
 		// Version header
 		switch (peek()) {
 			case TIdentifier(s) if (isKeyword(s, "version")):
@@ -2574,7 +3354,7 @@ class MacroManimParser {
 				error('unexpected content after main body: ${peek()}');
 		}
 
-		return nodes;
+		return {nodes: nodes, imports: imports};
 	}
 
 	// ===================== Graphics =====================
@@ -2753,9 +3533,550 @@ class MacroManimParser {
 		return ZERO;
 	}
 
+	// ===================== Pixel Shapes =====================
+
+	function parsePixelShapes():Array<PixelShapes> {
+		var shapes:Array<PixelShapes> = [];
+		while (!match(TClosed)) {
+			eatComma();
+			eatSemicolon();
+			if (match(TClosed)) break;
+			switch (peek()) {
+				case TIdentifier(s) if (isKeyword(s, "line")):
+					advance();
+					final start = parseXY();
+					expect(TComma);
+					final end = parseXY();
+					expect(TComma);
+					final color = parseColorOrReference();
+					shapes.push(LINE({start: start, end: end, color: color}));
+				case TIdentifier(s) if (isKeyword(s, "rect")):
+					advance();
+					final start = parseXY();
+					expect(TComma);
+					final width = parseIntegerOrReference();
+					expect(TComma);
+					final height = parseIntegerOrReference();
+					expect(TComma);
+					final color = parseColorOrReference();
+					shapes.push(RECT({start: start, width: width, height: height, color: color}));
+				case TIdentifier(s) if (isKeyword(s, "filledrect")):
+					advance();
+					final start = parseXY();
+					expect(TComma);
+					final width = parseIntegerOrReference();
+					expect(TComma);
+					final height = parseIntegerOrReference();
+					expect(TComma);
+					final color = parseColorOrReference();
+					shapes.push(FILLED_RECT({start: start, width: width, height: height, color: color}));
+				case TIdentifier(s) if (isKeyword(s, "pixel")):
+					advance();
+					final pos = parseXY();
+					expect(TComma);
+					final color = parseColorOrReference();
+					shapes.push(PIXEL({pos: pos, color: color}));
+				default:
+					error('unexpected pixel shape: ${peek()}');
+			}
+		}
+		return shapes;
+	}
+
+	// ===================== StateAnim Construct =====================
+
+	function parseStateAnimConstruct():Map<String, StateAnimConstruct> {
+		var constructs:Map<String, StateAnimConstruct> = new Map();
+		while (!match(TClosed)) {
+			eatComma();
+			if (match(TClosed)) break;
+			final stateName = expectIdentifierOrString();
+			expect(TArrow);
+			// expect "sheet"
+			switch (peek()) {
+				case TIdentifier(s) if (isKeyword(s, "sheet")):
+					advance();
+				default:
+					error("expected 'sheet' in construct");
+			}
+			final sheet = expectIdentifierOrString();
+			expect(TComma);
+			final name = parseStringOrReference();
+			expect(TComma);
+			final fps = parseIntegerOrReference();
+			eatComma();
+			var loop = false;
+			var center = false;
+			// Parse optional flags
+			while (true) {
+				switch (peek()) {
+					case TIdentifier(s) if (isKeyword(s, "loop")):
+						advance();
+						loop = true;
+						eatComma();
+					case TIdentifier(s) if (isKeyword(s, "center")):
+						advance();
+						center = true;
+						eatComma();
+					default:
+						break;
+				}
+			}
+			constructs.set(stateName, IndexedSheet(sheet, name, fps, loop, center));
+		}
+		return constructs;
+	}
+
+	// ===================== Paths =====================
+
+	function parsePaths():PathsDef {
+		var paths:PathsDef = new Map();
+		while (!match(TCurlyClosed)) {
+			final pathName = switch (peek()) {
+				case TName(s): advance(); s;
+				default: expectIdentifierOrString();
+			};
+			// expect "path" keyword
+			switch (peek()) {
+				case TIdentifier(s) if (isKeyword(s, "path")):
+					advance();
+				default:
+					error("expected 'path' keyword");
+			}
+			expect(TCurlyOpen);
+			var pathElements:Array<ParsedPaths> = [];
+			while (!match(TCurlyClosed)) {
+				eatSemicolon();
+				if (match(TCurlyClosed)) break;
+				switch (peek()) {
+					case TIdentifier(s) if (isKeyword(s, "forward")):
+						advance();
+						expect(TOpen);
+						final distance = parseIntegerOrReference();
+						expect(TClosed);
+						pathElements.push(Forward(distance));
+					case TIdentifier(s) if (isKeyword(s, "turn")):
+						advance();
+						expect(TOpen);
+						final angle = parseIntegerOrReference();
+						expect(TClosed);
+						pathElements.push(TurnDegrees(angle));
+					case TIdentifier(s) if (isKeyword(s, "arc")):
+						advance();
+						expect(TOpen);
+						final radius = parseIntegerOrReference();
+						expect(TComma);
+						final angleDelta = parseIntegerOrReference();
+						expect(TClosed);
+						pathElements.push(Arc(radius, angleDelta));
+					case TIdentifier(s) if (isKeyword(s, "line")):
+						advance();
+						expect(TOpen);
+						final mode = parseCoordinateMode();
+						final end = parseXY();
+						expect(TClosed);
+						pathElements.push(LineTo(end, mode));
+					case TIdentifier(s) if (isKeyword(s, "checkpoint")):
+						advance();
+						expect(TOpen);
+						final cpName = expectIdentifierOrString();
+						expect(TClosed);
+						pathElements.push(Checkpoint(cpName));
+					case TIdentifier(s) if (isKeyword(s, "bezier")):
+						advance();
+						expect(TOpen);
+						final mode = parseCoordinateMode();
+						final end = parseXY();
+						expect(TComma);
+						final control1 = parseXY();
+						if (match(TClosed)) {
+							pathElements.push(Bezier2To(end, control1, mode, null));
+						} else if (match(TComma)) {
+							// Check for smoothing or second control point
+							switch (peek()) {
+								case TIdentifier(s2) if (isKeyword(s2, "smoothing")):
+									final smoothing = parsePathSmoothing();
+									expect(TClosed);
+									pathElements.push(Bezier2To(end, control1, mode, smoothing));
+								default:
+									final control2 = parseXY();
+									if (match(TClosed)) {
+										pathElements.push(Bezier3To(end, control1, control2, mode, null));
+									} else {
+										expect(TComma);
+										final smoothing = parsePathSmoothing();
+										expect(TClosed);
+										pathElements.push(Bezier3To(end, control1, control2, mode, smoothing));
+									}
+							}
+						}
+					default:
+						error('unexpected path element: ${peek()}');
+				}
+			}
+			paths.set(pathName, pathElements);
+		}
+		return paths;
+	}
+
+	function parseCoordinateMode():Null<PathCoordinateMode> {
+		switch (peek()) {
+			case TIdentifier(s) if (isKeyword(s, "absolute")):
+				advance();
+				expect(TComma);
+				return PCMAbsolute;
+			case TIdentifier(s) if (isKeyword(s, "relative")):
+				advance();
+				expect(TComma);
+				return PCMRelative;
+			default:
+				return null;
+		}
+	}
+
+	function parsePathSmoothing():Null<SmoothingType> {
+		switch (peek()) {
+			case TIdentifier(s) if (isKeyword(s, "smoothing")):
+				advance();
+				expect(TColon);
+				switch (peek()) {
+					case TIdentifier(s2) if (isKeyword(s2, "auto")):
+						advance();
+						return STAuto;
+					case TIdentifier(s2) if (isKeyword(s2, "none")):
+						advance();
+						return STNone;
+					default:
+						return STDistance(parseFloatOrReference());
+				}
+			default:
+				return null;
+		}
+	}
+
+	// ===================== Animated Path =====================
+
+	function parseAnimatedPath():AnimatedPathDef {
+		var actions:AnimatedPathDef = [];
+		while (!match(TCurlyClosed)) {
+			// Time: either a float rate or a checkpoint name
+			var at:AnimatedPathTime;
+			switch (peek()) {
+				case TFloat(_) | TInteger(_):
+					final rate = parseFloatOrReference();
+					at = Rate(rate);
+				case TIdentifier(_) | TQuotedString(_):
+					final cpName = expectIdentifierOrString();
+					at = Checkpoint(cpName);
+				default:
+					error('expected rate or checkpoint name, got ${peek()}');
+					return actions; // unreachable
+			}
+			expect(TColon);
+			final action = parseAnimatedPathAction();
+			actions.push({at: at, action: action});
+		}
+		return actions;
+	}
+
+	function parseAnimatedPathAction():AnimatedPathsAction {
+		switch (peek()) {
+			case TIdentifier(s) if (isKeyword(s, "changespeed")):
+				advance();
+				final speed = parseFloatOrReference();
+				return ChangeSpeed(speed);
+			case TIdentifier(s) if (isKeyword(s, "accelerate")):
+				advance();
+				expect(TOpen);
+				final acceleration = parseFloatOrReference();
+				expect(TComma);
+				final duration = parseFloatOrReference();
+				expect(TClosed);
+				return Accelerate(acceleration, duration);
+			case TIdentifier(s) if (isKeyword(s, "event")):
+				advance();
+				expect(TOpen);
+				final eventName = expectIdentifierOrString();
+				expect(TClosed);
+				return Event(eventName);
+			case TIdentifier(s) if (isKeyword(s, "attachparticles")):
+				advance();
+				expect(TOpen);
+				final particlesName = expectIdentifierOrString();
+				var particlesTemplate = "";
+				if (match(TComma)) {
+					particlesTemplate = expectIdentifierOrString();
+				}
+				expect(TClosed);
+				expect(TCurlyOpen);
+				final particlesDef = parseParticles();
+				return AttachParticles(particlesName, particlesTemplate, particlesDef);
+			case TIdentifier(s) if (isKeyword(s, "removeparticles")):
+				advance();
+				expect(TOpen);
+				final particlesName = expectIdentifierOrString();
+				expect(TClosed);
+				return RemoveParticles(particlesName);
+			case TIdentifier(s) if (isKeyword(s, "changeanimstate")):
+				advance();
+				expect(TOpen);
+				final state = expectIdentifierOrString();
+				expect(TClosed);
+				return ChangeAnimSMState(state);
+			default:
+				return error('expected animated path action, got ${peek()}');
+		}
+	}
+
+	// ===================== Autotile =====================
+
+	function parseAutotile():AutotileDef {
+		var format:Null<AutotileFormat> = null;
+		var source:Null<AutotileSource> = null;
+		var tileSize:Null<ReferenceableValue> = null;
+		var depth:Null<ReferenceableValue> = null;
+		var mapping:Null<Map<Int, Int>> = null;
+		var region:Null<Array<ReferenceableValue>> = null;
+		var allowPartialMapping:Bool = false;
+
+		while (!match(TCurlyClosed)) {
+			switch (peek()) {
+				case TIdentifier(s) if (isKeyword(s, "format")):
+					advance();
+					expect(TColon);
+					switch (peek()) {
+						case TIdentifier(s2) if (isKeyword(s2, "cross")):
+							advance();
+							format = Cross;
+						case TIdentifier(s2) if (isKeyword(s2, "blob47")):
+							advance();
+							format = Blob47;
+						default:
+							error("expected cross or blob47");
+					}
+				case TIdentifier(s) if (isKeyword(s, "sheet")):
+					advance();
+					expect(TColon);
+					final sheet = parseStringOrReference();
+					expect(TComma);
+					switch (peek()) {
+						case TIdentifier(s2) if (isKeyword(s2, "prefix")):
+							advance();
+							expect(TColon);
+							final prefix = parseStringOrReference();
+							source = ATSAtlas(sheet, prefix);
+						case TIdentifier(s2) if (isKeyword(s2, "region")):
+							advance();
+							expect(TColon);
+							expect(TBracketOpen);
+							var regionVals:Array<ReferenceableValue> = [];
+							while (!match(TBracketClosed)) {
+								eatComma();
+								if (match(TBracketClosed)) break;
+								regionVals.push(parseIntegerOrReference());
+							}
+							source = ATSAtlasRegion(sheet, regionVals);
+						default:
+							error("expected prefix or region after sheet");
+					}
+				case TIdentifier(s) if (isKeyword(s, "file")):
+					advance();
+					expect(TColon);
+					final filename = parseStringOrReference();
+					source = ATSFile(filename);
+				case TIdentifier(s) if (isKeyword(s, "tiles")):
+					advance();
+					expect(TColon);
+					final tiles = parseTileSources();
+					source = ATSTiles(tiles);
+				case TIdentifier(s) if (isKeyword(s, "demo")):
+					advance();
+					expect(TColon);
+					final edgeColor = parseColorOrReference();
+					expect(TComma);
+					final fillColor = parseColorOrReference();
+					source = ATSDemo(edgeColor, fillColor);
+				case TIdentifier(s) if (isKeyword(s, "tilesize")):
+					advance();
+					expect(TColon);
+					tileSize = parseIntegerOrReference();
+				case TIdentifier(s) if (isKeyword(s, "depth")):
+					advance();
+					expect(TColon);
+					depth = parseIntegerOrReference();
+				case TIdentifier(s) if (isKeyword(s, "mapping")):
+					advance();
+					expect(TColon);
+					expect(TBracketOpen);
+					mapping = parseAutotileMapping();
+				case TIdentifier(s) if (isKeyword(s, "allowpartialmapping")):
+					advance();
+					expect(TColon);
+					allowPartialMapping = parseBool();
+				case TIdentifier(s) if (isKeyword(s, "region")):
+					advance();
+					expect(TColon);
+					expect(TBracketOpen);
+					region = [];
+					while (!match(TBracketClosed)) {
+						eatComma();
+						if (match(TBracketClosed)) break;
+						region.push(parseIntegerOrReference());
+					}
+				default:
+					error('unexpected autotile property: ${peek()}');
+			}
+		}
+
+		if (format == null) error("autotile requires format");
+		if (source == null) error("autotile requires source");
+		if (tileSize == null) error("autotile requires tileSize");
+
+		return {
+			format: format,
+			source: source,
+			tileSize: tileSize,
+			depth: depth,
+			mapping: mapping,
+			region: region,
+			allowPartialMapping: allowPartialMapping
+		};
+	}
+
+	function parseAutotileMapping():Map<Int, Int> {
+		var map:Map<Int, Int> = new Map();
+		var seqIdx = 0;
+		while (!match(TBracketClosed)) {
+			eatComma();
+			if (match(TBracketClosed)) break;
+			final idx = parseInteger();
+			if (match(TColon)) {
+				final target = parseInteger();
+				map.set(idx, target);
+			} else {
+				map.set(seqIdx, idx);
+			}
+			seqIdx++;
+		}
+		return map;
+	}
+
+	// ===================== Atlas2 =====================
+
+	function parseAtlas2():Atlas2Def {
+		expect(TOpen);
+		var source:Atlas2Source;
+		switch (peek()) {
+			case TIdentifier(s) if (isKeyword(s, "sheet")):
+				advance();
+				expect(TOpen);
+				final sheetName = parseStringOrReference();
+				expect(TClosed);
+				expect(TClosed);
+				source = A2SSheet(sheetName);
+			default:
+				final filename = parseStringOrReference();
+				expect(TClosed);
+				source = A2SFile(filename);
+		}
+
+		expect(TCurlyOpen);
+		var entries:Array<Atlas2EntryDef> = [];
+		while (!match(TCurlyClosed)) {
+			final name = expectIdentifierOrString();
+			expect(TColon);
+			final x = parseInteger();
+			expect(TComma);
+			final y = parseInteger();
+			expect(TComma);
+			final w = parseInteger();
+			expect(TComma);
+			final h = parseInteger();
+
+			var entry:Atlas2EntryDef = {name: name, x: x, y: y, w: w, h: h};
+
+			// Parse optional properties
+			while (match(TComma)) {
+				switch (peek()) {
+					case TIdentifier(s) if (isKeyword(s, "offset")):
+						advance();
+						expect(TColon);
+						entry.offsetX = parseInteger();
+						expect(TComma);
+						entry.offsetY = parseInteger();
+					case TIdentifier(s) if (isKeyword(s, "orig")):
+						advance();
+						expect(TColon);
+						entry.origW = parseInteger();
+						expect(TComma);
+						entry.origH = parseInteger();
+					case TIdentifier(s) if (isKeyword(s, "split")):
+						advance();
+						expect(TColon);
+						entry.split = [parseInteger()];
+						for (_ in 0...3) {
+							expect(TComma);
+							entry.split.push(parseInteger());
+						}
+					case TIdentifier(s) if (isKeyword(s, "index")):
+						advance();
+						expect(TColon);
+						entry.index = parseInteger();
+					default:
+						break;
+				}
+			}
+			entries.push(entry);
+		}
+
+		return {source: source, entries: entries};
+	}
+
+	// ===================== Optional Params (for filters) =====================
+
+	function parseOptionalParams(defs:Array<OptionalParametersParsing>, ?once:Bool):Map<String, Dynamic> {
+		var results:Map<String, Dynamic> = new Map();
+		while (!match(TClosed)) {
+			eatComma();
+			if (match(TClosed)) break;
+			final pname = expectIdentifierOrString();
+			expect(TColon);
+			var found = false;
+			for (d in defs) {
+				final defName = switch (d) {
+					case ParseInteger(n) | ParseIntegerOrReference(n) | ParseFloat(n) |
+						ParseFloatOrReference(n) | ParseBool(n) | ParseCustom(n, _) | ParseColor(n): n;
+				};
+				if (isKeyword(pname, defName)) {
+					if (results.exists(defName)) error('named parameter "$defName" already defined');
+					switch (d) {
+						case ParseInteger(n):
+							results.set(n, parseInteger());
+						case ParseIntegerOrReference(n):
+							results.set(n, parseIntegerOrReference());
+						case ParseFloat(n):
+							results.set(n, parseFloat_());
+						case ParseFloatOrReference(n):
+							results.set(n, parseFloatOrReference());
+						case ParseBool(n):
+							results.set(n, parseBool());
+						case ParseCustom(n, parse):
+							results.set(n, parse());
+						case ParseColor(n):
+							results.set(n, parseColorOrReference());
+					}
+					found = true;
+					break;
+				}
+			}
+			if (!found) error('unknown named parameter: $pname');
+		}
+		return results;
+	}
+
 	// ===================== Public API =====================
 
-	public static function parseFile(content:String, sourceName:String):Map<String, Node> {
+	public static function parseFile(content:String, sourceName:String, ?resourceLoader:Dynamic):MultiAnimResult {
 		// Tokenize
 		final lexer = new MacroLexer(content, sourceName);
 		var tokens:Array<Token> = [];
@@ -2766,8 +4087,7 @@ class MacroManimParser {
 		}
 
 		// Parse
-		final parser = new MacroManimParser(tokens, sourceName);
+		final parser = new MacroManimParser(tokens, sourceName, resourceLoader);
 		return parser.parse();
 	}
 }
-#end

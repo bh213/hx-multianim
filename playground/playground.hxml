@@ -1,4 +1,3 @@
--lib hxparse
 -lib heaps
 -lib hx-multianim
 -cp src
