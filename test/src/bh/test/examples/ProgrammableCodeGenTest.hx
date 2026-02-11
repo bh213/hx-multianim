@@ -3,14 +3,14 @@ package bh.test.examples;
 import utest.Assert;
 import h2d.Scene;
 import bh.multianim.MultiAnimBuilder;
-import bh.multianim.ProgrammableBuilderAccess;
 import bh.test.VisualTestBase;
 
 /**
- * Tests for the @:build(ProgrammableCodeGen.build(...)) generated classes.
+ * Tests for the @:build(ProgrammableCodeGen.buildAll()) generated classes.
+ * All programmables are consolidated into MultiProgrammable with @:manim fields.
  * Each programmable has two visual tests using the same .manim file:
  *   - Builder: renders via MultiAnimBuilder (standard path)
- *   - Macro: renders via the compile-time generated class
+ *   - Macro: renders via the compile-time generated companion class
  * Both compare against the same reference image.
  */
 class ProgrammableCodeGenTest extends VisualTestBase {
@@ -26,40 +26,39 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		super("programmableCodeGen", s2d);
 	}
 
-	function loadAccess(manimPath:String):{builder:MultiAnimBuilder, access:ProgrammableBuilderAccess} {
+	function loadBuilder(manimPath:String):MultiAnimBuilder {
 		final loader = TestResourceLoader.createLoader(false);
 		final fileContent = byte.ByteData.ofString(sys.io.File.getContent(manimPath));
-		final builder = MultiAnimBuilder.load(fileContent, loader, manimPath);
-		return {builder: builder, access: new ProgrammableBuilderAccess(builder)};
+		return MultiAnimBuilder.load(fileContent, loader, manimPath);
 	}
 
 	// ==================== Button: unit tests ====================
 
 	@Test
 	public function testButtonCreate():Void {
-		final ba = loadAccess(BUTTON_MANIM);
-		final btn = bh.test.ButtonProgrammable.create(ba.access);
-		Assert.notNull(btn.root, "ButtonProgrammable should have a root object");
+		final builder = loadBuilder(BUTTON_MANIM);
+		final btn = bh.test.MultiProgrammable_Button.create(builder);
+		Assert.notNull(btn.root, "Button should have a root object");
 		Assert.isTrue(btn.root.numChildren > 0, "Root should have children");
 	}
 
 	@Test
 	public function testButtonSetStatus():Void {
-		final ba = loadAccess(BUTTON_MANIM);
-		final btn = bh.test.ButtonProgrammable.create(ba.access);
+		final builder = loadBuilder(BUTTON_MANIM);
+		final btn = bh.test.MultiProgrammable_Button.create(builder);
 		Assert.isTrue(countVisibleChildren(btn.root) > 0, "Visible in normal state");
 
-		btn.setStatus(bh.test.ButtonProgrammable.Hover);
+		btn.setStatus(bh.test.MultiProgrammable_Button.Hover);
 		Assert.isTrue(countVisibleChildren(btn.root) > 0, "Visible in hover state");
 
-		btn.setStatus(bh.test.ButtonProgrammable.Pressed);
+		btn.setStatus(bh.test.MultiProgrammable_Button.Pressed);
 		Assert.isTrue(countVisibleChildren(btn.root) > 0, "Visible in pressed state");
 	}
 
 	@Test
 	public function testButtonSetText():Void {
-		final ba = loadAccess(BUTTON_MANIM);
-		final btn = bh.test.ButtonProgrammable.create(ba.access);
+		final builder = loadBuilder(BUTTON_MANIM);
+		final btn = bh.test.MultiProgrammable_Button.create(builder);
 		final textEl = findTextChild(btn.root);
 		Assert.notNull(textEl, "Should have a Text element");
 		if (textEl != null)
@@ -87,8 +86,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		this.testTitle = "#38: codegen button (builder)";
 		this.referenceDir = "test/examples/38-codegenButton";
 		macroRenderScreenshotAndCompare(function() {
-			final ba = loadAccess(BUTTON_MANIM);
-			return bh.test.ButtonProgrammable.create(ba.access).root;
+			final builder = loadBuilder(BUTTON_MANIM);
+			return bh.test.MultiProgrammable_Button.create(builder).root;
 		}, async);
 	}
 
@@ -96,16 +95,16 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	@Test
 	public function testHealthbarCreate():Void {
-		final ba = loadAccess(HEALTHBAR_MANIM);
-		final hb = bh.test.HealthbarProgrammable.create(ba.access);
-		Assert.notNull(hb.root, "HealthbarProgrammable should have a root object");
+		final builder = loadBuilder(HEALTHBAR_MANIM);
+		final hb = bh.test.MultiProgrammable_Healthbar.create(builder);
+		Assert.notNull(hb.root, "Healthbar should have a root object");
 		Assert.isTrue(hb.root.numChildren > 0, "Root should have children");
 	}
 
 	@Test
 	public function testHealthbarSetHealth():Void {
-		final ba = loadAccess(HEALTHBAR_MANIM);
-		final hb = bh.test.HealthbarProgrammable.create(ba.access);
+		final builder = loadBuilder(HEALTHBAR_MANIM);
+		final hb = bh.test.MultiProgrammable_Healthbar.create(builder);
 
 		// Check text shows health value
 		final textEl = findTextChild(hb.root);
@@ -122,8 +121,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	@Test
 	public function testHealthbarLowHealth():Void {
-		final ba = loadAccess(HEALTHBAR_MANIM);
-		final hb = bh.test.HealthbarProgrammable.create(ba.access);
+		final builder = loadBuilder(HEALTHBAR_MANIM);
+		final hb = bh.test.MultiProgrammable_Healthbar.create(builder);
 
 		// Set health below 30 — should switch to "pressed" (red) bar
 		hb.setHealth(20);
@@ -148,8 +147,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		this.testTitle = "#39: codegen healthbar (builder)";
 		this.referenceDir = "test/examples/39-codegenHealthbar";
 		macroRenderScreenshotAndCompare(function() {
-			final ba = loadAccess(HEALTHBAR_MANIM);
-			return bh.test.HealthbarProgrammable.create(ba.access).root;
+			final builder = loadBuilder(HEALTHBAR_MANIM);
+			return bh.test.MultiProgrammable_Healthbar.create(builder).root;
 		}, async);
 	}
 
@@ -157,16 +156,16 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	@Test
 	public function testDialogCreate():Void {
-		final ba = loadAccess(DIALOG_MANIM);
-		final dlg = bh.test.DialogProgrammable.create(ba.access);
-		Assert.notNull(dlg.root, "DialogProgrammable should have a root object");
+		final builder = loadBuilder(DIALOG_MANIM);
+		final dlg = bh.test.MultiProgrammable_Dialog.create(builder);
+		Assert.notNull(dlg.root, "Dialog should have a root object");
 		Assert.isTrue(dlg.root.numChildren > 0, "Root should have children");
 	}
 
 	@Test
 	public function testDialogSetTitle():Void {
-		final ba = loadAccess(DIALOG_MANIM);
-		final dlg = bh.test.DialogProgrammable.create(ba.access);
+		final builder = loadBuilder(DIALOG_MANIM);
+		final dlg = bh.test.MultiProgrammable_Dialog.create(builder);
 
 		final textEl = findTextChild(dlg.root);
 		Assert.notNull(textEl, "Should have title text");
@@ -181,14 +180,14 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	@Test
 	public function testDialogSetStyle():Void {
-		final ba = loadAccess(DIALOG_MANIM);
-		final dlg = bh.test.DialogProgrammable.create(ba.access, 400, "Dialog macro");
+		final builder = loadBuilder(DIALOG_MANIM);
+		final dlg = bh.test.MultiProgrammable_Dialog.create(builder, 400, "Dialog macro");
 
 		// Switch styles
-		dlg.setStyle(bh.test.DialogProgrammable.Hover);
+		dlg.setStyle(bh.test.MultiProgrammable_Dialog.Hover);
 		Assert.isTrue(countVisibleChildren(dlg.root) > 0, "Visible in hover style");
 
-		dlg.setStyle(bh.test.DialogProgrammable.Disabled);
+		dlg.setStyle(bh.test.MultiProgrammable_Dialog.Disabled);
 		Assert.isTrue(countVisibleChildren(dlg.root) > 0, "Visible in disabled style");
 	}
 
@@ -208,8 +207,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		this.testTitle = "#40: codegen dialog (builder)";
 		this.referenceDir = "test/examples/40-codegenDialog";
 		macroRenderScreenshotAndCompare(function() {
-			final ba = loadAccess(DIALOG_MANIM);
-			return bh.test.DialogProgrammable.create(ba.access).root;
+			final builder = loadBuilder(DIALOG_MANIM);
+			return bh.test.MultiProgrammable_Dialog.create(builder).root;
 		}, async);
 	}
 
@@ -217,16 +216,16 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	@Test
 	public function testRepeatCreate():Void {
-		final ba = loadAccess(REPEAT_MANIM);
-		final rpt = bh.test.RepeatProgrammable.create(ba.access);
-		Assert.notNull(rpt.root, "RepeatProgrammable should have a root object");
+		final builder = loadBuilder(REPEAT_MANIM);
+		final rpt = bh.test.MultiProgrammable_Repeat.create(builder);
+		Assert.notNull(rpt.root, "Repeat should have a root object");
 		Assert.isTrue(rpt.root.numChildren > 0, "Root should have children");
 	}
 
 	@Test
 	public function testRepeatChildCount():Void {
-		final ba = loadAccess(REPEAT_MANIM);
-		final rpt = bh.test.RepeatProgrammable.create(ba.access);
+		final builder = loadBuilder(REPEAT_MANIM);
+		final rpt = bh.test.MultiProgrammable_Repeat.create(builder);
 		// With default count=5, the param-dependent repeat should have 5 visible iteration containers
 		var totalChildren = countAllDescendants(rpt.root);
 		Assert.isTrue(totalChildren > 10, "Should have many descendant objects from unrolled repeats");
@@ -234,8 +233,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	@Test
 	public function testRepeatSetCount():Void {
-		final ba = loadAccess(REPEAT_MANIM);
-		final rpt = bh.test.RepeatProgrammable.create(ba.access);
+		final builder = loadBuilder(REPEAT_MANIM);
+		final rpt = bh.test.MultiProgrammable_Repeat.create(builder);
 
 		// Reduce count — some pool items should become hidden
 		rpt.setCount(2);
@@ -264,8 +263,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		this.testTitle = "#41: codegen repeat (builder)";
 		this.referenceDir = "test/examples/41-codegenRepeat";
 		macroRenderScreenshotAndCompare(function() {
-			final ba = loadAccess(REPEAT_MANIM);
-			return bh.test.RepeatProgrammable.create(ba.access).root;
+			final builder = loadBuilder(REPEAT_MANIM);
+			return bh.test.MultiProgrammable_Repeat.create(builder).root;
 		}, async);
 	}
 
@@ -273,16 +272,16 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	@Test
 	public function testRepeat2dCreate():Void {
-		final ba = loadAccess(REPEAT2D_MANIM);
-		final rpt2d = bh.test.Repeat2dProgrammable.create(ba.access);
-		Assert.notNull(rpt2d.root, "Repeat2dProgrammable should have a root object");
+		final builder = loadBuilder(REPEAT2D_MANIM);
+		final rpt2d = bh.test.MultiProgrammable_Repeat2d.create(builder);
+		Assert.notNull(rpt2d.root, "Repeat2d should have a root object");
 		Assert.isTrue(rpt2d.root.numChildren > 0, "Root should have children");
 	}
 
 	@Test
 	public function testRepeat2dSetCols():Void {
-		final ba = loadAccess(REPEAT2D_MANIM);
-		final rpt2d = bh.test.Repeat2dProgrammable.create(ba.access);
+		final builder = loadBuilder(REPEAT2D_MANIM);
+		final rpt2d = bh.test.MultiProgrammable_Repeat2d.create(builder);
 
 		// Reduce cols — some pool items should become hidden
 		rpt2d.setCols(1);
@@ -309,8 +308,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		this.testTitle = "#42: codegen repeat2d (builder)";
 		this.referenceDir = "test/examples/42-codegenRepeat2d";
 		macroRenderScreenshotAndCompare(function() {
-			final ba = loadAccess(REPEAT2D_MANIM);
-			return bh.test.Repeat2dProgrammable.create(ba.access).root;
+			final builder = loadBuilder(REPEAT2D_MANIM);
+			return bh.test.MultiProgrammable_Repeat2d.create(builder).root;
 		}, async);
 	}
 
@@ -318,16 +317,16 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	@Test
 	public function testLayoutCreate():Void {
-		final ba = loadAccess(LAYOUT_MANIM);
-		final lay = bh.test.LayoutProgrammable.create(ba.access);
-		Assert.notNull(lay.root, "LayoutProgrammable should have a root object");
+		final builder = loadBuilder(LAYOUT_MANIM);
+		final lay = bh.test.MultiProgrammable_Layout.create(builder);
+		Assert.notNull(lay.root, "Layout should have a root object");
 		Assert.isTrue(lay.root.numChildren > 0, "Root should have children");
 	}
 
 	@Test
 	public function testLayoutChildCount():Void {
-		final ba = loadAccess(LAYOUT_MANIM);
-		final lay = bh.test.LayoutProgrammable.create(ba.access);
+		final builder = loadBuilder(LAYOUT_MANIM);
+		final lay = bh.test.MultiProgrammable_Layout.create(builder);
 		// 5 list points + 4 sequence points = 9 ninepatch elements, each in containers
 		var totalChildren = countAllDescendants(lay.root);
 		Assert.isTrue(totalChildren >= 9, "Should have at least 9 descendant objects from layout repeats");
@@ -349,8 +348,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		this.testTitle = "#43: codegen layout (builder)";
 		this.referenceDir = "test/examples/43-codegenLayout";
 		macroRenderScreenshotAndCompare(function() {
-			final ba = loadAccess(LAYOUT_MANIM);
-			return bh.test.LayoutProgrammable.create(ba.access).root;
+			final builder = loadBuilder(LAYOUT_MANIM);
+			return bh.test.MultiProgrammable_Layout.create(builder).root;
 		}, async);
 	}
 
@@ -358,16 +357,16 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	@Test
 	public function testTilesIterCreate():Void {
-		final ba = loadAccess(TILESITER_MANIM);
-		final ti = bh.test.TilesIterProgrammable.create(ba.access);
-		Assert.notNull(ti.root, "TilesIterProgrammable should have a root object");
+		final builder = loadBuilder(TILESITER_MANIM);
+		final ti = bh.test.MultiProgrammable_TilesIter.create(builder);
+		Assert.notNull(ti.root, "TilesIter should have a root object");
 		Assert.isTrue(ti.root.numChildren > 0, "Root should have children");
 	}
 
 	@Test
 	public function testTilesIterHasBitmaps():Void {
-		final ba = loadAccess(TILESITER_MANIM);
-		final ti = bh.test.TilesIterProgrammable.create(ba.access);
+		final builder = loadBuilder(TILESITER_MANIM);
+		final ti = bh.test.MultiProgrammable_TilesIter.create(builder);
 		// Should have bitmap children from both tiles and stateanim iterators
 		var totalChildren = countAllDescendants(ti.root);
 		Assert.isTrue(totalChildren >= 2, "Should have descendant objects from runtime iterators");
@@ -389,9 +388,38 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		this.testTitle = "#44: codegen tiles iter (builder)";
 		this.referenceDir = "test/examples/44-codegenTilesIter";
 		macroRenderScreenshotAndCompare(function() {
-			final ba = loadAccess(TILESITER_MANIM);
-			return bh.test.TilesIterProgrammable.create(ba.access).root;
+			final builder = loadBuilder(TILESITER_MANIM);
+			return bh.test.MultiProgrammable_TilesIter.create(builder).root;
 		}, async);
+	}
+
+	// ==================== MultiProgrammable factory: unit tests ====================
+
+	@Test
+	public function testMultiProgrammableButton():Void {
+		final loader = TestResourceLoader.createLoader(false);
+		final multi = new bh.test.MultiProgrammable(loader);
+		final btn = multi.createButton();
+		Assert.notNull(btn, "createButton should return companion instance");
+		Assert.notNull(btn.root, "Button companion should have a root");
+		Assert.isTrue(btn.root.numChildren > 0, "Button root should have children");
+		Assert.notNull(multi.button, "multi.button field should be set after createButton()");
+	}
+
+	@Test
+	public function testMultiProgrammableHealthbar():Void {
+		final loader = TestResourceLoader.createLoader(false);
+		final multi = new bh.test.MultiProgrammable(loader);
+		final hb = multi.createHealthbar();
+		Assert.notNull(hb, "createHealthbar should return companion instance");
+		Assert.notNull(hb.root, "Healthbar companion should have a root");
+		Assert.isTrue(hb.root.numChildren > 0, "Healthbar root should have children");
+
+		// Verify typed setter works
+		hb.setHealth(50);
+		final textEl = findTextChild(hb.root);
+		if (textEl != null)
+			Assert.equals("50", textEl.text);
 	}
 
 	// ==================== Shared macro render helper ====================
