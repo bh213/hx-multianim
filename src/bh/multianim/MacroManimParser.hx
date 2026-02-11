@@ -2234,6 +2234,9 @@ class MacroManimParser {
 				var lineSpacing:Float = 0.;
 				var lineBreak:Bool = true;
 				var isHtml:Bool = false;
+				var dropShadowXY:Null<bh.base.FPoint> = null;
+				var dropShadowColor:Int = 0;
+				var dropShadowAlpha:Float = 0.5;
 				if (match(TComma)) {
 					halign = parseHAlign();
 					if (halign != null && match(TComma)) {
@@ -2261,6 +2264,16 @@ class MacroManimParser {
 							case "linespacing": lineSpacing = parseFloat_();
 							case "linebreak": lineBreak = parseBool();
 							case "html": isHtml = parseBool();
+							case "dropshadowxy":
+								final dx = parseFloat_();
+								expect(TComma);
+								final dy = parseFloat_();
+								dropShadowXY = {x: dx, y: dy};
+							case "dropshadowcolor":
+								final c = tryParseColor();
+								if (c != null) dropShadowColor = c;
+								else error("expected color value for dropShadowColor");
+							case "dropshadowalpha": dropShadowAlpha = parseFloat_();
 							default: error('unknown text param: $pname');
 						}
 					} else break;
@@ -2268,7 +2281,7 @@ class MacroManimParser {
 				final textDef:TextDef = {
 					fontName: fontname, text: text, color: color, halign: halign,
 					textAlignWidth: textAlignWidth, letterSpacing: letterSpacing, lineSpacing: lineSpacing,
-					lineBreak: lineBreak, dropShadowXY: null, dropShadowColor: 0, dropShadowAlpha: 0.5,
+					lineBreak: lineBreak, dropShadowXY: dropShadowXY, dropShadowColor: dropShadowColor, dropShadowAlpha: dropShadowAlpha,
 					isHtml: isHtml
 				};
 				createNode(TEXT(textDef), parent, conditional, scale, alpha, tint, layerIndex, updatableName);

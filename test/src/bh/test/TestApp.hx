@@ -71,8 +71,8 @@ class TestApp extends hxd.App {
 		}
 		
 			// Exit after enough frames to let all update callbacks finish
-			// With 33 visual examples + parser error tests, we need enough frames
-			if (frameCount >= 50) {
+			// With visual examples + codegen tests + parser error tests, we need enough frames
+			if (frameCount >= 58) {
 				// Generate visual HTML report before exiting
 				HtmlReportGenerator.generateReport();
 				Sys.exit(0);

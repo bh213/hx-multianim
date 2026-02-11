@@ -17,15 +17,21 @@ version: 0.3
   // Test tiles iterator with tilename - iterate over all tiles in crew2 sheet
   // Exposes $bitmap, $tilename, and $index
   text(dd, "tiles iterator with tilename (crew2 sheet):", yellow, left, 600): 40, 240;
-  repeatable($index, tiles($bitmap, $tilename, "crew2")) {
-    bitmap($bitmap): 40 + ($index % 16) * 70, 280 + ($index div 16) * 50;
+  @scale(0.5) point {
+    pos: 40, 270
+    repeatable($index, tiles($bitmap, $tilename, "crew2")) {
+      bitmap($bitmap): ($index % 24) * 70, ($index div 24) * 50;
+    }
   }
 
   // Test tiles iterator with tile name filter - iterate over all frames of a specific tile
   // Uses sheet name and exact tile name (key) to filter specific tiles
   text(dd, "tiles with tile filter (Arrow_dir0):", yellow, left, 600): 40, 480;
-  repeatable($index, tiles($bitmap, "crew2", "Arrow_dir0")) {
-    bitmap($bitmap): 40 + ($index % 16) * 70, 520 + ($index div 16) * 50;
+  @scale(0.5) point {
+    pos: 40, 510
+    repeatable($index, tiles($bitmap, "crew2", "Arrow_dir0")) {
+      bitmap($bitmap): ($index % 24) * 70, ($index div 24) * 50;
+    }
   }
 }
 

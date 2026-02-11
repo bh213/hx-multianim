@@ -3,6 +3,18 @@
 ## [0.4]
 
 ### Added
+- **ProgrammableCodeGen macro** — compile-time code generation for `.manim` programmable elements
+  - `@:build(ProgrammableCodeGen.buildAll())` on a factory class with `@:manim("path", "name")` field annotations
+  - Generates companion classes with typed `create()` factory and `setXxx()` parameter setters
+  - Inline `MacroManimParser` parses `.manim` files at compile time (no subprocess)
+  - Elements: bitmap, text, ninepatch, flow, layers, mask, point, interactive, reference, graphics, placeholder
+  - Conditionals: `@(p=>v)`, `@(p!= v)`, `@(p=>[v1,v2])`, ranges, `@else`, `@default`
+  - Full expression support: `$param`, arithmetic, ternary, comparisons
+  - Properties: scale, alpha, blendMode, tint, filters — all with param-dependent runtime updates
+  - All coordinate types: offset, grid, hex (position/corner/edge), layout
+  - REPEAT/REPEAT2D: compile-time unroll (static) or runtime pool (param-dependent) for all iterator types
+  - Placeholder delegation to `ProgrammableBuilder.buildPlaceholderVia*()` methods
+  - 14 visual tests (builder vs macro screenshot comparison)
 - **.anim conditionals: negation and multi-value** - Ported subset of .manim conditional system to .anim
   - `@(state != value)` - negation: match when state does NOT equal value
   - `@(state=>[v1,v2])` - multi-value: match when state is any of the listed values
@@ -61,3 +73,5 @@
 - **HTML report overlay** - Image lightbox now uses 100% opaque background
 - Updated all test examples with consistent styling and smaller label fonts (m3x6)
 - Improved hex coordinate demo showing both pointy and flat orientations with corner/edge labels
+- **tilesIteration test cleanup** — scaled tile sections to 0.5x with 24-column layout so all tiles fit within viewport
+- **codegenHexPos test cleanup** — reduced hex scale from 4x to 2x so both pointy and flat hexes are fully visible

@@ -31,4 +31,16 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/47-codegenReference/codegenReference.manim", "codegenReference")
 	public var reference;
+
+	@:manim("test/examples/48-codegenFilterParam/codegenFilterParam.manim", "codegenFilterParam")
+	public var filterParam;
+
+	@:manim("test/examples/49-codegenGridPos/codegenGridPos.manim", "codegenGridPos")
+	public var gridPos;
+
+	@:manim("test/examples/50-codegenHexPos/codegenHexPos.manim", "codegenHexPos")
+	public var hexPos;
+
+	@:manim("test/examples/51-codegenTextOpts/codegenTextOpts.manim", "codegenTextOpts")
+	public var textOpts;
 }
