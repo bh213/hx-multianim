@@ -428,7 +428,15 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		async.setTimeout(10000);
 		clearScene();
 
-		final root = createRoot();
+		var root:h2d.Object = null;
+		try {
+			root = createRoot();
+		} catch (e:Dynamic) {
+			Assert.fail('Macro createRoot() threw: $e');
+			async.done();
+			return;
+		}
+
 		root.setScale(4.0);
 		s2d.addChild(root);
 
@@ -437,17 +445,20 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		}
 
 		waitForUpdate(function(dt:Float) {
-			final actualPath = getActualImagePath();
-			final referencePath = getReferenceImagePath();
+			try {
+				final actualPath = getActualImagePath();
+				final referencePath = getReferenceImagePath();
 
-			var success = screenshot(actualPath, 1280, 720);
-			Assert.isTrue(success, 'Screenshot should be created at $actualPath');
+				var success = screenshot(actualPath, 1280, 720);
+				Assert.isTrue(success, 'Screenshot should be created at $actualPath');
 
-			if (success) {
-				var match = compareImages(actualPath, referencePath, 0.99);
-				Assert.isTrue(match, 'Macro output should match reference image');
+				if (success) {
+					var match = compareImages(actualPath, referencePath, 0.99);
+					Assert.isTrue(match, 'Macro output should match reference image');
+				}
+			} catch (e:Dynamic) {
+				Assert.fail('Macro screenshot/compare threw: $e');
 			}
-
 			async.done();
 		});
 	}

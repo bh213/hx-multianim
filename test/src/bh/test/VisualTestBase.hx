@@ -328,18 +328,21 @@ class VisualTestBase extends utest.Test {
 		if (result != null) {
 			// Queue screenshot for next update
 			waitForUpdate(function(dt:Float) {
-				var actualPath = getActualImagePath();
-				var referencePath = getReferenceImagePath();
+				try {
+					var actualPath = getActualImagePath();
+					var referencePath = getReferenceImagePath();
 
-				var success = screenshot(actualPath, sizeX, sizeY);
-				Assert.isTrue(success, 'Screenshot should be created at $actualPath');
+					var success = screenshot(actualPath, sizeX, sizeY);
+					Assert.isTrue(success, 'Screenshot should be created at $actualPath');
 
-				if (success) {
-					// Compare with reference
-					var match = compareImages(actualPath, referencePath);
-					Assert.isTrue(match, 'Screenshot should match reference image');
+					if (success) {
+						// Compare with reference
+						var match = compareImages(actualPath, referencePath);
+						Assert.isTrue(match, 'Screenshot should match reference image');
+					}
+				} catch (e:Dynamic) {
+					Assert.fail('Screenshot/compare threw: $e');
 				}
-
 				// Signal async test completion
 				async.done();
 			});
