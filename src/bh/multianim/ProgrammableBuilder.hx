@@ -96,10 +96,11 @@ class ProgrammableBuilder {
 				}
 			}
 		} else {
-			for (tileName in sheet.getContents().keys()) {
-				final frame = sheet.get(tileName);
-				if (frame != null)
-					result.push(frame.tile);
+			for (entries in sheet.getContents()) {
+				for (entry in entries) {
+					if (entry != null)
+						result.push(entry.t);
+				}
 			}
 		}
 		return result;

@@ -1532,10 +1532,14 @@ class MultiAnimBuilder {
 								}
 							}
 						} else {
-							// Full iteration: all tiles in sheet
-							for (tileName in sheet.getContents().keys()) {
-								tileSourceIterator.push(TSSheet(RVString(sheetName), RVString(tileName)));
-								tilenameIterator.push(tileName);
+							// Full iteration: all tiles in sheet (including all indexed entries per name)
+							for (tileName => entries in sheet.getContents()) {
+								for (entry in entries) {
+									if (entry != null) {
+										tileSourceIterator.push(TSTile(entry.t));
+										tilenameIterator.push(tileName);
+									}
+								}
 							}
 						}
 						repeatCount = tileSourceIterator.length;
@@ -2089,10 +2093,14 @@ class MultiAnimBuilder {
 								}
 							}
 						} else {
-							// Full iteration: all tiles in sheet
-							for (tileName in sheet.getContents().keys()) {
-								tileSourceIterator.push(TSSheet(RVString(sheetName), RVString(tileName)));
-								tilenameIterator.push(tileName);
+							// Full iteration: all tiles in sheet (including all indexed entries per name)
+							for (tileName => entries in sheet.getContents()) {
+								for (entry in entries) {
+									if (entry != null) {
+										tileSourceIterator.push(TSTile(entry.t));
+										tilenameIterator.push(tileName);
+									}
+								}
 							}
 						}
 						repeatCount = tileSourceIterator.length;
