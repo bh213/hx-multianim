@@ -1,0 +1,46 @@
+sheet: crew2
+center: 32,48
+
+
+animation {
+    name: explode
+    fps: 16
+    playlist {
+        sheet: "Turret_Explode_SW"
+    }
+}
+
+animation {
+    name: hit
+    fps: 10
+    loop: yes
+    playlist {
+        sheet: "Turret_Idle_SW_A" frames: 2..6
+    }
+}
+
+animation {
+    name: idle
+    fps: 14
+    loop: yes
+    playlist {
+        sheet: "Turret_Idle_SW_B"
+    }
+}
+
+animation {
+    name: shoot
+    fps: 16
+    loop: yes
+    playlist {
+        sheet: "Turret_Shoot_SW"
+    }
+}
+
+animation {
+    name: destroyed
+    fps: 1
+    playlist {
+        sheet: "Turret_Destroyed_SW"
+    }
+}
