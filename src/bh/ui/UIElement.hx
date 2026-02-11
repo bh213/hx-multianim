@@ -168,7 +168,8 @@ enum UIScreenEvent {
 	UIChangeItem(index:Int, items:Array<UIElementListItem>);
 	UIKeyPress(keyCode:Int, release:Bool);
 	UIOnControllerEvent(event:ControllerEvents);
-	
+	UIEntering;
+	UILeaving;
 }
 
 /**

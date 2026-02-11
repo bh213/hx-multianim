@@ -159,6 +159,7 @@ class ComponentsTestScreen extends UIScreenBase {
 				case UIKeyPress(keyCode, release):
 				case UIOnControllerEvent(result):
 				case UICustomEvent(eventName, data):
+				case _:
 			}
 	}
 }
