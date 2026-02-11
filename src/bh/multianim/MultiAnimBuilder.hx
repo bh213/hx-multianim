@@ -303,7 +303,7 @@ private typedef StoredBuilderState = {
 @:allow(bh.paths.MultiAnimPaths)
 @:allow(bh.paths.AnimatedPath)
 @:allow(bh.multianim.MultiAnimParser)
-@:allow(bh.multianim.ProgrammableBuilderAccess)
+@:allow(bh.multianim.ProgrammableBuilder)
 class MultiAnimBuilder {
 	final resourceLoader:bh.base.ResourceLoader;
 	public final sourceName:String;

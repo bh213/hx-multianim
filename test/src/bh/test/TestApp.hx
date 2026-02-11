@@ -8,14 +8,8 @@ import bh.test.VisualTestBase;
 import bh.base.FontManager;
 
 class TestApp extends hxd.App {
-	// Force compilation of @:build macro generated classes
-	static var _forceBuild1:Any = (null : bh.test.ButtonProgrammable);
-	static var _forceBuild2:Any = (null : bh.test.HealthbarProgrammable);
-	static var _forceBuild3:Any = (null : bh.test.DialogProgrammable);
-	static var _forceBuild4:Any = (null : bh.test.RepeatProgrammable);
-	static var _forceBuild5:Any = (null : bh.test.Repeat2dProgrammable);
-	static var _forceBuild6:Any = (null : bh.test.LayoutProgrammable);
-	static var _forceBuild7:Any = (null : bh.test.TilesIterProgrammable);
+	// Force compilation of @:build macro generated class
+	static var _forceBuild:Any = (null : bh.test.MultiProgrammable);
 
 	private var testRunner:Runner;
 	private var frameCount:Int = 0;

@@ -13,17 +13,21 @@ import bh.multianim.layouts.LayoutTypes.Layout;
 using StringTools;
 
 /**
- * Compile-time macro that generates typed fields for programmable classes from .manim definitions.
+ * Compile-time macro that generates typed companion classes for programmable UI components from .manim definitions.
  *
  * Usage:
- *   @:build(bh.multianim.ProgrammableCodeGen.build("test/res/std.manim", "button"))
- *   class ButtonProgrammable {}
+ *   @:build(bh.multianim.ProgrammableCodeGen.buildAll())
+ *   class MyScreen extends ProgrammableBuilder {
+ *       @:manim("path/to/file.manim", "buttonName") public var button;
+ *       @:manim("path/to/file.manim", "healthbar") public var healthbar;
+ *   }
  *
- * The macro fills the class with:
+ * For each @:manim field, a companion class is generated (e.g. MyScreen_Button) with:
  *   - `root: h2d.Object` — the root of the built h2d tree
- *   - `static create(access, typedParams...)` — factory with typed enum/bool params
+ *   - `static create(builder, typedParams...)` — factory with typed enum/bool params
  *   - `setXxx(v)` — typed setter per parameter (updates visibility + expressions)
  *   - `get_xxx()` — accessors for named elements
+ * The parent class gets `createXxx()` factory methods for each field.
  */
 class ProgrammableCodeGen {
 	static var elementCounter:Int = 0;
@@ -56,8 +60,7 @@ class ProgrammableCodeGen {
 	// Cache parsed results to avoid re-running subprocess for same file
 	static var parsedCache:Map<String, Map<String, Node>> = new Map();
 
-	public static function build(manimPath:String, programmableName:String):Array<Field> {
-		// Reset state
+	static function resetState():Void {
 		elementCounter = 0;
 		expressionUpdates = [];
 		visibilityEntries = [];
@@ -69,41 +72,169 @@ class ProgrammableCodeGen {
 		runtimeLoopVars = new Map();
 		repeatPoolEntries = [];
 		allParsedNodes = new Map();
+	}
 
-		// Parse .manim file via subprocess (classes with @:autoBuild can't work in macro context)
-		final nodes = parseViaSubprocess(manimPath);
-		if (nodes == null)
-			return null;
-		allParsedNodes = nodes;
-
-		// Find the programmable node
-		final node = nodes.get(programmableName);
-		if (node == null) {
-			Context.fatalError('ProgrammableCodeGen: programmable "$programmableName" not found in "$manimPath"', Context.currentPos());
-			return null;
-		}
-
-		switch (node.type) {
-			case PROGRAMMABLE(isTileGroup, parameters):
-				paramDefs = parameters;
-				for (kv in parameters.keyValueIterator()) {
-					paramNames.push(kv.key);
-				}
-			default:
-				Context.fatalError('ProgrammableCodeGen: "$programmableName" is not a programmable', Context.currentPos());
-				return null;
-		}
-
-		// Get the local class info for defining companion types and return types
+	/**
+	 * Multi-programmable macro: scans user-declared fields for @:manim metadata,
+	 * generates a companion class per field via Context.defineType(), and adds
+	 * createXxx() factory methods to the parent class.
+	 *
+	 * Usage:
+	 *   @:build(bh.multianim.ProgrammableCodeGen.buildAll())
+	 *   class MyScreen extends ProgrammableBuilder {
+	 *       @:manim("path.manim", "buttonName") var button;
+	 *       @:manim("path.manim", "healthbar") var healthbar;
+	 *   }
+	 */
+	public static function buildAll():Array<Field> {
+		final pos = Context.currentPos();
 		final localClass = Context.getLocalClass();
-		localClassPack = if (localClass != null) localClass.get().pack else [];
-		localClassName = if (localClass != null) localClass.get().name else "";
-		final classModule = if (localClass != null) localClass.get().module else "";
+		if (localClass == null) {
+			Context.fatalError('ProgrammableCodeGen.buildAll(): cannot get local class', pos);
+			return null;
+		}
 
-		// Classify params for typed API generation
-		classifyParamTypes();
+		final parentPack = localClass.get().pack;
+		final parentName = localClass.get().name;
+		final parentModule = localClass.get().module;
 
-		return generateFields(node);
+		final fields = Context.getBuildFields();
+		final newFields:Array<Field> = [];
+
+		for (field in fields) {
+			if (field.meta == null) continue;
+			for (meta in field.meta) {
+				if (meta.name != ":manim" && meta.name != "manim") continue;
+				if (meta.params == null || meta.params.length < 2) {
+					Context.fatalError('ProgrammableCodeGen.buildAll(): @:manim requires (manimPath, programmableName)', field.pos);
+					continue;
+				}
+
+				// Extract string arguments from metadata
+				final manimPath = extractMetaString(meta.params[0]);
+				final programmableName = extractMetaString(meta.params[1]);
+				if (manimPath == null || programmableName == null) {
+					Context.fatalError('ProgrammableCodeGen.buildAll(): @:manim arguments must be string literals', field.pos);
+					continue;
+				}
+
+				// Reset codegen state for each programmable
+				resetState();
+
+				// Parse the .manim file
+				final nodes = parseViaSubprocess(manimPath);
+				if (nodes == null) continue;
+				allParsedNodes = nodes;
+
+				final node = nodes.get(programmableName);
+				if (node == null) {
+					Context.fatalError('ProgrammableCodeGen.buildAll(): programmable "$programmableName" not found in "$manimPath"', field.pos);
+					continue;
+				}
+
+				switch (node.type) {
+					case PROGRAMMABLE(isTileGroup, parameters):
+						paramDefs = parameters;
+						for (kv in parameters.keyValueIterator())
+							paramNames.push(kv.key);
+					default:
+						Context.fatalError('ProgrammableCodeGen.buildAll(): "$programmableName" is not a programmable', field.pos);
+						continue;
+				}
+
+				// Companion class name: ParentName_FieldName
+				final companionName = parentName + "_" + toPascalCase(field.name);
+
+				// Set class info for generateFields to use
+				localClassPack = parentPack;
+				localClassName = companionName;
+
+				classifyParamTypes();
+
+				// Generate fields for the companion class
+				final companionFields = generateFields(node);
+
+				// Define the companion type
+				final td:TypeDefinition = {
+					pack: parentPack,
+					name: companionName,
+					pos: pos,
+					kind: TDClass({pack: ["bh", "multianim"], name: "ProgrammableBuilder"}, null, false, false, false),
+					fields: companionFields,
+					meta: [{name: ":allow", params: [macro bh.multianim.ProgrammableCodeGen], pos: pos}],
+				};
+				Context.defineType(td);
+
+				// Update the field's type to the companion class
+				final companionTypePath = {pack: parentPack, name: companionName};
+				field.kind = FVar(TPath(companionTypePath), null);
+
+				// Generate createXxx() factory method
+				final fieldNamePascal = toPascalCase(field.name);
+				final factoryName = "create" + fieldNamePascal;
+
+				// Build factory args (same typed params as the companion's create())
+				final factoryArgs:Array<FunctionArg> = [];
+				for (pName in paramNames) {
+					final def = paramDefs.get(pName);
+					final pubType = publicParamType(pName, def.type);
+					final hasDefault = def.defaultValue != null;
+					factoryArgs.push({
+						name: pName,
+						type: pubType,
+						opt: hasDefault,
+						value: hasDefault ? publicDefaultValue(pName, def) : null,
+					});
+				}
+
+				// Build the call to CompanionClass.create(_manimBuilder, params...)
+				final createCallArgs:Array<Expr> = [macro _manimBuilder];
+				for (pName in paramNames) {
+					final enumInfo = paramEnumTypes.get(pName);
+					if (enumInfo != null && enumInfo.typePath == "Bool") {
+						createCallArgs.push(macro($i{pName} ? 0 : 1));
+					} else {
+						createCallArgs.push(macro $i{pName});
+					}
+				}
+
+				final companionExpr:Expr = {
+					expr: EField(macro $p{parentPack.concat([companionName])}, "create"),
+					pos: pos,
+				};
+				final callExpr:Expr = {
+					expr: ECall(companionExpr, createCallArgs),
+					pos: pos,
+				};
+				final fieldRef = macro $p{["this", field.name]};
+				final manimPathExpr = macro $v{manimPath};
+
+				newFields.push({
+					name: factoryName,
+					kind: FFun({
+						args: factoryArgs,
+						ret: TPath(companionTypePath),
+						expr: macro {
+							final _manimBuilder = this.resourceLoader.loadMultiAnim($manimPathExpr);
+							$fieldRef = $callExpr;
+							return $fieldRef;
+						},
+					}),
+					access: [APublic],
+					pos: pos,
+				});
+			}
+		}
+
+		return fields.concat(newFields);
+	}
+
+	/** Extract a string literal from a macro expression */
+	static function extractMetaString(e:Expr):Null<String> {
+		return switch (e.expr) {
+			case EConst(CString(s, _)): s;
+			default: null;
+		};
 	}
 
 	/** Classify params and record which ones need enum constants or Bool conversion */
@@ -229,7 +360,7 @@ class ProgrammableCodeGen {
 
 		// 6. Private constructor (raw Int params, used internally by create())
 		final ctorArgs:Array<FunctionArg> = [];
-		ctorArgs.push({name: "access", type: macro :bh.multianim.ProgrammableBuilderAccess});
+		ctorArgs.push({name: "builder", type: macro :bh.multianim.MultiAnimBuilder});
 		for (name in paramNames) {
 			final def = paramDefs.get(name);
 			ctorArgs.push({
@@ -240,7 +371,11 @@ class ProgrammableCodeGen {
 			});
 		}
 
-		final ctorBody = constructorExprs.copy();
+		final ctorBody:Array<Expr> = [];
+		ctorBody.push(macro super(@:privateAccess builder.resourceLoader));
+		ctorBody.push(macro this._builder = builder);
+		for (e in constructorExprs)
+			ctorBody.push(e);
 		ctorBody.push(macro this._applyVisibility());
 		ctorBody.push(macro this._updateExpressions());
 		fields.push(makeMethod("new", ctorBody, ctorArgs, null, [APrivate], pos));
@@ -845,7 +980,7 @@ class ProgrammableCodeGen {
 				final sheetStr = sheetName;
 				final filterExpr:Expr = tileFilter != null ? macro $v{tileFilter} : macro null;
 				ctorExprs.push(macro {
-					final _rt_tiles = access.getSheetTiles($v{sheetStr}, $filterExpr);
+					final _rt_tiles = this.getSheetTiles($v{sheetStr}, $filterExpr);
 					for (_rt_i in 0..._rt_tiles.length) {
 						$loopBody;
 					}
@@ -865,7 +1000,7 @@ class ProgrammableCodeGen {
 				};
 				final animNameExpr = rvToExpr(animationName);
 				ctorExprs.push(macro {
-					final _rt_tiles = access.getStateAnimTiles($v{fileStr}, Std.string($animNameExpr), $selectorMapExpr);
+					final _rt_tiles = this.getStateAnimTiles($v{fileStr}, Std.string($animNameExpr), $selectorMapExpr);
 					for (_rt_i in 0..._rt_tiles.length) {
 						$loopBody;
 					}
@@ -1236,13 +1371,13 @@ class ProgrammableCodeGen {
 		final fontExpr = rvToExpr(textDef.fontName);
 		if (textDef.isHtml) {
 			createExprs.push(macro {
-				final font = access.loadFont($fontExpr);
+				final font = this.loadFont($fontExpr);
 				final t = new h2d.HtmlText(font);
-				t.loadFont = (name) -> access.loadFont(name);
+				t.loadFont = (name) -> this.loadFont(name);
 				$fieldRef = t;
 			});
 		} else {
-			createExprs.push(macro $fieldRef = new h2d.Text(access.loadFont($fontExpr)));
+			createExprs.push(macro $fieldRef = new h2d.Text(this.loadFont($fontExpr)));
 		}
 
 		// Alignment
@@ -1317,7 +1452,7 @@ class ProgrammableCodeGen {
 
 		final createExprs:Array<Expr> = [
 			macro {
-				final sg = access.load9Patch($v{sheet}, $v{tilename});
+				final sg = this.load9Patch($v{sheet}, $v{tilename});
 				sg.width = $wExpr;
 				sg.height = $hExpr;
 				sg.tileCenter = true;
@@ -1608,18 +1743,18 @@ class ProgrammableCodeGen {
 		return switch (ts) {
 			case TSFile(filename):
 				final fnExpr = rvToExpr(filename);
-				macro access.loadTileFile($fnExpr);
+				macro this.loadTileFile($fnExpr);
 			case TSSheet(sheet, name):
 				final sheetExpr = rvToExpr(sheet);
 				final nameExpr = rvToExpr(name);
-				macro access.loadTile($sheetExpr, $nameExpr);
+				macro this.loadTile($sheetExpr, $nameExpr);
 			case TSSheetWithIndex(sheet, name, index):
 				final sheetExpr = rvToExpr(sheet);
 				final nameExpr = rvToExpr(name);
 				final indexExpr = rvToExpr(index);
-				macro access.loadTileWithIndex($sheetExpr, $nameExpr, $indexExpr);
+				macro this.loadTileWithIndex($sheetExpr, $nameExpr, $indexExpr);
 			default:
-				macro access.loadTileFile("placeholder.png");
+				macro this.loadTileFile("placeholder.png");
 		};
 	}
 
@@ -1658,7 +1793,7 @@ class ProgrammableCodeGen {
 
 		// Build factory args
 		final factoryArgs:Array<FunctionArg> = [];
-		factoryArgs.push({name: "access", type: macro :bh.multianim.ProgrammableBuilderAccess});
+		factoryArgs.push({name: "builder", type: macro :bh.multianim.MultiAnimBuilder});
 
 		for (name in orderedParams) {
 			final def = paramDefs.get(name);
@@ -1674,7 +1809,7 @@ class ProgrammableCodeGen {
 		}
 
 		// Build the constructor call args: convert Bool params to Int, pass others directly
-		final ctorCallArgs:Array<Expr> = [macro access];
+		final ctorCallArgs:Array<Expr> = [macro builder];
 		for (pName in paramNames) {
 			final enumInfo = paramEnumTypes.get(pName);
 			if (enumInfo != null && enumInfo.typePath == "Bool") {

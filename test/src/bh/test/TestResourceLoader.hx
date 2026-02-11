@@ -40,9 +40,11 @@ class TestResourceLoader {
 
 		loader.loadMultiAnimImpl = resourceFilename -> {
 			if (debugMode) trace('Loading manim: ${resourceFilename}');
-			var fullPath = 'test/examples/${resourceFilename}';
+			// Try direct path first (for full paths like "test/examples/38-.../file.manim"),
+			// then fall back to test/examples/ prefix
+			var fullPath = if (FileSystem.exists(resourceFilename)) resourceFilename else 'test/examples/${resourceFilename}';
 			if (!FileSystem.exists(fullPath)) {
-				throw 'File not found: $fullPath';
+				throw 'File not found: $resourceFilename (tried direct and test/examples/ prefix)';
 			}
 			final fileContent = ByteData.ofString(File.getContent(fullPath));
 			return bh.multianim.MultiAnimBuilder.load(fileContent, loader, fullPath);

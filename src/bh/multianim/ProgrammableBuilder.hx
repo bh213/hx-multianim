@@ -9,18 +9,24 @@ import bh.multianim.MultiAnimBuilder.BuilderResult;
 import bh.multianim.MultiAnimParser.TileSource;
 
 /**
- * Runtime access layer for generated programmable classes.
- * Wraps MultiAnimBuilder's resource loading to provide a clean API
- * that generated code can call without @:privateAccess.
+ * Base class for generated programmable classes.
+ * The parent factory class is constructed with a ResourceLoader.
+ * Companion classes receive a MultiAnimBuilder at creation time
+ * (stored in _builder) for full resource resolution.
+ *
+ * Usage:
+ *   @:build(bh.multianim.ProgrammableCodeGen.buildAll())
+ *   class MyScreen extends ProgrammableBuilder {
+ *       @:manim("path.manim", "button") public var button;
+ *   }
  */
 @:allow(bh.multianim.ProgrammableCodeGen)
-class ProgrammableBuilderAccess {
-	public final builder:MultiAnimBuilder;
-	final resourceLoader:ResourceLoader;
+class ProgrammableBuilder {
+	public final resourceLoader:ResourceLoader;
+	var _builder:Dynamic = null;
 
-	public function new(builder:MultiAnimBuilder) {
-		this.builder = builder;
-		this.resourceLoader = @:privateAccess builder.resourceLoader;
+	public function new(resourceLoader:ResourceLoader) {
+		this.resourceLoader = resourceLoader;
 	}
 
 	/** Load a tile from a sprite sheet by name */
@@ -62,14 +68,18 @@ class ProgrammableBuilderAccess {
 		return resourceLoader.loadFont(name);
 	}
 
-	/** Get a sprite sheet (atlas) by name */
+	/** Get a sprite sheet (atlas) by name.
+	 *  Uses builder's getOrLoadSheet when available (handles inline atlases),
+	 *  otherwise falls back to resourceLoader.loadSheet2. */
 	function getSheet(sheetName:String):IAtlas2 {
-		return @:privateAccess builder.getOrLoadSheet(sheetName);
+		if (_builder != null)
+			return @:privateAccess (_builder : MultiAnimBuilder).getOrLoadSheet(sheetName);
+		return resourceLoader.loadSheet2(sheetName);
 	}
 
 	/** Build a sub-programmable via the builder (for REFERENCE nodes) */
 	public function buildReference(name:String, parameters:Map<String, Dynamic>):BuilderResult {
-		return builder.buildWithParameters(name, parameters);
+		return (_builder : MultiAnimBuilder).buildWithParameters(name, parameters);
 	}
 
 	/** Get all tiles from a sheet, optionally filtered by tile name prefix.
@@ -98,6 +108,7 @@ class ProgrammableBuilderAccess {
 	/** Get tiles for all frames of a state animation.
 	 *  Used by generated code for StateAnimIterator. */
 	public function getStateAnimTiles(animFilename:String, animationName:String, selector:Map<String, String>):Array<Tile> {
+		final builder:MultiAnimBuilder = _builder;
 		final tiles = @:privateAccess builder.collectStateAnimFrames(animFilename, animationName, selector);
 		final result:Array<Tile> = [];
 		for (ts in tiles) {
