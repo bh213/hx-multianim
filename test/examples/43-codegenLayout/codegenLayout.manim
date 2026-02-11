@@ -9,9 +9,7 @@ relativeLayouts {
     point: 60, 40
   }
 
-  #seqLayout sequence($i, 0, 3) {
-    point: $i * 50 + 10, 80
-  }
+  #seqLayout sequence($i: 0..3) point: $i * 50 + 10, 80
 }
 
 #codegenLayout programmable() {
@@ -21,7 +19,7 @@ relativeLayouts {
     ninepatch("ui", "button-idle", 40, 20): 0, 0
   }
 
-  // Sequence layout: 4 points
+  // Sequence layout: 4 points (0, 1, 2, 3)
   repeatable($j, layout("main", "seqLayout")) {
     pos: 0, 0
     ninepatch("ui", "button-pressed", 40, 20): 0, 0

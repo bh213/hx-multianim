@@ -2,7 +2,7 @@
 REM Test utility script for hx-multianim
 REM Usage: test.bat [run|gen-refs|report|rr] [-v|-verbose]
 
-setlocal
+setlocal enabledelayedexpansion
 set "ROOT=%~dp0"
 set "VERBOSE=0"
 
@@ -52,248 +52,28 @@ if not exist "%ROOT%test\screenshots\" (
 echo.
 echo Copying screenshots to reference locations...
 
-REM Example 1: hex grid + pixels
-if exist "%ROOT%test\screenshots\hexGridPixels_actual.png" (
-    copy /Y "%ROOT%test\screenshots\hexGridPixels_actual.png" "%ROOT%test\examples\1-hexGridPixels\reference.png" >nul
-    echo   01 - hexGridPixels
-)
-
-REM Example 2: text
-if exist "%ROOT%test\screenshots\textDemo_actual.png" (
-    copy /Y "%ROOT%test\screenshots\textDemo_actual.png" "%ROOT%test\examples\2-textDemo\reference.png" >nul
-    echo   02 - textDemo
-)
-
-REM Example 3: bitmap
-if exist "%ROOT%test\screenshots\bitmapDemo_actual.png" (
-    copy /Y "%ROOT%test\screenshots\bitmapDemo_actual.png" "%ROOT%test\examples\3-bitmapDemo\reference.png" >nul
-    echo   03 - bitmapDemo
-)
-
-REM Example 4: repeatable
-if exist "%ROOT%test\screenshots\repeatableDemo_actual.png" (
-    copy /Y "%ROOT%test\screenshots\repeatableDemo_actual.png" "%ROOT%test\examples\4-repeatableDemo\reference.png" >nul
-    echo   04 - repeatableDemo
-)
-
-REM Example 5: stateanim
-if exist "%ROOT%test\screenshots\stateAnimDemo_actual.png" (
-    copy /Y "%ROOT%test\screenshots\stateAnimDemo_actual.png" "%ROOT%test\examples\5-stateAnimDemo\reference.png" >nul
-    echo   05 - stateAnimDemo
-)
-
-REM Example 6: flow
-if exist "%ROOT%test\screenshots\flowDemo_actual.png" (
-    copy /Y "%ROOT%test\screenshots\flowDemo_actual.png" "%ROOT%test\examples\6-flowDemo\reference.png" >nul
-    echo   06 - flowDemo
-)
-
-REM Example 7: palette
-if exist "%ROOT%test\screenshots\paletteDemo_actual.png" (
-    copy /Y "%ROOT%test\screenshots\paletteDemo_actual.png" "%ROOT%test\examples\7-paletteDemo\reference.png" >nul
-    echo   07 - paletteDemo
-)
-
-REM Example 8: layers
-if exist "%ROOT%test\screenshots\layersDemo_actual.png" (
-    copy /Y "%ROOT%test\screenshots\layersDemo_actual.png" "%ROOT%test\examples\8-layersDemo\reference.png" >nul
-    echo   08 - layersDemo
-)
-
-REM Example 9: 9-patch
-if exist "%ROOT%test\screenshots\ninePatchDemo_actual.png" (
-    copy /Y "%ROOT%test\screenshots\ninePatchDemo_actual.png" "%ROOT%test\examples\9-ninePatchDemo\reference.png" >nul
-    echo   09 - ninePatchDemo
-)
-
-REM Example 10: reference
-if exist "%ROOT%test\screenshots\referenceDemo_actual.png" (
-    copy /Y "%ROOT%test\screenshots\referenceDemo_actual.png" "%ROOT%test\examples\10-referenceDemo\reference.png" >nul
-    echo   10 - referenceDemo
-)
-
-REM Example 11: bitmap align
-if exist "%ROOT%test\screenshots\bitmapAlignDemo_actual.png" (
-    copy /Y "%ROOT%test\screenshots\bitmapAlignDemo_actual.png" "%ROOT%test\examples\11-bitmapAlignDemo\reference.png" >nul
-    echo   11 - bitmapAlignDemo
-)
-
-REM Example 12: updatable from code
-if exist "%ROOT%test\screenshots\updatableDemo_actual.png" (
-    copy /Y "%ROOT%test\screenshots\updatableDemo_actual.png" "%ROOT%test\examples\12-updatableDemo\reference.png" >nul
-    echo   12 - updatableDemo
-)
-
-REM Example 13: layout repeatable
-if exist "%ROOT%test\screenshots\layoutRepeatableDemo_actual.png" (
-    copy /Y "%ROOT%test\screenshots\layoutRepeatableDemo_actual.png" "%ROOT%test\examples\13-layoutRepeatableDemo\reference.png" >nul
-    echo   13 - layoutRepeatableDemo
-)
-
-REM Example 14: tileGroup
-if exist "%ROOT%test\screenshots\tileGroupDemo_actual.png" (
-    copy /Y "%ROOT%test\screenshots\tileGroupDemo_actual.png" "%ROOT%test\examples\14-tileGroupDemo\reference.png" >nul
-    echo   14 - tileGroupDemo
-)
-
-REM Example 15: stateAnim construct
-if exist "%ROOT%test\screenshots\stateAnimConstructDemo_actual.png" (
-    copy /Y "%ROOT%test\screenshots\stateAnimConstructDemo_actual.png" "%ROOT%test\examples\15-stateAnimConstructDemo\reference.png" >nul
-    echo   15 - stateAnimConstructDemo
-)
-
-REM Example 16: div/mod
-if exist "%ROOT%test\screenshots\divModDemo_actual.png" (
-    copy /Y "%ROOT%test\screenshots\divModDemo_actual.png" "%ROOT%test\examples\16-divModDemo\reference.png" >nul
-    echo   16 - divModDemo
-)
-
-REM Example 17: apply
-if exist "%ROOT%test\screenshots\applyDemo_actual.png" (
-    copy /Y "%ROOT%test\screenshots\applyDemo_actual.png" "%ROOT%test\examples\17-applyDemo\reference.png" >nul
-    echo   17 - applyDemo
-)
-
-REM Example 18: conditionals (consolidated)
-if exist "%ROOT%test\screenshots\conditionalsDemo_actual.png" (
-    if not exist "%ROOT%test\examples\18-conditionalsDemo\" (
-        mkdir "%ROOT%test\examples\18-conditionalsDemo\"
-    )
-    copy /Y "%ROOT%test\screenshots\conditionalsDemo_actual.png" "%ROOT%test\examples\18-conditionalsDemo\reference.png" >nul
-    echo   18 - conditionalsDemo
-)
-
-REM Example 19: ternary op
-if exist "%ROOT%test\screenshots\ternaryOpDemo_actual.png" (
-    copy /Y "%ROOT%test\screenshots\ternaryOpDemo_actual.png" "%ROOT%test\examples\19-ternaryOpDemo\reference.png" >nul
-    echo   19 - ternaryOpDemo
-)
-
-REM Example 20: graphics
-if exist "%ROOT%test\screenshots\graphicsDemo_actual.png" (
-    copy /Y "%ROOT%test\screenshots\graphicsDemo_actual.png" "%ROOT%test\examples\20-graphicsDemo\reference.png" >nul
-    echo   20 - graphicsDemo
-)
-
-REM Example 21: repeatable2d
-if exist "%ROOT%test\screenshots\repeatable2dDemo_actual.png" (
-    copy /Y "%ROOT%test\screenshots\repeatable2dDemo_actual.png" "%ROOT%test\examples\21-repeatable2dDemo\reference.png" >nul
-    echo   21 - repeatable2dDemo
-)
-
-REM Example 23: tiles/stateanim iteration
-if exist "%ROOT%test\screenshots\tilesIteration_actual.png" (
-    copy /Y "%ROOT%test\screenshots\tilesIteration_actual.png" "%ROOT%test\examples\23-tilesIteration\reference.png" >nul
-    echo   23 - tilesIteration
-)
-
-REM Example 24: atlas demo
-if exist "%ROOT%test\screenshots\atlasDemo_actual.png" (
-    copy /Y "%ROOT%test\screenshots\atlasDemo_actual.png" "%ROOT%test\examples\24-atlasDemo\reference.png" >nul
-    echo   24 - atlasDemo
-)
-
-REM Example 26: autotile cross
-if exist "%ROOT%test\screenshots\autotileCross_actual.png" (
-    copy /Y "%ROOT%test\screenshots\autotileCross_actual.png" "%ROOT%test\examples\26-autotileCross\reference.png" >nul
-    echo   26 - autotileCross
-)
-
-REM Example 27: autotile blob47
-if exist "%ROOT%test\screenshots\autotileBlob47_actual.png" (
-    copy /Y "%ROOT%test\screenshots\autotileBlob47_actual.png" "%ROOT%test\examples\27-autotileBlob47\reference.png" >nul
-    echo   27 - autotileBlob47
-)
-
-REM Example 28: font showcase
-if exist "%ROOT%test\screenshots\fontShowcase_actual.png" (
-    copy /Y "%ROOT%test\screenshots\fontShowcase_actual.png" "%ROOT%test\examples\28-fontShowcase\reference.png" >nul
-    echo   28 - fontShowcase
-)
-
-REM Example 29: scale position demo
-if exist "%ROOT%test\screenshots\scalePositionDemo_actual.png" (
-    copy /Y "%ROOT%test\screenshots\scalePositionDemo_actual.png" "%ROOT%test\examples\29-scalePositionDemo\reference.png" >nul
-    echo   29 - scalePositionDemo
-)
-
-REM Example 30: autotile demo syntax
-if exist "%ROOT%test\screenshots\autotileDemoSyntax_actual.png" (
-    copy /Y "%ROOT%test\screenshots\autotileDemoSyntax_actual.png" "%ROOT%test\examples\30-autotileDemoSyntax\reference.png" >nul
-    echo   30 - autotileDemoSyntax
-)
-
-REM Example 31: forgotten plains terrain
-if exist "%ROOT%test\screenshots\forgottenPlainsTerrain_actual.png" (
-    copy /Y "%ROOT%test\screenshots\forgottenPlainsTerrain_actual.png" "%ROOT%test\examples\31-forgottenPlainsTerrain\reference.png" >nul
-    echo   31 - forgottenPlainsTerrain
-)
-
-REM Example 32: blob47 fallback
-if exist "%ROOT%test\screenshots\blob47Fallback_actual.png" (
-    copy /Y "%ROOT%test\screenshots\blob47Fallback_actual.png" "%ROOT%test\examples\32-blob47Fallback\reference.png" >nul
-    echo   32 - blob47Fallback
-)
-
-REM Example 33: @else and @default conditionals
-if exist "%ROOT%test\screenshots\elseDefaultDemo_actual.png" (
-    copy /Y "%ROOT%test\screenshots\elseDefaultDemo_actual.png" "%ROOT%test\examples\33-elseDefaultDemo\reference.png" >nul
-    echo   33 - elseDefaultDemo
-)
-
-REM Example 34: named filter params
-if exist "%ROOT%test\screenshots\namedFilterParams_actual.png" (
-    copy /Y "%ROOT%test\screenshots\namedFilterParams_actual.png" "%ROOT%test\examples\34-namedFilterParams\reference.png" >nul
-    echo   34 - namedFilterParams
-)
-
-REM Example 35: inline atlas2
-if exist "%ROOT%test\screenshots\inlineAtlas2Demo_actual.png" (
-    copy /Y "%ROOT%test\screenshots\inlineAtlas2Demo_actual.png" "%ROOT%test\examples\35-inlineAtlas2Demo\reference.png" >nul
-    echo   35 - inlineAtlas2Demo
-)
-
-REM Example 36: mask
-if exist "%ROOT%test\screenshots\maskDemo_actual.png" (
-    copy /Y "%ROOT%test\screenshots\maskDemo_actual.png" "%ROOT%test\examples\36-maskDemo\reference.png" >nul
-    echo   36 - maskDemo
-)
-
-REM Example 37: tint
-if exist "%ROOT%test\screenshots\tintDemo_actual.png" (
-    copy /Y "%ROOT%test\screenshots\tintDemo_actual.png" "%ROOT%test\examples\37-tintDemo\reference.png" >nul
-    echo   37 - tintDemo
-)
-
-REM Example 38: codegen button (builder = reference, macro compares against it)
-if exist "%ROOT%test\screenshots\codegenButton_actual.png" (
-    if not exist "%ROOT%test\examples\38-codegenButton\" (
-        mkdir "%ROOT%test\examples\38-codegenButton\"
-    )
-    copy /Y "%ROOT%test\screenshots\codegenButton_actual.png" "%ROOT%test\examples\38-codegenButton\reference.png" >nul
-    echo   38 - codegenButton (builder + macro)
-)
-
-REM Example 39: codegen healthbar (builder = reference, macro compares against it)
-if exist "%ROOT%test\screenshots\codegenHealthbar_actual.png" (
-    if not exist "%ROOT%test\examples\39-codegenHealthbar\" (
-        mkdir "%ROOT%test\examples\39-codegenHealthbar\"
-    )
-    copy /Y "%ROOT%test\screenshots\codegenHealthbar_actual.png" "%ROOT%test\examples\39-codegenHealthbar\reference.png" >nul
-    echo   39 - codegenHealthbar (builder + macro)
-)
-
-REM Example 40: codegen dialog (builder = reference, macro compares against it)
-if exist "%ROOT%test\screenshots\codegenDialog_actual.png" (
-    if not exist "%ROOT%test\examples\40-codegenDialog\" (
-        mkdir "%ROOT%test\examples\40-codegenDialog\"
-    )
-    copy /Y "%ROOT%test\screenshots\codegenDialog_actual.png" "%ROOT%test\examples\40-codegenDialog\reference.png" >nul
-    echo   40 - codegenDialog (builder + macro)
+REM Auto-discover test directories: iterate test\examples\N-testName folders
+REM For each, check if test\screenshots\testName_actual.png exists and copy it
+for /d %%D in ("%ROOT%test\examples\*") do (
+    call :process_test_dir "%%~nxD"
 )
 
 echo.
 echo Reference images updated. Re-run 'test.bat run' to verify tests pass.
+goto :eof
+
+:process_test_dir
+REM %~1 = directory name like "1-hexGridPixels" or "38-codegenButton"
+set "DIRN=%~1"
+REM Extract the number (before first dash) and test name (after first dash)
+for /f "tokens=1,* delims=-" %%A in ("!DIRN!") do (
+    set "NUM=%%A"
+    set "TNAME=%%B"
+)
+if exist "%ROOT%test\screenshots\!TNAME!_actual.png" (
+    copy /Y "%ROOT%test\screenshots\!TNAME!_actual.png" "%ROOT%test\examples\!DIRN!\reference.png" >nul
+    echo   !NUM! - !TNAME!
+)
 goto :eof
 
 :report

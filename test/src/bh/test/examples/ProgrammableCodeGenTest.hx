@@ -84,7 +84,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	@Test
 	public function test38_CodegenButtonMacro(async:utest.Async):Void {
 		this.testName = "codegenButton_macro";
-		this.testTitle = "#38: codegen button (macro)";
+		this.testTitle = "#38: codegen button (builder)";
 		this.referenceDir = "test/examples/38-codegenButton";
 		macroRenderScreenshotAndCompare(function() {
 			final ba = loadAccess(BUTTON_MANIM);
@@ -145,11 +145,11 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	@Test
 	public function test39_CodegenHealthbarMacro(async:utest.Async):Void {
 		this.testName = "codegenHealthbar_macro";
-		this.testTitle = "#39: codegen healthbar (macro)";
+		this.testTitle = "#39: codegen healthbar (builder)";
 		this.referenceDir = "test/examples/39-codegenHealthbar";
 		macroRenderScreenshotAndCompare(function() {
 			final ba = loadAccess(HEALTHBAR_MANIM);
-			return bh.test.HealthbarProgrammable.create(ba.access, 20, 200, 100, 10, 100).root;
+			return bh.test.HealthbarProgrammable.create(ba.access).root;
 		}, async);
 	}
 
@@ -205,7 +205,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	@Test
 	public function test40_CodegenDialogMacro(async:utest.Async):Void {
 		this.testName = "codegenDialog_macro";
-		this.testTitle = "#40: codegen dialog (macro)";
+		this.testTitle = "#40: codegen dialog (builder)";
 		this.referenceDir = "test/examples/40-codegenDialog";
 		macroRenderScreenshotAndCompare(function() {
 			final ba = loadAccess(DIALOG_MANIM);
@@ -261,7 +261,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	@Test
 	public function test41_CodegenRepeatMacro(async:utest.Async):Void {
 		this.testName = "codegenRepeat_macro";
-		this.testTitle = "#41: codegen repeat (macro)";
+		this.testTitle = "#41: codegen repeat (builder)";
 		this.referenceDir = "test/examples/41-codegenRepeat";
 		macroRenderScreenshotAndCompare(function() {
 			final ba = loadAccess(REPEAT_MANIM);
@@ -306,7 +306,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	@Test
 	public function test42_CodegenRepeat2dMacro(async:utest.Async):Void {
 		this.testName = "codegenRepeat2d_macro";
-		this.testTitle = "#42: codegen repeat2d (macro)";
+		this.testTitle = "#42: codegen repeat2d (builder)";
 		this.referenceDir = "test/examples/42-codegenRepeat2d";
 		macroRenderScreenshotAndCompare(function() {
 			final ba = loadAccess(REPEAT2D_MANIM);
@@ -346,7 +346,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	@Test
 	public function test43_CodegenLayoutMacro(async:utest.Async):Void {
 		this.testName = "codegenLayout_macro";
-		this.testTitle = "#43: codegen layout (macro)";
+		this.testTitle = "#43: codegen layout (builder)";
 		this.referenceDir = "test/examples/43-codegenLayout";
 		macroRenderScreenshotAndCompare(function() {
 			final ba = loadAccess(LAYOUT_MANIM);
@@ -386,7 +386,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	@Test
 	public function test44_CodegenTilesIterMacro(async:utest.Async):Void {
 		this.testName = "codegenTilesIter_macro";
-		this.testTitle = "#44: codegen tiles iter (macro)";
+		this.testTitle = "#44: codegen tiles iter (builder)";
 		this.referenceDir = "test/examples/44-codegenTilesIter";
 		macroRenderScreenshotAndCompare(function() {
 			final ba = loadAccess(TILESITER_MANIM);
@@ -403,6 +403,10 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		final root = createRoot();
 		root.setScale(4.0);
 		s2d.addChild(root);
+
+		if (testTitle != null && testTitle.length > 0) {
+			addTitleOverlay();
+		}
 
 		waitForUpdate(function(dt:Float) {
 			final actualPath = getActualImagePath();
