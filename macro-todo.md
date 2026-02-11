@@ -1,6 +1,14 @@
 # ProgrammableCodeGen Macro — TODO
 
-What the `@:build(ProgrammableCodeGen.build(...))` macro supports vs what's missing.
+What the `@:build(ProgrammableCodeGen.buildAll())` macro supports vs what's missing.
+
+## Architecture
+
+- Single factory class with `@:manim("path", "name")` field annotations
+- `buildAll()` generates companion classes (`ParentName_FieldName`) via `Context.defineType()`
+- Factory takes `ResourceLoader`, generated `createXxx()` methods handle loading internally
+- Companion `create()` receives `MultiAnimBuilder`, constructor passes `resourceLoader` to `ProgrammableBuilder` base
+- Parsing via `MacroManimParser` (inline macro parser, no subprocess)
 
 ## Fully Working
 
@@ -17,29 +25,30 @@ What the `@:build(ProgrammableCodeGen.build(...))` macro supports vs what's miss
 - **Properties** — scale, alpha, blendMode
 - **Static create()** — factory with typed params (Bool for bool, inline constants for enums), reordered (required first)
 - **Setters** — `setXxx(v)` per param, updates visibility + expressions in-place
+- **REPEAT / REPEAT2D** — all iterator types (see below)
+- **Self-loading factory** — `createXxx()` calls `resourceLoader.loadMultiAnim(path)` internally
 
-## Partially Working
+### REPEAT / REPEAT2D — All Iterators Working
 
-### REPEAT / REPEAT2D
-Iterates children N times with positioning. **Supported iterators:**
-- **GridIterator** — offset per iteration (dx, dy) — static count: compile-time unroll; param-dependent: pool with show/hide
-- **RangeIterator** — numeric range (start..end, step) — static: compile-time unroll; param-dependent: pool
+| Iterator | Approach | Details |
+|----------|----------|---------|
+| **GridIterator** | Compile-time unroll (static) or pool (param-dependent) | Offset per iteration (dx, dy) |
+| **RangeIterator** | Compile-time unroll (static) or pool (param-dependent) | Numeric range (start..end, step) |
+| **LayoutIterator** | Compile-time unroll | Resolves layout points from parsed AST at compile time |
+| **TilesIterator** | Runtime loop | Fetches tiles from sheet at construction, creates h2d.Bitmap children |
+| **StateAnimIterator** | Runtime loop | Fetches animation frames at construction, creates h2d.Bitmap children |
+| **ArrayIterator** | Runtime loop | Iterates array parameter values at construction |
 
-**Not yet supported iterators (fallback to empty placeholder):**
-- **LayoutIterator** — positions from layout points
-- **ArrayIterator** — iterate array parameter values
-- **StateAnimIterator** — iterate animation frames
-- **TilesIterator** — iterate sprite sheet tiles
+Static count: unrolled at compile time — N copies with loop variable substituted. Zero runtime overhead.
+Param-dependent count: pre-allocated pool up to max. `_applyVisibility()` shows/hides pool items.
+REPEAT2D: same approach for both axes. Static x Static → fully unrolled. Mixed → pool for param axis.
 
-Implementation details:
-- **Static count**: unrolled at compile time — N copies of children with loop variable substituted to literal. Zero runtime overhead.
-- **Param-dependent count**: pre-allocated pool up to max (from param default value). `_applyVisibility()` shows/hides pool items based on current count. Efficient updates — no object creation/deletion, only visibility toggling.
-- **REPEAT2D**: same approach for both axes. Static x Static → fully unrolled. Mixed → pool for param-dependent axis.
+## Not Implemented — Stub Only (empty h2d.Object placeholder)
 
 ### REFERENCE
 Delegates to another programmable with parameters. Builder calls `buildWithParameters(name, params)`.
 
-For codegen: could call `access.buildReference(name, params)` at construction time and store the result. Updates would require rebuilding the subtree (or delegating to the referenced programmable's own generated class if it also uses codegen).
+For codegen: call `this.buildReference(name, params)` at construction time and store the result. The method already exists on `ProgrammableBuilder`. Updates would require rebuilding the subtree (or delegating to the referenced programmable's own generated class).
 
 ### PLACEHOLDER
 Resolved via callbacks at build time. Builder calls the callback function to get a tile/object.
@@ -52,7 +61,7 @@ Vector drawing primitives on h2d.Graphics. Builder supports:
 - Style: filled vs line-width stroke
 - Color per element
 
-For codegen: generate the draw calls directly as macro expressions. Straightforward — each graphics element becomes a `g.beginFill()` / `g.drawRect()` / etc. call. Expressions referencing params would need redraw on update.
+For codegen: generate the draw calls directly as macro expressions. Each graphics element becomes a `g.beginFill()` / `g.drawRect()` / etc. call. Expressions referencing params would need redraw on update.
 
 ### PIXELS
 Pixel-level drawing (PixelLines). Builder supports:
@@ -70,12 +79,12 @@ Full particle system. Builder creates emitters with:
 - Force fields (attractor, repulsor, vortex, wind, turbulence)
 - Bounds modes (kill, bounce, wrap)
 
-For codegen: complex. Best approach is probably to store the ParticlesDef and delegate to a runtime helper that creates the particle system from the def. No need to inline all particle logic into generated code.
+For codegen: complex. Best approach is to delegate to a runtime helper that creates the particle system from the parsed AST. No need to inline all particle logic into generated code.
 
 ## Missing Properties
 
 ### Filters
-Not applied at all. Builder supports 9 filter types:
+Not applied at all. Builder supports 10 filter types:
 - **outline** — `h2d.filter.Outline` or custom `PixelOutline`
 - **glow** — `h2d.filter.Glow`
 - **blur** — `h2d.filter.Blur`
@@ -90,7 +99,7 @@ Not applied at all. Builder supports 9 filter types:
 Node has `filters: Array<FilterDef>`. Codegen ignores it entirely. Need to generate filter creation code in constructor and optionally update if filter params reference programmable params.
 
 ### Tint
-Node has `tintColor: Null<Int>`. Builder applies it to `h2d.Drawable` via cast. Codegen ignores it. Simple to add — just `cast(obj, h2d.Drawable).color.setColor(tintColor)` in constructor.
+Node has `tintColor: Null<Int>`. Builder applies it to `h2d.Drawable` via cast. Codegen ignores it. Simple to add — `cast(obj, h2d.Drawable).color.setColor(tintColor)` in constructor.
 
 ### Grid/Hex/Layout Positioning
 `generatePositionExpr()` only handles `OFFSET(x,y)` and `ZERO`. Returns null for:
@@ -108,25 +117,58 @@ Layout: resolve layout points at compile time from the parsed layout data.
 ### Position Expression Updates
 When positions use `$param` references (e.g., `$w - 70, $h - 30`), the codegen sets position in the constructor but does NOT update it in `_updateExpressions()`. Need to collect position param refs and add position updates alongside other expression updates.
 
-## Priority Order (suggested)
+## Suggested Implementation Order
 
-1. **Filters** — most commonly used missing feature, straightforward to add
-2. **Tint** — trivial, one-liner
-3. **Position expression updates** — important for correctness when params change positions
-4. **GRAPHICS** — direct draw call generation
-5. **PIXELS** — similar to graphics
-6. **REPEAT LayoutIterator/ArrayIterator** — needs layout data or array resolution at compile time
-7. **Grid/Hex positioning** — needs context propagation
-8. **Layout positioning** — needs layout data at compile time
-9. **REFERENCE** — delegation to builder or other generated class
-10. **PLACEHOLDER** — callback-based, needs API design
-11. **REPEAT StateAnimIterator/TilesIterator** — needs asset access at compile time
-12. **PARTICLES** — delegate to runtime helper
+### Phase 1: Correctness — make codegen output match builder output
 
-## Efficiency Improvements
+| # | Feature | Effort | Impact | Notes |
+|---|---------|--------|--------|-------|
+| 1 | **Tint** | Trivial | Low | One-liner: `cast(obj, h2d.Drawable).color.setColor(tintColor)` |
+| 2 | **Filters** | Medium | High | Most commonly used missing feature. Static filters (no param refs) are straightforward. Param-dependent filters need update logic. |
+| 3 | **Position expression updates** | Medium | High | Critical correctness bug — positions with `$param` refs don't update on setter calls. Need to add position updates to `expressionUpdates`. |
+| 4 | **REFERENCE** | Medium | High | Call `this.buildReference(name, params)` at construction. Already have the method on ProgrammableBuilder. Main question: how to handle updates. |
+| 5 | **GRAPHICS** | Medium | Medium | Generate `beginFill()`/`drawRect()`/etc. calls. Param-dependent graphics need clear+redraw. |
+| 6 | **PIXELS** | Medium | Low | Similar to GRAPHICS. Rare in practice. |
+| 7 | **Grid/Hex positioning** | Medium | Medium | Grid: inline math. Hex: call Hex.hx functions. Need parent context for grid spacing. |
+| 8 | **Layout positioning** | Low | Low | Resolve layout points from parsed AST (same approach as LayoutIterator). |
+| 9 | **PLACEHOLDER** | Low | Low | Generate setter method for user-provided objects. |
+| 10 | **PARTICLES** | High | Medium | Delegate to runtime helper. Complex but well-isolated. |
 
-Currently `_applyVisibility()` and `_updateExpressions()` update ALL elements on every setter call. Could generate per-param methods:
-- `_applyVisibility_status()` — only touches elements whose condition references `status`
-- `_updateExpressions_health()` — only recalculates expressions referencing `health`
+### Phase 2: Performance — optimize generated code
 
-The data is already available (`visibilityEntries` tracks conditions, `expressionUpdates` has `paramRefs`). Each setter would call only its relevant sub-methods.
+| # | Feature | Effort | Impact | Notes |
+|---|---------|--------|--------|-------|
+| 1 | **Per-param visibility** | Medium | High | Generate `_applyVisibility_paramName()` that only touches elements conditioned on that param. Currently every setter calls the full `_applyVisibility()`. |
+| 2 | **Per-param expressions** | Medium | High | Generate `_updateExpressions_paramName()` that only recalculates expressions referencing that param. Data already available in `paramRefs`. Currently setter skips call entirely if param unused, but when called, updates ALL expressions. |
+| 3 | **Lazy filter updates** | Low | Low | Only update filters when their param refs change. |
+
+## Suggested Tests
+
+### Correctness tests (new .manim examples + visual tests)
+
+| Test | .manim content | Validates |
+|------|---------------|-----------|
+| **45-codegenTint** | Bitmap with `tintColor` applied | Tint renders same as builder |
+| **46-codegenFilter** | Elements with outline, glow, blur filters | Filters applied correctly |
+| **47-codegenFilterParam** | Filter with param-dependent value (e.g., blur radius = `$blurAmount`) | Filter updates on setter |
+| **48-codegenPosExpr** | Elements with param-dependent positions (`$w - 70, $h - 30`) | Position updates when params change |
+| **49-codegenReference** | Programmable containing `reference($ref)` to another | Reference builds and renders |
+| **50-codegenGraphics** | Graphics elements (rect, circle, line) | Draw calls generate correctly |
+| **51-codegenGridPos** | Elements using `grid(x, y)` positioning | Grid positions calculated correctly |
+
+### Performance tests (unit tests, not visual)
+
+| Test | What to measure | Validates |
+|------|----------------|-----------|
+| **Setter call time** | Time N calls to `setHealth(i)` on a healthbar with many elements | Per-param optimization reduces work |
+| **Visibility overhead** | Compare `_applyVisibility()` full vs per-param on multi-param component | Per-param visibility skips unrelated elements |
+| **Codegen vs builder** | Time creation + 100 setter calls, codegen vs `MultiAnimBuilder.build()` | Codegen is faster (that's the whole point) |
+| **Memory** | Compare object count: codegen companion vs builder result | Codegen doesn't create excess objects |
+
+### How to add a correctness test
+
+1. Create `test/examples/<N>-codegen<Name>/codegen<Name>.manim`
+2. Add `@:manim("test/examples/<N>-codegen<Name>/codegen<Name>.manim", "codegen<Name>")` to `MultiProgrammable`
+3. Add unit test method in `ProgrammableCodeGenTest.hx` using companion class
+4. Add visual test comparing codegen output to builder output (use `macroRenderScreenshotAndCompare`)
+5. Generate reference image with `test.bat gen-refs`
