@@ -351,4 +351,147 @@ class VisualTestBase extends utest.Test {
 		}
 	}
 
+	/**
+	 * Build builder output, take screenshot, then build macro output, take screenshot,
+	 * compare both to reference. Reports as a single result with 3 images.
+	 * Phase 1: builder screenshot. Phase 2 (next frame): macro screenshot + compare both.
+	 */
+	public function builderAndMacroScreenshotAndCompare(animFilePath:String, elementName:String, createMacroRoot:() -> h2d.Object,
+			async:utest.Async, ?sizeX:Int, ?sizeY:Int, ?scale:Float):Void {
+		async.setTimeout(15000);
+		if (sizeX == null) sizeX = 1280;
+		if (sizeY == null) sizeY = 720;
+
+		// Phase 1: builder screenshot
+		clearScene();
+		var result = buildAndAddToScene(animFilePath, elementName, scale);
+		Assert.notNull(result, 'Failed to build element "$elementName" from $animFilePath');
+
+		if (result == null) {
+			async.done();
+			return;
+		}
+
+		waitForUpdate(function(dt:Float) {
+			var builderPath = 'test/screenshots/${testName}_actual.png';
+			var builderSuccess = false;
+			try {
+				builderSuccess = screenshot(builderPath, sizeX, sizeY);
+			} catch (e:Dynamic) {
+				Assert.fail('Builder screenshot threw: $e');
+				async.done();
+				return;
+			}
+
+			// Phase 2: macro screenshot
+			clearScene();
+			var macroRoot:h2d.Object = null;
+			try {
+				macroRoot = createMacroRoot();
+			} catch (e:Dynamic) {
+				Assert.fail('Macro createRoot() threw: $e');
+				// Still report builder result
+				var referencePath = getReferenceImagePath();
+				if (builderSuccess) {
+					compareImages(builderPath, referencePath);
+				}
+				async.done();
+				return;
+			}
+
+			if (scale == null) scale = 4.0;
+			macroRoot.setScale(scale);
+			s2d.addChild(macroRoot);
+
+			// Add title overlay to macro screenshot too (matching builder)
+			if (testTitle != null && testTitle.length > 0) {
+				addTitleOverlay();
+			}
+
+			waitForUpdate(function(dt2:Float) {
+				try {
+					var macroPath = 'test/screenshots/${testName}_macro.png';
+					var referencePath = getReferenceImagePath();
+
+					var macroSuccess = screenshot(macroPath, sizeX, sizeY);
+
+					// Compare builder vs reference
+					var builderSimilarity = 1.0;
+					var builderPassed = true;
+					if (builderSuccess) {
+						builderSimilarity = computeSimilarity(builderPath, referencePath);
+						builderPassed = builderSimilarity > 0.99;
+					} else {
+						builderPassed = false;
+						builderSimilarity = 0.0;
+					}
+
+					// Compare macro vs reference
+					var macroSimilarity = 1.0;
+					var macroPassed = true;
+					if (macroSuccess) {
+						macroSimilarity = computeSimilarity(macroPath, referencePath);
+						macroPassed = macroSimilarity > 0.99;
+					} else {
+						macroPassed = false;
+						macroSimilarity = 0.0;
+					}
+
+					// Overall pass = both pass
+					var overallPassed = builderPassed && macroPassed;
+
+					// Extract display name
+					var displayName = testName;
+					if (referenceDir != null) {
+						var dirName = haxe.io.Path.withoutDirectory(referenceDir);
+						var dashIdx = dirName.indexOf("-");
+						if (dashIdx > 0) {
+							var num = dirName.substring(0, dashIdx);
+							displayName = '#$num: $testName';
+						}
+					}
+
+					HtmlReportGenerator.addResultWithMacro(displayName, referencePath, builderPath, overallPassed, builderSimilarity, null, macroPath,
+						macroSimilarity, macroPassed);
+					HtmlReportGenerator.generateReport();
+
+					Assert.isTrue(builderPassed, 'Builder should match reference (similarity: ${Math.round(builderSimilarity * 10000) / 100}%)');
+					Assert.isTrue(macroPassed, 'Macro should match reference (similarity: ${Math.round(macroSimilarity * 10000) / 100}%)');
+				} catch (e:Dynamic) {
+					Assert.fail('Screenshot/compare threw: $e');
+				}
+				async.done();
+			});
+		});
+	}
+
+	/**
+	 * Compute similarity between two images without adding to report.
+	 */
+	public function computeSimilarity(actual:String, reference:String):Float {
+		if (!sys.FileSystem.exists(reference)) return 1.0; // No reference = pass
+		if (!sys.FileSystem.exists(actual)) return 0.0;
+
+		try {
+			var actualBytes = sys.io.File.getBytes(actual);
+			var referenceBytes = sys.io.File.getBytes(reference);
+			var p1 = hxd.res.Any.fromBytes(actual, actualBytes).toImage().getPixels();
+			var p2 = hxd.res.Any.fromBytes(reference, referenceBytes).toImage().getPixels();
+
+			if (p1.width != p2.width || p1.height != p2.height) return 0.0;
+
+			var totalPixels = p1.width * p1.height;
+			var matchingPixels = 0;
+			for (x in 0...p1.width) {
+				for (y in 0...p1.height) {
+					if (colorDistance(p1.getPixel(x, y), p2.getPixel(x, y)) < 5)
+						matchingPixels++;
+				}
+			}
+			return matchingPixels / totalPixels;
+		} catch (e:Dynamic) {
+			return 0.0;
+		}
+	}
+
 }

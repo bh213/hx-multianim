@@ -1015,11 +1015,24 @@ class MacroManimParser {
 				final genType = parseGeneratedTileType();
 				expect(TClosed);
 				return TSGenerated(genType);
+			case TIdentifier(s) if (isKeyword(s, "sheet")):
+				advance();
+				expect(TOpen);
+				final sheet = parseStringOrReference();
+				expect(TComma);
+				final name = parseStringOrReference();
+				if (match(TComma)) {
+					final index = parseIntegerOrReference();
+					expect(TClosed);
+					return TSSheetWithIndex(sheet, name, index);
+				}
+				expect(TClosed);
+				return TSSheet(sheet, name);
 			case TReference(s):
 				advance();
 				return TSReference(s);
 			default:
-				// sheet(sheetName, tileName [, index])
+				// bare sheetName, tileName [, index]
 				final sheet = parseStringOrReference();
 				expect(TComma);
 				final name = parseStringOrReference();
@@ -2069,6 +2082,12 @@ class MacroManimParser {
 				advance();
 				createNode(TILEGROUP, parent, conditional, scale, alpha, tint, layerIndex, updatableName);
 
+			case TIdentifier(s) if (isKeyword(s, "graphics")):
+				advance();
+				expect(TOpen);
+				final elements = parseGraphicsElements();
+				createNode(GRAPHICS(elements), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+
 			default:
 				error('expected valid node type, got ${peek()}');
 		}
@@ -2556,6 +2575,182 @@ class MacroManimParser {
 		}
 
 		return nodes;
+	}
+
+	// ===================== Graphics =====================
+
+	function parseGraphicsElements():Array<PositionedGraphicsElement> {
+		final elements:Array<PositionedGraphicsElement> = [];
+		while (true) {
+			eatComma();
+			switch (peek()) {
+				case TClosed:
+					advance();
+					return elements;
+				case TIdentifier(s) if (isKeyword(s, "rect")):
+					advance();
+					elements.push(parseGraphicsRect());
+				case TIdentifier(s) if (isKeyword(s, "circle")):
+					advance();
+					elements.push(parseGraphicsCircle());
+				case TIdentifier(s) if (isKeyword(s, "roundrect")):
+					advance();
+					elements.push(parseGraphicsRoundRect());
+				case TIdentifier(s) if (isKeyword(s, "ellipse")):
+					advance();
+					elements.push(parseGraphicsEllipse());
+				case TIdentifier(s) if (isKeyword(s, "arc")):
+					advance();
+					elements.push(parseGraphicsArc());
+				case TIdentifier(s) if (isKeyword(s, "line")):
+					advance();
+					elements.push(parseGraphicsLine());
+				case TIdentifier(s) if (isKeyword(s, "polygon")):
+					advance();
+					elements.push(parseGraphicsPolygon());
+				case TSemiColon:
+					advance();
+				default:
+					error('expected graphics element or ), got ${peek()}');
+					return elements;
+			}
+		}
+		return elements;
+	}
+
+	function parseGraphicsStyle():GraphicsStyle {
+		switch (peek()) {
+			case TIdentifier(s) if (isKeyword(s, "filled")):
+				advance();
+				return GSFilled;
+			case TInteger(n):
+				advance();
+				return GSLineWidth(RVInteger(Std.parseInt(n)));
+			case TFloat(n):
+				advance();
+				return GSLineWidth(RVFloat(Std.parseFloat(n)));
+			default:
+				final rv = parseIntegerOrReference();
+				return GSLineWidth(rv);
+		}
+	}
+
+	function parseGraphicsRect():PositionedGraphicsElement {
+		expect(TOpen);
+		final color = parseColorOrReference();
+		expect(TComma);
+		final style = parseGraphicsStyle();
+		expect(TComma);
+		final width = parseIntegerOrReference();
+		expect(TComma);
+		final height = parseIntegerOrReference();
+		expect(TClosed);
+		final pos = parseOptionalElementPos();
+		return {element: GERect(color, style, width, height), pos: pos};
+	}
+
+	function parseGraphicsCircle():PositionedGraphicsElement {
+		expect(TOpen);
+		final color = parseColorOrReference();
+		expect(TComma);
+		final style = parseGraphicsStyle();
+		expect(TComma);
+		final radius = parseFloatOrReference();
+		expect(TClosed);
+		final pos = parseOptionalElementPos();
+		return {element: GECircle(color, style, radius), pos: pos};
+	}
+
+	function parseGraphicsRoundRect():PositionedGraphicsElement {
+		expect(TOpen);
+		final color = parseColorOrReference();
+		expect(TComma);
+		final style = parseGraphicsStyle();
+		expect(TComma);
+		final width = parseIntegerOrReference();
+		expect(TComma);
+		final height = parseIntegerOrReference();
+		expect(TComma);
+		final radius = parseIntegerOrReference();
+		expect(TClosed);
+		final pos = parseOptionalElementPos();
+		return {element: GERoundRect(color, style, width, height, radius), pos: pos};
+	}
+
+	function parseGraphicsEllipse():PositionedGraphicsElement {
+		expect(TOpen);
+		final color = parseColorOrReference();
+		expect(TComma);
+		final style = parseGraphicsStyle();
+		expect(TComma);
+		final width = parseIntegerOrReference();
+		expect(TComma);
+		final height = parseIntegerOrReference();
+		expect(TClosed);
+		final pos = parseOptionalElementPos();
+		return {element: GEEllipse(color, style, width, height), pos: pos};
+	}
+
+	function parseGraphicsArc():PositionedGraphicsElement {
+		expect(TOpen);
+		final color = parseColorOrReference();
+		expect(TComma);
+		final style = parseGraphicsStyle();
+		expect(TComma);
+		final radius = parseFloatOrReference();
+		expect(TComma);
+		final startAngle = parseFloatOrReference();
+		expect(TComma);
+		final arcAngle = parseFloatOrReference();
+		expect(TClosed);
+		final pos = parseOptionalElementPos();
+		return {element: GEArc(color, style, radius, startAngle, arcAngle), pos: pos};
+	}
+
+	function parseGraphicsLine():PositionedGraphicsElement {
+		expect(TOpen);
+		final color = parseColorOrReference();
+		expect(TComma);
+		final lineWidth = parseFloatOrReference();
+		expect(TComma);
+		final sx = parseFloatOrReference();
+		expect(TComma);
+		final sy = parseFloatOrReference();
+		expect(TComma);
+		final ex = parseFloatOrReference();
+		expect(TComma);
+		final ey = parseFloatOrReference();
+		expect(TClosed);
+		final pos = parseOptionalElementPos();
+		return {element: GELine(color, lineWidth, OFFSET(sx, sy), OFFSET(ex, ey)), pos: pos};
+	}
+
+	function parseGraphicsPolygon():PositionedGraphicsElement {
+		expect(TOpen);
+		final color = parseColorOrReference();
+		expect(TComma);
+		final style = parseGraphicsStyle();
+		expect(TComma);
+		// Parse comma-separated x,y pairs until )
+		final points:Array<Coordinates> = [];
+		while (!match(TClosed)) {
+			eatComma();
+			if (match(TClosed)) break;
+			final x = parseFloatOrReference();
+			expect(TComma);
+			final y = parseFloatOrReference();
+			points.push(OFFSET(x, y));
+		}
+		final pos = parseOptionalElementPos();
+		return {element: GEPolygon(color, style, points), pos: pos};
+	}
+
+	/** Parse optional `: x, y` position after a graphics element, defaulting to ZERO */
+	function parseOptionalElementPos():Coordinates {
+		if (match(TColon)) {
+			return parseXY();
+		}
+		return ZERO;
 	}
 
 	// ===================== Public API =====================

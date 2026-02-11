@@ -14,6 +14,9 @@ typedef TestResult = {
 	var ?errorMessage:String;
 	var ?manimPath:String;
 	var ?manimContent:String;
+	var ?macroPath:String;
+	var ?macroSimilarity:Float;
+	var ?macroPassed:Bool;
 }
 
 class HtmlReportGenerator {
@@ -21,6 +24,11 @@ class HtmlReportGenerator {
 	private static var reportPath:String = "test/screenshots/index.html";
 
 	public static function addResult(testName:String, referencePath:String, actualPath:String, passed:Bool, similarity:Float, ?errorMessage:String):Void {
+		addResultWithMacro(testName, referencePath, actualPath, passed, similarity, errorMessage, null, null, null);
+	}
+
+	public static function addResultWithMacro(testName:String, referencePath:String, actualPath:String, passed:Bool, similarity:Float,
+			?errorMessage:String, ?macroPath:String, ?macroSimilarity:Float, ?macroPassed:Bool):Void {
 		// Find manim file in the same directory as reference
 		var manimPath:String = null;
 		var manimContent:String = null;
@@ -52,7 +60,10 @@ class HtmlReportGenerator {
 			similarity: similarity,
 			errorMessage: errorMessage,
 			manimPath: manimPath,
-			manimContent: manimContent
+			manimContent: manimContent,
+			macroPath: macroPath,
+			macroSimilarity: macroSimilarity,
+			macroPassed: macroPassed,
 		});
 	}
 
@@ -152,6 +163,8 @@ class HtmlReportGenerator {
 		html.add('            border-radius: 3px;\n');
 		html.add('            font-size: 14px;\n');
 		html.add('            font-weight: bold;\n');
+		html.add('            display: inline-block;\n');
+		html.add('            margin-left: 5px;\n');
 		html.add('        }\n');
 		html.add('        .test-status.passed {\n');
 		html.add('            background: #4CAF50;\n');
@@ -178,8 +191,13 @@ class HtmlReportGenerator {
 		html.add('        }\n');
 		html.add('        .image-comparison {\n');
 		html.add('            display: grid;\n');
-		html.add('            grid-template-columns: 1fr 1fr;\n');
 		html.add('            gap: 20px;\n');
+		html.add('        }\n');
+		html.add('        .image-comparison.cols-2 {\n');
+		html.add('            grid-template-columns: 1fr 1fr;\n');
+		html.add('        }\n');
+		html.add('        .image-comparison.cols-3 {\n');
+		html.add('            grid-template-columns: 1fr 1fr 1fr;\n');
 		html.add('        }\n');
 		html.add('        .image-container {\n');
 		html.add('            text-align: center;\n');
@@ -341,12 +359,18 @@ class HtmlReportGenerator {
 			var statusClass = result.passed ? "passed" : "failed";
 			var statusText = result.passed ? "PASSED" : "FAILED";
 			var similarityPercent = Math.round(result.similarity * 10000) / 100;
+			var hasMacro = result.macroPath != null;
 
 			html.add('    <div class="test-result ${statusClass}" id="test-${result.testName}">\n');
 			html.add('        <div class="test-header">\n');
 			html.add('            <div class="test-name">${result.testName}</div>\n');
 			html.add('            <div>\n');
-			html.add('                <span class="test-status ${statusClass}">${statusText}</span>\n');
+			html.add('                <span class="test-status ${statusClass}">Builder: ${statusText}</span>\n');
+			if (hasMacro) {
+				var macroStatusClass = result.macroPassed == true ? "passed" : "failed";
+				var macroStatusText = result.macroPassed == true ? "PASSED" : "FAILED";
+				html.add('                <span class="test-status ${macroStatusClass}">Macro: ${macroStatusText}</span>\n');
+			}
 			// Add manim link if we have manim content
 			if (result.manimPath != null && result.manimContent != null) {
 				var manimFileName = haxe.io.Path.withoutDirectory(result.manimPath);
@@ -354,7 +378,12 @@ class HtmlReportGenerator {
 			}
 			html.add('            </div>\n');
 			html.add('        </div>\n');
-			html.add('        <div class="similarity">Similarity: ${similarityPercent}%</div>\n');
+			html.add('        <div class="similarity">Builder similarity: ${similarityPercent}%');
+			if (hasMacro && result.macroSimilarity != null) {
+				var macroSimPercent = Math.round(result.macroSimilarity * 10000) / 100;
+				html.add(' | Macro similarity: ${macroSimPercent}%');
+			}
+			html.add('</div>\n');
 
 			// Show error message if present
 			if (result.errorMessage != null && result.errorMessage.length > 0) {
@@ -362,7 +391,8 @@ class HtmlReportGenerator {
 				html.add('        <div class="test-error">${escapedError}</div>\n');
 			}
 
-			html.add('        <div class="image-comparison">\n');
+			var colsClass = hasMacro ? "cols-3" : "cols-2";
+			html.add('        <div class="image-comparison ${colsClass}">\n');
 
 			// Reference image
 			html.add('            <div class="image-container">\n');
@@ -375,16 +405,29 @@ class HtmlReportGenerator {
 			}
 			html.add('            </div>\n');
 
-			// Actual image
+			// Builder (actual) image
 			html.add('            <div class="image-container">\n');
-			html.add('                <div class="image-label">Actual</div>\n');
+			html.add('                <div class="image-label">${hasMacro ? "Builder" : "Actual"}</div>\n');
 			if (FileSystem.exists(result.actualPath)) {
 				var relPath = makeRelativePath(result.actualPath);
-				html.add('                <img src="${relPath}" alt="Actual" onclick="showOverlay(this.src)">\n');
+				html.add('                <img src="${relPath}" alt="Builder" onclick="showOverlay(this.src)">\n');
 			} else {
-				html.add('                <div class="no-image">No actual image</div>\n');
+				html.add('                <div class="no-image">No builder image</div>\n');
 			}
 			html.add('            </div>\n');
+
+			// Macro image (only if present)
+			if (hasMacro) {
+				html.add('            <div class="image-container">\n');
+				html.add('                <div class="image-label">Macro</div>\n');
+				if (FileSystem.exists(result.macroPath)) {
+					var relPath = makeRelativePath(result.macroPath);
+					html.add('                <img src="${relPath}" alt="Macro" onclick="showOverlay(this.src)">\n');
+				} else {
+					html.add('                <div class="no-image">No macro image</div>\n');
+				}
+				html.add('            </div>\n');
+			}
 
 			html.add('        </div>\n');
 			html.add('    </div>\n');

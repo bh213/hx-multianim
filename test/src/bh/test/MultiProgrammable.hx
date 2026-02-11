@@ -22,4 +22,13 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/44-codegenTilesIter/codegenTilesIter.manim", "codegenTilesIter")
 	public var tilesIter;
+
+	@:manim("test/examples/37-tintDemo/tintDemo.manim", "tintDemo")
+	public var tint;
+
+	@:manim("test/examples/46-codegenGraphics/codegenGraphics.manim", "codegenGraphics")
+	public var graphics;
+
+	@:manim("test/examples/47-codegenReference/codegenReference.manim", "codegenReference")
+	public var reference;
 }
