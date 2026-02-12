@@ -15,3 +15,27 @@ version: 0.3
   pos: 0, 0
   reference($repeatableDemo):0,0
 }
+
+
+
+// version: 0.3
+
+// #repeat programmable() {
+//   pos: 0, 0
+//   grid: 1280, 720
+
+//   @alpha(0.3) bitmap(generated(color(1280, 720, gray)));
+
+//   repeatable($index, grid(5, dx: 20, dy: 1)) {
+//     @alpha(1.0 - $index/5.0) scale(4) bitmap(sheet("crew2", "marine_r_shooting_d")):120,320;
+//   }
+// }
+
+// #repeatableDemo programmable() {
+//   pos: 0, 0
+//   reference($repeat):0,0
+
+//   reference($repeat):0,100
+
+//   reference($repeat):100,200
+// }

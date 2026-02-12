@@ -707,6 +707,24 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		}, async);
 	}
 
+	// ==================== RepeatableDemo: macro comparison ====================
+
+	@Test
+	public function test04_RepeatableDemo(async:utest.Async):Void {
+		setupTest(4, "repeatableDemo");
+		builderAndMacroScreenshotAndCompare("test/examples/4-repeatableDemo/repeatableDemo.manim", "repeatableDemo",
+			() -> createMp().repeatableDemo.create(), async, null, null, null, 0.999);
+	}
+
+	// ==================== FlowDemo: macro comparison ====================
+
+	@Test
+	public function test06_FlowDemo(async:utest.Async):Void {
+		setupTest(6, "flowDemo");
+		builderAndMacroScreenshotAndCompare("test/examples/6-flowDemo/flowDemo.manim", "flowDemo",
+			() -> createMp().flowDemo.create(), async);
+	}
+
 	// ==================== HexGridPixels: macro comparison ====================
 
 	@Test
