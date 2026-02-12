@@ -13,15 +13,18 @@ import bh.multianim.MultiAnimParser.TileSource;
 
 /**
  * Base class for generated programmable classes.
- * The parent factory class is constructed with a ResourceLoader.
- * Companion classes receive a MultiAnimBuilder at creation time
- * (stored in _builder) for full resource resolution.
+ * Both the parent class and companion classes are constructed with a ResourceLoader.
+ * Companion classes load a MultiAnimBuilder on create() and store it in _builder.
  *
  * Usage:
  *   @:build(bh.multianim.ProgrammableCodeGen.buildAll())
  *   class MyScreen extends ProgrammableBuilder {
  *       @:manim("path.manim", "button") public var button;
  *   }
+ *
+ *   var screen = new MyScreen(resourceLoader);
+ *   var btn = screen.button.create(params...);
+ *   btn.root;  // h2d tree
  */
 @:allow(bh.multianim.ProgrammableCodeGen)
 class ProgrammableBuilder {
