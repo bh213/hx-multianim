@@ -797,6 +797,114 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 			() -> createMp().layoutRepeatableDemo.create(), async);
 	}
 
+	// ==================== TileGroupDemo: macro comparison ====================
+
+	@Test
+	public function test14_TileGroupDemo(async:utest.Async):Void {
+		setupTest(14, "tileGroupDemo");
+		builderAndMacroScreenshotAndCompare("test/examples/14-tileGroupDemo/tileGroupDemo.manim", "tileGroupDemo",
+			() -> createMp().tileGroupDemo.create(), async);
+	}
+
+	// ==================== ConditionalsDemo: macro comparison ====================
+
+	@Test
+	public function test18_ConditionalsDemo(async:utest.Async):Void {
+		setupTest(18, "conditionalsDemo");
+		builderAndMacroScreenshotAndCompare("test/examples/18-conditionalsDemo/conditionalsDemo.manim", "main",
+			() -> createMp().conditionalsDemo.create(), async);
+	}
+
+	// ==================== TernaryOpDemo: macro comparison ====================
+
+	@Test
+	public function test19_TernaryOpDemo(async:utest.Async):Void {
+		setupTest(19, "ternaryOpDemo");
+		builderAndMacroScreenshotAndCompare("test/examples/19-ternaryOpDemo/ternaryOpDemo.manim", "ternaryOpDemo",
+			() -> createMp().ternaryOpDemo.create(), async);
+	}
+
+	// ==================== GraphicsDemo: macro comparison ====================
+
+	@Test
+	public function test20_GraphicsDemo(async:utest.Async):Void {
+		setupTest(20, "graphicsDemo");
+		builderAndMacroScreenshotAndCompare("test/examples/20-graphicsDemo/graphicsDemo.manim", "graphicsDemo",
+			() -> createMp().graphicsDemo.create(), async);
+	}
+
+	// ==================== Repeatable2dDemo: macro comparison ====================
+
+	@Test
+	public function test21_Repeatable2dDemo(async:utest.Async):Void {
+		setupTest(21, "repeatable2dDemo");
+		builderAndMacroScreenshotAndCompare("test/examples/21-repeatable2dDemo/repeatable2dDemo.manim", "repeatable2dDemo",
+			() -> createMp().repeatable2dDemo.create(), async);
+	}
+
+	// ==================== AtlasDemo: macro comparison ====================
+
+	@Test
+	public function test23_AtlasDemo(async:utest.Async):Void {
+		setupTest(23, "atlasDemo");
+		builderAndMacroScreenshotAndCompare("test/examples/23-atlasDemo/atlasDemo.manim", "atlasDemo",
+			() -> createMp().atlasDemo.create(), async);
+	}
+
+	// ==================== FontShowcase: macro comparison ====================
+
+	@Test
+	public function test26_FontShowcase(async:utest.Async):Void {
+		setupTest(26, "fontShowcase");
+		builderAndMacroScreenshotAndCompare("test/examples/26-fontShowcase/fontShowcase.manim", "fontShowcase",
+			() -> createMp().fontShowcase.create(), async);
+	}
+
+	// ==================== ScalePositionDemo: macro comparison ====================
+
+	@Test
+	public function test27_ScalePositionDemo(async:utest.Async):Void {
+		setupTest(27, "scalePositionDemo");
+		builderAndMacroScreenshotAndCompare("test/examples/27-scalePositionDemo/scalePositionDemo.manim", "scalePositionDemo",
+			() -> createMp().scalePositionDemo.create(), async);
+	}
+
+	// ==================== ElseDefaultDemo: macro comparison ====================
+
+	@Test
+	public function test31_ElseDefaultDemo(async:utest.Async):Void {
+		setupTest(31, "elseDefaultDemo");
+		builderAndMacroScreenshotAndCompare("test/examples/31-elseDefaultDemo/elseDefaultDemo.manim", "elseDefaultDemo",
+			() -> createMp().elseDefaultDemo.create(), async);
+	}
+
+	// ==================== NamedFilterParams: macro comparison ====================
+
+	@Test
+	public function test32_NamedFilterParams(async:utest.Async):Void {
+		setupTest(32, "namedFilterParams");
+		builderAndMacroScreenshotAndCompare("test/examples/32-namedFilterParams/namedFilterParams.manim", "namedFilterParams",
+			() -> createMp().namedFilterParams.create(), async);
+	}
+
+	// ==================== InlineAtlas2Demo: macro comparison ====================
+
+	@Test
+	public function test33_InlineAtlas2Demo(async:utest.Async):Void {
+		setupTest(33, "inlineAtlas2Demo");
+		builderAndMacroScreenshotAndCompare("test/examples/33-inlineAtlas2Demo/inlineAtlas2Demo.manim", "inlineAtlas2Demo",
+			() -> createMp().inlineAtlas2Demo.create(), async);
+	}
+
+	// ==================== MaskDemo: macro comparison ====================
+
+	@Test
+	public function test34_MaskDemo(async:utest.Async):Void {
+		setupTest(34, "maskDemo");
+		builderAndMacroScreenshotAndCompare("test/examples/34-maskDemo/maskDemo.manim", "maskDemo",
+			() -> createMp().maskDemo.create(), async);
+	}
+
 	// ==================== ApplyDemo: macro comparison ====================
 
 	@Test

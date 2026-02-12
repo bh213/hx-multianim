@@ -76,6 +76,9 @@ class ProgrammableCodeGen {
 	// Current programmable name being processed (set per-field in buildAll)
 	static var currentProgrammableName:String = "";
 
+	// Counter for tileGroup elements within a programmable (for multi-tilegroup support)
+	static var tileGroupCounter:Int = 0;
+
 	// Cache parsed results to avoid re-running subprocess for same file
 	static var parsedCache:Map<String, Map<String, Node>> = new Map();
 
@@ -94,6 +97,7 @@ class ProgrammableCodeGen {
 		allParsedNodes = new Map();
 		currentManimPath = "";
 		currentProgrammableName = "";
+		tileGroupCounter = 0;
 		instanceClassName = "";
 	}
 
@@ -1699,20 +1703,20 @@ class ProgrammableCodeGen {
 				}
 				if (xExprs.length > 0) {
 					final polyExprs:Array<Expr> = [];
-					polyExprs.push(macro {
-						var c:Int = $cExpr;
-						if (c >>> 24 == 0) c |= 0xFF000000;
-					});
 
 					switch (style) {
 						case GSFilled:
 							polyExprs.push(macro {
+								var c:Int = $cExpr;
+								if (c >>> 24 == 0) c |= 0xFF000000;
 								final _g:h2d.Graphics = cast $gRef;
 								_g.beginFill(c);
 							});
 						case GSLineWidth(lw):
 							final lwExpr = rvToExpr(lw);
 							polyExprs.push(macro {
+								var c:Int = $cExpr;
+								if (c >>> 24 == 0) c |= 0xFF000000;
 								final _g:h2d.Graphics = cast $gRef;
 								_g.lineStyle($lwExpr, c);
 							});
@@ -2165,8 +2169,9 @@ class ProgrammableCodeGen {
 	static function generateTileGroupCreate(node:Node, fieldName:String, pos:Position):CreateResult {
 		final fieldRef = macro $p{["this", fieldName]};
 		final nameExpr:Expr = macro $v{currentProgrammableName};
+		final indexExpr:Expr = macro $v{tileGroupCounter++};
 		final createExprs:Array<Expr> = [
-			macro $fieldRef = this._pb.buildTileGroupFromProgrammable($nameExpr),
+			macro $fieldRef = this._pb.buildTileGroupFromProgrammable($nameExpr, $indexExpr),
 		];
 
 		return {

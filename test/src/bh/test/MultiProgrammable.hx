@@ -91,4 +91,40 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/13-layoutRepeatableDemo/layoutRepeatableDemo.manim", "layoutRepeatableDemo")
 	public var layoutRepeatableDemo;
+
+	@:manim("test/examples/14-tileGroupDemo/tileGroupDemo.manim", "tileGroupDemo")
+	public var tileGroupDemo;
+
+	@:manim("test/examples/18-conditionalsDemo/conditionalsDemo.manim", "main")
+	public var conditionalsDemo;
+
+	@:manim("test/examples/19-ternaryOpDemo/ternaryOpDemo.manim", "ternaryOpDemo")
+	public var ternaryOpDemo;
+
+	@:manim("test/examples/20-graphicsDemo/graphicsDemo.manim", "graphicsDemo")
+	public var graphicsDemo;
+
+	@:manim("test/examples/21-repeatable2dDemo/repeatable2dDemo.manim", "repeatable2dDemo")
+	public var repeatable2dDemo;
+
+	@:manim("test/examples/23-atlasDemo/atlasDemo.manim", "atlasDemo")
+	public var atlasDemo;
+
+	@:manim("test/examples/26-fontShowcase/fontShowcase.manim", "fontShowcase")
+	public var fontShowcase;
+
+	@:manim("test/examples/27-scalePositionDemo/scalePositionDemo.manim", "scalePositionDemo")
+	public var scalePositionDemo;
+
+	@:manim("test/examples/31-elseDefaultDemo/elseDefaultDemo.manim", "elseDefaultDemo")
+	public var elseDefaultDemo;
+
+	@:manim("test/examples/32-namedFilterParams/namedFilterParams.manim", "namedFilterParams")
+	public var namedFilterParams;
+
+	@:manim("test/examples/33-inlineAtlas2Demo/inlineAtlas2Demo.manim", "inlineAtlas2Demo")
+	public var inlineAtlas2Demo;
+
+	@:manim("test/examples/34-maskDemo/maskDemo.manim", "maskDemo")
+	public var maskDemo;
 }
