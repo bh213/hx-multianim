@@ -1,5 +1,14 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- **`createFrom()` named-parameter factory method** — generated alongside `create()` for every `@:manim` programmable. Takes an anonymous struct with named fields matching the `.manim` parameter names. Optional parameters (those with defaults) can be omitted from the struct.
+  ```haxe
+  var dlg = ui.dialog.createFrom({w: 400, title: "My Dialog"});  // named params
+  var dlg2 = ui.dialog.createFrom({});                            // all defaults
+  ```
+
 ## [0.4]
 
 ### Added

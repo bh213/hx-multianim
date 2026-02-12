@@ -6,7 +6,7 @@ What the `@:build(ProgrammableCodeGen.buildAll())` macro supports vs what's miss
 
 - Single factory class with `@:manim("path", "name")` field annotations
 - `buildAll()` generates companion classes (`ParentName_FieldName`) via `Context.defineType()`
-- Factory takes `ResourceLoader`, generated `createXxx()` methods handle loading internally
+- Factory takes `ResourceLoader`, generated `create()` and `createFrom()` methods handle loading internally
 - Companion `create()` receives `MultiAnimBuilder`, constructor passes `resourceLoader` to `ProgrammableBuilder` base
 - Parsing via `MacroManimParser` (inline macro parser, no subprocess)
 
@@ -28,7 +28,8 @@ What the `@:build(ProgrammableCodeGen.buildAll())` macro supports vs what's miss
 - **Conditionals** — `@(p=>v)`, `@(p=>[v1,v2])`, `@(p!=v)`, ranges `@(p=>10..30)`, `@else`, `@default`, `CoAny`, `CoFlag`, `CoNot`
 - **Expressions** — `$param`, `+`, `-`, `*`, `/`, `div`, `%`, ternary, comparisons, parentheses
 - **Properties** — scale, alpha, blendMode, tint (with param-dependent updates), filters (all 10 types, with param-dependent updates)
-- **Instance create()** — `mp.button.create(params)` with typed params (Bool for bool, inline constants for enums), reordered (required first)
+- **Instance create()** — `mp.button.create(params)` with typed positional params (Bool for bool, inline constants for enums), reordered (required first)
+- **Instance createFrom()** — `mp.button.createFrom({status: 0, buttonText: "Go"})` with named params via anonymous struct; optional params use `Null<T>` wrapping with null-coalescing to defaults
 - **Setters** — `setXxx(v)` per param, updates visibility + expressions in-place
 - **REPEAT / REPEAT2D** — all iterator types (see below)
 - **Instance-based factory** — `@:manim` fields are companion objects, `create()` calls `resourceLoader.loadMultiAnim(path)` internally, returns `this` for chaining
