@@ -711,6 +711,13 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		}, async);
 	}
 
+	// ==================== PaletteReplace: visual (3-image) ====================
+
+	@Test
+	public function test54_CodegenPaletteReplace(async:utest.Async):Void {
+		simpleMacroTest(54, "codegenPaletteReplace", () -> createMp().paletteReplace.create(), async);
+	}
+
 	// ==================== RepeatableDemo: macro comparison ====================
 
 	@Test

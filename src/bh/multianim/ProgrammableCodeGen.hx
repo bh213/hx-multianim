@@ -3224,8 +3224,9 @@ class ProgrammableCodeGen {
 						macro bh.base.filters.PixelOutline.create(bh.base.filters.PixelOutline.PixelOutlineMode.InlineColor($cExpr, $icExpr), $v{smoothColor});
 				}
 			case FilterPaletteReplace(paletteName, sourceRow, replacementRow):
-				// Palette replace needs runtime builder — fall back to null
-				null;
+				final srcExpr = rvToExpr(sourceRow);
+				final dstExpr = rvToExpr(replacementRow);
+				macro this._pb.buildPaletteReplaceFilter($v{paletteName}, $srcExpr, $dstExpr);
 			case FilterColorListReplace(sourceColors, replacementColors):
 				// Color list replace — generate arrays of resolved colors
 				final srcExprs:Array<Expr> = [];
