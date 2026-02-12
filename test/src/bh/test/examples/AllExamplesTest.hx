@@ -13,10 +13,8 @@ class AllExamplesTest extends VisualTestBase {
 		autotileHelper = new AutotileTestHelper(this, s2d);
 	}
 
-	// tests 1, 2, 3 moved to ProgrammableCodeGenTest (macro comparison)
-	@Test public function test04_RepeatableDemo(async:utest.Async) { simpleTest(4, "repeatableDemo", async); }
+	// tests 1, 2, 3, 4, 6 moved to ProgrammableCodeGenTest (macro comparison)
 	@Test public function test05_StateAnimDemo(async:utest.Async) { simpleTest(5, "stateAnimDemo", async); }
-	@Test public function test06_FlowDemo(async:utest.Async) { simpleTest(6, "flowDemo", async); }
 	@Test public function test07_PaletteDemo(async:utest.Async) { simpleTest(7, "paletteDemo", async); }
 	@Test public function test08_LayersDemo(async:utest.Async) { simpleTest(8, "layersDemo", async); }
 	@Test public function test09_NinePatchDemo(async:utest.Async) { simpleTest(9, "ninePatchDemo", async); }
