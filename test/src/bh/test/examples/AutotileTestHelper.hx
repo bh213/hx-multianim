@@ -69,6 +69,7 @@ class AutotileTestHelper {
 	public function buildCombinedAutotileTest(animFilePath:String, elementName:String, autotileName:String,
 			grid:Array<Array<Int>>, autotileX:Float, autotileY:Float,
 			async:utest.Async, ?sizeX:Int, ?sizeY:Int, ?threshold:Float, ?scale:Float):Void {
+		VisualTestBase.pendingVisualTests++;
 		testBase.clearScene();
 
 		if (scale == null) scale = 4.0;
@@ -94,9 +95,11 @@ class AutotileTestHelper {
 					Assert.isTrue(match, 'Screenshot should match reference image');
 				}
 
+				VisualTestBase.pendingVisualTests--;
 				async.done();
 			});
 		} else {
+			VisualTestBase.pendingVisualTests--;
 			async.done();
 		}
 	}
@@ -108,6 +111,7 @@ class AutotileTestHelper {
 	public function buildCombinedAutotileTestMultiple(animFilePath:String, elementName:String,
 			autotiles:Array<{name:String, grid:Array<Array<Int>>, x:Float, y:Float, ?background:Bool}>,
 			async:utest.Async, ?sizeX:Int, ?sizeY:Int, ?threshold:Float, ?scale:Float):Void {
+		VisualTestBase.pendingVisualTests++;
 		testBase.clearScene();
 
 		if (scale == null) scale = 4.0;
@@ -150,9 +154,11 @@ class AutotileTestHelper {
 					Assert.isTrue(match, 'Screenshot should match reference image');
 				}
 
+				VisualTestBase.pendingVisualTests--;
 				async.done();
 			});
 		} else {
+			VisualTestBase.pendingVisualTests--;
 			async.done();
 		}
 	}
@@ -163,6 +169,7 @@ class AutotileTestHelper {
 	 */
 	public function buildAutotileOnlyTest(animFilePath:String, autotileName:String, grid:Array<Array<Int>>,
 			x:Float, y:Float, async:utest.Async, ?sizeX:Int, ?sizeY:Int):Void {
+		VisualTestBase.pendingVisualTests++;
 		testBase.clearScene();
 
 		var tileGroup = buildAutotileAndAddToScene(animFilePath, autotileName, grid, x, y);
@@ -181,9 +188,11 @@ class AutotileTestHelper {
 					Assert.isTrue(match, 'Screenshot should match reference image');
 				}
 
+				VisualTestBase.pendingVisualTests--;
 				async.done();
 			});
 		} else {
+			VisualTestBase.pendingVisualTests--;
 			async.done();
 		}
 	}
