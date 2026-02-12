@@ -91,7 +91,7 @@ if defined TESTNUM (
     set "HXML=!TMPHXML!"
 )
 
-haxe "!HXML!"
+call haxe "!HXML!"
 
 if defined TESTNUM (
     if exist "!TMPHXML!" del "!TMPHXML!"
