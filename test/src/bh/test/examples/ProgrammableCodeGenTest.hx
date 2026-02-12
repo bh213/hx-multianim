@@ -3,6 +3,7 @@ package bh.test.examples;
 import utest.Assert;
 import h2d.Scene;
 import bh.test.VisualTestBase;
+import bh.test.HtmlReportGenerator;
 
 /**
  * Tests for the @:build(ProgrammableCodeGen.buildAll()) generated classes.
@@ -501,16 +502,12 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	public function testBoolFloatToggle():Void {
 		final mp = createMp();
 		final bf = mp.boolFloat.create();
-
-		// Default: showBorder=true, showLabel=false
 		final vis1 = countVisibleChildren(bf.root);
 
-		// Toggle showLabel on — should reveal label text
 		bf.setShowLabel(true);
 		final vis2 = countVisibleChildren(bf.root);
 		Assert.isTrue(vis2 > vis1, "Toggling showLabel on should increase visible children");
 
-		// Toggle showBorder off — should swap border ninepatch
 		bf.setShowBorder(false);
 		Assert.isTrue(countVisibleChildren(bf.root) > 0, "Should still have visible children after border toggle");
 	}
@@ -519,8 +516,6 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	public function testBoolFloatAlpha():Void {
 		final mp = createMp();
 		final bf = mp.boolFloat.create();
-
-		// Find a child with non-1.0 alpha (the @alpha($opacity) element)
 		var foundAlpha = false;
 		for (i in 0...bf.root.numChildren) {
 			final child = bf.root.getChildAt(i);
@@ -532,16 +527,88 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		Assert.isTrue(foundAlpha, "Should have a child with alpha < 1.0 from float param");
 	}
 
-	// ==================== BoolFloat: visual (3-image) ====================
+	// ==================== BoolFloat: visual — multi-instance with different params ====================
 
 	@Test
 	public function test52_CodegenBoolFloat(async:utest.Async):Void {
 		this.testName = "codegenBoolFloat";
 		this.testTitle = "#52: codegen bool+float";
 		this.referenceDir = "test/examples/52-codegenBoolFloat";
-		builderAndMacroScreenshotAndCompare("test/examples/52-codegenBoolFloat/codegenBoolFloat.manim", "codegenBoolFloat", function() {
-			return createMp().boolFloat.create().root;
-		}, async, 1280, 720);
+		async.setTimeout(15000);
+
+		final SCALE = 2.0;
+		final SPACING = 80.0;
+		final MANIM = "test/examples/52-codegenBoolFloat/codegenBoolFloat.manim";
+
+		// Phase 1: builder — 4 variants with different params
+		clearScene();
+		var container = new h2d.Object(s2d);
+		container.setScale(SCALE);
+
+		var fileContent = byte.ByteData.ofString(sys.io.File.getContent(MANIM));
+		var loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+		var builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, MANIM);
+
+		for (i in 0...4) {
+			var p = new Map<String, Dynamic>();
+			switch (i) {
+				case 0: p.set("showBorder", "true"); p.set("showLabel", "false"); p.set("opacity", 0.8); p.set("barWidth", 1.5);
+				case 1: p.set("showBorder", "false"); p.set("showLabel", "true"); p.set("opacity", 0.4); p.set("barWidth", 2.0);
+				case 2: p.set("showBorder", "true"); p.set("showLabel", "true"); p.set("opacity", 1.0); p.set("barWidth", 0.5);
+				case 3: p.set("showBorder", "false"); p.set("showLabel", "false"); p.set("opacity", 0.6); p.set("barWidth", 1.0);
+			}
+			var built = builder.buildWithParameters("codegenBoolFloat", p);
+			if (built != null && built.object != null) {
+				built.object.setPosition(0, i * SPACING);
+				container.addChild(built.object);
+			}
+		}
+
+		if (testTitle != null && testTitle.length > 0) addTitleOverlay();
+
+		waitForUpdate(function(dt:Float) {
+			var builderPath = getActualImagePath();
+			var builderSuccess = screenshot(builderPath, 1280, 720);
+
+			// Phase 2: macro — same 4 variants
+			clearScene();
+			var mc = new h2d.Object(s2d);
+			mc.setScale(SCALE);
+
+			for (i in 0...4) {
+				var mp = createMp();
+				var root = switch (i) {
+					case 0: mp.boolFloat.create(true, false, 0.8, 1.5).root;
+					case 1: mp.boolFloat.create(false, true, 0.4, 2.0).root;
+					case 2: mp.boolFloat.create(true, true, 1.0, 0.5).root;
+					default: mp.boolFloat.create(false, false, 0.6, 1.0).root;
+				};
+				root.setPosition(0, i * SPACING);
+				mc.addChild(root);
+			}
+
+			if (testTitle != null && testTitle.length > 0) addTitleOverlay();
+
+			waitForUpdate(function(dt2:Float) {
+				var macroPath = 'test/screenshots/${testName}_macro.png';
+				var macroSuccess = screenshot(macroPath, 1280, 720);
+				var referencePath = getReferenceImagePath();
+
+				var builderSim = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
+				var macroSim = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
+				var builderOk = builderSim > 0.99;
+				var macroOk = macroSim > 0.99;
+
+				var displayName = '#52: codegenBoolFloat';
+				HtmlReportGenerator.addResultWithMacro(displayName, referencePath, builderPath, builderOk && macroOk,
+					builderSim, null, macroPath, macroSim, macroOk);
+				HtmlReportGenerator.generateReport();
+
+				Assert.isTrue(builderOk, 'Builder should match reference (${Math.round(builderSim * 10000) / 100}%)');
+				Assert.isTrue(macroOk, 'Macro should match reference (${Math.round(macroSim * 10000) / 100}%)');
+				async.done();
+			});
+		});
 	}
 
 	// ==================== RangeFlags: unit tests ====================
@@ -558,33 +625,101 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	public function testRangeFlagsLevelConditional():Void {
 		final mp = createMp();
 		final rf = mp.rangeFlags.create();
-
-		// Default level=60, should be in 50..100 range (button-idle visible)
 		final vis1 = countVisibleChildren(rf.root);
 		Assert.isTrue(vis1 > 0, "Should have visible children at level 60");
 
-		// Change level to 20 — should switch to 0..50 range (button-pressed visible)
 		rf.setLevel(20);
 		final vis2 = countVisibleChildren(rf.root);
 		Assert.isTrue(vis2 > 0, "Should have visible children at level 20");
 
-		// Verify text shows updated level
 		final textEl = findTextChild(rf.root);
 		Assert.notNull(textEl, "Should have a text element");
 		if (textEl != null)
 			Assert.equals("20", textEl.text);
 	}
 
-	// ==================== RangeFlags: visual (3-image) ====================
+	// ==================== RangeFlags: visual — multi-instance with different params ====================
 
 	@Test
 	public function test53_CodegenRangeFlags(async:utest.Async):Void {
 		this.testName = "codegenRangeFlags";
 		this.testTitle = "#53: codegen range+flags";
 		this.referenceDir = "test/examples/53-codegenRangeFlags";
-		builderAndMacroScreenshotAndCompare("test/examples/53-codegenRangeFlags/codegenRangeFlags.manim", "codegenRangeFlags", function() {
-			return createMp().rangeFlags.create().root;
-		}, async, 1280, 720);
+		async.setTimeout(15000);
+
+		final SCALE = 2.0;
+		final SPACING = 75.0;
+		final MANIM = "test/examples/53-codegenRangeFlags/codegenRangeFlags.manim";
+
+		// Phase 1: builder — 4 variants with different params
+		clearScene();
+		var container = new h2d.Object(s2d);
+		container.setScale(SCALE);
+
+		var fileContent = byte.ByteData.ofString(sys.io.File.getContent(MANIM));
+		var loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+		var builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, MANIM);
+
+		for (i in 0...4) {
+			var p = new Map<String, Dynamic>();
+			switch (i) {
+				case 0: p.set("level", 60); p.set("power", 30); p.set("bits", 5);
+				case 1: p.set("level", 20); p.set("power", 45); p.set("bits", 3);
+				case 2: p.set("level", 80); p.set("power", 10); p.set("bits", 7);
+				case 3: p.set("level", 50); p.set("power", 50); p.set("bits", 0);
+			}
+			var built = builder.buildWithParameters("codegenRangeFlags", p);
+			if (built != null && built.object != null) {
+				built.object.setPosition(0, i * SPACING);
+				container.addChild(built.object);
+			}
+		}
+
+		if (testTitle != null && testTitle.length > 0) addTitleOverlay();
+
+		waitForUpdate(function(dt:Float) {
+			var builderPath = getActualImagePath();
+			var builderSuccess = screenshot(builderPath, 1280, 720);
+
+			// Phase 2: macro — same 4 variants
+			clearScene();
+			var mc = new h2d.Object(s2d);
+			mc.setScale(SCALE);
+
+			for (i in 0...4) {
+				var mp = createMp();
+				var root = switch (i) {
+					case 0: mp.rangeFlags.create(60, 30, 5).root;
+					case 1: mp.rangeFlags.create(20, 45, 3).root;
+					case 2: mp.rangeFlags.create(80, 10, 7).root;
+					default: mp.rangeFlags.create(50, 50, 0).root;
+				};
+				root.setPosition(0, i * SPACING);
+				mc.addChild(root);
+			}
+
+			if (testTitle != null && testTitle.length > 0) addTitleOverlay();
+
+			waitForUpdate(function(dt2:Float) {
+				var macroPath = 'test/screenshots/${testName}_macro.png';
+				var macroSuccess = screenshot(macroPath, 1280, 720);
+				var referencePath = getReferenceImagePath();
+
+				var builderSim = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
+				var macroSim = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
+				var builderOk = builderSim > 0.99;
+				var macroOk = macroSim > 0.99;
+
+				var displayName = '#53: codegenRangeFlags';
+				HtmlReportGenerator.addResultWithMacro(displayName, referencePath, builderPath, builderOk && macroOk,
+					builderSim, null, macroPath, macroSim, macroOk);
+				HtmlReportGenerator.generateReport();
+
+				Assert.isTrue(builderOk, 'Builder should match reference (${Math.round(builderSim * 10000) / 100}%)');
+				Assert.isTrue(macroOk, 'Macro should match reference (${Math.round(macroSim * 10000) / 100}%)');
+				async.done();
+			});
+		});
 	}
 
 	// ==================== MultiProgrammable factory: unit tests ====================

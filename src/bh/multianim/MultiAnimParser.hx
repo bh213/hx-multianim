@@ -775,7 +775,7 @@ enum NodeType {
 	STATEANIM_CONSTRUCT(initialState:ReferenceableValue, construct:Map<String, StateAnimConstruct>);
 	PIXELS(shapes:Array<PixelShapes>);
 	TEXT(textDef:TextDef);
-	PROGRAMMABLE(isTileGroup:Bool, parameters:ParametersDefinitions);
+	PROGRAMMABLE(isTileGroup:Bool, parameters:ParametersDefinitions, paramOrder:Array<String>);
 	TILEGROUP;
 	RELATIVE_LAYOUTS(layoutsDef:LayoutsDef);
 	PATHS(paths:PathsDef);
