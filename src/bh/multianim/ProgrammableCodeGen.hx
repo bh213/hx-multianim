@@ -404,6 +404,9 @@ class ProgrammableCodeGen {
 		// Factory create() — loads builder, creates new instance, returns it
 		factoryFields.push(generateFactoryCreate(pos));
 
+		// Factory createFrom() — struct-based named parameters alternative
+		factoryFields.push(generateFactoryCreateFrom(pos));
+
 		return {instanceFields: instanceFields, factoryFields: factoryFields};
 	}
 
@@ -2963,6 +2966,89 @@ class ProgrammableCodeGen {
 			}),
 			access: [APublic],
 			pos: pos,
+		};
+	}
+
+	/** Generate factory createFrom() method: takes anonymous struct with named params, creates new instance. */
+	static function generateFactoryCreateFrom(pos:Position):Field {
+		// 1. Build anonymous struct type: one field per param, optional fields use Null<T>
+		final anonFields:Array<Field> = [];
+		for (name in paramNames) {
+			final def = paramDefs.get(name);
+			final hasDefault = def.defaultValue != null;
+			final baseType = publicParamType(name, def.type);
+			final fieldType = if (hasDefault) nullableType(baseType, def.type) else baseType;
+
+			anonFields.push({
+				name: name,
+				kind: FVar(fieldType, null),
+				pos: pos,
+				access: [],
+				meta: hasDefault ? [{name: ":optional", params: [], pos: pos}] : [],
+			});
+		}
+		final paramStructType:ComplexType = TAnonymous(anonFields);
+
+		// 2. Build method body: extract values from struct with null-coalescing, then new Instance(this, ...)
+		final manimPathLit = macro $v{currentManimPath};
+		final bodyExprs:Array<Expr> = [
+			macro this._builder = this.resourceLoader.loadMultiAnim($manimPathLit),
+		];
+
+		final orderedParams = getOrderedParams();
+		final newArgs:Array<Expr> = [macro this];
+
+		for (name in orderedParams) {
+			final def = paramDefs.get(name);
+			final hasDefault = def.defaultValue != null;
+			final fieldAccess:Expr = {expr: EField(macro params, name), pos: pos};
+
+			if (hasDefault) {
+				final defaultExpr = publicDefaultValue(name, def);
+				final ternaryExpr:Expr = {
+					expr: ETernary(
+						{expr: EBinop(OpNotEq, fieldAccess, macro null), pos: pos},
+						fieldAccess,
+						defaultExpr
+					),
+					pos: pos,
+				};
+				final localName = "_arg_" + name;
+				bodyExprs.push({
+					expr: EVars([{name: localName, type: null, expr: ternaryExpr, isFinal: true}]),
+					pos: pos,
+				});
+				newArgs.push(macro $i{localName});
+			} else {
+				newArgs.push(fieldAccess);
+			}
+		}
+
+		final instTypePath = {pack: localClassPack, name: instanceClassName};
+		final newExpr:Expr = {expr: ENew(instTypePath, newArgs), pos: pos};
+		bodyExprs.push(macro return $newExpr);
+
+		final instType:ComplexType = TPath(instTypePath);
+		return {
+			name: "createFrom",
+			kind: FFun({
+				args: [{name: "params", type: paramStructType}],
+				ret: instType,
+				expr: macro $b{bodyExprs},
+			}),
+			access: [APublic],
+			pos: pos,
+		};
+	}
+
+	/** Wrap a type in Null<T> for value types (Int, Float, Bool) to make them nullable in anonymous structs.
+	 *  String is already nullable and doesn't need wrapping. */
+	static function nullableType(baseType:ComplexType, defType:DefinitionType):ComplexType {
+		return switch (defType) {
+			case PPTString:
+				baseType; // String is already nullable
+			default:
+				TPath({pack: [], name: "Null", params: [TPType(baseType)]});
 		};
 	}
 

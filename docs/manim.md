@@ -1164,9 +1164,13 @@ class MyUI extends bh.multianim.ProgrammableBuilder {
 ```haxe
 var ui = new MyUI(resourceLoader);
 
-// create() returns a new h2d.Object instance each time
+// create() with positional parameters
 var btn = ui.button.create();                  // all defaults
 var btn2 = ui.button.create("Submit");         // another independent instance
+
+// createFrom() with named parameters via anonymous struct
+var btn3 = ui.button.createFrom({buttonText: "OK"});              // only set what you need
+var btn4 = ui.button.createFrom({status: MyUI_Button.Hover, buttonText: "Cancel"});
 
 // Type-safe setters for each parameter
 btn.setStatus(MyUI_Button.Hover);              // enum constants are generated
@@ -1181,13 +1185,14 @@ scene.addChild(btn2);
 
 The `@:build(ProgrammableCodeGen.buildAll())` macro scans the class for `@:manim` fields and generates two classes for each one:
 
-1. **Factory class** (`MyUI_Button`) — extends `ProgrammableBuilder`, lives on the parent field (`ui.button`). Stateless — only holds the resource loader and cached builder. Has the `create()` method and static enum constants.
+1. **Factory class** (`MyUI_Button`) — extends `ProgrammableBuilder`, lives on the parent field (`ui.button`). Stateless — only holds the resource loader and cached builder. Has `create()` and `createFrom()` methods and static enum constants.
 
-2. **Instance class** (`MyUI_ButtonInstance`) — extends `h2d.Object`, returned by `create()`. Holds all element fields, parameter fields, setters, and visibility/expression update logic. Since it extends `h2d.Object`, it can be added directly to the scene graph.
+2. **Instance class** (`MyUI_ButtonInstance`) — extends `h2d.Object`, returned by `create()`/`createFrom()`. Holds all element fields, parameter fields, setters, and visibility/expression update logic. Since it extends `h2d.Object`, it can be added directly to the scene graph.
 
 For the example above, the generated API provides:
 
-- **`create([params...])`** — on the factory; builds a new h2d tree and returns a new instance
+- **`create([params...])`** — on the factory; positional parameters, builds a new h2d tree and returns a new instance
+- **`createFrom({...})`** — on the factory; named parameters via anonymous struct, optional params can be omitted
 - **`setStatus(v)`**, **`setButtonText(v)`** — on the instance; typed setters that update visibility and expressions
 - **Static enum constants** — `MyUI_Button.Hover`, `MyUI_Button.Pressed`, `MyUI_Button.Normal` (on the factory class)
 
@@ -1208,6 +1213,27 @@ Each `.manim` parameter type maps to a Haxe type in the generated `create()` sig
 
 Parameters with defaults are optional in `create()`. Required parameters (no default) must be provided.
 
+### `createFrom()` — Named Parameters
+
+Every factory also generates a `createFrom()` method that takes an anonymous struct with named fields instead of positional arguments. This is useful when a programmable has many parameters and you only want to set a few:
+
+```haxe
+// Positional — must count argument positions
+var dlg = ui.dialog.create(400, 200, "Title", "Body", MyUI_Dialog.Hover);
+
+// Named — specify only what you need, rest use defaults
+var dlg = ui.dialog.createFrom({w: 400, title: "Title"});
+
+// All defaults
+var dlg = ui.dialog.createFrom({});
+```
+
+**Rules:**
+- Field names match the `.manim` parameter names exactly
+- Parameters with defaults in `.manim` are optional in the struct (can be omitted)
+- Parameters without defaults are required (compiler enforces this)
+- Both `create()` and `createFrom()` return the same instance type and produce identical results
+
 ### Examples
 
 #### Button with enum and string parameters
@@ -1225,11 +1251,14 @@ Parameters with defaults are optional in `create()`. Required parameters (no def
 ```
 
 ```haxe
-// Haxe usage
+// Haxe usage — positional
 var btn = ui.button.create();
 btn.setStatus(MyUI_Button.Pressed);
 btn.setDisabled(true);   // shows disabled style regardless of status
 btn.setButtonText("Save");
+
+// Or with named parameters
+var btn2 = ui.button.createFrom({status: MyUI_Button.Pressed, disabled: true, buttonText: "Save"});
 ```
 
 #### Health bar with expressions and range conditionals
@@ -1250,7 +1279,8 @@ btn.setButtonText("Save");
 ```
 
 ```haxe
-var hb = ui.healthbar.create();        // defaults: 200x20, 75/100 health
+var hb = ui.healthbar.create();                          // defaults: 200x20, 75/100 health
+var hb2 = ui.healthbar.createFrom({w: 300, health: 50}); // named: custom width + health
 hb.setHealth(50);                       // bar resizes, text updates to "50"
 hb.setHealth(15);                       // switches to red (pressed) style
 ```

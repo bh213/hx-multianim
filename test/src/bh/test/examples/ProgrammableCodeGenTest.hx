@@ -158,6 +158,58 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		simpleMacroTest(38, "codegenDialog", () -> createMp().dialog.create(), async, null, null, 4.0);
 	}
 
+	// ==================== createFrom: unit tests ====================
+
+	@Test
+	public function testDialogCreateFrom():Void {
+		final mp = createMp();
+		final dlg = mp.dialog.createFrom({
+			w: 400,
+			h: 300,
+			title: "Test",
+			body: "Body text",
+			style: bh.test.MultiProgrammable_Dialog.Hover
+		});
+		Assert.notNull(dlg, "Dialog should be created with createFrom");
+		Assert.isTrue(dlg.numChildren > 0, "Root should have children");
+	}
+
+	@Test
+	public function testDialogCreateFromPartial():Void {
+		final mp = createMp();
+		final dlg = mp.dialog.createFrom({title: "Only Title"});
+		Assert.notNull(dlg, "Dialog should be created with partial params");
+		final textEl = findTextChild(dlg);
+		Assert.notNull(textEl, "Should have title text");
+		if (textEl != null)
+			Assert.equals("Only Title", textEl.text);
+	}
+
+	@Test
+	public function testDialogCreateFromEmpty():Void {
+		final mp = createMp();
+		final dlg = mp.dialog.createFrom({});
+		Assert.notNull(dlg, "Dialog should be created with all defaults");
+		Assert.isTrue(dlg.numChildren > 0, "Root should have children");
+	}
+
+	@Test
+	public function testBoolFloatCreateFrom():Void {
+		final mp = createMp();
+		final bf = mp.boolFloat.createFrom({showBorder: true, opacity: 0.5});
+		Assert.notNull(bf, "BoolFloat should be created from struct");
+		Assert.isTrue(bf.numChildren > 0, "Root should have children");
+	}
+
+	@Test
+	public function testCreateFromMatchesCreate():Void {
+		final mp1 = createMp();
+		final mp2 = createMp();
+		final pos = mp1.dialog.create(400, 200, "Test", "Body", bh.test.MultiProgrammable_Dialog.Hover);
+		final map = mp2.dialog.createFrom({w: 400, h: 200, title: "Test", body: "Body", style: bh.test.MultiProgrammable_Dialog.Hover});
+		Assert.equals(pos.numChildren, map.numChildren, "create and createFrom should produce same structure");
+	}
+
 	// ==================== Repeat: unit tests ====================
 
 	@Test
@@ -516,7 +568,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 			var mp = createMp();
 			return switch (i) {
 				case 0: mp.rangeFlags.create(60, 30, 5);
-				case 1: mp.rangeFlags.create(20, 45, 3);
+				case 1: mp.rangeFlags.createFrom({bits: 3, power:45 , level:20});
 				case 2: mp.rangeFlags.create(80, 10, 7);
 				default: mp.rangeFlags.create(50, 50, 0);
 			};
