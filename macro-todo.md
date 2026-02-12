@@ -4,7 +4,6 @@
 
 | Gap | Severity | Notes |
 |-----|----------|-------|
-| **Param-dependent hex corner/edge** | Low | `SELECTED_HEX_CORNER` / `SELECTED_HEX_EDGE` static only. Would need runtime `HexLayout` on generated class. |
 | **RVFunction** (`function(gridWidth)`) | Low | Evaluates to `0`. Rarely used. |
 | **RVElementOfArray** (`$arr[0]`) | Low | Evaluates to `0`. |
 | **RVArray / RVArrayReference** | Low | Evaluates to `0`. Mainly used internally by iterators. |
