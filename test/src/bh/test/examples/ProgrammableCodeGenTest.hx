@@ -2,7 +2,6 @@ package bh.test.examples;
 
 import utest.Assert;
 import h2d.Scene;
-import bh.multianim.MultiAnimBuilder;
 import bh.test.VisualTestBase;
 
 /**
@@ -15,45 +14,28 @@ import bh.test.VisualTestBase;
  * Both builder and macro are compared against reference; test fails if either fails.
  */
 class ProgrammableCodeGenTest extends VisualTestBase {
-	static final BUTTON_MANIM = "test/examples/38-codegenButton/codegenButton.manim";
-	static final HEALTHBAR_MANIM = "test/examples/39-codegenHealthbar/codegenHealthbar.manim";
-	static final DIALOG_MANIM = "test/examples/40-codegenDialog/codegenDialog.manim";
-	static final REPEAT_MANIM = "test/examples/41-codegenRepeat/codegenRepeat.manim";
-	static final REPEAT2D_MANIM = "test/examples/42-codegenRepeat2d/codegenRepeat2d.manim";
-	static final LAYOUT_MANIM = "test/examples/43-codegenLayout/codegenLayout.manim";
-	static final TILESITER_MANIM = "test/examples/44-codegenTilesIter/codegenTilesIter.manim";
-	static final TINT_MANIM = "test/examples/37-tintDemo/tintDemo.manim";
-	static final GRAPHICS_MANIM = "test/examples/46-codegenGraphics/codegenGraphics.manim";
-	static final REFERENCE_MANIM = "test/examples/47-codegenReference/codegenReference.manim";
-	static final FILTERPARAM_MANIM = "test/examples/48-codegenFilterParam/codegenFilterParam.manim";
-	static final GRIDPOS_MANIM = "test/examples/49-codegenGridPos/codegenGridPos.manim";
-	static final HEXPOS_MANIM = "test/examples/50-codegenHexPos/codegenHexPos.manim";
-	static final TEXTOPTS_MANIM = "test/examples/51-codegenTextOpts/codegenTextOpts.manim";
-
 	public function new(s2d:Scene) {
 		super("programmableCodeGen", s2d);
 	}
 
-	function loadBuilder(manimPath:String):MultiAnimBuilder {
-		final loader = TestResourceLoader.createLoader(false);
-		final fileContent = byte.ByteData.ofString(sys.io.File.getContent(manimPath));
-		return MultiAnimBuilder.load(fileContent, loader, manimPath);
+	function createMp():bh.test.MultiProgrammable {
+		return new bh.test.MultiProgrammable(TestResourceLoader.createLoader(false));
 	}
 
 	// ==================== Button: unit tests ====================
 
 	@Test
 	public function testButtonCreate():Void {
-		final builder = loadBuilder(BUTTON_MANIM);
-		final btn = bh.test.MultiProgrammable_Button.create(builder);
+		final mp = createMp();
+		final btn = mp.button.create();
 		Assert.notNull(btn.root, "Button should have a root object");
 		Assert.isTrue(btn.root.numChildren > 0, "Root should have children");
 	}
 
 	@Test
 	public function testButtonSetStatus():Void {
-		final builder = loadBuilder(BUTTON_MANIM);
-		final btn = bh.test.MultiProgrammable_Button.create(builder);
+		final mp = createMp();
+		final btn = mp.button.create();
 		Assert.isTrue(countVisibleChildren(btn.root) > 0, "Visible in normal state");
 
 		btn.setStatus(bh.test.MultiProgrammable_Button.Hover);
@@ -65,8 +47,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	@Test
 	public function testButtonSetText():Void {
-		final builder = loadBuilder(BUTTON_MANIM);
-		final btn = bh.test.MultiProgrammable_Button.create(builder);
+		final mp = createMp();
+		final btn = mp.button.create();
 		final textEl = findTextChild(btn.root);
 		Assert.notNull(textEl, "Should have a Text element");
 		if (textEl != null)
@@ -85,9 +67,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		this.testName = "codegenButton";
 		this.testTitle = "#38: codegen button";
 		this.referenceDir = "test/examples/38-codegenButton";
-		builderAndMacroScreenshotAndCompare(BUTTON_MANIM, "codegenButton", function() {
-			final builder = loadBuilder(BUTTON_MANIM);
-			return bh.test.MultiProgrammable_Button.create(builder).root;
+		builderAndMacroScreenshotAndCompare("test/examples/38-codegenButton/codegenButton.manim", "codegenButton", function() {
+			return createMp().button.create().root;
 		}, async, 1280, 720);
 	}
 
@@ -95,16 +76,16 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	@Test
 	public function testHealthbarCreate():Void {
-		final builder = loadBuilder(HEALTHBAR_MANIM);
-		final hb = bh.test.MultiProgrammable_Healthbar.create(builder);
+		final mp = createMp();
+		final hb = mp.healthbar.create();
 		Assert.notNull(hb.root, "Healthbar should have a root object");
 		Assert.isTrue(hb.root.numChildren > 0, "Root should have children");
 	}
 
 	@Test
 	public function testHealthbarSetHealth():Void {
-		final builder = loadBuilder(HEALTHBAR_MANIM);
-		final hb = bh.test.MultiProgrammable_Healthbar.create(builder);
+		final mp = createMp();
+		final hb = mp.healthbar.create();
 
 		// Check text shows health value
 		final textEl = findTextChild(hb.root);
@@ -121,8 +102,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	@Test
 	public function testHealthbarLowHealth():Void {
-		final builder = loadBuilder(HEALTHBAR_MANIM);
-		final hb = bh.test.MultiProgrammable_Healthbar.create(builder);
+		final mp = createMp();
+		final hb = mp.healthbar.create();
 
 		// Set health below 30 — should switch to "pressed" (red) bar
 		hb.setHealth(20);
@@ -138,9 +119,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		this.testName = "codegenHealthbar";
 		this.testTitle = "#39: codegen healthbar";
 		this.referenceDir = "test/examples/39-codegenHealthbar";
-		builderAndMacroScreenshotAndCompare(HEALTHBAR_MANIM, "codegenHealthbar", function() {
-			final builder = loadBuilder(HEALTHBAR_MANIM);
-			return bh.test.MultiProgrammable_Healthbar.create(builder).root;
+		builderAndMacroScreenshotAndCompare("test/examples/39-codegenHealthbar/codegenHealthbar.manim", "codegenHealthbar", function() {
+			return createMp().healthbar.create().root;
 		}, async, 1280, 720);
 	}
 
@@ -148,16 +128,16 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	@Test
 	public function testDialogCreate():Void {
-		final builder = loadBuilder(DIALOG_MANIM);
-		final dlg = bh.test.MultiProgrammable_Dialog.create(builder);
+		final mp = createMp();
+		final dlg = mp.dialog.create();
 		Assert.notNull(dlg.root, "Dialog should have a root object");
 		Assert.isTrue(dlg.root.numChildren > 0, "Root should have children");
 	}
 
 	@Test
 	public function testDialogSetTitle():Void {
-		final builder = loadBuilder(DIALOG_MANIM);
-		final dlg = bh.test.MultiProgrammable_Dialog.create(builder);
+		final mp = createMp();
+		final dlg = mp.dialog.create();
 
 		final textEl = findTextChild(dlg.root);
 		Assert.notNull(textEl, "Should have title text");
@@ -172,8 +152,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	@Test
 	public function testDialogSetStyle():Void {
-		final builder = loadBuilder(DIALOG_MANIM);
-		final dlg = bh.test.MultiProgrammable_Dialog.create(builder, 400, "Dialog macro");
+		final mp = createMp();
+		final dlg = mp.dialog.create(400, "Dialog macro");
 
 		// Switch styles
 		dlg.setStyle(bh.test.MultiProgrammable_Dialog.Hover);
@@ -190,9 +170,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		this.testName = "codegenDialog";
 		this.testTitle = "#40: codegen dialog";
 		this.referenceDir = "test/examples/40-codegenDialog";
-		builderAndMacroScreenshotAndCompare(DIALOG_MANIM, "codegenDialog", function() {
-			final builder = loadBuilder(DIALOG_MANIM);
-			return bh.test.MultiProgrammable_Dialog.create(builder).root;
+		builderAndMacroScreenshotAndCompare("test/examples/40-codegenDialog/codegenDialog.manim", "codegenDialog", function() {
+			return createMp().dialog.create().root;
 		}, async, 1280, 720);
 	}
 
@@ -200,16 +179,16 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	@Test
 	public function testRepeatCreate():Void {
-		final builder = loadBuilder(REPEAT_MANIM);
-		final rpt = bh.test.MultiProgrammable_Repeat.create(builder);
+		final mp = createMp();
+		final rpt = mp.repeat.create();
 		Assert.notNull(rpt.root, "Repeat should have a root object");
 		Assert.isTrue(rpt.root.numChildren > 0, "Root should have children");
 	}
 
 	@Test
 	public function testRepeatChildCount():Void {
-		final builder = loadBuilder(REPEAT_MANIM);
-		final rpt = bh.test.MultiProgrammable_Repeat.create(builder);
+		final mp = createMp();
+		final rpt = mp.repeat.create();
 		// With default count=5, the param-dependent repeat should have 5 visible iteration containers
 		var totalChildren = countAllDescendants(rpt.root);
 		Assert.isTrue(totalChildren > 10, "Should have many descendant objects from unrolled repeats");
@@ -217,8 +196,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	@Test
 	public function testRepeatSetCount():Void {
-		final builder = loadBuilder(REPEAT_MANIM);
-		final rpt = bh.test.MultiProgrammable_Repeat.create(builder);
+		final mp = createMp();
+		final rpt = mp.repeat.create();
 
 		// Reduce count — some pool items should become hidden
 		rpt.setCount(2);
@@ -238,9 +217,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		this.testName = "codegenRepeat";
 		this.testTitle = "#41: codegen repeat";
 		this.referenceDir = "test/examples/41-codegenRepeat";
-		builderAndMacroScreenshotAndCompare(REPEAT_MANIM, "codegenRepeat", function() {
-			final builder = loadBuilder(REPEAT_MANIM);
-			return bh.test.MultiProgrammable_Repeat.create(builder).root;
+		builderAndMacroScreenshotAndCompare("test/examples/41-codegenRepeat/codegenRepeat.manim", "codegenRepeat", function() {
+			return createMp().repeat.create().root;
 		}, async, 1280, 720);
 	}
 
@@ -248,16 +226,16 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	@Test
 	public function testRepeat2dCreate():Void {
-		final builder = loadBuilder(REPEAT2D_MANIM);
-		final rpt2d = bh.test.MultiProgrammable_Repeat2d.create(builder);
+		final mp = createMp();
+		final rpt2d = mp.repeat2d.create();
 		Assert.notNull(rpt2d.root, "Repeat2d should have a root object");
 		Assert.isTrue(rpt2d.root.numChildren > 0, "Root should have children");
 	}
 
 	@Test
 	public function testRepeat2dSetCols():Void {
-		final builder = loadBuilder(REPEAT2D_MANIM);
-		final rpt2d = bh.test.MultiProgrammable_Repeat2d.create(builder);
+		final mp = createMp();
+		final rpt2d = mp.repeat2d.create();
 
 		// Reduce cols — some pool items should become hidden
 		rpt2d.setCols(1);
@@ -275,9 +253,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		this.testName = "codegenRepeat2d";
 		this.testTitle = "#42: codegen repeat2d";
 		this.referenceDir = "test/examples/42-codegenRepeat2d";
-		builderAndMacroScreenshotAndCompare(REPEAT2D_MANIM, "codegenRepeat2d", function() {
-			final builder = loadBuilder(REPEAT2D_MANIM);
-			return bh.test.MultiProgrammable_Repeat2d.create(builder).root;
+		builderAndMacroScreenshotAndCompare("test/examples/42-codegenRepeat2d/codegenRepeat2d.manim", "codegenRepeat2d", function() {
+			return createMp().repeat2d.create().root;
 		}, async, 1280, 720);
 	}
 
@@ -285,16 +262,16 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	@Test
 	public function testLayoutCreate():Void {
-		final builder = loadBuilder(LAYOUT_MANIM);
-		final lay = bh.test.MultiProgrammable_Layout.create(builder);
+		final mp = createMp();
+		final lay = mp.layout.create();
 		Assert.notNull(lay.root, "Layout should have a root object");
 		Assert.isTrue(lay.root.numChildren > 0, "Root should have children");
 	}
 
 	@Test
 	public function testLayoutChildCount():Void {
-		final builder = loadBuilder(LAYOUT_MANIM);
-		final lay = bh.test.MultiProgrammable_Layout.create(builder);
+		final mp = createMp();
+		final lay = mp.layout.create();
 		// 5 list points + 4 sequence points = 9 ninepatch elements, each in containers
 		var totalChildren = countAllDescendants(lay.root);
 		Assert.isTrue(totalChildren >= 9, "Should have at least 9 descendant objects from layout repeats");
@@ -307,9 +284,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		this.testName = "codegenLayout";
 		this.testTitle = "#43: codegen layout";
 		this.referenceDir = "test/examples/43-codegenLayout";
-		builderAndMacroScreenshotAndCompare(LAYOUT_MANIM, "codegenLayout", function() {
-			final builder = loadBuilder(LAYOUT_MANIM);
-			return bh.test.MultiProgrammable_Layout.create(builder).root;
+		builderAndMacroScreenshotAndCompare("test/examples/43-codegenLayout/codegenLayout.manim", "codegenLayout", function() {
+			return createMp().layout.create().root;
 		}, async, 1280, 720);
 	}
 
@@ -317,16 +293,16 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	@Test
 	public function testTilesIterCreate():Void {
-		final builder = loadBuilder(TILESITER_MANIM);
-		final ti = bh.test.MultiProgrammable_TilesIter.create(builder);
+		final mp = createMp();
+		final ti = mp.tilesIter.create();
 		Assert.notNull(ti.root, "TilesIter should have a root object");
 		Assert.isTrue(ti.root.numChildren > 0, "Root should have children");
 	}
 
 	@Test
 	public function testTilesIterHasBitmaps():Void {
-		final builder = loadBuilder(TILESITER_MANIM);
-		final ti = bh.test.MultiProgrammable_TilesIter.create(builder);
+		final mp = createMp();
+		final ti = mp.tilesIter.create();
 		// Should have bitmap children from both tiles and stateanim iterators
 		var totalChildren = countAllDescendants(ti.root);
 		Assert.isTrue(totalChildren >= 2, "Should have descendant objects from runtime iterators");
@@ -339,9 +315,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		this.testName = "codegenTilesIter";
 		this.testTitle = "#44: codegen tiles iter";
 		this.referenceDir = "test/examples/44-codegenTilesIter";
-		builderAndMacroScreenshotAndCompare(TILESITER_MANIM, "codegenTilesIter", function() {
-			final builder = loadBuilder(TILESITER_MANIM);
-			return bh.test.MultiProgrammable_TilesIter.create(builder).root;
+		builderAndMacroScreenshotAndCompare("test/examples/44-codegenTilesIter/codegenTilesIter.manim", "codegenTilesIter", function() {
+			return createMp().tilesIter.create().root;
 		}, async, 1280, 720);
 	}
 
@@ -352,9 +327,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		this.testName = "tintDemo";
 		this.testTitle = "#37: tint";
 		this.referenceDir = "test/examples/37-tintDemo";
-		builderAndMacroScreenshotAndCompare(TINT_MANIM, "tintDemo", function() {
-			final builder = loadBuilder(TINT_MANIM);
-			return bh.test.MultiProgrammable_Tint.create(builder).root;
+		builderAndMacroScreenshotAndCompare("test/examples/37-tintDemo/tintDemo.manim", "tintDemo", function() {
+			return createMp().tint.create().root;
 		}, async, 1280, 720, 1.0);
 	}
 
@@ -365,9 +339,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		this.testName = "codegenGraphics";
 		this.testTitle = "#46: codegen graphics";
 		this.referenceDir = "test/examples/46-codegenGraphics";
-		builderAndMacroScreenshotAndCompare(GRAPHICS_MANIM, "codegenGraphics", function() {
-			final builder = loadBuilder(GRAPHICS_MANIM);
-			return bh.test.MultiProgrammable_Graphics.create(builder).root;
+		builderAndMacroScreenshotAndCompare("test/examples/46-codegenGraphics/codegenGraphics.manim", "codegenGraphics", function() {
+			return createMp().graphics.create().root;
 		}, async, 1280, 720);
 	}
 
@@ -378,9 +351,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		this.testName = "codegenReference";
 		this.testTitle = "#47: codegen reference";
 		this.referenceDir = "test/examples/47-codegenReference";
-		builderAndMacroScreenshotAndCompare(REFERENCE_MANIM, "codegenReference", function() {
-			final builder = loadBuilder(REFERENCE_MANIM);
-			return bh.test.MultiProgrammable_Reference.create(builder).root;
+		builderAndMacroScreenshotAndCompare("test/examples/47-codegenReference/codegenReference.manim", "codegenReference", function() {
+			return createMp().reference.create().root;
 		}, async, 1280, 720);
 	}
 
@@ -388,16 +360,16 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	@Test
 	public function testFilterParamCreate():Void {
-		final builder = loadBuilder(FILTERPARAM_MANIM);
-		final fp = bh.test.MultiProgrammable_FilterParam.create(builder);
+		final mp = createMp();
+		final fp = mp.filterParam.create();
 		Assert.notNull(fp.root, "FilterParam should have a root object");
 		Assert.isTrue(fp.root.numChildren > 0, "Root should have children");
 	}
 
 	@Test
 	public function testFilterParamSetOutlineColor():Void {
-		final builder = loadBuilder(FILTERPARAM_MANIM);
-		final fp = bh.test.MultiProgrammable_FilterParam.create(builder);
+		final mp = createMp();
+		final fp = mp.filterParam.create();
 
 		// Verify filter exists on first child (outline)
 		final firstChild = fp.root.getChildAt(0);
@@ -410,8 +382,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	@Test
 	public function testFilterParamSetTintColor():Void {
-		final builder = loadBuilder(FILTERPARAM_MANIM);
-		final fp = bh.test.MultiProgrammable_FilterParam.create(builder);
+		final mp = createMp();
+		final fp = mp.filterParam.create();
 
 		// Change tint color — tint should update
 		fp.setTintColor(0xFF0000);
@@ -426,9 +398,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		this.testName = "codegenFilterParam";
 		this.testTitle = "#48: codegen filter param";
 		this.referenceDir = "test/examples/48-codegenFilterParam";
-		builderAndMacroScreenshotAndCompare(FILTERPARAM_MANIM, "codegenFilterParam", function() {
-			final builder = loadBuilder(FILTERPARAM_MANIM);
-			return bh.test.MultiProgrammable_FilterParam.create(builder).root;
+		builderAndMacroScreenshotAndCompare("test/examples/48-codegenFilterParam/codegenFilterParam.manim", "codegenFilterParam", function() {
+			return createMp().filterParam.create().root;
 		}, async, 1280, 720);
 	}
 
@@ -436,16 +407,16 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	@Test
 	public function testGridPosCreate():Void {
-		final builder = loadBuilder(GRIDPOS_MANIM);
-		final gp = bh.test.MultiProgrammable_GridPos.create(builder);
+		final mp = createMp();
+		final gp = mp.gridPos.create();
 		Assert.notNull(gp.root, "GridPos should have a root object");
 		Assert.isTrue(gp.root.numChildren > 0, "Root should have children");
 	}
 
 	@Test
 	public function testGridPosChildCount():Void {
-		final builder = loadBuilder(GRIDPOS_MANIM);
-		final gp = bh.test.MultiProgrammable_GridPos.create(builder);
+		final mp = createMp();
+		final gp = mp.gridPos.create();
 		// 4 posLayout points + 3 colLayout points = 7 bitmaps
 		var totalChildren = countAllDescendants(gp.root);
 		Assert.isTrue(totalChildren >= 7, "Should have at least 7 descendant objects from layout repeats");
@@ -458,9 +429,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		this.testName = "codegenGridPos";
 		this.testTitle = "#49: codegen grid pos";
 		this.referenceDir = "test/examples/49-codegenGridPos";
-		builderAndMacroScreenshotAndCompare(GRIDPOS_MANIM, "codegenGridPos", function() {
-			final builder = loadBuilder(GRIDPOS_MANIM);
-			return bh.test.MultiProgrammable_GridPos.create(builder).root;
+		builderAndMacroScreenshotAndCompare("test/examples/49-codegenGridPos/codegenGridPos.manim", "codegenGridPos", function() {
+			return createMp().gridPos.create().root;
 		}, async, 1280, 720);
 	}
 
@@ -468,16 +438,16 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	@Test
 	public function testHexPosCreate():Void {
-		final builder = loadBuilder(HEXPOS_MANIM);
-		final hp = bh.test.MultiProgrammable_HexPos.create(builder);
+		final mp = createMp();
+		final hp = mp.hexPos.create();
 		Assert.notNull(hp.root, "HexPos should have a root object");
 		Assert.isTrue(hp.root.numChildren > 0, "Root should have children");
 	}
 
 	@Test
 	public function testHexPosChildCount():Void {
-		final builder = loadBuilder(HEXPOS_MANIM);
-		final hp = bh.test.MultiProgrammable_HexPos.create(builder);
+		final mp = createMp();
+		final hp = mp.hexPos.create();
 		// 2 hex groups x (6 corners + 6 edges) = 24 bitmaps
 		var totalChildren = countAllDescendants(hp.root);
 		Assert.isTrue(totalChildren >= 24, "Should have at least 24 descendant objects from hex positioning");
@@ -490,9 +460,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		this.testName = "codegenHexPos";
 		this.testTitle = "#50: codegen hex pos";
 		this.referenceDir = "test/examples/50-codegenHexPos";
-		builderAndMacroScreenshotAndCompare(HEXPOS_MANIM, "codegenHexPos", function() {
-			final builder = loadBuilder(HEXPOS_MANIM);
-			return bh.test.MultiProgrammable_HexPos.create(builder).root;
+		builderAndMacroScreenshotAndCompare("test/examples/50-codegenHexPos/codegenHexPos.manim", "codegenHexPos", function() {
+			return createMp().hexPos.create().root;
 		}, async, 1280, 720, 1.0);
 	}
 
@@ -500,8 +469,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	@Test
 	public function testTextOptsCreate():Void {
-		final builder = loadBuilder(TEXTOPTS_MANIM);
-		final to = bh.test.MultiProgrammable_TextOpts.create(builder);
+		final mp = createMp();
+		final to = mp.textOpts.create();
 		Assert.notNull(to.root, "TextOpts should have a root object");
 		Assert.isTrue(to.root.numChildren > 0, "Root should have children");
 	}
@@ -513,31 +482,127 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		this.testName = "codegenTextOpts";
 		this.testTitle = "#51: codegen text opts";
 		this.referenceDir = "test/examples/51-codegenTextOpts";
-		builderAndMacroScreenshotAndCompare(TEXTOPTS_MANIM, "codegenTextOpts", function() {
-			final builder = loadBuilder(TEXTOPTS_MANIM);
-			return bh.test.MultiProgrammable_TextOpts.create(builder).root;
+		builderAndMacroScreenshotAndCompare("test/examples/51-codegenTextOpts/codegenTextOpts.manim", "codegenTextOpts", function() {
+			return createMp().textOpts.create().root;
 		}, async, 1280, 720, 1.0);
+	}
+
+	// ==================== BoolFloat: unit tests ====================
+
+	@Test
+	public function testBoolFloatCreate():Void {
+		final mp = createMp();
+		final bf = mp.boolFloat.create();
+		Assert.notNull(bf.root, "BoolFloat should have a root object");
+		Assert.isTrue(bf.root.numChildren > 0, "Root should have children");
+	}
+
+	@Test
+	public function testBoolFloatToggle():Void {
+		final mp = createMp();
+		final bf = mp.boolFloat.create();
+
+		// Default: showBorder=true, showLabel=false
+		final vis1 = countVisibleChildren(bf.root);
+
+		// Toggle showLabel on — should reveal label text
+		bf.setShowLabel(true);
+		final vis2 = countVisibleChildren(bf.root);
+		Assert.isTrue(vis2 > vis1, "Toggling showLabel on should increase visible children");
+
+		// Toggle showBorder off — should swap border ninepatch
+		bf.setShowBorder(false);
+		Assert.isTrue(countVisibleChildren(bf.root) > 0, "Should still have visible children after border toggle");
+	}
+
+	@Test
+	public function testBoolFloatAlpha():Void {
+		final mp = createMp();
+		final bf = mp.boolFloat.create();
+
+		// Find a child with non-1.0 alpha (the @alpha($opacity) element)
+		var foundAlpha = false;
+		for (i in 0...bf.root.numChildren) {
+			final child = bf.root.getChildAt(i);
+			if (child.alpha < 1.0 && child.alpha > 0.0) {
+				foundAlpha = true;
+				break;
+			}
+		}
+		Assert.isTrue(foundAlpha, "Should have a child with alpha < 1.0 from float param");
+	}
+
+	// ==================== BoolFloat: visual (3-image) ====================
+
+	@Test
+	public function test52_CodegenBoolFloat(async:utest.Async):Void {
+		this.testName = "codegenBoolFloat";
+		this.testTitle = "#52: codegen bool+float";
+		this.referenceDir = "test/examples/52-codegenBoolFloat";
+		builderAndMacroScreenshotAndCompare("test/examples/52-codegenBoolFloat/codegenBoolFloat.manim", "codegenBoolFloat", function() {
+			return createMp().boolFloat.create().root;
+		}, async, 1280, 720);
+	}
+
+	// ==================== RangeFlags: unit tests ====================
+
+	@Test
+	public function testRangeFlagsCreate():Void {
+		final mp = createMp();
+		final rf = mp.rangeFlags.create();
+		Assert.notNull(rf.root, "RangeFlags should have a root object");
+		Assert.isTrue(rf.root.numChildren > 0, "Root should have children");
+	}
+
+	@Test
+	public function testRangeFlagsLevelConditional():Void {
+		final mp = createMp();
+		final rf = mp.rangeFlags.create();
+
+		// Default level=60, should be in 50..100 range (button-idle visible)
+		final vis1 = countVisibleChildren(rf.root);
+		Assert.isTrue(vis1 > 0, "Should have visible children at level 60");
+
+		// Change level to 20 — should switch to 0..50 range (button-pressed visible)
+		rf.setLevel(20);
+		final vis2 = countVisibleChildren(rf.root);
+		Assert.isTrue(vis2 > 0, "Should have visible children at level 20");
+
+		// Verify text shows updated level
+		final textEl = findTextChild(rf.root);
+		Assert.notNull(textEl, "Should have a text element");
+		if (textEl != null)
+			Assert.equals("20", textEl.text);
+	}
+
+	// ==================== RangeFlags: visual (3-image) ====================
+
+	@Test
+	public function test53_CodegenRangeFlags(async:utest.Async):Void {
+		this.testName = "codegenRangeFlags";
+		this.testTitle = "#53: codegen range+flags";
+		this.referenceDir = "test/examples/53-codegenRangeFlags";
+		builderAndMacroScreenshotAndCompare("test/examples/53-codegenRangeFlags/codegenRangeFlags.manim", "codegenRangeFlags", function() {
+			return createMp().rangeFlags.create().root;
+		}, async, 1280, 720);
 	}
 
 	// ==================== MultiProgrammable factory: unit tests ====================
 
 	@Test
 	public function testMultiProgrammableButton():Void {
-		final loader = TestResourceLoader.createLoader(false);
-		final multi = new bh.test.MultiProgrammable(loader);
-		final btn = multi.createButton();
-		Assert.notNull(btn, "createButton should return companion instance");
+		final multi = createMp();
+		final btn = multi.button.create();
+		Assert.notNull(btn, "button.create() should return companion instance");
 		Assert.notNull(btn.root, "Button companion should have a root");
 		Assert.isTrue(btn.root.numChildren > 0, "Button root should have children");
-		Assert.notNull(multi.button, "multi.button field should be set after createButton()");
 	}
 
 	@Test
 	public function testMultiProgrammableHealthbar():Void {
-		final loader = TestResourceLoader.createLoader(false);
-		final multi = new bh.test.MultiProgrammable(loader);
-		final hb = multi.createHealthbar();
-		Assert.notNull(hb, "createHealthbar should return companion instance");
+		final multi = createMp();
+		final hb = multi.healthbar.create();
+		Assert.notNull(hb, "healthbar.create() should return companion instance");
 		Assert.notNull(hb.root, "Healthbar companion should have a root");
 		Assert.isTrue(hb.root.numChildren > 0, "Healthbar root should have children");
 

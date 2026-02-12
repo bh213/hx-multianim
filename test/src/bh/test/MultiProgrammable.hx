@@ -43,4 +43,10 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/51-codegenTextOpts/codegenTextOpts.manim", "codegenTextOpts")
 	public var textOpts;
+
+	@:manim("test/examples/52-codegenBoolFloat/codegenBoolFloat.manim", "codegenBoolFloat")
+	public var boolFloat;
+
+	@:manim("test/examples/53-codegenRangeFlags/codegenRangeFlags.manim", "codegenRangeFlags")
+	public var rangeFlags;
 }

@@ -23,12 +23,17 @@ using StringTools;
  *       @:manim("path/to/file.manim", "healthbar") public var healthbar;
  *   }
  *
+ *   var screen = new MyScreen(resourceLoader);
+ *   var btn = screen.button.create(status, text);  // params only, no builder
+ *   btn.root;  // h2d tree
+ *   btn.setStatus(Hover);
+ *
  * For each @:manim field, a companion class is generated (e.g. MyScreen_Button) with:
  *   - `root: h2d.Object` — the root of the built h2d tree
- *   - `static create(builder, typedParams...)` — factory with typed enum/bool params
+ *   - `create(typedParams...)` — instance method that loads builder and builds the tree
  *   - `setXxx(v)` — typed setter per parameter (updates visibility + expressions)
  *   - `get_xxx()` — accessors for named elements
- * The parent class gets `createXxx()` factory methods for each field.
+ * The parent class gets a constructor that initializes all companion fields.
  */
 class ProgrammableCodeGen {
 	static var elementCounter:Int = 0;
@@ -58,6 +63,9 @@ class ProgrammableCodeGen {
 	static var localClassPack:Array<String> = [];
 	static var localClassName:String = "";
 
+	// Current manim path being processed (set per-field in buildAll, used by generateFields)
+	static var currentManimPath:String = "";
+
 	// Cache parsed results to avoid re-running subprocess for same file
 	static var parsedCache:Map<String, Map<String, Node>> = new Map();
 
@@ -73,19 +81,13 @@ class ProgrammableCodeGen {
 		runtimeLoopVars = new Map();
 		repeatPoolEntries = [];
 		allParsedNodes = new Map();
+		currentManimPath = "";
 	}
 
 	/**
 	 * Multi-programmable macro: scans user-declared fields for @:manim metadata,
 	 * generates a companion class per field via Context.defineType(), and adds
-	 * createXxx() factory methods to the parent class.
-	 *
-	 * Usage:
-	 *   @:build(bh.multianim.ProgrammableCodeGen.buildAll())
-	 *   class MyScreen extends ProgrammableBuilder {
-	 *       @:manim("path.manim", "buttonName") var button;
-	 *       @:manim("path.manim", "healthbar") var healthbar;
-	 *   }
+	 * a constructor to the parent class that initializes all fields.
 	 */
 	public static function buildAll():Array<Field> {
 		final pos = Context.currentPos();
@@ -101,6 +103,7 @@ class ProgrammableCodeGen {
 
 		final fields = Context.getBuildFields();
 		final newFields:Array<Field> = [];
+		final ctorInitExprs:Array<Expr> = [];
 
 		for (field in fields) {
 			if (field.meta == null) continue;
@@ -121,6 +124,7 @@ class ProgrammableCodeGen {
 
 				// Reset codegen state for each programmable
 				resetState();
+				currentManimPath = manimPath;
 
 				// Parse the .manim file
 				final nodes = parseViaSubprocess(manimPath);
@@ -170,62 +174,30 @@ class ProgrammableCodeGen {
 				final companionTypePath = {pack: parentPack, name: companionName};
 				field.kind = FVar(TPath(companionTypePath), null);
 
-				// Generate createXxx() factory method
-				final fieldNamePascal = toPascalCase(field.name);
-				final factoryName = "create" + fieldNamePascal;
-
-				// Build factory args (same typed params as the companion's create())
-				final factoryArgs:Array<FunctionArg> = [];
-				for (pName in paramNames) {
-					final def = paramDefs.get(pName);
-					final pubType = publicParamType(pName, def.type);
-					final hasDefault = def.defaultValue != null;
-					factoryArgs.push({
-						name: pName,
-						type: pubType,
-						opt: hasDefault,
-						value: hasDefault ? publicDefaultValue(pName, def) : null,
-					});
-				}
-
-				// Build the call to CompanionClass.create(_manimBuilder, params...)
-				final createCallArgs:Array<Expr> = [macro _manimBuilder];
-				for (pName in paramNames) {
-					final enumInfo = paramEnumTypes.get(pName);
-					if (enumInfo != null && enumInfo.typePath == "Bool") {
-						createCallArgs.push(macro($i{pName} ? 0 : 1));
-					} else {
-						createCallArgs.push(macro $i{pName});
-					}
-				}
-
-				final companionExpr:Expr = {
-					expr: EField(macro $p{parentPack.concat([companionName])}, "create"),
-					pos: pos,
-				};
-				final callExpr:Expr = {
-					expr: ECall(companionExpr, createCallArgs),
+				// Track companion info for parent constructor generation
+				final companionNewExpr:Expr = {
+					expr: ENew({pack: parentPack, name: companionName}, [macro this.resourceLoader]),
 					pos: pos,
 				};
 				final fieldRef = macro $p{["this", field.name]};
-				final manimPathExpr = macro $v{manimPath};
-
-				newFields.push({
-					name: factoryName,
-					kind: FFun({
-						args: factoryArgs,
-						ret: TPath(companionTypePath),
-						expr: macro {
-							final _manimBuilder = this.resourceLoader.loadMultiAnim($manimPathExpr);
-							$fieldRef = $callExpr;
-							return $fieldRef;
-						},
-					}),
-					access: [APublic],
-					pos: pos,
-				});
+				ctorInitExprs.push(macro $fieldRef = $companionNewExpr);
 			}
 		}
+
+		// Generate parent constructor that initializes all @:manim fields
+		newFields.push({
+			name: "new",
+			kind: FFun({
+				args: [{name: "resourceLoader", type: macro :bh.base.ResourceLoader}],
+				ret: null,
+				expr: macro {
+					super(resourceLoader);
+					$b{ctorInitExprs};
+				},
+			}),
+			access: [APublic],
+			pos: pos,
+		});
 
 		return fields.concat(newFields);
 	}
@@ -359,30 +331,12 @@ class ProgrammableCodeGen {
 			exprUpdateExprs.push(macro {});
 		fields.push(makeMethod("_updateExpressions", exprUpdateExprs, [], macro :Void, [APrivate], pos));
 
-		// 6. Private constructor (raw Int params, used internally by create())
-		final ctorArgs:Array<FunctionArg> = [];
-		ctorArgs.push({name: "builder", type: macro :bh.multianim.MultiAnimBuilder});
-		for (name in paramNames) {
-			final def = paramDefs.get(name);
-			ctorArgs.push({
-				name: "_" + name,
-				type: paramFieldType(def.type),
-				opt: def.defaultValue != null,
-				value: def.defaultValue != null ? resolvedParamToExpr(def.defaultValue, def.type) : null,
-			});
-		}
+		// 6. Public constructor (just resourceLoader — lazy/factory-ready state)
+		final ctorBody:Array<Expr> = [macro super(resourceLoader)];
+		fields.push(makeMethod("new", ctorBody, [{name: "resourceLoader", type: macro :bh.base.ResourceLoader}], null, [APublic], pos));
 
-		final ctorBody:Array<Expr> = [];
-		ctorBody.push(macro super(@:privateAccess builder.resourceLoader));
-		ctorBody.push(macro this._builder = builder);
-		for (e in constructorExprs)
-			ctorBody.push(e);
-		ctorBody.push(macro this._applyVisibility());
-		ctorBody.push(macro this._updateExpressions());
-		fields.push(makeMethod("new", ctorBody, ctorArgs, null, [APrivate], pos));
-
-		// 7. Static create() factory with typed params, reordered (required first, optional last)
-		fields.push(generateCreateFactory(pos));
+		// 7. Instance create() — loads builder, sets params, builds tree, returns this
+		fields.push(generateInstanceCreate(constructorExprs, pos));
 
 		// 8. Typed setters
 		for (name in paramNames) {
@@ -2548,8 +2502,9 @@ class ProgrammableCodeGen {
 
 	// ==================== Factory / Public API ====================
 
-	/** Generate the static create() factory method with typed params, reordered so required params come first */
-	static function generateCreateFactory(pos:Position):Field {
+	/** Generate instance create() method with typed params.
+	 *  Loads builder from resourceLoader, sets params, builds tree, returns this. */
+	static function generateInstanceCreate(constructorExprs:Array<Expr>, pos:Position):Field {
 		// Partition params: required (no default) first, optional (has default) last
 		final requiredParams:Array<String> = [];
 		final optionalParams:Array<String> = [];
@@ -2562,16 +2517,14 @@ class ProgrammableCodeGen {
 		}
 		final orderedParams = requiredParams.concat(optionalParams);
 
-		// Build factory args
-		final factoryArgs:Array<FunctionArg> = [];
-		factoryArgs.push({name: "builder", type: macro :bh.multianim.MultiAnimBuilder});
-
+		// Build create() args (programmable params only, no builder)
+		final createArgs:Array<FunctionArg> = [];
 		for (name in orderedParams) {
 			final def = paramDefs.get(name);
 			final pubType = publicParamType(name, def.type);
 			final hasDefault = def.defaultValue != null;
 
-			factoryArgs.push({
+			createArgs.push({
 				name: name,
 				type: pubType,
 				opt: hasDefault,
@@ -2579,34 +2532,47 @@ class ProgrammableCodeGen {
 			});
 		}
 
-		// Build the constructor call args: convert Bool params to Int, pass others directly
-		final ctorCallArgs:Array<Expr> = [macro builder];
+		// Build create() body
+		final createBody:Array<Expr> = [];
+
+		// Load builder from resourceLoader
+		final manimPathLit = macro $v{currentManimPath};
+		createBody.push(macro this._builder = this.resourceLoader.loadMultiAnim($manimPathLit));
+
+		// Create local vars for params with proper conversion (Bool -> Int, etc.)
+		// These locals are named _paramName to match what constructorExprs references
 		for (pName in paramNames) {
+			final privateName = "_" + pName;
 			final enumInfo = paramEnumTypes.get(pName);
-			if (enumInfo != null && enumInfo.typePath == "Bool") {
-				// Bool -> Int: true=0 (first index), false=1 (second index)
-				ctorCallArgs.push(macro($i{pName} ? 0 : 1));
+			final convExpr:Expr = if (enumInfo != null && enumInfo.typePath == "Bool") {
+				macro($i{pName} ? 0 : 1);
 			} else {
-				ctorCallArgs.push(macro $i{pName});
-			}
+				macro $i{pName};
+			};
+			createBody.push({
+				expr: EVars([{name: privateName, type: null, expr: convExpr, isFinal: false}]),
+				pos: pos,
+			});
 		}
 
-		final classType:ComplexType = TPath({pack: localClassPack, name: localClassName});
-		// Build: return @:privateAccess new pkg.ClassName(args...)
-		final newExpr:Expr = {
-			expr: ENew({pack: localClassPack, name: localClassName}, ctorCallArgs),
-			pos: pos,
-		};
-		final factoryBody:Array<Expr> = [macro return @:privateAccess $newExpr];
+		// Tree building (root creation, param assignments, child elements)
+		for (e in constructorExprs)
+			createBody.push(e);
 
+		createBody.push(macro this._applyVisibility());
+		createBody.push(macro this._updateExpressions());
+
+		createBody.push(macro return this);
+
+		final classType:ComplexType = TPath({pack: localClassPack, name: localClassName});
 		return {
 			name: "create",
 			kind: FFun({
-				args: factoryArgs,
+				args: createArgs,
 				ret: classType,
-				expr: macro $b{factoryBody},
+				expr: macro $b{createBody},
 			}),
-			access: [APublic, AStatic],
+			access: [APublic],
 			pos: pos,
 		};
 	}

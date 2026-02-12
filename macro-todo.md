@@ -26,10 +26,10 @@ What the `@:build(ProgrammableCodeGen.buildAll())` macro supports vs what's miss
 - **Conditionals** — `@(p=>v)`, `@(p=>[v1,v2])`, `@(p!=v)`, ranges `@(p=>10..30)`, `@else`, `@default`, `CoAny`, `CoFlag`, `CoNot`
 - **Expressions** — `$param`, `+`, `-`, `*`, `/`, `div`, `%`, ternary, comparisons, parentheses
 - **Properties** — scale, alpha, blendMode, tint (with param-dependent updates), filters (all 10 types, with param-dependent updates)
-- **Static create()** — factory with typed params (Bool for bool, inline constants for enums), reordered (required first)
+- **Instance create()** — `mp.button.create(params)` with typed params (Bool for bool, inline constants for enums), reordered (required first)
 - **Setters** — `setXxx(v)` per param, updates visibility + expressions in-place
 - **REPEAT / REPEAT2D** — all iterator types (see below)
-- **Self-loading factory** — `createXxx()` calls `resourceLoader.loadMultiAnim(path)` internally
+- **Instance-based factory** — `@:manim` fields are companion objects, `create()` calls `resourceLoader.loadMultiAnim(path)` internally, returns `this` for chaining
 
 ### Positioning — All Coordinate Types
 
@@ -120,3 +120,5 @@ For codegen: complex. Best approach is to delegate to a runtime helper that crea
 | 49 | codegenGridPos | Grid coordinate positioning from #defaultLayout |
 | 50 | codegenHexPos | Hex corner/edge positioning (pointy + flat) |
 | 51 | codegenTextOpts | letterSpacing, lineSpacing, lineBreak, dropShadow |
+| 52 | codegenBoolFloat | PPTBool conditionals, PPTFloat in @alpha() and expressions |
+| 53 | codegenRangeFlags | PPTRange conditionals + expressions, PPTFlags declaration |

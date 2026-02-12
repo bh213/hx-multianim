@@ -14,7 +14,9 @@
   - All coordinate types: offset, grid, hex (position/corner/edge), layout
   - REPEAT/REPEAT2D: compile-time unroll (static) or runtime pool (param-dependent) for all iterator types
   - Placeholder delegation to `ProgrammableBuilder.buildPlaceholderVia*()` methods
-  - 14 visual tests (builder vs macro screenshot comparison)
+  - Instance-based factory pattern: `mp.button.create(params)` instead of static `create(builder, params)`
+  - All parameter types: enum, bool, int, uint, float, string, color, range, flags
+  - 16 visual tests (builder vs macro screenshot comparison)
 - **.anim conditionals: negation and multi-value** - Ported subset of .manim conditional system to .anim
   - `@(state != value)` - negation: match when state does NOT equal value
   - `@(state=>[v1,v2])` - multi-value: match when state is any of the listed values

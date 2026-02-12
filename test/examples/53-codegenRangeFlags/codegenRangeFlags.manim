@@ -1,0 +1,17 @@
+version: 0.3
+
+#codegenRangeFlags programmable(level:0..100=60, power:0..50=30, bits:flags(8)=5) {
+      // Range: conditional based on level threshold
+      @(level => 50..100) ninepatch("ui", "button-idle", $level * 2, 20): 10, 10
+      @(level => 0..50) ninepatch("ui", "button-pressed", $level * 2, 20): 10, 10
+
+      // Range: second range param in width expression
+      ninepatch("ui", "button-hover", $power * 4, 15): 10, 40
+
+      // Flags: parameter exists for codegen type testing (no expression usage)
+      ninepatch("ui", "button-disabled", 100, 10): 10, 65
+
+      // Text showing param values
+      text(dd, $level, white, left, 100): 10, 85
+      text(dd, $power, white, left, 100): 10, 105
+}
