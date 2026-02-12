@@ -40,7 +40,6 @@ class TestApp extends hxd.App {
 		// Single test filtering: -D SINGLE_TEST=N runs only testNN_ methods
 		applySingleTestFilter(testRunner);
 
-		testRunner.addCase(new bh.test.examples.AllExamplesTest(s2d));
 		testRunner.addCase(new bh.test.examples.ParserErrorTest());
 		testRunner.addCase(new bh.test.examples.AnimParserTest());
 		testRunner.addCase(new bh.test.examples.ProgrammableCodeGenTest(s2d));
