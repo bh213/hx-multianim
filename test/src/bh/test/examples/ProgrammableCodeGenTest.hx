@@ -442,6 +442,14 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		simpleMacroTest(47, "codegenHexPos", () -> createMp().hexPos.create(), async);
 	}
 
+	@Test
+	public function testHexPosSetCornerIdx():Void {
+		final mp = createMp();
+		final hp = mp.hexPos.create();
+		hp.setCornerIdx(3);
+		Assert.isTrue(hp.numChildren > 0);
+	}
+
 	// ==================== TextOpts: unit tests ====================
 
 	@Test

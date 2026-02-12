@@ -43,6 +43,7 @@ class ProgrammableCodeGen {
 	static var expressionUpdates:Array<{fieldName:String, updateExpr:Expr, paramRefs:Array<String>}> = [];
 	static var visibilityEntries:Array<{fieldName:String, condition:Expr}> = [];
 	static var namedElements:Map<String, Array<String>> = [];
+	static var hexLayoutFieldAdded:Bool = false;
 
 	static var paramDefs:ParametersDefinitions;
 	static var paramNames:Array<String> = [];
@@ -97,6 +98,7 @@ class ProgrammableCodeGen {
 		allParsedNodes = new Map();
 		currentManimPath = "";
 		currentProgrammableName = "";
+		hexLayoutFieldAdded = false;
 		tileGroupCounter = 0;
 		instanceClassName = "";
 	}
@@ -448,7 +450,7 @@ class ProgrammableCodeGen {
 			case APPLY:
 				switch (node.conditionals) {
 					case NoConditional:
-						processApply(node, parentField, ctorExprs, pos);
+						processApply(node, parentField, fields, ctorExprs, pos);
 						return;
 					default:
 						processConditionalApply(node, parentField, fields, ctorExprs, siblings, pos);
@@ -467,6 +469,7 @@ class ProgrammableCodeGen {
 			ctorExprs.push(expr);
 
 		// Position
+		ensureHexLayoutIfNeeded(node.pos, node, fields, ctorExprs, pos);
 		final posExpr = generatePositionExpr(node.pos, fieldName, pos, node);
 		if (posExpr != null)
 			ctorExprs.push(posExpr);
@@ -680,6 +683,7 @@ class ProgrammableCodeGen {
 		ctorExprs.push(macro $p{["this", containerName]} = new h2d.Object());
 
 		// Position the container
+		ensureHexLayoutIfNeeded(node.pos, node, fields, ctorExprs, pos);
 		final posExpr = generatePositionExpr(node.pos, containerName, pos, node);
 		if (posExpr != null)
 			ctorExprs.push(posExpr);
@@ -837,6 +841,7 @@ class ProgrammableCodeGen {
 		fields.push(makeField(containerName, FVar(macro :h2d.Object, null), [APrivate], pos));
 		ctorExprs.push(macro $p{["this", containerName]} = new h2d.Object());
 
+		ensureHexLayoutIfNeeded(node.pos, node, fields, ctorExprs, pos);
 		final posExpr = generatePositionExpr(node.pos, containerName, pos, node);
 		if (posExpr != null)
 			ctorExprs.push(posExpr);
@@ -1022,6 +1027,7 @@ class ProgrammableCodeGen {
 		fields.push(makeField(containerName, FVar(macro :h2d.Object, null), [APrivate], pos));
 		ctorExprs.push(macro $p{["this", containerName]} = new h2d.Object());
 
+		ensureHexLayoutIfNeeded(node.pos, node, fields, ctorExprs, pos);
 		final posExpr = generatePositionExpr(node.pos, containerName, pos, node);
 		if (posExpr != null)
 			ctorExprs.push(posExpr);
@@ -1208,6 +1214,7 @@ class ProgrammableCodeGen {
 		fields.push(makeField(containerName, FVar(macro :h2d.Object, null), [APrivate], pos));
 		ctorExprs.push(macro $p{["this", containerName]} = new h2d.Object());
 
+		ensureHexLayoutIfNeeded(node.pos, node, fields, ctorExprs, pos);
 		final posExpr = generatePositionExpr(node.pos, containerName, pos, node);
 		if (posExpr != null)
 			ctorExprs.push(posExpr);
@@ -2186,10 +2193,11 @@ class ProgrammableCodeGen {
 
 	/** APPLY modifies the parent node's properties (position, scale, alpha, blendMode, tint, filter).
 	 *  It doesn't create a new element. */
-	static function processApply(node:Node, parentField:String, ctorExprs:Array<Expr>, pos:Position):Void {
+	static function processApply(node:Node, parentField:String, fields:Array<Field>, ctorExprs:Array<Expr>, pos:Position):Void {
 		final parentRef = parentField != null ? (macro $p{["this", parentField]}) : (macro this);
 
 		// Position offset
+		ensureHexLayoutIfNeeded(node.pos, node, fields, ctorExprs, pos);
 		final posExpr = generatePositionExpr(node.pos, parentField, pos, node);
 		if (posExpr != null)
 			ctorExprs.push(posExpr);
@@ -2271,6 +2279,7 @@ class ProgrammableCodeGen {
 					fields.push(makeField(saveFieldY, FVar(macro :Float, null), [APrivate], pos));
 					ctorExprs.push(macro $p{["this", saveFieldX]} = $parentRef.x);
 					ctorExprs.push(macro $p{["this", saveFieldY]} = $parentRef.y);
+					ensureHexLayoutIfNeeded(node.pos, node, fields, ctorExprs, pos);
 					final posExpr = generatePositionExpr(node.pos, parentField, pos, node);
 					if (posExpr != null)
 						applyExprs.push(posExpr);
@@ -2944,8 +2953,12 @@ class ProgrammableCodeGen {
 						final pt = hexLayout.polygonCorner(bh.base.Hex.zero(), Std.int(c), f);
 						macro $fieldRef.setPosition($v{pt.x}, $v{pt.y});
 					} else {
-						Context.warning('ProgrammableCodeGen: param-dependent hexCorner not yet supported', pos);
-						null;
+						final cExpr = rvToExpr(count);
+						final fExpr = rvToExpr(factor);
+						macro {
+							final _p = this._hexLayout.polygonCorner(bh.base.Hex.zero(), $cExpr, $fExpr);
+							$fieldRef.setPosition(_p.x, _p.y);
+						};
 					}
 				} else null;
 			case SELECTED_HEX_EDGE(direction, factor):
@@ -2957,8 +2970,12 @@ class ProgrammableCodeGen {
 						final pt = hexLayout.polygonEdge(bh.base.Hex.zero(), Std.int(d), f);
 						macro $fieldRef.setPosition($v{pt.x}, $v{pt.y});
 					} else {
-						Context.warning('ProgrammableCodeGen: param-dependent hexEdge not yet supported', pos);
-						null;
+						final dExpr = rvToExpr(direction);
+						final fExpr = rvToExpr(factor);
+						macro {
+							final _p = this._hexLayout.polygonEdge(bh.base.Hex.zero(), $dExpr, $fExpr);
+							$fieldRef.setPosition(_p.x, _p.y);
+						};
 					}
 				} else null;
 			case LAYOUT(layoutName, index):
@@ -3055,6 +3072,30 @@ class ProgrammableCodeGen {
 				result;
 			default: null;
 		};
+	}
+
+	/** Ensure _hexLayout field exists on instance class if coords need runtime hex calculation */
+	static function ensureHexLayoutIfNeeded(coords:Coordinates, node:MultiAnimParser.Node, fields:Array<Field>, ctorExprs:Array<Expr>,
+			pos:Position):Void {
+		if (coords == null || hexLayoutFieldAdded)
+			return;
+		switch (coords) {
+			case SELECTED_HEX_CORNER(count, factor) | SELECTED_HEX_EDGE(count, factor):
+				if (resolveRVStatic(count) == null || resolveRVStatic(factor) == null) {
+					final hexLayout = getHexLayoutForNode(node);
+					if (hexLayout != null) {
+						hexLayoutFieldAdded = true;
+						fields.push(makeField("_hexLayout", FVar(macro :bh.base.Hex.HexLayout, null), [APrivate], pos));
+						final orientExpr = switch (hexLayout.orientation) {
+							case POINTY: macro bh.base.Hex.HexOrientation.POINTY;
+							case FLAT: macro bh.base.Hex.HexOrientation.FLAT;
+						};
+						ctorExprs.push(macro this._hexLayout = bh.base.Hex.HexLayout.createFromFloats($orientExpr, $v{hexLayout.size.x},
+							$v{hexLayout.size.y}, $v{hexLayout.origin.x}, $v{hexLayout.origin.y}));
+					}
+				}
+			default:
+		}
 	}
 
 	/** Resolve a layout position by name and index at macro time */

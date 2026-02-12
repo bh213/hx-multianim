@@ -1,6 +1,6 @@
 version: 0.3
 
-#codegenHexPos programmable() {
+#codegenHexPos programmable(cornerIdx:int=0) {
   point {
     hex: pointy(32, 32)
     pos: 200, 200
@@ -39,5 +39,14 @@ version: 0.3
     bitmap(generated(color(8, 8, #FFFFFF))): hexEdge(3, 1.0)
     bitmap(generated(color(8, 8, #FFFFFF))): hexEdge(4, 1.0)
     bitmap(generated(color(8, 8, #FFFFFF))): hexEdge(5, 1.0)
+  }
+
+  point {
+    hex: pointy(32, 32)
+    pos: 800, 200
+    scale: 2
+
+    bitmap(generated(color(14, 14, #FFAA00))): hexCorner($cornerIdx, 1.0)
+    bitmap(generated(color(10, 10, #AA00FF))): hexEdge($cornerIdx, 1.0)
   }
 }
