@@ -31,34 +31,34 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	public function testButtonCreate():Void {
 		final mp = createMp();
 		final btn = mp.button.create();
-		Assert.notNull(btn.root, "Button should have a root object");
-		Assert.isTrue(btn.root.numChildren > 0, "Root should have children");
+		Assert.notNull(btn, "Button should be created");
+		Assert.isTrue(btn.numChildren > 0, "Root should have children");
 	}
 
 	@Test
 	public function testButtonSetStatus():Void {
 		final mp = createMp();
 		final btn = mp.button.create();
-		Assert.isTrue(countVisibleChildren(btn.root) > 0, "Visible in normal state");
+		Assert.isTrue(countVisibleChildren(btn) > 0, "Visible in normal state");
 
 		btn.setStatus(bh.test.MultiProgrammable_Button.Hover);
-		Assert.isTrue(countVisibleChildren(btn.root) > 0, "Visible in hover state");
+		Assert.isTrue(countVisibleChildren(btn) > 0, "Visible in hover state");
 
 		btn.setStatus(bh.test.MultiProgrammable_Button.Pressed);
-		Assert.isTrue(countVisibleChildren(btn.root) > 0, "Visible in pressed state");
+		Assert.isTrue(countVisibleChildren(btn) > 0, "Visible in pressed state");
 	}
 
 	@Test
 	public function testButtonSetText():Void {
 		final mp = createMp();
 		final btn = mp.button.create();
-		final textEl = findTextChild(btn.root);
+		final textEl = findTextChild(btn);
 		Assert.notNull(textEl, "Should have a Text element");
 		if (textEl != null)
 			Assert.equals("Button", textEl.text);
 
 		btn.setButtonText("Changed");
-		final textEl2 = findTextChild(btn.root);
+		final textEl2 = findTextChild(btn);
 		if (textEl2 != null)
 			Assert.equals("Changed", textEl2.text);
 	}
@@ -67,7 +67,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	@Test
 	public function test36_CodegenButton(async:utest.Async):Void {
-		simpleMacroTest(36, "codegenButton", () -> createMp().button.create().root, async, null, null, 4.0);
+		simpleMacroTest(36, "codegenButton", () -> createMp().button.create(), async, null, null, 4.0);
 	}
 
 	// ==================== Healthbar: unit tests ====================
@@ -76,8 +76,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	public function testHealthbarCreate():Void {
 		final mp = createMp();
 		final hb = mp.healthbar.create();
-		Assert.notNull(hb.root, "Healthbar should have a root object");
-		Assert.isTrue(hb.root.numChildren > 0, "Root should have children");
+		Assert.notNull(hb, "Healthbar should be created");
+		Assert.isTrue(hb.numChildren > 0, "Root should have children");
 	}
 
 	@Test
@@ -85,13 +85,13 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		final mp = createMp();
 		final hb = mp.healthbar.create();
 
-		final textEl = findTextChild(hb.root);
+		final textEl = findTextChild(hb);
 		Assert.notNull(textEl, "Should have health text");
 		if (textEl != null)
 			Assert.equals("75", textEl.text);
 
 		hb.setHealth(50);
-		final textEl2 = findTextChild(hb.root);
+		final textEl2 = findTextChild(hb);
 		if (textEl2 != null)
 			Assert.equals("50", textEl2.text);
 	}
@@ -102,7 +102,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		final hb = mp.healthbar.create();
 
 		hb.setHealth(20);
-		var visibleCount = countVisibleChildren(hb.root);
+		var visibleCount = countVisibleChildren(hb);
 		Assert.isTrue(visibleCount > 0, "Should have visible children at low health");
 	}
 
@@ -110,7 +110,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	@Test
 	public function test37_CodegenHealthbar(async:utest.Async):Void {
-		simpleMacroTest(37, "codegenHealthbar", () -> createMp().healthbar.create().root, async, null, null, 4.0);
+		simpleMacroTest(37, "codegenHealthbar", () -> createMp().healthbar.create(), async, null, null, 4.0);
 	}
 
 	// ==================== Dialog: unit tests ====================
@@ -119,8 +119,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	public function testDialogCreate():Void {
 		final mp = createMp();
 		final dlg = mp.dialog.create();
-		Assert.notNull(dlg.root, "Dialog should have a root object");
-		Assert.isTrue(dlg.root.numChildren > 0, "Root should have children");
+		Assert.notNull(dlg, "Dialog should be created");
+		Assert.isTrue(dlg.numChildren > 0, "Root should have children");
 	}
 
 	@Test
@@ -128,13 +128,13 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		final mp = createMp();
 		final dlg = mp.dialog.create();
 
-		final textEl = findTextChild(dlg.root);
+		final textEl = findTextChild(dlg);
 		Assert.notNull(textEl, "Should have title text");
 		if (textEl != null)
 			Assert.equals("Dialog", textEl.text);
 
 		dlg.setTitle("New Title");
-		final textEl2 = findTextChild(dlg.root);
+		final textEl2 = findTextChild(dlg);
 		if (textEl2 != null)
 			Assert.equals("New Title", textEl2.text);
 	}
@@ -145,17 +145,17 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		final dlg = mp.dialog.create(400, "Dialog macro");
 
 		dlg.setStyle(bh.test.MultiProgrammable_Dialog.Hover);
-		Assert.isTrue(countVisibleChildren(dlg.root) > 0, "Visible in hover style");
+		Assert.isTrue(countVisibleChildren(dlg) > 0, "Visible in hover style");
 
 		dlg.setStyle(bh.test.MultiProgrammable_Dialog.Disabled);
-		Assert.isTrue(countVisibleChildren(dlg.root) > 0, "Visible in disabled style");
+		Assert.isTrue(countVisibleChildren(dlg) > 0, "Visible in disabled style");
 	}
 
 	// ==================== Dialog: visual (3-image) ====================
 
 	@Test
 	public function test38_CodegenDialog(async:utest.Async):Void {
-		simpleMacroTest(38, "codegenDialog", () -> createMp().dialog.create().root, async, null, null, 4.0);
+		simpleMacroTest(38, "codegenDialog", () -> createMp().dialog.create(), async, null, null, 4.0);
 	}
 
 	// ==================== Repeat: unit tests ====================
@@ -164,15 +164,15 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	public function testRepeatCreate():Void {
 		final mp = createMp();
 		final rpt = mp.repeat.create();
-		Assert.notNull(rpt.root, "Repeat should have a root object");
-		Assert.isTrue(rpt.root.numChildren > 0, "Root should have children");
+		Assert.notNull(rpt, "Repeat should be created");
+		Assert.isTrue(rpt.numChildren > 0, "Root should have children");
 	}
 
 	@Test
 	public function testRepeatChildCount():Void {
 		final mp = createMp();
 		final rpt = mp.repeat.create();
-		var totalChildren = countAllDescendants(rpt.root);
+		var totalChildren = countAllDescendants(rpt);
 		Assert.isTrue(totalChildren > 10, "Should have many descendant objects from unrolled repeats");
 	}
 
@@ -182,11 +182,11 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		final rpt = mp.repeat.create();
 
 		rpt.setCount(2);
-		var visCount = countVisibleDescendants(rpt.root);
+		var visCount = countVisibleDescendants(rpt);
 		final count2 = visCount;
 
 		rpt.setCount(4);
-		visCount = countVisibleDescendants(rpt.root);
+		visCount = countVisibleDescendants(rpt);
 		Assert.isTrue(visCount > count2, "More visible descendants with higher count");
 	}
 
@@ -194,7 +194,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	@Test
 	public function test39_CodegenRepeat(async:utest.Async):Void {
-		simpleMacroTest(39, "codegenRepeat", () -> createMp().repeat.create().root, async, null, null, 4.0);
+		simpleMacroTest(39, "codegenRepeat", () -> createMp().repeat.create(), async, null, null, 4.0);
 	}
 
 	// ==================== Repeat2D: unit tests ====================
@@ -203,8 +203,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	public function testRepeat2dCreate():Void {
 		final mp = createMp();
 		final rpt2d = mp.repeat2d.create();
-		Assert.notNull(rpt2d.root, "Repeat2d should have a root object");
-		Assert.isTrue(rpt2d.root.numChildren > 0, "Root should have children");
+		Assert.notNull(rpt2d, "Repeat2d should be created");
+		Assert.isTrue(rpt2d.numChildren > 0, "Root should have children");
 	}
 
 	@Test
@@ -213,10 +213,10 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		final rpt2d = mp.repeat2d.create();
 
 		rpt2d.setCols(1);
-		final count1 = countVisibleDescendants(rpt2d.root);
+		final count1 = countVisibleDescendants(rpt2d);
 
 		rpt2d.setCols(3);
-		final count3 = countVisibleDescendants(rpt2d.root);
+		final count3 = countVisibleDescendants(rpt2d);
 		Assert.isTrue(count3 > count1, "More visible descendants with more cols");
 	}
 
@@ -224,7 +224,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	@Test
 	public function test40_CodegenRepeat2d(async:utest.Async):Void {
-		simpleMacroTest(40, "codegenRepeat2d", () -> createMp().repeat2d.create().root, async, null, null, 4.0);
+		simpleMacroTest(40, "codegenRepeat2d", () -> createMp().repeat2d.create(), async, null, null, 4.0);
 	}
 
 	// ==================== Layout: unit tests ====================
@@ -233,15 +233,15 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	public function testLayoutCreate():Void {
 		final mp = createMp();
 		final lay = mp.layout.create();
-		Assert.notNull(lay.root, "Layout should have a root object");
-		Assert.isTrue(lay.root.numChildren > 0, "Root should have children");
+		Assert.notNull(lay, "Layout should be created");
+		Assert.isTrue(lay.numChildren > 0, "Root should have children");
 	}
 
 	@Test
 	public function testLayoutChildCount():Void {
 		final mp = createMp();
 		final lay = mp.layout.create();
-		var totalChildren = countAllDescendants(lay.root);
+		var totalChildren = countAllDescendants(lay);
 		Assert.isTrue(totalChildren >= 9, "Should have at least 9 descendant objects from layout repeats");
 	}
 
@@ -249,7 +249,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	@Test
 	public function test41_CodegenLayout(async:utest.Async):Void {
-		simpleMacroTest(41, "codegenLayout", () -> createMp().layout.create().root, async, null, null, 4.0);
+		simpleMacroTest(41, "codegenLayout", () -> createMp().layout.create(), async, null, null, 4.0);
 	}
 
 	// ==================== TilesIter: unit tests ====================
@@ -258,15 +258,15 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	public function testTilesIterCreate():Void {
 		final mp = createMp();
 		final ti = mp.tilesIter.create();
-		Assert.notNull(ti.root, "TilesIter should have a root object");
-		Assert.isTrue(ti.root.numChildren > 0, "Root should have children");
+		Assert.notNull(ti, "TilesIter should be created");
+		Assert.isTrue(ti.numChildren > 0, "Root should have children");
 	}
 
 	@Test
 	public function testTilesIterHasBitmaps():Void {
 		final mp = createMp();
 		final ti = mp.tilesIter.create();
-		var totalChildren = countAllDescendants(ti.root);
+		var totalChildren = countAllDescendants(ti);
 		Assert.isTrue(totalChildren >= 2, "Should have descendant objects from runtime iterators");
 	}
 
@@ -274,28 +274,28 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	@Test
 	public function test42_CodegenTilesIter(async:utest.Async):Void {
-		simpleMacroTest(42, "codegenTilesIter", () -> createMp().tilesIter.create().root, async, null, null, 4.0);
+		simpleMacroTest(42, "codegenTilesIter", () -> createMp().tilesIter.create(), async, null, null, 4.0);
 	}
 
 	// ==================== Tint: visual (3-image) ====================
 
 	@Test
 	public function test35_TintDemo(async:utest.Async):Void {
-		simpleMacroTest(35, "tintDemo", () -> createMp().tint.create().root, async);
+		simpleMacroTest(35, "tintDemo", () -> createMp().tint.create(), async);
 	}
 
 	// ==================== Graphics: visual (3-image) ====================
 
 	@Test
 	public function test43_CodegenGraphics(async:utest.Async):Void {
-		simpleMacroTest(43, "codegenGraphics", () -> createMp().graphics.create().root, async, null, null, 4.0);
+		simpleMacroTest(43, "codegenGraphics", () -> createMp().graphics.create(), async, null, null, 4.0);
 	}
 
 	// ==================== Reference: visual (3-image) ====================
 
 	@Test
 	public function test44_CodegenReference(async:utest.Async):Void {
-		simpleMacroTest(44, "codegenReference", () -> createMp().reference.create().root, async, null, null, 4.0);
+		simpleMacroTest(44, "codegenReference", () -> createMp().reference.create(), async, null, null, 4.0);
 	}
 
 	// ==================== FilterParam: unit tests ====================
@@ -304,8 +304,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	public function testFilterParamCreate():Void {
 		final mp = createMp();
 		final fp = mp.filterParam.create();
-		Assert.notNull(fp.root, "FilterParam should have a root object");
-		Assert.isTrue(fp.root.numChildren > 0, "Root should have children");
+		Assert.notNull(fp, "FilterParam should be created");
+		Assert.isTrue(fp.numChildren > 0, "Root should have children");
 	}
 
 	@Test
@@ -313,7 +313,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		final mp = createMp();
 		final fp = mp.filterParam.create();
 
-		final firstChild = fp.root.getChildAt(0);
+		final firstChild = fp.getChildAt(0);
 		Assert.notNull(firstChild.filter, "First child should have an outline filter");
 
 		fp.setOutlineColor(0x00FF00);
@@ -326,14 +326,14 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		final fp = mp.filterParam.create();
 
 		fp.setTintColor(0xFF0000);
-		Assert.isTrue(fp.root.numChildren > 0, "Should still have children after tint change");
+		Assert.isTrue(fp.numChildren > 0, "Should still have children after tint change");
 	}
 
 	// ==================== FilterParam: visual (3-image) ====================
 
 	@Test
 	public function test45_CodegenFilterParam(async:utest.Async):Void {
-		simpleMacroTest(45, "codegenFilterParam", () -> createMp().filterParam.create().root, async, null, null, 4.0);
+		simpleMacroTest(45, "codegenFilterParam", () -> createMp().filterParam.create(), async, null, null, 4.0);
 	}
 
 	// ==================== GridPos: unit tests ====================
@@ -342,15 +342,15 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	public function testGridPosCreate():Void {
 		final mp = createMp();
 		final gp = mp.gridPos.create();
-		Assert.notNull(gp.root, "GridPos should have a root object");
-		Assert.isTrue(gp.root.numChildren > 0, "Root should have children");
+		Assert.notNull(gp, "GridPos should be created");
+		Assert.isTrue(gp.numChildren > 0, "Root should have children");
 	}
 
 	@Test
 	public function testGridPosChildCount():Void {
 		final mp = createMp();
 		final gp = mp.gridPos.create();
-		var totalChildren = countAllDescendants(gp.root);
+		var totalChildren = countAllDescendants(gp);
 		Assert.isTrue(totalChildren >= 7, "Should have at least 7 descendant objects from layout repeats");
 	}
 
@@ -358,7 +358,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	@Test
 	public function test46_CodegenGridPos(async:utest.Async):Void {
-		simpleMacroTest(46, "codegenGridPos", () -> createMp().gridPos.create().root, async, null, null, 4.0);
+		simpleMacroTest(46, "codegenGridPos", () -> createMp().gridPos.create(), async, null, null, 4.0);
 	}
 
 	// ==================== HexPos: unit tests ====================
@@ -367,15 +367,15 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	public function testHexPosCreate():Void {
 		final mp = createMp();
 		final hp = mp.hexPos.create();
-		Assert.notNull(hp.root, "HexPos should have a root object");
-		Assert.isTrue(hp.root.numChildren > 0, "Root should have children");
+		Assert.notNull(hp, "HexPos should be created");
+		Assert.isTrue(hp.numChildren > 0, "Root should have children");
 	}
 
 	@Test
 	public function testHexPosChildCount():Void {
 		final mp = createMp();
 		final hp = mp.hexPos.create();
-		var totalChildren = countAllDescendants(hp.root);
+		var totalChildren = countAllDescendants(hp);
 		Assert.isTrue(totalChildren >= 24, "Should have at least 24 descendant objects from hex positioning");
 	}
 
@@ -383,7 +383,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	@Test
 	public function test47_CodegenHexPos(async:utest.Async):Void {
-		simpleMacroTest(47, "codegenHexPos", () -> createMp().hexPos.create().root, async);
+		simpleMacroTest(47, "codegenHexPos", () -> createMp().hexPos.create(), async);
 	}
 
 	// ==================== TextOpts: unit tests ====================
@@ -392,15 +392,15 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	public function testTextOptsCreate():Void {
 		final mp = createMp();
 		final to = mp.textOpts.create();
-		Assert.notNull(to.root, "TextOpts should have a root object");
-		Assert.isTrue(to.root.numChildren > 0, "Root should have children");
+		Assert.notNull(to, "TextOpts should be created");
+		Assert.isTrue(to.numChildren > 0, "Root should have children");
 	}
 
 	// ==================== TextOpts: visual (3-image) ====================
 
 	@Test
 	public function test48_CodegenTextOpts(async:utest.Async):Void {
-		simpleMacroTest(48, "codegenTextOpts", () -> createMp().textOpts.create().root, async);
+		simpleMacroTest(48, "codegenTextOpts", () -> createMp().textOpts.create(), async);
 	}
 
 	// ==================== BoolFloat: unit tests ====================
@@ -409,22 +409,22 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	public function testBoolFloatCreate():Void {
 		final mp = createMp();
 		final bf = mp.boolFloat.create();
-		Assert.notNull(bf.root, "BoolFloat should have a root object");
-		Assert.isTrue(bf.root.numChildren > 0, "Root should have children");
+		Assert.notNull(bf, "BoolFloat should be created");
+		Assert.isTrue(bf.numChildren > 0, "Root should have children");
 	}
 
 	@Test
 	public function testBoolFloatToggle():Void {
 		final mp = createMp();
 		final bf = mp.boolFloat.create();
-		final vis1 = countVisibleChildren(bf.root);
+		final vis1 = countVisibleChildren(bf);
 
 		bf.setShowLabel(true);
-		final vis2 = countVisibleChildren(bf.root);
+		final vis2 = countVisibleChildren(bf);
 		Assert.isTrue(vis2 > vis1, "Toggling showLabel on should increase visible children");
 
 		bf.setShowBorder(false);
-		Assert.isTrue(countVisibleChildren(bf.root) > 0, "Should still have visible children after border toggle");
+		Assert.isTrue(countVisibleChildren(bf) > 0, "Should still have visible children after border toggle");
 	}
 
 	@Test
@@ -432,8 +432,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		final mp = createMp();
 		final bf = mp.boolFloat.create();
 		var foundAlpha = false;
-		for (i in 0...bf.root.numChildren) {
-			final child = bf.root.getChildAt(i);
+		for (i in 0...bf.numChildren) {
+			final child = bf.getChildAt(i);
 			if (child.alpha < 1.0 && child.alpha > 0.0) {
 				foundAlpha = true;
 				break;
@@ -461,10 +461,10 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		multiInstanceMacroTest(49, "codegenBoolFloat", 2.0, 80.0, params, function(i:Int):h2d.Object {
 			var mp = createMp();
 			return switch (i) {
-				case 0: mp.boolFloat.create(true, false, 0.8, 1.5).root;
-				case 1: mp.boolFloat.create(false, true, 0.4, 2.0).root;
-				case 2: mp.boolFloat.create(true, true, 1.0, 0.5).root;
-				default: mp.boolFloat.create(false, false, 0.6, 1.0).root;
+				case 0: mp.boolFloat.create(true, false, 0.8, 1.5);
+				case 1: mp.boolFloat.create(false, true, 0.4, 2.0);
+				case 2: mp.boolFloat.create(true, true, 1.0, 0.5);
+				default: mp.boolFloat.create(false, false, 0.6, 1.0);
 			};
 		}, async);
 	}
@@ -475,22 +475,22 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	public function testRangeFlagsCreate():Void {
 		final mp = createMp();
 		final rf = mp.rangeFlags.create();
-		Assert.notNull(rf.root, "RangeFlags should have a root object");
-		Assert.isTrue(rf.root.numChildren > 0, "Root should have children");
+		Assert.notNull(rf, "RangeFlags should be created");
+		Assert.isTrue(rf.numChildren > 0, "Root should have children");
 	}
 
 	@Test
 	public function testRangeFlagsLevelConditional():Void {
 		final mp = createMp();
 		final rf = mp.rangeFlags.create();
-		final vis1 = countVisibleChildren(rf.root);
+		final vis1 = countVisibleChildren(rf);
 		Assert.isTrue(vis1 > 0, "Should have visible children at level 60");
 
 		rf.setLevel(20);
-		final vis2 = countVisibleChildren(rf.root);
+		final vis2 = countVisibleChildren(rf);
 		Assert.isTrue(vis2 > 0, "Should have visible children at level 20");
 
-		final textEl = findTextChild(rf.root);
+		final textEl = findTextChild(rf);
 		Assert.notNull(textEl, "Should have a text element");
 		if (textEl != null)
 			Assert.equals("20", textEl.text);
@@ -515,10 +515,10 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		multiInstanceMacroTest(50, "codegenRangeFlags", 2.0, 75.0, params, function(i:Int):h2d.Object {
 			var mp = createMp();
 			return switch (i) {
-				case 0: mp.rangeFlags.create(60, 30, 5).root;
-				case 1: mp.rangeFlags.create(20, 45, 3).root;
-				case 2: mp.rangeFlags.create(80, 10, 7).root;
-				default: mp.rangeFlags.create(50, 50, 0).root;
+				case 0: mp.rangeFlags.create(60, 30, 5);
+				case 1: mp.rangeFlags.create(20, 45, 3);
+				case 2: mp.rangeFlags.create(80, 10, 7);
+				default: mp.rangeFlags.create(50, 50, 0);
 			};
 		}, async);
 	}
@@ -555,7 +555,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 			// Phase 2: macro — create, advance particles, screenshot
 			clearScene();
-			var macroRoot = createMp().particles.create().root;
+			var macroRoot = createMp().particles.create();
 			s2d.addChild(macroRoot);
 
 			var macroParticles = findParticles(macroRoot);
@@ -629,21 +629,19 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	public function testMultiProgrammableButton():Void {
 		final multi = createMp();
 		final btn = multi.button.create();
-		Assert.notNull(btn, "button.create() should return companion instance");
-		Assert.notNull(btn.root, "Button companion should have a root");
-		Assert.isTrue(btn.root.numChildren > 0, "Button root should have children");
+		Assert.notNull(btn, "button.create() should return instance");
+		Assert.isTrue(btn.numChildren > 0, "Button should have children");
 	}
 
 	@Test
 	public function testMultiProgrammableHealthbar():Void {
 		final multi = createMp();
 		final hb = multi.healthbar.create();
-		Assert.notNull(hb, "healthbar.create() should return companion instance");
-		Assert.notNull(hb.root, "Healthbar companion should have a root");
-		Assert.isTrue(hb.root.numChildren > 0, "Healthbar root should have children");
+		Assert.notNull(hb, "healthbar.create() should return instance");
+		Assert.isTrue(hb.numChildren > 0, "Healthbar should have children");
 
 		hb.setHealth(50);
-		final textEl = findTextChild(hb.root);
+		final textEl = findTextChild(hb);
 		if (textEl != null)
 			Assert.equals("50", textEl.text);
 	}
