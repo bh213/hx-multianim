@@ -17,18 +17,21 @@ typedef TestResult = {
 	var ?macroPath:String;
 	var ?macroSimilarity:Float;
 	var ?macroPassed:Bool;
+	var ?threshold:Float;
+	var ?macroThreshold:Float;
 }
 
 class HtmlReportGenerator {
 	private static var results:Array<TestResult> = [];
 	private static var reportPath:String = "test/screenshots/index.html";
 
-	public static function addResult(testName:String, referencePath:String, actualPath:String, passed:Bool, similarity:Float, ?errorMessage:String):Void {
-		addResultWithMacro(testName, referencePath, actualPath, passed, similarity, errorMessage, null, null, null);
+	public static function addResult(testName:String, referencePath:String, actualPath:String, passed:Bool, similarity:Float, ?errorMessage:String,
+			?threshold:Float):Void {
+		addResultWithMacro(testName, referencePath, actualPath, passed, similarity, errorMessage, null, null, null, threshold, null);
 	}
 
 	public static function addResultWithMacro(testName:String, referencePath:String, actualPath:String, passed:Bool, similarity:Float,
-			?errorMessage:String, ?macroPath:String, ?macroSimilarity:Float, ?macroPassed:Bool):Void {
+			?errorMessage:String, ?macroPath:String, ?macroSimilarity:Float, ?macroPassed:Bool, ?threshold:Float, ?macroThreshold:Float):Void {
 		// Find manim file in the same directory as reference
 		var manimPath:String = null;
 		var manimContent:String = null;
@@ -64,6 +67,8 @@ class HtmlReportGenerator {
 			macroPath: macroPath,
 			macroSimilarity: macroSimilarity,
 			macroPassed: macroPassed,
+			threshold: threshold,
+			macroThreshold: macroThreshold,
 		});
 	}
 
@@ -378,10 +383,12 @@ class HtmlReportGenerator {
 			}
 			html.add('            </div>\n');
 			html.add('        </div>\n');
-			html.add('        <div class="similarity">Builder similarity: ${similarityPercent}%');
+			var thresholdPercent = result.threshold != null ? Math.round(result.threshold * 10000) / 100 : 99.99;
+			html.add('        <div class="similarity">Builder similarity: ${similarityPercent}% (acceptance: ${thresholdPercent}%)');
 			if (hasMacro && result.macroSimilarity != null) {
 				var macroSimPercent = Math.round(result.macroSimilarity * 10000) / 100;
-				html.add(' | Macro similarity: ${macroSimPercent}%');
+				var macroThresholdPercent = result.macroThreshold != null ? Math.round(result.macroThreshold * 10000) / 100 : 99.0;
+				html.add(' | Macro similarity: ${macroSimPercent}% (acceptance: ${macroThresholdPercent}%)');
 			}
 			html.add('</div>\n');
 
