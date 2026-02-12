@@ -9,8 +9,8 @@ FIX:
 
 Components: allow setting various components via settings 
 
-repeatable grid: scale ignored for dy/dy?
-    - VALID BUG: GridIterator uses resolveAsInteger(dirX/dirY) directly
+repeatable step: scale ignored for dy/dy?
+
     - Grid's spacingX/spacingY is NOT applied to dx/dy values
     - If you have grid(32,32) and repeatable grid(1,0,5), dx=1 is treated as 1 pixel, not 32 pixels
     - See MultiAnimBuilder.hx:1409-1412

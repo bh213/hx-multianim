@@ -260,7 +260,7 @@ Enable debug traces by adding to HXML:
 ## Current TODO Items
 
 ### Fixes Needed
-- Repeatable grid scale for dx/dy
+- Repeatable step scale for dx/dy
 - HTML text implementation
 - Double reload issue
 - Hex coordinate system offset support
