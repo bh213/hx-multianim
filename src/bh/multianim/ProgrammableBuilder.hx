@@ -103,6 +103,12 @@ class ProgrammableBuilder {
 		return @:privateAccess (_builder : MultiAnimBuilder).getPalette(paletteName).getColorByIndex(index);
 	}
 
+	/** Build a palette replace filter via the builder (for FilterPaletteReplace) */
+	public function buildPaletteReplaceFilter(paletteName:String, sourceRow:Int, replacementRow:Int):h2d.filter.Filter {
+		var palette = @:privateAccess (_builder : MultiAnimBuilder).getPalette(paletteName);
+		return bh.base.filters.ReplacePaletteShader.createAsPaletteFilter(palette, sourceRow, replacementRow);
+	}
+
 	/** Build a sub-programmable via the builder (for REFERENCE nodes) */
 	public function buildReference(name:String, parameters:Map<String, Dynamic>):BuilderResult {
 		return (_builder : MultiAnimBuilder).buildWithParameters(name, parameters);
