@@ -13,9 +13,7 @@ class AllExamplesTest extends VisualTestBase {
 		autotileHelper = new AutotileTestHelper(this, s2d);
 	}
 
-	@Test public function test01_HexGridPixels(async:utest.Async) { simpleTest(1, "hexGridPixels", async); }
-	@Test public function test02_TextDemo(async:utest.Async) { simpleTest(2, "textDemo", async); }
-	@Test public function test03_BitmapDemo(async:utest.Async) { simpleTest(3, "bitmapDemo", async); }
+	// tests 1, 2, 3 moved to ProgrammableCodeGenTest (macro comparison)
 	@Test public function test04_RepeatableDemo(async:utest.Async) { simpleTest(4, "repeatableDemo", async); }
 	@Test public function test05_StateAnimDemo(async:utest.Async) { simpleTest(5, "stateAnimDemo", async); }
 	@Test public function test06_FlowDemo(async:utest.Async) { simpleTest(6, "flowDemo", async); }
@@ -29,7 +27,7 @@ class AllExamplesTest extends VisualTestBase {
 	@Test public function test14_TileGroupDemo(async:utest.Async) { simpleTest(14, "tileGroupDemo", async); }
 	@Test public function test15_StateAnimConstructDemo(async:utest.Async) { simpleTest(15, "stateAnimConstructDemo", async); }
 	@Test public function test16_DivModDemo(async:utest.Async) { simpleTest(16, "divModDemo", async); }
-	@Test public function test17_ApplyDemo(async:utest.Async) { simpleTest(17, "applyDemo", async); }
+	// test17 moved to ProgrammableCodeGenTest (macro comparison)
 	@Test public function test18_ConditionalsDemo(async:utest.Async) { simpleTest(18, "conditionalsDemo", async, "main"); }
 	@Test public function test19_TernaryOpDemo(async:utest.Async) { simpleTest(19, "ternaryOpDemo", async); }
 	@Test public function test20_GraphicsDemo(async:utest.Async) { simpleTest(20, "graphicsDemo", async); }

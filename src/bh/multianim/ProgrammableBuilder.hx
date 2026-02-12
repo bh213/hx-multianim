@@ -10,6 +10,8 @@ import bh.multianim.MultiAnimBuilder.CallbackRequest;
 import bh.multianim.MultiAnimBuilder.CallbackResult;
 import bh.multianim.MultiAnimBuilder.PlaceholderValues;
 import bh.multianim.MultiAnimParser.TileSource;
+import bh.stateanim.AnimationSM;
+import bh.stateanim.AnimationSM.AnimationFrameState;
 
 /**
  * Base class for generated programmable classes.
@@ -118,6 +120,74 @@ class ProgrammableBuilder {
 		return null;
 	}
 
+	/** Build a state animation from a .anim file.
+	 *  Used by generated code for STATEANIM nodes. */
+	public function buildStateAnim(filename:String, selectorMap:Map<String, String>, initialState:String):AnimationSM {
+		final animSM = resourceLoader.createAnimSM(filename, selectorMap);
+		animSM.play(initialState);
+		return animSM;
+	}
+
+	/** Build an inline-constructed state animation.
+	 *  Used by generated code for STATEANIM_CONSTRUCT nodes. */
+	public function buildStateAnimConstruct(initialState:String, constructData:Array<{key:String, sheet:String, animName:String, fps:Float, loop:Bool, center:Bool}>):AnimationSM {
+		final animSM = new AnimationSM([]);
+		for (entry in constructData) {
+			final loadedSheet = getSheet(entry.sheet);
+			final anim = loadedSheet.getAnim(entry.animName);
+			if (entry.center) {
+				for (i in 0...anim.length) {
+					anim[i] = anim[i].cloneWithNewTile(anim[i].tile.center());
+				}
+			}
+			final animStates = [for (a in anim) Frame(a.cloneWithDuration(1.0 / entry.fps))];
+			final loopCount = entry.loop ? -1 : 0;
+			animSM.addAnimationState(entry.key, animStates, loopCount, new Map());
+		}
+		animSM.play(initialState);
+		return animSM;
+	}
+
+	/** Build a TileGroup by finding it in the programmable's node tree.
+	 *  Used by generated code for TILEGROUP nodes.
+	 *  Delegates to the builder which handles TileGroup's special child-add mechanism. */
+	public function buildTileGroupFromProgrammable(programmableName:String):h2d.Object {
+		final builder:MultiAnimBuilder = cast _builder;
+		final progNode = builder.multiParserResult.nodes.get(programmableName);
+		if (progNode == null)
+			throw 'could not find programmable node: $programmableName';
+		final tgNode = findFirstTileGroupChild(progNode);
+		if (tgNode == null)
+			throw 'no tileGroup found in programmable: $programmableName';
+		// Build the tilegroup via the builder — it handles TileGroupMode for children
+		final result = builder.buildWithParameters(programmableName, new Map());
+		// Find the TileGroup in the result's object tree
+		return findTileGroupInTree(result.object);
+	}
+
+	private static function findFirstTileGroupChild(node:MultiAnimParser.Node):Null<MultiAnimParser.Node> {
+		for (child in node.children) {
+			switch child.type {
+				case TILEGROUP: return child;
+				default:
+					var found = findFirstTileGroupChild(child);
+					if (found != null) return found;
+			}
+		}
+		return null;
+	}
+
+	private static function findTileGroupInTree(obj:h2d.Object):h2d.Object {
+		if (Std.isOfType(obj, h2d.TileGroup)) return obj;
+		final it = @:privateAccess obj.children.iterator();
+		while (it.hasNext()) {
+			var child = it.next();
+			var found = findTileGroupInTree(child);
+			if (found != null) return found;
+		}
+		return obj; // fallback
+	}
+
 	/** Get all tiles from a sheet, optionally filtered by tile name prefix.
 	 *  Used by generated code for TilesIterator. */
 	public function getSheetTiles(sheetName:String, tileFilter:Null<String>):Array<Tile> {
@@ -191,6 +261,70 @@ class ProgrammableBuilder {
 			case null: null;
 			case PVObject(obj): obj;
 			case PVFactory(factoryMethod): factoryMethod(null);
+		};
+	}
+
+	/** Resolve a callback by name, returning a string result.
+	 *  Used by generated code for RVCallbacks in text elements. */
+	public function resolveCallback(name:String, defaultValue:String):String {
+		final builder:MultiAnimBuilder = cast _builder;
+		final callback = @:privateAccess builder.builderParams.callback;
+		if (callback == null) return defaultValue;
+		final result = callback(Name(name));
+		return switch result {
+			case CBRInteger(val): '$val';
+			case CBRFloat(val): '$val';
+			case CBRString(val): val;
+			case CBRNoResult: defaultValue;
+			case null: defaultValue;
+			default: defaultValue;
+		};
+	}
+
+	/** Resolve a callback by name and index, returning a string result.
+	 *  Used by generated code for RVCallbacksWithIndex in text elements. */
+	public function resolveCallbackWithIndex(name:String, index:Int, defaultValue:String):String {
+		final builder:MultiAnimBuilder = cast _builder;
+		final callback = @:privateAccess builder.builderParams.callback;
+		if (callback == null) return defaultValue;
+		final result = callback(NameWithIndex(name, index));
+		return switch result {
+			case CBRInteger(val): '$val';
+			case CBRFloat(val): '$val';
+			case CBRString(val): val;
+			case CBRNoResult: defaultValue;
+			case null: defaultValue;
+			default: defaultValue;
+		};
+	}
+
+	/** Resolve a callback by name, returning an integer result.
+	 *  Used by generated code for RVCallbacks in numeric expressions. */
+	public function resolveCallbackInt(name:String, defaultValue:Int):Int {
+		final builder:MultiAnimBuilder = cast _builder;
+		final callback = @:privateAccess builder.builderParams.callback;
+		if (callback == null) return defaultValue;
+		final result = callback(Name(name));
+		return switch result {
+			case CBRInteger(val): val;
+			case CBRNoResult: defaultValue;
+			case null: defaultValue;
+			default: defaultValue;
+		};
+	}
+
+	/** Resolve a callback by name and index, returning an integer result.
+	 *  Used by generated code for RVCallbacksWithIndex in numeric expressions. */
+	public function resolveCallbackWithIndexInt(name:String, index:Int, defaultValue:Int):Int {
+		final builder:MultiAnimBuilder = cast _builder;
+		final callback = @:privateAccess builder.builderParams.callback;
+		if (callback == null) return defaultValue;
+		final result = callback(NameWithIndex(name, index));
+		return switch result {
+			case CBRInteger(val): val;
+			case CBRNoResult: defaultValue;
+			case null: defaultValue;
+			default: defaultValue;
 		};
 	}
 

@@ -6,8 +6,10 @@ import haxe.macro.Expr;
 import haxe.macro.Type;
 import bh.multianim.MultiAnimParser;
 import bh.multianim.MultiAnimParser.MultiAnimResult;
+import bh.multianim.MultiAnimParser.StateAnimConstruct;
 import bh.multianim.CoordinateSystems;
 import bh.multianim.MacroCompatTypes.MacroFlowLayout;
+import bh.multianim.MacroCompatTypes.MacroBlendMode;
 import bh.multianim.layouts.LayoutTypes.LayoutContent;
 import bh.multianim.layouts.LayoutTypes.Layout;
 
@@ -57,6 +59,9 @@ class ProgrammableCodeGen {
 	// Repeat pool entries: for param-dependent repeats, tracks which pool containers to show/hide
 	static var repeatPoolEntries:Array<{containerField:String, iterIndex:Int, countParamRefs:Array<String>, countExpr:Expr}> = [];
 
+	// Conditional APPLY entries: tracks condition + apply/revert expressions for _applyVisibility()
+	static var applyEntries:Array<{condition:Expr, applyExprs:Array<Expr>, revertExprs:Array<Expr>}> = [];
+
 	// All parsed nodes from the .manim file (for looking up layouts etc.)
 	static var allParsedNodes:Map<String, Node> = new Map();
 
@@ -85,6 +90,7 @@ class ProgrammableCodeGen {
 		loopVarSubstitutions = new Map();
 		runtimeLoopVars = new Map();
 		repeatPoolEntries = [];
+		applyEntries = [];
 		allParsedNodes = new Map();
 		currentManimPath = "";
 		currentProgrammableName = "";
@@ -340,6 +346,13 @@ class ProgrammableCodeGen {
 				visExprs.push(macro $fieldRef.visible = ($v{idx} < $countE));
 			}
 		}
+		// Conditional APPLY: apply or revert parent properties based on condition
+		for (entry in applyEntries) {
+			final cond = entry.condition;
+			final applyBlock = macro $b{entry.applyExprs};
+			final revertBlock = macro $b{entry.revertExprs};
+			visExprs.push(macro if ($cond) $applyBlock else $revertBlock);
+		}
 		if (visExprs.length == 0)
 			visExprs.push(macro {});
 		instanceFields.push(makeMethod("_applyVisibility", visExprs, [], macro :Void, [APrivate], pos));
@@ -428,6 +441,15 @@ class ProgrammableCodeGen {
 			case REPEAT2D(varNameX, varNameY, repeatTypeX, repeatTypeY):
 				processRepeat2D(node, varNameX, varNameY, repeatTypeX, repeatTypeY, parentField, fields, ctorExprs, siblings, pos);
 				return;
+			case APPLY:
+				switch (node.conditionals) {
+					case NoConditional:
+						processApply(node, parentField, ctorExprs, pos);
+						return;
+					default:
+						processConditionalApply(node, parentField, fields, ctorExprs, siblings, pos);
+						return;
+				}
 			default:
 		}
 
@@ -461,6 +483,26 @@ class ProgrammableCodeGen {
 			final alphaExpr = rvToExpr(node.alpha);
 			final fieldRef = macro $p{["this", fieldName]};
 			ctorExprs.push(macro $fieldRef.alpha = $alphaExpr);
+		}
+
+		// BlendMode
+		if (node.blendMode != null) {
+			final fieldRef = macro $p{["this", fieldName]};
+			final bmExpr:Expr = switch (node.blendMode) {
+				case MBNone: macro h2d.BlendMode.None;
+				case MBAlpha: macro h2d.BlendMode.Alpha;
+				case MBAdd: macro h2d.BlendMode.Add;
+				case MBAlphaAdd: macro h2d.BlendMode.AlphaAdd;
+				case MBSoftAdd: macro h2d.BlendMode.SoftAdd;
+				case MBMultiply: macro h2d.BlendMode.Multiply;
+				case MBAlphaMultiply: macro h2d.BlendMode.AlphaMultiply;
+				case MBErase: macro h2d.BlendMode.Erase;
+				case MBScreen: macro h2d.BlendMode.Screen;
+				case MBSub: macro h2d.BlendMode.Sub;
+				case MBMax: macro h2d.BlendMode.Max;
+				case MBMin: macro h2d.BlendMode.Min;
+			};
+			ctorExprs.push(macro $fieldRef.blendMode = $bmExpr);
 		}
 
 		// Tint
@@ -1361,6 +1403,15 @@ class ProgrammableCodeGen {
 			case PARTICLES(particlesDef):
 				generateParticlesCreate(node, fieldName, particlesDef, pos);
 
+			case STATEANIM(filename, initialState, selectorReferences):
+				generateStateAnimCreate(node, fieldName, filename, initialState, selectorReferences, pos);
+
+			case STATEANIM_CONSTRUCT(initialState, construct):
+				generateStateAnimConstructCreate(node, fieldName, initialState, construct, pos);
+
+			case TILEGROUP:
+				generateTileGroupCreate(node, fieldName, pos);
+
 			default: null;
 		};
 	}
@@ -1450,7 +1501,7 @@ class ProgrammableCodeGen {
 
 		// Generate draw calls for each element
 		for (item in elements) {
-			final drawExprs = generateGraphicsElementExprs(fieldRef, item.element, item.pos);
+			final drawExprs = generateGraphicsElementExprs(fieldRef, item.element, item.pos, node, pos);
 			for (de in drawExprs)
 				createExprs.push(de);
 		}
@@ -1463,19 +1514,13 @@ class ProgrammableCodeGen {
 		};
 	}
 
-	static function generateGraphicsElementExprs(gRef:Expr, element:GraphicsElement, elementPos:Coordinates):Array<Expr> {
+	static function generateGraphicsElementExprs(gRef:Expr, element:GraphicsElement, elementPos:Coordinates, node:Node, pos:Position):Array<Expr> {
 		final exprs:Array<Expr> = [];
 
 		// Resolve element position offset
-		var posXExpr:Expr = macro 0.0;
-		var posYExpr:Expr = macro 0.0;
-		switch (elementPos) {
-			case OFFSET(x, y):
-				posXExpr = rvToExpr(x);
-				posYExpr = rvToExpr(y);
-			case ZERO | null:
-			default:
-		}
+		final elPos = coordsToXYExprs(elementPos, pos, node);
+		var posXExpr:Expr = elPos.x;
+		var posYExpr:Expr = elPos.y;
 
 		// Reset line style before each element
 		exprs.push(macro {
@@ -1618,22 +1663,12 @@ class ProgrammableCodeGen {
 			case GELine(color, lineWidth, start, end):
 				final cExpr = rvToExpr(color);
 				final lwExpr = rvToExpr(lineWidth);
-				var sxExpr:Expr = macro 0.0;
-				var syExpr:Expr = macro 0.0;
-				var exExpr:Expr = macro 0.0;
-				var eyExpr:Expr = macro 0.0;
-				switch (start) {
-					case OFFSET(x, y):
-						sxExpr = rvToExpr(x);
-						syExpr = rvToExpr(y);
-					default:
-				}
-				switch (end) {
-					case OFFSET(x, y):
-						exExpr = rvToExpr(x);
-						eyExpr = rvToExpr(y);
-					default:
-				}
+				final startXY = coordsToXYExprs(start, pos, node);
+				final endXY = coordsToXYExprs(end, pos, node);
+				final sxExpr = startXY.x;
+				final syExpr = startXY.y;
+				final exExpr = endXY.x;
+				final eyExpr = endXY.y;
 				exprs.push(macro {
 					final _g:h2d.Graphics = cast $gRef;
 					var c:Int = $cExpr;
@@ -1875,7 +1910,7 @@ class ProgrammableCodeGen {
 			final height:Int = maxY - minY + 1;
 
 			createExprs.push(macro {
-				final _pl = new bh.base.PixelLines($v{width}, $v{height});
+				final _pl = new bh.base.PixelLine.PixelLines($v{width}, $v{height});
 				$fieldRef = _pl;
 			});
 
@@ -1889,7 +1924,7 @@ class ProgrammableCodeGen {
 						var c:Int = s.color;
 						if (c >>> 24 == 0) c |= 0xFF000000;
 						createExprs.push(macro {
-							final _pl:bh.base.PixelLines = cast $fieldRef;
+							final _pl:bh.base.PixelLine.PixelLines = cast $fieldRef;
 							_pl.line($v{ix1}, $v{iy1}, $v{ix2}, $v{iy2}, $v{c});
 						});
 					case "rect":
@@ -1901,12 +1936,12 @@ class ProgrammableCodeGen {
 						if (c >>> 24 == 0) c |= 0xFF000000;
 						if (s.filled) {
 							createExprs.push(macro {
-								final _pl:bh.base.PixelLines = cast $fieldRef;
+								final _pl:bh.base.PixelLine.PixelLines = cast $fieldRef;
 								_pl.filledRect($v{ix}, $v{iy}, $v{iw}, $v{ih}, $v{c});
 							});
 						} else {
 							createExprs.push(macro {
-								final _pl:bh.base.PixelLines = cast $fieldRef;
+								final _pl:bh.base.PixelLine.PixelLines = cast $fieldRef;
 								_pl.rect($v{ix}, $v{iy}, $v{iw}, $v{ih}, $v{c});
 							});
 						}
@@ -1916,7 +1951,7 @@ class ProgrammableCodeGen {
 						var c:Int = s.color;
 						if (c >>> 24 == 0) c |= 0xFF000000;
 						createExprs.push(macro {
-							final _pl:bh.base.PixelLines = cast $fieldRef;
+							final _pl:bh.base.PixelLine.PixelLines = cast $fieldRef;
 							_pl.pixel($v{ix}, $v{iy}, $v{c});
 						});
 					default:
@@ -1924,7 +1959,7 @@ class ProgrammableCodeGen {
 			}
 
 			createExprs.push(macro {
-				final _pl:bh.base.PixelLines = cast $fieldRef;
+				final _pl:bh.base.PixelLine.PixelLines = cast $fieldRef;
 				_pl.updateBitmap();
 				_pl.setPosition($v{minX}, $v{minY});
 			});
@@ -2021,7 +2056,7 @@ class ProgrammableCodeGen {
 
 			// Create PixelLines and draw
 			final drawExprs:Array<Expr> = [
-				macro var _pl = new bh.base.PixelLines(_maxX - _minX + 1, _maxY - _minY + 1)
+				macro var _pl = new bh.base.PixelLine.PixelLines(_maxX - _minX + 1, _maxY - _minY + 1)
 			];
 			for (e in shapeVarExprs)
 				drawExprs.push(e);
@@ -2034,7 +2069,7 @@ class ProgrammableCodeGen {
 		}
 
 		return {
-			fieldType: macro :bh.base.PixelLines,
+			fieldType: macro :bh.base.PixelLine.PixelLines,
 			createExprs: createExprs,
 			isContainer: false,
 			exprUpdates: [],
@@ -2056,6 +2091,291 @@ class ProgrammableCodeGen {
 			isContainer: false,
 			exprUpdates: [],
 		};
+	}
+
+	// ==================== State Anim ====================
+
+	static function generateStateAnimCreate(node:Node, fieldName:String, filename:String, initialState:ReferenceableValue,
+			selectorReferences:Map<String, ReferenceableValue>, pos:Position):CreateResult {
+		final fieldRef = macro $p{["this", fieldName]};
+		final filenameExpr:Expr = macro $v{filename};
+		final initialStateExpr = rvToExpr(initialState);
+
+		// Build selector map: new Map(), then .set() for each entry
+		final mapBuildExprs:Array<Expr> = [macro final _selMap = new Map<String, String>()];
+		for (k => v in selectorReferences) {
+			final keyExpr:Expr = macro $v{k};
+			final valExpr = rvToExpr(v);
+			mapBuildExprs.push(macro _selMap.set($keyExpr, Std.string($valExpr)));
+		}
+		mapBuildExprs.push(macro $fieldRef = this._pb.buildStateAnim($filenameExpr, _selMap, Std.string($initialStateExpr)));
+
+		return {
+			fieldType: macro :h2d.Object,
+			createExprs: [macro $b{mapBuildExprs}],
+			isContainer: false,
+			exprUpdates: [],
+		};
+	}
+
+	// ==================== State Anim Construct ====================
+
+	static function generateStateAnimConstructCreate(node:Node, fieldName:String, initialState:ReferenceableValue,
+			construct:Map<String, StateAnimConstruct>, pos:Position):CreateResult {
+		final fieldRef = macro $p{["this", fieldName]};
+		final initialStateExpr = rvToExpr(initialState);
+
+		// Build construct data array expression
+		final constructExprs:Array<Expr> = [];
+		for (key => value in construct) {
+			switch value {
+				case IndexedSheet(sheet, animName, fps, loop, center):
+					final keyExpr:Expr = macro $v{key};
+					final sheetExpr:Expr = macro $v{sheet};
+					final animNameExpr = rvToExpr(animName);
+					final fpsExpr = rvToExpr(fps);
+					final loopExpr:Expr = macro $v{loop};
+					final centerExpr:Expr = macro $v{center};
+					constructExprs.push(macro {
+						key: $keyExpr,
+						sheet: $sheetExpr,
+						animName: Std.string($animNameExpr),
+						fps: $fpsExpr,
+						loop: $loopExpr,
+						center: $centerExpr,
+					});
+			}
+		}
+
+		final constructArrayExpr:Expr = macro $a{constructExprs};
+		final createExprs:Array<Expr> = [
+			macro $fieldRef = this._pb.buildStateAnimConstruct(Std.string($initialStateExpr), $constructArrayExpr),
+		];
+
+		return {
+			fieldType: macro :h2d.Object,
+			createExprs: createExprs,
+			isContainer: false,
+			exprUpdates: [],
+		};
+	}
+
+	// ==================== TileGroup ====================
+
+	static function generateTileGroupCreate(node:Node, fieldName:String, pos:Position):CreateResult {
+		final fieldRef = macro $p{["this", fieldName]};
+		final nameExpr:Expr = macro $v{currentProgrammableName};
+		final createExprs:Array<Expr> = [
+			macro $fieldRef = this._pb.buildTileGroupFromProgrammable($nameExpr),
+		];
+
+		return {
+			fieldType: macro :h2d.Object,
+			createExprs: createExprs,
+			isContainer: false,
+			exprUpdates: [],
+		};
+	}
+
+	// ==================== Apply ====================
+
+	/** APPLY modifies the parent node's properties (position, scale, alpha, blendMode, tint, filter).
+	 *  It doesn't create a new element. */
+	static function processApply(node:Node, parentField:String, ctorExprs:Array<Expr>, pos:Position):Void {
+		final parentRef = parentField != null ? (macro $p{["this", parentField]}) : (macro this);
+
+		// Position offset
+		final posExpr = generatePositionExpr(node.pos, parentField, pos, node);
+		if (posExpr != null)
+			ctorExprs.push(posExpr);
+
+		// Scale
+		if (node.scale != null) {
+			final scaleExpr = rvToExpr(node.scale);
+			ctorExprs.push(macro {
+				final s = $scaleExpr;
+				$parentRef.scaleX = s;
+				$parentRef.scaleY = s;
+			});
+		}
+
+		// Alpha
+		if (node.alpha != null) {
+			final alphaExpr = rvToExpr(node.alpha);
+			ctorExprs.push(macro $parentRef.alpha = $alphaExpr);
+		}
+
+		// BlendMode
+		if (node.blendMode != null) {
+			final bmExpr:Expr = switch (node.blendMode) {
+				case MBNone: macro h2d.BlendMode.None;
+				case MBAlpha: macro h2d.BlendMode.Alpha;
+				case MBAdd: macro h2d.BlendMode.Add;
+				case MBAlphaAdd: macro h2d.BlendMode.AlphaAdd;
+				case MBSoftAdd: macro h2d.BlendMode.SoftAdd;
+				case MBMultiply: macro h2d.BlendMode.Multiply;
+				case MBAlphaMultiply: macro h2d.BlendMode.AlphaMultiply;
+				case MBErase: macro h2d.BlendMode.Erase;
+				case MBScreen: macro h2d.BlendMode.Screen;
+				case MBSub: macro h2d.BlendMode.Sub;
+				case MBMax: macro h2d.BlendMode.Max;
+				case MBMin: macro h2d.BlendMode.Min;
+			};
+			ctorExprs.push(macro $parentRef.blendMode = $bmExpr);
+		}
+
+		// Tint
+		if (node.tint != null) {
+			final tintExpr = rvToExpr(node.tint);
+			ctorExprs.push(macro {
+				final _obj = $parentRef;
+				if (Std.isOfType(_obj, h2d.Drawable)) {
+					final d:h2d.Drawable = cast _obj;
+					var c:Int = $tintExpr;
+					if (c >>> 24 == 0) c |= 0xFF000000;
+					d.color.setColor(c);
+				}
+			});
+		}
+
+		// Filter
+		if (node.filter != null) {
+			final filterExpr = generateFilterExpr(node.filter, pos);
+			if (filterExpr != null) {
+				ctorExprs.push(macro $parentRef.filter = $filterExpr);
+			}
+		}
+	}
+
+	/** Conditional APPLY: saves original property values, then in _applyVisibility() applies or reverts based on condition. */
+	static function processConditionalApply(node:Node, parentField:String, fields:Array<Field>, ctorExprs:Array<Expr>,
+			siblings:Array<{node:Node, fieldName:String}>, pos:Position):Void {
+		final parentRef = parentField != null ? (macro $p{["this", parentField]}) : (macro this);
+		final applyExprs:Array<Expr> = [];
+		final revertExprs:Array<Expr> = [];
+		final applyIdx = applyEntries.length;
+
+		// Position offset — save original x/y, apply offset, revert to saved
+		if (node.pos != null) {
+			switch (node.pos) {
+				case ZERO:
+				default:
+					final saveFieldX = "_applyOrigX_" + applyIdx;
+					final saveFieldY = "_applyOrigY_" + applyIdx;
+					fields.push(makeField(saveFieldX, FVar(macro :Float, null), [APrivate], pos));
+					fields.push(makeField(saveFieldY, FVar(macro :Float, null), [APrivate], pos));
+					ctorExprs.push(macro $p{["this", saveFieldX]} = $parentRef.x);
+					ctorExprs.push(macro $p{["this", saveFieldY]} = $parentRef.y);
+					final posExpr = generatePositionExpr(node.pos, parentField, pos, node);
+					if (posExpr != null)
+						applyExprs.push(posExpr);
+					revertExprs.push(macro {
+						$parentRef.x = $p{["this", saveFieldX]};
+						$parentRef.y = $p{["this", saveFieldY]};
+					});
+			}
+		}
+
+		// Scale — save original, apply, revert
+		if (node.scale != null) {
+			final saveField = "_applyOrigScale_" + applyIdx;
+			fields.push(makeField(saveField, FVar(macro :Float, null), [APrivate], pos));
+			ctorExprs.push(macro $p{["this", saveField]} = $parentRef.scaleX);
+			final scaleExpr = rvToExpr(node.scale);
+			applyExprs.push(macro {
+				final s = $scaleExpr;
+				$parentRef.scaleX = s;
+				$parentRef.scaleY = s;
+			});
+			revertExprs.push(macro {
+				$parentRef.scaleX = $p{["this", saveField]};
+				$parentRef.scaleY = $p{["this", saveField]};
+			});
+		}
+
+		// Alpha — save original, apply, revert
+		if (node.alpha != null) {
+			final saveField = "_applyOrigAlpha_" + applyIdx;
+			fields.push(makeField(saveField, FVar(macro :Float, null), [APrivate], pos));
+			ctorExprs.push(macro $p{["this", saveField]} = $parentRef.alpha);
+			final alphaExpr = rvToExpr(node.alpha);
+			applyExprs.push(macro $parentRef.alpha = $alphaExpr);
+			revertExprs.push(macro $parentRef.alpha = $p{["this", saveField]});
+		}
+
+		// BlendMode — save original, apply, revert
+		if (node.blendMode != null) {
+			final saveField = "_applyOrigBM_" + applyIdx;
+			fields.push(makeField(saveField, FVar(macro :h2d.BlendMode, null), [APrivate], pos));
+			ctorExprs.push(macro $p{["this", saveField]} = $parentRef.blendMode);
+			final bmExpr:Expr = switch (node.blendMode) {
+				case MBNone: macro h2d.BlendMode.None;
+				case MBAlpha: macro h2d.BlendMode.Alpha;
+				case MBAdd: macro h2d.BlendMode.Add;
+				case MBAlphaAdd: macro h2d.BlendMode.AlphaAdd;
+				case MBSoftAdd: macro h2d.BlendMode.SoftAdd;
+				case MBMultiply: macro h2d.BlendMode.Multiply;
+				case MBAlphaMultiply: macro h2d.BlendMode.AlphaMultiply;
+				case MBErase: macro h2d.BlendMode.Erase;
+				case MBScreen: macro h2d.BlendMode.Screen;
+				case MBSub: macro h2d.BlendMode.Sub;
+				case MBMax: macro h2d.BlendMode.Max;
+				case MBMin: macro h2d.BlendMode.Min;
+			};
+			applyExprs.push(macro $parentRef.blendMode = $bmExpr);
+			revertExprs.push(macro $parentRef.blendMode = $p{["this", saveField]});
+		}
+
+		// Tint — save original color, apply, revert
+		if (node.tint != null) {
+			final saveField = "_applyOrigTint_" + applyIdx;
+			fields.push(makeField(saveField, FVar(macro :Int, null), [APrivate], pos));
+			ctorExprs.push(macro {
+				final _obj = $parentRef;
+				$p{["this", saveField]} = if (Std.isOfType(_obj, h2d.Drawable)) {
+					final d:h2d.Drawable = cast _obj;
+					d.color.toColor();
+				} else 0xFFFFFFFF;
+			});
+			final tintExpr = rvToExpr(node.tint);
+			applyExprs.push(macro {
+				final _obj = $parentRef;
+				if (Std.isOfType(_obj, h2d.Drawable)) {
+					final d:h2d.Drawable = cast _obj;
+					var c:Int = $tintExpr;
+					if (c >>> 24 == 0) c |= 0xFF000000;
+					d.color.setColor(c);
+				}
+			});
+			revertExprs.push(macro {
+				final _obj = $parentRef;
+				if (Std.isOfType(_obj, h2d.Drawable)) {
+					final d:h2d.Drawable = cast _obj;
+					d.color.setColor($p{["this", saveField]});
+				}
+			});
+		}
+
+		// Filter — save original, apply, revert
+		if (node.filter != null) {
+			final saveField = "_applyOrigFilter_" + applyIdx;
+			fields.push(makeField(saveField, FVar(macro :h2d.filter.Filter, null), [APrivate], pos));
+			ctorExprs.push(macro $p{["this", saveField]} = $parentRef.filter);
+			final filterExpr = generateFilterExpr(node.filter, pos);
+			if (filterExpr != null) {
+				applyExprs.push(macro $parentRef.filter = $filterExpr);
+				revertExprs.push(macro $parentRef.filter = $p{["this", saveField]});
+			}
+		}
+
+		// Generate visibility condition
+		final visCond = generateVisibilityCondition(node, siblings, null, pos);
+		if (visCond != null) {
+			applyEntries.push({condition: visCond, applyExprs: applyExprs, revertExprs: revertExprs});
+		}
+
+		if (siblings != null)
+			siblings.push({node: node, fieldName: ""});
 	}
 
 	static function generateBitmapCreate(node:Node, fieldName:String, tileSource:TileSource, hAlign:HorizontalAlign, vAlign:VerticalAlign, pos:Position):CreateResult {
@@ -2428,10 +2748,25 @@ class ProgrammableCodeGen {
 				final trueE = rvToExpr(ifTrue);
 				final falseE = rvToExpr(ifFalse);
 				macro($condE != 0 ? $trueE : $falseE);
-			case RVCallbacks(_name, defaultValue):
-				rvToExpr(defaultValue);
-			case RVCallbacksWithIndex(_name, _index, defaultValue):
-				rvToExpr(defaultValue);
+			case RVCallbacks(name, defaultValue):
+				final nameExpr = rvToExpr(name);
+				final defExpr = rvToExpr(defaultValue);
+				if (isStringRV(defaultValue) || defaultValue == null) {
+					final defStr = defaultValue != null ? defExpr : macro "";
+					macro this._pb.resolveCallback(Std.string($nameExpr), $defStr);
+				} else {
+					macro this._pb.resolveCallbackInt(Std.string($nameExpr), $defExpr);
+				}
+			case RVCallbacksWithIndex(name, index, defaultValue):
+				final nameExpr = rvToExpr(name);
+				final indexExpr = rvToExpr(index);
+				final defExpr = rvToExpr(defaultValue);
+				if (isStringRV(defaultValue) || defaultValue == null) {
+					final defStr = defaultValue != null ? defExpr : macro "";
+					macro this._pb.resolveCallbackWithIndex(Std.string($nameExpr), $indexExpr, $defStr);
+				} else {
+					macro this._pb.resolveCallbackWithIndexInt(Std.string($nameExpr), $indexExpr, $defExpr);
+				}
 			default:
 				macro 0;
 		};
@@ -3105,6 +3440,8 @@ class ProgrammableCodeGen {
 			case RVReference(ref):
 				final def = paramDefs.get(ref);
 				def != null && def.type == PPTString;
+			case RVCallbacks(_, defaultValue): defaultValue == null || isStringRV(defaultValue);
+			case RVCallbacksWithIndex(_, _, defaultValue): defaultValue == null || isStringRV(defaultValue);
 			default: false;
 		};
 	}

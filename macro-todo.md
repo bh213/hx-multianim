@@ -25,8 +25,12 @@ What the `@:build(ProgrammableCodeGen.buildAll())` macro supports vs what's miss
 - **PIXELS** — generates `bh.base.PixelLines` draw calls (line/rect/filledRect/pixel), all coordinate systems, compile-time bounds when static
 - **PARTICLES** — runtime delegation via `ProgrammableBuilder.buildParticles()`, full feature support
 - **PLACEHOLDER** — delegates to `ProgrammableBuilder.buildPlaceholderVia*()` methods, supports PRSCallback/PRSCallbackWithIndex/PRSBuilderParameterSource with PHTileSource/PHNothing fallback
+- **STATEANIM** — runtime delegation via `ProgrammableBuilder.buildStateAnim()`, loads .anim file with selector map
+- **STATEANIM_CONSTRUCT** — runtime delegation via `ProgrammableBuilder.buildStateAnimConstruct()`, inline-constructed state anims
+- **TILEGROUP** — runtime delegation via `ProgrammableBuilder.buildTileGroupFromProgrammable()`, batch tile rendering
+- **APPLY** — unconditional and conditional apply: modifies parent node's properties (scale, alpha, blendMode, tint, filter, position). Conditional apply (`@(param=>value) apply { ... }`) saves original values and reverts in `_applyVisibility()`
 - **Conditionals** — `@(p=>v)`, `@(p=>[v1,v2])`, `@(p!=v)`, ranges `@(p=>10..30)`, `@else`, `@default`, `CoAny`, `CoFlag`, `CoNot`
-- **Expressions** — `$param`, `+`, `-`, `*`, `/`, `div`, `%`, ternary, comparisons, parentheses
+- **Expressions** — `$param`, `+`, `-`, `*`, `/`, `div`, `%`, ternary, comparisons, parentheses, `callback("name")`, `callback("name", $index)`
 - **Properties** — scale, alpha, blendMode, tint (with param-dependent updates), filters (all 10 types, with param-dependent updates)
 - **Instance create()** — `mp.button.create(params)` with typed positional params (Bool for bool, inline constants for enums), reordered (required first)
 - **Instance createFrom()** — `mp.button.createFrom({status: 0, buttonText: "Go"})` with named params via anonymous struct; optional params use `Null<T>` wrapping with null-coalescing to defaults
@@ -64,19 +68,41 @@ REPEAT2D: same approach for both axes. Static x Static → fully unrolled. Mixed
 
 ## Recently Implemented
 
-### PIXELS
-Pixel-level drawing via `bh.base.PixelLines`. Generates compile-time bounds calculation and direct draw calls for all shape types (line, rect, filledRect, pixel). All coordinate systems supported (offset, grid, hex corner/edge, layout) — resolved at compile time when static. Falls back to runtime bounds calculation for param-dependent coordinates.
+### STATEANIM / STATEANIM_CONSTRUCT
+Runtime delegation via `ProgrammableBuilder.buildStateAnim()` and `buildStateAnimConstruct()`. State animations are loaded and played at construction time. Selector maps are built and passed at runtime.
 
-### PARTICLES
-Runtime delegation via `ProgrammableBuilder.buildParticles()` which calls `MultiAnimBuilder.createParticles()`. Supports all particle features (emit modes, tiles, colors, force fields, bounds, sub-emitters, etc.) by reusing the builder's full implementation at runtime.
+### TILEGROUP
+Runtime delegation via `ProgrammableBuilder.buildTileGroupFromProgrammable()`. TileGroup uses batch rendering with `addTransform` instead of `addChild`, so the entire subtree is delegated to the builder.
 
-## Missing Properties
+### APPLY (unconditional + conditional)
+Modifies parent node's properties (position, scale, alpha, blendMode, tint, filter) at construction time. Unconditional `apply { ... }` sets properties directly. Conditional `@(param=>value) apply { ... }` saves original property values at construction, then applies or reverts in `_applyVisibility()` based on the condition. Supports `@else` and `@default` chains.
+
+### blendMode property
+Maps `MacroBlendMode` enum to `h2d.BlendMode` field access. Applied after element creation alongside scale, alpha, and tint.
+
+### RVCallbacks / RVCallbacksWithIndex
+Callback expressions (`callback("name")`, `callback("name", $index)`) now delegate to `ProgrammableBuilder.resolveCallback()` / `resolveCallbackWithIndex()` at construction time. Returns string or integer depending on the default value type. Used in `std.manim` for checkbox labels, dropdown text, and repeatable list items.
+
+## Missing / Limitations
 
 ### Param-Dependent Hex Corner/Edge
 `SELECTED_HEX_CORNER` and `SELECTED_HEX_EDGE` only work with static (compile-time resolvable) values. Param-dependent values would require storing a `HexLayout` on the generated class for runtime calculation.
 
 ### FilterPaletteReplace
 `FilterPaletteReplace` falls back to null in codegen because it needs palette data from the builder at runtime.
+
+### Expression edge cases
+- `RVFunction` (e.g., `function(gridWidth)`) — evaluates to `0`
+- `RVElementOfArray` (e.g., `$arr[0]`) — evaluates to `0`
+- `RVArray` / `RVArrayReference` — evaluates to `0`
+- `RVColorXY` / `RVColor` — evaluates to `0`
+
+### Definition node types (not child elements)
+These are parsed but only used by reference, not as renderable children:
+- **PALETTE** — only matters for FilterPaletteReplace
+- **AUTOTILE** — accessed via `buildAutotile()` API
+- **ATLAS2** — inline atlas definitions
+- **ANIMATED_PATH** — path animation definitions
 
 ## Phase 2: Performance — optimize generated code
 
@@ -115,3 +141,7 @@ Runtime delegation via `ProgrammableBuilder.buildParticles()` which calls `Multi
 | 49 | codegenBoolFloat | PPTBool conditionals, PPTFloat in @alpha() and expressions |
 | 50 | codegenRangeFlags | PPTRange conditionals + expressions, PPTFlags declaration |
 | 51 | codegenParticles | Particles runtime delegation via buildParticles() |
+| 52 | codegenBlendMode | blendMode property on bitmap elements |
+| 53 | codegenApply | Unconditional + conditional apply (alpha, scale, filter, glow) with save/revert |
+
+Test 17 (applyDemo) was upgraded from builder-only to builder+macro comparison.
