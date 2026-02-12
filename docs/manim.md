@@ -1121,22 +1121,267 @@ Settings:
 
 ---
 
-## Macro-Based UI Construction
+## Programmable Macros (Compile-Time Code Generation)
 
-The library uses macros to map `.manim` file elements to Haxe code. Builder parameters in `.manim` files (using `builderParameter("name")`) are mapped to named arguments in the macro build:
+The library can generate **typed Haxe classes** from `.manim` programmable definitions at compile time. Instead of building UI at runtime with `MultiAnimBuilder.buildWithParameters()`, the macro system generates factory and instance classes with typed `create()` methods and parameter setters — giving you full type safety, IDE autocomplete, and zero parsing overhead.
+
+### Overview: Builder vs Macro
+
+| Approach | When to Use |
+|----------|-------------|
+| **Builder** (runtime) | Dynamic UIs, hot-reload during development, editor/playground |
+| **Macro** (compile-time) | Production code, type-safe APIs, performance-critical UI |
+
+Both approaches render identically — the macro system generates the same h2d tree that the runtime builder would produce.
+
+### Quick Start
+
+**1. Define a programmable in a `.manim` file:**
+
+```
+version: 0.3
+
+#myButton programmable(status:[hover, pressed, normal]=normal, buttonText="Click") {
+    @(status=>normal)  ninepatch("ui", "button-idle", 200, 30):    0, 0
+    @(status=>hover)   ninepatch("ui", "button-hover", 200, 30):   0, 0
+    @(status=>pressed) ninepatch("ui", "button-pressed", 200, 30): 0, 0
+    text(dd, $buttonText, white, center, 200): 0, 8
+}
+```
+
+**2. Create a factory class with `@:manim` annotations:**
+
+```haxe
+@:build(bh.multianim.ProgrammableCodeGen.buildAll())
+class MyUI extends bh.multianim.ProgrammableBuilder {
+    @:manim("res/ui/buttons.manim", "myButton")
+    public var button;
+}
+```
+
+**3. Use the generated typed API:**
+
+```haxe
+var ui = new MyUI(resourceLoader);
+
+// create() returns a new h2d.Object instance each time
+var btn = ui.button.create();                  // all defaults
+var btn2 = ui.button.create("Submit");         // another independent instance
+
+// Type-safe setters for each parameter
+btn.setStatus(MyUI_Button.Hover);              // enum constants are generated
+btn.setButtonText("Cancel");
+
+// The instance IS an h2d.Object — add directly to the scene
+scene.addChild(btn);
+scene.addChild(btn2);
+```
+
+### How It Works
+
+The `@:build(ProgrammableCodeGen.buildAll())` macro scans the class for `@:manim` fields and generates two classes for each one:
+
+1. **Factory class** (`MyUI_Button`) — extends `ProgrammableBuilder`, lives on the parent field (`ui.button`). Stateless — only holds the resource loader and cached builder. Has the `create()` method and static enum constants.
+
+2. **Instance class** (`MyUI_ButtonInstance`) — extends `h2d.Object`, returned by `create()`. Holds all element fields, parameter fields, setters, and visibility/expression update logic. Since it extends `h2d.Object`, it can be added directly to the scene graph.
+
+For the example above, the generated API provides:
+
+- **`create([params...])`** — on the factory; builds a new h2d tree and returns a new instance
+- **`setStatus(v)`**, **`setButtonText(v)`** — on the instance; typed setters that update visibility and expressions
+- **Static enum constants** — `MyUI_Button.Hover`, `MyUI_Button.Pressed`, `MyUI_Button.Normal` (on the factory class)
+
+### Parameter Type Mapping
+
+Each `.manim` parameter type maps to a Haxe type in the generated `create()` signature:
+
+| .manim Type | Haxe Type | Generated Constants | Example |
+|-------------|-----------|-------------------|---------|
+| `[hover, pressed, normal]` | `Int` | `static inline var Hover = 0;` etc. | `setStatus(MyUI_Button.Hover)` |
+| `bool` | `Bool` | — | `setVisible(true)` |
+| `uint`, `int` | `Int` | — | `setWidth(200)` |
+| `float` | `Float` | — | `setOpacity(0.8)` |
+| `0..100` (range) | `Int` | — | `setLevel(75)` |
+| `flags(8)` | `Int` | — | `setBits(5)` |
+| `"text"` (string) | `String` | — | `setLabel("Hello")` |
+| `color` | `Int` | — | `setTint(0xFF0000)` |
+
+Parameters with defaults are optional in `create()`. Required parameters (no default) must be provided.
+
+### Examples
+
+#### Button with enum and string parameters
+
+```
+// button.manim
+#myBtn programmable(status:[hover, pressed, normal]=normal, disabled:[true,false]=false, buttonText="Button") {
+    @(status=>normal, disabled=>false)  ninepatch("ui", "button-idle", 200, 30):     10, 21
+    @(status=>hover, disabled=>false)   ninepatch("ui", "button-hover", 200, 30):    10, 20
+    @(status=>pressed, disabled=>false) ninepatch("ui", "button-pressed", 200, 30):  10, 20
+    @(status=>*, disabled=>true)        ninepatch("ui", "button-disabled", 200, 30): 10, 20
+
+    text(dd, $buttonText, 0xffffff12, center, 200): 10, 30
+}
+```
+
+```haxe
+// Haxe usage
+var btn = ui.button.create();
+btn.setStatus(MyUI_Button.Pressed);
+btn.setDisabled(true);   // shows disabled style regardless of status
+btn.setButtonText("Save");
+```
+
+#### Health bar with expressions and range conditionals
+
+```
+// healthbar.manim
+#healthbar programmable(w:uint=200, h:uint=20, health:uint=75, maxHealth:uint=100) {
+    // Background
+    ninepatch("ui", "Sliderbar_H_3x1", $w, $h): 0, 0
+
+    // Health fill — width is an expression of parameters
+    @(health => 30..100) ninepatch("ui", "button-idle", $w * $health / $maxHealth, $h - 4): 2, 2
+    @(health => 0..30)   ninepatch("ui", "button-pressed", $w * $health / $maxHealth, $h - 4): 2, 2
+
+    // Text overlay
+    text(dd, $health, white, center, $w): 0, 3
+}
+```
+
+```haxe
+var hb = ui.healthbar.create();        // defaults: 200x20, 75/100 health
+hb.setHealth(50);                       // bar resizes, text updates to "50"
+hb.setHealth(15);                       // switches to red (pressed) style
+```
+
+When you call `setHealth()`, the generated code:
+1. Updates visibility — shows the green bar for 30-100, red bar for 0-30
+2. Recalculates expressions — resizes the bar width (`$w * $health / $maxHealth`)
+3. Updates text — displays the new health value
+
+#### Bool and float parameters
+
+```
+// panel.manim
+#panel programmable(showBorder:bool=true, showLabel:bool=false, opacity:float=0.8, barWidth:float=1.5) {
+    @(showBorder=>true)  ninepatch("ui", "button-hover", 150, 30): 0, 0
+    @(showBorder=>false) ninepatch("ui", "button-disabled", 150, 30): 0, 0
+    @(showLabel=>true)   text(dd, "Label", white, left, 100): 5, 8
+    @alpha($opacity)     ninepatch("ui", "button-idle", 120, 20): 0, 35
+    ninepatch("ui", "Sliderbar_H_3x1", 80 * $barWidth, 10): 0, 60
+}
+```
+
+```haxe
+var p = ui.panel.create(true, false, 0.8, 1.5);  // all params explicit
+p.setShowBorder(false);   // Bool setter
+p.setOpacity(0.5);        // Float — updates alpha expression
+p.setBarWidth(2.0);       // Float — recalculates width expression
+```
+
+#### Filters with parameter-driven values
+
+```
+// effects.manim
+#effects programmable(outlineColor:color=#FF0000, blurRadius:int=2, tintColor:color=#00FF00) {
+    bitmap(generated(color(60, 60, #4488FF))) {
+        filter: outline(size: 2, color: $outlineColor)
+        pos: 20, 20
+    }
+    bitmap(generated(color(60, 60, #44FF88))) {
+        filter: blur(radius: $blurRadius, gain: 1.0)
+        pos: 120, 20
+    }
+    @tint($tintColor) bitmap(generated(color(60, 60, #FFFFFF))): 220, 20
+}
+```
+
+```haxe
+var fx = ui.effects.create();
+fx.setOutlineColor(0x00FF00);  // filter updates in-place
+fx.setBlurRadius(5);
+fx.setTintColor(0xFF0000);
+```
+
+#### References to other programmables
+
+```
+// components.manim
+#colorBox programmable(width:int, height:int, c1:color=white) {
+    bitmap(generated(color($width, $height, $c1)));
+}
+
+#threeBoxes programmable() {
+    reference($colorBox, width=>100, height=>80, c1=>#FF0000): 20, 20;
+    reference($colorBox, width=>100, height=>80, c1=>#00FF00): 140, 20;
+    reference($colorBox, width=>100, height=>80, c1=>#0000FF): 260, 20;
+}
+```
+
+References are resolved at runtime — the macro generates a `buildReference()` call that uses the runtime builder to construct the referenced programmable's tree dynamically.
+
+#### Range and flags parameters
+
+```
+// stats.manim
+#statsBar programmable(level:0..100=60, power:0..50=30, bits:flags(8)=5) {
+    @(level => 50..100) ninepatch("ui", "button-idle", $level * 2, 15): 0, 0
+    @(level => 0..50)   ninepatch("ui", "button-pressed", $level * 2, 15): 0, 0
+    ninepatch("ui", "button-hover", $power * 3, 12): 0, 20
+    text(dd, $level, white, left, 80): 0, 50
+}
+```
+
+```haxe
+var stats = ui.statsBar.create(80, 25, 5);
+stats.setLevel(30);    // switches to "pressed" style, bar shrinks
+stats.setPower(50);    // bar grows to 150px wide
+stats.setBits(7);      // flags parameter — individual bits can be tested in conditionals
+```
+
+### Multiple Instances
+
+Each call to `create()` returns a new independent `h2d.Object` instance. The factory (`ui.button`) is stateless, so you can create as many instances as you need:
+
+```haxe
+var ui = new MyUI(resourceLoader);
+for (i in 0...4) {
+    var btn = ui.button.create();
+    btn.setButtonText('Button $i');
+    btn.setPosition(0, i * 40);
+    scene.addChild(btn);
+}
+```
+
+### MacroUtils.macroBuildWithParameters
+
+For **placeholder-based** composition (embedding interactive widgets like buttons, sliders, and dropdowns into a `.manim` layout), use `MacroUtils.macroBuildWithParameters`:
 
 **.manim file:**
 ```
-#ui programmable() {
-  placeholder(generated(cross(200, 20)), builderParameter("button")) {
-      settings{buildName=>button_custom}
-  }
+#settingsPanel programmable() {
+    ninepatch("ui", "Window_3x3_idle", 300, 400): 0, 0
+    placeholder(generated(cross(200, 20)), builderParameter("volumeSlider")): 20, 50
+    placeholder(generated(cross(200, 20)), builderParameter("muteCheckbox")): 20, 100
 }
 ```
 
 **Haxe code:**
 ```haxe
-var ui = MacroUtils.macroBuildWithParameters(buttonBuilder, "ui", [], [
-    button=>addButton(buttonBuilder, "Click Me!"),
+var res = MacroUtils.macroBuildWithParameters(builder, "settingsPanel", [], [
+    volumeSlider => addSlider(builder, 50),
+    muteCheckbox => addCheckbox(builder, true)
 ]);
+
+// Access the created widgets through the typed result
+res.volumeSlider;          // the slider UIElement
+res.muteCheckbox;          // the checkbox UIElement
+res.builderResults;        // the BuilderResult with .object, .getUpdatable(), etc.
 ```
+
+The macro automatically:
+- Detects whether each value is a factory function or a pre-created object
+- Injects `ResolvedSettings` into factory function calls
+- Adds UIElements to the UIScreen element list
+- Returns a typed anonymous struct with all named placeholders plus `builderResults`

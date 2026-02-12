@@ -14,26 +14,27 @@ import bh.multianim.layouts.LayoutTypes.Layout;
 using StringTools;
 
 /**
- * Compile-time macro that generates typed companion classes for programmable UI components from .manim definitions.
+ * Compile-time macro that generates typed factory + instance classes for programmable UI components from .manim definitions.
  *
  * Usage:
  *   @:build(bh.multianim.ProgrammableCodeGen.buildAll())
  *   class MyScreen extends ProgrammableBuilder {
  *       @:manim("path/to/file.manim", "buttonName") public var button;
- *       @:manim("path/to/file.manim", "healthbar") public var healthbar;
  *   }
  *
  *   var screen = new MyScreen(resourceLoader);
- *   var btn = screen.button.create(status, text);  // params only, no builder
- *   btn.root;  // h2d tree
- *   btn.setStatus(Hover);
+ *   var btn = screen.button.create(status, text);  // returns new instance (h2d.Object)
+ *   scene.addChild(btn);                           // instance IS the h2d.Object
+ *   btn.setStatus(MyScreen_Button.Hover);
  *
- * For each @:manim field, a companion class is generated (e.g. MyScreen_Button) with:
- *   - `root: h2d.Object` — the root of the built h2d tree
- *   - `create(typedParams...)` — instance method that loads builder and builds the tree
- *   - `setXxx(v)` — typed setter per parameter (updates visibility + expressions)
- *   - `get_xxx()` — accessors for named elements
- * The parent class gets a constructor that initializes all companion fields.
+ * For each @:manim field, two classes are generated:
+ *   - Factory (e.g. MyScreen_Button) extends ProgrammableBuilder:
+ *     - `create(typedParams...)` — creates a new instance with the given params
+ *     - Static enum constants (e.g. Hover = 0, Pressed = 1)
+ *   - Instance (e.g. MyScreen_ButtonInstance) extends h2d.Object:
+ *     - `setXxx(v)` — typed setter per parameter (updates visibility + expressions)
+ *     - `get_xxx()` — accessors for named elements
+ * The parent class gets a constructor that initializes all factory fields.
  */
 class ProgrammableCodeGen {
 	static var elementCounter:Int = 0;
@@ -61,7 +62,8 @@ class ProgrammableCodeGen {
 
 	// The local class info for generating return types
 	static var localClassPack:Array<String> = [];
-	static var localClassName:String = "";
+	static var localClassName:String = ""; // factory class name
+	static var instanceClassName:String = ""; // instance class name (returned by create())
 
 	// Current manim path being processed (set per-field in buildAll, used by generateFields)
 	static var currentManimPath:String = "";
@@ -86,6 +88,7 @@ class ProgrammableCodeGen {
 		allParsedNodes = new Map();
 		currentManimPath = "";
 		currentProgrammableName = "";
+		instanceClassName = "";
 	}
 
 	/**
@@ -152,40 +155,53 @@ class ProgrammableCodeGen {
 						continue;
 				}
 
-				// Companion class name: ParentName_FieldName
-				final companionName = parentName + "_" + toPascalCase(field.name);
+				// Factory class name: ParentName_FieldName
+				final factoryName = parentName + "_" + toPascalCase(field.name);
+				final instName = factoryName + "Instance";
 
 				// Set class info for generateFields to use
 				localClassPack = parentPack;
-				localClassName = companionName;
+				localClassName = factoryName;
+				instanceClassName = instName;
 
 				classifyParamTypes();
 
-				// Generate fields for the companion class
-				final companionFields = generateFields(node);
+				// Generate fields for both factory and instance classes
+				final result = generateFields(node);
 
-				// Define the companion type
-				final td:TypeDefinition = {
+				// Define the instance type (extends h2d.Object — IS the root)
+				final instTd:TypeDefinition = {
 					pack: parentPack,
-					name: companionName,
+					name: instName,
 					pos: pos,
-					kind: TDClass({pack: ["bh", "multianim"], name: "ProgrammableBuilder"}, null, false, false, false),
-					fields: companionFields,
+					kind: TDClass({pack: ["h2d"], name: "Object"}, null, false, false, false),
+					fields: result.instanceFields,
 					meta: [{name: ":allow", params: [macro bh.multianim.ProgrammableCodeGen], pos: pos}],
 				};
-				Context.defineType(td);
+				Context.defineType(instTd);
 
-				// Update the field's type to the companion class
-				final companionTypePath = {pack: parentPack, name: companionName};
-				field.kind = FVar(TPath(companionTypePath), null);
+				// Define the factory type (extends ProgrammableBuilder — has resource loading helpers)
+				final factoryTd:TypeDefinition = {
+					pack: parentPack,
+					name: factoryName,
+					pos: pos,
+					kind: TDClass({pack: ["bh", "multianim"], name: "ProgrammableBuilder"}, null, false, false, false),
+					fields: result.factoryFields,
+					meta: [{name: ":allow", params: [macro bh.multianim.ProgrammableCodeGen], pos: pos}],
+				};
+				Context.defineType(factoryTd);
 
-				// Track companion info for parent constructor generation
-				final companionNewExpr:Expr = {
-					expr: ENew({pack: parentPack, name: companionName}, [macro this.resourceLoader]),
+				// Update the field's type to the factory class
+				final factoryTypePath = {pack: parentPack, name: factoryName};
+				field.kind = FVar(TPath(factoryTypePath), null);
+
+				// Track factory info for parent constructor generation
+				final factoryNewExpr:Expr = {
+					expr: ENew({pack: parentPack, name: factoryName}, [macro this.resourceLoader]),
 					pos: pos,
 				};
 				final fieldRef = macro $p{["this", field.name]};
-				ctorInitExprs.push(macro $fieldRef = $companionNewExpr);
+				ctorInitExprs.push(macro $fieldRef = $factoryNewExpr);
 			}
 		}
 
@@ -274,35 +290,36 @@ class ProgrammableCodeGen {
 
 	// ==================== Field Generation ====================
 
-	static function generateFields(rootNode:Node):Array<Field> {
-		final fields:Array<Field> = [];
+	static function generateFields(rootNode:Node):{instanceFields:Array<Field>, factoryFields:Array<Field>} {
+		final instanceFields:Array<Field> = [];
+		final factoryFields:Array<Field> = [];
 		final pos = Context.currentPos();
 
-		// 1. Root field
-		fields.push(makeField("root", FVar(macro :h2d.Object, null), [APublic], pos));
+		// ============ Instance class fields (extends h2d.Object) ============
 
-		// 1b. Static inline enum constants (e.g. Hover = 0, Pressed = 1, Normal = 2)
-		generateEnumConstants(fields, pos);
+		// 1. _pb reference to ProgrammableBuilder (for runtime builder calls)
+		instanceFields.push(makeField("_pb", FVar(macro :bh.multianim.ProgrammableBuilder, null), [APrivate], pos));
 
 		// 2. Parameter fields
 		for (name in paramNames) {
 			final def = paramDefs.get(name);
 			final fieldType = paramFieldType(def.type);
-			fields.push(makeField("_" + name, FVar(fieldType, null), [APrivate], pos));
+			instanceFields.push(makeField("_" + name, FVar(fieldType, null), [APrivate], pos));
 		}
 
 		// 3. Element fields + constructor body
+		// Note: processChildren adds element fields to instanceFields,
+		// and tree-building exprs use _pb for ProgrammableBuilder methods
 		final constructorExprs:Array<Expr> = [];
-		constructorExprs.push(macro this.root = new h2d.Object());
 
 		for (name in paramNames) {
 			final paramField = "_" + name;
 			constructorExprs.push(macro $p{["this", paramField]} = $i{paramField});
 		}
 
-		// Process children
+		// Process children — parentField=null means add directly to this (the h2d.Object root)
 		if (rootNode.children != null)
-			processChildren(rootNode.children, "root", fields, constructorExprs, null, pos);
+			processChildren(rootNode.children, null, instanceFields, constructorExprs, null, pos);
 
 		// 4. _applyVisibility()
 		final visExprs:Array<Expr> = [];
@@ -325,7 +342,7 @@ class ProgrammableCodeGen {
 		}
 		if (visExprs.length == 0)
 			visExprs.push(macro {});
-		fields.push(makeMethod("_applyVisibility", visExprs, [], macro :Void, [APrivate], pos));
+		instanceFields.push(makeMethod("_applyVisibility", visExprs, [], macro :Void, [APrivate], pos));
 
 		// 5. _updateExpressions()
 		final exprUpdateExprs:Array<Expr> = [];
@@ -334,16 +351,12 @@ class ProgrammableCodeGen {
 		}
 		if (exprUpdateExprs.length == 0)
 			exprUpdateExprs.push(macro {});
-		fields.push(makeMethod("_updateExpressions", exprUpdateExprs, [], macro :Void, [APrivate], pos));
+		instanceFields.push(makeMethod("_updateExpressions", exprUpdateExprs, [], macro :Void, [APrivate], pos));
 
-		// 6. Public constructor (just resourceLoader — lazy/factory-ready state)
-		final ctorBody:Array<Expr> = [macro super(resourceLoader)];
-		fields.push(makeMethod("new", ctorBody, [{name: "resourceLoader", type: macro :bh.base.ResourceLoader}], null, [APublic], pos));
+		// 6. Instance constructor: (pb, params...) -> builds tree
+		instanceFields.push(generateInstanceConstructor(constructorExprs, pos));
 
-		// 7. Instance create() — loads builder, sets params, builds tree, returns this
-		fields.push(generateInstanceCreate(constructorExprs, pos));
-
-		// 8. Typed setters
+		// 7. Typed setters (on instance)
 		for (name in paramNames) {
 			final def = paramDefs.get(name);
 			final paramField = "_" + name;
@@ -368,21 +381,30 @@ class ProgrammableCodeGen {
 				setterExprs.push(macro this._updateExpressions());
 
 			final setterParamType = publicParamType(name, def.type);
-			fields.push(makeMethod("set" + toPascalCase(name), setterExprs, [{name: "v", type: setterParamType}], macro :Void, [APublic], pos));
+			instanceFields.push(makeMethod("set" + toPascalCase(name), setterExprs, [{name: "v", type: setterParamType}], macro :Void, [APublic], pos));
 		}
 
-		// 9. getRoot()
-		fields.push(makeMethod("getRoot", [macro return this.root], [], macro :h2d.Object, [APublic], pos));
-
-		// 10. Named element accessors
-		for (name => elementFields in namedElements) {
-			if (elementFields.length == 1) {
-				final ef = elementFields[0];
-				fields.push(makeMethod("get_" + name, [macro return $p{["this", ef]}], [], macro :h2d.Object, [APublic], pos));
+		// 8. Named element accessors (on instance)
+		for (name => elementFieldsList in namedElements) {
+			if (elementFieldsList.length == 1) {
+				final ef = elementFieldsList[0];
+				instanceFields.push(makeMethod("get_" + name, [macro return $p{["this", ef]}], [], macro :h2d.Object, [APublic], pos));
 			}
 		}
 
-		return fields;
+		// ============ Factory class fields (extends ProgrammableBuilder) ============
+
+		// Static inline enum constants (e.g. Hover = 0, Pressed = 1, Normal = 2)
+		generateEnumConstants(factoryFields, pos);
+
+		// Factory constructor (just resourceLoader)
+		final factoryCtor:Array<Expr> = [macro super(resourceLoader)];
+		factoryFields.push(makeMethod("new", factoryCtor, [{name: "resourceLoader", type: macro :bh.base.ResourceLoader}], null, [APublic], pos));
+
+		// Factory create() — loads builder, creates new instance, returns it
+		factoryFields.push(generateFactoryCreate(pos));
+
+		return {instanceFields: instanceFields, factoryFields: factoryFields};
 	}
 
 	// ==================== Node Processing ====================
@@ -498,8 +520,8 @@ class ProgrammableCodeGen {
 			}
 		}
 
-		// Add to parent
-		final parentRef = macro $p{["this", parentField]};
+		// Add to parent (parentField == null means add to this directly)
+		final parentRef = parentField != null ? (macro $p{["this", parentField]}) : (macro this);
 		final fieldRef = macro $p{["this", fieldName]};
 		if (node.layer != null && node.layer != -1) {
 			final layerVal:Int = node.layer;
@@ -613,8 +635,8 @@ class ProgrammableCodeGen {
 		if (posExpr != null)
 			ctorExprs.push(posExpr);
 
-		// Add to parent
-		final parentRef = macro $p{["this", parentField]};
+		// Add to parent (parentField == null means add to this directly)
+		final parentRef = parentField != null ? (macro $p{["this", parentField]}) : (macro this);
 		ctorExprs.push(macro $parentRef.addChild($p{["this", containerName]}));
 
 		// Visibility for the container itself
@@ -770,7 +792,7 @@ class ProgrammableCodeGen {
 		if (posExpr != null)
 			ctorExprs.push(posExpr);
 
-		final parentRef = macro $p{["this", parentField]};
+		final parentRef = parentField != null ? (macro $p{["this", parentField]}) : (macro this);
 		ctorExprs.push(macro $parentRef.addChild($p{["this", containerName]}));
 
 		final visCond = generateVisibilityCondition(node, siblings, containerName, pos);
@@ -955,7 +977,7 @@ class ProgrammableCodeGen {
 		if (posExpr != null)
 			ctorExprs.push(posExpr);
 
-		final parentRef = macro $p{["this", parentField]};
+		final parentRef = parentField != null ? (macro $p{["this", parentField]}) : (macro this);
 		ctorExprs.push(macro $parentRef.addChild($p{["this", containerName]}));
 
 		final visCond = generateVisibilityCondition(node, siblings, containerName, pos);
@@ -1000,7 +1022,7 @@ class ProgrammableCodeGen {
 				final sheetStr = sheetName;
 				final filterExpr:Expr = tileFilter != null ? macro $v{tileFilter} : macro null;
 				ctorExprs.push(macro {
-					final _rt_tiles = this.getSheetTiles($v{sheetStr}, $filterExpr);
+					final _rt_tiles = this._pb.getSheetTiles($v{sheetStr}, $filterExpr);
 					for (_rt_i in 0..._rt_tiles.length) {
 						$loopBody;
 					}
@@ -1020,7 +1042,7 @@ class ProgrammableCodeGen {
 				};
 				final animNameExpr = rvToExpr(animationName);
 				ctorExprs.push(macro {
-					final _rt_tiles = this.getStateAnimTiles($v{fileStr}, Std.string($animNameExpr), $selectorMapExpr);
+					final _rt_tiles = this._pb.getStateAnimTiles($v{fileStr}, Std.string($animNameExpr), $selectorMapExpr);
 					for (_rt_i in 0..._rt_tiles.length) {
 						$loopBody;
 					}
@@ -1118,7 +1140,7 @@ class ProgrammableCodeGen {
 		final fieldName = "_e" + (elementCounter++);
 		fields.push(makeField(fieldName, FVar(macro :h2d.Object, null), [APrivate], pos));
 		ctorExprs.push(macro $p{["this", fieldName]} = new h2d.Object());
-		final parentRef = macro $p{["this", parentField]};
+		final parentRef = parentField != null ? (macro $p{["this", parentField]}) : (macro this);
 		ctorExprs.push(macro $parentRef.addChild($p{["this", fieldName]}));
 		siblings.push({node: node, fieldName: fieldName});
 	}
@@ -1141,7 +1163,7 @@ class ProgrammableCodeGen {
 		if (posExpr != null)
 			ctorExprs.push(posExpr);
 
-		final parentRef = macro $p{["this", parentField]};
+		final parentRef = parentField != null ? (macro $p{["this", parentField]}) : (macro this);
 		ctorExprs.push(macro $parentRef.addChild($p{["this", containerName]}));
 
 		final visCond = generateVisibilityCondition(node, siblings, containerName, pos);
@@ -1358,7 +1380,7 @@ class ProgrammableCodeGen {
 			}
 		}
 		mapBuildExprs.push(macro {
-			final _result = this.buildReference($refNameExpr, _refParams);
+			final _result = this._pb.buildReference($refNameExpr, _refParams);
 			$fieldRef = _result != null ? _result.object : new h2d.Object();
 		});
 
@@ -1383,14 +1405,14 @@ class ProgrammableCodeGen {
 		final callExpr:Expr = switch (source) {
 			case PRSCallback(callbackName):
 				final nameExpr = rvToExpr(callbackName);
-				macro this.buildPlaceholderViaCallback($nameExpr);
+				macro this._pb.buildPlaceholderViaCallback($nameExpr);
 			case PRSCallbackWithIndex(callbackName, index):
 				final nameExpr = rvToExpr(callbackName);
 				final idxExpr = rvToExpr(index);
-				macro this.buildPlaceholderViaCallbackWithIndex($nameExpr, $idxExpr);
+				macro this._pb.buildPlaceholderViaCallbackWithIndex($nameExpr, $idxExpr);
 			case PRSBuilderParameterSource(callbackName):
 				final nameExpr = rvToExpr(callbackName);
-				macro this.buildPlaceholderViaSource($nameExpr);
+				macro this._pb.buildPlaceholderViaSource($nameExpr);
 		};
 
 		// Generate fallback expression based on placeholder type
@@ -2022,7 +2044,7 @@ class ProgrammableCodeGen {
 		final fieldRef = macro $p{["this", fieldName]};
 		final nameExpr:Expr = macro $v{currentProgrammableName};
 		final createExprs:Array<Expr> = [
-			macro $fieldRef = this.buildParticles($nameExpr),
+			macro $fieldRef = this._pb.buildParticles($nameExpr),
 		];
 
 		return {
@@ -2078,13 +2100,13 @@ class ProgrammableCodeGen {
 		final fontExpr = rvToExpr(textDef.fontName);
 		if (textDef.isHtml) {
 			createExprs.push(macro {
-				final font = this.loadFont($fontExpr);
+				final font = this._pb.loadFont($fontExpr);
 				final t = new h2d.HtmlText(font);
-				t.loadFont = (name) -> this.loadFont(name);
+				t.loadFont = (name) -> this._pb.loadFont(name);
 				$fieldRef = t;
 			});
 		} else {
-			createExprs.push(macro $fieldRef = new h2d.Text(this.loadFont($fontExpr)));
+			createExprs.push(macro $fieldRef = new h2d.Text(this._pb.loadFont($fontExpr)));
 		}
 
 		// Alignment
@@ -2163,7 +2185,7 @@ class ProgrammableCodeGen {
 
 		final createExprs:Array<Expr> = [
 			macro {
-				final sg = this.load9Patch($v{sheet}, $v{tilename});
+				final sg = this._pb.load9Patch($v{sheet}, $v{tilename});
 				sg.width = $wExpr;
 				sg.height = $hExpr;
 				sg.tileCenter = true;
@@ -2454,16 +2476,16 @@ class ProgrammableCodeGen {
 		return switch (ts) {
 			case TSFile(filename):
 				final fnExpr = rvToExpr(filename);
-				macro this.loadTileFile($fnExpr);
+				macro this._pb.loadTileFile($fnExpr);
 			case TSSheet(sheet, name):
 				final sheetExpr = rvToExpr(sheet);
 				final nameExpr = rvToExpr(name);
-				macro this.loadTile($sheetExpr, $nameExpr);
+				macro this._pb.loadTile($sheetExpr, $nameExpr);
 			case TSSheetWithIndex(sheet, name, index):
 				final sheetExpr = rvToExpr(sheet);
 				final nameExpr = rvToExpr(name);
 				final indexExpr = rvToExpr(index);
-				macro this.loadTileWithIndex($sheetExpr, $nameExpr, $indexExpr);
+				macro this._pb.loadTileWithIndex($sheetExpr, $nameExpr, $indexExpr);
 			case TSGenerated(genType):
 				switch (genType) {
 					case SolidColor(w, h, color):
@@ -2486,10 +2508,10 @@ class ProgrammableCodeGen {
 							h2d.Tile.fromColor(c, $wExpr, $hExpr);
 						};
 					default:
-						macro this.loadTileFile("placeholder.png");
+						macro this._pb.loadTileFile("placeholder.png");
 				};
 			default:
-				macro this.loadTileFile("placeholder.png");
+				macro this._pb.loadTileFile("placeholder.png");
 		};
 	}
 
@@ -2837,29 +2859,20 @@ class ProgrammableCodeGen {
 
 	// ==================== Factory / Public API ====================
 
-	/** Generate instance create() method with typed params.
-	 *  Loads builder from resourceLoader, sets params, builds tree, returns this. */
-	static function generateInstanceCreate(constructorExprs:Array<Expr>, pos:Position):Field {
-		// Partition params: required (no default) first, optional (has default) last
-		final requiredParams:Array<String> = [];
-		final optionalParams:Array<String> = [];
-		for (name in paramNames) {
-			final def = paramDefs.get(name);
-			if (def.defaultValue != null)
-				optionalParams.push(name);
-			else
-				requiredParams.push(name);
-		}
-		final orderedParams = requiredParams.concat(optionalParams);
+	/** Generate instance class constructor: (pb:ProgrammableBuilder, params...) -> builds tree.
+	 *  The instance extends h2d.Object, so super() is h2d.Object(). */
+	static function generateInstanceConstructor(constructorExprs:Array<Expr>, pos:Position):Field {
+		// Build constructor args: first is _pb, then typed params
+		final ctorArgs:Array<FunctionArg> = [];
+		ctorArgs.push({name: "_pb", type: macro :bh.multianim.ProgrammableBuilder});
 
-		// Build create() args (programmable params only, no builder)
-		final createArgs:Array<FunctionArg> = [];
+		// Partition params: required first, optional last
+		final orderedParams = getOrderedParams();
 		for (name in orderedParams) {
 			final def = paramDefs.get(name);
 			final pubType = publicParamType(name, def.type);
 			final hasDefault = def.defaultValue != null;
-
-			createArgs.push({
+			ctorArgs.push({
 				name: name,
 				type: pubType,
 				opt: hasDefault,
@@ -2867,12 +2880,10 @@ class ProgrammableCodeGen {
 			});
 		}
 
-		// Build create() body
-		final createBody:Array<Expr> = [];
-
-		// Load builder from resourceLoader
-		final manimPathLit = macro $v{currentManimPath};
-		createBody.push(macro this._builder = this.resourceLoader.loadMultiAnim($manimPathLit));
+		// Build constructor body
+		final ctorBody:Array<Expr> = [];
+		ctorBody.push(macro super());
+		ctorBody.push(macro this._pb = _pb);
 
 		// Create local vars for params with proper conversion (Bool -> Int, etc.)
 		// These locals are named _paramName to match what constructorExprs references
@@ -2884,32 +2895,89 @@ class ProgrammableCodeGen {
 			} else {
 				macro $i{pName};
 			};
-			createBody.push({
+			ctorBody.push({
 				expr: EVars([{name: privateName, type: null, expr: convExpr, isFinal: false}]),
 				pos: pos,
 			});
 		}
 
-		// Tree building (root creation, param assignments, child elements)
+		// Tree building (param assignments, child elements)
 		for (e in constructorExprs)
-			createBody.push(e);
+			ctorBody.push(e);
 
-		createBody.push(macro this._applyVisibility());
-		createBody.push(macro this._updateExpressions());
+		ctorBody.push(macro this._applyVisibility());
+		ctorBody.push(macro this._updateExpressions());
 
-		createBody.push(macro return this);
+		return {
+			name: "new",
+			kind: FFun({
+				args: ctorArgs,
+				ret: null,
+				expr: macro $b{ctorBody},
+			}),
+			access: [APublic],
+			pos: pos,
+		};
+	}
 
-		final classType:ComplexType = TPath({pack: localClassPack, name: localClassName});
+	/** Generate factory create() method: loads builder, creates new instance, returns it. */
+	static function generateFactoryCreate(pos:Position):Field {
+		// Build create() args (same typed params as instance constructor, minus _pb)
+		final createArgs:Array<FunctionArg> = [];
+		final orderedParams = getOrderedParams();
+		for (name in orderedParams) {
+			final def = paramDefs.get(name);
+			final pubType = publicParamType(name, def.type);
+			final hasDefault = def.defaultValue != null;
+			createArgs.push({
+				name: name,
+				type: pubType,
+				opt: hasDefault,
+				value: hasDefault ? publicDefaultValue(name, def) : null,
+			});
+		}
+
+		// Build create() body: load builder, create instance, return it
+		final manimPathLit = macro $v{currentManimPath};
+
+		// Build the new InstanceClass(this, param1, param2, ...) expression
+		final newArgs:Array<Expr> = [macro this];
+		for (name in orderedParams)
+			newArgs.push(macro $i{name});
+
+		final instTypePath = {pack: localClassPack, name: instanceClassName};
+		final newExpr:Expr = {expr: ENew(instTypePath, newArgs), pos: pos};
+
+		final createBody:Array<Expr> = [
+			macro this._builder = this.resourceLoader.loadMultiAnim($manimPathLit),
+			macro return $newExpr,
+		];
+
+		final instType:ComplexType = TPath(instTypePath);
 		return {
 			name: "create",
 			kind: FFun({
 				args: createArgs,
-				ret: classType,
+				ret: instType,
 				expr: macro $b{createBody},
 			}),
 			access: [APublic],
 			pos: pos,
 		};
+	}
+
+	/** Get ordered params: required first, optional last */
+	static function getOrderedParams():Array<String> {
+		final requiredParams:Array<String> = [];
+		final optionalParams:Array<String> = [];
+		for (name in paramNames) {
+			final def = paramDefs.get(name);
+			if (def.defaultValue != null)
+				optionalParams.push(name);
+			else
+				requiredParams.push(name);
+		}
+		return requiredParams.concat(optionalParams);
 	}
 
 	/** Get the public-facing type for a parameter (Bool for bool params, Int for enums, raw type otherwise) */
