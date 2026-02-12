@@ -577,7 +577,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 				var macroOk = macroSim > threshold;
 
 				HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath, builderOk && macroOk,
-					builderSim, null, macroPath, macroSim, macroOk);
+					builderSim, null, macroPath, macroSim, macroOk, threshold, threshold);
 				HtmlReportGenerator.generateReport();
 
 				Assert.isTrue(builderOk, 'Builder should roughly match reference (similarity: ${Math.round(builderSim * 10000) / 100}%)');

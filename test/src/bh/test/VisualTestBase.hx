@@ -258,7 +258,7 @@ class VisualTestBase extends utest.Test {
 			}
 		}
 
-		HtmlReportGenerator.addResult(getDisplayName(), reference, actual, passed, similarity);
+		HtmlReportGenerator.addResult(getDisplayName(), reference, actual, passed, similarity, null, threshold);
 		HtmlReportGenerator.generateReport();
 
 		return passed;
@@ -446,7 +446,7 @@ class VisualTestBase extends utest.Test {
 					var overallPassed = builderPassed && macroPassed;
 
 					HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath, overallPassed, builderSimilarity, null, macroPath,
-						macroSimilarity, macroPassed);
+						macroSimilarity, macroPassed, 0.99, 0.99);
 					HtmlReportGenerator.generateReport();
 
 					Assert.isTrue(builderPassed, 'Builder should match reference (similarity: ${Math.round(builderSimilarity * 10000) / 100}%)');
@@ -554,7 +554,7 @@ class VisualTestBase extends utest.Test {
 					var macroOk = macroSim > 0.99;
 
 					HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath, builderOk && macroOk,
-						builderSim, null, macroPath, macroSim, macroOk);
+						builderSim, null, macroPath, macroSim, macroOk, 0.99, 0.99);
 					HtmlReportGenerator.generateReport();
 
 					Assert.isTrue(builderOk, 'Builder should match reference (${Math.round(builderSim * 10000) / 100}%)');
