@@ -2854,6 +2854,40 @@ class ProgrammableCodeGen {
 							if (c >>> 24 == 0) c |= 0xFF000000;
 							h2d.Tile.fromColor(c, $wExpr, $hExpr);
 						};
+					case SolidColorWithText(w, h, color, text, textColor, font):
+						final wExpr = rvToExpr(w);
+						final hExpr = rvToExpr(h);
+						final cExpr = rvToExpr(color);
+						final textExpr = rvToExpr(text);
+						final tcExpr = rvToExpr(textColor);
+						final fontExpr = rvToExpr(font);
+						macro {
+							var c:Int = $cExpr;
+							if (c >>> 24 == 0) c |= 0xFF000000;
+							var tc:Int = $tcExpr;
+							if (tc >>> 24 == 0) tc |= 0xFF000000;
+							this._pb.generateColorWithTextTile($wExpr, $hExpr, c, "" + $textExpr, tc, $fontExpr);
+						};
+					case AutotileRef(autotileName, selector):
+						final nameExpr = rvToExpr(autotileName);
+						switch (selector) {
+							case ByIndex(index):
+								final indexExpr = rvToExpr(index);
+								macro this._pb.getAutotileTileByIndex($nameExpr, $indexExpr);
+							case ByEdges(edges):
+								final edgesExpr:Expr = macro $v{edges};
+								macro this._pb.getAutotileTileByIndex($nameExpr, $edgesExpr);
+						};
+					case AutotileRegionSheet(autotileName, scale, font, fontColor):
+						final nameExpr = rvToExpr(autotileName);
+						final scaleExpr = rvToExpr(scale);
+						final fontExpr = rvToExpr(font);
+						final fcExpr = rvToExpr(fontColor);
+						macro {
+							var fc:Int = $fcExpr;
+							if (fc >>> 24 == 0) fc |= 0xFF000000;
+							this._pb.getAutotileRegionSheetTile($nameExpr, $scaleExpr, $fontExpr, fc);
+						};
 					default:
 						macro this._pb.loadTileFile("placeholder.png");
 				};

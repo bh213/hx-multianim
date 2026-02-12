@@ -119,6 +119,30 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 	@:manim("test/examples/31-elseDefaultDemo/elseDefaultDemo.manim", "elseDefaultDemo")
 	public var elseDefaultDemo;
 
+	@:manim("test/examples/5-stateAnimDemo/stateAnimDemo.manim", "stateAnimDemo")
+	public var stateAnimDemo;
+
+	@:manim("test/examples/7-paletteDemo/paletteDemo.manim", "paletteDemo")
+	public var paletteDemo;
+
+	@:manim("test/examples/12-updatableDemo/updatableDemo.manim", "updatableDemo")
+	public var updatableDemo;
+
+	@:manim("test/examples/15-stateAnimConstructDemo/stateAnimConstructDemo.manim", "stateAnimConstructDemo")
+	public var stateAnimConstructDemo;
+
+	@:manim("test/examples/16-divModDemo/divModDemo.manim", "divModDemo")
+	public var divModDemo;
+
+	@:manim("test/examples/22-tilesIteration/tilesIteration.manim", "tilesIteration")
+	public var tilesIteration;
+
+	@:manim("test/examples/24-autotileCross/autotileCross.manim", "autotileCross")
+	public var autotileCross;
+
+	@:manim("test/examples/25-autotileBlob47/autotileBlob47.manim", "autotileBlob47")
+	public var autotileBlob47;
+
 	@:manim("test/examples/32-namedFilterParams/namedFilterParams.manim", "namedFilterParams")
 	public var namedFilterParams;
 
@@ -127,4 +151,13 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/34-maskDemo/maskDemo.manim", "maskDemo")
 	public var maskDemo;
+
+	@:manim("test/examples/28-autotileDemoSyntax/autotileDemoSyntax.manim", "autotileDemoSyntax")
+	public var autotileDemoSyntax;
+
+	@:manim("test/examples/29-forgottenPlainsTerrain/forgottenPlainsTerrain.manim", "forgottenPlainsTerrain")
+	public var forgottenPlainsTerrain;
+
+	@:manim("test/examples/30-blob47Fallback/blob47Fallback.manim", "blob47Fallback")
+	public var blob47Fallback;
 }

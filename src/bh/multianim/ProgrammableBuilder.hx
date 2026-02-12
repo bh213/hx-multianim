@@ -335,6 +335,36 @@ class ProgrammableBuilder {
 		};
 	}
 
+	/** Generate a tile with centered text on a solid color background.
+	 *  Used by generated code for colorWithText() in generated() tiles. */
+	public function generateColorWithTextTile(w:Int, h:Int, bgColor:Int, text:String, textColor:Int, fontName:String):Tile {
+		return @:privateAccess (_builder : MultiAnimBuilder).generateTileWithText(w, h, bgColor, text, textColor, fontName);
+	}
+
+	/** Generate an autotile region sheet tile showing the full region with numbered grid overlay.
+	 *  Used by generated code for autotileRegionSheet() in generated() tiles. */
+	public function getAutotileRegionSheetTile(autotileName:String, scale:Int, font:String, fontColor:Int):Tile {
+		final builder:MultiAnimBuilder = cast _builder;
+		final resolved = @:privateAccess builder.resolveAutotileRegionSheet(
+			MultiAnimParser.ReferenceableValue.RVString(autotileName),
+			MultiAnimParser.ReferenceableValue.RVInteger(scale),
+			MultiAnimParser.ReferenceableValue.RVString(font),
+			MultiAnimParser.ReferenceableValue.RVInteger(fontColor)
+		);
+		return @:privateAccess builder.generatePlaceholderBitmap(resolved);
+	}
+
+	/** Generate an autotile tile by name and index.
+	 *  Looks up the autotile definition and resolves the tile from the appropriate source. */
+	public function getAutotileTileByIndex(autotileName:String, tileIndex:Int):Tile {
+		final builder:MultiAnimBuilder = cast _builder;
+		final resolved = @:privateAccess builder.resolveAutotileRef(
+			MultiAnimParser.ReferenceableValue.RVString(autotileName),
+			MultiAnimParser.AutotileTileSelector.ByIndex(MultiAnimParser.ReferenceableValue.RVInteger(tileIndex))
+		);
+		return @:privateAccess builder.generatePlaceholderBitmap(resolved);
+	}
+
 	static function extractObject(result:CallbackResult):Null<h2d.Object> {
 		return switch result {
 			case CBRObject(val): val;

@@ -4,6 +4,7 @@ import utest.Assert;
 import h2d.Scene;
 import bh.test.VisualTestBase;
 import bh.test.HtmlReportGenerator;
+import bh.test.examples.AutotileTestHelper;
 
 /**
  * Tests for the @:build(ProgrammableCodeGen.buildAll()) generated classes.
@@ -17,8 +18,11 @@ import bh.test.HtmlReportGenerator;
 @:access(h2d.SpriteBatch)
 @:access(h2d.BatchElement)
 class ProgrammableCodeGenTest extends VisualTestBase {
+	var autotileHelper:AutotileTestHelper;
+
 	public function new(s2d:Scene) {
 		super("programmableCodeGen", s2d);
+		autotileHelper = new AutotileTestHelper(this, s2d);
 	}
 
 	function createMp():bh.test.MultiProgrammable {
@@ -878,6 +882,60 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 			() -> createMp().elseDefaultDemo.create(), async);
 	}
 
+	// ==================== StateAnimDemo: macro comparison ====================
+
+	@Test
+	public function test05_StateAnimDemo(async:utest.Async):Void {
+		setupTest(5, "stateAnimDemo");
+		builderAndMacroScreenshotAndCompare("test/examples/5-stateAnimDemo/stateAnimDemo.manim", "stateAnimDemo",
+			() -> createMp().stateAnimDemo.create(), async, null, null, null, 0.97);
+	}
+
+	// ==================== PaletteDemo: macro comparison ====================
+
+	@Test
+	public function test07_PaletteDemo(async:utest.Async):Void {
+		setupTest(7, "paletteDemo");
+		builderAndMacroScreenshotAndCompare("test/examples/7-paletteDemo/paletteDemo.manim", "paletteDemo",
+			() -> createMp().paletteDemo.create(), async);
+	}
+
+	// ==================== UpdatableDemo: macro comparison ====================
+
+	@Test
+	public function test12_UpdatableDemo(async:utest.Async):Void {
+		setupTest(12, "updatableDemo");
+		builderAndMacroScreenshotAndCompare("test/examples/12-updatableDemo/updatableDemo.manim", "updatableDemo",
+			() -> createMp().updatableDemo.create(), async);
+	}
+
+	// ==================== StateAnimConstructDemo: macro comparison ====================
+
+	@Test
+	public function test15_StateAnimConstructDemo(async:utest.Async):Void {
+		setupTest(15, "stateAnimConstructDemo");
+		builderAndMacroScreenshotAndCompare("test/examples/15-stateAnimConstructDemo/stateAnimConstructDemo.manim", "stateAnimConstructDemo",
+			() -> createMp().stateAnimConstructDemo.create(), async);
+	}
+
+	// ==================== DivModDemo: macro comparison ====================
+
+	@Test
+	public function test16_DivModDemo(async:utest.Async):Void {
+		setupTest(16, "divModDemo");
+		builderAndMacroScreenshotAndCompare("test/examples/16-divModDemo/divModDemo.manim", "divModDemo",
+			() -> createMp().divModDemo.create(), async);
+	}
+
+	// ==================== TilesIteration: macro comparison ====================
+
+	@Test
+	public function test22_TilesIteration(async:utest.Async):Void {
+		setupTest(22, "tilesIteration");
+		builderAndMacroScreenshotAndCompare("test/examples/22-tilesIteration/tilesIteration.manim", "tilesIteration",
+			() -> createMp().tilesIteration.create(), async);
+	}
+
 	// ==================== NamedFilterParams: macro comparison ====================
 
 	@Test
@@ -912,6 +970,330 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		setupTest(17, "applyDemo");
 		builderAndMacroScreenshotAndCompare("test/examples/17-applyDemo/applyDemo.manim", "applyDemo",
 			() -> createMp().applyDemo.create(), async);
+	}
+
+	// ==================== AutotileCross: macro comparison ====================
+
+	@Test
+	public function test24_AutotileCross(async:utest.Async):Void {
+		setupTest(24, "autotileCross");
+		VisualTestBase.pendingVisualTests++;
+		async.setTimeout(15000);
+		final animFilePath = "test/examples/24-autotileCross/autotileCross.manim";
+		final scale = 4.0;
+		final threshold = 0.98;
+		final autotileConfigs:Array<{name:String, grid:Array<Array<Int>>, x:Float, y:Float, background:Bool}> = [
+			{name: "crossColored", grid: AutotileTestHelper.SIMPLE_RECT_GRID, x: 80.0, y: 376.0, background: false},
+			{name: "crossWater", grid: AutotileTestHelper.SIMPLE_RECT_GRID, x: 520.0, y: 376.0, background: true}
+		];
+
+		// Phase 1: builder + autotile grids
+		clearScene();
+		var result = buildAndAddToScene(animFilePath, "autotileCross", scale);
+		if (result == null) {
+			Assert.fail('Failed to build "autotileCross"');
+			VisualTestBase.pendingVisualTests--;
+			async.done();
+			return;
+		}
+		addAutotileOverlays(animFilePath, autotileConfigs, scale);
+
+		waitForUpdate(function(dt:Float) {
+			var builderPath = getActualImagePath();
+			var builderSuccess = screenshot(builderPath, 1280, 720);
+
+			// Phase 2: macro + autotile grids
+			clearScene();
+			var macroRoot = createMp().autotileCross.create();
+			macroRoot.setScale(scale);
+			s2d.addChild(macroRoot);
+			addAutotileOverlays(animFilePath, autotileConfigs, scale);
+			if (testTitle != null && testTitle.length > 0) addTitleOverlay();
+
+			waitForUpdate(function(dt2:Float) {
+				var macroPath = 'test/screenshots/autotileCross_macro.png';
+				var referencePath = getReferenceImagePath();
+				var macroSuccess = screenshot(macroPath, 1280, 720);
+
+				var builderSim = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
+				var macroSim = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
+				var builderOk = builderSim > threshold;
+				var macroOk = macroSim > threshold;
+
+				HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath, builderOk && macroOk,
+					builderSim, null, macroPath, macroSim, macroOk, threshold, threshold);
+				HtmlReportGenerator.generateReport();
+
+				Assert.isTrue(builderOk, 'Builder should match reference (similarity: ${Math.round(builderSim * 10000) / 100}%)');
+				Assert.isTrue(macroOk, 'Macro should match reference (similarity: ${Math.round(macroSim * 10000) / 100}%)');
+
+				VisualTestBase.pendingVisualTests--;
+				async.done();
+			});
+		});
+	}
+
+	// ==================== AutotileBlob47: macro comparison ====================
+
+	@Test
+	public function test25_AutotileBlob47(async:utest.Async):Void {
+		setupTest(25, "autotileBlob47");
+		VisualTestBase.pendingVisualTests++;
+		async.setTimeout(15000);
+		final animFilePath = "test/examples/25-autotileBlob47/autotileBlob47.manim";
+		final scale = 2.0;
+		final threshold = 0.98;
+		final autotileConfigs:Array<{name:String, grid:Array<Array<Int>>, x:Float, y:Float, background:Bool}> = [
+			{name: "blob47Colored", grid: AutotileTestHelper.LARGE_SEA_GRID, x: 40.0, y: 326.0, background: false},
+			{name: "blob47Water", grid: AutotileTestHelper.LARGE_SEA_GRID, x: 684.0, y: 326.0, background: true}
+		];
+
+		// Phase 1: builder + autotile grids
+		clearScene();
+		var result = buildAndAddToScene(animFilePath, "autotileBlob47", scale);
+		if (result == null) {
+			Assert.fail('Failed to build "autotileBlob47"');
+			VisualTestBase.pendingVisualTests--;
+			async.done();
+			return;
+		}
+		addAutotileOverlays(animFilePath, autotileConfigs, scale);
+
+		waitForUpdate(function(dt:Float) {
+			var builderPath = getActualImagePath();
+			var builderSuccess = screenshot(builderPath, 1280, 720);
+
+			// Phase 2: macro + autotile grids
+			clearScene();
+			var macroRoot = createMp().autotileBlob47.create();
+			macroRoot.setScale(scale);
+			s2d.addChild(macroRoot);
+			addAutotileOverlays(animFilePath, autotileConfigs, scale);
+			if (testTitle != null && testTitle.length > 0) addTitleOverlay();
+
+			waitForUpdate(function(dt2:Float) {
+				var macroPath = 'test/screenshots/autotileBlob47_macro.png';
+				var referencePath = getReferenceImagePath();
+				var macroSuccess = screenshot(macroPath, 1280, 720);
+
+				var builderSim = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
+				var macroSim = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
+				var builderOk = builderSim > threshold;
+				var macroOk = macroSim > threshold;
+
+				HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath, builderOk && macroOk,
+					builderSim, null, macroPath, macroSim, macroOk, threshold, threshold);
+				HtmlReportGenerator.generateReport();
+
+				Assert.isTrue(builderOk, 'Builder should match reference (similarity: ${Math.round(builderSim * 10000) / 100}%)');
+				Assert.isTrue(macroOk, 'Macro should match reference (similarity: ${Math.round(macroSim * 10000) / 100}%)');
+
+				VisualTestBase.pendingVisualTests--;
+				async.done();
+			});
+		});
+	}
+
+	// ==================== AutotileDemoSyntax: macro comparison ====================
+
+	@Test
+	public function test28_AutotileDemoSyntax(async:utest.Async):Void {
+		setupTest(28, "autotileDemoSyntax");
+		VisualTestBase.pendingVisualTests++;
+		async.setTimeout(15000);
+		final animFilePath = "test/examples/28-autotileDemoSyntax/autotileDemoSyntax.manim";
+		final scale = 1.0;
+		final threshold = 0.98;
+		final autotileConfigs:Array<{name:String, grid:Array<Array<Int>>, x:Float, y:Float, background:Bool}> = [
+			{name: "simple13Demo", grid: AutotileTestHelper.SIMPLE_RECT_GRID, x: 400.0, y: 100.0, background: false}
+		];
+
+		// Phase 1: builder + autotile grids
+		clearScene();
+		var result = buildAndAddToScene(animFilePath, "autotileDemoSyntax", scale);
+		if (result == null) {
+			Assert.fail('Failed to build "autotileDemoSyntax"');
+			VisualTestBase.pendingVisualTests--;
+			async.done();
+			return;
+		}
+		addAutotileOverlays(animFilePath, autotileConfigs, scale);
+
+		waitForUpdate(function(dt:Float) {
+			var builderPath = getActualImagePath();
+			var builderSuccess = screenshot(builderPath, 1280, 720);
+
+			// Phase 2: macro + autotile grids
+			clearScene();
+			var macroRoot = createMp().autotileDemoSyntax.create();
+			macroRoot.setScale(scale);
+			s2d.addChild(macroRoot);
+			addAutotileOverlays(animFilePath, autotileConfigs, scale);
+			if (testTitle != null && testTitle.length > 0) addTitleOverlay();
+
+			waitForUpdate(function(dt2:Float) {
+				var macroPath = 'test/screenshots/autotileDemoSyntax_macro.png';
+				var referencePath = getReferenceImagePath();
+				var macroSuccess = screenshot(macroPath, 1280, 720);
+
+				var builderSim = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
+				var macroSim = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
+				var builderOk = builderSim > threshold;
+				var macroOk = macroSim > threshold;
+
+				HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath, builderOk && macroOk,
+					builderSim, null, macroPath, macroSim, macroOk, threshold, threshold);
+				HtmlReportGenerator.generateReport();
+
+				Assert.isTrue(builderOk, 'Builder should match reference (similarity: ${Math.round(builderSim * 10000) / 100}%)');
+				Assert.isTrue(macroOk, 'Macro should match reference (similarity: ${Math.round(macroSim * 10000) / 100}%)');
+
+				VisualTestBase.pendingVisualTests--;
+				async.done();
+			});
+		});
+	}
+
+	// ==================== ForgottenPlainsTerrain: macro comparison ====================
+
+	@Test
+	public function test29_ForgottenPlainsTerrain(async:utest.Async):Void {
+		setupTest(29, "forgottenPlainsTerrain");
+		VisualTestBase.pendingVisualTests++;
+		async.setTimeout(15000);
+		final animFilePath = "test/examples/29-forgottenPlainsTerrain/forgottenPlainsTerrain.manim";
+		final scale = 4.0;
+		final threshold = 0.98;
+		final autotileConfigs:Array<{name:String, grid:Array<Array<Int>>, x:Float, y:Float, background:Bool}> = [
+			{name: "grassTerrain", grid: AutotileTestHelper.CROSS_HOLE_GRID, x: 40.0, y: 360.0, background: false},
+			{name: "grassDemo", grid: AutotileTestHelper.CROSS_HOLE_GRID, x: 320.0, y: 360.0, background: false}
+		];
+
+		// Phase 1: builder + autotile grids
+		clearScene();
+		var result = buildAndAddToScene(animFilePath, "forgottenPlainsTerrain", scale);
+		if (result == null) {
+			Assert.fail('Failed to build "forgottenPlainsTerrain"');
+			VisualTestBase.pendingVisualTests--;
+			async.done();
+			return;
+		}
+		addAutotileOverlays(animFilePath, autotileConfigs, scale);
+
+		waitForUpdate(function(dt:Float) {
+			var builderPath = getActualImagePath();
+			var builderSuccess = screenshot(builderPath, 1280, 720);
+
+			// Phase 2: macro + autotile grids
+			clearScene();
+			var macroRoot = createMp().forgottenPlainsTerrain.create();
+			macroRoot.setScale(scale);
+			s2d.addChild(macroRoot);
+			addAutotileOverlays(animFilePath, autotileConfigs, scale);
+			if (testTitle != null && testTitle.length > 0) addTitleOverlay();
+
+			waitForUpdate(function(dt2:Float) {
+				var macroPath = 'test/screenshots/forgottenPlainsTerrain_macro.png';
+				var referencePath = getReferenceImagePath();
+				var macroSuccess = screenshot(macroPath, 1280, 720);
+
+				var builderSim = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
+				var macroSim = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
+				var builderOk = builderSim > threshold;
+				var macroOk = macroSim > threshold;
+
+				HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath, builderOk && macroOk,
+					builderSim, null, macroPath, macroSim, macroOk, threshold, threshold);
+				HtmlReportGenerator.generateReport();
+
+				Assert.isTrue(builderOk, 'Builder should match reference (similarity: ${Math.round(builderSim * 10000) / 100}%)');
+				Assert.isTrue(macroOk, 'Macro should match reference (similarity: ${Math.round(macroSim * 10000) / 100}%)');
+
+				VisualTestBase.pendingVisualTests--;
+				async.done();
+			});
+		});
+	}
+
+	// ==================== Blob47Fallback: macro comparison ====================
+
+	@Test
+	public function test30_Blob47Fallback(async:utest.Async):Void {
+		setupTest(30, "blob47Fallback");
+		VisualTestBase.pendingVisualTests++;
+		async.setTimeout(15000);
+		final animFilePath = "test/examples/30-blob47Fallback/blob47Fallback.manim";
+		final scale = 2.0;
+		final threshold = 0.98;
+		final autotileConfigs:Array<{name:String, grid:Array<Array<Int>>, x:Float, y:Float, background:Bool}> = [
+			{name: "blob47Demo", grid: AutotileTestHelper.LARGE_SEA_GRID, x: 20.0, y: 304.0, background: false},
+			{name: "blob47Grass", grid: AutotileTestHelper.LARGE_SEA_GRID, x: 320.0, y: 304.0, background: false}
+		];
+
+		// Phase 1: builder + autotile grids
+		clearScene();
+		var result = buildAndAddToScene(animFilePath, "blob47Fallback", scale);
+		if (result == null) {
+			Assert.fail('Failed to build "blob47Fallback"');
+			VisualTestBase.pendingVisualTests--;
+			async.done();
+			return;
+		}
+		addAutotileOverlays(animFilePath, autotileConfigs, scale);
+
+		waitForUpdate(function(dt:Float) {
+			var builderPath = getActualImagePath();
+			var builderSuccess = screenshot(builderPath, 1280, 720);
+
+			// Phase 2: macro + autotile grids
+			clearScene();
+			var macroRoot = createMp().blob47Fallback.create();
+			macroRoot.setScale(scale);
+			s2d.addChild(macroRoot);
+			addAutotileOverlays(animFilePath, autotileConfigs, scale);
+			if (testTitle != null && testTitle.length > 0) addTitleOverlay();
+
+			waitForUpdate(function(dt2:Float) {
+				var macroPath = 'test/screenshots/blob47Fallback_macro.png';
+				var referencePath = getReferenceImagePath();
+				var macroSuccess = screenshot(macroPath, 1280, 720);
+
+				var builderSim = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
+				var macroSim = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
+				var builderOk = builderSim > threshold;
+				var macroOk = macroSim > threshold;
+
+				HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath, builderOk && macroOk,
+					builderSim, null, macroPath, macroSim, macroOk, threshold, threshold);
+				HtmlReportGenerator.generateReport();
+
+				Assert.isTrue(builderOk, 'Builder should match reference (similarity: ${Math.round(builderSim * 10000) / 100}%)');
+				Assert.isTrue(macroOk, 'Macro should match reference (similarity: ${Math.round(macroSim * 10000) / 100}%)');
+
+				VisualTestBase.pendingVisualTests--;
+				async.done();
+			});
+		});
+	}
+
+	// ==================== Autotile helper ====================
+
+	/** Add autotile grids to the current scene with optional black backgrounds. */
+	private function addAutotileOverlays(animFilePath:String,
+			autotiles:Array<{name:String, grid:Array<Array<Int>>, x:Float, y:Float, background:Bool}>,
+			scale:Float):Void {
+		for (autotile in autotiles) {
+			if (autotile.background) {
+				var gridWidth = autotile.grid[0].length;
+				var gridHeight = autotile.grid.length;
+				var bgWidth = Std.int(gridWidth * 16 * scale);
+				var bgHeight = Std.int(gridHeight * 16 * scale);
+				var bg = new h2d.Bitmap(h2d.Tile.fromColor(0x000000, bgWidth, bgHeight), s2d);
+				bg.x = autotile.x;
+				bg.y = autotile.y;
+			}
+			autotileHelper.buildAutotileAndAddToScene(animFilePath, autotile.name, autotile.grid, autotile.x, autotile.y, scale);
+		}
 	}
 
 	// ==================== MultiProgrammable factory: unit tests ====================
