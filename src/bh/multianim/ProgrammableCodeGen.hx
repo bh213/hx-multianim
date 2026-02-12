@@ -1045,6 +1045,13 @@ class ProgrammableCodeGen {
 		// Set up runtime loop var mapping so rvToExpr generates runtime references
 		runtimeLoopVars.set(varName, "_rt_i");
 
+		// For array iterators, map the value variable to a runtime var
+		switch (repeatType) {
+			case ArrayIterator(valueVariableName, _):
+				runtimeLoopVars.set(valueVariableName, "_rt_val");
+			default:
+		}
+
 		// Build loop body expressions from child nodes
 		final loopBodyExprs:Array<Expr> = [];
 		if (node.children != null) {
@@ -1062,6 +1069,8 @@ class ProgrammableCodeGen {
 				if (tilenameVarName != null) runtimeLoopVars.remove(tilenameVarName);
 			case StateAnimIterator(bitmapVarName, _, _, _):
 				runtimeLoopVars.remove(bitmapVarName);
+			case ArrayIterator(valueVariableName, _):
+				runtimeLoopVars.remove(valueVariableName);
 			default:
 		}
 
@@ -1106,11 +1115,13 @@ class ProgrammableCodeGen {
 			case ArrayIterator(valueVariableName, arrayName):
 				final arrayField = "_" + arrayName;
 				final arrayRef = macro $p{["this", arrayField]};
+				final valAssign:Expr = macro final _rt_val = arr[_rt_i];
+				final arrayLoopBody:Expr = {expr: EBlock([valAssign, loopBody]), pos: pos};
 				ctorExprs.push(macro {
-					final arr:Array<Dynamic> = $arrayRef;
+					final arr:Array<String> = $arrayRef;
 					if (arr != null) {
 						for (_rt_i in 0...arr.length) {
-							$loopBody;
+							$arrayLoopBody;
 						}
 					}
 				});
@@ -1181,6 +1192,35 @@ class ProgrammableCodeGen {
 					}
 				}
 				bodyExprs.push({expr: EBlock(ptStmts), pos: pos});
+
+			case TEXT(textDef):
+				final stmts:Array<Expr> = [];
+				final fontExpr = rvToExpr(textDef.fontName);
+				stmts.push(macro final _rt_txt = new h2d.Text(this._pb.loadFont($fontExpr)));
+				stmts.push(macro $containerRef.addChild(_rt_txt));
+
+				final colorExpr = rvToExpr(textDef.color);
+				stmts.push(macro _rt_txt.textColor = $colorExpr);
+
+				final textExpr = rvToExpr(textDef.text);
+				stmts.push(macro _rt_txt.text = Std.string($textExpr));
+
+				switch (textDef.halign) {
+					case Right: stmts.push(macro _rt_txt.textAlign = Right);
+					case Center: stmts.push(macro _rt_txt.textAlign = Center);
+					default: stmts.push(macro _rt_txt.textAlign = Left);
+				}
+
+				if (child.pos != null) {
+					switch (child.pos) {
+						case OFFSET(x, y):
+							final xExpr = rvToExpr(x);
+							final yExpr = rvToExpr(y);
+							stmts.push(macro _rt_txt.setPosition($xExpr, $yExpr));
+						default:
+					}
+				}
+				bodyExprs.push({expr: EBlock(stmts), pos: pos});
 
 			default:
 				bodyExprs.push(macro {
@@ -2785,6 +2825,15 @@ class ProgrammableCodeGen {
 				final nameExpr = macro $v{name};
 				final indexExpr = rvToExpr(index);
 				macro this._pb.getPaletteColorByIndex($nameExpr, $indexExpr);
+			case RVElementOfArray(arrayRef, index):
+				final indexExpr = rvToExpr(index);
+				if (runtimeLoopVars.exists(arrayRef)) {
+					final rtName = runtimeLoopVars.get(arrayRef);
+					macro $i{rtName};
+				} else {
+					final arrayFieldRef = macro $p{["this", "_" + arrayRef]};
+					macro $arrayFieldRef[$indexExpr];
+				}
 			default:
 				macro 0;
 		};
@@ -3312,9 +3361,14 @@ class ProgrammableCodeGen {
 		// These locals are named _paramName to match what constructorExprs references
 		for (pName in paramNames) {
 			final privateName = "_" + pName;
+			final def = paramDefs.get(pName);
 			final enumInfo = paramEnumTypes.get(pName);
 			final convExpr:Expr = if (enumInfo != null && enumInfo.typePath == "Bool") {
 				macro($i{pName} ? 1 : 0);
+			} else if (def.type == PPTArray && def.defaultValue != null) {
+				// Array params default to null in signature; apply parsed default here
+				final defaultArr = resolvedParamToExpr(def.defaultValue, def.type);
+				macro($i{pName} != null ? $i{pName} : $defaultArr);
 			} else {
 				macro $i{pName};
 			};
@@ -3512,6 +3566,9 @@ class ProgrammableCodeGen {
 			// Enum param: just use the Int index directly
 			return resolvedParamToExpr(def.defaultValue, def.type);
 		}
+		// Array params: Haxe doesn't allow non-constant default values, use null
+		if (def.type == PPTArray)
+			return macro null;
 		return resolvedParamToExpr(def.defaultValue, def.type);
 	}
 
@@ -3540,7 +3597,7 @@ class ProgrammableCodeGen {
 			case PPTString: macro :String;
 			case PPTRange(_, _): macro :Int;
 			case PPTFlags(_): macro :Int;
-			case PPTArray: macro :Dynamic;
+			case PPTArray: macro :Array<String>;
 			default: macro :Int;
 		};
 	}
@@ -3560,6 +3617,9 @@ class ProgrammableCodeGen {
 				macro $v{f};
 			case StringValue(s):
 				macro $v{s};
+			case ArrayString(arr):
+				final elements:Array<Expr> = [for (s in arr) macro $v{s}];
+				{expr: EArrayDecl(elements), pos: (macro null).pos};
 			default:
 				macro null;
 		};

@@ -3,6 +3,11 @@
 ## [Unreleased]
 
 ### Added
+- **Array parameter macro support** — `param:array=[val1,val2]` now fully supported in ProgrammableCodeGen macro codegen
+  - Generates typed `Array<String>` fields with null-default + constructor fallback
+  - `RVElementOfArray` resolves array element access (`$arr[$i]`) in expressions
+  - `ArrayIterator` in `repeatable($i, array($val, $arr))` generates runtime pool loops with value variable
+  - TEXT elements supported inside runtime repeat loops
 - **`createFrom()` named-parameter factory method** — generated alongside `create()` for every `@:manim` programmable. Takes an anonymous struct with named fields matching the `.manim` parameter names. Optional parameters (those with defaults) can be omitted from the struct.
   ```haxe
   var dlg = ui.dialog.createFrom({w: 400, title: "My Dialog"});  // named params

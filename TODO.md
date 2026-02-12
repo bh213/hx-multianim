@@ -17,8 +17,7 @@ repeatable step: scale ignored for dy/dy?
     - grid is not supposed to mean grid coordinate system but that it moves in x,y direction by grid cells
 
 repeatable: inline array with $index, $value?
-    - UNCLEAR: ArrayIterator exists with $index support
-    - Need clarification on what specific syntax is missing
+    - DONE: ArrayIterator with `repeatable($i, array($val, $arr))` works in both builder and macro codegen
 
 fix html/implement text
     - PARTIAL: createHtmlText() exists in MultiAnimBuilder.hx:1071-1074
