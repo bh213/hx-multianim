@@ -752,6 +752,51 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 			() -> createMp().bitmapDemo.create(), async);
 	}
 
+	// ==================== LayersDemo: macro comparison ====================
+
+	@Test
+	public function test08_LayersDemo(async:utest.Async):Void {
+		setupTest(8, "layersDemo");
+		builderAndMacroScreenshotAndCompare("test/examples/8-layersDemo/layersDemo.manim", "layersDemo",
+			() -> createMp().layersDemo.create(), async);
+	}
+
+	// ==================== NinePatchDemo: macro comparison ====================
+
+	@Test
+	public function test09_NinePatchDemo(async:utest.Async):Void {
+		setupTest(9, "ninePatchDemo");
+		builderAndMacroScreenshotAndCompare("test/examples/9-ninePatchDemo/ninePatchDemo.manim", "ninePatchDemo",
+			() -> createMp().ninePatchDemo.create(), async);
+	}
+
+	// ==================== ReferenceDemo: macro comparison ====================
+
+	@Test
+	public function test10_ReferenceDemo(async:utest.Async):Void {
+		setupTest(10, "referenceDemo");
+		builderAndMacroScreenshotAndCompare("test/examples/10-referenceDemo/referenceDemo.manim", "referenceDemo",
+			() -> createMp().referenceDemo.create(), async);
+	}
+
+	// ==================== BitmapAlignDemo: macro comparison ====================
+
+	@Test
+	public function test11_BitmapAlignDemo(async:utest.Async):Void {
+		setupTest(11, "bitmapAlignDemo");
+		builderAndMacroScreenshotAndCompare("test/examples/11-bitmapAlignDemo/bitmapAlignDemo.manim", "bitmapAlignDemo",
+			() -> createMp().bitmapAlignDemo.create(), async);
+	}
+
+	// ==================== LayoutRepeatableDemo: macro comparison ====================
+
+	@Test
+	public function test13_LayoutRepeatableDemo(async:utest.Async):Void {
+		setupTest(13, "layoutRepeatableDemo");
+		builderAndMacroScreenshotAndCompare("test/examples/13-layoutRepeatableDemo/layoutRepeatableDemo.manim", "layoutRepeatableDemo",
+			() -> createMp().layoutRepeatableDemo.create(), async);
+	}
+
 	// ==================== ApplyDemo: macro comparison ====================
 
 	@Test

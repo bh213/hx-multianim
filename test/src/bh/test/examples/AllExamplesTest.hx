@@ -13,15 +13,10 @@ class AllExamplesTest extends VisualTestBase {
 		autotileHelper = new AutotileTestHelper(this, s2d);
 	}
 
-	// tests 1, 2, 3, 4, 6 moved to ProgrammableCodeGenTest (macro comparison)
+	// tests 1, 2, 3, 4, 6, 8, 9, 10, 11, 13 moved to ProgrammableCodeGenTest (macro comparison)
 	@Test public function test05_StateAnimDemo(async:utest.Async) { simpleTest(5, "stateAnimDemo", async); }
 	@Test public function test07_PaletteDemo(async:utest.Async) { simpleTest(7, "paletteDemo", async); }
-	@Test public function test08_LayersDemo(async:utest.Async) { simpleTest(8, "layersDemo", async); }
-	@Test public function test09_NinePatchDemo(async:utest.Async) { simpleTest(9, "ninePatchDemo", async); }
-	@Test public function test10_ReferenceDemo(async:utest.Async) { simpleTest(10, "referenceDemo", async); }
-	@Test public function test11_BitmapAlignDemo(async:utest.Async) { simpleTest(11, "bitmapAlignDemo", async); }
 	@Test public function test12_UpdatableDemo(async:utest.Async) { simpleTest(12, "updatableDemo", async); }
-	@Test public function test13_LayoutRepeatableDemo(async:utest.Async) { simpleTest(13, "layoutRepeatableDemo", async); }
 	@Test public function test14_TileGroupDemo(async:utest.Async) { simpleTest(14, "tileGroupDemo", async); }
 	@Test public function test15_StateAnimConstructDemo(async:utest.Async) { simpleTest(15, "stateAnimConstructDemo", async); }
 	@Test public function test16_DivModDemo(async:utest.Async) { simpleTest(16, "divModDemo", async); }

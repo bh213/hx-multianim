@@ -76,4 +76,19 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/6-flowDemo/flowDemo.manim", "flowDemo")
 	public var flowDemo;
+
+	@:manim("test/examples/8-layersDemo/layersDemo.manim", "layersDemo")
+	public var layersDemo;
+
+	@:manim("test/examples/9-ninePatchDemo/ninePatchDemo.manim", "ninePatchDemo")
+	public var ninePatchDemo;
+
+	@:manim("test/examples/10-referenceDemo/referenceDemo.manim", "referenceDemo")
+	public var referenceDemo;
+
+	@:manim("test/examples/11-bitmapAlignDemo/bitmapAlignDemo.manim", "bitmapAlignDemo")
+	public var bitmapAlignDemo;
+
+	@:manim("test/examples/13-layoutRepeatableDemo/layoutRepeatableDemo.manim", "layoutRepeatableDemo")
+	public var layoutRepeatableDemo;
 }
