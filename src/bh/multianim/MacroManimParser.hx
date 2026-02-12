@@ -1358,7 +1358,7 @@ class MacroManimParser {
 				if (n == null) error('expected integer for default');
 				Flag(n);
 			case PPTArray:
-				error('array default not supported in this context');
+				error('array default requires bracket syntax: [val1, val2, ...]');
 		}
 	}
 

@@ -163,4 +163,7 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/54-codegenPaletteReplace/codegenPaletteReplace.manim", "codegenPaletteReplace")
 	public var paletteReplace;
+
+	@:manim("test/examples/55-codegenArray/codegenArray.manim", "codegenArray")
+	public var array;
 }

@@ -5,10 +5,17 @@
 | Gap | Severity | Notes |
 |-----|----------|-------|
 | **RVFunction** (`function(gridWidth)`) | Low | Evaluates to `0`. Rarely used. |
-| **RVElementOfArray** (`$arr[0]`) | Low | Evaluates to `0`. |
-| **RVArray / RVArrayReference** | Low | Evaluates to `0`. Mainly used internally by iterators. |
 | **Multi-element named getters** | Low | Only single-element `get_name()` generated. Multi-element `Updatable` wrappers not created. |
 | **Definition node types** | N/A | AUTOTILE (`buildAutotile()` API), ATLAS2 (inline), ANIMATED_PATH — accessed by reference, not rendered as children. |
+
+## Implemented
+
+| Feature | Notes |
+|---------|-------|
+| **Array parameters** (`param:array=[v1,v2]`) | `PPTArray` → `Array<String>` typed field. Default as null with constructor fallback (Haxe constant-default limitation). |
+| **RVElementOfArray** (`$arr[$i]`) | Resolves to runtime loop var or `this._arr[index]`. |
+| **ArrayIterator in REPEAT** | `repeatable($i, array($val, $arr))` — runtime pool with `_rt_val` value variable. |
+| **TEXT in runtime repeat** | `generateRuntimeChildExprs` handles TEXT nodes inside param-dependent iterators. |
 
 ## Phase 2: Performance — optimize generated code
 

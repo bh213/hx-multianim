@@ -726,6 +726,30 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		simpleMacroTest(54, "codegenPaletteReplace", () -> createMp().paletteReplace.create(), async);
 	}
 
+	// ==================== Array: visual (3-image) ====================
+
+	@Test
+	public function test55_CodegenArray(async:utest.Async):Void {
+		var params:Array<Map<String, Dynamic>> = [];
+		for (i in 0...3) {
+			var p = new Map<String, Dynamic>();
+			switch (i) {
+				case 0: p.set("items", (["one", "two", "three"] : Array<Dynamic>));
+				case 1: p.set("items", (["alpha", "beta"] : Array<Dynamic>));
+				case 2: p.set("items", (["x", "y", "z", "w"] : Array<Dynamic>));
+			}
+			params.push(p);
+		}
+		multiInstanceMacroTest(55, "codegenArray", 4.0, 80.0, params, function(i:Int):h2d.Object {
+			var mp = createMp();
+			return switch (i) {
+				case 0: mp.array.create(["one", "two", "three"]);
+				case 1: mp.array.create(["alpha", "beta"]);
+				default: mp.array.create(["x", "y", "z", "w"]);
+			};
+		}, async);
+	}
+
 	// ==================== RepeatableDemo: macro comparison ====================
 
 	@Test
