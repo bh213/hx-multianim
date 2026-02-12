@@ -12,6 +12,10 @@ import bh.test.HtmlReportGenerator;
  *   - Builder (runtime) rendering
  *   - Macro (compile-time) rendering
  */
+@:access(bh.base.Particles)
+@:access(bh.base.ParticleGroup)
+@:access(h2d.SpriteBatch)
+@:access(h2d.BatchElement)
 class ProgrammableCodeGenTest extends VisualTestBase {
 	public function new(s2d:Scene) {
 		super("programmableCodeGen", s2d);
@@ -517,6 +521,106 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 				default: mp.rangeFlags.create(50, 50, 0).root;
 			};
 		}, async);
+	}
+
+	// ==================== Particles: visual + unit tests ====================
+
+	@Test
+	public function test51_CodegenParticles(async:utest.Async):Void {
+		setupTest(51, "codegenParticles");
+		VisualTestBase.pendingVisualTests++;
+		async.setTimeout(15000);
+
+		final animFilePath = 'test/examples/51-codegenParticles/codegenParticles.manim';
+		final sizeX = 1280;
+		final sizeY = 720;
+
+		// Phase 1: builder — build, advance particles, screenshot
+		clearScene();
+		var builderResult = buildAndAddToScene(animFilePath, "codegenParticles");
+		if (builderResult == null) {
+			Assert.fail("Failed to build codegenParticles from builder");
+			VisualTestBase.pendingVisualTests--;
+			async.done();
+			return;
+		}
+
+		var builderParticles = findParticles(builderResult.object);
+		if (builderParticles != null) advanceParticles(builderParticles, 1.5);
+
+		waitForUpdate(function(dt:Float) {
+			var builderPath = getActualImagePath();
+			var builderSuccess = screenshot(builderPath, sizeX, sizeY);
+			Assert.isTrue(builderSuccess, "Builder should produce non-empty screenshot");
+
+			// Phase 2: macro — create, advance particles, screenshot
+			clearScene();
+			var macroRoot = createMp().particles.create().root;
+			s2d.addChild(macroRoot);
+
+			var macroParticles = findParticles(macroRoot);
+			if (macroParticles != null) advanceParticles(macroParticles, 1.5);
+
+			waitForUpdate(function(dt2:Float) {
+				var macroPath = 'test/screenshots/codegenParticles_macro.png';
+				var macroSuccess = screenshot(macroPath, sizeX, sizeY);
+				Assert.isTrue(macroSuccess, "Macro should produce non-empty screenshot");
+
+				// Both should produce visible particles — compare loosely to reference
+				var referencePath = getReferenceImagePath();
+				var builderSim = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
+				var macroSim = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
+
+				// Use low threshold since particles are randomly positioned
+				var threshold = 0.70;
+				var builderOk = builderSim > threshold;
+				var macroOk = macroSim > threshold;
+
+				HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath, builderOk && macroOk,
+					builderSim, null, macroPath, macroSim, macroOk);
+				HtmlReportGenerator.generateReport();
+
+				Assert.isTrue(builderOk, 'Builder should roughly match reference (similarity: ${Math.round(builderSim * 10000) / 100}%)');
+				Assert.isTrue(macroOk, 'Macro should roughly match reference (similarity: ${Math.round(macroSim * 10000) / 100}%)');
+
+				VisualTestBase.pendingVisualTests--;
+				async.done();
+			});
+		});
+	}
+
+	static function findParticles(obj:h2d.Object):Null<bh.base.Particles> {
+		if (Std.isOfType(obj, bh.base.Particles)) return cast obj;
+		for (i in 0...obj.numChildren) {
+			var result = findParticles(obj.getChildAt(i));
+			if (result != null) return result;
+		}
+		return null;
+	}
+
+	/**
+	 * Advance particle simulation by totalTime seconds using fixed timesteps.
+	 * Uses @:access to directly update particle groups and batch elements.
+	 */
+	static function advanceParticles(particles:bh.base.Particles, totalTime:Float):Void {
+		final step:Float = 0.016;
+		var remaining = totalTime;
+		while (remaining > 0) {
+			final dt = remaining < step ? remaining : step;
+			for (g in particles.groups) {
+				if (!g.started && g.enabled) g.start();
+				g.updateTime(dt);
+				// Advance each particle in the batch (mirrors SpriteBatch.sync behavior)
+				var e = g.batch.first;
+				while (e != null) {
+					var next = e.next;
+					if (!e.update(dt))
+						e.remove();
+					e = next;
+				}
+			}
+			remaining -= step;
+		}
 	}
 
 	// ==================== MultiProgrammable factory: unit tests ====================

@@ -49,4 +49,7 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/50-codegenRangeFlags/codegenRangeFlags.manim", "codegenRangeFlags")
 	public var rangeFlags;
+
+	@:manim("test/examples/51-codegenParticles/codegenParticles.manim", "codegenParticles")
+	public var particles;
 }

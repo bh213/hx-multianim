@@ -22,6 +22,8 @@ What the `@:build(ProgrammableCodeGen.buildAll())` macro supports vs what's miss
 - **INTERACTIVE** — MAObject with width/height/id
 - **REFERENCE** — delegates to `ProgrammableBuilder.buildReference()` at construction, builds parameter map at runtime
 - **GRAPHICS** — generates `h2d.Graphics` draw calls (beginFill/drawRect/drawCircle/etc.), supports filled vs stroked
+- **PIXELS** — generates `bh.base.PixelLines` draw calls (line/rect/filledRect/pixel), all coordinate systems, compile-time bounds when static
+- **PARTICLES** — runtime delegation via `ProgrammableBuilder.buildParticles()`, full feature support
 - **PLACEHOLDER** — delegates to `ProgrammableBuilder.buildPlaceholderVia*()` methods, supports PRSCallback/PRSCallbackWithIndex/PRSBuilderParameterSource with PHTileSource/PHNothing fallback
 - **Conditionals** — `@(p=>v)`, `@(p=>[v1,v2])`, `@(p!=v)`, ranges `@(p=>10..30)`, `@else`, `@default`, `CoAny`, `CoFlag`, `CoNot`
 - **Expressions** — `$param`, `+`, `-`, `*`, `/`, `div`, `%`, ternary, comparisons, parentheses
@@ -59,25 +61,13 @@ Static count: unrolled at compile time — N copies with loop variable substitut
 Param-dependent count: pre-allocated pool up to max. `_applyVisibility()` shows/hides pool items.
 REPEAT2D: same approach for both axes. Static x Static → fully unrolled. Mixed → pool for param axis.
 
-## Not Implemented — Stub Only (empty h2d.Object placeholder)
+## Recently Implemented
 
 ### PIXELS
-Pixel-level drawing (PixelLines). Builder supports:
-- Lines, rectangles (filled/unfilled), individual pixels
-- Color per element
-
-For codegen: similar to GRAPHICS — generate draw calls. Needs `h2d.Graphics` with pixel-level operations.
+Pixel-level drawing via `bh.base.PixelLines`. Generates compile-time bounds calculation and direct draw calls for all shape types (line, rect, filledRect, pixel). All coordinate systems supported (offset, grid, hex corner/edge, layout) — resolved at compile time when static. Falls back to runtime bounds calculation for param-dependent coordinates.
 
 ### PARTICLES
-Full particle system. Builder creates emitters with:
-- Emitter modes (point, cone, box, circle)
-- Tile loading, life/size/speed/gravity
-- Color interpolation (start/mid/end)
-- Fade in/out, rotation
-- Force fields (attractor, repulsor, vortex, wind, turbulence)
-- Bounds modes (kill, bounce, wrap)
-
-For codegen: complex. Best approach is to delegate to a runtime helper that creates the particle system from the parsed AST. No need to inline all particle logic into generated code.
+Runtime delegation via `ProgrammableBuilder.buildParticles()` which calls `MultiAnimBuilder.createParticles()`. Supports all particle features (emit modes, tiles, colors, force fields, bounds, sub-emitters, etc.) by reusing the builder's full implementation at runtime.
 
 ## Missing Properties
 
@@ -107,18 +97,20 @@ For codegen: complex. Best approach is to delegate to a runtime helper that crea
 
 | # | Test | Covers |
 |---|------|--------|
-| 38 | codegenButton | Bitmap, text, ninepatch, conditionals, expressions |
-| 39 | codegenHealthbar | Ninepatch, expressions, param-dependent width |
-| 40 | codegenDialog | Flow, layers, mask, text, ninepatch |
-| 41 | codegenRepeat | Grid/range/layout/tiles/stateanim/array iterators |
-| 42 | codegenRepeat2d | 2D grid × grid, range × range |
-| 43 | codegenLayout | Layout positioning |
-| 44 | codegenTilesIter | TilesIterator with bitmap |
-| 46 | codegenGraphics | Graphics draw calls (filled/stroked) |
-| 47 | codegenReference | Reference to other programmables |
-| 48 | codegenFilterParam | Param-dependent filters (outline, blur, tint) |
-| 49 | codegenGridPos | Grid coordinate positioning from #defaultLayout |
-| 50 | codegenHexPos | Hex corner/edge positioning (pointy + flat) |
-| 51 | codegenTextOpts | letterSpacing, lineSpacing, lineBreak, dropShadow |
-| 52 | codegenBoolFloat | PPTBool conditionals, PPTFloat in @alpha() and expressions |
-| 53 | codegenRangeFlags | PPTRange conditionals + expressions, PPTFlags declaration |
+| 35 | tintDemo | Tint property baseline (visual only, no codegen comparison) |
+| 36 | codegenButton | Bitmap, text, ninepatch, conditionals, expressions |
+| 37 | codegenHealthbar | Ninepatch, expressions, param-dependent width |
+| 38 | codegenDialog | Flow, layers, mask, text, ninepatch |
+| 39 | codegenRepeat | Grid/range/layout/tiles/stateanim/array iterators |
+| 40 | codegenRepeat2d | 2D grid × grid, range × range |
+| 41 | codegenLayout | Layout positioning |
+| 42 | codegenTilesIter | TilesIterator with bitmap |
+| 43 | codegenGraphics | Graphics draw calls (filled/stroked) |
+| 44 | codegenReference | Reference to other programmables |
+| 45 | codegenFilterParam | Param-dependent filters (outline, blur, tint) |
+| 46 | codegenGridPos | Grid coordinate positioning from #defaultLayout |
+| 47 | codegenHexPos | Hex corner/edge positioning (pointy + flat) |
+| 48 | codegenTextOpts | letterSpacing, lineSpacing, lineBreak, dropShadow |
+| 49 | codegenBoolFloat | PPTBool conditionals, PPTFloat in @alpha() and expressions |
+| 50 | codegenRangeFlags | PPTRange conditionals + expressions, PPTFlags declaration |
+| 51 | codegenParticles | Particles runtime delegation via buildParticles() |

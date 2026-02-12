@@ -88,6 +88,36 @@ class ProgrammableBuilder {
 		return (_builder : MultiAnimBuilder).buildWithParameters(name, parameters);
 	}
 
+	/** Build a particle system via the builder (for PARTICLES nodes).
+	 *  Searches the named programmable's children for a PARTICLES node. */
+	public function buildParticles(programmableName:String):bh.base.Particles {
+		final builder:MultiAnimBuilder = cast _builder;
+		final progNode = builder.multiParserResult.nodes.get(programmableName);
+		if (progNode == null)
+			throw 'could not find programmable node: $programmableName';
+		final particlesNode = findFirstParticlesChild(progNode);
+		if (particlesNode == null)
+			throw 'no particles found in programmable: $programmableName';
+		return switch particlesNode.type {
+			case PARTICLES(particlesDef):
+				builder.createParticleFromDef(particlesDef, particlesNode.uniqueNodeName);
+			default:
+				throw 'unexpected node type in $programmableName';
+		};
+	}
+
+	private static function findFirstParticlesChild(node:MultiAnimParser.Node):Null<MultiAnimParser.Node> {
+		for (child in node.children) {
+			switch child.type {
+				case PARTICLES(_): return child;
+				default:
+					var found = findFirstParticlesChild(child);
+					if (found != null) return found;
+			}
+		}
+		return null;
+	}
+
 	/** Get all tiles from a sheet, optionally filtered by tile name prefix.
 	 *  Used by generated code for TilesIterator. */
 	public function getSheetTiles(sheetName:String, tileFilter:Null<String>):Array<Tile> {
