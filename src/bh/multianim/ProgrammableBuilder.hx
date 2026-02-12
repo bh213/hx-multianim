@@ -166,44 +166,33 @@ class ProgrammableBuilder {
 		return animSM;
 	}
 
-	/** Build a TileGroup by finding it in the programmable's node tree.
+	/** Build a TileGroup by finding the Nth one in the programmable's node tree.
 	 *  Used by generated code for TILEGROUP nodes.
 	 *  Delegates to the builder which handles TileGroup's special child-add mechanism. */
-	public function buildTileGroupFromProgrammable(programmableName:String):h2d.Object {
+	public function buildTileGroupFromProgrammable(programmableName:String, index:Int = 0):h2d.Object {
 		final builder:MultiAnimBuilder = cast _builder;
 		final progNode = builder.multiParserResult.nodes.get(programmableName);
 		if (progNode == null)
 			throw 'could not find programmable node: $programmableName';
-		final tgNode = findFirstTileGroupChild(progNode);
-		if (tgNode == null)
-			throw 'no tileGroup found in programmable: $programmableName';
 		// Build the tilegroup via the builder — it handles TileGroupMode for children
 		final result = builder.buildWithParameters(programmableName, new Map());
-		// Find the TileGroup in the result's object tree
-		return findTileGroupInTree(result.object);
+		// Find all TileGroups in the result's object tree
+		final tileGroups:Array<h2d.Object> = [];
+		findAllTileGroupsInTree(result.object, tileGroups);
+		if (index >= tileGroups.length)
+			throw 'tileGroup index $index out of range (found ${tileGroups.length}) in programmable: $programmableName';
+		return tileGroups[index];
 	}
 
-	private static function findFirstTileGroupChild(node:MultiAnimParser.Node):Null<MultiAnimParser.Node> {
-		for (child in node.children) {
-			switch child.type {
-				case TILEGROUP: return child;
-				default:
-					var found = findFirstTileGroupChild(child);
-					if (found != null) return found;
-			}
+	private static function findAllTileGroupsInTree(obj:h2d.Object, result:Array<h2d.Object>):Void {
+		if (Std.isOfType(obj, h2d.TileGroup)) {
+			result.push(obj);
+			return;
 		}
-		return null;
-	}
-
-	private static function findTileGroupInTree(obj:h2d.Object):h2d.Object {
-		if (Std.isOfType(obj, h2d.TileGroup)) return obj;
 		final it = @:privateAccess obj.children.iterator();
 		while (it.hasNext()) {
-			var child = it.next();
-			var found = findTileGroupInTree(child);
-			if (found != null) return found;
+			findAllTileGroupsInTree(it.next(), result);
 		}
-		return obj; // fallback
 	}
 
 	/** Get all tiles from a sheet, optionally filtered by tile name prefix.
