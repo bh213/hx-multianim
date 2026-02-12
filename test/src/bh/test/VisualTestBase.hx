@@ -365,12 +365,13 @@ class VisualTestBase extends utest.Test {
 	 * Handles errors gracefully — if build or macro creation fails, the test fails with an assertion.
 	 */
 	public function builderAndMacroScreenshotAndCompare(animFilePath:String, elementName:String, createMacroRoot:() -> h2d.Object,
-			async:utest.Async, ?sizeX:Int, ?sizeY:Int, ?scale:Float):Void {
+			async:utest.Async, ?sizeX:Int, ?sizeY:Int, ?scale:Float, ?threshold:Float):Void {
 		pendingVisualTests++;
 		async.setTimeout(15000);
 		if (sizeX == null) sizeX = 1280;
 		if (sizeY == null) sizeY = 720;
 		if (scale == null) scale = 1.0;
+		if (threshold == null) threshold = 0.99;
 
 		// Phase 1: builder screenshot
 		clearScene();
@@ -438,15 +439,15 @@ class VisualTestBase extends utest.Test {
 					var macroSuccess = screenshot(macroPath, sizeX, sizeY);
 
 					var builderSimilarity = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
-					var builderPassed = builderSuccess ? builderSimilarity > 0.99 : false;
+					var builderPassed = builderSuccess ? builderSimilarity > threshold : false;
 
 					var macroSimilarity = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
-					var macroPassed = macroSuccess ? macroSimilarity > 0.99 : false;
+					var macroPassed = macroSuccess ? macroSimilarity > threshold : false;
 
 					var overallPassed = builderPassed && macroPassed;
 
 					HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath, overallPassed, builderSimilarity, null, macroPath,
-						macroSimilarity, macroPassed, 0.99, 0.99);
+						macroSimilarity, macroPassed, threshold, threshold);
 					HtmlReportGenerator.generateReport();
 
 					Assert.isTrue(builderPassed, 'Builder should match reference (similarity: ${Math.round(builderSimilarity * 10000) / 100}%)');

@@ -675,6 +675,74 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		}
 	}
 
+	// ==================== BlendMode: visual (3-image) ====================
+
+	@Test
+	public function test52_CodegenBlendMode(async:utest.Async):Void {
+		simpleMacroTest(52, "codegenBlendMode", () -> createMp().blendMode.create(), async);
+	}
+
+	// ==================== Apply: visual — multi-instance ====================
+
+	@Test
+	public function test53_CodegenApply(async:utest.Async):Void {
+		var params:Array<Map<String, Dynamic>> = [];
+		for (i in 0...3) {
+			var p = new Map<String, Dynamic>();
+			switch (i) {
+				case 0: p.set("state", "alpha");
+				case 1: p.set("state", "filter");
+				case 2: p.set("state", "scale");
+			}
+			params.push(p);
+		}
+
+		multiInstanceMacroTest(53, "codegenApply", 1.0, 250.0, params, function(i:Int):h2d.Object {
+			var mp = createMp();
+			return switch (i) {
+				case 0: mp.apply.create(bh.test.MultiProgrammable_Apply.Alpha);
+				case 1: mp.apply.create(bh.test.MultiProgrammable_Apply.Filter);
+				default: mp.apply.create(bh.test.MultiProgrammable_Apply.Scale);
+			};
+		}, async);
+	}
+
+	// ==================== HexGridPixels: macro comparison ====================
+
+	@Test
+	public function test01_HexGridPixels(async:utest.Async):Void {
+		setupTest(1, "hexGridPixels");
+		builderAndMacroScreenshotAndCompare("test/examples/1-hexGridPixels/hexGridPixels.manim", "hexGridPixels",
+			() -> createMp().hexGridPixels.create(), async, null, null, null, 0.999);
+	}
+
+	// ==================== TextDemo: macro comparison ====================
+
+	@Test
+	public function test02_TextDemo(async:utest.Async):Void {
+		setupTest(2, "textDemo");
+		builderAndMacroScreenshotAndCompare("test/examples/2-textDemo/textDemo.manim", "textDemo",
+			() -> createMp().textDemo.create(), async);
+	}
+
+	// ==================== BitmapDemo: macro comparison ====================
+
+	@Test
+	public function test03_BitmapDemo(async:utest.Async):Void {
+		setupTest(3, "bitmapDemo");
+		builderAndMacroScreenshotAndCompare("test/examples/3-bitmapDemo/bitmapDemo.manim", "bitmapDemo",
+			() -> createMp().bitmapDemo.create(), async);
+	}
+
+	// ==================== ApplyDemo: macro comparison ====================
+
+	@Test
+	public function test17_ApplyDemo(async:utest.Async):Void {
+		setupTest(17, "applyDemo");
+		builderAndMacroScreenshotAndCompare("test/examples/17-applyDemo/applyDemo.manim", "applyDemo",
+			() -> createMp().applyDemo.create(), async);
+	}
+
 	// ==================== MultiProgrammable factory: unit tests ====================
 
 	@Test

@@ -359,6 +359,13 @@ class HtmlReportGenerator {
 			html.add('    </div>\n');
 		}
 
+		// Sort results by test number for consistent ordering
+		results.sort(function(a, b) {
+			var numA = extractTestNumber(a.testName);
+			var numB = extractTestNumber(b.testName);
+			return numA - numB;
+		});
+
 		// Individual test results
 		for (result in results) {
 			var statusClass = result.passed ? "passed" : "failed";
@@ -510,6 +517,19 @@ class HtmlReportGenerator {
 
 		// Write summary to a separate file for test.bat to read
 		File.saveContent("build/test_result.txt", getSummary());
+	}
+
+	private static function extractTestNumber(testName:String):Int {
+		// Test names follow pattern "#17: applyDemo"
+		if (testName.startsWith("#")) {
+			var colonIdx = testName.indexOf(":");
+			if (colonIdx > 1) {
+				var numStr = testName.substring(1, colonIdx);
+				var num = Std.parseInt(numStr);
+				if (num != null) return num;
+			}
+		}
+		return 9999;
 	}
 
 	private static function makeRelativePath(path:String):String {
