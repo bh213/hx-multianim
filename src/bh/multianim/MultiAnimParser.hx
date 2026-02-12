@@ -650,7 +650,7 @@ typedef ParticlesDef = {
 }
 
 enum RepeatType {
-	GridIterator(dx:ReferenceableValue, dy:ReferenceableValue, repeatCount:ReferenceableValue);
+	StepIterator(dx:ReferenceableValue, dy:ReferenceableValue, repeatCount:ReferenceableValue);
 	LayoutIterator(layoutName:String);
 	ArrayIterator(valueVariableName:String, arrayName:String);
 	RangeIterator(start:ReferenceableValue, end:ReferenceableValue, step:ReferenceableValue);

@@ -1494,7 +1494,7 @@ class MultiAnimBuilder {
 				var tilenameIterator:Array<String> = [];
 
 				switch repeatType {
-					case GridIterator(dirX, dirY, repeats):
+					case StepIterator(dirX, dirY, repeats):
 						repeatCount = resolveAsInteger(repeats);
 						dx = dirX == null ? 0 : resolveAsInteger(dirX);
 						dy = dirY == null ? 0 : resolveAsInteger(dirY);
@@ -1570,7 +1570,7 @@ class MultiAnimBuilder {
 					for (childNode in resolveConditionalChildren(node.children)) {
 						var iterPos = currentPos.clone();
 						switch repeatType {
-							case GridIterator(_, _, _):
+							case StepIterator(_, _, _):
 								iterPos.add(dx * count, dy * count);
 							case LayoutIterator(_):
 								var pt = iterator.next();
@@ -1615,7 +1615,7 @@ class MultiAnimBuilder {
 				}
 
 				switch repeatTypeX {
-					case GridIterator(dirX, dirY, repeats):
+					case StepIterator(dirX, dirY, repeats):
 						xRepeatCount = resolveAsInteger(repeats);
 						xDx = dirX == null ? 0 : resolveAsInteger(dirX);
 						xDy = dirY == null ? 0 : resolveAsInteger(dirY);
@@ -1641,7 +1641,7 @@ class MultiAnimBuilder {
 				}
 
 				switch repeatTypeY {
-					case GridIterator(dirX, dirY, repeats):
+					case StepIterator(dirX, dirY, repeats):
 						yRepeatCount = resolveAsInteger(repeats);
 						yDx = dirX == null ? 0 : resolveAsInteger(dirX);
 						yDy = dirY == null ? 0 : resolveAsInteger(dirY);
@@ -1677,7 +1677,7 @@ class MultiAnimBuilder {
 					var yOffsetX = 0;
 					var yOffsetY = 0;
 					switch repeatTypeY {
-						case GridIterator(_, _, _):
+						case StepIterator(_, _, _):
 							yOffsetX = yDx * yCount;
 							yOffsetY = yDy * yCount;
 						case LayoutIterator(_):
@@ -1698,7 +1698,7 @@ class MultiAnimBuilder {
 						var xOffsetX = 0;
 						var xOffsetY = 0;
 						switch repeatTypeX {
-							case GridIterator(_, _, _):
+							case StepIterator(_, _, _):
 								xOffsetX = xDx * xCount;
 								xOffsetY = xDy * xCount;
 							case LayoutIterator(_):
@@ -2055,7 +2055,7 @@ class MultiAnimBuilder {
 				var tilenameIterator:Array<String> = [];
 
 				switch repeatType {
-					case GridIterator(dirX, dirY, repeats):
+					case StepIterator(dirX, dirY, repeats):
 						repeatCount = resolveAsInteger(repeats);
 						dx = dirX == null ? 0 : resolveAsInteger(dirX);
 						dy = dirY == null ? 0 : resolveAsInteger(dirY);
@@ -2133,7 +2133,7 @@ class MultiAnimBuilder {
 						if (obj == null)
 							continue;
 						switch repeatType {
-							case GridIterator(_, _, _):
+							case StepIterator(_, _, _):
 								addPosition(obj, dx * count, dy * count);
 							case LayoutIterator(_):
 								var pt = iterator.next();
@@ -2183,7 +2183,7 @@ class MultiAnimBuilder {
 				}
 
 				switch repeatTypeX {
-					case GridIterator(dirX, dirY, repeats):
+					case StepIterator(dirX, dirY, repeats):
 						xRepeatCount = resolveAsInteger(repeats);
 						xDx = dirX == null ? 0 : resolveAsInteger(dirX);
 						xDy = dirY == null ? 0 : resolveAsInteger(dirY);
@@ -2209,7 +2209,7 @@ class MultiAnimBuilder {
 				}
 
 				switch repeatTypeY {
-					case GridIterator(dirX, dirY, repeats):
+					case StepIterator(dirX, dirY, repeats):
 						yRepeatCount = resolveAsInteger(repeats);
 						yDx = dirX == null ? 0 : resolveAsInteger(dirX);
 						yDy = dirY == null ? 0 : resolveAsInteger(dirY);
@@ -2247,7 +2247,7 @@ class MultiAnimBuilder {
 					var yOffsetX = 0.0;
 					var yOffsetY = 0.0;
 					switch repeatTypeY {
-						case GridIterator(_, _, _):
+						case StepIterator(_, _, _):
 							yOffsetX = yDx * yCount;
 							yOffsetY = yDy * yCount;
 						case LayoutIterator(_):
@@ -2268,7 +2268,7 @@ class MultiAnimBuilder {
 						var xOffsetX = 0.0;
 						var xOffsetY = 0.0;
 						switch repeatTypeX {
-							case GridIterator(_, _, _):
+							case StepIterator(_, _, _):
 								xOffsetX = xDx * xCount;
 								xOffsetY = xDy * xCount;
 							case LayoutIterator(_):

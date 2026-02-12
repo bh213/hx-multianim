@@ -2702,7 +2702,8 @@ class MacroManimParser {
 
 	function parseRepeatIterator(defs:ParametersDefinitions):RepeatType {
 		switch (peek()) {
-			case TIdentifier(s) if (isKeyword(s, "grid")):
+			case TIdentifier(s) if (isKeyword(s, "step") || isKeyword(s, "grid")):
+				if (isKeyword(s, "grid")) trace('WARNING: repeatable iterator "grid" is deprecated, use "step" instead');
 				advance();
 				expect(TOpen);
 				final count = parseIntegerOrReference();
@@ -2718,10 +2719,10 @@ class MacroManimParser {
 					switch (pname.toLowerCase()) {
 						case "dx": dx = parseIntegerOrReference();
 						case "dy": dy = parseIntegerOrReference();
-						default: error('unknown grid param: $pname');
+						default: error('unknown step param: $pname');
 					}
 				}
-				return GridIterator(dx, dy, count);
+				return StepIterator(dx, dy, count);
 			case TIdentifier(s) if (isKeyword(s, "layout")):
 				advance();
 				expect(TOpen);

@@ -632,7 +632,7 @@ class ProgrammableCodeGen {
 	/** Resolve repeat iterator info: returns {count, dx, dy, rangeStart, rangeStep} or null if param-dependent */
 	static function resolveRepeatInfo(repeatType:RepeatType):{staticCount:Null<Int>, dx:Int, dy:Int, rangeStart:Int, rangeStep:Int, countRV:Null<ReferenceableValue>} {
 		return switch (repeatType) {
-			case GridIterator(dirX, dirY, repeats):
+			case StepIterator(dirX, dirY, repeats):
 				final count = tryResolveStaticInt(repeats);
 				final dxVal = dirX != null ? tryResolveStaticInt(dirX) : 0;
 				final dyVal = dirY != null ? tryResolveStaticInt(dirY) : 0;
@@ -762,14 +762,14 @@ class ProgrammableCodeGen {
 	static function poolRepeatChildren(node:Node, varName:String, maxCount:Int, dx:Int, dy:Int, rangeStart:Int, rangeStep:Int, containerField:String, fields:Array<Field>, ctorExprs:Array<Expr>, countParamRefs:Array<String>, countRV:ReferenceableValue, repeatType:RepeatType, pos:Position):Void {
 		if (node.children == null) return;
 
-		// Generate the count expression: for GridIterator it's the count directly, for RangeIterator it needs calculation
+		// Generate the count expression: for StepIterator it's the count directly, for RangeIterator it needs calculation
 		final countExpr:Expr = switch (repeatType) {
 			case RangeIterator(start, end, step):
 				final endExpr = rvToExpr(end);
 				final startExpr = rvToExpr(start);
 				final stepExpr = rvToExpr(step);
 				macro Math.ceil(($endExpr - $startExpr) / $stepExpr);
-			case GridIterator(_, _, repeats):
+			case StepIterator(_, _, repeats):
 				rvToExpr(repeats);
 			default:
 				rvToExpr(countRV);
@@ -1281,7 +1281,7 @@ class ProgrammableCodeGen {
 				final startExpr = rvToExpr(start);
 				final stepExpr = rvToExpr(step);
 				macro Math.ceil(($endExpr - $startExpr) / $stepExpr);
-			case GridIterator(_, _, repeats): rvToExpr(repeats);
+			case StepIterator(_, _, repeats): rvToExpr(repeats);
 			default: macro $v{maxX};
 		};
 
@@ -1291,7 +1291,7 @@ class ProgrammableCodeGen {
 				final startExpr = rvToExpr(start);
 				final stepExpr = rvToExpr(step);
 				macro Math.ceil(($endExpr - $startExpr) / $stepExpr);
-			case GridIterator(_, _, repeats): rvToExpr(repeats);
+			case StepIterator(_, _, repeats): rvToExpr(repeats);
 			default: macro $v{maxY};
 		};
 

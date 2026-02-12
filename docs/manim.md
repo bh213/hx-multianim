@@ -207,10 +207,11 @@ Core element of the library. Creates an instance of all children belonging to th
 ### repeatable
 Repeats children with various iterators.
 
-**Grid iterator:**
+**Step iterator:**
 ```
-repeatable($varname, grid(repeatCount, dx, dy))
+repeatable($varname, step(repeatCount, dx, dy))
 ```
+Note: `grid` is accepted as a deprecated alias for `step`.
 
 **Layout iterator:**
 ```
@@ -259,11 +260,11 @@ repeatable($i, range(0, 3)) {
   text(pikzel, 'Index: $i', #fff, left, 100): $i*20, 0
 }
 
-repeatable($i, grid(10, dx:10)) {
+repeatable($i, step(10, dx:10)) {
   pixels (rect 0,0, 5, 5, #fff);
 }
 
-repeatable2d($x, $y, grid(3, dx:10), grid(2, dy:20)) {
+repeatable2d($x, $y, step(3, dx:10), step(2, dy:20)) {
   bitmap("cell.png"): 0,0
 }
 
