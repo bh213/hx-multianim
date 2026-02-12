@@ -2382,29 +2382,24 @@ class ProgrammableCodeGen {
 		final tileExpr = tileSourceToExpr(tileSource);
 		final fieldRef = macro $p{["this", fieldName]};
 		final createExprs:Array<Expr> = [];
-		final alignExprs:Array<Expr> = [];
+		// Always use tile.sub() to get an independent copy with correct dx/dy.
+		// Atlas tiles may have dx/dy mutated by AnimParser, so we must reset them.
+		// This matches the builder which always calls tile.sub() (MultiAnimBuilder line 1481).
+		var dxExpr:Expr = switch (hAlign) {
+			case Center: macro -(tile.width * 0.5);
+			case Right: macro -tile.width;
+			default: macro 0.0;
+		};
+		var dyExpr:Expr = switch (vAlign) {
+			case Center: macro -(tile.height * 0.5);
+			case Bottom: macro -tile.height;
+			default: macro 0.0;
+		};
 
-		switch (vAlign) {
-			case Center: alignExprs.push(macro tile.dy = -(tile.height * 0.5));
-			case Bottom: alignExprs.push(macro tile.dy = -tile.height);
-			default:
-		}
-
-		switch (hAlign) {
-			case Center: alignExprs.push(macro tile.dx = -(tile.width * 0.5));
-			case Right: alignExprs.push(macro tile.dx = -tile.width);
-			default:
-		}
-
-		if (alignExprs.length > 0) {
+		{
 			final block:Array<Expr> = [macro var tile = $tileExpr];
-			for (e in alignExprs)
-				block.push(e);
-			block.push(macro tile = tile.sub(0, 0, tile.width, tile.height, tile.dx, tile.dy));
-			block.push(macro $fieldRef = new h2d.Bitmap(tile));
+			block.push(macro $fieldRef = new h2d.Bitmap(tile.sub(0, 0, tile.width, tile.height, $dxExpr, $dyExpr)));
 			createExprs.push(macro $b{block});
-		} else {
-			createExprs.push(macro $fieldRef = new h2d.Bitmap($tileExpr));
 		}
 
 		return {
@@ -2767,6 +2762,15 @@ class ProgrammableCodeGen {
 				} else {
 					macro this._pb.resolveCallbackWithIndexInt(Std.string($nameExpr), $indexExpr, $defExpr);
 				}
+			case RVColorXY(externalReference, name, x, y):
+				final nameExpr = macro $v{name};
+				final xExpr = rvToExpr(x);
+				final yExpr = rvToExpr(y);
+				macro this._pb.getPaletteColor2D($nameExpr, $xExpr, $yExpr);
+			case RVColor(externalReference, name, index):
+				final nameExpr = macro $v{name};
+				final indexExpr = rvToExpr(index);
+				macro this._pb.getPaletteColorByIndex($nameExpr, $indexExpr);
 			default:
 				macro 0;
 		};

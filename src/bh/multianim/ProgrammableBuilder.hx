@@ -37,16 +37,18 @@ class ProgrammableBuilder {
 		this.resourceLoader = resourceLoader;
 	}
 
-	/** Load a tile from a sprite sheet by name */
+	/** Load a tile from a sprite sheet by name.
+	 *  Returns a copy so callers never mutate the cached atlas tile. */
 	public function loadTile(sheet:String, name:String):Tile {
 		final atlas = getSheet(sheet);
 		final frame = atlas.get(name);
 		if (frame == null)
 			throw 'tile "$name" not found in sheet "$sheet"';
-		return frame.tile;
+		return copyTile(frame.tile);
 	}
 
-	/** Load a tile from a sprite sheet by name and index */
+	/** Load a tile from a sprite sheet by name and index.
+	 *  Returns a copy so callers never mutate the cached atlas tile. */
 	public function loadTileWithIndex(sheet:String, name:String, index:Int):Tile {
 		final atlas = getSheet(sheet);
 		final anim = atlas.getAnim(name);
@@ -54,12 +56,18 @@ class ProgrammableBuilder {
 			throw 'tile "$name" not found in sheet "$sheet"';
 		if (index < 0 || index >= anim.length)
 			throw 'tile "$name" in sheet "$sheet" does not have index $index';
-		return anim[index].tile;
+		return copyTile(anim[index].tile);
 	}
 
-	/** Load a tile from a file path */
+	/** Load a tile from a file path.
+	 *  Returns a copy so callers never mutate the cached tile. */
 	public function loadTileFile(filename:String):Tile {
-		return resourceLoader.loadTile(filename);
+		return copyTile(resourceLoader.loadTile(filename));
+	}
+
+	/** Create an independent copy of a tile so the cached original is never mutated. */
+	static inline function copyTile(t:Tile):Tile {
+		return t.sub(0, 0, t.width, t.height, t.dx, t.dy);
 	}
 
 	/** Load a 9-patch ScaleGrid from a sprite sheet */
@@ -83,6 +91,16 @@ class ProgrammableBuilder {
 		if (_builder != null)
 			return @:privateAccess (_builder : MultiAnimBuilder).getOrLoadSheet(sheetName);
 		return resourceLoader.loadSheet2(sheetName);
+	}
+
+	/** Look up a 2D palette color by name and x,y coordinates */
+	public function getPaletteColor2D(paletteName:String, x:Int, y:Int):Int {
+		return @:privateAccess (_builder : MultiAnimBuilder).getPalette(paletteName).getColor2D(x, y);
+	}
+
+	/** Look up a palette color by name and index */
+	public function getPaletteColorByIndex(paletteName:String, index:Int):Int {
+		return @:privateAccess (_builder : MultiAnimBuilder).getPalette(paletteName).getColorByIndex(index);
 	}
 
 	/** Build a sub-programmable via the builder (for REFERENCE nodes) */
