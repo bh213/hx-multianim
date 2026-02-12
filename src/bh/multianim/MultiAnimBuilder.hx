@@ -2810,6 +2810,11 @@ class MultiAnimBuilder {
 		}
 	}
 
+	/** Create particles from a ParticlesDef directly (used by ProgrammableBuilder) */
+	public function createParticleFromDef(particlesDef:ParticlesDef, name:String):bh.base.Particles {
+		return createParticleImpl(particlesDef, name);
+	}
+
 	public function createAnimatedPath(name:String, path:Path, initialSpeed:Float, positionMode:AnimatedPathPositionMode, object:BuiltHeapsComponent) {
 		var node = multiParserResult?.nodes.get(name);
 		if (node == null)

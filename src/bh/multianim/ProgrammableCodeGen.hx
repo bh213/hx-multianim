@@ -66,6 +66,9 @@ class ProgrammableCodeGen {
 	// Current manim path being processed (set per-field in buildAll, used by generateFields)
 	static var currentManimPath:String = "";
 
+	// Current programmable name being processed (set per-field in buildAll)
+	static var currentProgrammableName:String = "";
+
 	// Cache parsed results to avoid re-running subprocess for same file
 	static var parsedCache:Map<String, Map<String, Node>> = new Map();
 
@@ -82,6 +85,7 @@ class ProgrammableCodeGen {
 		repeatPoolEntries = [];
 		allParsedNodes = new Map();
 		currentManimPath = "";
+		currentProgrammableName = "";
 	}
 
 	/**
@@ -125,6 +129,7 @@ class ProgrammableCodeGen {
 				// Reset codegen state for each programmable
 				resetState();
 				currentManimPath = manimPath;
+				currentProgrammableName = programmableName;
 
 				// Parse the .manim file
 				final nodes = parseViaSubprocess(manimPath);
@@ -1325,12 +1330,11 @@ class ProgrammableCodeGen {
 			case GRAPHICS(elements):
 				generateGraphicsCreate(node, fieldName, elements, pos);
 
-			case PIXELS(_) | PARTICLES(_): {
-					fieldType: macro :h2d.Object,
-					createExprs: [macro $p{["this", fieldName]} = new h2d.Object()],
-					isContainer: false,
-					exprUpdates: [],
-				};
+			case PIXELS(shapes):
+				generatePixelsCreate(node, fieldName, shapes, pos);
+
+			case PARTICLES(particlesDef):
+				generateParticlesCreate(node, fieldName, particlesDef, pos);
 
 			default: null;
 		};
@@ -1696,6 +1700,337 @@ class ProgrammableCodeGen {
 		}
 
 		return exprs;
+	}
+
+	// ==================== Pixels ====================
+
+	/** Resolve a Coordinates value to compile-time {x:Float, y:Float}, supporting all coordinate types */
+	static function coordsToStaticXY(coords:Coordinates, pos:Position, ?node:MultiAnimParser.Node):Null<{x:Float, y:Float}> {
+		if (coords == null) return {x: 0.0, y: 0.0};
+		return switch (coords) {
+			case ZERO: {x: 0.0, y: 0.0};
+			case OFFSET(xrv, yrv):
+				final xVal = resolveRVStatic(xrv);
+				final yVal = resolveRVStatic(yrv);
+				if (xVal != null && yVal != null) {x: xVal, y: yVal} else null;
+			case SELECTED_GRID_POSITION(gridX, gridY):
+				final grid = getGridFromLayout();
+				final gx = resolveRVStatic(gridX);
+				final gy = resolveRVStatic(gridY);
+				if (grid != null && gx != null && gy != null) {x: gx * grid.spacingX, y: gy * grid.spacingY} else null;
+			case SELECTED_GRID_POSITION_WITH_OFFSET(gridX, gridY, offsetX, offsetY):
+				final grid = getGridFromLayout();
+				final gx = resolveRVStatic(gridX);
+				final gy = resolveRVStatic(gridY);
+				final ox = resolveRVStatic(offsetX);
+				final oy = resolveRVStatic(offsetY);
+				if (grid != null && gx != null && gy != null && ox != null && oy != null) {x: gx * grid.spacingX + ox, y: gy * grid.spacingY + oy} else null;
+			case SELECTED_HEX_POSITION(hex):
+				final hexLayout = getHexLayoutForNode(node);
+				if (hexLayout != null) {
+					final pt = hexLayout.hexToPixel(hex);
+					{x: pt.x, y: pt.y};
+				} else null;
+			case SELECTED_HEX_CORNER(count, factor):
+				final hexLayout = getHexLayoutForNode(node);
+				if (hexLayout != null) {
+					final c = resolveRVStatic(count);
+					final f = resolveRVStatic(factor);
+					if (c != null && f != null) {
+						final pt = hexLayout.polygonCorner(bh.base.Hex.zero(), Std.int(c), f);
+						{x: pt.x, y: pt.y};
+					} else null;
+				} else null;
+			case SELECTED_HEX_EDGE(direction, factor):
+				final hexLayout = getHexLayoutForNode(node);
+				if (hexLayout != null) {
+					final d = resolveRVStatic(direction);
+					final f = resolveRVStatic(factor);
+					if (d != null && f != null) {
+						final pt = hexLayout.polygonEdge(bh.base.Hex.zero(), Std.int(d), f);
+						{x: pt.x, y: pt.y};
+					} else null;
+				} else null;
+			case LAYOUT(layoutName, index):
+				final idx = resolveRVStatic(index);
+				if (idx != null) resolveLayoutPosition(layoutName, Std.int(idx)) else null;
+		};
+	}
+
+	/** Resolve a Coordinates value to expression pair {x:Expr, y:Expr}, supporting all coordinate types.
+	 *  Falls back to rvToExpr for OFFSET when static resolution fails (param-dependent). */
+	static function coordsToXYExprs(coords:Coordinates, pos:Position, ?node:MultiAnimParser.Node):{x:Expr, y:Expr} {
+		if (coords == null) return {x: macro 0.0, y: macro 0.0};
+
+		// First try static resolution (works for all coordinate types)
+		final staticXY = coordsToStaticXY(coords, pos, node);
+		if (staticXY != null) {
+			return {x: macro $v{staticXY.x}, y: macro $v{staticXY.y}};
+		}
+
+		// Fall back to expression-based resolution for param-dependent OFFSET
+		return switch (coords) {
+			case OFFSET(xrv, yrv):
+				{x: rvToExpr(xrv), y: rvToExpr(yrv)};
+			default:
+				Context.warning('ProgrammableCodeGen: param-dependent coordinate type not supported in pixels, using (0,0)', pos);
+				{x: macro 0.0, y: macro 0.0};
+		};
+	}
+
+	static function generatePixelsCreate(node:Node, fieldName:String, shapes:Array<PixelShapes>, pos:Position):CreateResult {
+		final fieldRef = macro $p{["this", fieldName]};
+		final createExprs:Array<Expr> = [];
+
+		// Try to resolve all shapes at compile time for bounds calculation
+		var allStatic = true;
+		var staticShapes:Array<{type:String, x1:Float, y1:Float, x2:Float, y2:Float, w:Float, h:Float, color:Null<Int>, filled:Bool}> = [];
+
+		for (s in shapes) {
+			switch (s) {
+				case LINE(line):
+					final startXY = coordsToStaticXY(line.start, pos, node);
+					final endXY = coordsToStaticXY(line.end, pos, node);
+					final c = resolveRVStatic(line.color);
+					if (startXY != null && endXY != null && c != null) {
+						staticShapes.push({type: "line", x1: startXY.x, y1: startXY.y, x2: endXY.x, y2: endXY.y, w: 0, h: 0, color: Std.int(c), filled: false});
+					} else allStatic = false;
+				case RECT(rect) | FILLED_RECT(rect):
+					final startXY = coordsToStaticXY(rect.start, pos, node);
+					final w = resolveRVStatic(rect.width);
+					final h = resolveRVStatic(rect.height);
+					final c = resolveRVStatic(rect.color);
+					final filled = switch (s) { case FILLED_RECT(_): true; default: false; };
+					if (startXY != null && w != null && h != null && c != null) {
+						staticShapes.push({type: "rect", x1: startXY.x, y1: startXY.y, x2: 0, y2: 0, w: w, h: h, color: Std.int(c), filled: filled});
+					} else allStatic = false;
+				case PIXEL(pixel):
+					final xy = coordsToStaticXY(pixel.pos, pos, node);
+					final c = resolveRVStatic(pixel.color);
+					if (xy != null && c != null) {
+						staticShapes.push({type: "pixel", x1: xy.x, y1: xy.y, x2: 0, y2: 0, w: 0, h: 0, color: Std.int(c), filled: false});
+					} else allStatic = false;
+			}
+		}
+
+		if (allStatic && staticShapes.length > 0) {
+			// Fully static: compute bounds and generate direct draw calls
+			var minX:Int = 0x7FFFFFFF;
+			var minY:Int = 0x7FFFFFFF;
+			var maxX:Int = -0x7FFFFFFF;
+			var maxY:Int = -0x7FFFFFFF;
+			for (s in staticShapes) {
+				switch (s.type) {
+					case "line":
+						final ix1 = Math.round(s.x1);
+						final iy1 = Math.round(s.y1);
+						final ix2 = Math.round(s.x2);
+						final iy2 = Math.round(s.y2);
+						if (ix1 < minX) minX = ix1; if (iy1 < minY) minY = iy1;
+						if (ix2 < minX) minX = ix2; if (iy2 < minY) minY = iy2;
+						if (ix1 > maxX) maxX = ix1; if (iy1 > maxY) maxY = iy1;
+						if (ix2 > maxX) maxX = ix2; if (iy2 > maxY) maxY = iy2;
+					case "rect":
+						final ix = Math.round(s.x1);
+						final iy = Math.round(s.y1);
+						final iw = Math.round(s.w);
+						final ih = Math.round(s.h);
+						if (ix < minX) minX = ix; if (iy < minY) minY = iy;
+						if (ix + iw + 1 > maxX) maxX = ix + iw + 1;
+						if (iy + ih + 1 > maxY) maxY = iy + ih + 1;
+					case "pixel":
+						final ix = Math.round(s.x1);
+						final iy = Math.round(s.y1);
+						if (ix < minX) minX = ix; if (iy < minY) minY = iy;
+						if (ix > maxX) maxX = ix; if (iy > maxY) maxY = iy;
+					default:
+				}
+			}
+			final width:Int = maxX - minX + 1;
+			final height:Int = maxY - minY + 1;
+
+			createExprs.push(macro {
+				final _pl = new bh.base.PixelLines($v{width}, $v{height});
+				$fieldRef = _pl;
+			});
+
+			for (s in staticShapes) {
+				switch (s.type) {
+					case "line":
+						final ix1:Int = Math.round(s.x1) - minX;
+						final iy1:Int = Math.round(s.y1) - minY;
+						final ix2:Int = Math.round(s.x2) - minX;
+						final iy2:Int = Math.round(s.y2) - minY;
+						var c:Int = s.color;
+						if (c >>> 24 == 0) c |= 0xFF000000;
+						createExprs.push(macro {
+							final _pl:bh.base.PixelLines = cast $fieldRef;
+							_pl.line($v{ix1}, $v{iy1}, $v{ix2}, $v{iy2}, $v{c});
+						});
+					case "rect":
+						final ix:Int = Math.round(s.x1) - minX;
+						final iy:Int = Math.round(s.y1) - minY;
+						final iw:Int = Math.round(s.w);
+						final ih:Int = Math.round(s.h);
+						var c:Int = s.color;
+						if (c >>> 24 == 0) c |= 0xFF000000;
+						if (s.filled) {
+							createExprs.push(macro {
+								final _pl:bh.base.PixelLines = cast $fieldRef;
+								_pl.filledRect($v{ix}, $v{iy}, $v{iw}, $v{ih}, $v{c});
+							});
+						} else {
+							createExprs.push(macro {
+								final _pl:bh.base.PixelLines = cast $fieldRef;
+								_pl.rect($v{ix}, $v{iy}, $v{iw}, $v{ih}, $v{c});
+							});
+						}
+					case "pixel":
+						final ix:Int = Math.round(s.x1) - minX;
+						final iy:Int = Math.round(s.y1) - minY;
+						var c:Int = s.color;
+						if (c >>> 24 == 0) c |= 0xFF000000;
+						createExprs.push(macro {
+							final _pl:bh.base.PixelLines = cast $fieldRef;
+							_pl.pixel($v{ix}, $v{iy}, $v{c});
+						});
+					default:
+				}
+			}
+
+			createExprs.push(macro {
+				final _pl:bh.base.PixelLines = cast $fieldRef;
+				_pl.updateBitmap();
+				_pl.setPosition($v{minX}, $v{minY});
+			});
+		} else {
+			// Param-dependent: generate runtime bounds calculation + draw
+			final boundsExprs:Array<Expr> = [
+				macro var _minX:Int = 0x7FFFFFFF
+			];
+			boundsExprs.push(macro var _minY:Int = 0x7FFFFFFF);
+			boundsExprs.push(macro var _maxX:Int = -0x7FFFFFFF);
+			boundsExprs.push(macro var _maxY:Int = -0x7FFFFFFF);
+
+			// Track shapes for second pass
+			var shapeIdx = 0;
+			final shapeVarExprs:Array<Expr> = [];
+			for (s in shapes) {
+				final idx = shapeIdx++;
+				switch (s) {
+					case LINE(line):
+						final start = coordsToXYExprs(line.start, pos, node);
+						final end = coordsToXYExprs(line.end, pos, node);
+						final cExpr = rvToExpr(line.color);
+						final x1Var = "_sx" + idx;
+						final y1Var = "_sy" + idx;
+						final x2Var = "_ex" + idx;
+						final y2Var = "_ey" + idx;
+						final cVar = "_c" + idx;
+						boundsExprs.push(macro {
+							var $x1Var:Int = Math.round(${start.x});
+							var $y1Var:Int = Math.round(${start.y});
+							var $x2Var:Int = Math.round(${end.x});
+							var $y2Var:Int = Math.round(${end.y});
+							var c:Int = $cExpr;
+							if (c >>> 24 == 0) c |= 0xFF000000;
+							var $cVar:Int = c;
+							if ($i{x1Var} < _minX) _minX = $i{x1Var};
+							if ($i{y1Var} < _minY) _minY = $i{y1Var};
+							if ($i{x2Var} < _minX) _minX = $i{x2Var};
+							if ($i{y2Var} < _minY) _minY = $i{y2Var};
+							if ($i{x1Var} > _maxX) _maxX = $i{x1Var};
+							if ($i{y1Var} > _maxY) _maxY = $i{y1Var};
+							if ($i{x2Var} > _maxX) _maxX = $i{x2Var};
+							if ($i{y2Var} > _maxY) _maxY = $i{y2Var};
+						});
+						shapeVarExprs.push(macro _pl.line($i{x1Var} - _minX, $i{y1Var} - _minY, $i{x2Var} - _minX, $i{y2Var} - _minY, $i{cVar}));
+					case RECT(rect) | FILLED_RECT(rect):
+						final start = coordsToXYExprs(rect.start, pos, node);
+						final wExpr = rvToExpr(rect.width);
+						final hExpr = rvToExpr(rect.height);
+						final cExpr = rvToExpr(rect.color);
+						final filled = switch (s) { case FILLED_RECT(_): true; default: false; };
+						final xVar = "_rx" + idx;
+						final yVar = "_ry" + idx;
+						final wVar = "_rw" + idx;
+						final hVar = "_rh" + idx;
+						final cVar = "_c" + idx;
+						boundsExprs.push(macro {
+							var $xVar:Int = Math.round(${start.x});
+							var $yVar:Int = Math.round(${start.y});
+							var $wVar:Int = $wExpr;
+							var $hVar:Int = $hExpr;
+							var c:Int = $cExpr;
+							if (c >>> 24 == 0) c |= 0xFF000000;
+							var $cVar:Int = c;
+							if ($i{xVar} < _minX) _minX = $i{xVar};
+							if ($i{yVar} < _minY) _minY = $i{yVar};
+							if ($i{xVar} + $i{wVar} + 1 > _maxX) _maxX = $i{xVar} + $i{wVar} + 1;
+							if ($i{yVar} + $i{hVar} + 1 > _maxY) _maxY = $i{yVar} + $i{hVar} + 1;
+						});
+						if (filled)
+							shapeVarExprs.push(macro _pl.filledRect($i{xVar} - _minX, $i{yVar} - _minY, $i{wVar}, $i{hVar}, $i{cVar}));
+						else
+							shapeVarExprs.push(macro _pl.rect($i{xVar} - _minX, $i{yVar} - _minY, $i{wVar}, $i{hVar}, $i{cVar}));
+					case PIXEL(pixel):
+						final xy = coordsToXYExprs(pixel.pos, pos, node);
+						final cExpr = rvToExpr(pixel.color);
+						final xVar = "_px" + idx;
+						final yVar = "_py" + idx;
+						final cVar = "_c" + idx;
+						boundsExprs.push(macro {
+							var $xVar:Int = Math.round(${xy.x});
+							var $yVar:Int = Math.round(${xy.y});
+							var c:Int = $cExpr;
+							if (c >>> 24 == 0) c |= 0xFF000000;
+							var $cVar:Int = c;
+							if ($i{xVar} < _minX) _minX = $i{xVar};
+							if ($i{yVar} < _minY) _minY = $i{yVar};
+							if ($i{xVar} > _maxX) _maxX = $i{xVar};
+							if ($i{yVar} > _maxY) _maxY = $i{yVar};
+						});
+						shapeVarExprs.push(macro _pl.pixel($i{xVar} - _minX, $i{yVar} - _minY, $i{cVar}));
+				}
+			}
+
+			// Create PixelLines and draw
+			final drawExprs:Array<Expr> = [
+				macro var _pl = new bh.base.PixelLines(_maxX - _minX + 1, _maxY - _minY + 1)
+			];
+			for (e in shapeVarExprs)
+				drawExprs.push(e);
+			drawExprs.push(macro _pl.updateBitmap());
+			drawExprs.push(macro $fieldRef = _pl);
+			drawExprs.push(macro _pl.setPosition(_minX, _minY));
+
+			final allExprs = boundsExprs.concat(drawExprs);
+			createExprs.push(macro $b{allExprs});
+		}
+
+		return {
+			fieldType: macro :bh.base.PixelLines,
+			createExprs: createExprs,
+			isContainer: false,
+			exprUpdates: [],
+		};
+	}
+
+	// ==================== Particles ====================
+
+	static function generateParticlesCreate(node:Node, fieldName:String, particlesDef:ParticlesDef, pos:Position):CreateResult {
+		final fieldRef = macro $p{["this", fieldName]};
+		final nameExpr:Expr = macro $v{currentProgrammableName};
+		final createExprs:Array<Expr> = [
+			macro $fieldRef = this.buildParticles($nameExpr),
+		];
+
+		return {
+			fieldType: macro :bh.base.Particles,
+			createExprs: createExprs,
+			isContainer: false,
+			exprUpdates: [],
+		};
 	}
 
 	static function generateBitmapCreate(node:Node, fieldName:String, tileSource:TileSource, hAlign:HorizontalAlign, vAlign:VerticalAlign, pos:Position):CreateResult {
