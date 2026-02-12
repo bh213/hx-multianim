@@ -500,6 +500,9 @@ class HtmlReportGenerator {
 		html.add('</html>\n');
 
 		File.saveContent(reportPath, html.toString());
+
+		// Write summary to a separate file for test.bat to read
+		File.saveContent("build/test_result.txt", getSummary());
 	}
 
 	private static function makeRelativePath(path:String):String {
@@ -511,6 +514,16 @@ class HtmlReportGenerator {
 			return "../examples/" + path.substring("test/examples/".length);
 		}
 		return path;
+	}
+
+	public static function getSummary():String {
+		var passed = results.filter(r -> r.passed).length;
+		var failed = results.length - passed;
+		if (failed > 0) {
+			var failedNames = results.filter(r -> !r.passed).map(r -> r.testName);
+			return 'FAILED: ${failed}/${results.length} tests failed [${failedNames.join(", ")}]';
+		}
+		return 'OK: ${passed}/${results.length} visual tests passed';
 	}
 
 	public static function clear():Void {

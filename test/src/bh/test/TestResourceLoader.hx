@@ -40,7 +40,7 @@ class TestResourceLoader {
 
 		loader.loadMultiAnimImpl = resourceFilename -> {
 			if (debugMode) trace('Loading manim: ${resourceFilename}');
-			// Try direct path first (for full paths like "test/examples/38-.../file.manim"),
+			// Try direct path first (for full paths like "test/examples/36-.../file.manim"),
 			// then fall back to test/examples/ prefix
 			var fullPath = if (FileSystem.exists(resourceFilename)) resourceFilename else 'test/examples/${resourceFilename}';
 			if (!FileSystem.exists(fullPath)) {

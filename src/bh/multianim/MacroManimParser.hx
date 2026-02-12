@@ -3508,16 +3508,12 @@ class MacroManimParser {
 		expect(TComma);
 		final lineWidth = parseFloatOrReference();
 		expect(TComma);
-		final sx = parseFloatOrReference();
+		final start = parseXY();
 		expect(TComma);
-		final sy = parseFloatOrReference();
-		expect(TComma);
-		final ex = parseFloatOrReference();
-		expect(TComma);
-		final ey = parseFloatOrReference();
+		final end = parseXY();
 		expect(TClosed);
 		final pos = parseOptionalElementPos();
-		return {element: GELine(color, lineWidth, OFFSET(sx, sy), OFFSET(ex, ey)), pos: pos};
+		return {element: GELine(color, lineWidth, start, end), pos: pos};
 	}
 
 	function parseGraphicsPolygon():PositionedGraphicsElement {
