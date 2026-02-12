@@ -138,10 +138,10 @@ class ProgrammableCodeGen {
 				}
 
 				switch (node.type) {
-					case PROGRAMMABLE(isTileGroup, parameters):
+					case PROGRAMMABLE(isTileGroup, parameters, paramOrder):
 						paramDefs = parameters;
-						for (kv in parameters.keyValueIterator())
-							paramNames.push(kv.key);
+						for (name in paramOrder)
+							paramNames.push(name);
 					default:
 						Context.fatalError('ProgrammableCodeGen.buildAll(): "$programmableName" is not a programmable', field.pos);
 						continue;
@@ -344,9 +344,9 @@ class ProgrammableCodeGen {
 			final paramField = "_" + name;
 			final setterExprs:Array<Expr> = [];
 
-			// For bool params, convert Bool -> Int (true=0, false=1 matching enum index convention)
+			// For bool params, convert Bool -> Int (true=1, false=0 matching parser convention)
 			if (paramEnumTypes.exists(name) && paramEnumTypes.get(name).typePath == "Bool") {
-				setterExprs.push(macro $p{["this", paramField]} = ($i{"v"} ? 0 : 1));
+				setterExprs.push(macro $p{["this", paramField]} = ($i{"v"} ? 1 : 0));
 			} else {
 				setterExprs.push(macro $p{["this", paramField]} = $i{"v"});
 			}
@@ -2010,7 +2010,7 @@ class ProgrammableCodeGen {
 						return i;
 				}
 			case PPTBool:
-				return value == "true" ? 0 : 1;
+				return value == "true" ? 1 : 0;
 			default:
 		}
 		return 0;
@@ -2545,7 +2545,7 @@ class ProgrammableCodeGen {
 			final privateName = "_" + pName;
 			final enumInfo = paramEnumTypes.get(pName);
 			final convExpr:Expr = if (enumInfo != null && enumInfo.typePath == "Bool") {
-				macro($i{pName} ? 0 : 1);
+				macro($i{pName} ? 1 : 0);
 			} else {
 				macro $i{pName};
 			};
@@ -2593,10 +2593,10 @@ class ProgrammableCodeGen {
 	static function publicDefaultValue(name:String, def:{defaultValue:ResolvedIndexParameters, type:DefinitionType}):Expr {
 		final enumInfo = paramEnumTypes.get(name);
 		if (enumInfo != null && enumInfo.typePath == "Bool") {
-			// Bool param: Index(0, "true") -> true, Index(1, "false") -> false
+			// Bool param: Value(1) -> true, Value(0) -> false (matching parser convention)
 			return switch (def.defaultValue) {
-				case Index(idx, _): macro $v{idx == 0};
-				case Value(val): macro $v{val == 0};
+				case Index(idx, _): macro $v{idx != 0};
+				case Value(val): macro $v{val != 0};
 				default: macro false;
 			};
 		} else if (enumInfo != null) {

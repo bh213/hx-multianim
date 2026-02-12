@@ -2307,7 +2307,7 @@ class MultiAnimBuilder {
 				applyExtendedFormProperties(current, node);
 				return null;
 
-			case PROGRAMMABLE(_, _):
+			case PROGRAMMABLE(_, _, _):
 				throw 'invalid state, programmable should not be built' + MacroUtils.nodePos(node);
 
 			case PIXELS(shapes):
@@ -2486,7 +2486,7 @@ class MultiAnimBuilder {
 
 	function getProgrammableParameterDefinitions(node:Node, throwIfNotProgrammable = false):ParametersDefinitions {
 		switch node.type {
-			case PROGRAMMABLE(_, d):
+			case PROGRAMMABLE(_, d, _):
 				return d;
 			default:
 				if (throwIfNotProgrammable)
@@ -2502,7 +2502,7 @@ class MultiAnimBuilder {
 		var isProgrammable = false;
 		var isTileGroup = false;
 		switch rootNode.type {
-			case PROGRAMMABLE(isTG, _):
+			case PROGRAMMABLE(isTG, _, _):
 				isProgrammable = true;
 				isTileGroup = isTG;
 			default:

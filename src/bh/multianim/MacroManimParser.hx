@@ -1171,14 +1171,16 @@ class MacroManimParser {
 
 	// ===================== Parameter Definitions =====================
 
-	function parseDefines():ParametersDefinitions {
+	function parseDefines():{defs:ParametersDefinitions, order:Array<String>} {
 		var defines:ParametersDefinitions = new Map();
-		if (match(TClosed)) return defines;
+		var order:Array<String> = [];
+		if (match(TClosed)) return {defs: defines, order: order};
 		while (true) {
 			final def = parseDefine();
 			if (defines.exists(def.name)) error('parameter ${def.name} already defined');
 			defines.set(def.name, def);
-			if (match(TClosed)) return defines;
+			order.push(def.name);
+			if (match(TClosed)) return {defs: defines, order: order};
 			expect(TComma);
 		}
 	}
@@ -2389,9 +2391,9 @@ class MacroManimParser {
 					default:
 				}
 				expect(TOpen);
-				final params = parseDefines();
-				currentDefs = params;
-				createNode(PROGRAMMABLE(isTileGroup, params), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+				final parsed = parseDefines();
+				currentDefs = parsed.defs;
+				createNode(PROGRAMMABLE(isTileGroup, parsed.defs, parsed.order), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
 
 			case TIdentifier(s) if (isKeyword(s, "relativelayouts")):
 				advance();
