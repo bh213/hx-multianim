@@ -8,8 +8,8 @@ version: 0.3
 
   bitmap(generated(color(1280, 720, black)));
 
-  repeatable($row, grid(3, dy: 100)) {
-    repeatable($index, grid(16, dx: 48)) {
+  repeatable($row, step(3, dy: 100)) {
+    repeatable($index, step(16, dx: 48)) {
       pos: 20, 80
       bitmap(generated(color(40, 60, palette(file, $index, $row))));
     }
