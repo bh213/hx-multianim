@@ -682,29 +682,159 @@ bitmap(generated(autotileRegionSheet("grassTerrain", 4, "f3x5", white)))
 
 ## Paths
 
-Paths define animated paths for objects to follow.
+Paths define animated paths for objects to follow. Each path maintains a current position and direction angle.
 
 ```
 paths {
   #pathName path {
-    line(absolute, 100, 50)
-    bezier(relative, 100, 50, 75, 25, smoothing: auto)
+    lineTo(50, -20)
+    lineAbs(100, 50)
+    bezier(100, 50, 75, 25, smoothing: auto)
+    bezierAbs(100, 50, 75, 25)
     arc(100, 70)
     forward(100)
     checkpoint(test)
+    spiral(20, 60, 360)
+    wave(30, 80, 3)
+    moveTo(40, 0)
+    moveAbs(100, 50)
+    close
   }
 }
 ```
 
 **Path Commands:**
-* `line(coordinateMode, x, y)` - Draw a line
-* `bezier(coordinateMode, x1, y1, x2, y2[, x3, y3])` - Bezier curve
-* `forward(distance)` - Move forward
-* `turn(degrees)` - Turn by degrees
-* `arc(radius, angleDelta)` - Draw an arc
-* `checkpoint(name)` - Define checkpoint
+* `lineTo(x, y)` - Draw a line to relative coordinates (offset from current position)
+* `lineAbs(x, y)` - Draw a line to absolute coordinates in path space
+* `bezier(endX, endY, ctrlX, ctrlY[, ctrl2X, ctrl2Y][, smoothing: ...])` - Relative bezier curve (quadratic or cubic)
+* `bezierAbs(endX, endY, ctrlX, ctrlY[, ctrl2X, ctrl2Y][, smoothing: ...])` - Absolute bezier curve
+* `forward(distance)` - Move forward in the current direction
+* `turn(degrees)` - Turn by degrees (changes direction without moving)
+* `arc(radius, angleDelta)` - Draw a circular arc. Positive angleDelta = CCW, negative = CW
+* `checkpoint(name)` - Define a named checkpoint for timed actions
+* `close` - Close the path back to start with a line
+* `moveTo(x, y)` - Jump to a relative position without drawing
+* `moveAbs(x, y)` - Jump to an absolute position without drawing
+* `spiral(radiusStart, radiusEnd, angleDelta)` - Spiral arc with expanding/contracting radius. Positive angleDelta = CCW, negative = CW
+* `wave(amplitude, wavelength, count)` - Sinusoidal wave along the current direction
 
-**Smoothing Options:** `auto`, `none`, or custom distance
+**Relative vs Absolute commands:**
+Commands ending in `Abs` use absolute coordinates in path space. The default commands (`lineTo`, `bezier`, `moveTo`) use relative coordinates (offsets from the current position).
+
+**Smoothing (bezier only):**
+Bezier curves support an optional smoothing parameter that adds a control point aligned with the current direction for smooth tangent transitions between path segments:
+* `smoothing: auto` (default when omitted) - Smoothing control point at 50% distance to the first control point
+* `smoothing: none` - No smoothing; may produce sharp angle transitions between segments
+* `smoothing: <number>` - Custom distance for the smoothing control point
+
+**Path Normalization (runtime):**
+Paths can be scaled/rotated to fit between arbitrary start and end points:
+```haxe
+var path = paths.getPath("cardFlight", startPos, endPos);
+```
+The original path shape is preserved but transformed via scale + rotation + translation so that the path origin maps to `startPoint` and the path endpoint maps to `endPoint`.
+
+---
+
+## Animated Paths
+
+Animated paths control how objects traverse a path over time, with optional easing and timed actions.
+
+```
+#animName animatedPath {
+    easing: easeInOutQuad
+    duration: 0.8
+    0.0: event("start")
+    0.5: attachParticles("trail") { count: 30  emit: point(0,0)  tiles: file("p.png") }
+    1.0: event("end")
+}
+```
+
+**Properties:**
+* `easing: <easingType>` - Optional easing function for the animation timing
+* `duration: <float>` - Optional fixed duration (seconds); used with easing for time-based mode
+
+When both `easing` and `duration` are set, the path uses time-based mode where position = easing(time/duration). Without them, the path uses speed-based mode.
+
+**Timed Actions** (at rate 0.0-1.0 or checkpoint name):
+* `<rate>: event("<name>")` - Fire a named event
+* `<rate>: changeSpeed(<speed>)` - Change traversal speed
+* `<rate>: accelerate(<accel>, <duration>)` - Apply acceleration
+* `<rate>: attachParticles("<name>") { ... }` - Attach particle system
+* `<rate>: removeParticles("<name>")` - Remove particle system
+* `<rate>: changeAnimState("<state>")` - Change state animation
+
+**Easing Types:**
+* `linear` - No easing (default)
+* `easeinquad`, `easeoutquad`, `easeinoutquad` - Quadratic
+* `easeincubic`, `easeoutcubic`, `easeinoutcubic` - Cubic
+* `easeinback`, `easeoutback`, `easeinoutback` - Back (overshoot)
+* `easeoutbounce` - Bounce
+* `easeoutelastic` - Elastic
+* `cubicbezier(x1, y1, x2, y2)` - Custom cubic bezier curve
+
+---
+
+## Curves
+
+1D curves map a normalized input (0→1) to a float output value. Useful for speed profiles, opacity fades, size animations, etc.
+
+```
+curves {
+    #fadeIn curve {
+        easing: easeoutquad
+    }
+    #speedProfile curve {
+        points: [(0, 0.2), (0.3, 0.8), (0.7, 1.0), (1.0, 0.6)]
+    }
+    #custom curve {
+        easing: cubicbezier(0.25, 0.1, 0.25, 1.0)
+    }
+}
+```
+
+**Curve Types:**
+* **Easing-based:** `easing: <easingType>` - Uses an easing function to map input to output
+* **Point-based:** `points: [(t1, v1), (t2, v2), ...]` - Linear interpolation between control points
+* **Segmented:** Multiple time-ranged easing segments, optionally overlapping
+
+### Segmented Curves
+
+Segmented curves chain multiple easing functions across time ranges. Each segment applies its easing within its time interval.
+
+```
+curves {
+    // Non-overlapping segments (values default to 0→1)
+    #chained curve {
+        [0.0 .. 0.4] easeinquad
+        [0.4 .. 0.7] easeoutcubic
+        [0.7 .. 1.0] easeinback
+    }
+
+    // Segments with explicit value ranges
+    #detailed curve {
+        [0.0 .. 0.4] easeinquad (0.0, 0.6)
+        [0.3 .. 0.8] easeoutcubic (0.4, 1.0)
+        [0.7 .. 1.0] easeinback (0.9, 0.5)
+    }
+}
+```
+
+**Segment syntax:** `[timeStart .. timeEnd] easingType` or `[timeStart .. timeEnd] easingType (valueStart, valueEnd)`
+
+* **Easing is required** per segment
+* **Values default** to `(0.0, 1.0)` if omitted
+* **Overlapping segments** are blended (equal-weight average in the overlap zone)
+* **Gaps** between segments are linearly interpolated between the nearest left segment's end value and right segment's start value
+* Cannot mix segments with `easing:` or `points:` in the same curve
+
+**Runtime API:**
+```haxe
+var curve = builder.getCurve("fadeIn");
+var value = curve.getValue(0.5); // returns eased value at t=0.5
+```
+
+**Macro codegen** generates `getCurve_<name>():Curve` factory methods. Easing-only curves are baked inline at compile time.
 
 ---
 

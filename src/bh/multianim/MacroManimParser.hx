@@ -313,6 +313,7 @@ class MacroManimParser {
 
 	static final defaultLayoutNodeName = "#defaultLayout";
 	static final defaultPathNodeName = "#defaultPaths";
+	static final defaultCurveNodeName = "#defaultCurves";
 
 	function new(tokens:Array<Token>, sourceName:String, ?resourceLoader:Dynamic) {
 		this.tokens = tokens;
@@ -2589,6 +2590,18 @@ class MacroManimParser {
 				final n = createNode(ANIMATED_PATH(apDef), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
 				return n;
 
+			case TIdentifier(s) if (isKeyword(s, "curves")):
+				advance();
+				if (currentName == null) currentName = "curves";
+				if (parent != null) error("curves must be a root node");
+				expect(TCurlyOpen);
+				final curvesDef = parseCurves();
+				final n = createNode(CURVES(curvesDef), parent, conditional, scale, alpha, tint, layerIndex, switch (updatableName) {
+					case UNTObject(_): UNTObject(defaultCurveNodeName);
+					case UNTUpdatable(_): UNTUpdatable(defaultCurveNodeName);
+				});
+				return n;
+
 			case TIdentifier(s) if (isKeyword(s, "autotile")):
 				advance();
 				if (currentName == null) error("autotile requires a #name");
@@ -3680,6 +3693,18 @@ class MacroManimParser {
 						final angleDelta = parseIntegerOrReference();
 						expect(TClosed);
 						pathElements.push(Arc(radius, angleDelta));
+					case TIdentifier(s) if (isKeyword(s, "lineto")):
+						advance();
+						expect(TOpen);
+						final end = parseXY();
+						expect(TClosed);
+						pathElements.push(LineTo(end, PCMRelative));
+					case TIdentifier(s) if (isKeyword(s, "lineabs")):
+						advance();
+						expect(TOpen);
+						final end = parseXY();
+						expect(TClosed);
+						pathElements.push(LineTo(end, PCMAbsolute));
 					case TIdentifier(s) if (isKeyword(s, "line")):
 						advance();
 						expect(TOpen);
@@ -3693,31 +3718,93 @@ class MacroManimParser {
 						final cpName = expectIdentifierOrString();
 						expect(TClosed);
 						pathElements.push(Checkpoint(cpName));
-					case TIdentifier(s) if (isKeyword(s, "bezier")):
+					case TIdentifier(s) if (isKeyword(s, "close")):
+						advance();
+						pathElements.push(Close);
+					case TIdentifier(s) if (isKeyword(s, "moveto")):
 						advance();
 						expect(TOpen);
 						final mode = parseCoordinateMode();
+						final target = parseXY();
+						expect(TClosed);
+						pathElements.push(MoveTo(target, mode));
+					case TIdentifier(s) if (isKeyword(s, "moveabs")):
+						advance();
+						expect(TOpen);
+						final target = parseXY();
+						expect(TClosed);
+						pathElements.push(MoveTo(target, PCMAbsolute));
+					case TIdentifier(s) if (isKeyword(s, "spiral")):
+						advance();
+						expect(TOpen);
+						final radiusStart = parseIntegerOrReference();
+						expect(TComma);
+						final radiusEnd = parseIntegerOrReference();
+						expect(TComma);
+						final angleDelta = parseIntegerOrReference();
+						expect(TClosed);
+						pathElements.push(Spiral(radiusStart, radiusEnd, angleDelta));
+					case TIdentifier(s) if (isKeyword(s, "wave")):
+						advance();
+						expect(TOpen);
+						final amplitude = parseIntegerOrReference();
+						expect(TComma);
+						final wavelength = parseIntegerOrReference();
+						expect(TComma);
+						final count = parseIntegerOrReference();
+						expect(TClosed);
+						pathElements.push(Wave(amplitude, wavelength, count));
+					case TIdentifier(s) if (isKeyword(s, "bezierabs")):
+						advance();
+						expect(TOpen);
 						final end = parseXY();
 						expect(TComma);
 						final control1 = parseXY();
 						if (match(TClosed)) {
-							pathElements.push(Bezier2To(end, control1, mode, null));
+							pathElements.push(Bezier2To(end, control1, PCMAbsolute, null));
+						} else if (match(TComma)) {
+							switch (peek()) {
+								case TIdentifier(s2) if (isKeyword(s2, "smoothing")):
+									final smoothing = parsePathSmoothing();
+									expect(TClosed);
+									pathElements.push(Bezier2To(end, control1, PCMAbsolute, smoothing));
+								default:
+									final control2 = parseXY();
+									if (match(TClosed)) {
+										pathElements.push(Bezier3To(end, control1, control2, PCMAbsolute, null));
+									} else {
+										expect(TComma);
+										final smoothing = parsePathSmoothing();
+										expect(TClosed);
+										pathElements.push(Bezier3To(end, control1, control2, PCMAbsolute, smoothing));
+									}
+							}
+						}
+					case TIdentifier(s) if (isKeyword(s, "bezier")):
+						advance();
+						expect(TOpen);
+						final bezierMode = parseCoordinateMode();
+						final end = parseXY();
+						expect(TComma);
+						final control1 = parseXY();
+						if (match(TClosed)) {
+							pathElements.push(Bezier2To(end, control1, bezierMode, null));
 						} else if (match(TComma)) {
 							// Check for smoothing or second control point
 							switch (peek()) {
 								case TIdentifier(s2) if (isKeyword(s2, "smoothing")):
 									final smoothing = parsePathSmoothing();
 									expect(TClosed);
-									pathElements.push(Bezier2To(end, control1, mode, smoothing));
+									pathElements.push(Bezier2To(end, control1, bezierMode, smoothing));
 								default:
 									final control2 = parseXY();
 									if (match(TClosed)) {
-										pathElements.push(Bezier3To(end, control1, control2, mode, null));
+										pathElements.push(Bezier3To(end, control1, control2, bezierMode, null));
 									} else {
 										expect(TComma);
 										final smoothing = parsePathSmoothing();
 										expect(TClosed);
-										pathElements.push(Bezier3To(end, control1, control2, mode, smoothing));
+										pathElements.push(Bezier3To(end, control1, control2, bezierMode, smoothing));
 									}
 							}
 						}
@@ -3768,26 +3855,41 @@ class MacroManimParser {
 	// ===================== Animated Path =====================
 
 	function parseAnimatedPath():AnimatedPathDef {
-		var actions:AnimatedPathDef = [];
+		var actions:Array<AnimatedPathTimedAction> = [];
+		var easing:Null<EasingType> = null;
+		var duration:Null<ReferenceableValue> = null;
 		while (!match(TCurlyClosed)) {
-			// Time: either a float rate or a checkpoint name
-			var at:AnimatedPathTime;
 			switch (peek()) {
-				case TFloat(_) | TInteger(_):
-					final rate = parseFloatOrReference();
-					at = Rate(rate);
-				case TIdentifier(_) | TQuotedString(_):
-					final cpName = expectIdentifierOrString();
-					at = Checkpoint(cpName);
+				// easing: <easingType>
+				case TIdentifier(s) if (isKeyword(s, "easing")):
+					advance();
+					expect(TColon);
+					easing = parseEasingType();
+				// duration: <float>
+				case TIdentifier(s) if (isKeyword(s, "duration")):
+					advance();
+					expect(TColon);
+					duration = parseFloatOrReference();
 				default:
-					error('expected rate or checkpoint name, got ${peek()}');
-					return actions; // unreachable
+					// Time: either a float rate or a checkpoint name
+					var at:AnimatedPathTime;
+					switch (peek()) {
+						case TFloat(_) | TInteger(_):
+							final rate = parseFloatOrReference();
+							at = Rate(rate);
+						case TIdentifier(_) | TQuotedString(_):
+							final cpName = expectIdentifierOrString();
+							at = Checkpoint(cpName);
+						default:
+							error('expected rate, checkpoint name, easing, or duration, got ${peek()}');
+							return {actions: actions, easing: easing, duration: duration}; // unreachable
+					}
+					expect(TColon);
+					final action = parseAnimatedPathAction();
+					actions.push({at: at, action: action});
 			}
-			expect(TColon);
-			final action = parseAnimatedPathAction();
-			actions.push({at: at, action: action});
 		}
-		return actions;
+		return {actions: actions, easing: easing, duration: duration};
 	}
 
 	function parseAnimatedPathAction():AnimatedPathsAction {
@@ -3837,6 +3939,109 @@ class MacroManimParser {
 			default:
 				return error('expected animated path action, got ${peek()}');
 		}
+	}
+
+	// ===================== Easing =====================
+
+	function parseEasingType():EasingType {
+		switch (peek()) {
+			case TIdentifier(s) if (isKeyword(s, "linear")): advance(); return Linear;
+			case TIdentifier(s) if (isKeyword(s, "easeinquad")): advance(); return EaseInQuad;
+			case TIdentifier(s) if (isKeyword(s, "easeoutquad")): advance(); return EaseOutQuad;
+			case TIdentifier(s) if (isKeyword(s, "easeinoutquad")): advance(); return EaseInOutQuad;
+			case TIdentifier(s) if (isKeyword(s, "easeincubic")): advance(); return EaseInCubic;
+			case TIdentifier(s) if (isKeyword(s, "easeoutcubic")): advance(); return EaseOutCubic;
+			case TIdentifier(s) if (isKeyword(s, "easeinoutcubic")): advance(); return EaseInOutCubic;
+			case TIdentifier(s) if (isKeyword(s, "easeinback")): advance(); return EaseInBack;
+			case TIdentifier(s) if (isKeyword(s, "easeoutback")): advance(); return EaseOutBack;
+			case TIdentifier(s) if (isKeyword(s, "easeinoutback")): advance(); return EaseInOutBack;
+			case TIdentifier(s) if (isKeyword(s, "easeoutbounce")): advance(); return EaseOutBounce;
+			case TIdentifier(s) if (isKeyword(s, "easeoutelastic")): advance(); return EaseOutElastic;
+			case TIdentifier(s) if (isKeyword(s, "cubicbezier")):
+				advance();
+				expect(TOpen);
+				final x1 = parseFloat_();
+				expect(TComma);
+				final y1 = parseFloat_();
+				expect(TComma);
+				final x2 = parseFloat_();
+				expect(TComma);
+				final y2 = parseFloat_();
+				expect(TClosed);
+				return CubicBezier(x1, y1, x2, y2);
+			default:
+				return error('expected easing type, got ${peek()}');
+		}
+	}
+
+	// ===================== Curves =====================
+
+	function parseCurves():CurvesDef {
+		var curves:CurvesDef = new Map();
+		while (!match(TCurlyClosed)) {
+			final curveName = switch (peek()) {
+				case TName(s): advance(); s;
+				default: expectIdentifierOrString();
+			};
+			// expect "curve" keyword
+			switch (peek()) {
+				case TIdentifier(s) if (isKeyword(s, "curve")):
+					advance();
+				default:
+					error("expected 'curve' keyword");
+			}
+			expect(TCurlyOpen);
+			var easing:Null<EasingType> = null;
+			var points:Null<Array<ParticleCurvePoint>> = null;
+			var segments:Null<Array<CurveSegmentDef>> = null;
+			while (!match(TCurlyClosed)) {
+				eatSemicolon();
+				if (match(TCurlyClosed)) break;
+				switch (peek()) {
+					case TIdentifier(s) if (isKeyword(s, "easing")):
+						advance();
+						expect(TColon);
+						easing = parseEasingType();
+					case TIdentifier(s) if (isKeyword(s, "points")):
+						advance();
+						expect(TColon);
+						points = parseCurvePoints();
+					case TBracketOpen:
+						if (segments == null) segments = [];
+						segments.push(parseCurveSegment());
+					default:
+						error('expected easing, points, or segment [start..end] in curve definition, got ${peek()}');
+				}
+			}
+			if (segments != null && (easing != null || points != null))
+				error("cannot mix segments with easing/points in the same curve");
+			curves.set(curveName, {easing: easing, points: points, segments: segments});
+		}
+		return curves;
+	}
+
+	function parseCurveSegment():CurveSegmentDef {
+		expect(TBracketOpen);
+		final timeStart = parseFloatOrReference();
+		expect(TDoubleDot);
+		final timeEnd = parseFloatOrReference();
+		expect(TBracketClosed);
+		final easing = parseEasingType();
+		var valueStart:ReferenceableValue = RVFloat(0.0);
+		var valueEnd:ReferenceableValue = RVFloat(1.0);
+		if (match(TOpen)) {
+			valueStart = parseFloatOrReference();
+			expect(TComma);
+			valueEnd = parseFloatOrReference();
+			expect(TClosed);
+		}
+		return {
+			timeStart: timeStart,
+			timeEnd: timeEnd,
+			easing: easing,
+			valueStart: valueStart,
+			valueEnd: valueEnd
+		};
 	}
 
 	// ===================== Autotile =====================

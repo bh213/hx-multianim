@@ -64,11 +64,12 @@ sub-emitters
 
 Animations - easing & events
 paths:
-    - BASIC IMPLEMENTATION in AnimatedPath.hx
-    - Supports: ChangeSpeed, Accelerate, Event, AttachParticles, RemoveParticles, ChangeAnimSMState
-    - MISSING: Easing functions (only linear), grid/hex coordinate systems, start/end references
-    grid & hex coordinate systems
-    start, end references
+    - DONE: Easing functions (12 named + cubic bezier) in TweenUtils.hx
+    - DONE: AnimatedPath easing/duration mode (createWithDurationAndEasing)
+    - DONE: Path normalization (Path.normalize, SinglePath.transform)
+    - DONE: 1D Curves (Curve.hx, curves {} DSL, easing-based and point-based)
+    - DONE: Macro codegen for paths, animatedPath, curves
+    - REMAINING: grid/hex coordinate systems for paths
     particles diff with direction & speed as variables
     make object follow animation, maybe based on center or extra point??
 

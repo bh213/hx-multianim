@@ -3,7 +3,9 @@ package bh.paths;
 import h2d.col.Point;
 import bh.multianim.MultiAnimParser.ResolvedIndexParameters;
 import bh.base.FPoint;
+import bh.base.TweenUtils.FloatTools;
 import bh.multianim.MultiAnimBuilder;
+import bh.multianim.MultiAnimParser.EasingType;
 import bh.base.Particles;
 import bh.multianim.MultiAnimParser.BuiltHeapsComponent;
 import bh.multianim.MultiAnimParser.ParticlesDef;
@@ -55,6 +57,8 @@ class AnimatedPath {
     var h2dObject:h2d.Object;
     final positionMode:AnimatedPathPositionMode;
     
+    var easing:Null<EasingType> = null;
+    var duration:Null<Float> = null;
     var activeParticles:Map<String, Particles> = [];
     var timedActions:Array<TimedAction> = [];
     var currentTimedActionIndex:Int = 0;
@@ -102,9 +106,17 @@ class AnimatedPath {
         return new AnimatedPath(path, speed, object, positionMode, builder);
     }
 
-    
+
     public static function createWithSpeed(path:Path, speed:Float, object:BuiltHeapsComponent, positionMode:AnimatedPathPositionMode, builder):AnimatedPath {
         return new AnimatedPath(path, speed, object, positionMode, builder);
+    }
+
+    public static function createWithDurationAndEasing(path:Path, duration:Float, easing:Null<EasingType>, object:BuiltHeapsComponent, positionMode:AnimatedPathPositionMode, builder):AnimatedPath {
+        if (duration <= 0) throw 'duration must be > 0';
+        var ap = new AnimatedPath(path, path.totalLength / duration, object, positionMode, builder);
+        ap.duration = duration;
+        ap.easing = easing;
+        return ap;
     }
     function execute(animePathCommand:AnimatePathCommands) {
 
@@ -176,17 +188,26 @@ class AnimatedPath {
             onStart();
         }
 
-        // Apply acceleration if active
-        if (acceleration != 0. && accelerationDuration > 0.) {
-            var elapsedAccelTime = time - accelerationStartTime;
-            if (elapsedAccelTime < accelerationDuration) {
-                // Apply acceleration for this frame
-                speed += acceleration * dt;
-            } else {
-                // Acceleration period is over, reset
-                acceleration = 0.;
-                accelerationDuration = 0.;
+        time += dt;
+
+        if (easing != null && duration != null) {
+            // Duration+easing mode: compute rate from eased time
+            var rawRate = Math.min(time / duration, 1.0);
+            var easedRate = FloatTools.applyEasing(easing, rawRate);
+            distance = easedRate * pathLength;
+        } else {
+            // Speed-based mode (original behavior)
+            // Apply acceleration if active
+            if (acceleration != 0. && accelerationDuration > 0.) {
+                var elapsedAccelTime = time - accelerationStartTime;
+                if (elapsedAccelTime < accelerationDuration) {
+                    speed += acceleration * dt;
+                } else {
+                    acceleration = 0.;
+                    accelerationDuration = 0.;
+                }
             }
+            distance += dt * this.speed;
         }
 
         var currentRate = getAsRate();
@@ -197,10 +218,8 @@ class AnimatedPath {
                 currentTimedActionIndex++;
             } else break;
         }
-        time += dt;
-        distance += dt * this.speed;
-        
-        if (distance > pathLength) {
+
+        if (distance >= pathLength) {
             distance = pathLength;
             execute(Event(PathEnd));
             isDone = true;

@@ -172,4 +172,13 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/57-codegenMultiNamed/codegenMultiNamed.manim", "codegenMultiNamed")
 	public var multiNamed;
+
+	@:manim("test/examples/58-easingCurvesDemo/easingCurvesDemo.manim", "easingCurvesDemo")
+	public var easingCurves;
+
+	@:manim("test/examples/59-segmentedCurvesDemo/segmentedCurvesDemo.manim", "segmentedCurvesDemo")
+	public var segmentedCurves;
+
+	@:manim("test/examples/60-newPathCommands/newPathCommands.manim", "newPathCommands")
+	public var newPathCommands;
 }

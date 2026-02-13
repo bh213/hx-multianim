@@ -1931,6 +1931,7 @@ class MultiAnimBuilder {
 			case RELATIVE_LAYOUTS(_): throw 'layouts not allowed as non-root node' + MacroUtils.nodePos(node);
 			case ANIMATED_PATH(_): throw 'animatedPath not allowed as non-root node' + MacroUtils.nodePos(node);
 			case PATHS(_): throw 'paths not allowed as non-root node' + MacroUtils.nodePos(node);
+			case CURVES(_): throw 'curves not allowed as non-root node' + MacroUtils.nodePos(node);
 			case PARTICLES(particlesDef):
 				Particles(createParticleImpl(particlesDef, node.uniqueNodeName));
 			case PALETTE(_): throw 'palette not allowed as non-root node' + MacroUtils.nodePos(node);
@@ -2821,8 +2822,17 @@ class MultiAnimBuilder {
 			throw 'could not get animatedPath node #${name}' + currentNodePos();
 		switch node.type {
 			case ANIMATED_PATH(pathDef):
-				var retVal = new bh.paths.AnimatedPath(path, initialSpeed, object, positionMode, this);
-				for (action in pathDef) {
+				var retVal = if (pathDef.duration != null) {
+					final dur = resolveAsNumber(pathDef.duration);
+					bh.paths.AnimatedPath.createWithDurationAndEasing(path, dur, pathDef.easing, object, positionMode, this);
+				} else if (pathDef.easing != null) {
+					// Easing without explicit duration: estimate duration from speed
+					final estimatedDuration = path.totalLength / initialSpeed;
+					bh.paths.AnimatedPath.createWithDurationAndEasing(path, estimatedDuration, pathDef.easing, object, positionMode, this);
+				} else {
+					new bh.paths.AnimatedPath(path, initialSpeed, object, positionMode, this);
+				};
+				for (action in pathDef.actions) {
 					var atRate = switch action.at {
 						case Rate(r): resolveAsNumber(r);
 						case Checkpoint(name):
@@ -2868,6 +2878,50 @@ class MultiAnimBuilder {
 			default:
 				throw 'paths is of unexpected type ${node.type}' + MacroUtils.nodePos(node);
 		}
+	}
+
+	public function getCurves():Map<String, bh.paths.Curve> {
+		var node = multiParserResult?.nodes.get(MultiAnimParser.defaultCurveNodeName);
+		if (node == null)
+			throw 'curves does not exist';
+		switch node.type {
+			case CURVES(curvesDef):
+				var result = new Map<String, bh.paths.Curve>();
+				for (name => def in curvesDef) {
+					var resolvedPoints:Null<Array<bh.paths.Curve.CurvePoint>> = null;
+					if (def.points != null) {
+						resolvedPoints = [];
+						for (p in def.points) {
+							resolvedPoints.push({time: resolveAsNumber(p.time), value: resolveAsNumber(p.value)});
+						}
+					}
+					var resolvedSegments:Null<Array<bh.paths.Curve.CurveSegment>> = null;
+				if (def.segments != null) {
+					resolvedSegments = [];
+					for (s in def.segments) {
+						resolvedSegments.push({
+							timeStart: resolveAsNumber(s.timeStart),
+							timeEnd: resolveAsNumber(s.timeEnd),
+							easing: s.easing,
+							valueStart: resolveAsNumber(s.valueStart),
+							valueEnd: resolveAsNumber(s.valueEnd)
+						});
+					}
+				}
+				result.set(name, new bh.paths.Curve(resolvedPoints, def.easing, resolvedSegments));
+				}
+				return result;
+			default:
+				throw 'curves is of unexpected type ${node.type}' + MacroUtils.nodePos(node);
+		}
+	}
+
+	public function getCurve(name:String):bh.paths.Curve {
+		var curves = getCurves();
+		var curve = curves.get(name);
+		if (curve == null)
+			throw 'curve not found: $name';
+		return curve;
 	}
 
 	/**

@@ -1,0 +1,105 @@
+package bh.paths;
+
+import bh.multianim.MultiAnimParser.EasingType;
+import bh.base.TweenUtils.FloatTools;
+
+/** A 1D curve that maps a 0..1 input to a float output.
+ *  Can be defined by a named easing function, explicit control points, or easing segments. */
+class Curve {
+	var points:Null<Array<CurvePoint>>;
+	var easing:Null<EasingType>;
+	var segments:Null<Array<CurveSegment>>;
+
+	public function new(?points:Array<CurvePoint>, ?easing:EasingType, ?segments:Array<CurveSegment>) {
+		this.points = points;
+		this.easing = easing;
+		this.segments = segments;
+	}
+
+	/** Evaluate the curve at normalized time t (0..1). */
+	public function getValue(t:Float):Float {
+		t = FloatTools.clamp(t, 0.0, 1.0);
+
+		if (easing != null) {
+			return FloatTools.applyEasing(easing, t);
+		}
+
+		if (points != null && points.length > 0) {
+			if (points.length == 1) return points[0].value;
+
+			// Clamp to endpoints
+			if (t <= points[0].time) return points[0].value;
+			if (t >= points[points.length - 1].time) return points[points.length - 1].value;
+
+			// Find segment and linearly interpolate
+			for (i in 0...points.length - 1) {
+				if (t >= points[i].time && t <= points[i + 1].time) {
+					final segT = (t - points[i].time) / (points[i + 1].time - points[i].time);
+					return FloatTools.lerp(segT, points[i].value, points[i + 1].value);
+				}
+			}
+			return points[points.length - 1].value;
+		}
+
+		if (segments != null && segments.length > 0) {
+			return evaluateSegments(t);
+		}
+
+		return t;
+	}
+
+	private function evaluateSegments(t:Float):Float {
+		// Collect values from all segments containing t (handles overlaps)
+		var totalWeight:Float = 0.0;
+		var weightedSum:Float = 0.0;
+
+		// Also track nearest segments for gap interpolation
+		var leftEnd:Float = Math.NEGATIVE_INFINITY;
+		var leftValue:Float = 0.0;
+		var rightStart:Float = Math.POSITIVE_INFINITY;
+		var rightValue:Float = 0.0;
+
+		for (seg in segments) {
+			if (t >= seg.timeStart && t <= seg.timeEnd) {
+				final segDuration = seg.timeEnd - seg.timeStart;
+				final localT = if (segDuration <= 0.0) 0.0 else (t - seg.timeStart) / segDuration;
+				final easedT = FloatTools.applyEasing(seg.easing, localT);
+				final value = FloatTools.lerp(easedT, seg.valueStart, seg.valueEnd);
+				totalWeight += 1.0;
+				weightedSum += value;
+			} else if (seg.timeEnd <= t && seg.timeEnd > leftEnd) {
+				leftEnd = seg.timeEnd;
+				leftValue = seg.valueEnd;
+			} else if (seg.timeStart >= t && seg.timeStart < rightStart) {
+				rightStart = seg.timeStart;
+				rightValue = seg.valueStart;
+			}
+		}
+
+		if (totalWeight > 0.0) return weightedSum / totalWeight;
+
+		// Gap: linearly interpolate between nearest left end and right start
+		final hasLeft = leftEnd != Math.NEGATIVE_INFINITY;
+		final hasRight = rightStart != Math.POSITIVE_INFINITY;
+		if (hasLeft && hasRight) {
+			final gapT = (t - leftEnd) / (rightStart - leftEnd);
+			return FloatTools.lerp(gapT, leftValue, rightValue);
+		}
+		if (hasLeft) return leftValue;
+		if (hasRight) return rightValue;
+		return t;
+	}
+}
+
+typedef CurvePoint = {
+	var time:Float;
+	var value:Float;
+};
+
+typedef CurveSegment = {
+	var timeStart:Float;
+	var timeEnd:Float;
+	var easing:EasingType;
+	var valueStart:Float;
+	var valueEnd:Float;
+};
