@@ -1,0 +1,9 @@
+version: 0.3
+
+#codegenMultiNamed programmable(status:[idle, hover, pressed, disabled]=idle) {
+    #indicator @(status=>idle)     bitmap(generated(color(40, 40, #44aa44))): 10, 10
+    #indicator @(status=>hover)    bitmap(generated(color(40, 40, #44aaff))): 10, 10
+    #indicator @(status=>pressed)  bitmap(generated(color(40, 40, #ff4444))): 10, 10
+    #indicator @(status=>disabled) bitmap(generated(color(40, 40, #888888))): 10, 10
+    #label text(dd, "status indicator " + $status, white, left): 10, 60
+}

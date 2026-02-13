@@ -337,6 +337,17 @@ class ProgrammableCodeGen {
 		if (rootNode.children != null)
 			processChildren(rootNode.children, null, instanceFields, constructorExprs, null, pos);
 
+		// 3b. Multi-element named: create ProgrammableUpdatable fields + init
+		for (name => elementFieldsList in namedElements) {
+			if (elementFieldsList.length > 1) {
+				final namedField = "_named_" + name;
+				instanceFields.push(makeField(namedField, FVar(macro :bh.multianim.ProgrammableUpdatable, null), [APrivate], pos));
+				var arrayExprs = elementFieldsList.map(ef -> macro $p{["this", ef]});
+				final arrayLiteral:Expr = {expr: EArrayDecl(arrayExprs), pos: pos};
+				constructorExprs.push(macro $p{["this", namedField]} = new bh.multianim.ProgrammableUpdatable($arrayLiteral));
+			}
+		}
+
 		// 4. _applyVisibility()
 		final visExprs:Array<Expr> = [];
 		for (entry in visibilityEntries) {
@@ -412,6 +423,10 @@ class ProgrammableCodeGen {
 			if (elementFieldsList.length == 1) {
 				final ef = elementFieldsList[0];
 				instanceFields.push(makeMethod("get_" + name, [macro return $p{["this", ef]}], [], macro :h2d.Object, [APublic], pos));
+			} else if (elementFieldsList.length > 1) {
+				final namedField = "_named_" + name;
+				instanceFields.push(makeMethod("get_" + name, [macro return $p{["this", namedField]}], [],
+					macro :bh.multianim.IUpdatable, [APublic], pos));
 			}
 		}
 
@@ -1215,7 +1230,7 @@ class ProgrammableCodeGen {
 				final colorExpr = rvToExpr(textDef.color);
 				stmts.push(macro _rt_txt.textColor = $colorExpr);
 
-				final textExpr = rvToExpr(textDef.text);
+				final textExpr = rvToExpr(textDef.text, true);
 				stmts.push(macro _rt_txt.text = Std.string($textExpr));
 
 				switch (textDef.halign) {
@@ -2532,7 +2547,7 @@ class ProgrammableCodeGen {
 		final colorExpr = rvToExpr(textDef.color);
 		createExprs.push(macro $fieldRef.textColor = $colorExpr);
 
-		final textExpr = rvToExpr(textDef.text);
+		final textExpr = rvToExpr(textDef.text, true);
 		// Wrap with Std.string() to handle non-string params (e.g. uint used as text)
 		final textAssign = isStringRV(textDef.text) ? macro $fieldRef.text = $textExpr : macro $fieldRef.text = Std.string($textExpr);
 		createExprs.push(textAssign);
@@ -2760,7 +2775,7 @@ class ProgrammableCodeGen {
 
 	// ==================== Expression Translation ====================
 
-	static function rvToExpr(rv:ReferenceableValue):Expr {
+	static function rvToExpr(rv:ReferenceableValue, forString:Bool = false):Expr {
 		if (rv == null)
 			return macro 0;
 
@@ -2780,11 +2795,16 @@ class ProgrammableCodeGen {
 					final rtName = runtimeLoopVars.get(ref);
 					macro $i{rtName};
 				} else {
-					macro $p{["this", "_" + ref]};
+					final fieldExpr = macro $p{["this", "_" + ref]};
+					if (forString) {
+						enumToStringExpr(ref, fieldExpr);
+					} else {
+						fieldExpr;
+					}
 				}
 			case EBinop(op, e1, e2):
-				final left = rvToExpr(e1);
-				final right = rvToExpr(e2);
+				final left = rvToExpr(e1, forString);
+				final right = rvToExpr(e2, forString);
 				switch (op) {
 					case OpAdd: macro($left + $right);
 					case OpSub: macro($left - $right);
@@ -2800,15 +2820,15 @@ class ProgrammableCodeGen {
 					case OpGreaterEq: macro($left >= $right ? 1 : 0);
 				};
 			case EUnaryOp(_op, inner):
-				final innerExpr = rvToExpr(inner);
+				final innerExpr = rvToExpr(inner, forString);
 				macro -($innerExpr);
 			case RVParenthesis(e):
-				final inner = rvToExpr(e);
+				final inner = rvToExpr(e, forString);
 				macro($inner);
 			case RVTernary(condition, ifTrue, ifFalse):
 				final condE = rvToExpr(condition);
-				final trueE = rvToExpr(ifTrue);
-				final falseE = rvToExpr(ifFalse);
+				final trueE = rvToExpr(ifTrue, forString);
+				final falseE = rvToExpr(ifFalse, forString);
 				macro($condE != 0 ? $trueE : $falseE);
 			case RVCallbacks(name, defaultValue):
 				final nameExpr = rvToExpr(name);
@@ -2860,6 +2880,22 @@ class ProgrammableCodeGen {
 			default:
 				macro 0;
 		};
+	}
+
+	/** For enum params in string context, generate a lookup: ["idle","hover",...][this._status].
+	 *  For non-enum params, return the expression unchanged. */
+	static function enumToStringExpr(ref:String, fieldExpr:Expr):Expr {
+		final def = paramDefs.get(ref);
+		if (def != null) {
+			switch (def.type) {
+				case PPTEnum(values):
+					final namesExprs = values.map(v -> macro $v{v});
+					final namesArray:Expr = {expr: EArrayDecl(namesExprs), pos: Context.currentPos()};
+					return macro $namesArray[$fieldExpr];
+				default:
+			}
+		}
+		return fieldExpr;
 	}
 
 	static function collectParamRefs(rv:ReferenceableValue):Array<String> {

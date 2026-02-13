@@ -169,4 +169,7 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/56-codegenGridFunc/codegenGridFunc.manim", "codegenGridFunc")
 	public var gridFunc;
+
+	@:manim("test/examples/57-codegenMultiNamed/codegenMultiNamed.manim", "codegenMultiNamed")
+	public var multiNamed;
 }

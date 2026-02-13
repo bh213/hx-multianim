@@ -757,6 +757,78 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		simpleMacroTest(56, "codegenGridFunc", () -> createMp().gridFunc.create(), async, null, null, 4.0);
 	}
 
+	// ==================== MultiNamed: unit tests ====================
+
+	@Test
+	public function testMultiNamedCreate():Void {
+		final mp = createMp();
+		final mn = mp.multiNamed.create();
+		Assert.notNull(mn, "MultiNamed should be created");
+		Assert.isTrue(mn.numChildren > 0, "Root should have children");
+	}
+
+	@Test
+	public function testMultiNamedGetIndicator():Void {
+		final mp = createMp();
+		final mn = mp.multiNamed.create();
+		final indicator = mn.get_indicator();
+		Assert.notNull(indicator, "get_indicator() should return IUpdatable");
+		Assert.isTrue(Std.isOfType(indicator, bh.multianim.ProgrammableUpdatable), "Should be ProgrammableUpdatable instance");
+		final pu:bh.multianim.ProgrammableUpdatable = cast indicator;
+		Assert.equals(4, pu.objects.length, "Should have 4 indicator objects");
+	}
+
+	@Test
+	public function testMultiNamedGetLabel():Void {
+		final mp = createMp();
+		final mn = mp.multiNamed.create();
+		final label = mn.get_label();
+		Assert.notNull(label, "get_label() should return h2d.Object (single-element getter)");
+	}
+
+	@Test
+	public function testMultiNamedSetVisibility():Void {
+		final mp = createMp();
+		final mn = mp.multiNamed.create();
+		final indicator = mn.get_indicator();
+		final pu:bh.multianim.ProgrammableUpdatable = cast indicator;
+		indicator.setVisibility(false);
+		for (obj in pu.objects) {
+			Assert.isFalse(obj.visible, "All indicator objects should be hidden");
+		}
+		indicator.setVisibility(true);
+		for (obj in pu.objects) {
+			Assert.isTrue(obj.visible, "All indicator objects should be visible");
+		}
+	}
+
+	// ==================== MultiNamed: visual — multi-instance ====================
+
+	@Test
+	public function test57_CodegenMultiNamed(async:utest.Async):Void {
+		var params:Array<Map<String, Dynamic>> = [];
+		for (i in 0...4) {
+			var p = new Map<String, Dynamic>();
+			switch (i) {
+				case 0: p.set("status", "idle");
+				case 1: p.set("status", "hover");
+				case 2: p.set("status", "pressed");
+				case 3: p.set("status", "disabled");
+			}
+			params.push(p);
+		}
+
+		multiInstanceMacroTest(57, "codegenMultiNamed", 2.0, 80.0, params, function(i:Int):h2d.Object {
+			var mp = createMp();
+			return switch (i) {
+				case 0: mp.multiNamed.create();
+				case 1: mp.multiNamed.createFrom({status: bh.test.MultiProgrammable_MultiNamed.Hover});
+				case 2: mp.multiNamed.createFrom({status: bh.test.MultiProgrammable_MultiNamed.Pressed});
+				default: mp.multiNamed.createFrom({status: bh.test.MultiProgrammable_MultiNamed.Disabled});
+			};
+		}, async);
+	}
+
 	// ==================== RepeatableDemo: macro comparison ====================
 
 	@Test
