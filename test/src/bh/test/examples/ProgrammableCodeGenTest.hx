@@ -1507,7 +1507,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 				mp.easingCurves.create();
 
 				// Get curves via macro-generated methods
-				final macroCurves = new Map<String, bh.paths.Curve>();
+				final macroCurves = new Map<String, bh.paths.Curve.ICurve>();
 				macroCurves.set("linear", mp.easingCurves.getCurve_linear());
 				macroCurves.set("easeInQuad", mp.easingCurves.getCurve_easeInQuad());
 				macroCurves.set("easeOutQuad", mp.easingCurves.getCurve_easeOutQuad());
@@ -1624,7 +1624,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 				mp.segmentedCurves.create();
 
-				final macroCurves = new Map<String, bh.paths.Curve>();
+				final macroCurves = new Map<String, bh.paths.Curve.ICurve>();
 				macroCurves.set("simpleEasing", mp.segmentedCurves.getCurve_simpleEasing());
 				macroCurves.set("pointsCurve", mp.segmentedCurves.getCurve_pointsCurve());
 				macroCurves.set("segDefaultValues", mp.segmentedCurves.getCurve_segDefaultValues());
@@ -2058,7 +2058,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	// ==================== Easing/Curves visualization helpers ====================
 
 	/** Draw easing curve dot plots: each curve as a row of dots showing eased position. */
-	static function drawEasingCurvesVisualization(g:h2d.Graphics, font:h2d.Font, curves:Map<String, bh.paths.Curve>,
+	static function drawEasingCurvesVisualization(g:h2d.Graphics, font:h2d.Font, curves:Map<String, bh.paths.Curve.ICurve>,
 			curveNames:Array<String>, parent:h2d.Object):Void {
 		final startX:Float = 140;
 		final width:Float = 200;

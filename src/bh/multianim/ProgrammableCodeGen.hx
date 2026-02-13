@@ -14,6 +14,8 @@ import bh.multianim.MultiAnimParser.PathCoordinateMode;
 import bh.multianim.MultiAnimParser.SmoothingType;
 import bh.multianim.MultiAnimParser.EasingType;
 import bh.multianim.MultiAnimParser.ReferenceableValue;
+import bh.multianim.MultiAnimParser.CurveDef;
+import bh.multianim.MultiAnimParser.CurveSegmentDef;
 import bh.multianim.MultiAnimParser.CurvesDef;
 import bh.multianim.MultiAnimParser.PathsDef;
 import bh.multianim.CoordinateSystems;
@@ -4364,59 +4366,141 @@ class ProgrammableCodeGen {
 		for (curveName => curveDef in curvesDef) {
 			final methodName = "getCurve_" + sanitizeIdentifier(curveName);
 
-			// Generate inline Curve construction for all curve types
-			var easingExpr:Expr = macro null;
-			var pointsExpr:Expr = macro null;
-			var segmentsExpr:Expr = macro null;
-
-			if (curveDef.easing != null) {
-				easingExpr = easingTypeToExpr(curveDef.easing);
-			}
-
-			if (curveDef.points != null) {
-				var pointExprs:Array<Expr> = [];
-				for (p in curveDef.points) {
-					final timeExpr = rvToExpr(p.time);
-					final valueExpr = rvToExpr(p.value);
-					pointExprs.push(macro {time: $timeExpr, value: $valueExpr});
-				}
-				pointsExpr = macro $a{pointExprs};
-			}
-
-			if (curveDef.segments != null) {
-				var segExprs:Array<Expr> = [];
-				for (s in curveDef.segments) {
-					final tsExpr = rvToExpr(s.timeStart);
-					final teExpr = rvToExpr(s.timeEnd);
-					final eExpr = easingTypeToExpr(s.easing);
-					final vsExpr = rvToExpr(s.valueStart);
-					final veExpr = rvToExpr(s.valueEnd);
-					segExprs.push(macro {
-						timeStart: $tsExpr,
-						timeEnd: $teExpr,
-						easing: $eExpr,
-						valueStart: $vsExpr,
-						valueEnd: $veExpr
-					});
-				}
-				segmentsExpr = macro $a{segExprs};
-			}
+			// Generate an inline ICurve implementation with all math baked in (no state, no allocations)
+			var getValueBody = generateInlineCurveBody(curveDef, pos);
 
 			// Cached curve field for lazy initialization
 			var cacheFieldName = "_cachedCurve_" + sanitizeIdentifier(curveName);
 			factoryFields.push(makeField(cacheFieldName,
-				FVar(macro :bh.paths.Curve, macro null),
+				FVar(macro :bh.paths.Curve.ICurve, macro null),
 				[], pos));
 
 			var cacheIdent = cacheFieldName;
 			factoryFields.push(makeMethod(methodName, [
 				macro {
 					if ($i{cacheIdent} == null)
-						$i{cacheIdent} = new bh.paths.Curve($pointsExpr, $easingExpr, $segmentsExpr);
+						$i{cacheIdent} = new bh.paths.InlineCurve(function(t:Float):Float { $getValueBody; });
 					return $i{cacheIdent};
 				}
-			], [], macro :bh.paths.Curve, [APublic], pos));
+			], [], macro :bh.paths.Curve.ICurve, [APublic], pos));
 		}
+	}
+
+	/** Generate the body of an inline getValue function with all curve math baked in. */
+	static function generateInlineCurveBody(curveDef:CurveDef, pos:Position):Expr {
+		// Clamp t to [0, 1]
+		var bodyExprs:Array<Expr> = [
+			macro t = bh.base.TweenUtils.FloatTools.clamp(t, 0.0, 1.0)
+		];
+
+		if (curveDef.easing != null) {
+			// Pure easing function — single call
+			var easingExpr = easingTypeToExpr(curveDef.easing);
+			bodyExprs.push(macro return bh.base.TweenUtils.FloatTools.applyEasing($easingExpr, t));
+		} else if (curveDef.points != null && curveDef.points.length > 0) {
+			var pts = curveDef.points;
+
+			if (pts.length == 1) {
+				// Single point — constant value
+				var v = tryResolveFloat(pts[0].value);
+				bodyExprs.push(macro return $v{v});
+			} else {
+				// Multiple points — generate if/else chain for each segment
+				var firstTime = tryResolveFloat(pts[0].time);
+				var firstValue = tryResolveFloat(pts[0].value);
+				var lastTime = tryResolveFloat(pts[pts.length - 1].time);
+				var lastValue = tryResolveFloat(pts[pts.length - 1].value);
+
+				// Clamp to first point
+				bodyExprs.push(macro if (t <= $v{firstTime}) return $v{firstValue});
+
+				// Generate each segment as an if block
+				for (i in 0...pts.length - 1) {
+					var t0 = tryResolveFloat(pts[i].time);
+					var v0 = tryResolveFloat(pts[i].value);
+					var t1 = tryResolveFloat(pts[i + 1].time);
+					var v1 = tryResolveFloat(pts[i + 1].value);
+					var dt = t1 - t0;
+
+					if (dt <= 0) {
+						// Degenerate segment — skip
+						continue;
+					}
+
+					bodyExprs.push(macro if (t <= $v{t1}) {
+						var segT = (t - $v{t0}) / $v{dt};
+						return bh.base.TweenUtils.FloatTools.lerp(segT, $v{v0}, $v{v1});
+					});
+				}
+
+				// Final fallback (shouldn't normally reach due to clamping)
+				bodyExprs.push(macro return $v{lastValue});
+			}
+		} else if (curveDef.segments != null && curveDef.segments.length > 0) {
+			// Easing segments — generate inline evaluation
+			bodyExprs.push(generateInlineSegmentsBody(curveDef.segments, pos));
+		} else {
+			// Identity curve
+			bodyExprs.push(macro return t);
+		}
+
+		return macro $b{bodyExprs};
+	}
+
+	/** Generate inline code for evaluating easing segments (weighted blend with gap interpolation). */
+	static function generateInlineSegmentsBody(segments:Array<CurveSegmentDef>, pos:Position):Expr {
+		var exprs:Array<Expr> = [];
+
+		exprs.push(macro var totalWeight:Float = 0.0);
+		exprs.push(macro var weightedSum:Float = 0.0);
+		exprs.push(macro var leftEnd:Float = -1e30);
+		exprs.push(macro var leftValue:Float = 0.0);
+		exprs.push(macro var rightStart:Float = 1e30);
+		exprs.push(macro var rightValue:Float = 0.0);
+
+		// Unroll each segment as an if block
+		for (s in segments) {
+			var ts = tryResolveFloat(s.timeStart);
+			var te = tryResolveFloat(s.timeEnd);
+			var vs = tryResolveFloat(s.valueStart);
+			var ve = tryResolveFloat(s.valueEnd);
+			var easExpr = easingTypeToExpr(s.easing);
+
+			exprs.push(macro {
+				if (t >= $v{ts} && t < $v{te}) {
+					var segDuration = $v{te} - $v{ts};
+					var localT = if (segDuration <= 0.0) 0.0 else (t - $v{ts}) / segDuration;
+					var easedT = bh.base.TweenUtils.FloatTools.applyEasing($easExpr, localT);
+					var value = bh.base.TweenUtils.FloatTools.lerp(easedT, $v{vs}, $v{ve});
+					var halfDur = segDuration * 0.5;
+					var weight = if (halfDur <= 0.0) 1.0 else Math.max(Math.min((t - $v{ts}) / halfDur, ($v{te} - t) / halfDur), 1e-6);
+					totalWeight += weight;
+					weightedSum += weight * value;
+				} else if ($v{te} <= t && $v{te} > leftEnd) {
+					leftEnd = $v{te};
+					leftValue = $v{ve};
+				} else if ($v{ts} > t && $v{ts} < rightStart) {
+					rightStart = $v{ts};
+					rightValue = $v{vs};
+				}
+			});
+		}
+
+		exprs.push(macro if (totalWeight > 0.0) return weightedSum / totalWeight);
+		exprs.push(macro if (leftEnd == t) return leftValue);
+		exprs.push(macro {
+			var hasLeft = leftEnd != -1e30;
+			var hasRight = rightStart != 1e30;
+			if (hasLeft && hasRight) {
+				var gapT = (t - leftEnd) / (rightStart - leftEnd);
+				return bh.base.TweenUtils.FloatTools.lerp(gapT, leftValue, rightValue);
+			}
+		});
+		exprs.push(macro if (leftEnd != -1e30) return leftValue);
+		exprs.push(macro if (rightStart != 1e30) return rightValue);
+		exprs.push(macro return t);
+
+		return macro $b{exprs};
 	}
 
 	static function easingTypeToExpr(easing:EasingType):Expr {

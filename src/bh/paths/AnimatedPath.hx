@@ -1,7 +1,7 @@
 package bh.paths;
 
 import bh.base.FPoint;
-import bh.paths.Curve;
+import bh.paths.Curve.ICurve;
 import bh.paths.MultiAnimPaths.Path;
 
 enum AnimatedPathMode {
@@ -33,7 +33,7 @@ enum CurveSlot {
 @:structInit
 private class CurveSegment {
 	public var startRate:Float;
-	public var curve:Curve;
+	public var curve:ICurve;
 }
 
 @:structInit
@@ -90,12 +90,12 @@ class AnimatedPath {
 		};
 	}
 
-	public function addCurveSegment(slot:CurveSlot, startRate:Float, curve:Curve):Void {
+	public function addCurveSegment(slot:CurveSlot, startRate:Float, curve:ICurve):Void {
 		var segments = getSegmentsForSlot(slot);
 		insertSorted(segments, {startRate: startRate, curve: curve});
 	}
 
-	public function addCustomCurveSegment(name:String, startRate:Float, curve:Curve):Void {
+	public function addCustomCurveSegment(name:String, startRate:Float, curve:ICurve):Void {
 		if (!customCurveSegments.exists(name)) {
 			customCurveSegments.set(name, []);
 		}

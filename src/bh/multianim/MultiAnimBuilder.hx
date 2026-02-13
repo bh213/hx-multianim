@@ -2909,13 +2909,13 @@ class MultiAnimBuilder {
 		}
 	}
 
-	public function getCurves():Map<String, bh.paths.Curve> {
+	public function getCurves():Map<String, bh.paths.Curve.ICurve> {
 		var node = multiParserResult?.nodes.get(MultiAnimParser.defaultCurveNodeName);
 		if (node == null)
 			throw 'curves does not exist';
 		switch node.type {
 			case CURVES(curvesDef):
-				var result = new Map<String, bh.paths.Curve>();
+				var result = new Map<String, bh.paths.Curve.ICurve>();
 				for (name => def in curvesDef) {
 					var resolvedPoints:Null<Array<bh.paths.Curve.CurvePoint>> = null;
 					if (def.points != null) {
@@ -2945,7 +2945,7 @@ class MultiAnimBuilder {
 		}
 	}
 
-	public function getCurve(name:String):bh.paths.Curve {
+	public function getCurve(name:String):bh.paths.Curve.ICurve {
 		var curves = getCurves();
 		var curve = curves.get(name);
 		if (curve == null)

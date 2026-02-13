@@ -385,7 +385,7 @@ class ProgrammableBuilder {
 
 	/** Build a named curve via the builder.
 	 *  Used by generated code for CURVES nodes. */
-	public function buildCurve(name:String):bh.paths.Curve {
+	public function buildCurve(name:String):bh.paths.Curve.ICurve {
 		return (_builder : MultiAnimBuilder).getCurve(name);
 	}
 

@@ -3,9 +3,14 @@ package bh.paths;
 import bh.multianim.MultiAnimParser.EasingType;
 import bh.base.TweenUtils.FloatTools;
 
+/** Interface for a 1D curve that maps a 0..1 input to a float output. */
+interface ICurve {
+	public function getValue(t:Float):Float;
+}
+
 /** A 1D curve that maps a 0..1 input to a float output.
  *  Can be defined by a named easing function, explicit control points, or easing segments. */
-class Curve {
+class Curve implements ICurve {
 	var points:Null<Array<CurvePoint>>;
 	var easing:Null<EasingType>;
 	var segments:Null<Array<CurveSegment>>;
