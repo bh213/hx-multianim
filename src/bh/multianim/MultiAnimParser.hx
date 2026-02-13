@@ -501,28 +501,43 @@ enum AnimatedPathTime {
 	Checkpoint(checkpointName:String);
 }
 
-@:structInit
-class AnimatedPathTimedAction {
-    public var at:AnimatedPathTime;
-    public var action:AnimatedPathsAction;
+@:nullSafety
+enum AnimatedPathModeType {
+	APDistance;
+	APTime;
 }
 
 @:nullSafety
-enum AnimatedPathsAction {
-	ChangeSpeed(speed:ReferenceableValue);
-    Accelerate(acceleration:ReferenceableValue, duration:ReferenceableValue);
-    Event(eventName:String);
-    AttachParticles(particlesName:String, particlesTemplate:String, particlesDef:ParticlesDef);
-    RemoveParticles(particlesName:String);
-    ChangeAnimSMState(state:String);
+enum AnimatedPathCurveSlotType {
+	APSpeed;
+	APScale;
+	APAlpha;
+	APRotation;
+	APProgress;
+	APCustom(name:String);
 }
 
+@:structInit
+class AnimatedPathCurveAssignment {
+	public var at:AnimatedPathTime;
+	public var slot:AnimatedPathCurveSlotType;
+	public var curveName:String;
+}
+
+@:structInit
+class AnimatedPathTimedEvent {
+	public var at:AnimatedPathTime;
+	public var eventName:String;
+}
 
 @:nullSafety
 typedef AnimatedPathDef = {
-	var actions:Array<AnimatedPathTimedAction>;
-	var easing:Null<EasingType>;
+	var mode:Null<AnimatedPathModeType>;
+	var speed:Null<ReferenceableValue>;
 	var duration:Null<ReferenceableValue>;
+	var pathName:String;
+	var curveAssignments:Array<AnimatedPathCurveAssignment>;
+	var events:Array<AnimatedPathTimedEvent>;
 };
 
 @:nullSafety

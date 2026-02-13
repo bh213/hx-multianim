@@ -326,8 +326,29 @@ class Path {
 		throw 'rate out of range: $rate';
 	}
 
+	/** Get analytical tangent angle (radians) at the given rate (0..1). */
+	public function getTangentAngle(rate:Float):Float {
+		for (singlePath in singlePaths) {
+			if (rate >= singlePath.startRange && rate <= singlePath.endRange) {
+				return singlePath.getTangentAngle((rate - singlePath.startRange) / (singlePath.endRange - singlePath.startRange));
+			}
+		}
+		throw 'rate out of range: $rate';
+	}
+
 	public function getEndpoint():FPoint {
 		return endpoint;
+	}
+
+	/** Create a new Path rotated by the given angle (radians) around the origin. */
+	public function withStartAngle(angle:Float):Path {
+		final cosA = Math.cos(angle);
+		final sinA = Math.sin(angle);
+		var transformed:Array<SinglePath> = [];
+		for (sp in singlePaths) {
+			transformed.push(sp.transform(cosA, sinA, 1.0, 0., 0.));
+		}
+		return new Path(transformed);
 	}
 
 	/** Create a new Path whose (0,0)→endpoint is mapped onto startPoint→endPoint
@@ -411,6 +432,67 @@ private class SinglePath {
 				);
 		}
 	}
+	/** Analytical tangent angle (radians) at the given local rate (0..1). */
+	public function getTangentAngle(rate:Float):Float {
+		switch (path) {
+			case Checkpoint(_):
+				return 0.;
+			case Line:
+				return Math.atan2(end.y - start.y, end.x - start.x);
+			case Arc(center, startAngle, radius, angleDelta):
+				var angleDeltaRad = hxd.Math.degToRad(angleDelta);
+				var currentAngle = startAngle + angleDeltaRad * rate;
+				// Tangent is perpendicular to radius; direction depends on CW/CCW
+				if (angleDelta > 0)
+					return currentAngle + Math.PI / 2;
+				else
+					return currentAngle - Math.PI / 2;
+			case Bezier3(control1, control2, control3):
+				// Cubic bezier derivative: 3(1-t)^2(P1-P0) + 6(1-t)t(P2-P1) + 3t^2(P3-P2)
+				// Points: P0=start, P1=control1, P2=control2, P3=end
+				var t = rate;
+				var mt = 1.0 - t;
+				var dx = 3 * mt * mt * (control1.x - start.x) + 6 * mt * t * (control2.x - control1.x) + 3 * t * t * (end.x - control2.x);
+				var dy = 3 * mt * mt * (control1.y - start.y) + 6 * mt * t * (control2.y - control1.y) + 3 * t * t * (end.y - control2.y);
+				return Math.atan2(dy, dx);
+			case Bezier4(control1, control2, control3, control4):
+				// Quartic bezier derivative: 4 control points -> cubic derivative
+				// Points: P0=start, P1=control1, P2=control2, P3=control3, P4=end
+				var t = rate;
+				var mt = 1.0 - t;
+				var mt2 = mt * mt;
+				var t2 = t * t;
+				var dx = 4 * mt2 * mt * (control1.x - start.x) + 12 * mt2 * t * (control2.x - control1.x)
+					+ 12 * mt * t2 * (control3.x - control2.x) + 4 * t2 * t * (end.x - control3.x);
+				var dy = 4 * mt2 * mt * (control1.y - start.y) + 12 * mt2 * t * (control2.y - control1.y)
+					+ 12 * mt * t2 * (control3.y - control2.y) + 4 * t2 * t * (end.y - control3.y);
+				return Math.atan2(dy, dx);
+			case Spiral(center, startAngle, radiusStart, radiusEnd, angleDelta):
+				var angleDeltaRad = hxd.Math.degToRad(angleDelta);
+				var currentAngle = startAngle + angleDeltaRad * rate;
+				var r = rate.lerp(radiusStart, radiusEnd);
+				var dr = radiusEnd - radiusStart; // dr/dt (normalized)
+				// dx/dt = dr*cos(a) - r*angleDeltaRad*sin(a), dy/dt = dr*sin(a) + r*angleDeltaRad*cos(a)
+				var cosA = Math.cos(currentAngle);
+				var sinA = Math.sin(currentAngle);
+				var dx = dr * cosA - r * angleDeltaRad * sinA;
+				var dy = dr * sinA + r * angleDeltaRad * cosA;
+				return Math.atan2(dy, dx);
+			case Wave(amplitude, wavelength, count, dirAngle):
+				var totalLength = wavelength * count;
+				// forward component: constant = totalLength
+				// lateral component: amplitude * sin(rate * count * 2pi)
+				// d(lateral)/d(rate) = amplitude * count * 2pi * cos(rate * count * 2pi)
+				var phase = rate * count * 2 * Math.PI;
+				var dLateral = amplitude * count * 2 * Math.PI * Math.cos(phase);
+				var cosD = Math.cos(dirAngle);
+				var sinD = Math.sin(dirAngle);
+				var dx = totalLength * cosD - dLateral * sinD;
+				var dy = totalLength * sinD + dLateral * cosD;
+				return Math.atan2(dy, dx);
+		}
+	}
+
 	public function toPixelArray():Array<FPoint> {
 		
 		return switch path {

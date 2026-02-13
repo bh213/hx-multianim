@@ -5,7 +5,8 @@ import h2d.Tile;
 import bh.ui.UIElementBuilder;
 import h2d.HtmlText;
 import bh.paths.AnimatedPath;
-import bh.paths.AnimatedPath.AnimatePathCommands;
+import bh.paths.AnimatedPath.AnimatedPathMode;
+import bh.paths.AnimatedPath.CurveSlot;
 import bh.paths.MultiAnimPaths.Path;
 import bh.stateanim.AnimationFrame;
 import bh.stateanim.AnimationSM;
@@ -2816,39 +2817,67 @@ class MultiAnimBuilder {
 		return createParticleImpl(particlesDef, name);
 	}
 
-	public function createAnimatedPath(name:String, path:Path, initialSpeed:Float, positionMode:AnimatedPathPositionMode, object:BuiltHeapsComponent) {
+	/** Create an AnimatedPath from a named definition.
+	 *  Optional transforms:
+	 *  - (startPoint, endPoint): normalizes the path to fit between two points
+	 *  - (startAngle): rotates the path by the given angle (radians) */
+	public function createAnimatedPath(name:String, ?startPoint:bh.base.FPoint, ?endPoint:bh.base.FPoint, ?startAngle:Null<Float>):bh.paths.AnimatedPath {
 		var node = multiParserResult?.nodes.get(name);
 		if (node == null)
 			throw 'could not get animatedPath node #${name}' + currentNodePos();
 		switch node.type {
 			case ANIMATED_PATH(pathDef):
-				var retVal = if (pathDef.duration != null) {
-					final dur = resolveAsNumber(pathDef.duration);
-					bh.paths.AnimatedPath.createWithDurationAndEasing(path, dur, pathDef.easing, object, positionMode, this);
-				} else if (pathDef.easing != null) {
-					// Easing without explicit duration: estimate duration from speed
-					final estimatedDuration = path.totalLength / initialSpeed;
-					bh.paths.AnimatedPath.createWithDurationAndEasing(path, estimatedDuration, pathDef.easing, object, positionMode, this);
-				} else {
-					new bh.paths.AnimatedPath(path, initialSpeed, object, positionMode, this);
+				// Resolve path from paths block, apply optional transforms
+				var paths = getPaths();
+				var path = paths.getPath(pathDef.pathName, startPoint, endPoint);
+				if (startAngle != null)
+					path = path.withStartAngle(startAngle);
+
+				// Determine mode
+				var mode:AnimatedPathMode = switch (pathDef.mode) {
+					case APTime | null if (pathDef.duration != null):
+						Time(resolveAsNumber(pathDef.duration));
+					case APDistance | null if (pathDef.speed != null):
+						Distance(resolveAsNumber(pathDef.speed));
+					case APTime:
+						throw 'time mode requires duration' + MacroUtils.nodePos(node);
+					case APDistance:
+						throw 'distance mode requires speed' + MacroUtils.nodePos(node);
+					case null:
+						throw 'animatedPath requires either speed or duration' + MacroUtils.nodePos(node);
 				};
-				for (action in pathDef.actions) {
-					var atRate = switch action.at {
+
+				var retVal = new bh.paths.AnimatedPath(path, mode);
+
+				// Resolve curve references
+				var allCurves = getCurves();
+				for (ca in pathDef.curveAssignments) {
+					var atRate = switch ca.at {
 						case Rate(r): resolveAsNumber(r);
-						case Checkpoint(name):
-							path.getCheckpoint(name);
+						case Checkpoint(cpName): path.getCheckpoint(cpName);
+					};
+					var curve = allCurves.get(ca.curveName);
+					if (curve == null)
+						throw 'curve not found: ${ca.curveName}' + MacroUtils.nodePos(node);
+					switch ca.slot {
+						case APSpeed: retVal.addCurveSegment(Speed, atRate, curve);
+						case APScale: retVal.addCurveSegment(Scale, atRate, curve);
+						case APAlpha: retVal.addCurveSegment(Alpha, atRate, curve);
+						case APRotation: retVal.addCurveSegment(Rotation, atRate, curve);
+						case APProgress: retVal.addCurveSegment(Progress, atRate, curve);
+						case APCustom(customName): retVal.addCustomCurveSegment(customName, atRate, curve);
 					}
-					var resolvedAction:AnimatePathCommands = switch action.action {
-						case ChangeSpeed(speed): ChangeSpeed(resolveAsNumber(speed));
-						case Accelerate(acceleration, duration): Accelerate(resolveAsNumber(acceleration), resolveAsNumber(duration));
-						case Event(eventName): Event(Event(eventName));
-						case AttachParticles(particlesName, particlesTemplate, particlesDef):
-							AttachParticles(particlesName, particlesDef);
-						case RemoveParticles(particlesName): RemoveParticles(particlesName);
-						case ChangeAnimSMState(state): ChangeAnimSMState(state);
-					}
-					retVal.addAction({atRateTime: atRate, action: resolvedAction});
 				}
+
+				// Add events
+				for (ev in pathDef.events) {
+					var atRate = switch ev.at {
+						case Rate(r): resolveAsNumber(r);
+						case Checkpoint(cpName): path.getCheckpoint(cpName);
+					};
+					retVal.addEvent(atRate, ev.eventName);
+				}
+
 				return retVal;
 
 			default:

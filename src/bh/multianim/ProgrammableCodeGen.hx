@@ -3747,12 +3747,11 @@ class ProgrammableCodeGen {
 		final nameExpr:Expr = macro $v{name};
 		final methodName = "createAnimatedPath_" + sanitizeIdentifier(name);
 		factoryFields.push(makeMethod(methodName, [
-			macro return this.buildAnimatedPath($nameExpr, path, speed, positionMode, object)
+			macro return this.buildAnimatedPath($nameExpr, startPoint, endPoint, startAngle)
 		], [
-			{name: "path", type: macro :bh.paths.MultiAnimPaths.Path},
-			{name: "speed", type: macro :Float},
-			{name: "positionMode", type: macro :bh.paths.AnimatedPath.AnimatedPathPositionMode},
-			{name: "object", type: macro :bh.multianim.MultiAnimParser.BuiltHeapsComponent},
+			{name: "startPoint", opt: true, type: macro :bh.base.FPoint},
+			{name: "endPoint", opt: true, type: macro :bh.base.FPoint},
+			{name: "startAngle", opt: true, type: macro :Null<Float>},
 		], macro :bh.paths.AnimatedPath, [APublic], pos));
 	}
 

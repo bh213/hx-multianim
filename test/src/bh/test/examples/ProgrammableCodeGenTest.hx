@@ -1780,6 +1780,281 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		});
 	}
 
+	// ==================== AnimatedPath Curves: macro codegen (3-image) ====================
+
+	@Test
+	public function test61_AnimatedPathCurves(async:utest.Async):Void {
+		setupTest(61, "animatedPathCurves");
+		VisualTestBase.pendingVisualTests++;
+		async.setTimeout(15000);
+
+		final animFilePath = "test/examples/61-animatedPathCurves/animatedPathCurves.manim";
+		final sizeX = 1280;
+		final sizeY = 720;
+
+		// Phase 1: builder
+		clearScene();
+		try {
+			final fileContent = byte.ByteData.ofString(sys.io.File.getContent(animFilePath));
+			final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+			final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, animFilePath);
+
+			final g = new h2d.Graphics(s2d);
+			final font = loader.loadFont("m3x6");
+
+			// Background
+			g.lineStyle(0);
+			g.beginFill(0xC8B896);
+			g.drawRect(0, 0, sizeX, sizeY);
+			g.endFill();
+
+			// Create animated paths and simulate them
+			final animNames = ["distAnim", "timeAnim", "customAnim", "checkpointAnim"];
+
+			drawAnimatedPathGrid(g, font, s2d, builder, animNames);
+			drawAnimatedPathLegend(g, font, s2d);
+
+			if (testTitle != null && testTitle.length > 0) addTitleOverlay();
+		} catch (e:Dynamic) {
+			var msg = 'Builder threw: $e';
+			reportBuildFailure(msg);
+			Assert.fail(msg);
+			VisualTestBase.pendingVisualTests--;
+			async.done();
+			return;
+		}
+
+		waitForUpdate(function(dt:Float) {
+			var builderPath = getActualImagePath();
+			var builderSuccess = false;
+			try {
+				builderSuccess = screenshot(builderPath, sizeX, sizeY);
+			} catch (e:Dynamic) {
+				Assert.fail('Builder screenshot threw: $e');
+				VisualTestBase.pendingVisualTests--;
+				async.done();
+				return;
+			}
+
+			// Phase 2: macro
+			clearScene();
+			try {
+				final mp = createMp();
+				final g = new h2d.Graphics(s2d);
+				final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+				final font = loader.loadFont("m3x6");
+
+				mp.animatedPathCurves.create();
+
+				g.lineStyle(0);
+				g.beginFill(0xC8B896);
+				g.drawRect(0, 0, sizeX, sizeY);
+				g.endFill();
+
+				final animNames = ["distAnim", "timeAnim", "customAnim", "checkpointAnim"];
+
+				drawAnimatedPathGridMacro(g, font, s2d, mp, animNames);
+				drawAnimatedPathLegend(g, font, s2d);
+
+				if (testTitle != null && testTitle.length > 0) addTitleOverlay();
+			} catch (e:Dynamic) {
+				Assert.fail('Macro threw: $e');
+				VisualTestBase.pendingVisualTests--;
+				async.done();
+				return;
+			}
+
+			waitForUpdate(function(dt2:Float) {
+				try {
+					var macroPath = 'test/screenshots/animatedPathCurves_macro.png';
+					var referencePath = getReferenceImagePath();
+					var macroSuccess = screenshot(macroPath, sizeX, sizeY);
+
+					var builderSim = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
+					var macroSim = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
+					var builderOk = builderSim > 0.99;
+					var macroOk = macroSim > 0.99;
+
+					HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath, builderOk && macroOk,
+						builderSim, null, macroPath, macroSim, macroOk, 0.99, 0.99);
+					HtmlReportGenerator.generateReport();
+
+					Assert.isTrue(builderOk, 'Builder should match reference (${Math.round(builderSim * 10000) / 100}%)');
+					Assert.isTrue(macroOk, 'Macro should match reference (${Math.round(macroSim * 10000) / 100}%)');
+				} catch (e:Dynamic) {
+					Assert.fail('Screenshot/compare threw: $e');
+				}
+				VisualTestBase.pendingVisualTests--;
+				async.done();
+			});
+		});
+	}
+
+	// ==================== AnimatedPath visualization helpers ====================
+
+	static function simulateAnimatedPath(ap:bh.paths.AnimatedPath):Array<bh.paths.AnimatedPath.AnimatedPathState> {
+		var states:Array<bh.paths.AnimatedPath.AnimatedPathState> = [];
+		var totalTime:Float = 0;
+		final dt:Float = 0.05;
+		while (totalTime < 5.0) {
+			var state = ap.update(dt);
+			states.push({
+				position: state.position,
+				angle: state.angle,
+				rate: state.rate,
+				speed: state.speed,
+				scale: state.scale,
+				alpha: state.alpha,
+				rotation: state.rotation,
+				done: state.done,
+				custom: state.custom
+			});
+			totalTime += dt;
+			if (state.done) break;
+		}
+		return states;
+	}
+
+	static function drawAnimatedPathCell(g:h2d.Graphics, states:Array<bh.paths.AnimatedPath.AnimatedPathState>,
+			path:bh.paths.MultiAnimPaths.Path, baseX:Float, offsetY:Float):Void {
+		// Draw path line
+		g.lineStyle(1, 0x336633);
+		for (i in 0...201) {
+			final rate:Float = i / 200.0;
+			final pt = path.getPoint(rate);
+			if (i == 0)
+				g.moveTo(baseX + pt.x, offsetY + pt.y);
+			else
+				g.lineTo(baseX + pt.x, offsetY + pt.y);
+		}
+
+		// Draw sampled positions: dot color = rate (white→black), dot alpha = alpha, dot size = scale
+		for (state in states) {
+			final dotX = baseX + state.position.x;
+			final dotY = offsetY + state.position.y;
+			final rateBrightness = Std.int((1.0 - bh.base.TweenUtils.FloatTools.clamp(state.rate, 0, 1)) * 255);
+			final rateColor = (rateBrightness << 16) | (rateBrightness << 8) | rateBrightness;
+			final scaleSize = state.scale * 3;
+			g.lineStyle(0);
+			g.beginFill(rateColor, bh.base.TweenUtils.FloatTools.clamp(state.alpha, 0, 1));
+			g.drawCircle(dotX, dotY, scaleSize);
+			g.endFill();
+		}
+
+		// Draw scale curve graph below path
+		final curveY = offsetY + 120;
+		if (states.length > 1) {
+			g.lineStyle(1, 0x884444);
+			for (i in 0...states.length) {
+				final px = baseX + (i / states.length) * 200;
+				final py = curveY - states[i].scale * 30;
+				if (i == 0) g.moveTo(px, py); else g.lineTo(px, py);
+			}
+			// Draw alpha curve graph
+			g.lineStyle(1, 0x448844);
+			for (i in 0...states.length) {
+				final px = baseX + (i / states.length) * 200;
+				final py = curveY - states[i].alpha * 30;
+				if (i == 0) g.moveTo(px, py); else g.lineTo(px, py);
+			}
+		}
+	}
+
+	function drawAnimatedPathGrid(g:h2d.Graphics, font:h2d.Font, parent:h2d.Object,
+			builder:bh.multianim.MultiAnimBuilder, animNames:Array<String>):Void {
+		for (col in 0...animNames.length) {
+			final animName = animNames[col];
+			final baseX:Float = 40 + col * 320;
+			final baseY:Float = 40;
+
+			var label = new h2d.Text(font, parent);
+			label.text = animName;
+			label.textColor = 0x222222;
+			label.setPosition(baseX, 10);
+
+			final ap = builder.createAnimatedPath(animName);
+			final states = simulateAnimatedPath(ap);
+			drawAnimatedPathCell(g, states, ap.path, baseX, baseY);
+		}
+	}
+
+	function drawAnimatedPathGridMacro(g:h2d.Graphics, font:h2d.Font, parent:h2d.Object,
+			mp:bh.test.MultiProgrammable, animNames:Array<String>):Void {
+		for (col in 0...animNames.length) {
+			final animName = animNames[col];
+			final baseX:Float = 40 + col * 320;
+			final baseY:Float = 40;
+
+			var label = new h2d.Text(font, parent);
+			label.text = animName;
+			label.textColor = 0x222222;
+			label.setPosition(baseX, 10);
+
+			final ap = switch animName {
+				case "distAnim": mp.animatedPathCurves.createAnimatedPath_distAnim();
+				case "timeAnim": mp.animatedPathCurves.createAnimatedPath_timeAnim();
+				case "customAnim": mp.animatedPathCurves.createAnimatedPath_customAnim();
+				case "checkpointAnim": mp.animatedPathCurves.createAnimatedPath_checkpointAnim();
+				default: throw 'unknown anim: $animName';
+			};
+
+			final states = simulateAnimatedPath(ap);
+			drawAnimatedPathCell(g, states, ap.path, baseX, baseY);
+		}
+	}
+
+	static function drawAnimatedPathLegend(g:h2d.Graphics, font:h2d.Font, parent:h2d.Object):Void {
+		final legendX:Float = 20;
+		final legendY:Float = 690;
+		final spacing:Float = 160;
+
+		// Path geometry
+		g.lineStyle(2, 0x336633);
+		g.moveTo(legendX, legendY + 4);
+		g.lineTo(legendX + 20, legendY + 4);
+		var t1 = new h2d.Text(font, parent);
+		t1.text = "path";
+		t1.textColor = 0x336633;
+		t1.setPosition(legendX + 24, legendY - 3);
+
+		// Dots: size = scale, color = rate (white→black), opacity = alpha
+		final dotLegendX = legendX + spacing;
+		g.lineStyle(0);
+		g.beginFill(0xFFFFFF, 0.4);
+		g.drawCircle(dotLegendX + 4, legendY + 4, 2);
+		g.endFill();
+		g.beginFill(0x888888);
+		g.drawCircle(dotLegendX + 12, legendY + 4, 4);
+		g.endFill();
+		g.beginFill(0x000000);
+		g.drawCircle(dotLegendX + 22, legendY + 4, 6);
+		g.endFill();
+		var t2 = new h2d.Text(font, parent);
+		t2.text = "dots: size=scale, white..black=rate, opacity=alpha";
+		t2.textColor = 0x555555;
+		t2.setPosition(dotLegendX + 32, legendY - 3);
+
+		// Scale curve
+		final scaleLegendX = legendX + spacing * 2 + 120;
+		g.lineStyle(2, 0x884444);
+		g.moveTo(scaleLegendX, legendY + 4);
+		g.lineTo(scaleLegendX + 20, legendY + 4);
+		var t3 = new h2d.Text(font, parent);
+		t3.text = "scale curve";
+		t3.textColor = 0x884444;
+		t3.setPosition(scaleLegendX + 24, legendY - 3);
+
+		// Alpha curve
+		final alphaLegendX = scaleLegendX + spacing;
+		g.lineStyle(2, 0x448844);
+		g.moveTo(alphaLegendX, legendY + 4);
+		g.lineTo(alphaLegendX + 20, legendY + 4);
+		var t4 = new h2d.Text(font, parent);
+		t4.text = "alpha curve";
+		t4.textColor = 0x448844;
+		t4.setPosition(alphaLegendX + 24, legendY - 3);
+	}
+
 	// ==================== Easing/Curves visualization helpers ====================
 
 	/** Draw easing curve dot plots: each curve as a row of dots showing eased position. */

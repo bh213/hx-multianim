@@ -3855,23 +3855,42 @@ class MacroManimParser {
 	// ===================== Animated Path =====================
 
 	function parseAnimatedPath():AnimatedPathDef {
-		var actions:Array<AnimatedPathTimedAction> = [];
-		var easing:Null<EasingType> = null;
+		var curveAssignments:Array<AnimatedPathCurveAssignment> = [];
+		var events:Array<AnimatedPathTimedEvent> = [];
+		var mode:Null<AnimatedPathModeType> = null;
+		var speed:Null<ReferenceableValue> = null;
 		var duration:Null<ReferenceableValue> = null;
+		var pathName:Null<String> = null;
+
 		while (!match(TCurlyClosed)) {
 			switch (peek()) {
-				// easing: <easingType>
-				case TIdentifier(s) if (isKeyword(s, "easing")):
+				// type: distance | time
+				case TIdentifier(s) if (isKeyword(s, "type")):
 					advance();
 					expect(TColon);
-					easing = parseEasingType();
+					final modeStr = expectIdentifierOrString();
+					mode = switch (modeStr.toLowerCase()) {
+						case "distance": APDistance;
+						case "time": APTime;
+						default: error('expected "distance" or "time", got "$modeStr"');
+					};
+				// speed: <float>
+				case TIdentifier(s) if (isKeyword(s, "speed")):
+					advance();
+					expect(TColon);
+					speed = parseFloatOrReference();
 				// duration: <float>
 				case TIdentifier(s) if (isKeyword(s, "duration")):
 					advance();
 					expect(TColon);
 					duration = parseFloatOrReference();
+				// path: <pathName>
+				case TIdentifier(s) if (isKeyword(s, "path")):
+					advance();
+					expect(TColon);
+					pathName = expectIdentifierOrString();
 				default:
-					// Time: either a float rate or a checkpoint name
+					// Rate or checkpoint: <float>: ... or <identifier>: ...
 					var at:AnimatedPathTime;
 					switch (peek()) {
 						case TFloat(_) | TInteger(_):
@@ -3881,63 +3900,105 @@ class MacroManimParser {
 							final cpName = expectIdentifierOrString();
 							at = Checkpoint(cpName);
 						default:
-							error('expected rate, checkpoint name, easing, or duration, got ${peek()}');
-							return {actions: actions, easing: easing, duration: duration}; // unreachable
+							error('expected rate, checkpoint, type, speed, path, or duration, got ${peek()}');
+							return {mode: mode, speed: speed, duration: duration, pathName: pathName != null ? pathName : "", curveAssignments: curveAssignments, events: events};
 					}
 					expect(TColon);
-					final action = parseAnimatedPathAction();
-					actions.push({at: at, action: action});
+					// Parse comma-separated list of actions at this time point
+					parseAnimatedPathActions(at, curveAssignments, events);
 			}
 		}
-		return {actions: actions, easing: easing, duration: duration};
+		if (pathName == null) error("animatedPath requires a 'path:' field");
+
+		// Validate path exists and checkpoint references are valid
+		var pathCheckpoints:Array<String> = [];
+		var pathsNode = nodes.get(defaultPathNodeName);
+		if (pathsNode != null) {
+			switch (pathsNode.type) {
+				case PATHS(pathsDef):
+					var pathElements = pathsDef.get(pathName);
+					if (pathElements == null) error('path "$pathName" not found in paths block');
+					for (el in pathElements) {
+						switch (el) {
+							case Checkpoint(cpName): pathCheckpoints.push(cpName);
+							default:
+						}
+					}
+				default:
+			}
+		} else {
+			error("animatedPath requires a paths block to be defined before it");
+		}
+
+		// Validate checkpoint references in curve assignments and events
+		for (ca in curveAssignments) {
+			switch (ca.at) {
+				case Checkpoint(cpName):
+					if (pathCheckpoints.indexOf(cpName) < 0)
+						error('checkpoint "$cpName" not found in path "$pathName" (available: ${pathCheckpoints.join(", ")})');
+				default:
+			}
+		}
+		for (ev in events) {
+			switch (ev.at) {
+				case Checkpoint(cpName):
+					if (pathCheckpoints.indexOf(cpName) < 0)
+						error('checkpoint "$cpName" not found in path "$pathName" (available: ${pathCheckpoints.join(", ")})');
+				default:
+			}
+		}
+
+		return {mode: mode, speed: speed, duration: duration, pathName: pathName, curveAssignments: curveAssignments, events: events};
 	}
 
-	function parseAnimatedPathAction():AnimatedPathsAction {
-		switch (peek()) {
-			case TIdentifier(s) if (isKeyword(s, "changespeed")):
-				advance();
-				final speed = parseFloatOrReference();
-				return ChangeSpeed(speed);
-			case TIdentifier(s) if (isKeyword(s, "accelerate")):
-				advance();
-				expect(TOpen);
-				final acceleration = parseFloatOrReference();
-				expect(TComma);
-				final duration = parseFloatOrReference();
-				expect(TClosed);
-				return Accelerate(acceleration, duration);
-			case TIdentifier(s) if (isKeyword(s, "event")):
-				advance();
-				expect(TOpen);
-				final eventName = expectIdentifierOrString();
-				expect(TClosed);
-				return Event(eventName);
-			case TIdentifier(s) if (isKeyword(s, "attachparticles")):
-				advance();
-				expect(TOpen);
-				final particlesName = expectIdentifierOrString();
-				var particlesTemplate = "";
-				if (match(TComma)) {
-					particlesTemplate = expectIdentifierOrString();
-				}
-				expect(TClosed);
-				expect(TCurlyOpen);
-				final particlesDef = parseParticles();
-				return AttachParticles(particlesName, particlesTemplate, particlesDef);
-			case TIdentifier(s) if (isKeyword(s, "removeparticles")):
-				advance();
-				expect(TOpen);
-				final particlesName = expectIdentifierOrString();
-				expect(TClosed);
-				return RemoveParticles(particlesName);
-			case TIdentifier(s) if (isKeyword(s, "changeanimstate")):
-				advance();
-				expect(TOpen);
-				final state = expectIdentifierOrString();
-				expect(TClosed);
-				return ChangeAnimSMState(state);
-			default:
-				return error('expected animated path action, got ${peek()}');
+	function parseAnimatedPathActions(at:AnimatedPathTime, curveAssignments:Array<AnimatedPathCurveAssignment>, events:Array<AnimatedPathTimedEvent>):Void {
+		while (true) {
+			switch (peek()) {
+				case TIdentifier(s) if (isKeyword(s, "event")):
+					advance();
+					expect(TOpen);
+					final eventName = expectIdentifierOrString();
+					expect(TClosed);
+					events.push({at: at, eventName: eventName});
+				case TIdentifier(s) if (isKeyword(s, "speedcurve")):
+					advance();
+					expect(TColon);
+					final curveName = expectIdentifierOrString();
+					curveAssignments.push({at: at, slot: APSpeed, curveName: curveName});
+				case TIdentifier(s) if (isKeyword(s, "scalecurve")):
+					advance();
+					expect(TColon);
+					final curveName = expectIdentifierOrString();
+					curveAssignments.push({at: at, slot: APScale, curveName: curveName});
+				case TIdentifier(s) if (isKeyword(s, "alphacurve")):
+					advance();
+					expect(TColon);
+					final curveName = expectIdentifierOrString();
+					curveAssignments.push({at: at, slot: APAlpha, curveName: curveName});
+				case TIdentifier(s) if (isKeyword(s, "rotationcurve")):
+					advance();
+					expect(TColon);
+					final curveName = expectIdentifierOrString();
+					curveAssignments.push({at: at, slot: APRotation, curveName: curveName});
+				case TIdentifier(s) if (isKeyword(s, "progresscurve")):
+					advance();
+					expect(TColon);
+					final curveName = expectIdentifierOrString();
+					curveAssignments.push({at: at, slot: APProgress, curveName: curveName});
+				case TIdentifier(s) if (isKeyword(s, "custom")):
+					advance();
+					expect(TOpen);
+					final customName = expectIdentifierOrString();
+					expect(TClosed);
+					expect(TColon);
+					final curveName = expectIdentifierOrString();
+					curveAssignments.push({at: at, slot: APCustom(customName), curveName: curveName});
+				default:
+					error('expected curve assignment or event, got ${peek()}');
+					return;
+			}
+			// Check for comma to continue parsing more actions at this time point
+			if (!match(TComma)) return;
 		}
 	}
 
@@ -3994,6 +4055,7 @@ class MacroManimParser {
 			var easing:Null<EasingType> = null;
 			var points:Null<Array<ParticleCurvePoint>> = null;
 			var segments:Null<Array<CurveSegmentDef>> = null;
+			var segExplicit:Array<Bool> = [];
 			while (!match(TCurlyClosed)) {
 				eatSemicolon();
 				if (match(TCurlyClosed)) break;
@@ -4008,19 +4070,33 @@ class MacroManimParser {
 						points = parseCurvePoints();
 					case TBracketOpen:
 						if (segments == null) segments = [];
-						segments.push(parseCurveSegment());
+						var explicit = [false];
+						segments.push(parseCurveSegment(explicit));
+						segExplicit.push(explicit[0]);
 					default:
 						error('expected easing, points, or segment [start..end] in curve definition, got ${peek()}');
 				}
 			}
 			if (segments != null && (easing != null || points != null))
 				error("cannot mix segments with easing/points in the same curve");
+			// Auto-chain segments without explicit values: each gets equal fraction of 0..1 output
+			if (segments != null && segments.length > 1) {
+				var allImplicit = true;
+				for (e in segExplicit) if (e) { allImplicit = false; break; }
+				if (allImplicit) {
+					var n = segments.length;
+					for (i in 0...n) {
+						segments[i].valueStart = RVFloat(i / n);
+						segments[i].valueEnd = RVFloat((i + 1) / n);
+					}
+				}
+			}
 			curves.set(curveName, {easing: easing, points: points, segments: segments});
 		}
 		return curves;
 	}
 
-	function parseCurveSegment():CurveSegmentDef {
+	function parseCurveSegment(explicitOut:Array<Bool>):CurveSegmentDef {
 		expect(TBracketOpen);
 		final timeStart = parseFloatOrReference();
 		expect(TDoubleDot);
@@ -4034,6 +4110,7 @@ class MacroManimParser {
 			expect(TComma);
 			valueEnd = parseFloatOrReference();
 			expect(TClosed);
+			explicitOut[0] = true;
 		}
 		return {
 			timeStart: timeStart,
