@@ -750,6 +750,13 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		}, async);
 	}
 
+	// ==================== GridFunc: function(gridWidth/gridHeight) ====================
+
+	@Test
+	public function test56_CodegenGridFunc(async:utest.Async):Void {
+		simpleMacroTest(56, "codegenGridFunc", () -> createMp().gridFunc.create(), async, null, null, 4.0);
+	}
+
 	// ==================== RepeatableDemo: macro comparison ====================
 
 	@Test

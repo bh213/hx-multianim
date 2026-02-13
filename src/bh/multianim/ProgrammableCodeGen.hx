@@ -77,6 +77,9 @@ class ProgrammableCodeGen {
 	// Current programmable name being processed (set per-field in buildAll)
 	static var currentProgrammableName:String = "";
 
+	// Current node being processed (for resolving grid coordinate system in rvToExpr)
+	static var currentProcessingNode:Node = null;
+
 	// Counter for tileGroup elements within a programmable (for multi-tilegroup support)
 	static var tileGroupCounter:Int = 0;
 
@@ -96,6 +99,7 @@ class ProgrammableCodeGen {
 		repeatPoolEntries = [];
 		applyEntries = [];
 		allParsedNodes = new Map();
+		currentProcessingNode = null;
 		currentManimPath = "";
 		currentProgrammableName = "";
 		hexLayoutFieldAdded = false;
@@ -439,6 +443,7 @@ class ProgrammableCodeGen {
 	}
 
 	static function processNode(node:Node, parentField:String, fields:Array<Field>, ctorExprs:Array<Expr>, siblings:Array<{node:Node, fieldName:String}>, pos:Position):Void {
+		currentProcessingNode = node;
 		// Handle REPEAT/REPEAT2D specially — they unroll or pool children
 		switch (node.type) {
 			case REPEAT(varName, repeatType):
@@ -1013,6 +1018,14 @@ class ProgrammableCodeGen {
 			case EUnaryOp(_, e):
 				final inner = resolveRVStatic(e);
 				if (inner != null) -inner else null;
+			case RVFunction(functionType):
+				final grid = getGridFromCurrentNode();
+				if (grid != null) {
+					switch (functionType) {
+						case RVFGridWidth: cast(grid.spacingX, Float);
+						case RVFGridHeight: cast(grid.spacingY, Float);
+					}
+				} else null;
 			default: null;
 		};
 	}
@@ -2834,6 +2847,16 @@ class ProgrammableCodeGen {
 					final arrayFieldRef = macro $p{["this", "_" + arrayRef]};
 					macro $arrayFieldRef[$indexExpr];
 				}
+			case RVFunction(functionType):
+				final grid = getGridFromCurrentNode();
+				if (grid != null) {
+					switch (functionType) {
+						case RVFGridWidth: macro $v{grid.spacingX};
+						case RVFGridHeight: macro $v{grid.spacingY};
+					}
+				} else {
+					macro 0;
+				}
 			default:
 				macro 0;
 		};
@@ -3076,6 +3099,16 @@ class ProgrammableCodeGen {
 				refs;
 			default: [];
 		};
+	}
+
+	/** Get grid coordinate system from current node's parent chain */
+	static function getGridFromCurrentNode():Null<CoordinateSystems.GridCoordinateSystem> {
+		var node = currentProcessingNode;
+		while (node != null) {
+			if (node.gridCoordinateSystem != null) return node.gridCoordinateSystem;
+			node = node.parent;
+		}
+		return null;
 	}
 
 	/** Get grid coordinate system from #defaultLayout */
