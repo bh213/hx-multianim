@@ -18,6 +18,11 @@ import bh.multianim.MultiAnimParser.CurveDef;
 import bh.multianim.MultiAnimParser.CurveSegmentDef;
 import bh.multianim.MultiAnimParser.CurvesDef;
 import bh.multianim.MultiAnimParser.PathsDef;
+import bh.multianim.MultiAnimParser.DataDef;
+import bh.multianim.MultiAnimParser.DataValue;
+import bh.multianim.MultiAnimParser.DataValueType;
+import bh.multianim.MultiAnimParser.DataRecordDef;
+import bh.multianim.MultiAnimParser.DataFieldDef;
 import bh.multianim.CoordinateSystems;
 import bh.multianim.MacroCompatTypes.MacroFlowLayout;
 import bh.multianim.MacroCompatTypes.MacroBlendMode;
@@ -142,93 +147,148 @@ class ProgrammableCodeGen {
 		for (field in fields) {
 			if (field.meta == null) continue;
 			for (meta in field.meta) {
-				if (meta.name != ":manim" && meta.name != "manim") continue;
-				if (meta.params == null || meta.params.length < 2) {
-					Context.fatalError('ProgrammableCodeGen.buildAll(): @:manim requires (manimPath, programmableName)', field.pos);
-					continue;
-				}
-
-				// Extract string arguments from metadata
-				final manimPath = extractMetaString(meta.params[0]);
-				final programmableName = extractMetaString(meta.params[1]);
-				if (manimPath == null || programmableName == null) {
-					Context.fatalError('ProgrammableCodeGen.buildAll(): @:manim arguments must be string literals', field.pos);
-					continue;
-				}
-
-				// Reset codegen state for each programmable
-				resetState();
-				currentManimPath = manimPath;
-				currentProgrammableName = programmableName;
-
-				// Parse the .manim file
-				final nodes = parseViaSubprocess(manimPath);
-				if (nodes == null) continue;
-				allParsedNodes = nodes;
-
-				final node = nodes.get(programmableName);
-				if (node == null) {
-					Context.fatalError('ProgrammableCodeGen.buildAll(): programmable "$programmableName" not found in "$manimPath"', field.pos);
-					continue;
-				}
-
-				switch (node.type) {
-					case PROGRAMMABLE(isTileGroup, parameters, paramOrder):
-						paramDefs = parameters;
-						for (name in paramOrder)
-							paramNames.push(name);
-					default:
-						Context.fatalError('ProgrammableCodeGen.buildAll(): "$programmableName" is not a programmable', field.pos);
+				if (meta.name == ":manim" || meta.name == "manim") {
+					if (meta.params == null || meta.params.length < 2) {
+						Context.fatalError('ProgrammableCodeGen.buildAll(): @:manim requires (manimPath, programmableName)', field.pos);
 						continue;
+					}
+
+					// Extract string arguments from metadata
+					final manimPath = extractMetaString(meta.params[0]);
+					final programmableName = extractMetaString(meta.params[1]);
+					if (manimPath == null || programmableName == null) {
+						Context.fatalError('ProgrammableCodeGen.buildAll(): @:manim arguments must be string literals', field.pos);
+						continue;
+					}
+
+					// Reset codegen state for each programmable
+					resetState();
+					currentManimPath = manimPath;
+					currentProgrammableName = programmableName;
+
+					// Parse the .manim file
+					final nodes = parseViaSubprocess(manimPath);
+					if (nodes == null) continue;
+					allParsedNodes = nodes;
+
+					final node = nodes.get(programmableName);
+					if (node == null) {
+						Context.fatalError('ProgrammableCodeGen.buildAll(): programmable "$programmableName" not found in "$manimPath"', field.pos);
+						continue;
+					}
+
+					switch (node.type) {
+						case PROGRAMMABLE(isTileGroup, parameters, paramOrder):
+							paramDefs = parameters;
+							for (name in paramOrder)
+								paramNames.push(name);
+						default:
+							Context.fatalError('ProgrammableCodeGen.buildAll(): "$programmableName" is not a programmable', field.pos);
+							continue;
+					}
+
+					// Factory class name: ParentName_FieldName
+					final factoryName = parentName + "_" + toPascalCase(field.name);
+					final instName = factoryName + "Instance";
+
+					// Set class info for generateFields to use
+					localClassPack = parentPack;
+					localClassName = factoryName;
+					instanceClassName = instName;
+
+					classifyParamTypes();
+
+					// Generate fields for both factory and instance classes
+					final result = generateFields(node);
+
+					// Define the instance type (extends h2d.Object — IS the root)
+					final instTd:TypeDefinition = {
+						pack: parentPack,
+						name: instName,
+						pos: pos,
+						kind: TDClass({pack: ["h2d"], name: "Object"}, null, false, false, false),
+						fields: result.instanceFields,
+						meta: [{name: ":allow", params: [macro bh.multianim.ProgrammableCodeGen], pos: pos}],
+					};
+					Context.defineType(instTd);
+
+					// Define the factory type (extends ProgrammableBuilder — has resource loading helpers)
+					final factoryTd:TypeDefinition = {
+						pack: parentPack,
+						name: factoryName,
+						pos: pos,
+						kind: TDClass({pack: ["bh", "multianim"], name: "ProgrammableBuilder"}, null, false, false, false),
+						fields: result.factoryFields,
+						meta: [{name: ":allow", params: [macro bh.multianim.ProgrammableCodeGen], pos: pos}],
+					};
+					Context.defineType(factoryTd);
+
+					// Update the field's type to the factory class
+					final factoryTypePath = {pack: parentPack, name: factoryName};
+					field.kind = FVar(TPath(factoryTypePath), null);
+
+					// Track factory info for parent constructor generation
+					final factoryNewExpr:Expr = {
+						expr: ENew({pack: parentPack, name: factoryName}, [macro this.resourceLoader]),
+						pos: pos,
+					};
+					final fieldRef = macro $p{["this", field.name]};
+					ctorInitExprs.push(macro $fieldRef = $factoryNewExpr);
+
+				} else if (meta.name == ":data" || meta.name == "data") {
+					if (meta.params == null || meta.params.length < 2) {
+						Context.fatalError('ProgrammableCodeGen.buildAll(): @:data requires (manimPath, dataName)', field.pos);
+						continue;
+					}
+
+					final manimPath = extractMetaString(meta.params[0]);
+					final dataName = extractMetaString(meta.params[1]);
+					if (manimPath == null || dataName == null) {
+						Context.fatalError('ProgrammableCodeGen.buildAll(): @:data arguments must be string literals', field.pos);
+						continue;
+					}
+
+					// Parse the .manim file (reuses same cache as @:manim)
+					final nodes = parseViaSubprocess(manimPath);
+					if (nodes == null) continue;
+
+					final node = nodes.get(dataName);
+					if (node == null) {
+						Context.fatalError('ProgrammableCodeGen.buildAll(): data "$dataName" not found in "$manimPath"', field.pos);
+						continue;
+					}
+
+					switch (node.type) {
+						case DATA(dataDef):
+							final dataClassName = parentName + "_" + toPascalCase(field.name);
+							final dataFields = generateDataClass(dataDef, dataClassName, parentPack, pos);
+
+							// Define the data class
+							final dataTd:TypeDefinition = {
+								pack: parentPack,
+								name: dataClassName,
+								pos: pos,
+								kind: TDClass(null, null, false, false, false),
+								fields: dataFields,
+							};
+							Context.defineType(dataTd);
+
+							// Update the field type to the data class
+							field.kind = FVar(TPath({pack: parentPack, name: dataClassName}), null);
+
+							// Add initialization to constructor
+							final dataNewExpr:Expr = {
+								expr: ENew({pack: parentPack, name: dataClassName}, []),
+								pos: pos,
+							};
+							final fieldRef = macro $p{["this", field.name]};
+							ctorInitExprs.push(macro $fieldRef = $dataNewExpr);
+
+						default:
+							Context.fatalError('ProgrammableCodeGen.buildAll(): "$dataName" is not a data block', field.pos);
+							continue;
+					}
 				}
-
-				// Factory class name: ParentName_FieldName
-				final factoryName = parentName + "_" + toPascalCase(field.name);
-				final instName = factoryName + "Instance";
-
-				// Set class info for generateFields to use
-				localClassPack = parentPack;
-				localClassName = factoryName;
-				instanceClassName = instName;
-
-				classifyParamTypes();
-
-				// Generate fields for both factory and instance classes
-				final result = generateFields(node);
-
-				// Define the instance type (extends h2d.Object — IS the root)
-				final instTd:TypeDefinition = {
-					pack: parentPack,
-					name: instName,
-					pos: pos,
-					kind: TDClass({pack: ["h2d"], name: "Object"}, null, false, false, false),
-					fields: result.instanceFields,
-					meta: [{name: ":allow", params: [macro bh.multianim.ProgrammableCodeGen], pos: pos}],
-				};
-				Context.defineType(instTd);
-
-				// Define the factory type (extends ProgrammableBuilder — has resource loading helpers)
-				final factoryTd:TypeDefinition = {
-					pack: parentPack,
-					name: factoryName,
-					pos: pos,
-					kind: TDClass({pack: ["bh", "multianim"], name: "ProgrammableBuilder"}, null, false, false, false),
-					fields: result.factoryFields,
-					meta: [{name: ":allow", params: [macro bh.multianim.ProgrammableCodeGen], pos: pos}],
-				};
-				Context.defineType(factoryTd);
-
-				// Update the field's type to the factory class
-				final factoryTypePath = {pack: parentPack, name: factoryName};
-				field.kind = FVar(TPath(factoryTypePath), null);
-
-				// Track factory info for parent constructor generation
-				final factoryNewExpr:Expr = {
-					expr: ENew({pack: parentPack, name: factoryName}, [macro this.resourceLoader]),
-					pos: pos,
-				};
-				final fieldRef = macro $p{["this", field.name]};
-				ctorInitExprs.push(macro $fieldRef = $factoryNewExpr);
 			}
 		}
 
@@ -3717,6 +3777,117 @@ class ProgrammableCodeGen {
 				{expr: EArrayDecl(elements), pos: (macro null).pos};
 			default:
 				macro null;
+		};
+	}
+
+	// ==================== Data Block Codegen ====================
+
+	/** Generate fields for a data class from a DataDef.
+	 *  Record types become companion classes, scalar/array fields become public final fields. */
+	static function generateDataClass(dataDef:DataDef, className:String, pack:Array<String>, pos:Position):Array<Field> {
+		var dataFields:Array<Field> = [];
+
+		// Generate record companion classes
+		for (recordName => recordDef in dataDef.records) {
+			final recordClassName = className + "_" + toPascalCase(recordName);
+			final recordFields:Array<Field> = [];
+
+			// Public final fields for each record field
+			for (rf in recordDef.fields) {
+				recordFields.push({
+					name: rf.name,
+					kind: FVar(dataTypeToComplexType(rf.type, className, pack), null),
+					access: [APublic],
+					pos: pos,
+				});
+			}
+
+			// Constructor: new(field1, field2, ...)
+			final ctorArgs:Array<FunctionArg> = [];
+			final ctorAssigns:Array<Expr> = [];
+			for (rf in recordDef.fields) {
+				ctorArgs.push({name: rf.name, type: dataTypeToComplexType(rf.type, className, pack)});
+				ctorAssigns.push(macro $p{["this", rf.name]} = $i{rf.name});
+			}
+			recordFields.push({
+				name: "new",
+				kind: FFun({args: ctorArgs, ret: null, expr: macro $b{ctorAssigns}}),
+				access: [APublic],
+				pos: pos,
+			});
+
+			final recordTd:TypeDefinition = {
+				pack: pack,
+				name: recordClassName,
+				pos: pos,
+				kind: TDClass(null, null, false, false, false),
+				fields: recordFields,
+			};
+			Context.defineType(recordTd);
+		}
+
+		// Generate public final fields for each data entry
+		for (field in dataDef.fields) {
+			final initExpr = dataValueToExpr(field.value, className, pack, dataDef.records, pos);
+			dataFields.push({
+				name: field.name,
+				kind: FVar(dataTypeToComplexType(field.type, className, pack), initExpr),
+				access: [APublic, AFinal],
+				pos: pos,
+			});
+		}
+
+		// Empty constructor (fields initialized inline)
+		dataFields.push({
+			name: "new",
+			kind: FFun({args: [], ret: null, expr: macro {}}),
+			access: [APublic],
+			pos: pos,
+		});
+
+		return dataFields;
+	}
+
+	/** Convert a DataValueType to a Haxe ComplexType */
+	static function dataTypeToComplexType(type:DataValueType, className:String, pack:Array<String>):ComplexType {
+		return switch (type) {
+			case DVTInt: macro :Int;
+			case DVTFloat: macro :Float;
+			case DVTString: macro :String;
+			case DVTBool: macro :Bool;
+			case DVTRecord(recordName):
+				final recordClassName = className + "_" + toPascalCase(recordName);
+				TPath({pack: pack, name: recordClassName});
+			case DVTArray(elemType):
+				final elemCT = dataTypeToComplexType(elemType, className, pack);
+				TPath({pack: [], name: "Array", params: [TPType(elemCT)]});
+		};
+	}
+
+	/** Convert a DataValue to a Haxe expression for field initialization */
+	static function dataValueToExpr(value:DataValue, className:String, pack:Array<String>,
+			records:Map<String, DataRecordDef>, pos:Position):Expr {
+		return switch (value) {
+			case DVInt(v): {expr: EConst(CInt('$v')), pos: pos};
+			case DVFloat(v): {expr: EConst(CFloat('$v')), pos: pos};
+			case DVString(v): {expr: EConst(CString(v)), pos: pos};
+			case DVBool(v): {expr: EConst(CIdent(v ? "true" : "false")), pos: pos};
+			case DVArray(elements):
+				final elemExprs = [for (e in elements) dataValueToExpr(e, className, pack, records, pos)];
+				{expr: EArrayDecl(elemExprs), pos: pos};
+			case DVRecord(recordName, fields):
+				final recordClassName = className + "_" + toPascalCase(recordName);
+				// Build constructor args in field order from record definition
+				final recordDef = records.get(recordName);
+				final ctorArgs:Array<Expr> = [];
+				if (recordDef != null) {
+					for (rf in recordDef.fields) {
+						final val = fields.get(rf.name);
+						if (val != null)
+							ctorArgs.push(dataValueToExpr(val, className, pack, records, pos));
+					}
+				}
+				{expr: ENew({pack: pack, name: recordClassName}, ctorArgs), pos: pos};
 		};
 	}
 

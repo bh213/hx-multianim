@@ -838,6 +838,115 @@ var value = curve.getValue(0.5); // returns eased value at t=0.5
 
 ---
 
+## Data
+
+Data blocks define static typed data within `.manim` files — game configuration, upgrade costs, tier definitions, etc. Data is accessible at runtime via the builder (`Dynamic`) or at compile time via macro-generated typed classes.
+
+### Basic Syntax
+
+```
+#name data {
+    fieldName: value
+    anotherField: value
+}
+```
+
+Field types are inferred from values:
+- `5` → int
+- `3.5` → float
+- `"text"` → string
+- `true` / `false` → bool
+- `[1, 2, 3]` → array (element type inferred from first element)
+
+### Record Types
+
+Named record types define schemas for structured data. Declare them with `#name record(field: type, ...)` inside a data block:
+
+```
+#upgrades data {
+    #tier record(name: string, cost: int, dmg: float)
+
+    maxLevel: 5
+    name: "Warrior"
+    enabled: true
+    speed: 3.5
+    costs: [10, 20, 40, 80]
+    tiers: tier[] [
+        { name: "Bronze", cost: 10, dmg: 1.0 }
+        { name: "Silver", cost: 20, dmg: 1.5 }
+    ]
+    defaultTier: tier { name: "None", cost: 0, dmg: 0.0 }
+}
+```
+
+**Supported field types in records:** `int`, `float`, `string`, `bool`
+
+**Record-typed fields** require an explicit type prefix:
+- Single record: `fieldName: recordName { field: value, ... }`
+- Array of records: `fieldName: recordName[] [{ ... } { ... }]`
+
+Record values are validated against the schema — unknown fields, missing fields, and duplicate fields produce parser errors.
+
+### Using Data at Runtime (Builder)
+
+```haxe
+var builder = MultiAnimBuilder.load(fileContent, loader, "config.manim");
+var data:Dynamic = builder.getData("upgrades");
+trace(data.maxLevel);         // 5
+trace(data.costs[0]);         // 10
+trace(data.tiers[0].name);    // "Bronze"
+```
+
+### Using Data with Macros
+
+Use `@:data` metadata for compile-time typed access:
+
+```haxe
+@:build(bh.multianim.ProgrammableCodeGen.buildAll())
+class MyScreen extends bh.multianim.ProgrammableBuilder {
+    @:data("res/config.manim", "upgrades")
+    public var upgrades;
+}
+```
+
+The macro generates typed classes:
+
+```haxe
+// Generated record class
+class MyScreen_Upgrades_Tier {
+    public final name:String;
+    public final cost:Int;
+    public final dmg:Float;
+}
+
+// Generated data class with static final fields
+class MyScreen_Upgrades {
+    public final maxLevel:Int;        // = 5
+    public final name:String;         // = "Warrior"
+    public final costs:Array<Int>;    // = [10, 20, 40, 80]
+    public final tiers:Array<MyScreen_Upgrades_Tier>;
+    public final defaultTier:MyScreen_Upgrades_Tier;
+}
+```
+
+Usage:
+
+```haxe
+var screen = new MyScreen(resourceLoader);
+trace(screen.upgrades.maxLevel);         // 5
+trace(screen.upgrades.tiers[0].name);    // "Bronze"
+trace(screen.upgrades.defaultTier.dmg);  // 0.0
+```
+
+### Rules
+
+- Data blocks must be root-level (not nested inside programmables)
+- Data blocks require a `#name`
+- Record names must be unique within a data block
+- Commas between array elements and record fields are optional
+
+---
+
 ## Pixels
 
 Draws pixel-perfect primitives.

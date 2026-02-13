@@ -34,6 +34,14 @@
   var dlg = ui.dialog.createFrom({w: 400, title: "My Dialog"});  // named params
   var dlg2 = ui.dialog.createFrom({});                            // all defaults
   ```
+- **Data blocks** — New `#name data { }` root-level element for defining static typed data in `.manim` files
+  - Scalar fields with type inference: `maxLevel: 5`, `name: "Warrior"`, `enabled: true`, `speed: 3.5`
+  - Arrays: `costs: [10, 20, 40, 80]`
+  - Named record types: `#tier record(name: string, cost: int, dmg: float)` with schema validation
+  - Record-typed fields: `defaultTier: tier { name: "None", cost: 0, dmg: 0.0 }`
+  - Arrays of records: `tiers: tier[] [{ name: "Bronze", cost: 10, dmg: 1.0 }]`
+  - Builder: `getData("name")` returns `Dynamic` with all fields
+  - Macro: `@:data("file.manim", "name")` generates typed classes with `public final` fields and record typedefs
 
 ## [0.4]
 

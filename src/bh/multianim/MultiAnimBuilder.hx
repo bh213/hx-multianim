@@ -1938,6 +1938,7 @@ class MultiAnimBuilder {
 			case PALETTE(_): throw 'palette not allowed as non-root node' + MacroUtils.nodePos(node);
 			case AUTOTILE(_): throw 'autotile not allowed as non-root node' + MacroUtils.nodePos(node);
 			case ATLAS2(_): throw 'atlas2 is a definition node, not a renderable element' + MacroUtils.nodePos(node);
+			case DATA(_): throw 'data is a definition node, not a renderable element' + MacroUtils.nodePos(node);
 
 			case PLACEHOLDER(type, source):
 				var settings = resolveSettings(node);
@@ -2815,6 +2816,45 @@ class MultiAnimBuilder {
 	/** Create particles from a ParticlesDef directly (used by ProgrammableBuilder) */
 	public function createParticleFromDef(particlesDef:ParticlesDef, name:String):bh.base.Particles {
 		return createParticleImpl(particlesDef, name);
+	}
+
+	/** Get a data block by name, returning its fields as a Dynamic object. */
+	public function getData(name:String):Dynamic {
+		var node = multiParserResult?.nodes.get(name);
+		if (node == null)
+			throw 'could not get data node #${name}' + currentNodePos();
+		switch node.type {
+			case DATA(dataDef):
+				return resolveDataDef(dataDef);
+			default:
+				throw '$name has to be data' + MacroUtils.nodePos(node);
+		}
+	}
+
+	private function resolveDataDef(dataDef:DataDef):Dynamic {
+		var result:Dynamic = {};
+		for (field in dataDef.fields) {
+			Reflect.setField(result, field.name, resolveDataValue(field.value));
+		}
+		return result;
+	}
+
+	private function resolveDataValue(value:DataValue):Dynamic {
+		return switch (value) {
+			case DVInt(v): v;
+			case DVFloat(v): v;
+			case DVString(v): v;
+			case DVBool(v): v;
+			case DVArray(elements):
+				var arr:Array<Dynamic> = [for (e in elements) resolveDataValue(e)];
+				arr;
+			case DVRecord(_, fields):
+				var obj:Dynamic = {};
+				for (key => val in fields) {
+					Reflect.setField(obj, key, resolveDataValue(val));
+				}
+				obj;
+		};
 	}
 
 	/** Create an AnimatedPath from a named definition.

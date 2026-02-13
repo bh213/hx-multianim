@@ -597,4 +597,132 @@ class ParserErrorTest extends utest.Test {
 		');
 		Assert.isTrue(success, "@(mode != [a, b]) should parse successfully");
 	}
+
+	// ===== Data block validation tests =====
+
+	@Test
+	public function testDataRequiresName() {
+		var error = parseExpectingError('data { maxLevel: 5 }');
+		Assert.notNull(error, "Should throw error for data without #name");
+		Assert.isTrue(error.indexOf("data requires a #name") >= 0,
+			'Error should mention #name requirement, got: $error');
+	}
+
+	@Test
+	public function testDataNotNested() {
+		var error = parseExpectingError('
+			#outer programmable() {
+				#inner data { maxLevel: 5 }
+			}
+		');
+		Assert.notNull(error, "Should throw error for nested data");
+		Assert.isTrue(error.indexOf("data must be a root node") >= 0,
+			'Error should mention root node requirement, got: $error');
+	}
+
+	@Test
+	public function testDataDuplicateRecord() {
+		var error = parseExpectingError('
+			#test data {
+				#tier record(name: string, cost: int)
+				#tier record(name: string, dmg: float)
+			}
+		');
+		Assert.notNull(error, "Should throw error for duplicate record");
+		Assert.isTrue(error.indexOf("already defined") >= 0,
+			'Error should mention "already defined", got: $error');
+	}
+
+	@Test
+	public function testDataUnknownRecordType() {
+		var error = parseExpectingError('
+			#test data {
+				#tier record(name: string, cost: int)
+				value: unknown { name: "x", cost: 1 }
+			}
+		');
+		Assert.notNull(error, "Should throw error for unknown record type");
+		Assert.isTrue(error.indexOf('unknown record type') >= 0,
+			'Error should mention "unknown record type", got: $error');
+	}
+
+	@Test
+	public function testDataMissingRecordField() {
+		var error = parseExpectingError('
+			#test data {
+				#tier record(name: string, cost: int)
+				value: tier { name: "x" }
+			}
+		');
+		Assert.notNull(error, "Should throw error for missing required field");
+		Assert.isTrue(error.indexOf("missing required field") >= 0,
+			'Error should mention "missing required field", got: $error');
+	}
+
+	@Test
+	public function testDataUnknownFieldInRecord() {
+		var error = parseExpectingError('
+			#test data {
+				#tier record(name: string, cost: int)
+				value: tier { name: "x", cost: 5, unknown: 3 }
+			}
+		');
+		Assert.notNull(error, "Should throw error for unknown field in record");
+		Assert.isTrue(error.indexOf('unknown field') >= 0,
+			'Error should mention "unknown field", got: $error');
+	}
+
+	@Test
+	public function testDataDuplicateFieldInRecord() {
+		var error = parseExpectingError('
+			#test data {
+				#tier record(name: string, cost: int)
+				value: tier { name: "x", cost: 5, name: "y" }
+			}
+		');
+		Assert.notNull(error, "Should throw error for duplicate field in record");
+		Assert.isTrue(error.indexOf('duplicate field') >= 0,
+			'Error should mention "duplicate field", got: $error');
+	}
+
+	@Test
+	public function testDataParseSuccess() {
+		var success = parseExpectingSuccess('
+			#test data {
+				maxLevel: 5
+				name: "Warrior"
+				costs: [10, 20, 40, 80]
+			}
+		');
+		Assert.isTrue(success, "Simple data block should parse successfully");
+	}
+
+	@Test
+	public function testDataWithRecords() {
+		var success = parseExpectingSuccess('
+			#upgrades data {
+				#tier record(name: string, cost: int, dmg: float)
+				maxLevel: 5
+				tiers: tier[] [
+					{ name: "Bronze", cost: 10, dmg: 1.0 }
+					{ name: "Silver", cost: 20, dmg: 1.5 }
+				]
+				defaultTier: tier { name: "None", cost: 0, dmg: 0.0 }
+			}
+		');
+		Assert.isTrue(success, "Data block with records should parse successfully");
+	}
+
+	@Test
+	public function testDataBoolAndFloat() {
+		var success = parseExpectingSuccess('
+			#config data {
+				enabled: true
+				speed: 3.5
+				ratio: -0.5
+				count: -10
+			}
+		');
+		Assert.isTrue(success, "Data block with bools and floats should parse successfully");
+	}
 }
