@@ -2619,6 +2619,15 @@ class MacroManimParser {
 				final n = createNode(ATLAS2(a2Def), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
 				return n;
 
+			case TIdentifier(s) if (isKeyword(s, "data")):
+				advance();
+				if (currentName == null) error("data requires a #name");
+				if (parent != null) error("data must be a root node");
+				expect(TCurlyOpen);
+				final dataDef = parseData();
+				final n = createNode(DATA(dataDef), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+				return n;
+
 			// Standalone graphics shortcuts: rect(), line(), circle(), polygon(), ellipse(), roundrect()
 			case TIdentifier(s) if (isKeyword(s, "rect") || isKeyword(s, "circle") || isKeyword(s, "line")
 				|| isKeyword(s, "polygon") || isKeyword(s, "ellipse") || isKeyword(s, "roundrect") || isKeyword(s, "arc")):
@@ -4323,6 +4332,247 @@ class MacroManimParser {
 		}
 
 		return {source: source, entries: entries};
+	}
+
+	// ===================== Data =====================
+
+	function parseData():DataDef {
+		var records:Map<String, DataRecordDef> = new Map();
+		var fields:Array<DataFieldDef> = [];
+
+		while (!match(TCurlyClosed)) {
+			eatSemicolon();
+			if (match(TCurlyClosed)) break;
+
+			switch (peek()) {
+				case TName(name):
+					// #name record(...) — record type definition
+					advance();
+					expectKeyword("record");
+					expect(TOpen);
+					final recordFields = parseDataRecordFields();
+					if (records.exists(name)) error('record type "$name" already defined');
+					records.set(name, {name: name, fields: recordFields});
+
+				default:
+					// Regular field: name: [type] value
+					final fieldName = expectIdentifierOrString();
+					expect(TColon);
+					final field = parseDataField(fieldName, records);
+					fields.push(field);
+			}
+			eatSemicolon();
+		}
+
+		return {records: records, fields: fields};
+	}
+
+	function parseDataRecordFields():Array<{name:String, type:DataValueType}> {
+		var result:Array<{name:String, type:DataValueType}> = [];
+		if (match(TClosed)) return result;
+		while (true) {
+			final fieldName = expectIdentifierOrString();
+			expect(TColon);
+			final fieldType = parseDataType();
+			result.push({name: fieldName, type: fieldType});
+			if (match(TClosed)) return result;
+			expect(TComma);
+		}
+	}
+
+	/** Parse a type keyword: int, float, string, bool, or a record name.
+	 *  If followed by [], it becomes an array type. */
+	function parseDataType():DataValueType {
+		final typeName = expectIdentifierOrString();
+		var baseType:DataValueType = switch (typeName.toLowerCase()) {
+			case "int": DVTInt;
+			case "float": DVTFloat;
+			case "string": DVTString;
+			case "bool": DVTBool;
+			default: DVTRecord(typeName);
+		};
+		// Check for [] suffix making it an array type
+		if (match(TBracketOpen)) {
+			expect(TBracketClosed);
+			return DVTArray(baseType);
+		}
+		return baseType;
+	}
+
+	/** Parse a data field value, inferring type from value or using explicit type prefix for records. */
+	function parseDataField(fieldName:String, records:Map<String, DataRecordDef>):DataFieldDef {
+		// Check if next token is an identifier that could be a type prefix (record name)
+		switch (peek()) {
+			case TIdentifier(s) if (isKeyword(s, "true") || isKeyword(s, "false")):
+				// Bool value
+				final boolVal = parseBool();
+				return {name: fieldName, type: DVTBool, value: DVBool(boolVal)};
+
+			case TIdentifier(s):
+				// Could be: recordName { ... } or recordName[] [ ... ]
+				final saved = tpos;
+				advance();
+				switch (peek()) {
+					case TCurlyOpen:
+						// recordName { ... }
+						advance();
+						final recordDef = records.get(s);
+						if (recordDef == null) error('unknown record type "$s"');
+						final recordValue = parseDataRecordValue(s, recordDef, records);
+						return {name: fieldName, type: DVTRecord(s), value: recordValue};
+					case TBracketOpen:
+						// recordName[] [ ... ]
+						advance();
+						expect(TBracketClosed);
+						expect(TBracketOpen);
+						final elements = parseDataArrayElements(DVTRecord(s), records);
+						return {name: fieldName, type: DVTArray(DVTRecord(s)), value: DVArray(elements)};
+					default:
+						// Not a type prefix, restore position
+						tpos = saved;
+				}
+
+			default:
+		}
+
+		// Infer type from value
+		switch (peek()) {
+			case TInteger(n):
+				advance();
+				return {name: fieldName, type: DVTInt, value: DVInt(stringToInt(n))};
+			case TMinus:
+				advance();
+				switch (peek()) {
+					case TInteger(n):
+						advance();
+						return {name: fieldName, type: DVTInt, value: DVInt(-stringToInt(n))};
+					case TFloat(n):
+						advance();
+						return {name: fieldName, type: DVTFloat, value: DVFloat(-stringToFloat(n))};
+					default:
+						return error('expected number after minus');
+				}
+			case TFloat(n):
+				advance();
+				return {name: fieldName, type: DVTFloat, value: DVFloat(stringToFloat(n))};
+			case TQuotedString(s):
+				advance();
+				return {name: fieldName, type: DVTString, value: DVString(s)};
+			case TBracketOpen:
+				advance();
+				// Array literal — infer element type from first element
+				final elements = parseDataArrayInferred(records);
+				final elemType = if (elements.length > 0) inferDataValueType(elements[0]) else DVTInt;
+				return {name: fieldName, type: DVTArray(elemType), value: DVArray(elements)};
+			default:
+				return error('expected value in data field "$fieldName"');
+		}
+	}
+
+	function parseDataRecordValue(recordName:String, recordDef:DataRecordDef, records:Map<String, DataRecordDef>):DataValue {
+		var fieldValues:Map<String, DataValue> = new Map();
+		while (!match(TCurlyClosed)) {
+			eatComma();
+			if (match(TCurlyClosed)) break;
+			final name = expectIdentifierOrString();
+			expect(TColon);
+			// Find expected type from record definition
+			var expectedType:Null<DataValueType> = null;
+			for (rf in recordDef.fields) {
+				if (rf.name == name) {
+					expectedType = rf.type;
+					break;
+				}
+			}
+			if (expectedType == null) error('unknown field "$name" in record "$recordName"');
+			final value = parseDataValueOfType(expectedType, records);
+			if (fieldValues.exists(name)) error('duplicate field "$name" in record');
+			fieldValues.set(name, value);
+		}
+		// Validate all required fields present
+		for (rf in recordDef.fields) {
+			if (!fieldValues.exists(rf.name))
+				error('missing required field "${rf.name}" in record "$recordName"');
+		}
+		return DVRecord(recordName, fieldValues);
+	}
+
+	function parseDataValueOfType(type:DataValueType, records:Map<String, DataRecordDef>):DataValue {
+		return switch (type) {
+			case DVTInt: DVInt(parseInteger());
+			case DVTFloat: DVFloat(parseFloat_());
+			case DVTString:
+				switch (peek()) {
+					case TQuotedString(s): advance(); DVString(s);
+					default: error('expected string value');
+				}
+			case DVTBool: DVBool(parseBool());
+			case DVTRecord(recordName):
+				expect(TCurlyOpen);
+				final recordDef = records.get(recordName);
+				if (recordDef == null) error('unknown record type "$recordName"');
+				parseDataRecordValue(recordName, recordDef, records);
+			case DVTArray(elemType):
+				expect(TBracketOpen);
+				DVArray(parseDataArrayElements(elemType, records));
+		};
+	}
+
+	function parseDataArrayElements(elemType:DataValueType, records:Map<String, DataRecordDef>):Array<DataValue> {
+		var result:Array<DataValue> = [];
+		while (!match(TBracketClosed)) {
+			eatComma();
+			if (match(TBracketClosed)) break;
+			result.push(parseDataValueOfType(elemType, records));
+		}
+		return result;
+	}
+
+	function parseDataArrayInferred(records:Map<String, DataRecordDef>):Array<DataValue> {
+		var result:Array<DataValue> = [];
+		while (!match(TBracketClosed)) {
+			eatComma();
+			if (match(TBracketClosed)) break;
+			switch (peek()) {
+				case TInteger(n):
+					advance();
+					result.push(DVInt(stringToInt(n)));
+				case TFloat(n):
+					advance();
+					result.push(DVFloat(stringToFloat(n)));
+				case TQuotedString(s):
+					advance();
+					result.push(DVString(s));
+				case TMinus:
+					advance();
+					switch (peek()) {
+						case TInteger(n):
+							advance();
+							result.push(DVInt(-stringToInt(n)));
+						case TFloat(n):
+							advance();
+							result.push(DVFloat(-stringToFloat(n)));
+						default:
+							error('expected number after minus');
+					}
+				case TIdentifier(s) if (isKeyword(s, "true") || isKeyword(s, "false")):
+					result.push(DVBool(parseBool()));
+				default:
+					error('expected value in array literal');
+			}
+		}
+		return result;
+	}
+
+	function inferDataValueType(value:DataValue):DataValueType {
+		return switch (value) {
+			case DVInt(_): DVTInt;
+			case DVFloat(_): DVTFloat;
+			case DVString(_): DVTString;
+			case DVBool(_): DVTBool;
+			case DVRecord(name, _): DVTRecord(name);
+			case DVArray(elements): DVTArray(if (elements.length > 0) inferDataValueType(elements[0]) else DVTInt);
+		};
 	}
 
 	// ===================== Optional Params (for filters) =====================

@@ -377,25 +377,29 @@ class HtmlReportGenerator {
 			html.add('        <div class="test-header">\n');
 			html.add('            <div class="test-name">${result.testName}</div>\n');
 			html.add('            <div>\n');
+			// Manim link first (leftmost of right-aligned items)
+			if (result.manimPath != null && result.manimContent != null) {
+				var manimFileName = haxe.io.Path.withoutDirectory(result.manimPath);
+				html.add('                <a class="manim-link" onclick="showManim(\'${result.testName}\')">${manimFileName}</a>\n');
+			}
 			html.add('                <span class="test-status ${statusClass}">Builder: ${statusText}</span>\n');
 			if (hasMacro) {
 				var macroStatusClass = result.macroPassed == true ? "passed" : "failed";
 				var macroStatusText = result.macroPassed == true ? "PASSED" : "FAILED";
 				html.add('                <span class="test-status ${macroStatusClass}">Macro: ${macroStatusText}</span>\n');
 			}
-			// Add manim link if we have manim content
-			if (result.manimPath != null && result.manimContent != null) {
-				var manimFileName = haxe.io.Path.withoutDirectory(result.manimPath);
-				html.add('                <a class="manim-link" onclick="showManim(\'${result.testName}\')">${manimFileName}</a>\n');
-			}
 			html.add('            </div>\n');
 			html.add('        </div>\n');
 			var thresholdPercent = result.threshold != null ? Math.round(result.threshold * 10000) / 100 : 99.99;
-			html.add('        <div class="similarity">Builder similarity: ${similarityPercent}% (acceptance: ${thresholdPercent}%)');
+			var builderPassed = similarityPercent >= thresholdPercent;
+			var thresholdStyle = builderPassed ? 'color: #999;' : 'color: #c62828; font-weight: bold;';
+			html.add('        <div class="similarity">Builder similarity: ${similarityPercent}% <span style="${thresholdStyle}">(acceptance: ${thresholdPercent}%)</span>');
 			if (hasMacro && result.macroSimilarity != null) {
 				var macroSimPercent = Math.round(result.macroSimilarity * 10000) / 100;
 				var macroThresholdPercent = result.macroThreshold != null ? Math.round(result.macroThreshold * 10000) / 100 : 99.0;
-				html.add(' | Macro similarity: ${macroSimPercent}% (acceptance: ${macroThresholdPercent}%)');
+				var macroPassed = macroSimPercent >= macroThresholdPercent;
+				var macroThresholdStyle = macroPassed ? 'color: #999;' : 'color: #c62828; font-weight: bold;';
+				html.add(' | Macro similarity: ${macroSimPercent}% <span style="${macroThresholdStyle}">(acceptance: ${macroThresholdPercent}%)</span>');
 			}
 			html.add('</div>\n');
 

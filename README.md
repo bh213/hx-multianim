@@ -4,8 +4,9 @@ A Haxe library for creating animations and pixel art UI elements using the [Heap
 
 ## Documentation
 
-- **[.manim Format Reference](docs/manim.md)** - UI elements, programmables, layouts, graphics, and particles
+- **[.manim Format Reference](docs/manim.md)** - UI elements, programmables, layouts, graphics, particles, and data blocks
 - **[Programmable Macros](docs/manim.md#programmable-macros-compile-time-code-generation)** - Compile-time code generation tutorial and reference
+- **[Data Blocks](docs/manim.md#data)** - Static typed data definitions with macro codegen
 - **[.anim Format Reference](docs/anim.md)** - State animations with playlists and extra points
 
 ## Interactive Playground

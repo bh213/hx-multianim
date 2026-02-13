@@ -2474,4 +2474,79 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		trace('Performance: builder=${Std.int(builderTime * 1000)}ms, macro=${Std.int(macroTime * 1000)}ms, speedup=${Std.string(speedup).substr(0, 5)}x (${iterations} iterations)');
 		Assert.isTrue(macroTime < builderTime, 'Macro should be faster than builder: macro=${macroTime}s, builder=${builderTime}s');
 	}
+
+	// ==================== Data block: unit tests ====================
+
+	@Test
+	public function testDataScalarFields():Void {
+		final mp = createMp();
+		final data = mp.gameData;
+		Assert.notNull(data, "Data should be created");
+		Assert.equals(5, data.maxLevel);
+		Assert.equals("Warrior", data.name);
+		Assert.equals(true, data.enabled);
+		Assert.floatEquals(3.5, data.speed);
+	}
+
+	@Test
+	public function testDataArrayFields():Void {
+		final mp = createMp();
+		final costs = mp.gameData.costs;
+		Assert.notNull(costs, "costs array should not be null");
+		Assert.equals(4, costs.length);
+		Assert.equals(10, costs[0]);
+		Assert.equals(20, costs[1]);
+		Assert.equals(40, costs[2]);
+		Assert.equals(80, costs[3]);
+	}
+
+	@Test
+	public function testDataRecordFields():Void {
+		final mp = createMp();
+		final tiers = mp.gameData.tiers;
+		Assert.notNull(tiers, "tiers array should not be null");
+		Assert.equals(2, tiers.length);
+		Assert.equals("Bronze", tiers[0].name);
+		Assert.equals(10, tiers[0].cost);
+		Assert.floatEquals(1.0, tiers[0].dmg);
+		Assert.equals("Silver", tiers[1].name);
+		Assert.equals(20, tiers[1].cost);
+		Assert.floatEquals(1.5, tiers[1].dmg);
+	}
+
+	@Test
+	public function testDataSingleRecord():Void {
+		final mp = createMp();
+		final dt = mp.gameData.defaultTier;
+		Assert.notNull(dt, "defaultTier should not be null");
+		Assert.equals("None", dt.name);
+		Assert.equals(0, dt.cost);
+		Assert.floatEquals(0.0, dt.dmg);
+	}
+
+	@Test
+	public function testDataBuilderDynamic():Void {
+		final animFilePath = "test/examples/62-dataBlock/dataBlock.manim";
+		final fileContent = byte.ByteData.ofString(sys.io.File.getContent(animFilePath));
+		final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+		final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, animFilePath);
+
+		final data:Dynamic = builder.getData("gameData");
+		Assert.notNull(data, "Builder getData should return non-null");
+		Assert.equals(5, data.maxLevel);
+		Assert.equals("Warrior", data.name);
+		Assert.equals(true, data.enabled);
+
+		final costs:Array<Dynamic> = data.costs;
+		Assert.notNull(costs, "costs should not be null");
+		Assert.equals(4, costs.length);
+		Assert.equals(10, costs[0]);
+		Assert.equals(80, costs[3]);
+
+		final tiers:Array<Dynamic> = data.tiers;
+		Assert.notNull(tiers, "tiers should not be null");
+		Assert.equals(2, tiers.length);
+		Assert.equals("Bronze", tiers[0].name);
+		Assert.equals(10, tiers[0].cost);
+	}
 }

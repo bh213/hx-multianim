@@ -818,6 +818,42 @@ typedef TextDef = {
 	var isHtml:Bool;
 }
 
+// ========== Data block types ==========
+
+enum DataValueType {
+	DVTInt;
+	DVTFloat;
+	DVTString;
+	DVTBool;
+	DVTRecord(recordName:String);
+	DVTArray(elementType:DataValueType);
+}
+
+enum DataValue {
+	DVInt(v:Int);
+	DVFloat(v:Float);
+	DVString(v:String);
+	DVBool(v:Bool);
+	DVArray(elements:Array<DataValue>);
+	DVRecord(recordName:String, fields:Map<String, DataValue>);
+}
+
+typedef DataRecordDef = {
+	var name:String;
+	var fields:Array<{name:String, type:DataValueType}>;
+}
+
+typedef DataFieldDef = {
+	var name:String;
+	var type:DataValueType;
+	var value:DataValue;
+}
+
+typedef DataDef = {
+	var records:Map<String, DataRecordDef>;
+	var fields:Array<DataFieldDef>;
+}
+
 @:nullSafety
 enum NodeType {
 	FLOW(maxWidth:Null<ReferenceableValue>, maxHeight:Null<ReferenceableValue>, minWidth:Null<ReferenceableValue>, minHeight:Null<ReferenceableValue>,
@@ -851,7 +887,7 @@ enum NodeType {
 	GRAPHICS(elements:Array<PositionedGraphicsElement>);
 	AUTOTILE(autotileDef:AutotileDef);
 	ATLAS2(atlas2Def:Atlas2Def);
-
+	DATA(dataDef:DataDef);
 }
 
 enum NodeConditionalValues {

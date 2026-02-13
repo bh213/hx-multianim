@@ -16,6 +16,7 @@
 | **TEXT in runtime repeat** | `generateRuntimeChildExprs` handles TEXT nodes inside param-dependent iterators. |
 | **RVFunction** (`function(gridWidth/gridHeight)`) | Resolves grid spacing from node's parent chain at compile time. Handled in both `rvToExpr` and `resolveRVStatic`. |
 | **Multi-element named getters** | When multiple elements share the same `#name`, `get_name()` now returns `ProgrammableUpdatable` wrapping all elements. Single-element names still return `h2d.Object`. |
+| **`@:data` metadata** | `@:data("file.manim", "dataName")` generates typed data classes with `public final` fields. Record types generate companion classes (`ClassName_RecordName`). Builder `getData()` returns `Dynamic`. |
 
 ## Phase 2: Performance — optimize generated code
 
