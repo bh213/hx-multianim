@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(copy:*)",
+      "Bash(haxe:*)",
+      "Bash(where:*)",
+      "WebFetch(domain:heaps.io)",
+      "Bash(del \"c:\\\\Users\\\\goraz\\\\work\\\\github\\\\dotabota\\\\hx-multianim\\\\test\\\\res\\\\fonts\\\\f3x5.fnt\" \"c:\\\\Users\\\\goraz\\\\work\\\\github\\\\dotabota\\\\hx-multianim\\\\test\\\\res\\\\fonts\\\\f3x5.png\" \"c:\\\\Users\\\\goraz\\\\work\\\\github\\\\dotabota\\\\hx-multianim\\\\test\\\\res\\\\fonts\\\\f3x5.ttf\")",
+      "Bash(dir:*)",
+      "Bash(cmd.exe /c \"test.bat run\")",
+      "Bash(cmd.exe /c \"test.bat rr\")",
+      "Bash(cmd.exe /c \"test.bat gen-refs\")",
+      "Bash(find:*)",
+      "Bash(hl:*)",
+      "Bash(grep:*)",
+      "Bash(git fetch:*)",
+      "Bash(git merge:*)",
+      "Bash(git rebase:*)",
+      "Bash(git rm:*)",
+      "Bash(lix env:*)",
+      "Bash(node -e:*)",
+      "Bash(git mv:*)",
+      "WebFetch(domain:github.com)",
+      "Bash(popd:*)",
+      "Bash(git stash:*)",
+      "Bash(git show:*)",
+      "Bash(sort:*)"
+    ]
+  }
+}

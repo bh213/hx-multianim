@@ -47,7 +47,7 @@ private enum ComputedShape {
 
 @:nullSafety
 @:allow(bh.multianim.BuilderResult)
-class Updatable {
+class Updatable implements IUpdatable {
 	final updatables:Array<NamedBuildResult>;
 	var lastObject:Null<h2d.Object> = null;
 
