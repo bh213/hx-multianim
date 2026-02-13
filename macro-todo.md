@@ -4,7 +4,6 @@
 
 | Gap | Severity | Notes |
 |-----|----------|-------|
-| **RVFunction** (`function(gridWidth)`) | Low | Evaluates to `0`. Rarely used. |
 | **Multi-element named getters** | Low | Only single-element `get_name()` generated. Multi-element `Updatable` wrappers not created. |
 | **Definition node types** | N/A | AUTOTILE (`buildAutotile()` API), ATLAS2 (inline), ANIMATED_PATH — accessed by reference, not rendered as children. |
 
@@ -16,6 +15,7 @@
 | **RVElementOfArray** (`$arr[$i]`) | Resolves to runtime loop var or `this._arr[index]`. |
 | **ArrayIterator in REPEAT** | `repeatable($i, array($val, $arr))` — runtime pool with `_rt_val` value variable. |
 | **TEXT in runtime repeat** | `generateRuntimeChildExprs` handles TEXT nodes inside param-dependent iterators. |
+| **RVFunction** (`function(gridWidth/gridHeight)`) | Resolves grid spacing from node's parent chain at compile time. Handled in both `rvToExpr` and `resolveRVStatic`. |
 
 ## Phase 2: Performance — optimize generated code
 
