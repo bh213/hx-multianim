@@ -73,7 +73,7 @@ relativeLayouts {
 // TileGroup with repeatable grid layout
 #testTileGroup4 programmable tileGroup() {
       pos:800,100
-      repeatable($index, grid(3, dx:40)) {
+      repeatable($index, step(3, dx:40)) {
             bitmap(generated(color(20, 20, white)), left, top);
       }
 }
@@ -81,14 +81,14 @@ relativeLayouts {
 // Repeatable grid without tileGroup (for comparison)
 #testTileGroup5 programmable() {
       pos:805,105
-      repeatable($index, grid(3, dx:40)) {
+      repeatable($index, step(3, dx:40)) {
             bitmap(generated(color(20, 20, orange)), left, top);
       }
 }
 
 // TileGroup repeatable with variable iterator
 #testTileGroup6 programmable tileGroup() {
-      repeatable($item, grid(3, dx:40)) {
+      repeatable($item, step(3, dx:40)) {
             pos:810,110
             bitmap(generated(color(20, 20, red)), left, top);
       }
