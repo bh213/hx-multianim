@@ -2702,8 +2702,7 @@ class MacroManimParser {
 
 	function parseRepeatIterator(defs:ParametersDefinitions):RepeatType {
 		switch (peek()) {
-			case TIdentifier(s) if (isKeyword(s, "step") || isKeyword(s, "grid")):
-				if (isKeyword(s, "grid")) trace('WARNING: repeatable iterator "grid" is deprecated, use "step" instead');
+			case TIdentifier(s) if (isKeyword(s, "step")):
 				advance();
 				expect(TOpen);
 				final count = parseIntegerOrReference();

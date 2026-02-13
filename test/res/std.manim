@@ -167,7 +167,7 @@ version: 0.3
 
 
 #radioButtons programmable(count:int){
-      repeatable($index, grid($count, dy:20)) {
+      repeatable($index, step($count, dy:20)) {
             placeholder(generated(cross(15, 15)), callback("checkbox", $index)):0,0
             text(m6x11, callback("label", $index), 0xffffff12, left, 120): 24,4
             
@@ -175,7 +175,7 @@ version: 0.3
 }
 
 #radioButtonsHorizontal programmable(count:int){
-      repeatable($index, grid($count, dx:120 )) {
+      repeatable($index, step($count, dx:120 )) {
             placeholder(generated(cross(15, 15)), callback("checkbox", $index)):0,0
             text(m6x11, callback("label", $index), 0xffffff12, left, 120): 24,4
             
@@ -183,7 +183,7 @@ version: 0.3
 }
 
 #radioButtonsVertical programmable(count:int){
-      repeatable($index, grid($count, dy:30 )) {
+      repeatable($index, step($count, dy:30 )) {
             placeholder(generated(cross(15, 15)), callback("checkbox", $index)):0,0
             text(m6x11, callback("label", $index), 0xffffff12, left, 120): 24,4
             

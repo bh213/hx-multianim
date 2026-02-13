@@ -6,7 +6,7 @@ version: 0.3
 
   @alpha(0.3) bitmap(generated(color(1280, 720, yellow)));
 
-  repeatable($index, grid(6, dx: 150, dy: 0)) {
+  repeatable($index, step(6, dx: 150, dy: 0)) {
     pos: 40, 80
     // Row 1: x == 3 (dark green rect + light green text when true, dark red + light red when false)
     bitmap(generated(color(60, 40, ?($index == 3) #060 : #600))):0,80;

@@ -38,6 +38,9 @@ function App() {
   const consoleRef = useRef<HTMLDivElement>(null);
   const rightPanelRef = useRef<HTMLDivElement>(null);
 
+  // Track when .anim file click triggers animViewer - prevents useEffect from overwriting loader.currentFile
+  const animFileReloadPending = useRef<boolean>(false);
+
   // Refs for resizing
   const filePanelRef = useRef<HTMLDivElement>(null);
   const editorPanelRef = useRef<HTMLDivElement>(null);
@@ -198,6 +201,13 @@ function App() {
   useEffect(() => {
     if (loader.manimFiles.length === 0 || !selectedScreen) return;
 
+    // Skip if an .anim file click already triggered a reload - we don't
+    // want to overwrite loader.currentFile or double-reload
+    if (animFileReloadPending.current) {
+      animFileReloadPending.current = false;
+      return;
+    }
+
     const screen = loader.screens.find(s => s.name === selectedScreen);
     if (screen && screen.manimFile) {
       const matchingManimFile = loader.manimFiles.find(file => file.filename === screen.manimFile);
@@ -305,7 +315,15 @@ function App() {
           loader.currentExample = filename;
           setHasUnsavedChanges(false);
           setSyncOffer(null);
+          // Flag that this reload was triggered by an .anim file click,
+          // so the screen-change useEffect won't overwrite loader.currentFile
+          animFileReloadPending.current = true;
           setSelectedScreen('animViewer');
+          // Force reload even if animViewer is already the selected screen,
+          // since the useEffect won't fire when selectedScreen doesn't change.
+          // Also reload here directly so loader.currentFile isn't overwritten
+          // by the useEffect before the Haxe side reads it.
+          reloadAndCaptureError('animViewer');
         }
       }
     } else {

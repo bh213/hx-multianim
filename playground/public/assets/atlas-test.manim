@@ -2,7 +2,7 @@ version: 0.3
 
 #atlasGrid programmable(columns:int=8, sheetName="", sheetLength:int, tileWidth:int=120, tileHeight:int=80, indexY:int) {
   // Use "ui" or "fx" for sheetName to see the difference
-  @(sheetName=>crew2) repeatable($index, grid($sheetLength, dx:0)) {
+  @(sheetName=>crew2) repeatable($index, step($sheetLength, dx:0)) {
           pos: 5, 20
 
           @alpha(0.9) text(default, "sheet:" + $sheetName + ' yindex ${$indexY}', white, left, 200):10,-20

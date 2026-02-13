@@ -6,7 +6,7 @@ version: 0.3
 
   @alpha(0.3) bitmap(generated(color(1280, 720, gray)));
 
-  repeatable($index, grid(5, dx: 20, dy: 1)) {
+  repeatable($index, step(5, dx: 20, dy: 1)) {
     @alpha(1.0 - $index/5.0) scale(4) bitmap(sheet("crew2", "marine_r_shooting_d")):120,320;
   }
 }
@@ -26,7 +26,7 @@ version: 0.3
 
 //   @alpha(0.3) bitmap(generated(color(1280, 720, gray)));
 
-//   repeatable($index, grid(5, dx: 20, dy: 1)) {
+//   repeatable($index, step(5, dx: 20, dy: 1)) {
 //     @alpha(1.0 - $index/5.0) scale(4) bitmap(sheet("crew2", "marine_r_shooting_d")):120,320;
 //   }
 // }

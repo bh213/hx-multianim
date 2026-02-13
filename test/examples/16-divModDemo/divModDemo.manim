@@ -15,7 +15,7 @@ version: 0.3
   // Grid of 25 elements arranged 5x5 using div and mod
   // Row = $index div 5, Column = $index % 5
   // Each cell has a unique saturated color from the palette
-  repeatable($index, grid(25, dx: 0)) {
+  repeatable($index, step(25, dx: 0)) {
     pos: 20, 80
     bitmap(generated(colorWithText(60, 60, palette(colors, $index), $index, white, "dd"))): ($index % 5) * 80, ($index div 5) * 100
   }

@@ -8,7 +8,7 @@ version: 0.3
 
   @alpha(0.2) bitmap(generated(color(1280, 720, #333)));
 
-  repeatable2d($x, $y, grid(5, dx: 96), grid(3, dy: 96)) {
+  repeatable2d($x, $y, step(5, dx: 96), step(3, dy: 96)) {
     pos: 40, 120
     bitmap(generated(color(72, 72, palette(file, $x+7, $y))));
   }

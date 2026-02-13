@@ -2,7 +2,7 @@ version: 0.3
 
 #codegenRepeat2d programmable(cols:uint=3, rows:uint=2) {
   // Static 3x2 grid
-  repeatable2d($x, $y, grid(3, dx: 50), grid(2, dy: 30)) {
+  repeatable2d($x, $y, step(3, dx: 50), step(2, dy: 30)) {
     pos: 10, 10
     ninepatch("ui", "button-idle", 40, 20): 0, 0
   }
@@ -14,7 +14,7 @@ version: 0.3
   }
 
   // Param-dependent: cols x rows
-  repeatable2d($cx, $cy, grid($cols, dx: 40), grid($rows, dy: 25)) {
+  repeatable2d($cx, $cy, step($cols, dx: 40), step($rows, dy: 25)) {
     pos: 10, 160
     ninepatch("ui", "button-disabled", 30, 16): 0, 0
   }
