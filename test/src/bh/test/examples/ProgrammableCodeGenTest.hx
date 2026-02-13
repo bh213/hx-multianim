@@ -2549,4 +2549,11 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		Assert.equals("Bronze", tiers[0].name);
 		Assert.equals(10, tiers[0].cost);
 	}
+
+	// ==================== @final variable declaration ====================
+
+	@Test
+	public function test63_FinalVarDemo(async:utest.Async):Void {
+		simpleTest(63, "finalVarDemo", async);
+	}
 }

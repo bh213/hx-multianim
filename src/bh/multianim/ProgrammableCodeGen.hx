@@ -73,6 +73,9 @@ class ProgrammableCodeGen {
 	// Runtime loop variable mappings: maps manim var name -> runtime Haxe identifier name (for runtime iterators)
 	static var runtimeLoopVars:Map<String, String> = new Map();
 
+	// @final variable expressions: maps name -> expression for inline expansion in rvToExpr
+	static var finalVarExprs:Map<String, ReferenceableValue> = new Map();
+
 	// Repeat pool entries: for param-dependent repeats, tracks which pool containers to show/hide
 	static var repeatPoolEntries:Array<{containerField:String, iterIndex:Int, countParamRefs:Array<String>, countExpr:Expr}> = [];
 
@@ -112,6 +115,7 @@ class ProgrammableCodeGen {
 		paramEnumTypes = new Map();
 		loopVarSubstitutions = new Map();
 		runtimeLoopVars = new Map();
+		finalVarExprs = new Map();
 		repeatPoolEntries = [];
 		applyEntries = [];
 		allParsedNodes = new Map();
@@ -562,6 +566,9 @@ class ProgrammableCodeGen {
 						processConditionalApply(node, parentField, fields, ctorExprs, siblings, pos);
 						return;
 				}
+			case FINAL_VAR(name, expr):
+				finalVarExprs.set(name, expr);
+				return;
 			default:
 		}
 
@@ -1098,6 +1105,8 @@ class ProgrammableCodeGen {
 			case RVReference(ref):
 				if (loopVarSubstitutions.exists(ref))
 					cast(loopVarSubstitutions.get(ref), Float)
+				else if (finalVarExprs.exists(ref))
+					resolveRVStatic(finalVarExprs.get(ref))
 				else
 					null;
 			case EBinop(op, e1, e2):
@@ -2880,6 +2889,8 @@ class ProgrammableCodeGen {
 				} else if (runtimeLoopVars.exists(ref)) {
 					final rtName = runtimeLoopVars.get(ref);
 					macro $i{rtName};
+				} else if (finalVarExprs.exists(ref)) {
+					rvToExpr(finalVarExprs.get(ref), forString);
 				} else {
 					final fieldExpr = macro $p{["this", "_" + ref]};
 					if (forString) {
@@ -2996,7 +3007,9 @@ class ProgrammableCodeGen {
 
 		switch (rv) {
 			case RVReference(ref):
-				if (paramDefs.exists(ref) && !loopVarSubstitutions.exists(ref) && !refs.contains(ref))
+				if (finalVarExprs.exists(ref))
+					collectParamRefsImpl(finalVarExprs.get(ref), refs)
+				else if (paramDefs.exists(ref) && !loopVarSubstitutions.exists(ref) && !refs.contains(ref))
 					refs.push(ref);
 			case EBinop(_op, e1, e2):
 				collectParamRefsImpl(e1, refs);

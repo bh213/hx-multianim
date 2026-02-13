@@ -461,6 +461,62 @@ width: ?($count > 5) $count * 20 : $count * 30
 
 ---
 
+## Constants (`@final`)
+
+Declare immutable named constants to avoid repeating complex expressions:
+
+```
+@final cx = $x + $w / 2
+@final cy = $y + $h / 2
+bitmap(...): $cx, $cy
+text(...): $cx, $cy + 12
+```
+
+All parameter types are supported: numeric, string, color, bool, arrays.
+
+```
+@final label = "Player " + $name
+@final bg = #FF0000
+@final coords = [$x, $y, 15]
+@final displaySize = ?($big) 100 : 50
+```
+
+Constants can reference other constants:
+```
+@final baseX = 400
+@final offsetX = $baseX + 100
+```
+
+**Scoping:** Every `{ }` block creates a scope. Constants declared inside are cleaned up when leaving:
+```
+#test programmable(x:uint=5) {
+    @final doubled = $x * 2
+
+    flow() {
+        @final inner = $doubled + 1   // $doubled visible from outer scope
+        bitmap(...): $inner, 0
+    }
+    // $inner NOT available here
+
+    bitmap(...): $doubled, 0           // $doubled still in scope
+}
+```
+
+Inside repeatable, constants are re-evaluated per iteration:
+```
+repeatable($i, step(5, dx: 20)) {
+    @final angle = $i * 72
+    @final radius = $i * 10 + 20
+    bitmap(...): $radius, $angle
+}
+```
+
+**Errors:**
+- Duplicate name in same scope: `@final x = 1` then `@final x = 2`
+- Shadowing a programmable parameter: `@final width = ...` when `width` is a parameter
+
+---
+
 ## Imports
 
 ```

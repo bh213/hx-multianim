@@ -365,6 +365,27 @@ class MultiAnimBuilder {
 		return new MultiAnimBuilder(parsed, resourceLoader, sourceName);
 	}
 
+	function evaluateAndStoreFinal(name:String, expr:ReferenceableValue, node:Node):Void {
+		final existing = indexedParams.get(name);
+		if (existing != null) {
+			switch existing {
+				case ExpressionAlias(_): // Allow overwrite (repeatable re-iteration of same @final)
+				default:
+					throw '@final: \'$name\' shadows an existing parameter' + MacroUtils.nodePos(node);
+			}
+		}
+		indexedParams.set(name, ExpressionAlias(expr));
+	}
+
+	static function cleanupFinalVars(children:Array<Node>, indexedParams:Map<String, ResolvedIndexParameters>):Void {
+		for (childNode in children) {
+			switch childNode.type {
+				case FINAL_VAR(name, _): indexedParams.remove(name);
+				default:
+			}
+		}
+	}
+
 	function resolveAsArrayElement(v:ReferenceableValue):Dynamic {
 		switch v {
 			case RVElementOfArray(arrayRef, indexRef):
@@ -397,6 +418,7 @@ class MultiAnimBuilder {
 				#end
 				switch arrayVal {
 					case ArrayString(strArray): return strArray;
+					case ExpressionAlias(expr): return resolveAsArray(expr);
 					default: throw 'array reference ${refArr} is not an array but ${arrayVal}' + currentNodePos();
 				}
 			case RVTernary(condition, ifTrue, ifFalse):
@@ -538,7 +560,9 @@ class MultiAnimBuilder {
 				final val = indexedParams.get(ref);
 				switch val {
 					case Value(val): return val;
+					case ValueF(val): return Std.int(val);
 					case StringValue(s): stringToInt(s);
+					case ExpressionAlias(expr): resolveAsInteger(expr);
 					case null: throw 'reference ${ref} is null' + currentNodePos();
 					default: throw 'reference ${ref} is not a value but ${val}' + currentNodePos();
 				}
@@ -596,6 +620,7 @@ class MultiAnimBuilder {
 				switch val {
 					case Value(val): return val;
 					case ValueF(val): return val;
+					case ExpressionAlias(expr): resolveAsNumber(expr);
 					case null: throw 'reference ${ref} is null' + currentNodePos();
 					default: throw 'reference ${ref} is not a value but ${val}' + currentNodePos();
 				}
@@ -681,8 +706,10 @@ class MultiAnimBuilder {
 				final val:ResolvedIndexParameters = indexedParams.get(ref);
 				switch val {
 					case Value(val): return '${val}';
+					case ValueF(val): return '${val}';
 					case StringValue(s): return s;
 					case Index(_, value): return value;
+					case ExpressionAlias(expr): return resolveAsString(expr);
 					default: throw 'invalid reference value ${ref}, expected string got ${val}' + currentNodePos();
 				}
 			case RVParenthesis(e): return resolveAsString(e);
@@ -1568,7 +1595,8 @@ class MultiAnimBuilder {
 								indexedParams.set(tilenameVarName, StringValue(tilenameIterator[count]));
 						default:
 					}
-					for (childNode in resolveConditionalChildren(node.children)) {
+					final resolvedChildren = resolveConditionalChildren(node.children);
+					for (childNode in resolvedChildren) {
 						var iterPos = currentPos.clone();
 						switch repeatType {
 							case StepIterator(_, _, _):
@@ -1580,6 +1608,7 @@ class MultiAnimBuilder {
 						}
 						buildTileGroup(childNode, tileGroup, iterPos, gridCoordinateSystem, hexCoordinateSystem, builderParams);
 					}
+					cleanupFinalVars(resolvedChildren, indexedParams);
 				}
 				indexedParams.remove(varName);
 				switch repeatType {
@@ -1716,11 +1745,13 @@ class MultiAnimBuilder {
 						indexedParams.set(varNameY, Value(resolvedY));
 						if (xValueVariableName != null) indexedParams.set(xValueVariableName, StringValue(xArrayIterator[xCount]));
 						if (yValueVariableName != null) indexedParams.set(yValueVariableName, StringValue(yArrayIterator[yCount]));
-						for (childNode in resolveConditionalChildren(node.children)) {
+						final resolvedChildren = resolveConditionalChildren(node.children);
+						for (childNode in resolvedChildren) {
 							var iterPos = currentPos.clone();
 							iterPos.add(xOffsetX + yOffsetX, xOffsetY + yOffsetY);
 							buildTileGroup(childNode, tileGroup, iterPos, gridCoordinateSystem, hexCoordinateSystem, builderParams);
 						}
+						cleanupFinalVars(resolvedChildren, indexedParams);
 					}
 				}
 				indexedParams.remove(varNameX);
@@ -1730,17 +1761,21 @@ class MultiAnimBuilder {
 			case PIXELS(shapes):
 				final pixelsResult = drawPixels(shapes, gridCoordinateSystem, hexCoordinateSystem);
 				pixelsResult.pixelLines.tile;
+			case FINAL_VAR(name, expr):
+				evaluateAndStoreFinal(name, expr, node);
+				null;
 			default: throw 'unsupported node ${node.uniqueNodeName} ${node.type} in tileGroup mode' + MacroUtils.nodePos(node);
 		}
 
 		addToTileGroup(node, currentPos, tileGroupTile, tileGroup);
 
 		if (!skipChildren) { // for repeatable, as children were already processed
-
-			for (childNode in resolveConditionalChildren(node.children)) {
+			final resolvedChildren = resolveConditionalChildren(node.children);
+			for (childNode in resolvedChildren) {
 				buildTileGroup(childNode, tileGroup, currentPos.clone(), MultiAnimParser.getGridCoordinateSystem(childNode),
 					MultiAnimParser.getHexCoordinateSystem(childNode), builderParams);
 			}
+			cleanupFinalVars(resolvedChildren, indexedParams);
 		}
 	}
 
@@ -2131,7 +2166,8 @@ class MultiAnimBuilder {
 								indexedParams.set(tilenameVarName, StringValue(tilenameIterator[count]));
 						default:
 					}
-					for (childNode in resolveConditionalChildren(node.children)) {
+					final resolvedChildren = resolveConditionalChildren(node.children);
+					for (childNode in resolvedChildren) {
 						var obj = build(childNode, ObjectMode(object), gridCoordinateSystem, hexCoordinateSystem, internalResults, builderParams);
 						if (obj == null)
 							continue;
@@ -2147,6 +2183,7 @@ class MultiAnimBuilder {
 							case TilesIterator(_, _, _, _):
 						}
 					}
+					cleanupFinalVars(resolvedChildren, indexedParams);
 				}
 
 				indexedParams.remove(varName);
@@ -2288,12 +2325,14 @@ class MultiAnimBuilder {
 						indexedParams.set(varNameY, Value(resolvedY));
 						if (xValueVariableName != null) indexedParams.set(xValueVariableName, StringValue(xArrayIterator[xCount]));
 						if (yValueVariableName != null) indexedParams.set(yValueVariableName, StringValue(yArrayIterator[yCount]));
-						for (childNode in resolveConditionalChildren(node.children)) {
+						final resolvedChildren = resolveConditionalChildren(node.children);
+						for (childNode in resolvedChildren) {
 							var obj = build(childNode, ObjectMode(object), gridCoordinateSystem, hexCoordinateSystem, internalResults, builderParams);
 							if (obj == null)
 								continue;
 							addPosition(obj, xOffsetX + yOffsetX, xOffsetY + yOffsetY);
 						}
+						cleanupFinalVars(resolvedChildren, indexedParams);
 					}
 				}
 
@@ -2331,6 +2370,9 @@ class MultiAnimBuilder {
 				final tg = new TileGroup();
 				selectedBuildMode = TileGroupMode(tg);
 				HeapsObject(tg);
+			case FINAL_VAR(name, expr):
+				evaluateAndStoreFinal(name, expr, node);
+				return null;
 		}
 		final updatableName = node.updatableName;
 
@@ -2358,10 +2400,12 @@ class MultiAnimBuilder {
 			selectedBuildMode = ObjectMode(object);
 
 		if (!skipChildren) { // for repeatable, as children were already processed
-			for (childNode in resolveConditionalChildren(node.children)) {
+			final resolvedChildren = resolveConditionalChildren(node.children);
+			for (childNode in resolvedChildren) {
 				build(childNode, selectedBuildMode, MultiAnimParser.getGridCoordinateSystem(childNode), MultiAnimParser.getHexCoordinateSystem(childNode),
 					internalResults, builderParams);
 			}
+			cleanupFinalVars(resolvedChildren, indexedParams);
 		}
 		return object;
 	}

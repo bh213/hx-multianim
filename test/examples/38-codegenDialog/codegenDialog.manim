@@ -10,12 +10,14 @@ version: 0.3
       text(dd, $title, 0xFFDD44, center, 280): 20, 28
 
       // Separator line (thin ninepatch)
-      ninepatch("ui", "Sliderbar_H_3x1", $w - 20, 4): 20, 45
+      @final innerW = $w - 20
+      ninepatch("ui", "Sliderbar_H_3x1", $innerW, 4): 20, 45
 
       // Body text
       text(dd, $body, 0xCCCCCC, center, 280): 20, 55
 
       // OK button at bottom
-      ninepatch("ui", "button-idle", 60, 20): $w - 60, $h - 10
-      text(dd, "OK", white, center, 60): $w - 60, $h - 3
+      @final btnX = $w - 60
+      ninepatch("ui", "button-idle", 60, 20): $btnX, $h - 10
+      text(dd, "OK", white, center, 60): $btnX, $h - 3
 }

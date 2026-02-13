@@ -8,8 +8,9 @@ version: 0.3
       ninepatch("ui", "button-disabled", $w * $whiteLoss / $maxHealth, $h - 4): 12, 22
 
       // Health bar (green when healthy, red when low)
-      @(health => 30..100) ninepatch("ui", "button-idle", $w * $health / $maxHealth, $h - 4): 12, 22
-      @(health => 0..30) ninepatch("ui", "button-pressed", $w * $health / $maxHealth, $h - 4): 12, 22
+      @final healthBarW = $w * $health / $maxHealth
+      @(health => 30..100) ninepatch("ui", "button-idle", $healthBarW, $h - 4): 12, 22
+      @(health => 0..30) ninepatch("ui", "button-pressed", $healthBarW, $h - 4): 12, 22
 
       // Health text centered on the bar
       text(dd, $health, white, center, 200): 10, 23
