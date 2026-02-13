@@ -216,9 +216,9 @@ class VisualTestBase extends utest.Test {
 		var passed = true;
 
 		if (!sys.FileSystem.exists(reference)) {
-			verbose('Info: Reference image not found: $reference (would generate on first run)');
-			passed = true;
-			similarity = 1.0;
+			trace('Reference image not found: $reference — run gen-refs to create it');
+			passed = false;
+			similarity = 0.0;
 		} else if (!sys.FileSystem.exists(actual)) {
 			trace('Error: Actual image not found: $actual');
 			passed = false;
@@ -570,7 +570,7 @@ class VisualTestBase extends utest.Test {
 	}
 
 	public function computeSimilarity(actual:String, reference:String):Float {
-		if (!sys.FileSystem.exists(reference)) return 1.0;
+		if (!sys.FileSystem.exists(reference)) return 0.0;
 		if (!sys.FileSystem.exists(actual)) return 0.0;
 
 		try {
