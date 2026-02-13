@@ -2424,4 +2424,54 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		}
 		return count;
 	}
+
+	// ==================== Performance test: macro vs builder ====================
+
+	@Test
+	public function testMacroVsBuilderPerformance():Void {
+		final iterations = 10000;
+		final animFilePath = "test/examples/61-animatedPathCurves/animatedPathCurves.manim";
+
+		// Pre-load builder (file I/O not included in benchmark)
+		final fileContent = byte.ByteData.ofString(sys.io.File.getContent(animFilePath));
+		final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+		final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, animFilePath);
+
+		// Pre-create macro instance
+		final mp = createMp();
+
+		// Warm up both paths
+		builder.createAnimatedPath("distAnim");
+		builder.createAnimatedPath("timeAnim");
+		builder.createAnimatedPath("customAnim");
+		builder.createAnimatedPath("checkpointAnim");
+		mp.animatedPathCurves.createAnimatedPath_distAnim();
+		mp.animatedPathCurves.createAnimatedPath_timeAnim();
+		mp.animatedPathCurves.createAnimatedPath_customAnim();
+		mp.animatedPathCurves.createAnimatedPath_checkpointAnim();
+
+		// Benchmark builder
+		final builderStart = haxe.Timer.stamp();
+		for (_ in 0...iterations) {
+			builder.createAnimatedPath("distAnim");
+			builder.createAnimatedPath("timeAnim");
+			builder.createAnimatedPath("customAnim");
+			builder.createAnimatedPath("checkpointAnim");
+		}
+		final builderTime = haxe.Timer.stamp() - builderStart;
+
+		// Benchmark macro
+		final macroStart = haxe.Timer.stamp();
+		for (_ in 0...iterations) {
+			mp.animatedPathCurves.createAnimatedPath_distAnim();
+			mp.animatedPathCurves.createAnimatedPath_timeAnim();
+			mp.animatedPathCurves.createAnimatedPath_customAnim();
+			mp.animatedPathCurves.createAnimatedPath_checkpointAnim();
+		}
+		final macroTime = haxe.Timer.stamp() - macroStart;
+
+		final speedup = builderTime / macroTime;
+		trace('Performance: builder=${Std.int(builderTime * 1000)}ms, macro=${Std.int(macroTime * 1000)}ms, speedup=${Std.string(speedup).substr(0, 5)}x (${iterations} iterations)');
+		Assert.isTrue(macroTime < builderTime, 'Macro should be faster than builder: macro=${macroTime}s, builder=${builderTime}s');
+	}
 }

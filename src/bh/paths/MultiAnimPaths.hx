@@ -252,24 +252,25 @@ class MultiAnimPaths {
 
 @:allow(bh.paths.MultiAnimPaths)
 class Path {
-	final singlePaths:Array<SinglePath>;
-	final checkpoints:Map<String, Float> = [];
-	public final totalLength:Float;
-	public final endpoint:FPoint;
+	var singlePaths:Array<SinglePath>;
+	var checkpoints:Map<String, Float> = [];
+	public var totalLength:Float;
+	public var endpoint:FPoint;
 
-	public function new(singlePaths:Array<SinglePath>) {
+	public function new(singlePaths:Array<SinglePath>, ?precomputedLengths:Array<Float>) {
 		this.singlePaths = singlePaths;
 		var currentLength = 0.;
 
-		for (singlePath in singlePaths) {
+		for (i in 0...singlePaths.length) {
+			final singlePath = singlePaths[i];
 			final startOffset = currentLength;
-			currentLength += singlePath.length();
+			currentLength += if (precomputedLengths != null) precomputedLengths[i] else singlePath.length();
 			singlePath.startRange = startOffset;
 			singlePath.endRange = currentLength;
 		}
 
 		this.totalLength = currentLength;
-		
+
 		for (singlePath in singlePaths) {
 			singlePath.startRange /= totalLength;
 			singlePath.endRange /= totalLength;
@@ -280,7 +281,7 @@ class Path {
 					checkpoints.set(name, singlePath.startRange);
 
 				case _:
-			} 
+			}
 		}
 		this.singlePaths = this.singlePaths.filter(x-> !x.path.match(Checkpoint(_)));
 
@@ -291,6 +292,21 @@ class Path {
 			this.endpoint = new FPoint(0, 0);
 		}
 	}
+
+	/** Fast constructor for macro-generated code: singlePaths already have startRange/endRange
+	 *  normalized, no checkpoints in array, endpoint and totalLength pre-computed. */
+	public static function fromPrecomputed(singlePaths:Array<SinglePath>, totalLength:Float, checkpointNames:Array<String>,
+			checkpointRates:Array<Float>, endpoint:FPoint):Path {
+		var p = new Path([]);
+		p.singlePaths = singlePaths;
+		p.totalLength = totalLength;
+		p.endpoint = endpoint;
+		for (i in 0...checkpointNames.length) {
+			p.checkpoints.set(checkpointNames[i], checkpointRates[i]);
+		}
+		return p;
+	}
+
 
 	public inline function getCheckpoint(name:String):Float {
 		var retVal = checkpoints.get(name);
@@ -376,7 +392,7 @@ class Path {
 }
 
 @:allow(bh.paths.MultiAnimPaths)
-private class SinglePath {
+class SinglePath {
 	var startRange:Float = Math.NaN;
 	var endRange:Float = Math.NaN;
 
@@ -384,10 +400,18 @@ private class SinglePath {
 	var start:FPoint;
 	var end:FPoint;
 
-	function new(start:FPoint, end:FPoint, path:PathType) {
+	public function new(start:FPoint, end:FPoint, path:PathType) {
 		this.start = start;
 		this.end = end;
 		this.path = path;
+	}
+
+	/** Create a SinglePath with pre-computed normalized range values. */
+	public static inline function withRange(start:FPoint, end:FPoint, path:PathType, startRange:Float, endRange:Float):SinglePath {
+		var sp = new SinglePath(start, end, path);
+		sp.startRange = startRange;
+		sp.endRange = endRange;
+		return sp;
 	}
 
 	public function getPoint(rate:Float):FPoint {

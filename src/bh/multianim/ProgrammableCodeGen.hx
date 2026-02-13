@@ -7,6 +7,15 @@ import haxe.macro.Type;
 import bh.multianim.MultiAnimParser;
 import bh.multianim.MultiAnimParser.MultiAnimResult;
 import bh.multianim.MultiAnimParser.StateAnimConstruct;
+import bh.multianim.MultiAnimParser.AnimatedPathDef;
+import bh.multianim.MultiAnimParser.AnimatedPathModeType;
+import bh.multianim.MultiAnimParser.ParsedPaths;
+import bh.multianim.MultiAnimParser.PathCoordinateMode;
+import bh.multianim.MultiAnimParser.SmoothingType;
+import bh.multianim.MultiAnimParser.EasingType;
+import bh.multianim.MultiAnimParser.ReferenceableValue;
+import bh.multianim.MultiAnimParser.CurvesDef;
+import bh.multianim.MultiAnimParser.PathsDef;
 import bh.multianim.CoordinateSystems;
 import bh.multianim.MacroCompatTypes.MacroFlowLayout;
 import bh.multianim.MacroCompatTypes.MacroBlendMode;
@@ -452,7 +461,7 @@ class ProgrammableCodeGen {
 					case PATHS(pathsDef):
 						generatePathsFactoryMethods(pathsDef, factoryFields, pos);
 					case ANIMATED_PATH(apDef):
-						generateAnimatedPathFactoryMethod(nodeName, factoryFields, pos);
+						generateAnimatedPathFactoryMethod(nodeName, apDef, factoryFields, pos);
 					case CURVES(curvesDef):
 						generateCurvesFactoryMethods(curvesDef, factoryFields, pos);
 					default:
@@ -3722,7 +3731,7 @@ class ProgrammableCodeGen {
 	// ==================== Paths/Curves/AnimatedPath Factory Methods ====================
 
 	static function generatePathsFactoryMethods(pathsDef:PathsDef, factoryFields:Array<Field>, pos:Position):Void {
-		// Generic getPath(name, ?startPoint, ?endPoint) method
+		// Generic getPath(name, ?startPoint, ?endPoint) method - still uses builder for dynamic name
 		factoryFields.push(makeMethod("getPath", [
 			macro return this.buildPath(name, startPoint, endPoint)
 		], [
@@ -3731,24 +3740,620 @@ class ProgrammableCodeGen {
 			{name: "endPoint", type: macro :Null<bh.base.FPoint>, opt: true},
 		], macro :bh.paths.MultiAnimPaths.Path, [APublic], pos));
 
-		// Per-path typed methods: getPath_<name>(?startPoint, ?endPoint)
-		for (pathName => _ in pathsDef) {
-			final nameExpr:Expr = macro $v{pathName};
-			factoryFields.push(makeMethod("getPath_" + pathName, [
-				macro return this.buildPath($nameExpr, startPoint, endPoint)
-			], [
-				{name: "startPoint", type: macro :Null<bh.base.FPoint>, opt: true},
-				{name: "endPoint", type: macro :Null<bh.base.FPoint>, opt: true},
-			], macro :bh.paths.MultiAnimPaths.Path, [APublic], pos));
+		// Per-path typed methods: getPath_<name>(?startPoint, ?endPoint) with inline construction
+		for (pathName => pathDef in pathsDef) {
+			var resolved = resolvePathToExprs(pathDef);
+			if (resolved != null) {
+				// Pre-compute normalized ranges at compile time
+				var totalLength = 0.0;
+				for (l in resolved.lengths) totalLength += l;
+
+				if (totalLength > 0) {
+					// Compute normalized startRange/endRange for each segment
+					var startRanges:Array<Float> = [];
+					var endRanges:Array<Float> = [];
+					var cumulative = 0.0;
+					for (l in resolved.lengths) {
+						startRanges.push(cumulative / totalLength);
+						cumulative += l;
+						endRanges.push(cumulative / totalLength);
+					}
+
+					// Rewrite exprs to use SinglePath.withRange() with pre-normalized ranges
+					var rangedExprs:Array<Expr> = [];
+					for (i in 0...resolved.exprs.length) {
+						var origExpr = resolved.exprs[i];
+						var sr = startRanges[i];
+						var er = endRanges[i];
+						switch origExpr.expr {
+							case ENew(_, args) if (args.length == 3):
+								rangedExprs.push(macro bh.paths.MultiAnimPaths.SinglePath.withRange(
+									${args[0]}, ${args[1]}, ${args[2]}, $v{sr}, $v{er}
+								));
+							default:
+								rangedExprs.push(origExpr);
+						}
+					}
+
+					// Normalize checkpoint rates
+					var cpNames:Array<Expr> = [for (n in resolved.checkpointNames) macro $v{n}];
+					var cpRates:Array<Expr> = [for (l in resolved.checkpointLengths) macro $v{l / totalLength}];
+					var cpNamesExpr:Expr = {expr: EArrayDecl(cpNames), pos: pos};
+					var cpRatesExpr:Expr = {expr: EArrayDecl(cpRates), pos: pos};
+
+					// Compute endpoint from last segment's end point
+					var lastExpr = resolved.exprs[resolved.exprs.length - 1];
+					var endpointExpr:Expr = switch lastExpr.expr {
+						case ENew(_, args) if (args.length >= 2): args[1];
+						default: macro new bh.base.FPoint(0, 0);
+					};
+
+					// Generate cached path field for lazy initialization
+					var cacheFieldName = "_cachedPath_" + pathName;
+					factoryFields.push(makeField(cacheFieldName,
+						FVar(macro :bh.paths.MultiAnimPaths.Path, macro null),
+						[], pos));
+
+					var arrExpr:Expr = {expr: EArrayDecl(rangedExprs), pos: pos};
+					var cacheIdent = cacheFieldName;
+					factoryFields.push(makeMethod("getPath_" + pathName, [
+						macro {
+							if (startPoint != null && endPoint != null) {
+								// Dynamic transform requested — build fresh path and normalize
+								var basePath = bh.paths.MultiAnimPaths.Path.fromPrecomputed(
+									$arrExpr, $v{totalLength}, $cpNamesExpr, $cpRatesExpr, $endpointExpr
+								);
+								return basePath.normalize(startPoint, endPoint);
+							}
+							// Return cached base path
+							if ($i{cacheIdent} == null) {
+								$i{cacheIdent} = bh.paths.MultiAnimPaths.Path.fromPrecomputed(
+									$arrExpr, $v{totalLength}, $cpNamesExpr, $cpRatesExpr, $endpointExpr
+								);
+							}
+							return $i{cacheIdent};
+						}
+					], [
+						{name: "startPoint", type: macro :Null<bh.base.FPoint>, opt: true},
+						{name: "endPoint", type: macro :Null<bh.base.FPoint>, opt: true},
+					], macro :bh.paths.MultiAnimPaths.Path, [APublic], pos));
+				} else {
+					// Zero-length path — use regular constructor
+					var arrExpr:Expr = {expr: EArrayDecl(resolved.exprs), pos: pos};
+					factoryFields.push(makeMethod("getPath_" + pathName, [
+						macro {
+							var basePath = new bh.paths.MultiAnimPaths.Path($arrExpr);
+							if (startPoint != null && endPoint != null)
+								return basePath.normalize(startPoint, endPoint);
+							return basePath;
+						}
+					], [
+						{name: "startPoint", type: macro :Null<bh.base.FPoint>, opt: true},
+						{name: "endPoint", type: macro :Null<bh.base.FPoint>, opt: true},
+					], macro :bh.paths.MultiAnimPaths.Path, [APublic], pos));
+				}
+			} else {
+				// Fallback to builder for paths with parameter references
+				final nameExpr:Expr = macro $v{pathName};
+				factoryFields.push(makeMethod("getPath_" + pathName, [
+					macro return this.buildPath($nameExpr, startPoint, endPoint)
+				], [
+					{name: "startPoint", type: macro :Null<bh.base.FPoint>, opt: true},
+					{name: "endPoint", type: macro :Null<bh.base.FPoint>, opt: true},
+				], macro :bh.paths.MultiAnimPaths.Path, [APublic], pos));
+			}
 		}
 	}
 
-	static function generateAnimatedPathFactoryMethod(name:String, factoryFields:Array<Field>, pos:Position):Void {
-		final nameExpr:Expr = macro $v{name};
+	/** Try to resolve a ReferenceableValue to a Float at compile time. Returns null if it contains references. */
+	static function tryResolveFloat(rv:ReferenceableValue):Null<Float> {
+		if (rv == null) return null;
+		return switch (rv) {
+			case RVFloat(f): f;
+			case RVInteger(i): cast(i, Float);
+			case EBinop(op, e1, e2):
+				var l = tryResolveFloat(e1);
+				var r = tryResolveFloat(e2);
+				if (l == null || r == null) null;
+				else
+					switch (op) {
+						case OpAdd: l + r;
+						case OpSub: l - r;
+						case OpMul: l * r;
+						case OpDiv: l / r;
+						case OpMod: l % r;
+						case OpIntegerDiv: Math.floor(l / r);
+						default: null;
+					};
+			case EUnaryOp(_, e):
+				var v = tryResolveFloat(e);
+				if (v != null) -v else null;
+			case RVParenthesis(e): tryResolveFloat(e);
+			default: null;
+		};
+	}
+
+	/** Try to resolve a Coordinates to (x, y) at compile time. Returns null if it contains references. */
+	static function tryResolveCoordinate(coord:bh.multianim.CoordinateSystems.Coordinates):{x:Float, y:Float} {
+		return switch coord {
+			case ZERO: {x: 0.0, y: 0.0};
+			case OFFSET(xr, yr):
+				var x = tryResolveFloat(xr);
+				var y = tryResolveFloat(yr);
+				if (x != null && y != null) {x: x, y: y} else null;
+			default: null;
+		};
+	}
+
+	/** Resolve an entire path definition to pre-computed path data at compile time.
+	 *  Returns null if any value cannot be resolved (contains parameter references).
+	 *  Returns exprs with SinglePath.withRange() calls (pre-normalized), plus totalLength, checkpoints, and endpoint. */
+	static function resolvePathToExprs(pathDef:Array<ParsedPaths>):Null<{
+		exprs:Array<Expr>,
+		lengths:Array<Float>,
+		checkpointNames:Array<String>,
+		checkpointLengths:Array<Float>
+	}> {
+		var exprs:Array<Expr> = [];
+		var lengths:Array<Float> = [];
+		var checkpointNames:Array<String> = [];
+		var checkpointLengths:Array<Float> = []; // cumulative length at each checkpoint
+		var px:Float = 0.0, py:Float = 0.0;
+		var angle:Float = 0.0;
+
+		for (cmd in pathDef) {
+			switch cmd {
+				case LineTo(endCoord, mode):
+					var end = tryResolveCoordinate(endCoord);
+					if (end == null) return null;
+					var ex:Float, ey:Float;
+					switch mode {
+						case PCMAbsolute:
+							ex = end.x;
+							ey = end.y;
+						case PCMRelative | null:
+							ex = px + end.x;
+							ey = py + end.y;
+					}
+					exprs.push(macro new bh.paths.MultiAnimPaths.SinglePath(
+						new bh.base.FPoint($v{px}, $v{py}),
+						new bh.base.FPoint($v{ex}, $v{ey}),
+						bh.paths.MultiAnimPaths.PathType.Line
+					));
+					lengths.push(lineLength(px, py, ex, ey));
+					angle = Math.atan2(ey - py, ex - px);
+					px = ex;
+					py = ey;
+
+				case Forward(distance):
+					var d = tryResolveFloat(distance);
+					if (d == null) return null;
+					var ex = px + d * Math.cos(angle);
+					var ey = py + d * Math.sin(angle);
+					exprs.push(macro new bh.paths.MultiAnimPaths.SinglePath(
+						new bh.base.FPoint($v{px}, $v{py}),
+						new bh.base.FPoint($v{ex}, $v{ey}),
+						bh.paths.MultiAnimPaths.PathType.Line
+					));
+					lengths.push(lineLength(px, py, ex, ey));
+					px = ex;
+					py = ey;
+
+				case TurnDegrees(angleDelta):
+					var ad = tryResolveFloat(angleDelta);
+					if (ad == null) return null;
+					angle += ad * Math.PI / 180.0;
+					// Normalize angle to [-PI, PI]
+					while (angle > Math.PI) angle -= 2 * Math.PI;
+					while (angle < -Math.PI) angle += 2 * Math.PI;
+
+				case Arc(radius, angleDelta):
+					var r = tryResolveFloat(radius);
+					var ad = tryResolveFloat(angleDelta);
+					if (r == null || ad == null) return null;
+					var angleDeltaRad = ad * Math.PI / 180.0;
+					var perpAngle = angle + (ad > 0 ? Math.PI / 2 : -Math.PI / 2);
+					var cx = px + r * Math.cos(perpAngle);
+					var cy = py + r * Math.sin(perpAngle);
+					var startAngle = Math.atan2(py - cy, px - cx);
+					var endAngle = startAngle + angleDeltaRad;
+					var ex = cx + r * Math.cos(endAngle);
+					var ey = cy + r * Math.sin(endAngle);
+					exprs.push(macro new bh.paths.MultiAnimPaths.SinglePath(
+						new bh.base.FPoint($v{px}, $v{py}),
+						new bh.base.FPoint($v{ex}, $v{ey}),
+						bh.paths.MultiAnimPaths.PathType.Arc(new bh.base.FPoint($v{cx}, $v{cy}), $v{startAngle}, $v{r}, $v{ad})
+					));
+					lengths.push(arcLength(r, ad));
+					angle += angleDeltaRad;
+					px = ex;
+					py = ey;
+
+				case Checkpoint(name):
+					// Record checkpoint - don't add to exprs/lengths (will be filtered out)
+					var cumulativeLength = 0.0;
+					for (l in lengths) cumulativeLength += l;
+					checkpointNames.push(name);
+					checkpointLengths.push(cumulativeLength);
+
+				case Bezier2To(endCoord, controlCoord, mode, smoothing):
+					var end = tryResolveCoordinate(endCoord);
+					var control = tryResolveCoordinate(controlCoord);
+					if (end == null || control == null) return null;
+					var ex:Float, ey:Float, ctrlX:Float, ctrlY:Float;
+					switch mode {
+						case PCMAbsolute:
+							ex = end.x;
+							ey = end.y;
+							ctrlX = control.x;
+							ctrlY = control.y;
+						case PCMRelative | null:
+							ex = px + end.x;
+							ey = py + end.y;
+							ctrlX = px + control.x;
+							ctrlY = py + control.y;
+					}
+					var pxDist = getSmoothingDistanceCompileTime(smoothing, px, py, ctrlX, ctrlY);
+					if (pxDist == null) return null;
+					if (pxDist > 0) {
+						var smoothX = px + pxDist * Math.cos(angle);
+						var smoothY = py + pxDist * Math.sin(angle);
+						exprs.push(macro new bh.paths.MultiAnimPaths.SinglePath(
+							new bh.base.FPoint($v{px}, $v{py}),
+							new bh.base.FPoint($v{ex}, $v{ey}),
+							bh.paths.MultiAnimPaths.PathType.Bezier3(
+								new bh.base.FPoint($v{smoothX}, $v{smoothY}),
+								new bh.base.FPoint($v{ctrlX}, $v{ctrlY}),
+								new bh.base.FPoint($v{ex}, $v{ey})
+							)
+						));
+						lengths.push(bezier3Length(px, py, smoothX, smoothY, ctrlX, ctrlY, ex, ey));
+					} else {
+						exprs.push(macro new bh.paths.MultiAnimPaths.SinglePath(
+							new bh.base.FPoint($v{px}, $v{py}),
+							new bh.base.FPoint($v{ex}, $v{ey}),
+							bh.paths.MultiAnimPaths.PathType.Bezier3(
+								new bh.base.FPoint($v{px}, $v{py}),
+								new bh.base.FPoint($v{ctrlX}, $v{ctrlY}),
+								new bh.base.FPoint($v{ex}, $v{ey})
+							)
+						));
+						lengths.push(bezier3Length(px, py, px, py, ctrlX, ctrlY, ex, ey));
+					}
+					angle = Math.atan2(ey - ctrlY, ex - ctrlX);
+					px = ex;
+					py = ey;
+
+				case Bezier3To(endCoord, control1Coord, control2Coord, mode, smoothing):
+					var end = tryResolveCoordinate(endCoord);
+					var c1 = tryResolveCoordinate(control1Coord);
+					var c2 = tryResolveCoordinate(control2Coord);
+					if (end == null || c1 == null || c2 == null) return null;
+					var ex:Float, ey:Float, c1x:Float, c1y:Float, c2x:Float, c2y:Float;
+					switch mode {
+						case PCMAbsolute:
+							ex = end.x;
+							ey = end.y;
+							c1x = c1.x;
+							c1y = c1.y;
+							c2x = c2.x;
+							c2y = c2.y;
+						case PCMRelative | null:
+							ex = px + end.x;
+							ey = py + end.y;
+							c1x = px + c1.x;
+							c1y = px + c1.y;
+							c2x = px + c2.x;
+							c2y = py + c2.y;
+					}
+					var pxDist = getSmoothingDistanceCompileTime(smoothing, px, py, c1x, c1y);
+					if (pxDist == null) return null;
+					if (pxDist > 0) {
+						var smoothX = px + pxDist * Math.cos(angle);
+						var smoothY = py + pxDist * Math.sin(angle);
+						exprs.push(macro new bh.paths.MultiAnimPaths.SinglePath(
+							new bh.base.FPoint($v{px}, $v{py}),
+							new bh.base.FPoint($v{ex}, $v{ey}),
+							bh.paths.MultiAnimPaths.PathType.Bezier4(
+								new bh.base.FPoint($v{smoothX}, $v{smoothY}),
+								new bh.base.FPoint($v{c1x}, $v{c1y}),
+								new bh.base.FPoint($v{c2x}, $v{c2y}),
+								new bh.base.FPoint($v{ex}, $v{ey})
+							)
+						));
+						lengths.push(bezier4Length(px, py, smoothX, smoothY, c1x, c1y, c2x, c2y, ex, ey));
+					} else {
+						exprs.push(macro new bh.paths.MultiAnimPaths.SinglePath(
+							new bh.base.FPoint($v{px}, $v{py}),
+							new bh.base.FPoint($v{ex}, $v{ey}),
+							bh.paths.MultiAnimPaths.PathType.Bezier4(
+								new bh.base.FPoint($v{px}, $v{py}),
+								new bh.base.FPoint($v{c1x}, $v{c1y}),
+								new bh.base.FPoint($v{c2x}, $v{c2y}),
+								new bh.base.FPoint($v{ex}, $v{ey})
+							)
+						));
+						lengths.push(bezier4Length(px, py, px, py, c1x, c1y, c2x, c2y, ex, ey));
+					}
+					angle = Math.atan2(ey - c2y, ex - c2x);
+					px = ex;
+					py = ey;
+
+				case Close:
+					// Close back to start of first segment
+					var closeX:Float = 0.0;
+					var closeY:Float = 0.0;
+					// We can't easily get the start of first segment from exprs at compile time;
+					// fall back to builder
+					return null;
+
+				case MoveTo(target, mode):
+					var t = tryResolveCoordinate(target);
+					if (t == null) return null;
+					switch mode {
+						case PCMAbsolute:
+							angle = Math.atan2(t.y - py, t.x - px);
+							px = t.x;
+							py = t.y;
+						case PCMRelative | null:
+							var nx = px + t.x;
+							var ny = py + t.y;
+							angle = Math.atan2(ny - py, nx - px);
+							px = nx;
+							py = ny;
+					}
+
+				case Spiral(radiusStart, radiusEnd, angleDelta):
+					var rStart = tryResolveFloat(radiusStart);
+					var rEnd = tryResolveFloat(radiusEnd);
+					var ad = tryResolveFloat(angleDelta);
+					if (rStart == null || rEnd == null || ad == null) return null;
+					var angleDeltaRad = ad * Math.PI / 180.0;
+					var perpAngle = angle + (ad > 0 ? Math.PI / 2 : -Math.PI / 2);
+					var cx = px + rStart * Math.cos(perpAngle);
+					var cy = py + rStart * Math.sin(perpAngle);
+					var sa = Math.atan2(py - cy, px - cx);
+					var ea = sa + angleDeltaRad;
+					var ex = cx + rEnd * Math.cos(ea);
+					var ey = cy + rEnd * Math.sin(ea);
+					exprs.push(macro new bh.paths.MultiAnimPaths.SinglePath(
+						new bh.base.FPoint($v{px}, $v{py}),
+						new bh.base.FPoint($v{ex}, $v{ey}),
+						bh.paths.MultiAnimPaths.PathType.Spiral(
+							new bh.base.FPoint($v{cx}, $v{cy}), $v{sa}, $v{rStart}, $v{rEnd}, $v{ad}
+						)
+					));
+					lengths.push(spiralLength(cx, cy, sa, rStart, rEnd, ad));
+					angle += angleDeltaRad;
+					px = ex;
+					py = ey;
+
+				case Wave(amplitude, wavelength, count):
+					var amp = tryResolveFloat(amplitude);
+					var wl = tryResolveFloat(wavelength);
+					var cnt = tryResolveFloat(count);
+					if (amp == null || wl == null || cnt == null) return null;
+					var totalLength = wl * cnt;
+					var ex = px + totalLength * Math.cos(angle);
+					var ey = py + totalLength * Math.sin(angle);
+					final a = angle; // capture for macro
+					exprs.push(macro new bh.paths.MultiAnimPaths.SinglePath(
+						new bh.base.FPoint($v{px}, $v{py}),
+						new bh.base.FPoint($v{ex}, $v{ey}),
+						bh.paths.MultiAnimPaths.PathType.Wave($v{amp}, $v{wl}, $v{cnt}, $v{a})
+					));
+					lengths.push(waveLength(px, py, amp, wl, cnt, a));
+					px = ex;
+					py = ey;
+			}
+		}
+		return if (exprs.length > 0) {exprs: exprs, lengths: lengths, checkpointNames: checkpointNames, checkpointLengths: checkpointLengths} else null;
+	}
+
+	/** Compute smoothing distance at compile time. Returns null if the smoothing value contains references. */
+	static function getSmoothingDistanceCompileTime(smoothing:Null<SmoothingType>, sx:Float, sy:Float, cx:Float, cy:Float):Null<Float> {
+		if (smoothing == null) {
+			// Auto smoothing - 50% of distance to control point
+			return Math.sqrt((sx - cx) * (sx - cx) + (sy - cy) * (sy - cy)) * 0.5;
+		}
+		return switch smoothing {
+			case STNone: 0.0;
+			case STAuto: Math.sqrt((sx - cx) * (sx - cx) + (sy - cy) * (sy - cy)) * 0.5;
+			case STDistance(value): tryResolveFloat(value);
+		};
+	}
+
+	/** Compute line length at compile time. */
+	static inline function lineLength(sx:Float, sy:Float, ex:Float, ey:Float):Float {
+		return Math.sqrt((ex - sx) * (ex - sx) + (ey - sy) * (ey - sy));
+	}
+
+	/** Compute arc length at compile time. */
+	static inline function arcLength(radius:Float, angleDeltaDeg:Float):Float {
+		return radius * Math.abs(angleDeltaDeg * Math.PI / 180.0);
+	}
+
+	/** Estimate bezier3 (cubic) length at compile time via sampling. */
+	static function bezier3Length(sx:Float, sy:Float, c1x:Float, c1y:Float, c2x:Float, c2y:Float, ex:Float, ey:Float):Float {
+		// Points: P0=start, P1=c1, P2=c2, P3=end — cubic bezier with 8 sample steps
+		var length = 0.0;
+		var lastX = sx, lastY = sy;
+		for (i in 1...9) {
+			var t = i / 8.0;
+			var mt = 1.0 - t;
+			var mt2 = mt * mt;
+			var t2 = t * t;
+			var px = mt2 * mt * sx + 3 * mt2 * t * c1x + 3 * mt * t2 * c2x + t2 * t * ex;
+			var py = mt2 * mt * sy + 3 * mt2 * t * c1y + 3 * mt * t2 * c2y + t2 * t * ey;
+			length += Math.sqrt((px - lastX) * (px - lastX) + (py - lastY) * (py - lastY));
+			lastX = px;
+			lastY = py;
+		}
+		return length;
+	}
+
+	/** Estimate bezier4 (quartic) length at compile time via sampling. */
+	static function bezier4Length(sx:Float, sy:Float, c1x:Float, c1y:Float, c2x:Float, c2y:Float, c3x:Float, c3y:Float, ex:Float, ey:Float):Float {
+		var length = 0.0;
+		var lastX = sx, lastY = sy;
+		for (i in 1...13) {
+			var t = i / 12.0;
+			var mt = 1.0 - t;
+			var mt2 = mt * mt;
+			var mt3 = mt2 * mt;
+			var mt4 = mt3 * mt;
+			var t2 = t * t;
+			var t3 = t2 * t;
+			var t4 = t3 * t;
+			var px = mt4 * sx + 4 * mt3 * t * c1x + 6 * mt2 * t2 * c2x + 4 * mt * t3 * c3x + t4 * ex;
+			var py = mt4 * sy + 4 * mt3 * t * c1y + 6 * mt2 * t2 * c2y + 4 * mt * t3 * c3y + t4 * ey;
+			length += Math.sqrt((px - lastX) * (px - lastX) + (py - lastY) * (py - lastY));
+			lastX = px;
+			lastY = py;
+		}
+		return length;
+	}
+
+	/** Estimate spiral length at compile time via sampling. */
+	static function spiralLength(cx:Float, cy:Float, startAngle:Float, rStart:Float, rEnd:Float, angleDeltaDeg:Float):Float {
+		var angleDeltaRad = angleDeltaDeg * Math.PI / 180.0;
+		var sx = cx + rStart * Math.cos(startAngle);
+		var sy = cy + rStart * Math.sin(startAngle);
+		var length = 0.0;
+		var lastX = sx, lastY = sy;
+		for (i in 1...17) {
+			var rate = i / 16.0;
+			var currentAngle = startAngle + angleDeltaRad * rate;
+			var r = rStart + (rEnd - rStart) * rate;
+			var px = cx + r * Math.cos(currentAngle);
+			var py = cy + r * Math.sin(currentAngle);
+			length += Math.sqrt((px - lastX) * (px - lastX) + (py - lastY) * (py - lastY));
+			lastX = px;
+			lastY = py;
+		}
+		return length;
+	}
+
+	/** Estimate wave length at compile time via sampling. */
+	static function waveLength(sx:Float, sy:Float, amp:Float, wl:Float, cnt:Float, dirAngle:Float):Float {
+		var totalLen = wl * cnt;
+		var steps = Std.int(Math.max(16, Math.ceil(cnt * 8)));
+		var cosD = Math.cos(dirAngle);
+		var sinD = Math.sin(dirAngle);
+		var length = 0.0;
+		var lastX = sx, lastY = sy;
+		for (i in 1...steps + 1) {
+			var rate = i / steps;
+			var forward = rate * totalLen;
+			var phase = rate * cnt * 2 * Math.PI;
+			var lateral = amp * Math.sin(phase);
+			var px = sx + forward * cosD - lateral * sinD;
+			var py = sy + forward * sinD + lateral * cosD;
+			length += Math.sqrt((px - lastX) * (px - lastX) + (py - lastY) * (py - lastY));
+			lastX = px;
+			lastY = py;
+		}
+		return length;
+	}
+
+	static function generateAnimatedPathFactoryMethod(name:String, apDef:AnimatedPathDef, factoryFields:Array<Field>, pos:Position):Void {
 		final methodName = "createAnimatedPath_" + sanitizeIdentifier(name);
-		factoryFields.push(makeMethod(methodName, [
-			macro return this.buildAnimatedPath($nameExpr, startPoint, endPoint, startAngle)
-		], [
+
+		// Try to generate inline code
+		var bodyExprs:Array<Expr> = [];
+
+		// 1. Get path - call our own getPath_<name>() inline method
+		final pathMethodName = "getPath_" + sanitizeIdentifier(apDef.pathName);
+		bodyExprs.push(macro var path = $i{pathMethodName}(startPoint, endPoint));
+		bodyExprs.push(macro if (startAngle != null) path = path.withStartAngle(startAngle));
+
+		// 2. Determine mode
+		var modeExpr:Expr = null;
+		switch (apDef.mode) {
+			case APTime | null if (apDef.duration != null):
+				var durFloat = tryResolveFloat(apDef.duration);
+				if (durFloat != null) {
+					modeExpr = macro bh.paths.AnimatedPath.AnimatedPathMode.Time($v{durFloat});
+				} else {
+					var durExpr = rvToExpr(apDef.duration);
+					modeExpr = macro bh.paths.AnimatedPath.AnimatedPathMode.Time($durExpr);
+				}
+			case APDistance | null if (apDef.speed != null):
+				var spdFloat = tryResolveFloat(apDef.speed);
+				if (spdFloat != null) {
+					modeExpr = macro bh.paths.AnimatedPath.AnimatedPathMode.Distance($v{spdFloat});
+				} else {
+					var spdExpr = rvToExpr(apDef.speed);
+					modeExpr = macro bh.paths.AnimatedPath.AnimatedPathMode.Distance($spdExpr);
+				}
+			default:
+				// Fall back to builder
+				final nameExpr:Expr = macro $v{name};
+				factoryFields.push(makeMethod(methodName, [
+					macro return this.buildAnimatedPath($nameExpr, startPoint, endPoint, startAngle)
+				], [
+					{name: "startPoint", opt: true, type: macro :bh.base.FPoint},
+					{name: "endPoint", opt: true, type: macro :bh.base.FPoint},
+					{name: "startAngle", opt: true, type: macro :Null<Float>},
+				], macro :bh.paths.AnimatedPath, [APublic], pos));
+				return;
+		}
+
+		bodyExprs.push(macro var ap = new bh.paths.AnimatedPath(path, $modeExpr));
+
+		// 3. Add curve segments
+		for (ca in apDef.curveAssignments) {
+			// Resolve rate
+			var rateExpr:Expr;
+			switch ca.at {
+				case Rate(r):
+					rateExpr = rvToExpr(r);
+				case Checkpoint(cpName):
+					final cpNameStr:String = cpName;
+					rateExpr = macro path.getCheckpoint($v{cpNameStr});
+			}
+
+			// Get curve via inline method
+			final curveMethodName = "getCurve_" + sanitizeIdentifier(ca.curveName);
+			var curveExpr = macro $i{curveMethodName}();
+
+			// Determine slot
+			var slotExpr:Expr = switch ca.slot {
+				case APSpeed: macro bh.paths.AnimatedPath.CurveSlot.Speed;
+				case APScale: macro bh.paths.AnimatedPath.CurveSlot.Scale;
+				case APAlpha: macro bh.paths.AnimatedPath.CurveSlot.Alpha;
+				case APRotation: macro bh.paths.AnimatedPath.CurveSlot.Rotation;
+				case APProgress: macro bh.paths.AnimatedPath.CurveSlot.Progress;
+				case APCustom(customName):
+					null; // handled below
+			};
+
+			switch ca.slot {
+				case APCustom(customName):
+					final cn:String = customName;
+					bodyExprs.push(macro ap.addCustomCurveSegment($v{cn}, $rateExpr, $curveExpr));
+				default:
+					bodyExprs.push(macro ap.addCurveSegment($slotExpr, $rateExpr, $curveExpr));
+			}
+		}
+
+		// 4. Add events
+		for (ev in apDef.events) {
+			var rateExpr:Expr;
+			switch ev.at {
+				case Rate(r):
+					rateExpr = rvToExpr(r);
+				case Checkpoint(cpName):
+					final cpNameStr:String = cpName;
+					rateExpr = macro path.getCheckpoint($v{cpNameStr});
+			}
+			final evNameStr:String = ev.eventName;
+			bodyExprs.push(macro ap.addEvent($rateExpr, $v{evNameStr}));
+		}
+
+		bodyExprs.push(macro return ap);
+
+		factoryFields.push(makeMethod(methodName, bodyExprs, [
 			{name: "startPoint", opt: true, type: macro :bh.base.FPoint},
 			{name: "endPoint", opt: true, type: macro :bh.base.FPoint},
 			{name: "startAngle", opt: true, type: macro :Null<Float>},
@@ -3758,20 +4363,59 @@ class ProgrammableCodeGen {
 	static function generateCurvesFactoryMethods(curvesDef:CurvesDef, factoryFields:Array<Field>, pos:Position):Void {
 		for (curveName => curveDef in curvesDef) {
 			final methodName = "getCurve_" + sanitizeIdentifier(curveName);
-			final nameExpr:Expr = macro $v{curveName};
 
-			// For easing-only curves with no points or segments, we can bake inline
-			if (curveDef.easing != null && curveDef.points == null && curveDef.segments == null) {
-				final easingExpr = easingTypeToExpr(curveDef.easing);
-				factoryFields.push(makeMethod(methodName, [
-					macro return new bh.paths.Curve(null, $easingExpr)
-				], [], macro :bh.paths.Curve, [APublic], pos));
-			} else {
-				// Delegate to builder for point-based or mixed curves
-				factoryFields.push(makeMethod(methodName, [
-					macro return this.buildCurve($nameExpr)
-				], [], macro :bh.paths.Curve, [APublic], pos));
+			// Generate inline Curve construction for all curve types
+			var easingExpr:Expr = macro null;
+			var pointsExpr:Expr = macro null;
+			var segmentsExpr:Expr = macro null;
+
+			if (curveDef.easing != null) {
+				easingExpr = easingTypeToExpr(curveDef.easing);
 			}
+
+			if (curveDef.points != null) {
+				var pointExprs:Array<Expr> = [];
+				for (p in curveDef.points) {
+					final timeExpr = rvToExpr(p.time);
+					final valueExpr = rvToExpr(p.value);
+					pointExprs.push(macro {time: $timeExpr, value: $valueExpr});
+				}
+				pointsExpr = macro $a{pointExprs};
+			}
+
+			if (curveDef.segments != null) {
+				var segExprs:Array<Expr> = [];
+				for (s in curveDef.segments) {
+					final tsExpr = rvToExpr(s.timeStart);
+					final teExpr = rvToExpr(s.timeEnd);
+					final eExpr = easingTypeToExpr(s.easing);
+					final vsExpr = rvToExpr(s.valueStart);
+					final veExpr = rvToExpr(s.valueEnd);
+					segExprs.push(macro {
+						timeStart: $tsExpr,
+						timeEnd: $teExpr,
+						easing: $eExpr,
+						valueStart: $vsExpr,
+						valueEnd: $veExpr
+					});
+				}
+				segmentsExpr = macro $a{segExprs};
+			}
+
+			// Cached curve field for lazy initialization
+			var cacheFieldName = "_cachedCurve_" + sanitizeIdentifier(curveName);
+			factoryFields.push(makeField(cacheFieldName,
+				FVar(macro :bh.paths.Curve, macro null),
+				[], pos));
+
+			var cacheIdent = cacheFieldName;
+			factoryFields.push(makeMethod(methodName, [
+				macro {
+					if ($i{cacheIdent} == null)
+						$i{cacheIdent} = new bh.paths.Curve($pointsExpr, $easingExpr, $segmentsExpr);
+					return $i{cacheIdent};
+				}
+			], [], macro :bh.paths.Curve, [APublic], pos));
 		}
 	}
 
