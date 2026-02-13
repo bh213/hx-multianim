@@ -445,6 +445,21 @@ class ProgrammableCodeGen {
 		// Factory createFrom() — struct-based named parameters alternative
 		factoryFields.push(generateFactoryCreateFrom(pos));
 
+		// Generate path/curve/animatedPath factory methods from sibling root nodes
+		if (allParsedNodes != null) {
+			for (nodeName => node in allParsedNodes) {
+				switch (node.type) {
+					case PATHS(pathsDef):
+						generatePathsFactoryMethods(pathsDef, factoryFields, pos);
+					case ANIMATED_PATH(apDef):
+						generateAnimatedPathFactoryMethod(nodeName, factoryFields, pos);
+					case CURVES(curvesDef):
+						generateCurvesFactoryMethods(curvesDef, factoryFields, pos);
+					default:
+				}
+			}
+		}
+
 		return {instanceFields: instanceFields, factoryFields: factoryFields};
 	}
 
@@ -3702,6 +3717,96 @@ class ProgrammableCodeGen {
 				result += part.charAt(0).toUpperCase() + part.substr(1);
 		}
 		return result;
+	}
+
+	// ==================== Paths/Curves/AnimatedPath Factory Methods ====================
+
+	static function generatePathsFactoryMethods(pathsDef:PathsDef, factoryFields:Array<Field>, pos:Position):Void {
+		// Generic getPath(name, ?startPoint, ?endPoint) method
+		factoryFields.push(makeMethod("getPath", [
+			macro return this.buildPath(name, startPoint, endPoint)
+		], [
+			{name: "name", type: macro :String},
+			{name: "startPoint", type: macro :Null<bh.base.FPoint>, opt: true},
+			{name: "endPoint", type: macro :Null<bh.base.FPoint>, opt: true},
+		], macro :bh.paths.MultiAnimPaths.Path, [APublic], pos));
+
+		// Per-path typed methods: getPath_<name>(?startPoint, ?endPoint)
+		for (pathName => _ in pathsDef) {
+			final nameExpr:Expr = macro $v{pathName};
+			factoryFields.push(makeMethod("getPath_" + pathName, [
+				macro return this.buildPath($nameExpr, startPoint, endPoint)
+			], [
+				{name: "startPoint", type: macro :Null<bh.base.FPoint>, opt: true},
+				{name: "endPoint", type: macro :Null<bh.base.FPoint>, opt: true},
+			], macro :bh.paths.MultiAnimPaths.Path, [APublic], pos));
+		}
+	}
+
+	static function generateAnimatedPathFactoryMethod(name:String, factoryFields:Array<Field>, pos:Position):Void {
+		final nameExpr:Expr = macro $v{name};
+		final methodName = "createAnimatedPath_" + sanitizeIdentifier(name);
+		factoryFields.push(makeMethod(methodName, [
+			macro return this.buildAnimatedPath($nameExpr, path, speed, positionMode, object)
+		], [
+			{name: "path", type: macro :bh.paths.MultiAnimPaths.Path},
+			{name: "speed", type: macro :Float},
+			{name: "positionMode", type: macro :bh.paths.AnimatedPath.AnimatedPathPositionMode},
+			{name: "object", type: macro :bh.multianim.MultiAnimParser.BuiltHeapsComponent},
+		], macro :bh.paths.AnimatedPath, [APublic], pos));
+	}
+
+	static function generateCurvesFactoryMethods(curvesDef:CurvesDef, factoryFields:Array<Field>, pos:Position):Void {
+		for (curveName => curveDef in curvesDef) {
+			final methodName = "getCurve_" + sanitizeIdentifier(curveName);
+			final nameExpr:Expr = macro $v{curveName};
+
+			// For easing-only curves with no points or segments, we can bake inline
+			if (curveDef.easing != null && curveDef.points == null && curveDef.segments == null) {
+				final easingExpr = easingTypeToExpr(curveDef.easing);
+				factoryFields.push(makeMethod(methodName, [
+					macro return new bh.paths.Curve(null, $easingExpr)
+				], [], macro :bh.paths.Curve, [APublic], pos));
+			} else {
+				// Delegate to builder for point-based or mixed curves
+				factoryFields.push(makeMethod(methodName, [
+					macro return this.buildCurve($nameExpr)
+				], [], macro :bh.paths.Curve, [APublic], pos));
+			}
+		}
+	}
+
+	static function easingTypeToExpr(easing:EasingType):Expr {
+		return switch easing {
+			case Linear: macro bh.multianim.MultiAnimParser.EasingType.Linear;
+			case EaseInQuad: macro bh.multianim.MultiAnimParser.EasingType.EaseInQuad;
+			case EaseOutQuad: macro bh.multianim.MultiAnimParser.EasingType.EaseOutQuad;
+			case EaseInOutQuad: macro bh.multianim.MultiAnimParser.EasingType.EaseInOutQuad;
+			case EaseInCubic: macro bh.multianim.MultiAnimParser.EasingType.EaseInCubic;
+			case EaseOutCubic: macro bh.multianim.MultiAnimParser.EasingType.EaseOutCubic;
+			case EaseInOutCubic: macro bh.multianim.MultiAnimParser.EasingType.EaseInOutCubic;
+			case EaseInBack: macro bh.multianim.MultiAnimParser.EasingType.EaseInBack;
+			case EaseOutBack: macro bh.multianim.MultiAnimParser.EasingType.EaseOutBack;
+			case EaseInOutBack: macro bh.multianim.MultiAnimParser.EasingType.EaseInOutBack;
+			case EaseOutBounce: macro bh.multianim.MultiAnimParser.EasingType.EaseOutBounce;
+			case EaseOutElastic: macro bh.multianim.MultiAnimParser.EasingType.EaseOutElastic;
+			case CubicBezier(x1, y1, x2, y2):
+				macro bh.multianim.MultiAnimParser.EasingType.CubicBezier($v{x1}, $v{y1}, $v{x2}, $v{y2});
+		};
+	}
+
+	/** Sanitize a name for use as a Haxe identifier (strip leading #, replace non-alphanumeric) */
+	static function sanitizeIdentifier(name:String):String {
+		if (name.charAt(0) == "#") name = name.substr(1);
+		var result = new StringBuf();
+		for (i in 0...name.length) {
+			final c = name.charCodeAt(i);
+			if ((c >= 65 && c <= 90) || (c >= 97 && c <= 122) || (c >= 48 && c <= 57) || c == 95)
+				result.addChar(c);
+			else
+				result.addChar(95); // underscore
+		}
+		return result.toString();
 	}
 
 	static function makeField(name:String, kind:FieldType, access:Array<Access>, pos:Position):Field {

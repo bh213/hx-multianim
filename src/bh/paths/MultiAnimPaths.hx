@@ -13,6 +13,8 @@ enum PathType {
 	Arc(center:FPoint, startAngle:Float, radius:Float, angleDelta:Float);
 	Bezier3(control1:FPoint, control2:FPoint, control3:FPoint);
 	Bezier4(control1:FPoint, control2:FPoint, control3:FPoint, control4:FPoint);
+	Spiral(center:FPoint, startAngle:Float, radiusStart:Float, radiusEnd:Float, angleDelta:Float);
+	Wave(amplitude:Float, wavelength:Float, count:Float, dirAngle:Float);
 }
 
 @:nullSafety
@@ -162,11 +164,71 @@ class MultiAnimPaths {
 					// For quartic bezier, the tangent at the end point is from control2 to end point
 					angle = hxd.Math.atan2(finalEnd.y - finalControl2.y, finalEnd.x - finalControl2.x);
 					point = finalEnd;
+
+				case Close:
+					// Close back to start of first segment in this path
+					var closeTarget = if (singlePaths.length > 0) singlePaths[0].start else new FPoint(0, 0);
+					singlePaths.push(new SinglePath(point, closeTarget, Line));
+					angle = hxd.Math.atan2(closeTarget.y - point.y, closeTarget.x - point.x);
+					point = closeTarget;
+
+				case MoveTo(target, mode):
+					var target = resolveCoordinate(target);
+					var finalTarget = switch(mode) {
+						case PCMAbsolute: target;
+						case PCMRelative|null: new FPoint(point.x + target.x, point.y + target.y);
+					};
+					angle = hxd.Math.atan2(finalTarget.y - point.y, finalTarget.x - point.x);
+					point = finalTarget;
+
+				case Spiral(radiusStart, radiusEnd, angleDelta):
+					var rStart = resolveNumber(radiusStart);
+					var rEnd = resolveNumber(radiusEnd);
+					var angleDeltaF = resolveNumber(angleDelta);
+					var angleDeltaRad = hxd.Math.degToRad(angleDeltaF);
+
+					// Center is perpendicular to current direction, at distance radiusStart
+					var perpAngle = hxd.Math.angle(angle + (angleDeltaF > 0 ? Math.PI / 2 : -Math.PI / 2));
+					var centerX = point.x + rStart * Math.cos(perpAngle);
+					var centerY = point.y + rStart * Math.sin(perpAngle);
+					var center = new FPoint(centerX, centerY);
+
+					// Start angle (from center to start point)
+					var startAngle = Math.atan2(point.y - centerY, point.x - centerX);
+					var endAngle = startAngle + angleDeltaRad;
+
+					// End point: center + radiusEnd at endAngle
+					var endPt = new FPoint(
+						centerX + rEnd * Math.cos(endAngle),
+						centerY + rEnd * Math.sin(endAngle)
+					);
+					singlePaths.push(new SinglePath(point, endPt, Spiral(center, startAngle, rStart, rEnd, angleDeltaF)));
+
+					angle = hxd.Math.angle(angle + angleDeltaRad);
+					point = endPt;
+
+				case Wave(amplitude, wavelength, count):
+					var amp = resolveNumber(amplitude);
+					var wl = resolveNumber(wavelength);
+					var cnt = resolveNumber(count);
+					var totalLength = wl * cnt;
+
+					var endPt = new FPoint(
+						point.x + totalLength * Math.cos(angle),
+						point.y + totalLength * Math.sin(angle)
+					);
+					singlePaths.push(new SinglePath(point, endPt, Wave(amp, wl, cnt, angle)));
+					// Wave ends in same direction, angle doesn't change
+					point = endPt;
 			}
 		}
 
 		builder.indexedParams = oldIndexed;
-		return new Path(singlePaths);
+		var path = new Path(singlePaths);
+		if (startPoint != null && endPoint != null) {
+			return path.normalize(startPoint, endPoint);
+		}
+		return path;
 	}
 
 	private function getSmoothingDistance(smoothing:Null<bh.multianim.MultiAnimParser.SmoothingType>, start:FPoint, control:FPoint):Float {
@@ -267,6 +329,29 @@ class Path {
 	public function getEndpoint():FPoint {
 		return endpoint;
 	}
+
+	/** Create a new Path whose (0,0)→endpoint is mapped onto startPoint→endPoint
+	 *  via scale + rotation + translation. */
+	public function normalize(startPoint:FPoint, endPoint:FPoint):Path {
+		final rawDist = hxd.Math.distance(endpoint.x, endpoint.y);
+		if (rawDist < 1e-10) return this; // degenerate path, can't normalize
+
+		final targetDist = hxd.Math.distance(endPoint.x - startPoint.x, endPoint.y - startPoint.y);
+		final scale = targetDist / rawDist;
+
+		final rawAngle = Math.atan2(endpoint.y, endpoint.x);
+		final targetAngle = Math.atan2(endPoint.y - startPoint.y, endPoint.x - startPoint.x);
+		final rotation = targetAngle - rawAngle;
+
+		final cosA = Math.cos(rotation);
+		final sinA = Math.sin(rotation);
+
+		var transformed:Array<SinglePath> = [];
+		for (sp in singlePaths) {
+			transformed.push(sp.transform(cosA, sinA, scale, startPoint.x, startPoint.y));
+		}
+		return new Path(transformed);
+	}
 }
 
 @:allow(bh.paths.MultiAnimPaths)
@@ -305,6 +390,25 @@ private class SinglePath {
 				var xValues = [start.x, control1.x, control2.x, control3.x, end.x];
 				var yValues = [start.y, control1.y, control2.y, control3.y, end.y];
 				return new FPoint(rate.bezier(xValues), rate.bezier(yValues));
+			case Spiral(center, startAngle, radiusStart, radiusEnd, angleDelta):
+				var angleDeltaRad = hxd.Math.degToRad(angleDelta);
+				var currentAngle = startAngle + angleDeltaRad * rate;
+				var r = rate.lerp(radiusStart, radiusEnd);
+				return new FPoint(
+					center.x + r * Math.cos(currentAngle),
+					center.y + r * Math.sin(currentAngle)
+				);
+			case Wave(amplitude, wavelength, count, dirAngle):
+				var totalLength = wavelength * count;
+				var forward = rate * totalLength;
+				var phase = rate * count * 2 * Math.PI;
+				var lateral = amplitude * Math.sin(phase);
+				var cosD = Math.cos(dirAngle);
+				var sinD = Math.sin(dirAngle);
+				return new FPoint(
+					start.x + forward * cosD - lateral * sinD,
+					start.y + forward * sinD + lateral * cosD
+				);
 		}
 	}
 	public function toPixelArray():Array<FPoint> {
@@ -323,6 +427,12 @@ private class SinglePath {
 				[for(i in 0...steps) getPoint(1.0*i/steps)];
 			case Bezier4(control1, control2, control3, control4):
 				var steps = hxd.Math.imax(12, cast length() / 4);
+				[for(i in 0...steps) getPoint(1.0*i/steps)];
+			case Spiral(center, startAngle, radiusStart, radiusEnd, angleDelta):
+				var steps = hxd.Math.imax(8, cast length() / 4);
+				[for(i in 0...steps) getPoint(1.0*i/steps)];
+			case Wave(amplitude, wavelength, count, dirAngle):
+				var steps = hxd.Math.imax(12, cast length() / 2);
 				[for(i in 0...steps) getPoint(1.0*i/steps)];
 			default:
 				var steps = hxd.Math.imax(2, cast length() / 4);
@@ -353,11 +463,43 @@ private class SinglePath {
 				estimate(8);
 			case Bezier4(control1, control2, control3, control4):
 				estimate(12);
+			case Spiral(center, startAngle, radiusStart, radiusEnd, angleDelta):
+				estimate(16);
+			case Wave(amplitude, wavelength, count, dirAngle):
+				estimate(cast hxd.Math.imax(16, Math.ceil(count * 8)));
 			case Checkpoint(_): 0;
 		}
 	}
 
 	public function getEndpoint():FPoint {
 		return end;
+	}
+
+	/** Create a transformed copy: scale, rotate, then translate all points. */
+	public function transform(cosA:Float, sinA:Float, scale:Float, tx:Float, ty:Float):SinglePath {
+		inline function tp(p:FPoint):FPoint {
+			final sx = p.x * scale;
+			final sy = p.y * scale;
+			return new FPoint(sx * cosA - sy * sinA + tx, sx * sinA + sy * cosA + ty);
+		}
+
+		final newStart = tp(start);
+		final newEnd = tp(end);
+		final newPath:PathType = switch path {
+			case Checkpoint(name): Checkpoint(name);
+			case Line: Line;
+			case Arc(center, startAngle, radius, angleDelta):
+				final rotation = Math.atan2(sinA, cosA);
+				Arc(tp(center), startAngle + rotation, radius * scale, angleDelta);
+			case Bezier3(c1, c2, c3): Bezier3(tp(c1), tp(c2), tp(c3));
+			case Bezier4(c1, c2, c3, c4): Bezier4(tp(c1), tp(c2), tp(c3), tp(c4));
+			case Spiral(center, startAngle, radiusStart, radiusEnd, angleDelta):
+				final rotation = Math.atan2(sinA, cosA);
+				Spiral(tp(center), startAngle + rotation, radiusStart * scale, radiusEnd * scale, angleDelta);
+			case Wave(amplitude, wavelength, count, dirAngle):
+				final rotation = Math.atan2(sinA, cosA);
+				Wave(amplitude * scale, wavelength * scale, count, dirAngle + rotation);
+		};
+		return new SinglePath(newStart, newEnd, newPath);
 	}
 }

@@ -3,6 +3,27 @@
 ## [Unreleased]
 
 ### Added
+- **Easing system** — 12 named easing functions + cubic bezier for animation timing
+  - `EasingType` enum: Linear, EaseIn/Out/InOutQuad, EaseIn/Out/InOutCubic, EaseIn/Out/InOutBack, EaseOutBounce, EaseOutElastic, CubicBezier(x1,y1,x2,y2)
+  - All functions implemented in `FloatTools.applyEasing()` with Newton-Raphson solver for cubic bezier
+- **1D Curves** — New `curves` top-level element for mapping 0→1 input to float output
+  - Easing-based curves: `#name curve { easing: easeOutQuad }`
+  - Point-based curves: `#name curve { points: [(0, 0.2), (0.5, 1.0), (1.0, 0.3)] }`
+  - Runtime `Curve` class with `getValue(t):Float`
+  - Macro codegen: `getCurve_<name>()` factory methods (easing-only curves baked inline at compile time)
+- **AnimatedPath easing** — Duration+easing mode for animated paths
+  - `animatedPath { easing: easeInOutQuad  duration: 0.8 }` syntax
+  - `createWithDurationAndEasing()` factory alongside existing speed-based creation
+  - Timed actions still fire at correct rates under easing
+- **Path normalization** — Scale any path to fit between arbitrary start/end points
+  - `Path.normalize(startPoint, endPoint)` applies affine transform (scale + rotation + translation)
+  - `SinglePath.transform()` handles all path types including arc radius/angle adjustment
+  - `getPath(name, startPoint, endPoint)` applies normalization when both points provided
+- **Paths/curves macro codegen** — ProgrammableCodeGen generates typed factory methods
+  - `getPath_<name>(?startPoint, ?endPoint):Path` for each named path
+  - `getPath(name, ?startPoint, ?endPoint):Path` generic accessor
+  - `createAnimatedPath_<name>(path, speed, positionMode, object):AnimatedPath`
+  - `getCurve_<name>():Curve` with compile-time baking for simple curves
 - **Array parameter macro support** — `param:array=[val1,val2]` now fully supported in ProgrammableCodeGen macro codegen
   - Generates typed `Array<String>` fields with null-default + constructor fallback
   - `RVElementOfArray` resolves array element access (`$arr[$i]`) in expressions

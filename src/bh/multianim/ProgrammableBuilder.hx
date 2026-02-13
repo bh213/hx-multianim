@@ -371,6 +371,26 @@ class ProgrammableBuilder {
 		return @:privateAccess builder.generatePlaceholderBitmap(resolved);
 	}
 
+	/** Build a named path via the builder.
+	 *  Used by generated code for PATHS nodes. */
+	public function buildPath(name:String, ?startPoint:bh.base.FPoint, ?endPoint:bh.base.FPoint):bh.paths.MultiAnimPaths.Path {
+		return (_builder : MultiAnimBuilder).getPaths().getPath(name, startPoint, endPoint);
+	}
+
+	/** Create an animated path via the builder.
+	 *  Used by generated code for ANIMATED_PATH nodes. */
+	public function buildAnimatedPath(name:String, path:bh.paths.MultiAnimPaths.Path, speed:Float,
+			positionMode:bh.paths.AnimatedPath.AnimatedPathPositionMode,
+			object:MultiAnimParser.BuiltHeapsComponent):bh.paths.AnimatedPath {
+		return (_builder : MultiAnimBuilder).createAnimatedPath(name, path, speed, positionMode, object);
+	}
+
+	/** Build a named curve via the builder.
+	 *  Used by generated code for CURVES nodes. */
+	public function buildCurve(name:String):bh.paths.Curve {
+		return (_builder : MultiAnimBuilder).getCurve(name);
+	}
+
 	static function extractObject(result:CallbackResult):Null<h2d.Object> {
 		return switch result {
 			case CBRObject(val): val;

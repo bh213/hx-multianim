@@ -519,7 +519,11 @@ enum AnimatedPathsAction {
 
 
 @:nullSafety
-typedef AnimatedPathDef = Array<AnimatedPathTimedAction>;
+typedef AnimatedPathDef = {
+	var actions:Array<AnimatedPathTimedAction>;
+	var easing:Null<EasingType>;
+	var duration:Null<ReferenceableValue>;
+};
 
 @:nullSafety
 enum PathCoordinateMode {
@@ -534,6 +538,23 @@ enum SmoothingType {
 	STDistance(value:ReferenceableValue);
 }
 
+@:nullSafety
+enum EasingType {
+	Linear;
+	EaseInQuad;
+	EaseOutQuad;
+	EaseInOutQuad;
+	EaseInCubic;
+	EaseOutCubic;
+	EaseInOutCubic;
+	EaseInBack;
+	EaseOutBack;
+	EaseInOutBack;
+	EaseOutBounce;
+	EaseOutElastic;
+	CubicBezier(x1:Float, y1:Float, x2:Float, y2:Float);
+}
+
 enum ParsedPaths {
 	LineTo(end:Coordinates, mode:Null<PathCoordinateMode>);
 	Forward(distance:ReferenceableValue);
@@ -542,11 +563,31 @@ enum ParsedPaths {
 	Bezier2To(end:Coordinates, control:Coordinates, mode:Null<PathCoordinateMode>, smoothing:Null<SmoothingType>);
 	Bezier3To(end:Coordinates, control1:Coordinates, control2:Coordinates, mode:Null<PathCoordinateMode>, smoothing:Null<SmoothingType>);
 	Arc(radius:ReferenceableValue, angleDelta:ReferenceableValue);
+	Close;
+	MoveTo(target:Coordinates, mode:Null<PathCoordinateMode>);
+	Spiral(radiusStart:ReferenceableValue, radiusEnd:ReferenceableValue, angleDelta:ReferenceableValue);
+	Wave(amplitude:ReferenceableValue, wavelength:ReferenceableValue, count:ReferenceableValue);
 }
 
 @:nullSafety
 typedef PathsDef = Map<String, Array<ParsedPaths>>;
 
+typedef CurveSegmentDef = {
+	var timeStart:ReferenceableValue;
+	var timeEnd:ReferenceableValue;
+	var easing:EasingType;
+	var valueStart:ReferenceableValue;
+	var valueEnd:ReferenceableValue;
+};
+
+typedef CurveDef = {
+	var easing:Null<EasingType>;
+	var points:Null<Array<ParticleCurvePoint>>;
+	var segments:Null<Array<CurveSegmentDef>>;
+};
+
+@:nullSafety
+typedef CurvesDef = Map<String, CurveDef>;
 
 enum ParticlesEmitMode {
 	Point(emitDistance:ReferenceableValue, emitDistanceRandom:ReferenceableValue);
@@ -780,6 +821,7 @@ enum NodeType {
 	RELATIVE_LAYOUTS(layoutsDef:LayoutsDef);
 	PATHS(paths:PathsDef);
 	ANIMATED_PATH(animatedPathDef:AnimatedPathDef);
+	CURVES(curves:CurvesDef);
 	PARTICLES(particles:ParticlesDef);
 	APPLY;
 	LAYERS;
@@ -857,6 +899,7 @@ typedef MultiAnimResult = {
 class MultiAnimParser {
 	public static final defaultLayoutNodeName = "#defaultLayout";
 	public static final defaultPathNodeName = "#defaultPaths";
+	public static final defaultCurveNodeName = "#defaultCurves";
 
 	public static function parseFile(input:byte.ByteData, sourceName:String, resourceLoader:bh.base.ResourceLoader):MultiAnimResult {
 		final content = input.readString(0, input.length);

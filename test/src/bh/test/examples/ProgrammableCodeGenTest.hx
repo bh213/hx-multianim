@@ -1437,6 +1437,676 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 			Assert.equals("50", textEl.text);
 	}
 
+	// ==================== Easing & Curves: macro codegen (3-image) ====================
+
+	@Test
+	public function test58_EasingCurvesDemo(async:utest.Async):Void {
+		setupTest(58, "easingCurvesDemo");
+		VisualTestBase.pendingVisualTests++;
+		async.setTimeout(15000);
+
+		final animFilePath = "test/examples/58-easingCurvesDemo/easingCurvesDemo.manim";
+		final sizeX = 1280;
+		final sizeY = 720;
+		final curveNames = [
+			"linear", "easeInQuad", "easeOutQuad", "easeInOutCubic",
+			"easeOutBounce", "easeOutElastic", "easeInBack", "easeOutBack", "customPoints"
+		];
+		final pathNames = ["arc", "bezierS", "zigzag"];
+
+		// Phase 1: builder — load .manim, draw curves/paths with dots
+		clearScene();
+		try {
+			final fileContent = byte.ByteData.ofString(sys.io.File.getContent(animFilePath));
+			final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+			final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, animFilePath);
+
+			final curves = builder.getCurves();
+			final paths = builder.getPaths();
+			final pathMap = new Map<String, bh.paths.MultiAnimPaths.Path>();
+			for (name in pathNames) pathMap.set(name, paths.getPath(name));
+
+			final g = new h2d.Graphics(s2d);
+			final font = loader.loadFont("m3x6");
+
+			drawEasingCurvesVisualization(g, font, curves, curveNames, s2d);
+			drawPathVisualization(g, font, pathMap, pathNames, s2d);
+			drawNormalizationVisualization(g, font, paths, s2d);
+
+			if (testTitle != null && testTitle.length > 0) addTitleOverlay();
+		} catch (e:Dynamic) {
+			var msg = 'Builder threw: $e';
+			reportBuildFailure(msg);
+			Assert.fail(msg);
+			VisualTestBase.pendingVisualTests--;
+			async.done();
+			return;
+		}
+
+		waitForUpdate(function(dt:Float) {
+			var builderPath = getActualImagePath();
+			var builderSuccess = false;
+			try {
+				builderSuccess = screenshot(builderPath, sizeX, sizeY);
+			} catch (e:Dynamic) {
+				Assert.fail('Builder screenshot threw: $e');
+				VisualTestBase.pendingVisualTests--;
+				async.done();
+				return;
+			}
+
+			// Phase 2: macro — use generated factory methods
+			clearScene();
+			try {
+				final mp = createMp();
+				final g = new h2d.Graphics(s2d);
+				final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+				final font = loader.loadFont("m3x6");
+
+				// Initialize the builder (needed for path/curve methods that delegate to it)
+				mp.easingCurves.create();
+
+				// Get curves via macro-generated methods
+				final macroCurves = new Map<String, bh.paths.Curve>();
+				macroCurves.set("linear", mp.easingCurves.getCurve_linear());
+				macroCurves.set("easeInQuad", mp.easingCurves.getCurve_easeInQuad());
+				macroCurves.set("easeOutQuad", mp.easingCurves.getCurve_easeOutQuad());
+				macroCurves.set("easeInOutCubic", mp.easingCurves.getCurve_easeInOutCubic());
+				macroCurves.set("easeOutBounce", mp.easingCurves.getCurve_easeOutBounce());
+				macroCurves.set("easeOutElastic", mp.easingCurves.getCurve_easeOutElastic());
+				macroCurves.set("easeInBack", mp.easingCurves.getCurve_easeInBack());
+				macroCurves.set("easeOutBack", mp.easingCurves.getCurve_easeOutBack());
+				macroCurves.set("customPoints", mp.easingCurves.getCurve_customPoints());
+				drawEasingCurvesVisualization(g, font, macroCurves, curveNames, s2d);
+
+				// Get paths via macro-generated methods
+				final macroPathMap = new Map<String, bh.paths.MultiAnimPaths.Path>();
+				macroPathMap.set("arc", mp.easingCurves.getPath_arc());
+				macroPathMap.set("bezierS", mp.easingCurves.getPath_bezierS());
+				macroPathMap.set("zigzag", mp.easingCurves.getPath_zigzag());
+				drawPathVisualization(g, font, macroPathMap, pathNames, s2d);
+
+				// Normalization via macro: get arc path, then normalize it
+				final macroArc = mp.easingCurves.getPath_arc();
+				drawNormalizationVisualizationFromPath(g, font, macroArc, s2d);
+
+				if (testTitle != null && testTitle.length > 0) addTitleOverlay();
+			} catch (e:Dynamic) {
+				Assert.fail('Macro threw: $e');
+				VisualTestBase.pendingVisualTests--;
+				async.done();
+				return;
+			}
+
+			waitForUpdate(function(dt2:Float) {
+				try {
+					var macroPath = 'test/screenshots/easingCurvesDemo_macro.png';
+					var referencePath = getReferenceImagePath();
+					var macroSuccess = screenshot(macroPath, sizeX, sizeY);
+
+					var builderSim = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
+					var macroSim = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
+					var builderOk = builderSim > 0.99;
+					var macroOk = macroSim > 0.99;
+
+					HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath, builderOk && macroOk,
+						builderSim, null, macroPath, macroSim, macroOk, 0.99, 0.99);
+					HtmlReportGenerator.generateReport();
+
+					Assert.isTrue(builderOk, 'Builder should match reference (${Math.round(builderSim * 10000) / 100}%)');
+					Assert.isTrue(macroOk, 'Macro should match reference (${Math.round(macroSim * 10000) / 100}%)');
+				} catch (e:Dynamic) {
+					Assert.fail('Screenshot/compare threw: $e');
+				}
+				VisualTestBase.pendingVisualTests--;
+				async.done();
+			});
+		});
+	}
+
+	@Test
+	public function test59_SegmentedCurvesDemo(async:utest.Async):Void {
+		setupTest(59, "segmentedCurvesDemo");
+		VisualTestBase.pendingVisualTests++;
+		async.setTimeout(15000);
+
+		final animFilePath = "test/examples/59-segmentedCurvesDemo/segmentedCurvesDemo.manim";
+		final sizeX = 1280;
+		final sizeY = 720;
+		final curveNames = [
+			"simpleEasing", "pointsCurve", "segDefaultValues",
+			"segExplicitValues", "segOverlapping", "segGapped"
+		];
+
+		// Phase 1: builder
+		clearScene();
+		try {
+			final fileContent = byte.ByteData.ofString(sys.io.File.getContent(animFilePath));
+			final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+			final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, animFilePath);
+
+			final curves = builder.getCurves();
+
+			final g = new h2d.Graphics(s2d);
+			final font = loader.loadFont("m3x6");
+
+			drawEasingCurvesVisualization(g, font, curves, curveNames, s2d);
+
+			if (testTitle != null && testTitle.length > 0) addTitleOverlay();
+		} catch (e:Dynamic) {
+			var msg = 'Builder threw: $e';
+			reportBuildFailure(msg);
+			Assert.fail(msg);
+			VisualTestBase.pendingVisualTests--;
+			async.done();
+			return;
+		}
+
+		waitForUpdate(function(dt:Float) {
+			var builderPath = getActualImagePath();
+			var builderSuccess = false;
+			try {
+				builderSuccess = screenshot(builderPath, sizeX, sizeY);
+			} catch (e:Dynamic) {
+				Assert.fail('Builder screenshot threw: $e');
+				VisualTestBase.pendingVisualTests--;
+				async.done();
+				return;
+			}
+
+			// Phase 2: macro
+			clearScene();
+			try {
+				final mp = createMp();
+				final g = new h2d.Graphics(s2d);
+				final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+				final font = loader.loadFont("m3x6");
+
+				mp.segmentedCurves.create();
+
+				final macroCurves = new Map<String, bh.paths.Curve>();
+				macroCurves.set("simpleEasing", mp.segmentedCurves.getCurve_simpleEasing());
+				macroCurves.set("pointsCurve", mp.segmentedCurves.getCurve_pointsCurve());
+				macroCurves.set("segDefaultValues", mp.segmentedCurves.getCurve_segDefaultValues());
+				macroCurves.set("segExplicitValues", mp.segmentedCurves.getCurve_segExplicitValues());
+				macroCurves.set("segOverlapping", mp.segmentedCurves.getCurve_segOverlapping());
+				macroCurves.set("segGapped", mp.segmentedCurves.getCurve_segGapped());
+				drawEasingCurvesVisualization(g, font, macroCurves, curveNames, s2d);
+
+				if (testTitle != null && testTitle.length > 0) addTitleOverlay();
+			} catch (e:Dynamic) {
+				Assert.fail('Macro threw: $e');
+				VisualTestBase.pendingVisualTests--;
+				async.done();
+				return;
+			}
+
+			waitForUpdate(function(dt2:Float) {
+				try {
+					var macroPath = 'test/screenshots/segmentedCurvesDemo_macro.png';
+					var referencePath = getReferenceImagePath();
+					var macroSuccess = screenshot(macroPath, sizeX, sizeY);
+
+					var builderSim = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
+					var macroSim = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
+					var builderOk = builderSim > 0.99;
+					var macroOk = macroSim > 0.99;
+
+					HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath, builderOk && macroOk,
+						builderSim, null, macroPath, macroSim, macroOk, 0.99, 0.99);
+					HtmlReportGenerator.generateReport();
+
+					Assert.isTrue(builderOk, 'Builder should match reference (${Math.round(builderSim * 10000) / 100}%)');
+					Assert.isTrue(macroOk, 'Macro should match reference (${Math.round(macroSim * 10000) / 100}%)');
+				} catch (e:Dynamic) {
+					Assert.fail('Screenshot/compare threw: $e');
+				}
+				VisualTestBase.pendingVisualTests--;
+				async.done();
+			});
+		});
+	}
+
+	@Test
+	public function test60_NewPathCommands(async:utest.Async):Void {
+		setupTest(60, "newPathCommands");
+		VisualTestBase.pendingVisualTests++;
+		async.setTimeout(15000);
+
+		final animFilePath = "test/examples/60-newPathCommands/newPathCommands.manim";
+		final sizeX = 1280;
+		final sizeY = 720;
+		final pathNames = [
+			"triangle", "pentagon", "moveToRel", "moveToAbs", "spiralExpand", "spiralShrink", "waveBasic",
+			"waveAngled", "lineRel", "lineAbs", "arcTurn", "bezierSmooth", "combined", "checkpointClose"
+		];
+
+		// Phase 1: builder
+		clearScene();
+		try {
+			final fileContent = byte.ByteData.ofString(sys.io.File.getContent(animFilePath));
+			final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+			final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, animFilePath);
+
+			final paths = builder.getPaths();
+			final pathMap = new Map<String, bh.paths.MultiAnimPaths.Path>();
+			for (name in pathNames) pathMap.set(name, paths.getPath(name));
+
+			final g = new h2d.Graphics(s2d);
+			final font = loader.loadFont("m3x6");
+
+			drawPathGrid(g, font, pathMap, pathNames, s2d);
+
+			if (testTitle != null && testTitle.length > 0) addTitleOverlay();
+		} catch (e:Dynamic) {
+			var msg = 'Builder threw: $e';
+			reportBuildFailure(msg);
+			Assert.fail(msg);
+			VisualTestBase.pendingVisualTests--;
+			async.done();
+			return;
+		}
+
+		waitForUpdate(function(dt:Float) {
+			var builderPath = getActualImagePath();
+			var builderSuccess = false;
+			try {
+				builderSuccess = screenshot(builderPath, sizeX, sizeY);
+			} catch (e:Dynamic) {
+				Assert.fail('Builder screenshot threw: $e');
+				VisualTestBase.pendingVisualTests--;
+				async.done();
+				return;
+			}
+
+			// Phase 2: macro
+			clearScene();
+			try {
+				final mp = createMp();
+				final g = new h2d.Graphics(s2d);
+				final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+				final font = loader.loadFont("m3x6");
+
+				mp.newPathCommands.create();
+
+				final macroPathMap = new Map<String, bh.paths.MultiAnimPaths.Path>();
+				macroPathMap.set("triangle", mp.newPathCommands.getPath_triangle());
+				macroPathMap.set("pentagon", mp.newPathCommands.getPath_pentagon());
+				macroPathMap.set("moveToRel", mp.newPathCommands.getPath_moveToRel());
+				macroPathMap.set("moveToAbs", mp.newPathCommands.getPath_moveToAbs());
+				macroPathMap.set("spiralExpand", mp.newPathCommands.getPath_spiralExpand());
+				macroPathMap.set("spiralShrink", mp.newPathCommands.getPath_spiralShrink());
+				macroPathMap.set("waveBasic", mp.newPathCommands.getPath_waveBasic());
+				macroPathMap.set("waveAngled", mp.newPathCommands.getPath_waveAngled());
+				macroPathMap.set("lineRel", mp.newPathCommands.getPath_lineRel());
+				macroPathMap.set("lineAbs", mp.newPathCommands.getPath_lineAbs());
+				macroPathMap.set("arcTurn", mp.newPathCommands.getPath_arcTurn());
+				macroPathMap.set("bezierSmooth", mp.newPathCommands.getPath_bezierSmooth());
+				macroPathMap.set("combined", mp.newPathCommands.getPath_combined());
+				macroPathMap.set("checkpointClose", mp.newPathCommands.getPath_checkpointClose());
+				drawPathGrid(g, font, macroPathMap, pathNames, s2d);
+
+				if (testTitle != null && testTitle.length > 0) addTitleOverlay();
+			} catch (e:Dynamic) {
+				Assert.fail('Macro threw: $e');
+				VisualTestBase.pendingVisualTests--;
+				async.done();
+				return;
+			}
+
+			waitForUpdate(function(dt2:Float) {
+				try {
+					var macroPath = 'test/screenshots/newPathCommands_macro.png';
+					var referencePath = getReferenceImagePath();
+					var macroSuccess = screenshot(macroPath, sizeX, sizeY);
+
+					var builderSim = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
+					var macroSim = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
+					var builderOk = builderSim > 0.98;
+					var macroOk = macroSim > 0.98;
+
+					HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath, builderOk && macroOk,
+						builderSim, null, macroPath, macroSim, macroOk, 0.98, 0.98);
+					HtmlReportGenerator.generateReport();
+
+					Assert.isTrue(builderOk, 'Builder should match reference (${Math.round(builderSim * 10000) / 100}%)');
+					Assert.isTrue(macroOk, 'Macro should match reference (${Math.round(macroSim * 10000) / 100}%)');
+				} catch (e:Dynamic) {
+					Assert.fail('Screenshot/compare threw: $e');
+				}
+				VisualTestBase.pendingVisualTests--;
+				async.done();
+			});
+		});
+	}
+
+	// ==================== Easing/Curves visualization helpers ====================
+
+	/** Draw easing curve dot plots: each curve as a row of dots showing eased position. */
+	static function drawEasingCurvesVisualization(g:h2d.Graphics, font:h2d.Font, curves:Map<String, bh.paths.Curve>,
+			curveNames:Array<String>, parent:h2d.Object):Void {
+		final startX:Float = 140;
+		final width:Float = 200;
+		final height:Float = 50;
+		final baseY:Float = 30;
+		final rowSpacing:Float = 65;
+		final dotCount = 21;
+
+		// Background
+		g.lineStyle(0);
+		g.beginFill(0xC8B896);
+		g.drawRect(0, 0, 1280, 720);
+		g.endFill();
+
+		for (idx in 0...curveNames.length) {
+			final name = curveNames[idx];
+			final curve = curves.get(name);
+			if (curve == null) continue;
+
+			final rowY = baseY + idx * rowSpacing;
+
+			// Label
+			if (font != null) {
+				var label = new h2d.Text(font, parent);
+				label.text = name;
+				label.textColor = 0x222222;
+				label.setPosition(5, rowY + 10);
+			}
+
+			// Gray baseline
+			g.lineStyle(1, 0x999988);
+			g.moveTo(startX, rowY + height);
+			g.lineTo(startX + width, rowY + height);
+
+			// Gray top line
+			g.moveTo(startX, rowY);
+			g.lineTo(startX + width, rowY);
+
+			// Dots along the easing curve: X = t * width, Y = value * height (inverted)
+			// Colored white (t=0) to black (t=1)
+			for (i in 0...dotCount) {
+				final t:Float = i / (dotCount - 1);
+				final value = curve.getValue(t);
+				final dotX = startX + t * width;
+				final dotY = rowY + height - value * height;
+
+				final brightness = Std.int((1.0 - t) * 255);
+				final color = (brightness << 16) | (brightness << 8) | brightness;
+				g.lineStyle(0);
+				g.beginFill(color);
+				g.drawCircle(dotX, dotY, 3);
+				g.endFill();
+			}
+
+			// Also draw a continuous thin line showing the curve shape
+			g.lineStyle(1, 0x888877);
+			for (i in 0...101) {
+				final t:Float = i / 100.0;
+				final value = curve.getValue(t);
+				final px = startX + t * width;
+				final py = rowY + height - value * height;
+				if (i == 0)
+					g.moveTo(px, py);
+				else
+					g.lineTo(px, py);
+			}
+
+			// Horizontal dots at fixed time intervals showing X spacing (easing effect)
+			// Colored white (t=0) to black (t=1)
+			final dotRowY = rowY + height + 12;
+			for (i in 0...dotCount) {
+				final t:Float = i / (dotCount - 1);
+				final easedT = curve.getValue(t);
+				final dotX = startX + easedT * width;
+
+				final brightness = Std.int((1.0 - t) * 255);
+				final color = (brightness << 16) | (brightness << 8) | brightness;
+				g.lineStyle(0);
+				g.beginFill(color);
+				g.drawCircle(dotX, dotRowY, 2);
+				g.endFill();
+			}
+		}
+	}
+
+	/** Draw paths with dots at uniform and eased rate intervals. */
+	static function drawPathVisualization(g:h2d.Graphics, font:h2d.Font, pathMap:Map<String, bh.paths.MultiAnimPaths.Path>,
+			pathNames:Array<String>, parent:h2d.Object):Void {
+		final baseX:Float = 400;
+		final baseY:Float = 30;
+		final pathSpacing:Float = 200;
+		final dotCount = 31;
+
+		for (idx in 0...pathNames.length) {
+			final name = pathNames[idx];
+			final path = pathMap.get(name);
+			if (path == null) continue;
+
+			final offsetX = baseX + idx * (pathSpacing + 80);
+			final offsetY = baseY + 60;
+
+			// Label
+			if (font != null) {
+				var label = new h2d.Text(font, parent);
+				label.text = "path: " + name;
+				label.textColor = 0xAAFFAA;
+				label.setPosition(offsetX, baseY);
+			}
+
+			// Draw continuous path line
+			g.lineStyle(1, 0x336633);
+			for (i in 0...201) {
+				final rate:Float = i / 200.0;
+				final pt = path.getPoint(rate);
+				final px = offsetX + pt.x;
+				final py = offsetY + pt.y;
+				if (i == 0)
+					g.moveTo(px, py);
+				else
+					g.lineTo(px, py);
+			}
+
+			// Draw dots at uniform rate intervals
+			for (i in 0...dotCount) {
+				final rate:Float = i / (dotCount - 1);
+				final pt = path.getPoint(rate);
+				final dotX = offsetX + pt.x;
+				final dotY = offsetY + pt.y;
+
+				g.lineStyle(0);
+				g.beginFill(0x44FF44);
+				g.drawCircle(dotX, dotY, 3);
+				g.endFill();
+			}
+
+			// Draw eased dots (easeInOutCubic) in different color
+			g.lineStyle(0);
+			for (i in 0...dotCount) {
+				final t:Float = i / (dotCount - 1);
+				final easedRate = bh.base.TweenUtils.FloatTools.applyEasing(bh.multianim.MultiAnimParser.EasingType.EaseInOutCubic, t);
+				final pt = path.getPoint(easedRate);
+				final dotX = offsetX + pt.x;
+				final dotY = offsetY + pt.y;
+
+				g.beginFill(0xFF4444);
+				g.drawCircle(dotX, dotY, 2);
+				g.endFill();
+			}
+
+			// Legend
+			if (font != null && idx == 0) {
+				var legend1 = new h2d.Text(font, parent);
+				legend1.text = "green=uniform  red=easeInOutCubic";
+				legend1.textColor = 0x888888;
+				legend1.setPosition(baseX, baseY + 15);
+			}
+		}
+	}
+
+	/** Draw path normalization example (builder version using MultiAnimPaths). */
+	static function drawNormalizationVisualization(g:h2d.Graphics, font:h2d.Font, paths:bh.paths.MultiAnimPaths,
+			parent:h2d.Object):Void {
+		final arcPath = paths.getPath("arc");
+		final normArc = paths.getPath("arc", new bh.base.FPoint(350, 100), new bh.base.FPoint(550, 20));
+		drawNormalizationPaths(g, font, arcPath, normArc, parent);
+	}
+
+	/** Draw path normalization example (macro version using pre-built Path). */
+	static function drawNormalizationVisualizationFromPath(g:h2d.Graphics, font:h2d.Font, arcPath:bh.paths.MultiAnimPaths.Path,
+			parent:h2d.Object):Void {
+		final normArc = arcPath.normalize(new bh.base.FPoint(350, 100), new bh.base.FPoint(550, 20));
+		drawNormalizationPaths(g, font, arcPath, normArc, parent);
+	}
+
+	/** Shared normalization drawing logic. */
+	static function drawNormalizationPaths(g:h2d.Graphics, font:h2d.Font, arcPath:bh.paths.MultiAnimPaths.Path,
+			normArc:bh.paths.MultiAnimPaths.Path, parent:h2d.Object):Void {
+		final normX:Float = 400;
+		final normY:Float = 390;
+		if (font != null) {
+			var label = new h2d.Text(font, parent);
+			label.text = "path normalization: arc (0,0)->(200,0) vs (50,100)->(250,20)";
+			label.textColor = 0xFFAAAA;
+			label.setPosition(normX, normY - 20);
+		}
+
+		// Original arc with no normalization
+		g.lineStyle(1, 0x553333);
+		for (i in 0...201) {
+			final rate:Float = i / 200.0;
+			final pt = arcPath.getPoint(rate);
+			if (i == 0) g.moveTo(normX + pt.x, normY + pt.y);
+			else g.lineTo(normX + pt.x, normY + pt.y);
+		}
+		for (i in 0...21) {
+			final rate:Float = i / 20.0;
+			final pt = arcPath.getPoint(rate);
+			g.lineStyle(0);
+			g.beginFill(0xFF6666);
+			g.drawCircle(normX + pt.x, normY + pt.y, 3);
+			g.endFill();
+		}
+
+		// Normalized arc
+		final normStart = new bh.base.FPoint(350, 100);
+		final normEnd = new bh.base.FPoint(550, 20);
+		g.lineStyle(1, 0x335555);
+		for (i in 0...201) {
+			final rate:Float = i / 200.0;
+			final pt = normArc.getPoint(rate);
+			if (i == 0) g.moveTo(pt.x, normY - 100 + pt.y);
+			else g.lineTo(pt.x, normY - 100 + pt.y);
+		}
+		for (i in 0...21) {
+			final rate:Float = i / 20.0;
+			final pt = normArc.getPoint(rate);
+			g.lineStyle(0);
+			g.beginFill(0x44FFFF);
+			g.drawCircle(pt.x, normY - 100 + pt.y, 3);
+			g.endFill();
+		}
+
+		// Mark start/end points
+		g.lineStyle(0);
+		g.beginFill(0xFFFFFF);
+		g.drawCircle(normStart.x, normY - 100 + normStart.y, 4);
+		g.endFill();
+		g.beginFill(0xFFFF00);
+		g.drawCircle(normEnd.x, normY - 100 + normEnd.y, 4);
+		g.endFill();
+	}
+
+	/** Draw paths in a grid layout starting at (20,20). 7 columns, wrapping to next row.
+	 *  Dots are colored white (rate=0) to black (rate=1) on a tan background. */
+	static function drawPathGrid(g:h2d.Graphics, font:h2d.Font, pathMap:Map<String, bh.paths.MultiAnimPaths.Path>,
+			pathNames:Array<String>, parent:h2d.Object):Void {
+		final cols = 7;
+		final cellW:Float = 175;
+		final cellH:Float = 170;
+		final baseX:Float = 20;
+		final baseY:Float = 20;
+		final labelH:Float = 12;
+		final padding:Float = 5;
+		final dotCount = 31;
+
+		// Background
+		g.lineStyle(0);
+		g.beginFill(0xC8B896);
+		g.drawRect(0, 0, 1280, 720);
+		g.endFill();
+
+		for (idx in 0...pathNames.length) {
+			final name = pathNames[idx];
+			final path = pathMap.get(name);
+			if (path == null) continue;
+
+			final col = idx % cols;
+			final row = Std.int(idx / cols);
+			final cellX = baseX + col * cellW;
+			final cellY = baseY + row * cellH;
+
+			// Sample points and compute bounding box
+			var minX:Float = 1e9;
+			var minY:Float = 1e9;
+			var maxX:Float = -1e9;
+			var maxY:Float = -1e9;
+			var points = new Array<{x:Float, y:Float, rate:Float}>();
+			for (i in 0...dotCount) {
+				final rate:Float = i / (dotCount - 1);
+				final pt = path.getPoint(rate);
+				if (pt.x < minX) minX = pt.x;
+				if (pt.y < minY) minY = pt.y;
+				if (pt.x > maxX) maxX = pt.x;
+				if (pt.y > maxY) maxY = pt.y;
+				points.push({x: pt.x, y: pt.y, rate: rate});
+			}
+
+			// Available area below label
+			final availW = cellW - padding * 2;
+			final availH = cellH - labelH - padding * 3;
+			final pathW = maxX - minX;
+			final pathH = maxY - minY;
+
+			// Scale to fit, preserving aspect ratio
+			var scale:Float = 1.0;
+			if (pathW > 0 && pathH > 0) {
+				scale = Math.min(availW / pathW, availH / pathH);
+			} else if (pathW > 0) {
+				scale = availW / pathW;
+			} else if (pathH > 0) {
+				scale = availH / pathH;
+			}
+			if (scale > 1.0) scale = 1.0; // don't upscale
+
+			final scaledW = pathW * scale;
+			final scaledH = pathH * scale;
+
+			// Center path in available area
+			final drawAreaX = cellX + padding;
+			final drawAreaY = cellY + labelH + padding * 2;
+			final originX = drawAreaX + (availW - scaledW) / 2;
+			final originY = drawAreaY + (availH - scaledH) / 2;
+
+			// Label just above the path area
+			if (font != null) {
+				var label = new h2d.Text(font, parent);
+				label.text = name;
+				label.textColor = 0x222222;
+				label.setPosition(cellX + padding, cellY + padding);
+			}
+
+			// Draw dots colored white (rate=0) to black (rate=1)
+			for (p in points) {
+				final brightness = Std.int((1.0 - p.rate) * 255);
+				final color = (brightness << 16) | (brightness << 8) | brightness;
+				g.lineStyle(0);
+				g.beginFill(color);
+				g.drawCircle(originX + (p.x - minX) * scale, originY + (p.y - minY) * scale, 2.5);
+				g.endFill();
+			}
+		}
+	}
+
 	// ==================== Helpers ====================
 
 	static function countVisibleChildren(obj:h2d.Object):Int {

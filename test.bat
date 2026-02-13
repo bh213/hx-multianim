@@ -14,6 +14,7 @@ setlocal enabledelayedexpansion
 set "ROOT=%~dp0"
 set "VERBOSE=0"
 set "TESTNUM="
+set ESC=
 
 REM Parse arguments: flags, command, and optional test number
 for %%a in (%*) do (
@@ -47,12 +48,12 @@ echo Usage: test.bat [run^|gen-refs^|report^|rr] [testNum] [-v^|-verbose]
 goto :eof
 
 :run
-echo [96m--- TEST BEGIN ---[0m
+echo %ESC%[96m--- TEST BEGIN ---%ESC%[0m
 if defined TESTNUM echo Running test #%TESTNUM% only
 pushd "%ROOT%" >nul
 call :do_run
 popd >nul
-echo [96m--- TEST END ---[0m
+echo %ESC%[96m--- TEST END ---%ESC%[0m
 goto :eof
 
 :rr
