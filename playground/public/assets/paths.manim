@@ -167,23 +167,9 @@ forward(80)
 
 
 #panim animatedPath {
-  
-  0.05: accelerate (200, 5000)
-  0.1: attachParticles("test") {
-      count:30
-      relative: true
-      speed:500
-      loop: false
-      emit: cone(5,5, $angle+180, 1)
-      tiles:  sheet("fx", "missile/particle") 
-  }
-
-    0.1: attachParticles("test") {
-      count:120
-      relative: true
-      loop: false
-      speed:500
-      emit: cone(5,5, $angle+90, 1)
-      tiles:  sheet("fx", "missile/particle") 
-  }
+  path: line1
+  type: distance
+  speed: 50
+  0.0: event("start")
+  1.0: event("end")
 }

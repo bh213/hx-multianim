@@ -379,10 +379,8 @@ class ProgrammableBuilder {
 
 	/** Create an animated path via the builder.
 	 *  Used by generated code for ANIMATED_PATH nodes. */
-	public function buildAnimatedPath(name:String, path:bh.paths.MultiAnimPaths.Path, speed:Float,
-			positionMode:bh.paths.AnimatedPath.AnimatedPathPositionMode,
-			object:MultiAnimParser.BuiltHeapsComponent):bh.paths.AnimatedPath {
-		return (_builder : MultiAnimBuilder).createAnimatedPath(name, path, speed, positionMode, object);
+	public function buildAnimatedPath(name:String, ?startPoint:bh.base.FPoint, ?endPoint:bh.base.FPoint, ?startAngle:Null<Float>):bh.paths.AnimatedPath {
+		return (_builder : MultiAnimBuilder).createAnimatedPath(name, startPoint, endPoint, startAngle);
 	}
 
 	/** Build a named curve via the builder.

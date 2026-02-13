@@ -49,34 +49,42 @@ class Curve {
 	}
 
 	private function evaluateSegments(t:Float):Float {
-		// Collect values from all segments containing t (handles overlaps)
+		// Weighted blend of all segments containing t (smooth cross-fade for true overlaps).
+		// Uses half-open intervals [start, end) so back-to-back segments don't count as overlap.
 		var totalWeight:Float = 0.0;
 		var weightedSum:Float = 0.0;
 
-		// Also track nearest segments for gap interpolation
+		// Track nearest segments for gap/endpoint interpolation
 		var leftEnd:Float = Math.NEGATIVE_INFINITY;
 		var leftValue:Float = 0.0;
 		var rightStart:Float = Math.POSITIVE_INFINITY;
 		var rightValue:Float = 0.0;
 
 		for (seg in segments) {
-			if (t >= seg.timeStart && t <= seg.timeEnd) {
+			// Half-open: [timeStart, timeEnd) — back-to-back boundaries belong to the next segment
+			if (t >= seg.timeStart && t < seg.timeEnd) {
 				final segDuration = seg.timeEnd - seg.timeStart;
 				final localT = if (segDuration <= 0.0) 0.0 else (t - seg.timeStart) / segDuration;
 				final easedT = FloatTools.applyEasing(seg.easing, localT);
 				final value = FloatTools.lerp(easedT, seg.valueStart, seg.valueEnd);
-				totalWeight += 1.0;
-				weightedSum += value;
+				// Triangular weight: ~0 at edges, 1 at center — gives smooth cross-fade in true overlaps
+				final halfDur = segDuration * 0.5;
+				final weight = if (halfDur <= 0.0) 1.0 else Math.max(Math.min((t - seg.timeStart) / halfDur, (seg.timeEnd - t) / halfDur), 1e-6);
+				totalWeight += weight;
+				weightedSum += weight * value;
 			} else if (seg.timeEnd <= t && seg.timeEnd > leftEnd) {
 				leftEnd = seg.timeEnd;
 				leftValue = seg.valueEnd;
-			} else if (seg.timeStart >= t && seg.timeStart < rightStart) {
+			} else if (seg.timeStart > t && seg.timeStart < rightStart) {
 				rightStart = seg.timeStart;
 				rightValue = seg.valueStart;
 			}
 		}
 
 		if (totalWeight > 0.0) return weightedSum / totalWeight;
+
+		// t exactly at a segment endpoint (e.g. t=1.0 at last segment's end): use that segment's end value
+		if (leftEnd == t) return leftValue;
 
 		// Gap: linearly interpolate between nearest left end and right start
 		final hasLeft = leftEnd != Math.NEGATIVE_INFINITY;

@@ -181,4 +181,7 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/60-newPathCommands/newPathCommands.manim", "newPathCommands")
 	public var newPathCommands;
+
+	@:manim("test/examples/61-animatedPathCurves/animatedPathCurves.manim", "animatedPathCurves")
+	public var animatedPathCurves;
 }

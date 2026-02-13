@@ -50,8 +50,9 @@ curves {
 }
 
 #panim animatedPath {
-  easing: easeinoutcubic
+  path: arc
+  type: time
   duration: 2.0
-  0.0: event("start")
+  0.0: progressCurve: easeInOutCubic, event("start")
   1.0: event("end")
 }
