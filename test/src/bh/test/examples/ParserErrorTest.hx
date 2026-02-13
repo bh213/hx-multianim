@@ -725,4 +725,102 @@ class ParserErrorTest extends utest.Test {
 		');
 		Assert.isTrue(success, "Data block with bools and floats should parse successfully");
 	}
+
+	// ===== @final tests =====
+
+	@Test
+	public function testFinalBasicInteger() {
+		var success = parseExpectingSuccess('
+			#test programmable(x:uint=10) {
+				@final doubled = $$x * 2
+				bitmap(generated(color($$doubled, $$doubled, #f00))): 0, 0
+			}
+		');
+		Assert.isTrue(success, "@final with integer expression should parse");
+	}
+
+	@Test
+	public function testFinalChaining() {
+		var success = parseExpectingSuccess('
+			#test programmable(x:uint=10, y:uint=20) {
+				@final cx = $$x + 5
+				@final cy = $$y + 5
+				@final offset = $$cx + $$cy
+				bitmap(generated(color($$offset, $$offset, #f00))): 0, 0
+			}
+		');
+		Assert.isTrue(success, "@final chaining (referencing other finals) should parse");
+	}
+
+	@Test
+	public function testFinalWithString() {
+		var success = parseExpectingSuccess('
+			#test programmable(name:string="test") {
+				@final label = "hello"
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		');
+		Assert.isTrue(success, "@final with string value should parse");
+	}
+
+	@Test
+	public function testFinalWithColor() {
+		var success = parseExpectingSuccess('
+			#test programmable() {
+				@final bg = #FF0000
+				bitmap(generated(color(10, 10, $$bg))): 0, 0
+			}
+		');
+		Assert.isTrue(success, "@final with color value should parse");
+	}
+
+	@Test
+	public function testFinalWithArray() {
+		var success = parseExpectingSuccess('
+			#test programmable(x:uint=5, y:uint=10) {
+				@final coords = [$$x, $$y, 15]
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		');
+		Assert.isTrue(success, "@final with array expression should parse");
+	}
+
+	@Test
+	public function testFinalWithTernary() {
+		var success = parseExpectingSuccess('
+			#test programmable(big:bool=true) {
+				@final size = ?($$big) 100 : 50
+				bitmap(generated(color($$size, $$size, #f00))): 0, 0
+			}
+		');
+		Assert.isTrue(success, "@final with ternary expression should parse");
+	}
+
+	@Test
+	public function testFinalInsideFlow() {
+		var success = parseExpectingSuccess('
+			#test programmable(x:uint=5) {
+				@final outer = $$x * 2
+				flow() {
+					@final inner = $$outer + 1
+					bitmap(generated(color($$inner, $$inner, #f00))): 0, 0
+				}
+				bitmap(generated(color($$outer, $$outer, #00f))): 10, 10
+			}
+		');
+		Assert.isTrue(success, "@final with nested scoping should parse");
+	}
+
+	@Test
+	public function testFinalInsideRepeatable() {
+		var success = parseExpectingSuccess('
+			#test programmable() {
+				repeatable($$i, step(3, dx: 20)) {
+					@final pos = $$i * 30 + 5
+					bitmap(generated(color(10, 10, #f00))): $$pos, 0
+				}
+			}
+		');
+		Assert.isTrue(success, "@final inside repeatable should parse");
+	}
 }

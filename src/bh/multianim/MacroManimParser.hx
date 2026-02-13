@@ -656,6 +656,15 @@ class MacroManimParser {
 
 	function parseAnything():ReferenceableValue {
 		switch (peek()) {
+			case TQuestion:
+				advance();
+				expect(TOpen);
+				final cond = parseAnything();
+				expect(TClosed);
+				final ifTrue = parseAnything();
+				expect(TColon);
+				final ifFalse = parseAnything();
+				return parseNextAnythingExpression(RVTernary(cond, ifTrue, ifFalse));
 			case TIdentifier(s) if (isKeyword(s, "callback")):
 				advance();
 				return parseCallback();
@@ -2170,6 +2179,12 @@ class MacroManimParser {
 						advance();
 						conditional = ConditionalDefault;
 						atCount++;
+					case TIdentifier(s) if (isKeyword(s, "final")):
+						advance();
+						final name = expectIdentifierOrString();
+						expect(TEquals);
+						final expr = parseAnything();
+						return createNode(FINAL_VAR(name, expr), parent, NoConditional, null, null, null, -1, UNTObject(name));
 					default:
 						break;
 				}

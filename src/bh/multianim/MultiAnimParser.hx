@@ -428,6 +428,7 @@ enum ResolvedIndexParameters {
 	StringValue(s:String);
 	ArrayString(strArray:Array<String>);
 	TileSourceValue(tileSource:TileSource);
+	ExpressionAlias(expr:ReferenceableValue);
 }
 
 
@@ -888,6 +889,7 @@ enum NodeType {
 	AUTOTILE(autotileDef:AutotileDef);
 	ATLAS2(atlas2Def:Atlas2Def);
 	DATA(dataDef:DataDef);
+	FINAL_VAR(name:String, value:ReferenceableValue);
 }
 
 enum NodeConditionalValues {

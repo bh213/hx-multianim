@@ -1,0 +1,42 @@
+version: 0.3
+
+#finalVarDemo programmable(x:uint=100, y:uint=80, w:uint=200, h:uint=120) {
+  pos: 0, 0
+  grid: 1280, 720
+
+  // Background
+  @alpha(0.1) bitmap(generated(color(1280, 720, white)));
+
+  // Test 1: Basic @final with arithmetic
+  @final cx = $x + $w / 2
+  @final cy = $y + $h / 2
+  bitmap(generated(color(10, 10, #FF0000))): $cx - 5, $cy - 5
+
+  // Test 2: @final for reuse
+  @final x2 = $x + $w
+  @final y2 = $y + $h
+  bitmap(generated(color($w, 2, #0000FF))): $x, $y
+  bitmap(generated(color(2, $h, #0000FF))): $x, $y
+  bitmap(generated(color($w, 2, #0000FF))): $x, $y2
+  bitmap(generated(color(2, $h, #0000FF))): $x2, $y
+
+  // Test 3: @final inside repeatable
+  repeatable($i, step(5, dx: 0)) {
+    @final px = 400 + $i * 60
+    @final py = 50 + $i * 30
+    @final size = 20 + $i * 8
+    bitmap(generated(color($size, $size, #00AA00))): $px, $py
+  }
+
+  // Test 4: @final chaining
+  @final baseX = 400
+  @final baseY = 300
+  @final offsetX = $baseX + 100
+  @final offsetY = $baseY + 50
+  bitmap(generated(color(30, 30, #FF8800))): $offsetX, $offsetY
+
+  // Test 5: @final with ternary
+  @final bigMode = 1
+  @final markerSize = ?($bigMode) 40 : 15
+  bitmap(generated(color($markerSize, $markerSize, #8800FF))): 700, 300
+}

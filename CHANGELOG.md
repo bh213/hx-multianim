@@ -3,6 +3,14 @@
 ## [Unreleased]
 
 ### Added
+- **`@final` constants** — Declare immutable named constants in `.manim` to avoid repeating expressions
+  - Syntax: `@final name = expression` — evaluated once, reusable via `$name`
+  - All parameter types supported: uint, int, float, bool, string, color, arrays
+  - Block scoping: every `{ }` creates a scope, constants cleaned up on exit
+  - Works inside repeatable blocks (re-evaluated per iteration)
+  - Chaining: `@final b = $a + 1` where `a` is also a `@final`
+  - Error detection: duplicate names, parameter shadowing
+  - Full macro codegen support (inlined at usage sites)
 - **Easing system** — 12 named easing functions + cubic bezier for animation timing
   - `EasingType` enum: Linear, EaseIn/Out/InOutQuad, EaseIn/Out/InOutCubic, EaseIn/Out/InOutBack, EaseOutBounce, EaseOutElastic, CubicBezier(x1,y1,x2,y2)
   - All functions implemented in `FloatTools.applyEasing()` with Newton-Raphson solver for cubic bezier

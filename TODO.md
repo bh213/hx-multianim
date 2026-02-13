@@ -217,6 +217,12 @@ next major release
 
 DONE
 ===================================
+* @final constants - declare immutable named constants in .manim
+    - IMPLEMENTED: parser, builder, macro codegen
+    - Syntax: `@final name = expression`, reference via `$name`
+    - Block scoping with cleanup, works in repeatable
+    - Error detection: duplicate names, parameter shadowing
+
 * store pos for expressions/references so error can include pos
     - IMPLEMENTED: MacroUtils.nodePos() macro and currentNodePos() helper
     - Enabled with -D MULTIANIM_TRACE
