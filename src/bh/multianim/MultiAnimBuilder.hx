@@ -1827,7 +1827,7 @@ class MultiAnimBuilder {
 
 		final builtObject:BuiltHeapsComponent = switch node.type {
 			case FLOW(maxWidth, maxHeight, minWidth, minHeight, lineHeight, colWidth, layout, paddingTop, paddingBottom, paddingLeft, paddingRight,
-				horizontalSpacing, verticalSpacing, debug, multiline):
+				horizontalSpacing, verticalSpacing, debug, multiline, bgSheet, bgTile):
 				var f = new h2d.Flow();
 
 				if (maxWidth != null)
@@ -1863,6 +1863,15 @@ class MultiAnimBuilder {
 				f.debug = debug;
 				f.multiline = multiline;
 				f.overflow = Limit;
+
+				if (bgSheet != null && bgTile != null) {
+					final sg = load9Patch(resolveAsString(bgSheet), resolveAsString(bgTile));
+					f.borderLeft = sg.borderLeft;
+					f.borderRight = sg.borderRight;
+					f.borderTop = sg.borderTop;
+					f.borderBottom = sg.borderBottom;
+					f.backgroundTile = sg.tile;
+				}
 
 				HeapsFlow(f);
 			case LAYERS:
@@ -2081,7 +2090,6 @@ class MultiAnimBuilder {
 
 				StateAnim(animSM);
 			case REPEAT(varName, repeatType):
-				var object = new h2d.Object();
 				var dx = 0;
 				var dy = 0;
 				var repeatCount = 0;
@@ -2109,8 +2117,6 @@ class MultiAnimBuilder {
 						final rangeEnd = resolveAsInteger(end);
 						rangeStep = resolveAsInteger(step);
 						repeatCount = Math.ceil((rangeEnd - rangeStart) / rangeStep);
-						dx = 0;
-						dy = 0;
 					case StateAnimIterator(bitmapVarName, animFilename, animationName, selectorRefs):
 						final selector = [for (k => v in selectorRefs) k => resolveAsString(v)];
 						final animName = resolveAsString(animationName);
@@ -2119,8 +2125,6 @@ class MultiAnimBuilder {
 					case TilesIterator(bitmapVarName, tilenameVarName, sheetName, tileFilter):
 						final sheet = getOrLoadSheet(sheetName);
 						if (tileFilter != null) {
-							// Filter mode: iterate over frames for specific tilename (exact match)
-							// tileFilter must be an exact tile name/key in the atlas (e.g., "Arrow_dir0")
 							final frames = sheet.getAnim(tileFilter);
 							if (frames == null) {
 								throw 'Tile "${tileFilter}" not found in sheet "${sheetName}". The tile filter must be an exact tile name (key) in the atlas.' + MacroUtils.nodePos(node);
@@ -2131,7 +2135,6 @@ class MultiAnimBuilder {
 								}
 							}
 						} else {
-							// Full iteration: all tiles in sheet (including all indexed entries per name)
 							for (tileName => entries in sheet.getContents()) {
 								for (entry in entries) {
 									if (entry != null) {
@@ -2144,6 +2147,13 @@ class MultiAnimBuilder {
 						repeatCount = tileSourceIterator.length;
 				}
 
+				// Only create a wrapper when children need relative positioning (non-zero step offsets or layout iterator).
+				// Otherwise build directly into parent — this lets h2d.Flow see individual children.
+				final needsWrapper = (dx != 0 || dy != 0 || iterator != null);
+				var object = needsWrapper ? new h2d.Object() : null;
+				final buildTarget = needsWrapper ? object : current;
+				final ownPos = needsWrapper ? null : calculatePosition(node.pos, MultiAnimParser.getGridCoordinateSystem(node), MultiAnimParser.getHexCoordinateSystem(node));
+
 				if (indexedParams.exists(node.updatableName.getNameString()))
 					throw 'cannot use repeatable index param "$varName" as it is already defined' + MacroUtils.nodePos(node);
 				for (count in 0...repeatCount) {
@@ -2153,7 +2163,6 @@ class MultiAnimBuilder {
 					};
 					final gridCoordinateSystem = MultiAnimParser.getGridCoordinateSystem(node);
 					final hexCoordinateSystem = MultiAnimParser.getHexCoordinateSystem(node);
-					// Set indexed params before resolving conditional children
 					indexedParams.set(varName, Value(resolvedIndex));
 					switch repeatType {
 						case ArrayIterator(valueVariableName, arrayName):
@@ -2168,19 +2177,20 @@ class MultiAnimBuilder {
 					}
 					final resolvedChildren = resolveConditionalChildren(node.children);
 					for (childNode in resolvedChildren) {
-						var obj = build(childNode, ObjectMode(object), gridCoordinateSystem, hexCoordinateSystem, internalResults, builderParams);
+						var obj = build(childNode, ObjectMode(buildTarget), gridCoordinateSystem, hexCoordinateSystem, internalResults, builderParams);
 						if (obj == null)
 							continue;
-						switch repeatType {
-							case StepIterator(_, _, _):
-								addPosition(obj, dx * count, dy * count);
-							case LayoutIterator(_):
-								var pt = iterator.next();
-								addPosition(obj, pt.x, pt.y);
-							case ArrayIterator(valueVariableName, array):
-							case RangeIterator(_, _, _):
-							case StateAnimIterator(_, _, _, _):
-							case TilesIterator(_, _, _, _):
+						if (needsWrapper) {
+							switch repeatType {
+								case StepIterator(_, _, _):
+									addPosition(obj, dx * count, dy * count);
+								case LayoutIterator(_):
+									var pt = iterator.next();
+									addPosition(obj, pt.x, pt.y);
+								default:
+							}
+						} else if (ownPos.x != 0 || ownPos.y != 0) {
+							addPosition(obj, ownPos.x, ownPos.y);
 						}
 					}
 					cleanupFinalVars(resolvedChildren, indexedParams);
@@ -2196,7 +2206,11 @@ class MultiAnimBuilder {
 					case _:
 				}
 				skipChildren = true;
-				HeapsObject(object);
+				if (needsWrapper) {
+					HeapsObject(object);
+				} else {
+					return null;
+				}
 
 			case REPEAT2D(varNameX, varNameY, repeatTypeX, repeatTypeY):
 				var object = new h2d.Object();
