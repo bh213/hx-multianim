@@ -474,7 +474,7 @@ class VisualTestBase extends utest.Test {
 	 */
 	public function multiInstanceMacroTest(num:Int, name:String, scale:Float, spacing:Float,
 			builderParams:Array<Map<String, Dynamic>>, createMacroRoots:(index:Int) -> h2d.Object,
-			async:utest.Async):Void {
+			async:utest.Async, ?tolerance:Null<Float>):Void {
 		setupTest(num, name);
 		pendingVisualTests++;
 		async.setTimeout(15000);
@@ -551,11 +551,12 @@ class VisualTestBase extends utest.Test {
 
 					var builderSim = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
 					var macroSim = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
-					var builderOk = builderSim > 0.99;
-					var macroOk = macroSim > 0.99;
+					var threshold = if (tolerance != null) tolerance else 0.99;
+					var builderOk = builderSim > threshold;
+					var macroOk = macroSim > threshold;
 
 					HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath, builderOk && macroOk,
-						builderSim, null, macroPath, macroSim, macroOk, 0.99, 0.99);
+						builderSim, null, macroPath, macroSim, macroOk, threshold, threshold);
 					HtmlReportGenerator.generateReport();
 
 					Assert.isTrue(builderOk, 'Builder should match reference (${Math.round(builderSim * 10000) / 100}%)');

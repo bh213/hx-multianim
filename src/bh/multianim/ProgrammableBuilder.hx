@@ -389,6 +389,29 @@ class ProgrammableBuilder {
 		return (_builder : MultiAnimBuilder).getCurve(name);
 	}
 
+	/** Build an arbitrary node by its unique name, forwarding to the builder.
+	 *  Used by generated repeatable code for node types not handled inline. */
+	public function buildNodeByUniqueName(programmableName:String, uniqueNodeName:String):Null<h2d.Object> {
+		final builder:MultiAnimBuilder = cast _builder;
+		if (builder == null) return null;
+		final progNode = builder.multiParserResult.nodes.get(programmableName);
+		if (progNode == null) return null;
+		final targetNode = findNodeByUniqueName(progNode, uniqueNodeName);
+		if (targetNode == null) return null;
+		return @:privateAccess builder.buildSingleNode(targetNode);
+	}
+
+	private static function findNodeByUniqueName(node:MultiAnimParser.Node, name:String):Null<MultiAnimParser.Node> {
+		if (node.uniqueNodeName == name) return node;
+		if (node.children != null) {
+			for (child in node.children) {
+				final found = findNodeByUniqueName(child, name);
+				if (found != null) return found;
+			}
+		}
+		return null;
+	}
+
 	static function extractObject(result:CallbackResult):Null<h2d.Object> {
 		return switch result {
 			case CBRObject(val): val;

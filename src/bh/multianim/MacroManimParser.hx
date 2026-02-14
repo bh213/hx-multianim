@@ -72,6 +72,7 @@ private class MacroLexer {
 	var col:Int;
 	var lineStart:Int;
 	var sourceName:String;
+	var pendingTokens:Array<Token> = [];
 
 	public function new(src:String, sourceName:String) {
 		this.src = src;
@@ -84,6 +85,7 @@ private class MacroLexer {
 	}
 
 	public function nextToken():Token {
+		if (pendingTokens.length > 0) return pendingTokens.shift();
 		while (pos < len) {
 			final startLine = line;
 			final startCol = pos - lineStart + 1;
@@ -223,10 +225,13 @@ private class MacroLexer {
 				return new Token(TQuotedString(buf.toString()), startLine, startCol);
 			}
 
-			// Single-quoted string: '...'
+			// Single-quoted string with interpolation: '...${expr}...'
 			if (c == "'".code) {
 				pos++;
 				var buf = new StringBuf();
+				var parts:Array<{isCode:Bool, text:String}> = [];
+				var hasInterpolation = false;
+				var closed = false;
 				while (pos < len) {
 					final sc = src.charCodeAt(pos);
 					if (sc == '\\'.code && pos + 1 < len) {
@@ -240,13 +245,92 @@ private class MacroLexer {
 					}
 					if (sc == "'".code) {
 						pos++;
+						closed = true;
 						break;
+					}
+					// Check for ${...} interpolation
+					if (sc == '$'.code && pos + 1 < len && src.charCodeAt(pos + 1) == '{'.code) {
+						hasInterpolation = true;
+						parts.push({isCode: false, text: buf.toString()});
+						buf = new StringBuf();
+						final interpLine = line;
+						final interpCol = pos - lineStart + 1;
+						pos += 2; // skip ${
+						// Extract code until matching }
+						var depth = 1;
+						var codeStart = pos;
+						while (pos < len && depth > 0) {
+							final bc = src.charCodeAt(pos);
+							if (bc == '{'.code) depth++;
+							else if (bc == '}'.code) depth--;
+							else if (bc == "'".code) {
+								// Hit string terminator before closing } — interpolation is unclosed
+								throw '$sourceName:$interpLine:$interpCol: Unclosed string interpolation, expected }';
+							}
+							if (depth > 0) pos++;
+						}
+						if (depth > 0) {
+							throw '$sourceName:$interpLine:$interpCol: Unclosed string interpolation, expected }';
+						}
+						final codeText = src.substring(codeStart, pos);
+						if (StringTools.trim(codeText).length == 0) {
+							throw '$sourceName:$interpLine:$interpCol: Empty expression in string interpolation';
+						}
+						parts.push({isCode: true, text: codeText});
+						if (pos < len) pos++; // skip }
+						continue;
 					}
 					if (sc == '\n'.code) { line++; lineStart = pos + 1; }
 					buf.addChar(sc);
 					pos++;
 				}
-				return new Token(TQuotedString(buf.toString()), startLine, startCol);
+				if (!closed) {
+					throw '$sourceName:$startLine:$startCol: Unterminated string, missing closing single quote';
+				}
+
+				if (!hasInterpolation) {
+					return new Token(TQuotedString(buf.toString()), startLine, startCol);
+				}
+
+				// Has interpolation — emit tokens for: "prefix" + expr + "suffix" + ...
+				final remaining = buf.toString();
+				if (remaining.length > 0) parts.push({isCode: false, text: remaining});
+
+				// Build token list: parts joined with + operators, code parts re-lexed
+				var filtered:Array<Token> = [];
+				for (part in parts) {
+					if (part.isCode) {
+						// Re-lex the code section
+						var codeTokens:Array<Token> = [];
+						final subLexer = new MacroLexer(part.text, sourceName);
+						while (true) {
+							final st = subLexer.nextToken();
+							if (Type.enumEq(st.type, TEof)) break;
+							codeTokens.push(st);
+						}
+						if (codeTokens.length == 0) continue; // skip empty code
+						// Insert + before this part if there are preceding tokens
+						if (filtered.length > 0) filtered.push(new Token(TPlus, startLine, startCol));
+						// Wrap multi-token expressions in parentheses for correct precedence
+						if (codeTokens.length > 1) {
+							filtered.push(new Token(TOpen, startLine, startCol));
+							for (t in codeTokens) filtered.push(t);
+							filtered.push(new Token(TClosed, startLine, startCol));
+						} else {
+							for (t in codeTokens) filtered.push(t);
+						}
+					} else if (part.text.length > 0) {
+						// Insert + before this part if there are preceding tokens
+						if (filtered.length > 0) filtered.push(new Token(TPlus, startLine, startCol));
+						filtered.push(new Token(TQuotedString(part.text), startLine, startCol));
+					}
+					// Skip empty string parts entirely
+				}
+
+				if (filtered.length == 0) return new Token(TQuotedString(""), startLine, startCol);
+				final first = filtered.shift();
+				for (t in filtered) pendingTokens.push(t);
+				return first;
 			}
 
 			// #name
@@ -310,6 +394,8 @@ class MacroManimParser {
 	var resourceLoader:Dynamic;
 	var uniqueCounter:Int;
 	var currentName:Null<String>;
+	var activeDefs:Null<ParametersDefinitions>; // null = not inside programmable, set to currentDefs when entering programmable scope
+	var scopeVars:Null<Array<String>>; // loop vars, iterator output vars, @final vars (not in activeDefs)
 
 	static final defaultLayoutNodeName = "#defaultLayout";
 	static final defaultPathNodeName = "#defaultPaths";
@@ -323,6 +409,18 @@ class MacroManimParser {
 		this.imports = new Map();
 		this.resourceLoader = resourceLoader;
 		this.uniqueCounter = 654321;
+		this.activeDefs = null;
+		this.scopeVars = null;
+	}
+
+	function validateRef(name:String):Void {
+		if (activeDefs == null) return; // not inside programmable, skip validation
+		if (activeDefs.exists(name)) return;
+		if (scopeVars != null && scopeVars.indexOf(name) >= 0) return;
+		final paramNames = [for (k in activeDefs.keys()) k];
+		final allVars = scopeVars != null ? paramNames.concat(scopeVars) : paramNames;
+		final available = allVars.length > 0 ? allVars.join(", ") : "(none)";
+		error('unknown variable $$' + name + '. Available: ' + available);
 	}
 
 	// ---- Token access ----
@@ -443,6 +541,7 @@ class MacroManimParser {
 						return parseNextIntExpression(RVInteger(-stringToInt("0x" + n)));
 					case TReference(s):
 						advance();
+						validateRef(s);
 						if (match(TBracketOpen)) {
 							final idx = parseIntegerOrReference();
 							expect(TBracketClosed);
@@ -465,6 +564,7 @@ class MacroManimParser {
 				return parseNextIntExpression(RVInteger(stringToInt("0x" + n)));
 			case TReference(s):
 				advance();
+				validateRef(s);
 				if (match(TBracketOpen)) {
 					final idx = parseIntegerOrReference();
 					expect(TBracketClosed);
@@ -525,6 +625,7 @@ class MacroManimParser {
 						return parseNextFloatExpression(RVFloat(-stringToFloat(n)));
 					case TReference(s):
 						advance();
+						validateRef(s);
 						if (match(TBracketOpen)) {
 							final idx = parseFloatOrReference();
 							expect(TBracketClosed);
@@ -544,6 +645,7 @@ class MacroManimParser {
 				return parseNextFloatExpression(RVFloat(stringToFloat(n)));
 			case TReference(s):
 				advance();
+				validateRef(s);
 				if (match(TBracketOpen)) {
 					final idx = parseIntegerOrReference();
 					expect(TBracketClosed);
@@ -625,6 +727,7 @@ class MacroManimParser {
 				return parseNextStringExpression(RVString(s));
 			case TReference(s):
 				advance();
+				validateRef(s);
 				if (match(TBracketOpen)) {
 					final idx = parseIntegerOrReference();
 					expect(TBracketClosed);
@@ -644,6 +747,10 @@ class MacroManimParser {
 	function parseNextStringExpression(e1:ReferenceableValue):ReferenceableValue {
 		switch (peek()) {
 			case TPlus: advance(); return binop(e1, OpAdd, parseStringOrReference());
+			case TMinus: advance(); return binop(e1, OpSub, parseStringOrReference());
+			case TStar: advance(); return binop(e1, OpMul, parseStringOrReference());
+			case TSlash: advance(); return binop(e1, OpDiv, parseStringOrReference());
+			case TPercent: advance(); return binop(e1, OpMod, parseStringOrReference());
 			case TDoubleEquals: advance(); return binop(e1, OpEq, parseStringOrReference());
 			case TNotEquals: advance(); return binop(e1, OpNotEq, parseStringOrReference());
 			case TLessThan: advance(); return binop(e1, OpLess, parseStringOrReference());
@@ -683,6 +790,7 @@ class MacroManimParser {
 						return parseNextAnythingExpression(RVFloat(-stringToFloat(n)));
 					case TReference(s):
 						advance();
+						validateRef(s);
 						if (match(TBracketOpen)) {
 							final idx = parseAnything();
 							expect(TBracketClosed);
@@ -705,6 +813,7 @@ class MacroManimParser {
 				return parseNextAnythingExpression(RVFloat(stringToFloat(n)));
 			case TReference(s):
 				advance();
+				validateRef(s);
 				if (match(TBracketOpen)) {
 					final idx = parseAnything();
 					expect(TBracketClosed);
@@ -1091,6 +1200,7 @@ class MacroManimParser {
 				return TSSheet(sheet, name);
 			case TReference(s):
 				advance();
+				validateRef(s);
 				return TSReference(s);
 			default:
 				// bare sheetName, tileName [, index]
@@ -2118,6 +2228,8 @@ class MacroManimParser {
 	}
 
 	function parseNode(updatableName:UpdatableNameType, parent:Null<Node>, currentDefs:ParametersDefinitions):Node {
+		// Reset reference validation scope for each root-level node
+		if (parent == null) { activeDefs = null; scopeVars = null; }
 		var layerIndex = -1;
 		var alpha:Null<ReferenceableValue> = null;
 		var scale:Null<ReferenceableValue> = null;
@@ -2184,7 +2296,10 @@ class MacroManimParser {
 						final name = expectIdentifierOrString();
 						expect(TEquals);
 						final expr = parseAnything();
+						if (scopeVars != null) scopeVars.push(name);
 						return createNode(FINAL_VAR(name, expr), parent, NoConditional, null, null, null, -1, UNTObject(name));
+					case TAt:
+						advance(); // allow @alpha(0.5) @scale(0.25) chaining
 					default:
 						break;
 				}
@@ -2409,6 +2524,8 @@ class MacroManimParser {
 				expect(TOpen);
 				final parsed = parseDefines();
 				currentDefs = parsed.defs;
+				activeDefs = parsed.defs;
+				scopeVars = [];
 				createNode(PROGRAMMABLE(isTileGroup, parsed.defs, parsed.order), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
 
 			case TIdentifier(s) if (isKeyword(s, "relativelayouts")):
@@ -2725,7 +2842,33 @@ class MacroManimParser {
 				node.pos = ZERO;
 			case TCurlyOpen:
 				advance();
+				// Track loop variables in scope for repeatable/repeatable2d bodies
+				var loopVarsToPop = 0;
+				if (scopeVars != null) {
+					switch (node.type) {
+						case REPEAT(varName, repeatType):
+							scopeVars.push(varName);
+							loopVarsToPop = 1;
+							// Also track iterator output variables
+							switch (repeatType) {
+								case TilesIterator(bitmapVar, tilenameVar, _, _):
+									scopeVars.push(bitmapVar); loopVarsToPop++;
+									if (tilenameVar != null) { scopeVars.push(tilenameVar); loopVarsToPop++; }
+								case StateAnimIterator(bitmapVar, _, _, _):
+									scopeVars.push(bitmapVar); loopVarsToPop++;
+								case ArrayIterator(valueVar, _):
+									scopeVars.push(valueVar); loopVarsToPop++;
+								default:
+							}
+						case REPEAT2D(varNameX, varNameY, _, _):
+							scopeVars.push(varNameX);
+							scopeVars.push(varNameY);
+							loopVarsToPop = 2;
+						default:
+					}
+				}
 				parseNodes(node, currentDefs);
+				for (_ in 0...loopVarsToPop) scopeVars.pop();
 			case TEof:
 				error("unexpected end of file");
 			default:

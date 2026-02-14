@@ -3538,6 +3538,16 @@ class MultiAnimBuilder {
 		return multiParserResult?.nodes?.get(name) != null;
 	}
 
+	/** Build a single node in isolation, returning the resulting h2d.Object.
+	 *  Used by ProgrammableBuilder.buildNodeByUniqueName for forwarding unsupported
+	 *  repeatable node types to the builder at runtime. */
+	function buildSingleNode(node:Node):Null<h2d.Object> {
+		final parent = new h2d.Object();
+		final ir:InternalBuilderResults = {names: [], interactives: []};
+		build(node, ObjectMode(parent), null, null, ir, builderParams);
+		return if (parent.numChildren > 0) parent.getChildAt(0) else null;
+	}
+
 	public function buildWithComboParameters(name:String, inputParameters:Map<String, Dynamic>, allCombos:Array<String>, ?builderParams:BuilderParameters) {
 		pushBuilderState();
 		try {

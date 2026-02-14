@@ -42,9 +42,6 @@ fix conditional not working with repeatable vars - e.g @(index greaterOrEqual 3)
     - Bug may be timing - conditionals parsed/evaluated before repeatable sets the var
 
  
- add data support in manim files, stuff like key/value, string, int, float, array, ability to get by name, maybe index, probably expression support. Maybe sort of programmable that just return data
-
-
 particles:
     loop/non-loop support
         - EXISTS: emitLoop property in Particles
@@ -135,8 +132,8 @@ next major release
         - Would improve usability
 
 * named/optional parameters for filters
-    - NOT IMPLEMENTED - filters use positional parameters only
-    - See MultiAnimParser.hx filter parsing
+    - DONE: Named parameters supported (e.g., `outline(size: 2, color: red)`)
+    - Positional parameters still work for backward compatibility
 
 
 next major release
@@ -227,6 +224,28 @@ DONE
     - IMPLEMENTED: MacroUtils.nodePos() macro and currentNodePos() helper
     - Enabled with -D MULTIANIM_TRACE
     - All builder errors now include position when flag is set
+
+* data support in manim files
+    - IMPLEMENTED: `#name data { ... }` blocks with int, float, string, bool, arrays
+    - Record types: `#tier record(name: string, cost: int)` with validation
+    - Runtime: `builder.getData("name")` returns Dynamic
+    - Macro: `@:data("file.manim", "name")` generates typed classes
+
+* string interpolation in single-quoted strings
+    - IMPLEMENTED: `'text ${$var} more'` in both parser and macro parser
+    - Supports expressions: `'val: ${$x * 2}'`
+    - Error messages for unclosed braces, empty expressions, unterminated strings
+
+* parse-time variable validation
+    - IMPLEMENTED: Unknown `$var` references produce errors with available variable list
+    - Tracks parameter definitions, loop vars, iterator output vars, @final vars
+    - Proper scope management (loop vars only visible inside loop body)
+
+* paths, curves, animated paths
+    - IMPLEMENTED: Full DSL with lineTo, bezier, arc, spiral, wave, etc.
+    - Easing functions (12 named + cubic bezier)
+    - 1D curves (easing-based, point-based, segmented)
+    - Macro codegen for paths, animatedPath, curves
 
 will not implement:
 ===================

@@ -79,6 +79,9 @@ class ProgrammableCodeGen {
 	// Repeat pool entries: for param-dependent repeats, tracks which pool containers to show/hide
 	static var repeatPoolEntries:Array<{containerField:String, iterIndex:Int, countParamRefs:Array<String>, countExpr:Expr}> = [];
 
+	// Repeat rebuild entries: for param-dependent repeats that need runtime rebuild when count changes
+	static var repeatRebuildEntries:Array<{callExpr:Expr}> = [];
+
 	// Conditional APPLY entries: tracks condition + apply/revert expressions for _applyVisibility()
 	static var applyEntries:Array<{condition:Expr, applyExprs:Array<Expr>, revertExprs:Array<Expr>}> = [];
 
@@ -117,6 +120,7 @@ class ProgrammableCodeGen {
 		runtimeLoopVars = new Map();
 		finalVarExprs = new Map();
 		repeatPoolEntries = [];
+		repeatRebuildEntries = [];
 		applyEntries = [];
 		allParsedNodes = new Map();
 		currentProcessingNode = null;
@@ -441,6 +445,10 @@ class ProgrammableCodeGen {
 				final countE = entry.countExpr;
 				visExprs.push(macro $fieldRef.visible = ($v{idx} < $countE));
 			}
+		}
+		// Repeat rebuild: call rebuild method when count param changes
+		for (entry in repeatRebuildEntries) {
+			visExprs.push(entry.callExpr);
 		}
 		// Conditional APPLY: apply or revert parent properties based on condition
 		for (entry in applyEntries) {
@@ -871,7 +879,7 @@ class ProgrammableCodeGen {
 		}
 	}
 
-	/** Pool-based repeat: pre-allocate maxCount iteration containers, show/hide based on count param */
+	/** Runtime rebuild repeat: generates a method that creates/recreates children based on count param */
 	static function poolRepeatChildren(node:Node, varName:String, maxCount:Int, dx:Int, dy:Int, rangeStart:Int, rangeStep:Int, containerField:String, fields:Array<Field>, ctorExprs:Array<Expr>, countParamRefs:Array<String>, countRV:ReferenceableValue, repeatType:RepeatType, pos:Position):Void {
 		if (node.children == null) return;
 
@@ -888,38 +896,59 @@ class ProgrammableCodeGen {
 				rvToExpr(countRV);
 		};
 
-		for (i in 0...maxCount) {
-			final resolvedIndex = rangeStart + i * rangeStep;
-			loopVarSubstitutions.set(varName, resolvedIndex);
+		// Use runtimeLoopVars so rvToExpr generates runtime references for the loop variable
+		runtimeLoopVars.set(varName, "_rt_i");
 
-			// Create an iteration container
-			final iterContainerName = "_e" + (elementCounter++);
-			fields.push(makeField(iterContainerName, FVar(macro :h2d.Object, null), [APrivate], pos));
-			ctorExprs.push(macro $p{["this", iterContainerName]} = new h2d.Object());
-
-			// Grid offset
-			if (dx != 0 || dy != 0) {
-				final offsetX:Float = dx * i;
-				final offsetY:Float = dy * i;
-				ctorExprs.push(macro $p{["this", iterContainerName]}.setPosition($v{offsetX}, $v{offsetY}));
+		// Build loop body expressions from child nodes
+		final containerRef = macro _rt_cont;
+		final loopBodyExprs:Array<Expr> = [];
+		if (node.children != null) {
+			for (child in node.children) {
+				generateRuntimeChildExprs(child, repeatType, containerRef, loopBodyExprs, pos);
 			}
-
-			ctorExprs.push(macro $p{["this", containerField]}.addChild($p{["this", iterContainerName]}));
-
-			// Add visibility entry: show only if i < count
-			final iterIdx = i;
-			repeatPoolEntries.push({
-				containerField: iterContainerName,
-				iterIndex: iterIdx,
-				countParamRefs: countParamRefs,
-				countExpr: countExpr,
-			});
-
-			// Process children into the iteration container
-			processChildren(node.children, iterContainerName, fields, ctorExprs, [], pos);
-
-			loopVarSubstitutions.remove(varName);
 		}
+
+		runtimeLoopVars.remove(varName);
+
+		// Build the for-loop body: create container, position, add children
+		final forBodyExprs:Array<Expr> = [];
+		forBodyExprs.push(macro final _rt_cont = new h2d.Object());
+		final dxFloat:Float = dx;
+		final dyFloat:Float = dy;
+		final rangeStartFloat:Float = rangeStart;
+		final rangeStepFloat:Float = rangeStep;
+		if (dx != 0 || dy != 0) {
+			forBodyExprs.push(macro _rt_cont.setPosition($v{dxFloat} * _rt_i, $v{dyFloat} * _rt_i));
+		}
+		final containerFieldRef = macro $p{["this", containerField]};
+		forBodyExprs.push(macro $containerFieldRef.addChild(_rt_cont));
+		for (e in loopBodyExprs) forBodyExprs.push(e);
+
+		final forBody:Expr = {expr: EBlock(forBodyExprs), pos: pos};
+
+		// Generate rebuild method
+		final rebuildMethodName = "_rebuildRepeat_" + containerField;
+		final countTrackingField = rebuildMethodName + "_n";
+
+		// Tracking field for current count (to avoid unnecessary rebuilds)
+		fields.push(makeField(countTrackingField, FVar(macro :Int, macro -1), [APrivate], pos));
+
+		// Rebuild method: clears container and recreates children for the new count
+		final rebuildBody:Array<Expr> = [];
+		rebuildBody.push(macro if (_rt_count == $p{["this", countTrackingField]}) return);
+		rebuildBody.push(macro $p{["this", countTrackingField]} = _rt_count);
+		rebuildBody.push(macro $containerFieldRef.removeChildren());
+		rebuildBody.push(macro for (_rt_i in 0..._rt_count) $forBody);
+
+		fields.push(makeMethod(rebuildMethodName, rebuildBody, [{name: "_rt_count", type: macro :Int}], macro :Void, [APrivate], pos));
+
+		// Call rebuild in constructor with default count
+		ctorExprs.push(macro $i{rebuildMethodName}(Std.int(${countExpr})));
+
+		// Register for rebuild on param change
+		repeatRebuildEntries.push({
+			callExpr: macro $i{rebuildMethodName}(Std.int(${countExpr})),
+		});
 	}
 
 	/** Process LayoutIterator: resolve layout points at compile time from parsed AST */
@@ -1266,11 +1295,19 @@ class ProgrammableCodeGen {
 				};
 				// Collect all statements into a single block so _rt_bmp is in scope
 				final stmts:Array<Expr> = [];
-				// Reset tile dx/dy to match builder's TileGroup behavior
+				// Apply hAlign/vAlign via tile.sub() dx/dy, matching generateBitmapCreate
+				var dxExpr:Expr = switch (hAlign) {
+					case Center: macro -(_rt_tile.width * 0.5);
+					case Right: macro -_rt_tile.width;
+					default: macro 0.0;
+				};
+				var dyExpr:Expr = switch (vAlign) {
+					case Center: macro -(_rt_tile.height * 0.5);
+					case Bottom: macro -_rt_tile.height;
+					default: macro 0.0;
+				};
 				stmts.push(macro final _rt_tile = $bitmapExpr);
-				stmts.push(macro _rt_tile.dx = 0);
-				stmts.push(macro _rt_tile.dy = 0);
-				stmts.push(macro final _rt_bmp = new h2d.Bitmap(_rt_tile));
+				stmts.push(macro final _rt_bmp = new h2d.Bitmap(_rt_tile.sub(0, 0, _rt_tile.width, _rt_tile.height, $dxExpr, $dyExpr)));
 				stmts.push(macro $containerRef.addChild(_rt_bmp));
 				if (child.pos != null) {
 					switch (child.pos) {
@@ -1305,6 +1342,15 @@ class ProgrammableCodeGen {
 						default:
 					}
 				}
+				if (child.scale != null) {
+					final scaleExpr = rvToExpr(child.scale);
+					ptStmts.push(macro _rt_obj.scaleX = $scaleExpr);
+					ptStmts.push(macro _rt_obj.scaleY = $scaleExpr);
+				}
+				if (child.alpha != null) {
+					final alphaExpr = rvToExpr(child.alpha);
+					ptStmts.push(macro _rt_obj.alpha = $alphaExpr);
+				}
 				// Recurse into point's children with _rt_obj as parent
 				if (child.children != null) {
 					for (grandchild in child.children) {
@@ -1334,6 +1380,31 @@ class ProgrammableCodeGen {
 					default: stmts.push(macro _rt_txt.textAlign = Left);
 				}
 
+				switch (textDef.textAlignWidth) {
+					case TAWValue(value):
+						final scaleAdjust:Float = if (child.scale != null) {
+							final s = resolveRVStatic(child.scale);
+							if (s != null) s else 1.0;
+						} else 1.0;
+						final adjustedWidth:Float = value / scaleAdjust;
+						stmts.push(macro _rt_txt.maxWidth = $v{adjustedWidth});
+					default:
+				}
+
+				if (textDef.letterSpacing != 0)
+					stmts.push(macro _rt_txt.letterSpacing = $v{textDef.letterSpacing});
+				if (textDef.lineSpacing != 0)
+					stmts.push(macro _rt_txt.lineSpacing = $v{textDef.lineSpacing});
+				stmts.push(macro _rt_txt.lineBreak = $v{textDef.lineBreak});
+
+				if (textDef.dropShadowXY != null) {
+					final dx:Float = textDef.dropShadowXY.x;
+					final dy:Float = textDef.dropShadowXY.y;
+					final color:Int = textDef.dropShadowColor;
+					final alpha:Float = textDef.dropShadowAlpha;
+					stmts.push(macro _rt_txt.dropShadow = {dx: $v{dx}, dy: $v{dy}, color: $v{color}, alpha: $v{alpha}});
+				}
+
 				if (child.pos != null) {
 					switch (child.pos) {
 						case OFFSET(x, y):
@@ -1343,12 +1414,293 @@ class ProgrammableCodeGen {
 						default:
 					}
 				}
+				if (child.scale != null) {
+					final scaleExpr = rvToExpr(child.scale);
+					stmts.push(macro _rt_txt.scaleX = $scaleExpr);
+					stmts.push(macro _rt_txt.scaleY = $scaleExpr);
+				}
+				if (child.alpha != null) {
+					final alphaExpr = rvToExpr(child.alpha);
+					stmts.push(macro _rt_txt.alpha = $alphaExpr);
+				}
+				bodyExprs.push({expr: EBlock(stmts), pos: pos});
+
+			case NINEPATCH(sheet, tilename, width, height):
+				final stmts:Array<Expr> = [];
+				final sheetStr = sheet;
+				final tileStr = tilename;
+				final wExpr = rvToExpr(width);
+				final hExpr = rvToExpr(height);
+				stmts.push(macro final _rt_sg = this._pb.load9Patch($v{sheetStr}, $v{tileStr}));
+				stmts.push(macro _rt_sg.width = $wExpr);
+				stmts.push(macro _rt_sg.height = $hExpr);
+				stmts.push(macro _rt_sg.tileCenter = true);
+				stmts.push(macro _rt_sg.tileBorders = true);
+				stmts.push(macro _rt_sg.ignoreScale = false);
+				stmts.push(macro $containerRef.addChild(_rt_sg));
+				if (child.pos != null) {
+					switch (child.pos) {
+						case OFFSET(x, y):
+							final xExpr = rvToExpr(x);
+							final yExpr = rvToExpr(y);
+							stmts.push(macro _rt_sg.setPosition($xExpr, $yExpr));
+						default:
+					}
+				}
+				if (child.scale != null) {
+					final scaleExpr = rvToExpr(child.scale);
+					stmts.push(macro _rt_sg.scaleX = $scaleExpr);
+					stmts.push(macro _rt_sg.scaleY = $scaleExpr);
+				}
+				if (child.alpha != null) {
+					final alphaExpr = rvToExpr(child.alpha);
+					stmts.push(macro _rt_sg.alpha = $alphaExpr);
+				}
+				bodyExprs.push({expr: EBlock(stmts), pos: pos});
+
+			case GRAPHICS(elements):
+				final stmts:Array<Expr> = [];
+				stmts.push(macro final _rt_g = new h2d.Graphics());
+				stmts.push(macro $containerRef.addChild(_rt_g));
+				for (item in elements) {
+					final drawExprs = generateGraphicsElementExprs(macro _rt_g, item.element, item.pos, child, pos);
+					for (de in drawExprs)
+						stmts.push(de);
+				}
+				if (child.pos != null) {
+					switch (child.pos) {
+						case OFFSET(x, y):
+							final xExpr = rvToExpr(x);
+							final yExpr = rvToExpr(y);
+							stmts.push(macro _rt_g.setPosition($xExpr, $yExpr));
+						default:
+					}
+				}
+				if (child.scale != null) {
+					final scaleExpr = rvToExpr(child.scale);
+					stmts.push(macro _rt_g.scaleX = $scaleExpr);
+					stmts.push(macro _rt_g.scaleY = $scaleExpr);
+				}
+				if (child.alpha != null) {
+					final alphaExpr = rvToExpr(child.alpha);
+					stmts.push(macro _rt_g.alpha = $alphaExpr);
+				}
+				bodyExprs.push({expr: EBlock(stmts), pos: pos});
+
+			case PIXELS(shapes):
+				final stmts:Array<Expr> = [];
+				// Resolve all shapes at compile time for bounds calculation
+				var allStatic = true;
+				var staticShapes:Array<{type:String, x1:Float, y1:Float, x2:Float, y2:Float, w:Float, h:Float, color:Null<Int>, filled:Bool}> = [];
+				for (s in shapes) {
+					switch (s) {
+						case LINE(line):
+							final startXY = coordsToStaticXY(line.start, pos, child);
+							final endXY = coordsToStaticXY(line.end, pos, child);
+							final c = resolveRVStatic(line.color);
+							if (startXY != null && endXY != null && c != null)
+								staticShapes.push({type: "line", x1: startXY.x, y1: startXY.y, x2: endXY.x, y2: endXY.y, w: 0, h: 0, color: Std.int(c), filled: false});
+							else allStatic = false;
+						case RECT(rect) | FILLED_RECT(rect):
+							final startXY = coordsToStaticXY(rect.start, pos, child);
+							final w = resolveRVStatic(rect.width);
+							final h = resolveRVStatic(rect.height);
+							final c = resolveRVStatic(rect.color);
+							final filled = switch (s) { case FILLED_RECT(_): true; default: false; };
+							if (startXY != null && w != null && h != null && c != null)
+								staticShapes.push({type: "rect", x1: startXY.x, y1: startXY.y, x2: 0, y2: 0, w: w, h: h, color: Std.int(c), filled: filled});
+							else allStatic = false;
+						case PIXEL(pixel):
+							final xy = coordsToStaticXY(pixel.pos, pos, child);
+							final c = resolveRVStatic(pixel.color);
+							if (xy != null && c != null)
+								staticShapes.push({type: "pixel", x1: xy.x, y1: xy.y, x2: 0, y2: 0, w: 0, h: 0, color: Std.int(c), filled: false});
+							else allStatic = false;
+					}
+				}
+				if (allStatic && staticShapes.length > 0) {
+					var minX:Int = 0x7FFFFFFF; var minY:Int = 0x7FFFFFFF;
+					var maxX:Int = -0x7FFFFFFF; var maxY:Int = -0x7FFFFFFF;
+					for (s in staticShapes) {
+						switch (s.type) {
+							case "line":
+								final ix1 = Math.round(s.x1); final iy1 = Math.round(s.y1);
+								final ix2 = Math.round(s.x2); final iy2 = Math.round(s.y2);
+								if (ix1 < minX) minX = ix1; if (iy1 < minY) minY = iy1;
+								if (ix2 < minX) minX = ix2; if (iy2 < minY) minY = iy2;
+								if (ix1 > maxX) maxX = ix1; if (iy1 > maxY) maxY = iy1;
+								if (ix2 > maxX) maxX = ix2; if (iy2 > maxY) maxY = iy2;
+							case "rect":
+								final ix = Math.round(s.x1); final iy = Math.round(s.y1);
+								final iw = Math.round(s.w); final ih = Math.round(s.h);
+								if (ix < minX) minX = ix; if (iy < minY) minY = iy;
+								if (ix + iw + 1 > maxX) maxX = ix + iw + 1;
+								if (iy + ih + 1 > maxY) maxY = iy + ih + 1;
+							case "pixel":
+								final ix = Math.round(s.x1); final iy = Math.round(s.y1);
+								if (ix < minX) minX = ix; if (iy < minY) minY = iy;
+								if (ix > maxX) maxX = ix; if (iy > maxY) maxY = iy;
+							default:
+						}
+					}
+					final width:Int = maxX - minX + 1;
+					final height:Int = maxY - minY + 1;
+					stmts.push(macro final _rt_pl = new bh.base.PixelLine.PixelLines($v{width}, $v{height}));
+					stmts.push(macro $containerRef.addChild(_rt_pl));
+					stmts.push(macro _rt_pl.setPosition($v{minX}, $v{minY}));
+					for (s in staticShapes) {
+						switch (s.type) {
+							case "line":
+								final ix1:Int = Math.round(s.x1) - minX; final iy1:Int = Math.round(s.y1) - minY;
+								final ix2:Int = Math.round(s.x2) - minX; final iy2:Int = Math.round(s.y2) - minY;
+								var c:Int = s.color; if (c >>> 24 == 0) c |= 0xFF000000;
+								stmts.push(macro _rt_pl.line($v{ix1}, $v{iy1}, $v{ix2}, $v{iy2}, $v{c}));
+							case "rect":
+								final ix:Int = Math.round(s.x1) - minX; final iy:Int = Math.round(s.y1) - minY;
+								final iw:Int = Math.round(s.w); final ih:Int = Math.round(s.h);
+								var c:Int = s.color; if (c >>> 24 == 0) c |= 0xFF000000;
+								if (s.filled)
+									stmts.push(macro _rt_pl.filledRect($v{ix}, $v{iy}, $v{iw}, $v{ih}, $v{c}));
+								else
+									stmts.push(macro _rt_pl.rect($v{ix}, $v{iy}, $v{iw}, $v{ih}, $v{c}));
+							case "pixel":
+								final ix:Int = Math.round(s.x1) - minX; final iy:Int = Math.round(s.y1) - minY;
+								var c:Int = s.color; if (c >>> 24 == 0) c |= 0xFF000000;
+								stmts.push(macro _rt_pl.pixel($v{ix}, $v{iy}, $v{c}));
+							default:
+						}
+					}
+					stmts.push(macro _rt_pl.updateBitmap());
+				}
+				bodyExprs.push({expr: EBlock(stmts), pos: pos});
+
+			case MASK(w, h):
+				final stmts:Array<Expr> = [];
+				final wExpr = rvToExpr(w);
+				final hExpr = rvToExpr(h);
+				stmts.push(macro final _rt_mask = new h2d.Mask(Math.round($wExpr), Math.round($hExpr)));
+				stmts.push(macro $containerRef.addChild(_rt_mask));
+				if (child.pos != null) {
+					switch (child.pos) {
+						case OFFSET(x, y):
+							final xExpr = rvToExpr(x);
+							final yExpr = rvToExpr(y);
+							stmts.push(macro _rt_mask.setPosition($xExpr, $yExpr));
+						default:
+					}
+				}
+				if (child.scale != null) {
+					final scaleExpr = rvToExpr(child.scale);
+					stmts.push(macro _rt_mask.scaleX = $scaleExpr);
+					stmts.push(macro _rt_mask.scaleY = $scaleExpr);
+				}
+				if (child.alpha != null) {
+					final alphaExpr = rvToExpr(child.alpha);
+					stmts.push(macro _rt_mask.alpha = $alphaExpr);
+				}
+				if (child.children != null) {
+					for (grandchild in child.children) {
+						final innerStmts:Array<Expr> = [];
+						generateRuntimeChildExprs(grandchild, repeatType, macro _rt_mask, innerStmts, pos);
+						for (s in innerStmts)
+							stmts.push(s);
+					}
+				}
+				bodyExprs.push({expr: EBlock(stmts), pos: pos});
+
+			case LAYERS:
+				final stmts:Array<Expr> = [];
+				stmts.push(macro final _rt_layers = new h2d.Layers());
+				stmts.push(macro $containerRef.addChild(_rt_layers));
+				if (child.pos != null) {
+					switch (child.pos) {
+						case OFFSET(x, y):
+							final xExpr = rvToExpr(x);
+							final yExpr = rvToExpr(y);
+							stmts.push(macro _rt_layers.setPosition($xExpr, $yExpr));
+						default:
+					}
+				}
+				if (child.scale != null) {
+					final scaleExpr = rvToExpr(child.scale);
+					stmts.push(macro _rt_layers.scaleX = $scaleExpr);
+					stmts.push(macro _rt_layers.scaleY = $scaleExpr);
+				}
+				if (child.alpha != null) {
+					final alphaExpr = rvToExpr(child.alpha);
+					stmts.push(macro _rt_layers.alpha = $alphaExpr);
+				}
+				if (child.children != null) {
+					for (grandchild in child.children) {
+						final innerStmts:Array<Expr> = [];
+						generateRuntimeChildExprs(grandchild, repeatType, macro _rt_layers, innerStmts, pos);
+						for (s in innerStmts)
+							stmts.push(s);
+					}
+				}
+				bodyExprs.push({expr: EBlock(stmts), pos: pos});
+
+			case FLOW(maxWidth, maxHeight, minWidth, minHeight, lineHeight, colWidth, layout, paddingTop, paddingBottom, paddingLeft, paddingRight, horizontalSpacing, verticalSpacing, debug, multiline):
+				final stmts:Array<Expr> = [];
+				stmts.push(macro final _rt_flow = new h2d.Flow());
+				stmts.push(macro $containerRef.addChild(_rt_flow));
+				if (maxWidth != null) stmts.push(macro _rt_flow.maxWidth = ${rvToExpr(maxWidth)});
+				if (maxHeight != null) stmts.push(macro _rt_flow.maxHeight = ${rvToExpr(maxHeight)});
+				if (minWidth != null) stmts.push(macro _rt_flow.minWidth = ${rvToExpr(minWidth)});
+				if (minHeight != null) stmts.push(macro _rt_flow.minHeight = ${rvToExpr(minHeight)});
+				if (lineHeight != null) stmts.push(macro _rt_flow.lineHeight = ${rvToExpr(lineHeight)});
+				if (colWidth != null) stmts.push(macro _rt_flow.colWidth = ${rvToExpr(colWidth)});
+				if (layout != null) {
+					switch (layout) {
+						case MFLHorizontal: stmts.push(macro _rt_flow.layout = h2d.Flow.FlowLayout.Horizontal);
+						case MFLVertical: stmts.push(macro _rt_flow.layout = h2d.Flow.FlowLayout.Vertical);
+						case MFLStack: stmts.push(macro _rt_flow.layout = h2d.Flow.FlowLayout.Stack);
+					}
+				}
+				if (paddingTop != null) stmts.push(macro _rt_flow.paddingTop = ${rvToExpr(paddingTop)});
+				if (paddingBottom != null) stmts.push(macro _rt_flow.paddingBottom = ${rvToExpr(paddingBottom)});
+				if (paddingLeft != null) stmts.push(macro _rt_flow.paddingLeft = ${rvToExpr(paddingLeft)});
+				if (paddingRight != null) stmts.push(macro _rt_flow.paddingRight = ${rvToExpr(paddingRight)});
+				if (horizontalSpacing != null) stmts.push(macro _rt_flow.horizontalSpacing = ${rvToExpr(horizontalSpacing)});
+				if (verticalSpacing != null) stmts.push(macro _rt_flow.verticalSpacing = ${rvToExpr(verticalSpacing)});
+				if (debug) stmts.push(macro _rt_flow.debug = true);
+				if (multiline) stmts.push(macro _rt_flow.multiline = true);
+				stmts.push(macro _rt_flow.overflow = h2d.Flow.FlowOverflow.Limit);
+				if (child.pos != null) {
+					switch (child.pos) {
+						case OFFSET(x, y):
+							final xExpr = rvToExpr(x);
+							final yExpr = rvToExpr(y);
+							stmts.push(macro _rt_flow.setPosition($xExpr, $yExpr));
+						default:
+					}
+				}
+				if (child.scale != null) {
+					final scaleExpr = rvToExpr(child.scale);
+					stmts.push(macro _rt_flow.scaleX = $scaleExpr);
+					stmts.push(macro _rt_flow.scaleY = $scaleExpr);
+				}
+				if (child.alpha != null) {
+					final alphaExpr = rvToExpr(child.alpha);
+					stmts.push(macro _rt_flow.alpha = $alphaExpr);
+				}
+				if (child.children != null) {
+					for (grandchild in child.children) {
+						final innerStmts:Array<Expr> = [];
+						generateRuntimeChildExprs(grandchild, repeatType, macro _rt_flow, innerStmts, pos);
+						for (s in innerStmts)
+							stmts.push(s);
+					}
+				}
 				bodyExprs.push({expr: EBlock(stmts), pos: pos});
 
 			default:
+				// Forward unsupported node types to the builder at runtime
+				final progName = currentProgrammableName;
+				final nodeName = child.uniqueNodeName;
 				bodyExprs.push(macro {
-					final _rt_obj = new h2d.Object();
-					$containerRef.addChild(_rt_obj);
+					final _rt_obj = this._pb.buildNodeByUniqueName($v{progName}, $v{nodeName});
+					if (_rt_obj != null) $containerRef.addChild(_rt_obj);
 				});
 		}
 	}
@@ -1431,12 +1783,9 @@ class ProgrammableCodeGen {
 		}
 	}
 
-	/** Pool-based 2D repeat: pre-allocate maxX * maxY iteration containers */
+	/** Runtime rebuild 2D repeat: generates a method that creates/recreates children based on count params */
 	static function poolRepeat2DChildren(node:Node, varNameX:String, varNameY:String, infoX:{staticCount:Null<Int>, dx:Int, dy:Int, rangeStart:Int, rangeStep:Int, countRV:Null<ReferenceableValue>}, infoY:{staticCount:Null<Int>, dx:Int, dy:Int, rangeStart:Int, rangeStep:Int, countRV:Null<ReferenceableValue>}, repeatTypeX:RepeatType, repeatTypeY:RepeatType, containerField:String, fields:Array<Field>, ctorExprs:Array<Expr>, pos:Position):Void {
 		if (node.children == null) return;
-
-		final maxX = infoX.staticCount != null ? infoX.staticCount : resolveMaxCount(infoX.countRV);
-		final maxY = infoY.staticCount != null ? infoY.staticCount : resolveMaxCount(infoY.countRV);
 
 		final countXExpr:Expr = if (infoX.staticCount != null) macro $v{infoX.staticCount} else switch (repeatTypeX) {
 			case RangeIterator(start, end, step):
@@ -1445,7 +1794,7 @@ class ProgrammableCodeGen {
 				final stepExpr = rvToExpr(step);
 				macro Math.ceil(($endExpr - $startExpr) / $stepExpr);
 			case StepIterator(_, _, repeats): rvToExpr(repeats);
-			default: macro $v{maxX};
+			default: macro 0;
 		};
 
 		final countYExpr:Expr = if (infoY.staticCount != null) macro $v{infoY.staticCount} else switch (repeatTypeY) {
@@ -1455,56 +1804,69 @@ class ProgrammableCodeGen {
 				final stepExpr = rvToExpr(step);
 				macro Math.ceil(($endExpr - $startExpr) / $stepExpr);
 			case StepIterator(_, _, repeats): rvToExpr(repeats);
-			default: macro $v{maxY};
+			default: macro 0;
 		};
 
-		// Collect param refs for both axes
-		var allCountParamRefs:Array<String> = [];
-		if (infoX.countRV != null)
-			for (r in collectParamRefs(infoX.countRV))
-				if (!allCountParamRefs.contains(r))
-					allCountParamRefs.push(r);
-		if (infoY.countRV != null)
-			for (r in collectParamRefs(infoY.countRV))
-				if (!allCountParamRefs.contains(r))
-					allCountParamRefs.push(r);
+		// Use runtimeLoopVars so rvToExpr generates runtime references
+		runtimeLoopVars.set(varNameX, "_rt_ix");
+		runtimeLoopVars.set(varNameY, "_rt_iy");
 
-		for (iy in 0...maxY) {
-			final resolvedY = infoY.rangeStart + iy * infoY.rangeStep;
-			loopVarSubstitutions.set(varNameY, resolvedY);
-
-			for (ix in 0...maxX) {
-				final resolvedX = infoX.rangeStart + ix * infoX.rangeStep;
-				loopVarSubstitutions.set(varNameX, resolvedX);
-
-				final iterContainerName = "_e" + (elementCounter++);
-				fields.push(makeField(iterContainerName, FVar(macro :h2d.Object, null), [APrivate], pos));
-				ctorExprs.push(macro $p{["this", iterContainerName]} = new h2d.Object());
-
-				final totalDx:Float = infoX.dx * ix + infoY.dx * iy;
-				final totalDy:Float = infoX.dy * ix + infoY.dy * iy;
-				if (totalDx != 0 || totalDy != 0) {
-					ctorExprs.push(macro $p{["this", iterContainerName]}.setPosition($v{totalDx}, $v{totalDy}));
-				}
-
-				ctorExprs.push(macro $p{["this", containerField]}.addChild($p{["this", iterContainerName]}));
-
-				// Visibility: show if ix < countX && iy < countY
-				final ixVal = ix;
-				final iyVal = iy;
-				repeatPoolEntries.push({
-					containerField: iterContainerName,
-					iterIndex: -1, // special: use 2D check
-					countParamRefs: allCountParamRefs,
-					countExpr: macro($v{ixVal} < $countXExpr && $v{iyVal} < $countYExpr),
-				});
-
-				processChildren(node.children, iterContainerName, fields, ctorExprs, [], pos);
-
-				loopVarSubstitutions.remove(varNameX);
+		// Build loop body expressions from child nodes
+		final containerRef = macro _rt_cont;
+		final loopBodyExprs:Array<Expr> = [];
+		if (node.children != null) {
+			for (child in node.children) {
+				generateRuntimeChildExprs(child, repeatTypeX, containerRef, loopBodyExprs, pos);
 			}
-			loopVarSubstitutions.remove(varNameY);
 		}
+
+		runtimeLoopVars.remove(varNameX);
+		runtimeLoopVars.remove(varNameY);
+
+		// Build inner loop body: create container, position, add children
+		final innerBodyExprs:Array<Expr> = [];
+		innerBodyExprs.push(macro final _rt_cont = new h2d.Object());
+		final dxX:Float = infoX.dx;
+		final dyX:Float = infoX.dy;
+		final dxY:Float = infoY.dx;
+		final dyY:Float = infoY.dy;
+		if (dxX != 0 || dyX != 0 || dxY != 0 || dyY != 0) {
+			innerBodyExprs.push(macro _rt_cont.setPosition($v{dxX} * _rt_ix + $v{dxY} * _rt_iy, $v{dyX} * _rt_ix + $v{dyY} * _rt_iy));
+		}
+		final containerFieldRef = macro $p{["this", containerField]};
+		innerBodyExprs.push(macro $containerFieldRef.addChild(_rt_cont));
+		for (e in loopBodyExprs) innerBodyExprs.push(e);
+
+		final innerBody:Expr = {expr: EBlock(innerBodyExprs), pos: pos};
+
+		// Generate rebuild method
+		final rebuildMethodName = "_rebuildRepeat_" + containerField;
+		final countTrackingField = rebuildMethodName + "_n";
+
+		// Tracking field: encode both counts as countX * 10000 + countY for change detection
+		fields.push(makeField(countTrackingField, FVar(macro :Int, macro -1), [APrivate], pos));
+
+		final rebuildBody:Array<Expr> = [];
+		rebuildBody.push(macro {
+			final _rt_key = _rt_countX * 10000 + _rt_countY;
+			if (_rt_key == $p{["this", countTrackingField]}) return;
+			$p{["this", countTrackingField]} = _rt_key;
+		});
+		rebuildBody.push(macro $containerFieldRef.removeChildren());
+		rebuildBody.push(macro for (_rt_iy in 0..._rt_countY) for (_rt_ix in 0..._rt_countX) $innerBody);
+
+		fields.push(makeMethod(rebuildMethodName, rebuildBody, [
+			{name: "_rt_countX", type: macro :Int},
+			{name: "_rt_countY", type: macro :Int},
+		], macro :Void, [APrivate], pos));
+
+		// Call rebuild in constructor
+		ctorExprs.push(macro $i{rebuildMethodName}(Std.int($countXExpr), Std.int($countYExpr)));
+
+		// Register for rebuild on param change
+		repeatRebuildEntries.push({
+			callExpr: macro $i{rebuildMethodName}(Std.int($countXExpr), Std.int($countYExpr)),
+		});
 	}
 
 	// ==================== Node Creation ====================
