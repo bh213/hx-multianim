@@ -193,4 +193,7 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/65-repeatAllNodes/repeatAllNodes.manim", "repeatAllNodes")
 	public var repeatAllNodes;
+
+	@:manim("test/examples/66-flowBgDemo/flowBgDemo.manim", "flowBgDemo")
+	public var flowBgDemo2;
 }

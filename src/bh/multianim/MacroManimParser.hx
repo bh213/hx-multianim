@@ -2481,6 +2481,8 @@ class MacroManimParser {
 				var vSpacing:Null<ReferenceableValue> = null;
 				var debug = false;
 				var multiline = false;
+				var bgSheet:Null<ReferenceableValue> = null;
+				var bgTile:Null<ReferenceableValue> = null;
 				while (!match(TClosed)) {
 					eatComma();
 					if (match(TClosed)) break;
@@ -2506,10 +2508,17 @@ class MacroManimParser {
 							paddingLeft = p; paddingRight = p; paddingTop = p; paddingBottom = p;
 						case "debug": debug = parseBool();
 						case "multiline": multiline = parseBool();
+						case "background":
+							expectKeyword("ninepatch");
+							expect(TOpen);
+							bgSheet = parseStringOrReference();
+							expect(TComma);
+							bgTile = parseStringOrReference();
+							expect(TClosed);
 						default: error('unknown flow param: $pname');
 					}
 				}
-				createNode(FLOW(maxWidth, maxHeight, minWidth, minHeight, lineHeight, colWidth, layout, paddingTop, paddingBottom, paddingLeft, paddingRight, hSpacing, vSpacing, debug, multiline), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+				createNode(FLOW(maxWidth, maxHeight, minWidth, minHeight, lineHeight, colWidth, layout, paddingTop, paddingBottom, paddingLeft, paddingRight, hSpacing, vSpacing, debug, multiline, bgSheet, bgTile), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
 
 			case TIdentifier(s) if (isKeyword(s, "programmable")):
 				advance();

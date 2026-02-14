@@ -1640,7 +1640,7 @@ class ProgrammableCodeGen {
 				}
 				bodyExprs.push({expr: EBlock(stmts), pos: pos});
 
-			case FLOW(maxWidth, maxHeight, minWidth, minHeight, lineHeight, colWidth, layout, paddingTop, paddingBottom, paddingLeft, paddingRight, horizontalSpacing, verticalSpacing, debug, multiline):
+			case FLOW(maxWidth, maxHeight, minWidth, minHeight, lineHeight, colWidth, layout, paddingTop, paddingBottom, paddingLeft, paddingRight, horizontalSpacing, verticalSpacing, debug, multiline, bgSheet, bgTile):
 				final stmts:Array<Expr> = [];
 				stmts.push(macro final _rt_flow = new h2d.Flow());
 				stmts.push(macro $containerRef.addChild(_rt_flow));
@@ -1666,6 +1666,18 @@ class ProgrammableCodeGen {
 				if (debug) stmts.push(macro _rt_flow.debug = true);
 				if (multiline) stmts.push(macro _rt_flow.multiline = true);
 				stmts.push(macro _rt_flow.overflow = h2d.Flow.FlowOverflow.Limit);
+				if (bgSheet != null && bgTile != null) {
+					final sheetExpr = rvToExpr(bgSheet, true);
+					final tileExpr = rvToExpr(bgTile, true);
+					stmts.push(macro {
+						final _rt_bg = this._pb.load9Patch(Std.string($sheetExpr), Std.string($tileExpr));
+						_rt_flow.borderLeft = _rt_bg.borderLeft;
+						_rt_flow.borderRight = _rt_bg.borderRight;
+						_rt_flow.borderTop = _rt_bg.borderTop;
+						_rt_flow.borderBottom = _rt_bg.borderBottom;
+						_rt_flow.backgroundTile = _rt_bg.tile;
+					});
+				}
 				if (child.pos != null) {
 					switch (child.pos) {
 						case OFFSET(x, y):
@@ -1906,8 +1918,8 @@ class ProgrammableCodeGen {
 					exprUpdates: [],
 				};
 
-			case FLOW(maxWidth, maxHeight, minWidth, minHeight, lineHeight, colWidth, layout, paddingTop, paddingBottom, paddingLeft, paddingRight, horizontalSpacing, verticalSpacing, debug, multiline):
-				generateFlowCreate(node, fieldName, maxWidth, maxHeight, minWidth, minHeight, lineHeight, colWidth, layout, paddingTop, paddingBottom, paddingLeft, paddingRight, horizontalSpacing, verticalSpacing, debug, multiline, pos);
+			case FLOW(maxWidth, maxHeight, minWidth, minHeight, lineHeight, colWidth, layout, paddingTop, paddingBottom, paddingLeft, paddingRight, horizontalSpacing, verticalSpacing, debug, multiline, bgSheet, bgTile):
+				generateFlowCreate(node, fieldName, maxWidth, maxHeight, minWidth, minHeight, lineHeight, colWidth, layout, paddingTop, paddingBottom, paddingLeft, paddingRight, horizontalSpacing, verticalSpacing, debug, multiline, bgSheet, bgTile, pos);
 
 			case INTERACTIVE(w, h, id, _debug):
 				final wExpr = rvToExpr(w);
@@ -3077,7 +3089,7 @@ class ProgrammableCodeGen {
 		};
 	}
 
-	static function generateFlowCreate(node:Node, fieldName:String, maxWidth:Null<ReferenceableValue>, maxHeight:Null<ReferenceableValue>, minWidth:Null<ReferenceableValue>, minHeight:Null<ReferenceableValue>, lineHeight:Null<ReferenceableValue>, colWidth:Null<ReferenceableValue>, layout:Null<MacroFlowLayout>, paddingTop:Null<ReferenceableValue>, paddingBottom:Null<ReferenceableValue>, paddingLeft:Null<ReferenceableValue>, paddingRight:Null<ReferenceableValue>, horizontalSpacing:Null<ReferenceableValue>, verticalSpacing:Null<ReferenceableValue>, debug:Bool, multiline:Bool, pos:Position):CreateResult {
+	static function generateFlowCreate(node:Node, fieldName:String, maxWidth:Null<ReferenceableValue>, maxHeight:Null<ReferenceableValue>, minWidth:Null<ReferenceableValue>, minHeight:Null<ReferenceableValue>, lineHeight:Null<ReferenceableValue>, colWidth:Null<ReferenceableValue>, layout:Null<MacroFlowLayout>, paddingTop:Null<ReferenceableValue>, paddingBottom:Null<ReferenceableValue>, paddingLeft:Null<ReferenceableValue>, paddingRight:Null<ReferenceableValue>, horizontalSpacing:Null<ReferenceableValue>, verticalSpacing:Null<ReferenceableValue>, debug:Bool, multiline:Bool, bgSheet:Null<ReferenceableValue>, bgTile:Null<ReferenceableValue>, pos:Position):CreateResult {
 		final fieldRef = macro $p{["this", fieldName]};
 		final createExprs:Array<Expr> = [macro $fieldRef = new h2d.Flow()];
 
@@ -3103,6 +3115,18 @@ class ProgrammableCodeGen {
 		if (debug) createExprs.push(macro $fieldRef.debug = true);
 		if (multiline) createExprs.push(macro $fieldRef.multiline = true);
 		createExprs.push(macro $fieldRef.overflow = h2d.Flow.FlowOverflow.Limit);
+		if (bgSheet != null && bgTile != null) {
+			final sheetExpr = rvToExpr(bgSheet, true);
+			final tileExpr = rvToExpr(bgTile, true);
+			createExprs.push(macro {
+				final _bg = this._pb.load9Patch(Std.string($sheetExpr), Std.string($tileExpr));
+				$fieldRef.borderLeft = _bg.borderLeft;
+				$fieldRef.borderRight = _bg.borderRight;
+				$fieldRef.borderTop = _bg.borderTop;
+				$fieldRef.borderBottom = _bg.borderBottom;
+				$fieldRef.backgroundTile = _bg.tile;
+			});
+		}
 
 		return {
 			fieldType: macro :h2d.Flow,

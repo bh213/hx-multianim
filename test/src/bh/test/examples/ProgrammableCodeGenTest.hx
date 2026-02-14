@@ -2634,4 +2634,13 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 			return inst;
 		}, async, 0.999);
 	}
+
+	// ==================== Flow background ninepatch: auto-sizing ====================
+
+	@Test
+	public function test66_FlowBgDemo(async:utest.Async):Void {
+		setupTest(66, "flowBgDemo");
+		builderAndMacroScreenshotAndCompare("test/examples/66-flowBgDemo/flowBgDemo.manim", "flowBgDemo",
+			() -> createMp().flowBgDemo2.create(), async);
+	}
 }
