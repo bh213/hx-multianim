@@ -17,6 +17,11 @@
 | **RVFunction** (`function(gridWidth/gridHeight)`) | Resolves grid spacing from node's parent chain at compile time. Handled in both `rvToExpr` and `resolveRVStatic`. |
 | **Multi-element named getters** | When multiple elements share the same `#name`, `get_name()` now returns `ProgrammableUpdatable` wrapping all elements. Single-element names still return `h2d.Object`. |
 | **`@:data` metadata** | `@:data("file.manim", "dataName")` generates typed data classes with `public final` fields. Record types generate companion classes (`ClassName_RecordName`). Builder `getData()` returns `Dynamic`. |
+| **`@final` constants** | `@final name = expr` — macro codegen inlines constant values or generates local vars for expressions. Scoping matches builder (block-level cleanup, per-iteration in repeatables). |
+| **String interpolation** | `'text ${$var}'` in single-quoted strings. Lexer splits into text/code parts, emits as `"text" + $var`. Supports expressions: `'${$x * 2}'`. Error detection for unclosed braces, empty expressions, unterminated strings. |
+| **Parse-time variable validation** | Unknown `$var` references produce errors listing available variables. Tracks parameter defs (`activeDefs`), loop vars, iterator output vars, `@final` vars (`scopeVars`). |
+| **Paths, curves, animated paths** | `getPath_<name>()`, `getAnimatedPath_<name>()`, `getCurve_<name>()` factory methods. Easing-only curves baked inline at compile time. |
+| **Param-dependent repeatable rebuild** | Repeatables whose iterator count depends on parameters use runtime rebuild with object pooling instead of static children. |
 
 ## Phase 2: Performance — optimize generated code
 

@@ -833,9 +833,26 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	@Test
 	public function test04_RepeatableDemo(async:utest.Async):Void {
-		setupTest(4, "repeatableDemo");
-		builderAndMacroScreenshotAndCompare("test/examples/4-repeatableDemo/repeatableDemo.manim", "repeatableDemo",
-			() -> createMp().repeatableDemo.create(), async, null, null, null, 0.999);
+		var params:Array<Map<String, Dynamic>> = [];
+		for (i in 0...4) {
+			var p = new Map<String, Dynamic>();
+			switch (i) {
+				case 0: p.set("count", 1);
+				case 1: p.set("count", 3);
+				case 2: p.set("count", 5);
+				case 3: p.set("count", 20);
+			}
+			params.push(p);
+		}
+		multiInstanceMacroTest(4, "repeatableDemo", 1.0, 90.0, params, function(i:Int):h2d.Object {
+			var mp = createMp();
+			return switch (i) {
+				case 0: mp.repeatableDemo.create(1);
+				case 1: mp.repeatableDemo.create(3);
+				case 2: mp.repeatableDemo.create(5);
+				default: mp.repeatableDemo.create(20);
+			};
+		}, async);
 	}
 
 	// ==================== FlowDemo: macro comparison ====================
@@ -2555,5 +2572,66 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	@Test
 	public function test63_FinalVarDemo(async:utest.Async):Void {
 		simpleTest(63, "finalVarDemo", async);
+	}
+
+	// ==================== Repeat rebuild: dynamic count changes ====================
+
+	@Test
+	public function test64_RepeatRebuild(async:utest.Async):Void {
+		// Each variant: [initialCount, finalCount, initialCols, finalCols, initialRows, finalRows]
+		final variants:Array<Array<Int>> = [
+			[3, 5, 3, 5, 2, 5], // grow
+			[10, 3, 10, 3, 10, 3], // shrink
+			[0, 10, 0, 10, 0, 10], // from zero
+			[10, 10, 10, 10, 10, 10], // no change
+		];
+
+		// Builder params: use the final values directly
+		var params:Array<Map<String, Dynamic>> = [];
+		for (v in variants) {
+			var p = new Map<String, Dynamic>();
+			p.set("count", v[1]);
+			p.set("cols", v[3]);
+			p.set("rows", v[5]);
+			params.push(p);
+		}
+
+		multiInstanceMacroTest(64, "repeatRebuild", 1.0, 180.0, params, function(i:Int):h2d.Object {
+			var mp = createMp();
+			var v = variants[i];
+			// Create with initial values, then set to final values
+			var inst = mp.repeatRebuild.create(v[0], v[2], v[4]);
+			inst.setCount(v[1]);
+			inst.setCols(v[3]);
+			inst.setRows(v[5]);
+			return inst;
+		}, async);
+	}
+
+	// ==================== Repeat all node types: bitmap/text/ninepatch/point with scale/alpha/align ====================
+
+	@Test
+	public function test65_RepeatAllNodes(async:utest.Async):Void {
+		final variants:Array<Array<Int>> = [
+			[2, 4], // grow
+			[5, 2], // shrink
+			[0, 3], // from zero
+			[3, 3], // no change
+		];
+
+		var params:Array<Map<String, Dynamic>> = [];
+		for (v in variants) {
+			var p = new Map<String, Dynamic>();
+			p.set("count", v[1]);
+			params.push(p);
+		}
+
+		multiInstanceMacroTest(65, "repeatAllNodes", 1.0, 180.0, params, function(i:Int):h2d.Object {
+			var mp = createMp();
+			var v = variants[i];
+			var inst = mp.repeatAllNodes.create(v[0]);
+			inst.setCount(v[1]);
+			return inst;
+		}, async, 0.999);
 	}
 }

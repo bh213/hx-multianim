@@ -823,4 +823,395 @@ class ParserErrorTest extends utest.Test {
 		');
 		Assert.isTrue(success, "@final inside repeatable should parse");
 	}
+
+	// ===== String interpolation tests =====
+
+	@Test
+	public function testInterpolationSimpleRef() {
+		// Note: double-quoted Haxe strings to avoid Haxe interpolating $name
+		var success = parseExpectingSuccess("
+			#test programmable(name:string=\"hi\") {
+				text(dd, '${$name}', #ffffffff): 0, 0
+			}
+		");
+		Assert.isTrue(success, "Simple string interpolation '${" + "$" + "param}' should parse");
+	}
+
+	@Test
+	public function testInterpolationWithPrefix() {
+		var success = parseExpectingSuccess("
+			#test programmable(name:string=\"hi\") {
+				text(dd, 'hello ${$name}', #ffffffff): 0, 0
+			}
+		");
+		Assert.isTrue(success, "Interpolation with prefix text should parse");
+	}
+
+	@Test
+	public function testInterpolationWithSuffix() {
+		var success = parseExpectingSuccess("
+			#test programmable(name:string=\"hi\") {
+				text(dd, '${$name} world', #ffffffff): 0, 0
+			}
+		");
+		Assert.isTrue(success, "Interpolation with suffix text should parse");
+	}
+
+	@Test
+	public function testInterpolationWithPrefixAndSuffix() {
+		var success = parseExpectingSuccess("
+			#test programmable(name:string=\"hi\") {
+				text(dd, 'hello ${$name} world', #ffffffff): 0, 0
+			}
+		");
+		Assert.isTrue(success, "Interpolation with surrounding text should parse");
+	}
+
+	@Test
+	public function testInterpolationMultiple() {
+		var success = parseExpectingSuccess("
+			#test programmable(a:uint=1, b:uint=2) {
+				text(dd, '${$a} and ${$b}', #ffffffff): 0, 0
+			}
+		");
+		Assert.isTrue(success, "Multiple interpolations in one string should parse");
+	}
+
+	@Test
+	public function testInterpolationWithExpression() {
+		var success = parseExpectingSuccess("
+			#test programmable(x:uint=5) {
+				text(dd, 'val=${$x * 2}', #ffffffff): 0, 0
+			}
+		");
+		Assert.isTrue(success, "Interpolation with arithmetic expression should parse");
+	}
+
+	@Test
+	public function testInterpolationAdjacentToText() {
+		var success = parseExpectingSuccess("
+			#test programmable(x:uint=5) {
+				text(dd, 'count:${$x}items', #ffffffff): 0, 0
+			}
+		");
+		Assert.isTrue(success, "Interpolation directly adjacent to text should parse");
+	}
+
+	@Test
+	public function testInterpolationConsecutive() {
+		var success = parseExpectingSuccess("
+			#test programmable(a:uint=1, b:uint=2) {
+				text(dd, '${$a}${$b}', #ffffffff): 0, 0
+			}
+		");
+		Assert.isTrue(success, "Consecutive interpolations with no separator should parse");
+	}
+
+	@Test
+	public function testSingleQuoteNoInterpolation() {
+		var success = parseExpectingSuccess("
+			#test programmable() {
+				text(dd, 'plain text', #ffffffff): 0, 0
+			}
+		");
+		Assert.isTrue(success, "Single-quoted string without interpolation should still work");
+	}
+
+	@Test
+	public function testSingleQuoteDollarWithoutBrace() {
+		var success = parseExpectingSuccess("
+			#test programmable() {
+				text(dd, '$5 price', #ffffffff): 0, 0
+			}
+		");
+		Assert.isTrue(success, "Dollar sign not followed by { should be treated as literal text");
+	}
+
+	@Test
+	public function testInterpolationInRepeatable() {
+		var success = parseExpectingSuccess("
+			#test programmable(count:uint=3) {
+				repeatable($i, step($count, dx: 20)) {
+					text(dd, 'item ${$i}', #ffffffff): 0, 0
+				}
+			}
+		");
+		Assert.isTrue(success, "Interpolation with loop variable in repeatable should parse");
+	}
+
+	@Test
+	public function testInterpolationInRepeatable2d() {
+		var success = parseExpectingSuccess("
+			#test programmable(cols:uint=3, rows:uint=2) {
+				repeatable2d($cx, $cy, step($cols, dx: 30), step($rows, dy: 20)) {
+					text(dd, '${$cx}/${$cy}', #ffffffff): 0, 0
+				}
+			}
+		");
+		Assert.isTrue(success, "Interpolation in repeatable2d with loop variables should parse");
+	}
+
+	@Test
+	public function testInterpolationMixedWithConcat() {
+		var success = parseExpectingSuccess("
+			#test programmable(name:string=\"hi\") {
+				text(dd, \"prefix:\" + '${$name}', #ffffffff): 0, 0
+			}
+		");
+		Assert.isTrue(success, "Interpolated string used with + concatenation should parse");
+	}
+
+	// ===== String interpolation error tests =====
+
+	@Test
+	public function testInterpolationUnclosedBrace() {
+		var error = parseExpectingError("
+			#test programmable(x:uint=5) {
+				text(dd, 'hello ${$x', #ffffffff): 0, 0
+			}
+		");
+		Assert.notNull(error, "Should throw error for unclosed interpolation");
+		Assert.isTrue(error.indexOf("Unclosed string interpolation") >= 0,
+			'Error should mention unclosed interpolation, got: $error');
+	}
+
+	@Test
+	public function testInterpolationEmpty() {
+		var error = parseExpectingError("
+			#test programmable() {
+				text(dd, 'hello ${}', #ffffffff): 0, 0
+			}
+		");
+		Assert.notNull(error, "Should throw error for empty interpolation");
+		Assert.isTrue(error.indexOf("Empty expression") >= 0,
+			'Error should mention empty expression, got: $error');
+	}
+
+	@Test
+	public function testInterpolationEmptyWhitespace() {
+		var error = parseExpectingError("
+			#test programmable() {
+				text(dd, 'hello ${  }', #ffffffff): 0, 0
+			}
+		");
+		Assert.notNull(error, "Should throw error for whitespace-only interpolation");
+		Assert.isTrue(error.indexOf("Empty expression") >= 0,
+			'Error should mention empty expression, got: $error');
+	}
+
+	@Test
+	public function testInterpolationUnclosedString() {
+		var error = parseExpectingError("
+			#test programmable(x:uint=5) {
+				text(dd, 'hello ${$x}
+			}
+		");
+		Assert.notNull(error, "Should throw error for unterminated interpolated string");
+		Assert.isTrue(error.indexOf("Unterminated string") >= 0,
+			'Error should mention unterminated string, got: $error');
+	}
+
+	@Test
+	public function testInterpolationUnclosedBraceMessage() {
+		var error = parseExpectingError("
+			#test programmable(x:uint=5) {
+				text(dd, 'value: ${$x + 1', #ffffffff): 0, 0
+			}
+		");
+		Assert.notNull(error, "Should throw error for unclosed interpolation with expression");
+		Assert.isTrue(error.indexOf("expected }") >= 0,
+			'Error should tell user to close with }, got: $error');
+	}
+
+	@Test
+	public function testInterpolationNestedUnclosed() {
+		// ${  with { inside but no matching }
+		var error = parseExpectingError("
+			#test programmable(x:uint=5) {
+				text(dd, 'test ${$x + {1', #ffffffff): 0, 0
+			}
+		");
+		Assert.notNull(error, "Should throw error for unclosed nested braces in interpolation");
+		Assert.isTrue(error.indexOf("Unclosed string interpolation") >= 0,
+			'Error should mention unclosed interpolation, got: $error');
+	}
+
+	// ===== Undefined variable reference tests =====
+
+	@Test
+	public function testUndefinedVarInText() {
+		var error = parseExpectingError("
+			#test programmable(x:uint=5) {
+				text(dd, $nonexistent, #ffffffff): 0, 0
+			}
+		");
+		Assert.notNull(error, "Should throw error for undefined variable in text");
+		Assert.isTrue(error.indexOf("unknown variable") >= 0,
+			'Error should mention unknown variable, got: $error');
+		Assert.isTrue(error.indexOf("nonexistent") >= 0,
+			'Error should name the bad variable, got: $error');
+	}
+
+	@Test
+	public function testUndefinedVarShowsAvailable() {
+		var error = parseExpectingError("
+			#test programmable(hp:uint=100, mode:[a,b]=a) {
+				text(dd, $typo, #ffffffff): 0, 0
+			}
+		");
+		Assert.notNull(error, "Should throw error for undefined variable");
+		Assert.isTrue(error.indexOf("hp") >= 0,
+			'Error should list available variables including hp, got: $error');
+		Assert.isTrue(error.indexOf("mode") >= 0,
+			'Error should list available variables including mode, got: $error');
+	}
+
+	@Test
+	public function testUndefinedVarInInterpolation() {
+		var error = parseExpectingError("
+			#test programmable(x:uint=5) {
+				text(dd, 'value: ${$oops}', #ffffffff): 0, 0
+			}
+		");
+		Assert.notNull(error, "Should throw error for undefined variable in interpolated string");
+		Assert.isTrue(error.indexOf("unknown variable") >= 0,
+			'Error should mention unknown variable, got: $error');
+		Assert.isTrue(error.indexOf("oops") >= 0,
+			'Error should name the bad variable, got: $error');
+	}
+
+	@Test
+	public function testUndefinedVarInPosition() {
+		var error = parseExpectingError("
+			#test programmable(x:uint=5) {
+				bitmap(generated(color(10, 10, #f00))): $missing, 0
+			}
+		");
+		Assert.notNull(error, "Should throw error for undefined variable in position");
+		Assert.isTrue(error.indexOf("unknown variable") >= 0,
+			'Error should mention unknown variable, got: $error');
+	}
+
+	@Test
+	public function testUndefinedVarInAlpha() {
+		var error = parseExpectingError("
+			#test programmable(x:uint=5) {
+				@alpha($nope) bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		");
+		Assert.notNull(error, "Should throw error for undefined variable in alpha");
+		Assert.isTrue(error.indexOf("unknown variable") >= 0,
+			'Error should mention unknown variable, got: $error');
+	}
+
+	@Test
+	public function testDefinedParamIsValid() {
+		var success = parseExpectingSuccess("
+			#test programmable(x:uint=5, label:string=\"hi\") {
+				text(dd, $label, #ffffffff): $x, 0
+			}
+		");
+		Assert.isTrue(success, "Defined parameters should be valid references");
+	}
+
+	@Test
+	public function testLoopVarIsValid() {
+		var success = parseExpectingSuccess("
+			#test programmable(count:uint=3) {
+				repeatable($i, step($count, dx: 20)) {
+					text(dd, $i, #ffffffff): 0, 0
+				}
+			}
+		");
+		Assert.isTrue(success, "Loop variable should be valid inside repeatable body");
+	}
+
+	@Test
+	public function testLoopVarNotValidOutsideScope() {
+		var error = parseExpectingError("
+			#test programmable(count:uint=3) {
+				repeatable($i, step($count, dx: 20)) {
+					bitmap(generated(color(10, 10, #f00))): 0, 0
+				}
+				text(dd, $i, #ffffffff): 0, 50
+			}
+		");
+		Assert.notNull(error, "Loop variable should not be valid outside repeatable body");
+		Assert.isTrue(error.indexOf("unknown variable") >= 0,
+			'Error should mention unknown variable, got: $error');
+	}
+
+	@Test
+	public function testIteratorOutputVarIsValid() {
+		var success = parseExpectingSuccess("
+			#test programmable() {
+				repeatable($index, tiles($bmp, \"crew2\", \"Arrow_dir0\")) {
+					bitmap($bmp): $index * 40, 0;
+				}
+			}
+		");
+		Assert.isTrue(success, "Iterator output variable $bmp should be valid inside repeatable body");
+	}
+
+	@Test
+	public function testFinalVarIsValid() {
+		var success = parseExpectingSuccess('
+			#test programmable(x:uint=10) {
+				@final doubled = $$x * 2
+				bitmap(generated(color($$doubled, $$doubled, #f00))): 0, 0
+			}
+		');
+		Assert.isTrue(success, "@final variable should be valid as reference");
+	}
+
+	@Test
+	public function testFinalVarNotValidBeforeDeclaration() {
+		var error = parseExpectingError('
+			#test programmable(x:uint=10) {
+				bitmap(generated(color($$later, $$later, #f00))): 0, 0
+				@final later = $$x * 2
+			}
+		');
+		Assert.notNull(error, "@final variable should not be valid before its declaration");
+		Assert.isTrue(error.indexOf("unknown variable") >= 0,
+			'Error should mention unknown variable, got: $error');
+	}
+
+	@Test
+	public function testRepeatable2dVarsValid() {
+		var success = parseExpectingSuccess("
+			#test programmable(cols:uint=3, rows:uint=2) {
+				repeatable2d($cx, $cy, step($cols, dx: 30), step($rows, dy: 20)) {
+					text(dd, '${$cx}/${$cy}', #ffffffff): 0, 0
+				}
+			}
+		");
+		Assert.isTrue(success, "Both 2d loop variables should be valid inside body");
+	}
+
+	@Test
+	public function testNestedRepeatableScope() {
+		var success = parseExpectingSuccess("
+			#test programmable(n:uint=3) {
+				repeatable($i, step($n, dx: 40)) {
+					repeatable($j, step($n, dy: 20)) {
+						text(dd, $i, #ffffffff): 0, 0
+						text(dd, $j, #ffffffff): 10, 0
+					}
+				}
+			}
+		");
+		Assert.isTrue(success, "Outer loop variable should be accessible in inner repeatable");
+	}
+
+	@Test
+	public function testNonProgrammableNoValidation() {
+		// Data blocks and other non-programmable types should not trigger validation
+		var success = parseExpectingSuccess('
+			#test data {
+				maxLevel: 5
+			}
+		');
+		Assert.isTrue(success, "Non-programmable blocks should parse without variable validation");
+	}
 }

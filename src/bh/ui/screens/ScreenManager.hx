@@ -358,20 +358,24 @@ class ScreenManager {
 		var removedScreens:Null<Array<UIScreen>> = null;
 		var overrideActiveScreenControllers:Null<Array<UIScreen>> = null;
 
-		final layerTop = 6;
-		final layerMid = 4;
-		final layerBot = 2;
+		// Global scene layer indices (added to app.s2d)
+		// layerContent: main game screen (e.g. CombatScreen) - bottom
+		// layerMaster: persistent overlay screen (e.g. top bar) - above content
+		// layerDialog: modal dialog screens - above everything
+		final layerContent = 2;
+		final layerMaster = 4;
+		final layerDialog = 6;
 		switch mode {
 			case None:
 				switch newScreenMode {
 					case None:
 
 					case Single(single):
-						addedScreens = [single => layerMid];
+						addedScreens = [single => layerContent];
 					case MasterAndSingle(master, single):
-						addedScreens = [master => layerBot, single => layerMid];
+						addedScreens = [master => layerMaster, single => layerContent];
 					case Dialog(dialog, caller, previousMode, dialogName):
-						addedScreens = [dialog => layerTop];
+						addedScreens = [dialog => layerDialog];
 				}
 			case Single(oldSingle):
 				switch newScreenMode {
@@ -380,17 +384,17 @@ class ScreenManager {
 					case Single(single):
 						if (single != oldSingle) {
 							removedScreens = [oldSingle];
-							addedScreens = [single => layerMid];
+							addedScreens = [single => layerContent];
 						}
 					case MasterAndSingle(master, single):
 						if (single != oldSingle) {
 							removedScreens = [oldSingle];
-							addedScreens = [single => layerMid];
+							addedScreens = [single => layerContent];
 						}
 						if (master == oldSingle) throw 'Single -> MasterAndSingle: switching single with master';
 
 					case Dialog(dialog, caller, previousMode, dialogName):
-						addedScreens = [dialog => layerTop];
+						addedScreens = [dialog => layerDialog];
 						overrideActiveScreenControllers = [dialog];
 				}
 			case MasterAndSingle(oldMaster, oldSingle):
@@ -400,7 +404,7 @@ class ScreenManager {
 					case Single(single):
 						if (oldSingle != single) {
 							removedScreens = [oldSingle];
-							addedScreens = [single => layerMid];
+							addedScreens = [single => layerContent];
 						}
 						if (single == oldMaster)
 							throw 'MasterAndSingle -> Single: switching master to single';
@@ -411,15 +415,15 @@ class ScreenManager {
 						addedScreens = [];
 						if (oldMaster != master) {
 							removedScreens = [oldMaster];
-							addedScreens = [master => layerBot];
+							addedScreens = [master => layerMaster];
 						}
 						if (oldSingle != single) {
 							removedScreens.push(oldSingle);
-							addedScreens.set(single, layerMid);
+							addedScreens.set(single, layerContent);
 						}
 						if (single == oldMaster || master == oldSingle) throw 'MasterAndSingle -> MasterAndSingle: mismatching master/single';
 					case Dialog(dialog, caller, previousMode, dialogName):
-						addedScreens = [dialog => layerTop];
+						addedScreens = [dialog => layerDialog];
 						overrideActiveScreenControllers = [dialog, oldMaster]; // TODO: optional?
 				}
 
@@ -430,14 +434,14 @@ class ScreenManager {
 
 					case Single(single):
 						removedScreens = [oldDialog];
-						addedScreens = [single => layerMid];
+						addedScreens = [single => layerContent];
 					case MasterAndSingle(master, single):
 						removedScreens = [oldDialog];
-						addedScreens = [single => layerMid, master => layerBot];
+						addedScreens = [single => layerContent, master => layerMaster];
 
 					case Dialog(dialog, caller, previousMode, dialogName):
 						removedScreens = [oldDialog];
-						addedScreens = [dialog => layerTop];
+						addedScreens = [dialog => layerDialog];
 						overrideActiveScreenControllers = [dialog];
 						final result = dialog.getController().exitResponse;
 						caller.onScreenEvent(UIOnControllerEvent(OnDialogResult(dialogName, result)), null);

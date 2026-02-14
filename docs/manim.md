@@ -455,9 +455,50 @@ width: ?($count > 5) $count * 20 : $count * 30
 ```
 
 **Interpolated strings:**
+
+Single-quoted strings support `${...}` interpolation to embed expressions inline:
+
 ```
-'Nice to meet you ${$name}, have a nice day'
+'Hello ${$name}'                          // simple variable
+'prefix ${$name} suffix'                  // text before and after
+'${$x * 2} pixels'                        // expression with arithmetic
+'${$first} and ${$second}'                // multiple interpolations
+'Score: ${$points}/${$max}'               // adjacent to text
 ```
+
+Interpolation expressions are wrapped in parentheses for correct precedence, so `'val: ${$x * 2}'` becomes `"val: " + ($x * 2)`.
+
+Single-quoted strings without `${` are treated as plain strings. A literal `$` without `{` is kept as-is.
+
+Interpolation can be mixed with the `+` concatenation operator:
+```
+'Hello ${$name}' + " (id: " + $id + ")"
+```
+
+**Error detection:**
+- Unclosed `${` (missing `}`) produces: `Unclosed string interpolation, expected }`
+- Empty `${}` or `${ }` produces: `Empty expression in string interpolation`
+- Missing closing quote produces: `Unterminated string, missing closing single quote`
+
+---
+
+## Variable Validation
+
+Inside `programmable` blocks, all `$variable` references are validated at parse time. Referencing an undefined variable produces an error listing available variables:
+
+```
+unknown variable $foo. Available: width, height, index
+```
+
+**Variables in scope:**
+- **Parameters** defined in `programmable(...)` declaration
+- **Loop variables** (`$i`, `$x`, `$y`) inside `repeatable` / `repeatable2d` bodies
+- **Iterator output variables** (`$bitmap`, `$tilename`, `$value`) inside iterator bodies
+- **`@final` constants** after their declaration point
+
+Loop and iterator variables are only valid inside their enclosing `{ }` block. `@final` variables are valid from their declaration to the end of their scope.
+
+Outside `programmable` blocks (e.g., root-level elements), no validation is performed.
 
 ---
 
