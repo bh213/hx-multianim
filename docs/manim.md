@@ -1581,23 +1581,308 @@ Enable debug traces by adding to your HXML file:
 
 ---
 
-## Components
+## UI Components
 
-### ScrollList
+UI components are Haxe classes that wrap `.manim` programmables into interactive widgets. Each component requires its `.manim` programmable to follow a specific parameter/element naming contract.
 
-Settings:
-* `panelBuilder` - builder for the panel
-* `itemBuilder` - builder for the items
-* `scrollbarBuilder` - builder for the scrollbar
-* `width` - width of the scroll list
-* `height` - height of the scroll list
-* `topClearance` - clearance from the top of the screen
-* `scrollSpeed` - up/down scroll speed in pixels per second
+Components are typically created either:
+- Directly via static `create()` methods on the component class
+- Via `UIScreenBase` helper methods (`addButton`, `addCheckbox`, etc.) which support `.manim` settings overrides
+
+### Settings Convention
+
+`UIScreenBase` helper methods accept a `ResolvedSettings` map (from `.manim` `settings{...}` blocks). Setting names follow this convention:
+- **Single builder**: `buildName` — overrides the programmable name to build
+- **Multiple builders**: `<element>BuildName` — e.g. `radioBuildName`, `radioButtonBuildName`
+
+### Button
+
+**Haxe class:** `UIStandardMultiAnimButton`
+
+**Required `.manim` parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `buttonText` | string | Display text |
+| `status` | combo: `normal`, `hover`, `pressed` | Interaction state |
+| `disabled` | combo: `true`, `false` | Disabled state |
+
+**UIScreenBase settings:**
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `buildName` | string | `"button"` | Programmable name |
+| `text` | string | method param | Button text override |
+
+**Events:** `UIClick`
+
+```haxe
+// Direct
+var btn = UIStandardMultiAnimButton.create(builder, "button", "Click Me");
+
+// Via UIScreenBase (with macro settings injection)
+var btn = addButtonWithSingleBuilder(builder, "button", "Click Me");
+var btn = addButton(builder.createElementBuilder("button"), "Click Me", settings);
+```
+
+### Checkbox
+
+**Haxe class:** `UIStandardMultiCheckbox`
+
+**Required `.manim` parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `status` | combo: `normal`, `hover`, `pressed` | Interaction state |
+| `disabled` | combo: `true`, `false` | Disabled state |
+| `checked` | combo: `true`, `false` | Checked state |
+
+**UIScreenBase settings:**
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `buildName` | string | `"checkbox"` | Programmable name |
+| `initialValue` | bool | `false` | Initial checked state |
+
+**Events:** `UIToggle(checked:Bool)`
+
+```haxe
+var cb = UIStandardMultiCheckbox.create(builder, "checkbox", true);
+var cb = addCheckbox(builder, false);
+```
+
+### Checkbox with Text
+
+**Haxe class:** `UIElementContainer` (wraps checkbox + text)
+
+**Required `.manim` parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `textColor` | int | Text color |
+| `title` | string | Label text |
+| `font` | string | Font name |
+
+**Required `.manim` placeholder:** `checkbox` — resolved via factory to a checkbox widget
+
+**UIScreenBase settings:**
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `buildName` | string | `"checkboxWithText"` | Programmable name |
+| `textColor` | int | `0xFFFFFFFF` | Text color override |
+| `font` | string | method param | Font name override |
+
+```haxe
+var cbText = addCheckboxWithText(builder, "my label", "m6x11", true);
+```
+
+### Slider
+
+**Haxe class:** `UIStandardMultiAnimSlider`
+
+**Required `.manim` parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `status` | string: `normal`, `hover`, `pressed` | Interaction state |
+| `size` | int | Slider track width in pixels |
+| `value` | int | Current value (0-100) |
+| `disabled` | string: `true`, `false` | Disabled state |
+
+**Required `.manim` named points:**
+- `start` — left edge of the slider track
+- `end` — right edge of the slider track
+
+**UIScreenBase settings:**
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `buildName` | string | `"slider"` | Programmable name |
+| `size` | int | `200` | Track width |
+
+**Events:** `UIChangeValue(value:Int)` — value is always 0-100
+
+```haxe
+var slider = UIStandardMultiAnimSlider.create(builder, "slider", 200, 50);
+var slider = addSlider(builder, 50);
+```
+
+### Radio Buttons
+
+**Haxe class:** `UIMultiAnimRadioButtons`
+
+**Required `.manim` parameters (container):**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `count` | int | Number of radio buttons |
+
+**Required `.manim` placeholder (container):** `checkbox` — indexed placeholder, resolved to individual radio button widgets via callback
+
+**UIScreenBase settings:**
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `radioBuildName` | string | `"radioButtonsVertical"` / `"radioButtonsHorizontal"` | Container programmable name |
+| `radioButtonBuildName` | string | `"radio"` | Single radio button programmable name |
+
+**Events:** `UIChangeItem(index:Int, items:Array<UIElementListItem>)`
+
+```haxe
+var radio = UIMultiAnimRadioButtons.create(builder, "radioButtons", "radio", items, 0);
+var radio = addRadio(builder, items, true, 0); // vertical, selected index 0
+```
+
+### Scrollable List
+
+**Haxe class:** `UIMultiAnimScrollableList`
+
+**Required `.manim` parameters (panel):**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `width` | int | Panel width |
+| `height` | int | Panel height |
+| `topClearance` | int | Top margin |
+
+**Required `.manim` placeholder (panel):** `mask` — clipping mask for scroll content
+
+**Required `.manim` parameters (item via `UIElementBuilder`):**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `itemWidth` | int | Item width |
+| `index` | int | Item index |
+| `title` | string | Item display text |
+| `tile` | tile | Item icon (if available) |
+| `status` | combo: `normal`, `hover`, `pressed` | Interaction state |
+| `selected` | combo: `true`, `false` | Selection state |
+| `disabled` | combo: `true`, `false` | Disabled state |
+
+**Required `.manim` root setting (item):** `height` — item height in pixels
+
+**Required `.manim` parameters (scrollbar):**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `panelHeight` | string | Visible panel height |
+| `scrollableHeight` | string | Total scrollable content height |
+| `scrollPosition` | string | Current scroll position |
+
+**Optional `.manim` root setting (scrollbar):** `scrollSpeed` — pixels per second (default: 100)
+
+**UIScreenBase settings:**
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `panelBuildName` | string | method param | Panel programmable name |
+| `itemBuildName` | string | method param | Item programmable name |
+| `scrollbarBuildName` | string | method param | Scrollbar programmable name |
+| `scrollbarInPanelName` | string | `"scrollbar"` | Named element in panel for scrollbar placement |
+| `width` | int | `100` | Panel width |
+| `height` | int | `100` | Panel height |
+| `topClearance` | int | `0` | Top margin |
+| `scrollSpeed` | float | from `.manim` or `100` | Scroll speed override (pixels/sec) |
+| `doubleClickThreshold` | float | `0.3` | Double-click detection window (seconds) |
+| `wheelScrollMultiplier` | float | `10` | Mouse wheel scroll sensitivity |
+
+**Events:** `UIChangeItem(index, items)`, `onItemDoubleClicked` callback
+
+```haxe
+var list = UIMultiAnimScrollableList.create(panelBuilder, itemBuilder,
+    scrollbarBuilder, "scrollbar", 200, 300, items, 0, 0);
+
+// With settings overrides
+var list = addScrollableList(panelBuilder, itemBuilder, scrollbarBuilder,
+    "scrollbar", items, settings, 0, 200, 300);
+
+// Configurable after creation
+list.scrollSpeedOverride = 150.0;
+list.doubleClickThreshold = 0.5;
+list.wheelScrollMultiplier = 20;
+```
 
 ### Dropdown
 
-Settings:
-* `transitionTimer` - time to transition between open & closed
+**Haxe class:** `UIStandardMultiAnimDropdown`
+
+Combines a closed/open button with a `UIMultiAnimScrollableList` panel.
+
+**Required `.manim` parameters (dropdown):**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `status` | combo: `normal`, `hover`, `pressed` | Interaction state |
+| `panel` | combo: `open`, `closed` | Panel visibility state |
+
+**Required `.manim` named elements (dropdown):**
+- `panelPoint` — updatable point where the panel is positioned
+- `selectedName` — text element showing the currently selected item name
+
+**Optional `.manim` root setting (dropdown):** `transitionTimer` — open/close animation duration (default: 1.0 seconds)
+
+**UIScreenBase settings** (includes all Scrollable List settings, plus):
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `dropdownBuildName` | string | method param | Dropdown programmable name |
+| `autoOpen` | bool | `true` | Open on mouse enter |
+| `autoCloseOnLeave` | bool | `true` | Close on mouse leave |
+| `closeOnOutsideClick` | bool | `true` | Close when clicking outside |
+| `transitionTimer` | float | from `.manim` or `1.0` | Open/close animation duration override |
+
+**Events:** `UIChangeItem(index, items)`
+
+```haxe
+// Direct with separate builders
+var dd = UIStandardMultiAnimDropdown.create(
+    builder.createElementBuilder("dropdown"),
+    builder.createElementBuilder("list-panel"),
+    builder.createElementBuilder("list-item"),
+    builder.createElementBuilder("scrollbar"),
+    "scrollbar", items);
+
+// Convenience with single builder (uses standard component names as defaults)
+var dd = UIStandardMultiAnimDropdown.createWithSingleBuilder(builder, items);
+
+// Configurable after creation
+dd.autoOpen = false;
+dd.transitionTimerOverride = 0.5;
+```
+
+### Interactive
+
+**Haxe class:** `UIInteractiveWrapper`
+
+Hit-test regions with optional typed metadata. No `.manim` parameter contract — wraps `MAInteractive` objects directly.
+
+See the [interactive element](#interactive) section for `.manim` syntax.
+
+**Screen integration:**
+```haxe
+// Add single interactive
+var wrapper = addInteractive(maObject, "prefix");
+
+// Add all interactives from a build result
+var wrappers = addInteractives(buildResult, "prefix");
+
+// Remove by prefix
+removeInteractives("prefix");
+```
+
+**Events:** `UIClick`, `UIEntering`, `UILeaving` — check `source` for `UIElementIdentifiable` to get `id` and `metadata`
+
+### Draggable
+
+**Haxe class:** `UIMultiAnimDraggable`
+
+Wraps any `h2d.Object` to make it draggable. No `.manim` parameter contract.
+
+```haxe
+var draggable = UIMultiAnimDraggable.create(someObject);
+draggable.enabled = false; // disable dragging
+```
 
 ---
 

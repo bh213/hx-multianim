@@ -15,6 +15,6 @@ version: 0.3
 
       // Checkbox placeholder - uses checkbox2 style from std.manim
       placeholder(generated(cross(200, 20)), builderParameter("checkbox")) {
-            settings{checkboxBuildName=>checkbox2}
+            settings{buildName=>checkbox2}
       }
 }

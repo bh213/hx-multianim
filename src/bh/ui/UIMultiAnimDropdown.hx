@@ -37,6 +37,7 @@ class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisab
 	public var requestRedraw = true;
 
 	var transitionTimer = 1.0;
+	public var transitionTimerOverride:Null<Float> = null;
 
 	public var disabled(default, set):Bool = false;
 	public var items:Array<UIElementListItem> = [];
@@ -232,7 +233,7 @@ class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisab
 		final currentResult = mainPartImages.findResultByCombo(standardUIElementStatusToString(this.status), pStatus);
 		var updatable = currentResult.getUpdatable("panelPoint");
 
-		transitionTimer = currentResult.rootSettings.getFloatOrDefault("transitionTimer", 1.0);
+		transitionTimer = transitionTimerOverride ?? currentResult.rootSettings.getFloatOrDefault("transitionTimer", 1.0);
 		currentMainPart = currentResult.object;
 		root.addChild(currentMainPart);
 		if (panelObject != null)

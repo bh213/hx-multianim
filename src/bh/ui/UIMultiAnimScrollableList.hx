@@ -34,6 +34,9 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 	var keyScrollingDown = false;
 
 	public var scrollSpeed:Float = 100;
+	public var scrollSpeedOverride:Null<Float> = null;
+	public var doubleClickThreshold:Float = 0.3;
+	public var wheelScrollMultiplier:Float = 10;
 
 	final displayItems:Map<Int, MultiAnimMultiResult> = [];
 	final itemYPositions:Map<Int, Float> = [];
@@ -132,7 +135,7 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 				"scrollPosition" => '${this.mask.scrollY}'
 			]);
 			this.scrollbar = buildResult.object;
-			this.scrollSpeed = buildResult.rootSettings.getFloatOrDefault("scrollSpeed", 100);
+			this.scrollSpeed = scrollSpeedOverride ?? buildResult.rootSettings.getFloatOrDefault("scrollSpeed", 100);
 
 			var objs = this.panelResults.names.get(scrollbarInPanelName); 
 			if (objs == null) {
@@ -231,7 +234,7 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 			case OnPush(button):
 				if (newIndex != null) {
 					if (items[newIndex].disabled == null || items[newIndex].disabled == false) {
-						if (time - lastClick < 0.3 && lastClickIndex == newIndex) {
+						if (time - lastClick < doubleClickThreshold && lastClickIndex == newIndex) {
 							onItemDoubleClicked(newIndex, items, wrapper);
 						}
 						hoverMode = false;
@@ -273,7 +276,7 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 				updateScrollbar();
 
 			case OnWheel(dir):
-				this.mask.scrollY += dir * 10;
+				this.mask.scrollY += dir * wheelScrollMultiplier;
 				updateScrollbar();
 		}
 	}
