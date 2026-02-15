@@ -61,6 +61,8 @@ ninepatch("ui", "Window_3x3_idle", 60, 60) {
 
 The prefix form is more concise for single elements that don't need children or other long-form properties.
 
+**Note:** Property and keyword names are case-insensitive (`maxLife`, `maxlife`, and `MAXLIFE` are all equivalent). Some element names accept multiple spellings (e.g., `animatedPath`, `animated_path`, `animatedpath`).
+
 ### Example
 ```
 #panel programmable(width:uint=180, height:uint=30, mode:[idle,pressed]=pressed) {
@@ -144,7 +146,9 @@ flow([optional params])
 * `layout`: `vertical` | `horizontal` | `stack`
 * `paddingTop`, `paddingBottom`, `paddingLeft`, `paddingRight`, `padding`
 * `debug`: `true` | `false`
+* `multiline`: `true` | `false` — enables multi-line content wrapping
 * `horizontalSpacing:<int>`, `verticalSpacing:<int>`
+* `background: ninepatch(sheet, tile)` — adds a 9-patch background to the flow
 
 ### point
 Creates a point (not displayed) for positioning items.
@@ -301,6 +305,19 @@ layers() {
 }
 ```
 
+### mask
+Clips all child content to a rectangular region. Wraps `h2d.Mask`.
+
+```
+mask(width, height) {
+  bitmap(...): x, y
+}
+```
+
+* `width`, `height` — size of the clipping rectangle (integer or `$reference`)
+* Children positioned outside the mask bounds are clipped
+* Supports `pos`, `scale`, `alpha` properties
+
 ### placeholder
 Uses callback to get object to insert.
 
@@ -356,6 +373,13 @@ Emits setting values to the build.
 settings{key1=>value1, key2=>value2, ...}
 ```
 
+Values can be typed, similar to interactive metadata:
+```
+settings{action => "buy", price:int => 100, weight:float => 1.5}
+```
+
+Supported types: `int`, `float`, `string` (default when no type specified).
+
 ---
 
 ## Coordinate Systems (xy)
@@ -401,6 +425,7 @@ filter: group(outline(?($selected) 2 : 0, yellow), brightness(?($active) 1.2 : 0
 * `range`: `name:num..num`, e.g., `count:1..5 = 5`
 * `int`: `count:int`, e.g., `delta:int = 0`
 * `uint`: `count:uint`, e.g., `count:uint = 5`
+* `float`: `size:float`, e.g., `opacity:float = 0.8`
 * `flags`: `mask:flags(bits)`, e.g., `mask:flags(6)`
 * `string`: `name="myname"` (always has default)
 * `hexdirection`: `dir:hexdirection` (0..5)
@@ -457,6 +482,20 @@ Elements can use `@else` and `@default` to form conditional chains, similar to i
 ```
 
 `@else` and `@default` must follow a sibling that has a `@()` conditional. They cannot be used on root elements.
+
+### Inline Properties
+
+In addition to `alpha()` and `scale()` prefixes (documented above), these inline properties can be used on elements:
+
+* `@layer(index)` — set z-layer index (integer), for children of `layers` or `programmable`
+* `@alpha(value)` — set opacity (float or `$reference`)
+* `@scale(value)` — set scale multiplier (float or `$reference`)
+* `@tint(color)` — set color tint (hex color or `$reference`)
+
+Multiple inline properties can be combined:
+```
+@layer(2) @alpha(0.8) @tint(#FF0000) bitmap("sprite.png"): 10, 20
+```
 
 ---
 
@@ -1190,6 +1229,7 @@ Particle systems for visual effects like fire, smoke, explosions, and magic effe
 | `loop` | bool | true | Continuously emit particles |
 | `maxLife` | float | 1.0 | Particle lifetime in seconds |
 | `lifeRandom` | float | 0 | Random lifetime variation (0-1) |
+| `relative` | bool | false | Particles move relative to emitter (vs world space) |
 
 ### Movement Properties
 
@@ -1350,7 +1390,7 @@ Control particle behavior at boundaries.
 
 | Property | Type | Description |
 |----------|------|-------------|
-| `boundsMode` | enum | `kill`, `bounce(damping)`, `wrap` |
+| `boundsMode` | enum | `none`, `kill`, `bounce(damping)`, `wrap` |
 | `boundsMinX` | float | Left boundary |
 | `boundsMaxX` | float | Right boundary |
 | `boundsMinY` | float | Top boundary |
@@ -1371,6 +1411,42 @@ boundsMode: bounce(0.6)
 // Wrap around (for rain, etc.)
 boundsMode: wrap
 ```
+
+### Trail Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `trailEnabled` | bool | false | Enable particle trails |
+| `trailLength` | float | — | Trail length multiplier |
+| `trailFadeOut` | bool | false | Fade trail opacity over length |
+
+### Sub-Emitters
+
+Particles can spawn other particle groups on lifecycle events.
+
+```
+subEmitters: [
+    {
+        groupId: "sparkGroup",
+        trigger: ondeath,
+        probability: 0.8,
+        inheritVelocity: 0.5,
+        offsetX: 10,
+        offsetY: 0
+    }
+]
+```
+
+**Sub-emitter properties:**
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `groupId` | string | — | Name of the particle group to spawn |
+| `trigger` | enum | — | `onbirth`, `ondeath`, `oncollision`, `oninterval(seconds)` |
+| `probability` | float | 1.0 | Chance of spawning (0-1) |
+| `inheritVelocity` | float | — | Fraction of parent velocity inherited |
+| `offsetX` | float | — | Horizontal offset from parent |
+| `offsetY` | float | — | Vertical offset from parent |
 
 ### Multiple Tiles
 

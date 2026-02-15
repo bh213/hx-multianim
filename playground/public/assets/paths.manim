@@ -7,8 +7,8 @@ paths {
   #line1 path {
     
     
-    line(relative, 100,100)
-    
+    lineTo(100,100)
+
     arc(100, -90)
     forward(20)
     arc(100, 180) 
@@ -47,16 +47,16 @@ forward(80)
     forward(300)
   }
   #lineX path {
-    line(absolute, 100,100)
-    line(absolute, 500,0)
-    line(absolute, 0,500)
-    line(absolute, 0,0)
-    
+    lineAbs(100,100)
+    lineAbs(500,0)
+    lineAbs(0,500)
+    lineAbs(0,0)
+
   }
   #testModes path {
-    line(relative, 100, 50)
-    line(absolute, 200, 100)
-    line(300, 150) // default relative
+    lineTo(100, 50)
+    lineAbs(200, 100)
+    lineTo(300, 150)
     bezier(relative, 100, 50, 75, 25)
     bezier(absolute, 200, 100, 150, 50)
     bezier(100, 50, 75, 25) // default relative

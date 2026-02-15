@@ -3928,13 +3928,6 @@ class MacroManimParser {
 						final end = parseXY();
 						expect(TClosed);
 						pathElements.push(LineTo(end, PCMAbsolute));
-					case TIdentifier(s) if (isKeyword(s, "line")):
-						advance();
-						expect(TOpen);
-						final mode = parseCoordinateMode();
-						final end = parseXY();
-						expect(TClosed);
-						pathElements.push(LineTo(end, mode));
 					case TIdentifier(s) if (isKeyword(s, "checkpoint")):
 						advance();
 						expect(TOpen);

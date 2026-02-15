@@ -5,17 +5,17 @@ paths {
     arc(80, 180)
   }
   #linePath path {
-    line(relative, 200, 0)
+    lineTo(200, 0)
   }
   #bezierPath path {
     bezier(relative, 200, 0, 100, -80, smoothing: auto)
   }
   #checkpointPath path {
-    line(relative, 80, 0)
+    lineTo(80, 0)
     checkpoint("mid")
-    line(relative, 80, -60)
+    lineTo(80, -60)
     checkpoint("end")
-    line(relative, 40, 60)
+    lineTo(40, 60)
   }
 }
 

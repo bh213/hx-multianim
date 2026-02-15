@@ -10,6 +10,34 @@
 			"match": "//.*$"
 		},
 		{
+			"begin": "@\\(",
+			"beginCaptures": {
+			  "0": { "name": "keyword.control.at-sign" }
+			},
+			"end": "\\)",
+			"endCaptures": {
+			  "0": { "name": "keyword.control.parenthesis" }
+			},
+			"name": "meta.condition-block",
+			"patterns": [
+			  {
+				"match": "\\b([A-Za-z_][A-Za-z0-9_]*)\\s*(=>|!=)",
+				"captures": {
+				  "1": { "name": "variable.other.key" },
+				  "2": { "name": "keyword.operator" }
+				}
+			  },
+			  {
+				"match": "([A-Za-z_][A-Za-z0-9_]*)",
+				"name": "constant.other.value"
+			  }
+			]
+		},
+		{
+			"name": "variable.other.interpolation",
+			"match": "\\$\\$[A-Za-z][A-Za-z0-9]*\\$\\$"
+		},
+		{
 			"include": "#keywords"
 		}
 
@@ -20,7 +48,7 @@
 			"patterns": [
 			{
 				"name": "entity.name.class",
-				"match": "\\b(sheet|allowedExtraPoints|states|center)\\b"
+				"match": "\\b(sheet|allowedExtraPoints|states|center|metadata)\\b"
 			},
 			{
 				"name": "keyword",
@@ -28,7 +56,11 @@
 			},
 			{
 				"name": "entity.name.type",
-				"match": "\\b(name|fps|playlist|sheet|extrapoints|playlist|loop|event|goto|hit|random|trigger|command|frames|untilCommand|duration|file)\\b"
+				"match": "\\b(name|fps|playlist|sheet|extrapoints|loop|event|goto|hit|random|trigger|command|frames|untilCommand|duration|file)\\b"
+			},
+			{
+				"name": "constant.language",
+				"match": "\\b(yes|no|true|false)\\b"
 			}
 		]
 		},

@@ -8,10 +8,10 @@ paths {
     bezier(relative, 200, 0, 0, -120, smoothing: auto)
   }
   #zigzag path {
-    line(relative, 50, -40)
-    line(relative, 50, 40)
-    line(relative, 50, -40)
-    line(relative, 50, 40)
+    lineTo(50, -40)
+    lineTo(50, 40)
+    lineTo(50, -40)
+    lineTo(50, 40)
   }
 }
 

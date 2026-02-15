@@ -23,7 +23,7 @@ animation {
     loop: yes | <number>
     playlist {
         sheet: "sprite_$$state$$_name"
-        event <name> trigger | random x,y,radius | x,y
+        event <name> [trigger] | random x,y,radius | x,y
     }
     extrapoints {
         @(state=>value) pointName: x,y
@@ -209,11 +209,12 @@ Loads and plays a single frame PNG image.
 
 ```anim
 event <name> trigger
+event <name>
 event <name> x,y
 event <name> random x,y,radius
 ```
 
-* `trigger` - fires event with specific name
+* `trigger` - fires event with specific name. The `trigger` keyword is optional — bare `event <name>` produces the same result
 * `x,y` - fires point event at coordinates
 * `random x,y,radius` - fires event at random point within radius of (x,y)
 
