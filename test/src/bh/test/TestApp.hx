@@ -3,7 +3,6 @@ package bh.test;
 import hxd.App;
 import h2d.Scene;
 import utest.Runner;
-import utest.ui.Report;
 import bh.test.VisualTestBase;
 import bh.base.FontManager;
 
@@ -44,7 +43,9 @@ class TestApp extends hxd.App {
 		testRunner.addCase(new bh.test.examples.AnimParserTest());
 		testRunner.addCase(new bh.test.examples.ProgrammableCodeGenTest(s2d));
 
-		Report.create(testRunner);
+		// Capture unit test results in memory for HTML report
+		// (not using Report.create which calls Sys.exit on completion)
+		HtmlReportGenerator.setUnitTestAggregator(new utest.ui.common.ResultAggregator(testRunner, true));
 	}
 
 	public function subscribeToUpdate(callback:Float -> Void):Void {
@@ -76,6 +77,7 @@ class TestApp extends hxd.App {
 		if (testsCompleted) {
 			postCompletionCounter++;
 			if (postCompletionCounter >= POST_COMPLETION_FRAMES) {
+				HtmlReportGenerator.enableUnitTestReport();
 				HtmlReportGenerator.generateReport();
 				var summary = HtmlReportGenerator.getSummary();
 				sys.io.File.saveContent("build/test_result.txt", summary);
@@ -86,6 +88,7 @@ class TestApp extends hxd.App {
 		// Safety timeout: exit after 200 frames regardless
 		if (frameCount >= 200) {
 			trace("Warning: Safety timeout reached (200 frames), exiting with pending visual tests: " + VisualTestBase.pendingVisualTests);
+			HtmlReportGenerator.enableUnitTestReport();
 			HtmlReportGenerator.generateReport();
 			sys.io.File.saveContent("build/test_result.txt", "FAILED: Safety timeout (200 frames), pending: " + VisualTestBase.pendingVisualTests);
 			Sys.exit(1);

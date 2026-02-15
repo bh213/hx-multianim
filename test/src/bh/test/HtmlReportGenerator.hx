@@ -24,6 +24,16 @@ typedef TestResult = {
 class HtmlReportGenerator {
 	private static var results:Array<TestResult> = [];
 	private static var reportPath:String = "test/screenshots/index.html";
+	private static var unitAggregator:Null<utest.ui.common.ResultAggregator> = null;
+	private static var includeUnitTests:Bool = false;
+
+	public static function setUnitTestAggregator(aggregator:utest.ui.common.ResultAggregator):Void {
+		unitAggregator = aggregator;
+	}
+
+	public static function enableUnitTestReport():Void {
+		includeUnitTests = true;
+	}
 
 	public static function addResult(testName:String, referencePath:String, actualPath:String, passed:Bool, similarity:Float, ?errorMessage:String,
 			?threshold:Float):Void {
@@ -327,6 +337,67 @@ class HtmlReportGenerator {
 		html.add('            white-space: pre;\n');
 		html.add('            tab-size: 4;\n');
 		html.add('        }\n');
+		html.add('        .unit-tests-section {\n');
+		html.add('            margin-top: 40px;\n');
+		html.add('            border-top: 2px solid #999;\n');
+		html.add('            padding-top: 20px;\n');
+		html.add('        }\n');
+		html.add('        .unit-tests-summary {\n');
+		html.add('            background: white;\n');
+		html.add('            padding: 15px;\n');
+		html.add('            border-radius: 5px;\n');
+		html.add('            box-shadow: 0 2px 4px rgba(0,0,0,0.1);\n');
+		html.add('            margin-bottom: 15px;\n');
+		html.add('        }\n');
+		html.add('        .unit-tests-summary.all-passed {\n');
+		html.add('            border-left: 4px solid #4CAF50;\n');
+		html.add('        }\n');
+		html.add('        .unit-tests-summary.has-failures {\n');
+		html.add('            border-left: 4px solid #f44336;\n');
+		html.add('        }\n');
+		html.add('        .expand-btn {\n');
+		html.add('            background: #e0e0e0;\n');
+		html.add('            border: none;\n');
+		html.add('            padding: 6px 14px;\n');
+		html.add('            border-radius: 3px;\n');
+		html.add('            cursor: pointer;\n');
+		html.add('            font-size: 13px;\n');
+		html.add('            margin-left: 15px;\n');
+		html.add('        }\n');
+		html.add('        .expand-btn:hover { background: #ccc; }\n');
+		html.add('        .unit-details { display: none; }\n');
+		html.add('        .unit-details.visible { display: block; }\n');
+		html.add('        .unit-class {\n');
+		html.add('            background: white;\n');
+		html.add('            margin-bottom: 10px;\n');
+		html.add('            padding: 12px 15px;\n');
+		html.add('            border-radius: 5px;\n');
+		html.add('            box-shadow: 0 1px 3px rgba(0,0,0,0.08);\n');
+		html.add('        }\n');
+		html.add('        .unit-class-name {\n');
+		html.add('            font-weight: bold;\n');
+		html.add('            font-size: 15px;\n');
+		html.add('            color: #333;\n');
+		html.add('            margin-bottom: 8px;\n');
+		html.add('        }\n');
+		html.add('        .unit-method {\n');
+		html.add('            font-family: Consolas, Monaco, monospace;\n');
+		html.add('            font-size: 13px;\n');
+		html.add('            padding: 2px 0;\n');
+		html.add('        }\n');
+		html.add('        .unit-method.pass { color: #388E3C; }\n');
+		html.add('        .unit-method.fail { color: #c62828; font-weight: bold; }\n');
+		html.add('        .unit-method .dots { color: #999; margin-left: 4px; }\n');
+		html.add('        .unit-fail-detail {\n');
+		html.add('            background: #ffebee;\n');
+		html.add('            padding: 6px 10px;\n');
+		html.add('            margin: 2px 0 4px 20px;\n');
+		html.add('            border-radius: 3px;\n');
+		html.add('            font-size: 12px;\n');
+		html.add('            color: #c62828;\n');
+		html.add('            font-family: monospace;\n');
+		html.add('            white-space: pre-wrap;\n');
+		html.add('        }\n');
 		html.add('    </style>\n');
 		html.add('</head>\n');
 		html.add('<body>\n');
@@ -341,6 +412,9 @@ class HtmlReportGenerator {
 		html.add('        <span style="color: #4CAF50;">${passed} passed</span>, ');
 		html.add('        <span style="color: #f44336;">${failed} failed</span>\n');
 		html.add('    </div>\n');
+
+		// Unit test results section (before visual tests, details hidden by default)
+		generateUnitTestSection(html);
 
 		// Failed tests links section
 		var failedResults = results.filter(r -> !r.passed);
@@ -485,6 +559,20 @@ class HtmlReportGenerator {
 		html.add('${manimMap.toString()}\n');
 		html.add('    </script>\n');
 
+		// Unit test details toggle (separate script so JSON parse errors can't block it)
+		html.add('    <script>\n');
+		html.add('        function toggleUnitDetails() {\n');
+		html.add('            var el = document.getElementById("unitDetails");\n');
+		html.add('            var btn = document.getElementById("unitToggleBtn");\n');
+		html.add('            if (el.classList.contains("visible")) {\n');
+		html.add('                el.classList.remove("visible");\n');
+		html.add('                btn.textContent = "Show Details";\n');
+		html.add('            } else {\n');
+		html.add('                el.classList.add("visible");\n');
+		html.add('                btn.textContent = "Hide Details";\n');
+		html.add('            }\n');
+		html.add('        }\n');
+		html.add('    </script>\n');
 		// JavaScript for image overlay and manim overlay
 		html.add('    <script>\n');
 		html.add('        var manimData = JSON.parse(document.getElementById("manimData").textContent);\n');
@@ -517,10 +605,12 @@ class HtmlReportGenerator {
 		html.add('</body>\n');
 		html.add('</html>\n');
 
-		File.saveContent(reportPath, html.toString());
-
-		// Write summary to a separate file for test.bat to read
-		File.saveContent("build/test_result.txt", getSummary());
+		try {
+			File.saveContent(reportPath, html.toString());
+		} catch (e:Dynamic) {
+			// File may be locked by browser — don't fail tests over report writing
+			trace('Warning: Could not write report: $e');
+		}
 	}
 
 	private static function extractTestNumber(testName:String):Int {
@@ -550,14 +640,113 @@ class HtmlReportGenerator {
 	public static function getSummary():String {
 		var passed = results.filter(r -> r.passed).length;
 		var failed = results.length - passed;
+		var parts:Array<String> = [];
 		if (failed > 0) {
 			var failedNames = results.filter(r -> !r.passed).map(r -> r.testName);
-			return 'FAILED: ${failed}/${results.length} tests failed [${failedNames.join(", ")}]';
+			parts.push('FAILED: ${failed}/${results.length} visual tests failed [${failedNames.join(", ")}]');
 		}
+		if (includeUnitTests && unitAggregator != null && unitAggregator.root != null && !unitAggregator.root.stats.isOk) {
+			var us = unitAggregator.root.stats;
+			parts.push('FAILED: unit tests: ${us.failures} failures, ${us.errors} errors out of ${us.assertations} assertions');
+		}
+		if (parts.length > 0) return parts.join("; ");
 		return 'OK: ${passed}/${results.length} visual tests passed';
 	}
 
 	public static function clear():Void {
 		results = [];
+		unitAggregator = null;
+		includeUnitTests = false;
+	}
+
+	private static function generateUnitTestSection(html:StringBuf):Void {
+		if (!includeUnitTests || unitAggregator == null || unitAggregator.root == null) return;
+
+		var unitTestResult = unitAggregator.root;
+		var stats = unitTestResult.stats;
+		var allOk = stats.isOk;
+		var summaryClass = allOk ? "all-passed" : "has-failures";
+
+		html.add('    <div class="unit-tests-section">\n');
+		html.add('        <h2>Unit Tests</h2>\n');
+		html.add('        <div class="unit-tests-summary ${summaryClass}">\n');
+		html.add('            <strong>${stats.assertations} assertions:</strong> ');
+		html.add('            <span style="color: #4CAF50;">${stats.successes} passed</span>');
+		if (stats.failures > 0) html.add(', <span style="color: #f44336;">${stats.failures} failures</span>');
+		if (stats.errors > 0) html.add(', <span style="color: #f44336;">${stats.errors} errors</span>');
+		if (stats.warnings > 0) html.add(', <span style="color: #FF9800;">${stats.warnings} warnings</span>');
+		html.add('\n');
+		html.add('            <button class="expand-btn" id="unitToggleBtn" onclick="toggleUnitDetails()">Show Details</button>\n');
+		html.add('        </div>\n');
+
+		// Collapsible details
+		html.add('        <div class="unit-details" id="unitDetails">\n');
+
+		var allClasses:Array<utest.ui.common.ClassResult> = [];
+		collectClasses(unitTestResult, allClasses);
+		for (cls in allClasses) {
+			generateUnitClass(html, cls);
+		}
+
+		html.add('        </div>\n');
+		html.add('    </div>\n');
+	}
+
+	private static function collectClasses(root:utest.ui.common.PackageResult, out:Array<utest.ui.common.ClassResult>):Void {
+		// Collect root-level classes
+		for (className in root.classNames()) {
+			out.push(root.getClass(className));
+		}
+		// Collect classes from direct packages only (no recursion — flattenPackage=true
+		// puts all packages at root level, and PackageResult can have circular refs)
+		for (pkgName in root.packageNames()) {
+			var pkg = root.getPackage(pkgName);
+			for (className in pkg.classNames()) {
+				out.push(pkg.getClass(className));
+			}
+		}
+	}
+
+	private static function generateUnitClass(html:StringBuf, cls:utest.ui.common.ClassResult):Void {
+		html.add('            <div class="unit-class">\n');
+		html.add('                <div class="unit-class-name">${cls.className.htmlEscape()}</div>\n');
+
+		for (methodName in cls.methodNames()) {
+			var fixture = cls.get(methodName);
+			var ok = fixture.stats.isOk;
+			var statusCls = ok ? "pass" : "fail";
+			var dots = "";
+			for (assertation in fixture) {
+				switch (assertation) {
+					case Success(_): dots += ".";
+					case Failure(_, _): dots += "F";
+					case Error(_, _): dots += "E";
+					case SetupError(_, _): dots += "S";
+					case TeardownError(_, _): dots += "T";
+					case TimeoutError(_, _): dots += "O";
+					case AsyncError(_, _): dots += "A";
+					case Warning(_): dots += "W";
+					case Ignore(_): dots += "I";
+				}
+			}
+			var prefix = ok ? "OK" : "FAIL";
+			html.add('                <div class="unit-method ${statusCls}">${methodName.htmlEscape()}: ${prefix} <span class="dots">${dots}</span></div>\n');
+
+			// Show failure details
+			if (!ok) {
+				for (assertation in fixture) {
+					switch (assertation) {
+						case Failure(msg, pos):
+							var detail = '${pos.fileName}:${pos.lineNumber}: ${msg}';
+							html.add('                <div class="unit-fail-detail">${detail.htmlEscape()}</div>\n');
+						case Error(e, stack):
+							var detail = Std.string(e);
+							html.add('                <div class="unit-fail-detail">${detail.htmlEscape()}</div>\n');
+						default:
+					}
+				}
+			}
+		}
+		html.add('            </div>\n');
 	}
 }
