@@ -20,10 +20,9 @@ repeatable: inline array with $index, $value?
     - DONE: ArrayIterator with `repeatable($i, array($val, $arr))` works in both builder and macro codegen
 
 fix html/implement text
-    - PARTIAL: createHtmlText() exists in MultiAnimBuilder.hx:1071-1074
-    - Used when isHtml=true in TEXT node
-    - HTMLTEXT case is commented out (lines 1816-1818) - incomplete feature
-    - HtmlText works but may not be fully exposed in .manim DSL
+    - PARTIAL: `text(..., html: true)` parameter approach works via createHtmlText() in MultiAnimBuilder.hx
+    - Standalone HTMLTEXT element type is intentionally deprecated/commented out
+    - The `html: true` parameter on text elements is the supported approach
 
 fix double reload issue
     - NO CODE REFERENCES - likely runtime behavior in playground/game
@@ -57,15 +56,11 @@ sub-emitters
     - Building: MultiAnimBuilder.hx:2633-2644
     - Runtime: Particles.hx with SubEmitTrigger, triggerSubEmitters(), checkIntervalSubEmitters()
     - Triggers: OnBirth, OnDeath, OnCollision, Interval
-    - Verify all triggers work correctly
+    - REMAINING: Implement actual particle spawning in triggerSubEmitters() and checkIntervalSubEmitters() (currently stubbed)
 
 Animations - easing & events
 paths:
-    - DONE: Easing functions (12 named + cubic bezier) in TweenUtils.hx
-    - DONE: AnimatedPath easing/duration mode (createWithDurationAndEasing)
-    - DONE: Path normalization (Path.normalize, SinglePath.transform)
-    - DONE: 1D Curves (Curve.hx, curves {} DSL, easing-based and point-based)
-    - DONE: Macro codegen for paths, animatedPath, curves
+    - DONE: Full implementation complete
     - REMAINING: grid/hex coordinate systems for paths
     particles diff with direction & speed as variables
     make object follow animation, maybe based on center or extra point??
@@ -151,9 +146,9 @@ next major release
     - xy positioning and layer support incomplete
 
 * mask element?
-    - PARTIAL: h2d.Mask used internally in UIMultiAnimScrollableList.hx:21,65
-    - NOT exposed as .manim element type
-    - Would allow masking regions in DSL
+    - DONE: `mask(w, h)` exposed as .manim element type
+    - Parsed in MacroManimParser.hx, built in MultiAnimBuilder.hx
+    - Test coverage: test/examples/34-maskDemo/
 
 * uielements -> send initial change to uievents so control value can be synced to logic OR save/restore state for full page reloads & similar
     - NOT IMPLEMENTED

@@ -121,7 +121,7 @@ animation {
 }
 ```
 
-**Parameter types**: `uint`, `int`, `bool`, `string`, `color`, enum (`[val1,val2]`), range (`1..5`), flags
+**Parameter types**: `uint`, `int`, `float`, `bool`, `string`, `color`, enum (`[val1,val2]`), range (`1..5`), flags
 
 ### Common Elements
 
@@ -134,7 +134,13 @@ animation {
 | `reference($ref)` | Reference another programmable |
 | `interactive(w, h, id [, debug] [, key=>val ...])` | Hit-test region with optional metadata |
 | `layers()` | Z-ordering container |
+| `mask(w, h)` | Clipping mask rectangle |
+| `flow(...)` | Layout flow container |
 | `repeatable($var, iterator)` | Loop elements |
+| `tilegroup(...)` | Optimized tile grouping |
+| `stateanim construct(...)` | Inline state animation |
+| `point` | Positioning point |
+| `apply(...)` | Apply properties to parent |
 | `graphics(...)` | Vector graphics |
 | `pixels(...)` | Pixel primitives |
 | `particles {...}` | Particle effects |
@@ -143,6 +149,8 @@ animation {
 
 ```manim
 @(param=>value)           # Match when param equals value
+@if(param=>value)         # Explicit @if (same as @())
+@ifstrict(param=>value)   # Strict matching (must match ALL params)
 @(param != value)         # Match when param NOT equals value
 @(param=>[v1,v2])         # Match multiple values
 @(param >= 30)            # Greater than or equal
@@ -150,6 +158,9 @@ animation {
 @(param > 30)             # Strictly greater than
 @(param < 30)             # Strictly less than
 @(param => 10..30)        # Range match (10 <= param <= 30)
+@else                     # Matches when preceding @() didn't match
+@else(param=>value)       # Else-if with conditions
+@default                  # Final fallback
 ```
 
 ### Expressions
@@ -195,11 +206,16 @@ animation {
     sizeCurve: [(0, 0.5), (0.5, 1.2), (1.0, 0.2)]
     velocityCurve: [(0, 1.0), (1.0, 0.3)]
     forceFields: [turbulence(30, 0.02, 2.0), wind(10, 0), vortex(0, 0, 100, 150), attractor(0, 0, 50, 100), repulsor(0, 0, 80, 120)]
-    boundsMode: kill | bounce(0.6) | wrap
+    boundsMode: none | kill | bounce(0.6) | wrap
     boundsMinX: -100
     boundsMaxX: 300
     rotationSpeed: 90
     rotateAuto: true
+    relative: true
+    trailEnabled: true
+    trailLength: 0.5
+    trailFadeOut: true
+    subEmitters: [{ groupId: "sparks", trigger: ondeath, probability: 0.8 }]
 }
 ```
 
@@ -262,13 +278,12 @@ Enable debug traces by adding to HXML:
 
 ### Fixes Needed
 - Repeatable step scale for dx/dy
-- HTML text implementation
+- HTML text: standalone `HTMLTEXT` element type is deprecated/commented out (the `text(..., html: true)` parameter approach works)
 - Double reload issue
 - Hex coordinate system offset support
 
 ### Next Features
-- Animation paths with easing & events
-- Particle sub-emitters (partially implemented)
+- Particle sub-emitters (parsing and building complete, runtime spawning in `Particles.hx` not yet implemented)
 
 ## UI Notes — Interactives
 

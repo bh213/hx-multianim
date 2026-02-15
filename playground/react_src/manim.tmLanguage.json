@@ -56,6 +56,10 @@
 			]
 		  },
 		  {
+			"name": "keyword.control",
+			"match": "@(else|default|final)\\b"
+		},
+		  {
 			"name": "entity.name.method",
 			"match": "\\b@[A-Za-z][A-Za-z0-9]*\\b"
 
@@ -71,30 +75,49 @@
 			"patterns": [
 			{
 				"name": "entity.name.class",
-				"match": "\\b(animatedPath|particles|programmable|stateanim|flow|apply|text|tilegroup|repeatable|ninepatch|layers|placeholder|reference|bitmap|point|interactive|pixels|relativeLayouts|palettes|paths)\\b"
+				"match": "\\b(animatedPath|animated_path|animatedpath|particles|programmable|stateanim|flow|apply|text|tilegroup|repeatable|repeatable2d|ninepatch|layers|mask|placeholder|reference|bitmap|point|interactive|pixels|relativeLayouts|palettes|paths|curve|curves|autotile|atlas2|data|record|graphics|settings)\\b"
 			},
 			{
 				"name": "keyword",
-				"match": "\\b(external|path|debug|version|nothing|list|line|flat|pointy|layer|layout|callback|builderParam|tileSource|sheet|file|generated|hex|hexCorner|hexEdge|grid|settings|pos|alpha|blendMode|scale|updatable|cross|function|gridWidth|gridHeight|center|left|right|top|bottom|offset|construct|palette|position|import|filter)\\b"
+				"match": "\\b(external|path|debug|version|nothing|list|line|flat|pointy|layer|layout|callback|builderParam|builderParameter|tileSource|sheet|file|generated|hex|hexCorner|hexEdge|hexgrid|grid|pos|alpha|blendMode|scale|tint|updatable|cross|function|gridWidth|gridHeight|center|left|right|top|bottom|offset|construct|palette|position|import|filter|div|step|range|tiles|sequence|metadata|emit|count|loop|maxLife|lifeRandom|speed|speedRandom|speedIncrease|gravity|gravityAngle|size|sizeRandom|rotationInitial|rotationSpeed|rotationSpeedRandom|rotateAuto|fadeIn|fadeOut|fadePower|emitSync|emitDelay|animationRepeat|relative|trailEnabled|trailLength|trailFadeOut|colorStart|colorEnd|colorMid|colorMidPos|sizeCurve|velocityCurve|forceFields|boundsMode|boundsMinX|boundsMaxX|boundsMinY|boundsMaxY|subEmitters|groupId|trigger|probability|inheritVelocity|offsetX|offsetY|easing|duration|maxWidth|maxHeight|minWidth|minHeight|lineHeight|colWidth|paddingTop|paddingBottom|paddingLeft|paddingRight|padding|horizontalSpacing|verticalSpacing|multiline|background|tileSize|format|mapping|allowPartialMapping|depth|region|demo|lineTo|lineAbs|bezier|bezierAbs|arc|forward|turn|checkpoint|close|moveTo|moveAbs|spiral|wave|smoothing|none|event|changeSpeed|accelerate|attachParticles|removeParticles|changeAnimState)\\b"
 			},
 			{
 				"name": "entity.name.type",
-				"match": "\\b(int|uint|flags|string|hexdirection|griddirection|bool|color)\\b"
+				"match": "\\b(int|uint|float|flags|string|hexdirection|griddirection|bool|color|array)\\b"
 			},
 			{
-				"name": "entity.name.type",
-				"match": "\\b(int|uint|flags|string|hexdirection|griddirection|bool|color)\\b"
+				"name": "constant.language",
+				"match": "\\b(true|false|yes|no|add|multiply|screen|kill|wrap|linear|easeinquad|easeoutquad|easeinoutquad|easeincubic|easeoutcubic|easeinoutcubic|easeinback|easeoutback|easeinoutback|easeoutbounce|easeoutelastic|cubicbezier|vertical|horizontal|stack|filled|onbirth|ondeath|oncollision|oninterval|cross|blob47|pointy)\\b"
+			},
+			{
+				"name": "support.function",
+				"match": "\\b(turbulence|wind|vortex|attractor|repulsor|cone|box|circle|point|bounce|outline|glow|blur|saturate|brightness|dropShadow|replacePalette|replaceColor|pixelOutline|group|colorWithText|autotileRegionSheet)\\b"
 			}
 		]
 		},
 		"strings": {
-			"name": "string.quoted.double",
-			"begin": "\"",
-			"end": "\"",
 			"patterns": [
 				{
-					"name": "constant.character.escape.multianim",
-					"match": "\\\\."
+					"name": "string.quoted.double",
+					"begin": "\"",
+					"end": "\"",
+					"patterns": [
+						{
+							"name": "constant.character.escape.multianim",
+							"match": "\\\\."
+						}
+					]
+				},
+				{
+					"name": "string.quoted.single",
+					"begin": "'",
+					"end": "'",
+					"patterns": [
+						{
+							"name": "variable.other.interpolation",
+							"match": "\\$\\{[^}]*\\}"
+						}
+					]
 				}
 			]
 		}
