@@ -7,21 +7,26 @@ version: 0.3
   @alpha(0.1) bitmap(generated(color(1280, 720, white)));
 
   // Row 1: Interactive with debug overlay and metadata
+  text(m3x6, "debug + metadata (action, label)", #888888): 200, 58
   interactive(120, 40, "btn1", debug, action => "buy", label => "Buy Item"): 50, 50
 
-  // Row 2: Interactive with metadata
+  // Row 2: Interactive with metadata, no debug
+  text(m3x6, "metadata only (action => sell)", #888888): 200, 128
   interactive(120, 40, "btn2", action => "sell"): 50, 120
   bitmap(generated(color(120, 40, #00AA00))): 50, 120
 
   // Row 3: Interactive without metadata
+  text(m3x6, "no metadata, id only", #888888): 200, 198
   interactive(120, 40, "btn3"): 50, 190
   bitmap(generated(color(120, 40, #0088FF))): 50, 190
 
-  // Row 4: Interactive with typed metadata
+  // Row 4: Interactive with typed metadata (int, float, string)
+  text(m3x6, "typed metadata (price:int, weight:float, action)", #888888): 200, 268
   interactive(120, 40, "btn4", price:int => 100, weight:float => 1.5, action => "craft"): 50, 260
   bitmap(generated(color(120, 40, #AA0055))): 50, 260
 
-  // Row 5: Repeatable interactives with metadata
+  // Row 5: Repeatable interactives with $i index as id
+  text(m3x6, "repeatable interactives ($i as id, type => slot)", #888888): 490, 338
   repeatable($i, step($cols, dx: 140)) {
     interactive(120, 40, $i, type => "slot"): 50, 330
     bitmap(generated(color(120, 40, #8800FF))): 50, 330

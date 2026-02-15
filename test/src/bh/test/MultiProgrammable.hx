@@ -208,4 +208,7 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/67-interactiveMetadata/interactiveMetadata.manim", "interactiveMetadata")
 	public var interactiveMetadata;
+
+	@:manim("test/examples/68-filtersAdvanced/filtersAdvanced.manim", "filtersAdvanced")
+	public var filtersAdvanced;
 }
