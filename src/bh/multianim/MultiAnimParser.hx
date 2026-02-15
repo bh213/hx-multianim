@@ -841,7 +841,7 @@ enum DataValue {
 
 typedef DataRecordDef = {
 	var name:String;
-	var fields:Array<{name:String, type:DataValueType}>;
+	var fields:Array<{name:String, type:DataValueType, optional:Bool}>;
 }
 
 typedef DataFieldDef = {

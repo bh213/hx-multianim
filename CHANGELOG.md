@@ -46,10 +46,16 @@
   - Scalar fields with type inference: `maxLevel: 5`, `name: "Warrior"`, `enabled: true`, `speed: 3.5`
   - Arrays: `costs: [10, 20, 40, 80]`
   - Named record types: `#tier record(name: string, cost: int, dmg: float)` with schema validation
+  - Optional record fields: `?fieldName: type` — omitted fields generate `Null<T>`, can be skipped in record values
   - Record-typed fields: `defaultTier: tier { name: "None", cost: 0, dmg: 0.0 }`
   - Arrays of records: `tiers: tier[] [{ name: "Bronze", cost: 10, dmg: 1.0 }]`
   - Builder: `getData("name")` returns `Dynamic` with all fields
   - Macro: `@:data("file.manim", "name")` generates typed classes with `public final` fields and record typedefs
+  - Exposed type naming: record types named `PascalCase(dataName) + PascalCase(recordName)` (e.g., `GameDataTier` for `#tier` in `#gameData`)
+  - Custom type package: `@:data("file.manim", "name", "my.pkg")` puts generated record types in specified package
+  - `mergeTypes` flag: `@:data("file.manim", "name", "pkg", mergeTypes)` deduplicates identical record types across multiple `@:data` fields
+  - Type collision detection: fatal error if generated type name already exists
+- **HTML report: unit test section** — test runner results now displayed in HTML report with expandable per-class/method details, pass/fail status, and failure messages
 
 ## [0.4]
 

@@ -2567,6 +2567,56 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		Assert.equals(10, tiers[0].cost);
 	}
 
+	@Test
+	public function testDataOptionalFieldOmitted():Void {
+		final mp = createMp();
+		final bt = mp.gameData.basicTier;
+		Assert.notNull(bt, "basicTier should not be null");
+		Assert.equals("Basic", bt.name);
+		Assert.equals(5, bt.cost);
+		Assert.isNull(bt.dmg, "dmg should be null when omitted");
+	}
+
+	@Test
+	public function testDataOptionalFieldProvided():Void {
+		final mp = createMp();
+		final dt = mp.gameData.defaultTier;
+		Assert.notNull(dt, "defaultTier should not be null");
+		Assert.notNull(dt.dmg, "dmg should not be null when provided");
+		Assert.floatEquals(0.0, dt.dmg);
+	}
+
+	@Test
+	public function testDataExposedType():Void {
+		// The record type should be exposed as GameDataTier (PascalCase of dataName + recordName)
+		final mp = createMp();
+		final tier:bh.test.GameDataTier = mp.gameData.defaultTier;
+		Assert.notNull(tier, "Should be assignable to exposed type");
+		Assert.equals("None", tier.name);
+	}
+
+	@Test
+	public function testDataTypePackage():Void {
+		// typepackage puts the exposed type in a custom package
+		final mp = createMp();
+		final tier:bh.test.data.GameDataTier = mp.gameDataTypePkg.defaultTier;
+		Assert.notNull(tier, "Should be assignable to type in custom package");
+		Assert.equals("None", tier.name);
+		Assert.equals(0, tier.cost);
+	}
+
+	@Test
+	public function testDataMergeTypes():Void {
+		// mergeTypes should reuse the same type for identical record signatures
+		final mp = createMp();
+		final tier1:bh.test.merged.GameDataTier = mp.gameDataMerged1.defaultTier;
+		final tier2:bh.test.merged.GameDataTier = mp.gameDataMerged2.defaultTier;
+		Assert.notNull(tier1, "merged1 tier should not be null");
+		Assert.notNull(tier2, "merged2 tier should not be null");
+		Assert.equals("None", tier1.name);
+		Assert.equals("None", tier2.name);
+	}
+
 	// ==================== @final variable declaration ====================
 
 	@Test

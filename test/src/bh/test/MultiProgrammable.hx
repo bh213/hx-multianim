@@ -188,6 +188,15 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 	@:data("test/examples/62-dataBlock/dataBlock.manim", "gameData")
 	public var gameData;
 
+	@:data("test/examples/62-dataBlock/dataBlock.manim", "gameData", "bh.test.data")
+	public var gameDataTypePkg;
+
+	@:data("test/examples/62-dataBlock/dataBlock.manim", "gameData", "bh.test.merged", mergeTypes)
+	public var gameDataMerged1;
+
+	@:data("test/examples/62-dataBlock/dataBlock.manim", "gameData", "bh.test.merged", mergeTypes)
+	public var gameDataMerged2;
+
 	@:manim("test/examples/64-repeatRebuild/repeatRebuild.manim", "repeatRebuild")
 	public var repeatRebuild;
 
