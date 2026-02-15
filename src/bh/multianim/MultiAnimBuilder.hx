@@ -2370,8 +2370,19 @@ class MultiAnimBuilder {
 				final pixelsResult = drawPixels(shapes, gridCoordinateSystem, hexCoordinateSystem);
 				pixelsResult.pixelLines.setPosition(pixelsResult.minX, pixelsResult.minY);
 				Pixels(pixelsResult.pixelLines);
-			case INTERACTIVE(width, height, id, debug):
-				var obj = new MAObject(MAInteractive(resolveAsInteger(width), resolveAsInteger(height), resolveAsString(id)), debug);
+			case INTERACTIVE(width, height, id, debug, metadata):
+				var resolvedMeta:ResolvedSettings = null;
+				if (metadata != null) {
+					resolvedMeta = [];
+					for (entry in metadata) {
+						resolvedMeta.set(resolveAsString(entry.key), switch entry.type {
+							case SVTInt: RSVInt(resolveAsInteger(entry.value));
+							case SVTFloat: RSVFloat(resolveAsNumber(entry.value));
+							case SVTString: RSVString(resolveAsString(entry.value));
+						});
+					}
+				}
+				var obj = new MAObject(MAInteractive(resolveAsInteger(width), resolveAsInteger(height), resolveAsString(id), resolvedMeta), debug);
 				internalResults.interactives.push(obj);
 				HeapsObject(obj);
 

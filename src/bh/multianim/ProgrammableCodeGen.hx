@@ -14,6 +14,7 @@ import bh.multianim.MultiAnimParser.PathCoordinateMode;
 import bh.multianim.MultiAnimParser.SmoothingType;
 import bh.multianim.MultiAnimParser.EasingType;
 import bh.multianim.MultiAnimParser.ReferenceableValue;
+import bh.multianim.MultiAnimParser.SettingValueType;
 import bh.multianim.MultiAnimParser.CurveDef;
 import bh.multianim.MultiAnimParser.CurveSegmentDef;
 import bh.multianim.MultiAnimParser.CurvesDef;
@@ -1941,13 +1942,37 @@ class ProgrammableCodeGen {
 			case FLOW(maxWidth, maxHeight, minWidth, minHeight, lineHeight, colWidth, layout, paddingTop, paddingBottom, paddingLeft, paddingRight, horizontalSpacing, verticalSpacing, debug, multiline, bgSheet, bgTile):
 				generateFlowCreate(node, fieldName, maxWidth, maxHeight, minWidth, minHeight, lineHeight, colWidth, layout, paddingTop, paddingBottom, paddingLeft, paddingRight, horizontalSpacing, verticalSpacing, debug, multiline, bgSheet, bgTile, pos);
 
-			case INTERACTIVE(w, h, id, _debug):
+			case INTERACTIVE(w, h, id, debug, metadata):
 				final wExpr = rvToExpr(w);
 				final hExpr = rvToExpr(h);
 				final idExpr = rvToExpr(id);
+				final debugExpr:Expr = debug ? macro true : macro false;
+				final metaExpr:Expr = if (metadata == null) {
+					macro null;
+				} else {
+					final entries:Array<Expr> = [];
+					for (entry in metadata) {
+						final keyExpr = rvToExpr(entry.key, true);
+						final valExpr:Expr = switch entry.type {
+							case SVTInt: final v = rvToExpr(entry.value); macro bh.multianim.MultiAnimParser.SettingValue.RSVInt($v);
+							case SVTFloat: final v = rvToExpr(entry.value); macro bh.multianim.MultiAnimParser.SettingValue.RSVFloat($v);
+							case SVTString: final v = rvToExpr(entry.value, true); macro bh.multianim.MultiAnimParser.SettingValue.RSVString($v);
+						};
+						entries.push(macro m.set($keyExpr, $valExpr));
+					}
+					final setBlock:Expr = {expr: EBlock(entries), pos: Context.currentPos()};
+					macro {
+						var m = new Map<String, bh.multianim.MultiAnimParser.SettingValue>();
+						$setBlock;
+						m;
+					};
+				};
 				{
-					fieldType: macro :h2d.Object,
-					createExprs: [macro $p{["this", fieldName]} = new bh.base.MAObject($wExpr, $hExpr, $idExpr)],
+					fieldType: macro :bh.base.MAObject,
+					createExprs: [
+						macro $p{["this", fieldName]} = new bh.base.MAObject(
+							bh.base.MAObject.MultiAnimObjectData.MAInteractive($wExpr, $hExpr, $idExpr, $metaExpr), $debugExpr)
+					],
 					isContainer: false,
 					exprUpdates: [],
 				};

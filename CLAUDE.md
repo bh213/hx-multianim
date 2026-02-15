@@ -132,6 +132,7 @@ animation {
 | `ninepatch(sheet, tile, w, h)` | 9-patch scalable |
 | `placeholder(size, source)` | Dynamic placeholder |
 | `reference($ref)` | Reference another programmable |
+| `interactive(w, h, id [, debug] [, key=>val ...])` | Hit-test region with optional metadata |
 | `layers()` | Z-ordering container |
 | `repeatable($var, iterator)` | Loop elements |
 | `graphics(...)` | Vector graphics |
@@ -268,6 +269,25 @@ Enable debug traces by adding to HXML:
 ### Next Features
 - Animation paths with easing & events
 - Particle sub-emitters (partially implemented)
+
+## UI Notes — Interactives
+
+`interactive()` elements create hit-test regions with optional typed metadata:
+
+```manim
+interactive(200, 30, "myBtn")
+interactive(200, 30, "myBtn", debug)
+interactive(200, 30, "myBtn", action => "buy", label => "Buy Item")
+interactive(200, 30, $idx, price:int => 100, weight:float => 1.5, action => "craft")
+```
+
+Metadata supports typed values matching the settings system: `key => val` (string default), `key:int => N`, `key:float => N`, `key:string => "s"`. Keys and values can be `$references`.
+
+**UI integration:**
+- `UIInteractiveWrapper` — thin wrapper implementing `UIElement`, `StandardUIElementEvents`, `UIElementIdentifiable`
+- `UIElementIdentifiable` — opt-in interface with `id`, `prefix`, `metadata:BuilderResolvedSettings`
+- Screen methods: `addInteractive()`, `addInteractives(result, prefix)`, `removeInteractives(prefix)`
+- Events: emits standard `UIClick`, `UIEntering`, `UILeaving` — check `source` for `UIElementIdentifiable` to get `id`/`metadata`
 
 ## Playground
 

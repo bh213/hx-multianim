@@ -163,7 +163,7 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 
 	function parseInteractiveId(obj:MAObject):Int {
 		switch obj.multiAnimType {
-			case MAInteractive(width, height, identifier):
+			case MAInteractive(width, height, identifier, _):
 				var ident = Std.parseInt(identifier);
 				if (ident == null)
 					throw 'could not parse interactive id ${identifier}';

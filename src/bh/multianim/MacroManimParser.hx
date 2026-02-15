@@ -2451,16 +2451,21 @@ class MacroManimParser {
 				expect(TComma);
 				final id = parseStringOrReference();
 				var debug = false;
+				var metadata:Null<Array<{key:ReferenceableValue, type:SettingValueType, value:ReferenceableValue}>> = null;
 				if (match(TComma)) {
 					switch (peek()) {
 						case TIdentifier(d) if (isKeyword(d, "debug")):
 							advance();
 							debug = true;
+							if (match(TComma)) {
+								metadata = parseInteractiveMetadata();
+							}
 						default:
+							metadata = parseInteractiveMetadata();
 					}
 				}
 				expect(TClosed);
-				createNode(INTERACTIVE(w, h, id, debug), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+				createNode(INTERACTIVE(w, h, id, debug, metadata), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
 
 			case TIdentifier(s) if (isKeyword(s, "flow")):
 				advance();
@@ -3317,6 +3322,48 @@ class MacroManimParser {
 				default:
 					return params;
 			}
+		}
+	}
+
+	// ===================== Interactive Metadata =====================
+
+	function parseInteractiveMetadata():Null<Array<{key:ReferenceableValue, type:SettingValueType, value:ReferenceableValue}>> {
+		var metadata:Array<{key:ReferenceableValue, type:SettingValueType, value:ReferenceableValue}> = [];
+		while (true) {
+			switch (peek()) {
+				case TClosed:
+					return metadata.length == 0 ? null : metadata;
+				case TIdentifier(name):
+					advance();
+					metadata.push(parseMetadataValue(RVString(name)));
+					eatComma();
+				case TReference(name):
+					advance();
+					metadata.push(parseMetadataValue(RVReference(name)));
+					eatComma();
+				default:
+					return metadata.length == 0 ? null : metadata;
+			}
+		}
+	}
+
+	function parseMetadataValue(key:ReferenceableValue):{key:ReferenceableValue, type:SettingValueType, value:ReferenceableValue} {
+		switch (peek()) {
+			case TColon:
+				advance();
+				final typeName = expectIdentifierOrString();
+				expect(TArrow);
+				return switch (typeName.toLowerCase()) {
+					case "int": {key: key, type: SVTInt, value: parseIntegerOrReference()};
+					case "float": {key: key, type: SVTFloat, value: parseFloatOrReference()};
+					case "string": {key: key, type: SVTString, value: parseStringOrReference()};
+					default: error('expected int, float, or string after : in metadata');
+				};
+			case TArrow:
+				advance();
+				return {key: key, type: SVTString, value: parseAnything()};
+			default:
+				return error("expected :type=> or => after metadata key");
 		}
 	}
 

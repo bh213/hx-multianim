@@ -1,6 +1,7 @@
 package bh.ui;
 
 import bh.multianim.MultiAnimBuilder;
+import bh.multianim.MultiAnimBuilder.BuilderResolvedSettings;
 import bh.multianim.MultiAnimMultiResult;
 import bh.ui.UIMultiAnimDropdown;
 import h2d.col.Point;
@@ -170,6 +171,15 @@ enum UIScreenEvent {
 	UIOnControllerEvent(event:ControllerEvents);
 	UIEntering;
 	UILeaving;
+}
+
+/**
+ * Interface for UI elements that carry an identifier and optional metadata.
+ */
+interface UIElementIdentifiable {
+	var id(default, null):String;
+	var prefix(default, null):Null<String>;
+	var metadata(default, null):BuilderResolvedSettings;
 }
 
 /**

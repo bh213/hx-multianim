@@ -7,6 +7,8 @@ import bh.ui.UIMultiAnimButton.UIStandardMultiAnimButton;
 import bh.multianim.MultiAnimParser.ResolvedSettings;
 import bh.multianim.MultiAnimParser.SettingValue;
 import bh.ui.UIElement;
+import bh.ui.UIInteractiveWrapper;
+import bh.base.MAObject;
 import bh.multianim.MultiAnimBuilder;
 import bh.stateanim.AnimParser;
 import bh.ui.controllers.UIController;
@@ -47,6 +49,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	final layers:Map<LayersEnum, Int>;
 	var groups:Map<String, Array<UIElement>> = [];
 	var postCustomAddToLayer:Map<h2d.Object, UIElementCustomAddToLayer> = [];
+	var interactiveWrappers:Array<UIInteractiveWrapper> = [];
 
 	public function new(screenManager:ScreenManager, ?layers:Map<LayersEnum, Int>) {
 		this.root = new h2d.Layers();
@@ -361,6 +364,33 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	public function addBuilderResultWithIterator(r:BuilderResult, ?layer:LayersEnum, iterator):BuilderResult {
 		addObjectToLayerWithIterator(r.object, iterator, layer);
 		return r;
+	}
+
+	public function addInteractive(obj:MAObject, ?prefix:String):UIInteractiveWrapper {
+		var wrapper = new UIInteractiveWrapper(obj, prefix);
+		interactiveWrappers.push(wrapper);
+		addElement(wrapper, null);
+		return wrapper;
+	}
+
+	public function addInteractives(r:BuilderResult, ?prefix:String):Array<UIInteractiveWrapper> {
+		var wrappers:Array<UIInteractiveWrapper> = [];
+		for (obj in r.interactives) {
+			wrappers.push(addInteractive(obj, prefix));
+		}
+		return wrappers;
+	}
+
+	public function removeInteractives(?prefix:String):Void {
+		var toRemove:Array<UIInteractiveWrapper> = [];
+		for (w in interactiveWrappers) {
+			if (prefix == null || w.prefix == prefix)
+				toRemove.push(w);
+		}
+		for (w in toRemove) {
+			interactiveWrappers.remove(w);
+			removeElement(w);
+		}
 	}
 
 	public function addElement(element:UIElement, layer:Null<LayersEnum>) {
