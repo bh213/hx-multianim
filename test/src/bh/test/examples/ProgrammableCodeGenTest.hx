@@ -2702,4 +2702,18 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		builderAndMacroScreenshotAndCompare("test/examples/67-interactiveMetadata/interactiveMetadata.manim", "interactiveMetadata",
 			() -> createMp().interactiveMetadata.create(), async);
 	}
+
+	// ==================== Filters: group, pixelOutline, replaceColor, dropShadow ====================
+
+	@Test
+	public function test68_FiltersAdvanced(async:utest.Async):Void {
+		simpleMacroTest(68, "filtersAdvanced", () -> createMp().filtersAdvanced.create(), async);
+	}
+
+	// ==================== Manim import: external reference ====================
+
+	@Test
+	public function test69_ManimImport(async:utest.Async):Void {
+		simpleTest(69, "manimImport", async);
+	}
 }

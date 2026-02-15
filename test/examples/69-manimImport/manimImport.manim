@@ -1,0 +1,28 @@
+version: 0.3
+
+import "test/examples/69-manimImport/helpers.manim" as "helpers"
+
+#manimImport programmable() {
+    // Title
+    text(m3x6, "import + external reference", #AAAAAA): 20, 8
+
+    // helperBox with default label
+    text(m3x6, "helperBox (default label)", #888888): 20, 30
+    reference(external(helpers), $helperBox): 20, 44
+
+    // helperBox with custom label
+    text(m3x6, "helperBox (label=>Hi)", #888888): 220, 30
+    reference(external(helpers), $helperBox, label=>"Hi"): 220, 44
+
+    // helperCircle with default label and color
+    text(m3x6, "helperCircle (defaults)", #888888): 20, 100
+    reference(external(helpers), $helperCircle): 20, 114
+
+    // helperCircle with custom label and color
+    text(m3x6, "helperCircle (label+color)", #888888): 220, 100
+    reference(external(helpers), $helperCircle, label=>"custom", bg=>#FF00AA): 220, 114
+
+    // Local bitmap for comparison
+    text(m3x6, "local bitmap", #888888): 420, 100
+    bitmap(generated(color(40, 40, #00FF88))): 420, 114
+}

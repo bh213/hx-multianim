@@ -3906,11 +3906,11 @@ class ProgrammableCodeGen {
 					case POKnockout(color, knockout):
 						final cExpr = rvToExpr(color);
 						final kExpr = rvToExpr(knockout);
-						macro bh.base.filters.PixelOutline.create(bh.base.filters.PixelOutline.PixelOutlineMode.Knockout($cExpr, $kExpr), $v{smoothColor});
+						macro new bh.base.filters.PixelOutline(bh.base.filters.PixelOutlineFilterMode.Knockout($cExpr, $kExpr), $v{smoothColor});
 					case POInlineColor(color, inlineColor):
 						final cExpr = rvToExpr(color);
 						final icExpr = rvToExpr(inlineColor);
-						macro bh.base.filters.PixelOutline.create(bh.base.filters.PixelOutline.PixelOutlineMode.InlineColor($cExpr, $icExpr), $v{smoothColor});
+						macro new bh.base.filters.PixelOutline(bh.base.filters.PixelOutlineFilterMode.InlineColor($cExpr, $icExpr), $v{smoothColor});
 				}
 			case FilterPaletteReplace(paletteName, sourceRow, replacementRow):
 				final srcExpr = rvToExpr(sourceRow);
