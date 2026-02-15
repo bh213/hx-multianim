@@ -16,6 +16,6 @@ version: 0.3
       // Scrollable list placeholder
       placeholder(generated(cross(200, 150)), builderParameter("scrollableList")) {
             pos: 10, 80
-            settings{panelBuilder=>list-panel, itemBuilder=>list-item-120}
+            settings{panelBuildName=>list-panel, itemBuildName=>list-item-120}
       }
 }

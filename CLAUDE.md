@@ -225,7 +225,9 @@ See `docs/manim.md` for full particles documentation.
 
 - **Dropdown**: Uses closed button + scrollable panel, moves panel to different layer
 - **UIScreen**: If elements don't show or react to events, check if added to UIScreen's elements
-- **Macros**: `MacroUtils.macroBuildWithParameters` maps `.manim` elements to Haxe code
+- **Macros**: `MacroUtils.macroBuildWithParameters` maps `.manim` elements to Haxe code — auto-injects `ResolvedSettings` parameter
+- **Settings naming**: `buildName` for single builder override, `<element>BuildName` for multiple (e.g. `radioBuildName`, `radioButtonBuildName`)
+- **Full component reference**: See `docs/manim.md` "UI Components" section for all parameter contracts, settings, and events
 
 ## Guidelines for Modifications
 

@@ -92,7 +92,7 @@ class ComponentsTestScreen extends UIScreenBase {
 				scroll2=>addScrollableListWithSingleBuilder(builder, "list-panel", "list-item-120", "scrollbar", "scrollbar", list100, 10,100,100),
 				scroll3=>addScrollableListWithSingleBuilder(builder, "list-panel", "list-item-120", "scrollbar", "scrollbar", list20, 3,100,100),
 				scroll4=>addScrollableListWithSingleBuilder(builder, "list-panel", "list-item-120", "scrollbar", "scrollbar", list20disabled, 3,100,100),
-				checkboxWithLabel=>addCheckboxWithText(builder, "my label", true),
+				checkboxWithLabel=>addCheckboxWithText(builder, "my label", "m6x11", true),
 				//function addDropdown(providedBuilder, items, settings:ResolvedSettings, initialIndex = 0) {
 				//dropdown1 => addDropdown(builder, list100, 0)
 			]);
