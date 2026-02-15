@@ -228,8 +228,12 @@ DONE
 * data support in manim files
     - IMPLEMENTED: `#name data { ... }` blocks with int, float, string, bool, arrays
     - Record types: `#tier record(name: string, cost: int)` with validation
+    - Optional record fields: `?field: type` — omitted fields become `Null<T>`
     - Runtime: `builder.getData("name")` returns Dynamic
     - Macro: `@:data("file.manim", "name")` generates typed classes
+    - Exposed type naming: `PascalCase(dataName + recordName)` (e.g., `GameDataTier`)
+    - Custom type package: `@:data("file", "name", "my.pkg")`
+    - `mergeTypes` flag: deduplicates identical record types across `@:data` fields
 
 * string interpolation in single-quoted strings
     - IMPLEMENTED: `'text ${$var} more'` in both parser and macro parser

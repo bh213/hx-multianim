@@ -108,6 +108,9 @@ class ProgrammableCodeGen {
 	// Cache parsed results to avoid re-running subprocess for same file
 	static var parsedCache:Map<String, Map<String, Node>> = new Map();
 
+	// Type deduplication cache: signature → fully qualified type name (for mergeTypes)
+	static var mergedTypeCache:Map<String, {pack:Array<String>, name:String}> = new Map();
+
 	static function resetState():Void {
 		elementCounter = 0;
 		expressionUpdates = [];
@@ -256,6 +259,23 @@ class ProgrammableCodeGen {
 						continue;
 					}
 
+					// Optional 3rd param: typepackage (string)
+					var typePack = parentPack;
+					if (meta.params.length >= 3) {
+						final tp = extractMetaString(meta.params[2]);
+						if (tp != null) typePack = tp.length > 0 ? tp.split(".") : [];
+					}
+
+					// Optional: mergeTypes flag (identifier)
+					var mergeTypes = false;
+					for (i in 2...meta.params.length) {
+						switch (meta.params[i].expr) {
+							case EConst(CIdent("mergeTypes")):
+								mergeTypes = true;
+							default:
+						}
+					}
+
 					// Parse the .manim file (reuses same cache as @:manim)
 					final nodes = parseViaSubprocess(manimPath);
 					if (nodes == null) continue;
@@ -269,7 +289,7 @@ class ProgrammableCodeGen {
 					switch (node.type) {
 						case DATA(dataDef):
 							final dataClassName = parentName + "_" + toPascalCase(field.name);
-							final dataFields = generateDataClass(dataDef, dataClassName, parentPack, pos);
+							final dataFields = generateDataClass(dataDef, dataName, dataClassName, typePack, mergeTypes, pos);
 
 							// Define the data class
 							final dataTd:TypeDefinition = {
@@ -4182,30 +4202,62 @@ class ProgrammableCodeGen {
 	// ==================== Data Block Codegen ====================
 
 	/** Generate fields for a data class from a DataDef.
-	 *  Record types become companion classes, scalar/array fields become public final fields. */
-	static function generateDataClass(dataDef:DataDef, className:String, pack:Array<String>, pos:Position):Array<Field> {
+	 *  Record types become exposed classes, scalar/array fields become public final fields.
+	 *  @param dataName The #name from the manim file (e.g., "gameData") — used for exposed type naming
+	 *  @param className The internal data class name (e.g., "MultiProgrammable_GameData")
+	 *  @param typePack Package for exposed record types
+	 *  @param mergeTypes Whether to deduplicate identical record types
+	 */
+	static function generateDataClass(dataDef:DataDef, dataName:String, className:String, typePack:Array<String>,
+			mergeTypes:Bool, pos:Position):Array<Field> {
 		var dataFields:Array<Field> = [];
 
-		// Generate record companion classes
+		// Map from record name → exposed type {pack, name}
+		var recordTypeMap:Map<String, {pack:Array<String>, name:String}> = new Map();
+
+		// Generate exposed record types
 		for (recordName => recordDef in dataDef.records) {
-			final recordClassName = className + "_" + toPascalCase(recordName);
+			final exposedName = toPascalCase(dataName) + toPascalCase(recordName);
+
+			// Check for mergeTypes dedup
+			if (mergeTypes) {
+				final sig = recordSignature(recordDef);
+				final existing = mergedTypeCache.get(sig);
+				if (existing != null) {
+					recordTypeMap.set(recordName, existing);
+					continue;
+				}
+			}
+
+			// Check for type collision
+			try {
+				Context.getType(typePack.join(".") + (typePack.length > 0 ? "." : "") + exposedName);
+				Context.fatalError('Type "$exposedName" already exists (collision with data record "$recordName")', pos);
+			} catch (_:Dynamic) {
+				// Expected — type doesn't exist yet
+			}
+
 			final recordFields:Array<Field> = [];
 
 			// Public final fields for each record field
 			for (rf in recordDef.fields) {
+				var ct = dataTypeToComplexType(rf.type, recordTypeMap);
+				if (rf.optional) ct = TPath({pack: [], name: "Null", params: [TPType(ct)]});
 				recordFields.push({
 					name: rf.name,
-					kind: FVar(dataTypeToComplexType(rf.type, className, pack), null),
+					kind: FVar(ct, null),
 					access: [APublic],
 					pos: pos,
 				});
 			}
 
-			// Constructor: new(field1, field2, ...)
+			// Constructor: new(field1, field2, ...) — optional fields have opt:true
 			final ctorArgs:Array<FunctionArg> = [];
 			final ctorAssigns:Array<Expr> = [];
 			for (rf in recordDef.fields) {
-				ctorArgs.push({name: rf.name, type: dataTypeToComplexType(rf.type, className, pack)});
+				var ct = dataTypeToComplexType(rf.type, recordTypeMap);
+				if (rf.optional) ct = TPath({pack: [], name: "Null", params: [TPType(ct)]});
+				ctorArgs.push({name: rf.name, type: ct, opt: rf.optional});
 				ctorAssigns.push(macro $p{["this", rf.name]} = $i{rf.name});
 			}
 			recordFields.push({
@@ -4215,22 +4267,29 @@ class ProgrammableCodeGen {
 				pos: pos,
 			});
 
+			final typeInfo = {pack: typePack, name: exposedName};
+			recordTypeMap.set(recordName, typeInfo);
+
 			final recordTd:TypeDefinition = {
-				pack: pack,
-				name: recordClassName,
+				pack: typePack,
+				name: exposedName,
 				pos: pos,
 				kind: TDClass(null, null, false, false, false),
 				fields: recordFields,
 			};
 			Context.defineType(recordTd);
+
+			if (mergeTypes) {
+				mergedTypeCache.set(recordSignature(recordDef), typeInfo);
+			}
 		}
 
 		// Generate public final fields for each data entry
 		for (field in dataDef.fields) {
-			final initExpr = dataValueToExpr(field.value, className, pack, dataDef.records, pos);
+			final initExpr = dataValueToExpr(field.value, recordTypeMap, dataDef.records, pos);
 			dataFields.push({
 				name: field.name,
-				kind: FVar(dataTypeToComplexType(field.type, className, pack), initExpr),
+				kind: FVar(dataTypeToComplexType(field.type, recordTypeMap), initExpr),
 				access: [APublic, AFinal],
 				pos: pos,
 			});
@@ -4247,24 +4306,46 @@ class ProgrammableCodeGen {
 		return dataFields;
 	}
 
+	/** Build a signature string for a record definition (for mergeTypes dedup) */
+	static function recordSignature(recordDef:DataRecordDef):String {
+		var parts:Array<String> = [];
+		for (rf in recordDef.fields) {
+			final opt = rf.optional ? "?" : "";
+			parts.push('$opt${rf.name}:${dataValueTypeSignature(rf.type)}');
+		}
+		return parts.join(",");
+	}
+
+	static function dataValueTypeSignature(type:DataValueType):String {
+		return switch (type) {
+			case DVTInt: "Int";
+			case DVTFloat: "Float";
+			case DVTString: "String";
+			case DVTBool: "Bool";
+			case DVTRecord(recordName): 'Record($recordName)';
+			case DVTArray(elemType): 'Array<${dataValueTypeSignature(elemType)}>';
+		};
+	}
+
 	/** Convert a DataValueType to a Haxe ComplexType */
-	static function dataTypeToComplexType(type:DataValueType, className:String, pack:Array<String>):ComplexType {
+	static function dataTypeToComplexType(type:DataValueType, recordTypeMap:Map<String, {pack:Array<String>, name:String}>):ComplexType {
 		return switch (type) {
 			case DVTInt: macro :Int;
 			case DVTFloat: macro :Float;
 			case DVTString: macro :String;
 			case DVTBool: macro :Bool;
 			case DVTRecord(recordName):
-				final recordClassName = className + "_" + toPascalCase(recordName);
-				TPath({pack: pack, name: recordClassName});
+				final info = recordTypeMap.get(recordName);
+				if (info == null) macro :Dynamic;
+				else TPath({pack: info.pack, name: info.name});
 			case DVTArray(elemType):
-				final elemCT = dataTypeToComplexType(elemType, className, pack);
+				final elemCT = dataTypeToComplexType(elemType, recordTypeMap);
 				TPath({pack: [], name: "Array", params: [TPType(elemCT)]});
 		};
 	}
 
 	/** Convert a DataValue to a Haxe expression for field initialization */
-	static function dataValueToExpr(value:DataValue, className:String, pack:Array<String>,
+	static function dataValueToExpr(value:DataValue, recordTypeMap:Map<String, {pack:Array<String>, name:String}>,
 			records:Map<String, DataRecordDef>, pos:Position):Expr {
 		return switch (value) {
 			case DVInt(v): {expr: EConst(CInt('$v')), pos: pos};
@@ -4272,21 +4353,25 @@ class ProgrammableCodeGen {
 			case DVString(v): {expr: EConst(CString(v)), pos: pos};
 			case DVBool(v): {expr: EConst(CIdent(v ? "true" : "false")), pos: pos};
 			case DVArray(elements):
-				final elemExprs = [for (e in elements) dataValueToExpr(e, className, pack, records, pos)];
+				final elemExprs = [for (e in elements) dataValueToExpr(e, recordTypeMap, records, pos)];
 				{expr: EArrayDecl(elemExprs), pos: pos};
 			case DVRecord(recordName, fields):
-				final recordClassName = className + "_" + toPascalCase(recordName);
-				// Build constructor args in field order from record definition
+				final info = recordTypeMap.get(recordName);
 				final recordDef = records.get(recordName);
 				final ctorArgs:Array<Expr> = [];
 				if (recordDef != null) {
 					for (rf in recordDef.fields) {
 						final val = fields.get(rf.name);
 						if (val != null)
-							ctorArgs.push(dataValueToExpr(val, className, pack, records, pos));
+							ctorArgs.push(dataValueToExpr(val, recordTypeMap, records, pos));
+						else if (rf.optional)
+							ctorArgs.push(macro null);
 					}
 				}
-				{expr: ENew({pack: pack, name: recordClassName}, ctorArgs), pos: pos};
+				if (info != null)
+					{expr: ENew({pack: info.pack, name: info.name}, ctorArgs), pos: pos}
+				else
+					macro null;
 		};
 	}
 

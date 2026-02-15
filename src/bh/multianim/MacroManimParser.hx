@@ -4534,14 +4534,15 @@ class MacroManimParser {
 		return {records: records, fields: fields};
 	}
 
-	function parseDataRecordFields():Array<{name:String, type:DataValueType}> {
-		var result:Array<{name:String, type:DataValueType}> = [];
+	function parseDataRecordFields():Array<{name:String, type:DataValueType, optional:Bool}> {
+		var result:Array<{name:String, type:DataValueType, optional:Bool}> = [];
 		if (match(TClosed)) return result;
 		while (true) {
+			final isOptional = match(TQuestion);
 			final fieldName = expectIdentifierOrString();
 			expect(TColon);
 			final fieldType = parseDataType();
-			result.push({name: fieldName, type: fieldType});
+			result.push({name: fieldName, type: fieldType, optional: isOptional});
 			if (match(TClosed)) return result;
 			expect(TComma);
 		}
@@ -4656,9 +4657,9 @@ class MacroManimParser {
 			if (fieldValues.exists(name)) error('duplicate field "$name" in record');
 			fieldValues.set(name, value);
 		}
-		// Validate all required fields present
+		// Validate all required fields present (optional fields can be omitted)
 		for (rf in recordDef.fields) {
-			if (!fieldValues.exists(rf.name))
+			if (!fieldValues.exists(rf.name) && !rf.optional)
 				error('missing required field "${rf.name}" in record "$recordName"');
 		}
 		return DVRecord(recordName, fieldValues);

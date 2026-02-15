@@ -961,7 +961,7 @@ Named record types define schemas for structured data. Declare them with `#name 
 
 ```
 #upgrades data {
-    #tier record(name: string, cost: int, dmg: float)
+    #tier record(name: string, cost: int, ?dmg: float)
 
     maxLevel: 5
     name: "Warrior"
@@ -973,16 +973,24 @@ Named record types define schemas for structured data. Declare them with `#name 
         { name: "Silver", cost: 20, dmg: 1.5 }
     ]
     defaultTier: tier { name: "None", cost: 0, dmg: 0.0 }
+    basicTier: tier { name: "Basic", cost: 5 }
 }
 ```
 
 **Supported field types in records:** `int`, `float`, `string`, `bool`
 
+**Optional fields:** Prefix a field name with `?` to make it optional. Optional fields can be omitted from record values and default to `null`:
+```
+#item record(name: string, ?description: string, ?weight: float)
+light: item { name: "Feather" }                          // description=null, weight=null
+heavy: item { name: "Anvil", weight: 100.0 }             // description=null
+```
+
 **Record-typed fields** require an explicit type prefix:
 - Single record: `fieldName: recordName { field: value, ... }`
 - Array of records: `fieldName: recordName[] [{ ... } { ... }]`
 
-Record values are validated against the schema — unknown fields, missing fields, and duplicate fields produce parser errors.
+Record values are validated against the schema — unknown fields, missing required fields, and duplicate fields produce parser errors. Optional fields can be omitted without error.
 
 ### Using Data at Runtime (Builder)
 
@@ -1006,23 +1014,25 @@ class MyScreen extends bh.multianim.ProgrammableBuilder {
 }
 ```
 
-The macro generates typed classes:
+The macro generates typed classes. Record types are exposed as top-level classes named `PascalCase(dataName) + PascalCase(recordName)`:
 
 ```haxe
-// Generated record class
-class MyScreen_Upgrades_Tier {
+// Generated record class: "upgrades" data + "tier" record → UpgradesTier
+class UpgradesTier {
     public final name:String;
     public final cost:Int;
-    public final dmg:Float;
+    public final dmg:Null<Float>;     // optional field → Null<T>
+    public function new(name:String, cost:Int, ?dmg:Null<Float>) { ... }
 }
 
-// Generated data class with static final fields
+// Generated data class with public final fields
 class MyScreen_Upgrades {
     public final maxLevel:Int;        // = 5
     public final name:String;         // = "Warrior"
     public final costs:Array<Int>;    // = [10, 20, 40, 80]
-    public final tiers:Array<MyScreen_Upgrades_Tier>;
-    public final defaultTier:MyScreen_Upgrades_Tier;
+    public final tiers:Array<UpgradesTier>;
+    public final defaultTier:UpgradesTier;
+    public final basicTier:UpgradesTier;  // dmg is null (omitted)
 }
 ```
 
@@ -1033,7 +1043,33 @@ var screen = new MyScreen(resourceLoader);
 trace(screen.upgrades.maxLevel);         // 5
 trace(screen.upgrades.tiers[0].name);    // "Bronze"
 trace(screen.upgrades.defaultTier.dmg);  // 0.0
+trace(screen.upgrades.basicTier.dmg);    // null (optional, omitted)
 ```
+
+#### Custom Type Package
+
+By default, generated record types use the parent class's package. Override with a 3rd parameter:
+
+```haxe
+@:data("res/config.manim", "upgrades", "game.data")
+public var upgrades;
+// → generates game.data.UpgradesTier instead of default package
+```
+
+#### mergeTypes
+
+When multiple `@:data` fields reference files with identically-shaped records, use `mergeTypes` to share a single generated type:
+
+```haxe
+@:data("res/warriors.manim", "warriors", "game.units", mergeTypes)
+public var warriors;
+
+@:data("res/mages.manim", "mages", "game.units", mergeTypes)
+public var mages;
+// If both have #tier record(name: string, cost: int) → single game.units.WarriorsTier is reused
+```
+
+Records are considered identical when they have the same fields (name, type, optional flag) in the same order. A fatal error occurs if the generated type name collides with an existing type.
 
 ### Rules
 
@@ -1041,6 +1077,7 @@ trace(screen.upgrades.defaultTier.dmg);  // 0.0
 - Data blocks require a `#name`
 - Record names must be unique within a data block
 - Commas between array elements and record fields are optional
+- Optional fields (`?name: type`) default to `null` when omitted from record values
 
 ---
 

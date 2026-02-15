@@ -726,6 +726,41 @@ class ParserErrorTest extends utest.Test {
 		Assert.isTrue(success, "Data block with bools and floats should parse successfully");
 	}
 
+	@Test
+	public function testDataOptionalField() {
+		var success = parseExpectingSuccess('
+			#test data {
+				#tier record(name: string, cost: int, ?dmg: float)
+				value: tier { name: "x", cost: 5 }
+			}
+		');
+		Assert.isTrue(success, "Data block with optional field omitted should parse successfully");
+	}
+
+	@Test
+	public function testDataOptionalFieldProvided() {
+		var success = parseExpectingSuccess('
+			#test data {
+				#tier record(name: string, ?cost: int, ?dmg: float)
+				value: tier { name: "x", cost: 5, dmg: 1.0 }
+			}
+		');
+		Assert.isTrue(success, "Data block with optional fields provided should parse successfully");
+	}
+
+	@Test
+	public function testDataRequiredFieldStillRequired() {
+		var error = parseExpectingError('
+			#test data {
+				#tier record(name: string, cost: int, ?dmg: float)
+				value: tier { cost: 5 }
+			}
+		');
+		Assert.notNull(error, "Should throw error for missing required field");
+		Assert.isTrue(error.indexOf("missing required field") >= 0,
+			'Error should mention "missing required field", got: $error');
+	}
+
 	// ===== @final tests =====
 
 	@Test
