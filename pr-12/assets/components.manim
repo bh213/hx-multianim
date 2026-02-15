@@ -104,23 +104,23 @@ relativeLayouts {
 
       // 5 checkbox style variants (overriding the build name via settings)
       placeholder(generated(cross(200, 20)), builderParameter("checkbox1")) {
-            settings{checkboxBuildName=>checkbox2}
+            settings{buildName=>checkbox2}
       }
       placeholder(generated(cross(200, 20)), builderParameter("checkbox2")) {
             pos:30,0
-            settings{checkboxBuildName=>radio}
+            settings{buildName=>radio}
       }
       placeholder(generated(cross(200, 20)), builderParameter("checkbox3")) {
             pos:60,0
-            settings{checkboxBuildName=>radio2}
+            settings{buildName=>radio2}
       }
       placeholder(generated(cross(200, 20)), builderParameter("checkbox4")) {
             pos:90,0
-            settings{checkboxBuildName=>tickbox}
+            settings{buildName=>tickbox}
       }
       placeholder(generated(cross(200, 20)), builderParameter("checkbox5")) {
             pos:120,0
-            settings{checkboxBuildName=>toggle}
+            settings{buildName=>toggle}
       }
 
       // 4 scrollable lists with different configurations
