@@ -205,4 +205,7 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/66-flowBgDemo/flowBgDemo.manim", "flowBgDemo")
 	public var flowBgDemo2;
+
+	@:manim("test/examples/67-interactiveMetadata/interactiveMetadata.manim", "interactiveMetadata")
+	public var interactiveMetadata;
 }

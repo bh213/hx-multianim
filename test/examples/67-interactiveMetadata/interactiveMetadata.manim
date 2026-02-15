@@ -1,0 +1,29 @@
+version: 0.3
+
+#interactiveMetadata programmable(cols:uint=3) {
+  pos: 0, 0
+  grid: 1280, 720
+
+  @alpha(0.1) bitmap(generated(color(1280, 720, white)));
+
+  // Row 1: Interactive with debug overlay and metadata
+  interactive(120, 40, "btn1", debug, action => "buy", label => "Buy Item"): 50, 50
+
+  // Row 2: Interactive with metadata
+  interactive(120, 40, "btn2", action => "sell"): 50, 120
+  bitmap(generated(color(120, 40, #00AA00))): 50, 120
+
+  // Row 3: Interactive without metadata
+  interactive(120, 40, "btn3"): 50, 190
+  bitmap(generated(color(120, 40, #0088FF))): 50, 190
+
+  // Row 4: Interactive with typed metadata
+  interactive(120, 40, "btn4", price:int => 100, weight:float => 1.5, action => "craft"): 50, 260
+  bitmap(generated(color(120, 40, #AA0055))): 50, 260
+
+  // Row 5: Repeatable interactives with metadata
+  repeatable($i, step($cols, dx: 140)) {
+    interactive(120, 40, $i, type => "slot"): 50, 330
+    bitmap(generated(color(120, 40, #8800FF))): 50, 330
+  }
+}

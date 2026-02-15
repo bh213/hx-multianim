@@ -884,7 +884,8 @@ enum NodeType {
 	REFERENCE(externalReference:Null<String>, programmableReference:String, parameters:Map<String, ReferenceableValue>);
 	PLACEHOLDER(type:PlaceholderTypes, replacementSource:PlaceholderReplacementSource);
 	NINEPATCH(sheet:String, tilename:String, width:ReferenceableValue, height:ReferenceableValue);
-	INTERACTIVE(width:ReferenceableValue, height:ReferenceableValue, id:ReferenceableValue, debug:Bool);
+	INTERACTIVE(width:ReferenceableValue, height:ReferenceableValue, id:ReferenceableValue, debug:Bool,
+		metadata:Null<Array<{key:ReferenceableValue, type:SettingValueType, value:ReferenceableValue}>>);
 	PALETTE(paletteType:PaletteType);
 	GRAPHICS(elements:Array<PositionedGraphicsElement>);
 	AUTOTILE(autotileDef:AutotileDef);

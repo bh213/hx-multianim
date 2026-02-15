@@ -2693,4 +2693,13 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		builderAndMacroScreenshotAndCompare("test/examples/66-flowBgDemo/flowBgDemo.manim", "flowBgDemo",
 			() -> createMp().flowBgDemo2.create(), async);
 	}
+
+	// ==================== Interactive metadata: debug display + metadata parsing ====================
+
+	@Test
+	public function test67_InteractiveMetadata(async:utest.Async):Void {
+		setupTest(67, "interactiveMetadata");
+		builderAndMacroScreenshotAndCompare("test/examples/67-interactiveMetadata/interactiveMetadata.manim", "interactiveMetadata",
+			() -> createMp().interactiveMetadata.create(), async);
+	}
 }

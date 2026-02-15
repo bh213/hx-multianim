@@ -3,6 +3,21 @@
 ## [Unreleased]
 
 ### Added
+- **Interactive metadata** — `interactive()` now supports optional key=>value metadata with typed values
+  - Syntax: `interactive(w, h, id [, debug] [, key => val, ...])`
+  - Typed values matching settings system: `key => "str"`, `key:int => 100`, `key:float => 1.5`, `key:string => "text"`
+  - Keys and values can be `$references` (resolved at build time)
+  - Resolved metadata uses `ResolvedSettings` (`Map<String, SettingValue>`) with `RSVString/RSVInt/RSVFloat`
+- **UIInteractiveWrapper** — Thin `UIElement` wrapper for interactive MAObjects
+  - Implements `UIElement`, `StandardUIElementEvents`, `UIElementIdentifiable`
+  - Exposes `id`, `prefix`, `metadata:BuilderResolvedSettings` for typed access
+  - Emits standard `UIClick`/`UIEntering`/`UILeaving` — check `source` for `UIElementIdentifiable` to access `id`/`metadata`
+- **UIElementIdentifiable** — New opt-in interface for UI elements that carry an identifier and metadata
+  - `id:String`, `prefix:Null<String>`, `metadata:BuilderResolvedSettings`
+- **Screen interactive management** — `UIScreenBase` methods for adding/removing interactive wrappers
+  - `addInteractive(obj, prefix)` — wraps single MAObject
+  - `addInteractives(result, prefix)` — wraps all interactives from a BuilderResult
+  - `removeInteractives(prefix)` — removes wrappers by prefix (or all if null)
 - **`@final` constants** — Declare immutable named constants in `.manim` to avoid repeating expressions
   - Syntax: `@final name = expression` — evaluated once, reusable via `$name`
   - All parameter types supported: uint, int, float, bool, string, color, arrays

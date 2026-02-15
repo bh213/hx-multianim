@@ -319,6 +319,36 @@ reference($reference [, <params>])
 reference(external(externalName), $reference, [,<params>])
 ```
 
+### interactive
+Creates a hit-test region for UI interaction. Optionally carries an identifier and typed metadata.
+
+```
+interactive(width, height, id)
+interactive(width, height, id, debug)
+interactive(width, height, id, key => value, key2 => value2)
+interactive(width, height, id, debug, key => value)
+```
+
+**Parameters:**
+* `width`, `height` — size of the hit-test region (integer or `$reference`)
+* `id` — string identifier (string or `$reference`)
+* `debug` — optional flag to render a visible orange overlay with label (requires registered font)
+* `key => value` — optional metadata pairs (string values by default)
+
+**Typed metadata:**
+Metadata values can be typed to match the settings system:
+```
+interactive(200, 30, "buyBtn", action => "buy", price:int => 100, weight:float => 1.5)
+interactive(120, 40, $idx, type:string => "slot", slot:int => $i)
+```
+
+Supported types: `int`, `float`, `string` (default when no type specified). Keys and values can be `$references`.
+
+**UI integration:**
+* `UIInteractiveWrapper` wraps the interactive as a `UIElement` with `UIElementIdentifiable`
+* Screen methods: `addInteractive(obj, prefix)`, `addInteractives(result, prefix)`, `removeInteractives(prefix)`
+* Emits standard `UIClick`, `UIEntering`, `UILeaving` — check `source` for `UIElementIdentifiable` to access `id`/`metadata`
+
 ### settings
 Emits setting values to the build.
 
