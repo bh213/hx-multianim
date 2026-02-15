@@ -1,6 +1,6 @@
 # Main goals
 
-- allow code generation - programmable should be able to be generated in haxe macro with haxe code. Make sure all functionality is aligned with this goal. There should be update programmable functionality down the line as well
+- allow code generation - programmable element should always work via builder.buildWithParameters or via macro system e.g. @:manim("test/examples/60-newPathCommands/newPathCommands.manim", "newPathCommands")
 - some tools/testing might be split into separate repos. Most likely candidates are utils/  and playground.
 
 FIX:
@@ -8,16 +8,6 @@ FIX:
 
 
 Components: allow setting various components via settings 
-
-repeatable step: scale ignored for dy/dy?
-
-    - Grid's spacingX/spacingY is NOT applied to dx/dy values
-    - If you have grid(32,32) and repeatable grid(1,0,5), dx=1 is treated as 1 pixel, not 32 pixels
-    - See MultiAnimBuilder.hx:1409-1412
-    - grid is not supposed to mean grid coordinate system but that it moves in x,y direction by grid cells
-
-repeatable: inline array with $index, $value?
-    - DONE: ArrayIterator with `repeatable($i, array($val, $arr))` works in both builder and macro codegen
 
 fix html/implement text
     - PARTIAL: `text(..., html: true)` parameter approach works via createHtmlText() in MultiAnimBuilder.hx
@@ -58,30 +48,6 @@ sub-emitters
     - Triggers: OnBirth, OnDeath, OnCollision, Interval
     - REMAINING: Implement actual particle spawning in triggerSubEmitters() and checkIntervalSubEmitters() (currently stubbed)
 
-Animations - easing & events
-paths:
-    - DONE: Full implementation complete
-    - REMAINING: grid/hex coordinate systems for paths
-    particles diff with direction & speed as variables
-    make object follow animation, maybe based on center or extra point??
-
-
-
-#animate
-
-animate <path> by time {
-    0.2s: event("event")
-    2000ms: particleSystem("ps", lifetime: 1s), speed: 2.0)
-    10%:
-}
-
-animate <path> by distance {
-    10%:
-    200px: event
-}
-
-
-
 
 next major release
 ===================================
@@ -98,14 +64,6 @@ next major release
     - PARTIAL: replaceColor filter exists in MultiAnimParser.hx:3549
     - May not be fully exposed for stateanim use
 
-* align elements (or at least center placeholders)
-    - NOT IMPLEMENTED - no alignment code for placeholders
-    - Would help center dynamic content in placeholders
-
-* animSM can mark loop as forever to skip inf loop check
-    - RELATED CODE: AnimationSM.hx:177-233 has maxIterations=1000 safety check
-    - Some legitimate animations may hit this limit
-    - Would need new flag to skip check for known-infinite loops
 
 
 next major release
@@ -133,6 +91,10 @@ next major release
 
 next major release
 ========================
+
+# better reload behaviour
+Reload white system is live, requires tracking, custom h2d.object?
+
  # multianim:
 * subelements - handle nested subelements, keep state, don't query each time
     - PARTIAL: UIElementSubElements interface exists in UIElement.hx:236-237
@@ -145,10 +107,6 @@ next major release
     - Some layout support present in builder/parser
     - xy positioning and layer support incomplete
 
-* mask element?
-    - DONE: `mask(w, h)` exposed as .manim element type
-    - Parsed in MacroManimParser.hx, built in MultiAnimBuilder.hx
-    - Test coverage: test/examples/34-maskDemo/
 
 * uielements -> send initial change to uievents so control value can be synced to logic OR save/restore state for full page reloads & similar
     - NOT IMPLEMENTED
@@ -176,9 +134,6 @@ next major release
     - Currently recalculates coordinate system by walking tree
     - Could cache coordinate systems
 
-* fix scale / offset  - scaling affects offset, is that ok?
-    - DESIGN QUESTION - scaling does affect offset in current impl
-    - May be intentional or may need separation
 
 * draggable scrollbar
     - PARTIAL: UIMultiAnimDraggable.hx exists for general dragging
@@ -193,12 +148,6 @@ next major release
     - NOT IMPLEMENTED
     - Would propagate disabled state to all scrollable children
 
-* switch to macro builder everywhere?
-    - PARTIAL: MacroUtils.macroBuildWithParameters exists
-    - Used in some places but not consistently
-    - Would reduce boilerplate for placeholder bindings
-
-
 
 next major release
 ========================
@@ -207,55 +156,10 @@ next major release
     - Would be a tool for editing settings/configs
 
 
-DONE
-===================================
-* @final constants - declare immutable named constants in .manim
-    - IMPLEMENTED: parser, builder, macro codegen
-    - Syntax: `@final name = expression`, reference via `$name`
-    - Block scoping with cleanup, works in repeatable
-    - Error detection: duplicate names, parameter shadowing
-
-* store pos for expressions/references so error can include pos
-    - IMPLEMENTED: MacroUtils.nodePos() macro and currentNodePos() helper
-    - Enabled with -D MULTIANIM_TRACE
-    - All builder errors now include position when flag is set
-
-* data support in manim files
-    - IMPLEMENTED: `#name data { ... }` blocks with int, float, string, bool, arrays
-    - Record types: `#tier record(name: string, cost: int)` with validation
-    - Optional record fields: `?field: type` — omitted fields become `Null<T>`
-    - Runtime: `builder.getData("name")` returns Dynamic
-    - Macro: `@:data("file.manim", "name")` generates typed classes
-    - Exposed type naming: `PascalCase(dataName + recordName)` (e.g., `GameDataTier`)
-    - Custom type package: `@:data("file", "name", "my.pkg")`
-    - `mergeTypes` flag: deduplicates identical record types across `@:data` fields
-
-* string interpolation in single-quoted strings
-    - IMPLEMENTED: `'text ${$var} more'` in both parser and macro parser
-    - Supports expressions: `'val: ${$x * 2}'`
-    - Error messages for unclosed braces, empty expressions, unterminated strings
-
-* parse-time variable validation
-    - IMPLEMENTED: Unknown `$var` references produce errors with available variable list
-    - Tracks parameter definitions, loop vars, iterator output vars, @final vars
-    - Proper scope management (loop vars only visible inside loop body)
-
-* paths, curves, animated paths
-    - IMPLEMENTED: Full DSL with lineTo, bezier, arc, spiral, wave, etc.
-    - Easing functions (12 named + cubic bezier)
-    - 1D curves (easing-based, point-based, segmented)
-    - Macro codegen for paths, animatedPath, curves
 
 will not implement:
 ===================
 * affine transformation on node?
-* object to store builder with name/params for rebuilds? (done?)
 
 
-
-
-https://github.com/darmie/wrenparse/blob/master/src/wrenparse/WrenLexer.hx#L105
-http://simn.github.io/hxparse/hxparse/index.html
-https://github.com/Simn/hxparse/blob/master/README.md
-https://github.com/benmerckx/haxeparser/blob/813b026d12123d8a3a0ed9bb0150acd546ba2a07/src/haxeparser/HaxeLexer.hx#L198
 
