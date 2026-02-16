@@ -1,6 +1,8 @@
 name: Visual Tests
 
 on:
+  push:
+    branches: [ main ]
   pull_request:
     branches: [ main ]
 
@@ -109,8 +111,18 @@ jobs:
         # Disable Jekyll processing
         touch _report/.nojekyll
 
-    - name: Deploy test report to GitHub Pages
-      if: always() && github.event.pull_request.head.repo.full_name == github.repository
+    - name: Deploy test report to GitHub Pages (main)
+      if: always() && github.event_name == 'push'
+      uses: peaceiris/actions-gh-pages@v3
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./_report
+        publish_branch: gh-pages
+        destination_dir: test-report
+        keep_files: true
+
+    - name: Deploy test report to GitHub Pages (PR)
+      if: always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
       uses: peaceiris/actions-gh-pages@v3
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -120,7 +132,7 @@ jobs:
         keep_files: true
 
     - name: Comment PR with test results
-      if: always() && github.event.pull_request.head.repo.full_name == github.repository
+      if: always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
       uses: actions/github-script@v7
       with:
         script: |
