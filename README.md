@@ -9,6 +9,10 @@ A Haxe library for creating animations and pixel art UI elements using the [Heap
 - **[Data Blocks](docs/manim.md#data)** - Static typed data definitions with macro codegen
 - **[.anim Format Reference](docs/anim.md)** - State animations with playlists and extra points
 
+## Visual Test Report
+
+Latest test results: [Visual Test Report](https://bh213.github.io/hx-multianim/test-report/screenshots/index.html)
+
 ## Interactive Playground
 
 Playground is available at [gh-pages](https://bh213.github.io/hx-multianim/).
