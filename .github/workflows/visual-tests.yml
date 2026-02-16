@@ -90,12 +90,31 @@ jobs:
         path: test/screenshots/
         if-no-files-found: warn
 
+    - name: Prepare report for deployment
+      if: always()
+      run: |
+        mkdir -p _report/screenshots
+        mkdir -p _report/examples
+        # Copy HTML report and actual/macro screenshots
+        cp test/screenshots/*.html _report/screenshots/ 2>/dev/null || true
+        cp test/screenshots/*.png _report/screenshots/ 2>/dev/null || true
+        # Copy reference images preserving directory structure
+        for dir in test/examples/*/; do
+          dirname=$(basename "$dir")
+          if [ -f "$dir/reference.png" ]; then
+            mkdir -p "_report/examples/$dirname"
+            cp "$dir/reference.png" "_report/examples/$dirname/"
+          fi
+        done
+        # Disable Jekyll processing
+        touch _report/.nojekyll
+
     - name: Deploy test report to GitHub Pages
       if: always() && github.event.pull_request.head.repo.full_name == github.repository
       uses: peaceiris/actions-gh-pages@v3
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
-        publish_dir: ./test
+        publish_dir: ./_report
         publish_branch: gh-pages
         destination_dir: pr-${{ github.event.pull_request.number }}/test-report
         keep_files: true
