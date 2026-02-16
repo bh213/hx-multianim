@@ -1,4 +1,4 @@
-version: 0.3
+version: 0.5
 
 
 #dialogBase programmable() {
@@ -16,7 +16,7 @@ version: 0.3
 }
 
 #yesNoDialog programmable() {
-      reference($dialogBase) {
+      staticRef($dialogBase) {
         #dialogText(updatable) text(dd, "This is a text message", #ffffff00, center, 400): 50,50
       }
 }
@@ -25,7 +25,7 @@ version: 0.3
 
 #fileDialog programmable() {
       
-      reference($dialogBase){
+      staticRef($dialogBase){
         placeholder(generated(cross(20, 20)), builderParameter("filelist")):100,30
       }
 }

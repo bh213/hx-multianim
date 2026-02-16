@@ -1,4 +1,4 @@
-version: 0.3
+version: 0.5
 
 
 
@@ -7,8 +7,8 @@ paths {
   #line1 path {
     
     
-    line(relative, 100,100)
-    
+    lineTo(100,100)
+
     arc(100, -90)
     forward(20)
     arc(100, 180) 
@@ -47,16 +47,16 @@ forward(80)
     forward(300)
   }
   #lineX path {
-    line(absolute, 100,100)
-    line(absolute, 500,0)
-    line(absolute, 0,500)
-    line(absolute, 0,0)
-    
+    lineAbs(100,100)
+    lineAbs(500,0)
+    lineAbs(0,500)
+    lineAbs(0,0)
+
   }
   #testModes path {
-    line(relative, 100, 50)
-    line(absolute, 200, 100)
-    line(300, 150) // default relative
+    lineTo(100, 50)
+    lineAbs(200, 100)
+    lineTo(300, 150)
     bezier(relative, 100, 50, 75, 25)
     bezier(absolute, 200, 100, 150, 50)
     bezier(100, 50, 75, 25) // default relative
@@ -151,9 +151,11 @@ forward(80)
 
     point {
       pos: 640, 320
-      #ref1 placeholder(generated(cross(10, 10)), builderParameter("xxx")) {
+      #ref1 point {
+        bitmap(generated(cross(10, 10)));
         text(pixellari, "ref #1", yellow);
-        #ref2 placeholder(generated(cross(10, 10)), builderParameter("xxx")) {
+        #ref2 point {
+          bitmap(generated(cross(10, 10)));
           text(pixellari, "ref #2", green);
           scale: 0.5
           pos:100,100
@@ -165,23 +167,9 @@ forward(80)
 
 
 #panim animatedPath {
-  
-  0.05: accelerate (200, 5000)
-  0.1: attachParticles("test") {
-      count:30
-      relative: true
-      speed:500
-      loop: false
-      emit: cone(5,5, $angle+180, 1)
-      tiles:  sheet("fx", "missile/particle") 
-  }
-
-    0.1: attachParticles("test") {
-      count:120
-      relative: true
-      loop: false
-      speed:500
-      emit: cone(5,5, $angle+90, 1)
-      tiles:  sheet("fx", "missile/particle") 
-  }
+  path: line1
+  type: distance
+  speed: 50
+  0.0: event("start")
+  1.0: event("end")
 }

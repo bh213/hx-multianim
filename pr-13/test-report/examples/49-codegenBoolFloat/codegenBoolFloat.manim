@@ -1,9 +1,0 @@
-version: 0.3
-
-#codegenBoolFloat programmable(showBorder:bool=true, showLabel:bool=false, opacity:float=0.8, barWidth:float=1.5) {
-      @(showBorder=>true) ninepatch("ui", "button-hover", 150, 30): 0, 0
-      @(showBorder=>false) ninepatch("ui", "button-disabled", 150, 30): 0, 0
-      @(showLabel=>true) text(dd, "Label", white, left, 100): 5, 8
-      @alpha($opacity) ninepatch("ui", "button-idle", 120, 20): 0, 35
-      ninepatch("ui", "Sliderbar_H_3x1", 80 * $barWidth, 10): 0, 60
-}

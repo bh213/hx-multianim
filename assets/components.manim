@@ -1,13 +1,15 @@
-version: 0.3
+version: 0.5
+
+// Components Test
+// Demonstrates: tileGroups, macro builder placeholders, checkbox variants,
+// scrollable lists, and repeatable grids
 
 relativeLayouts {
   grid: 21, 31 {
   hexgrid:pointy(2, 3) {
-  
+
   #endpoint point: 600,10
 
-  
-    
   #endpoints list {
         point: 250,20
         point: 450,20
@@ -22,28 +24,33 @@ relativeLayouts {
   }
 }
 
-
+// Macro placeholder test - 4 types of builder parameters:
+//   element: pre-created UI element
+//   factoryElement: factory function returning UI element
+//   h2dObject: pre-created h2d.Object
+//   h2dObjectFactory: factory function returning h2d.Object
 #macroTest programmable() {
       pos:600,200
-      text(dd, "MacroTest", #ffffff00): 0,0
-      placeholder(generated(cross(10, 10)), builderParameter("element")):0,20
-      placeholder(generated(cross(10, 10)), builderParameter("factoryElement")):0,40
-      placeholder(generated(cross(10, 10)), builderParameter("h2dObject")):0,60
-      placeholder(generated(cross(10, 10)), builderParameter("h2dObjectFactory")):0,80
+      text(dd, "Macro Placeholders", #ffffffcc): 0,0
+      placeholder(generated(cross(10, 10)), builderParameter("element")):0,25
+      placeholder(generated(cross(10, 10)), builderParameter("factoryElement")):0,50
+      placeholder(generated(cross(10, 10)), builderParameter("h2dObject")):0,75
+      placeholder(generated(cross(10, 10)), builderParameter("h2dObjectFactory")):0,100
 }
-   
 
+// TileGroup examples - bitmap alignment
+// Shows left/top, left/center, left/bottom alignment
 #testTileGroup3 programmable() {
       pos:600,100
-          point {
-            text(dd, "tilegroup test", #ffffff00): 0,0
+      point {
+            text(dd, "Bitmap Alignment", #ffffffcc): 0,0
             bitmap(generated(color(20, 20, white)), left, top):0,50
             bitmap(generated(color(20, 20, white)), left, center):40,50
             bitmap(generated(color(20, 20, white)), left, bottom):80,50
-          }
+      }
 }
 
-
+// TileGroup with pos offset inside point
 #testTileGroup2 programmable tileGroup() {
       pos:600,100
       point {
@@ -54,8 +61,8 @@ relativeLayouts {
       }
 }
 
+// TileGroup with absolute pixel positions
 #testTileGroup1 programmable tileGroup() {
-      
       point {
             bitmap(generated(color(20, 20, gray)), left, top):610, 160
             bitmap(generated(color(20, 20, gray)), left, center):650, 160
@@ -63,69 +70,71 @@ relativeLayouts {
       }
 }
 
+// TileGroup with repeatable grid layout
 #testTileGroup4 programmable tileGroup() {
       pos:800,100
-      repeatable($index, grid(3, dx:40)) {
+      repeatable($index, step(3, dx:40)) {
             bitmap(generated(color(20, 20, white)), left, top);
       }
 }
 
-
+// Repeatable grid without tileGroup (for comparison)
 #testTileGroup5 programmable() {
       pos:805,105
-            repeatable($index, grid(3, dx:40)) {
+      repeatable($index, step(3, dx:40)) {
             bitmap(generated(color(20, 20, orange)), left, top);
       }
 }
 
+// TileGroup repeatable with variable iterator
 #testTileGroup6 programmable tileGroup() {
-      repeatable($bugabuga, grid(3, dx:40)) {
-            pos:810,110      
+      repeatable($item, step(3, dx:40)) {
+            pos:810,110
             bitmap(generated(color(20, 20, red)), left, top);
       }
 }
 
 
+// Main UI - interactive components
+// Checkbox variants: checkbox2, radio, radio2, tickbox, toggle
+// Scrollable lists with different item counts and settings
+// Checkbox with label text
 #ui programmable() {
       pos:100,300
-      
-      placeholder(generated(cross(200, 20)), builderParameter("checkbox1")) {
-            settings{checkboxBuildName=>checkbox2} // override builder name (will use checkbox2 programmable from std)
-      }
 
+      // 5 checkbox style variants (overriding the build name via settings)
+      placeholder(generated(cross(200, 20)), builderParameter("checkbox1")) {
+            settings{buildName=>checkbox2}
+      }
       placeholder(generated(cross(200, 20)), builderParameter("checkbox2")) {
             pos:30,0
-            settings{checkboxBuildName=>radio} 
+            settings{buildName=>radio}
       }
       placeholder(generated(cross(200, 20)), builderParameter("checkbox3")) {
             pos:60,0
-            settings{checkboxBuildName=>radio2} 
+            settings{buildName=>radio2}
       }
       placeholder(generated(cross(200, 20)), builderParameter("checkbox4")) {
             pos:90,0
-            settings{checkboxBuildName=>tickbox} 
+            settings{buildName=>tickbox}
       }
-
       placeholder(generated(cross(200, 20)), builderParameter("checkbox5")) {
             pos:120,0
-            settings{checkboxBuildName=>toggle} 
+            settings{buildName=>toggle}
       }
 
+      // 4 scrollable lists with different configurations
       placeholder(generated(cross(200, 20)), builderParameter("scroll1")) {
-            pos:400,100 
-            settings{height=>200, topClearance=>60}   
+            pos:400,100
+            settings{height=>200, topClearance=>60}
       }
       placeholder(generated(cross(200, 20)), builderParameter("scroll2")):550,100;
       placeholder(generated(cross(200, 20)), builderParameter("scroll3")):700,100;
-      
       placeholder(generated(cross(200, 20)), builderParameter("scroll4")):850,100;
-      
-      
+
+      // Checkbox with label text
       placeholder(generated(cross(200, 20)), builderParameter("checkboxWithLabel")) {
             pos:610,50;
             settings{font=>dd}
       }
-
-      
-      
 }
