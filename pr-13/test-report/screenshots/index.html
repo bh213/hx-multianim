@@ -308,14 +308,14 @@
 </head>
 <body>
     <h1>Visual Test Report</h1>
-    <div class="timestamp">Generated: 2026-02-16 07:36:16</div>
+    <div class="timestamp">Generated: 2026-02-16 07:51:47</div>
     <div class="summary">
-        <strong>Summary:</strong> 68 tests,         <span style="color: #4CAF50;">66 passed</span>,         <span style="color: #f44336;">2 failed</span>
+        <strong>Summary:</strong> 68 tests,         <span style="color: #4CAF50;">67 passed</span>,         <span style="color: #f44336;">1 failed</span>
     </div>
     <div class="unit-tests-section">
         <h2>Unit Tests</h2>
         <div class="unit-tests-summary has-failures">
-            <strong>438 assertions:</strong>             <span style="color: #4CAF50;">434 passed</span>, <span style="color: #f44336;">4 failures</span>
+            <strong>438 assertions:</strong>             <span style="color: #4CAF50;">436 passed</span>, <span style="color: #f44336;">2 failures</span>
             <button class="expand-btn" id="unitToggleBtn" onclick="toggleUnitDetails()">Show Details</button>
         </div>
         <div class="unit-details" id="unitDetails">
@@ -324,9 +324,6 @@
                 <div class="unit-method fail">test22_TilesIteration: FAIL <span class="dots">FF</span></div>
                 <div class="unit-fail-detail">test/src/bh/test/VisualTestBase.hx:453: Builder should match reference (similarity: 97.48%)</div>
                 <div class="unit-fail-detail">test/src/bh/test/VisualTestBase.hx:454: Macro should match reference (similarity: 97.48%)</div>
-                <div class="unit-method fail">test54_CodegenPaletteReplace: FAIL <span class="dots">FF</span></div>
-                <div class="unit-fail-detail">test/src/bh/test/VisualTestBase.hx:453: Builder should match reference (similarity: 98.44%)</div>
-                <div class="unit-fail-detail">test/src/bh/test/VisualTestBase.hx:454: Macro should match reference (similarity: 98.44%)</div>
                 <div class="unit-method pass">test01_HexGridPixels: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">test02_TextDemo: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">test03_BitmapDemo: OK <span class="dots">..</span></div>
@@ -379,6 +376,7 @@
                 <div class="unit-method pass">test51_CodegenParticles: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">test52_CodegenBlendMode: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">test53_CodegenApply: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">test54_CodegenPaletteReplace: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">test55_CodegenArray: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">test56_CodegenGridFunc: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">test57_CodegenMultiNamed: OK <span class="dots">..</span></div>
@@ -579,9 +577,6 @@
         <div>
             <a href="#test-#22: tilesIteration">#22: tilesIteration</a>
         </div>
-        <div>
-            <a href="#test-#54: codegenPaletteReplace">#54: codegenPaletteReplace</a>
-        </div>
     </div>
     <div class="test-result passed" id="test-#1: hexGridPixels">
         <div class="test-header">
@@ -692,7 +687,7 @@
                 <span class="test-status passed">Macro: PASSED</span>
             </div>
         </div>
-        <div class="similarity">Builder similarity: 99.64% <span style="color: #999;">(acceptance: 97%)</span> | Macro similarity: 99.38% <span style="color: #999;">(acceptance: 97%)</span></div>
+        <div class="similarity">Builder similarity: 100% <span style="color: #999;">(acceptance: 97%)</span> | Macro similarity: 99.74% <span style="color: #999;">(acceptance: 97%)</span></div>
         <div class="image-comparison cols-3">
             <div class="image-container">
                 <div class="image-label">Reference</div>
@@ -1842,7 +1837,7 @@
                 <span class="test-status passed">Macro: PASSED</span>
             </div>
         </div>
-        <div class="similarity">Builder similarity: 96.14% <span style="color: #999;">(acceptance: 70%)</span> | Macro similarity: 93.59% <span style="color: #999;">(acceptance: 70%)</span></div>
+        <div class="similarity">Builder similarity: 96.01% <span style="color: #999;">(acceptance: 70%)</span> | Macro similarity: 93.76% <span style="color: #999;">(acceptance: 70%)</span></div>
         <div class="image-comparison cols-3">
             <div class="image-container">
                 <div class="image-label">Reference</div>
@@ -1908,16 +1903,16 @@
             </div>
         </div>
     </div>
-    <div class="test-result failed" id="test-#54: codegenPaletteReplace">
+    <div class="test-result passed" id="test-#54: codegenPaletteReplace">
         <div class="test-header">
             <div class="test-name">#54: codegenPaletteReplace</div>
             <div>
                 <a class="manim-link" onclick="showManim('#54: codegenPaletteReplace')">codegenPaletteReplace.manim</a>
-                <span class="test-status failed">Builder: FAILED</span>
-                <span class="test-status failed">Macro: FAILED</span>
+                <span class="test-status passed">Builder: PASSED</span>
+                <span class="test-status passed">Macro: PASSED</span>
             </div>
         </div>
-        <div class="similarity">Builder similarity: 98.44% <span style="color: #c62828; font-weight: bold;">(acceptance: 99%)</span> | Macro similarity: 98.44% <span style="color: #c62828; font-weight: bold;">(acceptance: 99%)</span></div>
+        <div class="similarity">Builder similarity: 100% <span style="color: #999;">(acceptance: 99%)</span> | Macro similarity: 100% <span style="color: #999;">(acceptance: 99%)</span></div>
         <div class="image-comparison cols-3">
             <div class="image-container">
                 <div class="image-label">Reference</div>
