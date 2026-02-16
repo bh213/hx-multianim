@@ -1,0 +1,34 @@
+version: 0.3
+
+#applyDemoRef programmable(state:[alpha, filter, scale]) {
+  @(state=>alpha) apply {
+    alpha: 0.4
+    pos: 0, 0
+  }
+  @(state=>filter) apply {
+    filter:glow(color:yellow, alpha:1, gain:5, radius:100, smoothColor:true)
+    pos: 200, 200
+  }
+  @(state=>scale) apply {
+    scale: 0.7
+    pos: 400, 400
+  }
+  bitmap(generated(color(200, 200, green)));
+}
+
+#applyDemo programmable() {
+  pos: 0, 0
+  grid: 1280, 720
+
+  @alpha(0.3) bitmap(generated(color(1280, 720, #222)));
+
+  point {
+    pos: 10, 10
+    reference($applyDemoRef, state=>alpha):200, 20
+    @scale(3) text(dd, "state=>alpha, 40% alpha", white, left, 400):500, 60
+    reference($applyDemoRef, state=>filter):0, 100
+    @scale(3) text(dd, "state=>filter, glow", white, left, 400):500, 300
+    reference($applyDemoRef, state=>scale):-200, 160
+    @scale(3) text(dd, "state=>scale, 70% + x move", white, left, 400):500, 560
+  }
+}

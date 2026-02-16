@@ -1,0 +1,23 @@
+version: 0.3
+
+#codegenParticles programmable() {
+    point {
+        pos: 400, 300
+        particles {
+            count: 100
+            emit: cone(0, 0, 270, 45)
+            maxLife: 2.0
+            speed: 120
+            speedRandom: 0.3
+            sizeRandom: 0.3
+            lifeRandom: 0.3
+            tiles: sheet("demo", "tile-center")
+            loop: false
+            size: 2.0
+            gravity: 80
+            gravityAngle: 90
+            fadeOut: 0.7
+            emitSync: 0.9
+        }
+    }
+}

@@ -1,0 +1,58 @@
+version: 0.3
+
+paths {
+  #arc path {
+    arc(80, 180)
+  }
+  #bezierS path {
+    bezier(relative, 200, 0, 0, -120, smoothing: auto)
+  }
+  #zigzag path {
+    lineTo(50, -40)
+    lineTo(50, 40)
+    lineTo(50, -40)
+    lineTo(50, 40)
+  }
+}
+
+curves {
+  #linear curve {
+    easing: linear
+  }
+  #easeInQuad curve {
+    easing: easeinquad
+  }
+  #easeOutQuad curve {
+    easing: easeoutquad
+  }
+  #easeInOutCubic curve {
+    easing: easeinoutcubic
+  }
+  #easeOutBounce curve {
+    easing: easeoutbounce
+  }
+  #easeOutElastic curve {
+    easing: easeoutelastic
+  }
+  #easeInBack curve {
+    easing: easeinback
+  }
+  #easeOutBack curve {
+    easing: easeoutback
+  }
+  #customPoints curve {
+    points: [(0, 0.1), (0.25, 0.9), (0.5, 0.3), (0.75, 1.0), (1.0, 0.5)]
+  }
+}
+
+#easingCurvesDemo programmable() {
+  text(m3x6, "Easing & Curves Demo", white, left): 10, 5
+}
+
+#panim animatedPath {
+  path: arc
+  type: time
+  duration: 2.0
+  0.0: progressCurve: easeInOutCubic, event("start")
+  1.0: event("end")
+}

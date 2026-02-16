@@ -1,0 +1,21 @@
+version: 0.3
+
+#tintDemo programmable() {
+  bitmap(generated(color(80, 80, #FFFFFF))): 20, 20
+  @tint(#FF0000) bitmap(generated(color(80, 80, #FFFFFF))): 120, 20
+  @tint(#00FF00) bitmap(generated(color(80, 80, #FFFFFF))): 220, 20
+  @tint(#0000FF) bitmap(generated(color(80, 80, #FFFFFF))): 320, 20
+  @tint(#FFFF00) bitmap(generated(color(80, 80, #FFFFFF))): 420, 20
+  @tint(#FF0000) bitmap(generated(color(80, 80, #FF8800))): 20, 120
+  @tint(#00FF00) bitmap(generated(color(80, 80, #FF8800))): 120, 120
+  @tint(#0000FF) bitmap(generated(color(80, 80, #FF8800))): 220, 120
+  bitmap(generated(color(80, 80, #FF8800))) {
+    tint: #FF00FF
+    pos: 320, 120
+  }
+  @scale(4) bitmap(sheet("crew2", "marine_r_idle")): 20, 240
+  @scale(4) tint(#FF0000) bitmap(sheet("crew2", "marine_r_idle")): 120, 240
+  @scale(4) tint(#00FF00) bitmap(sheet("crew2", "marine_r_idle")): 220, 240
+  @scale(4) tint(#0000FF) bitmap(sheet("crew2", "marine_r_idle")): 320, 240
+  @scale(4) tint(#FFFF00) bitmap(sheet("crew2", "marine_r_idle")): 420, 240
+}

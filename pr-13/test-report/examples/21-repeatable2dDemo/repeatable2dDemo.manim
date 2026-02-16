@@ -1,0 +1,20 @@
+version: 0.3
+
+#file palette(file:"main-palette.png")
+
+#repeatable2dDemo programmable() {
+  pos: 0, 0
+  grid: 1280, 720
+
+  @alpha(0.2) bitmap(generated(color(1280, 720, #333)));
+
+  repeatable2d($x, $y, step(5, dx: 96), step(3, dy: 96)) {
+    pos: 40, 120
+    bitmap(generated(color(72, 72, palette(file, $x+7, $y))));
+  }
+
+  repeatable2d($x, $y, range(1, 4), range(1,5)) {
+    pos: 600, 100
+    @scale(3) text(dd, ""+$x+"/"+$y, white, left, 400): $x*120, ($y-1)*100;
+  }
+}

@@ -1,0 +1,7 @@
+version: 0.3
+
+#repeatableDemo programmable(count: uint = 5) {
+  repeatable($index, step($count, dx: 20, dy: 1)) {
+    @alpha(1.0 - $index/$count) scale(4) bitmap(sheet("crew2", "marine_r_shooting_d")):10,10;
+  }
+}

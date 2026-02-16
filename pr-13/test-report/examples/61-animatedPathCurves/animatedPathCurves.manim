@@ -1,0 +1,78 @@
+version: 0.3
+
+paths {
+  #arcPath path {
+    arc(80, 180)
+  }
+  #linePath path {
+    lineTo(200, 0)
+  }
+  #bezierPath path {
+    bezier(relative, 200, 0, 100, -80, smoothing: auto)
+  }
+  #checkpointPath path {
+    lineTo(80, 0)
+    checkpoint("mid")
+    lineTo(80, -60)
+    checkpoint("end")
+    lineTo(40, 60)
+  }
+}
+
+curves {
+  #linear curve {
+    easing: linear
+  }
+  #easeInOut curve {
+    easing: easeinoutcubic
+  }
+  #speedUp curve {
+    points: [(0, 0.2), (0.5, 1.0), (1.0, 2.0)]
+  }
+  #fadeIn curve {
+    points: [(0, 0.0), (0.3, 1.0), (1.0, 1.0)]
+  }
+  #scaleGrow curve {
+    points: [(0, 0.5), (0.5, 1.5), (1.0, 1.0)]
+  }
+}
+
+#animatedPathCurves programmable() {
+  text(m3x6, "AnimatedPath Curves Test", white, left): 10, 5
+}
+
+#distAnim animatedPath {
+  path: linePath
+  type: distance
+  speed: 100
+  0.0: speedCurve: speedUp, scaleCurve: scaleGrow, alphaCurve: fadeIn
+  0.5: event("halfway")
+  1.0: event("done")
+}
+
+#timeAnim animatedPath {
+  path: arcPath
+  type: time
+  duration: 1.5
+  0.0: progressCurve: easeInOut
+  0.0: event("start")
+  1.0: event("end")
+}
+
+#customAnim animatedPath {
+  path: bezierPath
+  type: time
+  duration: 2.0
+  0.0: scaleCurve: scaleGrow, custom("heat"): speedUp
+  0.5: alphaCurve: fadeIn
+  1.0: event("complete")
+}
+
+#checkpointAnim animatedPath {
+  path: checkpointPath
+  type: distance
+  speed: 80
+  0.0: scaleCurve: scaleGrow
+  mid: speedCurve: speedUp, event("reachedMid")
+  end: alphaCurve: fadeIn, event("reachedEnd")
+}

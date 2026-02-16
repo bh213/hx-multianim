@@ -1,0 +1,52 @@
+version: 0.3
+
+#codegenHexPos programmable(cornerIdx:int=0) {
+  point {
+    hex: pointy(32, 32)
+    pos: 200, 200
+    scale: 2
+
+    bitmap(generated(color(10, 10, #FF0000))): hexCorner(0, 1.0)
+    bitmap(generated(color(10, 10, #00FF00))): hexCorner(1, 1.0)
+    bitmap(generated(color(10, 10, #0000FF))): hexCorner(2, 1.0)
+    bitmap(generated(color(10, 10, #FFFF00))): hexCorner(3, 1.0)
+    bitmap(generated(color(10, 10, #FF00FF))): hexCorner(4, 1.0)
+    bitmap(generated(color(10, 10, #00FFFF))): hexCorner(5, 1.0)
+
+    bitmap(generated(color(8, 8, #FFFFFF))): hexEdge(0, 1.0)
+    bitmap(generated(color(8, 8, #FFFFFF))): hexEdge(1, 1.0)
+    bitmap(generated(color(8, 8, #FFFFFF))): hexEdge(2, 1.0)
+    bitmap(generated(color(8, 8, #FFFFFF))): hexEdge(3, 1.0)
+    bitmap(generated(color(8, 8, #FFFFFF))): hexEdge(4, 1.0)
+    bitmap(generated(color(8, 8, #FFFFFF))): hexEdge(5, 1.0)
+  }
+
+  point {
+    hex: flat(32, 32)
+    pos: 500, 200
+    scale: 2
+
+    bitmap(generated(color(10, 10, #FF0000))): hexCorner(0, 1.0)
+    bitmap(generated(color(10, 10, #00FF00))): hexCorner(1, 1.0)
+    bitmap(generated(color(10, 10, #0000FF))): hexCorner(2, 1.0)
+    bitmap(generated(color(10, 10, #FFFF00))): hexCorner(3, 1.0)
+    bitmap(generated(color(10, 10, #FF00FF))): hexCorner(4, 1.0)
+    bitmap(generated(color(10, 10, #00FFFF))): hexCorner(5, 1.0)
+
+    bitmap(generated(color(8, 8, #FFFFFF))): hexEdge(0, 1.0)
+    bitmap(generated(color(8, 8, #FFFFFF))): hexEdge(1, 1.0)
+    bitmap(generated(color(8, 8, #FFFFFF))): hexEdge(2, 1.0)
+    bitmap(generated(color(8, 8, #FFFFFF))): hexEdge(3, 1.0)
+    bitmap(generated(color(8, 8, #FFFFFF))): hexEdge(4, 1.0)
+    bitmap(generated(color(8, 8, #FFFFFF))): hexEdge(5, 1.0)
+  }
+
+  point {
+    hex: pointy(32, 32)
+    pos: 800, 200
+    scale: 2
+
+    bitmap(generated(color(14, 14, #FFAA00))): hexCorner($cornerIdx, 1.0)
+    bitmap(generated(color(10, 10, #AA00FF))): hexEdge($cornerIdx, 1.0)
+  }
+}

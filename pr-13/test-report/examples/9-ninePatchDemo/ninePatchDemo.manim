@@ -1,0 +1,17 @@
+version: 0.3
+
+#ninePatchDemo programmable() {
+  pos: 0, 0
+  grid: 1280, 720
+
+  @alpha(0.5) bitmap(generated(color(1280, 720, blue)));
+
+  @scale(5) ninepatch("ui", "Window_3x3_idle", 60, 60): 40, 100
+  @scale(5) ninepatch("ui", "Window_3x3_idle", 60, 100): 400, 100
+  @scale(5) ninepatch("ui", "Window_3x3_idle", 60, 20): 800, 100
+}
+
+#main point {
+  pos: 0, 0
+  reference($ninePatchDemo):0,0
+}

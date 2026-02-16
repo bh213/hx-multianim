@@ -1,0 +1,41 @@
+version: 0.3
+
+relativeLayouts {
+  grid: 128, 72 {
+    #repeatableTest list {
+      // Left eye
+      point: 360,180
+      point: 390,150
+      point: 450,150
+      point: 480,180
+      point: 450,210
+      point: 390,210
+      // Right eye
+      point: 720,180
+      point: 750,150
+      point: 810,150
+      point: 840,180
+      point: 810,210
+      point: 750,210
+      // Smile curve
+      point: 300,420
+      point: 360,510
+      point: 480,570
+      point: 600,600
+      point: 720,570
+      point: 840,510
+      point: 900,420
+    }
+  }
+}
+
+#layoutRepeatableDemo programmable() {
+  pos: 0, 0
+  grid: 1280, 720
+
+  @alpha(0.1) bitmap(generated(color(1280, 720, gray)));
+  repeatable($index, layout("mainScreen", "repeatableTest")) {
+    pos: 0, 0
+    bitmap(generated(color(60, 60, red)));
+  }
+}

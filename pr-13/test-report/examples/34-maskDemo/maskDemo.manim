@@ -1,0 +1,38 @@
+version: 0.3
+
+#maskDemo programmable() {
+  pos: 0, 0
+  grid: 1280, 720
+
+  bitmap(generated(color(1280, 720, #222222)));
+
+  // 300x300 red clipped to 200x10 - should see wide red bar
+  text(dd, "300x300 in mask(200,10)", #888, left, 300): 100, 75
+  mask(200, 10) {
+    pos: 100, 100
+    bitmap(generated(color(300, 300, red))): 0, 0
+  }
+
+  // 300x300 green offset -50,-50 in 150x150 mask - clipped on all sides
+  text(dd, "offset(-50,-50) in mask(150,150)", #888, left, 400): 400, 75
+  mask(150, 150) {
+    pos: 400, 100
+    bitmap(generated(color(300, 300, green))): -50, -50
+  }
+
+  // 300x300 blue in 100x200 mask - narrow vertical strip
+  text(dd, "300x300 in mask(100,200)", #888, left, 300): 700, 75
+  mask(100, 200) {
+    pos: 700, 100
+    bitmap(generated(color(300, 300, blue))): 0, 0
+  }
+
+  // 3 blocks 100px each, mask 250px wide - blue clipped at 50px
+  text(dd, "3x100w in mask(250,80) - blue clipped", #888, left, 400): 100, 375
+  mask(250, 80) {
+    pos: 100, 400
+    bitmap(generated(color(100, 80, red))): 0, 0
+    bitmap(generated(color(100, 80, green))): 100, 0
+    bitmap(generated(color(100, 80, blue))): 200, 0
+  }
+}

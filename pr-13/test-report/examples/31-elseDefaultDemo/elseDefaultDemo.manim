@@ -1,0 +1,152 @@
+version: 0.3
+
+// =============================================================================
+// Demo 1: Basic @else - binary toggle
+// =============================================================================
+#elseBasic programmable(mode:[on, off]) {
+  pos: 0, 0
+  graphics (
+    rect(#444, 1, 60, 30): 0, 0
+  ): 0, 0;
+  @(mode=>on) bitmap(generated(color(60, 30, #060))):0,0;
+  @else bitmap(generated(color(60, 30, #600))):2,2;
+  @(mode=>on) text(m3x6, "ON", #8f8, center, 60):0,8;
+  @else text(m3x6, "OFF", #f88, center, 60):0,10;
+}
+
+// =============================================================================
+// Demo 2: @else with condition (else-if chain)
+// =============================================================================
+#elseIfDemo programmable(level:[low, medium, high, critical]) {
+  pos: 0, 0
+  graphics (
+    rect(#444, 1, 80, 30): 0, 0
+  ): 0, 0;
+  @(level=>low) bitmap(generated(color(80, 30, #036))):0,0;
+  @else(level=>medium) bitmap(generated(color(80, 30, #063))):2,2;
+  @else(level=>high) bitmap(generated(color(80, 30, #630))):4,4;
+  @else bitmap(generated(color(80, 30, #600))):6,6;
+
+  @(level=>low) text(m3x6, "LOW", #8ff, center, 80):0,8;
+  @else(level=>medium) text(m3x6, "MED", #8f8, center, 80):0,10;
+  @else(level=>high) text(m3x6, "HIGH", #ff8, center, 80):0,12;
+  @else text(m3x6, "CRIT", #f88, center, 80):0,14;
+}
+
+// =============================================================================
+// Demo 3: @default - catch-all for unmatched states
+// =============================================================================
+#defaultDemo programmable(state:[idle, hover, pressed, disabled]) {
+  pos: 0, 0
+  graphics (
+    rect(#444, 1, 70, 30): 0, 0
+  ): 0, 0;
+  @(state=>idle) bitmap(generated(color(70, 30, #333))):0,0;
+  @(state=>hover) bitmap(generated(color(70, 30, #063))):2,2;
+  @default bitmap(generated(color(70, 30, #600))):4,4;
+
+  @(state=>idle) text(m3x6, "IDLE", #888, center, 70):0,8;
+  @(state=>hover) text(m3x6, "HOVER", #8f8, center, 70):0,10;
+  @default text(m3x6, "OTHER", #f88, center, 70):0,12;
+}
+
+// =============================================================================
+// Demo 4: @else with range conditions
+// =============================================================================
+#elseRangeDemo programmable(temp:-50..150) {
+  pos: 0, 0
+  graphics (
+    rect(#444, 1, 70, 40): 0, 0
+  ): 0, 0;
+  @(temp <= -1) bitmap(generated(color(70, 40, #48f))):0,0;
+  @else(temp => 0..100) bitmap(generated(color(70, 40, #06a))):2,2;
+  @else bitmap(generated(color(70, 40, #888))):4,4;
+
+  @(temp <= -1) text(m3x6, "ICE", white, center, 70):0,12;
+  @else(temp => 0..100) text(m3x6, "WATER", white, center, 70):0,14;
+  @else text(m3x6, "STEAM", white, center, 70):0,16;
+}
+
+// =============================================================================
+// Demo 5: @else with multiple parameters
+// =============================================================================
+#elseMultiDemo programmable(enabled:[yes, no], style:[bold, normal]) {
+  pos: 0, 0
+  graphics (
+    rect(#444, 1, 60, 30): 0, 0
+  ): 0, 0;
+  @(enabled=>yes) bitmap(generated(color(60, 30, #060))):0,0;
+  @else bitmap(generated(color(60, 30, #600))):2,2;
+  @(enabled=>yes, style=>bold) text(m3x6, "ON+B", #8f8, center, 60):0,8;
+  @else(enabled=>yes) text(m3x6, "ON", #8f8, center, 60):0,10;
+  @else text(m3x6, "OFF", #f88, center, 60):0,12;
+}
+
+// =============================================================================
+// Main: Display all demos
+// =============================================================================
+#elseDefaultDemo programmable() {
+  pos: 0, 0
+
+  // --- Row 1: Basic @else ---
+  point {
+    pos: 10, 10
+    text(m3x6, "@else - basic toggle", #888, left, 300):0,0;
+    reference($elseBasic, mode=>on):0,14;
+    text(m3x6, "on=>ON", #555, center, 60):0,48;
+    reference($elseBasic, mode=>off):70,14;
+    text(m3x6, "off=>OFF", #555, center, 60):70,48;
+  }
+
+  // --- Row 2: @else with conditions (else-if chain) ---
+  point {
+    pos: 10, 70
+    text(m3x6, "@else(cond) - else-if chain", #888, left, 300):0,0;
+    reference($elseIfDemo, level=>low):0,14;
+    text(m3x6, "low=>LOW", #555, center, 80):0,48;
+    reference($elseIfDemo, level=>medium):90,14;
+    text(m3x6, "med=>MED", #555, center, 80):90,48;
+    reference($elseIfDemo, level=>high):180,14;
+    text(m3x6, "high=>HIGH", #555, center, 80):180,48;
+    reference($elseIfDemo, level=>critical):270,14;
+    text(m3x6, "crit=>CRIT", #555, center, 80):270,48;
+  }
+
+  // --- Row 3: @default - catch-all ---
+  point {
+    pos: 10, 130
+    text(m3x6, "@default - catches unmatched", #888, left, 400):0,0;
+    reference($defaultDemo, state=>idle):0,14;
+    text(m3x6, "idle=>IDLE", #555, center, 70):0,48;
+    reference($defaultDemo, state=>hover):80,14;
+    text(m3x6, "hover=>HOVER", #555, center, 70):80,48;
+    reference($defaultDemo, state=>pressed):160,14;
+    text(m3x6, "press=>OTHER", #555, center, 70):160,48;
+    reference($defaultDemo, state=>disabled):240,14;
+    text(m3x6, "dis=>OTHER", #555, center, 70):240,48;
+  }
+
+  // --- Row 4: @else with range ---
+  point {
+    pos: 10, 196
+    text(m3x6, "@else(range) - temperature", #888, left, 400):0,0;
+    reference($elseRangeDemo, temp=>-20):0,14;
+    text(m3x6, "-20=>ICE", #555, center, 70):0,58;
+    reference($elseRangeDemo, temp=>50):80,14;
+    text(m3x6, "50=>WATER", #555, center, 70):80,58;
+    reference($elseRangeDemo, temp=>120):160,14;
+    text(m3x6, "120=>STEAM", #555, center, 70):160,58;
+  }
+
+  // --- Row 5: @else with multiple parameters ---
+  point {
+    pos: 10, 272
+    text(m3x6, "@else multi-param", #888, left, 400):0,0;
+    reference($elseMultiDemo, enabled=>yes, style=>bold):0,14;
+    text(m3x6, "y+b=>ON+B", #555, center, 60):0,48;
+    reference($elseMultiDemo, enabled=>yes, style=>normal):70,14;
+    text(m3x6, "y+n=>ON", #555, center, 60):70,48;
+    reference($elseMultiDemo, enabled=>no, style=>normal):140,14;
+    text(m3x6, "n+n=>OFF", #555, center, 60):140,48;
+  }
+}
