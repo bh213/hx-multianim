@@ -535,7 +535,9 @@ private typedef InternalBuilderResults = {
 private typedef StoredBuilderState = {
 	indexedParams:Map<String, ResolvedIndexParameters>,
 	builderParams:BuilderParameters,
-	currentNode:Null<Node>
+	currentNode:Null<Node>,
+	incrementalMode:Bool,
+	incrementalContext:Null<IncrementalUpdateContext>,
 }
 
 // @:nullSafety
@@ -590,6 +592,8 @@ class MultiAnimBuilder {
 		this.indexedParams = state.indexedParams;
 		this.builderParams = state.builderParams;
 		this.currentNode = state.currentNode;
+		this.incrementalMode = state.incrementalMode;
+		this.incrementalContext = state.incrementalContext;
 	}
 
 	function pushBuilderState() {
@@ -597,6 +601,8 @@ class MultiAnimBuilder {
 			indexedParams: this.indexedParams,
 			builderParams: this.builderParams,
 			currentNode: this.currentNode,
+			incrementalMode: this.incrementalMode,
+			incrementalContext: this.incrementalContext,
 		});
 		this.indexedParams = [];
 		this.builderParams = {};
@@ -1567,6 +1573,14 @@ class MultiAnimBuilder {
 				case OFFSET(x, y):
 					collectParamRefs(x, posRefs);
 					collectParamRefs(y, posRefs);
+				case SELECTED_GRID_POSITION(gridX, gridY):
+					collectParamRefs(gridX, posRefs);
+					collectParamRefs(gridY, posRefs);
+				case SELECTED_GRID_POSITION_WITH_OFFSET(gridX, gridY, offsetX, offsetY):
+					collectParamRefs(gridX, posRefs);
+					collectParamRefs(gridY, posRefs);
+					collectParamRefs(offsetX, posRefs);
+					collectParamRefs(offsetY, posRefs);
 				default:
 			}
 			if (posRefs.length > 0) {

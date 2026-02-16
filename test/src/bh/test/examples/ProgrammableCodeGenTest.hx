@@ -2848,18 +2848,18 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		simpleMacroTest(72, "flowAdvanced", () -> createMp().flowAdvanced.create(), async);
 	}
 
-	// ==================== Component element: visual ====================
+	// ==================== Dynamic refs: visual ====================
 
 	@Test
-	public function test73_ComponentDemo(async:utest.Async):Void {
-		simpleTest(73, "componentDemo", async);
+	public function test73_DynamicRefs(async:utest.Async):Void {
+		simpleTest(73, "dynamicRefs", async, null, null, 2.0);
 	}
 
 	// ==================== DynamicRef scope isolation: visual ====================
 
 	@Test
 	public function test74_DynamicRefScope(async:utest.Async):Void {
-		simpleMacroTest(74, "dynamicRefScope", () -> createMp().dynamicRefScope.create(), async);
+		simpleMacroTest(74, "dynamicRefScope", () -> createMp().dynamicRefScope.create(), async, null, null, 2.0);
 	}
 
 	// ==================== Indexed named: unit tests ====================
@@ -3007,9 +3007,9 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	@Test
 	public function testBuilderUpdateConditionalSwitch():Void {
 		// Build statusBar with value=80 (>= 50 → green bitmap visible)
-		final fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/73-componentDemo/componentDemo.manim"));
+		final fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/73-dynamicRefs/dynamicRefs.manim"));
 		final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
-		final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "componentDemo.manim");
+		final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "dynamicRefs.manim");
 
 		final params = new Map<String, Dynamic>();
 		params.set("value", 80);
@@ -3030,9 +3030,9 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	@Test
 	public function testBuilderUpdateTextExpression():Void {
 		// Build statusBar — text shows $label
-		final fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/73-componentDemo/componentDemo.manim"));
+		final fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/73-dynamicRefs/dynamicRefs.manim"));
 		final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
-		final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "componentDemo.manim");
+		final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "dynamicRefs.manim");
 
 		final params = new Map<String, Dynamic>();
 		params.set("value", 80);
@@ -3051,9 +3051,9 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	@Test
 	public function testBuilderUpdateMultipleParams():Void {
-		final fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/73-componentDemo/componentDemo.manim"));
+		final fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/73-dynamicRefs/dynamicRefs.manim"));
 		final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
-		final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "componentDemo.manim");
+		final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "dynamicRefs.manim");
 
 		final params = new Map<String, Dynamic>();
 		params.set("value", 80);
@@ -3074,12 +3074,93 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	// ==================== Component: unit tests ====================
 
+	// ==================== Progress bar: visual ====================
+
 	@Test
-	public function testComponentBuilderGetComponent():Void {
-		final fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/73-componentDemo/componentDemo.manim"));
+	public function test75_ProgressBarDemo(async:utest.Async):Void {
+		setupTest(75, "progressBarDemo");
+		VisualTestBase.pendingVisualTests++;
+		async.setTimeout(10000);
+		clearScene();
+
+		try {
+			final fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/75-progressBarDemo/progressBarDemo.manim"));
+			final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+			final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "progressBarDemo.manim");
+
+			// Column 1: progressBar (text beside) — 10 values
+			final col1Values = [0, 10, 25, 40, 50, 60, 75, 85, 95, 100];
+			for (i in 0...col1Values.length) {
+				final bar = bh.ui.UIMultiAnimProgressBar.create(builder, "progressBar", col1Values[i]);
+				bar.doRedraw();
+				final obj = bar.getObject();
+				obj.setPosition(10, 10 + i * 24);
+				s2d.addChild(obj);
+			}
+
+			// Column 2: progressBarBelow (label + value below) — 8 values
+			final col2Values = [0, 15, 33, 50, 66, 80, 95, 100];
+			for (i in 0...col2Values.length) {
+				final bar = bh.ui.UIMultiAnimProgressBar.create(builder, "progressBarBelow", col2Values[i]);
+				bar.doRedraw();
+				final obj = bar.getObject();
+				obj.setPosition(260, 10 + i * 28);
+				s2d.addChild(obj);
+			}
+
+			// Column 3: progressBarInside (text centered inside) — 10 values
+			final col3Values = [0, 5, 20, 35, 50, 65, 80, 90, 95, 100];
+			for (i in 0...col3Values.length) {
+				final bar = bh.ui.UIMultiAnimProgressBar.create(builder, "progressBarInside", col3Values[i]);
+				bar.doRedraw();
+				final obj = bar.getObject();
+				obj.setPosition(400, 10 + i * 22);
+				s2d.addChild(obj);
+			}
+
+			addTitleOverlay();
+		} catch (e:Dynamic) {
+			var msg = 'Progress bar test threw: $e';
+			reportBuildFailure(msg);
+			Assert.fail(msg);
+			VisualTestBase.pendingVisualTests--;
+			async.done();
+			return;
+		}
+
+		waitForUpdate(function(dt:Float) {
+			try {
+				var actualPath = getActualImagePath();
+				var referencePath = getReferenceImagePath();
+				var success = screenshot(actualPath);
+				Assert.isTrue(success, 'Screenshot should be created at $actualPath');
+				if (success) {
+					var match = compareImages(actualPath, referencePath);
+					Assert.isTrue(match, 'Screenshot should match reference image');
+				}
+			} catch (e:Dynamic) {
+				Assert.fail('Screenshot/compare threw: $e');
+			}
+			VisualTestBase.pendingVisualTests--;
+			async.done();
+		});
+	}
+
+	// ==================== Combo unconditional children: visual ====================
+
+	@Test
+	public function test76_ComboUnconditional(async:utest.Async):Void {
+		simpleTest(76, "comboUnconditional", async);
+	}
+
+	// ==================== Dynamic ref: unit tests ====================
+
+	@Test
+	public function testDynamicRefBuilderGetComponent():Void {
+		final fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/73-dynamicRefs/dynamicRefs.manim"));
 		final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
-		final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "componentDemo.manim");
-		final result = builder.buildWithParameters("componentDemo", new Map());
+		final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "dynamicRefs.manim");
+		final result = builder.buildWithParameters("dynamicRefs", new Map());
 
 		final dynRef = result.getDynamicRef("statusBar");
 		Assert.notNull(dynRef, "Should have statusBar dynamicRef");

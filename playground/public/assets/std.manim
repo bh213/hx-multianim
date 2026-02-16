@@ -68,10 +68,7 @@ version: 0.5
       @(status=>pressed, disabled=>false) ninepatch("ui", "button-pressed", 200, 30): 0,0
       @(status=>*, disabled=>true) ninepatch("ui", "button-disabled", 200, 30):       0,0
       
-      @(status=>hover, disabled=>false) text(dd, $buttonText, 0xffffff12, center, 200): 0,10
-      @(status=>pressed, disabled=>false) text(dd, $buttonText, 0xffffff12, center, 200): 0,10
-      @(status=>normal, disabled=>false) text(dd, $buttonText, 0xffffff12, center, 200): 0,10
-      @(status=>*, disabled=>true) text(dd, $buttonText, 0xffffff12, center, 200): 0,10
+      text(dd, $buttonText, 0xffffff12, center, 200): 0,10
 }
     
 

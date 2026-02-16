@@ -1,0 +1,98 @@
+version: 0.5
+
+// Simple status bar — conditional color based on value
+#statusBar programmable(value:uint=50, label:string="HP") {
+  @(value >= 50) bitmap(generated(color(40, 10, #44ff44))): 0, 0
+  @(value < 50) bitmap(generated(color(40, 10, #ff4444))): 0, 0
+  text(f3x5, $label, #ffffff): 2, 2
+}
+
+// Badge with icon and number
+#badge programmable(count:uint=0, color:color=#4488cc) {
+  bitmap(generated(color(20, 14, $color))): 0, 0
+  text(f3x5, $count, #ffffff, center, 20): 0, 4
+}
+
+// Labeled value display
+#labeledValue programmable(label:string="key", val:uint=0, barColor:color=#888888) {
+  text(f3x5, $label, #aaaaaa): 0, 0
+  bitmap(generated(color($val, 6, $barColor))): 30, 0
+  text(f3x5, $val, #ffffff): 90, 0
+}
+
+// Nested: uses statusBar inside
+#playerStats programmable(hp:uint=100, mp:uint=50, name:string="Player") {
+  text(f3x5, $name, #ffffff): 0, 0
+  dynamicRef($statusBar, value=>$hp, label=>"HP"): 0, 10
+  dynamicRef($statusBar, value=>$mp, label=>"MP"): 0, 24
+}
+
+#dynamicRefs programmable() {
+  // --- Column 1: Basic dynamicRef usage ---
+  text(m3x6, "Basic dynamicRef:", #cccccc): 10, 5
+
+  text(m3x6, "HP=80", #888888): 10, 20
+  dynamicRef($statusBar, value=>80, label=>"HP"): 60, 20
+
+  text(m3x6, "MP=30", #888888): 10, 36
+  dynamicRef($statusBar, value=>30, label=>"MP"): 60, 36
+
+  text(m3x6, "XP=50", #888888): 10, 52
+  dynamicRef($statusBar, value=>50, label=>"XP"): 60, 52
+
+  text(m3x6, "default", #888888): 10, 68
+  dynamicRef($statusBar): 60, 68
+
+  text(m3x6, "low=10", #888888): 10, 84
+  dynamicRef($statusBar, value=>10, label=>"STA"): 60, 84
+
+  text(m3x6, "full=99", #888888): 10, 100
+  dynamicRef($statusBar, value=>99, label=>"FUL"): 60, 100
+
+  text(m3x6, "zero=0", #888888): 10, 116
+  dynamicRef($statusBar, value=>0, label=>"---"): 60, 116
+
+  // --- Column 2: Badge refs ---
+  text(m3x6, "Badge refs:", #cccccc): 160, 5
+
+  dynamicRef($badge, count=>0, color=>#666666): 160, 20
+  dynamicRef($badge, count=>3, color=>#cc4444): 185, 20
+  dynamicRef($badge, count=>7, color=>#44cc44): 210, 20
+  dynamicRef($badge, count=>15, color=>#4444cc): 235, 20
+  dynamicRef($badge, count=>42, color=>#cc8844): 260, 20
+  dynamicRef($badge, count=>99, color=>#cc44cc): 285, 20
+
+  text(m3x6, "default badge:", #888888): 160, 40
+  dynamicRef($badge): 240, 40
+
+  // --- Column 2: Labeled values ---
+  text(m3x6, "Labeled values:", #cccccc): 160, 60
+
+  dynamicRef($labeledValue, label=>"ATK", val=>75, barColor=>#cc4444): 160, 76
+  dynamicRef($labeledValue, label=>"DEF", val=>45, barColor=>#4488cc): 160, 88
+  dynamicRef($labeledValue, label=>"SPD", val=>60, barColor=>#44cc44): 160, 100
+  dynamicRef($labeledValue, label=>"LCK", val=>12, barColor=>#cccc44): 160, 112
+  dynamicRef($labeledValue, label=>"INT", val=>90, barColor=>#cc44cc): 160, 124
+
+  // --- Column 3: Nested dynamicRefs ---
+  text(m3x6, "Nested refs (statusBar in playerStats):", #cccccc): 10, 145
+
+  dynamicRef($playerStats, hp=>90, mp=>60, name=>"Hero"): 10, 160
+  dynamicRef($playerStats, hp=>30, mp=>80, name=>"Mage"): 10, 200
+  dynamicRef($playerStats, hp=>55, mp=>10, name=>"Rogue"): 10, 240
+  dynamicRef($playerStats, hp=>100, mp=>100, name=>"Boss"): 10, 280
+
+  // --- Column 3: Multiple same ref, different params ---
+  text(m3x6, "Many status bars:", #cccccc): 200, 145
+
+  dynamicRef($statusBar, value=>5, label=>"5"): 200, 160
+  dynamicRef($statusBar, value=>15, label=>"15"): 200, 174
+  dynamicRef($statusBar, value=>25, label=>"25"): 200, 188
+  dynamicRef($statusBar, value=>35, label=>"35"): 200, 202
+  dynamicRef($statusBar, value=>45, label=>"45"): 200, 216
+  dynamicRef($statusBar, value=>55, label=>"55"): 200, 230
+  dynamicRef($statusBar, value=>65, label=>"65"): 200, 244
+  dynamicRef($statusBar, value=>75, label=>"75"): 200, 258
+  dynamicRef($statusBar, value=>85, label=>"85"): 200, 272
+  dynamicRef($statusBar, value=>95, label=>"95"): 200, 286
+}

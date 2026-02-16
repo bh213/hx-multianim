@@ -221,8 +221,8 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 	@:manim("test/examples/72-flowAdvanced/flowAdvanced.manim", "flowAdvanced")
 	public var flowAdvanced;
 
-	@:manim("test/examples/73-componentDemo/componentDemo.manim", "componentDemo")
-	public var componentDemo;
+	@:manim("test/examples/73-dynamicRefs/dynamicRefs.manim", "dynamicRefs")
+	public var dynamicRefs;
 
 	@:manim("test/examples/74-dynamicRefScope/dynamicRefScope.manim", "dynamicRefScope")
 	public var dynamicRefScope;

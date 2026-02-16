@@ -240,6 +240,9 @@ See `docs/manim.md` for full particles documentation.
 - **UIScreen**: If elements don't show or react to events, check if added to UIScreen's elements
 - **Macros**: `MacroUtils.macroBuildWithParameters` maps `.manim` elements to Haxe code — auto-injects `ResolvedSettings` parameter
 - **Settings naming**: `buildName` for single builder override, `<element>BuildName` for multiple (e.g. `radioBuildName`, `radioButtonBuildName`)
+- **Slider**: Supports custom float range (`min`, `max`, `step` settings). Internally maps to 0-100 grid. Implements both `UIElementNumberValue` (int) and `UIElementFloatValue` (float). Uses incremental mode for efficient redraws. Emits both `UIChangeValue(Int)` and `UIChangeFloatValue(Float)`.
+- **Progress bar**: Display-only component (`UIMultiAnimProgressBar`). Uses full rebuild (not incremental) because `bitmap(generated(color(...)))` is not tracked. Screen helper: `addProgressBar(builder, settings, initialValue)`.
+- **Scrollable list scrollbar**: Built with incremental mode — scroll events use `setParameter("scrollPosition", ...)` instead of full rebuild.
 - **Full component reference**: See `docs/manim.md` "UI Components" section for all parameter contracts, settings, and events
 
 ## Guidelines for Modifications

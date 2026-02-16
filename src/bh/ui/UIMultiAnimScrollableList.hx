@@ -21,6 +21,7 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 	final mask:h2d.Mask;
 
 	var scrollbar:h2d.Object = null;
+	var scrollbarResult:Null<BuilderResult> = null;
 
 	var interactives:Array<MAObject> = [];
 
@@ -77,6 +78,7 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 		this.hoverItem = null;
 		this.pressedItem = null;
 		this.scrollbar = null;
+		this.scrollbarResult = null;
 		this.interactives = [];
 	}
 
@@ -121,23 +123,25 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 		this.totalHeight = y;
 		this.mask.height = this.height;
 		this.mask.scrollBounds = h2d.col.Bounds.fromValues(0, 0, 0, hxd.Math.max(totalHeight, height));
-		updateScrollbar();
+		buildScrollbar();
 	}
 
-	function updateScrollbar() {
+	function buildScrollbar() {
 		if (this.scrollbar != null)
 			this.scrollbar.remove();
+		this.scrollbarResult = null;
 		if (this.height < totalHeight) { // show scrollbar
 
 			final buildResult = this.scrollbarBuilder.builder.buildWithParameters(this.scrollbarBuilder.name, [
 				"panelHeight" => '${height}',
 				"scrollableHeight" => '${totalHeight}',
-				"scrollPosition" => '${this.mask.scrollY}'
-			]);
+				"scrollPosition" => '0'
+			], null, null, true);
+			this.scrollbarResult = buildResult;
 			this.scrollbar = buildResult.object;
 			this.scrollSpeed = scrollSpeedOverride ?? buildResult.rootSettings.getFloatOrDefault("scrollSpeed", 100);
 
-			var objs = this.panelResults.names.get(scrollbarInPanelName); 
+			var objs = this.panelResults.names.get(scrollbarInPanelName);
 			if (objs == null) {
 				throw 'could not find scrollbar #${scrollbarInPanelName} in panel ${this.panelBuilder.name}';
 			}
@@ -145,6 +149,12 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 				throw 'found multiple scrollbars #${scrollbarInPanelName} in panel ${this.panelBuilder.name}';
 			}
 			else objs[0].getBuiltHeapsObject().toh2dObject().addChild(this.scrollbar);
+		}
+	}
+
+	function repositionScrollbar() {
+		if (this.scrollbarResult != null) {
+			this.scrollbarResult.setParameter("scrollPosition", Std.int(this.mask.scrollY));
 		}
 	}
 
@@ -273,11 +283,9 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 				if (key == hxd.Key.DOWN)
 					keyScrollingDown = !release;
 
-				updateScrollbar();
-
 			case OnWheel(dir):
 				this.mask.scrollY += dir * wheelScrollMultiplier;
-				updateScrollbar();
+				repositionScrollbar();
 		}
 	}
 
@@ -330,10 +338,10 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 	public function update(dt:Float) {
 		if (keyScrollingUp && !keyScrollingDown) {
 			this.mask.scrollY -= scrollSpeed * dt;
-			updateScrollbar();
+			repositionScrollbar();
 		} else if (!keyScrollingUp && keyScrollingDown) {
 			this.mask.scrollY += scrollSpeed * dt;
-			updateScrollbar();
+			repositionScrollbar();
 		}
 	}
 

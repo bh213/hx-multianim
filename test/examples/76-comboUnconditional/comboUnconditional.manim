@@ -1,0 +1,34 @@
+version: 0.5
+
+#comboBtn programmable(status:[hover, pressed, normal]=normal, disabled:[true, false]=false) {
+    @(status=>normal, disabled=>false) bitmap(generated(color(120, 30, #446688))): 0, 0
+    @(status=>hover, disabled=>false) bitmap(generated(color(120, 30, #5588aa))): 0, 0
+    @(status=>pressed, disabled=>false) bitmap(generated(color(120, 30, #334455))): 0, 0
+    @(status=>*, disabled=>true) bitmap(generated(color(120, 30, #555555))): 0, 0
+
+    text(dd, "Shared Text", white, center, 120): 0, 8
+    bitmap(generated(color(8, 8, #ff8800))): 5, 11
+}
+
+#comboUnconditional programmable() {
+    text(dd, "Unconditional children in combo programmables", #aaaaaa, left): 10, 10
+    text(dd, "Text + orange square should appear in ALL states below", #888888, left): 10, 26
+
+    text(dd, "normal", #666666, left): 140, 52
+    staticRef($comboBtn, status=>normal, disabled=>false): 10, 50
+
+    text(dd, "hover", #666666, left): 140, 92
+    staticRef($comboBtn, status=>hover, disabled=>false): 10, 90
+
+    text(dd, "pressed", #666666, left): 140, 132
+    staticRef($comboBtn, status=>pressed, disabled=>false): 10, 130
+
+    text(dd, "disabled+normal", #666666, left): 140, 172
+    staticRef($comboBtn, status=>normal, disabled=>true): 10, 170
+
+    text(dd, "disabled+hover", #666666, left): 140, 212
+    staticRef($comboBtn, status=>hover, disabled=>true): 10, 210
+
+    text(dd, "disabled+pressed", #666666, left): 140, 252
+    staticRef($comboBtn, status=>pressed, disabled=>true): 10, 250
+}

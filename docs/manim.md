@@ -1832,13 +1832,15 @@ var cbText = addCheckboxWithText(builder, "my label", "m6x11", true);
 
 **Haxe class:** `UIStandardMultiAnimSlider`
 
+**Interfaces:** `UIElement`, `UIElementDisablable`, `StandardUIElementEvents`, `UIElementNumberValue`, `UIElementFloatValue`, `UIElementSyncRedraw`
+
 **Required `.manim` parameters:**
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `status` | string: `normal`, `hover`, `pressed` | Interaction state |
 | `size` | int | Slider track width in pixels |
-| `value` | int | Current value (0-100) |
+| `value` | int | Current value (0-100 internally) |
 | `disabled` | string: `true`, `false` | Disabled state |
 
 **Required `.manim` named points:**
@@ -1851,12 +1853,33 @@ var cbText = addCheckboxWithText(builder, "my label", "m6x11", true);
 |---------|------|---------|-------------|
 | `buildName` | string | `"slider"` | Programmable name |
 | `size` | int | `200` | Track width |
+| `min` | float | `0` | Minimum value of the slider range |
+| `max` | float | `100` | Maximum value of the slider range |
+| `step` | float | `0` | Step size for snapping (0 = continuous) |
 
-**Events:** `UIChangeValue(value:Int)` — value is always 0-100
+**Events:**
+- `UIChangeValue(value:Int)` — integer value (rounded)
+- `UIChangeFloatValue(value:Float)` — precise float value
+
+**Custom range:** The slider maps any external `min`..`max` float range to the internal 0-100 `.manim` grid. For example, setting `min=0, max=1, step=0.1` gives a 0.0–1.0 slider with 0.1 increments, while the `.manim` grid still uses 0-100.
+
+**Incremental updates:** The slider uses incremental build mode — the first `doRedraw()` builds the full visual tree, subsequent redraws only update changed parameters (`status`, `value`, `disabled`) via `setParameter()`.
 
 ```haxe
 var slider = UIStandardMultiAnimSlider.create(builder, "slider", 200, 50);
 var slider = addSlider(builder, 50);
+
+// Custom range and steps
+slider.min = 0;
+slider.max = 1;
+slider.step = 0.1;
+
+// Float value access
+slider.setFloatValue(0.5);
+var v:Float = slider.getFloatValue();
+
+// Float callback
+slider.onFloatChange = (value:Float, wrapper) -> trace('Value: $value');
 ```
 
 ### Radio Buttons
@@ -1884,6 +1907,50 @@ var slider = addSlider(builder, 50);
 var radio = UIMultiAnimRadioButtons.create(builder, "radioButtons", "radio", items, 0);
 var radio = addRadio(builder, items, true, 0); // vertical, selected index 0
 ```
+
+### Progress Bar
+
+**Haxe class:** `UIMultiAnimProgressBar`
+
+**Interfaces:** `UIElement`, `UIElementNumberValue`, `UIElementSyncRedraw`
+
+A display-only component for health bars, XP bars, loading indicators, etc. The `.manim` definition receives a `value` (0-100) parameter and can use conditionals to change colors at different thresholds.
+
+**Required `.manim` parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `value` | 0..100 | Current progress value |
+
+**UIScreenBase settings:**
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `buildName` | string | `"progressBar"` | Programmable name |
+
+**Events:** `UIChangeValue(value:Int)` — emitted via `syncInitialState` when added to screen
+
+**Example `.manim`:**
+
+```manim
+#progressBar programmable(value:0..100=50) {
+    bitmap(generated(color(202, 20, #333333))): 0, 0
+    @(value => 0..25) bitmap(generated(color($value * 2, 16, #ff4444))): 1, 2
+    @(value => 26..60) bitmap(generated(color($value * 2, 16, #ffaa00))): 1, 2
+    @(value => 61..100) bitmap(generated(color($value * 2, 16, #44cc44))): 1, 2
+    text(dd, $value, white, left): 210, 3
+}
+```
+
+```haxe
+var bar = UIMultiAnimProgressBar.create(builder, "progressBar", 75);
+var bar = addProgressBar(builder, settings, 75);
+
+bar.setIntValue(50); // triggers redraw
+var v:Int = bar.getIntValue();
+```
+
+> **Note:** The progress bar uses full rebuild (not incremental mode) because `bitmap(generated(color(...)))` elements are not tracked by the incremental expression system.
 
 ### Scrollable List
 
@@ -1953,6 +2020,8 @@ list.scrollSpeedOverride = 150.0;
 list.doubleClickThreshold = 0.5;
 list.wheelScrollMultiplier = 20;
 ```
+
+**Performance:** The scrollbar is built with incremental mode. On scroll events (wheel, keyboard), only the `scrollPosition` parameter is updated via `setParameter()` instead of rebuilding the entire scrollbar visual. Full scrollbar rebuilds only happen when the item list changes (via `buildItems()`).
 
 ### Dropdown
 

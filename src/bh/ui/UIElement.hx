@@ -65,11 +65,19 @@ interface UIElementText {
 }
 
 /**
- * Interface for UI elements that represent an integer value (e.g., sliders).
+ * Interface for UI elements that represent an integer value (e.g., sliders, progress bars).
  */
 interface UIElementNumberValue {
 	function setIntValue(v:Int):Void;
 	function getIntValue():Int;
+}
+
+/**
+ * Interface for UI elements that represent a float value (e.g., sliders with custom range).
+ */
+interface UIElementFloatValue {
+	function setFloatValue(v:Float):Void;
+	function getFloatValue():Float;
 }
 
 /**
@@ -166,6 +174,7 @@ enum UIScreenEvent {
 	UICustomEvent(eventName:String, data:Dynamic);
 	UIToggle(pressed:Bool);
 	UIChangeValue(value:Int);
+	UIChangeFloatValue(value:Float);
 	UIChangeItem(index:Int, items:Array<UIElementListItem>);
 	UIKeyPress(keyCode:Int, release:Bool);
 	UIOnControllerEvent(event:ControllerEvents);

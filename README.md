@@ -201,8 +201,14 @@ var btn = addButton(builder.createElementBuilder("button"), "Click Me", settings
 // Checkboxes (buildName overridable via settings)
 var cb = addCheckbox(builder, true);
 
-// Sliders
+// Sliders (supports custom range via min/max/step settings)
 var slider = addSlider(builder, 50);
+slider.min = 0;
+slider.max = 1;
+slider.step = 0.1;
+
+// Progress bars (display-only, value 0-100)
+var bar = addProgressBar(builder, settings, 75);
 
 // Dropdowns (all sub-component names overridable via settings)
 var dd = addDropdown(dropdownBuilder, panelBuilder, itemBuilder,

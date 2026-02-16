@@ -3,6 +3,7 @@ package bh.ui.screens;
 import bh.ui.UIMultiAnimDropdown.UIStandardMultiAnimDropdown;
 import bh.ui.UIMultiAnimCheckbox.UIStandardMultiCheckbox;
 import bh.ui.UIMultiAnimSlider.UIStandardMultiAnimSlider;
+import bh.ui.UIMultiAnimProgressBar.UIMultiAnimProgressBar;
 import bh.ui.UIMultiAnimButton.UIStandardMultiAnimButton;
 import bh.multianim.MultiAnimParser.ResolvedSettings;
 import bh.multianim.MultiAnimParser.SettingValue;
@@ -227,11 +228,24 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		return UIStandardMultiAnimButton.create(builder.builder, builder.name, buttonText);
 	}
 
-	function addSlider(providedBuilder, settings:ResolvedSettings, initialValue:Int = 0) {
-		validateSettings(settings, ["buildName", "size"], "slider");
+	function addSlider(providedBuilder, settings:ResolvedSettings, initialValue:Float = 0) {
+		validateSettings(settings, ["buildName", "size", "min", "max", "step"], "slider");
 		final sliderBuildName = getSettings(settings, "buildName", "slider");
 		final size = getIntSettings(settings, "size", 200);
-		return UIStandardMultiAnimSlider.create(providedBuilder, sliderBuildName, size, initialValue);
+		final slider = UIStandardMultiAnimSlider.create(providedBuilder, sliderBuildName, size, initialValue);
+		if (hasSettings(settings, "min"))
+			slider.min = getFloatSettings(settings, "min", 0);
+		if (hasSettings(settings, "max"))
+			slider.max = getFloatSettings(settings, "max", 100);
+		if (hasSettings(settings, "step"))
+			slider.step = getFloatSettings(settings, "step", 0);
+		return slider;
+	}
+
+	function addProgressBar(providedBuilder, settings:ResolvedSettings, initialValue:Int = 0) {
+		validateSettings(settings, ["buildName"], "progressBar");
+		final barBuildName = getSettings(settings, "buildName", "progressBar");
+		return UIMultiAnimProgressBar.create(providedBuilder, barBuildName, initialValue);
 	}
 
 	function addCheckbox(providedBuilder, settings:ResolvedSettings, checked:Null<Bool> = null) {
@@ -453,6 +467,10 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	 * Call after adding elements to sync initial state with application logic.
 	 */
 	function syncInitialState(element:UIElement) {
+		if (Std.isOfType(element, UIElementFloatValue)) {
+			final floatEl = cast(element, UIElementFloatValue);
+			onScreenEvent(UIChangeFloatValue(floatEl.getFloatValue()), element);
+		}
 		if (Std.isOfType(element, UIElementNumberValue)) {
 			final numEl = cast(element, UIElementNumberValue);
 			onScreenEvent(UIChangeValue(numEl.getIntValue()), element);

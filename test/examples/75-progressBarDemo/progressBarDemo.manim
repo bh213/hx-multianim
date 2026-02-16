@@ -1,0 +1,33 @@
+version: 0.5
+
+#progressBar programmable(value:0..100=50) {
+    bitmap(generated(color(202, 20, #333333))): 0, 0
+
+    @(value => 0..25) bitmap(generated(color($value * 2, 16, #ff4444))): 1, 2
+    @(value => 26..60) bitmap(generated(color($value * 2, 16, #ffaa00))): 1, 2
+    @(value => 61..100) bitmap(generated(color($value * 2, 16, #44cc44))): 1, 2
+
+    text(dd, $value, white, left): 210, 3
+}
+
+#progressBarBelow programmable(value:0..100=50, label:string="bar") {
+    bitmap(generated(color(100, 12, #222222))): 0, 0
+
+    @(value => 0..33) bitmap(generated(color($value, 8, #ff4444))): 0, 2
+    @(value => 34..66) bitmap(generated(color($value, 8, #dddd44))): 0, 2
+    @(value => 67..100) bitmap(generated(color($value, 8, #44cc44))): 0, 2
+
+    text(f3x5, $label, #aaaaaa): 0, 14
+    text(f3x5, $value, white): 70, 14
+}
+
+#progressBarInside programmable(value:0..100=50) {
+    bitmap(generated(color(150, 16, #111111))): 0, 0
+
+    @(value => 0..20) bitmap(generated(color($value * 150 div 100, 12, #cc2222))): 0, 2
+    @(value => 21..50) bitmap(generated(color($value * 150 div 100, 12, #cc8822))): 0, 2
+    @(value => 51..80) bitmap(generated(color($value * 150 div 100, 12, #88aa22))): 0, 2
+    @(value => 81..100) bitmap(generated(color($value * 150 div 100, 12, #22cc44))): 0, 2
+
+    text(f3x5, $value, white, center, 150): 0, 4
+}
