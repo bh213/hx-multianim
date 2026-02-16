@@ -14,31 +14,20 @@ class ReplacePaletteShader extends h3d.shader.ScreenShader {
   static var SRC = {
     
     @const @param var PALETTE_SIZE:Int;
-    @const var TEST_APPROX:Bool = false;
     @const var TEST_ALPHA:Bool = false;
     @param var SRC_COL:Array<Vec4, PALETTE_SIZE>;
     @param var DST_COL:Array<Vec4, PALETTE_SIZE>;
     @param var texture:Sampler2D;
-    
+
+    // Epsilon-based comparison: half an 8-bit color step (~0.002)
+    // Handles float precision differences across DX/GL backends
     function testeq(a:Vec4, b:Vec4):Bool {
-      if (TEST_APPROX) {
-        if (TEST_ALPHA) {
-          return a.r - 1e-10 >= b.r && a.r + 1e-10 <= b.r &&
-                 a.g - 1e-10 >= b.g && a.g + 1e-10 <= b.g &&
-                 a.b - 1e-10 >= b.b && a.b + 1e-10 <= b.b &&
-                 a.a - 1e-10 >= b.a && a.a + 1e-10 <= b.a;
-        } else {
-          return a.r - 1e-10 >= b.r && a.r + 1e-10 <= b.r &&
-                 a.g - 1e-10 >= b.g && a.g + 1e-10 <= b.g &&
-                 a.b - 1e-10 >= b.b && a.b + 1e-10 <= b.b;
-        }
+      if (TEST_ALPHA) {
+        return abs(a.r - b.r) < 2e-3 && abs(a.g - b.g) < 2e-3 &&
+               abs(a.b - b.b) < 2e-3 && abs(a.a - b.a) < 2e-3;
       } else {
-        
-        if (TEST_ALPHA) {
-          return a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a;
-        } else {
-          return a.r == b.r && a.g == b.g && a.b == b.b;
-        }
+        return abs(a.r - b.r) < 2e-3 && abs(a.g - b.g) < 2e-3 &&
+               abs(a.b - b.b) < 2e-3;
       }
     }
     
