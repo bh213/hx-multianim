@@ -1,0 +1,45 @@
+version: 0.5
+
+#filtersAdvanced programmable() {
+    // dropShadow
+    text(m3x6, "dropShadow", #AAAAAA): 20, 8
+    bitmap(generated(color(60, 60, #4488FF))) {
+        filter: dropShadow(4, 45, #000000, 0.8, 2, 1, 1)
+        pos: 20, 22
+    }
+
+    // pixelOutline knockout mode
+    text(m3x6, "pixelOutline knockout", #AAAAAA): 140, 8
+    bitmap(generated(color(60, 60, #FF4488))) {
+        filter: pixelOutline(knockout, #0000FF, 0.5)
+        pos: 140, 22
+    }
+
+    // pixelOutline inlineColor mode
+    text(m3x6, "pixelOutline inlineColor", #AAAAAA): 300, 8
+    bitmap(generated(color(60, 60, #44FF88))) {
+        filter: pixelOutline(inlineColor, #FF0000, #FFFF00)
+        pos: 300, 22
+    }
+
+    // replaceColor: red -> green
+    text(m3x6, "replaceColor [red]->[green]", #AAAAAA): 20, 100
+    bitmap(generated(color(60, 60, #FF0000))) {
+        filter: replaceColor([#FF0000], [#00FF00])
+        pos: 20, 114
+    }
+
+    // group: outline + brightness
+    text(m3x6, "group(outline, brightness)", #AAAAAA): 220, 100
+    bitmap(generated(color(60, 60, #4488FF))) {
+        filter: group(outline(2, #FF0000), brightness(1.3))
+        pos: 220, 114
+    }
+
+    // group: dropShadow + outline
+    text(m3x6, "group(dropShadow, outline)", #AAAAAA): 420, 100
+    bitmap(generated(color(60, 60, #FFAA00))) {
+        filter: group(dropShadow(3, 30, #000000, 0.6, 1, 1, 1), outline(1, #FFFFFF))
+        pos: 420, 114
+    }
+}

@@ -1,16 +1,156 @@
-version: 0.3
+version: 0.5
 
 #textDemo programmable() {
-  pos:5,5
-  grid:250,150
+  pos: 0, 0
+  grid: 1280, 720
 
-  @alpha(0.3) bitmap(generated(color(function(gridWidth), function(gridHeight),green)));
-  @alpha(0.9) text(dd, "#2: text", white, left, 160);
+  @alpha(0.3) bitmap(generated(color(1280, 720, green)));
 
-  text(dd, "test left", #FF0000, left, 200):0,20;
-  text(m3x6, "test center", blue, center, 200):0,20;
-  text(pixeled6, "test right", 0xF00, right, 200):0,20;
-  text(pixellari, "The quick brown fox jumps over the lazy dog", #F00, right, 200):0,40;
+  // Row labels on left side
+  @scale(2) text(m3x6, "center", #888, left, 100):40,80;
+  @scale(2) text(m3x6, "right", #888, left, 100):40,160;
+
+  // Center aligned at different scales with bounding boxes
+  point {
+    pos: 140, 70
+    bitmap(generated(color(140, 20, #333)));
+    text(dd, "1x", yellow, center, 140):0,4;
+  }
+  point {
+    pos: 300, 70
+    bitmap(generated(color(160, 30, #333)));
+    @scale(2) text(dd, "2x", yellow, center, 160):0,4;
+  }
+  point {
+    pos: 480, 70
+    bitmap(generated(color(200, 45, #333)));
+    @scale(3) text(dd, "3x", yellow, center, 200):0,6;
+  }
+  point {
+    pos: 700, 70
+    bitmap(generated(color(260, 60, #333)));
+    @scale(4) text(dd, "4x", yellow, center, 260):0,8;
+  }
+  point {
+    pos: 980, 70
+    bitmap(generated(color(280, 70, #333)));
+    @scale(5) text(dd, "5x", yellow, center, 280):0,10;
+  }
+
+  // Right aligned at different scales with bounding boxes
+  point {
+    pos: 140, 150
+    bitmap(generated(color(140, 20, #600)));
+    text(dd, "1x", #8ff, right, 140):0,4;
+  }
+  point {
+    pos: 300, 150
+    bitmap(generated(color(160, 30, #600)));
+    @scale(2) text(dd, "2x", #8ff, right, 160):0,4;
+  }
+  point {
+    pos: 480, 150
+    bitmap(generated(color(200, 45, #600)));
+    @scale(3) text(dd, "3x", #8ff, right, 200):0,6;
+  }
+  point {
+    pos: 700, 150
+    bitmap(generated(color(260, 60, #600)));
+    @scale(4) text(dd, "4x", #8ff, right, 260):0,8;
+  }
+  point {
+    pos: 980, 150
+    bitmap(generated(color(280, 70, #600)));
+    @scale(5) text(dd, "5x", #8ff, right, 280):0,10;
+  }
+
+  // Different fonts with center alignment
+  @scale(2) text(m3x6, "fonts", #888, left, 100):40,250;
+
+  point {
+    pos: 140, 240
+    bitmap(generated(color(200, 50, #036)));
+    @scale(4) text(m3x6, "m3x6", white, center, 200):0,5;
+  }
+  point {
+    pos: 360, 240
+    bitmap(generated(color(200, 50, #036)));
+    @scale(4) text(pixeled6, "pixeled6", white, center, 200):0,5;
+  }
+  point {
+    pos: 580, 240
+    bitmap(generated(color(200, 50, #036)));
+    @scale(6) text(f3x5, "f3x5", white, center, 200):0,8;
+  }
+  point {
+    pos: 800, 240
+    bitmap(generated(color(200, 50, #036)));
+    @scale(3) text(dd, "dd", white, center, 200):0,8;
+  }
+  point {
+    pos: 1020, 240
+    bitmap(generated(color(240, 50, #036)));
+    @scale(2) text(pixellari, "pixellari", white, center, 240):0,8;
+  }
+
+  // Mixed scales side by side comparison
+  @scale(2) text(m3x6, "scales", #888, left, 100):40,340;
+
+  point {
+    pos: 140, 330
+    bitmap(generated(color(80, 28, #333)));
+    @scale(2) text(dd, "2x", #ff0, center, 80):0,4;
+  }
+  point {
+    pos: 240, 330
+    bitmap(generated(color(100, 42, #333)));
+    @scale(3) text(dd, "3x", #ff0, center, 100):0,6;
+  }
+  point {
+    pos: 360, 330
+    bitmap(generated(color(120, 56, #333)));
+    @scale(4) text(dd, "4x", #ff0, center, 120):0,8;
+  }
+  point {
+    pos: 500, 330
+    bitmap(generated(color(140, 70, #333)));
+    @scale(5) text(dd, "5x", #ff0, center, 140):0,10;
+  }
+  point {
+    pos: 660, 330
+    bitmap(generated(color(180, 84, #333)));
+    @scale(6) text(dd, "6x", #ff0, center, 180):0,12;
+  }
+  point {
+    pos: 860, 330
+    bitmap(generated(color(200, 98, #333)));
+    @scale(7) text(dd, "7x", #ff0, center, 200):0,14;
+  }
+
+  // Pixellari multi-line test
+  @scale(2) text(m3x6, "multiline", #888, left, 100):40,460;
+
+  point {
+    pos: 140, 450
+    bitmap(generated(color(300, 80, #222)));
+    @scale(2) text(pixellari, "line 1", #F88, center, 300):0,10;
+    @scale(2) text(pixellari, "line 2", #8F8, center, 300):0,45;
+  }
+
+  // Left aligned demo
+  @scale(2) text(m3x6, "left", #888, left, 100):40,560;
+
+  point {
+    pos: 140, 550
+    bitmap(generated(color(200, 50, #333)));
+    @scale(3) text(dd, "left A", white, left, 200):5,8;
+  }
+  point {
+    pos: 360, 550
+    bitmap(generated(color(200, 50, #333)));
+    @scale(3) text(dd, "left B", #8ff, left, 200):5,8;
+  }
+
+  // Description at bottom
+  @scale(2) text(m3x6, "center/right align in boxes, left align with offset", #666, left, 800):40,620;
 }
-
-

@@ -1,4 +1,4 @@
-version: 0.3
+version: 0.5
 
 #ui programmable() {
     // 0,0 -> 10,10 rect
@@ -114,7 +114,7 @@ version: 0.3
     
     point {
         pos: grid(2, 2)
-        repeatable($i, grid(10, dx:10, dy:10)) {
+        repeatable($i, step(10, dx:10, dy:10)) {
             pixels (
                 rect 0,0, 5,5, #fff
             ) {
@@ -211,7 +211,7 @@ version: 0.3
     // Pixel staircase (1x1 px, offset 10px)
     point {
         pos: grid(0, 3)
-        repeatable($i, grid(10, dx:10, dy:10)) {
+        repeatable($i, step(10, dx:10, dy:10)) {
             pixels (
                 pixel 0,0, #ff0
             ) {

@@ -7,6 +7,8 @@ import bh.ui.UIMultiAnimButton.UIStandardMultiAnimButton;
 import bh.multianim.MultiAnimParser.ResolvedSettings;
 import bh.multianim.MultiAnimParser.SettingValue;
 import bh.ui.UIElement;
+import bh.ui.UIInteractiveWrapper;
+import bh.base.MAObject;
 import bh.multianim.MultiAnimBuilder;
 import bh.stateanim.AnimParser;
 import bh.ui.controllers.UIController;
@@ -39,6 +41,7 @@ interface UIScreen {
 @:nullSafety
 abstract class UIScreenBase implements UIScreen implements UIControllerScreenIntegration {
 	var elements:Array<UIElement> = [];
+	var subElementProviders:Array<UIElementSubElements> = [];
 	var controllersStack:Array<UIController> = [];
 	var controller(get, never):UIController;
 	final root:h2d.Layers;
@@ -46,6 +49,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	final layers:Map<LayersEnum, Int>;
 	var groups:Map<String, Array<UIElement>> = [];
 	var postCustomAddToLayer:Map<h2d.Object, UIElementCustomAddToLayer> = [];
+	var interactiveWrappers:Array<UIInteractiveWrapper> = [];
 
 	public function new(screenManager:ScreenManager, ?layers:Map<LayersEnum, Int>) {
 		this.root = new h2d.Layers();
@@ -94,6 +98,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		}
 		groups.clear();
 		elements = [];
+		subElementProviders = [];
 		getSceneRoot().removeChildren();
 		onClear();
 	}
@@ -110,7 +115,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	public function onKey(keyCode:Int, release:Bool):Bool { return true;}
 
 	public function update(dt:Float):Void {
-		controller.update(dt);
+		// controller.update(dt) is already called by ScreenManager.update() before screen.update()
 		for (obj => v in postCustomAddToLayer) {
 			var insertedLayer = findLayerFromObject(obj);
 			if (insertedLayer == null)
@@ -122,11 +127,8 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 
 	public function getElements(type:SubElementsType):Array<UIElement> {
 		var retVal = elements.copy();
-		for (element in elements) {
-			if (Std.isOfType(element, UIElementSubElements)) {
-				final subElements = (cast(element, UIElementSubElements)).getSubElements(type);
-				retVal = retVal.concat(subElements);
-			}
+		for (provider in subElementProviders) {
+			retVal = retVal.concat(provider.getSubElements(type));
 		}
 		return retVal;
 	}
@@ -167,6 +169,23 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		};
 	}
 
+	function getFloatSettings(settings:ResolvedSettings, settingName:String, defaultValue:Float) {
+		if (settings == null)
+			return defaultValue;
+		final val = settings.get(settingName);
+		if (val == null)
+			return defaultValue;
+		return switch (val) {
+			case RSVFloat(f): f;
+			case RSVInt(i): i * 1.0;
+			case RSVString(s):
+				var floatVal = Std.parseFloat(s);
+				if (Math.isNaN(floatVal))
+					throw 'could not parse setting "$s" as float';
+				floatVal;
+		};
+	}
+
 	function getBoolSettings(settings:ResolvedSettings, settingName:String, defaultValue:Bool) {
 		if (settings == null)
 			return defaultValue;
@@ -200,9 +219,9 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	}
 
 	function addButton(builder:UIElementBuilder, text:String, settings:ResolvedSettings):UIStandardMultiAnimButton {
-		validateSettings(settings, ["builderName", "text"], "button");
-		if (hasSettings(settings, "builderName")) {
-			builder = builder.withUpdatedName(getSettings(settings, "builderName", "button"));
+		validateSettings(settings, ["buildName", "text"], "button");
+		if (hasSettings(settings, "buildName")) {
+			builder = builder.withUpdatedName(getSettings(settings, "buildName", "button"));
 		}
 		final buttonText = getSettings(settings, "text", text);
 		return UIStandardMultiAnimButton.create(builder.builder, builder.name, buttonText);
@@ -216,32 +235,32 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	}
 
 	function addCheckbox(providedBuilder, settings:ResolvedSettings, checked:Null<Bool> = null) {
-		validateSettings(settings, ["checkboxBuildName", "initialValue"], "checkbox");
-		final checkboxBuildName = getSettings(settings, "checkboxBuildName", "checkbox");
+		validateSettings(settings, ["buildName", "initialValue"], "checkbox");
+		final checkboxBuildName = getSettings(settings, "buildName", "checkbox");
 		final checkBoxInitialValue = getBoolSettings(settings, "initialValue", checked ?? false);
 		return UIStandardMultiCheckbox.create(providedBuilder, checkboxBuildName, checkBoxInitialValue);
 	}
 
 	function addRadio(providedBuilder, settings:ResolvedSettings, items:Array<UIElementListItem>, vertical:Bool, selectedIndex:Int = 0) {
-		validateSettings(settings, ["radioBuildName", "singleRadioButtonBuilderName"], "radio");
+		validateSettings(settings, ["radioBuildName", "radioButtonBuildName"], "radio");
 		final radioBuildName = getSettings(settings, "radioBuildName", vertical ? "radioButtonsVertical" : "radioButtonsHorizontal");
-		final singleRadioButtonBuilderName = getSettings(settings, "singleRadioButtonBuilderName", "radio");
-		return UIMultiAnimRadioButtons.create(providedBuilder, radioBuildName, singleRadioButtonBuilderName, items, 0);
+		final singleRadioButtonBuilderName = getSettings(settings, "radioButtonBuildName", "radio");
+		return UIMultiAnimRadioButtons.create(providedBuilder, radioBuildName, singleRadioButtonBuilderName, items, selectedIndex);
 	}
 	
-	function addText(textValue:String, fontName = "default", ?layer:LayersEnum) {
+	function addText(textValue:String, fontName:String, ?layer:LayersEnum) {
 		final textObj = new h2d.Text(bh.base.FontManager.getFontByName(fontName));
 		textObj.text = textValue;
 		return addObjectToLayer(textObj, layer);
 	}
 
 	// TODO: needs work
-	function addCheckboxWithText(providedBuilder:MultiAnimBuilder, settings:ResolvedSettings, label:String, checked:Bool) {
+	function addCheckboxWithText(providedBuilder:MultiAnimBuilder, settings:ResolvedSettings, label:String, fontName:String, checked:Bool) {
 		validateSettings(settings, ["buildName", "textColor", "font"], "checkboxWithText");
 		var checkbox;
 		final checkboxWithNameBuildName = getSettings(settings, "buildName", "checkboxWithText");
 		final textColor = getIntSettings(settings, "textColor", 0xFFFFFFFF);
-		final font = getSettings(settings, "font", "pikzel");
+		final font = getSettings(settings, "font", fontName);
 
 		final factory = (settings) -> {
 			checkbox = addCheckbox(providedBuilder, settings, checked);
@@ -255,23 +274,21 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 
 
 
-	// TODO: hardcoded dimensions
     function addScrollableListWithSingleBuilder(builder:MultiAnimBuilder, panelBuilderName:String, itemBuilderName:String, scrollbarBuilderName:String, scrollbarInPanelName:String, items, settings:ResolvedSettings, initialIndex:Int = 0, width:Int = 100, height:Int = 100):UIMultiAnimScrollableList {
         return addScrollableList(builder.createElementBuilder(panelBuilderName), builder.createElementBuilder(itemBuilderName), builder.createElementBuilder(scrollbarBuilderName), scrollbarInPanelName, items, settings, initialIndex, width, height);
     }
 
-	// TODO: hardcoded dimensions
 	function addScrollableList(panelBuilder:UIElementBuilder, itemBuilder:UIElementBuilder, scrollbarBuilder:UIElementBuilder, scrollbarInPanelName:String, items, settings:ResolvedSettings, initialIndex:Int = 0, width:Int = 100, height:Int = 100):UIMultiAnimScrollableList {
-		validateSettings(settings, ["panelBuilder", "itemBuilder", "scrollbarBuilder", "scrollbarInPanelName", "width", "height", "topClearance", "scrollSpeed"], "scrollableList");
-		
-		if (hasSettings(settings, "panelBuilder")) {
-			panelBuilder = panelBuilder.withUpdatedName(getSettings(settings, "panelBuilder", ""));
+		validateSettings(settings, ["panelBuildName", "itemBuildName", "scrollbarBuildName", "scrollbarInPanelName", "width", "height", "topClearance", "scrollSpeed", "doubleClickThreshold", "wheelScrollMultiplier"], "scrollableList");
+
+		if (hasSettings(settings, "panelBuildName")) {
+			panelBuilder = panelBuilder.withUpdatedName(getSettings(settings, "panelBuildName", ""));
 		}
-        if (hasSettings(settings, "itemBuilder")) {
-            itemBuilder = itemBuilder.withUpdatedName(getSettings(settings, "itemBuilder", ""));
+        if (hasSettings(settings, "itemBuildName")) {
+            itemBuilder = itemBuilder.withUpdatedName(getSettings(settings, "itemBuildName", ""));
         }
-		if (hasSettings(settings, "scrollbarBuilder")) {
-			scrollbarBuilder = scrollbarBuilder.withUpdatedName(getSettings(settings, "scrollbarBuilder", ""));
+		if (hasSettings(settings, "scrollbarBuildName")) {
+			scrollbarBuilder = scrollbarBuilder.withUpdatedName(getSettings(settings, "scrollbarBuildName", ""));
 		}
 		if (hasSettings(settings, "scrollbarInPanelName")) {
 			scrollbarInPanelName = getSettings(settings, "scrollbarInPanelName", "scrollbar");
@@ -279,7 +296,14 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		final finalWidth = getIntSettings(settings, "width", width);
 		final finalHeight = getIntSettings(settings, "height", height);
 		final topClearance = getIntSettings(settings, "topClearance", 0);
-		return UIMultiAnimScrollableList.create(panelBuilder, itemBuilder, scrollbarBuilder, scrollbarInPanelName, finalWidth, finalHeight, items, topClearance, initialIndex);
+		final list = UIMultiAnimScrollableList.create(panelBuilder, itemBuilder, scrollbarBuilder, scrollbarInPanelName, finalWidth, finalHeight, items, topClearance, initialIndex);
+		if (hasSettings(settings, "scrollSpeed"))
+			list.scrollSpeedOverride = getFloatSettings(settings, "scrollSpeed", 100);
+		if (hasSettings(settings, "doubleClickThreshold"))
+			list.doubleClickThreshold = getFloatSettings(settings, "doubleClickThreshold", 0.3);
+		if (hasSettings(settings, "wheelScrollMultiplier"))
+			list.wheelScrollMultiplier = getFloatSettings(settings, "wheelScrollMultiplier", 10);
+		return list;
 	}
 
 
@@ -289,17 +313,26 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	}
 
 	function addDropdown(dropdownBuilder:UIElementBuilder, panelBuilder:UIElementBuilder, itemBuilder:UIElementBuilder,  scrollbarBuilder:UIElementBuilder, scrollbarInPanelName:String, items, settings:ResolvedSettings, initialIndex = 0) {
-		validateSettings(settings, ["panelBuilder", "itemBuilder", "dropdownBuilder", "autoOpen", "autoCloseOnLeave", "closeOnOutsideClick"], "dropdown");
+		validateSettings(settings, [
+			// dropdown settings
+			"dropdownBuildName", "autoOpen", "autoCloseOnLeave", "closeOnOutsideClick", "transitionTimer",
+			// scrollable list settings (passed through)
+			"panelBuildName", "itemBuildName", "scrollbarBuildName", "scrollbarInPanelName",
+			"width", "height", "topClearance", "scrollSpeed", "doubleClickThreshold", "wheelScrollMultiplier"
+		], "dropdown");
 
-        if (hasSettings(settings, "panelBuilder")) {
-			panelBuilder = panelBuilder.withUpdatedName(getSettings(settings, "panelBuilder", ""));
+        if (hasSettings(settings, "panelBuildName")) {
+			panelBuilder = panelBuilder.withUpdatedName(getSettings(settings, "panelBuildName", ""));
 		}
-        if (hasSettings(settings, "itemBuilder")) {
-            itemBuilder = itemBuilder.withUpdatedName(getSettings(settings, "itemBuilder", ""));
+        if (hasSettings(settings, "itemBuildName")) {
+            itemBuilder = itemBuilder.withUpdatedName(getSettings(settings, "itemBuildName", ""));
         }
-        if (hasSettings(settings, "dropdownBuilder")) {
-            dropdownBuilder = dropdownBuilder.withUpdatedName(getSettings(settings, "dropdownBuilder", ""));
+        if (hasSettings(settings, "dropdownBuildName")) {
+            dropdownBuilder = dropdownBuilder.withUpdatedName(getSettings(settings, "dropdownBuildName", ""));
         }
+		if (hasSettings(settings, "scrollbarBuildName")) {
+			scrollbarBuilder = scrollbarBuilder.withUpdatedName(getSettings(settings, "scrollbarBuildName", ""));
+		}
 		if (hasSettings(settings, "scrollbarInPanelName")) {
 			scrollbarInPanelName = getSettings(settings, "scrollbarInPanelName", scrollbarInPanelName);
 		}
@@ -307,13 +340,24 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		final autoOpen = getBoolSettings(settings, "autoOpen", true);
 		final autoCloseOnLeave = getBoolSettings(settings, "autoCloseOnLeave", true);
 		final closeOnOutsideClick = getBoolSettings(settings, "closeOnOutsideClick", true);
-        
-		var panel = addScrollableList(panelBuilder, itemBuilder, scrollbarBuilder, scrollbarInPanelName, items, settings, initialIndex);
+		final panelWidth = getIntSettings(settings, "width", 120);
+		final panelHeight = getIntSettings(settings, "height", 300);
+		final topClearance = getIntSettings(settings, "topClearance", 0);
+
+		var panel = UIMultiAnimScrollableList.create(panelBuilder, itemBuilder, scrollbarBuilder, scrollbarInPanelName, panelWidth, panelHeight, items, topClearance, initialIndex);
+		if (hasSettings(settings, "scrollSpeed"))
+			panel.scrollSpeedOverride = getFloatSettings(settings, "scrollSpeed", 100);
+		if (hasSettings(settings, "doubleClickThreshold"))
+			panel.doubleClickThreshold = getFloatSettings(settings, "doubleClickThreshold", 0.3);
+		if (hasSettings(settings, "wheelScrollMultiplier"))
+			panel.wheelScrollMultiplier = getFloatSettings(settings, "wheelScrollMultiplier", 10);
 		final retVal = UIStandardMultiAnimDropdown.createWithPrebuiltPanel(dropdownBuilder, panel, items, initialIndex);
 
 		retVal.autoOpen = autoOpen;
 		retVal.autoCloseOnLeave = autoCloseOnLeave;
 		retVal.closeOnOutsideClick = closeOnOutsideClick;
+		if (hasSettings(settings, "transitionTimer"))
+			retVal.transitionTimerOverride = getFloatSettings(settings, "transitionTimer", 1.0);
 		return retVal;
 	}
 
@@ -354,8 +398,38 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		return r;
 	}
 
+	public function addInteractive(obj:MAObject, ?prefix:String):UIInteractiveWrapper {
+		var wrapper = new UIInteractiveWrapper(obj, prefix);
+		interactiveWrappers.push(wrapper);
+		addElement(wrapper, null);
+		return wrapper;
+	}
+
+	public function addInteractives(r:BuilderResult, ?prefix:String):Array<UIInteractiveWrapper> {
+		var wrappers:Array<UIInteractiveWrapper> = [];
+		for (obj in r.interactives) {
+			wrappers.push(addInteractive(obj, prefix));
+		}
+		return wrappers;
+	}
+
+	public function removeInteractives(?prefix:String):Void {
+		var toRemove:Array<UIInteractiveWrapper> = [];
+		for (w in interactiveWrappers) {
+			if (prefix == null || w.prefix == prefix)
+				toRemove.push(w);
+		}
+		for (w in toRemove) {
+			interactiveWrappers.remove(w);
+			removeElement(w);
+		}
+	}
+
 	public function addElement(element:UIElement, layer:Null<LayersEnum>) {
 		elements.push(element);
+		if (Std.isOfType(element, UIElementSubElements)) {
+			subElementProviders.push(cast(element, UIElementSubElements));
+		}
 		if (Std.isOfType(element, UIElementCustomAddToLayer)) {
 			final customElement:UIElementCustomAddToLayer = cast(element, UIElementCustomAddToLayer);
 			final result = customElement.customAddToLayer(layer, this, false);
@@ -368,10 +442,27 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 					postCustomAddToLayer.set(element.getObject(), customElement);
 			}
 		}
-		if (layer != null) {
+		if (layer != null && element.getObject().parent == null) {
 			addObjectToLayer(element.getObject(), layer);
 		}
 		return element;
+	}
+
+	/**
+	 * Sends the current state of a UI element as an event to onScreenEvent.
+	 * Call after adding elements to sync initial state with application logic.
+	 */
+	function syncInitialState(element:UIElement) {
+		if (Std.isOfType(element, UIElementNumberValue)) {
+			final numEl = cast(element, UIElementNumberValue);
+			onScreenEvent(UIChangeValue(numEl.getIntValue()), element);
+		} else if (Std.isOfType(element, UIElementListValue)) {
+			final listEl = cast(element, UIElementListValue);
+			onScreenEvent(UIChangeItem(listEl.getSelectedIndex(), listEl.getList()), element);
+		} else if (Std.isOfType(element, UIElementSelectable)) {
+			final selEl = cast(element, UIElementSelectable);
+			onScreenEvent(UIToggle(selEl.selected), element);
+		}
 	}
 
 	function getGroup(groupName:String):Array<UIElement> {
@@ -410,7 +501,9 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		element.getObject().remove();
 		element.clear();
 		elements.remove(element);
-
+		if (Std.isOfType(element, UIElementSubElements)) {
+			subElementProviders.remove(cast(element, UIElementSubElements));
+		}
 		return element;
 	}
 

@@ -10,7 +10,7 @@ import h2d.col.Point;
 import bh.ui.UIElement.UIElementEvents;
 
 // var allStates = hover, pressed, disabled, normal, selected
-class UIMultiAnimScrollableList implements UIElement implements StandardUIElementEvents implements UIElementSyncRedraw implements UIElementUpdatable
+class UIMultiAnimScrollableList implements UIElement implements UIElementDisablable implements StandardUIElementEvents implements UIElementSyncRedraw implements UIElementUpdatable
 		implements UIElementListValue {
 	final itemBuilder:UIElementBuilder;
 	final panelBuilder:UIElementBuilder;
@@ -25,6 +25,7 @@ class UIMultiAnimScrollableList implements UIElement implements StandardUIElemen
 	var interactives:Array<MAObject> = [];
 
 	public var requestRedraw = true;
+	public var disabled(default, set):Bool = false;
 
 	var width:Int;
 	var height:Int;
@@ -33,6 +34,9 @@ class UIMultiAnimScrollableList implements UIElement implements StandardUIElemen
 	var keyScrollingDown = false;
 
 	public var scrollSpeed:Float = 100;
+	public var scrollSpeedOverride:Null<Float> = null;
+	public var doubleClickThreshold:Float = 0.3;
+	public var wheelScrollMultiplier:Float = 10;
 
 	final displayItems:Map<Int, MultiAnimMultiResult> = [];
 	final itemYPositions:Map<Int, Float> = [];
@@ -131,7 +135,7 @@ class UIMultiAnimScrollableList implements UIElement implements StandardUIElemen
 				"scrollPosition" => '${this.mask.scrollY}'
 			]);
 			this.scrollbar = buildResult.object;
-			this.scrollSpeed = buildResult.rootSettings.getFloatOrDefault("scrollSpeed", 100);
+			this.scrollSpeed = scrollSpeedOverride ?? buildResult.rootSettings.getFloatOrDefault("scrollSpeed", 100);
 
 			var objs = this.panelResults.names.get(scrollbarInPanelName); 
 			if (objs == null) {
@@ -162,7 +166,7 @@ class UIMultiAnimScrollableList implements UIElement implements StandardUIElemen
 
 	function parseInteractiveId(obj:MAObject):Int {
 		switch obj.multiAnimType {
-			case MAInteractive(width, height, identifier):
+			case MAInteractive(width, height, identifier, _):
 				var ident = Std.parseInt(identifier);
 				if (ident == null)
 					throw 'could not parse interactive id ${identifier}';
@@ -212,7 +216,17 @@ class UIMultiAnimScrollableList implements UIElement implements StandardUIElemen
 		}
 	}
 
+	public function set_disabled(value:Bool):Bool {
+		if (this.disabled != value) {
+			this.disabled = value;
+			this.requestRedraw = true;
+		}
+		return value;
+	}
+
 	public function onEvent(wrapper:UIElementEventWrapper) {
+		if (this.disabled)
+			return;
 		final time = haxe.Timer.stamp();
 		var obj = findInteractiveIndex(wrapper.eventPos);
 		final newIndex = obj == null ? null : parseInteractiveId(obj);
@@ -220,7 +234,7 @@ class UIMultiAnimScrollableList implements UIElement implements StandardUIElemen
 			case OnPush(button):
 				if (newIndex != null) {
 					if (items[newIndex].disabled == null || items[newIndex].disabled == false) {
-						if (time - lastClick < 0.3 && lastClickIndex == newIndex) {
+						if (time - lastClick < doubleClickThreshold && lastClickIndex == newIndex) {
 							onItemDoubleClicked(newIndex, items, wrapper);
 						}
 						hoverMode = false;
@@ -262,7 +276,7 @@ class UIMultiAnimScrollableList implements UIElement implements StandardUIElemen
 				updateScrollbar();
 
 			case OnWheel(dir):
-				this.mask.scrollY += dir * 10;
+				this.mask.scrollY += dir * wheelScrollMultiplier;
 				updateScrollbar();
 		}
 	}

@@ -1,7 +1,25 @@
 package bh.base;
 import bh.base.GridDirection;
+#if !macro
 import h2d.col.Point;
+#end
 
+// Macro-safe Point substitute: matches h2d.col.Point's public API (x, y, new)
+// so HexLayout compiles in macro context without h2d.
+#if macro
+private class Point {
+	public var x:Float;
+	public var y:Float;
+	public function new(x:Float = 0, y:Float = 0) {
+		this.x = x;
+		this.y = y;
+	}
+	public function scale(f:Float):Void {
+		x *= f;
+		y *= f;
+	}
+}
+#end
 
 enum HexKey {
 	HEX(q:Int, r:Int, s:Int);
@@ -427,6 +445,11 @@ class HexLayout
 
     public function createDrawableHexLayout(size:Point, origin:Point) {
         return new HexLayout(this.orientation, size, origin);
+    }
+
+    /** Factory to create a HexLayout from raw floats, usable from outside the module */
+    public static function createFromFloats(orientation:HexOrientation, sizeX:Float, sizeY:Float, originX:Float = 0, originY:Float = 0):HexLayout {
+        return new HexLayout(orientation, new Point(sizeX, sizeY), new Point(originX, originY));
     }
 
 

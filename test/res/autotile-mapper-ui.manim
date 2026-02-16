@@ -1,0 +1,84 @@
+version: 0.5
+
+// AutotileMapper UI - full layout definition using flow
+#mapperUI programmable() {
+    // Status bar - positioned absolutely so hover text doesn't reflow the layout
+    #statusLabel(updatable) text(dd, "Ready", #88ff88ff): 10, 45
+
+    // Top-level vertical flow for the whole UI
+    flow(layout:vertical, padding:10, verticalSpacing:5) {
+
+        // Toolbar row: buttons
+        flow(layout:horizontal, horizontalSpacing:10) {
+            placeholder(generated(cross(200, 30)), builderParameter("autodetectBtn"));
+            placeholder(generated(cross(200, 30)), builderParameter("exportBtn"));
+            placeholder(generated(cross(200, 30)), builderParameter("clearBtn"));
+            placeholder(generated(cross(200, 30)), builderParameter("reloadBtn"));
+        }
+
+        // Two-column layout (multiline: wraps if too wide)
+        flow(layout:horizontal, horizontalSpacing:30, multiline:true, maxWidth:2540) {
+
+            // Left column
+            flow(layout:vertical, verticalSpacing:10, minWidth:380) {
+
+                // Region + Demo side by side (wraps if too wide)
+                flow(layout:horizontal, horizontalSpacing:20, multiline:true) {
+
+                    // Region section
+                    flow(layout:vertical, verticalSpacing:2) {
+                        flow(layout:horizontal, horizontalSpacing:10) {
+                            text(dd, "Region", #ccccccff);
+                            text(dd, "Zoom:", #ccccccff);
+                            placeholder(generated(cross(100, 20)), builderParameter("regionZoomSlider"));
+                        }
+                        placeholder(generated(cross(10, 10)), builderParameter("regionContainer"));
+                    }
+
+                    // Demo section
+                    flow(layout:vertical, verticalSpacing:2) {
+                        flow(layout:horizontal, horizontalSpacing:10) {
+                            text(dd, "Demo Map", #ccccccff);
+                            text(dd, "Zoom:", #ccccccff);
+                            placeholder(generated(cross(100, 20)), builderParameter("demoZoomSlider"));
+                        }
+                        placeholder(generated(cross(10, 10)), builderParameter("demoContainer"));
+                    }
+                }
+
+                // Ratio section
+                flow(layout:vertical, verticalSpacing:2) {
+                    flow(layout:horizontal, horizontalSpacing:10) {
+                        #ratioLabel(updatable) text(dd, "Edge/Center Ratio:", #ccccccff);
+                        text(dd, "Ratio:", #ccccccff);
+                        placeholder(generated(cross(100, 20)), builderParameter("ratioSlider"));
+                    }
+                    placeholder(generated(cross(10, 10)), builderParameter("ratioContainer"));
+                }
+            }
+
+            // Right column - Blob47 section
+            flow(layout:vertical, verticalSpacing:2) {
+                flow(layout:horizontal, horizontalSpacing:10) {
+                    text(dd, "Blob47 Tiles", #ccccccff);
+                    text(dd, "Zoom:", #ccccccff);
+                    placeholder(generated(cross(100, 20)), builderParameter("blob47ZoomSlider"));
+                }
+
+                // Legend
+                flow(layout:horizontal, horizontalSpacing:6) {
+                    bitmap(generated(color(10, 10, #225522)));
+                    text(dd, "mapped", #88ff88ff);
+                    bitmap(generated(color(10, 10, #442244)));
+                    text(dd, "auto", #ff66aaff);
+                    bitmap(generated(color(10, 10, #3a3a3a)));
+                    text(dd, "fallback", #aaaa66ff);
+                    bitmap(generated(color(10, 10, #3a3a3a)));
+                    text(dd, "empty", #cc4444ff);
+                }
+
+                placeholder(generated(cross(10, 10)), builderParameter("blob47Container"));
+            }
+        }
+    }
+}

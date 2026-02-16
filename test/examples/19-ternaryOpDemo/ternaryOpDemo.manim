@@ -1,0 +1,43 @@
+version: 0.5
+
+#ternaryOpDemo programmable() {
+  pos: 0, 0
+  grid: 1280, 720
+
+  @alpha(0.3) bitmap(generated(color(1280, 720, yellow)));
+
+  repeatable($index, step(6, dx: 150, dy: 0)) {
+    pos: 40, 80
+    // Row 1: x == 3 (dark green rect + light green text when true, dark red + light red when false)
+    bitmap(generated(color(60, 40, ?($index == 3) #060 : #600))):0,80;
+    @scale(5) text(f3x5, $index, ?($index == 3) #8f8 : #f88, center, 60):0,88;
+    // Row 2: x > 3
+    bitmap(generated(color(60, 40, ?($index > 3) #060 : #600))):0,160;
+    @scale(5) text(f3x5, $index, ?($index > 3) #8f8 : #f88, center, 60):0,168;
+    // Row 3: x < 3
+    bitmap(generated(color(60, 40, ?($index < 3) #060 : #600))):0,240;
+    @scale(5) text(f3x5, $index, ?($index < 3) #8f8 : #f88, center, 60):0,248;
+    // Row 4: x != 3
+    bitmap(generated(color(60, 40, ?($index != 3) #060 : #600))):0,320;
+    @scale(5) text(f3x5, $index, ?($index != 3) #8f8 : #f88, center, 60):0,328;
+    // Row 5: text T/F with conditional colors
+    bitmap(generated(color(60, 40, ?($index != 3) #060 : #600))):0,400;
+    @scale(5) text(f3x5, ?($index != 3) "T" : "F", ?($index != 3) #8f8 : #f88, center, 60):0,408;
+    // Row 6: x >= 3
+    bitmap(generated(color(60, 40, ?($index >= 3) #060 : #600))):0,480;
+    @scale(5) text(f3x5, $index, ?($index >= 3) #8f8 : #f88, center, 60):0,488;
+    // Row 7: x <= 3
+    bitmap(generated(color(60, 40, ?($index <= 3) #060 : #600))):0,560;
+    @scale(5) text(f3x5, $index, ?($index <= 3) #8f8 : #f88, center, 60):0,568;
+  }
+  point {
+    pos: 960, 80
+    @scale(3) text(dd, "x eq 3", white, left, 400):0, 80;
+    @scale(3) text(dd, "x > 3", white, left, 400):0,160;
+    @scale(3) text(dd, "x < 3", white, left, 400):0,240;
+    @scale(3) text(dd, "x != 3", white, left, 400):0,320;
+    @scale(3) text(dd, "text x != 3", white, left, 400):0, 400;
+    @scale(3) text(dd, "x >= 3", white, left, 400):0,480;
+    @scale(3) text(dd, "x <= 3", white, left, 400):0,560
+  }
+}

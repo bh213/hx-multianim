@@ -1,0 +1,14 @@
+version: 0.5
+
+#slotDemo programmable() {
+  repeatable($i, step(3, dx: 70)) {
+    ninepatch("ui", "button-idle", 60, 40): 0, 0
+    #icon[$i] slot {
+      bitmap(generated(color(20, 20, #555555))): 20, 10
+    }
+    #label[$i] text(f3x5, $i, #ffffffff): 5, 30
+  }
+  #footer slot {
+    text(f3x5, "default", #ffffffff): 0, 50
+  }
+}

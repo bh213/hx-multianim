@@ -1,0 +1,189 @@
+name: Visual Tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  visual-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Haxe
+      uses: krdlab/setup-haxe@v1
+      with:
+        haxe-version: '4.3.6'
+
+    - name: Setup Lix
+      uses: lix-pm/setup-lix@5d98ddc5d00ee5ebf9bd3095dc36b1c9fb50a98f
+
+    - name: Cache Lix dependencies
+      uses: actions/cache@v4
+      with:
+        path: ~/.lix
+        key: ${{ runner.os }}-lix-${{ hashFiles('**/haxe_libraries/*.hxml') }}
+        restore-keys: |
+          ${{ runner.os }}-lix-
+
+    - name: Install Haxe dependencies
+      run: lix download
+
+    - name: Setup HashLink
+      uses: cedx/setup-hashlink@v8
+      with:
+        version: '1.15'
+
+    - name: Install display and rendering dependencies
+      run: |
+        sudo apt-get update -y
+        sudo apt-get install --no-install-recommends -y \
+          libsdl2-2.0-0 \
+          libgl1-mesa-dri \
+          libopenal1 \
+          xvfb
+
+    - name: Create build directory
+      run: mkdir -p build
+
+    - name: Compile tests
+      run: haxe test-hx-multianim-ci.hxml
+
+    - name: Run visual tests
+      env:
+        SDL_AUDIODRIVER: dummy
+        LIBGL_ALWAYS_SOFTWARE: '1'
+      run: |
+        xvfb-run -a -s "-screen 0 1920x1080x24" hl build/hl-test.hl
+
+    - name: Check test results
+      id: test-results
+      if: always()
+      run: |
+        if [ -f build/test_result.txt ]; then
+          RESULT=$(cat build/test_result.txt)
+          echo "result<<EOF" >> $GITHUB_OUTPUT
+          echo "$RESULT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          if echo "$RESULT" | grep -q "FAILED"; then
+            echo "passed=false" >> $GITHUB_OUTPUT
+          else
+            echo "passed=true" >> $GITHUB_OUTPUT
+          fi
+        else
+          echo "result=Tests did not produce results (build/test_result.txt missing)" >> $GITHUB_OUTPUT
+          echo "passed=false" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Upload test screenshots
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-screenshots
+        path: test/screenshots/
+        if-no-files-found: warn
+
+    - name: Prepare report for deployment
+      if: always()
+      run: |
+        mkdir -p _report/screenshots
+        mkdir -p _report/examples
+        # Copy HTML report and actual/macro screenshots
+        cp test/screenshots/*.html _report/screenshots/ 2>/dev/null || true
+        cp test/screenshots/*.png _report/screenshots/ 2>/dev/null || true
+        # Copy reference images preserving directory structure
+        for dir in test/examples/*/; do
+          dirname=$(basename "$dir")
+          if [ -f "$dir/reference.png" ]; then
+            mkdir -p "_report/examples/$dirname"
+            cp "$dir/reference.png" "_report/examples/$dirname/"
+          fi
+        done
+        # Disable Jekyll processing
+        touch _report/.nojekyll
+
+    - name: Deploy test report to GitHub Pages (main)
+      if: always() && github.event_name == 'push'
+      uses: peaceiris/actions-gh-pages@v3
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./_report
+        publish_branch: gh-pages
+        destination_dir: test-report
+        keep_files: true
+
+    - name: Deploy test report to GitHub Pages (PR)
+      if: always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+      uses: peaceiris/actions-gh-pages@v3
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./_report
+        publish_branch: gh-pages
+        destination_dir: pr-${{ github.event.pull_request.number }}/test-report
+        keep_files: true
+
+    - name: Comment PR with test results
+      if: always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const prNumber = context.payload.pull_request.number;
+          const repoOwner = context.repo.owner;
+          const repoName = context.repo.repo;
+          const reportUrl = `https://${repoOwner}.github.io/${repoName}/pr-${prNumber}/test-report/screenshots/index.html`;
+          const passed = '${{ steps.test-results.outputs.passed }}' === 'true';
+          const result = `${{ steps.test-results.outputs.result }}`.trim();
+
+          const { data: comments } = await github.rest.issues.listComments({
+            owner: repoOwner,
+            repo: repoName,
+            issue_number: prNumber,
+          });
+
+          const botComment = comments.find(comment =>
+            comment.user.type === 'Bot' &&
+            comment.body.includes('## Visual Test Report')
+          );
+
+          const statusIcon = passed ? ':white_check_mark:' : ':x:';
+          const body = [
+            '## Visual Test Report',
+            '',
+            `${statusIcon} **Result:** ${result}`,
+            '',
+            `**[View Full Report](${reportUrl})**`,
+            '',
+            '_Report includes side-by-side comparison of reference vs actual screenshots._',
+            '_Note: GitHub Pages may take up to a minute to update after deployment._'
+          ].join('\n');
+
+          if (botComment) {
+            await github.rest.issues.updateComment({
+              owner: repoOwner,
+              repo: repoName,
+              comment_id: botComment.id,
+              body: body
+            });
+          } else {
+            await github.rest.issues.createComment({
+              owner: repoOwner,
+              repo: repoName,
+              issue_number: prNumber,
+              body: body
+            });
+          }
+
+    - name: Fail if tests failed
+      if: always() && steps.test-results.outputs.passed != 'true'
+      run: |
+        echo "Visual tests failed"
+        exit 1

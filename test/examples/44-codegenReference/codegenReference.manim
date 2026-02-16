@@ -1,0 +1,11 @@
+version: 0.5
+
+#codegenReferenceItem programmable(width:int, height:int, c1:color=white) {
+  bitmap(generated(color($width, $height, $c1)));
+}
+
+#codegenReference programmable() {
+  staticRef($codegenReferenceItem, width=>100, height=>80, c1=>#FF0000): 20, 20;
+  staticRef($codegenReferenceItem, width=>100, height=>80, c1=>#00FF00): 140, 20;
+  staticRef($codegenReferenceItem, width=>100, height=>80, c1=>#0000FF): 260, 20;
+}

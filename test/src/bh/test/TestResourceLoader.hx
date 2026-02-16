@@ -1,5 +1,6 @@
 package bh.test;
 
+import bh.base.FontManager;
 import bh.base.ResourceLoader;
 import bh.stateanim.AnimParser;
 import byte.ByteData;
@@ -39,19 +40,19 @@ class TestResourceLoader {
 
 		loader.loadMultiAnimImpl = resourceFilename -> {
 			if (debugMode) trace('Loading manim: ${resourceFilename}');
-			var fullPath = 'test/examples/${resourceFilename}';
+			// Try direct path first (for full paths like "test/examples/36-.../file.manim"),
+			// then fall back to test/examples/ prefix
+			var fullPath = if (FileSystem.exists(resourceFilename)) resourceFilename else 'test/examples/${resourceFilename}';
 			if (!FileSystem.exists(fullPath)) {
-				throw 'File not found: $fullPath';
+				throw 'File not found: $resourceFilename (tried direct and test/examples/ prefix)';
 			}
 			final fileContent = ByteData.ofString(File.getContent(fullPath));
 			return bh.multianim.MultiAnimBuilder.load(fileContent, loader, fullPath);
 		}
 
-		loader.loadFontImpl = filename -> {
-			if (debugMode) trace('Loading font: ${filename}');
-			// For now, return default font for all test requests
-			// Could be extended to use FontManager if needed
-			return hxd.res.DefaultFont.get();
+		loader.loadFontImpl = fontName -> {
+			if (debugMode) trace('Loading font: ${fontName}');
+			return FontManager.getFontByName(fontName);
 		}
 
 		return loader;

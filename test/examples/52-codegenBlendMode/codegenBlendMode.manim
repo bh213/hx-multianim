@@ -1,0 +1,11 @@
+version: 0.5
+
+#codegenBlendMode programmable() {
+      point {
+            bitmap(file("demo-0.png")): 10,10
+            bitmap(file("demo-0.png")): 50,10
+                  blendMode: add;
+            bitmap(file("demo-0.png")): 90,10
+                  blendMode: alphaAdd;
+      }
+}

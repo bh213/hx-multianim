@@ -1,0 +1,8 @@
+-lib heaps
+-lib hldx
+-cp ../src
+-cp src
+-main AutotileMapper
+-D message.reporting=pretty
+-D resourcesPath=../test/res
+-hl build/autotile-mapper.hl

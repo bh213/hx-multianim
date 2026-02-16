@@ -2,271 +2,110 @@ import { Screen, ManimFile, AnimFile } from './types';
 import { getFileContent, updateFileContent, fileExists } from './fileLoader';
 import { DEFAULT_SCREEN } from './App';
 
+/** Single source of truth for screen definitions */
+interface ScreenData {
+    name: string;
+    displayName: string;
+    description: string;
+    manimFile: string;
+    haxeFile: string;
+}
 
+const SCREEN_DATA: ScreenData[] = [
+    { name: 'scrollableList', displayName: 'Scrollable List Test', description: 'Scrollable list component test screen with interactive list selection and scrolling functionality.', manimFile: 'scrollable-list.manim', haxeFile: 'ScrollableListTestScreen.hx' },
+    { name: 'button', displayName: 'Button Test', description: 'Button component test screen with interactive button controls and click feedback.', manimFile: 'button.manim', haxeFile: 'ButtonTestScreen.hx' },
+    { name: 'checkbox', displayName: 'Checkbox Test', description: 'Checkbox component test screen with interactive checkbox controls and state display.', manimFile: 'checkbox.manim', haxeFile: 'CheckboxTestScreen.hx' },
+    { name: 'slider', displayName: 'Slider Test', description: 'Slider component test screen with interactive slider controls and screen selection functionality.', manimFile: 'slider.manim', haxeFile: 'SliderTestScreen.hx' },
+    { name: 'particlesAdvanced', displayName: 'Particles', description: 'Particle system examples demonstrating color gradients, force fields, bounds modes, trails, and various emission patterns.', manimFile: 'particles-advanced.manim', haxeFile: 'ParticlesAdvancedScreen.hx' },
+    { name: 'pixels', displayName: 'Pixels', description: 'Pixel art and static pixel demo screen.', manimFile: 'pixels.manim', haxeFile: 'PixelsScreen.hx' },
+    { name: 'components', displayName: 'Components', description: 'Interactive UI components showcase featuring buttons, checkboxes, sliders, and other form elements with hover and press animations.', manimFile: 'components.manim', haxeFile: 'ComponentsTestScreen.hx' },
+    { name: 'examples1', displayName: 'Examples 1', description: 'Basic animation examples demonstrating fundamental hx-multianim features including sprite animations, transitions, and simple UI elements.', manimFile: 'examples1.manim', haxeFile: 'Examples1Screen.hx' },
+    { name: 'paths', displayName: 'Paths', description: 'Path-based animations showing objects following complex paths, motion trails, and smooth movement animations.', manimFile: 'paths.manim', haxeFile: 'PathsScreen.hx' },
+    { name: 'fonts', displayName: 'Fonts', description: 'Font rendering demonstrations with various font types, sizes, and text effects including SDF (Signed Distance Field) fonts.', manimFile: 'fonts.manim', haxeFile: 'FontsScreen.hx' },
+    { name: 'room1', displayName: 'Room 1', description: '3D room environment with spatial animations, depth effects, and immersive 3D scene demonstrations.', manimFile: 'room1.manim', haxeFile: 'Room1Screen.hx' },
+    { name: 'stateAnim', displayName: 'State Animation', description: 'Complex state-based animations demonstrating transitions between different UI states and conditional animations.', manimFile: 'stateanim.manim', haxeFile: 'StateAnimScreen.hx' },
+    { name: 'dialogStart', displayName: 'Dialog Start', description: 'Dialog startup animations and initial dialog states with smooth entrance effects and loading sequences.', manimFile: 'dialog-start.manim', haxeFile: 'DialogStartScreen.hx' },
+    { name: 'settings', displayName: 'Settings', description: 'Settings interface with configuration options, preference panels, and settings-specific UI animations.', manimFile: 'settings.manim', haxeFile: 'SettingsScreen.hx' },
+    { name: 'atlasTest', displayName: 'Atlas Test', description: 'Atlas texture testing screen demonstrating sprite sheet loading, grid layouts, and atlas-based animations.', manimFile: 'atlas-test.manim', haxeFile: 'AtlasTestScreen.hx' },
+    { name: 'draggable', displayName: 'Draggable Test', description: 'Drag and drop functionality demonstration with free dragging, bounds-constrained dragging, and zone-restricted dropping.', manimFile: 'draggable.manim', haxeFile: 'DraggableTestScreen.hx' },
+    { name: 'animViewer', displayName: 'Animation Viewer', description: 'Animation viewer for .anim files. Displays all animations from the selected .anim file in a grid layout.', manimFile: 'animviewer.manim', haxeFile: 'AnimViewerScreen.hx' },
+];
 
+/** Extra manim files that don't have a corresponding screen */
+const EXTRA_MANIM_FILES = [
+    { filename: 'dialog-base.manim', displayName: 'Dialog Base', description: 'Dialog system foundation with base dialog layouts, text rendering, and dialog-specific animations and transitions.' },
+    { filename: 'std.manim', displayName: 'Standard Library', description: 'Standard library components and utilities for hx-multianim including common animations, effects, and helper functions.' },
+];
+
+const ANIM_FILES = ['arrows.anim', 'dice.anim', 'marine.anim', 'shield.anim', 'turret.anim'];
 
 /**
  * PlaygroundLoader - Combined file and manim loader for the hx-multianim playground
  * Handles loading manim files, editing them, and reloading the playground application
  */
 export class PlaygroundLoader {
-    public screens: Screen[] = [
-        { 
-            name: 'scrollableList', 
-            displayName: 'Scrollable List Test',
-            description: 'Scrollable list component test screen with interactive list selection and scrolling functionality.',
-            manimFile: 'scrollable-list.manim'
-        },
-        { 
-            name: 'button', 
-            displayName: 'Button Test',
-            description: 'Button component test screen with interactive button controls and click feedback.',
-            manimFile: 'button.manim'
-        },
-        { 
-            name: 'checkbox', 
-            displayName: 'Checkbox Test',
-            description: 'Checkbox component test screen with interactive checkbox controls and state display.',
-            manimFile: 'checkbox.manim'
-        },
-        { 
-            name: 'slider', 
-            displayName: 'Slider Test',
-            description: 'Slider component test screen with interactive slider controls and screen selection functionality.',
-            manimFile: 'slider.manim'
-        },
-        {
-            name: 'particlesAdvanced',
-            displayName: 'Particles',
-            description: 'Particle system examples demonstrating color gradients, force fields, bounds modes, trails, and various emission patterns.',
-            manimFile: 'particles-advanced.manim'
-        },
-        {
-            name: 'pixels', 
-            displayName: 'Pixels',
-            description: 'Pixel art and static pixel demo screen.',
-            manimFile: 'pixels.manim'
-        },
-        { 
-            name: 'components', 
-            displayName: 'Components',
-            description: 'Interactive UI components showcase featuring buttons, checkboxes, sliders, and other form elements with hover and press animations.',
-            manimFile: 'components.manim'
-        },
-        { 
-            name: 'examples1', 
-            displayName: 'Examples 1',
-            description: 'Basic animation examples demonstrating fundamental hx-multianim features including sprite animations, transitions, and simple UI elements.',
-            manimFile: 'examples1.manim'
-        },
-        { 
-            name: 'paths', 
-            displayName: 'Paths',
-            description: 'Path-based animations showing objects following complex paths, motion trails, and smooth movement animations.',
-            manimFile: 'paths.manim'
-        },
-        { 
-            name: 'fonts', 
-            displayName: 'Fonts',
-            description: 'Font rendering demonstrations with various font types, sizes, and text effects including SDF (Signed Distance Field) fonts.',
-            manimFile: 'fonts.manim'
-        },
-        { 
-            name: 'room1', 
-            displayName: 'Room 1',
-            description: '3D room environment with spatial animations, depth effects, and immersive 3D scene demonstrations.',
-            manimFile: 'room1.manim'
-        },
-        { 
-            name: 'stateAnim', 
-            displayName: 'State Animation',
-            description: 'Complex state-based animations demonstrating transitions between different UI states and conditional animations.',
-            manimFile: 'stateanim.manim'
-        },
-        { 
-            name: 'dialogStart', 
-            displayName: 'Dialog Start',
-            description: 'Dialog startup animations and initial dialog states with smooth entrance effects and loading sequences.',
-            manimFile: 'dialog-start.manim'
-        },
-        { 
-            name: 'settings', 
-            displayName: 'Settings',
-            description: 'Settings interface with configuration options, preference panels, and settings-specific UI animations.',
-            manimFile: 'settings.manim'
-        },
-        { 
-            name: 'atlasTest', 
-            displayName: 'Atlas Test',
-            description: 'Atlas texture testing screen demonstrating sprite sheet loading, grid layouts, and atlas-based animations.',
-            manimFile: 'atlas-test.manim'
-        },
-        {
-            name: 'draggable',
-            displayName: 'Draggable Test',
-            description: 'Drag and drop functionality demonstration with free dragging, bounds-constrained dragging, and zone-restricted dropping.',
-            manimFile: 'draggable.manim'
-        },
-        {
-            name: 'animViewer',
-            displayName: 'Animation Viewer',
-            description: 'Animation viewer for .anim files. Displays all animations from the selected .anim file in a grid layout.',
-            manimFile: 'animviewer.manim'
-        }
-    ];
-    
-    public manimFiles: ManimFile[] = [
-        { 
-            filename: 'scrollable-list.manim', 
-            displayName: 'Scrollable List Test',
-            description: 'Scrollable list component test screen with interactive list selection and scrolling functionality.',
-            content: null
-        },
-        { 
-            filename: 'button.manim', 
-            displayName: 'Button Test',
-            description: 'Button component test screen with interactive button controls and click feedback.',
-            content: null
-        },
-        { 
-            filename: 'checkbox.manim', 
-            displayName: 'Checkbox Test',
-            description: 'Checkbox component test screen with interactive checkbox controls and state display.',
-            content: null
-        },
-        { 
-            filename: 'slider.manim', 
-            displayName: 'Slider Test',
-            description: 'Slider component test screen with interactive slider controls and screen selection functionality.',
-            content: null
-        },
-        { 
-            filename: 'examples1.manim', 
-            displayName: 'Examples 1',
-            description: 'Basic animation examples demonstrating fundamental hx-multianim features including sprite animations, transitions, and simple UI elements.',
-            content: null
-        },
-        { 
-            filename: 'components.manim', 
-            displayName: 'Components',
-            description: 'Interactive UI components showcase featuring buttons, checkboxes, sliders, and other form elements with hover and press animations.',
-            content: null
-        },
-        { 
-            filename: 'dialog-base.manim', 
-            displayName: 'Dialog Base',
-            description: 'Dialog system foundation with base dialog layouts, text rendering, and dialog-specific animations and transitions.',
-            content: null
-        },
-        { 
-            filename: 'dialog-start.manim', 
-            displayName: 'Dialog Start',
-            description: 'Dialog startup animations and initial dialog states with smooth entrance effects and loading sequences.',
-            content: null
-        },
-        { 
-            filename: 'fonts.manim', 
-            displayName: 'Fonts',
-            description: 'Font rendering demonstrations with various font types, sizes, and text effects including SDF (Signed Distance Field) fonts.',
-            content: null
-        },
-        {
-            filename: 'particles-advanced.manim',
-            displayName: 'Particles',
-            description: 'Particle system examples demonstrating color gradients, force fields, bounds modes, trails, and various emission patterns.',
-            content: null
-        },
-        {
-            filename: 'pixels.manim', 
-            displayName: 'Pixels',
-            description: 'Pixel art and static pixel demo screen.',
-            content: null
-        },
-        { 
-            filename: 'paths.manim', 
-            displayName: 'Paths',
-            description: 'Path-based animations showing objects following complex paths, motion trails, and smooth movement animations.',
-            content: null
-        },
-        { 
-            filename: 'room1.manim', 
-            displayName: 'Room 1',
-            description: '3D room environment with spatial animations, depth effects, and immersive 3D scene demonstrations.',
-            content: null
-        },
-        { 
-            filename: 'settings.manim', 
-            displayName: 'Settings',
-            description: 'Settings interface with configuration options, preference panels, and settings-specific UI animations.',
-            content: null
-        },
-        { 
-            filename: 'stateanim.manim', 
-            displayName: 'State Animation',
-            description: 'Complex state-based animations demonstrating transitions between different UI states and conditional animations.',
-            content: null
-        },
-        { 
-            filename: 'std.manim', 
-            displayName: 'Standard Library',
-            description: 'Standard library components and utilities for hx-multianim including common animations, effects, and helper functions.',
-            content: null
-        },
-        { 
-            filename: 'draggable.manim', 
-            displayName: 'Draggable Test',
-            description: 'Drag and drop functionality demonstration with free dragging, bounds-constrained dragging, and zone-restricted dropping.',
-            content: null
-        },
-        {
-            filename: 'atlas-test.manim',
-            displayName: 'Atlas Test',
-            description: 'Atlas texture testing screen demonstrating sprite sheet loading, grid layouts, and atlas-based animations.',
-            content: null
-        },
-        {
-            filename: 'animviewer.manim',
-            displayName: 'Animation Viewer',
-            description: 'Animation viewer UI layout for displaying .anim files in a grid layout.',
-            content: null
-        }
-    ];
-    
-    public animFiles: AnimFile[] = [
-        { filename: 'arrows.anim', content: null },
-        { filename: 'dice.anim', content: null },
-        { filename: 'marine.anim', content: null },
-        { filename: 'shield.anim', content: null },
-        { filename: 'turret.anim', content: null }
-    ];
-    
+    public screens: Screen[];
+    public manimFiles: ManimFile[];
+    public animFiles: AnimFile[];
+
     public currentFile: string | null = null;
     public currentExample: string | null = null;
+    public currentScreen: string | null = null;
     public reloadTimeout: number | null = null;
-    public reloadDelay: number = 1000; // 1 second debounce
+    public reloadDelay: number = 1000;
     public mainApp: any = null;
     public baseUrl: string = '';
 
     constructor() {
+        // Derive screens and manimFiles from single source of truth
+        this.screens = SCREEN_DATA.map(s => ({
+            name: s.name,
+            displayName: s.displayName,
+            description: s.description,
+            manimFile: s.manimFile
+        }));
+
+        this.manimFiles = [
+            ...SCREEN_DATA.map(s => ({
+                filename: s.manimFile,
+                displayName: s.displayName,
+                description: s.description,
+                content: null as string | null
+            })),
+            ...EXTRA_MANIM_FILES.map(f => ({
+                filename: f.filename,
+                displayName: f.displayName,
+                description: f.description,
+                content: null as string | null,
+                isLibrary: true
+            }))
+        ];
+
+        this.animFiles = ANIM_FILES.map(f => ({ filename: f, content: null }));
+
         this.init();
     }
-    
+
+    getScreenHaxeFile(screenName: string): string {
+        const data = SCREEN_DATA.find(s => s.name === screenName);
+        if (data) return data.haxeFile;
+        return `${screenName.charAt(0).toUpperCase() + screenName.slice(1)}Screen.hx`;
+    }
+
     init(): void {
         this.setupFileLoader();
         this.loadFilesFromMap();
         this.waitForMainApp();
     }
-    
+
     loadFilesFromMap(): void {
-        // Load content from fileMap into manimFiles array
         this.manimFiles.forEach(file => {
             const content = getFileContent(file.filename);
             if (content) {
                 file.content = content;
             }
         });
-        
-        // Load content from fileMap into animFiles array
+
         this.animFiles.forEach(file => {
             const content = getFileContent(file.filename);
             if (content) {
@@ -274,8 +113,7 @@ export class PlaygroundLoader {
             }
         });
     }
-    
-    // Wait for the main app to be available
+
     waitForMainApp(): void {
         if (typeof window.PlaygroundMain !== 'undefined' && window.PlaygroundMain.instance) {
             this.mainApp = window.PlaygroundMain.instance;
@@ -283,18 +121,15 @@ export class PlaygroundLoader {
             setTimeout(() => this.waitForMainApp(), 100);
         }
     }
-    
-    // FileLoader functionality
+
     setupFileLoader(): void {
-        // Base URL that will be prepended to all URLs
         this.baseUrl = (() => {
             if (typeof window !== 'undefined' && window.location) {
                 return window.location.href;
             }
             return '';
         })();
-        
-        // Make FileLoader methods available globally
+
         window.FileLoader = {
             baseUrl: this.baseUrl,
             resolveUrl: (url: string) => this.resolveUrl(url),
@@ -302,16 +137,16 @@ export class PlaygroundLoader {
             stringToArrayBuffer: this.stringToArrayBuffer
         };
     }
-    
+
     resolveUrl(url: string): string {
         if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('//') || url.startsWith('file://')) {
             return url;
         }
-        
+
         if (!this.baseUrl) {
             return url;
         }
-        
+
         try {
             return new URL(url, this.baseUrl).href;
         } catch (e) {
@@ -320,28 +155,26 @@ export class PlaygroundLoader {
             return base + path;
         }
     }
-    
+
     stringToArrayBuffer(str: string): ArrayBuffer {
         const buf = new ArrayBuffer(str.length);
         const bufView = new Uint8Array(buf);
-    
         for (let i = 0, strLen = str.length; i < strLen; i++) {
             bufView[i] = str.charCodeAt(i);
         }
-    
         return buf;
     }
-    
+
     loadFile(url: string): ArrayBuffer {
         const filename = this.extractFilenameFromUrl(url);
-        
-        if (filename && fileExists(filename)) { 
+
+        if (filename && fileExists(filename)) {
             const content = getFileContent(filename);
             if (content) {
                 return this.stringToArrayBuffer(content);
             }
         }
-        
+
         // Try Haxe loader as fallback
         if (typeof window.hxd !== 'undefined' && window.hxd.res && window.hxd.res.load) {
             try {
@@ -355,7 +188,7 @@ export class PlaygroundLoader {
             }
         }
 
-        // Fall back to HTTP loading
+        // Fall back to synchronous HTTP loading (required by Haxe FileLoader contract)
         const resolvedUrl = this.resolveUrl(url);
         const xhr = new XMLHttpRequest();
         xhr.open('GET', resolvedUrl, false);
@@ -366,123 +199,81 @@ export class PlaygroundLoader {
             return new ArrayBuffer(0);
         }
     }
-    
+
     private extractFilenameFromUrl(url: string): string | null {
-        // Handle various URL formats:
-        // - "assets/filename.manim"
-        // - "/assets/filename.manim"
-        // - "filename.manim"
-        // - "http://.../filename.manim"
-        
-        // Remove query parameters and hash
         const cleanUrl = url.split('?')[0].split('#')[0];
-        
-        // Extract filename from path
         const pathParts = cleanUrl.split('/');
         const filename = pathParts[pathParts.length - 1];
-        
-        // Validate it's a supported file type
-        if (filename && (filename.endsWith('.manim') || filename.endsWith('.anim') || 
-                        filename.endsWith('.png') || filename.endsWith('.atlas2') || 
+
+        if (filename && (filename.endsWith('.manim') || filename.endsWith('.anim') ||
+                        filename.endsWith('.png') || filename.endsWith('.atlas2') ||
                         filename.endsWith('.fnt') || filename.endsWith('.tps'))) {
             return filename;
         }
-        
+
         return null;
     }
-    
+
     onContentChanged(content: string): void {
-        // Update the content in manimFiles array
         if (this.currentFile) {
             const manimFile = this.manimFiles.find(file => file.filename === this.currentFile);
             if (manimFile) {
                 manimFile.content = content;
-                // Also update the file map
                 updateFileContent(this.currentFile, content);
             }
-            
-            // Update the content in animFiles array
+
             const animFile = this.animFiles.find(file => file.filename === this.currentFile);
             if (animFile) {
                 animFile.content = content;
-                // Also update the file map
                 updateFileContent(this.currentFile, content);
             }
         }
-        
-        // Clear existing timeout
+
         if (this.reloadTimeout) {
             clearTimeout(this.reloadTimeout);
         }
-        
-        // Set new timeout for debounced reload
+
         this.reloadTimeout = setTimeout(() => {
             this.reloadPlayground();
         }, this.reloadDelay);
     }
-    
+
     reloadPlayground(screenName?: string): any {
-        // Get the screen name - use parameter if provided, otherwise get from dropdown
-        let selectedScreen = screenName;
-        if (!selectedScreen) {
-            const screenCombo = document.getElementById('screen-selector') as HTMLSelectElement;
-            selectedScreen = screenCombo ? screenCombo.value : 'particles';
-        }
-        
-        // Call reload with the selected screen
+        const selectedScreen = screenName || this.currentScreen || 'particles';
+        this.currentScreen = selectedScreen;
+
         if (window.PlaygroundMain?.instance) {
             try {
-                const res = window.PlaygroundMain.instance.reload(selectedScreen, true);
-                console.log('PlaygroundLoader reload result:', res);
-                console.log('Result type:', typeof res);
-                console.log('Result keys:', res ? Object.keys(res) : 'null');
-                if (res && res.__nativeException) {
-                    console.log('Error in reload result:', res.__nativeException);
-                }
-                return res;
+                return window.PlaygroundMain.instance.reload(selectedScreen, true);
             } catch (error) {
-                console.log('Exception during reload:', error);
                 return { __nativeException: error };
             }
         }
         return null;
     }
-    
-    getCurrentContent(): string {
-        const textarea = document.getElementById('manim-textarea') as HTMLTextAreaElement;
-        return textarea ? textarea.value : '';
-    }
-    
+
     getCurrentFile(): string | null {
         return this.currentFile;
     }
-    
-    // Method to get edited content for the FileLoader
+
     getEditedContent(filename: string): string | null {
         const manimFile = this.manimFiles.find(file => file.filename === filename);
-        if (manimFile) {
-            return manimFile.content;
-        }
-        
+        if (manimFile) return manimFile.content;
+
         const animFile = this.animFiles.find(file => file.filename === filename);
-        if (animFile) {
-            return animFile.content;
-        }
-        
+        if (animFile) return animFile.content;
+
         return null;
     }
-    
-    // Public method to update content without triggering reload (for Save button)
+
     updateContent(filename: string, content: string): void {
         const manimFile = this.manimFiles.find(file => file.filename === filename);
         if (manimFile) {
             manimFile.content = content;
-            // Also update the file map
             updateFileContent(filename, content);
         }
     }
-    
-    // Public method to dispose the playground
+
     dispose(): void {
         if (this.mainApp && typeof this.mainApp.dispose === 'function') {
             this.mainApp.dispose();
@@ -492,4 +283,4 @@ export class PlaygroundLoader {
     public static getDefaultScreen(): string {
         return DEFAULT_SCREEN;
     }
-} 
+}

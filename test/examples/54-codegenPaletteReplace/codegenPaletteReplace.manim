@@ -1,0 +1,21 @@
+version: 0.5
+
+#file palette(file:"main-palette.png")
+
+#codegenPaletteReplace programmable(replaceRow:int=1) {
+  bitmap(generated(color(120, 120, palette(file, 0, 0)))) {
+    pos: 20, 20
+  }
+  bitmap(generated(color(120, 120, palette(file, 0, 0)))) {
+    filter: replacePalette(file, 0, $replaceRow)
+    pos: 160, 20
+  }
+
+  bitmap(generated(color(120, 120, palette(file, 1, 0)))) {
+    pos: 20, 160
+  }
+  bitmap(generated(color(120, 120, palette(file, 1, 0)))) {
+    filter: replacePalette(file, 0, $replaceRow)
+    pos: 160, 160
+  }
+}

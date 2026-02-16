@@ -1,0 +1,108 @@
+version: 0.5
+
+// =============================================================================
+// AUTOTILE BLOB47 FORMAT TEST - Tests buildAutotile() with blob47 format
+// =============================================================================
+// Blob47 uses 47 unique tiles for full 8-direction neighbor combinations.
+// Each tile shown with demo graphics, labeled with index and edge flags.
+// =============================================================================
+
+
+// Demo autotile - water terrain
+#blob47Water autotile {
+    format: blob47
+    tileSize: 16
+    demo: black, #EEE    // dark blue edges, sea blue fill
+}
+
+// Colorful autotile with index numbers - for debugging which tile is used where
+#blob47Colored autotile {
+    format: blob47
+    tileSize: 16
+    tiles:
+        // 0: isolated (no neighbors)
+        generated(colorWithText(16, 16, 0x808080, "0", white, f3x5))
+        // 1-8: cardinal neighbors only
+        generated(colorWithText(16, 16, 0xFF4444, "1", white, f3x5))     // N
+        generated(colorWithText(16, 16, 0xFF5555, "2", white, f3x5))     // E
+        generated(colorWithText(16, 16, 0xFF6666, "3", white, f3x5))     // NE
+        generated(colorWithText(16, 16, 0xFF7777, "4", black, f3x5))     // N+ne+E
+        generated(colorWithText(16, 16, 0xFF8888, "5", black, f3x5))     // S
+        generated(colorWithText(16, 16, 0xFF9999, "6", black, f3x5))     // NS
+        generated(colorWithText(16, 16, 0xFFAAAA, "7", black, f3x5))     // ES
+        generated(colorWithText(16, 16, 0xFFBBBB, "8", black, f3x5))     // NES
+        // 9-20: more combinations
+        generated(colorWithText(16, 16, 0xFFCC00, "9", black, f3x5))     // +ne
+        generated(colorWithText(16, 16, 0xFFDD00, "10", black, f3x5))    // +se
+        generated(colorWithText(16, 16, 0xFFEE00, "11", black, f3x5))    // +se
+        generated(colorWithText(16, 16, 0xFFFF00, "12", black, f3x5))    // +ne+se
+        generated(colorWithText(16, 16, 0xCCFF00, "13", black, f3x5))    // W
+        generated(colorWithText(16, 16, 0xAAFF00, "14", black, f3x5))    // NW
+        generated(colorWithText(16, 16, 0x88FF00, "15", black, f3x5))    // EW
+        generated(colorWithText(16, 16, 0x66FF00, "16", black, f3x5))    // NEW
+        generated(colorWithText(16, 16, 0x44FF00, "17", black, f3x5))    // +ne
+        generated(colorWithText(16, 16, 0x22FF00, "18", black, f3x5))    // SW
+        generated(colorWithText(16, 16, 0x00FF00, "19", black, f3x5))    // NSW
+        generated(colorWithText(16, 16, 0x00FF22, "20", black, f3x5))    // ESW
+        // 21: center (all cardinals)
+        generated(colorWithText(16, 16, 0x00FF44, "21", black, f3x5))    // NESW
+        // 22-33: more corner combinations
+        generated(colorWithText(16, 16, 0x00FF66, "22", black, f3x5))
+        generated(colorWithText(16, 16, 0x00FF88, "23", black, f3x5))
+        generated(colorWithText(16, 16, 0x00FFAA, "24", black, f3x5))
+        generated(colorWithText(16, 16, 0x00FFCC, "25", black, f3x5))
+        generated(colorWithText(16, 16, 0x00FFEE, "26", black, f3x5))
+        generated(colorWithText(16, 16, 0x00EEFF, "27", black, f3x5))
+        generated(colorWithText(16, 16, 0x00CCFF, "28", black, f3x5))
+        generated(colorWithText(16, 16, 0x00AAFF, "29", black, f3x5))
+        generated(colorWithText(16, 16, 0x0088FF, "30", white, f3x5))
+        generated(colorWithText(16, 16, 0x0066FF, "31", white, f3x5))
+        generated(colorWithText(16, 16, 0x0044FF, "32", white, f3x5))
+        generated(colorWithText(16, 16, 0x0022FF, "33", white, f3x5))
+        // 34-45: nw corner combinations
+        generated(colorWithText(16, 16, 0x2200FF, "34", white, f3x5))
+        generated(colorWithText(16, 16, 0x4400FF, "35", white, f3x5))
+        generated(colorWithText(16, 16, 0x6600FF, "36", white, f3x5))
+        generated(colorWithText(16, 16, 0x8800FF, "37", white, f3x5))
+        generated(colorWithText(16, 16, 0xAA00FF, "38", white, f3x5))
+        generated(colorWithText(16, 16, 0xCC00FF, "39", white, f3x5))
+        generated(colorWithText(16, 16, 0xEE00FF, "40", white, f3x5))
+        generated(colorWithText(16, 16, 0xFF00EE, "41", white, f3x5))
+        generated(colorWithText(16, 16, 0xFF00CC, "42", white, f3x5))
+        generated(colorWithText(16, 16, 0xFF00AA, "43", white, f3x5))
+        generated(colorWithText(16, 16, 0xFF0088, "44", white, f3x5))
+        generated(colorWithText(16, 16, 0xFF0066, "45", white, f3x5))
+        // 46: all neighbors (full tile)
+        generated(colorWithText(16, 16, 0x44FF44, "46", black, f3x5))
+}
+
+// Visual demo - shows ALL 47 tiles with colored + demo tile pairs
+#autotileBlob47 programmable() {
+    pos: 0, 0
+    grid: 1280, 720
+
+    @alpha(0.1) bitmap(generated(color(1280, 720, black)));
+
+    // All 47 tiles in 5 rows of 10 (last row has 7)
+    // Colored tile at -18, demo tile at 0, 2px gap between them
+    // 55px spacing between pairs
+    repeatable($i, range(0, 47)) {
+        point {
+            pos: 20 + ($i % 10) * 55, 20 + ($i div 10) * 25
+            bitmap(generated(autotile("blob47Colored", $i))):-18,0
+            bitmap(generated(autotile("blob47Water", $i))):0,0
+        }
+    }
+
+    // Legend
+    point {
+        pos: 10, 150
+        text(f3x5, "Legend: 0=isolated, 21=center (NESW), 46=all neighbors", 0x666666, left);
+    }
+
+    // Map positions (used by test code, multiply by scale 2.0)
+    // mapColored: 20,163 -> x=40, y=326 at scale 2.0
+    // mapWater: 342,163 -> x=684, y=326 at scale 2.0 (with black background)
+    // 16x12 grid at 16px = 256x192
+    bitmap(generated(color(256, 192, black))):342,163
+}

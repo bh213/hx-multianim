@@ -1,4 +1,3 @@
--lib hxparse
 -lib heaps
 -cp src 
 bh.ui.screens.ScreenManager

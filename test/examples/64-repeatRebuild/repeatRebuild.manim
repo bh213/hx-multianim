@@ -1,0 +1,14 @@
+version: 0.5
+
+#repeatRebuild programmable(count:uint=5, cols:uint=3, rows:uint=2) {
+  repeatable($i, step($count, dx: 18)) {
+    ninepatch("ui", "button-pressed", 14, 12): 0, 0
+    text(f3x5, $i, #ffffffff): 6, 3
+  }
+  repeatable2d($cx, $cy, step($cols, dx: 34), step($rows, dy: 16)) {
+    pos: 0, 20
+    
+    ninepatch("ui", "button-idle", 30, 12): 0, 0
+    text(f3x5, '${$cx}x${$cy}', #ffffffff, center, 30): 0,3
+  }
+}

@@ -1,114 +1,128 @@
+# Main goals
 
+- allow code generation - programmable element should always work via builder.buildWithParameters or via macro system e.g. @:manim("test/examples/60-newPathCommands/newPathCommands.manim", "newPathCommands")
+- some tools/testing might be split into separate repos. Most likely candidates are utils/ and playground.
 
-FIX: 
+FIX:
 ===================================
-repeatable grid: scale ignored for dy/dy?
-repeatable: inline array with $index, $value?
+
+Components: allow setting various components via settings
+
 fix html/implement text
-fix double reload issue
-hex coordinate system offset support 
-fix conditional not working with repeatable vars - e.g @(index greaterOrEqual 3)
+    - PARTIAL: `text(..., html: true)` parameter approach works via createHtmlText() in MultiAnimBuilder.hx
+    - Standalone HTMLTEXT element type is intentionally deprecated/commented out
+    - The `html: true` parameter on text elements is the supported approach
 
-NEXT
-===================================
-conditionals ELSE??
+fix double reload issue
+    - NO CODE REFERENCES - likely runtime behavior in playground/game
+    - Need more context on when this occurs
+
+hex coordinate system offset support
+    - VALID - NOT IMPLEMENTED
+    - Grid has SELECTED_GRID_POSITION_WITH_OFFSET supporting grid(x,y,offsetX,offsetY)
+    - Hex only has SELECTED_HEX_POSITION - no offset variant
+    - HexCoordinateSystem missing offset parameters
+
+fix conditional not working with repeatable vars - e.g @(index greaterOrEqual 3)
+    - LIKELY VALID BUG
+    - Parser recognizes greaterThanOrEqual (MultiAnimParser.hx:2272)
+    - Repeatable variables added to indexedParams during iteration
+    - Bug may be timing - conditionals parsed/evaluated before repeatable sets the var
 
 
 particles:
     loop/non-loop support
+        - EXISTS: emitLoop property in Particles
     animSM support?
+        - NOT IMPLEMENTED for particles
     events - onEnd, onGroundHit?
+        - Collision triggers exist for sub-emitters
+        - No user-defined events system
 
-
-
-Animations - easing & events
-paths: 
-    grid & hex coordinate systems
-    start, end references
-    particles diff with direction & speed as variables
-    make object follow animation, maybe based on center or extra point??
-
-
-
-#animate
-
-animate <path> by time {
-    0.2s: event("event")
-    2000ms: particleSystem("ps", lifetime: 1s), speed: 2.0)
-    10%:
-}
-
-animate <path> by distance {
-    10%: 
-    200px: event
-}
-
-
+sub-emitters
+    - LARGELY IMPLEMENTED (parsing + building + runtime scaffolding)
+    - Full parsing: parseSubEmitter(), parseSubEmitters() in MultiAnimParser
+    - Runtime: Particles.hx with SubEmitTrigger, triggerSubEmitters(), checkIntervalSubEmitters()
+    - Triggers: OnBirth, OnDeath, OnCollision, Interval
+    - REMAINING: Implement actual particle spawning in triggerSubEmitters() and checkIntervalSubEmitters() (currently stubbed)
 
 
 next major release
 ===================================
 * generic components support
+    - NOT IMPLEMENTED
+    - Would allow reusable component patterns
+
 * bit expression - support for any bit and all bits (e.g. grid direction)
+    - NOT IMPLEMENTED
+    - Would help with grid direction bitfields
+
 # stateanim:
-* color replace? 
-* align elements (or at least center placeholders)
-* animSM can mark loop as forever to skip inf loop check
+* color replace?
+    - PARTIAL: replaceColor filter exists in MultiAnimParser
+    - May not be fully exposed for stateanim use
 
 
 next major release
 ===================================
-* tilegroup support:  ninepatch 
-* tilegroup REPEAT - extract into single func
-* radio: 
-    * paired uielement (click on label to change radio)
-* named/optional parameters for filters
+* tilegroup support: ninepatch
+    - NOT IMPLEMENTED - TileGroup exists but no ninepatch integration
 
+* tilegroup REPEAT - extract into single func
+    - Code deduplication opportunity — REPEAT/REPEAT2D already work with TileGroup mode
+
+* radio:
+    * paired uielement (click on label to change radio)
+        - NOT IMPLEMENTED
+        - Currently only checkbox is clickable, not accompanying label
 
 next major release
 ========================
+
+# better reload behaviour
+Reload white system is live, requires tracking, custom h2d.object?
+
  # multianim:
 * subelements - handle nested subelements, keep state, don't query each time
-* layouts -> relativeLayouts & absoluteScreens? layers support - support xy - layouts(layout node name, layout [,index] ): resolve layouts & palette references on load?
-* mask element?
-* uielements -> send initial change to uievents so control value can be synced to logic OR save/restore state for full page reloads & similar
+    - PARTIAL: UIElementSubElements interface exists
+    - UIScreen queries via Std.isOfType each time - could cache
+
+* layouts -> relativeLayouts & absoluteScreens? layers support
+    - PARTIAL: MultiAnimLayouts.hx exists
+    - xy positioning and layer support incomplete
+
+* uielements -> send initial change to uievents so control value can be synced to logic OR save/restore state for full page reloads
+    - NOT IMPLEMENTED
+    - Initial state not propagated to event listeners
+
 * move uielements to separate list, don't check interfaces all the time
-* add myhtml text from escape
-* hex/grid xy -> enable scale & translate - has offset for now
+    - NOT IMPLEMENTED - performance optimization opportunity
+
+* hex/grid xy -> enable scale & translate
+    - PARTIAL - offset supported, scale & translate NOT implemented
+
 * custom h2d.object subclasses with repeats to index or grid to index functionality
+    - NOT IMPLEMENTED
 
 * optimize grid/hex coordinate system so it doesn't walk the tree all the time
-* store pos for expressions/references so error can include pos
-* fix scale / offset  - scaling affects offset, is that ok?
-* draggable scrollbar 
+    - NOT IMPLEMENTED - could cache coordinate systems
+
+* draggable scrollbar
+    - PARTIAL: UIMultiAnimDraggable.hx exists for general dragging
+    - ScrollableList needs draggable scrollbar thumb
 
 * text width for align revisit
+    - NOT IMPLEMENTED
+
 * scrollable: whole disabled (all items to disabled)
-* switch to macro builder everywhere?
-
-
-
+    - NOT IMPLEMENTED
 
 next major release
 ========================
 * setting editor
+    - NOT IMPLEMENTED
 
 
 will not implement:
 ===================
 * affine transformation on node?
-* object to store builder with name/params for rebuilds? (done?)
-
-
-
-
-
-
-
-
-
-https://github.com/darmie/wrenparse/blob/master/src/wrenparse/WrenLexer.hx#L105
-http://simn.github.io/hxparse/hxparse/index.html
-https://github.com/Simn/hxparse/blob/master/README.md
-https://github.com/benmerckx/haxeparser/blob/813b026d12123d8a3a0ed9bb0150acd546ba2a07/src/haxeparser/HaxeLexer.hx#L198
-

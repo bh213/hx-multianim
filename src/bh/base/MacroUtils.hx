@@ -146,7 +146,7 @@ class MacroUtils {
 
             retValFields.push({field: key, expr: value });
             if (isUIElementType) {
-                addElementsBlock.push(macro addElement(retVal.$key, null)); // TODO: Add layer name/index
+                addElementsBlock.push(macro addElement(retVal.$key, DefaultLayer));
                 inputFields.set(key, macro PVObject($value.getObject()));
             } else if (isH2dObjectType){
                 inputFields.set(key, macro PVObject($value));
@@ -161,7 +161,7 @@ class MacroUtils {
         for (key => value in newValues) {
             retValFields.push({field: key, expr: macro $i{key}});
             localVars.push(macro var $key = $value);
-            addElementsBlock.push(macro addElement(macro key, false));
+            addElementsBlock.push(macro addElement($i{key}, DefaultLayer));
             inputFields.set(key, macro PVObject($i{key}.getObject()));
         }
 
@@ -171,7 +171,7 @@ class MacroUtils {
             checkIfNullBlock.push(macro if (retVal.$key == null) {throw 'macroBuildWithParameters UIElement value  ' + $v{key} + ' is null (check if placeholder object is named correctly)';});
             final updated = macro (settings:bh.multianim.MultiAnimParser.ResolvedSettings)->{
                 final element = $value;
-                addElement(element, null); // TODO: Add layer name/index
+                addElement(element, DefaultLayer);
                 $i{key} = element;
                 return element.getObject();
             }
@@ -264,9 +264,43 @@ class MacroUtils {
          
          return generatedExpression;
         //  return macro 2;
-#else 
+#else
 return null;
-#end         
+#end
+    }
+
+    /**
+     * Returns a string with the node's parser position when MULTIANIM_TRACE is defined.
+     * Returns empty string when MULTIANIM_TRACE is not set.
+     * Usage: throw 'error message' + MacroUtils.nodePos(node);
+     */
+    public static macro function nodePos(node:Expr):Expr {
+        #if macro
+        if (Context.defined("MULTIANIM_TRACE")) {
+            return macro ' at ' + $node.parserPos;
+        } else {
+            return macro '';
+        }
+        #else
+        return null;
+        #end
+    }
+
+    /**
+     * Returns a string with the node's parser position prefixed by custom text when MULTIANIM_TRACE is defined.
+     * Returns empty string when MULTIANIM_TRACE is not set.
+     * Usage: throw 'error message' + MacroUtils.nodePosWithPrefix(node, " (defined at ");
+     */
+    public static macro function nodePosWithPrefix(node:Expr, prefix:ExprOf<String>):Expr {
+        #if macro
+        if (Context.defined("MULTIANIM_TRACE")) {
+            return macro $prefix + $node.parserPos + ')';
+        } else {
+            return macro '';
+        }
+        #else
+        return null;
+        #end
     }
 
 }

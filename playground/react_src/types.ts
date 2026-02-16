@@ -10,23 +10,12 @@ export interface ManimFile {
     displayName: string;
     description: string;
     content: string | null;
+    isLibrary?: boolean;
 }
 
 export interface AnimFile {
     filename: string;
     content: string | null;
-}
-
-export interface PlaygroundLoader {
-    screens: Screen[];
-    manimFiles: ManimFile[];
-    animFiles: AnimFile[];
-    currentFile: string | null;
-    currentExample: string | null;
-    reloadTimeout: number | null;
-    reloadDelay: number;
-    mainApp: any;
-    baseUrl: string;
 }
 
 export interface FileLoader {
@@ -39,7 +28,7 @@ export interface FileLoader {
 declare global {
     interface Window {
         FileLoader: FileLoader;
-        playgroundLoader: PlaygroundLoader;
+        playgroundLoader: any;
         PlaygroundMain: {
             instance: any;
             defaultScreen: string;
@@ -54,4 +43,4 @@ declare global {
             };
         };
     }
-} 
+}

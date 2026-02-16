@@ -1,0 +1,76 @@
+version: 0.5
+
+#codegenTextOpts programmable() {
+
+  // Row 1: letterSpacing comparison
+  point {
+    pos: 10, 30
+    bitmap(generated(color(175, 40, #333)));
+    @scale(2) text(dd, "spacing=0", white, left, 175): 4, 4;
+  }
+  point {
+    pos: 200, 30
+    bitmap(generated(color(230, 40, #333)));
+    @scale(2) text(dd, "spacing=3", white, left, 230, letterSpacing: 3.0): 4, 4;
+  }
+  point {
+    pos: 450, 30
+    bitmap(generated(color(310, 40, #333)));
+    @scale(2) text(dd, "spacing=6", white, left, 310, letterSpacing: 6.0): 4, 4;
+  }
+
+  // Row 2: lineSpacing comparison (multiline)
+  point {
+    pos: 10, 75
+    bitmap(generated(color(130, 100, #333)));
+    @scale(2) text(dd, "line 1\nline 2\nline 3", #8FF, left, 130, lineSpacing: 0.0): 4, 4;
+  }
+  point {
+    pos: 160, 75
+    bitmap(generated(color(130, 115, #333)));
+    @scale(2) text(dd, "line 1\nline 2\nline 3", #8FF, left, 130, lineSpacing: 4.0): 4, 4;
+  }
+  point {
+    pos: 310, 75
+    bitmap(generated(color(130, 140, #333)));
+    @scale(2) text(dd, "line 1\nline 2\nline 3", #8FF, left, 130, lineSpacing: 8.0): 4, 4;
+  }
+
+  // Row 3: lineBreak comparison
+  point {
+    pos: 10, 230
+    bitmap(generated(color(155, 70, #440000)));
+    @scale(2) text(dd, "wrap on maxW", #FF8, left, 155, lineBreak: true): 4, 4;
+  }
+  point {
+    pos: 185, 230
+    bitmap(generated(color(550, 40, #004400)));
+    @scale(2) text(dd, "no wrap maxW 155", #FF8, left, 155, lineBreak: false): 4, 4;
+  }
+
+  // Row 4: dropShadow
+  point {
+    pos: 10, 310
+    bitmap(generated(color(215, 38, #222)));
+    @scale(2) text(dd, "drop shadow", yellow, left, 215, dropShadowXY: 2.0, 2.0, dropShadowColor: #000000, dropShadowAlpha: 0.8): 4, 4;
+  }
+  point {
+    pos: 250, 310
+    bitmap(generated(color(215, 38, #222)));
+    @scale(2) text(dd, "red shadow", white, left, 215, dropShadowXY: 3.0, 1.0, dropShadowColor: #FF0000, dropShadowAlpha: 1.0): 4, 4;
+  }
+
+  // Row 5: combined options
+  point {
+    pos: 10, 375
+    bitmap(generated(color(420, 75, #202040)));
+    @scale(2) text(dd, "all opts:\nspaced + shadow", #88FF88, center, 420, letterSpacing: 2.0, lineSpacing: 3.0, dropShadowXY: 1.0, 1.0, dropShadowColor: #fff, dropShadowAlpha: 0.6): 4, 4;
+  }
+
+  // Row 6: html mode
+  point {
+    pos: 10, 470
+    bitmap(generated(color(260, 32, #333)));
+    @scale(2) text(dd, "html mode text", #FF88FF, left, 260, html: true): 4, 4;
+  }
+}

@@ -19,6 +19,7 @@ class FPoint {
 		
 	}
 
+	#if !macro
 	public static inline function fromh2dPoint(p:h2d.col.Point) {
 		return new FPoint(p.x, p.y);
 	}
@@ -26,6 +27,7 @@ class FPoint {
 	public inline function toh2dPoint() {
 		return new h2d.col.Point(x, y);
 	}
+	#end
 
 	public function toPoint() {
 		return new Point(Math.round(x), Math.round(y));

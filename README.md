@@ -4,8 +4,14 @@ A Haxe library for creating animations and pixel art UI elements using the [Heap
 
 ## Documentation
 
-- **[.manim Format Reference](docs/manim.md)** - UI elements, programmables, layouts, graphics, and particles
+- **[.manim Format Reference](docs/manim.md)** - UI elements, programmables, layouts, graphics, particles, and data blocks
+- **[Programmable Macros](docs/manim.md#programmable-macros-compile-time-code-generation)** - Compile-time code generation tutorial and reference
+- **[Data Blocks](docs/manim.md#data)** - Static typed data definitions with macro codegen
 - **[.anim Format Reference](docs/anim.md)** - State animations with playlists and extra points
+
+## Visual Test Report
+
+Latest test results: [Visual Test Report](https://bh213.github.io/hx-multianim/test-report/screenshots/index.html)
 
 ## Interactive Playground
 
@@ -53,7 +59,7 @@ npm install -g lix
 
 2. **Create a UI element** (`.manim`):
    ```
-   version: 0.3
+   version: 0.5
 
    #textDemo programmable() {
      text(dd, "Hello World", red, left, 200): 0, 0
@@ -184,29 +190,30 @@ addObjectToLayer(sprite, BackgroundLayer);
 
 ### UI Elements
 
-`UIScreenBase` provides helper methods for common UI components:
+`UIScreenBase` provides helper methods for common UI components. Settings are injected automatically via `MacroUtils.macroBuildWithParameters` or passed explicitly. See [docs/manim.md](docs/manim.md#ui-components) for full component reference.
 
 ```haxe
 // Buttons
-var button = addButton(builder.createElementBuilder("button"), "Click Me", settings);
-button.onClick = () -> doSomething();
+var btn = addButtonWithSingleBuilder(builder, "button", "Click Me");
+// or with explicit builder
+var btn = addButton(builder.createElementBuilder("button"), "Click Me", settings);
 
-// Checkboxes
-var checkbox = addCheckbox(builder, settings, true);
-checkbox.onChanged = (checked) -> handleChange(checked);
+// Checkboxes (buildName overridable via settings)
+var cb = addCheckbox(builder, true);
 
 // Sliders
-var slider = addSlider(builder, settings, 50);
-slider.onValueChanged = (value) -> handleSlider(value);
+var slider = addSlider(builder, 50);
 
-// Dropdowns
-var dropdown = addDropdown(dropdownBuilder, panelBuilder, itemBuilder,
+// Dropdowns (all sub-component names overridable via settings)
+var dd = addDropdown(dropdownBuilder, panelBuilder, itemBuilder,
     scrollbarBuilder, "scrollbar", items, settings);
-dropdown.onSelectionChanged = (index) -> handleSelection(index);
 
 // Scrollable lists
 var list = addScrollableList(panelBuilder, itemBuilder, scrollbarBuilder,
     "scrollbar", items, settings, 0, 200, 300);
+
+// Radio buttons
+var radio = addRadio(builder, items, true, 0); // vertical, initially selected index 0
 ```
 
 ### Element Groups

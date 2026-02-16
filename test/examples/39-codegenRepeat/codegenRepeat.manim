@@ -1,0 +1,22 @@
+version: 0.5
+
+#codegenRepeat programmable(count:uint=5) {
+  // Static step repeat: 4 items with fixed dx offset
+  repeatable($i, step(4, dx: 40)) {
+    pos: 10, 10
+    ninepatch("ui", "button-idle", 30, 20): 0, 0
+    text(dd, $i, white, center, 30): 0, 2
+  }
+
+  // Range repeat: values 1..4
+  repeatable($r, range(1, 4)) {
+    pos: 10, 50
+    text(dd, $r, yellow, left, 200): $r * 40, 0
+  }
+
+  // Param-dependent step repeat: count controlled by $count param
+  repeatable($j, step($count, dx: 30)) {
+    pos: 10, 80
+    ninepatch("ui", "button-pressed", 20, 16): 0, 0
+  }
+}

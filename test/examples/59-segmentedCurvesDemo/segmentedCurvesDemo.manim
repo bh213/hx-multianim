@@ -1,0 +1,32 @@
+version: 0.5
+
+curves {
+  #simpleEasing curve {
+    easing: easeinquad
+  }
+  #pointsCurve curve {
+    points: [(0, 0.1), (0.25, 0.9), (0.5, 0.3), (0.75, 1.0), (1.0, 0.5)]
+  }
+  #segDefaultValues curve {
+    [0.0 .. 0.4] easeinquad
+    [0.4 .. 0.7] easeoutcubic
+    [0.7 .. 1.0] easeinback
+  }
+  #segExplicitValues curve {
+    [0.0 .. 0.4] easeinquad (0.0, 0.6)
+    [0.3 .. 0.8] easeoutcubic (0.4, 1.0)
+    [0.7 .. 1.0] easeinback (0.9, 0.5)
+  }
+  #segOverlapping curve {
+    [0.0 .. 0.6] easeinquad (0.0, 1.0)
+    [0.4 .. 1.0] easeoutcubic (1.0, 0.0)
+  }
+  #segGapped curve {
+    [0.0 .. 0.3] easeinquad (0.0, 0.8)
+    [0.7 .. 1.0] easeoutcubic (0.2, 1.0)
+  }
+}
+
+#segmentedCurvesDemo programmable() {
+  text(m3x6, "Segmented Curves Demo", white, left): 10, 5
+}

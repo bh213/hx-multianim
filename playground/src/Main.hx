@@ -122,9 +122,7 @@ class Main extends hxd.App {
 		screenManager.addScreen("dialogStart", new DialogStartScreen(screenManager));
 		screenManager.addScreen("stateAnim", new screens.StateAnimScreen(screenManager));
 		screenManager.addScreen("animViewer", new screens.AnimViewerScreen(screenManager));
-		#if hl
 		screenManager.addScreen("settings", new SettingsScreen(screenManager));
-		#end
 		
 		screenManager.addScreen("room1", new screens.Room1Screen(screenManager));
 		

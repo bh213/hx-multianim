@@ -1,19 +1,7 @@
-version: 0.3
+version: 0.5
 
-
-#repeatableDemo programmable() {
-  pos:5,5
-  grid:250,150
-
-  @alpha(0.3) bitmap(generated(color(function(gridWidth), function(gridHeight),gray)));
-  @alpha(0.9) text(dd, "#4: repeatable", white, left, 200);
-
-  repeatable($index, grid(5, dx:5, dy:1)) {
-    @alpha(1.0 - $index/5.0) scale(2) bitmap(sheet("crew2", "marine_r_shooting_d")):30,80;
+#repeatableDemo programmable(count: uint = 5) {
+  repeatable($index, step($count, dx: 20, dy: 1)) {
+    @alpha(1.0 - $index/$count) scale(4) bitmap(sheet("crew2", "marine_r_shooting_d")):10,10;
   }
-}
-
-#main point {
-  pos: 0, 0
-  reference($repeatableDemo):0,0
 }

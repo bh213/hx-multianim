@@ -17,6 +17,9 @@
 |------|-------------|
 | `src/bh/multianim/MultiAnimParser.hx` | Parser for `.manim` animation files |
 | `src/bh/multianim/MultiAnimBuilder.hx` | Builder for resolving parsed structures |
+| `src/bh/multianim/MacroManimParser.hx` | Compile-time parser (NOT hxparse-based) |
+| `src/bh/multianim/ProgrammableCodeGen.hx` | Macro code generation for `@:manim`/`@:data` |
+| `src/bh/multianim/ProgrammableBuilder.hx` | Base class for macro-generated factories |
 | `src/bh/stateanim/AnimParser.hx` | Parser for `.anim` state animation files |
 | `playground/` | Web-based playground for testing |
 | `playground/public/assets/` | Test `.manim` and `.anim` files |
@@ -74,7 +77,8 @@ When working with hxparse:
 ## Workflow
 
 1. **Parsing**: Converts `.manim`/`.anim` file text to AST with `Node` structures
-2. **Building**: Resolves references, expressions, and type conversions
+2. **Building**: Resolves references, expressions, and type conversions (runtime)
+3. **Macro codegen**: `MacroManimParser` parses `.manim` at compile time, `ProgrammableCodeGen` generates typed Haxe classes
 
 ## File Formats
 
@@ -93,26 +97,23 @@ allowedExtraPoints: [point1, point2]
 animation {
     name: animationName
     fps: 20
-    loop: untilCommand | yes | <number>
+    loop: yes | <number>
     playlist {
         sheet: "sprite_$$state$$_name"
-        loop <count> { ... }
         event <name> trigger | random x,y,radius | x,y
-        command
-        goto <animName>
     }
     extrapoints {
         @(state=>value) pointName: x,y
+        @(state != value) pointName: x,y
+        @(state=>[v1,v2]) pointName: x,y
     }
 }
 ```
 
 **Key `.anim` features:**
 - `$$stateName$$` - State variable interpolation in sheet names
-- `loop untilCommand` - Loop until command queue has entry
 - `extrapoints` - Named points for effects/interactions (bullets, particles, etc.)
-- `goto` - Transition to another animation
-- `command` - Execute next command from queue
+- Conditionals: `@(state=>value)`, `@(state != value)` negation, `@(state=>[v1,v2])` multi-value, `@(state != [v1,v2])` negated multi-value
 
 ## .manim Language Quick Reference
 
@@ -124,7 +125,7 @@ animation {
 }
 ```
 
-**Parameter types**: `uint`, `int`, `bool`, `string`, `color`, enum (`[val1,val2]`), range (`1..5`), flags
+**Parameter types**: `uint`, `int`, `float`, `bool`, `string`, `color`, enum (`[val1,val2]`), range (`1..5`), flags
 
 ### Common Elements
 
@@ -134,20 +135,45 @@ animation {
 | `text(font, text, color, [align, maxWidth])` | Text element |
 | `ninepatch(sheet, tile, w, h)` | 9-patch scalable |
 | `placeholder(size, source)` | Dynamic placeholder |
-| `reference($ref)` | Reference another programmable |
+| `staticRef($ref)` | Static embed of another programmable |
+| `dynamicRef($ref, params)` | Dynamic embed with runtime `setParameter()` support |
+| `#name slot` / `#name[$i] slot` | Swappable container (indexed variant for repeatables) |
+| `spacer(w, h)` | Empty space inside `flow` containers |
+| `interactive(w, h, id [, debug] [, key=>val ...])` | Hit-test region with optional metadata |
 | `layers()` | Z-ordering container |
+| `mask(w, h)` | Clipping mask rectangle |
+| `flow(...)` | Layout flow container |
 | `repeatable($var, iterator)` | Loop elements |
+| `tilegroup(...)` | Optimized tile grouping |
+| `stateanim construct(...)` | Inline state animation |
+| `point` | Positioning point |
+| `apply(...)` | Apply properties to parent |
 | `graphics(...)` | Vector graphics |
 | `pixels(...)` | Pixel primitives |
 | `particles {...}` | Particle effects |
+| `@final name = expr` | Immutable named constant |
+| `#name data {...}` | Static typed data block |
+| `#name atlas2("file") {...}` | Inline sprite atlas |
+| `curves {...}` | 1D curve definitions |
+| `paths {...}` | Path definitions |
+| `import "file" as "name"` | Import external .manim |
 
 ### Conditionals
 
 ```manim
 @(param=>value)           # Match when param equals value
-@(!param=>value)          # Match when param NOT equals value
+@if(param=>value)         # Explicit @if (same as @())
+@ifstrict(param=>value)   # Strict matching (must match ALL params)
+@(param != value)         # Match when param NOT equals value
 @(param=>[v1,v2])         # Match multiple values
-@(param=>greaterThanOrEqual 30)  # Range comparisons
+@(param >= 30)            # Greater than or equal
+@(param <= 30)            # Less than or equal
+@(param > 30)             # Strictly greater than
+@(param < 30)             # Strictly less than
+@(param => 10..30)        # Range match (10 <= param <= 30)
+@else                     # Matches when preceding @() didn't match
+@else(param=>value)       # Else-if with conditions
+@default                  # Final fallback
 ```
 
 ### Expressions
@@ -193,11 +219,16 @@ animation {
     sizeCurve: [(0, 0.5), (0.5, 1.2), (1.0, 0.2)]
     velocityCurve: [(0, 1.0), (1.0, 0.3)]
     forceFields: [turbulence(30, 0.02, 2.0), wind(10, 0), vortex(0, 0, 100, 150), attractor(0, 0, 50, 100), repulsor(0, 0, 80, 120)]
-    boundsMode: kill | bounce(0.6) | wrap
+    boundsMode: none | kill | bounce(0.6) | wrap
     boundsMinX: -100
     boundsMaxX: 300
     rotationSpeed: 90
     rotateAuto: true
+    relative: true
+    trailEnabled: true
+    trailLength: 0.5
+    trailFadeOut: true
+    subEmitters: [{ groupId: "sparks", trigger: ondeath, probability: 0.8 }]
 }
 ```
 
@@ -207,7 +238,9 @@ See `docs/manim.md` for full particles documentation.
 
 - **Dropdown**: Uses closed button + scrollable panel, moves panel to different layer
 - **UIScreen**: If elements don't show or react to events, check if added to UIScreen's elements
-- **Macros**: `MacroUtils.macroBuildWithParameters` maps `.manim` elements to Haxe code
+- **Macros**: `MacroUtils.macroBuildWithParameters` maps `.manim` elements to Haxe code — auto-injects `ResolvedSettings` parameter
+- **Settings naming**: `buildName` for single builder override, `<element>BuildName` for multiple (e.g. `radioBuildName`, `radioButtonBuildName`)
+- **Full component reference**: See `docs/manim.md` "UI Components" section for all parameter contracts, settings, and events
 
 ## Guidelines for Modifications
 
@@ -236,15 +269,7 @@ Tests are visual screenshot comparisons. To add a new test:
    }
    ```
 
-4. **Add to `test.bat`** in the `gen_refs` section:
-   ```batch
-   if exist "%ROOT%test\screenshots\<testName>_actual.png" (
-       copy /Y "%ROOT%test\screenshots\<testName>_actual.png" "%ROOT%test\examples\<N>-<testName>\reference.png" >nul
-       echo   <N> - <testName>
-   )
-   ```
-
-5. **Generate reference image**:
+4. **Generate reference image** (test.bat gen-refs uses dynamic loop — no manual entries needed):
    - Run `test.bat run` to generate screenshot
    - Run `test.bat gen-refs` to copy as reference
    - Verify with `test.bat run` again (should pass)
@@ -259,15 +284,56 @@ Enable debug traces by adding to HXML:
 ## Current TODO Items
 
 ### Fixes Needed
-- Repeatable grid scale for dx/dy
-- HTML text implementation
+- Repeatable step scale for dx/dy
+- HTML text: standalone `HTMLTEXT` element type is deprecated/commented out (the `text(..., html: true)` parameter approach works)
 - Double reload issue
 - Hex coordinate system offset support
+- Conditional not working with repeatable vars (e.g., `@(index >= 3)`)
 
 ### Next Features
-- Conditionals ELSE support
-- Animation paths with easing & events
-- Particle sub-emitters (partially implemented)
+- Particle sub-emitters (parsing and building complete, runtime spawning in `Particles.hx` not yet implemented)
+- Generic components support
+- Bit expressions (anyBit/allBits for grid directions)
+
+## UI Notes — Interactives
+
+`interactive()` elements create hit-test regions with optional typed metadata:
+
+```manim
+interactive(200, 30, "myBtn")
+interactive(200, 30, "myBtn", debug)
+interactive(200, 30, "myBtn", action => "buy", label => "Buy Item")
+interactive(200, 30, $idx, price:int => 100, weight:float => 1.5, action => "craft")
+```
+
+Metadata supports typed values matching the settings system: `key => val` (string default), `key:int => N`, `key:float => N`, `key:string => "s"`. Keys and values can be `$references`.
+
+**UI integration:**
+- `UIInteractiveWrapper` — thin wrapper implementing `UIElement`, `StandardUIElementEvents`, `UIElementIdentifiable`
+- `UIElementIdentifiable` — opt-in interface with `id`, `prefix`, `metadata:BuilderResolvedSettings`
+- Screen methods: `addInteractive()`, `addInteractives(result, prefix)`, `removeInteractives(prefix)`
+- Events: emits standard `UIClick`, `UIEntering`, `UILeaving` — check `source` for `UIElementIdentifiable` to get `id`/`metadata`
+
+## Notes — Indexed Names, Slots, Components
+
+**Indexed named elements** — `#name[$i]` inside `repeatable` creates per-iteration named entries (`name_0`, `name_1`, ...):
+- Builder: `result.getUpdatableByIndex("name", index)`
+- Codegen: `instance.get_name(index)` returns `h2d.Object`
+
+**Slots** — `#name slot` or `#name[$i] slot` for swappable containers:
+- Builder: `result.getSlot("name")` or `result.getSlot("name", index)` returns `SlotHandle`
+- Codegen: `instance.getSlot("name")` or `instance.getSlot("name", index)`
+- `SlotHandle` API: `setContent(obj)`, `clear()`, `getContent()`
+- Mismatched access (index on non-indexed or vice versa) throws
+
+**Dynamic refs** — `dynamicRef($ref, params)` embeds with incremental mode for runtime parameter updates:
+- Builder: `result.getDynamicRef("name").setParameter("param", value)`
+- Batch updates: `beginUpdate()` / `endUpdate()` defers re-evaluation
+- Codegen: generates runtime builder call, returns `BuilderResult`
+
+**Flow improvements** — new optional params on `flow()`:
+- `overflow: expand|limit|scroll|hidden`, `fillWidth: true`, `fillHeight: true`, `reverse: true`
+- `spacer(w, h)` element for fixed spacing inside flows
 
 ## Playground
 

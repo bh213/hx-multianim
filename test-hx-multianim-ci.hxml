@@ -1,0 +1,16 @@
+# CI test configuration (Linux/SDL headless)
+# Uses hlsdl instead of hldx for headless rendering on Linux
+# Run separately: haxe test-hx-multianim-ci.hxml && xvfb-run hl build/hl-test.hl
+
+-lib heaps
+-lib utest
+-lib hlsdl
+
+-cp test/src
+-p src
+-main bh.test.TestApp
+-debug
+-D resourcesPath=test/res
+-D windowSize=1280x720
+-D MULTIANIM_TRACE
+-hl build/hl-test.hl

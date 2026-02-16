@@ -1,7 +1,7 @@
-version: 0.3
+version: 0.5
 
 relativeLayouts {
-    #effectButtons sequence($i: 0..8) point: 50 + ($i % 5) * 200, 55 + 30* $i div 5
+    #controlRows sequence($i: 0..5) point: 10, 55 + $i * 40
 }
 
 // Advanced Particle System Examples
@@ -359,23 +359,59 @@ relativeLayouts {
 }
 
 // =============================================================================
-// UI DEMONSTRATION
+// UI DEMONSTRATION - Dropdown, Sliders, Checkboxes, Radio Buttons
 // =============================================================================
 #ui programmable() {
     text(pixellari, "Particles Demo", #ffffff, left, 800): 5, 5
+    #effectName(updatable) text(pixellari, "Effect: fire", #ffff00, left, 800): 5, 25
 
-    // Effect buttons row using relative layout
-    placeholder(generated(cross(75, 25)), builderParameter("fireBtn")): layout(effectButtons, 0)
-    placeholder(generated(cross(75, 25)), builderParameter("smokeBtn")): layout(effectButtons, 1)
-    placeholder(generated(cross(75, 25)), builderParameter("sparklesBtn")): layout(effectButtons, 2)
-    placeholder(generated(cross(75, 25)), builderParameter("vortexBtn")): layout(effectButtons, 3)
-    placeholder(generated(cross(75, 25)), builderParameter("explosionBtn")): layout(effectButtons, 4)
-    placeholder(generated(cross(75, 25)), builderParameter("rainBtn")): layout(effectButtons, 5)
-    placeholder(generated(cross(75, 25)), builderParameter("magicTrailBtn")): layout(effectButtons, 6)
-    placeholder(generated(cross(75, 25)), builderParameter("confettiBtn")): layout(effectButtons, 7)
-    placeholder(generated(cross(75, 25)), builderParameter("plasmaBtn")): layout(effectButtons, 8)
+    // Effect selector dropdown
+    text(pixellari, "Effect:", #aaaaaa): 10, 58
+    placeholder(generated(cross(150, 25)), builderParameter("effectDropdown")): 80, 50
 
-    #effectName(updatable) text(pixellari, "fire", #ffff00, left, 800): 5, 25
+    // Speed slider
+    text(pixellari, "Speed:", #aaaaaa): 10, 105
+    placeholder(generated(cross(200, 20)), builderParameter("speedSlider")): 80, 100
+    #speedVal(updatable) text(pixellari, "100%", #ffff00): 300, 105
 
-    #particles1(updatable) point: 400, 380
+    // Size slider
+    text(pixellari, "Size:", #aaaaaa): 10, 140
+    placeholder(generated(cross(200, 20)), builderParameter("sizeSlider")): 80, 135
+    #sizeVal(updatable) text(pixellari, "100%", #ffff00): 300, 140
+
+    // Gravity slider
+    text(pixellari, "Gravity:", #aaaaaa): 10, 175
+    placeholder(generated(cross(200, 20)), builderParameter("gravitySlider")): 80, 170
+    #gravityVal(updatable) text(pixellari, "100%", #ffff00): 300, 175
+
+    // FadeOut slider
+    text(pixellari, "FadeOut:", #aaaaaa): 10, 210
+    placeholder(generated(cross(200, 20)), builderParameter("fadeOutSlider")): 80, 205
+    #fadeOutVal(updatable) text(pixellari, "100%", #ffff00): 300, 210
+
+    // Loop checkbox
+    placeholder(generated(cross(20, 20)), builderParameter("loopCheckbox")): 10, 250
+    text(pixellari, "Loop", #aaaaaa): 35, 253
+
+    // Rotate Auto checkbox
+    placeholder(generated(cross(20, 20)), builderParameter("rotateCheckbox")): 130, 250
+    text(pixellari, "Rotate Auto", #aaaaaa): 155, 253
+
+    // Relative checkbox
+    placeholder(generated(cross(20, 20)), builderParameter("relativeCheckbox")): 280, 250
+    text(pixellari, "Relative", #aaaaaa): 305, 253
+
+    // Blend mode radio buttons
+    text(pixellari, "Blend:", #aaaaaa): 10, 290
+    placeholder(generated(cross(260, 25)), builderParameter("blendRadio")): 80, 285
+
+    // Count radio buttons
+    text(pixellari, "Count:", #aaaaaa): 10, 325
+    placeholder(generated(cross(260, 25)), builderParameter("countRadio")): 80, 320
+
+    // Restart button
+    placeholder(generated(cross(200, 25)), builderParameter("restartButton")): 10, 360
+
+    // Particle display area
+    #particles1(updatable) point: 640, 400
 }

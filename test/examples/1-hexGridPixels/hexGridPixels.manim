@@ -1,20 +1,64 @@
-version: 0.3
+version: 0.5
 
 #hexGridPixels programmable() {
-  pos:5,5
-  hex:pointy(40, 40)
-  grid:250,150
+  pos: 0, 0
+  grid: 1280, 720
 
-  @alpha(0.7) bitmap(generated(color(function(gridWidth), function(gridHeight), #777)));
-  pixels (
-    line hexCorner(0, 1.1), hexCorner(1, 1.1), #f00
-    line hexCorner(1, 1.1), hexCorner(2, 1.1), #0f0
-    line hexCorner(2, 1.1), hexCorner(3, 1.1), #00f
-    line hexCorner(3, 1.1), hexCorner(4, 1.1), #ff0
-    line hexCorner(4, 1.1), hexCorner(5, 1.1), #f0f
-    line hexCorner(5, 1.1), hexCorner(0, 1.1), #fff
-  ):100,50
-  @alpha(0.9) text(dd, "#1: hex grid + pixels", white, left, 200);
+  @alpha(0.7) bitmap(generated(color(1280, 720, #777)));
+
+  // Pointy-top hex orientation
+  point {
+    hex: pointy(32, 32)
+    pos: 250, 280
+    scale: 5
+    pixels (
+      line hexCorner(0, 1.1), hexCorner(1, 1.1), #f00
+      line hexCorner(1, 1.1), hexCorner(2, 1.1), #0f0
+      line hexCorner(2, 1.1), hexCorner(3, 1.1), #00f
+      line hexCorner(3, 1.1), hexCorner(4, 1.1), #ff0
+      line hexCorner(4, 1.1), hexCorner(5, 1.1), #f0f
+      line hexCorner(5, 1.1), hexCorner(0, 1.1), #fff
+    );
+
+    text(f3x5, "1", white, left):hexEdge(1, 1.3);
+    text(f3x5, "2", white, left):hexEdge(2, 1.3);
+    text(f3x5, "3", white, left):hexEdge(3, 1.3);
+    text(f3x5, "0", white, left):hexEdge(0, 1.3);
+    text(f3x5, "4", white, left):hexEdge(4, 1.3);
+    text(f3x5, "5", white, left):hexEdge(5, 1.3);
+
+      line(blue, 1, hexEdge(4, 1.1), hexEdge(4, 2));
+     @scale(0.4)text(dd, "pointy(32, 32)", white):hexEdge(4, 2)
+  }
+
+  // Flat-top hex orientation
+  point {
+    hex: flat(32, 32)
+    pos: 750, 280
+    scale: 5
+    pixels (
+      line hexCorner(0, 1.1), hexCorner(1, 1.1), #f00
+      line hexCorner(1, 1.1), hexCorner(2, 1.1), #0f0
+      line hexCorner(2, 1.1), hexCorner(3, 1.1), #00f
+      line hexCorner(3, 1.1), hexCorner(4, 1.1), #ff0
+      line hexCorner(4, 1.1), hexCorner(5, 1.1), #f0f
+      line hexCorner(5, 1.1), hexCorner(0, 1.1), #fff
+    );
+
+    text(f3x5, "1", white, left):hexCorner(1, 1.3);
+    text(f3x5, "2", white, left):hexCorner(2, 1.3);
+    text(f3x5, "3", white, left):hexCorner(3, 1.3);
+    text(f3x5, "0", white, left):hexCorner(0, 1.3);
+    text(f3x5, "4", white, left):hexCorner(4, 1.3);
+    text(f3x5, "5", white, left):hexCorner(5, 1.3);
+
+    
+    line(blue, 1, hexEdge(4, 1.1), hexEdge(4, 2));
+    @scale(0.4) text(dd, "flat(32, 32)", white, left):hexEdge(4, 2)
+    
+  }
+
+  // Labels below each hex
+  
+  
 }
-
-

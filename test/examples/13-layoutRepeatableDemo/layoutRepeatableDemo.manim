@@ -1,42 +1,41 @@
-version: 0.3
+version: 0.5
 
 relativeLayouts {
-  grid: 21, 31 {
+  grid: 128, 72 {
     #repeatableTest list {
       // Left eye
-      point: 60,30
-      point: 65,25
-      point: 75,25
-      point: 80,30
-      point: 75,35
-      point: 65,35
+      point: 360,180
+      point: 390,150
+      point: 450,150
+      point: 480,180
+      point: 450,210
+      point: 390,210
       // Right eye
-      point: 120,30
-      point: 125,25
-      point: 135,25
-      point: 140,30
-      point: 135,35
-      point: 125,35
+      point: 720,180
+      point: 750,150
+      point: 810,150
+      point: 840,180
+      point: 810,210
+      point: 750,210
       // Smile curve
-      point: 50,70
-      point: 60,85
-      point: 80,95
-      point: 100,100
-      point: 120,95
-      point: 140,85
-      point: 150,70
+      point: 300,420
+      point: 360,510
+      point: 480,570
+      point: 600,600
+      point: 720,570
+      point: 840,510
+      point: 900,420
     }
   }
 }
 
 #layoutRepeatableDemo programmable() {
-  pos:5,5
-  grid:250,150
+  pos: 0, 0
+  grid: 1280, 720
 
-  @alpha(0.1) bitmap(generated(color(function(gridWidth), function(gridHeight),gray)));
-  @alpha(0.9) text(dd, "#13: layout repeatable", white, left, 200);
+  @alpha(0.1) bitmap(generated(color(1280, 720, gray)));
   repeatable($index, layout("mainScreen", "repeatableTest")) {
     pos: 0, 0
-    bitmap(generated(color(5, 5, red)));
+    bitmap(generated(color(60, 60, red)));
   }
 }

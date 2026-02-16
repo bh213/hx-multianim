@@ -1,0 +1,43 @@
+version: 0.5
+
+// Blob47 autotile using Forgotten Plains tileset
+// Tileset: Minifantasy - Forgotten Plains by Krishna Palacio
+// Grass tiles at region [56, 24, 24, 40] = 3x5 grid of 8x8 tiles
+#blob47Grass autotile {
+    format: blob47
+    tileSize: 8
+    file: "../test/res/Tileset/Minifantasy_ForgottenPlainsTiles.png"
+    region: [8, 8, 80, 96]
+    allowPartialMapping: true
+    mapping: [
+      0:4,    // 0: isolated
+     1:115,    // 1: has N
+     2:86,    // 2: has E
+     3:116,    // 3: has N+E
+     4:46,    // 4: has N+NE+E
+     5:95,    // 5: has S
+     7:96,    // 7: has E+S
+     8:106,    // 8: has N+E+S
+     10:26,    // 10: has E+SE+S
+     12:36,    // 12: has N+NE+E+SE+S
+     13:88,    // 13: has W
+     14:118,    // 14: has N+W
+     16:117,    // 16: has N+E+W
+     19:108,    // 19: has N+S+W
+     20:87,    // 20: has E+S+W
+     21:107,    // 21: has N+E+S+W
+     26:98,    // 26: has S+SW+W
+     30:58,    // 30: has N+NE+E+S+SW+W
+     31:27,    // 31: has E+SE+S+SW+W
+     33:56,    // 33: has N+NE+E+SE+S+SW+W
+     34:48,    // 34: has N+W+NW
+     36:47,    // 36: has N+NE+E+W+NW
+     39:112,    // 39: has N+NE+E+S+W+NW
+     40:68,    // 40: has N+E+SE+S+W+NW
+     41:66,    // 41: has N+NE+E+SE+S+W+NW
+     42:38,    // 42: has N+S+SW+W+NW
+     44:67,    // 44: has N+NE+E+S+SW+W+NW
+     45:57,    // 45: has N+E+SE+S+SW+W+NW
+     46:8    // 46: has N+NE+E+SE+S+SW+W+NW
+ ]
+}

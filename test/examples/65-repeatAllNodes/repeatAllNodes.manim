@@ -1,0 +1,70 @@
+version: 0.5
+
+#repeatAllNodes programmable(count:uint=3) {
+  repeatable($i, step($count, dx: 240)) {
+    // ninepatch: plain, @scale, @alpha
+    ninepatch("ui", "button-idle", 200, 80): 0, 0
+    @scale(2) ninepatch("ui", "button-pressed", 38, 18): 86, 28
+    @alpha(0.5) @scale(0.25) ninepatch("ui", "button-idle", 128, 32): 110, 48
+
+    // text: @scale+center+maxWidth, @alpha+right+maxWidth, letterSpacing
+    @scale(2) text(f3x5, $i, #ffffffff, center, 200): 0, 3
+    @alpha(0.6) text(f3x5, 'idx', #ffff00ff, right, 200): 0, 68
+    text(f3x5, 'ab', #00ffffff, left, 80, letterSpacing: 2): 5, 15
+
+    // bitmap: center hAlign, @scale, @alpha
+    bitmap(generated(color(10, 10, #ff0000)), center): 100, 40
+    @scale(2) bitmap(generated(color(6, 6, #00ff00))): 180, 5
+    @alpha(0.5) bitmap(generated(color(8, 8, #0000ff))): 180, 18
+
+    // point: with children, @scale on point, @alpha on point
+    point {
+      pos: 5, 25
+      @scale(2) bitmap(generated(color(4, 4, #0088ff))): 0, 0
+      @alpha(0.7) text(f3x5, $i, #ff88ff): 10, 0
+    }
+    @scale(2) point {
+      pos: 5, 42
+      bitmap(generated(color(3, 3, #ffaa00))): 0, 0
+      text(f3x5, 'p', #ffffff): 8, 0
+    }
+    @alpha(0.4) point {
+      pos: 5, 55
+      bitmap(generated(color(3, 3, #ff00ff))): 0, 0
+    }
+
+    // graphics
+    graphics(
+      rect(#ff8800, filled, 40, 10): 5, 80;
+      circle(#00ffff, filled, 5): 140, 85;
+    );
+
+    // pixels
+    pixels (
+      line 5, 95, 60, 95, #ff00ff
+      rect 80, 92, 20, 5, #00ff00
+      pixel 120, 95, #ffff00
+    );
+
+    // mask with children
+    mask(60, 10) {
+      pos: 5, 100
+      bitmap(generated(color(100, 20, #884400))): 0, 0
+    }
+
+    // layers with children
+    layers {
+      pos: 80, 100
+      bitmap(generated(color(20, 10, #226622))): 0, 0
+      bitmap(generated(color(12, 6, #44ff44))): 4, 2
+    }
+
+    // flow with children
+    flow(layout: horizontal, padding: 1) {
+      pos: 120, 100
+      bitmap(generated(color(10, 5, #ff0000))): 0, 0
+      bitmap(generated(color(10, 5, #00ff00))): 0, 0
+      bitmap(generated(color(10, 5, #0000ff))): 0, 0
+    }
+  }
+}

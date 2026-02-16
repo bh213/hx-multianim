@@ -1,0 +1,17 @@
+version: 0.5
+
+#gameData data {
+    #tier record(name: string, cost: int, ?dmg: float)
+
+    maxLevel: 5
+    name: "Warrior"
+    enabled: true
+    speed: 3.5
+    costs: [10, 20, 40, 80]
+    tiers: tier[] [
+        { name: "Bronze", cost: 10, dmg: 1.0 }
+        { name: "Silver", cost: 20, dmg: 1.5 }
+    ]
+    defaultTier: tier { name: "None", cost: 0, dmg: 0.0 }
+    basicTier: tier { name: "Basic", cost: 5 }
+}

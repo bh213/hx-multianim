@@ -1,0 +1,8 @@
+version: 0.5
+
+#indexedNamed programmable() {
+  repeatable($i, step(4, dx: 40)) {
+    #label[$i] text(f3x5, $i, #ffffffff): 14, 0
+    #icon[$i] bitmap(generated(color(32, 32, #885522))): 0, 10
+  }
+}

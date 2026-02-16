@@ -1,0 +1,83 @@
+version: 0.5
+
+paths {
+  #triangle path {
+    forward(60)
+    turn(120)
+    forward(60)
+    close
+  }
+  #pentagon path {
+    forward(40)
+    turn(72)
+    forward(40)
+    turn(72)
+    forward(40)
+    turn(72)
+    forward(40)
+    close
+  }
+  #moveToRel path {
+    forward(50)
+    moveTo(30, 0)
+    forward(50)
+  }
+  #moveToAbs path {
+    forward(40)
+    moveAbs(0, 50)
+    forward(40)
+    moveAbs(0, 100)
+    forward(40)
+  }
+  #spiralExpand path {
+    spiral(15, 50, 720)
+  }
+  #spiralShrink path {
+    spiral(40, 10, -540)
+  }
+  #waveBasic path {
+    wave(20, 50, 3)
+  }
+  #waveAngled path {
+    turn(45)
+    wave(15, 40, 2)
+  }
+  #lineRel path {
+    lineTo(60, -30)
+    lineTo(40, 40)
+    lineTo(50, -10)
+  }
+  #lineAbs path {
+    lineAbs(80, 0)
+    lineAbs(80, 60)
+    lineAbs(0, 60)
+    close
+  }
+  #arcTurn path {
+    arc(30, 180)
+    arc(30, -180)
+  }
+  #bezierSmooth path {
+    bezier(80, 0, 0, -50, smoothing: auto)
+    bezier(80, 0, 0, 50, smoothing: auto)
+  }
+  #combined path {
+    forward(30)
+    spiral(20, 30, 180)
+    wave(10, 40, 2)
+    close
+  }
+  #checkpointClose path {
+    forward(40)
+    checkpoint(cp1)
+    turn(90)
+    forward(30)
+    turn(90)
+    forward(40)
+    close
+  }
+}
+
+#newPathCommands programmable() {
+  text(m3x6, "New Path Commands", white, left): 10, 5
+}

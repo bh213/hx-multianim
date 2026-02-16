@@ -1,0 +1,7 @@
+version: 0.5
+
+#codegenArray programmable(items:array=[one, two, three], colors:array=[red,green,blue,yellow]) {
+  repeatable($i, array($val, $items)) {
+    text(dd, $val, white, left): 10 + $i * 100, 10
+  }
+}

@@ -1,0 +1,134 @@
+version: 0.5
+
+// Autotile Example
+// Autotiles are root-level elements used for procedural terrain generation.
+// They are built using MultiAnimBuilder.buildAutotile(name, grid) which returns a TileGroup.
+
+// Cross format: 13 tiles for standard terrain
+// Tile layout: 0=N, 1=W, 2=C, 3=E, 4=S, 5-8=outer corners, 9-12=inner corners
+#grassPath autotile {
+    format: cross
+    sheet: "terrain"
+    prefix: "grass_"
+    tileSize: 16
+}
+
+// Cross format: For isometric elevation tiles with depth
+// Tile layout: 0=N, 1=W, 2=C, 3=E, 4=S, 5-8=outer corners, 9-12=inner corners
+#elevation autotile {
+    format: cross
+    file: "elevation.png"
+    tileSize: 16
+    depth: 8
+}
+
+// Blob47 format: Full 47-tile autotile with all edge/corner combinations
+// Uses 8-direction neighbor detection for seamless transitions
+#riverBank autotile {
+    format: blob47
+    sheet: "terrain"
+    prefix: "river_"
+    tileSize: 16
+}
+
+// With custom mapping: Remap tile indices if your tileset uses a different order
+#customTerrain autotile {
+    format: cross
+    sheet: "terrain"
+    prefix: "custom_"
+    tileSize: 16
+    mapping: [4, 1, 5, 3, 0, 2, 7, 8, 6, 9, 10, 11, 12]
+}
+
+// Region-based: Extract tiles from a specific region of an image
+#regionTerrain autotile {
+    format: cross
+    sheet: "tileset.png"
+    region: [0, 64, 64, 64]
+    tileSize: 16
+}
+
+// Explicit tiles: Full control over each tile source
+// Each tile can be from different sheets, files, or generated
+// Cross layout: 0=N, 1=W, 2=C, 3=E, 4=S, 5=NW, 6=NE, 7=SW, 8=SE, 9-12=inner
+#explicitTiles autotile {
+    format: cross
+    tileSize: 16
+    tiles:
+        sheet("terrain", "grass_n") sheet("terrain", "grass_w") sheet("terrain", "grass_c")
+        sheet("terrain", "grass_e") sheet("terrain", "grass_s")
+        sheet("terrain", "grass_nw") sheet("terrain", "grass_ne")
+        sheet("terrain", "grass_sw") sheet("terrain", "grass_se")
+        sheet("terrain", "grass_inner_ne") sheet("terrain", "grass_inner_nw")
+        sheet("terrain", "grass_inner_se") sheet("terrain", "grass_inner_sw")
+}
+
+// Generated tiles: For testing/prototyping without assets (manual method)
+// Cross layout: 0=N, 1=W, 2=C, 3=E, 4=S, 5=NW, 6=NE, 7=SW, 8=SE, 9-12=inner
+#generatedDemo autotile {
+    format: cross
+    tileSize: 16
+    tiles:
+        generated(color(16, 16, 0xFF9955))   // 0: N edge
+        generated(color(16, 16, 0xFFBB77))   // 1: W edge
+        generated(color(16, 16, 0x44AA44))   // 2: C (center - green)
+        generated(color(16, 16, 0xFFDD99))   // 3: E edge
+        generated(color(16, 16, 0xFFFFBB))   // 4: S edge
+        generated(color(16, 16, 0xFF8844))   // 5: NW outer corner
+        generated(color(16, 16, 0xFFAA66))   // 6: NE outer corner
+        generated(color(16, 16, 0xFFEEAA))   // 7: SW outer corner
+        generated(color(16, 16, 0xEEEECC))   // 8: SE outer corner
+        generated(color(16, 16, 0x66CC66))   // 9: inner NE
+        generated(color(16, 16, 0x77DD77))   // 10: inner NW
+        generated(color(16, 16, 0x88EE88))   // 11: inner SE
+        generated(color(16, 16, 0x99FF99))   // 12: inner SW
+}
+
+// ============================================================================
+// DEMO TILES: Auto-generated tiles with edge visualization
+// ============================================================================
+// The demo: syntax automatically generates tiles that show edge/fill visualization.
+// Great for testing autotile logic without actual assets.
+
+// Cross demo - generates 13 tiles for standard terrain
+#demoCross autotile {
+    format: cross
+    tileSize: 16
+    demo: 0x4444FF, 0xFFFF44    // edge color (blue), fill color (yellow)
+}
+
+// Blob47 demo - generates all 47 tiles for full autotiling
+#demoBlob47 autotile {
+    format: blob47
+    tileSize: 16
+    demo: 0xFF8800, 0x0088FF    // edge color (orange), fill color (blue)
+}
+
+// ============================================================================
+// USAGE EXAMPLE (Haxe code):
+// ============================================================================
+//
+// var builder = MultiAnimBuilder.load(content, resourceLoader, "autotile.manim");
+//
+// // Define terrain grid (1 = terrain present, 0 = empty)
+// var grid = [
+//     [0, 0, 1, 1, 1, 0],
+//     [0, 1, 1, 1, 1, 1],
+//     [1, 1, 1, 1, 1, 1],
+//     [1, 1, 1, 0, 1, 1],
+//     [0, 1, 1, 0, 0, 0]
+// ];
+//
+// // Build terrain TileGroup
+// var terrain = builder.buildAutotile("grassPath", grid);
+// scene.addChild(terrain);
+//
+// // For elevation with depth rendering:
+// var elevationGrid = [
+//     [0, 0, 0, 0, 0],
+//     [0, 1, 1, 1, 0],
+//     [0, 1, 1, 1, 0],
+//     [0, 0, 0, 0, 0]
+// ];
+// var elevation = builder.buildAutotileElevation("elevation", elevationGrid, 0);
+// scene.addChild(elevation);

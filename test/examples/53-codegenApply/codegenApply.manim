@@ -1,0 +1,17 @@
+version: 0.5
+
+#codegenApply programmable(state:[alpha, filter, scale]) {
+  apply {
+    scale: 2
+  }
+  @(state=>alpha) apply {
+    alpha: 0.4
+  }
+  @(state=>filter) apply {
+    filter:glow(color:yellow, alpha:1, gain:5, radius:100, smoothColor:true)
+  }
+  @(state=>scale) apply {
+    scale: 0.7
+  }
+  bitmap(generated(color(100, 100, green))): 50, 50
+}

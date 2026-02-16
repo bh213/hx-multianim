@@ -1,0 +1,332 @@
+version: 0.5
+
+// =============================================================================
+// AUTOTILE DEMO SYNTAX TEST - Showcases all supported autotile syntax patterns
+// =============================================================================
+// This file demonstrates every autotile source syntax supported by the parser.
+// =============================================================================
+
+// =============================================================================
+// SOURCE TYPE 1: demo: edgeColor, fillColor
+// Auto-generates abstract tiles showing edge/corner configurations
+// =============================================================================
+
+// Note: simple13Demo is kept for test backwards compatibility
+#simple13Demo autotile {
+    format: cross
+    tileSize: 16
+    demo: 0xFF4444, 0x44FF44    // red edges, green fill
+}
+
+#crossDemo autotile {
+    format: cross
+    tileSize: 16
+    demo: 0x4444FF, 0xFFFF44    // blue edges, yellow fill
+}
+
+#blob47Demo autotile {
+    format: blob47
+    tileSize: 12
+    demo: 0xFF8800, 0x0088FF    // orange edges, blue fill
+}
+
+// =============================================================================
+// SOURCE TYPE 2: tiles: explicit tile list
+// Full control over each tile using generated() or sheet() sources
+// =============================================================================
+
+#crossTiles autotile {
+    format: cross
+    tileSize: 16
+    tiles:
+        generated(color(16, 16, 0xAA3333))    // 0: N edge
+        generated(color(16, 16, 0xBB4444))    // 1: W edge
+        generated(color(16, 16, 0x33AA33))    // 2: Center
+        generated(color(16, 16, 0xCC5555))    // 3: E edge
+        generated(color(16, 16, 0xDD6666))    // 4: S edge
+        generated(color(16, 16, 0x992222))    // 5: NW outer
+        generated(color(16, 16, 0xAA2222))    // 6: NE outer
+        generated(color(16, 16, 0xEE7777))    // 7: SW outer
+        generated(color(16, 16, 0xFF8888))    // 8: SE outer
+        generated(color(16, 16, 0x44BB44))    // 9: iNE inner
+        generated(color(16, 16, 0x55CC55))    // 10: iNW inner
+        generated(color(16, 16, 0x66DD66))    // 11: iSE inner
+        generated(color(16, 16, 0x77EE77))    // 12: iSW inner
+}
+
+// =============================================================================
+// SOURCE TYPE 3: tiles: with colorWithText for labeled tiles
+// Generates tiles with embedded text labels (useful for debugging)
+// =============================================================================
+
+#crossLabeled autotile {
+    format: cross
+    tileSize: 20
+    tiles:
+        generated(colorWithText(20, 20, 0xAA3333, "N", white, "dd"))
+        generated(colorWithText(20, 20, 0xBB4444, "W", white, "dd"))
+        generated(colorWithText(20, 20, 0x33AA33, "C", white, "dd"))
+        generated(colorWithText(20, 20, 0xCC5555, "E", white, "dd"))
+        generated(colorWithText(20, 20, 0xDD6666, "S", white, "dd"))
+        generated(colorWithText(20, 20, 0x992222, "NW", white, "dd"))
+        generated(colorWithText(20, 20, 0xAA2222, "NE", white, "dd"))
+        generated(colorWithText(20, 20, 0xEE7777, "SW", white, "dd"))
+        generated(colorWithText(20, 20, 0xFF8888, "SE", white, "dd"))
+        generated(colorWithText(20, 20, 0x44BB44, "iNE", black, "dd"))
+        generated(colorWithText(20, 20, 0x55CC55, "iNW", black, "dd"))
+        generated(colorWithText(20, 20, 0x66DD66, "iSE", black, "dd"))
+        generated(colorWithText(20, 20, 0x77EE77, "iSW", black, "dd"))
+}
+
+// =============================================================================
+// SOURCE TYPE 4: file: with region: and mapping:
+// Load tiles from a specific region in an image file with index remapping
+// =============================================================================
+
+// Example syntax (uses forgottenPlainsTerrain tileset pattern):
+// #grassTerrain autotile {
+//     format: cross
+//     tileSize: 8
+//     file: "Tileset/Minifantasy_ForgottenPlainsTiles.png"
+//     region: [56, 24, 24, 40]  // x, y, width, height in pixels
+//     mapping: [
+//         1,    // 0: N edge      -> region tile 1
+//         3,    // 1: W edge      -> region tile 3
+//         4,    // 2: Center      -> region tile 4
+//         ...
+//     ]
+// }
+
+// =============================================================================
+// SOURCE TYPE 5: sheet: with prefix:
+// Load tiles from atlas using name prefix matching
+// =============================================================================
+
+// Example syntax:
+// #terrainAtlas autotile {
+//     format: cross
+//     tileSize: 16
+//     sheet: "terrain.atlas", prefix: "grass_"
+//     // Loads grass_0, grass_1, ..., grass_12 from atlas
+// }
+
+// =============================================================================
+// SOURCE TYPE 6: sheet: with region:
+// Load tiles from a region within an atlas
+// =============================================================================
+
+// Example syntax:
+// #terrainRegion autotile {
+//     format: blob47
+//     tileSize: 16
+//     sheet: "terrain.atlas", region: [0, 0, 128, 128]
+// }
+
+// =============================================================================
+// USING AUTOTILE IN PROGRAMMABLES
+// Reference individual tiles with generated(autotile("name", index))
+// =============================================================================
+
+#autotileDemoSyntax programmable() {
+    pos: 0, 0
+    grid: 1280, 720
+
+    @alpha(0.1) bitmap(generated(color(1280, 720, black)));
+
+    // Title
+    text(dd, "AUTOTILE SYNTAX REFERENCE", 0xFFFFFF, left, 600):20,10
+
+    // ==========================================================================
+    // SECTION 1: demo: syntax
+    // ==========================================================================
+    text(dd, "1. demo: edgeColor, fillColor", 0xFFAA00, left, 400):20,40
+    text(dd, "Auto-generates tiles showing edge configurations", 0x666666, left, 500):20,58
+
+    // Cross demo tiles (all 13 displayed individually)
+    text(dd, "Cross (13 tiles):", 0xAAAAFF, left, 150):20,80
+    point {
+        pos: 170, 78
+        bitmap(generated(autotile("crossDemo", 0))):0,0
+        bitmap(generated(autotile("crossDemo", 1))):18,0
+        bitmap(generated(autotile("crossDemo", 2))):36,0
+        bitmap(generated(autotile("crossDemo", 3))):54,0
+        bitmap(generated(autotile("crossDemo", 4))):72,0
+        bitmap(generated(autotile("crossDemo", 5))):90,0
+        bitmap(generated(autotile("crossDemo", 6))):108,0
+        bitmap(generated(autotile("crossDemo", 7))):126,0
+        bitmap(generated(autotile("crossDemo", 8))):144,0
+        bitmap(generated(autotile("crossDemo", 9))):162,0
+        bitmap(generated(autotile("crossDemo", 10))):180,0
+        bitmap(generated(autotile("crossDemo", 11))):198,0
+        bitmap(generated(autotile("crossDemo", 12))):216,0
+    }
+
+    // Blob47 demo tiles (first row of 16)
+    text(dd, "Blob47 (47 tiles):", 0xAAAAFF, left, 150):20,105
+    point {
+        pos: 170, 103
+        bitmap(generated(autotile("blob47Demo", 0))):0,0
+        bitmap(generated(autotile("blob47Demo", 1))):14,0
+        bitmap(generated(autotile("blob47Demo", 2))):28,0
+        bitmap(generated(autotile("blob47Demo", 3))):42,0
+        bitmap(generated(autotile("blob47Demo", 4))):56,0
+        bitmap(generated(autotile("blob47Demo", 5))):70,0
+        bitmap(generated(autotile("blob47Demo", 6))):84,0
+        bitmap(generated(autotile("blob47Demo", 7))):98,0
+        bitmap(generated(autotile("blob47Demo", 8))):112,0
+        bitmap(generated(autotile("blob47Demo", 9))):126,0
+        bitmap(generated(autotile("blob47Demo", 10))):140,0
+        bitmap(generated(autotile("blob47Demo", 11))):154,0
+        bitmap(generated(autotile("blob47Demo", 12))):168,0
+        bitmap(generated(autotile("blob47Demo", 13))):182,0
+        bitmap(generated(autotile("blob47Demo", 14))):196,0
+        bitmap(generated(autotile("blob47Demo", 15))):210,0
+    }
+    // Blob47 row 2
+    point {
+        pos: 170, 117
+        bitmap(generated(autotile("blob47Demo", 16))):0,0
+        bitmap(generated(autotile("blob47Demo", 17))):14,0
+        bitmap(generated(autotile("blob47Demo", 18))):28,0
+        bitmap(generated(autotile("blob47Demo", 19))):42,0
+        bitmap(generated(autotile("blob47Demo", 20))):56,0
+        bitmap(generated(autotile("blob47Demo", 21))):70,0
+        bitmap(generated(autotile("blob47Demo", 22))):84,0
+        bitmap(generated(autotile("blob47Demo", 23))):98,0
+        bitmap(generated(autotile("blob47Demo", 24))):112,0
+        bitmap(generated(autotile("blob47Demo", 25))):126,0
+        bitmap(generated(autotile("blob47Demo", 26))):140,0
+        bitmap(generated(autotile("blob47Demo", 27))):154,0
+        bitmap(generated(autotile("blob47Demo", 28))):168,0
+        bitmap(generated(autotile("blob47Demo", 29))):182,0
+        bitmap(generated(autotile("blob47Demo", 30))):196,0
+        bitmap(generated(autotile("blob47Demo", 31))):210,0
+    }
+    // Blob47 row 3
+    point {
+        pos: 170, 131
+        bitmap(generated(autotile("blob47Demo", 32))):0,0
+        bitmap(generated(autotile("blob47Demo", 33))):14,0
+        bitmap(generated(autotile("blob47Demo", 34))):28,0
+        bitmap(generated(autotile("blob47Demo", 35))):42,0
+        bitmap(generated(autotile("blob47Demo", 36))):56,0
+        bitmap(generated(autotile("blob47Demo", 37))):70,0
+        bitmap(generated(autotile("blob47Demo", 38))):84,0
+        bitmap(generated(autotile("blob47Demo", 39))):98,0
+        bitmap(generated(autotile("blob47Demo", 40))):112,0
+        bitmap(generated(autotile("blob47Demo", 41))):126,0
+        bitmap(generated(autotile("blob47Demo", 42))):140,0
+        bitmap(generated(autotile("blob47Demo", 43))):154,0
+        bitmap(generated(autotile("blob47Demo", 44))):168,0
+        bitmap(generated(autotile("blob47Demo", 45))):182,0
+        bitmap(generated(autotile("blob47Demo", 46))):196,0
+    }
+
+    // ==========================================================================
+    // SECTION 2: tiles: with generated(color())
+    // ==========================================================================
+    text(dd, "2. tiles: generated(color(w, h, color))", 0xFFAA00, left, 500):20,160
+    text(dd, "Explicit tile list with solid colors", 0x666666, left, 500):20,178
+
+    text(dd, "Cross:", 0xAAAAFF, left, 60):20,200
+    point {
+        pos: 85, 198
+        bitmap(generated(autotile("crossTiles", 0))):0,0
+        bitmap(generated(autotile("crossTiles", 1))):18,0
+        bitmap(generated(autotile("crossTiles", 2))):36,0
+        bitmap(generated(autotile("crossTiles", 3))):54,0
+        bitmap(generated(autotile("crossTiles", 4))):72,0
+        bitmap(generated(autotile("crossTiles", 5))):90,0
+        bitmap(generated(autotile("crossTiles", 6))):108,0
+        bitmap(generated(autotile("crossTiles", 7))):126,0
+        bitmap(generated(autotile("crossTiles", 8))):144,0
+        bitmap(generated(autotile("crossTiles", 9))):162,0
+        bitmap(generated(autotile("crossTiles", 10))):180,0
+        bitmap(generated(autotile("crossTiles", 11))):198,0
+        bitmap(generated(autotile("crossTiles", 12))):216,0
+    }
+
+    // ==========================================================================
+    // SECTION 3: tiles: with generated(colorWithText())
+    // ==========================================================================
+    text(dd, "3. tiles: generated(colorWithText(...))", 0xFFAA00, left, 500):20,230
+    text(dd, "Tiles with embedded text labels for debugging", 0x666666, left, 500):20,248
+
+    text(dd, "Cross:", 0xAAAAFF, left, 60):20,270
+    point {
+        pos: 85, 268
+        bitmap(generated(autotile("crossLabeled", 0))):0,0
+        bitmap(generated(autotile("crossLabeled", 1))):22,0
+        bitmap(generated(autotile("crossLabeled", 2))):44,0
+        bitmap(generated(autotile("crossLabeled", 3))):66,0
+        bitmap(generated(autotile("crossLabeled", 4))):88,0
+        bitmap(generated(autotile("crossLabeled", 5))):110,0
+        bitmap(generated(autotile("crossLabeled", 6))):132,0
+        bitmap(generated(autotile("crossLabeled", 7))):154,0
+        bitmap(generated(autotile("crossLabeled", 8))):176,0
+        bitmap(generated(autotile("crossLabeled", 9))):198,0
+        bitmap(generated(autotile("crossLabeled", 10))):220,0
+        bitmap(generated(autotile("crossLabeled", 11))):242,0
+        bitmap(generated(autotile("crossLabeled", 12))):264,0
+    }
+
+    // ==========================================================================
+    // SECTION 4: file: with region: and mapping:
+    // ==========================================================================
+    text(dd, "4. file: + region: + mapping:", 0xFFAA00, left, 400):20,310
+    text(dd, "Load from image file with region extraction and index remapping", 0x666666, left, 600):20,328
+
+    text(dd, "#grass autotile {", 0x66FF66, left, 400):40,350
+    text(dd, "format: cross", 0xCCCCCC, left, 400):60,365
+    text(dd, "tileSize: 8", 0xCCCCCC, left, 400):60,380
+    text(dd, "file: \"tileset.png\"", 0xFFFF88, left, 400):60,395
+    text(dd, "region: [56, 24, 24, 40]", 0x88FFFF, left, 400):60,410
+    text(dd, "mapping: [1, 3, 4, 5, 7, 0, 2, 6, 8, 10, 9, 13, 12]", 0xFF88FF, left, 500):60,425
+    text(dd, "}", 0x66FF66, left, 400):40,440
+
+    // ==========================================================================
+    // SECTION 5: sheet: with prefix:
+    // ==========================================================================
+    text(dd, "5. sheet: + prefix:", 0xFFAA00, left, 400):20,470
+    text(dd, "Load tiles from atlas by name prefix (grass_0, grass_1, ...)", 0x666666, left, 600):20,488
+
+    text(dd, "#atlas autotile {", 0x66FF66, left, 400):40,510
+    text(dd, "format: cross", 0xCCCCCC, left, 400):60,525
+    text(dd, "tileSize: 16", 0xCCCCCC, left, 400):60,540
+    text(dd, "sheet: \"terrain.atlas\", prefix: \"grass_\"", 0xFFFF88, left, 400):60,555
+    text(dd, "}", 0x66FF66, left, 400):40,570
+
+    // ==========================================================================
+    // SECTION 6: sheet: with region:
+    // ==========================================================================
+    text(dd, "6. sheet: + region:", 0xFFAA00, left, 400):540,310
+    text(dd, "Load tiles from a rectangular region within atlas", 0x666666, left, 500):540,328
+
+    text(dd, "#atlasRegion autotile {", 0x66FF66, left, 400):560,350
+    text(dd, "format: blob47", 0xCCCCCC, left, 400):580,365
+    text(dd, "tileSize: 16", 0xCCCCCC, left, 400):580,380
+    text(dd, "sheet: \"terrain.atlas\", region: [0, 0, 128, 128]", 0xFFFF88, left, 500):580,395
+    text(dd, "}", 0x66FF66, left, 400):560,410
+
+    // ==========================================================================
+    // FORMATS
+    // ==========================================================================
+    text(dd, "FORMATS:", 0xFFAA00, left, 200):540,450
+    text(dd, "format: cross   - 13 tiles (N,W,C,E,S + 4 outer + 4 inner corners)", 0xCCCCCC, left, 600):560,470
+    text(dd, "format: blob47  - 47 tiles (all edge/corner combinations)", 0xCCCCCC, left, 600):560,490
+
+    // ==========================================================================
+    // OPTIONAL PROPERTIES
+    // ==========================================================================
+    text(dd, "OPTIONAL:", 0xFFAA00, left, 200):540,530
+    text(dd, "tileSize: N     - tile dimensions in pixels (required)", 0xCCCCCC, left, 600):560,550
+    text(dd, "depth: N        - isometric elevation depth", 0xCCCCCC, left, 600):560,570
+    text(dd, "mapping: [...]  - remap tile indices", 0xCCCCCC, left, 600):560,590
+    text(dd, "region: [x,y,w,h] - extract from file region", 0xCCCCCC, left, 600):560,610
+
+    // ==========================================================================
+    // USAGE IN PROGRAMMABLES
+    // ==========================================================================
+    text(dd, "USAGE: generated(autotile(\"name\", index))", 0x88FF88, left, 500):20,620
+    text(dd, "Reference individual tiles by index in bitmap() calls", 0x666666, left, 500):20,638
+}

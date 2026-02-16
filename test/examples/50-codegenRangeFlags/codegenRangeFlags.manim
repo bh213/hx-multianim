@@ -1,0 +1,10 @@
+version: 0.5
+
+#codegenRangeFlags programmable(level:0..100=60, power:0..50=30, bits:flags(8)=5) {
+      @(level => 50..100) ninepatch("ui", "button-idle", $level * 2, 15): 0, 0
+      @(level => 0..50) ninepatch("ui", "button-pressed", $level * 2, 15): 0, 0
+      ninepatch("ui", "button-hover", $power * 3, 12): 0, 20
+      ninepatch("ui", "button-disabled", 80, 8): 0, 37
+      text(dd, $level, white, left, 80): 0, 50
+      text(dd, $power, white, left, 80): 50, 50
+}

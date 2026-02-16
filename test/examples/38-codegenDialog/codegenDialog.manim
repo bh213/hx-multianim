@@ -1,0 +1,23 @@
+version: 0.5
+
+#codegenDialog programmable(w:uint=300, h:uint=200, title="Dialog", body="Hello world", style:[idle, hover, disabled]=idle) {
+      // Panel background
+      @(style=>idle) ninepatch("ui", "Window_3x3_idle", $w, $h): 10, 20
+      @(style=>hover) ninepatch("ui", "Window_3x3_hover", $w, $h): 10, 20
+      @(style=>disabled) ninepatch("ui", "Window_3x3_disabled", $w, $h): 10, 20
+
+      // Title bar text
+      text(dd, $title, 0xFFDD44, center, 280): 20, 28
+
+      // Separator line (thin ninepatch)
+      @final innerW = $w - 20
+      ninepatch("ui", "Sliderbar_H_3x1", $innerW, 4): 20, 45
+
+      // Body text
+      text(dd, $body, 0xCCCCCC, center, 280): 20, 55
+
+      // OK button at bottom
+      @final btnX = $w - 60
+      ninepatch("ui", "button-idle", 60, 20): $btnX, $h - 10
+      text(dd, "OK", white, center, 60): $btnX, $h - 3
+}

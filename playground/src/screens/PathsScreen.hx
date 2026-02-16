@@ -1,6 +1,5 @@
 package screens;
 
-import bh.paths.AnimatedPath.AnimatedPathPositionMode;
 import bh.base.MacroUtils;
 import hxd.Res;
 import h2d.Graphics;
@@ -15,12 +14,6 @@ import bh.ui.UIMultiAnimButton;
 import bh.ui.*;
 import bh.ui.screens.UIScreen;
 
-private enum RadioAnimatedPathPositionMode {
-	Absolute;
-	RelativeToRef1;
-	RelativeToRef2;
-}
-
 class PathsScreen extends UIScreenBase {
 
 	var builder:Null<MultiAnimBuilder>;
@@ -34,7 +27,6 @@ class PathsScreen extends UIScreenBase {
 	var startPoint:Null<bh.base.FPoint> = null;
 	var endPoint:Null<bh.base.FPoint> = null;
 	var angle:Float = 0;
-	var animatedPathPositionMode:bh.paths.AnimatedPath.AnimatedPathPositionMode = Absolute;
 	var paths:MultiAnimPaths;
 	var cross1:h2d.Object;
 	var cross2:h2d.Object;
@@ -99,9 +91,9 @@ class PathsScreen extends UIScreenBase {
 
 			
 			final positionModes = [
-				{name: 'Absolute', data: RadioAnimatedPathPositionMode.Absolute},
-				{name: 'Relative #ref1', data: RadioAnimatedPathPositionMode.RelativeToRef1},
-				{name: 'Relative #ref2', data: RadioAnimatedPathPositionMode.RelativeToRef2},
+				{name: 'Absolute', data: 0},
+				{name: 'Relative #ref1', data: 1},
+				{name: 'Relative #ref2', data: 2},
 			];
 
 			onPathChanged();
@@ -141,16 +133,15 @@ class PathsScreen extends UIScreenBase {
 
 			res.animate.onClick = () -> {
 					this.root.addChild(animObjs[0]);
-					this.animatedPaths.push(pathsBuilder.createAnimatedPath("panim", selectedPath, 50, this.animatedPathPositionMode, HeapsObject(animObjs[0])));
-			}		
+					var ap = pathsBuilder.createAnimatedPath("panim");
+					var obj = animObjs[0];
+					ap.onUpdate = (state) -> {
+						obj.setPosition(state.position.x, state.position.y);
+					};
+					this.animatedPaths.push(ap);
+			}
 			res.positionMode.onItemChanged = (newIndex, items) -> {
-				var mode:RadioAnimatedPathPositionMode = items[newIndex].data;
-				this.animatedPathPositionMode = switch mode {
-					case Absolute: bh.paths.AnimatedPath.AnimatedPathPositionMode.Absolute;
-					case RelativeToRef1: bh.paths.AnimatedPath.AnimatedPathPositionMode.RelativeTo(ref1.toh2dObject());
-					case RelativeToRef2: bh.paths.AnimatedPath.AnimatedPathPositionMode.RelativeTo(ref2.toh2dObject());
-				};
-
+				// Position mode is now handled via onUpdate callback
 			}
 
 			res.angleSlider.onChange = (value, wrapper) -> {
@@ -197,16 +188,6 @@ class PathsScreen extends UIScreenBase {
 		for (path in animatedPaths) {
 			path.update(dt);
 		}
-		
-		//if (anim != null) {
-			//anim.update(dt);
-			
-			//var rate = anim.getAsRate();
-			//var pt = this.lines[0].getPoint(rate);
-			//animObj.setPosition(0,0);
-			//animObj.setPosition(pt.x, pt.y);
-	
-		// }
 	}
 	public function onScreenEvent(event:UIScreenEvent, source:UIElement) {
 		

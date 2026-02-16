@@ -1,4 +1,4 @@
-version: 0.3
+version: 0.5
 
       #main palette {
       0x1a1a1a  0x2c5f7c  0x4a90a4  0x7fdbda  0xff7f50  0xff4444  0x4caf50  0xffeb3b  0xffffff  0x666666  0xb0b0b0  0x000000
@@ -167,7 +167,7 @@ version: 0.3
 
 
 #radioButtons programmable(count:int){
-      repeatable($index, grid($count, dy:20)) {
+      repeatable($index, step($count, dy:20)) {
             placeholder(generated(cross(15, 15)), callback("checkbox", $index)):0,0
             text(m6x11, callback("label", $index), 0xffffff12, left, 120): 24,4
             
@@ -175,7 +175,7 @@ version: 0.3
 }
 
 #radioButtonsHorizontal programmable(count:int){
-      repeatable($index, grid($count, dx:120 )) {
+      repeatable($index, step($count, dx:120 )) {
             placeholder(generated(cross(15, 15)), callback("checkbox", $index)):0,0
             text(m6x11, callback("label", $index), 0xffffff12, left, 120): 24,4
             
@@ -183,7 +183,7 @@ version: 0.3
 }
 
 #radioButtonsVertical programmable(count:int){
-      repeatable($index, grid($count, dy:30 )) {
+      repeatable($index, step($count, dy:30 )) {
             placeholder(generated(cross(15, 15)), callback("checkbox", $index)):0,0
             text(m6x11, callback("label", $index), 0xffffff12, left, 120): 24,4
             
@@ -203,7 +203,7 @@ version: 0.3
       @(panel=>open) bitmap(sheet("ui", "icon_drop_open")):108,17
       #selectedName(updatable) text(m6x11, callback("selectedName"), 0xffffff12, center, 120): -4,6
       // @(images=>placeholder) placeholder(generated(cross(15, 15)), callback("test")):8,5
-      settings{transitionTimer=>.2}
+      settings{transitionTimer:float=>0.2}
 }
 
 

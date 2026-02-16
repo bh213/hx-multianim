@@ -1,0 +1,44 @@
+version: 0.5
+
+#tilesIteration programmable() {
+  pos: 0, 0
+  grid: 1280, 720
+
+  @alpha(0.3) bitmap(generated(color(1280, 720, gray)));
+
+  // Test stateanim iterator - iterate over animation frames from marine.anim
+  // Shows each frame as a bitmap with its index
+  text(dd, "stateanim iterator (marine.anim idle frames):", yellow, left, 600):40,60;
+  @scale(2) point {
+    pos: 40, 100
+    repeatable($index, stateanim($bitmap, "marine.anim", "idle", direction=>r)) {
+      bitmap($bitmap): $index * 80, 0;
+      text(dd, "frame "+$index, yellow, left, 100): $index * 80, 40;
+    }
+  }
+
+  // Test tiles iterator with tilename - iterate over all tiles in demo sheet
+  // Exposes $bitmap, $tilename, and $index
+  text(dd, "tiles iterator with tilename (demo sheet):", yellow, left, 600): 40, 240;
+  @scale(2) point {
+    pos: 40, 270
+    repeatable($index, tiles($bitmap, $tilename, "demo")) {
+      bitmap($bitmap): ($index % 11) * 60, ($index div 11) * 60;
+    }
+  }
+
+  // Test tiles iterator with tile name filter - iterate over all frames of a specific tile
+  // Uses sheet name and exact tile name (key) to filter specific tiles
+  text(dd, "tiles with tile filter (indexed-tile):", yellow, left, 600): 40, 480;
+  @scale(2) point {
+    pos: 40, 510
+    repeatable($index, tiles($bitmap, "demo", "indexed-tile")) {
+      bitmap($bitmap): $index * 60, 0;
+    }
+  }
+}
+
+#main point {
+  pos: 0, 0
+  staticRef($tilesIteration):0,0
+}
