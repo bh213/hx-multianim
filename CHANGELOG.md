@@ -70,6 +70,25 @@
   - Custom type package: `@:data("file.manim", "name", "my.pkg")` puts generated record types in specified package
   - `mergeTypes` flag: `@:data("file.manim", "name", "pkg", mergeTypes)` deduplicates identical record types across multiple `@:data` fields
   - Type collision detection: fatal error if generated type name already exists
+- **Flow improvements** — new optional parameters on `flow()`: `overflow` (expand/limit/scroll/hidden), `fillWidth`, `fillHeight`, `reverse`
+  - New `spacer(width, height)` element for fixed spacing inside flows
+- **Indexed named elements** — `#name[$i]` syntax inside `repeatable` creates per-iteration named entries
+  - Builder: `result.getUpdatableByIndex("name", index)` for typed access
+  - Codegen: generates `get_name(index:Int)` accessor methods
+- **Slot element** — `#name slot { ... }` creates swappable containers with default content
+  - Indexed variant `#name[$i] slot { ... }` inside repeatables creates per-iteration slots
+  - `SlotHandle` API: `setContent(obj)`, `clear()`, `getContent()` for runtime replacement
+  - Builder: `result.getSlot("name")` or `result.getSlot("name", index)` with mismatch validation
+  - Codegen: generates `getSlot_name()`, `getSlot_name(index)`, and generic `getSlot("name", ?index)`
+- **Builder incremental update** — opt-in mode for updating parameters without rebuilding the h2d tree
+  - Enable via `buildWithParameters(..., incremental: true)`
+  - `result.setParameter("name", value)` re-evaluates conditionals and expressions in-place
+  - `beginUpdate()`/`endUpdate()` for batching multiple parameter changes
+  - Tracks conditional visibility chains and expression-dependent properties
+- **Component element** — `component($ref, params)` embeds a programmable with incremental mode
+  - Like `reference` but supports runtime parameter changes via `setParameter()`
+  - Stored in BuilderResult: `result.getComponent("name")` returns sub-`BuilderResult`
+  - Supports `external()` references for cross-file components
 - **HTML report: unit test section** — test runner results now displayed in HTML report with expandable per-class/method details, pass/fail status, and failure messages
 
 ## [0.4]

@@ -4,6 +4,7 @@ import bh.multianim.MultiAnimParser;
 import bh.multianim.CoordinateSystems;
 import bh.multianim.MacroCompatTypes.MacroBlendMode;
 import bh.multianim.MacroCompatTypes.MacroFlowLayout;
+import bh.multianim.MacroCompatTypes.MacroFlowOverflow;
 import bh.multianim.layouts.LayoutTypes;
 import bh.base.Hex;
 
@@ -2203,6 +2204,7 @@ class MacroManimParser {
 		final nameStr = switch (updatableName) {
 			case UNTObject(n): n;
 			case UNTUpdatable(n): n;
+			case UNTIndexed(n, _): n;
 		}
 		return {
 			pos: ZERO,
@@ -2442,6 +2444,21 @@ class MacroManimParser {
 				expect(TClosed);
 				createNode(MASK(w, h), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
 
+			case TIdentifier(s) if (isKeyword(s, "spacer")):
+				advance();
+				expect(TOpen);
+				final spacerW = parseIntegerOrReference();
+				expect(TComma);
+				final spacerH = parseIntegerOrReference();
+				expect(TClosed);
+				createNode(SPACER(spacerW, spacerH), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+
+			case TIdentifier(s) if (isKeyword(s, "slot")):
+				advance();
+				if (updatableName == null)
+					error("slot requires a #name prefix");
+				createNode(SLOT, parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+
 			case TIdentifier(s) if (isKeyword(s, "interactive")):
 				advance();
 				expect(TOpen);
@@ -2488,6 +2505,10 @@ class MacroManimParser {
 				var multiline = false;
 				var bgSheet:Null<ReferenceableValue> = null;
 				var bgTile:Null<ReferenceableValue> = null;
+				var overflow:Null<MacroFlowOverflow> = null;
+				var fillWidth = false;
+				var fillHeight = false;
+				var reverse = false;
 				while (!match(TClosed)) {
 					eatComma();
 					if (match(TClosed)) break;
@@ -2520,10 +2541,14 @@ class MacroManimParser {
 							expect(TComma);
 							bgTile = parseStringOrReference();
 							expect(TClosed);
+						case "overflow": overflow = parseFlowOverflow();
+						case "fillwidth": fillWidth = parseBool();
+						case "fillheight": fillHeight = parseBool();
+						case "reverse": reverse = parseBool();
 						default: error('unknown flow param: $pname');
 					}
 				}
-				createNode(FLOW(maxWidth, maxHeight, minWidth, minHeight, lineHeight, colWidth, layout, paddingTop, paddingBottom, paddingLeft, paddingRight, hSpacing, vSpacing, debug, multiline, bgSheet, bgTile), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+				createNode(FLOW(maxWidth, maxHeight, minWidth, minHeight, lineHeight, colWidth, layout, paddingTop, paddingBottom, paddingLeft, paddingRight, hSpacing, vSpacing, debug, multiline, bgSheet, bgTile, overflow, fillWidth, fillHeight, reverse), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
 
 			case TIdentifier(s) if (isKeyword(s, "programmable")):
 				advance();
@@ -2549,6 +2574,7 @@ class MacroManimParser {
 				final n = createNode(RELATIVE_LAYOUTS(layoutsDef), parent, conditional, scale, alpha, tint, layerIndex, switch (updatableName) {
 					case UNTObject(_): UNTObject(defaultLayoutNodeName);
 					case UNTUpdatable(_): UNTUpdatable(defaultLayoutNodeName);
+					case UNTIndexed(_, _): UNTObject(defaultLayoutNodeName);
 				});
 				return n; // skip position/children parsing
 
@@ -2579,6 +2605,27 @@ class MacroManimParser {
 				}
 				expect(TClosed);
 				createNode(REFERENCE(extRef, progRef, params), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+
+			case TIdentifier(s) if (isKeyword(s, "component")):
+				advance();
+				expect(TOpen);
+				var extRef:Null<String> = null;
+				switch (peek()) {
+					case TIdentifier(s2) if (isKeyword(s2, "external")):
+						advance();
+						expect(TOpen);
+						extRef = expectIdentifierOrString();
+						expect(TClosed);
+						expect(TComma);
+					default:
+				}
+				final progRef = expectReferenceOrIdentifier();
+				var params:Map<String, ReferenceableValue> = new Map();
+				if (match(TComma)) {
+					params = parseReferenceParams();
+				}
+				expect(TClosed);
+				createNode(COMPONENT(extRef, progRef, params), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
 
 			case TIdentifier(s) if (isKeyword(s, "placeholder")):
 				advance();
@@ -2724,6 +2771,7 @@ class MacroManimParser {
 				final n = createNode(PATHS(pathsDef), parent, conditional, scale, alpha, tint, layerIndex, switch (updatableName) {
 					case UNTObject(_): UNTObject(defaultPathNodeName);
 					case UNTUpdatable(_): UNTUpdatable(defaultPathNodeName);
+					case UNTIndexed(_, _): UNTObject(defaultPathNodeName);
 				});
 				return n;
 
@@ -2745,6 +2793,7 @@ class MacroManimParser {
 				final n = createNode(CURVES(curvesDef), parent, conditional, scale, alpha, tint, layerIndex, switch (updatableName) {
 					case UNTObject(_): UNTObject(defaultCurveNodeName);
 					case UNTUpdatable(_): UNTUpdatable(defaultCurveNodeName);
+					case UNTIndexed(_, _): UNTObject(defaultCurveNodeName);
 				});
 				return n;
 
@@ -3378,6 +3427,16 @@ class MacroManimParser {
 		}
 	}
 
+	function parseFlowOverflow():MacroFlowOverflow {
+		switch (peek()) {
+			case TIdentifier(s) if (isKeyword(s, "expand")): advance(); return MFOExpand;
+			case TIdentifier(s) if (isKeyword(s, "limit")): advance(); return MFOLimit;
+			case TIdentifier(s) if (isKeyword(s, "scroll")): advance(); return MFOScroll;
+			case TIdentifier(s) if (isKeyword(s, "hidden")): advance(); return MFOHidden;
+			default: return error("expected expand, limit, scroll, or hidden");
+		}
+	}
+
 	// ===================== Parse Nodes (children block) =====================
 
 	function parseNodes(node:Null<Node>, defs:ParametersDefinitions):Void {
@@ -3497,7 +3556,7 @@ class MacroManimParser {
 				case TName(name):
 					advance();
 					currentName = name;
-					// Check for (updatable) modifier
+					// Check for (updatable) or [$var] modifier
 					var nameType:UpdatableNameType = UNTObject(name);
 					if (match(TOpen)) {
 						switch (peek()) {
@@ -3507,6 +3566,34 @@ class MacroManimParser {
 							default:
 						}
 						expect(TClosed);
+					} else if (match(TBracketOpen)) {
+						// #name[$var] — indexed named element
+						switch (peek()) {
+							case TReference(indexVar):
+								advance();
+								if (scopeVars == null || !scopeVars.contains(indexVar))
+									error('#name[$$$indexVar]: index variable $$$indexVar is not a known loop variable in this scope');
+								expect(TBracketClosed);
+								nameType = UNTIndexed(name, indexVar);
+							default:
+								error('expected $$variable inside #name[...]');
+						}
+					}
+					// Validate: #name (non-indexed) is not allowed inside repeatable
+					switch (nameType) {
+						case UNTObject(_) | UNTUpdatable(_):
+							var checkNode = node;
+							while (checkNode != null) {
+								switch (checkNode.type) {
+									case REPEAT(varName, _):
+										error('#$name requires indexed form #$name[$$' + varName + '] inside repeatable');
+									case REPEAT2D(varNameX, _, _, _):
+										error('#$name requires indexed form #$name[$$' + varNameX + '] inside repeatable');
+									default:
+								}
+								checkNode = checkNode.parent;
+							}
+						default:
 					}
 					final newNode = parseNode(nameType, node, defs);
 					currentName = null;
@@ -3522,6 +3609,7 @@ class MacroManimParser {
 							final n = switch (newNode.updatableName) {
 								case UNTObject(n): n;
 								case UNTUpdatable(n): n;
+								case UNTIndexed(n, _): n;
 							}
 							addNode(n, newNode);
 						} else {

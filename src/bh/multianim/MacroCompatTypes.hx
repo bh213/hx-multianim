@@ -26,6 +26,13 @@ enum MacroFlowLayout {
 	MFLStack;
 }
 
+enum MacroFlowOverflow {
+	MFOExpand;
+	MFOLimit;
+	MFOScroll;
+	MFOHidden;
+}
+
 #if !macro
 class MacroCompatConvert {
 	public static function toH2dBlendMode(m:MacroBlendMode):h2d.BlendMode {
@@ -50,6 +57,15 @@ class MacroCompatConvert {
 			case MFLHorizontal: Horizontal;
 			case MFLVertical: Vertical;
 			case MFLStack: Stack;
+		}
+	}
+
+	public static function toH2dFlowOverflow(m:MacroFlowOverflow):h2d.Flow.FlowOverflow {
+		return switch m {
+			case MFOExpand: Expand;
+			case MFOLimit: Limit;
+			case MFOScroll: Scroll;
+			case MFOHidden: Hidden;
 		}
 	}
 }

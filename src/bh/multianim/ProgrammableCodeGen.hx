@@ -26,6 +26,7 @@ import bh.multianim.MultiAnimParser.DataRecordDef;
 import bh.multianim.MultiAnimParser.DataFieldDef;
 import bh.multianim.CoordinateSystems;
 import bh.multianim.MacroCompatTypes.MacroFlowLayout;
+import bh.multianim.MacroCompatTypes.MacroFlowOverflow;
 import bh.multianim.MacroCompatTypes.MacroBlendMode;
 import bh.multianim.layouts.LayoutTypes.LayoutContent;
 import bh.multianim.layouts.LayoutTypes.Layout;
@@ -60,6 +61,10 @@ class ProgrammableCodeGen {
 	static var expressionUpdates:Array<{fieldName:String, updateExpr:Expr, paramRefs:Array<String>}> = [];
 	static var visibilityEntries:Array<{fieldName:String, condition:Expr}> = [];
 	static var namedElements:Map<String, Array<String>> = [];
+	static var indexedNamedElements:Map<String, Array<{index:Int, fieldName:String}>> = new Map();
+	static var slotFields:Map<String, String> = new Map(); // slot name -> container field name
+	static var indexedSlotFields:Map<String, Array<{index:Int, fieldName:String}>> = new Map(); // base name -> [{index, field}]
+	static var componentFields:Map<String, String> = new Map(); // component name -> BuilderResult field name
 	static var hexLayoutFieldAdded:Bool = false;
 
 	static var paramDefs:ParametersDefinitions;
@@ -117,6 +122,10 @@ class ProgrammableCodeGen {
 		expressionUpdates = [];
 		visibilityEntries = [];
 		namedElements = [];
+		indexedNamedElements = new Map();
+		slotFields = new Map();
+		indexedSlotFields = new Map();
+		componentFields = new Map();
 		paramDefs = new Map();
 		paramNames = [];
 		paramEnumTypes = new Map();
@@ -491,10 +500,17 @@ class ProgrammableCodeGen {
 			exprUpdateExprs.push(macro {});
 		instanceFields.push(makeMethod("_updateExpressions", exprUpdateExprs, [], macro :Void, [APrivate], pos));
 
-		// 6. Instance constructor: (pb, params...) -> builds tree
+		// 6. Pre-constructor: push slot/component init expressions to constructorExprs
+		// (slotFields and componentFields are already populated from processChildren)
+		for (slotName => containerField in slotFields) {
+			final handleField = "_slotHandle_" + slotName;
+			constructorExprs.push(macro $p{["this", handleField]} = new bh.multianim.MultiAnimBuilder.SlotHandle($p{["this", containerField]}));
+		}
+
+		// 7. Instance constructor: (pb, params...) -> builds tree
 		instanceFields.push(generateInstanceConstructor(constructorExprs, pos));
 
-		// 7. Typed setters (on instance)
+		// 8. Typed setters (on instance)
 		for (name in paramNames) {
 			final def = paramDefs.get(name);
 			final paramField = "_" + name;
@@ -524,6 +540,9 @@ class ProgrammableCodeGen {
 
 		// 8. Named element accessors (on instance)
 		for (name => elementFieldsList in namedElements) {
+			// Skip names that have indexed accessors — they get the indexed get_name(index) method instead
+			if (indexedNamedElements.exists(name))
+				continue;
 			if (elementFieldsList.length == 1) {
 				final ef = elementFieldsList[0];
 				instanceFields.push(makeMethod("get_" + name, [macro return $p{["this", ef]}], [], macro :h2d.Object, [APublic], pos));
@@ -532,6 +551,140 @@ class ProgrammableCodeGen {
 				instanceFields.push(makeMethod("get_" + name, [macro return $p{["this", namedField]}], [],
 					macro :bh.multianim.IUpdatable, [APublic], pos));
 			}
+		}
+
+		// 8b. Indexed named element accessors: get_name(index:Int):h2d.Object
+		for (name => indexedList in indexedNamedElements) {
+			// Build switch cases: case 0: return this._e5; case 1: return this._e8; ...
+			final switchCases:Array<Case> = [];
+			for (entry in indexedList) {
+				switchCases.push({
+					values: [macro $v{entry.index}],
+					expr: macro return $p{["this", entry.fieldName]},
+				});
+			}
+			final switchExpr:Expr = {
+				expr: ESwitch(macro index, switchCases, macro return null),
+				pos: pos,
+			};
+			instanceFields.push(makeMethod("get_" + name, [switchExpr], [{name: "index", type: macro :Int}], macro :h2d.Object, [APublic], pos));
+		}
+
+		// 8c. Slot accessors (on instance) — init expressions already pushed to constructorExprs in step 6
+		// Skip indexed slots from per-slot typed accessors (they get indexed getSlot_name(index) instead)
+		for (slotName => containerField in slotFields) {
+			var isIndexed = false;
+			for (_ => indexedList in indexedSlotFields) {
+				for (entry in indexedList) {
+					if (entry.fieldName == containerField) {
+						isIndexed = true;
+						break;
+					}
+				}
+				if (isIndexed)
+					break;
+			}
+			if (isIndexed)
+				continue;
+			final handleField = "_slotHandle_" + slotName;
+			instanceFields.push(makeField(handleField, FVar(macro :bh.multianim.MultiAnimBuilder.SlotHandle, null), [APrivate], pos));
+			instanceFields.push(makeMethod("getSlot_" + slotName, [macro return $p{["this", handleField]}], [],
+				macro :bh.multianim.MultiAnimBuilder.SlotHandle, [APublic], pos));
+		}
+		// Indexed slot accessors: getSlot_name(index:Int):SlotHandle
+		for (baseName => indexedList in indexedSlotFields) {
+			for (entry in indexedList) {
+				final handleField = "_slotHandle_" + baseName + "_" + entry.index;
+				instanceFields.push(makeField(handleField, FVar(macro :bh.multianim.MultiAnimBuilder.SlotHandle, null), [APrivate], pos));
+			}
+			final switchCases:Array<Case> = [];
+			for (entry in indexedList) {
+				final handleField = "_slotHandle_" + baseName + "_" + entry.index;
+				switchCases.push({
+					values: [macro $v{entry.index}],
+					expr: macro return $p{["this", handleField]},
+				});
+			}
+			final switchExpr:Expr = {
+				expr: ESwitch(macro index, switchCases, macro return null),
+				pos: pos,
+			};
+			instanceFields.push(makeMethod("getSlot_" + baseName, [switchExpr], [{name: "index", type: macro :Int}],
+				macro :bh.multianim.MultiAnimBuilder.SlotHandle, [APublic], pos));
+		}
+		// Generic getSlot(name:String, ?index:Null<Int>) dispatcher
+		if (Lambda.count(slotFields) > 0 || Lambda.count(indexedSlotFields) > 0) {
+			final bodyExprs:Array<Expr> = [];
+
+			// Handle indexed slots: require index parameter
+			for (baseName => indexedList in indexedSlotFields) {
+				final indexCases:Array<Case> = [];
+				for (entry in indexedList) {
+					final handleField = "_slotHandle_" + baseName + "_" + entry.index;
+					indexCases.push({
+						values: [macro $v{entry.index}],
+						expr: macro return $p{["this", handleField]},
+					});
+				}
+				final notFoundMsg = 'Slot "$baseName" index ';
+				final indexSwitch:Expr = {
+					expr: ESwitch(macro index, indexCases, macro throw $v{notFoundMsg} + index + ' not found'),
+					pos: pos,
+				};
+				bodyExprs.push(macro if (name == $v{baseName}) {
+					if (index == null)
+						throw 'Slot "' + $v{baseName} + '" is indexed — use getSlot("' + $v{baseName} + '", index)';
+					$indexSwitch;
+				});
+			}
+
+			// Handle non-indexed slots: reject index parameter
+			for (slotName => _ in slotFields) {
+				// Skip slots that are part of indexed groups
+				var isIndexed = false;
+				for (baseName => indexedList in indexedSlotFields) {
+					for (entry in indexedList) {
+						if (slotName == baseName + "_" + entry.index) {
+							isIndexed = true;
+							break;
+						}
+					}
+					if (isIndexed) break;
+				}
+				if (isIndexed) continue;
+				final handleField = "_slotHandle_" + slotName;
+				bodyExprs.push(macro if (name == $v{slotName}) {
+					if (index != null)
+						throw 'Slot "' + $v{slotName} + '" is not indexed — use getSlot("' + $v{slotName} + '") without index';
+					return $p{["this", handleField]};
+				});
+			}
+
+			bodyExprs.push(macro throw 'Slot "' + name + '" not found');
+			instanceFields.push(makeMethod("getSlot", bodyExprs, [
+				{name: "name", type: macro :String},
+				{name: "index", opt: true, type: macro :Null<Int>},
+			], macro :bh.multianim.MultiAnimBuilder.SlotHandle, [APublic], pos));
+		}
+
+		// 8d. Component accessors (on instance)
+		for (compName => resultField in componentFields) {
+			instanceFields.push(makeField(resultField, FVar(macro :bh.multianim.MultiAnimBuilder.BuilderResult, null), [APrivate], pos));
+		}
+		if (Lambda.count(componentFields) > 0) {
+			final compCases:Array<Case> = [];
+			for (compName => resultField in componentFields) {
+				compCases.push({
+					values: [macro $v{compName}],
+					expr: macro return $p{["this", resultField]},
+				});
+			}
+			final compSwitch:Expr = {
+				expr: ESwitch(macro name, compCases, macro return null),
+				pos: pos,
+			};
+			instanceFields.push(makeMethod("getComponent", [compSwitch], [{name: "name", type: macro :String}],
+				macro :bh.multianim.MultiAnimBuilder.BuilderResult, [APublic], pos));
 		}
 
 		// ============ Factory class fields (extends ProgrammableBuilder) ============
@@ -727,6 +880,24 @@ class ProgrammableCodeGen {
 			ctorExprs.push(macro $parentRef.addChild($fieldRef));
 		}
 
+		// Set flow properties for spacer elements after addChild
+		switch (node.type) {
+			case SPACER(width, height):
+				if (parentField != null) {
+					final wExpr = width != null ? rvToExpr(width) : macro 0;
+					final hExpr = height != null ? rvToExpr(height) : macro 0;
+					ctorExprs.push(macro {
+						final _fp = Std.downcast($parentRef, h2d.Flow);
+						if (_fp != null) {
+							final _props = _fp.getProperties($fieldRef);
+							_props.minWidth = $wExpr;
+							_props.minHeight = $hExpr;
+						}
+					});
+				}
+			default:
+		}
+
 		// Named element
 		switch (node.updatableName) {
 			case UNTObject(name) | UNTUpdatable(name):
@@ -737,6 +908,55 @@ class ProgrammableCodeGen {
 						namedElements.set(name, list);
 					}
 					list.push(fieldName);
+				}
+			case UNTIndexed(name, indexVar):
+				if (name != null && name != "") {
+					// Also store in regular namedElements for backward compat (get_name returns all)
+					var list = namedElements.get(name);
+					if (list == null) {
+						list = [];
+						namedElements.set(name, list);
+					}
+					list.push(fieldName);
+					// Store indexed mapping for get_name(index) accessor
+					final currentIndex = loopVarSubstitutions.exists(indexVar) ? loopVarSubstitutions.get(indexVar) : 0;
+					var indexedList = indexedNamedElements.get(name);
+					if (indexedList == null) {
+						indexedList = [];
+						indexedNamedElements.set(name, indexedList);
+					}
+					indexedList.push({index: currentIndex, fieldName: fieldName});
+				}
+		}
+
+		// Track slot containers — name comes from #name / #name[$i] prefix
+		switch (node.type) {
+			case SLOT:
+				switch (node.updatableName) {
+					case UNTIndexed(baseName, ref) if (loopVarSubstitutions.exists(ref)):
+						final currentIndex = loopVarSubstitutions.get(ref);
+						slotFields.set(baseName + "_" + currentIndex, fieldName);
+						var list = indexedSlotFields.get(baseName);
+						if (list == null) {
+							list = [];
+							indexedSlotFields.set(baseName, list);
+						}
+						list.push({index: currentIndex, fieldName: fieldName});
+					case UNTObject(name) | UNTUpdatable(name):
+						slotFields.set(name, fieldName);
+					default:
+						Context.warning("Slot requires a #name prefix for codegen", pos);
+				}
+			default:
+		}
+
+		// Track component BuilderResult fields
+		switch (node.type) {
+			case COMPONENT(_, programmableRef, _):
+				final compName = programmableRef;
+				if (compName != null) {
+					final resultField = "_comp_" + compName;
+					componentFields.set(compName, resultField);
 				}
 			default:
 		}
@@ -1661,7 +1881,7 @@ class ProgrammableCodeGen {
 				}
 				bodyExprs.push({expr: EBlock(stmts), pos: pos});
 
-			case FLOW(maxWidth, maxHeight, minWidth, minHeight, lineHeight, colWidth, layout, paddingTop, paddingBottom, paddingLeft, paddingRight, horizontalSpacing, verticalSpacing, debug, multiline, bgSheet, bgTile):
+			case FLOW(maxWidth, maxHeight, minWidth, minHeight, lineHeight, colWidth, layout, paddingTop, paddingBottom, paddingLeft, paddingRight, horizontalSpacing, verticalSpacing, debug, multiline, bgSheet, bgTile, overflow, fillWidth, fillHeight, reverse):
 				final stmts:Array<Expr> = [];
 				stmts.push(macro final _rt_flow = new h2d.Flow());
 				stmts.push(macro $containerRef.addChild(_rt_flow));
@@ -1686,7 +1906,19 @@ class ProgrammableCodeGen {
 				if (verticalSpacing != null) stmts.push(macro _rt_flow.verticalSpacing = ${rvToExpr(verticalSpacing)});
 				if (debug) stmts.push(macro _rt_flow.debug = true);
 				if (multiline) stmts.push(macro _rt_flow.multiline = true);
-				stmts.push(macro _rt_flow.overflow = h2d.Flow.FlowOverflow.Limit);
+				if (overflow != null) {
+					switch (overflow) {
+						case MFOExpand: stmts.push(macro _rt_flow.overflow = h2d.Flow.FlowOverflow.Expand);
+						case MFOLimit: stmts.push(macro _rt_flow.overflow = h2d.Flow.FlowOverflow.Limit);
+						case MFOScroll: stmts.push(macro _rt_flow.overflow = h2d.Flow.FlowOverflow.Scroll);
+						case MFOHidden: stmts.push(macro _rt_flow.overflow = h2d.Flow.FlowOverflow.Hidden);
+					}
+				} else {
+					stmts.push(macro _rt_flow.overflow = h2d.Flow.FlowOverflow.Limit);
+				}
+				if (fillWidth) stmts.push(macro _rt_flow.fillWidth = true);
+				if (fillHeight) stmts.push(macro _rt_flow.fillHeight = true);
+				if (reverse) stmts.push(macro _rt_flow.reverse = true);
 				if (bgSheet != null && bgTile != null) {
 					final sheetExpr = rvToExpr(bgSheet, true);
 					final tileExpr = rvToExpr(bgTile, true);
@@ -1939,8 +2171,20 @@ class ProgrammableCodeGen {
 					exprUpdates: [],
 				};
 
-			case FLOW(maxWidth, maxHeight, minWidth, minHeight, lineHeight, colWidth, layout, paddingTop, paddingBottom, paddingLeft, paddingRight, horizontalSpacing, verticalSpacing, debug, multiline, bgSheet, bgTile):
-				generateFlowCreate(node, fieldName, maxWidth, maxHeight, minWidth, minHeight, lineHeight, colWidth, layout, paddingTop, paddingBottom, paddingLeft, paddingRight, horizontalSpacing, verticalSpacing, debug, multiline, bgSheet, bgTile, pos);
+			case FLOW(maxWidth, maxHeight, minWidth, minHeight, lineHeight, colWidth, layout, paddingTop, paddingBottom, paddingLeft, paddingRight, horizontalSpacing, verticalSpacing, debug, multiline, bgSheet, bgTile, overflow, fillWidth, fillHeight, reverse):
+				generateFlowCreate(node, fieldName, maxWidth, maxHeight, minWidth, minHeight, lineHeight, colWidth, layout, paddingTop, paddingBottom, paddingLeft, paddingRight, horizontalSpacing, verticalSpacing, debug, multiline, bgSheet, bgTile, overflow, fillWidth, fillHeight, reverse, pos);
+
+			case SPACER(width, height):
+				generateSpacerCreate(node, fieldName, width, height, pos);
+
+			case SLOT:
+				// Slot is just a container (h2d.Object) — children are default content
+				return {
+					createExprs: [macro $p{["this", fieldName]} = new h2d.Object()],
+					fieldType: macro :h2d.Object,
+					isContainer: true,
+					exprUpdates: [],
+				};
 
 			case INTERACTIVE(w, h, id, debug, metadata):
 				final wExpr = rvToExpr(w);
@@ -1982,6 +2226,9 @@ class ProgrammableCodeGen {
 
 			case REFERENCE(externalReference, programmableRef, parameters):
 				generateReferenceCreate(node, fieldName, externalReference, programmableRef, parameters, pos);
+
+			case COMPONENT(externalReference, programmableRef, parameters):
+				generateComponentCreate(node, fieldName, externalReference, programmableRef, parameters, pos);
 
 			case REPEAT(_, _) | REPEAT2D(_, _, _, _):
 				// Should not be reached — processNode handles REPEAT/REPEAT2D directly
@@ -2029,6 +2276,42 @@ class ProgrammableCodeGen {
 		mapBuildExprs.push(macro {
 			final _result = this._pb.buildReference($refNameExpr, _refParams);
 			$fieldRef = _result != null ? _result.object : new h2d.Object();
+		});
+
+		createExprs.push(macro $b{mapBuildExprs});
+
+		return {
+			fieldType: macro :h2d.Object,
+			createExprs: createExprs,
+			isContainer: false,
+			exprUpdates: [],
+		};
+	}
+
+	// ==================== Component ====================
+
+	static function generateComponentCreate(node:Node, fieldName:String, externalReference:Null<String>,
+			programmableRef:String, parameters:Map<String, ReferenceableValue>, pos:Position):CreateResult {
+		final fieldRef = macro $p{["this", fieldName]};
+		final createExprs:Array<Expr> = [];
+		final refNameExpr:Expr = macro $v{programmableRef};
+
+		final resultField = "_comp_" + programmableRef;
+
+		// Build parameter map at runtime
+		final mapBuildExprs:Array<Expr> = [macro final _refParams = new Map<String, Dynamic>()];
+		if (parameters != null) {
+			for (key => val in parameters) {
+				final keyExpr:Expr = macro $v{key};
+				final valExpr = rvToExpr(val);
+				mapBuildExprs.push(macro _refParams.set($keyExpr, $valExpr));
+			}
+		}
+		// Build with incremental: true
+		mapBuildExprs.push(macro {
+			final _result = this._pb.buildComponent($refNameExpr, _refParams);
+			$fieldRef = _result != null ? _result.object : new h2d.Object();
+			$p{["this", resultField]} = _result;
 		});
 
 		createExprs.push(macro $b{mapBuildExprs});
@@ -3134,7 +3417,7 @@ class ProgrammableCodeGen {
 		};
 	}
 
-	static function generateFlowCreate(node:Node, fieldName:String, maxWidth:Null<ReferenceableValue>, maxHeight:Null<ReferenceableValue>, minWidth:Null<ReferenceableValue>, minHeight:Null<ReferenceableValue>, lineHeight:Null<ReferenceableValue>, colWidth:Null<ReferenceableValue>, layout:Null<MacroFlowLayout>, paddingTop:Null<ReferenceableValue>, paddingBottom:Null<ReferenceableValue>, paddingLeft:Null<ReferenceableValue>, paddingRight:Null<ReferenceableValue>, horizontalSpacing:Null<ReferenceableValue>, verticalSpacing:Null<ReferenceableValue>, debug:Bool, multiline:Bool, bgSheet:Null<ReferenceableValue>, bgTile:Null<ReferenceableValue>, pos:Position):CreateResult {
+	static function generateFlowCreate(node:Node, fieldName:String, maxWidth:Null<ReferenceableValue>, maxHeight:Null<ReferenceableValue>, minWidth:Null<ReferenceableValue>, minHeight:Null<ReferenceableValue>, lineHeight:Null<ReferenceableValue>, colWidth:Null<ReferenceableValue>, layout:Null<MacroFlowLayout>, paddingTop:Null<ReferenceableValue>, paddingBottom:Null<ReferenceableValue>, paddingLeft:Null<ReferenceableValue>, paddingRight:Null<ReferenceableValue>, horizontalSpacing:Null<ReferenceableValue>, verticalSpacing:Null<ReferenceableValue>, debug:Bool, multiline:Bool, bgSheet:Null<ReferenceableValue>, bgTile:Null<ReferenceableValue>, overflow:Null<MacroFlowOverflow>, fillWidth:Bool, fillHeight:Bool, reverse:Bool, pos:Position):CreateResult {
 		final fieldRef = macro $p{["this", fieldName]};
 		final createExprs:Array<Expr> = [macro $fieldRef = new h2d.Flow()];
 
@@ -3159,7 +3442,19 @@ class ProgrammableCodeGen {
 		if (verticalSpacing != null) createExprs.push(macro $fieldRef.verticalSpacing = ${rvToExpr(verticalSpacing)});
 		if (debug) createExprs.push(macro $fieldRef.debug = true);
 		if (multiline) createExprs.push(macro $fieldRef.multiline = true);
-		createExprs.push(macro $fieldRef.overflow = h2d.Flow.FlowOverflow.Limit);
+		if (overflow != null) {
+			switch (overflow) {
+				case MFOExpand: createExprs.push(macro $fieldRef.overflow = h2d.Flow.FlowOverflow.Expand);
+				case MFOLimit: createExprs.push(macro $fieldRef.overflow = h2d.Flow.FlowOverflow.Limit);
+				case MFOScroll: createExprs.push(macro $fieldRef.overflow = h2d.Flow.FlowOverflow.Scroll);
+				case MFOHidden: createExprs.push(macro $fieldRef.overflow = h2d.Flow.FlowOverflow.Hidden);
+			}
+		} else {
+			createExprs.push(macro $fieldRef.overflow = h2d.Flow.FlowOverflow.Limit);
+		}
+		if (fillWidth) createExprs.push(macro $fieldRef.fillWidth = true);
+		if (fillHeight) createExprs.push(macro $fieldRef.fillHeight = true);
+		if (reverse) createExprs.push(macro $fieldRef.reverse = true);
 		if (bgSheet != null && bgTile != null) {
 			final sheetExpr = rvToExpr(bgSheet, true);
 			final tileExpr = rvToExpr(bgTile, true);
@@ -3177,6 +3472,19 @@ class ProgrammableCodeGen {
 			fieldType: macro :h2d.Flow,
 			createExprs: createExprs,
 			isContainer: true,
+			exprUpdates: [],
+		};
+	}
+
+	static function generateSpacerCreate(node:Node, fieldName:String, width:Null<ReferenceableValue>, height:Null<ReferenceableValue>, pos:Position):CreateResult {
+		final fieldRef = macro $p{["this", fieldName]};
+		final createExprs:Array<Expr> = [macro $fieldRef = new h2d.Object()];
+
+		// Flow properties will be set after addChild in processNode via spacerFlowEntries
+		return {
+			fieldType: macro :h2d.Object,
+			createExprs: createExprs,
+			isContainer: false,
 			exprUpdates: [],
 		};
 	}

@@ -17,6 +17,9 @@
 |------|-------------|
 | `src/bh/multianim/MultiAnimParser.hx` | Parser for `.manim` animation files |
 | `src/bh/multianim/MultiAnimBuilder.hx` | Builder for resolving parsed structures |
+| `src/bh/multianim/MacroManimParser.hx` | Compile-time parser (NOT hxparse-based) |
+| `src/bh/multianim/ProgrammableCodeGen.hx` | Macro code generation for `@:manim`/`@:data` |
+| `src/bh/multianim/ProgrammableBuilder.hx` | Base class for macro-generated factories |
 | `src/bh/stateanim/AnimParser.hx` | Parser for `.anim` state animation files |
 | `playground/` | Web-based playground for testing |
 | `playground/public/assets/` | Test `.manim` and `.anim` files |
@@ -74,7 +77,8 @@ When working with hxparse:
 ## Workflow
 
 1. **Parsing**: Converts `.manim`/`.anim` file text to AST with `Node` structures
-2. **Building**: Resolves references, expressions, and type conversions
+2. **Building**: Resolves references, expressions, and type conversions (runtime)
+3. **Macro codegen**: `MacroManimParser` parses `.manim` at compile time, `ProgrammableCodeGen` generates typed Haxe classes
 
 ## File Formats
 
@@ -131,7 +135,10 @@ animation {
 | `text(font, text, color, [align, maxWidth])` | Text element |
 | `ninepatch(sheet, tile, w, h)` | 9-patch scalable |
 | `placeholder(size, source)` | Dynamic placeholder |
-| `reference($ref)` | Reference another programmable |
+| `reference($ref)` | Static embed of another programmable |
+| `component($ref, params)` | Dynamic embed with runtime `setParameter()` support |
+| `#name slot` / `#name[$i] slot` | Swappable container (indexed variant for repeatables) |
+| `spacer(w, h)` | Empty space inside `flow` containers |
 | `interactive(w, h, id [, debug] [, key=>val ...])` | Hit-test region with optional metadata |
 | `layers()` | Z-ordering container |
 | `mask(w, h)` | Clipping mask rectangle |
@@ -144,6 +151,12 @@ animation {
 | `graphics(...)` | Vector graphics |
 | `pixels(...)` | Pixel primitives |
 | `particles {...}` | Particle effects |
+| `@final name = expr` | Immutable named constant |
+| `#name data {...}` | Static typed data block |
+| `#name atlas2("file") {...}` | Inline sprite atlas |
+| `curves {...}` | 1D curve definitions |
+| `paths {...}` | Path definitions |
+| `import "file" as "name"` | Import external .manim |
 
 ### Conditionals
 
@@ -256,15 +269,7 @@ Tests are visual screenshot comparisons. To add a new test:
    }
    ```
 
-4. **Add to `test.bat`** in the `gen_refs` section:
-   ```batch
-   if exist "%ROOT%test\screenshots\<testName>_actual.png" (
-       copy /Y "%ROOT%test\screenshots\<testName>_actual.png" "%ROOT%test\examples\<N>-<testName>\reference.png" >nul
-       echo   <N> - <testName>
-   )
-   ```
-
-5. **Generate reference image**:
+4. **Generate reference image** (test.bat gen-refs uses dynamic loop — no manual entries needed):
    - Run `test.bat run` to generate screenshot
    - Run `test.bat gen-refs` to copy as reference
    - Verify with `test.bat run` again (should pass)
@@ -283,9 +288,12 @@ Enable debug traces by adding to HXML:
 - HTML text: standalone `HTMLTEXT` element type is deprecated/commented out (the `text(..., html: true)` parameter approach works)
 - Double reload issue
 - Hex coordinate system offset support
+- Conditional not working with repeatable vars (e.g., `@(index >= 3)`)
 
 ### Next Features
 - Particle sub-emitters (parsing and building complete, runtime spawning in `Particles.hx` not yet implemented)
+- Generic components support
+- Bit expressions (anyBit/allBits for grid directions)
 
 ## UI Notes — Interactives
 
@@ -305,6 +313,27 @@ Metadata supports typed values matching the settings system: `key => val` (strin
 - `UIElementIdentifiable` — opt-in interface with `id`, `prefix`, `metadata:BuilderResolvedSettings`
 - Screen methods: `addInteractive()`, `addInteractives(result, prefix)`, `removeInteractives(prefix)`
 - Events: emits standard `UIClick`, `UIEntering`, `UILeaving` — check `source` for `UIElementIdentifiable` to get `id`/`metadata`
+
+## Notes — Indexed Names, Slots, Components
+
+**Indexed named elements** — `#name[$i]` inside `repeatable` creates per-iteration named entries (`name_0`, `name_1`, ...):
+- Builder: `result.getUpdatableByIndex("name", index)`
+- Codegen: `instance.get_name(index)` returns `h2d.Object`
+
+**Slots** — `#name slot` or `#name[$i] slot` for swappable containers:
+- Builder: `result.getSlot("name")` or `result.getSlot("name", index)` returns `SlotHandle`
+- Codegen: `instance.getSlot("name")` or `instance.getSlot("name", index)`
+- `SlotHandle` API: `setContent(obj)`, `clear()`, `getContent()`
+- Mismatched access (index on non-indexed or vice versa) throws
+
+**Components** — `component($ref, params)` embeds with incremental mode for runtime parameter updates:
+- Builder: `result.getComponent("name").setParameter("param", value)`
+- Batch updates: `beginUpdate()` / `endUpdate()` defers re-evaluation
+- Codegen: generates runtime builder call, returns `BuilderResult`
+
+**Flow improvements** — new optional params on `flow()`:
+- `overflow: expand|limit|scroll|hidden`, `fillWidth: true`, `fillHeight: true`, `reverse: true`
+- `spacer(w, h)` element for fixed spacing inside flows
 
 ## Playground
 

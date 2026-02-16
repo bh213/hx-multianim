@@ -149,6 +149,19 @@ flow([optional params])
 * `multiline`: `true` | `false` — enables multi-line content wrapping
 * `horizontalSpacing:<int>`, `verticalSpacing:<int>`
 * `background: ninepatch(sheet, tile)` — adds a 9-patch background to the flow
+* `overflow`: `expand` | `limit` | `scroll` | `hidden` — controls child overflow behavior (default: `limit`)
+* `fillWidth`: `true` | `false` — children fill available width
+* `fillHeight`: `true` | `false` — children fill available height
+* `reverse`: `true` | `false` — reverses child rendering order
+
+### spacer
+Inserts empty space inside a `flow` container. Only valid as a child of `flow`.
+
+```
+spacer(width, height)
+```
+
+* `width`, `height` — fixed dimensions of the spacer (integer or `$reference`)
 
 ### point
 Creates a point (not displayed) for positioning items.
@@ -289,6 +302,85 @@ repeatable($index, tiles($bitmap, "crew2", "Arrow_dir0")) {
 }
 ```
 
+### Indexed Named Elements
+
+Inside `repeatable`, element names can include the loop variable to create per-iteration named references:
+
+```
+repeatable($i, step(4, dx: 40)) {
+    #label[$i] text(f3x5, $i, #ffffffff): 14, 0
+    #icon[$i] bitmap(generated(color(32, 32, #885522))): 0, 10
+}
+```
+
+This creates `label_0`, `label_1`, `label_2`, `label_3` and matching `icon_0`..`icon_3`.
+
+**Builder access:**
+```haxe
+result.getUpdatableByIndex("label", 0).updateText("Fireball");
+result.getUpdatableByIndex("icon", 2).updateTile(someTile);
+```
+
+**Codegen access:**
+```haxe
+instance.get_label(0);  // h2d.Object (cast to h2d.Text)
+instance.get_icon(2);   // h2d.Object (cast to h2d.Bitmap)
+```
+
+### slot
+Defines a swappable container whose content can be replaced at runtime. Children are default content shown when no replacement is set. Requires a `#name` prefix.
+
+```
+#footer slot {
+    // default content
+    text(f3x5, "default", #ffffffff): 0, 50
+}
+```
+
+**Indexed slots** inside `repeatable` use the `#name[$i]` syntax:
+
+```
+repeatable($i, step(3, dx: 70)) {
+    #icon[$i] slot {
+        bitmap(generated(color(20, 20, #555555))): 20, 10
+    }
+}
+```
+
+This creates slots `icon_0`, `icon_1`, `icon_2`.
+
+**Builder access:**
+```haxe
+// Non-indexed slot
+result.getSlot("footer").setContent(myWidget);
+result.getSlot("footer").clear();  // restores default content
+
+// Indexed slot — index is required
+result.getSlot("icon", 0).setContent(itemIcon);
+result.getSlot("icon", 2).clear();
+
+// Mismatches throw errors:
+result.getSlot("icon");        // Error: indexed slot requires index
+result.getSlot("footer", 0);  // Error: non-indexed slot rejects index
+```
+
+**Codegen access:**
+```haxe
+// Named accessors
+instance.getSlot_icon(0).setContent(itemIcon);
+instance.getSlot_footer().clear();
+
+// Generic accessor (same validation as builder)
+instance.getSlot("icon", 0);
+instance.getSlot("footer");
+```
+
+**SlotHandle API:**
+* `setContent(obj:h2d.Object)` — hides defaults, adds replacement
+* `clear()` — removes replacement, restores defaults
+* `getContent():Null<h2d.Object>` — returns current replacement or null
+* `container:h2d.Object` — the underlying container object
+
 ### ninepatch
 Draws 9-patch from atlas (requires `split` with 4 values in atlas).
 
@@ -329,12 +421,71 @@ placeholder(name, [onNoData], [source])
 * Sources: `callback("name")`, `callback("name", $i)`, `builderParameter("name")`
 
 ### reference
-References another programmable node.
+Embeds another programmable with parameters. The result is built **once** and is static — parameters cannot be changed after building.
 
 ```
 reference($reference [, <params>])
-reference(external(externalName), $reference, [,<params>])
+reference(external(externalName), $reference [, <params>])
 ```
+
+Use for reusable visual templates that don't need runtime updates.
+
+### component
+Embeds another programmable with **incremental mode** enabled, allowing parameters to be updated at runtime via `setParameter()`. Conditionals and expressions are re-evaluated when parameters change.
+
+```
+component($reference [, <params>])
+component(external(externalName), $reference [, <params>])
+```
+
+The component's `BuilderResult` is stored and accessible via `result.getComponent("name")`:
+
+```haxe
+var result = builder.buildWithParameters("myScreen", []);
+var hpBar = result.getComponent("statusBar");
+hpBar.setParameter("value", 25);   // updates visuals
+```
+
+Use for elements that need dynamic parameter changes after building (health bars, status displays, etc.).
+
+**reference vs component:**
+
+| | `reference` | `component` |
+|---|---|---|
+| Mutable at runtime | No | Yes (`setParameter()`) |
+| Stored in BuilderResult | No | Yes (`getComponent()`) |
+| Overhead | Minimal | Higher (tracks changes) |
+
+### Builder Incremental Update
+
+Components use **incremental mode** internally. You can also enable it directly via `buildWithParameters()`:
+
+```haxe
+var result = builder.buildWithParameters("statusBar", params, builderParams, indexedParams, true);
+```
+
+The last `true` parameter enables incremental mode. When enabled:
+- All conditional branches are built (not just matching ones), with non-matching elements set to `invisible`
+- Expression-dependent properties (text, color, size, position, alpha, tint, filters) are tracked
+- Calling `setParameter()` re-evaluates conditionals and expressions without rebuilding the tree
+
+**API:**
+```haxe
+// Single parameter update (applies immediately)
+result.setParameter("value", 75);
+result.setParameter("label", "ATK");
+
+// Batch update (defers re-evaluation until endUpdate)
+result.beginUpdate();
+result.setParameter("value", 30);
+result.setParameter("label", "MP");
+result.endUpdate();  // applies all changes at once
+
+// Access sub-components
+result.getComponent("statusBar").setParameter("value", 25);
+```
+
+Calling `setParameter()` without incremental mode throws an error.
 
 ### interactive
 Creates a hit-test region for UI interaction. Optionally carries an identifier and typed metadata.
