@@ -1,4 +1,4 @@
-version: 0.3
+version: 0.5
 
 // =============================================================================
 // AUTOTILE BLOB47 FORMAT TEST - Tests buildAutotile() with blob47 format

@@ -1,4 +1,4 @@
-version: 0.3
+version: 0.5
 
 #gameData data {
     #tier record(name: string, cost: int, ?dmg: float)

@@ -135,8 +135,8 @@ animation {
 | `text(font, text, color, [align, maxWidth])` | Text element |
 | `ninepatch(sheet, tile, w, h)` | 9-patch scalable |
 | `placeholder(size, source)` | Dynamic placeholder |
-| `reference($ref)` | Static embed of another programmable |
-| `component($ref, params)` | Dynamic embed with runtime `setParameter()` support |
+| `staticRef($ref)` | Static embed of another programmable |
+| `dynamicRef($ref, params)` | Dynamic embed with runtime `setParameter()` support |
 | `#name slot` / `#name[$i] slot` | Swappable container (indexed variant for repeatables) |
 | `spacer(w, h)` | Empty space inside `flow` containers |
 | `interactive(w, h, id [, debug] [, key=>val ...])` | Hit-test region with optional metadata |
@@ -326,8 +326,8 @@ Metadata supports typed values matching the settings system: `key => val` (strin
 - `SlotHandle` API: `setContent(obj)`, `clear()`, `getContent()`
 - Mismatched access (index on non-indexed or vice versa) throws
 
-**Components** — `component($ref, params)` embeds with incremental mode for runtime parameter updates:
-- Builder: `result.getComponent("name").setParameter("param", value)`
+**Dynamic refs** — `dynamicRef($ref, params)` embeds with incremental mode for runtime parameter updates:
+- Builder: `result.getDynamicRef("name").setParameter("param", value)`
 - Batch updates: `beginUpdate()` / `endUpdate()` defers re-evaluation
 - Codegen: generates runtime builder call, returns `BuilderResult`
 

@@ -1,4 +1,4 @@
-version: 0.3
+version: 0.5
 
 #codegenFilterParam programmable(outlineColor:color=#FF0000, blurRadius:int=2, tintColor:color=#00FF00) {
   bitmap(generated(color(60, 60, #4488FF))) {

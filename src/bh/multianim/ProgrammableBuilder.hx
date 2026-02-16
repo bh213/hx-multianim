@@ -109,13 +109,13 @@ class ProgrammableBuilder {
 		return bh.base.filters.ReplacePaletteShader.createAsPaletteFilter(palette, sourceRow, replacementRow);
 	}
 
-	/** Build a sub-programmable via the builder (for REFERENCE nodes) */
-	public function buildReference(name:String, parameters:Map<String, Dynamic>):BuilderResult {
+	/** Build a sub-programmable via the builder (for STATIC_REF nodes) */
+	public function buildStaticRef(name:String, parameters:Map<String, Dynamic>):BuilderResult {
 		return (_builder : MultiAnimBuilder).buildWithParameters(name, parameters);
 	}
 
-	/** Build a component via the builder (for COMPONENT nodes, always incremental) */
-	public function buildComponent(name:String, parameters:Map<String, Dynamic>):BuilderResult {
+	/** Build a dynamic ref via the builder (for DYNAMIC_REF nodes, always incremental) */
+	public function buildDynamicRef(name:String, parameters:Map<String, Dynamic>):BuilderResult {
 		return (_builder : MultiAnimBuilder).buildWithParameters(name, parameters, null, null, true);
 	}
 

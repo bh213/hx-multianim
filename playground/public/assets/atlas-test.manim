@@ -1,4 +1,4 @@
-version: 0.3
+version: 0.5
 
 #atlasGrid programmable(columns:int=8, sheetName="", sheetLength:int, tileWidth:int=120, tileHeight:int=80, indexY:int) {
   // Use "ui" or "fx" for sheetName to see the difference

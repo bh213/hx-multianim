@@ -402,7 +402,7 @@ class BuilderResult {
 	public var hexCoordinateSystem:Null<HexCoordinateSystem>;
 	public var slots:Map<String, SlotHandle>;
 	public var indexedSlotNames:Map<String, Bool>;
-	public var components:Map<String, BuilderResult>;
+	public var dynamicRefs:Map<String, BuilderResult>;
 	public var incrementalContext:Null<IncrementalUpdateContext>;
 
 	public function setParameter(name:String, value:Dynamic):Void {
@@ -453,13 +453,13 @@ class BuilderResult {
 		return getUpdatable('${name}_${index}');
 	}
 
-	public function getComponent(name:String):BuilderResult {
-		if (components == null)
-			throw 'No components in BuilderResult';
-		final comp = components.get(name);
-		if (comp == null)
-			throw 'Component "$name" not found in BuilderResult';
-		return comp;
+	public function getDynamicRef(name:String):BuilderResult {
+		if (dynamicRefs == null)
+			throw 'No dynamicRefs in BuilderResult';
+		final ref = dynamicRefs.get(name);
+		if (ref == null)
+			throw 'DynamicRef "$name" not found in BuilderResult';
+		return ref;
 	}
 
 	public function getSlot(name:String, ?index:Null<Int>):SlotHandle {
@@ -528,7 +528,7 @@ private typedef InternalBuilderResults = {
 	interactives:Array<MAObject>,
 	slots:Map<String, SlotHandle>,
 	indexedSlotNames:Map<String, Bool>,
-	components:Map<String, BuilderResult>
+	dynamicRefs:Map<String, BuilderResult>
 }
 
 @:nullSafety
@@ -2356,22 +2356,22 @@ class MultiAnimBuilder {
 					HeapsObject(callbackResultH2dObject);
 				}
 
-			case REFERENCE(externalReference, reference, parameters):
+			case STATIC_REF(externalReference, reference, parameters):
 				var builder = if (externalReference != null) {
 					var builder = multiParserResult?.imports?.get(externalReference);
 					if (builder == null)
-						throw 'could not find builder for external reference ${externalReference}' + MacroUtils.nodePos(node);
+						throw 'could not find builder for external staticRef ${externalReference}' + MacroUtils.nodePos(node);
 					builder;
 				} else this;
 
 				#if MULTIANIM_TRACE
-				trace('build reference ${reference} with parameters ${parameters} and builderParams ${builderParams} and indexedParams ${indexedParams}');
+				trace('build staticRef ${reference} with parameters ${parameters} and builderParams ${builderParams} and indexedParams ${indexedParams}');
 				#end
 
 				var result = builder.buildWithParameters(reference, parameters, builderParams, indexedParams);
 				var object = result?.object;
 				if (object == null)
-					throw 'could not build placeholder reference ${reference}' + MacroUtils.nodePos(node);
+					throw 'could not build staticRef ${reference}' + MacroUtils.nodePos(node);
 
 				// When the referenced programmable has a non-zero pos, buildWithParameters wraps it:
 				// holder(0,0) → retRoot(posX,posY) → children
@@ -2386,22 +2386,22 @@ class MultiAnimBuilder {
 
 				HeapsObject(object);
 
-			case COMPONENT(externalReference, reference, parameters):
+			case DYNAMIC_REF(externalReference, reference, parameters):
 				var builder = if (externalReference != null) {
 					var builder = multiParserResult?.imports?.get(externalReference);
 					if (builder == null)
-						throw 'could not find builder for external component reference ${externalReference}' + MacroUtils.nodePos(node);
+						throw 'could not find builder for external dynamicRef ${externalReference}' + MacroUtils.nodePos(node);
 					builder;
 				} else this;
 
-				// Build with incremental: true so the component supports setParameter
+				// Build with incremental: true so the dynamicRef supports setParameter
 				var result = builder.buildWithParameters(reference, parameters, builderParams, indexedParams, true);
 				var object = result?.object;
 				if (object == null)
-					throw 'could not build component reference ${reference}' + MacroUtils.nodePos(node);
+					throw 'could not build dynamicRef ${reference}' + MacroUtils.nodePos(node);
 
-				// Store the sub-result for later access via getComponent()
-				internalResults.components.set(reference, result);
+				// Store the sub-result for later access via getDynamicRef()
+				internalResults.dynamicRefs.set(reference, result);
 
 				if (object.numChildren == 1) {
 					final inner = object.getChildAt(0);
@@ -3002,7 +3002,7 @@ class MultiAnimBuilder {
 			interactives: [],
 			slots: new Map(),
 			indexedSlotNames: new Map(),
-			components: new Map(),
+			dynamicRefs: new Map(),
 		}
 
 		if (isTileGroup) {
@@ -3070,7 +3070,7 @@ class MultiAnimBuilder {
 			gridCoordinateSystem: gridCoordinateSystem,
 			slots: internalResults.slots,
 			indexedSlotNames: internalResults.indexedSlotNames,
-			components: internalResults.components,
+			dynamicRefs: internalResults.dynamicRefs,
 			incrementalContext: null,
 		};
 	}
@@ -4004,7 +4004,7 @@ class MultiAnimBuilder {
 	 *  repeatable node types to the builder at runtime. */
 	function buildSingleNode(node:Node):Null<h2d.Object> {
 		final parent = new h2d.Object();
-		final ir:InternalBuilderResults = {names: [], interactives: [], slots: new Map(), indexedSlotNames: new Map(), components: new Map()};
+		final ir:InternalBuilderResults = {names: [], interactives: [], slots: new Map(), indexedSlotNames: new Map(), dynamicRefs: new Map()};
 		build(node, ObjectMode(parent), null, null, ir, builderParams);
 		return if (parent.numChildren > 0) parent.getChildAt(0) else null;
 	}

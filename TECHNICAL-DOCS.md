@@ -41,12 +41,12 @@ The library has three main layers:
 
 ### BuilderResult
 
-Returned by `buildWithParameters()`. Contains the built h2d object tree and provides access to named elements, slots, components, and updatables.
+Returned by `buildWithParameters()`. Contains the built h2d object tree and provides access to named elements, slots, dynamic refs, and updatables.
 
 **Key methods:**
 - `getUpdatable(name)` / `getUpdatableByIndex(name, index)` — Access named elements for runtime updates
 - `getSlot(name, ?index)` — Access slot containers (`SlotHandle`)
-- `getComponent(name)` — Access component sub-results (`BuilderResult`)
+- `getDynamicRef(name)` — Access dynamic ref sub-results (`BuilderResult`)
 - `setParameter(name, value)` — Update parameters (incremental mode only)
 - `beginUpdate()` / `endUpdate()` — Batch parameter changes
 - `getSingleItemByName(name)` — Get raw h2d.Object by name
@@ -66,9 +66,9 @@ Slots (`#name slot`) create containers whose content can be swapped at runtime v
 
 Indexed slots (`#name[$i] slot`) inside repeatables create per-iteration containers: `getSlot("name", 0)`, `getSlot("name", 1)`, etc. Mismatched access (index on non-indexed or vice versa) throws.
 
-### Component System
+### Dynamic Ref System
 
-Components (`component($ref, params)`) embed programmables with incremental mode enabled automatically. The sub-result is stored and accessible via `getComponent("name")`. This enables runtime parameter updates on embedded elements without rebuilding.
+Dynamic refs (`dynamicRef($ref, params)`) embed programmables with incremental mode enabled automatically. The sub-result is stored and accessible via `getDynamicRef("name")`. This enables runtime parameter updates on embedded elements without rebuilding.
 
 ## UIElements
 

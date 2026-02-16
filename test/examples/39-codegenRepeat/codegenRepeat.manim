@@ -1,4 +1,4 @@
-version: 0.3
+version: 0.5
 
 #codegenRepeat programmable(count:uint=5) {
   // Static step repeat: 4 items with fixed dx offset

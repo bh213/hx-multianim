@@ -1,4 +1,4 @@
-version: 0.3
+version: 0.5
 
 #codegenMultiNamed programmable(status:[idle, hover, pressed, disabled]=idle) {
     #indicator @(status=>idle)     bitmap(generated(color(40, 40, #44aa44))): 10, 10

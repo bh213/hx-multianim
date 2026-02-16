@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Changed
+- **BREAKING: `reference` → `staticRef`, `component` → `dynamicRef`** — DSL keywords, enum variants, and all Haxe API methods renamed
+  - `.manim` syntax: `reference(...)` → `staticRef(...)`, `component(...)` → `dynamicRef(...)`
+  - Builder API: `getComponent("name")` → `getDynamicRef("name")`, `components` map → `dynamicRefs`
+  - Codegen API: `buildReference()` → `buildStaticRef()`, `buildComponent()` → `buildDynamicRef()`
+  - Parser accepts both old and new keywords for backward compatibility
+- **BREAKING: `.manim` version bump 0.3 → 0.5** — All `.manim` files must use `version: 0.5`
+
 ### Added
 - **Interactive metadata** — `interactive()` now supports optional key=>value metadata with typed values
   - Syntax: `interactive(w, h, id [, debug] [, key => val, ...])`
@@ -85,10 +93,10 @@
   - `result.setParameter("name", value)` re-evaluates conditionals and expressions in-place
   - `beginUpdate()`/`endUpdate()` for batching multiple parameter changes
   - Tracks conditional visibility chains and expression-dependent properties
-- **Component element** — `component($ref, params)` embeds a programmable with incremental mode
-  - Like `reference` but supports runtime parameter changes via `setParameter()`
-  - Stored in BuilderResult: `result.getComponent("name")` returns sub-`BuilderResult`
-  - Supports `external()` references for cross-file components
+- **Dynamic ref element** — `dynamicRef($ref, params)` (formerly `component`) embeds a programmable with incremental mode
+  - Like `staticRef` but supports runtime parameter changes via `setParameter()`
+  - Stored in BuilderResult: `result.getDynamicRef("name")` returns sub-`BuilderResult`
+  - Supports `external()` references for cross-file dynamic refs
 - **HTML report: unit test section** — test runner results now displayed in HTML report with expandable per-class/method details, pass/fail status, and failure messages
 
 ## [0.4]
@@ -98,7 +106,7 @@
   - `@:build(ProgrammableCodeGen.buildAll())` on a factory class with `@:manim("path", "name")` field annotations
   - Generates companion classes with typed `create()` factory and `setXxx()` parameter setters
   - Inline `MacroManimParser` parses `.manim` files at compile time (no subprocess)
-  - Elements: bitmap, text, ninepatch, flow, layers, mask, point, interactive, reference, graphics, placeholder
+  - Elements: bitmap, text, ninepatch, flow, layers, mask, point, interactive, staticRef, graphics, placeholder
   - Conditionals: `@(p=>v)`, `@(p!= v)`, `@(p=>[v1,v2])`, ranges, `@else`, `@default`
   - Full expression support: `$param`, arithmetic, ternary, comparisons
   - Properties: scale, alpha, blendMode, tint, filters — all with param-dependent runtime updates

@@ -1,4 +1,4 @@
-version: 0.3
+version: 0.5
 
 // =============================================================================
 // Demo 1: Basic @else - binary toggle
@@ -92,9 +92,9 @@ version: 0.3
   point {
     pos: 10, 10
     text(m3x6, "@else - basic toggle", #888, left, 300):0,0;
-    reference($elseBasic, mode=>on):0,14;
+    staticRef($elseBasic, mode=>on):0,14;
     text(m3x6, "on=>ON", #555, center, 60):0,48;
-    reference($elseBasic, mode=>off):70,14;
+    staticRef($elseBasic, mode=>off):70,14;
     text(m3x6, "off=>OFF", #555, center, 60):70,48;
   }
 
@@ -102,13 +102,13 @@ version: 0.3
   point {
     pos: 10, 70
     text(m3x6, "@else(cond) - else-if chain", #888, left, 300):0,0;
-    reference($elseIfDemo, level=>low):0,14;
+    staticRef($elseIfDemo, level=>low):0,14;
     text(m3x6, "low=>LOW", #555, center, 80):0,48;
-    reference($elseIfDemo, level=>medium):90,14;
+    staticRef($elseIfDemo, level=>medium):90,14;
     text(m3x6, "med=>MED", #555, center, 80):90,48;
-    reference($elseIfDemo, level=>high):180,14;
+    staticRef($elseIfDemo, level=>high):180,14;
     text(m3x6, "high=>HIGH", #555, center, 80):180,48;
-    reference($elseIfDemo, level=>critical):270,14;
+    staticRef($elseIfDemo, level=>critical):270,14;
     text(m3x6, "crit=>CRIT", #555, center, 80):270,48;
   }
 
@@ -116,13 +116,13 @@ version: 0.3
   point {
     pos: 10, 130
     text(m3x6, "@default - catches unmatched", #888, left, 400):0,0;
-    reference($defaultDemo, state=>idle):0,14;
+    staticRef($defaultDemo, state=>idle):0,14;
     text(m3x6, "idle=>IDLE", #555, center, 70):0,48;
-    reference($defaultDemo, state=>hover):80,14;
+    staticRef($defaultDemo, state=>hover):80,14;
     text(m3x6, "hover=>HOVER", #555, center, 70):80,48;
-    reference($defaultDemo, state=>pressed):160,14;
+    staticRef($defaultDemo, state=>pressed):160,14;
     text(m3x6, "press=>OTHER", #555, center, 70):160,48;
-    reference($defaultDemo, state=>disabled):240,14;
+    staticRef($defaultDemo, state=>disabled):240,14;
     text(m3x6, "dis=>OTHER", #555, center, 70):240,48;
   }
 
@@ -130,11 +130,11 @@ version: 0.3
   point {
     pos: 10, 196
     text(m3x6, "@else(range) - temperature", #888, left, 400):0,0;
-    reference($elseRangeDemo, temp=>-20):0,14;
+    staticRef($elseRangeDemo, temp=>-20):0,14;
     text(m3x6, "-20=>ICE", #555, center, 70):0,58;
-    reference($elseRangeDemo, temp=>50):80,14;
+    staticRef($elseRangeDemo, temp=>50):80,14;
     text(m3x6, "50=>WATER", #555, center, 70):80,58;
-    reference($elseRangeDemo, temp=>120):160,14;
+    staticRef($elseRangeDemo, temp=>120):160,14;
     text(m3x6, "120=>STEAM", #555, center, 70):160,58;
   }
 
@@ -142,11 +142,11 @@ version: 0.3
   point {
     pos: 10, 272
     text(m3x6, "@else multi-param", #888, left, 400):0,0;
-    reference($elseMultiDemo, enabled=>yes, style=>bold):0,14;
+    staticRef($elseMultiDemo, enabled=>yes, style=>bold):0,14;
     text(m3x6, "y+b=>ON+B", #555, center, 60):0,48;
-    reference($elseMultiDemo, enabled=>yes, style=>normal):70,14;
+    staticRef($elseMultiDemo, enabled=>yes, style=>normal):70,14;
     text(m3x6, "y+n=>ON", #555, center, 60):70,48;
-    reference($elseMultiDemo, enabled=>no, style=>normal):140,14;
+    staticRef($elseMultiDemo, enabled=>no, style=>normal):140,14;
     text(m3x6, "n+n=>OFF", #555, center, 60):140,48;
   }
 }

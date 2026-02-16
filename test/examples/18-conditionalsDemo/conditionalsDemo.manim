@@ -1,4 +1,4 @@
-version: 0.3
+version: 0.5
 
 // =============================================================================
 // Demo 1: Basic enum matching with @(param=>value)
@@ -98,46 +98,46 @@ version: 0.3
   point {
     pos: 40, 60
     text(m3x6, "@(param=>value) - exact match", #888, left, 300):0,0;
-    reference($enumDemo, state=>idle):0,12;
-    reference($enumDemo, state=>active):70,12;
-    reference($enumDemo, state=>error):140,12;
+    staticRef($enumDemo, state=>idle):0,12;
+    staticRef($enumDemo, state=>active):70,12;
+    staticRef($enumDemo, state=>error):140,12;
   }
 
   // --- Row 2: Negation ---
   point {
     pos: 40, 120
     text(m3x6, "@(param != value) - not equal", #888, left, 300):0,0;
-    reference($notDemo, mode=>on):0,12;
-    reference($notDemo, mode=>off):70,12;
+    staticRef($notDemo, mode=>on):0,12;
+    staticRef($notDemo, mode=>off):70,12;
   }
 
   // --- Row 3: Multiple values ---
   point {
     pos: 40, 180
     text(m3x6, "@(param=>[v1,v2]) - match any", #888, left, 300):0,0;
-    reference($multiDemo, level=>low):0,12;
-    reference($multiDemo, level=>medium):90,12;
-    reference($multiDemo, level=>high):180,12;
-    reference($multiDemo, level=>critical):270,12;
+    staticRef($multiDemo, level=>low):0,12;
+    staticRef($multiDemo, level=>medium):90,12;
+    staticRef($multiDemo, level=>high):180,12;
+    staticRef($multiDemo, level=>critical):270,12;
   }
 
   // --- Row 4: Combined ---
   point {
     pos: 40, 240
     text(m3x6, "@(p1=>v1, p2=>v2) - AND logic", #888, left, 300):0,0;
-    reference($combinedDemo, x=>A, y=>X):0,12;
-    reference($combinedDemo, x=>A, y=>Y):60,12;
-    reference($combinedDemo, x=>B, y=>X):120,12;
-    reference($combinedDemo, x=>B, y=>Y):180,12;
+    staticRef($combinedDemo, x=>A, y=>X):0,12;
+    staticRef($combinedDemo, x=>A, y=>Y):60,12;
+    staticRef($combinedDemo, x=>B, y=>X):120,12;
+    staticRef($combinedDemo, x=>B, y=>Y):180,12;
   }
 
   // --- Row 5: Range conditions (temperature) ---
   point {
     pos: 40, 300
     text(m3x6, "Range: >= <= > < and N..N", #888, left, 350):0,0;
-    reference($tempDemo, temp=>-20):0,12;
-    reference($tempDemo, temp=>50):80,12;
-    reference($tempDemo, temp=>120):160,12;
+    staticRef($tempDemo, temp=>-20):0,12;
+    staticRef($tempDemo, temp=>50):80,12;
+    staticRef($tempDemo, temp=>120):160,12;
   }
 
   // --- Row 6: @ifstrict ---
@@ -145,13 +145,13 @@ version: 0.3
     pos: 40, 360
     text(m3x6, "@ifstrict - must match ALL (red X = no match)", #888, left, 400):0,0;
     // Full matches - green
-    reference($strictDemo, a=>X, b=>P):0,12;
-    reference($strictDemo, a=>X, b=>Q):60,12;
-    reference($strictDemo, a=>Y, b=>P):120,12;
-    reference($strictDemo, a=>Y, b=>Q):180,12;
+    staticRef($strictDemo, a=>X, b=>P):0,12;
+    staticRef($strictDemo, a=>X, b=>Q):60,12;
+    staticRef($strictDemo, a=>Y, b=>P):120,12;
+    staticRef($strictDemo, a=>Y, b=>Q):180,12;
     // Partial params - no match, shows red X
-    reference($strictDemo, a=>X):250,12;
-    reference($strictDemo, b=>P):310,12;
+    staticRef($strictDemo, a=>X):250,12;
+    staticRef($strictDemo, b=>P):310,12;
   }
 
   // --- Right side: Syntax reference ---

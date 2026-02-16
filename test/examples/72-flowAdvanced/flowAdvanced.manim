@@ -1,4 +1,4 @@
-version: 0.3
+version: 0.5
 
 #flowBox programmable(w:uint=30, h:uint=15, color:color=#884422) {
   bitmap(generated(color($w, $h, $color))): 0, 0
@@ -14,18 +14,18 @@ version: 0.3
     point {
       pos: 0, 10
       flow(layout: horizontal, horizontalSpacing: 2) {
-        reference($flowBox, color=>#ff4444);
-        reference($flowBox, color=>#44ff44);
-        reference($flowBox, color=>#4444ff);
+        staticRef($flowBox, color=>#ff4444);
+        staticRef($flowBox, color=>#44ff44);
+        staticRef($flowBox, color=>#4444ff);
       }
     }
     text(m3x6, "reverse: true", #888): 120, 0
     point {
       pos: 120, 10
       flow(layout: horizontal, horizontalSpacing: 2, reverse: true) {
-        reference($flowBox, color=>#ff4444);
-        reference($flowBox, color=>#44ff44);
-        reference($flowBox, color=>#4444ff);
+        staticRef($flowBox, color=>#ff4444);
+        staticRef($flowBox, color=>#44ff44);
+        staticRef($flowBox, color=>#4444ff);
       }
     }
 
@@ -34,11 +34,11 @@ version: 0.3
     point {
       pos: 0, 50
       flow(layout: vertical, verticalSpacing: 1) {
-        reference($flowBox, w=>40, h=>10, color=>#ff8844);
+        staticRef($flowBox, w=>40, h=>10, color=>#ff8844);
         spacer(0, 8);
-        reference($flowBox, w=>40, h=>10, color=>#44ff88);
+        staticRef($flowBox, w=>40, h=>10, color=>#44ff88);
         spacer(0, 4);
-        reference($flowBox, w=>40, h=>10, color=>#8844ff);
+        staticRef($flowBox, w=>40, h=>10, color=>#8844ff);
       }
     }
 
@@ -47,18 +47,18 @@ version: 0.3
     point {
       pos: 120, 50
       flow(maxWidth: 50, layout: horizontal, overflow: expand) {
-        reference($flowBox, w=>30, h=>15, color=>#ff4488);
-        reference($flowBox, w=>30, h=>15, color=>#44ff88);
-        reference($flowBox, w=>30, h=>15, color=>#8844ff);
+        staticRef($flowBox, w=>30, h=>15, color=>#ff4488);
+        staticRef($flowBox, w=>30, h=>15, color=>#44ff88);
+        staticRef($flowBox, w=>30, h=>15, color=>#8844ff);
       }
     }
     text(m3x6, "overflow: hidden", #888): 120, 80
     point {
       pos: 120, 90
       flow(maxWidth: 50, layout: horizontal, overflow: hidden) {
-        reference($flowBox, w=>30, h=>15, color=>#ff4488);
-        reference($flowBox, w=>30, h=>15, color=>#44ff88);
-        reference($flowBox, w=>30, h=>15, color=>#8844ff);
+        staticRef($flowBox, w=>30, h=>15, color=>#ff4488);
+        staticRef($flowBox, w=>30, h=>15, color=>#44ff88);
+        staticRef($flowBox, w=>30, h=>15, color=>#8844ff);
       }
     }
   }

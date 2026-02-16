@@ -1,4 +1,4 @@
-version: 0.3
+version: 0.5
 
 #tilesIteration programmable() {
   pos: 0, 0
@@ -40,5 +40,5 @@ version: 0.3
 
 #main point {
   pos: 0, 0
-  reference($tilesIteration):0,0
+  staticRef($tilesIteration):0,0
 }

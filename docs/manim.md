@@ -420,45 +420,45 @@ placeholder(name, [onNoData], [source])
 * `onNoData`: `error`, `nothing`, or tileSource
 * Sources: `callback("name")`, `callback("name", $i)`, `builderParameter("name")`
 
-### reference
+### staticRef
 Embeds another programmable with parameters. The result is built **once** and is static — parameters cannot be changed after building.
 
 ```
-reference($reference [, <params>])
-reference(external(externalName), $reference [, <params>])
+staticRef($reference [, <params>])
+staticRef(external(externalName), $reference [, <params>])
 ```
 
 Use for reusable visual templates that don't need runtime updates.
 
-### component
+### dynamicRef
 Embeds another programmable with **incremental mode** enabled, allowing parameters to be updated at runtime via `setParameter()`. Conditionals and expressions are re-evaluated when parameters change.
 
 ```
-component($reference [, <params>])
-component(external(externalName), $reference [, <params>])
+dynamicRef($reference [, <params>])
+dynamicRef(external(externalName), $reference [, <params>])
 ```
 
-The component's `BuilderResult` is stored and accessible via `result.getComponent("name")`:
+The dynamic ref's `BuilderResult` is stored and accessible via `result.getDynamicRef("name")`:
 
 ```haxe
 var result = builder.buildWithParameters("myScreen", []);
-var hpBar = result.getComponent("statusBar");
+var hpBar = result.getDynamicRef("statusBar");
 hpBar.setParameter("value", 25);   // updates visuals
 ```
 
 Use for elements that need dynamic parameter changes after building (health bars, status displays, etc.).
 
-**reference vs component:**
+**staticRef vs dynamicRef:**
 
-| | `reference` | `component` |
+| | `staticRef` | `dynamicRef` |
 |---|---|---|
 | Mutable at runtime | No | Yes (`setParameter()`) |
-| Stored in BuilderResult | No | Yes (`getComponent()`) |
+| Stored in BuilderResult | No | Yes (`getDynamicRef()`) |
 | Overhead | Minimal | Higher (tracks changes) |
 
 ### Builder Incremental Update
 
-Components use **incremental mode** internally. You can also enable it directly via `buildWithParameters()`:
+Dynamic refs use **incremental mode** internally. You can also enable it directly via `buildWithParameters()`:
 
 ```haxe
 var result = builder.buildWithParameters("statusBar", params, builderParams, indexedParams, true);
@@ -481,8 +481,8 @@ result.setParameter("value", 30);
 result.setParameter("label", "MP");
 result.endUpdate();  // applies all changes at once
 
-// Access sub-components
-result.getComponent("statusBar").setParameter("value", 25);
+// Access sub-dynamic refs
+result.getDynamicRef("statusBar").setParameter("value", 25);
 ```
 
 Calling `setParameter()` without incremental mode throws an error.
@@ -2055,7 +2055,7 @@ Both approaches render identically — the macro system generates the same h2d t
 **1. Define a programmable in a `.manim` file:**
 
 ```
-version: 0.3
+version: 0.5
 
 #myButton programmable(status:[hover, pressed, normal]=normal, buttonText="Click") {
     @(status=>normal)  ninepatch("ui", "button-idle", 200, 30):    0, 0
@@ -2250,7 +2250,7 @@ fx.setBlurRadius(5);
 fx.setTintColor(0xFF0000);
 ```
 
-#### References to other programmables
+#### Static refs to other programmables
 
 ```
 // components.manim
@@ -2259,13 +2259,13 @@ fx.setTintColor(0xFF0000);
 }
 
 #threeBoxes programmable() {
-    reference($colorBox, width=>100, height=>80, c1=>#FF0000): 20, 20;
-    reference($colorBox, width=>100, height=>80, c1=>#00FF00): 140, 20;
-    reference($colorBox, width=>100, height=>80, c1=>#0000FF): 260, 20;
+    staticRef($colorBox, width=>100, height=>80, c1=>#FF0000): 20, 20;
+    staticRef($colorBox, width=>100, height=>80, c1=>#00FF00): 140, 20;
+    staticRef($colorBox, width=>100, height=>80, c1=>#0000FF): 260, 20;
 }
 ```
 
-References are resolved at runtime — the macro generates a `buildReference()` call that uses the runtime builder to construct the referenced programmable's tree dynamically.
+Static refs are resolved at runtime — the macro generates a `buildStaticRef()` call that uses the runtime builder to construct the referenced programmable's tree dynamically.
 
 #### Range and flags parameters
 

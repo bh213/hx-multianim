@@ -1,4 +1,4 @@
-version: 0.3
+version: 0.5
 
 // =============================================================================
 // BLOB47 FALLBACK TEST - Tests blob47 with partial tileset (uses fallback)

@@ -1,4 +1,4 @@
-version: 0.3
+version: 0.5
 
 #codegenArray programmable(items:array=[one, two, three], colors:array=[red,green,blue,yellow]) {
   repeatable($i, array($val, $items)) {

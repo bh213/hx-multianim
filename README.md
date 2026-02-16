@@ -59,7 +59,7 @@ npm install -g lix
 
 2. **Create a UI element** (`.manim`):
    ```
-   version: 0.3
+   version: 0.5
 
    #textDemo programmable() {
      text(dd, "Hello World", red, left, 200): 0, 0

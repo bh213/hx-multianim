@@ -1,4 +1,4 @@
-version: 0.3
+version: 0.5
 
 #codegenRangeFlags programmable(level:0..100=60, power:0..50=30, bits:flags(8)=5) {
       @(level => 50..100) ninepatch("ui", "button-idle", $level * 2, 15): 0, 0
