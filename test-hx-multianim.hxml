@@ -5,7 +5,7 @@
 
 -lib heaps
 -lib utest
--lib hlsdl
+-lib hldx
 
 -cp test/src
 -p src
