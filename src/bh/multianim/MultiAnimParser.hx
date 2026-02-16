@@ -217,6 +217,7 @@ enum PlaceholderReplacementSource {
 enum UpdatableNameType {
 	UNTObject(name:String);
 	UNTUpdatable(name:String);
+	UNTIndexed(name:String, indexVar:String);
 }
 
 enum SettingValueType {
@@ -242,6 +243,7 @@ function getNameString(updatableNameType:UpdatableNameType) {
 	return switch updatableNameType {
 		case UNTObject(name): name;
 		case UNTUpdatable(name): name;
+		case UNTIndexed(name, _): name;
 	}
 }
 
@@ -861,8 +863,10 @@ enum NodeType {
 		lineHeight:Null<ReferenceableValue>, colWidth:Null<ReferenceableValue>, layout:Null<MacroFlowLayout>,
 		paddingTop:Null<ReferenceableValue>,paddingBottom:Null<ReferenceableValue>, paddingLeft:Null<ReferenceableValue>, paddingRight:Null<ReferenceableValue>,
 		horizontalSpacing:Null<ReferenceableValue>, verticalSpacing:Null<ReferenceableValue>, debug:Bool, multiline:Bool,
-		bgSheet:Null<ReferenceableValue>, bgTile:Null<ReferenceableValue>
+		bgSheet:Null<ReferenceableValue>, bgTile:Null<ReferenceableValue>,
+		overflow:Null<MacroFlowOverflow>, fillWidth:Bool, fillHeight:Bool, reverse:Bool
 		);
+	SPACER(width:Null<ReferenceableValue>, height:Null<ReferenceableValue>);
 	BITMAP(tileSource:TileSource, hAlign:HorizontalAlign, vAlign:VerticalAlign);
 	POINT;
 	STATEANIM(filename:String, initialState:ReferenceableValue, selector:Map<String, ReferenceableValue>);
@@ -891,6 +895,8 @@ enum NodeType {
 	AUTOTILE(autotileDef:AutotileDef);
 	ATLAS2(atlas2Def:Atlas2Def);
 	DATA(dataDef:DataDef);
+	SLOT;
+	COMPONENT(externalReference:Null<String>, programmableReference:String, parameters:Map<String, ReferenceableValue>);
 	FINAL_VAR(name:String, value:ReferenceableValue);
 }
 

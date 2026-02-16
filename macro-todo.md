@@ -22,6 +22,13 @@
 | **Parse-time variable validation** | Unknown `$var` references produce errors listing available variables. Tracks parameter defs (`activeDefs`), loop vars, iterator output vars, `@final` vars (`scopeVars`). |
 | **Paths, curves, animated paths** | `getPath_<name>()`, `getAnimatedPath_<name>()`, `getCurve_<name>()` factory methods. Easing-only curves baked inline at compile time. |
 | **Param-dependent repeatable rebuild** | Repeatables whose iterator count depends on parameters use runtime rebuild with object pooling instead of static children. |
+| **`createFrom()` named parameters** | Every `@:manim` factory generates `createFrom({...})` alongside `create(...)`. Takes anonymous struct; optional params can be omitted. |
+| **Indexed named getters** | `#name[$i]` inside repeatable → `get_name(index:Int)` on instance. |
+| **Slot codegen** | `#name slot` → `getSlot_name()` and generic `getSlot("name")`. Indexed: `getSlot_name(index)` / `getSlot("name", index)`. |
+| **Component codegen** | `component($ref, params)` generates runtime builder call with incremental mode. `getComponent("name")` returns `BuilderResult`. |
+| **Filter codegen** | Param-driven filters (outline, blur, glow, etc.) generate runtime update code in setters. |
+| **`@:data` mergeTypes** | `@:data("file", "name", "pkg", mergeTypes)` deduplicates identical record types across multiple `@:data` fields. |
+| **`@:data` custom package** | 3rd parameter overrides generated record type package. |
 
 ## Phase 2: Performance — optimize generated code
 

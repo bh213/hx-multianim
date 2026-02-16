@@ -211,4 +211,16 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/68-filtersAdvanced/filtersAdvanced.manim", "filtersAdvanced")
 	public var filtersAdvanced;
+
+	@:manim("test/examples/70-indexedNamed/indexedNamed.manim", "indexedNamed")
+	public var indexedNamed;
+
+	@:manim("test/examples/71-slotDemo/slotDemo.manim", "slotDemo")
+	public var slotDemo;
+
+	@:manim("test/examples/72-flowAdvanced/flowAdvanced.manim", "flowAdvanced")
+	public var flowAdvanced;
+
+	@:manim("test/examples/73-componentDemo/componentDemo.manim", "componentDemo")
+	public var componentDemo;
 }

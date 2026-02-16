@@ -114,6 +114,11 @@ class ProgrammableBuilder {
 		return (_builder : MultiAnimBuilder).buildWithParameters(name, parameters);
 	}
 
+	/** Build a component via the builder (for COMPONENT nodes, always incremental) */
+	public function buildComponent(name:String, parameters:Map<String, Dynamic>):BuilderResult {
+		return (_builder : MultiAnimBuilder).buildWithParameters(name, parameters, null, null, true);
+	}
+
 	/** Build a particle system via the builder (for PARTICLES nodes).
 	 *  Searches the named programmable's children for a PARTICLES node. */
 	public function buildParticles(programmableName:String):bh.base.Particles {

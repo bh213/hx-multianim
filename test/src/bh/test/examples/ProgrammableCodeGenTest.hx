@@ -2422,6 +2422,32 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		return null;
 	}
 
+	static function findAllTextDescendants(obj:h2d.Object):Array<h2d.Text> {
+		var result:Array<h2d.Text> = [];
+		for (i in 0...obj.numChildren) {
+			final child = obj.getChildAt(i);
+			if (Std.isOfType(child, h2d.Text))
+				result.push(cast child);
+			for (t in findAllTextDescendants(child))
+				result.push(t);
+		}
+		return result;
+	}
+
+	static function findVisibleBitmapDescendants(obj:h2d.Object):Array<h2d.Bitmap> {
+		var result:Array<h2d.Bitmap> = [];
+		for (i in 0...obj.numChildren) {
+			final child = obj.getChildAt(i);
+			if (child.visible) {
+				if (Std.isOfType(child, h2d.Bitmap))
+					result.push(cast child);
+				for (b in findVisibleBitmapDescendants(child))
+					result.push(b);
+			}
+		}
+		return result;
+	}
+
 	static function countAllDescendants(obj:h2d.Object):Int {
 		var count = obj.numChildren;
 		for (i in 0...obj.numChildren) {
@@ -2715,5 +2741,342 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	@Test
 	public function test69_ManimImport(async:utest.Async):Void {
 		simpleTest(69, "manimImport", async);
+	}
+
+	// ==================== Indexed named elements: #name[$i] ====================
+
+	@Test
+	public function test70_IndexedNamed(async:utest.Async):Void {
+		simpleMacroTest(70, "indexedNamed", () -> createMp().indexedNamed.create(), async);
+	}
+
+	// ==================== Slot element ====================
+
+	@Test
+	public function test71_SlotDemo(async:utest.Async):Void {
+		simpleMacroTest(71, "slotDemo", () -> createMp().slotDemo.create(), async);
+	}
+
+	// ==================== Slot + indexed named: unit tests ====================
+
+	@Test
+	public function testSlotBuilderSetContent():Void {
+		final fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/71-slotDemo/slotDemo.manim"));
+		final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+		final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "slotDemo.manim");
+		final result = builder.buildWithParameters("slotDemo", new Map());
+
+		// Static slot access
+		final footer = result.getSlot("footer");
+		Assert.notNull(footer, "Should have footer slot");
+		Assert.isNull(footer.getContent(), "No custom content initially");
+
+		var defaultVisible = countVisibleChildren(footer.container);
+		Assert.isTrue(defaultVisible > 0, "Default content should be visible");
+
+		final custom = new h2d.Object();
+		footer.setContent(custom);
+		Assert.equals(custom, footer.getContent());
+
+		footer.clear();
+		Assert.isNull(footer.getContent(), "Content cleared");
+		Assert.isTrue(countVisibleChildren(footer.container) > 0, "Defaults visible again");
+
+		// Indexed slot access: #icon[$i] slot → getSlot("icon", index)
+		final slot0 = result.getSlot("icon", 0);
+		Assert.notNull(slot0, "Should have icon slot 0 from repeatable");
+		final slot1 = result.getSlot("icon", 1);
+		Assert.notNull(slot1, "Should have icon slot 1 from repeatable");
+		final slot2 = result.getSlot("icon", 2);
+		Assert.notNull(slot2, "Should have icon slot 2 from repeatable");
+
+		// Mismatch: indexed slot without index → throws
+		var threw = false;
+		try { result.getSlot("icon"); } catch (e:Dynamic) { threw = true; }
+		Assert.isTrue(threw, "getSlot('icon') without index should throw");
+
+		// Mismatch: non-indexed slot with index → throws
+		threw = false;
+		try { result.getSlot("footer", 0); } catch (e:Dynamic) { threw = true; }
+		Assert.isTrue(threw, "getSlot('footer', 0) with index should throw");
+
+		// Slot set/clear on indexed slot
+		final customIcon = new h2d.Object();
+		slot0.setContent(customIcon);
+		Assert.equals(customIcon, slot0.getContent());
+		slot0.clear();
+		Assert.isNull(slot0.getContent(), "Indexed slot cleared");
+
+		// Indexed named access (3 items from step(3))
+		final label0 = result.getUpdatableByIndex("label", 0);
+		Assert.notNull(label0, "Builder label_0 should exist");
+		final icon2 = result.getUpdatableByIndex("icon", 2);
+		Assert.notNull(icon2, "Builder icon_2 should exist");
+	}
+
+	@Test
+	public function testSlotCodegenGetSlot():Void {
+		final mp = createMp();
+		final instance = mp.slotDemo.create();
+		Assert.notNull(instance, "SlotDemo should be created");
+
+		// Static slot access
+		final footer = instance.getSlot_footer();
+		Assert.notNull(footer, "Should have footer slot via typed accessor");
+		final footerGeneric = instance.getSlot("footer");
+		Assert.notNull(footerGeneric, "Should have footer slot via generic accessor");
+
+		// Indexed slot access: getSlot_icon(index) accessor
+		final slot0 = instance.getSlot_icon(0);
+		Assert.notNull(slot0, "Should have icon slot 0 via indexed accessor");
+		final slot1 = instance.getSlot_icon(1);
+		Assert.notNull(slot1, "Should have icon slot 1 via indexed accessor");
+		final slot2 = instance.getSlot("icon", 2);
+		Assert.notNull(slot2, "Should have icon slot 2 via generic accessor");
+
+		// Indexed named access
+		final label0 = instance.get_label(0);
+		Assert.notNull(label0, "label[0] should exist via codegen");
+		final icon1 = instance.get_icon(1);
+		Assert.notNull(icon1, "icon[1] should exist via codegen");
+	}
+
+	// ==================== Flow improvements: visual (overflow, reverse, spacer) ====================
+
+	@Test
+	public function test72_FlowAdvanced(async:utest.Async):Void {
+		simpleMacroTest(72, "flowAdvanced", () -> createMp().flowAdvanced.create(), async);
+	}
+
+	// ==================== Component element: visual ====================
+
+	@Test
+	public function test73_ComponentDemo(async:utest.Async):Void {
+		simpleTest(73, "componentDemo", async);
+	}
+
+	// ==================== Indexed named: unit tests ====================
+
+	@Test
+	public function testIndexedNamedCodegenAccessors():Void {
+		final mp = createMp();
+		final instance = mp.indexedNamed.create();
+		Assert.notNull(instance, "IndexedNamed should be created");
+
+		// Access indexed elements via generated get_label/get_icon (4 items, step(4))
+		final label0 = instance.get_label(0);
+		Assert.notNull(label0, "label[0] should exist");
+		final label1 = instance.get_label(1);
+		Assert.notNull(label1, "label[1] should exist");
+		final label2 = instance.get_label(2);
+		Assert.notNull(label2, "label[2] should exist");
+		final label3 = instance.get_label(3);
+		Assert.notNull(label3, "label[3] should exist");
+
+		// Out of range should return null
+		final labelOob = instance.get_label(99);
+		Assert.isNull(labelOob, "Out of range should be null");
+
+		final icon0 = instance.get_icon(0);
+		Assert.notNull(icon0, "icon[0] should exist");
+
+		// Verify labels are h2d.Text with correct text content (text is $i = "0","1","2","3")
+		Assert.isTrue(Std.isOfType(label0, h2d.Text), "label[0] should be h2d.Text");
+		final text0:h2d.Text = cast label0;
+		Assert.equals("0", text0.text, "label[0] text should be '0'");
+		final text1:h2d.Text = cast label1;
+		Assert.equals("1", text1.text, "label[1] text should be '1'");
+		final text3:h2d.Text = cast label3;
+		Assert.equals("3", text3.text, "label[3] text should be '3'");
+
+		// Verify icons are h2d.Bitmap
+		Assert.isTrue(Std.isOfType(icon0, h2d.Bitmap), "icon[0] should be h2d.Bitmap");
+
+		// Test visibility changes on indexed elements
+		Assert.isTrue(label0.visible, "label[0] should be visible initially");
+		label0.visible = false;
+		Assert.isFalse(label0.visible, "label[0] should be hidden after change");
+		Assert.isTrue(label1.visible, "label[1] should still be visible");
+		label0.visible = true;
+
+		// Verify each element is a distinct object
+		Assert.isFalse(label0 == label1, "label[0] and label[1] should be different objects");
+		Assert.isFalse(icon0 == instance.get_icon(1), "icon[0] and icon[1] should be different objects");
+	}
+
+	@Test
+	public function testIndexedNamedBuilderByIndex():Void {
+		final fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/70-indexedNamed/indexedNamed.manim"));
+		final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+		final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "indexedNamed.manim");
+		final result = builder.buildWithParameters("indexedNamed", new Map());
+
+		// Verify all 4 indexed labels exist
+		final label0 = result.getUpdatableByIndex("label", 0);
+		Assert.notNull(label0, "Builder label_0 should exist");
+		final label1 = result.getUpdatableByIndex("label", 1);
+		Assert.notNull(label1, "Builder label_1 should exist");
+		final label2 = result.getUpdatableByIndex("label", 2);
+		Assert.notNull(label2, "Builder label_2 should exist");
+		final label3 = result.getUpdatableByIndex("label", 3);
+		Assert.notNull(label3, "Builder label_3 should exist");
+
+		// Verify all 4 indexed icons exist
+		final icon0 = result.getUpdatableByIndex("icon", 0);
+		Assert.notNull(icon0, "Builder icon_0 should exist");
+		final icon1 = result.getUpdatableByIndex("icon", 1);
+		Assert.notNull(icon1, "Builder icon_1 should exist");
+
+		// Use updateText on label updatable
+		label0.updateText("updated");
+		// Use setVisibility on icon updatable
+		icon1.setVisibility(false);
+	}
+
+	// ==================== Incremental update: unit tests ====================
+
+	@Test
+	public function testIncrementalConditionalVisibility():Void {
+		// Use elseBasic from test 31 — has @(mode=>on) and @else
+		final fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/31-elseDefaultDemo/elseDefaultDemo.manim"));
+		final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+		final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "elseDefaultDemo.manim");
+
+		final params = new Map<String, Dynamic>();
+		params.set("mode", "on");
+		final result = builder.buildWithParameters("elseBasic", params, null, null, true);
+
+		Assert.notNull(result.incrementalContext, "Should have incremental context");
+		var visibleBefore = countVisibleDescendants(result.object);
+		Assert.isTrue(visibleBefore > 0, "Should have visible children in 'on' mode");
+
+		// Switch to "off"
+		result.setParameter("mode", "off");
+		var visibleAfter = countVisibleDescendants(result.object);
+		Assert.isTrue(visibleAfter > 0, "Should have visible children in 'off' mode");
+	}
+
+	@Test
+	public function testIncrementalBatchUpdate():Void {
+		final fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/31-elseDefaultDemo/elseDefaultDemo.manim"));
+		final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+		final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "elseDefaultDemo.manim");
+
+		final params = new Map<String, Dynamic>();
+		params.set("mode", "on");
+		final result = builder.buildWithParameters("elseBasic", params, null, null, true);
+
+		// Batch update should not throw
+		result.beginUpdate();
+		result.setParameter("mode", "off");
+		result.endUpdate();
+
+		Assert.isTrue(countVisibleDescendants(result.object) > 0, "Should work after batch update");
+	}
+
+	@Test
+	public function testIncrementalRequiresFlag():Void {
+		final fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/31-elseDefaultDemo/elseDefaultDemo.manim"));
+		final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+		final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "elseDefaultDemo.manim");
+
+		final params = new Map<String, Dynamic>();
+		params.set("mode", "on");
+		final result = builder.buildWithParameters("elseBasic", params);
+
+		// Without incremental:true, setParameter should throw
+		Assert.isNull(result.incrementalContext, "Should NOT have incremental context without flag");
+		var threw = false;
+		try {
+			result.setParameter("mode", "off");
+		} catch (e:Dynamic) {
+			threw = true;
+		}
+		Assert.isTrue(threw, "setParameter without incremental mode should throw");
+	}
+
+	// ==================== Builder incremental update: statusBar ====================
+
+	@Test
+	public function testBuilderUpdateConditionalSwitch():Void {
+		// Build statusBar with value=80 (>= 50 → green bitmap visible)
+		final fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/73-componentDemo/componentDemo.manim"));
+		final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+		final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "componentDemo.manim");
+
+		final params = new Map<String, Dynamic>();
+		params.set("value", 80);
+		params.set("label", "HP");
+		final result = builder.buildWithParameters("statusBar", params, null, null, true);
+		Assert.notNull(result.incrementalContext, "Should be incremental");
+
+		// With value=80, @(value >= 50) matches → green visible, red hidden
+		var visibleBitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.isTrue(visibleBitmaps.length >= 1, "Should have at least 1 visible bitmap at value=80");
+
+		// Switch to value=30 (< 50 → red bitmap visible)
+		result.setParameter("value", 30);
+		var visibleAfter = findVisibleBitmapDescendants(result.object);
+		Assert.isTrue(visibleAfter.length >= 1, "Should have at least 1 visible bitmap at value=30");
+	}
+
+	@Test
+	public function testBuilderUpdateTextExpression():Void {
+		// Build statusBar — text shows $label
+		final fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/73-componentDemo/componentDemo.manim"));
+		final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+		final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "componentDemo.manim");
+
+		final params = new Map<String, Dynamic>();
+		params.set("value", 80);
+		params.set("label", "HP");
+		final result = builder.buildWithParameters("statusBar", params, null, null, true);
+
+		// Find the text element — should show "HP"
+		var texts = findAllTextDescendants(result.object);
+		Assert.isTrue(texts.length >= 1, "Should have text element");
+		Assert.equals("HP", texts[0].text);
+
+		// Update label
+		result.setParameter("label", "ATK");
+		Assert.equals("ATK", texts[0].text);
+	}
+
+	@Test
+	public function testBuilderUpdateMultipleParams():Void {
+		final fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/73-componentDemo/componentDemo.manim"));
+		final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+		final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "componentDemo.manim");
+
+		final params = new Map<String, Dynamic>();
+		params.set("value", 80);
+		params.set("label", "HP");
+		final result = builder.buildWithParameters("statusBar", params, null, null, true);
+
+		// Batch update both params at once
+		result.beginUpdate();
+		result.setParameter("value", 20);
+		result.setParameter("label", "MP");
+		result.endUpdate();
+
+		var texts = findAllTextDescendants(result.object);
+		Assert.isTrue(texts.length >= 1, "Should have text");
+		Assert.equals("MP", texts[0].text);
+		Assert.isTrue(findVisibleBitmapDescendants(result.object).length >= 1, "Should have visible bitmap");
+	}
+
+	// ==================== Component: unit tests ====================
+
+	@Test
+	public function testComponentBuilderGetComponent():Void {
+		final fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/73-componentDemo/componentDemo.manim"));
+		final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+		final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "componentDemo.manim");
+		final result = builder.buildWithParameters("componentDemo", new Map());
+
+		final comp = result.getComponent("statusBar");
+		Assert.notNull(comp, "Should have statusBar component");
+		Assert.notNull(comp.object, "Component should have an object");
+		Assert.notNull(comp.incrementalContext, "Component should be built incrementally");
 	}
 }

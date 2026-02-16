@@ -1249,4 +1249,56 @@ class ParserErrorTest extends utest.Test {
 		');
 		Assert.isTrue(success, "Non-programmable blocks should parse without variable validation");
 	}
+
+	@Test
+	public function testNameWithoutIndexInsideRepeatable() {
+		var error = parseExpectingError("
+			#test programmable(n:uint=3) {
+				repeatable($i, step($n, dx: 40)) {
+					#label text(f3x5, $i, #ffffffff): 0, 0
+				}
+			}
+		");
+		Assert.notNull(error, "Should throw error for #name without [$i] inside repeatable");
+		Assert.isTrue(error.indexOf("requires indexed form") >= 0,
+			'Error should mention indexed form, got: $error');
+	}
+
+	@Test
+	public function testNameWithoutIndexInsideNestedRepeatable() {
+		var error = parseExpectingError("
+			#test programmable(n:uint=3) {
+				repeatable($i, step($n, dx: 40)) {
+					repeatable($j, step($n, dy: 20)) {
+						#icon bitmap(generated(color(10, 10, #ff0000))): 0, 0
+					}
+				}
+			}
+		");
+		Assert.notNull(error, "Should throw error for #name without index in nested repeatable");
+		Assert.isTrue(error.indexOf("requires indexed form") >= 0,
+			'Error should mention indexed form, got: $error');
+	}
+
+	@Test
+	public function testIndexedNameInsideRepeatableIsValid() {
+		var success = parseExpectingSuccess("
+			#test programmable(n:uint=3) {
+				repeatable($i, step($n, dx: 40)) {
+					#label[$i] text(f3x5, $i, #ffffffff): 0, 0
+				}
+			}
+		");
+		Assert.isTrue(success, "#name[$i] inside repeatable should be valid");
+	}
+
+	@Test
+	public function testNameOutsideRepeatableIsValid() {
+		var success = parseExpectingSuccess("
+			#test programmable() {
+				#header text(f3x5, \"hello\", #ffffffff): 0, 0
+			}
+		");
+		Assert.isTrue(success, "#name outside repeatable should be valid");
+	}
 }
