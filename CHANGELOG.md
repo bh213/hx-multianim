@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.12] - 2026-02-16
 
 ### Changed
 - **BREAKING: `reference` → `staticRef`, `component` → `dynamicRef`** — DSL keywords, enum variants, and all Haxe API methods renamed
