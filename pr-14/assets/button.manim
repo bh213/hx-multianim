@@ -1,0 +1,38 @@
+version: 0.5
+
+// Button Test
+// Demonstrates a custom button with ninepatch states and a disable toggle.
+// The button_custom programmable defines 4 visual states:
+//   normal, hover, pressed (when enabled) + disabled state.
+
+#button_custom programmable(status:[hover, pressed, normal], disabled:[true, false], buttonText="Button") {
+      @(status=>normal, disabled=>false) ninepatch("ui", "button-idle", 200, 30):     0, 1
+      @(status=>hover, disabled=>false) ninepatch("ui", "button-hover", 200, 30):     0, 0
+      @(status=>pressed, disabled=>false) ninepatch("ui", "button-pressed", 200, 30): 0, 0
+      @(status=>*, disabled=>true) ninepatch("ui", "button-disabled", 200, 30):       0, 0
+
+      @(status=>normal, disabled=>false) text(dd, $buttonText, 0xffffff12, center, 200): 0, 10
+      @(status=>hover, disabled=>false) text(dd, $buttonText, 0xffffff12, center, 200): 0, 10
+      @(status=>pressed, disabled=>false) text(dd, $buttonText, 0xffffff12, center, 200): 0, 10
+      @(status=>*, disabled=>true) text(dd, $buttonText, 0xffffff12, center, 200): 0, 10
+}
+
+#ui programmable() {
+      pos: 100, 300
+
+      text(dd, "Button Demo", #ffffffcc): 10, -30
+
+      // Click status display
+      #buttonVal(updatable) text(dd, "Click the button!", #ffffffaa): 10, 50
+
+      // Button placeholder - uses button_custom programmable defined above
+      placeholder(generated(cross(200, 20)), builderParameter("button")) {
+            settings{buildName=>button_custom}
+      }
+
+      // Disable toggle checkbox
+      placeholder(generated(cross(200, 20)), builderParameter("disableCheckbox")) {
+            pos: 10, 100
+      }
+      text(dd, "Disable Button", #ffffffaa): 30, 100
+}

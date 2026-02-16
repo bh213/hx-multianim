@@ -1,0 +1,22 @@
+version: 0.5
+
+
+#ui programmable() {
+      pos:400,200
+      
+      #selectedFileText(updatable) text(dd, "No file selected", #ffffff00, center, 400): 0,50
+      
+      point {
+      
+        placeholder(generated(cross(20, 20)), builderParameter("openDialog1button"));
+        placeholder(generated(cross(200, 20)), builderParameter("openDialog2button")):250,0;
+        
+      }
+}
+
+
+      
+
+
+
+    

@@ -1,0 +1,78 @@
+version: 0.5
+
+
+relativeLayouts {
+  grid: 21, 31 {
+  offset: 50,50 {
+  
+  #roomCheckboxes sequence($i: 1..6) point: grid(0,$i)	
+  #cornerCheckboxes sequence($i: 1..6) point: grid(1,$i)	
+  #panelCheckboxes sequence($i: 1..6) point: grid(2,$i)	
+
+  #panelButtons sequence($i: 10..16) point: grid(0,$i)
+  }
+  }
+}
+
+
+#ui programmable() {
+      pos:600,400
+      hex:pointy(197, 180)
+      point {
+          pixels (
+            line hexCorner(0, 1.1), hexCorner(1, 1.1), #fF0000FF
+            line hexCorner(1, 1.1), hexCorner(2, 1.1), #fFFF0000
+            line hexCorner(2, 1.1), hexCorner(3, 1.1), #fF0000FF
+            line hexCorner(3, 1.1), hexCorner(4, 1.1), #fFFF0000
+            line hexCorner(4, 1.1), hexCorner(5, 1.1), #fF0000FF
+            line hexCorner(5, 1.1), hexCorner(0, 1.1), #fFFF0000
+          ):0,-4
+      }
+
+      #testNumber(updatable) text(pixellari, "test test test", #ffffff00, center, 100): 300,-200
+}
+      
+#room programmable(wallDirections:flags(6)=31, cornerDirections:flags(6)=31, panelDirections:flags(6)=31) {
+    pos:600,400
+    bitmap(file("png/Ground_02.png"), center): 0,0
+    bitmap(file("png/WallBase_02.png"), center): 0,0
+    layers 
+    {
+      
+      @(cornerDirections=>bit [1]) bitmap(file("png/Corner_090.png"), center): 0,0
+
+      @(wallDirections=>bit [1]) bitmap(file("png/Wall_060.png"), center): 0,0
+      @(panelDirections=>bit [1]) bitmap(file("png/Panel_060.png"), center): 0,0
+      
+      @(cornerDirections=>bit [0]) bitmap(file("png/Corner_030.png"), center): 0,0
+      
+      @(wallDirections=>bit [0]) bitmap(file("png/Wall_000.png"), center): 0,0
+      @(panelDirections=>bit [0]) bitmap(file("png/Panel_000.png"), center): 0,0
+
+      @(wallDirections=>bit [2]) bitmap(file("png/Wall_120.png"), center): 0,0
+      @(panelDirections=>bit [2]) bitmap(file("png/Panel_120.png"), center): 0,0
+
+      @(cornerDirections=>bit [5]) bitmap(file("png/Corner_330.png"), center): 0,0
+
+      @(wallDirections=>bit [5]) bitmap(file("png/Wall_300.png"), center): 0,0
+      @(cornerDirections=>bit [2]) bitmap(file("png/Corner_150.png"), center): 0,0
+      
+      @(wallDirections=>bit [3]) bitmap(file("png/Wall_180.png"), center): 0,0
+      @(panelDirections=>bit [3]) bitmap(file("png/Panel_180.png"), center): 0,0
+
+      @(cornerDirections=>bit [3]) bitmap(file("png/Corner_210.png"), center): 0,0
+
+      @(wallDirections=>bit [4]) bitmap(file("png/Wall_240.png"), center): 0,0
+
+      @(panelDirections=>bit [4]) bitmap(file("png/Panel_240.png"), center): 0,0
+      @(panelDirections=>bit [5]) bitmap(file("png/Panel_300.png"), center): 0,0
+
+      @(cornerDirections=>bit [4]) bitmap(file("png/Corner_270.png"), center): 0,0
+      
+    }
+
+}
+
+
+
+    

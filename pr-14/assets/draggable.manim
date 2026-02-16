@@ -1,0 +1,21 @@
+version: 0.5
+
+// Drag & Drop Test
+// Demonstrates draggable UI elements.
+// Draggable objects are created programmatically by DraggableTestScreen.hx.
+// This file defines the static background: title, drop zones, and labels.
+
+#ui programmable() {
+    text(dd, "Drag & Drop Test", #ffffffcc, center, 800): 0, 10
+
+    // Drop zone 1 - large target area
+    ninepatch("ui", "Window_3x3_idle", 180, 180): 300, 200
+    text(dd, "Drop Zone 1", #ffffffaa, center, 180): 300, 395
+
+    // Drop zone 2 - smaller target area
+    ninepatch("ui", "Window_3x3_idle", 120, 120): 550, 240
+    text(dd, "Drop Zone 2", #ffffffaa, center, 120): 550, 375
+
+    // Instructions
+    text(dd, "Drag the colored rectangles around the screen", #ffffff88): 100, 500
+}

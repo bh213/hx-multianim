@@ -1,0 +1,262 @@
+version: 0.5
+
+      #main palette {
+      0x1a1a1a  0x2c5f7c  0x4a90a4  0x7fdbda  0xff7f50  0xff4444  0x4caf50  0xffeb3b  0xffffff  0x666666  0xb0b0b0  0x000000
+      }
+
+  #slider programmable(status:[hover, pressed, normal]=normal, value:0..100=0, size:[100,200,300], disabled:[true, false]) {
+    //@(value=>between 50..70) text(dd, "HEEEEEEEEEEEEEEEEEY", 0xffffff12, center, 200): 0,10
+
+    //@(value=>[between 3..30]) text(dd, "HEEEEEEEEEEEEEEEEEY", 0xffffff12, center, 200): 0,10
+    @if(size=>300) point {
+      ninepatch("ui", "Sliderbar_H_3x1", 310, 8) {
+        grid: 3, 1;
+        #start point:grid(0, -1)
+        #end point:grid(100, -1)
+        #slider @(status=>hover)  bitmap(sheet("ui", "Slider_button_hover")):grid($value,-1)
+        #slider @(status=>normal)  bitmap(sheet("ui", "Slider_button_idle")):grid($value,-1)
+        #slider @(status=>pressed)  bitmap(sheet("ui", "Slider_button_pressed")):grid($value,-1)
+        #slider @(status=>*, disabled=>true)  bitmap(sheet("ui", "Slider_button_disabled")):grid($value,-1)
+      }
+    
+    }
+     @(size=>200, value=>*, status=>*) point {
+      
+      ninepatch("ui", "Sliderbar_H_3x1", 210, 8) {
+        grid:2, 1
+        #start point:grid(0, -1)
+        #end point:grid(100, -1)
+
+        #slider @(status=>hover)  bitmap(sheet("ui", "Slider_button_hover")):grid($value,-1)
+        #slider @(status=>normal)  bitmap(sheet("ui", "Slider_button_idle")):grid($value,-1)
+        #slider @(status=>pressed)  bitmap(sheet("ui", "Slider_button_pressed")):grid($value,-1)
+        #slider @(status=>*, disabled=>true)  bitmap(sheet("ui", "Slider_button_disabled")):grid($value,-1)
+        
+      
+    }
+    }
+     
+     @(size=>100, value=>*) point {
+      
+      ninepatch("ui", "Sliderbar_H_3x1", 110, 8) {
+        grid:1, 1
+        #start point:grid(0, -1)
+        #end point:grid(100, -1)
+
+        #slider @(status=>hover)  bitmap(sheet("ui", "Slider_button_hover")):grid($value,-1)
+        #slider @(status=>normal)  bitmap(sheet("ui", "Slider_button_idle")):grid($value,-1)
+        #slider @(status=>pressed)  bitmap(sheet("ui", "Slider_button_pressed")):grid($value,-1)
+        #slider @(status=>*, disabled=>true)  bitmap(sheet("ui", "Slider_button_disabled")):grid($value,-1)
+      
+    }
+    }
+  }
+
+
+ #button programmable(status:[hover, pressed,normal], disabled:[true, false], buttonText="Button") {
+      //filter:pixelOutline(knockout, blue, 0.3)
+      //filter:replacePalette(file, 0, 1)
+      
+      //bitmap(sheet("crew2", "marine_r_shooting_d")):30,130;
+      //filter:glow(red, 0.3, 1, 1, 1, smoothColor)
+      //filter:glow(red, 0.3, 1, 1, 1, smoothColor)
+      //filter:dropShadow(4, 1.6, #F3F, 0.9, 50, 3.05)
+      //filter:pixelOutline(knockout, blue, 0.3)
+      //filter:pixelOutline(inlineColor, red, yellow)
+      @(status=>normal, disabled=>false) ninepatch("ui", "button-idle", 200, 30):     0,1
+      @(status=>hover, disabled=>false) ninepatch("ui", "button-hover", 200, 30):     0,0
+      @(status=>pressed, disabled=>false) ninepatch("ui", "button-pressed", 200, 30): 0,0
+      @(status=>*, disabled=>true) ninepatch("ui", "button-disabled", 200, 30):       0,0
+      
+      @(status=>hover, disabled=>false) text(dd, $buttonText, 0xffffff12, center, 200): 0,10
+      @(status=>pressed, disabled=>false) text(dd, $buttonText, 0xffffff12, center, 200): 0,10
+      @(status=>normal, disabled=>false) text(dd, $buttonText, 0xffffff12, center, 200): 0,10
+      @(status=>*, disabled=>true) text(dd, $buttonText, 0xffffff12, center, 200): 0,10
+}
+    
+
+ #radio programmable(status:[hover, pressed, normal], checked:[true, false], disabled:[true, false]) {
+      @(status=>normal, checked=>false) bitmap(sheet("ui", "RadioButton_off_idle"));
+      @(status=>hover, checked=>false) bitmap(sheet("ui", "RadioButton_off_hover"));
+      @(status=>pressed, checked=>false) bitmap(sheet("ui", "RadioButton_off_pressed"));
+      @(disabled=>true, checked=>false) bitmap(sheet("ui", "RadioButton_off_disabled"));
+      @(status=>normal, checked=>true) bitmap(sheet("ui", "RadioButton_on_idle"));
+      @(status=>hover, checked=>true) bitmap(sheet("ui", "RadioButton_on_hover"));
+      @(status=>pressed, checked=>true) bitmap(sheet("ui", "RadioButton_on_pressed"));
+      @(disabled=>true, checked=>true) bitmap(sheet("ui", "RadioButton_on_disabled"));
+ }
+
+ #tab programmable(status:[hover, pressed, normal], checked:[true, false], disabled:[true, false], width:uint=120, height:uint=30) {
+      @(status=>normal, checked=>false) ninepatch("ui", "Tab_off_idle", $width, $height);
+      @(status=>hover, checked=>false) ninepatch("ui", "Tab_off_hover", $width, $height);
+      @(status=>pressed, checked=>false) ninepatch("ui", "Tab_off_pressed", $width, $height);
+      @(disabled=>true, checked=>false) ninepatch("ui", "Tab_off_disabled", $width, $height);
+      @(status=>normal, checked=>true) ninepatch("ui", "Tab_on_idle", $width, $height);
+      @(status=>hover, checked=>true) ninepatch("ui", "Tab_on_hover", $width, $height);
+      @(status=>pressed, checked=>true) ninepatch("ui", "Tab_on_pressed", $width, $height);
+      @(disabled=>true, checked=>true) ninepatch("ui", "Tab_on_disabled", $width, $height);
+       
+}
+
+ #radio2 programmable(status:[hover, pressed, normal], checked:[true, false], disabled:[true, false]) {
+      @(status=>normal, checked=>false) bitmap(sheet("ui", "RadioButton2_off_idle"));
+      @(status=>hover, checked=>false) bitmap(sheet("ui", "RadioButton2_off_hover"));
+      @(status=>pressed, checked=>false) bitmap(sheet("ui", "RadioButton2_off_pressed"));
+      @(disabled=>true, checked=>false) bitmap(sheet("ui", "RadioButton2_off_disabled"));
+      @(status=>normal, checked=>true) bitmap(sheet("ui", "RadioButton2_on_idle"));
+      @(status=>hover, checked=>true) bitmap(sheet("ui", "RadioButton2_on_hover"));
+      @(status=>pressed, checked=>true) bitmap(sheet("ui", "RadioButton2_on_pressed"));
+      @(disabled=>true, checked=>true) bitmap(sheet("ui", "RadioButton2_on_disabled"));
+       
+}
+ #tickbox programmable(status:[hover, pressed, normal], checked:[true, false], disabled:[true, false]) {
+      @(status=>normal, checked=>false) bitmap(sheet("ui", "TickBox2_off_idle"));
+      @(status=>hover, checked=>false) bitmap(sheet("ui", "TickBox2_off_hover"));
+      @(status=>pressed, checked=>false) bitmap(sheet("ui", "TickBox2_off_pressed"));
+      @(disabled=>true, checked=>false) bitmap(sheet("ui", "TickBox2_off_disabled"));
+      @(status=>normal, checked=>true) bitmap(sheet("ui", "TickBox2_on_idle"));
+      @(status=>hover, checked=>true) bitmap(sheet("ui", "TickBox2_on_hover"));
+      @(status=>pressed, checked=>true) bitmap(sheet("ui", "TickBox2_on_pressed"));
+      @(disabled=>true, checked=>true) bitmap(sheet("ui", "TickBox2_on_disabled"));
+}
+
+
+ #toggle programmable(status:[hover, pressed, normal], checked:[true, false], disabled:[true, false]) {
+      @(status=>normal, checked=>false) bitmap(sheet("ui", "Toggle_off_idle"));
+      @(status=>hover, checked=>false) bitmap(sheet("ui", "Toggle_off_hover"));
+      @(status=>pressed, checked=>false) bitmap(sheet("ui", "Toggle_off_pressed"));
+      @(disabled=>true, checked=>false) bitmap(sheet("ui", "Toggle_off_disabled"));
+      @(status=>normal, checked=>true) bitmap(sheet("ui", "Toggle_on_idle"));
+      @(status=>hover, checked=>true) bitmap(sheet("ui", "Toggle_on_hover"));
+      @(status=>pressed, checked=>true) bitmap(sheet("ui", "Toggle_on_pressed"));
+      @(disabled=>true, checked=>true) bitmap(sheet("ui", "Toggle_on_disabled"));
+}
+
+ #checkbox programmable(status:[hover, pressed, normal], checked:[true, false], disabled:[true, false]) {
+      @(status=>normal, checked=>false) bitmap(sheet("ui", "CheckBox_off_idle"));
+      @(status=>hover, checked=>false) bitmap(sheet("ui", "CheckBox_off_hover"));
+      @(status=>pressed, checked=>false) bitmap(sheet("ui", "CheckBox_off_pressed"));
+      @(disabled=>true, checked=>false) bitmap(sheet("ui", "CheckBox_off_disabled"));
+      @(status=>normal, checked=>true) bitmap(sheet("ui", "CheckBox_on_idle"));
+      @(status=>hover, checked=>true) bitmap(sheet("ui", "CheckBox_on_hover"));
+      @(status=>pressed, checked=>true) bitmap(sheet("ui", "CheckBox_on_pressed"));
+      @(disabled=>true, checked=>true) bitmap(sheet("ui", "CheckBox_on_disabled"));
+       
+}
+
+#checkbox2 programmable(status:[hover, pressed, normal], checked:[true, false], disabled:[true, false]) {
+  scale:2
+      @(status=>normal, checked=>false) bitmap(sheet("ui", "checkbox_unchecked_normal"));
+      @(status=>hover, checked=>false) bitmap(sheet("ui", "checkbox_unchecked_hover"));
+      @(status=>pressed, checked=>false) bitmap(sheet("ui", "checkbox_unchecked_pressed"));
+      //@(status=>disabled, checked=>false) bitmap(sheet("ui", "checkbox_unchecked_disabled"));
+      @(status=>normal, checked=>true) bitmap(sheet("ui", "checkbox_checked_normal"));
+      @(status=>hover, checked=>true) bitmap(sheet("ui", "checkbox_checked_hover"));
+      @(status=>pressed, checked=>true) bitmap(sheet("ui", "checkbox_checked_pressed"));
+      //@(status=>disabled, checked=>true) bitmap(sheet("ui", "checkbox_checked_disabled"));
+       
+}
+
+
+#checkboxWithText programmable(textColor:int, title="checkbox label", font="m6x11"){
+    point {
+     placeholder(generated(cross(15, 15)), builderParameter("checkbox")):0,0
+      text($font, $title, white, left): 40,4
+    }
+}
+
+
+#radioButtons programmable(count:int){
+      repeatable($index, step($count, dy:20)) {
+            placeholder(generated(cross(15, 15)), callback("checkbox", $index)):0,0
+            text(m6x11, callback("label", $index), 0xffffff12, left, 120): 24,4
+            
+      }
+}
+
+#radioButtonsHorizontal programmable(count:int){
+      repeatable($index, step($count, dx:120 )) {
+            placeholder(generated(cross(15, 15)), callback("checkbox", $index)):0,0
+            text(m6x11, callback("label", $index), 0xffffff12, left, 120): 24,4
+            
+      }
+}
+
+#radioButtonsVertical programmable(count:int){
+      repeatable($index, step($count, dy:30 )) {
+            placeholder(generated(cross(15, 15)), callback("checkbox", $index)):0,0
+            text(m6x11, callback("label", $index), 0xffffff12, left, 120): 24,4
+            
+      }
+}
+
+
+#dropdown programmable(images:[none,placeholder,tile]=placeholder, status:[hover, pressed, disabled,normal], panel:[open, closed]) {
+      
+      #panelPoint (updatable) point: 0, 30;
+      //placeholder(generated(cross(120, 200)), builderParameter("panel")):5,10
+      @(status=>hover) ninepatch("ui", "dropdown-button-hover", 120, 30);
+      @(status=>normal) ninepatch("ui", "dropdown-button-idle", 120, 30);
+      @(status=>pressed) ninepatch("ui", "dropdown-button-pressed", 120, 30);
+      @(status=>disabled) ninepatch("ui", "dropdown-button-disabled", 120, 30);
+      @(panel=>closed) bitmap(sheet("ui", "icon_drop_fold_idle")):108,17
+      @(panel=>open) bitmap(sheet("ui", "icon_drop_open")):108,17
+      #selectedName(updatable) text(m6x11, callback("selectedName"), 0xffffff12, center, 120): -4,6
+      // @(images=>placeholder) placeholder(generated(cross(15, 15)), callback("test")):8,5
+      settings{transitionTimer:float=>0.2}
+}
+
+
+#list-item-120 programmable(images:[none,placeholder,tile]=placeholder,status:[hover, pressed, normal], selected:[true, false], disabled:[true, false], tile="", itemWidth:uint=114,  index:uint=0, title="title") {
+        
+        @(status=>normal, selected=>false, disabled=>false) ninepatch("ui", "droppanel-mid-idle", $itemWidth+4, 20): -2,0
+        @(status=>normal, selected=>true, disabled=>false) ninepatch("ui", "droppanel-mid-pressed", $itemWidth+4, 20): -2,0
+        
+        @(status=>pressed, disabled=>false) ninepatch("ui", "droppanel-mid-pressed", $itemWidth+4, 20) {
+          pos:-2,0;
+          alpha:0.1;
+          blendMode: alphaAdd;
+        } 
+        @(status=>hover, disabled=>false) ninepatch("ui", "droppanel-mid-hover", $itemWidth+4, 20) {
+          pos:-2,0;
+          alpha:0.1;
+          blendMode: alphaAdd;
+        } 
+        
+        @(disabled=>true) ninepatch("ui", "droppanel-mid-disabled", $itemWidth+4, 20): -2,0
+        
+        text(m6x11, $title, 0xffffff12, left, 120): 24,4
+        @(images=>placeholder) placeholder(generated(cross(15, 15)), callback("test")):5,3
+        @(images=>tile) bitmap(file($tile), center):5,3
+        interactive($itemWidth , 20, $index);
+        settings{height:float=>20}
+}
+
+#list-panel programmable(width:uint=200, height:uint=200, topClearance:uint = 0) {
+  
+  ninepatch("ui", "Window_3x3_idle", $width+4, $height+8+$topClearance): -2,-4-$topClearance
+  placeholder(generated(cross($width, $height)), builderParameter("mask")):0,0
+  #scrollbar @layer(100) point: $width - 4, 0
+}
+
+#scrollbar programmable(panelHeight:uint=100, scrollableHeight:uint=200, scrollPosition:uint = 0) {
+
+ninepatch("ui", "scrollbar-1", 4, $panelHeight * $panelHeight / $scrollableHeight): 0, $scrollPosition*$panelHeight/$scrollableHeight
+  settings{scrollSpeed:float=>250}
+}
+
+
+#okCancelDialog programmable(dialogText = "Your text here") {
+      pos:400,200
+
+      ninepatch("ui", "Droppanel_3x3_idle", 550, 300): 0,0
+       #dialogText(updatable) text(dd, $dialogText, #ffffff00, center, 400): 50,50
+      point {
+        pos: 50,250
+        placeholder(generated(cross(20, 20)), builderParameter("ok")) {
+
+          
+        }
+        placeholder(generated(cross(20, 20)), builderParameter("cancel")):250,0
+      }
+}
