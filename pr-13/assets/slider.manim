@@ -1,0 +1,19 @@
+version: 0.3
+
+// Slider Test
+// Demonstrates a slider component with real-time value display.
+// Slider programmable is defined in std.manim with 3 size variants (100/200/300).
+
+#ui programmable() {
+      pos: 100, 300
+
+      text(dd, "Slider Demo", #ffffffcc): 10, -30
+
+      // Current value display
+      #sliderVal(updatable) text(dd, "Drag the slider!", #ffffffaa): 10, 50
+
+      // Slider placeholder
+      placeholder(generated(cross(200, 20)), builderParameter("slider")) {
+            pos: 10, 30
+      }
+}
