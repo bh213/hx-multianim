@@ -1,4 +1,4 @@
-version: 0.3
+version: 0.5
 
 #file palette(file:"main-palette.png")
 
@@ -217,14 +217,14 @@ relativeLayouts {
           @alpha(0.9) text(dd, "#10: reference", white, left, 200);
           
           
-          reference($referenceDemo, width=>10, height=>10, shape=>rect): 10,30;
-          reference($referenceDemo, width=>30, height=>30, shape=>triangle): 10, 60;
-          reference($referenceDemo, width=>50, height=>20, shape=>triangle): 100, 30;
-          reference($referenceDemo, width=>30, height=>30, shape=>triangle): 100, 60;
-          reference($referenceDemo, width=>15, height=>15, shape=>rect): 150, 60;
-          reference($arrayDemo, arr=>["first element","second element","3rd element", "4th element"]):170, 80
+          staticRef($referenceDemo, width=>10, height=>10, shape=>rect): 10,30;
+          staticRef($referenceDemo, width=>30, height=>30, shape=>triangle): 10, 60;
+          staticRef($referenceDemo, width=>50, height=>20, shape=>triangle): 100, 30;
+          staticRef($referenceDemo, width=>30, height=>30, shape=>triangle): 100, 60;
+          staticRef($referenceDemo, width=>15, height=>15, shape=>rect): 150, 60;
+          staticRef($arrayDemo, arr=>["first element","second element","3rd element", "4th element"]):170, 80
 
-          reference($arrayDemo, arr=>["first element","second element","3rd element", "4th element"], index=>2):170, 100
+          staticRef($arrayDemo, arr=>["first element","second element","3rd element", "4th element"], index=>2):170, 100
 
       }
       point { // example 11: bitmap align
@@ -328,11 +328,11 @@ relativeLayouts {
 
         point {
           pos:10,10
-          reference($applyDemo, state=>alpha):30,10
+          staticRef($applyDemo, state=>alpha):30,10
           @alpha(0.9) text(dd, "state=>alpha", white, left, 200):80,15
-          reference($applyDemo, state=>filter):0,20
+          staticRef($applyDemo, state=>filter):0,20
           @alpha(0.9) text(dd, "state=>filter", white, left, 200):80,55
-          reference($applyDemo, state=>scale):-30,30
+          staticRef($applyDemo, state=>scale):-30,30
           @alpha(0.9) text(dd, "state=>scale", white, left, 200):80,93
         }
       }
@@ -345,22 +345,22 @@ relativeLayouts {
 
           point {
             pos: 20, 20
-            reference($conditionalsDemo1, param1=>top): 0,0
-            reference($conditionalsDemo1, param1=>middle): 0,0
-            reference($conditionalsDemo1, param1=>bottom): 0,0
+            staticRef($conditionalsDemo1, param1=>top): 0,0
+            staticRef($conditionalsDemo1, param1=>middle): 0,0
+            staticRef($conditionalsDemo1, param1=>bottom): 0,0
           }
  
           point {
             pos: 80, 20
-            reference($conditionalsDemo2, param1=>A): 10,0
-            reference($conditionalsDemo2, param1=>B): 20,0
-            reference($conditionalsDemo2, param1=>C): 30,0
+            staticRef($conditionalsDemo2, param1=>A): 10,0
+            staticRef($conditionalsDemo2, param1=>B): 20,0
+            staticRef($conditionalsDemo2, param1=>C): 30,0
           }
           point {
             pos: 140, 20
-            reference($conditionalsDemo3, param1=>A, param2=>X): 10,0
-            reference($conditionalsDemo3, param1=>B, param2=>X): 40,0
-            reference($conditionalsDemo3, param1=>A, param2=>Y): 70,0
+            staticRef($conditionalsDemo3, param1=>A, param2=>X): 10,0
+            staticRef($conditionalsDemo3, param1=>B, param2=>X): 40,0
+            staticRef($conditionalsDemo3, param1=>A, param2=>Y): 70,0
           }
           
 

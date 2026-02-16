@@ -1,4 +1,4 @@
-version: 0.3
+version: 0.5
 
 // Autotile Example
 // Autotiles are root-level elements used for procedural terrain generation.
