@@ -1,4 +1,4 @@
-version: 0.3
+version: 0.5
 
 // Button Test
 // Demonstrates a custom button with ninepatch states and a disable toggle.

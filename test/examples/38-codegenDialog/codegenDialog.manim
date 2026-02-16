@@ -1,4 +1,4 @@
-version: 0.3
+version: 0.5
 
 #codegenDialog programmable(w:uint=300, h:uint=200, title="Dialog", body="Hello world", style:[idle, hover, disabled]=idle) {
       // Panel background

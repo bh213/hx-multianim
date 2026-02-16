@@ -1,4 +1,4 @@
-version: 0.3
+version: 0.5
 
 #tintDemo programmable() {
   bitmap(generated(color(80, 80, #FFFFFF))): 20, 20

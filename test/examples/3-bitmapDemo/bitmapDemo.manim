@@ -1,4 +1,4 @@
-version: 0.3
+version: 0.5
 
 #bitmapDemo programmable() {
   pos: 0, 0
@@ -23,5 +23,5 @@ version: 0.3
 
 #main point {
   pos: 0, 0
-  reference($bitmapDemo):0,0
+  staticRef($bitmapDemo):0,0
 }

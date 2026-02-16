@@ -1,4 +1,4 @@
-version: 0.3
+version: 0.5
 
 #finalVarDemo programmable(x:uint=100, y:uint=80, w:uint=200, h:uint=120) {
   pos: 0, 0

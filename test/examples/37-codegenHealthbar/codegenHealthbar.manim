@@ -1,4 +1,4 @@
-version: 0.3
+version: 0.5
 
 #codegenHealthbar programmable(w:uint=200, h:uint=20, health:uint=75, maxHealth:uint=100, whiteLoss:uint=90) {
       // Background bar (dark)

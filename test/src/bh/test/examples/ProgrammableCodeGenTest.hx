@@ -3074,9 +3074,9 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "componentDemo.manim");
 		final result = builder.buildWithParameters("componentDemo", new Map());
 
-		final comp = result.getComponent("statusBar");
-		Assert.notNull(comp, "Should have statusBar component");
-		Assert.notNull(comp.object, "Component should have an object");
-		Assert.notNull(comp.incrementalContext, "Component should be built incrementally");
+		final dynRef = result.getDynamicRef("statusBar");
+		Assert.notNull(dynRef, "Should have statusBar dynamicRef");
+		Assert.notNull(dynRef.object, "DynamicRef should have an object");
+		Assert.notNull(dynRef.incrementalContext, "DynamicRef should be built incrementally");
 	}
 }

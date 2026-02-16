@@ -2585,7 +2585,7 @@ class MacroManimParser {
 				final n = createNode(PARTICLES(p), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
 				return n;
 
-			case TIdentifier(s) if (isKeyword(s, "reference")):
+			case TIdentifier(s) if (isKeyword(s, "staticRef") || isKeyword(s, "reference")):
 				advance();
 				expect(TOpen);
 				var extRef:Null<String> = null;
@@ -2604,9 +2604,9 @@ class MacroManimParser {
 					params = parseReferenceParams();
 				}
 				expect(TClosed);
-				createNode(REFERENCE(extRef, progRef, params), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+				createNode(STATIC_REF(extRef, progRef, params), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
 
-			case TIdentifier(s) if (isKeyword(s, "component")):
+			case TIdentifier(s) if (isKeyword(s, "dynamicRef") || isKeyword(s, "component")):
 				advance();
 				expect(TOpen);
 				var extRef:Null<String> = null;
@@ -2625,7 +2625,7 @@ class MacroManimParser {
 					params = parseReferenceParams();
 				}
 				expect(TClosed);
-				createNode(COMPONENT(extRef, progRef, params), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+				createNode(DYNAMIC_REF(extRef, progRef, params), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
 
 			case TIdentifier(s) if (isKeyword(s, "placeholder")):
 				advance();
@@ -3672,15 +3672,15 @@ class MacroManimParser {
 				switch (peek()) {
 					case TFloat(v):
 						advance();
-						if (v != "0.3") error('version 0.3 expected, got $v');
+						if (v != "0.5") error('version 0.5 expected, got $v');
 					case TInteger(v):
 						advance();
-						if (v != "0") error('version 0.3 expected, got $v');
+						if (v != "0") error('version 0.5 expected, got $v');
 					default:
 						error("expected version number");
 				}
 			default:
-				error("Missing version declaration. Files must start with 'version: 0.3'");
+				error("Missing version declaration. Files must start with 'version: 0.5'");
 		}
 
 		// Parse root nodes

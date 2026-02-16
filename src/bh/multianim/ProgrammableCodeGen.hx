@@ -64,7 +64,7 @@ class ProgrammableCodeGen {
 	static var indexedNamedElements:Map<String, Array<{index:Int, fieldName:String}>> = new Map();
 	static var slotFields:Map<String, String> = new Map(); // slot name -> container field name
 	static var indexedSlotFields:Map<String, Array<{index:Int, fieldName:String}>> = new Map(); // base name -> [{index, field}]
-	static var componentFields:Map<String, String> = new Map(); // component name -> BuilderResult field name
+	static var dynamicRefFields:Map<String, String> = new Map(); // component name -> BuilderResult field name
 	static var hexLayoutFieldAdded:Bool = false;
 
 	static var paramDefs:ParametersDefinitions;
@@ -125,7 +125,7 @@ class ProgrammableCodeGen {
 		indexedNamedElements = new Map();
 		slotFields = new Map();
 		indexedSlotFields = new Map();
-		componentFields = new Map();
+		dynamicRefFields = new Map();
 		paramDefs = new Map();
 		paramNames = [];
 		paramEnumTypes = new Map();
@@ -500,8 +500,8 @@ class ProgrammableCodeGen {
 			exprUpdateExprs.push(macro {});
 		instanceFields.push(makeMethod("_updateExpressions", exprUpdateExprs, [], macro :Void, [APrivate], pos));
 
-		// 6. Pre-constructor: push slot/component init expressions to constructorExprs
-		// (slotFields and componentFields are already populated from processChildren)
+		// 6. Pre-constructor: push slot/dynamicRef init expressions to constructorExprs
+		// (slotFields and dynamicRefFields are already populated from processChildren)
 		for (slotName => containerField in slotFields) {
 			final handleField = "_slotHandle_" + slotName;
 			constructorExprs.push(macro $p{["this", handleField]} = new bh.multianim.MultiAnimBuilder.SlotHandle($p{["this", containerField]}));
@@ -667,23 +667,23 @@ class ProgrammableCodeGen {
 			], macro :bh.multianim.MultiAnimBuilder.SlotHandle, [APublic], pos));
 		}
 
-		// 8d. Component accessors (on instance)
-		for (compName => resultField in componentFields) {
+		// 8d. DynamicRef accessors (on instance)
+		for (refName => resultField in dynamicRefFields) {
 			instanceFields.push(makeField(resultField, FVar(macro :bh.multianim.MultiAnimBuilder.BuilderResult, null), [APrivate], pos));
 		}
-		if (Lambda.count(componentFields) > 0) {
-			final compCases:Array<Case> = [];
-			for (compName => resultField in componentFields) {
-				compCases.push({
-					values: [macro $v{compName}],
+		if (Lambda.count(dynamicRefFields) > 0) {
+			final refCases:Array<Case> = [];
+			for (refName => resultField in dynamicRefFields) {
+				refCases.push({
+					values: [macro $v{refName}],
 					expr: macro return $p{["this", resultField]},
 				});
 			}
-			final compSwitch:Expr = {
-				expr: ESwitch(macro name, compCases, macro return null),
+			final refSwitch:Expr = {
+				expr: ESwitch(macro name, refCases, macro return null),
 				pos: pos,
 			};
-			instanceFields.push(makeMethod("getComponent", [compSwitch], [{name: "name", type: macro :String}],
+			instanceFields.push(makeMethod("getDynamicRef", [refSwitch], [{name: "name", type: macro :String}],
 				macro :bh.multianim.MultiAnimBuilder.BuilderResult, [APublic], pos));
 		}
 
@@ -950,13 +950,13 @@ class ProgrammableCodeGen {
 			default:
 		}
 
-		// Track component BuilderResult fields
+		// Track dynamicRef BuilderResult fields
 		switch (node.type) {
-			case COMPONENT(_, programmableRef, _):
+			case DYNAMIC_REF(_, programmableRef, _):
 				final compName = programmableRef;
 				if (compName != null) {
 					final resultField = "_comp_" + compName;
-					componentFields.set(compName, resultField);
+					dynamicRefFields.set(compName, resultField);
 				}
 			default:
 		}
@@ -2224,11 +2224,11 @@ class ProgrammableCodeGen {
 			case PLACEHOLDER(type, source):
 				generatePlaceholderCreate(node, fieldName, type, source, pos);
 
-			case REFERENCE(externalReference, programmableRef, parameters):
-				generateReferenceCreate(node, fieldName, externalReference, programmableRef, parameters, pos);
+			case STATIC_REF(externalReference, programmableRef, parameters):
+				generateStaticRefCreate(node, fieldName, externalReference, programmableRef, parameters, pos);
 
-			case COMPONENT(externalReference, programmableRef, parameters):
-				generateComponentCreate(node, fieldName, externalReference, programmableRef, parameters, pos);
+			case DYNAMIC_REF(externalReference, programmableRef, parameters):
+				generateDynamicRefCreate(node, fieldName, externalReference, programmableRef, parameters, pos);
 
 			case REPEAT(_, _) | REPEAT2D(_, _, _, _):
 				// Should not be reached — processNode handles REPEAT/REPEAT2D directly
@@ -2256,9 +2256,9 @@ class ProgrammableCodeGen {
 		};
 	}
 
-	// ==================== Reference ====================
+	// ==================== StaticRef ====================
 
-	static function generateReferenceCreate(node:Node, fieldName:String, externalReference:Null<String>,
+	static function generateStaticRefCreate(node:Node, fieldName:String, externalReference:Null<String>,
 			programmableRef:String, parameters:Map<String, ReferenceableValue>, pos:Position):CreateResult {
 		final fieldRef = macro $p{["this", fieldName]};
 		final createExprs:Array<Expr> = [];
@@ -2274,7 +2274,7 @@ class ProgrammableCodeGen {
 			}
 		}
 		mapBuildExprs.push(macro {
-			final _result = this._pb.buildReference($refNameExpr, _refParams);
+			final _result = this._pb.buildStaticRef($refNameExpr, _refParams);
 			$fieldRef = _result != null ? _result.object : new h2d.Object();
 		});
 
@@ -2288,9 +2288,9 @@ class ProgrammableCodeGen {
 		};
 	}
 
-	// ==================== Component ====================
+	// ==================== DynamicRef ====================
 
-	static function generateComponentCreate(node:Node, fieldName:String, externalReference:Null<String>,
+	static function generateDynamicRefCreate(node:Node, fieldName:String, externalReference:Null<String>,
 			programmableRef:String, parameters:Map<String, ReferenceableValue>, pos:Position):CreateResult {
 		final fieldRef = macro $p{["this", fieldName]};
 		final createExprs:Array<Expr> = [];
@@ -2309,7 +2309,7 @@ class ProgrammableCodeGen {
 		}
 		// Build with incremental: true
 		mapBuildExprs.push(macro {
-			final _result = this._pb.buildComponent($refNameExpr, _refParams);
+			final _result = this._pb.buildDynamicRef($refNameExpr, _refParams);
 			$fieldRef = _result != null ? _result.object : new h2d.Object();
 			$p{["this", resultField]} = _result;
 		});

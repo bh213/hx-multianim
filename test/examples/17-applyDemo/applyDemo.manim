@@ -1,4 +1,4 @@
-version: 0.3
+version: 0.5
 
 #applyDemoRef programmable(state:[alpha, filter, scale]) {
   @(state=>alpha) apply {
@@ -24,11 +24,11 @@ version: 0.3
 
   point {
     pos: 10, 10
-    reference($applyDemoRef, state=>alpha):200, 20
+    staticRef($applyDemoRef, state=>alpha):200, 20
     @scale(3) text(dd, "state=>alpha, 40% alpha", white, left, 400):500, 60
-    reference($applyDemoRef, state=>filter):0, 100
+    staticRef($applyDemoRef, state=>filter):0, 100
     @scale(3) text(dd, "state=>filter, glow", white, left, 400):500, 300
-    reference($applyDemoRef, state=>scale):-200, 160
+    staticRef($applyDemoRef, state=>scale):-200, 160
     @scale(3) text(dd, "state=>scale, 70% + x move", white, left, 400):500, 560
   }
 }

@@ -1,4 +1,4 @@
-version: 0.3
+version: 0.5
 
 #codegenRepeat2d programmable(cols:uint=3, rows:uint=2) {
   // Static 3x2 grid

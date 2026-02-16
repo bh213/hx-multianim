@@ -1,4 +1,4 @@
-version: 0.3
+version: 0.5
 
 // 25 distinct saturated colors for each cell in the 5x5 grid
 // Colors chosen to be visually distinct from each other

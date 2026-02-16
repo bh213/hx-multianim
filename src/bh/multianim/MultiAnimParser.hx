@@ -156,7 +156,8 @@ enum MPKeywords {
 	MPVersion;
 	MPPlaceholder;
 	MPDebug;
-	MPReference;
+	MPStaticRef;
+	MPDynamicRef;
 	MPIf;
 	MPIfStrict;
 	MPInteractive;
@@ -885,7 +886,7 @@ enum NodeType {
 	MASK(width:ReferenceableValue, height:ReferenceableValue);
 	REPEAT(varName:String, repeatType:RepeatType);
 	REPEAT2D(varNameX:String, varNameY:String, repeatTypeX:RepeatType, repeatTypeY:RepeatType);
-	REFERENCE(externalReference:Null<String>, programmableReference:String, parameters:Map<String, ReferenceableValue>);
+	STATIC_REF(externalReference:Null<String>, programmableReference:String, parameters:Map<String, ReferenceableValue>);
 	PLACEHOLDER(type:PlaceholderTypes, replacementSource:PlaceholderReplacementSource);
 	NINEPATCH(sheet:String, tilename:String, width:ReferenceableValue, height:ReferenceableValue);
 	INTERACTIVE(width:ReferenceableValue, height:ReferenceableValue, id:ReferenceableValue, debug:Bool,
@@ -896,7 +897,7 @@ enum NodeType {
 	ATLAS2(atlas2Def:Atlas2Def);
 	DATA(dataDef:DataDef);
 	SLOT;
-	COMPONENT(externalReference:Null<String>, programmableReference:String, parameters:Map<String, ReferenceableValue>);
+	DYNAMIC_REF(externalReference:Null<String>, programmableReference:String, parameters:Map<String, ReferenceableValue>);
 	FINAL_VAR(name:String, value:ReferenceableValue);
 }
 

@@ -1,4 +1,4 @@
-version: 0.3
+version: 0.5
 
 // Colored box for flow items
 #flowBox programmable(w:uint=40, h:uint=20, color:color=#448) {
@@ -19,9 +19,9 @@ version: 0.3
       point {
         pos: 0, 10
         flow(minWidth:50, layout:vertical, padding:2, debug:true) {
-          reference($flowBox, w=>40, h=>15, color=>#844);
-          reference($flowBox, w=>40, h=>15, color=>#484);
-          reference($flowBox, w=>40, h=>15, color=>#448);
+          staticRef($flowBox, w=>40, h=>15, color=>#844);
+          staticRef($flowBox, w=>40, h=>15, color=>#484);
+          staticRef($flowBox, w=>40, h=>15, color=>#448);
         }
       }
     }
@@ -32,9 +32,9 @@ version: 0.3
       point {
         pos: 0, 10
         flow(minHeight:25, layout:horizontal, padding:2, debug:true) {
-          reference($flowBox, w=>30, h=>15, color=>#844);
-          reference($flowBox, w=>30, h=>15, color=>#484);
-          reference($flowBox, w=>30, h=>15, color=>#448);
+          staticRef($flowBox, w=>30, h=>15, color=>#844);
+          staticRef($flowBox, w=>30, h=>15, color=>#484);
+          staticRef($flowBox, w=>30, h=>15, color=>#448);
         }
       }
     }
@@ -45,9 +45,9 @@ version: 0.3
       point {
         pos: 0, 10
         flow(minWidth:50, minHeight:50, layout:stack, padding:2, debug:true) {
-          reference($flowBox, w=>50, h=>50, color=>#844);
-          reference($flowBox, w=>30, h=>30, color=>#484);
-          reference($flowBox, w=>10, h=>10, color=>#448);
+          staticRef($flowBox, w=>50, h=>50, color=>#844);
+          staticRef($flowBox, w=>30, h=>30, color=>#484);
+          staticRef($flowBox, w=>10, h=>10, color=>#448);
         }
       }
     }
@@ -59,9 +59,9 @@ version: 0.3
       point {
         pos: 0, 10
         flow(layout:horizontal, horizontalSpacing:4, padding:2, debug:true) {
-          reference($flowBox, w=>25, h=>15, color=>#844);
-          reference($flowBox, w=>25, h=>15, color=>#484);
-          reference($flowBox, w=>25, h=>15, color=>#448);
+          staticRef($flowBox, w=>25, h=>15, color=>#844);
+          staticRef($flowBox, w=>25, h=>15, color=>#484);
+          staticRef($flowBox, w=>25, h=>15, color=>#448);
         }
       }
     }
@@ -72,9 +72,9 @@ version: 0.3
       point {
         pos: 0, 10
         flow(minWidth:50, layout:vertical, verticalSpacing:4, padding:2, debug:true) {
-          reference($flowBox, w=>40, h=>12, color=>#844);
-          reference($flowBox, w=>40, h=>12, color=>#484);
-          reference($flowBox, w=>40, h=>12, color=>#448);
+          staticRef($flowBox, w=>40, h=>12, color=>#844);
+          staticRef($flowBox, w=>40, h=>12, color=>#484);
+          staticRef($flowBox, w=>40, h=>12, color=>#448);
         }
       }
     }
@@ -86,11 +86,11 @@ version: 0.3
       point {
         pos: 0, 10
         flow(maxWidth:80, layout:horizontal, multiline:true, padding:2, horizontalSpacing:2, verticalSpacing:2, debug:true) {
-          reference($flowBox, w=>30, h=>15, color=>#844);
-          reference($flowBox, w=>30, h=>15, color=>#484);
-          reference($flowBox, w=>30, h=>15, color=>#448);
-          reference($flowBox, w=>30, h=>15, color=>#884);
-          reference($flowBox, w=>30, h=>15, color=>#488);
+          staticRef($flowBox, w=>30, h=>15, color=>#844);
+          staticRef($flowBox, w=>30, h=>15, color=>#484);
+          staticRef($flowBox, w=>30, h=>15, color=>#448);
+          staticRef($flowBox, w=>30, h=>15, color=>#884);
+          staticRef($flowBox, w=>30, h=>15, color=>#488);
         }
       }
     }
@@ -101,8 +101,8 @@ version: 0.3
       point {
         pos: 0, 10
         flow(minWidth:60, layout:vertical, padding:8, debug:true) {
-          reference($flowBox, w=>40, h=>12, color=>#844);
-          reference($flowBox, w=>40, h=>12, color=>#484);
+          staticRef($flowBox, w=>40, h=>12, color=>#844);
+          staticRef($flowBox, w=>40, h=>12, color=>#484);
         }
       }
     }
@@ -113,8 +113,8 @@ version: 0.3
       point {
         pos: 0, 10
         flow(minWidth:70, layout:vertical, paddingLeft:10, paddingTop:4, debug:true) {
-          reference($flowBox, w=>40, h=>12, color=>#844);
-          reference($flowBox, w=>40, h=>12, color=>#484);
+          staticRef($flowBox, w=>40, h=>12, color=>#844);
+          staticRef($flowBox, w=>40, h=>12, color=>#484);
         }
       }
     }
@@ -126,9 +126,9 @@ version: 0.3
       point {
         pos: 0, 10
         flow(layout:horizontal, horizontalSpacing:2, padding:2, debug:true) {
-          reference($flowBox, w=>20, h=>30, color=>#844);
-          reference($flowBox, w=>40, h=>15, color=>#484);
-          reference($flowBox, w=>15, h=>25, color=>#448);
+          staticRef($flowBox, w=>20, h=>30, color=>#844);
+          staticRef($flowBox, w=>40, h=>15, color=>#484);
+          staticRef($flowBox, w=>15, h=>25, color=>#448);
         }
       }
     }
@@ -139,9 +139,9 @@ version: 0.3
       point {
         pos: 0, 10
         flow(minWidth:60, layout:vertical, verticalSpacing:2, padding:2, debug:true) {
-          reference($flowBox, w=>50, h=>10, color=>#844);
-          reference($flowBox, w=>30, h=>15, color=>#484);
-          reference($flowBox, w=>45, h=>8, color=>#448);
+          staticRef($flowBox, w=>50, h=>10, color=>#844);
+          staticRef($flowBox, w=>30, h=>15, color=>#484);
+          staticRef($flowBox, w=>45, h=>8, color=>#448);
         }
       }
     }

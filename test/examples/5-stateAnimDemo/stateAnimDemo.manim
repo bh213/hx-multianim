@@ -1,4 +1,4 @@
-version: 0.3
+version: 0.5
 
 #file palette(file:"main-palette.png")
 
@@ -21,5 +21,5 @@ version: 0.3
 
 #main point {
   pos: 0, 0
-  reference($stateAnimDemo):0,0
+  staticRef($stateAnimDemo):0,0
 }

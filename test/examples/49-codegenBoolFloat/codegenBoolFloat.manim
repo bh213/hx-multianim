@@ -1,4 +1,4 @@
-version: 0.3
+version: 0.5
 
 #codegenBoolFloat programmable(showBorder:bool=true, showLabel:bool=false, opacity:float=0.8, barWidth:float=1.5) {
       @(showBorder=>true) ninepatch("ui", "button-hover", 150, 30): 0, 0

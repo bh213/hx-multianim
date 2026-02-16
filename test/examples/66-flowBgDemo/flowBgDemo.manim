@@ -1,4 +1,4 @@
-version: 0.3
+version: 0.5
 
 // Panel with ninepatch background that auto-sizes based on item count
 #flowPanel programmable(count:uint=3) {
@@ -21,7 +21,7 @@ version: 0.3
       text(m3x6, "count:2", #888, left, 200);
       point {
         pos: 0, 10
-        reference($flowPanel, count=>2);
+        staticRef($flowPanel, count=>2);
       }
     }
 
@@ -30,7 +30,7 @@ version: 0.3
       text(m3x6, "count:4", #888, left, 200);
       point {
         pos: 0, 10
-        reference($flowPanel, count=>4);
+        staticRef($flowPanel, count=>4);
       }
     }
 
@@ -39,7 +39,7 @@ version: 0.3
       text(m3x6, "count:6", #888, left, 200);
       point {
         pos: 0, 10
-        reference($flowPanel, count=>6);
+        staticRef($flowPanel, count=>6);
       }
     }
 

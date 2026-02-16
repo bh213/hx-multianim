@@ -1,4 +1,4 @@
-version: 0.3
+version: 0.5
 
 #statusBar programmable(value:uint=50, label:string="HP") {
   @(value >= 50) bitmap(generated(color(40, 10, #44ff44))): 0, 0
@@ -8,11 +8,11 @@ version: 0.3
 
 #componentDemo programmable() {
   text(m3x6, "component 1 (value=80)", #888888): 10, 10
-  component($statusBar, value=>80, label=>"HP"): 10, 24
+  dynamicRef($statusBar, value=>80, label=>"HP"): 10, 24
 
   text(m3x6, "component 2 (value=30)", #888888): 10, 50
-  component($statusBar, value=>30, label=>"MP"): 10, 64
+  dynamicRef($statusBar, value=>30, label=>"MP"): 10, 64
 
   text(m3x6, "component 3 (default)", #888888): 10, 90
-  component($statusBar): 10, 104
+  dynamicRef($statusBar): 10, 104
 }

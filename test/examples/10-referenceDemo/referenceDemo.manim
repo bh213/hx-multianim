@@ -1,4 +1,4 @@
-version: 0.3
+version: 0.5
 
 #referenceDemoItem programmable(width:int, height:int, shape:[rect, triangle], c1:color=white) {
   @(shape=>rect) bitmap(generated(color($width, $height, $c1)));
@@ -15,8 +15,8 @@ version: 0.3
 
   @alpha(0.3) bitmap(generated(color(1280, 720, #555)));
 
-  reference($referenceDemoItem, width=>160, height=>160, shape=>rect): 80,120;
-  reference($referenceDemoItem, width=>320, height=>320, shape=>triangle): 80, 360;
-  reference($referenceDemoItem, width=>500, height=>200, shape=>triangle): 500, 120;
-  reference($referenceDemoItem, width=>320, height=>320, shape=>triangle): 700, 360;
+  staticRef($referenceDemoItem, width=>160, height=>160, shape=>rect): 80,120;
+  staticRef($referenceDemoItem, width=>320, height=>320, shape=>triangle): 80, 360;
+  staticRef($referenceDemoItem, width=>500, height=>200, shape=>triangle): 500, 120;
+  staticRef($referenceDemoItem, width=>320, height=>320, shape=>triangle): 700, 360;
 }
