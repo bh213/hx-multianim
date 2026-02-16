@@ -1,0 +1,29 @@
+version: 0.5
+
+// Child with params a, b, c — defaults are 10, 20, 30
+// Displays colored bars (width = param value) and text values
+#scopeChild programmable(a:uint=10, b:uint=20, c:uint=30) {
+  bitmap(generated(color($a, 8, #ff4444))): 0, 0
+  bitmap(generated(color($b, 8, #44ff44))): 0, 10
+  bitmap(generated(color($c, 8, #4444ff))): 0, 20
+  text(m3x6, $a, #ff4444): 80, 0
+  text(m3x6, $b, #44ff44): 80, 10
+  text(m3x6, $c, #4444ff): 80, 20
+}
+
+// Parent has SAME param names but different defaults (50, 60, 70).
+// Without scope isolation, parent params would leak into child.
+#dynamicRefScope programmable(a:uint=50, b:uint=60, c:uint=70) {
+
+  // Case 1: explicit pass — child should get parent values (50, 60, 70)
+  text(m3x6, "all explicit (expect 50,60,70):", #aaaaaa): 10, 10
+  dynamicRef($scopeChild, a=>$a, b=>$b, c=>$c): 10, 24
+
+  // Case 2: no params — child should use OWN defaults (10, 20, 30), NOT parent (50, 60, 70)
+  text(m3x6, "no params (expect 10,20,30):", #aaaaaa): 10, 60
+  dynamicRef($scopeChild): 10, 74
+
+  // Case 3: partial — only a passed. b,c should use child defaults (20, 30)
+  text(m3x6, "partial a only (expect 50,20,30):", #aaaaaa): 10, 110
+  dynamicRef($scopeChild, a=>$a): 10, 124
+}

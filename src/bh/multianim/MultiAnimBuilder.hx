@@ -3929,25 +3929,6 @@ class MultiAnimBuilder {
 					retVal.set(key, MultiAnimParser.dynamicValueToIndex(key, type, value, s -> throw s));
 				}
 			}
-		if (extraInput != null) {
-			for (key => value in extraInput) {
-				if (retVal.exists(key))
-					throw 'extra input "$key=>$value" already exists in input' + MacroUtils.nodePos(node);
-				if (Std.isOfType(value, ResolvedIndexParameters)) {
-					retVal.set(key, value);
-				} else if (Std.isOfType(value, ReferenceableValue)) {
-					final ref:ReferenceableValue = cast value;
-					final type = getDefsType(key, value);
-					final resolved = resolveReferenceableValue(ref, type);
-					retVal.set(key, MultiAnimParser.dynamicValueToIndex(key, type, resolved, s -> throw s));
-				} else {
-					final type = getDefsType(key, value);
-
-					retVal.set(key, MultiAnimParser.dynamicValueToIndex(key, type, value, s -> throw s));
-				}
-			}
-		}
-
 		for (key => value in definitions) {
 			if (!retVal.exists(key) && value.defaultValue != null)
 				retVal[key] = value.defaultValue;

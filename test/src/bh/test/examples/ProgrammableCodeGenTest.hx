@@ -2855,6 +2855,13 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		simpleTest(73, "componentDemo", async);
 	}
 
+	// ==================== DynamicRef scope isolation: visual ====================
+
+	@Test
+	public function test74_DynamicRefScope(async:utest.Async):Void {
+		simpleMacroTest(74, "dynamicRefScope", () -> createMp().dynamicRefScope.create(), async);
+	}
+
 	// ==================== Indexed named: unit tests ====================
 
 	@Test
@@ -3078,5 +3085,74 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		Assert.notNull(dynRef, "Should have statusBar dynamicRef");
 		Assert.notNull(dynRef.object, "DynamicRef should have an object");
 		Assert.notNull(dynRef.incrementalContext, "DynamicRef should be built incrementally");
+	}
+
+	// ==================== DynamicRef scope isolation: unit tests ====================
+
+	@Test
+	public function testDynamicRefOverlappingParamNamesNoThrow():Void {
+		// Parent and child share param names (a, b, c). Before the scope isolation fix,
+		// building with explicit param pass (a=>$a, b=>$b, c=>$c) would throw because
+		// the auto-inherited parent params collided with the explicitly passed params.
+		final fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/74-dynamicRefScope/dynamicRefScope.manim"));
+		final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+		final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "dynamicRefScope.manim");
+
+		final result = builder.buildWithParameters("dynamicRefScope", new Map());
+		Assert.notNull(result, "Should build without throwing");
+		Assert.notNull(result.object, "Should have root object");
+
+		final dynRef = result.getDynamicRef("scopeChild");
+		Assert.notNull(dynRef, "Should have scopeChild dynamicRef");
+		Assert.notNull(dynRef.incrementalContext, "DynamicRef should be incremental");
+	}
+
+	@Test
+	public function testDynamicRefChildUsesOwnDefaults():Void {
+		// When parent params are passed as inheritedParameters but no explicit input,
+		// child should use its own defaults — parent params must NOT leak through.
+		final fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/74-dynamicRefScope/dynamicRefScope.manim"));
+		final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+		final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "dynamicRefScope.manim");
+
+		// Simulate parent scope: a=50, b=60, c=70
+		final parentParams = new Map<String, bh.multianim.MultiAnimParser.ResolvedIndexParameters>();
+		parentParams.set("a", bh.multianim.MultiAnimParser.ResolvedIndexParameters.Value(50));
+		parentParams.set("b", bh.multianim.MultiAnimParser.ResolvedIndexParameters.Value(60));
+		parentParams.set("c", bh.multianim.MultiAnimParser.ResolvedIndexParameters.Value(70));
+
+		// Build child directly with empty input but parent params as inherited
+		final childResult = builder.buildWithParameters("scopeChild", new Map(), null, parentParams, true);
+		Assert.notNull(childResult, "Should build child");
+
+		// Child should use its OWN defaults (a=10, b=20, c=30), not parent values (50, 60, 70)
+		final bitmaps = findVisibleBitmapDescendants(childResult.object);
+		Assert.equals(3, bitmaps.length, 'Expected 3 bitmaps, got ${bitmaps.length}');
+		Assert.equals(10, Std.int(bitmaps[0].tile.width), "Bitmap a width should be child default 10, not parent 50");
+		Assert.equals(20, Std.int(bitmaps[1].tile.width), "Bitmap b width should be child default 20, not parent 60");
+		Assert.equals(30, Std.int(bitmaps[2].tile.width), "Bitmap c width should be child default 30, not parent 70");
+	}
+
+	@Test
+	public function testDynamicRefExplicitParamsPassedCorrectly():Void {
+		// When parent explicitly passes params via dynamicRef, child should receive them.
+		final fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/74-dynamicRefScope/dynamicRefScope.manim"));
+		final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+		final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "dynamicRefScope.manim");
+
+		// Build child directly with explicit params
+		final inputParams = new Map<String, Dynamic>();
+		inputParams.set("a", 50);
+		inputParams.set("b", 60);
+		inputParams.set("c", 70);
+		final childResult = builder.buildWithParameters("scopeChild", inputParams, null, null, true);
+		Assert.notNull(childResult, "Should build child");
+
+		// Child should have the explicitly passed values
+		final bitmaps = findVisibleBitmapDescendants(childResult.object);
+		Assert.equals(3, bitmaps.length, 'Expected 3 bitmaps, got ${bitmaps.length}');
+		Assert.equals(50, Std.int(bitmaps[0].tile.width), "Bitmap a width should be 50");
+		Assert.equals(60, Std.int(bitmaps[1].tile.width), "Bitmap b width should be 60");
+		Assert.equals(70, Std.int(bitmaps[2].tile.width), "Bitmap c width should be 70");
 	}
 }
