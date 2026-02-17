@@ -3892,7 +3892,7 @@ class MultiAnimBuilder {
 	}
 
 	function updateIndexedParamsFromDynamicMap(node: Node, input:Map<String, Dynamic>, definitions:ParametersDefinitions,
-			?extraInput:Map<String, ResolvedIndexParameters>):Void {
+			?extraInput:Map<String, ResolvedIndexParameters>, resolveExtraInput:Bool = false):Void {
 		inline function getDefsType(key:String, value:Dynamic) {
 			final type = definitions.get(key)?.type;
 			if (type == null)
@@ -3929,6 +3929,26 @@ class MultiAnimBuilder {
 					indexedParams.set(k, v);
 			}
 		}
+
+		if (resolveExtraInput && extraInput != null) {
+			for (key => value in extraInput) {
+				if (retVal.exists(key))
+					throw 'extra input "$key=>$value" already exists in input' + MacroUtils.nodePos(node);
+				if (Std.isOfType(value, ResolvedIndexParameters)) {
+					retVal.set(key, value);
+				} else if (Std.isOfType(value, ReferenceableValue)) {
+					final ref:ReferenceableValue = cast value;
+					final type = getDefsType(key, value);
+					final resolved = resolveReferenceableValue(ref, type);
+					retVal.set(key, MultiAnimParser.dynamicValueToIndex(key, type, resolved, s -> throw s));
+				} else {
+					final type = getDefsType(key, value);
+
+					retVal.set(key, MultiAnimParser.dynamicValueToIndex(key, type, value, s -> throw s));
+				}
+			}
+		}
+
 		if (input != null)
 			for (key => value in input) {
 				if (Std.isOfType(value, ResolvedIndexParameters)) {
@@ -4077,7 +4097,7 @@ class MultiAnimBuilder {
 					comboParams.set(key, StringValue(allOptions[key][vi]));
 				}
 
-				updateIndexedParamsFromDynamicMap(node, inputParameters, definitions, comboParams);
+				updateIndexedParamsFromDynamicMap(node, inputParameters, definitions, comboParams, true);
 				this.builderParams = builderParams;
 				var c = startBuild(name, node, gridCoordinateSystem, hexCoordinateSystem, builderParams);
 				result.addResult(c, [
