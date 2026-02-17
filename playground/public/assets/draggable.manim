@@ -1,9 +1,45 @@
 version: 0.5
 
 // Drag & Drop Test
-// Demonstrates draggable UI elements.
-// Draggable objects are created programmatically by DraggableTestScreen.hx.
-// This file defines the static background: title, drop zones, and labels.
+// Demonstrates all draggable modes: drop zones, constraints, priority, layer, alpha.
+
+curves {
+    #elasticBounce curve {
+        easing: easeoutelastic
+    }
+    #easeOut curve {
+        easing: easeoutcubic
+    }
+}
+
+paths {
+    #straightLine path {
+        lineTo(100, 0)
+    }
+}
+
+// Elastic return — bounces to origin like a card snapping back
+#returnAnim animatedPath {
+    path: straightLine
+    type: time
+    duration: 0.5
+    0.0: progressCurve: elasticBounce
+}
+
+// Quick snap to drop zone
+#snapAnim animatedPath {
+    path: straightLine
+    type: time
+    duration: 0.55
+    0.0: progressCurve: easeOut
+}
+
+// Linear return for simple cases
+#linearReturn animatedPath {
+    path: straightLine
+    type: time
+    duration: 0.2
+}
 
 #ui programmable() {
     text(dd, "Drag & Drop Test", #ffffffcc, center, 800): 0, 10
@@ -16,6 +52,14 @@ version: 0.5
     ninepatch("ui", "Window_3x3_idle", 120, 120): 550, 240
     text(dd, "Drop Zone 2", #ffffffaa, center, 120): 550, 375
 
-    // Instructions
-    text(dd, "Drag the colored rectangles around the screen", #ffffff88): 100, 500
+    // Horizontal constraint rail
+    bitmap(generated(color(500, 2, #ffffff44))): 50, 480
+    text(dd, "Horizontal (clamped to rail)", #ffffffaa): 50, 455
+
+    // BackgroundLayer demo label
+    text(dd, "Purple: hides behind (BackgroundLayer)", #ffffffaa): 550, 130
+
+    // Color legend
+    text(dd, "Cyan: snap zones + elastic return | Orange: priority zones", #ffffff88): 50, 530
+    text(dd, "Green: horizontal clamp | Purple: background layer", #ffffff88): 50, 550
 }

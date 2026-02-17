@@ -6,6 +6,8 @@ import bh.multianim.MultiAnimBuilder.SlotHandle;
 import bh.paths.AnimatedPath;
 import bh.paths.AnimatedPath.AnimatedPathMode;
 import bh.paths.MultiAnimPaths.Path;
+import bh.ui.screens.UIScreen;
+import bh.ui.screens.UIScreen.LayersEnum;
 import h2d.Object;
 import h2d.col.Bounds;
 import h2d.col.Point;
@@ -26,9 +28,14 @@ typedef DragDropDelegate = (result:DragDropResult, wrapper:UIElementEventWrapper
 
 /**
  * Delegate function type for handling drag events.
- * Called when dragging starts, moves, or ends.
+ * Called when dragging starts, moves, ends, or when entering/leaving drop zones.
  */
 typedef DragEventDelegate = (event:DragEvent, pos:Point, wrapper:UIElementEventWrapper) -> Void;
+
+/**
+ * Delegate function type for handling drag cancellation (drop outside any valid zone).
+ */
+typedef DragCancelDelegate = (pos:Point, wrapper:UIElementEventWrapper) -> Void;
 
 /**
  * Factory function type for creating an AnimatedPath between two points.
@@ -41,6 +48,8 @@ enum DragEvent {
 	DragMove;
 	DragEnd;
 	DragCancel;
+	ZoneEnter(zone:DropZone);
+	ZoneLeave(zone:DropZone);
 }
 
 @:structInit
@@ -50,7 +59,10 @@ class DropZone {
 	public var slot:Null<SlotHandle> = null;
 	public var snapX:Null<Float> = null;
 	public var snapY:Null<Float> = null;
-	public var accepts:Null<(draggable:UIMultiAnimDraggable) -> Bool> = null;
+	public var accepts:Null<(draggable:UIMultiAnimDraggable, zone:DropZone) -> Bool> = null;
+	public var priority:Int = 0;
+	public var boundsProvider:Null<() -> Bounds> = null;
+	public var snapProvider:Null<() -> Point> = null;
 }
 
 @:structInit
@@ -67,15 +79,17 @@ enum DraggableState {
 
 /**
  * A draggable wrapper for h2d objects that provides drag-and-drop functionality
- * with drop zones, slot integration, and path-based animations for
- * successful snaps and failed-drop returns.
+ * with drop zones, slot integration, path-based animations for
+ * successful snaps and failed-drop returns, zone hover tracking,
+ * drag constraints, priority-based zone selection, and UIScreen layer support.
  */
-class UIMultiAnimDraggable implements UIElement implements StandardUIElementEvents implements UIElementUpdatable {
+class UIMultiAnimDraggable implements UIElement implements StandardUIElementEvents implements UIElementUpdatable implements UIElementCustomAddToLayer {
 	var root:h2d.Object;
 	var target:h2d.Object;
 	var dragOffset:Point;
 
-	var draggableButtons:Array<Int> = [0];
+	public var draggableButtons:Array<Int> = [0];
+
 	var draggingButton:Int = -1;
 
 	var state:DraggableState = Idle;
@@ -83,11 +97,18 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 	var originY:Float = 0.;
 	var activeAnim:Null<AnimatedPath> = null;
 	var animOnComplete:Null<() -> Void> = null;
+	var activeWrapper:Null<UIElementEventWrapper> = null;
+	var currentHoverZone:Null<DropZone> = null;
+
+	// Layer support
+	var screen:Null<UIScreen> = null;
+	var currentLayer:Null<LayersEnum> = null;
 
 	// Delegate callbacks
 	public var onDragStart:Null<DragStartDelegate> = null;
 	public var onDragDrop:Null<DragDropDelegate> = null;
 	public var onDragEvent:Null<DragEventDelegate> = null;
+	public var onDragCancel:Null<DragCancelDelegate> = null;
 
 	// Path factories for animations (null = instant teleport)
 	public var returnPathFactory:Null<AnimatedPathFactory> = null;
@@ -98,11 +119,25 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 
 	// Configuration
 	public var enabled:Bool = true;
+	public var dragConstraint:Null<(pos:Point) -> Point> = null;
+
+	/** Optional layer to reparent to while dragging (null = stay on current layer). */
+	public var dragLayer:Null<LayersEnum> = null;
+
+	/** Alpha applied to the target while dragging (null = no change). */
+	public var dragAlpha:Null<Float> = null;
+
+	/** Alpha applied to the target when hovering over a valid drop zone (null = no change). */
+	public var zoneHighlightAlpha:Null<Float> = null;
+
+	/** Whether to return to origin on failed drop (true) or stay at current position (false). Default: true. */
+	public var returnToOrigin:Bool = true;
+
+	var savedAlpha:Float = 1.0;
 
 	public function new(target:h2d.Object) {
 		this.target = target;
-		var bounds = target.getBounds();
-		this.root = new MAObject(MADraggable(Math.ceil(bounds.width), Math.ceil(bounds.height)), false);
+		this.root = new MAObject(MADraggable(0, 0), false);
 		this.root.addChild(target);
 	}
 
@@ -117,16 +152,15 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 		return this;
 	}
 
-	public function addDropZoneFromSlot(id:String, slot:SlotHandle, ?accepts:(draggable:UIMultiAnimDraggable) -> Bool):UIMultiAnimDraggable {
-		var b = slot.container.getBounds();
-		var absPos = slot.container.localToGlobal(new Point(0, 0));
+	public function addDropZoneFromSlot(id:String, slot:SlotHandle,
+			?accepts:(draggable:UIMultiAnimDraggable, zone:DropZone) -> Bool):UIMultiAnimDraggable {
 		dropZones.push({
 			id: id,
-			bounds: b,
+			bounds: slot.container.getBounds(),
 			slot: slot,
-			snapX: absPos.x,
-			snapY: absPos.y,
-			accepts: accepts
+			accepts: accepts,
+			boundsProvider: () -> slot.container.getBounds(),
+			snapProvider: () -> slot.container.localToGlobal(new Point(0, 0))
 		});
 		return this;
 	}
@@ -140,13 +174,34 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 	}
 
 	function findDropZone(pos:Point):Null<DropZone> {
-		for (zone in dropZones) {
-			if (zone.bounds.contains(pos)) {
-				if (zone.accepts == null || zone.accepts(this))
-					return zone;
+		var best:Null<DropZone> = null;
+		var bestPriority = -2147483648;
+		var bestIndex = -1;
+		for (i in 0...dropZones.length) {
+			var zone = dropZones[i];
+			var b = zone.boundsProvider != null ? zone.boundsProvider() : zone.bounds;
+			if (b.contains(pos)) {
+				if (zone.accepts == null || zone.accepts(this, zone)) {
+					if (zone.priority > bestPriority || (zone.priority == bestPriority && i > bestIndex)) {
+						best = zone;
+						bestPriority = zone.priority;
+						bestIndex = i;
+					}
+				}
 			}
 		}
-		return null;
+		return best;
+	}
+
+	function getSnapPosition(zone:DropZone, fallback:Point):{x:Float, y:Float} {
+		if (zone.snapProvider != null) {
+			var sp = zone.snapProvider();
+			return {x: sp.x, y: sp.y};
+		}
+		return {
+			x: zone.snapX != null ? zone.snapX : fallback.x,
+			y: zone.snapY != null ? zone.snapY : fallback.y
+		};
 	}
 
 	// --- AnimatedPath helpers ---
@@ -157,18 +212,33 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 			return;
 		}
 
-		var from = new FPoint(fromX, fromY);
-		var to = new FPoint(toX, toY);
-
 		// Don't animate zero-distance
 		if (Math.abs(toX - fromX) < 0.5 && Math.abs(toY - fromY) < 0.5) {
 			onComplete();
 			return;
 		}
 
+		var from = new FPoint(fromX, fromY);
+		var to = new FPoint(toX, toY);
 		activeAnim = factory(from, to);
 		animOnComplete = onComplete;
 		state = Animating;
+	}
+
+	// --- Layer helpers ---
+
+	function moveToLayer(layer:Null<LayersEnum>):Void {
+		if (screen == null || layer == null)
+			return;
+		root.remove();
+		screen.addObjectToLayer(root, layer);
+	}
+
+	function restoreLayer():Void {
+		if (dragLayer != null && screen != null && currentLayer != null) {
+			root.remove();
+			screen.addObjectToLayer(root, currentLayer);
+		}
 	}
 
 	// --- UIElementUpdatable ---
@@ -178,7 +248,7 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 			return;
 
 		var s = activeAnim.update(dt);
-		target.setPosition(s.position.x, s.position.y);
+		root.setPosition(s.position.x, s.position.y);
 
 		if (s.done) {
 			var cb = animOnComplete;
@@ -201,13 +271,40 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 	}
 
 	public function clear() {
+		if (activeWrapper != null) {
+			activeWrapper.control.captureEvents.stopCapture();
+			activeWrapper = null;
+		}
 		activeAnim = null;
 		animOnComplete = null;
+		currentHoverZone = null;
+		draggingButton = -1;
+		if (state == Dragging) {
+			restoreLayer();
+			if (target != null)
+				target.alpha = savedAlpha;
+		}
 		state = Idle;
 		if (target != null) {
 			target.remove();
 			target = null;
 		}
+	}
+
+	// --- UIElementCustomAddToLayer ---
+
+	public function customAddToLayer(requestedLayer:Null<LayersEnum>, screen:UIScreen, updateMode:Bool):UIElementCustomAddToLayerResult {
+		if (requestedLayer == null) {
+			if (updateMode)
+				throw 'customAddToLayer update mode had no layer';
+			else
+				return Postponed;
+		}
+		if (!updateMode && this.root.parent == null)
+			screen.addObjectToLayer(this.root, requestedLayer);
+		this.screen = screen;
+		this.currentLayer = requestedLayer;
+		return Added;
 	}
 
 	// --- StandardUIElementEvents ---
@@ -227,13 +324,22 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 
 					draggingButton = button;
 					state = Dragging;
+					activeWrapper = wrapper;
 
 					// Remember origin for return animation
-					originX = target.x;
-					originY = target.y;
+					originX = root.x;
+					originY = root.y;
 
-					dragOffset = new Point(target.x - wrapper.eventPos.x, target.y - wrapper.eventPos.y);
+					dragOffset = new Point(root.x - wrapper.eventPos.x, root.y - wrapper.eventPos.y);
 					wrapper.control.captureEvents.startCapture();
+
+					// Apply drag alpha
+					savedAlpha = target.alpha;
+					if (dragAlpha != null)
+						target.alpha = dragAlpha;
+
+					// Reparent to drag layer if configured
+					moveToLayer(dragLayer);
 
 					wrapper.control.pushEvent(UICustomEvent("dragStart", null), this);
 					if (onDragEvent != null) {
@@ -244,7 +350,18 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 			case OnRelease(button):
 				if (button == draggingButton && state == Dragging) {
 					draggingButton = -1;
+					activeWrapper = null;
 					wrapper.control.captureEvents.stopCapture();
+
+					// Clear zone hover
+					if (currentHoverZone != null) {
+						if (onDragEvent != null)
+							onDragEvent(ZoneLeave(currentHoverZone), wrapper.eventPos, wrapper);
+						currentHoverZone = null;
+					}
+
+					// Restore alpha
+					target.alpha = savedAlpha;
 
 					var dropPos = new Point(wrapper.eventPos.x + dragOffset.x, wrapper.eventPos.y + dragOffset.y);
 					var zone = findDropZone(wrapper.eventPos);
@@ -258,40 +375,39 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 
 					if (accepted && zone != null) {
 						// Successful drop
-						var snapX = zone.snapX != null ? zone.snapX : dropPos.x;
-						var snapY = zone.snapY != null ? zone.snapY : dropPos.y;
+						var snap = getSnapPosition(zone, dropPos);
 
 						wrapper.control.pushEvent(UICustomEvent("dragDrop", {zone: zone.id}), this);
 						if (onDragEvent != null) {
 							onDragEvent(DragEnd, wrapper.eventPos, wrapper);
 						}
 
-						startAnimation(target.x, target.y, snapX, snapY, snapPathFactory, () -> {
-							target.setPosition(snapX, snapY);
+						startAnimation(root.x, root.y, snap.x, snap.y, snapPathFactory, () -> {
+							root.setPosition(snap.x, snap.y);
+							restoreLayer();
 							if (zone.slot != null) {
 								zone.slot.setContent(target);
 							}
 						});
-
-						// If no animation was started (factory null or zero distance),
-						// state is already Idle from startAnimation->onComplete
-						if (state != Animating) {
-							state = Idle;
-						}
 					} else {
-						// Failed drop - return to origin
+						// Failed drop
 						wrapper.control.pushEvent(UICustomEvent("dragCancel", null), this);
 						if (onDragEvent != null) {
 							onDragEvent(DragCancel, wrapper.eventPos, wrapper);
 						}
+						if (onDragCancel != null) {
+							onDragCancel(wrapper.eventPos, wrapper);
+						}
 
-						startAnimation(target.x, target.y, originX, originY, returnPathFactory, () -> {
-							target.setPosition(originX, originY);
-						});
-
-						if (state != Animating) {
-							target.setPosition(originX, originY);
+						if (returnToOrigin) {
+							startAnimation(root.x, root.y, originX, originY, returnPathFactory, () -> {
+								root.setPosition(originX, originY);
+								restoreLayer();
+							});
+						} else {
+							// Stay at current position
 							state = Idle;
+							restoreLayer();
 						}
 					}
 				}
@@ -299,7 +415,27 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 			case OnMouseMove:
 				if (state == Dragging) {
 					var newPos = new Point(wrapper.eventPos.x + dragOffset.x, wrapper.eventPos.y + dragOffset.y);
-					target.setPosition(newPos.x, newPos.y);
+					if (dragConstraint != null) {
+						newPos = dragConstraint(newPos);
+					}
+					root.setPosition(newPos.x, newPos.y);
+
+					// Zone hover tracking
+					var hoverZone = findDropZone(wrapper.eventPos);
+					if (hoverZone != currentHoverZone) {
+						if (currentHoverZone != null && onDragEvent != null) {
+							onDragEvent(ZoneLeave(currentHoverZone), wrapper.eventPos, wrapper);
+						}
+						currentHoverZone = hoverZone;
+						if (currentHoverZone != null && onDragEvent != null) {
+							onDragEvent(ZoneEnter(currentHoverZone), wrapper.eventPos, wrapper);
+						}
+						// Update alpha for zone highlight
+						if (zoneHighlightAlpha != null) {
+							target.alpha = if (currentHoverZone != null) zoneHighlightAlpha else if (dragAlpha != null) dragAlpha else savedAlpha;
+						}
+					}
+
 					if (onDragEvent != null) {
 						onDragEvent(DragMove, wrapper.eventPos, wrapper);
 					}

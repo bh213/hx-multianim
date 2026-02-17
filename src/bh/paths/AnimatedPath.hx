@@ -136,6 +136,7 @@ class AnimatedPath {
 
 		var rate:Float;
 		var effectiveSpeed:Float;
+		var modeComplete = false;
 
 		switch mode {
 			case Distance(baseSpeed):
@@ -144,6 +145,7 @@ class AnimatedPath {
 				effectiveSpeed = baseSpeed * speedMultiplier;
 				distance += dt * effectiveSpeed;
 				rate = getDistanceRate();
+				modeComplete = rate >= 1.0;
 
 			case Time(duration):
 				var timeRate = Math.min(time / duration, 1.0);
@@ -153,9 +155,10 @@ class AnimatedPath {
 				else
 					timeRate;
 				effectiveSpeed = if (time > 0) pathLength * rate / time else 0.;
+				// In Time mode, done when time elapses — not when rate overshoots
+				// (progress curves like EaseOutElastic overshoot past 1.0 to create bounce)
+				modeComplete = timeRate >= 1.0;
 		}
-
-		if (rate >= 1.0) rate = 1.0;
 
 		// Fire events up to current rate
 		while (currentEventIndex < timedEvents.length) {
@@ -169,7 +172,7 @@ class AnimatedPath {
 				break;
 		}
 
-		if (rate >= 1.0) {
+		if (modeComplete) {
 			computeState(1.0);
 			currentState.speed = effectiveSpeed;
 			currentState.done = true;

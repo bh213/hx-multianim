@@ -339,6 +339,15 @@ class Path {
 				return singlePath.getPoint((rate - singlePath.startRange) / (singlePath.endRange - singlePath.startRange));
 			}
 		}
+		// Extrapolate beyond [0, 1] using first/last segment (e.g. for overshooting progress curves)
+		if (rate > 1.0 && singlePaths.length > 0) {
+			var last = singlePaths[singlePaths.length - 1];
+			return last.getPoint((rate - last.startRange) / (last.endRange - last.startRange));
+		}
+		if (rate < 0.0 && singlePaths.length > 0) {
+			var first = singlePaths[0];
+			return first.getPoint((rate - first.startRange) / (first.endRange - first.startRange));
+		}
 		throw 'rate out of range: $rate';
 	}
 
@@ -348,6 +357,15 @@ class Path {
 			if (rate >= singlePath.startRange && rate <= singlePath.endRange) {
 				return singlePath.getTangentAngle((rate - singlePath.startRange) / (singlePath.endRange - singlePath.startRange));
 			}
+		}
+		// Extrapolate beyond [0, 1] using first/last segment
+		if (rate > 1.0 && singlePaths.length > 0) {
+			var last = singlePaths[singlePaths.length - 1];
+			return last.getTangentAngle((rate - last.startRange) / (last.endRange - last.startRange));
+		}
+		if (rate < 0.0 && singlePaths.length > 0) {
+			var first = singlePaths[0];
+			return first.getTangentAngle((rate - first.startRange) / (first.endRange - first.startRange));
 		}
 		throw 'rate out of range: $rate';
 	}
