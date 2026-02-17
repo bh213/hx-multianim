@@ -1999,8 +1999,9 @@ var v:Int = bar.getIntValue();
 | `scrollbarBuildName` | string | method param | Scrollbar programmable name |
 | `scrollbarInPanelName` | string | `"scrollbar"` | Named element in panel for scrollbar placement |
 | `width` | int | `100` | Panel width |
-| `height` | int | `100` | Panel height |
+| `height` | int | `100` | Panel height (acts as max height when `panelMode` is `scalable`) |
 | `topClearance` | int | `0` | Top margin |
+| `panelMode` | string | `"scrollable"` | `"scrollable"` for fixed height with scrollbar, `"scalable"` for auto-sizing to content |
 | `scrollSpeed` | float | from `.manim` or `100` | Scroll speed override (pixels/sec) |
 | `doubleClickThreshold` | float | `0.3` | Double-click detection window (seconds) |
 | `wheelScrollMultiplier` | float | `10` | Mouse wheel scroll sensitivity |
@@ -2027,7 +2028,7 @@ list.wheelScrollMultiplier = 20;
 
 **Haxe class:** `UIStandardMultiAnimDropdown`
 
-Combines a closed/open button with a `UIMultiAnimScrollableList` panel.
+Combines a closed/open button with a `UIMultiAnimScrollableList` panel. Supports both scrollable (fixed height with scrollbar) and scalable (auto-sizing to content) panel modes via the `panelMode` setting.
 
 **Required `.manim` parameters (dropdown):**
 

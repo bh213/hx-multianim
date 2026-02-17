@@ -12,6 +12,7 @@ import bh.multianim.MultiAnimBuilder.MultiAnimBuilder;
 import h2d.Object;
 import h2d.col.Point;
 import bh.ui.UIElement.UIElementEvents;
+import bh.ui.UIMultiAnimScrollableList.PanelSizeMode;
 
 private enum AnimState {
 	Opening;
@@ -101,8 +102,8 @@ class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisab
 		return new UIStandardMultiAnimDropdown(builder, panel, items, initialIndex);
 	}
 
-	public static function create(builder:UIElementBuilder, panelBuilder:UIElementBuilder, panelListItemBuilder:UIElementBuilder, scrollbarBuilder:UIElementBuilder, scrollbarInPanelName:String, items, initialIndex = 0, panelWidth = 120, panelHeight = 300) {
-		var panel = buildPanel(panelBuilder, panelListItemBuilder, scrollbarBuilder, scrollbarInPanelName, items, initialIndex, panelWidth, panelHeight);
+	public static function create(builder:UIElementBuilder, panelBuilder:UIElementBuilder, panelListItemBuilder:UIElementBuilder, scrollbarBuilder:UIElementBuilder, scrollbarInPanelName:String, items, initialIndex = 0, panelWidth = 120, panelHeight = 300, ?panelSizeMode:PanelSizeMode) {
+		var panel = buildPanel(panelBuilder, panelListItemBuilder, scrollbarBuilder, scrollbarInPanelName, items, initialIndex, panelWidth, panelHeight, panelSizeMode);
 		return new UIStandardMultiAnimDropdown(builder, panel, items, initialIndex);
 	}
 
@@ -110,8 +111,8 @@ class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisab
 	 * Convenience factory that takes a single MultiAnimBuilder and component names.
 	 * Uses standard component names by default (dropdown, list-panel, list-item-120, scrollbar).
 	 */
-	public static function createWithSingleBuilder(builder:MultiAnimBuilder, items:Array<UIElementListItem>, initialIndex = 0, dropdownName = "dropdown", panelName = "list-panel", itemName = "list-item-120", scrollbarName = "scrollbar", scrollbarInPanelName = "scrollbar", panelWidth = 120, panelHeight = 300) {
-		return create(builder.createElementBuilder(dropdownName), builder.createElementBuilder(panelName), builder.createElementBuilder(itemName), builder.createElementBuilder(scrollbarName), scrollbarInPanelName, items, initialIndex, panelWidth, panelHeight);
+	public static function createWithSingleBuilder(builder:MultiAnimBuilder, items:Array<UIElementListItem>, initialIndex = 0, dropdownName = "dropdown", panelName = "list-panel", itemName = "list-item-120", scrollbarName = "scrollbar", scrollbarInPanelName = "scrollbar", panelWidth = 120, panelHeight = 300, ?panelSizeMode:PanelSizeMode) {
+		return create(builder.createElementBuilder(dropdownName), builder.createElementBuilder(panelName), builder.createElementBuilder(itemName), builder.createElementBuilder(scrollbarName), scrollbarInPanelName, items, initialIndex, panelWidth, panelHeight, panelSizeMode);
 	}
 
 	function callback(input:CallbackRequest):CallbackResult {
@@ -133,8 +134,8 @@ class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisab
 		return CBRNoResult;
 	}
 
-	static function buildPanel(builder:UIElementBuilder, panelListItemBuilder:UIElementBuilder, scrollbarBuilder:UIElementBuilder, scrollbarInPanelName:String, items, initialIndex, panelWidth = 120, panelHeight = 300) {
-		return UIMultiAnimScrollableList.create(builder, panelListItemBuilder, scrollbarBuilder, scrollbarInPanelName, panelWidth, panelHeight, items, 0, initialIndex);
+	static function buildPanel(builder:UIElementBuilder, panelListItemBuilder:UIElementBuilder, scrollbarBuilder:UIElementBuilder, scrollbarInPanelName:String, items, initialIndex, panelWidth = 120, panelHeight = 300, ?panelSizeMode:PanelSizeMode) {
+		return UIMultiAnimScrollableList.create(builder, panelListItemBuilder, scrollbarBuilder, scrollbarInPanelName, panelWidth, panelHeight, items, 0, initialIndex, panelSizeMode);
 	}
 
 	function onPanelItemChanged(newIndex, items, wrapper) {
@@ -332,7 +333,7 @@ class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisab
 			else
 				return Postponed;
 		}
-		if (!updateMode)
+		if (!updateMode && this.root.parent == null)
 			screen.addObjectToLayer(this.root, requestedLayer);
 		var higherLayer = screen.getHigherLayer(requestedLayer);
 		screen.addObjectToLayer(this.panel.getObject(), higherLayer);

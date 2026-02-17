@@ -93,8 +93,9 @@ class ComponentsTestScreen extends UIScreenBase {
 				scroll3=>addScrollableListWithSingleBuilder(builder, "list-panel", "list-item-120", "scrollbar", "scrollbar", list20, 3,100,100),
 				scroll4=>addScrollableListWithSingleBuilder(builder, "list-panel", "list-item-120", "scrollbar", "scrollbar", list20disabled, 3,100,100),
 				checkboxWithLabel=>addCheckboxWithText(builder, "my label", "m6x11", true),
-				//function addDropdown(providedBuilder, items, settings:ResolvedSettings, initialIndex = 0) {
-				//dropdown1 => addDropdown(builder, list100, 0)
+				dropdownScalable1=>addDropdownWithSingleBuilder(builder, "dropdown", "list-panel", "list-item-120", "scrollbar", "scrollbar", list4, 0),
+				dropdownScalable2=>addDropdownWithSingleBuilder(builder, "dropdown", "list-panel", "list-item-120", "scrollbar", "scrollbar", list20, 0),
+				dropdownScrollable=>addDropdownWithSingleBuilder(builder, "dropdown", "list-panel", "list-item-120", "scrollbar", "scrollbar", list20, 0),
 			]);
 			var ui = res.builderResults;
 			

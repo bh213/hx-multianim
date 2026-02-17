@@ -213,6 +213,7 @@ class IncrementalUpdateContext {
 	var builderParams:BuilderParameters;
 	var conditionalEntries:Array<{object:h2d.Object, node:Node}> = [];
 	var trackedExpressions:Array<{updateFn:Void->Void, paramRefs:Array<String>}> = [];
+	var dynamicRefBindings:Array<{childContext:IncrementalUpdateContext, childParam:String, resolveFn:Void->Dynamic, referencedParams:Array<String>}> = [];
 	var rootNode:Node;
 	var batchMode:Bool = false;
 	var changedParams:Map<String, Bool> = new Map();
@@ -234,6 +235,10 @@ class IncrementalUpdateContext {
 
 	public function trackExpression(updateFn:Void->Void, paramRefs:Array<String>):Void {
 		trackedExpressions.push({updateFn: updateFn, paramRefs: paramRefs});
+	}
+
+	public function trackDynamicRef(childContext:IncrementalUpdateContext, childParam:String, resolveFn:Void->Dynamic, referencedParams:Array<String>):Void {
+		dynamicRefBindings.push({childContext: childContext, childParam: childParam, resolveFn: resolveFn, referencedParams: referencedParams});
 	}
 
 	public function setParameter(name:String, value:Dynamic):Void {
@@ -285,6 +290,20 @@ class IncrementalUpdateContext {
 			}
 			if (relevant || Lambda.count(changedParams) == 0) {
 				tracked.updateFn();
+			}
+		}
+
+		// Propagate to dynamic ref children
+		for (binding in dynamicRefBindings) {
+			var relevant = false;
+			for (ref in binding.referencedParams) {
+				if (changedParams.exists(ref)) {
+					relevant = true;
+					break;
+				}
+			}
+			if (relevant) {
+				binding.childContext.setParameter(binding.childParam, binding.resolveFn());
 			}
 		}
 
@@ -1563,6 +1582,31 @@ class MultiAnimBuilder {
 						}, npRefs);
 					}
 				}
+			case BITMAP(tileSource, _, _):
+				switch tileSource {
+					case TSGenerated(type):
+						switch type {
+							case SolidColor(w, h, color):
+								final bmpRefs:Array<String> = [];
+								collectParamRefs(w, bmpRefs);
+								collectParamRefs(h, bmpRefs);
+								collectParamRefs(color, bmpRefs);
+								if (bmpRefs.length > 0) {
+									final bmp = switch builtObject { case HeapsBitmap(bmp): bmp; default: null; };
+									if (bmp != null) {
+										final wCapture = w;
+										final hCapture = h;
+										final colorCapture = color;
+										incrementalContext.trackExpression(() -> {
+											bmp.tile = h2d.Tile.fromColor(resolveAsColorInteger(colorCapture).addAlphaIfNotPresent(),
+												resolveAsInteger(wCapture), resolveAsInteger(hCapture));
+										}, bmpRefs);
+									}
+								}
+							default:
+						}
+					default:
+				}
 			default:
 		}
 
@@ -2419,6 +2463,27 @@ class MultiAnimBuilder {
 
 				// Store the sub-result for later access via getDynamicRef()
 				internalResults.dynamicRefs.set(reference, result);
+
+				// Register parameter bindings for incremental propagation
+				if (incrementalMode && incrementalContext != null && result.incrementalContext != null) {
+					final childNode = builder.multiParserResult?.nodes?.get(reference);
+					final childDefs = childNode != null ? builder.getProgrammableParameterDefinitions(childNode) : new Map();
+					for (childParam => value in parameters) {
+						final refs:Array<String> = [];
+						collectParamRefs(value, refs);
+						if (refs.length > 0) {
+							final capturedValue = value;
+							final paramType = childDefs.get(childParam)?.type;
+							final resolveFn:Void->Dynamic = switch paramType {
+								case PPTString: () -> resolveAsString(capturedValue);
+								case PPTColor: () -> resolveAsColorInteger(capturedValue);
+								case PPTFloat: () -> resolveAsNumber(capturedValue);
+								default: () -> resolveAsInteger(capturedValue);
+							};
+							incrementalContext.trackDynamicRef(result.incrementalContext, childParam, resolveFn, refs);
+						}
+					}
+				}
 
 				if (object.numChildren == 1) {
 					final inner = object.getChildAt(0);

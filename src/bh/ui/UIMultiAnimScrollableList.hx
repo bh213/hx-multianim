@@ -9,6 +9,11 @@ import h2d.Object;
 import h2d.col.Point;
 import bh.ui.UIElement.UIElementEvents;
 
+enum PanelSizeMode {
+	FixedScroll;
+	AutoSize;
+}
+
 // var allStates = hover, pressed, disabled, normal, selected
 class UIMultiAnimScrollableList implements UIElement implements UIElementDisablable implements StandardUIElementEvents implements UIElementSyncRedraw implements UIElementUpdatable
 		implements UIElementListValue {
@@ -30,7 +35,9 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 
 	var width:Int;
 	var height:Int;
+	var maxHeight:Int;
 	var totalHeight:Float; // scrollable height
+	var panelSizeMode:PanelSizeMode;
 	var keyScrollingUp = false;
 	var keyScrollingDown = false;
 
@@ -56,21 +63,40 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 	var lastClickIndex = -1;
 	var topClearance = 0;
 
-	function new(panelBuilder:UIElementBuilder, itemBuilder:UIElementBuilder, scrollbarBuilder:UIElementBuilder, scrollbarInPanelName:String, width:Int, height:Int, items, topClearance, initialIndex = 0) {
+	function new(panelBuilder:UIElementBuilder, itemBuilder:UIElementBuilder, scrollbarBuilder:UIElementBuilder, scrollbarInPanelName:String, width:Int, height:Int, items, topClearance, initialIndex = 0, panelSizeMode:PanelSizeMode = null) {
 		this.panelBuilder = panelBuilder;
 		this.itemBuilder = itemBuilder;
 		this.scrollbarBuilder = scrollbarBuilder;
 		this.scrollbarInPanelName = scrollbarInPanelName;
 		this.root = new h2d.Object();
+		this.panelSizeMode = panelSizeMode ?? FixedScroll;
 
 		this.items = items;
 		this.width = width;
-		this.height = height;
+		this.maxHeight = height;
 		this.topClearance = topClearance;
-		this.mask = new h2d.Mask(width, height);
+
+		if (this.panelSizeMode == AutoSize) {
+			this.height = computeAutoSizeHeight(items);
+		} else {
+			this.height = height;
+		}
+
+		this.mask = new h2d.Mask(width, this.height);
 		this.panelResults = buildPanel();
 		currentItemIndex = initialIndex;
 		buildItems();
+	}
+
+	function computeAutoSizeHeight(items:Array<UIElementListItem>):Int {
+		if (items.length == 0)
+			return 0;
+		final sampleItem = itemBuilder.buildItem(0, items[0], width, maxHeight);
+		final result = getBuiltItem(sampleItem, "normal", false, items[0].disabled == true);
+		final singleHeight = result.rootSettings.getFloatOrException("height");
+		result.object.remove();
+		final totalItemsHeight = singleHeight * items.length;
+		return Std.int(hxd.Math.min(totalItemsHeight, maxHeight));
 	}
 
 	public function clear() {
@@ -82,12 +108,12 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 		this.interactives = [];
 	}
 
-	public static function createWithSingleBuilder(builder:MultiAnimBuilder, panelBuilderName:String, itemBuilderName:String, scrollbarBuilderName:String, scrollbarInPanelName:String, width:Int, height:Int, items, topClearance, initialIndex) {
-		return new UIMultiAnimScrollableList(builder.createElementBuilder(panelBuilderName), builder.createElementBuilder(itemBuilderName), builder.createElementBuilder(scrollbarBuilderName), scrollbarInPanelName, width, height, items, topClearance, initialIndex);
+	public static function createWithSingleBuilder(builder:MultiAnimBuilder, panelBuilderName:String, itemBuilderName:String, scrollbarBuilderName:String, scrollbarInPanelName:String, width:Int, height:Int, items, topClearance, initialIndex, ?panelSizeMode:PanelSizeMode) {
+		return new UIMultiAnimScrollableList(builder.createElementBuilder(panelBuilderName), builder.createElementBuilder(itemBuilderName), builder.createElementBuilder(scrollbarBuilderName), scrollbarInPanelName, width, height, items, topClearance, initialIndex, panelSizeMode);
 	}
 
-	public static function create(builder:UIElementBuilder, itemBuilder:UIElementBuilder, scrollbarBuilder:UIElementBuilder, scrollbarInPanelName:String, width:Int, height:Int, items, topClearance, initialIndex) {
-		return new UIMultiAnimScrollableList(builder, itemBuilder, scrollbarBuilder, scrollbarInPanelName, width, height, items, topClearance, initialIndex);
+	public static function create(builder:UIElementBuilder, itemBuilder:UIElementBuilder, scrollbarBuilder:UIElementBuilder, scrollbarInPanelName:String, width:Int, height:Int, items, topClearance, initialIndex, ?panelSizeMode:PanelSizeMode) {
+		return new UIMultiAnimScrollableList(builder, itemBuilder, scrollbarBuilder, scrollbarInPanelName, width, height, items, topClearance, initialIndex, panelSizeMode);
 	}
 
 	function buildPanel() {

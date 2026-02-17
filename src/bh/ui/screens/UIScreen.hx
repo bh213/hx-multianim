@@ -1,5 +1,6 @@
 package bh.ui.screens;
 
+import bh.ui.UIMultiAnimScrollableList.PanelSizeMode;
 import bh.ui.UIMultiAnimDropdown.UIStandardMultiAnimDropdown;
 import bh.ui.UIMultiAnimCheckbox.UIStandardMultiCheckbox;
 import bh.ui.UIMultiAnimSlider.UIStandardMultiAnimSlider;
@@ -294,7 +295,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
     }
 
 	function addScrollableList(panelBuilder:UIElementBuilder, itemBuilder:UIElementBuilder, scrollbarBuilder:UIElementBuilder, scrollbarInPanelName:String, items, settings:ResolvedSettings, initialIndex:Int = 0, width:Int = 100, height:Int = 100):UIMultiAnimScrollableList {
-		validateSettings(settings, ["panelBuildName", "itemBuildName", "scrollbarBuildName", "scrollbarInPanelName", "width", "height", "topClearance", "scrollSpeed", "doubleClickThreshold", "wheelScrollMultiplier"], "scrollableList");
+		validateSettings(settings, ["panelBuildName", "itemBuildName", "scrollbarBuildName", "scrollbarInPanelName", "width", "height", "topClearance", "scrollSpeed", "doubleClickThreshold", "wheelScrollMultiplier", "panelMode"], "scrollableList");
 
 		if (hasSettings(settings, "panelBuildName")) {
 			panelBuilder = panelBuilder.withUpdatedName(getSettings(settings, "panelBuildName", ""));
@@ -311,7 +312,9 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		final finalWidth = getIntSettings(settings, "width", width);
 		final finalHeight = getIntSettings(settings, "height", height);
 		final topClearance = getIntSettings(settings, "topClearance", 0);
-		final list = UIMultiAnimScrollableList.create(panelBuilder, itemBuilder, scrollbarBuilder, scrollbarInPanelName, finalWidth, finalHeight, items, topClearance, initialIndex);
+		final panelModeStr = getSettings(settings, "panelMode", "scrollable");
+		final sizeMode:PanelSizeMode = if (panelModeStr == "scalable") AutoSize else FixedScroll;
+		final list = UIMultiAnimScrollableList.create(panelBuilder, itemBuilder, scrollbarBuilder, scrollbarInPanelName, finalWidth, finalHeight, items, topClearance, initialIndex, sizeMode);
 		if (hasSettings(settings, "scrollSpeed"))
 			list.scrollSpeedOverride = getFloatSettings(settings, "scrollSpeed", 100);
 		if (hasSettings(settings, "doubleClickThreshold"))
@@ -333,7 +336,8 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 			"dropdownBuildName", "autoOpen", "autoCloseOnLeave", "closeOnOutsideClick", "transitionTimer",
 			// scrollable list settings (passed through)
 			"panelBuildName", "itemBuildName", "scrollbarBuildName", "scrollbarInPanelName",
-			"width", "height", "topClearance", "scrollSpeed", "doubleClickThreshold", "wheelScrollMultiplier"
+			"width", "height", "topClearance", "scrollSpeed", "doubleClickThreshold", "wheelScrollMultiplier",
+			"panelMode"
 		], "dropdown");
 
         if (hasSettings(settings, "panelBuildName")) {
@@ -358,8 +362,10 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		final panelWidth = getIntSettings(settings, "width", 120);
 		final panelHeight = getIntSettings(settings, "height", 300);
 		final topClearance = getIntSettings(settings, "topClearance", 0);
+		final panelModeStr = getSettings(settings, "panelMode", "scrollable");
+		final sizeMode:PanelSizeMode = if (panelModeStr == "scalable") AutoSize else FixedScroll;
 
-		var panel = UIMultiAnimScrollableList.create(panelBuilder, itemBuilder, scrollbarBuilder, scrollbarInPanelName, panelWidth, panelHeight, items, topClearance, initialIndex);
+		var panel = UIMultiAnimScrollableList.create(panelBuilder, itemBuilder, scrollbarBuilder, scrollbarInPanelName, panelWidth, panelHeight, items, topClearance, initialIndex, sizeMode);
 		if (hasSettings(settings, "scrollSpeed"))
 			panel.scrollSpeedOverride = getFloatSettings(settings, "scrollSpeed", 100);
 		if (hasSettings(settings, "doubleClickThreshold"))

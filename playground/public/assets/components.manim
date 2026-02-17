@@ -137,4 +137,20 @@ relativeLayouts {
             pos:610,50;
             settings{font=>dd}
       }
+
+      // Dropdown with scalable panel (few items - should auto-size)
+      placeholder(generated(cross(200, 20)), builderParameter("dropdownScalable1")) {
+            pos:400,0
+            settings{panelMode=>scalable, height:int=>300}
+      }
+      // Dropdown with scalable panel (many items - should scroll at maxHeight)
+      placeholder(generated(cross(200, 20)), builderParameter("dropdownScalable2")) {
+            pos:550,0
+            settings{panelMode=>scalable, height:int=>100}
+      }
+      // Dropdown with default scrollable panel for comparison
+      placeholder(generated(cross(200, 20)), builderParameter("dropdownScrollable")) {
+            pos:700,0
+            settings{height:int=>100}
+      }
 }

@@ -56,7 +56,7 @@ class MacroUtils {
     // built result and all passed inputs. For example above, res would be:
     //  res == { dialog1: yesNoDialog, dialog2=>fileDialog, buildingResults: <result of MultiAnimBuilder.buildWithParameters>}. fileDialog & yesNoDialog returned are the same instance as passed in.
 
-    public static macro function macroBuildWithParameters(builder:Expr, builderName:ExprOf<String>, inputParams:Expr, builderParams:Expr):Expr {
+    public static macro function macroBuildWithParameters(builder:Expr, builderName:ExprOf<String>, inputParams:Expr, builderParams:Expr, ?incremental:ExprOf<Bool>):Expr {
     #if macro        
         final clazz = Context.getLocalType();
         
@@ -221,8 +221,14 @@ class MacroUtils {
             for (name => expr in inputFields) {
               map.push(macro $v{name} => $expr);
             }
-            return macro @:nullSafety(Off) final builderResults = $builder.buildWithParameters($builderName, $inputParams, {placeholderObjects:$a{map}});
-
+            final isIncremental = switch (incremental?.expr) {
+                case EConst(CIdent("true")): true;
+                default: false;
+            }
+            if (isIncremental)
+                return macro @:nullSafety(Off) final builderResults = $builder.buildWithParameters($builderName, $inputParams, {placeholderObjects:$a{map}}, null, true);
+            else
+                return macro @:nullSafety(Off) final builderResults = $builder.buildWithParameters($builderName, $inputParams, {placeholderObjects:$a{map}});
         }
 
         var retAnonStructure =  {

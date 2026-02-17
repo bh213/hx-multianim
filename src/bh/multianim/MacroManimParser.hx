@@ -870,9 +870,14 @@ class MacroManimParser {
 	}
 
 	function binop(e1:ReferenceableValue, op:RvOp, e2:ReferenceableValue):ReferenceableValue {
-		// Precedence: mul/div bind tighter than add/sub
+		// Precedence: mul/div bind tighter than add/sub.
+		// Same-precedence operators are left-associative: a * b / c => (a * b) / c
 		return switch [e2, op] {
 			case [EBinop(op2 = OpAdd | OpSub, e3, e4), OpMul | OpDiv | OpMod | OpIntegerDiv]:
+				EBinop(op2, EBinop(op, e1, e3), e4);
+			case [EBinop(op2 = OpMul | OpDiv | OpMod | OpIntegerDiv, e3, e4), OpMul | OpDiv | OpMod | OpIntegerDiv]:
+				EBinop(op2, EBinop(op, e1, e3), e4);
+			case [EBinop(op2 = OpAdd | OpSub, e3, e4), OpAdd | OpSub]:
 				EBinop(op2, EBinop(op, e1, e3), e4);
 			default:
 				EBinop(op, e1, e2);
