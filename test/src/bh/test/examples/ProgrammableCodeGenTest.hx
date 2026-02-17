@@ -3308,4 +3308,72 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		// The object should be placed in the scene graph
 		Assert.notNull(directObj.parent, "PVObject should be added to scene despite ignoring settings");
 	}
+
+	// ==================== Character Sheet Demo: dynamicRef + params + placeholder ====================
+
+	@Test
+	public function test78_CharacterSheetDemo(async:utest.Async):Void {
+		setupTest(78, "characterSheetDemo");
+		VisualTestBase.pendingVisualTests++;
+		async.setTimeout(10000);
+		clearScene();
+
+		try {
+			final fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/78-characterSheetDemo/characterSheetDemo.manim"));
+			final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+			final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "characterSheetDemo.manim");
+
+			// Build with explicit parameters (mirroring game usage with MacroUtils.macroBuildWithParameters)
+			final params = new Map<String, Dynamic>();
+			params.set("hp", 75);
+			params.set("maxHp", 100);
+			params.set("mp", 30);
+			params.set("maxMp", 50);
+			params.set("strStat", 12);
+			params.set("dexStat", 9);
+			params.set("intStat", 7);
+			params.set("xp", 60);
+			params.set("xpMax", 100);
+			params.set("level", 3);
+
+			// Provide a placeholder for levelUpButton (like addButtonWithSingleBuilder in game)
+			final buttonObj = new h2d.Object();
+			final result = builder.buildWithParameters("characterSheetDemo", params, {
+				placeholderObjects: [
+					"levelUpButton" => PVObject(buttonObj),
+				]
+			}, null, true);
+
+			Assert.notNull(result, "Build should succeed");
+			Assert.notNull(result.object, "Should have root object");
+			Assert.notNull(result.incrementalContext, "Should be incremental");
+
+			s2d.addChild(result.object);
+			addTitleOverlay();
+		} catch (e:Dynamic) {
+			var msg = 'Character sheet demo test threw: $e';
+			reportBuildFailure(msg);
+			Assert.fail(msg);
+			VisualTestBase.pendingVisualTests--;
+			async.done();
+			return;
+		}
+
+		waitForUpdate(function(dt:Float) {
+			try {
+				var actualPath = getActualImagePath();
+				var referencePath = getReferenceImagePath();
+				var success = screenshot(actualPath);
+				Assert.isTrue(success, 'Screenshot should be created at $actualPath');
+				if (success) {
+					var match = compareImages(actualPath, referencePath);
+					Assert.isTrue(match, 'Screenshot should match reference image');
+				}
+			} catch (e:Dynamic) {
+				Assert.fail('Screenshot/compare threw: $e');
+			}
+			VisualTestBase.pendingVisualTests--;
+			async.done();
+		});
+	}
 }

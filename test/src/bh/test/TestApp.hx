@@ -29,6 +29,7 @@ class TestApp extends hxd.App {
 		FontManager.registerFont("f3x5", hxd.Res.fonts.f3x5.toFont());
 		FontManager.registerFont("peaberry-white", hxd.Res.fonts.WhitePeaberry.toFont());
 		FontManager.registerFont("peaberry-white-outline", hxd.Res.fonts.WhitePeaberryOutline.toFont(), 0, -5);
+		FontManager.registerFont("m6x11", hxd.Res.fonts.m6x11.toFont());
 
 		VisualTestBase.appInstance = this;
 
