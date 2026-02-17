@@ -123,10 +123,9 @@ class ComponentsTestScreen extends UIScreenBase {
 			
 
 			var h2dObj = createCross(0xFFFF0000);
-			var testCheckbox = UIStandardMultiCheckbox.create(builder, "checkbox", true);
 			var macroRes = MacroUtils.macroBuildWithParameters(componentsBuilder, "macroTest", [], [
 				factoryElement=>addCheckbox(builder,  true),
-				element=>testCheckbox,
+				element=>addCheckbox(builder,  true),
 				h2dObjectFactory=>createCross(0xFF0000FF),
 				h2dObject=>h2dObj,
 				]);

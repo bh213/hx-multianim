@@ -294,11 +294,12 @@ class StateAnimScreen extends UIScreenBase {
 			bounds=>addCheckbox(stdBuilder, true),
 			animStates=>addCheckbox(stdBuilder, true),
 			animCommands=>addCheckbox(stdBuilder, true),
-			load=>loaderButton,
+			load=>loaderButton.getObject(),
 			speedSlider => addSlider(stdBuilder,  0),
 		]);
 		var ui = res.builderResults;
 		addBuilderResult(ui);
+		addElement(loaderButton, DefaultLayer);
 		this.pausedCheckbox = res.pause;
 		this.showBoundsCheckbox = res.bounds;
 		this.animStatesCheckbox = res.animStates;

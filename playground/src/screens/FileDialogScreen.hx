@@ -27,19 +27,16 @@ class FileDialogScreen extends UIScreenBase {
 		var dialogBuilder = this.screenManager.buildFromResourceName("dialog-base.manim", false);
 		var stdBuilder = this.screenManager.buildFromResourceName("std.manim", false);
 
-		var okButton = UIStandardMultiAnimButton.create(stdBuilder, "button", "OK");
-		var cancelButton = UIStandardMultiAnimButton.create(stdBuilder, "button", "Cancel");
-
 		var list:Array<UIElementListItem> = cast files.map(x-> {name:x});
-		
+
 		var res = MacroUtils.macroBuildWithParameters(dialogBuilder, "fileDialog", [], [
-			button1 => okButton,
-			button2 => cancelButton,
+			button1 => addButtonWithSingleBuilder(stdBuilder, "button", "OK"),
+			button2 => addButtonWithSingleBuilder(stdBuilder, "button", "Cancel"),
 			filelist => addScrollableListWithSingleBuilder(stdBuilder, "list-panel", "list-item-120", "scrollbar", "scrollbar", list, 0, 300, 200)
 		]);
 
-		this.button1 = okButton;
-		this.button2 = cancelButton;
+		this.button1 = res.button1;
+		this.button2 = res.button2;
 		this.scrollableList = res.filelist;
 		addBuilderResult(res.builderResults);
 
@@ -49,16 +46,16 @@ class FileDialogScreen extends UIScreenBase {
 		}
 		scrollableList.onItemDoubleClicked = (newIndex, items, wrapper) -> {
 			selected = items[newIndex].name;
-			this.getController().exitResponse = selected;	
+			this.getController().exitResponse = selected;
 		}
 
-		okButton.onClick = () -> {
+		res.button1.onClick = () -> {
 			if (selected == null) throw 'filename should have been selected';
 			this.getController().exitResponse = selected;
 		}
-		cancelButton.onClick = () -> this.getController().exitResponse = false;
+		res.button2.onClick = () -> this.getController().exitResponse = false;
 
-		okButton.disabled = true;
+		res.button1.disabled = true;
 	}
 
 	public function onScreenEvent(event:UIScreenEvent, source:UIElement) {

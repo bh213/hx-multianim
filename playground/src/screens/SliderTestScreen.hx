@@ -28,27 +28,22 @@ class SliderTestScreen extends UIScreenBase {
 		this.builder = this.screenManager.buildFromResourceName("std.manim", false);
 		var sliderBuilder = this.screenManager.buildFromResourceName("slider.manim", false);
 
-		var s300 = UIStandardMultiAnimSlider.create(builder, "slider", 300);
-		var s300s = UIStandardMultiAnimSlider.create(builder, "slider", 300);
-		var s200 = UIStandardMultiAnimSlider.create(builder, "slider", 200);
-		s200.max = 50;
-		s200.step = 5;
-		var s100 = UIStandardMultiAnimSlider.create(builder, "slider", 100);
-		s100.min = -10;
-		s100.max = 10;
-		s100.step = 1;
-
 		var ui = MacroUtils.macroBuildWithParameters(sliderBuilder, "ui", [], [
-			slider300 => s300,
-			slider300s => s300s,
-			slider200 => s200,
-			slider100 => s100,
+			slider300 => addSlider(builder, 0),
+			slider300s => addSlider(builder, 0),
+			slider200 => addSlider(builder, 0),
+			slider100 => addSlider(builder, 0),
 		]);
 
-		this.slider300 = s300;
-		this.slider300s = s300s;
-		this.slider200 = s200;
-		this.slider100 = s100;
+		this.slider300 = ui.slider300;
+		this.slider300s = ui.slider300s;
+		this.slider200 = ui.slider200;
+		this.slider100 = ui.slider100;
+		slider200.max = 50;
+		slider200.step = 5;
+		slider100.min = -10;
+		slider100.max = 10;
+		slider100.step = 1;
 		this.updatableText300 = ui.builderResults.getUpdatable("sliderVal300");
 		this.updatableText300s = ui.builderResults.getUpdatable("sliderVal300s");
 		this.updatableText200 = ui.builderResults.getUpdatable("sliderVal200");

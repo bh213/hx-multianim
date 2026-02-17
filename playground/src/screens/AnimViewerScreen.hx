@@ -59,8 +59,13 @@ class AnimViewerScreen extends UIScreenBase {
 		#end
 
 		// Build UI
-		var loaderButton = UIStandardMultiAnimButton.create(this.stdBuilder, "button", 'Load');
-		loaderButton.onClick = () -> {
+		var res = MacroUtils.macroBuildWithParameters(viewerBuilder, "ui", [], [
+			load => addButtonWithSingleBuilder(stdBuilder, "button", "Load"),
+			speedSlider => addSlider(stdBuilder, 50),
+			scaleSlider => addSlider(stdBuilder, 40),
+		]);
+
+		res.load.onClick = () -> {
 			var files = [
 				"arrows.anim",
 				"dice.anim",
@@ -72,12 +77,6 @@ class AnimViewerScreen extends UIScreenBase {
 			dialog.load();
 			this.screenManager.modalDialog(dialog, this, "fileChange");
 		};
-
-		var res = MacroUtils.macroBuildWithParameters(viewerBuilder, "ui", [], [
-			load => loaderButton,
-			speedSlider => addSlider(stdBuilder, 50),
-			scaleSlider => addSlider(stdBuilder, 40),
-		]);
 
 		var ui = res.builderResults;
 		addBuilderResult(ui);

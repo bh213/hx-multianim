@@ -146,8 +146,7 @@ class MacroUtils {
 
             retValFields.push({field: key, expr: value });
             if (isUIElementType) {
-                addElementsBlock.push(macro addElement(retVal.$key, DefaultLayer));
-                inputFields.set(key, macro PVObject($value.getObject()));
+                Context.fatalError('UIElement "$key" should not be passed directly to macroBuildWithParameters — use a factory function instead (e.g. $key => addCheckbox(builder, true)) so that .manim settings are applied', value.pos);
             } else if (isH2dObjectType){
                 inputFields.set(key, macro PVObject($value));
             } else throw 'unexpected type, h2d.Object or UIElement or descendant expected';
@@ -170,10 +169,10 @@ class MacroUtils {
             retValFields.push({field: key, expr: macro $i{key}});
             checkIfNullBlock.push(macro if (retVal.$key == null) {throw 'macroBuildWithParameters UIElement value  ' + $v{key} + ' is null (check if placeholder object is named correctly)';});
             final updated = macro (settings:bh.multianim.MultiAnimParser.ResolvedSettings)->{
-                final element = $value;
-                addElement(element, DefaultLayer);
-                $i{key} = element;
-                return element.getObject();
+                final _el = $value;
+                addElement(_el, DefaultLayer);
+                $i{key} = _el;
+                return _el.getObject();
             }
 
             inputFields.set(key, macro PVFactory($updated));

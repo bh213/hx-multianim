@@ -387,11 +387,13 @@ class ScreenManager {
 							addedScreens = [single => layerContent];
 						}
 					case MasterAndSingle(master, single):
-						if (single != oldSingle) {
-							removedScreens = [oldSingle];
-							addedScreens = [single => layerContent];
-						}
 						if (master == oldSingle) throw 'Single -> MasterAndSingle: switching single with master';
+						removedScreens = [];
+						addedScreens = [master => layerMaster];
+						if (single != oldSingle) {
+							removedScreens.push(oldSingle);
+							addedScreens.set(single, layerContent);
+						}
 
 					case Dialog(dialog, caller, previousMode, dialogName):
 						addedScreens = [dialog => layerDialog];

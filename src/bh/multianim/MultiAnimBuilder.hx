@@ -2350,7 +2350,10 @@ class MultiAnimBuilder {
 							var param = builderParams.placeholderObjects.get(resolveAsString(callbackName));
 							switch param {
 								case null: null;
-								case PVObject(obj): obj;
+								case PVObject(obj):
+									if (settings != null)
+										trace('Warning: PVObject placeholder "${resolveAsString(callbackName)}" ignores .manim settings — use PVFactory instead to receive settings');
+									obj;
 								case PVFactory(factoryMethod):
 									var res = factoryMethod(settings);
 									// trace('FACTORY', settings, res, type, source);

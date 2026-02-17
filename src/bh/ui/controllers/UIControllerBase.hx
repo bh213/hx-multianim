@@ -125,8 +125,7 @@ abstract class UIControllerBase implements UIController {
 				captureEvents.target = null;
 			// else throw 'invalid drag state ${captureEvents}';
 			captureEvents.reset();
-		} else
-			throw 'unsupported onEvent ${element}';
+		}
 	}
 
 	public function handleClick(mousePoint:Point, button:Int, release:Bool, eventWrapper:EventWrapper) {

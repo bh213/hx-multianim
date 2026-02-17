@@ -278,7 +278,10 @@ class ProgrammableBuilder {
 		final param = phObjects.get(name);
 		return switch param {
 			case null: null;
-			case PVObject(obj): obj;
+			case PVObject(obj):
+				if (settings != null)
+					trace('Warning: PVObject placeholder "$name" ignores .manim settings — use PVFactory instead to receive settings');
+				obj;
 			case PVFactory(factoryMethod): factoryMethod(settings);
 		};
 	}

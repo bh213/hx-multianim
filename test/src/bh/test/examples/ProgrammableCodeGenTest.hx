@@ -5,6 +5,7 @@ import h2d.Scene;
 import bh.test.VisualTestBase;
 import bh.test.HtmlReportGenerator;
 import bh.test.examples.AutotileTestHelper;
+import bh.multianim.MultiAnimBuilder.PlaceholderValues;
 
 /**
  * Tests for the @:build(ProgrammableCodeGen.buildAll()) generated classes.
@@ -3235,5 +3236,76 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		Assert.equals(50, Std.int(bitmaps[0].tile.width), "Bitmap a width should be 50");
 		Assert.equals(60, Std.int(bitmaps[1].tile.width), "Bitmap b width should be 60");
 		Assert.equals(70, Std.int(bitmaps[2].tile.width), "Bitmap c width should be 70");
+	}
+
+	// ==================== PVFactory vs PVObject settings: unit tests ====================
+
+	@Test
+	public function testPVFactoryReceivesSettings():Void {
+		// PVFactory should receive .manim-defined settings when the placeholder has a settings{} block
+		final fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/77-pvFactorySettings/pvFactorySettings.manim"));
+		final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+		final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "pvFactorySettings.manim");
+
+		var receivedSettings:bh.multianim.MultiAnimParser.ResolvedSettings = null;
+		final factoryObj = new h2d.Object();
+		final result = builder.buildWithParameters("pvFactorySettings", new Map(), {
+			placeholderObjects: [
+				"withSettings" => PVFactory((settings) -> {
+					receivedSettings = settings;
+					return factoryObj;
+				}),
+				"noSettings" => PVFactory((_) -> new h2d.Object()),
+			]
+		});
+
+		Assert.notNull(receivedSettings, "PVFactory should receive non-null settings from .manim settings{} block");
+		Assert.notNull(receivedSettings.get("buildName"), "Settings should contain 'buildName'");
+		Assert.notNull(receivedSettings.get("size"), "Settings should contain 'size'");
+	}
+
+	@Test
+	public function testPVFactoryNoSettingsWhenNoneInManim():Void {
+		// PVFactory should receive null settings when the placeholder has no settings{} block
+		final fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/77-pvFactorySettings/pvFactorySettings.manim"));
+		final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+		final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "pvFactorySettings.manim");
+
+		var receivedSettings:bh.multianim.MultiAnimParser.ResolvedSettings = null;
+		var factoryCalled = false;
+		final result = builder.buildWithParameters("pvFactorySettings", new Map(), {
+			placeholderObjects: [
+				"noSettings" => PVFactory((settings) -> {
+					factoryCalled = true;
+					receivedSettings = settings;
+					return new h2d.Object();
+				}),
+				"withSettings" => PVFactory((_) -> new h2d.Object()),
+			]
+		});
+
+		Assert.isTrue(factoryCalled, "PVFactory for 'noSettings' should have been called");
+		Assert.isNull(receivedSettings, "PVFactory should receive null settings when placeholder has no settings{} block");
+	}
+
+	@Test
+	public function testPVObjectIgnoresSettings():Void {
+		// PVObject always returns the object directly, ignoring any .manim settings.
+		// This test verifies the object is still used (not null) even though settings are lost.
+		final fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/77-pvFactorySettings/pvFactorySettings.manim"));
+		final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+		final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "pvFactorySettings.manim");
+
+		final directObj = new h2d.Object();
+		final result = builder.buildWithParameters("pvFactorySettings", new Map(), {
+			placeholderObjects: [
+				"withSettings" => PVObject(directObj),
+				"noSettings" => PVObject(new h2d.Object()),
+			]
+		});
+
+		Assert.notNull(result, "Build should succeed with PVObject");
+		// The object should be placed in the scene graph
+		Assert.notNull(directObj.parent, "PVObject should be added to scene despite ignoring settings");
 	}
 }
