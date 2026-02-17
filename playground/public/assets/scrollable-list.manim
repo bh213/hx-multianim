@@ -14,7 +14,7 @@ version: 0.5
       #listVal(updatable) text(dd, "Select an item from the list!", #ffffffaa): 10, 50
 
       // Scrollable list placeholder
-      placeholder(generated(cross(200, 150)), builderParameter("scrollableList")) {
+      placeholder(generated(cross(200, 150, #FF0000)), builderParameter("scrollableList")) {
             pos: 10, 80
             settings{panelBuildName=>list-panel, itemBuildName=>list-item-120}
       }

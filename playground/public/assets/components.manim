@@ -32,10 +32,10 @@ relativeLayouts {
 #macroTest programmable() {
       pos:600,200
       text(dd, "Macro Placeholders", #ffffffcc): 0,0
-      placeholder(generated(cross(10, 10)), builderParameter("element")):0,25
-      placeholder(generated(cross(10, 10)), builderParameter("factoryElement")):0,50
-      placeholder(generated(cross(10, 10)), builderParameter("h2dObject")):0,75
-      placeholder(generated(cross(10, 10)), builderParameter("h2dObjectFactory")):0,100
+      placeholder(generated(cross(10, 10, #FF0000)), builderParameter("element")):0,25
+      placeholder(generated(cross(10, 10, #FF0000)), builderParameter("factoryElement")):0,50
+      placeholder(generated(cross(10, 10, #FF0000)), builderParameter("h2dObject")):0,75
+      placeholder(generated(cross(10, 10, #FF0000)), builderParameter("h2dObjectFactory")):0,100
 }
 
 // TileGroup examples - bitmap alignment
@@ -103,53 +103,53 @@ relativeLayouts {
       pos:100,300
 
       // 5 checkbox style variants (overriding the build name via settings)
-      placeholder(generated(cross(200, 20)), builderParameter("checkbox1")) {
+      placeholder(generated(cross(200, 20, #FF0000)), builderParameter("checkbox1")) {
             settings{buildName=>checkbox2}
       }
-      placeholder(generated(cross(200, 20)), builderParameter("checkbox2")) {
+      placeholder(generated(cross(200, 20, #FF0000)), builderParameter("checkbox2")) {
             pos:30,0
             settings{buildName=>radio}
       }
-      placeholder(generated(cross(200, 20)), builderParameter("checkbox3")) {
+      placeholder(generated(cross(200, 20, #FF0000)), builderParameter("checkbox3")) {
             pos:60,0
             settings{buildName=>radio2}
       }
-      placeholder(generated(cross(200, 20)), builderParameter("checkbox4")) {
+      placeholder(generated(cross(200, 20, #FF0000)), builderParameter("checkbox4")) {
             pos:90,0
             settings{buildName=>tickbox}
       }
-      placeholder(generated(cross(200, 20)), builderParameter("checkbox5")) {
+      placeholder(generated(cross(200, 20, #FF0000)), builderParameter("checkbox5")) {
             pos:120,0
             settings{buildName=>toggle}
       }
 
       // 4 scrollable lists with different configurations
-      placeholder(generated(cross(200, 20)), builderParameter("scroll1")) {
+      placeholder(generated(cross(200, 20, #FF0000)), builderParameter("scroll1")) {
             pos:400,100
             settings{height=>200, topClearance=>60}
       }
-      placeholder(generated(cross(200, 20)), builderParameter("scroll2")):550,100;
-      placeholder(generated(cross(200, 20)), builderParameter("scroll3")):700,100;
-      placeholder(generated(cross(200, 20)), builderParameter("scroll4")):850,100;
+      placeholder(generated(cross(200, 20, #FF0000)), builderParameter("scroll2")):550,100;
+      placeholder(generated(cross(200, 20, #FF0000)), builderParameter("scroll3")):700,100;
+      placeholder(generated(cross(200, 20, #FF0000)), builderParameter("scroll4")):850,100;
 
       // Checkbox with label text
-      placeholder(generated(cross(200, 20)), builderParameter("checkboxWithLabel")) {
+      placeholder(generated(cross(200, 20, #FF0000)), builderParameter("checkboxWithLabel")) {
             pos:610,50;
             settings{font=>dd}
       }
 
       // Dropdown with scalable panel (few items - should auto-size)
-      placeholder(generated(cross(200, 20)), builderParameter("dropdownScalable1")) {
+      placeholder(generated(cross(200, 20, #FF0000)), builderParameter("dropdownScalable1")) {
             pos:400,0
             settings{panelMode=>scalable, height:int=>300}
       }
       // Dropdown with scalable panel (many items - should scroll at maxHeight)
-      placeholder(generated(cross(200, 20)), builderParameter("dropdownScalable2")) {
+      placeholder(generated(cross(200, 20, #FF0000)), builderParameter("dropdownScalable2")) {
             pos:550,0
             settings{panelMode=>scalable, height:int=>100}
       }
       // Dropdown with default scrollable panel for comparison
-      placeholder(generated(cross(200, 20)), builderParameter("dropdownScrollable")) {
+      placeholder(generated(cross(200, 20, #FF0000)), builderParameter("dropdownScrollable")) {
             pos:700,0
             settings{height:int=>100}
       }

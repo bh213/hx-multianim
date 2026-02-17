@@ -26,12 +26,12 @@ version: 0.5
       #buttonVal(updatable) text(dd, "Click the button!", #ffffffaa): 10, 50
 
       // Button placeholder - uses button_custom programmable defined above
-      placeholder(generated(cross(200, 20)), builderParameter("button")) {
+      placeholder(generated(cross(200, 20, #FF0000)), builderParameter("button")) {
             settings{buildName=>button_custom}
       }
 
       // Disable toggle checkbox
-      placeholder(generated(cross(200, 20)), builderParameter("disableCheckbox")) {
+      placeholder(generated(cross(200, 20, #FF0000)), builderParameter("disableCheckbox")) {
             pos: 10, 100
       }
       text(dd, "Disable Button", #ffffffaa): 30, 100

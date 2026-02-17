@@ -727,7 +727,7 @@ enum AutotileTileSelector {
 }
 
 enum GeneratedTileType {
-	Cross(width:ReferenceableValue, height:ReferenceableValue, color:ReferenceableValue);
+	Cross(width:ReferenceableValue, height:ReferenceableValue, color:ReferenceableValue, thickness:ReferenceableValue);
 	SolidColor(width:ReferenceableValue, height:ReferenceableValue, color:ReferenceableValue);
 	SolidColorWithText(width:ReferenceableValue, height:ReferenceableValue, color:ReferenceableValue, text:ReferenceableValue, textColor:ReferenceableValue, font:ReferenceableValue);
 	AutotileRef(autotileName:ReferenceableValue, selector:AutotileTileSelector);

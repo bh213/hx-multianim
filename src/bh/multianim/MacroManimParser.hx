@@ -1230,10 +1230,12 @@ class MacroManimParser {
 				final w = parseIntegerOrReference();
 				expect(TComma);
 				final h = parseIntegerOrReference();
-				var color:ReferenceableValue = RVInteger(0xFF0000);
-				if (match(TComma)) color = parseColorOrReference();
+				expect(TComma);
+				final color = parseColorOrReference();
+				var thickness:ReferenceableValue = RVInteger(1);
+				if (match(TComma)) thickness = parseIntegerOrReference();
 				expect(TClosed);
-				return Cross(w, h, color);
+				return Cross(w, h, color, thickness);
 			case TIdentifier(s) if (isKeyword(s, "color")):
 				advance();
 				expect(TOpen);

@@ -1,8 +1,8 @@
 version: 0.5
 
 #pvFactorySettings programmable() {
-      placeholder(generated(cross(50, 20)), builderParameter("noSettings")):0,0
-      placeholder(generated(cross(50, 20)), builderParameter("withSettings")) {
+      placeholder(generated(cross(50, 20, #FF0000)), builderParameter("noSettings")):0,0
+      placeholder(generated(cross(50, 20, #FF0000)), builderParameter("withSettings")) {
             settings{buildName=>customBuild, size:int=>42}
             pos: 0, 30
       }

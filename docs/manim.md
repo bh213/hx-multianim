@@ -1689,7 +1689,7 @@ updatable.setObject(particles);
 * `sheet(sheet, name, index)` - from atlas sheet with specific frame index (for multi-frame tiles)
 * `file(filename)` - from file
 * `$varname` - reference to a tile source variable (e.g., `$bitmap` from stateanim/tiles iterators)
-* `generated(cross(width, height[, color]))` - generated cross
+* `generated(cross(width, height, color[, thickness]))` - generated cross (thickness default: 1)
 * `generated(color(width, height, color))` - solid color
 * `generated(colorWithText(width, height, color, text, textColor, font))` - solid color with text
 * `generated(autotile("name", selector))` - demo tile from autotile definition
@@ -2378,8 +2378,8 @@ For **placeholder-based** composition (embedding interactive widgets like button
 ```
 #settingsPanel programmable() {
     ninepatch("ui", "Window_3x3_idle", 300, 400): 0, 0
-    placeholder(generated(cross(200, 20)), builderParameter("volumeSlider")): 20, 50
-    placeholder(generated(cross(200, 20)), builderParameter("muteCheckbox")): 20, 100
+    placeholder(generated(cross(200, 20, #FF0000)), builderParameter("volumeSlider")): 20, 50
+    placeholder(generated(cross(200, 20, #FF0000)), builderParameter("muteCheckbox")): 20, 100
 }
 ```
 

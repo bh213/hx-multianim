@@ -12,7 +12,7 @@ import h2d.Tile;
 import bh.stateanim.AnimParser;
 
 enum ResolvedGeneratedTileType {
-    Cross(width:Int, height:Int, color:Int);
+    Cross(width:Int, height:Int, color:Int, thickness:Int);
 	SolidColor(width:Int, height:Int, color:Int);
 	SolidColorWithText(width:Int, height:Int, color:Int, text:String, textColor:Int, font:String);
 	AutotileRef(format:AutotileFormat, tileIndex:Int, tileSize:Int, edgeColor:Int, fillColor:Int);

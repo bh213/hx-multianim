@@ -1019,11 +1019,16 @@ class MultiAnimBuilder {
 
 	function generatePlaceholderBitmap(type:ResolvedGeneratedTileType) {
 		return switch type {
-			case Cross(w, h, color):
+			case Cross(w, h, color, thickness):
+				final c = color.addAlphaIfNotPresent();
 				final pl = new PixelLines(w, h);
-				pl.rect(0, 0, w - 1, h - 1, color);
-				 pl.line(0, 0, w - 1, h - 1, color);
-				 pl.line(0, h - 1, w - 1,  0, color);
+				for (t in 0...thickness) {
+					pl.rect(t, t, w - 1 - t * 2, h - 1 - t * 2, c);
+					pl.line(t, 0, w - 1, h - 1 - t, c);
+					pl.line(0, t, w - 1 - t, h - 1, c);
+					pl.line(t, h - 1, w - 1, t, c);
+					pl.line(0, h - 1 - t, w - 1 - t, 0, c);
+				}
 				pl.updateBitmap();
 				pl.tile;
 
@@ -1366,7 +1371,7 @@ class MultiAnimBuilder {
 			case TSSheetWithIndex(sheet, name, index): loadTileImpl(resolveAsString(sheet), resolveAsString(name), resolveAsInteger(index)).tile;
 			case TSGenerated(type):
 				var resolvedType:ResolvedGeneratedTileType = switch type {
-					case Cross(width, height, color): Cross(resolveAsInteger(width), resolveAsInteger(height), resolveAsColorInteger(color));
+					case Cross(width, height, color, thickness): Cross(resolveAsInteger(width), resolveAsInteger(height), resolveAsColorInteger(color), resolveAsInteger(thickness));
 					case SolidColor(width, height, color): SolidColor(resolveAsInteger(width), resolveAsInteger(height), resolveAsColorInteger(color));
 					case SolidColorWithText(width, height, color, text, textColor, font): SolidColorWithText(resolveAsInteger(width), resolveAsInteger(height), resolveAsColorInteger(color), resolveAsString(text), resolveAsColorInteger(textColor), resolveAsString(font));
 					case AutotileRef(autotileName, selector): resolveAutotileRef(autotileName, selector);

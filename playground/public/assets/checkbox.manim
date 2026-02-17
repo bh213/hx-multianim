@@ -14,7 +14,7 @@ version: 0.5
       #checkboxVal(updatable) text(dd, "Toggle the checkbox!", #ffffffaa): 10, 50
 
       // Checkbox placeholder - uses checkbox2 style from std.manim
-      placeholder(generated(cross(200, 20)), builderParameter("checkbox")) {
+      placeholder(generated(cross(200, 20, #FF0000)), builderParameter("checkbox")) {
             settings{buildName=>checkbox2}
       }
 }

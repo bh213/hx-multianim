@@ -160,7 +160,7 @@ version: 0.5
 
 #checkboxWithText programmable(textColor:int, title="checkbox label", font="m6x11"){
     point {
-     placeholder(generated(cross(15, 15)), builderParameter("checkbox")):0,0
+     placeholder(generated(cross(15, 15, #FF0000)), builderParameter("checkbox")):0,0
       text($font, $title, white, left): 40,4
     }
 }
@@ -168,7 +168,7 @@ version: 0.5
 
 #radioButtons programmable(count:int){
       repeatable($index, step($count, dy:20)) {
-            placeholder(generated(cross(15, 15)), callback("checkbox", $index)):0,0
+            placeholder(generated(cross(15, 15, #FF0000)), callback("checkbox", $index)):0,0
             text(m6x11, callback("label", $index), 0xffffff12, left, 120): 24,4
             
       }
@@ -176,7 +176,7 @@ version: 0.5
 
 #radioButtonsHorizontal programmable(count:int){
       repeatable($index, step($count, dx:120 )) {
-            placeholder(generated(cross(15, 15)), callback("checkbox", $index)):0,0
+            placeholder(generated(cross(15, 15, #FF0000)), callback("checkbox", $index)):0,0
             text(m6x11, callback("label", $index), 0xffffff12, left, 120): 24,4
             
       }
@@ -184,7 +184,7 @@ version: 0.5
 
 #radioButtonsVertical programmable(count:int){
       repeatable($index, step($count, dy:30 )) {
-            placeholder(generated(cross(15, 15)), callback("checkbox", $index)):0,0
+            placeholder(generated(cross(15, 15, #FF0000)), callback("checkbox", $index)):0,0
             text(m6x11, callback("label", $index), 0xffffff12, left, 120): 24,4
             
       }
@@ -194,7 +194,7 @@ version: 0.5
 #dropdown programmable(images:[none,placeholder,tile]=placeholder, status:[hover, pressed, disabled,normal], panel:[open, closed]) {
       
       #panelPoint (updatable) point: 0, 30;
-      //placeholder(generated(cross(120, 200)), builderParameter("panel")):5,10
+      //placeholder(generated(cross(120, 200, #FF0000)), builderParameter("panel")):5,10
       @(status=>hover) ninepatch("ui", "dropdown-button-hover", 120, 30);
       @(status=>normal) ninepatch("ui", "dropdown-button-idle", 120, 30);
       @(status=>pressed) ninepatch("ui", "dropdown-button-pressed", 120, 30);
@@ -202,7 +202,7 @@ version: 0.5
       @(panel=>closed) bitmap(sheet("ui", "icon_drop_fold_idle")):108,17
       @(panel=>open) bitmap(sheet("ui", "icon_drop_open")):108,17
       #selectedName(updatable) text(m6x11, callback("selectedName"), 0xffffff12, center, 120): -4,6
-      // @(images=>placeholder) placeholder(generated(cross(15, 15)), callback("test")):8,5
+      // @(images=>placeholder) placeholder(generated(cross(15, 15, #FF0000)), callback("test")):8,5
       settings{transitionTimer:float=>.2}
 }
 
@@ -226,7 +226,7 @@ version: 0.5
         @(disabled=>true) ninepatch("ui", "droppanel-mid-disabled", $itemWidth+4, 20): -2,0
         
         text(m6x11, $title, 0xffffff12, left, 120): 24,4
-        @(images=>placeholder) placeholder(generated(cross(15, 15)), callback("test")):5,3
+        @(images=>placeholder) placeholder(generated(cross(15, 15, #FF0000)), callback("test")):5,3
         @(images=>tile) bitmap(file($tile), center):5,3
         interactive($itemWidth , 20, $index);
         settings{height:float=>20}
@@ -235,7 +235,7 @@ version: 0.5
 #list-panel programmable(width:uint=200, height:uint=200, topClearance:uint = 0) {
   
   ninepatch("ui", "Window_3x3_idle", $width+4, $height+8+$topClearance): -2,-4-$topClearance
-  placeholder(generated(cross($width, $height)), builderParameter("mask")):0,0
+  placeholder(generated(cross($width, $height, #FF0000)), builderParameter("mask")):0,0
   #scrollbar @layer(100) point: $width - 4, 0
 }
 
@@ -253,10 +253,10 @@ ninepatch("ui", "scrollbar-1", 4, $panelHeight * $panelHeight / $scrollableHeigh
        #dialogText(updatable) text(dd, $dialogText, #ffffff00, center, 400): 50,50
       point {
         pos: 50,250
-        placeholder(generated(cross(20, 20)), builderParameter("ok")) {
+        placeholder(generated(cross(20, 20, #FF0000)), builderParameter("ok")) {
 
           
         }
-        placeholder(generated(cross(20, 20)), builderParameter("cancel")):250,0
+        placeholder(generated(cross(20, 20, #FF0000)), builderParameter("cancel")):250,0
       }
 }

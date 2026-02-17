@@ -10,16 +10,16 @@ relativeLayouts {
     text(dd, "Animation Viewer", #ffffff, left, 400): 10, 5
 
     // Load button
-    placeholder(generated(cross(80, 25)), builderParameter("load")): 1100, 5
+    placeholder(generated(cross(80, 25, #FF0000)), builderParameter("load")): 1100, 5
 
     // Speed slider
-    placeholder(generated(cross(150, 20)), builderParameter("speedSlider")) {
+    placeholder(generated(cross(150, 20, #FF0000)), builderParameter("speedSlider")) {
         pos: 750, 10
         text(m6x11, "Speed", #ffffffff): 0, -15
     }
 
     // Scale slider
-    placeholder(generated(cross(150, 20)), builderParameter("scaleSlider")) {
+    placeholder(generated(cross(150, 20, #FF0000)), builderParameter("scaleSlider")) {
         pos: 920, 10
         text(m6x11, "Scale", #ffffffff): 0, -15
     }

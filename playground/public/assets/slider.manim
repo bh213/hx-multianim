@@ -12,28 +12,28 @@ version: 0.5
       // Size 300, default 0-100
       text(dd, "Size 300 (0-100):", #ffffffaa): 0, 0
       #sliderVal300(updatable) text(dd, "0", #ffffffaa): 250, 0
-      placeholder(generated(cross(310, 20)), builderParameter("slider300")) {
+      placeholder(generated(cross(310, 20, #FF0000)), builderParameter("slider300")) {
             pos: 0, 15
       }
 
       // Size 300 scaled x2, default 0-100
       text(dd, "Size 300 @scale(2) (0-100):", #ffffffaa): 0, 60
       #sliderVal300s(updatable) text(dd, "0", #ffffffaa): 250, 60
-      @scale(2) placeholder(generated(cross(310, 20)), builderParameter("slider300s")) {
+      @scale(2) placeholder(generated(cross(310, 20, #FF0000)), builderParameter("slider300s")) {
             pos: 0, 75
       }
 
       // Size 200, range 0-50, step 5
       text(dd, "Size 200 (0-50 step 5):", #ffffffaa): 0, 140
       #sliderVal200(updatable) text(dd, "0", #ffffffaa): 250, 140
-      placeholder(generated(cross(210, 20)), builderParameter("slider200")) {
+      placeholder(generated(cross(210, 20, #FF0000)), builderParameter("slider200")) {
             pos: 0, 155
       }
 
       // Size 100, range -10 to 10, step 1
       text(dd, "Size 100 (-10 to 10 step 1):", #ffffffaa): 0, 200
       #sliderVal100(updatable) text(dd, "0", #ffffffaa): 250, 200
-      placeholder(generated(cross(110, 20)), builderParameter("slider100")) {
+      placeholder(generated(cross(110, 20, #FF0000)), builderParameter("slider100")) {
             pos: 0, 215
       }
 }

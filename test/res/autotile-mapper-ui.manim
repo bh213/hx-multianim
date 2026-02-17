@@ -10,10 +10,10 @@ version: 0.5
 
         // Toolbar row: buttons
         flow(layout:horizontal, horizontalSpacing:10) {
-            placeholder(generated(cross(200, 30)), builderParameter("autodetectBtn"));
-            placeholder(generated(cross(200, 30)), builderParameter("exportBtn"));
-            placeholder(generated(cross(200, 30)), builderParameter("clearBtn"));
-            placeholder(generated(cross(200, 30)), builderParameter("reloadBtn"));
+            placeholder(generated(cross(200, 30, #FF0000)), builderParameter("autodetectBtn"));
+            placeholder(generated(cross(200, 30, #FF0000)), builderParameter("exportBtn"));
+            placeholder(generated(cross(200, 30, #FF0000)), builderParameter("clearBtn"));
+            placeholder(generated(cross(200, 30, #FF0000)), builderParameter("reloadBtn"));
         }
 
         // Two-column layout (multiline: wraps if too wide)
@@ -30,9 +30,9 @@ version: 0.5
                         flow(layout:horizontal, horizontalSpacing:10) {
                             text(dd, "Region", #ccccccff);
                             text(dd, "Zoom:", #ccccccff);
-                            placeholder(generated(cross(100, 20)), builderParameter("regionZoomSlider"));
+                            placeholder(generated(cross(100, 20, #FF0000)), builderParameter("regionZoomSlider"));
                         }
-                        placeholder(generated(cross(10, 10)), builderParameter("regionContainer"));
+                        placeholder(generated(cross(10, 10, #FF0000)), builderParameter("regionContainer"));
                     }
 
                     // Demo section
@@ -40,9 +40,9 @@ version: 0.5
                         flow(layout:horizontal, horizontalSpacing:10) {
                             text(dd, "Demo Map", #ccccccff);
                             text(dd, "Zoom:", #ccccccff);
-                            placeholder(generated(cross(100, 20)), builderParameter("demoZoomSlider"));
+                            placeholder(generated(cross(100, 20, #FF0000)), builderParameter("demoZoomSlider"));
                         }
-                        placeholder(generated(cross(10, 10)), builderParameter("demoContainer"));
+                        placeholder(generated(cross(10, 10, #FF0000)), builderParameter("demoContainer"));
                     }
                 }
 
@@ -51,9 +51,9 @@ version: 0.5
                     flow(layout:horizontal, horizontalSpacing:10) {
                         #ratioLabel(updatable) text(dd, "Edge/Center Ratio:", #ccccccff);
                         text(dd, "Ratio:", #ccccccff);
-                        placeholder(generated(cross(100, 20)), builderParameter("ratioSlider"));
+                        placeholder(generated(cross(100, 20, #FF0000)), builderParameter("ratioSlider"));
                     }
-                    placeholder(generated(cross(10, 10)), builderParameter("ratioContainer"));
+                    placeholder(generated(cross(10, 10, #FF0000)), builderParameter("ratioContainer"));
                 }
             }
 
@@ -62,7 +62,7 @@ version: 0.5
                 flow(layout:horizontal, horizontalSpacing:10) {
                     text(dd, "Blob47 Tiles", #ccccccff);
                     text(dd, "Zoom:", #ccccccff);
-                    placeholder(generated(cross(100, 20)), builderParameter("blob47ZoomSlider"));
+                    placeholder(generated(cross(100, 20, #FF0000)), builderParameter("blob47ZoomSlider"));
                 }
 
                 // Legend
@@ -77,7 +77,7 @@ version: 0.5
                     text(dd, "empty", #cc4444ff);
                 }
 
-                placeholder(generated(cross(10, 10)), builderParameter("blob47Container"));
+                placeholder(generated(cross(10, 10, #FF0000)), builderParameter("blob47Container"));
             }
         }
     }

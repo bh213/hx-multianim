@@ -8,8 +8,8 @@ version: 0.5
       
       point {
       
-        placeholder(generated(cross(20, 20)), builderParameter("openDialog1button"));
-        placeholder(generated(cross(200, 20)), builderParameter("openDialog2button")):250,0;
+        placeholder(generated(cross(20, 20, #FF0000)), builderParameter("openDialog1button"));
+        placeholder(generated(cross(200, 20, #FF0000)), builderParameter("openDialog2button")):250,0;
         
       }
 }

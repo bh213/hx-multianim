@@ -3841,7 +3841,7 @@ class ProgrammableCodeGen {
 							if (c >>> 24 == 0) c |= 0xFF000000;
 							h2d.Tile.fromColor(c, $wExpr, $hExpr);
 						};
-					case Cross(w, h, color):
+					case Cross(w, h, color, thickness):
 						// Cross: solid color with diagonal lines — approximate as solid color
 						final wExpr = rvToExpr(w);
 						final hExpr = rvToExpr(h);

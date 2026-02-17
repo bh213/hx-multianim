@@ -140,22 +140,22 @@ forward(80)
 
 #ui programmable() {
     text(pixellari, "testing paths", #ffffff00, center, 100): 30, 50
-    placeholder(generated(cross(200, 20)), builderParameter("animate")):1050,100
+    placeholder(generated(cross(200, 20, #FF0000)), builderParameter("animate")):1050,100
     
-    placeholder(generated(cross(200, 20)), builderParameter("path")):600,100
-    placeholder(generated(cross(200, 20)), builderParameter("startPoint")):750,100
-    placeholder(generated(cross(200, 20)), builderParameter("endPoint")):900,100
-    placeholder(generated(cross(200, 20)), builderParameter("positionMode")):900,300
-    placeholder(generated(cross(200, 20)), builderParameter("angleSlider")):900,240
+    placeholder(generated(cross(200, 20, #FF0000)), builderParameter("path")):600,100
+    placeholder(generated(cross(200, 20, #FF0000)), builderParameter("startPoint")):750,100
+    placeholder(generated(cross(200, 20, #FF0000)), builderParameter("endPoint")):900,100
+    placeholder(generated(cross(200, 20, #FF0000)), builderParameter("positionMode")):900,300
+    placeholder(generated(cross(200, 20, #FF0000)), builderParameter("angleSlider")):900,240
 
 
     point {
       pos: 640, 320
       #ref1 point {
-        bitmap(generated(cross(10, 10)));
+        bitmap(generated(cross(10, 10, #FF0000)));
         text(pixellari, "ref #1", yellow);
         #ref2 point {
-          bitmap(generated(cross(10, 10)));
+          bitmap(generated(cross(10, 10, #FF0000)));
           text(pixellari, "ref #2", green);
           scale: 0.5
           pos:100,100
