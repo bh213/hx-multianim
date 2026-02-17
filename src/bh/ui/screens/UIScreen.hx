@@ -100,6 +100,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		groups.clear();
 		elements = [];
 		subElementProviders = [];
+		postCustomAddToLayer.clear();
 		getSceneRoot().removeChildren();
 		onClear();
 	}
