@@ -271,7 +271,10 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 				if (newIndex != null) {
 					if (items[newIndex].disabled == null || items[newIndex].disabled == false) {
 						if (time - lastClick < doubleClickThreshold && lastClickIndex == newIndex) {
+							this.currentItemIndex = newIndex;
+							triggerItemChanged(newIndex, wrapper);
 							onItemDoubleClicked(newIndex, items, wrapper);
+							wrapper.control.pushEvent(UIDoubleClickItem(newIndex, items), this);
 						}
 						hoverMode = false;
 						this.requestRedraw = true;

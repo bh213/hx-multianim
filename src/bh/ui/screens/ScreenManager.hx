@@ -329,6 +329,7 @@ class ScreenManager {
 	}
 
 	public function modalDialog(dialog:UIScreen, caller:UIScreen, dialogName:String) {
+		dialog.load();
 		updateScreenMode(Dialog(dialog, caller, mode, dialogName));
 	}
 
