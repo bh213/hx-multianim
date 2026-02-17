@@ -2342,7 +2342,8 @@ class ProgrammableCodeGen {
 				macro this._pb.buildPlaceholderViaCallbackWithIndex($nameExpr, $idxExpr);
 			case PRSBuilderParameterSource(callbackName):
 				final nameExpr = rvToExpr(callbackName);
-				macro this._pb.buildPlaceholderViaSource($nameExpr);
+				final settingsExpr = nodeSettingsToExpr(node);
+				macro this._pb.buildPlaceholderViaSource($nameExpr, $settingsExpr);
 		};
 
 		// Generate fallback expression based on placeholder type
@@ -3770,6 +3771,47 @@ class ProgrammableCodeGen {
 				collectParamRefsImpl(defaultValue, refs);
 			default:
 		}
+	}
+
+	// ==================== Node Settings ====================
+
+	/** Convert a node's settings (walking parent chain) to a ResolvedSettings expression */
+	static function nodeSettingsToExpr(node:Node):Expr {
+		// Collect settings walking up the parent chain (same logic as MultiAnimBuilder.resolveSettings)
+		var merged:Null<Map<String, MultiAnimParser.ParsedSettingValue>> = null;
+		var current = node;
+		while (current != null) {
+			if (current.settings != null) {
+				if (merged == null)
+					merged = current.settings.copy();
+				else {
+					for (key => value in current.settings) {
+						if (!merged.exists(key))
+							merged[key] = value;
+					}
+				}
+			}
+			current = current.parent;
+		}
+		if (merged == null)
+			return macro null;
+
+		final entries:Array<Expr> = [];
+		for (key => sv in merged) {
+			final keyExpr = macro $v{key};
+			final valExpr:Expr = switch sv.type {
+				case SVTInt: final v = rvToExpr(sv.value); macro bh.multianim.MultiAnimParser.SettingValue.RSVInt($v);
+				case SVTFloat: final v = rvToExpr(sv.value); macro bh.multianim.MultiAnimParser.SettingValue.RSVFloat($v);
+				case SVTString: final v = rvToExpr(sv.value, true); macro bh.multianim.MultiAnimParser.SettingValue.RSVString($v);
+			};
+			entries.push(macro m.set($keyExpr, $valExpr));
+		}
+		final setBlock:Expr = {expr: EBlock(entries), pos: Context.currentPos()};
+		return macro {
+			var m = new Map<String, bh.multianim.MultiAnimParser.SettingValue>();
+			$setBlock;
+			m;
+		};
 	}
 
 	// ==================== Tile Source ====================

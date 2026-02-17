@@ -37,7 +37,7 @@ export default defineConfig({
   base: './',
   root: 'react_src',
   server: {
-    port: 3000,
+    port: 5000,
     open: true,
     watch: {
       // Also watch public directory for manim/anim file changes

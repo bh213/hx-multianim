@@ -9,6 +9,7 @@ import bh.multianim.MultiAnimBuilder.BuilderResult;
 import bh.multianim.MultiAnimBuilder.CallbackRequest;
 import bh.multianim.MultiAnimBuilder.CallbackResult;
 import bh.multianim.MultiAnimBuilder.PlaceholderValues;
+import bh.multianim.MultiAnimParser.ResolvedSettings;
 import bh.multianim.MultiAnimParser.TileSource;
 import bh.stateanim.AnimationSM;
 import bh.stateanim.AnimationSM.AnimationFrameState;
@@ -270,7 +271,7 @@ class ProgrammableBuilder {
 	}
 
 	/** Build a placeholder via builder parameter source (for PRSBuilderParameterSource) */
-	public function buildPlaceholderViaSource(name:String):Null<h2d.Object> {
+	public function buildPlaceholderViaSource(name:String, settings:ResolvedSettings = null):Null<h2d.Object> {
 		final builder:MultiAnimBuilder = _builder;
 		final phObjects = @:privateAccess builder.builderParams.placeholderObjects;
 		if (phObjects == null) return null;
@@ -278,7 +279,7 @@ class ProgrammableBuilder {
 		return switch param {
 			case null: null;
 			case PVObject(obj): obj;
-			case PVFactory(factoryMethod): factoryMethod(null);
+			case PVFactory(factoryMethod): factoryMethod(settings);
 		};
 	}
 

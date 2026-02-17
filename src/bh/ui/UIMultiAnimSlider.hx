@@ -5,6 +5,7 @@ import bh.multianim.MultiAnimBuilder.MultiAnimBuilder;
 import h2d.Object;
 import h2d.col.Point;
 import bh.ui.UIElement;
+import bh.multianim.MultiAnimParser.NamedBuildResult;
 
 class UIStandardMultiAnimSlider implements UIElement implements UIElementDisablable implements StandardUIElementEvents implements UIElementNumberValue
 		implements UIElementFloatValue implements UIElementSyncRedraw {
@@ -99,11 +100,37 @@ class UIStandardMultiAnimSlider implements UIElement implements UIElementDisabla
 		return getObject().getBounds().contains(pos);
 	}
 
+	static function isVisibleInScene(obj:h2d.Object):Bool {
+		var cur = obj;
+		while (cur != null) {
+			if (!cur.visible) return false;
+			cur = cur.parent;
+		}
+		return true;
+	}
+
+	// The slider .manim has multiple conditional branches (one per size variant),
+	// each with its own #start/#end points. In incremental mode, inactive branches
+	// are kept in the scene graph with visible=false on the conditional wrapper.
+	// names["start"] returns all variants, so we walk the parent chain to find
+	// the one in the active (visible) branch.
+	static function findVisible(items:Array<NamedBuildResult>):Null<h2d.Object> {
+		for (item in items) {
+			final obj = item.getBuiltHeapsObject().toh2dObject();
+			if (obj != null && isVisibleInScene(obj))
+				return obj;
+		}
+		return null;
+	}
+
 	function calculatePos(eventPos:Point):Float {
-		final start = currentResult.names["start"][0].getBuiltHeapsObject().toh2dObject();
-		final localPos = start.globalToLocal(eventPos.clone());
-		final end = currentResult.names["end"][0].getBuiltHeapsObject().toh2dObject();
-		final ratio = hxd.Math.clamp(localPos.x, start.x, end.x) / (end.x - start.x);
+		final start = findVisible(currentResult.names["start"]);
+		final end = findVisible(currentResult.names["end"]);
+		if (start == null || end == null) return currentValue;
+		// globalToLocal on start.parent (the ninepatch) converts scene mouse coords
+		// into the same coordinate space as start.x/end.x, handling any parent scaling.
+		final localPos = start.parent.globalToLocal(eventPos.clone());
+		final ratio = hxd.Math.clamp((localPos.x - start.x) / (end.x - start.x), 0, 1);
 		return snapToStep(min + ratio * (max - min));
 	}
 
