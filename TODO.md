@@ -1,7 +1,7 @@
 # Main goals
 
 - allow code generation - programmable element should always work via builder.buildWithParameters or via macro system e.g. @:manim("test/examples/60-newPathCommands/newPathCommands.manim", "newPathCommands")
-- some tools/testing might be split into separate repos. Most likely candidates are utils/ and playground.
+- some tools/testing might be split into separate repos. Most likely candidate is utils/. Playground already moved to ../hx-multianim-playground.
 
 FIX:
 ===================================

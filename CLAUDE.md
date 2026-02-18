@@ -21,8 +21,6 @@
 | `src/bh/multianim/ProgrammableCodeGen.hx` | Macro code generation for `@:manim`/`@:data` |
 | `src/bh/multianim/ProgrammableBuilder.hx` | Base class for macro-generated factories |
 | `src/bh/stateanim/AnimParser.hx` | Parser for `.anim` state animation files |
-| `playground/` | Web-based playground for testing |
-| `playground/public/assets/` | Test `.manim` and `.anim` files |
 | `test/` | Test suite |
 
 ## Build & Run Commands
@@ -36,14 +34,9 @@ test.bat run        # Run all tests
 test.bat gen-refs   # Generate reference images
 test.bat report     # Open test report in browser
 
-# Run playground (requires Node.js)
-cd playground
-lix download
-npm install
-npm run dev
 ```
 
-Playground runs at `http://localhost:3000`.
+Playground lives in a separate repository: `../hx-multianim-playground`.
 
 ## Parser Pattern Matching (Important!)
 
@@ -376,8 +369,4 @@ Metadata supports typed values matching the settings system: `key => val` (strin
 
 Interactive playground at: https://bh213.github.io/hx-multianim/
 
-Features:
-- Live examples of UI components
-- Real-time `.manim` editing with preview
-- Multiple example screens
-- Live asset reloading
+Playground source lives in a separate repository: `../hx-multianim-playground`.

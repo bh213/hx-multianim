@@ -15,25 +15,7 @@ Latest test results: [Visual Test Report](https://bh213.github.io/hx-multianim/t
 
 ## Interactive Playground
 
-Playground is available at [gh-pages](https://bh213.github.io/hx-multianim/).
-
-The playground provides:
-- **Live Examples**: Interactive demonstrations of UI components, animations, and effects
-- **Code Editor**: Real-time editing of `.manim` files with instant preview
-- **Multiple Screens**: Various examples showcasing different features
-
-### Running the Playground
-
-```bash
-cd playground
-lix download
-npm install
-npm run dev
-```
-
-This will start the playground at `http://localhost:3000` with live reloading enabled.
-
-For more details, see the [playground README](playground/README.md).
+Playground is available at [gh-pages](https://bh213.github.io/hx-multianim/) and lives in a separate repository: `../hx-multianim-playground`.
 
 ## Getting Started
 
