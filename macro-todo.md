@@ -4,36 +4,12 @@
 
 | Gap | Severity | Notes |
 |-----|----------|-------|
-| **Definition node types** | N/A | AUTOTILE (`buildAutotile()` API), ATLAS2 (inline), ANIMATED_PATH — accessed by reference, not rendered as children. |
+| **AUTOTILE as tile source only** | Low | Works inside `bitmap()` via `AutotileRef`/`AutotileRegionSheet`. Not handled as top-level node type (falls through to `default: null` in `generateCreateExpr`). Probably fine since autotiles are definition nodes, not renderables. |
+| **ATLAS2** | N/A | Definition node, not renderable. Builder throws `'atlas2 is a definition node'`. No codegen accessor for atlas2-defined tiles — tiles are accessed via sheet references instead. |
 
-## Implemented
-
-| Feature | Notes |
-|---------|-------|
-| **Array parameters** (`param:array=[v1,v2]`) | `PPTArray` → `Array<String>` typed field. Default as null with constructor fallback (Haxe constant-default limitation). |
-| **RVElementOfArray** (`$arr[$i]`) | Resolves to runtime loop var or `this._arr[index]`. |
-| **ArrayIterator in REPEAT** | `repeatable($i, array($val, $arr))` — runtime pool with `_rt_val` value variable. |
-| **TEXT in runtime repeat** | `generateRuntimeChildExprs` handles TEXT nodes inside param-dependent iterators. |
-| **RVFunction** (`function(gridWidth/gridHeight)`) | Resolves grid spacing from node's parent chain at compile time. Handled in both `rvToExpr` and `resolveRVStatic`. |
-| **Multi-element named getters** | When multiple elements share the same `#name`, `get_name()` now returns `ProgrammableUpdatable` wrapping all elements. Single-element names still return `h2d.Object`. |
-| **`@:data` metadata** | `@:data("file.manim", "dataName")` generates typed data classes with `public final` fields. Record types generate companion classes (`ClassName_RecordName`). Builder `getData()` returns `Dynamic`. |
-| **`@final` constants** | `@final name = expr` — macro codegen inlines constant values or generates local vars for expressions. Scoping matches builder (block-level cleanup, per-iteration in repeatables). |
-| **String interpolation** | `'text ${$var}'` in single-quoted strings. Lexer splits into text/code parts, emits as `"text" + $var`. Supports expressions: `'${$x * 2}'`. Error detection for unclosed braces, empty expressions, unterminated strings. |
-| **Parse-time variable validation** | Unknown `$var` references produce errors listing available variables. Tracks parameter defs (`activeDefs`), loop vars, iterator output vars, `@final` vars (`scopeVars`). |
-| **Paths, curves, animated paths** | `getPath_<name>()`, `getAnimatedPath_<name>()`, `getCurve_<name>()` factory methods. Easing-only curves baked inline at compile time. |
-| **Param-dependent repeatable rebuild** | Repeatables whose iterator count depends on parameters use runtime rebuild with object pooling instead of static children. |
-| **`createFrom()` named parameters** | Every `@:manim` factory generates `createFrom({...})` alongside `create(...)`. Takes anonymous struct; optional params can be omitted. |
-| **Indexed named getters** | `#name[$i]` inside repeatable → `get_name(index:Int)` on instance. |
-| **Slot codegen** | `#name slot` → `getSlot_name()` and generic `getSlot("name")`. Indexed: `getSlot_name(index)` / `getSlot("name", index)`. |
-| **Component codegen** | `component($ref, params)` generates runtime builder call with incremental mode. `getComponent("name")` returns `BuilderResult`. |
-| **Filter codegen** | Param-driven filters (outline, blur, glow, etc.) generate runtime update code in setters. |
-| **`@:data` mergeTypes** | `@:data("file", "name", "pkg", mergeTypes)` deduplicates identical record types across multiple `@:data` fields. |
-| **`@:data` custom package** | 3rd parameter overrides generated record type package. |
-
-## Phase 2: Performance — optimize generated code
+## Performance — optimize generated code
 
 | # | Feature | Effort | Impact | Notes |
 |---|---------|--------|--------|-------|
 | 1 | **Per-param visibility** | Medium | High | Generate `_applyVisibility_paramName()` that only touches elements conditioned on that param. Currently every setter calls the full `_applyVisibility()`. |
-| 2 | **Per-param expressions** | Medium | High | Generate `_updateExpressions_paramName()` that only recalculates expressions referencing that param. Data already available in `paramRefs`. Currently setter skips call entirely if param unused, but when called, updates ALL expressions. |
-| 3 | **Lazy filter updates** | Low | Low | Only update filters when their param refs change. |
+| 2 | **Per-param expressions** | Low | Medium | `_updateExpressions()` is already skipped when param has no expression refs. Next step: generate per-param `_updateExpressions_paramName()` that only recalculates expressions referencing that param, instead of all expressions. |
