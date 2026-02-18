@@ -5350,6 +5350,8 @@ class ProgrammableCodeGen {
 		}
 
 		bodyExprs.push(macro var ap = new bh.paths.AnimatedPath(path, $modeExpr));
+		if (apDef.loop) bodyExprs.push(macro ap.loop = true);
+		if (apDef.pingPong) bodyExprs.push(macro ap.pingPong = true);
 
 		// 3. Add curve segments
 		for (ca in apDef.curveAssignments) {
@@ -5374,6 +5376,7 @@ class ProgrammableCodeGen {
 				case APAlpha: macro bh.paths.AnimatedPath.CurveSlot.Alpha;
 				case APRotation: macro bh.paths.AnimatedPath.CurveSlot.Rotation;
 				case APProgress: macro bh.paths.AnimatedPath.CurveSlot.Progress;
+				case APColor(_, _): macro bh.paths.AnimatedPath.CurveSlot.Color;
 				case APCustom(customName):
 					null; // handled below
 			};
@@ -5382,6 +5385,11 @@ class ProgrammableCodeGen {
 				case APCustom(customName):
 					final cn:String = customName;
 					bodyExprs.push(macro ap.addCustomCurveSegment($v{cn}, $rateExpr, $curveExpr));
+				case APColor(startColor, endColor):
+					bodyExprs.push(macro ap.addCurveSegment($slotExpr, $rateExpr, $curveExpr));
+					var scExpr = rvToExpr(startColor);
+					var ecExpr = rvToExpr(endColor);
+					bodyExprs.push(macro ap.setColorRange(Std.int($scExpr), Std.int($ecExpr)));
 				default:
 					bodyExprs.push(macro ap.addCurveSegment($slotExpr, $rateExpr, $curveExpr));
 			}

@@ -3484,6 +3484,8 @@ class MultiAnimBuilder {
 				};
 
 				var retVal = new bh.paths.AnimatedPath(path, mode);
+				retVal.loop = pathDef.loop;
+				retVal.pingPong = pathDef.pingPong;
 
 				// Resolve curve references
 				var allCurves = getCurves();
@@ -3501,6 +3503,9 @@ class MultiAnimBuilder {
 						case APAlpha: retVal.addCurveSegment(Alpha, atRate, curve);
 						case APRotation: retVal.addCurveSegment(Rotation, atRate, curve);
 						case APProgress: retVal.addCurveSegment(Progress, atRate, curve);
+						case APColor(startColor, endColor):
+							retVal.addCurveSegment(Color, atRate, curve);
+							retVal.setColorRange(Std.int(resolveAsNumber(startColor)), Std.int(resolveAsNumber(endColor)));
 						case APCustom(customName): retVal.addCustomCurveSegment(customName, atRate, curve);
 					}
 				}

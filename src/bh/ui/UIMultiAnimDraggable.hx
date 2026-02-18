@@ -134,6 +134,15 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 	/** Whether to return to origin on failed drop (true) or stay at current position (false). Default: true. */
 	public var returnToOrigin:Bool = true;
 
+	/** Whether to apply scale from AnimatedPathState during animation. Default: false. */
+	public var animApplyScale:Bool = false;
+
+	/** Whether to apply alpha from AnimatedPathState during animation. Default: false. */
+	public var animApplyAlpha:Bool = false;
+
+	/** Whether to apply rotation from AnimatedPathState during animation. Default: false. */
+	public var animApplyRotation:Bool = false;
+
 	var savedAlpha:Float = 1.0;
 
 	public function new(target:h2d.Object) {
@@ -262,8 +271,22 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 
 		var s = activeAnim.update(dt);
 		root.setPosition(s.position.x, s.position.y);
+		if (animApplyScale) {
+			target.scaleX = s.scale;
+			target.scaleY = s.scale;
+		}
+		if (animApplyAlpha) target.alpha = s.alpha;
+		if (animApplyRotation) target.rotation = s.rotation;
 
 		if (s.done) {
+			// Restore target properties modified by animation
+			if (animApplyScale) {
+				target.scaleX = 1.;
+				target.scaleY = 1.;
+			}
+			if (animApplyAlpha) target.alpha = savedAlpha;
+			if (animApplyRotation) target.rotation = 0.;
+
 			var cb = animOnComplete;
 			activeAnim = null;
 			animOnComplete = null;

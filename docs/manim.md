@@ -1056,40 +1056,94 @@ The original path shape is preserved but transformed via scale + rotation + tran
 
 ## Animated Paths
 
-Animated paths control how objects traverse a path over time, with optional easing and timed actions.
+Animated paths control how objects traverse a named path over time, with curve-based property animation, timed events, and optional looping.
 
 ```
 #animName animatedPath {
-    easing: easeInOutQuad
+    path: myPath
+    type: time
     duration: 0.8
-    0.0: event("start")
-    0.5: attachParticles("trail") { count: 30  emit: point(0,0)  tiles: file("p.png") }
-    1.0: event("end")
+    loop: false
+    pingPong: false
+    0.0: progressCurve: easeOutElastic
+    0.0: scaleCurve: growThenShrink, alphaCurve: fadeIn
+    0.5: event("halfway")
+    0.0: colorCurve: linear, #FF0000, #00FF00
+    0.0: custom(myValue): customCurve
 }
 ```
 
 **Properties:**
-* `easing: <easingType>` - Optional easing function for the animation timing
-* `duration: <float>` - Optional fixed duration (seconds); used with easing for time-based mode
+* `path: <pathName>` - **Required.** Name of a path defined in the `paths {}` block
+* `type: time | distance` - Animation mode (optional, inferred from `duration`/`speed`)
+* `duration: <float>` - Duration in seconds (time mode)
+* `speed: <float>` - Base speed in pixels/second (distance mode)
+* `loop: true | false` - Repeat the animation continuously (default: false)
+* `pingPong: true | false` - Alternate forward/reverse on each cycle (default: false)
 
-When both `easing` and `duration` are set, the path uses time-based mode where position = easing(time/duration). Without them, the path uses speed-based mode.
+**Curve Slots** (at rate 0.0–1.0 or checkpoint name):
+* `<rate>: speedCurve: <curveName>` - Speed multiplier (distance mode only)
+* `<rate>: scaleCurve: <curveName>` - Scale (default 1.0)
+* `<rate>: alphaCurve: <curveName>` - Alpha/opacity (default 1.0)
+* `<rate>: rotationCurve: <curveName>` - Rotation in radians (default 0.0)
+* `<rate>: progressCurve: <curveName>` - Maps time-rate to path-rate (time mode only); allows easing/overshoot
+* `<rate>: colorCurve: <curveName>, <startColor>, <endColor>` - Color interpolation (RGB lerp)
+* `<rate>: custom("<name>"): <curveName>` - Named custom float value
 
-**Timed Actions** (at rate 0.0-1.0 or checkpoint name):
-* `<rate>: event("<name>")` - Fire a named event
-* `<rate>: changeSpeed(<speed>)` - Change traversal speed
-* `<rate>: accelerate(<accel>, <duration>)` - Apply acceleration
-* `<rate>: attachParticles("<name>") { ... }` - Attach particle system
-* `<rate>: removeParticles("<name>")` - Remove particle system
-* `<rate>: changeAnimState("<state>")` - Change state animation
+Multiple curve assignments at the same rate are comma-separated:
+```
+0.0: scaleCurve: grow, alphaCurve: fadeIn, event("start")
+```
 
-**Easing Types:**
-* `linear` - No easing (default)
-* `easeinquad`, `easeoutquad`, `easeinoutquad` - Quadratic
-* `easeincubic`, `easeoutcubic`, `easeinoutcubic` - Cubic
-* `easeinback`, `easeoutback`, `easeinoutback` - Back (overshoot)
-* `easeoutbounce` - Bounce
-* `easeoutelastic` - Elastic
-* `cubicbezier(x1, y1, x2, y2)` - Custom cubic bezier curve
+**Timed Events:**
+* `<rate>: event("<name>")` - Fire a named event at the given rate
+
+Rate values are 0.0–1.0. Alternatively, use a checkpoint name defined in the referenced path:
+```
+midpoint: event("reachedMiddle"), scaleCurve: shrink
+```
+
+**Built-in events** (fired automatically):
+* `pathStart` - First update
+* `pathEnd` - Animation complete (non-looping only)
+* `cycleStart` - Beginning of each loop/pingPong cycle
+* `cycleEnd` - End of each loop/pingPong cycle
+
+**AnimatedPathState** (returned by `update(dt)` and `seek(rate)`):
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `position` | `FPoint` | — | Current position on path |
+| `angle` | `Float` | — | Tangent angle (radians) |
+| `rate` | `Float` | — | Current progress (0..1) |
+| `speed` | `Float` | — | Effective speed |
+| `scale` | `Float` | 1.0 | From `scaleCurve` |
+| `alpha` | `Float` | 1.0 | From `alphaCurve` |
+| `rotation` | `Float` | 0.0 | From `rotationCurve` |
+| `color` | `Int` | 0xFFFFFF | From `colorCurve` (RGB) |
+| `cycle` | `Int` | 0 | Current loop cycle index |
+| `done` | `Bool` | false | True when animation finishes |
+| `custom` | `Map<String, Float>` | — | Named custom curve values |
+
+**Runtime API:**
+```haxe
+// Builder
+var ap = builder.createAnimatedPath("animName", startPoint, endPoint);
+ap.onUpdate = (state) -> { obj.setPosition(state.position.x, state.position.y); };
+ap.onEvent = (name, state) -> { if (name == "halfway") doSomething(); };
+
+// Macro codegen
+var ap = factory.createAnimatedPath_animName(startPoint, endPoint);
+
+// Update loop
+var state = ap.update(dt);
+
+// Seek to arbitrary position (no side effects, no events)
+var state = ap.seek(0.5);
+
+// Reset for reuse (avoids re-creation)
+ap.reset();
+```
 
 ---
 

@@ -55,6 +55,8 @@ class UIElementBuilder {
 		if (tileSource != null) {
 			params.set("tile", ResolvedIndexParameters.TileSourceValue(tileSource));
 			params.set("images", "tile");
+		} else {
+			params.set("images", "none");
 		}
 
 		return builder.buildWithComboParameters(name, params, ["status", "selected", "disabled"], builderParams);

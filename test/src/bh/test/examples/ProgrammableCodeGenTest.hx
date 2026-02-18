@@ -1925,7 +1925,9 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 				scale: state.scale,
 				alpha: state.alpha,
 				rotation: state.rotation,
+				color: state.color,
 				done: state.done,
+				cycle: state.cycle,
 				custom: state.custom
 			});
 			totalTime += dt;

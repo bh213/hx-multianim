@@ -520,6 +520,7 @@ enum AnimatedPathCurveSlotType {
 	APRotation;
 	APProgress;
 	APCustom(name:String);
+	APColor(startColor:ReferenceableValue, endColor:ReferenceableValue);
 }
 
 @:structInit
@@ -543,6 +544,8 @@ typedef AnimatedPathDef = {
 	var pathName:String;
 	var curveAssignments:Array<AnimatedPathCurveAssignment>;
 	var events:Array<AnimatedPathTimedEvent>;
+	var loop:Bool;
+	var pingPong:Bool;
 };
 
 @:nullSafety

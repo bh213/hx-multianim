@@ -156,6 +156,7 @@ animation {
 | `#name atlas2("file") {...}` | Inline sprite atlas |
 | `curves {...}` | 1D curve definitions |
 | `paths {...}` | Path definitions |
+| `#name animatedPath {...}` | Animated path with curves/events |
 | `import "file" as "name"` | Import external .manim |
 
 ### Conditionals
@@ -233,6 +234,37 @@ animation {
 ```
 
 See `docs/manim.md` for full particles documentation.
+
+### Animated Paths Quick Reference
+
+```manim
+#animName animatedPath {
+    path: myPath
+    type: time
+    duration: 1.0
+    loop: false
+    pingPong: false
+    0.0: progressCurve: easeOut, scaleCurve: grow, alphaCurve: fadeIn
+    0.5: event("halfway")
+    0.0: colorCurve: linear, #FF0000, #00FF00
+    0.0: custom("myValue"): customCurve
+}
+```
+
+**Properties:** `path` (required), `type: time|distance`, `duration`, `speed`, `loop: bool`, `pingPong: bool`
+
+**Curve slots** (at rate 0.0–1.0 or checkpoint name): `speedCurve`, `scaleCurve`, `alphaCurve`, `rotationCurve`, `progressCurve`, `colorCurve: curve, startColor, endColor`, `custom("name"): curve`
+
+**Events:** `event("name")`. Built-in: `pathStart`, `pathEnd`, `cycleStart`, `cycleEnd`
+
+**State fields:** `position`, `angle`, `rate`, `speed`, `scale`, `alpha`, `rotation`, `color`, `cycle`, `done`, `custom`
+
+**Runtime API:**
+- Builder: `builder.createAnimatedPath("name", ?startPoint, ?endPoint)`
+- Codegen: `factory.createAnimatedPath_name(?startPoint, ?endPoint)`
+- `ap.update(dt)` → `AnimatedPathState`, `ap.seek(rate)` → state without side effects, `ap.reset()` for reuse
+
+See `docs/manim.md` for full animated paths documentation.
 
 ## UI Elements Notes
 

@@ -4180,6 +4180,8 @@ class MacroManimParser {
 		var speed:Null<ReferenceableValue> = null;
 		var duration:Null<ReferenceableValue> = null;
 		var pathName:Null<String> = null;
+		var loop:Bool = false;
+		var pingPong:Bool = false;
 
 		while (!match(TCurlyClosed)) {
 			switch (peek()) {
@@ -4203,6 +4205,16 @@ class MacroManimParser {
 					advance();
 					expect(TColon);
 					duration = parseFloatOrReference();
+				// loop: true|false
+				case TIdentifier(s) if (isKeyword(s, "loop")):
+					advance();
+					expect(TColon);
+					loop = parseBool();
+				// pingPong: true|false
+				case TIdentifier(s) if (isKeyword(s, "pingpong")):
+					advance();
+					expect(TColon);
+					pingPong = parseBool();
 				// path: <pathName>
 				case TIdentifier(s) if (isKeyword(s, "path")):
 					advance();
@@ -4220,7 +4232,7 @@ class MacroManimParser {
 							at = Checkpoint(cpName);
 						default:
 							error('expected rate, checkpoint, type, speed, path, or duration, got ${peek()}');
-							return {mode: mode, speed: speed, duration: duration, pathName: pathName != null ? pathName : "", curveAssignments: curveAssignments, events: events};
+							return {mode: mode, speed: speed, duration: duration, pathName: pathName != null ? pathName : "", curveAssignments: curveAssignments, events: events, loop: loop, pingPong: pingPong};
 					}
 					expect(TColon);
 					// Parse comma-separated list of actions at this time point
@@ -4267,7 +4279,7 @@ class MacroManimParser {
 			}
 		}
 
-		return {mode: mode, speed: speed, duration: duration, pathName: pathName, curveAssignments: curveAssignments, events: events};
+		return {mode: mode, speed: speed, duration: duration, pathName: pathName, curveAssignments: curveAssignments, events: events, loop: loop, pingPong: pingPong};
 	}
 
 	function parseAnimatedPathActions(at:AnimatedPathTime, curveAssignments:Array<AnimatedPathCurveAssignment>, events:Array<AnimatedPathTimedEvent>):Void {
@@ -4304,6 +4316,15 @@ class MacroManimParser {
 					expect(TColon);
 					final curveName = expectIdentifierOrString();
 					curveAssignments.push({at: at, slot: APProgress, curveName: curveName});
+				case TIdentifier(s) if (isKeyword(s, "colorcurve")):
+					advance();
+					expect(TColon);
+					final curveName = expectIdentifierOrString();
+					expect(TComma);
+					final startColor = parseColorOrReference();
+					expect(TComma);
+					final endColor = parseColorOrReference();
+					curveAssignments.push({at: at, slot: APColor(startColor, endColor), curveName: curveName});
 				case TIdentifier(s) if (isKeyword(s, "custom")):
 					advance();
 					expect(TOpen);
