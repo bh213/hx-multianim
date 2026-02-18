@@ -33,6 +33,11 @@ import bh.multianim.layouts.LayoutTypes.Layout;
 
 using StringTools;
 
+private enum MacroSlotKey {
+	Named(name:String);
+	Indexed(name:String, index:Int);
+}
+
 /**
  * Compile-time macro that generates typed factory + instance classes for programmable UI components from .manim definitions.
  *
@@ -62,8 +67,7 @@ class ProgrammableCodeGen {
 	static var visibilityEntries:Array<{fieldName:String, condition:Expr}> = [];
 	static var namedElements:Map<String, Array<String>> = [];
 	static var indexedNamedElements:Map<String, Array<{index:Int, fieldName:String}>> = new Map();
-	static var slotFields:Map<String, String> = new Map(); // slot name -> container field name
-	static var indexedSlotFields:Map<String, Array<{index:Int, fieldName:String}>> = new Map(); // base name -> [{index, field}]
+	static var slotEntries:Array<{key:MacroSlotKey, fieldName:String}> = [];
 	static var dynamicRefFields:Map<String, String> = new Map(); // component name -> BuilderResult field name
 	static var hexLayoutFieldAdded:Bool = false;
 
@@ -123,8 +127,7 @@ class ProgrammableCodeGen {
 		visibilityEntries = [];
 		namedElements = [];
 		indexedNamedElements = new Map();
-		slotFields = new Map();
-		indexedSlotFields = new Map();
+		slotEntries = [];
 		dynamicRefFields = new Map();
 		paramDefs = new Map();
 		paramNames = [];
@@ -501,10 +504,10 @@ class ProgrammableCodeGen {
 		instanceFields.push(makeMethod("_updateExpressions", exprUpdateExprs, [], macro :Void, [APrivate], pos));
 
 		// 6. Pre-constructor: push slot/dynamicRef init expressions to constructorExprs
-		// (slotFields and dynamicRefFields are already populated from processChildren)
-		for (slotName => containerField in slotFields) {
-			final handleField = "_slotHandle_" + slotName;
-			constructorExprs.push(macro $p{["this", handleField]} = new bh.multianim.MultiAnimBuilder.SlotHandle($p{["this", containerField]}));
+		// (slotEntries and dynamicRefFields are already populated from processChildren)
+		for (entry in slotEntries) {
+			final handleField = slotHandleFieldName(entry.key);
+			constructorExprs.push(macro $p{["this", handleField]} = new bh.multianim.MultiAnimBuilder.SlotHandle($p{["this", entry.fieldName]}));
 		}
 
 		// 7. Instance constructor: (pb, params...) -> builds tree
@@ -571,32 +574,35 @@ class ProgrammableCodeGen {
 		}
 
 		// 8c. Slot accessors (on instance) — init expressions already pushed to constructorExprs in step 6
-		// Skip indexed slots from per-slot typed accessors (they get indexed getSlot_name(index) instead)
-		for (slotName => containerField in slotFields) {
-			var isIndexed = false;
-			for (_ => indexedList in indexedSlotFields) {
-				for (entry in indexedList) {
-					if (entry.fieldName == containerField) {
-						isIndexed = true;
-						break;
+		// Collect indexed slot base names and their entries
+		final indexedSlotGroups:Map<String, Array<{index:Int, fieldName:String}>> = new Map();
+		final namedSlots:Array<{name:String, fieldName:String}> = [];
+		for (entry in slotEntries) {
+			switch entry.key {
+				case Indexed(baseName, index):
+					var list = indexedSlotGroups.get(baseName);
+					if (list == null) {
+						list = [];
+						indexedSlotGroups.set(baseName, list);
 					}
-				}
-				if (isIndexed)
-					break;
+					list.push({index: index, fieldName: entry.fieldName});
+				case Named(name):
+					namedSlots.push({name: name, fieldName: entry.fieldName});
 			}
-			if (isIndexed)
-				continue;
-			final handleField = "_slotHandle_" + slotName;
+		}
+		// All slot entries get private handle fields
+		for (entry in slotEntries) {
+			final handleField = slotHandleFieldName(entry.key);
 			instanceFields.push(makeField(handleField, FVar(macro :bh.multianim.MultiAnimBuilder.SlotHandle, null), [APrivate], pos));
-			instanceFields.push(makeMethod("getSlot_" + slotName, [macro return $p{["this", handleField]}], [],
+		}
+		// Non-indexed: typed getSlot_name() accessor
+		for (ns in namedSlots) {
+			final handleField = "_slotHandle_" + ns.name;
+			instanceFields.push(makeMethod("getSlot_" + ns.name, [macro return $p{["this", handleField]}], [],
 				macro :bh.multianim.MultiAnimBuilder.SlotHandle, [APublic], pos));
 		}
-		// Indexed slot accessors: getSlot_name(index:Int):SlotHandle
-		for (baseName => indexedList in indexedSlotFields) {
-			for (entry in indexedList) {
-				final handleField = "_slotHandle_" + baseName + "_" + entry.index;
-				instanceFields.push(makeField(handleField, FVar(macro :bh.multianim.MultiAnimBuilder.SlotHandle, null), [APrivate], pos));
-			}
+		// Indexed: typed getSlot_name(index:Int) accessor with switch
+		for (baseName => indexedList in indexedSlotGroups) {
 			final switchCases:Array<Case> = [];
 			for (entry in indexedList) {
 				final handleField = "_slotHandle_" + baseName + "_" + entry.index;
@@ -613,11 +619,11 @@ class ProgrammableCodeGen {
 				macro :bh.multianim.MultiAnimBuilder.SlotHandle, [APublic], pos));
 		}
 		// Generic getSlot(name:String, ?index:Null<Int>) dispatcher
-		if (Lambda.count(slotFields) > 0 || Lambda.count(indexedSlotFields) > 0) {
+		if (slotEntries.length > 0) {
 			final bodyExprs:Array<Expr> = [];
 
 			// Handle indexed slots: require index parameter
-			for (baseName => indexedList in indexedSlotFields) {
+			for (baseName => indexedList in indexedSlotGroups) {
 				final indexCases:Array<Case> = [];
 				for (entry in indexedList) {
 					final handleField = "_slotHandle_" + baseName + "_" + entry.index;
@@ -639,23 +645,11 @@ class ProgrammableCodeGen {
 			}
 
 			// Handle non-indexed slots: reject index parameter
-			for (slotName => _ in slotFields) {
-				// Skip slots that are part of indexed groups
-				var isIndexed = false;
-				for (baseName => indexedList in indexedSlotFields) {
-					for (entry in indexedList) {
-						if (slotName == baseName + "_" + entry.index) {
-							isIndexed = true;
-							break;
-						}
-					}
-					if (isIndexed) break;
-				}
-				if (isIndexed) continue;
-				final handleField = "_slotHandle_" + slotName;
-				bodyExprs.push(macro if (name == $v{slotName}) {
+			for (ns in namedSlots) {
+				final handleField = "_slotHandle_" + ns.name;
+				bodyExprs.push(macro if (name == $v{ns.name}) {
 					if (index != null)
-						throw 'Slot "' + $v{slotName} + '" is not indexed — use getSlot("' + $v{slotName} + '") without index';
+						throw 'Slot "' + $v{ns.name} + '" is not indexed — use getSlot("' + $v{ns.name} + '") without index';
 					return $p{["this", handleField]};
 				});
 			}
@@ -935,15 +929,9 @@ class ProgrammableCodeGen {
 				switch (node.updatableName) {
 					case UNTIndexed(baseName, ref) if (loopVarSubstitutions.exists(ref)):
 						final currentIndex = loopVarSubstitutions.get(ref);
-						slotFields.set(baseName + "_" + currentIndex, fieldName);
-						var list = indexedSlotFields.get(baseName);
-						if (list == null) {
-							list = [];
-							indexedSlotFields.set(baseName, list);
-						}
-						list.push({index: currentIndex, fieldName: fieldName});
+						slotEntries.push({key: Indexed(baseName, currentIndex), fieldName: fieldName});
 					case UNTObject(name) | UNTUpdatable(name):
-						slotFields.set(name, fieldName);
+						slotEntries.push({key: Named(name), fieldName: fieldName});
 					default:
 						Context.warning("Slot requires a #name prefix for codegen", pos);
 				}
@@ -4761,6 +4749,13 @@ class ProgrammableCodeGen {
 					{expr: ENew({pack: info.pack, name: info.name}, ctorArgs), pos: pos}
 				else
 					macro null;
+		};
+	}
+
+	static function slotHandleFieldName(key:MacroSlotKey):String {
+		return switch key {
+			case Named(name): "_slotHandle_" + name;
+			case Indexed(name, index): "_slotHandle_" + name + "_" + index;
 		};
 	}
 

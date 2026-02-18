@@ -371,6 +371,11 @@ class IncrementalUpdateContext {
 	}
 }
 
+enum SlotKey {
+	Named(name:String);
+	Indexed(name:String, index:Int);
+}
+
 class SlotHandle {
 	public var container:h2d.Object;
 
@@ -419,8 +424,7 @@ class BuilderResult {
 	public var rootSettings:BuilderResolvedSettings;
 	public var gridCoordinateSystem:Null<GridCoordinateSystem>;
 	public var hexCoordinateSystem:Null<HexCoordinateSystem>;
-	public var slots:Map<String, SlotHandle>;
-	public var indexedSlotNames:Map<String, Bool>;
+	public var slots:Array<{key:SlotKey, handle:SlotHandle}>;
 	public var dynamicRefs:Map<String, BuilderResult>;
 	public var incrementalContext:Null<IncrementalUpdateContext>;
 
@@ -484,21 +488,37 @@ class BuilderResult {
 	public function getSlot(name:String, ?index:Null<Int>):SlotHandle {
 		if (slots == null)
 			throw 'No slots in BuilderResult';
-		if (indexedSlotNames != null && indexedSlotNames.exists(name)) {
+		var isIndexed = false;
+		for (entry in slots) {
+			switch entry.key {
+				case Indexed(n, _) if (n == name):
+					isIndexed = true;
+					break;
+				default:
+			}
+		}
+		if (isIndexed) {
 			if (index == null)
 				throw 'Slot "$name" is indexed — use getSlot("$name", index)';
-			final key = name + "_" + index;
-			final slot = slots.get(key);
-			if (slot == null)
-				throw 'Slot "$name" index $index not found';
-			return slot;
+			for (entry in slots) {
+				switch entry.key {
+					case Indexed(n, i) if (n == name && i == index):
+						return entry.handle;
+					default:
+				}
+			}
+			throw 'Slot "$name" index $index not found';
 		} else {
 			if (index != null)
 				throw 'Slot "$name" is not indexed — use getSlot("$name") without index';
-			final slot = slots.get(name);
-			if (slot == null)
-				throw 'Slot "$name" not found in BuilderResult';
-			return slot;
+			for (entry in slots) {
+				switch entry.key {
+					case Named(n) if (n == name):
+						return entry.handle;
+					default:
+				}
+			}
+			throw 'Slot "$name" not found in BuilderResult';
 		}
 	}
 }
@@ -545,8 +565,7 @@ typedef BuilderCallbackFunction = CallbackRequest->CallbackResult;
 private typedef InternalBuilderResults = {
 	names:Map<String, Array<NamedBuildResult>>,
 	interactives:Array<MAObject>,
-	slots:Map<String, SlotHandle>,
-	indexedSlotNames:Map<String, Bool>,
+	slots:Array<{key:SlotKey, handle:SlotHandle}>,
 	dynamicRefs:Map<String, BuilderResult>
 }
 
@@ -2924,12 +2943,12 @@ class MultiAnimBuilder {
 			case SLOT:
 				switch node.updatableName {
 					case UNTIndexed(baseName, indexVar):
-						final index = resolveAsString(RVReference(indexVar));
-						final resolvedName = baseName + "_" + index;
-						internalResults.slots.set(resolvedName, new SlotHandle(object));
-						internalResults.indexedSlotNames.set(baseName, true);
+						final index = Std.parseInt(resolveAsString(RVReference(indexVar)));
+						if (index == null)
+							throw 'Slot "$baseName" indexed variable did not resolve to an integer';
+						internalResults.slots.push({key: Indexed(baseName, index), handle: new SlotHandle(object)});
 					case UNTObject(name) | UNTUpdatable(name):
-						internalResults.slots.set(name, new SlotHandle(object));
+						internalResults.slots.push({key: Named(name), handle: new SlotHandle(object)});
 					default:
 				}
 			default:
@@ -3087,8 +3106,7 @@ class MultiAnimBuilder {
 		final internalResults:InternalBuilderResults = {
 			names: [],
 			interactives: [],
-			slots: new Map(),
-			indexedSlotNames: new Map(),
+			slots: [],
 			dynamicRefs: new Map(),
 		}
 
@@ -3156,7 +3174,6 @@ class MultiAnimBuilder {
 			hexCoordinateSystem: hexCoordinateSystem,
 			gridCoordinateSystem: gridCoordinateSystem,
 			slots: internalResults.slots,
-			indexedSlotNames: internalResults.indexedSlotNames,
 			dynamicRefs: internalResults.dynamicRefs,
 			incrementalContext: null,
 		};
@@ -4092,7 +4109,7 @@ class MultiAnimBuilder {
 	 *  repeatable node types to the builder at runtime. */
 	function buildSingleNode(node:Node):Null<h2d.Object> {
 		final parent = new h2d.Object();
-		final ir:InternalBuilderResults = {names: [], interactives: [], slots: new Map(), indexedSlotNames: new Map(), dynamicRefs: new Map()};
+		final ir:InternalBuilderResults = {names: [], interactives: [], slots: [], dynamicRefs: new Map()};
 		build(node, ObjectMode(parent), null, null, ir, builderParams);
 		return if (parent.numChildren > 0) parent.getChildAt(0) else null;
 	}
