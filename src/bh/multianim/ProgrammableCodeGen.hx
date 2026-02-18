@@ -1627,8 +1627,15 @@ class ProgrammableCodeGen {
 							final s = resolveRVStatic(child.scale);
 							if (s != null) s else 1.0;
 						} else 1.0;
-						final adjustedWidth:Float = value / scaleAdjust;
-						stmts.push(macro _rt_txt.maxWidth = $v{adjustedWidth});
+						final staticVal = resolveRVStatic(value);
+						if (staticVal != null) {
+							final adjustedWidth:Float = staticVal / scaleAdjust;
+							stmts.push(macro _rt_txt.maxWidth = $v{adjustedWidth});
+						} else {
+							final valExpr = rvToExpr(value);
+							final scaleExpr = macro $v{scaleAdjust};
+							stmts.push(macro _rt_txt.maxWidth = $valExpr / $scaleExpr);
+						}
 					default:
 				}
 
@@ -3322,8 +3329,15 @@ class ProgrammableCodeGen {
 					final s = resolveRVStatic(node.scale);
 					if (s != null) s else 1.0;
 				} else 1.0;
-				final adjustedWidth:Float = value / scaleAdjust;
-				createExprs.push(macro $fieldRef.maxWidth = $v{adjustedWidth});
+				final staticVal = resolveRVStatic(value);
+				if (staticVal != null) {
+					final adjustedWidth:Float = staticVal / scaleAdjust;
+					createExprs.push(macro $fieldRef.maxWidth = $v{adjustedWidth});
+				} else {
+					final valExpr = rvToExpr(value);
+					final scaleExpr = macro $v{scaleAdjust};
+					createExprs.push(macro $fieldRef.maxWidth = $valExpr / $scaleExpr);
+				}
 			default:
 		}
 

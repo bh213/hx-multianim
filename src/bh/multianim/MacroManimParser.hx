@@ -2388,9 +2388,9 @@ class MacroManimParser {
 							case TIdentifier(gs) if (isKeyword(gs, "grid")):
 								advance();
 								textAlignWidth = TAWGrid;
+							case TInteger(_), TMinus, THexInteger(_), TReference(_), TQuestion:
+								textAlignWidth = TAWValue(parseIntegerOrReference());
 							default:
-								final mw = tryParseIntValue();
-								if (mw != null) textAlignWidth = TAWValue(mw);
 						}
 					}
 				}

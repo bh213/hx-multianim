@@ -2325,7 +2325,7 @@ class MultiAnimBuilder {
 					final scaleAdjust = if (node.scale != null) resolveAsNumber(node.scale) else 1.0;
 					switch textDef.textAlignWidth {
 						case TAWValue(value):
-								t.maxWidth = value / scaleAdjust;
+								t.maxWidth = resolveAsNumber(value) / scaleAdjust;
 						case TAWGrid:
 							if (gridCoordinateSystem != null)
 								t.maxWidth = gridCoordinateSystem.spacingX / scaleAdjust;

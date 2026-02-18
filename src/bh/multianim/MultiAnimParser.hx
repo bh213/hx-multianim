@@ -473,7 +473,7 @@ enum ReferenceableValue {
 
 enum TextAlignWidth {
 	TAWAuto;
-	TAWValue(value:Int);
+	TAWValue(value:ReferenceableValue);
 	TAWGrid;
 }
 

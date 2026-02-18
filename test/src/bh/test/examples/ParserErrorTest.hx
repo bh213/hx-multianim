@@ -1301,4 +1301,68 @@ class ParserErrorTest extends utest.Test {
 		");
 		Assert.isTrue(success, "#name outside repeatable should be valid");
 	}
+
+	// ===== Text maxWidth reference tests =====
+
+	@Test
+	public function testTextMaxWidthLiteral() {
+		var success = parseExpectingSuccess('
+			#test programmable() {
+				text(dd, "hello", #ffffff, center, 100): 0, 0
+			}
+		');
+		Assert.isTrue(success, "Text with literal maxWidth should parse successfully");
+	}
+
+	@Test
+	public function testTextMaxWidthReference() {
+		var success = parseExpectingSuccess("
+			#test programmable(w:uint=40) {
+				text(dd, \"hello\", #ffffff, center, $w): 0, 0
+			}
+		");
+		Assert.isTrue(success, "Text with reference maxWidth should parse successfully");
+	}
+
+	@Test
+	public function testTextMaxWidthExpression() {
+		var success = parseExpectingSuccess("
+			#test programmable(w:uint=40) {
+				text(dd, \"hello\", #ffffff, center, $w * 2): 0, 0
+			}
+		");
+		Assert.isTrue(success, "Text with expression maxWidth should parse successfully");
+	}
+
+	@Test
+	public function testTextMaxWidthUndefinedRef() {
+		var error = parseExpectingError("
+			#test programmable(w:uint=40) {
+				text(dd, \"hello\", #ffffff, center, $undefined): 0, 0
+			}
+		");
+		Assert.notNull(error, "Should throw error for undefined reference in text maxWidth");
+		Assert.isTrue(error.indexOf("unknown variable") >= 0,
+			'Error should mention unknown variable, got: $error');
+	}
+
+	@Test
+	public function testTextMaxWidthWithInterpolatedText() {
+		var success = parseExpectingSuccess("
+			#test programmable(w:uint=40) {
+				text(dd, '${$w}', #ffffff, center, $w): 0, 0
+			}
+		");
+		Assert.isTrue(success, "Text with interpolated text value and reference maxWidth should parse successfully");
+	}
+
+	@Test
+	public function testTextMaxWidthGrid() {
+		var success = parseExpectingSuccess('
+			#test programmable() {
+				text(dd, "hello", #ffffff, center, grid): 0, 0
+			}
+		');
+		Assert.isTrue(success, "Text with grid maxWidth should still parse successfully");
+	}
 }
