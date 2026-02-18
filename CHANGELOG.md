@@ -98,6 +98,24 @@
   - Stored in BuilderResult: `result.getDynamicRef("name")` returns sub-`BuilderResult`
   - Supports `external()` references for cross-file dynamic refs
 - **HTML report: unit test section** — test runner results now displayed in HTML report with expandable per-class/method details, pass/fail status, and failure messages
+- **`tile` parameter type** — new `.manim` parameter type for passing tile sources at runtime
+  - Syntax: `name:tile` — no default value allowed
+  - Use with `bitmap($name)` to display caller-provided tiles
+  - Macro codegen: maps to `Dynamic` (pass `h2d.Tile` at runtime)
+  - Builder: pass via `TileHelper.sheet("atlas", "tile")`, `TileHelper.file("img.png")`, or `TileHelper.sheetIndex("atlas", "tile", idx)`
+- **`TileRef` enum for `UIElementListItem`** — structured tile references replace plain `tileName` string
+  - `TRFile(filename)`, `TRSheet(sheet, name)`, `TRSheetIndex(sheet, name, index)`, `TRTile(tile)`
+  - `TRGeneratedRect(w, h)`, `TRGeneratedRectColor(w, h, color)` for generated solid-color rectangles
+  - New `tileRef` field on `UIElementListItem`; legacy `tileName` still supported
+  - `UIElementBuilder.buildItem()` now correctly sets the `images` parameter (fixes tile display in list items)
+- **`TileHelper`** — static helper class for creating tile builder parameters
+  - `TileHelper.file("img.png")`, `TileHelper.sheet("atlas", "tile")`, `TileHelper.sheetIndex("atlas", "tile", idx)`
+  - `TileHelper.generatedRect(w, h)`, `TileHelper.generatedRectColor(w, h, color)` for solid-color tiles
+  - Returns `ResolvedIndexParameters` for use with `buildWithParameters()` param maps
+
+### Fixed
+- **Codegen `generated(color())` division** — expressions using `/` in width/height (e.g. `$value * $barWidth / $maxValue`) now wrapped with `Std.int()` to produce correct `Int` arguments for `h2d.Tile.fromColor`
+- **Codegen DCE stripping setters** — generated Instance classes now annotated with `@:keep` metadata to prevent dead code elimination from removing setter methods when instances are accessed through `Dynamic`
 
 ## [0.4]
 

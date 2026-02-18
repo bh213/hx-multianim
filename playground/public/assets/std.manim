@@ -204,7 +204,7 @@ version: 0.5
 }
 
 
-#list-item-120 programmable(images:[none,placeholder,tile]=placeholder,status:[hover, pressed, normal], selected:[true, false], disabled:[true, false], tile="", itemWidth:uint=114,  index:uint=0, title="title") {
+#list-item-120 programmable(images:[none,placeholder,tile]=placeholder,status:[hover, pressed, normal], selected:[true, false], disabled:[true, false], tile:tile, itemWidth:uint=114,  index:uint=0, title="title") {
         
         @(status=>normal, selected=>false, disabled=>false) ninepatch("ui", "droppanel-mid-idle", $itemWidth+4, 20): -2,0
         @(status=>normal, selected=>true, disabled=>false) ninepatch("ui", "droppanel-mid-pressed", $itemWidth+4, 20): -2,0
@@ -224,7 +224,7 @@ version: 0.5
         
         text(m6x11, $title, 0xffffff12, left, 120): 24,4
         @(images=>placeholder) placeholder(generated(cross(15, 15, #FF0000)), callback("test")):5,3
-        @(images=>tile) bitmap(file($tile), center):5,3
+        @(images=>tile) bitmap($tile, center):5,3
         interactive($itemWidth , 20, $index);
         settings{height:float=>20}
 }

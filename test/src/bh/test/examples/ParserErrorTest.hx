@@ -1365,4 +1365,49 @@ class ParserErrorTest extends utest.Test {
 		');
 		Assert.isTrue(success, "Text with grid maxWidth should still parse successfully");
 	}
+
+	// ===== Tile parameter type tests =====
+
+	@Test
+	public function testTileParameterTypeParsesSuccessfully() {
+		var success = parseExpectingSuccess('
+			#test programmable(icon:tile) {
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		');
+		Assert.isTrue(success, "tile parameter type should parse successfully");
+	}
+
+	@Test
+	public function testTileParameterCannotHaveDefault() {
+		var error = parseExpectingError('
+			#test programmable(icon:tile="something") {
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		');
+		Assert.notNull(error, "Should throw error for tile parameter with default value");
+		Assert.isTrue(error.indexOf("cannot have a default") >= 0,
+			'Error should mention tile cannot have default, got: $error');
+	}
+
+	@Test
+	public function testTileParameterWithBitmapRef() {
+		var success = parseExpectingSuccess('
+			#test programmable(icon:tile) {
+				bitmap($$icon): 0, 0
+			}
+		');
+		Assert.isTrue(success, "tile parameter used as bitmap source via $$ref should parse");
+	}
+
+	@Test
+	public function testMultipleTileParameters() {
+		var success = parseExpectingSuccess('
+			#test programmable(icon:tile, bg:tile, mode:[a,b]=a) {
+				bitmap($$icon): 0, 0
+				bitmap($$bg): 30, 0
+			}
+		');
+		Assert.isTrue(success, "Multiple tile parameters should parse successfully");
+	}
 }

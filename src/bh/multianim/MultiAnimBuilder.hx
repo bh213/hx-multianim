@@ -4005,6 +4005,7 @@ class MultiAnimBuilder {
 				case PPTString: resolveAsString(ref);
 				case PPTColor: resolveAsColorInteger(ref);
 				case PPTArray: resolveAsArray(ref);
+				case PPTTile: resolveAsString(ref);
 			}
 		}
 
@@ -4162,6 +4163,7 @@ class MultiAnimBuilder {
 					case PPTColor: throw 'Prop "${prop}" is color and cannot be used as combo' + MacroUtils.nodePos(node);
 					case PPTFloat: throw 'Prop "${prop}" is float and cannot be used as combo' + MacroUtils.nodePos(node);
 					case PPTArray: throw 'Prop "${prop}" is array and cannot be used as combo' + MacroUtils.nodePos(node);
+					case PPTTile: throw 'Prop "${prop}" is tile and cannot be used as combo' + MacroUtils.nodePos(node);
 				}
 				allOptions.set(prop, allValues);
 				totalStates *= allValues.length;

@@ -395,6 +395,7 @@ enum DefinitionType {
 	PPTString;
 	PPTColor;
 	PPTArray;
+	PPTTile;
 }
 
 typedef Definition = {
@@ -1069,6 +1070,8 @@ class MultiAnimParser {
 					ArrayString(cast value)
 				else
 					err('array default not supported in this context');
+			case PPTTile:
+				TileSourceValue(TSFile(RVString(s)));
 		}
 	}
 

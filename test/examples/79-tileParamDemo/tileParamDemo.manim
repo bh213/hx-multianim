@@ -1,0 +1,10 @@
+version: 0.5
+
+relativeLayouts {
+  #demoLayout sequence($i: 0..5) point: 20 + $i div 3 * 150, 10 + ($i * 35) % 105
+}
+
+#tileParamDemo programmable(icon:tile, label:string="tile") {
+    bitmap($icon): 0, 0
+    text(f3x5, $label, #ffffffff): 30, 2
+}

@@ -3,6 +3,10 @@ package bh.ui;
 import bh.multianim.MultiAnimBuilder;
 import bh.multianim.MultiAnimBuilder.BuilderResolvedSettings;
 import bh.multianim.MultiAnimMultiResult;
+import bh.multianim.MultiAnimParser.ReferenceableValue;
+import bh.multianim.MultiAnimParser.ResolvedIndexParameters;
+import bh.multianim.MultiAnimParser.TileSource;
+import bh.multianim.MultiAnimParser.GeneratedTileType;
 import bh.ui.UIMultiAnimDropdown;
 import h2d.col.Point;
 import h2d.Object;
@@ -19,6 +23,44 @@ enum StandardUIElementStates {
 }
 
 /**
+ * Represents a tile reference for UI list items.
+ * Allows specifying tiles from different sources: file path, sprite sheet, or pre-loaded tile.
+ */
+enum TileRef {
+	TRFile(filename:String);
+	TRSheet(sheet:String, name:String);
+	TRSheetIndex(sheet:String, name:String, index:Int);
+	TRGeneratedRect(width:Int, height:Int);
+	TRGeneratedRectColor(width:Int, height:Int, color:Int);
+	#if !macro
+	TRTile(tile:h2d.Tile);
+	#end
+}
+
+/** Helper to create ResolvedIndexParameters values for passing tile parameters to the builder. */
+class TileHelper {
+	public static function file(filename:String):ResolvedIndexParameters {
+		return TileSourceValue(TSFile(RVString(filename)));
+	}
+
+	public static function sheet(sheetName:String, name:String):ResolvedIndexParameters {
+		return TileSourceValue(TSSheet(RVString(sheetName), RVString(name)));
+	}
+
+	public static function sheetIndex(sheetName:String, name:String, index:Int):ResolvedIndexParameters {
+		return TileSourceValue(TSSheetWithIndex(RVString(sheetName), RVString(name), RVInteger(index)));
+	}
+
+	public static function generatedRect(width:Int, height:Int):ResolvedIndexParameters {
+		return TileSourceValue(TSGenerated(SolidColor(RVInteger(width), RVInteger(height), RVInteger(0x00000000))));
+	}
+
+	public static function generatedRectColor(width:Int, height:Int, color:Int):ResolvedIndexParameters {
+		return TileSourceValue(TSGenerated(SolidColor(RVInteger(width), RVInteger(height), RVInteger(color))));
+	}
+}
+
+/**
  * Represents an item in a UI element list (e.g., dropdown, listbox).
  * Used by controls that display selectable lists.
  */
@@ -28,6 +70,7 @@ typedef UIElementListItem = {
 	var name:String;
 	var ?disabled:Bool;
 	var ?tileName:String;
+	var ?tileRef:TileRef;
 	var ?data:Dynamic;
 }
 

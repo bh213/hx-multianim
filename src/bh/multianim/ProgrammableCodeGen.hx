@@ -232,7 +232,7 @@ class ProgrammableCodeGen {
 						pos: pos,
 						kind: TDClass({pack: ["h2d"], name: "Object"}, null, false, false, false),
 						fields: result.instanceFields,
-						meta: [{name: ":allow", params: [macro bh.multianim.ProgrammableCodeGen], pos: pos}],
+						meta: [{name: ":allow", params: [macro bh.multianim.ProgrammableCodeGen], pos: pos}, {name: ":keep", params: null, pos: pos}],
 					};
 					Context.defineType(instTd);
 
@@ -3841,7 +3841,7 @@ class ProgrammableCodeGen {
 						macro {
 							var c:Int = $cExpr;
 							if (c >>> 24 == 0) c |= 0xFF000000;
-							h2d.Tile.fromColor(c, $wExpr, $hExpr);
+							h2d.Tile.fromColor(c, Std.int($wExpr), Std.int($hExpr));
 						};
 					case Cross(w, h, color, thickness):
 						// Cross: solid color with diagonal lines — approximate as solid color
@@ -3851,7 +3851,7 @@ class ProgrammableCodeGen {
 						macro {
 							var c:Int = $cExpr;
 							if (c >>> 24 == 0) c |= 0xFF000000;
-							h2d.Tile.fromColor(c, $wExpr, $hExpr);
+							h2d.Tile.fromColor(c, Std.int($wExpr), Std.int($hExpr));
 						};
 					case SolidColorWithText(w, h, color, text, textColor, font):
 						final wExpr = rvToExpr(w);
@@ -3889,6 +3889,14 @@ class ProgrammableCodeGen {
 						};
 					default:
 						macro this._pb.loadTileFile("placeholder.png");
+				};
+			case TSReference(ref):
+				// Check if the reference is a tile parameter — use the field directly as h2d.Tile
+				final def = paramDefs != null ? paramDefs.get(ref) : null;
+				if (def != null && def.type == PPTTile) {
+					macro $p{["this", "_" + ref]};
+				} else {
+					macro this._pb.loadTileFile("placeholder.png");
 				};
 			default:
 				macro this._pb.loadTileFile("placeholder.png");
@@ -4549,6 +4557,7 @@ class ProgrammableCodeGen {
 			case PPTRange(_, _): macro :Int;
 			case PPTFlags(_): macro :Int;
 			case PPTArray: macro :Array<String>;
+			case PPTTile: macro :Dynamic;
 			default: macro :Int;
 		};
 	}

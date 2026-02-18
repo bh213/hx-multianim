@@ -6,6 +6,7 @@ import bh.test.VisualTestBase;
 import bh.test.HtmlReportGenerator;
 import bh.test.examples.AutotileTestHelper;
 import bh.multianim.MultiAnimBuilder.PlaceholderValues;
+import bh.ui.UIElement.TileHelper;
 
 /**
  * Tests for the @:build(ProgrammableCodeGen.buildAll()) generated classes.
@@ -3375,5 +3376,108 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 			VisualTestBase.pendingVisualTests--;
 			async.done();
 		});
+	}
+
+	// ==================== Tile Parameter Demo: tile:tile type with sheet tiles ====================
+
+	@Test
+	public function test79_TileParamDemo(async:utest.Async):Void {
+		var tileNames = ["tile-center", "tile-topleft", "tile-bottomright"];
+		var labels = ["tile-center", "tile-topleft", "tile-bottomright", "genRect", "genRectColor"];
+		var params:Array<Map<String, Dynamic>> = [];
+		for (i in 0...tileNames.length) {
+			var p = new Map<String, Dynamic>();
+			p.set("icon", TileHelper.sheet("demo", tileNames[i]));
+			p.set("label", tileNames[i]);
+			params.push(p);
+		}
+
+		var pRect = new Map<String, Dynamic>();
+		pRect.set("icon", TileHelper.generatedRect(16, 16));
+		pRect.set("label", "genRect");
+		params.push(pRect);
+
+		var pRectColor = new Map<String, Dynamic>();
+		pRectColor.set("icon", TileHelper.generatedRectColor(16, 16, 0xFF4444));
+		pRectColor.set("label", "genRectColor");
+		params.push(pRectColor);
+
+		layoutMacroTest(79, "tileParamDemo", "demoLayout", 4.0, params, function(i:Int):h2d.Object {
+			var mp = createMp();
+			if (i < tileNames.length) {
+				var tile = mp.loadTile("demo", tileNames[i]);
+				return mp.tileParamDemo.create(tile, labels[i]);
+			} else if (i == 3) {
+				var tile = h2d.Tile.fromColor(0xFF00FFFF, 16, 16);
+				return mp.tileParamDemo.create(tile, labels[i]);
+			} else {
+				var tile = h2d.Tile.fromColor(0xFFFF4444, 16, 16);
+				return mp.tileParamDemo.create(tile, labels[i]);
+			}
+		}, async);
+	}
+
+	// ==================== ColorDiv: generated(color()) with / division ====================
+
+	@Test
+	public function testColorDivCreate():Void {
+		// Issue 1: generated(color(expr / expr, ...)) must produce Int for h2d.Tile.fromColor.
+		// Before the fix, / yielded Float and fromColor threw a type error at runtime.
+		final mp = createMp();
+		final inst = mp.colorDiv.create();
+		Assert.notNull(inst, "colorDiv should be created");
+		Assert.isTrue(inst.numChildren > 0, "Root should have children");
+
+		// Verify the division-computed bitmap has correct integer width.
+		// Default: value=75, maxValue=100, barWidth=200  →  75*200/100 = 150
+		final bitmaps = findVisibleBitmapDescendants(inst);
+		Assert.isTrue(bitmaps.length >= 3, 'Expected at least 3 bitmaps, got ${bitmaps.length}');
+		if (bitmaps.length >= 3) {
+			// Second bitmap: width = 75*200/100 = 150
+			Assert.equals(150, Std.int(bitmaps[1].tile.width), "Division-computed width should be 150");
+			// Third bitmap: width = 150, height = 200/10 = 20
+			Assert.equals(150, Std.int(bitmaps[2].tile.width), "Third bitmap width should be 150");
+			Assert.equals(20, Std.int(bitmaps[2].tile.height), "Third bitmap height (barWidth/10) should be 20");
+		}
+	}
+
+	@Test
+	public function testColorDivSetterUpdates():Void {
+		// Verify codegen setters work without throwing when division expressions are present.
+		// generated(color()) tiles are created once at build time; setters update internal params
+		// and re-evaluate expressions — the important thing is no type error from Float/Int mismatch.
+		final mp = createMp();
+		final inst = mp.colorDiv.create();
+
+		inst.setValue(50);
+		inst.setMaxValue(200);
+		inst.setBarWidth(300);
+		Assert.isTrue(inst.numChildren > 0, "Instance should still have children after setters");
+	}
+
+	@Test
+	public function testColorDivDynamicAccess():Void {
+		// Issue 2: DCE must not strip setter methods from codegen Instance types.
+		// Accessing through Dynamic simulates the real-world pattern where generated
+		// types cannot be imported and are stored as Dynamic.
+		final mp = createMp();
+		final inst:Dynamic = mp.colorDiv.create();
+		Assert.notNull(inst, "colorDiv created via Dynamic should not be null");
+
+		// Call setter through Dynamic — would throw "not a function" if DCE stripped it
+		var threw = false;
+		try {
+			inst.setValue(60);
+		} catch (e:Dynamic) {
+			threw = true;
+		}
+		Assert.isFalse(threw, "Calling setValue through Dynamic should not throw (DCE must preserve setter)");
+	}
+
+	// ==================== ColorDiv: visual (3-image) ====================
+
+	@Test
+	public function test80_CodegenColorDiv(async:utest.Async):Void {
+		simpleMacroTest(80, "codegenColorDiv", () -> createMp().colorDiv.create(), async, null, null, 4.0);
 	}
 }

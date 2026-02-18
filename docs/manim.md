@@ -583,6 +583,7 @@ filter: group(outline(?($selected) 2 : 0, yellow), brightness(?($active) 1.2 : 0
 * `griddirection`: `dir:griddirection` (0..7)
 * `bool`: `true`/`false`, `yes`/`no`, or `0`/`1`
 * `color`: `color:<color>`, e.g., `color:#f0f` or `red`
+* `tile`: `name:tile` — a tile source passed at runtime (no default allowed). Used with `bitmap($name)` to display caller-provided tiles. In generated code, maps to `Dynamic` (accepts `h2d.Tile`). For the builder, pass via `TileHelper.sheet("atlas", "tile")` or `TileHelper.file("img.png")`.
 
 ---
 
@@ -1980,6 +1981,23 @@ var v:Int = bar.getIntValue();
 
 **Required `.manim` root setting (item):** `height` — item height in pixels
 
+**List item tile sources:** Each `UIElementListItem` can specify a tile via the `tileRef` field using the `TileRef` enum:
+
+```haxe
+var items:Array<UIElementListItem> = [
+    {name: "Sword", tileRef: TRFile("sword.png")},
+    {name: "Shield", tileRef: TRSheet("items", "shield")},
+    {name: "Potion", tileRef: TRSheetIndex("items", "potion", 2)},
+    {name: "Spacer", tileRef: TRGeneratedRect(16, 16)},
+    {name: "Red box", tileRef: TRGeneratedRectColor(16, 16, 0xFF4444)},
+    {name: "No icon"},  // tile parameter omitted
+];
+```
+
+`TileRef` variants: `TRFile`, `TRSheet`, `TRSheetIndex`, `TRGeneratedRect`, `TRGeneratedRectColor`, `TRTile` (pass pre-loaded `h2d.Tile`).
+
+The legacy `tileName` field (plain string file path) is still supported but deprecated in favor of `tileRef`.
+
 **Required `.manim` parameters (scrollbar):**
 
 | Parameter | Type | Description |
@@ -2196,8 +2214,9 @@ Each `.manim` parameter type maps to a Haxe type in the generated `create()` sig
 | `flags(8)` | `Int` | — | `setBits(5)` |
 | `"text"` (string) | `String` | — | `setLabel("Hello")` |
 | `color` | `Int` | — | `setTint(0xFF0000)` |
+| `tile` | `Dynamic` | — | `create(myTile)` (pass `h2d.Tile`) |
 
-Parameters with defaults are optional in `create()`. Required parameters (no default) must be provided.
+Parameters with defaults are optional in `create()`. Required parameters (no default) must be provided. `tile` parameters never have defaults and are always required.
 
 ### `createFrom()` — Named Parameters
 

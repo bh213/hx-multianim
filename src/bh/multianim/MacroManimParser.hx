@@ -1359,6 +1359,9 @@ class MacroManimParser {
 			case TIdentifier(s) if (isKeyword(s, "array")):
 				advance();
 				def.type = PPTArray;
+			case TIdentifier(s) if (isKeyword(s, "tile")):
+				advance();
+				def.type = PPTTile;
 			case TIdentifier(s) if (isKeyword(s, "flags")):
 				advance();
 				expect(TOpen);
@@ -1415,6 +1418,8 @@ class MacroManimParser {
 	function parseDefaultParameterValue(param:Definition):Void {
 		if (!match(TEquals)) return;
 		switch (param.type) {
+			case PPTTile:
+				error('tile parameter "${param.name}" cannot have a default value');
 			case PPTColor:
 				final c = tryParseColor();
 				if (c != null) { param.defaultValue = Value(c); return; }
@@ -1488,6 +1493,8 @@ class MacroManimParser {
 				Flag(n);
 			case PPTArray:
 				error('array default requires bracket syntax: [val1, val2, ...]');
+			case PPTTile:
+				TileSourceValue(TSFile(RVString(value)));
 		}
 	}
 
