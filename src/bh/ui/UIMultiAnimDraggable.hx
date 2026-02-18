@@ -2,6 +2,7 @@ package bh.ui;
 
 import bh.base.FPoint;
 import bh.base.MAObject;
+import bh.multianim.MultiAnimBuilder;
 import bh.multianim.MultiAnimBuilder.SlotHandle;
 import bh.paths.AnimatedPath;
 import bh.paths.AnimatedPath.AnimatedPathMode;
@@ -171,6 +172,18 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 
 	public function clearDropZones():Void {
 		dropZones = [];
+	}
+
+	// --- AnimatedPath from builder ---
+
+	public function setReturnAnimPath(builder:MultiAnimBuilder, name:String):UIMultiAnimDraggable {
+		returnPathFactory = (from, to) -> builder.createAnimatedPath(name, from, to);
+		return this;
+	}
+
+	public function setSnapAnimPath(builder:MultiAnimBuilder, name:String):UIMultiAnimDraggable {
+		snapPathFactory = (from, to) -> builder.createAnimatedPath(name, from, to);
+		return this;
 	}
 
 	function findDropZone(pos:Point):Null<DropZone> {
