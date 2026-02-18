@@ -2472,7 +2472,15 @@ class MacroManimParser {
 				advance();
 				if (updatableName == null)
 					error("slot requires a #name prefix");
-				createNode(SLOT, parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+				if (match(TOpen)) {
+					final parsed = parseDefines();
+					currentDefs = parsed.defs;
+					activeDefs = parsed.defs;
+					scopeVars = [];
+					createNode(SLOT(parsed.defs, parsed.order), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+				} else {
+					createNode(SLOT(null, null), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+				}
 
 			case TIdentifier(s) if (isKeyword(s, "interactive")):
 				advance();

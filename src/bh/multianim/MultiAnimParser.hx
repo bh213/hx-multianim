@@ -900,7 +900,7 @@ enum NodeType {
 	AUTOTILE(autotileDef:AutotileDef);
 	ATLAS2(atlas2Def:Atlas2Def);
 	DATA(dataDef:DataDef);
-	SLOT;
+	SLOT(parameters:Null<ParametersDefinitions>, paramOrder:Null<Array<String>>);
 	DYNAMIC_REF(externalReference:Null<String>, programmableReference:String, parameters:Map<String, ReferenceableValue>);
 	FINAL_VAR(name:String, value:ReferenceableValue);
 }

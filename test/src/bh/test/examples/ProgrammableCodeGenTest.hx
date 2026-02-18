@@ -3483,4 +3483,74 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	public function test80_CodegenColorDiv(async:utest.Async):Void {
 		simpleMacroTest(80, "codegenColorDiv", () -> createMp().colorDiv.create(), async, null, null, 4.0);
 	}
+
+	// ==================== SlotParams: visual + unit ====================
+
+	@Test
+	public function test81_SlotParams(async:utest.Async):Void {
+		simpleMacroTest(81, "slotParams", () -> createMp().slotParams.create(), async, null, null, 4.0);
+	}
+
+	@Test
+	public function testSlotParamsSetParameter():Void {
+		final fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/81-slotParams/slotParams.manim"));
+		final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+		final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "slotParams.manim");
+		final result = builder.buildWithParameters("slotParams", new Map());
+
+		// Test indexed parameterized slots
+		final slot0 = result.getSlot("item", 0);
+		Assert.notNull(slot0, "Should have item slot 0");
+		Assert.isTrue(slot0.isEmpty(), "Slot should be empty initially");
+		Assert.notNull(slot0.incrementalContext, "Parameterized slot should have incremental context");
+
+		// Test setParameter
+		slot0.setParameter("state", "filled");
+
+		// Test data field
+		slot0.data = "test-data";
+		Assert.equals("test-data", slot0.data);
+
+		// Test named parameterized slot
+		final single = result.getSlot("single");
+		Assert.notNull(single, "Should have single slot");
+		Assert.notNull(single.incrementalContext, "Single slot should have incremental context");
+		single.setParameter("active", true);
+
+		// Test content operations with parameterized slot
+		final content = new h2d.Object();
+		slot0.setContent(content);
+		Assert.isTrue(slot0.isOccupied(), "Should be occupied after setContent");
+		Assert.equals(content, slot0.getContent());
+		slot0.clear();
+		Assert.isTrue(slot0.isEmpty(), "Should be empty after clear");
+	}
+
+	@Test
+	public function testSlotParamsCodegen():Void {
+		final instance = createMp().slotParams.create();
+		Assert.notNull(instance, "Codegen instance should be created");
+
+		// Test indexed parameterized slot via codegen
+		final slot0 = instance.getSlot_item(0);
+		Assert.notNull(slot0, "Codegen should have item slot 0");
+		Assert.notNull(slot0.incrementalContext, "Codegen parameterized slot should have incremental context");
+		Assert.isTrue(slot0.isEmpty(), "Codegen slot should start empty");
+
+		// Test setParameter on codegen slot
+		slot0.setParameter("state", "filled");
+
+		// Test named parameterized slot via codegen
+		final single = instance.getSlot_single();
+		Assert.notNull(single, "Codegen should have single slot");
+		Assert.notNull(single.incrementalContext, "Codegen single slot should have incremental context");
+		single.setParameter("active", true);
+
+		// Test content operations
+		final content = new h2d.Object();
+		slot0.setContent(content);
+		Assert.isTrue(slot0.isOccupied(), "Should be occupied");
+		slot0.clear();
+		Assert.isTrue(slot0.isEmpty(), "Should be empty after clear");
+	}
 }

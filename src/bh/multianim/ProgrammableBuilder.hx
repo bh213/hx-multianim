@@ -6,6 +6,7 @@ import h2d.Font;
 import bh.base.ResourceLoader;
 import bh.base.Atlas2.IAtlas2;
 import bh.multianim.MultiAnimBuilder.BuilderResult;
+import bh.multianim.MultiAnimBuilder.SlotHandle;
 import bh.multianim.MultiAnimBuilder.CallbackRequest;
 import bh.multianim.MultiAnimBuilder.CallbackResult;
 import bh.multianim.MultiAnimBuilder.PlaceholderValues;
@@ -118,6 +119,13 @@ class ProgrammableBuilder {
 	/** Build a dynamic ref via the builder (for DYNAMIC_REF nodes, always incremental) */
 	public function buildDynamicRef(name:String, parameters:Map<String, Dynamic>):BuilderResult {
 		return (_builder : MultiAnimBuilder).buildWithParameters(name, parameters, null, null, true);
+	}
+
+	/** Build a parameterized slot's children via the builder (for SLOT nodes with parameters in codegen).
+	 *  Returns a SlotHandle with IncrementalUpdateContext for runtime setParameter() calls. */
+	public function buildParameterizedSlot(programmableName:String, slotName:String,
+			parentParams:Map<String, Dynamic>, container:h2d.Object):SlotHandle {
+		return (_builder : MultiAnimBuilder).buildSlotContent(programmableName, slotName, parentParams, container);
 	}
 
 	/** Build a particle system via the builder (for PARTICLES nodes).

@@ -1,0 +1,15 @@
+version: 0.5
+
+#slotParams programmable() {
+  repeatable($i, step(3, dx: 60)) {
+    #item[$i] slot(state:[empty,filled,highlight]=empty) {
+      @(state => empty)     bitmap(generated(color(40, 40, #444444ff))): 0, 0
+      @(state => filled)    bitmap(generated(color(40, 40, #00aa00ff))): 0, 0
+      @(state => highlight) bitmap(generated(color(40, 40, #ffaa00ff))): 0, 0
+    }
+  }
+  #single slot(active:bool=false) {
+    bitmap(generated(color(50, 20, #666666ff))): 0, 50
+    @(active => true) bitmap(generated(color(50, 20, #ff0000ff))): 0, 50
+  }
+}

@@ -378,37 +378,72 @@ enum SlotKey {
 
 class SlotHandle {
 	public var container:h2d.Object;
+	public var data:Dynamic = null;
+	public var incrementalContext:Null<IncrementalUpdateContext> = null;
 
 	var defaultChildren:Array<h2d.Object>;
 	var currentContent:Null<h2d.Object>;
+	var contentRoot:Null<h2d.Object> = null;
+	var hasParameters:Bool = false;
 
-	public function new(container:h2d.Object) {
+	public function new(container:h2d.Object, ?incrementalContext:IncrementalUpdateContext) {
 		this.container = container;
 		this.defaultChildren = [];
 		this.currentContent = null;
 		for (i in 0...container.numChildren)
 			this.defaultChildren.push(container.getChildAt(i));
+		if (incrementalContext != null) {
+			this.incrementalContext = incrementalContext;
+			this.hasParameters = true;
+			this.contentRoot = new h2d.Object();
+			container.addChild(this.contentRoot);
+		}
 	}
 
 	public function setContent(obj:h2d.Object):Void {
 		clear();
-		for (child in defaultChildren)
-			child.visible = false;
-		currentContent = obj;
-		container.addChild(obj);
+		if (hasParameters) {
+			currentContent = obj;
+			contentRoot.addChild(obj);
+		} else {
+			for (child in defaultChildren)
+				child.visible = false;
+			currentContent = obj;
+			container.addChild(obj);
+		}
 	}
 
 	public function clear():Void {
 		if (currentContent != null) {
-			container.removeChild(currentContent);
+			if (hasParameters) {
+				contentRoot.removeChild(currentContent);
+			} else {
+				container.removeChild(currentContent);
+			}
 			currentContent = null;
 		}
-		for (child in defaultChildren)
-			child.visible = true;
+		if (!hasParameters) {
+			for (child in defaultChildren)
+				child.visible = true;
+		}
 	}
 
 	public function getContent():Null<h2d.Object> {
 		return currentContent;
+	}
+
+	public function isEmpty():Bool {
+		return currentContent == null;
+	}
+
+	public function isOccupied():Bool {
+		return currentContent != null;
+	}
+
+	public function setParameter(name:String, value:Dynamic):Void {
+		if (incrementalContext == null)
+			throw 'Slot has no parameters';
+		incrementalContext.setParameter(name, value);
 	}
 }
 
@@ -2293,7 +2328,7 @@ class MultiAnimBuilder {
 				final obj = new h2d.Object();
 				skipChildren = true;
 				HeapsObject(obj);
-			case SLOT:
+			case SLOT(parameters, paramOrder):
 				final container = new h2d.Object();
 				HeapsObject(container);
 			case NINEPATCH(sheet, tilename, width, height):
@@ -2929,6 +2964,31 @@ class MultiAnimBuilder {
 		if (selectedBuildMode == null)
 			selectedBuildMode = ObjectMode(object);
 
+		// For SLOT with parameters: set up incremental mode before building children
+		var slotIncrementalCtx:Null<IncrementalUpdateContext> = null;
+		var savedSlotIncrementalMode:Bool = false;
+		var savedSlotIncrementalContext:Null<IncrementalUpdateContext> = null;
+		var savedSlotIndexedParams:Null<Map<String, ResolvedIndexParameters>> = null;
+		switch node.type {
+			case SLOT(parameters, _) if (parameters != null):
+				savedSlotIncrementalMode = this.incrementalMode;
+				savedSlotIncrementalContext = this.incrementalContext;
+				savedSlotIndexedParams = this.indexedParams;
+				// Merge slot parameter defaults into a copy of current params
+				final mergedParams:Map<String, ResolvedIndexParameters> = new Map();
+				for (k => v in this.indexedParams)
+					mergedParams.set(k, v);
+				for (key => def in parameters) {
+					if (def.defaultValue != null)
+						mergedParams.set(key, def.defaultValue);
+				}
+				this.indexedParams = mergedParams;
+				slotIncrementalCtx = new IncrementalUpdateContext(this, mergedParams, builderParams, node);
+				this.incrementalMode = true;
+				this.incrementalContext = slotIncrementalCtx;
+			default:
+		}
+
 		if (!skipChildren) { // for repeatable, as children were already processed
 			final resolvedChildren = resolveConditionalChildren(node.children);
 			for (childNode in resolvedChildren) {
@@ -2938,17 +2998,24 @@ class MultiAnimBuilder {
 			cleanupFinalVars(resolvedChildren, indexedParams);
 		}
 
+		// Restore incremental state after slot children are built
+		if (savedSlotIndexedParams != null) {
+			this.incrementalMode = savedSlotIncrementalMode;
+			this.incrementalContext = savedSlotIncrementalContext;
+			this.indexedParams = savedSlotIndexedParams;
+		}
+
 		// Register slot handle after children are built
 		switch node.type {
-			case SLOT:
+			case SLOT(parameters, _):
 				switch node.updatableName {
 					case UNTIndexed(baseName, indexVar):
 						final index = Std.parseInt(resolveAsString(RVReference(indexVar)));
 						if (index == null)
 							throw 'Slot "$baseName" indexed variable did not resolve to an integer';
-						internalResults.slots.push({key: Indexed(baseName, index), handle: new SlotHandle(object)});
+						internalResults.slots.push({key: Indexed(baseName, index), handle: new SlotHandle(object, slotIncrementalCtx)});
 					case UNTObject(name) | UNTUpdatable(name):
-						internalResults.slots.push({key: Named(name), handle: new SlotHandle(object)});
+						internalResults.slots.push({key: Named(name), handle: new SlotHandle(object, slotIncrementalCtx)});
 					default:
 				}
 			default:
@@ -4104,6 +4171,115 @@ class MultiAnimBuilder {
 
 	public function hasNode(name:String) {
 		return multiParserResult?.nodes?.get(name) != null;
+	}
+
+	/** Build a parameterized slot's children into its container with incremental mode.
+	 *  Used by codegen (via ProgrammableBuilder) for parameterized slots. */
+	public function buildSlotContent(programmableName:String, slotName:String,
+			parentParams:Map<String, Dynamic>, container:h2d.Object):SlotHandle {
+		final progNode = multiParserResult?.nodes.get(programmableName);
+		if (progNode == null)
+			throw 'buildSlotContent: programmable "$programmableName" not found';
+		final slotNode = findSlotNode(progNode, slotName);
+		if (slotNode == null)
+			throw 'buildSlotContent: slot "$slotName" not found in "$programmableName"';
+		final slotParams = switch slotNode.type {
+			case SLOT(params, _): params;
+			default: null;
+		};
+		if (slotParams == null)
+			throw 'buildSlotContent: slot "$slotName" has no parameters';
+
+		pushBuilderState();
+
+		// Build merged params: parent params converted to resolved + slot defaults
+		final mergedParams:Map<String, ResolvedIndexParameters> = new Map();
+		if (parentParams != null) {
+			final progDefs = getProgrammableParameterDefinitions(progNode, false);
+			for (key => value in parentParams) {
+				final def = progDefs.get(key);
+				if (def != null) {
+					mergedParams.set(key, dynamicToResolvedWithDef(def.type, value));
+				} else {
+					mergedParams.set(key, dynamicToResolvedInferred(value));
+				}
+			}
+		}
+		// Merge slot parameter defaults
+		for (key => def in slotParams) {
+			if (def.defaultValue != null && !mergedParams.exists(key))
+				mergedParams.set(key, def.defaultValue);
+		}
+		this.indexedParams = mergedParams;
+
+		// Create incremental context for the slot
+		final builderParams:BuilderParameters = {callback: defaultCallback};
+		this.builderParams = builderParams;
+		final slotCtx = new IncrementalUpdateContext(this, mergedParams, builderParams, slotNode);
+		this.incrementalMode = true;
+		this.incrementalContext = slotCtx;
+
+		// Build slot children into container
+		final internalResults:InternalBuilderResults = {names: [], interactives: [], slots: [], dynamicRefs: new Map()};
+		for (childNode in resolveConditionalChildren(slotNode.children)) {
+			build(childNode, ObjectMode(container), null, null, internalResults, builderParams);
+		}
+
+		popBuilderState();
+		return new SlotHandle(container, slotCtx);
+	}
+
+	private static function findSlotNode(node:Node, slotName:String):Null<Node> {
+		for (child in node.children) {
+			switch child.type {
+				case SLOT(params, _) if (params != null):
+					switch child.updatableName {
+						case UNTObject(name) | UNTUpdatable(name) if (name == slotName):
+							return child;
+						case UNTIndexed(baseName, _) if (baseName == slotName):
+							return child;
+						default:
+					}
+				default:
+					final found = findSlotNode(child, slotName);
+					if (found != null) return found;
+			}
+		}
+		return null;
+	}
+
+	private static function dynamicToResolvedWithDef(type:DefinitionType, value:Dynamic):ResolvedIndexParameters {
+		return switch type {
+			case PPTEnum(values):
+				// Codegen passes enum index as Int — convert back to Index(idx, name)
+				if (Std.isOfType(value, Int)) {
+					final idx:Int = cast value;
+					Index(idx, values[idx]);
+				} else {
+					// String value — look up index
+					final s:String = cast value;
+					Index(values.indexOf(s), s);
+				}
+			case PPTBool | PPTInt | PPTUnsignedInt | PPTRange(_, _) | PPTColor | PPTHexDirection | PPTGridDirection:
+				Value(cast value);
+			case PPTFloat:
+				ValueF(cast value);
+			case PPTString:
+				StringValue(cast value);
+			case PPTFlags(_):
+				Flag(cast value);
+			case PPTArray:
+				ArrayString(cast value);
+			case PPTTile:
+				StringValue(Std.string(value));
+		};
+	}
+
+	private static function dynamicToResolvedInferred(value:Dynamic):ResolvedIndexParameters {
+		if (Std.isOfType(value, Int)) return Value(cast value);
+		if (Std.isOfType(value, Float)) return ValueF(cast value);
+		if (Std.isOfType(value, String)) return StringValue(cast value);
+		return Value(cast value);
 	}
 
 	/** Build a single node in isolation, returning the resulting h2d.Object.

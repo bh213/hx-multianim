@@ -235,4 +235,7 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/80-codegenColorDiv/codegenColorDiv.manim", "codegenColorDiv")
 	public var colorDiv;
+
+	@:manim("test/examples/81-slotParams/slotParams.manim", "slotParams")
+	public var slotParams;
 }

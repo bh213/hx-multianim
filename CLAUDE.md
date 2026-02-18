@@ -131,6 +131,7 @@ animation {
 | `staticRef($ref)` | Static embed of another programmable |
 | `dynamicRef($ref, params)` | Dynamic embed with runtime `setParameter()` support |
 | `#name slot` / `#name[$i] slot` | Swappable container (indexed variant for repeatables) |
+| `#name slot(param:type=default, ...)` | Parameterized slot with visual states |
 | `spacer(w, h)` | Empty space inside `flow` containers |
 | `interactive(w, h, id [, debug] [, key=>val ...])` | Hit-test region with optional metadata |
 | `layers()` | Z-ordering container |
@@ -353,8 +354,22 @@ Metadata supports typed values matching the settings system: `key => val` (strin
 **Slots** — `#name slot` or `#name[$i] slot` for swappable containers:
 - Builder: `result.getSlot("name")` or `result.getSlot("name", index)` returns `SlotHandle`
 - Codegen: `instance.getSlot("name")` or `instance.getSlot("name", index)`
-- `SlotHandle` API: `setContent(obj)`, `clear()`, `getContent()`
+- `SlotHandle` API: `setContent(obj)`, `clear()`, `getContent()`, `isEmpty()`, `isOccupied()`, `data` (arbitrary payload)
 - Mismatched access (index on non-indexed or vice versa) throws
+
+**Parameterized slots** — `#name slot(param:type=default, ...)` for visual state management:
+- Same parameter types as `programmable()`: `uint`, `int`, `float`, `bool`, `string`, `color`, enum, range, flags
+- Conditionals (`@()`, `@else`, `@default`) and expressions (`$param`) work inside the slot body
+- `SlotHandle.setParameter("name", value)` updates visuals via `IncrementalUpdateContext`
+- Content goes into a separate `contentRoot` (decoration always visible, not hidden by `setContent`)
+- Codegen: warning emitted, `setParameter()` not supported (use runtime builder)
+
+**Drag-and-drop** — `UIMultiAnimDraggable` with slot integration:
+- `addDropZonesFromSlots("baseName", builderResult, ?accepts)` — batch drop zone creation
+- `createFromSlot(slot)` — creates draggable from slot content, tracks `sourceSlot`
+- `swapMode` — swaps contents when dropping onto an occupied slot
+- Zone highlight callbacks: `onDragStartHighlightZones`, `onDragEndHighlightZones` on draggable
+- Per-zone: `DropZone.onZoneHighlight` callback for hover state
 
 **Dynamic refs** — `dynamicRef($ref, params)` embeds with incremental mode for runtime parameter updates:
 - Builder: `result.getDynamicRef("name").setParameter("param", value)`

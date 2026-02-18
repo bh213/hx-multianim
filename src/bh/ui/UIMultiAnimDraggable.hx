@@ -3,7 +3,9 @@ package bh.ui;
 import bh.base.FPoint;
 import bh.base.MAObject;
 import bh.multianim.MultiAnimBuilder;
+import bh.multianim.MultiAnimBuilder.BuilderResult;
 import bh.multianim.MultiAnimBuilder.SlotHandle;
+import bh.multianim.MultiAnimBuilder.SlotKey;
 import bh.paths.AnimatedPath;
 import bh.paths.AnimatedPath.AnimatedPathMode;
 import bh.paths.MultiAnimPaths.Path;
@@ -65,6 +67,7 @@ class DropZone {
 	public var priority:Int = 0;
 	public var boundsProvider:Null<() -> Bounds> = null;
 	public var snapProvider:Null<() -> Point> = null;
+	public var onZoneHighlight:Null<(zone:DropZone, highlight:Bool) -> Void> = null;
 }
 
 @:structInit
@@ -112,6 +115,12 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 	public var onDragEvent:Null<DragEventDelegate> = null;
 	public var onDragCancel:Null<DragCancelDelegate> = null;
 
+	/** Called on drag start with all valid zones (filtered by accepts). Use to highlight available drop targets. */
+	public var onDragStartHighlightZones:Null<(zones:Array<DropZone>) -> Void> = null;
+
+	/** Called on drop/cancel to clear all zone highlights. */
+	public var onDragEndHighlightZones:Null<(zones:Array<DropZone>) -> Void> = null;
+
 	// Path factories for animations (null = instant teleport)
 	public var returnPathFactory:Null<AnimatedPathFactory> = null;
 	public var snapPathFactory:Null<AnimatedPathFactory> = null;
@@ -144,6 +153,12 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 	/** Whether to apply rotation from AnimatedPathState during animation. Default: false. */
 	public var animApplyRotation:Bool = false;
 
+	/** Source slot this draggable was taken from (for drag-from-slot). Null if not from a slot. */
+	public var sourceSlot:Null<SlotHandle> = null;
+
+	/** Whether to swap contents when dropping onto an occupied slot. Default: false. */
+	public var swapMode:Bool = false;
+
 	var savedAlpha:Float = 1.0;
 
 	public function new(target:h2d.Object) {
@@ -154,6 +169,18 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 
 	public static function create(target:h2d.Object):UIMultiAnimDraggable {
 		return new UIMultiAnimDraggable(target);
+	}
+
+	/** Creates a draggable from a slot's content. Returns null if slot is empty. */
+	public static function createFromSlot(slot:SlotHandle):Null<UIMultiAnimDraggable> {
+		var content = slot.getContent();
+		if (content == null)
+			return null;
+		slot.clear();
+		var drag = new UIMultiAnimDraggable(content);
+		drag.sourceSlot = slot;
+		drag.returnToOrigin = true;
+		return drag;
 	}
 
 	// --- Drop zone management ---
@@ -173,6 +200,20 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 			boundsProvider: () -> slot.container.getBounds(),
 			snapProvider: () -> slot.container.localToGlobal(new Point(0, 0))
 		});
+		return this;
+	}
+
+	public function addDropZonesFromSlots(baseName:String, builderResult:BuilderResult,
+			?accepts:(draggable:UIMultiAnimDraggable, zone:DropZone) -> Bool):UIMultiAnimDraggable {
+		for (entry in builderResult.slots) {
+			switch entry.key {
+				case Indexed(name, index) if (name == baseName):
+					addDropZoneFromSlot(baseName + "_" + index, entry.handle, accepts);
+				case Named(name) if (name == baseName):
+					addDropZoneFromSlot(baseName, entry.handle, accepts);
+				default:
+			}
+		}
 		return this;
 	}
 
@@ -382,6 +423,12 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 					if (onDragEvent != null) {
 						onDragEvent(DragStart, wrapper.eventPos, wrapper);
 					}
+
+					// Notify zone highlight callbacks
+					if (onDragStartHighlightZones != null) {
+						var validZones = dropZones.filter(z -> z.accepts == null || z.accepts(this, z));
+						onDragStartHighlightZones(validZones);
+					}
 				}
 
 			case OnRelease(button):
@@ -392,10 +439,16 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 
 					// Clear zone hover
 					if (currentHoverZone != null) {
+						if (currentHoverZone.onZoneHighlight != null)
+							currentHoverZone.onZoneHighlight(currentHoverZone, false);
 						if (onDragEvent != null)
 							onDragEvent(ZoneLeave(currentHoverZone), wrapper.eventPos, wrapper);
 						currentHoverZone = null;
 					}
+
+					// Clear all zone highlights
+					if (onDragEndHighlightZones != null)
+						onDragEndHighlightZones(dropZones);
 
 					// Restore alpha
 					target.alpha = savedAlpha;
@@ -423,11 +476,23 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 							root.setPosition(snap.x, snap.y);
 							restoreLayer();
 							if (zone.slot != null) {
-								zone.slot.setContent(target);
+								// Swap mode: move displaced content to source slot
+								if (swapMode && zone.slot.isOccupied() && sourceSlot != null) {
+									var displaced = zone.slot.getContent();
+									var displacedData = zone.slot.data;
+									zone.slot.clear();
+									zone.slot.setContent(target);
+									zone.slot.data = sourceSlot.data;
+									sourceSlot.setContent(displaced);
+									sourceSlot.data = displacedData;
+								} else {
+									zone.slot.setContent(target);
+								}
 							}
+							sourceSlot = null;
 						});
 					} else {
-						// Failed drop
+						// Failed drop — return to source slot if applicable
 						wrapper.control.pushEvent(UICustomEvent("dragCancel", null), this);
 						if (onDragEvent != null) {
 							onDragEvent(DragCancel, wrapper.eventPos, wrapper);
@@ -440,6 +505,11 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 							startAnimation(root.x, root.y, originX, originY, returnPathFactory, () -> {
 								root.setPosition(originX, originY);
 								restoreLayer();
+								// Return to source slot on failed drop
+								if (sourceSlot != null) {
+									sourceSlot.setContent(target);
+									sourceSlot = null;
+								}
 							});
 						} else {
 							// Stay at current position
@@ -460,12 +530,18 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 					// Zone hover tracking
 					var hoverZone = findDropZone(wrapper.eventPos);
 					if (hoverZone != currentHoverZone) {
-						if (currentHoverZone != null && onDragEvent != null) {
-							onDragEvent(ZoneLeave(currentHoverZone), wrapper.eventPos, wrapper);
+						if (currentHoverZone != null) {
+							if (currentHoverZone.onZoneHighlight != null)
+								currentHoverZone.onZoneHighlight(currentHoverZone, false);
+							if (onDragEvent != null)
+								onDragEvent(ZoneLeave(currentHoverZone), wrapper.eventPos, wrapper);
 						}
 						currentHoverZone = hoverZone;
-						if (currentHoverZone != null && onDragEvent != null) {
-							onDragEvent(ZoneEnter(currentHoverZone), wrapper.eventPos, wrapper);
+						if (currentHoverZone != null) {
+							if (currentHoverZone.onZoneHighlight != null)
+								currentHoverZone.onZoneHighlight(currentHoverZone, true);
+							if (onDragEvent != null)
+								onDragEvent(ZoneEnter(currentHoverZone), wrapper.eventPos, wrapper);
 						}
 						// Update alpha for zone highlight
 						if (zoneHighlightAlpha != null) {
