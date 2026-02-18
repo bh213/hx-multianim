@@ -382,14 +382,14 @@ class ProgrammableBuilder {
 
 	/** Build a named path via the builder.
 	 *  Used by generated code for PATHS nodes. */
-	public function buildPath(name:String, ?startPoint:bh.base.FPoint, ?endPoint:bh.base.FPoint):bh.paths.MultiAnimPaths.Path {
-		return (_builder : MultiAnimBuilder).getPaths().getPath(name, startPoint, endPoint);
+	public function buildPath(name:String, ?normalization:bh.paths.MultiAnimPaths.PathNormalization):bh.paths.MultiAnimPaths.Path {
+		return (_builder : MultiAnimBuilder).getPaths().getPath(name, normalization);
 	}
 
 	/** Create an animated path via the builder.
 	 *  Used by generated code for ANIMATED_PATH nodes. */
-	public function buildAnimatedPath(name:String, ?startPoint:bh.base.FPoint, ?endPoint:bh.base.FPoint, ?startAngle:Null<Float>):bh.paths.AnimatedPath {
-		return (_builder : MultiAnimBuilder).createAnimatedPath(name, startPoint, endPoint, startAngle);
+	public function buildAnimatedPath(name:String, ?normalization:bh.paths.MultiAnimPaths.PathNormalization):bh.paths.AnimatedPath {
+		return (_builder : MultiAnimBuilder).createAnimatedPath(name, normalization);
 	}
 
 	/** Build a named curve via the builder.

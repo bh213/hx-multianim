@@ -6,6 +6,7 @@ import bh.test.VisualTestBase;
 import bh.test.HtmlReportGenerator;
 import bh.test.examples.AutotileTestHelper;
 import bh.multianim.MultiAnimBuilder.PlaceholderValues;
+import bh.paths.MultiAnimPaths.PathNormalization;
 import bh.ui.UIElement.TileHelper;
 
 /**
@@ -2243,14 +2244,14 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	static function drawNormalizationVisualization(g:h2d.Graphics, font:h2d.Font, paths:bh.paths.MultiAnimPaths,
 			parent:h2d.Object):Void {
 		final arcPath = paths.getPath("arc");
-		final normArc = paths.getPath("arc", new bh.base.FPoint(350, 100), new bh.base.FPoint(550, 20));
+		final normArc = paths.getPath("arc", Stretch(new bh.base.FPoint(350, 100), new bh.base.FPoint(550, 20)));
 		drawNormalizationPaths(g, font, arcPath, normArc, parent);
 	}
 
 	/** Draw path normalization example (macro version using pre-built Path). */
 	static function drawNormalizationVisualizationFromPath(g:h2d.Graphics, font:h2d.Font, arcPath:bh.paths.MultiAnimPaths.Path,
 			parent:h2d.Object):Void {
-		final normArc = arcPath.normalize(new bh.base.FPoint(350, 100), new bh.base.FPoint(550, 20));
+		final normArc = arcPath.applyTransform(Stretch(new bh.base.FPoint(350, 100), new bh.base.FPoint(550, 20)));
 		drawNormalizationPaths(g, font, arcPath, normArc, parent);
 	}
 

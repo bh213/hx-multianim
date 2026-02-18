@@ -3454,10 +3454,8 @@ class MultiAnimBuilder {
 	}
 
 	/** Create an AnimatedPath from a named definition.
-	 *  Optional transforms:
-	 *  - (startPoint, endPoint): normalizes the path to fit between two points
-	 *  - (startAngle): rotates the path by the given angle (radians) */
-	public function createAnimatedPath(name:String, ?startPoint:bh.base.FPoint, ?endPoint:bh.base.FPoint, ?startAngle:Null<Float>):bh.paths.AnimatedPath {
+	 *  Optional PathNormalization transform controls how the path is positioned/scaled. */
+	public function createAnimatedPath(name:String, ?normalization:bh.paths.MultiAnimPaths.PathNormalization):bh.paths.AnimatedPath {
 		var node = multiParserResult?.nodes.get(name);
 		if (node == null)
 			throw 'could not get animatedPath node #${name}' + currentNodePos();
@@ -3465,9 +3463,7 @@ class MultiAnimBuilder {
 			case ANIMATED_PATH(pathDef):
 				// Resolve path from paths block, apply optional transforms
 				var paths = getPaths();
-				var path = paths.getPath(pathDef.pathName, startPoint, endPoint);
-				if (startAngle != null)
-					path = path.withStartAngle(startAngle);
+				var path = paths.getPath(pathDef.pathName, normalization);
 
 				// Determine mode
 				var mode:AnimatedPathMode = switch (pathDef.mode) {

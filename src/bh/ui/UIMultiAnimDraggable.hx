@@ -7,6 +7,7 @@ import bh.multianim.MultiAnimBuilder.SlotHandle;
 import bh.paths.AnimatedPath;
 import bh.paths.AnimatedPath.AnimatedPathMode;
 import bh.paths.MultiAnimPaths.Path;
+import bh.paths.MultiAnimPaths.PathNormalization;
 import bh.ui.screens.UIScreen;
 import bh.ui.screens.UIScreen.LayersEnum;
 import h2d.Object;
@@ -186,12 +187,12 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 	// --- AnimatedPath from builder ---
 
 	public function setReturnAnimPath(builder:MultiAnimBuilder, name:String):UIMultiAnimDraggable {
-		returnPathFactory = (from, to) -> builder.createAnimatedPath(name, from, to);
+		returnPathFactory = (from, to) -> builder.createAnimatedPath(name, Stretch(from, to));
 		return this;
 	}
 
 	public function setSnapAnimPath(builder:MultiAnimBuilder, name:String):UIMultiAnimDraggable {
-		snapPathFactory = (from, to) -> builder.createAnimatedPath(name, from, to);
+		snapPathFactory = (from, to) -> builder.createAnimatedPath(name, Stretch(from, to));
 		return this;
 	}
 

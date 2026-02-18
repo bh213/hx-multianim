@@ -17,6 +17,24 @@ enum PathType {
 	Wave(amplitude:Float, wavelength:Float, count:Float, dirAngle:Float);
 }
 
+/** How to transform a path relative to start/end points. */
+enum PathNormalization {
+	/** Maps path's (0,0)→endpoint onto startPoint→endPoint via scale+rotation+translation.
+	 *  Best for open paths with a clear start→end direction. */
+	Stretch(startPoint:FPoint, endPoint:FPoint);
+
+	/** Scales path so its extent fits targetDist, centers geometric midpoint between start and end.
+	 *  Best for closed paths (circuit, star, circle). */
+	FitCenter(startPoint:FPoint, endPoint:FPoint);
+
+	/** No scaling. Translates path origin to position, rotates by angle (radians). */
+	Anchor(position:FPoint, angle:Float);
+
+	/** Scales path to fit inside the axis-aligned bounding box defined by topLeft→bottomRight.
+	 *  No rotation — the two points define a rectangle. */
+	FitBounds(topLeft:FPoint, bottomRight:FPoint);
+}
+
 @:nullSafety
 class MultiAnimPaths {
 	final pathDefs:PathsDef;
@@ -27,10 +45,10 @@ class MultiAnimPaths {
 		this.builder = builder;
 	}
 
-	public function getPath(name:String, ?startPoint:FPoint, ?endPoint:FPoint):Path {
+	public function getPath(name:String, ?normalization:PathNormalization):Path {
 		final oldIndexed = builder.indexedParams;
 		builder.indexedParams = [];
-		
+
 		var gridCoordinateSystem:Null<GridCoordinateSystem> = null;
 		var hexCoordinateSystem:Null<HexCoordinateSystem> = null;
 
@@ -46,7 +64,6 @@ class MultiAnimPaths {
 		if (def == null)
 			throw 'path not found: $name';
 
-		var baseStart = startPoint != null ? startPoint : new FPoint(0, 0);
 		var singlePaths:Array<SinglePath> = [];
 		var point = new FPoint(0, 0);
 		var angle:Float = 0.;
@@ -225,8 +242,8 @@ class MultiAnimPaths {
 
 		builder.indexedParams = oldIndexed;
 		var path = new Path(singlePaths);
-		if (startPoint != null && endPoint != null) {
-			return path.normalize(startPoint, endPoint);
+		if (normalization != null) {
+			return path.applyTransform(normalization);
 		}
 		return path;
 	}
@@ -374,38 +391,147 @@ class Path {
 		return endpoint;
 	}
 
-	/** Create a new Path rotated by the given angle (radians) around the origin. */
-	public function withStartAngle(angle:Float):Path {
-		final cosA = Math.cos(angle);
-		final sinA = Math.sin(angle);
+	/** Apply a normalization transform to this path, returning a new transformed Path. */
+	public function applyTransform(mode:PathNormalization):Path {
+		return switch mode {
+			case Stretch(startPoint, endPoint):
+				applyStretch(startPoint, endPoint);
+			case FitCenter(startPoint, endPoint):
+				applyFitCenter(startPoint, endPoint);
+			case Anchor(position, angle):
+				applyAnchor(position, angle);
+			case FitBounds(topLeft, bottomRight):
+				applyFitBounds(topLeft, bottomRight);
+		};
+	}
+
+	/** Stretch: maps (0,0)→endpoint onto startPoint→endPoint via scale+rotation+translation. */
+	function applyStretch(startPoint:FPoint, endPoint:FPoint):Path {
+		final targetDist = hxd.Math.distance(endPoint.x - startPoint.x, endPoint.y - startPoint.y);
+		final targetAngle = Math.atan2(endPoint.y - startPoint.y, endPoint.x - startPoint.x);
+		final rawDist = hxd.Math.distance(endpoint.x, endpoint.y);
+		if (rawDist < 1e-10) return applyFitCenter(startPoint, endPoint); // degenerate: fallback
+
+		final scale = targetDist / rawDist;
+		final rawAngle = Math.atan2(endpoint.y, endpoint.x);
+		final rotation = targetAngle - rawAngle;
+		return transformAll(Math.cos(rotation), Math.sin(rotation), scale, startPoint.x, startPoint.y);
+	}
+
+	/** FitCenter: scales by max extent, centers geometric midpoint between start and end. */
+	function applyFitCenter(startPoint:FPoint, endPoint:FPoint):Path {
+		final targetDist = hxd.Math.distance(endPoint.x - startPoint.x, endPoint.y - startPoint.y);
+		final targetAngle = Math.atan2(endPoint.y - startPoint.y, endPoint.x - startPoint.x);
+		final maxExtent = computeMaxExtent();
+		final scale = if (maxExtent > 1e-10) targetDist / (maxExtent * 2) else 1.0;
+
+		// Scale + rotate around origin first, then compute center offset
+		final cosA = Math.cos(targetAngle);
+		final sinA = Math.sin(targetAngle);
+		var scaled = transformAll(cosA, sinA, scale, 0, 0);
+
+		// Compute geometric center of scaled path
+		final center = scaled.computeCenter();
+		final midX = (startPoint.x + endPoint.x) / 2;
+		final midY = (startPoint.y + endPoint.y) / 2;
+
+		// Translate so center maps to midpoint
+		return scaled.translateAll(midX - center.x, midY - center.y);
+	}
+
+	/** Anchor: translate to position, rotate by angle. No scaling. */
+	function applyAnchor(position:FPoint, angle:Float):Path {
+		return transformAll(Math.cos(angle), Math.sin(angle), 1.0, position.x, position.y);
+	}
+
+	/** FitBounds: scale to fit inside axis-aligned bounding box, no rotation. */
+	function applyFitBounds(topLeft:FPoint, bottomRight:FPoint):Path {
+		final bounds = computeBounds();
+		final pathW = bounds.maxX - bounds.minX;
+		final pathH = bounds.maxY - bounds.minY;
+		final boxW = bottomRight.x - topLeft.x;
+		final boxH = bottomRight.y - topLeft.y;
+
+		// Uniform scale to fit
+		var scale:Float = 1.0;
+		if (pathW > 1e-10 && pathH > 1e-10)
+			scale = Math.min(boxW / pathW, boxH / pathH);
+		else if (pathW > 1e-10)
+			scale = boxW / pathW;
+		else if (pathH > 1e-10)
+			scale = boxH / pathH;
+
+		// Scale around origin, then translate to center in box
+		var scaled = transformAll(1.0, 0.0, scale, 0, 0);
+		final scaledBounds = scaled.computeBounds();
+		final scaledW = scaledBounds.maxX - scaledBounds.minX;
+		final scaledH = scaledBounds.maxY - scaledBounds.minY;
+		final tx = topLeft.x + (boxW - scaledW) / 2 - scaledBounds.minX;
+		final ty = topLeft.y + (boxH - scaledH) / 2 - scaledBounds.minY;
+
+		return scaled.translateAll(tx, ty);
+	}
+
+	/** Apply scale+rotation+translation to all segments. */
+	function transformAll(cosA:Float, sinA:Float, scale:Float, tx:Float, ty:Float):Path {
 		var transformed:Array<SinglePath> = [];
 		for (sp in singlePaths) {
-			transformed.push(sp.transform(cosA, sinA, 1.0, 0., 0.));
+			transformed.push(sp.transform(cosA, sinA, scale, tx, ty));
 		}
 		return new Path(transformed);
 	}
 
-	/** Create a new Path whose (0,0)→endpoint is mapped onto startPoint→endPoint
-	 *  via scale + rotation + translation. */
-	public function normalize(startPoint:FPoint, endPoint:FPoint):Path {
-		final rawDist = hxd.Math.distance(endpoint.x, endpoint.y);
-		if (rawDist < 1e-10) return this; // degenerate path, can't normalize
-
-		final targetDist = hxd.Math.distance(endPoint.x - startPoint.x, endPoint.y - startPoint.y);
-		final scale = targetDist / rawDist;
-
-		final rawAngle = Math.atan2(endpoint.y, endpoint.x);
-		final targetAngle = Math.atan2(endPoint.y - startPoint.y, endPoint.x - startPoint.x);
-		final rotation = targetAngle - rawAngle;
-
-		final cosA = Math.cos(rotation);
-		final sinA = Math.sin(rotation);
-
+	/** Translate all segments by (dx, dy). */
+	function translateAll(dx:Float, dy:Float):Path {
 		var transformed:Array<SinglePath> = [];
 		for (sp in singlePaths) {
-			transformed.push(sp.transform(cosA, sinA, scale, startPoint.x, startPoint.y));
+			transformed.push(sp.transform(1.0, 0.0, 1.0, dx, dy));
 		}
 		return new Path(transformed);
+	}
+
+	/** Compute the maximum distance any point on this path is from the origin,
+	 *  by sampling at regular intervals. */
+	function computeMaxExtent():Float {
+		var maxDist:Float = 0;
+		final steps = 50;
+		for (i in 0...steps + 1) {
+			var pt = getPoint(i / steps);
+			var d = hxd.Math.distance(pt.x, pt.y);
+			if (d > maxDist) maxDist = d;
+		}
+		return maxDist;
+	}
+
+	/** Compute geometric center by sampling points along the path. */
+	function computeCenter():FPoint {
+		var sumX:Float = 0;
+		var sumY:Float = 0;
+		final steps = 50;
+		for (i in 0...steps + 1) {
+			var pt = getPoint(i / steps);
+			sumX += pt.x;
+			sumY += pt.y;
+		}
+		final n = steps + 1;
+		return new FPoint(sumX / n, sumY / n);
+	}
+
+	/** Compute axis-aligned bounding box by sampling points along the path. */
+	function computeBounds():{minX:Float, minY:Float, maxX:Float, maxY:Float} {
+		var minX = Math.POSITIVE_INFINITY;
+		var minY = Math.POSITIVE_INFINITY;
+		var maxX = Math.NEGATIVE_INFINITY;
+		var maxY = Math.NEGATIVE_INFINITY;
+		final steps = 50;
+		for (i in 0...steps + 1) {
+			var pt = getPoint(i / steps);
+			if (pt.x < minX) minX = pt.x;
+			if (pt.y < minY) minY = pt.y;
+			if (pt.x > maxX) maxX = pt.x;
+			if (pt.y > maxY) maxY = pt.y;
+		}
+		return {minX: minX, minY: minY, maxX: maxX, maxY: maxY};
 	}
 }
 

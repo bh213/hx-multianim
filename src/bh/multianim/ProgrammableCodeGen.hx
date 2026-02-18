@@ -4781,13 +4781,12 @@ class ProgrammableCodeGen {
 	// ==================== Paths/Curves/AnimatedPath Factory Methods ====================
 
 	static function generatePathsFactoryMethods(pathsDef:PathsDef, factoryFields:Array<Field>, pos:Position):Void {
-		// Generic getPath(name, ?startPoint, ?endPoint) method - still uses builder for dynamic name
+		// Generic getPath(name, ?normalization) method - still uses builder for dynamic name
 		factoryFields.push(makeMethod("getPath", [
-			macro return this.buildPath(name, startPoint, endPoint)
+			macro return this.buildPath(name, normalization)
 		], [
 			{name: "name", type: macro :String},
-			{name: "startPoint", type: macro :Null<bh.base.FPoint>, opt: true},
-			{name: "endPoint", type: macro :Null<bh.base.FPoint>, opt: true},
+			{name: "normalization", type: macro :Null<bh.paths.MultiAnimPaths.PathNormalization>, opt: true},
 		], macro :bh.paths.MultiAnimPaths.Path, [APublic], pos));
 
 		// Per-path typed methods: getPath_<name>(?startPoint, ?endPoint) with inline construction
@@ -4848,12 +4847,12 @@ class ProgrammableCodeGen {
 					var cacheIdent = cacheFieldName;
 					factoryFields.push(makeMethod("getPath_" + pathName, [
 						macro {
-							if (startPoint != null && endPoint != null) {
-								// Dynamic transform requested — build fresh path and normalize
+							if (normalization != null) {
+								// Dynamic transform requested — build fresh path and apply transform
 								var basePath = bh.paths.MultiAnimPaths.Path.fromPrecomputed(
 									$arrExpr, $v{totalLength}, $cpNamesExpr, $cpRatesExpr, $endpointExpr
 								);
-								return basePath.normalize(startPoint, endPoint);
+								return basePath.applyTransform(normalization);
 							}
 							// Return cached base path
 							if ($i{cacheIdent} == null) {
@@ -4864,8 +4863,7 @@ class ProgrammableCodeGen {
 							return $i{cacheIdent};
 						}
 					], [
-						{name: "startPoint", type: macro :Null<bh.base.FPoint>, opt: true},
-						{name: "endPoint", type: macro :Null<bh.base.FPoint>, opt: true},
+						{name: "normalization", type: macro :Null<bh.paths.MultiAnimPaths.PathNormalization>, opt: true},
 					], macro :bh.paths.MultiAnimPaths.Path, [APublic], pos));
 				} else {
 					// Zero-length path — use regular constructor
@@ -4873,23 +4871,21 @@ class ProgrammableCodeGen {
 					factoryFields.push(makeMethod("getPath_" + pathName, [
 						macro {
 							var basePath = new bh.paths.MultiAnimPaths.Path($arrExpr);
-							if (startPoint != null && endPoint != null)
-								return basePath.normalize(startPoint, endPoint);
+							if (normalization != null)
+								return basePath.applyTransform(normalization);
 							return basePath;
 						}
 					], [
-						{name: "startPoint", type: macro :Null<bh.base.FPoint>, opt: true},
-						{name: "endPoint", type: macro :Null<bh.base.FPoint>, opt: true},
+						{name: "normalization", type: macro :Null<bh.paths.MultiAnimPaths.PathNormalization>, opt: true},
 					], macro :bh.paths.MultiAnimPaths.Path, [APublic], pos));
 				}
 			} else {
 				// Fallback to builder for paths with parameter references
 				final nameExpr:Expr = macro $v{pathName};
 				factoryFields.push(makeMethod("getPath_" + pathName, [
-					macro return this.buildPath($nameExpr, startPoint, endPoint)
+					macro return this.buildPath($nameExpr, normalization)
 				], [
-					{name: "startPoint", type: macro :Null<bh.base.FPoint>, opt: true},
-					{name: "endPoint", type: macro :Null<bh.base.FPoint>, opt: true},
+					{name: "normalization", type: macro :Null<bh.paths.MultiAnimPaths.PathNormalization>, opt: true},
 				], macro :bh.paths.MultiAnimPaths.Path, [APublic], pos));
 			}
 		}
@@ -5314,8 +5310,7 @@ class ProgrammableCodeGen {
 
 		// 1. Get path - call our own getPath_<name>() inline method
 		final pathMethodName = "getPath_" + sanitizeIdentifier(apDef.pathName);
-		bodyExprs.push(macro var path = $i{pathMethodName}(startPoint, endPoint));
-		bodyExprs.push(macro if (startAngle != null) path = path.withStartAngle(startAngle));
+		bodyExprs.push(macro var path = $i{pathMethodName}(normalization));
 
 		// 2. Determine mode
 		var modeExpr:Expr = null;
@@ -5340,11 +5335,9 @@ class ProgrammableCodeGen {
 				// Fall back to builder
 				final nameExpr:Expr = macro $v{name};
 				factoryFields.push(makeMethod(methodName, [
-					macro return this.buildAnimatedPath($nameExpr, startPoint, endPoint, startAngle)
+					macro return this.buildAnimatedPath($nameExpr, normalization)
 				], [
-					{name: "startPoint", opt: true, type: macro :bh.base.FPoint},
-					{name: "endPoint", opt: true, type: macro :bh.base.FPoint},
-					{name: "startAngle", opt: true, type: macro :Null<Float>},
+					{name: "normalization", opt: true, type: macro :Null<bh.paths.MultiAnimPaths.PathNormalization>},
 				], macro :bh.paths.AnimatedPath, [APublic], pos));
 				return;
 		}
@@ -5412,9 +5405,7 @@ class ProgrammableCodeGen {
 		bodyExprs.push(macro return ap);
 
 		factoryFields.push(makeMethod(methodName, bodyExprs, [
-			{name: "startPoint", opt: true, type: macro :bh.base.FPoint},
-			{name: "endPoint", opt: true, type: macro :bh.base.FPoint},
-			{name: "startAngle", opt: true, type: macro :Null<Float>},
+			{name: "normalization", opt: true, type: macro :Null<bh.paths.MultiAnimPaths.PathNormalization>},
 		], macro :bh.paths.AnimatedPath, [APublic], pos));
 	}
 

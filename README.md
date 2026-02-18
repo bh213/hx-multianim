@@ -15,7 +15,7 @@ Latest test results: [Visual Test Report](https://bh213.github.io/hx-multianim/t
 
 ## Interactive Playground
 
-Playground is available at [gh-pages](https://bh213.github.io/hx-multianim/) and lives in a separate repository: `../hx-multianim-playground`.
+Playground is available at [gh-pages](https://bh213.github.io/hx-multianim-playground/) and lives in a separate repository: `../hx-multianim-playground`.
 
 ## Getting Started
 
