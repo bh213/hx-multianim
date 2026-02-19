@@ -2182,14 +2182,25 @@ class BuilderUnitTest extends BuilderTestBase {
 		final bitmaps = findVisibleBitmapDescendants(result.object);
 		Assert.equals(6, bitmaps.length);
 
-		// Each pair of bitmaps should share the same parent (same layout point wrapper)
-		Assert.equals(bitmaps[0].parent, bitmaps[1].parent);
-		Assert.equals(bitmaps[2].parent, bitmaps[3].parent);
-		Assert.equals(bitmaps[4].parent, bitmaps[5].parent);
-
-		// Different iterations should have different parents
-		Assert.isFalse(bitmaps[0].parent == bitmaps[2].parent);
-		Assert.isFalse(bitmaps[2].parent == bitmaps[4].parent);
+		// Verify positions: both children in each iteration should share the same
+		// layout-point offset. The first bitmap is at (layoutX+0, layoutY+0),
+		// the second at (layoutX+5, layoutY+5).
+		// Layout points: (10,10), (110,10), (210,10)
+		// Iteration 0: bitmap[0] at (10,10), bitmap[1] at (15,15)
+		// Iteration 1: bitmap[2] at (110,10), bitmap[3] at (115,15)
+		// Iteration 2: bitmap[4] at (210,10), bitmap[5] at (215,15)
+		Assert.floatEquals(10, bitmaps[0].x);
+		Assert.floatEquals(10, bitmaps[0].y);
+		Assert.floatEquals(15, bitmaps[1].x);
+		Assert.floatEquals(15, bitmaps[1].y);
+		Assert.floatEquals(110, bitmaps[2].x);
+		Assert.floatEquals(10, bitmaps[2].y);
+		Assert.floatEquals(115, bitmaps[3].x);
+		Assert.floatEquals(15, bitmaps[3].y);
+		Assert.floatEquals(210, bitmaps[4].x);
+		Assert.floatEquals(10, bitmaps[4].y);
+		Assert.floatEquals(215, bitmaps[5].x);
+		Assert.floatEquals(15, bitmaps[5].y);
 	}
 
 	@Test

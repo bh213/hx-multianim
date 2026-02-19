@@ -219,6 +219,7 @@ enum UpdatableNameType {
 	UNTObject(name:String);
 	UNTUpdatable(name:String);
 	UNTIndexed(name:String, indexVar:String);
+	UNTIndexed2D(name:String, indexVarX:String, indexVarY:String);
 }
 
 enum SettingValueType {
@@ -245,6 +246,7 @@ function getNameString(updatableNameType:UpdatableNameType) {
 		case UNTObject(name): name;
 		case UNTUpdatable(name): name;
 		case UNTIndexed(name, _): name;
+		case UNTIndexed2D(name, _, _): name;
 	}
 }
 
@@ -900,6 +902,7 @@ enum NodeType {
 	ATLAS2(atlas2Def:Atlas2Def);
 	DATA(dataDef:DataDef);
 	SLOT(parameters:Null<ParametersDefinitions>, paramOrder:Null<Array<String>>);
+	SLOT_CONTENT;
 	DYNAMIC_REF(externalReference:Null<String>, programmableReference:String, parameters:Map<String, ReferenceableValue>);
 	FINAL_VAR(name:String, value:ReferenceableValue);
 }

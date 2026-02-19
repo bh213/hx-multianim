@@ -2405,6 +2405,7 @@ class MacroManimParser {
 			case UNTObject(n): n;
 			case UNTUpdatable(n): n;
 			case UNTIndexed(n, _): n;
+			case UNTIndexed2D(n, _, _): n;
 		}
 		return {
 			pos: ZERO,
@@ -2668,6 +2669,24 @@ class MacroManimParser {
 					createNode(SLOT(null, null), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
 				}
 
+			case TIdentifier(s) if (isKeyword(s, "slotContent") || isKeyword(s, "slotcontent")):
+				advance();
+				// Validate: must be inside a SLOT node
+				var insideSlot = false;
+				var checkNode = parent;
+				while (checkNode != null) {
+					switch (checkNode.type) {
+						case SLOT(_, _):
+							insideSlot = true;
+							break;
+						default:
+					}
+					checkNode = checkNode.parent;
+				}
+				if (!insideSlot)
+					error("slotContent can only be used inside a slot body");
+				createNode(SLOT_CONTENT, parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+
 			case TIdentifier(s) if (isKeyword(s, "interactive")):
 				advance();
 				expect(TOpen);
@@ -2784,6 +2803,7 @@ class MacroManimParser {
 					case UNTObject(_): UNTObject(defaultLayoutNodeName);
 					case UNTUpdatable(_): UNTUpdatable(defaultLayoutNodeName);
 					case UNTIndexed(_, _): UNTObject(defaultLayoutNodeName);
+					case UNTIndexed2D(_, _, _): UNTObject(defaultLayoutNodeName);
 				});
 				return n; // skip position/children parsing
 
@@ -2981,6 +3001,7 @@ class MacroManimParser {
 					case UNTObject(_): UNTObject(defaultPathNodeName);
 					case UNTUpdatable(_): UNTUpdatable(defaultPathNodeName);
 					case UNTIndexed(_, _): UNTObject(defaultPathNodeName);
+					case UNTIndexed2D(_, _, _): UNTObject(defaultPathNodeName);
 				});
 				return n;
 
@@ -3003,6 +3024,7 @@ class MacroManimParser {
 					case UNTObject(_): UNTObject(defaultCurveNodeName);
 					case UNTUpdatable(_): UNTUpdatable(defaultCurveNodeName);
 					case UNTIndexed(_, _): UNTObject(defaultCurveNodeName);
+					case UNTIndexed2D(_, _, _): UNTObject(defaultCurveNodeName);
 				});
 				return n;
 
@@ -3818,14 +3840,31 @@ class MacroManimParser {
 						}
 						expect(TClosed);
 					} else if (match(TBracketOpen)) {
-						// #name[$var] — indexed named element
+						// #name[$var] or #name[$varX, $varY] — indexed named element
 						switch (peek()) {
-							case TReference(indexVar):
+							case TReference(indexVar1):
 								advance();
-								if (scopeVars == null || !scopeVars.contains(indexVar))
-									error('#name[$$$indexVar]: index variable $$$indexVar is not a known loop variable in this scope');
-								expect(TBracketClosed);
-								nameType = UNTIndexed(name, indexVar);
+								if (match(TComma)) {
+									// 2D indexing: #name[$x, $y]
+									switch (peek()) {
+										case TReference(indexVar2):
+											advance();
+											if (scopeVars == null || !scopeVars.contains(indexVar1))
+												error('#name[$$$indexVar1, $$$indexVar2]: index variable $$$indexVar1 is not a known loop variable in this scope');
+											if (!scopeVars.contains(indexVar2))
+												error('#name[$$$indexVar1, $$$indexVar2]: index variable $$$indexVar2 is not a known loop variable in this scope');
+											expect(TBracketClosed);
+											nameType = UNTIndexed2D(name, indexVar1, indexVar2);
+										default:
+											error('expected $$variable for second index in #name[$$x, $$y]');
+									}
+								} else {
+									// 1D indexing: #name[$i]
+									if (scopeVars == null || !scopeVars.contains(indexVar1))
+										error('#name[$$$indexVar1]: index variable $$$indexVar1 is not a known loop variable in this scope');
+									expect(TBracketClosed);
+									nameType = UNTIndexed(name, indexVar1);
+								}
 							default:
 								error('expected $$variable inside #name[...]');
 						}
@@ -3838,8 +3877,8 @@ class MacroManimParser {
 								switch (checkNode.type) {
 									case REPEAT(varName, _):
 										error('#$name requires indexed form #$name[$$' + varName + '] inside repeatable');
-									case REPEAT2D(varNameX, _, _, _):
-										error('#$name requires indexed form #$name[$$' + varNameX + '] inside repeatable');
+									case REPEAT2D(varNameX, varNameY, _, _):
+										error('#$name requires indexed form #$name[$$' + varNameX + ', $$' + varNameY + '] inside repeatable2d');
 									default:
 								}
 								checkNode = checkNode.parent;
@@ -3861,6 +3900,7 @@ class MacroManimParser {
 								case UNTObject(n): n;
 								case UNTUpdatable(n): n;
 								case UNTIndexed(n, _): n;
+								case UNTIndexed2D(n, _, _): n;
 							}
 							addNode(n, newNode);
 						} else {

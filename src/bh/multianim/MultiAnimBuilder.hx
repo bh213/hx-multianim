@@ -313,7 +313,7 @@ class IncrementalUpdateContext {
 		changedParams = new Map();
 	}
 
-	function applyConditionalChains():Void {
+	public function applyConditionalChains():Void {
 		// Walk the root node's children to resolve @else/@default chains with new params
 		if (rootNode.children == null) return;
 		resolveVisibilityForChildren(rootNode.children);
@@ -373,9 +373,12 @@ class IncrementalUpdateContext {
 	}
 }
 
+class SlotContentRoot extends h2d.Object {}
+
 enum SlotKey {
 	Named(name:String);
 	Indexed(name:String, index:Int);
+	Indexed2D(name:String, indexX:Int, indexY:Int);
 }
 
 class SlotHandle {
@@ -386,10 +389,12 @@ class SlotHandle {
 	var defaultChildren:Array<h2d.Object>;
 	var currentContent:Null<h2d.Object>;
 	var contentRoot:Null<h2d.Object> = null;
+	var contentTarget:Null<h2d.Object> = null;
 	var hasParameters:Bool = false;
 
-	public function new(container:h2d.Object, ?incrementalContext:IncrementalUpdateContext) {
+	public function new(container:h2d.Object, ?incrementalContext:IncrementalUpdateContext, ?contentTarget:h2d.Object) {
 		this.container = container;
+		this.contentTarget = contentTarget;
 		this.defaultChildren = [];
 		this.currentContent = null;
 		for (i in 0...container.numChildren)
@@ -397,14 +402,19 @@ class SlotHandle {
 		if (incrementalContext != null) {
 			this.incrementalContext = incrementalContext;
 			this.hasParameters = true;
-			this.contentRoot = new h2d.Object();
-			container.addChild(this.contentRoot);
+			if (contentTarget == null) {
+				this.contentRoot = new h2d.Object();
+				container.addChild(this.contentRoot);
+			}
 		}
 	}
 
 	public function setContent(obj:h2d.Object):Void {
 		clear();
-		if (hasParameters) {
+		if (contentTarget != null) {
+			currentContent = obj;
+			contentTarget.addChild(obj);
+		} else if (hasParameters) {
 			currentContent = obj;
 			contentRoot.addChild(obj);
 		} else {
@@ -417,14 +427,16 @@ class SlotHandle {
 
 	public function clear():Void {
 		if (currentContent != null) {
-			if (hasParameters) {
+			if (contentTarget != null) {
+				contentTarget.removeChild(currentContent);
+			} else if (hasParameters) {
 				contentRoot.removeChild(currentContent);
 			} else {
 				container.removeChild(currentContent);
 			}
 			currentContent = null;
 		}
-		if (!hasParameters) {
+		if (!hasParameters && contentTarget == null) {
 			for (child in defaultChildren)
 				child.visible = true;
 		}
@@ -522,19 +534,35 @@ class BuilderResult {
 		return ref;
 	}
 
-	public function getSlot(name:String, ?index:Null<Int>):SlotHandle {
+	public function getSlot(name:String, ?index:Null<Int>, ?indexY:Null<Int>):SlotHandle {
 		if (slots == null)
 			throw 'No slots in BuilderResult';
-		var isIndexed = false;
+		// Determine what kind of slot this is
+		var is1DIndexed = false;
+		var is2DIndexed = false;
 		for (entry in slots) {
 			switch entry.key {
 				case Indexed(n, _) if (n == name):
-					isIndexed = true;
+					is1DIndexed = true;
+					break;
+				case Indexed2D(n, _, _) if (n == name):
+					is2DIndexed = true;
 					break;
 				default:
 			}
 		}
-		if (isIndexed) {
+		if (is2DIndexed) {
+			if (index == null || indexY == null)
+				throw 'Slot "$name" is 2D-indexed — use getSlot("$name", x, y)';
+			for (entry in slots) {
+				switch entry.key {
+					case Indexed2D(n, ix, iy) if (n == name && ix == index && iy == indexY):
+						return entry.handle;
+					default:
+				}
+			}
+			throw 'Slot "$name" index ($index, $indexY) not found';
+		} else if (is1DIndexed) {
 			if (index == null)
 				throw 'Slot "$name" is indexed — use getSlot("$name", index)';
 			for (entry in slots) {
@@ -2602,6 +2630,9 @@ class MultiAnimBuilder {
 			case SLOT(parameters, paramOrder):
 				final container = new h2d.Object();
 				HeapsObject(container);
+			case SLOT_CONTENT:
+				final obj = new SlotContentRoot();
+				HeapsObject(obj);
 			case NINEPATCH(sheet, tilename, width, height):
 				var sg = load9Patch(sheet, tilename);
 
@@ -3279,7 +3310,7 @@ class MultiAnimBuilder {
 		final n = updatableName.getNameString();
 		if (n != null) {
 			final names = internalResults.names;
-			// For indexed names (#name[$i]), also store under name_N key
+			// For indexed names (#name[$i] or #name[$x,$y]), also store under name_N / name_X_Y key
 			switch updatableName {
 				case UNTIndexed(name, indexVar):
 					final indexValue = indexedParams.get(indexVar);
@@ -3289,6 +3320,18 @@ class MultiAnimBuilder {
 							default: 0;
 						};
 						final indexedKey = '${name}_${idx}';
+						if (names.exists(indexedKey))
+							names[indexedKey].push(toNamedResult(updatableName, builtObject, node));
+						else
+							names[indexedKey] = [toNamedResult(updatableName, builtObject, node)];
+					}
+				case UNTIndexed2D(name, indexVarX, indexVarY):
+					final indexValueX = indexedParams.get(indexVarX);
+					final indexValueY = indexedParams.get(indexVarY);
+					if (indexValueX != null && indexValueY != null) {
+						final idxX = switch indexValueX { case Value(v): v; default: 0; };
+						final idxY = switch indexValueY { case Value(v): v; default: 0; };
+						final indexedKey = '${name}_${idxX}_${idxY}';
 						if (names.exists(indexedKey))
 							names[indexedKey].push(toNamedResult(updatableName, builtObject, node));
 						else
@@ -3360,14 +3403,28 @@ class MultiAnimBuilder {
 		// Register slot handle after children are built
 		switch node.type {
 			case SLOT(parameters, _):
+				// Find slotContent child if present
+				var slotContentTarget:Null<h2d.Object> = null;
+				for (i in 0...object.numChildren) {
+					if (Std.downcast(object.getChildAt(i), SlotContentRoot) != null) {
+						slotContentTarget = object.getChildAt(i);
+						break;
+					}
+				}
 				switch node.updatableName {
 					case UNTIndexed(baseName, indexVar):
 						final index = Std.parseInt(resolveAsString(RVReference(indexVar)));
 						if (index == null)
 							throw 'Slot "$baseName" indexed variable did not resolve to an integer';
-						internalResults.slots.push({key: Indexed(baseName, index), handle: new SlotHandle(object, slotIncrementalCtx)});
+						internalResults.slots.push({key: Indexed(baseName, index), handle: new SlotHandle(object, slotIncrementalCtx, slotContentTarget)});
+					case UNTIndexed2D(baseName, indexVarX, indexVarY):
+						final indexX = Std.parseInt(resolveAsString(RVReference(indexVarX)));
+						final indexY = Std.parseInt(resolveAsString(RVReference(indexVarY)));
+						if (indexX == null || indexY == null)
+							throw 'Slot "$baseName" 2D indexed variables did not resolve to integers';
+						internalResults.slots.push({key: Indexed2D(baseName, indexX, indexY), handle: new SlotHandle(object, slotIncrementalCtx, slotContentTarget)});
 					case UNTObject(name) | UNTUpdatable(name):
-						internalResults.slots.push({key: Named(name), handle: new SlotHandle(object, slotIncrementalCtx)});
+						internalResults.slots.push({key: Named(name), handle: new SlotHandle(object, slotIncrementalCtx, slotContentTarget)});
 					default:
 				}
 			default:
@@ -4530,6 +4587,7 @@ class MultiAnimBuilder {
 
 		if (incremental) {
 			retVal.incrementalContext = this.incrementalContext;
+			this.incrementalContext.applyConditionalChains();
 			this.incrementalMode = false;
 			this.incrementalContext = null;
 		}
@@ -4595,7 +4653,16 @@ class MultiAnimBuilder {
 		}
 
 		popBuilderState();
-		return new SlotHandle(container, slotCtx);
+
+		// Find slotContent child if present
+		var slotContentTarget:Null<h2d.Object> = null;
+		for (i in 0...container.numChildren) {
+			if (Std.downcast(container.getChildAt(i), SlotContentRoot) != null) {
+				slotContentTarget = container.getChildAt(i);
+				break;
+			}
+		}
+		return new SlotHandle(container, slotCtx, slotContentTarget);
 	}
 
 	private static function findSlotNode(node:Node, slotName:String):Null<Node> {
@@ -4606,6 +4673,8 @@ class MultiAnimBuilder {
 						case UNTObject(name) | UNTUpdatable(name) if (name == slotName):
 							return child;
 						case UNTIndexed(baseName, _) if (baseName == slotName):
+							return child;
+						case UNTIndexed2D(baseName, _, _) if (baseName == slotName):
 							return child;
 						default:
 					}

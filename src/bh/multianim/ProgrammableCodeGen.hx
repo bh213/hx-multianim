@@ -36,6 +36,7 @@ using StringTools;
 private enum MacroSlotKey {
 	Named(name:String);
 	Indexed(name:String, index:Int);
+	Indexed2D(name:String, indexX:Int, indexY:Int);
 }
 
 /**
@@ -67,6 +68,7 @@ class ProgrammableCodeGen {
 	static var visibilityEntries:Array<{fieldName:String, condition:Expr}> = [];
 	static var namedElements:Map<String, Array<String>> = [];
 	static var indexedNamedElements:Map<String, Array<{index:Int, fieldName:String}>> = new Map();
+	static var indexed2DNamedElements:Map<String, Array<{indexX:Int, indexY:Int, fieldName:String}>> = new Map();
 	static var slotEntries:Array<{key:MacroSlotKey, fieldName:String, hasParams:Bool, loopVars:Map<String, Int>}> = [];
 	static var dynamicRefFields:Map<String, String> = new Map(); // component name -> BuilderResult field name
 	static var hexLayoutFieldAdded:Bool = false;
@@ -127,6 +129,7 @@ class ProgrammableCodeGen {
 		visibilityEntries = [];
 		namedElements = [];
 		indexedNamedElements = new Map();
+		indexed2DNamedElements = new Map();
 		slotEntries = [];
 		dynamicRefFields = new Map();
 		paramDefs = new Map();
@@ -512,6 +515,7 @@ class ProgrammableCodeGen {
 				final slotName:String = switch entry.key {
 					case Named(name): name;
 					case Indexed(baseName, _): baseName;
+					case Indexed2D(baseName, _, _): baseName;
 				};
 				final progNameExpr:Expr = macro $v{currentProgrammableName};
 				final slotNameExpr:Expr = macro $v{slotName};
@@ -531,7 +535,17 @@ class ProgrammableCodeGen {
 				mapExprs.push(macro $p{["this", handleField]} = this._pb.buildParameterizedSlot($progNameExpr, $slotNameExpr, _slotPP, $containerExpr));
 				constructorExprs.push(macro $b{mapExprs});
 			} else {
-				constructorExprs.push(macro $p{["this", handleField]} = new bh.multianim.MultiAnimBuilder.SlotHandle($p{["this", entry.fieldName]}));
+				constructorExprs.push(macro {
+					var _ct:Null<h2d.Object> = null;
+					final _sc = $p{["this", entry.fieldName]};
+					for (_ci in 0..._sc.numChildren) {
+						if (Std.downcast(_sc.getChildAt(_ci), bh.multianim.MultiAnimBuilder.SlotContentRoot) != null) {
+							_ct = _sc.getChildAt(_ci);
+							break;
+						}
+					}
+					$p{["this", handleField]} = new bh.multianim.MultiAnimBuilder.SlotHandle(_sc, null, _ct);
+				});
 			}
 		}
 
@@ -568,8 +582,8 @@ class ProgrammableCodeGen {
 
 		// 8. Named element accessors (on instance)
 		for (name => elementFieldsList in namedElements) {
-			// Skip names that have indexed accessors — they get the indexed get_name(index) method instead
-			if (indexedNamedElements.exists(name))
+			// Skip names that have indexed accessors — they get the indexed get_name(index/x,y) method instead
+			if (indexedNamedElements.exists(name) || indexed2DNamedElements.exists(name))
 				continue;
 			if (elementFieldsList.length == 1) {
 				final ef = elementFieldsList[0];
@@ -598,9 +612,23 @@ class ProgrammableCodeGen {
 			instanceFields.push(makeMethod("get_" + name, [switchExpr], [{name: "index", type: macro :Int}], macro :h2d.Object, [APublic], pos));
 		}
 
+		// 8b2. 2D Indexed named element accessors: get_name(x:Int, y:Int):h2d.Object
+		for (name => indexedList in indexed2DNamedElements) {
+			final ifExprs:Array<Expr> = [];
+			for (entry in indexedList) {
+				ifExprs.push(macro if (x == $v{entry.indexX} && y == $v{entry.indexY}) return $p{["this", entry.fieldName]});
+			}
+			ifExprs.push(macro return null);
+			instanceFields.push(makeMethod("get_" + name, ifExprs, [
+				{name: "x", type: macro :Int},
+				{name: "y", type: macro :Int},
+			], macro :h2d.Object, [APublic], pos));
+		}
+
 		// 8c. Slot accessors (on instance) — init expressions already pushed to constructorExprs in step 6
 		// Collect indexed slot base names and their entries
 		final indexedSlotGroups:Map<String, Array<{index:Int, fieldName:String}>> = new Map();
+		final indexed2DSlotGroups:Map<String, Array<{indexX:Int, indexY:Int, fieldName:String}>> = new Map();
 		final namedSlots:Array<{name:String, fieldName:String}> = [];
 		for (entry in slotEntries) {
 			switch entry.key {
@@ -611,6 +639,13 @@ class ProgrammableCodeGen {
 						indexedSlotGroups.set(baseName, list);
 					}
 					list.push({index: index, fieldName: entry.fieldName});
+				case Indexed2D(baseName, indexX, indexY):
+					var list = indexed2DSlotGroups.get(baseName);
+					if (list == null) {
+						list = [];
+						indexed2DSlotGroups.set(baseName, list);
+					}
+					list.push({indexX: indexX, indexY: indexY, fieldName: entry.fieldName});
 				case Named(name):
 					namedSlots.push({name: name, fieldName: entry.fieldName});
 			}
@@ -626,7 +661,7 @@ class ProgrammableCodeGen {
 			instanceFields.push(makeMethod("getSlot_" + ns.name, [macro return $p{["this", handleField]}], [],
 				macro :bh.multianim.MultiAnimBuilder.SlotHandle, [APublic], pos));
 		}
-		// Indexed: typed getSlot_name(index:Int) accessor with switch
+		// 1D Indexed: typed getSlot_name(index:Int) accessor with switch
 		for (baseName => indexedList in indexedSlotGroups) {
 			final switchCases:Array<Case> = [];
 			for (entry in indexedList) {
@@ -643,11 +678,40 @@ class ProgrammableCodeGen {
 			instanceFields.push(makeMethod("getSlot_" + baseName, [switchExpr], [{name: "index", type: macro :Int}],
 				macro :bh.multianim.MultiAnimBuilder.SlotHandle, [APublic], pos));
 		}
-		// Generic getSlot(name:String, ?index:Null<Int>) dispatcher
+		// 2D Indexed: typed getSlot_name(x:Int, y:Int) accessor with if-chain
+		for (baseName => indexedList in indexed2DSlotGroups) {
+			final ifExprs:Array<Expr> = [];
+			for (entry in indexedList) {
+				final handleField = slotHandleFieldName(Indexed2D(baseName, entry.indexX, entry.indexY));
+				ifExprs.push(macro if (x == $v{entry.indexX} && y == $v{entry.indexY}) return $p{["this", handleField]});
+			}
+			ifExprs.push(macro return null);
+			instanceFields.push(makeMethod("getSlot_" + baseName, ifExprs, [
+				{name: "x", type: macro :Int},
+				{name: "y", type: macro :Int},
+			], macro :bh.multianim.MultiAnimBuilder.SlotHandle, [APublic], pos));
+		}
+		// Generic getSlot(name:String, ?index:Null<Int>, ?indexY:Null<Int>) dispatcher
 		if (slotEntries.length > 0) {
 			final bodyExprs:Array<Expr> = [];
 
-			// Handle indexed slots: require index parameter
+			// Handle 2D indexed slots: require both index and indexY
+			for (baseName => indexedList in indexed2DSlotGroups) {
+				final ifCases:Array<Expr> = [];
+				for (entry in indexedList) {
+					final handleField = slotHandleFieldName(Indexed2D(baseName, entry.indexX, entry.indexY));
+					ifCases.push(macro if (index == $v{entry.indexX} && indexY == $v{entry.indexY}) return $p{["this", handleField]});
+				}
+				final notFoundMsg = 'Slot "' + baseName + '" index (';
+				ifCases.push(macro throw $v{notFoundMsg} + index + ', ' + indexY + ') not found');
+				bodyExprs.push(macro if (name == $v{baseName}) {
+					if (index == null || indexY == null)
+						throw 'Slot "' + $v{baseName} + '" is 2D-indexed — use getSlot("' + $v{baseName} + '", x, y)';
+					$b{ifCases};
+				});
+			}
+
+			// Handle 1D indexed slots: require index parameter
 			for (baseName => indexedList in indexedSlotGroups) {
 				final indexCases:Array<Case> = [];
 				for (entry in indexedList) {
@@ -683,6 +747,7 @@ class ProgrammableCodeGen {
 			instanceFields.push(makeMethod("getSlot", bodyExprs, [
 				{name: "name", type: macro :String},
 				{name: "index", opt: true, type: macro :Null<Int>},
+				{name: "indexY", opt: true, type: macro :Null<Int>},
 			], macro :bh.multianim.MultiAnimBuilder.SlotHandle, [APublic], pos));
 		}
 
@@ -946,6 +1011,23 @@ class ProgrammableCodeGen {
 					}
 					indexedList.push({index: currentIndex, fieldName: fieldName});
 				}
+			case UNTIndexed2D(name, indexVarX, indexVarY):
+				if (name != null && name != "") {
+					var list = namedElements.get(name);
+					if (list == null) {
+						list = [];
+						namedElements.set(name, list);
+					}
+					list.push(fieldName);
+					final currentX = loopVarSubstitutions.exists(indexVarX) ? loopVarSubstitutions.get(indexVarX) : 0;
+					final currentY = loopVarSubstitutions.exists(indexVarY) ? loopVarSubstitutions.get(indexVarY) : 0;
+					var indexedList = indexed2DNamedElements.get(name);
+					if (indexedList == null) {
+						indexedList = [];
+						indexed2DNamedElements.set(name, indexedList);
+					}
+					indexedList.push({indexX: currentX, indexY: currentY, fieldName: fieldName});
+				}
 		}
 
 		// Track slot containers — name comes from #name / #name[$i] prefix
@@ -958,6 +1040,10 @@ class ProgrammableCodeGen {
 					case UNTIndexed(baseName, ref) if (loopVarSubstitutions.exists(ref)):
 						final currentIndex = loopVarSubstitutions.get(ref);
 						slotEntries.push({key: Indexed(baseName, currentIndex), fieldName: fieldName, hasParams: hp, loopVars: capturedLoopVars});
+					case UNTIndexed2D(baseName, refX, refY) if (loopVarSubstitutions.exists(refX) && loopVarSubstitutions.exists(refY)):
+						final currentX = loopVarSubstitutions.get(refX);
+						final currentY = loopVarSubstitutions.get(refY);
+						slotEntries.push({key: Indexed2D(baseName, currentX, currentY), fieldName: fieldName, hasParams: hp, loopVars: capturedLoopVars});
 					case UNTObject(name) | UNTUpdatable(name):
 						slotEntries.push({key: Named(name), fieldName: fieldName, hasParams: hp, loopVars: capturedLoopVars});
 					default:
@@ -2252,6 +2338,16 @@ class ProgrammableCodeGen {
 					createExprs: [macro $p{["this", fieldName]} = new h2d.Object()],
 					fieldType: macro :h2d.Object,
 					isContainer: parameters == null,
+					exprUpdates: [],
+				};
+
+			case SLOT_CONTENT:
+				return {
+					createExprs: [
+						macro $p{["this", fieldName]} = new bh.multianim.MultiAnimBuilder.SlotContentRoot(),
+					],
+					fieldType: macro :h2d.Object,
+					isContainer: true,
 					exprUpdates: [],
 				};
 
@@ -5424,6 +5520,7 @@ class ProgrammableCodeGen {
 		return switch key {
 			case Named(name): "_slotHandle_" + name;
 			case Indexed(name, index): "_slotHandle_" + name + "_" + index;
+			case Indexed2D(name, indexX, indexY): "_slotHandle_" + name + "_" + indexX + "_" + indexY;
 		};
 	}
 

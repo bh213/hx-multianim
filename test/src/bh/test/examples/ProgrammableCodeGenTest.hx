@@ -3553,4 +3553,237 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		slot0.clear();
 		Assert.isTrue(slot0.isEmpty(), "Should be empty after clear");
 	}
+
+	// --- Test 83: 2D Slot Indexing ---
+
+	@Test
+	public function test83_Slot2dIndex(async:utest.Async):Void {
+		simpleMacroTest(83, "slot2dIndex", () -> createMp().slot2dIndex.create(), async, null, null, 4.0);
+	}
+
+	@Test
+	public function testSlot2dIndexBuilder():Void {
+		final fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/83-slot2dIndex/slot2dIndex.manim"));
+		final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+		final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "slot2dIndex.manim");
+		final result = builder.buildWithParameters("slot2dIndex", new Map());
+
+		// 2D slot access: #cell[$x, $y] with 3x2 grid
+		final slot00 = result.getSlot("cell", 0, 0);
+		Assert.notNull(slot00, "Should have cell slot (0,0)");
+		final slot10 = result.getSlot("cell", 1, 0);
+		Assert.notNull(slot10, "Should have cell slot (1,0)");
+		final slot20 = result.getSlot("cell", 2, 0);
+		Assert.notNull(slot20, "Should have cell slot (2,0)");
+		final slot01 = result.getSlot("cell", 0, 1);
+		Assert.notNull(slot01, "Should have cell slot (0,1)");
+		final slot21 = result.getSlot("cell", 2, 1);
+		Assert.notNull(slot21, "Should have cell slot (2,1)");
+
+		// Mismatch: 2D slot without both indices → throws
+		var threw = false;
+		try { result.getSlot("cell", 0); } catch (e:Dynamic) { threw = true; }
+		Assert.isTrue(threw, "getSlot('cell', 0) without y should throw for 2D slot");
+
+		threw = false;
+		try { result.getSlot("cell"); } catch (e:Dynamic) { threw = true; }
+		Assert.isTrue(threw, "getSlot('cell') without indices should throw for 2D slot");
+
+		// Set/clear content on 2D slot
+		final custom = new h2d.Object();
+		slot00.setContent(custom);
+		Assert.equals(custom, slot00.getContent());
+		slot00.clear();
+		Assert.isNull(slot00.getContent(), "Content cleared");
+	}
+
+	@Test
+	public function testSlot2dIndexCodegen():Void {
+		final instance = createMp().slot2dIndex.create();
+		Assert.notNull(instance, "Codegen instance should be created");
+
+		// Typed 2D accessor
+		final slot00 = instance.getSlot_cell(0, 0);
+		Assert.notNull(slot00, "Codegen should have cell slot (0,0)");
+		final slot21 = instance.getSlot_cell(2, 1);
+		Assert.notNull(slot21, "Codegen should have cell slot (2,1)");
+
+		// Generic dispatcher
+		final slotG = instance.getSlot("cell", 0, 0);
+		Assert.notNull(slotG, "Generic getSlot should work for 2D");
+
+		// Content operations
+		final content = new h2d.Object();
+		slot00.setContent(content);
+		Assert.isTrue(slot00.isOccupied(), "Should be occupied");
+		slot00.clear();
+		Assert.isTrue(slot00.isEmpty(), "Should be empty after clear");
+	}
+
+	// --- Test 84: slotContent Marker ---
+
+	@Test
+	public function test84_SlotContent(async:utest.Async):Void {
+		setupTest(84, "slotContent", "#84: slotContent");
+		VisualTestBase.pendingVisualTests++;
+		async.setTimeout(15000);
+		clearScene();
+
+		// Build via builder
+		var result:Dynamic = buildAndAddToScene("test/examples/84-slotContent/slotContent.manim", "slotContentDemo", 4.0);
+		if (result == null) {
+			Assert.fail("Failed to build slotContentDemo");
+			VisualTestBase.pendingVisualTests--;
+			async.done();
+			return;
+		}
+
+		// Populate slots with content to visually demonstrate slotContent
+		populateSlotContentDemo(result);
+
+		waitForUpdate(function(dt:Float) {
+			var builderPath = 'test/screenshots/${testName}_actual.png';
+			var builderSuccess = screenshot(builderPath, 1280, 720);
+
+			// Phase 2: macro version
+			clearScene();
+			var macroInstance = createMp().slotContentDemo.create();
+			macroInstance.setScale(4.0);
+			s2d.addChild(macroInstance);
+			populateSlotContentCodegen(macroInstance);
+
+			waitForUpdate(function(dt2:Float) {
+				try {
+					var macroPath = 'test/screenshots/${testName}_macro.png';
+					var referencePath = getReferenceImagePath();
+					var threshold = 0.99;
+
+					var macroSuccess = screenshot(macroPath, 1280, 720);
+
+					var builderSimilarity = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
+					var builderPassed = builderSuccess ? builderSimilarity > threshold : false;
+					var macroSimilarity = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
+					var macroPassed = macroSuccess ? macroSimilarity > threshold : false;
+
+					HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath,
+						builderPassed && macroPassed, builderSimilarity, null, macroPath,
+						macroSimilarity, macroPassed, threshold, threshold);
+					HtmlReportGenerator.generateReport();
+
+					Assert.isTrue(builderPassed, 'Builder should match reference (similarity: ${Math.round(builderSimilarity * 10000) / 100}%)');
+					Assert.isTrue(macroPassed, 'Macro should match reference (similarity: ${Math.round(macroSimilarity * 10000) / 100}%)');
+				} catch (e:Dynamic) {
+					Assert.fail('Screenshot/compare threw: $e');
+				}
+				VisualTestBase.pendingVisualTests--;
+				async.done();
+			});
+		});
+	}
+
+	static function makeContentCircle(radius:Int, color:Int):h2d.Graphics {
+		var g = new h2d.Graphics();
+		g.beginFill(color);
+		g.drawCircle(radius, radius, radius);
+		g.endFill();
+		return g;
+	}
+
+	static function makeContentRect(w:Int, h:Int, color:Int):h2d.Graphics {
+		var g = new h2d.Graphics();
+		g.beginFill(color);
+		g.drawRect(0, 0, w, h);
+		g.endFill();
+		return g;
+	}
+
+	function populateSlotContentDemo(result:Dynamic):Void {
+		var br:bh.multianim.MultiAnimBuilder.BuilderResult = result;
+		br.getSlot("slotA").setContent(makeContentCircle(4, 0xFFFF88));
+		br.getSlot("slotB").setContent(makeContentRect(10, 8, 0xFF4444));
+		br.getSlot("slotC").setContent(makeContentCircle(5, 0x44FF44));
+		br.getSlot("slotD").setContent(makeContentRect(12, 8, 0x44DDFF));
+	}
+
+	function populateSlotContentCodegen(instance:Dynamic):Void {
+		var slotA:bh.multianim.MultiAnimBuilder.SlotHandle = instance.getSlot_slotA();
+		slotA.setContent(makeContentCircle(4, 0xFFFF88));
+		var slotB:bh.multianim.MultiAnimBuilder.SlotHandle = instance.getSlot_slotB();
+		slotB.setContent(makeContentRect(10, 8, 0xFF4444));
+		var slotC:bh.multianim.MultiAnimBuilder.SlotHandle = instance.getSlot_slotC();
+		slotC.setContent(makeContentCircle(5, 0x44FF44));
+		var slotD:bh.multianim.MultiAnimBuilder.SlotHandle = instance.getSlot_slotD();
+		slotD.setContent(makeContentRect(12, 8, 0x44DDFF));
+	}
+
+	@Test
+	public function testSlotContentBuilder():Void {
+		final fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/84-slotContent/slotContent.manim"));
+		final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+		final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "slotContent.manim");
+		final result = builder.buildWithParameters("slotContentDemo", new Map());
+
+		// Slot with slotContent marker — decoration stays visible
+		final slotA = result.getSlot("slotA");
+		Assert.notNull(slotA, "Should have slotA");
+		final visibleBefore = countVisibleChildren(slotA.container);
+		Assert.isTrue(visibleBefore > 0, "Default decoration should be visible");
+
+		final custom = new h2d.Object();
+		slotA.setContent(custom);
+		Assert.equals(custom, slotA.getContent());
+		final visibleAfter = countVisibleChildren(slotA.container);
+		Assert.isTrue(visibleAfter >= visibleBefore, "Decoration should remain visible after setContent with slotContent");
+
+		slotA.clear();
+		Assert.isNull(slotA.getContent(), "Content cleared");
+		Assert.isTrue(countVisibleChildren(slotA.container) >= visibleBefore, "Decoration still visible after clear");
+
+		// slotB: content placed before semi-transparent overlay
+		final slotB = result.getSlot("slotB");
+		Assert.notNull(slotB, "Should have slotB");
+
+		// slotC: misaligned decorations with content between them
+		final slotC = result.getSlot("slotC");
+		Assert.notNull(slotC, "Should have slotC");
+
+		// slotD: border + bar decoration
+		final slotD = result.getSlot("slotD");
+		Assert.notNull(slotD, "Should have slotD");
+
+		// Plain slot (without slotContent) — should hide defaults on setContent
+		final plain = result.getSlot("plain");
+		Assert.notNull(plain, "Should have plain slot");
+		final plainVisibleBefore = countVisibleChildren(plain.container);
+		Assert.isTrue(plainVisibleBefore > 0, "Plain defaults visible");
+
+		plain.setContent(new h2d.Object());
+		final firstDefault = plain.container.getChildAt(0);
+		Assert.isFalse(firstDefault.visible, "Plain defaults hidden after setContent");
+
+		plain.clear();
+		Assert.isTrue(countVisibleChildren(plain.container) == plainVisibleBefore, "Plain defaults visible after clear");
+	}
+
+	@Test
+	public function testSlotContentCodegen():Void {
+		final instance = createMp().slotContentDemo.create();
+		Assert.notNull(instance, "Codegen instance should be created");
+
+		// Typed accessor
+		final slotA:bh.multianim.MultiAnimBuilder.SlotHandle = instance.getSlot_slotA();
+		Assert.notNull(slotA, "Codegen should have slotA");
+
+		// Decoration visible, set content, decoration still visible
+		final visibleBefore = countVisibleChildren(slotA.container);
+		Assert.isTrue(visibleBefore > 0, "Decoration visible");
+
+		final custom = new h2d.Object();
+		slotA.setContent(custom);
+		Assert.equals(custom, slotA.getContent());
+		Assert.isTrue(countVisibleChildren(slotA.container) >= visibleBefore, "Decoration remains visible");
+
+		slotA.clear();
+		Assert.isNull(slotA.getContent());
+	}
 }

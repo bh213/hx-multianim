@@ -241,4 +241,10 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/82-layoutMultiChild/layoutMultiChild.manim", "layoutMultiChild")
 	public var layoutMultiChild;
+
+	@:manim("test/examples/83-slot2dIndex/slot2dIndex.manim", "slot2dIndex")
+	public var slot2dIndex;
+
+	@:manim("test/examples/84-slotContent/slotContent.manim", "slotContentDemo")
+	public var slotContentDemo;
 }
