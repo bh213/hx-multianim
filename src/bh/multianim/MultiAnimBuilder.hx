@@ -872,7 +872,8 @@ class MultiAnimBuilder {
 			case RVArray(refArray): throw 'RVArray not supported' + currentNodePos();
 			case RVArrayReference(refArray): throw 'RVArrayReference not supported' + currentNodePos();
 			case RVInteger(i): return i;
-			case RVFloat(_) | RVString(_): throw '${v} should be an integer' + currentNodePos();
+			case RVFloat(f): return Std.int(f);
+			case RVString(s): return stringToInt(s);
 			case RVColorXY(_, _, _) | RVColor(_, _): resolveAsColorInteger(v);
 			case RVReference(ref):
 				if (!indexedParams.exists(ref)) {
@@ -932,7 +933,10 @@ class MultiAnimBuilder {
 			case RVArrayReference(refArray): throw 'RVArrayReference not supported' + currentNodePos();
 			case RVInteger(i): i;
 			case RVFloat(f): f;
-			case RVString(_): throw 'should be an integer or float' + currentNodePos();
+			case RVString(s):
+				final f = Std.parseFloat(s);
+				if (Math.isNaN(f)) throw 'expected number, got ${s}' + currentNodePos();
+				f;
 			case RVColorXY(_, _, _) | RVColor(_, _): throw 'reference is a color but needs to be float' + currentNodePos();
 			case RVReference(ref):
 				if (!indexedParams.exists(ref))
@@ -1034,7 +1038,16 @@ class MultiAnimBuilder {
 					case ExpressionAlias(expr): return resolveAsString(expr);
 					default: throw 'invalid reference value ${ref}, expected string got ${val}' + currentNodePos();
 				}
-			case RVParenthesis(e): return resolveAsString(e);
+			case RVParenthesis(e):
+				// Parenthesized expressions (from ${...} interpolation) should evaluate
+				// arithmetically first, then convert to string. This ensures ${value + 10}
+				// produces "87" not "7710".
+				try {
+					final n = resolveAsNumber(e);
+					return n == Math.ffloor(n) ? Std.string(Std.int(n)) : Std.string(n);
+				} catch (_:Dynamic) {
+					return resolveAsString(e);
+				}
 			case RVFunction(functionType): '${resolveAsInteger(v)}';
 			case RVCallbacks(name, defaultValue):
 				final input = Name(resolveAsString(name));
@@ -1048,6 +1061,8 @@ class MultiAnimBuilder {
 			case EBinop(op, e1, e2): switch op {
 					case OpAdd:
 						return resolveAsString(e1) + resolveAsString(e2);
+					case OpMul, OpSub, OpDiv, OpMod, OpIntegerDiv:
+						return '${resolveAsInteger(v)}';
 					case OpEq:
 						return resolveAsString(e1) == resolveAsString(e2) ? "1" : "0";
 					case OpNotEq:
@@ -1060,7 +1075,6 @@ class MultiAnimBuilder {
 						return resolveAsString(e1) <= resolveAsString(e2) ? "1" : "0";
 					case OpGreaterEq:
 						return resolveAsString(e1) >= resolveAsString(e2) ? "1" : "0";
-					default: throw 'op ${op} not supported on strings' + currentNodePos();
 				}
 			case RVTernary(condition, ifTrue, ifFalse):
 				return if (resolveAsBool(condition)) resolveAsString(ifTrue) else resolveAsString(ifFalse);
@@ -2645,15 +2659,40 @@ class MultiAnimBuilder {
 						repeatCount = tileSourceIterator.length;
 				}
 
+				// Collect param refs for incremental tracking of param-dependent repeat counts
+				final repeatParamRefs:Array<String> = [];
+				switch repeatType {
+					case StepIterator(dirX, dirY, repeats):
+						collectParamRefs(repeats, repeatParamRefs);
+						if (dirX != null) collectParamRefs(dirX, repeatParamRefs);
+						if (dirY != null) collectParamRefs(dirY, repeatParamRefs);
+					case RangeIterator(start, end, step):
+						collectParamRefs(start, repeatParamRefs);
+						collectParamRefs(end, repeatParamRefs);
+						collectParamRefs(step, repeatParamRefs);
+					default:
+				}
+				final hasIncrementalRepeat = incrementalMode && incrementalContext != null && repeatParamRefs.length > 0;
+
 				// Only create a wrapper when children need relative positioning (non-zero step offsets or layout iterator).
 				// Otherwise build directly into parent — this lets h2d.Flow see individual children.
-				final needsWrapper = (dx != 0 || dy != 0 || iterator != null);
+				// Also force wrapper for param-dependent repeats in incremental mode (need container for removeChildren).
+				final needsWrapper = (dx != 0 || dy != 0 || iterator != null || hasIncrementalRepeat);
 				var object = needsWrapper ? new h2d.Object() : null;
 				final buildTarget = needsWrapper ? object : current;
 				final ownPos = needsWrapper ? null : calculatePosition(node.pos, MultiAnimParser.getGridCoordinateSystem(node), MultiAnimParser.getHexCoordinateSystem(node));
 
 				if (indexedParams.exists(node.updatableName.getNameString()))
 					throw 'cannot use repeatable index param "$varName" as it is already defined' + MacroUtils.nodePos(node);
+
+				// Disable incremental tracking for children of param-dependent repeats
+				// (they will be fully rebuilt when the tracked params change)
+				final savedIncrementalMode = incrementalMode;
+				final savedIncrementalCtx = incrementalContext;
+				if (hasIncrementalRepeat) {
+					incrementalMode = false;
+				}
+
 				for (count in 0...repeatCount) {
 					final resolvedIndex = switch repeatType {
 						case RangeIterator(_, _, _): rangeStart + count * rangeStep;
@@ -2703,6 +2742,58 @@ class MultiAnimBuilder {
 						if (tilenameVarName != null) indexedParams.remove(tilenameVarName);
 					case _:
 				}
+
+				// Restore incremental mode and register structural rebuild
+				if (hasIncrementalRepeat) {
+					incrementalMode = savedIncrementalMode;
+					final capturedNode = node;
+					final capturedObject = object;
+					final capturedVarName = varName;
+					final capturedRepeatType = repeatType;
+					final capturedBP = builderParams;
+					savedIncrementalCtx.trackExpression(() -> {
+						var newDx = 0;
+						var newDy = 0;
+						var newCount = 0;
+						var newRangeStart = 0;
+						var newRangeStep = 1;
+						switch capturedRepeatType {
+							case StepIterator(dirX, dirY, repeats):
+								newCount = resolveAsInteger(repeats);
+								newDx = dirX == null ? 0 : resolveAsInteger(dirX);
+								newDy = dirY == null ? 0 : resolveAsInteger(dirY);
+							case RangeIterator(start, end, step):
+								newRangeStart = resolveAsInteger(start);
+								final rangeEnd = resolveAsInteger(end);
+								newRangeStep = resolveAsInteger(step);
+								newCount = Math.ceil((rangeEnd - newRangeStart) / newRangeStep);
+							default:
+						}
+						capturedObject.removeChildren();
+						final gcs = MultiAnimParser.getGridCoordinateSystem(capturedNode);
+						final hcs = MultiAnimParser.getHexCoordinateSystem(capturedNode);
+						final ir:InternalBuilderResults = {names: [], interactives: [], slots: [], dynamicRefs: new Map()};
+						for (count in 0...newCount) {
+							final resolvedIndex = switch capturedRepeatType {
+								case RangeIterator(_, _, _): newRangeStart + count * newRangeStep;
+								case _: count;
+							};
+							indexedParams.set(capturedVarName, Value(resolvedIndex));
+							final resolvedChildren = resolveConditionalChildren(capturedNode.children);
+							for (childNode in resolvedChildren) {
+								var obj = build(childNode, ObjectMode(capturedObject), gcs, hcs, ir, capturedBP);
+								if (obj == null)
+									continue;
+								if (newDx != 0 || newDy != 0) {
+									addPosition(obj, newDx * count, newDy * count);
+								}
+							}
+							cleanupFinalVars(resolvedChildren, indexedParams);
+						}
+						indexedParams.remove(capturedVarName);
+					}, repeatParamRefs);
+				}
+
 				skipChildren = true;
 				if (needsWrapper) {
 					HeapsObject(object);

@@ -996,6 +996,173 @@ class ParserErrorTest extends utest.Test {
 		Assert.isTrue(success, "Interpolated string used with + concatenation should parse");
 	}
 
+	// ===== Bare identifier interpolation (${name} shorthand for ${$name}) =====
+	// Note: Haxe double-quoted strings "" have NO interpolation, single-quoted '' do
+
+	@Test
+	public function testInterpolationBareIdentifier() {
+		var success = parseExpectingSuccess("
+			#test programmable(name:string=\"hi\") {
+				text(dd, '${name}', #ffffffff): 0, 0
+			}
+		");
+		Assert.isTrue(success, "Bare identifier in interpolation should be treated as reference");
+	}
+
+	@Test
+	public function testInterpolationBareIdentifierWithPrefix() {
+		var success = parseExpectingSuccess("
+			#test programmable(name:string=\"hi\") {
+				text(dd, 'hello ${name}', #ffffffff): 0, 0
+			}
+		");
+		Assert.isTrue(success, "Bare identifier with prefix text should parse");
+	}
+
+	@Test
+	public function testInterpolationBareArithmetic() {
+		var success = parseExpectingSuccess("
+			#test programmable(x:uint=5) {
+				text(dd, 'val=${x * 2}', #ffffffff): 0, 0
+			}
+		");
+		Assert.isTrue(success, "Bare identifier with arithmetic should parse");
+	}
+
+	@Test
+	public function testInterpolationBareMultipleVars() {
+		var success = parseExpectingSuccess("
+			#test programmable(a:uint=1, b:uint=2) {
+				text(dd, '${a} and ${b}', #ffffffff): 0, 0
+			}
+		");
+		Assert.isTrue(success, "Multiple bare identifiers in interpolation should parse");
+	}
+
+	@Test
+	public function testInterpolationBareExpression() {
+		var success = parseExpectingSuccess("
+			#test programmable(a:uint=1, b:uint=2) {
+				text(dd, '${a + b}', #ffffffff): 0, 0
+			}
+		");
+		Assert.isTrue(success, "Bare identifier expression in interpolation should parse");
+	}
+
+	@Test
+	public function testInterpolationDivOperator() {
+		var success = parseExpectingSuccess("
+			#test programmable(value:uint=100) {
+				text(dd, '${value div 10}', #ffffffff): 0, 0
+			}
+		");
+		Assert.isTrue(success, "div operator inside string interpolation should parse");
+	}
+
+	@Test
+	public function testInterpolationArithmeticAdd() {
+		var success = parseExpectingSuccess("
+			#test programmable(value:uint=77) {
+				text(dd, '${value + 10}', #ffffffff): 0, 0
+			}
+		");
+		Assert.isTrue(success, "Addition inside string interpolation should parse");
+	}
+
+	@Test
+	public function testInterpolationWithSuffixText() {
+		var success = parseExpectingSuccess("
+			#test programmable(x:uint=5) {
+				text(dd, 'prefix ${x + 1} suffix', #ffffffff): 0, 0
+			}
+		");
+		Assert.isTrue(success, "Multi-token interpolation with prefix and suffix text should parse");
+	}
+
+	@Test
+	public function testInterpolationErrorPositionNotLine1() {
+		// Error inside interpolation should report the actual line, not line 1
+		var error = parseExpectingError("
+			#test programmable(x:uint=5) {
+				bitmap(generated(color(10, 10, #ff0000))): 0, 0
+				bitmap(generated(color(10, 10, #00ff00))): 0, 20
+				text(dd, 'value: ${$oops}', #ffffffff): 0, 40
+			}
+		");
+		Assert.notNull(error, "Should throw error for undefined variable in interpolation");
+		// The error should NOT report line 1 (sub-lexer default) — it should report the actual line
+		Assert.isFalse(error.indexOf("test-input:1:") >= 0,
+			'Error position should not be line 1 (sub-lexer default), got: $error');
+	}
+
+	@Test
+	public function testInterpolationBareMixedWithDollar() {
+		var success = parseExpectingSuccess("
+			#test programmable(a:uint=1, b:uint=2) {
+				text(dd, '${a} and ${$b}', #ffffffff): 0, 0
+			}
+		");
+		Assert.isTrue(success, "Mixing bare and dollar-prefixed refs should parse");
+	}
+
+	@Test
+	public function testInterpolationBareWithDoubleQuotedString() {
+		var success = parseExpectingSuccess("
+			#test programmable(x:uint=5) {
+				text(dd, 'prefix ${x + \"items\"}', #ffffffff): 0, 0
+			}
+		");
+		Assert.isTrue(success, "Bare identifier with double-quoted string concat should parse");
+	}
+
+	@Test
+	public function testInterpolationBareInRepeatable() {
+		var success = parseExpectingSuccess("
+			#test programmable(count:uint=3) {
+				repeatable($i, step($count, dx: 20)) {
+					text(dd, 'item ${i}', #ffffffff): 0, 0
+				}
+			}
+		");
+		Assert.isTrue(success, "Bare loop variable in interpolation should parse");
+	}
+
+	@Test
+	public function testInterpolationBareInRepeatable2d() {
+		var success = parseExpectingSuccess("
+			#test programmable(cols:uint=3, rows:uint=2) {
+				repeatable2d($cx, $cy, step($cols, dx: 30), step($rows, dy: 20)) {
+					text(dd, '${cx}x${cy}', #ffffffff): 0, 0
+				}
+			}
+		");
+		Assert.isTrue(success, "Bare loop variables in repeatable2d interpolation should parse");
+	}
+
+	@Test
+	public function testInterpolationBareUndefinedVar() {
+		var error = parseExpectingError("
+			#test programmable(x:uint=5) {
+				text(dd, '${oops}', #ffffffff): 0, 0
+			}
+		");
+		Assert.notNull(error, "Bare undefined variable in interpolation should throw error");
+		Assert.isTrue(error.indexOf("unknown variable") >= 0,
+			'Error should mention unknown variable, got: $error');
+		Assert.isTrue(error.indexOf("oops") >= 0,
+			'Error should name the bad variable, got: $error');
+	}
+
+	@Test
+	public function testInterpolationBareCallbackPreserved() {
+		var success = parseExpectingSuccess("
+			#test programmable(x:uint=5) {
+				text(dd, '${callback(\"test\")}', #ffffffff): 0, 0
+			}
+		");
+		Assert.isTrue(success, "callback keyword inside interpolation should be preserved");
+	}
+
 	// ===== String interpolation error tests =====
 
 	@Test

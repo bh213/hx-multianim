@@ -230,7 +230,7 @@ private class MacroLexer {
 			if (c == "'".code) {
 				pos++;
 				var buf = new StringBuf();
-				var parts:Array<{isCode:Bool, text:String}> = [];
+				var parts:Array<{isCode:Bool, text:String, codeLine:Int, codeCol:Int}> = [];
 				var hasInterpolation = false;
 				var closed = false;
 				while (pos < len) {
@@ -252,7 +252,7 @@ private class MacroLexer {
 					// Check for ${...} interpolation
 					if (sc == '$'.code && pos + 1 < len && src.charCodeAt(pos + 1) == '{'.code) {
 						hasInterpolation = true;
-						parts.push({isCode: false, text: buf.toString()});
+						parts.push({isCode: false, text: buf.toString(), codeLine: 0, codeCol: 0});
 						buf = new StringBuf();
 						final interpLine = line;
 						final interpCol = pos - lineStart + 1;
@@ -277,7 +277,7 @@ private class MacroLexer {
 						if (StringTools.trim(codeText).length == 0) {
 							throw '$sourceName:$interpLine:$interpCol: Empty expression in string interpolation';
 						}
-						parts.push({isCode: true, text: codeText});
+						parts.push({isCode: true, text: codeText, codeLine: interpLine, codeCol: interpCol});
 						if (pos < len) pos++; // skip }
 						continue;
 					}
@@ -295,7 +295,7 @@ private class MacroLexer {
 
 				// Has interpolation — emit tokens for: "prefix" + expr + "suffix" + ...
 				final remaining = buf.toString();
-				if (remaining.length > 0) parts.push({isCode: false, text: remaining});
+				if (remaining.length > 0) parts.push({isCode: false, text: remaining, codeLine: 0, codeCol: 0});
 
 				// Build token list: parts joined with + operators, code parts re-lexed
 				var filtered:Array<Token> = [];
@@ -310,6 +310,20 @@ private class MacroLexer {
 							codeTokens.push(st);
 						}
 						if (codeTokens.length == 0) continue; // skip empty code
+						// Adjust token positions to the interpolation start in the original source
+						for (ct in codeTokens) {
+							ct.line = part.codeLine;
+							ct.col = part.codeCol + ct.col;
+						}
+						// Inside ${...}, bare identifiers are parameter references
+						// (allow ${test} as shorthand for ${$test})
+						for (i in 0...codeTokens.length) {
+							switch (codeTokens[i].type) {
+								case TIdentifier(s) if (!isInterpolationKeyword(s)):
+									codeTokens[i] = new Token(TReference(s), codeTokens[i].line, codeTokens[i].col);
+								default:
+							}
+						}
 						// Insert + before this part if there are preceding tokens
 						if (filtered.length > 0) filtered.push(new Token(TPlus, startLine, startCol));
 						// Wrap multi-token expressions in parentheses for correct precedence
@@ -381,6 +395,15 @@ private class MacroLexer {
 
 	public function posString():String {
 		return '$sourceName:$line';
+	}
+
+	static final interpolationKeywords = ["callback", "function", "div", "true", "false", "yes", "no"];
+
+	static function isInterpolationKeyword(s:String):Bool {
+		final lower = s.toLowerCase();
+		for (kw in interpolationKeywords)
+			if (lower == kw) return true;
+		return false;
 	}
 }
 
@@ -737,9 +760,9 @@ class MacroManimParser {
 				return parseNextStringExpression(RVReference(s));
 			case TOpen:
 				advance();
-				final e = parseStringOrReference();
+				final e = parseAnything();
 				expect(TClosed);
-				return RVParenthesis(e);
+				return parseNextStringExpression(RVParenthesis(e));
 			default:
 				return error('expected string or reference, got ${peek()}');
 		}
@@ -752,6 +775,7 @@ class MacroManimParser {
 			case TStar: advance(); return binop(e1, OpMul, parseStringOrReference());
 			case TSlash: advance(); return binop(e1, OpDiv, parseStringOrReference());
 			case TPercent: advance(); return binop(e1, OpMod, parseStringOrReference());
+			case TIdentifier(s) if (isKeyword(s, "div")): advance(); return binop(e1, OpIntegerDiv, parseStringOrReference());
 			case TDoubleEquals: advance(); return binop(e1, OpEq, parseStringOrReference());
 			case TNotEquals: advance(); return binop(e1, OpNotEq, parseStringOrReference());
 			case TLessThan: advance(); return binop(e1, OpLess, parseStringOrReference());
