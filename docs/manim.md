@@ -1839,12 +1839,25 @@ Components are typically created either:
 | `status` | combo: `normal`, `hover`, `pressed` | Interaction state |
 | `disabled` | combo: `true`, `false` | Disabled state |
 
+**Optional `.manim` parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `width` | uint | `200` | Button width (ninepatch + text centering) |
+| `height` | uint | `30` | Button height (ninepatch) |
+| `font` | string | `"dd"` | Font name for button text |
+| `fontColor` | int | `0xffffff12` | Text color (ARGB) |
+
 **UIScreenBase settings:**
 
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
 | `buildName` | string | `"button"` | Programmable name |
 | `text` | string | method param | Button text override |
+| `width` | int | `200` | Button width override |
+| `height` | int | `30` | Button height override |
+| `font` | string | `"dd"` | Font name override |
+| `fontColor` | int | `0xffffff12` | Text color override |
 
 **Events:** `UIClick`
 
@@ -1852,9 +1865,19 @@ Components are typically created either:
 // Direct
 var btn = UIStandardMultiAnimButton.create(builder, "button", "Click Me");
 
+// With extra parameters (width, height, font, fontColor)
+var btn = UIStandardMultiAnimButton.create(builder, "button", "Click Me", ["width" => 300, "font" => "m6x11"]);
+
 // Via UIScreenBase (with macro settings injection)
 var btn = addButtonWithSingleBuilder(builder, "button", "Click Me");
 var btn = addButton(builder.createElementBuilder("button"), "Click Me", settings);
+```
+
+**`.manim` settings override example (in parent placeholder):**
+```manim
+placeholder(generated(cross(300, 40, white)), builderParameter("myBtn")) {
+    settings{text=>"Wide Button", width:int=>300, height:int=>40, font=>"m6x11", fontColor:int=>0xff7f50ff}
+}
 ```
 
 ### Checkbox
