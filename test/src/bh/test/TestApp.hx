@@ -42,6 +42,7 @@ class TestApp extends hxd.App {
 
 		testRunner.addCase(new bh.test.examples.ParserErrorTest());
 		testRunner.addCase(new bh.test.examples.AnimParserTest());
+		testRunner.addCase(new bh.test.examples.BuilderUnitTest());
 		testRunner.addCase(new bh.test.examples.ProgrammableCodeGenTest(s2d));
 
 		// Capture unit test results in memory for HTML report

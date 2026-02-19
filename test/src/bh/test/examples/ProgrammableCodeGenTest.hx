@@ -2404,73 +2404,30 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		}
 	}
 
-	// ==================== Helpers ====================
+	// ==================== Helpers (delegated to BuilderTestBase) ====================
 
 	static function countVisibleChildren(obj:h2d.Object):Int {
-		var count = 0;
-		for (i in 0...obj.numChildren) {
-			if (obj.getChildAt(i).visible)
-				count++;
-		}
-		return count;
+		return bh.test.BuilderTestBase.countVisibleChildren(obj);
 	}
 
 	static function findTextChild(obj:h2d.Object):Null<h2d.Text> {
-		for (i in 0...obj.numChildren) {
-			final child = obj.getChildAt(i);
-			if (Std.isOfType(child, h2d.Text)) {
-				final t:h2d.Text = cast child;
-				if (t.visible)
-					return t;
-			}
-		}
-		return null;
+		return bh.test.BuilderTestBase.findTextChild(obj);
 	}
 
 	static function findAllTextDescendants(obj:h2d.Object):Array<h2d.Text> {
-		var result:Array<h2d.Text> = [];
-		for (i in 0...obj.numChildren) {
-			final child = obj.getChildAt(i);
-			if (Std.isOfType(child, h2d.Text))
-				result.push(cast child);
-			for (t in findAllTextDescendants(child))
-				result.push(t);
-		}
-		return result;
+		return bh.test.BuilderTestBase.findAllTextDescendants(obj);
 	}
 
 	static function findVisibleBitmapDescendants(obj:h2d.Object):Array<h2d.Bitmap> {
-		var result:Array<h2d.Bitmap> = [];
-		for (i in 0...obj.numChildren) {
-			final child = obj.getChildAt(i);
-			if (child.visible) {
-				if (Std.isOfType(child, h2d.Bitmap))
-					result.push(cast child);
-				for (b in findVisibleBitmapDescendants(child))
-					result.push(b);
-			}
-		}
-		return result;
+		return bh.test.BuilderTestBase.findVisibleBitmapDescendants(obj);
 	}
 
 	static function countAllDescendants(obj:h2d.Object):Int {
-		var count = obj.numChildren;
-		for (i in 0...obj.numChildren) {
-			count += countAllDescendants(obj.getChildAt(i));
-		}
-		return count;
+		return bh.test.BuilderTestBase.countAllDescendants(obj);
 	}
 
 	static function countVisibleDescendants(obj:h2d.Object):Int {
-		var count = 0;
-		for (i in 0...obj.numChildren) {
-			final child = obj.getChildAt(i);
-			if (child.visible) {
-				count++;
-				count += countVisibleDescendants(child);
-			}
-		}
-		return count;
+		return bh.test.BuilderTestBase.countVisibleDescendants(obj);
 	}
 
 	// ==================== Performance test: macro vs builder ====================
