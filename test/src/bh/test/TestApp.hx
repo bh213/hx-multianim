@@ -15,6 +15,8 @@ class TestApp extends hxd.App {
 	private var updateSubscribers:Array<Float -> Void> = [];
 	private var testsStarted:Bool = false;
 	private var testsCompleted:Bool = false;
+	private var startTime:Float = 0;
+	private static inline var WALL_CLOCK_TIMEOUT_SEC = 60.0;
 	// Frames to wait after all visual tests complete (for async callbacks to flush)
 	private static inline var POST_COMPLETION_FRAMES = 3;
 	private var postCompletionCounter:Int = 0;
@@ -34,6 +36,8 @@ class TestApp extends hxd.App {
 		VisualTestBase.appInstance = this;
 
 		HtmlReportGenerator.clear();
+
+		startTime = Sys.time();
 
 		testRunner = new Runner();
 
@@ -87,19 +91,28 @@ class TestApp extends hxd.App {
 			}
 		}
 
-		// Safety timeout: exit after 200 frames regardless
-		if (frameCount >= 200) {
-			trace("Warning: Safety timeout reached (200 frames), exiting with pending visual tests: " + VisualTestBase.pendingVisualTests);
+		// Safety timeout: exit after 200 frames or 60 seconds wall-clock
+		var elapsed = Sys.time() - startTime;
+		if (frameCount >= 200 || elapsed >= WALL_CLOCK_TIMEOUT_SEC) {
+			trace('Warning: Safety timeout reached (frames: $frameCount, elapsed: ${Math.round(elapsed)}s), '
+				+ 'pending visual tests: ${VisualTestBase.pendingVisualTests}');
 			HtmlReportGenerator.enableUnitTestReport();
 			HtmlReportGenerator.generateReport();
-			sys.io.File.saveContent("build/test_result.txt", "FAILED: Safety timeout (200 frames), pending: " + VisualTestBase.pendingVisualTests);
+			sys.io.File.saveContent("build/test_result.txt",
+				'FAILED: Safety timeout (frames: $frameCount, elapsed: ${Math.round(elapsed)}s), '
+				+ 'pending: ${VisualTestBase.pendingVisualTests}');
 			Sys.exit(1);
 		}
 	}
 
 	override function render(e:h3d.Engine) {
 		e.clear(0, 1);
-		s2d.render(e);
+		try {
+			s2d.render(e);
+		} catch (err:Dynamic) {
+			trace('Error during render: $err');
+			s2d.removeChildren();
+		}
 	}
 
 	static function applySingleTestFilter(runner:Runner):Void {

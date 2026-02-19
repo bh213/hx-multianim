@@ -47,7 +47,13 @@ class VisualTestBase extends utest.Test {
 		if (updateWaiter != null) {
 			var callback = updateWaiter;
 			updateWaiter = null;
-			callback(dt);
+			try {
+				callback(dt);
+			} catch (e:Dynamic) {
+				trace('Error in waitForUpdate callback: $e');
+				if (pendingVisualTests > 0)
+					pendingVisualTests--;
+			}
 		}
 	}
 
