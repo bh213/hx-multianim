@@ -1,5 +1,47 @@
 # Changelog
 
+## [0.13-dev] - 2026-02-19
+
+### Added
+- **Parameterized slots** — `#name slot(param:type=default, ...)` for visual state management
+  - Supports all parameter types: `uint`, `int`, `float`, `bool`, `string`, `color`, enum, range, flags
+  - Conditionals (`@()`, `@else`, `@default`) and expressions (`$param`) work inside slot body
+  - `SlotHandle.setParameter("name", value)` updates visuals via `IncrementalUpdateContext`
+  - Content goes into separate `contentRoot` (decoration always visible, not hidden by `setContent`)
+  - Codegen: warning emitted, `setParameter()` not supported (use runtime builder)
+- **Enhanced SlotHandle API** — `isEmpty()`, `isOccupied()`, `data` field for arbitrary payload storage
+- **UIElement double-click support** — `UIDoubleClick` event and double-click detection in UI elements
+- **Progress bar component** — `UIMultiAnimProgressBar` display-only component
+  - Uses full rebuild (not incremental) because `bitmap(generated(color(...)))` is not tracked
+  - Screen helper: `addProgressBar(builder, settings, initialValue)`
+- **Direct `$var` in text** — text elements can now use parameter references directly (e.g. `$w`)
+- **Dropdown with scroll** — dropdown panel now supports scrollable content for long lists, moves panel to different layer
+- **Slider custom float range** — `min`, `max`, `step` settings for sliders
+  - Implements both `UIElementNumberValue` (int) and `UIElementFloatValue` (float)
+  - Incremental mode for efficient redraws
+  - Emits both `UIChangeValue(Int)` and `UIChangeFloatValue(Float)`
+- **Draggable slot integration** — `UIMultiAnimDraggable` enhancements
+  - `addDropZonesFromSlots("baseName", builderResult, ?accepts)` for batch drop zone creation
+  - `createFromSlot(slot)` creates draggable from slot content, tracks `sourceSlot`
+  - `swapMode` swaps contents when dropping onto an occupied slot
+  - Zone highlight callbacks: `onDragStartHighlightZones`, `onDragEndHighlightZones`
+  - Per-zone: `DropZone.onZoneHighlight` callback for hover state
+- **Scrollable list scrollbar** — built with incremental mode, scroll events use `setParameter("scrollPosition", ...)` instead of full rebuild
+- **Parser error tests** — `ParserErrorTest.hx` for comprehensive parser error validation
+
+### Fixed
+- **`${...}` expression parsing** — parser now correctly handles `${...}` expressions in `.manim` files
+- **Static/dynamic ref inheritance** — fixed scope and inheritance issues between staticRef/dynamicRef
+- **Button bug in `resolveExtraInput`** — fixed crash in button event resolution
+- **`generated(cross())` rendering** — corrected cross generation in multiple files
+- **Expression priority** — fixed operator precedence in conditional expressions
+
+### Changed
+- **Slot storage refactored** — changed from `Map<String, SlotHandle>` to array-based `SlotKey` storage supporting `Named(name)` and `Indexed(name, index)` keys
+- **Removed `PVObject` support for UI elements** — removed error-prone `PVObject` path; `PVFactory` is now the only supported approach for UI element parameters in `macroBuildWithParameters`
+- **Animated path improvements** — better path normalization, enhanced speed/duration/easing support
+- **Playground removed from repository** — moved to separate `../hx-multianim-playground` repository
+
 ## [0.12] - 2026-02-16
 
 ### Changed
