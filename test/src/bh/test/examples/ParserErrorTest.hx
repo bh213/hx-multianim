@@ -1577,4 +1577,228 @@ class ParserErrorTest extends utest.Test {
 		');
 		Assert.isTrue(success, "Multiple tile parameters should parse successfully");
 	}
+
+	// ===== Coordinate system & property access syntax tests =====
+
+	@Test
+	public function testCtxReservedAsParameterName() {
+		var error = parseExpectingError('
+			#test programmable(ctx:uint=0) {
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		');
+		Assert.notNull(error, "Should throw error for ctx as parameter name");
+	}
+
+	@Test
+	public function testGridPosParseSuccess() {
+		var success = parseExpectingSuccess('
+			#test programmable(n:uint=0) {
+				grid: 20, 20
+				bitmap(generated(color(10, 10, #f00))): $$grid.pos($$n, 0)
+			}
+		');
+		Assert.isTrue(success, "grid.pos() coordinate should parse");
+	}
+
+	@Test
+	public function testGridPosWithOffsetParseSuccess() {
+		var success = parseExpectingSuccess('
+			#test programmable(n:uint=0) {
+				grid: 20, 20
+				bitmap(generated(color(10, 10, #f00))): $$grid.pos($$n, 0, 5, 3)
+			}
+		');
+		Assert.isTrue(success, "grid.pos() with offset should parse");
+	}
+
+	@Test
+	public function testGridPropertyWidthParseSuccess() {
+		var success = parseExpectingSuccess('
+			#test programmable(n:uint=0) {
+				grid: 20, 15
+				bitmap(generated(color($$grid.width, $$grid.height, #f00))): 0, 0
+			}
+		');
+		Assert.isTrue(success, "grid.width/height properties should parse");
+	}
+
+	@Test
+	public function testHexCubeParseSuccess() {
+		var success = parseExpectingSuccess('
+			#test programmable(n:uint=0) {
+				hex: pointy(16, 16)
+				bitmap(generated(color(10, 10, #f00))): $$hex.cube(0, 0, 0)
+			}
+		');
+		Assert.isTrue(success, "hex.cube() coordinate should parse");
+	}
+
+	@Test
+	public function testHexCornerParseSuccess() {
+		var success = parseExpectingSuccess('
+			#test programmable(n:uint=0) {
+				hex: pointy(16, 16)
+				bitmap(generated(color(10, 10, #f00))): $$hex.corner($$n, 1.0)
+			}
+		');
+		Assert.isTrue(success, "hex.corner() coordinate should parse");
+	}
+
+	@Test
+	public function testHexEdgeParseSuccess() {
+		var success = parseExpectingSuccess('
+			#test programmable(n:uint=0) {
+				hex: pointy(16, 16)
+				bitmap(generated(color(10, 10, #f00))): $$hex.edge($$n, 0.5)
+			}
+		');
+		Assert.isTrue(success, "hex.edge() coordinate should parse");
+	}
+
+	@Test
+	public function testHexOffsetParseSuccess() {
+		var success = parseExpectingSuccess('
+			#test programmable(n:uint=0) {
+				hex: pointy(16, 16)
+				bitmap(generated(color(10, 10, #f00))): $$hex.offset($$n, 0, even)
+			}
+		');
+		Assert.isTrue(success, "hex.offset() coordinate should parse");
+	}
+
+	@Test
+	public function testHexDoubledParseSuccess() {
+		var success = parseExpectingSuccess('
+			#test programmable(n:uint=0) {
+				hex: pointy(16, 16)
+				bitmap(generated(color(10, 10, #f00))): $$hex.doubled($$n, 0)
+			}
+		');
+		Assert.isTrue(success, "hex.doubled() coordinate should parse");
+	}
+
+	@Test
+	public function testHexPixelParseSuccess() {
+		var success = parseExpectingSuccess('
+			#test programmable(n:uint=0) {
+				hex: pointy(16, 16)
+				bitmap(generated(color(10, 10, #f00))): $$hex.pixel(100, 200)
+			}
+		');
+		Assert.isTrue(success, "hex.pixel() coordinate should parse");
+	}
+
+	@Test
+	public function testHexWidthHeightParseSuccess() {
+		var success = parseExpectingSuccess('
+			#test programmable() {
+				hex: pointy(16, 16)
+				bitmap(generated(color($$hex.width, $$hex.height, #f00))): 0, 0
+			}
+		');
+		Assert.isTrue(success, "hex.width/height properties should parse");
+	}
+
+	@Test
+	public function testNamedGridSystemParseSuccess() {
+		var success = parseExpectingSuccess('
+			#test programmable(n:uint=0) {
+				grid: #small 10, 10
+				grid: #big 40, 40
+				bitmap(generated(color(10, 10, #f00))): $$small.pos($$n, 0)
+				bitmap(generated(color(10, 10, #00f))): $$big.pos($$n, 0)
+			}
+		');
+		Assert.isTrue(success, "Named grid coordinate systems should parse");
+	}
+
+	@Test
+	public function testNamedHexSystemParseSuccess() {
+		var success = parseExpectingSuccess('
+			#test programmable(n:uint=0) {
+				hex: #myHex pointy(16, 16)
+				bitmap(generated(color(10, 10, #f00))): $$myHex.cube(0, 0, 0)
+			}
+		');
+		Assert.isTrue(success, "Named hex coordinate system should parse");
+	}
+
+	@Test
+	public function testMixedNamedSystemsParseSuccess() {
+		var success = parseExpectingSuccess('
+			#test programmable(n:uint=0) {
+				grid: #g 20, 20
+				hex: #h flat(12, 12)
+				bitmap(generated(color(10, 10, #f00))): $$g.pos($$n, 0)
+				bitmap(generated(color(10, 10, #00f))): $$h.cube(0, 0, 0)
+			}
+		');
+		Assert.isTrue(success, "Mixed named grid+hex systems should parse");
+	}
+
+	@Test
+	public function testCoordinateXYExtractionParseSuccess() {
+		var success = parseExpectingSuccess('
+			#test programmable(n:uint=0) {
+				grid: 20, 15
+				bitmap(generated(color($$grid.pos($$n, 0).x, $$grid.pos($$n, 0).y, #f00))): 0, 0
+			}
+		');
+		Assert.isTrue(success, "Coordinate .x/.y extraction should parse");
+	}
+
+	@Test
+	public function testHexCornerXYExtractionParseSuccess() {
+		var success = parseExpectingSuccess('
+			#test programmable(n:uint=0) {
+				hex: pointy(16, 16)
+				bitmap(generated(color($$hex.corner($$n, 1.0).x, $$hex.corner($$n, 1.0).y, #f00))): 0, 0
+			}
+		');
+		Assert.isTrue(success, "Hex corner .x/.y extraction should parse");
+	}
+
+	@Test
+	public function testCtxWidthHeightParseSuccess() {
+		var success = parseExpectingSuccess('
+			#test programmable() {
+				bitmap(generated(color($$ctx.width, $$ctx.height, #f00))): 0, 0
+			}
+		');
+		Assert.isTrue(success, "ctx.width/height properties should parse");
+	}
+
+	@Test
+	public function testCtxRandomParseSuccess() {
+		var success = parseExpectingSuccess('
+			#test programmable() {
+				bitmap(generated(color($$ctx.random(5, 20), 10, #f00))): 0, 0
+			}
+		');
+		Assert.isTrue(success, "ctx.random() method should parse");
+	}
+
+	@Test
+	public function testHexOffsetOddParseSuccess() {
+		var success = parseExpectingSuccess('
+			#test programmable(n:uint=0) {
+				hex: flat(16, 16)
+				bitmap(generated(color(10, 10, #f00))): $$hex.offset($$n, 0, odd)
+			}
+		');
+		Assert.isTrue(success, "hex.offset() with odd parity should parse");
+	}
+
+	@Test
+	public function testGridPosXYInExpressionValue() {
+		// .x/.y extraction used in expression context (bitmap dimensions), not as position
+		var success = parseExpectingSuccess('
+			#test programmable(n:uint=0) {
+				grid: 20, 15
+				bitmap(generated(color($$grid.pos($$n, 0).x + 5, $$grid.pos($$n, 0).y + 3, #f00))): 0, 0
+			}
+		');
+		Assert.isTrue(success, "grid.pos().x/y as expression values should parse");
+	}
 }

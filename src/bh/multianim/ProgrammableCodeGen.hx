@@ -1414,14 +1414,59 @@ class ProgrammableCodeGen {
 			case EUnaryOp(_, e):
 				final inner = resolveRVStatic(e);
 				if (inner != null) -inner else null;
-			case RVFunction(functionType):
-				final grid = getGridFromCurrentNode();
-				if (grid != null) {
-					switch (functionType) {
-						case RVFGridWidth: cast(grid.spacingX, Float);
-						case RVFGridHeight: cast(grid.spacingY, Float);
-					}
-				} else null;
+			case RVPropertyAccess(ref, property):
+				switch (ref) {
+					case "grid" | "ctx.grid":
+						final grid = getGridFromCurrentNode();
+						if (grid != null) {
+							switch (property) {
+								case "width": cast(grid.spacingX, Float);
+								case "height": cast(grid.spacingY, Float);
+								default: null;
+							}
+						} else null;
+					case "hex" | "ctx.hex":
+						final hexLayout = getHexLayoutForNode(currentProcessingNode);
+						if (hexLayout != null) {
+							switch (property) {
+								case "width": hexLayout.size.x;
+								case "height": hexLayout.size.y;
+								default: null;
+							}
+						} else null;
+					default:
+						// Named coordinate systems
+						if (currentProcessingNode != null) {
+							final namedCS = getNamedCoordSystem(ref, currentProcessingNode);
+							if (namedCS != null) {
+								switch (namedCS) {
+									case NamedGrid(system):
+										switch (property) {
+											case "width": cast(system.spacingX, Float);
+											case "height": cast(system.spacingY, Float);
+											default: null;
+										}
+									case NamedHex(system):
+										switch (property) {
+											case "width": system.hexLayout.size.x;
+											case "height": system.hexLayout.size.y;
+											default: null;
+										}
+								}
+							} else null;
+						} else null;
+				}
+			case RVMethodCall(ref, method, args):
+				// $ctx.random() cannot be resolved statically
+				null;
+			case RVChainedMethodCall(base, property, _):
+				if (property != "x" && property != "y") null;
+				else switch (base) {
+					case RVMethodCall(ref, method, args):
+						final pt = resolveMethodCallToStaticPoint(ref, method, args);
+						if (pt != null) (property == "x" ? pt.x : pt.y) else null;
+					default: null;
+				}
 			default: null;
 		};
 	}
@@ -2686,11 +2731,72 @@ class ProgrammableCodeGen {
 				final ox = resolveRVStatic(offsetX);
 				final oy = resolveRVStatic(offsetY);
 				if (grid != null && gx != null && gy != null && ox != null && oy != null) {x: gx * grid.spacingX + ox, y: gy * grid.spacingY + oy} else null;
-			case SELECTED_HEX_POSITION(hex):
+			case SELECTED_HEX_CUBE(q, r, s):
 				final hexLayout = getHexLayoutForNode(node);
 				if (hexLayout != null) {
-					final pt = hexLayout.hexToPixel(hex);
-					{x: pt.x, y: pt.y};
+					final qv = resolveRVStatic(q);
+					final rv2 = resolveRVStatic(r);
+					final sv = resolveRVStatic(s);
+					if (qv != null && rv2 != null && sv != null) {
+						final hex = new bh.base.Hex.FractionalHex(qv, rv2, sv).round();
+						final pt = hexLayout.hexToPixel(hex);
+						{x: pt.x, y: pt.y};
+					} else null;
+				} else null;
+			case SELECTED_HEX_OFFSET(col, row, parity):
+				final hexLayout = getHexLayoutForNode(node);
+				if (hexLayout != null) {
+					final c = resolveRVStatic(col);
+					final r2 = resolveRVStatic(row);
+					if (c != null && r2 != null) {
+						final parityVal = switch (parity) { case EVEN: bh.base.Hex.OffsetCoord.EVEN; case ODD: bh.base.Hex.OffsetCoord.ODD; };
+						final hex = switch (hexLayout.orientation) {
+							case POINTY: bh.base.Hex.OffsetCoord.qoffsetToCube(parityVal, new bh.base.Hex.OffsetCoord(Std.int(c), Std.int(r2)));
+							case FLAT: bh.base.Hex.OffsetCoord.roffsetToCube(parityVal, new bh.base.Hex.OffsetCoord(Std.int(c), Std.int(r2)));
+						};
+						final pt = hexLayout.hexToPixel(hex);
+						{x: pt.x, y: pt.y};
+					} else null;
+				} else null;
+			case SELECTED_HEX_DOUBLED(col2, row2):
+				final hexLayout = getHexLayoutForNode(node);
+				if (hexLayout != null) {
+					final c = resolveRVStatic(col2);
+					final r2 = resolveRVStatic(row2);
+					if (c != null && r2 != null) {
+						final hex = switch (hexLayout.orientation) {
+							case POINTY: bh.base.Hex.DoubledCoord.qdoubledToCube(new bh.base.Hex.DoubledCoord(Std.int(c), Std.int(r2)));
+							case FLAT: bh.base.Hex.DoubledCoord.rdoubledToCube(new bh.base.Hex.DoubledCoord(Std.int(c), Std.int(r2)));
+						};
+						final pt = hexLayout.hexToPixel(hex);
+						{x: pt.x, y: pt.y};
+					} else null;
+				} else null;
+			case SELECTED_HEX_PIXEL(px, py):
+				// pixelToHex requires h2d.col.Point which is not available at macro time
+				// Fall through to runtime resolution
+				null;
+			case SELECTED_HEX_CELL_CORNER(cell, cornerIndex, factor):
+				final hexLayout = getHexLayoutForNode(node);
+				if (hexLayout != null) {
+					final ci = resolveRVStatic(cornerIndex);
+					final f = resolveRVStatic(factor);
+					final cellHex = resolveCoordToStaticHex(cell, hexLayout);
+					if (ci != null && f != null && cellHex != null) {
+						final pt = hexLayout.polygonCorner(cellHex, Std.int(ci), f);
+						{x: pt.x, y: pt.y};
+					} else null;
+				} else null;
+			case SELECTED_HEX_CELL_EDGE(cell, direction, factor):
+				final hexLayout = getHexLayoutForNode(node);
+				if (hexLayout != null) {
+					final d = resolveRVStatic(direction);
+					final f = resolveRVStatic(factor);
+					final cellHex = resolveCoordToStaticHex(cell, hexLayout);
+					if (d != null && f != null && cellHex != null) {
+						final pt = hexLayout.polygonEdge(cellHex, Std.int(d), f);
+						{x: pt.x, y: pt.y};
+					} else null;
 				} else null;
 			case SELECTED_HEX_CORNER(count, factor):
 				final hexLayout = getHexLayoutForNode(node);
@@ -2715,7 +2821,292 @@ class ProgrammableCodeGen {
 			case LAYOUT(layoutName, index):
 				final idx = resolveRVStatic(index);
 				if (idx != null) resolveLayoutPosition(layoutName, Std.int(idx)) else null;
+			case NAMED_COORD(name, coord):
+				final namedCS = if (node != null) getNamedCoordSystem(name, node) else null;
+				if (namedCS != null) {
+					resolveNamedCoordStatic(namedCS, coord, pos, node);
+				} else null;
 		};
+	}
+
+	/** Resolve a named coordinate system's inner coordinate statically */
+	static function resolveNamedCoordStatic(namedCS:CoordinateSystems.CoordinateSystemDef, coord:Coordinates, pos:Position, node:MultiAnimParser.Node):Null<{x:Float, y:Float}> {
+		switch (namedCS) {
+			case NamedGrid(system):
+				return switch (coord) {
+					case SELECTED_GRID_POSITION(gridX, gridY):
+						final gx = resolveRVStatic(gridX);
+						final gy = resolveRVStatic(gridY);
+						if (gx != null && gy != null) {x: system.spacingX * gx, y: system.spacingY * gy} else null;
+					case SELECTED_GRID_POSITION_WITH_OFFSET(gridX, gridY, offsetX, offsetY):
+						final gx = resolveRVStatic(gridX);
+						final gy = resolveRVStatic(gridY);
+						final ox = resolveRVStatic(offsetX);
+						final oy = resolveRVStatic(offsetY);
+						if (gx != null && gy != null && ox != null && oy != null)
+							{x: system.spacingX * gx + ox, y: system.spacingY * gy + oy}
+						else null;
+					default: null;
+				};
+			case NamedHex(system):
+				final hexLayout = system.hexLayout;
+				return switch (coord) {
+					case SELECTED_HEX_CUBE(q, r, s):
+						final qv = resolveRVStatic(q);
+						final rv2 = resolveRVStatic(r);
+						final sv = resolveRVStatic(s);
+						if (qv != null && rv2 != null && sv != null) {
+							final hex = new bh.base.Hex.FractionalHex(qv, rv2, sv).round();
+							final pt = hexLayout.hexToPixel(hex);
+							{x: pt.x, y: pt.y};
+						} else null;
+					case SELECTED_HEX_CORNER(count, factor):
+						final c = resolveRVStatic(count);
+						final f = resolveRVStatic(factor);
+						if (c != null && f != null) {
+							final pt = hexLayout.polygonCorner(bh.base.Hex.zero(), Std.int(c), f);
+							{x: pt.x, y: pt.y};
+						} else null;
+					case SELECTED_HEX_EDGE(direction, factor):
+						final d = resolveRVStatic(direction);
+						final f = resolveRVStatic(factor);
+						if (d != null && f != null) {
+							final pt = hexLayout.polygonEdge(bh.base.Hex.zero(), Std.int(d), f);
+							{x: pt.x, y: pt.y};
+						} else null;
+					default: null;
+				};
+		}
+	}
+
+	/** Resolve a cell Coordinates to a static Hex for use in cell-relative operations */
+	static function resolveCoordToStaticHex(cell:Coordinates, hexLayout:bh.base.Hex.HexLayout):Null<bh.base.Hex> {
+		return switch (cell) {
+			case SELECTED_HEX_CUBE(q, r, s):
+				final qv = resolveRVStatic(q);
+				final rv2 = resolveRVStatic(r);
+				final sv = resolveRVStatic(s);
+				if (qv != null && rv2 != null && sv != null)
+					new bh.base.Hex.FractionalHex(qv, rv2, sv).round()
+				else null;
+			case SELECTED_HEX_OFFSET(col, row, parity):
+				final c = resolveRVStatic(col);
+				final r2 = resolveRVStatic(row);
+				if (c != null && r2 != null) {
+					final parityVal = switch (parity) { case EVEN: bh.base.Hex.OffsetCoord.EVEN; case ODD: bh.base.Hex.OffsetCoord.ODD; };
+					switch (hexLayout.orientation) {
+						case POINTY: bh.base.Hex.OffsetCoord.qoffsetToCube(parityVal, new bh.base.Hex.OffsetCoord(Std.int(c), Std.int(r2)));
+						case FLAT: bh.base.Hex.OffsetCoord.roffsetToCube(parityVal, new bh.base.Hex.OffsetCoord(Std.int(c), Std.int(r2)));
+					};
+				} else null;
+			case SELECTED_HEX_DOUBLED(col2, row2):
+				final c = resolveRVStatic(col2);
+				final r2 = resolveRVStatic(row2);
+				if (c != null && r2 != null) {
+					switch (hexLayout.orientation) {
+						case POINTY: bh.base.Hex.DoubledCoord.qdoubledToCube(new bh.base.Hex.DoubledCoord(Std.int(c), Std.int(r2)));
+						case FLAT: bh.base.Hex.DoubledCoord.rdoubledToCube(new bh.base.Hex.DoubledCoord(Std.int(c), Std.int(r2)));
+					};
+				} else null;
+			case SELECTED_HEX_PIXEL(_, _):
+				// pixelToHex requires h2d.col.Point — not available at macro time
+				null;
+			default: null;
+		};
+	}
+
+	/** Resolve an RVMethodCall($ref.method(args)) to a static {x, y} point at macro time.
+	 *  Returns null if any argument can't be statically resolved. */
+	static function resolveMethodCallToStaticPoint(ref:String, method:String, args:Array<ReferenceableValue>):Null<{x:Float, y:Float}> {
+		final hexLayout = getHexLayoutForNode(currentProcessingNode);
+		final grid = getGridFromCurrentNode();
+
+		// Grid methods
+		if (ref == "grid" || ref == "ctx.grid") {
+			if (grid == null) return null;
+			switch (method) {
+				case "pos":
+					if (args.length < 2) return null;
+					final gx = resolveRVStatic(args[0]);
+					final gy = resolveRVStatic(args[1]);
+					if (gx == null || gy == null) return null;
+					var ox:Float = 0; var oy:Float = 0;
+					if (args.length >= 4) {
+						final oxv = resolveRVStatic(args[2]);
+						final oyv = resolveRVStatic(args[3]);
+						if (oxv == null || oyv == null) return null;
+						ox = oxv; oy = oyv;
+					}
+					return {x: gx * grid.spacingX + ox, y: gy * grid.spacingY + oy};
+				default: return null;
+			}
+		}
+
+		// Named grid systems
+		if (currentProcessingNode != null) {
+			final namedCS = getNamedCoordSystem(ref, currentProcessingNode);
+			if (namedCS != null) {
+				switch (namedCS) {
+					case NamedGrid(system):
+						switch (method) {
+							case "pos":
+								if (args.length < 2) return null;
+								final gx = resolveRVStatic(args[0]);
+								final gy = resolveRVStatic(args[1]);
+								if (gx == null || gy == null) return null;
+								var ox:Float = 0; var oy:Float = 0;
+								if (args.length >= 4) {
+									final oxv = resolveRVStatic(args[2]);
+									final oyv = resolveRVStatic(args[3]);
+									if (oxv == null || oyv == null) return null;
+									ox = oxv; oy = oyv;
+								}
+								return {x: gx * system.spacingX + ox, y: gy * system.spacingY + oy};
+							default: return null;
+						}
+					case NamedHex(system):
+						return resolveHexMethodToStaticPoint(system.hexLayout, method, args);
+				}
+			}
+		}
+
+		// Hex methods
+		if (hexLayout == null) return null;
+		return resolveHexMethodToStaticPoint(hexLayout, method, args);
+	}
+
+	static function resolveHexMethodToStaticPoint(hexLayout:bh.base.Hex.HexLayout, method:String, args:Array<ReferenceableValue>):Null<{x:Float, y:Float}> {
+		switch (method) {
+			case "corner":
+				if (args.length < 1) return null;
+				final idx = resolveRVStatic(args[0]);
+				final factor = if (args.length >= 2) resolveRVStatic(args[1]) else 1.0;
+				if (idx == null || factor == null) return null;
+				final pt = hexLayout.polygonCorner(bh.base.Hex.zero(), Std.int(idx), factor);
+				return {x: pt.x, y: pt.y};
+			case "edge":
+				if (args.length < 1) return null;
+				final dir = resolveRVStatic(args[0]);
+				final factor = if (args.length >= 2) resolveRVStatic(args[1]) else 1.0;
+				if (dir == null || factor == null) return null;
+				final pt = hexLayout.polygonEdge(bh.base.Hex.zero(), Std.int(dir), factor);
+				return {x: pt.x, y: pt.y};
+			case "cube":
+				if (args.length != 3) return null;
+				final qv = resolveRVStatic(args[0]);
+				final rv2 = resolveRVStatic(args[1]);
+				final sv = resolveRVStatic(args[2]);
+				if (qv == null || rv2 == null || sv == null) return null;
+				final hex = new bh.base.Hex.FractionalHex(qv, rv2, sv).round();
+				final pt = hexLayout.hexToPixel(hex);
+				return {x: pt.x, y: pt.y};
+			case "offset":
+				if (args.length < 2) return null;
+				final c = resolveRVStatic(args[0]);
+				final r2 = resolveRVStatic(args[1]);
+				if (c == null || r2 == null) return null;
+				final parityVal = if (args.length >= 3) {
+					final p = resolveRVStatic(args[2]);
+					// Can't resolve string parity statically from RV; default to EVEN
+					bh.base.Hex.OffsetCoord.EVEN;
+				} else bh.base.Hex.OffsetCoord.EVEN;
+				final hex = switch (hexLayout.orientation) {
+					case POINTY: bh.base.Hex.OffsetCoord.qoffsetToCube(parityVal, new bh.base.Hex.OffsetCoord(Std.int(c), Std.int(r2)));
+					case FLAT: bh.base.Hex.OffsetCoord.roffsetToCube(parityVal, new bh.base.Hex.OffsetCoord(Std.int(c), Std.int(r2)));
+				};
+				final pt = hexLayout.hexToPixel(hex);
+				return {x: pt.x, y: pt.y};
+			case "doubled":
+				if (args.length != 2) return null;
+				final c = resolveRVStatic(args[0]);
+				final r2 = resolveRVStatic(args[1]);
+				if (c == null || r2 == null) return null;
+				final hex = switch (hexLayout.orientation) {
+					case POINTY: bh.base.Hex.DoubledCoord.qdoubledToCube(new bh.base.Hex.DoubledCoord(Std.int(c), Std.int(r2)));
+					case FLAT: bh.base.Hex.DoubledCoord.rdoubledToCube(new bh.base.Hex.DoubledCoord(Std.int(c), Std.int(r2)));
+				};
+				final pt = hexLayout.hexToPixel(hex);
+				return {x: pt.x, y: pt.y};
+			case "pixel":
+				// pixelToHex not available at macro time
+				return null;
+			default: return null;
+		}
+	}
+
+	/** Generate a runtime expression for extracting .x or .y from a coordinate method call */
+	static function resolveMethodCallToRuntimeComponentExpr(ref:String, method:String, args:Array<ReferenceableValue>, component:String):Expr {
+		final argExprs = args.map(a -> rvToExpr(a));
+
+		// Grid methods — check named systems too
+		var gridSystem:Null<GridCoordinateSystem> = null;
+		if (ref == "grid" || ref == "ctx.grid") {
+			gridSystem = getGridFromCurrentNode();
+		} else if (currentProcessingNode != null) {
+			final namedCS = getNamedCoordSystem(ref, currentProcessingNode);
+			if (namedCS != null) {
+				switch (namedCS) {
+					case NamedGrid(system): gridSystem = system;
+					case NamedHex(_): // fall through to hex handling below
+				}
+			}
+		}
+		if (gridSystem != null) {
+			switch (method) {
+				case "pos":
+					final sx:Int = gridSystem.spacingX;
+					final sy:Int = gridSystem.spacingY;
+					final gxExpr = argExprs[0];
+					final gyExpr = argExprs[1];
+					if (component == "x") {
+						if (argExprs.length >= 4) { final oxExpr = argExprs[2]; return macro $gxExpr * $v{sx} + $oxExpr; }
+						return macro $gxExpr * $v{sx};
+					} else {
+						if (argExprs.length >= 4) { final oyExpr = argExprs[3]; return macro $gyExpr * $v{sy} + $oyExpr; }
+						return macro $gyExpr * $v{sy};
+					}
+				default:
+					Context.error('Runtime .$component extraction not supported for grid method .$method()', Context.currentPos());
+					return macro 0;
+			}
+		}
+
+		// Hex methods — need _hexLayout field
+		if (!hexLayoutFieldAdded) {
+			Context.error('Runtime hex .$component extraction requires hex coordinate system with runtime parameters in scope', Context.currentPos());
+			return macro 0;
+		}
+
+		switch (method) {
+			case "corner":
+				if (argExprs.length < 1) Context.error('corner() requires at least 1 argument', Context.currentPos());
+				final idxExpr = argExprs[0];
+				final factorExpr = if (argExprs.length >= 2) argExprs[1] else macro 1.0;
+				if (component == "x")
+					return macro this._hexLayout.polygonCorner(bh.base.Hex.zero(), $idxExpr, $factorExpr).x;
+				else
+					return macro this._hexLayout.polygonCorner(bh.base.Hex.zero(), $idxExpr, $factorExpr).y;
+			case "edge":
+				if (argExprs.length < 1) Context.error('edge() requires at least 1 argument', Context.currentPos());
+				final dirExpr = argExprs[0];
+				final factorExpr = if (argExprs.length >= 2) argExprs[1] else macro 1.0;
+				if (component == "x")
+					return macro this._hexLayout.polygonEdge(bh.base.Hex.zero(), $dirExpr, $factorExpr).x;
+				else
+					return macro this._hexLayout.polygonEdge(bh.base.Hex.zero(), $dirExpr, $factorExpr).y;
+			case "cube":
+				if (argExprs.length != 3) Context.error('cube() requires 3 arguments', Context.currentPos());
+				final qExpr = argExprs[0];
+				final rExpr = argExprs[1];
+				final sExpr = argExprs[2];
+				if (component == "x")
+					return macro this._hexLayout.hexToPixel(new bh.base.Hex.FractionalHex($qExpr, $rExpr, $sExpr).round()).x;
+				else
+					return macro this._hexLayout.hexToPixel(new bh.base.Hex.FractionalHex($qExpr, $rExpr, $sExpr).round()).y;
+			default:
+				Context.error('Runtime .${component} extraction not supported for method .$method()', Context.currentPos());
+				return macro 0;
+		}
 	}
 
 	/** Resolve a Coordinates value to expression pair {x:Expr, y:Expr}, supporting all coordinate types.
@@ -3735,15 +4126,67 @@ class ProgrammableCodeGen {
 					final arrayFieldRef = macro $p{["this", "_" + arrayRef]};
 					macro $arrayFieldRef[$indexExpr];
 				}
-			case RVFunction(functionType):
-				final grid = getGridFromCurrentNode();
-				if (grid != null) {
-					switch (functionType) {
-						case RVFGridWidth: macro $v{grid.spacingX};
-						case RVFGridHeight: macro $v{grid.spacingY};
-					}
+			case RVPropertyAccess(ref, property):
+				// Try static resolution first
+				final staticVal = resolveRVStatic(rv);
+				if (staticVal != null) {
+					macro $v{staticVal};
 				} else {
+					// Runtime properties
+					switch (ref) {
+						case "ctx":
+							switch (property) {
+								case "width": macro this.getScene().width;
+								case "height": macro this.getScene().height;
+								default:
+									Context.error('Unknown context property: $$ctx.$property', Context.currentPos());
+									macro 0;
+							}
+						default:
+							Context.error('Cannot resolve property access $$ref.$property at runtime', Context.currentPos());
+							macro 0;
+					}
+				}
+			case RVMethodCall(ref, method, args):
+				switch (ref) {
+					case "ctx":
+						switch (method) {
+							case "random":
+								if (args.length == 2) {
+									final minExpr = rvToExpr(args[0]);
+									final maxExpr = rvToExpr(args[1]);
+									macro $minExpr + Std.random($maxExpr - $minExpr);
+								} else {
+									Context.error('$$ctx.random() requires 2 arguments (min, max)', Context.currentPos());
+									macro 0;
+								}
+							default:
+								Context.error('Unknown context method: $$ctx.$method()', Context.currentPos());
+								macro 0;
+						}
+					default:
+						Context.error('Cannot resolve method call $$ref.$method() in expression context — use .x or .y to extract coordinates', Context.currentPos());
+						macro 0;
+				}
+			case RVChainedMethodCall(base, property, _):
+				if (property != "x" && property != "y") {
+					Context.error('Unsupported chained property .$property — only .x and .y are supported', Context.currentPos());
 					macro 0;
+				} else {
+					// Try static resolution first
+					final staticVal = resolveRVStatic(rv);
+					if (staticVal != null) {
+						macro $v{staticVal};
+					} else {
+						// Generate runtime expression
+						switch (base) {
+							case RVMethodCall(ref, method, args):
+								resolveMethodCallToRuntimeComponentExpr(ref, method, args, property);
+							default:
+								Context.error('Unsupported base expression for .$property extraction', Context.currentPos());
+								macro 0;
+						}
+					}
 				}
 			default:
 				macro 0;
@@ -3800,6 +4243,11 @@ class ProgrammableCodeGen {
 				collectParamRefsImpl(name, refs);
 				collectParamRefsImpl(index, refs);
 				collectParamRefsImpl(defaultValue, refs);
+			case RVMethodCall(_, _, args):
+				for (a in args) collectParamRefsImpl(a, refs);
+			case RVChainedMethodCall(base, _, args):
+				collectParamRefsImpl(base, refs);
+				for (a in args) collectParamRefsImpl(a, refs);
 			default:
 		}
 	}
@@ -3965,11 +4413,81 @@ class ProgrammableCodeGen {
 					final sy:Int = grid.spacingY;
 					macro $fieldRef.setPosition($gxExpr * $v{sx} + $oxExpr, $gyExpr * $v{sy} + $oyExpr);
 				} else null;
-			case SELECTED_HEX_POSITION(hex):
+			case SELECTED_HEX_CUBE(q, r, s):
 				final hexLayout = getHexLayoutForNode(node);
 				if (hexLayout != null) {
-					final pt = hexLayout.hexToPixel(hex);
-					macro $fieldRef.setPosition($v{pt.x}, $v{pt.y});
+					final qv = resolveRVStatic(q);
+					final rv2 = resolveRVStatic(r);
+					final sv = resolveRVStatic(s);
+					if (qv != null && rv2 != null && sv != null) {
+						final hex = new bh.base.Hex.FractionalHex(qv, rv2, sv).round();
+						final pt = hexLayout.hexToPixel(hex);
+						macro $fieldRef.setPosition($v{pt.x}, $v{pt.y});
+					} else {
+						final qExpr = rvToExpr(q);
+						final rExpr = rvToExpr(r);
+						final sExpr = rvToExpr(s);
+						macro {
+							final _hex = new bh.base.Hex.FractionalHex($qExpr, $rExpr, $sExpr).round();
+							final _p = this._hexLayout.hexToPixel(_hex);
+							$fieldRef.setPosition(_p.x, _p.y);
+						};
+					}
+				} else null;
+			case SELECTED_HEX_OFFSET(col, row, parity):
+				final hexLayout = getHexLayoutForNode(node);
+				if (hexLayout != null) {
+					final c = resolveRVStatic(col);
+					final r2 = resolveRVStatic(row);
+					if (c != null && r2 != null) {
+						final parityVal = switch (parity) { case EVEN: bh.base.Hex.OffsetCoord.EVEN; case ODD: bh.base.Hex.OffsetCoord.ODD; };
+						final hex = switch (hexLayout.orientation) {
+							case POINTY: bh.base.Hex.OffsetCoord.qoffsetToCube(parityVal, new bh.base.Hex.OffsetCoord(Std.int(c), Std.int(r2)));
+							case FLAT: bh.base.Hex.OffsetCoord.roffsetToCube(parityVal, new bh.base.Hex.OffsetCoord(Std.int(c), Std.int(r2)));
+						};
+						final pt = hexLayout.hexToPixel(hex);
+						macro $fieldRef.setPosition($v{pt.x}, $v{pt.y});
+					} else null;
+				} else null;
+			case SELECTED_HEX_DOUBLED(col2, row2):
+				final hexLayout = getHexLayoutForNode(node);
+				if (hexLayout != null) {
+					final c = resolveRVStatic(col2);
+					final r2 = resolveRVStatic(row2);
+					if (c != null && r2 != null) {
+						final hex = switch (hexLayout.orientation) {
+							case POINTY: bh.base.Hex.DoubledCoord.qdoubledToCube(new bh.base.Hex.DoubledCoord(Std.int(c), Std.int(r2)));
+							case FLAT: bh.base.Hex.DoubledCoord.rdoubledToCube(new bh.base.Hex.DoubledCoord(Std.int(c), Std.int(r2)));
+						};
+						final pt = hexLayout.hexToPixel(hex);
+						macro $fieldRef.setPosition($v{pt.x}, $v{pt.y});
+					} else null;
+				} else null;
+			case SELECTED_HEX_PIXEL(_, _):
+				// pixelToHex requires h2d.col.Point — not available at macro time
+				// TODO: generate runtime code for pixel coord resolution
+				null;
+			case SELECTED_HEX_CELL_CORNER(cell, cornerIndex, factor):
+				final hexLayout = getHexLayoutForNode(node);
+				if (hexLayout != null) {
+					final ci = resolveRVStatic(cornerIndex);
+					final f = resolveRVStatic(factor);
+					final cellHex = resolveCoordToStaticHex(cell, hexLayout);
+					if (ci != null && f != null && cellHex != null) {
+						final pt = hexLayout.polygonCorner(cellHex, Std.int(ci), f);
+						macro $fieldRef.setPosition($v{pt.x}, $v{pt.y});
+					} else null;
+				} else null;
+			case SELECTED_HEX_CELL_EDGE(cell, direction, factor):
+				final hexLayout = getHexLayoutForNode(node);
+				if (hexLayout != null) {
+					final d = resolveRVStatic(direction);
+					final f = resolveRVStatic(factor);
+					final cellHex = resolveCoordToStaticHex(cell, hexLayout);
+					if (d != null && f != null && cellHex != null) {
+						final pt = hexLayout.polygonEdge(cellHex, Std.int(d), f);
+						macro $fieldRef.setPosition($v{pt.x}, $v{pt.y});
+					} else null;
 				} else null;
 			case SELECTED_HEX_CORNER(count, factor):
 				final hexLayout = getHexLayoutForNode(node);
@@ -4014,7 +4532,33 @@ class ProgrammableCodeGen {
 					else
 						null;
 				} else null;
+			case NAMED_COORD(name, coord):
+				final namedCS = if (node != null) getNamedCoordSystem(name, node) else null;
+				if (namedCS != null) {
+					final pt = resolveNamedCoordStatic(namedCS, coord, pos, node);
+					if (pt != null)
+						macro $fieldRef.setPosition($v{pt.x}, $v{pt.y})
+					else
+						null;
+				} else null;
 		};
+	}
+
+	static function collectCoordParamRefs(coord:Coordinates, refs:Array<String>):Void {
+		if (coord == null) return;
+		switch (coord) {
+			case OFFSET(x, y): collectParamRefsImpl(x, refs); collectParamRefsImpl(y, refs);
+			case SELECTED_GRID_POSITION(x, y): collectParamRefsImpl(x, refs); collectParamRefsImpl(y, refs);
+			case SELECTED_GRID_POSITION_WITH_OFFSET(x, y, ox, oy): collectParamRefsImpl(x, refs); collectParamRefsImpl(y, refs); collectParamRefsImpl(ox, refs); collectParamRefsImpl(oy, refs);
+			case SELECTED_HEX_CUBE(q, r, s): collectParamRefsImpl(q, refs); collectParamRefsImpl(r, refs); collectParamRefsImpl(s, refs);
+			case SELECTED_HEX_OFFSET(col, row, _): collectParamRefsImpl(col, refs); collectParamRefsImpl(row, refs);
+			case SELECTED_HEX_DOUBLED(col, row): collectParamRefsImpl(col, refs); collectParamRefsImpl(row, refs);
+			case SELECTED_HEX_PIXEL(x, y): collectParamRefsImpl(x, refs); collectParamRefsImpl(y, refs);
+			case SELECTED_HEX_CORNER(count, factor): collectParamRefsImpl(count, refs); collectParamRefsImpl(factor, refs);
+			case SELECTED_HEX_EDGE(dir, factor): collectParamRefsImpl(dir, refs); collectParamRefsImpl(factor, refs);
+			case NAMED_COORD(_, coord): collectCoordParamRefs(coord, refs);
+			default:
+		}
 	}
 
 	/** Collect param refs from a Coordinates value */
@@ -4048,12 +4592,59 @@ class ProgrammableCodeGen {
 				collectParamRefsImpl(direction, refs);
 				collectParamRefsImpl(factor, refs);
 				refs;
+			case SELECTED_HEX_CUBE(q, r, s):
+				final refs:Array<String> = [];
+				collectParamRefsImpl(q, refs);
+				collectParamRefsImpl(r, refs);
+				collectParamRefsImpl(s, refs);
+				refs;
+			case SELECTED_HEX_OFFSET(col, row, _):
+				final refs:Array<String> = [];
+				collectParamRefsImpl(col, refs);
+				collectParamRefsImpl(row, refs);
+				refs;
+			case SELECTED_HEX_DOUBLED(col, row):
+				final refs:Array<String> = [];
+				collectParamRefsImpl(col, refs);
+				collectParamRefsImpl(row, refs);
+				refs;
+			case SELECTED_HEX_PIXEL(x, y):
+				final refs:Array<String> = [];
+				collectParamRefsImpl(x, refs);
+				collectParamRefsImpl(y, refs);
+				refs;
+			case SELECTED_HEX_CELL_CORNER(cell, cornerIndex, factor):
+				final refs:Array<String> = [];
+				collectCoordParamRefs(cell, refs);
+				collectParamRefsImpl(cornerIndex, refs);
+				collectParamRefsImpl(factor, refs);
+				refs;
+			case SELECTED_HEX_CELL_EDGE(cell, direction, factor):
+				final refs:Array<String> = [];
+				collectCoordParamRefs(cell, refs);
+				collectParamRefsImpl(direction, refs);
+				collectParamRefsImpl(factor, refs);
+				refs;
 			case LAYOUT(_, index):
 				final refs:Array<String> = [];
 				collectParamRefsImpl(index, refs);
 				refs;
+			case NAMED_COORD(_, coord):
+				collectPositionParamRefs(coord);
 			default: [];
 		};
+	}
+
+	/** Get named coordinate system by walking parent chain (macro-safe version) */
+	static function getNamedCoordSystem(name:String, node:MultiAnimParser.Node):Null<CoordinateSystems.CoordinateSystemDef> {
+		while (node != null) {
+			if (node.namedCoordinateSystems != null) {
+				final cs = node.namedCoordinateSystems.get(name);
+				if (cs != null) return cs;
+			}
+			node = node.parent;
+		}
+		return null;
 	}
 
 	/** Get grid coordinate system from current node's parent chain */
@@ -4116,19 +4707,58 @@ class ProgrammableCodeGen {
 			pos:Position):Void {
 		if (coords == null || hexLayoutFieldAdded)
 			return;
-		switch (coords) {
+		final needsRuntime = switch (coords) {
 			case SELECTED_HEX_CORNER(count, factor) | SELECTED_HEX_EDGE(count, factor):
-				if (resolveRVStatic(count) == null || resolveRVStatic(factor) == null) {
-					final hexLayout = getHexLayoutForNode(node);
-					if (hexLayout != null) {
-						hexLayoutFieldAdded = true;
-						fields.push(makeField("_hexLayout", FVar(macro :bh.base.Hex.HexLayout, null), [APrivate], pos));
-						final orientExpr = switch (hexLayout.orientation) {
-							case POINTY: macro bh.base.Hex.HexOrientation.POINTY;
-							case FLAT: macro bh.base.Hex.HexOrientation.FLAT;
-						};
-						ctorExprs.push(macro this._hexLayout = bh.base.Hex.HexLayout.createFromFloats($orientExpr, $v{hexLayout.size.x},
-							$v{hexLayout.size.y}, $v{hexLayout.origin.x}, $v{hexLayout.origin.y}));
+				resolveRVStatic(count) == null || resolveRVStatic(factor) == null;
+			case SELECTED_HEX_CUBE(q, r, s):
+				resolveRVStatic(q) == null || resolveRVStatic(r) == null || resolveRVStatic(s) == null;
+			case SELECTED_HEX_OFFSET(col, row, _):
+				resolveRVStatic(col) == null || resolveRVStatic(row) == null;
+			case SELECTED_HEX_DOUBLED(col, row):
+				resolveRVStatic(col) == null || resolveRVStatic(row) == null;
+			case SELECTED_HEX_PIXEL(x, y):
+				resolveRVStatic(x) == null || resolveRVStatic(y) == null;
+			case SELECTED_HEX_CELL_CORNER(_, cornerIndex, factor):
+				resolveRVStatic(cornerIndex) == null || resolveRVStatic(factor) == null;
+			case SELECTED_HEX_CELL_EDGE(_, direction, factor):
+				resolveRVStatic(direction) == null || resolveRVStatic(factor) == null;
+			default: false;
+		};
+		if (needsRuntime) {
+			final hexLayout = getHexLayoutForNode(node);
+			if (hexLayout != null) {
+				hexLayoutFieldAdded = true;
+				fields.push(makeField("_hexLayout", FVar(macro :bh.base.Hex.HexLayout, null), [APrivate], pos));
+				final orientExpr = switch (hexLayout.orientation) {
+					case POINTY: macro bh.base.Hex.HexOrientation.POINTY;
+					case FLAT: macro bh.base.Hex.HexOrientation.FLAT;
+				};
+				ctorExprs.push(macro this._hexLayout = bh.base.Hex.HexLayout.createFromFloats($orientExpr, $v{hexLayout.size.x},
+					$v{hexLayout.size.y}, $v{hexLayout.origin.x}, $v{hexLayout.origin.y}));
+			}
+		}
+	}
+
+	/** Ensure _hexLayout field is created for runtime hex method calls in expression context (.x/.y). */
+	static function ensureHexLayoutForExprRV(rv:ReferenceableValue, node:MultiAnimParser.Node, fields:Array<Field>, ctorExprs:Array<Expr>,
+			pos:Position):Void {
+		if (hexLayoutFieldAdded) return;
+		switch (rv) {
+			case RVChainedMethodCall(RVMethodCall(ref, method, _), property, _) if (property == "x" || property == "y"):
+				if (ref == "hex" || ref == "ctx.hex" || (currentProcessingNode != null && getNamedCoordSystem(ref, currentProcessingNode) != null)) {
+					// Check if static resolution fails (needs runtime)
+					if (resolveRVStatic(rv) == null) {
+						final hexLayout = getHexLayoutForNode(node);
+						if (hexLayout != null) {
+							hexLayoutFieldAdded = true;
+							fields.push(makeField("_hexLayout", FVar(macro :bh.base.Hex.HexLayout, null), [APrivate], pos));
+							final orientExpr = switch (hexLayout.orientation) {
+								case POINTY: macro bh.base.Hex.HexOrientation.POINTY;
+								case FLAT: macro bh.base.Hex.HexOrientation.FLAT;
+							};
+							ctorExprs.push(macro this._hexLayout = bh.base.Hex.HexLayout.createFromFloats($orientExpr, $v{hexLayout.size.x},
+								$v{hexLayout.size.y}, $v{hexLayout.origin.x}, $v{hexLayout.origin.y}));
+						}
 					}
 				}
 			default:

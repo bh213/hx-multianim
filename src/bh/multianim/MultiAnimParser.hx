@@ -448,11 +448,6 @@ enum ConditionalValues {
 
 }
 
-enum ReferenceableValueFunction {
-	RVFGridWidth;
-	RVFGridHeight;
-}
-
 enum ReferenceableValue {
 	RVElementOfArray(arrayRef:String, index:ReferenceableValue);
 	RVString(s:String);
@@ -461,7 +456,9 @@ enum ReferenceableValue {
 	RVArrayReference(refArr:String);
 	RVFloat(f:Float);
 	RVReference(ref:String);
-	RVFunction(functionType:ReferenceableValueFunction);
+	RVPropertyAccess(ref:String, property:String);
+	RVMethodCall(ref:String, method:String, args:Array<ReferenceableValue>);
+	RVChainedMethodCall(base:ReferenceableValue, method:String, args:Array<ReferenceableValue>);
 	RVParenthesis(e:ReferenceableValue);
 	RVCallbacksWithIndex(name:ReferenceableValue, index:ReferenceableValue, defaultValue:ReferenceableValue);
 	RVCallbacks(name:ReferenceableValue, defaultValue:ReferenceableValue);
@@ -939,6 +936,7 @@ typedef Node = {
 	pos:Coordinates,
 	gridCoordinateSystem:Null<GridCoordinateSystem>,
 	hexCoordinateSystem:Null<HexCoordinateSystem>,
+	namedCoordinateSystems:Null<Map<String, CoordinateSystemDef>>,
 	scale: Null<ReferenceableValue>,
 	alpha: Null<ReferenceableValue>,
 	tint: Null<ReferenceableValue>,
@@ -1027,6 +1025,17 @@ class MultiAnimParser {
 	public static function getHexCoordinateSystem(node:Node):Null<HexCoordinateSystem> {
 		while (node != null) {
 			if (node.hexCoordinateSystem != null) return node.hexCoordinateSystem;
+			node = node.parent;
+		}
+		return null;
+	}
+
+	public static function getNamedCoordinateSystem(name:String, node:Node):Null<CoordinateSystemDef> {
+		while (node != null) {
+			if (node.namedCoordinateSystems != null) {
+				final cs = node.namedCoordinateSystems.get(name);
+				if (cs != null) return cs;
+			}
 			node = node.parent;
 		}
 		return null;

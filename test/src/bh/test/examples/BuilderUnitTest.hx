@@ -1091,4 +1091,681 @@ class BuilderUnitTest extends BuilderTestBase {
 		Assert.equals(20, Std.int(bitmaps[0].tile.width));
 		Assert.equals(10, Std.int(bitmaps[0].tile.height));
 	}
+
+	// ==================== Grid coordinate system tests ====================
+
+	@Test
+	public function testGridPosBasic():Void {
+		// grid(20, 15) with pos(2, 3) => x=40, y=45
+		final result = buildFromSource("
+			#test programmable(n:uint=2) {
+				grid: 20, 15
+				bitmap(generated(color(5, 5, #f00))): $grid.pos($n, 3)
+			}
+		", "test");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(40, Std.int(bitmaps[0].x));
+		Assert.equals(45, Std.int(bitmaps[0].y));
+	}
+
+	@Test
+	public function testGridPosWithOffset():Void {
+		// grid(20, 15) with pos(1, 2, 5, 3) => x=20+5=25, y=30+3=33
+		final result = buildFromSource("
+			#test programmable() {
+				grid: 20, 15
+				bitmap(generated(color(5, 5, #f00))): $grid.pos(1, 2, 5, 3)
+			}
+		", "test");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(25, Std.int(bitmaps[0].x));
+		Assert.equals(33, Std.int(bitmaps[0].y));
+	}
+
+	@Test
+	public function testGridWidthHeightValues():Void {
+		// grid(25, 30) => width=25, height=30, used as bitmap dimensions
+		final result = buildFromSource("
+			#test programmable() {
+				grid: 25, 30
+				bitmap(generated(color($grid.width, $grid.height, #f00))): 0, 0
+			}
+		", "test");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(25, Std.int(bitmaps[0].tile.width));
+		Assert.equals(30, Std.int(bitmaps[0].tile.height));
+	}
+
+	@Test
+	public function testGridPosXYExtraction():Void {
+		// grid(20, 15), pos(3, 2).x = 60, pos(3, 2).y = 30
+		// Use as bitmap dimensions to verify values
+		final result = buildFromSource("
+			#test programmable() {
+				grid: 20, 15
+				bitmap(generated(color($grid.pos(3, 2).x, $grid.pos(3, 2).y, #f00))): 0, 0
+			}
+		", "test");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(60, Std.int(bitmaps[0].tile.width));
+		Assert.equals(30, Std.int(bitmaps[0].tile.height));
+	}
+
+	@Test
+	public function testGridPosXYExtractionWithOffset():Void {
+		// grid(20, 15), pos(1, 2, 7, 3).x = 20+7=27, pos(1, 2, 7, 3).y = 30+3=33
+		final result = buildFromSource("
+			#test programmable() {
+				grid: 20, 15
+				bitmap(generated(color($grid.pos(1, 2, 7, 3).x, $grid.pos(1, 2, 7, 3).y, #f00))): 0, 0
+			}
+		", "test");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(27, Std.int(bitmaps[0].tile.width));
+		Assert.equals(33, Std.int(bitmaps[0].tile.height));
+	}
+
+	@Test
+	public function testGridPosZero():Void {
+		// grid(20, 15) with pos(0, 0) => x=0, y=0
+		final result = buildFromSource("
+			#test programmable() {
+				grid: 20, 15
+				bitmap(generated(color(5, 5, #f00))): $grid.pos(0, 0)
+			}
+		", "test");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(0, Std.int(bitmaps[0].x));
+		Assert.equals(0, Std.int(bitmaps[0].y));
+	}
+
+	@Test
+	public function testGridWidthInExpression():Void {
+		// grid(20, 15) => $grid.width * 3 = 60
+		final result = buildFromSource("
+			#test programmable() {
+				grid: 20, 15
+				bitmap(generated(color($grid.width * 3, 10, #f00))): 0, 0
+			}
+		", "test");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(60, Std.int(bitmaps[0].tile.width));
+	}
+
+	// ==================== Named grid system tests ====================
+
+	@Test
+	public function testNamedGridPos():Void {
+		// small: grid(10, 10), big: grid(40, 40)
+		// $small.pos(1, 0) => x=10, $big.pos(1, 0) => x=40
+		final result = buildFromSource("
+			#test programmable() {
+				grid: #small 10, 10
+				grid: #big 40, 40
+				bitmap(generated(color(5, 5, #f00))): $small.pos(1, 0)
+				bitmap(generated(color(5, 5, #00f))): $big.pos(1, 0)
+			}
+		", "test");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(2, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].x));
+		Assert.equals(0, Std.int(bitmaps[0].y));
+		Assert.equals(40, Std.int(bitmaps[1].x));
+		Assert.equals(0, Std.int(bitmaps[1].y));
+	}
+
+	@Test
+	public function testNamedGridWidthHeight():Void {
+		// small: grid(10, 15) => width=10, height=15
+		final result = buildFromSource("
+			#test programmable() {
+				grid: #small 10, 15
+				bitmap(generated(color($small.width, $small.height, #f00))): 0, 0
+			}
+		", "test");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+		Assert.equals(15, Std.int(bitmaps[0].tile.height));
+	}
+
+	@Test
+	public function testNamedGridPosXYExtraction():Void {
+		// myGrid: grid(30, 20), pos(2, 1).x = 60, pos(2, 1).y = 20
+		final result = buildFromSource("
+			#test programmable() {
+				grid: #myGrid 30, 20
+				bitmap(generated(color($myGrid.pos(2, 1).x, $myGrid.pos(2, 1).y, #f00))): 0, 0
+			}
+		", "test");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(60, Std.int(bitmaps[0].tile.width));
+		Assert.equals(20, Std.int(bitmaps[0].tile.height));
+	}
+
+	// ==================== Hex coordinate system tests ====================
+
+	@Test
+	public function testHexCubeOrigin():Void {
+		// hex(pointy, 16), cube(0,0,0) => should be at hex center (origin)
+		final result = buildFromSource("
+			#test programmable() {
+				hex: pointy(16, 16)
+				bitmap(generated(color(5, 5, #f00))): $hex.cube(0, 0, 0)
+			}
+		", "test");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		// origin hex => position 0,0
+		Assert.equals(0, Std.int(bitmaps[0].x));
+		Assert.equals(0, Std.int(bitmaps[0].y));
+	}
+
+	@Test
+	public function testHexCubeNonOrigin():Void {
+		// hex(pointy, 16), cube(1, -1, 0) should produce non-zero position
+		final result = buildFromSource("
+			#test programmable() {
+				hex: pointy(16, 16)
+				bitmap(generated(color(5, 5, #f00))): $hex.cube(1, -1, 0)
+			}
+		", "test");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		// Position should not be at origin
+		final x = bitmaps[0].x;
+		final y = bitmaps[0].y;
+		Assert.isTrue(x != 0 || y != 0, "cube(1,-1,0) should not be at origin");
+	}
+
+	@Test
+	public function testHexCornerXYExtraction():Void {
+		// hex(pointy, 16), corner(0, 1.0) should produce non-zero values
+		final result = buildFromSource("
+			#test programmable() {
+				hex: pointy(16, 16)
+				bitmap(generated(color($hex.corner(0, 1.0).x + 50, $hex.corner(0, 1.0).y + 50, #f00))): 0, 0
+			}
+		", "test");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		// corner(0, 1.0) at pointy size 16 produces specific values
+		// The +50 offset ensures positive bitmap dimensions
+		final w = Std.int(bitmaps[0].tile.width);
+		final h = Std.int(bitmaps[0].tile.height);
+		Assert.isTrue(w > 0, "corner .x + 50 should produce positive width, got: " + w);
+		Assert.isTrue(h > 0, "corner .y + 50 should produce positive height, got: " + h);
+	}
+
+	@Test
+	public function testHexEdgeXYExtraction():Void {
+		// hex(pointy, 16), edge(0, 0.5)
+		final result = buildFromSource("
+			#test programmable() {
+				hex: pointy(16, 16)
+				bitmap(generated(color($hex.edge(0, 0.5).x + 50, $hex.edge(0, 0.5).y + 50, #f00))): 0, 0
+			}
+		", "test");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		final w = Std.int(bitmaps[0].tile.width);
+		final h = Std.int(bitmaps[0].tile.height);
+		Assert.isTrue(w > 0, "edge .x + 50 should produce positive width, got: " + w);
+		Assert.isTrue(h > 0, "edge .y + 50 should produce positive height, got: " + h);
+	}
+
+	@Test
+	public function testHexCornerSymmetry():Void {
+		// Corners 0 and 3 of a pointy hex are vertically symmetric
+		// corner(0).y and corner(3).y should be negatives of each other
+		final result = buildFromSource("
+			#test programmable() {
+				hex: pointy(16, 16)
+				bitmap(generated(color($hex.corner(0, 1.0).y + 50, $hex.corner(3, 1.0).y + 50, #f00))): 0, 0
+			}
+		", "test");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		final w = Std.int(bitmaps[0].tile.width);
+		final h = Std.int(bitmaps[0].tile.height);
+		// corner(0).y + 50 and corner(3).y + 50 should sum to 100 (since they are negatives)
+		Assert.equals(100, w + h);
+	}
+
+	@Test
+	public function testHexCubeXYExtraction():Void {
+		// hex(pointy, 16), cube(1, 0, -1).x and .y
+		final result = buildFromSource("
+			#test programmable() {
+				hex: pointy(16, 16)
+				bitmap(generated(color($hex.cube(1, 0, -1).x + 50, $hex.cube(1, 0, -1).y + 50, #f00))): 0, 0
+			}
+		", "test");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		final w = Std.int(bitmaps[0].tile.width);
+		final h = Std.int(bitmaps[0].tile.height);
+		Assert.isTrue(w > 0, "cube(1,0,-1).x + 50 should be positive, got: " + w);
+		Assert.isTrue(h > 0, "cube(1,0,-1).y + 50 should be positive, got: " + h);
+		// cube(1,0,-1) moves right in pointy hex, so x should be > 50
+		Assert.isTrue(w > 50, "cube(1,0,-1).x should be positive, got value+50: " + w);
+	}
+
+	@Test
+	public function testHexOffsetEven():Void {
+		// hex(pointy, 16), offset(1, 0, even) should produce a non-origin position
+		final result = buildFromSource("
+			#test programmable() {
+				hex: pointy(16, 16)
+				bitmap(generated(color(5, 5, #f00))): $hex.offset(1, 0, even)
+			}
+		", "test");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		final x = bitmaps[0].x;
+		Assert.isTrue(x != 0, "offset(1,0,even) should not be at x=0");
+	}
+
+	@Test
+	public function testHexOffsetOdd():Void {
+		// hex(pointy, 16), offset(1, 0, odd) should produce a different position than even
+		final resultEven = buildFromSource("
+			#test programmable() {
+				hex: pointy(16, 16)
+				bitmap(generated(color(5, 5, #f00))): $hex.offset(1, 1, even)
+			}
+		", "test");
+		final resultOdd = buildFromSource("
+			#test programmable() {
+				hex: pointy(16, 16)
+				bitmap(generated(color(5, 5, #f00))): $hex.offset(1, 1, odd)
+			}
+		", "test");
+		final bitmapsEven = findVisibleBitmapDescendants(resultEven.object);
+		final bitmapsOdd = findVisibleBitmapDescendants(resultOdd.object);
+		// Even and odd parity for row 1 should produce different y positions
+		Assert.isTrue(bitmapsEven[0].y != bitmapsOdd[0].y || bitmapsEven[0].x != bitmapsOdd[0].x,
+			"Even and odd parity should produce different positions");
+	}
+
+	@Test
+	public function testHexDoubled():Void {
+		// hex(pointy, 16), doubled(2, 0) should produce a non-origin position
+		final result = buildFromSource("
+			#test programmable() {
+				hex: pointy(16, 16)
+				bitmap(generated(color(5, 5, #f00))): $hex.doubled(2, 0)
+			}
+		", "test");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.isTrue(bitmaps[0].x != 0, "doubled(2,0) should not be at x=0");
+	}
+
+	@Test
+	public function testHexWidthHeightValues():Void {
+		// hex(pointy, 16) => width and height should be positive non-zero
+		final result = buildFromSource("
+			#test programmable() {
+				hex: pointy(16, 16)
+				bitmap(generated(color($hex.width, $hex.height, #f00))): 0, 0
+			}
+		", "test");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		final w = Std.int(bitmaps[0].tile.width);
+		final h = Std.int(bitmaps[0].tile.height);
+		Assert.isTrue(w > 0, "hex.width should be positive, got: " + w);
+		Assert.isTrue(h > 0, "hex.height should be positive, got: " + h);
+	}
+
+	@Test
+	public function testHexFlatVsPointyOrientation():Void {
+		// flat and pointy hex with same size should produce different width/height ratios
+		final resultPointy = buildFromSource("
+			#test programmable() {
+				hex: pointy(16, 16)
+				bitmap(generated(color($hex.width, $hex.height, #f00))): 0, 0
+			}
+		", "test");
+		final resultFlat = buildFromSource("
+			#test programmable() {
+				hex: flat(16, 16)
+				bitmap(generated(color($hex.width, $hex.height, #f00))): 0, 0
+			}
+		", "test");
+		final pointyBitmaps = findVisibleBitmapDescendants(resultPointy.object);
+		final flatBitmaps = findVisibleBitmapDescendants(resultFlat.object);
+		// Pointy: width < height. Flat: width > height (for same size)
+		// Actually for pointy: w = sqrt(3)*size, h = 2*size
+		// For flat: w = 2*size, h = sqrt(3)*size
+		// So pointy.width should equal flat.height and vice versa
+		final pw = Std.int(pointyBitmaps[0].tile.width);
+		final ph = Std.int(pointyBitmaps[0].tile.height);
+		final fw = Std.int(flatBitmaps[0].tile.width);
+		final fh = Std.int(flatBitmaps[0].tile.height);
+		Assert.equals(pw, fh);
+		Assert.equals(ph, fw);
+	}
+
+	// ==================== Named hex system tests ====================
+
+	@Test
+	public function testNamedHexCube():Void {
+		final result = buildFromSource("
+			#test programmable() {
+				hex: #myHex pointy(16, 16)
+				bitmap(generated(color(5, 5, #f00))): $myHex.cube(1, -1, 0)
+			}
+		", "test");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.isTrue(bitmaps[0].x != 0 || bitmaps[0].y != 0, "named hex cube should resolve");
+	}
+
+	@Test
+	public function testNamedHexCornerXY():Void {
+		// Compare named system to default system — should produce same results
+		final resultDefault = buildFromSource("
+			#test programmable() {
+				hex: pointy(16, 16)
+				bitmap(generated(color($hex.corner(0, 1.0).x + 50, $hex.corner(0, 1.0).y + 50, #f00))): 0, 0
+			}
+		", "test");
+		final resultNamed = buildFromSource("
+			#test programmable() {
+				hex: #h pointy(16, 16)
+				bitmap(generated(color($h.corner(0, 1.0).x + 50, $h.corner(0, 1.0).y + 50, #f00))): 0, 0
+			}
+		", "test");
+		final defaultBitmaps = findVisibleBitmapDescendants(resultDefault.object);
+		final namedBitmaps = findVisibleBitmapDescendants(resultNamed.object);
+		Assert.equals(Std.int(defaultBitmaps[0].tile.width), Std.int(namedBitmaps[0].tile.width));
+		Assert.equals(Std.int(defaultBitmaps[0].tile.height), Std.int(namedBitmaps[0].tile.height));
+	}
+
+	// ==================== Coordinate .x/.y in expressions ====================
+
+	@Test
+	public function testGridPosXInArithmetic():Void {
+		// grid(20, 15), pos(2, 0).x = 40, 40 + 10 = 50
+		final result = buildFromSource("
+			#test programmable() {
+				grid: 20, 15
+				bitmap(generated(color($grid.pos(2, 0).x + 10, 5, #f00))): 0, 0
+			}
+		", "test");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(50, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testGridPosYInArithmetic():Void {
+		// grid(20, 15), pos(0, 3).y = 45, 45 - 5 = 40
+		final result = buildFromSource("
+			#test programmable() {
+				grid: 20, 15
+				bitmap(generated(color($grid.pos(0, 3).y - 5, 5, #f00))): 0, 0
+			}
+		", "test");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(40, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testGridPosXYAsDimensions():Void {
+		// Using .x and .y extraction as bitmap dimensions
+		// grid(20, 15), pos(1, 2).x = 20, pos(1, 2).y = 30
+		final result = buildFromSource("
+			#test programmable() {
+				grid: 20, 15
+				bitmap(generated(color($grid.pos(1, 2).x, $grid.pos(1, 2).y, #f00))): 0, 0
+			}
+		", "test");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(20, Std.int(bitmaps[0].tile.width));
+		Assert.equals(30, Std.int(bitmaps[0].tile.height));
+	}
+
+	@Test
+	public function testGridPosXYWithParamDep():Void {
+		// grid(20, 15), pos($n, 1) with n=3 => x=60, y=15
+		final params = new Map<String, Dynamic>();
+		params.set("n", 3);
+		final result = buildFromSource("
+			#test programmable(n:uint=0) {
+				grid: 20, 15
+				bitmap(generated(color($grid.pos($n, 1).x, $grid.pos($n, 1).y, #f00))): 0, 0
+			}
+		", "test", params);
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(60, Std.int(bitmaps[0].tile.width));
+		Assert.equals(15, Std.int(bitmaps[0].tile.height));
+	}
+
+	// ==================== Multiple coordinate systems in one programmable ====================
+
+	@Test
+	public function testTwoGridSystems():Void {
+		// Two different grid spacings, verifying each resolves independently
+		final result = buildFromSource("
+			#test programmable() {
+				grid: #a 10, 10
+				grid: #b 30, 30
+				bitmap(generated(color(5, 5, #f00))): $a.pos(1, 1)
+				bitmap(generated(color(5, 5, #00f))): $b.pos(1, 1)
+			}
+		", "test");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(2, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].x));
+		Assert.equals(10, Std.int(bitmaps[0].y));
+		Assert.equals(30, Std.int(bitmaps[1].x));
+		Assert.equals(30, Std.int(bitmaps[1].y));
+	}
+
+	@Test
+	public function testGridAndHexMixed():Void {
+		// One grid and one hex system
+		final result = buildFromSource("
+			#test programmable() {
+				grid: #g 20, 20
+				hex: #h pointy(16, 16)
+				bitmap(generated(color(5, 5, #f00))): $g.pos(2, 0)
+				bitmap(generated(color(5, 5, #00f))): $h.cube(0, 0, 0)
+			}
+		", "test");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(2, bitmaps.length);
+		Assert.equals(40, Std.int(bitmaps[0].x));
+		Assert.equals(0, Std.int(bitmaps[0].y));
+		Assert.equals(0, Std.int(bitmaps[1].x));
+		Assert.equals(0, Std.int(bitmaps[1].y));
+	}
+
+	// ==================== Hex coordinate consistency ====================
+
+	@Test
+	public function testHexCubeConsistentXY():Void {
+		// .x/.y extraction from cube should match position from cube as coordinate
+		final result = buildFromSource("
+			#test programmable() {
+				hex: pointy(16, 16)
+				bitmap(generated(color(5, 5, #f00))): $hex.cube(1, 0, -1)
+				bitmap(generated(color($hex.cube(1, 0, -1).x + 50, $hex.cube(1, 0, -1).y + 50, #f00))): 0, 0
+			}
+		", "test");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		// First bitmap positioned at hex(1,0,-1)
+		// Second bitmap dimensions = hex(1,0,-1).x + 50, hex(1,0,-1).y + 50
+		final posX = Std.int(bitmaps[0].x);
+		final posY = Std.int(bitmaps[0].y);
+		final dimW = Std.int(bitmaps[1].tile.width);
+		final dimH = Std.int(bitmaps[1].tile.height);
+		Assert.equals(posX + 50, dimW);
+		Assert.equals(posY + 50, dimH);
+	}
+
+	@Test
+	public function testHexOffsetXYExtraction():Void {
+		// hex(pointy, 16), offset(1, 0, even) — extract and verify
+		final result = buildFromSource("
+			#test programmable() {
+				hex: pointy(16, 16)
+				bitmap(generated(color(5, 5, #f00))): $hex.offset(1, 0, even)
+				bitmap(generated(color($hex.offset(1, 0, even).x + 50, $hex.offset(1, 0, even).y + 50, #f00))): 0, 0
+			}
+		", "test");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		final posX = Std.int(bitmaps[0].x);
+		final posY = Std.int(bitmaps[0].y);
+		final dimW = Std.int(bitmaps[1].tile.width);
+		final dimH = Std.int(bitmaps[1].tile.height);
+		Assert.equals(posX + 50, dimW);
+		Assert.equals(posY + 50, dimH);
+	}
+
+	@Test
+	public function testHexDoubledXYExtraction():Void {
+		// hex(pointy, 16), doubled(2, 0) — extract and verify consistency
+		final result = buildFromSource("
+			#test programmable() {
+				hex: pointy(16, 16)
+				bitmap(generated(color(5, 5, #f00))): $hex.doubled(2, 0)
+				bitmap(generated(color($hex.doubled(2, 0).x + 50, $hex.doubled(2, 0).y + 50, #f00))): 0, 0
+			}
+		", "test");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		final posX = Std.int(bitmaps[0].x);
+		final posY = Std.int(bitmaps[0].y);
+		final dimW = Std.int(bitmaps[1].tile.width);
+		final dimH = Std.int(bitmaps[1].tile.height);
+		Assert.equals(posX + 50, dimW);
+		Assert.equals(posY + 50, dimH);
+	}
+
+	// ==================== Coordinate system scoping / nesting ====================
+
+	@Test
+	public function testGridInheritedThroughFlow():Void {
+		// grid defined on programmable, used inside nested flow — should walk up parent chain
+		final result = buildFromSource("
+			#test programmable() {
+				grid: 20, 15
+				flow(layout:vertical) {
+					bitmap(generated(color(5, 5, #f00))): $grid.pos(2, 3)
+				}
+			}
+		", "test");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(40, Std.int(bitmaps[0].x));
+		Assert.equals(45, Std.int(bitmaps[0].y));
+	}
+
+	@Test
+	public function testGridShadowingInNestedFlow():Void {
+		// Inner grid: on flow should shadow outer grid: on programmable
+		final result = buildFromSource("
+			#test programmable() {
+				grid: 20, 15
+				flow(layout:vertical) {
+					grid: 10, 10
+					bitmap(generated(color(5, 5, #f00))): $grid.pos(1, 1)
+				}
+				bitmap(generated(color(5, 5, #00f))): $grid.pos(1, 1)
+			}
+		", "test");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(2, bitmaps.length);
+		// First bitmap inside flow — uses inner grid (10,10)
+		Assert.equals(10, Std.int(bitmaps[0].x));
+		Assert.equals(10, Std.int(bitmaps[0].y));
+		// Second bitmap outside flow — uses outer grid (20,15)
+		Assert.equals(20, Std.int(bitmaps[1].x));
+		Assert.equals(15, Std.int(bitmaps[1].y));
+	}
+
+	@Test
+	public function testHexInheritedThroughFlow():Void {
+		// hex defined on programmable, used inside nested flow
+		final result = buildFromSource("
+			#test programmable() {
+				hex: pointy(16, 16)
+				flow(layout:vertical) {
+					bitmap(generated(color(5, 5, #f00))): $hex.cube(0, 0, 0)
+				}
+			}
+		", "test");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(0, Std.int(bitmaps[0].x));
+		Assert.equals(0, Std.int(bitmaps[0].y));
+	}
+
+	@Test
+	public function testNamedGridInheritedThroughFlow():Void {
+		// named grid on programmable, accessed inside nested flow
+		final result = buildFromSource("
+			#test programmable() {
+				grid: #myGrid 25, 30
+				flow(layout:vertical) {
+					bitmap(generated(color(5, 5, #f00))): $myGrid.pos(2, 1)
+				}
+			}
+		", "test");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(50, Std.int(bitmaps[0].x));
+		Assert.equals(30, Std.int(bitmaps[0].y));
+	}
+
+	@Test
+	public function testNamedGridWidthInheritedThroughFlow():Void {
+		// named grid width/height accessible through nesting
+		final result = buildFromSource("
+			#test programmable() {
+				grid: #myGrid 25, 30
+				flow(layout:vertical) {
+					bitmap(generated(color($myGrid.width, $myGrid.height, #f00))): 0, 0
+				}
+			}
+		", "test");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(25, Std.int(bitmaps[0].tile.width));
+		Assert.equals(30, Std.int(bitmaps[0].tile.height));
+	}
+
+	@Test
+	public function testGridInheritedThroughLayers():Void {
+		// grid defined on programmable, used inside nested layers
+		final result = buildFromSource("
+			#test programmable() {
+				grid: 20, 15
+				layers() {
+					bitmap(generated(color(5, 5, #f00))): $grid.pos(3, 2)
+				}
+			}
+		", "test");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(60, Std.int(bitmaps[0].x));
+		Assert.equals(30, Std.int(bitmaps[0].y));
+	}
+
+	@Test
+	public function testGridDoubleNesting():Void {
+		// grid inherited through two levels of nesting: programmable > flow > layers
+		final result = buildFromSource("
+			#test programmable() {
+				grid: 20, 15
+				flow(layout:vertical) {
+					layers() {
+						bitmap(generated(color(5, 5, #f00))): $grid.pos(1, 2)
+					}
+				}
+			}
+		", "test");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(20, Std.int(bitmaps[0].x));
+		Assert.equals(30, Std.int(bitmaps[0].y));
+	}
 }

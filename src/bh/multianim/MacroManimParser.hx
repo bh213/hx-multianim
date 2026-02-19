@@ -25,6 +25,7 @@ private enum MacroTokenType {
 	TExclamation;
 	TQuestion;
 	TColon;
+	TDot;           // .
 	TDoubleDot;     // ..
 	TSemiColon;
 	TArrow;         // =>
@@ -180,6 +181,12 @@ private class MacroLexer {
 					} else break;
 				}
 				return new Token(THexInteger(src.substring(hexStart, pos)), startLine, startCol);
+			}
+
+			// Single dot (after double-dot and before number check — only when NOT followed by a digit)
+			if (c == '.'.code && !(pos + 1 < len && src.charCodeAt(pos + 1) >= '0'.code && src.charCodeAt(pos + 1) <= '9'.code)) {
+				pos++;
+				return new Token(TDot, startLine, startCol);
 			}
 
 			// Number: integer or float
@@ -420,6 +427,7 @@ class MacroManimParser {
 	var currentName:Null<String>;
 	var activeDefs:Null<ParametersDefinitions>; // null = not inside programmable, set to currentDefs when entering programmable scope
 	var scopeVars:Null<Array<String>>; // loop vars, iterator output vars, @final vars (not in activeDefs)
+	var namedCoordSystems:Null<Array<String>>; // names registered via hex: #name or grid: #name
 
 	static final defaultLayoutNodeName = "#defaultLayout";
 	static final defaultPathNodeName = "#defaultPaths";
@@ -437,10 +445,14 @@ class MacroManimParser {
 		this.scopeVars = null;
 	}
 
+	static final implicitRefs = ["ctx", "grid", "hex"];
+
 	function validateRef(name:String):Void {
 		if (activeDefs == null) return; // not inside programmable, skip validation
 		if (activeDefs.exists(name)) return;
 		if (scopeVars != null && scopeVars.indexOf(name) >= 0) return;
+		if (implicitRefs.indexOf(name) >= 0) return;
+		if (namedCoordSystems != null && namedCoordSystems.indexOf(name) >= 0) return;
 		final paramNames = [for (k in activeDefs.keys()) k];
 		final allVars = scopeVars != null ? paramNames.concat(scopeVars) : paramNames;
 		final available = allVars.length > 0 ? allVars.join(", ") : "(none)";
@@ -550,10 +562,6 @@ class MacroManimParser {
 			case TIdentifier(s) if (isKeyword(s, "callback")):
 				advance();
 				return parseCallback();
-			case TIdentifier(s) if (isKeyword(s, "function")):
-				advance();
-				expect(TOpen);
-				return RVFunction(parseFunction());
 			case TMinus:
 				advance();
 				switch (peek()) {
@@ -570,6 +578,9 @@ class MacroManimParser {
 							final idx = parseIntegerOrReference();
 							expect(TBracketClosed);
 							return parseNextIntExpression(EUnaryOp(OpNeg, RVElementOfArray(s, idx)));
+						}
+						if (match(TDot)) {
+							return parseNextIntExpression(EUnaryOp(OpNeg, parsePropertyOrMethodChain(s)));
 						}
 						return parseNextIntExpression(EUnaryOp(OpNeg, RVReference(s)));
 					case TOpen:
@@ -593,6 +604,9 @@ class MacroManimParser {
 					final idx = parseIntegerOrReference();
 					expect(TBracketClosed);
 					return parseNextIntExpression(RVElementOfArray(s, idx));
+				}
+				if (match(TDot)) {
+					return parseNextIntExpression(parsePropertyOrMethodChain(s));
 				}
 				return parseNextIntExpression(RVReference(s));
 			case TOpen:
@@ -637,10 +651,6 @@ class MacroManimParser {
 			case TIdentifier(s) if (isKeyword(s, "callback")):
 				advance();
 				return parseCallback();
-			case TIdentifier(s) if (isKeyword(s, "function")):
-				advance();
-				expect(TOpen);
-				return RVFunction(parseFunction());
 			case TMinus:
 				advance();
 				switch (peek()) {
@@ -654,6 +664,9 @@ class MacroManimParser {
 							final idx = parseFloatOrReference();
 							expect(TBracketClosed);
 							return parseNextFloatExpression(EUnaryOp(OpNeg, RVElementOfArray(s, idx)));
+						}
+						if (match(TDot)) {
+							return parseNextFloatExpression(EUnaryOp(OpNeg, parsePropertyOrMethodChain(s)));
 						}
 						return parseNextFloatExpression(EUnaryOp(OpNeg, RVReference(s)));
 					case TOpen:
@@ -674,6 +687,9 @@ class MacroManimParser {
 					final idx = parseIntegerOrReference();
 					expect(TBracketClosed);
 					return parseNextFloatExpression(RVElementOfArray(s, idx));
+				}
+				if (match(TDot)) {
+					return parseNextFloatExpression(parsePropertyOrMethodChain(s));
 				}
 				return parseNextFloatExpression(RVReference(s));
 			case TOpen:
@@ -800,10 +816,6 @@ class MacroManimParser {
 			case TIdentifier(s) if (isKeyword(s, "callback")):
 				advance();
 				return parseCallback();
-			case TIdentifier(s) if (isKeyword(s, "function")):
-				advance();
-				expect(TOpen);
-				return RVFunction(parseFunction());
 			case TMinus:
 				advance();
 				switch (peek()) {
@@ -820,6 +832,9 @@ class MacroManimParser {
 							final idx = parseAnything();
 							expect(TBracketClosed);
 							return parseNextAnythingExpression(EUnaryOp(OpNeg, RVElementOfArray(s, idx)));
+						}
+						if (match(TDot)) {
+							return parseNextAnythingExpression(EUnaryOp(OpNeg, parsePropertyOrMethodChain(s)));
 						}
 						return parseNextAnythingExpression(EUnaryOp(OpNeg, RVReference(s)));
 					case TOpen:
@@ -843,6 +858,9 @@ class MacroManimParser {
 					final idx = parseAnything();
 					expect(TBracketClosed);
 					return parseNextAnythingExpression(RVElementOfArray(s, idx));
+				}
+				if (match(TDot)) {
+					return parseNextAnythingExpression(parsePropertyOrMethodChain(s));
 				}
 				return parseNextAnythingExpression(RVReference(s));
 			case TQuotedString(s):
@@ -925,18 +943,47 @@ class MacroManimParser {
 		return RVCallbacks(name, defaultValue);
 	}
 
-	function parseFunction():ReferenceableValueFunction {
-		switch (peek()) {
-			case TIdentifier(s) if (isKeyword(s, "gridwidth")):
-				advance();
+	function parsePropertyOrMethodChain(ref:String):ReferenceableValue {
+		final ident = expectIdentifierOrString();
+		if (match(TOpen)) {
+			// Method call: $ref.method(args...)
+			final args:Array<ReferenceableValue> = [];
+			if (!match(TClosed)) {
+				args.push(parseAnything());
+				while (match(TComma)) {
+					args.push(parseAnything());
+				}
 				expect(TClosed);
-				return RVFGridWidth;
-			case TIdentifier(s) if (isKeyword(s, "gridheight")):
-				advance();
-				expect(TClosed);
-				return RVFGridHeight;
-			default:
-				return error("unknown function");
+			}
+			var base:ReferenceableValue = RVMethodCall(ref, ident, args);
+			// Check for further chaining: $hex.cube(0,1,-1).hexCorner(0, 1.1).x
+			while (match(TDot)) {
+				final nextIdent = expectIdentifierOrString();
+				if (match(TOpen)) {
+					final nextArgs:Array<ReferenceableValue> = [];
+					if (!match(TClosed)) {
+						nextArgs.push(parseAnything());
+						while (match(TComma)) {
+							nextArgs.push(parseAnything());
+						}
+						expect(TClosed);
+					}
+					base = RVChainedMethodCall(base, nextIdent, nextArgs);
+				} else {
+					// Terminal property: .x, .y
+					base = RVChainedMethodCall(base, nextIdent, []);
+				}
+			}
+			return base;
+		} else {
+			// $ctx.hex or $ctx.grid → sub-object, check for further chaining
+			if (ref == "ctx" && (ident == "hex" || ident == "grid")) {
+				if (match(TDot)) {
+					return parsePropertyOrMethodChain("ctx." + ident);
+				}
+			}
+			// Simple property: $ref.width, $ref.height
+			return RVPropertyAccess(ref, ident);
 		}
 	}
 
@@ -1047,33 +1094,20 @@ class MacroManimParser {
 
 	function parseXY():Coordinates {
 		switch (peek()) {
-			case TIdentifier(s) if (isKeyword(s, "grid")):
+			case TReference(s):
+				// Check if this is $ref.method() (coordinate method chain) or just $ref as part of OFFSET
+				// We need to peek ahead: if the token after $ref is TDot, it's a coordinate method chain
 				advance();
-				expect(TOpen);
-				final x = parseIntegerOrReference();
+				validateRef(s);
+				if (match(TDot)) {
+					return parseCoordinateMethodChain(s);
+				}
+				// Not a dot — this is a plain reference used in OFFSET(x, y) position
+				// Put back as an expression and parse as OFFSET
+				final x = parseNextIntExpression(RVReference(s));
 				expect(TComma);
 				final y = parseIntegerOrReference();
-				if (match(TComma)) {
-					final ox = parseIntegerOrReference();
-					expect(TComma);
-					final oy = parseIntegerOrReference();
-					expect(TClosed);
-					return SELECTED_GRID_POSITION_WITH_OFFSET(x, y, ox, oy);
-				}
-				expect(TClosed);
-				return SELECTED_GRID_POSITION(x, y);
-			case TIdentifier(s) if (isKeyword(s, "hex")):
-				advance();
-				expect(TOpen);
-				final q = parseInteger();
-				expect(TComma);
-				final r = parseInteger();
-				expect(TComma);
-				final sv = parseInteger();
-				eatComma();
-				expect(TClosed);
-				if (q + r + sv != 0) error("q + r + s must be 0");
-				return SELECTED_HEX_POSITION(new Hex(q, r, sv));
+				return OFFSET(x, y);
 			case TIdentifier(s) if (isKeyword(s, "layout")):
 				advance();
 				expect(TOpen);
@@ -1085,28 +1119,153 @@ class MacroManimParser {
 				}
 				expect(TClosed);
 				return LAYOUT(layoutName, null);
-			case TIdentifier(s) if (isKeyword(s, "hexedge")):
-				advance();
-				expect(TOpen);
-				final dir = parseIntegerOrReference();
-				expect(TComma);
-				final factor = parseFloatOrReference();
-				expect(TClosed);
-				return SELECTED_HEX_EDGE(dir, factor);
-			case TIdentifier(s) if (isKeyword(s, "hexcorner")):
-				advance();
-				expect(TOpen);
-				final dir = parseIntegerOrReference();
-				expect(TComma);
-				final factor = parseFloatOrReference();
-				expect(TClosed);
-				return SELECTED_HEX_CORNER(dir, factor);
 			default:
 				final x = parseIntegerOrReference();
 				expect(TComma);
 				final y = parseIntegerOrReference();
 				return OFFSET(x, y);
 		}
+	}
+
+	function parseCoordinateMethodChain(ref:String):Coordinates {
+		// ref is "hex", "grid", "localhex", "ctx", etc.
+		// For $ctx.hex / $ctx.grid, resolve the sub-object first
+		var effectiveRef = ref;
+		if (ref == "ctx") {
+			final sub = expectIdentifierOrString();
+			if (sub != "hex" && sub != "grid") {
+				error('$$ctx.$sub is not a coordinate system. Use $$ctx.hex or $$ctx.grid in position context');
+			}
+			expect(TDot);
+			effectiveRef = sub; // now parse as if $hex.method() or $grid.method()
+		}
+
+		final method = expectIdentifierOrString();
+		expect(TOpen);
+
+		// Grid methods
+		final isNamed = namedCoordSystems != null && namedCoordSystems.indexOf(effectiveRef) >= 0;
+		inline function wrapNamed(coord:Coordinates):Coordinates {
+			return if (isNamed) NAMED_COORD(effectiveRef, coord) else coord;
+		}
+		if (effectiveRef == "grid" || (isNamed && method == "pos")) {
+			switch (method) {
+				case "pos":
+					final x = parseIntegerOrReference();
+					expect(TComma);
+					final y = parseIntegerOrReference();
+					if (match(TComma)) {
+						final ox = parseIntegerOrReference();
+						expect(TComma);
+						final oy = parseIntegerOrReference();
+						expect(TClosed);
+						return wrapNamed(SELECTED_GRID_POSITION_WITH_OFFSET(x, y, ox, oy));
+					}
+					expect(TClosed);
+					return wrapNamed(SELECTED_GRID_POSITION(x, y));
+				default:
+					return error('Unknown grid method: $method');
+			}
+		}
+
+		// Hex methods
+		if (effectiveRef == "hex" || isNamed) {
+			var cellCoord:Coordinates = null;
+			switch (method) {
+				case "cube":
+					final q = parseFloatOrReference();
+					expect(TComma);
+					final r = parseFloatOrReference();
+					expect(TComma);
+					final s = parseFloatOrReference();
+					expect(TClosed);
+					cellCoord = SELECTED_HEX_CUBE(q, r, s);
+
+				case "offset":
+					final col = parseIntegerOrReference();
+					expect(TComma);
+					final row = parseIntegerOrReference();
+					var parity:OffsetParity = EVEN;
+					if (match(TComma)) {
+						final parityIdent = expectIdentifierOrString();
+						parity = switch (parityIdent) {
+							case "even": EVEN;
+							case "odd": ODD;
+							default: error('Expected "even" or "odd", got: $parityIdent');
+						};
+					}
+					expect(TClosed);
+					cellCoord = SELECTED_HEX_OFFSET(col, row, parity);
+
+				case "doubled":
+					final col = parseIntegerOrReference();
+					expect(TComma);
+					final row = parseIntegerOrReference();
+					expect(TClosed);
+					cellCoord = SELECTED_HEX_DOUBLED(col, row);
+
+				case "pixel":
+					final x = parseFloatOrReference();
+					expect(TComma);
+					final y = parseFloatOrReference();
+					expect(TClosed);
+					cellCoord = SELECTED_HEX_PIXEL(x, y);
+
+				case "corner":
+					final idx = parseIntegerOrReference();
+					final factor = if (match(TComma)) parseFloatOrReference() else RVFloat(1.0);
+					expect(TClosed);
+					return wrapNamed(SELECTED_HEX_CORNER(idx, factor));
+
+				case "edge":
+					final dir = parseIntegerOrReference();
+					final factor = if (match(TComma)) parseFloatOrReference() else RVFloat(1.0);
+					expect(TClosed);
+					return wrapNamed(SELECTED_HEX_EDGE(dir, factor));
+
+				default:
+					return error('Unknown hex method: $method');
+			}
+
+			// Check for chained .hexCorner() / .hexEdge() after any cell addressing method
+			if (match(TDot)) {
+				return wrapNamed(parseHexCellChain(cellCoord));
+			}
+			return wrapNamed(cellCoord);
+		}
+
+		return error('Unknown coordinate system: $effectiveRef');
+	}
+
+	function parseHexCellChain(cell:Coordinates):Coordinates {
+		final chainMethod = expectIdentifierOrString();
+		expect(TOpen);
+		switch (chainMethod) {
+			case "hexCorner":
+				final idx = parseIntegerOrReference();
+				final factor = if (match(TComma)) parseFloatOrReference() else RVFloat(1.0);
+				expect(TClosed);
+				return SELECTED_HEX_CELL_CORNER(cell, idx, factor);
+			case "hexEdge":
+				final dir = parseIntegerOrReference();
+				final factor = if (match(TComma)) parseFloatOrReference() else RVFloat(1.0);
+				expect(TClosed);
+				return SELECTED_HEX_CELL_EDGE(cell, dir, factor);
+			default:
+				return error('Unknown hex chain method: $chainMethod. Expected hexCorner or hexEdge');
+		}
+	}
+
+	function isNamedGrid(name:String):Bool {
+		if (namedCoordSystems == null) return false;
+		// We can't easily distinguish grid vs hex by name at parse time.
+		// Named systems are tracked, and the builder will validate the type.
+		return namedCoordSystems.indexOf(name) >= 0;
+	}
+
+	function isNamedHex(name:String):Bool {
+		if (namedCoordSystems == null) return false;
+		return namedCoordSystems.indexOf(name) >= 0;
 	}
 
 	// ===================== Helpers =====================
@@ -1340,6 +1499,8 @@ class MacroManimParser {
 
 	function parseDefine():Definition {
 		final paramName = expectIdentifierOrString();
+		if (implicitRefs.indexOf(paramName) >= 0)
+			error('$$' + paramName + ' is a reserved name and cannot be used as a parameter');
 		// Shorthand: name="default" (string type with default)
 		if (match(TEquals)) {
 			switch (peek()) {
@@ -2253,6 +2414,7 @@ class MacroManimParser {
 			layer: layerIndex,
 			gridCoordinateSystem: null,
 			hexCoordinateSystem: null,
+			namedCoordinateSystems: null,
 			blendMode: null,
 			filter: null,
 			parent: parent,
@@ -3509,16 +3671,39 @@ class MacroManimParser {
 					advance();
 					expect(TColon);
 					if (node == null) error("grid not supported on root");
+					// Check for #name
+					var gridName:Null<String> = null;
+					switch (peek()) {
+						case TName(n):
+							advance();
+							gridName = n;
+						default:
+					}
 					final w = parseInteger();
 					expect(TComma);
 					final h = parseInteger();
 					eatSemicolon();
-					node.gridCoordinateSystem = {spacingX: w, spacingY: h};
+					final gridSystem:GridCoordinateSystem = {spacingX: w, spacingY: h};
+					node.gridCoordinateSystem = gridSystem;
+					if (gridName != null) {
+						if (node.namedCoordinateSystems == null) node.namedCoordinateSystems = new Map();
+						node.namedCoordinateSystems.set(gridName, NamedGrid(gridSystem));
+						if (namedCoordSystems == null) namedCoordSystems = [];
+						namedCoordSystems.push(gridName);
+					}
 				case TIdentifier(s) if (isKeyword(s, "hex")):
 					if (isPropertyColon()) {
 						advance();
 						expect(TColon);
 						if (node == null) error("hex not supported on root");
+						// Check for #name
+						var hexName:Null<String> = null;
+						switch (peek()) {
+							case TName(n):
+								advance();
+								hexName = n;
+							default:
+						}
 						final orientation = parseHexOrientation();
 						expect(TOpen);
 						final w = parseFloat_();
@@ -3526,7 +3711,14 @@ class MacroManimParser {
 						final h = parseFloat_();
 						expect(TClosed);
 						eatSemicolon();
-						node.hexCoordinateSystem = {hexLayout: HexLayout.createFromFloats(orientation, w, h)};
+						final hexSystem:HexCoordinateSystem = {hexLayout: HexLayout.createFromFloats(orientation, w, h)};
+						node.hexCoordinateSystem = hexSystem;
+						if (hexName != null) {
+							if (node.namedCoordinateSystems == null) node.namedCoordinateSystems = new Map();
+							node.namedCoordinateSystems.set(hexName, NamedHex(hexSystem));
+							if (namedCoordSystems == null) namedCoordSystems = [];
+							namedCoordSystems.push(hexName);
+						}
 					} else {
 						parseChildNode(node, defs);
 					}

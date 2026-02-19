@@ -38,6 +38,24 @@
 
 All position updates tracked for elements with `$param` references.
 
+### Coordinate System & Property Access — Codegen Support
+
+| Feature | Builder | CodeGen | Notes |
+|---------|---------|---------|-------|
+| `$grid.pos(x,y)` / `$grid.pos(x,y,ox,oy)` | Full | Full | Static resolution at macro time when args are constants |
+| `$grid.width` / `$grid.height` | Full | Full | Resolved statically from coordinate system definition |
+| `$hex.cube(q,r,s)` | Full | Full | Static + runtime |
+| `$hex.corner(i,f)` / `$hex.edge(d,f)` | Full | Full | Static + runtime via `_hexLayout` field |
+| `$hex.offset(c,r,parity)` | Full | Full | Static + runtime |
+| `$hex.doubled(c,r)` | Full | Full | Static + runtime |
+| `$hex.pixel(x,y)` | Full | Runtime only | Cannot resolve at macro time (needs h2d.col.Point) |
+| `$hex.width` / `$hex.height` | Full | Full | Static resolution |
+| Named coordinate systems | Full | Full | `$name.pos()`, `$name.cube()`, etc. |
+| `.x` / `.y` extraction | Full | Full | `$hex.corner(0, 1.0).x` extracts coordinate component |
+| `$ctx.width` / `$ctx.height` | Full | Full | Runtime resolution via `this.getSize()` |
+| `$ctx.random(min, max)` | Full | Full | Runtime Math.random() expression |
+| Cell-relative `.corner()` / `.edge()` | Full | Not yet | `$hex.cube(q,r,s).corner(i,f)` — builder resolves, codegen not implemented |
+
 ### Root-Level Definitions — Codegen Support
 
 | Definition | Builder | CodeGen | Notes |

@@ -22,6 +22,8 @@ import h2d.Mask;
 import bh.multianim.layouts.MultiAnimLayouts;
 import bh.base.MAObject;
 import bh.multianim.CoordinateSystems;
+import bh.base.Hex.OffsetCoord;
+import bh.base.Hex.DoubledCoord;
 import bh.base.PixelLine;
 import h2d.Object;
 import bh.multianim.MultiAnimParser;
@@ -583,6 +585,7 @@ enum PlaceholderValues {
 typedef BuilderParameters = {
 	var ?callback:BuilderCallbackFunction;
 	var ?placeholderObjects:Map<String, PlaceholderValues>;
+	var ?scene:h2d.Scene;
 }
 
 @:nullSafety
@@ -799,14 +802,156 @@ class MultiAnimBuilder {
 		}
 	}
 
-	function resolveRVFunction(functionType:ReferenceableValueFunction):Int {
-		final gridCoordinateSystem = MultiAnimParser.getGridCoordinateSystem(this.currentNode);
-		if (gridCoordinateSystem == null)
-			throw 'cannot resolve $functionType as there is no grid defined' + currentNodePos();
+	function resolveRVPropertyAccess(ref:String, property:String):Float {
+		switch (ref) {
+			case "ctx":
+				switch (property) {
+					case "width":
+						if (builderParams.scene == null) throw '$$ctx.width requires scene in BuilderParameters' + currentNodePos();
+						return builderParams.scene.width;
+					case "height":
+						if (builderParams.scene == null) throw '$$ctx.height requires scene in BuilderParameters' + currentNodePos();
+						return builderParams.scene.height;
+					default: throw '$ref.$property is not a known context property' + currentNodePos();
+				}
+			case "grid" | "ctx.grid":
+				final gcs = if (ref == "ctx.grid") MultiAnimParser.getGridCoordinateSystem(currentNode) else MultiAnimParser.getGridCoordinateSystem(currentNode);
+				if (gcs == null) throw 'no grid coordinate system in scope for $ref.$property' + currentNodePos();
+				switch (property) {
+					case "width": return gcs.spacingX;
+					case "height": return gcs.spacingY;
+					default: throw '$ref.$property is not a known grid property' + currentNodePos();
+				}
+			case "hex" | "ctx.hex":
+				final hcs = MultiAnimParser.getHexCoordinateSystem(currentNode);
+				if (hcs == null) throw 'no hex coordinate system in scope for $ref.$property' + currentNodePos();
+				switch (property) {
+					case "width": return hcs.hexLayout.size.x;
+					case "height": return hcs.hexLayout.size.y;
+					default: throw '$ref.$property is not a known hex property' + currentNodePos();
+				}
+			default:
+				// Check named coordinate systems
+				final namedCS = MultiAnimParser.getNamedCoordinateSystem(ref, currentNode);
+				if (namedCS != null) {
+					switch (namedCS) {
+						case NamedGrid(system):
+							switch (property) {
+								case "width": return system.spacingX;
+								case "height": return system.spacingY;
+								default: throw '$ref.$property is not a known grid property' + currentNodePos();
+							}
+						case NamedHex(system):
+							switch (property) {
+								case "width": return system.hexLayout.size.x;
+								case "height": return system.hexLayout.size.y;
+								default: throw '$ref.$property is not a known hex property' + currentNodePos();
+							}
+					}
+				}
+				throw 'unknown reference $ref for property access .$property' + currentNodePos();
+		}
+	}
 
-		return switch functionType {
-			case RVFGridWidth: gridCoordinateSystem.spacingX;
-			case RVFGridHeight: gridCoordinateSystem.spacingY;
+	function resolveRVMethodCall(ref:String, method:String, args:Array<ReferenceableValue>):Float {
+		switch (ref) {
+			case "ctx":
+				switch (method) {
+					case "random":
+						if (args.length != 2) throw '$ref.$method() requires 2 arguments (min, max)' + currentNodePos();
+						final min = resolveAsInteger(args[0]);
+						final max = resolveAsInteger(args[1]);
+						return min + Std.random(max - min);
+					default: throw '$ref.$method() is not a known context method' + currentNodePos();
+				}
+			default:
+				throw 'unknown reference $ref for method call .$method()' + currentNodePos();
+		}
+	}
+
+	/** Resolves a coordinate method call ($hex.corner(), $hex.edge(), $hex.cube(), $grid.pos(), etc.) to an FPoint. */
+	function resolveRVMethodCallToPoint(ref:String, method:String, args:Array<ReferenceableValue>):FPoint {
+		final namedCS = if (ref != "grid" && ref != "ctx.grid" && ref != "hex" && ref != "ctx.hex") MultiAnimParser.getNamedCoordinateSystem(ref, currentNode) else null;
+		final isNamedGrid = switch (namedCS) { case NamedGrid(_): true; default: false; };
+		// Grid methods
+		if (ref == "grid" || ref == "ctx.grid" || isNamedGrid) {
+			final gcs = if (ref == "grid" || ref == "ctx.grid") {
+				MultiAnimParser.getGridCoordinateSystem(currentNode);
+			} else {
+				switch (namedCS) {
+					case NamedGrid(system): system;
+					default: null;
+				}
+			};
+			if (gcs == null) throw 'no grid coordinate system in scope for $$$ref.$method()' + currentNodePos();
+			switch (method) {
+				case "pos":
+					if (args.length < 2) throw '$$$ref.pos() requires at least 2 arguments (x, y)' + currentNodePos();
+					final x = resolveAsInteger(args[0]);
+					final y = resolveAsInteger(args[1]);
+					if (args.length >= 4) {
+						final ox = resolveAsInteger(args[2]);
+						final oy = resolveAsInteger(args[3]);
+						return gcs.resolveAsGrid(x, y, ox, oy);
+					}
+					return gcs.resolveAsGrid(x, y);
+				default: throw '$$$ref.$method() is not a known grid method' + currentNodePos();
+			}
+		}
+
+		// Hex methods
+		final hcs = if (ref == "hex" || ref == "ctx.hex") {
+			MultiAnimParser.getHexCoordinateSystem(currentNode);
+		} else {
+			switch (namedCS) {
+				case NamedHex(system): system;
+				default: null;
+			}
+		};
+		if (hcs == null) throw 'no hex coordinate system in scope for $$$ref.$method()' + currentNodePos();
+
+		switch (method) {
+			case "corner":
+				if (args.length < 1) throw '$$$ref.corner() requires at least 1 argument (index)' + currentNodePos();
+				final idx = resolveAsInteger(args[0]);
+				final factor = if (args.length >= 2) resolveAsNumber(args[1]) else 1.0;
+				return hcs.resolveAsHexCorner(idx, factor);
+			case "edge":
+				if (args.length < 1) throw '$$$ref.edge() requires at least 1 argument (direction)' + currentNodePos();
+				final dir = resolveAsInteger(args[0]);
+				final factor = if (args.length >= 2) resolveAsNumber(args[1]) else 1.0;
+				return hcs.resolveAsHexEdge(dir, factor);
+			case "cube":
+				if (args.length != 3) throw '$$$ref.cube() requires 3 arguments (q, r, s)' + currentNodePos();
+				return hcs.resolveHexCube(resolveAsNumber(args[0]), resolveAsNumber(args[1]), resolveAsNumber(args[2]));
+			case "offset":
+				if (args.length < 2) throw '$$$ref.offset() requires at least 2 arguments (col, row)' + currentNodePos();
+				final parity:OffsetParity = if (args.length >= 3) {
+					final p = resolveAsString(args[2]);
+					switch (p) { case "even": EVEN; case "odd": ODD; default: throw 'Expected "even" or "odd", got: $p' + currentNodePos(); }
+				} else EVEN;
+				return hcs.resolveHexOffset(resolveAsInteger(args[0]), resolveAsInteger(args[1]), parity);
+			case "doubled":
+				if (args.length != 2) throw '$$$ref.doubled() requires 2 arguments (col, row)' + currentNodePos();
+				return hcs.resolveHexDoubled(resolveAsInteger(args[0]), resolveAsInteger(args[1]));
+			case "pixel":
+				if (args.length != 2) throw '$$$ref.pixel() requires 2 arguments (x, y)' + currentNodePos();
+				return hcs.resolveHexPixel(resolveAsNumber(args[0]), resolveAsNumber(args[1]));
+			default: throw '$$$ref.$method() is not a known hex method' + currentNodePos();
+		}
+	}
+
+	/** Resolves RVChainedMethodCall for .x/.y extraction from coordinate methods. */
+	function resolveRVChainedMethodCall(base:ReferenceableValue, property:String):Float {
+		if (property != "x" && property != "y")
+			throw 'unsupported chained property .$property — only .x and .y are supported' + currentNodePos();
+
+		switch (base) {
+			case RVMethodCall(ref, method, args):
+				final pt = resolveRVMethodCallToPoint(ref, method, args);
+				return if (property == "x") pt.x else pt.y;
+			default:
+				throw 'unsupported base expression for .$property extraction' + currentNodePos();
 		}
 	}
 
@@ -890,7 +1035,9 @@ class MultiAnimBuilder {
 					default: throw 'reference ${ref} is not a value but ${val}' + currentNodePos();
 				}
 			case RVParenthesis(e): resolveAsInteger(e);
-			case RVFunction(functionType): resolveRVFunction(functionType);
+			case RVPropertyAccess(ref, property): Std.int(resolveRVPropertyAccess(ref, property));
+			case RVMethodCall(ref, method, args): Std.int(resolveRVMethodCall(ref, method, args));
+			case RVChainedMethodCall(base, property, _): Std.int(resolveRVChainedMethodCall(base, property));
 			case RVTernary(condition, ifTrue, ifFalse):
 				return if (resolveAsBool(condition)) resolveAsInteger(ifTrue) else resolveAsInteger(ifFalse);
 
@@ -951,7 +1098,9 @@ class MultiAnimBuilder {
 					default: throw 'reference ${ref} is not a value but ${val}' + currentNodePos();
 				}
 			case RVParenthesis(e): resolveAsNumber(e);
-			case RVFunction(functionType): resolveRVFunction(functionType);
+			case RVPropertyAccess(ref, property): resolveRVPropertyAccess(ref, property);
+			case RVMethodCall(ref, method, args): resolveRVMethodCall(ref, method, args);
+			case RVChainedMethodCall(base, property, _): resolveRVChainedMethodCall(base, property);
 			case RVTernary(condition, ifTrue, ifFalse):
 				return if (resolveAsBool(condition)) resolveAsNumber(ifTrue) else resolveAsNumber(ifFalse);
 			case RVCallbacks(name, defaultValue):
@@ -1048,7 +1197,8 @@ class MultiAnimBuilder {
 				} catch (_:Dynamic) {
 					return resolveAsString(e);
 				}
-			case RVFunction(functionType): '${resolveAsInteger(v)}';
+			case RVPropertyAccess(_, _) | RVMethodCall(_, _, _): '${resolveAsNumber(v)}';
+			case RVChainedMethodCall(base, property, _): '${resolveRVChainedMethodCall(base, property)}';
 			case RVCallbacks(name, defaultValue):
 				final input = Name(resolveAsString(name));
 				final result = builderParams.callback(input);
@@ -1621,6 +1771,23 @@ class MultiAnimBuilder {
 		}
 	}
 
+	static function collectCoordinateParamRefs(coord:Coordinates, result:Array<String>):Void {
+		if (coord == null) return;
+		switch coord {
+			case OFFSET(x, y): collectParamRefs(x, result); collectParamRefs(y, result);
+			case SELECTED_GRID_POSITION(x, y): collectParamRefs(x, result); collectParamRefs(y, result);
+			case SELECTED_GRID_POSITION_WITH_OFFSET(x, y, ox, oy): collectParamRefs(x, result); collectParamRefs(y, result); collectParamRefs(ox, result); collectParamRefs(oy, result);
+			case SELECTED_HEX_CUBE(q, r, s): collectParamRefs(q, result); collectParamRefs(r, result); collectParamRefs(s, result);
+			case SELECTED_HEX_OFFSET(col, row, _): collectParamRefs(col, result); collectParamRefs(row, result);
+			case SELECTED_HEX_DOUBLED(col, row): collectParamRefs(col, result); collectParamRefs(row, result);
+			case SELECTED_HEX_PIXEL(x, y): collectParamRefs(x, result); collectParamRefs(y, result);
+			case SELECTED_HEX_CORNER(count, factor): collectParamRefs(count, result); collectParamRefs(factor, result);
+			case SELECTED_HEX_EDGE(dir, factor): collectParamRefs(dir, result); collectParamRefs(factor, result);
+			case NAMED_COORD(_, coord): collectCoordinateParamRefs(coord, result);
+			default:
+		}
+	}
+
 	/** Track param-dependent expressions for incremental updates */
 	function trackIncrementalExpressions(node:Node, object:h2d.Object, builtObject:BuiltHeapsComponent):Void {
 		if (incrementalContext == null) return;
@@ -1698,6 +1865,35 @@ class MultiAnimBuilder {
 					collectParamRefs(gridY, posRefs);
 					collectParamRefs(offsetX, posRefs);
 					collectParamRefs(offsetY, posRefs);
+				case SELECTED_HEX_CORNER(count, factor):
+					collectParamRefs(count, posRefs);
+					collectParamRefs(factor, posRefs);
+				case SELECTED_HEX_EDGE(direction, factor):
+					collectParamRefs(direction, posRefs);
+					collectParamRefs(factor, posRefs);
+				case SELECTED_HEX_CUBE(q, r, s):
+					collectParamRefs(q, posRefs);
+					collectParamRefs(r, posRefs);
+					collectParamRefs(s, posRefs);
+				case SELECTED_HEX_OFFSET(col, row, _):
+					collectParamRefs(col, posRefs);
+					collectParamRefs(row, posRefs);
+				case SELECTED_HEX_DOUBLED(col, row):
+					collectParamRefs(col, posRefs);
+					collectParamRefs(row, posRefs);
+				case SELECTED_HEX_PIXEL(x, y):
+					collectParamRefs(x, posRefs);
+					collectParamRefs(y, posRefs);
+				case SELECTED_HEX_CELL_CORNER(cell, cornerIndex, factor):
+					collectCoordinateParamRefs(cell, posRefs);
+					collectParamRefs(cornerIndex, posRefs);
+					collectParamRefs(factor, posRefs);
+				case SELECTED_HEX_CELL_EDGE(cell, direction, factor):
+					collectCoordinateParamRefs(cell, posRefs);
+					collectParamRefs(direction, posRefs);
+					collectParamRefs(factor, posRefs);
+				case NAMED_COORD(_, coord):
+					collectCoordinateParamRefs(coord, posRefs);
 				default:
 			}
 			if (posRefs.length > 0) {
@@ -1744,22 +1940,79 @@ class MultiAnimBuilder {
 				if (hexCoordinateSystem == null)
 					throw 'hexCoordinateSystem is null' + currentNodePos();
 				hexCoordinateSystem.resolveAsHexEdge(resolveAsInteger(direction), resolveAsNumber(factor));
-			case SELECTED_HEX_POSITION(hex):
-				if (hexCoordinateSystem == null)
-					throw 'hexCoordinateSystem is null' + currentNodePos();
-				hexCoordinateSystem.resolveAsHexPosition(hex);
 			case SELECTED_HEX_CORNER(count, factor):
 				if (hexCoordinateSystem == null)
 					throw 'hexCoordinateSystem is null' + currentNodePos();
 				hexCoordinateSystem.resolveAsHexCorner(resolveAsInteger(count), resolveAsNumber(factor));
+			case SELECTED_HEX_CUBE(q, r, s):
+				if (hexCoordinateSystem == null)
+					throw 'hexCoordinateSystem is null' + currentNodePos();
+				hexCoordinateSystem.resolveHexCube(resolveAsNumber(q), resolveAsNumber(r), resolveAsNumber(s));
+			case SELECTED_HEX_OFFSET(col, row, parity):
+				if (hexCoordinateSystem == null)
+					throw 'hexCoordinateSystem is null' + currentNodePos();
+				hexCoordinateSystem.resolveHexOffset(resolveAsInteger(col), resolveAsInteger(row), parity);
+			case SELECTED_HEX_DOUBLED(col, row):
+				if (hexCoordinateSystem == null)
+					throw 'hexCoordinateSystem is null' + currentNodePos();
+				hexCoordinateSystem.resolveHexDoubled(resolveAsInteger(col), resolveAsInteger(row));
+			case SELECTED_HEX_PIXEL(x, y):
+				if (hexCoordinateSystem == null)
+					throw 'hexCoordinateSystem is null' + currentNodePos();
+				hexCoordinateSystem.resolveHexPixel(resolveAsNumber(x), resolveAsNumber(y));
+			case SELECTED_HEX_CELL_CORNER(cell, cornerIndex, factor):
+				if (hexCoordinateSystem == null)
+					throw 'hexCoordinateSystem is null' + currentNodePos();
+				final hex = resolveToHex(cell, hexCoordinateSystem);
+				hexCoordinateSystem.resolveAsHexCellCorner(hex, resolveAsInteger(cornerIndex), resolveAsNumber(factor));
+			case SELECTED_HEX_CELL_EDGE(cell, direction, factor):
+				if (hexCoordinateSystem == null)
+					throw 'hexCoordinateSystem is null' + currentNodePos();
+				final hex = resolveToHex(cell, hexCoordinateSystem);
+				hexCoordinateSystem.resolveAsHexCellEdge(hex, resolveAsInteger(direction), resolveAsNumber(factor));
 			case LAYOUT(layoutName, index):
 				var idx = 0;
 				if (index != null)
 					idx = resolveAsInteger(index);
 				var pt = getLayouts(builderParams).getPoint(layoutName, idx);
 				returnPosition(pt.x, pt.y);
+			case NAMED_COORD(name, coord):
+				final namedCS = MultiAnimParser.getNamedCoordinateSystem(name, currentNode);
+				if (namedCS == null) throw 'unknown named coordinate system: $name' + currentNodePos();
+				switch (namedCS) {
+					case NamedGrid(system): calculatePosition(coord, system, hexCoordinateSystem);
+					case NamedHex(system): calculatePosition(coord, gridCoordinateSystem, system);
+				}
 		}
 		return pos;
+	}
+
+	function resolveToHex(cell:Coordinates, hexCoordinateSystem:HexCoordinateSystem):bh.base.Hex {
+		return switch cell {
+			case SELECTED_HEX_CUBE(q, r, s):
+				hexCoordinateSystem.resolveHexToHex(resolveAsNumber(q), resolveAsNumber(r), resolveAsNumber(s));
+			case SELECTED_HEX_OFFSET(col, row, parity):
+				final parityVal = switch (parity) { case EVEN: OffsetCoord.EVEN; case ODD: OffsetCoord.ODD; };
+				switch (hexCoordinateSystem.hexLayout.orientation) {
+					case POINTY: OffsetCoord.qoffsetToCube(parityVal, new OffsetCoord(resolveAsInteger(col), resolveAsInteger(row)));
+					case FLAT: OffsetCoord.roffsetToCube(parityVal, new OffsetCoord(resolveAsInteger(col), resolveAsInteger(row)));
+				};
+			case SELECTED_HEX_DOUBLED(col, row):
+				switch (hexCoordinateSystem.hexLayout.orientation) {
+					case POINTY: DoubledCoord.qdoubledToCube(new DoubledCoord(resolveAsInteger(col), resolveAsInteger(row)));
+					case FLAT: DoubledCoord.rdoubledToCube(new DoubledCoord(resolveAsInteger(col), resolveAsInteger(row)));
+				};
+			case SELECTED_HEX_PIXEL(x, y):
+				hexCoordinateSystem.hexLayout.pixelToHex(new h2d.col.Point(resolveAsNumber(x), resolveAsNumber(y))).round();
+			case NAMED_COORD(name, coord):
+				final namedCS = MultiAnimParser.getNamedCoordinateSystem(name, currentNode);
+				switch (namedCS) {
+					case NamedHex(system): resolveToHex(coord, system);
+					default: throw 'Named system $name is not a hex coordinate system' + currentNodePos();
+				}
+			default:
+				throw 'Cannot resolve cell coordinates to hex: $cell' + currentNodePos();
+		};
 	}
 
 	function drawPixels(shapes:Array<PixelShapes>, gridCoordinateSystem, hexCoordinateSystem) {

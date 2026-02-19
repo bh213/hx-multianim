@@ -8,16 +8,16 @@
 
 - **Language**: Haxe
 - **Framework**: Heaps (game/graphics framework)
-- **Parser**: hxparse (stream-based lexer/parser) - **Modified fork from `github.com/bh213/hxparse`**, not official haxelib
+- **Parser**: Custom hand-written lexer/parser in `MacroManimParser.hx` (runs both at compile-time and runtime)
 - **Package Manager**: Lix (recommended)
 
 ## Project Structure
 
 | Path | Description |
 |------|-------------|
-| `src/bh/multianim/MultiAnimParser.hx` | Parser for `.manim` animation files |
+| `src/bh/multianim/MultiAnimParser.hx` | Parser facade — delegates to MacroManimParser |
 | `src/bh/multianim/MultiAnimBuilder.hx` | Builder for resolving parsed structures |
-| `src/bh/multianim/MacroManimParser.hx` | Compile-time parser (NOT hxparse-based) |
+| `src/bh/multianim/MacroManimParser.hx` | Main parser for `.manim` files (used at both compile-time and runtime) |
 | `src/bh/multianim/ProgrammableCodeGen.hx` | Macro code generation for `@:manim`/`@:data` |
 | `src/bh/multianim/ProgrammableBuilder.hx` | Base class for macro-generated factories |
 | `src/bh/stateanim/AnimParser.hx` | Parser for `.anim` state animation files |
@@ -38,39 +38,16 @@ test.bat report     # Open test report in browser
 
 Playground lives in a separate repository: `../hx-multianim-playground`.
 
-## Parser Pattern Matching (Important!)
+## Parser Architecture
 
-When working with hxparse:
-- Pattern matching only matches on the **first element** of a case pattern, which is ok as long as you don't want to switch on later tokens.
-    ok:
-      switch stream {
-            case [Token1, Token2, Token3]
-            case _:
-      }
+The `.manim` parser is a custom hand-written lexer/parser in `MacroManimParser.hx`. It uses a token-based approach with `peek()`, `advance()`, `match()`, and `expect()` for parsing. The same parser runs at both compile-time (for `@:manim` macro codegen) and runtime (via `MultiAnimParser.parseFile()` which delegates to `MacroManimParser.parseFile()`).
 
-    not ok:
-      switch stream {
-            case [Token1, Token2, Token3]
-            case [Token1, Token4]:
-      }
-      Second case will not be considered. 
-    Should use:
-      switch stream {
-            case [Token1]:
-                switch stream {
-                    case [Token2, Token3]:
-                    case [Token4]:
-                }
-      }
-
-- Use nested `switch` statements for multi-token matching
-- For `[Token1, Token2, Token3]`, create separate switches for each token
-- Reference: https://github.com/Simn/hxparse
+The `.anim` state animation parser in `AnimParser.hx` is a separate hand-written parser.
 
 ## Workflow
 
-1. **Parsing**: Converts `.manim`/`.anim` file text to AST with `Node` structures
-2. **Building**: Resolves references, expressions, and type conversions (runtime)
+1. **Parsing**: `MacroManimParser` converts `.manim` file text to AST with `Node` structures
+2. **Building**: `MultiAnimBuilder` resolves references, expressions, and type conversions (runtime)
 3. **Macro codegen**: `MacroManimParser` parses `.manim` at compile time, `ProgrammableCodeGen` generates typed Haxe classes
 
 ## File Formats
@@ -181,8 +158,14 @@ animation {
 ### Coordinate Systems
 
 - Offset: `x,y`
-- Grid: `grid(x, y [, offsetX, offsetY])`
-- Hex: `hex(q, r, s)`, `hexCorner(index, scale)`, `hexEdge(index, scale)`
+- Grid: `$grid.pos(x, y [, offsetX, offsetY])` (requires `grid: spacingX, spacingY` in body)
+- Grid properties: `$grid.width`, `$grid.height`
+- Hex: `$hex.cube(q, r, s)`, `$hex.corner(index, scale)`, `$hex.edge(direction, scale)` (requires `hex: orientation(w, h)` in body)
+- Hex offset/doubled: `$hex.offset(col, row, even|odd)`, `$hex.doubled(col, row)`
+- Hex properties: `$hex.width`, `$hex.height`
+- Named systems: `grid: #name spacingX, spacingY`, `hex: #name orientation(w, h)`
+- Value extraction: `$grid.pos(x, y).x`, `$hex.corner(0, 1.0).y`
+- Context: `$ctx.width`, `$ctx.height`, `$ctx.random(min, max)`
 - Layout: `layout(layoutName [, index])`
 
 ### Filters

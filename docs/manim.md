@@ -535,13 +535,82 @@ Supported types: `int`, `float`, `string` (default when no type specified).
 
 ## Coordinate Systems (xy)
 
+### Basic Coordinates
+
 * `x,y` - offset coordinates
-* `hex(q, r, s)` - hex coordinates (requires hex system)
-* `hexCorner(index, scale)` - position at hex corner
-* `hexEdge(index, scale)` - position at hex edge
-* `grid(x, y[, offsetX, offsetY])` - grid coordinates
 * `;` - 0,0 offset
 * `layout(layoutName [, index])` - coordinates from layout
+
+### Grid Coordinates
+
+Requires a `grid:` declaration inside the element body:
+
+```manim
+#test programmable(n:uint=0) {
+    grid: 20, 20
+    bitmap(tile): $grid.pos($n, 0)
+}
+```
+
+* `$grid.pos(x, y)` - grid position
+* `$grid.pos(x, y, offsetX, offsetY)` - grid position with pixel offset
+* `$grid.width` - grid cell width (spacingX)
+* `$grid.height` - grid cell height (spacingY)
+
+Named grid systems use `#name`:
+
+```manim
+#test programmable(n:uint=0) {
+    grid: #smallGrid 10, 10
+    grid: #bigGrid 40, 40
+    bitmap(tile): $smallGrid.pos($n, 0)
+    bitmap(tile): $bigGrid.pos($n, 0)
+}
+```
+
+### Hex Coordinates
+
+Requires a `hex:` declaration inside the element body:
+
+```manim
+#test programmable(n:uint=0) {
+    hex: pointy(16, 16)
+    bitmap(tile): $hex.cube(0, 0, 0)
+}
+```
+
+* `$hex.cube(q, r, s)` - hex cube coordinates
+* `$hex.corner(index, scale)` - position at hex polygon corner
+* `$hex.edge(direction, scale)` - position at hex polygon edge
+* `$hex.offset(col, row, even|odd)` - hex offset coordinates
+* `$hex.doubled(col, row)` - hex doubled coordinates
+* `$hex.pixel(x, y)` - snap pixel position to nearest hex center
+* `$hex.width` - hex cell width
+* `$hex.height` - hex cell height
+
+Cell-relative hex methods (position relative to a specific hex cell):
+
+* `$hex.cube(q, r, s).corner(index, scale)` - corner of a specific hex cell
+* `$hex.cube(q, r, s).edge(direction, scale)` - edge of a specific hex cell
+
+### Coordinate Value Extraction (.x / .y)
+
+Any coordinate method call can have `.x` or `.y` appended to extract a single component as a numeric value. This is useful in expressions:
+
+```manim
+#test programmable(n:uint=0) {
+    grid: 20, 15
+    hex: pointy(16, 16)
+    bitmap(generated(color($grid.pos($n, 0).x + 5, $grid.pos($n, 0).y, #f00))): 0, 0
+    text(dd, '${$hex.corner(0, 1.0).x}', #fff): 0, 0
+}
+```
+
+### Context Properties
+
+* `$ctx.width` - width of the programmable element
+* `$ctx.height` - height of the programmable element
+* `$ctx.random(min, max)` - random value between min and max
 
 ---
 

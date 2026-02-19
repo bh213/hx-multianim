@@ -6,10 +6,10 @@
 FIX:
 ===================================
 
-hex coordinate system offset support
-    - Grid has SELECTED_GRID_POSITION_WITH_OFFSET supporting grid(x,y,offsetX,offsetY)
-    - Hex only has SELECTED_HEX_POSITION - no offset variant
-    - HexCoordinateSystem missing offset parameters
+~~hex coordinate system offset support~~ DONE
+    - Implemented via $hex.offset(), $hex.doubled(), $hex.pixel() coordinate methods
+    - Grid offset via $grid.pos(x, y, offsetX, offsetY)
+    - Coordinate .x/.y extraction for expression use
 
 fix conditional not working with repeatable vars - e.g @(index >= 3)
     - Parser recognizes greaterThanOrEqual (MultiAnimParser.hx:2272)
