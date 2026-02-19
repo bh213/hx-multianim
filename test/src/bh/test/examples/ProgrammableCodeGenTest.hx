@@ -3483,6 +3483,49 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		Assert.isTrue(slot0.isEmpty(), "Should be empty after clear");
 	}
 
+	// ==================== LayoutMultiChild: unit + visual ====================
+
+	@Test
+	public function testLayoutMultiChildCount():Void {
+		final mp = createMp();
+		final lmc = mp.layoutMultiChild.create();
+		Assert.notNull(lmc, "layoutMultiChild should be created");
+		// 6 layout points x 2 children each = 12 bitmaps
+		var totalChildren = countAllDescendants(lmc);
+		Assert.isTrue(totalChildren >= 12, 'Should have at least 12 descendants (6 points x 2 children), got $totalChildren');
+	}
+
+	@Test
+	public function testLayoutMultiChildPositions():Void {
+		// Build via runtime builder and verify that both children of each iteration
+		// share the same layout-based offset (i.e. the iterator wasn't advanced per child).
+		final fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/82-layoutMultiChild/layoutMultiChild.manim"));
+		final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+		final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "layoutMultiChild.manim");
+		final result = builder.buildWithParameters("layoutMultiChild", new Map());
+		Assert.notNull(result, "Build should succeed");
+
+		// The root object should have wrapper objects for each iteration.
+		// Each wrapper is positioned at the layout point and contains 2 children.
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(12, bitmaps.length, 'Expected 12 bitmaps (6 iterations x 2), got ${bitmaps.length}');
+
+		// Verify pairs of bitmaps share the same parent wrapper (same layout point).
+		// Bitmaps at even indices should share a parent with the next odd-index bitmap.
+		var i = 0;
+		while (i < bitmaps.length - 1) {
+			final parent1 = bitmaps[i].parent;
+			final parent2 = bitmaps[i + 1].parent;
+			Assert.equals(parent1, parent2, 'Bitmaps at index $i and ${i + 1} should share a parent (same layout point)');
+			i += 2;
+		}
+	}
+
+	@Test
+	public function test82_LayoutMultiChild(async:utest.Async):Void {
+		simpleMacroTest(82, "layoutMultiChild", () -> createMp().layoutMultiChild.create(), async, null, null, 4.0);
+	}
+
 	@Test
 	public function testSlotParamsCodegen():Void {
 		final instance = createMp().slotParams.create();

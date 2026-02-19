@@ -2300,14 +2300,18 @@ class MultiAnimBuilder {
 						default:
 					}
 					final resolvedChildren = resolveConditionalChildren(node.children);
+					// Resolve layout point once per iteration (not per child)
+					var layoutPt:Null<FPoint> = switch repeatType {
+						case LayoutIterator(_): iterator.next();
+						default: null;
+					};
 					for (childNode in resolvedChildren) {
 						var iterPos = currentPos.clone();
 						switch repeatType {
 							case StepIterator(_, _, _):
 								iterPos.add(dx * count, dy * count);
 							case LayoutIterator(_):
-								var pt = iterator.next();
-								iterPos.add(cast pt.x, cast pt.y);
+								iterPos.add(cast layoutPt.x, cast layoutPt.y);
 							default:
 						}
 						buildTileGroup(childNode, tileGroup, iterPos, gridCoordinateSystem, hexCoordinateSystem, builderParams);
@@ -2966,6 +2970,11 @@ class MultiAnimBuilder {
 						default:
 					}
 					final resolvedChildren = resolveConditionalChildren(node.children);
+					// Resolve layout point once per iteration (not per child)
+					var layoutPt:Null<FPoint> = switch repeatType {
+						case LayoutIterator(_): iterator.next();
+						default: null;
+					};
 					for (childNode in resolvedChildren) {
 						var obj = build(childNode, ObjectMode(buildTarget), gridCoordinateSystem, hexCoordinateSystem, internalResults, builderParams);
 						if (obj == null)
@@ -2975,8 +2984,7 @@ class MultiAnimBuilder {
 								case StepIterator(_, _, _):
 									addPosition(obj, dx * count, dy * count);
 								case LayoutIterator(_):
-									var pt = iterator.next();
-									addPosition(obj, pt.x, pt.y);
+									addPosition(obj, layoutPt.x, layoutPt.y);
 								default:
 							}
 						} else if (ownPos.x != 0 || ownPos.y != 0) {

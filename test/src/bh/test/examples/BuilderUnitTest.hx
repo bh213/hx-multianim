@@ -2153,4 +2153,66 @@ class BuilderUnitTest extends BuilderTestBase {
 		final rate3 = path.getClosestRate(new bh.base.FPoint(95, 0));
 		Assert.floatEquals(0.95, rate3);
 	}
+
+	// ==================== Layout repeatable: multi-child iterator fix ====================
+
+	@Test
+	public function testLayoutRepeatableMultiChild():Void {
+		// Regression test: layout iterator should advance once per iteration,
+		// not once per child. With 3 layout points and 2 children per iteration,
+		// the old code would consume 2 points per iteration and run out at iteration 2.
+		final result = buildFromSource("
+			relativeLayouts {
+				#testLayout list {
+					point: 10, 10
+					point: 110, 10
+					point: 210, 10
+				}
+			}
+			#test programmable() {
+				repeatable($i, layout(\"main\", \"testLayout\")) {
+					pos: 0, 0
+					bitmap(generated(color(40, 20, red))): 0, 0
+					bitmap(generated(color(30, 15, blue))): 5, 5
+				}
+			}
+		", "test");
+		Assert.notNull(result, "Build should succeed");
+		// 3 layout points x 2 children = 6 bitmaps
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(6, bitmaps.length);
+
+		// Each pair of bitmaps should share the same parent (same layout point wrapper)
+		Assert.equals(bitmaps[0].parent, bitmaps[1].parent);
+		Assert.equals(bitmaps[2].parent, bitmaps[3].parent);
+		Assert.equals(bitmaps[4].parent, bitmaps[5].parent);
+
+		// Different iterations should have different parents
+		Assert.isFalse(bitmaps[0].parent == bitmaps[2].parent);
+		Assert.isFalse(bitmaps[2].parent == bitmaps[4].parent);
+	}
+
+	@Test
+	public function testLayoutRepeatableSingleChild():Void {
+		// Sanity check: single-child layout repeatable should still work
+		final result = buildFromSource("
+			relativeLayouts {
+				#testLayout list {
+					point: 0, 0
+					point: 50, 0
+					point: 100, 0
+					point: 150, 0
+				}
+			}
+			#test programmable() {
+				repeatable($i, layout(\"main\", \"testLayout\")) {
+					pos: 0, 0
+					bitmap(generated(color(40, 20, red))): 0, 0
+				}
+			}
+		", "test");
+		Assert.notNull(result, "Build should succeed");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(4, bitmaps.length);
+	}
 }
