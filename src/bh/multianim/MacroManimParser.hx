@@ -2004,6 +2004,30 @@ class MacroManimParser {
 				final value = parseFloatOrReference();
 				expect(TClosed);
 				return FilterBrightness(value);
+			case TIdentifier(s) if (isKeyword(s, "grayscale")):
+				advance();
+				expect(TOpen);
+				if (isNamedParamNext()) {
+					final results = parseOptionalParams([
+						ParseFloatOrReference("value"),
+					]);
+					return FilterGrayscale(cast results.get("value") ?? RVFloat(1.));
+				}
+				final value = parseFloatOrReference();
+				expect(TClosed);
+				return FilterGrayscale(value);
+			case TIdentifier(s) if (isKeyword(s, "hue")):
+				advance();
+				expect(TOpen);
+				if (isNamedParamNext()) {
+					final results = parseOptionalParams([
+						ParseFloatOrReference("value"),
+					]);
+					return FilterHue(cast results.get("value") ?? RVFloat(0.));
+				}
+				final value = parseFloatOrReference();
+				expect(TClosed);
+				return FilterHue(value);
 			case TIdentifier(s) if (isKeyword(s, "blur")):
 				advance();
 				expect(TOpen);

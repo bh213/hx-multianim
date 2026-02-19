@@ -623,6 +623,8 @@ Filters can be applied to any visual element. Most parameters support expression
 * `outline(size, color)`
 * `saturate(value)` - 0.0=grayscale, 1.0=normal
 * `brightness(value)` - 0.0=black, 1.0=normal
+* `grayscale(value)` - 0.0=no effect, 1.0=full grayscale
+* `hue(value)` - hue rotation angle
 * `blur(radius, gain, [quality], [linear])`
 * `pixelOutline(knockout, color, knockoutStrength)`
 * `pixelOutline(inlineColor, outlineColor, inlineColor)`

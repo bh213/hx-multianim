@@ -4917,6 +4917,10 @@ class ProgrammableCodeGen {
 				collectParamRefsImpl(v, refs);
 			case FilterBrightness(v):
 				collectParamRefsImpl(v, refs);
+			case FilterGrayscale(v):
+				collectParamRefsImpl(v, refs);
+			case FilterHue(v):
+				collectParamRefsImpl(v, refs);
 			case FilterGlow(color, alpha, radius, gain, quality, _, _):
 				collectParamRefsImpl(color, refs);
 				collectParamRefsImpl(alpha, refs);
@@ -4984,6 +4988,22 @@ class ProgrammableCodeGen {
 					final m = new h3d.Matrix();
 					m.identity();
 					m.colorLightness($vExpr);
+					new h2d.filter.ColorMatrix(m);
+				};
+			case FilterGrayscale(v):
+				final vExpr = rvToExpr(v);
+				macro {
+					final m = new h3d.Matrix();
+					m.identity();
+					m.colorSaturate(-$vExpr);
+					new h2d.filter.ColorMatrix(m);
+				};
+			case FilterHue(v):
+				final vExpr = rvToExpr(v);
+				macro {
+					final m = new h3d.Matrix();
+					m.identity();
+					m.colorHue($vExpr);
 					new h2d.filter.ColorMatrix(m);
 				};
 			case FilterGlow(color, alpha, radius, gain, quality, smoothColor, knockout):

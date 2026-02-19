@@ -3522,6 +3522,16 @@ class MultiAnimBuilder {
 				m.colorLightness(resolveAsNumber(v));
 
 				new h2d.filter.ColorMatrix(m);
+			case FilterGrayscale(v):
+				var m = new h3d.Matrix();
+				m.identity();
+				m.colorSaturate(-resolveAsNumber(v));
+				new h2d.filter.ColorMatrix(m);
+			case FilterHue(v):
+				var m = new h3d.Matrix();
+				m.identity();
+				m.colorHue(resolveAsNumber(v));
+				new h2d.filter.ColorMatrix(m);
 			case FilterGlow(color, alpha, radius, gain, quality, smoothColor, knockout):
 				final f = new h2d.filter.Glow(resolveAsColorInteger(color), resolveAsNumber(alpha), resolveAsNumber(radius), resolveAsNumber(gain), resolveAsNumber(quality), smoothColor);
 				f.knockout = knockout;

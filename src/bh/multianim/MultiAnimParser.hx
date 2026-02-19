@@ -920,6 +920,8 @@ enum FilterType {
 	FilterOutline(s:ReferenceableValue, color:ReferenceableValue);
 	FilterSaturate(v:ReferenceableValue);
 	FilterBrightness(v:ReferenceableValue);
+	FilterGrayscale(v:ReferenceableValue);
+	FilterHue(v:ReferenceableValue);
 	FilterGlow(color:ReferenceableValue, alpha:ReferenceableValue, radius:ReferenceableValue, gain:ReferenceableValue, quality:ReferenceableValue, smoothColor:Bool, knockout:Bool);
 	FilterBlur(radius:ReferenceableValue, gain:ReferenceableValue, quality:ReferenceableValue, linear:ReferenceableValue);
 	FilterDropShadow(distance:ReferenceableValue, angle:ReferenceableValue, color:ReferenceableValue, alpha:ReferenceableValue, radius:ReferenceableValue, gain:ReferenceableValue, quality:ReferenceableValue, smoothColor:Bool);

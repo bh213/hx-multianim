@@ -170,7 +170,7 @@ animation {
 
 ### Filters
 
-`outline`, `glow`, `blur`, `saturate`, `brightness`, `dropShadow`, `replacePalette`, `replaceColor`, `pixelOutline`, `group`
+`outline`, `glow`, `blur`, `saturate`, `brightness`, `grayscale`, `hue`, `dropShadow`, `replacePalette`, `replaceColor`, `pixelOutline`, `group`
 
 ### Particles Quick Reference
 
