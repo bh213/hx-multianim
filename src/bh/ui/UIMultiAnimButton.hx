@@ -21,12 +21,17 @@ class UIStandardMultiAnimButton implements UIElement implements UIElementDisabla
 		currentButtonObject = null;
 	}
 
-	public static function create(builder:MultiAnimBuilder, name:String, buttonText:String) {
-		return new UIStandardMultiAnimButton(builder, name, buttonText);
+	public static function create(builder:MultiAnimBuilder, name:String, buttonText:String, ?extraParams:Map<String, Dynamic>) {
+		return new UIStandardMultiAnimButton(builder, name, buttonText, extraParams);
 	}
 
-	function new(builder:MultiAnimBuilder, name:String, buttonText:String) {
-		this.multiResult = builder.buildWithComboParameters(name, ["buttonText" => buttonText], ["status", "disabled"]);
+	function new(builder:MultiAnimBuilder, name:String, buttonText:String, ?extraParams:Map<String, Dynamic>) {
+		var params:Map<String, Dynamic> = ["buttonText" => buttonText];
+		if (extraParams != null) {
+			for (key => value in extraParams)
+				params.set(key, value);
+		}
+		this.multiResult = builder.buildWithComboParameters(name, params, ["status", "disabled"]);
 		this.root = new h2d.Object();
 	}
 

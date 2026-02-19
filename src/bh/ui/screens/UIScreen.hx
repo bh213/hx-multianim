@@ -222,12 +222,24 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	}
 
 	function addButton(builder:UIElementBuilder, text:String, settings:ResolvedSettings):UIStandardMultiAnimButton {
-		validateSettings(settings, ["buildName", "text"], "button");
+		validateSettings(settings, ["buildName", "text", "width", "height", "font", "fontColor"], "button");
 		if (hasSettings(settings, "buildName")) {
 			builder = builder.withUpdatedName(getSettings(settings, "buildName", "button"));
 		}
 		final buttonText = getSettings(settings, "text", text);
-		return UIStandardMultiAnimButton.create(builder.builder, builder.name, buttonText);
+		var extraParams:Null<Map<String, Dynamic>> = null;
+		if (hasSettings(settings, "width") || hasSettings(settings, "height") || hasSettings(settings, "font") || hasSettings(settings, "fontColor")) {
+			extraParams = new Map();
+			if (hasSettings(settings, "width"))
+				extraParams.set("width", getIntSettings(settings, "width", 200));
+			if (hasSettings(settings, "height"))
+				extraParams.set("height", getIntSettings(settings, "height", 30));
+			if (hasSettings(settings, "font"))
+				extraParams.set("font", getSettings(settings, "font", "dd"));
+			if (hasSettings(settings, "fontColor"))
+				extraParams.set("fontColor", getIntSettings(settings, "fontColor", 0xffffff12));
+		}
+		return UIStandardMultiAnimButton.create(builder.builder, builder.name, buttonText, extraParams);
 	}
 
 	function addSlider(providedBuilder, settings:ResolvedSettings, initialValue:Float = 0) {
