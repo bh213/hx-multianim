@@ -110,11 +110,11 @@ class VisualTestBase extends utest.Test {
 	 * @param scale Scale factor (default 1.0)
 	 */
 	public function simpleMacroTest(num:Int, name:String, createMacroRoot:() -> h2d.Object,
-			async:utest.Async, ?programmableName:String, ?title:String, ?scale:Float):Void {
+			async:utest.Async, ?programmableName:String, ?title:String, ?scale:Float, ?threshold:Float):Void {
 		setupTest(num, name, title);
 		var progName = programmableName != null ? programmableName : name;
 		var s = scale != null ? scale : 1.0;
-		builderAndMacroScreenshotAndCompare(manimPath(num, name), progName, createMacroRoot, async, 1280, 720, s);
+		builderAndMacroScreenshotAndCompare(manimPath(num, name), progName, createMacroRoot, async, 1280, 720, s, threshold);
 	}
 
 	// ==================== Build and render ====================

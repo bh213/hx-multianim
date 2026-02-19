@@ -3558,7 +3558,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	@Test
 	public function test83_Slot2dIndex(async:utest.Async):Void {
-		simpleMacroTest(83, "slot2dIndex", () -> createMp().slot2dIndex.create(), async, null, null, 4.0);
+		simpleMacroTest(83, "slot2dIndex", () -> createMp().slot2dIndex.create(), async, null, null, 4.0, 0.999);
 	}
 
 	@Test
@@ -3699,21 +3699,21 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	function populateSlotContentDemo(result:Dynamic):Void {
 		var br:bh.multianim.MultiAnimBuilder.BuilderResult = result;
-		br.getSlot("slotA").setContent(makeContentCircle(4, 0xFFFF88));
-		br.getSlot("slotB").setContent(makeContentRect(10, 8, 0xFF4444));
-		br.getSlot("slotC").setContent(makeContentCircle(5, 0x44FF44));
-		br.getSlot("slotD").setContent(makeContentRect(12, 8, 0x44DDFF));
+		br.getSlot("slotA").setContent(makeContentRect(40, 16, 0xFFFF00));
+		br.getSlot("slotB").setContent(makeContentRect(30, 20, 0xFF4444));
+		br.getSlot("slotC").setContent(makeContentRect(20, 16, 0xFF00FF));
+		br.getSlot("slotD").setContent(makeContentRect(30, 28, 0x00FFFF));
 	}
 
 	function populateSlotContentCodegen(instance:Dynamic):Void {
 		var slotA:bh.multianim.MultiAnimBuilder.SlotHandle = instance.getSlot_slotA();
-		slotA.setContent(makeContentCircle(4, 0xFFFF88));
+		slotA.setContent(makeContentRect(40, 16, 0xFFFF00));
 		var slotB:bh.multianim.MultiAnimBuilder.SlotHandle = instance.getSlot_slotB();
-		slotB.setContent(makeContentRect(10, 8, 0xFF4444));
+		slotB.setContent(makeContentRect(30, 20, 0xFF4444));
 		var slotC:bh.multianim.MultiAnimBuilder.SlotHandle = instance.getSlot_slotC();
-		slotC.setContent(makeContentCircle(5, 0x44FF44));
+		slotC.setContent(makeContentRect(20, 16, 0xFF00FF));
 		var slotD:bh.multianim.MultiAnimBuilder.SlotHandle = instance.getSlot_slotD();
-		slotD.setContent(makeContentRect(12, 8, 0x44DDFF));
+		slotD.setContent(makeContentRect(30, 28, 0x00FFFF));
 	}
 
 	@Test

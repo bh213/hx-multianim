@@ -2226,4 +2226,78 @@ class BuilderUnitTest extends BuilderTestBase {
 		final bitmaps = findVisibleBitmapDescendants(result.object);
 		Assert.equals(4, bitmaps.length);
 	}
+
+	// ==================== Incremental conditional apply tests ====================
+
+	@Test
+	public function testIncrementalApplyFilterNotAppliedWhenConditionFalse():Void {
+		final result = buildFromSource("
+			#test programmable(dead:uint=0) {
+				bitmap(generated(color(50, 50, #ff0000))): 0, 0
+				@(dead => 1) apply {
+					filter: grayscale(1.0)
+				}
+			}
+		", "test", null, Incremental);
+		Assert.notNull(result, "Build should succeed");
+		Assert.isNull(result.object.filter, "Filter should NOT be applied when dead=0");
+	}
+
+	@Test
+	public function testIncrementalApplyFilterAppliedWhenConditionTrue():Void {
+		final params = new Map<String, Dynamic>();
+		params.set("dead", 1);
+		final result = buildFromSource("
+			#test programmable(dead:uint=0) {
+				bitmap(generated(color(50, 50, #ff0000))): 0, 0
+				@(dead => 1) apply {
+					filter: grayscale(1.0)
+				}
+			}
+		", "test", params, Incremental);
+		Assert.notNull(result, "Build should succeed");
+		Assert.notNull(result.object.filter, "Filter SHOULD be applied when dead=1");
+	}
+
+	@Test
+	public function testIncrementalApplyFilterTogglesWithSetParameter():Void {
+		final result = buildFromSource("
+			#test programmable(dead:uint=0) {
+				bitmap(generated(color(50, 50, #ff0000))): 0, 0
+				@(dead => 1) apply {
+					filter: grayscale(1.0)
+				}
+			}
+		", "test", null, Incremental);
+		Assert.isNull(result.object.filter, "Filter should NOT be applied initially (dead=0)");
+
+		// Toggle on
+		result.setParameter("dead", 1);
+		Assert.notNull(result.object.filter, "Filter SHOULD be applied after dead=1");
+
+		// Toggle off
+		result.setParameter("dead", 0);
+		Assert.isNull(result.object.filter, "Filter should be removed after dead=0");
+	}
+
+	@Test
+	public function testIncrementalApplyAlphaTogglesWithSetParameter():Void {
+		final result = buildFromSource("
+			#test programmable(dim:uint=0) {
+				bitmap(generated(color(50, 50, #ff0000))): 0, 0
+				@(dim => 1) apply {
+					alpha: 0.3
+				}
+			}
+		", "test", null, Incremental);
+		Assert.floatEquals(1.0, result.object.alpha);
+
+		// Toggle on
+		result.setParameter("dim", 1);
+		Assert.floatEquals(0.3, result.object.alpha);
+
+		// Toggle off — should restore original alpha
+		result.setParameter("dim", 0);
+		Assert.floatEquals(1.0, result.object.alpha);
+	}
 }

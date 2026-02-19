@@ -214,6 +214,12 @@ class IncrementalUpdateContext {
 	var indexedParams:Map<String, ResolvedIndexParameters>;
 	var builderParams:BuilderParameters;
 	var conditionalEntries:Array<{object:h2d.Object, node:Node}> = [];
+	var conditionalApplyEntries:Array<{
+		parent:h2d.Object, node:Node, applied:Bool,
+		savedFilter:Null<h2d.filter.Filter>, savedAlpha:Null<Float>,
+		savedScaleX:Null<Float>, savedScaleY:Null<Float>,
+		appliedPosX:Float, appliedPosY:Float,
+	}> = [];
 	var trackedExpressions:Array<{updateFn:Void->Void, paramRefs:Array<String>}> = [];
 	var dynamicRefBindings:Array<{childContext:IncrementalUpdateContext, childParam:String, resolveFn:Void->Dynamic, referencedParams:Array<String>}> = [];
 	var rootNode:Node;
@@ -241,6 +247,63 @@ class IncrementalUpdateContext {
 
 	public function trackDynamicRef(childContext:IncrementalUpdateContext, childParam:String, resolveFn:Void->Dynamic, referencedParams:Array<String>):Void {
 		dynamicRefBindings.push({childContext: childContext, childParam: childParam, resolveFn: resolveFn, referencedParams: referencedParams});
+	}
+
+	public function trackConditionalApply(parent:h2d.Object, node:Node, applied:Bool,
+			savedFilter:Null<h2d.filter.Filter>, savedAlpha:Null<Float>,
+			savedScaleX:Null<Float>, savedScaleY:Null<Float>,
+			appliedPosX:Float, appliedPosY:Float):Void {
+		conditionalApplyEntries.push({
+			parent: parent, node: node, applied: applied,
+			savedFilter: savedFilter, savedAlpha: savedAlpha,
+			savedScaleX: savedScaleX, savedScaleY: savedScaleY,
+			appliedPosX: appliedPosX, appliedPosY: appliedPosY,
+		});
+	}
+
+	function applyConditionalApplyEntry(entry:{
+		parent:h2d.Object, node:Node, applied:Bool,
+		savedFilter:Null<h2d.filter.Filter>, savedAlpha:Null<Float>,
+		savedScaleX:Null<Float>, savedScaleY:Null<Float>,
+		appliedPosX:Float, appliedPosY:Float,
+	}):Void {
+		if (entry.applied) return;
+		final parent = entry.parent;
+		final node = entry.node;
+		// Save current state before applying
+		if (node.filter != null) entry.savedFilter = parent.filter;
+		if (node.alpha != null) entry.savedAlpha = parent.alpha;
+		if (node.scale != null) { entry.savedScaleX = parent.scaleX; entry.savedScaleY = parent.scaleY; }
+		// Apply position
+		final pos = builder.calculatePosition(node.pos, MultiAnimParser.getGridCoordinateSystem(node), MultiAnimParser.getHexCoordinateSystem(node));
+		entry.appliedPosX = pos.x;
+		entry.appliedPosY = pos.y;
+		builder.addPosition(parent, pos.x, pos.y);
+		// Apply properties
+		builder.applyExtendedFormProperties(parent, node);
+		entry.applied = true;
+	}
+
+	function unapplyConditionalApplyEntry(entry:{
+		parent:h2d.Object, node:Node, applied:Bool,
+		savedFilter:Null<h2d.filter.Filter>, savedAlpha:Null<Float>,
+		savedScaleX:Null<Float>, savedScaleY:Null<Float>,
+		appliedPosX:Float, appliedPosY:Float,
+	}):Void {
+		if (!entry.applied) return;
+		final parent = entry.parent;
+		final node = entry.node;
+		// Restore saved state
+		if (node.filter != null) parent.filter = entry.savedFilter;
+		if (node.alpha != null && entry.savedAlpha != null) parent.alpha = entry.savedAlpha;
+		if (node.scale != null && entry.savedScaleX != null && entry.savedScaleY != null) {
+			parent.scaleX = entry.savedScaleX;
+			parent.scaleY = entry.savedScaleY;
+		}
+		// Remove position offset
+		parent.x -= entry.appliedPosX;
+		parent.y -= entry.appliedPosY;
+		entry.applied = false;
 	}
 
 	public function setParameter(name:String, value:Dynamic):Void {
@@ -277,6 +340,12 @@ class IncrementalUpdateContext {
 		// Re-evaluate visibility for all conditional elements
 		for (entry in conditionalEntries) {
 			entry.object.visible = builder.isMatch(entry.node, indexedParams);
+		}
+		// Re-evaluate conditional apply entries
+		for (entry in conditionalApplyEntries) {
+			final shouldApply = builder.isMatch(entry.node, indexedParams);
+			if (shouldApply) applyConditionalApplyEntry(entry);
+			else unapplyConditionalApplyEntry(entry);
 		}
 		// Re-evaluate @else/@default chain visibility
 		applyConditionalChains();
@@ -332,6 +401,21 @@ class IncrementalUpdateContext {
 					break;
 				}
 			}
+			// Find conditional apply entry for this node (APPLY nodes have no tracked object)
+			var trackedApply:Null<{
+				parent:h2d.Object, node:Node, applied:Bool,
+				savedFilter:Null<h2d.filter.Filter>, savedAlpha:Null<Float>,
+				savedScaleX:Null<Float>, savedScaleY:Null<Float>,
+				appliedPosX:Float, appliedPosY:Float,
+			}> = null;
+			if (trackedObj == null) {
+				for (ae in conditionalApplyEntries) {
+					if (ae.node == childNode) {
+						trackedApply = ae;
+						break;
+					}
+				}
+			}
 
 			switch childNode.conditionals {
 				case Conditional(conditions, strict):
@@ -339,6 +423,10 @@ class IncrementalUpdateContext {
 					prevSiblingMatched = matched;
 					if (matched) anyConditionalSiblingMatched = true;
 					if (trackedObj != null) trackedObj.visible = matched;
+					if (trackedApply != null) {
+						if (matched) applyConditionalApplyEntry(trackedApply);
+						else unapplyConditionalApplyEntry(trackedApply);
+					}
 
 				case ConditionalElse(extraConditions):
 					if (!prevSiblingMatched) {
@@ -346,19 +434,29 @@ class IncrementalUpdateContext {
 							prevSiblingMatched = true;
 							anyConditionalSiblingMatched = true;
 							if (trackedObj != null) trackedObj.visible = true;
+							if (trackedApply != null) applyConditionalApplyEntry(trackedApply);
 						} else {
 							var matched = builder.matchConditions(extraConditions, false, indexedParams);
 							prevSiblingMatched = matched;
 							if (matched) anyConditionalSiblingMatched = true;
 							if (trackedObj != null) trackedObj.visible = matched;
+							if (trackedApply != null) {
+								if (matched) applyConditionalApplyEntry(trackedApply);
+								else unapplyConditionalApplyEntry(trackedApply);
+							}
 						}
 					} else {
 						prevSiblingMatched = true;
 						if (trackedObj != null) trackedObj.visible = false;
+						if (trackedApply != null) unapplyConditionalApplyEntry(trackedApply);
 					}
 
 				case ConditionalDefault:
 					if (trackedObj != null) trackedObj.visible = !anyConditionalSiblingMatched;
+					if (trackedApply != null) {
+						if (!anyConditionalSiblingMatched) applyConditionalApplyEntry(trackedApply);
+						else unapplyConditionalApplyEntry(trackedApply);
+					}
 					anyConditionalSiblingMatched = false;
 
 				case NoConditional:
@@ -1816,6 +1914,40 @@ class MultiAnimBuilder {
 		}
 	}
 
+	static function collectGraphicsElementParamRefs(element:GraphicsElement, result:Array<String>):Void {
+		switch element {
+			case GERect(color, style, width, height):
+				collectParamRefs(color, result); collectParamRefs(width, result); collectParamRefs(height, result);
+				collectGraphicsStyleParamRefs(style, result);
+			case GEPolygon(color, style, points):
+				collectParamRefs(color, result); collectGraphicsStyleParamRefs(style, result);
+				for (p in points) collectCoordinateParamRefs(p, result);
+			case GECircle(color, style, radius):
+				collectParamRefs(color, result); collectParamRefs(radius, result);
+				collectGraphicsStyleParamRefs(style, result);
+			case GEEllipse(color, style, width, height):
+				collectParamRefs(color, result); collectParamRefs(width, result); collectParamRefs(height, result);
+				collectGraphicsStyleParamRefs(style, result);
+			case GEArc(color, style, radius, startAngle, arcAngle):
+				collectParamRefs(color, result); collectParamRefs(radius, result);
+				collectParamRefs(startAngle, result); collectParamRefs(arcAngle, result);
+				collectGraphicsStyleParamRefs(style, result);
+			case GERoundRect(color, style, width, height, radius):
+				collectParamRefs(color, result); collectParamRefs(width, result); collectParamRefs(height, result);
+				collectParamRefs(radius, result); collectGraphicsStyleParamRefs(style, result);
+			case GELine(color, lineWidth, start, end):
+				collectParamRefs(color, result); collectParamRefs(lineWidth, result);
+				collectCoordinateParamRefs(start, result); collectCoordinateParamRefs(end, result);
+		}
+	}
+
+	static function collectGraphicsStyleParamRefs(style:GraphicsStyle, result:Array<String>):Void {
+		switch style {
+			case GSLineWidth(lw): collectParamRefs(lw, result);
+			case GSFilled:
+		}
+	}
+
 	/** Track param-dependent expressions for incremental updates */
 	function trackIncrementalExpressions(node:Node, object:h2d.Object, builtObject:BuiltHeapsComponent):Void {
 		if (incrementalContext == null) return;
@@ -1874,6 +2006,24 @@ class MultiAnimBuilder {
 							default:
 						}
 					default:
+				}
+			case GRAPHICS(elements):
+				final gfxRefs:Array<String> = [];
+				for (item in elements) {
+					collectCoordinateParamRefs(item.pos, gfxRefs);
+					collectGraphicsElementParamRefs(item.element, gfxRefs);
+				}
+				if (gfxRefs.length > 0) {
+					final g:h2d.Graphics = switch builtObject { case HeapsObject(obj): Std.downcast(obj, h2d.Graphics); default: null; };
+					if (g != null) {
+						final elementsCapture = elements;
+						final gridCapture = MultiAnimParser.getGridCoordinateSystem(node);
+						final hexCapture = MultiAnimParser.getHexCoordinateSystem(node);
+						incrementalContext.trackExpression(() -> {
+							g.clear();
+							drawGraphicsElements(g, elementsCapture, gridCapture, hexCapture);
+						}, gfxRefs);
+					}
 				}
 			default:
 		}
@@ -3239,9 +3389,26 @@ class MultiAnimBuilder {
 			case APPLY:
 				if (current == null)
 					throw 'apply not allowed as root node' + MacroUtils.nodePos(node);
-				var pos = calculatePosition(node.pos, MultiAnimParser.getGridCoordinateSystem(node), MultiAnimParser.getHexCoordinateSystem(node));
-				addPosition(current, pos.x, pos.y);
-				applyExtendedFormProperties(current, node);
+				if (incrementalMode && node.conditionals != NoConditional && incrementalContext != null) {
+					// In incremental mode with conditional: track for toggling on parameter changes
+					if (nodeVisible) {
+						// Save state before applying
+						final savedFilter = node.filter != null ? current.filter : null;
+						final savedAlpha = node.alpha != null ? current.alpha : null;
+						final savedScaleX = node.scale != null ? current.scaleX : null;
+						final savedScaleY = node.scale != null ? current.scaleY : null;
+						final pos = calculatePosition(node.pos, MultiAnimParser.getGridCoordinateSystem(node), MultiAnimParser.getHexCoordinateSystem(node));
+						addPosition(current, pos.x, pos.y);
+						applyExtendedFormProperties(current, node);
+						incrementalContext.trackConditionalApply(current, node, true, savedFilter, savedAlpha, savedScaleX, savedScaleY, pos.x, pos.y);
+					} else {
+						incrementalContext.trackConditionalApply(current, node, false, null, null, null, null, 0, 0);
+					}
+				} else {
+					var pos = calculatePosition(node.pos, MultiAnimParser.getGridCoordinateSystem(node), MultiAnimParser.getHexCoordinateSystem(node));
+					addPosition(current, pos.x, pos.y);
+					applyExtendedFormProperties(current, node);
+				}
 				return null;
 
 			case PROGRAMMABLE(_, _, _):
