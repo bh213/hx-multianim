@@ -12,6 +12,7 @@ class UIElementBuilder {
 	public var name(default, null):String;
 	public var builder(default, null):MultiAnimBuilder;
 	var builderParams(default, null):BuilderParameters;
+	public var extraParams(default, null):Null<Map<String, Dynamic>>;
 
 	public function new(builder:MultiAnimBuilder, name:String) {
 		this.name = name;
@@ -26,7 +27,15 @@ class UIElementBuilder {
 	}
 
 	public function withUpdatedName(name:String):UIElementBuilder {
-		return new UIElementBuilder(this.builder, name);
+		final b = new UIElementBuilder(this.builder, name);
+		b.extraParams = this.extraParams;
+		return b;
+	}
+
+	public function withExtraParams(params:Map<String, Dynamic>):UIElementBuilder {
+		final b = new UIElementBuilder(this.builder, this.name);
+		b.extraParams = params;
+		return b;
 	}
 
 	public function buildItem(index:Int, item:UIElementListItem, itemWidth:Int, itemHeight:Int):MultiAnimMultiResult {
@@ -57,6 +66,11 @@ class UIElementBuilder {
 			params.set("images", "tile");
 		} else {
 			params.set("images", "none");
+		}
+
+		if (extraParams != null) {
+			for (key => value in extraParams)
+				params.set(key, value);
 		}
 
 		return builder.buildWithComboParameters(name, params, ["status", "selected", "disabled"], builderParams);

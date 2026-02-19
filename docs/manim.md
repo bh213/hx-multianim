@@ -526,10 +526,10 @@ settings{key1=>value1, key2=>value2, ...}
 
 Values can be typed, similar to interactive metadata:
 ```
-settings{action => "buy", price:int => 100, weight:float => 1.5}
+settings{action => "buy", price:int => 100, weight:float => 1.5, fontColor:color => white}
 ```
 
-Supported types: `int`, `float`, `string` (default when no type specified).
+Supported types: `int`, `float`, `string` (default when no type specified), `color` (accepts named colors like `white`, `red`, hex `#ff7f50`, `0xFF0000` — stored as int).
 
 ---
 
@@ -1876,7 +1876,7 @@ var btn = addButton(builder.createElementBuilder("button"), "Click Me", settings
 **`.manim` settings override example (in parent placeholder):**
 ```manim
 placeholder(generated(cross(300, 40, white)), builderParameter("myBtn")) {
-    settings{text=>"Wide Button", width:int=>300, height:int=>40, font=>"m6x11", fontColor:int=>0xff7f50ff}
+    settings{text=>"Wide Button", width:int=>300, height:int=>40, font=>"m6x11", fontColor:color=>orange}
 }
 ```
 
@@ -2126,6 +2126,8 @@ The legacy `tileName` field (plain string file path) is still supported but depr
 | `scrollSpeed` | float | from `.manim` or `100` | Scroll speed override (pixels/sec) |
 | `doubleClickThreshold` | float | `0.3` | Double-click detection window (seconds) |
 | `wheelScrollMultiplier` | float | `10` | Mouse wheel scroll sensitivity |
+| `font` | string | item default | Font name override for list items |
+| `fontColor` | int/color | item default | Text color override for list items |
 
 **Events:** `UIChangeItem(index, items)`, `onItemDoubleClicked` callback
 
@@ -2158,9 +2160,16 @@ Combines a closed/open button with a `UIMultiAnimScrollableList` panel. Supports
 | `status` | combo: `normal`, `hover`, `pressed` | Interaction state |
 | `panel` | combo: `open`, `closed` | Panel visibility state |
 
+**Optional `.manim` parameters (dropdown):**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `font` | string | `"m6x11"` | Font for the selected item text on the button |
+| `fontColor` | int | `0xffffff12` | Color for the selected item text on the button |
+
 **Required `.manim` named elements (dropdown):**
 - `panelPoint` — updatable point where the panel is positioned
-- `selectedName` — text element showing the currently selected item name
+- `selectedName` — text element showing the currently selected item name (use `$font`/`$fontColor` for customization)
 
 **Optional `.manim` root setting (dropdown):** `transitionTimer` — open/close animation duration (default: 1.0 seconds)
 
@@ -2173,6 +2182,8 @@ Combines a closed/open button with a `UIMultiAnimScrollableList` panel. Supports
 | `autoCloseOnLeave` | bool | `true` | Close on mouse leave |
 | `closeOnOutsideClick` | bool | `true` | Close when clicking outside |
 | `transitionTimer` | float | from `.manim` or `1.0` | Open/close animation duration override |
+| `font` | string | `"m6x11"` | Font for both the dropdown button and list items |
+| `fontColor` | color/int | `0xffffff12` | Text color for both the dropdown button and list items |
 
 **Events:** `UIChangeItem(index, items)`
 

@@ -307,7 +307,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
     }
 
 	function addScrollableList(panelBuilder:UIElementBuilder, itemBuilder:UIElementBuilder, scrollbarBuilder:UIElementBuilder, scrollbarInPanelName:String, items, settings:ResolvedSettings, initialIndex:Int = 0, width:Int = 100, height:Int = 100):UIMultiAnimScrollableList {
-		validateSettings(settings, ["panelBuildName", "itemBuildName", "scrollbarBuildName", "scrollbarInPanelName", "width", "height", "topClearance", "scrollSpeed", "doubleClickThreshold", "wheelScrollMultiplier", "panelMode"], "scrollableList");
+		validateSettings(settings, ["panelBuildName", "itemBuildName", "scrollbarBuildName", "scrollbarInPanelName", "width", "height", "topClearance", "scrollSpeed", "doubleClickThreshold", "wheelScrollMultiplier", "panelMode", "font", "fontColor"], "scrollableList");
 
 		if (hasSettings(settings, "panelBuildName")) {
 			panelBuilder = panelBuilder.withUpdatedName(getSettings(settings, "panelBuildName", ""));
@@ -326,6 +326,14 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		final topClearance = getIntSettings(settings, "topClearance", 0);
 		final panelModeStr = getSettings(settings, "panelMode", "scrollable");
 		final sizeMode:PanelSizeMode = if (panelModeStr == "scalable") AutoSize else FixedScroll;
+		if (hasSettings(settings, "font") || hasSettings(settings, "fontColor")) {
+			var itemExtraParams = new Map<String, Dynamic>();
+			if (hasSettings(settings, "font"))
+				itemExtraParams.set("font", getSettings(settings, "font", "m6x11"));
+			if (hasSettings(settings, "fontColor"))
+				itemExtraParams.set("fontColor", getIntSettings(settings, "fontColor", 0xffffff12));
+			itemBuilder = itemBuilder.withExtraParams(itemExtraParams);
+		}
 		final list = UIMultiAnimScrollableList.create(panelBuilder, itemBuilder, scrollbarBuilder, scrollbarInPanelName, finalWidth, finalHeight, items, topClearance, initialIndex, sizeMode);
 		if (hasSettings(settings, "scrollSpeed"))
 			list.scrollSpeedOverride = getFloatSettings(settings, "scrollSpeed", 100);
@@ -349,7 +357,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 			// scrollable list settings (passed through)
 			"panelBuildName", "itemBuildName", "scrollbarBuildName", "scrollbarInPanelName",
 			"width", "height", "topClearance", "scrollSpeed", "doubleClickThreshold", "wheelScrollMultiplier",
-			"panelMode"
+			"panelMode", "font", "fontColor"
 		], "dropdown");
 
         if (hasSettings(settings, "panelBuildName")) {
@@ -376,7 +384,15 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		final topClearance = getIntSettings(settings, "topClearance", 0);
 		final panelModeStr = getSettings(settings, "panelMode", "scrollable");
 		final sizeMode:PanelSizeMode = if (panelModeStr == "scalable") AutoSize else FixedScroll;
-
+		if (hasSettings(settings, "font") || hasSettings(settings, "fontColor")) {
+			var itemExtraParams = new Map<String, Dynamic>();
+			if (hasSettings(settings, "font"))
+				itemExtraParams.set("font", getSettings(settings, "font", "m6x11"));
+			if (hasSettings(settings, "fontColor"))
+				itemExtraParams.set("fontColor", getIntSettings(settings, "fontColor", 0xffffff12));
+			itemBuilder = itemBuilder.withExtraParams(itemExtraParams);
+			dropdownBuilder = dropdownBuilder.withExtraParams(itemExtraParams);
+		}
 		var panel = UIMultiAnimScrollableList.create(panelBuilder, itemBuilder, scrollbarBuilder, scrollbarInPanelName, panelWidth, panelHeight, items, topClearance, initialIndex, sizeMode);
 		if (hasSettings(settings, "scrollSpeed"))
 			panel.scrollSpeedOverride = getFloatSettings(settings, "scrollSpeed", 100);

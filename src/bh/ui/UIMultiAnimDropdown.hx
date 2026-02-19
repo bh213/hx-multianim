@@ -54,7 +54,12 @@ class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisab
 		this.root = new h2d.Object();
 		this.items = items;
 
-		this.mainPartImages = this.builder.builder.buildWithComboParameters(builder.name, [], ["status", "panel"], {callback: @:nullSafety(Off) callback});
+		var inputParams:Map<String, Dynamic> = [];
+		if (builder.extraParams != null) {
+			for (key => value in builder.extraParams)
+				inputParams.set(key, value);
+		}
+		this.mainPartImages = this.builder.builder.buildWithComboParameters(builder.name, inputParams, ["status", "panel"], {callback: @:nullSafety(Off) callback});
 
 		if (this.mainPartImages == null)
 			throw 'could not build combo #${builder.name}';

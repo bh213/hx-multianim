@@ -250,6 +250,8 @@ See `docs/manim.md` for full animated paths documentation.
 ## UI Elements Notes
 
 - **Button**: Supports `width`, `height`, `font`, `fontColor` settings. `addButton`/`addButtonWithSingleBuilder` read these from `ResolvedSettings` and pass as extra params to `UIStandardMultiAnimButton.create()`.
+- **Scrollable list / Dropdown**: Supports `font`, `fontColor` settings — forwarded to both item builder and dropdown button builder via `UIElementBuilder.withExtraParams()`. The `#dropdown` programmable accepts `font`/`fontColor` params for the selected item text.
+- **Settings `color` type**: `fontColor:color=>white` — parsed via `parseColorOrReference()`, stored as `SVTInt`. Supports named colors (`white`, `red`, etc.), hex (`#ff7f50`, `0xFF0000`).
 - **Dropdown**: Uses closed button + scrollable panel, moves panel to different layer
 - **UIScreen**: If elements don't show or react to events, check if added to UIScreen's elements
 - **Macros**: `MacroUtils.macroBuildWithParameters` maps `.manim` elements to Haxe code — auto-injects `ResolvedSettings` parameter

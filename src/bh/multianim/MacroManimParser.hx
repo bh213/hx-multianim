@@ -3105,8 +3105,12 @@ class MacroManimParser {
 									final value = parseStringOrReference();
 									if (parent.settings.exists(key)) error('setting $key already defined');
 									parent.settings.set(key, {type: SVTString, value: value});
+								case "color":
+									final value = parseColorOrReference();
+									if (parent.settings.exists(key)) error('setting $key already defined');
+									parent.settings.set(key, {type: SVTInt, value: value});
 								default:
-									error('expected int, float, or string after : in settings');
+									error('expected int, float, string, or color after : in settings');
 							}
 						case TArrow:
 							advance();
