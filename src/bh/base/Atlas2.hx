@@ -137,7 +137,8 @@ class Atlas2 extends hxd.res.Resource.Resource implements IAtlas2 {
 			var line = StringTools.trim(lines.shift());
 			if ( line == "" ) continue;
             final tileFilename = basePath + line;
-			var tileFile = hxd.res.Loader.currentInstance.load(tileFilename).toTile();
+			var tileFile = hxd.res.Loader.currentInstance.load(tileFilename)?.toTile();
+			if (tileFile == null) throw 'Could not load tile ${tileFilename}';
 			sourceTiles.push(tileFile);
 			while( lines.length > 0 ) {
 				if( lines[0].indexOf(":") < 0 ) break;
