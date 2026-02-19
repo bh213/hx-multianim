@@ -164,6 +164,10 @@ Animated paths control traversal timing with optional easing and timed actions (
 - **Speed-based:** Constant speed traversal
 - **Duration+easing:** `duration: 0.8` + `easing: easeInOutQuad` for time-based mode
 
+Curve slots accept either named curves from `curves{}` or inline easing names (e.g. `alphaCurve: easeInQuad`). The `easing:` shorthand is sugar for `0.0: progressCurve:`. Multi-color curve stops allow per-segment color pairs at different rates. `createProjectilePath()` is a convenience wrapper using `Stretch` normalization.
+
+**Path reverse lookup:** `path.getClosestRate(point)` finds the nearest rate (0..1) to a world point using coarse sampling + golden-section refinement.
+
 ## Easing System
 
 `EasingType` enum with 12 named functions plus `CubicBezier(x1, y1, x2, y2)`:

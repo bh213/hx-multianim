@@ -40,6 +40,14 @@ private class CurveSegment {
 }
 
 @:structInit
+private class ColorCurveSegment {
+	public var startRate:Float;
+	public var curve:ICurve;
+	public var startColor:Int;
+	public var endColor:Int;
+}
+
+@:structInit
 private class TimedEvent {
 	public var atRate:Float;
 	public var eventName:String;
@@ -67,12 +75,8 @@ class AnimatedPath {
 	var alphaCurveSegments:Array<CurveSegment> = [];
 	var rotationCurveSegments:Array<CurveSegment> = [];
 	var progressCurveSegments:Array<CurveSegment> = [];
-	var colorCurveSegments:Array<CurveSegment> = [];
+	var colorCurveSegments:Array<ColorCurveSegment> = [];
 	var customCurveSegments:Map<String, Array<CurveSegment>> = [];
-
-	// Color interpolation endpoints (set via setColorRange)
-	var colorStart:Int = 0xFFFFFF;
-	var colorEnd:Int = 0xFFFFFF;
 
 	// Timed events (sorted by atRate)
 	var timedEvents:Array<TimedEvent> = [];
@@ -110,9 +114,27 @@ class AnimatedPath {
 		insertSorted(segments, {startRate: startRate, curve: curve});
 	}
 
+	/** Add a color curve segment with per-segment start/end colors. */
+	public function addColorCurveSegment(startRate:Float, curve:ICurve, startColor:Int, endColor:Int):Void {
+		var left = 0;
+		var right = colorCurveSegments.length;
+		while (left < right) {
+			var mid = Std.int((left + right) / 2);
+			if (colorCurveSegments[mid].startRate < startRate)
+				left = mid + 1;
+			else
+				right = mid;
+		}
+		colorCurveSegments.insert(left, {startRate: startRate, curve: curve, startColor: startColor, endColor: endColor});
+	}
+
+	/** @deprecated Use addColorCurveSegment() for per-segment colors. */
 	public function setColorRange(startColor:Int, endColor:Int):Void {
-		this.colorStart = startColor;
-		this.colorEnd = endColor;
+		// Backward compat: set colors on all existing color segments
+		for (seg in colorCurveSegments) {
+			seg.startColor = startColor;
+			seg.endColor = endColor;
+		}
 	}
 
 	public function addCustomCurveSegment(name:String, startRate:Float, curve:ICurve):Void {
@@ -269,7 +291,7 @@ class AnimatedPath {
 		currentState.alpha = evaluateCurveSlot(alphaCurveSegments, rate);
 		currentState.rotation = evaluateCurveSlotDefault(rotationCurveSegments, rate, 0.);
 		if (colorCurveSegments.length > 0)
-			currentState.color = lerpColor(colorStart, colorEnd, evaluateCurveSlotDefault(colorCurveSegments, rate, 0.));
+			currentState.color = evaluateColorCurve(rate);
 		currentState.done = false;
 
 		// Custom curves
@@ -323,8 +345,32 @@ class AnimatedPath {
 			case Alpha: alphaCurveSegments;
 			case Rotation: rotationCurveSegments;
 			case Progress: progressCurveSegments;
-			case Color: colorCurveSegments;
+			case Color: throw "Use addColorCurveSegment() for Color slot";
 		};
+	}
+
+	/** Evaluate per-segment color curve: find active segment, evaluate curve, lerp between segment's colors. */
+	function evaluateColorCurve(rate:Float):Int {
+		// Find active segment: largest startRate <= rate
+		var activeIndex = -1;
+		for (i in 0...colorCurveSegments.length) {
+			if (colorCurveSegments[i].startRate <= rate)
+				activeIndex = i;
+			else
+				break;
+		}
+
+		if (activeIndex < 0) return 0xFFFFFF;
+
+		var segment = colorCurveSegments[activeIndex];
+		var segStart = segment.startRate;
+		var segEnd = if (activeIndex + 1 < colorCurveSegments.length) colorCurveSegments[activeIndex + 1].startRate else 1.0;
+
+		var localT = if (segEnd <= segStart) 0. else (rate - segStart) / (segEnd - segStart);
+		localT = Math.min(Math.max(localT, 0.), 1.);
+
+		var curveValue = segment.curve.getValue(localT);
+		return lerpColor(segment.startColor, segment.endColor, curveValue);
 	}
 
 	static inline function lerpColor(c1:Int, c2:Int, t:Float):Int {

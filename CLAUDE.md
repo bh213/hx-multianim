@@ -196,7 +196,7 @@ animation {
     colorEnd: #FFFF88
     sizeCurve: [(0, 0.5), (0.5, 1.2), (1.0, 0.2)]
     velocityCurve: [(0, 1.0), (1.0, 0.3)]
-    forceFields: [turbulence(30, 0.02, 2.0), wind(10, 0), vortex(0, 0, 100, 150), attractor(0, 0, 50, 100), repulsor(0, 0, 80, 120)]
+    forceFields: [turbulence(30, 0.02, 2.0), wind(10, 0), vortex(0, 0, 100, 150), attractor(0, 0, 50, 100), repulsor(0, 0, 80, 120), pathguide(myPath, 80, 120, 50)]
     boundsMode: none | kill | bounce(0.6) | wrap
     boundsMinX: -100
     boundsMaxX: 300
@@ -221,16 +221,18 @@ See `docs/manim.md` for full particles documentation.
     duration: 1.0
     loop: false
     pingPong: false
-    0.0: progressCurve: easeOut, scaleCurve: grow, alphaCurve: fadeIn
+    easing: easeOutCubic
+    0.0: scaleCurve: grow, alphaCurve: easeInQuad
     0.5: event("halfway")
     0.0: colorCurve: linear, #FF0000, #00FF00
+    0.5: colorCurve: easeInQuad, #00FF00, #0000FF
     0.0: custom("myValue"): customCurve
 }
 ```
 
-**Properties:** `path` (required), `type: time|distance`, `duration`, `speed`, `loop: bool`, `pingPong: bool`
+**Properties:** `path` (required), `type: time|distance`, `duration`, `speed`, `loop: bool`, `pingPong: bool`, `easing: <easingName>` (shorthand for `0.0: progressCurve: <easingName>`)
 
-**Curve slots** (at rate 0.0–1.0 or checkpoint name): `speedCurve`, `scaleCurve`, `alphaCurve`, `rotationCurve`, `progressCurve`, `colorCurve: curve, startColor, endColor`, `custom("name"): curve`
+**Curve slots** (at rate 0.0–1.0 or checkpoint name): `speedCurve`, `scaleCurve`, `alphaCurve`, `rotationCurve`, `progressCurve`, `colorCurve: curve, startColor, endColor`, `custom("name"): curve`. Curve references can be named curves from `curves{}` or **inline easing names** (e.g. `easeInQuad`). Multiple `colorCurve` assignments at different rates create per-segment color interpolation.
 
 **Events:** `event("name")`. Built-in: `pathStart`, `pathEnd`, `cycleStart`, `cycleEnd`
 
@@ -238,8 +240,10 @@ See `docs/manim.md` for full particles documentation.
 
 **Runtime API:**
 - Builder: `builder.createAnimatedPath("name", ?startPoint, ?endPoint)`
+- Projectile helper: `builder.createProjectilePath("name", startPoint, endPoint)` (Stretch normalization)
 - Codegen: `factory.createAnimatedPath_name(?startPoint, ?endPoint)`
 - `ap.update(dt)` → `AnimatedPathState`, `ap.seek(rate)` → state without side effects, `ap.reset()` for reuse
+- Reverse lookup: `path.getClosestRate(worldPoint)` → closest rate (0..1)
 
 See `docs/manim.md` for full animated paths documentation.
 

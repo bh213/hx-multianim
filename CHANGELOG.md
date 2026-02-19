@@ -28,6 +28,13 @@
   - Per-zone: `DropZone.onZoneHighlight` callback for hover state
 - **Scrollable list scrollbar** — built with incremental mode, scroll events use `setParameter("scrollPosition", ...)` instead of full rebuild
 - **Parser error tests** — `ParserErrorTest.hx` for comprehensive parser error validation
+- **Inline easing in animatedPath curve slots** — `alphaCurve: easeInQuad` works directly without requiring a `curves{}` block
+- **AnimatedPath `easing:` shorthand** — `easing: easeOutCubic` as shortcut for `0.0: progressCurve: easeOutCubic`
+- **Multi-color curve stops** — per-segment color pairs in animatedPath: multiple `colorCurve` assignments at different rates, each with its own start/end colors (e.g. red→green at 0.0, green→blue at 0.5)
+- **`pathGuide` force field** — `pathguide(pathName, attractStrength, flowStrength, radius)` attracts particles toward a named path and nudges them along its direction
+- **`Path.getClosestRate(point)`** — reverse lookup to find the closest rate (0..1) on a path to a given world point; uses coarse sampling + golden-section refinement
+- **`createProjectilePath()` helper** — `builder.createProjectilePath("name", startPoint, endPoint)` convenience method using Stretch normalization
+- **AnimatedPath non-visual unit tests** — 15 new tests in BuilderUnitTest covering time/distance modes, inline easing, easing shorthand, events, loop, pingPong, seek, checkpoints, custom curves, multi-color stops, projectile helper, getClosestRate
 
 ### Fixed
 - **`${...}` expression parsing** — parser now correctly handles `${...}` expressions in `.manim` files

@@ -52,6 +52,12 @@ enum ForceField {
 		Turbulence/noise-based displacement.
 	**/
 	Turbulence(strength:Float, scale:Float, speed:Float);
+	/**
+		Guides particles toward a path and along its tangent direction.
+		attractStrength pulls toward nearest point on path.
+		flowStrength pushes along path's tangent direction.
+	**/
+	PathGuide(path:bh.paths.MultiAnimPaths.Path, attractStrength:Float, flowStrength:Float, radius:Float);
 }
 
 /**
@@ -806,6 +812,29 @@ class ParticleGroup {
 					var noiseY = Math.cos(p.x * scale * 0.8 + time * 1.1) * Math.sin(p.y * scale + time);
 					p.vx += noiseX * strength * dt;
 					p.vy += noiseY * strength * dt;
+
+				case PathGuide(path, attractStrength, flowStrength, radius):
+					var closestRate = path.getClosestRate(new bh.base.FPoint(p.x, p.y));
+					var closestPt = path.getPoint(closestRate);
+					var dx = closestPt.x - p.x;
+					var dy = closestPt.y - p.y;
+					var dist = Math.sqrt(dx * dx + dy * dy);
+					if (dist < radius) {
+						var falloff = (1.0 - dist / radius);
+						// Attract toward path
+						if (attractStrength != 0 && dist > 1e-6) {
+							var af = falloff * attractStrength * dt / dist;
+							p.vx += dx * af;
+							p.vy += dy * af;
+						}
+						// Flow along tangent
+						if (flowStrength != 0) {
+							var tangent = path.getTangentAngle(closestRate);
+							var ff = falloff * flowStrength * dt;
+							p.vx += Math.cos(tangent) * ff;
+							p.vy += Math.sin(tangent) * ff;
+						}
+					}
 			}
 		}
 	}

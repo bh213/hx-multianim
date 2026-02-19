@@ -3491,6 +3491,18 @@ class MacroManimParser {
 					final radius = parseFloatOrReference();
 					expect(TClosed);
 					fields.push(FFRepulsor(x, y, strength, radius));
+				case TIdentifier(s) if (isKeyword(s, "pathguide")):
+					advance();
+					expect(TOpen);
+					final pathName = expectIdentifierOrString();
+					expect(TComma);
+					final attractStrength = parseFloatOrReference();
+					expect(TComma);
+					final flowStrength = parseFloatOrReference();
+					expect(TComma);
+					final radius = parseFloatOrReference();
+					expect(TClosed);
+					fields.push(FFPathGuide(pathName, attractStrength, flowStrength, radius));
 				default:
 					error('unknown force field type: ${peek()}');
 			}
@@ -4444,6 +4456,12 @@ class MacroManimParser {
 					advance();
 					expect(TColon);
 					pathName = expectIdentifierOrString();
+				// easing: <easingType> (shorthand for 0.0: progressCurve: <easing>)
+				case TIdentifier(s) if (isKeyword(s, "easing")):
+					advance();
+					expect(TColon);
+					final easingType = parseEasingType();
+					curveAssignments.push({at: Rate(RVFloat(0.0)), slot: APProgress, curveName: null, inlineEasing: easingType});
 				default:
 					// Rate or checkpoint: <float>: ... or <identifier>: ...
 					var at:AnimatedPathTime;
@@ -4506,6 +4524,14 @@ class MacroManimParser {
 		return {mode: mode, speed: speed, duration: duration, pathName: pathName, curveAssignments: curveAssignments, events: events, loop: loop, pingPong: pingPong};
 	}
 
+	/** Parse a curve name or inline easing after a curve slot colon.
+	 *  Returns {curveName, inlineEasing} — exactly one is non-null. */
+	function parseCurveNameOrEasing():{curveName:Null<String>, inlineEasing:Null<EasingType>} {
+		final name = expectIdentifierOrString();
+		final easing = tryMatchEasingName(name);
+		return if (easing != null) {curveName: null, inlineEasing: easing} else {curveName: name, inlineEasing: null};
+	}
+
 	function parseAnimatedPathActions(at:AnimatedPathTime, curveAssignments:Array<AnimatedPathCurveAssignment>, events:Array<AnimatedPathTimedEvent>):Void {
 		while (true) {
 			switch (peek()) {
@@ -4518,45 +4544,45 @@ class MacroManimParser {
 				case TIdentifier(s) if (isKeyword(s, "speedcurve")):
 					advance();
 					expect(TColon);
-					final curveName = expectIdentifierOrString();
-					curveAssignments.push({at: at, slot: APSpeed, curveName: curveName});
+					final c = parseCurveNameOrEasing();
+					curveAssignments.push({at: at, slot: APSpeed, curveName: c.curveName, inlineEasing: c.inlineEasing});
 				case TIdentifier(s) if (isKeyword(s, "scalecurve")):
 					advance();
 					expect(TColon);
-					final curveName = expectIdentifierOrString();
-					curveAssignments.push({at: at, slot: APScale, curveName: curveName});
+					final c = parseCurveNameOrEasing();
+					curveAssignments.push({at: at, slot: APScale, curveName: c.curveName, inlineEasing: c.inlineEasing});
 				case TIdentifier(s) if (isKeyword(s, "alphacurve")):
 					advance();
 					expect(TColon);
-					final curveName = expectIdentifierOrString();
-					curveAssignments.push({at: at, slot: APAlpha, curveName: curveName});
+					final c = parseCurveNameOrEasing();
+					curveAssignments.push({at: at, slot: APAlpha, curveName: c.curveName, inlineEasing: c.inlineEasing});
 				case TIdentifier(s) if (isKeyword(s, "rotationcurve")):
 					advance();
 					expect(TColon);
-					final curveName = expectIdentifierOrString();
-					curveAssignments.push({at: at, slot: APRotation, curveName: curveName});
+					final c = parseCurveNameOrEasing();
+					curveAssignments.push({at: at, slot: APRotation, curveName: c.curveName, inlineEasing: c.inlineEasing});
 				case TIdentifier(s) if (isKeyword(s, "progresscurve")):
 					advance();
 					expect(TColon);
-					final curveName = expectIdentifierOrString();
-					curveAssignments.push({at: at, slot: APProgress, curveName: curveName});
+					final c = parseCurveNameOrEasing();
+					curveAssignments.push({at: at, slot: APProgress, curveName: c.curveName, inlineEasing: c.inlineEasing});
 				case TIdentifier(s) if (isKeyword(s, "colorcurve")):
 					advance();
 					expect(TColon);
-					final curveName = expectIdentifierOrString();
+					final c = parseCurveNameOrEasing();
 					expect(TComma);
 					final startColor = parseColorOrReference();
 					expect(TComma);
 					final endColor = parseColorOrReference();
-					curveAssignments.push({at: at, slot: APColor(startColor, endColor), curveName: curveName});
+					curveAssignments.push({at: at, slot: APColor(startColor, endColor), curveName: c.curveName, inlineEasing: c.inlineEasing});
 				case TIdentifier(s) if (isKeyword(s, "custom")):
 					advance();
 					expect(TOpen);
 					final customName = expectIdentifierOrString();
 					expect(TClosed);
 					expect(TColon);
-					final curveName = expectIdentifierOrString();
-					curveAssignments.push({at: at, slot: APCustom(customName), curveName: curveName});
+					final c = parseCurveNameOrEasing();
+					curveAssignments.push({at: at, slot: APCustom(customName), curveName: c.curveName, inlineEasing: c.inlineEasing});
 				default:
 					error('expected curve assignment or event, got ${peek()}');
 					return;
@@ -4597,6 +4623,25 @@ class MacroManimParser {
 			default:
 				return error('expected easing type, got ${peek()}');
 		}
+	}
+
+	/** Check if a string identifier is a known easing name. Returns null if not. */
+	static function tryMatchEasingName(s:String):Null<EasingType> {
+		return switch (s.toLowerCase()) {
+			case "linear": Linear;
+			case "easeinquad": EaseInQuad;
+			case "easeoutquad": EaseOutQuad;
+			case "easeinoutquad": EaseInOutQuad;
+			case "easeincubic": EaseInCubic;
+			case "easeoutcubic": EaseOutCubic;
+			case "easeinoutcubic": EaseInOutCubic;
+			case "easeinback": EaseInBack;
+			case "easeoutback": EaseOutBack;
+			case "easeinoutback": EaseInOutBack;
+			case "easeoutbounce": EaseOutBounce;
+			case "easeoutelastic": EaseOutElastic;
+			default: null;
+		};
 	}
 
 	// ===================== Curves =====================

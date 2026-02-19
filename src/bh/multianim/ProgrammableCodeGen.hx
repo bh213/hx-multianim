@@ -6017,9 +6017,18 @@ class ProgrammableCodeGen {
 					rateExpr = macro path.getCheckpoint($v{cpNameStr});
 			}
 
-			// Get curve via inline method
-			final curveMethodName = "getCurve_" + sanitizeIdentifier(ca.curveName);
-			var curveExpr = macro $i{curveMethodName}();
+			// Get curve: inline easing or named curve reference
+			var curveExpr:Expr;
+			if (ca.inlineEasing != null) {
+				// Create a Curve from inline easing type
+				var easingExpr = easingTypeToExpr(ca.inlineEasing);
+				curveExpr = macro new bh.paths.Curve(null, $easingExpr, null);
+			} else if (ca.curveName != null) {
+				final curveMethodName = "getCurve_" + sanitizeIdentifier(ca.curveName);
+				curveExpr = macro $i{curveMethodName}();
+			} else {
+				continue;
+			}
 
 			// Determine slot
 			var slotExpr:Expr = switch ca.slot {
@@ -6028,7 +6037,7 @@ class ProgrammableCodeGen {
 				case APAlpha: macro bh.paths.AnimatedPath.CurveSlot.Alpha;
 				case APRotation: macro bh.paths.AnimatedPath.CurveSlot.Rotation;
 				case APProgress: macro bh.paths.AnimatedPath.CurveSlot.Progress;
-				case APColor(_, _): macro bh.paths.AnimatedPath.CurveSlot.Color;
+				case APColor(_, _): null;
 				case APCustom(customName):
 					null; // handled below
 			};
@@ -6038,10 +6047,9 @@ class ProgrammableCodeGen {
 					final cn:String = customName;
 					bodyExprs.push(macro ap.addCustomCurveSegment($v{cn}, $rateExpr, $curveExpr));
 				case APColor(startColor, endColor):
-					bodyExprs.push(macro ap.addCurveSegment($slotExpr, $rateExpr, $curveExpr));
 					var scExpr = rvToExpr(startColor);
 					var ecExpr = rvToExpr(endColor);
-					bodyExprs.push(macro ap.setColorRange(Std.int($scExpr), Std.int($ecExpr)));
+					bodyExprs.push(macro ap.addColorCurveSegment($rateExpr, $curveExpr, Std.int($scExpr), Std.int($ecExpr)));
 				default:
 					bodyExprs.push(macro ap.addCurveSegment($slotExpr, $rateExpr, $curveExpr));
 			}

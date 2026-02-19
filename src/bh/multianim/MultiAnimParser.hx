@@ -524,7 +524,8 @@ enum AnimatedPathCurveSlotType {
 class AnimatedPathCurveAssignment {
 	public var at:AnimatedPathTime;
 	public var slot:AnimatedPathCurveSlotType;
-	public var curveName:String;
+	public var curveName:Null<String>;
+	public var inlineEasing:Null<EasingType>;
 }
 
 @:structInit
@@ -624,6 +625,7 @@ enum ParticleForceFieldDef {
 	FFVortex(x:ReferenceableValue, y:ReferenceableValue, strength:ReferenceableValue, radius:ReferenceableValue);
 	FFWind(vx:ReferenceableValue, vy:ReferenceableValue);
 	FFTurbulence(strength:ReferenceableValue, scale:ReferenceableValue, speed:ReferenceableValue);
+	FFPathGuide(pathName:String, attractStrength:ReferenceableValue, flowStrength:ReferenceableValue, radius:ReferenceableValue);
 }
 
 // Curve point for velocity/size over lifetime

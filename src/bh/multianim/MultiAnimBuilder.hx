@@ -3710,6 +3710,9 @@ class MultiAnimBuilder {
 						Wind(resolveAsNumber(vx), resolveAsNumber(vy));
 					case FFTurbulence(strength, scale, speed):
 						Turbulence(resolveAsNumber(strength), resolveAsNumber(scale), resolveAsNumber(speed));
+					case FFPathGuide(pathName, attractStrength, flowStrength, radius):
+						var pathObj = getPaths().getPath(pathName);
+						PathGuide(pathObj, resolveAsNumber(attractStrength), resolveAsNumber(flowStrength), resolveAsNumber(radius));
 				};
 				group.forceFields.push(converted);
 			}
@@ -3895,15 +3898,24 @@ class MultiAnimBuilder {
 				retVal.pingPong = pathDef.pingPong;
 
 				// Resolve curve references
-				var allCurves = getCurves();
+				var allCurves:Null<Map<String, bh.paths.Curve.ICurve>> = null;
 				for (ca in pathDef.curveAssignments) {
 					var atRate = switch ca.at {
 						case Rate(r): resolveAsNumber(r);
 						case Checkpoint(cpName): path.getCheckpoint(cpName);
 					};
-					var curve = allCurves.get(ca.curveName);
-					if (curve == null)
-						throw 'curve not found: ${ca.curveName}' + MacroUtils.nodePos(node);
+					// Resolve curve: inline easing takes precedence over named curve
+					var curve:bh.paths.Curve.ICurve;
+					if (ca.inlineEasing != null) {
+						curve = new bh.paths.Curve(null, ca.inlineEasing, null);
+					} else if (ca.curveName != null) {
+						if (allCurves == null) allCurves = getCurves();
+						curve = allCurves.get(ca.curveName);
+						if (curve == null)
+							throw 'curve not found: ${ca.curveName}' + MacroUtils.nodePos(node);
+					} else {
+						throw 'curve assignment must have either curveName or inlineEasing' + MacroUtils.nodePos(node);
+					}
 					switch ca.slot {
 						case APSpeed: retVal.addCurveSegment(Speed, atRate, curve);
 						case APScale: retVal.addCurveSegment(Scale, atRate, curve);
@@ -3911,8 +3923,7 @@ class MultiAnimBuilder {
 						case APRotation: retVal.addCurveSegment(Rotation, atRate, curve);
 						case APProgress: retVal.addCurveSegment(Progress, atRate, curve);
 						case APColor(startColor, endColor):
-							retVal.addCurveSegment(Color, atRate, curve);
-							retVal.setColorRange(Std.int(resolveAsNumber(startColor)), Std.int(resolveAsNumber(endColor)));
+							retVal.addColorCurveSegment(atRate, curve, Std.int(resolveAsNumber(startColor)), Std.int(resolveAsNumber(endColor)));
 						case APCustom(customName): retVal.addCustomCurveSegment(customName, atRate, curve);
 					}
 				}
@@ -3931,6 +3942,12 @@ class MultiAnimBuilder {
 			default:
 				throw '$name has to be animatedPath' + MacroUtils.nodePos(node);
 		}
+	}
+
+	/** Convenience method for creating a projectile path: stretches the named path
+	 *  from startPoint to endPoint using Stretch normalization. */
+	public function createProjectilePath(name:String, startPoint:bh.base.FPoint, endPoint:bh.base.FPoint):bh.paths.AnimatedPath {
+		return createAnimatedPath(name, bh.paths.MultiAnimPaths.PathNormalization.Stretch(startPoint, endPoint));
 	}
 
 	public function getLayouts(?builderParams:BuilderParameters):MultiAnimLayouts {

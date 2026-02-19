@@ -1768,4 +1768,389 @@ class BuilderUnitTest extends BuilderTestBase {
 		Assert.equals(20, Std.int(bitmaps[0].x));
 		Assert.equals(30, Std.int(bitmaps[0].y));
 	}
+
+	// ==================== AnimatedPath tests ====================
+
+	@Test
+	public function testAnimatedPathTimeMode():Void {
+		final builder = builderFromSource("
+			paths {
+				#straight path {
+					lineTo(100, 0)
+				}
+			}
+			#test animatedPath {
+				path: straight
+				type: time
+				duration: 2.0
+			}
+		");
+		final ap = builder.createAnimatedPath("test");
+		Assert.notNull(ap);
+
+		// Update by half duration — rate should be ~0.5
+		final state1 = ap.update(1.0);
+		Assert.floatEquals(0.5, state1.rate);
+		Assert.isFalse(state1.done);
+
+		// Complete the path
+		final state2 = ap.update(1.0);
+		Assert.floatEquals(1.0, state2.rate);
+		Assert.isTrue(state2.done);
+	}
+
+	@Test
+	public function testAnimatedPathDistanceMode():Void {
+		final builder = builderFromSource("
+			paths {
+				#straight path {
+					lineTo(100, 0)
+				}
+			}
+			#test animatedPath {
+				path: straight
+				type: distance
+				speed: 50.0
+			}
+		");
+		final ap = builder.createAnimatedPath("test");
+
+		// At speed=50, 1s covers 50px → rate = 50/100 = 0.5
+		final state = ap.update(1.0);
+		Assert.floatEquals(0.5, state.rate);
+		Assert.isFalse(state.done);
+	}
+
+	@Test
+	public function testAnimatedPathDtZero():Void {
+		final builder = builderFromSource("
+			paths {
+				#straight path {
+					lineTo(100, 0)
+				}
+			}
+			#test animatedPath {
+				path: straight
+				type: time
+				duration: 1.0
+			}
+		");
+		final ap = builder.createAnimatedPath("test");
+
+		// First call with dt > 0 starts the path
+		ap.update(0.5);
+		final state = ap.update(0.0);
+		// dt=0 should not advance rate
+		Assert.floatEquals(0.5, state.rate);
+		Assert.isFalse(state.done);
+	}
+
+	@Test
+	public function testAnimatedPathScaleCurve():Void {
+		final builder = builderFromSource("
+			paths {
+				#straight path { lineTo(100, 0) }
+			}
+			curves {
+				#grow curve {
+					points: [(0, 0.5), (1, 2.0)]
+				}
+			}
+			#test animatedPath {
+				path: straight
+				type: time
+				duration: 1.0
+				0.0: scaleCurve: grow
+			}
+		");
+		final ap = builder.createAnimatedPath("test");
+
+		final state = ap.update(0.5);
+		// At rate=0.5, curve localT=0.5, lerp(0.5, 0.5, 2.0) = 1.25
+		Assert.floatEquals(1.25, state.scale);
+	}
+
+	@Test
+	public function testAnimatedPathInlineEasing():Void {
+		// Test inline easing without a curves{} block
+		final builder = builderFromSource("
+			paths {
+				#straight path { lineTo(100, 0) }
+			}
+			#test animatedPath {
+				path: straight
+				type: time
+				duration: 1.0
+				0.0: alphaCurve: easeInQuad
+			}
+		");
+		final ap = builder.createAnimatedPath("test");
+
+		final state = ap.update(0.5);
+		// easeInQuad(0.5) = 0.25
+		Assert.floatEquals(0.25, state.alpha);
+	}
+
+	@Test
+	public function testAnimatedPathEasingShorthand():Void {
+		// Test easing: keyword as shorthand for progressCurve
+		final builder = builderFromSource("
+			paths {
+				#straight path { lineTo(100, 0) }
+			}
+			#test animatedPath {
+				path: straight
+				type: time
+				duration: 1.0
+				easing: easeInQuad
+			}
+		");
+		final ap = builder.createAnimatedPath("test");
+
+		final state = ap.update(0.5);
+		// timeRate=0.5, progressCurve = easeInQuad(0.5) = 0.25 = pathRate
+		Assert.floatEquals(0.25, state.rate);
+	}
+
+	@Test
+	public function testAnimatedPathEvents():Void {
+		final builder = builderFromSource("
+			paths {
+				#straight path { lineTo(100, 0) }
+			}
+			#test animatedPath {
+				path: straight
+				type: time
+				duration: 1.0
+				0.0: event(\"start\")
+				0.5: event(\"mid\")
+				1.0: event(\"end\")
+			}
+		");
+		final ap = builder.createAnimatedPath("test");
+
+		var events:Array<String> = [];
+		ap.onEvent = function(name:String, state:bh.paths.AnimatedPath.AnimatedPathState) {
+			events.push(name);
+		};
+
+		ap.update(0.6);
+		// Should fire: pathStart, start, mid
+		Assert.isTrue(events.indexOf("pathStart") >= 0);
+		Assert.isTrue(events.indexOf("start") >= 0);
+		Assert.isTrue(events.indexOf("mid") >= 0);
+		Assert.isTrue(events.indexOf("end") < 0);
+	}
+
+	@Test
+	public function testAnimatedPathLoop():Void {
+		final builder = builderFromSource("
+			paths {
+				#straight path { lineTo(100, 0) }
+			}
+			#test animatedPath {
+				path: straight
+				type: time
+				duration: 1.0
+				loop: true
+			}
+		");
+		final ap = builder.createAnimatedPath("test");
+
+		ap.update(1.5);
+		final state = ap.getState();
+		Assert.equals(1, state.cycle);
+		Assert.floatEquals(0.5, state.rate);
+		Assert.isFalse(state.done);
+	}
+
+	@Test
+	public function testAnimatedPathPingPong():Void {
+		final builder = builderFromSource("
+			paths {
+				#straight path { lineTo(100, 0) }
+			}
+			#test animatedPath {
+				path: straight
+				type: time
+				duration: 1.0
+				loop: true
+				pingPong: true
+			}
+		");
+		final ap = builder.createAnimatedPath("test");
+
+		ap.update(1.5);
+		final state = ap.getState();
+		// After first cycle (0→1), reversed, now 0.5s into reversed cycle → rate = 1.0 - 0.5 = 0.5
+		Assert.floatEquals(0.5, state.rate);
+		Assert.equals(1, state.cycle);
+	}
+
+	@Test
+	public function testAnimatedPathSeek():Void {
+		final builder = builderFromSource("
+			paths {
+				#straight path { lineTo(100, 0) }
+			}
+			#test animatedPath {
+				path: straight
+				type: time
+				duration: 1.0
+				0.5: event(\"mid\")
+			}
+		");
+		final ap = builder.createAnimatedPath("test");
+
+		var eventFired = false;
+		ap.onEvent = function(name:String, state:bh.paths.AnimatedPath.AnimatedPathState) {
+			eventFired = true;
+		};
+
+		// Seek should not fire events or advance internal time
+		final state = ap.seek(0.7);
+		Assert.floatEquals(0.7, state.rate);
+		Assert.isFalse(eventFired);
+	}
+
+	@Test
+	public function testAnimatedPathCheckpoints():Void {
+		final builder = builderFromSource("
+			paths {
+				#path1 path {
+					lineTo(50, 0)
+					checkpoint(mid)
+					lineTo(100, 0)
+				}
+			}
+			#test animatedPath {
+				path: path1
+				type: time
+				duration: 1.0
+				mid: event(\"atCheckpoint\")
+			}
+		");
+		final ap = builder.createAnimatedPath("test");
+
+		var events:Array<String> = [];
+		ap.onEvent = function(name:String, state:bh.paths.AnimatedPath.AnimatedPathState) {
+			events.push(name);
+		};
+
+		ap.update(1.0);
+		Assert.isTrue(events.indexOf("atCheckpoint") >= 0);
+	}
+
+	@Test
+	public function testAnimatedPathCustomCurve():Void {
+		final builder = builderFromSource("
+			paths {
+				#straight path { lineTo(100, 0) }
+			}
+			curves {
+				#intensity curve {
+					points: [(0, 0), (1, 10)]
+				}
+			}
+			#test animatedPath {
+				path: straight
+				type: time
+				duration: 1.0
+				0.0: custom(\"intensity\"): intensity
+			}
+		");
+		final ap = builder.createAnimatedPath("test");
+
+		final state = ap.update(0.3);
+		// At rate=0.3, curve localT=0.3, lerp(0.3, 0, 10) = 3.0
+		Assert.floatEquals(3.0, state.custom.get("intensity"));
+	}
+
+	@Test
+	public function testAnimatedPathMultiColorStops():Void {
+		final builder = builderFromSource("
+			paths {
+				#straight path { lineTo(100, 0) }
+			}
+			curves {
+				#fade curve { easing: linear }
+			}
+			#test animatedPath {
+				path: straight
+				type: time
+				duration: 1.0
+				0.0: colorCurve: fade, #FF0000, #00FF00
+				0.5: colorCurve: fade, #00FF00, #0000FF
+			}
+		");
+		final ap = builder.createAnimatedPath("test");
+
+		// At t=0.0: start of first segment → color should be #FF0000
+		final state0 = ap.seek(0.0);
+		Assert.equals(0xFF0000, state0.color);
+
+		// At t=0.5: start of second segment → color should be #00FF00
+		final state1 = ap.seek(0.5);
+		Assert.equals(0x00FF00, state1.color);
+
+		// At t=1.0: end of second segment → color should be #0000FF
+		final state2 = ap.seek(1.0);
+		Assert.equals(0x0000FF, state2.color);
+	}
+
+	@Test
+	public function testProjectilePathHelper():Void {
+		final builder = builderFromSource("
+			paths {
+				#straight path { lineTo(100, 0) }
+			}
+			#test animatedPath {
+				path: straight
+				type: time
+				duration: 1.0
+			}
+		");
+		final from = new bh.base.FPoint(10, 20);
+		final to = new bh.base.FPoint(210, 20);
+		final ap = builder.createProjectilePath("test", from, to);
+
+		Assert.notNull(ap);
+		// Seek to start — position should be near 'from'
+		final state0 = ap.seek(0.0);
+		Assert.floatEquals(10, state0.position.x);
+		Assert.floatEquals(20, state0.position.y);
+
+		// Seek to end — position should be near 'to'
+		final state1 = ap.seek(1.0);
+		Assert.floatEquals(210, state1.position.x);
+		Assert.floatEquals(20, state1.position.y);
+	}
+
+	@Test
+	public function testPathGetClosestRate():Void {
+		final builder = builderFromSource("
+			paths {
+				#straight path { lineTo(100, 0) }
+			}
+			#test animatedPath {
+				path: straight
+				type: time
+				duration: 1.0
+			}
+		");
+		final paths = builder.getPaths();
+		final path = paths.getPath("straight");
+
+		// Point near midpoint of line (0,0)→(100,0)
+		final rate = path.getClosestRate(new bh.base.FPoint(50, 5));
+		Assert.floatEquals(0.5, rate);
+
+		// Point near start
+		final rate2 = path.getClosestRate(new bh.base.FPoint(10, 10));
+		Assert.floatEquals(0.1, rate2);
+
+		// Point near end
+		final rate3 = path.getClosestRate(new bh.base.FPoint(95, 0));
+		Assert.floatEquals(0.95, rate3);
+	}
 }

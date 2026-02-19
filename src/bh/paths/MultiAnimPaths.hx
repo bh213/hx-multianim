@@ -391,6 +391,56 @@ class Path {
 		return endpoint;
 	}
 
+	/** Find the rate (0..1) on this path closest to the given world point.
+	 *  Uses coarse sampling followed by golden-section refinement. */
+	public function getClosestRate(point:FPoint):Float {
+		if (singlePaths.length == 0) return 0.0;
+
+		// Phase 1: Coarse sampling
+		final samples = 50;
+		var closestRate:Float = 0.0;
+		var closestDistSq:Float = Math.POSITIVE_INFINITY;
+
+		for (i in 0...samples + 1) {
+			final rate = i / samples;
+			final pt = getPoint(rate);
+			final dx = pt.x - point.x;
+			final dy = pt.y - point.y;
+			final distSq = dx * dx + dy * dy;
+			if (distSq < closestDistSq) {
+				closestDistSq = distSq;
+				closestRate = rate;
+			}
+		}
+
+		// Phase 2: Golden-section refinement around the closest sample
+		final searchRadius = 1.0 / samples;
+		var left = Math.max(0.0, closestRate - searchRadius);
+		var right = Math.min(1.0, closestRate + searchRadius);
+		final phi = (Math.sqrt(5.0) - 1.0) / 2.0;
+		final tolerance = 1e-6;
+
+		while (right - left > tolerance) {
+			final mid1 = right - (right - left) * phi;
+			final mid2 = left + (right - left) * phi;
+
+			final pt1 = getPoint(mid1);
+			final pt2 = getPoint(mid2);
+			final dx1 = pt1.x - point.x;
+			final dy1 = pt1.y - point.y;
+			final dx2 = pt2.x - point.x;
+			final dy2 = pt2.y - point.y;
+
+			if (dx1 * dx1 + dy1 * dy1 < dx2 * dx2 + dy2 * dy2) {
+				right = mid2;
+			} else {
+				left = mid1;
+			}
+		}
+
+		return (left + right) / 2.0;
+	}
+
 	/** Apply a normalization transform to this path, returning a new transformed Path. */
 	public function applyTransform(mode:PathNormalization):Path {
 		return switch mode {

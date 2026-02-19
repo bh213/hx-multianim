@@ -1125,93 +1125,46 @@ The original path shape is preserved but transformed via scale + rotation + tran
 
 ## Animated Paths
 
-Animated paths control how objects traverse a named path over time, with curve-based property animation, timed events, and optional looping.
+Animated paths control how objects traverse a named path over time, with curve-based property animation, timed events, and optional looping. **See [Animated Paths Guide](animpaths.md) for a detailed tutorial with examples.**
 
 ```
 #animName animatedPath {
     path: myPath
-    type: time
     duration: 0.8
-    loop: false
-    pingPong: false
-    0.0: progressCurve: easeOutElastic
-    0.0: scaleCurve: growThenShrink, alphaCurve: fadeIn
+    easing: easeOutCubic
+    0.0: scaleCurve: easeInQuad, alphaCurve: fadeIn
     0.5: event("halfway")
     0.0: colorCurve: linear, #FF0000, #00FF00
-    0.0: custom(myValue): customCurve
+    0.5: colorCurve: linear, #00FF00, #0000FF
+    0.0: custom("myValue"): customCurve
 }
 ```
 
-**Properties:**
-* `path: <pathName>` - **Required.** Name of a path defined in the `paths {}` block
-* `type: time | distance` - Animation mode (optional, inferred from `duration`/`speed`)
-* `duration: <float>` - Duration in seconds (time mode)
-* `speed: <float>` - Base speed in pixels/second (distance mode)
-* `loop: true | false` - Repeat the animation continuously (default: false)
-* `pingPong: true | false` - Alternate forward/reverse on each cycle (default: false)
+**Properties:** `path` (required), `type: time|distance`, `duration`, `speed`, `loop`, `pingPong`, `easing` (shorthand for `0.0: progressCurve:`)
 
-**Curve Slots** (at rate 0.0–1.0 or checkpoint name):
-* `<rate>: speedCurve: <curveName>` - Speed multiplier (distance mode only)
-* `<rate>: scaleCurve: <curveName>` - Scale (default 1.0)
-* `<rate>: alphaCurve: <curveName>` - Alpha/opacity (default 1.0)
-* `<rate>: rotationCurve: <curveName>` - Rotation in radians (default 0.0)
-* `<rate>: progressCurve: <curveName>` - Maps time-rate to path-rate (time mode only); allows easing/overshoot
-* `<rate>: colorCurve: <curveName>, <startColor>, <endColor>` - Color interpolation (RGB lerp)
-* `<rate>: custom("<name>"): <curveName>` - Named custom float value
+**Curve slots** (at rate 0.0–1.0 or checkpoint name): `speedCurve`, `scaleCurve`, `alphaCurve`, `rotationCurve`, `progressCurve`, `colorCurve: curve, #start, #end`, `custom("name"): curve`
 
-Multiple curve assignments at the same rate are comma-separated:
-```
-0.0: scaleCurve: grow, alphaCurve: fadeIn, event("start")
-```
+Curve references can be named curves from `curves{}` or **inline easing names** (e.g. `easeInQuad`, `easeOutCubic`) — no `curves{}` block needed. Multiple `colorCurve` assignments at different rates create per-segment color interpolation, each with its own start/end colors.
 
-**Timed Events:**
-* `<rate>: event("<name>")` - Fire a named event at the given rate
+**Events:** `<rate>: event("name")`. Built-in: `pathStart`, `pathEnd`, `cycleStart`, `cycleEnd`
 
-Rate values are 0.0–1.0. Alternatively, use a checkpoint name defined in the referenced path:
-```
-midpoint: event("reachedMiddle"), scaleCurve: shrink
-```
-
-**Built-in events** (fired automatically):
-* `pathStart` - First update
-* `pathEnd` - Animation complete (non-looping only)
-* `cycleStart` - Beginning of each loop/pingPong cycle
-* `cycleEnd` - End of each loop/pingPong cycle
-
-**AnimatedPathState** (returned by `update(dt)` and `seek(rate)`):
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `position` | `FPoint` | — | Current position on path |
-| `angle` | `Float` | — | Tangent angle (radians) |
-| `rate` | `Float` | — | Current progress (0..1) |
-| `speed` | `Float` | — | Effective speed |
-| `scale` | `Float` | 1.0 | From `scaleCurve` |
-| `alpha` | `Float` | 1.0 | From `alphaCurve` |
-| `rotation` | `Float` | 0.0 | From `rotationCurve` |
-| `color` | `Int` | 0xFFFFFF | From `colorCurve` (RGB) |
-| `cycle` | `Int` | 0 | Current loop cycle index |
-| `done` | `Bool` | false | True when animation finishes |
-| `custom` | `Map<String, Float>` | — | Named custom curve values |
+**AnimatedPathState** (returned by `update(dt)` and `seek(rate)`): `position`, `angle`, `rate`, `speed`, `scale`, `alpha`, `rotation`, `color`, `cycle`, `done`, `custom`
 
 **Runtime API:**
 ```haxe
-// Builder
-var ap = builder.createAnimatedPath("animName", startPoint, endPoint);
-ap.onUpdate = (state) -> { obj.setPosition(state.position.x, state.position.y); };
+var ap = builder.createAnimatedPath("name");                         // basic
+var ap = builder.createAnimatedPath("name", Stretch(start, end));    // normalized
+var ap = builder.createProjectilePath("name", start, end);           // projectile shorthand
+var ap = factory.createAnimatedPath_name(start, end);                // macro codegen
+
+ap.onUpdate = (state) -> { sprite.setPosition(state.position.x, state.position.y); };
 ap.onEvent = (name, state) -> { if (name == "halfway") doSomething(); };
 
-// Macro codegen
-var ap = factory.createAnimatedPath_animName(startPoint, endPoint);
+var state = ap.update(dt);   // advance and get state
+var state = ap.seek(0.5);    // query without side effects
+ap.reset();                  // reuse from beginning
 
-// Update loop
-var state = ap.update(dt);
-
-// Seek to arbitrary position (no side effects, no events)
-var state = ap.seek(0.5);
-
-// Reset for reuse (avoids re-creation)
-ap.reset();
+var rate = path.getClosestRate(worldPoint);  // reverse lookup
 ```
 
 ---
@@ -1617,6 +1570,7 @@ forceFields: [force1, force2, ...]
 | Vortex | `vortex(x, y, strength, radius)` | Spins particles around point |
 | Wind | `wind(vx, vy)` | Constant directional force |
 | Turbulence | `turbulence(strength, scale, speed)` | Noise-based displacement |
+| PathGuide | `pathguide(pathName, attractStrength, flowStrength, radius)` | Attracts particles toward a named path and nudges them along its direction |
 
 **Examples:**
 ```
@@ -1628,6 +1582,9 @@ forceFields: [turbulence(20, 0.015, 1.0), wind(15, 0)]
 
 // Plasma with repulsor
 forceFields: [repulsor(0, 0, 100, 120), turbulence(15, 0.02, 2.0)]
+
+// Magical stream along a path — particles attracted to path and pushed along it
+forceFields: [pathguide(myBezierPath, 80, 120, 50)]
 ```
 
 ### Curves
