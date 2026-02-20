@@ -36,11 +36,11 @@ jobs:
 
     - name: Build library for hashlink
       run: |
-        haxe hx-multianim.hxml -hl build/hl-manim.hl -D message.reporting=pretty -D resourcesPath=playground/res
+        haxe hx-multianim.hxml -hl build/hl-manim.hl -D message.reporting=pretty -D resourcesPath=test/res
 
     - name: Build library for javascript
       run: |
-        haxe hx-multianim.hxml -js build/js-manim.js -D message.reporting=pretty -D resourcesPath=playground/res
+        haxe hx-multianim.hxml -js build/js-manim.js -D message.reporting=pretty -D resourcesPath=test/res
 
     - name: Verify build output
       run: |
