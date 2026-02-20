@@ -26,8 +26,12 @@ Next:
 * generic components support
 * bit expression - support for any bit and all bits (e.g. grid direction)
 * stateanim: color replace (replaceColor filter exists in MultiAnimParser, not fully exposed for stateanim)
-* tilegroup support: ninepatch
-* tilegroup REPEAT - extract into single func (dedup REPEAT/REPEAT2D)
+~~tilegroup support: ninepatch~~ DONE
+    - Decomposes 9-patch into 9 sub-tiles (corners/edges/center) added directly to TileGroup
+    - Edges/center scaled to fill target dimensions
+~~tilegroup REPEAT - extract into single func (dedup REPEAT/REPEAT2D)~~ DONE
+    - Extracted resolveTileGroupRepeatAxis(), setTileGroupRepeatIterationParams(), cleanupTileGroupRepeatExtraVars()
+    - REPEAT and REPEAT2D now share resolution logic
 * radio: paired uielement (click on label to change radio)
 
 Later:

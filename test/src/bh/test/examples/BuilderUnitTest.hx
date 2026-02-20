@@ -2434,6 +2434,89 @@ class BuilderUnitTest extends BuilderTestBase {
 		Assert.pass();
 	}
 
+	// ==================== Bool settings ====================
+
+	@Test
+	public function testBoolSettingTrue():Void {
+		final result = buildFromSource("
+			#test programmable() {
+				settings{visible:bool=>true}
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		", "test");
+		Assert.notNull(result);
+		Assert.isTrue(result.rootSettings.getBoolOrDefault("visible", false));
+	}
+
+	@Test
+	public function testBoolSettingFalse():Void {
+		final result = buildFromSource("
+			#test programmable() {
+				settings{enabled:bool=>false}
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		", "test");
+		Assert.notNull(result);
+		Assert.isFalse(result.rootSettings.getBoolOrDefault("enabled", true));
+	}
+
+	@Test
+	public function testBoolSettingYesNo():Void {
+		final result = buildFromSource("
+			#test programmable() {
+				settings{a:bool=>yes, b:bool=>no}
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		", "test");
+		Assert.notNull(result);
+		Assert.isTrue(result.rootSettings.getBoolOrDefault("a", false));
+		Assert.isFalse(result.rootSettings.getBoolOrDefault("b", true));
+	}
+
+	@Test
+	public function testBoolSettingNumeric():Void {
+		final result = buildFromSource("
+			#test programmable() {
+				settings{on:bool=>1, off:bool=>0}
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		", "test");
+		Assert.notNull(result);
+		Assert.isTrue(result.rootSettings.getBoolOrDefault("on", false));
+		Assert.isFalse(result.rootSettings.getBoolOrDefault("off", true));
+	}
+
+	@Test
+	public function testBoolSettingCoercion():Void {
+		final result = buildFromSource("
+			#test programmable() {
+				settings{flag:bool=>true}
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		", "test");
+		Assert.notNull(result);
+		// Bool coerces to string
+		Assert.equals("true", result.rootSettings.getStringOrDefault("flag", ""));
+		// Bool coerces to int
+		Assert.equals(1, result.rootSettings.getIntOrDefault("flag", 0));
+		// Bool coerces to float
+		Assert.equals(1.0, result.rootSettings.getFloatOrDefault("flag", 0.0));
+	}
+
+	@Test
+	public function testBoolSettingMixed():Void {
+		final result = buildFromSource("
+			#test programmable() {
+				settings{name=>hello, count:int=>5, active:bool=>true}
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		", "test");
+		Assert.notNull(result);
+		Assert.equals("hello", result.rootSettings.getStringOrDefault("name", ""));
+		Assert.equals(5, result.rootSettings.getIntOrDefault("count", 0));
+		Assert.isTrue(result.rootSettings.getBoolOrDefault("active", false));
+	}
+
 	// ===== Helpers =====
 
 	static function findGraphicsChild(obj:h2d.Object):Null<h2d.Graphics> {

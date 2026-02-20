@@ -140,6 +140,7 @@ class BuilderResolvedSettings {
 			case RSVString(s): s;
 			case RSVInt(i): '$i';
 			case RSVFloat(f): '$f';
+			case RSVBool(b): b ? "true" : "false";
 		};
 	}
 
@@ -153,6 +154,7 @@ class BuilderResolvedSettings {
 			case RSVString(s): s;
 			case RSVInt(i): '$i';
 			case RSVFloat(f): '$f';
+			case RSVBool(b): b ? "true" : "false";
 		};
 	}
 
@@ -166,6 +168,7 @@ class BuilderResolvedSettings {
 			case RSVInt(i): i;
 			case RSVFloat(f): throw 'expected int setting ${settingName} to valid int number but was float $f';
 			case RSVString(s): throw 'expected int setting ${settingName} to valid int number but was string $s';
+			case RSVBool(b): b ? 1 : 0;
 		};
 	}
 
@@ -179,6 +182,7 @@ class BuilderResolvedSettings {
 			case RSVInt(i): i;
 			case RSVFloat(f): throw 'expected int setting ${settingName} to valid int number but was float $f';
 			case RSVString(s): throw 'expected int setting ${settingName} to valid int number but was string $s';
+			case RSVBool(b): b ? 1 : 0;
 		};
 	}
 
@@ -192,6 +196,7 @@ class BuilderResolvedSettings {
 			case RSVFloat(f): f;
 			case RSVInt(i): cast i;
 			case RSVString(s): throw 'expected float setting ${settingName} to valid float number but was string $s';
+			case RSVBool(b): b ? 1.0 : 0.0;
 		};
 	}
 
@@ -205,6 +210,26 @@ class BuilderResolvedSettings {
 			case RSVFloat(f): f;
 			case RSVInt(i): cast i;
 			case RSVString(s): throw 'expected float setting ${settingName} to valid float number but was string $s';
+			case RSVBool(b): b ? 1.0 : 0.0;
+		};
+	}
+
+	public function getBoolOrDefault(settingName:String, defaultValue:Bool):Bool {
+		if (settings == null)
+			return defaultValue;
+		var r = settings[settingName];
+		if (r == null)
+			return defaultValue;
+		return switch r {
+			case RSVBool(b): b;
+			case RSVInt(i): i != 0;
+			case RSVFloat(f): f != 0;
+			case RSVString(s):
+				switch (s.toLowerCase()) {
+					case "true" | "1" | "yes": true;
+					case "false" | "0" | "no": false;
+					default: throw 'could not parse setting "$s" as bool';
+				};
 		};
 	}
 }
@@ -3482,6 +3507,7 @@ class MultiAnimBuilder {
 							case SVTInt: RSVInt(resolveAsInteger(entry.value));
 							case SVTFloat: RSVFloat(resolveAsNumber(entry.value));
 							case SVTString: RSVString(resolveAsString(entry.value));
+							case SVTBool: RSVBool(resolveAsBool(entry.value));
 						});
 					}
 				}
@@ -3679,6 +3705,7 @@ class MultiAnimBuilder {
 					case SVTInt: RSVInt(resolveAsInteger(settingValue.value));
 					case SVTFloat: RSVFloat(resolveAsNumber(settingValue.value));
 					case SVTString: RSVString(resolveAsString(settingValue.value));
+					case SVTBool: RSVBool(resolveAsBool(settingValue.value));
 				}
 			}
 			return retSettings;

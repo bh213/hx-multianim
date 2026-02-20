@@ -152,6 +152,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 			case RSVString(s): s;
 			case RSVInt(i): '$i';
 			case RSVFloat(f): '$f';
+			case RSVBool(b): b ? "true" : "false";
 		};
 	}
 
@@ -164,6 +165,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		return switch (val) {
 			case RSVInt(i): i;
 			case RSVFloat(f): Std.int(f);
+			case RSVBool(b): b ? 1 : 0;
 			case RSVString(s):
 				var intVal = Std.parseInt(s);
 				if (intVal == null)
@@ -181,6 +183,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		return switch (val) {
 			case RSVFloat(f): f;
 			case RSVInt(i): i * 1.0;
+			case RSVBool(b): b ? 1.0 : 0.0;
 			case RSVString(s):
 				var floatVal = Std.parseFloat(s);
 				if (Math.isNaN(floatVal))
@@ -195,15 +198,16 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		final val = settings.get(settingName);
 		if (val == null)
 			return defaultValue;
-		final strVal = switch (val) {
-			case RSVString(s): s;
-			case RSVInt(i): '$i';
-			case RSVFloat(f): '$f';
-		};
-		return switch (strVal.toLowerCase()) {
-			case "true" | "1" | "yes": true;
-			case "false" | "0" | "no": false;
-			default: throw 'could not parse setting "$strVal" as bool';
+		return switch (val) {
+			case RSVBool(b): b;
+			case RSVString(s):
+				switch (s.toLowerCase()) {
+					case "true" | "1" | "yes": true;
+					case "false" | "0" | "no": false;
+					default: throw 'could not parse setting "$s" as bool';
+				};
+			case RSVInt(i): i != 0;
+			case RSVFloat(f): f != 0;
 		};
 	}
 

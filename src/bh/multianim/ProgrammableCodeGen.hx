@@ -2366,6 +2366,7 @@ class ProgrammableCodeGen {
 							case SVTInt: final v = rvToExpr(entry.value); macro bh.multianim.MultiAnimParser.SettingValue.RSVInt($v);
 							case SVTFloat: final v = rvToExpr(entry.value); macro bh.multianim.MultiAnimParser.SettingValue.RSVFloat($v);
 							case SVTString: final v = rvToExpr(entry.value, true); macro bh.multianim.MultiAnimParser.SettingValue.RSVString($v);
+							case SVTBool: final v = rvToExpr(entry.value); macro bh.multianim.MultiAnimParser.SettingValue.RSVBool($v != 0);
 						};
 						entries.push(macro m.set($keyExpr, $valExpr));
 					}
@@ -4378,6 +4379,7 @@ class ProgrammableCodeGen {
 				case SVTInt: final v = rvToExpr(sv.value); macro bh.multianim.MultiAnimParser.SettingValue.RSVInt($v);
 				case SVTFloat: final v = rvToExpr(sv.value); macro bh.multianim.MultiAnimParser.SettingValue.RSVFloat($v);
 				case SVTString: final v = rvToExpr(sv.value, true); macro bh.multianim.MultiAnimParser.SettingValue.RSVString($v);
+				case SVTBool: final v = rvToExpr(sv.value); macro bh.multianim.MultiAnimParser.SettingValue.RSVBool($v != 0);
 			};
 			entries.push(macro m.set($keyExpr, $valExpr));
 		}

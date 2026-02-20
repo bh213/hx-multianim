@@ -16,8 +16,9 @@ class PixelLines extends h2d.Bitmap {
 	}
 
 	public function clear() {
-		data.lock();
+		// clear before lock so the locked ImageData captures the cleared state
 		data.clear(0);
+		data.lock();
 	}
 
 	public function line(x0:Int, y0:Int, x1:Int, y1:Int, colorARGB:Int) {
@@ -36,7 +37,13 @@ class PixelLines extends h2d.Bitmap {
 
 	public function filledRect(x:Int, y:Int, width:Int, height:Int, colorARGB:Int) {
 		data.lock();
-		data.fill(x, y, width, height, colorARGB);
+		// Don't use data.fill() — on JS it writes to canvas ctx directly,
+		// bypassing the locked ImageData, so unlock() overwrites the result.
+		for (dy in 0...height) {
+			for (dx in 0...width) {
+				data.setPixel(x + dx, y + dy, colorARGB);
+			}
+		}
 	}
 
 	public function pixel(x:Int, y:Int, colorARGB:Int) {

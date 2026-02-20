@@ -1323,6 +1323,29 @@ class MacroManimParser {
 		}
 	}
 
+	function parseBoolOrReference():ReferenceableValue {
+		switch (peek()) {
+			case TReference(s):
+				advance();
+				validateRef(s);
+				return RVReference(s);
+			case TIdentifier(s) if (isKeyword(s, "yes") || isKeyword(s, "true")):
+				advance();
+				return RVInteger(1);
+			case TIdentifier(s) if (isKeyword(s, "no") || isKeyword(s, "false")):
+				advance();
+				return RVInteger(0);
+			case TInteger(s) if (s == "1"):
+				advance();
+				return RVInteger(1);
+			case TInteger(s) if (s == "0"):
+				advance();
+				return RVInteger(0);
+			default:
+				return error("expected true/false, 0/1, yes/no, or $$reference");
+		}
+	}
+
 	function expectIdentifierOrString():String {
 		switch (peek()) {
 			case TIdentifier(s):
@@ -3133,8 +3156,12 @@ class MacroManimParser {
 									final value = parseColorOrReference();
 									if (parent.settings.exists(key)) error('setting $key already defined');
 									parent.settings.set(key, {type: SVTInt, value: value});
+								case "bool":
+									final value = parseBoolOrReference();
+									if (parent.settings.exists(key)) error('setting $key already defined');
+									parent.settings.set(key, {type: SVTBool, value: value});
 								default:
-									error('expected int, float, string, or color after : in settings');
+									error('expected int, float, string, color, or bool after : in settings');
 							}
 						case TArrow:
 							advance();
@@ -3677,7 +3704,8 @@ class MacroManimParser {
 					case "int": {key: key, type: SVTInt, value: parseIntegerOrReference()};
 					case "float": {key: key, type: SVTFloat, value: parseFloatOrReference()};
 					case "string": {key: key, type: SVTString, value: parseStringOrReference()};
-					default: error('expected int, float, or string after : in metadata');
+					case "bool": {key: key, type: SVTBool, value: parseBoolOrReference()};
+					default: error('expected int, float, string, or bool after : in metadata');
 				};
 			case TArrow:
 				advance();

@@ -115,7 +115,7 @@ animation {
 | `mask(w, h)` | Clipping mask rectangle |
 | `flow(...)` | Layout flow container |
 | `repeatable($var, iterator)` | Loop elements |
-| `tilegroup(...)` | Optimized tile grouping |
+| `tilegroup` | Optimized tile grouping (supports `bitmap`, `ninepatch`, `repeatable`, `repeatable2d`, `pixels`, `point`) |
 | `stateanim construct(...)` | Inline state animation |
 | `point` | Positioning point |
 | `apply(...)` | Apply properties to parent |

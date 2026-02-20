@@ -226,6 +226,7 @@ enum SettingValueType {
 	SVTString;
 	SVTInt;
 	SVTFloat;
+	SVTBool;
 }
 
 typedef ParsedSettingValue = {
@@ -237,6 +238,7 @@ enum SettingValue {
 	RSVString(s:String);
 	RSVInt(i:Int);
 	RSVFloat(f:Float);
+	RSVBool(b:Bool);
 }
 
 typedef ResolvedSettings = Null<Map<String, SettingValue>>;
