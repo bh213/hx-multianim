@@ -2363,6 +2363,139 @@ class BuilderUnitTest extends BuilderTestBase {
 		Assert.pass();
 	}
 
+	// ==================== Pixels actual pixel data verification ====================
+
+	static inline final PIXEL_H = 5;
+	static inline final PIXEL_W = 100;
+	static inline final RED = 0xFFFF0000;
+
+	/** Check all pixels: 0..filledWidth should be expectedColor, filledWidth..totalWidth should be 0 (transparent). */
+	static function assertPixelRect(pl:bh.base.PixelLine.PixelLines, filledWidth:Int, expectedColor:Int, label:String):Void {
+		for (y in 0...pl.data.height) {
+			for (x in 0...pl.data.width) {
+				final actual = pl.data.getPixel(x, y);
+				if (x < filledWidth && y < PIXEL_H) {
+					if (actual != expectedColor) {
+						Assert.fail('$label: pixel($x,$y) expected filled 0x${StringTools.hex(expectedColor, 8)} but got 0x${StringTools.hex(actual, 8)}');
+						return;
+					}
+				} else {
+					if (actual != 0) {
+						Assert.fail('$label: pixel($x,$y) expected transparent but got 0x${StringTools.hex(actual, 8)}');
+						return;
+					}
+				}
+			}
+		}
+		Assert.pass();
+	}
+
+	@Test
+	public function testPixelsFilledRectAt100Percent():Void {
+		final result = buildFromSource("
+			#test programmable(val:uint=100) {
+				pixels (
+					filledRect 0, 0, $val, 5, #ff0000
+				);
+			}
+		", "test");
+		Assert.notNull(result);
+		final pl = findPixelLinesChild(result.object);
+		Assert.notNull(pl, "Should have a PixelLines child");
+		assertPixelRect(pl, PIXEL_W, RED, "val=100");
+	}
+
+	@Test
+	public function testPixelsFilledRectAt50Percent():Void {
+		final params = new Map<String, Dynamic>();
+		params.set("val", 50);
+		final result = buildFromSource("
+			#test programmable(val:uint=100) {
+				pixels (
+					filledRect 0, 0, $val, 5, #ff0000
+				);
+			}
+		", "test", params);
+		Assert.notNull(result);
+		final pl = findPixelLinesChild(result.object);
+		Assert.notNull(pl, "Should have a PixelLines child");
+		assertPixelRect(pl, 50, RED, "val=50");
+	}
+
+	@Test
+	public function testPixelsFilledRectAt0Percent():Void {
+		final params = new Map<String, Dynamic>();
+		params.set("val", 0);
+		final result = buildFromSource("
+			#test programmable(val:uint=100) {
+				pixels (
+					filledRect 0, 0, $val, 5, #ff0000
+				);
+			}
+		", "test", params);
+		Assert.notNull(result);
+		final pl = findPixelLinesChild(result.object);
+		if (pl != null)
+			assertPixelRect(pl, 0, RED, "val=0");
+		else
+			Assert.pass();
+	}
+
+	@Test
+	public function testIncrementalPixelsActualDataAfterSetParameter():Void {
+		final result = buildFromSource("
+			#test programmable(val:uint=100) {
+				pixels (
+					filledRect 0, 0, $val, 5, #ff0000
+				);
+			}
+		", "test", null, Incremental);
+		Assert.notNull(result);
+		var pl = findPixelLinesChild(result.object);
+		Assert.notNull(pl, "Should have a PixelLines child");
+		assertPixelRect(pl, PIXEL_W, RED, "initial val=100");
+
+		result.setParameter("val", 50);
+		pl = findPixelLinesChild(result.object);
+		Assert.notNull(pl, "Should still have a PixelLines child after update");
+		assertPixelRect(pl, 50, RED, "after val=50");
+
+		result.setParameter("val", 0);
+		pl = findPixelLinesChild(result.object);
+		if (pl != null)
+			assertPixelRect(pl, 0, RED, "after val=0");
+		else
+			Assert.pass();
+	}
+
+	@Test
+	public function testIncrementalPixelsSweep100to0():Void {
+		final result = buildFromSource("
+			#test programmable(val:uint=100) {
+				pixels (
+					filledRect 0, 0, $val, 5, #ff0000
+				);
+			}
+		", "test", null, Incremental);
+		Assert.notNull(result);
+		// Sweep from 100 down to 0 in steps of 10
+		var val = 100;
+		while (val >= 0) {
+			result.setParameter("val", val);
+			final pl = findPixelLinesChild(result.object);
+			if (val == 0) {
+				if (pl != null)
+					assertPixelRect(pl, 0, RED, 'sweep val=$val');
+				else
+					Assert.pass();
+			} else {
+				Assert.notNull(pl, 'Should have PixelLines at val=$val');
+				assertPixelRect(pl, val, RED, 'sweep val=$val');
+			}
+			val -= 10;
+		}
+	}
+
 	// ==================== Incremental pixels expression tracking ====================
 
 	@Test
@@ -2524,6 +2657,18 @@ class BuilderUnitTest extends BuilderTestBase {
 			final child = obj.getChildAt(i);
 			if (Std.isOfType(child, h2d.Graphics))
 				return cast child;
+		}
+		return null;
+	}
+
+	static function findPixelLinesChild(obj:h2d.Object):Null<bh.base.PixelLine.PixelLines> {
+		for (i in 0...obj.numChildren) {
+			final child = obj.getChildAt(i);
+			if (Std.isOfType(child, bh.base.PixelLine.PixelLines))
+				return cast child;
+			final found = findPixelLinesChild(child);
+			if (found != null)
+				return found;
 		}
 		return null;
 	}

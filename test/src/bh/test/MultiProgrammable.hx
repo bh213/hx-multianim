@@ -247,4 +247,7 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/84-slotContent/slotContent.manim", "slotContentDemo")
 	public var slotContentDemo;
+
+	@:manim("test/examples/85-fontHeight/fontHeight.manim", "fontHeight")
+	public var fontHeight;
 }

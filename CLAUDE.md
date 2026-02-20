@@ -165,7 +165,7 @@ animation {
 - Hex properties: `$hex.width`, `$hex.height`
 - Named systems: `grid: #name spacingX, spacingY`, `hex: #name orientation(w, h)`
 - Value extraction: `$grid.pos(x, y).x`, `$hex.corner(0, 1.0).y`
-- Context: `$ctx.width`, `$ctx.height`, `$ctx.random(min, max)`
+- Context: `$ctx.width`, `$ctx.height`, `$ctx.random(min, max)`, `$ctx.font("name").lineHeight`, `$ctx.font("name").baseLine`
 - Layout: `layout(layoutName [, index])`
 
 ### Filters

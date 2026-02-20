@@ -4257,6 +4257,9 @@ class ProgrammableCodeGen {
 									Context.error('$$ctx.random() requires 2 arguments (min, max)', Context.currentPos());
 									macro 0;
 								}
+							case "font":
+								Context.error('$$ctx.font() must be followed by .lineHeight or .baseLine', Context.currentPos());
+								macro 0;
 							default:
 								Context.error('Unknown context method: $$ctx.$method()', Context.currentPos());
 								macro 0;
@@ -4266,8 +4269,26 @@ class ProgrammableCodeGen {
 						macro 0;
 				}
 			case RVChainedMethodCall(base, property, _):
-				if (property != "x" && property != "y") {
-					Context.error('Unsupported chained property .$property — only .x and .y are supported', Context.currentPos());
+				if (property == "lineHeight" || property == "baseLine") {
+					// Font property access: $ctx.font("name").lineHeight / .baseLine
+					switch (base) {
+						case RVMethodCall(ref, method, args):
+							if (ref == "ctx" && method == "font" && args.length == 1) {
+								final fontNameExpr = rvToExpr(args[0]);
+								if (property == "lineHeight")
+									macro this._pb.loadFont($fontNameExpr).lineHeight;
+								else
+									macro this._pb.loadFont($fontNameExpr).baseLine;
+							} else {
+								Context.error('$$ctx.font("name") is required for .$property access', Context.currentPos());
+								macro 0;
+							}
+						default:
+							Context.error('Unsupported base expression for .$property — use $$ctx.font("name").$property', Context.currentPos());
+							macro 0;
+					}
+				} else if (property != "x" && property != "y") {
+					Context.error('Unsupported chained property .$property — only .x, .y, .lineHeight, .baseLine are supported', Context.currentPos());
 					macro 0;
 				} else {
 					// Try static resolution first

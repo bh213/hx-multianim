@@ -611,6 +611,18 @@ Any coordinate method call can have `.x` or `.y` appended to extract a single co
 * `$ctx.width` - width of the programmable element
 * `$ctx.height` - height of the programmable element
 * `$ctx.random(min, max)` - random value between min and max
+* `$ctx.font("name").lineHeight` - line height of the named font
+* `$ctx.font("name").baseLine` - baseline offset of the named font
+
+Font metrics are resolved at build time and can be used in expressions:
+
+```manim
+#demo programmable() {
+    bitmap(generated(color(4, $ctx.font("dd").lineHeight, #55aa55))): 0, 0
+    text(dd, "Sample", white, left): 6, 0
+    text(f3x5, "below", #aaa, left): 6, $ctx.font("dd").lineHeight + 2
+}
+```
 
 ---
 

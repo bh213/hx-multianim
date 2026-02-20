@@ -236,8 +236,10 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 			extraParams = new Map();
 			if (hasSettings(settings, "width"))
 				extraParams.set("width", getIntSettings(settings, "width", 200));
-			if (hasSettings(settings, "height"))
-				extraParams.set("height", getIntSettings(settings, "height", 30));
+			final height = getIntSettings(settings, "height", 30);
+			if (hasSettings(settings, "height")) {
+				extraParams.set("height", height);
+			}
 			if (hasSettings(settings, "font"))
 				extraParams.set("font", getSettings(settings, "font", "dd"));
 			if (hasSettings(settings, "fontColor"))

@@ -35,8 +35,12 @@
 - **`Path.getClosestRate(point)`** — reverse lookup to find the closest rate (0..1) on a path to a given world point; uses coarse sampling + golden-section refinement
 - **`createProjectilePath()` helper** — `builder.createProjectilePath("name", startPoint, endPoint)` convenience method using Stretch normalization
 - **AnimatedPath non-visual unit tests** — 15 new tests in BuilderUnitTest covering time/distance modes, inline easing, easing shorthand, events, loop, pingPong, seek, checkpoints, custom curves, multi-color stops, projectile helper, getClosestRate
+- **Font metrics context** — `$ctx.font("name").lineHeight` and `$ctx.font("name").baseLine` for querying font metrics at build time (both builder and codegen)
+- **Pixel data unit tests** — filledRect pixel verification and incremental pixel update sweep tests
 
 ### Fixed
+- **Pixels position scaling** — `pixels` element position offset now scales correctly when `scale > 1` (previously offset was unscaled, causing misalignment)
+- **Float precision in `setParameter`** — `IncrementalUpdateContext.setParameter` now preserves float values via `ValueF()` instead of truncating to `Int`
 - **`${...}` expression parsing** — parser now correctly handles `${...}` expressions in `.manim` files
 - **Static/dynamic ref inheritance** — fixed scope and inheritance issues between staticRef/dynamicRef
 - **Button bug in `resolveExtraInput`** — fixed crash in button event resolution

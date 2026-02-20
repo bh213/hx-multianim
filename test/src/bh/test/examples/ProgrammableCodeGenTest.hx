@@ -3786,4 +3786,11 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		slotA.clear();
 		Assert.isNull(slotA.getContent());
 	}
+
+	// --- Test 85: fontHeight ---
+
+	@Test
+	public function test85_FontHeight(async:utest.Async):Void {
+		simpleMacroTest(85, "fontHeight", () -> createMp().fontHeight.create(), async, null, null, 4.0);
+	}
 }

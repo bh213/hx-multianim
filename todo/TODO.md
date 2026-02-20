@@ -6,6 +6,15 @@
 FIX:
 ===================================
 
+Color format & alpha inconsistencies:
+    - PixelOutline: colors passed to Vector4.setColor() without addAlphaIfNotPresent() → alpha=0, outline invisible (Builder:3816-3817, Codegen:5064-5071)
+    - Graphics beginFill/lineStyle: get ARGB via addAlphaIfNotPresent(), but API expects RGB (works by accident due to & 0xFF masking) (Builder:2338+, Codegen:2584+)
+    - Tile.fromColor: gets ARGB via addAlphaIfNotPresent(), but API expects RGB (works in practice) (Builder:1424, Codegen:4439)
+    - Particle colors: no masking or alpha handling — extraction works by accident with & 0xFF (Particles:676-678, lerpColor:732-742)
+    - AnimatedPath lerpColor: same RGB-only pattern as Particles (AnimatedPath:376)
+    - textColor masking inconsistent: masked in static text (Builder:1642) but not in incremental (Builder:2029) or codegen (Codegen:1760, 3865) — works because Heaps handles it
+    - dropShadow.color not masked (Builder:2948) — works because Heaps handles it
+
 ~~hex coordinate system offset support~~ DONE
     - Implemented via $hex.offset(), $hex.doubled(), $hex.pixel() coordinate methods
     - Grid offset via $grid.pos(x, y, offsetX, offsetY)
@@ -24,6 +33,7 @@ particles:
 Next:
 ===================================
 * generic components support
+* 
 * bit expression - support for any bit and all bits (e.g. grid direction)
 * stateanim: color replace (replaceColor filter exists in MultiAnimParser, not fully exposed for stateanim)
 ~~tilegroup support: ninepatch~~ DONE

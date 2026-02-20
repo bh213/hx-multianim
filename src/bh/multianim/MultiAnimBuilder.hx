@@ -332,9 +332,11 @@ class IncrementalUpdateContext {
 	}
 
 	public function setParameter(name:String, value:Dynamic):Void {
-		// Convert to ResolvedIndexParameters
-		if (Std.isOfType(value, Int) || Std.isOfType(value, Float)) {
-			indexedParams.set(name, Value(Std.int(value)));
+		// Convert to ResolvedIndexParameters — preserve float precision for float values
+		if (Std.isOfType(value, Int)) {
+			indexedParams.set(name, Value(value));
+		} else if (Std.isOfType(value, Float)) {
+			indexedParams.set(name, ValueF(value));
 		} else if (Std.isOfType(value, String)) {
 			indexedParams.set(name, StringValue(cast value));
 		} else if (Std.isOfType(value, Bool)) {
@@ -1013,6 +1015,8 @@ class MultiAnimBuilder {
 						final min = resolveAsInteger(args[0]);
 						final max = resolveAsInteger(args[1]);
 						return min + Std.random(max - min);
+					case "font":
+						throw '$$ctx.font() must be followed by .lineHeight or .baseLine' + currentNodePos();
 					default: throw '$ref.$method() is not a known context method' + currentNodePos();
 				}
 			default:
@@ -1092,10 +1096,25 @@ class MultiAnimBuilder {
 		}
 	}
 
-	/** Resolves RVChainedMethodCall for .x/.y extraction from coordinate methods. */
+	/** Resolves RVChainedMethodCall for .x/.y extraction from coordinate methods and font property access. */
 	function resolveRVChainedMethodCall(base:ReferenceableValue, property:String):Float {
+		// Font property access: $ctx.font("name").lineHeight / .baseLine
+		if (property == "lineHeight" || property == "baseLine") {
+			switch (base) {
+				case RVMethodCall(ref, method, args):
+					if (ref == "ctx" && method == "font") {
+						if (args.length != 1) throw '$$ctx.font() requires 1 argument (font name)' + currentNodePos();
+						final fontName = resolveAsString(args[0]);
+						final font = resourceLoader.loadFont(fontName);
+						return if (property == "lineHeight") font.lineHeight else font.baseLine;
+					}
+				default:
+			}
+			throw 'unsupported base expression for .$property — use $$ctx.font("name").$property' + currentNodePos();
+		}
+
 		if (property != "x" && property != "y")
-			throw 'unsupported chained property .$property — only .x and .y are supported' + currentNodePos();
+			throw 'unsupported chained property .$property — only .x, .y, .lineHeight, .baseLine are supported' + currentNodePos();
 
 		switch (base) {
 			case RVMethodCall(ref, method, args):
@@ -3496,7 +3515,10 @@ class MultiAnimBuilder {
 
 			case PIXELS(shapes):
 				final pixelsResult = drawPixels(shapes, gridCoordinateSystem, hexCoordinateSystem);
-				pixelsResult.pixelLines.setPosition(pixelsResult.minX, pixelsResult.minY);
+				// Scale the position offset so pixel content aligns correctly when scale > 1
+				final pixelScale = node.scale != null ? resolveAsNumber(node.scale) : 1.0;
+				
+				pixelsResult.pixelLines.setPosition(pixelsResult.minX * pixelScale, pixelsResult.minY * pixelScale);
 				Pixels(pixelsResult.pixelLines);
 			case INTERACTIVE(width, height, id, debug, metadata):
 				var resolvedMeta:ResolvedSettings = null;
