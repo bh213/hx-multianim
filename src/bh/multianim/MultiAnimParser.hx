@@ -618,8 +618,9 @@ enum ParticlesEmitMode {
 	Point(emitDistance:ReferenceableValue, emitDistanceRandom:ReferenceableValue);
 	Cone(emitDistance:ReferenceableValue, emitDistanceRandom:ReferenceableValue, emitConeAngle:ReferenceableValue, emitConeAngleRandom:ReferenceableValue);
 	Box(width:ReferenceableValue, height:ReferenceableValue, emitConeAngle:ReferenceableValue, emitConeAngleRandom:ReferenceableValue);
-	Path(points:Array<{x:ReferenceableValue, y:ReferenceableValue}>, emitConeAngle:ReferenceableValue, emitConeAngleRandom:ReferenceableValue);
 	Circle(radius:ReferenceableValue, radiusRandom:ReferenceableValue, emitConeAngle:ReferenceableValue, emitConeAngleRandom:ReferenceableValue);
+	ManimPath(pathName:String);
+	ManimPathTangent(pathName:String);
 }
 
 // Force field types for particles
@@ -638,12 +639,47 @@ typedef ParticleCurvePoint = {
 	var value:ReferenceableValue;
 }
 
+// Curve reference for particles (named curve or inline easing)
+typedef ParticleCurveRef = {
+	var curveName:Null<String>;
+	var inlineEasing:Null<EasingType>;
+}
+
+// Color curve segment for particles (rate-based, like AnimatedPath)
+typedef ParticleColorCurveSegment = {
+	var atRate:ReferenceableValue;
+	var curveName:Null<String>;
+	var inlineEasing:Null<EasingType>;
+	var startColor:ReferenceableValue;
+	var endColor:ReferenceableValue;
+}
+
+// Particle AnimSM state definition (lifetime-driven)
+typedef ParticleAnimStateDef = {
+	var atRate:ReferenceableValue;
+	var animName:String;
+}
+
+// Particle AnimSM event override (event-driven state change)
+typedef ParticleAnimEventOverride = {
+	var trigger:String; // "onBounce", "onDeath", etc.
+	var animName:String;
+}
+
 // Bounds mode for particle collision
 enum ParticleBoundsModeDef {
 	BMNone;
 	BMKill;
 	BMBounce(damping:ReferenceableValue);
 	BMWrap;
+}
+
+// Line bounds definition
+typedef ParticleBoundsLineDef = {
+	var x1:ReferenceableValue;
+	var y1:ReferenceableValue;
+	var x2:ReferenceableValue;
+	var y2:ReferenceableValue;
 }
 
 // Sub-emitter trigger types
@@ -690,30 +726,33 @@ typedef ParticlesDef = {
 	var rotationSpeed:Null<ReferenceableValue>;
 	var rotationSpeedRandom:Null<ReferenceableValue>;
 	var rotateAuto:Null<Bool>;
-	// Color interpolation
-	var colorStart:Null<ReferenceableValue>;
-	var colorEnd:Null<ReferenceableValue>;
-	var colorMid:Null<ReferenceableValue>;
-	var colorMidPos:Null<ReferenceableValue>;
+	var forwardAngle:Null<ReferenceableValue>;
+	// Color curves (AnimatedPath-style segments)
+	var colorCurves:Null<Array<ParticleColorCurveSegment>>;
 	// Force fields
 	var forceFields:Null<Array<ParticleForceFieldDef>>;
 	// Curves
-	var velocityCurve:Null<Array<ParticleCurvePoint>>;
-	var sizeCurve:Null<Array<ParticleCurvePoint>>;
-	// Trails
-	var trailEnabled:Null<Bool>;
-	var trailLength:Null<ReferenceableValue>;
-	var trailFadeOut:Null<Bool>;
+	var velocityCurve:Null<ParticleCurveRef>;
+	var sizeCurve:Null<ParticleCurveRef>;
 	// Bounds/collision
 	var boundsMode:Null<ParticleBoundsModeDef>;
 	var boundsMinX:Null<ReferenceableValue>;
 	var boundsMaxX:Null<ReferenceableValue>;
 	var boundsMinY:Null<ReferenceableValue>;
 	var boundsMaxY:Null<ReferenceableValue>;
+	var boundsLines:Null<Array<ParticleBoundsLineDef>>;
 	// Sub-emitters
 	var subEmitters:Null<Array<ParticleSubEmitterDef>>;
 	// Animation
 	var animationRepeat:Null<ReferenceableValue>;
+	// AnimatedPath integration
+	var attachTo:Null<String>;
+	var spawnCurve:Null<ParticleCurveRef>;
+	// AnimSM tile source
+	var animFile:Null<String>;
+	var animSelector:Null<Map<String, String>>;
+	var animStates:Null<Array<ParticleAnimStateDef>>;
+	var animEventOverrides:Null<Array<ParticleAnimEventOverride>>;
 }
 
 enum RepeatType {

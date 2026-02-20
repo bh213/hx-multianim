@@ -32,6 +32,20 @@
 - **AnimatedPath `easing:` shorthand** — `easing: easeOutCubic` as shortcut for `0.0: progressCurve: easeOutCubic`
 - **Multi-color curve stops** — per-segment color pairs in animatedPath: multiple `colorCurve` assignments at different rates, each with its own start/end colors (e.g. red→green at 0.0, green→blue at 0.5)
 - **`pathGuide` force field** — `pathguide(pathName, attractStrength, flowStrength, radius)` attracts particles toward a named path and nudges them along its direction
+- **Particle system overhaul** — major redesign of the particle system:
+  - **Color curves** — replaced `colorStart/colorEnd/colorMid/colorMidPos` with per-segment `colorCurve` using AnimatedPath-style syntax (e.g. `0.0: colorCurve: linear, #FF4400, #FFAA00`)
+  - **ICurve references** — `sizeCurve` and `velocityCurve` now reference named curves or inline easings (e.g. `sizeCurve: easeOutQuad`) instead of inline point arrays
+  - **Forward angle** — `forwardAngle: 90` for sprites that face a direction other than right when using `rotateAuto`
+  - **Line bounds** — `boundsLine: x1, y1, x2, y2` for one-sided line boundaries (multiple allowed)
+  - **Path emission** — `emit: path(pathName)` and `emit: path(pathName, tangent)` for emitting along named paths
+  - **AnimatedPath integration** — `attachTo: animPathName` tracks emitter position along animated path; `spawnCurve: curveName` modulates emission rate
+  - **Sub-emitter spawning** — `triggerSubEmitters()` now actually spawns particles with velocity inheritance and position offsets
+  - **Runtime `emitBurst(count)`** — force-emit N particles immediately for event-driven effects
+  - **Mutable force fields** — `group.forceFields` is now a public array with `addForceField()`, `removeForceFieldAt()`, `clearForceFields()`
+  - **AnimSM tile source** — `animFile`, `animSelector`, rate-based `anim("name")` states, and event overrides (`onBounce`, `onDeath`)
+  - **BREAKING**: Removed trail system (`trailEnabled`, `trailLength`, `trailFadeOut`)
+  - **BREAKING**: Removed old color properties (`colorStart`, `colorEnd`, `colorMid`, `colorMidPos`)
+  - **BREAKING**: Changed `sizeCurve`/`velocityCurve` syntax from point arrays to curve references
 - **`Path.getClosestRate(point)`** — reverse lookup to find the closest rate (0..1) on a path to a given world point; uses coarse sampling + golden-section refinement
 - **`createProjectilePath()` helper** — `builder.createProjectilePath("name", startPoint, endPoint)` convenience method using Stretch normalization
 - **AnimatedPath non-visual unit tests** — 15 new tests in BuilderUnitTest covering time/distance modes, inline easing, easing shorthand, events, loop, pingPong, seek, checkpoints, custom curves, multi-color stops, projectile helper, getClosestRate

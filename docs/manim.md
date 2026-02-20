@@ -1447,7 +1447,7 @@ graphics (
 
 ## Particles
 
-Particle systems for visual effects like fire, smoke, explosions, and magic effects.
+Particle systems for visual effects like fire, smoke, explosions, and magic effects. **See [Particles Guide](particles.md) for a detailed tutorial with examples.**
 
 ### Basic Syntax
 
@@ -1534,6 +1534,8 @@ emit: point(distance, distanceRandom)
 emit: cone(distance, distanceRandom, angle, angleRandom)
 emit: box(width, height, angle, angleRandom)
 emit: circle(radius, radiusRandom, angle, angleRandom)
+emit: path(pathName)
+emit: path(pathName, tangent)
 ```
 
 **Angles are in degrees.** -90 = up, 0 = right, 90 = down, 180 = left.
@@ -1551,26 +1553,34 @@ emit: box(200, 10, 90, 10)
 
 // Circle edge with outward emission (angle 0,0 = radial)
 emit: circle(50, 10, 0, 0)
+
+// Emit along a named path
+emit: path(myBezierPath)
+
+// Emit along path with velocity following tangent
+emit: path(myBezierPath, tangent)
 ```
 
-### Color Interpolation
+### Color Curves
 
-Particles can transition through colors over their lifetime.
+Particles can transition through colors over their lifetime using per-segment color curves (same system as animatedPath).
 
-| Property | Type | Description |
-|----------|------|-------------|
-| `colorStart` | color | Color at birth |
-| `colorEnd` | color | Color at death |
-| `colorMid` | color | Optional middle color |
-| `colorMidPos` | float | Position of middle color (0-1) |
+**Syntax:**
+```
+rate: colorCurve: curveName, #startColor, #endColor
+```
 
-**Example:**
+Multiple segments at different rates create per-segment color interpolation.
+
+**Examples:**
 ```
 // Fire gradient: orange -> yellow -> white
-colorStart: #FF4400
-colorMid: #FFAA00
-colorMidPos: 0.4
-colorEnd: #FFFF88
+0.0: colorCurve: linear, #FF4400, #FFAA00
+0.4: colorCurve: linear, #FFAA00, #FFFF88
+
+// Two-phase color with easing
+0.0: colorCurve: easeInQuad, #FF0000, #00FF00
+0.5: colorCurve: easeOutQuad, #00FF00, #0000FF
 ```
 
 ### Force Fields
@@ -1609,7 +1619,7 @@ forceFields: [pathguide(myBezierPath, 80, 120, 50)]
 
 ### Curves
 
-Define how values change over particle lifetime using curve points `(time, value)`.
+Define how values change over particle lifetime using named curves or inline easing functions.
 
 | Property | Description |
 |----------|-------------|
@@ -1618,22 +1628,20 @@ Define how values change over particle lifetime using curve points `(time, value
 
 **Syntax:**
 ```
-sizeCurve: [(time1, value1), (time2, value2), ...]
-velocityCurve: [(time1, value1), (time2, value2), ...]
+sizeCurve: curveName
+velocityCurve: easeOutQuad
 ```
 
-Time is normalized (0.0 = birth, 1.0 = death). Values are multipliers.
+References a named curve from a `curves{}` block, or uses an inline easing name (e.g. `linear`, `easeInQuad`, `easeOutCubic`).
 
 **Examples:**
 ```
-// Grow then shrink
-sizeCurve: [(0, 0.5), (0.3, 1.2), (1.0, 0.2)]
+// Reference a named curve
+sizeCurve: mySizeCurve
 
-// Slow down over time
-velocityCurve: [(0, 1.0), (0.2, 0.5), (1.0, 0.1)]
-
-// Pulsing size
-sizeCurve: [(0, 0.5), (0.25, 1.2), (0.5, 0.8), (0.75, 1.1), (1.0, 0.3)]
+// Use inline easing
+velocityCurve: easeOutQuad
+sizeCurve: easeInOutCubic
 ```
 
 ### Bounds Modes
@@ -1647,6 +1655,9 @@ Control particle behavior at boundaries.
 | `boundsMaxX` | float | Right boundary |
 | `boundsMinY` | float | Top boundary |
 | `boundsMaxY` | float | Bottom boundary |
+| `boundsLine` | x1, y1, x2, y2 | One-sided line boundary (multiple allowed) |
+
+**Line bounds:** The "out" side is the left side of the direction from (x1,y1) to (x2,y2).
 
 **Examples:**
 ```
@@ -1662,15 +1673,66 @@ boundsMode: bounce(0.6)
 
 // Wrap around (for rain, etc.)
 boundsMode: wrap
+
+// Line bounds (one-sided wall)
+boundsMode: bounce(0.8)
+boundsLine: 0, 0, 100, 0
+boundsLine: 100, 0, 100, 100
 ```
 
-### Trail Properties
+### Rotation: Forward Angle
 
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
-| `trailEnabled` | bool | false | Enable particle trails |
-| `trailLength` | float | — | Trail length multiplier |
-| `trailFadeOut` | bool | false | Fade trail opacity over length |
+| `forwardAngle` | float | 0 | Forward direction in degrees (0 = right) |
+
+When `rotateAuto: true` is set, `forwardAngle` defines which direction the sprite "faces" by default. Useful when sprite art faces a direction other than right.
+
+### Path Emission
+
+Emit particles along named paths defined in a `paths{}` block.
+
+```
+emit: path(myPathName)
+emit: path(myPathName, tangent)
+```
+
+With `tangent`, particle initial velocity follows the path tangent direction at the spawn point.
+
+### AnimatedPath Integration
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `attachTo` | string | Emitter position tracks a named animated path |
+| `spawnCurve` | curve ref | Modulate emission rate over attached path's lifetime |
+
+**Runtime API:** `group.emitBurst(count)` forces N particles immediately.
+
+### AnimSM Tile Source
+
+Use state animation frames as particle tile source, with lifetime-driven and event-driven state transitions.
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `animFile` | string | Path to .anim file |
+| `animSelector` | key => value | AnimSM state selector |
+| `rate: anim("name")` | rate action | Set animation state at lifetime rate (0.0-1.0) |
+| `onBounce: anim("name")` | event | Override animation on bounce collision |
+| `onDeath: anim("name")` | event | Override animation on death |
+
+**Example:**
+```
+#sparks particles {
+    emit: point(0, 10)
+    tiles: file("fallback.png")
+    animFile: "spark.anim"
+    animSelector: type => fire
+    0.0: anim("birth")
+    0.5: anim("midlife")
+    0.8: anim("dying")
+    onBounce: anim("impact")
+}
+```
 
 ### Sub-Emitters
 
@@ -1731,11 +1793,9 @@ tiles: file("star.png") file("dot.png") file("ring.png")
     fadeIn: 0.1
     fadeOut: 0.6
     fadePower: 1.5
-    colorStart: #FF4400
-    colorMid: #FFAA00
-    colorMidPos: 0.4
-    colorEnd: #FFFF88
-    sizeCurve: [(0, 0.5), (0.3, 1.2), (1.0, 0.2)]
+    0.0: colorCurve: linear, #FF4400, #FFAA00
+    0.4: colorCurve: linear, #FFAA00, #FFFF88
+    sizeCurve: fireGrowShrink
     forceFields: [turbulence(30, 0.02, 2.0)]
 }
 ```
@@ -1755,8 +1815,7 @@ tiles: file("star.png") file("dot.png") file("ring.png")
     blendMode: alpha
     fadeIn: 0.1
     fadeOut: 0.9
-    colorStart: #AACCFF
-    colorEnd: #6688CC
+    0.0: colorCurve: linear, #AACCFF, #6688CC
     gravity: 100
     gravityAngle: 90
     boundsMode: wrap
