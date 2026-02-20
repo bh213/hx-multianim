@@ -249,8 +249,11 @@ See `docs/manim.md` for full animated paths documentation.
 
 ## UI Elements Notes
 
-- **Button**: Supports `width`, `height`, `font`, `fontColor` settings. `addButton`/`addButtonWithSingleBuilder` read these from `ResolvedSettings` and pass as extra params to `UIStandardMultiAnimButton.create()`.
-- **Scrollable list / Dropdown**: Supports `font`, `fontColor` settings — forwarded to both item builder and dropdown button builder via `UIElementBuilder.withExtraParams()`. The `#dropdown` programmable accepts `font`/`fontColor` params for the selected item text.
+- **Generic settings pass-through**: Any setting not recognized as control or behavioral is automatically forwarded to the underlying programmable as an extra parameter. The programmable must declare a matching parameter; mismatches throw with programmable name + available params.
+- **Prefixed settings**: `item.fontColor`, `scrollbar.thickness` — dotted keys route to sub-builders in multi-programmable components (dropdown, scrollableList). Registered prefixes: dropdown has `dropdown`, `item`, `scrollbar` (main=panel); scrollableList has `item`, `scrollbar` (main=panel).
+- **Multi-forward settings**: Unprefixed `font`/`fontColor` on dropdown/scrollableList forward to ALL relevant sub-builders for backwards compatibility.
+- **Button**: `buildName` and `text` are control settings; everything else (e.g. `width`, `height`, `font`, `fontColor`) passes through to `#button` programmable.
+- **Scrollable list / Dropdown**: `font`, `fontColor` forwarded to both item builder and dropdown button builder. The `#dropdown` programmable accepts `font`/`fontColor` params for the selected item text.
 - **Settings `color` type**: `fontColor:color=>white` — parsed via `parseColorOrReference()`, stored as `SVTInt`. Supports named colors (`white`, `red`, etc.), hex (`#ff7f50`, `0xFF0000`).
 - **Dropdown**: Uses closed button + scrollable panel, moves panel to different layer
 - **UIScreen**: If elements don't show or react to events, check if added to UIScreen's elements

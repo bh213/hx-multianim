@@ -86,6 +86,16 @@ UI elements implement the `UIElement` interface for event handling within the sc
 
 Dropdown control consists of a closed-like button and scrollable panel. The dropdown moves the panel to a different layer and keeps position in sync with `PositionLinkObject`.
 
+### Settings Pass-Through
+
+`UIScreenBase` helper methods (`addButton`, `addSlider`, etc.) classify each setting as:
+1. **Control** — consumed by UIScreen (e.g. `buildName`, `panelMode`)
+2. **Behavioral** — set on the UI object (e.g. `min`, `max`, `autoOpen`)
+3. **Pass-through** — forwarded as `extraParams` to the programmable builder
+4. **Prefixed pass-through** — dotted keys like `item.fontColor` route to sub-builders in multi-programmable components (dropdown, scrollableList)
+
+Unknown pass-through params are validated by `MultiAnimBuilder.updateIndexedParamsFromDynamicMap()`, which throws with the programmable name and available parameters.
+
 ### Elements handling by UIScreen
 
 If elements are not showing or reacting to events, check if they have been added to UIScreen's elements.

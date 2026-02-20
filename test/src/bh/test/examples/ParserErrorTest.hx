@@ -1801,4 +1801,52 @@ class ParserErrorTest extends utest.Test {
 		');
 		Assert.isTrue(success, "grid.pos().x/y as expression values should parse");
 	}
+
+	// ===== Settings: dotted key parsing =====
+
+	@Test
+	public function testSettingsDottedKeyParses() {
+		var success = parseExpectingSuccess('
+			#test programmable() {
+				placeholder(generated(cross(10, 10, white)), builderParameter("x")) {
+					settings {
+						item.fontColor: int => 0xff0000,
+						scrollbar.thickness: int => 6
+					}
+				}
+			}
+		');
+		Assert.isTrue(success, "Dotted setting keys should parse successfully");
+	}
+
+	@Test
+	public function testSettingsDottedKeyWithStringType() {
+		var success = parseExpectingSuccess('
+			#test programmable() {
+				placeholder(generated(cross(10, 10, white)), builderParameter("x")) {
+					settings {
+						item.font: string => "dd",
+						panel.mode => "custom"
+					}
+				}
+			}
+		');
+		Assert.isTrue(success, "Dotted setting keys with string type should parse");
+	}
+
+	@Test
+	public function testSettingsMixedDottedAndPlain() {
+		var success = parseExpectingSuccess('
+			#test programmable() {
+				placeholder(generated(cross(10, 10, white)), builderParameter("x")) {
+					settings {
+						buildName => "myBtn",
+						width: int => 300,
+						item.fontColor: int => 0xff0000
+					}
+				}
+			}
+		');
+		Assert.isTrue(success, "Mixed dotted and plain setting keys should parse");
+	}
 }

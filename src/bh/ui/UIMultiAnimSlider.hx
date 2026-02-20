@@ -25,12 +25,15 @@ class UIStandardMultiAnimSlider implements UIElement implements UIElementDisabla
 	public var max:Float = 100;
 	public var step:Float = 0;
 
-	function new(builder:MultiAnimBuilder, name:String, size:Int, initialValue:Float) {
+	var extraParams:Null<Map<String, Dynamic>>;
+
+	function new(builder:MultiAnimBuilder, name:String, size:Int, initialValue:Float, ?extraParams:Null<Map<String, Dynamic>>) {
 		this.root = new h2d.Object();
 		this.builder = builder;
 		this.buildName = name;
 		this.currentValue = initialValue;
 		this.size = size;
+		this.extraParams = extraParams;
 	}
 
 	public function clear() {
@@ -54,8 +57,8 @@ class UIStandardMultiAnimSlider implements UIElement implements UIElementDisabla
 		return value;
 	}
 
-	public static function create(builder:MultiAnimBuilder, name:String, size:Int, initialValue:Float = 0) {
-		return new UIStandardMultiAnimSlider(builder, name, size, initialValue);
+	public static function create(builder:MultiAnimBuilder, name:String, size:Int, initialValue:Float = 0, ?extraParams:Null<Map<String, Dynamic>>) {
+		return new UIStandardMultiAnimSlider(builder, name, size, initialValue, extraParams);
 	}
 
 	function externalToInternal(value:Float):Int {
@@ -72,12 +75,16 @@ class UIStandardMultiAnimSlider implements UIElement implements UIElementDisabla
 	public function doRedraw() {
 		this.requestRedraw = false;
 		if (this.currentResult == null) {
-			this.currentResult = builder.buildWithParameters(buildName, [
+			var params:Map<String, Dynamic> = [
 				"status" => standardUIElementStatusToString(status),
 				"size" => size,
 				"value" => externalToInternal(currentValue),
 				"disabled" => '$disabled'
-			], null, null, true);
+			];
+			if (extraParams != null)
+				for (key => value in extraParams)
+					params.set(key, value);
+			this.currentResult = builder.buildWithParameters(buildName, params, null, null, true);
 			if (currentResult == null)
 				throw 'could not build #${buildName}';
 			if (currentResult.object == null)

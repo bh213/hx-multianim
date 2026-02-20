@@ -3132,7 +3132,12 @@ class MacroManimParser {
 				if (parent == null) error("settings must have a parent");
 				if (parent.settings == null) parent.settings = new Map();
 				while (!match(TCurlyClosed)) {
-					final key = expectIdentifierOrString();
+					var key = expectIdentifierOrString();
+					// Support dotted keys for sub-component targeting: item.fontColor, scrollbar.thickness
+					if (match(TDot)) {
+						final suffix = expectIdentifierOrString();
+						key = key + "." + suffix;
+					}
 					switch (peek()) {
 						case TColon:
 							advance();
