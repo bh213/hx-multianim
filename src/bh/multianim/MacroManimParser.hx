@@ -3351,14 +3351,25 @@ class MacroManimParser {
 			maxLife: null, lifeRandom: null, size: null, sizeRandom: null, blendMode: null,
 			speed: null, speedRandom: null, speedIncrease: null, gravity: null, gravityAngle: null,
 			fadeIn: null, fadeOut: null, fadePower: null, tiles: [], emit: Point(RVFloat(0), RVFloat(0)),
-			rotationInitial: null, rotationSpeed: null, rotationSpeedRandom: null, rotateAuto: null,
-			colorStart: null, colorEnd: null, colorMid: null, colorMidPos: null,
+			rotationInitial: null, rotationSpeed: null, rotationSpeedRandom: null, rotateAuto: null, forwardAngle: null,
+			colorCurves: null,
 			forceFields: null, velocityCurve: null, sizeCurve: null,
-			trailEnabled: null, trailLength: null, trailFadeOut: null,
-			boundsMode: null, boundsMinX: null, boundsMaxX: null, boundsMinY: null, boundsMaxY: null,
-			subEmitters: null, animationRepeat: null
+			boundsMode: null, boundsMinX: null, boundsMaxX: null, boundsMinY: null, boundsMaxY: null, boundsLines: null,
+			subEmitters: null, animationRepeat: null,
+			attachTo: null, spawnCurve: null,
+			animFile: null, animSelector: null, animStates: null, animEventOverrides: null
 		};
 		while (!match(TCurlyClosed)) {
+			// Check for rate-based actions: 0.0: colorCurve: ...
+			switch (peek()) {
+				case TFloat(_) | TInteger(_):
+					final rate = parseFloatOrReference();
+					expect(TColon);
+					parseParticleRateAction(rate, p);
+					eatSemicolon();
+					continue;
+				default:
+			}
 			if (!isNamedParamNext()) { eatComma(); eatSemicolon(); continue; }
 			final name = expectIdentifierOrString();
 			expect(TColon);
@@ -3382,13 +3393,37 @@ class MacroManimParser {
 				case "rotationspeedrandom": p.rotationSpeedRandom = parseFloatOrReference();
 				case "rotationinitial": p.rotationInitial = parseFloatOrReference();
 				case "rotateauto": p.rotateAuto = parseBool();
+				case "forwardangle": p.forwardAngle = parseFloatOrReference();
 				case "emitdelay": p.emitDelay = parseFloatOrReference();
 				case "emitsync": p.emitSync = parseFloatOrReference();
-				case "colorstart": p.colorStart = parseColorOrReference();
-				case "colorend": p.colorEnd = parseColorOrReference();
-				case "colormid": p.colorMid = parseColorOrReference();
-				case "colormidpos": p.colorMidPos = parseFloatOrReference();
 				case "animationrepeat": p.animationRepeat = parseFloatOrReference();
+				case "attachto": p.attachTo = expectIdentifierOrString();
+				case "spawncurve": p.spawnCurve = parseCurveNameOrEasing();
+				case "animfile": p.animFile = expectIdentifierOrString();
+				case "animselector":
+					if (p.animSelector == null) p.animSelector = new Map();
+					final key = expectIdentifierOrString();
+					expect(TArrow);
+					final val = expectIdentifierOrString();
+					p.animSelector.set(key, val);
+				case "onbounce":
+					final animActionName = expectIdentifierOrString();
+					if (isKeyword(animActionName, "anim")) {
+						expect(TOpen);
+						final animName = expectIdentifierOrString();
+						expect(TClosed);
+						if (p.animEventOverrides == null) p.animEventOverrides = [];
+						p.animEventOverrides.push({trigger: "onBounce", animName: animName});
+					} else error('expected anim("name") after onBounce:');
+				case "ondeath":
+					final animActionName2 = expectIdentifierOrString();
+					if (isKeyword(animActionName2, "anim")) {
+						expect(TOpen);
+						final animName = expectIdentifierOrString();
+						expect(TClosed);
+						if (p.animEventOverrides == null) p.animEventOverrides = [];
+						p.animEventOverrides.push({trigger: "onDeath", animName: animName});
+					} else error('expected anim("name") after onDeath:');
 				case "blendmode":
 					final bm = tryParseBlendMode();
 					if (bm == null) error("unknown blend mode");
@@ -3398,9 +3433,9 @@ class MacroManimParser {
 				case "emit":
 					p.emit = parseEmitMode();
 				case "sizecurve":
-					p.sizeCurve = parseCurvePoints();
+					p.sizeCurve = parseCurveNameOrEasing();
 				case "velocitycurve":
-					p.velocityCurve = parseCurvePoints();
+					p.velocityCurve = parseCurveNameOrEasing();
 				case "forcefields":
 					p.forceFields = parseForceFields();
 				case "boundsmode":
@@ -3413,12 +3448,16 @@ class MacroManimParser {
 					p.boundsMinY = parseFloatOrReference();
 				case "boundsmaxy":
 					p.boundsMaxY = parseFloatOrReference();
-				case "trailenabled":
-					p.trailEnabled = parseBool();
-				case "traillength":
-					p.trailLength = parseFloatOrReference();
-				case "trailfadeout":
-					p.trailFadeOut = parseBool();
+				case "boundsline":
+					final x1 = parseFloatOrReference();
+					expect(TComma);
+					final y1 = parseFloatOrReference();
+					expect(TComma);
+					final x2 = parseFloatOrReference();
+					expect(TComma);
+					final y2 = parseFloatOrReference();
+					if (p.boundsLines == null) p.boundsLines = [];
+					p.boundsLines.push({x1: x1, y1: y1, x2: x2, y2: y2});
 				case "subemitters":
 					p.subEmitters = parseSubEmitters();
 				default:
@@ -3428,6 +3467,35 @@ class MacroManimParser {
 			eatSemicolon();
 		}
 		return p;
+	}
+
+	function parseParticleRateAction(atRate:ReferenceableValue, p:ParticlesDef):Void {
+		final actionName = expectIdentifierOrString();
+		switch (actionName.toLowerCase()) {
+			case "colorcurve":
+				expect(TColon);
+				final c = parseCurveNameOrEasing();
+				expect(TComma);
+				final startColor = parseColorOrReference();
+				expect(TComma);
+				final endColor = parseColorOrReference();
+				if (p.colorCurves == null) p.colorCurves = [];
+				p.colorCurves.push({
+					atRate: atRate,
+					curveName: c.curveName,
+					inlineEasing: c.inlineEasing,
+					startColor: startColor,
+					endColor: endColor
+				});
+			case "anim":
+				expect(TOpen);
+				final animName = expectIdentifierOrString();
+				expect(TClosed);
+				if (p.animStates == null) p.animStates = [];
+				p.animStates.push({atRate: atRate, animName: animName});
+			default:
+				error('unknown particle rate action: $actionName');
+		}
 	}
 
 	function parseTileSources():Array<TileSource> {
@@ -3491,8 +3559,20 @@ class MacroManimParser {
 				final angleRand = parseFloatOrReference();
 				expect(TClosed);
 				return Circle(r, rRand, angle, angleRand);
+			case TIdentifier(s) if (isKeyword(s, "path")):
+				advance();
+				expect(TOpen);
+				final pathName = expectIdentifierOrString();
+				var tangent = false;
+				if (match(TComma)) {
+					final flag = expectIdentifierOrString();
+					if (isKeyword(flag, "tangent")) tangent = true;
+					else error('unknown path emit flag: $flag, expected "tangent"');
+				}
+				expect(TClosed);
+				return tangent ? ManimPathTangent(pathName) : ManimPath(pathName);
 			default:
-				return error("expected emit mode: point, cone, box, circle");
+				return error("expected emit mode: point, cone, box, circle, path");
 		}
 	}
 

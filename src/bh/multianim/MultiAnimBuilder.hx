@@ -31,7 +31,6 @@ import bh.base.ResourceLoader;
 import bh.base.Particles.ForceField;
 import bh.base.Particles.BoundsMode;
 import bh.base.Particles.SubEmitTrigger;
-import bh.base.Particles.CurvePoint;
 import bh.base.MacroUtils;
 import bh.base.Atlas2.IAtlas2;
 import bh.base.Atlas2.InlineAtlas2;
@@ -4025,24 +4024,33 @@ class MultiAnimBuilder {
 			group.rotSpeedRand = hxd.Math.degToRad(resolveAsNumber(particlesDef.rotationSpeedRandom));
 		if (particlesDef.rotateAuto != null)
 			group.rotAuto = particlesDef.rotateAuto;
+		if (particlesDef.forwardAngle != null)
+			group.forwardAngle = hxd.Math.degToRad(resolveAsNumber(particlesDef.forwardAngle));
 
 		// Animation repeat
 		if (particlesDef.animationRepeat != null)
 			group.animationRepeat = resolveAsNumber(particlesDef.animationRepeat);
 
-		// Color interpolation
-		if (particlesDef.colorStart != null) {
+		// Color curves
+		if (particlesDef.colorCurves != null) {
 			group.colorEnabled = true;
-			group.colorStart = resolveAsInteger(particlesDef.colorStart);
+			var colorCurvesArray:Array<ParticleColorCurveSegment> = particlesDef.colorCurves;
+			for (cc in colorCurvesArray) {
+				var curve:bh.paths.Curve.ICurve;
+				if (cc.inlineEasing != null) {
+					curve = new bh.paths.Curve(null, cc.inlineEasing, null);
+				} else if (cc.curveName != null) {
+					var curves = getCurves();
+					var found = curves.get(cc.curveName);
+					if (found == null)
+						throw 'color curve not found: ${cc.curveName}' + currentNodePos();
+					curve = found;
+				} else {
+					throw 'color curve must have either curveName or inlineEasing' + currentNodePos();
+				}
+				group.addColorCurveSegment(resolveAsNumber(cc.atRate), curve, resolveAsInteger(cc.startColor), resolveAsInteger(cc.endColor));
+			}
 		}
-		if (particlesDef.colorEnd != null) {
-			group.colorEnabled = true;
-			group.colorEnd = resolveAsInteger(particlesDef.colorEnd);
-		}
-		if (particlesDef.colorMid != null)
-			group.colorMid = resolveAsInteger(particlesDef.colorMid);
-		if (particlesDef.colorMidPos != null)
-			group.colorMidPos = resolveAsNumber(particlesDef.colorMidPos);
 
 		// Force fields
 		if (particlesDef.forceFields != null) {
@@ -4069,30 +4077,12 @@ class MultiAnimBuilder {
 		}
 
 		// Velocity curve
-		if (particlesDef.velocityCurve != null) {
-			group.velocityCurve = [];
-			var velocityCurveArray:Array<ParticleCurvePoint> = particlesDef.velocityCurve;
-			for (cp in velocityCurveArray) {
-				group.velocityCurve.push({time: resolveAsNumber(cp.time), value: resolveAsNumber(cp.value)});
-			}
-		}
+		if (particlesDef.velocityCurve != null)
+			group.velocityCurve = resolveParticleCurveRef(particlesDef.velocityCurve);
 
 		// Size curve
-		if (particlesDef.sizeCurve != null) {
-			group.sizeCurve = [];
-			var sizeCurveArray:Array<ParticleCurvePoint> = particlesDef.sizeCurve;
-			for (cp in sizeCurveArray) {
-				group.sizeCurve.push({time: resolveAsNumber(cp.time), value: resolveAsNumber(cp.value)});
-			}
-		}
-
-		// Trails
-		if (particlesDef.trailEnabled != null)
-			group.trailEnabled = particlesDef.trailEnabled;
-		if (particlesDef.trailLength != null)
-			group.trailLength = resolveAsInteger(particlesDef.trailLength);
-		if (particlesDef.trailFadeOut != null)
-			group.trailFadeOut = particlesDef.trailFadeOut;
+		if (particlesDef.sizeCurve != null)
+			group.sizeCurve = resolveParticleCurveRef(particlesDef.sizeCurve);
 
 		// Bounds/collision
 		if (particlesDef.boundsMode != null) {
@@ -4111,6 +4101,12 @@ class MultiAnimBuilder {
 			group.boundsMinY = resolveAsNumber(particlesDef.boundsMinY);
 		if (particlesDef.boundsMaxY != null)
 			group.boundsMaxY = resolveAsNumber(particlesDef.boundsMaxY);
+		if (particlesDef.boundsLines != null) {
+			var boundsLinesArray:Array<ParticleBoundsLineDef> = particlesDef.boundsLines;
+			for (bl in boundsLinesArray) {
+				group.addBoundsLine(resolveAsNumber(bl.x1), resolveAsNumber(bl.y1), resolveAsNumber(bl.x2), resolveAsNumber(bl.y2));
+			}
+		}
 
 		// Sub-emitters
 		if (particlesDef.subEmitters != null) {
@@ -4147,13 +4143,94 @@ class MultiAnimBuilder {
 			case Circle(radius, radiusRandom, emitConeAngle, emitConeAngleRandom):
 				group.emitMode = bh.base.PartEmitMode.Circle(resolveAsNumber(radius), resolveAsNumber(radiusRandom), hxd.Math.degToRad(resolveAsNumber(emitConeAngle)),
 					hxd.Math.degToRad(resolveAsNumber(emitConeAngleRandom)));
-			case Path(points, emitConeAngle, emitConeAngleRandom):
-				var resolvedPoints:Array<{x:Float, y:Float}> = [];
-				for (p in points) {
-					resolvedPoints.push({x: resolveAsNumber(p.x), y: resolveAsNumber(p.y)});
+			case ManimPath(pathName):
+				var path = getPaths().getPath(pathName);
+				group.emitMode = bh.base.PartEmitMode.ManimPath(path);
+			case ManimPathTangent(pathName):
+				var path = getPaths().getPath(pathName);
+				group.emitMode = bh.base.PartEmitMode.ManimPathTangent(path);
+		}
+
+		// AnimatedPath integration
+		if (particlesDef.attachTo != null) {
+			group.attachedPath = createAnimatedPath(particlesDef.attachTo);
+		}
+		if (particlesDef.spawnCurve != null)
+			group.spawnCurve = resolveParticleCurveRef(particlesDef.spawnCurve);
+
+		// AnimSM tile source
+		if (particlesDef.animFile != null && particlesDef.animStates != null) {
+			var selector:Map<String, String> = particlesDef.animSelector != null ? particlesDef.animSelector : new Map();
+			final animParser = resourceLoader.loadAnimParser(particlesDef.animFile);
+			final animSM = animParser.createAnimSM(selector);
+
+			// Build anim states sorted by startLifeRate
+			var animStatesArray:Array<ParticleAnimStateDef> = particlesDef.animStates;
+			for (asDef in animStatesArray) {
+				var animName = asDef.animName;
+				var descriptor = animSM.animationStates.get(animName);
+				if (descriptor == null)
+					throw 'particle animation "${animName}" not found in "${particlesDef.animFile}"' + currentNodePos();
+
+				// Extract tiles from animation frames
+				var frameTiles:Array<h2d.Tile> = [];
+				for (state in descriptor.states) {
+					switch state {
+						case Frame(frame):
+							if (frame.tile != null) frameTiles.push(frame.tile);
+						case _:
+					}
 				}
-				group.emitMode = bh.base.PartEmitMode.Path(resolvedPoints, hxd.Math.degToRad(resolveAsNumber(emitConeAngle)),
-					hxd.Math.degToRad(resolveAsNumber(emitConeAngleRandom)));
+
+				group.animStates.push({
+					name: animName,
+					tiles: frameTiles,
+					fps: 0,
+					startLifeRate: resolveAsNumber(asDef.atRate)
+				});
+			}
+
+			// Sort by startLifeRate
+			group.animStates.sort((a, b) -> a.startLifeRate < b.startLifeRate ? -1 : a.startLifeRate > b.startLifeRate ? 1 : 0);
+
+			// Build event overrides — map trigger name to index in animStates
+			if (particlesDef.animEventOverrides != null) {
+				var animEventOverridesArray:Array<ParticleAnimEventOverride> = particlesDef.animEventOverrides;
+				for (eo in animEventOverridesArray) {
+					// Find the animStates index matching this animation name
+					var foundIndex = -1;
+					for (i in 0...group.animStates.length) {
+						if (group.animStates[i].name == eo.animName) {
+							foundIndex = i;
+							break;
+						}
+					}
+					if (foundIndex < 0) {
+						// The event override references an anim that wasn't added as a lifetime state — add it
+						var descriptor = animSM.animationStates.get(eo.animName);
+						if (descriptor == null)
+							throw 'particle event animation "${eo.animName}" not found in "${particlesDef.animFile}"' + currentNodePos();
+
+						var frameTiles:Array<h2d.Tile> = [];
+						for (state in descriptor.states) {
+							switch state {
+								case Frame(frame):
+									if (frame.tile != null) frameTiles.push(frame.tile);
+								case _:
+							}
+						}
+
+						foundIndex = group.animStates.length;
+						group.animStates.push({
+							name: eo.animName,
+							tiles: frameTiles,
+							fps: 0,
+							startLifeRate: 1.0 // Event overrides don't have a natural startLifeRate
+						});
+					}
+					group.animEventOverrides.set(eo.trigger, foundIndex);
+				}
+			}
 		}
 
 		particles.addGroup(group);
@@ -4366,6 +4443,19 @@ class MultiAnimBuilder {
 		if (curve == null)
 			throw 'curve not found: $name';
 		return curve;
+	}
+
+	function resolveParticleCurveRef(ref:MultiAnimParser.ParticleCurveRef):bh.paths.Curve.ICurve {
+		if (ref.inlineEasing != null)
+			return new bh.paths.Curve(null, ref.inlineEasing, null);
+		if (ref.curveName != null) {
+			var curves = getCurves();
+			var curve = curves.get(ref.curveName);
+			if (curve == null)
+				throw 'curve not found: ${ref.curveName}' + currentNodePos();
+			return curve;
+		}
+		throw 'curve reference must have either curveName or inlineEasing' + currentNodePos();
 	}
 
 	/**

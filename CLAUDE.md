@@ -177,7 +177,7 @@ animation {
 ```manim
 #effectName particles {
     count: 100
-    emit: point(0, 0) | cone(dist, distRand, angle, angleRand) | box(w, h, angle, angleRand) | circle(r, rRand, angle, angleRand)
+    emit: point(0, 0) | cone(dist, distRand, angle, angleRand) | box(w, h, angle, angleRand) | circle(r, rRand, angle, angleRand) | path(pathName [, tangent])
     tiles: file("particle.png")
     loop: true
     maxLife: 2.0
@@ -190,25 +190,31 @@ animation {
     blendMode: add | alpha
     fadeIn: 0.1
     fadeOut: 0.8
-    colorStart: #FF4400
-    colorMid: #FFAA00
-    colorMidPos: 0.4
-    colorEnd: #FFFF88
-    sizeCurve: [(0, 0.5), (0.5, 1.2), (1.0, 0.2)]
-    velocityCurve: [(0, 1.0), (1.0, 0.3)]
+    forwardAngle: 90
+    0.0: colorCurve: linear, #FF4400, #FFAA00
+    0.5: colorCurve: easeInQuad, #FFAA00, #FFFF88
+    sizeCurve: myCurveName | easeOutQuad
+    velocityCurve: myCurveName | easeOutQuad
     forceFields: [turbulence(30, 0.02, 2.0), wind(10, 0), vortex(0, 0, 100, 150), attractor(0, 0, 50, 100), repulsor(0, 0, 80, 120), pathguide(myPath, 80, 120, 50)]
     boundsMode: none | kill | bounce(0.6) | wrap
     boundsMinX: -100
     boundsMaxX: 300
+    boundsLine: 0, 0, 100, 0
     rotationSpeed: 90
     rotateAuto: true
     relative: true
-    trailEnabled: true
-    trailLength: 0.5
-    trailFadeOut: true
+    attachTo: animPathName
+    spawnCurve: curveName
+    animFile: "spark.anim"
+    animSelector: type => fire
+    0.0: anim("birth")
+    0.8: anim("dying")
+    onBounce: anim("impact")
     subEmitters: [{ groupId: "sparks", trigger: ondeath, probability: 0.8 }]
 }
 ```
+
+**Runtime API:** `group.emitBurst(count)`, `group.addForceField(ff)`, `group.removeForceFieldAt(i)`, `group.clearForceFields()`
 
 See `docs/manim.md` for full particles documentation.
 

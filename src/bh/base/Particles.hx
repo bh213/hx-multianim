@@ -5,7 +5,7 @@ package bh.base;
 **/
 enum PartEmitMode {
 	/**
-		A single Point, that emits in all directions. 
+		A single Point, that emits in all directions.
 		Parametrized with `emitDistance` and `emitDistanceRandom` which specify the distance from the emission point.
 	**/
 	Point(emitDistance:Float,  emitDistanceRandom:Float);
@@ -18,14 +18,17 @@ enum PartEmitMode {
 	**/
 	Box(width:Float, height:Float, emitConeAngle:Float, emitConeAngleRandom:Float);
 	/**
-		Emit along a path defined by control points.
-		Particles are positioned along the path with optional random offset.
-	**/
-	Path(points:Array<{x:Float, y:Float}>, emitConeAngle:Float, emitConeAngleRandom:Float);
-	/**
 		Emit from the edge of a circle/ring.
 	**/
 	Circle(radius:Float, radiusRandom:Float, emitConeAngle:Float, emitConeAngleRandom:Float);
+	/**
+		Emit along a named path. Particles spawn at random positions along the path.
+	**/
+	ManimPath(path:bh.paths.MultiAnimPaths.Path);
+	/**
+		Emit along a named path with velocity following the path tangent direction.
+	**/
+	ManimPathTangent(path:bh.paths.MultiAnimPaths.Path);
 }
 
 /**
@@ -61,14 +64,6 @@ enum ForceField {
 }
 
 /**
-	A curve point for interpolating values over particle lifetime.
-**/
-typedef CurvePoint = {
-	var time:Float;  // 0.0 to 1.0 (normalized lifetime)
-	var value:Float;
-}
-
-/**
 	Sub-emitter trigger conditions.
 **/
 enum SubEmitTrigger {
@@ -88,6 +83,16 @@ typedef SubEmitter = {
 	var inheritVelocity:Float;
 	var offsetX:Float;
 	var offsetY:Float;
+}
+
+/**
+	Animation state for particles (pre-extracted tiles from AnimSM).
+**/
+typedef ParticleAnimState = {
+	var name:String;
+	var tiles:Array<h2d.Tile>;
+	var fps:Float;
+	var startLifeRate:Float;
 }
 
 /**
@@ -116,15 +121,15 @@ private class Particle extends h2d.SpriteBatch.BatchElement {
 	// For sub-emitter interval tracking
 	public var lastSubEmitTime : Float = 0;
 
-	// Trail history for ribbon particles
-	public var trailHistory : Null<Array<{x:Float, y:Float, alpha:Float}>> = null;
-
 	// Unique seed for turbulence variation per particle
 	public var noiseSeed : Float = 0;
 
 	// Base scale for size curve calculations (per-particle)
 	public var baseScaleX : Float = 1;
 	public var baseScaleY : Float = 1;
+
+	// Current AnimSM state index (for lifetime-driven animation states)
+	public var currentAnimStateIndex : Int = 0;
 
 	public function new(group:ParticleGroup) {
 		super(null);
@@ -168,27 +173,13 @@ private class Particle extends h2d.SpriteBatch.BatchElement {
 		var effectiveVx = vx * velocityMult;
 		var effectiveVy = vy * velocityMult;
 
-		// Store previous position for trails
-		var history = trailHistory;
-		if (group.trailEnabled && history != null) {
-			// Shift history
-			var i = history.length - 1;
-			while (i > 0) {
-				history[i] = history[i - 1];
-				i--;
-			}
-			if (history.length > 0) {
-				history[0] = {x: x, y: y, alpha: alpha};
-			}
-		}
-
 		x += effectiveVx * dt;
 		y += effectiveVy * dt;
 		life += dt;
 
 		// Rotation
 		if( group.rotAuto )
-			rotation = Math.atan2(effectiveVy, effectiveVx) + life * vr + group.rotInit * Math.PI;
+			rotation = Math.atan2(effectiveVy, effectiveVx) - group.forwardAngle + life * vr;
 		else
 			rotation += vr * dt;
 
@@ -212,14 +203,32 @@ private class Particle extends h2d.SpriteBatch.BatchElement {
 
 		// Color interpolation
 		if (group.colorEnabled) {
-			var col = group.getInterpolatedColor(timeNormalized);
+			var col = group.evaluateColorCurve(timeNormalized);
 			r = ((col >> 16) & 0xFF) / 255.0;
 			g = ((col >> 8) & 0xFF) / 255.0;
 			b = (col & 0xFF) / 255.0;
 		}
 
 		// Sprite animation
-		if (group.animationRepeat > 0 && group.tiles.length > 1) {
+		if (group.animStates.length > 0) {
+			// AnimSM-driven: find active state by lifetime rate
+			var stateIdx = currentAnimStateIndex;
+			// Advance state if we've passed the next state's start rate
+			while (stateIdx + 1 < group.animStates.length && timeNormalized >= group.animStates[stateIdx + 1].startLifeRate) {
+				stateIdx++;
+			}
+			currentAnimStateIndex = stateIdx;
+			var animState = group.animStates[stateIdx];
+			if (animState.tiles.length > 0) {
+				// Compute local time within this state
+				var stateStart = animState.startLifeRate;
+				var stateEnd = if (stateIdx + 1 < group.animStates.length) group.animStates[stateIdx + 1].startLifeRate else 1.0;
+				var localT = if (stateEnd <= stateStart) 0. else (timeNormalized - stateStart) / (stateEnd - stateStart);
+				localT = Math.min(Math.max(localT, 0.), 1.);
+				var frameIndex = Std.int(localT * animState.tiles.length) % animState.tiles.length;
+				t = animState.tiles[frameIndex];
+			}
+		} else if (group.animationRepeat > 0 && group.tiles.length > 1) {
 			var animProgress = timeNormalized * group.animationRepeat;
 			var frameIndex = Std.int(animProgress * group.tiles.length) % group.tiles.length;
 			t = group.tiles[frameIndex];
@@ -406,6 +415,10 @@ class ParticleGroup {
 		If enabled, particles will be automatically rotated in the direction of particle velocity.
 	**/
 	public var rotAuto							= false;
+	/**
+		Forward angle offset in radians for rotateAuto. Default 0 means sprite faces right.
+	**/
+	public var forwardAngle : Float				= 0;
 
 	/**
 		The time in seconds during which particle alpha fades in after being emitted.
@@ -440,51 +453,52 @@ class ParticleGroup {
 	**/
 	public var colorEnabled(default, null) : Bool = false;
 	/**
-		Starting color (at birth). Format: 0xRRGGBB
+		Color curve segments sorted by startRate. Uses AnimatedPath-style per-segment interpolation.
 	**/
-	public var colorStart(default, null) : Int = 0xFFFFFF;
-	/**
-		Ending color (at death). Format: 0xRRGGBB
-	**/
-	public var colorEnd(default, null) : Int = 0xFFFFFF;
-	/**
-		Optional middle color for 3-point gradient. Set to -1 to disable.
-	**/
-	public var colorMid(default, null) : Int = -1;
-	/**
-		Position of the middle color (0.0 to 1.0). Default 0.5.
-	**/
-	public var colorMidPos(default, null) : Float = 0.5;
+	var colorCurveSegments : Array<{startRate:Float, curve:bh.paths.Curve.ICurve, startColor:Int, endColor:Int}> = [];
+
+	/** Add a color curve segment with per-segment start/end colors. Sorted by startRate. */
+	public function addColorCurveSegment(startRate:Float, curve:bh.paths.Curve.ICurve, startColor:Int, endColor:Int):Void {
+		var left = 0;
+		var right = colorCurveSegments.length;
+		while (left < right) {
+			var mid = Std.int((left + right) / 2);
+			if (colorCurveSegments[mid].startRate < startRate)
+				left = mid + 1;
+			else
+				right = mid;
+		}
+		colorCurveSegments.insert(left, {startRate: startRate, curve: curve, startColor: startColor, endColor: endColor});
+		colorEnabled = true;
+	}
 
 	// ----- Force Fields -----
 	/**
-		Array of force fields affecting this particle group.
+		Array of force fields affecting this particle group. Mutable at runtime.
 	**/
-	public var forceFields(default, null) : Array<ForceField> = [];
+	public var forceFields : Array<ForceField> = [];
+
+	public function addForceField(ff:ForceField):Void {
+		forceFields.push(ff);
+	}
+
+	public function removeForceFieldAt(index:Int):Void {
+		forceFields.splice(index, 1);
+	}
+
+	public function clearForceFields():Void {
+		forceFields = [];
+	}
 
 	// ----- Curves -----
 	/**
-		Velocity multiplier curve over lifetime. Empty array = no curve (constant 1.0).
+		Velocity multiplier curve over lifetime. null = no curve (constant 1.0).
 	**/
-	public var velocityCurve(default, null) : Array<CurvePoint> = [];
+	public var velocityCurve : Null<bh.paths.Curve.ICurve> = null;
 	/**
-		Size multiplier curve over lifetime. Empty array = no curve (constant 1.0).
+		Size multiplier curve over lifetime. null = no curve (constant 1.0).
 	**/
-	public var sizeCurve(default, null) : Array<CurvePoint> = [];
-
-	// ----- Trails -----
-	/**
-		Enable trail/ribbon effect for particles.
-	**/
-	public var trailEnabled(default, null) : Bool = false;
-	/**
-		Number of trail segments to keep.
-	**/
-	public var trailLength(default, null) : Int = 10;
-	/**
-		Whether trail should fade out along its length.
-	**/
-	public var trailFadeOut(default, null) : Bool = true;
+	public var sizeCurve : Null<bh.paths.Curve.ICurve> = null;
 
 	// ----- Bounds/Collision -----
 	/**
@@ -507,6 +521,23 @@ class ParticleGroup {
 		Boundary rectangle - maxY.
 	**/
 	public var boundsMaxY(default, null) : Float = 600;
+	/**
+		Line bounds. Each line has endpoints (x1,y1)-(x2,y2) and a precomputed outward normal (nx,ny).
+		Particles on the normal side are in-bounds; those on the opposite side are out-of-bounds.
+	**/
+	public var boundsLines : Array<{x1:Float, y1:Float, x2:Float, y2:Float, nx:Float, ny:Float}> = [];
+
+	/** Add a line boundary. The "out" side is the left side of the direction from (x1,y1) to (x2,y2). */
+	public function addBoundsLine(x1:Float, y1:Float, x2:Float, y2:Float):Void {
+		var dx = x2 - x1;
+		var dy = y2 - y1;
+		var len = Math.sqrt(dx * dx + dy * dy);
+		if (len < 1e-10) return;
+		// Left-hand normal (outward = "kill" side)
+		var nx = dy / len;
+		var ny = -dx / len;
+		boundsLines.push({x1: x1, y1: y1, x2: x2, y2: y2, nx: nx, ny: ny});
+	}
 
 	// ----- Sub-emitters -----
 	/**
@@ -514,6 +545,28 @@ class ParticleGroup {
 	**/
 	public var subEmitters(default, null) : Array<SubEmitter> = [];
 
+	// ----- AnimSM Tile Source -----
+	/**
+		Animation states for particles, sorted by startLifeRate. When set, overrides simple tile animation.
+	**/
+	public var animStates : Array<ParticleAnimState> = [];
+	/**
+		Event-driven animation overrides. Maps trigger name ("onBounce", "onDeath") to anim state index.
+	**/
+	public var animEventOverrides : Map<String, Int> = new Map();
+
+	// ----- AnimatedPath Integration -----
+	/**
+		Attached animated path — emitter position tracks this path.
+	**/
+	public var attachedPath : Null<bh.paths.AnimatedPath> = null;
+	/**
+		Spawn curve — modulates emission rate over attached path's lifetime.
+	**/
+	public var spawnCurve : Null<bh.paths.Curve.ICurve> = null;
+
+	/** Accumulator for dynamic emission when spawnCurve is active. */
+	var emissionAccumulator : Float = 0;
 
 	inline function set_blendMode(v) { batch.blendMode = v; return blendMode = v; }
 	
@@ -546,15 +599,37 @@ class ParticleGroup {
 		for( i in 0...nparts ) {
 			var p = new Particle(this);
 			p.delay = rand() * life * (1 - emitSync) + emitDelay;
-			if (trailEnabled) {
-				var history:Array<{x:Float, y:Float, alpha:Float}> = [];
-				for (j in 0...trailLength) {
-					history.push({x: 0.0, y: 0.0, alpha: 0.0});
-				}
-				p.trailHistory = history;
-			}
 			batch.add(p);
 		}
+	}
+
+	/**
+		Emit a burst of particles at a specific position with optional inherited velocity.
+		Creates particles on-the-fly and adds them to the batch.
+	**/
+	public function emitBurstAt(atX:Float, atY:Float, inheritVx:Float, inheritVy:Float, count:Int):Void {
+		if (!started) {
+			batch.visible = true;
+			started = true;
+			globalTime = 0;
+		}
+		for (i in 0...count) {
+			var p = new Particle(this);
+			init(p);
+			p.x += atX;
+			p.y += atY;
+			p.vx += inheritVx;
+			p.vy += inheritVy;
+			p.visible = true;
+			batch.add(p);
+		}
+	}
+
+	/**
+		Emit a burst of particles at the emitter's current position.
+	**/
+	public function emitBurst(count:Int):Void {
+		emitBurstAt(0, 0, 0, 0, count);
 	}
 
 	function init( p : Particle ):Void {
@@ -599,36 +674,26 @@ class ParticleGroup {
 				p.vx = Math.cos(phi);
 				p.vy = Math.sin(phi);
 
-			case Path(points, emitConeAngle, emitConeAngleRandom):
-				if (points.length > 0) {
-					// Pick a random position along the path
-					var t = rand();
-					var totalLen = 0.0;
-					var segments:Array<Float> = [];
-					for (i in 0...points.length - 1) {
-						var pdx = points[i + 1].x - points[i].x;
-						var pdy = points[i + 1].y - points[i].y;
-						var slen = Math.sqrt(pdx * pdx + pdy * pdy);
-						segments.push(slen);
-						totalLen += slen;
-					}
+			case ManimPath(path):
+				var rate = rand();
+				var pt = path.getPoint(rate);
+				p.x += pt.x;
+				p.y += pt.y;
+				// Random velocity direction
+				p.vx = srand();
+				p.vy = srand();
+				var len = hxd.Math.sqrt(p.vx * p.vx + p.vy * p.vy);
+				if (len > 0) speed *= 1 / len;
 
-					var targetDist = t * totalLen;
-					var accum = 0.0;
-					for (i in 0...segments.length) {
-						if (accum + segments[i] >= targetDist) {
-							var localT = (targetDist - accum) / segments[i];
-							p.x += points[i].x + (points[i + 1].x - points[i].x) * localT;
-							p.y += points[i].y + (points[i + 1].y - points[i].y) * localT;
-							break;
-						}
-						accum += segments[i];
-					}
-				}
-
-				final phi = hxd.Math.angle(emitConeAngle + emitConeAngleRandom * srand());
-				p.vx = Math.cos(phi);
-				p.vy = Math.sin(phi);
+			case ManimPathTangent(path):
+				var rate = rand();
+				var pt = path.getPoint(rate);
+				p.x += pt.x;
+				p.y += pt.y;
+				// Velocity follows path tangent
+				var tangent = path.getTangentAngle(rate);
+				p.vx = Math.cos(tangent);
+				p.vy = Math.sin(tangent);
 
 			case Circle(radius, radiusRandom, emitConeAngle, emitConeAngleRandom):
 				var angle = rand() * Math.PI * 2;
@@ -671,19 +736,12 @@ class ParticleGroup {
 		var initRot = emitDirectionAsAngle ? Math.atan2(p.vy, p.vx) : srand() * Math.PI * g.rotInit;
 		p.rotation = initRot;
 
-		// Initialize color
-		if (colorEnabled) {
-			p.r = ((colorStart >> 16) & 0xFF) / 255.0;
-			p.g = ((colorStart >> 8) & 0xFF) / 255.0;
-			p.b = (colorStart & 0xFF) / 255.0;
-		}
-
-		// Initialize trail history
-		var history = p.trailHistory;
-		if (trailEnabled && history != null) {
-			for (i in 0...history.length) {
-				history[i] = {x: p.x, y: p.y, alpha: 0.0};
-			}
+		// Initialize color from first color curve segment
+		if (colorEnabled && colorCurveSegments.length > 0) {
+			var initColor = colorCurveSegments[0].startColor;
+			p.r = ((initColor >> 16) & 0xFF) / 255.0;
+			p.g = ((initColor >> 8) & 0xFF) / 255.0;
+			p.b = (initColor & 0xFF) / 255.0;
 		}
 
 		if ( !isRelative ) {
@@ -711,22 +769,29 @@ class ParticleGroup {
 	// ========== Helper Functions ==========
 
 	/**
-		Interpolate color based on normalized lifetime.
+		Evaluate per-segment color curve at normalized lifetime.
 	**/
-	public function getInterpolatedColor(t:Float):Int {
-		if (colorMid >= 0) {
-			// 3-point gradient
-			if (t < colorMidPos) {
-				var localT = t / colorMidPos;
-				return lerpColor(colorStart, colorMid, localT);
-			} else {
-				var localT = (t - colorMidPos) / (1.0 - colorMidPos);
-				return lerpColor(colorMid, colorEnd, localT);
-			}
-		} else {
-			// 2-point gradient
-			return lerpColor(colorStart, colorEnd, t);
+	public function evaluateColorCurve(rate:Float):Int {
+		// Find active segment: largest startRate <= rate
+		var activeIndex = -1;
+		for (i in 0...colorCurveSegments.length) {
+			if (colorCurveSegments[i].startRate <= rate)
+				activeIndex = i;
+			else
+				break;
 		}
+
+		if (activeIndex < 0) return 0xFFFFFF;
+
+		var segment = colorCurveSegments[activeIndex];
+		var segStart = segment.startRate;
+		var segEnd = if (activeIndex + 1 < colorCurveSegments.length) colorCurveSegments[activeIndex + 1].startRate else 1.0;
+
+		var localT = if (segEnd <= segStart) 0. else (rate - segStart) / (segEnd - segStart);
+		localT = Math.min(Math.max(localT, 0.), 1.);
+
+		var curveValue = segment.curve.getValue(localT);
+		return lerpColor(segment.startColor, segment.endColor, curveValue);
 	}
 
 	inline function lerpColor(c1:Int, c2:Int, t:Float):Int {
@@ -746,33 +811,14 @@ class ParticleGroup {
 		Get velocity curve value at normalized time.
 	**/
 	public function getVelocityCurveValue(t:Float):Float {
-		return getCurveValue(velocityCurve, t);
+		return velocityCurve != null ? velocityCurve.getValue(t) : 1.0;
 	}
 
 	/**
 		Get size curve value at normalized time.
 	**/
 	public function getSizeCurveValue(t:Float):Float {
-		return getCurveValue(sizeCurve, t);
-	}
-
-	function getCurveValue(curve:Null<Array<CurvePoint>>, t:Float):Float {
-		if (curve == null || curve.length == 0) return 1.0;
-		if (curve.length == 1) return curve[0].value;
-
-		// Find the two points to interpolate between
-		var i = 0;
-		while (i < curve.length - 1 && curve[i + 1].time < t) {
-			i++;
-		}
-
-		if (i >= curve.length - 1) return curve[curve.length - 1].value;
-		if (t <= curve[0].time) return curve[0].value;
-
-		var p1 = curve[i];
-		var p2 = curve[i + 1];
-		var localT = (t - p1.time) / (p2.time - p1.time);
-		return p1.value + (p2.value - p1.value) * localT;
+		return sizeCurve != null ? sizeCurve.getValue(t) : 1.0;
 	}
 
 	/**
@@ -864,6 +910,14 @@ class ParticleGroup {
 					triggerSubEmitters(p, OnCollision);
 					return false;
 				}
+				// Check line bounds
+				for (line in boundsLines) {
+					var dot = (p.x - line.x1) * line.nx + (p.y - line.y1) * line.ny;
+					if (dot < 0) {
+						triggerSubEmitters(p, OnCollision);
+						return false;
+					}
+				}
 				return true;
 
 			case Bounce(damping):
@@ -886,8 +940,23 @@ class ParticleGroup {
 					p.vy = -p.vy * damping;
 					collided = true;
 				}
+				// Check line bounds
+				for (line in boundsLines) {
+					var dot = (p.x - line.x1) * line.nx + (p.y - line.y1) * line.ny;
+					if (dot < 0) {
+						// Reflect velocity across line normal
+						var vDot = p.vx * line.nx + p.vy * line.ny;
+						p.vx = (p.vx - 2 * vDot * line.nx) * damping;
+						p.vy = (p.vy - 2 * vDot * line.ny) * damping;
+						// Push particle back to line surface
+						p.x -= dot * line.nx;
+						p.y -= dot * line.ny;
+						collided = true;
+					}
+				}
 				if (collided) {
 					triggerSubEmitters(p, OnCollision);
+					applyAnimEventOverride(p, "onBounce");
 				}
 				return true;
 
@@ -898,6 +967,7 @@ class ParticleGroup {
 				else if (p.x > boundsMaxX) p.x -= width;
 				if (p.y < boundsMinY) p.y += height;
 				else if (p.y > boundsMaxY) p.y -= height;
+				// Line bounds don't apply to wrap mode
 				return true;
 		}
 	}
@@ -917,8 +987,14 @@ class ParticleGroup {
 			var subGroup = parts.getGroup(se.groupId);
 			if (subGroup == null) continue;
 
-			// Spawn particles from sub-group at this location
-			// This is simplified - full implementation would create particles directly
+			// Spawn a particle from sub-group at parent particle's location
+			subGroup.emitBurstAt(
+				p.x + se.offsetX,
+				p.y + se.offsetY,
+				p.vx * se.inheritVelocity,
+				p.vy * se.inheritVelocity,
+				1
+			);
 		}
 	}
 
@@ -930,6 +1006,22 @@ class ParticleGroup {
 			case [OnInterval(_), OnInterval(_)]: true;
 			case _: false;
 		};
+	}
+
+	/**
+		Apply an event-driven animation override to a particle.
+		If the trigger matches a registered override, switches the particle to that anim state.
+	**/
+	public function applyAnimEventOverride(p:Particle, triggerName:String):Void {
+		var stateIndex = animEventOverrides.get(triggerName);
+		if (stateIndex != null && stateIndex < animStates.length) {
+			p.currentAnimStateIndex = stateIndex;
+			// Update tile immediately
+			var animState = animStates[stateIndex];
+			if (animState.tiles.length > 0) {
+				p.t = animState.tiles[0];
+			}
+		}
 	}
 
 	/**
@@ -947,7 +1039,13 @@ class ParticleGroup {
 						if (rand() <= se.probability) {
 							var subGroup = parts.getGroup(se.groupId);
 							if (subGroup != null) {
-								// Sub-emitter logic here
+								subGroup.emitBurstAt(
+									p.x + se.offsetX,
+									p.y + se.offsetY,
+									p.vx * se.inheritVelocity,
+									p.vy * se.inheritVelocity,
+									1
+								);
 							}
 						}
 					}
@@ -957,10 +1055,27 @@ class ParticleGroup {
 	}
 
 	/**
-		Update global time for turbulence calculations.
+		Update global time, animated path tracking, and spawn curve emission.
 	**/
 	public function updateTime(dt:Float):Void {
 		globalTime += dt;
+
+		// Update attached animated path
+		if (attachedPath != null) {
+			var state = attachedPath.update(dt);
+			dx = Std.int(state.position.x);
+			dy = Std.int(state.position.y);
+
+			// Dynamic emission via spawn curve
+			if (spawnCurve != null) {
+				var rate = spawnCurve.getValue(state.rate);
+				emissionAccumulator += rate * nparts * dt / life;
+				while (emissionAccumulator >= 1.0) {
+					emissionAccumulator -= 1.0;
+					emitBurst(1);
+				}
+			}
+		}
 	}
 
 }
