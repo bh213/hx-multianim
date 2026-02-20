@@ -1948,6 +1948,25 @@ class MultiAnimBuilder {
 		}
 	}
 
+	static function collectPixelShapesParamRefs(shapes:Array<PixelShapes>, result:Array<String>):Void {
+		for (s in shapes) {
+			switch s {
+				case LINE(line):
+					collectCoordinateParamRefs(line.start, result);
+					collectCoordinateParamRefs(line.end, result);
+					collectParamRefs(line.color, result);
+				case RECT(rect) | FILLED_RECT(rect):
+					collectCoordinateParamRefs(rect.start, result);
+					collectParamRefs(rect.width, result);
+					collectParamRefs(rect.height, result);
+					collectParamRefs(rect.color, result);
+				case PIXEL(pixel):
+					collectCoordinateParamRefs(pixel.pos, result);
+					collectParamRefs(pixel.color, result);
+			}
+		}
+	}
+
 	/** Track param-dependent expressions for incremental updates */
 	function trackIncrementalExpressions(node:Node, object:h2d.Object, builtObject:BuiltHeapsComponent):Void {
 		if (incrementalContext == null) return;
@@ -2023,6 +2042,22 @@ class MultiAnimBuilder {
 							g.clear();
 							drawGraphicsElements(g, elementsCapture, gridCapture, hexCapture);
 						}, gfxRefs);
+					}
+				}
+			case PIXELS(shapes):
+				final pxRefs:Array<String> = [];
+				collectPixelShapesParamRefs(shapes, pxRefs);
+				if (pxRefs.length > 0) {
+					final pl = switch builtObject { case Pixels(p): p; default: null; };
+					if (pl != null) {
+						final shapesCapture = shapes;
+						final gridCapture = MultiAnimParser.getGridCoordinateSystem(node);
+						final hexCapture = MultiAnimParser.getHexCoordinateSystem(node);
+						incrementalContext.trackExpression(() -> {
+							final result = drawPixels(shapesCapture, gridCapture, hexCapture);
+							pl.tile = result.pixelLines.tile;
+							pl.data = result.pixelLines.data;
+						}, pxRefs);
 					}
 				}
 			default:
@@ -2354,6 +2389,117 @@ class MultiAnimBuilder {
 		}
 	}
 
+	private function resolveTileGroupRepeatAxis(repeatType:RepeatType, node:Node, allowTileIterators:Bool):{
+		dx:Int, dy:Int, repeatCount:Int,
+		layoutName:Null<String>,
+		arrayIterator:Array<String>, valueVariableName:Null<String>,
+		rangeStart:Int, rangeStep:Int,
+		tileSourceIterator:Array<TileSource>, tilenameIterator:Array<String>,
+		bitmapVarName:Null<String>, tilenameVarName:Null<String>,
+	} {
+		var dx = 0;
+		var dy = 0;
+		var repeatCount = 0;
+		var layoutName:Null<String> = null;
+		var arrayIterator:Array<String> = [];
+		var valueVariableName:Null<String> = null;
+		var rangeStart = 0;
+		var rangeStep = 1;
+		var tileSourceIterator:Array<TileSource> = [];
+		var tilenameIterator:Array<String> = [];
+		var bitmapVarName:Null<String> = null;
+		var tilenameVarName:Null<String> = null;
+
+		switch repeatType {
+			case StepIterator(dirX, dirY, repeats):
+				repeatCount = resolveAsInteger(repeats);
+				dx = dirX == null ? 0 : resolveAsInteger(dirX);
+				dy = dirY == null ? 0 : resolveAsInteger(dirY);
+			case LayoutIterator(ln):
+				final l = getLayouts();
+				repeatCount = l.getLayoutSequenceLengthByLayoutName(ln);
+				layoutName = ln;
+			case ArrayIterator(varName, arrayName):
+				arrayIterator = resolveAsArray(RVArrayReference(arrayName));
+				repeatCount = arrayIterator.length;
+				valueVariableName = varName;
+			case RangeIterator(start, end, step):
+				rangeStart = resolveAsInteger(start);
+				final rangeEnd = resolveAsInteger(end);
+				rangeStep = resolveAsInteger(step);
+				repeatCount = Math.ceil((rangeEnd - rangeStart) / rangeStep);
+			case StateAnimIterator(bmpVarName, animFilename, animationName, selectorRefs):
+				if (!allowTileIterators)
+					throw 'StateAnimIterator not supported in REPEAT2D' + MacroUtils.nodePos(node);
+				final selector = [for (k => v in selectorRefs) k => resolveAsString(v)];
+				final animName = resolveAsString(animationName);
+				tileSourceIterator = collectStateAnimFrames(animFilename, animName, selector);
+				repeatCount = tileSourceIterator.length;
+				bitmapVarName = bmpVarName;
+			case TilesIterator(bmpVarName, tnVarName, sheetName, tileFilter):
+				if (!allowTileIterators)
+					throw 'TilesIterator not supported in REPEAT2D' + MacroUtils.nodePos(node);
+				bitmapVarName = bmpVarName;
+				tilenameVarName = tnVarName;
+				final sheet = getOrLoadSheet(sheetName);
+				if (tileFilter != null) {
+					final frames = sheet.getAnim(tileFilter);
+					if (frames == null) {
+						throw 'Tile "${tileFilter}" not found in sheet "${sheetName}". The tile filter must be an exact tile name (key) in the atlas.'
+							+ MacroUtils.nodePos(node);
+					}
+					for (frame in frames) {
+						if (frame != null && frame.tile != null) {
+							tileSourceIterator.push(TSTile(frame.tile));
+						}
+					}
+				} else {
+					for (tn => entries in sheet.getContents()) {
+						for (entry in entries) {
+							if (entry != null) {
+								tileSourceIterator.push(TSTile(entry.t));
+								tilenameIterator.push(tn);
+							}
+						}
+					}
+				}
+				repeatCount = tileSourceIterator.length;
+		}
+
+		return {
+			dx: dx, dy: dy, repeatCount: repeatCount,
+			layoutName: layoutName,
+			arrayIterator: arrayIterator, valueVariableName: valueVariableName,
+			rangeStart: rangeStart, rangeStep: rangeStep,
+			tileSourceIterator: tileSourceIterator, tilenameIterator: tilenameIterator,
+			bitmapVarName: bitmapVarName, tilenameVarName: tilenameVarName,
+		};
+	}
+
+	private function setTileGroupRepeatIterationParams(varName:String, repeatType:RepeatType, info:{
+		rangeStart:Int, rangeStep:Int,
+		arrayIterator:Array<String>, valueVariableName:Null<String>,
+		tileSourceIterator:Array<TileSource>, tilenameIterator:Array<String>,
+		bitmapVarName:Null<String>, tilenameVarName:Null<String>,
+	}, count:Int):Void {
+		final resolvedIndex = switch repeatType {
+			case RangeIterator(_, _, _): info.rangeStart + count * info.rangeStep;
+			case _: count;
+		};
+		indexedParams.set(varName, Value(resolvedIndex));
+		if (info.valueVariableName != null)
+			indexedParams.set(info.valueVariableName, StringValue(info.arrayIterator[count]));
+		if (info.bitmapVarName != null)
+			indexedParams.set(info.bitmapVarName, TileSourceValue(info.tileSourceIterator[count]));
+		if (info.tilenameVarName != null && count < info.tilenameIterator.length)
+			indexedParams.set(info.tilenameVarName, StringValue(info.tilenameIterator[count]));
+	}
+
+	private function cleanupTileGroupRepeatExtraVars(info:{bitmapVarName:Null<String>, tilenameVarName:Null<String>}):Void {
+		if (info.bitmapVarName != null) indexedParams.remove(info.bitmapVarName);
+		if (info.tilenameVarName != null) indexedParams.remove(info.tilenameVarName);
+	}
+
 	function buildTileGroup(node:Node, tileGroup:h2d.TileGroup, currentPos:Point, gridCoordinateSystem:GridCoordinateSystem,
 			hexCoordinateSystem:HexCoordinateSystem, builderParams:BuilderParameters):Void {
 		if (isMatch(node, indexedParams) == false)
@@ -2364,15 +2510,9 @@ class MultiAnimBuilder {
 		currentPos.add(pos.x, pos.y);
 		var skipChildren = false;
 		var tileGroupTile = switch node.type {
-			// case NINEPATCH(sheet, tilename, width, height):
-			// 	var sg = load9Patch(sheet, tilename);
-
-			// 	sg.width = resolveAsNumber(width);
-			// 	sg.height = resolveAsNumber(height);
-			// 	sg.tileCenter = true;
-			// 	sg.tileBorders = true;
-			// 	sg.ignoreScale = false;
-			// 	NinePatch(sg);
+			case NINEPATCH(sheet, tilename, width, height):
+				addNinePatchToTileGroup(node, sheet, tilename, width, height, currentPos, tileGroup);
+				null;
 			case BITMAP(tileSource, hAlign, vAlign):
 				var tile = loadTileSource(tileSource);
 				var height = tile.height;
@@ -2393,101 +2533,23 @@ class MultiAnimBuilder {
 			case POINT:
 				null;
 			case REPEAT(varName, repeatType):
-				var dx = 0;
-				var dy = 0;
-				var repeatCount = 0;
-				var iterator = null;
-				var arrayIterator:Array<String> = [];
-				var rangeStart = 0;
-				var rangeStep = 1;
-				var tileSourceIterator:Array<TileSource> = [];
-				var tilenameIterator:Array<String> = [];
-
-				switch repeatType {
-					case StepIterator(dirX, dirY, repeats):
-						repeatCount = resolveAsInteger(repeats);
-						dx = dirX == null ? 0 : resolveAsInteger(dirX);
-						dy = dirY == null ? 0 : resolveAsInteger(dirY);
-					case LayoutIterator(layoutName):
-						final l = getLayouts();
-						repeatCount = l.getLayoutSequenceLengthByLayoutName(layoutName);
-						iterator = l.getIterator(layoutName);
-					case ArrayIterator(variableName, arrayName):
-						arrayIterator = resolveAsArray(RVArrayReference(arrayName));
-						repeatCount = arrayIterator.length;
-					case RangeIterator(start, end, step):
-						rangeStart = resolveAsInteger(start);
-						final rangeEnd = resolveAsInteger(end);
-						rangeStep = resolveAsInteger(step);
-						repeatCount = Math.ceil((rangeEnd - rangeStart) / rangeStep);
-						dx = 0;
-						dy = 0;
-					case StateAnimIterator(bitmapVarName, animFilename, animationName, selectorRefs):
-						final selector = [for (k => v in selectorRefs) k => resolveAsString(v)];
-						final animName = resolveAsString(animationName);
-						tileSourceIterator = collectStateAnimFrames(animFilename, animName, selector);
-						repeatCount = tileSourceIterator.length;
-					case TilesIterator(bitmapVarName, tilenameVarName, sheetName, tileFilter):
-						final sheet = getOrLoadSheet(sheetName);
-						if (tileFilter != null) {
-							// Filter mode: iterate over frames for specific tilename (exact match)
-							// tileFilter must be an exact tile name/key in the atlas (e.g., "Arrow_dir0")
-							final frames = sheet.getAnim(tileFilter);
-							if (frames == null) {
-								throw 'Tile "${tileFilter}" not found in sheet "${sheetName}". The tile filter must be an exact tile name (key) in the atlas.' + MacroUtils.nodePos(node);
-							}
-							for (frame in frames) {
-								if (frame != null && frame.tile != null) {
-									tileSourceIterator.push(TSTile(frame.tile));
-								}
-							}
-						} else {
-							// Full iteration: all tiles in sheet (including all indexed entries per name)
-							for (tileName => entries in sheet.getContents()) {
-								for (entry in entries) {
-									if (entry != null) {
-										tileSourceIterator.push(TSTile(entry.t));
-										tilenameIterator.push(tileName);
-									}
-								}
-							}
-						}
-						repeatCount = tileSourceIterator.length;
-				}
+				final info = resolveTileGroupRepeatAxis(repeatType, node, true);
+				final iterator = info.layoutName == null ? null : getLayouts().getIterator(info.layoutName);
 
 				if (indexedParams.exists(node.updatableName.getNameString()))
 					throw 'cannot use repeatable index param "$varName" as it is already defined' + MacroUtils.nodePos(node);
-				for (count in 0...repeatCount) {
-					final resolvedIndex = switch repeatType {
-						case RangeIterator(_, _, _): rangeStart + count * rangeStep;
-						case _: count;
-					};
+				for (count in 0...info.repeatCount) {
 					final gridCoordinateSystem = MultiAnimParser.getGridCoordinateSystem(node);
 					final hexCoordinateSystem = MultiAnimParser.getHexCoordinateSystem(node);
-					// Set indexed params before resolving conditional children
-					indexedParams.set(varName, Value(resolvedIndex));
-					switch repeatType {
-						case ArrayIterator(valueVariableName, array):
-							indexedParams.set(valueVariableName, StringValue(arrayIterator[count]));
-						case StateAnimIterator(bitmapVarName, _, _, _):
-							indexedParams.set(bitmapVarName, TileSourceValue(tileSourceIterator[count]));
-						case TilesIterator(bitmapVarName, tilenameVarName, _, _):
-							indexedParams.set(bitmapVarName, TileSourceValue(tileSourceIterator[count]));
-							if (tilenameVarName != null && count < tilenameIterator.length)
-								indexedParams.set(tilenameVarName, StringValue(tilenameIterator[count]));
-						default:
-					}
+					setTileGroupRepeatIterationParams(varName, repeatType, info, count);
 					final resolvedChildren = resolveConditionalChildren(node.children);
 					// Resolve layout point once per iteration (not per child)
-					var layoutPt:Null<FPoint> = switch repeatType {
-						case LayoutIterator(_): iterator.next();
-						default: null;
-					};
+					var layoutPt:Null<FPoint> = iterator != null ? iterator.next() : null;
 					for (childNode in resolvedChildren) {
 						var iterPos = currentPos.clone();
 						switch repeatType {
 							case StepIterator(_, _, _):
-								iterPos.add(dx * count, dy * count);
+								iterPos.add(info.dx * count, info.dy * count);
 							case LayoutIterator(_):
 								iterPos.add(cast layoutPt.x, cast layoutPt.y);
 							default:
@@ -2497,140 +2559,45 @@ class MultiAnimBuilder {
 					cleanupFinalVars(resolvedChildren, indexedParams);
 				}
 				indexedParams.remove(varName);
-				switch repeatType {
-					case StateAnimIterator(bitmapVarName, _, _, _):
-						indexedParams.remove(bitmapVarName);
-					case TilesIterator(bitmapVarName, tilenameVarName, _, _):
-						indexedParams.remove(bitmapVarName);
-						if (tilenameVarName != null) indexedParams.remove(tilenameVarName);
-					case _:
-				}
+				cleanupTileGroupRepeatExtraVars(info);
 				skipChildren = true;
 				null;
 			case REPEAT2D(varNameX, varNameY, repeatTypeX, repeatTypeY):
-				var xRepeatCount = 0;
-				var yRepeatCount = 0;
-				var xDx = 0;
-				var xDy = 0;
-				var yDx = 0;
-				var yDy = 0;
-				var xLayoutName:Null<String> = null;
-				var yLayoutName:Null<String> = null;
-				var xArrayIterator:Array<String> = [];
-				var yArrayIterator:Array<String> = [];
-				var xValueVariableName:Null<String> = null;
-				var yValueVariableName:Null<String> = null;
-				var xRangeStart = 0;
-				var xRangeStep = 1;
-				var yRangeStart = 0;
-				var yRangeStep = 1;
-				var layouts:Null<MultiAnimLayouts> = null;
-				function getLayoutsIfNeeded() {
-					if (layouts == null) layouts = getLayouts();
-					return layouts;
-				}
-
-				switch repeatTypeX {
-					case StepIterator(dirX, dirY, repeats):
-						xRepeatCount = resolveAsInteger(repeats);
-						xDx = dirX == null ? 0 : resolveAsInteger(dirX);
-						xDy = dirY == null ? 0 : resolveAsInteger(dirY);
-					case LayoutIterator(layoutName):
-						final l = getLayoutsIfNeeded();
-						xRepeatCount = l.getLayoutSequenceLengthByLayoutName(layoutName);
-						xLayoutName = layoutName;
-					case ArrayIterator(variableName, arrayName):
-						xArrayIterator = resolveAsArray(RVArrayReference(arrayName));
-						xRepeatCount = xArrayIterator.length;
-						xValueVariableName = variableName;
-					case RangeIterator(start, end, step):
-						xRangeStart = resolveAsInteger(start);
-						final rangeEnd = resolveAsInteger(end);
-						xRangeStep = resolveAsInteger(step);
-						xRepeatCount = Math.ceil((rangeEnd - xRangeStart) / xRangeStep);
-						xDx = 0;
-						xDy = 0;
-					case StateAnimIterator(_, _, _, _):
-						throw 'StateAnimIterator not supported in REPEAT2D' + MacroUtils.nodePos(node);
-					case TilesIterator(_, _, _, _):
-						throw 'TilesIterator not supported in REPEAT2D' + MacroUtils.nodePos(node);
-				}
-
-				switch repeatTypeY {
-					case StepIterator(dirX, dirY, repeats):
-						yRepeatCount = resolveAsInteger(repeats);
-						yDx = dirX == null ? 0 : resolveAsInteger(dirX);
-						yDy = dirY == null ? 0 : resolveAsInteger(dirY);
-					case LayoutIterator(layoutName):
-						final l = getLayoutsIfNeeded();
-						yRepeatCount = l.getLayoutSequenceLengthByLayoutName(layoutName);
-						yLayoutName = layoutName;
-					case ArrayIterator(variableName, arrayName):
-						yArrayIterator = resolveAsArray(RVArrayReference(arrayName));
-						yRepeatCount = yArrayIterator.length;
-						yValueVariableName = variableName;
-					case RangeIterator(start, end, step):
-						yRangeStart = resolveAsInteger(start);
-						final rangeEnd = resolveAsInteger(end);
-						yRangeStep = resolveAsInteger(step);
-						yRepeatCount = Math.ceil((rangeEnd - yRangeStart) / yRangeStep);
-						yDx = 0;
-						yDy = 0;
-					case StateAnimIterator(_, _, _, _):
-						throw 'StateAnimIterator not supported in REPEAT2D' + MacroUtils.nodePos(node);
-					case TilesIterator(_, _, _, _):
-						throw 'TilesIterator not supported in REPEAT2D' + MacroUtils.nodePos(node);
-				}
+				final xInfo = resolveTileGroupRepeatAxis(repeatTypeX, node, false);
+				final yInfo = resolveTileGroupRepeatAxis(repeatTypeY, node, false);
 
 				if (indexedParams.exists(varNameX) || indexedParams.exists(varNameY))
 					throw 'cannot use repeatable2d index param "$varNameX" or "$varNameY" as it is already defined' + MacroUtils.nodePos(node);
-				var yIterator = yLayoutName == null ? null : getLayoutsIfNeeded().getIterator(yLayoutName);
-				for (yCount in 0...yRepeatCount) {
-					final resolvedY = switch repeatTypeY {
-						case RangeIterator(_, _, _): yRangeStart + yCount * yRangeStep;
-						case _: yCount;
-					};
+				var yIterator = yInfo.layoutName == null ? null : getLayouts().getIterator(yInfo.layoutName);
+				for (yCount in 0...yInfo.repeatCount) {
 					var yOffsetX = 0;
 					var yOffsetY = 0;
 					switch repeatTypeY {
 						case StepIterator(_, _, _):
-							yOffsetX = yDx * yCount;
-							yOffsetY = yDy * yCount;
+							yOffsetX = yInfo.dx * yCount;
+							yOffsetY = yInfo.dy * yCount;
 						case LayoutIterator(_):
 							var pt = yIterator.next();
 							yOffsetX = cast pt.x;
 							yOffsetY = cast pt.y;
-						case RangeIterator(_, _, _):
-						case ArrayIterator(_, _):
-						case StateAnimIterator(_, _, _, _):
-						case TilesIterator(_, _, _, _):
+						default:
 					}
-					var xIterator = xLayoutName == null ? null : getLayoutsIfNeeded().getIterator(xLayoutName);
-					for (xCount in 0...xRepeatCount) {
-						final resolvedX = switch repeatTypeX {
-							case RangeIterator(_, _, _): xRangeStart + xCount * xRangeStep;
-							case _: xCount;
-						};
+					var xIterator = xInfo.layoutName == null ? null : getLayouts().getIterator(xInfo.layoutName);
+					for (xCount in 0...xInfo.repeatCount) {
 						var xOffsetX = 0;
 						var xOffsetY = 0;
 						switch repeatTypeX {
 							case StepIterator(_, _, _):
-								xOffsetX = xDx * xCount;
-								xOffsetY = xDy * xCount;
+								xOffsetX = xInfo.dx * xCount;
+								xOffsetY = xInfo.dy * xCount;
 							case LayoutIterator(_):
 								var pt = xIterator.next();
 								xOffsetX = cast pt.x;
 								xOffsetY = cast pt.y;
-							case RangeIterator(_, _, _):
-							case ArrayIterator(_, _):
-							case StateAnimIterator(_, _, _, _):
-							case TilesIterator(_, _, _, _):
+							default:
 						}
-						// Set indexed params before resolving conditional children
-						indexedParams.set(varNameX, Value(resolvedX));
-						indexedParams.set(varNameY, Value(resolvedY));
-						if (xValueVariableName != null) indexedParams.set(xValueVariableName, StringValue(xArrayIterator[xCount]));
-						if (yValueVariableName != null) indexedParams.set(yValueVariableName, StringValue(yArrayIterator[yCount]));
+						setTileGroupRepeatIterationParams(varNameX, repeatTypeX, xInfo, xCount);
+						setTileGroupRepeatIterationParams(varNameY, repeatTypeY, yInfo, yCount);
 						final resolvedChildren = resolveConditionalChildren(node.children);
 						for (childNode in resolvedChildren) {
 							var iterPos = currentPos.clone();
@@ -2674,6 +2641,94 @@ class MultiAnimBuilder {
 			if (node.blendMode != null && node.blendMode != MBAlpha)
 				throw 'tileGroup does not support blendMode other than Alpha for ${node.type}' + MacroUtils.nodePos(node);
 			tileGroup.addTransform(currentPos.x, currentPos.y, scale, scale, 0, tileGroupTile);
+		}
+	}
+
+	function addNinePatchToTileGroup(node:Node, sheet:String, tilename:String, widthRV:ReferenceableValue, heightRV:ReferenceableValue,
+			currentPos:Point, tileGroup:h2d.TileGroup):Void {
+		final atlasSheet = getOrLoadSheet(sheet);
+		if (atlasSheet == null)
+			throw 'sheet ${sheet} could not be loaded' + currentNodePos();
+		final entries = atlasSheet.getContents().get(tilename);
+		if (entries == null || entries.length == 0 || entries[0] == null)
+			throw 'tile ${tilename} in sheet ${sheet} could not be loaded' + currentNodePos();
+		final entry = entries[0];
+		final srcTile = entry.t;
+		if (entry.split == null || entry.split.length != 4)
+			throw 'tile ${tilename} in sheet ${sheet} is not a valid 9-patch (needs split with 4 values)' + currentNodePos();
+
+		final bl:Float = entry.split[0]; // border left
+		final br:Float = entry.split[1]; // border right
+		final bt:Float = entry.split[2]; // border top
+		final bb:Float = entry.split[3]; // border bottom
+
+		final targetW:Float = resolveAsNumber(widthRV);
+		final targetH:Float = resolveAsNumber(heightRV);
+		final scale:Float = node.scale == null ? 1.0 : resolveAsNumber(node.scale);
+
+		if (node.filter != null && node.filter != FilterNone)
+			throw 'tileGroup does not support filters for ${node.type}' + MacroUtils.nodePos(node);
+		if (node.blendMode != null && node.blendMode != MBAlpha)
+			throw 'tileGroup does not support blendMode other than Alpha for ${node.type}' + MacroUtils.nodePos(node);
+
+		tileGroup.setDefaultColor(0xFFFFFF, node.alpha != null ? resolveAsNumber(node.alpha) : 1.0);
+
+		final px:Float = currentPos.x;
+		final py:Float = currentPos.y;
+
+		// Source inner region dimensions
+		final srcInnerW:Float = srcTile.width - bl - br;
+		final srcInnerH:Float = srcTile.height - bt - bb;
+
+		// Target inner region dimensions
+		final innerW:Float = targetW - bl - br;
+		final innerH:Float = targetH - bt - bb;
+
+		// 4 corners (no stretching, rendered at native border sizes)
+		if (bl > 0 && bt > 0) {
+			final t = srcTile.sub(0, 0, bl, bt);
+			tileGroup.addTransform(px, py, scale, scale, 0, t);
+		}
+		if (br > 0 && bt > 0) {
+			final t = srcTile.sub(srcTile.width - br, 0, br, bt);
+			tileGroup.addTransform(px + (targetW - br) * scale, py, scale, scale, 0, t);
+		}
+		if (bl > 0 && bb > 0) {
+			final t = srcTile.sub(0, srcTile.height - bb, bl, bb);
+			tileGroup.addTransform(px, py + (targetH - bb) * scale, scale, scale, 0, t);
+		}
+		if (br > 0 && bb > 0) {
+			final t = srcTile.sub(srcTile.width - br, srcTile.height - bb, br, bb);
+			tileGroup.addTransform(px + (targetW - br) * scale, py + (targetH - bb) * scale, scale, scale, 0, t);
+		}
+
+		// 4 edges (scaled in one direction to fill target dimensions)
+		if (srcInnerW > 0 && bt > 0 && innerW > 0) {
+			final t = srcTile.sub(bl, 0, srcInnerW, bt);
+			t.scaleToSize(innerW, bt);
+			tileGroup.addTransform(px + bl * scale, py, scale, scale, 0, t);
+		}
+		if (srcInnerW > 0 && bb > 0 && innerW > 0) {
+			final t = srcTile.sub(bl, srcTile.height - bb, srcInnerW, bb);
+			t.scaleToSize(innerW, bb);
+			tileGroup.addTransform(px + bl * scale, py + (targetH - bb) * scale, scale, scale, 0, t);
+		}
+		if (bl > 0 && srcInnerH > 0 && innerH > 0) {
+			final t = srcTile.sub(0, bt, bl, srcInnerH);
+			t.scaleToSize(bl, innerH);
+			tileGroup.addTransform(px, py + bt * scale, scale, scale, 0, t);
+		}
+		if (br > 0 && srcInnerH > 0 && innerH > 0) {
+			final t = srcTile.sub(srcTile.width - br, bt, br, srcInnerH);
+			t.scaleToSize(br, innerH);
+			tileGroup.addTransform(px + (targetW - br) * scale, py + bt * scale, scale, scale, 0, t);
+		}
+
+		// Center (scaled in both directions)
+		if (srcInnerW > 0 && srcInnerH > 0 && innerW > 0 && innerH > 0) {
+			final t = srcTile.sub(bl, bt, srcInnerW, srcInnerH);
+			t.scaleToSize(innerW, innerH);
+			tileGroup.addTransform(px + bl * scale, py + bt * scale, scale, scale, 0, t);
 		}
 	}
 

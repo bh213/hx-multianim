@@ -2300,4 +2300,148 @@ class BuilderUnitTest extends BuilderTestBase {
 		result.setParameter("dim", 0);
 		Assert.floatEquals(1.0, result.object.alpha);
 	}
+
+	// ==================== Incremental graphics expression tracking ====================
+
+	@Test
+	public function testIncrementalGraphicsRedrawsOnSetParameter():Void {
+		final result = buildFromSource("
+			#test programmable(val:uint=100, maxVal:uint=100) {
+				graphics(rect(#ff0000, filled, $val * 200 / $maxVal, 20): 0, 0): 0, 0
+			}
+		", "test", null, Incremental);
+		Assert.notNull(result);
+		final g = findGraphicsChild(result.object);
+		Assert.notNull(g, "Should find h2d.Graphics child");
+
+		// setParameter should trigger clear+redraw without crashing
+		result.setParameter("val", 50);
+		Assert.pass();
+	}
+
+	@Test
+	public function testIncrementalGraphicsWithConditionalAndExpression():Void {
+		final result = buildFromSource("
+			#test programmable(hp:uint=80, maxHp:uint=100) {
+				graphics(rect(#1a1a1a, filled, 200, 20): 0, 0): 0, 0
+				@(hp => 1..50) graphics(rect(#cc3322, filled, $hp * 200 / $maxHp, 20): 0, 0): 0, 0
+				@(hp => 51..100) graphics(rect(#44cc44, filled, $hp * 200 / $maxHp, 20): 0, 0): 0, 0
+			}
+		", "test", null, Incremental);
+		// hp=80 → green bar visible, red bar hidden
+		Assert.equals(3, result.object.numChildren);
+		final redBar = result.object.getChildAt(1);
+		final greenBar = result.object.getChildAt(2);
+		Assert.isFalse(redBar.visible);
+		Assert.isTrue(greenBar.visible);
+
+		// Change to hp=30 → red visible, green hidden
+		result.setParameter("hp", 30);
+		Assert.isTrue(redBar.visible);
+		Assert.isFalse(greenBar.visible);
+
+		// Change to hp=70 → green visible, red hidden
+		result.setParameter("hp", 70);
+		Assert.isFalse(redBar.visible);
+		Assert.isTrue(greenBar.visible);
+	}
+
+	@Test
+	public function testIncrementalGraphicsBatchUpdate():Void {
+		final result = buildFromSource("
+			#test programmable(val:uint=100, maxVal:uint=100) {
+				graphics(rect(#ff0000, filled, $val * 200 / $maxVal, 20): 0, 0): 0, 0
+			}
+		", "test", null, Incremental);
+		Assert.notNull(result);
+
+		// Batch update should also work
+		result.beginUpdate();
+		result.setParameter("val", 25);
+		result.setParameter("maxVal", 200);
+		result.endUpdate();
+		Assert.pass();
+	}
+
+	// ==================== Incremental pixels expression tracking ====================
+
+	@Test
+	public function testIncrementalPixelsRedrawsOnSetParameter():Void {
+		final result = buildFromSource("
+			#test programmable(val:uint=100, maxVal:uint=100) {
+				pixels (
+					filledRect 0, 0, $val * 32 / $maxVal, 5, #ff0000
+				);
+			}
+		", "test", null, Incremental);
+		Assert.notNull(result);
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		final pl = bitmaps[0];
+		final tileBefore = pl.tile;
+		Assert.notNull(tileBefore);
+
+		// setParameter should trigger redraw — tile should be replaced
+		result.setParameter("val", 50);
+		Assert.isTrue(pl.tile != tileBefore, "Tile should be replaced after setParameter");
+	}
+
+	@Test
+	public function testIncrementalPixelsWithConditionalAndExpression():Void {
+		final result = buildFromSource("
+			#test programmable(hp:uint=80, maxHp:uint=100) {
+				pixels (
+					filledRect 0, 0, 34, 7, #111111
+				);
+				@(hp => 1..50) pixels (
+					filledRect 0, 0, $hp * 32 / $maxHp, 5, #cc3322
+				);
+				@(hp => 51..100) pixels (
+					filledRect 0, 0, $hp * 32 / $maxHp, 5, #44cc44
+				);
+			}
+		", "test", null, Incremental);
+		// hp=80 → green pixels visible, red hidden
+		Assert.equals(3, result.object.numChildren);
+		final redPixels = result.object.getChildAt(1);
+		final greenPixels = result.object.getChildAt(2);
+		Assert.isFalse(redPixels.visible);
+		Assert.isTrue(greenPixels.visible);
+
+		// Change to hp=30 → red visible, green hidden
+		result.setParameter("hp", 30);
+		Assert.isTrue(redPixels.visible);
+		Assert.isFalse(greenPixels.visible);
+	}
+
+	@Test
+	public function testIncrementalDynamicRefWithGraphics():Void {
+		final result = buildFromSource("
+			#bar programmable(val:uint=100, maxVal:uint=100) {
+				graphics(rect(#1a1a1a, filled, 200, 20): 0, 0): 0, 0
+				graphics(rect(#44cc44, filled, $val * 200 / $maxVal, 20): 0, 0): 0, 0
+			}
+			#parent programmable(hp:uint=100, maxHp:uint=100) {
+				dynamicRef($bar, val=>$hp, maxVal=>$maxHp): 0, 0
+			}
+		", "parent", null, Incremental);
+		Assert.notNull(result);
+
+		// setParameter on parent should propagate to dynamicRef child
+		result.beginUpdate();
+		result.setParameter("hp", 50);
+		result.endUpdate();
+		Assert.pass();
+	}
+
+	// ===== Helpers =====
+
+	static function findGraphicsChild(obj:h2d.Object):Null<h2d.Graphics> {
+		for (i in 0...obj.numChildren) {
+			final child = obj.getChildAt(i);
+			if (Std.isOfType(child, h2d.Graphics))
+				return cast child;
+		}
+		return null;
+	}
 }
