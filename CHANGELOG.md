@@ -45,6 +45,8 @@
   - Added `?extraParams` to `UIMultiAnimCheckbox`, `UIMultiAnimRadioButtons`, `UIMultiAnimProgressBar`, `UIMultiAnimSlider`
 
 ### Fixed
+- **`filledRect` restored to `data.fill()`** — removed manual `setPixel` loop workaround; fixed `updateBitmap()` to read pixels before `unlock()` so `fill()` results are preserved on JS
+- **Incremental `pixels` size/position update** — incremental redraws now update bitmap width, height, and position when tile dimensions change from dynamic shapes
 - **Pixels position scaling** — `pixels` element position offset now scales correctly when `scale > 1` (previously offset was unscaled, causing misalignment)
 - **Float precision in `setParameter`** — `IncrementalUpdateContext.setParameter` now preserves float values via `ValueF()` instead of truncating to `Int`
 - **`${...}` expression parsing** — parser now correctly handles `${...}` expressions in `.manim` files

@@ -2097,10 +2097,16 @@ class MultiAnimBuilder {
 						final shapesCapture = shapes;
 						final gridCapture = MultiAnimParser.getGridCoordinateSystem(node);
 						final hexCapture = MultiAnimParser.getHexCoordinateSystem(node);
+						final pixelScaleCapture:Float = node.scale != null ? resolveAsNumber(node.scale) : 1.0;
 						incrementalContext.trackExpression(() -> {
 							final result = drawPixels(shapesCapture, gridCapture, hexCapture);
 							pl.tile = result.pixelLines.tile;
 							pl.data = result.pixelLines.data;
+							// Update constraint size so Bitmap doesn't stretch the new tile to the old canvas dimensions
+							pl.width = result.pixelLines.tile.width;
+							pl.height = result.pixelLines.tile.height;
+							// Update position for new bounds (minX/minY change when shapes have dynamic widths)
+							pl.setPosition(result.minX * pixelScaleCapture, result.minY * pixelScaleCapture);
 						}, pxRefs);
 					}
 				}
