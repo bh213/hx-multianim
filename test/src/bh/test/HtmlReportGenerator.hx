@@ -653,6 +653,70 @@ class HtmlReportGenerator {
 		return 'OK: ${passed}/${results.length} visual tests passed';
 	}
 
+	public static function getStructuredSummary(elapsedSeconds:Int, ?statusOverride:String):String {
+		var buf = new StringBuf();
+		buf.add("--- TEST RESULT ---\n");
+
+		var visualPassed = results.filter(r -> r.passed).length;
+		var visualFailed = results.length - visualPassed;
+		var hasFailures = visualFailed > 0;
+
+		// Unit test stats
+		var unitFail = 0;
+		var unitErr = 0;
+		var unitAssert = 0;
+		if (includeUnitTests && unitAggregator != null && unitAggregator.root != null) {
+			var us = unitAggregator.root.stats;
+			unitFail = us.failures;
+			unitErr = us.errors;
+			unitAssert = us.assertations;
+			if (!us.isOk) hasFailures = true;
+		}
+
+		var status = statusOverride != null ? statusOverride : (hasFailures ? "FAILED" : "OK");
+		buf.add('status: ${status}\n');
+		buf.add('visual_total: ${results.length}\n');
+		buf.add('visual_passed: ${visualPassed}\n');
+		buf.add('visual_failed: ${visualFailed}\n');
+		if (visualFailed > 0) {
+			var failedNames = results.filter(r -> !r.passed).map(r -> r.testName);
+			buf.add('visual_failures: [${failedNames.join(", ")}]\n');
+		}
+		buf.add('unit_assertions: ${unitAssert}\n');
+		buf.add('unit_failures: ${unitFail}\n');
+		buf.add('unit_errors: ${unitErr}\n');
+
+		// Per-failure details for unit tests
+		if ((unitFail > 0 || unitErr > 0) && unitAggregator != null && unitAggregator.root != null) {
+			var details:Array<String> = [];
+			var allClasses:Array<utest.ui.common.ClassResult> = [];
+			collectClasses(unitAggregator.root, allClasses);
+			for (cls in allClasses) {
+				for (methodName in cls.methodNames()) {
+					var fixture = cls.get(methodName);
+					if (!fixture.stats.isOk) {
+						for (assertation in fixture) {
+							switch (assertation) {
+								case Failure(msg, pos):
+									details.push('${cls.className}.${methodName}: ${pos.fileName}:${pos.lineNumber}: ${msg}');
+								case Error(e, stack):
+									details.push('${cls.className}.${methodName}: ${Std.string(e)}');
+								default:
+							}
+						}
+					}
+				}
+			}
+			if (details.length > 0) {
+				buf.add('unit_error_details: [${details.join(", ")}]\n');
+			}
+		}
+
+		buf.add('elapsed_seconds: ${elapsedSeconds}\n');
+		buf.add("--- END TEST RESULT ---");
+		return buf.toString();
+	}
+
 	public static function clear():Void {
 		results = [];
 		unitAggregator = null;

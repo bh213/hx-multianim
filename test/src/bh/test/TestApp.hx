@@ -85,9 +85,10 @@ class TestApp extends hxd.App {
 			if (postCompletionCounter >= POST_COMPLETION_FRAMES) {
 				HtmlReportGenerator.enableUnitTestReport();
 				HtmlReportGenerator.generateReport();
-				var summary = HtmlReportGenerator.getSummary();
-				sys.io.File.saveContent("build/test_result.txt", summary);
-				Sys.exit(summary.indexOf("FAILED") >= 0 ? 1 : 0);
+				var elapsedSec = Math.round(Sys.time() - startTime);
+				var structured = HtmlReportGenerator.getStructuredSummary(elapsedSec);
+				sys.io.File.saveContent("build/test_result.txt", structured);
+				Sys.exit(structured.indexOf("status: FAILED") >= 0 ? 1 : 0);
 			}
 		}
 
@@ -98,9 +99,9 @@ class TestApp extends hxd.App {
 				+ 'pending visual tests: ${VisualTestBase.pendingVisualTests}');
 			HtmlReportGenerator.enableUnitTestReport();
 			HtmlReportGenerator.generateReport();
-			sys.io.File.saveContent("build/test_result.txt",
-				'FAILED: Safety timeout (frames: $frameCount, elapsed: ${Math.round(elapsed)}s), '
-				+ 'pending: ${VisualTestBase.pendingVisualTests}');
+			var elapsedSec = Math.round(elapsed);
+			var structured = HtmlReportGenerator.getStructuredSummary(elapsedSec, "TIMEOUT");
+			sys.io.File.saveContent("build/test_result.txt", structured);
 			Sys.exit(1);
 		}
 	}
