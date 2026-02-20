@@ -3965,8 +3965,8 @@ class MultiAnimBuilder {
 		}
 	}
 
-	function createParticleImpl(particlesDef, name) {
-		var particles = new bh.base.Particles();
+	function createParticleImpl(particlesDef, name, ?existingParticles:bh.base.Particles) {
+		var particles = existingParticles != null ? existingParticles : new bh.base.Particles();
 		final tiles = Lambda.map(particlesDef.tiles, x -> loadTileSource(x));
 		var group = new bh.base.Particles.ParticleGroup(name, particles, tiles);
 
@@ -4125,7 +4125,8 @@ class MultiAnimBuilder {
 					probability: resolveAsNumber(se.probability),
 					inheritVelocity: se.inheritVelocity != null ? resolveAsNumber(se.inheritVelocity) : 0.0,
 					offsetX: se.offsetX != null ? resolveAsNumber(se.offsetX) : 0.0,
-					offsetY: se.offsetY != null ? resolveAsNumber(se.offsetY) : 0.0
+					offsetY: se.offsetY != null ? resolveAsNumber(se.offsetY) : 0.0,
+					burstCount: se.burstCount != null ? resolveAsInteger(se.burstCount) : 1
 				});
 			}
 		}
@@ -4243,8 +4244,21 @@ class MultiAnimBuilder {
 			throw 'could not get particles node #${name}' + currentNodePos();
 		switch node.type {
 			case PARTICLES(particlesDef):
-				return createParticleImpl(particlesDef, node.uniqueNodeName);
+				return createParticleImpl(particlesDef, name);
 
+			default:
+				throw '$name has to be particles' + MacroUtils.nodePos(node);
+		}
+	}
+
+	/** Add a particle group to an existing Particles container (for sub-emitters). */
+	public function addParticleGroupTo(name:String, particles:bh.base.Particles):Void {
+		var node = multiParserResult?.nodes.get(name);
+		if (node == null)
+			throw 'could not get particles node #${name}' + currentNodePos();
+		switch node.type {
+			case PARTICLES(particlesDef):
+				createParticleImpl(particlesDef, name, particles);
 			default:
 				throw '$name has to be particles' + MacroUtils.nodePos(node);
 		}

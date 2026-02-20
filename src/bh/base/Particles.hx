@@ -83,6 +83,7 @@ typedef SubEmitter = {
 	var inheritVelocity:Float;
 	var offsetX:Float;
 	var offsetY:Float;
+	var burstCount:Int;
 }
 
 /**
@@ -237,7 +238,12 @@ private class Particle extends h2d.SpriteBatch.BatchElement {
 		// Bounds checking
 		if (group.boundsMode != None) {
 			if (!group.checkBounds(this)) {
-				return false;
+				if (group.emitLoop) {
+					group.init(this);
+					delay = 0;
+				} else {
+					return false;
+				}
 			}
 		}
 
@@ -987,13 +993,13 @@ class ParticleGroup {
 			var subGroup = parts.getGroup(se.groupId);
 			if (subGroup == null) continue;
 
-			// Spawn a particle from sub-group at parent particle's location
+			// Spawn particles from sub-group at parent particle's location
 			subGroup.emitBurstAt(
 				p.x + se.offsetX,
 				p.y + se.offsetY,
 				p.vx * se.inheritVelocity,
 				p.vy * se.inheritVelocity,
-				1
+				se.burstCount
 			);
 		}
 	}
@@ -1044,7 +1050,7 @@ class ParticleGroup {
 									p.y + se.offsetY,
 									p.vx * se.inheritVelocity,
 									p.vy * se.inheritVelocity,
-									1
+									se.burstCount
 								);
 							}
 						}

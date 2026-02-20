@@ -698,6 +698,7 @@ typedef ParticleSubEmitterDef = {
 	var inheritVelocity:Null<ReferenceableValue>;
 	var offsetX:Null<ReferenceableValue>;
 	var offsetY:Null<ReferenceableValue>;
+	var burstCount:Null<ReferenceableValue>;
 }
 
 @:nullSafety

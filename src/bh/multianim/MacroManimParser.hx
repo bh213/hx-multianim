@@ -3706,6 +3706,7 @@ class MacroManimParser {
 			var inheritVelocity:Null<ReferenceableValue> = null;
 			var offsetX:Null<ReferenceableValue> = null;
 			var offsetY:Null<ReferenceableValue> = null;
+			var burstCount:Null<ReferenceableValue> = null;
 			while (!match(TCurlyClosed)) {
 				final name = expectIdentifierOrString();
 				expect(TColon);
@@ -3728,12 +3729,13 @@ class MacroManimParser {
 					case "inheritvelocity": inheritVelocity = parseFloatOrReference();
 					case "offsetx": offsetX = parseFloatOrReference();
 					case "offsety": offsetY = parseFloatOrReference();
+					case "burstcount": burstCount = parseFloatOrReference();
 					default: parseStringOrReference(); // skip unknown
 				}
 				eatSemicolon();
 			}
 			emitters.push({groupId: groupId, trigger: trigger, probability: probability,
-				inheritVelocity: inheritVelocity, offsetX: offsetX, offsetY: offsetY});
+				inheritVelocity: inheritVelocity, offsetX: offsetX, offsetY: offsetY, burstCount: burstCount});
 		}
 		return emitters;
 	}
