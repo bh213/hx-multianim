@@ -2672,4 +2672,61 @@ class BuilderUnitTest extends BuilderTestBase {
 		}
 		return null;
 	}
+
+	// ==================== Generic settings pass-through ====================
+
+	@Test
+	public function testSettingsPassThroughParam():Void {
+		// A programmable with a custom param; pass it via buildWithParameters (simulating settings pass-through)
+		final result = buildFromSource("
+			#test programmable(myWidth:uint=10, myHeight:uint=5) {
+				bitmap(generated(color($myWidth, $myHeight, #f00))): 0, 0
+			}
+		", "test", ["myWidth" => 30, "myHeight" => 20]);
+		Assert.notNull(result, "Build should succeed with pass-through params");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(30, Std.int(bitmaps[0].tile.width));
+		Assert.equals(20, Std.int(bitmaps[0].tile.height));
+	}
+
+	@Test
+	public function testSettingsUnknownParamThrowsWithMessage():Void {
+		// Passing a param that doesn't exist in the programmable should throw with helpful message
+		var errorMsg:String = null;
+		try {
+			buildFromSource("
+				#test programmable(x:uint=10) {
+					bitmap(generated(color($x, $x, #f00))): 0, 0
+				}
+			", "test", ["nonexistent" => 42]);
+		} catch (e:Dynamic) {
+			errorMsg = Std.string(e);
+		}
+		Assert.notNull(errorMsg, "Should throw for unknown param");
+		Assert.isTrue(errorMsg.indexOf("nonexistent") >= 0, 'Error should mention "nonexistent", got: $errorMsg');
+		Assert.isTrue(errorMsg.indexOf("does not match any parameter") >= 0, 'Error should say "does not match any parameter", got: $errorMsg');
+		Assert.isTrue(errorMsg.indexOf("#test") >= 0, 'Error should mention programmable name "#test", got: $errorMsg');
+		Assert.isTrue(errorMsg.indexOf("x") >= 0, 'Error should list available param "x", got: $errorMsg');
+	}
+
+	@Test
+	public function testSettingsPassThroughWithDefaultOverride():Void {
+		// Pass-through should override the default value
+		final resultDefault = buildFromSource("
+			#test programmable(w:uint=50) {
+				bitmap(generated(color($w, 10, #f00))): 0, 0
+			}
+		", "test");
+		final bitmapsDefault = findVisibleBitmapDescendants(resultDefault.object);
+		Assert.equals(50, Std.int(bitmapsDefault[0].tile.width));
+
+		final resultOverride = buildFromSource("
+			#test programmable(w:uint=50) {
+				bitmap(generated(color($w, 10, #f00))): 0, 0
+			}
+		", "test", ["w" => 80]);
+		final bitmapsOverride = findVisibleBitmapDescendants(resultOverride.object);
+		Assert.equals(80, Std.int(bitmapsOverride[0].tile.width));
+	}
 }

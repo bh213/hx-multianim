@@ -37,6 +37,12 @@
 - **AnimatedPath non-visual unit tests** — 15 new tests in BuilderUnitTest covering time/distance modes, inline easing, easing shorthand, events, loop, pingPong, seek, checkpoints, custom curves, multi-color stops, projectile helper, getClosestRate
 - **Font metrics context** — `$ctx.font("name").lineHeight` and `$ctx.font("name").baseLine` for querying font metrics at build time (both builder and codegen)
 - **Pixel data unit tests** — filledRect pixel verification and incremental pixel update sweep tests
+- **Generic settings pass-through** — settings not recognized as control or behavioral are automatically forwarded as extra parameters to the underlying programmable
+  - Dotted setting keys (`item.fontColor`, `scrollbar.thickness`) for targeting sub-builders in multi-programmable components
+  - Prefixed routing: dropdown supports `dropdown.*`, `item.*`, `scrollbar.*` prefixes; scrollableList supports `item.*`, `scrollbar.*`
+  - Multi-forward: unprefixed `font`/`fontColor` on dropdown/scrollableList forwards to all relevant sub-builders
+  - Improved error messages: mismatched pass-through params show programmable name and available parameters
+  - Added `?extraParams` to `UIMultiAnimCheckbox`, `UIMultiAnimRadioButtons`, `UIMultiAnimProgressBar`, `UIMultiAnimSlider`
 
 ### Fixed
 - **Pixels position scaling** — `pixels` element position offset now scales correctly when `scale > 1` (previously offset was unscaled, causing misalignment)

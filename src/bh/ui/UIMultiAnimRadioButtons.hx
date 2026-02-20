@@ -19,12 +19,17 @@ class UIMultiAnimRadioButtons implements UIElement implements UIElementDisablabl
 	final builderResult:BuilderResult;
 	var allowUnselected = false;
 
-	public function new(builder:MultiAnimBuilder, radioButtonsBuildName, singleRadioButtonBuilderName, items, selectedIndex) {
+	public function new(builder:MultiAnimBuilder, radioButtonsBuildName, singleRadioButtonBuilderName, items, selectedIndex,
+			?extraParams:Null<Map<String, Dynamic>>) {
 		this.builder = builder;
 		this.items = items;
 		this.singleRadioButtonBuilderName = singleRadioButtonBuilderName;
 		this.selectedIndex = selectedIndex;
-		this.builderResult = builder.buildWithParameters(radioButtonsBuildName, ["count" => items.length], {callback: builderCallback});
+		var params:Map<String, Dynamic> = ["count" => items.length];
+		if (extraParams != null)
+			for (key => value in extraParams)
+				params.set(key, value);
+		this.builderResult = builder.buildWithParameters(radioButtonsBuildName, params, {callback: builderCallback});
 		setSelectedIndex(selectedIndex);
 	}
 
@@ -60,8 +65,8 @@ class UIMultiAnimRadioButtons implements UIElement implements UIElementDisablabl
 	public function onEvent(eventWrapper:UIElementEventWrapper) {}
 
 	public static function create(builder:MultiAnimBuilder, radioButtonsBuildName:String, singleRadioButtonBuilderName:String, items:Array<UIElementListItem>,
-			selectedIndex:Int) {
-		return new UIMultiAnimRadioButtons(builder, radioButtonsBuildName, singleRadioButtonBuilderName, items, selectedIndex);
+			selectedIndex:Int, ?extraParams:Null<Map<String, Dynamic>>) {
+		return new UIMultiAnimRadioButtons(builder, radioButtonsBuildName, singleRadioButtonBuilderName, items, selectedIndex, extraParams);
 	}
 
 	public function getObject():Object {

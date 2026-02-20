@@ -2307,8 +2307,6 @@ class MultiAnimBuilder {
 		}
 		var minX:Int = bounds.xMin;
 		var minY:Int = bounds.yMin;
-		var maxX:Int = bounds.xMax;
-		var maxY:Int = bounds.yMax;
 		var width:Int = bounds.width +1;
 		var height:Int = bounds.height + 1;
 		var pl = new PixelLines(width,height);
@@ -4760,8 +4758,10 @@ class MultiAnimBuilder {
 			?extraInput:Map<String, ResolvedIndexParameters>, resolveExtraInput:Bool = false):Void {
 		inline function getDefsType(key:String, value:Dynamic) {
 			final type = definitions.get(key)?.type;
-			if (type == null)
-				throw '$key=>$value does not have matching ParametersDefinitions ${definitions.toString()} (or type is null)' + MacroUtils.nodePos(node);
+			if (type == null) {
+				final availableParams = [for (k in definitions.keys()) k];
+				throw 'Setting "$key" does not match any parameter of programmable "#${node.uniqueNodeName}". Available parameters: ${availableParams.join(", ")}' + MacroUtils.nodePos(node);
+			}
 			return type;
 		}
 

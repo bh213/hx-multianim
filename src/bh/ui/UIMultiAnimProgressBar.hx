@@ -15,22 +15,29 @@ class UIMultiAnimProgressBar implements UIElement implements UIElementNumberValu
 
 	public var requestRedraw(default, null):Bool = true;
 
-	function new(builder:MultiAnimBuilder, name:String, initialValue:Int) {
+	var extraParams:Null<Map<String, Dynamic>>;
+
+	function new(builder:MultiAnimBuilder, name:String, initialValue:Int, ?extraParams:Null<Map<String, Dynamic>>) {
 		this.root = new h2d.Object();
 		this.builder = builder;
 		this.buildName = name;
 		this.currentValue = initialValue;
+		this.extraParams = extraParams;
 	}
 
-	public static function create(builder:MultiAnimBuilder, name:String, initialValue:Int = 0) {
-		return new UIMultiAnimProgressBar(builder, name, initialValue);
+	public static function create(builder:MultiAnimBuilder, name:String, initialValue:Int = 0, ?extraParams:Null<Map<String, Dynamic>>) {
+		return new UIMultiAnimProgressBar(builder, name, initialValue, extraParams);
 	}
 
 	public function doRedraw() {
 		this.requestRedraw = false;
 		if (this.currentResult != null && this.currentResult.object != null)
 			this.currentResult.object.remove();
-		this.currentResult = builder.buildWithParameters(buildName, ["value" => currentValue]);
+		var params:Map<String, Dynamic> = ["value" => currentValue];
+		if (extraParams != null)
+			for (key => value in extraParams)
+				params.set(key, value);
+		this.currentResult = builder.buildWithParameters(buildName, params);
 		if (this.currentResult == null)
 			throw 'could not build #${buildName}';
 		if (this.currentResult.object == null)

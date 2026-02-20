@@ -37,13 +37,8 @@ class PixelLines extends h2d.Bitmap {
 
 	public function filledRect(x:Int, y:Int, width:Int, height:Int, colorARGB:Int) {
 		data.lock();
-		// Don't use data.fill() — on JS it writes to canvas ctx directly,
-		// bypassing the locked ImageData, so unlock() overwrites the result.
-		for (dy in 0...height) {
-			for (dx in 0...width) {
-				data.setPixel(x + dx, y + dy, colorARGB);
-			}
-		}
+		trace('${x}, ${y}, ${width}, ${height}');
+		data.fill(x, y, width, height, colorARGB);
 	}
 
 	public function pixel(x:Int, y:Int, colorARGB:Int) {

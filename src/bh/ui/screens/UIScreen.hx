@@ -221,38 +221,102 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		}
 	}
 
+	function settingValueToDynamic(v:SettingValue):Dynamic {
+		return switch (v) {
+			case RSVInt(i): i;
+			case RSVFloat(f): f;
+			case RSVString(s): s;
+			case RSVBool(b): b;
+		};
+	}
+
+	/**
+	 * Splits settings into control/behavioral (handled by caller) and pass-through params.
+	 * - Control and behavioral settings are skipped (caller handles them explicitly).
+	 * - Dotted keys (e.g. "item.fontColor") are routed to the prefixed map.
+	 * - Unprefixed keys that are not in multiForward go to the main map.
+	 * - Keys listed in multiForward go to ALL registered prefix maps AND main.
+	 */
+	function splitSettings(settings:ResolvedSettings, controlSettings:Array<String>, behavioralSettings:Array<String>,
+			registeredPrefixes:Array<String>, multiForwardSettings:Array<String>,
+			elementName:String):{main:Null<Map<String, Dynamic>>, prefixed:Map<String, Map<String, Dynamic>>} {
+		var main:Null<Map<String, Dynamic>> = null;
+		var prefixed = new Map<String, Map<String, Dynamic>>();
+
+		if (settings == null)
+			return {main: main, prefixed: prefixed};
+
+		for (key in settings.keys()) {
+			if (controlSettings.contains(key) || behavioralSettings.contains(key))
+				continue;
+
+			final sv = settings.get(key);
+			if (sv == null)
+				continue;
+			final value = settingValueToDynamic(sv);
+			final dotIdx = key.indexOf(".");
+			if (dotIdx > 0) {
+				// Prefixed setting: "item.fontColor"
+				final prefix = key.substr(0, dotIdx);
+				final paramName = key.substr(dotIdx + 1);
+				if (!registeredPrefixes.contains(prefix))
+					throw 'Unknown sub-component prefix "$prefix" in setting "$key" for $elementName. Valid prefixes: ${registeredPrefixes.join(", ")}';
+				var prefixMap = prefixed.get(prefix);
+				if (prefixMap == null) {
+					prefixMap = new Map<String, Dynamic>();
+					prefixed.set(prefix, prefixMap);
+				}
+				prefixMap.set(paramName, value);
+			} else if (multiForwardSettings.contains(key)) {
+				// Multi-forward setting: goes to main AND all registered prefixes
+				if (main == null)
+					main = new Map<String, Dynamic>();
+				main.set(key, value);
+				for (prefix in registeredPrefixes) {
+					var prefixMap = prefixed.get(prefix);
+					if (prefixMap == null) {
+						prefixMap = new Map<String, Dynamic>();
+						prefixed.set(prefix, prefixMap);
+					}
+					prefixMap.set(key, value);
+				}
+			} else {
+				// Unprefixed pass-through: goes to main builder
+				if (main == null)
+					main = new Map<String, Dynamic>();
+				main.set(key, value);
+			}
+		}
+		return {main: main, prefixed: prefixed};
+	}
+
+	function mergeExtraParams(existing:Null<Map<String, Dynamic>>, additional:Null<Map<String, Dynamic>>):Null<Map<String, Dynamic>> {
+		if (additional == null)
+			return existing;
+		if (existing == null)
+			return additional;
+		for (key => value in additional)
+			existing.set(key, value);
+		return existing;
+	}
+
 	function addButtonWithSingleBuilder(builder:MultiAnimBuilder, buttonBuilderName:String, settings:ResolvedSettings, text:String):UIStandardMultiAnimButton {
 		return addButton(builder.createElementBuilder(buttonBuilderName), text, settings);
 	}
 
 	function addButton(builder:UIElementBuilder, text:String, settings:ResolvedSettings):UIStandardMultiAnimButton {
-		validateSettings(settings, ["buildName", "text", "width", "height", "font", "fontColor"], "button");
-		if (hasSettings(settings, "buildName")) {
+		if (hasSettings(settings, "buildName"))
 			builder = builder.withUpdatedName(getSettings(settings, "buildName", "button"));
-		}
 		final buttonText = getSettings(settings, "text", text);
-		var extraParams:Null<Map<String, Dynamic>> = null;
-		if (hasSettings(settings, "width") || hasSettings(settings, "height") || hasSettings(settings, "font") || hasSettings(settings, "fontColor")) {
-			extraParams = new Map();
-			if (hasSettings(settings, "width"))
-				extraParams.set("width", getIntSettings(settings, "width", 200));
-			final height = getIntSettings(settings, "height", 30);
-			if (hasSettings(settings, "height")) {
-				extraParams.set("height", height);
-			}
-			if (hasSettings(settings, "font"))
-				extraParams.set("font", getSettings(settings, "font", "dd"));
-			if (hasSettings(settings, "fontColor"))
-				extraParams.set("fontColor", getIntSettings(settings, "fontColor", 0xffffff12));
-		}
-		return UIStandardMultiAnimButton.create(builder.builder, builder.name, buttonText, extraParams);
+		final split = splitSettings(settings, ["buildName", "text"], [], [], [], "button");
+		return UIStandardMultiAnimButton.create(builder.builder, builder.name, buttonText, split.main);
 	}
 
 	function addSlider(providedBuilder, settings:ResolvedSettings, initialValue:Float = 0) {
-		validateSettings(settings, ["buildName", "size", "min", "max", "step"], "slider");
 		final sliderBuildName = getSettings(settings, "buildName", "slider");
 		final size = getIntSettings(settings, "size", 200);
-		final slider = UIStandardMultiAnimSlider.create(providedBuilder, sliderBuildName, size, initialValue);
+		final split = splitSettings(settings, ["buildName", "size"], ["min", "max", "step"], [], [], "slider");
+		final slider = UIStandardMultiAnimSlider.create(providedBuilder, sliderBuildName, size, initialValue, split.main);
 		if (hasSettings(settings, "min"))
 			slider.min = getFloatSettings(settings, "min", 0);
 		if (hasSettings(settings, "max"))
@@ -263,23 +327,23 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	}
 
 	function addProgressBar(providedBuilder, settings:ResolvedSettings, initialValue:Int = 0) {
-		validateSettings(settings, ["buildName"], "progressBar");
 		final barBuildName = getSettings(settings, "buildName", "progressBar");
-		return UIMultiAnimProgressBar.create(providedBuilder, barBuildName, initialValue);
+		final split = splitSettings(settings, ["buildName"], [], [], [], "progressBar");
+		return UIMultiAnimProgressBar.create(providedBuilder, barBuildName, initialValue, split.main);
 	}
 
 	function addCheckbox(providedBuilder, settings:ResolvedSettings, checked:Null<Bool> = null) {
-		validateSettings(settings, ["buildName", "initialValue"], "checkbox");
 		final checkboxBuildName = getSettings(settings, "buildName", "checkbox");
 		final checkBoxInitialValue = getBoolSettings(settings, "initialValue", checked ?? false);
-		return UIStandardMultiCheckbox.create(providedBuilder, checkboxBuildName, checkBoxInitialValue);
+		final split = splitSettings(settings, ["buildName"], ["initialValue"], [], [], "checkbox");
+		return UIStandardMultiCheckbox.create(providedBuilder, checkboxBuildName, checkBoxInitialValue, split.main);
 	}
 
 	function addRadio(providedBuilder, settings:ResolvedSettings, items:Array<UIElementListItem>, vertical:Bool, selectedIndex:Int = 0) {
-		validateSettings(settings, ["radioBuildName", "radioButtonBuildName"], "radio");
 		final radioBuildName = getSettings(settings, "radioBuildName", vertical ? "radioButtonsVertical" : "radioButtonsHorizontal");
 		final singleRadioButtonBuilderName = getSettings(settings, "radioButtonBuildName", "radio");
-		return UIMultiAnimRadioButtons.create(providedBuilder, radioBuildName, singleRadioButtonBuilderName, items, selectedIndex);
+		final split = splitSettings(settings, ["radioBuildName", "radioButtonBuildName"], [], [], [], "radio");
+		return UIMultiAnimRadioButtons.create(providedBuilder, radioBuildName, singleRadioButtonBuilderName, items, selectedIndex, split.main);
 	}
 	
 	function addText(textValue:String, fontName:String, ?layer:LayersEnum) {
@@ -290,18 +354,20 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 
 	// TODO: needs work
 	function addCheckboxWithText(providedBuilder:MultiAnimBuilder, settings:ResolvedSettings, label:String, fontName:String, checked:Bool) {
-		validateSettings(settings, ["buildName", "textColor", "font"], "checkboxWithText");
 		var checkbox;
 		final checkboxWithNameBuildName = getSettings(settings, "buildName", "checkboxWithText");
-		final textColor = getIntSettings(settings, "textColor", 0xFFFFFFFF);
-		final font = getSettings(settings, "font", fontName);
+		final split = splitSettings(settings, ["buildName"], [], [], [], "checkboxWithText");
+		var params:Map<String, Dynamic> = ["title" => label, "font" => fontName];
+		if (split.main != null)
+			for (key => value in split.main)
+				params.set(key, value);
 
 		final factory = (settings) -> {
 			checkbox = addCheckbox(providedBuilder, settings, checked);
 			addElement(checkbox, null);
 			return checkbox.getObject();
 		}
-		var built = providedBuilder.buildWithParameters(checkboxWithNameBuildName, ["textColor" => textColor, "title" => label, "font" => font],
+		var built = providedBuilder.buildWithParameters(checkboxWithNameBuildName, params,
 			{placeholderObjects: ["checkbox" => PVFactory(factory)]});
 		return new UIElementContainer(checkbox, built.object);
 	}
@@ -313,33 +379,36 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
     }
 
 	function addScrollableList(panelBuilder:UIElementBuilder, itemBuilder:UIElementBuilder, scrollbarBuilder:UIElementBuilder, scrollbarInPanelName:String, items, settings:ResolvedSettings, initialIndex:Int = 0, width:Int = 100, height:Int = 100):UIMultiAnimScrollableList {
-		validateSettings(settings, ["panelBuildName", "itemBuildName", "scrollbarBuildName", "scrollbarInPanelName", "width", "height", "topClearance", "scrollSpeed", "doubleClickThreshold", "wheelScrollMultiplier", "panelMode", "font", "fontColor"], "scrollableList");
-
-		if (hasSettings(settings, "panelBuildName")) {
+		if (hasSettings(settings, "panelBuildName"))
 			panelBuilder = panelBuilder.withUpdatedName(getSettings(settings, "panelBuildName", ""));
-		}
-        if (hasSettings(settings, "itemBuildName")) {
-            itemBuilder = itemBuilder.withUpdatedName(getSettings(settings, "itemBuildName", ""));
-        }
-		if (hasSettings(settings, "scrollbarBuildName")) {
+		if (hasSettings(settings, "itemBuildName"))
+			itemBuilder = itemBuilder.withUpdatedName(getSettings(settings, "itemBuildName", ""));
+		if (hasSettings(settings, "scrollbarBuildName"))
 			scrollbarBuilder = scrollbarBuilder.withUpdatedName(getSettings(settings, "scrollbarBuildName", ""));
-		}
-		if (hasSettings(settings, "scrollbarInPanelName")) {
+		if (hasSettings(settings, "scrollbarInPanelName"))
 			scrollbarInPanelName = getSettings(settings, "scrollbarInPanelName", "scrollbar");
-		}
+		final panelModeStr = getSettings(settings, "panelMode", "scrollable");
+		final sizeMode:PanelSizeMode = if (panelModeStr == "scalable") AutoSize else FixedScroll;
+
+		final split = splitSettings(settings,
+			["panelBuildName", "itemBuildName", "scrollbarBuildName", "scrollbarInPanelName", "panelMode",
+			 "width", "height", "topClearance"],
+			["scrollSpeed", "doubleClickThreshold", "wheelScrollMultiplier"],
+			["item", "scrollbar"],
+			["font", "fontColor"],
+			"scrollableList");
+
+		// Apply prefixed and multi-forward params to sub-builders
+		final itemPrefixed = split.prefixed.get("item");
+		if (itemPrefixed != null)
+			itemBuilder = itemBuilder.withExtraParams(itemPrefixed);
+		final scrollbarPrefixed = split.prefixed.get("scrollbar");
+		if (scrollbarPrefixed != null)
+			scrollbarBuilder = scrollbarBuilder.withExtraParams(scrollbarPrefixed);
+
 		final finalWidth = getIntSettings(settings, "width", width);
 		final finalHeight = getIntSettings(settings, "height", height);
 		final topClearance = getIntSettings(settings, "topClearance", 0);
-		final panelModeStr = getSettings(settings, "panelMode", "scrollable");
-		final sizeMode:PanelSizeMode = if (panelModeStr == "scalable") AutoSize else FixedScroll;
-		if (hasSettings(settings, "font") || hasSettings(settings, "fontColor")) {
-			var itemExtraParams = new Map<String, Dynamic>();
-			if (hasSettings(settings, "font"))
-				itemExtraParams.set("font", getSettings(settings, "font", "m6x11"));
-			if (hasSettings(settings, "fontColor"))
-				itemExtraParams.set("fontColor", getIntSettings(settings, "fontColor", 0xffffff12));
-			itemBuilder = itemBuilder.withExtraParams(itemExtraParams);
-		}
 		final list = UIMultiAnimScrollableList.create(panelBuilder, itemBuilder, scrollbarBuilder, scrollbarInPanelName, finalWidth, finalHeight, items, topClearance, initialIndex, sizeMode);
 		if (hasSettings(settings, "scrollSpeed"))
 			list.scrollSpeedOverride = getFloatSettings(settings, "scrollSpeed", 100);
@@ -356,31 +425,39 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		return addDropdown(builder.createElementBuilder(dropdownBuilderName), builder.createElementBuilder(panelBuilderName), builder.createElementBuilder(panelListItemBuilderName), builder.createElementBuilder(scrollbarBuilderName), scrollbarInPanelName, items, settings, initialIndex);
 	}
 
-	function addDropdown(dropdownBuilder:UIElementBuilder, panelBuilder:UIElementBuilder, itemBuilder:UIElementBuilder,  scrollbarBuilder:UIElementBuilder, scrollbarInPanelName:String, items, settings:ResolvedSettings, initialIndex = 0) {
-		validateSettings(settings, [
-			// dropdown settings
-			"dropdownBuildName", "autoOpen", "autoCloseOnLeave", "closeOnOutsideClick", "transitionTimer",
-			// scrollable list settings (passed through)
-			"panelBuildName", "itemBuildName", "scrollbarBuildName", "scrollbarInPanelName",
-			"width", "height", "topClearance", "scrollSpeed", "doubleClickThreshold", "wheelScrollMultiplier",
-			"panelMode", "font", "fontColor"
-		], "dropdown");
-
-        if (hasSettings(settings, "panelBuildName")) {
+	function addDropdown(dropdownBuilder:UIElementBuilder, panelBuilder:UIElementBuilder, itemBuilder:UIElementBuilder, scrollbarBuilder:UIElementBuilder, scrollbarInPanelName:String, items, settings:ResolvedSettings, initialIndex = 0) {
+		if (hasSettings(settings, "panelBuildName"))
 			panelBuilder = panelBuilder.withUpdatedName(getSettings(settings, "panelBuildName", ""));
-		}
-        if (hasSettings(settings, "itemBuildName")) {
-            itemBuilder = itemBuilder.withUpdatedName(getSettings(settings, "itemBuildName", ""));
-        }
-        if (hasSettings(settings, "dropdownBuildName")) {
-            dropdownBuilder = dropdownBuilder.withUpdatedName(getSettings(settings, "dropdownBuildName", ""));
-        }
-		if (hasSettings(settings, "scrollbarBuildName")) {
+		if (hasSettings(settings, "itemBuildName"))
+			itemBuilder = itemBuilder.withUpdatedName(getSettings(settings, "itemBuildName", ""));
+		if (hasSettings(settings, "dropdownBuildName"))
+			dropdownBuilder = dropdownBuilder.withUpdatedName(getSettings(settings, "dropdownBuildName", ""));
+		if (hasSettings(settings, "scrollbarBuildName"))
 			scrollbarBuilder = scrollbarBuilder.withUpdatedName(getSettings(settings, "scrollbarBuildName", ""));
-		}
-		if (hasSettings(settings, "scrollbarInPanelName")) {
+		if (hasSettings(settings, "scrollbarInPanelName"))
 			scrollbarInPanelName = getSettings(settings, "scrollbarInPanelName", scrollbarInPanelName);
-		}
+		final panelModeStr = getSettings(settings, "panelMode", "scrollable");
+		final sizeMode:PanelSizeMode = if (panelModeStr == "scalable") AutoSize else FixedScroll;
+
+		final split = splitSettings(settings,
+			["dropdownBuildName", "panelBuildName", "itemBuildName", "scrollbarBuildName", "scrollbarInPanelName", "panelMode",
+			 "width", "height", "topClearance"],
+			["autoOpen", "autoCloseOnLeave", "closeOnOutsideClick", "transitionTimer",
+			 "scrollSpeed", "doubleClickThreshold", "wheelScrollMultiplier"],
+			["dropdown", "item", "scrollbar"],
+			["font", "fontColor"],
+			"dropdown");
+
+		// Apply prefixed and multi-forward params to sub-builders
+		final dropdownPrefixed = split.prefixed.get("dropdown");
+		if (dropdownPrefixed != null)
+			dropdownBuilder = dropdownBuilder.withExtraParams(dropdownPrefixed);
+		final itemPrefixed = split.prefixed.get("item");
+		if (itemPrefixed != null)
+			itemBuilder = itemBuilder.withExtraParams(itemPrefixed);
+		final scrollbarPrefixed = split.prefixed.get("scrollbar");
+		if (scrollbarPrefixed != null)
+			scrollbarBuilder = scrollbarBuilder.withExtraParams(scrollbarPrefixed);
 
 		final autoOpen = getBoolSettings(settings, "autoOpen", true);
 		final autoCloseOnLeave = getBoolSettings(settings, "autoCloseOnLeave", true);
@@ -388,17 +465,6 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		final panelWidth = getIntSettings(settings, "width", 120);
 		final panelHeight = getIntSettings(settings, "height", 300);
 		final topClearance = getIntSettings(settings, "topClearance", 0);
-		final panelModeStr = getSettings(settings, "panelMode", "scrollable");
-		final sizeMode:PanelSizeMode = if (panelModeStr == "scalable") AutoSize else FixedScroll;
-		if (hasSettings(settings, "font") || hasSettings(settings, "fontColor")) {
-			var itemExtraParams = new Map<String, Dynamic>();
-			if (hasSettings(settings, "font"))
-				itemExtraParams.set("font", getSettings(settings, "font", "m6x11"));
-			if (hasSettings(settings, "fontColor"))
-				itemExtraParams.set("fontColor", getIntSettings(settings, "fontColor", 0xffffff12));
-			itemBuilder = itemBuilder.withExtraParams(itemExtraParams);
-			dropdownBuilder = dropdownBuilder.withExtraParams(itemExtraParams);
-		}
 		var panel = UIMultiAnimScrollableList.create(panelBuilder, itemBuilder, scrollbarBuilder, scrollbarInPanelName, panelWidth, panelHeight, items, topClearance, initialIndex, sizeMode);
 		if (hasSettings(settings, "scrollSpeed"))
 			panel.scrollSpeedOverride = getFloatSettings(settings, "scrollSpeed", 100);

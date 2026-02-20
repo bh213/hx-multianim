@@ -531,6 +531,12 @@ settings{action => "buy", price:int => 100, weight:float => 1.5, fontColor:color
 
 Supported types: `int`, `float`, `string` (default when no type specified), `color` (accepts named colors like `white`, `red`, hex `#ff7f50`, `0xFF0000` — stored as int).
 
+**Dotted keys** target sub-components in multi-builder UI elements (dropdown, scrollable list):
+```
+settings{item.fontColor:int => 0xff0000, scrollbar.thickness:int => 6}
+```
+The prefix (`item`, `scrollbar`, `dropdown`) routes the setting to the corresponding sub-builder. Unprefixed settings go to the main builder. See the [UI Components](#ui-components) section for valid prefixes per component.
+
 ---
 
 ## Coordinate Systems (xy)
@@ -1837,7 +1843,15 @@ Components are typically created either:
 
 ### Settings Convention
 
-`UIScreenBase` helper methods accept a `ResolvedSettings` map (from `.manim` `settings{...}` blocks). Setting names follow this convention:
+`UIScreenBase` helper methods accept a `ResolvedSettings` map (from `.manim` `settings{...}` blocks).
+
+**Setting categories:**
+1. **Control settings** — consumed by UIScreen, never forwarded. E.g. `buildName`, `text`, `panelMode`.
+2. **Behavioral settings** — set as properties on the created UI object. E.g. `min`, `max`, `step` on slider, `autoOpen` on dropdown.
+3. **Pass-through settings** — forwarded as extra parameters to the underlying programmable. Any setting not recognized as control or behavioral is passed through. The programmable must declare a matching parameter; if not, a clear error is thrown listing available parameters.
+4. **Prefixed pass-through** — `prefix.paramName` targets a sub-builder in multi-builder components. E.g. `item.fontColor` for dropdown/scrollable list.
+
+**Build name conventions:**
 - **Single builder**: `buildName` — overrides the programmable name to build
 - **Multiple builders**: `<element>BuildName` — e.g. `radioBuildName`, `radioButtonBuildName`
 
@@ -1864,14 +1878,11 @@ Components are typically created either:
 
 **UIScreenBase settings:**
 
-| Setting | Type | Default | Description |
-|---------|------|---------|-------------|
-| `buildName` | string | `"button"` | Programmable name |
-| `text` | string | method param | Button text override |
-| `width` | int | `200` | Button width override |
-| `height` | int | `30` | Button height override |
-| `font` | string | `"dd"` | Font name override |
-| `fontColor` | int | `0xffffff12` | Text color override |
+| Setting | Category | Type | Default | Description |
+|---------|----------|------|---------|-------------|
+| `buildName` | control | string | `"button"` | Programmable name |
+| `text` | control | string | method param | Button text override |
+| *any other* | pass-through | — | — | Forwarded to `#button` programmable (e.g. `width`, `height`, `font`, `fontColor`) |
 
 **Events:** `UIClick`
 
@@ -1908,10 +1919,11 @@ placeholder(generated(cross(300, 40, white)), builderParameter("myBtn")) {
 
 **UIScreenBase settings:**
 
-| Setting | Type | Default | Description |
-|---------|------|---------|-------------|
-| `buildName` | string | `"checkbox"` | Programmable name |
-| `initialValue` | bool | `false` | Initial checked state |
+| Setting | Category | Type | Default | Description |
+|---------|----------|------|---------|-------------|
+| `buildName` | control | string | `"checkbox"` | Programmable name |
+| `initialValue` | behavioral | bool | `false` | Initial checked state |
+| *any other* | pass-through | — | — | Forwarded to checkbox programmable |
 
 **Events:** `UIToggle(checked:Bool)`
 
@@ -1936,11 +1948,10 @@ var cb = addCheckbox(builder, false);
 
 **UIScreenBase settings:**
 
-| Setting | Type | Default | Description |
-|---------|------|---------|-------------|
-| `buildName` | string | `"checkboxWithText"` | Programmable name |
-| `textColor` | int | `0xFFFFFFFF` | Text color override |
-| `font` | string | method param | Font name override |
+| Setting | Category | Type | Default | Description |
+|---------|----------|------|---------|-------------|
+| `buildName` | control | string | `"checkboxWithText"` | Programmable name |
+| *any other* | pass-through | — | — | Forwarded to checkboxWithText programmable (e.g. `textColor`, `font`, `title`) |
 
 ```haxe
 var cbText = addCheckboxWithText(builder, "my label", "m6x11", true);
@@ -1967,13 +1978,14 @@ var cbText = addCheckboxWithText(builder, "my label", "m6x11", true);
 
 **UIScreenBase settings:**
 
-| Setting | Type | Default | Description |
-|---------|------|---------|-------------|
-| `buildName` | string | `"slider"` | Programmable name |
-| `size` | int | `200` | Track width |
-| `min` | float | `0` | Minimum value of the slider range |
-| `max` | float | `100` | Maximum value of the slider range |
-| `step` | float | `0` | Step size for snapping (0 = continuous) |
+| Setting | Category | Type | Default | Description |
+|---------|----------|------|---------|-------------|
+| `buildName` | control | string | `"slider"` | Programmable name |
+| `size` | control | int | `200` | Track width |
+| `min` | behavioral | float | `0` | Minimum value of the slider range |
+| `max` | behavioral | float | `100` | Maximum value of the slider range |
+| `step` | behavioral | float | `0` | Step size for snapping (0 = continuous) |
+| *any other* | pass-through | — | — | Forwarded to slider programmable |
 
 **Events:**
 - `UIChangeValue(value:Int)` — integer value (rounded)
@@ -2014,10 +2026,11 @@ slider.onFloatChange = (value:Float, wrapper) -> trace('Value: $value');
 
 **UIScreenBase settings:**
 
-| Setting | Type | Default | Description |
-|---------|------|---------|-------------|
-| `radioBuildName` | string | `"radioButtonsVertical"` / `"radioButtonsHorizontal"` | Container programmable name |
-| `radioButtonBuildName` | string | `"radio"` | Single radio button programmable name |
+| Setting | Category | Type | Default | Description |
+|---------|----------|------|---------|-------------|
+| `radioBuildName` | control | string | `"radioButtonsVertical"` / `"radioButtonsHorizontal"` | Container programmable name |
+| `radioButtonBuildName` | control | string | `"radio"` | Single radio button programmable name |
+| *any other* | pass-through | — | — | Forwarded to radio container programmable |
 
 **Events:** `UIChangeItem(index:Int, items:Array<UIElementListItem>)`
 
@@ -2042,9 +2055,10 @@ A display-only component for health bars, XP bars, loading indicators, etc. The 
 
 **UIScreenBase settings:**
 
-| Setting | Type | Default | Description |
-|---------|------|---------|-------------|
-| `buildName` | string | `"progressBar"` | Programmable name |
+| Setting | Category | Type | Default | Description |
+|---------|----------|------|---------|-------------|
+| `buildName` | control | string | `"progressBar"` | Programmable name |
+| *any other* | pass-through | — | — | Forwarded to progressBar programmable |
 
 **Events:** `UIChangeValue(value:Int)` — emitted via `syncInitialState` when added to screen
 
@@ -2127,21 +2141,24 @@ The legacy `tileName` field (plain string file path) is still supported but depr
 
 **UIScreenBase settings:**
 
-| Setting | Type | Default | Description |
-|---------|------|---------|-------------|
-| `panelBuildName` | string | method param | Panel programmable name |
-| `itemBuildName` | string | method param | Item programmable name |
-| `scrollbarBuildName` | string | method param | Scrollbar programmable name |
-| `scrollbarInPanelName` | string | `"scrollbar"` | Named element in panel for scrollbar placement |
-| `width` | int | `100` | Panel width |
-| `height` | int | `100` | Panel height (acts as max height when `panelMode` is `scalable`) |
-| `topClearance` | int | `0` | Top margin |
-| `panelMode` | string | `"scrollable"` | `"scrollable"` for fixed height with scrollbar, `"scalable"` for auto-sizing to content |
-| `scrollSpeed` | float | from `.manim` or `100` | Scroll speed override (pixels/sec) |
-| `doubleClickThreshold` | float | `0.3` | Double-click detection window (seconds) |
-| `wheelScrollMultiplier` | float | `10` | Mouse wheel scroll sensitivity |
-| `font` | string | item default | Font name override for list items |
-| `fontColor` | int/color | item default | Text color override for list items |
+| Setting | Category | Type | Default | Description |
+|---------|----------|------|---------|-------------|
+| `panelBuildName` | control | string | method param | Panel programmable name |
+| `itemBuildName` | control | string | method param | Item programmable name |
+| `scrollbarBuildName` | control | string | method param | Scrollbar programmable name |
+| `scrollbarInPanelName` | control | string | `"scrollbar"` | Named element in panel for scrollbar placement |
+| `width` | control | int | `100` | Panel width |
+| `height` | control | int | `100` | Panel height (acts as max height when `panelMode` is `scalable`) |
+| `topClearance` | control | int | `0` | Top margin |
+| `panelMode` | control | string | `"scrollable"` | `"scrollable"` for fixed height with scrollbar, `"scalable"` for auto-sizing to content |
+| `scrollSpeed` | behavioral | float | from `.manim` or `100` | Scroll speed override (pixels/sec) |
+| `doubleClickThreshold` | behavioral | float | `0.3` | Double-click detection window (seconds) |
+| `wheelScrollMultiplier` | behavioral | float | `10` | Mouse wheel scroll sensitivity |
+| `font` | multi-forward | string | item default | Font name — forwarded to item builder |
+| `fontColor` | multi-forward | int/color | item default | Text color — forwarded to item builder |
+| `item.*` | prefixed pass-through | — | — | Forwarded to item sub-builder (e.g. `item.fontColor`) |
+| `scrollbar.*` | prefixed pass-through | — | — | Forwarded to scrollbar sub-builder |
+| *any other* | pass-through | — | — | Forwarded to panel (main) programmable |
 
 **Events:** `UIChangeItem(index, items)`, `onItemDoubleClicked` callback
 
@@ -2189,15 +2206,19 @@ Combines a closed/open button with a `UIMultiAnimScrollableList` panel. Supports
 
 **UIScreenBase settings** (includes all Scrollable List settings, plus):
 
-| Setting | Type | Default | Description |
-|---------|------|---------|-------------|
-| `dropdownBuildName` | string | method param | Dropdown programmable name |
-| `autoOpen` | bool | `true` | Open on mouse enter |
-| `autoCloseOnLeave` | bool | `true` | Close on mouse leave |
-| `closeOnOutsideClick` | bool | `true` | Close when clicking outside |
-| `transitionTimer` | float | from `.manim` or `1.0` | Open/close animation duration override |
-| `font` | string | `"m6x11"` | Font for both the dropdown button and list items |
-| `fontColor` | color/int | `0xffffff12` | Text color for both the dropdown button and list items |
+| Setting | Category | Type | Default | Description |
+|---------|----------|------|---------|-------------|
+| `dropdownBuildName` | control | string | method param | Dropdown programmable name |
+| `autoOpen` | behavioral | bool | `true` | Open on mouse enter |
+| `autoCloseOnLeave` | behavioral | bool | `true` | Close on mouse leave |
+| `closeOnOutsideClick` | behavioral | bool | `true` | Close when clicking outside |
+| `transitionTimer` | behavioral | float | from `.manim` or `1.0` | Open/close animation duration override |
+| `font` | multi-forward | string | `"m6x11"` | Font — forwarded to both dropdown button and item builders |
+| `fontColor` | multi-forward | color/int | `0xffffff12` | Text color — forwarded to both dropdown button and item builders |
+| `dropdown.*` | prefixed pass-through | — | — | Forwarded to dropdown button sub-builder (e.g. `dropdown.font`) |
+| `item.*` | prefixed pass-through | — | — | Forwarded to item sub-builder |
+| `scrollbar.*` | prefixed pass-through | — | — | Forwarded to scrollbar sub-builder |
+| *any other* | pass-through | — | — | Forwarded to panel (main) programmable |
 
 **Events:** `UIChangeItem(index, items)`
 
