@@ -232,29 +232,44 @@ The v0.12 breaking change bumped `.manim` version from 0.3 to 0.5. This is docum
 
 ## Test Coverage Gaps
 
-### 28. No unit tests for parser error paths
+The suite has **193 tests total**: 103 parser error tests, 19 anim parser tests, ~60 codegen unit tests, and 72 visual regression tests. Parser error coverage is strong. The gaps are in runtime behavior:
 
-All 73 tests are visual regression tests (render + screenshot compare). There are no unit tests for:
-- Parser error messages on malformed input
-- Builder error handling for missing references
-- Edge cases in expression evaluation
-- Conditional chain logic
+```
+                     Parsing  Building  Rendering  Macro-Gen
+Core Features          ++       ++         ++       ++
+Conditionals           ++       ++         ++       +
+Coordinates            +        ++         ++       +
+Animations             +        +          ++       +
+Particles              +        +          -        +
+Data Blocks            ++       -          -        -
+Error Handling         ++       -          -        -
+Edge Cases             +        -          -        -
+Performance            -        -          -        -
+```
+
+### 28. No runtime error or edge case tests
+
+Parser error tests exist (103 in `ParserErrorTest.hx`), but no builder/runtime error tests for: missing resources, invalid parameter types at runtime, circular imports, or expression type mismatches.
 
 ### 29. No tests for incremental updates
 
-`IncrementalUpdateContext` (parameter changes without rebuild) has no dedicated test coverage.
+`IncrementalUpdateContext` (parameter changes without rebuild) has no dedicated test coverage. `beginUpdate()`/`endUpdate()` batching untested.
 
 ### 30. No tests for UI component lifecycle
 
-UI components (button, checkbox, slider, dropdown, scrollable list, radio buttons) are tested visually but not for:
-- Event handling correctness
-- State transitions
-- `clear()`/dispose behavior
-- Edge cases (empty lists, zero-size sliders, etc.)
+UI components are tested visually but not for event handling, state transitions, `clear()`/dispose, or edge cases (empty lists, zero-size sliders).
 
-### 31. Particle system untested
+### 31. Conditional + repeatable interaction untested
 
-No visual regression tests for particle rendering or sub-emitter behavior.
+CLAUDE.md documents `@(index >= 3)` as broken with repeatable vars. No test exists for this interaction — tests exist for conditionals and for repeatables, but not for conditions referencing loop variables.
+
+### 31b. Particle rendering and sub-emitters untested
+
+No visual regression tests for particle effects. Sub-emitter runtime spawning (stubbed in code) has no test.
+
+### 31c. Frame-based test timing is fragile
+
+Tests use a 200-frame safety timeout and frame-based async (`waitForUpdate` callback). Not deterministic across machines — potential CI flakiness source.
 
 ---
 
