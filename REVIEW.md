@@ -302,6 +302,39 @@ TODO.md mentions `animSM support?` for particles. Tying particle effects to stat
 
 ---
 
+## Type System Issues
+
+### 41. Excessive `Dynamic` usage erodes type safety
+
+The codebase has 10+ locations using `Dynamic` where stronger types exist:
+
+- **`ProgrammableBuilder._builder`** (`ProgrammableBuilder.hx:34`) — typed `Dynamic` instead of `Null<MultiAnimBuilder>`, requiring `@:privateAccess` casts everywhere. Should be typed properly.
+- **`setParameter(name, value:Dynamic)`** (`MultiAnimBuilder.hx:239,408`) — parameter values lose type info at the API boundary
+- **`UIElementListItem.data:Dynamic`** (`UIElement.hx:31`) — list item custom data has no type constraint
+- **`AnimationPlaylistEvent.Trigger(data:Dynamic)`** (`AnimationSM.hx:12`) — event data untyped
+
+### 42. Dead enum variants — `RVArray` and `RVArrayReference`
+
+`MultiAnimParser.hx:459-460` defines `RVArray` and `RVArrayReference` variants in the `ReferenceableValue` enum. Every use site in `MultiAnimBuilder.hx` (lines 655, 793, 852, 936) throws `"not supported"`. These are dead code — either implement array resolution or remove the variants to avoid confusion.
+
+### 43. Particle type duplication between parser and runtime
+
+Two parallel type hierarchies exist:
+- Parser AST: `ParticlesEmitMode`, `ParticleForceFieldDef`, `ParticleSubEmitterDef`, `ParticleBoundsModeDef`
+- Runtime: `PartEmitMode`, `ForceField`, `SubEmitter`, `BoundsMode`
+
+Each pair has manual conversion functions between them. This doubles the maintenance surface and risks the two getting out of sync.
+
+### 44. `BuiltHeapsComponent` mixes incompatible base types
+
+`MultiAnimParser.hx:291-302` defines variants like `HeapsObject(h2d.Object)`, `HeapsBitmap(h2d.Bitmap)`, etc. alongside `StateAnim(AnimationSM)` and `Particles(Particles)` which do NOT extend `h2d.Object`. The `toh2dObject()` conversion function must handle these specially, and callers that assume an `h2d.Object` result will crash on StateAnim/Particles.
+
+### 45. Inconsistent `@:nullSafety` coverage
+
+26 files use `@:nullSafety` but many enum/typedef definitions lack it. Some files have both strict and lenient null handling within the same scope. The inconsistency means null-checking is not reliably enforced project-wide.
+
+---
+
 ## Summary
 
 | Category | Count | Top Priority |
@@ -315,5 +348,6 @@ TODO.md mentions `animSM support?` for particles. Tying particle effects to stat
 | Test gaps | 4 | #28 parser error tests |
 | Performance | 4 | #32 per-param updates |
 | Feature suggestions | 5 | #36 reload recovery |
+| Type system | 5 | #41 Dynamic usage, #42 dead variants |
 
 The codebase is well-structured and the DSL design is thoughtful. The critical bugs (#1 and #2) are straightforward fixes. The biggest architectural concern is the lack of non-visual tests — as the language grows, parser and builder edge cases need systematic unit testing beyond screenshot comparisons.
