@@ -583,6 +583,10 @@ class SlotHandle {
 			throw 'Slot has no parameters';
 		incrementalContext.setParameter(name, value);
 	}
+
+	public function getScreenBounds():h2d.col.Bounds {
+		return container.getBounds();
+	}
 }
 
 @:nullSafety
@@ -1645,7 +1649,7 @@ class MultiAnimBuilder {
 		// Center text vertically (use integer position for deterministic rendering)
 		final textHeight = textObj.textHeight;
 		textObj.x = 0;
-		textObj.y = Math.floor((h - textHeight) / 2);
+		textObj.y = Math.floor((h - font.lineHeight) / 2);
 
 		// Render to texture using drawTo
 		final texture = new h3d.mat.Texture(w, h, [Target]);
@@ -2245,6 +2249,9 @@ class MultiAnimBuilder {
 					case NamedGrid(system): calculatePosition(coord, system, hexCoordinateSystem);
 					case NamedHex(system): calculatePosition(coord, gridCoordinateSystem, system);
 				}
+			case WITH_OFFSET(base, offsetX, offsetY):
+				final basePt = calculatePosition(base, gridCoordinateSystem, hexCoordinateSystem);
+				returnPosition(basePt.x + resolveAsNumber(offsetX), basePt.y + resolveAsNumber(offsetY));
 		}
 		return pos;
 	}
@@ -4394,12 +4401,12 @@ class MultiAnimBuilder {
 	public function getLayouts(?builderParams:BuilderParameters):MultiAnimLayouts {
 		var node = multiParserResult?.nodes.get(MultiAnimParser.defaultLayoutNodeName);
 		if (node == null)
-			throw 'relativeLayouts does not exist' + currentNodePos();
+			throw 'layouts block does not exist' + currentNodePos();
 		switch node.type {
 			case RELATIVE_LAYOUTS(layoutsDef):
 				return new MultiAnimLayouts(layoutsDef, this);
 			default:
-				throw 'relativeLayouts is of unexpected type ${node.type}' + MacroUtils.nodePos(node);
+				throw 'layouts block is of unexpected type ${node.type}' + MacroUtils.nodePos(node);
 		}
 	}
 

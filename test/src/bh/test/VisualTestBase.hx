@@ -133,7 +133,7 @@ class VisualTestBase extends utest.Test {
 			var loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
 			var builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, animFilePath);
 
-			var built = builder.buildWithParameters(name, new Map());
+			var built = builder.buildWithParameters(name, new Map(), {scene: s2d});
 			verbose('Built element "$name" from $animFilePath: $built');
 			if (built == null) {
 				throw 'Error: Failed to build element "$name" from $animFilePath';

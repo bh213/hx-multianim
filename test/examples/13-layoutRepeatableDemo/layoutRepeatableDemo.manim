@@ -1,6 +1,6 @@
 version: 0.5
 
-relativeLayouts {
+layouts {
   grid: 128, 72 {
     #repeatableTest list {
       // Left eye

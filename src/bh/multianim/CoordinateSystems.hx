@@ -30,6 +30,7 @@ enum Coordinates {
 	SELECTED_HEX_CELL_CORNER(cell:Coordinates, cornerIndex:ReferenceableValue, factor:ReferenceableValue);
 	SELECTED_HEX_CELL_EDGE(cell:Coordinates, direction:ReferenceableValue, factor:ReferenceableValue);
 	NAMED_COORD(name:String, coord:Coordinates);
+	WITH_OFFSET(base:Coordinates, offsetX:ReferenceableValue, offsetY:ReferenceableValue);
 }
 
 @:using(bh.multianim.CoordinateSystems.HexCoordinateSystemHelper)

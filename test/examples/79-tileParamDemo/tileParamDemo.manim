@@ -1,6 +1,6 @@
 version: 0.5
 
-relativeLayouts {
+layouts {
   #demoLayout sequence($i: 0..5) point: 20 + $i div 3 * 150, 10 + ($i * 35) % 105
 }
 

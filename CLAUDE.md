@@ -165,6 +165,7 @@ animation {
 - Hex properties: `$hex.width`, `$hex.height`
 - Named systems: `grid: #name spacingX, spacingY`, `hex: #name orientation(w, h)`
 - Value extraction: `$grid.pos(x, y).x`, `$hex.corner(0, 1.0).y`
+- Offset suffix: `.offset(x, y)` on any coordinate expression adds a pixel offset (e.g., `layout(name).offset(5, 10)`, `$grid.pos(1, 2).offset(3, 4)`)
 - Context: `$ctx.width`, `$ctx.height`, `$ctx.random(min, max)`, `$ctx.font("name").lineHeight`, `$ctx.font("name").baseLine`
 - Layout: `layout(layoutName [, index])`
 

@@ -78,6 +78,7 @@ class MultiAnimLayouts {
             case Single(content):1;
             case List(list): list.length;
             case Sequence(varName, from, to, content): to - from + 1;
+            case Grid(cols, rows, _, _): cols * rows;
         }
     }
 
@@ -87,7 +88,7 @@ class MultiAnimLayouts {
 
     public function getPointFromLayout(l:Layout, index:Int, ?builderParams:BuilderParameters):FPoint {
         if (index < 0) throw 'index < 0 for layout ${l.name}';
-        return switch l.type {
+        var pt = switch l.type {
             case Single(content):
                 resolve(l.grid, l.hex, l.offset, content, "i", index, builderParams);
             case List(list):
@@ -96,7 +97,34 @@ class MultiAnimLayouts {
             case Sequence(variable, from, to, content):
                 if (index > to - from) throw 'index > to - from for layout ${l.name}';
                 resolve(l.grid, l.hex, l.offset, content, variable, from + index, builderParams);
+            case Grid(cols, rows, cellW, cellH):
+                if (index >= cols * rows) throw 'index $index out of bounds for grid layout ${l.name} (${cols}x${rows})';
+                var col = index % cols;
+                var row = Std.int(index / cols);
+                new FPoint(l.offset.x + col * cellW, l.offset.y + row * cellH);
         }
+        return applyAlignment(pt, l);
+    }
+
+    function applyAlignment(pt:FPoint, l:Layout):FPoint {
+        if (l.alignX == Left && l.alignY == Top) return pt;
+        final scene = builder.builderParams.scene;
+        if (scene == null) throw 'layout "${l.name}" uses align but no scene is available';
+        if (l.alignX != Left) {
+            pt.x = switch l.alignX {
+                case Left: pt.x;
+                case Center: scene.width / 2 + pt.x;
+                case Right: scene.width - pt.x;
+            }
+        }
+        if (l.alignY != Top) {
+            pt.y = switch l.alignY {
+                case Top: pt.y;
+                case Center: scene.height / 2 + pt.y;
+                case Bottom: scene.height - pt.y;
+            }
+        }
+        return pt;
     }
 
     public function getPoint(name:String, index:Int = 0):FPoint {

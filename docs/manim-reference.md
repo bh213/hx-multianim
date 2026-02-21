@@ -15,7 +15,7 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | `#name curves { ... }` | Define named interpolation curves |
 | `#name paths { ... }` | Define named movement paths |
 | `#name animatedPath { ... }` | Define animated path with curves, events, and timing |
-| `#name relativelayouts { ... }` | Define named coordinate layouts for positioning |
+| `#name layouts { ... }` | Define named coordinate layouts for positioning |
 | `#name atlas2("file") { ... }` | Define inline sprite atlas from image file |
 | `#name palette { ... }` | Define color palette |
 | `#name autotile { ... }` | Define procedural auto-tile set |
@@ -79,8 +79,8 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 
 | Iterator | Description |
 |----------|-------------|
-| `step(dx, dy, count)` | Fixed step offset, repeated `count` times |
-| `layout(layoutName)` | Position from named relative layout |
+| `step(count, dx: N, dy: N)` | Fixed step offset, repeated `count` times |
+| `layout("blockName", "entryName")` | Position from named relative layout (blockName is label only, entryName is the `#name` used in layout) |
 | `array(arrayName)` | Iterate over data array |
 | `range(start, end, step)` | Numeric range with optional step |
 | `stateanim(file, anim, selector)` | Iterate animation frames; exposes `$bitmap`, `$tilename` |
@@ -290,6 +290,10 @@ Define with `hex: flat(w, h)` or `hex: pointy(w, h)` (or named: `hex: #name ...`
 
 ### Layout Positioning
 `layout(layoutName)` or `layout(layoutName, $index)` — position from named layout definition.
+
+### Offset Suffix
+`.offset(x, y)` suffix on any coordinate expression adds a pixel offset to the result.
+Works with all coordinate types: `layout(name).offset(5, 10)`, `$grid.pos(1, 2).offset(3, 4)`, `$hex.cube(q, r, s).offset(5, 5)`.
 
 ### Value Extraction
 `.x` or `.y` suffix on any coordinate method extracts a single component for use in expressions.
@@ -594,15 +598,93 @@ Bezier smoothing options: `auto`, `distance(value)`, or none.
 
 ---
 
-## Relative Layouts
+## Layouts
 
-| Type | Description |
-|------|-------------|
-| `point: x, y` | Single named position |
-| `list { point: x, y ... }` | Named list of positions |
-| `sequence($i: range) point: expr` | Generated positions from range expression |
+Defined inside `layouts { ... }` block at the root of a programmable.
 
-Layout types for positioning: `point`, `grid`, `hexgrid`, `offset`.
+### Layout Entry Types
+
+| Syntax | Description |
+|--------|-------------|
+| `#name point: x, y` | Single named position |
+| `#name point: $grid.pos(x, y)` | Single position using grid coordinates |
+| `#name list { point: x, y; ... }` | Explicit list of positions |
+| `#name sequence($i: from..to) point: expr, expr` | Generated positions from range variable |
+| `#name cells(cols: N, rows: N, cellWidth: N, cellHeight: N)` | Cell grid layout — `cols * rows` points in row-major order |
+
+### Container Blocks
+
+Containers scope coordinate systems and offsets for nested entries:
+
+| Block | Description |
+|-------|-------------|
+| `grid: spacingX, spacingY { ... }` | Set grid coordinate system for children |
+| `hexgrid: flat\|pointy(w, h) { ... }` | Set hex coordinate system for children |
+| `offset: x, y { ... }` | Add offset to all children (cumulative, nestable) |
+
+### Accessing Layout Points
+
+| Syntax | Description |
+|--------|-------------|
+| `layout(layoutName)` | Position element at layout's single/first point |
+| `layout(layoutName, $index)` | Position at indexed point (for list/sequence/cells) |
+
+### Alignment (Edge-Relative Positioning)
+
+Per-layout trailing modifier that changes the coordinate origin edge. Coordinates become insets from the specified edge of the screen/container.
+
+```
+#name <layout-type> align: <values>
+```
+
+| Value | Axis | Meaning |
+|-------|------|---------|
+| `left` | X | Default — x measured from left edge |
+| `right` | X | x measured from right edge (`screenWidth - x`) |
+| `centerX` | X | x measured from horizontal center (`screenWidth/2 + x`) |
+| `top` | Y | Default — y measured from top edge |
+| `bottom` | Y | y measured from bottom edge (`screenHeight - y`) |
+| `centerY` | Y | y measured from vertical center (`screenHeight/2 + y`) |
+| `center` | X+Y | Shorthand for `centerX, centerY` |
+
+Only one value per axis is allowed. Mixing two X values (e.g. `right, centerX`) or two Y values is an error. `center` cannot be combined with any other value (ambiguity error).
+
+```manim
+#hud point: 10, 10 align: right, top           # 10px from right edge, 10px from top
+#status point: 0, 20 align: center             # centered on screen, 20px below center
+#invGrid cells(...) align: right, bottom        # grid anchored from bottom-right
+```
+
+### Example
+
+```manim
+layouts {
+    offset: 10, 20 {
+        #pos1 point: 50, 100
+        grid: 32, 32 {
+            #slots sequence($i: 0..5) point: $grid.pos($i, 0)
+        }
+        hexgrid: pointy(25.0, 25.0) {
+            #hexPattern list {
+                point: $hex.cube(0, 0, 0)
+                point: $hex.cube(1, -1, 0)
+                point: $hex.cube(0, 1, -1)
+            } align: right
+        }
+        #invGrid cells(cols: 4, rows: 3, cellWidth: 58, cellHeight: 58)
+        #minimap point: 10, 10 align: right, bottom
+    }
+}
+
+// Using layouts in programmable:
+#myComponent programmable() {
+    bitmap(...): layout(pos1)                              // single point
+    bitmap(...): layout(minimap).offset(-80, 0)            // with offset suffix
+    repeatable($i, layout("layouts", "slots")) {            // layout iterator
+        bitmap(...): 0, 0                                  // children at 0,0 (iterator positions the wrapper)
+    }
+}
+```
 
 ---
 

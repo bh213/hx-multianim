@@ -80,8 +80,9 @@ function Do-Run {
     # --- PHASE 1: Compilation ---
     Write-Status "Compiling..."
     $psi = New-Object System.Diagnostics.ProcessStartInfo
-    $psi.FileName = "haxe"
-    $psi.Arguments = $hxml
+    # Use cmd.exe /c to support haxe installed as .cmd/.ps1 wrapper (e.g. lix/npm shims)
+    $psi.FileName = "cmd.exe"
+    $psi.Arguments = "/c haxe $hxml"
     $psi.UseShellExecute = $false
     $psi.WorkingDirectory = $Root
     if ($AIOutput) {
