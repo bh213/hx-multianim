@@ -2162,7 +2162,7 @@ class BuilderUnitTest extends BuilderTestBase {
 		// not once per child. With 3 layout points and 2 children per iteration,
 		// the old code would consume 2 points per iteration and run out at iteration 2.
 		final result = buildFromSource("
-			relativeLayouts {
+			layouts {
 				#testLayout list {
 					point: 10, 10
 					point: 110, 10
@@ -2207,7 +2207,7 @@ class BuilderUnitTest extends BuilderTestBase {
 	public function testLayoutRepeatableSingleChild():Void {
 		// Sanity check: single-child layout repeatable should still work
 		final result = buildFromSource("
-			relativeLayouts {
+			layouts {
 				#testLayout list {
 					point: 0, 0
 					point: 50, 0

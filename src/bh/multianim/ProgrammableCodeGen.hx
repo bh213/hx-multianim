@@ -1300,7 +1300,7 @@ class ProgrammableCodeGen {
 		// Look up the #defaultLayout node from allParsedNodes
 		final layoutNode = allParsedNodes.get("#defaultLayout");
 		if (layoutNode == null) {
-			Context.warning('ProgrammableCodeGen: no relativeLayouts found for layout "$layoutName", using fallback', Context.currentPos());
+			Context.warning('ProgrammableCodeGen: no layouts block found for layout "$layoutName", using fallback', Context.currentPos());
 			processRepeatFallback(node, parentField, fields, ctorExprs, siblings, pos);
 			return;
 		}
@@ -1414,6 +1414,29 @@ class ProgrammableCodeGen {
 					}
 					loopVarSubstitutions.remove(varName);
 					loopVarSubstitutions.remove(seqVarName);
+				}
+
+			case Grid(cols, rows, cellW, cellH):
+				final offsetX:Float = layout.offset != null ? layout.offset.x : 0;
+				final offsetY:Float = layout.offset != null ? layout.offset.y : 0;
+				final total = cols * rows;
+				for (i in 0...total) {
+					loopVarSubstitutions.set(varName, i);
+					final col = i % cols;
+					final row = Std.int(i / cols);
+					final px:Float = col * cellW + offsetX;
+					final py:Float = row * cellH + offsetY;
+					if (px != 0 || py != 0) {
+						final iterContainerName = "_e" + (elementCounter++);
+						fields.push(makeField(iterContainerName, FVar(macro :h2d.Object, null), [APrivate], pos));
+						ctorExprs.push(macro $p{["this", iterContainerName]} = new h2d.Object());
+						ctorExprs.push(macro $p{["this", iterContainerName]}.setPosition($v{px}, $v{py}));
+						ctorExprs.push(macro $p{["this", containerName]}.addChild($p{["this", iterContainerName]}));
+						processChildren(node.children, iterContainerName, fields, ctorExprs, [], pos);
+					} else {
+						processChildren(node.children, containerName, fields, ctorExprs, [], pos);
+					}
+					loopVarSubstitutions.remove(varName);
 				}
 		}
 	}
@@ -2923,6 +2946,11 @@ class ProgrammableCodeGen {
 				if (namedCS != null) {
 					resolveNamedCoordStatic(namedCS, coord, pos, node);
 				} else null;
+			case WITH_OFFSET(base, offsetX, offsetY):
+				final basePt = coordsToStaticXY(base, pos, node);
+				final ox = resolveRVStatic(offsetX);
+				final oy = resolveRVStatic(offsetY);
+				if (basePt != null && ox != null && oy != null) {x: basePt.x + ox, y: basePt.y + oy} else null;
 		};
 	}
 
@@ -4660,6 +4688,19 @@ class ProgrammableCodeGen {
 					else
 						null;
 				} else null;
+			case WITH_OFFSET(base, offsetX, offsetY):
+				final baseExpr = generatePositionExpr(base, fieldName, pos, node);
+				if (baseExpr != null) {
+					final ox = resolveRVStatic(offsetX);
+					final oy = resolveRVStatic(offsetY);
+					if (ox != null && oy != null) {
+						final basePt = coordsToStaticXY(base, pos, node);
+						if (basePt != null)
+							macro $fieldRef.setPosition($v{basePt.x + ox}, $v{basePt.y + oy})
+						else
+							null;
+					} else null;
+				} else null;
 		};
 	}
 
@@ -4909,6 +4950,11 @@ class ProgrammableCodeGen {
 			case Sequence(_, from, to, content):
 				if (index >= from && index <= to)
 					resolveLayoutPoint(content, layout, index)
+				else
+					null;
+			case Grid(cols, rows, cellW, cellH):
+				if (index >= 0 && index < cols * rows)
+					{x: (index % cols) * cellW + 0.0, y: Std.int(index / cols) * cellH + 0.0}
 				else
 					null;
 		};

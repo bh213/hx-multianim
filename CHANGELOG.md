@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.13-dev] - 2026-02-19
+## [0.13-dev] - 2026-02-21
 
 ### Added
 - **Parameterized slots** — `#name slot(param:type=default, ...)` for visual state management
@@ -57,6 +57,28 @@
   - Multi-forward: unprefixed `font`/`fontColor` on dropdown/scrollableList forwards to all relevant sub-builders
   - Improved error messages: mismatched pass-through params show programmable name and available parameters
   - Added `?extraParams` to `UIMultiAnimCheckbox`, `UIMultiAnimRadioButtons`, `UIMultiAnimProgressBar`, `UIMultiAnimSlider`
+- **Layout alignment** — `align:` modifier on layout entries for edge-relative positioning
+  - `align: right` — mirror X from right edge (`x = screenWidth - x`)
+  - `align: bottom` — mirror Y from bottom edge (`y = screenHeight - y`)
+  - `align: centerX` / `align: centerY` — offset from center (`x = screenWidth/2 + x`)
+  - `align: center` — shorthand for `centerX + centerY`
+  - Combinable: `align: right, bottom`, `align: centerX, bottom`, etc.
+  - Works on all layout types: `point`, `list`, `sequence`, `cells`
+  - Requires scene dimensions available at build time
+- **`cells` layout type** — grid-based layout for uniform cell grids
+  - Syntax: `#name cells(cols: N, rows: N, cellWidth: N, cellHeight: N)`
+  - Generates `cols * rows` positions in row-major order
+- **`hexgrid` coordinate system in layouts** — hex coordinates within layout blocks
+  - Syntax: `hexgrid: pointy(w, h) { ... }` or `hexgrid: flat(w, h) { ... }`
+  - Points use `$hex.cube(q, r, s)`, `$hex.corner(i, s)`, `$hex.edge(d, s)`
+  - Combinable with `align:` for edge-relative hex layouts
+- **`.offset()` coordinate suffix** — `WITH_OFFSET` for adjusting any coordinate type
+  - Syntax: `layout(name).offset(x, y)`, `$grid.pos(x, y).offset(ox, oy)`, etc.
+  - Works on all coordinate types: OFFSET, LAYOUT, grid, hex, etc.
+  - Supported in builder and codegen (`coordsToStaticXY`, `generatePositionExpr`)
+- **Sub-emitter `burstCount`** — particle sub-emitters now respect `count` field instead of always spawning 1 particle
+- **Particle loop recycle** — particles with `loop: true` that exit bounds are recycled (re-initialized) instead of killed
+- **`manim-reference.md`** — comprehensive quick-lookup reference document for all `.manim` language constructs
 
 ### Fixed
 - **`filledRect` restored to `data.fill()`** — removed manual `setPixel` loop workaround; fixed `updateBitmap()` to read pixels before `unlock()` so `fill()` results are preserved on JS
@@ -74,6 +96,7 @@
 - **Removed `PVObject` support for UI elements** — removed error-prone `PVObject` path; `PVFactory` is now the only supported approach for UI element parameters in `macroBuildWithParameters`
 - **Animated path improvements** — better path normalization, enhanced speed/duration/easing support
 - **Playground removed from repository** — moved to separate `../hx-multianim-playground` repository
+- **`relativeLayouts` renamed to `layouts`** — DSL keyword, docs, and all references updated; parser still accepts `relativeLayouts` for backward compatibility
 
 ## [0.12] - 2026-02-16
 

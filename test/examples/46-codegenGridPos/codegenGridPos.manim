@@ -1,6 +1,6 @@
 version: 0.5
 
-relativeLayouts {
+layouts {
   #posLayout list {
     point: 10, 10
     point: 90, 10

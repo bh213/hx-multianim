@@ -1849,4 +1849,213 @@ class ParserErrorTest extends utest.Test {
 		');
 		Assert.isTrue(success, "Mixed dotted and plain setting keys should parse");
 	}
+
+	// ===== Layout align tests =====
+
+	@Test
+	public function testLayoutAlignCenterX() {
+		var success = parseExpectingSuccess("
+			layouts {
+				#pos point: 100, 50 align: centerX
+			}
+			#test programmable() {
+				bitmap(generated(color(10, 10, #f00))): layout(pos)
+			}
+		");
+		Assert.isTrue(success, "Layout align: centerX should parse");
+	}
+
+	@Test
+	public function testLayoutAlignRightBottom() {
+		var success = parseExpectingSuccess("
+			layouts {
+				#pos point: 10, 10 align: right, bottom
+			}
+			#test programmable() {
+				bitmap(generated(color(10, 10, #f00))): layout(pos)
+			}
+		");
+		Assert.isTrue(success, "Layout align: right, bottom should parse");
+	}
+
+	@Test
+	public function testLayoutAlignCenter() {
+		var success = parseExpectingSuccess("
+			layouts {
+				#pos point: 0, 0 align: center
+			}
+			#test programmable() {
+				bitmap(generated(color(10, 10, #f00))): layout(pos)
+			}
+		");
+		Assert.isTrue(success, "Layout align: center should parse");
+	}
+
+	@Test
+	public function testLayoutAlignCenterY() {
+		var success = parseExpectingSuccess("
+			layouts {
+				#pos point: 50, 0 align: centerY
+			}
+			#test programmable() {
+				bitmap(generated(color(10, 10, #f00))): layout(pos)
+			}
+		");
+		Assert.isTrue(success, "Layout align: centerY should parse");
+	}
+
+	@Test
+	public function testLayoutAlignOnCells() {
+		var success = parseExpectingSuccess("
+			layouts {
+				#grid cells(cols: 3, rows: 2, cellWidth: 50, cellHeight: 50) align: right, bottom
+			}
+			#test programmable() {
+				bitmap(generated(color(10, 10, #f00))): layout(grid, 0)
+			}
+		");
+		Assert.isTrue(success, "Layout align on cells should parse");
+	}
+
+	@Test
+	public function testLayoutAlignOnSequence() {
+		var success = parseExpectingSuccess("
+			layouts {
+				grid: 32, 32 {
+					#slots sequence($i: 0..5) point: $i * 32, 0 align: centerX
+				}
+			}
+			#test programmable() {
+				bitmap(generated(color(10, 10, #f00))): layout(slots, 0)
+			}
+		");
+		Assert.isTrue(success, "Layout align on sequence should parse");
+	}
+
+	@Test
+	public function testLayoutAlignOnList() {
+		var success = parseExpectingSuccess("
+			layouts {
+				#pts list {
+					point: 10, 10
+					point: 20, 20
+				} align: bottom
+			}
+			#test programmable() {
+				bitmap(generated(color(10, 10, #f00))): layout(pts, 0)
+			}
+		");
+		Assert.isTrue(success, "Layout align on list should parse");
+	}
+
+	@Test
+	public function testLayoutAlignNoAlign() {
+		var success = parseExpectingSuccess("
+			layouts {
+				#pos point: 100, 50
+			}
+			#test programmable() {
+				bitmap(generated(color(10, 10, #f00))): layout(pos)
+			}
+		");
+		Assert.isTrue(success, "Layout without align should parse");
+	}
+
+	@Test
+	public function testLayoutAlignDuplicateX() {
+		var error = parseExpectingError("
+			layouts {
+				#pos point: 10, 10 align: right, centerX
+			}
+			#test programmable() {
+				bitmap(generated(color(10, 10, #f00))): layout(pos)
+			}
+		");
+		Assert.notNull(error, "Should throw error for duplicate X alignment");
+		Assert.isTrue(error.indexOf("duplicate X alignment") >= 0,
+			'Error should mention duplicate X alignment, got: $error');
+	}
+
+	@Test
+	public function testLayoutAlignDuplicateY() {
+		var error = parseExpectingError("
+			layouts {
+				#pos point: 10, 10 align: bottom, centerY
+			}
+			#test programmable() {
+				bitmap(generated(color(10, 10, #f00))): layout(pos)
+			}
+		");
+		Assert.notNull(error, "Should throw error for duplicate Y alignment");
+		Assert.isTrue(error.indexOf("duplicate Y alignment") >= 0,
+			'Error should mention duplicate Y alignment, got: $error');
+	}
+
+	@Test
+	public function testLayoutAlignCenterCombined() {
+		var error = parseExpectingError("
+			layouts {
+				#pos point: 10, 10 align: center, right
+			}
+			#test programmable() {
+				bitmap(generated(color(10, 10, #f00))): layout(pos)
+			}
+		");
+		Assert.notNull(error, "Should throw error for center combined with other values");
+		Assert.isTrue(error.indexOf("center cannot be combined") >= 0,
+			'Error should mention center cannot be combined, got: $error');
+	}
+
+	@Test
+	public function testLayoutAlignCenterAfterOther() {
+		var error = parseExpectingError("
+			layouts {
+				#pos point: 10, 10 align: right, center
+			}
+			#test programmable() {
+				bitmap(generated(color(10, 10, #f00))): layout(pos)
+			}
+		");
+		Assert.notNull(error, "Should throw error for center after other align value");
+		Assert.isTrue(error.indexOf("center cannot be combined") >= 0,
+			'Error should mention center cannot be combined, got: $error');
+	}
+
+	// ===== .offset(x, y) suffix tests =====
+
+	public function testOffsetOnLayout() {
+		var success = parseExpectingSuccess("
+			layouts {
+				#pos point: 10, 10
+			}
+			#test programmable() {
+				bitmap(generated(color(10, 10, #f00))): layout(pos).offset(5, 10)
+			}
+		");
+		Assert.isTrue(success, "layout().offset() should parse successfully");
+	}
+
+	public function testOffsetOnGridPos() {
+		var success = parseExpectingSuccess("
+			#test programmable() {
+				grid: 32, 32
+				bitmap(generated(color(10, 10, #f00))): " + "$" + "grid.pos(1, 2).offset(3, 4)
+			}
+		");
+		Assert.isTrue(success, "grid.pos().offset() should parse successfully");
+	}
+
+	public function testOffsetInvalidSuffix() {
+		var error = parseExpectingError("
+			layouts {
+				#pos point: 10, 10
+			}
+			#test programmable() {
+				bitmap(generated(color(10, 10, #f00))): layout(pos).foo(1, 2)
+			}
+		");
+		Assert.notNull(error, "Should throw error for unknown coordinate suffix");
+		Assert.isTrue(error.indexOf("Unknown coordinate suffix") >= 0,
+			'Error should mention unknown coordinate suffix, got: $error');
+	}
 }

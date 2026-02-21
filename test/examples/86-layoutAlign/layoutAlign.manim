@@ -1,0 +1,174 @@
+version: 0.5
+
+layouts {
+    // Default (top-left) - red box at 40,40
+    #topLeft point: 40, 40
+
+    // align: right - green box 40px from right edge
+    #topRight point: 40, 40 align: right
+
+    // align: bottom - blue box 40px from bottom edge
+    #bottomLeft point: 40, 40 align: bottom
+
+    // align: right, bottom - yellow box in bottom-right corner
+    #bottomRight point: 40, 40 align: right, bottom
+
+    // align: centerX - cyan box centered horizontally, 40px from top
+    #centerTop point: 0, 40 align: centerX
+
+    // align: centerY - fuchsia box centered vertically, 40px from left
+    #leftCenter point: 40, 0 align: centerY
+
+    // align: centerY - red box centered vertically, 40px from right
+    #rightCenter point: 40, 0 align: centerY, right
+
+
+    // align: center - white box at screen center
+    #center point: 0, 0 align: center
+
+    // align: centerX, bottom - teal box centered horizontally, 40px from bottom
+    #bottomCenter point: 0, 40 align: centerX, bottom
+
+    // cells without alignment - positioned in center area
+    offset: 180, 100 {
+        #cellGrid cells(cols: 6, rows: 3, cellWidth: 30, cellHeight: 30)
+    }
+
+    // hex grid in top-right quadrant - hexagonal pattern
+    hexgrid: pointy(25.0, 25.0) {
+        offset: 350, 150 {
+            #hexRing list {
+                // center
+                point: $hex.cube(0, 0, 0)
+                // ring 1
+                point: $hex.cube(1, -1, 0)
+                point: $hex.cube(1, 0, -1)
+                point: $hex.cube(0, 1, -1)
+                point: $hex.cube(-1, 1, 0)
+                point: $hex.cube(-1, 0, 1)
+                point: $hex.cube(0, -1, 1)
+                // ring 2
+                point: $hex.cube(2, -2, 0)
+                point: $hex.cube(2, -1, -1)
+                point: $hex.cube(2, 0, -2)
+                point: $hex.cube(1, 1, -2)
+                point: $hex.cube(0, 2, -2)
+                point: $hex.cube(-1, 2, -1)
+                point: $hex.cube(-2, 2, 0)
+                point: $hex.cube(-2, 1, 1)
+                point: $hex.cube(-2, 0, 2)
+                point: $hex.cube(-1, -1, 2)
+                point: $hex.cube(0, -2, 2)
+                point: $hex.cube(1, -2, 1)
+            } align: right
+        }
+    }
+
+    // grid in bottom-left quadrant - dense small rects
+    grid: 14, 14 {
+        offset: 90, 90 {
+            #gridDots list {
+                point: $grid.pos(0, 0)
+                point: $grid.pos(1, 0)
+                point: $grid.pos(2, 0)
+                point: $grid.pos(3, 0)
+                point: $grid.pos(4, 0)
+                point: $grid.pos(5, 0)
+                point: $grid.pos(6, 0)
+                point: $grid.pos(7, 0)
+                point: $grid.pos(8, 0)
+                point: $grid.pos(9, 0)
+                point: $grid.pos(0, 1)
+                point: $grid.pos(1, 1)
+                point: $grid.pos(2, 1)
+                point: $grid.pos(3, 1)
+                point: $grid.pos(4, 1)
+                point: $grid.pos(5, 1)
+                point: $grid.pos(6, 1)
+                point: $grid.pos(7, 1)
+                point: $grid.pos(8, 1)
+                point: $grid.pos(9, 1)
+                point: $grid.pos(0, 2)
+                point: $grid.pos(1, 2)
+                point: $grid.pos(2, 2)
+                point: $grid.pos(3, 2)
+                point: $grid.pos(4, 2)
+                point: $grid.pos(5, 2)
+                point: $grid.pos(6, 2)
+                point: $grid.pos(7, 2)
+                point: $grid.pos(8, 2)
+                point: $grid.pos(9, 2)
+                point: $grid.pos(0, 3)
+                point: $grid.pos(1, 3)
+                point: $grid.pos(2, 3)
+                point: $grid.pos(3, 3)
+                point: $grid.pos(4, 3)
+                point: $grid.pos(5, 3)
+                point: $grid.pos(6, 3)
+                point: $grid.pos(7, 3)
+                point: $grid.pos(8, 3)
+                point: $grid.pos(9, 3)
+                point: $grid.pos(0, 4)
+                point: $grid.pos(1, 4)
+                point: $grid.pos(2, 4)
+                point: $grid.pos(3, 4)
+                point: $grid.pos(4, 4)
+                point: $grid.pos(5, 4)
+                point: $grid.pos(6, 4)
+                point: $grid.pos(7, 4)
+                point: $grid.pos(8, 4)
+                point: $grid.pos(9, 4)
+            } align: bottom
+        }
+    }
+}
+
+#layoutAlign programmable() {
+    // Background
+    @alpha(0.1) bitmap(generated(color(1280, 720, gray))): 0, 0
+
+    // Top-left (default) - red
+    bitmap(generated(colorwithtext(80, 30, red, "topLeft", white, m3x6))): layout(topLeft)
+
+    // Top-right - green
+    bitmap(generated(colorwithtext(80, 30, green, "right", white, m3x6))): layout(topRight).offset(-80,0)
+
+    // Bottom-left - blue
+    bitmap(generated(colorwithtext(80, 30, blue, "bottom", white, m3x6))): layout(bottomLeft).offset(-80,-30)
+
+    // Bottom-right - yellow
+    bitmap(generated(colorwithtext(80, 30, yellow, "right+btm", black, m3x6))): layout(bottomRight).offset(-80, -30)
+
+    // Center-top - cyan
+    bitmap(generated(colorwithtext(80, 30, cyan, "centerX", black, m3x6))): layout(centerTop)
+
+    // Left-center - fuchsia
+    bitmap(generated(colorwithtext(80, 30, fuchsia, "centerY", white, m3x6))): layout(leftCenter)
+
+    // Right-center - red
+    bitmap(generated(colorwithtext(80, 30, red, "centerY", white, m3x6))): layout(rightCenter).offset(-80,0)
+
+    // Center - white
+    bitmap(generated(colorwithtext(80, 30, white, "center", black, m3x6))): layout(center)
+
+    // Bottom-center - teal
+    bitmap(generated(colorwithtext(80, 30, teal, "cX+btm", white, m3x6))): layout(bottomCenter).offset(0, -30)
+
+    // Cells grid - orange boxes
+    repeatable($i, layout("layouts", "cellGrid")) {
+        bitmap(generated(colorwithtext(16, 16, orange, "cell", black, m3x6))): 0, 0
+    }
+
+    // Hex ring - lime hexagonal pattern (top-right, align: right)
+    repeatable($i, layout("layouts", "hexRing")) {
+        bitmap(generated(color(20, 20, lime))): 0, 0
+    }
+
+    // Grid dots - navy small rects (bottom-left, align: bottom)
+    repeatable($i, layout("layouts", "gridDots")) {
+        bitmap(generated(color(10, 10, navy))): 0, 0
+    }
+
+    // .offset() suffix test - maroon box offset from topLeft layout position
+    bitmap(generated(colorwithtext(60, 20, maroon, "offset", white, m3x6))): layout(topLeft).offset(0, 35)
+}

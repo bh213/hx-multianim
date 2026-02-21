@@ -1093,21 +1093,22 @@ class MacroManimParser {
 	// ===================== Coordinate Parsing =====================
 
 	function parseXY():Coordinates {
-		switch (peek()) {
+		var coord:Coordinates = switch (peek()) {
 			case TReference(s):
 				// Check if this is $ref.method() (coordinate method chain) or just $ref as part of OFFSET
 				// We need to peek ahead: if the token after $ref is TDot, it's a coordinate method chain
 				advance();
 				validateRef(s);
 				if (match(TDot)) {
-					return parseCoordinateMethodChain(s);
+					parseCoordinateMethodChain(s);
+				} else {
+					// Not a dot — this is a plain reference used in OFFSET(x, y) position
+					// Put back as an expression and parse as OFFSET
+					final x = parseNextIntExpression(RVReference(s));
+					expect(TComma);
+					final y = parseIntegerOrReference();
+					OFFSET(x, y);
 				}
-				// Not a dot — this is a plain reference used in OFFSET(x, y) position
-				// Put back as an expression and parse as OFFSET
-				final x = parseNextIntExpression(RVReference(s));
-				expect(TComma);
-				final y = parseIntegerOrReference();
-				return OFFSET(x, y);
 			case TIdentifier(s) if (isKeyword(s, "layout")):
 				advance();
 				expect(TOpen);
@@ -1115,16 +1116,30 @@ class MacroManimParser {
 				if (match(TComma)) {
 					final index = parseIntegerOrReference();
 					expect(TClosed);
-					return LAYOUT(layoutName, index);
+					LAYOUT(layoutName, index);
+				} else {
+					expect(TClosed);
+					LAYOUT(layoutName, null);
 				}
-				expect(TClosed);
-				return LAYOUT(layoutName, null);
 			default:
 				final x = parseIntegerOrReference();
 				expect(TComma);
 				final y = parseIntegerOrReference();
-				return OFFSET(x, y);
+				OFFSET(x, y);
+		};
+		// Check for .offset(x, y) suffix on any coordinate
+		if (match(TDot)) {
+			final method = expectIdentifierOrString();
+			if (!isKeyword(method, "offset"))
+				error('Unknown coordinate suffix: .$method. Expected .offset(x, y)');
+			expect(TOpen);
+			final ox = parseFloatOrReference();
+			expect(TComma);
+			final oy = parseFloatOrReference();
+			expect(TClosed);
+			coord = WITH_OFFSET(coord, ox, oy);
 		}
+		return coord;
 	}
 
 	function parseCoordinateMethodChain(ref:String):Coordinates {
@@ -2390,49 +2405,132 @@ class MacroManimParser {
 		switch (peek()) {
 			case TName(name):
 				advance();
+				var layoutType:LayoutsType = null;
 				// Try single point first
 				final content = parseLayoutContent();
 				if (content != null) {
-					eatSemicolon();
-					layouts.set(name, {name: name, type: Single(content), grid: grid, hex: hex, offset: foldOffsets(offsets)});
-					return;
-				}
-				// sequence or list
-				switch (peek()) {
-					case TIdentifier(s) if (isKeyword(s, "sequence")):
-						advance();
-						expect(TOpen);
-						final varName = expectReferenceOrIdentifier();
-						expect(TColon);
-						final from = parseInteger();
-						expect(TDoubleDot);
-						final to = parseInteger();
-						expect(TClosed);
-						final lc = parseLayoutContent();
-						if (lc == null) error("layout content expected");
-						eatSemicolon();
-						layouts.set(name, {name: name, type: Sequence(varName, from, to, lc), grid: grid, hex: hex, offset: foldOffsets(offsets)});
-					case TIdentifier(s) if (isKeyword(s, "list")):
-						advance();
-						expect(TCurlyOpen);
-						var contentList:Array<LayoutContent> = [];
-						while (true) {
+					layoutType = Single(content);
+				} else {
+					// sequence, list, or cells
+					switch (peek()) {
+						case TIdentifier(s) if (isKeyword(s, "sequence")):
+							advance();
+							expect(TOpen);
+							final varName = expectReferenceOrIdentifier();
+							expect(TColon);
+							final from = parseInteger();
+							expect(TDoubleDot);
+							final to = parseInteger();
+							expect(TClosed);
 							final lc = parseLayoutContent();
-							if (lc != null) {
-								eatSemicolon();
-								contentList.push(lc);
-							} else {
-								break;
+							if (lc == null) error("layout content expected");
+							layoutType = Sequence(varName, from, to, lc);
+						case TIdentifier(s) if (isKeyword(s, "list")):
+							advance();
+							expect(TCurlyOpen);
+							var contentList:Array<LayoutContent> = [];
+							while (true) {
+								final lc = parseLayoutContent();
+								if (lc != null) {
+									eatSemicolon();
+									contentList.push(lc);
+								} else {
+									break;
+								}
 							}
-						}
-						expect(TCurlyClosed);
-						layouts.set(name, {name: name, type: List(contentList), grid: grid, hex: hex, offset: foldOffsets(offsets)});
-					default:
-						error("expected sequence, list, or point");
+							expect(TCurlyClosed);
+							layoutType = List(contentList);
+						case TIdentifier(s) if (isKeyword(s, "cells")):
+							advance();
+							expect(TOpen);
+							var cols = 0;
+							var rows = 0;
+							var cellWidth = 0;
+							var cellHeight = 0;
+							for (_ in 0...4) {
+								final key = expectIdentifierOrString();
+								expect(TColon);
+								final val = parseInteger();
+								switch (key) {
+									case "cols": cols = val;
+									case "rows": rows = val;
+									case "cellWidth": cellWidth = val;
+									case "cellHeight": cellHeight = val;
+									default: error('unknown cells param: $key');
+								}
+								match(TComma);
+							}
+							expect(TClosed);
+							layoutType = Grid(cols, rows, cellWidth, cellHeight);
+						default:
+							error("expected sequence, list, cells, or point");
+					}
 				}
+				// Parse optional align: suffix
+				final align = parseLayoutAlign();
+				eatSemicolon();
+				layouts.set(name, {name: name, type: layoutType, grid: grid, hex: hex, offset: foldOffsets(offsets),
+					alignX: align.alignX, alignY: align.alignY});
 			default:
 				error('expected layout name (#name), got ${peek()}');
 		}
+	}
+
+	function parseLayoutAlign():{alignX:LayoutAlignX, alignY:LayoutAlignY} {
+		var alignX:LayoutAlignX = Left;
+		var alignY:LayoutAlignY = Top;
+		switch (peek()) {
+			case TIdentifier(s) if (isKeyword(s, "align")):
+				advance();
+				expect(TColon);
+				var hasCenter = false;
+				var setX = false;
+				var setY = false;
+				var count = 0;
+				while (true) {
+					if (count > 0 && !match(TComma)) break;
+					switch (peek()) {
+						case TIdentifier(v) if (isKeyword(v, "center")):
+							advance();
+							if (setX || setY) error("center cannot be combined with other align values");
+							hasCenter = true;
+							alignX = LayoutAlignX.Center;
+							alignY = LayoutAlignY.Center;
+							setX = true;
+							setY = true;
+						case TIdentifier(v) if (isKeyword(v, "centerX")):
+							advance();
+							if (hasCenter) error("center cannot be combined with other align values");
+							if (setX) error("duplicate X alignment");
+							alignX = LayoutAlignX.Center;
+							setX = true;
+						case TIdentifier(v) if (isKeyword(v, "right")):
+							advance();
+							if (hasCenter) error("center cannot be combined with other align values");
+							if (setX) error("duplicate X alignment");
+							alignX = LayoutAlignX.Right;
+							setX = true;
+						case TIdentifier(v) if (isKeyword(v, "centerY")):
+							advance();
+							if (hasCenter) error("center cannot be combined with other align values");
+							if (setY) error("duplicate Y alignment");
+							alignY = LayoutAlignY.Center;
+							setY = true;
+						case TIdentifier(v) if (isKeyword(v, "bottom")):
+							advance();
+							if (hasCenter) error("center cannot be combined with other align values");
+							if (setY) error("duplicate Y alignment");
+							alignY = LayoutAlignY.Bottom;
+							setY = true;
+						default:
+							if (count == 0) error('unknown align value: ${peek()}');
+							break;
+					}
+					count++;
+				}
+			default:
+		}
+		return {alignX: alignX, alignY: alignY};
 	}
 
 	function foldOffsets(offsets:Array<bh.base.Point>):bh.base.Point {
@@ -2842,7 +2940,7 @@ class MacroManimParser {
 				scopeVars = [];
 				createNode(PROGRAMMABLE(isTileGroup, parsed.defs, parsed.order), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
 
-			case TIdentifier(s) if (isKeyword(s, "relativelayouts")):
+			case TIdentifier(s) if (isKeyword(s, "layouts") || isKeyword(s, "relativelayouts")):
 				advance();
 				expect(TCurlyOpen);
 				final layoutsDef = parseLayouts();

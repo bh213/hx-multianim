@@ -13,6 +13,19 @@ enum LayoutsType {
 	Single(content:LayoutContent);
 	List(list:Array<LayoutContent>);
     Sequence(varName:String, from:Int, to:Int, content:LayoutContent);
+    Grid(cols:Int, rows:Int, cellW:Int, cellH:Int);
+}
+
+enum LayoutAlignX {
+	Left;
+	Center;
+	Right;
+}
+
+enum LayoutAlignY {
+	Top;
+	Center;
+	Bottom;
 }
 
 @:nullSafety
@@ -21,5 +34,7 @@ typedef Layout = {
 	type:LayoutsType,
     grid:Null<GridCoordinateSystem>,
 	hex:Null<HexCoordinateSystem>,
-	offset:Point
+	offset:Point,
+	alignX:LayoutAlignX,
+	alignY:LayoutAlignY
 };

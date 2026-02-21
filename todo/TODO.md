@@ -48,7 +48,7 @@ Later:
 ===================================
 * better reload behaviour - tracking, custom h2d.object?
 * subelements - handle nested subelements, keep state, don't query each time (cache Std.isOfType)
-* layouts -> relativeLayouts & absoluteScreens? layers support
+* layouts -> absoluteScreens? layers support
 * uielements -> send initial change to uievents so control value can be synced to logic
 * move uielements to separate list, don't check interfaces all the time
 * hex/grid xy -> enable scale & translate

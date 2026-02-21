@@ -3793,4 +3793,11 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	public function test85_FontHeight(async:utest.Async):Void {
 		simpleMacroTest(85, "fontHeight", () -> createMp().fontHeight.create(), async, null, null, 4.0);
 	}
+
+	// --- Test 86: layoutAlign ---
+
+	@Test
+	public function test86_LayoutAlign(async:utest.Async):Void {
+		simpleTest(86, "layoutAlign", async, null, null, 1.0);
+	}
 }

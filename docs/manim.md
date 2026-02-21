@@ -883,7 +883,7 @@ External name can be used to reference programmables from external multianim.
 Layouts are root-level elements for positioning elements on screen.
 
 ```
-relativeLayouts {
+layouts {
   #endpoint point: 600,10
 
   #endpoints list {
