@@ -47,7 +47,13 @@ class VisualTestBase extends utest.Test {
 		if (updateWaiter != null) {
 			var callback = updateWaiter;
 			updateWaiter = null;
-			callback(dt);
+			try {
+				callback(dt);
+			} catch (e:Dynamic) {
+				trace('Error in waitForUpdate callback: $e');
+				if (pendingVisualTests > 0)
+					pendingVisualTests--;
+			}
 		}
 	}
 
@@ -104,11 +110,11 @@ class VisualTestBase extends utest.Test {
 	 * @param scale Scale factor (default 1.0)
 	 */
 	public function simpleMacroTest(num:Int, name:String, createMacroRoot:() -> h2d.Object,
-			async:utest.Async, ?programmableName:String, ?title:String, ?scale:Float):Void {
+			async:utest.Async, ?programmableName:String, ?title:String, ?scale:Float, ?threshold:Float):Void {
 		setupTest(num, name, title);
 		var progName = programmableName != null ? programmableName : name;
 		var s = scale != null ? scale : 1.0;
-		builderAndMacroScreenshotAndCompare(manimPath(num, name), progName, createMacroRoot, async, 1280, 720, s);
+		builderAndMacroScreenshotAndCompare(manimPath(num, name), progName, createMacroRoot, async, 1280, 720, s, threshold);
 	}
 
 	// ==================== Build and render ====================
@@ -127,7 +133,7 @@ class VisualTestBase extends utest.Test {
 			var loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
 			var builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, animFilePath);
 
-			var built = builder.buildWithParameters(name, new Map());
+			var built = builder.buildWithParameters(name, new Map(), {scene: s2d});
 			verbose('Built element "$name" from $animFilePath: $built');
 			if (built == null) {
 				throw 'Error: Failed to build element "$name" from $animFilePath';
@@ -531,6 +537,112 @@ class VisualTestBase extends utest.Test {
 				for (i in 0...variantCount) {
 					var root = createMacroRoots(i);
 					root.setPosition(0, i * spacing);
+					mc.addChild(root);
+				}
+			} catch (e:Dynamic) {
+				Assert.fail('Macro createRoot() threw: $e');
+				pendingVisualTests--;
+				async.done();
+				return;
+			}
+
+			if (testTitle != null && testTitle.length > 0) addTitleOverlay();
+
+			waitForUpdate(function(dt2:Float) {
+				try {
+					var macroPath = 'test/screenshots/${testName}_macro.png';
+					var referencePath = getReferenceImagePath();
+
+					var macroSuccess = screenshot(macroPath, 1280, 720);
+
+					var builderSim = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
+					var macroSim = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
+					var threshold = if (tolerance != null) tolerance else 0.99;
+					var builderOk = builderSim > threshold;
+					var macroOk = macroSim > threshold;
+
+					HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath, builderOk && macroOk,
+						builderSim, null, macroPath, macroSim, macroOk, threshold, threshold);
+					HtmlReportGenerator.generateReport();
+
+					Assert.isTrue(builderOk, 'Builder should match reference (${Math.round(builderSim * 10000) / 100}%)');
+					Assert.isTrue(macroOk, 'Macro should match reference (${Math.round(macroSim * 10000) / 100}%)');
+				} catch (e:Dynamic) {
+					Assert.fail('Screenshot/compare threw: $e');
+				}
+				pendingVisualTests--;
+				async.done();
+			});
+		});
+	}
+
+	/**
+	 * Multi-instance macro vs builder test using .manim layout for positioning.
+	 * Like multiInstanceMacroTest but reads layout points from the .manim file instead of using fixed spacing.
+	 */
+	public function layoutMacroTest(num:Int, name:String, layoutName:String, scale:Float,
+			builderParams:Array<Map<String, Dynamic>>, createMacroRoots:(index:Int) -> h2d.Object,
+			async:utest.Async, ?tolerance:Null<Float>):Void {
+		setupTest(num, name);
+		pendingVisualTests++;
+		async.setTimeout(15000);
+
+		var animFilePath = manimPath(num, name);
+		var variantCount = builderParams.length;
+
+		// Phase 1: builder — N variants positioned by layout
+		clearScene();
+		var container = new h2d.Object(s2d);
+		container.setScale(scale);
+
+		var layoutPoints:Array<h2d.col.Point> = [];
+		try {
+			var fileContent = byte.ByteData.ofString(sys.io.File.getContent(animFilePath));
+			var loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+			var builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, animFilePath);
+			var layouts = builder.getLayouts();
+
+			for (i in 0...variantCount) {
+				var pt = layouts.getPoint(layoutName, i);
+				layoutPoints.push(new h2d.col.Point(pt.x, pt.y));
+				var built = builder.buildWithParameters(name, builderParams[i]);
+				if (built != null && built.object != null) {
+					built.object.setPosition(pt.x, pt.y);
+					container.addChild(built.object);
+				}
+			}
+		} catch (e:Dynamic) {
+			var msg = 'Builder build threw exception for "$name": $e';
+			reportBuildFailure(msg);
+			Assert.fail(msg);
+			pendingVisualTests--;
+			async.done();
+			return;
+		}
+
+		if (testTitle != null && testTitle.length > 0) addTitleOverlay();
+
+		waitForUpdate(function(dt:Float) {
+			var builderPath = getActualImagePath();
+			var builderSuccess = false;
+			try {
+				builderSuccess = screenshot(builderPath, 1280, 720);
+			} catch (e:Dynamic) {
+				Assert.fail('Builder screenshot threw: $e');
+				pendingVisualTests--;
+				async.done();
+				return;
+			}
+
+			// Phase 2: macro — same N variants positioned by layout
+			clearScene();
+			var mc = new h2d.Object(s2d);
+			mc.setScale(scale);
+
+			try {
+				for (i in 0...variantCount) {
+					var root = createMacroRoots(i);
+					root.setPosition(layoutPoints[i].x, layoutPoints[i].y);
 					mc.addChild(root);
 				}
 			} catch (e:Dynamic) {

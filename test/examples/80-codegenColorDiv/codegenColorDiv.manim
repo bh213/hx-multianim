@@ -1,0 +1,18 @@
+version: 0.5
+
+// Test: generated(color()) with division produces correct Int dimensions
+// The / operator yields Float in codegen; Std.int() wrapping is required for h2d.Tile.fromColor.
+
+#codegenColorDiv programmable(value:uint=75, maxValue:uint=100, barWidth:uint=200) {
+    // Static color — no division (baseline)
+    bitmap(generated(color(200, 20, #333333))): 10, 10
+
+    // Division in width: $value * $barWidth / $maxValue  (75*200/100 = 150)
+    bitmap(generated(color($value * $barWidth / $maxValue, 20, #44cc44))): 10, 10
+
+    // Division in both width and height
+    bitmap(generated(color($value * $barWidth / $maxValue, $barWidth / 10, #cc4444))): 10, 40
+
+    // Text showing computed value for verification
+    text(m6x11, $value, white): 10, 65
+}

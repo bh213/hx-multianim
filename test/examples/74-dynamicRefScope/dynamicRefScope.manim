@@ -1,0 +1,64 @@
+version: 0.5
+
+// Child with params a, b, c — defaults are 10, 20, 30
+// Displays colored bars (width = param value) and text values
+#scopeChild programmable(a:uint=10, b:uint=20, c:uint=30) {
+  bitmap(generated(color($a, 8, #ff4444))): 0, 0
+  bitmap(generated(color($b, 8, #44ff44))): 0, 10
+  bitmap(generated(color($c, 8, #4444ff))): 0, 20
+  text(m3x6, $a, #ff4444): 80, 0
+  text(m3x6, $b, #44ff44): 80, 10
+  text(m3x6, $c, #4444ff): 80, 20
+}
+
+// Second child type — single param with default
+#scopeLabel programmable(val:uint=99, color:color=#ffffff) {
+  bitmap(generated(color($val, 6, $color))): 0, 0
+  text(m3x6, $val, $color): 60, 0
+}
+
+// Parent has SAME param names but different defaults (50, 60, 70).
+// Without scope isolation, parent params would leak into child.
+#dynamicRefScope programmable(a:uint=50, b:uint=60, c:uint=70, val:uint=42) {
+
+  // Case 1: explicit pass — child should get parent values (50, 60, 70)
+  text(m3x6, "1: all explicit (expect 50,60,70):", #aaaaaa): 5, 5
+  dynamicRef($scopeChild, a=>$a, b=>$b, c=>$c): 5, 16
+
+  // Case 2: no params — child should use OWN defaults (10, 20, 30), NOT parent (50, 60, 70)
+  text(m3x6, "2: no params (expect 10,20,30):", #aaaaaa): 5, 50
+  dynamicRef($scopeChild): 5, 61
+
+  // Case 3: partial — only a passed. b,c should use child defaults (20, 30)
+  text(m3x6, "3: partial a only (expect 50,20,30):", #aaaaaa): 5, 95
+  dynamicRef($scopeChild, a=>$a): 5, 106
+
+  // Case 4: partial — only b,c passed. a should use child default (10)
+  text(m3x6, "4: partial b,c only (expect 10,60,70):", #aaaaaa): 5, 140
+  dynamicRef($scopeChild, b=>$b, c=>$c): 5, 151
+
+  // Case 5: override with literals — child gets literal values, not parent
+  text(m3x6, "5: literals (expect 33,66,99):", #aaaaaa): 5, 185
+  dynamicRef($scopeChild, a=>33, b=>66, c=>99): 5, 196
+
+  // Case 6: mixed literals and parent refs
+  text(m3x6, "6: mixed (expect 50,44,30):", #aaaaaa): 5, 230
+  dynamicRef($scopeChild, a=>$a, b=>44, c=>30): 5, 241
+
+  // Case 7: different child type — val shadows parent val (42), but child default is 99
+  text(m3x6, "7: scopeLabel no params (expect 99):", #aaaaaa): 310, 5
+  dynamicRef($scopeLabel): 310, 16
+
+  // Case 8: scopeLabel with parent val passed explicitly
+  text(m3x6, "8: scopeLabel val=$val (expect 42):", #aaaaaa): 310, 35
+  dynamicRef($scopeLabel, val=>$val, color=>#ffaa44): 310, 46
+
+  // Case 9: scopeLabel with literal
+  text(m3x6, "9: scopeLabel val=75 (expect 75):", #aaaaaa): 310, 65
+  dynamicRef($scopeLabel, val=>75, color=>#44aaff): 310, 76
+
+  // Case 10: two children side by side — independent scopes
+  text(m3x6, "10: two children, different params:", #aaaaaa): 310, 100
+  dynamicRef($scopeChild, a=>20, b=>40, c=>60): 310, 111
+  dynamicRef($scopeChild, a=>80, b=>60, c=>40): 420, 111
+}

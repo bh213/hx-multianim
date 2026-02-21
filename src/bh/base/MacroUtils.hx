@@ -56,7 +56,7 @@ class MacroUtils {
     // built result and all passed inputs. For example above, res would be:
     //  res == { dialog1: yesNoDialog, dialog2=>fileDialog, buildingResults: <result of MultiAnimBuilder.buildWithParameters>}. fileDialog & yesNoDialog returned are the same instance as passed in.
 
-    public static macro function macroBuildWithParameters(builder:Expr, builderName:ExprOf<String>, inputParams:Expr, builderParams:Expr):Expr {
+    public static macro function macroBuildWithParameters(builder:Expr, builderName:ExprOf<String>, inputParams:Expr, builderParams:Expr, ?incremental:ExprOf<Bool>):Expr {
     #if macro        
         final clazz = Context.getLocalType();
         
@@ -146,8 +146,7 @@ class MacroUtils {
 
             retValFields.push({field: key, expr: value });
             if (isUIElementType) {
-                addElementsBlock.push(macro addElement(retVal.$key, DefaultLayer));
-                inputFields.set(key, macro PVObject($value.getObject()));
+                Context.fatalError('UIElement "$key" should not be passed directly to macroBuildWithParameters — use a factory function instead (e.g. $key => addCheckbox(builder, true)) so that .manim settings are applied', value.pos);
             } else if (isH2dObjectType){
                 inputFields.set(key, macro PVObject($value));
             } else throw 'unexpected type, h2d.Object or UIElement or descendant expected';
@@ -170,10 +169,10 @@ class MacroUtils {
             retValFields.push({field: key, expr: macro $i{key}});
             checkIfNullBlock.push(macro if (retVal.$key == null) {throw 'macroBuildWithParameters UIElement value  ' + $v{key} + ' is null (check if placeholder object is named correctly)';});
             final updated = macro (settings:bh.multianim.MultiAnimParser.ResolvedSettings)->{
-                final element = $value;
-                addElement(element, DefaultLayer);
-                $i{key} = element;
-                return element.getObject();
+                final _el = $value;
+                addElement(_el, DefaultLayer);
+                $i{key} = _el;
+                return _el.getObject();
             }
 
             inputFields.set(key, macro PVFactory($updated));
@@ -222,8 +221,14 @@ class MacroUtils {
             for (name => expr in inputFields) {
               map.push(macro $v{name} => $expr);
             }
-            return macro @:nullSafety(Off) final builderResults = $builder.buildWithParameters($builderName, $inputParams, {placeholderObjects:$a{map}});
-
+            final isIncremental = switch (incremental?.expr) {
+                case EConst(CIdent("true")): true;
+                default: false;
+            }
+            if (isIncremental)
+                return macro @:nullSafety(Off) final builderResults = $builder.buildWithParameters($builderName, $inputParams, {placeholderObjects:$a{map}}, null, true);
+            else
+                return macro @:nullSafety(Off) final builderResults = $builder.buildWithParameters($builderName, $inputParams, {placeholderObjects:$a{map}});
         }
 
         var retAnonStructure =  {

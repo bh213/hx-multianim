@@ -1,0 +1,94 @@
+version: 0.5
+
+// Character Sheet Demo - Dynamic References
+// Reusable child programmables embedded via dynamicRef for automatic parameter-driven updates.
+
+// ── Resource bar (HP/MP) ──────────────────────────────────────────────
+#resourceBar programmable(value:uint=50, maxValue:uint=100, barColor:color=#ff4444, label:string="HP") {
+  text(m6x11, $label, #aaaaaa): 0, 4
+  bitmap(generated(color(300, 16, #1a1a1a))): 30, 0
+  bitmap(generated(color($value * 300 / $maxValue, 16, $barColor))): 30, 0
+  text(m6x11, '${$value} / ${$maxValue}', #ffffff, center, 300): 30, 2
+}
+
+// ── Attribute stat bar ────────────────────────────────────────────────
+#statBar programmable(statName:string="STR", statValue:uint=10, barColor:color=#ff7f50, maxStat:uint=30) {
+  text(m6x11, $statName, $barColor): 0, 1
+  text(m6x11, $statValue, #ffffff): 40, 1
+  bitmap(generated(color(120, 10, #1a1a1a))): 70, 1
+  bitmap(generated(color($statValue * 120 / $maxStat, 10, $barColor))): 70, 1
+}
+
+// ── XP progress bar ──────────────────────────────────────────────────
+#xpBar programmable(xp:uint=0, xpMax:uint=100) {
+  bitmap(generated(color(340, 16, #1a1a1a))): 0, 0
+  @(xp > 0) bitmap(generated(color($xp * 340 / $xpMax, 16, #ffeb3b))): 0, 0
+  text(m6x11, '${$xp} / ${$xpMax} XP', #ffffff, center, 340): 0, 2
+}
+
+// ── Main character sheet ─────────────────────────────────────────────
+#characterSheetDemo programmable(
+    hp:uint=100, maxHp:uint=100,
+    mp:uint=50,  maxMp:uint=50,
+    strStat:uint=10, dexStat:uint=8, intStat:uint=6,
+    xp:uint=0, xpMax:uint=100,
+    level:uint=1
+) {
+    pos: 50, 80
+
+    // Title
+    text(pixellari, "Character Sheet", #7fdbda): 0, 0
+    bitmap(generated(color(500, 1, #7fdbda33))): 0, 22
+
+    // Main panel
+    ninepatch("ui", "Window_3x3_idle", 400, 440): 0, 35
+
+    // Character identity
+    text(m6x11, "Name:", #aaaaaa): 20, 55
+    text(dd, "Aethon", #ffffff, left, 300): 80, 50
+
+    text(m6x11, "Class:", #aaaaaa): 20, 85
+    text(pixellari, "Warrior", #ff7f50, left, 200): 80, 83
+
+    text(m6x11, "Level:", #aaaaaa): 250, 85
+    text(dd, $level, #ffeb3b, left, 60): 310, 80
+
+    // Separator
+    bitmap(generated(color(360, 1, #7fdbda33))): 20, 110
+
+    // HP bar via dynamicRef
+    dynamicRef($resourceBar, value=>$hp, maxValue=>$maxHp, barColor=>#ff4444, label=>"HP"): 20, 125
+
+    // MP bar via dynamicRef
+    dynamicRef($resourceBar, value=>$mp, maxValue=>$maxMp, barColor=>#4a90a4, label=>"MP"): 20, 150
+
+    // Separator
+    bitmap(generated(color(360, 1, #7fdbda33))): 20, 178
+
+    // Attributes
+    text(pixellari, "Attributes", #7fdbda): 20, 190
+
+    dynamicRef($statBar, statName=>"STR", statValue=>$strStat, barColor=>#ff7f50, maxStat=>30): 30, 215
+    dynamicRef($statBar, statName=>"DEX", statValue=>$dexStat, barColor=>#4caf50, maxStat=>30): 30, 235
+    dynamicRef($statBar, statName=>"INT", statValue=>$intStat, barColor=>#4a90a4, maxStat=>30): 30, 255
+
+    // Separator
+    bitmap(generated(color(360, 1, #7fdbda33))): 20, 278
+
+    // Experience
+    text(m6x11, "Experience", #7fdbda): 20, 292
+
+    dynamicRef($xpBar, xp=>$xp, xpMax=>$xpMax): 30, 312
+
+    // Level Up button
+    placeholder(generated(cross(200, 30, #FF0000)), builderParameter("levelUpButton")) {
+        pos: 100, 345
+    }
+
+    // Stats summary
+    text(m6x11, "Total Power:", #aaaaaa): 20, 395
+    text(pixellari, '${$strStat + $dexStat + $intStat}', #ffeb3b, left, 100): 130, 393
+
+    // Instructions
+    text(m6x11, "Click Level Up to gain XP and increase stats.", #666666): 0, 490
+}

@@ -1,5 +1,103 @@
 # Changelog
 
+## [0.13-dev] - 2026-02-21
+
+### Added
+- **Parameterized slots** — `#name slot(param:type=default, ...)` for visual state management
+  - Supports all parameter types: `uint`, `int`, `float`, `bool`, `string`, `color`, enum, range, flags
+  - Conditionals (`@()`, `@else`, `@default`) and expressions (`$param`) work inside slot body
+  - `SlotHandle.setParameter("name", value)` updates visuals via `IncrementalUpdateContext`
+  - Content goes into separate `contentRoot` (decoration always visible, not hidden by `setContent`)
+  - Codegen: warning emitted, `setParameter()` not supported (use runtime builder)
+- **Enhanced SlotHandle API** — `isEmpty()`, `isOccupied()`, `data` field for arbitrary payload storage
+- **UIElement double-click support** — `UIDoubleClick` event and double-click detection in UI elements
+- **Progress bar component** — `UIMultiAnimProgressBar` display-only component
+  - Uses full rebuild (not incremental) because `bitmap(generated(color(...)))` is not tracked
+  - Screen helper: `addProgressBar(builder, settings, initialValue)`
+- **Direct `$var` in text** — text elements can now use parameter references directly (e.g. `$w`)
+- **Dropdown with scroll** — dropdown panel now supports scrollable content for long lists, moves panel to different layer
+- **Slider custom float range** — `min`, `max`, `step` settings for sliders
+  - Implements both `UIElementNumberValue` (int) and `UIElementFloatValue` (float)
+  - Incremental mode for efficient redraws
+  - Emits both `UIChangeValue(Int)` and `UIChangeFloatValue(Float)`
+- **Draggable slot integration** — `UIMultiAnimDraggable` enhancements
+  - `addDropZonesFromSlots("baseName", builderResult, ?accepts)` for batch drop zone creation
+  - `createFromSlot(slot)` creates draggable from slot content, tracks `sourceSlot`
+  - `swapMode` swaps contents when dropping onto an occupied slot
+  - Zone highlight callbacks: `onDragStartHighlightZones`, `onDragEndHighlightZones`
+  - Per-zone: `DropZone.onZoneHighlight` callback for hover state
+- **Scrollable list scrollbar** — built with incremental mode, scroll events use `setParameter("scrollPosition", ...)` instead of full rebuild
+- **Parser error tests** — `ParserErrorTest.hx` for comprehensive parser error validation
+- **Inline easing in animatedPath curve slots** — `alphaCurve: easeInQuad` works directly without requiring a `curves{}` block
+- **AnimatedPath `easing:` shorthand** — `easing: easeOutCubic` as shortcut for `0.0: progressCurve: easeOutCubic`
+- **Multi-color curve stops** — per-segment color pairs in animatedPath: multiple `colorCurve` assignments at different rates, each with its own start/end colors (e.g. red→green at 0.0, green→blue at 0.5)
+- **`pathGuide` force field** — `pathguide(pathName, attractStrength, flowStrength, radius)` attracts particles toward a named path and nudges them along its direction
+- **Particle system overhaul** — major redesign of the particle system:
+  - **Color curves** — replaced `colorStart/colorEnd/colorMid/colorMidPos` with per-segment `colorCurve` using AnimatedPath-style syntax (e.g. `0.0: colorCurve: linear, #FF4400, #FFAA00`)
+  - **ICurve references** — `sizeCurve` and `velocityCurve` now reference named curves or inline easings (e.g. `sizeCurve: easeOutQuad`) instead of inline point arrays
+  - **Forward angle** — `forwardAngle: 90` for sprites that face a direction other than right when using `rotateAuto`
+  - **Line bounds** — `boundsLine: x1, y1, x2, y2` for one-sided line boundaries (multiple allowed)
+  - **Path emission** — `emit: path(pathName)` and `emit: path(pathName, tangent)` for emitting along named paths
+  - **AnimatedPath integration** — `attachTo: animPathName` tracks emitter position along animated path; `spawnCurve: curveName` modulates emission rate
+  - **Sub-emitter spawning** — `triggerSubEmitters()` now actually spawns particles with velocity inheritance and position offsets
+  - **Runtime `emitBurst(count)`** — force-emit N particles immediately for event-driven effects
+  - **Mutable force fields** — `group.forceFields` is now a public array with `addForceField()`, `removeForceFieldAt()`, `clearForceFields()`
+  - **AnimSM tile source** — `animFile`, `animSelector`, rate-based `anim("name")` states, and event overrides (`onBounce`, `onDeath`)
+  - **BREAKING**: Removed trail system (`trailEnabled`, `trailLength`, `trailFadeOut`)
+  - **BREAKING**: Removed old color properties (`colorStart`, `colorEnd`, `colorMid`, `colorMidPos`)
+  - **BREAKING**: Changed `sizeCurve`/`velocityCurve` syntax from point arrays to curve references
+- **`Path.getClosestRate(point)`** — reverse lookup to find the closest rate (0..1) on a path to a given world point; uses coarse sampling + golden-section refinement
+- **`createProjectilePath()` helper** — `builder.createProjectilePath("name", startPoint, endPoint)` convenience method using Stretch normalization
+- **AnimatedPath non-visual unit tests** — 15 new tests in BuilderUnitTest covering time/distance modes, inline easing, easing shorthand, events, loop, pingPong, seek, checkpoints, custom curves, multi-color stops, projectile helper, getClosestRate
+- **Font metrics context** — `$ctx.font("name").lineHeight` and `$ctx.font("name").baseLine` for querying font metrics at build time (both builder and codegen)
+- **Pixel data unit tests** — filledRect pixel verification and incremental pixel update sweep tests
+- **Generic settings pass-through** — settings not recognized as control or behavioral are automatically forwarded as extra parameters to the underlying programmable
+  - Dotted setting keys (`item.fontColor`, `scrollbar.thickness`) for targeting sub-builders in multi-programmable components
+  - Prefixed routing: dropdown supports `dropdown.*`, `item.*`, `scrollbar.*` prefixes; scrollableList supports `item.*`, `scrollbar.*`
+  - Multi-forward: unprefixed `font`/`fontColor` on dropdown/scrollableList forwards to all relevant sub-builders
+  - Improved error messages: mismatched pass-through params show programmable name and available parameters
+  - Added `?extraParams` to `UIMultiAnimCheckbox`, `UIMultiAnimRadioButtons`, `UIMultiAnimProgressBar`, `UIMultiAnimSlider`
+- **Layout alignment** — `align:` modifier on layout entries for edge-relative positioning
+  - `align: right` — mirror X from right edge (`x = screenWidth - x`)
+  - `align: bottom` — mirror Y from bottom edge (`y = screenHeight - y`)
+  - `align: centerX` / `align: centerY` — offset from center (`x = screenWidth/2 + x`)
+  - `align: center` — shorthand for `centerX + centerY`
+  - Combinable: `align: right, bottom`, `align: centerX, bottom`, etc.
+  - Works on all layout types: `point`, `list`, `sequence`, `cells`
+  - Requires scene dimensions available at build time
+- **`cells` layout type** — grid-based layout for uniform cell grids
+  - Syntax: `#name cells(cols: N, rows: N, cellWidth: N, cellHeight: N)`
+  - Generates `cols * rows` positions in row-major order
+- **`hexgrid` coordinate system in layouts** — hex coordinates within layout blocks
+  - Syntax: `hexgrid: pointy(w, h) { ... }` or `hexgrid: flat(w, h) { ... }`
+  - Points use `$hex.cube(q, r, s)`, `$hex.corner(i, s)`, `$hex.edge(d, s)`
+  - Combinable with `align:` for edge-relative hex layouts
+- **`.offset()` coordinate suffix** — `WITH_OFFSET` for adjusting any coordinate type
+  - Syntax: `layout(name).offset(x, y)`, `$grid.pos(x, y).offset(ox, oy)`, etc.
+  - Works on all coordinate types: OFFSET, LAYOUT, grid, hex, etc.
+  - Supported in builder and codegen (`coordsToStaticXY`, `generatePositionExpr`)
+- **Sub-emitter `burstCount`** — particle sub-emitters now respect `count` field instead of always spawning 1 particle
+- **Particle loop recycle** — particles with `loop: true` that exit bounds are recycled (re-initialized) instead of killed
+- **`manim-reference.md`** — comprehensive quick-lookup reference document for all `.manim` language constructs
+
+### Fixed
+- **`filledRect` restored to `data.fill()`** — removed manual `setPixel` loop workaround; fixed `updateBitmap()` to read pixels before `unlock()` so `fill()` results are preserved on JS
+- **Incremental `pixels` size/position update** — incremental redraws now update bitmap width, height, and position when tile dimensions change from dynamic shapes
+- **Pixels position scaling** — `pixels` element position offset now scales correctly when `scale > 1` (previously offset was unscaled, causing misalignment)
+- **Float precision in `setParameter`** — `IncrementalUpdateContext.setParameter` now preserves float values via `ValueF()` instead of truncating to `Int`
+- **`${...}` expression parsing** — parser now correctly handles `${...}` expressions in `.manim` files
+- **Static/dynamic ref inheritance** — fixed scope and inheritance issues between staticRef/dynamicRef
+- **Button bug in `resolveExtraInput`** — fixed crash in button event resolution
+- **`generated(cross())` rendering** — corrected cross generation in multiple files
+- **Expression priority** — fixed operator precedence in conditional expressions
+
+### Changed
+- **Slot storage refactored** — changed from `Map<String, SlotHandle>` to array-based `SlotKey` storage supporting `Named(name)` and `Indexed(name, index)` keys
+- **Removed `PVObject` support for UI elements** — removed error-prone `PVObject` path; `PVFactory` is now the only supported approach for UI element parameters in `macroBuildWithParameters`
+- **Animated path improvements** — better path normalization, enhanced speed/duration/easing support
+- **Playground removed from repository** — moved to separate `../hx-multianim-playground` repository
+- **`relativeLayouts` renamed to `layouts`** — DSL keyword, docs, and all references updated; parser still accepts `relativeLayouts` for backward compatibility
+
 ## [0.12] - 2026-02-16
 
 ### Changed
@@ -98,6 +196,24 @@
   - Stored in BuilderResult: `result.getDynamicRef("name")` returns sub-`BuilderResult`
   - Supports `external()` references for cross-file dynamic refs
 - **HTML report: unit test section** — test runner results now displayed in HTML report with expandable per-class/method details, pass/fail status, and failure messages
+- **`tile` parameter type** — new `.manim` parameter type for passing tile sources at runtime
+  - Syntax: `name:tile` — no default value allowed
+  - Use with `bitmap($name)` to display caller-provided tiles
+  - Macro codegen: maps to `Dynamic` (pass `h2d.Tile` at runtime)
+  - Builder: pass via `TileHelper.sheet("atlas", "tile")`, `TileHelper.file("img.png")`, or `TileHelper.sheetIndex("atlas", "tile", idx)`
+- **`TileRef` enum for `UIElementListItem`** — structured tile references replace plain `tileName` string
+  - `TRFile(filename)`, `TRSheet(sheet, name)`, `TRSheetIndex(sheet, name, index)`, `TRTile(tile)`
+  - `TRGeneratedRect(w, h)`, `TRGeneratedRectColor(w, h, color)` for generated solid-color rectangles
+  - New `tileRef` field on `UIElementListItem`; legacy `tileName` still supported
+  - `UIElementBuilder.buildItem()` now correctly sets the `images` parameter (fixes tile display in list items)
+- **`TileHelper`** — static helper class for creating tile builder parameters
+  - `TileHelper.file("img.png")`, `TileHelper.sheet("atlas", "tile")`, `TileHelper.sheetIndex("atlas", "tile", idx)`
+  - `TileHelper.generatedRect(w, h)`, `TileHelper.generatedRectColor(w, h, color)` for solid-color tiles
+  - Returns `ResolvedIndexParameters` for use with `buildWithParameters()` param maps
+
+### Fixed
+- **Codegen `generated(color())` division** — expressions using `/` in width/height (e.g. `$value * $barWidth / $maxValue`) now wrapped with `Std.int()` to produce correct `Int` arguments for `h2d.Tile.fromColor`
+- **Codegen DCE stripping setters** — generated Instance classes now annotated with `@:keep` metadata to prevent dead code elimination from removing setter methods when instances are accessed through `Dynamic`
 
 ## [0.4]
 

@@ -1,0 +1,97 @@
+version: 0.5
+
+#fontHeight programmable() {
+  // 3 columns x 3 rows, each font: green lineHeight bar, red baseLine bar, sample text, numeric values below
+
+  // Row 1
+  // dd (lh=18, bl=12)
+  point {
+    pos: 10, 10
+    bitmap(generated(color(4, $ctx.font("dd").lineHeight, #55aa55))): 0, 0
+    bitmap(generated(color(4, $ctx.font("dd").baseLine, #aa3333))): 5, 0
+    text(dd, "dd Abg", white, left): 11, 0
+    text(f3x5, "18", #55aa55, left): 11, $ctx.font("dd").lineHeight + 2
+    text(f3x5, "12", #aa3333, left): 23, $ctx.font("dd").lineHeight + 2
+  }
+
+  // pixeled6 (lh=13, bl=10)
+  point {
+    pos: 110, 10
+    bitmap(generated(color(4, $ctx.font("pixeled6").lineHeight, #55aa55))): 0, 0
+    bitmap(generated(color(4, $ctx.font("pixeled6").baseLine, #aa3333))): 5, 0
+    text(pixeled6, "pixeled6 Abg", white, left): 11, 0
+    text(f3x5, "13", #55aa55, left): 11, $ctx.font("pixeled6").lineHeight + 2
+    text(f3x5, "10", #aa3333, left): 23, $ctx.font("pixeled6").lineHeight + 2
+  }
+
+  // m3x6 (lh=13, bl=11)
+  point {
+    pos: 210, 10
+    bitmap(generated(color(4, $ctx.font("m3x6").lineHeight, #55aa55))): 0, 0
+    bitmap(generated(color(4, $ctx.font("m3x6").baseLine, #aa3333))): 5, 0
+    text(m3x6, "m3x6 Abg", white, left): 11, 0
+    text(f3x5, "13", #55aa55, left): 11, $ctx.font("m3x6").lineHeight + 2
+    text(f3x5, "11", #aa3333, left): 23, $ctx.font("m3x6").lineHeight + 2
+  }
+
+  // Row 2
+  // pixellari (lh=18, bl=12)
+  point {
+    pos: 10, 45
+    bitmap(generated(color(4, $ctx.font("pixellari").lineHeight, #55aa55))): 0, 0
+    bitmap(generated(color(4, $ctx.font("pixellari").baseLine, #aa3333))): 5, 0
+    text(pixellari, "pixellari Abg", white, left): 11, 0
+    text(f3x5, "18", #55aa55, left): 11, $ctx.font("pixellari").lineHeight + 2
+    text(f3x5, "12", #aa3333, left): 23, $ctx.font("pixellari").lineHeight + 2
+  }
+
+  // f3x5 (lh=6, bl=5)
+  point {
+    pos: 110, 45
+    bitmap(generated(color(4, $ctx.font("f3x5").lineHeight, #55aa55))): 0, 0
+    bitmap(generated(color(4, $ctx.font("f3x5").baseLine, #aa3333))): 5, 0
+    text(f3x5, "f3x5 Abg", white, left): 11, 0
+    text(f3x5, "6", #55aa55, left): 11, $ctx.font("f3x5").lineHeight + 2
+    text(f3x5, "5", #aa3333, left): 19, $ctx.font("f3x5").lineHeight + 2
+  }
+
+  // m6x11 (lh=16, bl=11)
+  point {
+    pos: 210, 45
+    bitmap(generated(color(4, $ctx.font("m6x11").lineHeight, #55aa55))): 0, 0
+    bitmap(generated(color(4, $ctx.font("m6x11").baseLine, #aa3333))): 5, 0
+    text(m6x11, "m6x11 Abg", white, left): 11, 0
+    text(f3x5, "16", #55aa55, left): 11, $ctx.font("m6x11").lineHeight + 2
+    text(f3x5, "11", #aa3333, left): 23, $ctx.font("m6x11").lineHeight + 2
+  }
+
+  // Row 3
+  // peaberry-white (lh=25, bl=13)
+  point {
+    pos: 10, 80
+    bitmap(generated(color(4, $ctx.font("peaberry-white").lineHeight, #55aa55))): 0, 0
+    bitmap(generated(color(4, $ctx.font("peaberry-white").baseLine, #aa3333))): 5, 0
+    text(peaberry-white, "peaberry Abg", white, left): 11, 0
+    text(f3x5, "25", #55aa55, left): 11, $ctx.font("peaberry-white").lineHeight + 2
+    text(f3x5, "13", #aa3333, left): 23, $ctx.font("peaberry-white").lineHeight + 2
+  }
+
+  // peaberry-white-outline (lh=28, bl=13)
+  point {
+    pos: 180, 80
+    bitmap(generated(color(4, $ctx.font("peaberry-white-outline").lineHeight, #55aa55))): 0, 0
+    bitmap(generated(color(4, $ctx.font("peaberry-white-outline").baseLine, #aa3333))): 5, 0
+    text(peaberry-white-outline, "outline Abg", white, left): 11, 0
+    text(f3x5, "28", #55aa55, left): 11, $ctx.font("peaberry-white-outline").lineHeight + 2
+    text(f3x5, "13", #aa3333, left): 23, $ctx.font("peaberry-white-outline").lineHeight + 2
+  }
+
+  // Legend at bottom
+  point {
+    pos: 10, 125
+    bitmap(generated(color(10, 4, #55aa55))): 0, 1
+    text(f3x5, "lineHeight", #aaaaaa, left): 12, 0
+    bitmap(generated(color(10, 4, #aa3333))): 60, 1
+    text(f3x5, "baseLine", #aaaaaa, left): 72, 0
+  }
+}

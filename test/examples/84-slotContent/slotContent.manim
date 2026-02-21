@@ -1,0 +1,37 @@
+version: 0.5
+
+#slotContentDemo programmable() {
+  // Slot A: header/footer bars with slotContent in between — content added by test
+  #slotA slot {
+    bitmap(generated(color(50, 8, #aa4444))): 0, 0
+    slotContent: 3, 12
+    bitmap(generated(color(50, 8, #aa4444))): 0, 32
+  }
+
+  // Slot B: semi-transparent overlay frame, content behind shows through
+  #slotB slot {
+    slotContent: 65, 3
+    @alpha(0.4) bitmap(generated(color(55, 38, #6666ee))): 62, 0
+  }
+
+  // Slot C: corner decorations with content off-center
+  #slotC slot {
+    bitmap(generated(color(10, 10, #44aa44))): 0, 50
+    bitmap(generated(color(10, 10, #44aa44))): 40, 80
+    slotContent: 12, 58
+    bitmap(generated(color(10, 10, #44aa44))): 40, 50
+    bitmap(generated(color(10, 10, #44aa44))): 0, 80
+  }
+
+  // Slot D: tall left border + bottom bar, content fills middle
+  #slotD slot {
+    bitmap(generated(color(6, 44, #ccaa00))): 130, 0
+    slotContent: 140, 2
+    bitmap(generated(color(50, 6, #ccaa00))): 130, 38
+  }
+
+  // Slot E: plain slot (no slotContent) — for contrast
+  #plain slot {
+    bitmap(generated(color(50, 40, #444444))): 195, 0
+  }
+}

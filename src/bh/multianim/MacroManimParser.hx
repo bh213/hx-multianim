@@ -25,6 +25,7 @@ private enum MacroTokenType {
 	TExclamation;
 	TQuestion;
 	TColon;
+	TDot;           // .
 	TDoubleDot;     // ..
 	TSemiColon;
 	TArrow;         // =>
@@ -182,6 +183,12 @@ private class MacroLexer {
 				return new Token(THexInteger(src.substring(hexStart, pos)), startLine, startCol);
 			}
 
+			// Single dot (after double-dot and before number check — only when NOT followed by a digit)
+			if (c == '.'.code && !(pos + 1 < len && src.charCodeAt(pos + 1) >= '0'.code && src.charCodeAt(pos + 1) <= '9'.code)) {
+				pos++;
+				return new Token(TDot, startLine, startCol);
+			}
+
 			// Number: integer or float
 			if ((c >= '0'.code && c <= '9'.code) || (c == '.'.code && pos + 1 < len && src.charCodeAt(pos + 1) >= '0'.code && src.charCodeAt(pos + 1) <= '9'.code)) {
 				final numStart = pos;
@@ -230,7 +237,7 @@ private class MacroLexer {
 			if (c == "'".code) {
 				pos++;
 				var buf = new StringBuf();
-				var parts:Array<{isCode:Bool, text:String}> = [];
+				var parts:Array<{isCode:Bool, text:String, codeLine:Int, codeCol:Int}> = [];
 				var hasInterpolation = false;
 				var closed = false;
 				while (pos < len) {
@@ -252,7 +259,7 @@ private class MacroLexer {
 					// Check for ${...} interpolation
 					if (sc == '$'.code && pos + 1 < len && src.charCodeAt(pos + 1) == '{'.code) {
 						hasInterpolation = true;
-						parts.push({isCode: false, text: buf.toString()});
+						parts.push({isCode: false, text: buf.toString(), codeLine: 0, codeCol: 0});
 						buf = new StringBuf();
 						final interpLine = line;
 						final interpCol = pos - lineStart + 1;
@@ -277,7 +284,7 @@ private class MacroLexer {
 						if (StringTools.trim(codeText).length == 0) {
 							throw '$sourceName:$interpLine:$interpCol: Empty expression in string interpolation';
 						}
-						parts.push({isCode: true, text: codeText});
+						parts.push({isCode: true, text: codeText, codeLine: interpLine, codeCol: interpCol});
 						if (pos < len) pos++; // skip }
 						continue;
 					}
@@ -295,7 +302,7 @@ private class MacroLexer {
 
 				// Has interpolation — emit tokens for: "prefix" + expr + "suffix" + ...
 				final remaining = buf.toString();
-				if (remaining.length > 0) parts.push({isCode: false, text: remaining});
+				if (remaining.length > 0) parts.push({isCode: false, text: remaining, codeLine: 0, codeCol: 0});
 
 				// Build token list: parts joined with + operators, code parts re-lexed
 				var filtered:Array<Token> = [];
@@ -310,6 +317,20 @@ private class MacroLexer {
 							codeTokens.push(st);
 						}
 						if (codeTokens.length == 0) continue; // skip empty code
+						// Adjust token positions to the interpolation start in the original source
+						for (ct in codeTokens) {
+							ct.line = part.codeLine;
+							ct.col = part.codeCol + ct.col;
+						}
+						// Inside ${...}, bare identifiers are parameter references
+						// (allow ${test} as shorthand for ${$test})
+						for (i in 0...codeTokens.length) {
+							switch (codeTokens[i].type) {
+								case TIdentifier(s) if (!isInterpolationKeyword(s)):
+									codeTokens[i] = new Token(TReference(s), codeTokens[i].line, codeTokens[i].col);
+								default:
+							}
+						}
 						// Insert + before this part if there are preceding tokens
 						if (filtered.length > 0) filtered.push(new Token(TPlus, startLine, startCol));
 						// Wrap multi-token expressions in parentheses for correct precedence
@@ -382,6 +403,15 @@ private class MacroLexer {
 	public function posString():String {
 		return '$sourceName:$line';
 	}
+
+	static final interpolationKeywords = ["callback", "function", "div", "true", "false", "yes", "no"];
+
+	static function isInterpolationKeyword(s:String):Bool {
+		final lower = s.toLowerCase();
+		for (kw in interpolationKeywords)
+			if (lower == kw) return true;
+		return false;
+	}
 }
 
 // ===================== Parser =====================
@@ -397,6 +427,7 @@ class MacroManimParser {
 	var currentName:Null<String>;
 	var activeDefs:Null<ParametersDefinitions>; // null = not inside programmable, set to currentDefs when entering programmable scope
 	var scopeVars:Null<Array<String>>; // loop vars, iterator output vars, @final vars (not in activeDefs)
+	var namedCoordSystems:Null<Array<String>>; // names registered via hex: #name or grid: #name
 
 	static final defaultLayoutNodeName = "#defaultLayout";
 	static final defaultPathNodeName = "#defaultPaths";
@@ -414,10 +445,14 @@ class MacroManimParser {
 		this.scopeVars = null;
 	}
 
+	static final implicitRefs = ["ctx", "grid", "hex"];
+
 	function validateRef(name:String):Void {
 		if (activeDefs == null) return; // not inside programmable, skip validation
 		if (activeDefs.exists(name)) return;
 		if (scopeVars != null && scopeVars.indexOf(name) >= 0) return;
+		if (implicitRefs.indexOf(name) >= 0) return;
+		if (namedCoordSystems != null && namedCoordSystems.indexOf(name) >= 0) return;
 		final paramNames = [for (k in activeDefs.keys()) k];
 		final allVars = scopeVars != null ? paramNames.concat(scopeVars) : paramNames;
 		final available = allVars.length > 0 ? allVars.join(", ") : "(none)";
@@ -527,10 +562,6 @@ class MacroManimParser {
 			case TIdentifier(s) if (isKeyword(s, "callback")):
 				advance();
 				return parseCallback();
-			case TIdentifier(s) if (isKeyword(s, "function")):
-				advance();
-				expect(TOpen);
-				return RVFunction(parseFunction());
 			case TMinus:
 				advance();
 				switch (peek()) {
@@ -547,6 +578,9 @@ class MacroManimParser {
 							final idx = parseIntegerOrReference();
 							expect(TBracketClosed);
 							return parseNextIntExpression(EUnaryOp(OpNeg, RVElementOfArray(s, idx)));
+						}
+						if (match(TDot)) {
+							return parseNextIntExpression(EUnaryOp(OpNeg, parsePropertyOrMethodChain(s)));
 						}
 						return parseNextIntExpression(EUnaryOp(OpNeg, RVReference(s)));
 					case TOpen:
@@ -570,6 +604,9 @@ class MacroManimParser {
 					final idx = parseIntegerOrReference();
 					expect(TBracketClosed);
 					return parseNextIntExpression(RVElementOfArray(s, idx));
+				}
+				if (match(TDot)) {
+					return parseNextIntExpression(parsePropertyOrMethodChain(s));
 				}
 				return parseNextIntExpression(RVReference(s));
 			case TOpen:
@@ -614,10 +651,6 @@ class MacroManimParser {
 			case TIdentifier(s) if (isKeyword(s, "callback")):
 				advance();
 				return parseCallback();
-			case TIdentifier(s) if (isKeyword(s, "function")):
-				advance();
-				expect(TOpen);
-				return RVFunction(parseFunction());
 			case TMinus:
 				advance();
 				switch (peek()) {
@@ -631,6 +664,9 @@ class MacroManimParser {
 							final idx = parseFloatOrReference();
 							expect(TBracketClosed);
 							return parseNextFloatExpression(EUnaryOp(OpNeg, RVElementOfArray(s, idx)));
+						}
+						if (match(TDot)) {
+							return parseNextFloatExpression(EUnaryOp(OpNeg, parsePropertyOrMethodChain(s)));
 						}
 						return parseNextFloatExpression(EUnaryOp(OpNeg, RVReference(s)));
 					case TOpen:
@@ -651,6 +687,9 @@ class MacroManimParser {
 					final idx = parseIntegerOrReference();
 					expect(TBracketClosed);
 					return parseNextFloatExpression(RVElementOfArray(s, idx));
+				}
+				if (match(TDot)) {
+					return parseNextFloatExpression(parsePropertyOrMethodChain(s));
 				}
 				return parseNextFloatExpression(RVReference(s));
 			case TOpen:
@@ -737,9 +776,9 @@ class MacroManimParser {
 				return parseNextStringExpression(RVReference(s));
 			case TOpen:
 				advance();
-				final e = parseStringOrReference();
+				final e = parseAnything();
 				expect(TClosed);
-				return RVParenthesis(e);
+				return parseNextStringExpression(RVParenthesis(e));
 			default:
 				return error('expected string or reference, got ${peek()}');
 		}
@@ -752,6 +791,7 @@ class MacroManimParser {
 			case TStar: advance(); return binop(e1, OpMul, parseStringOrReference());
 			case TSlash: advance(); return binop(e1, OpDiv, parseStringOrReference());
 			case TPercent: advance(); return binop(e1, OpMod, parseStringOrReference());
+			case TIdentifier(s) if (isKeyword(s, "div")): advance(); return binop(e1, OpIntegerDiv, parseStringOrReference());
 			case TDoubleEquals: advance(); return binop(e1, OpEq, parseStringOrReference());
 			case TNotEquals: advance(); return binop(e1, OpNotEq, parseStringOrReference());
 			case TLessThan: advance(); return binop(e1, OpLess, parseStringOrReference());
@@ -776,10 +816,6 @@ class MacroManimParser {
 			case TIdentifier(s) if (isKeyword(s, "callback")):
 				advance();
 				return parseCallback();
-			case TIdentifier(s) if (isKeyword(s, "function")):
-				advance();
-				expect(TOpen);
-				return RVFunction(parseFunction());
 			case TMinus:
 				advance();
 				switch (peek()) {
@@ -796,6 +832,9 @@ class MacroManimParser {
 							final idx = parseAnything();
 							expect(TBracketClosed);
 							return parseNextAnythingExpression(EUnaryOp(OpNeg, RVElementOfArray(s, idx)));
+						}
+						if (match(TDot)) {
+							return parseNextAnythingExpression(EUnaryOp(OpNeg, parsePropertyOrMethodChain(s)));
 						}
 						return parseNextAnythingExpression(EUnaryOp(OpNeg, RVReference(s)));
 					case TOpen:
@@ -819,6 +858,9 @@ class MacroManimParser {
 					final idx = parseAnything();
 					expect(TBracketClosed);
 					return parseNextAnythingExpression(RVElementOfArray(s, idx));
+				}
+				if (match(TDot)) {
+					return parseNextAnythingExpression(parsePropertyOrMethodChain(s));
 				}
 				return parseNextAnythingExpression(RVReference(s));
 			case TQuotedString(s):
@@ -870,10 +912,16 @@ class MacroManimParser {
 	}
 
 	function binop(e1:ReferenceableValue, op:RvOp, e2:ReferenceableValue):ReferenceableValue {
-		// Precedence: mul/div bind tighter than add/sub
+		// Precedence: mul/div bind tighter than add/sub.
+		// Same-precedence operators are left-associative: a * b / c => (a * b) / c
+		// Use recursive binop() for the left subtree to handle chains like a * b / c + d
 		return switch [e2, op] {
 			case [EBinop(op2 = OpAdd | OpSub, e3, e4), OpMul | OpDiv | OpMod | OpIntegerDiv]:
-				EBinop(op2, EBinop(op, e1, e3), e4);
+				EBinop(op2, binop(e1, op, e3), e4);
+			case [EBinop(op2 = OpMul | OpDiv | OpMod | OpIntegerDiv, e3, e4), OpMul | OpDiv | OpMod | OpIntegerDiv]:
+				EBinop(op2, binop(e1, op, e3), e4);
+			case [EBinop(op2 = OpAdd | OpSub, e3, e4), OpAdd | OpSub]:
+				EBinop(op2, binop(e1, op, e3), e4);
 			default:
 				EBinop(op, e1, e2);
 		}
@@ -895,18 +943,47 @@ class MacroManimParser {
 		return RVCallbacks(name, defaultValue);
 	}
 
-	function parseFunction():ReferenceableValueFunction {
-		switch (peek()) {
-			case TIdentifier(s) if (isKeyword(s, "gridwidth")):
-				advance();
+	function parsePropertyOrMethodChain(ref:String):ReferenceableValue {
+		final ident = expectIdentifierOrString();
+		if (match(TOpen)) {
+			// Method call: $ref.method(args...)
+			final args:Array<ReferenceableValue> = [];
+			if (!match(TClosed)) {
+				args.push(parseAnything());
+				while (match(TComma)) {
+					args.push(parseAnything());
+				}
 				expect(TClosed);
-				return RVFGridWidth;
-			case TIdentifier(s) if (isKeyword(s, "gridheight")):
-				advance();
-				expect(TClosed);
-				return RVFGridHeight;
-			default:
-				return error("unknown function");
+			}
+			var base:ReferenceableValue = RVMethodCall(ref, ident, args);
+			// Check for further chaining: $hex.cube(0,1,-1).hexCorner(0, 1.1).x
+			while (match(TDot)) {
+				final nextIdent = expectIdentifierOrString();
+				if (match(TOpen)) {
+					final nextArgs:Array<ReferenceableValue> = [];
+					if (!match(TClosed)) {
+						nextArgs.push(parseAnything());
+						while (match(TComma)) {
+							nextArgs.push(parseAnything());
+						}
+						expect(TClosed);
+					}
+					base = RVChainedMethodCall(base, nextIdent, nextArgs);
+				} else {
+					// Terminal property: .x, .y
+					base = RVChainedMethodCall(base, nextIdent, []);
+				}
+			}
+			return base;
+		} else {
+			// $ctx.hex or $ctx.grid → sub-object, check for further chaining
+			if (ref == "ctx" && (ident == "hex" || ident == "grid")) {
+				if (match(TDot)) {
+					return parsePropertyOrMethodChain("ctx." + ident);
+				}
+			}
+			// Simple property: $ref.width, $ref.height
+			return RVPropertyAccess(ref, ident);
 		}
 	}
 
@@ -1016,34 +1093,22 @@ class MacroManimParser {
 	// ===================== Coordinate Parsing =====================
 
 	function parseXY():Coordinates {
-		switch (peek()) {
-			case TIdentifier(s) if (isKeyword(s, "grid")):
+		var coord:Coordinates = switch (peek()) {
+			case TReference(s):
+				// Check if this is $ref.method() (coordinate method chain) or just $ref as part of OFFSET
+				// We need to peek ahead: if the token after $ref is TDot, it's a coordinate method chain
 				advance();
-				expect(TOpen);
-				final x = parseIntegerOrReference();
-				expect(TComma);
-				final y = parseIntegerOrReference();
-				if (match(TComma)) {
-					final ox = parseIntegerOrReference();
+				validateRef(s);
+				if (match(TDot)) {
+					parseCoordinateMethodChain(s);
+				} else {
+					// Not a dot — this is a plain reference used in OFFSET(x, y) position
+					// Put back as an expression and parse as OFFSET
+					final x = parseNextIntExpression(RVReference(s));
 					expect(TComma);
-					final oy = parseIntegerOrReference();
-					expect(TClosed);
-					return SELECTED_GRID_POSITION_WITH_OFFSET(x, y, ox, oy);
+					final y = parseIntegerOrReference();
+					OFFSET(x, y);
 				}
-				expect(TClosed);
-				return SELECTED_GRID_POSITION(x, y);
-			case TIdentifier(s) if (isKeyword(s, "hex")):
-				advance();
-				expect(TOpen);
-				final q = parseInteger();
-				expect(TComma);
-				final r = parseInteger();
-				expect(TComma);
-				final sv = parseInteger();
-				eatComma();
-				expect(TClosed);
-				if (q + r + sv != 0) error("q + r + s must be 0");
-				return SELECTED_HEX_POSITION(new Hex(q, r, sv));
 			case TIdentifier(s) if (isKeyword(s, "layout")):
 				advance();
 				expect(TOpen);
@@ -1051,32 +1116,171 @@ class MacroManimParser {
 				if (match(TComma)) {
 					final index = parseIntegerOrReference();
 					expect(TClosed);
-					return LAYOUT(layoutName, index);
+					LAYOUT(layoutName, index);
+				} else {
+					expect(TClosed);
+					LAYOUT(layoutName, null);
 				}
-				expect(TClosed);
-				return LAYOUT(layoutName, null);
-			case TIdentifier(s) if (isKeyword(s, "hexedge")):
-				advance();
-				expect(TOpen);
-				final dir = parseIntegerOrReference();
-				expect(TComma);
-				final factor = parseFloatOrReference();
-				expect(TClosed);
-				return SELECTED_HEX_EDGE(dir, factor);
-			case TIdentifier(s) if (isKeyword(s, "hexcorner")):
-				advance();
-				expect(TOpen);
-				final dir = parseIntegerOrReference();
-				expect(TComma);
-				final factor = parseFloatOrReference();
-				expect(TClosed);
-				return SELECTED_HEX_CORNER(dir, factor);
 			default:
 				final x = parseIntegerOrReference();
 				expect(TComma);
 				final y = parseIntegerOrReference();
-				return OFFSET(x, y);
+				OFFSET(x, y);
+		};
+		// Check for .offset(x, y) suffix on any coordinate
+		if (match(TDot)) {
+			final method = expectIdentifierOrString();
+			if (!isKeyword(method, "offset"))
+				error('Unknown coordinate suffix: .$method. Expected .offset(x, y)');
+			expect(TOpen);
+			final ox = parseFloatOrReference();
+			expect(TComma);
+			final oy = parseFloatOrReference();
+			expect(TClosed);
+			coord = WITH_OFFSET(coord, ox, oy);
 		}
+		return coord;
+	}
+
+	function parseCoordinateMethodChain(ref:String):Coordinates {
+		// ref is "hex", "grid", "localhex", "ctx", etc.
+		// For $ctx.hex / $ctx.grid, resolve the sub-object first
+		var effectiveRef = ref;
+		if (ref == "ctx") {
+			final sub = expectIdentifierOrString();
+			if (sub != "hex" && sub != "grid") {
+				error('$$ctx.$sub is not a coordinate system. Use $$ctx.hex or $$ctx.grid in position context');
+			}
+			expect(TDot);
+			effectiveRef = sub; // now parse as if $hex.method() or $grid.method()
+		}
+
+		final method = expectIdentifierOrString();
+		expect(TOpen);
+
+		// Grid methods
+		final isNamed = namedCoordSystems != null && namedCoordSystems.indexOf(effectiveRef) >= 0;
+		inline function wrapNamed(coord:Coordinates):Coordinates {
+			return if (isNamed) NAMED_COORD(effectiveRef, coord) else coord;
+		}
+		if (effectiveRef == "grid" || (isNamed && method == "pos")) {
+			switch (method) {
+				case "pos":
+					final x = parseIntegerOrReference();
+					expect(TComma);
+					final y = parseIntegerOrReference();
+					if (match(TComma)) {
+						final ox = parseIntegerOrReference();
+						expect(TComma);
+						final oy = parseIntegerOrReference();
+						expect(TClosed);
+						return wrapNamed(SELECTED_GRID_POSITION_WITH_OFFSET(x, y, ox, oy));
+					}
+					expect(TClosed);
+					return wrapNamed(SELECTED_GRID_POSITION(x, y));
+				default:
+					return error('Unknown grid method: $method');
+			}
+		}
+
+		// Hex methods
+		if (effectiveRef == "hex" || isNamed) {
+			var cellCoord:Coordinates = null;
+			switch (method) {
+				case "cube":
+					final q = parseFloatOrReference();
+					expect(TComma);
+					final r = parseFloatOrReference();
+					expect(TComma);
+					final s = parseFloatOrReference();
+					expect(TClosed);
+					cellCoord = SELECTED_HEX_CUBE(q, r, s);
+
+				case "offset":
+					final col = parseIntegerOrReference();
+					expect(TComma);
+					final row = parseIntegerOrReference();
+					var parity:OffsetParity = EVEN;
+					if (match(TComma)) {
+						final parityIdent = expectIdentifierOrString();
+						parity = switch (parityIdent) {
+							case "even": EVEN;
+							case "odd": ODD;
+							default: error('Expected "even" or "odd", got: $parityIdent');
+						};
+					}
+					expect(TClosed);
+					cellCoord = SELECTED_HEX_OFFSET(col, row, parity);
+
+				case "doubled":
+					final col = parseIntegerOrReference();
+					expect(TComma);
+					final row = parseIntegerOrReference();
+					expect(TClosed);
+					cellCoord = SELECTED_HEX_DOUBLED(col, row);
+
+				case "pixel":
+					final x = parseFloatOrReference();
+					expect(TComma);
+					final y = parseFloatOrReference();
+					expect(TClosed);
+					cellCoord = SELECTED_HEX_PIXEL(x, y);
+
+				case "corner":
+					final idx = parseIntegerOrReference();
+					final factor = if (match(TComma)) parseFloatOrReference() else RVFloat(1.0);
+					expect(TClosed);
+					return wrapNamed(SELECTED_HEX_CORNER(idx, factor));
+
+				case "edge":
+					final dir = parseIntegerOrReference();
+					final factor = if (match(TComma)) parseFloatOrReference() else RVFloat(1.0);
+					expect(TClosed);
+					return wrapNamed(SELECTED_HEX_EDGE(dir, factor));
+
+				default:
+					return error('Unknown hex method: $method');
+			}
+
+			// Check for chained .hexCorner() / .hexEdge() after any cell addressing method
+			if (match(TDot)) {
+				return wrapNamed(parseHexCellChain(cellCoord));
+			}
+			return wrapNamed(cellCoord);
+		}
+
+		return error('Unknown coordinate system: $effectiveRef');
+	}
+
+	function parseHexCellChain(cell:Coordinates):Coordinates {
+		final chainMethod = expectIdentifierOrString();
+		expect(TOpen);
+		switch (chainMethod) {
+			case "hexCorner":
+				final idx = parseIntegerOrReference();
+				final factor = if (match(TComma)) parseFloatOrReference() else RVFloat(1.0);
+				expect(TClosed);
+				return SELECTED_HEX_CELL_CORNER(cell, idx, factor);
+			case "hexEdge":
+				final dir = parseIntegerOrReference();
+				final factor = if (match(TComma)) parseFloatOrReference() else RVFloat(1.0);
+				expect(TClosed);
+				return SELECTED_HEX_CELL_EDGE(cell, dir, factor);
+			default:
+				return error('Unknown hex chain method: $chainMethod. Expected hexCorner or hexEdge');
+		}
+	}
+
+	function isNamedGrid(name:String):Bool {
+		if (namedCoordSystems == null) return false;
+		// We can't easily distinguish grid vs hex by name at parse time.
+		// Named systems are tracked, and the builder will validate the type.
+		return namedCoordSystems.indexOf(name) >= 0;
+	}
+
+	function isNamedHex(name:String):Bool {
+		if (namedCoordSystems == null) return false;
+		return namedCoordSystems.indexOf(name) >= 0;
 	}
 
 	// ===================== Helpers =====================
@@ -1131,6 +1335,29 @@ class MacroManimParser {
 				return false;
 			default:
 				return error("expected true/false, 0/1 or yes/no");
+		}
+	}
+
+	function parseBoolOrReference():ReferenceableValue {
+		switch (peek()) {
+			case TReference(s):
+				advance();
+				validateRef(s);
+				return RVReference(s);
+			case TIdentifier(s) if (isKeyword(s, "yes") || isKeyword(s, "true")):
+				advance();
+				return RVInteger(1);
+			case TIdentifier(s) if (isKeyword(s, "no") || isKeyword(s, "false")):
+				advance();
+				return RVInteger(0);
+			case TInteger(s) if (s == "1"):
+				advance();
+				return RVInteger(1);
+			case TInteger(s) if (s == "0"):
+				advance();
+				return RVInteger(0);
+			default:
+				return error("expected true/false, 0/1, yes/no, or $$reference");
 		}
 	}
 
@@ -1224,10 +1451,12 @@ class MacroManimParser {
 				final w = parseIntegerOrReference();
 				expect(TComma);
 				final h = parseIntegerOrReference();
-				var color:ReferenceableValue = RVInteger(0xFF0000);
-				if (match(TComma)) color = parseColorOrReference();
+				expect(TComma);
+				final color = parseColorOrReference();
+				var thickness:ReferenceableValue = RVInteger(1);
+				if (match(TComma)) thickness = parseIntegerOrReference();
 				expect(TClosed);
-				return Cross(w, h, color);
+				return Cross(w, h, color, thickness);
 			case TIdentifier(s) if (isKeyword(s, "color")):
 				advance();
 				expect(TOpen);
@@ -1308,6 +1537,8 @@ class MacroManimParser {
 
 	function parseDefine():Definition {
 		final paramName = expectIdentifierOrString();
+		if (implicitRefs.indexOf(paramName) >= 0)
+			error('$$' + paramName + ' is a reserved name and cannot be used as a parameter');
 		// Shorthand: name="default" (string type with default)
 		if (match(TEquals)) {
 			switch (peek()) {
@@ -1351,6 +1582,9 @@ class MacroManimParser {
 			case TIdentifier(s) if (isKeyword(s, "array")):
 				advance();
 				def.type = PPTArray;
+			case TIdentifier(s) if (isKeyword(s, "tile")):
+				advance();
+				def.type = PPTTile;
 			case TIdentifier(s) if (isKeyword(s, "flags")):
 				advance();
 				expect(TOpen);
@@ -1407,6 +1641,8 @@ class MacroManimParser {
 	function parseDefaultParameterValue(param:Definition):Void {
 		if (!match(TEquals)) return;
 		switch (param.type) {
+			case PPTTile:
+				error('tile parameter "${param.name}" cannot have a default value');
 			case PPTColor:
 				final c = tryParseColor();
 				if (c != null) { param.defaultValue = Value(c); return; }
@@ -1480,6 +1716,8 @@ class MacroManimParser {
 				Flag(n);
 			case PPTArray:
 				error('array default requires bracket syntax: [val1, val2, ...]');
+			case PPTTile:
+				TileSourceValue(TSFile(RVString(value)));
 		}
 	}
 
@@ -1804,6 +2042,30 @@ class MacroManimParser {
 				final value = parseFloatOrReference();
 				expect(TClosed);
 				return FilterBrightness(value);
+			case TIdentifier(s) if (isKeyword(s, "grayscale")):
+				advance();
+				expect(TOpen);
+				if (isNamedParamNext()) {
+					final results = parseOptionalParams([
+						ParseFloatOrReference("value"),
+					]);
+					return FilterGrayscale(cast results.get("value") ?? RVFloat(1.));
+				}
+				final value = parseFloatOrReference();
+				expect(TClosed);
+				return FilterGrayscale(value);
+			case TIdentifier(s) if (isKeyword(s, "hue")):
+				advance();
+				expect(TOpen);
+				if (isNamedParamNext()) {
+					final results = parseOptionalParams([
+						ParseFloatOrReference("value"),
+					]);
+					return FilterHue(cast results.get("value") ?? RVFloat(0.));
+				}
+				final value = parseFloatOrReference();
+				expect(TClosed);
+				return FilterHue(value);
 			case TIdentifier(s) if (isKeyword(s, "blur")):
 				advance();
 				expect(TOpen);
@@ -2143,49 +2405,132 @@ class MacroManimParser {
 		switch (peek()) {
 			case TName(name):
 				advance();
+				var layoutType:LayoutsType = null;
 				// Try single point first
 				final content = parseLayoutContent();
 				if (content != null) {
-					eatSemicolon();
-					layouts.set(name, {name: name, type: Single(content), grid: grid, hex: hex, offset: foldOffsets(offsets)});
-					return;
-				}
-				// sequence or list
-				switch (peek()) {
-					case TIdentifier(s) if (isKeyword(s, "sequence")):
-						advance();
-						expect(TOpen);
-						final varName = expectReferenceOrIdentifier();
-						expect(TColon);
-						final from = parseInteger();
-						expect(TDoubleDot);
-						final to = parseInteger();
-						expect(TClosed);
-						final lc = parseLayoutContent();
-						if (lc == null) error("layout content expected");
-						eatSemicolon();
-						layouts.set(name, {name: name, type: Sequence(varName, from, to, lc), grid: grid, hex: hex, offset: foldOffsets(offsets)});
-					case TIdentifier(s) if (isKeyword(s, "list")):
-						advance();
-						expect(TCurlyOpen);
-						var contentList:Array<LayoutContent> = [];
-						while (true) {
+					layoutType = Single(content);
+				} else {
+					// sequence, list, or cells
+					switch (peek()) {
+						case TIdentifier(s) if (isKeyword(s, "sequence")):
+							advance();
+							expect(TOpen);
+							final varName = expectReferenceOrIdentifier();
+							expect(TColon);
+							final from = parseInteger();
+							expect(TDoubleDot);
+							final to = parseInteger();
+							expect(TClosed);
 							final lc = parseLayoutContent();
-							if (lc != null) {
-								eatSemicolon();
-								contentList.push(lc);
-							} else {
-								break;
+							if (lc == null) error("layout content expected");
+							layoutType = Sequence(varName, from, to, lc);
+						case TIdentifier(s) if (isKeyword(s, "list")):
+							advance();
+							expect(TCurlyOpen);
+							var contentList:Array<LayoutContent> = [];
+							while (true) {
+								final lc = parseLayoutContent();
+								if (lc != null) {
+									eatSemicolon();
+									contentList.push(lc);
+								} else {
+									break;
+								}
 							}
-						}
-						expect(TCurlyClosed);
-						layouts.set(name, {name: name, type: List(contentList), grid: grid, hex: hex, offset: foldOffsets(offsets)});
-					default:
-						error("expected sequence, list, or point");
+							expect(TCurlyClosed);
+							layoutType = List(contentList);
+						case TIdentifier(s) if (isKeyword(s, "cells")):
+							advance();
+							expect(TOpen);
+							var cols = 0;
+							var rows = 0;
+							var cellWidth = 0;
+							var cellHeight = 0;
+							for (_ in 0...4) {
+								final key = expectIdentifierOrString();
+								expect(TColon);
+								final val = parseInteger();
+								switch (key) {
+									case "cols": cols = val;
+									case "rows": rows = val;
+									case "cellWidth": cellWidth = val;
+									case "cellHeight": cellHeight = val;
+									default: error('unknown cells param: $key');
+								}
+								match(TComma);
+							}
+							expect(TClosed);
+							layoutType = Grid(cols, rows, cellWidth, cellHeight);
+						default:
+							error("expected sequence, list, cells, or point");
+					}
 				}
+				// Parse optional align: suffix
+				final align = parseLayoutAlign();
+				eatSemicolon();
+				layouts.set(name, {name: name, type: layoutType, grid: grid, hex: hex, offset: foldOffsets(offsets),
+					alignX: align.alignX, alignY: align.alignY});
 			default:
 				error('expected layout name (#name), got ${peek()}');
 		}
+	}
+
+	function parseLayoutAlign():{alignX:LayoutAlignX, alignY:LayoutAlignY} {
+		var alignX:LayoutAlignX = Left;
+		var alignY:LayoutAlignY = Top;
+		switch (peek()) {
+			case TIdentifier(s) if (isKeyword(s, "align")):
+				advance();
+				expect(TColon);
+				var hasCenter = false;
+				var setX = false;
+				var setY = false;
+				var count = 0;
+				while (true) {
+					if (count > 0 && !match(TComma)) break;
+					switch (peek()) {
+						case TIdentifier(v) if (isKeyword(v, "center")):
+							advance();
+							if (setX || setY) error("center cannot be combined with other align values");
+							hasCenter = true;
+							alignX = LayoutAlignX.Center;
+							alignY = LayoutAlignY.Center;
+							setX = true;
+							setY = true;
+						case TIdentifier(v) if (isKeyword(v, "centerX")):
+							advance();
+							if (hasCenter) error("center cannot be combined with other align values");
+							if (setX) error("duplicate X alignment");
+							alignX = LayoutAlignX.Center;
+							setX = true;
+						case TIdentifier(v) if (isKeyword(v, "right")):
+							advance();
+							if (hasCenter) error("center cannot be combined with other align values");
+							if (setX) error("duplicate X alignment");
+							alignX = LayoutAlignX.Right;
+							setX = true;
+						case TIdentifier(v) if (isKeyword(v, "centerY")):
+							advance();
+							if (hasCenter) error("center cannot be combined with other align values");
+							if (setY) error("duplicate Y alignment");
+							alignY = LayoutAlignY.Center;
+							setY = true;
+						case TIdentifier(v) if (isKeyword(v, "bottom")):
+							advance();
+							if (hasCenter) error("center cannot be combined with other align values");
+							if (setY) error("duplicate Y alignment");
+							alignY = LayoutAlignY.Bottom;
+							setY = true;
+						default:
+							if (count == 0) error('unknown align value: ${peek()}');
+							break;
+					}
+					count++;
+				}
+			default:
+		}
+		return {alignX: alignX, alignY: alignY};
 	}
 
 	function foldOffsets(offsets:Array<bh.base.Point>):bh.base.Point {
@@ -2205,6 +2550,7 @@ class MacroManimParser {
 			case UNTObject(n): n;
 			case UNTUpdatable(n): n;
 			case UNTIndexed(n, _): n;
+			case UNTIndexed2D(n, _, _): n;
 		}
 		return {
 			pos: ZERO,
@@ -2214,6 +2560,7 @@ class MacroManimParser {
 			layer: layerIndex,
 			gridCoordinateSystem: null,
 			hexCoordinateSystem: null,
+			namedCoordinateSystems: null,
 			blendMode: null,
 			filter: null,
 			parent: parent,
@@ -2380,9 +2727,9 @@ class MacroManimParser {
 							case TIdentifier(gs) if (isKeyword(gs, "grid")):
 								advance();
 								textAlignWidth = TAWGrid;
+							case TInteger(_), TMinus, THexInteger(_), TReference(_), TQuestion:
+								textAlignWidth = TAWValue(parseIntegerOrReference());
 							default:
-								final mw = tryParseIntValue();
-								if (mw != null) textAlignWidth = TAWValue(mw);
 						}
 					}
 				}
@@ -2457,7 +2804,33 @@ class MacroManimParser {
 				advance();
 				if (updatableName == null)
 					error("slot requires a #name prefix");
-				createNode(SLOT, parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+				if (match(TOpen)) {
+					final parsed = parseDefines();
+					currentDefs = parsed.defs;
+					activeDefs = parsed.defs;
+					scopeVars = [];
+					createNode(SLOT(parsed.defs, parsed.order), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+				} else {
+					createNode(SLOT(null, null), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+				}
+
+			case TIdentifier(s) if (isKeyword(s, "slotContent") || isKeyword(s, "slotcontent")):
+				advance();
+				// Validate: must be inside a SLOT node
+				var insideSlot = false;
+				var checkNode = parent;
+				while (checkNode != null) {
+					switch (checkNode.type) {
+						case SLOT(_, _):
+							insideSlot = true;
+							break;
+						default:
+					}
+					checkNode = checkNode.parent;
+				}
+				if (!insideSlot)
+					error("slotContent can only be used inside a slot body");
+				createNode(SLOT_CONTENT, parent, conditional, scale, alpha, tint, layerIndex, updatableName);
 
 			case TIdentifier(s) if (isKeyword(s, "interactive")):
 				advance();
@@ -2567,7 +2940,7 @@ class MacroManimParser {
 				scopeVars = [];
 				createNode(PROGRAMMABLE(isTileGroup, parsed.defs, parsed.order), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
 
-			case TIdentifier(s) if (isKeyword(s, "relativelayouts")):
+			case TIdentifier(s) if (isKeyword(s, "layouts") || isKeyword(s, "relativelayouts")):
 				advance();
 				expect(TCurlyOpen);
 				final layoutsDef = parseLayouts();
@@ -2575,6 +2948,7 @@ class MacroManimParser {
 					case UNTObject(_): UNTObject(defaultLayoutNodeName);
 					case UNTUpdatable(_): UNTUpdatable(defaultLayoutNodeName);
 					case UNTIndexed(_, _): UNTObject(defaultLayoutNodeName);
+					case UNTIndexed2D(_, _, _): UNTObject(defaultLayoutNodeName);
 				});
 				return n; // skip position/children parsing
 
@@ -2772,6 +3146,7 @@ class MacroManimParser {
 					case UNTObject(_): UNTObject(defaultPathNodeName);
 					case UNTUpdatable(_): UNTUpdatable(defaultPathNodeName);
 					case UNTIndexed(_, _): UNTObject(defaultPathNodeName);
+					case UNTIndexed2D(_, _, _): UNTObject(defaultPathNodeName);
 				});
 				return n;
 
@@ -2794,6 +3169,7 @@ class MacroManimParser {
 					case UNTObject(_): UNTObject(defaultCurveNodeName);
 					case UNTUpdatable(_): UNTUpdatable(defaultCurveNodeName);
 					case UNTIndexed(_, _): UNTObject(defaultCurveNodeName);
+					case UNTIndexed2D(_, _, _): UNTObject(defaultCurveNodeName);
 				});
 				return n;
 
@@ -2854,7 +3230,12 @@ class MacroManimParser {
 				if (parent == null) error("settings must have a parent");
 				if (parent.settings == null) parent.settings = new Map();
 				while (!match(TCurlyClosed)) {
-					final key = expectIdentifierOrString();
+					var key = expectIdentifierOrString();
+					// Support dotted keys for sub-component targeting: item.fontColor, scrollbar.thickness
+					if (match(TDot)) {
+						final suffix = expectIdentifierOrString();
+						key = key + "." + suffix;
+					}
 					switch (peek()) {
 						case TColon:
 							advance();
@@ -2874,8 +3255,16 @@ class MacroManimParser {
 									final value = parseStringOrReference();
 									if (parent.settings.exists(key)) error('setting $key already defined');
 									parent.settings.set(key, {type: SVTString, value: value});
+								case "color":
+									final value = parseColorOrReference();
+									if (parent.settings.exists(key)) error('setting $key already defined');
+									parent.settings.set(key, {type: SVTInt, value: value});
+								case "bool":
+									final value = parseBoolOrReference();
+									if (parent.settings.exists(key)) error('setting $key already defined');
+									parent.settings.set(key, {type: SVTBool, value: value});
 								default:
-									error('expected int, float, or string after : in settings');
+									error('expected int, float, string, color, or bool after : in settings');
 							}
 						case TArrow:
 							advance();
@@ -3060,14 +3449,25 @@ class MacroManimParser {
 			maxLife: null, lifeRandom: null, size: null, sizeRandom: null, blendMode: null,
 			speed: null, speedRandom: null, speedIncrease: null, gravity: null, gravityAngle: null,
 			fadeIn: null, fadeOut: null, fadePower: null, tiles: [], emit: Point(RVFloat(0), RVFloat(0)),
-			rotationInitial: null, rotationSpeed: null, rotationSpeedRandom: null, rotateAuto: null,
-			colorStart: null, colorEnd: null, colorMid: null, colorMidPos: null,
+			rotationInitial: null, rotationSpeed: null, rotationSpeedRandom: null, rotateAuto: null, forwardAngle: null,
+			colorCurves: null,
 			forceFields: null, velocityCurve: null, sizeCurve: null,
-			trailEnabled: null, trailLength: null, trailFadeOut: null,
-			boundsMode: null, boundsMinX: null, boundsMaxX: null, boundsMinY: null, boundsMaxY: null,
-			subEmitters: null, animationRepeat: null
+			boundsMode: null, boundsMinX: null, boundsMaxX: null, boundsMinY: null, boundsMaxY: null, boundsLines: null,
+			subEmitters: null, animationRepeat: null,
+			attachTo: null, spawnCurve: null,
+			animFile: null, animSelector: null, animStates: null, animEventOverrides: null
 		};
 		while (!match(TCurlyClosed)) {
+			// Check for rate-based actions: 0.0: colorCurve: ...
+			switch (peek()) {
+				case TFloat(_) | TInteger(_):
+					final rate = parseFloatOrReference();
+					expect(TColon);
+					parseParticleRateAction(rate, p);
+					eatSemicolon();
+					continue;
+				default:
+			}
 			if (!isNamedParamNext()) { eatComma(); eatSemicolon(); continue; }
 			final name = expectIdentifierOrString();
 			expect(TColon);
@@ -3091,13 +3491,37 @@ class MacroManimParser {
 				case "rotationspeedrandom": p.rotationSpeedRandom = parseFloatOrReference();
 				case "rotationinitial": p.rotationInitial = parseFloatOrReference();
 				case "rotateauto": p.rotateAuto = parseBool();
+				case "forwardangle": p.forwardAngle = parseFloatOrReference();
 				case "emitdelay": p.emitDelay = parseFloatOrReference();
 				case "emitsync": p.emitSync = parseFloatOrReference();
-				case "colorstart": p.colorStart = parseColorOrReference();
-				case "colorend": p.colorEnd = parseColorOrReference();
-				case "colormid": p.colorMid = parseColorOrReference();
-				case "colormidpos": p.colorMidPos = parseFloatOrReference();
 				case "animationrepeat": p.animationRepeat = parseFloatOrReference();
+				case "attachto": p.attachTo = expectIdentifierOrString();
+				case "spawncurve": p.spawnCurve = parseCurveNameOrEasing();
+				case "animfile": p.animFile = expectIdentifierOrString();
+				case "animselector":
+					if (p.animSelector == null) p.animSelector = new Map();
+					final key = expectIdentifierOrString();
+					expect(TArrow);
+					final val = expectIdentifierOrString();
+					p.animSelector.set(key, val);
+				case "onbounce":
+					final animActionName = expectIdentifierOrString();
+					if (isKeyword(animActionName, "anim")) {
+						expect(TOpen);
+						final animName = expectIdentifierOrString();
+						expect(TClosed);
+						if (p.animEventOverrides == null) p.animEventOverrides = [];
+						p.animEventOverrides.push({trigger: "onBounce", animName: animName});
+					} else error('expected anim("name") after onBounce:');
+				case "ondeath":
+					final animActionName2 = expectIdentifierOrString();
+					if (isKeyword(animActionName2, "anim")) {
+						expect(TOpen);
+						final animName = expectIdentifierOrString();
+						expect(TClosed);
+						if (p.animEventOverrides == null) p.animEventOverrides = [];
+						p.animEventOverrides.push({trigger: "onDeath", animName: animName});
+					} else error('expected anim("name") after onDeath:');
 				case "blendmode":
 					final bm = tryParseBlendMode();
 					if (bm == null) error("unknown blend mode");
@@ -3107,9 +3531,9 @@ class MacroManimParser {
 				case "emit":
 					p.emit = parseEmitMode();
 				case "sizecurve":
-					p.sizeCurve = parseCurvePoints();
+					p.sizeCurve = parseCurveNameOrEasing();
 				case "velocitycurve":
-					p.velocityCurve = parseCurvePoints();
+					p.velocityCurve = parseCurveNameOrEasing();
 				case "forcefields":
 					p.forceFields = parseForceFields();
 				case "boundsmode":
@@ -3122,12 +3546,16 @@ class MacroManimParser {
 					p.boundsMinY = parseFloatOrReference();
 				case "boundsmaxy":
 					p.boundsMaxY = parseFloatOrReference();
-				case "trailenabled":
-					p.trailEnabled = parseBool();
-				case "traillength":
-					p.trailLength = parseFloatOrReference();
-				case "trailfadeout":
-					p.trailFadeOut = parseBool();
+				case "boundsline":
+					final x1 = parseFloatOrReference();
+					expect(TComma);
+					final y1 = parseFloatOrReference();
+					expect(TComma);
+					final x2 = parseFloatOrReference();
+					expect(TComma);
+					final y2 = parseFloatOrReference();
+					if (p.boundsLines == null) p.boundsLines = [];
+					p.boundsLines.push({x1: x1, y1: y1, x2: x2, y2: y2});
 				case "subemitters":
 					p.subEmitters = parseSubEmitters();
 				default:
@@ -3137,6 +3565,35 @@ class MacroManimParser {
 			eatSemicolon();
 		}
 		return p;
+	}
+
+	function parseParticleRateAction(atRate:ReferenceableValue, p:ParticlesDef):Void {
+		final actionName = expectIdentifierOrString();
+		switch (actionName.toLowerCase()) {
+			case "colorcurve":
+				expect(TColon);
+				final c = parseCurveNameOrEasing();
+				expect(TComma);
+				final startColor = parseColorOrReference();
+				expect(TComma);
+				final endColor = parseColorOrReference();
+				if (p.colorCurves == null) p.colorCurves = [];
+				p.colorCurves.push({
+					atRate: atRate,
+					curveName: c.curveName,
+					inlineEasing: c.inlineEasing,
+					startColor: startColor,
+					endColor: endColor
+				});
+			case "anim":
+				expect(TOpen);
+				final animName = expectIdentifierOrString();
+				expect(TClosed);
+				if (p.animStates == null) p.animStates = [];
+				p.animStates.push({atRate: atRate, animName: animName});
+			default:
+				error('unknown particle rate action: $actionName');
+		}
 	}
 
 	function parseTileSources():Array<TileSource> {
@@ -3200,8 +3657,20 @@ class MacroManimParser {
 				final angleRand = parseFloatOrReference();
 				expect(TClosed);
 				return Circle(r, rRand, angle, angleRand);
+			case TIdentifier(s) if (isKeyword(s, "path")):
+				advance();
+				expect(TOpen);
+				final pathName = expectIdentifierOrString();
+				var tangent = false;
+				if (match(TComma)) {
+					final flag = expectIdentifierOrString();
+					if (isKeyword(flag, "tangent")) tangent = true;
+					else error('unknown path emit flag: $flag, expected "tangent"');
+				}
+				expect(TClosed);
+				return tangent ? ManimPathTangent(pathName) : ManimPath(pathName);
 			default:
-				return error("expected emit mode: point, cone, box, circle");
+				return error("expected emit mode: point, cone, box, circle, path");
 		}
 	}
 
@@ -3282,6 +3751,18 @@ class MacroManimParser {
 					final radius = parseFloatOrReference();
 					expect(TClosed);
 					fields.push(FFRepulsor(x, y, strength, radius));
+				case TIdentifier(s) if (isKeyword(s, "pathguide")):
+					advance();
+					expect(TOpen);
+					final pathName = expectIdentifierOrString();
+					expect(TComma);
+					final attractStrength = parseFloatOrReference();
+					expect(TComma);
+					final flowStrength = parseFloatOrReference();
+					expect(TComma);
+					final radius = parseFloatOrReference();
+					expect(TClosed);
+					fields.push(FFPathGuide(pathName, attractStrength, flowStrength, radius));
 				default:
 					error('unknown force field type: ${peek()}');
 			}
@@ -3323,6 +3804,7 @@ class MacroManimParser {
 			var inheritVelocity:Null<ReferenceableValue> = null;
 			var offsetX:Null<ReferenceableValue> = null;
 			var offsetY:Null<ReferenceableValue> = null;
+			var burstCount:Null<ReferenceableValue> = null;
 			while (!match(TCurlyClosed)) {
 				final name = expectIdentifierOrString();
 				expect(TColon);
@@ -3345,12 +3827,13 @@ class MacroManimParser {
 					case "inheritvelocity": inheritVelocity = parseFloatOrReference();
 					case "offsetx": offsetX = parseFloatOrReference();
 					case "offsety": offsetY = parseFloatOrReference();
+					case "burstcount": burstCount = parseFloatOrReference();
 					default: parseStringOrReference(); // skip unknown
 				}
 				eatSemicolon();
 			}
 			emitters.push({groupId: groupId, trigger: trigger, probability: probability,
-				inheritVelocity: inheritVelocity, offsetX: offsetX, offsetY: offsetY});
+				inheritVelocity: inheritVelocity, offsetX: offsetX, offsetY: offsetY, burstCount: burstCount});
 		}
 		return emitters;
 	}
@@ -3406,7 +3889,8 @@ class MacroManimParser {
 					case "int": {key: key, type: SVTInt, value: parseIntegerOrReference()};
 					case "float": {key: key, type: SVTFloat, value: parseFloatOrReference()};
 					case "string": {key: key, type: SVTString, value: parseStringOrReference()};
-					default: error('expected int, float, or string after : in metadata');
+					case "bool": {key: key, type: SVTBool, value: parseBoolOrReference()};
+					default: error('expected int, float, string, or bool after : in metadata');
 				};
 			case TArrow:
 				advance();
@@ -3462,16 +3946,39 @@ class MacroManimParser {
 					advance();
 					expect(TColon);
 					if (node == null) error("grid not supported on root");
+					// Check for #name
+					var gridName:Null<String> = null;
+					switch (peek()) {
+						case TName(n):
+							advance();
+							gridName = n;
+						default:
+					}
 					final w = parseInteger();
 					expect(TComma);
 					final h = parseInteger();
 					eatSemicolon();
-					node.gridCoordinateSystem = {spacingX: w, spacingY: h};
+					final gridSystem:GridCoordinateSystem = {spacingX: w, spacingY: h};
+					node.gridCoordinateSystem = gridSystem;
+					if (gridName != null) {
+						if (node.namedCoordinateSystems == null) node.namedCoordinateSystems = new Map();
+						node.namedCoordinateSystems.set(gridName, NamedGrid(gridSystem));
+						if (namedCoordSystems == null) namedCoordSystems = [];
+						namedCoordSystems.push(gridName);
+					}
 				case TIdentifier(s) if (isKeyword(s, "hex")):
 					if (isPropertyColon()) {
 						advance();
 						expect(TColon);
 						if (node == null) error("hex not supported on root");
+						// Check for #name
+						var hexName:Null<String> = null;
+						switch (peek()) {
+							case TName(n):
+								advance();
+								hexName = n;
+							default:
+						}
 						final orientation = parseHexOrientation();
 						expect(TOpen);
 						final w = parseFloat_();
@@ -3479,7 +3986,14 @@ class MacroManimParser {
 						final h = parseFloat_();
 						expect(TClosed);
 						eatSemicolon();
-						node.hexCoordinateSystem = {hexLayout: HexLayout.createFromFloats(orientation, w, h)};
+						final hexSystem:HexCoordinateSystem = {hexLayout: HexLayout.createFromFloats(orientation, w, h)};
+						node.hexCoordinateSystem = hexSystem;
+						if (hexName != null) {
+							if (node.namedCoordinateSystems == null) node.namedCoordinateSystems = new Map();
+							node.namedCoordinateSystems.set(hexName, NamedHex(hexSystem));
+							if (namedCoordSystems == null) namedCoordSystems = [];
+							namedCoordSystems.push(hexName);
+						}
 					} else {
 						parseChildNode(node, defs);
 					}
@@ -3567,14 +4081,31 @@ class MacroManimParser {
 						}
 						expect(TClosed);
 					} else if (match(TBracketOpen)) {
-						// #name[$var] — indexed named element
+						// #name[$var] or #name[$varX, $varY] — indexed named element
 						switch (peek()) {
-							case TReference(indexVar):
+							case TReference(indexVar1):
 								advance();
-								if (scopeVars == null || !scopeVars.contains(indexVar))
-									error('#name[$$$indexVar]: index variable $$$indexVar is not a known loop variable in this scope');
-								expect(TBracketClosed);
-								nameType = UNTIndexed(name, indexVar);
+								if (match(TComma)) {
+									// 2D indexing: #name[$x, $y]
+									switch (peek()) {
+										case TReference(indexVar2):
+											advance();
+											if (scopeVars == null || !scopeVars.contains(indexVar1))
+												error('#name[$$$indexVar1, $$$indexVar2]: index variable $$$indexVar1 is not a known loop variable in this scope');
+											if (!scopeVars.contains(indexVar2))
+												error('#name[$$$indexVar1, $$$indexVar2]: index variable $$$indexVar2 is not a known loop variable in this scope');
+											expect(TBracketClosed);
+											nameType = UNTIndexed2D(name, indexVar1, indexVar2);
+										default:
+											error('expected $$variable for second index in #name[$$x, $$y]');
+									}
+								} else {
+									// 1D indexing: #name[$i]
+									if (scopeVars == null || !scopeVars.contains(indexVar1))
+										error('#name[$$$indexVar1]: index variable $$$indexVar1 is not a known loop variable in this scope');
+									expect(TBracketClosed);
+									nameType = UNTIndexed(name, indexVar1);
+								}
 							default:
 								error('expected $$variable inside #name[...]');
 						}
@@ -3587,8 +4118,8 @@ class MacroManimParser {
 								switch (checkNode.type) {
 									case REPEAT(varName, _):
 										error('#$name requires indexed form #$name[$$' + varName + '] inside repeatable');
-									case REPEAT2D(varNameX, _, _, _):
-										error('#$name requires indexed form #$name[$$' + varNameX + '] inside repeatable');
+									case REPEAT2D(varNameX, varNameY, _, _):
+										error('#$name requires indexed form #$name[$$' + varNameX + ', $$' + varNameY + '] inside repeatable2d');
 									default:
 								}
 								checkNode = checkNode.parent;
@@ -3610,6 +4141,7 @@ class MacroManimParser {
 								case UNTObject(n): n;
 								case UNTUpdatable(n): n;
 								case UNTIndexed(n, _): n;
+								case UNTIndexed2D(n, _, _): n;
 							}
 							addNode(n, newNode);
 						} else {
@@ -4165,6 +4697,8 @@ class MacroManimParser {
 		var speed:Null<ReferenceableValue> = null;
 		var duration:Null<ReferenceableValue> = null;
 		var pathName:Null<String> = null;
+		var loop:Bool = false;
+		var pingPong:Bool = false;
 
 		while (!match(TCurlyClosed)) {
 			switch (peek()) {
@@ -4188,11 +4722,27 @@ class MacroManimParser {
 					advance();
 					expect(TColon);
 					duration = parseFloatOrReference();
+				// loop: true|false
+				case TIdentifier(s) if (isKeyword(s, "loop")):
+					advance();
+					expect(TColon);
+					loop = parseBool();
+				// pingPong: true|false
+				case TIdentifier(s) if (isKeyword(s, "pingpong")):
+					advance();
+					expect(TColon);
+					pingPong = parseBool();
 				// path: <pathName>
 				case TIdentifier(s) if (isKeyword(s, "path")):
 					advance();
 					expect(TColon);
 					pathName = expectIdentifierOrString();
+				// easing: <easingType> (shorthand for 0.0: progressCurve: <easing>)
+				case TIdentifier(s) if (isKeyword(s, "easing")):
+					advance();
+					expect(TColon);
+					final easingType = parseEasingType();
+					curveAssignments.push({at: Rate(RVFloat(0.0)), slot: APProgress, curveName: null, inlineEasing: easingType});
 				default:
 					// Rate or checkpoint: <float>: ... or <identifier>: ...
 					var at:AnimatedPathTime;
@@ -4205,7 +4755,7 @@ class MacroManimParser {
 							at = Checkpoint(cpName);
 						default:
 							error('expected rate, checkpoint, type, speed, path, or duration, got ${peek()}');
-							return {mode: mode, speed: speed, duration: duration, pathName: pathName != null ? pathName : "", curveAssignments: curveAssignments, events: events};
+							return {mode: mode, speed: speed, duration: duration, pathName: pathName != null ? pathName : "", curveAssignments: curveAssignments, events: events, loop: loop, pingPong: pingPong};
 					}
 					expect(TColon);
 					// Parse comma-separated list of actions at this time point
@@ -4252,7 +4802,15 @@ class MacroManimParser {
 			}
 		}
 
-		return {mode: mode, speed: speed, duration: duration, pathName: pathName, curveAssignments: curveAssignments, events: events};
+		return {mode: mode, speed: speed, duration: duration, pathName: pathName, curveAssignments: curveAssignments, events: events, loop: loop, pingPong: pingPong};
+	}
+
+	/** Parse a curve name or inline easing after a curve slot colon.
+	 *  Returns {curveName, inlineEasing} — exactly one is non-null. */
+	function parseCurveNameOrEasing():{curveName:Null<String>, inlineEasing:Null<EasingType>} {
+		final name = expectIdentifierOrString();
+		final easing = tryMatchEasingName(name);
+		return if (easing != null) {curveName: null, inlineEasing: easing} else {curveName: name, inlineEasing: null};
 	}
 
 	function parseAnimatedPathActions(at:AnimatedPathTime, curveAssignments:Array<AnimatedPathCurveAssignment>, events:Array<AnimatedPathTimedEvent>):Void {
@@ -4267,36 +4825,45 @@ class MacroManimParser {
 				case TIdentifier(s) if (isKeyword(s, "speedcurve")):
 					advance();
 					expect(TColon);
-					final curveName = expectIdentifierOrString();
-					curveAssignments.push({at: at, slot: APSpeed, curveName: curveName});
+					final c = parseCurveNameOrEasing();
+					curveAssignments.push({at: at, slot: APSpeed, curveName: c.curveName, inlineEasing: c.inlineEasing});
 				case TIdentifier(s) if (isKeyword(s, "scalecurve")):
 					advance();
 					expect(TColon);
-					final curveName = expectIdentifierOrString();
-					curveAssignments.push({at: at, slot: APScale, curveName: curveName});
+					final c = parseCurveNameOrEasing();
+					curveAssignments.push({at: at, slot: APScale, curveName: c.curveName, inlineEasing: c.inlineEasing});
 				case TIdentifier(s) if (isKeyword(s, "alphacurve")):
 					advance();
 					expect(TColon);
-					final curveName = expectIdentifierOrString();
-					curveAssignments.push({at: at, slot: APAlpha, curveName: curveName});
+					final c = parseCurveNameOrEasing();
+					curveAssignments.push({at: at, slot: APAlpha, curveName: c.curveName, inlineEasing: c.inlineEasing});
 				case TIdentifier(s) if (isKeyword(s, "rotationcurve")):
 					advance();
 					expect(TColon);
-					final curveName = expectIdentifierOrString();
-					curveAssignments.push({at: at, slot: APRotation, curveName: curveName});
+					final c = parseCurveNameOrEasing();
+					curveAssignments.push({at: at, slot: APRotation, curveName: c.curveName, inlineEasing: c.inlineEasing});
 				case TIdentifier(s) if (isKeyword(s, "progresscurve")):
 					advance();
 					expect(TColon);
-					final curveName = expectIdentifierOrString();
-					curveAssignments.push({at: at, slot: APProgress, curveName: curveName});
+					final c = parseCurveNameOrEasing();
+					curveAssignments.push({at: at, slot: APProgress, curveName: c.curveName, inlineEasing: c.inlineEasing});
+				case TIdentifier(s) if (isKeyword(s, "colorcurve")):
+					advance();
+					expect(TColon);
+					final c = parseCurveNameOrEasing();
+					expect(TComma);
+					final startColor = parseColorOrReference();
+					expect(TComma);
+					final endColor = parseColorOrReference();
+					curveAssignments.push({at: at, slot: APColor(startColor, endColor), curveName: c.curveName, inlineEasing: c.inlineEasing});
 				case TIdentifier(s) if (isKeyword(s, "custom")):
 					advance();
 					expect(TOpen);
 					final customName = expectIdentifierOrString();
 					expect(TClosed);
 					expect(TColon);
-					final curveName = expectIdentifierOrString();
-					curveAssignments.push({at: at, slot: APCustom(customName), curveName: curveName});
+					final c = parseCurveNameOrEasing();
+					curveAssignments.push({at: at, slot: APCustom(customName), curveName: c.curveName, inlineEasing: c.inlineEasing});
 				default:
 					error('expected curve assignment or event, got ${peek()}');
 					return;
@@ -4337,6 +4904,25 @@ class MacroManimParser {
 			default:
 				return error('expected easing type, got ${peek()}');
 		}
+	}
+
+	/** Check if a string identifier is a known easing name. Returns null if not. */
+	static function tryMatchEasingName(s:String):Null<EasingType> {
+		return switch (s.toLowerCase()) {
+			case "linear": Linear;
+			case "easeinquad": EaseInQuad;
+			case "easeoutquad": EaseOutQuad;
+			case "easeinoutquad": EaseInOutQuad;
+			case "easeincubic": EaseInCubic;
+			case "easeoutcubic": EaseOutCubic;
+			case "easeinoutcubic": EaseInOutCubic;
+			case "easeinback": EaseInBack;
+			case "easeoutback": EaseOutBack;
+			case "easeinoutback": EaseInOutBack;
+			case "easeoutbounce": EaseOutBounce;
+			case "easeoutelastic": EaseOutElastic;
+			default: null;
+		};
 	}
 
 	// ===================== Curves =====================

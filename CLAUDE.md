@@ -8,21 +8,19 @@
 
 - **Language**: Haxe
 - **Framework**: Heaps (game/graphics framework)
-- **Parser**: hxparse (stream-based lexer/parser) - **Modified fork from `github.com/bh213/hxparse`**, not official haxelib
+- **Parser**: Custom hand-written lexer/parser in `MacroManimParser.hx` (runs both at compile-time and runtime)
 - **Package Manager**: Lix (recommended)
 
 ## Project Structure
 
 | Path | Description |
 |------|-------------|
-| `src/bh/multianim/MultiAnimParser.hx` | Parser for `.manim` animation files |
+| `src/bh/multianim/MultiAnimParser.hx` | Parser facade — delegates to MacroManimParser |
 | `src/bh/multianim/MultiAnimBuilder.hx` | Builder for resolving parsed structures |
-| `src/bh/multianim/MacroManimParser.hx` | Compile-time parser (NOT hxparse-based) |
+| `src/bh/multianim/MacroManimParser.hx` | Main parser for `.manim` files (used at both compile-time and runtime) |
 | `src/bh/multianim/ProgrammableCodeGen.hx` | Macro code generation for `@:manim`/`@:data` |
 | `src/bh/multianim/ProgrammableBuilder.hx` | Base class for macro-generated factories |
 | `src/bh/stateanim/AnimParser.hx` | Parser for `.anim` state animation files |
-| `playground/` | Web-based playground for testing |
-| `playground/public/assets/` | Test `.manim` and `.anim` files |
 | `test/` | Test suite |
 
 ## Build & Run Commands
@@ -36,48 +34,20 @@ test.bat run        # Run all tests
 test.bat gen-refs   # Generate reference images
 test.bat report     # Open test report in browser
 
-# Run playground (requires Node.js)
-cd playground
-lix download
-npm install
-npm run dev
 ```
 
-Playground runs at `http://localhost:3000`.
+Playground lives in a separate repository: `../hx-multianim-playground`.
 
-## Parser Pattern Matching (Important!)
+## Parser Architecture
 
-When working with hxparse:
-- Pattern matching only matches on the **first element** of a case pattern, which is ok as long as you don't want to switch on later tokens.
-    ok:
-      switch stream {
-            case [Token1, Token2, Token3]
-            case _:
-      }
+The `.manim` parser is a custom hand-written lexer/parser in `MacroManimParser.hx`. It uses a token-based approach with `peek()`, `advance()`, `match()`, and `expect()` for parsing. The same parser runs at both compile-time (for `@:manim` macro codegen) and runtime (via `MultiAnimParser.parseFile()` which delegates to `MacroManimParser.parseFile()`).
 
-    not ok:
-      switch stream {
-            case [Token1, Token2, Token3]
-            case [Token1, Token4]:
-      }
-      Second case will not be considered. 
-    Should use:
-      switch stream {
-            case [Token1]:
-                switch stream {
-                    case [Token2, Token3]:
-                    case [Token4]:
-                }
-      }
-
-- Use nested `switch` statements for multi-token matching
-- For `[Token1, Token2, Token3]`, create separate switches for each token
-- Reference: https://github.com/Simn/hxparse
+The `.anim` state animation parser in `AnimParser.hx` is a separate hand-written parser.
 
 ## Workflow
 
-1. **Parsing**: Converts `.manim`/`.anim` file text to AST with `Node` structures
-2. **Building**: Resolves references, expressions, and type conversions (runtime)
+1. **Parsing**: `MacroManimParser` converts `.manim` file text to AST with `Node` structures
+2. **Building**: `MultiAnimBuilder` resolves references, expressions, and type conversions (runtime)
 3. **Macro codegen**: `MacroManimParser` parses `.manim` at compile time, `ProgrammableCodeGen` generates typed Haxe classes
 
 ## File Formats
@@ -125,7 +95,7 @@ animation {
 }
 ```
 
-**Parameter types**: `uint`, `int`, `float`, `bool`, `string`, `color`, enum (`[val1,val2]`), range (`1..5`), flags
+**Parameter types**: `uint`, `int`, `float`, `bool`, `string`, `color`, `tile`, enum (`[val1,val2]`), range (`1..5`), flags
 
 ### Common Elements
 
@@ -138,13 +108,14 @@ animation {
 | `staticRef($ref)` | Static embed of another programmable |
 | `dynamicRef($ref, params)` | Dynamic embed with runtime `setParameter()` support |
 | `#name slot` / `#name[$i] slot` | Swappable container (indexed variant for repeatables) |
+| `#name slot(param:type=default, ...)` | Parameterized slot with visual states |
 | `spacer(w, h)` | Empty space inside `flow` containers |
 | `interactive(w, h, id [, debug] [, key=>val ...])` | Hit-test region with optional metadata |
 | `layers()` | Z-ordering container |
 | `mask(w, h)` | Clipping mask rectangle |
 | `flow(...)` | Layout flow container |
 | `repeatable($var, iterator)` | Loop elements |
-| `tilegroup(...)` | Optimized tile grouping |
+| `tilegroup` | Optimized tile grouping (supports `bitmap`, `ninepatch`, `repeatable`, `repeatable2d`, `pixels`, `point`) |
 | `stateanim construct(...)` | Inline state animation |
 | `point` | Positioning point |
 | `apply(...)` | Apply properties to parent |
@@ -156,6 +127,7 @@ animation {
 | `#name atlas2("file") {...}` | Inline sprite atlas |
 | `curves {...}` | 1D curve definitions |
 | `paths {...}` | Path definitions |
+| `#name animatedPath {...}` | Animated path with curves/events |
 | `import "file" as "name"` | Import external .manim |
 
 ### Conditionals
@@ -186,20 +158,27 @@ animation {
 ### Coordinate Systems
 
 - Offset: `x,y`
-- Grid: `grid(x, y [, offsetX, offsetY])`
-- Hex: `hex(q, r, s)`, `hexCorner(index, scale)`, `hexEdge(index, scale)`
+- Grid: `$grid.pos(x, y [, offsetX, offsetY])` (requires `grid: spacingX, spacingY` in body)
+- Grid properties: `$grid.width`, `$grid.height`
+- Hex: `$hex.cube(q, r, s)`, `$hex.corner(index, scale)`, `$hex.edge(direction, scale)` (requires `hex: orientation(w, h)` in body)
+- Hex offset/doubled: `$hex.offset(col, row, even|odd)`, `$hex.doubled(col, row)`
+- Hex properties: `$hex.width`, `$hex.height`
+- Named systems: `grid: #name spacingX, spacingY`, `hex: #name orientation(w, h)`
+- Value extraction: `$grid.pos(x, y).x`, `$hex.corner(0, 1.0).y`
+- Offset suffix: `.offset(x, y)` on any coordinate expression adds a pixel offset (e.g., `layout(name).offset(5, 10)`, `$grid.pos(1, 2).offset(3, 4)`)
+- Context: `$ctx.width`, `$ctx.height`, `$ctx.random(min, max)`, `$ctx.font("name").lineHeight`, `$ctx.font("name").baseLine`
 - Layout: `layout(layoutName [, index])`
 
 ### Filters
 
-`outline`, `glow`, `blur`, `saturate`, `brightness`, `dropShadow`, `replacePalette`, `replaceColor`, `pixelOutline`, `group`
+`outline`, `glow`, `blur`, `saturate`, `brightness`, `grayscale`, `hue`, `dropShadow`, `replacePalette`, `replaceColor`, `pixelOutline`, `group`
 
 ### Particles Quick Reference
 
 ```manim
 #effectName particles {
     count: 100
-    emit: point(0, 0) | cone(dist, distRand, angle, angleRand) | box(w, h, angle, angleRand) | circle(r, rRand, angle, angleRand)
+    emit: point(0, 0) | cone(dist, distRand, angle, angleRand) | box(w, h, angle, angleRand) | circle(r, rRand, angle, angleRand) | path(pathName [, tangent])
     tiles: file("particle.png")
     loop: true
     maxLife: 2.0
@@ -212,34 +191,86 @@ animation {
     blendMode: add | alpha
     fadeIn: 0.1
     fadeOut: 0.8
-    colorStart: #FF4400
-    colorMid: #FFAA00
-    colorMidPos: 0.4
-    colorEnd: #FFFF88
-    sizeCurve: [(0, 0.5), (0.5, 1.2), (1.0, 0.2)]
-    velocityCurve: [(0, 1.0), (1.0, 0.3)]
-    forceFields: [turbulence(30, 0.02, 2.0), wind(10, 0), vortex(0, 0, 100, 150), attractor(0, 0, 50, 100), repulsor(0, 0, 80, 120)]
+    forwardAngle: 90
+    0.0: colorCurve: linear, #FF4400, #FFAA00
+    0.5: colorCurve: easeInQuad, #FFAA00, #FFFF88
+    sizeCurve: myCurveName | easeOutQuad
+    velocityCurve: myCurveName | easeOutQuad
+    forceFields: [turbulence(30, 0.02, 2.0), wind(10, 0), vortex(0, 0, 100, 150), attractor(0, 0, 50, 100), repulsor(0, 0, 80, 120), pathguide(myPath, 80, 120, 50)]
     boundsMode: none | kill | bounce(0.6) | wrap
     boundsMinX: -100
     boundsMaxX: 300
+    boundsLine: 0, 0, 100, 0
     rotationSpeed: 90
     rotateAuto: true
     relative: true
-    trailEnabled: true
-    trailLength: 0.5
-    trailFadeOut: true
+    attachTo: animPathName
+    spawnCurve: curveName
+    animFile: "spark.anim"
+    animSelector: type => fire
+    0.0: anim("birth")
+    0.8: anim("dying")
+    onBounce: anim("impact")
     subEmitters: [{ groupId: "sparks", trigger: ondeath, probability: 0.8 }]
 }
 ```
 
+**Runtime API:** `group.emitBurst(count)`, `group.addForceField(ff)`, `group.removeForceFieldAt(i)`, `group.clearForceFields()`
+
 See `docs/manim.md` for full particles documentation.
+
+### Animated Paths Quick Reference
+
+```manim
+#animName animatedPath {
+    path: myPath
+    type: time
+    duration: 1.0
+    loop: false
+    pingPong: false
+    easing: easeOutCubic
+    0.0: scaleCurve: grow, alphaCurve: easeInQuad
+    0.5: event("halfway")
+    0.0: colorCurve: linear, #FF0000, #00FF00
+    0.5: colorCurve: easeInQuad, #00FF00, #0000FF
+    0.0: custom("myValue"): customCurve
+}
+```
+
+**Properties:** `path` (required), `type: time|distance`, `duration`, `speed`, `loop: bool`, `pingPong: bool`, `easing: <easingName>` (shorthand for `0.0: progressCurve: <easingName>`)
+
+**Curve slots** (at rate 0.0–1.0 or checkpoint name): `speedCurve`, `scaleCurve`, `alphaCurve`, `rotationCurve`, `progressCurve`, `colorCurve: curve, startColor, endColor`, `custom("name"): curve`. Curve references can be named curves from `curves{}` or **inline easing names** (e.g. `easeInQuad`). Multiple `colorCurve` assignments at different rates create per-segment color interpolation.
+
+**Events:** `event("name")`. Built-in: `pathStart`, `pathEnd`, `cycleStart`, `cycleEnd`
+
+**State fields:** `position`, `angle`, `rate`, `speed`, `scale`, `alpha`, `rotation`, `color`, `cycle`, `done`, `custom`
+
+**Runtime API:**
+- Builder: `builder.createAnimatedPath("name", ?startPoint, ?endPoint)`
+- Projectile helper: `builder.createProjectilePath("name", startPoint, endPoint)` (Stretch normalization)
+- Codegen: `factory.createAnimatedPath_name(?startPoint, ?endPoint)`
+- `ap.update(dt)` → `AnimatedPathState`, `ap.seek(rate)` → state without side effects, `ap.reset()` for reuse
+- Reverse lookup: `path.getClosestRate(worldPoint)` → closest rate (0..1)
+
+See `docs/manim.md` for full animated paths documentation.
 
 ## UI Elements Notes
 
+- **Generic settings pass-through**: Any setting not recognized as control or behavioral is automatically forwarded to the underlying programmable as an extra parameter. The programmable must declare a matching parameter; mismatches throw with programmable name + available params.
+- **Prefixed settings**: `item.fontColor`, `scrollbar.thickness` — dotted keys route to sub-builders in multi-programmable components (dropdown, scrollableList). Registered prefixes: dropdown has `dropdown`, `item`, `scrollbar` (main=panel); scrollableList has `item`, `scrollbar` (main=panel).
+- **Multi-forward settings**: Unprefixed `font`/`fontColor` on dropdown/scrollableList forward to ALL relevant sub-builders for backwards compatibility.
+- **Button**: `buildName` and `text` are control settings; everything else (e.g. `width`, `height`, `font`, `fontColor`) passes through to `#button` programmable.
+- **Scrollable list / Dropdown**: `font`, `fontColor` forwarded to both item builder and dropdown button builder. The `#dropdown` programmable accepts `font`/`fontColor` params for the selected item text.
+- **Settings `color` type**: `fontColor:color=>white` — parsed via `parseColorOrReference()`, stored as `SVTInt`. Supports named colors (`white`, `red`, etc.), hex (`#ff7f50`, `0xFF0000`).
 - **Dropdown**: Uses closed button + scrollable panel, moves panel to different layer
 - **UIScreen**: If elements don't show or react to events, check if added to UIScreen's elements
 - **Macros**: `MacroUtils.macroBuildWithParameters` maps `.manim` elements to Haxe code — auto-injects `ResolvedSettings` parameter
 - **Settings naming**: `buildName` for single builder override, `<element>BuildName` for multiple (e.g. `radioBuildName`, `radioButtonBuildName`)
+- **Slider**: Supports custom float range (`min`, `max`, `step` settings). Internally maps to 0-100 grid. Implements both `UIElementNumberValue` (int) and `UIElementFloatValue` (float). Uses incremental mode for efficient redraws. Emits both `UIChangeValue(Int)` and `UIChangeFloatValue(Float)`.
+- **Progress bar**: Display-only component (`UIMultiAnimProgressBar`). Uses full rebuild (not incremental) because `bitmap(generated(color(...)))` is not tracked. Screen helper: `addProgressBar(builder, settings, initialValue)`.
+- **Scrollable list scrollbar**: Built with incremental mode — scroll events use `setParameter("scrollPosition", ...)` instead of full rebuild.
+- **List item tiles**: `UIElementListItem.tileRef` uses `TileRef` enum (`TRFile`, `TRSheet`, `TRSheetIndex`, `TRTile`, `TRGeneratedRect`, `TRGeneratedRectColor`) for structured tile references. Legacy `tileName` (plain string) still works. `TileHelper` class provides static helpers for builder params: `TileHelper.sheet("atlas", "tile")`, `TileHelper.file("img.png")`, `TileHelper.generatedRect(w, h)`, `TileHelper.generatedRectColor(w, h, color)`.
+- **`tile` parameter type**: `.manim` `name:tile` declares a tile parameter (no default allowed). Use with `bitmap($name)`. In codegen maps to `Dynamic` (pass `h2d.Tile`). In builder pass via `TileHelper`.
 - **Full component reference**: See `docs/manim.md` "UI Components" section for all parameter contracts, settings, and events
 
 ## Guidelines for Modifications
@@ -323,8 +354,22 @@ Metadata supports typed values matching the settings system: `key => val` (strin
 **Slots** — `#name slot` or `#name[$i] slot` for swappable containers:
 - Builder: `result.getSlot("name")` or `result.getSlot("name", index)` returns `SlotHandle`
 - Codegen: `instance.getSlot("name")` or `instance.getSlot("name", index)`
-- `SlotHandle` API: `setContent(obj)`, `clear()`, `getContent()`
+- `SlotHandle` API: `setContent(obj)`, `clear()`, `getContent()`, `isEmpty()`, `isOccupied()`, `data` (arbitrary payload)
 - Mismatched access (index on non-indexed or vice versa) throws
+
+**Parameterized slots** — `#name slot(param:type=default, ...)` for visual state management:
+- Same parameter types as `programmable()`: `uint`, `int`, `float`, `bool`, `string`, `color`, enum, range, flags
+- Conditionals (`@()`, `@else`, `@default`) and expressions (`$param`) work inside the slot body
+- `SlotHandle.setParameter("name", value)` updates visuals via `IncrementalUpdateContext`
+- Content goes into a separate `contentRoot` (decoration always visible, not hidden by `setContent`)
+- Codegen: warning emitted, `setParameter()` not supported (use runtime builder)
+
+**Drag-and-drop** — `UIMultiAnimDraggable` with slot integration:
+- `addDropZonesFromSlots("baseName", builderResult, ?accepts)` — batch drop zone creation
+- `createFromSlot(slot)` — creates draggable from slot content, tracks `sourceSlot`
+- `swapMode` — swaps contents when dropping onto an occupied slot
+- Zone highlight callbacks: `onDragStartHighlightZones`, `onDragEndHighlightZones` on draggable
+- Per-zone: `DropZone.onZoneHighlight` callback for hover state
 
 **Dynamic refs** — `dynamicRef($ref, params)` embeds with incremental mode for runtime parameter updates:
 - Builder: `result.getDynamicRef("name").setParameter("param", value)`
@@ -339,8 +384,4 @@ Metadata supports typed values matching the settings system: `key => val` (strin
 
 Interactive playground at: https://bh213.github.io/hx-multianim/
 
-Features:
-- Live examples of UI components
-- Real-time `.manim` editing with preview
-- Multiple example screens
-- Live asset reloading
+Playground source lives in a separate repository: `../hx-multianim-playground`.

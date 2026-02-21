@@ -996,6 +996,173 @@ class ParserErrorTest extends utest.Test {
 		Assert.isTrue(success, "Interpolated string used with + concatenation should parse");
 	}
 
+	// ===== Bare identifier interpolation (${name} shorthand for ${$name}) =====
+	// Note: Haxe double-quoted strings "" have NO interpolation, single-quoted '' do
+
+	@Test
+	public function testInterpolationBareIdentifier() {
+		var success = parseExpectingSuccess("
+			#test programmable(name:string=\"hi\") {
+				text(dd, '${name}', #ffffffff): 0, 0
+			}
+		");
+		Assert.isTrue(success, "Bare identifier in interpolation should be treated as reference");
+	}
+
+	@Test
+	public function testInterpolationBareIdentifierWithPrefix() {
+		var success = parseExpectingSuccess("
+			#test programmable(name:string=\"hi\") {
+				text(dd, 'hello ${name}', #ffffffff): 0, 0
+			}
+		");
+		Assert.isTrue(success, "Bare identifier with prefix text should parse");
+	}
+
+	@Test
+	public function testInterpolationBareArithmetic() {
+		var success = parseExpectingSuccess("
+			#test programmable(x:uint=5) {
+				text(dd, 'val=${x * 2}', #ffffffff): 0, 0
+			}
+		");
+		Assert.isTrue(success, "Bare identifier with arithmetic should parse");
+	}
+
+	@Test
+	public function testInterpolationBareMultipleVars() {
+		var success = parseExpectingSuccess("
+			#test programmable(a:uint=1, b:uint=2) {
+				text(dd, '${a} and ${b}', #ffffffff): 0, 0
+			}
+		");
+		Assert.isTrue(success, "Multiple bare identifiers in interpolation should parse");
+	}
+
+	@Test
+	public function testInterpolationBareExpression() {
+		var success = parseExpectingSuccess("
+			#test programmable(a:uint=1, b:uint=2) {
+				text(dd, '${a + b}', #ffffffff): 0, 0
+			}
+		");
+		Assert.isTrue(success, "Bare identifier expression in interpolation should parse");
+	}
+
+	@Test
+	public function testInterpolationDivOperator() {
+		var success = parseExpectingSuccess("
+			#test programmable(value:uint=100) {
+				text(dd, '${value div 10}', #ffffffff): 0, 0
+			}
+		");
+		Assert.isTrue(success, "div operator inside string interpolation should parse");
+	}
+
+	@Test
+	public function testInterpolationArithmeticAdd() {
+		var success = parseExpectingSuccess("
+			#test programmable(value:uint=77) {
+				text(dd, '${value + 10}', #ffffffff): 0, 0
+			}
+		");
+		Assert.isTrue(success, "Addition inside string interpolation should parse");
+	}
+
+	@Test
+	public function testInterpolationWithSuffixText() {
+		var success = parseExpectingSuccess("
+			#test programmable(x:uint=5) {
+				text(dd, 'prefix ${x + 1} suffix', #ffffffff): 0, 0
+			}
+		");
+		Assert.isTrue(success, "Multi-token interpolation with prefix and suffix text should parse");
+	}
+
+	@Test
+	public function testInterpolationErrorPositionNotLine1() {
+		// Error inside interpolation should report the actual line, not line 1
+		var error = parseExpectingError("
+			#test programmable(x:uint=5) {
+				bitmap(generated(color(10, 10, #ff0000))): 0, 0
+				bitmap(generated(color(10, 10, #00ff00))): 0, 20
+				text(dd, 'value: ${$oops}', #ffffffff): 0, 40
+			}
+		");
+		Assert.notNull(error, "Should throw error for undefined variable in interpolation");
+		// The error should NOT report line 1 (sub-lexer default) — it should report the actual line
+		Assert.isFalse(error.indexOf("test-input:1:") >= 0,
+			'Error position should not be line 1 (sub-lexer default), got: $error');
+	}
+
+	@Test
+	public function testInterpolationBareMixedWithDollar() {
+		var success = parseExpectingSuccess("
+			#test programmable(a:uint=1, b:uint=2) {
+				text(dd, '${a} and ${$b}', #ffffffff): 0, 0
+			}
+		");
+		Assert.isTrue(success, "Mixing bare and dollar-prefixed refs should parse");
+	}
+
+	@Test
+	public function testInterpolationBareWithDoubleQuotedString() {
+		var success = parseExpectingSuccess("
+			#test programmable(x:uint=5) {
+				text(dd, 'prefix ${x + \"items\"}', #ffffffff): 0, 0
+			}
+		");
+		Assert.isTrue(success, "Bare identifier with double-quoted string concat should parse");
+	}
+
+	@Test
+	public function testInterpolationBareInRepeatable() {
+		var success = parseExpectingSuccess("
+			#test programmable(count:uint=3) {
+				repeatable($i, step($count, dx: 20)) {
+					text(dd, 'item ${i}', #ffffffff): 0, 0
+				}
+			}
+		");
+		Assert.isTrue(success, "Bare loop variable in interpolation should parse");
+	}
+
+	@Test
+	public function testInterpolationBareInRepeatable2d() {
+		var success = parseExpectingSuccess("
+			#test programmable(cols:uint=3, rows:uint=2) {
+				repeatable2d($cx, $cy, step($cols, dx: 30), step($rows, dy: 20)) {
+					text(dd, '${cx}x${cy}', #ffffffff): 0, 0
+				}
+			}
+		");
+		Assert.isTrue(success, "Bare loop variables in repeatable2d interpolation should parse");
+	}
+
+	@Test
+	public function testInterpolationBareUndefinedVar() {
+		var error = parseExpectingError("
+			#test programmable(x:uint=5) {
+				text(dd, '${oops}', #ffffffff): 0, 0
+			}
+		");
+		Assert.notNull(error, "Bare undefined variable in interpolation should throw error");
+		Assert.isTrue(error.indexOf("unknown variable") >= 0,
+			'Error should mention unknown variable, got: $error');
+		Assert.isTrue(error.indexOf("oops") >= 0,
+			'Error should name the bad variable, got: $error');
+	}
+
+	@Test
+	public function testInterpolationBareCallbackPreserved() {
+		var success = parseExpectingSuccess("
+			#test programmable(x:uint=5) {
+				text(dd, '${callback(\"test\")}', #ffffffff): 0, 0
+			}
+		");
+		Assert.isTrue(success, "callback keyword inside interpolation should be preserved");
+	}
+
 	// ===== String interpolation error tests =====
 
 	@Test
@@ -1300,5 +1467,595 @@ class ParserErrorTest extends utest.Test {
 			}
 		");
 		Assert.isTrue(success, "#name outside repeatable should be valid");
+	}
+
+	// ===== Text maxWidth reference tests =====
+
+	@Test
+	public function testTextMaxWidthLiteral() {
+		var success = parseExpectingSuccess('
+			#test programmable() {
+				text(dd, "hello", #ffffff, center, 100): 0, 0
+			}
+		');
+		Assert.isTrue(success, "Text with literal maxWidth should parse successfully");
+	}
+
+	@Test
+	public function testTextMaxWidthReference() {
+		var success = parseExpectingSuccess("
+			#test programmable(w:uint=40) {
+				text(dd, \"hello\", #ffffff, center, $w): 0, 0
+			}
+		");
+		Assert.isTrue(success, "Text with reference maxWidth should parse successfully");
+	}
+
+	@Test
+	public function testTextMaxWidthExpression() {
+		var success = parseExpectingSuccess("
+			#test programmable(w:uint=40) {
+				text(dd, \"hello\", #ffffff, center, $w * 2): 0, 0
+			}
+		");
+		Assert.isTrue(success, "Text with expression maxWidth should parse successfully");
+	}
+
+	@Test
+	public function testTextMaxWidthUndefinedRef() {
+		var error = parseExpectingError("
+			#test programmable(w:uint=40) {
+				text(dd, \"hello\", #ffffff, center, $undefined): 0, 0
+			}
+		");
+		Assert.notNull(error, "Should throw error for undefined reference in text maxWidth");
+		Assert.isTrue(error.indexOf("unknown variable") >= 0,
+			'Error should mention unknown variable, got: $error');
+	}
+
+	@Test
+	public function testTextMaxWidthWithInterpolatedText() {
+		var success = parseExpectingSuccess("
+			#test programmable(w:uint=40) {
+				text(dd, '${$w}', #ffffff, center, $w): 0, 0
+			}
+		");
+		Assert.isTrue(success, "Text with interpolated text value and reference maxWidth should parse successfully");
+	}
+
+	@Test
+	public function testTextMaxWidthGrid() {
+		var success = parseExpectingSuccess('
+			#test programmable() {
+				text(dd, "hello", #ffffff, center, grid): 0, 0
+			}
+		');
+		Assert.isTrue(success, "Text with grid maxWidth should still parse successfully");
+	}
+
+	// ===== Tile parameter type tests =====
+
+	@Test
+	public function testTileParameterTypeParsesSuccessfully() {
+		var success = parseExpectingSuccess('
+			#test programmable(icon:tile) {
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		');
+		Assert.isTrue(success, "tile parameter type should parse successfully");
+	}
+
+	@Test
+	public function testTileParameterCannotHaveDefault() {
+		var error = parseExpectingError('
+			#test programmable(icon:tile="something") {
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		');
+		Assert.notNull(error, "Should throw error for tile parameter with default value");
+		Assert.isTrue(error.indexOf("cannot have a default") >= 0,
+			'Error should mention tile cannot have default, got: $error');
+	}
+
+	@Test
+	public function testTileParameterWithBitmapRef() {
+		var success = parseExpectingSuccess('
+			#test programmable(icon:tile) {
+				bitmap($$icon): 0, 0
+			}
+		');
+		Assert.isTrue(success, "tile parameter used as bitmap source via $$ref should parse");
+	}
+
+	@Test
+	public function testMultipleTileParameters() {
+		var success = parseExpectingSuccess('
+			#test programmable(icon:tile, bg:tile, mode:[a,b]=a) {
+				bitmap($$icon): 0, 0
+				bitmap($$bg): 30, 0
+			}
+		');
+		Assert.isTrue(success, "Multiple tile parameters should parse successfully");
+	}
+
+	// ===== Coordinate system & property access syntax tests =====
+
+	@Test
+	public function testCtxReservedAsParameterName() {
+		var error = parseExpectingError('
+			#test programmable(ctx:uint=0) {
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		');
+		Assert.notNull(error, "Should throw error for ctx as parameter name");
+	}
+
+	@Test
+	public function testGridPosParseSuccess() {
+		var success = parseExpectingSuccess('
+			#test programmable(n:uint=0) {
+				grid: 20, 20
+				bitmap(generated(color(10, 10, #f00))): $$grid.pos($$n, 0)
+			}
+		');
+		Assert.isTrue(success, "grid.pos() coordinate should parse");
+	}
+
+	@Test
+	public function testGridPosWithOffsetParseSuccess() {
+		var success = parseExpectingSuccess('
+			#test programmable(n:uint=0) {
+				grid: 20, 20
+				bitmap(generated(color(10, 10, #f00))): $$grid.pos($$n, 0, 5, 3)
+			}
+		');
+		Assert.isTrue(success, "grid.pos() with offset should parse");
+	}
+
+	@Test
+	public function testGridPropertyWidthParseSuccess() {
+		var success = parseExpectingSuccess('
+			#test programmable(n:uint=0) {
+				grid: 20, 15
+				bitmap(generated(color($$grid.width, $$grid.height, #f00))): 0, 0
+			}
+		');
+		Assert.isTrue(success, "grid.width/height properties should parse");
+	}
+
+	@Test
+	public function testHexCubeParseSuccess() {
+		var success = parseExpectingSuccess('
+			#test programmable(n:uint=0) {
+				hex: pointy(16, 16)
+				bitmap(generated(color(10, 10, #f00))): $$hex.cube(0, 0, 0)
+			}
+		');
+		Assert.isTrue(success, "hex.cube() coordinate should parse");
+	}
+
+	@Test
+	public function testHexCornerParseSuccess() {
+		var success = parseExpectingSuccess('
+			#test programmable(n:uint=0) {
+				hex: pointy(16, 16)
+				bitmap(generated(color(10, 10, #f00))): $$hex.corner($$n, 1.0)
+			}
+		');
+		Assert.isTrue(success, "hex.corner() coordinate should parse");
+	}
+
+	@Test
+	public function testHexEdgeParseSuccess() {
+		var success = parseExpectingSuccess('
+			#test programmable(n:uint=0) {
+				hex: pointy(16, 16)
+				bitmap(generated(color(10, 10, #f00))): $$hex.edge($$n, 0.5)
+			}
+		');
+		Assert.isTrue(success, "hex.edge() coordinate should parse");
+	}
+
+	@Test
+	public function testHexOffsetParseSuccess() {
+		var success = parseExpectingSuccess('
+			#test programmable(n:uint=0) {
+				hex: pointy(16, 16)
+				bitmap(generated(color(10, 10, #f00))): $$hex.offset($$n, 0, even)
+			}
+		');
+		Assert.isTrue(success, "hex.offset() coordinate should parse");
+	}
+
+	@Test
+	public function testHexDoubledParseSuccess() {
+		var success = parseExpectingSuccess('
+			#test programmable(n:uint=0) {
+				hex: pointy(16, 16)
+				bitmap(generated(color(10, 10, #f00))): $$hex.doubled($$n, 0)
+			}
+		');
+		Assert.isTrue(success, "hex.doubled() coordinate should parse");
+	}
+
+	@Test
+	public function testHexPixelParseSuccess() {
+		var success = parseExpectingSuccess('
+			#test programmable(n:uint=0) {
+				hex: pointy(16, 16)
+				bitmap(generated(color(10, 10, #f00))): $$hex.pixel(100, 200)
+			}
+		');
+		Assert.isTrue(success, "hex.pixel() coordinate should parse");
+	}
+
+	@Test
+	public function testHexWidthHeightParseSuccess() {
+		var success = parseExpectingSuccess('
+			#test programmable() {
+				hex: pointy(16, 16)
+				bitmap(generated(color($$hex.width, $$hex.height, #f00))): 0, 0
+			}
+		');
+		Assert.isTrue(success, "hex.width/height properties should parse");
+	}
+
+	@Test
+	public function testNamedGridSystemParseSuccess() {
+		var success = parseExpectingSuccess('
+			#test programmable(n:uint=0) {
+				grid: #small 10, 10
+				grid: #big 40, 40
+				bitmap(generated(color(10, 10, #f00))): $$small.pos($$n, 0)
+				bitmap(generated(color(10, 10, #00f))): $$big.pos($$n, 0)
+			}
+		');
+		Assert.isTrue(success, "Named grid coordinate systems should parse");
+	}
+
+	@Test
+	public function testNamedHexSystemParseSuccess() {
+		var success = parseExpectingSuccess('
+			#test programmable(n:uint=0) {
+				hex: #myHex pointy(16, 16)
+				bitmap(generated(color(10, 10, #f00))): $$myHex.cube(0, 0, 0)
+			}
+		');
+		Assert.isTrue(success, "Named hex coordinate system should parse");
+	}
+
+	@Test
+	public function testMixedNamedSystemsParseSuccess() {
+		var success = parseExpectingSuccess('
+			#test programmable(n:uint=0) {
+				grid: #g 20, 20
+				hex: #h flat(12, 12)
+				bitmap(generated(color(10, 10, #f00))): $$g.pos($$n, 0)
+				bitmap(generated(color(10, 10, #00f))): $$h.cube(0, 0, 0)
+			}
+		');
+		Assert.isTrue(success, "Mixed named grid+hex systems should parse");
+	}
+
+	@Test
+	public function testCoordinateXYExtractionParseSuccess() {
+		var success = parseExpectingSuccess('
+			#test programmable(n:uint=0) {
+				grid: 20, 15
+				bitmap(generated(color($$grid.pos($$n, 0).x, $$grid.pos($$n, 0).y, #f00))): 0, 0
+			}
+		');
+		Assert.isTrue(success, "Coordinate .x/.y extraction should parse");
+	}
+
+	@Test
+	public function testHexCornerXYExtractionParseSuccess() {
+		var success = parseExpectingSuccess('
+			#test programmable(n:uint=0) {
+				hex: pointy(16, 16)
+				bitmap(generated(color($$hex.corner($$n, 1.0).x, $$hex.corner($$n, 1.0).y, #f00))): 0, 0
+			}
+		');
+		Assert.isTrue(success, "Hex corner .x/.y extraction should parse");
+	}
+
+	@Test
+	public function testCtxWidthHeightParseSuccess() {
+		var success = parseExpectingSuccess('
+			#test programmable() {
+				bitmap(generated(color($$ctx.width, $$ctx.height, #f00))): 0, 0
+			}
+		');
+		Assert.isTrue(success, "ctx.width/height properties should parse");
+	}
+
+	@Test
+	public function testCtxRandomParseSuccess() {
+		var success = parseExpectingSuccess('
+			#test programmable() {
+				bitmap(generated(color($$ctx.random(5, 20), 10, #f00))): 0, 0
+			}
+		');
+		Assert.isTrue(success, "ctx.random() method should parse");
+	}
+
+	@Test
+	public function testHexOffsetOddParseSuccess() {
+		var success = parseExpectingSuccess('
+			#test programmable(n:uint=0) {
+				hex: flat(16, 16)
+				bitmap(generated(color(10, 10, #f00))): $$hex.offset($$n, 0, odd)
+			}
+		');
+		Assert.isTrue(success, "hex.offset() with odd parity should parse");
+	}
+
+	@Test
+	public function testGridPosXYInExpressionValue() {
+		// .x/.y extraction used in expression context (bitmap dimensions), not as position
+		var success = parseExpectingSuccess('
+			#test programmable(n:uint=0) {
+				grid: 20, 15
+				bitmap(generated(color($$grid.pos($$n, 0).x + 5, $$grid.pos($$n, 0).y + 3, #f00))): 0, 0
+			}
+		');
+		Assert.isTrue(success, "grid.pos().x/y as expression values should parse");
+	}
+
+	// ===== Settings: dotted key parsing =====
+
+	@Test
+	public function testSettingsDottedKeyParses() {
+		var success = parseExpectingSuccess('
+			#test programmable() {
+				placeholder(generated(cross(10, 10, white)), builderParameter("x")) {
+					settings {
+						item.fontColor: int => 0xff0000,
+						scrollbar.thickness: int => 6
+					}
+				}
+			}
+		');
+		Assert.isTrue(success, "Dotted setting keys should parse successfully");
+	}
+
+	@Test
+	public function testSettingsDottedKeyWithStringType() {
+		var success = parseExpectingSuccess('
+			#test programmable() {
+				placeholder(generated(cross(10, 10, white)), builderParameter("x")) {
+					settings {
+						item.font: string => "dd",
+						panel.mode => "custom"
+					}
+				}
+			}
+		');
+		Assert.isTrue(success, "Dotted setting keys with string type should parse");
+	}
+
+	@Test
+	public function testSettingsMixedDottedAndPlain() {
+		var success = parseExpectingSuccess('
+			#test programmable() {
+				placeholder(generated(cross(10, 10, white)), builderParameter("x")) {
+					settings {
+						buildName => "myBtn",
+						width: int => 300,
+						item.fontColor: int => 0xff0000
+					}
+				}
+			}
+		');
+		Assert.isTrue(success, "Mixed dotted and plain setting keys should parse");
+	}
+
+	// ===== Layout align tests =====
+
+	@Test
+	public function testLayoutAlignCenterX() {
+		var success = parseExpectingSuccess("
+			layouts {
+				#pos point: 100, 50 align: centerX
+			}
+			#test programmable() {
+				bitmap(generated(color(10, 10, #f00))): layout(pos)
+			}
+		");
+		Assert.isTrue(success, "Layout align: centerX should parse");
+	}
+
+	@Test
+	public function testLayoutAlignRightBottom() {
+		var success = parseExpectingSuccess("
+			layouts {
+				#pos point: 10, 10 align: right, bottom
+			}
+			#test programmable() {
+				bitmap(generated(color(10, 10, #f00))): layout(pos)
+			}
+		");
+		Assert.isTrue(success, "Layout align: right, bottom should parse");
+	}
+
+	@Test
+	public function testLayoutAlignCenter() {
+		var success = parseExpectingSuccess("
+			layouts {
+				#pos point: 0, 0 align: center
+			}
+			#test programmable() {
+				bitmap(generated(color(10, 10, #f00))): layout(pos)
+			}
+		");
+		Assert.isTrue(success, "Layout align: center should parse");
+	}
+
+	@Test
+	public function testLayoutAlignCenterY() {
+		var success = parseExpectingSuccess("
+			layouts {
+				#pos point: 50, 0 align: centerY
+			}
+			#test programmable() {
+				bitmap(generated(color(10, 10, #f00))): layout(pos)
+			}
+		");
+		Assert.isTrue(success, "Layout align: centerY should parse");
+	}
+
+	@Test
+	public function testLayoutAlignOnCells() {
+		var success = parseExpectingSuccess("
+			layouts {
+				#grid cells(cols: 3, rows: 2, cellWidth: 50, cellHeight: 50) align: right, bottom
+			}
+			#test programmable() {
+				bitmap(generated(color(10, 10, #f00))): layout(grid, 0)
+			}
+		");
+		Assert.isTrue(success, "Layout align on cells should parse");
+	}
+
+	@Test
+	public function testLayoutAlignOnSequence() {
+		var success = parseExpectingSuccess("
+			layouts {
+				grid: 32, 32 {
+					#slots sequence($i: 0..5) point: $i * 32, 0 align: centerX
+				}
+			}
+			#test programmable() {
+				bitmap(generated(color(10, 10, #f00))): layout(slots, 0)
+			}
+		");
+		Assert.isTrue(success, "Layout align on sequence should parse");
+	}
+
+	@Test
+	public function testLayoutAlignOnList() {
+		var success = parseExpectingSuccess("
+			layouts {
+				#pts list {
+					point: 10, 10
+					point: 20, 20
+				} align: bottom
+			}
+			#test programmable() {
+				bitmap(generated(color(10, 10, #f00))): layout(pts, 0)
+			}
+		");
+		Assert.isTrue(success, "Layout align on list should parse");
+	}
+
+	@Test
+	public function testLayoutAlignNoAlign() {
+		var success = parseExpectingSuccess("
+			layouts {
+				#pos point: 100, 50
+			}
+			#test programmable() {
+				bitmap(generated(color(10, 10, #f00))): layout(pos)
+			}
+		");
+		Assert.isTrue(success, "Layout without align should parse");
+	}
+
+	@Test
+	public function testLayoutAlignDuplicateX() {
+		var error = parseExpectingError("
+			layouts {
+				#pos point: 10, 10 align: right, centerX
+			}
+			#test programmable() {
+				bitmap(generated(color(10, 10, #f00))): layout(pos)
+			}
+		");
+		Assert.notNull(error, "Should throw error for duplicate X alignment");
+		Assert.isTrue(error.indexOf("duplicate X alignment") >= 0,
+			'Error should mention duplicate X alignment, got: $error');
+	}
+
+	@Test
+	public function testLayoutAlignDuplicateY() {
+		var error = parseExpectingError("
+			layouts {
+				#pos point: 10, 10 align: bottom, centerY
+			}
+			#test programmable() {
+				bitmap(generated(color(10, 10, #f00))): layout(pos)
+			}
+		");
+		Assert.notNull(error, "Should throw error for duplicate Y alignment");
+		Assert.isTrue(error.indexOf("duplicate Y alignment") >= 0,
+			'Error should mention duplicate Y alignment, got: $error');
+	}
+
+	@Test
+	public function testLayoutAlignCenterCombined() {
+		var error = parseExpectingError("
+			layouts {
+				#pos point: 10, 10 align: center, right
+			}
+			#test programmable() {
+				bitmap(generated(color(10, 10, #f00))): layout(pos)
+			}
+		");
+		Assert.notNull(error, "Should throw error for center combined with other values");
+		Assert.isTrue(error.indexOf("center cannot be combined") >= 0,
+			'Error should mention center cannot be combined, got: $error');
+	}
+
+	@Test
+	public function testLayoutAlignCenterAfterOther() {
+		var error = parseExpectingError("
+			layouts {
+				#pos point: 10, 10 align: right, center
+			}
+			#test programmable() {
+				bitmap(generated(color(10, 10, #f00))): layout(pos)
+			}
+		");
+		Assert.notNull(error, "Should throw error for center after other align value");
+		Assert.isTrue(error.indexOf("center cannot be combined") >= 0,
+			'Error should mention center cannot be combined, got: $error');
+	}
+
+	// ===== .offset(x, y) suffix tests =====
+
+	public function testOffsetOnLayout() {
+		var success = parseExpectingSuccess("
+			layouts {
+				#pos point: 10, 10
+			}
+			#test programmable() {
+				bitmap(generated(color(10, 10, #f00))): layout(pos).offset(5, 10)
+			}
+		");
+		Assert.isTrue(success, "layout().offset() should parse successfully");
+	}
+
+	public function testOffsetOnGridPos() {
+		var success = parseExpectingSuccess("
+			#test programmable() {
+				grid: 32, 32
+				bitmap(generated(color(10, 10, #f00))): " + "$" + "grid.pos(1, 2).offset(3, 4)
+			}
+		");
+		Assert.isTrue(success, "grid.pos().offset() should parse successfully");
+	}
+
+	public function testOffsetInvalidSuffix() {
+		var error = parseExpectingError("
+			layouts {
+				#pos point: 10, 10
+			}
+			#test programmable() {
+				bitmap(generated(color(10, 10, #f00))): layout(pos).foo(1, 2)
+			}
+		");
+		Assert.notNull(error, "Should throw error for unknown coordinate suffix");
+		Assert.isTrue(error.indexOf("Unknown coordinate suffix") >= 0,
+			'Error should mention unknown coordinate suffix, got: $error');
 	}
 }

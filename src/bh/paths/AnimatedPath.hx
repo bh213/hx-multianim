@@ -18,7 +18,9 @@ class AnimatedPathState {
 	public var scale:Float;
 	public var alpha:Float;
 	public var rotation:Float;
+	public var color:Int;
 	public var done:Bool;
+	public var cycle:Int;
 	public var custom:Map<String, Float>;
 }
 
@@ -28,12 +30,21 @@ enum CurveSlot {
 	Alpha;
 	Rotation;
 	Progress; // time mode only: maps timeRate -> pathRate
+	Color; // maps rate -> 0..1 interpolation between startColor and endColor
 }
 
 @:structInit
 private class CurveSegment {
 	public var startRate:Float;
 	public var curve:ICurve;
+}
+
+@:structInit
+private class ColorCurveSegment {
+	public var startRate:Float;
+	public var curve:ICurve;
+	public var startColor:Int;
+	public var endColor:Int;
 }
 
 @:structInit
@@ -48,10 +59,15 @@ class AnimatedPath {
 	final mode:AnimatedPathMode;
 	final pathLength:Float;
 
+	public var loop:Bool = false;
+	public var pingPong:Bool = false;
+
 	var time:Float = 0.;
 	var distance:Float = 0.;
 	var isDone:Bool = false;
 	var started:Bool = false;
+	var cycleCount:Int = 0;
+	var reversed:Bool = false;
 
 	// Curve segments per slot (sorted by startRate)
 	var speedCurveSegments:Array<CurveSegment> = [];
@@ -59,6 +75,7 @@ class AnimatedPath {
 	var alphaCurveSegments:Array<CurveSegment> = [];
 	var rotationCurveSegments:Array<CurveSegment> = [];
 	var progressCurveSegments:Array<CurveSegment> = [];
+	var colorCurveSegments:Array<ColorCurveSegment> = [];
 	var customCurveSegments:Map<String, Array<CurveSegment>> = [];
 
 	// Timed events (sorted by atRate)
@@ -85,7 +102,9 @@ class AnimatedPath {
 			scale: 1.,
 			alpha: 1.,
 			rotation: 0.,
+			color: 0xFFFFFF,
 			done: false,
+			cycle: 0,
 			custom: []
 		};
 	}
@@ -93,6 +112,29 @@ class AnimatedPath {
 	public function addCurveSegment(slot:CurveSlot, startRate:Float, curve:ICurve):Void {
 		var segments = getSegmentsForSlot(slot);
 		insertSorted(segments, {startRate: startRate, curve: curve});
+	}
+
+	/** Add a color curve segment with per-segment start/end colors. */
+	public function addColorCurveSegment(startRate:Float, curve:ICurve, startColor:Int, endColor:Int):Void {
+		var left = 0;
+		var right = colorCurveSegments.length;
+		while (left < right) {
+			var mid = Std.int((left + right) / 2);
+			if (colorCurveSegments[mid].startRate < startRate)
+				left = mid + 1;
+			else
+				right = mid;
+		}
+		colorCurveSegments.insert(left, {startRate: startRate, curve: curve, startColor: startColor, endColor: endColor});
+	}
+
+	/** @deprecated Use addColorCurveSegment() for per-segment colors. */
+	public function setColorRange(startColor:Int, endColor:Int):Void {
+		// Backward compat: set colors on all existing color segments
+		for (seg in colorCurveSegments) {
+			seg.startColor = startColor;
+			seg.endColor = endColor;
+		}
 	}
 
 	public function addCustomCurveSegment(name:String, startRate:Float, curve:ICurve):Void {
@@ -117,7 +159,24 @@ class AnimatedPath {
 		timedEvents.insert(left, {atRate: atRate, eventName: eventName});
 	}
 
+	public function reset():Void {
+		time = 0.;
+		distance = 0.;
+		isDone = false;
+		started = false;
+		currentEventIndex = 0;
+		cycleCount = 0;
+		reversed = false;
+	}
+
 	public function getState():AnimatedPathState {
+		return currentState;
+	}
+
+	/** Compute and return the path state at an arbitrary rate (0..1) without
+	 *  advancing internal time/distance or firing events. */
+	public function seek(rate:Float):AnimatedPathState {
+		computeState(rate);
 		return currentState;
 	}
 
@@ -136,6 +195,7 @@ class AnimatedPath {
 
 		var rate:Float;
 		var effectiveSpeed:Float;
+		var modeComplete = false;
 
 		switch mode {
 			case Distance(baseSpeed):
@@ -144,6 +204,7 @@ class AnimatedPath {
 				effectiveSpeed = baseSpeed * speedMultiplier;
 				distance += dt * effectiveSpeed;
 				rate = getDistanceRate();
+				modeComplete = rate >= 1.0;
 
 			case Time(duration):
 				var timeRate = Math.min(time / duration, 1.0);
@@ -153,25 +214,60 @@ class AnimatedPath {
 				else
 					timeRate;
 				effectiveSpeed = if (time > 0) pathLength * rate / time else 0.;
+				// In Time mode, done when time elapses — not when rate overshoots
+				// (progress curves like EaseOutElastic overshoot past 1.0 to create bounce)
+				modeComplete = timeRate >= 1.0;
 		}
-
-		if (rate >= 1.0) rate = 1.0;
 
 		// Fire events up to current rate
 		while (currentEventIndex < timedEvents.length) {
 			final ev = timedEvents[currentEventIndex];
 			if (ev.atRate <= rate) {
-				computeState(ev.atRate);
+				computeState(if (reversed) 1.0 - ev.atRate else ev.atRate);
 				currentState.speed = effectiveSpeed;
+				currentState.cycle = cycleCount;
 				fireEvent(ev.eventName);
 				currentEventIndex++;
 			} else
 				break;
 		}
 
-		if (rate >= 1.0) {
+		if (modeComplete) {
+			if (loop || pingPong) {
+				// Complete this cycle
+				computeState(if (reversed) 0. else 1.0);
+				currentState.speed = effectiveSpeed;
+				currentState.cycle = cycleCount;
+				fireEvent("cycleEnd");
+				onUpdate(currentState);
+
+				// Start new cycle
+				cycleCount++;
+				currentEventIndex = 0;
+				switch mode {
+					case Time(duration): time -= duration;
+					case Distance(_): distance -= pathLength;
+				}
+				if (pingPong) reversed = !reversed;
+				fireEvent("cycleStart");
+				// Re-compute rate for remainder of this frame
+				switch mode {
+					case Distance(baseSpeed):
+						rate = getDistanceRate();
+					case Time(duration):
+						var timeRate = Math.min(time / duration, 1.0);
+						rate = if (progressCurveSegments.length > 0) evaluateCurveSlot(progressCurveSegments, timeRate) else timeRate;
+				}
+				if (reversed) rate = 1.0 - rate;
+				computeState(rate);
+				currentState.speed = effectiveSpeed;
+				currentState.cycle = cycleCount;
+				onUpdate(currentState);
+				return currentState;
+			}
 			computeState(1.0);
 			currentState.speed = effectiveSpeed;
+			currentState.cycle = cycleCount;
 			currentState.done = true;
 			fireEvent("pathEnd");
 			onUpdate(currentState);
@@ -179,8 +275,10 @@ class AnimatedPath {
 			return currentState;
 		}
 
+		if (reversed) rate = 1.0 - rate;
 		computeState(rate);
 		currentState.speed = effectiveSpeed;
+		currentState.cycle = cycleCount;
 		onUpdate(currentState);
 		return currentState;
 	}
@@ -192,6 +290,8 @@ class AnimatedPath {
 		currentState.scale = evaluateCurveSlot(scaleCurveSegments, rate);
 		currentState.alpha = evaluateCurveSlot(alphaCurveSegments, rate);
 		currentState.rotation = evaluateCurveSlotDefault(rotationCurveSegments, rate, 0.);
+		if (colorCurveSegments.length > 0)
+			currentState.color = evaluateColorCurve(rate);
 		currentState.done = false;
 
 		// Custom curves
@@ -245,7 +345,45 @@ class AnimatedPath {
 			case Alpha: alphaCurveSegments;
 			case Rotation: rotationCurveSegments;
 			case Progress: progressCurveSegments;
+			case Color: throw "Use addColorCurveSegment() for Color slot";
 		};
+	}
+
+	/** Evaluate per-segment color curve: find active segment, evaluate curve, lerp between segment's colors. */
+	function evaluateColorCurve(rate:Float):Int {
+		// Find active segment: largest startRate <= rate
+		var activeIndex = -1;
+		for (i in 0...colorCurveSegments.length) {
+			if (colorCurveSegments[i].startRate <= rate)
+				activeIndex = i;
+			else
+				break;
+		}
+
+		if (activeIndex < 0) return 0xFFFFFF;
+
+		var segment = colorCurveSegments[activeIndex];
+		var segStart = segment.startRate;
+		var segEnd = if (activeIndex + 1 < colorCurveSegments.length) colorCurveSegments[activeIndex + 1].startRate else 1.0;
+
+		var localT = if (segEnd <= segStart) 0. else (rate - segStart) / (segEnd - segStart);
+		localT = Math.min(Math.max(localT, 0.), 1.);
+
+		var curveValue = segment.curve.getValue(localT);
+		return lerpColor(segment.startColor, segment.endColor, curveValue);
+	}
+
+	static inline function lerpColor(c1:Int, c2:Int, t:Float):Int {
+		var r1 = (c1 >> 16) & 0xFF;
+		var g1 = (c1 >> 8) & 0xFF;
+		var b1 = c1 & 0xFF;
+		var r2 = (c2 >> 16) & 0xFF;
+		var g2 = (c2 >> 8) & 0xFF;
+		var b2 = c2 & 0xFF;
+		var r = Std.int(r1 + (r2 - r1) * t);
+		var g = Std.int(g1 + (g2 - g1) * t);
+		var b = Std.int(b1 + (b2 - b1) * t);
+		return (r << 16) | (g << 8) | b;
 	}
 
 	function insertSorted(segments:Array<CurveSegment>, segment:CurveSegment):Void {

@@ -5,6 +5,7 @@ A Haxe library for creating animations and pixel art UI elements using the [Heap
 ## Documentation
 
 - **[.manim Format Reference](docs/manim.md)** - UI elements, programmables, layouts, graphics, particles, and data blocks
+- **[Animated Paths Guide](docs/animpaths.md)** - Paths, curves, easing, animated path traversal, projectiles, and examples
 - **[Programmable Macros](docs/manim.md#programmable-macros-compile-time-code-generation)** - Compile-time code generation tutorial and reference
 - **[Data Blocks](docs/manim.md#data)** - Static typed data definitions with macro codegen
 - **[.anim Format Reference](docs/anim.md)** - State animations with playlists and extra points
@@ -15,25 +16,7 @@ Latest test results: [Visual Test Report](https://bh213.github.io/hx-multianim/t
 
 ## Interactive Playground
 
-Playground is available at [gh-pages](https://bh213.github.io/hx-multianim/).
-
-The playground provides:
-- **Live Examples**: Interactive demonstrations of UI components, animations, and effects
-- **Code Editor**: Real-time editing of `.manim` files with instant preview
-- **Multiple Screens**: Various examples showcasing different features
-
-### Running the Playground
-
-```bash
-cd playground
-lix download
-npm install
-npm run dev
-```
-
-This will start the playground at `http://localhost:3000` with live reloading enabled.
-
-For more details, see the [playground README](playground/README.md).
+Playground is available at [gh-pages](https://bh213.github.io/hx-multianim-playground/) and lives in a separate repository: `../hx-multianim-playground`.
 
 ## Getting Started
 
@@ -201,8 +184,14 @@ var btn = addButton(builder.createElementBuilder("button"), "Click Me", settings
 // Checkboxes (buildName overridable via settings)
 var cb = addCheckbox(builder, true);
 
-// Sliders
+// Sliders (supports custom range via min/max/step settings)
 var slider = addSlider(builder, 50);
+slider.min = 0;
+slider.max = 1;
+slider.step = 0.1;
+
+// Progress bars (display-only, value 0-100)
+var bar = addProgressBar(builder, settings, 75);
 
 // Dropdowns (all sub-component names overridable via settings)
 var dd = addDropdown(dropdownBuilder, panelBuilder, itemBuilder,

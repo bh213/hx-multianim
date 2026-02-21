@@ -4,6 +4,6 @@ version: 0.5
   grid: 80, 60
 
   repeatable($i, step(3, dx: 1)) {
-    bitmap(generated(color(function(gridWidth), function(gridHeight), #448844))): $i * function(gridWidth), $i * function(gridHeight)
+    bitmap(generated(color($grid.width, $grid.height, #448844))): $i * $grid.width, $i * $grid.height
   }
 }

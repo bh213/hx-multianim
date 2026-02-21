@@ -221,6 +221,33 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 	@:manim("test/examples/72-flowAdvanced/flowAdvanced.manim", "flowAdvanced")
 	public var flowAdvanced;
 
-	@:manim("test/examples/73-componentDemo/componentDemo.manim", "componentDemo")
-	public var componentDemo;
+	@:manim("test/examples/73-dynamicRefs/dynamicRefs.manim", "dynamicRefs")
+	public var dynamicRefs;
+
+	@:manim("test/examples/74-dynamicRefScope/dynamicRefScope.manim", "dynamicRefScope")
+	public var dynamicRefScope;
+
+	@:manim("test/examples/78-characterSheetDemo/characterSheetDemo.manim", "characterSheetDemo")
+	public var characterSheetDemo;
+
+	@:manim("test/examples/79-tileParamDemo/tileParamDemo.manim", "tileParamDemo")
+	public var tileParamDemo;
+
+	@:manim("test/examples/80-codegenColorDiv/codegenColorDiv.manim", "codegenColorDiv")
+	public var colorDiv;
+
+	@:manim("test/examples/81-slotParams/slotParams.manim", "slotParams")
+	public var slotParams;
+
+	@:manim("test/examples/82-layoutMultiChild/layoutMultiChild.manim", "layoutMultiChild")
+	public var layoutMultiChild;
+
+	@:manim("test/examples/83-slot2dIndex/slot2dIndex.manim", "slot2dIndex")
+	public var slot2dIndex;
+
+	@:manim("test/examples/84-slotContent/slotContent.manim", "slotContentDemo")
+	public var slotContentDemo;
+
+	@:manim("test/examples/85-fontHeight/fontHeight.manim", "fontHeight")
+	public var fontHeight;
 }

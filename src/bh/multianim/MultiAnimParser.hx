@@ -219,12 +219,14 @@ enum UpdatableNameType {
 	UNTObject(name:String);
 	UNTUpdatable(name:String);
 	UNTIndexed(name:String, indexVar:String);
+	UNTIndexed2D(name:String, indexVarX:String, indexVarY:String);
 }
 
 enum SettingValueType {
 	SVTString;
 	SVTInt;
 	SVTFloat;
+	SVTBool;
 }
 
 typedef ParsedSettingValue = {
@@ -236,6 +238,7 @@ enum SettingValue {
 	RSVString(s:String);
 	RSVInt(i:Int);
 	RSVFloat(f:Float);
+	RSVBool(b:Bool);
 }
 
 typedef ResolvedSettings = Null<Map<String, SettingValue>>;
@@ -245,6 +248,7 @@ function getNameString(updatableNameType:UpdatableNameType) {
 		case UNTObject(name): name;
 		case UNTUpdatable(name): name;
 		case UNTIndexed(name, _): name;
+		case UNTIndexed2D(name, _, _): name;
 	}
 }
 
@@ -395,6 +399,7 @@ enum DefinitionType {
 	PPTString;
 	PPTColor;
 	PPTArray;
+	PPTTile;
 }
 
 typedef Definition = {
@@ -447,11 +452,6 @@ enum ConditionalValues {
 
 }
 
-enum ReferenceableValueFunction {
-	RVFGridWidth;
-	RVFGridHeight;
-}
-
 enum ReferenceableValue {
 	RVElementOfArray(arrayRef:String, index:ReferenceableValue);
 	RVString(s:String);
@@ -460,7 +460,9 @@ enum ReferenceableValue {
 	RVArrayReference(refArr:String);
 	RVFloat(f:Float);
 	RVReference(ref:String);
-	RVFunction(functionType:ReferenceableValueFunction);
+	RVPropertyAccess(ref:String, property:String);
+	RVMethodCall(ref:String, method:String, args:Array<ReferenceableValue>);
+	RVChainedMethodCall(base:ReferenceableValue, method:String, args:Array<ReferenceableValue>);
 	RVParenthesis(e:ReferenceableValue);
 	RVCallbacksWithIndex(name:ReferenceableValue, index:ReferenceableValue, defaultValue:ReferenceableValue);
 	RVCallbacks(name:ReferenceableValue, defaultValue:ReferenceableValue);
@@ -473,7 +475,7 @@ enum ReferenceableValue {
 
 enum TextAlignWidth {
 	TAWAuto;
-	TAWValue(value:Int);
+	TAWValue(value:ReferenceableValue);
 	TAWGrid;
 }
 
@@ -519,13 +521,15 @@ enum AnimatedPathCurveSlotType {
 	APRotation;
 	APProgress;
 	APCustom(name:String);
+	APColor(startColor:ReferenceableValue, endColor:ReferenceableValue);
 }
 
 @:structInit
 class AnimatedPathCurveAssignment {
 	public var at:AnimatedPathTime;
 	public var slot:AnimatedPathCurveSlotType;
-	public var curveName:String;
+	public var curveName:Null<String>;
+	public var inlineEasing:Null<EasingType>;
 }
 
 @:structInit
@@ -542,6 +546,8 @@ typedef AnimatedPathDef = {
 	var pathName:String;
 	var curveAssignments:Array<AnimatedPathCurveAssignment>;
 	var events:Array<AnimatedPathTimedEvent>;
+	var loop:Bool;
+	var pingPong:Bool;
 };
 
 @:nullSafety
@@ -612,8 +618,9 @@ enum ParticlesEmitMode {
 	Point(emitDistance:ReferenceableValue, emitDistanceRandom:ReferenceableValue);
 	Cone(emitDistance:ReferenceableValue, emitDistanceRandom:ReferenceableValue, emitConeAngle:ReferenceableValue, emitConeAngleRandom:ReferenceableValue);
 	Box(width:ReferenceableValue, height:ReferenceableValue, emitConeAngle:ReferenceableValue, emitConeAngleRandom:ReferenceableValue);
-	Path(points:Array<{x:ReferenceableValue, y:ReferenceableValue}>, emitConeAngle:ReferenceableValue, emitConeAngleRandom:ReferenceableValue);
 	Circle(radius:ReferenceableValue, radiusRandom:ReferenceableValue, emitConeAngle:ReferenceableValue, emitConeAngleRandom:ReferenceableValue);
+	ManimPath(pathName:String);
+	ManimPathTangent(pathName:String);
 }
 
 // Force field types for particles
@@ -623,6 +630,7 @@ enum ParticleForceFieldDef {
 	FFVortex(x:ReferenceableValue, y:ReferenceableValue, strength:ReferenceableValue, radius:ReferenceableValue);
 	FFWind(vx:ReferenceableValue, vy:ReferenceableValue);
 	FFTurbulence(strength:ReferenceableValue, scale:ReferenceableValue, speed:ReferenceableValue);
+	FFPathGuide(pathName:String, attractStrength:ReferenceableValue, flowStrength:ReferenceableValue, radius:ReferenceableValue);
 }
 
 // Curve point for velocity/size over lifetime
@@ -631,12 +639,47 @@ typedef ParticleCurvePoint = {
 	var value:ReferenceableValue;
 }
 
+// Curve reference for particles (named curve or inline easing)
+typedef ParticleCurveRef = {
+	var curveName:Null<String>;
+	var inlineEasing:Null<EasingType>;
+}
+
+// Color curve segment for particles (rate-based, like AnimatedPath)
+typedef ParticleColorCurveSegment = {
+	var atRate:ReferenceableValue;
+	var curveName:Null<String>;
+	var inlineEasing:Null<EasingType>;
+	var startColor:ReferenceableValue;
+	var endColor:ReferenceableValue;
+}
+
+// Particle AnimSM state definition (lifetime-driven)
+typedef ParticleAnimStateDef = {
+	var atRate:ReferenceableValue;
+	var animName:String;
+}
+
+// Particle AnimSM event override (event-driven state change)
+typedef ParticleAnimEventOverride = {
+	var trigger:String; // "onBounce", "onDeath", etc.
+	var animName:String;
+}
+
 // Bounds mode for particle collision
 enum ParticleBoundsModeDef {
 	BMNone;
 	BMKill;
 	BMBounce(damping:ReferenceableValue);
 	BMWrap;
+}
+
+// Line bounds definition
+typedef ParticleBoundsLineDef = {
+	var x1:ReferenceableValue;
+	var y1:ReferenceableValue;
+	var x2:ReferenceableValue;
+	var y2:ReferenceableValue;
 }
 
 // Sub-emitter trigger types
@@ -655,6 +698,7 @@ typedef ParticleSubEmitterDef = {
 	var inheritVelocity:Null<ReferenceableValue>;
 	var offsetX:Null<ReferenceableValue>;
 	var offsetY:Null<ReferenceableValue>;
+	var burstCount:Null<ReferenceableValue>;
 }
 
 @:nullSafety
@@ -683,30 +727,33 @@ typedef ParticlesDef = {
 	var rotationSpeed:Null<ReferenceableValue>;
 	var rotationSpeedRandom:Null<ReferenceableValue>;
 	var rotateAuto:Null<Bool>;
-	// Color interpolation
-	var colorStart:Null<ReferenceableValue>;
-	var colorEnd:Null<ReferenceableValue>;
-	var colorMid:Null<ReferenceableValue>;
-	var colorMidPos:Null<ReferenceableValue>;
+	var forwardAngle:Null<ReferenceableValue>;
+	// Color curves (AnimatedPath-style segments)
+	var colorCurves:Null<Array<ParticleColorCurveSegment>>;
 	// Force fields
 	var forceFields:Null<Array<ParticleForceFieldDef>>;
 	// Curves
-	var velocityCurve:Null<Array<ParticleCurvePoint>>;
-	var sizeCurve:Null<Array<ParticleCurvePoint>>;
-	// Trails
-	var trailEnabled:Null<Bool>;
-	var trailLength:Null<ReferenceableValue>;
-	var trailFadeOut:Null<Bool>;
+	var velocityCurve:Null<ParticleCurveRef>;
+	var sizeCurve:Null<ParticleCurveRef>;
 	// Bounds/collision
 	var boundsMode:Null<ParticleBoundsModeDef>;
 	var boundsMinX:Null<ReferenceableValue>;
 	var boundsMaxX:Null<ReferenceableValue>;
 	var boundsMinY:Null<ReferenceableValue>;
 	var boundsMaxY:Null<ReferenceableValue>;
+	var boundsLines:Null<Array<ParticleBoundsLineDef>>;
 	// Sub-emitters
 	var subEmitters:Null<Array<ParticleSubEmitterDef>>;
 	// Animation
 	var animationRepeat:Null<ReferenceableValue>;
+	// AnimatedPath integration
+	var attachTo:Null<String>;
+	var spawnCurve:Null<ParticleCurveRef>;
+	// AnimSM tile source
+	var animFile:Null<String>;
+	var animSelector:Null<Map<String, String>>;
+	var animStates:Null<Array<ParticleAnimStateDef>>;
+	var animEventOverrides:Null<Array<ParticleAnimEventOverride>>;
 }
 
 enum RepeatType {
@@ -727,7 +774,7 @@ enum AutotileTileSelector {
 }
 
 enum GeneratedTileType {
-	Cross(width:ReferenceableValue, height:ReferenceableValue, color:ReferenceableValue);
+	Cross(width:ReferenceableValue, height:ReferenceableValue, color:ReferenceableValue, thickness:ReferenceableValue);
 	SolidColor(width:ReferenceableValue, height:ReferenceableValue, color:ReferenceableValue);
 	SolidColorWithText(width:ReferenceableValue, height:ReferenceableValue, color:ReferenceableValue, text:ReferenceableValue, textColor:ReferenceableValue, font:ReferenceableValue);
 	AutotileRef(autotileName:ReferenceableValue, selector:AutotileTileSelector);
@@ -896,7 +943,8 @@ enum NodeType {
 	AUTOTILE(autotileDef:AutotileDef);
 	ATLAS2(atlas2Def:Atlas2Def);
 	DATA(dataDef:DataDef);
-	SLOT;
+	SLOT(parameters:Null<ParametersDefinitions>, paramOrder:Null<Array<String>>);
+	SLOT_CONTENT;
 	DYNAMIC_REF(externalReference:Null<String>, programmableReference:String, parameters:Map<String, ReferenceableValue>);
 	FINAL_VAR(name:String, value:ReferenceableValue);
 }
@@ -914,6 +962,8 @@ enum FilterType {
 	FilterOutline(s:ReferenceableValue, color:ReferenceableValue);
 	FilterSaturate(v:ReferenceableValue);
 	FilterBrightness(v:ReferenceableValue);
+	FilterGrayscale(v:ReferenceableValue);
+	FilterHue(v:ReferenceableValue);
 	FilterGlow(color:ReferenceableValue, alpha:ReferenceableValue, radius:ReferenceableValue, gain:ReferenceableValue, quality:ReferenceableValue, smoothColor:Bool, knockout:Bool);
 	FilterBlur(radius:ReferenceableValue, gain:ReferenceableValue, quality:ReferenceableValue, linear:ReferenceableValue);
 	FilterDropShadow(distance:ReferenceableValue, angle:ReferenceableValue, color:ReferenceableValue, alpha:ReferenceableValue, radius:ReferenceableValue, gain:ReferenceableValue, quality:ReferenceableValue, smoothColor:Bool);
@@ -935,6 +985,7 @@ typedef Node = {
 	pos:Coordinates,
 	gridCoordinateSystem:Null<GridCoordinateSystem>,
 	hexCoordinateSystem:Null<HexCoordinateSystem>,
+	namedCoordinateSystems:Null<Map<String, CoordinateSystemDef>>,
 	scale: Null<ReferenceableValue>,
 	alpha: Null<ReferenceableValue>,
 	tint: Null<ReferenceableValue>,
@@ -1028,6 +1079,17 @@ class MultiAnimParser {
 		return null;
 	}
 
+	public static function getNamedCoordinateSystem(name:String, node:Node):Null<CoordinateSystemDef> {
+		while (node != null) {
+			if (node.namedCoordinateSystems != null) {
+				final cs = node.namedCoordinateSystems.get(name);
+				if (cs != null) return cs;
+			}
+			node = node.parent;
+		}
+		return null;
+	}
+
 	public static function dynamicValueToIndex(name:String, type:DefinitionType, value:Dynamic, err:String->Dynamic):ResolvedIndexParameters {
 		final s:String = Std.isOfType(value, String) ? cast value : Std.string(value);
 		return switch (type) {
@@ -1069,6 +1131,8 @@ class MultiAnimParser {
 					ArrayString(cast value)
 				else
 					err('array default not supported in this context');
+			case PPTTile:
+				TileSourceValue(TSFile(RVString(s)));
 		}
 	}
 

@@ -33,6 +33,12 @@ import bh.multianim.layouts.LayoutTypes.Layout;
 
 using StringTools;
 
+private enum MacroSlotKey {
+	Named(name:String);
+	Indexed(name:String, index:Int);
+	Indexed2D(name:String, indexX:Int, indexY:Int);
+}
+
 /**
  * Compile-time macro that generates typed factory + instance classes for programmable UI components from .manim definitions.
  *
@@ -62,8 +68,8 @@ class ProgrammableCodeGen {
 	static var visibilityEntries:Array<{fieldName:String, condition:Expr}> = [];
 	static var namedElements:Map<String, Array<String>> = [];
 	static var indexedNamedElements:Map<String, Array<{index:Int, fieldName:String}>> = new Map();
-	static var slotFields:Map<String, String> = new Map(); // slot name -> container field name
-	static var indexedSlotFields:Map<String, Array<{index:Int, fieldName:String}>> = new Map(); // base name -> [{index, field}]
+	static var indexed2DNamedElements:Map<String, Array<{indexX:Int, indexY:Int, fieldName:String}>> = new Map();
+	static var slotEntries:Array<{key:MacroSlotKey, fieldName:String, hasParams:Bool, loopVars:Map<String, Int>}> = [];
 	static var dynamicRefFields:Map<String, String> = new Map(); // component name -> BuilderResult field name
 	static var hexLayoutFieldAdded:Bool = false;
 
@@ -123,8 +129,8 @@ class ProgrammableCodeGen {
 		visibilityEntries = [];
 		namedElements = [];
 		indexedNamedElements = new Map();
-		slotFields = new Map();
-		indexedSlotFields = new Map();
+		indexed2DNamedElements = new Map();
+		slotEntries = [];
 		dynamicRefFields = new Map();
 		paramDefs = new Map();
 		paramNames = [];
@@ -229,7 +235,7 @@ class ProgrammableCodeGen {
 						pos: pos,
 						kind: TDClass({pack: ["h2d"], name: "Object"}, null, false, false, false),
 						fields: result.instanceFields,
-						meta: [{name: ":allow", params: [macro bh.multianim.ProgrammableCodeGen], pos: pos}],
+						meta: [{name: ":allow", params: [macro bh.multianim.ProgrammableCodeGen], pos: pos}, {name: ":keep", params: null, pos: pos}],
 					};
 					Context.defineType(instTd);
 
@@ -501,10 +507,46 @@ class ProgrammableCodeGen {
 		instanceFields.push(makeMethod("_updateExpressions", exprUpdateExprs, [], macro :Void, [APrivate], pos));
 
 		// 6. Pre-constructor: push slot/dynamicRef init expressions to constructorExprs
-		// (slotFields and dynamicRefFields are already populated from processChildren)
-		for (slotName => containerField in slotFields) {
-			final handleField = "_slotHandle_" + slotName;
-			constructorExprs.push(macro $p{["this", handleField]} = new bh.multianim.MultiAnimBuilder.SlotHandle($p{["this", containerField]}));
+		// (slotEntries and dynamicRefFields are already populated from processChildren)
+		for (entry in slotEntries) {
+			final handleField = slotHandleFieldName(entry.key);
+			if (entry.hasParams) {
+				// Parameterized slot: delegate building to runtime builder via ProgrammableBuilder
+				final slotName:String = switch entry.key {
+					case Named(name): name;
+					case Indexed(baseName, _): baseName;
+					case Indexed2D(baseName, _, _): baseName;
+				};
+				final progNameExpr:Expr = macro $v{currentProgrammableName};
+				final slotNameExpr:Expr = macro $v{slotName};
+				final containerExpr:Expr = macro $p{["this", entry.fieldName]};
+
+				// Build parent params map with all programmable parameters + loop variables
+				final mapExprs:Array<Expr> = [macro final _slotPP = new Map<String, Dynamic>()];
+				for (pn in paramNames) {
+					final keyExpr:Expr = macro $v{pn};
+					mapExprs.push(macro _slotPP.set($keyExpr, $p{["this", "_" + pn]}));
+				}
+				for (loopVar => loopVal in entry.loopVars) {
+					final keyExpr:Expr = macro $v{loopVar};
+					final valExpr:Expr = macro $v{loopVal};
+					mapExprs.push(macro _slotPP.set($keyExpr, $valExpr));
+				}
+				mapExprs.push(macro $p{["this", handleField]} = this._pb.buildParameterizedSlot($progNameExpr, $slotNameExpr, _slotPP, $containerExpr));
+				constructorExprs.push(macro $b{mapExprs});
+			} else {
+				constructorExprs.push(macro {
+					var _ct:Null<h2d.Object> = null;
+					final _sc = $p{["this", entry.fieldName]};
+					for (_ci in 0..._sc.numChildren) {
+						if (Std.downcast(_sc.getChildAt(_ci), bh.multianim.MultiAnimBuilder.SlotContentRoot) != null) {
+							_ct = _sc.getChildAt(_ci);
+							break;
+						}
+					}
+					$p{["this", handleField]} = new bh.multianim.MultiAnimBuilder.SlotHandle(_sc, null, _ct);
+				});
+			}
 		}
 
 		// 7. Instance constructor: (pb, params...) -> builds tree
@@ -540,8 +582,8 @@ class ProgrammableCodeGen {
 
 		// 8. Named element accessors (on instance)
 		for (name => elementFieldsList in namedElements) {
-			// Skip names that have indexed accessors — they get the indexed get_name(index) method instead
-			if (indexedNamedElements.exists(name))
+			// Skip names that have indexed accessors — they get the indexed get_name(index/x,y) method instead
+			if (indexedNamedElements.exists(name) || indexed2DNamedElements.exists(name))
 				continue;
 			if (elementFieldsList.length == 1) {
 				final ef = elementFieldsList[0];
@@ -570,33 +612,57 @@ class ProgrammableCodeGen {
 			instanceFields.push(makeMethod("get_" + name, [switchExpr], [{name: "index", type: macro :Int}], macro :h2d.Object, [APublic], pos));
 		}
 
-		// 8c. Slot accessors (on instance) — init expressions already pushed to constructorExprs in step 6
-		// Skip indexed slots from per-slot typed accessors (they get indexed getSlot_name(index) instead)
-		for (slotName => containerField in slotFields) {
-			var isIndexed = false;
-			for (_ => indexedList in indexedSlotFields) {
-				for (entry in indexedList) {
-					if (entry.fieldName == containerField) {
-						isIndexed = true;
-						break;
-					}
-				}
-				if (isIndexed)
-					break;
+		// 8b2. 2D Indexed named element accessors: get_name(x:Int, y:Int):h2d.Object
+		for (name => indexedList in indexed2DNamedElements) {
+			final ifExprs:Array<Expr> = [];
+			for (entry in indexedList) {
+				ifExprs.push(macro if (x == $v{entry.indexX} && y == $v{entry.indexY}) return $p{["this", entry.fieldName]});
 			}
-			if (isIndexed)
-				continue;
-			final handleField = "_slotHandle_" + slotName;
+			ifExprs.push(macro return null);
+			instanceFields.push(makeMethod("get_" + name, ifExprs, [
+				{name: "x", type: macro :Int},
+				{name: "y", type: macro :Int},
+			], macro :h2d.Object, [APublic], pos));
+		}
+
+		// 8c. Slot accessors (on instance) — init expressions already pushed to constructorExprs in step 6
+		// Collect indexed slot base names and their entries
+		final indexedSlotGroups:Map<String, Array<{index:Int, fieldName:String}>> = new Map();
+		final indexed2DSlotGroups:Map<String, Array<{indexX:Int, indexY:Int, fieldName:String}>> = new Map();
+		final namedSlots:Array<{name:String, fieldName:String}> = [];
+		for (entry in slotEntries) {
+			switch entry.key {
+				case Indexed(baseName, index):
+					var list = indexedSlotGroups.get(baseName);
+					if (list == null) {
+						list = [];
+						indexedSlotGroups.set(baseName, list);
+					}
+					list.push({index: index, fieldName: entry.fieldName});
+				case Indexed2D(baseName, indexX, indexY):
+					var list = indexed2DSlotGroups.get(baseName);
+					if (list == null) {
+						list = [];
+						indexed2DSlotGroups.set(baseName, list);
+					}
+					list.push({indexX: indexX, indexY: indexY, fieldName: entry.fieldName});
+				case Named(name):
+					namedSlots.push({name: name, fieldName: entry.fieldName});
+			}
+		}
+		// All slot entries get private handle fields
+		for (entry in slotEntries) {
+			final handleField = slotHandleFieldName(entry.key);
 			instanceFields.push(makeField(handleField, FVar(macro :bh.multianim.MultiAnimBuilder.SlotHandle, null), [APrivate], pos));
-			instanceFields.push(makeMethod("getSlot_" + slotName, [macro return $p{["this", handleField]}], [],
+		}
+		// Non-indexed: typed getSlot_name() accessor
+		for (ns in namedSlots) {
+			final handleField = "_slotHandle_" + ns.name;
+			instanceFields.push(makeMethod("getSlot_" + ns.name, [macro return $p{["this", handleField]}], [],
 				macro :bh.multianim.MultiAnimBuilder.SlotHandle, [APublic], pos));
 		}
-		// Indexed slot accessors: getSlot_name(index:Int):SlotHandle
-		for (baseName => indexedList in indexedSlotFields) {
-			for (entry in indexedList) {
-				final handleField = "_slotHandle_" + baseName + "_" + entry.index;
-				instanceFields.push(makeField(handleField, FVar(macro :bh.multianim.MultiAnimBuilder.SlotHandle, null), [APrivate], pos));
-			}
+		// 1D Indexed: typed getSlot_name(index:Int) accessor with switch
+		for (baseName => indexedList in indexedSlotGroups) {
 			final switchCases:Array<Case> = [];
 			for (entry in indexedList) {
 				final handleField = "_slotHandle_" + baseName + "_" + entry.index;
@@ -612,12 +678,41 @@ class ProgrammableCodeGen {
 			instanceFields.push(makeMethod("getSlot_" + baseName, [switchExpr], [{name: "index", type: macro :Int}],
 				macro :bh.multianim.MultiAnimBuilder.SlotHandle, [APublic], pos));
 		}
-		// Generic getSlot(name:String, ?index:Null<Int>) dispatcher
-		if (Lambda.count(slotFields) > 0 || Lambda.count(indexedSlotFields) > 0) {
+		// 2D Indexed: typed getSlot_name(x:Int, y:Int) accessor with if-chain
+		for (baseName => indexedList in indexed2DSlotGroups) {
+			final ifExprs:Array<Expr> = [];
+			for (entry in indexedList) {
+				final handleField = slotHandleFieldName(Indexed2D(baseName, entry.indexX, entry.indexY));
+				ifExprs.push(macro if (x == $v{entry.indexX} && y == $v{entry.indexY}) return $p{["this", handleField]});
+			}
+			ifExprs.push(macro return null);
+			instanceFields.push(makeMethod("getSlot_" + baseName, ifExprs, [
+				{name: "x", type: macro :Int},
+				{name: "y", type: macro :Int},
+			], macro :bh.multianim.MultiAnimBuilder.SlotHandle, [APublic], pos));
+		}
+		// Generic getSlot(name:String, ?index:Null<Int>, ?indexY:Null<Int>) dispatcher
+		if (slotEntries.length > 0) {
 			final bodyExprs:Array<Expr> = [];
 
-			// Handle indexed slots: require index parameter
-			for (baseName => indexedList in indexedSlotFields) {
+			// Handle 2D indexed slots: require both index and indexY
+			for (baseName => indexedList in indexed2DSlotGroups) {
+				final ifCases:Array<Expr> = [];
+				for (entry in indexedList) {
+					final handleField = slotHandleFieldName(Indexed2D(baseName, entry.indexX, entry.indexY));
+					ifCases.push(macro if (index == $v{entry.indexX} && indexY == $v{entry.indexY}) return $p{["this", handleField]});
+				}
+				final notFoundMsg = 'Slot "' + baseName + '" index (';
+				ifCases.push(macro throw $v{notFoundMsg} + index + ', ' + indexY + ') not found');
+				bodyExprs.push(macro if (name == $v{baseName}) {
+					if (index == null || indexY == null)
+						throw 'Slot "' + $v{baseName} + '" is 2D-indexed — use getSlot("' + $v{baseName} + '", x, y)';
+					$b{ifCases};
+				});
+			}
+
+			// Handle 1D indexed slots: require index parameter
+			for (baseName => indexedList in indexedSlotGroups) {
 				final indexCases:Array<Case> = [];
 				for (entry in indexedList) {
 					final handleField = "_slotHandle_" + baseName + "_" + entry.index;
@@ -639,23 +734,11 @@ class ProgrammableCodeGen {
 			}
 
 			// Handle non-indexed slots: reject index parameter
-			for (slotName => _ in slotFields) {
-				// Skip slots that are part of indexed groups
-				var isIndexed = false;
-				for (baseName => indexedList in indexedSlotFields) {
-					for (entry in indexedList) {
-						if (slotName == baseName + "_" + entry.index) {
-							isIndexed = true;
-							break;
-						}
-					}
-					if (isIndexed) break;
-				}
-				if (isIndexed) continue;
-				final handleField = "_slotHandle_" + slotName;
-				bodyExprs.push(macro if (name == $v{slotName}) {
+			for (ns in namedSlots) {
+				final handleField = "_slotHandle_" + ns.name;
+				bodyExprs.push(macro if (name == $v{ns.name}) {
 					if (index != null)
-						throw 'Slot "' + $v{slotName} + '" is not indexed — use getSlot("' + $v{slotName} + '") without index';
+						throw 'Slot "' + $v{ns.name} + '" is not indexed — use getSlot("' + $v{ns.name} + '") without index';
 					return $p{["this", handleField]};
 				});
 			}
@@ -664,6 +747,7 @@ class ProgrammableCodeGen {
 			instanceFields.push(makeMethod("getSlot", bodyExprs, [
 				{name: "name", type: macro :String},
 				{name: "index", opt: true, type: macro :Null<Int>},
+				{name: "indexY", opt: true, type: macro :Null<Int>},
 			], macro :bh.multianim.MultiAnimBuilder.SlotHandle, [APublic], pos));
 		}
 
@@ -927,23 +1011,41 @@ class ProgrammableCodeGen {
 					}
 					indexedList.push({index: currentIndex, fieldName: fieldName});
 				}
+			case UNTIndexed2D(name, indexVarX, indexVarY):
+				if (name != null && name != "") {
+					var list = namedElements.get(name);
+					if (list == null) {
+						list = [];
+						namedElements.set(name, list);
+					}
+					list.push(fieldName);
+					final currentX = loopVarSubstitutions.exists(indexVarX) ? loopVarSubstitutions.get(indexVarX) : 0;
+					final currentY = loopVarSubstitutions.exists(indexVarY) ? loopVarSubstitutions.get(indexVarY) : 0;
+					var indexedList = indexed2DNamedElements.get(name);
+					if (indexedList == null) {
+						indexedList = [];
+						indexed2DNamedElements.set(name, indexedList);
+					}
+					indexedList.push({indexX: currentX, indexY: currentY, fieldName: fieldName});
+				}
 		}
 
 		// Track slot containers — name comes from #name / #name[$i] prefix
 		switch (node.type) {
-			case SLOT:
+			case SLOT(parameters, _):
+				final hp = parameters != null;
+				// Capture current loop variable values for parameterized slots
+				final capturedLoopVars:Map<String, Int> = hp ? [for (k => v in loopVarSubstitutions) k => v] : new Map();
 				switch (node.updatableName) {
 					case UNTIndexed(baseName, ref) if (loopVarSubstitutions.exists(ref)):
 						final currentIndex = loopVarSubstitutions.get(ref);
-						slotFields.set(baseName + "_" + currentIndex, fieldName);
-						var list = indexedSlotFields.get(baseName);
-						if (list == null) {
-							list = [];
-							indexedSlotFields.set(baseName, list);
-						}
-						list.push({index: currentIndex, fieldName: fieldName});
+						slotEntries.push({key: Indexed(baseName, currentIndex), fieldName: fieldName, hasParams: hp, loopVars: capturedLoopVars});
+					case UNTIndexed2D(baseName, refX, refY) if (loopVarSubstitutions.exists(refX) && loopVarSubstitutions.exists(refY)):
+						final currentX = loopVarSubstitutions.get(refX);
+						final currentY = loopVarSubstitutions.get(refY);
+						slotEntries.push({key: Indexed2D(baseName, currentX, currentY), fieldName: fieldName, hasParams: hp, loopVars: capturedLoopVars});
 					case UNTObject(name) | UNTUpdatable(name):
-						slotFields.set(name, fieldName);
+						slotEntries.push({key: Named(name), fieldName: fieldName, hasParams: hp, loopVars: capturedLoopVars});
 					default:
 						Context.warning("Slot requires a #name prefix for codegen", pos);
 				}
@@ -1198,7 +1300,7 @@ class ProgrammableCodeGen {
 		// Look up the #defaultLayout node from allParsedNodes
 		final layoutNode = allParsedNodes.get("#defaultLayout");
 		if (layoutNode == null) {
-			Context.warning('ProgrammableCodeGen: no relativeLayouts found for layout "$layoutName", using fallback', Context.currentPos());
+			Context.warning('ProgrammableCodeGen: no layouts block found for layout "$layoutName", using fallback', Context.currentPos());
 			processRepeatFallback(node, parentField, fields, ctorExprs, siblings, pos);
 			return;
 		}
@@ -1313,6 +1415,29 @@ class ProgrammableCodeGen {
 					loopVarSubstitutions.remove(varName);
 					loopVarSubstitutions.remove(seqVarName);
 				}
+
+			case Grid(cols, rows, cellW, cellH):
+				final offsetX:Float = layout.offset != null ? layout.offset.x : 0;
+				final offsetY:Float = layout.offset != null ? layout.offset.y : 0;
+				final total = cols * rows;
+				for (i in 0...total) {
+					loopVarSubstitutions.set(varName, i);
+					final col = i % cols;
+					final row = Std.int(i / cols);
+					final px:Float = col * cellW + offsetX;
+					final py:Float = row * cellH + offsetY;
+					if (px != 0 || py != 0) {
+						final iterContainerName = "_e" + (elementCounter++);
+						fields.push(makeField(iterContainerName, FVar(macro :h2d.Object, null), [APrivate], pos));
+						ctorExprs.push(macro $p{["this", iterContainerName]} = new h2d.Object());
+						ctorExprs.push(macro $p{["this", iterContainerName]}.setPosition($v{px}, $v{py}));
+						ctorExprs.push(macro $p{["this", containerName]}.addChild($p{["this", iterContainerName]}));
+						processChildren(node.children, iterContainerName, fields, ctorExprs, [], pos);
+					} else {
+						processChildren(node.children, containerName, fields, ctorExprs, [], pos);
+					}
+					loopVarSubstitutions.remove(varName);
+				}
 		}
 	}
 
@@ -1398,14 +1523,59 @@ class ProgrammableCodeGen {
 			case EUnaryOp(_, e):
 				final inner = resolveRVStatic(e);
 				if (inner != null) -inner else null;
-			case RVFunction(functionType):
-				final grid = getGridFromCurrentNode();
-				if (grid != null) {
-					switch (functionType) {
-						case RVFGridWidth: cast(grid.spacingX, Float);
-						case RVFGridHeight: cast(grid.spacingY, Float);
-					}
-				} else null;
+			case RVPropertyAccess(ref, property):
+				switch (ref) {
+					case "grid" | "ctx.grid":
+						final grid = getGridFromCurrentNode();
+						if (grid != null) {
+							switch (property) {
+								case "width": cast(grid.spacingX, Float);
+								case "height": cast(grid.spacingY, Float);
+								default: null;
+							}
+						} else null;
+					case "hex" | "ctx.hex":
+						final hexLayout = getHexLayoutForNode(currentProcessingNode);
+						if (hexLayout != null) {
+							switch (property) {
+								case "width": hexLayout.size.x;
+								case "height": hexLayout.size.y;
+								default: null;
+							}
+						} else null;
+					default:
+						// Named coordinate systems
+						if (currentProcessingNode != null) {
+							final namedCS = getNamedCoordSystem(ref, currentProcessingNode);
+							if (namedCS != null) {
+								switch (namedCS) {
+									case NamedGrid(system):
+										switch (property) {
+											case "width": cast(system.spacingX, Float);
+											case "height": cast(system.spacingY, Float);
+											default: null;
+										}
+									case NamedHex(system):
+										switch (property) {
+											case "width": system.hexLayout.size.x;
+											case "height": system.hexLayout.size.y;
+											default: null;
+										}
+								}
+							} else null;
+						} else null;
+				}
+			case RVMethodCall(ref, method, args):
+				// $ctx.random() cannot be resolved statically
+				null;
+			case RVChainedMethodCall(base, property, _):
+				if (property != "x" && property != "y") null;
+				else switch (base) {
+					case RVMethodCall(ref, method, args):
+						final pt = resolveMethodCallToStaticPoint(ref, method, args);
+						if (pt != null) (property == "x" ? pt.x : pt.y) else null;
+					default: null;
+				}
 			default: null;
 		};
 	}
@@ -1627,8 +1797,15 @@ class ProgrammableCodeGen {
 							final s = resolveRVStatic(child.scale);
 							if (s != null) s else 1.0;
 						} else 1.0;
-						final adjustedWidth:Float = value / scaleAdjust;
-						stmts.push(macro _rt_txt.maxWidth = $v{adjustedWidth});
+						final staticVal = resolveRVStatic(value);
+						if (staticVal != null) {
+							final adjustedWidth:Float = staticVal / scaleAdjust;
+							stmts.push(macro _rt_txt.maxWidth = $v{adjustedWidth});
+						} else {
+							final valExpr = rvToExpr(value);
+							final scaleExpr = macro $v{scaleAdjust};
+							stmts.push(macro _rt_txt.maxWidth = $valExpr / $scaleExpr);
+						}
 					default:
 				}
 
@@ -2177,10 +2354,21 @@ class ProgrammableCodeGen {
 			case SPACER(width, height):
 				generateSpacerCreate(node, fieldName, width, height, pos);
 
-			case SLOT:
-				// Slot is just a container (h2d.Object) — children are default content
+			case SLOT(parameters, _):
+				// Plain slots: container with children generated by codegen
+				// Parameterized slots: container only (children built at runtime via IncrementalUpdateContext)
 				return {
 					createExprs: [macro $p{["this", fieldName]} = new h2d.Object()],
+					fieldType: macro :h2d.Object,
+					isContainer: parameters == null,
+					exprUpdates: [],
+				};
+
+			case SLOT_CONTENT:
+				return {
+					createExprs: [
+						macro $p{["this", fieldName]} = new bh.multianim.MultiAnimBuilder.SlotContentRoot(),
+					],
 					fieldType: macro :h2d.Object,
 					isContainer: true,
 					exprUpdates: [],
@@ -2201,6 +2389,7 @@ class ProgrammableCodeGen {
 							case SVTInt: final v = rvToExpr(entry.value); macro bh.multianim.MultiAnimParser.SettingValue.RSVInt($v);
 							case SVTFloat: final v = rvToExpr(entry.value); macro bh.multianim.MultiAnimParser.SettingValue.RSVFloat($v);
 							case SVTString: final v = rvToExpr(entry.value, true); macro bh.multianim.MultiAnimParser.SettingValue.RSVString($v);
+							case SVTBool: final v = rvToExpr(entry.value); macro bh.multianim.MultiAnimParser.SettingValue.RSVBool($v != 0);
 						};
 						entries.push(macro m.set($keyExpr, $valExpr));
 					}
@@ -2342,7 +2531,8 @@ class ProgrammableCodeGen {
 				macro this._pb.buildPlaceholderViaCallbackWithIndex($nameExpr, $idxExpr);
 			case PRSBuilderParameterSource(callbackName):
 				final nameExpr = rvToExpr(callbackName);
-				macro this._pb.buildPlaceholderViaSource($nameExpr);
+				final settingsExpr = nodeSettingsToExpr(node);
+				macro this._pb.buildPlaceholderViaSource($nameExpr, $settingsExpr);
 		};
 
 		// Generate fallback expression based on placeholder type
@@ -2661,11 +2851,72 @@ class ProgrammableCodeGen {
 				final ox = resolveRVStatic(offsetX);
 				final oy = resolveRVStatic(offsetY);
 				if (grid != null && gx != null && gy != null && ox != null && oy != null) {x: gx * grid.spacingX + ox, y: gy * grid.spacingY + oy} else null;
-			case SELECTED_HEX_POSITION(hex):
+			case SELECTED_HEX_CUBE(q, r, s):
 				final hexLayout = getHexLayoutForNode(node);
 				if (hexLayout != null) {
-					final pt = hexLayout.hexToPixel(hex);
-					{x: pt.x, y: pt.y};
+					final qv = resolveRVStatic(q);
+					final rv2 = resolveRVStatic(r);
+					final sv = resolveRVStatic(s);
+					if (qv != null && rv2 != null && sv != null) {
+						final hex = new bh.base.Hex.FractionalHex(qv, rv2, sv).round();
+						final pt = hexLayout.hexToPixel(hex);
+						{x: pt.x, y: pt.y};
+					} else null;
+				} else null;
+			case SELECTED_HEX_OFFSET(col, row, parity):
+				final hexLayout = getHexLayoutForNode(node);
+				if (hexLayout != null) {
+					final c = resolveRVStatic(col);
+					final r2 = resolveRVStatic(row);
+					if (c != null && r2 != null) {
+						final parityVal = switch (parity) { case EVEN: bh.base.Hex.OffsetCoord.EVEN; case ODD: bh.base.Hex.OffsetCoord.ODD; };
+						final hex = switch (hexLayout.orientation) {
+							case POINTY: bh.base.Hex.OffsetCoord.qoffsetToCube(parityVal, new bh.base.Hex.OffsetCoord(Std.int(c), Std.int(r2)));
+							case FLAT: bh.base.Hex.OffsetCoord.roffsetToCube(parityVal, new bh.base.Hex.OffsetCoord(Std.int(c), Std.int(r2)));
+						};
+						final pt = hexLayout.hexToPixel(hex);
+						{x: pt.x, y: pt.y};
+					} else null;
+				} else null;
+			case SELECTED_HEX_DOUBLED(col2, row2):
+				final hexLayout = getHexLayoutForNode(node);
+				if (hexLayout != null) {
+					final c = resolveRVStatic(col2);
+					final r2 = resolveRVStatic(row2);
+					if (c != null && r2 != null) {
+						final hex = switch (hexLayout.orientation) {
+							case POINTY: bh.base.Hex.DoubledCoord.qdoubledToCube(new bh.base.Hex.DoubledCoord(Std.int(c), Std.int(r2)));
+							case FLAT: bh.base.Hex.DoubledCoord.rdoubledToCube(new bh.base.Hex.DoubledCoord(Std.int(c), Std.int(r2)));
+						};
+						final pt = hexLayout.hexToPixel(hex);
+						{x: pt.x, y: pt.y};
+					} else null;
+				} else null;
+			case SELECTED_HEX_PIXEL(px, py):
+				// pixelToHex requires h2d.col.Point which is not available at macro time
+				// Fall through to runtime resolution
+				null;
+			case SELECTED_HEX_CELL_CORNER(cell, cornerIndex, factor):
+				final hexLayout = getHexLayoutForNode(node);
+				if (hexLayout != null) {
+					final ci = resolveRVStatic(cornerIndex);
+					final f = resolveRVStatic(factor);
+					final cellHex = resolveCoordToStaticHex(cell, hexLayout);
+					if (ci != null && f != null && cellHex != null) {
+						final pt = hexLayout.polygonCorner(cellHex, Std.int(ci), f);
+						{x: pt.x, y: pt.y};
+					} else null;
+				} else null;
+			case SELECTED_HEX_CELL_EDGE(cell, direction, factor):
+				final hexLayout = getHexLayoutForNode(node);
+				if (hexLayout != null) {
+					final d = resolveRVStatic(direction);
+					final f = resolveRVStatic(factor);
+					final cellHex = resolveCoordToStaticHex(cell, hexLayout);
+					if (d != null && f != null && cellHex != null) {
+						final pt = hexLayout.polygonEdge(cellHex, Std.int(d), f);
+						{x: pt.x, y: pt.y};
+					} else null;
 				} else null;
 			case SELECTED_HEX_CORNER(count, factor):
 				final hexLayout = getHexLayoutForNode(node);
@@ -2690,7 +2941,297 @@ class ProgrammableCodeGen {
 			case LAYOUT(layoutName, index):
 				final idx = resolveRVStatic(index);
 				if (idx != null) resolveLayoutPosition(layoutName, Std.int(idx)) else null;
+			case NAMED_COORD(name, coord):
+				final namedCS = if (node != null) getNamedCoordSystem(name, node) else null;
+				if (namedCS != null) {
+					resolveNamedCoordStatic(namedCS, coord, pos, node);
+				} else null;
+			case WITH_OFFSET(base, offsetX, offsetY):
+				final basePt = coordsToStaticXY(base, pos, node);
+				final ox = resolveRVStatic(offsetX);
+				final oy = resolveRVStatic(offsetY);
+				if (basePt != null && ox != null && oy != null) {x: basePt.x + ox, y: basePt.y + oy} else null;
 		};
+	}
+
+	/** Resolve a named coordinate system's inner coordinate statically */
+	static function resolveNamedCoordStatic(namedCS:CoordinateSystems.CoordinateSystemDef, coord:Coordinates, pos:Position, node:MultiAnimParser.Node):Null<{x:Float, y:Float}> {
+		switch (namedCS) {
+			case NamedGrid(system):
+				return switch (coord) {
+					case SELECTED_GRID_POSITION(gridX, gridY):
+						final gx = resolveRVStatic(gridX);
+						final gy = resolveRVStatic(gridY);
+						if (gx != null && gy != null) {x: system.spacingX * gx, y: system.spacingY * gy} else null;
+					case SELECTED_GRID_POSITION_WITH_OFFSET(gridX, gridY, offsetX, offsetY):
+						final gx = resolveRVStatic(gridX);
+						final gy = resolveRVStatic(gridY);
+						final ox = resolveRVStatic(offsetX);
+						final oy = resolveRVStatic(offsetY);
+						if (gx != null && gy != null && ox != null && oy != null)
+							{x: system.spacingX * gx + ox, y: system.spacingY * gy + oy}
+						else null;
+					default: null;
+				};
+			case NamedHex(system):
+				final hexLayout = system.hexLayout;
+				return switch (coord) {
+					case SELECTED_HEX_CUBE(q, r, s):
+						final qv = resolveRVStatic(q);
+						final rv2 = resolveRVStatic(r);
+						final sv = resolveRVStatic(s);
+						if (qv != null && rv2 != null && sv != null) {
+							final hex = new bh.base.Hex.FractionalHex(qv, rv2, sv).round();
+							final pt = hexLayout.hexToPixel(hex);
+							{x: pt.x, y: pt.y};
+						} else null;
+					case SELECTED_HEX_CORNER(count, factor):
+						final c = resolveRVStatic(count);
+						final f = resolveRVStatic(factor);
+						if (c != null && f != null) {
+							final pt = hexLayout.polygonCorner(bh.base.Hex.zero(), Std.int(c), f);
+							{x: pt.x, y: pt.y};
+						} else null;
+					case SELECTED_HEX_EDGE(direction, factor):
+						final d = resolveRVStatic(direction);
+						final f = resolveRVStatic(factor);
+						if (d != null && f != null) {
+							final pt = hexLayout.polygonEdge(bh.base.Hex.zero(), Std.int(d), f);
+							{x: pt.x, y: pt.y};
+						} else null;
+					default: null;
+				};
+		}
+	}
+
+	/** Resolve a cell Coordinates to a static Hex for use in cell-relative operations */
+	static function resolveCoordToStaticHex(cell:Coordinates, hexLayout:bh.base.Hex.HexLayout):Null<bh.base.Hex> {
+		return switch (cell) {
+			case SELECTED_HEX_CUBE(q, r, s):
+				final qv = resolveRVStatic(q);
+				final rv2 = resolveRVStatic(r);
+				final sv = resolveRVStatic(s);
+				if (qv != null && rv2 != null && sv != null)
+					new bh.base.Hex.FractionalHex(qv, rv2, sv).round()
+				else null;
+			case SELECTED_HEX_OFFSET(col, row, parity):
+				final c = resolveRVStatic(col);
+				final r2 = resolveRVStatic(row);
+				if (c != null && r2 != null) {
+					final parityVal = switch (parity) { case EVEN: bh.base.Hex.OffsetCoord.EVEN; case ODD: bh.base.Hex.OffsetCoord.ODD; };
+					switch (hexLayout.orientation) {
+						case POINTY: bh.base.Hex.OffsetCoord.qoffsetToCube(parityVal, new bh.base.Hex.OffsetCoord(Std.int(c), Std.int(r2)));
+						case FLAT: bh.base.Hex.OffsetCoord.roffsetToCube(parityVal, new bh.base.Hex.OffsetCoord(Std.int(c), Std.int(r2)));
+					};
+				} else null;
+			case SELECTED_HEX_DOUBLED(col2, row2):
+				final c = resolveRVStatic(col2);
+				final r2 = resolveRVStatic(row2);
+				if (c != null && r2 != null) {
+					switch (hexLayout.orientation) {
+						case POINTY: bh.base.Hex.DoubledCoord.qdoubledToCube(new bh.base.Hex.DoubledCoord(Std.int(c), Std.int(r2)));
+						case FLAT: bh.base.Hex.DoubledCoord.rdoubledToCube(new bh.base.Hex.DoubledCoord(Std.int(c), Std.int(r2)));
+					};
+				} else null;
+			case SELECTED_HEX_PIXEL(_, _):
+				// pixelToHex requires h2d.col.Point — not available at macro time
+				null;
+			default: null;
+		};
+	}
+
+	/** Resolve an RVMethodCall($ref.method(args)) to a static {x, y} point at macro time.
+	 *  Returns null if any argument can't be statically resolved. */
+	static function resolveMethodCallToStaticPoint(ref:String, method:String, args:Array<ReferenceableValue>):Null<{x:Float, y:Float}> {
+		final hexLayout = getHexLayoutForNode(currentProcessingNode);
+		final grid = getGridFromCurrentNode();
+
+		// Grid methods
+		if (ref == "grid" || ref == "ctx.grid") {
+			if (grid == null) return null;
+			switch (method) {
+				case "pos":
+					if (args.length < 2) return null;
+					final gx = resolveRVStatic(args[0]);
+					final gy = resolveRVStatic(args[1]);
+					if (gx == null || gy == null) return null;
+					var ox:Float = 0; var oy:Float = 0;
+					if (args.length >= 4) {
+						final oxv = resolveRVStatic(args[2]);
+						final oyv = resolveRVStatic(args[3]);
+						if (oxv == null || oyv == null) return null;
+						ox = oxv; oy = oyv;
+					}
+					return {x: gx * grid.spacingX + ox, y: gy * grid.spacingY + oy};
+				default: return null;
+			}
+		}
+
+		// Named grid systems
+		if (currentProcessingNode != null) {
+			final namedCS = getNamedCoordSystem(ref, currentProcessingNode);
+			if (namedCS != null) {
+				switch (namedCS) {
+					case NamedGrid(system):
+						switch (method) {
+							case "pos":
+								if (args.length < 2) return null;
+								final gx = resolveRVStatic(args[0]);
+								final gy = resolveRVStatic(args[1]);
+								if (gx == null || gy == null) return null;
+								var ox:Float = 0; var oy:Float = 0;
+								if (args.length >= 4) {
+									final oxv = resolveRVStatic(args[2]);
+									final oyv = resolveRVStatic(args[3]);
+									if (oxv == null || oyv == null) return null;
+									ox = oxv; oy = oyv;
+								}
+								return {x: gx * system.spacingX + ox, y: gy * system.spacingY + oy};
+							default: return null;
+						}
+					case NamedHex(system):
+						return resolveHexMethodToStaticPoint(system.hexLayout, method, args);
+				}
+			}
+		}
+
+		// Hex methods
+		if (hexLayout == null) return null;
+		return resolveHexMethodToStaticPoint(hexLayout, method, args);
+	}
+
+	static function resolveHexMethodToStaticPoint(hexLayout:bh.base.Hex.HexLayout, method:String, args:Array<ReferenceableValue>):Null<{x:Float, y:Float}> {
+		switch (method) {
+			case "corner":
+				if (args.length < 1) return null;
+				final idx = resolveRVStatic(args[0]);
+				final factor = if (args.length >= 2) resolveRVStatic(args[1]) else 1.0;
+				if (idx == null || factor == null) return null;
+				final pt = hexLayout.polygonCorner(bh.base.Hex.zero(), Std.int(idx), factor);
+				return {x: pt.x, y: pt.y};
+			case "edge":
+				if (args.length < 1) return null;
+				final dir = resolveRVStatic(args[0]);
+				final factor = if (args.length >= 2) resolveRVStatic(args[1]) else 1.0;
+				if (dir == null || factor == null) return null;
+				final pt = hexLayout.polygonEdge(bh.base.Hex.zero(), Std.int(dir), factor);
+				return {x: pt.x, y: pt.y};
+			case "cube":
+				if (args.length != 3) return null;
+				final qv = resolveRVStatic(args[0]);
+				final rv2 = resolveRVStatic(args[1]);
+				final sv = resolveRVStatic(args[2]);
+				if (qv == null || rv2 == null || sv == null) return null;
+				final hex = new bh.base.Hex.FractionalHex(qv, rv2, sv).round();
+				final pt = hexLayout.hexToPixel(hex);
+				return {x: pt.x, y: pt.y};
+			case "offset":
+				if (args.length < 2) return null;
+				final c = resolveRVStatic(args[0]);
+				final r2 = resolveRVStatic(args[1]);
+				if (c == null || r2 == null) return null;
+				final parityVal = if (args.length >= 3) {
+					final p = resolveRVStatic(args[2]);
+					// Can't resolve string parity statically from RV; default to EVEN
+					bh.base.Hex.OffsetCoord.EVEN;
+				} else bh.base.Hex.OffsetCoord.EVEN;
+				final hex = switch (hexLayout.orientation) {
+					case POINTY: bh.base.Hex.OffsetCoord.qoffsetToCube(parityVal, new bh.base.Hex.OffsetCoord(Std.int(c), Std.int(r2)));
+					case FLAT: bh.base.Hex.OffsetCoord.roffsetToCube(parityVal, new bh.base.Hex.OffsetCoord(Std.int(c), Std.int(r2)));
+				};
+				final pt = hexLayout.hexToPixel(hex);
+				return {x: pt.x, y: pt.y};
+			case "doubled":
+				if (args.length != 2) return null;
+				final c = resolveRVStatic(args[0]);
+				final r2 = resolveRVStatic(args[1]);
+				if (c == null || r2 == null) return null;
+				final hex = switch (hexLayout.orientation) {
+					case POINTY: bh.base.Hex.DoubledCoord.qdoubledToCube(new bh.base.Hex.DoubledCoord(Std.int(c), Std.int(r2)));
+					case FLAT: bh.base.Hex.DoubledCoord.rdoubledToCube(new bh.base.Hex.DoubledCoord(Std.int(c), Std.int(r2)));
+				};
+				final pt = hexLayout.hexToPixel(hex);
+				return {x: pt.x, y: pt.y};
+			case "pixel":
+				// pixelToHex not available at macro time
+				return null;
+			default: return null;
+		}
+	}
+
+	/** Generate a runtime expression for extracting .x or .y from a coordinate method call */
+	static function resolveMethodCallToRuntimeComponentExpr(ref:String, method:String, args:Array<ReferenceableValue>, component:String):Expr {
+		final argExprs = args.map(a -> rvToExpr(a));
+
+		// Grid methods — check named systems too
+		var gridSystem:Null<GridCoordinateSystem> = null;
+		if (ref == "grid" || ref == "ctx.grid") {
+			gridSystem = getGridFromCurrentNode();
+		} else if (currentProcessingNode != null) {
+			final namedCS = getNamedCoordSystem(ref, currentProcessingNode);
+			if (namedCS != null) {
+				switch (namedCS) {
+					case NamedGrid(system): gridSystem = system;
+					case NamedHex(_): // fall through to hex handling below
+				}
+			}
+		}
+		if (gridSystem != null) {
+			switch (method) {
+				case "pos":
+					final sx:Int = gridSystem.spacingX;
+					final sy:Int = gridSystem.spacingY;
+					final gxExpr = argExprs[0];
+					final gyExpr = argExprs[1];
+					if (component == "x") {
+						if (argExprs.length >= 4) { final oxExpr = argExprs[2]; return macro $gxExpr * $v{sx} + $oxExpr; }
+						return macro $gxExpr * $v{sx};
+					} else {
+						if (argExprs.length >= 4) { final oyExpr = argExprs[3]; return macro $gyExpr * $v{sy} + $oyExpr; }
+						return macro $gyExpr * $v{sy};
+					}
+				default:
+					Context.error('Runtime .$component extraction not supported for grid method .$method()', Context.currentPos());
+					return macro 0;
+			}
+		}
+
+		// Hex methods — need _hexLayout field
+		if (!hexLayoutFieldAdded) {
+			Context.error('Runtime hex .$component extraction requires hex coordinate system with runtime parameters in scope', Context.currentPos());
+			return macro 0;
+		}
+
+		switch (method) {
+			case "corner":
+				if (argExprs.length < 1) Context.error('corner() requires at least 1 argument', Context.currentPos());
+				final idxExpr = argExprs[0];
+				final factorExpr = if (argExprs.length >= 2) argExprs[1] else macro 1.0;
+				if (component == "x")
+					return macro this._hexLayout.polygonCorner(bh.base.Hex.zero(), $idxExpr, $factorExpr).x;
+				else
+					return macro this._hexLayout.polygonCorner(bh.base.Hex.zero(), $idxExpr, $factorExpr).y;
+			case "edge":
+				if (argExprs.length < 1) Context.error('edge() requires at least 1 argument', Context.currentPos());
+				final dirExpr = argExprs[0];
+				final factorExpr = if (argExprs.length >= 2) argExprs[1] else macro 1.0;
+				if (component == "x")
+					return macro this._hexLayout.polygonEdge(bh.base.Hex.zero(), $dirExpr, $factorExpr).x;
+				else
+					return macro this._hexLayout.polygonEdge(bh.base.Hex.zero(), $dirExpr, $factorExpr).y;
+			case "cube":
+				if (argExprs.length != 3) Context.error('cube() requires 3 arguments', Context.currentPos());
+				final qExpr = argExprs[0];
+				final rExpr = argExprs[1];
+				final sExpr = argExprs[2];
+				if (component == "x")
+					return macro this._hexLayout.hexToPixel(new bh.base.Hex.FractionalHex($qExpr, $rExpr, $sExpr).round()).x;
+				else
+					return macro this._hexLayout.hexToPixel(new bh.base.Hex.FractionalHex($qExpr, $rExpr, $sExpr).round()).y;
+			default:
+				Context.error('Runtime .${component} extraction not supported for method .$method()', Context.currentPos());
+				return macro 0;
+		}
 	}
 
 	/** Resolve a Coordinates value to expression pair {x:Expr, y:Expr}, supporting all coordinate types.
@@ -3321,8 +3862,15 @@ class ProgrammableCodeGen {
 					final s = resolveRVStatic(node.scale);
 					if (s != null) s else 1.0;
 				} else 1.0;
-				final adjustedWidth:Float = value / scaleAdjust;
-				createExprs.push(macro $fieldRef.maxWidth = $v{adjustedWidth});
+				final staticVal = resolveRVStatic(value);
+				if (staticVal != null) {
+					final adjustedWidth:Float = staticVal / scaleAdjust;
+					createExprs.push(macro $fieldRef.maxWidth = $v{adjustedWidth});
+				} else {
+					final valExpr = rvToExpr(value);
+					final scaleExpr = macro $v{scaleAdjust};
+					createExprs.push(macro $fieldRef.maxWidth = $valExpr / $scaleExpr);
+				}
 			default:
 		}
 
@@ -3703,15 +4251,88 @@ class ProgrammableCodeGen {
 					final arrayFieldRef = macro $p{["this", "_" + arrayRef]};
 					macro $arrayFieldRef[$indexExpr];
 				}
-			case RVFunction(functionType):
-				final grid = getGridFromCurrentNode();
-				if (grid != null) {
-					switch (functionType) {
-						case RVFGridWidth: macro $v{grid.spacingX};
-						case RVFGridHeight: macro $v{grid.spacingY};
-					}
+			case RVPropertyAccess(ref, property):
+				// Try static resolution first
+				final staticVal = resolveRVStatic(rv);
+				if (staticVal != null) {
+					macro $v{staticVal};
 				} else {
+					// Runtime properties
+					switch (ref) {
+						case "ctx":
+							switch (property) {
+								case "width": macro this.getScene().width;
+								case "height": macro this.getScene().height;
+								default:
+									Context.error('Unknown context property: $$ctx.$property', Context.currentPos());
+									macro 0;
+							}
+						default:
+							Context.error('Cannot resolve property access $$ref.$property at runtime', Context.currentPos());
+							macro 0;
+					}
+				}
+			case RVMethodCall(ref, method, args):
+				switch (ref) {
+					case "ctx":
+						switch (method) {
+							case "random":
+								if (args.length == 2) {
+									final minExpr = rvToExpr(args[0]);
+									final maxExpr = rvToExpr(args[1]);
+									macro $minExpr + Std.random($maxExpr - $minExpr);
+								} else {
+									Context.error('$$ctx.random() requires 2 arguments (min, max)', Context.currentPos());
+									macro 0;
+								}
+							case "font":
+								Context.error('$$ctx.font() must be followed by .lineHeight or .baseLine', Context.currentPos());
+								macro 0;
+							default:
+								Context.error('Unknown context method: $$ctx.$method()', Context.currentPos());
+								macro 0;
+						}
+					default:
+						Context.error('Cannot resolve method call $$ref.$method() in expression context — use .x or .y to extract coordinates', Context.currentPos());
+						macro 0;
+				}
+			case RVChainedMethodCall(base, property, _):
+				if (property == "lineHeight" || property == "baseLine") {
+					// Font property access: $ctx.font("name").lineHeight / .baseLine
+					switch (base) {
+						case RVMethodCall(ref, method, args):
+							if (ref == "ctx" && method == "font" && args.length == 1) {
+								final fontNameExpr = rvToExpr(args[0]);
+								if (property == "lineHeight")
+									macro this._pb.loadFont($fontNameExpr).lineHeight;
+								else
+									macro this._pb.loadFont($fontNameExpr).baseLine;
+							} else {
+								Context.error('$$ctx.font("name") is required for .$property access', Context.currentPos());
+								macro 0;
+							}
+						default:
+							Context.error('Unsupported base expression for .$property — use $$ctx.font("name").$property', Context.currentPos());
+							macro 0;
+					}
+				} else if (property != "x" && property != "y") {
+					Context.error('Unsupported chained property .$property — only .x, .y, .lineHeight, .baseLine are supported', Context.currentPos());
 					macro 0;
+				} else {
+					// Try static resolution first
+					final staticVal = resolveRVStatic(rv);
+					if (staticVal != null) {
+						macro $v{staticVal};
+					} else {
+						// Generate runtime expression
+						switch (base) {
+							case RVMethodCall(ref, method, args):
+								resolveMethodCallToRuntimeComponentExpr(ref, method, args, property);
+							default:
+								Context.error('Unsupported base expression for .$property extraction', Context.currentPos());
+								macro 0;
+						}
+					}
 				}
 			default:
 				macro 0;
@@ -3768,8 +4389,55 @@ class ProgrammableCodeGen {
 				collectParamRefsImpl(name, refs);
 				collectParamRefsImpl(index, refs);
 				collectParamRefsImpl(defaultValue, refs);
+			case RVMethodCall(_, _, args):
+				for (a in args) collectParamRefsImpl(a, refs);
+			case RVChainedMethodCall(base, _, args):
+				collectParamRefsImpl(base, refs);
+				for (a in args) collectParamRefsImpl(a, refs);
 			default:
 		}
+	}
+
+	// ==================== Node Settings ====================
+
+	/** Convert a node's settings (walking parent chain) to a ResolvedSettings expression */
+	static function nodeSettingsToExpr(node:Node):Expr {
+		// Collect settings walking up the parent chain (same logic as MultiAnimBuilder.resolveSettings)
+		var merged:Null<Map<String, MultiAnimParser.ParsedSettingValue>> = null;
+		var current = node;
+		while (current != null) {
+			if (current.settings != null) {
+				if (merged == null)
+					merged = current.settings.copy();
+				else {
+					for (key => value in current.settings) {
+						if (!merged.exists(key))
+							merged[key] = value;
+					}
+				}
+			}
+			current = current.parent;
+		}
+		if (merged == null)
+			return macro null;
+
+		final entries:Array<Expr> = [];
+		for (key => sv in merged) {
+			final keyExpr = macro $v{key};
+			final valExpr:Expr = switch sv.type {
+				case SVTInt: final v = rvToExpr(sv.value); macro bh.multianim.MultiAnimParser.SettingValue.RSVInt($v);
+				case SVTFloat: final v = rvToExpr(sv.value); macro bh.multianim.MultiAnimParser.SettingValue.RSVFloat($v);
+				case SVTString: final v = rvToExpr(sv.value, true); macro bh.multianim.MultiAnimParser.SettingValue.RSVString($v);
+				case SVTBool: final v = rvToExpr(sv.value); macro bh.multianim.MultiAnimParser.SettingValue.RSVBool($v != 0);
+			};
+			entries.push(macro m.set($keyExpr, $valExpr));
+		}
+		final setBlock:Expr = {expr: EBlock(entries), pos: Context.currentPos()};
+		return macro {
+			var m = new Map<String, bh.multianim.MultiAnimParser.SettingValue>();
+			$setBlock;
+			m;
+		};
 	}
 
 	// ==================== Tile Source ====================
@@ -3797,9 +4465,9 @@ class ProgrammableCodeGen {
 						macro {
 							var c:Int = $cExpr;
 							if (c >>> 24 == 0) c |= 0xFF000000;
-							h2d.Tile.fromColor(c, $wExpr, $hExpr);
+							h2d.Tile.fromColor(c, Std.int($wExpr), Std.int($hExpr));
 						};
-					case Cross(w, h, color):
+					case Cross(w, h, color, thickness):
 						// Cross: solid color with diagonal lines — approximate as solid color
 						final wExpr = rvToExpr(w);
 						final hExpr = rvToExpr(h);
@@ -3807,7 +4475,7 @@ class ProgrammableCodeGen {
 						macro {
 							var c:Int = $cExpr;
 							if (c >>> 24 == 0) c |= 0xFF000000;
-							h2d.Tile.fromColor(c, $wExpr, $hExpr);
+							h2d.Tile.fromColor(c, Std.int($wExpr), Std.int($hExpr));
 						};
 					case SolidColorWithText(w, h, color, text, textColor, font):
 						final wExpr = rvToExpr(w);
@@ -3845,6 +4513,14 @@ class ProgrammableCodeGen {
 						};
 					default:
 						macro this._pb.loadTileFile("placeholder.png");
+				};
+			case TSReference(ref):
+				// Check if the reference is a tile parameter — use the field directly as h2d.Tile
+				final def = paramDefs != null ? paramDefs.get(ref) : null;
+				if (def != null && def.type == PPTTile) {
+					macro $p{["this", "_" + ref]};
+				} else {
+					macro this._pb.loadTileFile("placeholder.png");
 				};
 			default:
 				macro this._pb.loadTileFile("placeholder.png");
@@ -3884,11 +4560,81 @@ class ProgrammableCodeGen {
 					final sy:Int = grid.spacingY;
 					macro $fieldRef.setPosition($gxExpr * $v{sx} + $oxExpr, $gyExpr * $v{sy} + $oyExpr);
 				} else null;
-			case SELECTED_HEX_POSITION(hex):
+			case SELECTED_HEX_CUBE(q, r, s):
 				final hexLayout = getHexLayoutForNode(node);
 				if (hexLayout != null) {
-					final pt = hexLayout.hexToPixel(hex);
-					macro $fieldRef.setPosition($v{pt.x}, $v{pt.y});
+					final qv = resolveRVStatic(q);
+					final rv2 = resolveRVStatic(r);
+					final sv = resolveRVStatic(s);
+					if (qv != null && rv2 != null && sv != null) {
+						final hex = new bh.base.Hex.FractionalHex(qv, rv2, sv).round();
+						final pt = hexLayout.hexToPixel(hex);
+						macro $fieldRef.setPosition($v{pt.x}, $v{pt.y});
+					} else {
+						final qExpr = rvToExpr(q);
+						final rExpr = rvToExpr(r);
+						final sExpr = rvToExpr(s);
+						macro {
+							final _hex = new bh.base.Hex.FractionalHex($qExpr, $rExpr, $sExpr).round();
+							final _p = this._hexLayout.hexToPixel(_hex);
+							$fieldRef.setPosition(_p.x, _p.y);
+						};
+					}
+				} else null;
+			case SELECTED_HEX_OFFSET(col, row, parity):
+				final hexLayout = getHexLayoutForNode(node);
+				if (hexLayout != null) {
+					final c = resolveRVStatic(col);
+					final r2 = resolveRVStatic(row);
+					if (c != null && r2 != null) {
+						final parityVal = switch (parity) { case EVEN: bh.base.Hex.OffsetCoord.EVEN; case ODD: bh.base.Hex.OffsetCoord.ODD; };
+						final hex = switch (hexLayout.orientation) {
+							case POINTY: bh.base.Hex.OffsetCoord.qoffsetToCube(parityVal, new bh.base.Hex.OffsetCoord(Std.int(c), Std.int(r2)));
+							case FLAT: bh.base.Hex.OffsetCoord.roffsetToCube(parityVal, new bh.base.Hex.OffsetCoord(Std.int(c), Std.int(r2)));
+						};
+						final pt = hexLayout.hexToPixel(hex);
+						macro $fieldRef.setPosition($v{pt.x}, $v{pt.y});
+					} else null;
+				} else null;
+			case SELECTED_HEX_DOUBLED(col2, row2):
+				final hexLayout = getHexLayoutForNode(node);
+				if (hexLayout != null) {
+					final c = resolveRVStatic(col2);
+					final r2 = resolveRVStatic(row2);
+					if (c != null && r2 != null) {
+						final hex = switch (hexLayout.orientation) {
+							case POINTY: bh.base.Hex.DoubledCoord.qdoubledToCube(new bh.base.Hex.DoubledCoord(Std.int(c), Std.int(r2)));
+							case FLAT: bh.base.Hex.DoubledCoord.rdoubledToCube(new bh.base.Hex.DoubledCoord(Std.int(c), Std.int(r2)));
+						};
+						final pt = hexLayout.hexToPixel(hex);
+						macro $fieldRef.setPosition($v{pt.x}, $v{pt.y});
+					} else null;
+				} else null;
+			case SELECTED_HEX_PIXEL(_, _):
+				// pixelToHex requires h2d.col.Point — not available at macro time
+				// TODO: generate runtime code for pixel coord resolution
+				null;
+			case SELECTED_HEX_CELL_CORNER(cell, cornerIndex, factor):
+				final hexLayout = getHexLayoutForNode(node);
+				if (hexLayout != null) {
+					final ci = resolveRVStatic(cornerIndex);
+					final f = resolveRVStatic(factor);
+					final cellHex = resolveCoordToStaticHex(cell, hexLayout);
+					if (ci != null && f != null && cellHex != null) {
+						final pt = hexLayout.polygonCorner(cellHex, Std.int(ci), f);
+						macro $fieldRef.setPosition($v{pt.x}, $v{pt.y});
+					} else null;
+				} else null;
+			case SELECTED_HEX_CELL_EDGE(cell, direction, factor):
+				final hexLayout = getHexLayoutForNode(node);
+				if (hexLayout != null) {
+					final d = resolveRVStatic(direction);
+					final f = resolveRVStatic(factor);
+					final cellHex = resolveCoordToStaticHex(cell, hexLayout);
+					if (d != null && f != null && cellHex != null) {
+						final pt = hexLayout.polygonEdge(cellHex, Std.int(d), f);
+						macro $fieldRef.setPosition($v{pt.x}, $v{pt.y});
+					} else null;
 				} else null;
 			case SELECTED_HEX_CORNER(count, factor):
 				final hexLayout = getHexLayoutForNode(node);
@@ -3933,7 +4679,46 @@ class ProgrammableCodeGen {
 					else
 						null;
 				} else null;
+			case NAMED_COORD(name, coord):
+				final namedCS = if (node != null) getNamedCoordSystem(name, node) else null;
+				if (namedCS != null) {
+					final pt = resolveNamedCoordStatic(namedCS, coord, pos, node);
+					if (pt != null)
+						macro $fieldRef.setPosition($v{pt.x}, $v{pt.y})
+					else
+						null;
+				} else null;
+			case WITH_OFFSET(base, offsetX, offsetY):
+				final baseExpr = generatePositionExpr(base, fieldName, pos, node);
+				if (baseExpr != null) {
+					final ox = resolveRVStatic(offsetX);
+					final oy = resolveRVStatic(offsetY);
+					if (ox != null && oy != null) {
+						final basePt = coordsToStaticXY(base, pos, node);
+						if (basePt != null)
+							macro $fieldRef.setPosition($v{basePt.x + ox}, $v{basePt.y + oy})
+						else
+							null;
+					} else null;
+				} else null;
 		};
+	}
+
+	static function collectCoordParamRefs(coord:Coordinates, refs:Array<String>):Void {
+		if (coord == null) return;
+		switch (coord) {
+			case OFFSET(x, y): collectParamRefsImpl(x, refs); collectParamRefsImpl(y, refs);
+			case SELECTED_GRID_POSITION(x, y): collectParamRefsImpl(x, refs); collectParamRefsImpl(y, refs);
+			case SELECTED_GRID_POSITION_WITH_OFFSET(x, y, ox, oy): collectParamRefsImpl(x, refs); collectParamRefsImpl(y, refs); collectParamRefsImpl(ox, refs); collectParamRefsImpl(oy, refs);
+			case SELECTED_HEX_CUBE(q, r, s): collectParamRefsImpl(q, refs); collectParamRefsImpl(r, refs); collectParamRefsImpl(s, refs);
+			case SELECTED_HEX_OFFSET(col, row, _): collectParamRefsImpl(col, refs); collectParamRefsImpl(row, refs);
+			case SELECTED_HEX_DOUBLED(col, row): collectParamRefsImpl(col, refs); collectParamRefsImpl(row, refs);
+			case SELECTED_HEX_PIXEL(x, y): collectParamRefsImpl(x, refs); collectParamRefsImpl(y, refs);
+			case SELECTED_HEX_CORNER(count, factor): collectParamRefsImpl(count, refs); collectParamRefsImpl(factor, refs);
+			case SELECTED_HEX_EDGE(dir, factor): collectParamRefsImpl(dir, refs); collectParamRefsImpl(factor, refs);
+			case NAMED_COORD(_, coord): collectCoordParamRefs(coord, refs);
+			default:
+		}
 	}
 
 	/** Collect param refs from a Coordinates value */
@@ -3967,12 +4752,59 @@ class ProgrammableCodeGen {
 				collectParamRefsImpl(direction, refs);
 				collectParamRefsImpl(factor, refs);
 				refs;
+			case SELECTED_HEX_CUBE(q, r, s):
+				final refs:Array<String> = [];
+				collectParamRefsImpl(q, refs);
+				collectParamRefsImpl(r, refs);
+				collectParamRefsImpl(s, refs);
+				refs;
+			case SELECTED_HEX_OFFSET(col, row, _):
+				final refs:Array<String> = [];
+				collectParamRefsImpl(col, refs);
+				collectParamRefsImpl(row, refs);
+				refs;
+			case SELECTED_HEX_DOUBLED(col, row):
+				final refs:Array<String> = [];
+				collectParamRefsImpl(col, refs);
+				collectParamRefsImpl(row, refs);
+				refs;
+			case SELECTED_HEX_PIXEL(x, y):
+				final refs:Array<String> = [];
+				collectParamRefsImpl(x, refs);
+				collectParamRefsImpl(y, refs);
+				refs;
+			case SELECTED_HEX_CELL_CORNER(cell, cornerIndex, factor):
+				final refs:Array<String> = [];
+				collectCoordParamRefs(cell, refs);
+				collectParamRefsImpl(cornerIndex, refs);
+				collectParamRefsImpl(factor, refs);
+				refs;
+			case SELECTED_HEX_CELL_EDGE(cell, direction, factor):
+				final refs:Array<String> = [];
+				collectCoordParamRefs(cell, refs);
+				collectParamRefsImpl(direction, refs);
+				collectParamRefsImpl(factor, refs);
+				refs;
 			case LAYOUT(_, index):
 				final refs:Array<String> = [];
 				collectParamRefsImpl(index, refs);
 				refs;
+			case NAMED_COORD(_, coord):
+				collectPositionParamRefs(coord);
 			default: [];
 		};
+	}
+
+	/** Get named coordinate system by walking parent chain (macro-safe version) */
+	static function getNamedCoordSystem(name:String, node:MultiAnimParser.Node):Null<CoordinateSystems.CoordinateSystemDef> {
+		while (node != null) {
+			if (node.namedCoordinateSystems != null) {
+				final cs = node.namedCoordinateSystems.get(name);
+				if (cs != null) return cs;
+			}
+			node = node.parent;
+		}
+		return null;
 	}
 
 	/** Get grid coordinate system from current node's parent chain */
@@ -4035,19 +4867,58 @@ class ProgrammableCodeGen {
 			pos:Position):Void {
 		if (coords == null || hexLayoutFieldAdded)
 			return;
-		switch (coords) {
+		final needsRuntime = switch (coords) {
 			case SELECTED_HEX_CORNER(count, factor) | SELECTED_HEX_EDGE(count, factor):
-				if (resolveRVStatic(count) == null || resolveRVStatic(factor) == null) {
-					final hexLayout = getHexLayoutForNode(node);
-					if (hexLayout != null) {
-						hexLayoutFieldAdded = true;
-						fields.push(makeField("_hexLayout", FVar(macro :bh.base.Hex.HexLayout, null), [APrivate], pos));
-						final orientExpr = switch (hexLayout.orientation) {
-							case POINTY: macro bh.base.Hex.HexOrientation.POINTY;
-							case FLAT: macro bh.base.Hex.HexOrientation.FLAT;
-						};
-						ctorExprs.push(macro this._hexLayout = bh.base.Hex.HexLayout.createFromFloats($orientExpr, $v{hexLayout.size.x},
-							$v{hexLayout.size.y}, $v{hexLayout.origin.x}, $v{hexLayout.origin.y}));
+				resolveRVStatic(count) == null || resolveRVStatic(factor) == null;
+			case SELECTED_HEX_CUBE(q, r, s):
+				resolveRVStatic(q) == null || resolveRVStatic(r) == null || resolveRVStatic(s) == null;
+			case SELECTED_HEX_OFFSET(col, row, _):
+				resolveRVStatic(col) == null || resolveRVStatic(row) == null;
+			case SELECTED_HEX_DOUBLED(col, row):
+				resolveRVStatic(col) == null || resolveRVStatic(row) == null;
+			case SELECTED_HEX_PIXEL(x, y):
+				resolveRVStatic(x) == null || resolveRVStatic(y) == null;
+			case SELECTED_HEX_CELL_CORNER(_, cornerIndex, factor):
+				resolveRVStatic(cornerIndex) == null || resolveRVStatic(factor) == null;
+			case SELECTED_HEX_CELL_EDGE(_, direction, factor):
+				resolveRVStatic(direction) == null || resolveRVStatic(factor) == null;
+			default: false;
+		};
+		if (needsRuntime) {
+			final hexLayout = getHexLayoutForNode(node);
+			if (hexLayout != null) {
+				hexLayoutFieldAdded = true;
+				fields.push(makeField("_hexLayout", FVar(macro :bh.base.Hex.HexLayout, null), [APrivate], pos));
+				final orientExpr = switch (hexLayout.orientation) {
+					case POINTY: macro bh.base.Hex.HexOrientation.POINTY;
+					case FLAT: macro bh.base.Hex.HexOrientation.FLAT;
+				};
+				ctorExprs.push(macro this._hexLayout = bh.base.Hex.HexLayout.createFromFloats($orientExpr, $v{hexLayout.size.x},
+					$v{hexLayout.size.y}, $v{hexLayout.origin.x}, $v{hexLayout.origin.y}));
+			}
+		}
+	}
+
+	/** Ensure _hexLayout field is created for runtime hex method calls in expression context (.x/.y). */
+	static function ensureHexLayoutForExprRV(rv:ReferenceableValue, node:MultiAnimParser.Node, fields:Array<Field>, ctorExprs:Array<Expr>,
+			pos:Position):Void {
+		if (hexLayoutFieldAdded) return;
+		switch (rv) {
+			case RVChainedMethodCall(RVMethodCall(ref, method, _), property, _) if (property == "x" || property == "y"):
+				if (ref == "hex" || ref == "ctx.hex" || (currentProcessingNode != null && getNamedCoordSystem(ref, currentProcessingNode) != null)) {
+					// Check if static resolution fails (needs runtime)
+					if (resolveRVStatic(rv) == null) {
+						final hexLayout = getHexLayoutForNode(node);
+						if (hexLayout != null) {
+							hexLayoutFieldAdded = true;
+							fields.push(makeField("_hexLayout", FVar(macro :bh.base.Hex.HexLayout, null), [APrivate], pos));
+							final orientExpr = switch (hexLayout.orientation) {
+								case POINTY: macro bh.base.Hex.HexOrientation.POINTY;
+								case FLAT: macro bh.base.Hex.HexOrientation.FLAT;
+							};
+							ctorExprs.push(macro this._hexLayout = bh.base.Hex.HexLayout.createFromFloats($orientExpr, $v{hexLayout.size.x},
+								$v{hexLayout.size.y}, $v{hexLayout.origin.x}, $v{hexLayout.origin.y}));
+						}
 					}
 				}
 			default:
@@ -4081,6 +4952,11 @@ class ProgrammableCodeGen {
 					resolveLayoutPoint(content, layout, index)
 				else
 					null;
+			case Grid(cols, rows, cellW, cellH):
+				if (index >= 0 && index < cols * rows)
+					{x: (index % cols) * cellW + 0.0, y: Std.int(index / cols) * cellH + 0.0}
+				else
+					null;
 		};
 
 		if (pt != null) {
@@ -4109,6 +4985,10 @@ class ProgrammableCodeGen {
 			case FilterSaturate(v):
 				collectParamRefsImpl(v, refs);
 			case FilterBrightness(v):
+				collectParamRefsImpl(v, refs);
+			case FilterGrayscale(v):
+				collectParamRefsImpl(v, refs);
+			case FilterHue(v):
 				collectParamRefsImpl(v, refs);
 			case FilterGlow(color, alpha, radius, gain, quality, _, _):
 				collectParamRefsImpl(color, refs);
@@ -4177,6 +5057,22 @@ class ProgrammableCodeGen {
 					final m = new h3d.Matrix();
 					m.identity();
 					m.colorLightness($vExpr);
+					new h2d.filter.ColorMatrix(m);
+				};
+			case FilterGrayscale(v):
+				final vExpr = rvToExpr(v);
+				macro {
+					final m = new h3d.Matrix();
+					m.identity();
+					m.colorSaturate(-$vExpr);
+					new h2d.filter.ColorMatrix(m);
+				};
+			case FilterHue(v):
+				final vExpr = rvToExpr(v);
+				macro {
+					final m = new h3d.Matrix();
+					m.identity();
+					m.colorHue($vExpr);
 					new h2d.filter.ColorMatrix(m);
 				};
 			case FilterGlow(color, alpha, radius, gain, quality, smoothColor, knockout):
@@ -4505,6 +5401,7 @@ class ProgrammableCodeGen {
 			case PPTRange(_, _): macro :Int;
 			case PPTFlags(_): macro :Int;
 			case PPTArray: macro :Array<String>;
+			case PPTTile: macro :Dynamic;
 			default: macro :Int;
 		};
 	}
@@ -4708,6 +5605,14 @@ class ProgrammableCodeGen {
 		};
 	}
 
+	static function slotHandleFieldName(key:MacroSlotKey):String {
+		return switch key {
+			case Named(name): "_slotHandle_" + name;
+			case Indexed(name, index): "_slotHandle_" + name + "_" + index;
+			case Indexed2D(name, indexX, indexY): "_slotHandle_" + name + "_" + indexX + "_" + indexY;
+		};
+	}
+
 	static function toPascalCase(s:String):String {
 		final parts = s.split("-").join("_").split("_");
 		var result = "";
@@ -4721,13 +5626,12 @@ class ProgrammableCodeGen {
 	// ==================== Paths/Curves/AnimatedPath Factory Methods ====================
 
 	static function generatePathsFactoryMethods(pathsDef:PathsDef, factoryFields:Array<Field>, pos:Position):Void {
-		// Generic getPath(name, ?startPoint, ?endPoint) method - still uses builder for dynamic name
+		// Generic getPath(name, ?normalization) method - still uses builder for dynamic name
 		factoryFields.push(makeMethod("getPath", [
-			macro return this.buildPath(name, startPoint, endPoint)
+			macro return this.buildPath(name, normalization)
 		], [
 			{name: "name", type: macro :String},
-			{name: "startPoint", type: macro :Null<bh.base.FPoint>, opt: true},
-			{name: "endPoint", type: macro :Null<bh.base.FPoint>, opt: true},
+			{name: "normalization", type: macro :Null<bh.paths.MultiAnimPaths.PathNormalization>, opt: true},
 		], macro :bh.paths.MultiAnimPaths.Path, [APublic], pos));
 
 		// Per-path typed methods: getPath_<name>(?startPoint, ?endPoint) with inline construction
@@ -4788,12 +5692,12 @@ class ProgrammableCodeGen {
 					var cacheIdent = cacheFieldName;
 					factoryFields.push(makeMethod("getPath_" + pathName, [
 						macro {
-							if (startPoint != null && endPoint != null) {
-								// Dynamic transform requested — build fresh path and normalize
+							if (normalization != null) {
+								// Dynamic transform requested — build fresh path and apply transform
 								var basePath = bh.paths.MultiAnimPaths.Path.fromPrecomputed(
 									$arrExpr, $v{totalLength}, $cpNamesExpr, $cpRatesExpr, $endpointExpr
 								);
-								return basePath.normalize(startPoint, endPoint);
+								return basePath.applyTransform(normalization);
 							}
 							// Return cached base path
 							if ($i{cacheIdent} == null) {
@@ -4804,8 +5708,7 @@ class ProgrammableCodeGen {
 							return $i{cacheIdent};
 						}
 					], [
-						{name: "startPoint", type: macro :Null<bh.base.FPoint>, opt: true},
-						{name: "endPoint", type: macro :Null<bh.base.FPoint>, opt: true},
+						{name: "normalization", type: macro :Null<bh.paths.MultiAnimPaths.PathNormalization>, opt: true},
 					], macro :bh.paths.MultiAnimPaths.Path, [APublic], pos));
 				} else {
 					// Zero-length path — use regular constructor
@@ -4813,23 +5716,21 @@ class ProgrammableCodeGen {
 					factoryFields.push(makeMethod("getPath_" + pathName, [
 						macro {
 							var basePath = new bh.paths.MultiAnimPaths.Path($arrExpr);
-							if (startPoint != null && endPoint != null)
-								return basePath.normalize(startPoint, endPoint);
+							if (normalization != null)
+								return basePath.applyTransform(normalization);
 							return basePath;
 						}
 					], [
-						{name: "startPoint", type: macro :Null<bh.base.FPoint>, opt: true},
-						{name: "endPoint", type: macro :Null<bh.base.FPoint>, opt: true},
+						{name: "normalization", type: macro :Null<bh.paths.MultiAnimPaths.PathNormalization>, opt: true},
 					], macro :bh.paths.MultiAnimPaths.Path, [APublic], pos));
 				}
 			} else {
 				// Fallback to builder for paths with parameter references
 				final nameExpr:Expr = macro $v{pathName};
 				factoryFields.push(makeMethod("getPath_" + pathName, [
-					macro return this.buildPath($nameExpr, startPoint, endPoint)
+					macro return this.buildPath($nameExpr, normalization)
 				], [
-					{name: "startPoint", type: macro :Null<bh.base.FPoint>, opt: true},
-					{name: "endPoint", type: macro :Null<bh.base.FPoint>, opt: true},
+					{name: "normalization", type: macro :Null<bh.paths.MultiAnimPaths.PathNormalization>, opt: true},
 				], macro :bh.paths.MultiAnimPaths.Path, [APublic], pos));
 			}
 		}
@@ -5254,8 +6155,7 @@ class ProgrammableCodeGen {
 
 		// 1. Get path - call our own getPath_<name>() inline method
 		final pathMethodName = "getPath_" + sanitizeIdentifier(apDef.pathName);
-		bodyExprs.push(macro var path = $i{pathMethodName}(startPoint, endPoint));
-		bodyExprs.push(macro if (startAngle != null) path = path.withStartAngle(startAngle));
+		bodyExprs.push(macro var path = $i{pathMethodName}(normalization));
 
 		// 2. Determine mode
 		var modeExpr:Expr = null;
@@ -5280,16 +6180,16 @@ class ProgrammableCodeGen {
 				// Fall back to builder
 				final nameExpr:Expr = macro $v{name};
 				factoryFields.push(makeMethod(methodName, [
-					macro return this.buildAnimatedPath($nameExpr, startPoint, endPoint, startAngle)
+					macro return this.buildAnimatedPath($nameExpr, normalization)
 				], [
-					{name: "startPoint", opt: true, type: macro :bh.base.FPoint},
-					{name: "endPoint", opt: true, type: macro :bh.base.FPoint},
-					{name: "startAngle", opt: true, type: macro :Null<Float>},
+					{name: "normalization", opt: true, type: macro :Null<bh.paths.MultiAnimPaths.PathNormalization>},
 				], macro :bh.paths.AnimatedPath, [APublic], pos));
 				return;
 		}
 
 		bodyExprs.push(macro var ap = new bh.paths.AnimatedPath(path, $modeExpr));
+		if (apDef.loop) bodyExprs.push(macro ap.loop = true);
+		if (apDef.pingPong) bodyExprs.push(macro ap.pingPong = true);
 
 		// 3. Add curve segments
 		for (ca in apDef.curveAssignments) {
@@ -5303,9 +6203,18 @@ class ProgrammableCodeGen {
 					rateExpr = macro path.getCheckpoint($v{cpNameStr});
 			}
 
-			// Get curve via inline method
-			final curveMethodName = "getCurve_" + sanitizeIdentifier(ca.curveName);
-			var curveExpr = macro $i{curveMethodName}();
+			// Get curve: inline easing or named curve reference
+			var curveExpr:Expr;
+			if (ca.inlineEasing != null) {
+				// Create a Curve from inline easing type
+				var easingExpr = easingTypeToExpr(ca.inlineEasing);
+				curveExpr = macro new bh.paths.Curve(null, $easingExpr, null);
+			} else if (ca.curveName != null) {
+				final curveMethodName = "getCurve_" + sanitizeIdentifier(ca.curveName);
+				curveExpr = macro $i{curveMethodName}();
+			} else {
+				continue;
+			}
 
 			// Determine slot
 			var slotExpr:Expr = switch ca.slot {
@@ -5314,6 +6223,7 @@ class ProgrammableCodeGen {
 				case APAlpha: macro bh.paths.AnimatedPath.CurveSlot.Alpha;
 				case APRotation: macro bh.paths.AnimatedPath.CurveSlot.Rotation;
 				case APProgress: macro bh.paths.AnimatedPath.CurveSlot.Progress;
+				case APColor(_, _): null;
 				case APCustom(customName):
 					null; // handled below
 			};
@@ -5322,6 +6232,10 @@ class ProgrammableCodeGen {
 				case APCustom(customName):
 					final cn:String = customName;
 					bodyExprs.push(macro ap.addCustomCurveSegment($v{cn}, $rateExpr, $curveExpr));
+				case APColor(startColor, endColor):
+					var scExpr = rvToExpr(startColor);
+					var ecExpr = rvToExpr(endColor);
+					bodyExprs.push(macro ap.addColorCurveSegment($rateExpr, $curveExpr, Std.int($scExpr), Std.int($ecExpr)));
 				default:
 					bodyExprs.push(macro ap.addCurveSegment($slotExpr, $rateExpr, $curveExpr));
 			}
@@ -5344,9 +6258,7 @@ class ProgrammableCodeGen {
 		bodyExprs.push(macro return ap);
 
 		factoryFields.push(makeMethod(methodName, bodyExprs, [
-			{name: "startPoint", opt: true, type: macro :bh.base.FPoint},
-			{name: "endPoint", opt: true, type: macro :bh.base.FPoint},
-			{name: "startAngle", opt: true, type: macro :Null<Float>},
+			{name: "normalization", opt: true, type: macro :Null<bh.paths.MultiAnimPaths.PathNormalization>},
 		], macro :bh.paths.AnimatedPath, [APublic], pos));
 	}
 

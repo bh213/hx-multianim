@@ -49,13 +49,17 @@ class UIStandardMultiCheckbox implements UIElement implements UIElementDisablabl
 		return value;
 	}
 
-	public static function create(builder:MultiAnimBuilder, name, checked) {
-		return new UIStandardMultiCheckbox(builder, name, checked);
+	public static function create(builder:MultiAnimBuilder, name, checked, ?extraParams:Null<Map<String, Dynamic>>) {
+		return new UIStandardMultiCheckbox(builder, name, checked, extraParams);
 	}
 
-	function new(builder:MultiAnimBuilder, name:String, startsChecked) {
+	function new(builder:MultiAnimBuilder, name:String, startsChecked, ?extraParams:Null<Map<String, Dynamic>>) {
 		this.root = new h2d.Object();
-		this.multiResult = builder.buildWithComboParameters(name, [], ["status", "disabled", "checked"]);
+		var params:Map<String, Dynamic> = [];
+		if (extraParams != null)
+			for (key => value in extraParams)
+				params.set(key, value);
+		this.multiResult = builder.buildWithComboParameters(name, params, ["status", "disabled", "checked"]);
 		this.selected = startsChecked;
 	}
 

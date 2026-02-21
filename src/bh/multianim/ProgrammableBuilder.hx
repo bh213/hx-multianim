@@ -6,9 +6,11 @@ import h2d.Font;
 import bh.base.ResourceLoader;
 import bh.base.Atlas2.IAtlas2;
 import bh.multianim.MultiAnimBuilder.BuilderResult;
+import bh.multianim.MultiAnimBuilder.SlotHandle;
 import bh.multianim.MultiAnimBuilder.CallbackRequest;
 import bh.multianim.MultiAnimBuilder.CallbackResult;
 import bh.multianim.MultiAnimBuilder.PlaceholderValues;
+import bh.multianim.MultiAnimParser.ResolvedSettings;
 import bh.multianim.MultiAnimParser.TileSource;
 import bh.stateanim.AnimationSM;
 import bh.stateanim.AnimationSM.AnimationFrameState;
@@ -117,6 +119,13 @@ class ProgrammableBuilder {
 	/** Build a dynamic ref via the builder (for DYNAMIC_REF nodes, always incremental) */
 	public function buildDynamicRef(name:String, parameters:Map<String, Dynamic>):BuilderResult {
 		return (_builder : MultiAnimBuilder).buildWithParameters(name, parameters, null, null, true);
+	}
+
+	/** Build a parameterized slot's children via the builder (for SLOT nodes with parameters in codegen).
+	 *  Returns a SlotHandle with IncrementalUpdateContext for runtime setParameter() calls. */
+	public function buildParameterizedSlot(programmableName:String, slotName:String,
+			parentParams:Map<String, Dynamic>, container:h2d.Object):SlotHandle {
+		return (_builder : MultiAnimBuilder).buildSlotContent(programmableName, slotName, parentParams, container);
 	}
 
 	/** Build a particle system via the builder (for PARTICLES nodes).
@@ -270,15 +279,18 @@ class ProgrammableBuilder {
 	}
 
 	/** Build a placeholder via builder parameter source (for PRSBuilderParameterSource) */
-	public function buildPlaceholderViaSource(name:String):Null<h2d.Object> {
+	public function buildPlaceholderViaSource(name:String, settings:ResolvedSettings = null):Null<h2d.Object> {
 		final builder:MultiAnimBuilder = _builder;
 		final phObjects = @:privateAccess builder.builderParams.placeholderObjects;
 		if (phObjects == null) return null;
 		final param = phObjects.get(name);
 		return switch param {
 			case null: null;
-			case PVObject(obj): obj;
-			case PVFactory(factoryMethod): factoryMethod(null);
+			case PVObject(obj):
+				if (settings != null)
+					trace('Warning: PVObject placeholder "$name" ignores .manim settings — use PVFactory instead to receive settings');
+				obj;
+			case PVFactory(factoryMethod): factoryMethod(settings);
 		};
 	}
 
@@ -378,14 +390,14 @@ class ProgrammableBuilder {
 
 	/** Build a named path via the builder.
 	 *  Used by generated code for PATHS nodes. */
-	public function buildPath(name:String, ?startPoint:bh.base.FPoint, ?endPoint:bh.base.FPoint):bh.paths.MultiAnimPaths.Path {
-		return (_builder : MultiAnimBuilder).getPaths().getPath(name, startPoint, endPoint);
+	public function buildPath(name:String, ?normalization:bh.paths.MultiAnimPaths.PathNormalization):bh.paths.MultiAnimPaths.Path {
+		return (_builder : MultiAnimBuilder).getPaths().getPath(name, normalization);
 	}
 
 	/** Create an animated path via the builder.
 	 *  Used by generated code for ANIMATED_PATH nodes. */
-	public function buildAnimatedPath(name:String, ?startPoint:bh.base.FPoint, ?endPoint:bh.base.FPoint, ?startAngle:Null<Float>):bh.paths.AnimatedPath {
-		return (_builder : MultiAnimBuilder).createAnimatedPath(name, startPoint, endPoint, startAngle);
+	public function buildAnimatedPath(name:String, ?normalization:bh.paths.MultiAnimPaths.PathNormalization):bh.paths.AnimatedPath {
+		return (_builder : MultiAnimBuilder).createAnimatedPath(name, normalization);
 	}
 
 	/** Build a named curve via the builder.

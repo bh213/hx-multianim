@@ -15,6 +15,8 @@ class TestApp extends hxd.App {
 	private var updateSubscribers:Array<Float -> Void> = [];
 	private var testsStarted:Bool = false;
 	private var testsCompleted:Bool = false;
+	private var startTime:Float = 0;
+	private static inline var WALL_CLOCK_TIMEOUT_SEC = 60.0;
 	// Frames to wait after all visual tests complete (for async callbacks to flush)
 	private static inline var POST_COMPLETION_FRAMES = 3;
 	private var postCompletionCounter:Int = 0;
@@ -29,10 +31,13 @@ class TestApp extends hxd.App {
 		FontManager.registerFont("f3x5", hxd.Res.fonts.f3x5.toFont());
 		FontManager.registerFont("peaberry-white", hxd.Res.fonts.WhitePeaberry.toFont());
 		FontManager.registerFont("peaberry-white-outline", hxd.Res.fonts.WhitePeaberryOutline.toFont(), 0, -5);
+		FontManager.registerFont("m6x11", hxd.Res.fonts.m6x11.toFont());
 
 		VisualTestBase.appInstance = this;
 
 		HtmlReportGenerator.clear();
+
+		startTime = Sys.time();
 
 		testRunner = new Runner();
 
@@ -41,6 +46,7 @@ class TestApp extends hxd.App {
 
 		testRunner.addCase(new bh.test.examples.ParserErrorTest());
 		testRunner.addCase(new bh.test.examples.AnimParserTest());
+		testRunner.addCase(new bh.test.examples.BuilderUnitTest());
 		testRunner.addCase(new bh.test.examples.ProgrammableCodeGenTest(s2d));
 
 		// Capture unit test results in memory for HTML report
@@ -79,25 +85,35 @@ class TestApp extends hxd.App {
 			if (postCompletionCounter >= POST_COMPLETION_FRAMES) {
 				HtmlReportGenerator.enableUnitTestReport();
 				HtmlReportGenerator.generateReport();
-				var summary = HtmlReportGenerator.getSummary();
-				sys.io.File.saveContent("build/test_result.txt", summary);
-				Sys.exit(summary.indexOf("FAILED") >= 0 ? 1 : 0);
+				var elapsedSec = Math.round(Sys.time() - startTime);
+				var structured = HtmlReportGenerator.getStructuredSummary(elapsedSec);
+				sys.io.File.saveContent("build/test_result.txt", structured);
+				Sys.exit(structured.indexOf("status: FAILED") >= 0 ? 1 : 0);
 			}
 		}
 
-		// Safety timeout: exit after 200 frames regardless
-		if (frameCount >= 200) {
-			trace("Warning: Safety timeout reached (200 frames), exiting with pending visual tests: " + VisualTestBase.pendingVisualTests);
+		// Safety timeout: exit after 200 frames or 60 seconds wall-clock
+		var elapsed = Sys.time() - startTime;
+		if (frameCount >= 200 || elapsed >= WALL_CLOCK_TIMEOUT_SEC) {
+			trace('Warning: Safety timeout reached (frames: $frameCount, elapsed: ${Math.round(elapsed)}s), '
+				+ 'pending visual tests: ${VisualTestBase.pendingVisualTests}');
 			HtmlReportGenerator.enableUnitTestReport();
 			HtmlReportGenerator.generateReport();
-			sys.io.File.saveContent("build/test_result.txt", "FAILED: Safety timeout (200 frames), pending: " + VisualTestBase.pendingVisualTests);
+			var elapsedSec = Math.round(elapsed);
+			var structured = HtmlReportGenerator.getStructuredSummary(elapsedSec, "TIMEOUT");
+			sys.io.File.saveContent("build/test_result.txt", structured);
 			Sys.exit(1);
 		}
 	}
 
 	override function render(e:h3d.Engine) {
 		e.clear(0, 1);
-		s2d.render(e);
+		try {
+			s2d.render(e);
+		} catch (err:Dynamic) {
+			trace('Error during render: $err');
+			s2d.removeChildren();
+		}
 	}
 
 	static function applySingleTestFilter(runner:Runner):Void {

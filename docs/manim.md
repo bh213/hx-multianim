@@ -526,22 +526,109 @@ settings{key1=>value1, key2=>value2, ...}
 
 Values can be typed, similar to interactive metadata:
 ```
-settings{action => "buy", price:int => 100, weight:float => 1.5}
+settings{action => "buy", price:int => 100, weight:float => 1.5, fontColor:color => white}
 ```
 
-Supported types: `int`, `float`, `string` (default when no type specified).
+Supported types: `int`, `float`, `string` (default when no type specified), `color` (accepts named colors like `white`, `red`, hex `#ff7f50`, `0xFF0000` — stored as int).
+
+**Dotted keys** target sub-components in multi-builder UI elements (dropdown, scrollable list):
+```
+settings{item.fontColor:int => 0xff0000, scrollbar.thickness:int => 6}
+```
+The prefix (`item`, `scrollbar`, `dropdown`) routes the setting to the corresponding sub-builder. Unprefixed settings go to the main builder. See the [UI Components](#ui-components) section for valid prefixes per component.
 
 ---
 
 ## Coordinate Systems (xy)
 
+### Basic Coordinates
+
 * `x,y` - offset coordinates
-* `hex(q, r, s)` - hex coordinates (requires hex system)
-* `hexCorner(index, scale)` - position at hex corner
-* `hexEdge(index, scale)` - position at hex edge
-* `grid(x, y[, offsetX, offsetY])` - grid coordinates
 * `;` - 0,0 offset
 * `layout(layoutName [, index])` - coordinates from layout
+
+### Grid Coordinates
+
+Requires a `grid:` declaration inside the element body:
+
+```manim
+#test programmable(n:uint=0) {
+    grid: 20, 20
+    bitmap(tile): $grid.pos($n, 0)
+}
+```
+
+* `$grid.pos(x, y)` - grid position
+* `$grid.pos(x, y, offsetX, offsetY)` - grid position with pixel offset
+* `$grid.width` - grid cell width (spacingX)
+* `$grid.height` - grid cell height (spacingY)
+
+Named grid systems use `#name`:
+
+```manim
+#test programmable(n:uint=0) {
+    grid: #smallGrid 10, 10
+    grid: #bigGrid 40, 40
+    bitmap(tile): $smallGrid.pos($n, 0)
+    bitmap(tile): $bigGrid.pos($n, 0)
+}
+```
+
+### Hex Coordinates
+
+Requires a `hex:` declaration inside the element body:
+
+```manim
+#test programmable(n:uint=0) {
+    hex: pointy(16, 16)
+    bitmap(tile): $hex.cube(0, 0, 0)
+}
+```
+
+* `$hex.cube(q, r, s)` - hex cube coordinates
+* `$hex.corner(index, scale)` - position at hex polygon corner
+* `$hex.edge(direction, scale)` - position at hex polygon edge
+* `$hex.offset(col, row, even|odd)` - hex offset coordinates
+* `$hex.doubled(col, row)` - hex doubled coordinates
+* `$hex.pixel(x, y)` - snap pixel position to nearest hex center
+* `$hex.width` - hex cell width
+* `$hex.height` - hex cell height
+
+Cell-relative hex methods (position relative to a specific hex cell):
+
+* `$hex.cube(q, r, s).corner(index, scale)` - corner of a specific hex cell
+* `$hex.cube(q, r, s).edge(direction, scale)` - edge of a specific hex cell
+
+### Coordinate Value Extraction (.x / .y)
+
+Any coordinate method call can have `.x` or `.y` appended to extract a single component as a numeric value. This is useful in expressions:
+
+```manim
+#test programmable(n:uint=0) {
+    grid: 20, 15
+    hex: pointy(16, 16)
+    bitmap(generated(color($grid.pos($n, 0).x + 5, $grid.pos($n, 0).y, #f00))): 0, 0
+    text(dd, '${$hex.corner(0, 1.0).x}', #fff): 0, 0
+}
+```
+
+### Context Properties
+
+* `$ctx.width` - width of the programmable element
+* `$ctx.height` - height of the programmable element
+* `$ctx.random(min, max)` - random value between min and max
+* `$ctx.font("name").lineHeight` - line height of the named font
+* `$ctx.font("name").baseLine` - baseline offset of the named font
+
+Font metrics are resolved at build time and can be used in expressions:
+
+```manim
+#demo programmable() {
+    bitmap(generated(color(4, $ctx.font("dd").lineHeight, #55aa55))): 0, 0
+    text(dd, "Sample", white, left): 6, 0
+    text(f3x5, "below", #aaa, left): 6, $ctx.font("dd").lineHeight + 2
+}
+```
 
 ---
 
@@ -554,6 +641,8 @@ Filters can be applied to any visual element. Most parameters support expression
 * `outline(size, color)`
 * `saturate(value)` - 0.0=grayscale, 1.0=normal
 * `brightness(value)` - 0.0=black, 1.0=normal
+* `grayscale(value)` - 0.0=no effect, 1.0=full grayscale
+* `hue(value)` - hue rotation angle
 * `blur(radius, gain, [quality], [linear])`
 * `pixelOutline(knockout, color, knockoutStrength)`
 * `pixelOutline(inlineColor, outlineColor, inlineColor)`
@@ -583,6 +672,7 @@ filter: group(outline(?($selected) 2 : 0, yellow), brightness(?($active) 1.2 : 0
 * `griddirection`: `dir:griddirection` (0..7)
 * `bool`: `true`/`false`, `yes`/`no`, or `0`/`1`
 * `color`: `color:<color>`, e.g., `color:#f0f` or `red`
+* `tile`: `name:tile` — a tile source passed at runtime (no default allowed). Used with `bitmap($name)` to display caller-provided tiles. In generated code, maps to `Dynamic` (accepts `h2d.Tile`). For the builder, pass via `TileHelper.sheet("atlas", "tile")` or `TileHelper.file("img.png")`.
 
 ---
 
@@ -793,7 +883,7 @@ External name can be used to reference programmables from external multianim.
 Layouts are root-level elements for positioning elements on screen.
 
 ```
-relativeLayouts {
+layouts {
   #endpoint point: 600,10
 
   #endpoints list {
@@ -1055,40 +1145,47 @@ The original path shape is preserved but transformed via scale + rotation + tran
 
 ## Animated Paths
 
-Animated paths control how objects traverse a path over time, with optional easing and timed actions.
+Animated paths control how objects traverse a named path over time, with curve-based property animation, timed events, and optional looping. **See [Animated Paths Guide](animpaths.md) for a detailed tutorial with examples.**
 
 ```
 #animName animatedPath {
-    easing: easeInOutQuad
+    path: myPath
     duration: 0.8
-    0.0: event("start")
-    0.5: attachParticles("trail") { count: 30  emit: point(0,0)  tiles: file("p.png") }
-    1.0: event("end")
+    easing: easeOutCubic
+    0.0: scaleCurve: easeInQuad, alphaCurve: fadeIn
+    0.5: event("halfway")
+    0.0: colorCurve: linear, #FF0000, #00FF00
+    0.5: colorCurve: linear, #00FF00, #0000FF
+    0.0: custom("myValue"): customCurve
 }
 ```
 
-**Properties:**
-* `easing: <easingType>` - Optional easing function for the animation timing
-* `duration: <float>` - Optional fixed duration (seconds); used with easing for time-based mode
+**Properties:** `path` (required), `type: time|distance`, `duration`, `speed`, `loop`, `pingPong`, `easing` (shorthand for `0.0: progressCurve:`)
 
-When both `easing` and `duration` are set, the path uses time-based mode where position = easing(time/duration). Without them, the path uses speed-based mode.
+**Curve slots** (at rate 0.0–1.0 or checkpoint name): `speedCurve`, `scaleCurve`, `alphaCurve`, `rotationCurve`, `progressCurve`, `colorCurve: curve, #start, #end`, `custom("name"): curve`
 
-**Timed Actions** (at rate 0.0-1.0 or checkpoint name):
-* `<rate>: event("<name>")` - Fire a named event
-* `<rate>: changeSpeed(<speed>)` - Change traversal speed
-* `<rate>: accelerate(<accel>, <duration>)` - Apply acceleration
-* `<rate>: attachParticles("<name>") { ... }` - Attach particle system
-* `<rate>: removeParticles("<name>")` - Remove particle system
-* `<rate>: changeAnimState("<state>")` - Change state animation
+Curve references can be named curves from `curves{}` or **inline easing names** (e.g. `easeInQuad`, `easeOutCubic`) — no `curves{}` block needed. Multiple `colorCurve` assignments at different rates create per-segment color interpolation, each with its own start/end colors.
 
-**Easing Types:**
-* `linear` - No easing (default)
-* `easeinquad`, `easeoutquad`, `easeinoutquad` - Quadratic
-* `easeincubic`, `easeoutcubic`, `easeinoutcubic` - Cubic
-* `easeinback`, `easeoutback`, `easeinoutback` - Back (overshoot)
-* `easeoutbounce` - Bounce
-* `easeoutelastic` - Elastic
-* `cubicbezier(x1, y1, x2, y2)` - Custom cubic bezier curve
+**Events:** `<rate>: event("name")`. Built-in: `pathStart`, `pathEnd`, `cycleStart`, `cycleEnd`
+
+**AnimatedPathState** (returned by `update(dt)` and `seek(rate)`): `position`, `angle`, `rate`, `speed`, `scale`, `alpha`, `rotation`, `color`, `cycle`, `done`, `custom`
+
+**Runtime API:**
+```haxe
+var ap = builder.createAnimatedPath("name");                         // basic
+var ap = builder.createAnimatedPath("name", Stretch(start, end));    // normalized
+var ap = builder.createProjectilePath("name", start, end);           // projectile shorthand
+var ap = factory.createAnimatedPath_name(start, end);                // macro codegen
+
+ap.onUpdate = (state) -> { sprite.setPosition(state.position.x, state.position.y); };
+ap.onEvent = (name, state) -> { if (name == "halfway") doSomething(); };
+
+var state = ap.update(dt);   // advance and get state
+var state = ap.seek(0.5);    // query without side effects
+ap.reset();                  // reuse from beginning
+
+var rate = path.getClosestRate(worldPoint);  // reverse lookup
+```
 
 ---
 
@@ -1350,7 +1447,7 @@ graphics (
 
 ## Particles
 
-Particle systems for visual effects like fire, smoke, explosions, and magic effects.
+Particle systems for visual effects like fire, smoke, explosions, and magic effects. **See [Particles Guide](particles.md) for a detailed tutorial with examples.**
 
 ### Basic Syntax
 
@@ -1437,6 +1534,8 @@ emit: point(distance, distanceRandom)
 emit: cone(distance, distanceRandom, angle, angleRandom)
 emit: box(width, height, angle, angleRandom)
 emit: circle(radius, radiusRandom, angle, angleRandom)
+emit: path(pathName)
+emit: path(pathName, tangent)
 ```
 
 **Angles are in degrees.** -90 = up, 0 = right, 90 = down, 180 = left.
@@ -1454,26 +1553,34 @@ emit: box(200, 10, 90, 10)
 
 // Circle edge with outward emission (angle 0,0 = radial)
 emit: circle(50, 10, 0, 0)
+
+// Emit along a named path
+emit: path(myBezierPath)
+
+// Emit along path with velocity following tangent
+emit: path(myBezierPath, tangent)
 ```
 
-### Color Interpolation
+### Color Curves
 
-Particles can transition through colors over their lifetime.
+Particles can transition through colors over their lifetime using per-segment color curves (same system as animatedPath).
 
-| Property | Type | Description |
-|----------|------|-------------|
-| `colorStart` | color | Color at birth |
-| `colorEnd` | color | Color at death |
-| `colorMid` | color | Optional middle color |
-| `colorMidPos` | float | Position of middle color (0-1) |
+**Syntax:**
+```
+rate: colorCurve: curveName, #startColor, #endColor
+```
 
-**Example:**
+Multiple segments at different rates create per-segment color interpolation.
+
+**Examples:**
 ```
 // Fire gradient: orange -> yellow -> white
-colorStart: #FF4400
-colorMid: #FFAA00
-colorMidPos: 0.4
-colorEnd: #FFFF88
+0.0: colorCurve: linear, #FF4400, #FFAA00
+0.4: colorCurve: linear, #FFAA00, #FFFF88
+
+// Two-phase color with easing
+0.0: colorCurve: easeInQuad, #FF0000, #00FF00
+0.5: colorCurve: easeOutQuad, #00FF00, #0000FF
 ```
 
 ### Force Fields
@@ -1493,6 +1600,7 @@ forceFields: [force1, force2, ...]
 | Vortex | `vortex(x, y, strength, radius)` | Spins particles around point |
 | Wind | `wind(vx, vy)` | Constant directional force |
 | Turbulence | `turbulence(strength, scale, speed)` | Noise-based displacement |
+| PathGuide | `pathguide(pathName, attractStrength, flowStrength, radius)` | Attracts particles toward a named path and nudges them along its direction |
 
 **Examples:**
 ```
@@ -1504,11 +1612,14 @@ forceFields: [turbulence(20, 0.015, 1.0), wind(15, 0)]
 
 // Plasma with repulsor
 forceFields: [repulsor(0, 0, 100, 120), turbulence(15, 0.02, 2.0)]
+
+// Magical stream along a path — particles attracted to path and pushed along it
+forceFields: [pathguide(myBezierPath, 80, 120, 50)]
 ```
 
 ### Curves
 
-Define how values change over particle lifetime using curve points `(time, value)`.
+Define how values change over particle lifetime using named curves or inline easing functions.
 
 | Property | Description |
 |----------|-------------|
@@ -1517,22 +1628,20 @@ Define how values change over particle lifetime using curve points `(time, value
 
 **Syntax:**
 ```
-sizeCurve: [(time1, value1), (time2, value2), ...]
-velocityCurve: [(time1, value1), (time2, value2), ...]
+sizeCurve: curveName
+velocityCurve: easeOutQuad
 ```
 
-Time is normalized (0.0 = birth, 1.0 = death). Values are multipliers.
+References a named curve from a `curves{}` block, or uses an inline easing name (e.g. `linear`, `easeInQuad`, `easeOutCubic`).
 
 **Examples:**
 ```
-// Grow then shrink
-sizeCurve: [(0, 0.5), (0.3, 1.2), (1.0, 0.2)]
+// Reference a named curve
+sizeCurve: mySizeCurve
 
-// Slow down over time
-velocityCurve: [(0, 1.0), (0.2, 0.5), (1.0, 0.1)]
-
-// Pulsing size
-sizeCurve: [(0, 0.5), (0.25, 1.2), (0.5, 0.8), (0.75, 1.1), (1.0, 0.3)]
+// Use inline easing
+velocityCurve: easeOutQuad
+sizeCurve: easeInOutCubic
 ```
 
 ### Bounds Modes
@@ -1546,6 +1655,9 @@ Control particle behavior at boundaries.
 | `boundsMaxX` | float | Right boundary |
 | `boundsMinY` | float | Top boundary |
 | `boundsMaxY` | float | Bottom boundary |
+| `boundsLine` | x1, y1, x2, y2 | One-sided line boundary (multiple allowed) |
+
+**Line bounds:** The "out" side is the left side of the direction from (x1,y1) to (x2,y2).
 
 **Examples:**
 ```
@@ -1561,15 +1673,66 @@ boundsMode: bounce(0.6)
 
 // Wrap around (for rain, etc.)
 boundsMode: wrap
+
+// Line bounds (one-sided wall)
+boundsMode: bounce(0.8)
+boundsLine: 0, 0, 100, 0
+boundsLine: 100, 0, 100, 100
 ```
 
-### Trail Properties
+### Rotation: Forward Angle
 
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
-| `trailEnabled` | bool | false | Enable particle trails |
-| `trailLength` | float | — | Trail length multiplier |
-| `trailFadeOut` | bool | false | Fade trail opacity over length |
+| `forwardAngle` | float | 0 | Forward direction in degrees (0 = right) |
+
+When `rotateAuto: true` is set, `forwardAngle` defines which direction the sprite "faces" by default. Useful when sprite art faces a direction other than right.
+
+### Path Emission
+
+Emit particles along named paths defined in a `paths{}` block.
+
+```
+emit: path(myPathName)
+emit: path(myPathName, tangent)
+```
+
+With `tangent`, particle initial velocity follows the path tangent direction at the spawn point.
+
+### AnimatedPath Integration
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `attachTo` | string | Emitter position tracks a named animated path |
+| `spawnCurve` | curve ref | Modulate emission rate over attached path's lifetime |
+
+**Runtime API:** `group.emitBurst(count)` forces N particles immediately.
+
+### AnimSM Tile Source
+
+Use state animation frames as particle tile source, with lifetime-driven and event-driven state transitions.
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `animFile` | string | Path to .anim file |
+| `animSelector` | key => value | AnimSM state selector |
+| `rate: anim("name")` | rate action | Set animation state at lifetime rate (0.0-1.0) |
+| `onBounce: anim("name")` | event | Override animation on bounce collision |
+| `onDeath: anim("name")` | event | Override animation on death |
+
+**Example:**
+```
+#sparks particles {
+    emit: point(0, 10)
+    tiles: file("fallback.png")
+    animFile: "spark.anim"
+    animSelector: type => fire
+    0.0: anim("birth")
+    0.5: anim("midlife")
+    0.8: anim("dying")
+    onBounce: anim("impact")
+}
+```
 
 ### Sub-Emitters
 
@@ -1630,11 +1793,9 @@ tiles: file("star.png") file("dot.png") file("ring.png")
     fadeIn: 0.1
     fadeOut: 0.6
     fadePower: 1.5
-    colorStart: #FF4400
-    colorMid: #FFAA00
-    colorMidPos: 0.4
-    colorEnd: #FFFF88
-    sizeCurve: [(0, 0.5), (0.3, 1.2), (1.0, 0.2)]
+    0.0: colorCurve: linear, #FF4400, #FFAA00
+    0.4: colorCurve: linear, #FFAA00, #FFFF88
+    sizeCurve: fireGrowShrink
     forceFields: [turbulence(30, 0.02, 2.0)]
 }
 ```
@@ -1654,8 +1815,7 @@ tiles: file("star.png") file("dot.png") file("ring.png")
     blendMode: alpha
     fadeIn: 0.1
     fadeOut: 0.9
-    colorStart: #AACCFF
-    colorEnd: #6688CC
+    0.0: colorCurve: linear, #AACCFF, #6688CC
     gravity: 100
     gravityAngle: 90
     boundsMode: wrap
@@ -1689,7 +1849,7 @@ updatable.setObject(particles);
 * `sheet(sheet, name, index)` - from atlas sheet with specific frame index (for multi-frame tiles)
 * `file(filename)` - from file
 * `$varname` - reference to a tile source variable (e.g., `$bitmap` from stateanim/tiles iterators)
-* `generated(cross(width, height[, color]))` - generated cross
+* `generated(cross(width, height, color[, thickness]))` - generated cross (thickness default: 1)
 * `generated(color(width, height, color))` - solid color
 * `generated(colorWithText(width, height, color, text, textColor, font))` - solid color with text
 * `generated(autotile("name", selector))` - demo tile from autotile definition
@@ -1742,7 +1902,15 @@ Components are typically created either:
 
 ### Settings Convention
 
-`UIScreenBase` helper methods accept a `ResolvedSettings` map (from `.manim` `settings{...}` blocks). Setting names follow this convention:
+`UIScreenBase` helper methods accept a `ResolvedSettings` map (from `.manim` `settings{...}` blocks).
+
+**Setting categories:**
+1. **Control settings** — consumed by UIScreen, never forwarded. E.g. `buildName`, `text`, `panelMode`.
+2. **Behavioral settings** — set as properties on the created UI object. E.g. `min`, `max`, `step` on slider, `autoOpen` on dropdown.
+3. **Pass-through settings** — forwarded as extra parameters to the underlying programmable. Any setting not recognized as control or behavioral is passed through. The programmable must declare a matching parameter; if not, a clear error is thrown listing available parameters.
+4. **Prefixed pass-through** — `prefix.paramName` targets a sub-builder in multi-builder components. E.g. `item.fontColor` for dropdown/scrollable list.
+
+**Build name conventions:**
 - **Single builder**: `buildName` — overrides the programmable name to build
 - **Multiple builders**: `<element>BuildName` — e.g. `radioBuildName`, `radioButtonBuildName`
 
@@ -1758,12 +1926,22 @@ Components are typically created either:
 | `status` | combo: `normal`, `hover`, `pressed` | Interaction state |
 | `disabled` | combo: `true`, `false` | Disabled state |
 
+**Optional `.manim` parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `width` | uint | `200` | Button width (ninepatch + text centering) |
+| `height` | uint | `30` | Button height (ninepatch) |
+| `font` | string | `"dd"` | Font name for button text |
+| `fontColor` | int | `0xffffff12` | Text color (ARGB) |
+
 **UIScreenBase settings:**
 
-| Setting | Type | Default | Description |
-|---------|------|---------|-------------|
-| `buildName` | string | `"button"` | Programmable name |
-| `text` | string | method param | Button text override |
+| Setting | Category | Type | Default | Description |
+|---------|----------|------|---------|-------------|
+| `buildName` | control | string | `"button"` | Programmable name |
+| `text` | control | string | method param | Button text override |
+| *any other* | pass-through | — | — | Forwarded to `#button` programmable (e.g. `width`, `height`, `font`, `fontColor`) |
 
 **Events:** `UIClick`
 
@@ -1771,9 +1949,19 @@ Components are typically created either:
 // Direct
 var btn = UIStandardMultiAnimButton.create(builder, "button", "Click Me");
 
+// With extra parameters (width, height, font, fontColor)
+var btn = UIStandardMultiAnimButton.create(builder, "button", "Click Me", ["width" => 300, "font" => "m6x11"]);
+
 // Via UIScreenBase (with macro settings injection)
 var btn = addButtonWithSingleBuilder(builder, "button", "Click Me");
 var btn = addButton(builder.createElementBuilder("button"), "Click Me", settings);
+```
+
+**`.manim` settings override example (in parent placeholder):**
+```manim
+placeholder(generated(cross(300, 40, white)), builderParameter("myBtn")) {
+    settings{text=>"Wide Button", width:int=>300, height:int=>40, font=>"m6x11", fontColor:color=>orange}
+}
 ```
 
 ### Checkbox
@@ -1790,10 +1978,11 @@ var btn = addButton(builder.createElementBuilder("button"), "Click Me", settings
 
 **UIScreenBase settings:**
 
-| Setting | Type | Default | Description |
-|---------|------|---------|-------------|
-| `buildName` | string | `"checkbox"` | Programmable name |
-| `initialValue` | bool | `false` | Initial checked state |
+| Setting | Category | Type | Default | Description |
+|---------|----------|------|---------|-------------|
+| `buildName` | control | string | `"checkbox"` | Programmable name |
+| `initialValue` | behavioral | bool | `false` | Initial checked state |
+| *any other* | pass-through | — | — | Forwarded to checkbox programmable |
 
 **Events:** `UIToggle(checked:Bool)`
 
@@ -1818,11 +2007,10 @@ var cb = addCheckbox(builder, false);
 
 **UIScreenBase settings:**
 
-| Setting | Type | Default | Description |
-|---------|------|---------|-------------|
-| `buildName` | string | `"checkboxWithText"` | Programmable name |
-| `textColor` | int | `0xFFFFFFFF` | Text color override |
-| `font` | string | method param | Font name override |
+| Setting | Category | Type | Default | Description |
+|---------|----------|------|---------|-------------|
+| `buildName` | control | string | `"checkboxWithText"` | Programmable name |
+| *any other* | pass-through | — | — | Forwarded to checkboxWithText programmable (e.g. `textColor`, `font`, `title`) |
 
 ```haxe
 var cbText = addCheckboxWithText(builder, "my label", "m6x11", true);
@@ -1832,13 +2020,15 @@ var cbText = addCheckboxWithText(builder, "my label", "m6x11", true);
 
 **Haxe class:** `UIStandardMultiAnimSlider`
 
+**Interfaces:** `UIElement`, `UIElementDisablable`, `StandardUIElementEvents`, `UIElementNumberValue`, `UIElementFloatValue`, `UIElementSyncRedraw`
+
 **Required `.manim` parameters:**
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `status` | string: `normal`, `hover`, `pressed` | Interaction state |
 | `size` | int | Slider track width in pixels |
-| `value` | int | Current value (0-100) |
+| `value` | int | Current value (0-100 internally) |
 | `disabled` | string: `true`, `false` | Disabled state |
 
 **Required `.manim` named points:**
@@ -1847,16 +2037,38 @@ var cbText = addCheckboxWithText(builder, "my label", "m6x11", true);
 
 **UIScreenBase settings:**
 
-| Setting | Type | Default | Description |
-|---------|------|---------|-------------|
-| `buildName` | string | `"slider"` | Programmable name |
-| `size` | int | `200` | Track width |
+| Setting | Category | Type | Default | Description |
+|---------|----------|------|---------|-------------|
+| `buildName` | control | string | `"slider"` | Programmable name |
+| `size` | control | int | `200` | Track width |
+| `min` | behavioral | float | `0` | Minimum value of the slider range |
+| `max` | behavioral | float | `100` | Maximum value of the slider range |
+| `step` | behavioral | float | `0` | Step size for snapping (0 = continuous) |
+| *any other* | pass-through | — | — | Forwarded to slider programmable |
 
-**Events:** `UIChangeValue(value:Int)` — value is always 0-100
+**Events:**
+- `UIChangeValue(value:Int)` — integer value (rounded)
+- `UIChangeFloatValue(value:Float)` — precise float value
+
+**Custom range:** The slider maps any external `min`..`max` float range to the internal 0-100 `.manim` grid. For example, setting `min=0, max=1, step=0.1` gives a 0.0–1.0 slider with 0.1 increments, while the `.manim` grid still uses 0-100.
+
+**Incremental updates:** The slider uses incremental build mode — the first `doRedraw()` builds the full visual tree, subsequent redraws only update changed parameters (`status`, `value`, `disabled`) via `setParameter()`.
 
 ```haxe
 var slider = UIStandardMultiAnimSlider.create(builder, "slider", 200, 50);
 var slider = addSlider(builder, 50);
+
+// Custom range and steps
+slider.min = 0;
+slider.max = 1;
+slider.step = 0.1;
+
+// Float value access
+slider.setFloatValue(0.5);
+var v:Float = slider.getFloatValue();
+
+// Float callback
+slider.onFloatChange = (value:Float, wrapper) -> trace('Value: $value');
 ```
 
 ### Radio Buttons
@@ -1873,10 +2085,11 @@ var slider = addSlider(builder, 50);
 
 **UIScreenBase settings:**
 
-| Setting | Type | Default | Description |
-|---------|------|---------|-------------|
-| `radioBuildName` | string | `"radioButtonsVertical"` / `"radioButtonsHorizontal"` | Container programmable name |
-| `radioButtonBuildName` | string | `"radio"` | Single radio button programmable name |
+| Setting | Category | Type | Default | Description |
+|---------|----------|------|---------|-------------|
+| `radioBuildName` | control | string | `"radioButtonsVertical"` / `"radioButtonsHorizontal"` | Container programmable name |
+| `radioButtonBuildName` | control | string | `"radio"` | Single radio button programmable name |
+| *any other* | pass-through | — | — | Forwarded to radio container programmable |
 
 **Events:** `UIChangeItem(index:Int, items:Array<UIElementListItem>)`
 
@@ -1884,6 +2097,51 @@ var slider = addSlider(builder, 50);
 var radio = UIMultiAnimRadioButtons.create(builder, "radioButtons", "radio", items, 0);
 var radio = addRadio(builder, items, true, 0); // vertical, selected index 0
 ```
+
+### Progress Bar
+
+**Haxe class:** `UIMultiAnimProgressBar`
+
+**Interfaces:** `UIElement`, `UIElementNumberValue`, `UIElementSyncRedraw`
+
+A display-only component for health bars, XP bars, loading indicators, etc. The `.manim` definition receives a `value` (0-100) parameter and can use conditionals to change colors at different thresholds.
+
+**Required `.manim` parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `value` | 0..100 | Current progress value |
+
+**UIScreenBase settings:**
+
+| Setting | Category | Type | Default | Description |
+|---------|----------|------|---------|-------------|
+| `buildName` | control | string | `"progressBar"` | Programmable name |
+| *any other* | pass-through | — | — | Forwarded to progressBar programmable |
+
+**Events:** `UIChangeValue(value:Int)` — emitted via `syncInitialState` when added to screen
+
+**Example `.manim`:**
+
+```manim
+#progressBar programmable(value:0..100=50) {
+    bitmap(generated(color(202, 20, #333333))): 0, 0
+    @(value => 0..25) bitmap(generated(color($value * 2, 16, #ff4444))): 1, 2
+    @(value => 26..60) bitmap(generated(color($value * 2, 16, #ffaa00))): 1, 2
+    @(value => 61..100) bitmap(generated(color($value * 2, 16, #44cc44))): 1, 2
+    text(dd, $value, white, left): 210, 3
+}
+```
+
+```haxe
+var bar = UIMultiAnimProgressBar.create(builder, "progressBar", 75);
+var bar = addProgressBar(builder, settings, 75);
+
+bar.setIntValue(50); // triggers redraw
+var v:Int = bar.getIntValue();
+```
+
+> **Note:** The progress bar uses full rebuild (not incremental mode) because `bitmap(generated(color(...)))` elements are not tracked by the incremental expression system.
 
 ### Scrollable List
 
@@ -1913,6 +2171,23 @@ var radio = addRadio(builder, items, true, 0); // vertical, selected index 0
 
 **Required `.manim` root setting (item):** `height` — item height in pixels
 
+**List item tile sources:** Each `UIElementListItem` can specify a tile via the `tileRef` field using the `TileRef` enum:
+
+```haxe
+var items:Array<UIElementListItem> = [
+    {name: "Sword", tileRef: TRFile("sword.png")},
+    {name: "Shield", tileRef: TRSheet("items", "shield")},
+    {name: "Potion", tileRef: TRSheetIndex("items", "potion", 2)},
+    {name: "Spacer", tileRef: TRGeneratedRect(16, 16)},
+    {name: "Red box", tileRef: TRGeneratedRectColor(16, 16, 0xFF4444)},
+    {name: "No icon"},  // tile parameter omitted
+];
+```
+
+`TileRef` variants: `TRFile`, `TRSheet`, `TRSheetIndex`, `TRGeneratedRect`, `TRGeneratedRectColor`, `TRTile` (pass pre-loaded `h2d.Tile`).
+
+The legacy `tileName` field (plain string file path) is still supported but deprecated in favor of `tileRef`.
+
 **Required `.manim` parameters (scrollbar):**
 
 | Parameter | Type | Description |
@@ -1925,18 +2200,24 @@ var radio = addRadio(builder, items, true, 0); // vertical, selected index 0
 
 **UIScreenBase settings:**
 
-| Setting | Type | Default | Description |
-|---------|------|---------|-------------|
-| `panelBuildName` | string | method param | Panel programmable name |
-| `itemBuildName` | string | method param | Item programmable name |
-| `scrollbarBuildName` | string | method param | Scrollbar programmable name |
-| `scrollbarInPanelName` | string | `"scrollbar"` | Named element in panel for scrollbar placement |
-| `width` | int | `100` | Panel width |
-| `height` | int | `100` | Panel height |
-| `topClearance` | int | `0` | Top margin |
-| `scrollSpeed` | float | from `.manim` or `100` | Scroll speed override (pixels/sec) |
-| `doubleClickThreshold` | float | `0.3` | Double-click detection window (seconds) |
-| `wheelScrollMultiplier` | float | `10` | Mouse wheel scroll sensitivity |
+| Setting | Category | Type | Default | Description |
+|---------|----------|------|---------|-------------|
+| `panelBuildName` | control | string | method param | Panel programmable name |
+| `itemBuildName` | control | string | method param | Item programmable name |
+| `scrollbarBuildName` | control | string | method param | Scrollbar programmable name |
+| `scrollbarInPanelName` | control | string | `"scrollbar"` | Named element in panel for scrollbar placement |
+| `width` | control | int | `100` | Panel width |
+| `height` | control | int | `100` | Panel height (acts as max height when `panelMode` is `scalable`) |
+| `topClearance` | control | int | `0` | Top margin |
+| `panelMode` | control | string | `"scrollable"` | `"scrollable"` for fixed height with scrollbar, `"scalable"` for auto-sizing to content |
+| `scrollSpeed` | behavioral | float | from `.manim` or `100` | Scroll speed override (pixels/sec) |
+| `doubleClickThreshold` | behavioral | float | `0.3` | Double-click detection window (seconds) |
+| `wheelScrollMultiplier` | behavioral | float | `10` | Mouse wheel scroll sensitivity |
+| `font` | multi-forward | string | item default | Font name — forwarded to item builder |
+| `fontColor` | multi-forward | int/color | item default | Text color — forwarded to item builder |
+| `item.*` | prefixed pass-through | — | — | Forwarded to item sub-builder (e.g. `item.fontColor`) |
+| `scrollbar.*` | prefixed pass-through | — | — | Forwarded to scrollbar sub-builder |
+| *any other* | pass-through | — | — | Forwarded to panel (main) programmable |
 
 **Events:** `UIChangeItem(index, items)`, `onItemDoubleClicked` callback
 
@@ -1954,11 +2235,13 @@ list.doubleClickThreshold = 0.5;
 list.wheelScrollMultiplier = 20;
 ```
 
+**Performance:** The scrollbar is built with incremental mode. On scroll events (wheel, keyboard), only the `scrollPosition` parameter is updated via `setParameter()` instead of rebuilding the entire scrollbar visual. Full scrollbar rebuilds only happen when the item list changes (via `buildItems()`).
+
 ### Dropdown
 
 **Haxe class:** `UIStandardMultiAnimDropdown`
 
-Combines a closed/open button with a `UIMultiAnimScrollableList` panel.
+Combines a closed/open button with a `UIMultiAnimScrollableList` panel. Supports both scrollable (fixed height with scrollbar) and scalable (auto-sizing to content) panel modes via the `panelMode` setting.
 
 **Required `.manim` parameters (dropdown):**
 
@@ -1967,21 +2250,34 @@ Combines a closed/open button with a `UIMultiAnimScrollableList` panel.
 | `status` | combo: `normal`, `hover`, `pressed` | Interaction state |
 | `panel` | combo: `open`, `closed` | Panel visibility state |
 
+**Optional `.manim` parameters (dropdown):**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `font` | string | `"m6x11"` | Font for the selected item text on the button |
+| `fontColor` | int | `0xffffff12` | Color for the selected item text on the button |
+
 **Required `.manim` named elements (dropdown):**
 - `panelPoint` — updatable point where the panel is positioned
-- `selectedName` — text element showing the currently selected item name
+- `selectedName` — text element showing the currently selected item name (use `$font`/`$fontColor` for customization)
 
 **Optional `.manim` root setting (dropdown):** `transitionTimer` — open/close animation duration (default: 1.0 seconds)
 
 **UIScreenBase settings** (includes all Scrollable List settings, plus):
 
-| Setting | Type | Default | Description |
-|---------|------|---------|-------------|
-| `dropdownBuildName` | string | method param | Dropdown programmable name |
-| `autoOpen` | bool | `true` | Open on mouse enter |
-| `autoCloseOnLeave` | bool | `true` | Close on mouse leave |
-| `closeOnOutsideClick` | bool | `true` | Close when clicking outside |
-| `transitionTimer` | float | from `.manim` or `1.0` | Open/close animation duration override |
+| Setting | Category | Type | Default | Description |
+|---------|----------|------|---------|-------------|
+| `dropdownBuildName` | control | string | method param | Dropdown programmable name |
+| `autoOpen` | behavioral | bool | `true` | Open on mouse enter |
+| `autoCloseOnLeave` | behavioral | bool | `true` | Close on mouse leave |
+| `closeOnOutsideClick` | behavioral | bool | `true` | Close when clicking outside |
+| `transitionTimer` | behavioral | float | from `.manim` or `1.0` | Open/close animation duration override |
+| `font` | multi-forward | string | `"m6x11"` | Font — forwarded to both dropdown button and item builders |
+| `fontColor` | multi-forward | color/int | `0xffffff12` | Text color — forwarded to both dropdown button and item builders |
+| `dropdown.*` | prefixed pass-through | — | — | Forwarded to dropdown button sub-builder (e.g. `dropdown.font`) |
+| `item.*` | prefixed pass-through | — | — | Forwarded to item sub-builder |
+| `scrollbar.*` | prefixed pass-through | — | — | Forwarded to scrollbar sub-builder |
+| *any other* | pass-through | — | — | Forwarded to panel (main) programmable |
 
 **Events:** `UIChangeItem(index, items)`
 
@@ -2126,8 +2422,9 @@ Each `.manim` parameter type maps to a Haxe type in the generated `create()` sig
 | `flags(8)` | `Int` | — | `setBits(5)` |
 | `"text"` (string) | `String` | — | `setLabel("Hello")` |
 | `color` | `Int` | — | `setTint(0xFF0000)` |
+| `tile` | `Dynamic` | — | `create(myTile)` (pass `h2d.Tile`) |
 
-Parameters with defaults are optional in `create()`. Required parameters (no default) must be provided.
+Parameters with defaults are optional in `create()`. Required parameters (no default) must be provided. `tile` parameters never have defaults and are always required.
 
 ### `createFrom()` — Named Parameters
 
@@ -2308,8 +2605,8 @@ For **placeholder-based** composition (embedding interactive widgets like button
 ```
 #settingsPanel programmable() {
     ninepatch("ui", "Window_3x3_idle", 300, 400): 0, 0
-    placeholder(generated(cross(200, 20)), builderParameter("volumeSlider")): 20, 50
-    placeholder(generated(cross(200, 20)), builderParameter("muteCheckbox")): 20, 100
+    placeholder(generated(cross(200, 20, #FF0000)), builderParameter("volumeSlider")): 20, 50
+    placeholder(generated(cross(200, 20, #FF0000)), builderParameter("muteCheckbox")): 20, 100
 }
 ```
 
