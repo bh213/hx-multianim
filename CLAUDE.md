@@ -84,6 +84,7 @@ animation {
 - `$$stateName$$` - State variable interpolation in sheet names
 - `extrapoints` - Named points for effects/interactions (bullets, particles, etc.)
 - Conditionals: `@(state=>value)`, `@(state != value)` negation, `@(state=>[v1,v2])` multi-value, `@(state != [v1,v2])` negated multi-value
+- `AnimMetadata` - Typed metadata access with state-aware matching: `getIntOrDefault(key, default, ?stateSelector)`, `getIntOrException(key, ?stateSelector)`, `getStringOrDefault(key, default, ?stateSelector)`, `getStringOrException(key, ?stateSelector)`. Accessed via `parsed.metadata`.
 
 ## .manim Language Quick Reference
 
@@ -143,6 +144,7 @@ animation {
 @(param > 30)             # Strictly greater than
 @(param < 30)             # Strictly less than
 @(param => 10..30)        # Range match (10 <= param <= 30)
+@(param => bit[N])        # Bit flag test (checks if bit N is set)
 @else                     # Matches when preceding @() didn't match
 @else(param=>value)       # Else-if with conditions
 @default                  # Final fallback
@@ -158,7 +160,7 @@ animation {
 ### Coordinate Systems
 
 - Offset: `x,y`
-- Grid: `$grid.pos(x, y [, offsetX, offsetY])` (requires `grid: spacingX, spacingY` in body)
+- Grid: `$grid.pos(x, y)` (requires `grid: spacingX, spacingY` in body)
 - Grid properties: `$grid.width`, `$grid.height`
 - Hex: `$hex.cube(q, r, s)`, `$hex.corner(index, scale)`, `$hex.edge(direction, scale)` (requires `hex: orientation(w, h)` in body)
 - Hex offset/doubled: `$hex.offset(col, row, even|odd)`, `$hex.doubled(col, row)`
@@ -322,9 +324,7 @@ Enable debug traces by adding to HXML:
 - Conditional not working with repeatable vars (e.g., `@(index >= 3)`)
 
 ### Next Features
-- Particle sub-emitters (parsing and building complete, runtime spawning in `Particles.hx` not yet implemented)
 - Generic components support
-- Bit expressions (anyBit/allBits for grid directions)
 
 ## UI Notes — Interactives
 

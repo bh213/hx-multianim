@@ -450,14 +450,12 @@ animSM.onAnimationEvent = (event) -> {
 ### Accessing Metadata
 
 ```haxe
-var loadedAnim = parsed.getLoadedAnimation();
-
 // Access metadata with state selector
-var fireOffsetX = loadedAnim.metadata.getIntOrDefault("fireOffsetX", 0, stateSelector);
+var fireOffsetX = parsed.metadata.getIntOrDefault("fireOffsetX", 0, stateSelector);
 
 // Access metadata without state (for non-conditional values)
-var spriteWidth = loadedAnim.metadata.getIntOrDefault("spriteWidth", 32);
-var description = loadedAnim.metadata.getStringOrDefault("description", "Unknown");
+var spriteWidth = parsed.metadata.getIntOrDefault("spriteWidth", 32);
+var description = parsed.metadata.getStringOrDefault("description", "Unknown");
 ```
 
 ### Changing States at Runtime
@@ -474,7 +472,8 @@ animSM = parsed.createAnimSM(stateSelector);
 
 ```haxe
 // Create externally driven animation
-var animSM = parsed.createAnimSM(stateSelector, true); // externallyDriven = true
+var animSM = parsed.createAnimSM(stateSelector);
+animSM.externallyDriven = true;
 
 // In your game loop, manually update the animation
 function update(dt:Float) {

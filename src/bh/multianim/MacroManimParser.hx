@@ -1174,7 +1174,7 @@ class MacroManimParser {
 						expect(TComma);
 						final oy = parseIntegerOrReference();
 						expect(TClosed);
-						return wrapNamed(SELECTED_GRID_POSITION_WITH_OFFSET(x, y, ox, oy));
+						return wrapNamed(WITH_OFFSET(SELECTED_GRID_POSITION(x, y), ox, oy));
 					}
 					expect(TClosed);
 					return wrapNamed(SELECTED_GRID_POSITION(x, y));

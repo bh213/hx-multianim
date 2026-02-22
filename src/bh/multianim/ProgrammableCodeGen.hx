@@ -1477,16 +1477,6 @@ class ProgrammableCodeGen {
 				} else {
 					null;
 				}
-			case SELECTED_GRID_POSITION_WITH_OFFSET(gridX, gridY, offsetX, offsetY):
-				final gx = resolveRVStatic(gridX);
-				final gy = resolveRVStatic(gridY);
-				final ox = resolveRVStatic(offsetX);
-				final oy = resolveRVStatic(offsetY);
-				if (gx != null && gy != null && ox != null && oy != null && layout.grid != null) {
-					{x: layout.grid.spacingX * gx + ox, y: layout.grid.spacingY * gy + oy};
-				} else {
-					null;
-				}
 			default: null;
 		};
 	}
@@ -1938,7 +1928,7 @@ class ProgrammableCodeGen {
 				}
 				if (allStatic && staticShapes.length > 0) {
 					var minX:Int = 0x7FFFFFFF; var minY:Int = 0x7FFFFFFF;
-					var maxX:Int = -0x7FFFFFFF; var maxY:Int = -0x7FFFFFFF;
+					var maxX:Int = -0x80000000; var maxY:Int = -0x80000000;
 					for (s in staticShapes) {
 						switch (s.type) {
 							case "line":
@@ -2844,13 +2834,6 @@ class ProgrammableCodeGen {
 				final gx = resolveRVStatic(gridX);
 				final gy = resolveRVStatic(gridY);
 				if (grid != null && gx != null && gy != null) {x: gx * grid.spacingX, y: gy * grid.spacingY} else null;
-			case SELECTED_GRID_POSITION_WITH_OFFSET(gridX, gridY, offsetX, offsetY):
-				final grid = getGridFromLayout();
-				final gx = resolveRVStatic(gridX);
-				final gy = resolveRVStatic(gridY);
-				final ox = resolveRVStatic(offsetX);
-				final oy = resolveRVStatic(offsetY);
-				if (grid != null && gx != null && gy != null && ox != null && oy != null) {x: gx * grid.spacingX + ox, y: gy * grid.spacingY + oy} else null;
 			case SELECTED_HEX_CUBE(q, r, s):
 				final hexLayout = getHexLayoutForNode(node);
 				if (hexLayout != null) {
@@ -2963,14 +2946,6 @@ class ProgrammableCodeGen {
 						final gx = resolveRVStatic(gridX);
 						final gy = resolveRVStatic(gridY);
 						if (gx != null && gy != null) {x: system.spacingX * gx, y: system.spacingY * gy} else null;
-					case SELECTED_GRID_POSITION_WITH_OFFSET(gridX, gridY, offsetX, offsetY):
-						final gx = resolveRVStatic(gridX);
-						final gy = resolveRVStatic(gridY);
-						final ox = resolveRVStatic(offsetX);
-						final oy = resolveRVStatic(offsetY);
-						if (gx != null && gy != null && ox != null && oy != null)
-							{x: system.spacingX * gx + ox, y: system.spacingY * gy + oy}
-						else null;
 					default: null;
 				};
 			case NamedHex(system):
@@ -3294,8 +3269,8 @@ class ProgrammableCodeGen {
 			// Fully static: compute bounds and generate direct draw calls
 			var minX:Int = 0x7FFFFFFF;
 			var minY:Int = 0x7FFFFFFF;
-			var maxX:Int = -0x7FFFFFFF;
-			var maxY:Int = -0x7FFFFFFF;
+			var maxX:Int = -0x80000000;
+			var maxY:Int = -0x80000000;
 			for (s in staticShapes) {
 				switch (s.type) {
 					case "line":
@@ -3386,8 +3361,8 @@ class ProgrammableCodeGen {
 				macro var _minX:Int = 0x7FFFFFFF
 			];
 			boundsExprs.push(macro var _minY:Int = 0x7FFFFFFF);
-			boundsExprs.push(macro var _maxX:Int = -0x7FFFFFFF);
-			boundsExprs.push(macro var _maxY:Int = -0x7FFFFFFF);
+			boundsExprs.push(macro var _maxX:Int = -0x80000000);
+			boundsExprs.push(macro var _maxY:Int = -0x80000000);
 
 			// Track shapes for second pass
 			var shapeIdx = 0;
@@ -4549,17 +4524,6 @@ class ProgrammableCodeGen {
 					final sy:Int = grid.spacingY;
 					macro $fieldRef.setPosition($gxExpr * $v{sx}, $gyExpr * $v{sy});
 				} else null;
-			case SELECTED_GRID_POSITION_WITH_OFFSET(gridX, gridY, offsetX, offsetY):
-				final grid = getGridFromLayout();
-				if (grid != null) {
-					final gxExpr = rvToExpr(gridX);
-					final gyExpr = rvToExpr(gridY);
-					final oxExpr = rvToExpr(offsetX);
-					final oyExpr = rvToExpr(offsetY);
-					final sx:Int = grid.spacingX;
-					final sy:Int = grid.spacingY;
-					macro $fieldRef.setPosition($gxExpr * $v{sx} + $oxExpr, $gyExpr * $v{sy} + $oyExpr);
-				} else null;
 			case SELECTED_HEX_CUBE(q, r, s):
 				final hexLayout = getHexLayoutForNode(node);
 				if (hexLayout != null) {
@@ -4709,7 +4673,6 @@ class ProgrammableCodeGen {
 		switch (coord) {
 			case OFFSET(x, y): collectParamRefsImpl(x, refs); collectParamRefsImpl(y, refs);
 			case SELECTED_GRID_POSITION(x, y): collectParamRefsImpl(x, refs); collectParamRefsImpl(y, refs);
-			case SELECTED_GRID_POSITION_WITH_OFFSET(x, y, ox, oy): collectParamRefsImpl(x, refs); collectParamRefsImpl(y, refs); collectParamRefsImpl(ox, refs); collectParamRefsImpl(oy, refs);
 			case SELECTED_HEX_CUBE(q, r, s): collectParamRefsImpl(q, refs); collectParamRefsImpl(r, refs); collectParamRefsImpl(s, refs);
 			case SELECTED_HEX_OFFSET(col, row, _): collectParamRefsImpl(col, refs); collectParamRefsImpl(row, refs);
 			case SELECTED_HEX_DOUBLED(col, row): collectParamRefsImpl(col, refs); collectParamRefsImpl(row, refs);
@@ -4717,6 +4680,7 @@ class ProgrammableCodeGen {
 			case SELECTED_HEX_CORNER(count, factor): collectParamRefsImpl(count, refs); collectParamRefsImpl(factor, refs);
 			case SELECTED_HEX_EDGE(dir, factor): collectParamRefsImpl(dir, refs); collectParamRefsImpl(factor, refs);
 			case NAMED_COORD(_, coord): collectCoordParamRefs(coord, refs);
+			case WITH_OFFSET(base, offsetX, offsetY): collectCoordParamRefs(base, refs); collectParamRefsImpl(offsetX, refs); collectParamRefsImpl(offsetY, refs);
 			default:
 		}
 	}
@@ -4734,13 +4698,6 @@ class ProgrammableCodeGen {
 				final refs:Array<String> = [];
 				collectParamRefsImpl(gridX, refs);
 				collectParamRefsImpl(gridY, refs);
-				refs;
-			case SELECTED_GRID_POSITION_WITH_OFFSET(gridX, gridY, offsetX, offsetY):
-				final refs:Array<String> = [];
-				collectParamRefsImpl(gridX, refs);
-				collectParamRefsImpl(gridY, refs);
-				collectParamRefsImpl(offsetX, refs);
-				collectParamRefsImpl(offsetY, refs);
 				refs;
 			case SELECTED_HEX_CORNER(count, factor):
 				final refs:Array<String> = [];
@@ -4791,6 +4748,11 @@ class ProgrammableCodeGen {
 				refs;
 			case NAMED_COORD(_, coord):
 				collectPositionParamRefs(coord);
+			case WITH_OFFSET(base, offsetX, offsetY):
+				final refs:Array<String> = collectPositionParamRefs(base);
+				collectParamRefsImpl(offsetX, refs);
+				collectParamRefsImpl(offsetY, refs);
+				refs;
 			default: [];
 		};
 	}

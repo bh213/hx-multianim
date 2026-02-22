@@ -726,6 +726,8 @@ class ParticleGroup {
 		p.vr = vrot;
 
 		// Handle animation frame selection
+		if (tiles.length == 0)
+			return;
 		if (animationRepeat == 0 && tiles.length > 1) {
 			// Random frame when animation is disabled
 			p.t = tiles[Std.random(tiles.length)];

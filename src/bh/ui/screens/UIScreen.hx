@@ -372,19 +372,20 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 				extraParams = new Map();
 			for (key => value in tabPanelParams)
 				extraParams.set('panel${key.charAt(0).toUpperCase()}${key.substr(1)}', value);
-			// Auto-derive panelOffset from tab button height if not explicitly set
-			// (also skip if panelOffset was passed directly in settings)
-			if (!tabPanelParams.exists("offset") && (extraParams == null || !extraParams.exists("panelOffset"))) {
-				if (extraParams == null)
-					extraParams = new Map();
-				var tabHeight:Dynamic = 30;
-				if (tabButtonParams != null) {
-					var h = tabButtonParams.get("height");
-					if (h != null)
-						tabHeight = h;
-				}
-				extraParams.set("panelOffset", tabHeight);
+		}
+
+		// Forward tab button height to tabBar so .manim can compute panelOffset from it
+		{
+			if (extraParams == null)
+				extraParams = new Map();
+			var tabHeight:Dynamic = 30;
+			if (tabButtonParams != null) {
+				var h = tabButtonParams.get("height");
+				if (h != null)
+					tabHeight = h;
 			}
+			if (!extraParams.exists("tabButtonHeight"))
+				extraParams.set("tabButtonHeight", tabHeight);
 		}
 
 		return new UIMultiAnimTabs(providedBuilder, tabBarBuildName, tabButtonBuildName, items, selectedIndex, this, extraParams, tabButtonParams);
