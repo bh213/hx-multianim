@@ -5215,22 +5215,22 @@ class MultiAnimBuilder {
 		}
 	}
 
-	function loadTileImpl(sheet, tilename, ?index:Int) {
-		final sheet = getOrLoadSheet(sheet);
+	function loadTileImpl(sheetName:String, tilename:String, ?index:Int) {
+		final sheet = getOrLoadSheet(sheetName);
 		if (sheet == null)
-			throw 'sheet ${sheet} could not be loaded' + currentNodePos();
+			throw 'sheet ${sheetName} could not be loaded' + currentNodePos();
 
 		final tile = if (index != null) {
 			final arr = sheet.getAnim(tilename);
 			if (arr == null)
-				throw 'tile ${tilename}, index $index sheet ${sheet} could not be loaded' + currentNodePos();
+				throw 'tile ${tilename}, index $index sheet ${sheetName} could not be loaded' + currentNodePos();
 			if (index < 0 || index >= arr.length)
-				throw 'tile $tilename from sheet $sheet does not have tile index $index, should be [0, ${arr.length - 1}]' + currentNodePos();
+				throw 'tile $tilename from sheet $sheetName does not have tile index $index, should be [0, ${arr.length - 1}]' + currentNodePos();
 			arr[index];
 		} else {
 			final t = sheet.get(tilename);
 			if (t == null)
-				throw 'tile ${tilename} in sheet ${sheet} could not be loaded' + currentNodePos();
+				throw 'tile ${tilename} in sheet ${sheetName} could not be loaded' + currentNodePos();
 			t;
 		}
 
