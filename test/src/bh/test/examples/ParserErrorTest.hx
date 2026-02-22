@@ -2125,6 +2125,52 @@ class ParserErrorTest extends utest.Test {
 		Assert.isTrue(success, "@(condition) @alpha @scale #name element should parse");
 	}
 
+	// ===== Particles block error recovery tests =====
+
+	@Test
+	public function testParticlesUnexpectedTokenError() {
+		var error = parseExpectingError('
+			#test programmable() {
+				#fx particles {
+					count: 10
+					[invalid]
+				}
+			}
+		');
+		Assert.notNull(error, "Should throw error for unexpected token in particles block");
+		Assert.isTrue(error.indexOf("unexpected token") >= 0,
+			'Error should mention unexpected token, got: $error');
+	}
+
+	@Test
+	public function testParticlesValidBasicBlock() {
+		var success = parseExpectingSuccess('
+			#test programmable() {
+				#fx particles {
+					count: 50
+					maxLife: 2.0
+					speed: 100
+					emit: point(0, 0)
+					tiles: generated(color(4, 4, #ff0000))
+				}
+			}
+		');
+		Assert.isTrue(success, "Basic particles block should parse successfully");
+	}
+
+	// ===== Flow unexpected token error test =====
+
+	@Test
+	public function testFlowUnexpectedTokenError() {
+		var error = parseExpectingError('
+			#test programmable() {
+				flow([invalid]) {
+				}
+			}
+		');
+		Assert.notNull(error, "Should throw error for unexpected token in flow parameters");
+	}
+
 	@Test
 	public function testConditionalBeforeNameDuplicateNameError() {
 		var error = parseExpectingError("
