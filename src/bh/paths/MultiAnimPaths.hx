@@ -496,11 +496,17 @@ class Path {
 
 	/** FitBounds: scale to fit inside axis-aligned bounding box, no rotation. */
 	function applyFitBounds(topLeft:FPoint, bottomRight:FPoint):Path {
+		// Normalize so min/max are correct regardless of point order
+		final minX = Math.min(topLeft.x, bottomRight.x);
+		final minY = Math.min(topLeft.y, bottomRight.y);
+		final maxX = Math.max(topLeft.x, bottomRight.x);
+		final maxY = Math.max(topLeft.y, bottomRight.y);
+
 		final bounds = computeBounds();
 		final pathW = bounds.maxX - bounds.minX;
 		final pathH = bounds.maxY - bounds.minY;
-		final boxW = bottomRight.x - topLeft.x;
-		final boxH = bottomRight.y - topLeft.y;
+		final boxW = maxX - minX;
+		final boxH = maxY - minY;
 
 		// Uniform scale to fit
 		var scale:Float = 1.0;
@@ -516,8 +522,8 @@ class Path {
 		final scaledBounds = scaled.computeBounds();
 		final scaledW = scaledBounds.maxX - scaledBounds.minX;
 		final scaledH = scaledBounds.maxY - scaledBounds.minY;
-		final tx = topLeft.x + (boxW - scaledW) / 2 - scaledBounds.minX;
-		final ty = topLeft.y + (boxH - scaledH) / 2 - scaledBounds.minY;
+		final tx = minX + (boxW - scaledW) / 2 - scaledBounds.minX;
+		final ty = minY + (boxH - scaledH) / 2 - scaledBounds.minY;
 
 		return scaled.translateAll(tx, ty);
 	}
