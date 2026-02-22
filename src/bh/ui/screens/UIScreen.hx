@@ -1,6 +1,7 @@
 package bh.ui.screens;
 
 import bh.ui.UIMultiAnimScrollableList.PanelSizeMode;
+import bh.ui.UIMultiAnimScrollableList.ClickMode;
 import bh.ui.UIMultiAnimDropdown.UIStandardMultiAnimDropdown;
 import bh.ui.UIMultiAnimCheckbox.UIStandardMultiCheckbox;
 import bh.ui.UIMultiAnimSlider.UIStandardMultiAnimSlider;
@@ -446,7 +447,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		final split = splitSettings(settings,
 			["panelBuildName", "itemBuildName", "scrollbarBuildName", "scrollbarInPanelName", "panelMode",
 			 "width", "height", "topClearance"],
-			["scrollSpeed", "doubleClickThreshold", "wheelScrollMultiplier"],
+			["scrollSpeed", "doubleClickThreshold", "wheelScrollMultiplier", "clickMode"],
 			["item", "scrollbar"],
 			["font", "fontColor"],
 			"scrollableList");
@@ -469,6 +470,8 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 			list.doubleClickThreshold = getFloatSettings(settings, "doubleClickThreshold", 0.3);
 		if (hasSettings(settings, "wheelScrollMultiplier"))
 			list.wheelScrollMultiplier = getFloatSettings(settings, "wheelScrollMultiplier", 10);
+		if (hasSettings(settings, "clickMode"))
+			list.clickMode = if (getSettings(settings, "clickMode", "double") == "single") SingleClick else DoubleClick;
 		return list;
 	}
 

@@ -1675,10 +1675,17 @@ class MacroManimParser {
 			if (match(TClosed)) return result;
 			if (result.keys().hasNext()) expect(TComma);
 
-			final paramName = expectIdentifierOrString();
+			final paramName = switch (peek()) {
+				case TReference(s):
+					advance();
+					s;
+				default:
+					expectIdentifierOrString();
+			};
 
-			// Validate parameter
-			if (!defs.exists(paramName)) error('conditional parameter "$paramName" does not have definition');
+			// Validate parameter — accept both programmable params and repeatable loop vars
+			if (!defs.exists(paramName) && (scopeVars == null || !scopeVars.contains(paramName)))
+				error('conditional parameter "$paramName" does not have definition');
 			if (result.exists(paramName)) error('conditional parameter "$paramName" already defined');
 
 			// Check for comparison operators
@@ -1712,14 +1719,10 @@ class MacroManimParser {
 							}
 							result.set(paramName, CoNot(CoEnums(enums)));
 						default:
-							final val = expectIdentifierOrString();
+							final val = parseConditionalValue();
 							final paramDef = defs.get(paramName);
-							if (paramDef != null) {
-								final cv = stringToConditional(val, paramDef.type);
-								result.set(paramName, CoNot(cv));
-							} else {
-								result.set(paramName, CoNot(CoStringValue(val)));
-							}
+							final cv = paramDef != null ? stringToConditional(val, paramDef.type) : stringToConditionalGeneric(val);
+							result.set(paramName, CoNot(cv));
 					}
 				case TArrow:
 					advance();
@@ -1739,14 +1742,10 @@ class MacroManimParser {
 						case TExclamation:
 							// Backward compat: @(param => !value) negate syntax
 							advance();
-							final val = expectIdentifierOrString();
+							final val = parseConditionalValue();
 							final paramDef = defs.get(paramName);
-							if (paramDef != null) {
-								final cv = stringToConditional(val, paramDef.type);
-								result.set(paramName, CoNot(cv));
-							} else {
-								result.set(paramName, CoNot(CoStringValue(val)));
-							}
+							final cv = paramDef != null ? stringToConditional(val, paramDef.type) : stringToConditionalGeneric(val);
+							result.set(paramName, CoNot(cv));
 						default:
 							// Check for backward compat keywords
 							switch (peek()) {
@@ -1787,7 +1786,8 @@ class MacroManimParser {
 											final cv = stringToConditional(val, paramDef.type);
 											result.set(paramName, cv);
 										} else {
-											result.set(paramName, CoStringValue(val));
+											final cv2 = stringToConditionalGeneric(val);
+											result.set(paramName, cv2);
 										}
 									}
 							}
@@ -1852,6 +1852,12 @@ class MacroManimParser {
 				final n = Std.parseInt(val);
 				if (n != null) CoValue(n) else CoStringValue(val);
 		}
+	}
+
+	/** Converts a string value to ConditionalValues without type info (for loop vars). Tries integer first. */
+	function stringToConditionalGeneric(val:String):ConditionalValues {
+		final n = Std.parseInt(val);
+		return if (n != null) CoValue(n) else CoStringValue(val);
 	}
 
 	function resolveToFloat(rv:ReferenceableValue):Null<Float> {

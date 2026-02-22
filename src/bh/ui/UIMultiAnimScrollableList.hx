@@ -14,6 +14,11 @@ enum PanelSizeMode {
 	AutoSize;
 }
 
+enum ClickMode {
+	SingleClick;
+	DoubleClick;
+}
+
 // var allStates = hover, pressed, disabled, normal, selected
 class UIMultiAnimScrollableList implements UIElement implements UIElementDisablable implements StandardUIElementEvents implements UIElementSyncRedraw implements UIElementUpdatable
 		implements UIElementListValue {
@@ -45,6 +50,7 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 	public var scrollSpeedOverride:Null<Float> = null;
 	public var doubleClickThreshold:Float = 0.3;
 	public var wheelScrollMultiplier:Float = 10;
+	public var clickMode:ClickMode = DoubleClick;
 
 	final displayItems:Map<Int, MultiAnimMultiResult> = [];
 	final itemYPositions:Map<Int, Float> = [];
@@ -106,6 +112,34 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 		this.scrollbar = null;
 		this.scrollbarResult = null;
 		this.interactives = [];
+	}
+
+	public function setItems(newItems:Array<UIElementListItem>, selectedIndex:Int = 0) {
+		// Reset interaction state before changing items (setter validates bounds)
+		this.currentHoverIndex = -1;
+		this.currentPressedIndex = -1;
+
+		// Clear and repopulate (items is final, can't reassign)
+		this.items.resize(0);
+		for (item in newItems)
+			this.items.push(item);
+
+		// Handle AutoSize mode
+		if (panelSizeMode == AutoSize) {
+			this.height = computeAutoSizeHeight(this.items);
+			this.mask.height = this.height;
+			this.panelResults = buildPanel();
+		}
+
+		// Reset scroll position
+		this.mask.scrollY = 0;
+
+		// Rebuild items and scrollbar
+		buildItems();
+
+		// Set selection
+		this.currentItemIndex = if (newItems.length > 0) selectedIndex else -1;
+		this.requestRedraw = true;
 	}
 
 	public static function createWithSingleBuilder(builder:MultiAnimBuilder, panelBuilderName:String, itemBuilderName:String, scrollbarBuilderName:String, scrollbarInPanelName:String, width:Int, height:Int, items, topClearance, initialIndex, ?panelSizeMode:PanelSizeMode) {
@@ -184,6 +218,28 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 		}
 	}
 
+	public function scrollToIndex(idx:Int) {
+		if (idx < 0 || idx >= items.length)
+			return;
+		final itemY = itemYPositions.get(idx);
+		if (itemY == null)
+			return;
+		final multiResult = displayItems.get(idx);
+		if (multiResult == null)
+			return;
+		final result = getBuiltItem(multiResult, "normal", false, false);
+		final itemHeight = result.rootSettings.getFloatOrException("height");
+		final scrollTop = mask.scrollY;
+		final scrollBottom = scrollTop + height;
+		if (itemY >= scrollTop && itemY + itemHeight <= scrollBottom)
+			return; // already visible
+		if (itemY < scrollTop)
+			mask.scrollY = itemY
+		else
+			mask.scrollY = itemY + itemHeight - height;
+		repositionScrollbar();
+	}
+
 	public function getObject():Object {
 		return root;
 	}
@@ -224,6 +280,17 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 		if (pressedItem != null)
 			pressedItem.remove();
 
+		if (this.disabled) {
+			// When disabled: only show selected item in disabled variant, no hover/pressed
+			if (currentItemIndex != -1) {
+				final builtMultiItem = this.displayItems.get(currentItemIndex);
+				this.selectedItem = getBuiltItem(builtMultiItem, "normal", true, true).object;
+				this.mask.addChild(this.selectedItem);
+				this.selectedItem.y = this.itemYPositions.get(currentItemIndex);
+			}
+			return;
+		}
+
 		var stateName = "normal";
 		if (currentHoverIndex == currentItemIndex)
 			stateName = "hover";
@@ -255,6 +322,13 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 	public function set_disabled(value:Bool):Bool {
 		if (this.disabled != value) {
 			this.disabled = value;
+			if (value) {
+				root.alpha = 0.5;
+				this.currentHoverIndex = -1;
+				this.currentPressedIndex = -1;
+			} else {
+				root.alpha = 1.0;
+			}
 			this.requestRedraw = true;
 		}
 		return value;
@@ -270,7 +344,7 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 			case OnPush(button):
 				if (newIndex != null) {
 					if (items[newIndex].disabled == null || items[newIndex].disabled == false) {
-						if (time - lastClick < doubleClickThreshold && lastClickIndex == newIndex) {
+						if (clickMode == DoubleClick && time - lastClick < doubleClickThreshold && lastClickIndex == newIndex) {
 							this.currentItemIndex = newIndex;
 							triggerItemChanged(newIndex, wrapper);
 							onItemDoubleClicked(newIndex, items, wrapper);
@@ -288,6 +362,10 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 				if (newIndex == currentPressedIndex && this.currentItemIndex != newIndex) {
 					this.currentItemIndex = newIndex;
 					triggerItemChanged(newIndex, wrapper);
+					if (clickMode == SingleClick) {
+						onItemClicked(newIndex, items, wrapper);
+						wrapper.control.pushEvent(UIClickItem(newIndex, items), this);
+					}
 				}
 				currentPressedIndex = -1;
 				hoverMode = true;
@@ -382,4 +460,6 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 	public dynamic function onItemChanged(newIndex:Int, items:Array<UIElementListItem>, wrapper:UIElementEventWrapper) {}
 
 	public dynamic function onItemDoubleClicked(newIndex:Int, items:Array<UIElementListItem>, wrapper:UIElementEventWrapper) {}
+
+	public dynamic function onItemClicked(newIndex:Int, items:Array<UIElementListItem>, wrapper:UIElementEventWrapper) {}
 }

@@ -145,6 +145,8 @@ animation {
 @(param < 30)             # Strictly less than
 @(param => 10..30)        # Range match (10 <= param <= 30)
 @(param => bit[N])        # Bit flag test (checks if bit N is set)
+@($loopVar => value)      # Match repeatable loop variable (inside repeatable body)
+@($loopVar >= N)          # Range/comparison on loop variable
 @else                     # Matches when preceding @() didn't match
 @else(param=>value)       # Else-if with conditions
 @default                  # Final fallback
@@ -271,6 +273,7 @@ See `docs/manim.md` for full animated paths documentation.
 - **Slider**: Supports custom float range (`min`, `max`, `step` settings). Internally maps to 0-100 grid. Implements both `UIElementNumberValue` (int) and `UIElementFloatValue` (float). Uses incremental mode for efficient redraws. Emits both `UIChangeValue(Int)` and `UIChangeFloatValue(Float)`.
 - **Progress bar**: Display-only component (`UIMultiAnimProgressBar`). Uses full rebuild (not incremental) because `bitmap(generated(color(...)))` is not tracked. Screen helper: `addProgressBar(builder, settings, initialValue)`.
 - **Scrollable list scrollbar**: Built with incremental mode — scroll events use `setParameter("scrollPosition", ...)` instead of full rebuild.
+- **Scrollable list runtime API**: `setItems(newItems, ?selectedIndex)` replaces content at runtime; `scrollToIndex(idx)` scrolls to make item visible; `clickMode` (`SingleClick`/`DoubleClick`) controls action event; `disabled` dims list (alpha 0.5) and shows selected in disabled variant. Events: `UIClickItem` (single-click mode), `UIDoubleClickItem` (double-click mode). Setting: `clickMode => "single"` or `"double"`.
 - **List item tiles**: `UIElementListItem.tileRef` uses `TileRef` enum (`TRFile`, `TRSheet`, `TRSheetIndex`, `TRTile`, `TRGeneratedRect`, `TRGeneratedRectColor`) for structured tile references. Legacy `tileName` (plain string) still works. `TileHelper` class provides static helpers for builder params: `TileHelper.sheet("atlas", "tile")`, `TileHelper.file("img.png")`, `TileHelper.generatedRect(w, h)`, `TileHelper.generatedRectColor(w, h, color)`.
 - **`tile` parameter type**: `.manim` `name:tile` declares a tile parameter (no default allowed). Use with `bitmap($name)`. In codegen maps to `Dynamic` (pass `h2d.Tile`). In builder pass via `TileHelper`.
 - **Full component reference**: See `docs/manim.md` "UI Components" section for all parameter contracts, settings, and events
@@ -322,7 +325,7 @@ Enable debug traces by adding to HXML:
 - HTML text: standalone `HTMLTEXT` element type is deprecated/commented out (the `text(..., html: true)` parameter approach works)
 - Double reload issue
 - Hex coordinate system offset support
-- Conditional not working with repeatable vars (e.g., `@(index >= 3)`)
+
 
 ### Next Features
 - Generic components support
