@@ -2757,4 +2757,57 @@ class BuilderUnitTest extends BuilderTestBase {
 		final bitmapsOverride = findVisibleBitmapDescendants(resultOverride.object);
 		Assert.equals(80, Std.int(bitmapsOverride[0].tile.width));
 	}
+
+	// ==================== Repeatable variable in conditional ====================
+
+	@Test
+	public function testRepeatableVarConditionalExact():Void {
+		// @($i => 0) should show element only on first iteration
+		final result = buildFromSource("
+			#test programmable() {
+				repeatable($i, step(3, dx: 20)) {
+					bitmap(generated(color(10, 10, #f00))): 0, 0
+					@($i => 0) bitmap(generated(color(5, 5, #00f))): 0, 0
+				}
+			}
+		", "test");
+		Assert.notNull(result, "Build should succeed");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		// 3 red bitmaps (all iterations) + 1 blue bitmap (only iteration 0)
+		Assert.equals(4, bitmaps.length);
+	}
+
+	@Test
+	public function testRepeatableVarConditionalRange():Void {
+		// @($i >= 2) should show element only on iterations 2+
+		final result = buildFromSource("
+			#test programmable() {
+				repeatable($i, step(4, dx: 20)) {
+					bitmap(generated(color(10, 10, #f00))): 0, 0
+					@($i >= 2) bitmap(generated(color(5, 5, #0f0))): 0, 0
+				}
+			}
+		", "test");
+		Assert.notNull(result, "Build should succeed");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		// 4 red bitmaps (all iterations) + 2 green bitmaps (iterations 2, 3)
+		Assert.equals(6, bitmaps.length);
+	}
+
+	@Test
+	public function testRepeatableVarConditionalNot():Void {
+		// @($i != 1) should show on all iterations except 1
+		final result = buildFromSource("
+			#test programmable() {
+				repeatable($i, step(3, dx: 20)) {
+					bitmap(generated(color(10, 10, #f00))): 0, 0
+					@($i != 1) bitmap(generated(color(5, 5, #ff0))): 0, 0
+				}
+			}
+		", "test");
+		Assert.notNull(result, "Build should succeed");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		// 3 red bitmaps (all iterations) + 2 yellow bitmaps (iterations 0, 2)
+		Assert.equals(5, bitmaps.length);
+	}
 }

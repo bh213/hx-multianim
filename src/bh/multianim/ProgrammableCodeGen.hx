@@ -4058,7 +4058,15 @@ class ProgrammableCodeGen {
 		for (kv in values.keyValueIterator()) {
 			final paramName:String = kv.key;
 			final condVal:ConditionalValues = kv.value;
-			final paramExpr = macro $p{["this", "_" + paramName]};
+			final paramExpr = if (loopVarSubstitutions.exists(paramName)) {
+				final val = loopVarSubstitutions.get(paramName);
+				macro $v{val};
+			} else if (runtimeLoopVars.exists(paramName)) {
+				final rtName = runtimeLoopVars.get(paramName);
+				macro $i{rtName};
+			} else {
+				macro $p{["this", "_" + paramName]};
+			};
 			final cond = condValueToExpr(condVal, paramExpr, paramName);
 			result = macro($result && $cond);
 		}

@@ -205,6 +205,8 @@ Graphics shapes can also be used as standalone elements (shorthand for `graphics
 | `@else(conditions)` | Else-if with additional conditions |
 | `@default` | Final fallback when nothing above matched |
 
+Conditionals also work with **repeatable loop variables** (e.g., `@($i => 0)`, `@($i >= 3)`, `@($i != 1)`) inside `repeatable` bodies.
+
 Additional condition keywords: `greaterthanorequal`, `lessthanorequal`, `bit`, `between`.
 
 ---
@@ -716,7 +718,7 @@ These are pre-built UI components used through the builder/screen system.
 | **Slider** | Draggable value selector with custom range (int or float) |
 | **Radio buttons** | Mutually exclusive selection group |
 | **Dropdown** | Collapsible selection list with scrollable panel |
-| **Scrollable list** | Scrollable list of selectable items with scrollbar |
+| **Scrollable list** | Scrollable list of selectable items with scrollbar. `setItems()`, `scrollToIndex()`, `clickMode`, disabled state |
 | **Progress bar** | Display-only value indicator (0-100) |
 | **Interactive** | Hit-test region with ID and optional typed metadata |
 | **Draggable** | Drag-and-drop with drop zones, slot integration, swap mode |
@@ -747,6 +749,7 @@ When `tabPanel.contentRoot` is set, tab content coordinates are relative to the 
 | `font`, `fontColor` | Typography |
 | `panelMode` | `scrollable` or `scalable` (dropdown, scrollable list) |
 | `scrollSpeed` | Scroll velocity |
+| `clickMode` | `"single"` or `"double"` — action event mode (scrollable list) |
 | `prefix.setting` | Route setting to sub-builder (`item.font`, `scrollbar.thickness`) |
 
 ---

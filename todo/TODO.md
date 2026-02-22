@@ -20,11 +20,6 @@ Color format & alpha inconsistencies:
     - Grid offset via $grid.pos(x, y, offsetX, offsetY)
     - Coordinate .x/.y extraction for expression use
 
-fix conditional not working with repeatable vars - e.g @(index >= 3)
-    - Parser recognizes greaterThanOrEqual (MultiAnimParser.hx:2272)
-    - Repeatable variables added to indexedParams during iteration
-    - Bug may be timing - conditionals parsed/evaluated before repeatable sets the var
-
 particles:
     sub-emitters: implement actual particle spawning in triggerSubEmitters() and checkIntervalSubEmitters() (currently stubbed)
     animSM support?
@@ -55,7 +50,7 @@ Later:
 * custom h2d.object subclasses with repeats to index or grid to index functionality
 * optimize grid/hex coordinate system so it doesn't walk the tree all the time
 * text width for align revisit
-* scrollable: whole disabled (all items to disabled)
+~~* scrollable: whole disabled (all items to disabled)~~ DONE — disabled property now dims list (alpha 0.5), blocks events, shows selected in disabled variant
 * setting editor
 
 will not implement:

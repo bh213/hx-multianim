@@ -220,6 +220,7 @@ enum UIScreenEvent {
 	UIChangeFloatValue(value:Float);
 	UIChangeItem(index:Int, items:Array<UIElementListItem>);
 	UIDoubleClickItem(index:Int, items:Array<UIElementListItem>);
+	UIClickItem(index:Int, items:Array<UIElementListItem>);
 	UIKeyPress(keyCode:Int, release:Bool);
 	UIOnControllerEvent(event:ControllerEvents);
 	UIEntering;

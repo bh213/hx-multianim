@@ -1847,6 +1847,7 @@ class MultiAnimBuilder {
 				switch currentValue {
 					case Index(idx, value): if (value != s) return false;
 					case StringValue(sv): if (s != sv) return false;
+					case Value(val): if (Std.string(val) != s) return false;
 					default: throw 'invalid param types ${currentValue}, ${condValue}' + currentNodePos();
 				}
 		}

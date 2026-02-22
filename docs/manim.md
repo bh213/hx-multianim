@@ -708,6 +708,20 @@ The wildcard `*` is useful when a condition must constrain some parameters but a
 
 In the example above, the disabled style applies regardless of the `status` value, as long as `disabled` is `true`.
 
+**Repeatable loop variables in conditionals:**
+
+Conditionals can reference repeatable loop variables using `$varName`:
+
+```
+repeatable($i, step(5, dx: 40)) {
+    bitmap(generated(color(30, 30, #333333))): 0, 0
+    @($i => 0) text(m5x7, "FIRST", #ff0000, center, 30): 0, 10
+    @($i >= 3) text(m5x7, "LATE", #0000ff, center, 30): 0, 10
+}
+```
+
+All conditional operators work with loop variables: `=>`, `!=`, `>=`, `<=`, `>`, `<`, ranges (`start..end`), and multi-value (`[v1, v2]`).
+
 ### Conditional Chains: @else and @default
 
 Elements can use `@else` and `@default` to form conditional chains, similar to if/else-if/else:
@@ -2213,13 +2227,16 @@ The legacy `tileName` field (plain string file path) is still supported but depr
 | `scrollSpeed` | behavioral | float | from `.manim` or `100` | Scroll speed override (pixels/sec) |
 | `doubleClickThreshold` | behavioral | float | `0.3` | Double-click detection window (seconds) |
 | `wheelScrollMultiplier` | behavioral | float | `10` | Mouse wheel scroll sensitivity |
+| `clickMode` | behavioral | string | `"double"` | `"single"` for single-click action, `"double"` for double-click action |
 | `font` | multi-forward | string | item default | Font name — forwarded to item builder |
 | `fontColor` | multi-forward | int/color | item default | Text color — forwarded to item builder |
 | `item.*` | prefixed pass-through | — | — | Forwarded to item sub-builder (e.g. `item.fontColor`) |
 | `scrollbar.*` | prefixed pass-through | — | — | Forwarded to scrollbar sub-builder |
 | *any other* | pass-through | — | — | Forwarded to panel (main) programmable |
 
-**Events:** `UIChangeItem(index, items)`, `onItemDoubleClicked` callback
+**Events:** `UIChangeItem(index, items)`, `UIClickItem(index, items)` (single-click mode), `UIDoubleClickItem(index, items)` (double-click mode)
+
+**Callbacks:** `onItemChanged`, `onItemClicked` (single-click mode), `onItemDoubleClicked` (double-click mode)
 
 ```haxe
 var list = UIMultiAnimScrollableList.create(panelBuilder, itemBuilder,
@@ -2233,9 +2250,19 @@ var list = addScrollableList(panelBuilder, itemBuilder, scrollbarBuilder,
 list.scrollSpeedOverride = 150.0;
 list.doubleClickThreshold = 0.5;
 list.wheelScrollMultiplier = 20;
+list.clickMode = SingleClick; // single-click fires UIClickItem
+
+// Replace items at runtime
+list.setItems(newItems, 0); // replaces content, selects first item
+
+// Programmatic scroll
+list.scrollToIndex(5); // scrolls to make item 5 visible
+
+// Disabled state — dims list (alpha 0.5), blocks interaction, shows selected in disabled variant
+list.disabled = true;
 ```
 
-**Performance:** The scrollbar is built with incremental mode. On scroll events (wheel, keyboard), only the `scrollPosition` parameter is updated via `setParameter()` instead of rebuilding the entire scrollbar visual. Full scrollbar rebuilds only happen when the item list changes (via `buildItems()`).
+**Performance:** The scrollbar is built with incremental mode. On scroll events (wheel, keyboard), only the `scrollPosition` parameter is updated via `setParameter()` instead of rebuilding the entire scrollbar visual. Full scrollbar rebuilds only happen when the item list changes (via `buildItems()` or `setItems()`).
 
 ### Dropdown
 
