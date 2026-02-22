@@ -214,6 +214,7 @@ enum ControllerEvents {
  */
 enum UIScreenEvent {
 	UIClick;
+	UIPush;
 	UICustomEvent(eventName:String, data:Dynamic);
 	UIToggle(pressed:Bool);
 	UIChangeValue(value:Int);

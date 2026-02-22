@@ -7,11 +7,13 @@ import bh.multianim.MultiAnimBuilder.BuilderResolvedSettings;
 import bh.ui.UIElement;
 
 @:nullSafety
-class UIInteractiveWrapper implements UIElement implements StandardUIElementEvents implements UIElementIdentifiable {
+class UIInteractiveWrapper implements UIElement implements StandardUIElementEvents implements UIElementIdentifiable implements UIElementDisablable {
 	public final interactive:MAObject;
 	public final prefix:Null<String>;
 	public final id:String;
 	public final metadata:BuilderResolvedSettings;
+	public var disabled(default, set):Bool = false;
+	public var hovered(default, null):Bool = false;
 
 	public function new(interactive:MAObject, prefix:Null<String>) {
 		this.interactive = interactive;
@@ -30,6 +32,11 @@ class UIInteractiveWrapper implements UIElement implements StandardUIElementEven
 		}
 	}
 
+	function set_disabled(v:Bool):Bool {
+		disabled = v;
+		return v;
+	}
+
 	public function getObject():h2d.Object {
 		return interactive;
 	}
@@ -41,12 +48,17 @@ class UIInteractiveWrapper implements UIElement implements StandardUIElementEven
 	public function clear() {}
 
 	public function onEvent(wrapper:UIElementEventWrapper) {
+		if (disabled) return;
 		switch wrapper.event {
+			case OnPush(_):
+				wrapper.control.pushEvent(UIPush, this);
 			case OnRelease(_):
 				wrapper.control.pushEvent(UIClick, this);
 			case OnEnter:
+				hovered = true;
 				wrapper.control.pushEvent(UIEntering, this);
 			case OnLeave:
+				hovered = false;
 				wrapper.control.pushEvent(UILeaving, this);
 			default:
 		}
