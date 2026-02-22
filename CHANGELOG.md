@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.13-dev] - 2026-02-21
+## [0.13-dev] - 2026-02-22
 
 ### Added
 - **Parameterized slots** — `#name slot(param:type=default, ...)` for visual state management
@@ -79,8 +79,19 @@
 - **Sub-emitter `burstCount`** — particle sub-emitters now respect `count` field instead of always spawning 1 particle
 - **Particle loop recycle** — particles with `loop: true` that exit bounds are recycled (re-initialized) instead of killed
 - **`manim-reference.md`** — comprehensive quick-lookup reference document for all `.manim` language constructs
+- **`#name` after conditionals** — `@(cond) #name element(...)` syntax now supported; `#name` can appear after `@()`, `@else`, `@default`, `@alpha()`, `@scale()`, etc.
+- **`hasName()` / `hasNameByIndex()`** — non-throwing existence checks on `BuilderResult` for named elements
+- **Tabs component** — `UIMultiAnimTabs` for tab bar with per-tab content management
+  - `beginTab()` / `endTab()` to scope screen elements per tab
+  - `ContentTarget` interface for routing screen element additions to active tab
+  - Settings: `buildName` (tabBar), `tabButtonBuildName` (buttons), `tabButton.*` (prefixed to buttons), `tabPanel.width`/`tabPanel.height`, `tabPanel.contentRoot` (relative coordinate mode)
+  - Events: `UIChangeItem(index, items)`
 
 ### Fixed
+- **Indexed name key separator** — internal indexed name keys (`#name[$i]`) now use space separator instead of `_` to prevent clashes with names containing underscores
+- **`loadTileImpl` error reporting** — improved error messages when tile loading fails
+- **`SELECTED_GRID_POSITION_WITH_OFFSET` removed** — grid position with offset now uses generic `WITH_OFFSET` wrapper instead of a dedicated enum variant
+- **`BuilderResolvedSettings` null safety** — `getStringOrDefault` and `getBoolOrDefault` now throw when settings map is null instead of silently returning defaults
 - **`filledRect` restored to `data.fill()`** — removed manual `setPixel` loop workaround; fixed `updateBitmap()` to read pixels before `unlock()` so `fill()` results are preserved on JS
 - **Incremental `pixels` size/position update** — incremental redraws now update bitmap width, height, and position when tile dimensions change from dynamic shapes
 - **Pixels position scaling** — `pixels` element position offset now scales correctly when `scale > 1` (previously offset was unscaled, causing misalignment)
@@ -96,6 +107,8 @@
 - **Removed `PVObject` support for UI elements** — removed error-prone `PVObject` path; `PVFactory` is now the only supported approach for UI element parameters in `macroBuildWithParameters`
 - **Animated path improvements** — better path normalization, enhanced speed/duration/easing support
 - **Playground removed from repository** — moved to separate `../hx-multianim-playground` repository
+- **Parser code simplification** — `MacroManimParser.hx` refactored for cleaner parsing logic
+- **AnimParser code simplification** — `AnimParser.hx` streamlined
 - **`relativeLayouts` renamed to `layouts`** — DSL keyword, docs, and all references updated; parser still accepts `relativeLayouts` for backward compatibility
 
 ## [0.12] - 2026-02-16

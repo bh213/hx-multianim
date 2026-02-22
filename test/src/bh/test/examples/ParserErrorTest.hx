@@ -2058,4 +2058,82 @@ class ParserErrorTest extends utest.Test {
 		Assert.isTrue(error.indexOf("Unknown coordinate suffix") >= 0,
 			'Error should mention unknown coordinate suffix, got: $error');
 	}
+
+	// ===== @(condition) #name — name after conditional =====
+
+	@Test
+	public function testConditionalBeforeNameParseSuccess() {
+		var success = parseExpectingSuccess("
+			#test programmable(mode:[on,off]=on) {
+				@(mode=>on) #myElement bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		");
+		Assert.isTrue(success, "@(condition) #name element should parse");
+	}
+
+	@Test
+	public function testConditionalBeforeNameWithUpdatable() {
+		var success = parseExpectingSuccess("
+			#test programmable(mode:[on,off]=on) {
+				@(mode=>on) #myElement(updatable) bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		");
+		Assert.isTrue(success, "@(condition) #name(updatable) element should parse");
+	}
+
+	@Test
+	public function testConditionalBeforeNameWithIndex() {
+		var success = parseExpectingSuccess("
+			#test programmable(mode:[on,off]=on, count:uint=3) {
+				repeatable($i, step($count, dx: 20)) {
+					@(mode=>on) #myElement[$i] bitmap(generated(color(10, 10, #f00))): 0, 0
+				}
+			}
+		");
+		Assert.isTrue(success, "@(condition) #name[$i] element should parse");
+	}
+
+	@Test
+	public function testElseBeforeNameParseSuccess() {
+		var success = parseExpectingSuccess("
+			#test programmable(mode:[on,off]=on) {
+				@(mode=>on) bitmap(generated(color(10, 10, #f00))): 0, 0
+				@else #fallback bitmap(generated(color(10, 10, #00f))): 0, 0
+			}
+		");
+		Assert.isTrue(success, "@else #name element should parse");
+	}
+
+	@Test
+	public function testDefaultBeforeNameParseSuccess() {
+		var success = parseExpectingSuccess("
+			#test programmable(mode:[on,off,other]=on) {
+				@(mode=>on) bitmap(generated(color(10, 10, #f00))): 0, 0
+				@default #fallback bitmap(generated(color(10, 10, #00f))): 0, 0
+			}
+		");
+		Assert.isTrue(success, "@default #name element should parse");
+	}
+
+	@Test
+	public function testConditionalBeforeNameWithAlphaScale() {
+		var success = parseExpectingSuccess("
+			#test programmable(mode:[on,off]=on) {
+				@(mode=>on) @alpha(0.5) @scale(2) #myElement bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		");
+		Assert.isTrue(success, "@(condition) @alpha @scale #name element should parse");
+	}
+
+	@Test
+	public function testConditionalBeforeNameDuplicateNameError() {
+		var error = parseExpectingError("
+			#test programmable(mode:[on,off]=on) {
+				#outer @(mode=>on) #inner bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		");
+		Assert.notNull(error, "Should throw error when both #outer and #inner names provided");
+		Assert.isTrue(error.indexOf("already has a name") >= 0,
+			'Error should mention duplicate name, got: $error');
+	}
 }

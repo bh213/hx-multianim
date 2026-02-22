@@ -274,6 +274,7 @@ See `docs/manim.md` for full animated paths documentation.
 - **List item tiles**: `UIElementListItem.tileRef` uses `TileRef` enum (`TRFile`, `TRSheet`, `TRSheetIndex`, `TRTile`, `TRGeneratedRect`, `TRGeneratedRectColor`) for structured tile references. Legacy `tileName` (plain string) still works. `TileHelper` class provides static helpers for builder params: `TileHelper.sheet("atlas", "tile")`, `TileHelper.file("img.png")`, `TileHelper.generatedRect(w, h)`, `TileHelper.generatedRectColor(w, h, color)`.
 - **`tile` parameter type**: `.manim` `name:tile` declares a tile parameter (no default allowed). Use with `bitmap($name)`. In codegen maps to `Dynamic` (pass `h2d.Tile`). In builder pass via `TileHelper`.
 - **Full component reference**: See `docs/manim.md` "UI Components" section for all parameter contracts, settings, and events
+- **Tabs**: `UIMultiAnimTabs` — tab bar with per-tab content management via `beginTab()`/`endTab()`. Uses `ContentTarget` interface for screen element routing. Settings: `buildName` (tabBar), `tabButtonBuildName` (tab), `tabButton.*` (prefixed to buttons), `tabPanel.width`/`tabPanel.height` (panel size), `tabPanel.contentRoot` (behavioral — enables relative coordinate mode by naming a `#point` element in the tabBar programmable). In relative mode, each tab gets its own `h2d.Layers` at the named element's position, so screen layers work within the panel. Events: `UIChangeItem(index, items)`.
 
 ## Guidelines for Modifications
 

@@ -649,8 +649,16 @@ class BuilderResult {
 		return new Updatable(namesArray);
 	}
 
+	public function hasName(name:String):Bool {
+		return names.exists(name);
+	}
+
+	public function hasNameByIndex(name:String, index:Int):Bool {
+		return names.exists('${name} ${index}');
+	}
+
 	public function getUpdatableByIndex(name:String, index:Int):Updatable {
-		return getUpdatable('${name}_${index}');
+		return getUpdatable('${name} ${index}');
 	}
 
 	public function getDynamicRef(name:String):BuilderResult {
@@ -3590,7 +3598,7 @@ class MultiAnimBuilder {
 							case Value(v): v;
 							default: 0;
 						};
-						final indexedKey = '${name}_${idx}';
+						final indexedKey = '${name} ${idx}';
 						if (names.exists(indexedKey))
 							names[indexedKey].push(toNamedResult(updatableName, builtObject, node));
 						else
@@ -3602,7 +3610,7 @@ class MultiAnimBuilder {
 					if (indexValueX != null && indexValueY != null) {
 						final idxX = switch indexValueX { case Value(v): v; default: 0; };
 						final idxY = switch indexValueY { case Value(v): v; default: 0; };
-						final indexedKey = '${name}_${idxX}_${idxY}';
+						final indexedKey = '${name} ${idxX} ${idxY}';
 						if (names.exists(indexedKey))
 							names[indexedKey].push(toNamedResult(updatableName, builtObject, node));
 						else

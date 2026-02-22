@@ -367,7 +367,14 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		// Merge tabPanel.* prefix params into tab bar extra params (width→panelWidth, height→panelHeight, offset→panelOffset)
 		var extraParams:Null<Map<String, Dynamic>> = cast split.main;
 		final tabPanelParams = split.prefixed.get("tabPanel");
+		// Extract contentRoot before merging — it's a behavioral setting, not forwarded to programmable
+		var contentRootName:Null<String> = null;
 		if (tabPanelParams != null) {
+			final crValue = tabPanelParams.get("contentRoot");
+			if (crValue != null) {
+				contentRootName = Std.string(crValue);
+				tabPanelParams.remove("contentRoot");
+			}
 			if (extraParams == null)
 				extraParams = new Map();
 			for (key => value in tabPanelParams)
@@ -388,7 +395,8 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 				extraParams.set("tabButtonHeight", tabHeight);
 		}
 
-		return new UIMultiAnimTabs(providedBuilder, tabBarBuildName, tabButtonBuildName, items, selectedIndex, this, extraParams, tabButtonParams);
+		return new UIMultiAnimTabs(providedBuilder, tabBarBuildName, tabButtonBuildName, items, selectedIndex, this, extraParams, tabButtonParams,
+			contentRootName, layers);
 	}
 
 	function addText(textValue:String, fontName:String, ?layer:LayersEnum) {
@@ -547,13 +555,16 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		if (contentTarget != null && !inElementRouting) {
 			contentTarget.registerObject(object);
 		}
-		if (layer == null) {
-			getSceneRoot().add(object, layers.get(DefaultLayer));
+		final resolvedLayer = layer ?? DefaultLayer;
+		final layerIdxN = layers.get(resolvedLayer);
+		if (layerIdxN == null)
+			throw 'layer not found $resolvedLayer';
+		final layerIdx:Int = layerIdxN;
+		// When content target handles its own scene graph, delegate to it
+		if (contentTarget != null && contentTarget.handlesSceneGraph()) {
+			contentTarget.addToLayer(object, layerIdx);
 		} else {
-			var idx = layers.get(layer);
-			if (idx == null)
-				throw 'layer not found $layer';
-			getSceneRoot().add(object, idx);
+			getSceneRoot().add(object, layerIdx);
 		}
 
 		return object;

@@ -11,6 +11,7 @@ There are two ways you can declare elements: short form and long form.
 **Short form:**
 ```
 #name @optionalConditional shortcuts element(params): xy
+@optionalConditional #name shortcuts element(params): xy
 ```
 
 **Long form:**
@@ -2328,6 +2329,85 @@ Wraps any `h2d.Object` to make it draggable. No `.manim` parameter contract.
 ```haxe
 var draggable = UIMultiAnimDraggable.create(someObject);
 draggable.enabled = false; // disable dragging
+```
+
+### Tabs
+
+**Haxe class:** `UIMultiAnimTabs`
+
+Tab bar with per-tab content management. Content is added via `beginTab()`/`endTab()` using normal screen methods.
+
+**Required `.manim` programmables:**
+
+**`#tabBar`** — the tab bar container:
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `count` | int | — | Number of tabs (set automatically) |
+| `panelWidth` | uint | `0` | Panel backing width (0 = no panel) |
+| `panelHeight` | uint | `0` | Panel backing height (0 = no panel) |
+| `tabButtonHeight` | uint | `30` | Tab button height (forwarded automatically) |
+| `spacing` | int | `0` | Horizontal spacing between tab buttons |
+| `offset` | int | `8` | Left padding for tab button flow |
+| `contentPadTop` | int | `3` | Content area top padding from panel border |
+| `contentPadLeft` | int | `8` | Content area left padding from panel border |
+
+Must contain a `repeatable` with `placeholder(...)` using `callback("tabButton", $index)`.
+When `panelHeight > 0`, renders a ninepatch panel backing and optionally a `#contentArea point` for relative coordinate mode.
+
+**`#tab`** — individual tab button (used by `UIMultiAnimTabButton`):
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `status` | enum: `hover`, `pressed`, `normal` | Interaction state |
+| `checked` | enum: `true`, `false` | Whether tab is selected |
+| `disabled` | enum: `true`, `false` | Disabled state |
+| `buttonText` | string | Tab label text |
+
+**UIScreenBase settings:**
+
+| Setting | Category | Type | Default | Description |
+|---------|----------|------|---------|-------------|
+| `buildName` | control | string | `"tabBar"` | Tab bar programmable name |
+| `tabButtonBuildName` | control | string | `"tab"` | Tab button programmable name |
+| `tabButton.width` | prefixed | int | — | Tab button width |
+| `tabButton.height` | prefixed | int | — | Tab button height |
+| `tabButton.font` | prefixed | string | — | Tab button font |
+| `tabPanel.width` | prefixed | int | — | Panel ninepatch width (→ `panelWidth`) |
+| `tabPanel.height` | prefixed | int | — | Panel ninepatch height (→ `panelHeight`) |
+| `tabPanel.contentRoot` | behavioral | string | — | Named element for relative coordinate mode |
+
+**Relative coordinate mode:**
+
+When `tabPanel.contentRoot` is set (e.g. `tabPanel.contentRoot => contentArea`), the named element in the tabBar programmable defines the origin for tab content coordinates. Each tab gets its own `h2d.Layers` child at that position, so screen layers (`BackgroundLayer`, `DefaultLayer`, `ModalLayer`) work within the panel.
+
+Without `tabPanel.contentRoot`, coordinates are absolute (same as screen coordinates).
+
+**Events:** `UIChangeItem(index, items)` — fired on tab switch
+
+```haxe
+// Settings with relative mode
+// settings{tabPanel.width=>600, tabPanel.height=>200, tabPanel.contentRoot=>contentArea}
+
+tabs = addTabs(builder, settings, items, 0);
+addElementWithPos(tabs, 50, 20);
+
+// Absolute mode — coordinates are screen-relative
+tabs.beginTab(0);
+    addElementWithPos(button, 100, 80);  // 100,80 from screen origin
+tabs.endTab();
+
+// Relative mode (with contentRoot) — coordinates are panel-relative
+tabs.beginTab(0);
+    addElementWithPos(button, 10, 10);   // 10,10 from panel content area
+tabs.endTab();
+```
+
+**`.manim` settings override example:**
+```manim
+placeholder(generated(cross(600, 300, white)), builderParameter("myTabs")) {
+    settings{tabPanel.width:int=>600, tabPanel.height:int=>200, tabPanel.contentRoot=>contentArea}
+}
 ```
 
 ---
