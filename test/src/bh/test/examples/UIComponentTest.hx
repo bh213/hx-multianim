@@ -478,13 +478,14 @@ class UIComponentTest extends BuilderTestBase {
 	}
 
 	@Test
-	public function testInteractivePushNoEvent():Void {
+	public function testInteractivePushEmitsUIPush():Void {
 		var obj = new MAObject(MAInteractive(100, 30, "testBtn", null), false);
 		var wrapper = new UIInteractiveWrapper(obj, null);
 		var mock = new MockControllable();
 
 		UITestHarness.simulatePush(wrapper, mock);
-		Assert.equals(0, mock.eventCount());
+		Assert.equals(1, mock.eventCount());
+		Assert.isTrue(mock.hasEvent(UIPush));
 	}
 
 	// ============== Settings Parsing Tests ==============
