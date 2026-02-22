@@ -4,6 +4,7 @@ import bh.multianim.MultiAnimMultiResult;
 import bh.multianim.MultiAnimBuilder;
 import bh.multianim.MultiAnimBuilder.CallbackRequest;
 import bh.multianim.MultiAnimBuilder.CallbackResult;
+import bh.multianim.MultiAnimParser.toh2dObject;
 import h2d.Object;
 import h2d.col.Point;
 import bh.ui.UIElement;
@@ -17,6 +18,13 @@ interface ContentTarget {
 	function registerElement(element:UIElement):Void;
 	function registerObject(object:h2d.Object):Void;
 	function unregisterElement(element:UIElement):Void;
+
+	/** When true, this content target manages its own scene graph.
+	 * addObjectToLayer delegates to addToLayer() instead of the screen root. */
+	function handlesSceneGraph():Bool;
+
+	/** Add object to a layer within this content target's own layer hierarchy. */
+	function addToLayer(object:h2d.Object, layerIndex:Int):Void;
 }
 
 /**
@@ -156,8 +164,13 @@ class UIMultiAnimTabs implements UIElement implements UIElementDisablable implem
 	// Extra params forwarded to individual tab buttons (e.g. width, height from prefixed settings)
 	final tabButtonExtraParams:Null<Map<String, Dynamic>>;
 
+	// Relative mode — per-tab h2d.Layers for content, parented under contentRoot element
+	final tabLayersRoots:Map<Int, h2d.Layers> = [];
+	var relativeMode:Bool = false;
+
 	public function new(builder:MultiAnimBuilder, tabBarBuildName:String, tabButtonBuildName:String, items:Array<UIElementListItem>, selectedIndex:Int,
-			screen:bh.ui.screens.UIScreen.UIScreenBase, ?extraParams:Null<Map<String, Dynamic>>, ?tabButtonExtraParams:Null<Map<String, Dynamic>>) {
+			screen:bh.ui.screens.UIScreen.UIScreenBase, ?extraParams:Null<Map<String, Dynamic>>, ?tabButtonExtraParams:Null<Map<String, Dynamic>>,
+			?contentRootName:Null<String>, ?screenLayers:Null<Map<bh.ui.screens.UIScreen.LayersEnum, Int>>) {
 		this.builder = builder;
 		this.items = items;
 		this.tabButtonBuilderName = tabButtonBuildName;
@@ -171,6 +184,24 @@ class UIMultiAnimTabs implements UIElement implements UIElementDisablable implem
 				params.set(key, value);
 
 		this.builderResult = builder.buildWithParameters(tabBarBuildName, params, {callback: builderCallback});
+
+		// Set up relative mode if contentRoot is specified
+		if (contentRootName != null) {
+			final namedItems = builderResult.names[contentRootName];
+			if (namedItems == null || namedItems.length == 0)
+				throw 'tabPanel.contentRoot: named element "$contentRootName" not found in tabBar programmable';
+			final contentRootObj = toh2dObject(namedItems[0].object);
+			// Create per-tab h2d.Layers as children of the content root point
+			for (i in 0...items.length) {
+				final tabLayers = new h2d.Layers();
+				contentRootObj.addChild(tabLayers);
+				tabLayersRoots.set(i, tabLayers);
+			}
+			this.relativeMode = true;
+		} else {
+			this.relativeMode = false;
+		}
+
 		applySelectedIndex(selectedIndex);
 	}
 
@@ -275,6 +306,19 @@ class UIMultiAnimTabs implements UIElement implements UIElementDisablable implem
 		}
 	}
 
+	// --- ContentTarget scene graph ---
+
+	public function handlesSceneGraph():Bool {
+		return relativeMode;
+	}
+
+	public function addToLayer(object:h2d.Object, layerIndex:Int):Void {
+		final tabLayers = tabLayersRoots.get(populatingTabIndex);
+		if (tabLayers == null)
+			throw 'no layers root for tab $populatingTabIndex';
+		tabLayers.add(object, layerIndex);
+	}
+
 	// --- Tab content routing ---
 
 	public function beginTab(tabIndex:Int) {
@@ -299,6 +343,13 @@ class UIMultiAnimTabs implements UIElement implements UIElementDisablable implem
 	// --- Visibility ---
 
 	function setTabContentVisible(tabIndex:Int, visible:Bool) {
+		// In relative mode, toggle the tab's layers root for efficient show/hide
+		if (relativeMode) {
+			final tabLayers = tabLayersRoots.get(tabIndex);
+			if (tabLayers != null)
+				tabLayers.visible = visible;
+			return;
+		}
 		var elements = tabContent.get(tabIndex);
 		if (elements != null)
 			for (el in elements)

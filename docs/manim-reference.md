@@ -334,8 +334,13 @@ Applied to any element via long-form body or inline syntax.
 | Syntax | Description |
 |--------|-------------|
 | `#name element(...)` | Named element — accessible from builder/codegen |
-| `#name[$i] element(...)` | Indexed named element inside repeatable — creates `name_0`, `name_1`, etc. |
+| `#name[$i] element(...)` | Indexed named element inside repeatable |
 | `#name(updatable) element(...)` | Explicitly marked updatable for runtime property changes |
+| `@(cond) #name element(...)` | Named element after conditional — `#name` can appear after `@` modifiers |
+
+**Builder API:**
+- `result.getUpdatable("name")` / `result.getUpdatableByIndex("name", index)`
+- `result.hasName("name")` / `result.hasNameByIndex("name", index)` — check existence without throwing
 
 ---
 
@@ -715,6 +720,20 @@ These are pre-built UI components used through the builder/screen system.
 | **Progress bar** | Display-only value indicator (0-100) |
 | **Interactive** | Hit-test region with ID and optional typed metadata |
 | **Draggable** | Drag-and-drop with drop zones, slot integration, swap mode |
+| **Tabs** | Tab bar with per-tab content management, relative coordinates mode |
+
+### Tabs Settings
+
+| Setting | Category | Description |
+|---------|----------|-------------|
+| `buildName` | control | Tab bar programmable name (default: `"tabBar"`) |
+| `tabButtonBuildName` | control | Tab button programmable name (default: `"tab"`) |
+| `tabButton.*` | prefixed | Forwarded to tab buttons (e.g. `tabButton.width`, `tabButton.height`) |
+| `tabPanel.width` | prefixed | Panel ninepatch width (→ `panelWidth` param) |
+| `tabPanel.height` | prefixed | Panel ninepatch height (→ `panelHeight` param) |
+| `tabPanel.contentRoot` | behavioral | Named element for relative coordinates (e.g. `contentArea`) |
+
+When `tabPanel.contentRoot` is set, tab content coordinates are relative to the named element's position. Each tab gets its own `h2d.Layers` for proper layer support within the panel.
 
 ### Common UI Settings
 

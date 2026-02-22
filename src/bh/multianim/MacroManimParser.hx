@@ -2598,6 +2598,66 @@ class MacroManimParser {
 			default:
 		}
 
+		// Allow #name after @ modifiers: @(condition) #name element(...)
+		switch (peek()) {
+			case TName(name):
+				if (!updatableName.match(UNTObject(null))) error('#$name: element already has a name');
+				advance();
+				updatableName = UNTObject(name);
+				if (match(TOpen)) {
+					switch (peek()) {
+						case TIdentifier(s) if (isKeyword(s, "updatable")):
+							advance();
+							updatableName = UNTUpdatable(name);
+						default:
+					}
+					expect(TClosed);
+				} else if (match(TBracketOpen)) {
+					switch (peek()) {
+						case TReference(indexVar1):
+							advance();
+							if (match(TComma)) {
+								switch (peek()) {
+									case TReference(indexVar2):
+										advance();
+										if (scopeVars == null || !scopeVars.contains(indexVar1))
+											error('#name[$$$indexVar1, $$$indexVar2]: index variable $$$indexVar1 is not a known loop variable in this scope');
+										if (!scopeVars.contains(indexVar2))
+											error('#name[$$$indexVar1, $$$indexVar2]: index variable $$$indexVar2 is not a known loop variable in this scope');
+										expect(TBracketClosed);
+										updatableName = UNTIndexed2D(name, indexVar1, indexVar2);
+									default:
+										error('expected $$variable for second index in #name[$$x, $$y]');
+								}
+							} else {
+								if (scopeVars == null || !scopeVars.contains(indexVar1))
+									error('#name[$$$indexVar1]: index variable $$$indexVar1 is not a known loop variable in this scope');
+								expect(TBracketClosed);
+								updatableName = UNTIndexed(name, indexVar1);
+							}
+						default:
+							error('expected $$variable inside #name[...]');
+					}
+				}
+				// Validate: #name (non-indexed) is not allowed inside repeatable
+				switch (updatableName) {
+					case UNTObject(_) | UNTUpdatable(_):
+						var checkNode = parent;
+						while (checkNode != null) {
+							switch (checkNode.type) {
+								case REPEAT(varName, _):
+									error('#$name requires indexed form #$name[$$' + varName + '] inside repeatable');
+								case REPEAT2D(varNameX, varNameY, _, _):
+									error('#$name requires indexed form #$name[$$' + varNameX + ', $$' + varNameY + '] inside repeatable2d');
+								default:
+							}
+							checkNode = checkNode.parent;
+						}
+					default:
+				}
+			default:
+		}
+
 		// Parse node type
 		final node:Node = switch (peek()) {
 			case TIdentifier(s) if (isKeyword(s, "bitmap")):

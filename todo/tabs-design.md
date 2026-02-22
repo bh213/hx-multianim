@@ -605,6 +605,74 @@ component's `clear()` should also clear all registered tab content. Since the ta
 is in `screen.elements`, the screen's `clear()` loop calls `tabs.clear()` which handles it.
 The `contentTargetOwnership` map should also be cleared in `UIScreenBase.clear()`.
 
+## Relative Coordinate Mode
+
+By default, content added inside `beginTab()`/`endTab()` uses absolute screen coordinates. With `tabPanel.contentRoot`, coordinates become relative to a named element in the tabBar programmable.
+
+### Setting
+
+```
+settings{tabPanel.contentRoot => contentArea}
+```
+
+`contentRoot` is a behavioral setting — it is NOT forwarded to the programmable. It names a `#point` (or any named element) in the tabBar programmable.
+
+### How it works
+
+1. `addTabs()` extracts `tabPanel.contentRoot` from settings before forwarding remaining `tabPanel.*` params to the programmable
+2. `UIMultiAnimTabs` constructor looks up the named element in `builderResult.names`
+3. Creates per-tab `h2d.Layers` as children of that element's `h2d.Object`
+4. `ContentTarget.handlesSceneGraph()` returns `true` in relative mode
+5. `addObjectToLayer()` delegates to `ContentTarget.addToLayer()` instead of the screen root
+6. Each tab's `h2d.Layers` uses the same layer indices as the screen (BackgroundLayer=1, DefaultLayer=3, ModalLayer=5)
+
+### ContentTarget interface (extended)
+
+```haxe
+interface ContentTarget {
+    function registerElement(element:UIElement):Void;
+    function registerObject(object:h2d.Object):Void;
+    function unregisterElement(element:UIElement):Void;
+    function handlesSceneGraph():Bool;
+    function addToLayer(object:h2d.Object, layerIndex:Int):Void;
+}
+```
+
+### .manim — tabBar with contentArea
+
+```manim
+#tabBar programmable(count:int, panelWidth:uint=0, panelHeight:uint=0,
+        tabButtonHeight:uint=30, spacing:int=0, offset:int=8,
+        contentPadTop:int=3, contentPadLeft:int=8) {
+    flow(layout: horizontal, horizontalSpacing: $spacing, paddingLeft: $offset) {
+        repeatable($index, range(0, $count)) {
+            placeholder(generated(cross(15, 15, #FF0000)), callback("tabButton", $index));
+        }
+    }
+    @(panelHeight > 0) @layer(-100) ninepatch("ui", "Window_tabbed_3x3_idle", $panelWidth, $panelHeight): 0, $tabButtonHeight - 9
+    @(panelHeight > 0) #contentArea point: $contentPadLeft, $tabButtonHeight - 9 + $contentPadTop
+}
+```
+
+### Usage — relative coordinates
+
+```haxe
+// Settings enable relative mode
+// settings{tabPanel.width=>600, tabPanel.height=>200, tabPanel.contentRoot=>contentArea}
+
+tabs = addTabs(builder, settings, items, 0);
+addElementWithPos(tabs, 50, 20);
+
+tabs.beginTab(0);
+    addElementWithPos(button, 10, 10);   // 10,10 from panel content area top-left
+    addBuilderResult(bg, BackgroundLayer); // layers work inside the panel
+tabs.endTab();
+```
+
+### Visibility in relative mode
+
+In relative mode, `setTabContentVisible()` toggles the tab's `h2d.Layers.visible` flag instead of iterating individual elements/objects. This is more efficient and handles all children at once.
+
 ## Summary
 
 | Aspect | Design |
@@ -612,18 +680,19 @@ The `contentTargetOwnership` map should also be cleared in `UIScreenBase.clear()
 | Tab buttons | `UIMultiAnimTabButton` — button with selected state, combo params `["status", "disabled"]` |
 | Container | `UIMultiAnimTabs` — manages buttons + content, implements `UIElementSubElements` + `ContentTarget` |
 | Event filtering | `getSubElements()` only returns active tab content |
-| Visibility | Automatic show/hide on tab switch |
+| Visibility | Automatic show/hide on tab switch (per-element or per-layers-root in relative mode) |
 | Screen helper | `addTabs()` on `UIScreenBase` |
 | Content routing | `tabs.beginTab(index)` / `tabs.endTab()` — sets generic `ContentTarget` on screen |
 | Screen mechanism | `ContentTarget` interface — generic, reusable for accordion etc. |
+| Relative mode | `tabPanel.contentRoot` setting — per-tab `h2d.Layers` under named element |
 | Event | `UIChangeItem(index, items)` on tab switch |
-| .manim | `#tabButton` programmable + `#tabBar` programmable (repeatable + placeholder) |
+| .manim | `#tab` programmable + `#tabBar` programmable (repeatable + placeholder + optional `#contentArea point`) |
 | Key principle | All existing screen helpers work unchanged inside `beginTab`/`endTab` |
 
 ## Files to Create/Modify
 
 | File | Change |
 |------|--------|
-| `src/bh/ui/UIMultiAnimTabs.hx` | **New** — `UIMultiAnimTabButton`, `UIMultiAnimTabs`, `ContentTarget` interface |
-| `src/bh/ui/screens/UIScreen.hx` | Add `contentTarget`, `contentTargetOwnership`, `setContentTarget()`, `clearContentTarget()` to `UIScreenBase`; routing check in `addElement` and `addObjectToLayer`; `addTabs()` helper |
-| `test/examples/N-tabs/` | Visual test with tab bar + content switching |
+| `src/bh/ui/UIMultiAnimTabs.hx` | `UIMultiAnimTabButton`, `UIMultiAnimTabs`, `ContentTarget` interface (with `handlesSceneGraph`/`addToLayer`) |
+| `src/bh/ui/screens/UIScreen.hx` | `contentTarget` routing in `addElement`/`addObjectToLayer`; `addTabs()` with `tabPanel.contentRoot` extraction |
+| `std.manim` | `#tabBar` with `contentPadTop`/`contentPadLeft` params and `#contentArea point` |
