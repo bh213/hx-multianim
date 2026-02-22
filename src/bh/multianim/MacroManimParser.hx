@@ -2881,7 +2881,12 @@ class MacroManimParser {
 				while (!match(TClosed)) {
 					eatComma();
 					if (match(TClosed)) break;
-					if (!isNamedParamNext()) { eatComma(); continue; }
+					if (!isNamedParamNext()) {
+						if (!match(TComma)) {
+							error('unexpected token in flow parameters: ${peek()}');
+						}
+						continue;
+					}
 					final pname = expectIdentifierOrString();
 					expect(TColon);
 					switch (pname.toLowerCase()) {
@@ -3464,7 +3469,12 @@ class MacroManimParser {
 					continue;
 				default:
 			}
-			if (!isNamedParamNext()) { eatComma(); eatSemicolon(); continue; }
+			if (!isNamedParamNext()) {
+				if (!match(TComma) && !match(TSemiColon)) {
+					error('unexpected token in particles block: ${peek()}');
+				}
+				continue;
+			}
 			final name = expectIdentifierOrString();
 			expect(TColon);
 			switch (name.toLowerCase()) {
