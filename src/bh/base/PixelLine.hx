@@ -37,7 +37,13 @@ class PixelLines extends h2d.Bitmap {
 
 	public function filledRect(x:Int, y:Int, width:Int, height:Int, colorARGB:Int) {
 		data.lock();
-		data.fill(x, y, width, height, colorARGB);
+		// Use setPixel instead of data.fill() — on JS, fill() writes to the canvas
+		// via ctx.fillRect() bypassing lockImage, so unlock() would overwrite it.
+		for (py in y...(y + height)) {
+			for (px in x...(x + width)) {
+				data.setPixel(px, py, colorARGB);
+			}
+		}
 	}
 
 	public function pixel(x:Int, y:Int, colorARGB:Int) {
@@ -46,10 +52,8 @@ class PixelLines extends h2d.Bitmap {
 	}
 
 	public function updateBitmap() {
-		// On JS, read pixels BEFORE unlock — fill() draws on the canvas via ctx.fillRect,
-		// but unlock() overwrites the canvas with the stale lockImage captured before any fills.
-		final pixels = data.getPixels();
 		data.unlock();
+		final pixels = data.getPixels();
 		var tile = h2d.Tile.fromPixels(pixels);
 		tile.setCenterRatio(centerX, centerY);
 		this.tile = tile;
