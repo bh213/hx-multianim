@@ -131,7 +131,7 @@ class BuilderResolvedSettings {
 
 	public function getStringOrDefault(settingName:String, defaultString:String):String {
 		if (settings == null)
-			return defaultString;
+			throw 'settings not found, was looking for $settingName';
 		final r = settings[settingName];
 		if (r == null)
 			return defaultString;
@@ -215,7 +215,7 @@ class BuilderResolvedSettings {
 
 	public function getBoolOrDefault(settingName:String, defaultValue:Bool):Bool {
 		if (settings == null)
-			return defaultValue;
+			throw 'settings not found, was looking for $settingName';
 		var r = settings[settingName];
 		if (r == null)
 			return defaultValue;
@@ -1949,7 +1949,6 @@ class MultiAnimBuilder {
 		switch coord {
 			case OFFSET(x, y): collectParamRefs(x, result); collectParamRefs(y, result);
 			case SELECTED_GRID_POSITION(x, y): collectParamRefs(x, result); collectParamRefs(y, result);
-			case SELECTED_GRID_POSITION_WITH_OFFSET(x, y, ox, oy): collectParamRefs(x, result); collectParamRefs(y, result); collectParamRefs(ox, result); collectParamRefs(oy, result);
 			case SELECTED_HEX_CUBE(q, r, s): collectParamRefs(q, result); collectParamRefs(r, result); collectParamRefs(s, result);
 			case SELECTED_HEX_OFFSET(col, row, _): collectParamRefs(col, result); collectParamRefs(row, result);
 			case SELECTED_HEX_DOUBLED(col, row): collectParamRefs(col, result); collectParamRefs(row, result);
@@ -1957,6 +1956,7 @@ class MultiAnimBuilder {
 			case SELECTED_HEX_CORNER(count, factor): collectParamRefs(count, result); collectParamRefs(factor, result);
 			case SELECTED_HEX_EDGE(dir, factor): collectParamRefs(dir, result); collectParamRefs(factor, result);
 			case NAMED_COORD(_, coord): collectCoordinateParamRefs(coord, result);
+			case WITH_OFFSET(base, offsetX, offsetY): collectCoordinateParamRefs(base, result); collectParamRefs(offsetX, result); collectParamRefs(offsetY, result);
 			default:
 		}
 	}
@@ -2126,11 +2126,6 @@ class MultiAnimBuilder {
 				case SELECTED_GRID_POSITION(gridX, gridY):
 					collectParamRefs(gridX, posRefs);
 					collectParamRefs(gridY, posRefs);
-				case SELECTED_GRID_POSITION_WITH_OFFSET(gridX, gridY, offsetX, offsetY):
-					collectParamRefs(gridX, posRefs);
-					collectParamRefs(gridY, posRefs);
-					collectParamRefs(offsetX, posRefs);
-					collectParamRefs(offsetY, posRefs);
 				case SELECTED_HEX_CORNER(count, factor):
 					collectParamRefs(count, posRefs);
 					collectParamRefs(factor, posRefs);
@@ -2198,10 +2193,6 @@ class MultiAnimBuilder {
 				if (gridCoordinateSystem == null)
 					throw 'gridCoordinateSystem is null' + currentNodePos();
 				gridCoordinateSystem.resolveAsGrid(resolveAsInteger(gridX), resolveAsInteger(gridY));
-			case SELECTED_GRID_POSITION_WITH_OFFSET(gridX, gridY, offsetX, offsetY):
-				if (gridCoordinateSystem == null)
-					throw 'gridCoordinateSystem is null' + currentNodePos();
-				gridCoordinateSystem.resolveAsGrid(resolveAsInteger(gridX), resolveAsInteger(gridY), resolveAsInteger(offsetX), resolveAsInteger(offsetY));
 			case SELECTED_HEX_EDGE(direction, factor):
 				if (hexCoordinateSystem == null)
 					throw 'hexCoordinateSystem is null' + currentNodePos();
@@ -3000,8 +2991,8 @@ class MultiAnimBuilder {
 					return switch result {
 						case CBRObject(val): val;
 						case CBRNoResult: null;
-						default: throw 'expected h2d.object but got $result' + currentNodePos();
 						case null: null;
+						default: throw 'expected h2d.object but got $result' + currentNodePos();
 					}
 				}
 				var callbackResultH2dObject:Null<h2d.Object> = switch source {

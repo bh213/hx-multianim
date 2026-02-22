@@ -270,8 +270,7 @@ Define with `grid: spacingX, spacingY` (or named: `grid: #name spacingX, spacing
 
 | Method | Description |
 |--------|-------------|
-| `$grid.pos(x, y)` | Position at grid cell |
-| `$grid.pos(x, y, offX, offY)` | Grid cell with pixel offset |
+| `$grid.pos(x, y)` | Position at grid cell (use `.offset(x, y)` for pixel offsets) |
 | `$grid.width` | Cell width |
 | `$grid.height` | Cell height |
 

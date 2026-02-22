@@ -20,7 +20,6 @@ enum Coordinates {
 	OFFSET(x:ReferenceableValue, y:ReferenceableValue);
 	LAYOUT(layoutName:String, index:ReferenceableValue);
 	SELECTED_GRID_POSITION(gridX:ReferenceableValue, gridY:ReferenceableValue);
-	SELECTED_GRID_POSITION_WITH_OFFSET(gridX:ReferenceableValue, gridY:ReferenceableValue, offsetX:ReferenceableValue, offsetY:ReferenceableValue);
 	SELECTED_HEX_CORNER(count:ReferenceableValue, factor:ReferenceableValue);
 	SELECTED_HEX_EDGE(direction:ReferenceableValue, factor:ReferenceableValue);
 	SELECTED_HEX_CUBE(q:ReferenceableValue, r:ReferenceableValue, s:ReferenceableValue);

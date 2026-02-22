@@ -558,8 +558,7 @@ Requires a `grid:` declaration inside the element body:
 }
 ```
 
-* `$grid.pos(x, y)` - grid position
-* `$grid.pos(x, y, offsetX, offsetY)` - grid position with pixel offset
+* `$grid.pos(x, y)` - grid position (use `.offset(x, y)` suffix for pixel offsets)
 * `$grid.width` - grid cell width (spacingX)
 * `$grid.height` - grid cell height (spacingY)
 
