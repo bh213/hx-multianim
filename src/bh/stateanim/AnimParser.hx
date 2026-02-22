@@ -1087,54 +1087,15 @@ class AnimParser implements AnimParserResult {
 
 	public static function findPlaylist(stateSelector:AnimationStateSelector, animation:AnimationState, definedStates:Map<String, Array<String>>) {
 		validateStateSelector(definedStates, stateSelector);
-		var bestScore = -1;
-		var best2Score = -1;
-		var best:Null<Playlist> = null;
-		var best2:Null<Playlist> = null;
-		for (p in animation.playlist) {
-			final count = countStateMatch(p.states, stateSelector);
-			if (count > bestScore) {
-				best2Score = bestScore;
-				best2 = best;
-				best = p;
-				bestScore = count;
-			} else if (bestScore == count) {
-				best2 = best;
-				best = p;
-				best2Score = bestScore;
-			}
-		}
-		if (best != null && best2Score == bestScore)
-			throw 'ambiguous playlist: ${animation.name} ${best.states} ${best2.states} selector: ${stateSelector}';
-		return best;
+		return findBestStateMatch(animation.playlist, stateSelector, 'playlist: ${animation.name}');
 	}
 
 	public static function findExtraPoint(extraPointName:String, stateSelector:AnimationStateSelector, animation:AnimationState,
 			definedStates:Map<String, Array<String>>) {
 		validateStateSelector(definedStates, stateSelector);
-		var bestScore = -1;
-		var best2Score = -1;
-		var best:Null<ExtraPoints> = null;
-		var best2:Null<ExtraPoints> = null;
 		final allExtraPoints = animation.extraPoint.get(extraPointName);
 		if (allExtraPoints == null) return null;
-
-		for (p in allExtraPoints) {
-			final count = countStateMatch(p.states, stateSelector);
-			if (count > bestScore) {
-				best2Score = bestScore;
-				best2 = best;
-				best = p;
-				bestScore = count;
-			} else if (bestScore == count) {
-				best2 = best;
-				best = p;
-				best2Score = bestScore;
-			}
-		}
-		if (best != null && best2Score == bestScore)
-			throw 'ambiguous extraPoint: ${extraPointName} ${best.states} ${best2.states} selector: ${stateSelector}';
-		return best;
+		return findBestStateMatch(allExtraPoints, stateSelector, 'extraPoint: $extraPointName');
 	}
 
 	public static function findAnimation(name:String, stateSelector:AnimationStateSelector, definedStates, animations) {
@@ -1143,18 +1104,30 @@ class AnimParser implements AnimParserResult {
 	}
 
 	public static function findAnimationInternal(name:String, stateSelector:AnimationStateSelector, animations:Array<AnimationState>) {
+		return findBestStateMatch(animations.filter(a -> a.name == name), stateSelector, 'animation: $name');
+	}
+
+	private static function findBestStateMatch<T:{var states:AnimConditionalSelector;}>(items:Array<T>, stateSelector:AnimationStateSelector,
+			ambiguityContext:String):Null<T> {
 		var bestScore = -1;
-		var best:Null<AnimationState> = null;
-		for (a in animations) {
-			if (name != a.name) continue;
-			var count = countStateMatch(a.states, stateSelector);
+		var best2Score = -1;
+		var best:Null<T> = null;
+		var best2:Null<T> = null;
+		for (item in items) {
+			final count = countStateMatch(item.states, stateSelector);
 			if (count > bestScore) {
-				best = a;
+				best2Score = bestScore;
+				best2 = best;
+				best = item;
 				bestScore = count;
 			} else if (bestScore == count) {
-				throw 'ambiguous animation: ${a.name}:${a.states}, ${best.name}:${best.states}';
+				best2 = best;
+				best = item;
+				best2Score = bestScore;
 			}
 		}
+		if (best != null && best2Score == bestScore)
+			throw 'ambiguous $ambiguityContext: ${best.states} vs ${best2.states} selector: $stateSelector';
 		return best;
 	}
 
