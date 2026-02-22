@@ -6,6 +6,8 @@ import bh.ui.UIMultiAnimCheckbox.UIStandardMultiCheckbox;
 import bh.ui.UIMultiAnimSlider.UIStandardMultiAnimSlider;
 import bh.ui.UIMultiAnimProgressBar.UIMultiAnimProgressBar;
 import bh.ui.UIMultiAnimButton.UIStandardMultiAnimButton;
+import bh.ui.UIMultiAnimTabs;
+import bh.ui.UIMultiAnimTabs.ContentTarget;
 import bh.multianim.MultiAnimParser.ResolvedSettings;
 import bh.multianim.MultiAnimParser.SettingValue;
 import bh.ui.UIElement;
@@ -52,6 +54,11 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	var groups:Map<String, Array<UIElement>> = [];
 	var postCustomAddToLayer:Map<h2d.Object, UIElementCustomAddToLayer> = [];
 	var interactiveWrappers:Array<UIInteractiveWrapper> = [];
+
+	// Content routing for tabs and similar composite containers
+	var contentTarget:Null<ContentTarget> = null;
+	var contentTargetOwnership:Map<UIElement, ContentTarget> = [];
+	var inElementRouting:Bool = false;
 
 	public function new(screenManager:ScreenManager, ?layers:Map<LayersEnum, Int>) {
 		this.root = new h2d.Layers();
@@ -102,6 +109,9 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		elements = [];
 		subElementProviders = [];
 		postCustomAddToLayer.clear();
+		contentTarget = null;
+		contentTargetOwnership.clear();
+		inElementRouting = false;
 		getSceneRoot().removeChildren();
 		onClear();
 	}
@@ -118,6 +128,8 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	public function onKey(keyCode:Int, release:Bool):Bool { return true;}
 
 	public function update(dt:Float):Void {
+		if (contentTarget != null)
+			throw 'content target still set during update — missing endTab() call?';
 		// controller.update(dt) is already called by ScreenManager.update() before screen.update()
 		for (obj => v in postCustomAddToLayer) {
 			var insertedLayer = findLayerFromObject(obj);
@@ -345,7 +357,39 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		final split = splitSettings(settings, ["radioBuildName", "radioButtonBuildName"], [], [], [], "radio");
 		return UIMultiAnimRadioButtons.create(providedBuilder, radioBuildName, singleRadioButtonBuilderName, items, selectedIndex, split.main);
 	}
-	
+
+	function addTabs(providedBuilder:MultiAnimBuilder, settings:ResolvedSettings, items:Array<UIElementListItem>, selectedIndex:Int = 0) {
+		final tabBarBuildName = getSettings(settings, "buildName", "tabBar");
+		final tabButtonBuildName = getSettings(settings, "tabButtonBuildName", "tab");
+		final split = splitSettings(settings, ["buildName", "tabButtonBuildName"], [], ["tabButton", "tabPanel"], [], "tabs");
+		final tabButtonParams = split.prefixed.get("tabButton");
+
+		// Merge tabPanel.* prefix params into tab bar extra params (width→panelWidth, height→panelHeight, offset→panelOffset)
+		var extraParams:Null<Map<String, Dynamic>> = cast split.main;
+		final tabPanelParams = split.prefixed.get("tabPanel");
+		if (tabPanelParams != null) {
+			if (extraParams == null)
+				extraParams = new Map();
+			for (key => value in tabPanelParams)
+				extraParams.set('panel${key.charAt(0).toUpperCase()}${key.substr(1)}', value);
+			// Auto-derive panelOffset from tab button height if not explicitly set
+			// (also skip if panelOffset was passed directly in settings)
+			if (!tabPanelParams.exists("offset") && (extraParams == null || !extraParams.exists("panelOffset"))) {
+				if (extraParams == null)
+					extraParams = new Map();
+				var tabHeight:Dynamic = 30;
+				if (tabButtonParams != null) {
+					var h = tabButtonParams.get("height");
+					if (h != null)
+						tabHeight = h;
+				}
+				extraParams.set("panelOffset", tabHeight);
+			}
+		}
+
+		return new UIMultiAnimTabs(providedBuilder, tabBarBuildName, tabButtonBuildName, items, selectedIndex, this, extraParams, tabButtonParams);
+	}
+
 	function addText(textValue:String, fontName:String, ?layer:LayersEnum) {
 		final textObj = new h2d.Text(bh.base.FontManager.getFontByName(fontName));
 		textObj.text = textValue;
@@ -482,7 +526,26 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		return retVal;
 	}
 
+	@:allow(bh.ui.UIMultiAnimTabs)
+	function setContentTarget(target:ContentTarget) {
+		if (contentTarget != null)
+			throw 'content target already set';
+		contentTarget = target;
+	}
+
+	@:allow(bh.ui.UIMultiAnimTabs)
+	function clearContentTarget() {
+		if (contentTarget == null)
+			throw 'no content target set';
+		contentTarget = null;
+	}
+
 	public function addObjectToLayer(object:h2d.Object, ?layer:LayersEnum) {
+		// Register standalone objects for visibility management.
+		// Skip when called from addElement routing (element already registered).
+		if (contentTarget != null && !inElementRouting) {
+			contentTarget.registerObject(object);
+		}
 		if (layer == null) {
 			getSceneRoot().add(object, layers.get(DefaultLayer));
 		} else {
@@ -547,6 +610,36 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	}
 
 	public function addElement(element:UIElement, layer:Null<LayersEnum>) {
+		if (contentTarget != null) {
+			// Route to content target (tabs, etc.) instead of main element list
+			contentTarget.registerElement(element);
+			contentTargetOwnership.set(element, contentTarget);
+			// Still add to scene graph for rendering — but suppress registerObject
+			// since registerElement already covers this element's visibility
+			inElementRouting = true;
+			if (Std.isOfType(element, UIElementSubElements)) {
+				subElementProviders.push(cast(element, UIElementSubElements));
+			}
+			if (Std.isOfType(element, UIElementCustomAddToLayer)) {
+				final customElement:UIElementCustomAddToLayer = cast(element, UIElementCustomAddToLayer);
+				final result = customElement.customAddToLayer(layer, this, false);
+				switch result {
+					case Added:
+						inElementRouting = false;
+						return element;
+					case Postponed:
+						if (postCustomAddToLayer.exists(element.getObject()))
+							throw 'element already is in postCustomAddToLayer';
+						postCustomAddToLayer.set(element.getObject(), customElement);
+				}
+			}
+			if (layer != null && element.getObject().parent == null) {
+				addObjectToLayer(element.getObject(), layer);
+			}
+			inElementRouting = false;
+			return element;
+		}
+
 		elements.push(element);
 		if (Std.isOfType(element, UIElementSubElements)) {
 			subElementProviders.push(cast(element, UIElementSubElements));
@@ -625,7 +718,13 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	public function removeElement(element:UIElement) {
 		element.getObject().remove();
 		element.clear();
-		elements.remove(element);
+		var owner = contentTargetOwnership.get(element);
+		if (owner != null) {
+			owner.unregisterElement(element);
+			contentTargetOwnership.remove(element);
+		} else {
+			elements.remove(element);
+		}
 		if (Std.isOfType(element, UIElementSubElements)) {
 			subElementProviders.remove(cast(element, UIElementSubElements));
 		}
