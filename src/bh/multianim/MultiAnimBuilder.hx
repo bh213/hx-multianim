@@ -624,12 +624,12 @@ class BuilderResult {
 	}
 
 	public function getNodeSettings(elementName:String):ResolvedSettings {
-		final results = names[name];
+		final results = names[elementName];
 		if (results == null || results.length != 1)
-			throw 'Could not get single node for name $name';
+			throw 'Could not get single node for name $elementName';
 		final settings = results[0].settings;
 		if (settings == null)
-			throw 'no settings specified for $name';
+			throw 'no settings specified for $elementName';
 		return settings;
 	}
 

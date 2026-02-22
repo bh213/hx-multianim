@@ -9,6 +9,7 @@ import bh.test.BuilderTestBase.getDataFromSource;
 import bh.test.BuilderTestBase.findVisibleBitmapDescendants;
 import bh.test.BuilderTestBase.findAllTextDescendants;
 import bh.test.BuilderTestBase.countVisibleChildren;
+import bh.multianim.MultiAnimParser.SettingValue;
 
 /**
  * Non-visual builder tests.
@@ -2648,6 +2649,33 @@ class BuilderUnitTest extends BuilderTestBase {
 		Assert.equals("hello", result.rootSettings.getStringOrDefault("name", ""));
 		Assert.equals(5, result.rootSettings.getIntOrDefault("count", 0));
 		Assert.isTrue(result.rootSettings.getBoolOrDefault("active", false));
+	}
+
+	// ==================== getNodeSettings ====================
+
+	@Test
+	public function testGetNodeSettingsUsesElementName():Void {
+		final result = buildFromSource("
+			#test programmable() {
+				#btn placeholder(generated(cross(10, 10, #f00)), builderParameter(\"btn\")) {
+					settings{action=>buy, price:int=>50}
+					pos: 0, 0
+				}
+				#lbl placeholder(generated(cross(10, 10, #0f0)), builderParameter(\"lbl\")) {
+					settings{action=>sell, price:int=>100}
+					pos: 20, 0
+				}
+			}
+		", "test");
+		Assert.notNull(result);
+		final btnSettings = result.getNodeSettings("btn");
+		Assert.notNull(btnSettings);
+		Assert.same(RSVString("buy"), btnSettings["action"]);
+		Assert.same(RSVInt(50), btnSettings["price"]);
+		final lblSettings = result.getNodeSettings("lbl");
+		Assert.notNull(lblSettings);
+		Assert.same(RSVString("sell"), lblSettings["action"]);
+		Assert.same(RSVInt(100), lblSettings["price"]);
 	}
 
 	// ===== Helpers =====
