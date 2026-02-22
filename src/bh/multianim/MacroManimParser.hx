@@ -64,6 +64,14 @@ private class Token {
 	}
 }
 
+// Expression type discriminator for shared expression-parsing helpers
+private enum ExprType {
+	EInt;
+	EFloat;
+	EString;
+	EAny;
+}
+
 // ===================== Lexer =====================
 
 private class MacroLexer {
@@ -548,17 +556,79 @@ class MacroManimParser {
 
 	// ===================== Expression Parsing =====================
 
+	// Dispatch to the correct expression parser based on type
+	inline function parseExpr(t:ExprType):ReferenceableValue {
+		return switch (t) {
+			case EInt: parseIntegerOrReference();
+			case EFloat: parseFloatOrReference();
+			case EString: parseStringOrReference();
+			case EAny: parseAnything();
+		};
+	}
+
+	// Shared: parse operator chain after an atom expression
+	function parseNextExpression(e1:ReferenceableValue, t:ExprType):ReferenceableValue {
+		switch (peek()) {
+			case TPlus: advance(); return binop(e1, OpAdd, parseExpr(t));
+			case TMinus: advance(); return binop(e1, OpSub, parseExpr(t));
+			case TStar: advance(); return binop(e1, OpMul, parseExpr(t));
+			case TSlash: advance(); return binop(e1, OpDiv, parseExpr(t));
+			case TPercent: advance(); return binop(e1, OpMod, parseExpr(t));
+			case TIdentifier(s) if (isKeyword(s, "div")): advance(); return binop(e1, OpIntegerDiv, parseExpr(t));
+			case TDoubleEquals: advance(); return binop(e1, OpEq, parseExpr(t));
+			case TNotEquals: advance(); return binop(e1, OpNotEq, parseExpr(t));
+			case TLessThan: advance(); return binop(e1, OpLess, parseExpr(t));
+			case TGreaterThan: advance(); return binop(e1, OpGreater, parseExpr(t));
+			case TLessEquals: advance(); return binop(e1, OpLessEq, parseExpr(t));
+			case TGreaterEquals: advance(); return binop(e1, OpGreaterEq, parseExpr(t));
+			default: return e1;
+		}
+	}
+
+	// Shared: ternary ?(cond) ifTrue : ifFalse — caller already consumed TQuestion
+	function parseTernaryExpr(t:ExprType):ReferenceableValue {
+		expect(TOpen);
+		final cond = parseAnything();
+		expect(TClosed);
+		final ifTrue = parseExpr(t);
+		expect(TColon);
+		final ifFalse = parseExpr(t);
+		return RVTernary(cond, ifTrue, ifFalse);
+	}
+
+	// Shared: $ref with optional [$idx] bracket index and .property chain
+	function parseRefExpr(s:String, idxType:ExprType):ReferenceableValue {
+		validateRef(s);
+		if (match(TBracketOpen)) {
+			final idx = parseExpr(idxType);
+			expect(TBracketClosed);
+			return RVElementOfArray(s, idx);
+		}
+		if (match(TDot)) {
+			return parsePropertyOrMethodChain(s);
+		}
+		return RVReference(s);
+	}
+
+	// Shared: unary minus on $ref with optional [$idx] bracket index and .property chain
+	function parseUnaryMinusRef(s:String, idxType:ExprType):ReferenceableValue {
+		validateRef(s);
+		if (match(TBracketOpen)) {
+			final idx = parseExpr(idxType);
+			expect(TBracketClosed);
+			return EUnaryOp(OpNeg, RVElementOfArray(s, idx));
+		}
+		if (match(TDot)) {
+			return EUnaryOp(OpNeg, parsePropertyOrMethodChain(s));
+		}
+		return EUnaryOp(OpNeg, RVReference(s));
+	}
+
 	function parseIntegerOrReference():ReferenceableValue {
 		switch (peek()) {
 			case TQuestion:
 				advance();
-				expect(TOpen);
-				final cond = parseAnything();
-				expect(TClosed);
-				final ifTrue = parseIntegerOrReference();
-				expect(TColon);
-				final ifFalse = parseIntegerOrReference();
-				return parseNextIntExpression(RVTernary(cond, ifTrue, ifFalse));
+				return parseNextExpression(parseTernaryExpr(EInt), EInt);
 			case TIdentifier(s) if (isKeyword(s, "callback")):
 				advance();
 				return parseCallback();
@@ -567,87 +637,46 @@ class MacroManimParser {
 				switch (peek()) {
 					case TInteger(n):
 						advance();
-						return parseNextIntExpression(RVInteger(-stringToInt(n)));
+						return parseNextExpression(RVInteger(-stringToInt(n)), EInt);
 					case THexInteger(n):
 						advance();
-						return parseNextIntExpression(RVInteger(-stringToInt("0x" + n)));
+						return parseNextExpression(RVInteger(-stringToInt("0x" + n)), EInt);
 					case TReference(s):
 						advance();
-						validateRef(s);
-						if (match(TBracketOpen)) {
-							final idx = parseIntegerOrReference();
-							expect(TBracketClosed);
-							return parseNextIntExpression(EUnaryOp(OpNeg, RVElementOfArray(s, idx)));
-						}
-						if (match(TDot)) {
-							return parseNextIntExpression(EUnaryOp(OpNeg, parsePropertyOrMethodChain(s)));
-						}
-						return parseNextIntExpression(EUnaryOp(OpNeg, RVReference(s)));
+						return parseNextExpression(parseUnaryMinusRef(s, EInt), EInt);
 					case TOpen:
 						advance();
 						final e = parseIntegerOrReference();
 						expect(TClosed);
-						return parseNextIntExpression(EUnaryOp(OpNeg, RVParenthesis(e)));
+						return parseNextExpression(EUnaryOp(OpNeg, RVParenthesis(e)), EInt);
 					default:
 						return error('expected value after unary minus');
 				}
 			case TInteger(n):
 				advance();
-				return parseNextIntExpression(RVInteger(stringToInt(n)));
+				return parseNextExpression(RVInteger(stringToInt(n)), EInt);
 			case THexInteger(n):
 				advance();
-				return parseNextIntExpression(RVInteger(stringToInt("0x" + n)));
+				return parseNextExpression(RVInteger(stringToInt("0x" + n)), EInt);
 			case TReference(s):
 				advance();
-				validateRef(s);
-				if (match(TBracketOpen)) {
-					final idx = parseIntegerOrReference();
-					expect(TBracketClosed);
-					return parseNextIntExpression(RVElementOfArray(s, idx));
-				}
-				if (match(TDot)) {
-					return parseNextIntExpression(parsePropertyOrMethodChain(s));
-				}
-				return parseNextIntExpression(RVReference(s));
+				return parseNextExpression(parseRefExpr(s, EInt), EInt);
 			case TOpen:
 				advance();
 				final e = parseIntegerOrReference();
 				expect(TClosed);
-				return parseNextIntExpression(RVParenthesis(e));
+				return parseNextExpression(RVParenthesis(e), EInt);
 			default:
 				return error('expected integer or expression, got ${peek()}');
 		}
 	}
 
-	function parseNextIntExpression(e1:ReferenceableValue):ReferenceableValue {
-		switch (peek()) {
-			case TPlus: advance(); return binop(e1, OpAdd, parseIntegerOrReference());
-			case TMinus: advance(); return binop(e1, OpSub, parseIntegerOrReference());
-			case TStar: advance(); return binop(e1, OpMul, parseIntegerOrReference());
-			case TSlash: advance(); return binop(e1, OpDiv, parseIntegerOrReference());
-			case TPercent: advance(); return binop(e1, OpMod, parseIntegerOrReference());
-			case TIdentifier(s) if (isKeyword(s, "div")): advance(); return binop(e1, OpIntegerDiv, parseIntegerOrReference());
-			case TDoubleEquals: advance(); return binop(e1, OpEq, parseIntegerOrReference());
-			case TNotEquals: advance(); return binop(e1, OpNotEq, parseIntegerOrReference());
-			case TLessThan: advance(); return binop(e1, OpLess, parseIntegerOrReference());
-			case TGreaterThan: advance(); return binop(e1, OpGreater, parseIntegerOrReference());
-			case TLessEquals: advance(); return binop(e1, OpLessEq, parseIntegerOrReference());
-			case TGreaterEquals: advance(); return binop(e1, OpGreaterEq, parseIntegerOrReference());
-			default: return e1;
-		}
-	}
 
 	function parseFloatOrReference():ReferenceableValue {
 		switch (peek()) {
 			case TQuestion:
 				advance();
-				expect(TOpen);
-				final cond = parseAnything();
-				expect(TClosed);
-				final ifTrue = parseFloatOrReference();
-				expect(TColon);
-				final ifFalse = parseFloatOrReference();
-				return parseNextFloatExpression(RVTernary(cond, ifTrue, ifFalse));
+				return parseNextExpression(parseTernaryExpr(EFloat), EFloat);
 			case TIdentifier(s) if (isKeyword(s, "callback")):
 				advance();
 				return parseCallback();
@@ -656,81 +685,40 @@ class MacroManimParser {
 				switch (peek()) {
 					case TInteger(n) | TFloat(n):
 						advance();
-						return parseNextFloatExpression(RVFloat(-stringToFloat(n)));
+						return parseNextExpression(RVFloat(-stringToFloat(n)), EFloat);
 					case TReference(s):
 						advance();
-						validateRef(s);
-						if (match(TBracketOpen)) {
-							final idx = parseFloatOrReference();
-							expect(TBracketClosed);
-							return parseNextFloatExpression(EUnaryOp(OpNeg, RVElementOfArray(s, idx)));
-						}
-						if (match(TDot)) {
-							return parseNextFloatExpression(EUnaryOp(OpNeg, parsePropertyOrMethodChain(s)));
-						}
-						return parseNextFloatExpression(EUnaryOp(OpNeg, RVReference(s)));
+						return parseNextExpression(parseUnaryMinusRef(s, EInt), EFloat);
 					case TOpen:
 						advance();
 						final e = parseFloatOrReference();
 						expect(TClosed);
-						return parseNextFloatExpression(EUnaryOp(OpNeg, RVParenthesis(e)));
+						return parseNextExpression(EUnaryOp(OpNeg, RVParenthesis(e)), EFloat);
 					default:
 						return error('expected value after unary minus');
 				}
 			case TInteger(n) | TFloat(n):
 				advance();
-				return parseNextFloatExpression(RVFloat(stringToFloat(n)));
+				return parseNextExpression(RVFloat(stringToFloat(n)), EFloat);
 			case TReference(s):
 				advance();
-				validateRef(s);
-				if (match(TBracketOpen)) {
-					final idx = parseIntegerOrReference();
-					expect(TBracketClosed);
-					return parseNextFloatExpression(RVElementOfArray(s, idx));
-				}
-				if (match(TDot)) {
-					return parseNextFloatExpression(parsePropertyOrMethodChain(s));
-				}
-				return parseNextFloatExpression(RVReference(s));
+				return parseNextExpression(parseRefExpr(s, EInt), EFloat);
 			case TOpen:
 				advance();
 				final e = parseFloatOrReference();
 				expect(TClosed);
-				return RVParenthesis(e);
+				return parseNextExpression(RVParenthesis(e), EFloat);
 			default:
 				return error('expected float or expression, got ${peek()}');
 		}
 	}
 
-	function parseNextFloatExpression(e1:ReferenceableValue):ReferenceableValue {
-		switch (peek()) {
-			case TPlus: advance(); return binop(e1, OpAdd, parseFloatOrReference());
-			case TMinus: advance(); return binop(e1, OpSub, parseFloatOrReference());
-			case TStar: advance(); return binop(e1, OpMul, parseFloatOrReference());
-			case TSlash: advance(); return binop(e1, OpDiv, parseFloatOrReference());
-			case TPercent: advance(); return binop(e1, OpMod, parseFloatOrReference());
-			case TIdentifier(s) if (isKeyword(s, "div")): advance(); return binop(e1, OpIntegerDiv, parseIntegerOrReference());
-			case TDoubleEquals: advance(); return binop(e1, OpEq, parseFloatOrReference());
-			case TNotEquals: advance(); return binop(e1, OpNotEq, parseFloatOrReference());
-			case TLessThan: advance(); return binop(e1, OpLess, parseFloatOrReference());
-			case TGreaterThan: advance(); return binop(e1, OpGreater, parseFloatOrReference());
-			case TLessEquals: advance(); return binop(e1, OpLessEq, parseFloatOrReference());
-			case TGreaterEquals: advance(); return binop(e1, OpGreaterEq, parseFloatOrReference());
-			default: return e1;
-		}
-	}
 
 	function parseStringOrReference():ReferenceableValue {
 		switch (peek()) {
 			case TQuestion:
 				advance();
-				expect(TOpen);
-				final cond = parseAnything();
-				expect(TClosed);
-				final ifTrue = parseStringOrReference();
-				expect(TColon);
-				final ifFalse = parseStringOrReference();
-				return parseNextStringExpression(RVTernary(cond, ifTrue, ifFalse));
+				return parseNextExpression(parseTernaryExpr(EString), EString);
 			case TIdentifier(s) if (isKeyword(s, "callback")):
 				advance();
 				return parseCallback();
@@ -739,7 +727,7 @@ class MacroManimParser {
 				switch (peek()) {
 					case TInteger(n) | TFloat(n):
 						advance();
-						return parseNextStringExpression(RVString('-' + n));
+						return parseNextExpression(RVString('-' + n), EString);
 					default:
 						return error('expected number after minus in string context');
 				}
@@ -749,70 +737,47 @@ class MacroManimParser {
 				switch (peek()) {
 					case TIdentifier(s2):
 						advance();
-						return parseNextStringExpression(RVString(n + s2));
+						return parseNextExpression(RVString(n + s2), EString);
 					default:
-						return parseNextStringExpression(RVString(n));
+						return parseNextExpression(RVString(n), EString);
 				}
 			case THexInteger(n):
 				advance();
-				return parseNextStringExpression(RVString("0x" + n));
+				return parseNextExpression(RVString("0x" + n), EString);
 			case TQuotedString(s):
 				advance();
-				return parseNextStringExpression(RVString(s));
+				return parseNextExpression(RVString(s), EString);
 			case TIdentifier(s):
 				advance();
-				return parseNextStringExpression(RVString(s));
+				return parseNextExpression(RVString(s), EString);
 			case TName(s):
 				advance();
-				return parseNextStringExpression(RVString(s));
+				return parseNextExpression(RVString(s), EString);
 			case TReference(s):
 				advance();
 				validateRef(s);
 				if (match(TBracketOpen)) {
 					final idx = parseIntegerOrReference();
 					expect(TBracketClosed);
-					return parseNextStringExpression(RVElementOfArray(s, idx));
+					return parseNextExpression(RVElementOfArray(s, idx), EString);
 				}
-				return parseNextStringExpression(RVReference(s));
+				return parseNextExpression(RVReference(s), EString);
 			case TOpen:
 				advance();
 				final e = parseAnything();
 				expect(TClosed);
-				return parseNextStringExpression(RVParenthesis(e));
+				return parseNextExpression(RVParenthesis(e), EString);
 			default:
 				return error('expected string or reference, got ${peek()}');
 		}
 	}
 
-	function parseNextStringExpression(e1:ReferenceableValue):ReferenceableValue {
-		switch (peek()) {
-			case TPlus: advance(); return binop(e1, OpAdd, parseStringOrReference());
-			case TMinus: advance(); return binop(e1, OpSub, parseStringOrReference());
-			case TStar: advance(); return binop(e1, OpMul, parseStringOrReference());
-			case TSlash: advance(); return binop(e1, OpDiv, parseStringOrReference());
-			case TPercent: advance(); return binop(e1, OpMod, parseStringOrReference());
-			case TIdentifier(s) if (isKeyword(s, "div")): advance(); return binop(e1, OpIntegerDiv, parseStringOrReference());
-			case TDoubleEquals: advance(); return binop(e1, OpEq, parseStringOrReference());
-			case TNotEquals: advance(); return binop(e1, OpNotEq, parseStringOrReference());
-			case TLessThan: advance(); return binop(e1, OpLess, parseStringOrReference());
-			case TGreaterThan: advance(); return binop(e1, OpGreater, parseStringOrReference());
-			case TLessEquals: advance(); return binop(e1, OpLessEq, parseStringOrReference());
-			case TGreaterEquals: advance(); return binop(e1, OpGreaterEq, parseStringOrReference());
-			default: return e1;
-		}
-	}
 
 	function parseAnything():ReferenceableValue {
 		switch (peek()) {
 			case TQuestion:
 				advance();
-				expect(TOpen);
-				final cond = parseAnything();
-				expect(TClosed);
-				final ifTrue = parseAnything();
-				expect(TColon);
-				final ifFalse = parseAnything();
-				return parseNextAnythingExpression(RVTernary(cond, ifTrue, ifFalse));
+				return parseNextExpression(parseTernaryExpr(EAny), EAny);
 			case TIdentifier(s) if (isKeyword(s, "callback")):
 				advance();
 				return parseCallback();
@@ -821,65 +786,47 @@ class MacroManimParser {
 				switch (peek()) {
 					case TInteger(n) | THexInteger(n):
 						advance();
-						return parseNextAnythingExpression(RVInteger(-stringToInt(n)));
+						return parseNextExpression(RVInteger(-stringToInt(n)), EAny);
 					case TFloat(n):
 						advance();
-						return parseNextAnythingExpression(RVFloat(-stringToFloat(n)));
+						return parseNextExpression(RVFloat(-stringToFloat(n)), EAny);
 					case TReference(s):
 						advance();
-						validateRef(s);
-						if (match(TBracketOpen)) {
-							final idx = parseAnything();
-							expect(TBracketClosed);
-							return parseNextAnythingExpression(EUnaryOp(OpNeg, RVElementOfArray(s, idx)));
-						}
-						if (match(TDot)) {
-							return parseNextAnythingExpression(EUnaryOp(OpNeg, parsePropertyOrMethodChain(s)));
-						}
-						return parseNextAnythingExpression(EUnaryOp(OpNeg, RVReference(s)));
+						return parseNextExpression(parseUnaryMinusRef(s, EAny), EAny);
 					case TOpen:
 						advance();
 						final e = parseAnything();
 						expect(TClosed);
-						return parseNextAnythingExpression(EUnaryOp(OpNeg, RVParenthesis(e)));
+						return parseNextExpression(EUnaryOp(OpNeg, RVParenthesis(e)), EAny);
 					default:
 						return error('expected value after unary minus');
 				}
 			case TInteger(n) | THexInteger(n):
 				advance();
-				return parseNextAnythingExpression(RVInteger(stringToInt(n)));
+				return parseNextExpression(RVInteger(stringToInt(n)), EAny);
 			case TFloat(n):
 				advance();
-				return parseNextAnythingExpression(RVFloat(stringToFloat(n)));
+				return parseNextExpression(RVFloat(stringToFloat(n)), EAny);
 			case TReference(s):
 				advance();
-				validateRef(s);
-				if (match(TBracketOpen)) {
-					final idx = parseAnything();
-					expect(TBracketClosed);
-					return parseNextAnythingExpression(RVElementOfArray(s, idx));
-				}
-				if (match(TDot)) {
-					return parseNextAnythingExpression(parsePropertyOrMethodChain(s));
-				}
-				return parseNextAnythingExpression(RVReference(s));
+				return parseNextExpression(parseRefExpr(s, EAny), EAny);
 			case TQuotedString(s):
 				advance();
-				return parseNextAnythingExpression(RVString(s));
+				return parseNextExpression(RVString(s), EAny);
 			case TIdentifier(s):
 				advance();
-				return parseNextAnythingExpression(RVString(s));
+				return parseNextExpression(RVString(s), EAny);
 			case TName(s):
 				// TName is #xxx - try as color first (#f00, #FF0000, etc.)
 				final c = tryStringToColor("#" + s);
 				advance();
-				if (c != null) return parseNextAnythingExpression(RVInteger(c));
-				return parseNextAnythingExpression(RVString(s));
+				if (c != null) return parseNextExpression(RVInteger(c), EAny);
+				return parseNextExpression(RVString(s), EAny);
 			case TOpen:
 				advance();
 				final e = parseAnything();
 				expect(TClosed);
-				return parseNextAnythingExpression(RVParenthesis(e));
+				return parseNextExpression(RVParenthesis(e), EAny);
 			case TBracketOpen:
 				advance();
 				final arr:Array<ReferenceableValue> = [];
@@ -893,23 +840,6 @@ class MacroManimParser {
 		}
 	}
 
-	function parseNextAnythingExpression(e1:ReferenceableValue):ReferenceableValue {
-		switch (peek()) {
-			case TPlus: advance(); return binop(e1, OpAdd, parseAnything());
-			case TMinus: advance(); return binop(e1, OpSub, parseAnything());
-			case TStar: advance(); return binop(e1, OpMul, parseAnything());
-			case TSlash: advance(); return binop(e1, OpDiv, parseAnything());
-			case TPercent: advance(); return binop(e1, OpMod, parseAnything());
-			case TIdentifier(s) if (isKeyword(s, "div")): advance(); return binop(e1, OpIntegerDiv, parseAnything());
-			case TDoubleEquals: advance(); return binop(e1, OpEq, parseAnything());
-			case TNotEquals: advance(); return binop(e1, OpNotEq, parseAnything());
-			case TLessThan: advance(); return binop(e1, OpLess, parseAnything());
-			case TGreaterThan: advance(); return binop(e1, OpGreater, parseAnything());
-			case TLessEquals: advance(); return binop(e1, OpLessEq, parseAnything());
-			case TGreaterEquals: advance(); return binop(e1, OpGreaterEq, parseAnything());
-			default: return e1;
-		}
-	}
 
 	function binop(e1:ReferenceableValue, op:RvOp, e2:ReferenceableValue):ReferenceableValue {
 		// Precedence: mul/div bind tighter than add/sub.
@@ -1104,7 +1034,7 @@ class MacroManimParser {
 				} else {
 					// Not a dot — this is a plain reference used in OFFSET(x, y) position
 					// Put back as an expression and parse as OFFSET
-					final x = parseNextIntExpression(RVReference(s));
+					final x = parseNextExpression(RVReference(s), EInt);
 					expect(TComma);
 					final y = parseIntegerOrReference();
 					OFFSET(x, y);
@@ -2232,11 +2162,11 @@ class MacroManimParser {
 	function parseColorsList(endToken:MacroTokenType):Array<ReferenceableValue> {
 		var colors:Array<ReferenceableValue> = [];
 		while (true) {
-			eatComma();
 			if (Type.enumEq(peek(), endToken)) {
 				advance();
 				break;
 			}
+			if (colors.length > 0) eatComma();
 			colors.push(parseColorOrReference());
 		}
 		return colors;
@@ -4049,6 +3979,7 @@ class MacroManimParser {
 						parseChildNode(node, defs);
 					}
 				case TIdentifier(s) if (isKeyword(s, "blendmode")):
+				if (isPropertyColon()) {
 					advance();
 					expect(TColon);
 					if (node == null) error("blendMode not supported on root");
@@ -4056,6 +3987,9 @@ class MacroManimParser {
 					if (bm == null) error("unknown blend mode");
 					node.blendMode = bm;
 					eatSemicolon();
+				} else {
+					parseChildNode(node, defs);
+				}
 				case TIdentifier(s) if (isKeyword(s, "import")):
 					advance();
 					final file = expectIdentifierOrString();
