@@ -217,7 +217,7 @@ class VisualTestBase extends utest.Test {
 	// ==================== Image comparison ====================
 
 	public function compareImages(actual:String, reference:String, ?threshold:Float):Bool {
-		if (threshold == null) threshold = 0.9999;
+		if (threshold == null) threshold = 1.0;
 		var similarity = 1.0;
 		var passed = true;
 
@@ -255,7 +255,7 @@ class VisualTestBase extends utest.Test {
 
 					similarity = matchingPixels / totalPixels;
 					verbose('Image similarity: ${Math.round(similarity * 10000) / 100}%');
-					passed = similarity > threshold;
+					passed = similarity >= threshold;
 				}
 			} catch (e:Dynamic) {
 				trace('Error comparing images: $e');
@@ -377,7 +377,7 @@ class VisualTestBase extends utest.Test {
 		if (sizeX == null) sizeX = 1280;
 		if (sizeY == null) sizeY = 720;
 		if (scale == null) scale = 1.0;
-		if (threshold == null) threshold = 0.99;
+		if (threshold == null) threshold = 1.0;
 
 		// Phase 1: builder screenshot
 		clearScene();
@@ -445,10 +445,10 @@ class VisualTestBase extends utest.Test {
 					var macroSuccess = screenshot(macroPath, sizeX, sizeY);
 
 					var builderSimilarity = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
-					var builderPassed = builderSuccess ? builderSimilarity > threshold : false;
+					var builderPassed = builderSuccess ? builderSimilarity >= threshold : false;
 
 					var macroSimilarity = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
-					var macroPassed = macroSuccess ? macroSimilarity > threshold : false;
+					var macroPassed = macroSuccess ? macroSimilarity >= threshold : false;
 
 					var overallPassed = builderPassed && macroPassed;
 
@@ -557,9 +557,9 @@ class VisualTestBase extends utest.Test {
 
 					var builderSim = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
 					var macroSim = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
-					var threshold = if (tolerance != null) tolerance else 0.99;
-					var builderOk = builderSim > threshold;
-					var macroOk = macroSim > threshold;
+					var threshold = if (tolerance != null) tolerance else 1.0;
+					var builderOk = builderSim >= threshold;
+					var macroOk = macroSim >= threshold;
 
 					HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath, builderOk && macroOk,
 						builderSim, null, macroPath, macroSim, macroOk, threshold, threshold);
@@ -663,9 +663,9 @@ class VisualTestBase extends utest.Test {
 
 					var builderSim = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
 					var macroSim = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
-					var threshold = if (tolerance != null) tolerance else 0.99;
-					var builderOk = builderSim > threshold;
-					var macroOk = macroSim > threshold;
+					var threshold = if (tolerance != null) tolerance else 1.0;
+					var builderOk = builderSim >= threshold;
+					var macroOk = macroSim >= threshold;
 
 					HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath, builderOk && macroOk,
 						builderSim, null, macroPath, macroSim, macroOk, threshold, threshold);

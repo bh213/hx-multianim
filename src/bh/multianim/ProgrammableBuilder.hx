@@ -112,13 +112,25 @@ class ProgrammableBuilder {
 	}
 
 	/** Build a sub-programmable via the builder (for STATIC_REF nodes) */
-	public function buildStaticRef(name:String, parameters:Map<String, Dynamic>):BuilderResult {
-		return (_builder : MultiAnimBuilder).buildWithParameters(name, parameters);
+	public function buildStaticRef(name:String, parameters:Map<String, Dynamic>, ?externalRef:String):BuilderResult {
+		var builder:MultiAnimBuilder = cast _builder;
+		if (externalRef != null) {
+			var extBuilder = @:privateAccess builder.multiParserResult?.imports?.get(externalRef);
+			if (extBuilder == null) throw 'buildStaticRef: external reference "$externalRef" not found';
+			builder = extBuilder;
+		}
+		return builder.buildWithParameters(name, parameters);
 	}
 
 	/** Build a dynamic ref via the builder (for DYNAMIC_REF nodes, always incremental) */
-	public function buildDynamicRef(name:String, parameters:Map<String, Dynamic>):BuilderResult {
-		return (_builder : MultiAnimBuilder).buildWithParameters(name, parameters, null, null, true);
+	public function buildDynamicRef(name:String, parameters:Map<String, Dynamic>, ?externalRef:String):BuilderResult {
+		var builder:MultiAnimBuilder = cast _builder;
+		if (externalRef != null) {
+			var extBuilder = @:privateAccess builder.multiParserResult?.imports?.get(externalRef);
+			if (extBuilder == null) throw 'buildDynamicRef: external reference "$externalRef" not found';
+			builder = extBuilder;
+		}
+		return builder.buildWithParameters(name, parameters, null, null, true);
 	}
 
 	/** Build a parameterized slot's children via the builder (for SLOT nodes with parameters in codegen).
@@ -292,6 +304,14 @@ class ProgrammableBuilder {
 				obj;
 			case PVFactory(factoryMethod): factoryMethod(settings);
 		};
+	}
+
+	/** Set placeholder objects on the underlying builder.
+	 *  Called by generated create()/createFrom() before constructing the instance. */
+	public function setPlaceholderObjects(placeholders:Null<Map<String, PlaceholderValues>>):Void {
+		if (_builder == null) return;
+		final builder:MultiAnimBuilder = cast _builder;
+		@:privateAccess builder.builderParams.placeholderObjects = placeholders;
 	}
 
 	/** Resolve a callback by name, returning a string result.

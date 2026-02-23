@@ -227,6 +227,18 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 	@:manim("test/examples/74-dynamicRefScope/dynamicRefScope.manim", "dynamicRefScope")
 	public var dynamicRefScope;
 
+	@:manim("test/examples/69-manimImport/manimImport.manim", "manimImport")
+	public var manimImport;
+
+	@:manim("test/examples/75-progressBarDemo/progressBarDemo.manim", "progressBar")
+	public var progressBar;
+
+	@:manim("test/examples/75-progressBarDemo/progressBarDemo.manim", "progressBarBelow")
+	public var progressBarBelow;
+
+	@:manim("test/examples/75-progressBarDemo/progressBarDemo.manim", "progressBarInside")
+	public var progressBarInside;
+
 	@:manim("test/examples/78-characterSheetDemo/characterSheetDemo.manim", "characterSheetDemo")
 	public var characterSheetDemo;
 

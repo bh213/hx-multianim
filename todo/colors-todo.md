@@ -180,29 +180,36 @@ static function asColorInt(sv:SettingValue):Null<Int> {
 
 ## Verification: Color Usage by Context
 
-Full audit of how colors flow through every subsystem. The convention throughout is **0xRRGGBB** (24-bit, no alpha) as the internal color format, with `addAlphaIfNotPresent()` applied only where Heaps APIs need 32-bit AARRGGBB.
+Full audit of how colors flow through every subsystem, verified against Heaps 2.1.0 source.
+
+**Key Heaps insight**: Most Heaps APIs extract RGB from lower 24 bits and handle alpha separately. Only `Vector4.setColor()` extracts alpha from the top byte. This means `addAlphaIfNotPresent()` is only truly needed for `Vector4.setColor()` call sites.
 
 ### `addAlphaIfNotPresent()` consistency
 
-| Context | Called? | Correct? | Notes |
-|---------|---------|----------|-------|
-| `Tile.fromColor` (bitmap generated) | YES | OK | Builder line 1435, 2130 |
-| Graphics shapes (rect, circle, line, polygon, etc.) | YES | OK | Builder lines 2414-2501 |
-| Pixel shapes (line, rect, pixel) | YES | OK | Builder lines 2365-2382 |
-| Tint (`@tint`) | YES | OK | Builder line 3836, codegen inlines check |
-| Autotile demo tiles | YES | OK | Builder lines 4736-4737 |
-| `ReplacePaletteShader` (replaceColor filter) | YES | OK | Shader constructor lines 55, 57 |
-| `PixelOutline` — `outlineColor` | NO | OK | Shader param is `Vec3` — alpha byte ignored |
-| `PixelOutline` — `inlineColor` | NO | **BUG** | Shader param is `Vec4`, alpha=0 makes color invisible |
-| Outline filter | NO | OK | Heaps `h2d.filter.Outline` uses RGB only internally |
-| Glow filter | NO | OK | Heaps Glow: separate `alpha` parameter |
-| DropShadow filter | NO | OK | Heaps DropShadow: separate `alpha` parameter |
-| Text color (builder) | NO | OK | `h2d.Text.textColor` is RGB-only property |
-| Text color (codegen) | NO | OK | Same — assigned directly, alpha irrelevant |
-| Particle colorCurve | NO | OK | `lerpColor()` is RGB-only; alpha via separate fadeIn/fadeOut |
-| AnimatedPath colorCurve | NO | OK | Same `lerpColor()` pattern; alpha via separate alphaCurve |
+| Context | Called? | Needed? | Why (verified in Heaps source) |
+|---------|---------|---------|-------------------------------|
+| `Tile.fromColor` (bitmap generated) | YES | **NO** | `Texture.fromColor` does `color & 0xFFFFFF`, alpha defaults to `1.0` — top byte discarded |
+| Graphics `beginFill` / `setColor` | YES | **NO** | Extracts RGB via `(color >> N) & 0xFF`, alpha is separate param |
+| Graphics `lineStyle` | YES | **NO** | Same RGB extraction pattern, separate alpha param |
+| Pixel shapes (line, rect, pixel) | YES | **NO** | Uses Graphics internally — same pattern |
+| Tint (`@tint`) — `Vector4.setColor()` | YES | **YES** | `Vector4.setColor` extracts `(c >>> 24) / 255` as alpha |
+| Autotile demo tiles | YES | **NO** | Goes through `Tile.fromColor` |
+| `ReplacePaletteShader` — `Vector4.setColor()` | YES | **YES** | Same Vec4 path — alpha used in shader comparison |
+| `PixelOutline` — `outlineColor` (Vec3) | NO | **NO** | `Vector.setColor` (Vec3 version) has NO alpha field — only RGB |
+| `PixelOutline` — `inlineColor` (Vec4) | NO | **YES — BUG** | `Vector4.setColor` extracts alpha; shader uses `output.color = inlineColor` (Vec4 with alpha) |
+| Outline filter | NO | **NO** | `h3d.pass.Outline`: `shader.color.setColor(color)` then `.a = alpha` — alpha overwritten |
+| Glow filter | NO | **NO** | Same pattern: color.setColor + color.a override |
+| DropShadow filter | NO | **NO** | Same pattern: color.setColor + color.a override |
+| Text color (builder) | NO | **NO** | `h2d.Text.textColor` documented as "RGB color. Alpha value is ignored." |
+| Text color (codegen) | NO | **NO** | Same |
+| Text `dropShadow.color` | NO | **NO** | `color.setColor(ds.color)` then `color.a = ds.alpha * oldA` — alpha overwritten |
+| Particle colorCurve | NO | **NO** | `lerpColor()` is RGB-only; runtime extracts via `(col >> N) & 0xFF` |
+| AnimatedPath colorCurve | NO | **NO** | Same `lerpColor()` pattern |
 
-**Action needed:** Fix `PixelOutline` `InlineColor` mode — add `addAlphaIfNotPresent()` before `setColor()` on `inlineColor`.
+**Bugs:**
+- Fix `PixelOutline` `InlineColor` mode — add `addAlphaIfNotPresent()` before `setColor()` on `inlineColor` (Vec4).
+
+**Cleanup opportunity:** `addAlphaIfNotPresent()` calls on `Tile.fromColor`, `Graphics`, and pixel shapes are harmless but unnecessary — Heaps ignores the top byte in all these APIs. Could simplify if desired, but low priority.
 
 ### Particle colorCurve
 
@@ -234,6 +241,12 @@ Full audit of how colors flow through every subsystem. The convention throughout
 - **Tile.fromColor**: Codegen generates the call; runtime builder applies `addAlphaIfNotPresent()`. Need to verify codegen path also applies it.
 - **Filter expressions**: `rvToExpr(color)` generates raw int literal — no alpha handling. OK for Outline/Glow/DropShadow (Heaps handles it). PixelOutline inlineColor would need the same fix in codegen.
 - **Text color**: Codegen assigns `textColor = $colorExpr` directly. OK — h2d.Text uses RGB only.
+
+### Text `dropShadow.color` note
+
+`dropShadowColor` is a **static Int**, not a `ReferenceableValue`. Parsed via `tryParseColor()` (MacroManimParser.hx:2751), not `parseColorOrReference()` — so `$param` references and `palette()` are not supported. Default is `0` (line 2716). The color is assigned directly to `h2d.Text.dropShadow.color` (builder line 3024, codegen lines 1939/4132) without masking or `addAlphaIfNotPresent()`. Works because Heaps treats it as RGB. However:
+- 8-digit hex colors will have wrong RGB (same main bug)
+- Cannot use dynamic color parameters — only literal colors
 
 ### Text color masking inconsistency
 

@@ -19,6 +19,7 @@ typedef TestResult = {
 	var ?macroPassed:Bool;
 	var ?threshold:Float;
 	var ?macroThreshold:Float;
+	var ?builderVsMacroSimilarity:Float;
 }
 
 class HtmlReportGenerator {
@@ -65,6 +66,12 @@ class HtmlReportGenerator {
 			}
 		}
 
+		// Compute direct builder-vs-macro similarity
+		var bvmSimilarity:Null<Float> = null;
+		if (macroPath != null && actualPath != null && FileSystem.exists(actualPath) && FileSystem.exists(macroPath)) {
+			bvmSimilarity = computeSimilarity(actualPath, macroPath);
+		}
+
 		// Generate diff images for pairs that differ
 		var diffBase = actualPath != null ? actualPath.replace("_actual.png", "") : null;
 		if (diffBase != null) {
@@ -72,8 +79,7 @@ class HtmlReportGenerator {
 				generateDiffImage(actualPath, referencePath, diffBase + "_diff_bref.png");
 			if (macroPath != null && macroSimilarity != null && macroSimilarity < 1.0 && FileSystem.exists(macroPath) && FileSystem.exists(referencePath))
 				generateDiffImage(macroPath, referencePath, diffBase + "_diff_mref.png");
-			if (macroPath != null && actualPath != null && FileSystem.exists(actualPath) && FileSystem.exists(macroPath)
-				&& !(similarity == 1.0 && macroSimilarity != null && macroSimilarity == 1.0))
+			if (bvmSimilarity != null && bvmSimilarity < 1.0)
 				generateDiffImage(actualPath, macroPath, diffBase + "_diff_bm.png");
 		}
 
@@ -91,6 +97,7 @@ class HtmlReportGenerator {
 			macroPassed: macroPassed,
 			threshold: threshold,
 			macroThreshold: macroThreshold,
+			builderVsMacroSimilarity: bvmSimilarity,
 		});
 	}
 
@@ -466,9 +473,7 @@ class HtmlReportGenerator {
 
 		// Builder vs Macro mismatch errors section
 		var macroMismatches = results.filter(function(r) {
-			if (r.macroPath == null) return false;
-			if (!FileSystem.exists(r.actualPath) || !FileSystem.exists(r.macroPath)) return false;
-			return !(r.similarity == 1.0 && r.macroSimilarity != null && r.macroSimilarity == 1.0);
+			return r.builderVsMacroSimilarity != null && r.builderVsMacroSimilarity < 1.0;
 		});
 		if (macroMismatches.length > 0) {
 			html.add('    <div class="failed-links" style="border-left-color:#b71c1c;background:#ffcdd2;">\n');
@@ -588,8 +593,7 @@ class HtmlReportGenerator {
 				var dpRel = FileSystem.exists(dp) ? makeRelativePath(dp) : "";
 				diffLinks.push('<a class="diff-link" onclick="showDiff(\'${macRel}\',\'${refRel}\',\'Macro\',\'Reference\',\'${dpRel}\')">Diff: Macro vs Ref</a>');
 			}
-			if (hasMacro && FileSystem.exists(result.actualPath) && FileSystem.exists(result.macroPath)
-				&& !(result.similarity == 1.0 && result.macroSimilarity != null && result.macroSimilarity == 1.0)) {
+			if (result.builderVsMacroSimilarity != null && result.builderVsMacroSimilarity < 1.0) {
 				var actRel = makeRelativePath(result.actualPath);
 				var macRel = makeRelativePath(result.macroPath);
 				var dp = diffBase + "_diff_bm.png";
@@ -796,8 +800,7 @@ class HtmlReportGenerator {
 			parts.push('FAILED: ${failed}/${results.length} visual tests failed [${failedNames.join(", ")}]');
 		}
 		var macroMismatchCount = results.filter(function(r) {
-			if (r.macroPath == null) return false;
-			return !(r.similarity == 1.0 && r.macroSimilarity != null && r.macroSimilarity == 1.0);
+			return r.builderVsMacroSimilarity != null && r.builderVsMacroSimilarity < 1.0;
 		}).length;
 		if (macroMismatchCount > 0) {
 			parts.push('ERROR: ${macroMismatchCount} builder vs macro mismatches');
@@ -832,8 +835,7 @@ class HtmlReportGenerator {
 
 		// Builder vs Macro mismatches
 		var macroMismatchNames = results.filter(function(r) {
-			if (r.macroPath == null) return false;
-			return !(r.similarity == 1.0 && r.macroSimilarity != null && r.macroSimilarity == 1.0);
+			return r.builderVsMacroSimilarity != null && r.builderVsMacroSimilarity < 1.0;
 		}).map(r -> r.testName);
 		if (macroMismatchNames.length > 0) hasFailures = true;
 
@@ -918,6 +920,36 @@ class HtmlReportGenerator {
 			return true;
 		} catch (e:Dynamic) {
 			return false;
+		}
+	}
+
+	/**
+	 * Compute pixel similarity between two images (0.0 to 1.0).
+	 */
+	public static function computeSimilarity(path1:String, path2:String):Float {
+		if (!FileSystem.exists(path1) || !FileSystem.exists(path2)) return 0.0;
+		try {
+			var bytes1 = File.getBytes(path1);
+			var bytes2 = File.getBytes(path2);
+			var p1 = hxd.res.Any.fromBytes(path1, bytes1).toImage().getPixels();
+			var p2 = hxd.res.Any.fromBytes(path2, bytes2).toImage().getPixels();
+			if (p1.width != p2.width || p1.height != p2.height) return 0.0;
+			var totalPixels = p1.width * p1.height;
+			var matchingPixels = 0;
+			for (x in 0...p1.width) {
+				for (y in 0...p1.height) {
+					var c1 = p1.getPixel(x, y);
+					var c2 = p2.getPixel(x, y);
+					var dr = Std.int(Math.abs(((c1 >> 16) & 0xFF) - ((c2 >> 16) & 0xFF)));
+					var dg = Std.int(Math.abs(((c1 >> 8) & 0xFF) - ((c2 >> 8) & 0xFF)));
+					var db = Std.int(Math.abs((c1 & 0xFF) - (c2 & 0xFF)));
+					var da = Std.int(Math.abs(((c1 >> 24) & 0xFF) - ((c2 >> 24) & 0xFF)));
+					if (Math.max(da, Math.max(dr, Math.max(dg, db))) < 5) matchingPixels++;
+				}
+			}
+			return matchingPixels / totalPixels;
+		} catch (e:Dynamic) {
+			return 0.0;
 		}
 	}
 

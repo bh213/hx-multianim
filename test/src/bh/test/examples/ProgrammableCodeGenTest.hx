@@ -678,16 +678,16 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 				var builderSim = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
 				var macroSim = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
 
-				var threshold = 0.98;
-				var builderOk = builderSim > threshold;
-				var macroOk = macroSim > threshold;
+				var threshold = 1.0;
+				var builderOk = builderSim >= threshold;
+				var macroOk = macroSim >= threshold;
 
 				HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath, builderOk && macroOk,
 					builderSim, null, macroPath, macroSim, macroOk, threshold, threshold);
 				HtmlReportGenerator.generateReport();
 
-				Assert.isTrue(builderOk, 'Builder should roughly match reference (similarity: ${Math.round(builderSim * 10000) / 100}%)');
-				Assert.isTrue(macroOk, 'Macro should roughly match reference (similarity: ${Math.round(macroSim * 10000) / 100}%)');
+				Assert.isTrue(builderOk, 'Builder should match reference (similarity: ${Math.round(builderSim * 10000) / 100}%)');
+				Assert.isTrue(macroOk, 'Macro should match reference (similarity: ${Math.round(macroSim * 10000) / 100}%)');
 
 				VisualTestBase.pendingVisualTests--;
 				async.done();
@@ -955,7 +955,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	public function test01_HexGridPixels(async:utest.Async):Void {
 		setupTest(1, "hexGridPixels");
 		builderAndMacroScreenshotAndCompare("test/examples/1-hexGridPixels/hexGridPixels.manim", "hexGridPixels",
-			() -> createMp().hexGridPixels.create(), async, null, null, null, 0.999);
+			() -> createMp().hexGridPixels.create(), async);
 	}
 
 	// ==================== TextDemo: macro comparison ====================
@@ -1107,8 +1107,65 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	@Test
 	public function test05_StateAnimDemo(async:utest.Async):Void {
 		setupTest(5, "stateAnimDemo");
-		builderAndMacroScreenshotAndCompare("test/examples/5-stateAnimDemo/stateAnimDemo.manim", "stateAnimDemo",
-			() -> createMp().stateAnimDemo.create(), async, null, null, null, 0.97);
+		VisualTestBase.pendingVisualTests++;
+		async.setTimeout(15000);
+
+		final animFilePath = "test/examples/5-stateAnimDemo/stateAnimDemo.manim";
+		final sizeX = 1280;
+		final sizeY = 720;
+
+		// Phase 1: builder — build, freeze AnimSMs, screenshot
+		clearScene();
+		var builderResult = buildAndAddToScene(animFilePath, "stateAnimDemo");
+		if (builderResult == null) {
+			Assert.fail("Failed to build stateAnimDemo from builder");
+			VisualTestBase.pendingVisualTests--;
+			async.done();
+			return;
+		}
+
+		for (a in findAllAnimSM(builderResult.object))
+			a.externallyDriven = true;
+
+		waitForUpdate(function(dt:Float) {
+			var builderPath = getActualImagePath();
+			var builderSuccess = screenshot(builderPath, sizeX, sizeY);
+
+			// Phase 2: macro — create, freeze AnimSMs, screenshot
+			clearScene();
+			var macroRoot = createMp().stateAnimDemo.create();
+			s2d.addChild(macroRoot);
+
+			for (a in findAllAnimSM(macroRoot))
+				a.externallyDriven = true;
+
+			if (testTitle != null && testTitle.length > 0)
+				addTitleOverlay();
+
+			waitForUpdate(function(dt2:Float) {
+				var macroPath = 'test/screenshots/stateAnimDemo_macro.png';
+				var referencePath = getReferenceImagePath();
+				var macroSuccess = screenshot(macroPath, sizeX, sizeY);
+
+				var builderSim = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
+				var macroSim = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
+
+				var threshold = 1.0;
+				var builderOk = builderSim >= threshold;
+				var macroOk = macroSim >= threshold;
+
+				HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath, builderOk && macroOk, builderSim, null,
+					macroPath, macroSim, macroOk, threshold, threshold);
+				HtmlReportGenerator.generateReport();
+
+				Assert.isTrue(builderOk,
+					'Builder should match reference (similarity: ${Math.round(builderSim * 10000) / 100}%)');
+				Assert.isTrue(macroOk, 'Macro should match reference (similarity: ${Math.round(macroSim * 10000) / 100}%)');
+
+				VisualTestBase.pendingVisualTests--;
+				async.done();
+			});
+		});
 	}
 
 	// ==================== PaletteDemo: macro comparison ====================
@@ -1214,9 +1271,9 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 				var builderSim = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
 				var macroSim = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
 
-				var threshold = 0.99;
-				var builderOk = builderSim > threshold;
-				var macroOk = macroSim > threshold;
+				var threshold = 1.0;
+				var builderOk = builderSim >= threshold;
+				var macroOk = macroSim >= threshold;
 
 				HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath, builderOk && macroOk, builderSim, null,
 					macroPath, macroSim, macroOk, threshold, threshold);
@@ -1259,7 +1316,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		async.setTimeout(15000);
 		final animFilePath = "test/examples/24-autotileCross/autotileCross.manim";
 		final scale = 4.0;
-		final threshold = 0.98;
+		final threshold = 1.0;
 		final autotileConfigs:Array<{name:String, grid:Array<Array<Int>>, x:Float, y:Float, background:Bool}> = [
 			{name: "crossColored", grid: AutotileTestHelper.SIMPLE_RECT_GRID, x: 80.0, y: 376.0, background: false},
 			{name: "crossWater", grid: AutotileTestHelper.SIMPLE_RECT_GRID, x: 520.0, y: 376.0, background: true}
@@ -1295,8 +1352,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 				var builderSim = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
 				var macroSim = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
-				var builderOk = builderSim > threshold;
-				var macroOk = macroSim > threshold;
+				var builderOk = builderSim >= threshold;
+				var macroOk = macroSim >= threshold;
 
 				HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath, builderOk && macroOk,
 					builderSim, null, macroPath, macroSim, macroOk, threshold, threshold);
@@ -1320,7 +1377,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		async.setTimeout(15000);
 		final animFilePath = "test/examples/25-autotileBlob47/autotileBlob47.manim";
 		final scale = 2.0;
-		final threshold = 0.98;
+		final threshold = 1.0;
 		final autotileConfigs:Array<{name:String, grid:Array<Array<Int>>, x:Float, y:Float, background:Bool}> = [
 			{name: "blob47Colored", grid: AutotileTestHelper.LARGE_SEA_GRID, x: 40.0, y: 326.0, background: false},
 			{name: "blob47Water", grid: AutotileTestHelper.LARGE_SEA_GRID, x: 684.0, y: 326.0, background: true}
@@ -1356,8 +1413,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 				var builderSim = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
 				var macroSim = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
-				var builderOk = builderSim > threshold;
-				var macroOk = macroSim > threshold;
+				var builderOk = builderSim >= threshold;
+				var macroOk = macroSim >= threshold;
 
 				HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath, builderOk && macroOk,
 					builderSim, null, macroPath, macroSim, macroOk, threshold, threshold);
@@ -1381,7 +1438,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		async.setTimeout(15000);
 		final animFilePath = "test/examples/28-autotileDemoSyntax/autotileDemoSyntax.manim";
 		final scale = 1.0;
-		final threshold = 0.98;
+		final threshold = 1.0;
 		final autotileConfigs:Array<{name:String, grid:Array<Array<Int>>, x:Float, y:Float, background:Bool}> = [
 			{name: "simple13Demo", grid: AutotileTestHelper.SIMPLE_RECT_GRID, x: 400.0, y: 100.0, background: false}
 		];
@@ -1416,8 +1473,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 				var builderSim = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
 				var macroSim = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
-				var builderOk = builderSim > threshold;
-				var macroOk = macroSim > threshold;
+				var builderOk = builderSim >= threshold;
+				var macroOk = macroSim >= threshold;
 
 				HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath, builderOk && macroOk,
 					builderSim, null, macroPath, macroSim, macroOk, threshold, threshold);
@@ -1441,7 +1498,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		async.setTimeout(15000);
 		final animFilePath = "test/examples/29-forgottenPlainsTerrain/forgottenPlainsTerrain.manim";
 		final scale = 4.0;
-		final threshold = 0.98;
+		final threshold = 1.0;
 		final autotileConfigs:Array<{name:String, grid:Array<Array<Int>>, x:Float, y:Float, background:Bool}> = [
 			{name: "grassTerrain", grid: AutotileTestHelper.CROSS_HOLE_GRID, x: 40.0, y: 360.0, background: false},
 			{name: "grassDemo", grid: AutotileTestHelper.CROSS_HOLE_GRID, x: 320.0, y: 360.0, background: false}
@@ -1477,8 +1534,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 				var builderSim = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
 				var macroSim = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
-				var builderOk = builderSim > threshold;
-				var macroOk = macroSim > threshold;
+				var builderOk = builderSim >= threshold;
+				var macroOk = macroSim >= threshold;
 
 				HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath, builderOk && macroOk,
 					builderSim, null, macroPath, macroSim, macroOk, threshold, threshold);
@@ -1502,7 +1559,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		async.setTimeout(15000);
 		final animFilePath = "test/examples/30-blob47Fallback/blob47Fallback.manim";
 		final scale = 2.0;
-		final threshold = 0.98;
+		final threshold = 1.0;
 		final autotileConfigs:Array<{name:String, grid:Array<Array<Int>>, x:Float, y:Float, background:Bool}> = [
 			{name: "blob47Demo", grid: AutotileTestHelper.LARGE_SEA_GRID, x: 20.0, y: 304.0, background: false},
 			{name: "blob47Grass", grid: AutotileTestHelper.LARGE_SEA_GRID, x: 320.0, y: 304.0, background: false}
@@ -1538,8 +1595,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 				var builderSim = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
 				var macroSim = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
-				var builderOk = builderSim > threshold;
-				var macroOk = macroSim > threshold;
+				var builderOk = builderSim >= threshold;
+				var macroOk = macroSim >= threshold;
 
 				HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath, builderOk && macroOk,
 					builderSim, null, macroPath, macroSim, macroOk, threshold, threshold);
@@ -1706,11 +1763,11 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 					var builderSim = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
 					var macroSim = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
-					var builderOk = builderSim > 0.99;
-					var macroOk = macroSim > 0.99;
+					var builderOk = builderSim >= 1.0;
+					var macroOk = macroSim >= 1.0;
 
 					HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath, builderOk && macroOk,
-						builderSim, null, macroPath, macroSim, macroOk, 0.99, 0.99);
+						builderSim, null, macroPath, macroSim, macroOk, 1.0, 1.0);
 					HtmlReportGenerator.generateReport();
 
 					Assert.isTrue(builderOk, 'Builder should match reference (${Math.round(builderSim * 10000) / 100}%)');
@@ -1809,11 +1866,11 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 					var builderSim = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
 					var macroSim = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
-					var builderOk = builderSim > 0.99;
-					var macroOk = macroSim > 0.99;
+					var builderOk = builderSim >= 1.0;
+					var macroOk = macroSim >= 1.0;
 
 					HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath, builderOk && macroOk,
-						builderSim, null, macroPath, macroSim, macroOk, 0.99, 0.99);
+						builderSim, null, macroPath, macroSim, macroOk, 1.0, 1.0);
 					HtmlReportGenerator.generateReport();
 
 					Assert.isTrue(builderOk, 'Builder should match reference (${Math.round(builderSim * 10000) / 100}%)');
@@ -1922,11 +1979,11 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 					var builderSim = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
 					var macroSim = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
-					var builderOk = builderSim > 0.98;
-					var macroOk = macroSim > 0.98;
+					var builderOk = builderSim >= 1.0;
+					var macroOk = macroSim >= 1.0;
 
 					HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath, builderOk && macroOk,
-						builderSim, null, macroPath, macroSim, macroOk, 0.98, 0.98);
+						builderSim, null, macroPath, macroSim, macroOk, 1.0, 1.0);
 					HtmlReportGenerator.generateReport();
 
 					Assert.isTrue(builderOk, 'Builder should match reference (${Math.round(builderSim * 10000) / 100}%)');
@@ -2032,11 +2089,11 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 					var builderSim = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
 					var macroSim = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
-					var builderOk = builderSim > 0.99;
-					var macroOk = macroSim > 0.99;
+					var builderOk = builderSim >= 1.0;
+					var macroOk = macroSim >= 1.0;
 
 					HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath, builderOk && macroOk,
-						builderSim, null, macroPath, macroSim, macroOk, 0.99, 0.99);
+						builderSim, null, macroPath, macroSim, macroOk, 1.0, 1.0);
 					HtmlReportGenerator.generateReport();
 
 					Assert.isTrue(builderOk, 'Builder should match reference (${Math.round(builderSim * 10000) / 100}%)');
@@ -2837,14 +2894,14 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	@Test
 	public function test68_FiltersAdvanced(async:utest.Async):Void {
-		simpleMacroTest(68, "filtersAdvanced", () -> createMp().filtersAdvanced.create(), async);
+		simpleMacroTest(68, "filtersAdvanced", () -> createMp().filtersAdvanced.create(), async, null, null, null, 0.99);
 	}
 
 	// ==================== Manim import: external reference ====================
 
 	@Test
 	public function test69_ManimImport(async:utest.Async):Void {
-		simpleTest(69, "manimImport", async);
+		simpleMacroTest(69, "manimImport", () -> createMp().manimImport.create(), async);
 	}
 
 	// ==================== Indexed named elements: #name[$i] ====================
@@ -3186,16 +3243,19 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	public function test75_ProgressBarDemo(async:utest.Async):Void {
 		setupTest(75, "progressBarDemo");
 		VisualTestBase.pendingVisualTests++;
-		async.setTimeout(10000);
-		clearScene();
+		async.setTimeout(15000);
 
+		final col1Values = [0, 10, 25, 40, 50, 60, 75, 85, 95, 100];
+		final col2Values = [0, 15, 33, 50, 66, 80, 95, 100];
+		final col3Values = [0, 5, 20, 35, 50, 65, 80, 90, 95, 100];
+
+		// Phase 1: builder
+		clearScene();
 		try {
 			final fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/75-progressBarDemo/progressBarDemo.manim"));
 			final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
 			final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "progressBarDemo.manim");
 
-			// Column 1: progressBar (text beside) — 10 values
-			final col1Values = [0, 10, 25, 40, 50, 60, 75, 85, 95, 100];
 			for (i in 0...col1Values.length) {
 				final bar = bh.ui.UIMultiAnimProgressBar.create(builder, "progressBar", col1Values[i]);
 				bar.doRedraw();
@@ -3203,9 +3263,6 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 				obj.setPosition(10, 10 + i * 24);
 				s2d.addChild(obj);
 			}
-
-			// Column 2: progressBarBelow (label + value below) — 8 values
-			final col2Values = [0, 15, 33, 50, 66, 80, 95, 100];
 			for (i in 0...col2Values.length) {
 				final bar = bh.ui.UIMultiAnimProgressBar.create(builder, "progressBarBelow", col2Values[i]);
 				bar.doRedraw();
@@ -3213,9 +3270,6 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 				obj.setPosition(260, 10 + i * 28);
 				s2d.addChild(obj);
 			}
-
-			// Column 3: progressBarInside (text centered inside) — 10 values
-			final col3Values = [0, 5, 20, 35, 50, 65, 80, 90, 95, 100];
 			for (i in 0...col3Values.length) {
 				final bar = bh.ui.UIMultiAnimProgressBar.create(builder, "progressBarInside", col3Values[i]);
 				bar.doRedraw();
@@ -3223,10 +3277,9 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 				obj.setPosition(400, 10 + i * 22);
 				s2d.addChild(obj);
 			}
-
 			addTitleOverlay();
 		} catch (e:Dynamic) {
-			var msg = 'Progress bar test threw: $e';
+			var msg = 'Progress bar builder test threw: $e';
 			reportBuildFailure(msg);
 			Assert.fail(msg);
 			VisualTestBase.pendingVisualTests--;
@@ -3235,20 +3288,60 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		}
 
 		waitForUpdate(function(dt:Float) {
+			var builderPath = getActualImagePath();
+			var builderSuccess = screenshot(builderPath);
+
+			// Phase 2: codegen
+			clearScene();
 			try {
-				var actualPath = getActualImagePath();
-				var referencePath = getReferenceImagePath();
-				var success = screenshot(actualPath);
-				Assert.isTrue(success, 'Screenshot should be created at $actualPath');
-				if (success) {
-					var match = compareImages(actualPath, referencePath);
-					Assert.isTrue(match, 'Screenshot should match reference image');
+				final mp = createMp();
+				for (i in 0...col1Values.length) {
+					final obj = mp.progressBar.create(col1Values[i]);
+					obj.setPosition(10, 10 + i * 24);
+					s2d.addChild(obj);
 				}
+				for (i in 0...col2Values.length) {
+					final obj = mp.progressBarBelow.create(col2Values[i]);
+					obj.setPosition(260, 10 + i * 28);
+					s2d.addChild(obj);
+				}
+				for (i in 0...col3Values.length) {
+					final obj = mp.progressBarInside.create(col3Values[i]);
+					obj.setPosition(400, 10 + i * 22);
+					s2d.addChild(obj);
+				}
+				addTitleOverlay();
 			} catch (e:Dynamic) {
-				Assert.fail('Screenshot/compare threw: $e');
+				Assert.fail('Progress bar codegen threw: $e');
+				VisualTestBase.pendingVisualTests--;
+				async.done();
+				return;
 			}
-			VisualTestBase.pendingVisualTests--;
-			async.done();
+
+			waitForUpdate(function(dt2:Float) {
+				try {
+					var macroPath = 'test/screenshots/${testName}_macro.png';
+					var referencePath = getReferenceImagePath();
+					var macroSuccess = screenshot(macroPath);
+
+					var builderSimilarity = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
+					var macroSimilarity = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
+
+					HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath,
+						builderSimilarity >= 1.0 && macroSimilarity >= 1.0, builderSimilarity, null, macroPath, macroSimilarity,
+						macroSimilarity >= 1.0);
+					HtmlReportGenerator.generateReport();
+
+					Assert.isTrue(builderSimilarity >= 1.0,
+						'Builder should match reference (similarity: ${Math.round(builderSimilarity * 10000) / 100}%)');
+					Assert.isTrue(macroSimilarity >= 1.0,
+						'Macro should match reference (similarity: ${Math.round(macroSimilarity * 10000) / 100}%)');
+				} catch (e:Dynamic) {
+					Assert.fail('Screenshot/compare threw: $e');
+				}
+				VisualTestBase.pendingVisualTests--;
+				async.done();
+			});
 		});
 	}
 
@@ -3422,15 +3515,15 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	public function test78_CharacterSheetDemo(async:utest.Async):Void {
 		setupTest(78, "characterSheetDemo");
 		VisualTestBase.pendingVisualTests++;
-		async.setTimeout(10000);
-		clearScene();
+		async.setTimeout(15000);
 
+		// Phase 1: builder
+		clearScene();
 		try {
 			final fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/78-characterSheetDemo/characterSheetDemo.manim"));
 			final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
 			final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "characterSheetDemo.manim");
 
-			// Build with explicit parameters (mirroring game usage with MacroUtils.macroBuildWithParameters)
 			final params = new Map<String, Dynamic>();
 			params.set("hp", 75);
 			params.set("maxHp", 100);
@@ -3443,7 +3536,6 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 			params.set("xpMax", 100);
 			params.set("level", 3);
 
-			// Provide a placeholder for levelUpButton (like addButtonWithSingleBuilder in game)
 			final buttonObj = new h2d.Object();
 			final result = builder.buildWithParameters("characterSheetDemo", params, {
 				placeholderObjects: [
@@ -3458,7 +3550,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 			s2d.addChild(result.object);
 			addTitleOverlay();
 		} catch (e:Dynamic) {
-			var msg = 'Character sheet demo test threw: $e';
+			var msg = 'Character sheet builder test threw: $e';
 			reportBuildFailure(msg);
 			Assert.fail(msg);
 			VisualTestBase.pendingVisualTests--;
@@ -3467,20 +3559,56 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		}
 
 		waitForUpdate(function(dt:Float) {
+			var builderPath = getActualImagePath();
+			var builderSuccess = screenshot(builderPath);
+
+			// Phase 2: codegen
+			clearScene();
 			try {
-				var actualPath = getActualImagePath();
-				var referencePath = getReferenceImagePath();
-				var success = screenshot(actualPath);
-				Assert.isTrue(success, 'Screenshot should be created at $actualPath');
-				if (success) {
-					var match = compareImages(actualPath, referencePath);
-					Assert.isTrue(match, 'Screenshot should match reference image');
-				}
+				final mp = createMp();
+				final buttonObj = new h2d.Object();
+				final instance = mp.characterSheetDemo.createFrom({
+					hp: 75, maxHp: 100, mp: 30, maxMp: 50,
+					strStat: 12, dexStat: 9, intStat: 7,
+					xp: 60, xpMax: 100, level: 3
+				}, ["levelUpButton" => PVObject(buttonObj)]);
+
+				// Root pos: 50, 80 from .manim is not applied in codegen (caller sets position)
+				instance.x = 50;
+				instance.y = 80;
+				s2d.addChild(instance);
+				addTitleOverlay();
 			} catch (e:Dynamic) {
-				Assert.fail('Screenshot/compare threw: $e');
+				Assert.fail('Character sheet codegen threw: $e');
+				VisualTestBase.pendingVisualTests--;
+				async.done();
+				return;
 			}
-			VisualTestBase.pendingVisualTests--;
-			async.done();
+
+			waitForUpdate(function(dt2:Float) {
+				try {
+					var macroPath = 'test/screenshots/${testName}_macro.png';
+					var referencePath = getReferenceImagePath();
+					var macroSuccess = screenshot(macroPath);
+
+					var builderSimilarity = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
+					var macroSimilarity = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
+
+					HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath,
+						builderSimilarity >= 1.0 && macroSimilarity >= 1.0, builderSimilarity, null, macroPath, macroSimilarity,
+						macroSimilarity >= 1.0);
+					HtmlReportGenerator.generateReport();
+
+					Assert.isTrue(builderSimilarity >= 1.0,
+						'Builder should match reference (similarity: ${Math.round(builderSimilarity * 10000) / 100}%)');
+					Assert.isTrue(macroSimilarity >= 1.0,
+						'Macro should match reference (similarity: ${Math.round(macroSimilarity * 10000) / 100}%)');
+				} catch (e:Dynamic) {
+					Assert.fail('Screenshot/compare threw: $e');
+				}
+				VisualTestBase.pendingVisualTests--;
+				async.done();
+			});
 		});
 	}
 
@@ -3704,7 +3832,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	@Test
 	public function test83_Slot2dIndex(async:utest.Async):Void {
-		simpleMacroTest(83, "slot2dIndex", () -> createMp().slot2dIndex.create(), async, null, null, 4.0, 0.999);
+		simpleMacroTest(83, "slot2dIndex", () -> createMp().slot2dIndex.create(), async, null, null, 4.0);
 	}
 
 	@Test
@@ -3803,14 +3931,14 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 				try {
 					var macroPath = 'test/screenshots/${testName}_macro.png';
 					var referencePath = getReferenceImagePath();
-					var threshold = 0.99;
+					var threshold = 1.0;
 
 					var macroSuccess = screenshot(macroPath, 1280, 720);
 
 					var builderSimilarity = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
-					var builderPassed = builderSuccess ? builderSimilarity > threshold : false;
+					var builderPassed = builderSuccess ? builderSimilarity >= threshold : false;
 					var macroSimilarity = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
-					var macroPassed = macroSuccess ? macroSimilarity > threshold : false;
+					var macroPassed = macroSuccess ? macroSimilarity >= threshold : false;
 
 					HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath,
 						builderPassed && macroPassed, builderSimilarity, null, macroPath,

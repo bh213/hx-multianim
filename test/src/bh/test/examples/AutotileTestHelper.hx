@@ -63,7 +63,7 @@ class AutotileTestHelper {
 	/**
 	 * Build combined test: programmable element + autotile terrain.
 	 * Tests both regular element building and buildAutotile().
-	 * @param threshold Optional similarity threshold (default 0.9999 = 99.99%). Use lower values for tests with GPU-rendered text.
+	 * @param threshold Optional similarity threshold (default 1.0 = 100%).
 	 * @param scale Optional scale factor for both element and autotile (default 4.0)
 	 */
 	public function buildCombinedAutotileTest(animFilePath:String, elementName:String, autotileName:String,
