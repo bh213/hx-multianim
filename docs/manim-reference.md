@@ -287,7 +287,11 @@ Define with `hex: flat(w, h)` or `hex: pointy(w, h)` (or named: `hex: #name ...`
 | `$hex.corner(index, scale)` | Hex polygon corner (0-5) |
 | `$hex.edge(direction, scale)` | Hex polygon edge midpoint |
 | `$hex.pixel(x, y)` | Snap pixel to nearest hex center |
+| `$hex.cube(q,r,s).hexCorner(i, f)` | Corner relative to specific hex cell |
+| `$hex.cube(q,r,s).hexEdge(d, f)` | Edge midpoint relative to specific hex cell |
 | `$hex.width`, `$hex.height` | Cell dimensions |
+
+All hex coordinate types support param-dependent values in both builder and codegen (e.g., `$hex.offset($col, $row, even)`).
 
 ### Layout Positioning
 `layout(layoutName)` or `layout(layoutName, $index)` — position from named layout definition.

@@ -48,6 +48,12 @@ class AnimationSM extends h2d.Object {
 	**/
 	public var externallyDriven:Bool;
 
+	/**
+		Replaceable random function for deterministic testing.
+		Used by RandomPointEvent. Default: Math.random.
+	**/
+	public var randomFunc:() -> Float = Math.random;
+
 	var speed:Float = 1.0;
 	var elapsedTime:Float = 0;
 
@@ -219,8 +225,8 @@ class AnimationSM extends h2d.Object {
 						case PointEvent(name, point):
 							onAnimationEvent(PointEvent(name, point));
 						case RandomPointEvent(name, point, randomRadius):
-							final randomAngle = Math.random() * 2 * Math.PI;
-							final r = Math.random() * randomRadius;
+							final randomAngle = randomFunc() * 2 * Math.PI;
+							final r = randomFunc() * randomRadius;
 							var randomPoint = point.clone();
 							randomPoint.x += Std.int(r * Math.cos(randomAngle));
 							randomPoint.y += Std.int(r * Math.sin(randomAngle));

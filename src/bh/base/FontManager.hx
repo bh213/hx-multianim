@@ -15,6 +15,8 @@ class FontManager {
 		}
 		if (offsetX != 0 || offsetY != 0) {
 			font.setOffset(offsetX, offsetY);
+			@:privateAccess font.baseLine +=offsetY;
+			@:privateAccess font.lineHeight +=offsetY;
 		}
 		fontRegistry.set(lowerName, font);
 	}

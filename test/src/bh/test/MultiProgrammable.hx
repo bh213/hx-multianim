@@ -250,4 +250,16 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/85-fontHeight/fontHeight.manim", "fontHeight")
 	public var fontHeight;
+
+	@:manim("test/examples/63-finalVarDemo/finalVarDemo.manim", "finalVarDemo")
+	public var finalVarDemo;
+
+	@:manim("test/examples/76-comboUnconditional/comboUnconditional.manim", "comboUnconditional")
+	public var comboUnconditional;
+
+	@:manim("test/examples/86-layoutAlign/layoutAlign.manim", "layoutAlign")
+	public var layoutAlign;
+
+	@:manim("test/examples/87-codegenHexRuntime/codegenHexRuntime.manim", "codegenHexRuntime")
+	public var hexRuntime;
 }

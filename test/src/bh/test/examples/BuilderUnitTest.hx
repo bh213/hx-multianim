@@ -2810,4 +2810,92 @@ class BuilderUnitTest extends BuilderTestBase {
 		// 3 red bitmaps (all iterations) + 2 yellow bitmaps (iterations 0, 2)
 		Assert.equals(5, bitmaps.length);
 	}
+
+	// ==================== Incremental scale/alpha/filter expression tracking ====================
+
+	@Test
+	public function testIncrementalScaleTrackedOnSetParameter():Void {
+		final result = buildFromSource("
+			#test programmable(s:float=1.0) {
+				bitmap(generated(color(50, 50, #ff0000))) {
+					scale: $s
+					pos: 0, 0
+				}
+			}
+		", "test", null, Incremental);
+		Assert.notNull(result);
+		final bmp = result.object.getChildAt(0);
+		Assert.floatEquals(1.0, bmp.scaleX);
+		Assert.floatEquals(1.0, bmp.scaleY);
+
+		result.setParameter("s", 0.5);
+		Assert.floatEquals(0.5, bmp.scaleX);
+		Assert.floatEquals(0.5, bmp.scaleY);
+
+		result.setParameter("s", 2.0);
+		Assert.floatEquals(2.0, bmp.scaleX);
+		Assert.floatEquals(2.0, bmp.scaleY);
+	}
+
+	@Test
+	public function testIncrementalAlphaTrackedOnSetParameter():Void {
+		final result = buildFromSource("
+			#test programmable(a:float=1.0) {
+				bitmap(generated(color(50, 50, #ff0000))) {
+					alpha: $a
+					pos: 0, 0
+				}
+			}
+		", "test", null, Incremental);
+		Assert.notNull(result);
+		final bmp = result.object.getChildAt(0);
+		Assert.floatEquals(1.0, bmp.alpha);
+
+		result.setParameter("a", 0.3);
+		Assert.floatEquals(0.3, bmp.alpha);
+
+		result.setParameter("a", 0.8);
+		Assert.floatEquals(0.8, bmp.alpha);
+	}
+
+	@Test
+	public function testIncrementalFilterTrackedOnSetParameter():Void {
+		final result = buildFromSource("
+			#test programmable(grey:float=0.0) {
+				bitmap(generated(color(50, 50, #ff0000))) {
+					filter: grayscale($grey)
+					pos: 0, 0
+				}
+			}
+		", "test", null, Incremental);
+		Assert.notNull(result);
+		final bmp = result.object.getChildAt(0);
+
+		result.setParameter("grey", 1.0);
+		Assert.notNull(bmp.filter, "Filter should be set after grey=1.0");
+
+		result.setParameter("grey", 0.0);
+		Assert.notNull(bmp.filter, "Filter still set (grayscale(0) is still a filter object)");
+	}
+
+	@Test
+	public function testIncrementalScaleExpressionTrackedOnSetParameter():Void {
+		final result = buildFromSource("
+			#test programmable(zoom:uint=100) {
+				bitmap(generated(color(50, 50, #ff0000))) {
+					scale: $zoom / 100
+					pos: 0, 0
+				}
+			}
+		", "test", null, Incremental);
+		Assert.notNull(result);
+		final bmp = result.object.getChildAt(0);
+		Assert.floatEquals(1.0, bmp.scaleX);
+
+		result.setParameter("zoom", 200);
+		Assert.floatEquals(2.0, bmp.scaleX);
+
+		result.setParameter("zoom", 50);
+		Assert.floatEquals(0.5, bmp.scaleX);
+	}
 }

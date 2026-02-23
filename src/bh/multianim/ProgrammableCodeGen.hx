@@ -71,7 +71,9 @@ class ProgrammableCodeGen {
 	static var indexed2DNamedElements:Map<String, Array<{indexX:Int, indexY:Int, fieldName:String}>> = new Map();
 	static var slotEntries:Array<{key:MacroSlotKey, fieldName:String, hasParams:Bool, loopVars:Map<String, Int>}> = [];
 	static var dynamicRefFields:Map<String, String> = new Map(); // component name -> BuilderResult field name
-	static var hexLayoutFieldAdded:Bool = false;
+	static var hexLayoutFieldMap:Map<String, String> = new Map(); // layout key → field name
+	static var hexLayoutFieldCount:Int = 0;
+	static var needsLayoutAlign:Bool = false;
 
 	static var paramDefs:ParametersDefinitions;
 	static var paramNames:Array<String> = [];
@@ -145,7 +147,9 @@ class ProgrammableCodeGen {
 		currentProcessingNode = null;
 		currentManimPath = "";
 		currentProgrammableName = "";
-		hexLayoutFieldAdded = false;
+		hexLayoutFieldMap = new Map();
+		hexLayoutFieldCount = 0;
+		needsLayoutAlign = false;
 		tileGroupCounter = 0;
 		instanceClassName = "";
 	}
@@ -233,7 +237,12 @@ class ProgrammableCodeGen {
 						pack: parentPack,
 						name: instName,
 						pos: pos,
-						kind: TDClass({pack: ["h2d"], name: "Object"}, null, false, false, false),
+						kind: TDClass(
+							needsLayoutAlign
+								? {pack: ["bh", "multianim"], name: "LayoutAlignRoot"}
+								: {pack: ["h2d"], name: "Object"},
+							null, false, false, false
+						),
 						fields: result.instanceFields,
 						meta: [{name: ":allow", params: [macro bh.multianim.ProgrammableCodeGen], pos: pos}, {name: ":keep", params: null, pos: pos}],
 					};
@@ -857,18 +866,38 @@ class ProgrammableCodeGen {
 		if (node.scale != null) {
 			final scaleExpr = rvToExpr(node.scale);
 			final fieldRef = macro $p{["this", fieldName]};
-			ctorExprs.push(macro {
+			final scaleUpdateExpr = macro {
 				final s = $scaleExpr;
 				$fieldRef.scaleX = s;
 				$fieldRef.scaleY = s;
-			});
+			};
+			ctorExprs.push(scaleUpdateExpr);
+
+			final scaleRefs = collectParamRefs(node.scale);
+			if (scaleRefs.length > 0) {
+				expressionUpdates.push({
+					fieldName: fieldName,
+					updateExpr: scaleUpdateExpr,
+					paramRefs: scaleRefs,
+				});
+			}
 		}
 
 		// Alpha
 		if (node.alpha != null) {
 			final alphaExpr = rvToExpr(node.alpha);
 			final fieldRef = macro $p{["this", fieldName]};
-			ctorExprs.push(macro $fieldRef.alpha = $alphaExpr);
+			final alphaUpdateExpr = macro $fieldRef.alpha = $alphaExpr;
+			ctorExprs.push(alphaUpdateExpr);
+
+			final alphaRefs = collectParamRefs(node.alpha);
+			if (alphaRefs.length > 0) {
+				expressionUpdates.push({
+					fieldName: fieldName,
+					updateExpr: alphaUpdateExpr,
+					paramRefs: alphaRefs,
+				});
+			}
 		}
 
 		// BlendMode
@@ -1340,6 +1369,11 @@ class ProgrammableCodeGen {
 		siblings.push({node: node, fieldName: containerName});
 
 		// Resolve layout points and unroll
+		final isAligned = layoutHasAlign(layout);
+		if (isAligned) needsLayoutAlign = true;
+		final alignXInt = isAligned ? alignXToInt(layout.alignX) : 0;
+		final alignYInt = isAligned ? alignYToInt(layout.alignY) : 0;
+
 		switch (layout.type) {
 			case List(list):
 				final offsetX:Float = layout.offset != null ? layout.offset.x : 0;
@@ -1350,11 +1384,14 @@ class ProgrammableCodeGen {
 					if (pt != null) {
 						final px:Float = pt.x + offsetX;
 						final py:Float = pt.y + offsetY;
-						if (px != 0 || py != 0) {
+						if (px != 0 || py != 0 || isAligned) {
 							final iterContainerName = "_e" + (elementCounter++);
 							fields.push(makeField(iterContainerName, FVar(macro :h2d.Object, null), [APrivate], pos));
 							ctorExprs.push(macro $p{["this", iterContainerName]} = new h2d.Object());
-							ctorExprs.push(macro $p{["this", iterContainerName]}.setPosition($v{px}, $v{py}));
+							if (isAligned)
+								ctorExprs.push(macro this.addAlignEntry($p{["this", iterContainerName]}, $v{px}, $v{py}, $v{alignXInt}, $v{alignYInt}, 0.0, 0.0))
+							else
+								ctorExprs.push(macro $p{["this", iterContainerName]}.setPosition($v{px}, $v{py}));
 							ctorExprs.push(macro $p{["this", containerName]}.addChild($p{["this", iterContainerName]}));
 							processChildren(node.children, iterContainerName, fields, ctorExprs, [], pos);
 						} else {
@@ -1374,11 +1411,14 @@ class ProgrammableCodeGen {
 				if (pt != null) {
 					final px:Float = pt.x + offsetX;
 					final py:Float = pt.y + offsetY;
-					if (px != 0 || py != 0) {
+					if (px != 0 || py != 0 || isAligned) {
 						final iterContainerName = "_e" + (elementCounter++);
 						fields.push(makeField(iterContainerName, FVar(macro :h2d.Object, null), [APrivate], pos));
 						ctorExprs.push(macro $p{["this", iterContainerName]} = new h2d.Object());
-						ctorExprs.push(macro $p{["this", iterContainerName]}.setPosition($v{px}, $v{py}));
+						if (isAligned)
+							ctorExprs.push(macro this.addAlignEntry($p{["this", iterContainerName]}, $v{px}, $v{py}, $v{alignXInt}, $v{alignYInt}, 0.0, 0.0))
+						else
+							ctorExprs.push(macro $p{["this", iterContainerName]}.setPosition($v{px}, $v{py}));
 						ctorExprs.push(macro $p{["this", containerName]}.addChild($p{["this", iterContainerName]}));
 						processChildren(node.children, iterContainerName, fields, ctorExprs, [], pos);
 					} else {
@@ -1399,11 +1439,14 @@ class ProgrammableCodeGen {
 					if (pt != null) {
 						final px:Float = pt.x + offsetX;
 						final py:Float = pt.y + offsetY;
-						if (px != 0 || py != 0) {
+						if (px != 0 || py != 0 || isAligned) {
 							final iterContainerName = "_e" + (elementCounter++);
 							fields.push(makeField(iterContainerName, FVar(macro :h2d.Object, null), [APrivate], pos));
 							ctorExprs.push(macro $p{["this", iterContainerName]} = new h2d.Object());
-							ctorExprs.push(macro $p{["this", iterContainerName]}.setPosition($v{px}, $v{py}));
+							if (isAligned)
+								ctorExprs.push(macro this.addAlignEntry($p{["this", iterContainerName]}, $v{px}, $v{py}, $v{alignXInt}, $v{alignYInt}, 0.0, 0.0))
+							else
+								ctorExprs.push(macro $p{["this", iterContainerName]}.setPosition($v{px}, $v{py}));
 							ctorExprs.push(macro $p{["this", containerName]}.addChild($p{["this", iterContainerName]}));
 							processChildren(node.children, iterContainerName, fields, ctorExprs, [], pos);
 						} else {
@@ -1426,11 +1469,14 @@ class ProgrammableCodeGen {
 					final row = Std.int(i / cols);
 					final px:Float = col * cellW + offsetX;
 					final py:Float = row * cellH + offsetY;
-					if (px != 0 || py != 0) {
+					if (px != 0 || py != 0 || isAligned) {
 						final iterContainerName = "_e" + (elementCounter++);
 						fields.push(makeField(iterContainerName, FVar(macro :h2d.Object, null), [APrivate], pos));
 						ctorExprs.push(macro $p{["this", iterContainerName]} = new h2d.Object());
-						ctorExprs.push(macro $p{["this", iterContainerName]}.setPosition($v{px}, $v{py}));
+						if (isAligned)
+							ctorExprs.push(macro this.addAlignEntry($p{["this", iterContainerName]}, $v{px}, $v{py}, $v{alignXInt}, $v{alignYInt}, 0.0, 0.0))
+						else
+							ctorExprs.push(macro $p{["this", iterContainerName]}.setPosition($v{px}, $v{py}));
 						ctorExprs.push(macro $p{["this", containerName]}.addChild($p{["this", iterContainerName]}));
 						processChildren(node.children, iterContainerName, fields, ctorExprs, [], pos);
 					} else {
@@ -1477,6 +1523,85 @@ class ProgrammableCodeGen {
 				} else {
 					null;
 				}
+			case SELECTED_HEX_CUBE(q, r, s):
+				if (layout.hex != null) {
+					final qv = resolveRVStatic(q);
+					final rv2 = resolveRVStatic(r);
+					final sv = resolveRVStatic(s);
+					if (qv != null && rv2 != null && sv != null) {
+						final hex = new bh.base.Hex.FractionalHex(qv, rv2, sv).round();
+						final pt = layout.hex.hexLayout.hexToPixel(hex);
+						{x: pt.x, y: pt.y};
+					} else null;
+				} else null;
+			case SELECTED_HEX_CORNER(count, factor):
+				if (layout.hex != null) {
+					final c = resolveRVStatic(count);
+					final f = resolveRVStatic(factor);
+					if (c != null && f != null) {
+						final pt = layout.hex.hexLayout.polygonCorner(bh.base.Hex.zero(), Std.int(c), f);
+						{x: pt.x, y: pt.y};
+					} else null;
+				} else null;
+			case SELECTED_HEX_EDGE(direction, factor):
+				if (layout.hex != null) {
+					final d = resolveRVStatic(direction);
+					final f = resolveRVStatic(factor);
+					if (d != null && f != null) {
+						final pt = layout.hex.hexLayout.polygonEdge(bh.base.Hex.zero(), Std.int(d), f);
+						{x: pt.x, y: pt.y};
+					} else null;
+				} else null;
+			case SELECTED_HEX_OFFSET(col, row, parity):
+				if (layout.hex != null) {
+					final c = resolveRVStatic(col);
+					final r2 = resolveRVStatic(row);
+					if (c != null && r2 != null) {
+						final parityVal = switch (parity) {
+							case EVEN: bh.base.Hex.OffsetCoord.EVEN;
+							case ODD: bh.base.Hex.OffsetCoord.ODD;
+						};
+						final hex = switch (layout.hex.hexLayout.orientation) {
+							case POINTY: bh.base.Hex.OffsetCoord.qoffsetToCube(parityVal, new bh.base.Hex.OffsetCoord(Std.int(c), Std.int(r2)));
+							case FLAT: bh.base.Hex.OffsetCoord.roffsetToCube(parityVal, new bh.base.Hex.OffsetCoord(Std.int(c), Std.int(r2)));
+						};
+						final pt = layout.hex.hexLayout.hexToPixel(hex);
+						{x: pt.x, y: pt.y};
+					} else null;
+				} else null;
+			case SELECTED_HEX_DOUBLED(col2, row2):
+				if (layout.hex != null) {
+					final c = resolveRVStatic(col2);
+					final r2 = resolveRVStatic(row2);
+					if (c != null && r2 != null) {
+						final hex = switch (layout.hex.hexLayout.orientation) {
+							case POINTY: bh.base.Hex.DoubledCoord.qdoubledToCube(new bh.base.Hex.DoubledCoord(Std.int(c), Std.int(r2)));
+							case FLAT: bh.base.Hex.DoubledCoord.rdoubledToCube(new bh.base.Hex.DoubledCoord(Std.int(c), Std.int(r2)));
+						};
+						final pt = layout.hex.hexLayout.hexToPixel(hex);
+						{x: pt.x, y: pt.y};
+					} else null;
+				} else null;
+			case SELECTED_HEX_CELL_CORNER(cell, cornerIndex, factor):
+				if (layout.hex != null) {
+					final ci = resolveRVStatic(cornerIndex);
+					final f = resolveRVStatic(factor);
+					final cellHex = resolveCoordToStaticHex(cell, layout.hex.hexLayout);
+					if (ci != null && f != null && cellHex != null) {
+						final pt = layout.hex.hexLayout.polygonCorner(cellHex, Std.int(ci), f);
+						{x: pt.x, y: pt.y};
+					} else null;
+				} else null;
+			case SELECTED_HEX_CELL_EDGE(cell, direction, factor):
+				if (layout.hex != null) {
+					final d = resolveRVStatic(direction);
+					final f = resolveRVStatic(factor);
+					final cellHex = resolveCoordToStaticHex(cell, layout.hex.hexLayout);
+					if (d != null && f != null && cellHex != null) {
+						final pt = layout.hex.hexLayout.polygonEdge(cellHex, Std.int(d), f);
+						{x: pt.x, y: pt.y};
+					} else null;
+				} else null;
 			default: null;
 		};
 	}
@@ -2922,7 +3047,7 @@ class ProgrammableCodeGen {
 					} else null;
 				} else null;
 			case LAYOUT(layoutName, index):
-				final idx = resolveRVStatic(index);
+				final idx = index != null ? resolveRVStatic(index) : 0.0;
 				if (idx != null) resolveLayoutPosition(layoutName, Std.int(idx)) else null;
 			case NAMED_COORD(name, coord):
 				final namedCS = if (node != null) getNamedCoordSystem(name, node) else null;
@@ -3011,6 +3136,43 @@ class ProgrammableCodeGen {
 			case SELECTED_HEX_PIXEL(_, _):
 				// pixelToHex requires h2d.col.Point — not available at macro time
 				null;
+			default: null;
+		};
+	}
+
+	/** Generate a runtime macro expression that evaluates to bh.base.Hex at runtime.
+	 *  Mirrors resolveCoordToStaticHex() but produces expressions instead of values.
+	 *  Parity and orientation are known at macro time and baked into generated code. */
+	static function resolveCoordToRuntimeHexExpr(cell:Coordinates, hexLayout:bh.base.Hex.HexLayout):Null<Expr> {
+		return switch (cell) {
+			case SELECTED_HEX_CUBE(q, r, s):
+				final qExpr = rvToExpr(q);
+				final rExpr = rvToExpr(r);
+				final sExpr = rvToExpr(s);
+				macro new bh.base.Hex.FractionalHex($qExpr, $rExpr, $sExpr).round();
+			case SELECTED_HEX_OFFSET(col, row, parity):
+				final colExpr = rvToExpr(col);
+				final rowExpr = rvToExpr(row);
+				final parityExpr = switch (parity) {
+					case EVEN: macro bh.base.Hex.OffsetCoord.EVEN;
+					case ODD: macro bh.base.Hex.OffsetCoord.ODD;
+				};
+				switch (hexLayout.orientation) {
+					case POINTY: macro bh.base.Hex.OffsetCoord.qoffsetToCube($parityExpr, new bh.base.Hex.OffsetCoord($colExpr, $rowExpr));
+					case FLAT: macro bh.base.Hex.OffsetCoord.roffsetToCube($parityExpr, new bh.base.Hex.OffsetCoord($colExpr, $rowExpr));
+				};
+			case SELECTED_HEX_DOUBLED(col2, row2):
+				final colExpr = rvToExpr(col2);
+				final rowExpr = rvToExpr(row2);
+				switch (hexLayout.orientation) {
+					case POINTY: macro bh.base.Hex.DoubledCoord.qdoubledToCube(new bh.base.Hex.DoubledCoord($colExpr, $rowExpr));
+					case FLAT: macro bh.base.Hex.DoubledCoord.rdoubledToCube(new bh.base.Hex.DoubledCoord($colExpr, $rowExpr));
+				};
+			case SELECTED_HEX_PIXEL(px, py):
+				final xExpr = rvToExpr(px);
+				final yExpr = rvToExpr(py);
+				final _hlRef = hexFieldRef(null, hexLayout);
+				macro $_hlRef.pixelToHex(new h2d.col.Point($xExpr, $yExpr)).round();
 			default: null;
 		};
 	}
@@ -3106,9 +3268,10 @@ class ProgrammableCodeGen {
 				final r2 = resolveRVStatic(args[1]);
 				if (c == null || r2 == null) return null;
 				final parityVal = if (args.length >= 3) {
-					final p = resolveRVStatic(args[2]);
-					// Can't resolve string parity statically from RV; default to EVEN
-					bh.base.Hex.OffsetCoord.EVEN;
+					switch (args[2]) {
+						case RVString(s) if (s == "odd"): bh.base.Hex.OffsetCoord.ODD;
+						default: bh.base.Hex.OffsetCoord.EVEN;
+					};
 				} else bh.base.Hex.OffsetCoord.EVEN;
 				final hex = switch (hexLayout.orientation) {
 					case POINTY: bh.base.Hex.OffsetCoord.qoffsetToCube(parityVal, new bh.base.Hex.OffsetCoord(Std.int(c), Std.int(r2)));
@@ -3172,37 +3335,79 @@ class ProgrammableCodeGen {
 		}
 
 		// Hex methods — need _hexLayout field
-		if (!hexLayoutFieldAdded) {
+		if (hexLayoutFieldCount == 0) {
 			Context.error('Runtime hex .$component extraction requires hex coordinate system with runtime parameters in scope', Context.currentPos());
 			return macro 0;
 		}
 
+		final _hlRef = hexFieldRef(currentProcessingNode);
 		switch (method) {
 			case "corner":
 				if (argExprs.length < 1) Context.error('corner() requires at least 1 argument', Context.currentPos());
 				final idxExpr = argExprs[0];
 				final factorExpr = if (argExprs.length >= 2) argExprs[1] else macro 1.0;
 				if (component == "x")
-					return macro this._hexLayout.polygonCorner(bh.base.Hex.zero(), $idxExpr, $factorExpr).x;
+					return macro $_hlRef.polygonCorner(bh.base.Hex.zero(), $idxExpr, $factorExpr).x;
 				else
-					return macro this._hexLayout.polygonCorner(bh.base.Hex.zero(), $idxExpr, $factorExpr).y;
+					return macro $_hlRef.polygonCorner(bh.base.Hex.zero(), $idxExpr, $factorExpr).y;
 			case "edge":
 				if (argExprs.length < 1) Context.error('edge() requires at least 1 argument', Context.currentPos());
 				final dirExpr = argExprs[0];
 				final factorExpr = if (argExprs.length >= 2) argExprs[1] else macro 1.0;
 				if (component == "x")
-					return macro this._hexLayout.polygonEdge(bh.base.Hex.zero(), $dirExpr, $factorExpr).x;
+					return macro $_hlRef.polygonEdge(bh.base.Hex.zero(), $dirExpr, $factorExpr).x;
 				else
-					return macro this._hexLayout.polygonEdge(bh.base.Hex.zero(), $dirExpr, $factorExpr).y;
+					return macro $_hlRef.polygonEdge(bh.base.Hex.zero(), $dirExpr, $factorExpr).y;
 			case "cube":
 				if (argExprs.length != 3) Context.error('cube() requires 3 arguments', Context.currentPos());
 				final qExpr = argExprs[0];
 				final rExpr = argExprs[1];
 				final sExpr = argExprs[2];
 				if (component == "x")
-					return macro this._hexLayout.hexToPixel(new bh.base.Hex.FractionalHex($qExpr, $rExpr, $sExpr).round()).x;
+					return macro $_hlRef.hexToPixel(new bh.base.Hex.FractionalHex($qExpr, $rExpr, $sExpr).round()).x;
 				else
-					return macro this._hexLayout.hexToPixel(new bh.base.Hex.FractionalHex($qExpr, $rExpr, $sExpr).round()).y;
+					return macro $_hlRef.hexToPixel(new bh.base.Hex.FractionalHex($qExpr, $rExpr, $sExpr).round()).y;
+			case "offset":
+				if (argExprs.length < 2) Context.error('offset() requires at least 2 arguments', Context.currentPos());
+				final colExpr = argExprs[0];
+				final rowExpr = argExprs[1];
+				final parityStr = if (args.length >= 3) switch (args[2]) { case RVString(s): s; default: "even"; } else "even";
+				final parityExpr = if (parityStr == "odd") macro bh.base.Hex.OffsetCoord.ODD else macro bh.base.Hex.OffsetCoord.EVEN;
+				final hexLayout = getHexLayoutForNode(currentProcessingNode);
+				if (hexLayout != null) {
+					final hexExpr = switch (hexLayout.orientation) {
+						case POINTY: macro bh.base.Hex.OffsetCoord.qoffsetToCube($parityExpr, new bh.base.Hex.OffsetCoord($colExpr, $rowExpr));
+						case FLAT: macro bh.base.Hex.OffsetCoord.roffsetToCube($parityExpr, new bh.base.Hex.OffsetCoord($colExpr, $rowExpr));
+					};
+					if (component == "x")
+						return macro $_hlRef.hexToPixel($hexExpr).x;
+					else
+						return macro $_hlRef.hexToPixel($hexExpr).y;
+				} else { Context.error('offset() requires hex coordinate system in scope', Context.currentPos()); return macro 0; }
+			case "doubled":
+				if (argExprs.length != 2) Context.error('doubled() requires 2 arguments', Context.currentPos());
+				final colExpr = argExprs[0];
+				final rowExpr = argExprs[1];
+				final hexLayout = getHexLayoutForNode(currentProcessingNode);
+				if (hexLayout != null) {
+					final hexExpr = switch (hexLayout.orientation) {
+						case POINTY: macro bh.base.Hex.DoubledCoord.qdoubledToCube(new bh.base.Hex.DoubledCoord($colExpr, $rowExpr));
+						case FLAT: macro bh.base.Hex.DoubledCoord.rdoubledToCube(new bh.base.Hex.DoubledCoord($colExpr, $rowExpr));
+					};
+					if (component == "x")
+						return macro $_hlRef.hexToPixel($hexExpr).x;
+					else
+						return macro $_hlRef.hexToPixel($hexExpr).y;
+				} else { Context.error('doubled() requires hex coordinate system in scope', Context.currentPos()); return macro 0; }
+			case "pixel":
+				if (argExprs.length != 2) Context.error('pixel() requires 2 arguments', Context.currentPos());
+				final xExpr = argExprs[0];
+				final yExpr = argExprs[1];
+				final ptExpr = macro $_hlRef.hexToPixel($_hlRef.pixelToHex(new h2d.col.Point($xExpr, $yExpr)).round());
+				if (component == "x")
+					return macro $ptExpr.x;
+				else
+					return macro $ptExpr.y;
 			default:
 				Context.error('Runtime .${component} extraction not supported for method .$method()', Context.currentPos());
 				return macro 0;
@@ -3220,10 +3425,69 @@ class ProgrammableCodeGen {
 			return {x: macro $v{staticXY.x}, y: macro $v{staticXY.y}};
 		}
 
-		// Fall back to expression-based resolution for param-dependent OFFSET
+		// Fall back to expression-based resolution for param-dependent coords
+		final _hlRef = hexFieldRef(node != null ? node : currentProcessingNode);
 		return switch (coords) {
 			case OFFSET(xrv, yrv):
 				{x: rvToExpr(xrv), y: rvToExpr(yrv)};
+			case SELECTED_HEX_CUBE(q, r, s):
+				final qExpr = rvToExpr(q);
+				final rExpr = rvToExpr(r);
+				final sExpr = rvToExpr(s);
+				{
+					x: macro $_hlRef.hexToPixel(new bh.base.Hex.FractionalHex($qExpr, $rExpr, $sExpr).round()).x,
+					y: macro $_hlRef.hexToPixel(new bh.base.Hex.FractionalHex($qExpr, $rExpr, $sExpr).round()).y
+				};
+			case SELECTED_HEX_CORNER(count, factor):
+				final cExpr = rvToExpr(count);
+				final fExpr = rvToExpr(factor);
+				{
+					x: macro $_hlRef.polygonCorner(bh.base.Hex.zero(), $cExpr, $fExpr).x,
+					y: macro $_hlRef.polygonCorner(bh.base.Hex.zero(), $cExpr, $fExpr).y
+				};
+			case SELECTED_HEX_EDGE(dir, factor):
+				final dExpr = rvToExpr(dir);
+				final fExpr = rvToExpr(factor);
+				{
+					x: macro $_hlRef.polygonEdge(bh.base.Hex.zero(), $dExpr, $fExpr).x,
+					y: macro $_hlRef.polygonEdge(bh.base.Hex.zero(), $dExpr, $fExpr).y
+				};
+			case SELECTED_HEX_OFFSET(col, row, parity):
+				final colExpr = rvToExpr(col);
+				final rowExpr = rvToExpr(row);
+				final parityExpr = switch (parity) { case EVEN: macro bh.base.Hex.OffsetCoord.EVEN; case ODD: macro bh.base.Hex.OffsetCoord.ODD; };
+				final hexLayout = if (node != null) getHexLayoutForNode(node) else null;
+				if (hexLayout != null) {
+					final hexExpr = switch (hexLayout.orientation) {
+						case POINTY: macro bh.base.Hex.OffsetCoord.qoffsetToCube($parityExpr, new bh.base.Hex.OffsetCoord($colExpr, $rowExpr));
+						case FLAT: macro bh.base.Hex.OffsetCoord.roffsetToCube($parityExpr, new bh.base.Hex.OffsetCoord($colExpr, $rowExpr));
+					};
+					{ x: macro $_hlRef.hexToPixel($hexExpr).x, y: macro $_hlRef.hexToPixel($hexExpr).y };
+				} else {
+					Context.warning('ProgrammableCodeGen: hex offset requires hex coordinate system, using (0,0)', pos);
+					{x: macro 0.0, y: macro 0.0};
+				}
+			case SELECTED_HEX_DOUBLED(col, row):
+				final colExpr = rvToExpr(col);
+				final rowExpr = rvToExpr(row);
+				final hexLayout = if (node != null) getHexLayoutForNode(node) else null;
+				if (hexLayout != null) {
+					final hexExpr = switch (hexLayout.orientation) {
+						case POINTY: macro bh.base.Hex.DoubledCoord.qdoubledToCube(new bh.base.Hex.DoubledCoord($colExpr, $rowExpr));
+						case FLAT: macro bh.base.Hex.DoubledCoord.rdoubledToCube(new bh.base.Hex.DoubledCoord($colExpr, $rowExpr));
+					};
+					{ x: macro $_hlRef.hexToPixel($hexExpr).x, y: macro $_hlRef.hexToPixel($hexExpr).y };
+				} else {
+					Context.warning('ProgrammableCodeGen: hex doubled requires hex coordinate system, using (0,0)', pos);
+					{x: macro 0.0, y: macro 0.0};
+				}
+			case SELECTED_HEX_PIXEL(px, py):
+				final xExpr = rvToExpr(px);
+				final yExpr = rvToExpr(py);
+				{
+					x: macro $_hlRef.hexToPixel($_hlRef.pixelToHex(new h2d.col.Point($xExpr, $yExpr)).round()).x,
+					y: macro $_hlRef.hexToPixel($_hlRef.pixelToHex(new h2d.col.Point($xExpr, $yExpr)).round()).y
+				};
 			default:
 				Context.warning('ProgrammableCodeGen: param-dependent coordinate type not supported in pixels, using (0,0)', pos);
 				{x: macro 0.0, y: macro 0.0};
@@ -4546,9 +4810,10 @@ class ProgrammableCodeGen {
 						final qExpr = rvToExpr(q);
 						final rExpr = rvToExpr(r);
 						final sExpr = rvToExpr(s);
+						final _hlRef = hexFieldRef(node, pos);
 						macro {
 							final _hex = new bh.base.Hex.FractionalHex($qExpr, $rExpr, $sExpr).round();
-							final _p = this._hexLayout.hexToPixel(_hex);
+							final _p = $_hlRef.hexToPixel(_hex);
 							$fieldRef.setPosition(_p.x, _p.y);
 						};
 					}
@@ -4566,7 +4831,27 @@ class ProgrammableCodeGen {
 						};
 						final pt = hexLayout.hexToPixel(hex);
 						macro $fieldRef.setPosition($v{pt.x}, $v{pt.y});
-					} else null;
+					} else {
+						final colExpr = rvToExpr(col);
+						final rowExpr = rvToExpr(row);
+						final parityExpr = switch (parity) {
+							case EVEN: macro bh.base.Hex.OffsetCoord.EVEN;
+							case ODD: macro bh.base.Hex.OffsetCoord.ODD;
+						};
+						final _hlRef = hexFieldRef(node, pos);
+						switch (hexLayout.orientation) {
+							case POINTY: macro {
+								final _hex = bh.base.Hex.OffsetCoord.qoffsetToCube($parityExpr, new bh.base.Hex.OffsetCoord($colExpr, $rowExpr));
+								final _p = $_hlRef.hexToPixel(_hex);
+								$fieldRef.setPosition(_p.x, _p.y);
+							};
+							case FLAT: macro {
+								final _hex = bh.base.Hex.OffsetCoord.roffsetToCube($parityExpr, new bh.base.Hex.OffsetCoord($colExpr, $rowExpr));
+								final _p = $_hlRef.hexToPixel(_hex);
+								$fieldRef.setPosition(_p.x, _p.y);
+							};
+						};
+					}
 				} else null;
 			case SELECTED_HEX_DOUBLED(col2, row2):
 				final hexLayout = getHexLayoutForNode(node);
@@ -4580,12 +4865,36 @@ class ProgrammableCodeGen {
 						};
 						final pt = hexLayout.hexToPixel(hex);
 						macro $fieldRef.setPosition($v{pt.x}, $v{pt.y});
-					} else null;
+					} else {
+						final colExpr = rvToExpr(col2);
+						final rowExpr = rvToExpr(row2);
+						final _hlRef = hexFieldRef(node, pos);
+						switch (hexLayout.orientation) {
+							case POINTY: macro {
+								final _hex = bh.base.Hex.DoubledCoord.qdoubledToCube(new bh.base.Hex.DoubledCoord($colExpr, $rowExpr));
+								final _p = $_hlRef.hexToPixel(_hex);
+								$fieldRef.setPosition(_p.x, _p.y);
+							};
+							case FLAT: macro {
+								final _hex = bh.base.Hex.DoubledCoord.rdoubledToCube(new bh.base.Hex.DoubledCoord($colExpr, $rowExpr));
+								final _p = $_hlRef.hexToPixel(_hex);
+								$fieldRef.setPosition(_p.x, _p.y);
+							};
+						};
+					}
 				} else null;
-			case SELECTED_HEX_PIXEL(_, _):
-				// pixelToHex requires h2d.col.Point — not available at macro time
-				// TODO: generate runtime code for pixel coord resolution
-				null;
+			case SELECTED_HEX_PIXEL(px, py):
+				final hexLayout = getHexLayoutForNode(node);
+				if (hexLayout != null) {
+					final xExpr = rvToExpr(px);
+					final yExpr = rvToExpr(py);
+					final _hlRef = hexFieldRef(node, pos);
+					macro {
+						final _hex = $_hlRef.pixelToHex(new h2d.col.Point($xExpr, $yExpr)).round();
+						final _p = $_hlRef.hexToPixel(_hex);
+						$fieldRef.setPosition(_p.x, _p.y);
+					};
+				} else null;
 			case SELECTED_HEX_CELL_CORNER(cell, cornerIndex, factor):
 				final hexLayout = getHexLayoutForNode(node);
 				if (hexLayout != null) {
@@ -4595,7 +4904,27 @@ class ProgrammableCodeGen {
 					if (ci != null && f != null && cellHex != null) {
 						final pt = hexLayout.polygonCorner(cellHex, Std.int(ci), f);
 						macro $fieldRef.setPosition($v{pt.x}, $v{pt.y});
-					} else null;
+					} else {
+						final ciExpr = rvToExpr(cornerIndex);
+						final fExpr = rvToExpr(factor);
+						final _hlRef = hexFieldRef(node, pos);
+						if (cellHex != null) {
+							// Cell is static, only corner params are dynamic
+							macro {
+								final _p = $_hlRef.polygonCorner(new bh.base.Hex($v{cellHex.q}, $v{cellHex.r}, $v{cellHex.s}), $ciExpr, $fExpr);
+								$fieldRef.setPosition(_p.x, _p.y);
+							};
+						} else {
+							final cellExpr = resolveCoordToRuntimeHexExpr(cell, hexLayout);
+							if (cellExpr != null)
+								macro {
+									final _cellHex = $cellExpr;
+									final _p = $_hlRef.polygonCorner(_cellHex, $ciExpr, $fExpr);
+									$fieldRef.setPosition(_p.x, _p.y);
+								}
+							else null;
+						}
+					}
 				} else null;
 			case SELECTED_HEX_CELL_EDGE(cell, direction, factor):
 				final hexLayout = getHexLayoutForNode(node);
@@ -4606,7 +4935,26 @@ class ProgrammableCodeGen {
 					if (d != null && f != null && cellHex != null) {
 						final pt = hexLayout.polygonEdge(cellHex, Std.int(d), f);
 						macro $fieldRef.setPosition($v{pt.x}, $v{pt.y});
-					} else null;
+					} else {
+						final dExpr = rvToExpr(direction);
+						final fExpr = rvToExpr(factor);
+						final _hlRef = hexFieldRef(node, pos);
+						if (cellHex != null) {
+							macro {
+								final _p = $_hlRef.polygonEdge(new bh.base.Hex($v{cellHex.q}, $v{cellHex.r}, $v{cellHex.s}), $dExpr, $fExpr);
+								$fieldRef.setPosition(_p.x, _p.y);
+							};
+						} else {
+							final cellExpr = resolveCoordToRuntimeHexExpr(cell, hexLayout);
+							if (cellExpr != null)
+								macro {
+									final _cellHex = $cellExpr;
+									final _p = $_hlRef.polygonEdge(_cellHex, $dExpr, $fExpr);
+									$fieldRef.setPosition(_p.x, _p.y);
+								}
+							else null;
+						}
+					}
 				} else null;
 			case SELECTED_HEX_CORNER(count, factor):
 				final hexLayout = getHexLayoutForNode(node);
@@ -4619,8 +4967,9 @@ class ProgrammableCodeGen {
 					} else {
 						final cExpr = rvToExpr(count);
 						final fExpr = rvToExpr(factor);
+						final _hlRef = hexFieldRef(node, pos);
 						macro {
-							final _p = this._hexLayout.polygonCorner(bh.base.Hex.zero(), $cExpr, $fExpr);
+							final _p = $_hlRef.polygonCorner(bh.base.Hex.zero(), $cExpr, $fExpr);
 							$fieldRef.setPosition(_p.x, _p.y);
 						};
 					}
@@ -4636,20 +4985,28 @@ class ProgrammableCodeGen {
 					} else {
 						final dExpr = rvToExpr(direction);
 						final fExpr = rvToExpr(factor);
+						final _hlRef = hexFieldRef(node, pos);
 						macro {
-							final _p = this._hexLayout.polygonEdge(bh.base.Hex.zero(), $dExpr, $fExpr);
+							final _p = $_hlRef.polygonEdge(bh.base.Hex.zero(), $dExpr, $fExpr);
 							$fieldRef.setPosition(_p.x, _p.y);
 						};
 					}
 				} else null;
 			case LAYOUT(layoutName, index):
-				final idx = resolveRVStatic(index);
+				final idx = index != null ? resolveRVStatic(index) : 0.0;
 				if (idx != null) {
+					final layout = getLayoutDef(layoutName);
 					final pt = resolveLayoutPosition(layoutName, Std.int(idx));
-					if (pt != null)
-						macro $fieldRef.setPosition($v{pt.x}, $v{pt.y})
-					else
-						null;
+					if (pt != null) {
+						if (layout != null && layoutHasAlign(layout)) {
+							needsLayoutAlign = true;
+							final ax = alignXToInt(layout.alignX);
+							final ay = alignYToInt(layout.alignY);
+							macro this.addAlignEntry($fieldRef, $v{pt.x}, $v{pt.y}, $v{ax}, $v{ay}, 0.0, 0.0);
+						} else {
+							macro $fieldRef.setPosition($v{pt.x}, $v{pt.y});
+						}
+					} else null;
 				} else null;
 			case NAMED_COORD(name, coord):
 				final namedCS = if (node != null) getNamedCoordSystem(name, node) else null;
@@ -4661,18 +5018,36 @@ class ProgrammableCodeGen {
 						null;
 				} else null;
 			case WITH_OFFSET(base, offsetX, offsetY):
-				final baseExpr = generatePositionExpr(base, fieldName, pos, node);
-				if (baseExpr != null) {
-					final ox = resolveRVStatic(offsetX);
-					final oy = resolveRVStatic(offsetY);
-					if (ox != null && oy != null) {
-						final basePt = coordsToStaticXY(base, pos, node);
-						if (basePt != null)
-							macro $fieldRef.setPosition($v{basePt.x + ox}, $v{basePt.y + oy})
-						else
-							null;
-					} else null;
-				} else null;
+				final ox = resolveRVStatic(offsetX);
+				final oy = resolveRVStatic(offsetY);
+				if (ox != null && oy != null) {
+					// Check if base is an aligned LAYOUT
+					switch (base) {
+						case LAYOUT(layoutName, index):
+							final idx = index != null ? resolveRVStatic(index) : 0.0;
+							if (idx != null) {
+								final layout = getLayoutDef(layoutName);
+								final pt = resolveLayoutPosition(layoutName, Std.int(idx));
+								if (pt != null && layout != null && layoutHasAlign(layout)) {
+									needsLayoutAlign = true;
+									final ax = alignXToInt(layout.alignX);
+									final ay = alignYToInt(layout.alignY);
+									macro this.addAlignEntry($fieldRef, $v{pt.x}, $v{pt.y}, $v{ax}, $v{ay}, $v{ox}, $v{oy});
+								} else if (pt != null) {
+									macro $fieldRef.setPosition($v{pt.x + ox}, $v{pt.y + oy});
+								} else null;
+							} else null;
+						default:
+							final basePt = coordsToStaticXY(base, pos, node);
+							if (basePt != null)
+								macro $fieldRef.setPosition($v{basePt.x + ox}, $v{basePt.y + oy})
+							else
+								null;
+					}
+				} else {
+					final baseExpr = generatePositionExpr(base, fieldName, pos, node);
+					if (baseExpr != null) baseExpr else null;
+				};
 		};
 	}
 
@@ -4687,6 +5062,8 @@ class ProgrammableCodeGen {
 			case SELECTED_HEX_PIXEL(x, y): collectParamRefsImpl(x, refs); collectParamRefsImpl(y, refs);
 			case SELECTED_HEX_CORNER(count, factor): collectParamRefsImpl(count, refs); collectParamRefsImpl(factor, refs);
 			case SELECTED_HEX_EDGE(dir, factor): collectParamRefsImpl(dir, refs); collectParamRefsImpl(factor, refs);
+			case SELECTED_HEX_CELL_CORNER(cell, cornerIndex, factor): collectCoordParamRefs(cell, refs); collectParamRefsImpl(cornerIndex, refs); collectParamRefsImpl(factor, refs);
+			case SELECTED_HEX_CELL_EDGE(cell, direction, factor): collectCoordParamRefs(cell, refs); collectParamRefsImpl(direction, refs); collectParamRefsImpl(factor, refs);
 			case NAMED_COORD(_, coord): collectCoordParamRefs(coord, refs);
 			case WITH_OFFSET(base, offsetX, offsetY): collectCoordParamRefs(base, refs); collectParamRefsImpl(offsetX, refs); collectParamRefsImpl(offsetY, refs);
 			default:
@@ -4832,10 +5209,49 @@ class ProgrammableCodeGen {
 		};
 	}
 
+	/** Create a unique key for a hex layout based on orientation + size */
+	static function hexLayoutKey(hl:bh.base.Hex.HexLayout):String {
+		final o = switch (hl.orientation) { case POINTY: "P"; case FLAT: "F"; };
+		return '${o}_${hl.size.x}_${hl.size.y}';
+	}
+
+	/** Get or create a hex layout field, returns the field name */
+	static function getOrCreateHexField(hexLayout:bh.base.Hex.HexLayout, fields:Array<Field>, ctorExprs:Array<Expr>,
+			pos:Position):String {
+		final key = hexLayoutKey(hexLayout);
+		if (hexLayoutFieldMap.exists(key))
+			return hexLayoutFieldMap.get(key);
+		final fieldName = hexLayoutFieldCount == 0 ? "_hexLayout" : '_hexLayout${hexLayoutFieldCount}';
+		hexLayoutFieldCount++;
+		hexLayoutFieldMap.set(key, fieldName);
+		fields.push(makeField(fieldName, FVar(macro :bh.base.Hex.HexLayout, null), [APrivate], pos));
+		final orientExpr = switch (hexLayout.orientation) {
+			case POINTY: macro bh.base.Hex.HexOrientation.POINTY;
+			case FLAT: macro bh.base.Hex.HexOrientation.FLAT;
+		};
+		final initExpr = macro bh.base.Hex.HexLayout.createFromFloats($orientExpr, $v{hexLayout.size.x}, $v{hexLayout.size.y},
+			$v{hexLayout.origin.x}, $v{hexLayout.origin.y});
+		ctorExprs.push({
+			expr: EBinop(OpAssign, {expr: EField({expr: EConst(CIdent("this")), pos: pos}, fieldName), pos: pos}, initExpr),
+			pos: pos
+		});
+		return fieldName;
+	}
+
+	/** Build a `this.fieldName` expression for the hex layout of the given node */
+	static function hexFieldRef(?node:MultiAnimParser.Node, ?hexLayout:bh.base.Hex.HexLayout, ?pos:Position):Expr {
+		if (pos == null) pos = Context.currentPos();
+		final hl = hexLayout != null ? hexLayout : (node != null ? getHexLayoutForNode(node) : null);
+		if (hl == null) return {expr: EField({expr: EConst(CIdent("this")), pos: pos}, "_hexLayout"), pos: pos};
+		final key = hexLayoutKey(hl);
+		final fieldName = hexLayoutFieldMap.exists(key) ? hexLayoutFieldMap.get(key) : "_hexLayout";
+		return {expr: EField({expr: EConst(CIdent("this")), pos: pos}, fieldName), pos: pos};
+	}
+
 	/** Ensure _hexLayout field exists on instance class if coords need runtime hex calculation */
 	static function ensureHexLayoutIfNeeded(coords:Coordinates, node:MultiAnimParser.Node, fields:Array<Field>, ctorExprs:Array<Expr>,
 			pos:Position):Void {
-		if (coords == null || hexLayoutFieldAdded)
+		if (coords == null)
 			return;
 		final needsRuntime = switch (coords) {
 			case SELECTED_HEX_CORNER(count, factor) | SELECTED_HEX_EDGE(count, factor):
@@ -4846,25 +5262,18 @@ class ProgrammableCodeGen {
 				resolveRVStatic(col) == null || resolveRVStatic(row) == null;
 			case SELECTED_HEX_DOUBLED(col, row):
 				resolveRVStatic(col) == null || resolveRVStatic(row) == null;
-			case SELECTED_HEX_PIXEL(x, y):
-				resolveRVStatic(x) == null || resolveRVStatic(y) == null;
-			case SELECTED_HEX_CELL_CORNER(_, cornerIndex, factor):
-				resolveRVStatic(cornerIndex) == null || resolveRVStatic(factor) == null;
-			case SELECTED_HEX_CELL_EDGE(_, direction, factor):
-				resolveRVStatic(direction) == null || resolveRVStatic(factor) == null;
+			case SELECTED_HEX_PIXEL(_, _):
+				true; // pixelToHex always requires runtime
+			case SELECTED_HEX_CELL_CORNER(cell, cornerIndex, factor):
+				resolveRVStatic(cornerIndex) == null || resolveRVStatic(factor) == null || resolveCoordToStaticHex(cell, getHexLayoutForNode(node)) == null;
+			case SELECTED_HEX_CELL_EDGE(cell, direction, factor):
+				resolveRVStatic(direction) == null || resolveRVStatic(factor) == null || resolveCoordToStaticHex(cell, getHexLayoutForNode(node)) == null;
 			default: false;
 		};
 		if (needsRuntime) {
 			final hexLayout = getHexLayoutForNode(node);
 			if (hexLayout != null) {
-				hexLayoutFieldAdded = true;
-				fields.push(makeField("_hexLayout", FVar(macro :bh.base.Hex.HexLayout, null), [APrivate], pos));
-				final orientExpr = switch (hexLayout.orientation) {
-					case POINTY: macro bh.base.Hex.HexOrientation.POINTY;
-					case FLAT: macro bh.base.Hex.HexOrientation.FLAT;
-				};
-				ctorExprs.push(macro this._hexLayout = bh.base.Hex.HexLayout.createFromFloats($orientExpr, $v{hexLayout.size.x},
-					$v{hexLayout.size.y}, $v{hexLayout.origin.x}, $v{hexLayout.origin.y}));
+				getOrCreateHexField(hexLayout, fields, ctorExprs, pos);
 			}
 		}
 	}
@@ -4872,7 +5281,6 @@ class ProgrammableCodeGen {
 	/** Ensure _hexLayout field is created for runtime hex method calls in expression context (.x/.y). */
 	static function ensureHexLayoutForExprRV(rv:ReferenceableValue, node:MultiAnimParser.Node, fields:Array<Field>, ctorExprs:Array<Expr>,
 			pos:Position):Void {
-		if (hexLayoutFieldAdded) return;
 		switch (rv) {
 			case RVChainedMethodCall(RVMethodCall(ref, method, _), property, _) if (property == "x" || property == "y"):
 				if (ref == "hex" || ref == "ctx.hex" || (currentProcessingNode != null && getNamedCoordSystem(ref, currentProcessingNode) != null)) {
@@ -4880,19 +5288,39 @@ class ProgrammableCodeGen {
 					if (resolveRVStatic(rv) == null) {
 						final hexLayout = getHexLayoutForNode(node);
 						if (hexLayout != null) {
-							hexLayoutFieldAdded = true;
-							fields.push(makeField("_hexLayout", FVar(macro :bh.base.Hex.HexLayout, null), [APrivate], pos));
-							final orientExpr = switch (hexLayout.orientation) {
-								case POINTY: macro bh.base.Hex.HexOrientation.POINTY;
-								case FLAT: macro bh.base.Hex.HexOrientation.FLAT;
-							};
-							ctorExprs.push(macro this._hexLayout = bh.base.Hex.HexLayout.createFromFloats($orientExpr, $v{hexLayout.size.x},
-								$v{hexLayout.size.y}, $v{hexLayout.origin.x}, $v{hexLayout.origin.y}));
+							getOrCreateHexField(hexLayout, fields, ctorExprs, pos);
 						}
 					}
 				}
 			default:
 		}
+	}
+
+	/** Get a Layout definition by name from #defaultLayout */
+	static function getLayoutDef(name:String):Null<bh.multianim.layouts.LayoutTypes.Layout> {
+		final layoutNode = allParsedNodes.get("#defaultLayout");
+		if (layoutNode == null) return null;
+		final layoutsDef = switch (layoutNode.type) {
+			case RELATIVE_LAYOUTS(ld): ld;
+			default: return null;
+		};
+		return layoutsDef.get(name);
+	}
+
+	/** Check if a layout uses non-default alignment */
+	static function layoutHasAlign(layout:bh.multianim.layouts.LayoutTypes.Layout):Bool {
+		return layout.alignX != bh.multianim.layouts.LayoutTypes.LayoutAlignX.Left
+			|| layout.alignY != bh.multianim.layouts.LayoutTypes.LayoutAlignY.Top;
+	}
+
+	/** Convert LayoutAlignX to integer code for LayoutAlignRoot */
+	static function alignXToInt(ax:bh.multianim.layouts.LayoutTypes.LayoutAlignX):Int {
+		return switch (ax) { case Left: 0; case Center: 1; case Right: 2; };
+	}
+
+	/** Convert LayoutAlignY to integer code for LayoutAlignRoot */
+	static function alignYToInt(ay:bh.multianim.layouts.LayoutTypes.LayoutAlignY):Int {
+		return switch (ay) { case Top: 0; case Center: 1; case Bottom: 2; };
 	}
 
 	/** Resolve a layout position by name and index at macro time */

@@ -135,7 +135,7 @@ private class Particle extends h2d.SpriteBatch.BatchElement {
 	public function new(group:ParticleGroup) {
 		super(null);
 		this.group = group;
-		this.noiseSeed = hxd.Math.random() * 1000;
+		this.noiseSeed = group.rand() * 1000;
 	}
 
 	override function update(dt:Float):Bool {
@@ -276,8 +276,15 @@ private class Particle extends h2d.SpriteBatch.BatchElement {
 @:nullSafety(Strict)
 class ParticleGroup {
 
-	inline function srand():Float return hxd.Math.srand();
-	inline function rand():Float return hxd.Math.random();
+	/**
+		Random number generator function returning values in [0, 1) range.
+		Override to inject a deterministic random source (e.g. for testing).
+	**/
+	public var randomFunc : () -> Float = () -> hxd.Math.random();
+
+	inline function rand():Float return randomFunc();
+	inline function srand():Float return randomFunc() * 2.0 - 1.0;
+	inline function randInt(n:Int):Int return Std.int(randomFunc() * n);
 
 	final parts : Particles;
 	final batch : h2d.SpriteBatch;
@@ -596,8 +603,6 @@ class ParticleGroup {
 		batch.hasUpdate = true;
 	}
 
-	
-
 	function start():Void {
 		batch.clear();
 		started = true;
@@ -730,7 +735,7 @@ class ParticleGroup {
 			return;
 		if (animationRepeat == 0 && tiles.length > 1) {
 			// Random frame when animation is disabled
-			p.t = tiles[Std.random(tiles.length)];
+			p.t = tiles[randInt(tiles.length)];
 		} else {
 			p.t = tiles[0];
 		}
@@ -1143,6 +1148,14 @@ class Particles extends h2d.Drawable {
 	**/
 	public function getGroup( id : String ):Null<ParticleGroup> {
 		return groups.get(id);
+	}
+
+	/**
+		Set the random number generator function for all particle groups.
+		The function should return values in [0, 1) range.
+	**/
+	public function setRandomFunc(func:() -> Float):Void {
+		for (g in groups) g.randomFunc = func;
 	}
 
 	override function sync(ctx:h2d.RenderContext):Void {

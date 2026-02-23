@@ -24,13 +24,13 @@ class TestApp extends hxd.App {
 	override function init() {
 		hxd.Res.initLocal();
 
-		FontManager.registerFont("dd", hxd.Res.fonts.digitaldisco.toFont(), 0, -1);
+		FontManager.registerFont("dd", hxd.Res.fonts.digitaldisco.toFont(), 0, -3);
 		FontManager.registerFont("pixeled6", hxd.Res.fonts.pixeled_6.toFont(), 0, -4);
 		FontManager.registerFont("m3x6", hxd.Res.fonts.m3x6.toFont(), 0, -5);
-		FontManager.registerFont("pixellari", hxd.Res.fonts.pixellari.toFont());
+		FontManager.registerFont("pixellari", hxd.Res.fonts.pixellari.toFont(), -1, -1);
 		FontManager.registerFont("f3x5", hxd.Res.fonts.f3x5.toFont());
-		FontManager.registerFont("peaberry-white", hxd.Res.fonts.WhitePeaberry.toFont());
-		FontManager.registerFont("peaberry-white-outline", hxd.Res.fonts.WhitePeaberryOutline.toFont(), 0, -5);
+		FontManager.registerFont("peaberry-white", hxd.Res.fonts.WhitePeaberry.toFont(), -2, -9);
+		FontManager.registerFont("peaberry-white-outline", hxd.Res.fonts.WhitePeaberryOutline.toFont(), -2, -10);
 		FontManager.registerFont("m6x11", hxd.Res.fonts.m6x11.toFont());
 
 		VisualTestBase.appInstance = this;
