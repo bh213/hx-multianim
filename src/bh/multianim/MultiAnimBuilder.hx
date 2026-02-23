@@ -129,9 +129,13 @@ class BuilderResolvedSettings {
 		this.settings = settings;
 	}
 
+	public function hasSettings():Bool {
+		return settings != null;
+	}
+
 	public function getStringOrDefault(settingName:String, defaultString:String):String {
 		if (settings == null)
-			throw 'settings not found, was looking for $settingName';
+			return defaultString;
 		final r = settings[settingName];
 		if (r == null)
 			return defaultString;
@@ -176,7 +180,7 @@ class BuilderResolvedSettings {
 
 	public function getIntOrDefault(settingName:String, defaultValue:Int):Int {
 		if (settings == null)
-			throw 'settings not found, was looking for $settingName';
+			return defaultValue;
 		var r = settings[settingName];
 		if (r == null)
 			return defaultValue;
@@ -206,7 +210,7 @@ class BuilderResolvedSettings {
 
 	public function getFloatOrDefault(settingName:String, defaultValue:Float):Float {
 		if (settings == null)
-			throw 'settings not found, was looking for $settingName';
+			return defaultValue;
 		var r = settings[settingName];
 		if (r == null)
 			return defaultValue;
@@ -221,7 +225,7 @@ class BuilderResolvedSettings {
 
 	public function getBoolOrDefault(settingName:String, defaultValue:Bool):Bool {
 		if (settings == null)
-			throw 'settings not found, was looking for $settingName';
+			return defaultValue;
 		var r = settings[settingName];
 		if (r == null)
 			return defaultValue;

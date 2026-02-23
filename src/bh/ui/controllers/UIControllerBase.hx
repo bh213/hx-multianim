@@ -131,9 +131,11 @@ abstract class UIControllerBase implements UIController {
 	public function handleClick(mousePoint:Point, button:Int, release:Bool, eventWrapper:EventWrapper) {
 		final element = getEventElement(mousePoint);
 		if (integration.onMouseClick(mousePoint, button, release) == false) return;
-		final triggeredElements = controllable.outsideClick.triggerOutsideEvents(element);
-		for (value in triggeredElements) {
-			handleEvent(value, release ? OnReleaseOutside(button) : OnPushOutside(button), mousePoint);
+		if (release) {
+			final triggeredElements = controllable.outsideClick.triggerOutsideEvents(element);
+			for (value in triggeredElements) {
+				handleEvent(value, OnReleaseOutside(button), mousePoint);
+			}
 		}
 		if (element == null)
 			return;

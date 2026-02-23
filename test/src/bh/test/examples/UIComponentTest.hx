@@ -454,7 +454,7 @@ class UIComponentTest extends BuilderTestBase {
 		var mock = new MockControllable();
 
 		UITestHarness.simulateClick(wrapper, mock);
-		Assert.isTrue(mock.hasEvent(UIClick));
+		Assert.isTrue(mock.hasInteractiveEvent(UIClick));
 	}
 
 	@Test
@@ -464,7 +464,7 @@ class UIComponentTest extends BuilderTestBase {
 		var mock = new MockControllable();
 
 		UITestHarness.simulateEnter(wrapper, mock);
-		Assert.isTrue(mock.hasEvent(UIEntering));
+		Assert.isTrue(mock.hasInteractiveEvent(UIEntering));
 	}
 
 	@Test
@@ -474,7 +474,7 @@ class UIComponentTest extends BuilderTestBase {
 		var mock = new MockControllable();
 
 		UITestHarness.simulateLeave(wrapper, mock);
-		Assert.isTrue(mock.hasEvent(UILeaving));
+		Assert.isTrue(mock.hasInteractiveEvent(UILeaving));
 	}
 
 	@Test
@@ -485,7 +485,7 @@ class UIComponentTest extends BuilderTestBase {
 
 		UITestHarness.simulatePush(wrapper, mock);
 		Assert.equals(1, mock.eventCount());
-		Assert.isTrue(mock.hasEvent(UIPush));
+		Assert.isTrue(mock.hasInteractiveEvent(UIPush));
 	}
 
 	// ============== Settings Parsing Tests ==============
