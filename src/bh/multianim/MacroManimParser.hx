@@ -3068,8 +3068,17 @@ class MacroManimParser {
 						expect(TOpen);
 						final initialState = parseStringOrReference();
 						eatComma();
+						// Check for optional externallyDriven flag
+						var externallyDriven = false;
+						switch (peek()) {
+							case TIdentifier(s3) if (isKeyword(s3, "externallydriven")):
+								advance();
+								externallyDriven = true;
+								eatComma();
+							default:
+						}
 						final constructs = parseStateAnimConstruct();
-						createNode(STATEANIM_CONSTRUCT(initialState, constructs), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+						createNode(STATEANIM_CONSTRUCT(initialState, constructs, externallyDriven), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
 					default:
 						expect(TOpen);
 						final filename = expectIdentifierOrString();

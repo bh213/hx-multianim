@@ -267,9 +267,286 @@ The masking in `generateTileWithText` is correct but redundant if colors are alw
 
 `resolveAsColorInteger` adds palette lookup support (`RVColor`, `RVColorXY`). The particle/animatedPath paths would fail if someone used `palette(...)` in a colorCurve — they should use `resolveAsColorInteger` instead. Low priority since palette colors in curves are unlikely.
 
+## Bug: Named Colors in staticRef/dynamicRef Parameters
+
+### Problem
+
+`staticRef($colorParam, c=>red)` and `dynamicRef($ref, c=>red)` — named colors fail in the **builder** path.
+
+**Root cause chain:**
+
+1. `parseReferenceParams()` calls `parseAnything()` to parse parameter values
+2. `parseAnything()` at line ~816 treats all identifiers as strings:
+   ```haxe
+   case TIdentifier(s):
+       advance();
+       return parseNextExpression(RVString(s), EAny);
+   ```
+   Named color `red` becomes `RVString("red")`, NOT `RVInteger(0xFF0000)`.
+3. In builder `STATIC_REF`/`DYNAMIC_REF` case, `buildWithParameters()` receives the `Map<String, ReferenceableValue>` as `Map<String, Dynamic>`.
+4. `updateIndexedParamsFromDynamicMap()` detects the value is a `ReferenceableValue`, calls `resolveReferenceableValue()`.
+5. For `PPTColor`, that calls `resolveAsColorInteger(RVString("red"))`.
+6. `resolveAsColorInteger()` has no `RVString` case — falls to `default: throw`.
+
+**What works vs what doesn't:**
+
+| Format | `parseAnything` produces | Builder path | Codegen path |
+|--------|------------------------|-------------|-------------|
+| `c=>#FF0000` | `RVInteger(0xFF0000)` via TName color check | OK | OK |
+| `c=>#f00` | `RVInteger(0xFF0000)` via TName color check | OK | OK |
+| `c=>0xFF0000` | `RVInteger(0xFF0000)` via THexInteger | OK | OK |
+| `c=>16711680` | `RVInteger(16711680)` via TInteger | OK | OK |
+| `c=>red` | `RVString("red")` — no color check | **THROWS** | OK (string→dynamicValueToIndex→tryStringToColor) |
+| `c=>white` | `RVString("white")` | **THROWS** | OK |
+
+**Why codegen works:** `rvToExpr(RVString("red"))` → `macro $v{"red"}` → string `"red"` passed to `ProgrammableBuilder.buildStaticRef()` → `buildWithParameters()` receives plain string (not ReferenceableValue) → takes the `else` branch in `updateIndexedParamsFromDynamicMap` → `dynamicValueToIndex("c", PPTColor, "red")` → `tryStringToColor("red")` → `0xFF0000`.
+
+### Fix Options
+
+**Option A — Fix `resolveAsColorInteger()` (recommended)**
+
+Add `RVString` handling in `resolveAsColorInteger()` (MultiAnimBuilder.hx:~950):
+
+```haxe
+case RVString(s):
+    final c = MacroManimParser.tryStringToColor(s);
+    if (c != null) return c;
+    final parsed = Std.parseInt(s);
+    if (parsed != null) return parsed;
+    throw 'cannot resolve color from string "$s"' + currentNodePos();
+```
+
+Pros: Minimal change, only affects color resolution, no risk to other parsing.
+Cons: None — codegen path already works, this just fixes builder.
+
+**Option B — Fix `parseAnything()` to try colors first**
+
+```haxe
+case TIdentifier(s):
+    final c = tryStringToColor(s);
+    if (c != null) { advance(); return parseNextExpression(RVInteger(c), EAny); }
+    advance();
+    return parseNextExpression(RVString(s), EAny);
+```
+
+Pros: Named colors resolve at parse time, consistent with `TName` handling (line 819-824).
+Cons: **Dangerous** — `parseAnything` is used in many contexts. A string parameter or enum value named `red`, `blue`, `green` etc. would be silently converted to an integer. Breaks enum values like `[red, blue, green]` if those happen to be used. Also affects conditional values like `@($state=>red)`.
+
+**Option C — Type-aware `parseAnything` (hybrid)**
+
+Not feasible — `parseAnything` has no type context (doesn't know if the caller expects a color, string, or int).
+
+**Recommendation: Option A.** Safe, targeted fix to `resolveAsColorInteger`. The same pattern of "try named color, fall back to parseInt" is already used in `dynamicValueToIndex` for `PPTColor`.
+
+### Also applies to `resolveReferenceableValue()` in dynamicRef bindings
+
+The incremental binding code at MultiAnimBuilder.hx:~3163 also calls `resolveAsColorInteger` for `PPTColor` params — same fix covers this path too since it goes through the same function.
+
+## Settings Color Handling — Design Options
+
+### Current flow
+
+```
+.manim settings{} block
+    → parseStringOrReference / parseColorOrReference
+    → ParsedSettingValue {type: SVTString|SVTInt, value: ReferenceableValue}
+    → resolveSettings() → ResolvedSettings (Map<String, SettingValue = RSVString|RSVInt|...>)
+    → settingValueToDynamic() → Map<String, Dynamic>    ← type info lost here
+    → buildWithParameters() → updateIndexedParamsFromDynamicMap()
+    → dynamicValueToIndex(key, targetType, value)        ← target type available here
+```
+
+Settings are parsed **without knowing the target** programmable's parameter types. Type info is lost at the `settingValueToDynamic` step. But `dynamicValueToIndex` at the end DOES know the target type and handles string→color conversion (`tryStringToColor`).
+
+### What works today
+
+| Setting syntax | Stored as | Forwarded as Dynamic | Target `PPTColor` param | Result |
+|---|---|---|---|---|
+| `fontColor:color => red` | `SVTInt, RVInteger(0xFF0000)` | `16711680` (int) | `dynamicValueToIndex → Value(0xFF0000)` | **OK** |
+| `fontColor:color => #FF0000` | `SVTInt, RVInteger(0xFF0000)` | `16711680` (int) | same | **OK** |
+| `fontColor => red` (untyped) | `SVTString, RVString("red")` | `"red"` (string) | `tryStringToColor("red") → Value(0xFF0000)` | **OK** (accidental) |
+| `fontColor => #FF0000` (untyped) | `SVTString, RVString("FF0000")` | `"FF0000"` (string) | `tryStringToColor("FF0000") → null, Std.parseInt → null` | **FAILS** |
+| `fontColor => 0xFF0000` (untyped) | `SVTString, RVString("0xFF0000")` | `"0xFF0000"` (string) | `tryStringToColor("0xFF0000") → 0xFF0000` | **OK** |
+
+Note: untyped `fontColor => #FF0000` — the `#` prefix makes the lexer produce `TName("FF0000")`, and `parseStringOrReference` stores it as `RVString("FF0000")` (no `#` prefix). Then `tryStringToColor("FF0000")` fails because it needs a `#` or `0x` prefix. **This is a bug** — `#hex` colors silently become wrong strings in untyped settings.
+
+### Design Options
+
+**Option 1: Require explicit `:color` type (status quo + docs)**
+
+Users must write `fontColor:color => red`. Untyped `fontColor => red` works by accident; `fontColor => #FF0000` is silently broken. Document that color settings require `:color` annotation.
+
+Pros: No code changes.
+Cons: Footgun — untyped `#hex` silently fails.
+
+**Option 2: Add `SVTColor`/`RSVColor` + keep requiring `:color`**
+
+Already planned in the SVTColor section above. Settings with `:color` type annotation get proper `SVTColor`/`RSVColor` type. Untyped settings stay strings.
+
+Pros: Better type safety for explicit colors. Consumer code can distinguish `RSVColor(0xFF0000)` from `RSVInt(255)`.
+Cons: Still doesn't fix untyped `fontColor => #FF0000`.
+
+**Option 3: Type-infer settings from target programmable (at resolution time)**
+
+When `resolveSettings()` runs, it doesn't know the target. But we could defer color resolution: keep the raw `ReferenceableValue` through to `updateIndexedParamsFromDynamicMap` and let the target type drive resolution.
+
+Implementation: Change `settingValueToDynamic` to preserve `ReferenceableValue` for string settings:
+```haxe
+case RSVString(s):
+    // Check if the string looks like a color reference — forward as RV
+    // so target type resolution can handle it
+    RVString(s);  // or just s — both paths work via dynamicValueToIndex
+```
+
+But this doesn't actually help — the issue is that `parseStringOrReference` for `#hex` drops the `#` prefix. The fix needs to happen at parse time.
+
+**Option 4: Use `parseAnything` for untyped settings values (recommended)**
+
+Change the untyped settings path from `parseStringOrReference()` to `parseAnything()`:
+
+```haxe
+// Current (MacroManimParser.hx:~3280):
+case TArrow:
+    advance();
+    final value = parseStringOrReference();  // untyped defaults to string
+    parent.settings.set(key, {type: SVTString, value: value});
+
+// Proposed:
+case TArrow:
+    advance();
+    final value = parseAnything();
+    // Infer type from what parseAnything produced
+    final svType = switch (value) {
+        case RVInteger(_): SVTInt;
+        case RVFloat(_): SVTFloat;
+        case RVString(s) if (s == "true" || s == "false"): SVTBool;
+        default: SVTString;
+    };
+    parent.settings.set(key, {type: svType, value: value});
+```
+
+This fixes:
+- `fontColor => #FF0000` — `parseAnything` handles `TName` → tries `tryStringToColor("#FF0000")` → `RVInteger(0xFF0000)` → stored as `SVTInt`
+- `fontColor => 0xFF0000` — `parseAnything` handles `THexInteger` → `RVInteger(0xFF0000)` → `SVTInt`
+- `fontColor => 255` — `parseAnything` → `RVInteger(255)` → `SVTInt`
+- `fontColor => red` — `parseAnything` → `RVString("red")` → `SVTString` (named colors still need `:color` or target-type resolution)
+- `text => "hello"` — `parseAnything` → `RVString("hello")` → `SVTString`
+
+Pros: `#hex` and `0xhex` values work in untyped settings. Better type inference overall.
+Cons: Slightly different parsing behavior — `fontColor => 42` currently stored as `SVTString/RVString("42")`, would become `SVTInt/RVInteger(42)`. Shouldn't matter since `dynamicValueToIndex` handles both, but needs testing.
+
+**Option 5: Option 4 + SVTColor inference**
+
+Same as Option 4 but also infer `SVTColor` when `parseAnything` produces an integer from a color-looking token:
+
+```haxe
+case TArrow:
+    advance();
+    // Peek to detect color-like tokens before parsing
+    final isColorLike = switch (peek()) {
+        case TName(_): true;  // #hex
+        default: false;
+    };
+    final value = parseAnything();
+    final svType = switch (value) {
+        case RVInteger(_) if (isColorLike): SVTColor;  // was #hex
+        case RVInteger(_): SVTInt;
+        case RVFloat(_): SVTFloat;
+        default: SVTString;
+    };
+    parent.settings.set(key, {type: svType, value: value});
+```
+
+This is over-engineering — we can't reliably distinguish "is this int a color?" without knowing the target. **Not recommended.**
+
+### Recommendation
+
+**Option 4** — switch untyped settings from `parseStringOrReference` to `parseAnything`. Fixes the `#hex` bug and gives better type inference. Combined with **Option 2** (SVTColor/RSVColor for `:color` typed settings) for full type safety when explicit.
+
+Named colors (`red`, `white`) in untyped settings stay as `RVString` and work via `dynamicValueToIndex` at the target. For explicit color semantics, use `:color` type annotation.
+
 ## Summary of All Bugs Found
 
 1. **8-digit hex RRGGBBAA vs AARRGGBB** — main bug, affects 10+ test files (see top of doc)
 2. **PixelOutline `inlineColor` missing alpha** — `Vec4` shader param gets alpha=0, making inline color invisible for 6-digit hex colors
 3. **Particle/AnimatedPath colorCurve uses `resolveAsInteger`** instead of `resolveAsColorInteger` — palette colors in curves would fail
 4. **`addAlphaIfNotPresent` blocks 0% alpha** — cannot specify fully transparent colors
+5. **Named colors in staticRef/dynamicRef params** — builder path throws on `c=>red` because `resolveAsColorInteger` doesn't handle `RVString`
+6. **Untyped settings `#hex` colors lose `#` prefix** — `fontColor => #FF0000` stores `RVString("FF0000")` without `#`, `tryStringToColor` fails
+
+## Implementation TODO
+
+Ordered by dependency — earlier items unblock later ones.
+
+### Phase 1: Core parser fixes (no API changes)
+
+- [ ] **1a. Fix `#RRGGBBAA` → AARRGGBB rotation** in `tryStringToColor()` (MacroManimParser.hx:~1006)
+  - 8-char hex: rotate `RRGGBBAA → AARRGGBB`
+  - Validate hex length: accept only 3, 6, or 8 digits after `#`; reject others with clear error
+  - Files: MacroManimParser.hx
+
+- [ ] **1b. Add `transparent` named color** to `tryStringToColor()` map
+  - Value: `0x00000000`
+  - Requires `addAlphaIfNotPresent` to not override `0x00000000` (use sentinel or skip when exactly 0)
+  - Files: MacroManimParser.hx, ColorUtils.hx
+
+- [ ] **1c. Add more named colors** to `tryStringToColor()` map
+  - Essential: `gold`, `brown`, `pink`, `coral`, `crimson`, `indigo`
+  - Grays: `darkgray`, `lightgray`
+  - Nice-to-have: `skyblue`, `forestgreen`, `tomato`, `wheat`, `slate`
+  - Files: MacroManimParser.hx
+
+- [ ] **1d. Fix `resolveAsColorInteger` for `RVString`** (MultiAnimBuilder.hx:~950)
+  - Add: `case RVString(s): tryStringToColor(s) ?? Std.parseInt(s) ?? throw`
+  - Fixes named colors in staticRef/dynamicRef params (bug #5)
+  - Files: MultiAnimBuilder.hx
+
+- [ ] **1e. Fix particle/animatedPath colorCurve resolution** (bug #3)
+  - Change `resolveAsInteger(cc.startColor)` → `resolveAsColorInteger(cc.startColor)` (MultiAnimBuilder.hx:~4124)
+  - Change `Std.int(resolveAsNumber(startColor))` → `resolveAsColorInteger(startColor)` (MultiAnimBuilder.hx:~4440)
+  - Enables palette() colors in colorCurves
+  - Files: MultiAnimBuilder.hx
+
+- [ ] **1f. Fix PixelOutline `inlineColor` alpha** (bug #2)
+  - Add `addAlphaIfNotPresent()` before `setColor()` on `inlineColor` Vec4
+  - Files: PixelOutline shader code
+
+### Phase 2: Settings type system improvements
+
+- [ ] **2a. Add `SVTColor` / `RSVColor`** to type enums
+  - Add `SVTColor` to `SettingValueType` (MultiAnimParser.hx:225)
+  - Add `RSVColor(c:Int)` to `SettingValue` (MultiAnimParser.hx:237)
+  - Parser: `case "color":` stores `{type: SVTColor, ...}` instead of `SVTInt` (MacroManimParser.hx:~3262)
+  - Builder: `case SVTColor: RSVColor(resolveAsColorInteger(settingValue.value))` in `resolveSettings()` (MultiAnimBuilder.hx:~3803)
+  - Interactive metadata: add `case SVTColor:` alongside `SVTInt` (MultiAnimBuilder.hx:~3605)
+  - Codegen: add `case SVTColor:` alongside `SVTInt` cases
+  - Add helper: `SettingValue.asColorInt()` → matches both `RSVColor` and `RSVInt` for backward compat
+  - Files: MultiAnimParser.hx, MacroManimParser.hx, MultiAnimBuilder.hx, ProgrammableCodeGen.hx, UIScreen.hx
+
+- [ ] **2b. Switch untyped settings to `parseAnything()`**
+  - Change `parseStringOrReference()` → `parseAnything()` for `key => value` settings (MacroManimParser.hx:~3280)
+  - Infer `SVTInt`/`SVTFloat`/`SVTString` from what `parseAnything` produces
+  - Fixes bug #6: `fontColor => #FF0000` now parsed correctly via `parseAnything`'s `TName` color handling
+  - Test: `fontColor => #FF0000`, `fontColor => 0xFF0000`, `fontColor => 42`, `text => "hello"`, `fontColor => red`
+  - Files: MacroManimParser.hx
+
+### Phase 3: Cleanup and consistency
+
+- [ ] **3a. Fix all existing 8-digit hex in .manim test files**
+  - After 1a, review: slotParams, slot2dIndex, characterSheetDemo, updatableDemo, repeatAllNodes, repeatRebuild, indexedNamed, slotDemo, tileParamDemo, codegenButton
+  - Regenerate reference images
+
+- [ ] **3b. Audit `addAlphaIfNotPresent` calls**
+  - Remove unnecessary calls on `Tile.fromColor`, Graphics, pixel shapes (Heaps ignores top byte)
+  - Keep on `Vector4.setColor()` paths (tint, replacePalette, pixelOutline inlineColor)
+  - Low priority — harmless but noisy
+
+- [ ] **3c. Update documentation**
+  - `docs/manim-reference.md`: document all color formats, named colors, `#RRGGBBAA` convention
+  - Add examples: `#f00`, `#FF0000`, `#FF000080` (red @ 50%), `white`, `transparent`, `0xFFFF0000`
+  - Document that settings colors should use `:color` type for best results
+
+- [ ] **3d. Add color verification visual test** (test 88)
+  - Already started: `test/examples/88-colorVerification/colorVerification.manim`
+  - Extend with: named colors in ref params, settings forwarding, 8-digit alpha colors
+  - Generate reference image

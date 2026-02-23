@@ -1,8 +1,26 @@
 version: 0.5
 
 #indexedNamed programmable() {
-  repeatable($i, step(4, dx: 40)) {
-    #label[$i] text(f3x5, $i, #ffffffff): 14, 0
-    #icon[$i] bitmap(generated(color(32, 32, #885522))): 0, 10
+  text(f3x5, "indexed named elements", #aaaaaa): 5, 3
+
+  repeatable($i, step(6, dx: 48)) {
+    @($i => 0) bitmap(generated(color(40, 40, #cc3333))): 2, 14
+    @($i => 1) bitmap(generated(color(40, 40, #33cc33))): 2, 14
+    @($i => 2) bitmap(generated(color(40, 40, #3333cc))): 2, 14
+    @($i => 3) bitmap(generated(color(40, 40, #cccc33))): 2, 14
+    @($i => 4) bitmap(generated(color(40, 40, #cc33cc))): 2, 14
+    @($i => 5) bitmap(generated(color(40, 40, #33cccc))): 2, 14
+    #label[$i] text(f3x5, $i, #ffffff): 18, 30
+    #icon[$i] bitmap(generated(color(8, 8, #ffffff))): 17, 19
+  }
+
+  text(f3x5, "vertical:", #888888): 5, 62
+
+  repeatable($j, step(4, dy: 24)) {
+    @($j => 0) bitmap(generated(color(55, 16, #ff6644))): 5, 74
+    @($j => 1) bitmap(generated(color(55, 16, #66ff44))): 5, 74
+    @($j => 2) bitmap(generated(color(55, 16, #4466ff))): 5, 74
+    @($j => 3) bitmap(generated(color(55, 16, #ffff44))): 5, 74
+    #vtxt[$j] text(f3x5, $j, #ffffff): 24, 78
   }
 }

@@ -1,26 +1,59 @@
 version: 0.5
 
 layouts {
-  #posLayout list {
+  #rowPos list {
     point: 10, 10
-    point: 90, 10
-    point: 170, 10
-    point: 250, 10
+    point: 100, 10
+    point: 190, 10
+    point: 280, 10
+    point: 370, 10
+    point: 460, 10
   }
 
-  #colLayout list {
+  #colPos list {
     point: 10, 80
-    point: 90, 80
-    point: 170, 80
+    point: 10, 140
+    point: 10, 200
+    point: 10, 260
+  }
+
+  #diagPos list {
+    point: 120, 80
+    point: 200, 140
+    point: 280, 200
+    point: 360, 260
+  }
+
+  #zigzagPos list {
+    point: 420, 80
+    point: 480, 160
+    point: 540, 80
+    point: 570, 160
   }
 }
 
 #codegenGridPos programmable() {
-  repeatable($i, layout("main", "posLayout")) {
-    bitmap(generated(color(70, 50, #4488FF))): 0, 0
+  // Row: horizontal
+  repeatable($i, layout("main", "rowPos")) {
+    bitmap(generated(color(80, 36, #4488FF))): 0, 0
+    text(f3x5, $i, #ffffff): 35, 14
   }
 
-  repeatable($j, layout("main", "colLayout")) {
-    bitmap(generated(color(70, 50, #FF4488))): 0, 0
+  // Column: vertical
+  repeatable($j, layout("main", "colPos")) {
+    bitmap(generated(color(80, 36, #FF4488))): 0, 0
+    text(f3x5, $j, #ffffff): 35, 14
+  }
+
+  // Diagonal
+  repeatable($k, layout("main", "diagPos")) {
+    bitmap(generated(color(60, 32, #44FF88))): 0, 0
+    text(f3x5, $k, #ffffff): 25, 12
+  }
+
+  // Zigzag
+  repeatable($z, layout("main", "zigzagPos")) {
+    bitmap(generated(color(60, 32, #FFAA44))): 0, 0
+    text(f3x5, $z, #ffffff): 25, 12
   }
 }

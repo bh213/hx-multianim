@@ -121,6 +121,9 @@ class ProgrammableCodeGen {
 	// Counter for tileGroup elements within a programmable (for multi-tilegroup support)
 	static var tileGroupCounter:Int = 0;
 
+	// Counter for particles elements within a programmable (for multi-particles support)
+	static var particlesCounter:Int = 0;
+
 	// Cache parsed results to avoid re-running subprocess for same file
 	static var parsedCache:Map<String, Map<String, Node>> = new Map();
 
@@ -154,6 +157,7 @@ class ProgrammableCodeGen {
 		hexLayoutFieldCount = 0;
 		needsLayoutAlign = false;
 		tileGroupCounter = 0;
+		particlesCounter = 0;
 		instanceClassName = "";
 	}
 
@@ -2553,8 +2557,8 @@ class ProgrammableCodeGen {
 			case STATEANIM(filename, initialState, selectorReferences):
 				generateStateAnimCreate(node, fieldName, filename, initialState, selectorReferences, pos);
 
-			case STATEANIM_CONSTRUCT(initialState, construct):
-				generateStateAnimConstructCreate(node, fieldName, initialState, construct, pos);
+			case STATEANIM_CONSTRUCT(initialState, construct, externallyDriven):
+				generateStateAnimConstructCreate(node, fieldName, initialState, construct, externallyDriven, pos);
 
 			case TILEGROUP:
 				generateTileGroupCreate(node, fieldName, pos);
@@ -2961,7 +2965,7 @@ class ProgrammableCodeGen {
 				final yVal = resolveRVStatic(yrv);
 				if (xVal != null && yVal != null) {x: xVal, y: yVal} else null;
 			case SELECTED_GRID_POSITION(gridX, gridY):
-				final grid = getGridFromLayout();
+				final grid = getGridFromNode(node);
 				final gx = resolveRVStatic(gridX);
 				final gy = resolveRVStatic(gridY);
 				if (grid != null && gx != null && gy != null) {x: gx * grid.spacingX, y: gy * grid.spacingY} else null;
@@ -3743,8 +3747,9 @@ class ProgrammableCodeGen {
 	static function generateParticlesCreate(node:Node, fieldName:String, particlesDef:ParticlesDef, pos:Position):CreateResult {
 		final fieldRef = macro $p{["this", fieldName]};
 		final nameExpr:Expr = macro $v{currentProgrammableName};
+		final indexExpr:Expr = macro $v{particlesCounter++};
 		final createExprs:Array<Expr> = [
-			macro $fieldRef = this._pb.buildParticles($nameExpr),
+			macro $fieldRef = this._pb.buildParticles($nameExpr, $indexExpr),
 		];
 
 		return {
@@ -3783,7 +3788,7 @@ class ProgrammableCodeGen {
 	// ==================== State Anim Construct ====================
 
 	static function generateStateAnimConstructCreate(node:Node, fieldName:String, initialState:ReferenceableValue,
-			construct:Map<String, StateAnimConstruct>, pos:Position):CreateResult {
+			construct:Map<String, StateAnimConstruct>, externallyDriven:Bool, pos:Position):CreateResult {
 		final fieldRef = macro $p{["this", fieldName]};
 		final initialStateExpr = rvToExpr(initialState);
 
@@ -3810,8 +3815,9 @@ class ProgrammableCodeGen {
 		}
 
 		final constructArrayExpr:Expr = macro $a{constructExprs};
+		final externallyDrivenExpr:Expr = macro $v{externallyDriven};
 		final createExprs:Array<Expr> = [
-			macro $fieldRef = this._pb.buildStateAnimConstruct(Std.string($initialStateExpr), $constructArrayExpr),
+			macro $fieldRef = this._pb.buildStateAnimConstruct(Std.string($initialStateExpr), $constructArrayExpr, $externallyDrivenExpr),
 		];
 
 		return {
@@ -4794,7 +4800,7 @@ class ProgrammableCodeGen {
 				final yExpr = rvToExpr(y);
 				macro $fieldRef.setPosition($xExpr, $yExpr);
 			case SELECTED_GRID_POSITION(gridX, gridY):
-				final grid = getGridFromLayout();
+				final grid = getGridFromNode(node);
 				if (grid != null) {
 					final gxExpr = rvToExpr(gridX);
 					final gyExpr = rvToExpr(gridY);
@@ -5186,6 +5192,17 @@ class ProgrammableCodeGen {
 				result;
 			default: null;
 		};
+	}
+
+	/** Get grid layout for a node — first traverses parent chain, then falls back to #defaultLayout */
+	static function getGridFromNode(?node:MultiAnimParser.Node):Null<CoordinateSystems.GridCoordinateSystem> {
+		var n = node;
+		while (n != null) {
+			if (n.gridCoordinateSystem != null)
+				return n.gridCoordinateSystem;
+			n = n.parent;
+		}
+		return getGridFromLayout();
 	}
 
 	/** Get hex layout for a node — first traverses parent chain, then falls back to #defaultLayout */

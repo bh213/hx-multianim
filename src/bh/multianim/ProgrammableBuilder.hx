@@ -142,14 +142,18 @@ class ProgrammableBuilder {
 
 	/** Build a particle system via the builder (for PARTICLES nodes).
 	 *  Searches the named programmable's children for a PARTICLES node. */
-	public function buildParticles(programmableName:String):bh.base.Particles {
+	public function buildParticles(programmableName:String, index:Int = 0):bh.base.Particles {
 		final builder:MultiAnimBuilder = cast _builder;
 		final progNode = builder.multiParserResult.nodes.get(programmableName);
 		if (progNode == null)
 			throw 'could not find programmable node: $programmableName';
-		final particlesNode = findFirstParticlesChild(progNode);
-		if (particlesNode == null)
+		final allParticles:Array<MultiAnimParser.Node> = [];
+		findAllParticlesChildren(progNode, allParticles);
+		if (allParticles.length == 0)
 			throw 'no particles found in programmable: $programmableName';
+		if (index >= allParticles.length)
+			throw 'particles index $index out of range (found ${allParticles.length}) in programmable: $programmableName';
+		final particlesNode = allParticles[index];
 		return switch particlesNode.type {
 			case PARTICLES(particlesDef):
 				builder.createParticleFromDef(particlesDef, particlesNode.uniqueNodeName);
@@ -158,16 +162,13 @@ class ProgrammableBuilder {
 		};
 	}
 
-	private static function findFirstParticlesChild(node:MultiAnimParser.Node):Null<MultiAnimParser.Node> {
+	private static function findAllParticlesChildren(node:MultiAnimParser.Node, result:Array<MultiAnimParser.Node>):Void {
 		for (child in node.children) {
 			switch child.type {
-				case PARTICLES(_): return child;
-				default:
-					var found = findFirstParticlesChild(child);
-					if (found != null) return found;
+				case PARTICLES(_): result.push(child);
+				default: findAllParticlesChildren(child, result);
 			}
 		}
-		return null;
 	}
 
 	/** Build a state animation from a .anim file.
@@ -180,7 +181,7 @@ class ProgrammableBuilder {
 
 	/** Build an inline-constructed state animation.
 	 *  Used by generated code for STATEANIM_CONSTRUCT nodes. */
-	public function buildStateAnimConstruct(initialState:String, constructData:Array<{key:String, sheet:String, animName:String, fps:Float, loop:Bool, center:Bool}>):AnimationSM {
+	public function buildStateAnimConstruct(initialState:String, constructData:Array<{key:String, sheet:String, animName:String, fps:Float, loop:Bool, center:Bool}>, externallyDriven:Bool = false):AnimationSM {
 		final animSM = new AnimationSM([]);
 		for (entry in constructData) {
 			final loadedSheet = getSheet(entry.sheet);
@@ -195,6 +196,7 @@ class ProgrammableBuilder {
 			animSM.addAnimationState(entry.key, animStates, loopCount, new Map());
 		}
 		animSM.play(initialState);
+		if (externallyDriven) animSM.externallyDriven = true;
 		return animSM;
 	}
 

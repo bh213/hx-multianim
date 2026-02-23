@@ -3,9 +3,9 @@ version: 0.5
 #referenceDemoItem programmable(width:int, height:int, shape:[rect, triangle], c1:color=white) {
   @(shape=>rect) bitmap(generated(color($width, $height, $c1)));
   @(shape=>triangle) pixels (
-    line 0,0, 0, $height, #f00
-    line 0,$height, $width, $height, #f00
-    line $width,$height, 0, 0, #f00
+    line 0,0, 0, $height, $c1
+    line 0,$height, $width, $height, $c1
+    line $width,$height, 0, 0, $c1
   );
 }
 
@@ -15,8 +15,36 @@ version: 0.5
 
   @alpha(0.3) bitmap(generated(color(1280, 720, #555)));
 
-  staticRef($referenceDemoItem, width=>160, height=>160, shape=>rect): 80,120;
-  staticRef($referenceDemoItem, width=>320, height=>320, shape=>triangle): 80, 360;
-  staticRef($referenceDemoItem, width=>500, height=>200, shape=>triangle): 500, 120;
-  staticRef($referenceDemoItem, width=>320, height=>320, shape=>triangle): 700, 360;
+  text(dd, "staticRef Demo - Embedding Sub-Programmables", white, left): 30, 20
+
+  // Row 1: Rectangles
+  text(dd, "rectangles:", #aaaaaa, left): 30, 55
+  staticRef($referenceDemoItem, width=>60, height=>60, shape=>rect, c1=>#FF4444): 30, 80;
+  text(f3x5, "60x60", #888888): 30, 145
+  staticRef($referenceDemoItem, width=>100, height=>40, shape=>rect, c1=>#44FF44): 110, 80;
+  text(f3x5, "100x40", #888888): 110, 125
+  staticRef($referenceDemoItem, width=>40, height=>100, shape=>rect, c1=>#4444FF): 230, 80;
+  text(f3x5, "40x100", #888888): 230, 185
+  staticRef($referenceDemoItem, width=>80, height=>80, shape=>rect, c1=>#FFFF44): 290, 80;
+  text(f3x5, "80x80", #888888): 290, 165
+  staticRef($referenceDemoItem, width=>120, height=>30, shape=>rect, c1=>#FF44FF): 400, 80;
+  text(f3x5, "120x30", #888888): 400, 115
+  staticRef($referenceDemoItem, width=>50, height=>50, shape=>rect, c1=>#44FFFF): 550, 80;
+  text(f3x5, "50x50", #888888): 550, 135
+
+  // Row 2: Triangles
+  text(dd, "triangles:", #aaaaaa, left): 30, 210
+  staticRef($referenceDemoItem, width=>80, height=>80, shape=>triangle, c1=>#FF6644): 30, 240;
+  staticRef($referenceDemoItem, width=>120, height=>60, shape=>triangle, c1=>#66FF44): 140, 240;
+  staticRef($referenceDemoItem, width=>60, height=>120, shape=>triangle, c1=>#4466FF): 290, 240;
+  staticRef($referenceDemoItem, width=>100, height=>100, shape=>triangle, c1=>#FFAA44): 380, 240;
+  staticRef($referenceDemoItem, width=>150, height=>50, shape=>triangle, c1=>#FF44AA): 510, 240;
+  staticRef($referenceDemoItem, width=>200, height=>80, shape=>triangle, c1=>#44FFAA): 690, 240;
+
+  // Row 3: Large mixed
+  text(dd, "large mixed:", #aaaaaa, left): 30, 400
+  staticRef($referenceDemoItem, width=>200, height=>150, shape=>rect, c1=>#FF8844): 30, 430;
+  staticRef($referenceDemoItem, width=>200, height=>200, shape=>triangle, c1=>#44FF88): 260, 430;
+  staticRef($referenceDemoItem, width=>300, height=>120, shape=>rect, c1=>#8844FF): 490, 430;
+  staticRef($referenceDemoItem, width=>250, height=>150, shape=>triangle, c1=>#FFFF88): 820, 430;
 }

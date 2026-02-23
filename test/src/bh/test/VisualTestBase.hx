@@ -430,8 +430,8 @@ class VisualTestBase extends utest.Test {
 				return;
 			}
 
-			macroRoot.setScale(scale);
 			s2d.addChild(macroRoot);
+			macroRoot.setScale(scale);
 
 			if (testTitle != null && testTitle.length > 0) {
 				addTitleOverlay();

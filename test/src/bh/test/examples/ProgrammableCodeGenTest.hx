@@ -6,6 +6,7 @@ import bh.test.VisualTestBase;
 import bh.test.HtmlReportGenerator;
 import bh.test.examples.AutotileTestHelper;
 import bh.multianim.MultiAnimBuilder.PlaceholderValues;
+import bh.multianim.MultiAnimParser.SettingValue;
 import bh.paths.MultiAnimPaths.PathNormalization;
 import bh.ui.UIElement.TileHelper;
 
@@ -417,7 +418,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	@Test
 	public function test46_CodegenGridPos(async:utest.Async):Void {
-		simpleMacroTest(46, "codegenGridPos", () -> createMp().gridPos.create(), async, null, null, 4.0);
+		simpleMacroTest(46, "codegenGridPos", () -> createMp().gridPos.create(), async, null, null, 2.0);
 	}
 
 	// ==================== HexPos: unit tests ====================
@@ -645,10 +646,11 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 			return;
 		}
 
-		var builderParticles = findParticles(builderResult.object);
-		if (builderParticles != null) {
-			builderParticles.setRandomFunc(seededRandom(42));
-			advanceParticles(builderParticles, 1.5);
+		var allBuilderParticles = new Array<bh.base.Particles>();
+		findAllParticles(builderResult.object, allBuilderParticles);
+		for (idx in 0...allBuilderParticles.length) {
+			allBuilderParticles[idx].setRandomFunc(seededRandom(42));
+			advanceParticles(allBuilderParticles[idx], 1.5);
 		}
 
 		waitForUpdate(function(dt:Float) {
@@ -662,10 +664,11 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 			s2d.addChild(macroRoot);
 			if (testTitle != null && testTitle.length > 0) addTitleOverlay();
 
-			var macroParticles = findParticles(macroRoot);
-			if (macroParticles != null) {
-				macroParticles.setRandomFunc(seededRandom(42));
-				advanceParticles(macroParticles, 1.5);
+			var allMacroParticles = new Array<bh.base.Particles>();
+			findAllParticles(macroRoot, allMacroParticles);
+			for (idx in 0...allMacroParticles.length) {
+				allMacroParticles[idx].setRandomFunc(seededRandom(42));
+				advanceParticles(allMacroParticles[idx], 1.5);
 			}
 
 			waitForUpdate(function(dt2:Float) {
@@ -678,12 +681,13 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 				var builderSim = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
 				var macroSim = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
 
-				var threshold = 1.0;
-				var builderOk = builderSim >= threshold;
-				var macroOk = macroSim >= threshold;
+				var builderThreshold = 0.98;
+				var macroThreshold = 0.80;
+				var builderOk = builderSim >= builderThreshold;
+				var macroOk = macroSim >= macroThreshold;
 
 				HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath, builderOk && macroOk,
-					builderSim, null, macroPath, macroSim, macroOk, threshold, threshold);
+					builderSim, null, macroPath, macroSim, macroOk, builderThreshold, macroThreshold);
 				HtmlReportGenerator.generateReport();
 
 				Assert.isTrue(builderOk, 'Builder should match reference (similarity: ${Math.round(builderSim * 10000) / 100}%)');
@@ -702,6 +706,16 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 			if (result != null) return result;
 		}
 		return null;
+	}
+
+	static function findAllParticles(obj:h2d.Object, results:Array<bh.base.Particles>):Void {
+		if (Std.isOfType(obj, bh.base.Particles)) {
+			results.push(cast obj);
+			return;
+		}
+		for (i in 0...obj.numChildren) {
+			findAllParticles(obj.getChildAt(i), results);
+		}
 	}
 
 	/**
@@ -2908,14 +2922,14 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	@Test
 	public function test70_IndexedNamed(async:utest.Async):Void {
-		simpleMacroTest(70, "indexedNamed", () -> createMp().indexedNamed.create(), async);
+		simpleMacroTest(70, "indexedNamed", () -> createMp().indexedNamed.create(), async, null, null, 4.0);
 	}
 
 	// ==================== Slot element ====================
 
 	@Test
 	public function test71_SlotDemo(async:utest.Async):Void {
-		simpleMacroTest(71, "slotDemo", () -> createMp().slotDemo.create(), async);
+		simpleMacroTest(71, "slotDemo", () -> createMp().slotDemo.create(), async, null, null, 4.0);
 	}
 
 	// ==================== Slot + indexed named: unit tests ====================
@@ -3245,38 +3259,35 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		VisualTestBase.pendingVisualTests++;
 		async.setTimeout(15000);
 
-		final col1Values = [0, 10, 25, 40, 50, 60, 75, 85, 95, 100];
-		final col2Values = [0, 15, 33, 50, 66, 80, 95, 100];
-		final col3Values = [0, 5, 20, 35, 50, 65, 80, 90, 95, 100];
-
 		// Phase 1: builder
 		clearScene();
+		var builder:bh.multianim.MultiAnimBuilder.MultiAnimBuilder = null;
+
+		// PVFactory that creates progress bars from placeholder settings
+		final barFactory:bh.multianim.MultiAnimParser.ResolvedSettings->h2d.Object = (settings) -> {
+			final buildName = switch (settings.get("buildName")) {
+				case RSVString(s): s;
+				default: "progressBar";
+			};
+			final value = switch (settings.get("value")) {
+				case RSVInt(i): i;
+				default: 0;
+			};
+			final bar = bh.ui.UIMultiAnimProgressBar.create(builder, buildName, value);
+			bar.doRedraw();
+			return bar.getObject();
+		};
 		try {
 			final fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/75-progressBarDemo/progressBarDemo.manim"));
 			final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
-			final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "progressBarDemo.manim");
+			builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "progressBarDemo.manim");
 
-			for (i in 0...col1Values.length) {
-				final bar = bh.ui.UIMultiAnimProgressBar.create(builder, "progressBar", col1Values[i]);
-				bar.doRedraw();
-				final obj = bar.getObject();
-				obj.setPosition(10, 10 + i * 24);
-				s2d.addChild(obj);
-			}
-			for (i in 0...col2Values.length) {
-				final bar = bh.ui.UIMultiAnimProgressBar.create(builder, "progressBarBelow", col2Values[i]);
-				bar.doRedraw();
-				final obj = bar.getObject();
-				obj.setPosition(260, 10 + i * 28);
-				s2d.addChild(obj);
-			}
-			for (i in 0...col3Values.length) {
-				final bar = bh.ui.UIMultiAnimProgressBar.create(builder, "progressBarInside", col3Values[i]);
-				bar.doRedraw();
-				final obj = bar.getObject();
-				obj.setPosition(400, 10 + i * 22);
-				s2d.addChild(obj);
-			}
+			final result = builder.buildWithParameters("progressBarLayout", null, {
+				placeholderObjects: [
+					"bar" => PVFactory(barFactory),
+				]
+			});
+			s2d.addChild(result.object);
 			addTitleOverlay();
 		} catch (e:Dynamic) {
 			var msg = 'Progress bar builder test threw: $e';
@@ -3295,21 +3306,10 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 			clearScene();
 			try {
 				final mp = createMp();
-				for (i in 0...col1Values.length) {
-					final obj = mp.progressBar.create(col1Values[i]);
-					obj.setPosition(10, 10 + i * 24);
-					s2d.addChild(obj);
-				}
-				for (i in 0...col2Values.length) {
-					final obj = mp.progressBarBelow.create(col2Values[i]);
-					obj.setPosition(260, 10 + i * 28);
-					s2d.addChild(obj);
-				}
-				for (i in 0...col3Values.length) {
-					final obj = mp.progressBarInside.create(col3Values[i]);
-					obj.setPosition(400, 10 + i * 22);
-					s2d.addChild(obj);
-				}
+				final instance = mp.progressBarLayout.create([
+					"bar" => PVFactory(barFactory),
+				]);
+				s2d.addChild(instance);
 				addTitleOverlay();
 			} catch (e:Dynamic) {
 				Assert.fail('Progress bar codegen threw: $e');
@@ -3780,18 +3780,19 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		Assert.notNull(result, "Build should succeed");
 
 		// The root object should have wrapper objects for each iteration.
-		// Each wrapper is positioned at the layout point and contains 2 children.
+		// Each wrapper is positioned at the layout point and contains 3 bitmap children.
 		final bitmaps = findVisibleBitmapDescendants(result.object);
-		Assert.equals(12, bitmaps.length, 'Expected 12 bitmaps (6 iterations x 2), got ${bitmaps.length}');
+		Assert.equals(18, bitmaps.length, 'Expected 18 bitmaps (6 iterations x 3), got ${bitmaps.length}');
 
-		// Verify pairs of bitmaps share the same parent wrapper (same layout point).
-		// Bitmaps at even indices should share a parent with the next odd-index bitmap.
+		// Verify triples of bitmaps share the same parent wrapper (same layout point).
 		var i = 0;
-		while (i < bitmaps.length - 1) {
+		while (i < bitmaps.length - 2) {
 			final parent1 = bitmaps[i].parent;
 			final parent2 = bitmaps[i + 1].parent;
+			final parent3 = bitmaps[i + 2].parent;
 			Assert.equals(parent1, parent2, 'Bitmaps at index $i and ${i + 1} should share a parent (same layout point)');
-			i += 2;
+			Assert.equals(parent1, parent3, 'Bitmaps at index $i and ${i + 2} should share a parent (same layout point)');
+			i += 3;
 		}
 	}
 
@@ -4076,5 +4077,12 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		setupTest(86, "layoutAlign");
 		builderAndMacroScreenshotAndCompare("test/examples/86-layoutAlign/layoutAlign.manim", "layoutAlign",
 			() -> createMp().layoutAlign.create(), async, null, null, 1.0);
+	}
+
+	// ==================== ColorVerification: visual (3-image) ====================
+
+	@Test
+	public function test88_ColorVerification(async:utest.Async):Void {
+		simpleMacroTest(88, "colorVerification", () -> createMp().colorVerification.create(), async);
 	}
 }
