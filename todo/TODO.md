@@ -18,8 +18,6 @@
 ### Haxelib Release
 
 **haxelib.json gaps** (current: [haxelib.json](../haxelib.json), version `0.12.0`):
-- [ ] Add `"license": "BSD"` — **required field**, currently missing (LICENSE file is BSD 3-Clause)
-- [ ] Add tags: `["animation", "ui", "heaps", "pixel-art", "sprite", "manim"]`
 - [ ] Fill `releasenote` for each release
 
 **Pre-release checklist:**
