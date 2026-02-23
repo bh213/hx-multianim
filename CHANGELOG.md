@@ -129,6 +129,7 @@
 - **Multi-particles codegen** — `buildParticles(programmableName, index)` supports index parameter for programmables with multiple `particles {}` blocks; codegen auto-indexes particle nodes
 - **Visual test improvements** — improved visual content and descriptions for tests 10, 15, 32, 44, 46, 51, 56, 70, 71, 75, 76, 81, 82, 83; test 88 (colorVerification) added
 - **Test 75 placeholder+settings pattern** — `progressBarDemo` rewritten to use `placeholder(nothing, builderParameter("bar"))` with `settings{buildName=>..., value:int=>N}` driving `UIMultiAnimProgressBar` creation via `PVFactory`
+- **`autoSyncInitialState` on UIScreenBase** — opt-in property to automatically fire initial state events (`UIChangeValue`, `UIToggle`, etc.) for all elements on first `update()` call; guarded against late changes after sync has already run
 - **Color system overhaul** — comprehensive rework of color handling across parser, builder, and codegen
   - Named colors now bake `0xFF` alpha (Heaps `AARRGGBB` format) — `addAlphaIfNotPresent()` is a no-op for all named colors
   - Added `transparent` named color (`0x00000000`)
@@ -166,6 +167,7 @@
 - **Button bug in `resolveExtraInput`** — fixed crash in button event resolution
 - **`generated(cross())` rendering** — corrected cross generation in multiple files
 - **Expression priority** — fixed operator precedence in conditional expressions
+- **PixelOutline shader passthrough** — transparent pixels outside outline area now correctly pass through the original color instead of being left unset (fixes visual artifacts with pixelOutline filter)
 
 ### Changed
 - **Slot storage refactored** — changed from `Map<String, SlotHandle>` to array-based `SlotKey` storage supporting `Named(name)` and `Indexed(name, index)` keys

@@ -55,6 +55,15 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	var groups:Map<String, Array<UIElement>> = [];
 	var postCustomAddToLayer:Map<h2d.Object, UIElementCustomAddToLayer> = [];
 	var interactiveWrappers:Array<UIInteractiveWrapper> = [];
+	private var _autoSyncInitialState:Bool = false;
+	var autoSyncInitialState(never, set):Bool;
+	var initialSyncDone:Bool = false;
+
+	function set_autoSyncInitialState(value:Bool):Bool {
+		if (initialSyncDone)
+			throw 'autoSyncInitialState cannot be changed after initial sync has already run';
+		return _autoSyncInitialState = value;
+	}
 
 	// Content routing for tabs and similar composite containers
 	var contentTarget:Null<ContentTarget> = null;
@@ -113,6 +122,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		contentTarget = null;
 		contentTargetOwnership.clear();
 		inElementRouting = false;
+		initialSyncDone = false;
 		getSceneRoot().removeChildren();
 		onClear();
 	}
@@ -120,6 +130,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	public function onClear() {}
 
 	public abstract function load():Void;
+
 
 	public abstract function onScreenEvent(event:UIScreenEvent, source:UIElement):Void;
 
@@ -131,6 +142,11 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	public function update(dt:Float):Void {
 		if (contentTarget != null)
 			throw 'content target still set during update — missing endTab() call?';
+		if (_autoSyncInitialState && !initialSyncDone) {
+			initialSyncDone = true;
+			for (el in elements)
+				syncInitialState(el);
+		}
 		// controller.update(dt) is already called by ScreenManager.update() before screen.update()
 		for (obj => v in postCustomAddToLayer) {
 			var insertedLayer = findLayerFromObject(obj);
@@ -602,6 +618,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		return r;
 	}
 
+	/** Wraps a single interactive MAObject as a UIElement. Events arrive in `onScreenEvent`; cast source to `UIElementIdentifiable` for id/metadata. */
 	public function addInteractive(obj:MAObject, ?prefix:String):UIInteractiveWrapper {
 		var wrapper = new UIInteractiveWrapper(obj, prefix);
 		interactiveWrappers.push(wrapper);
@@ -609,6 +626,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		return wrapper;
 	}
 
+	/** Registers all `interactive()` elements from a builder result. Events arrive in `onScreenEvent`; cast source to `UIElementIdentifiable` for id/metadata. */
 	public function addInteractives(r:BuilderResult, ?prefix:String):Array<UIInteractiveWrapper> {
 		var wrappers:Array<UIInteractiveWrapper> = [];
 		for (obj in r.interactives) {

@@ -49,7 +49,7 @@
 - Radio: paired UIElement (click on label to change radio)
 - Subelements: handle nested subelements, keep state, don't query each time (cache `Std.isOfType`)
 - Layouts: absoluteScreens / layers support
-- UIElements: send initial change event so control value can be synced to logic
+- ~~UIElements: send initial change event so control value can be synced to logic~~ (done — `autoSyncInitialState` on UIScreenBase)
 - UIElements: move to separate list, don't check interfaces all the time
 - Hex/grid XY: enable scale & translate
 - Custom `h2d.Object` subclasses with repeats-to-index or grid-to-index functionality
