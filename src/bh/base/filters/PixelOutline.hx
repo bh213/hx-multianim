@@ -108,6 +108,8 @@ private class PixelOutlineShader extends h3d.shader.ScreenShader {
 					|| texture.get(vec2(input.uv.x, input.uv.y + pixelSize.y)).a != 0
 					|| texture.get(vec2(input.uv.x, input.uv.y - pixelSize.y)).a != 0)
 					output.color = vec4(outlineColor, 1);
+				else
+					output.color = curColor;
 			} else if (length(inlineColor) != 0) {
 				output.color = inlineColor;
 			} else
