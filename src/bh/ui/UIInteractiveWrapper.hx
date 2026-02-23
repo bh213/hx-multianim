@@ -51,15 +51,18 @@ class UIInteractiveWrapper implements UIElement implements StandardUIElementEven
 		if (disabled) return;
 		switch wrapper.event {
 			case OnPush(_):
-				wrapper.control.pushEvent(UIPush, this);
+				wrapper.control.outsideClick.trackOutsideClick(true);
+				wrapper.control.pushEvent(UIInteractiveEvent(UIPush, this.id, this.metadata), this);
 			case OnRelease(_):
-				wrapper.control.pushEvent(UIClick, this);
+				wrapper.control.pushEvent(UIInteractiveEvent(UIClick, this.id, this.metadata), this);
+			case OnReleaseOutside(_):
+				wrapper.control.pushEvent(UIInteractiveEvent(UIClickOutside, this.id, this.metadata), this);
 			case OnEnter:
 				hovered = true;
-				wrapper.control.pushEvent(UIEntering, this);
+				wrapper.control.pushEvent(UIInteractiveEvent(UIEntering, this.id, this.metadata), this);
 			case OnLeave:
 				hovered = false;
-				wrapper.control.pushEvent(UILeaving, this);
+				wrapper.control.pushEvent(UIInteractiveEvent(UILeaving, this.id, this.metadata), this);
 			default:
 		}
 	}

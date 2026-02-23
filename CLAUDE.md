@@ -346,8 +346,17 @@ Metadata supports typed values matching the settings system: `key => val` (strin
 **UI integration:**
 - `UIInteractiveWrapper` — thin wrapper implementing `UIElement`, `StandardUIElementEvents`, `UIElementIdentifiable`
 - `UIElementIdentifiable` — opt-in interface with `id`, `prefix`, `metadata:BuilderResolvedSettings`
-- Screen methods: `addInteractive()`, `addInteractives(result, prefix)`, `removeInteractives(prefix)`
-- Events: emits standard `UIClick`, `UIEntering`, `UILeaving` — check `source` for `UIElementIdentifiable` to get `id`/`metadata`
+- Screen methods: `addInteractive()`, `addInteractives(result, prefix)`, `removeInteractives(prefix)`, `getInteractive(id)` (O(1) map lookup), `getInteractivesByPrefix(prefix)`
+- Events: emits `UIInteractiveEvent(event, id, metadata)` — pattern match in `onScreenEvent`:
+  ```haxe
+  case UIInteractiveEvent(UIClick, id, meta): // clicked interactive
+  case UIInteractiveEvent(UIEntering, id, meta): // hover enter
+  case UIInteractiveEvent(UILeaving, id, meta): // hover leave
+  case UIInteractiveEvent(UIPush, id, meta): // mouse down
+  case UIInteractiveEvent(UIClickOutside, id, meta): // clicked outside
+  ```
+- **`UITooltipHelper`** — screen-driven tooltip helper: `startHover(id, buildName, ?params)`, `cancelHover(id)`, `show()`, `hide()`, `update(dt)`; configurable delay, position, offset, layer, per-interactive overrides
+- **`UIPanelHelper`** — screen-driven panel helper: `open(id, buildName, ?params)`, `close()`, `isOpen()`, `getPanelResult()`, `handleOutsideClick(event)`; auto-registers panel interactives with prefix; `OutsideClick` / `Manual` close modes
 
 ## Notes — Indexed Names, Slots, Components
 

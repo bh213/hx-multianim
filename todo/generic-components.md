@@ -19,31 +19,63 @@ function getInteractivesByPrefix(prefix:String):Array<UIInteractiveWrapper> {
 }
 ```
 
-### Typed interactive event handler
+### UIInteractiveEvent — new UIScreenEvent variant
 
-Single callback for all interactive events. Eliminates `Std.isOfType` + cast boilerplate.
+Interactives emit a single wrapped event instead of raw UIClick/UIEntering/etc. No separate callback, no casting — just pattern match in `onScreenEvent`.
 
 ```haxe
-// On UIScreenBase
-var _interactiveHandler:Null<(UIScreenEvent, String, BuilderResolvedSettings) -> Void> = null;
-
-function onInteractiveEvent(callback:(event:UIScreenEvent, id:String, metadata:BuilderResolvedSettings) -> Void):Void {
-    _interactiveHandler = callback;
+enum UIScreenEvent {
+    // ... existing (UIClick, UIEntering, UILeaving, UIPush stay for buttons/lifecycle) ...
+    UIInteractiveEvent(event:UIScreenEvent, id:String, metadata:BuilderResolvedSettings);
 }
 ```
 
-Checked in `onScreenEvent` before falling through to normal handling. Non-interactive events (sliders, lists, dialogs) still go through the regular `onScreenEvent` override.
+UIInteractiveWrapper changes — emits `UIInteractiveEvent` wrapping the inner event:
+
+```haxe
+// UIInteractiveWrapper.onEvent()
+case OnRelease(_):
+    wrapper.control.pushEvent(UIInteractiveEvent(UIClick, this.id, this.metadata), this);
+case OnPush(_):
+    wrapper.control.pushEvent(UIInteractiveEvent(UIPush, this.id, this.metadata), this);
+case OnEnter:
+    hovered = true;
+    wrapper.control.pushEvent(UIInteractiveEvent(UIEntering, this.id, this.metadata), this);
+case OnLeave:
+    hovered = false;
+    wrapper.control.pushEvent(UIInteractiveEvent(UILeaving, this.id, this.metadata), this);
+```
+
+Screen usage — id and metadata available directly in the pattern match:
+
+```haxe
+override function onScreenEvent(event:UIScreenEvent, source:UIElement) {
+    switch event {
+        case UIInteractiveEvent(UIClick, id, meta):
+            trace('clicked $id');
+        case UIInteractiveEvent(UIEntering, id, meta):
+            trace('hover $id');
+        case UIInteractiveEvent(UILeaving, id, meta):
+            trace('leave $id');
+        case UIChangeValue(v):
+            // slider — unchanged
+        default:
+    }
+}
+```
+
+No backward compat needed — no internal components consume UIClick/UIEntering/UILeaving from interactives. ScreenManager uses UIEntering/UILeaving for screen lifecycle with `source: null`, which is unrelated.
 
 ---
 
 ## Phase 2: Screen-Driven Tooltip & Panel Helpers
 
-The interactive is dumb — it just emits events. The **screen** decides what to do. Helper methods on `UIScreenBase` make common patterns easy while keeping full control in the screen's event handler.
+The interactive is dumb — it just emits events. The **screen** decides what to do. Helper methods make common patterns easy while keeping full control in the screen's event handler.
 
 ### Design Principle
 
 ```
-Interactive emits event → onInteractiveEvent handler → screen calls helpers
+Interactive emits UIInteractiveEvent → screen's onScreenEvent → screen calls helpers
 ```
 
 No magic. No auto-wiring from metadata. The screen explicitly decides what happens for each interactive. Metadata (`tooltip => "name"`, `panel => "name"`) is just data the screen can read — it doesn't trigger behavior automatically.
@@ -51,7 +83,6 @@ No magic. No auto-wiring from metadata. The screen explicitly decides what happe
 ### Setup
 
 ```haxe
-// In screen load() — provide builder once for tooltip/panel construction
 var tooltipHelper:UITooltipHelper;
 var panelHelper:UIPanelHelper;
 
@@ -72,26 +103,27 @@ override function load() {
     var result = builder.buildWithParameters("shopUI", params);
     addBuilderResult(result);
     addInteractives(result);
+}
 
-    onInteractiveEvent((event, id, meta) -> {
-        switch event {
-            case UIEntering:
-                // Read tooltip name from metadata, or hardcode it
-                var tipName = meta.getString("tooltip");
-                if (tipName != null)
-                    tooltipHelper.startHover(id, tipName, meta.toMap());
+override function onScreenEvent(event:UIScreenEvent, source:UIElement) {
+    switch event {
+        case UIInteractiveEvent(UIEntering, id, meta):
+            var tipName = meta.getString("tooltip");
+            if (tipName != null)
+                tooltipHelper.startHover(id, tipName, meta.toMap());
 
-            case UILeaving:
-                tooltipHelper.cancelHover(id);
+        case UIInteractiveEvent(UILeaving, id, meta):
+            tooltipHelper.cancelHover(id);
 
-            case UIClick:
-                var panelName = meta.getString("panel");
-                if (panelName != null)
-                    panelHelper.open(id, panelName, meta.toMap());
+        case UIInteractiveEvent(UIClick, id, meta):
+            var panelName = meta.getString("panel");
+            if (panelName != null)
+                panelHelper.open(id, panelName, meta.toMap());
+            else
+                handleClick(id, meta);
 
-            default:
-        }
-    });
+        default:
+    }
 }
 
 override function update(dt:Float) {
@@ -143,6 +175,10 @@ class UIPanelHelper {
     function close():Void;
     function isOpen():Bool;
 
+    // Auto-close on outside click — pass event from onScreenEvent, returns true if closed
+    // Handles UIClickOutside (via controller's trackOutsideClick) and UIClick on unrelated interactive
+    function handleOutsideClick(event:UIScreenEvent):Bool;
+
     // Access panel's interactives (for nested interactive events)
     function getPanelResult():Null<BuilderResult>;
 }
@@ -153,13 +189,12 @@ class UIPanelHelper {
 The screen controls everything:
 
 ```haxe
-case UIEntering:
+case UIInteractiveEvent(UIEntering, id, meta):
     // Conditional tooltip — don't show during drag
-    if (!isDragging) {
+    if (!isDragging)
         tooltipHelper.startHover(id, "priceTip", ["price" => getCurrentPrice(id)]);
-    }
 
-case UIClick:
+case UIInteractiveEvent(UIClick, id, meta):
     // Different panel based on game state
     if (isShopOpen)
         panelHelper.open(id, "buyConfirm", ["item" => id]);
@@ -192,10 +227,10 @@ Connect an interactive to a programmable that provides visual feedback via `stat
 
 | Input | From | To | Event emitted |
 |-------|------|----|---------------|
-| OnEnter | normal | hover | UIEntering |
-| OnPush | hover | pressed | UIPush |
-| OnRelease | pressed | hover | UIClick |
-| OnLeave | hover/pressed | normal | UILeaving |
+| OnEnter | normal | hover | UIInteractiveEvent(UIEntering, ...) |
+| OnPush | hover | pressed | UIInteractiveEvent(UIPush, ...) |
+| OnRelease | pressed | hover | UIInteractiveEvent(UIClick, ...) |
+| OnLeave | hover/pressed | normal | UIInteractiveEvent(UILeaving, ...) |
 | programmatic | any | disabled | — |
 
 ### UIRichInteractiveHelper
@@ -212,34 +247,37 @@ class UIRichInteractiveHelper {
 
     // Programmatic state
     function setDisabled(interactiveId:String, disabled:Bool):Void;
+
+    // Call from onScreenEvent for bound interactives
+    function handleEvent(event:UIScreenEvent, id:String):Void;
 }
 ```
 
-Usage — screen wires it in the event handler:
+Usage:
 
 ```haxe
 richHelper = new UIRichInteractiveHelper(this, builder);
 richHelper.bind("buyBtn", "shopButton");
 
-onInteractiveEvent((event, id, meta) -> {
-    // Rich helper auto-updates visual state for bound interactives
-    richHelper.handleEvent(event, id);
-
-    // Then screen does its own logic
+override function onScreenEvent(event:UIScreenEvent, source:UIElement) {
     switch event {
-        case UIClick:
+        case UIInteractiveEvent(_, id, meta):
+            richHelper.handleEvent(event, id);
+
+        case UIInteractiveEvent(UIClick, id, meta):
             if (id == "buyBtn") purchase();
+
         default:
     }
-});
+}
 ```
 
-Or if the screen wants full manual control, skip the helper and call `setParameter` directly:
+Or full manual control without the helper:
 
 ```haxe
-case UIEntering:
+case UIInteractiveEvent(UIEntering, id, _):
     myBuiltResult.setParameter("status", "hover");
-case UILeaving:
+case UIInteractiveEvent(UILeaving, id, _):
     myBuiltResult.setParameter("status", "normal");
 ```
 
@@ -249,8 +287,8 @@ case UILeaving:
 
 | Phase | What | Pattern |
 |-------|------|---------|
-| 1 | Map lookup + typed event handler | Foundation for everything else |
-| 2 | `UITooltipHelper` + `UIPanelHelper` | Screen calls helpers from event handler |
+| 1 | Map lookup + `UIInteractiveEvent` variant | Foundation — no casting, pattern match |
+| 2 | `UITooltipHelper` + `UIPanelHelper` | Screen calls helpers from onScreenEvent |
 | 3 | `UIRichInteractiveHelper` | Screen calls helper to manage visual state |
 
-All three follow the same principle: **interactive emits, screen decides, helpers do the work**.
+All three follow the same principle: **interactive emits `UIInteractiveEvent`, screen decides, helpers do the work**.

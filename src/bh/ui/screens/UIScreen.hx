@@ -55,6 +55,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	var groups:Map<String, Array<UIElement>> = [];
 	var postCustomAddToLayer:Map<h2d.Object, UIElementCustomAddToLayer> = [];
 	var interactiveWrappers:Array<UIInteractiveWrapper> = [];
+	var interactiveMap:Map<String, UIInteractiveWrapper> = [];
 	private var _autoSyncInitialState:Bool = false;
 	var autoSyncInitialState(never, set):Bool;
 	var initialSyncDone:Bool = false;
@@ -118,6 +119,8 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		groups.clear();
 		elements = [];
 		subElementProviders = [];
+		interactiveWrappers = [];
+		interactiveMap.clear();
 		postCustomAddToLayer.clear();
 		contentTarget = null;
 		contentTargetOwnership.clear();
@@ -618,15 +621,16 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		return r;
 	}
 
-	/** Wraps a single interactive MAObject as a UIElement. Events arrive in `onScreenEvent`; cast source to `UIElementIdentifiable` for id/metadata. */
+	/** Wraps a single interactive MAObject as a UIElement. Events arrive in `onScreenEvent` as `UIInteractiveEvent(event, id, metadata)`. */
 	public function addInteractive(obj:MAObject, ?prefix:String):UIInteractiveWrapper {
 		var wrapper = new UIInteractiveWrapper(obj, prefix);
 		interactiveWrappers.push(wrapper);
+		interactiveMap.set(wrapper.id, wrapper);
 		addElement(wrapper, null);
 		return wrapper;
 	}
 
-	/** Registers all `interactive()` elements from a builder result. Events arrive in `onScreenEvent`; cast source to `UIElementIdentifiable` for id/metadata. */
+	/** Registers all `interactive()` elements from a builder result. Events arrive in `onScreenEvent` as `UIInteractiveEvent(event, id, metadata)`. */
 	public function addInteractives(r:BuilderResult, ?prefix:String):Array<UIInteractiveWrapper> {
 		var wrappers:Array<UIInteractiveWrapper> = [];
 		for (obj in r.interactives) {
@@ -643,8 +647,19 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		}
 		for (w in toRemove) {
 			interactiveWrappers.remove(w);
+			interactiveMap.remove(w.id);
 			removeElement(w);
 		}
+	}
+
+	/** O(1) lookup of interactive wrapper by id. */
+	public function getInteractive(id:String):Null<UIInteractiveWrapper> {
+		return interactiveMap.get(id);
+	}
+
+	/** Returns all interactive wrappers with the given prefix. */
+	public function getInteractivesByPrefix(prefix:String):Array<UIInteractiveWrapper> {
+		return [for (w in interactiveWrappers) if (w.prefix == prefix) w];
 	}
 
 	public function addElement(element:UIElement, layer:Null<LayersEnum>) {

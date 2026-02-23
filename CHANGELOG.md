@@ -129,6 +129,14 @@
 - **Multi-particles codegen** — `buildParticles(programmableName, index)` supports index parameter for programmables with multiple `particles {}` blocks; codegen auto-indexes particle nodes
 - **Visual test improvements** — improved visual content and descriptions for tests 10, 15, 32, 44, 46, 51, 56, 70, 71, 75, 76, 81, 82, 83; test 88 (colorVerification) added
 - **Test 75 placeholder+settings pattern** — `progressBarDemo` rewritten to use `placeholder(nothing, builderParameter("bar"))` with `settings{buildName=>..., value:int=>N}` driving `UIMultiAnimProgressBar` creation via `PVFactory`
+- **`UIInteractiveEvent` screen event** — new `UIScreenEvent.UIInteractiveEvent(event, id, metadata)` wraps interactive events with id and metadata for direct pattern matching; eliminates `Std.isOfType` + cast boilerplate
+  - `UIInteractiveWrapper` now emits `UIInteractiveEvent` instead of raw `UIClick`/`UIEntering`/`UILeaving`/`UIPush`
+  - `UIClickOutside` event — emitted via `OnReleaseOutside` when user clicks outside a previously-pushed interactive (uses controller's `trackOutsideClick` infrastructure)
+  - No backward compat impact — no internal components consumed raw events from interactives
+- **Interactive map lookup** — `UIScreenBase.getInteractive(id)` for O(1) lookup by id; `getInteractivesByPrefix(prefix)` for group queries
+- **`UITooltipHelper`** — screen-driven tooltip helper with hover delay timer, configurable position/offset/layer, per-interactive overrides, manual show/hide
+- **`UIPanelHelper`** — screen-driven panel helper for click-to-open panels anchored to interactives; auto-registers panel interactives with prefix; `handleOutsideClick(event)` auto-closes on `UIClickOutside` or click on unrelated interactive
+- **`BuilderResolvedSettings` null-safe defaults** — `getStringOrDefault()`, `getIntOrDefault()`, `getFloatOrDefault()`, `getBoolOrDefault()` now return the default value when settings are null instead of throwing; new `hasSettings()` method for explicit null check
 - **`autoSyncInitialState` on UIScreenBase** — opt-in property to automatically fire initial state events (`UIChangeValue`, `UIToggle`, etc.) for all elements on first `update()` call; guarded against late changes after sync has already run
 - **Color system overhaul** — comprehensive rework of color handling across parser, builder, and codegen
   - Named colors now bake `0xFF` alpha (Heaps `AARRGGBB` format) — `addAlphaIfNotPresent()` is a no-op for all named colors

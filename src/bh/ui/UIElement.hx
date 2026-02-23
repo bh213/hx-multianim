@@ -226,6 +226,8 @@ enum UIScreenEvent {
 	UIOnControllerEvent(event:ControllerEvents);
 	UIEntering;
 	UILeaving;
+	UIClickOutside;
+	UIInteractiveEvent(event:UIScreenEvent, id:String, metadata:BuilderResolvedSettings);
 }
 
 /**

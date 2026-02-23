@@ -72,6 +72,19 @@ class MockControllable implements Controllable {
 	public function eventCount():Int {
 		return recordedEvents.length;
 	}
+
+	/** Check if any recorded event is a UIInteractiveEvent wrapping the given inner event type. */
+	public function hasInteractiveEvent(innerEvent:UIScreenEvent):Bool {
+		for (e in recordedEvents) {
+			switch e.event {
+				case UIInteractiveEvent(evt, _, _):
+					if (Type.enumEq(evt, innerEvent))
+						return true;
+				default:
+			}
+		}
+		return false;
+	}
 }
 
 /**
