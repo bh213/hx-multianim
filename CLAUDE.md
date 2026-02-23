@@ -266,7 +266,7 @@ See `docs/manim.md` for full animated paths documentation.
 - **Multi-forward settings**: Unprefixed `font`/`fontColor` on dropdown/scrollableList forward to ALL relevant sub-builders for backwards compatibility.
 - **Button**: `buildName` and `text` are control settings; everything else (e.g. `width`, `height`, `font`, `fontColor`) passes through to `#button` programmable.
 - **Scrollable list / Dropdown**: `font`, `fontColor` forwarded to both item builder and dropdown button builder. The `#dropdown` programmable accepts `font`/`fontColor` params for the selected item text.
-- **Settings `color` type**: `fontColor:color=>white` — parsed via `parseColorOrReference()`, stored as `SVTInt`. Supports named colors (`white`, `red`, etc.), hex (`#ff7f50`, `0xFF0000`).
+- **Settings `color` type**: `fontColor:color=>white` — parsed via `parseColorOrReference()`, stored as `SVTColor`/`RSVColor`. Supports named colors (`white`, `red`, `transparent`, etc.), hex (`#RGB`, `#RRGGBB`, `#RRGGBBAA`), and native Heaps format (`0xAARRGGBB`). `SettingValueTools.asColorInt()` helper matches both `RSVColor` and `RSVInt` for backward compatibility.
 - **Dropdown**: Uses closed button + scrollable panel, moves panel to different layer
 - **UIScreen**: If elements don't show or react to events, check if added to UIScreen's elements
 - **Macros**: `MacroUtils.macroBuildWithParameters` maps `.manim` elements to Haxe code — auto-injects `ResolvedSettings` parameter

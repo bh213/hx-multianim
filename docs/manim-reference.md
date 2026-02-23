@@ -223,7 +223,7 @@ Additional condition keywords: `greaterthanorequal`, `lessthanorequal`, `bit`, `
 | `float` | Floating point number |
 | `bool` | Boolean (`true`/`false`/`yes`/`no`/`1`/`0`) |
 | `string` | Text string (quoted) |
-| `color` | Color value — hex `#RRGGBB` or named color |
+| `color` | Color value — `#RGB`, `#RRGGBB`, `#RRGGBBAA`, `0xAARRGGBB`, or named color |
 | `tile` | Tile reference (no default allowed) |
 | `[val1,val2,val3]` | Enum — one of listed values |
 | `start..end` | Integer range |
@@ -379,11 +379,36 @@ Applied to any element via long-form body or inline syntax.
 
 ---
 
-## Named Colors
+## Color Formats
 
-`white`, `silver`, `gray`, `black`, `maroon`, `red`, `orange`, `yellow`, `olive`, `green`, `lime`, `purple`, `fuchsia`, `teal`, `cyan`, `aqua`, `blue`, `navy`
+| Format | Example | Description |
+|--------|---------|-------------|
+| `#RGB` | `#f00` | Shorthand — expands `#RGB` → `#RRGGBB` (opaque) |
+| `#RRGGBB` | `#FF0000` | 6-digit hex RGB (opaque) |
+| `#RRGGBBAA` | `#FF000080` | 8-digit hex RGBA — CSS convention, alpha last (red @ 50%) |
+| `0xAARRGGBB` | `0xFFFF0000` | Native Heaps format — alpha first (for power users) |
+| Named | `red` | Named color (see list below) |
 
-Also hex: `#RRGGBB` or `#RRGGBBAA`.
+### Named Colors
+
+**Basic (CSS):** `transparent`, `white`, `silver`, `lightgray`, `gray`, `darkgray`, `black`, `maroon`, `red`, `crimson`, `orange`, `coral`, `tomato`, `gold`, `yellow`, `wheat`, `olive`, `green`, `lime`, `forestgreen`, `teal`, `cyan`, `aqua`, `skyblue`, `blue`, `navy`, `indigo`, `purple`, `fuchsia`, `pink`, `brown`, `slate`
+
+`transparent` = fully transparent (alpha 0). All other named colors are fully opaque.
+
+### Settings Color Type
+
+Use `:color` type annotation for explicit color semantics in settings:
+```
+fontColor:color => red
+fontColor:color => #FF0000
+fontColor:color => #FF000080
+```
+
+Untyped settings also accept `#hex` and `0xhex` values:
+```
+fontColor => #FF0000
+fontColor => 0xFF0000
+```
 
 ---
 

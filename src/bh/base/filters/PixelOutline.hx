@@ -1,5 +1,7 @@
 package bh.base.filters;
 
+import bh.base.ColorUtils;
+
 enum PixelOutlineFilterMode {
 	Knockout(color:Int, knockout:Float);
 	InlineColor(color:Int, inlineColor:Int);
@@ -80,7 +82,8 @@ private class PixelOutlinePass extends h3d.pass.ScreenFx<PixelOutlineShader> {
 
 		shader.texture = src;
 		shader.outlineColor.setColor(color);
-		shader.inlineColor.setColor(inlineColor);
+		// inlineColor=0 is sentinel for "no inline color" (knockout mode) — don't add alpha to it
+		shader.inlineColor.setColor(inlineColor != 0 ? ColorUtils.addAlphaIfNotPresent(inlineColor) : 0);
 		shader.pixelSize.set(1 / src.width, 1 / src.height);
 		shader.knockOutMul = knockOut;
 		render();

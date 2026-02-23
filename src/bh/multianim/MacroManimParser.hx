@@ -801,9 +801,12 @@ class MacroManimParser {
 					default:
 						return error('expected value after unary minus');
 				}
-			case TInteger(n) | THexInteger(n):
+			case TInteger(n):
 				advance();
 				return parseNextExpression(RVInteger(stringToInt(n)), EAny);
+			case THexInteger(n):
+				advance();
+				return parseNextExpression(RVInteger(stringToInt("0x" + n)), EAny);
 			case TFloat(n):
 				advance();
 				return parseNextExpression(RVFloat(stringToFloat(n)), EAny);
@@ -969,6 +972,9 @@ class MacroManimParser {
 			case TName(s):
 				final c = tryStringToColor("#" + s);
 				if (c != null) { advance(); return c; }
+				if (s.length != 3 && s.length != 6 && s.length != 8) {
+					error('Invalid color \'#$s\' — expected #RGB (3), #RRGGBB (6), or #RRGGBBAA (8) hex digits');
+				}
 				return null;
 			case TIdentifier(s):
 				final c = tryStringToColor(s);
@@ -981,24 +987,40 @@ class MacroManimParser {
 
 	public static function tryStringToColor(s:String):Null<Int> {
 		if (s == null) return null;
+		// Named colors return AARRGGBB with 0xFF alpha baked in (except transparent).
+		// This makes addAlphaIfNotPresent() a no-op for all named colors.
 		var color = switch (s.toLowerCase()) {
-			case "maroon": 0x800000;
-			case "red": 0xFF0000;
-			case "orange": 0xFFA500;
-			case "yellow": 0xFFFF00;
-			case "olive": 0x808000;
-			case "green": 0x008000;
-			case "lime": 0x00FF00;
-			case "purple": 0x800080;
-			case "fuchsia": 0xFF00FF;
-			case "teal": 0x008080;
-			case "cyan" | "aqua": 0x00FFFF;
-			case "blue": 0x0000FF;
-			case "navy": 0x000080;
-			case "black": 0x000000;
-			case "gray": 0x808080;
-			case "silver": 0xC0C0C0;
-			case "white": 0xFFFFFF;
+			case "transparent": 0x00000000;
+			case "maroon": 0xFF800000;
+			case "red": 0xFFFF0000;
+			case "orange": 0xFFFFA500;
+			case "yellow": 0xFFFFFF00;
+			case "olive": 0xFF808000;
+			case "green": 0xFF008000;
+			case "lime": 0xFF00FF00;
+			case "purple": 0xFF800080;
+			case "fuchsia": 0xFFFF00FF;
+			case "teal": 0xFF008080;
+			case "cyan" | "aqua": 0xFF00FFFF;
+			case "blue": 0xFF0000FF;
+			case "navy": 0xFF000080;
+			case "black": 0xFF000000;
+			case "gray": 0xFF808080;
+			case "silver": 0xFFC0C0C0;
+			case "white": 0xFFFFFFFF;
+			case "gold": 0xFFFFD700;
+			case "brown": 0xFF8B4513;
+			case "pink": 0xFFFFC0CB;
+			case "coral": 0xFFFF7F50;
+			case "crimson": 0xFFDC143C;
+			case "indigo": 0xFF4B0082;
+			case "darkgray": 0xFF404040;
+			case "lightgray": 0xFFD0D0D0;
+			case "skyblue": 0xFF87CEEB;
+			case "forestgreen": 0xFF228B22;
+			case "tomato": 0xFFFF6347;
+			case "wheat": 0xFFF5DEB3;
+			case "slate": 0xFF708090;
 			default: null;
 		}
 		if (color != null) return color;
@@ -1007,15 +1029,24 @@ class MacroManimParser {
 			final colorStr = s.substring(1);
 			final colorVal = Std.parseInt("0x" + colorStr);
 			if (colorStr.length == 3 && colorVal != null) {
+				// #RGB → 0xFFRRGGBB (expand and bake alpha)
 				var r = colorVal >> 8;
 				var g = (colorVal & 0xF0) >> 4;
 				var b = colorVal & 0xF;
 				r |= r << 4;
 				g |= g << 4;
 				b |= b << 4;
-				return (r << 16) | (g << 8) | b;
+				return 0xFF000000 | (r << 16) | (g << 8) | b;
 			}
-			return colorVal;
+			if (colorStr.length == 8 && colorVal != null) {
+				// #RRGGBBAA (CSS convention) → AARRGGBB (Heaps convention)
+				final aa = colorVal & 0xFF;
+				final rrggbb = colorVal >>> 8;
+				return (aa << 24) | rrggbb;
+			}
+			if (colorStr.length != 6 || colorVal == null) return null; // Only accept 3, 6, or 8 hex digits
+			// #RRGGBB → 0xFFRRGGBB (bake alpha)
+			return 0xFF000000 | colorVal;
 		}
 		return Std.parseInt(s);
 	}
@@ -3268,7 +3299,7 @@ class MacroManimParser {
 								case "color":
 									final value = parseColorOrReference();
 									if (parent.settings.exists(key)) error('setting $key already defined');
-									parent.settings.set(key, {type: SVTInt, value: value});
+									parent.settings.set(key, {type: SVTColor, value: value});
 								case "bool":
 									final value = parseBoolOrReference();
 									if (parent.settings.exists(key)) error('setting $key already defined');
@@ -3278,10 +3309,15 @@ class MacroManimParser {
 							}
 						case TArrow:
 							advance();
-							// Untyped: key=>value (defaults to string)
-							final value = parseStringOrReference();
+							// Untyped: key=>value — infer type from parsed value
+							final value = parseAnything();
 							if (parent.settings.exists(key)) error('setting $key already defined');
-							parent.settings.set(key, {type: SVTString, value: value});
+							final svType = switch (value) {
+								case RVInteger(_): SVTInt;
+								case RVFloat(_): SVTFloat;
+								default: SVTString;
+							};
+							parent.settings.set(key, {type: svType, value: value});
 						default:
 							error('expected :type=> or => after setting key');
 					}
@@ -3904,8 +3940,9 @@ class MacroManimParser {
 					case "int": {key: key, type: SVTInt, value: parseIntegerOrReference()};
 					case "float": {key: key, type: SVTFloat, value: parseFloatOrReference()};
 					case "string": {key: key, type: SVTString, value: parseStringOrReference()};
+					case "color": {key: key, type: SVTColor, value: parseColorOrReference()};
 					case "bool": {key: key, type: SVTBool, value: parseBoolOrReference()};
-					default: error('expected int, float, string, or bool after : in metadata');
+					default: error('expected int, float, string, color, or bool after : in metadata');
 				};
 			case TArrow:
 				advance();
