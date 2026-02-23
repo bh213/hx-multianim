@@ -65,6 +65,18 @@ class HtmlReportGenerator {
 			}
 		}
 
+		// Generate diff images for pairs that differ
+		var diffBase = actualPath != null ? actualPath.replace("_actual.png", "") : null;
+		if (diffBase != null) {
+			if (similarity < 1.0 && actualPath != null && referencePath != null && FileSystem.exists(actualPath) && FileSystem.exists(referencePath))
+				generateDiffImage(actualPath, referencePath, diffBase + "_diff_bref.png");
+			if (macroPath != null && macroSimilarity != null && macroSimilarity < 1.0 && FileSystem.exists(macroPath) && FileSystem.exists(referencePath))
+				generateDiffImage(macroPath, referencePath, diffBase + "_diff_mref.png");
+			if (macroPath != null && actualPath != null && FileSystem.exists(actualPath) && FileSystem.exists(macroPath)
+				&& !(similarity == 1.0 && macroSimilarity != null && macroSimilarity == 1.0))
+				generateDiffImage(actualPath, macroPath, diffBase + "_diff_bm.png");
+		}
+
 		results.push({
 			testName: testName,
 			referencePath: referencePath,
@@ -398,6 +410,25 @@ class HtmlReportGenerator {
 		html.add('            font-family: monospace;\n');
 		html.add('            white-space: pre-wrap;\n');
 		html.add('        }\n');
+		html.add('        .diff-links { margin-top:10px; display:flex; gap:10px; }\n');
+		html.add('        .diff-link { color:#c62828; cursor:pointer; font-size:13px; font-weight:bold; padding:3px 8px; border:1px solid #c62828; border-radius:3px; user-select:none; }\n');
+		html.add('        .diff-link:hover { background:#ffebee; }\n');
+		html.add('        .diff-link-error { color:#fff; background:#c62828; cursor:pointer; font-size:13px; font-weight:bold; padding:3px 8px; border:1px solid #c62828; border-radius:3px; user-select:none; }\n');
+		html.add('        .diff-link-error:hover { background:#b71c1c; }\n');
+		html.add('        .diff-overlay { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:#222; z-index:1000; flex-direction:column; }\n');
+		html.add('        .diff-overlay.active { display:flex; }\n');
+		html.add('        .diff-header { background:#333; padding:10px 20px; display:flex; justify-content:space-between; align-items:center; flex-shrink:0; }\n');
+		html.add('        .diff-title { color:#fff; font-size:16px; font-weight:bold; }\n');
+		html.add('        .diff-tabs { display:flex; gap:5px; }\n');
+		html.add('        .diff-tabs button { background:#555; color:#fff; border:none; padding:6px 14px; border-radius:3px; cursor:pointer; font-size:13px; }\n');
+		html.add('        .diff-tabs button:hover { background:#666; }\n');
+		html.add('        .diff-tabs button.active { background:#1976D2; }\n');
+		html.add('        .diff-close { color:#fff; background:#555; border:none; padding:6px 14px; border-radius:3px; cursor:pointer; font-size:13px; }\n');
+		html.add('        .diff-close:hover { background:#666; }\n');
+		html.add('        .diff-body { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; overflow:auto; padding:20px; }\n');
+		html.add('        .diff-label { color:#fff; font-size:16px; margin-top:10px; font-weight:bold; }\n');
+		html.add('        .diff-controls { margin-top:10px; color:#ccc; font-size:14px; text-align:center; display:flex; align-items:center; gap:10px; }\n');
+		html.add('        .diff-controls input[type="range"] { width:300px; }\n');
 		html.add('    </style>\n');
 		html.add('</head>\n');
 		html.add('<body>\n');
@@ -428,6 +459,23 @@ class HtmlReportGenerator {
 					var escapedError = result.errorMessage.htmlEscape();
 					html.add('            <span class="error-message">${escapedError}</span>\n');
 				}
+				html.add('        </div>\n');
+			}
+			html.add('    </div>\n');
+		}
+
+		// Builder vs Macro mismatch errors section
+		var macroMismatches = results.filter(function(r) {
+			if (r.macroPath == null) return false;
+			if (!FileSystem.exists(r.actualPath) || !FileSystem.exists(r.macroPath)) return false;
+			return !(r.similarity == 1.0 && r.macroSimilarity != null && r.macroSimilarity == 1.0);
+		});
+		if (macroMismatches.length > 0) {
+			html.add('    <div class="failed-links" style="border-left-color:#b71c1c;background:#ffcdd2;">\n');
+			html.add('        <h3 style="color:#b71c1c;">Builder vs Macro Mismatches (${macroMismatches.length})</h3>\n');
+			for (result in macroMismatches) {
+				html.add('        <div>\n');
+				html.add('            <a href="#test-${result.testName}">${result.testName}</a>\n');
 				html.add('        </div>\n');
 			}
 			html.add('    </div>\n');
@@ -522,6 +570,40 @@ class HtmlReportGenerator {
 			}
 
 			html.add('        </div>\n');
+
+			// Diff links for pairs that differ
+			var diffBase = result.actualPath.replace("_actual.png", "");
+			var diffLinks = new Array<String>();
+			if (result.similarity < 1.0 && FileSystem.exists(result.referencePath) && FileSystem.exists(result.actualPath)) {
+				var actRel = makeRelativePath(result.actualPath);
+				var refRel = makeRelativePath(result.referencePath);
+				var dp = diffBase + "_diff_bref.png";
+				var dpRel = FileSystem.exists(dp) ? makeRelativePath(dp) : "";
+				diffLinks.push('<a class="diff-link" onclick="showDiff(\'${actRel}\',\'${refRel}\',\'Builder\',\'Reference\',\'${dpRel}\')">Diff: Builder vs Ref</a>');
+			}
+			if (hasMacro && result.macroSimilarity != null && result.macroSimilarity < 1.0 && FileSystem.exists(result.macroPath) && FileSystem.exists(result.referencePath)) {
+				var macRel = makeRelativePath(result.macroPath);
+				var refRel = makeRelativePath(result.referencePath);
+				var dp = diffBase + "_diff_mref.png";
+				var dpRel = FileSystem.exists(dp) ? makeRelativePath(dp) : "";
+				diffLinks.push('<a class="diff-link" onclick="showDiff(\'${macRel}\',\'${refRel}\',\'Macro\',\'Reference\',\'${dpRel}\')">Diff: Macro vs Ref</a>');
+			}
+			if (hasMacro && FileSystem.exists(result.actualPath) && FileSystem.exists(result.macroPath)
+				&& !(result.similarity == 1.0 && result.macroSimilarity != null && result.macroSimilarity == 1.0)) {
+				var actRel = makeRelativePath(result.actualPath);
+				var macRel = makeRelativePath(result.macroPath);
+				var dp = diffBase + "_diff_bm.png";
+				var dpRel = FileSystem.exists(dp) ? makeRelativePath(dp) : "";
+				diffLinks.push('<a class="diff-link-error" onclick="showDiff(\'${actRel}\',\'${macRel}\',\'Builder\',\'Macro\',\'${dpRel}\')">ERROR: Builder vs Macro differ</a>');
+			}
+			if (diffLinks.length > 0) {
+				html.add('        <div class="diff-links">\n');
+				for (link in diffLinks) {
+					html.add('            ${link}\n');
+				}
+				html.add('        </div>\n');
+			}
+
 			html.add('    </div>\n');
 		}
 
@@ -538,6 +620,24 @@ class HtmlReportGenerator {
 		html.add('            <button class="manim-overlay-close" onclick="hideManim()">Close (Esc)</button>\n');
 		html.add('        </div>\n');
 		html.add('        <pre class="manim-content" id="manimContent"></pre>\n');
+		html.add('    </div>\n');
+
+		// Diff overlay element
+		html.add('    <div class="diff-overlay" id="diffOverlay">\n');
+		html.add('        <div class="diff-header">\n');
+		html.add('            <span class="diff-title" id="diffTitle"></span>\n');
+		html.add('            <div class="diff-tabs">\n');
+		html.add('                <button id="tabSlider" class="active" onclick="setDiffMode(\'slider\')">Slider</button>\n');
+		html.add('                <button id="tabDiff" onclick="setDiffMode(\'diff\')">Difference</button>\n');
+		html.add('            </div>\n');
+		html.add('            <button class="diff-close" onclick="hideDiff()">Close (Esc)</button>\n');
+		html.add('        </div>\n');
+		html.add('        <div class="diff-body">\n');
+		html.add('            <canvas id="diffCanvas" style="display:block;background:#fff"></canvas>\n');
+		html.add('            <img id="diffImg" style="display:none;max-width:90vw;max-height:75vh;background:#000">\n');
+		html.add('            <div class="diff-label" id="diffLabel"></div>\n');
+		html.add('            <div class="diff-controls" id="diffControls"></div>\n');
+		html.add('        </div>\n');
 		html.add('    </div>\n');
 
 		// Hidden script data for manim contents
@@ -594,10 +694,60 @@ class HtmlReportGenerator {
 		html.add('        function hideManim() {\n');
 		html.add('            document.getElementById("manimOverlay").classList.remove("active");\n');
 		html.add('        }\n');
+		// Diff viewer — canvas slider + pre-generated diff image
+		html.add('        var ds={l1:"",l2:"",mode:"slider",img1:null,img2:null,split:50,diffSrc:""};\n');
+		html.add('        function showDiff(a,b,la,lb,dp){\n');
+		html.add('            ds.l1=la;ds.l2=lb;ds.split=50;ds.diffSrc=dp||"";\n');
+		html.add('            document.getElementById("diffTitle").textContent=la+" vs "+lb;\n');
+		html.add('            ds.img1=new Image();ds.img2=new Image();\n');
+		html.add('            var n=0;\n');
+		html.add('            function ck(){n++;if(n===2){document.getElementById("diffOverlay").classList.add("active");setDiffMode("slider");}}\n');
+		html.add('            ds.img1.onload=ck;ds.img2.onload=ck;\n');
+		html.add('            ds.img1.src=a;ds.img2.src=b;\n');
+		html.add('        }\n');
+		html.add('        function hideDiff(){document.getElementById("diffOverlay").classList.remove("active");}\n');
+		html.add('        function setDiffMode(m){\n');
+		html.add('            ds.mode=m;\n');
+		html.add('            document.getElementById("tabSlider").className=m==="slider"?"active":"";\n');
+		html.add('            document.getElementById("tabDiff").className=m==="diff"?"active":"";\n');
+		html.add('            var cv=document.getElementById("diffCanvas");\n');
+		html.add('            var im=document.getElementById("diffImg");\n');
+		html.add('            var lb=document.getElementById("diffLabel");\n');
+		html.add('            var co=document.getElementById("diffControls");\n');
+		html.add('            if(m==="slider"){\n');
+		html.add('                cv.style.display="block";im.style.display="none";\n');
+		html.add('                ds.split=50;lb.textContent="";\n');
+		html.add('                co.innerHTML=ds.l1+" <input type=\\\"range\\\" min=\\\"0\\\" max=\\\"100\\\" value=\\\"50\\\" oninput=\\\"wipeSlider(this.value)\\\"> "+ds.l2;\n');
+		html.add('                renderSlider();\n');
+		html.add('            }else{\n');
+		html.add('                cv.style.display="none";\n');
+		html.add('                if(ds.diffSrc){im.src=ds.diffSrc;im.style.display="block";}else{im.style.display="none";}\n');
+		html.add('                lb.textContent="Bright pixels = differences";co.innerHTML="";\n');
+		html.add('            }\n');
+		html.add('        }\n');
+		html.add('        function wipeSlider(v){ds.split=parseInt(v);renderSlider();}\n');
+		html.add('        function renderSlider(){\n');
+		html.add('            if(!ds.img1||!ds.img2||!ds.img1.complete||!ds.img2.complete)return;\n');
+		html.add('            var c=document.getElementById("diffCanvas");\n');
+		html.add('            var w=ds.img1.naturalWidth,h=ds.img1.naturalHeight;\n');
+		html.add('            var maxW=window.innerWidth*0.9,maxH=window.innerHeight*0.75;\n');
+		html.add('            var sc=Math.min(1,maxW/w,maxH/h);\n');
+		html.add('            var dw=Math.round(w*sc),dh=Math.round(h*sc);\n');
+		html.add('            c.width=dw;c.height=dh;\n');
+		html.add('            var ctx=c.getContext("2d");\n');
+		html.add('            ctx.imageSmoothingEnabled=false;\n');
+		html.add('            var sx=Math.round(dw*ds.split/100);\n');
+		html.add('            ctx.save();ctx.beginPath();ctx.rect(0,0,sx,dh);ctx.clip();\n');
+		html.add('            ctx.drawImage(ds.img1,0,0,dw,dh);ctx.restore();\n');
+		html.add('            ctx.save();ctx.beginPath();ctx.rect(sx,0,dw-sx,dh);ctx.clip();\n');
+		html.add('            ctx.drawImage(ds.img2,0,0,dw,dh);ctx.restore();\n');
+		html.add('            ctx.fillStyle="#ff0000";ctx.fillRect(sx-1,0,2,dh);\n');
+		html.add('        }\n');
 		html.add('        document.addEventListener("keydown", function(e) {\n');
 		html.add('            if (e.key === "Escape") {\n');
 		html.add('                hideOverlay();\n');
 		html.add('                hideManim();\n');
+		html.add('                hideDiff();\n');
 		html.add('            }\n');
 		html.add('        });\n');
 		html.add('    </script>\n');
@@ -645,6 +795,13 @@ class HtmlReportGenerator {
 			var failedNames = results.filter(r -> !r.passed).map(r -> r.testName);
 			parts.push('FAILED: ${failed}/${results.length} visual tests failed [${failedNames.join(", ")}]');
 		}
+		var macroMismatchCount = results.filter(function(r) {
+			if (r.macroPath == null) return false;
+			return !(r.similarity == 1.0 && r.macroSimilarity != null && r.macroSimilarity == 1.0);
+		}).length;
+		if (macroMismatchCount > 0) {
+			parts.push('ERROR: ${macroMismatchCount} builder vs macro mismatches');
+		}
 		if (includeUnitTests && unitAggregator != null && unitAggregator.root != null && !unitAggregator.root.stats.isOk) {
 			var us = unitAggregator.root.stats;
 			parts.push('FAILED: unit tests: ${us.failures} failures, ${us.errors} errors out of ${us.assertations} assertions');
@@ -673,6 +830,13 @@ class HtmlReportGenerator {
 			if (!us.isOk) hasFailures = true;
 		}
 
+		// Builder vs Macro mismatches
+		var macroMismatchNames = results.filter(function(r) {
+			if (r.macroPath == null) return false;
+			return !(r.similarity == 1.0 && r.macroSimilarity != null && r.macroSimilarity == 1.0);
+		}).map(r -> r.testName);
+		if (macroMismatchNames.length > 0) hasFailures = true;
+
 		var status = statusOverride != null ? statusOverride : (hasFailures ? "FAILED" : "OK");
 		buf.add('status: ${status}\n');
 		buf.add('visual_total: ${results.length}\n');
@@ -681,6 +845,10 @@ class HtmlReportGenerator {
 		if (visualFailed > 0) {
 			var failedNames = results.filter(r -> !r.passed).map(r -> r.testName);
 			buf.add('visual_failures: [${failedNames.join(", ")}]\n');
+		}
+		buf.add('macro_mismatches: ${macroMismatchNames.length}\n');
+		if (macroMismatchNames.length > 0) {
+			buf.add('macro_mismatch_tests: [${macroMismatchNames.join(", ")}]\n');
 		}
 		buf.add('unit_assertions: ${unitAssert}\n');
 		buf.add('unit_failures: ${unitFail}\n');
@@ -721,6 +889,36 @@ class HtmlReportGenerator {
 		results = [];
 		unitAggregator = null;
 		includeUnitTests = false;
+	}
+
+	/**
+	 * Generate a grayscale diff image: abs(image1 - image2) amplified 5x.
+	 * Black = identical, white = maximum difference.
+	 */
+	public static function generateDiffImage(path1:String, path2:String, outputPath:String):Bool {
+		if (!FileSystem.exists(path1) || !FileSystem.exists(path2)) return false;
+		try {
+			var bytes1 = File.getBytes(path1);
+			var bytes2 = File.getBytes(path2);
+			var p1 = hxd.res.Any.fromBytes(path1, bytes1).toImage().getPixels();
+			var p2 = hxd.res.Any.fromBytes(path2, bytes2).toImage().getPixels();
+			if (p1.width != p2.width || p1.height != p2.height) return false;
+			for (x in 0...p1.width) {
+				for (y in 0...p1.height) {
+					var c1 = p1.getPixel(x, y);
+					var c2 = p2.getPixel(x, y);
+					var dr = Std.int(Math.abs(((c1 >> 16) & 0xFF) - ((c2 >> 16) & 0xFF)));
+					var dg = Std.int(Math.abs(((c1 >> 8) & 0xFF) - ((c2 >> 8) & 0xFF)));
+					var db = Std.int(Math.abs((c1 & 0xFF) - (c2 & 0xFF)));
+					var v = Std.int(Math.min(255, Math.max(dr, Math.max(dg, db)) * 5));
+					p1.setPixel(x, y, 0xFF000000 | (v << 16) | (v << 8) | v);
+				}
+			}
+			File.saveBytes(outputPath, p1.toPNG());
+			return true;
+		} catch (e:Dynamic) {
+			return false;
+		}
 	}
 
 	private static function generateUnitTestSection(html:StringBuf):Void {

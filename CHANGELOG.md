@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.13-dev] - 2026-02-22
+## [0.13-dev] - 2026-02-23
 
 ### Added
 - **Parameterized slots** — `#name slot(param:type=default, ...)` for visual state management
@@ -86,8 +86,46 @@
   - `ContentTarget` interface for routing screen element additions to active tab
   - Settings: `buildName` (tabBar), `tabButtonBuildName` (buttons), `tabButton.*` (prefixed to buttons), `tabPanel.width`/`tabPanel.height`, `tabPanel.contentRoot` (relative coordinate mode)
   - Events: `UIChangeItem(index, items)`
+- **Repeatable loop variable conditionals** — `@($i => value)` conditionals now work inside `repeatable` blocks
+  - Parser accepts `$reference` tokens in conditional parameter position
+  - Loop variables validated against scope vars (not just programmable params)
+  - `stringToConditionalGeneric()` for type inference without param definition (tries integer first)
+  - Comparison operators (`>=`, `<=`, `!=`) work on loop variables
+  - Builder resolves `Value(val)` against `CoStringValue` via `Std.string()` conversion
+  - Codegen: loop variable substitutions correctly applied in conditional expressions
+- **Scrollable list runtime API** — `setItems(newItems, ?selectedIndex)` replaces content at runtime; `scrollToIndex(idx)` scrolls to make item visible
+- **Scrollable list click mode** — `clickMode` setting (`SingleClick`/`DoubleClick`) controls action event
+  - `SingleClick`: emits `UIClickItem` on single click selection
+  - `DoubleClick` (default): emits `UIDoubleClickItem` on double-click
+  - Setting: `clickMode => "single"` or `"double"`
+- **Scrollable list disabled state** — `disabled` property dims list (alpha 0.5) and shows selected item in disabled variant
+- **`UIPush` screen event** — new `UIScreenEvent.UIPush` for mouse-down events
+- **`UIClickItem` screen event** — new `UIScreenEvent.UIClickItem(index, items)` for single-click list actions
+- **Interactive wrapper improvements** — `UIInteractiveWrapper` now implements `UIElementDisablable`
+  - `disabled` property blocks all events when true
+  - `hovered` property tracks hover state
+  - `UIPush` event emitted on `OnPush` (in addition to `UIClick` on `OnRelease`)
+- **UI component unit tests** — comprehensive non-visual test suite (`UIComponentTest.hx`) covering button, checkbox, slider, progress bar, interactive wrapper, and screen settings
+  - `UITestHarness` with `MockControllable`, `UITestScreen`, and event simulation helpers (`simulateClick`, `simulatePush`, `simulateEnter`, `simulateLeave`)
+- **Parser error recovery** — improved error messages for unexpected tokens in `flow()` parameters and `particles` blocks
+- **Hex runtime codegen** — all hex coordinate types now support param-dependent values in macro codegen
+  - `$hex.offset($col, $row, even/odd)` — runtime offset-to-cube conversion with orientation-aware method selection
+  - `$hex.doubled($col, $row)` — runtime doubled-to-cube conversion
+  - `$hex.pixel($x, $y)` — runtime pixel-to-hex-to-pixel snap (previously a TODO stub)
+  - `$hex.cube($q, $r, $s).hexCorner($i, $f)` / `.hexEdge($d, $f)` — cell-relative corner/edge with dynamic cell and/or index
+  - Runtime support in `pixels` elements for hex coordinate types (previously warned and used `(0,0)`)
+  - Runtime `.x`/`.y` extraction for `offset()`, `doubled()`, `pixel()` in expressions
+- **Multi-hex-layout codegen** — programmables with multiple `point {}` blocks using different hex layouts now generate separate `_hexLayout` / `_hexLayout1` / ... fields per unique orientation+size combination
+- **Layout alignment codegen** — `LayoutAlignRoot` class enables deferred layout alignment positioning in macro-generated classes; generated class extends `LayoutAlignRoot` instead of `h2d.Object` when layouts use `align`
+- **Deterministic particle/animation testing** — `Particles.setRandomFunc()` and `AnimationSM.randomFunc` enable seeded random injection for reproducible test screenshots
+- **Scale/alpha/tint/filter incremental tracking** — builder now tracks param refs in scale, alpha, tint, and filter expressions for incremental updates via `setParameter()`
 
 ### Fixed
+- **Multi-hex-layout codegen mismatch** — programmables with multiple `point {}` blocks using different hex orientations/sizes now generate correct positions for each block (previously all blocks used the first layout's field)
+- **Layout index null default** — `layout(name)` without explicit index now defaults to index 0 in codegen (previously returned null, causing missing elements)
+- **Font offset baseline/lineHeight** — `FontManager` now adjusts `baseLine` and `lineHeight` when font offset is applied
+- **Hex offset parity in static expression context** — `$hex.offset(col, row, odd).x` now correctly uses ODD parity instead of always defaulting to EVEN
+- **`fitBounds` path normalization** — `applyFitBounds()` now normalizes min/max coordinates regardless of point order, fixing incorrect scaling when topLeft/bottomRight were swapped
 - **Indexed name key separator** — internal indexed name keys (`#name[$i]`) now use space separator instead of `_` to prevent clashes with names containing underscores
 - **`loadTileImpl` error reporting** — improved error messages when tile loading fails
 - **`SELECTED_GRID_POSITION_WITH_OFFSET` removed** — grid position with offset now uses generic `WITH_OFFSET` wrapper instead of a dedicated enum variant

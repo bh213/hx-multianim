@@ -20,6 +20,7 @@
 | `src/bh/multianim/MacroManimParser.hx` | Main parser for `.manim` files (used at both compile-time and runtime) |
 | `src/bh/multianim/ProgrammableCodeGen.hx` | Macro code generation for `@:manim`/`@:data` |
 | `src/bh/multianim/ProgrammableBuilder.hx` | Base class for macro-generated factories |
+| `src/bh/multianim/LayoutAlignRoot.hx` | Base class for codegen instances with aligned layouts |
 | `src/bh/stateanim/AnimParser.hx` | Parser for `.anim` state animation files |
 | `test/` | Test suite |
 
@@ -324,7 +325,6 @@ Enable debug traces by adding to HXML:
 - Repeatable step scale for dx/dy
 - HTML text: standalone `HTMLTEXT` element type is deprecated/commented out (the `text(..., html: true)` parameter approach works)
 - Double reload issue
-- Hex coordinate system offset support
 
 
 ### Next Features

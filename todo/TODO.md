@@ -27,6 +27,12 @@
 
 ## Features
 
+- Codegen: support `builderParameter` placeholders in `create()`/`createFrom()` API
+  - Currently `buildPlaceholderViaSource()` reads `builder.builderParams.placeholderObjects` but codegen never sets it
+  - Need: detect `PRSBuilderParameterSource` names during codegen scan phase, add them as `Map<String, PlaceholderValues>` arg to `create()`/`createFrom()`
+  - In factory `create()` body: set `builder.builderParams.placeholderObjects` before constructing the instance
+  - Then `buildPlaceholderViaSource()` already works — no changes needed there
+  - Test: add codegen version of #78-characterSheetDemo using `mp.characterSheetDemo.create()` with placeholder arg
 - Generic components support
 - Bit expression: support for any-bit and all-bits (e.g. grid direction)
 - StateAnim: color replace (replaceColor filter exists in MultiAnimParser, not fully exposed for stateanim)

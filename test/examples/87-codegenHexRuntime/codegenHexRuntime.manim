@@ -1,0 +1,113 @@
+version: 0.5
+
+#codegenHexRuntime programmable(col:int=1, row:int=0, ci:int=2, q:int=1) {
+
+  // === Pointy hex: offset grid via repeatable2d ===
+  point {
+    hex: pointy(20, 20)
+    pos: 80, 80
+    scale: 2
+
+    // 3x3 offset grid with param-dependent column
+    repeatable2d($c, $r, range(0, 3), range(0, 3)) {
+      bitmap(generated(color(4, 4, #FF6600))): $hex.offset($c, $r, even)
+    }
+
+    // Param-dependent offset marker (larger, distinct color)
+    bitmap(generated(color(6, 6, #FFFFFF))): $hex.offset($col, $row, even)
+  }
+
+  // === Pointy hex: doubled grid via repeatable2d ===
+  point {
+    hex: pointy(20, 20)
+    pos: 280, 80
+    scale: 2
+
+    repeatable2d($c, $r, range(0, 3), range(0, 3)) {
+      bitmap(generated(color(4, 4, #0066FF))): $hex.doubled($c, $r)
+    }
+
+    bitmap(generated(color(6, 6, #FFFFFF))): $hex.doubled($col, $row)
+  }
+
+  // === Pointy hex: corners and edges via repeatable ===
+  point {
+    hex: pointy(24, 24)
+    pos: 500, 80
+    scale: 2
+
+    // Draw all 6 corners of origin hex
+    repeatable($i, range(0, 6)) {
+      bitmap(generated(color(4, 4, #00FF00))): $hex.corner($i, 1.0)
+    }
+
+    // Draw all 6 edges of origin hex
+    repeatable($i, range(0, 6)) {
+      bitmap(generated(color(3, 3, #FFFF00))): $hex.edge($i, 1.0)
+    }
+
+    // Cell-relative: corners of cube(q, 0, -q)
+    repeatable($i, range(0, 6)) {
+      bitmap(generated(color(4, 4, #FF0000))): $hex.cube($q, 0, -$q).hexCorner($i, 1.0)
+    }
+
+    // Cell-relative: edges of cube(q, 0, -q)
+    repeatable($i, range(0, 6)) {
+      bitmap(generated(color(3, 3, #FF00FF))): $hex.cube($q, 0, -$q).hexEdge($i, 1.0)
+    }
+
+    // Param-dependent corner index highlight
+    bitmap(generated(color(8, 8, #FFFFFF))): $hex.cube($q, 0, -$q).hexCorner($ci, 1.0)
+  }
+
+  // === Flat hex: offset grid with odd parity ===
+  point {
+    hex: flat(20, 20)
+    pos: 80, 320
+    scale: 2
+
+    repeatable2d($c, $r, range(0, 3), range(0, 3)) {
+      bitmap(generated(color(4, 4, #FF6600))): $hex.offset($c, $r, odd)
+    }
+
+    bitmap(generated(color(6, 6, #FFFFFF))): $hex.offset($col, $row, odd)
+  }
+
+  // === Flat hex: doubled grid ===
+  point {
+    hex: flat(20, 20)
+    pos: 280, 320
+    scale: 2
+
+    repeatable2d($c, $r, range(0, 3), range(0, 3)) {
+      bitmap(generated(color(4, 4, #0066FF))): $hex.doubled($c, $r)
+    }
+
+    bitmap(generated(color(6, 6, #FFFFFF))): $hex.doubled($col, $row)
+  }
+
+  // === Flat hex: corners and cell-relative ===
+  point {
+    hex: flat(24, 24)
+    pos: 500, 320
+    scale: 2
+
+    repeatable($i, range(0, 6)) {
+      bitmap(generated(color(4, 4, #00FF00))): $hex.corner($i, 1.0)
+    }
+
+    repeatable($i, range(0, 6)) {
+      bitmap(generated(color(3, 3, #FFFF00))): $hex.edge($i, 1.0)
+    }
+
+    repeatable($i, range(0, 6)) {
+      bitmap(generated(color(4, 4, #FF0000))): $hex.cube($q, 0, -$q).hexCorner($i, 1.0)
+    }
+
+    repeatable($i, range(0, 6)) {
+      bitmap(generated(color(3, 3, #FF00FF))): $hex.cube($q, 0, -$q).hexEdge($i, 1.0)
+    }
+
+    bitmap(generated(color(8, 8, #FFFFFF))): $hex.cube($q, 0, -$q).hexEdge($ci, 1.0)
+  }
+}

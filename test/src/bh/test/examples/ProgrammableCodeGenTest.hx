@@ -453,6 +453,39 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		Assert.isTrue(hp.numChildren > 0);
 	}
 
+	// ==================== HexRuntime: visual (3-image) ====================
+
+	@Test
+	public function test87_CodegenHexRuntime(async:utest.Async):Void {
+		simpleMacroTest(87, "codegenHexRuntime", () -> createMp().hexRuntime.create(), async);
+	}
+
+	// ==================== HexRuntime: unit tests ====================
+
+	@Test
+	public function testHexRuntimeCreate():Void {
+		final mp = createMp();
+		final hr = mp.hexRuntime.create();
+		Assert.notNull(hr, "HexRuntime should be created");
+		Assert.isTrue(hr.numChildren > 0, "Root should have children");
+	}
+
+	@Test
+	public function testHexRuntimeSetCol():Void {
+		final mp = createMp();
+		final hr = mp.hexRuntime.create();
+		hr.setCol(2);
+		Assert.isTrue(hr.numChildren > 0);
+	}
+
+	@Test
+	public function testHexRuntimeSetQ():Void {
+		final mp = createMp();
+		final hr = mp.hexRuntime.create();
+		hr.setQ(2);
+		Assert.isTrue(hr.numChildren > 0);
+	}
+
 	// ==================== TextOpts: unit tests ====================
 
 	@Test
@@ -613,7 +646,10 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		}
 
 		var builderParticles = findParticles(builderResult.object);
-		if (builderParticles != null) advanceParticles(builderParticles, 1.5);
+		if (builderParticles != null) {
+			builderParticles.setRandomFunc(seededRandom(42));
+			advanceParticles(builderParticles, 1.5);
+		}
 
 		waitForUpdate(function(dt:Float) {
 			var builderPath = getActualImagePath();
@@ -624,9 +660,13 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 			clearScene();
 			var macroRoot = createMp().particles.create();
 			s2d.addChild(macroRoot);
+			if (testTitle != null && testTitle.length > 0) addTitleOverlay();
 
 			var macroParticles = findParticles(macroRoot);
-			if (macroParticles != null) advanceParticles(macroParticles, 1.5);
+			if (macroParticles != null) {
+				macroParticles.setRandomFunc(seededRandom(42));
+				advanceParticles(macroParticles, 1.5);
+			}
 
 			waitForUpdate(function(dt2:Float) {
 				var macroPath = 'test/screenshots/codegenParticles_macro.png';
@@ -638,8 +678,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 				var builderSim = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
 				var macroSim = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
 
-				// Use low threshold since particles are randomly positioned
-				var threshold = 0.70;
+				var threshold = 0.98;
 				var builderOk = builderSim > threshold;
 				var macroOk = macroSim > threshold;
 
@@ -666,9 +705,48 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	}
 
 	/**
-	 * Advance particle simulation by totalTime seconds using fixed timesteps.
-	 * Uses @:access to directly update particle groups and batch elements.
+	 * Create a seeded random function returning values in [0, 1) range.
+	 * Uses hxd.Rand for deterministic reproducible sequences.
 	 */
+	static function seededRandom(seed:Int):() -> Float {
+		var rng = new hxd.Rand(seed);
+		return rng.rand;
+	}
+
+	static function findAnimSM(obj:h2d.Object):Null<bh.stateanim.AnimationSM> {
+		if (Std.isOfType(obj, bh.stateanim.AnimationSM)) return cast obj;
+		for (i in 0...obj.numChildren) {
+			var result = findAnimSM(obj.getChildAt(i));
+			if (result != null) return result;
+		}
+		return null;
+	}
+
+	static function findAllAnimSM(obj:h2d.Object):Array<bh.stateanim.AnimationSM> {
+		var result:Array<bh.stateanim.AnimationSM> = [];
+		if (Std.isOfType(obj, bh.stateanim.AnimationSM)) result.push(cast obj);
+		for (i in 0...obj.numChildren) {
+			for (a in findAllAnimSM(obj.getChildAt(i)))
+				result.push(a);
+		}
+		return result;
+	}
+
+	/**
+	 * Advance an AnimationSM deterministically in fixed 0.016s steps.
+	 * Sets externallyDriven=true so sync() won't also advance.
+	 */
+	static function advanceAnimSM(animSM:bh.stateanim.AnimationSM, totalTime:Float):Void {
+		animSM.externallyDriven = true;
+		final step:Float = 0.016;
+		var remaining = totalTime;
+		while (remaining > 0) {
+			final dt = remaining < step ? remaining : step;
+			animSM.update(dt);
+			remaining -= step;
+		}
+	}
+
 	static function advanceParticles(particles:bh.base.Particles, totalTime:Float):Void {
 		final step:Float = 0.016;
 		var remaining = totalTime;
@@ -687,6 +765,10 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 				}
 			}
 			remaining -= step;
+		}
+		// Freeze particles so render sync doesn't apply extra real-time updates
+		for (g in particles.groups) {
+			g.batch.hasUpdate = false;
 		}
 	}
 
@@ -1084,12 +1166,70 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	}
 
 	// ==================== InlineAtlas2Demo: macro comparison ====================
+	// Custom flow to freeze AnimSMs for deterministic stateanim construct screenshots.
 
 	@Test
 	public function test33_InlineAtlas2Demo(async:utest.Async):Void {
 		setupTest(33, "inlineAtlas2Demo");
-		builderAndMacroScreenshotAndCompare("test/examples/33-inlineAtlas2Demo/inlineAtlas2Demo.manim", "inlineAtlas2Demo",
-			() -> createMp().inlineAtlas2Demo.create(), async);
+		VisualTestBase.pendingVisualTests++;
+		async.setTimeout(15000);
+
+		final animFilePath = "test/examples/33-inlineAtlas2Demo/inlineAtlas2Demo.manim";
+		final sizeX = 1280;
+		final sizeY = 720;
+
+		// Phase 1: builder — build, freeze AnimSMs, screenshot
+		clearScene();
+		var builderResult = buildAndAddToScene(animFilePath, "inlineAtlas2Demo");
+		if (builderResult == null) {
+			Assert.fail("Failed to build inlineAtlas2Demo from builder");
+			VisualTestBase.pendingVisualTests--;
+			async.done();
+			return;
+		}
+
+		for (a in findAllAnimSM(builderResult.object))
+			a.externallyDriven = true;
+
+		waitForUpdate(function(dt:Float) {
+			var builderPath = getActualImagePath();
+			var builderSuccess = screenshot(builderPath, sizeX, sizeY);
+
+			// Phase 2: macro — create, freeze AnimSMs, screenshot
+			clearScene();
+			var macroRoot = createMp().inlineAtlas2Demo.create();
+			s2d.addChild(macroRoot);
+
+			for (a in findAllAnimSM(macroRoot))
+				a.externallyDriven = true;
+
+			if (testTitle != null && testTitle.length > 0)
+				addTitleOverlay();
+
+			waitForUpdate(function(dt2:Float) {
+				var macroPath = 'test/screenshots/inlineAtlas2Demo_macro.png';
+				var referencePath = getReferenceImagePath();
+				var macroSuccess = screenshot(macroPath, sizeX, sizeY);
+
+				var builderSim = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
+				var macroSim = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
+
+				var threshold = 0.99;
+				var builderOk = builderSim > threshold;
+				var macroOk = macroSim > threshold;
+
+				HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath, builderOk && macroOk, builderSim, null,
+					macroPath, macroSim, macroOk, threshold, threshold);
+				HtmlReportGenerator.generateReport();
+
+				Assert.isTrue(builderOk,
+					'Builder should match reference (similarity: ${Math.round(builderSim * 10000) / 100}%)');
+				Assert.isTrue(macroOk, 'Macro should match reference (similarity: ${Math.round(macroSim * 10000) / 100}%)');
+
+				VisualTestBase.pendingVisualTests--;
+				async.done();
+			});
+		});
 	}
 
 	// ==================== MaskDemo: macro comparison ====================
@@ -2609,7 +2749,9 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	@Test
 	public function test63_FinalVarDemo(async:utest.Async):Void {
-		simpleTest(63, "finalVarDemo", async);
+		setupTest(63, "finalVarDemo");
+		builderAndMacroScreenshotAndCompare("test/examples/63-finalVarDemo/finalVarDemo.manim", "finalVarDemo",
+			() -> createMp().finalVarDemo.create(), async);
 	}
 
 	// ==================== Repeat rebuild: dynamic count changes ====================
@@ -2814,7 +2956,9 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	@Test
 	public function test73_DynamicRefs(async:utest.Async):Void {
-		simpleTest(73, "dynamicRefs", async, null, null, 2.0);
+		setupTest(73, "dynamicRefs");
+		builderAndMacroScreenshotAndCompare("test/examples/73-dynamicRefs/dynamicRefs.manim", "dynamicRefs",
+			() -> createMp().dynamicRefs.create(), async, null, null, 2.0);
 	}
 
 	// ==================== DynamicRef scope isolation: visual ====================
@@ -3112,7 +3256,9 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	@Test
 	public function test76_ComboUnconditional(async:utest.Async):Void {
-		simpleTest(76, "comboUnconditional", async);
+		setupTest(76, "comboUnconditional");
+		builderAndMacroScreenshotAndCompare("test/examples/76-comboUnconditional/comboUnconditional.manim", "comboUnconditional",
+			() -> createMp().comboUnconditional.create(), async);
 	}
 
 	// ==================== Dynamic ref: unit tests ====================
@@ -3353,7 +3499,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		}
 
 		var pRect = new Map<String, Dynamic>();
-		pRect.set("icon", TileHelper.generatedRect(16, 16));
+		pRect.set("icon", TileHelper.generatedRectColor(16, 16, 0x00FFFF));
 		pRect.set("label", "genRect");
 		params.push(pRect);
 
@@ -3368,7 +3514,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 				var tile = mp.loadTile("demo", tileNames[i]);
 				return mp.tileParamDemo.create(tile, labels[i]);
 			} else if (i == 3) {
-				var tile = h2d.Tile.fromColor(0xFF00FFFF, 16, 16);
+				var tile = h2d.Tile.fromColor(0x00FFFF, 16, 16);
 				return mp.tileParamDemo.create(tile, labels[i]);
 			} else {
 				var tile = h2d.Tile.fromColor(0xFFFF4444, 16, 16);
@@ -3651,6 +3797,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 			macroInstance.setScale(4.0);
 			s2d.addChild(macroInstance);
 			populateSlotContentCodegen(macroInstance);
+			if (testTitle != null && testTitle.length > 0) addTitleOverlay();
 
 			waitForUpdate(function(dt2:Float) {
 				try {
@@ -3798,6 +3945,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	@Test
 	public function test86_LayoutAlign(async:utest.Async):Void {
-		simpleTest(86, "layoutAlign", async, null, null, 1.0);
+		setupTest(86, "layoutAlign");
+		builderAndMacroScreenshotAndCompare("test/examples/86-layoutAlign/layoutAlign.manim", "layoutAlign",
+			() -> createMp().layoutAlign.create(), async, null, null, 1.0);
 	}
 }

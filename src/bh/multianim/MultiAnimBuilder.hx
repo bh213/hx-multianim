@@ -1970,6 +1970,60 @@ class MultiAnimBuilder {
 		}
 	}
 
+	static function collectFilterParamRefs(filter:FilterType, result:Array<String>):Void {
+		if (filter == null) return;
+		switch (filter) {
+			case FilterNone:
+			case FilterGroup(filters):
+				for (f in filters) collectFilterParamRefs(f, result);
+			case FilterOutline(size, color):
+				collectParamRefs(size, result);
+				collectParamRefs(color, result);
+			case FilterSaturate(v):
+				collectParamRefs(v, result);
+			case FilterBrightness(v):
+				collectParamRefs(v, result);
+			case FilterGrayscale(v):
+				collectParamRefs(v, result);
+			case FilterHue(v):
+				collectParamRefs(v, result);
+			case FilterGlow(color, alpha, radius, gain, quality, _, _):
+				collectParamRefs(color, result);
+				collectParamRefs(alpha, result);
+				collectParamRefs(radius, result);
+				collectParamRefs(gain, result);
+				collectParamRefs(quality, result);
+			case FilterBlur(radius, gain, quality, linear):
+				collectParamRefs(radius, result);
+				collectParamRefs(gain, result);
+				collectParamRefs(quality, result);
+				collectParamRefs(linear, result);
+			case FilterDropShadow(distance, angle, color, alpha, radius, gain, quality, _):
+				collectParamRefs(distance, result);
+				collectParamRefs(angle, result);
+				collectParamRefs(color, result);
+				collectParamRefs(alpha, result);
+				collectParamRefs(radius, result);
+				collectParamRefs(gain, result);
+				collectParamRefs(quality, result);
+			case FilterPixelOutline(mode, _):
+				switch (mode) {
+					case POKnockout(color, knockout):
+						collectParamRefs(color, result);
+						collectParamRefs(knockout, result);
+					case POInlineColor(color, inlineColor):
+						collectParamRefs(color, result);
+						collectParamRefs(inlineColor, result);
+				}
+			case FilterPaletteReplace(_, sourceRow, replacementRow):
+				collectParamRefs(sourceRow, result);
+				collectParamRefs(replacementRow, result);
+			case FilterColorListReplace(sourceColors, replacementColors):
+				for (c in sourceColors) collectParamRefs(c, result);
+				for (c in replacementColors) collectParamRefs(c, result);
+		}
+	}
+
 	static function collectGraphicsElementParamRefs(element:GraphicsElement, result:Array<String>):Void {
 		switch element {
 			case GERect(color, style, width, height):
@@ -2176,6 +2230,18 @@ class MultiAnimBuilder {
 					object.y = p.y;
 				}, posRefs);
 			}
+		}
+
+		// Track scale/alpha/filter/tint if they reference params
+		final extRefs:Array<String> = [];
+		if (node.scale != null) collectParamRefs(node.scale, extRefs);
+		if (node.alpha != null) collectParamRefs(node.alpha, extRefs);
+		if (node.tint != null) collectParamRefs(node.tint, extRefs);
+		if (node.filter != null) collectFilterParamRefs(node.filter, extRefs);
+		if (extRefs.length > 0) {
+			incrementalContext.trackExpression(() -> {
+				applyExtendedFormProperties(object, node);
+			}, extRefs);
 		}
 	}
 
