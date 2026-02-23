@@ -58,7 +58,9 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 |---------|-------------|
 | `placeholder(type, source)` | Dynamic content slot resolved at build time |
 | `staticRef($ref, params)` | Static embed of another programmable (alias: `reference`) |
+| `staticRef(external("importName"), $ref, params)` | Static embed from imported .manim file |
 | `dynamicRef($ref, params)` | Dynamic embed with runtime `setParameter()` support (alias: `component`) |
+| `dynamicRef(external("importName"), $ref, params)` | Dynamic embed from imported .manim file |
 | `#name slot` | Swappable content container |
 | `#name[$i] slot` | Indexed slot inside repeatable |
 | `#name slot(params)` | Parameterized slot with visual states and conditionals |

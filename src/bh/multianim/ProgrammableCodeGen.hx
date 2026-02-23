@@ -75,6 +75,8 @@ class ProgrammableCodeGen {
 	static var hexLayoutFieldCount:Int = 0;
 	static var needsLayoutAlign:Bool = false;
 
+	static var hasBuilderParameterPlaceholders:Bool = false;
+
 	static var paramDefs:ParametersDefinitions;
 	static var paramNames:Array<String> = [];
 
@@ -134,6 +136,7 @@ class ProgrammableCodeGen {
 		indexed2DNamedElements = new Map();
 		slotEntries = [];
 		dynamicRefFields = new Map();
+		hasBuilderParameterPlaceholders = false;
 		paramDefs = new Map();
 		paramNames = [];
 		paramEnumTypes = new Map();
@@ -2577,8 +2580,9 @@ class ProgrammableCodeGen {
 				mapBuildExprs.push(macro _refParams.set($keyExpr, $valExpr));
 			}
 		}
+		final extRefExpr:Expr = externalReference != null ? macro $v{externalReference} : macro null;
 		mapBuildExprs.push(macro {
-			final _result = this._pb.buildStaticRef($refNameExpr, _refParams);
+			final _result = this._pb.buildStaticRef($refNameExpr, _refParams, $extRefExpr);
 			$fieldRef = _result != null ? _result.object : new h2d.Object();
 		});
 
@@ -2612,8 +2616,9 @@ class ProgrammableCodeGen {
 			}
 		}
 		// Build with incremental: true
+		final dynExtRefExpr:Expr = externalReference != null ? macro $v{externalReference} : macro null;
 		mapBuildExprs.push(macro {
-			final _result = this._pb.buildDynamicRef($refNameExpr, _refParams);
+			final _result = this._pb.buildDynamicRef($refNameExpr, _refParams, $dynExtRefExpr);
 			$fieldRef = _result != null ? _result.object : new h2d.Object();
 			$p{["this", resultField]} = _result;
 		});
@@ -2645,6 +2650,7 @@ class ProgrammableCodeGen {
 				final idxExpr = rvToExpr(index);
 				macro this._pb.buildPlaceholderViaCallbackWithIndex($nameExpr, $idxExpr);
 			case PRSBuilderParameterSource(callbackName):
+				hasBuilderParameterPlaceholders = true;
 				final nameExpr = rvToExpr(callbackName);
 				final settingsExpr = nodeSettingsToExpr(node);
 				macro this._pb.buildPlaceholderViaSource($nameExpr, $settingsExpr);
@@ -5615,6 +5621,16 @@ class ProgrammableCodeGen {
 			});
 		}
 
+		// Add optional placeholders parameter when programmable uses builderParameter placeholders
+		if (hasBuilderParameterPlaceholders) {
+			createArgs.push({
+				name: "placeholders",
+				type: macro :Null<Map<String, bh.multianim.MultiAnimBuilder.PlaceholderValues>>,
+				opt: true,
+				value: null,
+			});
+		}
+
 		// Build create() body: load builder, create instance, return it
 		final manimPathLit = macro $v{currentManimPath};
 
@@ -5628,8 +5644,10 @@ class ProgrammableCodeGen {
 
 		final createBody:Array<Expr> = [
 			macro this._builder = this.resourceLoader.loadMultiAnim($manimPathLit),
-			macro return $newExpr,
 		];
+		if (hasBuilderParameterPlaceholders)
+			createBody.push(macro this.setPlaceholderObjects(placeholders));
+		createBody.push(macro return $newExpr);
 
 		final instType:ComplexType = TPath(instTypePath);
 		return {
@@ -5669,6 +5687,8 @@ class ProgrammableCodeGen {
 		final bodyExprs:Array<Expr> = [
 			macro this._builder = this.resourceLoader.loadMultiAnim($manimPathLit),
 		];
+		if (hasBuilderParameterPlaceholders)
+			bodyExprs.push(macro this.setPlaceholderObjects(placeholders));
 
 		final orderedParams = getOrderedParams();
 		final newArgs:Array<Expr> = [macro this];
@@ -5704,10 +5724,18 @@ class ProgrammableCodeGen {
 		bodyExprs.push(macro return $newExpr);
 
 		final instType:ComplexType = TPath(instTypePath);
+		final createFromArgs:Array<FunctionArg> = [{name: "params", type: paramStructType}];
+		if (hasBuilderParameterPlaceholders) {
+			createFromArgs.push({
+				name: "placeholders",
+				type: macro :Null<Map<String, bh.multianim.MultiAnimBuilder.PlaceholderValues>>,
+				opt: true,
+			});
+		}
 		return {
 			name: "createFrom",
 			kind: FFun({
-				args: [{name: "params", type: paramStructType}],
+				args: createFromArgs,
 				ret: instType,
 				expr: macro $b{bodyExprs},
 			}),

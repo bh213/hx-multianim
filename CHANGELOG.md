@@ -119,6 +119,12 @@
 - **Layout alignment codegen** — `LayoutAlignRoot` class enables deferred layout alignment positioning in macro-generated classes; generated class extends `LayoutAlignRoot` instead of `h2d.Object` when layouts use `align`
 - **Deterministic particle/animation testing** — `Particles.setRandomFunc()` and `AnimationSM.randomFunc` enable seeded random injection for reproducible test screenshots
 - **Scale/alpha/tint/filter incremental tracking** — builder now tracks param refs in scale, alpha, tint, and filter expressions for incremental updates via `setParameter()`
+- **External reference codegen** — `buildStaticRef()` and `buildDynamicRef()` now resolve cross-file imports in macro-generated code via optional `?externalRef` parameter
+- **Placeholder parameter in codegen** — `create()` and `createFrom()` accept optional `placeholders` parameter when the programmable uses `builderParameter` placeholders, enabling codegen parity with builder's `buildWithParameters()` placeholder support
+- **Strict visual test thresholds** — all test thresholds normalized to 100% exact match (`>= 1.0`), eliminating previous fuzzy tolerances (0.97-0.9999)
+- **Builder-vs-macro direct similarity** — HTML report now computes and displays direct builder-vs-macro image similarity instead of inferring mismatches from individual reference comparisons
+- **More builder+macro test coverage** — `manimImport`, `progressBarDemo`, `characterSheetDemo`, and `stateAnimDemo` tests upgraded from builder-only to builder+macro screenshot comparison
+- **Deterministic stateAnim testing** — `stateAnimDemo` test freezes AnimSM via `externallyDriven = true` for reproducible screenshots
 
 ### Fixed
 - **Multi-hex-layout codegen mismatch** — programmables with multiple `point {}` blocks using different hex orientations/sizes now generate correct positions for each block (previously all blocks used the first layout's field)

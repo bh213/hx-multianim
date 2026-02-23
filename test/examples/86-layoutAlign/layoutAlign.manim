@@ -134,7 +134,7 @@ layouts {
     bitmap(generated(colorwithtext(80, 30, green, "right", white, m3x6))): layout(topRight).offset(-80,0)
 
     // Bottom-left - blue
-    bitmap(generated(colorwithtext(80, 30, blue, "bottom", white, m3x6))): layout(bottomLeft).offset(-80,-30)
+    bitmap(generated(colorwithtext(80, 30, blue, "bottom", white, m3x6))): layout(bottomLeft).offset(0,-30)
 
     // Bottom-right - yellow
     bitmap(generated(colorwithtext(80, 30, yellow, "right+btm", black, m3x6))): layout(bottomRight).offset(-80, -30)
