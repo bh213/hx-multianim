@@ -1,9 +1,14 @@
 version: 0.5
 
 #codegenGridFunc programmable() {
-  grid: 80, 60
+  grid: 50, 30
 
-  repeatable($i, step(3, dx: 1)) {
+  repeatable($i, step(5, dx: 1)) {
     bitmap(generated(color($grid.width, $grid.height, #448844))): $i * $grid.width, $i * $grid.height
+    text(f3x5, $i, #ffffff): $i * $grid.width + 20, $i * $grid.height + 12
+  }
+
+  repeatable($j, step(6, dx: 1)) {
+    bitmap(generated(color($grid.width, $grid.height - 15, #884488))): $j * $grid.width, $grid.height * 5 + 10
   }
 }

@@ -125,8 +125,13 @@
 - **Builder-vs-macro direct similarity** — HTML report now computes and displays direct builder-vs-macro image similarity instead of inferring mismatches from individual reference comparisons
 - **More builder+macro test coverage** — `manimImport`, `progressBarDemo`, `characterSheetDemo`, and `stateAnimDemo` tests upgraded from builder-only to builder+macro screenshot comparison
 - **Deterministic stateAnim testing** — `stateAnimDemo` test freezes AnimSM via `externallyDriven = true` for reproducible screenshots
+- **`externallyDriven` flag on `stateAnim construct`** — `stateAnim construct(initialState, externallyDriven, ...)` syntax for animations driven externally (not by internal timer); supported in parser, builder, and codegen
+- **Multi-particles codegen** — `buildParticles(programmableName, index)` supports index parameter for programmables with multiple `particles {}` blocks; codegen auto-indexes particle nodes
+- **Visual test improvements** — improved visual content and descriptions for tests 10, 15, 32, 44, 46, 51, 56, 70, 71, 75, 76, 81, 82, 83; test 88 (colorVerification) added
+- **Test 75 placeholder+settings pattern** — `progressBarDemo` rewritten to use `placeholder(nothing, builderParameter("bar"))` with `settings{buildName=>..., value:int=>N}` driving `UIMultiAnimProgressBar` creation via `PVFactory`
 
 ### Fixed
+- **Grid coord lookup in nested elements** — `$grid.pos()` in codegen now traverses parent chain to find the correct grid coordinate system instead of only checking the default layout (fixes grid positioning in nested/conditional elements)
 - **Multi-hex-layout codegen mismatch** — programmables with multiple `point {}` blocks using different hex orientations/sizes now generate correct positions for each block (previously all blocks used the first layout's field)
 - **Layout index null default** — `layout(name)` without explicit index now defaults to index 0 in codegen (previously returned null, causing missing elements)
 - **Font offset baseline/lineHeight** — `FontManager` now adjusts `baseLine` and `lineHeight` when font offset is applied

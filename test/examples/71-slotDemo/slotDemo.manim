@@ -1,14 +1,27 @@
 version: 0.5
 
 #slotDemo programmable() {
+  text(f3x5, "slot demo", #aaaaaa): 5, 3
+
+  // Indexed slots
+  text(f3x5, "indexed #icon[$i]:", #888888): 5, 14
   repeatable($i, step(3, dx: 70)) {
-    ninepatch("ui", "button-idle", 60, 40): 0, 0
+    ninepatch("ui", "button-idle", 60, 40): 5, 24
     #icon[$i] slot {
-      bitmap(generated(color(20, 20, #555555))): 20, 10
+      bitmap(generated(color(20, 20, #555555))): 25, 34
     }
-    #label[$i] text(f3x5, $i, #ffffffff): 5, 30
+    #label[$i] text(f3x5, $i, #ffffffff): 48, 28
   }
+
+  // Non-indexed single slot
+  text(f3x5, "single #footer:", #888888): 5, 72
   #footer slot {
-    text(f3x5, "default", #ffffffff): 0, 50
+    text(f3x5, "default content", #cccccc): 5, 82
+  }
+
+  // Additional slot
+  text(f3x5, "single #extra:", #888888): 5, 98
+  #extra slot {
+    bitmap(generated(color(40, 20, #884422))): 5, 108
   }
 }

@@ -1,50 +1,84 @@
 version: 0.5
 
 /*
-  This test demonstrates:
-  - Block comments (this is one!)
-  - Named parameters for filters
+  Named parameters for filters — positional vs named syntax comparison
 */
 
 #namedFilterParams programmable() {
-    /* outline with named params */
-    bitmap(generated(color(40, 40, #4488ff))) {
+    text(dd, "Named Filter Parameters", #cccccc): 10, 5
+
+    // Row 1: outline and glow
+    text(f3x5, "outline(size:2, color:red)", #888888): 10, 30
+    bitmap(generated(color(80, 80, #4488ff))) {
         filter: outline(size: 2, color: #ff0000)
-        pos: 10, 10
+        pos: 10, 42
     }
 
-    /* blur with named params */
-    bitmap(generated(color(40, 40, #44ff88))) {
-        filter: blur(radius: 2, gain: 1.5)
-        pos: 80, 10
-    }
-
-    /* brightness with named param */
-    bitmap(generated(color(40, 40, #ff4488))) {
-        filter: brightness(value: 1.5)
-        pos: 150, 10
-    }
-
-    /* saturate with named param */
-    bitmap(generated(color(40, 40, #ffaa44))) {
-        filter: saturate(value: 0.5)
-        pos: 220, 10
-    }
-
-    // positional syntax still works
-    bitmap(generated(color(40, 40, #4488ff))) {
+    text(f3x5, "outline(2, #00ff00)", #888888): 120, 30
+    bitmap(generated(color(80, 80, #4488ff))) {
         filter: outline(2, #00ff00)
-        pos: 10, 80
+        pos: 120, 42
     }
 
-    bitmap(generated(color(40, 40, #44ff88))) {
-        filter: blur(2, 1.5)
-        pos: 80, 80
+    text(f3x5, "glow(#ff0, 4, 1, 1, 0.5)", #888888): 240, 30
+    bitmap(generated(color(80, 80, #4488ff))) {
+        filter: glow(#ffff00, 4, 1, 1, 0.5)
+        pos: 240, 42
     }
 
-    /* blur with extra named params: quality and linear */
-    bitmap(generated(color(40, 40, #88ffcc))) {
+    text(f3x5, "pixelOutline(knockout)", #888888): 370, 30
+    bitmap(generated(color(80, 80, #4488ff))) {
+        filter: pixelOutline(knockout, #0000FF, 0.5)
+        pos: 370, 42
+    }
+
+    // Row 2: blur and shadow
+    text(f3x5, "blur(radius:2, gain:1.5)", #888888): 10, 140
+    bitmap(generated(color(80, 80, #44ff88))) {
+        filter: blur(radius: 2, gain: 1.5)
+        pos: 10, 152
+    }
+
+    text(f3x5, "blur(3, 1.0, 2, 1.0)", #888888): 120, 140
+    bitmap(generated(color(80, 80, #88ffcc))) {
         filter: blur(radius: 3, gain: 1.0, quality: 2, linear: 1.0)
-        pos: 150, 80
+        pos: 120, 152
+    }
+
+    text(f3x5, "dropShadow(4, 45, ...)", #888888): 240, 140
+    bitmap(generated(color(80, 80, #ff8844))) {
+        filter: dropShadow(4, 45, #000000, 0.8, 2, 1, 1)
+        pos: 240, 152
+    }
+
+    text(f3x5, "pixelOutline(inlineColor)", #888888): 370, 140
+    bitmap(generated(color(80, 80, #ff4488))) {
+        filter: pixelOutline(inlineColor, #FF0000, #FFFF00)
+        pos: 370, 152
+    }
+
+    // Row 3: color adjustment filters
+    text(f3x5, "brightness(value:1.5)", #888888): 10, 250
+    bitmap(generated(color(80, 80, #ff4488))) {
+        filter: brightness(value: 1.5)
+        pos: 10, 262
+    }
+
+    text(f3x5, "saturate(value:0.5)", #888888): 120, 250
+    bitmap(generated(color(80, 80, #ffaa44))) {
+        filter: saturate(value: 0.5)
+        pos: 120, 262
+    }
+
+    text(f3x5, "outline(size:3, #0f0)", #888888): 240, 250
+    bitmap(generated(color(80, 80, #44aaff))) {
+        filter: outline(size: 3, color: #00ff00)
+        pos: 240, 262
+    }
+
+    text(f3x5, "blur(radius:4, gain:2)", #888888): 370, 250
+    bitmap(generated(color(80, 80, #aaff44))) {
+        filter: blur(radius: 4, gain: 2)
+        pos: 370, 262
     }
 }

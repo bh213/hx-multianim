@@ -1,11 +1,14 @@
 version: 0.5
 
 #slot2dIndex programmable() {
-  repeatable2d($x, $y, step(3, dx: 70), step(2, dy: 50)) {
+  text(f3x5, "2d indexed slots", #aaaaaa): 5, 3
+
+  repeatable2d($x, $y, step(3, dx: 80), step(2, dy: 60)) {
     #cell[$x, $y] slot {
-      bitmap(generated(color(60, 40, #444444ff))): 0, 0
-      text(f3x5, 'empty 2d slot', #ffffffff): 5, 10
-      text(f3x5, ""+$x+","+$y, #ffffffff): 5, 30
+      @($x => 0) bitmap(generated(color(70, 50, #553333ff))): 0, 14
+      @($x => 1) bitmap(generated(color(70, 50, #335533ff))): 0, 14
+      @($x => 2) bitmap(generated(color(70, 50, #333355ff))): 0, 14
+      text(f3x5, ""+$x+","+$y, #ffffffff): 5, 24
     }
   }
 }

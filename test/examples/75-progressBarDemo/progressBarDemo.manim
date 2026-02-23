@@ -31,3 +31,46 @@ version: 0.5
 
     text(f3x5, $value, white, center, 150): 0, 4
 }
+
+#progressBarLayout programmable() {
+    // Column 1: Standard progress bars
+    placeholder(nothing, builderParameter("bar")) { settings{buildName=>progressBar, value:int=>0} pos: 10, 10 }
+    placeholder(nothing, builderParameter("bar")) { settings{buildName=>progressBar, value:int=>10} pos: 10, 34 }
+    placeholder(nothing, builderParameter("bar")) { settings{buildName=>progressBar, value:int=>25} pos: 10, 58 }
+    placeholder(nothing, builderParameter("bar")) { settings{buildName=>progressBar, value:int=>40} pos: 10, 82 }
+    placeholder(nothing, builderParameter("bar")) { settings{buildName=>progressBar, value:int=>50} pos: 10, 106 }
+    placeholder(nothing, builderParameter("bar")) { settings{buildName=>progressBar, value:int=>60} pos: 10, 130 }
+    placeholder(nothing, builderParameter("bar")) { settings{buildName=>progressBar, value:int=>75} pos: 10, 154 }
+    placeholder(nothing, builderParameter("bar")) { settings{buildName=>progressBar, value:int=>85} pos: 10, 178 }
+    placeholder(nothing, builderParameter("bar")) { settings{buildName=>progressBar, value:int=>95} pos: 10, 202 }
+    placeholder(nothing, builderParameter("bar")) { settings{buildName=>progressBar, value:int=>100} pos: 10, 226 }
+
+    // Column 2: Compact bars with label
+    placeholder(nothing, builderParameter("bar")) { settings{buildName=>progressBarBelow, value:int=>0} pos: 260, 10 }
+    placeholder(nothing, builderParameter("bar")) { settings{buildName=>progressBarBelow, value:int=>15} pos: 260, 38 }
+    placeholder(nothing, builderParameter("bar")) { settings{buildName=>progressBarBelow, value:int=>33} pos: 260, 66 }
+    placeholder(nothing, builderParameter("bar")) { settings{buildName=>progressBarBelow, value:int=>50} pos: 260, 94 }
+    placeholder(nothing, builderParameter("bar")) { settings{buildName=>progressBarBelow, value:int=>66} pos: 260, 122 }
+    placeholder(nothing, builderParameter("bar")) { settings{buildName=>progressBarBelow, value:int=>80} pos: 260, 150 }
+    placeholder(nothing, builderParameter("bar")) { settings{buildName=>progressBarBelow, value:int=>95} pos: 260, 178 }
+    placeholder(nothing, builderParameter("bar")) { settings{buildName=>progressBarBelow, value:int=>100} pos: 260, 206 }
+
+    // Column 3: Inner fill bars
+    placeholder(nothing, builderParameter("bar")) { settings{buildName=>progressBarInside, value:int=>0} pos: 400, 10 }
+    placeholder(nothing, builderParameter("bar")) { settings{buildName=>progressBarInside, value:int=>5} pos: 400, 32 }
+    placeholder(nothing, builderParameter("bar")) { settings{buildName=>progressBarInside, value:int=>20} pos: 400, 54 }
+    placeholder(nothing, builderParameter("bar")) { settings{buildName=>progressBarInside, value:int=>35} pos: 400, 76 }
+    placeholder(nothing, builderParameter("bar")) { settings{buildName=>progressBarInside, value:int=>50} pos: 400, 98 }
+    placeholder(nothing, builderParameter("bar")) { settings{buildName=>progressBarInside, value:int=>65} pos: 400, 120 }
+    placeholder(nothing, builderParameter("bar")) { settings{buildName=>progressBarInside, value:int=>80} pos: 400, 142 }
+    placeholder(nothing, builderParameter("bar")) { settings{buildName=>progressBarInside, value:int=>90} pos: 400, 164 }
+    placeholder(nothing, builderParameter("bar")) { settings{buildName=>progressBarInside, value:int=>95} pos: 400, 186 }
+    placeholder(nothing, builderParameter("bar")) { settings{buildName=>progressBarInside, value:int=>100} pos: 400, 208 }
+
+    // Description
+    text(dd, "Progress Bar Variants", #cccccc): 10, 300
+    text(f3x5, "Standard bar with value label (0-100 range)", #888888): 10, 324
+    text(f3x5, "Compact bars with label prefix", #888888): 10, 338
+    text(f3x5, "Centered value text, inner fill", #888888): 10, 352
+    text(f3x5, "Colors: 0-25 red, 26-60 orange, 61-100 green", #aaaaaa): 10, 372
+}

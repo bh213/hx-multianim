@@ -6,13 +6,13 @@ version: 0.5
     @(status=>pressed, disabled=>false) bitmap(generated(color(120, 30, #334455))): 0, 0
     @(status=>*, disabled=>true) bitmap(generated(color(120, 30, #555555))): 0, 0
 
-    text(dd, "Shared Text", white, center, 120): 0, 8
+    text(dd, "Always Visible", white, center, 120): 0, 8
     bitmap(generated(color(8, 8, #ff8800))): 5, 11
 }
 
 #comboUnconditional programmable() {
-    text(dd, "Unconditional children in combo programmables", #aaaaaa, left): 10, 10
-    text(dd, "Text + orange square should appear in ALL states below", #888888, left): 10, 26
+    text(dd, "Unconditional children in conditional programmables", #aaaaaa, left): 10, 10
+    text(dd, "Orange square + text appear in ALL states (unconditional)", #888888, left): 10, 26
 
     text(dd, "normal", #666666, left): 140, 52
     staticRef($comboBtn, status=>normal, disabled=>false): 10, 50

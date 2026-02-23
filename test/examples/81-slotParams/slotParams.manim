@@ -1,15 +1,34 @@
 version: 0.5
 
 #slotParams programmable() {
+  text(f3x5, "parameterized slots", #aaaaaa): 5, 3
+
   repeatable($i, step(3, dx: 60)) {
+    text(f3x5, $i, #ffffff): 18, 14
     #item[$i] slot(state:[empty,filled,highlight]=empty) {
-      @(state => empty)     bitmap(generated(color(40, 40, #444444ff))): 0, 0
-      @(state => filled)    bitmap(generated(color(40, 40, #00aa00ff))): 0, 0
-      @(state => highlight) bitmap(generated(color(40, 40, #ffaa00ff))): 0, 0
+      @(state => empty)     bitmap(generated(color(40, 40, #444444ff))): 0, 22
+      @(state => filled)    bitmap(generated(color(40, 40, #00aa00ff))): 0, 22
+      @(state => highlight) bitmap(generated(color(40, 40, #ffaa00ff))): 0, 22
+      @(state => empty)     text(f3x5, "empty", #888888): 5, 66
+      @(state => filled)    text(f3x5, "filled", #00ff00): 5, 66
+      @(state => highlight) text(f3x5, "hlght", #ffaa00): 5, 66
     }
   }
+
+  text(f3x5, "#single:", #888888): 5, 86
   #single slot(active:bool=false) {
-    bitmap(generated(color(50, 20, #666666ff))): 0, 50
-    @(active => true) bitmap(generated(color(50, 20, #ff0000ff))): 0, 50
+    @(active => false) bitmap(generated(color(50, 20, #666666ff))): 5, 96
+    @(active => true)  bitmap(generated(color(50, 20, #ff0000ff))): 5, 96
+    @(active => false) text(f3x5, "inactive", #888888): 5, 120
+    @(active => true)  text(f3x5, "active", #ff0000): 5, 120
   }
+
+  // Legend
+  text(f3x5, "states:", #888888): 200, 14
+  bitmap(generated(color(12, 12, #444444))): 200, 24
+  text(f3x5, "empty", #888888): 216, 26
+  bitmap(generated(color(12, 12, #00aa00))): 200, 40
+  text(f3x5, "filled", #00ff00): 216, 42
+  bitmap(generated(color(12, 12, #ffaa00))): 200, 56
+  text(f3x5, "hlght", #ffaa00): 216, 58
 }

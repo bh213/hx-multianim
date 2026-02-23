@@ -6,17 +6,41 @@
 
 ## V1
 - hot reload
+- colors
 - tooltips
-- visual tests
-- haxelib release
+- interactives/generic components?
+- visual tests fixes
+- haxelib release (see details below)
+- blob47 utils?
+- review in-text colors & html text support for manim
+- investigate missing h2d.flow features
 
+### Haxelib Release
 
-### Particles
-- Events: onEnd, onGroundHit (collision triggers exist for sub-emitters, no user-defined events)
+**haxelib.json gaps** (current: [haxelib.json](../haxelib.json), version `0.12.0`):
+- [ ] Add `"license": "BSD"` — **required field**, currently missing (LICENSE file is BSD 3-Clause)
+- [ ] Add tags: `["animation", "ui", "heaps", "pixel-art", "sprite", "manim"]`
+- [ ] Fill `releasenote` for each release
 
-### Other fixes
-- Repeatable step scale for dx/dy
-- HTML text: standalone `HTMLTEXT` element type is deprecated/commented out
+**Pre-release checklist:**
+- [ ] Register haxelib account if not done (`haxelib register`)
+- [ ] Test locally: `haxelib dev hx-multianim .` to simulate installation
+- [ ] Bump version in haxelib.json
+- [ ] Manual submit: `haxelib submit .` (auto-zips, excludes dotfiles)
+
+**Automation (GitHub Actions):**
+- [ ] Add `HAXELIB_PASSWORD` secret to GitHub repo settings
+- [ ] Create `.github/workflows/release-and-publish.yml`:
+  - Triggers on push to `main`
+  - `EndBug/version-check@v2` detects version bump in haxelib.json
+  - `softprops/action-gh-release@v1` creates GitHub Release `vX.Y.Z`
+  - `haxelib submit . ${{ secrets.HAXELIB_PASSWORD }}` publishes
+  - Reuse build/test steps from existing [build.yml](../.github/workflows/build.yml)
+
+**Versioning notes:**
+- Haxelib uses restricted SemVer: `major.minor.patch[-alpha|beta|rc[.N]]`
+- Current `0.x.y` signals unstable API — use `1.0.0` when stable
+- Submitted versions **cannot be overwritten** — must bump for any change
 
 ## After 1.0
 

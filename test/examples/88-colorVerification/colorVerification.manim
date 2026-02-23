@@ -1,0 +1,194 @@
+version: 0.5
+
+#colorParam programmable(c:color=#FF0000) {
+  bitmap(generated(color(80, 50, $c))): 0, 0
+}
+
+#colorVerification programmable() {
+  bitmap(generated(color(1280, 720, #222222)));
+
+  point {
+    pos: 10, 14
+    grid: 90, 70
+
+    // Row 0: Named colors
+    text(m3x6, "named:", #888): $grid.pos(0, 0)
+    text(m3x6, "red", #888): $grid.pos(1, 0).offset(0, -10)
+    bitmap(generated(color(80, 50, red))): $grid.pos(1, 0)
+    text(m3x6, "lime", #888): $grid.pos(2, 0).offset(0, -10)
+    bitmap(generated(color(80, 50, lime))): $grid.pos(2, 0)
+    text(m3x6, "blue", #888): $grid.pos(3, 0).offset(0, -10)
+    bitmap(generated(color(80, 50, blue))): $grid.pos(3, 0)
+    text(m3x6, "white", #888): $grid.pos(4, 0).offset(0, -10)
+    bitmap(generated(color(80, 50, white))): $grid.pos(4, 0)
+    text(m3x6, "yellow", #888): $grid.pos(5, 0).offset(0, -10)
+    bitmap(generated(color(80, 50, yellow))): $grid.pos(5, 0)
+    text(m3x6, "cyan", #888): $grid.pos(6, 0).offset(0, -10)
+    bitmap(generated(color(80, 50, cyan))): $grid.pos(6, 0)
+
+    // Row 1: #RGB shorthand
+    text(m3x6, "#RGB:", #888): $grid.pos(0, 1)
+    text(m3x6, "#f00", #888): $grid.pos(1, 1).offset(0, -10)
+    bitmap(generated(color(80, 50, #f00))): $grid.pos(1, 1)
+    text(m3x6, "#0f0", #888): $grid.pos(2, 1).offset(0, -10)
+    bitmap(generated(color(80, 50, #0f0))): $grid.pos(2, 1)
+    text(m3x6, "#00f", #888): $grid.pos(3, 1).offset(0, -10)
+    bitmap(generated(color(80, 50, #00f))): $grid.pos(3, 1)
+    text(m3x6, "#fff", #888): $grid.pos(4, 1).offset(0, -10)
+    bitmap(generated(color(80, 50, #fff))): $grid.pos(4, 1)
+    text(m3x6, "#ff0", #888): $grid.pos(5, 1).offset(0, -10)
+    bitmap(generated(color(80, 50, #ff0))): $grid.pos(5, 1)
+    text(m3x6, "#0ff", #888): $grid.pos(6, 1).offset(0, -10)
+    bitmap(generated(color(80, 50, #0ff))): $grid.pos(6, 1)
+
+    // Row 2: #RRGGBB
+    text(m3x6, "#RRGGBB:", #888): $grid.pos(0, 2)
+    text(m3x6, "#FF0000", #888): $grid.pos(1, 2).offset(0, -10)
+    bitmap(generated(color(80, 50, #FF0000))): $grid.pos(1, 2)
+    text(m3x6, "#00FF00", #888): $grid.pos(2, 2).offset(0, -10)
+    bitmap(generated(color(80, 50, #00FF00))): $grid.pos(2, 2)
+    text(m3x6, "#0000FF", #888): $grid.pos(3, 2).offset(0, -10)
+    bitmap(generated(color(80, 50, #0000FF))): $grid.pos(3, 2)
+    text(m3x6, "#FFFFFF", #888): $grid.pos(4, 2).offset(0, -10)
+    bitmap(generated(color(80, 50, #FFFFFF))): $grid.pos(4, 2)
+    text(m3x6, "#FFFF00", #888): $grid.pos(5, 2).offset(0, -10)
+    bitmap(generated(color(80, 50, #FFFF00))): $grid.pos(5, 2)
+    text(m3x6, "#00FFFF", #888): $grid.pos(6, 2).offset(0, -10)
+    bitmap(generated(color(80, 50, #00FFFF))): $grid.pos(6, 2)
+
+    // Row 3: Text colors
+    text(m3x6, "text:", #888): $grid.pos(0, 3)
+    @scale(2) text(m3x6, "RED", red): $grid.pos(1, 3).offset(0, 10)
+    @scale(2) text(m3x6, "GRN", lime): $grid.pos(2, 3).offset(0, 10)
+    @scale(2) text(m3x6, "BLU", #0000FF): $grid.pos(3, 3).offset(0, 10)
+    @scale(2) text(m3x6, "WHT", white): $grid.pos(4, 3).offset(0, 10)
+    @scale(2) text(m3x6, "YLW", yellow): $grid.pos(5, 3).offset(0, 10)
+    @scale(2) text(m3x6, "CYN", cyan): $grid.pos(6, 3).offset(0, 10)
+
+    // Row 4: @tint on white blocks
+    text(m3x6, "@tint:", #888): $grid.pos(0, 4)
+    text(m3x6, "red", #888): $grid.pos(1, 4).offset(0, -10)
+    @tint(red) bitmap(generated(color(80, 50, #FFFFFF))): $grid.pos(1, 4)
+    text(m3x6, "#00FF00", #888): $grid.pos(2, 4).offset(0, -10)
+    @tint(#00FF00) bitmap(generated(color(80, 50, #FFFFFF))): $grid.pos(2, 4)
+    text(m3x6, "#0000FF", #888): $grid.pos(3, 4).offset(0, -10)
+    @tint(#0000FF) bitmap(generated(color(80, 50, #FFFFFF))): $grid.pos(3, 4)
+    text(m3x6, "white", #888): $grid.pos(4, 4).offset(0, -10)
+    @tint(white) bitmap(generated(color(80, 50, #FFFFFF))): $grid.pos(4, 4)
+    text(m3x6, "#FFFF00", #888): $grid.pos(5, 4).offset(0, -10)
+    @tint(#FFFF00) bitmap(generated(color(80, 50, #FFFFFF))): $grid.pos(5, 4)
+    text(m3x6, "#00FFFF", #888): $grid.pos(6, 4).offset(0, -10)
+    @tint(#00FFFF) bitmap(generated(color(80, 50, #FFFFFF))): $grid.pos(6, 4)
+
+    // Row 5: Graphics rects
+    text(m3x6, "graphics:", #888): $grid.pos(0, 5)
+    text(m3x6, "red", #888): $grid.pos(1, 5).offset(0, -10)
+    graphics(rect(red, filled, 80, 50)): $grid.pos(1, 5)
+    text(m3x6, "#0f0", #888): $grid.pos(2, 5).offset(0, -10)
+    graphics(rect(#0f0, filled, 80, 50)): $grid.pos(2, 5)
+    text(m3x6, "#0000FF", #888): $grid.pos(3, 5).offset(0, -10)
+    graphics(rect(#0000FF, filled, 80, 50)): $grid.pos(3, 5)
+    text(m3x6, "white", #888): $grid.pos(4, 5).offset(0, -10)
+    graphics(rect(white, filled, 80, 50)): $grid.pos(4, 5)
+    text(m3x6, "#FFFF00", #888): $grid.pos(5, 5).offset(0, -10)
+    graphics(rect(#FFFF00, filled, 80, 50)): $grid.pos(5, 5)
+    text(m3x6, "#00FFFF", #888): $grid.pos(6, 5).offset(0, -10)
+    graphics(rect(#00FFFF, filled, 80, 50)): $grid.pos(6, 5)
+
+    // Row 6: Filters
+    text(m3x6, "filters:", #888): $grid.pos(0, 6)
+    text(m3x6, "outline", #888): $grid.pos(1, 6).offset(0, -10)
+    bitmap(generated(color(60, 40, #888888))) {
+      filter: outline(2, #FF0000)
+      pos: $grid.pos(1, 6)
+    }
+    text(m3x6, "glow", #888): $grid.pos(2, 6).offset(0, -10)
+    bitmap(generated(color(60, 40, #888888))) {
+      filter: glow(#00FF00, 4, 1, 1, 0.5)
+      pos: $grid.pos(2, 6)
+    }
+    text(m3x6, "dropShadow", #888): $grid.pos(3, 6).offset(0, -10)
+    bitmap(generated(color(60, 40, #888888))) {
+      filter: dropShadow(4, 45, #0000FF, 0.8, 2, 1, 1)
+      pos: $grid.pos(3, 6)
+    }
+    text(m3x6, "outline wht", #888): $grid.pos(4, 6).offset(0, -10)
+    bitmap(generated(color(60, 40, #888888))) {
+      filter: outline(2, #FFFFFF)
+      pos: $grid.pos(4, 6)
+    }
+    text(m3x6, "pxOutKO", #888): $grid.pos(5, 6).offset(0, -10)
+    bitmap(generated(color(60, 40, #888888))) {
+      filter: pixelOutline(knockout, #FFFF00, 0.5)
+      pos: $grid.pos(5, 6)
+    }
+    text(m3x6, "pxOutInl", #888): $grid.pos(6, 6).offset(0, -10)
+    bitmap(generated(color(60, 40, #888888))) {
+      filter: pixelOutline(inlineColor, #00FFFF, #00FFFF)
+      pos: $grid.pos(6, 6)
+    }
+
+    // Row 7: replaceColor (result matches column color)
+    text(m3x6, "replace:", #888): $grid.pos(0, 7)
+    text(m3x6, "->red", #888): $grid.pos(1, 7).offset(0, -10)
+    bitmap(generated(color(80, 50, #888888))) {
+      filter: replaceColor([#888888], [#FF0000])
+      pos: $grid.pos(1, 7)
+    }
+    text(m3x6, "->grn", #888): $grid.pos(2, 7).offset(0, -10)
+    bitmap(generated(color(80, 50, #888888))) {
+      filter: replaceColor([#888888], [#00FF00])
+      pos: $grid.pos(2, 7)
+    }
+    text(m3x6, "->blu", #888): $grid.pos(3, 7).offset(0, -10)
+    bitmap(generated(color(80, 50, #888888))) {
+      filter: replaceColor([#888888], [#0000FF])
+      pos: $grid.pos(3, 7)
+    }
+    text(m3x6, "->wht", #888): $grid.pos(4, 7).offset(0, -10)
+    bitmap(generated(color(80, 50, #888888))) {
+      filter: replaceColor([#888888], [#FFFFFF])
+      pos: $grid.pos(4, 7)
+    }
+    text(m3x6, "->ylw", #888): $grid.pos(5, 7).offset(0, -10)
+    bitmap(generated(color(80, 50, #888888))) {
+      filter: replaceColor([#888888], [#FFFF00])
+      pos: $grid.pos(5, 7)
+    }
+    text(m3x6, "->cyn", #888): $grid.pos(6, 7).offset(0, -10)
+    bitmap(generated(color(80, 50, #888888))) {
+      filter: replaceColor([#888888], [#00FFFF])
+      pos: $grid.pos(6, 7)
+    }
+
+    // Row 8: Color parameter
+    text(m3x6, "param:", #888): $grid.pos(0, 8)
+    text(m3x6, "default", #888): $grid.pos(1, 8).offset(0, -10)
+    staticRef($colorParam): $grid.pos(1, 8)
+    text(m3x6, "#00FF00", #888): $grid.pos(2, 8).offset(0, -10)
+    staticRef($colorParam, c=>#00FF00): $grid.pos(2, 8)
+    text(m3x6, "#0000FF", #888): $grid.pos(3, 8).offset(0, -10)
+    staticRef($colorParam, c=>#0000FF): $grid.pos(3, 8)
+    text(m3x6, "#FFFFFF", #888): $grid.pos(4, 8).offset(0, -10)
+    staticRef($colorParam, c=>#FFFFFF): $grid.pos(4, 8)
+    text(m3x6, "#FFFF00", #888): $grid.pos(5, 8).offset(0, -10)
+    staticRef($colorParam, c=>#FFFF00): $grid.pos(5, 8)
+    text(m3x6, "#00FFFF", #888): $grid.pos(6, 8).offset(0, -10)
+    staticRef($colorParam, c=>#00FFFF): $grid.pos(6, 8)
+
+    // Row 9: 0xRRGGBB format
+    text(m3x6, "0xRRGGBB:", #888): $grid.pos(0, 9)
+    text(m3x6, "0xFF0000", #888): $grid.pos(1, 9).offset(0, -10)
+    bitmap(generated(color(80, 50, 0xFF0000))): $grid.pos(1, 9)
+    text(m3x6, "0x00FF00", #888): $grid.pos(2, 9).offset(0, -10)
+    bitmap(generated(color(80, 50, 0x00FF00))): $grid.pos(2, 9)
+    text(m3x6, "0x0000FF", #888): $grid.pos(3, 9).offset(0, -10)
+    bitmap(generated(color(80, 50, 0x0000FF))): $grid.pos(3, 9)
+    text(m3x6, "0xFFFFFF", #888): $grid.pos(4, 9).offset(0, -10)
+    bitmap(generated(color(80, 50, 0xFFFFFF))): $grid.pos(4, 9)
+    text(m3x6, "0xFFFF00", #888): $grid.pos(5, 9).offset(0, -10)
+    bitmap(generated(color(80, 50, 0xFFFF00))): $grid.pos(5, 9)
+    text(m3x6, "0x00FFFF", #888): $grid.pos(6, 9).offset(0, -10)
+    bitmap(generated(color(80, 50, 0x00FFFF))): $grid.pos(6, 9)
+  }
+}

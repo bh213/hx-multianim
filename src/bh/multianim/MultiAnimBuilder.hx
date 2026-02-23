@@ -3188,7 +3188,7 @@ class MultiAnimBuilder {
 				animSM.play(resolveAsString(initialState));
 
 				StateAnim(animSM);
-			case STATEANIM_CONSTRUCT(initialState, construct):
+			case STATEANIM_CONSTRUCT(initialState, construct, externallyDriven):
 				var animSM = new AnimationSM([]);
 				for (key => value in construct) {
 					switch value {
@@ -3212,6 +3212,7 @@ class MultiAnimBuilder {
 					throw 'initialState ${initialStateResolved} does not exist in constructed stateanim' + MacroUtils.nodePos(node);
 
 				animSM.play(initialStateResolved);
+				if (externallyDriven) animSM.externallyDriven = true;
 
 				StateAnim(animSM);
 			case REPEAT(varName, repeatType):

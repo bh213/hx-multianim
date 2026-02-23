@@ -239,6 +239,9 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 	@:manim("test/examples/75-progressBarDemo/progressBarDemo.manim", "progressBarInside")
 	public var progressBarInside;
 
+	@:manim("test/examples/75-progressBarDemo/progressBarDemo.manim", "progressBarLayout")
+	public var progressBarLayout;
+
 	@:manim("test/examples/78-characterSheetDemo/characterSheetDemo.manim", "characterSheetDemo")
 	public var characterSheetDemo;
 
@@ -274,4 +277,7 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/87-codegenHexRuntime/codegenHexRuntime.manim", "codegenHexRuntime")
 	public var hexRuntime;
+
+	@:manim("test/examples/88-colorVerification/colorVerification.manim", "colorVerification")
+	public var colorVerification;
 }

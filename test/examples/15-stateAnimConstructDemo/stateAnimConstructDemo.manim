@@ -6,10 +6,47 @@ version: 0.5
 
   @alpha(0.1) bitmap(generated(color(1280, 720, white)));
 
-  @scale(2) text(dd, "state1", white, left, 200): 80, 120
-  @scale(4) stateAnim construct("state2",
+  text(dd, "stateAnim construct - Inline State Animations", white, left, 600): 40, 20
+
+  // Left: state2 initial
+  text(dd, "initial: state2", #aaaaaa, left, 200): 60, 60
+  @scale(4) stateAnim construct("state2", externallyDriven,
     "state1" => sheet "demo", indexed-tile, 10, loop
     "state2" => sheet "demo", tile-center, 10
-  ): 200, 300
-  rect(#FF69B4, 4, 104, 104): 196, 296
+  ): 80, 120
+  rect(#FF69B4, 3, 104, 104): 76, 116
+
+  // Middle: state1 initial
+  text(dd, "initial: state1", #aaaaaa, left, 200): 300, 60
+  @scale(4) stateAnim construct("state1", externallyDriven,
+    "state1" => sheet "demo", indexed-tile, 10, loop
+    "state2" => sheet "demo", tile-center, 10
+  ): 320, 120
+  rect(#69B4FF, 3, 104, 104): 316, 116
+
+  // Right: larger scale
+  text(dd, "scale 6", #aaaaaa, left, 200): 540, 60
+  @scale(6) stateAnim construct("state2", externallyDriven,
+    "state1" => sheet "demo", indexed-tile, 10, loop
+    "state2" => sheet "demo", tile-center, 10
+  ): 560, 120
+  rect(#B4FF69, 3, 156, 156): 556, 116
+
+  // Bottom row: smaller at scale 2
+  text(dd, "scale 2 pair:", #aaaaaa, left, 300): 60, 320
+  @scale(2) stateAnim construct("state1", externallyDriven,
+    "state1" => sheet "demo", indexed-tile, 10, loop
+    "state2" => sheet "demo", tile-center, 10
+  ): 80, 370
+  rect(#FFFF69, 2, 52, 52): 78, 368
+
+  @scale(2) stateAnim construct("state2", externallyDriven,
+    "state1" => sheet "demo", indexed-tile, 10, loop
+    "state2" => sheet "demo", tile-center, 10
+  ): 200, 370
+  rect(#FF69FF, 2, 52, 52): 198, 368
+
+  // Info text
+  text(dd, "state1: indexed-tile, 10fps, loop", #666666, left, 500): 60, 460
+  text(dd, "state2: tile-center, 10fps, no loop", #666666, left, 500): 60, 490
 }

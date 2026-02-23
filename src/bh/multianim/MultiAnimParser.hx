@@ -918,7 +918,7 @@ enum NodeType {
 	BITMAP(tileSource:TileSource, hAlign:HorizontalAlign, vAlign:VerticalAlign);
 	POINT;
 	STATEANIM(filename:String, initialState:ReferenceableValue, selector:Map<String, ReferenceableValue>);
-	STATEANIM_CONSTRUCT(initialState:ReferenceableValue, construct:Map<String, StateAnimConstruct>);
+	STATEANIM_CONSTRUCT(initialState:ReferenceableValue, construct:Map<String, StateAnimConstruct>, externallyDriven:Bool);
 	PIXELS(shapes:Array<PixelShapes>);
 	TEXT(textDef:TextDef);
 	PROGRAMMABLE(isTileGroup:Bool, parameters:ParametersDefinitions, paramOrder:Array<String>);

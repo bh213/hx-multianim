@@ -34,6 +34,7 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | `graphics(...)` | Vector graphics shapes |
 | `stateanim("file", state, selector)` | State machine animation from .anim file |
 | `stateanim construct(initial, states)` | Inline state machine animation definition |
+| `stateanim construct(initial, externallyDriven, states)` | Inline state animation driven externally (not by internal timer) |
 | `particles { ... }` | Particle effect system |
 
 ---
