@@ -6,8 +6,9 @@
 
 ## V1
 - hot reload
-- colors
+- ~~colors~~ (done — see CHANGELOG 0.13-dev)
 - tooltips
+- transitions & animations (see [transitions-planning.md](transitions-planning.md))
 - interactives/generic components?
 - visual tests fixes
 - haxelib release (see details below)

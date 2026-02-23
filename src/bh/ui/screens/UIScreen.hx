@@ -164,6 +164,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		return switch (val) {
 			case RSVString(s): s;
 			case RSVInt(i): '$i';
+			case RSVColor(c): '$c';
 			case RSVFloat(f): '$f';
 			case RSVBool(b): b ? "true" : "false";
 		};
@@ -177,6 +178,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 			return defaultValue;
 		return switch (val) {
 			case RSVInt(i): i;
+			case RSVColor(c): c;
 			case RSVFloat(f): Std.int(f);
 			case RSVBool(b): b ? 1 : 0;
 			case RSVString(s):
@@ -196,6 +198,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		return switch (val) {
 			case RSVFloat(f): f;
 			case RSVInt(i): i * 1.0;
+			case RSVColor(c): c * 1.0;
 			case RSVBool(b): b ? 1.0 : 0.0;
 			case RSVString(s):
 				var floatVal = Std.parseFloat(s);
@@ -220,6 +223,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 					default: throw 'could not parse setting "$s" as bool';
 				};
 			case RSVInt(i): i != 0;
+			case RSVColor(c): c != 0;
 			case RSVFloat(f): f != 0;
 		};
 	}
@@ -237,6 +241,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	function settingValueToDynamic(v:SettingValue):Dynamic {
 		return switch (v) {
 			case RSVInt(i): i;
+			case RSVColor(c): c;
 			case RSVFloat(f): f;
 			case RSVString(s): s;
 			case RSVBool(b): b;

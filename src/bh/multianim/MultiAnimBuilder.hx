@@ -138,6 +138,7 @@ class BuilderResolvedSettings {
 		return switch r {
 			case RSVString(s): s;
 			case RSVInt(i): '$i';
+			case RSVColor(c): '$c';
 			case RSVFloat(f): '$f';
 			case RSVBool(b): b ? "true" : "false";
 		};
@@ -152,6 +153,7 @@ class BuilderResolvedSettings {
 		return switch r {
 			case RSVString(s): s;
 			case RSVInt(i): '$i';
+			case RSVColor(c): '$c';
 			case RSVFloat(f): '$f';
 			case RSVBool(b): b ? "true" : "false";
 		};
@@ -165,6 +167,7 @@ class BuilderResolvedSettings {
 			throw 'expected int setting ${settingName} to present but was not';
 		return switch r {
 			case RSVInt(i): i;
+			case RSVColor(c): c;
 			case RSVFloat(f): throw 'expected int setting ${settingName} to valid int number but was float $f';
 			case RSVString(s): throw 'expected int setting ${settingName} to valid int number but was string $s';
 			case RSVBool(b): b ? 1 : 0;
@@ -179,6 +182,7 @@ class BuilderResolvedSettings {
 			return defaultValue;
 		return switch r {
 			case RSVInt(i): i;
+			case RSVColor(c): c;
 			case RSVFloat(f): throw 'expected int setting ${settingName} to valid int number but was float $f';
 			case RSVString(s): throw 'expected int setting ${settingName} to valid int number but was string $s';
 			case RSVBool(b): b ? 1 : 0;
@@ -194,6 +198,7 @@ class BuilderResolvedSettings {
 		return switch r {
 			case RSVFloat(f): f;
 			case RSVInt(i): cast i;
+			case RSVColor(c): cast c;
 			case RSVString(s): throw 'expected float setting ${settingName} to valid float number but was string $s';
 			case RSVBool(b): b ? 1.0 : 0.0;
 		};
@@ -208,6 +213,7 @@ class BuilderResolvedSettings {
 		return switch r {
 			case RSVFloat(f): f;
 			case RSVInt(i): cast i;
+			case RSVColor(c): cast c;
 			case RSVString(s): throw 'expected float setting ${settingName} to valid float number but was string $s';
 			case RSVBool(b): b ? 1.0 : 0.0;
 		};
@@ -222,6 +228,7 @@ class BuilderResolvedSettings {
 		return switch r {
 			case RSVBool(b): b;
 			case RSVInt(i): i != 0;
+			case RSVColor(c): c != 0;
 			case RSVFloat(f): f != 0;
 			case RSVString(s):
 				switch (s.toLowerCase()) {
@@ -949,6 +956,12 @@ class MultiAnimBuilder {
 
 		return switch v {
 			case RVInteger(i): i;
+			case RVString(s):
+				final c = MacroManimParser.tryStringToColor(s);
+				if (c != null) return c;
+				final parsed = Std.parseInt(s);
+				if (parsed != null) return parsed;
+				throw 'cannot resolve color from string "$s"' + currentNodePos();
 			case RVColorXY(externalReference, name, x, y):
 				var builder = getBuilderWithExternal(externalReference);
 				var palette = builder.getPalette(name);
@@ -1419,6 +1432,7 @@ class MultiAnimBuilder {
 	function generatePlaceholderBitmap(type:ResolvedGeneratedTileType) {
 		return switch type {
 			case Cross(w, h, color, thickness):
+				// PixelLines writes raw pixel data — alpha byte must be set
 				final c = color.addAlphaIfNotPresent();
 				final pl = new PixelLines(w, h);
 				for (t in 0...thickness) {
@@ -1432,15 +1446,15 @@ class MultiAnimBuilder {
 				pl.tile;
 
 			case SolidColor(w, h, color):
-				h2d.Tile.fromColor(color.addAlphaIfNotPresent(), w, h);
+				h2d.Tile.fromColor(color, w, h);
 
 			case SolidColorWithText(w, h, bgColor, text, textColor, fontName):
 				// Create a solid color tile with centered text using font rendering
-				generateTileWithText(w, h, bgColor.addAlphaIfNotPresent(), text, textColor.addAlphaIfNotPresent(), fontName);
+				generateTileWithText(w, h, bgColor, text, textColor, fontName);
 
 			case AutotileRef(format, tileIndex, tileSize, edgeColor, fillColor):
 				// Generate autotile demo tile with diagonal corners
-				generateAutotileDemoTile(format, tileIndex, tileSize, edgeColor.addAlphaIfNotPresent(), fillColor.addAlphaIfNotPresent());
+				generateAutotileDemoTile(format, tileIndex, tileSize, edgeColor, fillColor);
 
 			case AutotileRegionSheet(baseTile, regionX, regionY, regionW, regionH, tileSize, tileCount, scale, font, fontColor):
 				// Generate a visual tile sheet showing the region with numbered grid overlay
@@ -2127,7 +2141,7 @@ class MultiAnimBuilder {
 										final hCapture = h;
 										final colorCapture = color;
 										incrementalContext.trackExpression(() -> {
-											bmp.tile = h2d.Tile.fromColor(resolveAsColorInteger(colorCapture).addAlphaIfNotPresent(),
+											bmp.tile = h2d.Tile.fromColor(resolveAsColorInteger(colorCapture),
 												resolveAsInteger(wCapture), resolveAsInteger(hCapture));
 										}, bmpRefs);
 									}
@@ -2362,7 +2376,8 @@ class MultiAnimBuilder {
 					var y1 = Math.round(startPos.y);
 					var x2 = Math.round(endPos.x);
 					var y2 = Math.round(endPos.y);
-					computedShapes.push(ComputedShape.Line(x1, y1, x2, y2, resolveAsColorInteger(line.color).addAlphaIfNotPresent()));
+					// PixelLines writes raw pixel data — alpha byte must be set
+				computedShapes.push(ComputedShape.Line(x1, y1, x2, y2, resolveAsColorInteger(line.color).addAlphaIfNotPresent()));
 					bounds.addPos(x1, y1);
 					bounds.addPos(x2, y2);
 				case RECT(rect) | FILLED_RECT(rect):
@@ -2411,7 +2426,7 @@ class MultiAnimBuilder {
 			g.lineStyle();
 			switch item.element {
 				case GERect(color, style, width, height):
-					var resolvedColor = resolveAsColorInteger(color).addAlphaIfNotPresent();
+					var resolvedColor = resolveAsColorInteger(color);
 					switch style {
 						case GSFilled:
 							g.beginFill(resolvedColor);
@@ -2423,7 +2438,7 @@ class MultiAnimBuilder {
 							g.lineStyle();
 					}
 				case GEPolygon(color, style, points):
-					var resolvedColor = resolveAsColorInteger(color).addAlphaIfNotPresent();
+					var resolvedColor = resolveAsColorInteger(color);
 					switch style {
 						case GSFilled:
 							g.beginFill(resolvedColor);
@@ -2448,7 +2463,7 @@ class MultiAnimBuilder {
 						case GSLineWidth(_): g.lineStyle();
 					}
 				case GECircle(color, style, radius):
-					var resolvedColor = resolveAsColorInteger(color).addAlphaIfNotPresent();
+					var resolvedColor = resolveAsColorInteger(color);
 					switch style {
 						case GSFilled:
 							g.beginFill(resolvedColor);
@@ -2460,7 +2475,7 @@ class MultiAnimBuilder {
 							g.lineStyle();
 					}
 				case GEEllipse(color, style, width, height):
-					var resolvedColor = resolveAsColorInteger(color).addAlphaIfNotPresent();
+					var resolvedColor = resolveAsColorInteger(color);
 					switch style {
 						case GSFilled:
 							g.beginFill(resolvedColor);
@@ -2472,7 +2487,7 @@ class MultiAnimBuilder {
 							g.lineStyle();
 					}
 				case GEArc(color, style, radius, startAngle, arcAngle):
-					var resolvedColor = resolveAsColorInteger(color).addAlphaIfNotPresent();
+					var resolvedColor = resolveAsColorInteger(color);
 					switch style {
 						case GSLineWidth(lw):
 							g.lineStyle(resolveAsNumber(lw), resolvedColor);
@@ -2485,7 +2500,7 @@ class MultiAnimBuilder {
 							g.lineStyle();
 					}
 				case GERoundRect(color, style, width, height, radius):
-					var resolvedColor = resolveAsColorInteger(color).addAlphaIfNotPresent();
+					var resolvedColor = resolveAsColorInteger(color);
 					var rad = resolveAsNumber(radius);
 					switch style {
 						case GSFilled:
@@ -2498,7 +2513,7 @@ class MultiAnimBuilder {
 							g.lineStyle();
 					}
 				case GELine(color, lineWidth, start, end):
-					var resolvedColor = resolveAsColorInteger(color).addAlphaIfNotPresent();
+					var resolvedColor = resolveAsColorInteger(color);
 					var startPos = calculatePosition(start, gridCoordinateSystem, hexCoordinateSystem);
 					var endPos = calculatePosition(end, gridCoordinateSystem, hexCoordinateSystem);
 					g.lineStyle(resolveAsNumber(lineWidth), resolvedColor);
@@ -3606,6 +3621,7 @@ class MultiAnimBuilder {
 							case SVTInt: RSVInt(resolveAsInteger(entry.value));
 							case SVTFloat: RSVFloat(resolveAsNumber(entry.value));
 							case SVTString: RSVString(resolveAsString(entry.value));
+							case SVTColor: RSVColor(resolveAsColorInteger(entry.value));
 							case SVTBool: RSVBool(resolveAsBool(entry.value));
 						});
 					}
@@ -3804,6 +3820,7 @@ class MultiAnimBuilder {
 					case SVTInt: RSVInt(resolveAsInteger(settingValue.value));
 					case SVTFloat: RSVFloat(resolveAsNumber(settingValue.value));
 					case SVTString: RSVString(resolveAsString(settingValue.value));
+					case SVTColor: RSVColor(resolveAsColorInteger(settingValue.value));
 					case SVTBool: RSVBool(resolveAsBool(settingValue.value));
 				}
 			}
@@ -4122,7 +4139,7 @@ class MultiAnimBuilder {
 				} else {
 					throw 'color curve must have either curveName or inlineEasing' + currentNodePos();
 				}
-				group.addColorCurveSegment(resolveAsNumber(cc.atRate), curve, resolveAsInteger(cc.startColor), resolveAsInteger(cc.endColor));
+				group.addColorCurveSegment(resolveAsNumber(cc.atRate), curve, resolveAsColorInteger(cc.startColor), resolveAsColorInteger(cc.endColor));
 			}
 		}
 
@@ -4438,7 +4455,7 @@ class MultiAnimBuilder {
 						case APRotation: retVal.addCurveSegment(Rotation, atRate, curve);
 						case APProgress: retVal.addCurveSegment(Progress, atRate, curve);
 						case APColor(startColor, endColor):
-							retVal.addColorCurveSegment(atRate, curve, Std.int(resolveAsNumber(startColor)), Std.int(resolveAsNumber(endColor)));
+							retVal.addColorCurveSegment(atRate, curve, resolveAsColorInteger(startColor), resolveAsColorInteger(endColor));
 						case APCustom(customName): retVal.addCustomCurveSegment(customName, atRate, curve);
 					}
 				}
@@ -4734,6 +4751,7 @@ class MultiAnimBuilder {
 
 			case ATSDemo(edgeColor, fillColor):
 				// Auto-generated demo tiles based on format
+				// PixelLines writes raw pixel data — alpha byte must be set
 				final edge = resolveAsColorInteger(edgeColor).addAlphaIfNotPresent();
 				final fill = resolveAsColorInteger(fillColor).addAlphaIfNotPresent();
 				final tileCount = switch autotileDef.format {
@@ -4752,6 +4770,9 @@ class MultiAnimBuilder {
 	private function generateAutotileDemoTile(format:AutotileFormat, tileIndex:Int, tileSize:Int, edgeColor:Int, fillColor:Int):h2d.Tile {
 		final borderWidth = Std.int(Math.max(1, tileSize / 8));
 		final cornerSize = Std.int(Math.max(2, tileSize / 2)); // Size of diagonal corner cut
+		// PixelLines writes raw pixel data — alpha byte must be set
+		edgeColor = edgeColor.addAlphaIfNotPresent();
+		fillColor = fillColor.addAlphaIfNotPresent();
 		final pl = new PixelLines(tileSize, tileSize);
 
 		// Fill entire tile with fill color

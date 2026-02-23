@@ -129,8 +129,24 @@
 - **Multi-particles codegen** — `buildParticles(programmableName, index)` supports index parameter for programmables with multiple `particles {}` blocks; codegen auto-indexes particle nodes
 - **Visual test improvements** — improved visual content and descriptions for tests 10, 15, 32, 44, 46, 51, 56, 70, 71, 75, 76, 81, 82, 83; test 88 (colorVerification) added
 - **Test 75 placeholder+settings pattern** — `progressBarDemo` rewritten to use `placeholder(nothing, builderParameter("bar"))` with `settings{buildName=>..., value:int=>N}` driving `UIMultiAnimProgressBar` creation via `PVFactory`
+- **Color system overhaul** — comprehensive rework of color handling across parser, builder, and codegen
+  - Named colors now bake `0xFF` alpha (Heaps `AARRGGBB` format) — `addAlphaIfNotPresent()` is a no-op for all named colors
+  - Added `transparent` named color (`0x00000000`)
+  - Added 14 named colors: `gold`, `brown`, `pink`, `coral`, `crimson`, `indigo`, `darkgray`, `lightgray`, `skyblue`, `forestgreen`, `tomato`, `wheat`, `slate`
+  - `#RRGGBBAA` now correctly converts CSS convention (alpha-last) to Heaps `AARRGGBB` (alpha-first)
+  - `#RGB` and `#RRGGBB` now bake `0xFF` alpha into the value
+  - Hex length validation: only 3, 6, or 8 hex digits accepted after `#`
+  - `SVTColor` / `RSVColor` — new setting value type for semantic color distinction
+  - `SettingValueTools.asColorInt()` helper matches both `RSVColor` and `RSVInt` for backward compatibility
+  - Interactive metadata supports `:color` type annotation
+  - Untyped settings (`key => value`) now use `parseAnything()` for type inference (fixes `#hex` and `0xhex` values)
 
 ### Fixed
+- **Hex integer in `parseAnything()`** — `THexInteger` tokens now reconstruct `0x` prefix before `stringToInt()` (fixes `0xAA8844` in untyped settings)
+- **Named colors in staticRef/dynamicRef params** — `resolveAsColorInteger()` now handles `RVString` for named colors like `c=>red`
+- **Particle/animatedPath colorCurve resolution** — changed from `resolveAsInteger` to `resolveAsColorInteger`, enabling palette colors in color curves
+- **PixelOutline `inlineColor` alpha** — `Vec4` shader param now applies `addAlphaIfNotPresent()` (previously alpha was 0, making inline color invisible for 6-digit hex)
+- **Unnecessary `addAlphaIfNotPresent()` calls removed** — removed from `Tile.fromColor`, `Graphics`, and other APIs where Heaps ignores the top byte
 - **Grid coord lookup in nested elements** — `$grid.pos()` in codegen now traverses parent chain to find the correct grid coordinate system instead of only checking the default layout (fixes grid positioning in nested/conditional elements)
 - **Multi-hex-layout codegen mismatch** — programmables with multiple `point {}` blocks using different hex orientations/sizes now generate correct positions for each block (previously all blocks used the first layout's field)
 - **Layout index null default** — `layout(name)` without explicit index now defaults to index 0 in codegen (previously returned null, causing missing elements)

@@ -227,6 +227,7 @@ enum SettingValueType {
 	SVTInt;
 	SVTFloat;
 	SVTBool;
+	SVTColor;
 }
 
 typedef ParsedSettingValue = {
@@ -239,6 +240,18 @@ enum SettingValue {
 	RSVInt(i:Int);
 	RSVFloat(f:Float);
 	RSVBool(b:Bool);
+	RSVColor(c:Int);
+}
+
+class SettingValueTools {
+	/** Returns color as Int, matching both RSVColor and RSVInt for backward compatibility. */
+	public static function asColorInt(sv:SettingValue):Null<Int> {
+		return switch sv {
+			case RSVColor(c): c;
+			case RSVInt(i): i;
+			default: null;
+		};
+	}
 }
 
 typedef ResolvedSettings = Null<Map<String, SettingValue>>;
