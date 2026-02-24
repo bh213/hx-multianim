@@ -1,12 +1,13 @@
 package bh.ui;
 
+import bh.base.CursorManager;
 import bh.multianim.MultiAnimBuilder;
 import bh.multianim.MultiAnimBuilder.MultiAnimBuilder;
 import bh.ui.UIElement;
 import h2d.Object;
 import h2d.col.Point;
 
-class UIStandardMultiAnimButton implements UIElement implements UIElementDisablable implements StandardUIElementEvents {
+class UIStandardMultiAnimButton implements UIElement implements UIElementDisablable implements StandardUIElementEvents implements UIElementCursor {
 	final result:BuilderResult;
 
 	public var disabled(default, set):Bool = false;
@@ -44,6 +45,12 @@ class UIStandardMultiAnimButton implements UIElement implements UIElementDisabla
 	}
 
 	public function clear() {}
+
+	public function getCursor():hxd.Cursor {
+		if (disabled)
+			return CursorManager.getDefaultCursor();
+		return CursorManager.getDefaultInteractiveCursor();
+	}
 
 	public function onEvent(wrapper:UIElementEventWrapper) {
 		if (this.disabled)

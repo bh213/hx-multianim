@@ -223,6 +223,12 @@ class BuilderResolvedSettings {
 		};
 	}
 
+	public function keys():Iterator<String> {
+		if (settings == null)
+			return [].iterator();
+		return settings.keys();
+	}
+
 	public function getBoolOrDefault(settingName:String, defaultValue:Bool):Bool {
 		if (settings == null)
 			return defaultValue;

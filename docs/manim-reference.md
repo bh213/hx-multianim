@@ -827,6 +827,23 @@ interactive(200, 30, "shopBtn", bind => "status", events: [hover, click, push])
 
 `UIRichInteractiveHelper.register(result)` scans interactives for `bind` metadata and auto-wires hover/press/leave state transitions to `setParameter()` calls on the bound `BuilderResult`.
 
+### Cursor Metadata
+
+Set cursor for interactive elements via `cursor` metadata:
+
+```manim
+interactive(200, 30, "buyBtn", cursor => "pointer")
+interactive(200, 30, "dragArea", cursor => "move", cursor.hover => "move", cursor.disabled => "default")
+```
+
+| Key | Description |
+|-----|-------------|
+| `cursor` | Base cursor (fallback for all states). Default: `CursorManager.getDefaultInteractiveCursor()` |
+| `cursor.hover` | Cursor when hovered. Default: same as `cursor` |
+| `cursor.disabled` | Cursor when disabled. Default: `CursorManager.getDefaultCursor()` |
+
+Pre-registered cursor names: `default`, `pointer`/`button`, `move`, `text`, `hide`/`none`. Register custom cursors via `CursorManager.registerCursor("name", cursor)`.
+
 ---
 
 ## Macro Code Generation

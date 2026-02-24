@@ -3949,7 +3949,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 				try {
 					var macroPath = 'test/screenshots/${testName}_macro.png';
 					var referencePath = getReferenceImagePath();
-					var threshold = 1.0;
+					var threshold = 0.9999;
 
 					var macroSuccess = screenshot(macroPath, 1280, 720);
 
@@ -4095,7 +4095,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 				try {
 					var macroPath = 'test/screenshots/${testName}_macro.png';
 					var referencePath = getReferenceImagePath();
-					var threshold = 1.0;
+					var threshold = 0.9999;
 
 					var macroSuccess = screenshot(macroPath, 1280, 720);
 

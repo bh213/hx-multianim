@@ -115,8 +115,11 @@ abstract class UIControllerBase implements UIController {
 
 			final captureEvents = controllable.captureEvents;
 			cast(element, StandardUIElementEvents).onEvent(wrapper);
-			// TODO: only call this on mouse click? or have some interface decide if element needs notification or not
-			controllable.outsideClick.handle(element);
+			switch (event) {
+				case OnPush(_), OnRelease(_), OnReleaseOutside(_):
+					controllable.outsideClick.handle(element);
+				default:
+			}
 			if (captureEvents.start == false && captureEvents.stop == false)
 				return;
 			if (captureEvents.start && captureEvents.target == null)
@@ -169,6 +172,15 @@ abstract class UIControllerBase implements UIController {
 			}
 			handleEvent(element, OnEnter, mousePoint);
 			currentOver = element;
+		}
+		updateCursor();
+	}
+
+	function updateCursor() {
+		if (currentOver != null && Std.isOfType(currentOver, UIElementCursor)) {
+			hxd.System.setCursor((cast(currentOver, UIElementCursor)).getCursor());
+		} else {
+			hxd.System.setCursor(bh.base.CursorManager.getDefaultCursor());
 		}
 	}
 

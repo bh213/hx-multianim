@@ -362,6 +362,15 @@ Metadata supports typed values matching the settings system: `key => val` (strin
 - **`UIRichInteractiveHelper`** — state binding helper: `register(result, ?prefix)` auto-scans bind metadata; `handleEvent(event)` drives Normal→Hover→Pressed→Normal state machine via `setParameter()`; `setDisabled(id, disabled)` for disabled state; `bind()`/`unbind()`/`setParameter()`/`getResult()` for manual control
 - **`UITooltipHelper`** — screen-driven tooltip helper: `startHover(id, buildName, ?params)`, `cancelHover(id)`, `show()`, `hide()`, `update(dt)`; configurable delay, position, offset, layer, per-interactive overrides
 - **`UIPanelHelper`** — screen-driven panel helper: `open(id, buildName, ?params)`, `close()`, `isOpen()`, `getPanelResult()`, `handleOutsideClick(event)`; auto-registers panel interactives with prefix; `OutsideClick` / `Manual` close modes
+- **Cursor support** — `UIElementCursor` interface with `getCursor():hxd.Cursor` for state-dependent cursor
+  - `CursorManager` — static registry (like `FontManager`); pre-registers Heaps cursors: `default`, `pointer`/`button`, `move`, `text`, `hide`/`none`
+  - `registerCursor(name, cursor)` / `unregisterCursor(name)` / `getCursor(name)` for custom cursors
+  - `setDefaultInteractiveCursor(cursor)` — global default for UI elements (defaults to `Button`/pointer)
+  - `setDefaultCursor(cursor)` — fallback when not hovering any element (defaults to `Default`)
+  - All built-in components (Button, Checkbox, Slider, Dropdown, TabButton, ScrollableList) implement `UIElementCursor`
+  - Interactive per-state cursors via metadata: `cursor => "pointer"`, `cursor.hover => "move"`, `cursor.disabled => "default"`
+  - Unknown `cursor.*` suffixes throw (valid: `cursor.hover`, `cursor.disabled`)
+  - Controller plumbing in `UIControllerBase.handleMove()` — calls `hxd.System.setCursor()`
 
 ## Notes — Indexed Names, Slots, Components
 

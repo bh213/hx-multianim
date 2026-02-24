@@ -1,5 +1,6 @@
 package bh.ui;
 
+import bh.base.CursorManager;
 import bh.multianim.MultiAnimBuilder;
 import bh.multianim.MultiAnimBuilder.MultiAnimBuilder;
 import bh.ui.UIElement;
@@ -8,7 +9,7 @@ import h2d.col.Point;
 
 @:nullSafety
 class UIStandardMultiCheckbox implements UIElement implements UIElementDisablable implements UIElementSelectable implements StandardUIElementEvents
-		implements UIElementNumberValue {
+		implements UIElementNumberValue implements UIElementCursor {
 	final result:BuilderResult;
 
 	public var disabled(default, set):Bool = false;
@@ -16,6 +17,12 @@ class UIStandardMultiCheckbox implements UIElement implements UIElementDisablabl
 	public var ignoreSelectEvents = false;
 
 	public function clear() {}
+
+	public function getCursor():hxd.Cursor {
+		if (disabled)
+			return CursorManager.getDefaultCursor();
+		return CursorManager.getDefaultInteractiveCursor();
+	}
 
 	public function set_disabled(value:Bool):Bool {
 		if (this.disabled != value) {

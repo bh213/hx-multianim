@@ -42,6 +42,8 @@ class UITooltipHelper {
 	// Active tooltip
 	var activeTooltipId:Null<String> = null;
 	var activeResult:Null<BuilderResult> = null;
+	var activeBuildName:Null<String> = null;
+	var activeParams:Null<Map<String, Dynamic>> = null;
 
 	public function new(screen:UIScreenBase, builder:MultiAnimBuilder, ?defaults:TooltipDefaults) {
 		this.screen = screen;
@@ -92,6 +94,8 @@ class UITooltipHelper {
 			activeResult = null;
 		}
 		activeTooltipId = null;
+		activeBuildName = null;
+		activeParams = null;
 	}
 
 	/** Set custom delay for a specific interactive. */
@@ -135,6 +139,27 @@ class UITooltipHelper {
 		return activeTooltipId;
 	}
 
+	/** Update parameters on the active tooltip (incremental update). Returns false if no tooltip is active. */
+	public function updateParams(params:Map<String, Dynamic>):Bool {
+		if (activeResult == null || activeTooltipId == null)
+			return false;
+		for (key => value in params)
+			activeResult.setParameter(key, value);
+		return true;
+	}
+
+	/** Rebuild the active tooltip with new parameters. Returns false if no tooltip is active. */
+	public function rebuild(?params:Map<String, Dynamic>):Bool {
+		if (activeTooltipId == null || activeBuildName == null)
+			return false;
+		final id = activeTooltipId;
+		final buildName = activeBuildName;
+		final buildParams = params ?? activeParams;
+		hide();
+		showTooltip(id, buildName, buildParams);
+		return true;
+	}
+
 	function showTooltip(interactiveId:String, buildName:String, params:Null<Map<String, Dynamic>>):Void {
 		final wrapper = screen.getInteractive(interactiveId);
 		if (wrapper == null)
@@ -149,6 +174,8 @@ class UITooltipHelper {
 
 		activeTooltipId = interactiveId;
 		activeResult = result;
+		activeBuildName = buildName;
+		activeParams = params;
 	}
 
 	function positionTooltip(tooltip:h2d.Object, anchor:h2d.Object, position:TooltipPosition, offset:Int):Void {

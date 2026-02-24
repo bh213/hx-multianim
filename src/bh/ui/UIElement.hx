@@ -246,6 +246,14 @@ interface UIElementDisablable {
 	var disabled(default, set):Bool;
 }
 
+/**
+ * Interface for UI elements that provide a state-dependent cursor.
+ * Always returns a concrete cursor — the controller uses it directly.
+ */
+interface UIElementCursor {
+	function getCursor():hxd.Cursor;
+}
+
 
 /**
  * Interface for UI elements that can be selected (e.g., radio buttons, list items).

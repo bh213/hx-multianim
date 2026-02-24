@@ -1,5 +1,6 @@
 package bh.ui;
 
+import bh.base.CursorManager;
 import bh.ui.screens.UIScreen;
 import bh.base.PositionLinkObject;
 import bh.multianim.MultiAnimBuilder.CallbackRequest;
@@ -23,7 +24,8 @@ private enum AnimState {
 
 @:nullSafety
 class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisablable implements UIElementUpdatable implements StandardUIElementEvents
-		implements UIElementSyncRedraw implements UIElementListValue implements UIElementSubElements implements UIElementCustomAddToLayer {
+		implements UIElementSyncRedraw implements UIElementListValue implements UIElementSubElements implements UIElementCustomAddToLayer
+		implements UIElementCursor {
 	final mainPartImages:MultiAnimMultiResult;
 	var status(default, set):StandardUIElementStates = SUINormal;
 	var root:h2d.Object;
@@ -75,6 +77,12 @@ class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisab
 	public function clear() {
 		this.items = [];
 		this.currentMainPart = null;
+	}
+
+	public function getCursor():hxd.Cursor {
+		if (disabled)
+			return CursorManager.getDefaultCursor();
+		return CursorManager.getDefaultInteractiveCursor();
 	}
 
 	function set_currentItemIndex(value:Int):Int {
