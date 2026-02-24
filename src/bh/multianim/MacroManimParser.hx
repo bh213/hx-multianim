@@ -3938,6 +3938,7 @@ class MacroManimParser {
 		return switch (value) {
 			case RVInteger(_): SVTInt;
 			case RVFloat(_): SVTFloat;
+			case RVString(s) if (s.toLowerCase() == "true" || s.toLowerCase() == "false"): SVTBool;
 			default: SVTString;
 		};
 	}

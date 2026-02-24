@@ -21,7 +21,18 @@ typedef PanelDefaults = {
 }
 
 @:nullSafety
+private typedef PanelState = {
+	var interactiveId:String;
+	var result:BuilderResult;
+	var prefix:String;
+	var closeMode:PanelCloseMode;
+	var pendingClose:Bool;
+}
+
+@:nullSafety
 class UIPanelHelper {
+	/** Event name used with UICustomEvent when a panel closes. Data is the interactiveId (String). */
+	public static inline final EVENT_PANEL_CLOSE = "panelClose";
 	final screen:UIScreenBase;
 	final builder:MultiAnimBuilder;
 	final defaultPosition:TooltipPosition;
@@ -29,11 +40,18 @@ class UIPanelHelper {
 	final layer:LayersEnum;
 	final defaultCloseMode:PanelCloseMode;
 
-	// Active panel state
+	// Per-interactive overrides
+	var positionOverrides:Map<String, TooltipPosition> = [];
+	var offsetOverrides:Map<String, Int> = [];
+
+	// Active panel state (single-panel API, backwards compatible)
 	var activeInteractiveId:Null<String> = null;
 	var activeResult:Null<BuilderResult> = null;
 	var activePanelPrefix:Null<String> = null;
 	var activeCloseMode:PanelCloseMode;
+
+	// Named panel slots for multi-panel support
+	var namedPanels:Map<String, PanelState> = [];
 
 	public function new(screen:UIScreenBase, builder:MultiAnimBuilder, ?defaults:PanelDefaults) {
 		this.screen = screen;
@@ -45,6 +63,18 @@ class UIPanelHelper {
 		this.activeCloseMode = this.defaultCloseMode;
 	}
 
+	/** Set custom position for a specific interactive. */
+	public function setPosition(interactiveId:String, position:TooltipPosition):Void {
+		positionOverrides.set(interactiveId, position);
+	}
+
+	/** Set custom offset for a specific interactive. */
+	public function setOffset(interactiveId:String, offset:Int):Void {
+		offsetOverrides.set(interactiveId, offset);
+	}
+
+	// ---- Single-panel API (backwards compatible) ----
+
 	/** Open a panel anchored to an interactive. Closes any existing panel first. */
 	public function open(interactiveId:String, buildName:String, ?params:Map<String, Dynamic>, ?closeMode:PanelCloseMode):Void {
 		close();
@@ -54,8 +84,8 @@ class UIPanelHelper {
 			return;
 
 		final result = builder.buildWithParameters(buildName, params ?? [], null, null, true);
-		final position = defaultPosition;
-		final offset = defaultOffset;
+		final position = positionOverrides.get(interactiveId) ?? defaultPosition;
+		final offset = offsetOverrides.get(interactiveId) ?? defaultOffset;
 
 		positionPanel(result.object, wrapper.interactive, position, offset);
 		screen.addObjectToLayer(result.object, layer);
@@ -71,13 +101,19 @@ class UIPanelHelper {
 		activeCloseMode = closeMode ?? defaultCloseMode;
 	}
 
-	/** Close the active panel. */
+	/** Close the active panel. Pushes `UICustomEvent(EVENT_PANEL_CLOSE, interactiveId)` to the screen. */
 	public function close():Void {
 		if (activeResult != null) {
+			final closedId = activeInteractiveId;
 			if (activePanelPrefix != null)
 				screen.removeInteractives(activePanelPrefix);
 			activeResult.object.remove();
 			activeResult = null;
+			activeInteractiveId = null;
+			activePanelPrefix = null;
+			if (closedId != null)
+				screen.onScreenEvent(UICustomEvent(EVENT_PANEL_CLOSE, closedId), null);
+			return;
 		}
 		activeInteractiveId = null;
 		activePanelPrefix = null;
@@ -105,10 +141,75 @@ class UIPanelHelper {
 
 	/** Check if an interactive id belongs to the current panel's interactives. */
 	public function isOwnInteractive(id:String):Bool {
-		if (activePanelPrefix == null)
-			return false;
-		return StringTools.startsWith(id, activePanelPrefix);
+		if (activePanelPrefix != null && StringTools.startsWith(id, activePanelPrefix))
+			return true;
+		for (_ => panel in namedPanels) {
+			if (StringTools.startsWith(id, panel.prefix))
+				return true;
+		}
+		return false;
 	}
+
+	// ---- Named multi-panel API ----
+
+	/** Open a named panel slot. Closes previous panel in the same slot (if any), other slots stay open. */
+	public function openNamed(slot:String, interactiveId:String, buildName:String, ?params:Map<String, Dynamic>,
+			?closeMode:PanelCloseMode):Void {
+		closeNamed(slot);
+
+		final wrapper = screen.getInteractive(interactiveId);
+		if (wrapper == null)
+			return;
+
+		final result = builder.buildWithParameters(buildName, params ?? [], null, null, true);
+		final position = positionOverrides.get(interactiveId) ?? defaultPosition;
+		final offset = offsetOverrides.get(interactiveId) ?? defaultOffset;
+
+		positionPanel(result.object, wrapper.interactive, position, offset);
+		screen.addObjectToLayer(result.object, layer);
+
+		final prefix = '${slot}.${interactiveId}.$buildName';
+		if (result.interactives.length > 0)
+			screen.addInteractives(result, prefix);
+
+		namedPanels.set(slot, {
+			interactiveId: interactiveId,
+			result: result,
+			prefix: prefix,
+			closeMode: closeMode ?? defaultCloseMode,
+			pendingClose: false,
+		});
+	}
+
+	/** Close a specific named panel slot. */
+	public function closeNamed(slot:String):Void {
+		final panel = namedPanels.get(slot);
+		if (panel == null)
+			return;
+		screen.removeInteractives(panel.prefix);
+		panel.result.object.remove();
+		namedPanels.remove(slot);
+		screen.onScreenEvent(UICustomEvent(EVENT_PANEL_CLOSE, panel.interactiveId), null);
+	}
+
+	/** Close all named panels. */
+	public function closeAllNamed():Void {
+		for (slot => _ in namedPanels)
+			closeNamed(slot);
+	}
+
+	/** Whether a named panel slot is open. */
+	public function isOpenNamed(slot:String):Bool {
+		return namedPanels.exists(slot);
+	}
+
+	/** Returns the builder result of a named panel slot. */
+	public function getNamedPanelResult(slot:String):Null<BuilderResult> {
+		final panel = namedPanels.get(slot);
+		return panel?.result;
+	}
+
+	// ---- Outside-click handling ----
 
 	/**
 	 * Call from onScreenEvent for every UIInteractiveEvent to handle outside-click close.
@@ -116,39 +217,79 @@ class UIPanelHelper {
 	 * elsewhere fires UIClickOutside. Because the controller sends OnReleaseOutside before
 	 * OnRelease, we defer the close to allow panel's own interactives to cancel it.
 	 * Call `checkPendingClose()` from the screen's update().
-	 * Returns true if the panel was closed immediately (click on unrelated interactive).
+	 * Returns true if any panel was closed immediately (click on unrelated interactive).
 	 */
 	var _pendingClose:Bool = false;
 
 	public function handleOutsideClick(event:UIScreenEvent):Bool {
-		if (!isOpen() || activeCloseMode != OutsideClick)
-			return false;
-		switch event {
-			case UIInteractiveEvent(UIClickOutside, id, _):
-				// Trigger's outside click — defer in case a panel interactive click follows
-				if (id == activeInteractiveId)
-					_pendingClose = true;
-				return false;
-			case UIInteractiveEvent(UIClick, id, _):
-				if (id == activeInteractiveId || isOwnInteractive(id)) {
-					_pendingClose = false; // cancel — clicked our own
-					return false;
-				}
-				// Clicked unrelated interactive — close immediately
-				_pendingClose = false;
-				close();
-				return true;
-			default:
-				return false;
+		var closed = false;
+		// Handle single-panel
+		if (isOpen() && activeCloseMode == OutsideClick) {
+			switch event {
+				case UIInteractiveEvent(UIClickOutside, id, _):
+					if (id == activeInteractiveId)
+						_pendingClose = true;
+				case UIInteractiveEvent(UIClick, id, _):
+					if (id == activeInteractiveId || (activePanelPrefix != null && StringTools.startsWith(id, activePanelPrefix))) {
+						_pendingClose = false;
+					} else if (!isNamedPanelInteractive(id)) {
+						_pendingClose = false;
+						close();
+						closed = true;
+					}
+				default:
+			}
 		}
+		// Handle named panels
+		for (_ => panel in namedPanels) {
+			if (panel.closeMode != OutsideClick)
+				continue;
+			switch event {
+				case UIInteractiveEvent(UIClickOutside, id, _):
+					if (id == panel.interactiveId)
+						panel.pendingClose = true;
+				case UIInteractiveEvent(UIClick, id, _):
+					if (id == panel.interactiveId || StringTools.startsWith(id, panel.prefix)) {
+						panel.pendingClose = false;
+					} else if (!isOwnInteractive(id)) {
+						panel.pendingClose = false;
+						// Defer named panel close to checkPendingClose to avoid iterator invalidation
+						panel.pendingClose = true;
+					}
+				default:
+			}
+		}
+		return closed;
 	}
 
-	/** Call from screen's update(). Resolves deferred outside-click close. Returns true if closed. */
+	/** Call from screen's update(). Resolves deferred outside-click close. Returns true if any panel was closed. */
 	public function checkPendingClose():Bool {
+		var closed = false;
 		if (_pendingClose) {
 			_pendingClose = false;
 			close();
-			return true;
+			closed = true;
+		}
+		// Collect named slots to close (avoid modifying map during iteration)
+		var toClose:Null<Array<String>> = null;
+		for (slot => panel in namedPanels) {
+			if (panel.pendingClose) {
+				if (toClose == null) toClose = [];
+				toClose.push(slot);
+			}
+		}
+		if (toClose != null)
+			for (slot in toClose) {
+				closeNamed(slot);
+				closed = true;
+			}
+		return closed;
+	}
+
+	function isNamedPanelInteractive(id:String):Bool {
+		for (_ => panel in namedPanels) {
+			if (StringTools.startsWith(id, panel.prefix))
+				return true;
 		}
 		return false;
 	}

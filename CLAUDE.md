@@ -343,7 +343,7 @@ interactive(200, 30, "myBtn", action => "buy", label => "Buy Item")
 interactive(200, 30, $idx, price:int => 100, weight:float => 1.5, action => "craft")
 ```
 
-Metadata supports typed values matching the settings system: `key => val` (string default), `key:int => N`, `key:float => N`, `key:string => "s"`. Keys and values can be `$references`.
+Metadata supports typed values matching the settings system: `key => val` (string default), `key:int => N`, `key:float => N`, `key:string => "s"`, `key:bool => true`, `key:color => #RGB`. Untyped `key => true`/`key => false` auto-infers bool type. Keys and values can be `$references`. Access: `metadata.has(key)`, `metadata.getStringOrDefault(key, default)`, `metadata.getIntOrDefault(key, default)`, `metadata.getBoolOrDefault(key, default)`, etc.
 
 **UI integration:**
 - `UIInteractiveWrapper` — thin wrapper implementing `UIElement`, `StandardUIElementEvents`, `UIElementIdentifiable`
@@ -360,8 +360,8 @@ Metadata supports typed values matching the settings system: `key => val` (strin
 - **Event filtering**: `events: [hover, click, push]` metadata controls which events are emitted. `EVENT_HOVER=1`, `EVENT_CLICK=2`, `EVENT_PUSH=4`, `EVENT_ALL=7` (default)
 - **Bind metadata**: `bind => "status"` declares which programmable parameter the interactive drives for `UIRichInteractiveHelper` auto-wiring
 - **`UIRichInteractiveHelper`** — state binding helper: `register(result, ?prefix)` auto-scans bind metadata; `handleEvent(event)` drives Normal→Hover→Pressed→Normal state machine via `setParameter()`; `setDisabled(id, disabled)` for disabled state; `bind()`/`unbind()`/`setParameter()`/`getResult()` for manual control
-- **`UITooltipHelper`** — screen-driven tooltip helper: `startHover(id, buildName, ?params)`, `cancelHover(id)`, `show()`, `hide()`, `update(dt)`; configurable delay, position, offset, layer, per-interactive overrides
-- **`UIPanelHelper`** — screen-driven panel helper: `open(id, buildName, ?params)`, `close()`, `isOpen()`, `getPanelResult()`, `handleOutsideClick(event)`; auto-registers panel interactives with prefix; `OutsideClick` / `Manual` close modes
+- **`UITooltipHelper`** — screen-driven tooltip helper: `startHover(id, buildName, ?params)`, `cancelHover(id)`, `show()`, `hide()`, `update(dt)`; configurable delay, position, offset, layer; per-interactive overrides: `setDelay()`, `setPosition()`, `setOffset()`
+- **`UIPanelHelper`** — screen-driven panel helper: `open(id, buildName, ?params)`, `close()`, `isOpen()`, `getPanelResult()`, `handleOutsideClick(event)`; auto-registers panel interactives with prefix; `OutsideClick` / `Manual` close modes; per-interactive overrides: `setPosition()`, `setOffset()`; pushes `UICustomEvent(EVENT_PANEL_CLOSE, interactiveId)` on close; multi-panel support via named slots: `openNamed(slot, ...)`, `closeNamed(slot)`, `closeAllNamed()`, `isOpenNamed(slot)`, `getNamedPanelResult(slot)`
 - **Cursor support** — `UIElementCursor` interface with `getCursor():hxd.Cursor` for state-dependent cursor
   - `CursorManager` — static registry (like `FontManager`); pre-registers Heaps cursors: `default`, `pointer`/`button`, `move`, `text`, `hide`/`none`
   - `registerCursor(name, cursor)` / `unregisterCursor(name)` / `getCursor(name)` for custom cursors

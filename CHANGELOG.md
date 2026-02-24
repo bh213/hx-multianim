@@ -174,6 +174,12 @@
   - `SettingValueTools.asColorInt()` helper matches both `RSVColor` and `RSVInt` for backward compatibility
   - Interactive metadata supports `:color` type annotation
   - Untyped settings (`key => value`) now use `parseAnything()` for type inference (fixes `#hex` and `0xhex` values)
+- **UITooltipHelper per-interactive offset** — `setOffset(interactiveId, offset)` for per-interactive offset overrides (parity with `setDelay()`/`setPosition()`)
+- **UIPanelHelper per-interactive overrides** — `setPosition(interactiveId, position)` and `setOffset(interactiveId, offset)` for per-interactive positioning
+- **UIPanelHelper close event** — `UICustomEvent(EVENT_PANEL_CLOSE, interactiveId)` pushed to `onScreenEvent` when a panel closes; `EVENT_PANEL_CLOSE` constant on `UIPanelHelper`
+- **UIPanelHelper multi-panel support** — named panel slots via `openNamed(slot, ...)`, `closeNamed(slot)`, `closeAllNamed()`, `isOpenNamed(slot)`, `getNamedPanelResult(slot)` — multiple panels can be open simultaneously
+- **Boolean metadata type inference** — untyped `key => true`/`key => false` in interactive metadata now infers `SVTBool` (previously inferred as string)
+- **`BuilderResolvedSettings.has(key)`** — convenience method to check if a key exists in settings
 
 ### Changed
 - **Button incremental rewrite** — `UIStandardMultiAnimButton` now uses single incremental `BuilderResult` with `setParameter()` instead of `MultiAnimMultiResult` (pre-built combo swap). Removes `doRedraw()`, `requestRedraw`, and `UIElementSyncRedraw`.

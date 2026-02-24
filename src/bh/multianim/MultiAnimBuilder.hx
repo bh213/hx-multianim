@@ -133,6 +133,13 @@ class BuilderResolvedSettings {
 		return settings != null;
 	}
 
+	/** Returns true if the given key exists in the settings. */
+	public function has(key:String):Bool {
+		if (settings == null)
+			return false;
+		return settings.exists(key);
+	}
+
 	public function getStringOrDefault(settingName:String, defaultString:String):String {
 		if (settings == null)
 			return defaultString;
