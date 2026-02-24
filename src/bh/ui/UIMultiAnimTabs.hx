@@ -49,7 +49,13 @@ class UIMultiAnimTabButton implements UIElement implements UIElementDisablable i
 	public function set_selected(value:Bool):Bool {
 		if (this.selected != value) {
 			this.selected = value;
+			if (value)
+				result.beginUpdate();
 			result.setParameter("checked", '${value}');
+			if (value)
+				result.setParameter("status", "normal");
+			if (value)
+				result.endUpdate();
 		}
 		return value;
 	}
@@ -66,7 +72,7 @@ class UIMultiAnimTabButton implements UIElement implements UIElementDisablable i
 	public function clear() {}
 
 	public function getCursor():hxd.Cursor {
-		if (disabled)
+		if (disabled || selected)
 			return CursorManager.getDefaultCursor();
 		return CursorManager.getDefaultInteractiveCursor();
 	}
@@ -89,14 +95,17 @@ class UIMultiAnimTabButton implements UIElement implements UIElementDisablable i
 					onInternalClick(wrapper.control);
 				}
 			case OnRelease(button):
-				result.setParameter("status", "normal");
+				if (!selected)
+					result.setParameter("status", "normal");
 			case OnReleaseOutside(_):
 			case OnPushOutside(_):
 
 			case OnEnter:
-				result.setParameter("status", "hover");
+				if (!selected)
+					result.setParameter("status", "hover");
 			case OnLeave:
-				result.setParameter("status", "normal");
+				if (!selected)
+					result.setParameter("status", "normal");
 			case OnKey(up, key):
 			case OnWheel(dir):
 			case OnMouseMove:
