@@ -84,29 +84,23 @@ class UIComponentTest extends BuilderTestBase {
 		var button = UIStandardMultiAnimButton.create(builder, "button", "Test");
 		var mock = new MockControllable();
 
-		// requestRedraw starts true from constructor
-		Assert.isTrue(button.requestRedraw);
-
-		// Hover changes status — requestRedraw stays true
+		// Hover applies immediately via setParameter (no redraw cycle)
 		UITestHarness.simulateEnter(button, mock);
-		Assert.isTrue(button.requestRedraw);
+		Assert.notNull(button.getObject());
 
-		// Leave changes status — requestRedraw stays true
+		// Leave applies immediately
 		UITestHarness.simulateLeave(button, mock);
-		Assert.isTrue(button.requestRedraw);
+		Assert.notNull(button.getObject());
 	}
 
 	@Test
-	public function testButtonDisabledRedrawFlag():Void {
+	public function testButtonDisabledState():Void {
 		var builder = BuilderTestBase.builderFromSource(BUTTON_MANIM);
 		var button = UIStandardMultiAnimButton.create(builder, "button", "Test");
 
-		// requestRedraw starts true
-		Assert.isTrue(button.requestRedraw);
-
 		button.disabled = true;
 		Assert.isTrue(button.disabled);
-		Assert.isTrue(button.requestRedraw);
+		Assert.notNull(button.getObject());
 	}
 
 	@Test

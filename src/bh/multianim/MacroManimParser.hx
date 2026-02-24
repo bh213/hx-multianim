@@ -3918,7 +3918,11 @@ class MacroManimParser {
 					return metadata.length == 0 ? null : metadata;
 				case TIdentifier(name):
 					advance();
-					metadata.push(parseMetadataValue(RVString(name)));
+					if (isKeyword(name, "events")) {
+						metadata.push(parseInteractiveEventsMetadata());
+					} else {
+						metadata.push(parseMetadataValue(RVString(name)));
+					}
 					eatComma();
 				case TReference(name):
 					advance();
@@ -3928,6 +3932,23 @@ class MacroManimParser {
 					return metadata.length == 0 ? null : metadata;
 			}
 		}
+	}
+
+	function parseInteractiveEventsMetadata():{key:ReferenceableValue, type:SettingValueType, value:ReferenceableValue} {
+		expect(TColon);
+		expect(TBracketOpen);
+		var flags = 0;
+		while (!match(TBracketClosed)) {
+			final eventName = expectIdentifierOrString();
+			switch (eventName.toLowerCase()) {
+				case "hover": flags |= 1;
+				case "click": flags |= 2;
+				case "push": flags |= 4;
+				default: error('unknown event type "$eventName", expected hover, click, or push');
+			}
+			eatComma();
+		}
+		return {key: RVString("events"), type: SVTInt, value: RVInteger(flags)};
 	}
 
 	function parseMetadataValue(key:ReferenceableValue):{key:ReferenceableValue, type:SettingValueType, value:ReferenceableValue} {

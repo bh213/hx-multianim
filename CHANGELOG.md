@@ -138,6 +138,17 @@
 - **`UIPanelHelper`** — screen-driven panel helper for click-to-open panels anchored to interactives; auto-registers panel interactives with prefix; `handleOutsideClick(event)` auto-closes on `UIClickOutside` or click on unrelated interactive
 - **`BuilderResolvedSettings` null-safe defaults** — `getStringOrDefault()`, `getIntOrDefault()`, `getFloatOrDefault()`, `getBoolOrDefault()` now return the default value when settings are null instead of throwing; new `hasSettings()` method for explicit null check
 - **`autoSyncInitialState` on UIScreenBase** — opt-in property to automatically fire initial state events (`UIChangeValue`, `UIToggle`, etc.) for all elements on first `update()` call; guarded against late changes after sync has already run
+- **Interactive event filtering** — `events: [hover, click, push]` metadata on `interactive()` elements
+  - Controls which events the interactive emits; omit events not needed to reduce overhead
+  - Flag constants: `EVENT_HOVER=1` (UIEntering+UILeaving), `EVENT_CLICK=2` (UIClick), `EVENT_PUSH=4` (UIPush+UIClickOutside)
+  - Default: all events enabled (`EVENT_ALL=7`)
+- **Interactive bind metadata** — `bind => "status"` on `interactive()` for auto-wiring with `UIRichInteractiveHelper`
+  - Declares which programmable parameter the interactive's state machine drives
+- **`UIRichInteractiveHelper`** — state binding helper that maps interactive hover/press/leave events to programmable parameter updates
+  - `register(result, ?prefix)` auto-scans interactives for `bind` metadata and wires state machines
+  - `handleEvent(event)` drives Normal→Hover→Pressed→Normal state transitions via `setParameter()`
+  - `setDisabled(id, disabled)` gates events and sets disabled visual state
+  - `bind()`/`unbind()`/`setParameter()`/`getResult()` for manual control
 - **Color system overhaul** — comprehensive rework of color handling across parser, builder, and codegen
   - Named colors now bake `0xFF` alpha (Heaps `AARRGGBB` format) — `addAlphaIfNotPresent()` is a no-op for all named colors
   - Added `transparent` named color (`0x00000000`)
@@ -149,6 +160,11 @@
   - `SettingValueTools.asColorInt()` helper matches both `RSVColor` and `RSVInt` for backward compatibility
   - Interactive metadata supports `:color` type annotation
   - Untyped settings (`key => value`) now use `parseAnything()` for type inference (fixes `#hex` and `0xhex` values)
+
+### Changed
+- **Button incremental rewrite** — `UIStandardMultiAnimButton` now uses single incremental `BuilderResult` with `setParameter()` instead of `MultiAnimMultiResult` (pre-built combo swap). Removes `doRedraw()`, `requestRedraw`, and `UIElementSyncRedraw`.
+- **Checkbox incremental rewrite** — `UIStandardMultiCheckbox` same pattern; uses `beginUpdate()`/`endUpdate()` for batched status+checked changes on toggle
+- **TabButton incremental rewrite** — `UIMultiAnimTabButton` same pattern; selected/disabled states via `setParameter()`
 
 ### Fixed
 - **Hex integer in `parseAnything()`** — `THexInteger` tokens now reconstruct `0x` prefix before `stringToInt()` (fixes `0xAA8844` in untyped settings)

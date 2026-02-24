@@ -1,81 +1,66 @@
 package bh.ui;
 
-import bh.multianim.MultiAnimMultiResult;
-import bh.ui.UIElement;
+import bh.multianim.MultiAnimBuilder;
 import bh.multianim.MultiAnimBuilder.MultiAnimBuilder;
+import bh.ui.UIElement;
 import h2d.Object;
 import h2d.col.Point;
-import bh.ui.UIElement.UIElementEvents;
 
-class UIStandardMultiAnimButton implements UIElement implements UIElementDisablable implements StandardUIElementEvents implements UIElementSyncRedraw {
-	final multiResult:MultiAnimMultiResult;
-	var status(default, set):StandardUIElementStates = SUINormal;
-	var root:h2d.Object;
-	var currentButtonObject:Null<h2d.Object>;
+class UIStandardMultiAnimButton implements UIElement implements UIElementDisablable implements StandardUIElementEvents {
+	final result:BuilderResult;
 
 	public var disabled(default, set):Bool = false;
-
-	public var requestRedraw = true;
-
-	public function clear() {
-		currentButtonObject = null;
-	}
 
 	public static function create(builder:MultiAnimBuilder, name:String, buttonText:String, ?extraParams:Map<String, Dynamic>) {
 		return new UIStandardMultiAnimButton(builder, name, buttonText, extraParams);
 	}
 
 	function new(builder:MultiAnimBuilder, name:String, buttonText:String, ?extraParams:Map<String, Dynamic>) {
-		var params:Map<String, Dynamic> = ["buttonText" => buttonText];
+		var params:Map<String, Dynamic> = ["buttonText" => buttonText, "status" => "normal", "disabled" => "false"];
 		if (extraParams != null) {
 			for (key => value in extraParams)
 				params.set(key, value);
 		}
-		this.multiResult = builder.buildWithComboParameters(name, params, ["status", "disabled"]);
-		this.root = new h2d.Object();
-	}
-
-	function set_status(value:StandardUIElementStates):StandardUIElementStates {
-		if (this.status != value) {
-			this.status = value;
-			this.requestRedraw = true;
-		}
-		return value;
+		this.result = builder.buildWithParameters(name, params, null, null, true);
 	}
 
 	public function set_disabled(value:Bool):Bool {
 		if (this.disabled != value) {
 			this.disabled = value;
-			this.requestRedraw = true;
+			result.beginUpdate();
+			result.setParameter("status", value ? "disabled" : "normal");
+			result.setParameter("disabled", '${value}');
+			result.endUpdate();
 		}
 		return value;
 	}
 
 	public function getObject():Object {
-		return root;
+		return result.object;
 	}
 
 	public function containsPoint(pos:Point):Bool {
 		return getObject().getBounds().contains(pos);
 	}
 
+	public function clear() {}
+
 	public function onEvent(wrapper:UIElementEventWrapper) {
 		if (this.disabled)
 			return;
 		switch wrapper.event {
 			case OnPush(button):
-				this.status = SUIPressed;
-
+				result.setParameter("status", "pressed");
 			case OnRelease(button):
 				triggerClicked(wrapper.control);
-				this.status = SUINormal;
+				result.setParameter("status", "hover");
 			case OnReleaseOutside(_):
+				result.setParameter("status", "normal");
 			case OnPushOutside(_):
-
 			case OnEnter:
-				this.status = SUIHover;
+				result.setParameter("status", "hover");
 			case OnLeave:
-				this.status = SUINormal;
+				result.setParameter("status", "normal");
 			case OnKey(up, key):
 			case OnWheel(dir):
 			case OnMouseMove:
@@ -88,15 +73,4 @@ class UIStandardMultiAnimButton implements UIElement implements UIElementDisabla
 	}
 
 	public dynamic function onClick() {}
-
-	public function doRedraw() {
-		this.requestRedraw = false;
-		if (this.currentButtonObject != null)
-			this.currentButtonObject.remove();
-
-		var result = multiResult.findResultByCombo(standardUIElementStatusToString(status), '${disabled}');
-
-		this.currentButtonObject = result.object;
-		root.addChild(result.object);
-	}
 }

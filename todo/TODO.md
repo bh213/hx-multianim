@@ -6,10 +6,7 @@
 
 ## V1
 - hot reload
-- ~~colors~~ (done — see CHANGELOG 0.13-dev)
-- ~~tooltips~~ (done — `UITooltipHelper` + `UIPanelHelper`, see CHANGELOG 0.13-dev)
 - transitions & animations (see [transitions-planning.md](transitions-planning.md))
-- ~~interactives/generic components~~ (Phase 1+2 done — `UIInteractiveEvent`, map lookup, helpers; Phase 3 rich visual state pending, see [generic-components.md](generic-components.md))
 - visual tests fixes
 - haxelib release (see details below)
 - blob47 utils?

@@ -1,6 +1,5 @@
 package bh.ui;
 
-import bh.multianim.MultiAnimMultiResult;
 import bh.multianim.MultiAnimBuilder;
 import bh.multianim.MultiAnimBuilder.CallbackRequest;
 import bh.multianim.MultiAnimBuilder.CallbackResult;
@@ -28,34 +27,20 @@ interface ContentTarget {
 }
 
 /**
- * A single tab button. Uses the same combo pattern as UIStandardMultiCheckbox
- * (status/disabled/checked axes) but with tab-specific click behavior:
- * clicking a selected tab does nothing, clicking an unselected tab selects it.
+ * A single tab button. Uses incremental build with status/disabled/checked parameters.
+ * Clicking a selected tab does nothing, clicking an unselected tab selects it.
  */
 @:nullSafety
-class UIMultiAnimTabButton implements UIElement implements UIElementDisablable implements StandardUIElementEvents implements UIElementSyncRedraw {
-	final multiResult:MultiAnimMultiResult;
-	var checkboxObject:Null<h2d.Object>;
-
-	var status(default, set):StandardUIElementStates = SUINormal;
-	var root:h2d.Object;
+class UIMultiAnimTabButton implements UIElement implements UIElementDisablable implements StandardUIElementEvents {
+	final result:BuilderResult;
 
 	public var disabled(default, set):Bool = false;
 	public var selected(default, set):Bool = false;
-	public var requestRedraw = true;
-
-	function set_status(value:StandardUIElementStates):StandardUIElementStates {
-		if (this.status != value) {
-			this.status = value;
-			this.requestRedraw = true;
-		}
-		return value;
-	}
 
 	public function set_disabled(value:Bool):Bool {
 		if (this.disabled != value) {
 			this.disabled = value;
-			this.requestRedraw = true;
+			result.setParameter("disabled", '${value}');
 		}
 		return value;
 	}
@@ -63,37 +48,24 @@ class UIMultiAnimTabButton implements UIElement implements UIElementDisablable i
 	public function set_selected(value:Bool):Bool {
 		if (this.selected != value) {
 			this.selected = value;
-			this.requestRedraw = true;
+			result.setParameter("checked", '${value}');
 		}
 		return value;
 	}
 
 	@:allow(bh.ui.UIMultiAnimTabs)
 	function new(builder:MultiAnimBuilder, name:String, ?extraParams:Null<Map<String, Dynamic>>) {
-		this.root = new h2d.Object();
-		var params:Map<String, Dynamic> = [];
+		var params:Map<String, Dynamic> = ["status" => "normal", "disabled" => "false", "checked" => "false"];
 		if (extraParams != null)
 			for (key => value in extraParams)
 				params.set(key, value);
-		this.multiResult = builder.buildWithComboParameters(name, params, ["status", "disabled", "checked"]);
+		this.result = builder.buildWithParameters(name, params, null, null, true);
 	}
 
-	public function clear() {
-		this.checkboxObject = null;
-	}
-
-	public function doRedraw() {
-		this.requestRedraw = false;
-		if (this.checkboxObject != null)
-			this.checkboxObject.remove();
-
-		var result = multiResult.findResultByCombo(standardUIElementStatusToString(status), '${disabled}', '${selected}');
-		this.checkboxObject = result.object;
-		root.addChild(result.object);
-	}
+	public function clear() {}
 
 	public function getObject():Object {
-		return root;
+		return result.object;
 	}
 
 	public function containsPoint(pos:Point):Bool {
@@ -106,18 +78,18 @@ class UIMultiAnimTabButton implements UIElement implements UIElementDisablable i
 		switch wrapper.event {
 			case OnPush(button):
 				if (!selected) {
-					this.status = SUIPressed;
+					result.setParameter("status", "pressed");
 					onInternalClick(wrapper.control);
 				}
 			case OnRelease(button):
-				this.status = selected ? SUINormal : SUINormal;
+				result.setParameter("status", "normal");
 			case OnReleaseOutside(_):
 			case OnPushOutside(_):
 
 			case OnEnter:
-				this.status = SUIHover;
+				result.setParameter("status", "hover");
 			case OnLeave:
-				this.status = SUINormal;
+				result.setParameter("status", "normal");
 			case OnKey(up, key):
 			case OnWheel(dir):
 			case OnMouseMove:
