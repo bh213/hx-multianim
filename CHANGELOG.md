@@ -8,7 +8,7 @@
   - Conditionals (`@()`, `@else`, `@default`) and expressions (`$param`) work inside slot body
   - `SlotHandle.setParameter("name", value)` updates visuals via `IncrementalUpdateContext`
   - Content goes into separate `contentRoot` (decoration always visible, not hidden by `setContent`)
-  - Codegen: warning emitted, `setParameter()` not supported (use runtime builder)
+  - Codegen: `setParameter()` supported — parameterized slots built via `buildParameterizedSlot()` at runtime
 - **Enhanced SlotHandle API** — `isEmpty()`, `isOccupied()`, `data` field for arbitrary payload storage
 - **UIElement double-click support** — `UIDoubleClick` event and double-click detection in UI elements
 - **Progress bar component** — `UIMultiAnimProgressBar` display-only component
@@ -113,7 +113,8 @@
   - `$hex.doubled($col, $row)` — runtime doubled-to-cube conversion
   - `$hex.pixel($x, $y)` — runtime pixel-to-hex-to-pixel snap (previously a TODO stub)
   - `$hex.cube($q, $r, $s).hexCorner($i, $f)` / `.hexEdge($d, $f)` — cell-relative corner/edge with dynamic cell and/or index
-  - Runtime support in `pixels` elements for hex coordinate types (previously warned and used `(0,0)`)
+  - Full coordinate parity in `pixels` elements — all coordinate types (grid, layout, named, offset, hex cell corner/edge) now generate runtime expressions; unsupported types produce compile errors instead of silent `(0,0)` fallback
+  - Fixed pixel shape variable scoping bug — `boundsExprs` nested blocks incorrectly scoped variables; flattened to individual statements
   - Runtime `.x`/`.y` extraction for `offset()`, `doubled()`, `pixel()` in expressions
 - **Multi-hex-layout codegen** — programmables with multiple `point {}` blocks using different hex layouts now generate separate `_hexLayout` / `_hexLayout1` / ... fields per unique orientation+size combination
 - **Layout alignment codegen** — `LayoutAlignRoot` class enables deferred layout alignment positioning in macro-generated classes; generated class extends `LayoutAlignRoot` instead of `h2d.Object` when layouts use `align`
@@ -127,7 +128,9 @@
 - **Deterministic stateAnim testing** — `stateAnimDemo` test freezes AnimSM via `externallyDriven = true` for reproducible screenshots
 - **`externallyDriven` flag on `stateAnim construct`** — `stateAnim construct(initialState, externallyDriven, ...)` syntax for animations driven externally (not by internal timer); supported in parser, builder, and codegen
 - **Multi-particles codegen** — `buildParticles(programmableName, index)` supports index parameter for programmables with multiple `particles {}` blocks; codegen auto-indexes particle nodes
-- **Visual test improvements** — improved visual content and descriptions for tests 10, 15, 32, 44, 46, 51, 56, 70, 71, 75, 76, 81, 82, 83; test 88 (colorVerification) added
+- **Test similarity reporting** — `fmtSim()` / `formatSimilarity()` show diff pixel count when similarity rounds to 100% but isn't exact (e.g. "100% (3px differ)")
+- **SlotContent test rewrite** — test 84 redesigned with clearer visual demo: positioned/behind/over slot layouts with labeled legend
+- **Visual test improvements** — improved visual content and descriptions for tests 10, 15, 32, 44, 46, 51, 56, 70, 71, 75, 76, 81, 82, 83, 84; test 88 (colorVerification) added
 - **Slot runtime test coverage** — tests 81 (slotParams) and 83 (slot2dIndex) now exercise `setContent()`, `setParameter()`, and 2D slot indexing at runtime with full builder+macro comparison; test 76 (comboUnconditional) labels improved to show exact parameter combinations
 - **Test 75 placeholder+settings pattern** — `progressBarDemo` rewritten to use `placeholder(nothing, builderParameter("bar"))` with `settings{buildName=>..., value:int=>N}` driving `UIMultiAnimProgressBar` creation via `PVFactory`
 - **`UIInteractiveEvent` screen event** — new `UIScreenEvent.UIInteractiveEvent(event, id, metadata)` wraps interactive events with id and metadata for direct pattern matching; eliminates `Std.isOfType` + cast boilerplate

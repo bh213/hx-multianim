@@ -690,8 +690,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 					builderSim, null, macroPath, macroSim, macroOk, builderThreshold, macroThreshold);
 				HtmlReportGenerator.generateReport();
 
-				Assert.isTrue(builderOk, 'Builder should match reference (similarity: ${Math.round(builderSim * 10000) / 100}%)');
-				Assert.isTrue(macroOk, 'Macro should match reference (similarity: ${Math.round(macroSim * 10000) / 100}%)');
+				Assert.isTrue(builderOk, 'Builder should match reference (similarity: ${VisualTestBase.fmtSim(builderSim)})');
+				Assert.isTrue(macroOk, 'Macro should match reference (similarity: ${VisualTestBase.fmtSim(macroSim)})');
 
 				VisualTestBase.pendingVisualTests--;
 				async.done();
@@ -1173,8 +1173,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 				HtmlReportGenerator.generateReport();
 
 				Assert.isTrue(builderOk,
-					'Builder should match reference (similarity: ${Math.round(builderSim * 10000) / 100}%)');
-				Assert.isTrue(macroOk, 'Macro should match reference (similarity: ${Math.round(macroSim * 10000) / 100}%)');
+					'Builder should match reference (similarity: ${VisualTestBase.fmtSim(builderSim)})');
+				Assert.isTrue(macroOk, 'Macro should match reference (similarity: ${VisualTestBase.fmtSim(macroSim)})');
 
 				VisualTestBase.pendingVisualTests--;
 				async.done();
@@ -1294,8 +1294,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 				HtmlReportGenerator.generateReport();
 
 				Assert.isTrue(builderOk,
-					'Builder should match reference (similarity: ${Math.round(builderSim * 10000) / 100}%)');
-				Assert.isTrue(macroOk, 'Macro should match reference (similarity: ${Math.round(macroSim * 10000) / 100}%)');
+					'Builder should match reference (similarity: ${VisualTestBase.fmtSim(builderSim)})');
+				Assert.isTrue(macroOk, 'Macro should match reference (similarity: ${VisualTestBase.fmtSim(macroSim)})');
 
 				VisualTestBase.pendingVisualTests--;
 				async.done();
@@ -1373,8 +1373,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 					builderSim, null, macroPath, macroSim, macroOk, threshold, threshold);
 				HtmlReportGenerator.generateReport();
 
-				Assert.isTrue(builderOk, 'Builder should match reference (similarity: ${Math.round(builderSim * 10000) / 100}%)');
-				Assert.isTrue(macroOk, 'Macro should match reference (similarity: ${Math.round(macroSim * 10000) / 100}%)');
+				Assert.isTrue(builderOk, 'Builder should match reference (similarity: ${VisualTestBase.fmtSim(builderSim)})');
+				Assert.isTrue(macroOk, 'Macro should match reference (similarity: ${VisualTestBase.fmtSim(macroSim)})');
 
 				VisualTestBase.pendingVisualTests--;
 				async.done();
@@ -1434,8 +1434,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 					builderSim, null, macroPath, macroSim, macroOk, threshold, threshold);
 				HtmlReportGenerator.generateReport();
 
-				Assert.isTrue(builderOk, 'Builder should match reference (similarity: ${Math.round(builderSim * 10000) / 100}%)');
-				Assert.isTrue(macroOk, 'Macro should match reference (similarity: ${Math.round(macroSim * 10000) / 100}%)');
+				Assert.isTrue(builderOk, 'Builder should match reference (similarity: ${VisualTestBase.fmtSim(builderSim)})');
+				Assert.isTrue(macroOk, 'Macro should match reference (similarity: ${VisualTestBase.fmtSim(macroSim)})');
 
 				VisualTestBase.pendingVisualTests--;
 				async.done();
@@ -1494,8 +1494,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 					builderSim, null, macroPath, macroSim, macroOk, threshold, threshold);
 				HtmlReportGenerator.generateReport();
 
-				Assert.isTrue(builderOk, 'Builder should match reference (similarity: ${Math.round(builderSim * 10000) / 100}%)');
-				Assert.isTrue(macroOk, 'Macro should match reference (similarity: ${Math.round(macroSim * 10000) / 100}%)');
+				Assert.isTrue(builderOk, 'Builder should match reference (similarity: ${VisualTestBase.fmtSim(builderSim)})');
+				Assert.isTrue(macroOk, 'Macro should match reference (similarity: ${VisualTestBase.fmtSim(macroSim)})');
 
 				VisualTestBase.pendingVisualTests--;
 				async.done();
@@ -1555,8 +1555,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 					builderSim, null, macroPath, macroSim, macroOk, threshold, threshold);
 				HtmlReportGenerator.generateReport();
 
-				Assert.isTrue(builderOk, 'Builder should match reference (similarity: ${Math.round(builderSim * 10000) / 100}%)');
-				Assert.isTrue(macroOk, 'Macro should match reference (similarity: ${Math.round(macroSim * 10000) / 100}%)');
+				Assert.isTrue(builderOk, 'Builder should match reference (similarity: ${VisualTestBase.fmtSim(builderSim)})');
+				Assert.isTrue(macroOk, 'Macro should match reference (similarity: ${VisualTestBase.fmtSim(macroSim)})');
 
 				VisualTestBase.pendingVisualTests--;
 				async.done();
@@ -1616,8 +1616,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 					builderSim, null, macroPath, macroSim, macroOk, threshold, threshold);
 				HtmlReportGenerator.generateReport();
 
-				Assert.isTrue(builderOk, 'Builder should match reference (similarity: ${Math.round(builderSim * 10000) / 100}%)');
-				Assert.isTrue(macroOk, 'Macro should match reference (similarity: ${Math.round(macroSim * 10000) / 100}%)');
+				Assert.isTrue(builderOk, 'Builder should match reference (similarity: ${VisualTestBase.fmtSim(builderSim)})');
+				Assert.isTrue(macroOk, 'Macro should match reference (similarity: ${VisualTestBase.fmtSim(macroSim)})');
 
 				VisualTestBase.pendingVisualTests--;
 				async.done();
@@ -1784,8 +1784,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 						builderSim, null, macroPath, macroSim, macroOk, 1.0, 1.0);
 					HtmlReportGenerator.generateReport();
 
-					Assert.isTrue(builderOk, 'Builder should match reference (${Math.round(builderSim * 10000) / 100}%)');
-					Assert.isTrue(macroOk, 'Macro should match reference (${Math.round(macroSim * 10000) / 100}%)');
+					Assert.isTrue(builderOk, 'Builder should match reference (${VisualTestBase.fmtSim(builderSim)})');
+					Assert.isTrue(macroOk, 'Macro should match reference (${VisualTestBase.fmtSim(macroSim)})');
 				} catch (e:Dynamic) {
 					Assert.fail('Screenshot/compare threw: $e');
 				}
@@ -1887,8 +1887,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 						builderSim, null, macroPath, macroSim, macroOk, 1.0, 1.0);
 					HtmlReportGenerator.generateReport();
 
-					Assert.isTrue(builderOk, 'Builder should match reference (${Math.round(builderSim * 10000) / 100}%)');
-					Assert.isTrue(macroOk, 'Macro should match reference (${Math.round(macroSim * 10000) / 100}%)');
+					Assert.isTrue(builderOk, 'Builder should match reference (${VisualTestBase.fmtSim(builderSim)})');
+					Assert.isTrue(macroOk, 'Macro should match reference (${VisualTestBase.fmtSim(macroSim)})');
 				} catch (e:Dynamic) {
 					Assert.fail('Screenshot/compare threw: $e');
 				}
@@ -2000,8 +2000,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 						builderSim, null, macroPath, macroSim, macroOk, 1.0, 1.0);
 					HtmlReportGenerator.generateReport();
 
-					Assert.isTrue(builderOk, 'Builder should match reference (${Math.round(builderSim * 10000) / 100}%)');
-					Assert.isTrue(macroOk, 'Macro should match reference (${Math.round(macroSim * 10000) / 100}%)');
+					Assert.isTrue(builderOk, 'Builder should match reference (${VisualTestBase.fmtSim(builderSim)})');
+					Assert.isTrue(macroOk, 'Macro should match reference (${VisualTestBase.fmtSim(macroSim)})');
 				} catch (e:Dynamic) {
 					Assert.fail('Screenshot/compare threw: $e');
 				}
@@ -2110,8 +2110,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 						builderSim, null, macroPath, macroSim, macroOk, 1.0, 1.0);
 					HtmlReportGenerator.generateReport();
 
-					Assert.isTrue(builderOk, 'Builder should match reference (${Math.round(builderSim * 10000) / 100}%)');
-					Assert.isTrue(macroOk, 'Macro should match reference (${Math.round(macroSim * 10000) / 100}%)');
+					Assert.isTrue(builderOk, 'Builder should match reference (${VisualTestBase.fmtSim(builderSim)})');
+					Assert.isTrue(macroOk, 'Macro should match reference (${VisualTestBase.fmtSim(macroSim)})');
 				} catch (e:Dynamic) {
 					Assert.fail('Screenshot/compare threw: $e');
 				}
@@ -3333,9 +3333,9 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 					HtmlReportGenerator.generateReport();
 
 					Assert.isTrue(builderSimilarity >= 1.0,
-						'Builder should match reference (similarity: ${Math.round(builderSimilarity * 10000) / 100}%)');
+						'Builder should match reference (similarity: ${VisualTestBase.fmtSim(builderSimilarity)})');
 					Assert.isTrue(macroSimilarity >= 1.0,
-						'Macro should match reference (similarity: ${Math.round(macroSimilarity * 10000) / 100}%)');
+						'Macro should match reference (similarity: ${VisualTestBase.fmtSim(macroSimilarity)})');
 				} catch (e:Dynamic) {
 					Assert.fail('Screenshot/compare threw: $e');
 				}
@@ -3600,9 +3600,9 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 					HtmlReportGenerator.generateReport();
 
 					Assert.isTrue(builderSimilarity >= 1.0,
-						'Builder should match reference (similarity: ${Math.round(builderSimilarity * 10000) / 100}%)');
+						'Builder should match reference (similarity: ${VisualTestBase.fmtSim(builderSimilarity)})');
 					Assert.isTrue(macroSimilarity >= 1.0,
-						'Macro should match reference (similarity: ${Math.round(macroSimilarity * 10000) / 100}%)');
+						'Macro should match reference (similarity: ${VisualTestBase.fmtSim(macroSimilarity)})');
 				} catch (e:Dynamic) {
 					Assert.fail('Screenshot/compare threw: $e');
 				}
@@ -3765,8 +3765,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 						macroSimilarity, macroPassed, threshold, threshold);
 					HtmlReportGenerator.generateReport();
 
-					Assert.isTrue(builderPassed, 'Builder should match reference (similarity: ${Math.round(builderSimilarity * 10000) / 100}%)');
-					Assert.isTrue(macroPassed, 'Macro should match reference (similarity: ${Math.round(macroSimilarity * 10000) / 100}%)');
+					Assert.isTrue(builderPassed, 'Builder should match reference (similarity: ${VisualTestBase.fmtSim(builderSimilarity)})');
+					Assert.isTrue(macroPassed, 'Macro should match reference (similarity: ${VisualTestBase.fmtSim(macroSimilarity)})');
 				} catch (e:Dynamic) {
 					Assert.fail('Screenshot/compare threw: $e');
 				}
@@ -3963,8 +3963,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 						macroSimilarity, macroPassed, threshold, threshold);
 					HtmlReportGenerator.generateReport();
 
-					Assert.isTrue(builderPassed, 'Builder should match reference (similarity: ${Math.round(builderSimilarity * 10000) / 100}%)');
-					Assert.isTrue(macroPassed, 'Macro should match reference (similarity: ${Math.round(macroSimilarity * 10000) / 100}%)');
+					Assert.isTrue(builderPassed, 'Builder should match reference (similarity: ${VisualTestBase.fmtSim(builderSimilarity)})');
+					Assert.isTrue(macroPassed, 'Macro should match reference (similarity: ${VisualTestBase.fmtSim(macroSimilarity)})');
 				} catch (e:Dynamic) {
 					Assert.fail('Screenshot/compare threw: $e');
 				}
@@ -4068,7 +4068,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		clearScene();
 
 		// Build via builder
-		var result:Dynamic = buildAndAddToScene("test/examples/84-slotContent/slotContent.manim", "slotContentDemo", 4.0);
+		var result:Dynamic = buildAndAddToScene("test/examples/84-slotContent/slotContent.manim", "slotContentDemo", 3.0);
 		if (result == null) {
 			Assert.fail("Failed to build slotContentDemo");
 			VisualTestBase.pendingVisualTests--;
@@ -4086,7 +4086,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 			// Phase 2: macro version
 			clearScene();
 			var macroInstance = createMp().slotContentDemo.create();
-			macroInstance.setScale(4.0);
+			macroInstance.setScale(3.0);
 			s2d.addChild(macroInstance);
 			populateSlotContentCodegen(macroInstance);
 			if (testTitle != null && testTitle.length > 0) addTitleOverlay();
@@ -4109,8 +4109,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 						macroSimilarity, macroPassed, threshold, threshold);
 					HtmlReportGenerator.generateReport();
 
-					Assert.isTrue(builderPassed, 'Builder should match reference (similarity: ${Math.round(builderSimilarity * 10000) / 100}%)');
-					Assert.isTrue(macroPassed, 'Macro should match reference (similarity: ${Math.round(macroSimilarity * 10000) / 100}%)');
+					Assert.isTrue(builderPassed, 'Builder should match reference (similarity: ${VisualTestBase.fmtSim(builderSimilarity)})');
+					Assert.isTrue(macroPassed, 'Macro should match reference (similarity: ${VisualTestBase.fmtSim(macroSimilarity)})');
 				} catch (e:Dynamic) {
 					Assert.fail('Screenshot/compare threw: $e');
 				}
@@ -4120,39 +4120,32 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		});
 	}
 
-	static function makeContentCircle(radius:Int, color:Int):h2d.Graphics {
-		var g = new h2d.Graphics();
-		g.beginFill(color);
-		g.drawCircle(radius, radius, radius);
-		g.endFill();
-		return g;
-	}
-
-	static function makeContentRect(w:Int, h:Int, color:Int):h2d.Graphics {
-		var g = new h2d.Graphics();
-		g.beginFill(color);
-		g.drawRect(0, 0, w, h);
-		g.endFill();
-		return g;
+	function buildContentBlock():h2d.Object {
+		var fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/84-slotContent/slotContent.manim"));
+		var loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+		var builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "slotContent.manim");
+		var block = builder.buildWithParameters("contentBlock", new Map());
+		return block.object;
 	}
 
 	function populateSlotContentDemo(result:Dynamic):Void {
 		var br:bh.multianim.MultiAnimBuilder.BuilderResult = result;
-		br.getSlot("slotA").setContent(makeContentRect(40, 16, 0xFFFF00));
-		br.getSlot("slotB").setContent(makeContentRect(30, 20, 0xFF4444));
-		br.getSlot("slotC").setContent(makeContentRect(20, 16, 0xFF00FF));
-		br.getSlot("slotD").setContent(makeContentRect(30, 28, 0x00FFFF));
+		br.getSlot("slotA").setContent(buildContentBlock());
+		var contentB = buildContentBlock();
+		contentB.alpha = 0.5;
+		br.getSlot("slotB").setContent(contentB);
+		br.getSlot("slotC").setContent(buildContentBlock());
 	}
 
 	function populateSlotContentCodegen(instance:Dynamic):Void {
 		var slotA:bh.multianim.MultiAnimBuilder.SlotHandle = instance.getSlot_slotA();
-		slotA.setContent(makeContentRect(40, 16, 0xFFFF00));
+		slotA.setContent(buildContentBlock());
 		var slotB:bh.multianim.MultiAnimBuilder.SlotHandle = instance.getSlot_slotB();
-		slotB.setContent(makeContentRect(30, 20, 0xFF4444));
+		var contentB = buildContentBlock();
+		contentB.alpha = 0.5;
+		slotB.setContent(contentB);
 		var slotC:bh.multianim.MultiAnimBuilder.SlotHandle = instance.getSlot_slotC();
-		slotC.setContent(makeContentRect(20, 16, 0xFF00FF));
-		var slotD:bh.multianim.MultiAnimBuilder.SlotHandle = instance.getSlot_slotD();
-		slotD.setContent(makeContentRect(30, 28, 0x00FFFF));
+		slotC.setContent(buildContentBlock());
 	}
 
 	@Test
@@ -4178,17 +4171,13 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		Assert.isNull(slotA.getContent(), "Content cleared");
 		Assert.isTrue(countVisibleChildren(slotA.container) >= visibleBefore, "Decoration still visible after clear");
 
-		// slotB: content placed before semi-transparent overlay
+		// slotB: decoration before slotContent renders behind content
 		final slotB = result.getSlot("slotB");
 		Assert.notNull(slotB, "Should have slotB");
 
-		// slotC: misaligned decorations with content between them
+		// slotC: decoration after slotContent renders over content
 		final slotC = result.getSlot("slotC");
 		Assert.notNull(slotC, "Should have slotC");
-
-		// slotD: border + bar decoration
-		final slotD = result.getSlot("slotD");
-		Assert.notNull(slotD, "Should have slotD");
 
 		// Plain slot (without slotContent) — should hide defaults on setContent
 		final plain = result.getSlot("plain");

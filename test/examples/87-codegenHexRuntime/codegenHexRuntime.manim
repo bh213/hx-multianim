@@ -110,4 +110,39 @@ version: 0.5
 
     bitmap(generated(color(8, 8, #FFFFFF))): $hex.cube($q, 0, -$q).hexEdge($ci, 1.0)
   }
+
+  // === Pixels with param-dependent grid positions ===
+  point {
+    grid: 20, 20
+    pos: 80, 530
+    scale: 2
+    pixels (
+      rect $grid.pos($col, $row), 4, 4, #FFFF00
+      rect $grid.pos(0, 0), 4, 4, #FF0000
+      rect $grid.pos($col + 1, $row + 1), 4, 4, #00FFFF
+    );
+  }
+
+  // === Pixels with named grid positions ===
+  point {
+    grid: #myGrid 20, 20
+    pos: 280, 530
+    scale: 2
+    pixels (
+      rect $myGrid.pos($col, $row), 4, 4, #FFFF00
+      rect $myGrid.pos(0, 0), 4, 4, #FF0000
+    );
+  }
+
+  // === Pixels with WITH_OFFSET ===
+  point {
+    hex: pointy(20, 20)
+    pos: 500, 530
+    scale: 2
+    pixels (
+      rect $hex.corner($ci, 1.0).offset(2, 2), 4, 4, #00FF00
+      rect $hex.cube($q, 0, -$q).hexCorner($ci, 1.0), 4, 4, #FF0000
+      rect $hex.cube($q, 0, -$q).hexEdge($ci, 1.0), 4, 4, #FF00FF
+    );
+  }
 }

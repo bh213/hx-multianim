@@ -380,7 +380,7 @@ Metadata supports typed values matching the settings system: `key => val` (strin
 - Conditionals (`@()`, `@else`, `@default`) and expressions (`$param`) work inside the slot body
 - `SlotHandle.setParameter("name", value)` updates visuals via `IncrementalUpdateContext`
 - Content goes into a separate `contentRoot` (decoration always visible, not hidden by `setContent`)
-- Codegen: warning emitted, `setParameter()` not supported (use runtime builder)
+- Codegen: `setParameter()` supported — parameterized slots built via `buildParameterizedSlot()` at runtime with full incremental support
 
 **Drag-and-drop** — `UIMultiAnimDraggable` with slot integration:
 - `addDropZonesFromSlots("baseName", builderResult, ?accepts)` — batch drop zone creation

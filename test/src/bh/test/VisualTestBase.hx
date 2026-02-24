@@ -254,7 +254,12 @@ class VisualTestBase extends utest.Test {
 					}
 
 					similarity = matchingPixels / totalPixels;
-					verbose('Image similarity: ${Math.round(similarity * 10000) / 100}%');
+					var diffPixels = totalPixels - matchingPixels;
+					var pct = Math.round(similarity * 10000) / 100;
+					if (pct >= 100.0 && similarity < 1.0)
+						verbose('Image similarity: ${pct}% (${diffPixels}px differ)');
+					else
+						verbose('Image similarity: ${pct}%');
 					passed = similarity >= threshold;
 				}
 			} catch (e:Dynamic) {
@@ -706,5 +711,15 @@ class VisualTestBase extends utest.Test {
 		} catch (e:Dynamic) {
 			return 0.0;
 		}
+	}
+
+	/** Format similarity with diff pixel count when percentage rounds to 100% but isn't exact. */
+	public static function fmtSim(similarity:Float, totalPixels:Int = 921600):String {
+		var pct = Math.round(similarity * 10000) / 100;
+		if (pct >= 100.0 && similarity < 1.0) {
+			var diffPixels = totalPixels - Math.round(similarity * totalPixels);
+			return '${pct}% (${diffPixels}px differ)';
+		}
+		return '${pct}%';
 	}
 }

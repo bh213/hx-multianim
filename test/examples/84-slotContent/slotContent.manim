@@ -1,37 +1,66 @@
 version: 0.5
 
+#contentBlock programmable() {
+  bitmap(generated(color(30, 20, #ff4444ff))): 0, 0
+  @Scale(0.5) text(f3x5, "content", #ffffff, center, 30): 0, 7
+}
+
 #slotContentDemo programmable() {
-  // Slot A: header/footer bars with slotContent in between — content added by test
+  text(f3x5, "slotContent", #aaaaaa): 5, 3
+
+  // --- Slot A: positioned ---
+  text(f3x5, "A: positioned", #ffffff): 10, 18
   #slotA slot {
-    bitmap(generated(color(50, 8, #aa4444))): 0, 0
-    slotContent: 3, 12
-    bitmap(generated(color(50, 8, #aa4444))): 0, 32
+    bitmap(generated(color(50, 8, #aa4444))): 5, 28
+    slotContent: 15, 38
+    bitmap(generated(color(50, 8, #aa4444))): 5, 60
   }
+  text(f3x5, "offset 15,38", #888888): 10, 72
 
-  // Slot B: semi-transparent overlay frame, content behind shows through
+  // --- Slot B: behind ---
+  text(f3x5, "B: behind", #ffffff): 85, 18
   #slotB slot {
-    slotContent: 65, 3
-    @alpha(0.4) bitmap(generated(color(55, 38, #6666ee))): 62, 0
+    bitmap(generated(color(50, 40, #4466aaff))): 75, 28
+    slotContent: 85, 38
   }
+  text(f3x5, "content a=0.5", #888888): 85, 72
 
-  // Slot C: corner decorations with content off-center
+  // --- Slot C: over ---
+  text(f3x5, "C: over", #ffffff): 160, 18
   #slotC slot {
-    bitmap(generated(color(10, 10, #44aa44))): 0, 50
-    bitmap(generated(color(10, 10, #44aa44))): 40, 80
-    slotContent: 12, 58
-    bitmap(generated(color(10, 10, #44aa44))): 40, 50
-    bitmap(generated(color(10, 10, #44aa44))): 0, 80
+    slotContent: 150, 38
+    @alpha(0.6) bitmap(generated(color(50, 40, #6644aaff))): 145, 28
   }
+  text(f3x5, "overlay a=0.6", #888888): 160, 72
 
-  // Slot D: tall left border + bottom bar, content fills middle
-  #slotD slot {
-    bitmap(generated(color(6, 44, #ccaa00))): 130, 0
-    slotContent: 140, 2
-    bitmap(generated(color(50, 6, #ccaa00))): 130, 38
-  }
-
-  // Slot E: plain slot (no slotContent) — for contrast
+  // --- Plain: no slotContent ---
+  text(f3x5, "plain", #ffffff): 240, 18
   #plain slot {
-    bitmap(generated(color(50, 40, #444444))): 195, 0
+    bitmap(generated(color(50, 40, #444444ff))): 230, 28
   }
+  text(f3x5, "no content set", #888888): 230, 72
+
+  // ===== Legend =====
+  text(f3x5, "legend:", #888888): 310, 18
+
+  // content block
+  staticRef($contentBlock): 310, 30
+  text(f3x5, "= setContent()", #ff4444): 344, 36
+
+  // decoration
+  bitmap(generated(color(20, 10, #aa4444))): 310, 56
+  text(f3x5, "decoration (before)", #aa4444): 334, 58
+
+  bitmap(generated(color(20, 10, #6644aa))): 310, 70
+  text(f3x5, "decoration (after)", #6644aa): 334, 72
+
+  text(f3x5, "before slotContent", #aaaaaa): 310, 88
+  text(f3x5, "  -> behind content", #aaaaaa): 310, 96
+
+  text(f3x5, "after slotContent", #aaaaaa): 310, 110
+  text(f3x5, "  -> over content", #aaaaaa): 310, 118
+
+  text(f3x5, "B: content alpha 0.5", #4466aa): 310, 134
+  text(f3x5, "plain: no slotContent", #888888): 310, 144
+  text(f3x5, "  -> decoration hidden", #888888): 310, 152
 }
