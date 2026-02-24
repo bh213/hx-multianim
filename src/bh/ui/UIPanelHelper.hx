@@ -53,7 +53,7 @@ class UIPanelHelper {
 		if (wrapper == null)
 			return;
 
-		final result = builder.buildWithParameters(buildName, params ?? []);
+		final result = builder.buildWithParameters(buildName, params ?? [], null, null, true);
 		final position = defaultPosition;
 		final offset = defaultOffset;
 
@@ -96,6 +96,11 @@ class UIPanelHelper {
 	/** Returns the builder result of the active panel (for accessing named elements, slots, etc). */
 	public function getPanelResult():Null<BuilderResult> {
 		return activeResult;
+	}
+
+	/** Returns the prefix used for the active panel's interactives. */
+	public function getActivePrefix():Null<String> {
+		return activePanelPrefix;
 	}
 
 	/** Check if an interactive id belongs to the current panel's interactives. */

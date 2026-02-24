@@ -264,7 +264,9 @@ See `docs/manim.md` for full animated paths documentation.
 - **Generic settings pass-through**: Any setting not recognized as control or behavioral is automatically forwarded to the underlying programmable as an extra parameter. The programmable must declare a matching parameter; mismatches throw with programmable name + available params.
 - **Prefixed settings**: `item.fontColor`, `scrollbar.thickness` — dotted keys route to sub-builders in multi-programmable components (dropdown, scrollableList). Registered prefixes: dropdown has `dropdown`, `item`, `scrollbar` (main=panel); scrollableList has `item`, `scrollbar` (main=panel).
 - **Multi-forward settings**: Unprefixed `font`/`fontColor` on dropdown/scrollableList forward to ALL relevant sub-builders for backwards compatibility.
-- **Button**: `buildName` and `text` are control settings; everything else (e.g. `width`, `height`, `font`, `fontColor`) passes through to `#button` programmable.
+- **Button**: `buildName` and `text` are control settings; everything else (e.g. `width`, `height`, `font`, `fontColor`) passes through to `#button` programmable. Uses incremental `BuilderResult` with `setParameter("status", ...)` for state changes (no `MultiAnimMultiResult` combo swap).
+- **Checkbox**: Same incremental approach as button; uses `beginUpdate()`/`endUpdate()` when toggling both `status` and `checked` parameters.
+- **TabButton**: Same incremental approach; `selected`/`disabled` via `setParameter("checked"/"disabled", ...)`.
 - **Scrollable list / Dropdown**: `font`, `fontColor` forwarded to both item builder and dropdown button builder. The `#dropdown` programmable accepts `font`/`fontColor` params for the selected item text.
 - **Settings `color` type**: `fontColor:color=>white` — parsed via `parseColorOrReference()`, stored as `SVTColor`/`RSVColor`. Supports named colors (`white`, `red`, `transparent`, etc.), hex (`#RGB`, `#RRGGBB`, `#RRGGBBAA`), and native Heaps format (`0xAARRGGBB`). `SettingValueTools.asColorInt()` helper matches both `RSVColor` and `RSVInt` for backward compatibility.
 - **Dropdown**: Uses closed button + scrollable panel, moves panel to different layer
@@ -355,6 +357,9 @@ Metadata supports typed values matching the settings system: `key => val` (strin
   case UIInteractiveEvent(UIPush, id, meta): // mouse down
   case UIInteractiveEvent(UIClickOutside, id, meta): // clicked outside
   ```
+- **Event filtering**: `events: [hover, click, push]` metadata controls which events are emitted. `EVENT_HOVER=1`, `EVENT_CLICK=2`, `EVENT_PUSH=4`, `EVENT_ALL=7` (default)
+- **Bind metadata**: `bind => "status"` declares which programmable parameter the interactive drives for `UIRichInteractiveHelper` auto-wiring
+- **`UIRichInteractiveHelper`** — state binding helper: `register(result, ?prefix)` auto-scans bind metadata; `handleEvent(event)` drives Normal→Hover→Pressed→Normal state machine via `setParameter()`; `setDisabled(id, disabled)` for disabled state; `bind()`/`unbind()`/`setParameter()`/`getResult()` for manual control
 - **`UITooltipHelper`** — screen-driven tooltip helper: `startHover(id, buildName, ?params)`, `cancelHover(id)`, `show()`, `hide()`, `update(dt)`; configurable delay, position, offset, layer, per-interactive overrides
 - **`UIPanelHelper`** — screen-driven panel helper: `open(id, buildName, ?params)`, `close()`, `isOpen()`, `getPanelResult()`, `handleOutsideClick(event)`; auto-registers panel interactives with prefix; `OutsideClick` / `Manual` close modes
 

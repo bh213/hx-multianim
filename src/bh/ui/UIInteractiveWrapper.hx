@@ -8,10 +8,16 @@ import bh.ui.UIElement;
 
 @:nullSafety
 class UIInteractiveWrapper implements UIElement implements StandardUIElementEvents implements UIElementIdentifiable implements UIElementDisablable {
+	public static inline final EVENT_HOVER = 1;
+	public static inline final EVENT_CLICK = 2;
+	public static inline final EVENT_PUSH = 4;
+	public static inline final EVENT_ALL = 7;
+
 	public final interactive:MAObject;
 	public final prefix:Null<String>;
 	public final id:String;
 	public final metadata:BuilderResolvedSettings;
+	public final eventFlags:Int;
 	public var disabled(default, set):Bool = false;
 	public var hovered(default, null):Bool = false;
 
@@ -21,12 +27,15 @@ class UIInteractiveWrapper implements UIElement implements StandardUIElementEven
 		final extracted = extractInteractiveData(interactive, prefix);
 		this.id = extracted.id;
 		this.metadata = extracted.metadata;
+		this.eventFlags = extracted.eventFlags;
 	}
 
-	static function extractInteractiveData(obj:MAObject, prefix:Null<String>):{id:String, metadata:BuilderResolvedSettings} {
+	static function extractInteractiveData(obj:MAObject, prefix:Null<String>):{id:String, metadata:BuilderResolvedSettings, eventFlags:Int} {
 		switch obj.multiAnimType {
 			case MAInteractive(_, _, identifier, meta):
-				return {id: prefix != null ? '$prefix.$identifier' : identifier, metadata: new BuilderResolvedSettings(meta)};
+				final brs = new BuilderResolvedSettings(meta);
+				final flags = brs.getIntOrDefault("events", EVENT_ALL);
+				return {id: prefix != null ? '$prefix.$identifier' : identifier, metadata: brs, eventFlags: flags};
 			default:
 				throw "UIInteractiveWrapper requires MAInteractive";
 		}
@@ -51,18 +60,26 @@ class UIInteractiveWrapper implements UIElement implements StandardUIElementEven
 		if (disabled) return;
 		switch wrapper.event {
 			case OnPush(_):
-				wrapper.control.outsideClick.trackOutsideClick(true);
-				wrapper.control.pushEvent(UIInteractiveEvent(UIPush, this.id, this.metadata), this);
+				if (eventFlags & EVENT_PUSH != 0) {
+					wrapper.control.outsideClick.trackOutsideClick(true);
+					wrapper.control.pushEvent(UIInteractiveEvent(UIPush, this.id, this.metadata), this);
+				}
 			case OnRelease(_):
-				wrapper.control.pushEvent(UIInteractiveEvent(UIClick, this.id, this.metadata), this);
+				if (eventFlags & EVENT_CLICK != 0)
+					wrapper.control.pushEvent(UIInteractiveEvent(UIClick, this.id, this.metadata), this);
 			case OnReleaseOutside(_):
-				wrapper.control.pushEvent(UIInteractiveEvent(UIClickOutside, this.id, this.metadata), this);
+				if (eventFlags & EVENT_PUSH != 0)
+					wrapper.control.pushEvent(UIInteractiveEvent(UIClickOutside, this.id, this.metadata), this);
 			case OnEnter:
-				hovered = true;
-				wrapper.control.pushEvent(UIInteractiveEvent(UIEntering, this.id, this.metadata), this);
+				if (eventFlags & EVENT_HOVER != 0) {
+					hovered = true;
+					wrapper.control.pushEvent(UIInteractiveEvent(UIEntering, this.id, this.metadata), this);
+				}
 			case OnLeave:
-				hovered = false;
-				wrapper.control.pushEvent(UIInteractiveEvent(UILeaving, this.id, this.metadata), this);
+				if (eventFlags & EVENT_HOVER != 0) {
+					hovered = false;
+					wrapper.control.pushEvent(UIInteractiveEvent(UILeaving, this.id, this.metadata), this);
+				}
 			default:
 		}
 	}

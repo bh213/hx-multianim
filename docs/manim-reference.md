@@ -66,7 +66,7 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | `#name[$i] slot` | Indexed slot inside repeatable |
 | `#name slot(params)` | Parameterized slot with visual states and conditionals |
 | `slotContent` | Content insertion point inside parameterized slot body |
-| `interactive(w, h, id, debug, metadata)` | Hit-test region with optional typed key-value metadata |
+| `interactive(w, h, id, debug, metadata)` | Hit-test region with optional typed key-value metadata, event filtering, and bind |
 | `settings { key=>val }` | Emit typed settings to builder |
 
 ---
@@ -794,7 +794,38 @@ When enabled, elements support efficient runtime updates without full rebuild:
 - `setParameter()` re-evaluates only affected properties
 - `beginUpdate()` / `endUpdate()` for batched parameter changes
 
-Used by: dynamic refs, slider, scrollbar, parameterized slots.
+Used by: dynamic refs, slider, scrollbar, parameterized slots, button, checkbox, tab button.
+
+---
+
+## Interactive Event Filtering & Bind
+
+### Event Filtering
+
+Control which events an interactive emits via `events:` metadata:
+
+```manim
+interactive(200, 30, "myBtn", events: [hover, click])
+interactive(200, 30, "tooltip-trigger", events: [hover])
+```
+
+| Flag | Events controlled |
+|------|-------------------|
+| `hover` | `UIEntering` + `UILeaving` |
+| `click` | `UIClick` |
+| `push` | `UIPush` + `UIClickOutside` + outside-click tracking |
+
+Default: all events enabled. Omitting `events:` emits all event types.
+
+### Bind Metadata
+
+Declare which programmable parameter an interactive drives for `UIRichInteractiveHelper` auto-wiring:
+
+```manim
+interactive(200, 30, "shopBtn", bind => "status", events: [hover, click, push])
+```
+
+`UIRichInteractiveHelper.register(result)` scans interactives for `bind` metadata and auto-wires hover/press/leave state transitions to `setParameter()` calls on the bound `BuilderResult`.
 
 ---
 
