@@ -497,6 +497,8 @@ class HtmlReportGenerator {
 		for (result in results) {
 			var statusClass = result.passed ? "passed" : "failed";
 			var statusText = result.passed ? "PASSED" : "FAILED";
+			var totalPixels = 1280 * 720;
+			var similarityStr = formatSimilarity(result.similarity, totalPixels);
 			var similarityPercent = Math.round(result.similarity * 10000) / 100;
 			var hasMacro = result.macroPath != null;
 
@@ -520,13 +522,14 @@ class HtmlReportGenerator {
 			var thresholdPercent = result.threshold != null ? Math.round(result.threshold * 10000) / 100 : 99.99;
 			var builderPassed = similarityPercent >= thresholdPercent;
 			var thresholdStyle = builderPassed ? 'color: #999;' : 'color: #c62828; font-weight: bold;';
-			html.add('        <div class="similarity">Builder similarity: ${similarityPercent}% <span style="${thresholdStyle}">(acceptance: ${thresholdPercent}%)</span>');
+			html.add('        <div class="similarity">Builder similarity: ${similarityStr} <span style="${thresholdStyle}">(acceptance: ${thresholdPercent}%)</span>');
 			if (hasMacro && result.macroSimilarity != null) {
+				var macroSimStr = formatSimilarity(result.macroSimilarity, totalPixels);
 				var macroSimPercent = Math.round(result.macroSimilarity * 10000) / 100;
 				var macroThresholdPercent = result.macroThreshold != null ? Math.round(result.macroThreshold * 10000) / 100 : 99.0;
 				var macroPassed = macroSimPercent >= macroThresholdPercent;
 				var macroThresholdStyle = macroPassed ? 'color: #999;' : 'color: #c62828; font-weight: bold;';
-				html.add(' | Macro similarity: ${macroSimPercent}% <span style="${macroThresholdStyle}">(acceptance: ${macroThresholdPercent}%)</span>');
+				html.add(' | Macro similarity: ${macroSimStr} <span style="${macroThresholdStyle}">(acceptance: ${macroThresholdPercent}%)</span>');
 			}
 			html.add('</div>\n');
 
@@ -885,6 +888,19 @@ class HtmlReportGenerator {
 		buf.add('elapsed_seconds: ${elapsedSeconds}\n');
 		buf.add("--- END TEST RESULT ---");
 		return buf.toString();
+	}
+
+	/**
+	 * Format similarity as percentage string. When it rounds to 100% but isn't exact,
+	 * append the diff pixel count so near-misses are visible in the report.
+	 */
+	private static function formatSimilarity(similarity:Float, totalPixels:Int):String {
+		var percent = Math.round(similarity * 10000) / 100;
+		if (percent >= 100.0 && similarity < 1.0) {
+			var diffPixels = totalPixels - Math.round(similarity * totalPixels);
+			return '${percent}% (${diffPixels}px differ)';
+		}
+		return '${percent}%';
 	}
 
 	public static function clear():Void {

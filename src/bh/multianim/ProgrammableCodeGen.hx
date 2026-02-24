@@ -3475,7 +3475,7 @@ class ProgrammableCodeGen {
 					};
 					{ x: macro $_hlRef.hexToPixel($hexExpr).x, y: macro $_hlRef.hexToPixel($hexExpr).y };
 				} else {
-					Context.warning('ProgrammableCodeGen: hex offset requires hex coordinate system, using (0,0)', pos);
+					Context.error('ProgrammableCodeGen: hex offset requires hex coordinate system', pos);
 					{x: macro 0.0, y: macro 0.0};
 				}
 			case SELECTED_HEX_DOUBLED(col, row):
@@ -3489,7 +3489,7 @@ class ProgrammableCodeGen {
 					};
 					{ x: macro $_hlRef.hexToPixel($hexExpr).x, y: macro $_hlRef.hexToPixel($hexExpr).y };
 				} else {
-					Context.warning('ProgrammableCodeGen: hex doubled requires hex coordinate system, using (0,0)', pos);
+					Context.error('ProgrammableCodeGen: hex doubled requires hex coordinate system', pos);
 					{x: macro 0.0, y: macro 0.0};
 				}
 			case SELECTED_HEX_PIXEL(px, py):
@@ -3499,9 +3499,119 @@ class ProgrammableCodeGen {
 					x: macro $_hlRef.hexToPixel($_hlRef.pixelToHex(new h2d.col.Point($xExpr, $yExpr)).round()).x,
 					y: macro $_hlRef.hexToPixel($_hlRef.pixelToHex(new h2d.col.Point($xExpr, $yExpr)).round()).y
 				};
-			default:
-				Context.warning('ProgrammableCodeGen: param-dependent coordinate type not supported in pixels, using (0,0)', pos);
+			case ZERO:
 				{x: macro 0.0, y: macro 0.0};
+			case SELECTED_GRID_POSITION(gridX, gridY):
+				final grid = getGridFromNode(node);
+				if (grid != null) {
+					final gxExpr = rvToExpr(gridX);
+					final gyExpr = rvToExpr(gridY);
+					final sx:Int = grid.spacingX;
+					final sy:Int = grid.spacingY;
+					{x: macro $gxExpr * $v{sx}, y: macro $gyExpr * $v{sy}};
+				} else {
+					Context.error('ProgrammableCodeGen: grid coordinate requires grid coordinate system', pos);
+					{x: macro 0.0, y: macro 0.0};
+				}
+			case LAYOUT(layoutName, index):
+				final idx = index != null ? resolveRVStatic(index) : 0.0;
+				if (idx != null) {
+					final pt = resolveLayoutPosition(layoutName, Std.int(idx));
+					if (pt != null) {
+						{x: macro $v{pt.x}, y: macro $v{pt.y}};
+					} else {
+						Context.error('ProgrammableCodeGen: layout "$layoutName" not found or index out of range', pos);
+						{x: macro 0.0, y: macro 0.0};
+					}
+				} else {
+					Context.error('ProgrammableCodeGen: param-dependent layout index not supported in pixels', pos);
+					{x: macro 0.0, y: macro 0.0};
+				}
+			case NAMED_COORD(name, coord):
+				final namedCS = if (node != null) getNamedCoordSystem(name, node) else null;
+				if (namedCS != null) {
+					switch (namedCS) {
+						case NamedGrid(system):
+							switch (coord) {
+								case SELECTED_GRID_POSITION(gridX, gridY):
+									final gxExpr = rvToExpr(gridX);
+									final gyExpr = rvToExpr(gridY);
+									final sx:Int = system.spacingX;
+									final sy:Int = system.spacingY;
+									{x: macro $gxExpr * $v{sx}, y: macro $gyExpr * $v{sy}};
+								default:
+									Context.error('ProgrammableCodeGen: unsupported coordinate type inside named grid', pos);
+									{x: macro 0.0, y: macro 0.0};
+							}
+						case NamedHex(system):
+							// Delegate to the hex handling by recursing with the inner coord
+							coordsToXYExprs(coord, pos, node);
+					}
+				} else {
+					Context.error('ProgrammableCodeGen: named coordinate system "$name" not found', pos);
+					{x: macro 0.0, y: macro 0.0};
+				}
+			case WITH_OFFSET(base, offsetX, offsetY):
+				final baseXY = coordsToXYExprs(base, pos, node);
+				final oxExpr = rvToExpr(offsetX);
+				final oyExpr = rvToExpr(offsetY);
+				final bx = baseXY.x;
+				final by = baseXY.y;
+				{x: macro $bx + $oxExpr, y: macro $by + $oyExpr};
+			case SELECTED_HEX_CELL_CORNER(cell, cornerIndex, factor):
+				final hexLayout = getHexLayoutForNode(node);
+				if (hexLayout != null) {
+					final ciExpr = rvToExpr(cornerIndex);
+					final fExpr = rvToExpr(factor);
+					final cellHex = resolveCoordToStaticHex(cell, hexLayout);
+					if (cellHex != null) {
+						{
+							x: macro $_hlRef.polygonCorner(new bh.base.Hex($v{cellHex.q}, $v{cellHex.r}, $v{cellHex.s}), $ciExpr, $fExpr).x,
+							y: macro $_hlRef.polygonCorner(new bh.base.Hex($v{cellHex.q}, $v{cellHex.r}, $v{cellHex.s}), $ciExpr, $fExpr).y
+						};
+					} else {
+						final cellExpr = resolveCoordToRuntimeHexExpr(cell, hexLayout);
+						if (cellExpr != null) {
+							{
+								x: macro { final _cellHex = $cellExpr; $_hlRef.polygonCorner(_cellHex, $ciExpr, $fExpr).x; },
+								y: macro { final _cellHex = $cellExpr; $_hlRef.polygonCorner(_cellHex, $ciExpr, $fExpr).y; }
+							};
+						} else {
+							Context.error('ProgrammableCodeGen: cannot resolve cell coordinate for hex cell corner', pos);
+							{x: macro 0.0, y: macro 0.0};
+						}
+					}
+				} else {
+					Context.error('ProgrammableCodeGen: hex cell corner requires hex coordinate system', pos);
+					{x: macro 0.0, y: macro 0.0};
+				}
+			case SELECTED_HEX_CELL_EDGE(cell, direction, factor):
+				final hexLayout = getHexLayoutForNode(node);
+				if (hexLayout != null) {
+					final dExpr = rvToExpr(direction);
+					final fExpr = rvToExpr(factor);
+					final cellHex = resolveCoordToStaticHex(cell, hexLayout);
+					if (cellHex != null) {
+						{
+							x: macro $_hlRef.polygonEdge(new bh.base.Hex($v{cellHex.q}, $v{cellHex.r}, $v{cellHex.s}), $dExpr, $fExpr).x,
+							y: macro $_hlRef.polygonEdge(new bh.base.Hex($v{cellHex.q}, $v{cellHex.r}, $v{cellHex.s}), $dExpr, $fExpr).y
+						};
+					} else {
+						final cellExpr = resolveCoordToRuntimeHexExpr(cell, hexLayout);
+						if (cellExpr != null) {
+							{
+								x: macro { final _cellHex = $cellExpr; $_hlRef.polygonEdge(_cellHex, $dExpr, $fExpr).x; },
+								y: macro { final _cellHex = $cellExpr; $_hlRef.polygonEdge(_cellHex, $dExpr, $fExpr).y; }
+							};
+						} else {
+							Context.error('ProgrammableCodeGen: cannot resolve cell coordinate for hex cell edge', pos);
+							{x: macro 0.0, y: macro 0.0};
+						}
+					}
+				} else {
+					Context.error('ProgrammableCodeGen: hex cell edge requires hex coordinate system', pos);
+					{x: macro 0.0, y: macro 0.0};
+				}
 		};
 	}
 
@@ -3654,23 +3764,19 @@ class ProgrammableCodeGen {
 						final x2Var = "_ex" + idx;
 						final y2Var = "_ey" + idx;
 						final cVar = "_c" + idx;
-						boundsExprs.push(macro {
-							var $x1Var:Int = Math.round(${start.x});
-							var $y1Var:Int = Math.round(${start.y});
-							var $x2Var:Int = Math.round(${end.x});
-							var $y2Var:Int = Math.round(${end.y});
-							var c:Int = $cExpr;
-							if (c >>> 24 == 0) c |= 0xFF000000;
-							var $cVar:Int = c;
-							if ($i{x1Var} < _minX) _minX = $i{x1Var};
-							if ($i{y1Var} < _minY) _minY = $i{y1Var};
-							if ($i{x2Var} < _minX) _minX = $i{x2Var};
-							if ($i{y2Var} < _minY) _minY = $i{y2Var};
-							if ($i{x1Var} > _maxX) _maxX = $i{x1Var};
-							if ($i{y1Var} > _maxY) _maxY = $i{y1Var};
-							if ($i{x2Var} > _maxX) _maxX = $i{x2Var};
-							if ($i{y2Var} > _maxY) _maxY = $i{y2Var};
-						});
+						boundsExprs.push(macro var $x1Var:Int = Math.round(${start.x}));
+						boundsExprs.push(macro var $y1Var:Int = Math.round(${start.y}));
+						boundsExprs.push(macro var $x2Var:Int = Math.round(${end.x}));
+						boundsExprs.push(macro var $y2Var:Int = Math.round(${end.y}));
+						boundsExprs.push(macro var $cVar:Int = { var c:Int = $cExpr; if (c >>> 24 == 0) c |= 0xFF000000; c; });
+						boundsExprs.push(macro if ($i{x1Var} < _minX) _minX = $i{x1Var});
+						boundsExprs.push(macro if ($i{y1Var} < _minY) _minY = $i{y1Var});
+						boundsExprs.push(macro if ($i{x2Var} < _minX) _minX = $i{x2Var});
+						boundsExprs.push(macro if ($i{y2Var} < _minY) _minY = $i{y2Var});
+						boundsExprs.push(macro if ($i{x1Var} > _maxX) _maxX = $i{x1Var});
+						boundsExprs.push(macro if ($i{y1Var} > _maxY) _maxY = $i{y1Var});
+						boundsExprs.push(macro if ($i{x2Var} > _maxX) _maxX = $i{x2Var});
+						boundsExprs.push(macro if ($i{y2Var} > _maxY) _maxY = $i{y2Var});
 						shapeVarExprs.push(macro _pl.line($i{x1Var} - _minX, $i{y1Var} - _minY, $i{x2Var} - _minX, $i{y2Var} - _minY, $i{cVar}));
 					case RECT(rect) | FILLED_RECT(rect):
 						final start = coordsToXYExprs(rect.start, pos, node);
@@ -3683,19 +3789,15 @@ class ProgrammableCodeGen {
 						final wVar = "_rw" + idx;
 						final hVar = "_rh" + idx;
 						final cVar = "_c" + idx;
-						boundsExprs.push(macro {
-							var $xVar:Int = Math.round(${start.x});
-							var $yVar:Int = Math.round(${start.y});
-							var $wVar:Int = $wExpr;
-							var $hVar:Int = $hExpr;
-							var c:Int = $cExpr;
-							if (c >>> 24 == 0) c |= 0xFF000000;
-							var $cVar:Int = c;
-							if ($i{xVar} < _minX) _minX = $i{xVar};
-							if ($i{yVar} < _minY) _minY = $i{yVar};
-							if ($i{xVar} + $i{wVar} + 1 > _maxX) _maxX = $i{xVar} + $i{wVar} + 1;
-							if ($i{yVar} + $i{hVar} + 1 > _maxY) _maxY = $i{yVar} + $i{hVar} + 1;
-						});
+						boundsExprs.push(macro var $xVar:Int = Math.round(${start.x}));
+						boundsExprs.push(macro var $yVar:Int = Math.round(${start.y}));
+						boundsExprs.push(macro var $wVar:Int = $wExpr);
+						boundsExprs.push(macro var $hVar:Int = $hExpr);
+						boundsExprs.push(macro var $cVar:Int = { var c:Int = $cExpr; if (c >>> 24 == 0) c |= 0xFF000000; c; });
+						boundsExprs.push(macro if ($i{xVar} < _minX) _minX = $i{xVar});
+						boundsExprs.push(macro if ($i{yVar} < _minY) _minY = $i{yVar});
+						boundsExprs.push(macro if ($i{xVar} + $i{wVar} + 1 > _maxX) _maxX = $i{xVar} + $i{wVar} + 1);
+						boundsExprs.push(macro if ($i{yVar} + $i{hVar} + 1 > _maxY) _maxY = $i{yVar} + $i{hVar} + 1);
 						if (filled)
 							shapeVarExprs.push(macro _pl.filledRect($i{xVar} - _minX, $i{yVar} - _minY, $i{wVar}, $i{hVar}, $i{cVar}));
 						else
@@ -3706,17 +3808,13 @@ class ProgrammableCodeGen {
 						final xVar = "_px" + idx;
 						final yVar = "_py" + idx;
 						final cVar = "_c" + idx;
-						boundsExprs.push(macro {
-							var $xVar:Int = Math.round(${xy.x});
-							var $yVar:Int = Math.round(${xy.y});
-							var c:Int = $cExpr;
-							if (c >>> 24 == 0) c |= 0xFF000000;
-							var $cVar:Int = c;
-							if ($i{xVar} < _minX) _minX = $i{xVar};
-							if ($i{yVar} < _minY) _minY = $i{yVar};
-							if ($i{xVar} > _maxX) _maxX = $i{xVar};
-							if ($i{yVar} > _maxY) _maxY = $i{yVar};
-						});
+						boundsExprs.push(macro var $xVar:Int = Math.round(${xy.x}));
+						boundsExprs.push(macro var $yVar:Int = Math.round(${xy.y}));
+						boundsExprs.push(macro var $cVar:Int = { var c:Int = $cExpr; if (c >>> 24 == 0) c |= 0xFF000000; c; });
+						boundsExprs.push(macro if ($i{xVar} < _minX) _minX = $i{xVar});
+						boundsExprs.push(macro if ($i{yVar} < _minY) _minY = $i{yVar});
+						boundsExprs.push(macro if ($i{xVar} > _maxX) _maxX = $i{xVar});
+						boundsExprs.push(macro if ($i{yVar} > _maxY) _maxY = $i{yVar});
 						shapeVarExprs.push(macro _pl.pixel($i{xVar} - _minX, $i{yVar} - _minY, $i{cVar}));
 				}
 			}

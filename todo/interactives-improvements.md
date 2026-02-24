@@ -47,7 +47,7 @@ Suggestions based on reviewing the current interactive system (UIInteractiveWrap
 
 ### 3.1 No `Auto` positioning with overflow detection
 **Issue:** Only supports Above/Below/Left/Right. If the tooltip would overflow the screen (e.g. tooltip Above an element near the top edge), it gets clipped.
-**Suggestion:** Add `Auto` position that checks screen bounds and flips to the opposite side. Already mentioned in `tooltip-planning.md` §6 but not implemented.
+**Suggestion:** Add `Auto` position that checks screen bounds and flips to the opposite side.
 
 ### 3.2 No tooltip content update for active tooltip
 **Issue:** Once a tooltip is shown, its content is static. If the underlying data changes (e.g. a price updates while hovering), the tooltip shows stale data.
@@ -62,8 +62,8 @@ Suggestions based on reviewing the current interactive system (UIInteractiveWrap
 **Suggestion:** Optional `followMouse:Bool` mode that updates position in `update(dt)` based on current mouse position.
 
 ### 3.5 No show/hide transition
-**Issue:** Tooltip appears/disappears instantly. `transitions-planning.md` mentions fade in/out but it's not implemented.
-**Suggestion:** Defer to the transitions system when implemented. In the meantime, a simple alpha tween (0→1 over 0.1s) would improve feel.
+**Issue:** Tooltip appears/disappears instantly.
+**Suggestion:** A simple alpha tween (0→1 over ~0.15s) would improve feel. Could later integrate with a transitions system if one is built.
 
 ---
 
@@ -83,7 +83,7 @@ Suggestions based on reviewing the current interactive system (UIInteractiveWrap
 
 ### 4.4 No `onClose` callback or event
 **Issue:** When a panel is closed (by outside click or programmatically), the screen only knows via `checkPendingClose()` return value or by checking `isOpen()`. There's no event pushed to `onScreenEvent`.
-**Suggestion:** Push a `UIPanelClose` event (as designed in `tooltip-planning.md` §2) when the panel closes.
+**Suggestion:** Push a `UIPanelClose` event when the panel closes, so screens can react in `onScreenEvent` like they do for other UI events.
 
 ### 4.5 Only one panel at a time
 **Issue:** Opening a new panel always closes the previous one. Can't have two panels open simultaneously (e.g. a context menu + a detail panel).
@@ -103,22 +103,39 @@ Suggestions based on reviewing the current interactive system (UIInteractiveWrap
 
 ---
 
-## 6. Missing from tooltip-planning.md (Implementation Gaps)
+## 6. Declarative Event-Driven Tooltip/Panel System (Not Yet Implemented)
 
-These are features designed in `tooltip-planning.md` but not yet in the current helpers:
+The current helpers (`UITooltipHelper`, `UIPanelHelper`) are manual/imperative. The planned design is a declarative, event-driven system that would be the largest single improvement. Key pieces:
 
-| Feature | Planning Doc | Current State |
-|---------|-------------|---------------|
-| `tooltip` metadata auto-wiring | §1 | Not implemented — manual `startHover`/`cancelHover` calls needed |
-| `panel` metadata auto-wiring | §1 | Not implemented — manual `open`/`close` calls needed |
-| Event-driven lifecycle (`UITooltipRequest`/`UIPanelRequest`) | §2 | Not implemented |
-| Parameter forwarding from parent | §1 | Not implemented |
-| `tooltipText` shorthand | §7 | Not implemented |
-| `Auto` positioning with overflow | §6 | Not implemented |
-| Screen-level `enableTooltips()`/`enablePanels()` | §3 | Not implemented |
-| Nested panel interactives with compound prefix | §4 | Partially — `UIPanelHelper.open()` does register with prefix |
+### 6.1 Metadata auto-wiring
+`tooltip => "progName"` and `panel => "progName"` metadata on interactives would auto-wire hover/click behavior without manual `startHover`/`cancelHover`/`open`/`close` calls. Parent parameters forwarded by name-match.
 
-The current helpers are manual/imperative. The planning doc envisions a declarative, event-driven system. The gap is significant — bridging it is the largest single improvement opportunity.
+### 6.2 Event-driven lifecycle
+New `UIScreenEvent` variants: `UITooltipRequest(config)`, `UITooltipHide`, `UIPanelRequest(config)`, `UIPanelClose`. Config objects are mutable — screens can modify params, swap buildName, change position, or set `cancelled = true` before the tooltip/panel appears. All control flows through existing `onScreenEvent`.
+
+### 6.3 Screen-level setup
+`enableTooltips(builder, {delay, position, offset, layer})` and `enablePanels(builder, {closeOn, position, layer})` — one-time setup per screen. Manual registration (`setTooltip`/`setPanel`) available for interactives without metadata.
+
+### 6.4 `tooltipText` shorthand
+`tooltipText => "Click to purchase"` for simple text tooltips using a built-in default programmable.
+
+### 6.5 Nested panel interactives
+Panel interactives get compound prefix: `{parentId}.{panelName}.{childId}`. Partially working — `UIPanelHelper.open()` already registers with prefix.
+
+### 6.6 Auto positioning with overflow
+`Auto` position checks screen bounds and flips to opposite side. (Same as §3.1 above.)
+
+### Current state
+
+| Feature | Status |
+|---------|--------|
+| `tooltip`/`panel` metadata auto-wiring | Not implemented |
+| Event-driven lifecycle | Not implemented |
+| Parameter forwarding from parent | Not implemented |
+| `tooltipText` shorthand | Not implemented |
+| `Auto` positioning | Not implemented |
+| Screen-level `enableTooltips()`/`enablePanels()` | Not implemented |
+| Nested panel interactives | Partial |
 
 ---
 
