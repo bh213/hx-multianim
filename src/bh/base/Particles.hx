@@ -610,6 +610,11 @@ class ParticleGroup {
 		for( i in 0...nparts ) {
 			var p = new Particle(this);
 			p.delay = rand() * life * (1 - emitSync) + emitDelay;
+			if (p.delay <= 0) {
+				init(p);
+				p.visible = true;
+				triggerSubEmitters(p, OnBirth);
+			}
 			batch.add(p);
 		}
 	}
