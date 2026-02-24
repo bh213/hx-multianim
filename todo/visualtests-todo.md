@@ -1,13 +1,67 @@
 # Visual Tests TODO
 
-## Test 71 — `slotDemo`
-What is this test actually testing? The purpose is unclear. Needs a clearer demonstration of the slot concept — what slots are, how they work, what states they can be in.
 
-## Test 76 — `comboUnconditional`
-Just write the statuses as text labels instead of relying on visual cues alone. Each button state (normal/hover/pressed x enabled/disabled) should have a clear text label showing its current state name.
+## Missing UI Component Tests
 
-## Test 81 — `slotParams`
-Weird colors, elements not filled properly, something seems missing. Review the color assignments for each state (empty/filled/highlight) and make sure the visual output matches expectations. Possibly missing state transitions or default values not being applied correctly.
+### Dropdown (`UIMultiAnimDropdown`) — HIGH
+No visual or unit tests. Needs at minimum: creation test, open/close state, item selection, disabled state, prefixed settings (`item.*`, `scrollbar.*`).
 
-## Test 83 — `slot2dIndex`
-Fill at least one slot with content at a different (x, y) position so we can visually confirm that 2D indexing actually works. Currently all slots look identical, which doesn't prove anything. The test should programmatically set content in a specific slot (e.g., slot[2,1]) to make it visually distinct from the defaults.
+### Scrollable List (`UIMultiAnimScrollableList`) — HIGH
+No visual or unit tests. Needs: creation, `setItems()` runtime update, `scrollToIndex()`, click mode (single/double), disabled state, scroll position, `TileRef` item tiles.
+
+### Tabs (`UIMultiAnimTabs`) — HIGH
+No visual or unit tests. Needs: creation, tab switching (`beginTab`/`endTab`), `ContentTarget` routing, `tabPanel.contentRoot` relative mode, `UIChangeItem` event.
+
+### Drag-and-Drop (`UIMultiAnimDraggable`) — MEDIUM
+No tests. Needs: `addDropZonesFromSlots`, `createFromSlot`, `swapMode`, zone highlight callbacks.
+
+## Missing Helper Tests
+
+### `UIRichInteractiveHelper` — MEDIUM
+No dedicated test for state binding auto-wiring. Needs: `register()` scanning bind metadata, `handleEvent()` driving Normal→Hover→Pressed→Normal, `setDisabled()`.
+
+### `UITooltipHelper` — MEDIUM
+No tests. Needs: `startHover`/`cancelHover`, delay behavior, `show`/`hide`, position/offset configuration.
+
+### `UIPanelHelper` — MEDIUM
+No tests. Needs: `open`/`close`, `isOpen`, `handleOutsideClick`, `OutsideClick`/`Manual` close modes.
+
+## Missing Parser / Builder Error Tests
+
+### Parser Error Coverage — MEDIUM
+Current `ParserErrorTest` only covers conditional validation (`@else`/`@default` ordering). Missing error cases: malformed expressions, invalid parameter types, unknown element types, duplicate programmable names, circular references, invalid coordinate system syntax.
+
+### Builder Error Paths — MEDIUM
+No negative tests for builder. Missing: reference to non-existent programmable, wrong parameter types, undefined `$ref`, invalid filter parameters, slot name mismatches (indexed vs non-indexed).
+
+## Test Numbering Audit
+
+Tests 1–88 exist as directories. Numbering is **continuous with no gaps**.
+
+Two directories have no visual test method (unit-only, by design):
+- **62** — `dataBlock` — used via `builder.getData()` in unit tests only
+- **77** — `pvFactorySettings` — used in PVFactory unit tests, builds manually (no `@:manim` registration)
+
+These are non-visual tests living inside the visual test numbering scheme (`test/examples/`). Consider refactoring: either move their unit tests out of `ProgrammableCodeGenTest.hx` into `BuilderUnitTest.hx` where other non-visual builder tests live, or relocate their data files out of `test/examples/` to avoid confusion with the visual test sequence.
+
+All other 86 directories (1–88 minus 62, 77) have both a `testNN_` method in `ProgrammableCodeGenTest.hx` and a `@:manim` registration in `MultiProgrammable.hx`.
+
+## Missing Feature Coverage
+
+### `UIClickOutside` Event — LOW
+Documented in CLAUDE.md but not tested. Add a `UIComponentTest` case verifying `UIInteractiveEvent(UIClickOutside, ...)` fires correctly.
+
+### AnimMetadata API (`.anim`) — LOW
+`getIntOrDefault`, `getStringOrDefault`, `getIntOrException`, `getStringOrException` with state selectors — no unit tests in `AnimParserTest`.
+
+### Hex Offset/Doubled Coordinates — LOW
+`$hex.offset(col, row, even|odd)` and `$hex.doubled(col, row)` not specifically tested. Tests 47/87 cover hex cube/corner/edge only.
+
+### Animated Path Events — LOW
+`pathStart`, `pathEnd`, `cycleStart`, `cycleEnd` events not asserted programmatically. Test 61 only does visual sampling.
+
+### Particle Runtime API — LOW
+`addForceField`, `removeForceFieldAt`, `clearForceFields`, sub-emitters — no unit tests. Only visual particle test (51) with seeded comparison.
+
+### `autoSyncInitialState` — LOW
+Referenced in commit history but no test verifying the behavior.

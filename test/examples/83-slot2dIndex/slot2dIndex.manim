@@ -1,9 +1,14 @@
 version: 0.5
 
-#slot2dIndex programmable() {
-  text(f3x5, "2d indexed slots", #aaaaaa): 5, 3
+#contentRect programmable() {
+  bitmap(generated(color(24, 16, #cccc00ff))): 0, 0
+  @Scale(0.5) text(f3x5, "content", #000000, center, 24): 0, 4
+}
 
-  repeatable2d($x, $y, step(3, dx: 80), step(2, dy: 60)) {
+#slot2dIndex programmable() {
+  text(f3x5, "2d indexed slots - setContent at [2,1]", #aaaaaa): 5, 3
+
+  repeatable2d($x, $y, step(3, dx: 80), step(2, dy: 70)) {
     #cell[$x, $y] slot {
       @($x => 0) bitmap(generated(color(70, 50, #553333ff))): 0, 14
       @($x => 1) bitmap(generated(color(70, 50, #335533ff))): 0, 14
@@ -11,4 +16,19 @@ version: 0.5
       text(f3x5, ""+$x+","+$y, #ffffffff): 5, 24
     }
   }
+
+  // Legend - colors
+  text(f3x5, "x coord selects color:", #888888): 250, 14
+  bitmap(generated(color(12, 8, #553333))): 250, 26
+  text(f3x5, "x=0", #aa6666): 266, 26
+  bitmap(generated(color(12, 8, #335533))): 250, 40
+  text(f3x5, "x=1", #66aa66): 266, 40
+  bitmap(generated(color(12, 8, #333355))): 250, 54
+  text(f3x5, "x=2", #6666aa): 266, 54
+
+  // Legend - content
+  text(f3x5, "content:", #888888): 250, 74
+  staticRef($contentRect): 250, 86
+  text(f3x5, "= setContent()", #cccc00): 278, 88
+  text(f3x5, "replaces default at cell[2,1]", #aaaaaa): 250, 106
 }

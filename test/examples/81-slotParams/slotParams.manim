@@ -1,5 +1,10 @@
 version: 0.5
 
+#contentBall programmable() {
+  graphics(circle(#ff4444, filled, 12)): 12, 12
+  @Scale(0.5) text(f3x5, "content", #ffffff, center, 24): 0, 9
+}
+
 #slotParams programmable() {
   text(f3x5, "parameterized slots", #aaaaaa): 5, 3
 
@@ -11,24 +16,32 @@ version: 0.5
       @(state => highlight) bitmap(generated(color(40, 40, #ffaa00ff))): 0, 22
       @(state => empty)     text(f3x5, "empty", #888888): 5, 66
       @(state => filled)    text(f3x5, "filled", #00ff00): 5, 66
-      @(state => highlight) text(f3x5, "hlght", #ffaa00): 5, 66
+      @(state => highlight) text(f3x5, "highlight", #ffaa00): 5, 66
     }
   }
 
   text(f3x5, "#single:", #888888): 5, 86
-  #single slot(active:bool=false) {
-    @(active => false) bitmap(generated(color(50, 20, #666666ff))): 5, 96
-    @(active => true)  bitmap(generated(color(50, 20, #ff0000ff))): 5, 96
-    @(active => false) text(f3x5, "inactive", #888888): 5, 120
-    @(active => true)  text(f3x5, "active", #ff0000): 5, 120
+  text(f3x5, "default=green, set to red", #555555): 50, 86
+  text(f3x5, "from code via setParameter", #555555): 50, 94
+  #single slot(color:[red,green]=green) {
+    @(color => green) bitmap(generated(color(50, 20, #00aa00ff))): 5, 106
+    @(color => red)   bitmap(generated(color(50, 20, #ff0000ff))): 5, 106
+    @(color => green) text(f3x5, "color=>green", #00ff00): 5, 130
+    @(color => red)   text(f3x5, "color=>red", #ff0000): 5, 130
   }
 
-  // Legend
-  text(f3x5, "states:", #888888): 200, 14
+  // Legend - slot states
+  text(f3x5, "slot states:", #888888): 200, 14
   bitmap(generated(color(12, 12, #444444))): 200, 24
   text(f3x5, "empty", #888888): 216, 26
   bitmap(generated(color(12, 12, #00aa00))): 200, 40
   text(f3x5, "filled", #00ff00): 216, 42
   bitmap(generated(color(12, 12, #ffaa00))): 200, 56
-  text(f3x5, "hlght", #ffaa00): 216, 58
+  text(f3x5, "highlight", #ffaa00): 216, 58
+
+  // Legend - content
+  text(f3x5, "content:", #888888): 200, 76
+  staticRef($contentBall): 200, 86
+  text(f3x5, "= setContent()", #ff4444): 228, 88
+  text(f3x5, "slot[1] gets content", #aaaaaa): 200, 108
 }

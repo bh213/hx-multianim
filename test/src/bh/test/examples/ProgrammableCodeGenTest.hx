@@ -3719,7 +3719,90 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	@Test
 	public function test81_SlotParams(async:utest.Async):Void {
-		simpleMacroTest(81, "slotParams", () -> createMp().slotParams.create(), async, null, null, 4.0);
+		setupTest(81, "slotParams", "#81: slotParams");
+		VisualTestBase.pendingVisualTests++;
+		async.setTimeout(15000);
+		clearScene();
+
+		// Build via builder
+		var result:Dynamic = buildAndAddToScene("test/examples/81-slotParams/slotParams.manim", "slotParams", 4.0);
+		if (result == null) {
+			Assert.fail("Failed to build slotParams");
+			VisualTestBase.pendingVisualTests--;
+			async.done();
+			return;
+		}
+
+		populateSlotParamsDemo(result);
+
+		waitForUpdate(function(dt:Float) {
+			var builderPath = 'test/screenshots/${testName}_actual.png';
+			var builderSuccess = screenshot(builderPath, 1280, 720);
+
+			// Phase 2: macro version
+			clearScene();
+			var macroInstance = createMp().slotParams.create();
+			macroInstance.setScale(4.0);
+			s2d.addChild(macroInstance);
+			populateSlotParamsCodegen(macroInstance);
+			if (testTitle != null && testTitle.length > 0) addTitleOverlay();
+
+			waitForUpdate(function(dt2:Float) {
+				try {
+					var macroPath = 'test/screenshots/${testName}_macro.png';
+					var referencePath = getReferenceImagePath();
+					var threshold = 1.0;
+
+					var macroSuccess = screenshot(macroPath, 1280, 720);
+
+					var builderSimilarity = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
+					var builderPassed = builderSuccess ? builderSimilarity >= threshold : false;
+					var macroSimilarity = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
+					var macroPassed = macroSuccess ? macroSimilarity >= threshold : false;
+
+					HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath,
+						builderPassed && macroPassed, builderSimilarity, null, macroPath,
+						macroSimilarity, macroPassed, threshold, threshold);
+					HtmlReportGenerator.generateReport();
+
+					Assert.isTrue(builderPassed, 'Builder should match reference (similarity: ${Math.round(builderSimilarity * 10000) / 100}%)');
+					Assert.isTrue(macroPassed, 'Macro should match reference (similarity: ${Math.round(macroSimilarity * 10000) / 100}%)');
+				} catch (e:Dynamic) {
+					Assert.fail('Screenshot/compare threw: $e');
+				}
+				VisualTestBase.pendingVisualTests--;
+				async.done();
+			});
+		});
+	}
+
+	function buildContentBall():h2d.Object {
+		var fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/81-slotParams/slotParams.manim"));
+		var loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+		var builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "slotParams.manim");
+		var ball = builder.buildWithParameters("contentBall", new Map());
+		// Position at slot's content area (bitmap starts at y=22, 40px tall → center at y=30)
+		ball.object.setPosition(8, 30);
+		return ball.object;
+	}
+
+	function populateSlotParamsDemo(result:Dynamic):Void {
+		var br:bh.multianim.MultiAnimBuilder.BuilderResult = result;
+		// slot[0] = empty (default), slot[1] = filled + content, slot[2] = highlight
+		br.getSlot("item", 1).setParameter("state", "filled");
+		br.getSlot("item", 1).setContent(buildContentBall());
+		br.getSlot("item", 2).setParameter("state", "highlight");
+		br.getSlot("single").setParameter("color", "red");
+	}
+
+	function populateSlotParamsCodegen(instance:Dynamic):Void {
+		var slot1:bh.multianim.MultiAnimBuilder.SlotHandle = instance.getSlot_item(1);
+		slot1.setParameter("state", "filled");
+		slot1.setContent(buildContentBall());
+		var slot2:bh.multianim.MultiAnimBuilder.SlotHandle = instance.getSlot_item(2);
+		slot2.setParameter("state", "highlight");
+		var single:bh.multianim.MultiAnimBuilder.SlotHandle = instance.getSlot_single();
+		single.setParameter("color", "red");
 	}
 
 	@Test
@@ -3746,7 +3829,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		final single = result.getSlot("single");
 		Assert.notNull(single, "Should have single slot");
 		Assert.notNull(single.incrementalContext, "Single slot should have incremental context");
-		single.setParameter("active", true);
+		single.setParameter("color", "red");
 
 		// Test content operations with parameterized slot
 		final content = new h2d.Object();
@@ -3819,7 +3902,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		final single = instance.getSlot_single();
 		Assert.notNull(single, "Codegen should have single slot");
 		Assert.notNull(single.incrementalContext, "Codegen single slot should have incremental context");
-		single.setParameter("active", true);
+		single.setParameter("color", "red");
 
 		// Test content operations
 		final content = new h2d.Object();
@@ -3833,7 +3916,87 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	@Test
 	public function test83_Slot2dIndex(async:utest.Async):Void {
-		simpleMacroTest(83, "slot2dIndex", () -> createMp().slot2dIndex.create(), async, null, null, 4.0);
+		setupTest(83, "slot2dIndex", "#83: slot2dIndex");
+		VisualTestBase.pendingVisualTests++;
+		async.setTimeout(15000);
+		clearScene();
+
+		// Build via builder
+		var result:Dynamic = buildAndAddToScene("test/examples/83-slot2dIndex/slot2dIndex.manim", "slot2dIndex", 3.0);
+		if (result == null) {
+			Assert.fail("Failed to build slot2dIndex");
+			VisualTestBase.pendingVisualTests--;
+			async.done();
+			return;
+		}
+
+		// Set content on cell [2,1] to prove 2D indexing routes correctly
+		populateSlot2dDemo(result);
+
+		waitForUpdate(function(dt:Float) {
+			var builderPath = 'test/screenshots/${testName}_actual.png';
+			var builderSuccess = screenshot(builderPath, 1280, 720);
+
+			// Phase 2: macro version
+			clearScene();
+			var macroInstance = createMp().slot2dIndex.create();
+			macroInstance.setScale(3.0);
+			s2d.addChild(macroInstance);
+			populateSlot2dCodegen(macroInstance);
+			if (testTitle != null && testTitle.length > 0) addTitleOverlay();
+
+			waitForUpdate(function(dt2:Float) {
+				try {
+					var macroPath = 'test/screenshots/${testName}_macro.png';
+					var referencePath = getReferenceImagePath();
+					var threshold = 1.0;
+
+					var macroSuccess = screenshot(macroPath, 1280, 720);
+
+					var builderSimilarity = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
+					var builderPassed = builderSuccess ? builderSimilarity >= threshold : false;
+					var macroSimilarity = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
+					var macroPassed = macroSuccess ? macroSimilarity >= threshold : false;
+
+					HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath,
+						builderPassed && macroPassed, builderSimilarity, null, macroPath,
+						macroSimilarity, macroPassed, threshold, threshold);
+					HtmlReportGenerator.generateReport();
+
+					Assert.isTrue(builderPassed, 'Builder should match reference (similarity: ${Math.round(builderSimilarity * 10000) / 100}%)');
+					Assert.isTrue(macroPassed, 'Macro should match reference (similarity: ${Math.round(macroSimilarity * 10000) / 100}%)');
+				} catch (e:Dynamic) {
+					Assert.fail('Screenshot/compare threw: $e');
+				}
+				VisualTestBase.pendingVisualTests--;
+				async.done();
+			});
+		});
+	}
+
+	function buildContentRect():h2d.Object {
+		var g = new h2d.Graphics();
+		g.beginFill(0xCCCC00);
+		g.drawRect(0, 0, 60, 40);
+		g.endFill();
+		var font = hxd.Res.fonts.f3x5.toFont();
+		var tf = new h2d.Text(font, g);
+		tf.text = "content";
+		tf.textColor = 0x000000;
+		tf.x = 18;
+		tf.y = 16;
+		g.setPosition(5, 16);
+		return g;
+	}
+
+	function populateSlot2dDemo(result:Dynamic):Void {
+		var br:bh.multianim.MultiAnimBuilder.BuilderResult = result;
+		br.getSlot("cell", 2, 1).setContent(buildContentRect());
+	}
+
+	function populateSlot2dCodegen(instance:Dynamic):Void {
+		var slot:bh.multianim.MultiAnimBuilder.SlotHandle = instance.getSlot_cell(2, 1);
+		slot.setContent(buildContentRect());
 	}
 
 	@Test

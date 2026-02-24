@@ -128,6 +128,7 @@
 - **`externallyDriven` flag on `stateAnim construct`** — `stateAnim construct(initialState, externallyDriven, ...)` syntax for animations driven externally (not by internal timer); supported in parser, builder, and codegen
 - **Multi-particles codegen** — `buildParticles(programmableName, index)` supports index parameter for programmables with multiple `particles {}` blocks; codegen auto-indexes particle nodes
 - **Visual test improvements** — improved visual content and descriptions for tests 10, 15, 32, 44, 46, 51, 56, 70, 71, 75, 76, 81, 82, 83; test 88 (colorVerification) added
+- **Slot runtime test coverage** — tests 81 (slotParams) and 83 (slot2dIndex) now exercise `setContent()`, `setParameter()`, and 2D slot indexing at runtime with full builder+macro comparison; test 76 (comboUnconditional) labels improved to show exact parameter combinations
 - **Test 75 placeholder+settings pattern** — `progressBarDemo` rewritten to use `placeholder(nothing, builderParameter("bar"))` with `settings{buildName=>..., value:int=>N}` driving `UIMultiAnimProgressBar` creation via `PVFactory`
 - **`UIInteractiveEvent` screen event** — new `UIScreenEvent.UIInteractiveEvent(event, id, metadata)` wraps interactive events with id and metadata for direct pattern matching; eliminates `Std.isOfType` + cast boilerplate
   - `UIInteractiveWrapper` now emits `UIInteractiveEvent` instead of raw `UIClick`/`UIEntering`/`UILeaving`/`UIPush`
