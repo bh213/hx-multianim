@@ -14,21 +14,26 @@ version: 0.5
     text(dd, "Unconditional children in conditional programmables", #aaaaaa, left): 10, 10
     text(dd, "Orange square + text appear in ALL states (unconditional)", #888888, left): 10, 26
 
-    text(dd, "normal", #666666, left): 140, 52
+    text(dd, "status=>normal, disabled=>false", #666666, left): 140, 52
     staticRef($comboBtn, status=>normal, disabled=>false): 10, 50
 
-    text(dd, "hover", #666666, left): 140, 92
+    text(dd, "status=>hover, disabled=>false", #666666, left): 140, 92
     staticRef($comboBtn, status=>hover, disabled=>false): 10, 90
 
-    text(dd, "pressed", #666666, left): 140, 132
+    text(dd, "status=>pressed, disabled=>false", #666666, left): 140, 132
     staticRef($comboBtn, status=>pressed, disabled=>false): 10, 130
 
-    text(dd, "disabled+normal", #666666, left): 140, 172
+    text(dd, "status=>normal, disabled=>true", #666666, left): 140, 172
     staticRef($comboBtn, status=>normal, disabled=>true): 10, 170
 
-    text(dd, "disabled+hover", #666666, left): 140, 212
+    text(dd, "status=>hover, disabled=>true", #666666, left): 140, 212
     staticRef($comboBtn, status=>hover, disabled=>true): 10, 210
 
-    text(dd, "disabled+pressed", #666666, left): 140, 252
+    text(dd, "status=>pressed, disabled=>true", #666666, left): 140, 252
     staticRef($comboBtn, status=>pressed, disabled=>true): 10, 250
+
+    // Legend
+    text(dd, "#comboBtn: programmable with conditional backgrounds + unconditional text/icon", #888888, left): 10, 290
+    text(dd, "Conditional: colored rect changes per status (blue/light/dark/grey)", #666666, left): 10, 306
+    text(dd, "Unconditional: 'Always Visible' text + orange square stay in all states", #666666, left): 10, 322
 }
