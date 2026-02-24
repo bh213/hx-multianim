@@ -139,6 +139,16 @@
   - No backward compat impact — no internal components consumed raw events from interactives
 - **Interactive map lookup** — `UIScreenBase.getInteractive(id)` for O(1) lookup by id; `getInteractivesByPrefix(prefix)` for group queries
 - **`UITooltipHelper`** — screen-driven tooltip helper with hover delay timer, configurable position/offset/layer, per-interactive overrides, manual show/hide
+  - `updateParams(params)` — incremental parameter update on active tooltip
+  - `rebuild(?params)` — full rebuild of active tooltip with optional new parameters
+- **Cursor support** — automatic cursor changes on hover for all UI elements
+  - `CursorManager` — static registry following `FontManager` pattern; pre-registers Heaps built-in cursors (`default`, `pointer`, `button`, `move`, `text`, `hide`, `none`)
+  - `UIElementCursor` interface — `getCursor():hxd.Cursor` returns state-dependent cursor (disabled → default arrow, enabled → pointer)
+  - All built-in components implement `UIElementCursor`: Button, Checkbox, Slider, Dropdown, TabButton, ScrollableList
+  - `UIInteractiveWrapper` — per-state cursors from `.manim` metadata: `cursor => "pointer"`, `cursor.hover => "move"`, `cursor.disabled => "default"`; unknown `cursor.*` keys throw
+  - `UIControllerBase.handleMove()` — cursor plumbing, sets `hxd.System.setCursor()` based on hovered element
+  - `CursorManager.setDefaultInteractiveCursor()` / `setDefaultCursor()` — global defaults (interactive defaults to `Button`)
+  - `BuilderResolvedSettings.keys()` — new method for iterating metadata keys
 - **`UIPanelHelper`** — screen-driven panel helper for click-to-open panels anchored to interactives; auto-registers panel interactives with prefix; `handleOutsideClick(event)` auto-closes on `UIClickOutside` or click on unrelated interactive
 - **`BuilderResolvedSettings` null-safe defaults** — `getStringOrDefault()`, `getIntOrDefault()`, `getFloatOrDefault()`, `getBoolOrDefault()` now return the default value when settings are null instead of throwing; new `hasSettings()` method for explicit null check
 - **`autoSyncInitialState` on UIScreenBase** — opt-in property to automatically fire initial state events (`UIChangeValue`, `UIToggle`, etc.) for all elements on first `update()` call; guarded against late changes after sync has already run
@@ -171,6 +181,7 @@
 - **TabButton incremental rewrite** — `UIMultiAnimTabButton` same pattern; selected/disabled states via `setParameter()`
 
 ### Fixed
+- **`outsideClick.handle()` called on every event** — now guarded to only fire on `OnPush`/`OnRelease`/`OnReleaseOutside` (was unnecessarily processing hover/wheel/move events)
 - **Hex integer in `parseAnything()`** — `THexInteger` tokens now reconstruct `0x` prefix before `stringToInt()` (fixes `0xAA8844` in untyped settings)
 - **Named colors in staticRef/dynamicRef params** — `resolveAsColorInteger()` now handles `RVString` for named colors like `c=>red`
 - **Particle/animatedPath colorCurve resolution** — changed from `resolveAsInteger` to `resolveAsColorInteger`, enabling palette colors in color curves

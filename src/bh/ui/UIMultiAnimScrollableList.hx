@@ -1,5 +1,6 @@
 package bh.ui;
 
+import bh.base.CursorManager;
 import bh.multianim.MultiAnimBuilder.BuilderResult;
 import bh.multianim.MultiAnimMultiResult;
 import bh.base.MAObject;
@@ -21,7 +22,7 @@ enum ClickMode {
 
 // var allStates = hover, pressed, disabled, normal, selected
 class UIMultiAnimScrollableList implements UIElement implements UIElementDisablable implements StandardUIElementEvents implements UIElementSyncRedraw implements UIElementUpdatable
-		implements UIElementListValue {
+		implements UIElementListValue implements UIElementCursor {
 	final itemBuilder:UIElementBuilder;
 	final panelBuilder:UIElementBuilder;
 	final scrollbarBuilder:UIElementBuilder;
@@ -112,6 +113,12 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 		this.scrollbar = null;
 		this.scrollbarResult = null;
 		this.interactives = [];
+	}
+
+	public function getCursor():hxd.Cursor {
+		if (disabled)
+			return CursorManager.getDefaultCursor();
+		return CursorManager.getDefaultInteractiveCursor();
 	}
 
 	public function setItems(newItems:Array<UIElementListItem>, selectedIndex:Int = 0) {

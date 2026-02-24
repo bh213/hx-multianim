@@ -1,5 +1,6 @@
 package bh.ui;
 
+import bh.base.CursorManager;
 import bh.multianim.MultiAnimBuilder;
 import bh.multianim.MultiAnimBuilder.CallbackRequest;
 import bh.multianim.MultiAnimBuilder.CallbackResult;
@@ -31,7 +32,7 @@ interface ContentTarget {
  * Clicking a selected tab does nothing, clicking an unselected tab selects it.
  */
 @:nullSafety
-class UIMultiAnimTabButton implements UIElement implements UIElementDisablable implements StandardUIElementEvents {
+class UIMultiAnimTabButton implements UIElement implements UIElementDisablable implements StandardUIElementEvents implements UIElementCursor {
 	final result:BuilderResult;
 
 	public var disabled(default, set):Bool = false;
@@ -63,6 +64,12 @@ class UIMultiAnimTabButton implements UIElement implements UIElementDisablable i
 	}
 
 	public function clear() {}
+
+	public function getCursor():hxd.Cursor {
+		if (disabled)
+			return CursorManager.getDefaultCursor();
+		return CursorManager.getDefaultInteractiveCursor();
+	}
 
 	public function getObject():Object {
 		return result.object;

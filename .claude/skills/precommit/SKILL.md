@@ -39,7 +39,8 @@ Verify:
 - No sensitive files (.env, credentials) in the diff
 - All reference images updated if visual tests changed
 - No inconsistencies between code changes and documentation
-- MEMORY.md is up to date with any new patterns or pitfalls discovered
+- MEMORY.md is up to date with any new patterns or pitfalls discovered. 
+- Check if anything can be removed from MEMORY.md because it is no longer relevant. Ask user if unsure.
 
 ## 6. Suggest Commit Message
 
@@ -47,6 +48,7 @@ Verify:
 - Format: `area: short description` on first line
 - Add bullet points for significant changes in the body
 - Keep the first line under 72 characters
+- Do not include TODO file changes.
 
 ## 7. Report Summary
 
@@ -58,4 +60,4 @@ Present a summary table:
 - Any issues found
 - Suggested commit message
 
-Do NOT create the commit automatically. Present the summary and wait for the user to decide.
+Do NOT create the commit at all. Present the summary and user will commit.

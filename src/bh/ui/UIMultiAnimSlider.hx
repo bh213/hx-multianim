@@ -1,5 +1,6 @@
 package bh.ui;
 
+import bh.base.CursorManager;
 import bh.multianim.MultiAnimBuilder;
 import bh.multianim.MultiAnimBuilder.MultiAnimBuilder;
 import h2d.Object;
@@ -8,7 +9,7 @@ import bh.ui.UIElement;
 import bh.multianim.MultiAnimParser.NamedBuildResult;
 
 class UIStandardMultiAnimSlider implements UIElement implements UIElementDisablable implements StandardUIElementEvents implements UIElementNumberValue
-		implements UIElementFloatValue implements UIElementSyncRedraw {
+		implements UIElementFloatValue implements UIElementSyncRedraw implements UIElementCursor {
 	var status(default, set):StandardUIElementStates = SUINormal;
 	var currentResult:Null<BuilderResult> = null;
 	var root:h2d.Object;
@@ -39,6 +40,12 @@ class UIStandardMultiAnimSlider implements UIElement implements UIElementDisabla
 	public function clear() {
 		this.currentResult = null;
 		this.builder = null;
+	}
+
+	public function getCursor():hxd.Cursor {
+		if (disabled)
+			return CursorManager.getDefaultCursor();
+		return CursorManager.getDefaultInteractiveCursor();
 	}
 
 	public function set_disabled(value:Bool):Bool {
