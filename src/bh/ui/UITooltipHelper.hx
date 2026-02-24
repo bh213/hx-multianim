@@ -32,6 +32,7 @@ class UITooltipHelper {
 	// Per-interactive overrides
 	var delayOverrides:Map<String, Float> = [];
 	var positionOverrides:Map<String, TooltipPosition> = [];
+	var offsetOverrides:Map<String, Int> = [];
 
 	// Current hover state
 	var hoverInteractiveId:Null<String> = null;
@@ -108,6 +109,11 @@ class UITooltipHelper {
 		positionOverrides.set(interactiveId, position);
 	}
 
+	/** Set custom offset for a specific interactive. */
+	public function setOffset(interactiveId:String, offset:Int):Void {
+		offsetOverrides.set(interactiveId, offset);
+	}
+
 	/** Call from screen's update(dt). Manages hover delay timer. */
 	public function update(dt:Float):Void {
 		if (hoverInteractiveId == null)
@@ -167,7 +173,7 @@ class UITooltipHelper {
 
 		final result = builder.buildWithParameters(buildName, params ?? []);
 		final position = positionOverrides.get(interactiveId) ?? defaultPosition;
-		final offset = defaultOffset;
+		final offset = offsetOverrides.get(interactiveId) ?? defaultOffset;
 
 		positionTooltip(result.object, wrapper.interactive, position, offset);
 		screen.addObjectToLayer(result.object, layer);
