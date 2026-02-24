@@ -39,8 +39,6 @@
 - Submitted versions **cannot be overwritten** — must bump for any change
 
 ## After 1.0
-
-- Type parsing unification: merge interactive + settings type dispatch (see [type-parsing-unification.md](type-parsing-unification.md))
 - Generic components support
 - Bit expression: support for any-bit and all-bits (e.g. grid direction)
 - StateAnim: color replace (replaceColor filter exists in MultiAnimParser, not fully exposed for stateanim)

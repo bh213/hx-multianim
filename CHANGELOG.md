@@ -181,6 +181,7 @@
 - **TabButton incremental rewrite** — `UIMultiAnimTabButton` same pattern; selected/disabled states via `setParameter()`
 
 ### Fixed
+- **Selected tab hover/cursor** — selected tab no longer shows clickable cursor or hover highlight on mouse re-enter; `getCursor()` returns default arrow, `OnEnter`/`OnLeave`/`OnRelease` skip state changes, and `set_selected(true)` resets status to "normal"
 - **`outsideClick.handle()` called on every event** — now guarded to only fire on `OnPush`/`OnRelease`/`OnReleaseOutside` (was unnecessarily processing hover/wheel/move events)
 - **Hex integer in `parseAnything()`** — `THexInteger` tokens now reconstruct `0x` prefix before `stringToInt()` (fixes `0xAA8844` in untyped settings)
 - **Named colors in staticRef/dynamicRef params** — `resolveAsColorInteger()` now handles `RVString` for named colors like `c=>red`
@@ -214,6 +215,7 @@
 - **Animated path improvements** — better path normalization, enhanced speed/duration/easing support
 - **Playground removed from repository** — moved to separate `../hx-multianim-playground` repository
 - **Parser code simplification** — `MacroManimParser.hx` refactored for cleaner parsing logic
+- **Type parsing unification** — extracted `parseTypedSettingValue()` and `inferSettingType()` to deduplicate settings and interactive metadata type dispatch
 - **AnimParser code simplification** — `AnimParser.hx` streamlined
 - **`relativeLayouts` renamed to `layouts`** — DSL keyword, docs, and all references updated; parser still accepts `relativeLayouts` for backward compatibility
 

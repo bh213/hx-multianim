@@ -3280,44 +3280,14 @@ class MacroManimParser {
 					switch (peek()) {
 						case TColon:
 							advance();
-							// Typed: key:type=>value
-							final typeName = expectIdentifierOrString();
-							expect(TArrow);
-							switch (typeName.toLowerCase()) {
-								case "int":
-									final value = parseIntegerOrReference();
-									if (parent.settings.exists(key)) error('setting $key already defined');
-									parent.settings.set(key, {type: SVTInt, value: value});
-								case "float":
-									final value = parseFloatOrReference();
-									if (parent.settings.exists(key)) error('setting $key already defined');
-									parent.settings.set(key, {type: SVTFloat, value: value});
-								case "string":
-									final value = parseStringOrReference();
-									if (parent.settings.exists(key)) error('setting $key already defined');
-									parent.settings.set(key, {type: SVTString, value: value});
-								case "color":
-									final value = parseColorOrReference();
-									if (parent.settings.exists(key)) error('setting $key already defined');
-									parent.settings.set(key, {type: SVTColor, value: value});
-								case "bool":
-									final value = parseBoolOrReference();
-									if (parent.settings.exists(key)) error('setting $key already defined');
-									parent.settings.set(key, {type: SVTBool, value: value});
-								default:
-									error('expected int, float, string, color, or bool after : in settings');
-							}
+							final tv = parseTypedSettingValue();
+							if (parent.settings.exists(key)) error('setting $key already defined');
+							parent.settings.set(key, {type: tv.type, value: tv.value});
 						case TArrow:
 							advance();
-							// Untyped: key=>value — infer type from parsed value
 							final value = parseAnything();
 							if (parent.settings.exists(key)) error('setting $key already defined');
-							final svType = switch (value) {
-								case RVInteger(_): SVTInt;
-								case RVFloat(_): SVTFloat;
-								default: SVTString;
-							};
-							parent.settings.set(key, {type: svType, value: value});
+							parent.settings.set(key, {type: inferSettingType(value), value: value});
 						default:
 							error('expected :type=> or => after setting key');
 					}
@@ -3951,23 +3921,37 @@ class MacroManimParser {
 		return {key: RVString("events"), type: SVTInt, value: RVInteger(flags)};
 	}
 
+	function parseTypedSettingValue():{type:SettingValueType, value:ReferenceableValue} {
+		final typeName = expectIdentifierOrString();
+		expect(TArrow);
+		return switch (typeName.toLowerCase()) {
+			case "int": {type: SVTInt, value: parseIntegerOrReference()};
+			case "float": {type: SVTFloat, value: parseFloatOrReference()};
+			case "string": {type: SVTString, value: parseStringOrReference()};
+			case "color": {type: SVTColor, value: parseColorOrReference()};
+			case "bool": {type: SVTBool, value: parseBoolOrReference()};
+			default: error('expected int, float, string, color, or bool after : in typed value');
+		};
+	}
+
+	function inferSettingType(value:ReferenceableValue):SettingValueType {
+		return switch (value) {
+			case RVInteger(_): SVTInt;
+			case RVFloat(_): SVTFloat;
+			default: SVTString;
+		};
+	}
+
 	function parseMetadataValue(key:ReferenceableValue):{key:ReferenceableValue, type:SettingValueType, value:ReferenceableValue} {
 		switch (peek()) {
 			case TColon:
 				advance();
-				final typeName = expectIdentifierOrString();
-				expect(TArrow);
-				return switch (typeName.toLowerCase()) {
-					case "int": {key: key, type: SVTInt, value: parseIntegerOrReference()};
-					case "float": {key: key, type: SVTFloat, value: parseFloatOrReference()};
-					case "string": {key: key, type: SVTString, value: parseStringOrReference()};
-					case "color": {key: key, type: SVTColor, value: parseColorOrReference()};
-					case "bool": {key: key, type: SVTBool, value: parseBoolOrReference()};
-					default: error('expected int, float, string, color, or bool after : in metadata');
-				};
+				final tv = parseTypedSettingValue();
+				return {key: key, type: tv.type, value: tv.value};
 			case TArrow:
 				advance();
-				return {key: key, type: SVTString, value: parseAnything()};
+				final value = parseAnything();
+				return {key: key, type: inferSettingType(value), value: value};
 			default:
 				return error("expected :type=> or => after metadata key");
 		}

@@ -2,11 +2,7 @@
 
 ## Remaining Gaps
 
-None — full coordinate parity in all element types including `pixels()`.
-
-### Fixed
-- **Param-dependent coords in PIXELS** — `SELECTED_GRID_POSITION`, `NAMED_COORD`, `WITH_OFFSET`, `SELECTED_HEX_CELL_CORNER/EDGE`, `LAYOUT`, `ZERO` now all supported. Missing coord types produce compile-time errors instead of silent `(0,0)` fallback.
-- **Pixel shape variable scoping bug** — `boundsExprs` used nested `macro { }` blocks which scoped variables, making them invisible to `shapeVarExprs`. Fixed by pushing individual statements.
+None
 
 ## Performance — Optimize Generated Code
 
