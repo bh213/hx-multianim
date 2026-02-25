@@ -37,10 +37,12 @@ import bh.base.Atlas2.InlineAtlas2;
 import bh.base.Atlas2.AtlasEntry;
 
 using bh.base.MapTools;
+using bh.multianim.ParseUtils;
 using StringTools;
 using bh.base.ColorUtils;
 
 // Place this after imports, before any class definitions
+@:nullSafety
 private enum ComputedShape {
 	Line(x1:Int, y1:Int, x2:Int, y2:Int, color:Int);
 	Rect(x:Int, y:Int, w:Int, h:Int, color:Int, filled:Bool);
@@ -122,6 +124,7 @@ class Updatable implements IUpdatable {
 	}
 }
 
+@:nullSafety
 class BuilderResolvedSettings {
 	var settings:ResolvedSettings;
 
@@ -257,6 +260,7 @@ class BuilderResolvedSettings {
 	}
 }
 
+@:nullSafety
 class IncrementalUpdateContext {
 	var builder:MultiAnimBuilder;
 	var indexedParams:Map<String, ResolvedIndexParameters>;
@@ -356,13 +360,16 @@ class IncrementalUpdateContext {
 		final parent = entry.parent;
 		final node = entry.node;
 		// Restore saved state
-		if (node.filter != null) parent.filter = entry.savedFilter;
-		if (node.alpha != null && entry.savedAlpha != null) parent.alpha = entry.savedAlpha;
-		if (node.scale != null && entry.savedScaleX != null && entry.savedScaleY != null) {
-			parent.scaleX = entry.savedScaleX;
-			parent.scaleY = entry.savedScaleY;
+		if (node.filter != null) parent.filter = cast entry.savedFilter;
+		final _alpha = entry.savedAlpha;
+		if (node.alpha != null && _alpha != null) parent.alpha = _alpha;
+		final _scaleX = entry.savedScaleX; final _scaleY = entry.savedScaleY;
+		if (node.scale != null && _scaleX != null && _scaleY != null) {
+			parent.scaleX = _scaleX;
+			parent.scaleY = _scaleY;
 		}
-		if (node.rotation != null && entry.savedRotation != null) parent.rotation = entry.savedRotation;
+		final _rotation = entry.savedRotation;
+		if (node.rotation != null && _rotation != null) parent.rotation = _rotation;
 		// Remove position offset
 		parent.x -= entry.appliedPosX;
 		parent.y -= entry.appliedPosY;
@@ -536,14 +543,17 @@ class IncrementalUpdateContext {
 	}
 }
 
+@:nullSafety
 class SlotContentRoot extends h2d.Object {}
 
+@:nullSafety
 enum SlotKey {
 	Named(name:String);
 	Indexed(name:String, index:Int);
 	Indexed2D(name:String, indexX:Int, indexY:Int);
 }
 
+@:nullSafety
 class SlotHandle {
 	public var container:h2d.Object;
 	public var data:Dynamic = null;
@@ -577,7 +587,7 @@ class SlotHandle {
 		if (contentTarget != null) {
 			currentContent = obj;
 			contentTarget.addChild(obj);
-		} else if (hasParameters) {
+		} else if (hasParameters && contentRoot != null) {
 			currentContent = obj;
 			contentRoot.addChild(obj);
 		} else {
@@ -592,7 +602,7 @@ class SlotHandle {
 		if (currentContent != null) {
 			if (contentTarget != null) {
 				contentTarget.removeChild(currentContent);
-			} else if (hasParameters) {
+			} else if (hasParameters && contentRoot != null) {
 				contentRoot.removeChild(currentContent);
 			} else {
 				container.removeChild(currentContent);
@@ -793,6 +803,7 @@ enum CallbackRequest {
 	PlaceholderWithIndex(name:String, index:Int); // when used in placeholder
 }
 
+@:nullSafety
 enum CallbackResult {
 	CBRInteger(val:Int);
 	CBRFloat(val:Float);
@@ -801,6 +812,7 @@ enum CallbackResult {
 	CBRNoResult; // for default behaviors, e.g. for example of PLACEHOLDER
 }
 
+@:nullSafety
 enum PlaceholderValues {
 	PVObject(obj:h2d.Object);
 	PVFactory(factoryMethod:ResolvedSettings->h2d.Object);
@@ -841,7 +853,7 @@ private typedef StoredBuilderState = {
 	incrementalContext:Null<IncrementalUpdateContext>,
 }
 
-// @:nullSafety
+@:nullSafety
 
 @:allow(bh.multianim.layouts.MultiAnimLayouts)
 @:allow(bh.paths.MultiAnimPaths)
@@ -999,10 +1011,10 @@ class MultiAnimBuilder {
 	}
 
 	function resolveAsColorInteger(v:ReferenceableValue):Int {
-		function getBuilderWithExternal(externalReference:String) {
+		function getBuilderWithExternal(externalReference:Null<String>) {
 			if (externalReference == null)
 				return this;
-			var builder = multiParserResult?.imports?.get(externalReference);
+			var builder = multiParserResult.imports.get(externalReference);
 			if (builder == null)
 				throw 'could not find builder for external reference ${externalReference}' + currentNodePos();
 			return builder;
@@ -1038,15 +1050,19 @@ class MultiAnimBuilder {
 			case "ctx":
 				switch (property) {
 					case "width":
-						if (builderParams.scene == null) throw '$$ctx.width requires scene in BuilderParameters' + currentNodePos();
-						return builderParams.scene.width;
+						final scene = builderParams.scene;
+						if (scene == null) throw '$$ctx.width requires scene in BuilderParameters' + currentNodePos();
+						return scene.width;
 					case "height":
-						if (builderParams.scene == null) throw '$$ctx.height requires scene in BuilderParameters' + currentNodePos();
-						return builderParams.scene.height;
+						final scene = builderParams.scene;
+						if (scene == null) throw '$$ctx.height requires scene in BuilderParameters' + currentNodePos();
+						return scene.height;
 					default: throw '$ref.$property is not a known context property' + currentNodePos();
 				}
 			case "grid" | "ctx.grid":
-				final gcs = if (ref == "ctx.grid") MultiAnimParser.getGridCoordinateSystem(currentNode) else MultiAnimParser.getGridCoordinateSystem(currentNode);
+				final node = currentNode;
+				if (node == null) throw 'currentNode is null in resolveRVPropertyAccess' + currentNodePos();
+				final gcs = if (ref == "ctx.grid") MultiAnimParser.getGridCoordinateSystem(node) else MultiAnimParser.getGridCoordinateSystem(node);
 				if (gcs == null) throw 'no grid coordinate system in scope for $ref.$property' + currentNodePos();
 				switch (property) {
 					case "width": return gcs.spacingX;
@@ -1054,7 +1070,9 @@ class MultiAnimBuilder {
 					default: throw '$ref.$property is not a known grid property' + currentNodePos();
 				}
 			case "hex" | "ctx.hex":
-				final hcs = MultiAnimParser.getHexCoordinateSystem(currentNode);
+				final node = currentNode;
+				if (node == null) throw 'currentNode is null in resolveRVPropertyAccess' + currentNodePos();
+				final hcs = MultiAnimParser.getHexCoordinateSystem(node);
 				if (hcs == null) throw 'no hex coordinate system in scope for $ref.$property' + currentNodePos();
 				switch (property) {
 					case "width": return hcs.hexLayout.size.x;
@@ -1063,7 +1081,9 @@ class MultiAnimBuilder {
 				}
 			default:
 				// Check named coordinate systems
-				final namedCS = MultiAnimParser.getNamedCoordinateSystem(ref, currentNode);
+				final node = currentNode;
+				if (node == null) throw 'currentNode is null in resolveRVPropertyAccess' + currentNodePos();
+				final namedCS = MultiAnimParser.getNamedCoordinateSystem(ref, node);
 				if (namedCS != null) {
 					switch (namedCS) {
 						case NamedGrid(system):
@@ -1104,12 +1124,14 @@ class MultiAnimBuilder {
 
 	/** Resolves a coordinate method call ($hex.corner(), $hex.edge(), $hex.cube(), $grid.pos(), etc.) to an FPoint. */
 	function resolveRVMethodCallToPoint(ref:String, method:String, args:Array<ReferenceableValue>):FPoint {
-		final namedCS = if (ref != "grid" && ref != "ctx.grid" && ref != "hex" && ref != "ctx.hex") MultiAnimParser.getNamedCoordinateSystem(ref, currentNode) else null;
+		final node = currentNode;
+		if (node == null) throw 'currentNode is null in resolveRVMethodCallToPoint' + currentNodePos();
+		final namedCS = if (ref != "grid" && ref != "ctx.grid" && ref != "hex" && ref != "ctx.hex") MultiAnimParser.getNamedCoordinateSystem(ref, node) else null;
 		final isNamedGrid = switch (namedCS) { case NamedGrid(_): true; default: false; };
 		// Grid methods
 		if (ref == "grid" || ref == "ctx.grid" || isNamedGrid) {
 			final gcs = if (ref == "grid" || ref == "ctx.grid") {
-				MultiAnimParser.getGridCoordinateSystem(currentNode);
+				MultiAnimParser.getGridCoordinateSystem(node);
 			} else {
 				switch (namedCS) {
 					case NamedGrid(system): system;
@@ -1134,7 +1156,7 @@ class MultiAnimBuilder {
 
 		// Hex methods
 		final hcs = if (ref == "hex" || ref == "ctx.hex") {
-			MultiAnimParser.getHexCoordinateSystem(currentNode);
+			MultiAnimParser.getHexCoordinateSystem(node);
 		} else {
 			switch (namedCS) {
 				case NamedHex(system): system;
@@ -1249,6 +1271,7 @@ class MultiAnimBuilder {
 		}
 	}
 
+	@:nullSafety(Off)
 	function resolveAsInteger(v:ReferenceableValue) {
 		function handleCallback(result, input:CallbackRequest, defaultValue) {
 			return switch result {
@@ -1321,6 +1344,7 @@ class MultiAnimBuilder {
 		}
 	}
 
+	@:nullSafety(Off)
 	function resolveAsNumber(v:ReferenceableValue):Float {
 		return switch v {
 			case RVElementOfArray(array, index): resolveAsArrayElement(v);
@@ -1397,6 +1421,7 @@ class MultiAnimBuilder {
 		}
 	}
 
+	@:nullSafety(Off)
 	function resolveAsString(v:ReferenceableValue):String {
 		function handleCallback(result, input:CallbackRequest, defaultValue) {
 			return switch result {
@@ -1483,7 +1508,7 @@ class MultiAnimBuilder {
 		}
 	}
 
-	function generatePlaceholderBitmap(type:ResolvedGeneratedTileType) {
+	function generatePlaceholderBitmap(type:ResolvedGeneratedTileType):h2d.Tile {
 		return switch type {
 			case Cross(w, h, color, thickness):
 				// PixelLines writes raw pixel data — alpha byte must be set
@@ -1528,7 +1553,7 @@ class MultiAnimBuilder {
 	 */
 	function resolveAutotileRef(autotileName:ReferenceableValue, selector:AutotileTileSelector):ResolvedGeneratedTileType {
 		final name = resolveAsString(autotileName);
-		final node = multiParserResult?.nodes.get(name);
+		final node = multiParserResult.nodes.get(name);
 		if (node == null)
 			throw 'autotile reference: could not find autotile "$name"' + currentNodePos();
 
@@ -1580,26 +1605,27 @@ class MultiAnimBuilder {
 				var regionTile = baseTile;
 				var regionX = 0;
 				var regionY = 0;
-				if (autotileDef.region != null) {
-					final r = autotileDef.region;
-					regionX = resolveAsInteger(r[0]);
-					regionY = resolveAsInteger(r[1]);
-					final regionW = resolveAsInteger(r[2]);
-					final regionH = resolveAsInteger(r[3]);
+				final region = autotileDef.region;
+				if (region != null) {
+					regionX = resolveAsInteger(region[0]);
+					regionY = resolveAsInteger(region[1]);
+					final regionW = resolveAsInteger(region[2]);
+					final regionH = resolveAsInteger(region[3]);
 					regionTile = baseTile.sub(regionX, regionY, regionW, regionH);
 				}
 
 				// Apply mapping if present (remap the tile index)
 				var mappedIndex = tileIndex;
-				if (autotileDef.mapping != null) {
+				final mapping = autotileDef.mapping;
+				if (mapping != null) {
 					var actualIndex = tileIndex;
 					// For blob47 with allowPartialMapping, apply fallback for missing tiles
-					if (format == Blob47 && autotileDef.allowPartialMapping && !autotileDef.mapping.exists(actualIndex)) {
-						actualIndex = bh.base.Autotile.applyBlob47FallbackWithMap(tileIndex, autotileDef.mapping);
+					if (format == Blob47 && autotileDef.allowPartialMapping && !mapping.exists(actualIndex)) {
+						actualIndex = bh.base.Autotile.applyBlob47FallbackWithMap(tileIndex, mapping);
 					}
-					if (!autotileDef.mapping.exists(actualIndex))
+					if (!mapping.exists(actualIndex))
 						throw 'autotile reference: tile index $tileIndex not found in mapping' + MacroUtils.nodePos(node);
-					mappedIndex = autotileDef.mapping.get(actualIndex);
+					mappedIndex = cast mapping.get(actualIndex);
 				}
 
 				// Calculate tile position within the region
@@ -1619,15 +1645,16 @@ class MultiAnimBuilder {
 
 				// Apply mapping if present
 				var mappedIndex = tileIndex;
-				if (autotileDef.mapping != null) {
+				final mapping2 = autotileDef.mapping;
+				if (mapping2 != null) {
 					var actualIndex = tileIndex;
 					// For blob47 with allowPartialMapping, apply fallback for missing tiles
-					if (format == Blob47 && autotileDef.allowPartialMapping && !autotileDef.mapping.exists(actualIndex)) {
-						actualIndex = bh.base.Autotile.applyBlob47FallbackWithMap(tileIndex, autotileDef.mapping);
+					if (format == Blob47 && autotileDef.allowPartialMapping && !mapping2.exists(actualIndex)) {
+						actualIndex = bh.base.Autotile.applyBlob47FallbackWithMap(tileIndex, mapping2);
 					}
-					if (!autotileDef.mapping.exists(actualIndex))
+					if (!mapping2.exists(actualIndex))
 						throw 'autotile reference: tile index $tileIndex not found in mapping' + MacroUtils.nodePos(node);
-					mappedIndex = autotileDef.mapping.get(actualIndex);
+					mappedIndex = cast mapping2.get(actualIndex);
 				}
 
 				// Load tile from atlas with prefix and index
@@ -1654,7 +1681,7 @@ class MultiAnimBuilder {
 		final fontName = resolveAsString(font);
 		final fontColorVal = resolveAsColorInteger(fontColor);
 
-		final node = multiParserResult?.nodes.get(name);
+		final node = multiParserResult.nodes.get(name);
 		if (node == null)
 			throw 'autotileRegionSheet: could not find autotile "$name"' + currentNodePos();
 
@@ -2147,7 +2174,8 @@ class MultiAnimBuilder {
 
 	/** Track param-dependent expressions for incremental updates */
 	function trackIncrementalExpressions(node:Node, object:h2d.Object, builtObject:BuiltHeapsComponent):Void {
-		if (incrementalContext == null) return;
+		final ctx = incrementalContext;
+		if (ctx == null) return;
 
 		switch node.type {
 			case TEXT(textDef):
@@ -2158,7 +2186,7 @@ class MultiAnimBuilder {
 					final t = switch builtObject { case HeapsText(t): t; default: null; };
 					if (t != null) {
 						final textDefCapture = textDef;
-						incrementalContext.trackExpression(() -> {
+						ctx.trackExpression(() -> {
 							t.text = resolveAsString(textDefCapture.text);
 							t.textColor = resolveAsColorInteger(textDefCapture.color);
 						}, textRefs);
@@ -2173,7 +2201,7 @@ class MultiAnimBuilder {
 					if (sg != null) {
 						final wCapture = width;
 						final hCapture = height;
-						incrementalContext.trackExpression(() -> {
+						ctx.trackExpression(() -> {
 							sg.width = resolveAsNumber(wCapture);
 							sg.height = resolveAsNumber(hCapture);
 						}, npRefs);
@@ -2194,7 +2222,7 @@ class MultiAnimBuilder {
 										final wCapture = w;
 										final hCapture = h;
 										final colorCapture = color;
-										incrementalContext.trackExpression(() -> {
+										ctx.trackExpression(() -> {
 											bmp.tile = h2d.Tile.fromColor(resolveAsColorInteger(colorCapture),
 												resolveAsInteger(wCapture), resolveAsInteger(hCapture));
 										}, bmpRefs);
@@ -2211,12 +2239,12 @@ class MultiAnimBuilder {
 					collectGraphicsElementParamRefs(item.element, gfxRefs);
 				}
 				if (gfxRefs.length > 0) {
-					final g:h2d.Graphics = switch builtObject { case HeapsObject(obj): Std.downcast(obj, h2d.Graphics); default: null; };
+					final g:Null<h2d.Graphics> = switch builtObject { case HeapsObject(obj) if (Std.isOfType(obj, h2d.Graphics)): cast obj; default: null; };
 					if (g != null) {
 						final elementsCapture = elements;
 						final gridCapture = MultiAnimParser.getGridCoordinateSystem(node);
 						final hexCapture = MultiAnimParser.getHexCoordinateSystem(node);
-						incrementalContext.trackExpression(() -> {
+						ctx.trackExpression(() -> {
 							g.clear();
 							drawGraphicsElements(g, elementsCapture, gridCapture, hexCapture);
 						}, gfxRefs);
@@ -2231,8 +2259,9 @@ class MultiAnimBuilder {
 						final shapesCapture = shapes;
 						final gridCapture = MultiAnimParser.getGridCoordinateSystem(node);
 						final hexCapture = MultiAnimParser.getHexCoordinateSystem(node);
-						final pixelScaleCapture:Float = node.scale != null ? resolveAsNumber(node.scale) : 1.0;
-						incrementalContext.trackExpression(() -> {
+						final _nodeScale = node.scale;
+						final pixelScaleCapture:Float = _nodeScale != null ? resolveAsNumber(_nodeScale) : 1.0;
+						ctx.trackExpression(() -> {
 							final result = drawPixels(shapesCapture, gridCapture, hexCapture);
 							pl.tile = result.pixelLines.tile;
 							pl.data = result.pixelLines.data;
@@ -2248,9 +2277,10 @@ class MultiAnimBuilder {
 		}
 
 		// Track position if it references params
-		if (node.pos != null) {
+		final _pos = node.pos;
+		if (_pos != null) {
 			final posRefs:Array<String> = [];
-			switch node.pos {
+			switch _pos {
 				case OFFSET(x, y):
 					collectParamRefs(x, posRefs);
 					collectParamRefs(y, posRefs);
@@ -2289,10 +2319,10 @@ class MultiAnimBuilder {
 				default:
 			}
 			if (posRefs.length > 0) {
-				final posCapture = node.pos;
+				final posCapture = _pos;
 				final gcs = MultiAnimParser.getGridCoordinateSystem(node);
 				final hcs = MultiAnimParser.getHexCoordinateSystem(node);
-				incrementalContext.trackExpression(() -> {
+				ctx.trackExpression(() -> {
 					final p = calculatePosition(posCapture, gcs, hcs);
 					object.x = p.x;
 					object.y = p.y;
@@ -2302,13 +2332,13 @@ class MultiAnimBuilder {
 
 		// Track scale/rotation/alpha/filter/tint if they reference params
 		final extRefs:Array<String> = [];
-		if (node.scale != null) collectParamRefs(node.scale, extRefs);
-		if (node.rotation != null) collectParamRefs(node.rotation, extRefs);
-		if (node.alpha != null) collectParamRefs(node.alpha, extRefs);
-		if (node.tint != null) collectParamRefs(node.tint, extRefs);
-		if (node.filter != null) collectFilterParamRefs(node.filter, extRefs);
+		final _scale = node.scale; if (_scale != null) collectParamRefs(_scale, extRefs);
+		final _rotation = node.rotation; if (_rotation != null) collectParamRefs(_rotation, extRefs);
+		final _alpha = node.alpha; if (_alpha != null) collectParamRefs(_alpha, extRefs);
+		final _tint = node.tint; if (_tint != null) collectParamRefs(_tint, extRefs);
+		final _filter = node.filter; if (_filter != null) collectFilterParamRefs(_filter, extRefs);
 		if (extRefs.length > 0) {
-			incrementalContext.trackExpression(() -> {
+			ctx.trackExpression(() -> {
 				applyExtendedFormProperties(object, node);
 			}, extRefs);
 		}
@@ -2319,6 +2349,7 @@ class MultiAnimBuilder {
 		obj.y += y;
 	}
 
+	@:nullSafety(Off)
 	function calculatePosition(position, gridCoordinateSystem:Null<GridCoordinateSystem>, hexCoordinateSystem:Null<HexCoordinateSystem>):FPoint {
 		inline function returnPosition(x:Float, y:Float):FPoint {
 			return new FPoint(x, y);
@@ -2409,7 +2440,9 @@ class MultiAnimBuilder {
 			case SELECTED_HEX_PIXEL(x, y):
 				hexCoordinateSystem.hexLayout.pixelToHex(new h2d.col.Point(resolveAsNumber(x), resolveAsNumber(y))).round();
 			case NAMED_COORD(name, coord):
-				final namedCS = MultiAnimParser.getNamedCoordinateSystem(name, currentNode);
+				final node = currentNode;
+				if (node == null) throw 'currentNode is null in resolveToHex' + currentNodePos();
+				final namedCS = MultiAnimParser.getNamedCoordinateSystem(name, node);
 				switch (namedCS) {
 					case NamedHex(system): resolveToHex(coord, system);
 					default: throw 'Named system $name is not a hex coordinate system' + currentNodePos();
@@ -2419,7 +2452,7 @@ class MultiAnimBuilder {
 		};
 	}
 
-	function drawPixels(shapes:Array<PixelShapes>, gridCoordinateSystem, hexCoordinateSystem) {
+	function drawPixels(shapes:Array<PixelShapes>, gridCoordinateSystem:Null<GridCoordinateSystem>, hexCoordinateSystem:Null<HexCoordinateSystem>) {
 		var computedShapes:Array<ComputedShape> = [];
 		var bounds = new h2d.col.IBounds();
 		for (s in shapes) {
@@ -2690,6 +2723,7 @@ class MultiAnimBuilder {
 		if (info.tilenameVarName != null) indexedParams.remove(info.tilenameVarName);
 	}
 
+	@:nullSafety(Off)
 	function buildTileGroup(node:Node, tileGroup:h2d.TileGroup, currentPos:Point, gridCoordinateSystem:GridCoordinateSystem,
 			hexCoordinateSystem:HexCoordinateSystem, builderParams:BuilderParameters):Void {
 		if (isMatch(node, indexedParams) == false)
@@ -2922,6 +2956,7 @@ class MultiAnimBuilder {
 		}
 	}
 
+	@:nullSafety(Off)
 	function build(node:Node, buildMode:InternalBuildMode, gridCoordinateSystem:GridCoordinateSystem, hexCoordinateSystem:HexCoordinateSystem,
 			internalResults:InternalBuilderResults, builderParams:BuilderParameters):h2d.Object {
 		final nodeVisible = isMatch(node, indexedParams);
@@ -3175,7 +3210,7 @@ class MultiAnimBuilder {
 
 			case STATIC_REF(externalReference, reference, parameters):
 				var builder = if (externalReference != null) {
-					var builder = multiParserResult?.imports?.get(externalReference);
+					var builder = multiParserResult.imports?.get(externalReference);
 					if (builder == null)
 						throw 'could not find builder for external staticRef ${externalReference}' + MacroUtils.nodePos(node);
 					builder;
@@ -3205,7 +3240,7 @@ class MultiAnimBuilder {
 
 			case DYNAMIC_REF(externalReference, reference, parameters):
 				var builder = if (externalReference != null) {
-					var builder = multiParserResult?.imports?.get(externalReference);
+					var builder = multiParserResult.imports?.get(externalReference);
 					if (builder == null)
 						throw 'could not find builder for external dynamicRef ${externalReference}' + MacroUtils.nodePos(node);
 					builder;
@@ -3222,7 +3257,7 @@ class MultiAnimBuilder {
 
 				// Register parameter bindings for incremental propagation
 				if (incrementalMode && incrementalContext != null && result.incrementalContext != null) {
-					final childNode = builder.multiParserResult?.nodes?.get(reference);
+					final childNode = builder.multiParserResult.nodes?.get(reference);
 					final childDefs = childNode != null ? builder.getProgrammableParameterDefinitions(childNode) : new Map();
 					for (childParam => value in parameters) {
 						final refs:Array<String> = [];
@@ -3832,15 +3867,11 @@ class MultiAnimBuilder {
 				}
 				switch node.updatableName {
 					case UNTIndexed(baseName, indexVar):
-						final index = Std.parseInt(resolveAsString(RVReference(indexVar)));
-						if (index == null)
-							throw 'Slot "$baseName" indexed variable did not resolve to an integer';
+						final index = resolveAsString(RVReference(indexVar)).toInt();
 						internalResults.slots.push({key: Indexed(baseName, index), handle: new SlotHandle(object, slotIncrementalCtx, slotContentTarget)});
 					case UNTIndexed2D(baseName, indexVarX, indexVarY):
-						final indexX = Std.parseInt(resolveAsString(RVReference(indexVarX)));
-						final indexY = Std.parseInt(resolveAsString(RVReference(indexVarY)));
-						if (indexX == null || indexY == null)
-							throw 'Slot "$baseName" 2D indexed variables did not resolve to integers';
+						final indexX = resolveAsString(RVReference(indexVarX)).toInt();
+						final indexY = resolveAsString(RVReference(indexVarY)).toInt();
 						internalResults.slots.push({key: Indexed2D(baseName, indexX, indexY), handle: new SlotHandle(object, slotIncrementalCtx, slotContentTarget)});
 					case UNTObject(name) | UNTUpdatable(name):
 						internalResults.slots.push({key: Named(name), handle: new SlotHandle(object, slotIncrementalCtx, slotContentTarget)});
@@ -3854,7 +3885,7 @@ class MultiAnimBuilder {
 
 	function resolveSettings(node:Node):ResolvedSettings {
 		var currentSettings:Null<Map<String, ParsedSettingValue>> = null;
-		var current = node;
+		var current:Null<Node> = node;
 		while (current != null) {
 			if (current.settings != null) {
 				if (currentSettings == null)
@@ -3907,9 +3938,10 @@ class MultiAnimBuilder {
 		if (node.filter != null)
 			object.filter = buildFilter(node.filter);
 		if (node.tint != null) {
-			var d = Std.downcast(object, h2d.Drawable);
-			if (d != null)
+			if (Std.isOfType(object, h2d.Drawable)) {
+				final d:h2d.Drawable = cast object;
 				d.color.setColor(resolveAsColorInteger(node.tint).addAlphaIfNotPresent());
+			}
 		}
 	}
 
@@ -3972,11 +4004,8 @@ class MultiAnimBuilder {
 		}
 	}
 
-	function stringToInt(n) {
-		var i = Std.parseInt(n);
-		if (i != null)
-			return i;
-		return throw 'expected integer, got ${n}';
+	function stringToInt(n:String):Int {
+		return n.toInt();
 	}
 
 	public function hasMultiAnimWithName(name) {
@@ -4093,7 +4122,7 @@ class MultiAnimBuilder {
 	}
 
 	function buildPalettes(name:String):Palette {
-		var node = multiParserResult?.nodes.get(name);
+		var node = multiParserResult.nodes.get(name);
 		if (node == null)
 			throw 'could not get palette node #${name}' + currentNodePos();
 		return switch node.type {
@@ -4114,7 +4143,7 @@ class MultiAnimBuilder {
 		}
 	}
 
-	function createParticleImpl(particlesDef, name, ?existingParticles:bh.base.Particles) {
+	function createParticleImpl(particlesDef, name, ?existingParticles:bh.base.Particles):bh.base.Particles {
 		var particles = existingParticles != null ? existingParticles : new bh.base.Particles();
 		final tiles = Lambda.map(particlesDef.tiles, x -> loadTileSource(x));
 		var group = new bh.base.Particles.ParticleGroup(name, particles, tiles);
@@ -4413,7 +4442,7 @@ class MultiAnimBuilder {
 	}
 
 	public function createParticles(name:String, ?builderParams:BuilderParameters):bh.base.Particles {
-		var node = multiParserResult?.nodes.get(name);
+		var node = multiParserResult.nodes.get(name);
 		if (node == null)
 			throw 'could not get particles node #${name}' + currentNodePos();
 		switch node.type {
@@ -4427,7 +4456,7 @@ class MultiAnimBuilder {
 
 	/** Add a particle group to an existing Particles container (for sub-emitters). */
 	public function addParticleGroupTo(name:String, particles:bh.base.Particles):Void {
-		var node = multiParserResult?.nodes.get(name);
+		var node = multiParserResult.nodes.get(name);
 		if (node == null)
 			throw 'could not get particles node #${name}' + currentNodePos();
 		switch node.type {
@@ -4445,7 +4474,7 @@ class MultiAnimBuilder {
 
 	/** Get a data block by name, returning its fields as a Dynamic object. */
 	public function getData(name:String):Dynamic {
-		var node = multiParserResult?.nodes.get(name);
+		var node = multiParserResult.nodes.get(name);
 		if (node == null)
 			throw 'could not get data node #${name}' + currentNodePos();
 		switch node.type {
@@ -4485,7 +4514,7 @@ class MultiAnimBuilder {
 	/** Create an AnimatedPath from a named definition.
 	 *  Optional PathNormalization transform controls how the path is positioned/scaled. */
 	public function createAnimatedPath(name:String, ?normalization:bh.paths.MultiAnimPaths.PathNormalization):bh.paths.AnimatedPath {
-		var node = multiParserResult?.nodes.get(name);
+		var node = multiParserResult.nodes.get(name);
 		if (node == null)
 			throw 'could not get animatedPath node #${name}' + currentNodePos();
 		switch node.type {
@@ -4515,7 +4544,7 @@ class MultiAnimBuilder {
 				// Resolve curve references
 				var allCurves:Null<Map<String, bh.paths.Curve.ICurve>> = null;
 				for (ca in pathDef.curveAssignments) {
-					var atRate = switch ca.at {
+					var atRate:Float = switch ca.at {
 						case Rate(r): resolveAsNumber(r);
 						case Checkpoint(cpName): path.getCheckpoint(cpName);
 					};
@@ -4525,9 +4554,10 @@ class MultiAnimBuilder {
 						curve = new bh.paths.Curve(null, ca.inlineEasing, null);
 					} else if (ca.curveName != null) {
 						if (allCurves == null) allCurves = getCurves();
-						curve = allCurves.get(ca.curveName);
-						if (curve == null)
+						final resolved = allCurves.get(ca.curveName);
+						if (resolved == null)
 							throw 'curve not found: ${ca.curveName}' + MacroUtils.nodePos(node);
+						curve = resolved;
 					} else {
 						throw 'curve assignment must have either curveName or inlineEasing' + MacroUtils.nodePos(node);
 					}
@@ -4545,7 +4575,7 @@ class MultiAnimBuilder {
 
 				// Add events
 				for (ev in pathDef.events) {
-					var atRate = switch ev.at {
+					var atRate:Float = switch ev.at {
 						case Rate(r): resolveAsNumber(r);
 						case Checkpoint(cpName): path.getCheckpoint(cpName);
 					};
@@ -4566,7 +4596,7 @@ class MultiAnimBuilder {
 	}
 
 	public function getLayouts(?builderParams:BuilderParameters):MultiAnimLayouts {
-		var node = multiParserResult?.nodes.get(MultiAnimParser.defaultLayoutNodeName);
+		var node = multiParserResult.nodes.get(MultiAnimParser.defaultLayoutNodeName);
 		if (node == null)
 			throw 'layouts block does not exist' + currentNodePos();
 		switch node.type {
@@ -4578,7 +4608,7 @@ class MultiAnimBuilder {
 	}
 
 	public function getPaths(?builderParams:BuilderParameters):bh.paths.MultiAnimPaths {
-		var node = multiParserResult?.nodes.get(MultiAnimParser.defaultPathNodeName);
+		var node = multiParserResult.nodes.get(MultiAnimParser.defaultPathNodeName);
 		if (node == null)
 			throw 'paths does not exist';
 		switch node.type {
@@ -4590,7 +4620,7 @@ class MultiAnimBuilder {
 	}
 
 	public function getCurves():Map<String, bh.paths.Curve.ICurve> {
-		var node = multiParserResult?.nodes.get(MultiAnimParser.defaultCurveNodeName);
+		var node = multiParserResult.nodes.get(MultiAnimParser.defaultCurveNodeName);
 		if (node == null)
 			throw 'curves does not exist';
 		switch node.type {
@@ -4653,7 +4683,7 @@ class MultiAnimBuilder {
 	 * @return h2d.TileGroup populated with the correct autotiles
 	 */
 	public function buildAutotile(name:String, grid:Array<Array<Int>>):h2d.TileGroup {
-		var node = multiParserResult?.nodes.get(name);
+		var node = multiParserResult.nodes.get(name);
 		if (node == null)
 			throw 'could not get autotile node #${name}' + currentNodePos();
 		switch node.type {
@@ -4672,7 +4702,7 @@ class MultiAnimBuilder {
 	 * @return h2d.TileGroup populated with the correct autotiles and depth
 	 */
 	public function buildAutotileElevation(name:String, grid:Array<Array<Int>>, baseY:Float):h2d.TileGroup {
-		var node = multiParserResult?.nodes.get(name);
+		var node = multiParserResult.nodes.get(name);
 		if (node == null)
 			throw 'could not get autotile node #${name}' + currentNodePos();
 		switch node.type {
@@ -4687,7 +4717,7 @@ class MultiAnimBuilder {
 		final tileGroup = new h2d.TileGroup();
 		final tiles = loadAutotileTiles(autotileDef);
 		final tileSize = resolveAsInteger(autotileDef.tileSize);
-		final depth = autotileDef.depth != null ? resolveAsInteger(autotileDef.depth) : 0;
+		final _depth = autotileDef.depth; final depth = _depth != null ? resolveAsInteger(_depth) : 0;
 		// For ATSFile with mapping, the mapping is applied during tile loading, so don't apply it here
 		final mappingAppliedDuringLoading = switch autotileDef.source {
 			case ATSFile(_): autotileDef.mapping != null;
@@ -4718,8 +4748,9 @@ class MultiAnimBuilder {
 					if (autotileDef.format == Blob47 && autotileDef.allowPartialMapping && !mapping.exists(actualIndex)) {
 						actualIndex = bh.base.Autotile.applyBlob47FallbackWithMap(tileIndex, mapping);
 					}
-					if (mapping.exists(actualIndex)) {
-						tileIndex = mapping.get(actualIndex);
+					final mapped = mapping.get(actualIndex);
+					if (mapped != null) {
+						tileIndex = mapped;
 					}
 				}
 
@@ -4790,24 +4821,28 @@ class MultiAnimBuilder {
 				// If region is provided, extract tiles from that region only
 				// Region format: [offsetX, offsetY, width, height]
 				// Tile indices in mapping are relative to the region
-				final regionX = autotileDef.region != null ? resolveAsInteger(autotileDef.region[0]) : 0;
-				final regionY = autotileDef.region != null ? resolveAsInteger(autotileDef.region[1]) : 0;
-				final regionW = autotileDef.region != null ? resolveAsInteger(autotileDef.region[2]) : Std.int(baseTile.width);
+				final _region = autotileDef.region;
+				final regionX = _region != null ? resolveAsInteger(_region[0]) : 0;
+				final regionY = _region != null ? resolveAsInteger(_region[1]) : 0;
+				final regionW = _region != null ? resolveAsInteger(_region[2]) : Std.int(baseTile.width);
 				final tilesPerRow = Std.int(regionW / tileSize);
 
 				// If mapping is provided (Map<Int, Int>), load tiles from mapped positions
 				// For allowPartialMapping, missing tiles will be filled with a placeholder and resolved at render time
-				if (autotileDef.mapping != null) {
+				final _mapping = autotileDef.mapping;
+				if (_mapping != null) {
 					final result = new Array<h2d.Tile>();
 					for (i in 0...tileCount) {
 						// Get the mapped tileset index, using fallback for missing blob47 tiles
 						var mappedIdx = 0;
-						if (autotileDef.mapping.exists(i)) {
-							mappedIdx = autotileDef.mapping.get(i);
+						final mv = _mapping.get(i);
+						if (mv != null) {
+							mappedIdx = mv;
 						} else if (autotileDef.format == Blob47 && autotileDef.allowPartialMapping) {
 							// Find fallback tile and use its mapping
-							final fallbackIdx = bh.base.Autotile.applyBlob47FallbackWithMap(i, autotileDef.mapping);
-							mappedIdx = autotileDef.mapping.exists(fallbackIdx) ? autotileDef.mapping.get(fallbackIdx) : 0;
+							final fallbackIdx = bh.base.Autotile.applyBlob47FallbackWithMap(i, _mapping);
+							final fv = _mapping.get(fallbackIdx);
+							mappedIdx = fv != null ? fv : 0;
 						} else {
 							throw 'autotile: tile index $i not found in mapping' + currentNodePos();
 						}
@@ -5132,7 +5167,7 @@ class MultiAnimBuilder {
 			builderParams = {callback: defaultCallback};
 		else if (builderParams.callback == null)
 			builderParams.callback = defaultCallback;
-		var node = multiParserResult?.nodes.get(name);
+		var node = multiParserResult.nodes.get(name);
 		if (node == null) {
 			final error = 'buildWithParameters ${inputParameters}: could find element "$name" to build';
 			trace(error);
@@ -5152,11 +5187,12 @@ class MultiAnimBuilder {
 			this.incrementalContext = new IncrementalUpdateContext(this, indexedParams, builderParams, node);
 		}
 
-		var retVal = startBuild(name, node, MultiAnimParser.getGridCoordinateSystem(node), MultiAnimParser.getHexCoordinateSystem(node), builderParams);
+		var retVal = startBuild(name, node, cast MultiAnimParser.getGridCoordinateSystem(node), cast MultiAnimParser.getHexCoordinateSystem(node), builderParams);
 
 		if (incremental) {
-			retVal.incrementalContext = this.incrementalContext;
-			this.incrementalContext.applyConditionalChains();
+			final ctx = this.incrementalContext;
+			retVal.incrementalContext = ctx;
+			if (ctx != null) ctx.applyConditionalChains();
 			this.incrementalMode = false;
 			this.incrementalContext = null;
 		}
@@ -5177,11 +5213,11 @@ class MultiAnimBuilder {
 	}
 
 	public function hasNode(name:String) {
-		return multiParserResult?.nodes?.get(name) != null;
+		return multiParserResult.nodes?.get(name) != null;
 	}
 
 	public function getParameterDefinitions(programmableName:String):ParametersDefinitions {
-		final node = multiParserResult?.nodes?.get(programmableName);
+		final node = multiParserResult.nodes?.get(programmableName);
 		if (node == null)
 			return new Map();
 		return getProgrammableParameterDefinitions(node);
@@ -5191,7 +5227,7 @@ class MultiAnimBuilder {
 	 *  Used by codegen (via ProgrammableBuilder) for parameterized slots. */
 	public function buildSlotContent(programmableName:String, slotName:String,
 			parentParams:Map<String, Dynamic>, container:h2d.Object):SlotHandle {
-		final progNode = multiParserResult?.nodes.get(programmableName);
+		final progNode = multiParserResult.nodes.get(programmableName);
 		if (progNode == null)
 			throw 'buildSlotContent: programmable "$programmableName" not found';
 		final slotNode = findSlotNode(progNode, slotName);
@@ -5236,7 +5272,7 @@ class MultiAnimBuilder {
 		// Build slot children into container
 		final internalResults:InternalBuilderResults = {names: [], interactives: [], slots: [], dynamicRefs: new Map()};
 		for (childNode in resolveConditionalChildren(slotNode.children)) {
-			build(childNode, ObjectMode(container), null, null, internalResults, builderParams);
+			build(childNode, ObjectMode(container), cast null, cast null, internalResults, builderParams);
 		}
 
 		popBuilderState();
@@ -5313,7 +5349,7 @@ class MultiAnimBuilder {
 	function buildSingleNode(node:Node):Null<h2d.Object> {
 		final parent = new h2d.Object();
 		final ir:InternalBuilderResults = {names: [], interactives: [], slots: [], dynamicRefs: new Map()};
-		build(node, ObjectMode(parent), null, null, ir, builderParams);
+		build(node, ObjectMode(parent), cast null, cast null, ir, builderParams);
 		return if (parent.numChildren > 0) parent.getChildAt(0) else null;
 	}
 
@@ -5325,7 +5361,7 @@ class MultiAnimBuilder {
 			else if (builderParams.callback == null)
 				builderParams.callback = defaultCallback;
 
-			final node = multiParserResult?.nodes?.get(name);
+			final node = multiParserResult.nodes.get(name);
 			if (node == null) {
 				throw 'buildWithComboParameters ${allCombos}: could not build ${name} with parameters ${inputParameters} and builderParameters ${builderParams}' + currentNodePos();
 			}
@@ -5348,7 +5384,8 @@ class MultiAnimBuilder {
 					throw 'Prop "${prop}" set both as parameter and combo' + MacroUtils.nodePos(node);
 				if (allOptions.exists(prop))
 					throw 'Duplicate combo "${prop}"' + MacroUtils.nodePos(node);
-				var def = definitions[prop];
+				final def = definitions[prop];
+				if (def == null) throw 'definition for "${prop}" not found' + MacroUtils.nodePos(node);
 				var allValues = switch def.type {
 					case PPTHexDirection: [for (i in 0...6) '$i}'];
 					case PPTGridDirection: [for (i in 0...8) '$i}'];
@@ -5388,12 +5425,14 @@ class MultiAnimBuilder {
 					final vi = ci % comboCounts[ki];
 					ci = Std.int(ci / comboCounts[ki]);
 					var key = comboNames[ki];
-					comboParams.set(key, StringValue(allOptions[key][vi]));
+					final opts = allOptions[key];
+					if (opts == null) throw 'combo options for "${key}" not found';
+					comboParams.set(key, StringValue(opts[vi]));
 				}
 
 				updateIndexedParamsFromDynamicMap(node, inputParameters, definitions, comboParams, true);
 				this.builderParams = builderParams;
-				var c = startBuild(name, node, gridCoordinateSystem, hexCoordinateSystem, builderParams);
+				var c = startBuild(name, node, cast gridCoordinateSystem, cast hexCoordinateSystem, builderParams);
 				result.addResult(c, [
 					for (combo in allCombos) {
 						switch comboParams[combo] {
@@ -5462,7 +5501,7 @@ class MultiAnimBuilder {
 	}
 
 	function resolveInlineAtlas(name:String):Null<IAtlas2> {
-		final node = multiParserResult?.nodes?.get(name);
+		final node = multiParserResult.nodes.get(name);
 		if (node == null) return null;
 
 		switch node.type {
@@ -5485,12 +5524,12 @@ class MultiAnimBuilder {
 				final contents:Map<String, Array<AtlasEntry>> = [];
 				for (entry in atlas2Def.entries) {
 					final t = sourceTile.sub(entry.x, entry.y, entry.w, entry.h, 0, 0);
-					final idx = entry.index != null ? entry.index : 0;
-					final offsetX = entry.offsetX != null ? entry.offsetX : 0;
-					final offsetY = entry.offsetY != null ? entry.offsetY : 0;
-					final origW = entry.origW != null ? entry.origW : entry.w;
-					final origH = entry.origH != null ? entry.origH : entry.h;
-					final split:Array<Int> = entry.split != null ? entry.split : [];
+					final _idx = entry.index; final idx:Int = _idx != null ? _idx : 0;
+					final _ox = entry.offsetX; final offsetX:Int = _ox != null ? _ox : 0;
+					final _oy = entry.offsetY; final offsetY:Int = _oy != null ? _oy : 0;
+					final _ow = entry.origW; final origW:Int = _ow != null ? _ow : entry.w;
+					final _oh = entry.origH; final origH:Int = _oh != null ? _oh : entry.h;
+					final _sp = entry.split; final split:Array<Int> = _sp != null ? _sp : [];
 
 					var tl = contents.get(entry.name);
 					if (tl == null) {

@@ -9,9 +9,11 @@ import bh.multianim.layouts.LayoutTypes;
 import bh.base.Hex;
 
 using StringTools;
+using bh.multianim.ParseUtils;
 
 // ===================== Token types for the hand-coded lexer =====================
 
+@:nullSafety
 private enum MacroTokenType {
 	TEof;
 	TOpen;          // (
@@ -50,6 +52,7 @@ private enum MacroTokenType {
 	TQuotedString(s:String);
 }
 
+@:nullSafety
 private class Token {
 	public var type:MacroTokenType;
 	public var line:Int;
@@ -65,6 +68,7 @@ private class Token {
 }
 
 // Expression type discriminator for shared expression-parsing helpers
+@:nullSafety
 private enum ExprType {
 	EInt;
 	EFloat;
@@ -424,6 +428,7 @@ private class MacroLexer {
 
 // ===================== Parser =====================
 
+@:nullSafety
 class MacroManimParser {
 	var tokens:Array<Token>;
 	var tpos:Int;
@@ -541,10 +546,7 @@ class MacroManimParser {
 
 	function stringToInt(s:String):Int {
 		// Handle underscore separators
-		final cleaned = s.split("_").join("");
-		final i = Std.parseInt(cleaned);
-		if (i == null) error('expected integer, got $s');
-		return i;
+		return s.split("_").join("").toInt();
 	}
 
 	function stringToFloat(s:String):Float {
@@ -1190,7 +1192,8 @@ class MacroManimParser {
 		expect(TOpen);
 
 		// Grid methods
-		final isNamed = namedCoordSystems != null && namedCoordSystems.indexOf(effectiveRef) >= 0;
+		final _namedCoordSystems = namedCoordSystems;
+		final isNamed = _namedCoordSystems != null && _namedCoordSystems.indexOf(effectiveRef) >= 0;
 		inline function wrapNamed(coord:Coordinates):Coordinates {
 			return if (isNamed) NAMED_COORD(effectiveRef, coord) else coord;
 		}
@@ -1216,7 +1219,7 @@ class MacroManimParser {
 
 		// Hex methods
 		if (effectiveRef == "hex" || isNamed) {
-			var cellCoord:Coordinates = null;
+			var cellCoord:Null<Coordinates> = null;
 			switch (method) {
 				case "cube":
 					final q = parseFloatOrReference();
@@ -1273,6 +1276,7 @@ class MacroManimParser {
 					return error('Unknown hex method: $method');
 			}
 
+			if (cellCoord == null) return error('Unknown hex method: $method');
 			// Check for chained .hexCorner() / .hexEdge() after any cell addressing method
 			if (match(TDot)) {
 				return wrapNamed(parseHexCellChain(cellCoord));
@@ -1681,7 +1685,7 @@ class MacroManimParser {
 			case PPTArray:
 				param.defaultValue = ArrayString(parseStringArray());
 			default:
-				var s:String = null;
+				var s:Null<String> = null;
 				switch (peek()) {
 					case TIdentifier(str):
 						advance();
@@ -1706,7 +1710,9 @@ class MacroManimParser {
 					default:
 						error('unexpected default value: ${peek()}');
 				}
-				param.defaultValue = dynamicValueToIndex(param.name, param.type, s);
+				if (s == null) error('unexpected default value: ${peek()}');
+				final _s:String = s ?? "";
+				param.defaultValue = dynamicValueToIndex(param.name, param.type, _s);
 		}
 	}
 
@@ -1716,13 +1722,9 @@ class MacroManimParser {
 				if (!values.contains(value)) error('enum "$name" does not contain value "$value"');
 				Index(values.indexOf(value), value);
 			case PPTRange(from, to):
-				final n = Std.parseInt(value);
-				if (n == null) error('expected integer for range default');
-				Value(n);
+				Value(value.toInt());
 			case PPTInt | PPTUnsignedInt:
-				final n = Std.parseInt(value);
-				if (n == null) error('expected integer for default');
-				Value(n);
+				Value(value.toInt());
 			case PPTFloat:
 				final f = Std.parseFloat(value);
 				if (Math.isNaN(f)) error('expected float for default');
@@ -1731,20 +1733,16 @@ class MacroManimParser {
 				switch (value.toLowerCase()) {
 					case "true" | "yes" | "1": Value(1);
 					case "false" | "no" | "0": Value(0);
-					default: error('invalid bool default: $value');
+					default: error('invalid bool default: $value'); Value(0);
 				}
 			case PPTString: StringValue(value);
 			case PPTColor:
 				final c = tryStringToColor(value);
-				if (c != null) Value(c) else Value(Std.parseInt(value));
+				if (c != null) Value(c) else Value(value.toInt());
 			case PPTHexDirection | PPTGridDirection:
-				final n = Std.parseInt(value);
-				if (n == null) error('expected integer for default');
-				Value(n);
+				Value(value.toInt());
 			case PPTFlags(bits):
-				final n = Std.parseInt(value);
-				if (n == null) error('expected integer for default');
-				Flag(n);
+				Flag(value.toInt());
 			case PPTArray:
 				error('array default requires bracket syntax: [val1, val2, ...]');
 			case PPTTile:
@@ -1948,7 +1946,7 @@ class MacroManimParser {
 				if (n != null) CoFlag(n) else CoStringValue(val);
 			case PPTColor:
 				final c = tryStringToColor(val);
-				if (c != null) CoValue(c) else CoValue(Std.parseInt(val));
+				if (c != null) CoValue(c) else CoValue(val.toInt());
 			default:
 				final n = Std.parseInt(val);
 				if (n != null) CoValue(n) else CoStringValue(val);
@@ -2023,6 +2021,7 @@ class MacroManimParser {
 
 	// ===================== Filter =====================
 
+	@:nullSafety(Off)
 	function parseFilter():FilterType {
 		switch (peek()) {
 			case TIdentifier(s) if (isKeyword(s, "none")):
@@ -2442,7 +2441,7 @@ class MacroManimParser {
 		switch (peek()) {
 			case TName(name):
 				advance();
-				var layoutType:LayoutsType = null;
+				var layoutType:Null<LayoutsType> = null;
 				// Try single point first
 				final content = parseLayoutContent();
 				if (content != null) {
@@ -2460,7 +2459,7 @@ class MacroManimParser {
 							final to = parseInteger();
 							expect(TClosed);
 							final lc = parseLayoutContent();
-							if (lc == null) error("layout content expected");
+							if (lc == null) { error("layout content expected"); return; }
 							layoutType = Sequence(varName, from, to, lc);
 						case TIdentifier(s) if (isKeyword(s, "list")):
 							advance();
@@ -2504,9 +2503,10 @@ class MacroManimParser {
 					}
 				}
 				// Parse optional align: suffix
+				if (layoutType == null) { error('expected layout content for $name'); return; }
 				final align = parseLayoutAlign();
 				eatSemicolon();
-				layouts.set(name, {name: name, type: layoutType, grid: grid, hex: hex, offset: foldOffsets(offsets),
+				layouts.set(name, {name: name, type: cast layoutType, grid: grid, hex: hex, offset: foldOffsets(offsets),
 					alignX: align.alignX, alignY: align.alignY});
 			default:
 				error('expected layout name (#name), got ${peek()}');
@@ -2614,6 +2614,7 @@ class MacroManimParser {
 		};
 	}
 
+	@:nullSafety(Off)
 	function parseNode(updatableName:UpdatableNameType, parent:Null<Node>, currentDefs:ParametersDefinitions):Node {
 		// Reset reference validation scope for each root-level node
 		if (parent == null) { activeDefs = null; scopeVars = null; }
@@ -4051,8 +4052,8 @@ class MacroManimParser {
 		while (!match(TBracketClosed)) {
 			if (emitters.length > 0) expect(TComma);
 			expect(TCurlyOpen);
-			var groupId:String = null;
-			var trigger:ParticleSubEmitTriggerDef = null;
+			var groupId:Null<String> = null;
+			var trigger:Null<ParticleSubEmitTriggerDef> = null;
 			var probability:ReferenceableValue = RVFloat(1.0);
 			var inheritVelocity:Null<ReferenceableValue> = null;
 			var offsetX:Null<ReferenceableValue> = null;
@@ -4085,7 +4086,9 @@ class MacroManimParser {
 				}
 				eatSemicolon();
 			}
-			emitters.push({groupId: groupId, trigger: trigger, probability: probability,
+			if (groupId == null) { error('subEmitter requires groupId'); continue; }
+			if (trigger == null) { error('subEmitter requires trigger'); continue; }
+			emitters.push({groupId: cast groupId, trigger: cast trigger, probability: probability,
 				inheritVelocity: inheritVelocity, offsetX: offsetX, offsetY: offsetY, burstCount: burstCount});
 		}
 		return emitters;
@@ -4213,6 +4216,7 @@ class MacroManimParser {
 
 	// ===================== Parse Nodes (children block) =====================
 
+	@:nullSafety(Off)
 	function parseNodes(node:Null<Node>, defs:ParametersDefinitions):Void {
 		while (true) {
 			switch (peek()) {
@@ -4456,6 +4460,7 @@ class MacroManimParser {
 		}
 	}
 
+	@:nullSafety(Off)
 	function parseChildNode(node:Null<Node>, defs:ParametersDefinitions):Void {
 		final newNode = parseNode(UNTObject(null), node, defs);
 		if (newNode != null) {
@@ -4580,10 +4585,10 @@ class MacroManimParser {
 				return GSFilled;
 			case TInteger(n):
 				advance();
-				return GSLineWidth(RVInteger(Std.parseInt(n)));
+				return GSLineWidth(RVInteger(stringToInt(n)));
 			case TFloat(n):
 				advance();
-				return GSLineWidth(RVFloat(Std.parseFloat(n)));
+				return GSLineWidth(RVFloat(stringToFloat(n)));
 			default:
 				final rv = parseIntegerOrReference();
 				return GSLineWidth(rv);
@@ -4994,6 +4999,7 @@ class MacroManimParser {
 
 	// ===================== Animated Path =====================
 
+	@:nullSafety(Off)
 	function parseAnimatedPath():AnimatedPathDef {
 		var curveAssignments:Array<AnimatedPathCurveAssignment> = [];
 		var events:Array<AnimatedPathTimedEvent> = [];
@@ -5415,14 +5421,14 @@ class MacroManimParser {
 			}
 		}
 
-		if (format == null) error("autotile requires format");
-		if (source == null) error("autotile requires source");
-		if (tileSize == null) error("autotile requires tileSize");
+		if (format == null) { error("autotile requires format"); return cast null; }
+		if (source == null) { error("autotile requires source"); return cast null; }
+		if (tileSize == null) { error("autotile requires tileSize"); return cast null; }
 
 		return {
-			format: format,
-			source: source,
-			tileSize: tileSize,
+			format: cast format,
+			source: cast source,
+			tileSize: cast tileSize,
 			depth: depth,
 			mapping: mapping,
 			region: region,
@@ -5603,7 +5609,7 @@ class MacroManimParser {
 						// recordName { ... }
 						advance();
 						final recordDef = records.get(s);
-						if (recordDef == null) error('unknown record type "$s"');
+						if (recordDef == null) { error('unknown record type "$s"'); return cast null; }
 						final recordValue = parseDataRecordValue(s, recordDef, records);
 						return {name: fieldName, type: DVTRecord(s), value: recordValue};
 					case TBracketOpen:
@@ -5670,7 +5676,7 @@ class MacroManimParser {
 					break;
 				}
 			}
-			if (expectedType == null) error('unknown field "$name" in record "$recordName"');
+			if (expectedType == null) { error('unknown field "$name" in record "$recordName"'); return DVInt(0); }
 			final value = parseDataValueOfType(expectedType, records);
 			if (fieldValues.exists(name)) error('duplicate field "$name" in record');
 			fieldValues.set(name, value);
@@ -5690,13 +5696,13 @@ class MacroManimParser {
 			case DVTString:
 				switch (peek()) {
 					case TQuotedString(s): advance(); DVString(s);
-					default: error('expected string value');
+					default: error('expected string value'); DVString("");
 				}
 			case DVTBool: DVBool(parseBool());
 			case DVTRecord(recordName):
 				expect(TCurlyOpen);
 				final recordDef = records.get(recordName);
-				if (recordDef == null) error('unknown record type "$recordName"');
+				if (recordDef == null) { error('unknown record type "$recordName"'); return DVInt(0); }
 				parseDataRecordValue(recordName, recordDef, records);
 			case DVTArray(elemType):
 				expect(TBracketOpen);

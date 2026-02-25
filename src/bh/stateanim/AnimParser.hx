@@ -11,13 +11,16 @@ import bh.base.Point;
 
 using StringTools;
 using bh.base.MapTools;
+using bh.multianim.ParseUtils;
 
+@:nullSafety
 enum APIdentifierType {
 	AITString;
 	AITParameter;
 	AITQuotedString;
 }
 
+@:nullSafety
 enum APToken {
 	APEof;
 	APOpen;
@@ -38,14 +41,17 @@ enum APToken {
 	APNotEquals;
 }
 
+@:nullSafety
 enum AnimConditionalValue {
 	ACVSingle(value:String);
 	ACVMulti(values:Array<String>);
 	ACVNot(inner:AnimConditionalValue);
 }
 
+@:nullSafety
 typedef AnimConditionalSelector = Map<String, AnimConditionalValue>;
 
+@:nullSafety
 enum APKeywords {
 	APSheet;
 	APFile;
@@ -67,6 +73,7 @@ enum APKeywords {
 
 // ===================== Hand-coded Lexer =====================
 
+@:nullSafety
 private class AnimToken {
 	public var type:APToken;
 	public var line:Int;
@@ -185,7 +192,7 @@ private class AnimLexerHC {
 					final nc = src.charCodeAt(pos + 1);
 					if (nc == '"'.code) { buf.addChar('"'.code); pos += 2; col += 2; continue; }
 					if (nc == 'u'.code && pos + 5 < len) {
-						buf.add(String.fromCharCode(Std.parseInt("0x" + src.substr(pos + 2, 4))));
+						buf.add(String.fromCharCode(("0x" + src.substr(pos + 2, 4)).toInt()));
 						pos += 6; col += 6; continue;
 					}
 				}
@@ -233,16 +240,19 @@ private class AnimLexerHC {
 
 // ===================== Types =====================
 
+@:nullSafety
 enum MetadataValue {
 	MVInt(i:Int);
 	MVString(s:String);
 }
 
+@:nullSafety
 typedef MetadataEntry = {
 	var states:AnimConditionalSelector;
 	var value:MetadataValue;
 }
 
+@:nullSafety
 typedef LoadedAnimation = {
 	var sheet:String;
 	var states:Map<String, Array<String>>;
@@ -252,6 +262,7 @@ typedef LoadedAnimation = {
 	var animations:Array<AnimationState>;
 }
 
+@:nullSafety
 class AnimMetadata {
 	final metadata:Map<String, Array<MetadataEntry>>;
 
@@ -319,6 +330,7 @@ class AnimMetadata {
 	}
 }
 
+@:nullSafety
 @:using(AnimParser.ExtraPointsHelper)
 typedef ExtraPoints = {
 	var states:AnimConditionalSelector;
@@ -326,6 +338,7 @@ typedef ExtraPoints = {
 	var ?visited:Bool;
 }
 
+@:nullSafety
 enum AnimPlaylistFrames {
 	SheetFrameAnim(name:String, durationMilliseconds:Null<Int>);
 	SheetFrameAnimWithIndex(name:String, from:Null<Int>, to:Null<Int>, durationMilliseconds:Null<Int>);
@@ -333,12 +346,14 @@ enum AnimPlaylistFrames {
 	PlaylistEvent(playlistEvent:AnimationPlaylistEvent);
 }
 
+@:nullSafety
 typedef Playlist = {
 	var states:AnimConditionalSelector;
 	var anims:Array<AnimPlaylistFrames>;
 	var ?visited:Bool;
 }
 
+@:nullSafety
 typedef AnimationState = {
 	var name:String;
 	var states:AnimConditionalSelector;
@@ -349,12 +364,14 @@ typedef AnimationState = {
 	var ?visited:Bool;
 }
 
+@:nullSafety
 class ExtraPointsHelper {
 	public static function toPoint(pt:ExtraPoints) {
 		return new h2d.col.IPoint(pt.point.x, pt.point.y);
 	}
 }
 
+@:nullSafety
 class AnimUnexpected<Token> extends ParseUnexpected<Token> {
 	final message:String;
 
@@ -369,6 +386,7 @@ class AnimUnexpected<Token> extends ParseUnexpected<Token> {
 	}
 }
 
+@:nullSafety
 class InvalidSyntax extends ParseError {
 	public var error:String;
 
@@ -382,8 +400,10 @@ class InvalidSyntax extends ParseError {
 	}
 }
 
+@:nullSafety
 typedef AnimationStateSelector = Map<String, String>;
 
+@:nullSafety
 interface AnimParserResult {
 	var definedStates(default, never):Map<String, Array<String>>;
 	var metadata(default, never):Null<AnimMetadata>;
@@ -392,6 +412,7 @@ interface AnimParserResult {
 
 // ===================== Parser =====================
 
+@:nullSafety
 class AnimParser implements AnimParserResult {
 	var tokens:Array<AnimToken>;
 	var tpos:Int;
@@ -402,7 +423,7 @@ class AnimParser implements AnimParserResult {
 	var allowedExtraPoints:Array<String> = [];
 	public var definedStates(default, null):Map<String, Array<String>> = [];
 	var definedStatesIndexes:Array<String> = [];
-	var sheetName:String;
+	var sheetName:Null<String> = null;
 	var center:Null<Point> = null;
 	var metadataMap:Map<String, Array<MetadataEntry>> = [];
 	public var metadata(default, null):Null<AnimMetadata> = null;
@@ -452,7 +473,7 @@ class AnimParser implements AnimParserResult {
 	}
 
 	function unexpectedError(?message:String):Dynamic {
-		final err = new AnimUnexpected(peek(), curPos(), message);
+		final err = new AnimUnexpected(peek(), curPos(), message ?? "unexpected");
 		trace(err);
 		throw err;
 	}
@@ -490,6 +511,7 @@ class AnimParser implements AnimParserResult {
 
 	// ===================== Main Parse =====================
 
+	@:nullSafety(Off)
 	function parse():Void {
 		var animationParsingStarted = false;
 		while (true) {
@@ -629,7 +651,7 @@ class AnimParser implements AnimParserResult {
 				switch (peek()) {
 					case APNumber(y):
 						advance();
-						return {x: Std.parseInt(x), y: Std.parseInt(y)};
+						return {x: x.toInt(), y: y.toInt()};
 					default:
 						return unexpectedError("expected y coordinate");
 				}
@@ -757,13 +779,15 @@ class AnimParser implements AnimParserResult {
 			switch (peek()) {
 				case APNumber(numStr):
 					advance();
-					var entry:MetadataEntry = {states: states, value: MVInt(Std.parseInt(numStr))};
-					if (metadataMap.exists(key)) metadataMap[key].push(entry);
+					var entry:MetadataEntry = {states: states, value: MVInt(numStr.toInt())};
+					final existing = metadataMap.get(key);
+					if (existing != null) existing.push(entry);
 					else metadataMap[key] = [entry];
 				case APIdentifier(strVal, _, AITQuotedString):
 					advance();
 					var entry:MetadataEntry = {states: states, value: MVString(strVal)};
-					if (metadataMap.exists(key)) metadataMap[key].push(entry);
+					final existing = metadataMap.get(key);
+					if (existing != null) existing.push(entry);
 					else metadataMap[key] = [entry];
 				default:
 					unexpectedError("Expected number or string value in metadata");
@@ -771,6 +795,7 @@ class AnimParser implements AnimParserResult {
 		}
 	}
 
+	@:nullSafety(Off)
 	function parseAnimation(statesDefinitions, animationStates, allowedExtraPointsList) {
 		var extraPoints:Map<String, Array<ExtraPoints>> = [];
 		var ret = {loop: (null : Null<Int>), name: (null : Null<String>), fps: (null : Null<Int>), extraPoints: extraPoints, playlist: ([] : Array<Playlist>)};
@@ -802,7 +827,7 @@ class AnimParser implements AnimParserResult {
 									ret.loop = null;
 								case APNumber(number):
 									advance();
-									var cnt = Std.parseInt(number);
+									final cnt = number.toInt();
 									if (cnt <= 0) syntaxError("loop counter must be greater than 0");
 									ret.loop = cnt;
 								default:
@@ -818,7 +843,7 @@ class AnimParser implements AnimParserResult {
 						case APNumber(number):
 							advance();
 							if (ret.fps != null) syntaxError("fps already set");
-							ret.fps = Std.parseInt(number);
+							ret.fps = number.toInt();
 							if (ret.fps <= 0) syntaxError("fps must be greater than 0");
 						default:
 							unexpectedError("expected fps number");
@@ -849,7 +874,8 @@ class AnimParser implements AnimParserResult {
 		return ret;
 	}
 
-	function parseExtraPoints(statesDefinitions, animationStates, extraPoints:Map<String, Array<ExtraPoints>>, allowedExtraPointsList:Array<String>):Void {
+	function parseExtraPoints(statesDefinitions:Map<String, Array<String>>, animationStates:AnimConditionalSelector,
+			extraPoints:Map<String, Array<ExtraPoints>>, allowedExtraPointsList:Array<String>):Void {
 		while (true) {
 			skipNewlines();
 			if (match(APCurlyClosed)) break;
@@ -865,7 +891,8 @@ class AnimParser implements AnimParserResult {
 			checkForUnreachableState(animationStates, states);
 
 			var p = {states: states, point: c};
-			if (extraPoints.exists(pointName)) extraPoints[pointName].push(p);
+			final existing = extraPoints.get(pointName);
+			if (existing != null) existing.push(p);
 			else extraPoints.set(pointName, [p]);
 		}
 	}
@@ -899,7 +926,7 @@ class AnimParser implements AnimParserResult {
 							switch (peek()) {
 								case APNumber(randomRadius):
 									advance();
-									final r = Std.parseInt(randomRadius);
+									final r = randomRadius.toInt();
 									anims.push(PlaylistEvent(RandomPointEvent(eventName, new h2d.col.IPoint(p.x, p.y), r)));
 								default:
 									unexpectedError("expected radius");
@@ -928,14 +955,16 @@ class AnimParser implements AnimParserResult {
 							switch (peek()) {
 								case APNumber(startIndex):
 									advance();
-									start = Std.parseInt(startIndex);
+									final startN = startIndex.toInt();
+									start = startN;
 									expect(APDoubleDot);
 									switch (peek()) {
 										case APNumber(endIndex):
 											advance();
-											end = Std.parseInt(endIndex);
-											if (start < 0) syntaxError('frame index must be non-negative, was $start');
-											if (end < 0) syntaxError('frame index must be non-negative, was $end');
+											final endN = endIndex.toInt();
+											end = endN;
+											if (startN < 0) syntaxError('frame index must be non-negative, was $startN');
+											if (endN < 0) syntaxError('frame index must be non-negative, was $endN');
 										default:
 											unexpectedError("expected end index");
 									}
@@ -979,19 +1008,19 @@ class AnimParser implements AnimParserResult {
 				switch (peek()) {
 					case APIdentifier("ms", _, AITString):
 						advance();
-						final d = Std.parseInt(duration);
+						final d = duration.toInt();
 						if (d <= 0) return syntaxError("duration must be greater than 0");
 						return d;
 					default:
 						// Number without ms suffix - assume ms
-						final d = Std.parseInt(duration);
+						final d = duration.toInt();
 						if (d <= 0) return syntaxError("duration must be greater than 0");
 						return d;
 				}
 			case APIdentifier(durationStr, _, AITString):
 				advance();
 				if (durationStr.endsWith("ms")) {
-					final d = Std.parseInt(durationStr.substring(0, durationStr.length - 2));
+					final d = durationStr.substring(0, durationStr.length - 2).toInt();
 					if (d <= 0) syntaxError("duration must be greater than 0");
 					return d;
 				} else
@@ -1004,9 +1033,10 @@ class AnimParser implements AnimParserResult {
 	// ===================== State Validation =====================
 
 	static function validateState(definedStates:Map<String, Array<String>>, name:String, value:String) {
-		if (!definedStates.exists(name))
+		final vals = definedStates.get(name);
+		if (vals == null)
 			throw 'state ${name} not defined';
-		if (definedStates[name].contains(value) == false)
+		if (vals.contains(value) == false)
 			throw 'state ${name} does not allow value:${value}';
 	}
 
@@ -1014,15 +1044,17 @@ class AnimParser implements AnimParserResult {
 		if (definedStates.count() != selector.count())
 			throw 'invalid selector ${selector} for defined states ${definedStates}';
 		for (key => value in definedStates) {
-			if (selector.exists(key) == false)
+			final sv = selector.get(key);
+			if (sv == null)
 				throw 'key not defined: ${key}';
-			if (value.contains(selector[key]) == false)
+			if (value.contains(sv) == false)
 				throw 'unknown state value ${value} not defined for key: ${key}: ${definedStates}';
 		}
 		for (key => value in selector) {
-			if (definedStates.exists(key) == false)
+			final vals = definedStates.get(key);
+			if (vals == null)
 				throw 'unknown state key: ${key}';
-			if (definedStates[key].contains(value) == false)
+			if (vals.contains(value) == false)
 				throw 'unknown state value ${value} not defined for key: ${key}: ${definedStates}';
 		}
 	}
@@ -1072,11 +1104,12 @@ class AnimParser implements AnimParserResult {
 		};
 	}
 
-	public static function countStateMatch(match:AnimConditionalSelector, selector:AnimationStateSelector) {
+	public static function countStateMatch(match:AnimConditionalSelector, selector:AnimationStateSelector):Int {
 		var retVal = 0;
 		for (key => value in selector) {
-			if (match.exists(key)) {
-				if (matchConditionalValue(match[key], value))
+			final condVal = match.get(key);
+			if (condVal != null) {
+				if (matchConditionalValue(condVal, value))
 					retVal++;
 				else
 					retVal -= 10000;
@@ -1126,22 +1159,24 @@ class AnimParser implements AnimParserResult {
 				best2Score = bestScore;
 			}
 		}
-		if (best != null && best2Score == bestScore)
+		if (best != null && best2 != null && best2Score == bestScore)
 			throw 'ambiguous $ambiguityContext: ${best.states} vs ${best2.states} selector: $stateSelector';
 		return best;
 	}
 
 	// ===================== Runtime Methods =====================
 
-	function createAllStates(statesDefinitions:Map<String, Array<String>>) {
+	function createAllStates(statesDefinitions:Map<String, Array<String>>):Array<AnimationStateSelector> {
 		var totalStates = 1;
-		var stateValuesCount = [];
-		var stateKeys = [];
-		var retVal = [];
+		var stateValuesCount:Array<Int> = [];
+		var stateKeys:Array<String> = [];
+		var stateValues:Array<Array<String>> = [];
+		var retVal:Array<AnimationStateSelector> = [];
 		for (key => value in statesDefinitions) {
 			totalStates *= value.length;
 			stateValuesCount.push(value.length);
 			stateKeys.push(key);
+			stateValues.push(value);
 		}
 		for (i in 0...totalStates) {
 			final x:AnimationStateSelector = [];
@@ -1149,8 +1184,7 @@ class AnimParser implements AnimParserResult {
 			for (ki in 0...stateKeys.length) {
 				final vi = ci % stateValuesCount[ki];
 				ci = Std.int(ci / stateValuesCount[ki]);
-				var key = stateKeys[ki];
-				x.set(key, statesDefinitions[key][vi]);
+				x.set(stateKeys[ki], stateValues[ki][vi]);
 			}
 			retVal.push(x);
 		}
@@ -1158,6 +1192,12 @@ class AnimParser implements AnimParserResult {
 	}
 
 	function createStates(anims:Array<AnimPlaylistFrames>, anim:AnimationState, stateSelector:AnimationStateSelector):Array<AnimationFrameState> {
+		final _center = center;
+		final _sheetName = sheetName;
+		if (_sheetName == null) throw 'sheet not set';
+		final _fps = anim.fps;
+		if (_fps == null) throw 'fps not set for animation ${anim.name}';
+
 		function replaceState(inputStr:String, stateSelector:AnimationStateSelector) {
 			var result = inputStr;
 			for (key => value in stateSelector) {
@@ -1167,48 +1207,51 @@ class AnimParser implements AnimParserResult {
 		}
 
 		function tileToFrame(tile:h2d.Tile, duration:Float):AnimationFrameState {
-			if (center != null) {
-				tile.dx = -center.x;
-				tile.dy = -center.y;
+			if (_center != null) {
+				tile.dx = -_center.x;
+				tile.dy = -_center.y;
 			}
 			return Frame(new AnimationFrame(tile, duration, 0, 0, tile.iwidth, tile.iheight));
 		}
 
 		function AFtoFrame(f:AnimationFrame, duration:Float):AnimationFrameState {
-			if (center != null) {
-				f.tile.dx = f.offsetx - center.x;
-				f.tile.dy = (f.height - f.tile.height) - f.offsety - center.y;
+			if (_center != null) {
+				f.tile.dx = f.offsetx - _center.x;
+				f.tile.dy = (f.height - f.tile.height) - f.offsety - _center.y;
 			}
 			return Frame(f.cloneWithDuration(duration));
 		}
 
 		var retVal = [];
-		final duration = 1.0 / anim.fps;
+		final duration = 1.0 / _fps;
 		for (frames in anims) {
 			switch frames {
 				case SheetFrameAnim(name, overrideDuration):
 					final expandedName = replaceState(name, stateSelector);
-					final sheet = resourceLoader.loadSheet2(sheetName);
-					if (sheet == null) throw 'sheet ${sheetName} not found';
+					final sheet = resourceLoader.loadSheet2(_sheetName);
+					if (sheet == null) throw 'sheet ${_sheetName} not found';
 					final loadedTiles = sheet.getAnim(expandedName);
 					if (loadedTiles == null) throw 'tiles ${name}->${expandedName} not found';
 					var tiles = sheet.getAnim(expandedName);
-					var d = overrideDuration == null ? duration : overrideDuration / 1000.0;
+					final _od = overrideDuration;
+					var d = _od == null ? duration : _od / 1000.0;
 					retVal = retVal.concat(Lambda.map(tiles, t -> AFtoFrame(t, d)));
 				case SheetFrameAnimWithIndex(name, from, to, overrideDuration):
-					final sheet = resourceLoader.loadSheet2(sheetName);
-					if (sheet == null) throw 'sheet ${sheetName} not found';
+					final sheet = resourceLoader.loadSheet2(_sheetName);
+					if (sheet == null) throw 'sheet ${_sheetName} not found';
 					final expandedName = replaceState(name, stateSelector);
 					final animTiles = sheet.getAnim(expandedName);
 					if (animTiles == null) throw 'tiles ${name}->${expandedName} not found';
-					var d = overrideDuration == null ? duration : overrideDuration / 1000.0;
+					final _od = overrideDuration;
+					var d = _od == null ? duration : _od / 1000.0;
 					for (i in 0...animTiles.length) {
 						if ((from == null || i >= from) && (to == null || i <= to)) {
 							retVal.push(AFtoFrame(animTiles[i], d));
 						}
 					}
 				case FileSingleFrame(filename, overrideDuration):
-					var d = overrideDuration == null ? duration : overrideDuration / 1000.0;
+					final _od = overrideDuration;
+					var d = _od == null ? duration : _od / 1000.0;
 					retVal.push(tileToFrame(resourceLoader.loadTile(filename), d));
 				case PlaylistEvent(playlistEvent):
 					retVal.push(Event(playlistEvent));
@@ -1217,27 +1260,30 @@ class AnimParser implements AnimParserResult {
 		return retVal;
 	}
 
-	function selectorToHex(selector:AnimationStateSelector) {
+	function selectorToHex(selector:AnimationStateSelector):String {
 		if (selector.count() == 0) return "";
 		var indexes = Bytes.alloc(definedStatesIndexes.length);
 		indexes.fill(0, indexes.length, 255);
 		for (key => value in selector) {
 			final idx = definedStatesIndexes.indexOf(key);
 			if (idx == -1) throw 'invalid selector key ${key}';
-			final value = definedStates[key].indexOf(value);
-			indexes.set(idx, value);
+			final vals = definedStates.get(key);
+			if (vals == null) throw 'unknown state key: ${key}';
+			indexes.set(idx, vals.indexOf(value));
 		}
 		return indexes.toHex();
 	}
 
-	function hexToSelector(hex:String) {
+	function hexToSelector(hex:String):AnimationStateSelector {
 		var selector:AnimationStateSelector = [];
 		if (hex.length == 0) return selector;
 		var indexes = Bytes.ofHex(hex);
 		for (i in 0...indexes.length) {
 			final key = definedStatesIndexes[i];
 			final byteValue = indexes.get(i);
-			selector.set(key, definedStates[key][byteValue]);
+			final vals = definedStates.get(key);
+			if (vals == null) throw 'unknown state key: ${key}';
+			selector.set(key, vals[byteValue]);
 		}
 		return selector;
 	}
@@ -1257,13 +1303,14 @@ class AnimParser implements AnimParserResult {
 					var pt = findExtraPoint(pointName, stateSelector, anim, definedStates);
 					if (pt != null) extraPoints.set(pointName, pt.toPoint());
 				}
-				final loopCount = anim.loop == null ? 0 : anim.loop;
+				final loopCount:Int = anim.loop ?? 0;
 				cacheArray.push({name: name, states: states, loopCount: loopCount, extraPoints: extraPoints});
 			}
 			cache.set(hex, cacheArray);
 		}
 
 		final cacheEntries = cache.get(hex);
+		if (cacheEntries == null) throw 'cache miss for hex ${hex}';
 		for (e in cacheEntries) {
 			animSM.addAnimationState(e.name, e.states, e.loopCount, e.extraPoints);
 		}
