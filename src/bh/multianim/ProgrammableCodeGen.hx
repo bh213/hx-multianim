@@ -890,6 +890,23 @@ class ProgrammableCodeGen {
 			}
 		}
 
+		// Rotation
+		if (node.rotation != null) {
+			final rotExpr = rvToExpr(node.rotation);
+			final fieldRef = macro $p{["this", fieldName]};
+			final rotUpdateExpr = macro $fieldRef.rotation = hxd.Math.degToRad($rotExpr);
+			ctorExprs.push(rotUpdateExpr);
+
+			final rotRefs = collectParamRefs(node.rotation);
+			if (rotRefs.length > 0) {
+				expressionUpdates.push({
+					fieldName: fieldName,
+					updateExpr: rotUpdateExpr,
+					paramRefs: rotRefs,
+				});
+			}
+		}
+
 		// Alpha
 		if (node.alpha != null) {
 			final alphaExpr = rvToExpr(node.alpha);
@@ -1856,6 +1873,10 @@ class ProgrammableCodeGen {
 					stmts.push(macro _rt_bmp.scaleX = $scaleExpr);
 					stmts.push(macro _rt_bmp.scaleY = $scaleExpr);
 				}
+				if (child.rotation != null) {
+					final rotExpr = rvToExpr(child.rotation);
+					stmts.push(macro _rt_bmp.rotation = hxd.Math.degToRad($rotExpr));
+				}
 				if (child.alpha != null) {
 					final alphaExpr = rvToExpr(child.alpha);
 					stmts.push(macro _rt_bmp.alpha = $alphaExpr);
@@ -1879,6 +1900,10 @@ class ProgrammableCodeGen {
 					final scaleExpr = rvToExpr(child.scale);
 					ptStmts.push(macro _rt_obj.scaleX = $scaleExpr);
 					ptStmts.push(macro _rt_obj.scaleY = $scaleExpr);
+				}
+				if (child.rotation != null) {
+					final rotExpr = rvToExpr(child.rotation);
+					ptStmts.push(macro _rt_obj.rotation = hxd.Math.degToRad($rotExpr));
 				}
 				if (child.alpha != null) {
 					final alphaExpr = rvToExpr(child.alpha);
@@ -1959,6 +1984,10 @@ class ProgrammableCodeGen {
 					stmts.push(macro _rt_txt.scaleX = $scaleExpr);
 					stmts.push(macro _rt_txt.scaleY = $scaleExpr);
 				}
+				if (child.rotation != null) {
+					final rotExpr = rvToExpr(child.rotation);
+					stmts.push(macro _rt_txt.rotation = hxd.Math.degToRad($rotExpr));
+				}
 				if (child.alpha != null) {
 					final alphaExpr = rvToExpr(child.alpha);
 					stmts.push(macro _rt_txt.alpha = $alphaExpr);
@@ -1992,6 +2021,10 @@ class ProgrammableCodeGen {
 					stmts.push(macro _rt_sg.scaleX = $scaleExpr);
 					stmts.push(macro _rt_sg.scaleY = $scaleExpr);
 				}
+				if (child.rotation != null) {
+					final rotExpr = rvToExpr(child.rotation);
+					stmts.push(macro _rt_sg.rotation = hxd.Math.degToRad($rotExpr));
+				}
 				if (child.alpha != null) {
 					final alphaExpr = rvToExpr(child.alpha);
 					stmts.push(macro _rt_sg.alpha = $alphaExpr);
@@ -2020,6 +2053,10 @@ class ProgrammableCodeGen {
 					final scaleExpr = rvToExpr(child.scale);
 					stmts.push(macro _rt_g.scaleX = $scaleExpr);
 					stmts.push(macro _rt_g.scaleY = $scaleExpr);
+				}
+				if (child.rotation != null) {
+					final rotExpr = rvToExpr(child.rotation);
+					stmts.push(macro _rt_g.rotation = hxd.Math.degToRad($rotExpr));
 				}
 				if (child.alpha != null) {
 					final alphaExpr = rvToExpr(child.alpha);
@@ -2134,6 +2171,10 @@ class ProgrammableCodeGen {
 					stmts.push(macro _rt_mask.scaleX = $scaleExpr);
 					stmts.push(macro _rt_mask.scaleY = $scaleExpr);
 				}
+				if (child.rotation != null) {
+					final rotExpr = rvToExpr(child.rotation);
+					stmts.push(macro _rt_mask.rotation = hxd.Math.degToRad($rotExpr));
+				}
 				if (child.alpha != null) {
 					final alphaExpr = rvToExpr(child.alpha);
 					stmts.push(macro _rt_mask.alpha = $alphaExpr);
@@ -2165,6 +2206,10 @@ class ProgrammableCodeGen {
 					final scaleExpr = rvToExpr(child.scale);
 					stmts.push(macro _rt_layers.scaleX = $scaleExpr);
 					stmts.push(macro _rt_layers.scaleY = $scaleExpr);
+				}
+				if (child.rotation != null) {
+					final rotExpr = rvToExpr(child.rotation);
+					stmts.push(macro _rt_layers.rotation = hxd.Math.degToRad($rotExpr));
 				}
 				if (child.alpha != null) {
 					final alphaExpr = rvToExpr(child.alpha);
@@ -2243,6 +2288,10 @@ class ProgrammableCodeGen {
 					final scaleExpr = rvToExpr(child.scale);
 					stmts.push(macro _rt_flow.scaleX = $scaleExpr);
 					stmts.push(macro _rt_flow.scaleY = $scaleExpr);
+				}
+				if (child.rotation != null) {
+					final rotExpr = rvToExpr(child.rotation);
+					stmts.push(macro _rt_flow.rotation = hxd.Math.degToRad($rotExpr));
 				}
 				if (child.alpha != null) {
 					final alphaExpr = rvToExpr(child.alpha);
@@ -3968,6 +4017,12 @@ class ProgrammableCodeGen {
 			});
 		}
 
+		// Rotation
+		if (node.rotation != null) {
+			final rotExpr = rvToExpr(node.rotation);
+			ctorExprs.push(macro $parentRef.rotation = hxd.Math.degToRad($rotExpr));
+		}
+
 		// Alpha
 		if (node.alpha != null) {
 			final alphaExpr = rvToExpr(node.alpha);
@@ -4061,6 +4116,16 @@ class ProgrammableCodeGen {
 				$parentRef.scaleX = $p{["this", saveField]};
 				$parentRef.scaleY = $p{["this", saveField]};
 			});
+		}
+
+		// Rotation — save original, apply, revert
+		if (node.rotation != null) {
+			final saveField = "_applyOrigRotation_" + applyIdx;
+			fields.push(makeField(saveField, FVar(macro :Float, null), [APrivate], pos));
+			ctorExprs.push(macro $p{["this", saveField]} = $parentRef.rotation);
+			final rotExpr = rvToExpr(node.rotation);
+			applyExprs.push(macro $parentRef.rotation = hxd.Math.degToRad($rotExpr));
+			revertExprs.push(macro $parentRef.rotation = $p{["this", saveField]});
 		}
 
 		// Alpha — save original, apply, revert

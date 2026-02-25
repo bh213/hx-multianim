@@ -2580,7 +2580,7 @@ class MacroManimParser {
 	// ===================== Node Parsing =====================
 
 	function createNode(type:NodeType, parent:Null<Node>, conditional:NodeConditionalValues,
-			scale:Null<ReferenceableValue>, alpha:Null<ReferenceableValue>, tint:Null<ReferenceableValue>,
+			scale:Null<ReferenceableValue>, rotation:Null<ReferenceableValue>, alpha:Null<ReferenceableValue>, tint:Null<ReferenceableValue>,
 			layerIndex:Int, updatableName:UpdatableNameType):Node {
 		uniqueCounter++;
 		final nameStr = switch (updatableName) {
@@ -2592,6 +2592,7 @@ class MacroManimParser {
 		return {
 			pos: ZERO,
 			scale: scale,
+			rotation: rotation,
 			alpha: alpha,
 			tint: tint,
 			layer: layerIndex,
@@ -2619,6 +2620,7 @@ class MacroManimParser {
 		var layerIndex = -1;
 		var alpha:Null<ReferenceableValue> = null;
 		var scale:Null<ReferenceableValue> = null;
+		var rotation:Null<ReferenceableValue> = null;
 		var tint:Null<ReferenceableValue> = null;
 		var conditional:NodeConditionalValues = NoConditional;
 
@@ -2665,6 +2667,12 @@ class MacroManimParser {
 						scale = parseFloatOrReference();
 						expect(TClosed);
 						atCount++;
+					case TIdentifier(s) if (isKeyword(s, "rotate")):
+						advance();
+						expect(TOpen);
+						rotation = parseAngleOrReference();
+						expect(TClosed);
+						atCount++;
 					case TIdentifier(s) if (isKeyword(s, "else")):
 						advance();
 						if (match(TOpen)) {
@@ -2683,7 +2691,7 @@ class MacroManimParser {
 						expect(TEquals);
 						final expr = parseAnything();
 						if (scopeVars != null) scopeVars.push(name);
-						return createNode(FINAL_VAR(name, expr), parent, NoConditional, null, null, null, -1, UNTObject(name));
+						return createNode(FINAL_VAR(name, expr), parent, NoConditional, null, null, null, null, -1, UNTObject(name));
 					case TAt:
 						advance(); // allow @alpha(0.5) @scale(0.25) chaining
 					default:
@@ -2784,7 +2792,7 @@ class MacroManimParser {
 					}
 				}
 				expect(TClosed);
-				createNode(BITMAP(ts, hAlign, vAlign), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+				createNode(BITMAP(ts, hAlign, vAlign), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 
 			case TIdentifier(s) if (isKeyword(s, "ninepatch")):
 				advance();
@@ -2797,7 +2805,7 @@ class MacroManimParser {
 				expect(TComma);
 				final height = parseIntegerOrReference();
 				expect(TClosed);
-				createNode(NINEPATCH(sheet, tilename, width, height), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+				createNode(NINEPATCH(sheet, tilename, width, height), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 
 			case TIdentifier(s) if (isKeyword(s, "text")):
 				advance();
@@ -2863,21 +2871,21 @@ class MacroManimParser {
 					lineBreak: lineBreak, dropShadowXY: dropShadowXY, dropShadowColor: dropShadowColor, dropShadowAlpha: dropShadowAlpha,
 					isHtml: isHtml
 				};
-				createNode(TEXT(textDef), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+				createNode(TEXT(textDef), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 
 			case TIdentifier(s) if (isKeyword(s, "apply")):
 				advance();
-				createNode(APPLY, parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+				createNode(APPLY, parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 
 			case TIdentifier(s) if (isKeyword(s, "point")):
 				advance();
 				if (match(TOpen)) expect(TClosed);
-				createNode(POINT, parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+				createNode(POINT, parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 
 			case TIdentifier(s) if (isKeyword(s, "layers")):
 				advance();
 				if (match(TOpen)) expect(TClosed);
-				createNode(LAYERS, parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+				createNode(LAYERS, parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 
 			case TIdentifier(s) if (isKeyword(s, "mask")):
 				advance();
@@ -2886,7 +2894,7 @@ class MacroManimParser {
 				expect(TComma);
 				final h = parseIntegerOrReference();
 				expect(TClosed);
-				createNode(MASK(w, h), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+				createNode(MASK(w, h), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 
 			case TIdentifier(s) if (isKeyword(s, "spacer")):
 				advance();
@@ -2895,7 +2903,7 @@ class MacroManimParser {
 				expect(TComma);
 				final spacerH = parseIntegerOrReference();
 				expect(TClosed);
-				createNode(SPACER(spacerW, spacerH), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+				createNode(SPACER(spacerW, spacerH), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 
 			case TIdentifier(s) if (isKeyword(s, "slot")):
 				advance();
@@ -2906,9 +2914,9 @@ class MacroManimParser {
 					currentDefs = parsed.defs;
 					activeDefs = parsed.defs;
 					scopeVars = [];
-					createNode(SLOT(parsed.defs, parsed.order), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+					createNode(SLOT(parsed.defs, parsed.order), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 				} else {
-					createNode(SLOT(null, null), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+					createNode(SLOT(null, null), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 				}
 
 			case TIdentifier(s) if (isKeyword(s, "slotContent") || isKeyword(s, "slotcontent")):
@@ -2927,7 +2935,7 @@ class MacroManimParser {
 				}
 				if (!insideSlot)
 					error("slotContent can only be used inside a slot body");
-				createNode(SLOT_CONTENT, parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+				createNode(SLOT_CONTENT, parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 
 			case TIdentifier(s) if (isKeyword(s, "interactive")):
 				advance();
@@ -2952,7 +2960,7 @@ class MacroManimParser {
 					}
 				}
 				expect(TClosed);
-				createNode(INTERACTIVE(w, h, id, debug, metadata), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+				createNode(INTERACTIVE(w, h, id, debug, metadata), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 
 			case TIdentifier(s) if (isKeyword(s, "flow")):
 				advance();
@@ -3023,7 +3031,7 @@ class MacroManimParser {
 						default: error('unknown flow param: $pname');
 					}
 				}
-				createNode(FLOW(maxWidth, maxHeight, minWidth, minHeight, lineHeight, colWidth, layout, paddingTop, paddingBottom, paddingLeft, paddingRight, hSpacing, vSpacing, debug, multiline, bgSheet, bgTile, overflow, fillWidth, fillHeight, reverse), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+				createNode(FLOW(maxWidth, maxHeight, minWidth, minHeight, lineHeight, colWidth, layout, paddingTop, paddingBottom, paddingLeft, paddingRight, hSpacing, vSpacing, debug, multiline, bgSheet, bgTile, overflow, fillWidth, fillHeight, reverse), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 
 			case TIdentifier(s) if (isKeyword(s, "programmable")):
 				advance();
@@ -3040,13 +3048,13 @@ class MacroManimParser {
 				currentDefs = parsed.defs;
 				activeDefs = parsed.defs;
 				scopeVars = [];
-				createNode(PROGRAMMABLE(isTileGroup, parsed.defs, parsed.order), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+				createNode(PROGRAMMABLE(isTileGroup, parsed.defs, parsed.order), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 
 			case TIdentifier(s) if (isKeyword(s, "layouts") || isKeyword(s, "relativelayouts")):
 				advance();
 				expect(TCurlyOpen);
 				final layoutsDef = parseLayouts();
-				final n = createNode(RELATIVE_LAYOUTS(layoutsDef), parent, conditional, scale, alpha, tint, layerIndex, switch (updatableName) {
+				final n = createNode(RELATIVE_LAYOUTS(layoutsDef), parent, conditional, scale, rotation, alpha, tint, layerIndex, switch (updatableName) {
 					case UNTObject(_): UNTObject(defaultLayoutNodeName);
 					case UNTUpdatable(_): UNTUpdatable(defaultLayoutNodeName);
 					case UNTIndexed(_, _): UNTObject(defaultLayoutNodeName);
@@ -3058,7 +3066,7 @@ class MacroManimParser {
 				advance();
 				expect(TCurlyOpen);
 				final p = parseParticles();
-				final n = createNode(PARTICLES(p), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+				final n = createNode(PARTICLES(p), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 				return n;
 
 			case TIdentifier(s) if (isKeyword(s, "staticRef") || isKeyword(s, "reference")):
@@ -3080,7 +3088,7 @@ class MacroManimParser {
 					params = parseReferenceParams();
 				}
 				expect(TClosed);
-				createNode(STATIC_REF(extRef, progRef, params), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+				createNode(STATIC_REF(extRef, progRef, params), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 
 			case TIdentifier(s) if (isKeyword(s, "dynamicRef") || isKeyword(s, "component")):
 				advance();
@@ -3101,7 +3109,7 @@ class MacroManimParser {
 					params = parseReferenceParams();
 				}
 				expect(TClosed);
-				createNode(DYNAMIC_REF(extRef, progRef, params), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+				createNode(DYNAMIC_REF(extRef, progRef, params), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 
 			case TIdentifier(s) if (isKeyword(s, "placeholder")):
 				advance();
@@ -3136,7 +3144,7 @@ class MacroManimParser {
 						error("expected callback or builderParameter");
 				}
 				expect(TClosed);
-				createNode(PLACEHOLDER(type, source), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+				createNode(PLACEHOLDER(type, source), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 
 			case TIdentifier(s) if (isKeyword(s, "repeatable2d")):
 				advance();
@@ -3149,7 +3157,7 @@ class MacroManimParser {
 				expect(TComma);
 				final repeatTypeY = parseRepeatIterator(currentDefs);
 				expect(TClosed);
-				createNode(REPEAT2D(varNameX, varNameY, repeatTypeX, repeatTypeY), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+				createNode(REPEAT2D(varNameX, varNameY, repeatTypeX, repeatTypeY), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 
 			case TIdentifier(s) if (isKeyword(s, "repeatable")):
 				advance();
@@ -3158,7 +3166,7 @@ class MacroManimParser {
 				expect(TComma);
 				final repeatType = parseRepeatIterator(currentDefs);
 				expect(TClosed);
-				createNode(REPEAT(varName, repeatType), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+				createNode(REPEAT(varName, repeatType), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 
 			case TIdentifier(s) if (isKeyword(s, "stateanim")):
 				advance();
@@ -3179,7 +3187,7 @@ class MacroManimParser {
 							default:
 						}
 						final constructs = parseStateAnimConstruct();
-						createNode(STATEANIM_CONSTRUCT(initialState, constructs, externallyDriven), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+						createNode(STATEANIM_CONSTRUCT(initialState, constructs, externallyDriven), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 					default:
 						expect(TOpen);
 						final filename = expectIdentifierOrString();
@@ -3193,18 +3201,18 @@ class MacroManimParser {
 							selector.set(key, val);
 						}
 						expect(TClosed);
-						createNode(STATEANIM(filename, initialState, selector), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+						createNode(STATEANIM(filename, initialState, selector), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 				}
 
 			case TIdentifier(s) if (isKeyword(s, "tilegroup")):
 				advance();
-				createNode(TILEGROUP, parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+				createNode(TILEGROUP, parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 
 			case TIdentifier(s) if (isKeyword(s, "graphics")):
 				advance();
 				expect(TOpen);
 				final elements = parseGraphicsElements();
-				createNode(GRAPHICS(elements), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+				createNode(GRAPHICS(elements), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 
 			case TIdentifier(s) if (isKeyword(s, "palette")):
 				advance();
@@ -3222,20 +3230,20 @@ class MacroManimParser {
 								expect(TClosed);
 								expect(TCurlyOpen);
 								final colors = parseColorsList(TCurlyClosed);
-								createNode(PALETTE(PaletteColors2D(colors, width)), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+								createNode(PALETTE(PaletteColors2D(colors, width)), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 							case TIdentifier(s2) if (isKeyword(s2, "file")):
 								advance();
 								expect(TColon);
 								final filename = parseStringOrReference();
 								expect(TClosed);
-								createNode(PALETTE(PaletteImageFile(filename)), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+								createNode(PALETTE(PaletteImageFile(filename)), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 							default:
 								error("expected 2d or file in palette()");
 						}
 					case TCurlyOpen:
 						advance();
 						final colors = parseColorsList(TCurlyClosed);
-						createNode(PALETTE(PaletteColors(colors)), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+						createNode(PALETTE(PaletteColors(colors)), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 					default:
 						error("expected { or ( after palette");
 				};
@@ -3245,7 +3253,7 @@ class MacroManimParser {
 				advance();
 				expect(TOpen);
 				final shapes = parsePixelShapes();
-				createNode(PIXELS(shapes), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+				createNode(PIXELS(shapes), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 
 			case TIdentifier(s) if (isKeyword(s, "paths")):
 				advance();
@@ -3253,7 +3261,7 @@ class MacroManimParser {
 				if (parent != null) error("paths must be a root node");
 				expect(TCurlyOpen);
 				final pathsDef = parsePaths();
-				final n = createNode(PATHS(pathsDef), parent, conditional, scale, alpha, tint, layerIndex, switch (updatableName) {
+				final n = createNode(PATHS(pathsDef), parent, conditional, scale, rotation, alpha, tint, layerIndex, switch (updatableName) {
 					case UNTObject(_): UNTObject(defaultPathNodeName);
 					case UNTUpdatable(_): UNTUpdatable(defaultPathNodeName);
 					case UNTIndexed(_, _): UNTObject(defaultPathNodeName);
@@ -3267,7 +3275,7 @@ class MacroManimParser {
 				if (parent != null) error("animated_path must be a root node");
 				expect(TCurlyOpen);
 				final apDef = parseAnimatedPath();
-				final n = createNode(ANIMATED_PATH(apDef), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+				final n = createNode(ANIMATED_PATH(apDef), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 				return n;
 
 			case TIdentifier(s) if (isKeyword(s, "curves")):
@@ -3276,7 +3284,7 @@ class MacroManimParser {
 				if (parent != null) error("curves must be a root node");
 				expect(TCurlyOpen);
 				final curvesDef = parseCurves();
-				final n = createNode(CURVES(curvesDef), parent, conditional, scale, alpha, tint, layerIndex, switch (updatableName) {
+				final n = createNode(CURVES(curvesDef), parent, conditional, scale, rotation, alpha, tint, layerIndex, switch (updatableName) {
 					case UNTObject(_): UNTObject(defaultCurveNodeName);
 					case UNTUpdatable(_): UNTUpdatable(defaultCurveNodeName);
 					case UNTIndexed(_, _): UNTObject(defaultCurveNodeName);
@@ -3290,7 +3298,7 @@ class MacroManimParser {
 				if (parent != null) error("autotile must be a root node");
 				expect(TCurlyOpen);
 				final atDef = parseAutotile();
-				final n = createNode(AUTOTILE(atDef), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+				final n = createNode(AUTOTILE(atDef), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 				return n;
 
 			case TIdentifier(s) if (isKeyword(s, "atlas2")):
@@ -3298,7 +3306,7 @@ class MacroManimParser {
 				if (currentName == null) error("atlas2 requires a #name");
 				if (parent != null) error("atlas2 must be a root node");
 				final a2Def = parseAtlas2();
-				final n = createNode(ATLAS2(a2Def), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+				final n = createNode(ATLAS2(a2Def), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 				return n;
 
 			case TIdentifier(s) if (isKeyword(s, "data")):
@@ -3307,7 +3315,7 @@ class MacroManimParser {
 				if (parent != null) error("data must be a root node");
 				expect(TCurlyOpen);
 				final dataDef = parseData();
-				final n = createNode(DATA(dataDef), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+				final n = createNode(DATA(dataDef), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 				return n;
 
 			// Standalone graphics shortcuts: rect(), line(), circle(), polygon(), ellipse(), roundrect()
@@ -3330,7 +3338,7 @@ class MacroManimParser {
 				// Extract the element position as node position, reset element pos to ZERO
 				final nodePos = element.pos;
 				element.pos = ZERO;
-				final n = createNode(GRAPHICS([element]), parent, conditional, scale, alpha, tint, layerIndex, updatableName);
+				final n = createNode(GRAPHICS([element]), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 				n.pos = nodePos;
 				eatSemicolon();
 				return n;
@@ -4286,6 +4294,16 @@ class MacroManimParser {
 						expect(TColon);
 						if (node == null) error("scale not supported on root");
 						node.scale = parseFloatOrReference();
+						eatSemicolon();
+					} else {
+						parseChildNode(node, defs);
+					}
+				case TIdentifier(s) if (isKeyword(s, "rotate")):
+					if (isPropertyColon()) {
+						advance();
+						expect(TColon);
+						if (node == null) error("rotate not supported on root");
+						node.rotation = parseAngleOrReference();
 						eatSemicolon();
 					} else {
 						parseChildNode(node, defs);

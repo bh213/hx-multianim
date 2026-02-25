@@ -1,0 +1,127 @@
+version: 0.5
+
+// =============================================================================
+// ROTATE DEMO - Verify @rotate works with various angles and syntax
+// =============================================================================
+
+#rotateDemo programmable() {
+    pos: 0, 0
+
+    // Dark background
+    bitmap(generated(color(1280, 720, #333)));
+
+    // =========================================================================
+    // TEST 1: Basic rotation at different angles
+    // =========================================================================
+
+    point {
+        pos: 100, 80
+
+        text(m3x6, "TEST 1: Rotation angles", white, left, 400):0,-20;
+
+        // No rotation (reference)
+        bitmap(generated(color(40, 20, #F00))):0,0;
+        text(m3x6, "0", #AAA, left, 50):0,25;
+
+        // 45 degrees
+        @rotate(45deg) bitmap(generated(color(40, 20, #0F0))):80,0;
+        text(m3x6, "45", #AAA, left, 50):80,25;
+
+        // 90 degrees
+        @rotate(90deg) bitmap(generated(color(40, 20, #00F))):160,0;
+        text(m3x6, "90", #AAA, left, 50):160,25;
+
+        // 180 degrees
+        @rotate(180deg) bitmap(generated(color(40, 20, #FF0))):240,0;
+        text(m3x6, "180", #AAA, left, 50):240,25;
+
+        // 270 degrees
+        @rotate(270deg) bitmap(generated(color(40, 20, #F0F))):320,0;
+        text(m3x6, "270", #AAA, left, 50):320,25;
+    }
+
+    // =========================================================================
+    // TEST 2: Property syntax vs inline syntax
+    // =========================================================================
+
+    point {
+        pos: 100, 220
+
+        text(m3x6, "TEST 2: Property syntax vs inline", white, left, 400):0,-20;
+
+        // Inline @rotate syntax
+        @rotate(30deg) bitmap(generated(color(30, 15, #F80))):0,0;
+        text(m3x6, "@rotate(30deg)", #F80, left, 200):0,30;
+
+        // Property syntax
+        bitmap(generated(color(30, 15, #08F))) {
+            rotate: 30deg
+            pos: 180, 0
+        }
+        text(m3x6, "rotate: 30deg", #08F, left, 200):180,30;
+    }
+
+    // =========================================================================
+    // TEST 3: Angle units
+    // =========================================================================
+
+    point {
+        pos: 100, 340
+
+        text(m3x6, "TEST 3: Angle units (all equivalent to 90 degrees)", white, left, 600):0,-20;
+
+        // 90 degrees
+        @rotate(90deg) bitmap(generated(color(30, 15, #F00))):0,0;
+        text(m3x6, "90deg", #AAA, left, 80):0,25;
+
+        // bare number (degrees)
+        @rotate(90) bitmap(generated(color(30, 15, #0F0))):100,0;
+        text(m3x6, "90", #AAA, left, 80):100,25;
+
+        // direction constant
+        @rotate(down) bitmap(generated(color(30, 15, #00F))):200,0;
+        text(m3x6, "down", #AAA, left, 80):200,25;
+    }
+
+    // =========================================================================
+    // TEST 4: Combined @rotate with @scale and @alpha
+    // =========================================================================
+
+    point {
+        pos: 100, 460
+
+        text(m3x6, "TEST 4: Combined modifiers", white, left, 400):0,-20;
+
+        // Rotate only
+        @rotate(45deg) bitmap(generated(color(30, 15, #F00))):0,0;
+        text(m3x6, "rotate", #AAA, left, 80):0,30;
+
+        // Rotate + scale
+        @rotate(45deg) @scale(2) bitmap(generated(color(30, 15, #0F0))):100,0;
+        text(m3x6, "rot+scale", #AAA, left, 100):100,30;
+
+        // Rotate + alpha
+        @rotate(45deg) @alpha(0.5) bitmap(generated(color(30, 15, #00F))):240,0;
+        text(m3x6, "rot+alpha", #AAA, left, 100):240,30;
+
+        // Rotate + scale + alpha
+        @rotate(45deg) @scale(2) @alpha(0.5) bitmap(generated(color(30, 15, #FF0))):360,0;
+        text(m3x6, "rot+scl+alp", #AAA, left, 120):360,30;
+    }
+
+    // =========================================================================
+    // TEST 5: Negative rotation
+    // =========================================================================
+
+    point {
+        pos: 100, 600
+
+        text(m3x6, "TEST 5: Negative rotation", white, left, 400):0,-20;
+
+        @rotate(-30deg) bitmap(generated(color(40, 20, #F00))):0,0;
+        text(m3x6, "-30deg", #AAA, left, 80):0,25;
+
+        @rotate(-90deg) bitmap(generated(color(40, 20, #0F0))):120,0;
+        text(m3x6, "-90deg", #AAA, left, 80):120,25;
+    }
+}

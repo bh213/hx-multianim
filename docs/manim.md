@@ -35,28 +35,37 @@ There are two ways you can declare elements: short form and long form.
 
 Short form is for adding elements such as bitmaps and text without being too verbose. Long form supports adding children and inline properties.
 
-### Shorthand Prefixes: alpha() and scale()
+### Shorthand Prefixes: alpha(), scale(), rotate()
 
-In short form, `alpha(value)` and `scale(value)` can be used as inline prefixes before an element, as an alternative to the long-form `alpha:` and `scale:` properties:
+In short form, `alpha(value)`, `scale(value)`, and `rotate(angle)` can be used as inline prefixes before an element, as an alternative to the long-form `alpha:`, `scale:`, and `rotate:` properties:
 
 ```
 // Shorthand prefix form (short form only)
 @alpha(0.5) bitmap(generated(color(1280, 720, blue)));
 @scale(5) ninepatch("ui", "Window_3x3_idle", 60, 60): 40, 100
+@rotate(45deg) bitmap("sprite.png"): 100, 100
 
 // Can be combined with conditionals
 @(mode=>idle) alpha(0.1) ninepatch("ui", "Droppanel_3x3_idle", $width, $height): 0,0
 
 // Supports expressions with parameter references
 @alpha(1.0 - $index/5.0) scale(4) bitmap(sheet("crew2", "marine_r_shooting_d")):120,320
+
+// rotate() supports angle units: deg, rad, turn, and direction constants
+@rotate(90deg) bitmap("sprite.png"): 0, 0
+@rotate(down) bitmap("sprite.png"): 0, 0
 ```
 
-These are equivalent to setting `alpha:` and `scale:` in the long form:
+These are equivalent to setting `alpha:`, `scale:`, and `rotate:` in the long form:
 ```
 // Long form equivalent
 ninepatch("ui", "Window_3x3_idle", 60, 60) {
     pos: 40, 100
     scale: 5
+}
+bitmap("sprite.png") {
+    pos: 100, 100
+    rotate: 45deg
 }
 ```
 
@@ -82,6 +91,7 @@ In this example, a programmable in the long form with name `panel` is created. I
 * `grid: sizex, sizey` - specifies grid coordinates for itself and its children
 * `hex: pointy|flat(sizex, sizey)` - specifies hex coordinates for itself and its children
 * `scale: value` - scale for this element and children
+* `rotate: angle` - rotation angle (supports `deg`, `rad`, `turn` suffixes and direction constants)
 * `alpha: value` - alpha (opacity) of this element and children
 * `blendMode: none|alpha|add|alphaAdd|softAdd|multiply|alphaMultiply|erase|screen|sub|max|min` - see [Heaps docs](https://heaps.io/api/h2d/BlendMode.html)
 * `layer: index` - for immediate children of `layers` and `programmable`, z-order index
@@ -741,16 +751,17 @@ Elements can use `@else` and `@default` to form conditional chains, similar to i
 
 ### Inline Properties
 
-In addition to `alpha()` and `scale()` prefixes (documented above), these inline properties can be used on elements:
+In addition to `alpha()`, `scale()`, and `rotate()` prefixes (documented above), these inline properties can be used on elements:
 
 * `@layer(index)` — set z-layer index (integer), for children of `layers` or `programmable`
 * `@alpha(value)` — set opacity (float or `$reference`)
 * `@scale(value)` — set scale multiplier (float or `$reference`)
+* `@rotate(angle)` — set rotation angle (supports `deg`, `rad`, `turn` suffixes, direction constants, or `$reference`)
 * `@tint(color)` — set color tint (hex color or `$reference`)
 
 Multiple inline properties can be combined:
 ```
-@layer(2) @alpha(0.8) @tint(#FF0000) bitmap("sprite.png"): 10, 20
+@layer(2) @alpha(0.8) @rotate(45deg) @tint(#FF0000) bitmap("sprite.png"): 10, 20
 ```
 
 ---

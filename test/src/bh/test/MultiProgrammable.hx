@@ -280,4 +280,7 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/88-colorVerification/colorVerification.manim", "colorVerification")
 	public var colorVerification;
+
+	@:manim("test/examples/90-rotateDemo/rotateDemo.manim", "rotateDemo")
+	public var rotateDemo;
 }

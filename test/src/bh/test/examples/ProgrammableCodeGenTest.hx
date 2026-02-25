@@ -4238,6 +4238,15 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		simpleMacroTest(88, "colorVerification", () -> createMp().colorVerification.create(), async);
 	}
 
+	// ==================== RotateDemo: macro comparison ====================
+
+	@Test
+	public function test90_RotateDemo(async:utest.Async):Void {
+		setupTest(90, "rotateDemo");
+		builderAndMacroScreenshotAndCompare("test/examples/90-rotateDemo/rotateDemo.manim", "rotateDemo",
+			() -> createMp().rotateDemo.create(), async);
+	}
+
 	// ==================== TextInput: visual (builder-only) ====================
 
 	@Test
