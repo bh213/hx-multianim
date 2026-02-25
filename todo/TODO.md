@@ -23,8 +23,8 @@
 - Code generation: programmable elements should always work via `builder.buildWithParameters` or via macro system (`@:manim(...)`)
 
 ## V1
-- ~~hot reload~~ (done — see CHANGELOG)
-- more hot reload integration tests needed (multi-reload cycles, UI components, edge cases)
+- ~~hot reload~~ (done — see CHANGELOG and [docs/hot-reload.md](../docs/hot-reload.md))
+- more hot reload integration tests needed — see [docs/hot-reload.md "Missing Tests"](../docs/hot-reload.md#missing-tests-needed) for full list
 - nullsafty parser, maybe builder
 - add @rotate()
 - transitions & animations (see [transitions-planning.md](transitions-planning.md))
