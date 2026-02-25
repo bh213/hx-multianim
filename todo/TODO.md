@@ -12,6 +12,7 @@
 - blob47 utils?
 - review in-text colors & html text support for manim
 - investigate missing h2d.flow features
+- step repeatable requires dx or dy but we might need just repeatable
 
 ### Haxelib Release
 
