@@ -228,6 +228,9 @@ enum UIScreenEvent {
 	UILeaving;
 	UIClickOutside;
 	UIInteractiveEvent(event:UIScreenEvent, id:String, metadata:BuilderResolvedSettings);
+	UITextChange(text:String);
+	UITextSubmit(text:String);
+	UIFocusChange(focused:Bool);
 }
 
 /**

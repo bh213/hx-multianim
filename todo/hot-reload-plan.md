@@ -1,28 +1,54 @@
 # Hot Reload Plan — Live .manim Reload for Rapid Iteration
 
-Goal: When a `.manim` file changes on disk, update live visuals in-place — move an HP bar, tweak particle colors, adjust a layout — and see the result instantly without restarting. Preserve game state, slot contents, and parameter values. Only require full restart when the change is structurally incompatible.
+Goal: When a `.manim` file changes on disk, update live visuals in-place — move an HP bar, tweak particle colors, adjust a layout — and see the result instantly without restarting. Preserve game state, slot contents, and parameter values across all screens. Only require full restart when the change is structurally incompatible.
+
+**Scope:** All screens (hero select, shop, combat, etc.) — not just combat. `.anim` files are out of scope for hot-reload (change rarely enough that full restart is acceptable).
 
 ## Current Reload: What Happens Today
 
 ```
-File changed on disk
+File changed on disk (or R key pressed)
+  → Heaps LIVE_UPDATE detects change
+  → resource.watch() callback fires → onReload(resource)
   → ScreenManager.reload()
-    → Clear all builders (cached MultiAnimBuilder instances)
-    → Re-parse all .manim files from scratch
-    → Clear all resource caches (sheets, tiles, fonts, atlases)
-    → screen.clear()  ← destroys ALL h2d objects
-    → screen.load()   ← rebuilds everything from scratch
+    → Save old builders map, clear it
+    → Re-parse each .manim resource via buildFromResource()
+      → loader.loadMultiAnim() → MacroManimParser.parseFile()
+    → If parse fails: rollback to old builders, clear cache, return error
+    → If parse succeeds: loader.clearCache()
+    → For every registered screen: screen.clear() then screen.load()
+    → Re-activate current screen mode via updateScreenMode(this.mode)
 ```
 
 **What breaks:**
-- All BuilderResult instances orphaned (old h2d objects gone)
+- All BuilderResult instances orphaned (old h2d objects removed by `removeChildren()`)
 - All IncrementalUpdateContext instances invalidated
 - All slot contents lost (drag-and-drop state, user-placed items)
 - All runtime parameter values reset to defaults
 - UI element state lost (scroll positions, selected items, toggled checkboxes)
 - Game logic holding references to h2d objects now points to dead objects
+- In combat: `screen.clear()` removes `combatRoot` → `UIOnControllerEvent(Entering)` triggers `initCombat()` → full combat restart. All unit positions, HP, hero XP, ability cooldowns, buffs — gone
 - Animations restart from frame 0
 - Particles restart from scratch
+
+### Two Build Patterns in the Game
+
+Understanding these is critical for the hot-reload design:
+
+**Pattern A: Registered incremental results** — built once, updated via `setParameter()`:
+- Sidebar hero cards (`CombatScreen.initSidebar()`, `incremental: true`)
+- Screen HUD elements (built in `screen.load()`, held as screen fields)
+- UI widgets (buttons, sliders, checkboxes, dropdowns — managed by UIScreen)
+
+These have a stable lifecycle: created in `load()`, live until `clear()`. They hold parameter state that needs preserving across reload.
+
+**Pattern B: Transient non-incremental builds** — rebuilt frequently, not held long-term:
+- Per-unit HP/mana bars via `DrawingResources.getCreepBody()` / `getHeroBody()` etc.
+- Each call to `buildWithParameters(name, params)` creates a fresh `BuilderResult` (no incremental context)
+- `UnitVisual` uses a hash-based cache: only rebuilds when params change (HP, shields, status)
+- Old `bodyObj` removed, new one added to `bodyContainer` each time the hash changes
+
+For Pattern B, there's nothing to snapshot/restore — we just need the `MultiAnimBuilder` to be replaced so the *next* build call uses the new definition. The unit bodies will pick up changes on their next hash-triggered rebuild (usually next frame when any value changes, or we can invalidate hashes).
 
 ## Design Decisions
 
@@ -32,14 +58,23 @@ File changed on disk
 - `resource.watch()` file watching on all loaded `.manim` files
 - Reloadable object registry (see below)
 - Reload event logging with timing info
+- Builder replacement for transient builds
 
-**Note:** `@:manim` codegen factories are compile-time generated and cannot hot-reload — they require recompile. Hot-reload only works for the runtime builder path (`MultiAnimBuilder.buildWithParameters()`). Games using codegen should use the runtime builder for components they want to iterate on live.
+**Note:** `@:manim` codegen factories are compile-time generated and cannot hot-reload — they require recompile. During development, use the runtime builder path (`MultiAnimBuilder.buildWithParameters()`). After iteration is done, switch to codegen for production. Hot-reload for codegen may be added later.
+
+### Hot-Reload Strategy: Two Paths
+
+**Path A — Incremental results:** Full snapshot → rebuild → restore cycle. These are screen-level UI elements with state to preserve.
+
+**Path B — Transient builds:** Just replace the cached `MultiAnimBuilder` in `ScreenManager.builders` / `DrawingResources`. The next `buildWithParameters()` call automatically uses the new definition. No snapshot needed — these objects are rebuilt on demand anyway.
+
+For unit bodies specifically: on `.manim` file change, invalidate the `bodyHash` on all `UnitVisual` instances so they rebuild on the next `draw()` call (next frame). This is the "force rehash" approach — no immediate rebuild of 50+ unit bodies, just a hash invalidation that triggers natural rebuild.
 
 ### Reloadable Object Registry
 
-To know which live objects need updating when a file changes, objects must be **registered as reloadable**.
+To know which live objects need updating when a file changes, **incremental** BuilderResults must be **registered as reloadable**.
 
-**`ReloadableRegistry`** — a global (or per-ScreenManager) registry that tracks all live BuilderResults by their source `.manim` file path.
+**`ReloadableRegistry`** — a global (or per-ScreenManager) registry that tracks live BuilderResults by their source `.manim` file path.
 
 ```haxe
 class ReloadableRegistry {
@@ -67,11 +102,13 @@ typedef ReloadCallback = (result:BuilderResult, report:ReloadReport) -> Void;
 - When the BuilderResult's root object is removed from scene, it auto-unregisters (via `onRemove` callback)
 - Game code can also manually register/unregister for custom lifecycle management
 
-**Why registration matters:** A single `.manim` file may produce hundreds of live objects (e.g., one HP bar per unit). The registry knows exactly which BuilderResults to update when a file changes. Without it, reload has to blindly rebuild everything.
+**Transient builds (Pattern B) are NOT registered** — they have no state to preserve. The builder replacement handles them.
+
+**Why registration matters:** A single `.manim` file may produce hundreds of live objects (e.g., one HP bar per unit). For incremental results with state, the registry knows exactly which BuilderResults to update. For transient builds, no tracking is needed — just replace the builder.
 
 ### Marking Objects as Reloadable
 
-By default in dev mode, all BuilderResults from `.manim` files are registered. But game code can control this:
+By default in dev mode, all **incremental** BuilderResults are registered. Non-incremental builds are not (they're transient). But game code can control this:
 
 ```haxe
 // Opt out — this object won't be hot-reloaded (e.g., one-shot temporary effects)
@@ -178,17 +215,6 @@ Implementation:
 - Temporary: leave untouched. They'll die naturally via `isDone` → `onEnd` → `remove()`
 - If particle properties changed but no structural change: update `ParticleGroup` fields in-place (speed, gravity, colors, etc.) — even for looped particles this is preferable to restart when possible
 
-### StateAnim (.anim files)
-
-State animations have their own state machines with current state, current frame, and transition history.
-
-| Change | Result |
-|--------|--------|
-| Frame data / sheet references | Reload. Preserve current state + frame index if still valid. |
-| Extrapoints positions | Reload. Immediate feedback (e.g., moving a weapon attachment point). |
-| State list changed | Restart animation. State machine structure is different. |
-| Animation timing (fps) | Reload. Current frame preserved, playback speed changes. |
-
 ### Other Top-Level Components
 
 Top-level non-programmable definitions (paths, curves, layouts, data, atlas2) live in the same `.manim` file and should reload too. The challenge: game code may hold references to resolved instances.
@@ -293,6 +319,8 @@ typedef ReloadReport = {
     particlesRestarted:Array<String>,
     needsFullRestart:Null<String>,       // non-null = reason
     error:Null<{message:String, file:String, line:Int, col:Int}>,  // parse or build error
+    rebuiltCount:Int,                    // number of live objects rebuilt
+    elapsedMs:Float,                     // total reload time
 }
 ```
 
@@ -305,7 +333,7 @@ File changed on disk (resource.watch callback in dev mode)
   │    └─ PARSE ERROR? → keep old builder, log error, return ReloadReport(error=...), STOP
   │                       file watcher stays active, retry on next save
   │
-  ├─ Compare signatures:
+  ├─ Compare signatures (for each programmable in file):
   │    ├─ Top-level params: removed or renamed? → NeedsFullRestart (keep old state)
   │    ├─ Top-level params: type changed? → NeedsFullRestart (keep old state)
   │    ├─ Structural type changes? (programmable→data) → NeedsFullRestart (keep old state)
@@ -313,11 +341,17 @@ File changed on disk (resource.watch callback in dev mode)
   │
   ├─ Create new MultiAnimBuilder from new AST
   │
-  ├─ For each registered ReloadableHandle for this file:
+  ├─ Replace cached builder in ScreenManager.builders map
+  │    (transient builds will pick up the new builder automatically on next build call)
+  │
+  ├─ Notify transient-build consumers (e.g., DrawingResources):
+  │    └─ Invalidate bodyHash on all live UnitVisuals → rebuild on next draw frame
+  │
+  ├─ For each registered ReloadableHandle for this file (incremental results):
   │    │
   │    ├─ Snapshot current state:
   │    │    ├─ Parameter values (from IncrementalUpdateContext)
-  │    │    ├─ Slot contents + data (reparent h2d.Objects)
+  │    │    ├─ Slot contents + data (reparent h2d.Objects to temp holder)
   │    │    ├─ UI element state (scroll pos, selection, toggles)
   │    │    └─ DynamicRef parameter values
   │    │
@@ -372,11 +406,44 @@ function swapInScene(oldRoot:h2d.Object, newRoot:h2d.Object) {
 
 `-D MULTIANIM_DEV` enables:
 1. **File watching** — `resource.watch()` registered for all loaded `.manim` files
-2. **Object registry** — `ReloadableRegistry` tracks all live BuilderResults
-3. **Auto-registration** — `buildWithParameters` auto-registers results; `onRemove` auto-unregisters
-4. **Debug overlay** (optional) — flash/highlight reloaded objects briefly for visual confirmation
+2. **Object registry** — `ReloadableRegistry` tracks live incremental BuilderResults
+3. **Auto-registration** — `buildWithParameters(..., incremental: true)` auto-registers results; `onRemove` auto-unregisters
+4. **Builder replacement** — transient builds pick up new definitions automatically
+5. **Debug overlay** (optional) — flash/highlight reloaded objects briefly for visual confirmation
 
 The overhead is acceptable for development. Ship without `-D MULTIANIM_DEV`.
+
+## ScreenManager Integration
+
+The critical change: `ScreenManager.reload()` must NOT do `screen.clear()` + `screen.load()` in dev mode. Instead:
+
+```
+Current reload (non-dev):
+  screen.clear() → screen.load()    // full teardown and rebuild
+
+Hot-reload (dev mode):
+  1. Replace cached MultiAnimBuilder for the changed file only
+  2. Clear resource caches that reference the changed file
+  3. Rebuild registered incremental results (snapshot → rebuild → restore → swap)
+  4. Notify transient-build consumers to invalidate
+  5. Do NOT call screen.clear() or screen.load()
+```
+
+This means the screen's `load()` method only runs once at startup. Hot-reload preserves all screen state — combat continues running, hero selection state preserved, shop inventory intact.
+
+### DrawingResources Integration
+
+`DrawingResources` holds `unitBodiesBuilder`, `terrainBuilder`, etc. On hot-reload:
+
+```haxe
+// In dev mode, DrawingResources listens for builder replacement:
+// When unitBodiesBuilder's source file changes:
+//   1. Replace unitBodiesBuilder with new builder
+//   2. Invalidate all UnitVisual.bodyHash values → forces rebuild on next draw()
+//   3. Unit bodies pick up new .manim definition naturally on next frame
+```
+
+This is lightweight — no 50-unit rebuild burst, just hash invalidation + natural per-frame rebuild.
 
 ## API Surface
 
@@ -385,7 +452,7 @@ The overhead is acceptable for development. Ship without `-D MULTIANIM_DEV`.
 ```haxe
 // In dev mode, BuilderResult gains:
 class BuilderResult {
-    public var reloadable:Bool;                    // default true in dev mode
+    public var reloadable:Bool;                    // default true for incremental results in dev mode
     public var onReload:Null<(BuilderResult, ReloadReport) -> Void>;
 }
 
@@ -408,6 +475,25 @@ interface IHotReloadable {
 
 Most screens won't need this — the automatic parameter/slot/UI state snapshot handles common cases. Only implement `IHotReloadable` for custom game state that the library can't know about (e.g., a unit reference, a game-logic timer tied to a visual).
 
+### Transient Build Consumer
+
+Game code that creates transient builds needs to know when its builder changed:
+
+```haxe
+// DrawingResources or similar:
+interface IBuilderConsumer {
+    function onBuilderReplaced(sourcePath:String, newBuilder:MultiAnimBuilder):Void;
+}
+
+// Implementation in DrawingResources:
+function onBuilderReplaced(sourcePath:String, newBuilder:MultiAnimBuilder) {
+    if (sourcePath == "manim/unitbodies.manim") {
+        unitBodiesBuilder = newBuilder;
+        invalidateAllBodyHashes();  // force rebuild on next draw
+    }
+}
+```
+
 ## What NOT to Do
 
 - **Don't hot-reload in release mode** — hot-reload is dev-only. No registry, no file watching, no runtime overhead in shipped builds.
@@ -415,62 +501,87 @@ Most screens won't need this — the automatic parameter/slot/UI state snapshot 
 - **Don't auto-cascade imported files** — if `import "other.manim"` changed, that's a separate file watch event. Reload only the directly-changed file. Imports are resolved during parse, so the re-parsed file picks up the new import content.
 - **Don't cache old AST** — always re-parse from disk. Parser is fast enough.
 - **Don't try to diff ASTs** (Phase 1) — snapshot/rebuild/restore is simpler and sufficient. AST diffing can be added later as an optimization if rebuild is too slow for large scenes.
-- **Don't hot-reload codegen** — `@:manim` factories are compile-time. Use the runtime builder path for components you want to iterate on live.
+- **Don't call screen.clear()/screen.load()** — the whole point is avoiding the teardown cycle.
+- **Don't rebuild transient builds eagerly** — just replace the builder and let the normal rebuild cycle handle it (next hash change or next frame).
 
 ## Phased Implementation
 
-### Phase 1: Core Hot-Reload Infrastructure
+### Phase 1: Core Infrastructure
 
-1. **Error-safe reload** — parse/build errors keep old state, log error, stay watching for next save
-2. **`ReloadableRegistry`** — registry of live BuilderResults by source path
-3. **Auto-register/unregister** in `buildWithParameters` (dev mode only)
-4. **State snapshot** — capture params, slots, UI state from `IncrementalUpdateContext`
-5. **Rebuild + restore** — full rebuild with new builder, restore snapshot to new result
-6. **Scene graph swap** — replace old root with new root preserving transforms
-7. **Signature check** — detect param removes/renames/type changes → NeedsFullRestart
-8. **Param addition** — new params with defaults merge into existing param set
-9. **Particle handling** — restart looped, preserve temporary
+1. **`ReloadableRegistry`** — registry of live incremental BuilderResults by source path
+2. **Auto-register/unregister** — `buildWithParameters(..., incremental: true)` in dev mode auto-registers; `onRemove` auto-unregisters
+3. **Builder replacement** — `ScreenManager.hotReload(resource)` replaces cached builder for a single file, clears relevant caches
+4. **Error-safe reload** — parse/build errors keep old state, log error with file:line:col, stay watching for next save
+5. **Signature check** — detect param removes/renames/type changes → NeedsFullRestart
+6. **State snapshot** — capture params, slots, UI state from `IncrementalUpdateContext`
+7. **Rebuild + restore** — full rebuild with new builder, restore snapshot to new result
+8. **Scene graph swap** — replace old root with new root preserving transforms
+9. **Param addition** — new params with defaults merge into existing param set
 10. **`ReloadReport`** — structured feedback to game code (including errors)
+11. **`IBuilderConsumer` notification** — tell DrawingResources etc. that a builder changed
 
-### Phase 2: Top-Level Component Invalidation
+### Phase 2: Full State Preservation
 
-1. **Path invalidation** — `AnimatedPath.onPathInvalidated` callback, re-read geometry
-2. **Curve invalidation** — re-resolve curve references in AnimatedPath and particles
-3. **Layout invalidation** — auto-handled during rebuild (layout coords recalculated)
-4. **Data block change detection** — `report.dataChanged` flag
-5. **`ReloadReport` enrichment** — per-component change flags
+1. **Particle handling** — restart looped, preserve temporary
+2. **Path invalidation** — `AnimatedPath.onPathInvalidated` callback, re-read geometry
+3. **Curve invalidation** — re-resolve curve references in AnimatedPath and particles
+4. **Layout invalidation** — auto-handled during rebuild (layout coords recalculated)
+5. **Data block change detection** — `report.dataChanged` flag
+6. **`ReloadReport` enrichment** — per-component change flags
+7. **UI element state restoration** — scroll positions, selected items, toggles
+8. **DynamicRef state** — capture and restore nested dynamic ref parameters
+9. **Slot content reparenting** — preserve slot contents across rebuild
 
 ### Phase 3: Polish & Optimization (if needed)
 
-1. **Fast-path patching** — for position-only and property-only changes, skip full rebuild
-2. **Node→object mapping** — store during build for targeted patching
-3. **Debug overlay** — brief highlight flash on reloaded objects
-4. **Hot-reload indicator** — on-screen status showing reload count/timing
+1. **Nested import tracking** — when `shared.manim` changes, reload everything that imports it
+2. **Fast-path patching** — for position-only and property-only changes, skip full rebuild
+3. **Node→object mapping** — store during build for targeted patching
+4. **Debug overlay** — brief highlight flash on reloaded objects
+5. **Hot-reload indicator** — on-screen status showing reload count/timing/errors
 
 ## Use Case: HP Bar on Live Units
 
-This is the motivating scenario. A game has 50 units on screen, each with an HP bar built from `hpBar.manim`. The designer wants to nudge the HP bar 3 pixels to the right.
+This is the motivating scenario. A game has 50 creeps on screen, each with an HP bar built from `unitbodies.manim`. The designer wants to nudge the HP bar 3 pixels to the right.
 
-**Without hot-reload:** Change file → recompile → restart game → replay to get 50 units on screen → check position. Minutes per iteration.
+**Without hot-reload:** Change file → press R → combat restarts from scratch → wait for units to spawn → check position. Minutes per iteration.
 
 **With hot-reload (dev mode):**
 
-1. Game builds HP bars via `builder.buildWithParameters("hpBar", params, incremental: true)`
-2. Each HP bar's `BuilderResult` is auto-registered in `ReloadableRegistry` under `"hpBar.manim"`
-3. Designer changes position in `hpBar.manim` and saves
-4. `resource.watch` fires → `ScreenManager.hotReload("hpBar.manim")`
-5. Registry finds 50 live `ReloadableHandle`s for this file
-6. For each: snapshot params (current HP value, color, etc.) → rebuild with new builder → restore params → swap in scene graph
-7. All 50 HP bars update to new position instantly. HP values, colors preserved.
+1. Game builds unit bodies via `DrawingResources.getCreepBody(...)` → `unitBodiesBuilder.buildWithParameters("creepBody", params)` (non-incremental, hash-cached)
+2. `unitbodies.manim` file changes on disk → `resource.watch` fires
+3. `ScreenManager.hotReload("unitbodies.manim")`:
+   - Re-parses the file → creates new `MultiAnimBuilder`
+   - Replaces `unitBodiesBuilder` in DrawingResources
+   - Invalidates all `UnitVisual.bodyHash` values
+4. On next `Combat.run()` → `unit.draw()` → `visual.updateBody()`:
+   - Hash check finds mismatch (was invalidated)
+   - `getCreepBody(...)` calls `buildWithParameters` on new builder → new visuals
+   - Old body replaced, new body shown
+5. All 50 unit bodies update within 1-2 frames. Combat continues uninterrupted — same HP, same positions, same buffs.
 
-Total time: ~100ms for 50 rebuilds. Instant visual feedback.
+## Use Case: Sidebar Hero Card
 
-## Open Questions
+Sidebar hero cards use incremental mode with `setParameter()`:
 
-1. **Performance at scale:** 50 rebuilds should be fine. 500? Need to measure. If too slow, Phase 4's fast-path patching (position-only changes skip rebuild) becomes important.
+1. `CombatScreen.initSidebar()` builds `heroCard` with `incremental: true` → auto-registered in `ReloadableRegistry`
+2. Every frame, `updateSidebar()` calls `cardResult.setParameter("hp", ...)` etc.
+3. `sidebar.manim` changes on disk → `ScreenManager.hotReload("sidebar.manim")`
+4. Registry finds the live `heroCard` result:
+   - Snapshots current params: `hp`, `mana`, `name`, `heroClass`, `level`, etc.
+   - Rebuilds with new builder and same params
+   - Restores slot contents (ability icons, item icons)
+   - Swaps in scene graph
+5. Sidebar updates instantly. Next `updateSidebar()` call continues using the new result as if nothing happened.
 
-2. **Nested imports:** If `main.manim` imports `shared.manim`, and `shared.manim` changes, should we reload everything that imports it? Probably yes in dev mode — track import dependencies in the registry.
+## Resolved Questions
 
-3. **StateAnim (.anim) hot-reload:** `.anim` files are a separate parser. Should they also hot-reload? Useful for tweaking animation timing. Lower priority than `.manim` but same infrastructure applies. Can share the same file-watch + invalidation pattern.
+1. **Performance at scale:** Transient builds (unit bodies) don't have a rebuild burst — they update naturally via hash invalidation (1-2 frames). Only incremental results (screen UI, typically <20 per screen) need snapshot/rebuild/restore. Not a concern.
 
-4. **Playground integration:** The web playground (`hx-multianim-playground`) already has live preview. Should it share the same reload logic? Probably not — the playground re-parses and rebuilds from scratch each time, which is fine for single-component editing.
+2. **Nested imports:** Deferred to Phase 3. For Phase 1, editing an imported file requires also re-saving the importing file (or pressing R for full reload). Import dependency tracking can be added later.
+
+3. **StateAnim (.anim) hot-reload:** Out of scope. `.anim` files change rarely enough that full restart is acceptable. The infrastructure could support it later if needed — same file-watch + invalidation pattern.
+
+4. **Playground integration:** No — the playground re-parses and rebuilds from scratch each time, which is fine for single-component editing. Different architecture, different needs.
+
+5. **Codegen hot-reload:** Out of scope for now. During development, use runtime builder path. After iteration is done, switch to codegen for production. Codegen hot-reload may be added later as an enhancement.

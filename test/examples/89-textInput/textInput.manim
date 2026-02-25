@@ -1,0 +1,69 @@
+version: 0.5
+
+#textInput programmable(
+    status:[normal,hover,focused,disabled]=normal,
+    placeholder:bool=true,
+    width:uint=200,
+    height:uint=24,
+    placeholderText:string="Type here..."
+) {
+    @(status=>normal)   ninepatch("ui", "Text_Color_3x3_idle", $width, $height): 0, 0
+    @(status=>hover)    ninepatch("ui", "Text_Color_3x3_hover", $width, $height): 0, 0
+    @(status=>focused)  ninepatch("ui", "Text_Color_3x3_pressed", $width, $height): 0, 0
+    @(status=>disabled) ninepatch("ui", "Text_Color_3x3_disabled", $width, $height): 0, 0
+
+    @(placeholder=>true) text(dd, $placeholderText, #888888): 4, 4
+
+    #textArea point: 4, 4
+}
+
+#textInputGrey programmable(
+    status:[normal,hover,focused,disabled]=normal,
+    placeholder:bool=true,
+    width:uint=200,
+    height:uint=24,
+    placeholderText:string="Type here..."
+) {
+    @(status=>normal)   ninepatch("ui", "Text_Grey_3x3_idle", $width, $height): 0, 0
+    @(status=>hover)    ninepatch("ui", "Text_Grey_3x3_hover", $width, $height): 0, 0
+    @(status=>focused)  ninepatch("ui", "Text_Grey_3x3_pressed", $width, $height): 0, 0
+    @(status=>disabled) ninepatch("ui", "Text_Grey_3x3_disabled", $width, $height): 0, 0
+
+    @(placeholder=>true) text(dd, $placeholderText, #888888): 4, 4
+
+    #textArea point: 4, 4
+}
+
+#textInputTitle programmable(
+    status:[normal,hover,focused,disabled]=normal,
+    placeholder:bool=true,
+    width:uint=200,
+    height:uint=30,
+    placeholderText:string="Type here..."
+) {
+    @(status=>normal)   ninepatch("ui", "Text_Title_Color_3x3_idle", $width, $height): 0, 0
+    @(status=>hover)    ninepatch("ui", "Text_Title_Color_3x3_hover", $width, $height): 0, 0
+    @(status=>focused)  ninepatch("ui", "Text_Title_Color_3x3_pressed", $width, $height): 0, 0
+    @(status=>disabled) ninepatch("ui", "Text_Title_Color_3x3_disabled", $width, $height): 0, 0
+
+    @(placeholder=>true) text(dd, $placeholderText, #888888): 6, 6
+
+    #textArea point: 6, 6
+}
+
+#textInputTitleGrey programmable(
+    status:[normal,hover,focused,disabled]=normal,
+    placeholder:bool=true,
+    width:uint=200,
+    height:uint=30,
+    placeholderText:string="Type here..."
+) {
+    @(status=>normal)   ninepatch("ui", "Text_Title_Grey_3x3_idle", $width, $height): 0, 0
+    @(status=>hover)    ninepatch("ui", "Text_Title_Grey_3x3_hover", $width, $height): 0, 0
+    @(status=>focused)  ninepatch("ui", "Text_Title_Grey_3x3_pressed", $width, $height): 0, 0
+    @(status=>disabled) ninepatch("ui", "Text_Title_Grey_3x3_disabled", $width, $height): 0, 0
+
+    @(placeholder=>true) text(dd, $placeholderText, #888888): 6, 6
+
+    #textArea point: 6, 6
+}
