@@ -285,6 +285,19 @@ class IncrementalUpdateContext {
 		this.rootNode = rootNode;
 	}
 
+	#if MULTIANIM_DEV
+	public function snapshotParams():Map<String, ResolvedIndexParameters> {
+		final copy:Map<String, ResolvedIndexParameters> = new Map();
+		for (k => v in indexedParams)
+			copy.set(k, v);
+		return copy;
+	}
+
+	public function getBuilderParams():BuilderParameters {
+		return builderParams;
+	}
+	#end
+
 	public function trackConditional(object:h2d.Object, node:Node):Void {
 		conditionalEntries.push({object: object, node: node});
 	}
@@ -628,6 +641,28 @@ class BuilderResult {
 	public var slots:Array<{key:SlotKey, handle:SlotHandle}>;
 	public var dynamicRefs:Map<String, BuilderResult>;
 	public var incrementalContext:Null<IncrementalUpdateContext>;
+	#if MULTIANIM_DEV
+	public var reloadable:Bool = true;
+	public var reloadHandle:Null<bh.multianim.dev.HotReload.ReloadableHandle> = null;
+	public var onReload:Null<(BuilderResult, bh.multianim.dev.HotReload.ReloadReport) -> Void> = null;
+
+	// Adopt internals from another result, keeping this instance as the stable reference.
+	// The scene graph object is swapped via SceneSwapper (caller responsibility).
+	public function adoptFrom(other:BuilderResult):Void {
+		this.object = other.object;
+		this.name = other.name;
+		this.names = other.names;
+		this.interactives = other.interactives;
+		this.layouts = other.layouts;
+		this.palettes = other.palettes;
+		this.rootSettings = other.rootSettings;
+		this.gridCoordinateSystem = other.gridCoordinateSystem;
+		this.hexCoordinateSystem = other.hexCoordinateSystem;
+		this.slots = other.slots;
+		this.dynamicRefs = other.dynamicRefs;
+		this.incrementalContext = other.incrementalContext;
+	}
+	#end
 
 	public function setParameter(name:String, value:Dynamic):Void {
 		if (incrementalContext == null)
@@ -5120,12 +5155,30 @@ class MultiAnimBuilder {
 			this.incrementalContext = null;
 		}
 
+		#if MULTIANIM_DEV
+		if (incremental && retVal.incrementalContext != null && retVal.reloadable) {
+			if (Std.isOfType(resourceLoader, bh.base.ResourceLoader.CachingResourceLoader)) {
+				final cachingLoader = cast(resourceLoader, bh.base.ResourceLoader.CachingResourceLoader);
+				if (cachingLoader.hotReloadRegistry != null) {
+					retVal.reloadHandle = cachingLoader.hotReloadRegistry.register(sourceName, retVal, name);
+				}
+			}
+		}
+		#end
+
 		popBuilderState();
 		return retVal;
 	}
 
 	public function hasNode(name:String) {
 		return multiParserResult?.nodes?.get(name) != null;
+	}
+
+	public function getParameterDefinitions(programmableName:String):ParametersDefinitions {
+		final node = multiParserResult?.nodes?.get(programmableName);
+		if (node == null)
+			return new Map();
+		return getProgrammableParameterDefinitions(node);
 	}
 
 	/** Build a parameterized slot's children into its container with incremental mode.

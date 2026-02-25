@@ -208,6 +208,12 @@ abstract class UIControllerBase implements UIController {
 		return UIControllerRunning;
 	}
 
+	public function clearState() {
+		currentOver = null;
+		controllable.captureEvents.target = null;
+		controllable.captureEvents.reset();
+	}
+
 	public function lifecycleEvent(event:UIControllerLifecycleEvent) {
 		switch event {
 			case LifecycleControllerStarted:

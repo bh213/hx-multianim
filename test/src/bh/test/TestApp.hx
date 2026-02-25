@@ -49,6 +49,9 @@ class TestApp extends hxd.App {
 		testRunner.addCase(new bh.test.examples.BuilderUnitTest());
 		testRunner.addCase(new bh.test.examples.UIComponentTest());
 		testRunner.addCase(new bh.test.examples.ProgrammableCodeGenTest(s2d));
+		#if MULTIANIM_DEV
+		testRunner.addCase(new bh.test.examples.HotReloadTest());
+		#end
 
 		// Capture unit test results in memory for HTML report
 		// (not using Report.create which calls Sys.exit on completion)

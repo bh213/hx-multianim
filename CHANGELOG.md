@@ -212,6 +212,19 @@
   - `enterAdvances` flag — Enter key advances to next input (deferred to next frame to avoid Heaps event conflicts)
   - Duplicate `tabIndex` values throw at registration time
   - Skips disabled inputs when cycling
+- **Hot reload** — live `.manim` file updates during development without restarting (`-D MULTIANIM_DEV`)
+  - **Three reload strategies**: per-file nuclear (screens), in-place (non-screen incremental handles), transient (builder-only replacement)
+  - **Stable `BuilderResult` references** — `replaceChildren` + `adoptFrom` pattern keeps game-held result references valid across reloads; no `onReload` callbacks needed
+  - **State preservation** — `StateSnapshotter`/`StateRestorer` captures parameter state, slot contents, and dynamicRef params; restores after rebuild
+  - **Signature checking** — `SignatureChecker` detects removed/type-changed params and reports `ReloadNeedsRestart`; added params are safe
+  - **Content hashing** — `FileChangeDetector` (FNV-1a) skips unchanged files
+  - **Auto-registration** — incremental builds auto-register with `ReloadableRegistry` via `ReloadSentinel` (invisible child, auto-unregisters on scene removal)
+  - **Screen source tracking** — `screenSourceMap` records which `.manim` files each screen loaded; per-file nuclear only reloads affected screens
+  - **Reload events** — `ReloadEvent` enum (`ReloadStarted`, `ReloadSucceeded`, `ReloadFailed`, `ReloadNeedsRestart`) with `addReloadListener()`
+  - **Parse error resilience** — failed parse keeps old state; old result remains functional
+  - **Dev test configuration** — `test-hx-multianim-dev.hxml` with `-D MULTIANIM_DEV`; `test.ps1` runs both standard and dev test suites
+  - **HotReloadTest** — comprehensive unit test suite: resolvedToDynamic, SignatureChecker, SceneSwapper.replaceChildren, snapshot/restore round-trips, slot preservation, parse error handling, dynamicRef params
+- **`UIController.clearState()`** — new interface method; resets hover/capture state in `UIControllerBase` during screen clear (prevents stale state after nuclear reload)
 
 ### Changed
 - **Button incremental rewrite** — `UIStandardMultiAnimButton` now uses single incremental `BuilderResult` with `setParameter()` instead of `MultiAnimMultiResult` (pre-built combo swap). Removes `doRedraw()`, `requestRedraw`, and `UIElementSyncRedraw`.
