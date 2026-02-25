@@ -49,20 +49,25 @@ function Invoke-TestRun {
 
     Push-Location $Root
     try {
-        $result = Do-Run
+        # Run standard tests
+        $result = Do-Run "test-hx-multianim.hxml" "build/hl-test.hl" "build/test_result.txt" ""
+        if ($result -ne 0) { return $result }
+
+        # Run dev-mode tests (hot-reload)
+        $result = Do-Run "test-hx-multianim-dev.hxml" "build/hl-test-dev.hl" "build/test_result.txt" " [DEV]"
         return $result
     } finally {
         Pop-Location
     }
 }
 
-function Do-Run {
+function Do-Run($BaseHxml, $HlBinary, $ResultFileName, $Label) {
     # Select hxml config
-    $hxml = "test-hx-multianim.hxml"
-    if ($VerboseOutput) { $hxml = "test-hx-multianim-verbose.hxml" }
+    $hxml = $BaseHxml
+    if ($VerboseOutput -and $Label -eq "") { $hxml = "test-hx-multianim-verbose.hxml" }
 
     # Prepare result file
-    $resultFile = Join-Path $Root "build\test_result.txt"
+    $resultFile = Join-Path $Root $ResultFileName
     if (Test-Path $resultFile) { Remove-Item $resultFile }
     $buildDir = Join-Path $Root "build"
     if (-not (Test-Path $buildDir)) {
@@ -78,7 +83,7 @@ function Do-Run {
     }
 
     # --- PHASE 1: Compilation ---
-    Write-Status "Compiling..."
+    Write-Status "Compiling$Label..."
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     # Use cmd.exe /c to support haxe installed as .cmd/.ps1 wrapper (e.g. lix/npm shims)
     $psi.FileName = "cmd.exe"
@@ -99,7 +104,7 @@ function Do-Run {
     if ($compileProc.ExitCode -ne 0) {
         if ($tmpHxml -and (Test-Path $tmpHxml)) { Remove-Item $tmpHxml }
         if ($AIOutput) {
-            Write-Line "--- TEST RESULT ---"
+            Write-Line "--- TEST RESULT$Label ---"
             Write-Line "status: COMPILE_ERROR"
             Write-Line "haxe_exit_code: $($compileProc.ExitCode)"
             if ($compileStderr) {
@@ -107,16 +112,16 @@ function Do-Run {
             }
             Write-Line "--- END TEST RESULT ---"
         } else {
-            Write-Host "ERROR: Compilation failed (exit code $($compileProc.ExitCode))" -ForegroundColor Red
+            Write-Host "ERROR:$Label Compilation failed (exit code $($compileProc.ExitCode))" -ForegroundColor Red
         }
         return $compileProc.ExitCode
     }
 
     # --- PHASE 2: Execution with timeout ---
-    Write-Status "Running tests..."
+    Write-Status "Running tests$Label..."
     $psi2 = New-Object System.Diagnostics.ProcessStartInfo
     $psi2.FileName = "hl"
-    $psi2.Arguments = "build/hl-test.hl"
+    $psi2.Arguments = $HlBinary
     $psi2.UseShellExecute = $false
     $psi2.WorkingDirectory = $Root
     if ($AIOutput) {
@@ -134,12 +139,12 @@ function Do-Run {
         $hlProc.Kill()
         if ($tmpHxml -and (Test-Path $tmpHxml)) { Remove-Item $tmpHxml }
         if ($AIOutput) {
-            Write-Line "--- TEST RESULT ---"
+            Write-Line "--- TEST RESULT$Label ---"
             Write-Line "status: TIMEOUT"
             Write-Line "elapsed_seconds: $HlTimeout"
             Write-Line "--- END TEST RESULT ---"
         } else {
-            Write-Host "ERROR: hl process did not exit within $HlTimeout seconds" -ForegroundColor Red
+            Write-Host "ERROR:$Label hl process did not exit within $HlTimeout seconds" -ForegroundColor Red
         }
         return 124
     }
@@ -158,7 +163,7 @@ function Do-Run {
                     $vTotal = if ($content -match 'visual_total:\s*(\d+)') { $Matches[1] } else { "?" }
                     $vPassed = if ($content -match 'visual_passed:\s*(\d+)') { $Matches[1] } else { "?" }
                     $uAssert = if ($content -match 'unit_assertions:\s*(\d+)') { $Matches[1] } else { "0" }
-                    Write-Host "OK: $vPassed/$vTotal visual tests passed, $uAssert unit assertions passed" -ForegroundColor Green
+                    Write-Host "OK$Label`: $vPassed/$vTotal visual tests passed, $uAssert unit assertions passed" -ForegroundColor Green
                 } else {
                     Write-Host $content -ForegroundColor Red
                 }
@@ -168,17 +173,17 @@ function Do-Run {
         }
     } else {
         if ($AIOutput) {
-            Write-Line "--- TEST RESULT ---"
+            Write-Line "--- TEST RESULT$Label ---"
             Write-Line "status: FAILED"
-            Write-Line "error: test did not produce results (build/test_result.txt missing)"
+            Write-Line "error: test did not produce results ($ResultFileName missing)"
             Write-Line "--- END TEST RESULT ---"
         } else {
-            Write-Host "Error: test did not produce results (build/test_result.txt missing)" -ForegroundColor Red
+            Write-Host "Error:$Label test did not produce results ($ResultFileName missing)" -ForegroundColor Red
         }
         return 1
     }
 
-    Write-Status "--- TEST END ---"
+    Write-Status "--- TEST END$Label ---"
     return $hlProc.ExitCode
 }
 

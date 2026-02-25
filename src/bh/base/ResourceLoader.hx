@@ -35,6 +35,10 @@ interface ResourceLoader {
 
 class CachingResourceLoader implements ResourceLoader {
 
+	#if MULTIANIM_DEV
+	public var hotReloadRegistry:Null<bh.multianim.dev.HotReload.ReloadableRegistry> = null;
+	public var fileChangeDetector:Null<bh.multianim.dev.HotReload.FileChangeDetector> = null;
+	#end
 
     var animSMCache:Map<String, AnimParserResult> = [];
     var multiAnimCache:Map<String, MultiAnimBuilder> = [];
@@ -137,14 +141,20 @@ class CachingResourceLoader implements ResourceLoader {
 	}
 
     public function loadMultiAnim(resourceFilename:String):MultiAnimBuilder {
-    
+
         var key = resourceFilename;
         if (multiAnimCycleDetection.contains(key)) throw 'cyclic dependency in multiAnim $key: path ${multiAnimCycleDetection}';
         multiAnimCycleDetection.push(key);
-        
+
         var retVal =  cachedGet(multiAnimCache, key, k ->loadMultiAnimImpl(k));
-        
+
         multiAnimCycleDetection.remove(key);
         return retVal;
     }
+
+	#if MULTIANIM_DEV
+	public function replaceMultiAnim(path:String, builder:MultiAnimBuilder):Void {
+		multiAnimCache.set(path, builder);
+	}
+	#end
 }

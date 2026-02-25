@@ -2,7 +2,7 @@
 
 | # | Item | Summary | Section | Priority |
 |---|------|---------|---------|----------|
-| 1 | Hot reload | Live .manim reload without restart | V1 | High |
+| 1 | ~~Hot reload~~ | ~~Live .manim reload without restart~~ | V1 | ~~Done~~ |
 | 2 | Transitions & animations | Tween manager + .manim transition declarations | V1 | High |
 | 3 | Visual tests fixes | Fix existing visual test issues | V1 | High |
 | 4 | Haxelib release | Publish to haxelib + CI automation | V1 | High |
@@ -23,7 +23,10 @@
 - Code generation: programmable elements should always work via `builder.buildWithParameters` or via macro system (`@:manim(...)`)
 
 ## V1
-- hot reload
+- ~~hot reload~~ (done — see CHANGELOG)
+- more hot reload integration tests needed (multi-reload cycles, UI components, edge cases)
+- nullsafty parser, maybe builder
+- add @rotate()
 - transitions & animations (see [transitions-planning.md](transitions-planning.md))
 - visual tests fixes (see [test-todo.md](test-todo.md))
 - haxelib release (see details below)
@@ -36,6 +39,10 @@
 
 **haxelib.json gaps** (current: [haxelib.json](../haxelib.json), version `0.12.0`):
 - [ ] Fill `releasenote` for each release
+
+**CI/test matrix:**
+- [ ] Dev mode tests (`-D MULTIANIM_DEV`) need matrix build or sequential run in CI (currently `test.ps1` runs both)
+- [ ] Consider if dev-mode tests should run in release builds or only in dev CI stage
 
 **Pre-release checklist:**
 - [ ] Register haxelib account if not done (`haxelib register`)

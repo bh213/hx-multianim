@@ -35,7 +35,7 @@ interface UIController {
 	function update(dt:Float):UIControllerResult;
 	function lifecycleEvent(event:UIControllerLifecycleEvent):Void;
 	function onScreenEvent(event:UIScreenEvent, source:UIElement):Void;
-	
+	function clearState():Void;
 }
 
 typedef EventWrapper = {
