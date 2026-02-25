@@ -1,8 +1,8 @@
-# Hot Reload Plan — Live .manim Reload for Rapid Iteration
+# Hot Reload Plan — Live .manim & .anim Reload for Rapid Iteration
 
-Goal: When a `.manim` file changes on disk, update live visuals in-place — move an HP bar, tweak particle colors, adjust a layout — and see the result instantly without restarting. Preserve game state, slot contents, and parameter values across all screens. Only require full restart when the change is structurally incompatible.
+Goal: When a `.manim` or `.anim` file changes on disk, update live visuals in-place — move an HP bar, tweak particle colors, adjust a layout, change an extrapoint position — and see the result instantly without restarting. Preserve game state, slot contents, and parameter values across all screens. Only require full restart when the change is structurally incompatible.
 
-**Scope:** All screens (hero select, shop, combat, etc.) — not just combat. `.anim` files are out of scope for hot-reload (change rarely enough that full restart is acceptable).
+**Scope:** All screens (hero select, shop, combat, etc.) — not just combat. Both `.manim` and `.anim` files are supported.
 
 ## Current Reload: What Happens Today
 
@@ -52,17 +52,92 @@ For Pattern B, there's nothing to snapshot/restore — we just need the `MultiAn
 
 ## Design Decisions
 
-### Dev Mode
+### Dev Mode — `#if MULTIANIM_DEV`
 
 **Compile flag: `-D MULTIANIM_DEV`** enables:
-- `resource.watch()` file watching on all loaded `.manim` files
+- `resource.watch()` file watching on all loaded `.manim` and `.anim` files
 - Reloadable object registry (see below)
+- File content hashing for change detection
 - Reload event logging with timing info
 - Builder replacement for transient builds
+- Notification callbacks for reload events and failures
+
+All hot-reload infrastructure is wrapped in `#if MULTIANIM_DEV` conditional compilation. In release builds, no registry, no file watching, no hashing, no runtime overhead. The goal is zero cost when the flag is not set.
+
+**Where `#if` is practical vs. not:** Registry fields and file-watcher registration are clean `#if` blocks. Avoid `#if` inside tight loops or deeply nested logic where it would hurt readability — in those cases, prefer a no-op function that compiles away.
 
 **Note:** `@:manim` codegen factories are compile-time generated and cannot hot-reload — they require recompile. During development, use the runtime builder path (`MultiAnimBuilder.buildWithParameters()`). After iteration is done, switch to codegen for production. Hot-reload for codegen may be added later.
 
-### Hot-Reload Strategy: Two Paths
+### Change Detection — File Content Hashing
+
+Instead of reloading all files on every file-watch event, only reload files whose content has actually changed.
+
+```haxe
+#if MULTIANIM_DEV
+class FileChangeDetector {
+    // Map: file path → hash of last-loaded content
+    var contentHashes:Map<String, Int>;  // use haxe.crypto.Crc32 or similar fast hash
+
+    // Returns true if file content differs from last known version
+    function hasChanged(path:String, currentContent:String):Bool;
+
+    // Update stored hash after successful reload
+    function updateHash(path:String, content:String):Void;
+
+    // Clear hash for a file (force reload on next check)
+    function invalidate(path:String):Void;
+}
+#end
+```
+
+**How it works:**
+1. When a `.manim` or `.anim` file is first loaded, compute and store a hash of its content
+2. When `resource.watch()` fires, read the file and compare hash to stored value
+3. If hash matches → skip reload (file modification timestamp changed but content didn't, e.g. editor auto-save without changes)
+4. If hash differs → proceed with reload, update stored hash on success
+5. On failed reload (parse error), do NOT update the hash — the old hash stays so next save triggers another comparison
+
+**Hash choice:** CRC32 or a simple string hash — doesn't need to be cryptographic, just fast. Content is typically <50KB.
+
+### .anim File Hot-Reload
+
+`.anim` files define state animations with playlists, extrapoints, events, and metadata. They are now in scope for hot-reload with specific rules about what can change safely.
+
+**What updates and when:**
+
+| Change | Behavior |
+|--------|----------|
+| **Extrapoint positions** | Applied on next state change (when `AnimationSM` transitions to a new animation/state, it re-reads extrapoints from the parsed data) |
+| **Event timing/names** | Applied on next state change (event triggers are re-resolved from playlist data on animation start) |
+| **Animation FPS** | Applied on next state change |
+| **Add new animation** | Available immediately for new `playAnimation()` calls. Existing instances don't see it until they try to play it |
+| **Modify existing animation** (playlist, frames, loop) | Applied on next state change or `playAnimation()` call |
+| **Delete an animation** | **Requires full restart.** Game code referencing the deleted animation by name will fail at runtime |
+| **Rename an animation** | **Requires full restart.** Same reason — game code uses the old name |
+| **Delete/rename a state** | **Requires full restart.** State selectors in game code would break |
+| **Add new state values** | Safe — existing selectors continue to work |
+| **Change center point** | Applied on next state change |
+| **Modify metadata** | Applied on next metadata access (metadata is re-read from parsed result) |
+
+**Why "on next state change" is sufficient:** In a running game, units constantly cycle through animations (idle → walk → attack → idle). A state change happens within seconds at most. For immediate feedback during development, the developer can trigger a state change manually (e.g., attack a unit, move it). This avoids the complexity of patching live `AnimationSM` instances mid-animation.
+
+**Implementation:**
+- `.anim` files are currently loaded via `sys.io.File.getBytes()` (bypassing `hxd.Res`), so they don't have `resource.watch()` support
+- In dev mode, register `.anim` file paths with the `FileChangeDetector` and poll for changes (or add `resource.watch()` support by loading through `hxd.Res`)
+- On change detected: re-parse via `AnimParser.parseFile()`, replace cached `AnimParserResult` in `CachingResourceLoader.animSMCache`
+- Existing `AnimationSM` instances hold a reference to their `AnimParserResult` — on next state change, they read from the (now-replaced) parsed data
+- Signature check: compare old vs. new animation names and state definitions. If any animation or state was deleted/renamed, report `NeedsFullRestart`
+
+**Cache invalidation:** `CachingResourceLoader.animSMCache` caches `AnimParserResult` by filename. On `.anim` reload:
+1. Remove old entry from `animSMCache`
+2. Re-parse and store new result
+3. Live `AnimationSM` instances that were created from the old result need their internal `parsedResult` reference updated. Two approaches:
+   - **(a) Indirection:** `AnimationSM` holds a reference to a wrapper/handle that points to the latest parsed result. The wrapper is updated in-place. Minimal code change.
+   - **(b) Registry:** Similar to `.manim` ReloadableRegistry, track live `AnimationSM` instances and update them on reload. More explicit but more bookkeeping.
+
+Approach (a) — indirection via a thin handle — is preferred for simplicity.
+
+### Hot-Reload Strategy: Two Paths (for .manim)
 
 **Path A — Incremental results:** Full snapshot → rebuild → restore cycle. These are screen-level UI elements with state to preserve.
 
@@ -74,9 +149,8 @@ For unit bodies specifically: on `.manim` file change, invalidate the `bodyHash`
 
 To know which live objects need updating when a file changes, **incremental** BuilderResults must be **registered as reloadable**.
 
-**`ReloadableRegistry`** — a global (or per-ScreenManager) registry that tracks live BuilderResults by their source `.manim` file path.
-
 ```haxe
+#if MULTIANIM_DEV
 class ReloadableRegistry {
     // Map: source file path → list of live ReloadableHandle
     var liveObjects:Map<String, Array<ReloadableHandle>>;
@@ -95,6 +169,7 @@ typedef ReloadableHandle = {
 }
 
 typedef ReloadCallback = (result:BuilderResult, report:ReloadReport) -> Void;
+#end
 ```
 
 **Registration happens automatically** when building in dev mode:
@@ -122,6 +197,75 @@ result.onReload = (newResult, report) -> {
 };
 ```
 
+### Reload Notification System
+
+Game code needs to know about reload events — both successes and failures — with rich diagnostic information.
+
+```haxe
+#if MULTIANIM_DEV
+// Listener callback type
+typedef ReloadListener = (event:ReloadEvent) -> Void;
+
+enum ReloadEvent {
+    // Fired when a file change is detected and reload begins
+    ReloadStarted(file:String, fileType:ReloadFileType);
+
+    // Fired on successful reload
+    ReloadSucceeded(report:ReloadReport);
+
+    // Fired on parse or build error (old state preserved)
+    ReloadFailed(report:ReloadReport);
+
+    // Fired when change requires full restart
+    ReloadNeedsRestart(report:ReloadReport);
+}
+
+enum ReloadFileType {
+    Manim;
+    Anim;
+}
+#end
+```
+
+**Registration API on ScreenManager:**
+
+```haxe
+#if MULTIANIM_DEV
+class ScreenManager {
+    // Register/unregister reload listeners
+    public function addReloadListener(listener:ReloadListener):Void;
+    public function removeReloadListener(listener:ReloadListener):Void;
+}
+#end
+```
+
+**Use cases for listeners:**
+- **Debug overlay:** Show reload status, error messages with file:line:col, timing info
+- **Error display:** Semi-transparent error text at screen top showing parse errors (auto-clears on next successful reload)
+- **Sound feedback:** Play a click on success, a buzz on failure
+- **Logging:** Write reload events to a log file for later analysis
+- **Metrics:** Track reload counts, average times, failure rates
+
+**Failure information — maximum detail:**
+
+```haxe
+typedef ReloadError = {
+    message:String,           // human-readable error description
+    file:String,              // full path to the file
+    line:Int,                 // 1-based line number
+    col:Int,                  // 1-based column number
+    errorType:ReloadErrorType,
+    context:Null<String>,     // surrounding source lines for context
+}
+
+enum ReloadErrorType {
+    ParseError;               // syntax error, unexpected token
+    BuildError;               // missing sheet, bad tile reference, expression error
+    SignatureIncompatible;    // param removed/renamed/type changed
+    AnimDeletedOrRenamed;     // .anim animation or state deleted/renamed
+}
+```
+
 ### Error Handling — Keep Running on Bad Edits
 
 Parse and build errors during reload are **expected** — this is the core workflow. A dev types half a line, saves, and the file is temporarily broken. The system must handle this gracefully:
@@ -134,31 +278,22 @@ Parse and build errors during reload are **expected** — this is the core workf
 | **Parse** | Missing import, bad version header | Same — keep old state, log error. |
 | **Build** | Missing sheet, bad tile reference | Keep old objects. Log error. Retry on next change. |
 | **Build** | Expression evaluation error | Keep old objects. Log error. |
-| **Signature check** | Incompatible param change | Keep old objects. Report `NeedsFullRestart` with reason. |
+| **Signature check** | Incompatible param change (.manim) | Keep old objects. Report `NeedsFullRestart` with reason. |
+| **Signature check** | Deleted/renamed animation or state (.anim) | Keep old state. Report `NeedsFullRestart` with reason. |
 
 **Error state lifecycle:**
 ```
 File saved (broken)
-  → Parse fails → log error, keep old state, stay watching
+  → Parse fails → notify listeners (ReloadFailed), keep old state, stay watching
 File saved (still broken)
-  → Parse fails → log error again, keep old state
+  → Parse fails → notify listeners (ReloadFailed) again, keep old state
 File saved (fixed)
-  → Parse succeeds → proceed with reload → success
+  → Parse succeeds → proceed with reload → notify listeners (ReloadSucceeded)
 ```
 
 The file watcher stays active through errors. Every save triggers a new parse attempt. Once the file is valid again, reload proceeds normally.
 
-**Error reporting:**
-```haxe
-typedef ReloadReport = {
-    // ... (existing fields)
-    error:Null<{message:String, file:String, line:Int, col:Int}>,
-}
-```
-
-Game code can display the error in a debug overlay (e.g., semi-transparent error text at screen top). The `onHotReload` callback fires even on errors, so the game can show/hide the error display.
-
-### Parameter Change Rules
+### Parameter Change Rules (.manim)
 
 **Top-level programmable parameters** (`programmable(param:type=default, ...)`):
 
@@ -309,28 +444,34 @@ Every reload produces a report so game code knows what changed:
 ```haxe
 typedef ReloadReport = {
     success:Bool,
-    programmablesRebuilt:Array<String>,
-    paramsAdded:Array<String>,           // new params with defaults
+    file:String,                                  // path of the changed file
+    fileType:ReloadFileType,                      // Manim or Anim
+    programmablesRebuilt:Array<String>,            // .manim only
+    paramsAdded:Array<String>,                     // new params with defaults (.manim)
+    animationsModified:Array<String>,              // .anim only — which animations changed
     pathsChanged:Bool,
     curvesChanged:Bool,
     layoutsChanged:Bool,
     dataChanged:Bool,
     atlasChanged:Bool,
     particlesRestarted:Array<String>,
-    needsFullRestart:Null<String>,       // non-null = reason
-    error:Null<{message:String, file:String, line:Int, col:Int}>,  // parse or build error
-    rebuiltCount:Int,                    // number of live objects rebuilt
-    elapsedMs:Float,                     // total reload time
+    needsFullRestart:Null<String>,                 // non-null = reason
+    errors:Array<ReloadError>,                     // all errors (parse, build, per-handle)
+    rebuiltCount:Int,                              // number of live objects rebuilt
+    elapsedMs:Float,                               // total reload time
 }
 ```
 
-## Reload Flow
+## Reload Flow — .manim Files
 
 ```
 File changed on disk (resource.watch callback in dev mode)
   │
+  ├─ Read file content, compute hash
+  │    └─ Hash matches stored hash? → skip reload, STOP (content unchanged)
+  │
   ├─ Try re-parse .manim file → new MultiAnimResult
-  │    └─ PARSE ERROR? → keep old builder, log error, return ReloadReport(error=...), STOP
+  │    └─ PARSE ERROR? → keep old builder, notify listeners (ReloadFailed), STOP
   │                       file watcher stays active, retry on next save
   │
   ├─ Compare signatures (for each programmable in file):
@@ -343,6 +484,8 @@ File changed on disk (resource.watch callback in dev mode)
   │
   ├─ Replace cached builder in ScreenManager.builders map
   │    (transient builds will pick up the new builder automatically on next build call)
+  │
+  ├─ Update content hash for this file
   │
   ├─ Notify transient-build consumers (e.g., DrawingResources):
   │    └─ Invalidate bodyHash on all live UnitVisuals → rebuild on next draw frame
@@ -374,10 +517,45 @@ File changed on disk (resource.watch callback in dev mode)
   │    │
   │    └─ Call onReload callback if registered
   │
+  ├─ Notify listeners (ReloadSucceeded with report)
+  │
   └─ Return ReloadReport (success or partial success with per-handle errors)
 ```
 
-### Scene Graph Swap
+## Reload Flow — .anim Files
+
+```
+File change detected (polling or resource.watch in dev mode)
+  │
+  ├─ Read file content, compute hash
+  │    └─ Hash matches stored hash? → skip reload, STOP (content unchanged)
+  │
+  ├─ Try re-parse .anim file → new AnimParserResult
+  │    └─ PARSE ERROR? → keep old parsed result, notify listeners (ReloadFailed), STOP
+  │
+  ├─ Signature check:
+  │    ├─ Compare animation names: any deleted or renamed? → NeedsFullRestart
+  │    ├─ Compare state definitions: any state deleted or renamed? → NeedsFullRestart
+  │    └─ Otherwise: proceed
+  │
+  ├─ Replace cached AnimParserResult in CachingResourceLoader.animSMCache
+  │    (live AnimationSM instances hold a handle/wrapper that now points to new data)
+  │
+  ├─ Update content hash for this file
+  │
+  ├─ Notify listeners (ReloadSucceeded with report)
+  │    Report includes: animationsModified list
+  │
+  └─ Live AnimationSM instances pick up changes on next state change:
+       ├─ New extrapoint positions read from updated parsed data
+       ├─ New event timings read from updated playlists
+       ├─ New FPS applied to animation playback
+       └─ New/modified animations available for playAnimation() calls
+```
+
+**Key difference from .manim reload:** No snapshot/rebuild/restore cycle. `.anim` reload just swaps the parsed data behind an indirection handle. The `AnimationSM` state machine continues running — it picks up new data naturally when it transitions to a new animation.
+
+### Scene Graph Swap (for .manim)
 
 The key operation: replacing the old `BuilderResult.object` with the new one **at the same position in the parent's child list**, preserving the parent-set `x`, `y`, `scaleX`, `scaleY`, `alpha`, and any filters applied by game code.
 
@@ -405,13 +583,16 @@ function swapInScene(oldRoot:h2d.Object, newRoot:h2d.Object) {
 ## Dev Mode Implementation
 
 `-D MULTIANIM_DEV` enables:
-1. **File watching** — `resource.watch()` registered for all loaded `.manim` files
-2. **Object registry** — `ReloadableRegistry` tracks live incremental BuilderResults
-3. **Auto-registration** — `buildWithParameters(..., incremental: true)` auto-registers results; `onRemove` auto-unregisters
-4. **Builder replacement** — transient builds pick up new definitions automatically
-5. **Debug overlay** (optional) — flash/highlight reloaded objects briefly for visual confirmation
+1. **File watching** — `resource.watch()` registered for all loaded `.manim` files; polling or `resource.watch()` for `.anim` files
+2. **Content hashing** — `FileChangeDetector` stores hashes per file, skips reload when content unchanged
+3. **Object registry** — `ReloadableRegistry` tracks live incremental BuilderResults
+4. **Auto-registration** — `buildWithParameters(..., incremental: true)` auto-registers results; `onRemove` auto-unregisters
+5. **Builder replacement** — transient builds pick up new definitions automatically
+6. **AnimationSM indirection** — live state machines pick up new `.anim` data via handle
+7. **Notification system** — `ReloadListener` callbacks for all reload events (start, success, failure, needs-restart)
+8. **Debug overlay** (optional) — flash/highlight reloaded objects briefly for visual confirmation
 
-The overhead is acceptable for development. Ship without `-D MULTIANIM_DEV`.
+All wrapped in `#if MULTIANIM_DEV`. The overhead is acceptable for development. Ship without `-D MULTIANIM_DEV`.
 
 ## ScreenManager Integration
 
@@ -422,11 +603,14 @@ Current reload (non-dev):
   screen.clear() → screen.load()    // full teardown and rebuild
 
 Hot-reload (dev mode):
-  1. Replace cached MultiAnimBuilder for the changed file only
-  2. Clear resource caches that reference the changed file
-  3. Rebuild registered incremental results (snapshot → rebuild → restore → swap)
-  4. Notify transient-build consumers to invalidate
-  5. Do NOT call screen.clear() or screen.load()
+  1. Detect which file changed (via content hash comparison)
+  2. Replace cached MultiAnimBuilder / AnimParserResult for the changed file only
+  3. Clear resource caches that reference the changed file
+  4. Rebuild registered incremental results (snapshot → rebuild → restore → swap) — .manim only
+  5. Notify transient-build consumers to invalidate — .manim only
+  6. For .anim: just swap parsed data behind indirection handle
+  7. Notify all registered ReloadListeners
+  8. Do NOT call screen.clear() or screen.load()
 ```
 
 This means the screen's `load()` method only runs once at startup. Hot-reload preserves all screen state — combat continues running, hero selection state preserved, shop inventory intact.
@@ -451,15 +635,20 @@ This is lightweight — no 50-unit rebuild burst, just hash invalidation + natur
 
 ```haxe
 // In dev mode, BuilderResult gains:
+#if MULTIANIM_DEV
 class BuilderResult {
-    public var reloadable:Bool;                    // default true for incremental results in dev mode
+    public var reloadable:Bool;                    // default true for incremental results
     public var onReload:Null<(BuilderResult, ReloadReport) -> Void>;
 }
+#end
 
 // ScreenManager gains:
 class ScreenManager {
+    #if MULTIANIM_DEV
     public function hotReload(?resource):ReloadReport;
-    public var onHotReload:Null<(ReloadReport) -> Void>;  // global callback
+    public function addReloadListener(listener:ReloadListener):Void;
+    public function removeReloadListener(listener:ReloadListener):Void;
+    #end
 }
 ```
 
@@ -467,10 +656,12 @@ class ScreenManager {
 
 Screens that need custom state preservation implement:
 ```haxe
+#if MULTIANIM_DEV
 interface IHotReloadable {
     function captureState():Dynamic;
     function restoreState(state:Dynamic):Void;
 }
+#end
 ```
 
 Most screens won't need this — the automatic parameter/slot/UI state snapshot handles common cases. Only implement `IHotReloadable` for custom game state that the library can't know about (e.g., a unit reference, a game-logic timer tied to a visual).
@@ -480,10 +671,12 @@ Most screens won't need this — the automatic parameter/slot/UI state snapshot 
 Game code that creates transient builds needs to know when its builder changed:
 
 ```haxe
+#if MULTIANIM_DEV
 // DrawingResources or similar:
 interface IBuilderConsumer {
     function onBuilderReplaced(sourcePath:String, newBuilder:MultiAnimBuilder):Void;
 }
+#end
 
 // Implementation in DrawingResources:
 function onBuilderReplaced(sourcePath:String, newBuilder:MultiAnimBuilder) {
@@ -496,41 +689,49 @@ function onBuilderReplaced(sourcePath:String, newBuilder:MultiAnimBuilder) {
 
 ## What NOT to Do
 
-- **Don't hot-reload in release mode** — hot-reload is dev-only. No registry, no file watching, no runtime overhead in shipped builds.
+- **Don't hot-reload in release mode** — hot-reload is dev-only. No registry, no file watching, no hashing, no runtime overhead in shipped builds.
 - **Don't preserve broken references** — if a named element was removed in the new `.manim`, log a warning. Don't silently return null from `getUpdatable()`.
 - **Don't auto-cascade imported files** — if `import "other.manim"` changed, that's a separate file watch event. Reload only the directly-changed file. Imports are resolved during parse, so the re-parsed file picks up the new import content.
 - **Don't cache old AST** — always re-parse from disk. Parser is fast enough.
 - **Don't try to diff ASTs** (Phase 1) — snapshot/rebuild/restore is simpler and sufficient. AST diffing can be added later as an optimization if rebuild is too slow for large scenes.
 - **Don't call screen.clear()/screen.load()** — the whole point is avoiding the teardown cycle.
 - **Don't rebuild transient builds eagerly** — just replace the builder and let the normal rebuild cycle handle it (next hash change or next frame).
+- **Don't forcefully update live AnimationSM mid-animation** — let them pick up changes on next state change. Simpler, safer.
 
 ## Phased Implementation
 
 ### Phase 1: Core Infrastructure
 
-1. **`ReloadableRegistry`** — registry of live incremental BuilderResults by source path
-2. **Auto-register/unregister** — `buildWithParameters(..., incremental: true)` in dev mode auto-registers; `onRemove` auto-unregisters
-3. **Builder replacement** — `ScreenManager.hotReload(resource)` replaces cached builder for a single file, clears relevant caches
-4. **Error-safe reload** — parse/build errors keep old state, log error with file:line:col, stay watching for next save
-5. **Signature check** — detect param removes/renames/type changes → NeedsFullRestart
-6. **State snapshot** — capture params, slots, UI state from `IncrementalUpdateContext`
-7. **Rebuild + restore** — full rebuild with new builder, restore snapshot to new result
-8. **Scene graph swap** — replace old root with new root preserving transforms
-9. **Param addition** — new params with defaults merge into existing param set
-10. **`ReloadReport`** — structured feedback to game code (including errors)
-11. **`IBuilderConsumer` notification** — tell DrawingResources etc. that a builder changed
+1. **`FileChangeDetector`** — content hashing for `.manim` and `.anim` files, skip reload on unchanged content
+2. **`ReloadableRegistry`** — registry of live incremental BuilderResults by source path
+3. **Auto-register/unregister** — `buildWithParameters(..., incremental: true)` in dev mode auto-registers; `onRemove` auto-unregisters
+4. **Builder replacement** — `ScreenManager.hotReload(resource)` replaces cached builder for a single file, clears relevant caches
+5. **Error-safe reload** — parse/build errors keep old state, log error with file:line:col, stay watching for next save
+6. **Notification system** — `ReloadListener` callbacks for reload events (started, succeeded, failed, needs-restart) with full error detail
+7. **Signature check** — detect param removes/renames/type changes → NeedsFullRestart
+8. **State snapshot** — capture params, slots, UI state from `IncrementalUpdateContext`
+9. **Rebuild + restore** — full rebuild with new builder, restore snapshot to new result
+10. **Scene graph swap** — replace old root with new root preserving transforms
+11. **Param addition** — new params with defaults merge into existing param set
+12. **`ReloadReport`** — structured feedback to game code (including errors)
+13. **`IBuilderConsumer` notification** — tell DrawingResources etc. that a builder changed
+14. All infrastructure behind `#if MULTIANIM_DEV`
 
-### Phase 2: Full State Preservation
+### Phase 2: .anim Hot-Reload + Full State Preservation
 
-1. **Particle handling** — restart looped, preserve temporary
-2. **Path invalidation** — `AnimatedPath.onPathInvalidated` callback, re-read geometry
-3. **Curve invalidation** — re-resolve curve references in AnimatedPath and particles
-4. **Layout invalidation** — auto-handled during rebuild (layout coords recalculated)
-5. **Data block change detection** — `report.dataChanged` flag
-6. **`ReloadReport` enrichment** — per-component change flags
-7. **UI element state restoration** — scroll positions, selected items, toggles
-8. **DynamicRef state** — capture and restore nested dynamic ref parameters
-9. **Slot content reparenting** — preserve slot contents across rebuild
+1. **`.anim` file watching** — register `.anim` paths with change detector, wire up reload trigger
+2. **`.anim` parsed data replacement** — re-parse and swap `AnimParserResult` in cache
+3. **AnimationSM indirection handle** — live instances follow pointer to latest parsed data
+4. **`.anim` signature check** — detect deleted/renamed animations or states → NeedsFullRestart
+5. **Particle handling** — restart looped, preserve temporary
+6. **Path invalidation** — `AnimatedPath.onPathInvalidated` callback, re-read geometry
+7. **Curve invalidation** — re-resolve curve references in AnimatedPath and particles
+8. **Layout invalidation** — auto-handled during rebuild (layout coords recalculated)
+9. **Data block change detection** — `report.dataChanged` flag
+10. **`ReloadReport` enrichment** — per-component change flags, `.anim`-specific fields
+11. **UI element state restoration** — scroll positions, selected items, toggles
+12. **DynamicRef state** — capture and restore nested dynamic ref parameters
+13. **Slot content reparenting** — preserve slot contents across rebuild
 
 ### Phase 3: Polish & Optimization (if needed)
 
@@ -551,6 +752,7 @@ This is the motivating scenario. A game has 50 creeps on screen, each with an HP
 1. Game builds unit bodies via `DrawingResources.getCreepBody(...)` → `unitBodiesBuilder.buildWithParameters("creepBody", params)` (non-incremental, hash-cached)
 2. `unitbodies.manim` file changes on disk → `resource.watch` fires
 3. `ScreenManager.hotReload("unitbodies.manim")`:
+   - Content hash check: hash differs → proceed
    - Re-parses the file → creates new `MultiAnimBuilder`
    - Replaces `unitBodiesBuilder` in DrawingResources
    - Invalidates all `UnitVisual.bodyHash` values
@@ -574,14 +776,35 @@ Sidebar hero cards use incremental mode with `setParameter()`:
    - Swaps in scene graph
 5. Sidebar updates instantly. Next `updateSidebar()` call continues using the new result as if nothing happened.
 
+## Use Case: Adjusting Unit Extrapoints
+
+A developer wants to move the "fire" extrapoint on an archer unit 2 pixels to the left so projectiles spawn from the correct position.
+
+**Without hot-reload:** Change `.anim` file → restart game → wait for combat to start → wait for archer to attack → check projectile origin. Minutes per iteration.
+
+**With hot-reload (dev mode):**
+
+1. `archer.anim` is loaded at game start, parsed into `AnimParserResult`, cached in `CachingResourceLoader`
+2. `AnimationSM` instances for all archers hold a handle pointing to this parsed result
+3. Developer edits `archer.anim`, changes `@(direction=>r) fire : 7, -11` to `fire : 5, -11`
+4. File change detected → content hash differs → re-parse
+5. Signature check: no animations deleted/renamed, no states changed → proceed
+6. New `AnimParserResult` replaces old in cache; handle updated to point to new data
+7. Next time any archer transitions to attack animation:
+   - Extrapoints are read from the (now-updated) parsed data
+   - Projectile spawns at the new position
+8. Combat continues uninterrupted. Developer sees the change within seconds.
+
 ## Resolved Questions
 
 1. **Performance at scale:** Transient builds (unit bodies) don't have a rebuild burst — they update naturally via hash invalidation (1-2 frames). Only incremental results (screen UI, typically <20 per screen) need snapshot/rebuild/restore. Not a concern.
 
 2. **Nested imports:** Deferred to Phase 3. For Phase 1, editing an imported file requires also re-saving the importing file (or pressing R for full reload). Import dependency tracking can be added later.
 
-3. **StateAnim (.anim) hot-reload:** Out of scope. `.anim` files change rarely enough that full restart is acceptable. The infrastructure could support it later if needed — same file-watch + invalidation pattern.
+3. **.anim hot-reload approach:** `.anim` files use a simpler indirection-based approach — no snapshot/rebuild/restore. Live `AnimationSM` instances pick up changes on next state change. Adding new animations is safe; deleting or renaming requires full restart (detected by signature check).
 
-4. **Playground integration:** No — the playground re-parses and rebuilds from scratch each time, which is fine for single-component editing. Different architecture, different needs.
+4. **Change detection cost:** Content hashing (CRC32) on file-watch callback is negligible — files are small (<50KB) and callbacks are infrequent (human edit speed). Skipping unchanged files avoids unnecessary parse/rebuild work.
 
-5. **Codegen hot-reload:** Out of scope for now. During development, use runtime builder path. After iteration is done, switch to codegen for production. Codegen hot-reload may be added later as an enhancement.
+5. **Playground integration:** No — the playground re-parses and rebuilds from scratch each time, which is fine for single-component editing. Different architecture, different needs.
+
+6. **Codegen hot-reload:** Out of scope for now. During development, use runtime builder path. After iteration is done, switch to codegen for production. Codegen hot-reload may be added later as an enhancement.
