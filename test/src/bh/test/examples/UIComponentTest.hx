@@ -9,6 +9,8 @@ import bh.ui.UIMultiAnimButton.UIStandardMultiAnimButton;
 import bh.ui.UIMultiAnimCheckbox.UIStandardMultiCheckbox;
 import bh.ui.UIMultiAnimProgressBar;
 import bh.ui.UIMultiAnimSlider.UIStandardMultiAnimSlider;
+import bh.ui.UIMultiAnimTextInput;
+import bh.ui.UITabGroup;
 import bh.ui.UIInteractiveWrapper;
 import bh.base.MAObject;
 import bh.base.MAObject.MultiAnimObjectData;
@@ -623,5 +625,176 @@ class UIComponentTest extends BuilderTestBase {
 		var scrollbarMap = result.prefixed.get("scrollbar");
 		Assert.notNull(scrollbarMap);
 		Assert.isTrue(scrollbarMap.exists("font"));
+	}
+
+	// ============== TextInput Tests ==============
+
+	static final TEXTINPUT_MANIM = "
+		#textInput programmable(status:[normal,hover,focused,disabled]=normal, placeholder:bool=true, width:uint=200, height:uint=24) {
+			bitmap(generated(color($width, $height, #333333))): 0, 0
+			#textArea point: 4, 4
+		}
+	";
+
+	function ensureTestFont() {
+		try {
+			bh.base.FontManager.getFontByName("testfont");
+		} catch (e:Dynamic) {
+			bh.base.FontManager.registerFont("testfont", hxd.res.DefaultFont.get());
+		}
+	}
+
+	@Test
+	public function testTextInputCreation():Void {
+		ensureTestFont();
+		var builder = BuilderTestBase.builderFromSource(TEXTINPUT_MANIM);
+		var input = UIMultiAnimTextInput.create(builder, "textInput", {font: "testfont"});
+		Assert.notNull(input);
+		Assert.notNull(input.getObject());
+		Assert.isFalse(input.disabled);
+		Assert.equals("", input.getText());
+	}
+
+	@Test
+	public function testTextInputInitialText():Void {
+		ensureTestFont();
+		var builder = BuilderTestBase.builderFromSource(TEXTINPUT_MANIM);
+		var input = UIMultiAnimTextInput.create(builder, "textInput", {font: "testfont", text: "hello"});
+		Assert.equals("hello", input.getText());
+	}
+
+	@Test
+	public function testTextInputSetGetText():Void {
+		ensureTestFont();
+		var builder = BuilderTestBase.builderFromSource(TEXTINPUT_MANIM);
+		var input = UIMultiAnimTextInput.create(builder, "textInput", {font: "testfont"});
+
+		input.setText("world");
+		Assert.equals("world", input.getText());
+
+		input.setText("");
+		Assert.equals("", input.getText());
+	}
+
+	@Test
+	public function testTextInputDisabledState():Void {
+		ensureTestFont();
+		var builder = BuilderTestBase.builderFromSource(TEXTINPUT_MANIM);
+		var input = UIMultiAnimTextInput.create(builder, "textInput", {font: "testfont"});
+
+		input.disabled = true;
+		Assert.isTrue(input.disabled);
+
+		input.disabled = false;
+		Assert.isFalse(input.disabled);
+	}
+
+	@Test
+	public function testTextInputDisabledBlocksEvents():Void {
+		ensureTestFont();
+		var builder = BuilderTestBase.builderFromSource(TEXTINPUT_MANIM);
+		var input = UIMultiAnimTextInput.create(builder, "textInput", {font: "testfont"});
+		input.disabled = true;
+		var mock = new MockControllable();
+
+		UITestHarness.simulateEnter(input, mock);
+		// Disabled should not process hover
+		Assert.notNull(input.getObject());
+	}
+
+	@Test
+	public function testTextInputHoverState():Void {
+		ensureTestFont();
+		var builder = BuilderTestBase.builderFromSource(TEXTINPUT_MANIM);
+		var input = UIMultiAnimTextInput.create(builder, "textInput", {font: "testfont"});
+		var mock = new MockControllable();
+
+		UITestHarness.simulateEnter(input, mock);
+		Assert.notNull(input.getObject());
+
+		UITestHarness.simulateLeave(input, mock);
+		Assert.notNull(input.getObject());
+	}
+
+	@Test
+	public function testTextInputCursorType():Void {
+		ensureTestFont();
+		var builder = BuilderTestBase.builderFromSource(TEXTINPUT_MANIM);
+		var input = UIMultiAnimTextInput.create(builder, "textInput", {font: "testfont"});
+
+		Assert.isTrue(Type.enumEq(input.getCursor(), hxd.Cursor.TextInput));
+
+		input.disabled = true;
+		Assert.isTrue(Type.enumEq(input.getCursor(), bh.base.CursorManager.getDefaultCursor()));
+	}
+
+	@Test
+	public function testTextInputOnChangeCallback():Void {
+		ensureTestFont();
+		var builder = BuilderTestBase.builderFromSource(TEXTINPUT_MANIM);
+		var input = UIMultiAnimTextInput.create(builder, "textInput", {font: "testfont"});
+		var callbackFired = false;
+
+		input.onChange = function() {
+			callbackFired = true;
+		};
+
+		// Directly set text triggers setText, not onChange (onChange is from h2d.TextInput)
+		input.setText("test");
+		Assert.isFalse(callbackFired); // setText doesn't fire onChange callback
+	}
+
+	@Test
+	public function testTextInputContainsPoint():Void {
+		ensureTestFont();
+		var builder = BuilderTestBase.builderFromSource(TEXTINPUT_MANIM);
+		var input = UIMultiAnimTextInput.create(builder, "textInput", {font: "testfont"});
+		Assert.notNull(input.getObject());
+		// Object exists and getBounds works
+		var bounds = input.getObject().getBounds();
+		Assert.notNull(bounds);
+	}
+
+	// ============== TabGroup Tests ==============
+
+	@Test
+	public function testTabGroupCreation():Void {
+		var group = new UITabGroup();
+		Assert.notNull(group);
+		Assert.isFalse(group.enterAdvances);
+	}
+
+	@Test
+	public function testTabGroupAddRemove():Void {
+		ensureTestFont();
+		var group = new UITabGroup();
+		var builder = BuilderTestBase.builderFromSource(TEXTINPUT_MANIM);
+		var input1 = UIMultiAnimTextInput.create(builder, "textInput", {font: "testfont"});
+		var input2 = UIMultiAnimTextInput.create(builder, "textInput", {font: "testfont"});
+
+		group.add(input1);
+		group.add(input2);
+
+		// handleTab with no focused input returns true (focuses first)
+		// But focus() requires a scene, so it won't actually focus.
+		// Just verify no crash.
+		group.handleTab(false);
+
+		group.remove(input1);
+		group.clear();
+	}
+
+	@Test
+	public function testTabGroupHandleTabEmpty():Void {
+		var group = new UITabGroup();
+		Assert.isFalse(group.handleTab(false));
+		Assert.isFalse(group.handleTab(true));
+	}
+
+	@Test
+	public function testTabGroupHandleEnterDisabled():Void {
+		var group = new UITabGroup();
+		group.enterAdvances = false;
+		Assert.isFalse(group.handleEnter());
 	}
 }

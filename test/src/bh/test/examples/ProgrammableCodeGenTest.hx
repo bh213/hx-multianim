@@ -4237,4 +4237,71 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	public function test88_ColorVerification(async:utest.Async):Void {
 		simpleMacroTest(88, "colorVerification", () -> createMp().colorVerification.create(), async);
 	}
+
+	// ==================== TextInput: visual (builder-only) ====================
+
+	@Test
+	public function test89_TextInput(async:utest.Async):Void {
+		setupTest(89, "textInput");
+		VisualTestBase.pendingVisualTests++;
+		async.setTimeout(10000);
+		clearScene();
+
+		final animFilePath = 'test/examples/89-textInput/textInput.manim';
+		final programmables = ["textInput", "textInputGrey", "textInputTitle", "textInputTitleGrey"];
+		final statuses = ["normal", "hover", "focused", "disabled"];
+		final scale = 2.0;
+		final groupColSpacing:Float = 320;
+		final groupRowSpacing:Float = 200;
+		final statusRowSpacing:Float = 35;
+
+		try {
+			var fileContent = byte.ByteData.ofString(sys.io.File.getContent(animFilePath));
+			var loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+			var builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, animFilePath);
+
+			var container = new h2d.Object(s2d);
+			container.setScale(scale);
+
+			for (pi in 0...programmables.length) {
+				var groupCol = pi % 2;
+				var groupRow = Std.int(pi / 2);
+				for (si in 0...statuses.length) {
+					var params = new Map<String, Dynamic>();
+					params.set("status", statuses[si]);
+					var built = builder.buildWithParameters(programmables[pi], params);
+					if (built != null && built.object != null) {
+						built.object.setPosition(
+							groupCol * groupColSpacing + 10,
+							groupRow * groupRowSpacing + si * statusRowSpacing + 10
+						);
+						container.addChild(built.object);
+					}
+				}
+			}
+		} catch (e:Dynamic) {
+			var msg = 'Build threw exception for textInput variants: $e';
+			Assert.fail(msg);
+			VisualTestBase.pendingVisualTests--;
+			async.done();
+			return;
+		}
+
+		waitForUpdate(function(dt:Float) {
+			try {
+				var actualPath = getActualImagePath();
+				var referencePath = getReferenceImagePath();
+				var success = screenshot(actualPath, 1280, 720);
+				Assert.isTrue(success, 'Screenshot should be created at $actualPath');
+				if (success) {
+					var match = compareImages(actualPath, referencePath);
+					Assert.isTrue(match, 'Screenshot should match reference image');
+				}
+			} catch (e:Dynamic) {
+				Assert.fail('Screenshot/compare threw: $e');
+			}
+			VisualTestBase.pendingVisualTests--;
+			async.done();
+		});
+	}
 }

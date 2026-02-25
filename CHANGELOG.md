@@ -180,6 +180,22 @@
 - **UIPanelHelper multi-panel support** — named panel slots via `openNamed(slot, ...)`, `closeNamed(slot)`, `closeAllNamed()`, `isOpenNamed(slot)`, `getNamedPanelResult(slot)` — multiple panels can be open simultaneously
 - **Boolean metadata type inference** — untyped `key => true`/`key => false` in interactive metadata now infers `SVTBool` (previously inferred as string)
 - **`BuilderResolvedSettings.has(key)`** — convenience method to check if a key exists in settings
+- **Text input component** — `UIMultiAnimTextInput` wraps Heaps' `h2d.TextInput` inside a `.manim` programmable frame
+  - Requires `.manim` programmable with `status:[normal,hover,focused,disabled]`, `placeholder:bool`, and `#textArea point`
+  - Settings: `buildName`, `font`, `fontColor`, `cursorColor`, `selectionColor`, `text`, `placeholder`, `maxLength`, `multiline`, `readOnly`, `disabled`, `filter`, `inputWidth`
+  - `TextInputFilter` enum: `FNumericOnly`, `FAlphanumeric`, `FCustom(fn)`
+  - Callbacks: `onChange()`, `onSubmit()`, `onFocusChange(focused)`
+  - Implements `UIElement`, `UIElementDisablable`, `UIElementText`, `UIElementCursor`, `UIElementUpdatable`
+  - Screen helper: `addTextInput(builder, settings, ?initialText)`
+  - Events: `UITextChange(text)`, `UITextSubmit(text)`, `UIFocusChange(focused)`
+- **Tab navigation** — `UITabGroup` helper for Tab/Shift+Tab cycling between text inputs
+  - `enableTabNavigation(mode)` with `TabWireMode` enum (`Autowire`/`Manual`)
+  - `Autowire` mode auto-handles Tab key in `onKey()` — no manual event handling needed
+  - Auto-assigns tab indices in insertion order, or explicit `tabIndex` setting
+  - `handleTab(shift)`, `advanceFrom(source)`, `focusFirst()`, `focusByIndex(tabIndex)`
+  - `enterAdvances` flag — Enter key advances to next input (deferred to next frame to avoid Heaps event conflicts)
+  - Duplicate `tabIndex` values throw at registration time
+  - Skips disabled inputs when cycling
 
 ### Changed
 - **Button incremental rewrite** — `UIStandardMultiAnimButton` now uses single incremental `BuilderResult` with `setParameter()` instead of `MultiAnimMultiResult` (pre-built combo swap). Removes `doRedraw()`, `requestRedraw`, and `UIElementSyncRedraw`.

@@ -7,6 +7,10 @@ import bh.ui.UIMultiAnimCheckbox.UIStandardMultiCheckbox;
 import bh.ui.UIMultiAnimSlider.UIStandardMultiAnimSlider;
 import bh.ui.UIMultiAnimProgressBar.UIMultiAnimProgressBar;
 import bh.ui.UIMultiAnimButton.UIStandardMultiAnimButton;
+import bh.ui.UIMultiAnimTextInput;
+import bh.ui.UIMultiAnimTextInput.TextInputFilter;
+import bh.ui.UITabGroup;
+import bh.ui.UITabGroup.TabWireMode;
 import bh.ui.UIMultiAnimTabs;
 import bh.ui.UIMultiAnimTabs.ContentTarget;
 import bh.multianim.MultiAnimParser.ResolvedSettings;
@@ -56,6 +60,8 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	var postCustomAddToLayer:Map<h2d.Object, UIElementCustomAddToLayer> = [];
 	var interactiveWrappers:Array<UIInteractiveWrapper> = [];
 	var interactiveMap:Map<String, UIInteractiveWrapper> = [];
+	var tabGroup:Null<UITabGroup> = null;
+	var tabAutoWired:Bool = false;
 	private var _autoSyncInitialState:Bool = false;
 	var autoSyncInitialState(never, set):Bool;
 	var initialSyncDone:Bool = false;
@@ -135,12 +141,21 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	public abstract function load():Void;
 
 
-	public abstract function onScreenEvent(event:UIScreenEvent, source:UIElement):Void;
+	public abstract function onScreenEvent(event:UIScreenEvent, source:Null<UIElement>):Void;
 
 	public function onMouseMove(pos:h2d.col.Point):Bool { return true;}
 	public function onMouseClick(pos:h2d.col.Point, button:Int, release:Bool):Bool {return true;}
 	public function onMouseWheel(pos:h2d.col.Point, delta:Float):Bool { return true;}
-	public function onKey(keyCode:Int, release:Bool):Bool { return true;}
+	public function onKey(keyCode:Int, release:Bool):Bool {
+		if (tabAutoWired && !release && tabGroup != null) {
+			if (keyCode == hxd.Key.TAB) {
+				final shift = hxd.Key.isDown(hxd.Key.SHIFT) || hxd.Key.isDown(hxd.Key.LSHIFT) || hxd.Key.isDown(hxd.Key.RSHIFT);
+				if (tabGroup.handleTab(shift))
+					return false;
+			}
+		}
+		return true;
+	}
 
 	public function update(dt:Float):Void {
 		if (contentTarget != null)
@@ -374,6 +389,68 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		final checkBoxInitialValue = getBoolSettings(settings, "initialValue", checked ?? false);
 		final split = splitSettings(settings, ["buildName"], ["initialValue"], [], [], "checkbox");
 		return UIStandardMultiCheckbox.create(providedBuilder, checkboxBuildName, checkBoxInitialValue, split.main);
+	}
+
+	function addTextInput(providedBuilder:MultiAnimBuilder, settings:ResolvedSettings, ?initialText:String):UIMultiAnimTextInput {
+		final buildName = getSettings(settings, "buildName", "textInput");
+		final text = getSettings(settings, "text", initialText ?? "");
+		final placeholderText = getSettings(settings, "placeholder", "");
+		final fontName = getSettings(settings, "font", "");
+		final fontColor = getIntSettings(settings, "fontColor", 0xFFFFFF);
+		final cursorColor = getIntSettings(settings, "cursorColor", 0xFFFFFF);
+		final selectionColor = getIntSettings(settings, "selectionColor", 0x3399FF);
+
+		final split = splitSettings(settings, ["buildName", "text", "placeholder", "font", "fontColor", "cursorColor", "selectionColor"],
+			["maxLength", "multiline", "readOnly", "disabled", "filter", "tabIndex", "inputWidth"], [], [], "textInput");
+
+		var extraParams = split.main;
+		if (placeholderText != "") {
+			if (extraParams == null)
+				extraParams = new Map<String, Dynamic>();
+			extraParams.set("placeholderText", placeholderText);
+		}
+
+		final config:UIMultiAnimTextInput.TextInputConfig = {
+			font: fontName,
+			fontColor: fontColor,
+			cursorColor: cursorColor,
+			selectionColor: selectionColor,
+			text: text,
+			placeholder: placeholderText,
+			maxLength: getIntSettings(settings, "maxLength", 0),
+			multiline: getBoolSettings(settings, "multiline", false),
+			readOnly: getBoolSettings(settings, "readOnly", false),
+			inputWidth: getIntSettings(settings, "inputWidth", 0),
+			extraParams: extraParams
+		};
+
+		final input = UIMultiAnimTextInput.create(providedBuilder, buildName, config);
+
+		if (getBoolSettings(settings, "disabled", false))
+			input.disabled = true;
+
+		final filterStr = getSettings(settings, "filter", "none");
+		switch filterStr {
+			case "numeric":
+				input.filter = FNumericOnly;
+			case "alphanumeric":
+				input.filter = FAlphanumeric;
+			default:
+		}
+
+		if (tabGroup != null) {
+			final tabIndex = getIntSettings(settings, "tabIndex", -1);
+			tabGroup.add(input, tabIndex);
+			input.tabGroup = tabGroup;
+		}
+
+		return input;
+	}
+
+	function enableTabNavigation(mode:TabWireMode = Autowire):UITabGroup {
+		tabGroup = new UITabGroup();
+		tabAutoWired = mode == Autowire;
+		return tabGroup;
 	}
 
 	function addRadio(providedBuilder, settings:ResolvedSettings, items:Array<UIElementListItem>, vertical:Bool, selectedIndex:Int = 0) {
