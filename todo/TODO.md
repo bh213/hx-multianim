@@ -1,5 +1,23 @@
 # TODO
 
+| # | Item | Summary | Section | Priority |
+|---|------|---------|---------|----------|
+| 1 | Hot reload | Live .manim reload without restart | V1 | High |
+| 2 | Transitions & animations | Tween manager + .manim transition declarations | V1 | High |
+| 3 | Visual tests fixes | Fix existing visual test issues | V1 | High |
+| 4 | Haxelib release | Publish to haxelib + CI automation | V1 | High |
+| 5 | Blob47 utils | Autotile mapping utilities | V1 | Medium |
+| 6 | In-text colors & html text | Review color/html text support in .manim | V1 | Medium |
+| 7 | Missing h2d.flow features | Investigate unsupported flow properties | V1 | Medium |
+| 8 | Step repeatable without dx/dy | Allow repeatable without requiring dx or dy | V1 | Low |
+| 9 | Dropdown z-ordering | Panel renders behind other UI elements | Bugs | Medium |
+| 10 | `closeAllNamed()` iterator | Mutating map during iteration, fragile | Bugs | Low |
+| 11 | Named panel outside-click | Wrong panel's close cancelled on click | Bugs | Medium |
+| 12 | Legacy particle syntax | Remove `boundsMode`/`colorCurve`/positional emit | Deprecation | Low |
+| 13 | `relativeLayouts` alias | Remove, keep only `layouts` | Deprecation | Low |
+| 14 | `reference`/`component` alias | Remove, keep only `staticRef`/`dynamicRef` | Deprecation | Low |
+| 15 | Text input codegen | `@:manim` factory with `createTextInput()` | After 1.0 | Low |
+
 ## Main Goals
 
 - Code generation: programmable elements should always work via `builder.buildWithParameters` or via macro system (`@:manim(...)`)
@@ -7,7 +25,7 @@
 ## V1
 - hot reload
 - transitions & animations (see [transitions-planning.md](transitions-planning.md))
-- visual tests fixes
+- visual tests fixes (see [test-todo.md](test-todo.md))
 - haxelib release (see details below)
 - blob47 utils?
 - review in-text colors & html text support for manim
@@ -39,6 +57,21 @@
 - Current `0.x.y` signals unstable API — use `1.0.0` when stable
 - Submitted versions **cannot be overwritten** — must bump for any change
 
+## Bugs
+
+### Dropdown panel not on modal layer
+**File:** `UIMultiAnimDropdown.hx:246`
+The dropdown's floating panel uses `PositionLinkObject` but doesn't get placed on the modal layer. This can cause z-ordering issues where other UI elements render on top of the dropdown.
+**Fix:** Route through `UIElementCustomAddToLayer` or `screen.addObjectToLayer(obj, ModalLayer)`.
+
+### `closeAllNamed()` iterator safety
+`closeAllNamed()` iterates `namedPanels` while `closeNamed()` removes from it. Currently works because Haxe `StringMap` iteration copies keys, but fragile.
+**Fix:** Collect keys first (like `checkPendingClose` already does).
+
+### Named panel outside-click scope is too broad
+In `handleOutsideClick`, clicking inside *any* panel cancels the pending close for a *specific* named panel (line 254 uses `isOwnInteractive` which checks all panels). Should only cancel if the click is on this panel's own interactives or the trigger interactive.
+**Fix:** Check `panel.prefix` and `panel.interactiveId` directly instead of `isOwnInteractive(id)`.
+
 ## Deprecation Cleanup
 - Remove legacy particle syntax from parser (keep only new forms):
   - `boundsMode`/`boundsMinX`/`boundsMaxX`/`boundsMinY`/`boundsMaxY`/`boundsLine` → `bounds:` combined syntax only
@@ -49,6 +82,7 @@
 
 ## After 1.0
 - Generic components support
+- Text input codegen support (`@:manim` factory with `createTextInput()`)
 - Bit expression: support for any-bit and all-bits (e.g. grid direction)
 - StateAnim: color replace (replaceColor filter exists in MultiAnimParser, not fully exposed for stateanim)
 - Radio: paired UIElement (click on label to change radio)
