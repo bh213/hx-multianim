@@ -714,6 +714,76 @@ class MacroManimParser {
 	}
 
 
+	// Parses an angle value with optional unit suffix (deg/rad/turn) and direction constants.
+	// Returns value in degrees (for backward compat — builder applies degToRad).
+	// Bare numbers are treated as degrees.
+	function parseAngleOrReference():ReferenceableValue {
+		// Check for named direction constants
+		switch (peek()) {
+			case TIdentifier(s):
+				final lower = s.toLowerCase();
+				switch (lower) {
+					case "right":
+						advance();
+						return parseAngleNextExpression(RVFloat(0));
+					case "down":
+						advance();
+						return parseAngleNextExpression(RVFloat(90));
+					case "left":
+						advance();
+						return parseAngleNextExpression(RVFloat(180));
+					case "up":
+						advance();
+						return parseAngleNextExpression(RVFloat(270));
+					default:
+				}
+			default:
+		}
+		final value = parseFloatOrReference();
+		return applyAngleUnit(value);
+	}
+
+	// After parsing a base angle value, check for unit suffix and apply conversion.
+	function applyAngleUnit(value:ReferenceableValue):ReferenceableValue {
+		switch (peek()) {
+			case TIdentifier(s):
+				final lower = s.toLowerCase();
+				switch (lower) {
+					case "deg":
+						advance();
+						return value; // already degrees
+					case "rad":
+						advance();
+						// Convert radians to degrees: value * (180 / PI)
+						return EBinop(OpMul, value, RVFloat(180.0 / 3.14159265358979323));
+					case "turn" | "turns":
+						advance();
+						// Convert turns to degrees: value * 360
+						return EBinop(OpMul, value, RVFloat(360.0));
+					default:
+						return value; // no unit suffix, bare number = degrees
+				}
+			default:
+				return value; // no unit suffix, bare number = degrees
+		}
+	}
+
+	// Handle expressions after a direction constant (e.g. "down + 10deg")
+	function parseAngleNextExpression(value:ReferenceableValue):ReferenceableValue {
+		switch (peek()) {
+			case TPlus:
+				advance();
+				final rhs = parseAngleOrReference();
+				return EBinop(OpAdd, value, rhs);
+			case TMinus:
+				advance();
+				final rhs = parseAngleOrReference();
+				return EBinop(OpSub, value, rhs);
+			default:
+				return value;
+		}
+	}
+
 	function parseStringOrReference():ReferenceableValue {
 		switch (peek()) {
 			case TQuestion:
@@ -2103,7 +2173,7 @@ class MacroManimParser {
 				if (isNamedParamNext()) {
 					final results = parseOptionalParams([
 						ParseFloatOrReference("distance"),
-						ParseFloatOrReference("angle"),
+						ParseCustom("angle", parseAngleOrReference),
 						ParseFloatOrReference("alpha"),
 						ParseFloatOrReference("radius"),
 						ParseCustom("color", parseColorOrReference),
@@ -2124,7 +2194,7 @@ class MacroManimParser {
 				}
 				final distance = parseFloatOrReference();
 				expect(TComma);
-				final angle = parseFloatOrReference();
+				final angle = parseAngleOrReference();
 				expect(TComma);
 				final color = parseColorOrReference();
 				expect(TComma);
@@ -3466,7 +3536,7 @@ class MacroManimParser {
 			speed: null, speedRandom: null, speedIncrease: null, gravity: null, gravityAngle: null,
 			fadeIn: null, fadeOut: null, fadePower: null, tiles: [], emit: Point(RVFloat(0), RVFloat(0)),
 			rotationInitial: null, rotationSpeed: null, rotationSpeedRandom: null, rotateAuto: null, forwardAngle: null,
-			colorCurves: null,
+			colorCurves: null, colorStops: null,
 			forceFields: null, velocityCurve: null, sizeCurve: null,
 			boundsMode: null, boundsMinX: null, boundsMaxX: null, boundsMinY: null, boundsMaxY: null, boundsLines: null,
 			subEmitters: null, animationRepeat: null,
@@ -3497,25 +3567,25 @@ class MacroManimParser {
 				case "loop": p.loop = parseBool();
 				case "relative": p.relative = parseBool();
 				case "maxlife": p.maxLife = parseFloatOrReference();
-				case "liferandom": p.lifeRandom = parseFloatOrReference();
+				case "liferandom" | "liferand": p.lifeRandom = parseFloatOrReference();
 				case "size": p.size = parseFloatOrReference();
-				case "sizerandom": p.sizeRandom = parseFloatOrReference();
+				case "sizerandom" | "sizerand": p.sizeRandom = parseFloatOrReference();
 				case "speed": p.speed = parseFloatOrReference();
-				case "speedrandom": p.speedRandom = parseFloatOrReference();
-				case "speedincrease": p.speedIncrease = parseFloatOrReference();
+				case "speedrandom" | "speedrand": p.speedRandom = parseFloatOrReference();
+				case "speedincrease" | "speedincr" | "acceleration": p.speedIncrease = parseFloatOrReference();
 				case "gravity": p.gravity = parseFloatOrReference();
-				case "gravityangle": p.gravityAngle = parseFloatOrReference();
+				case "gravityangle": p.gravityAngle = parseAngleOrReference();
 				case "fadein": p.fadeIn = parseFloatOrReference();
 				case "fadeout": p.fadeOut = parseFloatOrReference();
 				case "fadepower": p.fadePower = parseFloatOrReference();
-				case "rotationspeed": p.rotationSpeed = parseFloatOrReference();
-				case "rotationspeedrandom": p.rotationSpeedRandom = parseFloatOrReference();
-				case "rotationinitial": p.rotationInitial = parseFloatOrReference();
-				case "rotateauto": p.rotateAuto = parseBool();
-				case "forwardangle": p.forwardAngle = parseFloatOrReference();
-				case "emitdelay": p.emitDelay = parseFloatOrReference();
+				case "rotationspeed" | "rotspeed": p.rotationSpeed = parseAngleOrReference();
+				case "rotationspeedrandom" | "rotspeedrand" | "rotationspeedrand": p.rotationSpeedRandom = parseAngleOrReference();
+				case "rotationinitial" | "rotinitial": p.rotationInitial = parseAngleOrReference();
+				case "rotateauto" | "autorotate": p.rotateAuto = parseBool();
+				case "forwardangle": p.forwardAngle = parseAngleOrReference();
+				case "emitdelay" | "delay": p.emitDelay = parseFloatOrReference();
 				case "emitsync": p.emitSync = parseFloatOrReference();
-				case "animationrepeat": p.animationRepeat = parseFloatOrReference();
+				case "animationrepeat" | "animrepeat": p.animationRepeat = parseFloatOrReference();
 				case "attachto": p.attachTo = expectIdentifierOrString();
 				case "spawncurve": p.spawnCurve = parseCurveNameOrEasing();
 				case "animfile": p.animFile = expectIdentifierOrString();
@@ -3555,8 +3625,12 @@ class MacroManimParser {
 					p.sizeCurve = parseCurveNameOrEasing();
 				case "velocitycurve":
 					p.velocityCurve = parseCurveNameOrEasing();
+				case "colorstops":
+					p.colorStops = parseColorStops();
 				case "forcefields":
 					p.forceFields = parseForceFields();
+				case "bounds":
+					parseBoundsCombined(p);
 				case "boundsmode":
 					p.boundsMode = parseBoundsMode();
 				case "boundsminx":
@@ -3617,6 +3691,35 @@ class MacroManimParser {
 		}
 	}
 
+	// colorStops: 0.0 #FF0000, 0.5 #00FF00 easeInQuad, 1.0 #0000FF
+	function parseColorStops():Array<ParticleColorStop> {
+		var stops:Array<ParticleColorStop> = [];
+		while (true) {
+			final rate = parseFloatOrReference();
+			final color = parseColorOrReference();
+			// Optional curve name/easing after color (interpolation to next stop)
+			var curveName:Null<String> = null;
+			var inlineEasing:Null<EasingType> = null;
+			switch (peek()) {
+				case TIdentifier(s):
+					// Check if this is an easing name or a named curve
+					final easing = tryMatchEasingName(s);
+					if (easing != null) {
+						advance();
+						inlineEasing = easing;
+					} else if (!isNamedParamNext()) {
+						// Could be a named curve from curves{}, but not a particle property
+						advance();
+						curveName = s;
+					}
+				default:
+			}
+			stops.push({rate: rate, color: color, curveName: curveName, inlineEasing: inlineEasing});
+			if (!match(TComma)) break;
+		}
+		return stops;
+	}
+
 	function parseTileSources():Array<TileSource> {
 		var tiles:Array<TileSource> = [];
 		while (true) {
@@ -3637,6 +3740,9 @@ class MacroManimParser {
 			case TIdentifier(s) if (isKeyword(s, "point")):
 				advance();
 				expect(TOpen);
+				if (isNamedParamNext()) {
+					return parseEmitModeNamed("point");
+				}
 				final dist = parseFloatOrReference();
 				expect(TComma);
 				final distRand = parseFloatOrReference();
@@ -3645,37 +3751,46 @@ class MacroManimParser {
 			case TIdentifier(s) if (isKeyword(s, "cone")):
 				advance();
 				expect(TOpen);
+				if (isNamedParamNext()) {
+					return parseEmitModeNamed("cone");
+				}
 				final dist = parseFloatOrReference();
 				expect(TComma);
 				final distRand = parseFloatOrReference();
 				expect(TComma);
-				final angle = parseFloatOrReference();
+				final angle = parseAngleOrReference();
 				expect(TComma);
-				final angleRand = parseFloatOrReference();
+				final angleRand = parseAngleOrReference();
 				expect(TClosed);
 				return Cone(dist, distRand, angle, angleRand);
 			case TIdentifier(s) if (isKeyword(s, "box")):
 				advance();
 				expect(TOpen);
+				if (isNamedParamNext()) {
+					return parseEmitModeNamed("box");
+				}
 				final w = parseFloatOrReference();
 				expect(TComma);
 				final h = parseFloatOrReference();
 				expect(TComma);
-				final angle = parseFloatOrReference();
+				final angle = parseAngleOrReference();
 				expect(TComma);
-				final angleRand = parseFloatOrReference();
+				final angleRand = parseAngleOrReference();
 				expect(TClosed);
-				return Box(w, h, angle, angleRand);
+				return Box(w, h, angle, angleRand, false);
 			case TIdentifier(s) if (isKeyword(s, "circle")):
 				advance();
 				expect(TOpen);
+				if (isNamedParamNext()) {
+					return parseEmitModeNamed("circle");
+				}
 				final r = parseFloatOrReference();
 				expect(TComma);
 				final rRand = parseFloatOrReference();
 				expect(TComma);
-				final angle = parseFloatOrReference();
+				final angle = parseAngleOrReference();
 				expect(TComma);
-				final angleRand = parseFloatOrReference();
+				final angleRand = parseAngleOrReference();
 				expect(TClosed);
 				return Circle(r, rRand, angle, angleRand);
 			case TIdentifier(s) if (isKeyword(s, "path")):
@@ -3692,6 +3807,58 @@ class MacroManimParser {
 				return tangent ? ManimPathTangent(pathName) : ManimPath(pathName);
 			default:
 				return error("expected emit mode: point, cone, box, circle, path");
+		}
+	}
+
+	function parseEmitModeNamed(mode:String):ParticlesEmitMode {
+		var dist:ReferenceableValue = RVFloat(0);
+		var distRand:ReferenceableValue = RVFloat(0);
+		var angle:ReferenceableValue = RVFloat(0);
+		var angleSpread:ReferenceableValue = RVFloat(0);
+		var w:ReferenceableValue = RVFloat(0);
+		var h:ReferenceableValue = RVFloat(0);
+		var r:ReferenceableValue = RVFloat(0);
+		var rRand:ReferenceableValue = RVFloat(0);
+		var center = false;
+		while (!match(TClosed)) {
+			eatComma();
+			if (match(TClosed)) break;
+			final pname = expectIdentifierOrString();
+			expect(TColon);
+			switch (pname.toLowerCase()) {
+				case "dist" | "distance":
+					dist = parseFloatOrReference();
+				case "distrand" | "distrandom" | "distancerandom":
+					distRand = parseFloatOrReference();
+				case "angle":
+					angle = parseAngleOrReference();
+				case "anglespread" | "anglerand" | "anglerandom":
+					angleSpread = parseAngleOrReference();
+				case "w" | "width":
+					w = parseFloatOrReference();
+				case "h" | "height":
+					h = parseFloatOrReference();
+				case "r" | "radius":
+					r = parseFloatOrReference();
+				case "rrand" | "radiusrandom" | "rrandom":
+					rRand = parseFloatOrReference();
+				case "center" | "centered":
+					center = parseBool();
+				default:
+					error('unknown emit parameter: $pname');
+			}
+		}
+		switch (mode) {
+			case "point":
+				return Point(dist, distRand);
+			case "cone":
+				return Cone(dist, distRand, angle, angleSpread);
+			case "box":
+				return Box(w, h, angle, angleSpread, center);
+			case "circle":
+				return Circle(r, rRand, angle, angleSpread);
+			default:
+				return error('internal: unknown emit mode $mode');
 		}
 	}
 
@@ -3810,6 +3977,63 @@ class MacroManimParser {
 				return BMNone;
 			default:
 				return error('unknown bounds mode: ${peek()}');
+		}
+	}
+
+	// bounds: kill, box(x: -50, y: -50, w: 250, h: 250), line(0, 0, 100, 0)
+	function parseBoundsCombined(p:ParticlesDef):Void {
+		p.boundsMode = parseBoundsMode();
+		while (match(TComma)) {
+			switch (peek()) {
+				case TIdentifier(s) if (isKeyword(s, "box")):
+					advance();
+					expect(TOpen);
+					if (isNamedParamNext()) {
+						final results = parseOptionalParams([
+							ParseFloatOrReference("x"),
+							ParseFloatOrReference("y"),
+							ParseFloatOrReference("w"),
+							ParseFloatOrReference("h"),
+						]);
+						final x:ReferenceableValue = cast results.get("x") ?? RVFloat(0);
+						final y:ReferenceableValue = cast results.get("y") ?? RVFloat(0);
+						final w:ReferenceableValue = cast results.get("w") ?? RVFloat(0);
+						final h:ReferenceableValue = cast results.get("h") ?? RVFloat(0);
+						p.boundsMinX = x;
+						p.boundsMinY = y;
+						p.boundsMaxX = EBinop(OpAdd, x, w);
+						p.boundsMaxY = EBinop(OpAdd, y, h);
+					} else {
+						// box(x, y, w, h) positional
+						final x = parseFloatOrReference();
+						expect(TComma);
+						final y = parseFloatOrReference();
+						expect(TComma);
+						final w = parseFloatOrReference();
+						expect(TComma);
+						final h = parseFloatOrReference();
+						expect(TClosed);
+						p.boundsMinX = x;
+						p.boundsMinY = y;
+						p.boundsMaxX = EBinop(OpAdd, x, w);
+						p.boundsMaxY = EBinop(OpAdd, y, h);
+					}
+				case TIdentifier(s) if (isKeyword(s, "line")):
+					advance();
+					expect(TOpen);
+					final x1 = parseFloatOrReference();
+					expect(TComma);
+					final y1 = parseFloatOrReference();
+					expect(TComma);
+					final x2 = parseFloatOrReference();
+					expect(TComma);
+					final y2 = parseFloatOrReference();
+					expect(TClosed);
+					if (p.boundsLines == null) p.boundsLines = [];
+					p.boundsLines.push({x1: x1, y1: y1, x2: x2, y2: y2});
+				default:
+					error('expected box() or line() in bounds definition, got: ${peek()}');
+			}
 		}
 	}
 
@@ -4412,9 +4636,9 @@ class MacroManimParser {
 		expect(TComma);
 		final radius = parseFloatOrReference();
 		expect(TComma);
-		final startAngle = parseFloatOrReference();
+		final startAngle = parseAngleOrReference();
 		expect(TComma);
-		final arcAngle = parseFloatOrReference();
+		final arcAngle = parseAngleOrReference();
 		expect(TClosed);
 		final pos = parseOptionalElementPos();
 		return {element: GEArc(color, style, radius, startAngle, arcAngle), pos: pos};
@@ -4587,7 +4811,7 @@ class MacroManimParser {
 					case TIdentifier(s) if (isKeyword(s, "turn")):
 						advance();
 						expect(TOpen);
-						final angle = parseIntegerOrReference();
+						final angle = parseAngleOrReference();
 						expect(TClosed);
 						pathElements.push(TurnDegrees(angle));
 					case TIdentifier(s) if (isKeyword(s, "arc")):
@@ -4595,7 +4819,7 @@ class MacroManimParser {
 						expect(TOpen);
 						final radius = parseIntegerOrReference();
 						expect(TComma);
-						final angleDelta = parseIntegerOrReference();
+						final angleDelta = parseAngleOrReference();
 						expect(TClosed);
 						pathElements.push(Arc(radius, angleDelta));
 					case TIdentifier(s) if (isKeyword(s, "lineto")):
@@ -4639,7 +4863,7 @@ class MacroManimParser {
 						expect(TComma);
 						final radiusEnd = parseIntegerOrReference();
 						expect(TComma);
-						final angleDelta = parseIntegerOrReference();
+						final angleDelta = parseAngleOrReference();
 						expect(TClosed);
 						pathElements.push(Spiral(radiusStart, radiusEnd, angleDelta));
 					case TIdentifier(s) if (isKeyword(s, "wave")):

@@ -2182,4 +2182,241 @@ class ParserErrorTest extends utest.Test {
 		Assert.isTrue(error.indexOf("already has a name") >= 0,
 			'Error should mention duplicate name, got: $error');
 	}
+
+	// ===== Particles renames: angle units =====
+
+	@Test
+	public function testParticlesAngleUnitDeg() {
+		Assert.isTrue(parseExpectingSuccess("
+			#test programmable() {
+				point {
+					pos: 0, 0
+					particles {
+						count: 10
+						tiles: file(\"test.png\")
+						gravityAngle: 90deg
+						rotationSpeed: 45deg
+						forwardAngle: 270deg
+					}
+				}
+			}
+		"), "Angle deg suffix should parse");
+	}
+
+	@Test
+	public function testParticlesAngleUnitRad() {
+		Assert.isTrue(parseExpectingSuccess("
+			#test programmable() {
+				point {
+					pos: 0, 0
+					particles {
+						count: 10
+						tiles: file(\"test.png\")
+						gravityAngle: 1.57rad
+					}
+				}
+			}
+		"), "Angle rad suffix should parse");
+	}
+
+	@Test
+	public function testParticlesAngleUnitTurn() {
+		Assert.isTrue(parseExpectingSuccess("
+			#test programmable() {
+				point {
+					pos: 0, 0
+					particles {
+						count: 10
+						tiles: file(\"test.png\")
+						gravityAngle: 0.25turn
+					}
+				}
+			}
+		"), "Angle turn suffix should parse");
+	}
+
+	@Test
+	public function testParticlesDirectionConstants() {
+		Assert.isTrue(parseExpectingSuccess("
+			#test programmable() {
+				point {
+					pos: 0, 0
+					particles {
+						count: 10
+						tiles: file(\"test.png\")
+						gravityAngle: down
+						forwardAngle: up
+					}
+				}
+			}
+		"), "Direction constants should parse");
+	}
+
+	@Test
+	public function testParticlesDirectionWithOffset() {
+		Assert.isTrue(parseExpectingSuccess("
+			#test programmable() {
+				point {
+					pos: 0, 0
+					particles {
+						count: 10
+						tiles: file(\"test.png\")
+						gravityAngle: down + 10deg
+					}
+				}
+			}
+		"), "Direction with offset should parse");
+	}
+
+	// ===== Particles renames: property aliases =====
+
+	@Test
+	public function testParticlesAliases() {
+		Assert.isTrue(parseExpectingSuccess("
+			#test programmable() {
+				point {
+					pos: 0, 0
+					particles {
+						count: 10
+						tiles: file(\"test.png\")
+						lifeRand: 0.5
+						sizeRand: 0.3
+						speedRand: 0.2
+						speedIncr: 5
+						rotSpeed: 90
+						rotSpeedRand: 10
+						rotInitial: 45
+						autoRotate: true
+						delay: 0.1
+						animRepeat: 2
+					}
+				}
+			}
+		"), "Property aliases should parse");
+	}
+
+	// ===== Particles renames: named emit parameters =====
+
+	@Test
+	public function testEmitNamedParams() {
+		Assert.isTrue(parseExpectingSuccess("
+			#test programmable() {
+				point {
+					pos: 0, 0
+					particles {
+						count: 10
+						tiles: file(\"test.png\")
+						emit: cone(dist: 50, distRand: 10, angle: right, angleSpread: 90deg)
+					}
+				}
+			}
+		"), "Named emit params should parse");
+	}
+
+	@Test
+	public function testEmitBoxCenter() {
+		Assert.isTrue(parseExpectingSuccess("
+			#test programmable() {
+				point {
+					pos: 0, 0
+					particles {
+						count: 10
+						tiles: file(\"test.png\")
+						emit: box(w: 100, h: 100, center: true, angle: down, angleSpread: 45deg)
+					}
+				}
+			}
+		"), "Named emit box with center should parse");
+	}
+
+	// ===== Particles renames: bounds combined syntax =====
+
+	@Test
+	public function testBoundsCombined() {
+		Assert.isTrue(parseExpectingSuccess("
+			#test programmable() {
+				point {
+					pos: 0, 0
+					particles {
+						count: 10
+						tiles: file(\"test.png\")
+						bounds: kill, box(0, 0, 800, 600)
+					}
+				}
+			}
+		"), "Combined bounds syntax should parse");
+	}
+
+	@Test
+	public function testBoundsCombinedNamed() {
+		Assert.isTrue(parseExpectingSuccess("
+			#test programmable() {
+				point {
+					pos: 0, 0
+					particles {
+						count: 10
+						tiles: file(\"test.png\")
+						bounds: bounce(0.6), box(x: -50, y: -50, w: 250, h: 250), line(0, 0, 100, 0)
+					}
+				}
+			}
+		"), "Combined bounds with named box and line should parse");
+	}
+
+	// ===== Particles renames: colorStops =====
+
+	@Test
+	public function testColorStops() {
+		Assert.isTrue(parseExpectingSuccess("
+			#test programmable() {
+				point {
+					pos: 0, 0
+					particles {
+						count: 10
+						tiles: file(\"test.png\")
+						colorStops: 0.0 #FF0000, 1.0 #0000FF
+					}
+				}
+			}
+		"), "Simple colorStops should parse");
+	}
+
+	@Test
+	public function testColorStopsWithEasing() {
+		Assert.isTrue(parseExpectingSuccess("
+			#test programmable() {
+				point {
+					pos: 0, 0
+					particles {
+						count: 10
+						tiles: file(\"test.png\")
+						colorStops: 0.0 #FF4400, 0.5 #FFAA00 easeInQuad, 1.0 #FFFF88
+					}
+				}
+			}
+		"), "ColorStops with easing should parse");
+	}
+
+	// ===== Angle units in other contexts =====
+
+	@Test
+	public function testGraphicsArcAngleUnits() {
+		Assert.isTrue(parseExpectingSuccess("
+			#test programmable() {
+				graphics(
+					arc(#ff0000, filled, 50, 0deg, 90deg): 100, 100;
+				): 0, 0
+			}
+		"), "Graphics arc with angle units should parse");
+	}
+
+	@Test
+	public function testDropShadowAngleUnit() {
+		Assert.isTrue(parseExpectingSuccess("
+			#test programmable() {
+				bitmap(generated(color(50, 50, #ff0000))): 0, 0
+				filter: dropShadow(distance: 5, angle: 45deg, color: #000000, alpha: 0.5)
+			}
+		"), "DropShadow with angle unit should parse");
+	}
 }

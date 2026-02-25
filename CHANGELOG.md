@@ -3,6 +3,22 @@
 ## [0.13-dev] - 2026-02-23
 
 ### Added
+- **Particle angle units** — all angle properties accept `deg`, `rad`, `turn` suffixes; bare numbers remain degrees (backward compat)
+  - Direction constants: `right` (0°), `down` (90°), `left` (180°), `up` (270°)
+  - Expressions: `down + 10deg`, `left - 15deg`
+  - Works in particles, graphics `arc()`, `dropShadow` filter, and path `turn()`/`arc()`/`spiral()` commands
+- **Particle emit named parameters** — `emit: cone(dist: 50, distRand: 10, angle: right, angleSpread: 90deg)`
+  - All emit modes support named params: `point`, `cone`, `box`, `circle`
+  - `box(center: true)` for centered spawning (default: top-left aligned)
+  - Positional syntax still works for backward compatibility
+- **Particle `colorStops`** — `colorStops: 0.0 #FF0000, 0.5 #00FF00 easeInQuad, 1.0 #0000FF`
+  - Each stop is `rate color [curve]` — curve specifies interpolation to next stop
+  - Replaces verbose `rate: colorCurve: easing, #start, #end` segments (old syntax still works)
+- **Particle `bounds:` combined syntax** — `bounds: kill, box(x: 0, y: 0, w: 800, h: 600), line(0, 0, 100, 0)`
+  - Replaces separate `boundsMode`/`boundsMinX`/`boundsMaxX`/etc. properties (old syntax still works)
+  - `box()` supports both positional `box(x, y, w, h)` and named `box(x: ..., y: ..., w: ..., h: ...)` params
+- **Particle property aliases** — shorter names for common properties
+  - `lifeRand`, `sizeRand`, `speedRand`, `speedIncr`/`acceleration`, `rotSpeed`, `rotSpeedRand`, `rotInitial`, `autoRotate`, `delay`, `animRepeat`
 - **Parameterized slots** — `#name slot(param:type=default, ...)` for visual state management
   - Supports all parameter types: `uint`, `int`, `float`, `bool`, `string`, `color`, enum, range, flags
   - Conditionals (`@()`, `@else`, `@default`) and expressions (`$param`) work inside slot body

@@ -190,23 +190,19 @@ animation {
     speed: 50
     speedRandom: 0.3
     gravity: 100
-    gravityAngle: 90
+    gravityAngle: 90deg
     size: 0.5
     sizeRandom: 0.2
     blendMode: add | alpha
     fadeIn: 0.1
     fadeOut: 0.8
-    forwardAngle: 90
-    0.0: colorCurve: linear, #FF4400, #FFAA00
-    0.5: colorCurve: easeInQuad, #FFAA00, #FFFF88
+    forwardAngle: down
+    colorStops: 0.0 #FF4400, 0.5 #FFAA00 easeInQuad, 1.0 #FFFF88
     sizeCurve: myCurveName | easeOutQuad
     velocityCurve: myCurveName | easeOutQuad
     forceFields: [turbulence(30, 0.02, 2.0), wind(10, 0), vortex(0, 0, 100, 150), attractor(0, 0, 50, 100), repulsor(0, 0, 80, 120), pathguide(myPath, 80, 120, 50)]
-    boundsMode: none | kill | bounce(0.6) | wrap
-    boundsMinX: -100
-    boundsMaxX: 300
-    boundsLine: 0, 0, 100, 0
-    rotationSpeed: 90
+    bounds: kill, box(x: 0, y: 0, w: 800, h: 600)
+    rotationSpeed: 90deg
     rotateAuto: true
     relative: true
     attachTo: animPathName
@@ -219,6 +215,18 @@ animation {
     subEmitters: [{ groupId: "sparks", trigger: ondeath, probability: 0.8 }]
 }
 ```
+
+**Angle units:** All angle properties accept `deg`, `rad`, `turn` suffixes. Bare numbers are degrees (backward compat). Direction constants: `right` (0°), `down` (90°), `left` (180°), `up` (270°). Expressions: `down + 10deg`.
+
+**Emit named params:** `emit: cone(dist: 50, distRand: 10, angle: right, angleSpread: 90deg)`. Box supports `center: true` for centered spawning.
+
+**Color stops:** `colorStops: 0.0 #FF0000, 0.5 #00FF00 easeInQuad, 1.0 #0000FF`. Each stop is `rate color [curve]`. Curve specifies interpolation to next stop.
+
+**Bounds combined:** `bounds: kill, box(x: -50, y: -50, w: 250, h: 250), line(0, 0, 100, 0)`. Positional: `box(x, y, w, h)`.
+
+**Property aliases:** `lifeRand`, `sizeRand`, `speedRand`, `speedIncr`/`acceleration`, `rotSpeed`, `rotSpeedRand`, `rotInitial`, `autoRotate`, `delay`, `animRepeat`.
+
+**Legacy syntax** (`boundsMode`/`boundsMinX`/etc., `0.0: colorCurve: ...`) still works for backward compatibility.
 
 **Runtime API:** `group.emitBurst(count)`, `group.addForceField(ff)`, `group.removeForceFieldAt(i)`, `group.clearForceFields()`
 

@@ -1464,12 +1464,29 @@ graphics (
 
 Particle systems for visual effects like fire, smoke, explosions, and magic effects. **See [Particles Guide](particles.md) for a detailed tutorial with examples.**
 
+### Angle Units
+
+All angle properties accept unit suffixes and direction constants:
+
+```
+gravityAngle: 90deg           // explicit degrees
+gravityAngle: 1.57rad         // radians
+gravityAngle: 0.25turn        // turns (1 turn = 360°)
+gravityAngle: down            // direction constant (90°)
+gravityAngle: down + 10deg    // direction with offset
+gravityAngle: 90              // bare number = degrees (backward compat)
+```
+
+Direction constants: `right` (0°), `down` (90°), `left` (180°), `up` (270°).
+
+Angle units also work in graphics `arc()`, `dropShadow` filter angle, and path `turn()`/`arc()`/`spiral()`.
+
 ### Basic Syntax
 
 ```
 #effectName particles {
     count: 100
-    emit: point(0, 0)
+    emit: cone(dist: 50, angle: up, angleSpread: 30deg)
     tiles: file("particle.png")
     loop: true
     maxLife: 2.0
@@ -1491,7 +1508,7 @@ Particle systems for visual effects like fire, smoke, explosions, and magic effe
 | `count` | int | 100 | Maximum particles alive at once |
 | `loop` | bool | true | Continuously emit particles |
 | `maxLife` | float | 1.0 | Particle lifetime in seconds |
-| `lifeRandom` | float | 0 | Random lifetime variation (0-1) |
+| `lifeRandom` (`lifeRand`) | float | 0 | Random lifetime variation (0-1) |
 | `relative` | bool | false | Particles move relative to emitter (vs world space) |
 
 ### Movement Properties
@@ -1499,26 +1516,26 @@ Particle systems for visual effects like fire, smoke, explosions, and magic effe
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
 | `speed` | float | 50 | Initial particle velocity |
-| `speedRandom` | float | 0 | Random speed variation (0-1) |
-| `speedIncrease` | float | 0 | Speed change over time (-1 to 1) |
+| `speedRandom` (`speedRand`) | float | 0 | Random speed variation (0-1) |
+| `speedIncrease` (`speedIncr`, `acceleration`) | float | 0 | Speed change over time (-1 to 1) |
 | `gravity` | float | 0 | Gravity strength |
-| `gravityAngle` | float | 90 | Gravity direction in degrees (90 = down) |
+| `gravityAngle` | angle | down | Gravity direction (angle with units/constants) |
 
 ### Size Properties
 
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
 | `size` | float | 1.0 | Initial particle scale |
-| `sizeRandom` | float | 0 | Random size variation (0-1) |
+| `sizeRandom` (`sizeRand`) | float | 0 | Random size variation (0-1) |
 
 ### Rotation Properties
 
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
-| `rotationInitial` | float | 0 | Initial rotation range in degrees |
-| `rotationSpeed` | float | 0 | Rotation speed in degrees/sec |
-| `rotationSpeedRandom` | float | 0 | Random rotation speed variation |
-| `rotateAuto` | bool | false | Auto-rotate to match velocity direction |
+| `rotationInitial` (`rotInitial`) | angle | 0 | Initial rotation range |
+| `rotationSpeed` (`rotSpeed`) | angle | 0 | Rotation speed (angle/sec) |
+| `rotationSpeedRandom` (`rotSpeedRand`) | angle | 0 | Random rotation speed variation |
+| `rotateAuto` (`autoRotate`) | bool | false | Auto-rotate to match velocity direction |
 
 ### Fade Properties
 
@@ -1533,17 +1550,18 @@ Particle systems for visual effects like fire, smoke, explosions, and magic effe
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
 | `emitSync` | float | 0 | Synchronization (0=spread, 1=burst) |
-| `emitDelay` | float | 0 | Fixed delay before emission |
+| `emitDelay` (`delay`) | float | 0 | Fixed delay before emission |
 
 ### Rendering Properties
 
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
 | `blendMode` | enum | alpha | `alpha`, `add`, `multiply`, etc. |
-| `animationRepeat` | float | 1 | Animation loops (0=random frame) |
+| `animationRepeat` (`animRepeat`) | float | 1 | Animation loops (0=random frame) |
 
 ### Emission Modes
 
+**Positional syntax** (backward compatible):
 ```
 emit: point(distance, distanceRandom)
 emit: cone(distance, distanceRandom, angle, angleRandom)
@@ -1553,21 +1571,25 @@ emit: path(pathName)
 emit: path(pathName, tangent)
 ```
 
-**Angles are in degrees.** -90 = up, 0 = right, 90 = down, 180 = left.
+**Named parameter syntax** (preferred):
+```
+emit: point(dist: 20)
+emit: cone(dist: 50, distRand: 10, angle: up, angleSpread: 30deg)
+emit: box(w: 200, h: 10, center: true, angle: down, angleSpread: 10deg)
+emit: circle(r: 50, rRand: 10, angle: 0deg, angleSpread: 180deg)
+```
+
+Named params: `dist`/`distance`, `distRand`, `angle`, `angleSpread`/`angleRand`, `w`/`width`, `h`/`height`, `r`/`radius`, `rRand`, `center`/`centered`.
+
+`box(center: true)` spawns in `(-w/2..w/2, -h/2..h/2)` instead of `(0..w, 0..h)`.
 
 **Examples:**
 ```
-// Point emission in all directions
-emit: point(0, 20)
+// Cone upward with 30° spread (named params)
+emit: cone(dist: 0, distRand: 10, angle: up, angleSpread: 30deg)
 
-// Cone upward with 30° spread
-emit: cone(0, 10, -90, 30)
-
-// Box area with downward emission
-emit: box(200, 10, 90, 10)
-
-// Circle edge with outward emission (angle 0,0 = radial)
-emit: circle(50, 10, 0, 0)
+// Box area with centered downward emission
+emit: box(w: 200, h: 10, center: true, angle: down, angleSpread: 10deg)
 
 // Emit along a named path
 emit: path(myBezierPath)
@@ -1576,26 +1598,37 @@ emit: path(myBezierPath)
 emit: path(myBezierPath, tangent)
 ```
 
-### Color Curves
+### Color
 
-Particles can transition through colors over their lifetime using per-segment color curves (same system as animatedPath).
+**Color stops** (preferred syntax):
+```
+colorStops: 0.0 #FF4400, 0.5 #FFAA00 easeInQuad, 1.0 #FFFF88
+```
 
-**Syntax:**
+Each stop is `rate color [curve]`. The curve specifies interpolation from this stop to the next (default: linear). Curve can be an inline easing name or a named curve from `curves{}`.
+
+**Examples:**
+```
+// Simple two-color gradient
+colorStops: 0.0 #FF0000, 1.0 #0000FF
+
+// Fire gradient with easing
+colorStops: 0.0 #FF4400, 0.5 #FFAA00 easeInQuad, 1.0 #FFFF88
+
+// Using named colors
+colorStops: 0.0 red, 0.3 yellow easeOutCubic, 1.0 transparent
+```
+
+**Legacy color curves** (still supported):
 ```
 rate: colorCurve: curveName, #startColor, #endColor
 ```
 
 Multiple segments at different rates create per-segment color interpolation.
 
-**Examples:**
 ```
-// Fire gradient: orange -> yellow -> white
 0.0: colorCurve: linear, #FF4400, #FFAA00
 0.4: colorCurve: linear, #FFAA00, #FFFF88
-
-// Two-phase color with easing
-0.0: colorCurve: easeInQuad, #FF0000, #00FF00
-0.5: colorCurve: easeOutQuad, #00FF00, #0000FF
 ```
 
 ### Force Fields
@@ -1659,9 +1692,30 @@ velocityCurve: easeOutQuad
 sizeCurve: easeInOutCubic
 ```
 
-### Bounds Modes
+### Bounds
 
-Control particle behavior at boundaries.
+**Combined syntax** (preferred):
+```
+bounds: mode, box(x, y, w, h), line(x1, y1, x2, y2)
+```
+
+Mode: `none`, `kill`, `bounce(damping)`, `wrap`. Box and line shapes are optional, comma-separated. Multiple `line()` entries allowed.
+
+Box supports named params: `box(x: -50, y: -50, w: 250, h: 250)`.
+
+**Examples:**
+```
+// Kill at bounds
+bounds: kill, box(x: 0, y: 0, w: 800, h: 600)
+
+// Bounce with energy loss and line wall
+bounds: bounce(0.6), box(x: -50, y: -50, w: 250, h: 250), line(0, 0, 100, 0)
+
+// Wrap around (for rain, etc.)
+bounds: wrap, box(0, 0, 500, 400)
+```
+
+**Legacy syntax** (still supported):
 
 | Property | Type | Description |
 |----------|------|-------------|
@@ -1674,34 +1728,13 @@ Control particle behavior at boundaries.
 
 **Line bounds:** The "out" side is the left side of the direction from (x1,y1) to (x2,y2).
 
-**Examples:**
-```
-// Kill particles at bounds
-boundsMode: kill
-boundsMinX: -100
-boundsMaxX: 300
-boundsMinY: -50
-boundsMaxY: 250
-
-// Bounce with energy loss
-boundsMode: bounce(0.6)
-
-// Wrap around (for rain, etc.)
-boundsMode: wrap
-
-// Line bounds (one-sided wall)
-boundsMode: bounce(0.8)
-boundsLine: 0, 0, 100, 0
-boundsLine: 100, 0, 100, 100
-```
-
 ### Rotation: Forward Angle
 
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
-| `forwardAngle` | float | 0 | Forward direction in degrees (0 = right) |
+| `forwardAngle` | angle | right | Forward direction (angle with units/constants) |
 
-When `rotateAuto: true` is set, `forwardAngle` defines which direction the sprite "faces" by default. Useful when sprite art faces a direction other than right.
+When `autoRotate: true` is set, `forwardAngle` defines which direction the sprite "faces" by default. Example: `forwardAngle: down` for sprites that face downward.
 
 ### Path Emission
 
@@ -1794,22 +1827,21 @@ tiles: file("star.png") file("dot.png") file("ring.png")
 ```
 #fire particles {
     count: 100
-    emit: cone(0, 10, -90, 30)
+    emit: cone(dist: 0, distRand: 10, angle: up, angleSpread: 30deg)
     maxLife: 2.0
-    lifeRandom: 0.3
+    lifeRand: 0.3
     speed: 80
-    speedRandom: 0.3
+    speedRand: 0.3
     tiles: file("circle_soft.png")
     loop: true
     size: 0.8
-    sizeRandom: 0.4
+    sizeRand: 0.4
     emitSync: 0.2
     blendMode: add
     fadeIn: 0.1
     fadeOut: 0.6
     fadePower: 1.5
-    0.0: colorCurve: linear, #FF4400, #FFAA00
-    0.4: colorCurve: linear, #FFAA00, #FFFF88
+    colorStops: 0.0 #FF4400, 0.4 #FFAA00, 1.0 #FFFF88
     sizeCurve: fireGrowShrink
     forceFields: [turbulence(30, 0.02, 2.0)]
 }
@@ -1819,26 +1851,22 @@ tiles: file("star.png") file("dot.png") file("ring.png")
 ```
 #rain particles {
     count: 200
-    emit: box(500, 10, 100, 5)
+    emit: box(w: 500, h: 10, angle: down + 10deg, angleSpread: 5deg)
     maxLife: 1.5
-    lifeRandom: 0.2
+    lifeRand: 0.2
     speed: 400
-    speedRandom: 0.15
+    speedRand: 0.15
     tiles: file("spark.png")
     loop: true
     size: 0.2
     blendMode: alpha
     fadeIn: 0.1
     fadeOut: 0.9
-    0.0: colorCurve: linear, #AACCFF, #6688CC
+    colorStops: 0.0 #AACCFF, 1.0 #6688CC
     gravity: 100
-    gravityAngle: 90
-    boundsMode: wrap
-    boundsMinX: -50
-    boundsMaxX: 450
-    boundsMinY: -20
-    boundsMaxY: 350
-    rotateAuto: true
+    gravityAngle: down
+    bounds: wrap, box(x: -50, y: -20, w: 500, h: 370)
+    autoRotate: true
 }
 ```
 

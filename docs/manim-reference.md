@@ -532,6 +532,23 @@ Bezier smoothing options: `auto`, `distance(value)`, or none.
 
 ## Particles
 
+### Angle Units
+
+All angle properties accept unit suffixes and direction constants:
+
+| Unit/Constant | Description |
+|---------------|-------------|
+| `90deg` | Degrees (default for bare numbers) |
+| `1.57rad` | Radians |
+| `0.25turn` | Turns (1 turn = 360°) |
+| `right` | 0° (positive X) |
+| `down` | 90° (positive Y) |
+| `left` | 180° |
+| `up` | 270° |
+| `down + 10deg` | Direction with offset expression |
+
+Angle units also work in graphics `arc()`, `dropShadow` filter angle, and path `turn()`/`arc()`/`spiral()`.
+
 ### Emission Modes
 
 | Mode | Description |
@@ -542,35 +559,44 @@ Bezier smoothing options: `auto`, `distance(value)`, or none.
 | `circle(radius, radiusRand, angle, angleRand)` | Circular area emission |
 | `path(pathName, tangent)` | Emit along a path, optionally tangent-aligned |
 
+**Named parameters** (alternative syntax):
+```
+emit: cone(dist: 50, distRand: 10, angle: right, angleSpread: 90deg)
+emit: box(w: 100, h: 100, center: true, angle: down, angleSpread: 45deg)
+emit: circle(r: 50, rRand: 10, angle: 0deg, angleSpread: 180deg)
+```
+
 ### Core Properties
 
-| Property | Description |
-|----------|-------------|
-| `count` | Maximum alive particles |
-| `loop` | Continuous emission |
-| `maxLife` | Particle lifetime in seconds |
-| `lifeRandom` | Lifetime variance (0-1) |
-| `relative` | Particles move with emitter |
+| Property | Aliases | Description |
+|----------|---------|-------------|
+| `count` | | Maximum alive particles |
+| `loop` | | Continuous emission |
+| `maxLife` | | Particle lifetime in seconds |
+| `lifeRandom` | `lifeRand` | Lifetime variance (0-1) |
+| `relative` | | Particles move with emitter |
 
 ### Movement
 
-| Property | Description |
-|----------|-------------|
-| `speed` | Initial velocity |
-| `speedRandom` | Speed variance |
-| `speedIncrease` | Acceleration |
-| `gravity` | Gravity strength |
-| `gravityAngle` | Gravity direction (degrees) |
+| Property | Aliases | Description |
+|----------|---------|-------------|
+| `speed` | | Initial velocity |
+| `speedRandom` | `speedRand` | Speed variance |
+| `speedIncrease` | `speedIncr`, `acceleration` | Acceleration |
+| `gravity` | | Gravity strength |
+| `gravityAngle` | | Gravity direction (angle) |
 
 ### Size & Rotation
 
-| Property | Description |
-|----------|-------------|
-| `size`, `sizeRandom` | Particle size and variance |
-| `rotationInitial` | Starting rotation |
-| `rotationSpeed`, `rotationSpeedRandom` | Spin rate and variance |
-| `rotateAuto` | Auto-rotate to face velocity direction |
-| `forwardAngle` | Sprite forward direction offset |
+| Property | Aliases | Description |
+|----------|---------|-------------|
+| `size` | | Particle size |
+| `sizeRandom` | `sizeRand` | Size variance |
+| `rotationInitial` | `rotInitial` | Starting rotation (angle) |
+| `rotationSpeed` | `rotSpeed` | Spin rate (angle/sec) |
+| `rotationSpeedRandom` | `rotSpeedRand` | Spin variance |
+| `rotateAuto` | `autoRotate` | Auto-rotate to face velocity |
+| `forwardAngle` | | Sprite forward direction (angle) |
 
 ### Fading
 
@@ -582,12 +608,28 @@ Bezier smoothing options: `auto`, `distance(value)`, or none.
 
 ### Rendering
 
-| Property | Description |
-|----------|-------------|
-| `blendMode` | Blend mode for particles |
-| `tiles` | Tile sources (file, sheet, generated) |
-| `animFile` | State animation file for animated particles |
-| `animSelector` | State selection for animated particles |
+| Property | Aliases | Description |
+|----------|---------|-------------|
+| `blendMode` | | Blend mode for particles |
+| `tiles` | | Tile sources (file, sheet, generated) |
+| `emitDelay` | `delay` | Fixed delay before emission |
+| `emitSync` | | Synchronization (0=spread, 1=burst) |
+| `animFile` | | State animation file |
+| `animSelector` | | State selection |
+| `animationRepeat` | `animRepeat` | Animation loops |
+
+### Color
+
+**Color stops** (preferred):
+```
+colorStops: 0.0 #FF4400, 0.5 #FFAA00 easeInQuad, 1.0 #FFFF88
+```
+Each stop: `rate color [curve]`. Curve specifies interpolation to next stop (default: linear).
+
+**Legacy color curves** (still supported):
+```
+rate: colorCurve: easing, #startColor, #endColor
+```
 
 ### Lifetime Curves
 
@@ -595,7 +637,6 @@ Bezier smoothing options: `auto`, `distance(value)`, or none.
 |----------|-------------|
 | `sizeCurve` | Size over lifetime (named curve or inline easing) |
 | `velocityCurve` | Speed over lifetime |
-| `colorCurve` | Color gradient segments: `rate: colorCurve: easing, #start, #end` |
 | `spawnCurve` | Emission rate modulation |
 
 ### Lifetime Animation Events
@@ -603,6 +644,14 @@ Bezier smoothing options: `auto`, `distance(value)`, or none.
 `onBounce: anim("name")` — trigger on boundary collision.
 
 ### Bounds
+
+**Combined syntax** (preferred):
+```
+bounds: kill, box(x: 0, y: 0, w: 800, h: 600)
+bounds: bounce(0.6), box(x: -50, y: -50, w: 250, h: 250), line(0, 0, 100, 0)
+```
+
+**Legacy syntax** (still supported):
 
 | Property | Description |
 |----------|-------------|
