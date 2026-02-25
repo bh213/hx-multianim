@@ -327,6 +327,7 @@ Applied to any element via long-form body or inline syntax.
 | `grid: spacingX, spacingY` | Grid coordinate system for children |
 | `hex: orientation(w, h)` | Hex coordinate system for children |
 | `scale: value` | Scale factor |
+| `rotate: angle` | Rotation angle (supports `deg`, `rad`, `turn`, direction constants) |
 | `alpha: value` | Opacity (0.0-1.0) |
 | `tint: color` | Color tint overlay |
 | `layer: index` | Z-order index within layers/programmable |
@@ -334,7 +335,7 @@ Applied to any element via long-form body or inline syntax.
 | `blendMode: mode` | Blend mode |
 
 ### Inline Property Prefixes (before element at `@`)
-`@layer(index)`, `@alpha(value)`, `@scale(value)`, `@tint(color)`
+`@layer(index)`, `@alpha(value)`, `@scale(value)`, `@rotate(angle)`, `@tint(color)`
 
 ---
 

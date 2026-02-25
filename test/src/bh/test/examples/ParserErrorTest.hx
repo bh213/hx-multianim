@@ -2125,6 +2125,61 @@ class ParserErrorTest extends utest.Test {
 		Assert.isTrue(success, "@(condition) @alpha @scale #name element should parse");
 	}
 
+	// ===== @rotate parsing tests =====
+
+	@Test
+	public function testRotateInlinePrefix() {
+		var success = parseExpectingSuccess("
+			#test programmable() {
+				@rotate(45) bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		");
+		Assert.isTrue(success, "@rotate(45) should parse");
+	}
+
+	@Test
+	public function testRotateWithDegSuffix() {
+		var success = parseExpectingSuccess("
+			#test programmable() {
+				@rotate(90deg) bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		");
+		Assert.isTrue(success, "@rotate(90deg) should parse");
+	}
+
+	@Test
+	public function testRotatePropertySyntax() {
+		var success = parseExpectingSuccess("
+			#test programmable() {
+				bitmap(generated(color(10, 10, #f00))) {
+					rotate: 45deg
+					pos: 0, 0
+				}
+			}
+		");
+		Assert.isTrue(success, "rotate: 45deg property syntax should parse");
+	}
+
+	@Test
+	public function testRotateCombinedWithAlphaScale() {
+		var success = parseExpectingSuccess("
+			#test programmable(mode:[on,off]=on) {
+				@(mode=>on) @alpha(0.5) @scale(2) @rotate(90deg) #myElement bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		");
+		Assert.isTrue(success, "@(condition) @alpha @scale @rotate #name element should parse");
+	}
+
+	@Test
+	public function testRotateWithDirectionConstant() {
+		var success = parseExpectingSuccess("
+			#test programmable() {
+				@rotate(down) bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		");
+		Assert.isTrue(success, "@rotate(down) should parse");
+	}
+
 	// ===== Particles block error recovery tests =====
 
 	@Test

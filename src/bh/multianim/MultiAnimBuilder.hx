@@ -265,7 +265,7 @@ class IncrementalUpdateContext {
 	var conditionalApplyEntries:Array<{
 		parent:h2d.Object, node:Node, applied:Bool,
 		savedFilter:Null<h2d.filter.Filter>, savedAlpha:Null<Float>,
-		savedScaleX:Null<Float>, savedScaleY:Null<Float>,
+		savedScaleX:Null<Float>, savedScaleY:Null<Float>, savedRotation:Null<Float>,
 		appliedPosX:Float, appliedPosY:Float,
 	}> = [];
 	var trackedExpressions:Array<{updateFn:Void->Void, paramRefs:Array<String>}> = [];
@@ -312,12 +312,12 @@ class IncrementalUpdateContext {
 
 	public function trackConditionalApply(parent:h2d.Object, node:Node, applied:Bool,
 			savedFilter:Null<h2d.filter.Filter>, savedAlpha:Null<Float>,
-			savedScaleX:Null<Float>, savedScaleY:Null<Float>,
+			savedScaleX:Null<Float>, savedScaleY:Null<Float>, savedRotation:Null<Float>,
 			appliedPosX:Float, appliedPosY:Float):Void {
 		conditionalApplyEntries.push({
 			parent: parent, node: node, applied: applied,
 			savedFilter: savedFilter, savedAlpha: savedAlpha,
-			savedScaleX: savedScaleX, savedScaleY: savedScaleY,
+			savedScaleX: savedScaleX, savedScaleY: savedScaleY, savedRotation: savedRotation,
 			appliedPosX: appliedPosX, appliedPosY: appliedPosY,
 		});
 	}
@@ -325,7 +325,7 @@ class IncrementalUpdateContext {
 	function applyConditionalApplyEntry(entry:{
 		parent:h2d.Object, node:Node, applied:Bool,
 		savedFilter:Null<h2d.filter.Filter>, savedAlpha:Null<Float>,
-		savedScaleX:Null<Float>, savedScaleY:Null<Float>,
+		savedScaleX:Null<Float>, savedScaleY:Null<Float>, savedRotation:Null<Float>,
 		appliedPosX:Float, appliedPosY:Float,
 	}):Void {
 		if (entry.applied) return;
@@ -335,6 +335,7 @@ class IncrementalUpdateContext {
 		if (node.filter != null) entry.savedFilter = parent.filter;
 		if (node.alpha != null) entry.savedAlpha = parent.alpha;
 		if (node.scale != null) { entry.savedScaleX = parent.scaleX; entry.savedScaleY = parent.scaleY; }
+		if (node.rotation != null) entry.savedRotation = parent.rotation;
 		// Apply position
 		final pos = builder.calculatePosition(node.pos, MultiAnimParser.getGridCoordinateSystem(node), MultiAnimParser.getHexCoordinateSystem(node));
 		entry.appliedPosX = pos.x;
@@ -348,7 +349,7 @@ class IncrementalUpdateContext {
 	function unapplyConditionalApplyEntry(entry:{
 		parent:h2d.Object, node:Node, applied:Bool,
 		savedFilter:Null<h2d.filter.Filter>, savedAlpha:Null<Float>,
-		savedScaleX:Null<Float>, savedScaleY:Null<Float>,
+		savedScaleX:Null<Float>, savedScaleY:Null<Float>, savedRotation:Null<Float>,
 		appliedPosX:Float, appliedPosY:Float,
 	}):Void {
 		if (!entry.applied) return;
@@ -361,6 +362,7 @@ class IncrementalUpdateContext {
 			parent.scaleX = entry.savedScaleX;
 			parent.scaleY = entry.savedScaleY;
 		}
+		if (node.rotation != null && entry.savedRotation != null) parent.rotation = entry.savedRotation;
 		// Remove position offset
 		parent.x -= entry.appliedPosX;
 		parent.y -= entry.appliedPosY;
@@ -468,7 +470,7 @@ class IncrementalUpdateContext {
 			var trackedApply:Null<{
 				parent:h2d.Object, node:Node, applied:Bool,
 				savedFilter:Null<h2d.filter.Filter>, savedAlpha:Null<Float>,
-				savedScaleX:Null<Float>, savedScaleY:Null<Float>,
+				savedScaleX:Null<Float>, savedScaleY:Null<Float>, savedRotation:Null<Float>,
 				appliedPosX:Float, appliedPosY:Float,
 			}> = null;
 			if (trackedObj == null) {
@@ -2298,9 +2300,10 @@ class MultiAnimBuilder {
 			}
 		}
 
-		// Track scale/alpha/filter/tint if they reference params
+		// Track scale/rotation/alpha/filter/tint if they reference params
 		final extRefs:Array<String> = [];
 		if (node.scale != null) collectParamRefs(node.scale, extRefs);
+		if (node.rotation != null) collectParamRefs(node.rotation, extRefs);
 		if (node.alpha != null) collectParamRefs(node.alpha, extRefs);
 		if (node.tint != null) collectParamRefs(node.tint, extRefs);
 		if (node.filter != null) collectFilterParamRefs(node.filter, extRefs);
@@ -3640,12 +3643,13 @@ class MultiAnimBuilder {
 						final savedAlpha = node.alpha != null ? current.alpha : null;
 						final savedScaleX = node.scale != null ? current.scaleX : null;
 						final savedScaleY = node.scale != null ? current.scaleY : null;
+						final savedRotation = node.rotation != null ? current.rotation : null;
 						final pos = calculatePosition(node.pos, MultiAnimParser.getGridCoordinateSystem(node), MultiAnimParser.getHexCoordinateSystem(node));
 						addPosition(current, pos.x, pos.y);
 						applyExtendedFormProperties(current, node);
-						incrementalContext.trackConditionalApply(current, node, true, savedFilter, savedAlpha, savedScaleX, savedScaleY, pos.x, pos.y);
+						incrementalContext.trackConditionalApply(current, node, true, savedFilter, savedAlpha, savedScaleX, savedScaleY, savedRotation, pos.x, pos.y);
 					} else {
-						incrementalContext.trackConditionalApply(current, node, false, null, null, null, null, 0, 0);
+						incrementalContext.trackConditionalApply(current, node, false, null, null, null, null, null, 0, 0);
 					}
 				} else {
 					var pos = calculatePosition(node.pos, MultiAnimParser.getGridCoordinateSystem(node), MultiAnimParser.getHexCoordinateSystem(node));
@@ -3894,6 +3898,8 @@ class MultiAnimBuilder {
 	function applyExtendedFormProperties(object:h2d.Object, node:Node) {
 		if (node.scale != null)
 			object.setScale(resolveAsNumber(node.scale));
+		if (node.rotation != null)
+			object.rotation = hxd.Math.degToRad(resolveAsNumber(node.rotation));
 		if (node.alpha != null)
 			object.alpha = resolveAsNumber(node.alpha);
 		if (node.blendMode != null)
