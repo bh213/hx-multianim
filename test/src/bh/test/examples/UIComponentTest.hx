@@ -777,11 +777,12 @@ class UIComponentTest extends BuilderTestBase {
 
 		// handleTab with no focused input returns true (focuses first)
 		// But focus() requires a scene, so it won't actually focus.
-		// Just verify no crash.
-		group.handleTab(false);
+		Assert.isTrue(group.handleTab(false));
 
 		group.remove(input1);
 		group.clear();
+		// After clear, handleTab should return false (no inputs)
+		Assert.isFalse(group.handleTab(false));
 	}
 
 	@Test
