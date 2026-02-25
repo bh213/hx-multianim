@@ -1,8 +1,15 @@
 # Changelog
 
-## [0.13-dev] - 2026-02-23
+## [0.13-dev] - 2026-02-25
 
 ### Added
+- **`@rotate(angle)` element modifier** — rotate any element by an angle, matching `@scale`/`@alpha`/`@tint` pattern
+  - Inline prefix: `@rotate(45deg) bitmap(...)`, property syntax: `rotate: 90deg`
+  - Supports angle units (`deg`, `rad`, `turn`), direction constants (`right`, `down`, `left`, `up`), expressions
+  - Combinable: `@rotate(45deg) @scale(2) @alpha(0.5) bitmap(...)`
+  - Works in both builder (runtime) and codegen (`@:manim` macro) paths
+  - Conditional apply support: `@(state=>rotated) apply { rotate: 45deg }`
+  - Incremental updates when using `$paramName` references
 - **Particle angle units** — all angle properties accept `deg`, `rad`, `turn` suffixes; bare numbers remain degrees (backward compat)
   - Direction constants: `right` (0°), `down` (90°), `left` (180°), `up` (270°)
   - Expressions: `down + 10deg`, `left - 15deg`

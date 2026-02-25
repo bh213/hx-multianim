@@ -1010,6 +1010,7 @@ typedef Node = {
 	hexCoordinateSystem:Null<HexCoordinateSystem>,
 	namedCoordinateSystems:Null<Map<String, CoordinateSystemDef>>,
 	scale: Null<ReferenceableValue>,
+	rotation: Null<ReferenceableValue>,
 	alpha: Null<ReferenceableValue>,
 	tint: Null<ReferenceableValue>,
 	layer:Null<Int>,
