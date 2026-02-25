@@ -10,6 +10,7 @@ import bh.multianim.CoordinateSystems;
 import bh.multianim.layouts.LayoutTypes;
 using StringTools;
 using bh.base.ColorUtils;
+using bh.multianim.ParseUtils;
 #if !macro
 import bh.base.Particles;
 import bh.base.PixelLine;
@@ -17,6 +18,7 @@ import bh.stateanim.AnimationSM;
 import h2d.ScaleGrid;
 #end
 
+@:nullSafety
 enum OptionalParametersParsing {
 	ParseInteger(name:String);
 	ParseIntegerOrReference(name:String);
@@ -28,6 +30,7 @@ enum OptionalParametersParsing {
 	
 }
 
+@:nullSafety
 enum IdentifierType {
 	ITString;
 	ITReference;
@@ -35,24 +38,28 @@ enum IdentifierType {
 	ITQuotedString;
 }
 
+@:nullSafety
 enum MPInterpolationEnum {
 	MPIStart;
 	MPIEnd(stringValue:String);
 	MPICode(prefix:String);
 }
 
+@:nullSafety
 enum NumberType {
 	NTInteger;
 	NTFloat;
 	NTHexInteger;
 }
 
+@:nullSafety
 enum ValueType {
 	VTInt;
 	VTFloat;
 	VTString;
 }
 
+@:nullSafety
 enum MPToken {
 	MPEof;
 	MPOpen;
@@ -88,6 +95,7 @@ enum MPToken {
 	MPInterpolation(type:MPInterpolationEnum);
 }
 
+@:nullSafety
 enum MPKeywords {
 	MPTile;
 	MPBit;
@@ -202,18 +210,21 @@ enum MPKeywords {
 	MPTint;
 }
 
+@:nullSafety
 enum PlaceholderTypes {
 	PHTileSource(source:TileSource);
 	PHError;
 	PHNothing;
 }
 
+@:nullSafety
 enum PlaceholderReplacementSource {
 	PRSCallback(name:ReferenceableValue);
 	PRSCallbackWithIndex(name:ReferenceableValue, index:ReferenceableValue);
 	PRSBuilderParameterSource(name:ReferenceableValue);
 }
 
+@:nullSafety
 @:using(bh.multianim.MultiAnimParser)
 enum UpdatableNameType {
 	UNTObject(name:String);
@@ -222,6 +233,7 @@ enum UpdatableNameType {
 	UNTIndexed2D(name:String, indexVarX:String, indexVarY:String);
 }
 
+@:nullSafety
 enum SettingValueType {
 	SVTString;
 	SVTInt;
@@ -230,11 +242,13 @@ enum SettingValueType {
 	SVTColor;
 }
 
+@:nullSafety
 typedef ParsedSettingValue = {
 	var type:SettingValueType;
 	var value:ReferenceableValue;
 }
 
+@:nullSafety
 enum SettingValue {
 	RSVString(s:String);
 	RSVInt(i:Int);
@@ -243,6 +257,7 @@ enum SettingValue {
 	RSVColor(c:Int);
 }
 
+@:nullSafety
 class SettingValueTools {
 	/** Returns color as Int, matching both RSVColor and RSVInt for backward compatibility. */
 	public static function asColorInt(sv:SettingValue):Null<Int> {
@@ -254,6 +269,7 @@ class SettingValueTools {
 	}
 }
 
+@:nullSafety
 typedef ResolvedSettings = Null<Map<String, SettingValue>>;
 
 function getNameString(updatableNameType:UpdatableNameType) {
@@ -266,6 +282,7 @@ function getNameString(updatableNameType:UpdatableNameType) {
 }
 
 #if !macro
+@:nullSafety
 @:using(bh.multianim.MultiAnimParser)
 typedef NamedBuildResult = {
 	var type:UpdatableNameType;
@@ -304,6 +321,7 @@ function toh2dObject(builtHeapsComponent:BuiltHeapsComponent):h2d.Object {
 #end
 
 #if !macro
+@:nullSafety
 @:using(bh.multianim.MultiAnimParser)
 enum BuiltHeapsComponent {
 	HeapsObject(obj:h2d.Object);
@@ -320,6 +338,7 @@ enum BuiltHeapsComponent {
 #end
 
 
+@:nullSafety
 class MultiAnimUnexpected<Token> extends ParseUnexpected<Token> {
 
 	final message:String;
@@ -350,6 +369,7 @@ class InvalidSyntax extends ParseError {
 	}
 }
 
+@:nullSafety
 enum PixelShapes {
 	LINE(line:PixelLine);
 	RECT(rect:PixelRect);
@@ -357,11 +377,13 @@ enum PixelShapes {
 	PIXEL(pixel:PixelPixel);
 }
 
+@:nullSafety
 enum GraphicsStyle {
 	GSFilled;
 	GSLineWidth(width:ReferenceableValue);
 }
 
+@:nullSafety
 enum GraphicsElement {
 	GERect(color:ReferenceableValue, style:GraphicsStyle, width:ReferenceableValue, height:ReferenceableValue);
 	GEPolygon(color:ReferenceableValue, style:GraphicsStyle, points:Array<Coordinates>);
@@ -372,11 +394,13 @@ enum GraphicsElement {
 	GELine(color:ReferenceableValue, lineWidth:ReferenceableValue, start:Coordinates, end:Coordinates);
 }
 
+@:nullSafety
 typedef PositionedGraphicsElement = {
 	var element:GraphicsElement;
 	var pos:Coordinates;
 }
 
+@:nullSafety
 @:NotNull
 typedef PixelLine = {
 	start:Coordinates,
@@ -384,6 +408,7 @@ typedef PixelLine = {
 	color:ReferenceableValue
 }
 
+@:nullSafety
 @:NotNull
 typedef PixelRect = {
 	start:Coordinates,
@@ -393,12 +418,14 @@ typedef PixelRect = {
 
 }
 
+@:nullSafety
 @:NotNull
 typedef PixelPixel = {
 	pos:Coordinates,
 	color:ReferenceableValue
 }
 
+@:nullSafety
 enum DefinitionType {
 	PPTHexDirection;
 	PPTGridDirection;
@@ -415,16 +442,19 @@ enum DefinitionType {
 	PPTTile;
 }
 
+@:nullSafety
 typedef Definition = {
 	name:String,
 	type:DefinitionType,
 	defaultValue:Null<ResolvedIndexParameters>
 }
 
+@:nullSafety
 enum RvUnaryOp {
 	OpNeg;
 }
 
+@:nullSafety
 enum RvOp {
 	OpAdd;
 	OpMul;
@@ -441,6 +471,7 @@ enum RvOp {
 }
 
 
+@:nullSafety
 enum ResolvedIndexParameters {
 	Index(idx:Int, value:String);
 	Value(val:Int);
@@ -453,6 +484,7 @@ enum ResolvedIndexParameters {
 }
 
 
+@:nullSafety
 enum ConditionalValues {
 	CoEnums(a:Array<String>);
 	CoRange(from:Null<Float>, to:Null<Float>, fromExclusive:Bool, toExclusive:Bool);
@@ -465,6 +497,7 @@ enum ConditionalValues {
 
 }
 
+@:nullSafety
 enum ReferenceableValue {
 	RVElementOfArray(arrayRef:String, index:ReferenceableValue);
 	RVString(s:String);
@@ -477,8 +510,8 @@ enum ReferenceableValue {
 	RVMethodCall(ref:String, method:String, args:Array<ReferenceableValue>);
 	RVChainedMethodCall(base:ReferenceableValue, method:String, args:Array<ReferenceableValue>);
 	RVParenthesis(e:ReferenceableValue);
-	RVCallbacksWithIndex(name:ReferenceableValue, index:ReferenceableValue, defaultValue:ReferenceableValue);
-	RVCallbacks(name:ReferenceableValue, defaultValue:ReferenceableValue);
+	RVCallbacksWithIndex(name:ReferenceableValue, index:ReferenceableValue, defaultValue:Null<ReferenceableValue>);
+	RVCallbacks(name:ReferenceableValue, defaultValue:Null<ReferenceableValue>);
 	RVColorXY(externalReference:Null<String>, palette:String, x:ReferenceableValue, y:ReferenceableValue);
 	RVColor(externalReference:Null<String>, palette:String, index:ReferenceableValue);
 	RVTernary(condition:ReferenceableValue, ifTrue:ReferenceableValue, ifFalse:ReferenceableValue);
@@ -486,26 +519,31 @@ enum ReferenceableValue {
 	EUnaryOp(op:RvUnaryOp, e:ReferenceableValue);
 }
 
+@:nullSafety
 enum TextAlignWidth {
 	TAWAuto;
 	TAWValue(value:ReferenceableValue);
 	TAWGrid;
 }
 
+@:nullSafety
 enum HorizontalAlign {
 	Left;
 	Right;
 	Center;
 }
 
+@:nullSafety
 enum VerticalAlign {
 	Top;
 	Center;
 	Bottom;
 }
 
+@:nullSafety
 typedef ParametersDefinitions = Map<String, Definition>;
 
+@:nullSafety
 private enum LayoutsParsingState {
 	LPSGrid;
 	LPSHex;
@@ -515,6 +553,7 @@ private enum LayoutsParsingState {
 @:nullSafety
 typedef LayoutsDef = Map<String, Layout>;
 
+@:nullSafety
 enum AnimatedPathTime {
 	Rate(float:ReferenceableValue);
 	Checkpoint(checkpointName:String);
@@ -537,6 +576,7 @@ enum AnimatedPathCurveSlotType {
 	APColor(startColor:ReferenceableValue, endColor:ReferenceableValue);
 }
 
+@:nullSafety
 @:structInit
 class AnimatedPathCurveAssignment {
 	public var at:AnimatedPathTime;
@@ -545,6 +585,7 @@ class AnimatedPathCurveAssignment {
 	public var inlineEasing:Null<EasingType>;
 }
 
+@:nullSafety
 @:structInit
 class AnimatedPathTimedEvent {
 	public var at:AnimatedPathTime;
@@ -593,6 +634,7 @@ enum EasingType {
 	CubicBezier(x1:Float, y1:Float, x2:Float, y2:Float);
 }
 
+@:nullSafety
 enum ParsedPaths {
 	LineTo(end:Coordinates, mode:Null<PathCoordinateMode>);
 	Forward(distance:ReferenceableValue);
@@ -610,6 +652,7 @@ enum ParsedPaths {
 @:nullSafety
 typedef PathsDef = Map<String, Array<ParsedPaths>>;
 
+@:nullSafety
 typedef CurveSegmentDef = {
 	var timeStart:ReferenceableValue;
 	var timeEnd:ReferenceableValue;
@@ -618,6 +661,7 @@ typedef CurveSegmentDef = {
 	var valueEnd:ReferenceableValue;
 };
 
+@:nullSafety
 typedef CurveDef = {
 	var easing:Null<EasingType>;
 	var points:Null<Array<ParticleCurvePoint>>;
@@ -627,6 +671,7 @@ typedef CurveDef = {
 @:nullSafety
 typedef CurvesDef = Map<String, CurveDef>;
 
+@:nullSafety
 enum ParticlesEmitMode {
 	Point(emitDistance:ReferenceableValue, emitDistanceRandom:ReferenceableValue);
 	Cone(emitDistance:ReferenceableValue, emitDistanceRandom:ReferenceableValue, emitConeAngle:ReferenceableValue, emitConeAngleRandom:ReferenceableValue);
@@ -637,6 +682,7 @@ enum ParticlesEmitMode {
 }
 
 // Force field types for particles
+@:nullSafety
 enum ParticleForceFieldDef {
 	FFAttractor(x:ReferenceableValue, y:ReferenceableValue, strength:ReferenceableValue, radius:ReferenceableValue);
 	FFRepulsor(x:ReferenceableValue, y:ReferenceableValue, strength:ReferenceableValue, radius:ReferenceableValue);
@@ -647,18 +693,21 @@ enum ParticleForceFieldDef {
 }
 
 // Curve point for velocity/size over lifetime
+@:nullSafety
 typedef ParticleCurvePoint = {
 	var time:ReferenceableValue;
 	var value:ReferenceableValue;
 }
 
 // Curve reference for particles (named curve or inline easing)
+@:nullSafety
 typedef ParticleCurveRef = {
 	var curveName:Null<String>;
 	var inlineEasing:Null<EasingType>;
 }
 
 // Color curve segment for particles (rate-based, like AnimatedPath)
+@:nullSafety
 typedef ParticleColorCurveSegment = {
 	var atRate:ReferenceableValue;
 	var curveName:Null<String>;
@@ -668,6 +717,7 @@ typedef ParticleColorCurveSegment = {
 }
 
 // Color stop for particles (rate + color + optional interpolation curve to next stop)
+@:nullSafety
 typedef ParticleColorStop = {
 	var rate:ReferenceableValue;
 	var color:ReferenceableValue;
@@ -676,18 +726,21 @@ typedef ParticleColorStop = {
 }
 
 // Particle AnimSM state definition (lifetime-driven)
+@:nullSafety
 typedef ParticleAnimStateDef = {
 	var atRate:ReferenceableValue;
 	var animName:String;
 }
 
 // Particle AnimSM event override (event-driven state change)
+@:nullSafety
 typedef ParticleAnimEventOverride = {
 	var trigger:String; // "onBounce", "onDeath", etc.
 	var animName:String;
 }
 
 // Bounds mode for particle collision
+@:nullSafety
 enum ParticleBoundsModeDef {
 	BMNone;
 	BMKill;
@@ -696,6 +749,7 @@ enum ParticleBoundsModeDef {
 }
 
 // Line bounds definition
+@:nullSafety
 typedef ParticleBoundsLineDef = {
 	var x1:ReferenceableValue;
 	var y1:ReferenceableValue;
@@ -704,6 +758,7 @@ typedef ParticleBoundsLineDef = {
 }
 
 // Sub-emitter trigger types
+@:nullSafety
 enum ParticleSubEmitTriggerDef {
 	SETOnBirth;
 	SETOnDeath;
@@ -712,6 +767,7 @@ enum ParticleSubEmitTriggerDef {
 }
 
 // Sub-emitter configuration
+@:nullSafety
 typedef ParticleSubEmitterDef = {
 	var groupId:String;
 	var trigger:ParticleSubEmitTriggerDef;
@@ -779,6 +835,7 @@ typedef ParticlesDef = {
 	var animEventOverrides:Null<Array<ParticleAnimEventOverride>>;
 }
 
+@:nullSafety
 enum RepeatType {
 	StepIterator(dx:ReferenceableValue, dy:ReferenceableValue, repeatCount:ReferenceableValue);
 	LayoutIterator(layoutName:String);
@@ -791,11 +848,13 @@ enum RepeatType {
 }
 
 // Selector for which tile to get from an autotile
+@:nullSafety
 enum AutotileTileSelector {
 	ByIndex(index:ReferenceableValue);     // Select by tile index (0-46 for blob47)
 	ByEdges(edges:Int);                    // Select by edge bitmask (N|E|S|W|NE|SE|SW|NW)
 }
 
+@:nullSafety
 enum GeneratedTileType {
 	Cross(width:ReferenceableValue, height:ReferenceableValue, color:ReferenceableValue, thickness:ReferenceableValue);
 	SolidColor(width:ReferenceableValue, height:ReferenceableValue, color:ReferenceableValue);
@@ -804,6 +863,7 @@ enum GeneratedTileType {
 	AutotileRegionSheet(autotileName:ReferenceableValue, scale:ReferenceableValue, font:ReferenceableValue, fontColor:ReferenceableValue);  // Shows entire region with numbered grid overlay
 }
 
+@:nullSafety
 enum TileSource {
 	TSFile(filename:ReferenceableValue);
 	TSSheet(sheet:ReferenceableValue, name:ReferenceableValue);
@@ -815,6 +875,7 @@ enum TileSource {
 	TSReference(varName:String); // Reference to a TileSource variable (e.g., $bitmap from stateanim iterator)
 }
 
+@:nullSafety
 enum PaletteType {
 	PaletteColors(colors:Array<ReferenceableValue>);
 	PaletteColors2D(colors:Array<ReferenceableValue>, width:Int);
@@ -822,11 +883,13 @@ enum PaletteType {
 }
 
 // Autotile formats for terrain generation
+@:nullSafety
 enum AutotileFormat {
 	Cross;      // Cross layout + corners for elevation (with depth)
 	Blob47;     // Full 47-tile autotile with all edge/corner combinations
 }
 
+@:nullSafety
 enum AutotileSource {
 	ATSAtlas(sheet:ReferenceableValue, prefix:ReferenceableValue);
 	ATSAtlasRegion(sheet:ReferenceableValue, region:Array<ReferenceableValue>);
@@ -846,6 +909,7 @@ typedef AutotileDef = {
 	var ?allowPartialMapping:Bool;        // blob47 only: if true, missing tiles use fallback instead of error
 }
 
+@:nullSafety
 enum Atlas2Source {
 	A2SFile(filename:ReferenceableValue);
 	A2SSheet(sheetName:ReferenceableValue);
@@ -872,6 +936,7 @@ typedef Atlas2Def = {
 	var entries:Array<Atlas2EntryDef>;
 }
 
+@:nullSafety
 enum StateAnimConstruct {
 	IndexedSheet(sheet:String, name:ReferenceableValue, fps:ReferenceableValue, loop: Bool, center:Bool);
 }
@@ -894,6 +959,7 @@ typedef TextDef = {
 
 // ========== Data block types ==========
 
+@:nullSafety
 enum DataValueType {
 	DVTInt;
 	DVTFloat;
@@ -903,6 +969,7 @@ enum DataValueType {
 	DVTArray(elementType:DataValueType);
 }
 
+@:nullSafety
 enum DataValue {
 	DVInt(v:Int);
 	DVFloat(v:Float);
@@ -912,17 +979,20 @@ enum DataValue {
 	DVRecord(recordName:String, fields:Map<String, DataValue>);
 }
 
+@:nullSafety
 typedef DataRecordDef = {
 	var name:String;
 	var fields:Array<{name:String, type:DataValueType, optional:Bool}>;
 }
 
+@:nullSafety
 typedef DataFieldDef = {
 	var name:String;
 	var type:DataValueType;
 	var value:DataValue;
 }
 
+@:nullSafety
 typedef DataDef = {
 	var records:Map<String, DataRecordDef>;
 	var fields:Array<DataFieldDef>;
@@ -972,6 +1042,7 @@ enum NodeType {
 	FINAL_VAR(name:String, value:ReferenceableValue);
 }
 
+@:nullSafety
 enum NodeConditionalValues {
 	Conditional(values:Map<String, ConditionalValues>, strict:Bool);
 	ConditionalElse(values:Null<Map<String, ConditionalValues>>);
@@ -979,6 +1050,7 @@ enum NodeConditionalValues {
 	NoConditional;
 }
 
+@:nullSafety
 enum FilterType {
 	FilterNone;
 	FilterGroup(filters:Array<FilterType>);
@@ -997,6 +1069,7 @@ enum FilterType {
 }
 
 // Used to keep pixelOutline parameters referenceable until build time
+@:nullSafety
 enum PixelOutlineModeDef {
 	POKnockout(color:ReferenceableValue, knockout:ReferenceableValue);
 	POInlineColor(color:ReferenceableValue, inlineColor:ReferenceableValue);
@@ -1027,12 +1100,14 @@ typedef Node = {
 	#end
 }
 
+@:nullSafety
 typedef MultiAnimResult = {
 	var nodes: Map<String, Node>;
 	var imports:Map<String, Dynamic>;
 }
 
 #if !macro
+@:nullSafety
 class MultiAnimParser {
 	public static final defaultLayoutNodeName = "#defaultLayout";
 	public static final defaultPathNodeName = "#defaultPaths";
@@ -1088,28 +1163,31 @@ class MultiAnimParser {
 	}
 
 	public static function getGridCoordinateSystem(node:Node):Null<GridCoordinateSystem> {
-		while (node != null) {
-			if (node.gridCoordinateSystem != null) return node.gridCoordinateSystem;
-			node = node.parent;
+		var current:Null<Node> = node;
+		while (current != null) {
+			if (current.gridCoordinateSystem != null) return current.gridCoordinateSystem;
+			current = current.parent;
 		}
 		return null;
 	}
 
 	public static function getHexCoordinateSystem(node:Node):Null<HexCoordinateSystem> {
-		while (node != null) {
-			if (node.hexCoordinateSystem != null) return node.hexCoordinateSystem;
-			node = node.parent;
+		var current:Null<Node> = node;
+		while (current != null) {
+			if (current.hexCoordinateSystem != null) return current.hexCoordinateSystem;
+			current = current.parent;
 		}
 		return null;
 	}
 
 	public static function getNamedCoordinateSystem(name:String, node:Node):Null<CoordinateSystemDef> {
-		while (node != null) {
-			if (node.namedCoordinateSystems != null) {
-				final cs = node.namedCoordinateSystems.get(name);
+		var current:Null<Node> = node;
+		while (current != null) {
+			if (current.namedCoordinateSystems != null) {
+				final cs = current.namedCoordinateSystems.get(name);
 				if (cs != null) return cs;
 			}
-			node = node.parent;
+			current = current.parent;
 		}
 		return null;
 	}
@@ -1118,43 +1196,43 @@ class MultiAnimParser {
 		final s:String = Std.isOfType(value, String) ? cast value : Std.string(value);
 		return switch (type) {
 			case PPTEnum(values):
-				if (!values.contains(s)) err('enum "$name" does not contain value "$s"');
+				if (!values.contains(s)) throw err('enum "$name" does not contain value "$s"');
 				Index(values.indexOf(s), s);
 			case PPTRange(from, to):
 				final n = Std.parseInt(s);
-				if (n == null) err('expected integer for range default');
+				if (n == null) throw err('expected integer for range default');
 				Value(n);
 			case PPTInt | PPTUnsignedInt:
 				final n = Std.parseInt(s);
-				if (n == null) err('expected integer for default');
+				if (n == null) throw err('expected integer for default');
 				Value(n);
 			case PPTFloat:
 				final f = Std.parseFloat(s);
-				if (Math.isNaN(f)) err('expected float for default');
+				if (Math.isNaN(f)) throw err('expected float for default');
 				ValueF(f);
 			case PPTBool:
 				switch (s.toLowerCase()) {
 					case "true" | "yes" | "1": Value(1);
 					case "false" | "no" | "0": Value(0);
-					default: err('invalid bool default: $s');
+					default: throw err('invalid bool default: $s');
 				}
 			case PPTString: StringValue(s);
 			case PPTColor:
 				final c = tryStringToColor(s);
-				if (c != null) Value(c) else Value(Std.parseInt(s));
+				if (c != null) Value(c) else { final p = Std.parseInt(s); if (p == null) throw err('invalid color: $s'); Value(p); }
 			case PPTHexDirection | PPTGridDirection:
 				final n = Std.parseInt(s);
-				if (n == null) err('expected integer for default');
+				if (n == null) throw err('expected integer for default');
 				Value(n);
 			case PPTFlags(bits):
 				final n = Std.parseInt(s);
-				if (n == null) err('expected integer for default');
+				if (n == null) throw err('expected integer for default');
 				Flag(n);
 			case PPTArray:
 				if (Std.isOfType(value, Array))
 					ArrayString(cast value)
 				else
-					err('array default not supported in this context');
+					throw err('array default not supported in this context');
 			case PPTTile:
 				TileSourceValue(TSFile(RVString(s)));
 		}

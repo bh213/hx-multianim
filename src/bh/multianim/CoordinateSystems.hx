@@ -18,7 +18,7 @@ enum CoordinateSystemDef {
 enum Coordinates {
 	ZERO;
 	OFFSET(x:ReferenceableValue, y:ReferenceableValue);
-	LAYOUT(layoutName:String, index:ReferenceableValue);
+	LAYOUT(layoutName:String, index:Null<ReferenceableValue>);
 	SELECTED_GRID_POSITION(gridX:ReferenceableValue, gridY:ReferenceableValue);
 	SELECTED_HEX_CORNER(count:ReferenceableValue, factor:ReferenceableValue);
 	SELECTED_HEX_EDGE(direction:ReferenceableValue, factor:ReferenceableValue);

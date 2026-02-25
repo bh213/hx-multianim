@@ -233,6 +233,13 @@
   - **HotReloadTest** — comprehensive unit test suite: resolvedToDynamic, SignatureChecker, SceneSwapper.replaceChildren, snapshot/restore round-trips, slot preservation, parse error handling, dynamicRef params
 - **`UIController.clearState()`** — new interface method; resets hover/capture state in `UIControllerBase` during screen clear (prevents stale state after nuclear reload)
 
+- **`@:nullSafety` on parser and builder** — applied `@:nullSafety` to `MacroManimParser`, `AnimParser`, `MultiAnimBuilder`, `MultiAnimParser`, `ProgrammableBuilder` and all public enums/typedefs
+  - Explicit `Null<T>` annotations for nullable variables; null narrowing via local finals
+  - `@:nullSafety(Off)` on complex methods where full annotation is impractical (`parseNode`, `build`, `calculatePosition`, etc.)
+- **`ParseUtils.toInt()` helper** — new `static inline` function using `Std.parseInt(s) ?? throw` pattern; replaces all `Std.parseInt(...) ?? 0` workarounds across parser and builder files
+  - Used as `using bh.multianim.ParseUtils` extension method: `value.toInt()`, `numStr.toInt()`
+- **`LAYOUT` index now `Null<ReferenceableValue>`** — `layout(name)` without index properly represented as null instead of requiring a dummy value
+
 ### Changed
 - **Button incremental rewrite** — `UIStandardMultiAnimButton` now uses single incremental `BuilderResult` with `setParameter()` instead of `MultiAnimMultiResult` (pre-built combo swap). Removes `doRedraw()`, `requestRedraw`, and `UIElementSyncRedraw`.
 - **Checkbox incremental rewrite** — `UIStandardMultiCheckbox` same pattern; uses `beginUpdate()`/`endUpdate()` for batched status+checked changes on toggle
