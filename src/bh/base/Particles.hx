@@ -16,7 +16,7 @@ enum PartEmitMode {
 	/**
 		A box, parametrized with `emitDist` and `emitDistY`.
 	**/
-	Box(width:Float, height:Float, emitConeAngle:Float, emitConeAngleRandom:Float);
+	Box(width:Float, height:Float, emitConeAngle:Float, emitConeAngleRandom:Float, center:Bool);
 	/**
 		Emit from the edge of a circle/ring.
 	**/
@@ -682,9 +682,14 @@ class ParticleGroup {
 				p.x += p.vx * r;
 				p.y += p.vy * r;
 
-			case Box(width, height, emitConeAngle, emitConeAngleRandom):
-				p.x += width * rand();
-				p.y += height * rand();
+			case Box(width, height, emitConeAngle, emitConeAngleRandom, center):
+				if (center) {
+					p.x += width * (rand() - 0.5);
+					p.y += height * (rand() - 0.5);
+				} else {
+					p.x += width * rand();
+					p.y += height * rand();
+				}
 
 				final phi = hxd.Math.angle(emitConeAngle + emitConeAngleRandom * srand());
 				p.vx = Math.cos(phi);

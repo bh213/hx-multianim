@@ -630,7 +630,7 @@ typedef CurvesDef = Map<String, CurveDef>;
 enum ParticlesEmitMode {
 	Point(emitDistance:ReferenceableValue, emitDistanceRandom:ReferenceableValue);
 	Cone(emitDistance:ReferenceableValue, emitDistanceRandom:ReferenceableValue, emitConeAngle:ReferenceableValue, emitConeAngleRandom:ReferenceableValue);
-	Box(width:ReferenceableValue, height:ReferenceableValue, emitConeAngle:ReferenceableValue, emitConeAngleRandom:ReferenceableValue);
+	Box(width:ReferenceableValue, height:ReferenceableValue, emitConeAngle:ReferenceableValue, emitConeAngleRandom:ReferenceableValue, center:Bool);
 	Circle(radius:ReferenceableValue, radiusRandom:ReferenceableValue, emitConeAngle:ReferenceableValue, emitConeAngleRandom:ReferenceableValue);
 	ManimPath(pathName:String);
 	ManimPathTangent(pathName:String);
@@ -665,6 +665,14 @@ typedef ParticleColorCurveSegment = {
 	var inlineEasing:Null<EasingType>;
 	var startColor:ReferenceableValue;
 	var endColor:ReferenceableValue;
+}
+
+// Color stop for particles (rate + color + optional interpolation curve to next stop)
+typedef ParticleColorStop = {
+	var rate:ReferenceableValue;
+	var color:ReferenceableValue;
+	var curveName:Null<String>;
+	var inlineEasing:Null<EasingType>;
 }
 
 // Particle AnimSM state definition (lifetime-driven)
@@ -741,8 +749,10 @@ typedef ParticlesDef = {
 	var rotationSpeedRandom:Null<ReferenceableValue>;
 	var rotateAuto:Null<Bool>;
 	var forwardAngle:Null<ReferenceableValue>;
-	// Color curves (AnimatedPath-style segments)
+	// Color curves (AnimatedPath-style segments) — legacy rate-prefixed syntax
 	var colorCurves:Null<Array<ParticleColorCurveSegment>>;
+	// Color stops — new syntax: colorStops: 0.0 #FF0000, 0.5 #00FF00 easeInQuad, 1.0 #0000FF
+	var colorStops:Null<Array<ParticleColorStop>>;
 	// Force fields
 	var forceFields:Null<Array<ParticleForceFieldDef>>;
 	// Curves

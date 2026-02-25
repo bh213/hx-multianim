@@ -39,6 +39,14 @@
 - Current `0.x.y` signals unstable API — use `1.0.0` when stable
 - Submitted versions **cannot be overwritten** — must bump for any change
 
+## Deprecation Cleanup
+- Remove legacy particle syntax from parser (keep only new forms):
+  - `boundsMode`/`boundsMinX`/`boundsMaxX`/`boundsMinY`/`boundsMaxY`/`boundsLine` → `bounds:` combined syntax only
+  - `rate: colorCurve: easing, #start, #end` → `colorStops:` only
+  - Positional emit args `cone(dist, distRand, angle, angleRand)` → named params only
+- Remove `relativeLayouts` keyword alias (currently accepted alongside `layouts`)
+- Remove `reference`/`component` keyword aliases (currently accepted alongside `staticRef`/`dynamicRef`)
+
 ## After 1.0
 - Generic components support
 - Bit expression: support for any-bit and all-bits (e.g. grid direction)

@@ -4160,6 +4160,31 @@ class MultiAnimBuilder {
 			}
 		}
 
+		// Color stops (new syntax — converted to color curve segments)
+		if (particlesDef.colorStops != null) {
+			group.colorEnabled = true;
+			var stops:Array<ParticleColorStop> = particlesDef.colorStops;
+			if (stops.length < 2)
+				throw 'colorStops requires at least 2 stops' + currentNodePos();
+			for (i in 0...stops.length - 1) {
+				final s = stops[i];
+				final next = stops[i + 1];
+				var curve:bh.paths.Curve.ICurve;
+				if (s.inlineEasing != null) {
+					curve = new bh.paths.Curve(null, s.inlineEasing, null);
+				} else if (s.curveName != null) {
+					var curves = getCurves();
+					var found = curves.get(s.curveName);
+					if (found == null)
+						throw 'color curve not found: ${s.curveName}' + currentNodePos();
+					curve = found;
+				} else {
+					curve = new bh.paths.Curve(null, Linear, null);
+				}
+				group.addColorCurveSegment(resolveAsNumber(s.rate), curve, resolveAsColorInteger(s.color), resolveAsColorInteger(next.color));
+			}
+		}
+
 		// Force fields
 		if (particlesDef.forceFields != null) {
 			group.forceFields = [];
@@ -4246,9 +4271,9 @@ class MultiAnimBuilder {
 			case Cone(emitDistance, emitDistanceRandom, emitConeAngle, emitConeAngleRandom):
 				group.emitMode = bh.base.PartEmitMode.Cone(resolveAsNumber(emitDistance), resolveAsNumber(emitDistanceRandom), hxd.Math.degToRad(resolveAsNumber(emitConeAngle)),
 					hxd.Math.degToRad(resolveAsNumber(emitConeAngleRandom)));
-			case Box(width, height, emitConeAngle, emitConeAngleRandom):
+			case Box(width, height, emitConeAngle, emitConeAngleRandom, center):
 				group.emitMode = bh.base.PartEmitMode.Box(resolveAsNumber(width), resolveAsNumber(height), hxd.Math.degToRad(resolveAsNumber(emitConeAngle)),
-					hxd.Math.degToRad(resolveAsNumber(emitConeAngleRandom)));
+					hxd.Math.degToRad(resolveAsNumber(emitConeAngleRandom)), center);
 			case Circle(radius, radiusRandom, emitConeAngle, emitConeAngleRandom):
 				group.emitMode = bh.base.PartEmitMode.Circle(resolveAsNumber(radius), resolveAsNumber(radiusRandom), hxd.Math.degToRad(resolveAsNumber(emitConeAngle)),
 					hxd.Math.degToRad(resolveAsNumber(emitConeAngleRandom)));

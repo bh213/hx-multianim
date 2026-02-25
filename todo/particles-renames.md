@@ -161,11 +161,35 @@ colorStops: 0.0 red, 0.3 yellow easeOutCubic, 1.0 transparent
 - Old `0.0: colorCurve:` syntax → deprecated fallback
 - New `colorStops:` is a single particle property, not a rate action
 
-## 6. Implementation Order
+## 6. Property Name Aliases — DONE
 
-1. **Angle units** — parser-level `parseAngle()`, backward compat with bare numbers
-2. **Named directions** — `right/down/left/up` constants in angle expressions
-3. **Emitter named params** — opt-in named parameter syntax for emit modes
-4. **Bounds rework** — new `bounds:` combined syntax
-5. **Color stops** — new `colorStops:` property replacing rate-prefixed `colorCurve`
-6. **Deprecation** — old syntax still works, warnings optional
+Alternative names added to `parseParticles()` switch in `MacroManimParser.hx`:
+
+| Canonical | Aliases |
+|-----------|---------|
+| `maxLife` |  |
+| `lifeRandom` | `lifeRand` |
+| `sizeRandom` | `sizeRand` |
+| `speedRandom` | `speedRand` |
+| `speedIncrease` | `speedIncr`, `acceleration` |
+| `gravityAngle` |  |
+| `rotationSpeed` | `rotSpeed` |
+| `rotationSpeedRandom` | `rotSpeedRand`, `rotationSpeedRand` |
+| `rotationInitial` | `rotInitial` |
+| `rotateAuto` | `autoRotate` |
+| `forwardAngle` |
+| `emitDelay` | `delay` |
+| `emitSync` |  |
+| `animationRepeat` | `animRepeat` |
+| `spawnCurve` |  |
+
+All matching is case-insensitive (existing behavior).
+
+## 7. Implementation Order
+
+1. **Angle units** — DONE: `parseAngleOrReference()` with deg/rad/turn suffixes, backward compat with bare numbers
+2. **Named directions** — DONE: `right/down/left/up` constants with expression support (e.g. `down + 10deg`)
+3. **Emitter named params** — DONE: `parseEmitModeNamed()` with named parameters, `center` support on Box
+4. **Bounds rework** — DONE: `bounds:` combined syntax with `box()` and `line()` shapes
+5. **Color stops** — DONE: `colorStops:` property with `parseColorStops()`
+6. **Deprecation** — old syntax still works (no warnings, backward compatible)
