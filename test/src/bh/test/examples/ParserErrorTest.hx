@@ -2816,4 +2816,201 @@ class ParserErrorTest extends utest.Test {
 		Assert.isTrue(error.indexOf("unknown variable") >= 0,
 			'Error should mention unknown variable, got: $error');
 	}
+
+	// ===== Rich text markup tests =====
+
+	@Test
+	public function testRichTextHtmlRemoved() {
+		var error = parseExpectingError('
+			#test programmable() {
+				text(dd, "hello", white, left, 200, html: true): 0, 0
+			}
+		');
+		Assert.notNull(error, "Should throw error for html: true");
+		Assert.isTrue(error.indexOf("no longer supported") >= 0,
+			'Error should mention no longer supported, got: $error');
+	}
+
+	@Test
+	public function testRichTextStylesColorOnly() {
+		var success = parseExpectingSuccess('
+			#test programmable() {
+				text(dd, "hello $${damage}world$${/}", white, left, 200,
+					styles: {damage: #FF0000}): 0, 0
+			}
+		');
+		Assert.isTrue(success, "styles with color should parse");
+	}
+
+	@Test
+	public function testRichTextStylesFontOnly() {
+		var success = parseExpectingSuccess('
+			#test programmable() {
+				text(dd, "hello $${em}world$${/}", white, left, 200,
+					styles: {em: "dd"}): 0, 0
+			}
+		');
+		Assert.isTrue(success, "styles with font only should parse");
+	}
+
+	@Test
+	public function testRichTextStylesColorAndFont() {
+		var success = parseExpectingSuccess('
+			#test programmable() {
+				text(dd, "hello $${gold}100g$${/}", white, left, 200,
+					styles: {gold: #FFD700 "dd"}): 0, 0
+			}
+		');
+		Assert.isTrue(success, "styles with color and font should parse");
+	}
+
+	@Test
+	public function testRichTextStylesMultiple() {
+		var success = parseExpectingSuccess('
+			#test programmable() {
+				text(dd, "$${a}x$${/} $${b}y$${/} $${c}z$${/}", white, left, 200,
+					styles: {a: #FF0000, b: #00FF00 "dd", c: "dd"}): 0, 0
+			}
+		');
+		Assert.isTrue(success, "multiple styles should parse");
+	}
+
+	@Test
+	public function testRichTextStylesNamedColor() {
+		var success = parseExpectingSuccess('
+			#test programmable() {
+				text(dd, "$${fire}flames$${/}", white, left, 200,
+					styles: {fire: red}): 0, 0
+			}
+		');
+		Assert.isTrue(success, "styles with named color should parse");
+	}
+
+	@Test
+	public function testRichTextStyleNoColorNoFont() {
+		var error = parseExpectingError('
+			#test programmable() {
+				text(dd, "hello", white, left, 200,
+					styles: {bad: }): 0, 0
+			}
+		');
+		Assert.notNull(error, "Should throw error for style with no color or font");
+	}
+
+	@Test
+	public function testRichTextUnknownStyleRef() {
+		var error = parseExpectingError('
+			#test programmable() {
+				text(dd, "hello $${unknown}world$${/}", white, left, 200,
+					styles: {damage: #FF0000}): 0, 0
+			}
+		');
+		Assert.notNull(error, "Should throw error for unknown style reference");
+		Assert.isTrue(error.indexOf("unknown") >= 0,
+			'Error should mention unknown style, got: $error');
+	}
+
+	@Test
+	public function testRichTextInlineColorParses() {
+		var success = parseExpectingSuccess('
+			#test programmable() {
+				text(dd, "$${c:#FF0000}red$${/} $${c:blue}blue$${/}", white, left, 200): 0, 0
+			}
+		');
+		Assert.isTrue(success, "inline color markup should parse");
+	}
+
+	@Test
+	public function testRichTextInlineFontParses() {
+		var success = parseExpectingSuccess('
+			#test programmable() {
+				text(dd, "normal $${f:dd}bold$${/} normal", white, left, 200): 0, 0
+			}
+		');
+		Assert.isTrue(success, "inline font markup should parse");
+	}
+
+	@Test
+	public function testRichTextImageParses() {
+		var success = parseExpectingSuccess('
+			#test programmable() {
+				text(dd, "Cost $${img:coin} 100", white, left, 200,
+					images: [coin generated(color(14, 14, #FFD700))]): 0, 0
+			}
+		');
+		Assert.isTrue(success, "image markup should parse");
+	}
+
+	@Test
+	public function testRichTextAlignParses() {
+		var success = parseExpectingSuccess('
+			#test programmable() {
+				text(dd, "left\n$${align:center}center$${/}", white, left, 200): 0, 0
+			}
+		');
+		Assert.isTrue(success, "align markup should parse");
+	}
+
+	@Test
+	public function testRichTextLinkParses() {
+		var success = parseExpectingSuccess('
+			#test programmable() {
+				text(dd, "$${link:shop}click$${/}", white, left, 200): 0, 0
+			}
+		');
+		Assert.isTrue(success, "link markup should parse");
+	}
+
+	@Test
+	public function testRichTextCondenseWhiteParses() {
+		var success = parseExpectingSuccess('
+			#test programmable() {
+				text(dd, "spaces   here", white, left, 200, condenseWhite: true): 0, 0
+			}
+		');
+		Assert.isTrue(success, "condenseWhite should parse");
+	}
+
+	@Test
+	public function testRichTextNestingParses() {
+		var success = parseExpectingSuccess('
+			#test programmable() {
+				text(dd, "$${damage}crit $${c:yellow}50$${/} dmg$${/}", white, left, 200,
+					styles: {damage: #FF0000}): 0, 0
+			}
+		');
+		Assert.isTrue(success, "nested markup should parse");
+	}
+
+	@Test
+	public function testRichTextNoMarkupStaysPlain() {
+		var success = parseExpectingSuccess('
+			#test programmable() {
+				text(dd, "plain text no markup", white, left, 200): 0, 0
+			}
+		');
+		Assert.isTrue(success, "plain text should parse");
+	}
+
+	@Test
+	public function testRichTextStylesBracketSyntaxFails() {
+		var error = parseExpectingError('
+			#test programmable() {
+				text(dd, "hello", white, left, 200,
+					styles: [damage #FF0000]): 0, 0
+			}
+		');
+		Assert.notNull(error, "Should throw error for bracket syntax on styles");
+	}
+
+	@Test
+	public function testRichTextMixedStylesAndInlineColor() {
+		var success = parseExpectingSuccess('
+			#test programmable() {
+				text(dd, "$${warn}Warning:$${/} costs $${c:gold}100g$${/}", white, left, 200,
+					styles: {warn: #FF4444}): 0, 0
+			}
+		');
+		Assert.isTrue(success, "mixed styles and inline color should parse");
+	}
 }

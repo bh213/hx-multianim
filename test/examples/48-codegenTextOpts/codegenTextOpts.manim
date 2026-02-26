@@ -67,10 +67,11 @@ version: 0.5
     @scale(2) text(dd, "all opts:\nspaced + shadow", #88FF88, center, 420, letterSpacing: 2.0, lineSpacing: 3.0, dropShadowXY: 1.0, 1.0, dropShadowColor: #fff, dropShadowAlpha: 0.6): 4, 4;
   }
 
-  // Row 6: html mode
+  // Row 6: rich text styles
   point {
     pos: 10, 470
-    bitmap(generated(color(260, 32, #333)));
-    @scale(2) text(dd, "html mode text", #FF88FF, left, 260, html: true): 4, 4;
+    bitmap(generated(color(420, 32, #333)));
+    @scale(2) text(dd, "Deal ${damage}50${/} for ${gold}100g${/}", #FF88FF, left, 420,
+        styles: {damage: #FF0000, gold: #FFD700}): 4, 4;
   }
 }

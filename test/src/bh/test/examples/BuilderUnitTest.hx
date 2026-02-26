@@ -3494,4 +3494,171 @@ class BuilderUnitTest extends BuilderTestBase {
 		Assert.isTrue(err.indexOf("spacer") >= 0, 'Error should mention "spacer", got: $err');
 		Assert.isTrue(err.indexOf("flow") >= 0, 'Error should mention "flow", got: $err');
 	}
+
+	// ==================== Rich text: markup conversion and HtmlText ====================
+
+	@Test
+	public function testRichTextStylesCreatesHtmlText():Void {
+		final result = buildFromSource("
+			#test programmable() {
+				text(dd, \"Deal $${damage}50$${/} damage\", white, left, 200,
+					styles: {damage: #FF0000}): 0, 0
+			}
+		", "test");
+		Assert.notNull(result);
+		final texts = findAllTextDescendants(result.object);
+		Assert.equals(1, texts.length);
+		Assert.isTrue(Std.isOfType(texts[0], h2d.HtmlText), "Should be HtmlText when styles defined");
+	}
+
+	@Test
+	public function testRichTextMarkupConverted():Void {
+		final result = buildFromSource("
+			#test programmable() {
+				text(dd, \"Deal $${damage}50$${/} damage\", white, left, 200,
+					styles: {damage: #FF0000}): 0, 0
+			}
+		", "test");
+		final texts = findAllTextDescendants(result.object);
+		Assert.equals(1, texts.length);
+		final ht:h2d.HtmlText = cast texts[0];
+		Assert.isTrue(ht.text.indexOf("<damage>") >= 0, 'HTML should contain <damage>, got: ${ht.text}');
+		Assert.isTrue(ht.text.indexOf("</damage>") >= 0, 'HTML should contain </damage>, got: ${ht.text}');
+	}
+
+	@Test
+	public function testRichTextInlineColorConverted():Void {
+		final result = buildFromSource("
+			#test programmable() {
+				text(dd, \"$${c:#FF0000}red$${/} text\", white, left, 200): 0, 0
+			}
+		", "test");
+		final texts = findAllTextDescendants(result.object);
+		Assert.equals(1, texts.length);
+		final ht:h2d.HtmlText = cast texts[0];
+		Assert.isTrue(ht.text.indexOf("<font color=") >= 0, 'HTML should contain font color, got: ${ht.text}');
+		Assert.isTrue(ht.text.indexOf("</font>") >= 0, 'HTML should contain </font>, got: ${ht.text}');
+	}
+
+	@Test
+	public function testRichTextInlineFontConverted():Void {
+		final result = buildFromSource("
+			#test programmable() {
+				text(dd, \"normal $${f:dd}switched$${/} end\", white, left, 200): 0, 0
+			}
+		", "test");
+		final texts = findAllTextDescendants(result.object);
+		Assert.equals(1, texts.length);
+		final ht:h2d.HtmlText = cast texts[0];
+		Assert.isTrue(ht.text.indexOf("<font face=") >= 0, 'HTML should contain font face, got: ${ht.text}');
+	}
+
+	@Test
+	public function testRichTextImageMarkupConverted():Void {
+		final result = buildFromSource("
+			#test programmable() {
+				text(dd, \"Cost $${img:coin} gold\", white, left, 200,
+					images: [coin generated(color(14, 14, #FFD700))]): 0, 0
+			}
+		", "test");
+		final texts = findAllTextDescendants(result.object);
+		Assert.equals(1, texts.length);
+		final ht:h2d.HtmlText = cast texts[0];
+		Assert.isTrue(ht.text.indexOf("<img src=") >= 0, 'HTML should contain img src, got: ${ht.text}');
+	}
+
+	@Test
+	public function testRichTextAlignMarkupConverted():Void {
+		final result = buildFromSource("
+			#test programmable() {
+				text(dd, \"left\\n$${align:center}center$${/}\", white, left, 200): 0, 0
+			}
+		", "test");
+		final texts = findAllTextDescendants(result.object);
+		Assert.equals(1, texts.length);
+		final ht:h2d.HtmlText = cast texts[0];
+		Assert.isTrue(ht.text.indexOf("<p align=") >= 0, 'HTML should contain p align, got: ${ht.text}');
+		Assert.isTrue(ht.text.indexOf("</p>") >= 0, 'HTML should contain </p>, got: ${ht.text}');
+	}
+
+	@Test
+	public function testRichTextLinkMarkupConverted():Void {
+		final result = buildFromSource("
+			#test programmable() {
+				text(dd, \"$${link:shop}click$${/}\", white, left, 200): 0, 0
+			}
+		", "test");
+		final texts = findAllTextDescendants(result.object);
+		Assert.equals(1, texts.length);
+		final ht:h2d.HtmlText = cast texts[0];
+		Assert.isTrue(ht.text.indexOf("<a href=") >= 0, 'HTML should contain a href, got: ${ht.text}');
+		Assert.isTrue(ht.text.indexOf("</a>") >= 0, 'HTML should contain </a>, got: ${ht.text}');
+	}
+
+	@Test
+	public function testRichTextPlainTextStaysText():Void {
+		final result = buildFromSource("
+			#test programmable() {
+				text(dd, \"plain text no markup\", white, left, 200): 0, 0
+			}
+		", "test");
+		final texts = findAllTextDescendants(result.object);
+		Assert.equals(1, texts.length);
+		Assert.isFalse(Std.isOfType(texts[0], h2d.HtmlText), "Should be plain Text when no markup");
+	}
+
+	@Test
+	public function testRichTextCondenseWhiteCreatesHtmlText():Void {
+		final result = buildFromSource("
+			#test programmable() {
+				text(dd, \"spaces   here\", white, left, 200, condenseWhite: true): 0, 0
+			}
+		", "test");
+		final texts = findAllTextDescendants(result.object);
+		Assert.equals(1, texts.length);
+		Assert.isTrue(Std.isOfType(texts[0], h2d.HtmlText), "condenseWhite should create HtmlText");
+	}
+
+	@Test
+	public function testRichTextNestingConverted():Void {
+		final result = buildFromSource("
+			#test programmable() {
+				text(dd, \"$${damage}crit $${c:yellow}50$${/} dmg$${/}\", white, left, 200,
+					styles: {damage: #FF0000}): 0, 0
+			}
+		", "test");
+		final texts = findAllTextDescendants(result.object);
+		Assert.equals(1, texts.length);
+		final ht:h2d.HtmlText = cast texts[0];
+		Assert.isTrue(ht.text.indexOf("<damage>") >= 0, 'Should have <damage> tag');
+		Assert.isTrue(ht.text.indexOf("<font color=") >= 0, 'Should have nested font color');
+		Assert.isTrue(ht.text.indexOf("</font>") >= 0, 'Should have </font> closing');
+		Assert.isTrue(ht.text.indexOf("</damage>") >= 0, 'Should have </damage> closing');
+	}
+
+	@Test
+	public function testRichTextColorOnlyStyle():Void {
+		final result = buildFromSource("
+			#test programmable() {
+				text(dd, \"$${fire}flames$${/}\", white, left, 200,
+					styles: {fire: red}): 0, 0
+			}
+		", "test");
+		final texts = findAllTextDescendants(result.object);
+		Assert.equals(1, texts.length);
+		Assert.isTrue(Std.isOfType(texts[0], h2d.HtmlText), "Named color style should create HtmlText");
+	}
+
+	@Test
+	public function testRichTextFontOnlyStyle():Void {
+		final result = buildFromSource("
+			#test programmable() {
+				text(dd, \"$${em}emphasis$${/}\", white, left, 200,
+					styles: {em: \"dd\"}): 0, 0
+			}
+		", "test");
+		final texts = findAllTextDescendants(result.object);
+		Assert.equals(1, texts.length);
+		Assert.isTrue(Std.isOfType(texts[0], h2d.HtmlText), "Font-only style should create HtmlText");
+	}
 }

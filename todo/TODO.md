@@ -6,7 +6,7 @@
 | 3 | Visual tests fixes | Fix existing visual test issues | V1 | High |
 | 4 | Haxelib release | Publish to haxelib + CI automation | V1 | High |
 | 5 | Blob47 utils | Autotile mapping utilities | V1 | Medium |
-| 6 | In-text colors & html text | Review color/html text support in .manim | V1 | Medium |
+| ~~6~~ | ~~In-text colors & html text~~ | Done — native `${markup}` + `styles:` system (see [text-todo.md](text-todo.md)) | V1 | Done |
 | 9 | Dropdown z-ordering | Panel renders behind other UI elements | Bugs | Medium |
 | 10 | `closeAllNamed()` iterator | Mutating map during iteration, fragile | Bugs | Low |
 | 11 | Named panel outside-click | Wrong panel's close cancelled on click | Bugs | Medium |
@@ -23,7 +23,7 @@
 - visual tests fixes (see [test-todo.md](test-todo.md))
 - haxelib release (see details below)
 - blob47 utils?
-- review in-text colors & html text support for manim
+- ~~review in-text colors & html text support for manim~~ (done — native rich text markup)
 
 ### Haxelib Release
 

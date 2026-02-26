@@ -2873,7 +2873,9 @@ class MacroManimParser {
 				var letterSpacing:Float = 0.;
 				var lineSpacing:Float = 0.;
 				var lineBreak:Bool = true;
-				var isHtml:Bool = false;
+				var styles:Null<Array<TextStyleDef>> = null;
+				var images:Null<Array<TextImageDef>> = null;
+				var condenseWhite:Null<Bool> = null;
 				var dropShadowXY:Null<bh.base.FPoint> = null;
 				var dropShadowColor:Int = 0;
 				var dropShadowAlpha:Float = 0.5;
@@ -2903,7 +2905,10 @@ class MacroManimParser {
 							case "letterspacing": letterSpacing = parseFloat_();
 							case "linespacing": lineSpacing = parseFloat_();
 							case "linebreak": lineBreak = parseBool();
-							case "html": isHtml = parseBool();
+							case "html": error('"html: true" is no longer supported. Use styles: [...] or {c:color}/{f:font} markup instead.');
+							case "styles": styles = parseTextStyles();
+							case "images": images = parseTextImages();
+							case "condensewhite": condenseWhite = parseBool();
 							case "dropshadowxy":
 								final dx = parseFloat_();
 								expect(TComma);
@@ -2918,11 +2923,32 @@ class MacroManimParser {
 						}
 					} else break;
 				}
+				// Auto-detect markup in literal text
+				var hasMarkup = false;
+				switch (text) {
+					case RVString(s): hasMarkup = TextMarkupConverter.hasMarkup(s);
+					default:
+				}
+
+				// Validate ${styleName} references against defined styles for literal text
+				if (styles != null) {
+					switch (text) {
+						case RVString(s):
+							final styleNames = [for (st in styles) st.name];
+							for (ref in TextMarkupConverter.extractStyleReferences(s)) {
+								if (styleNames.indexOf(ref) < 0) {
+									error('unknown style "$${$ref}" in text markup; defined styles: [${styleNames.join(", ")}]');
+								}
+							}
+						default:
+					}
+				}
+
 				final textDef:TextDef = {
 					fontName: fontname, text: text, color: color, halign: halign,
 					textAlignWidth: textAlignWidth, letterSpacing: letterSpacing, lineSpacing: lineSpacing,
 					lineBreak: lineBreak, dropShadowXY: dropShadowXY, dropShadowColor: dropShadowColor, dropShadowAlpha: dropShadowAlpha,
-					isHtml: isHtml
+					styles: styles, images: images, condenseWhite: condenseWhite, hasMarkup: hasMarkup
 				};
 				createNode(TEXT(textDef), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 
@@ -3786,6 +3812,74 @@ class MacroManimParser {
 			default:
 				error('unknown particle rate action: $actionName');
 		}
+	}
+
+	// styles: {damage: #FF0000, gold: #FFD700 "boldFont", emphasis: "italicFont"}
+	function parseTextStyles():Array<TextStyleDef> {
+		expect(TCurlyOpen);
+		var styles:Array<TextStyleDef> = [];
+		while (!match(TCurlyClosed)) {
+			if (styles.length > 0) {
+				eatComma();
+				if (match(TCurlyClosed)) break;
+			}
+			final name = expectIdentifierOrString();
+			expect(TColon);
+			var color:Null<Int> = null;
+			var fontName:Null<String> = null;
+
+			// Try to parse optional color (hex or named)
+			final c = tryParseColor();
+			if (c != null) color = c;
+
+			// Try to parse optional font name (quoted string)
+			switch (peek()) {
+				case TQuotedString(s):
+					advance();
+					fontName = s;
+				default:
+			}
+
+			if (color == null && fontName == null)
+				error('style "$name" must have at least a color or a font name');
+
+			styles.push({name: name, color: color, fontName: fontName});
+		}
+		return styles;
+	}
+
+	// images: [gold file("gold.png"), sword sheet("items", "sword_16") middle, 2.0]
+	function parseTextImages():Array<TextImageDef> {
+		expect(TBracketOpen);
+		var images:Array<TextImageDef> = [];
+		while (!match(TBracketClosed)) {
+			if (images.length > 0) {
+				eatComma();
+				if (match(TBracketClosed)) break;
+			}
+			final name = expectIdentifierOrString();
+			final ts = parseTileSource();
+			var valign:Null<String> = null;
+			var spacing:Null<Float> = null;
+
+			// Optional: valign (top/middle/bottom)
+			switch (peek()) {
+				case TIdentifier(s) if (s == "top" || s == "middle" || s == "bottom"):
+					advance();
+					valign = s;
+				default:
+			}
+			// Optional: spacing (only if comma-separated within the same entry, before next entry)
+			// Peek for a float — but be careful not to consume the comma that separates entries
+			switch (peek()) {
+				case TFloat(_), TInteger(_):
+					spacing = parseFloat_();
+				default:
+			}
+
+			images.push({name: name, tileSource: ts, valign: valign, spacing: spacing});
+		}
+		return images;
 	}
 
 	// colorStops: 0.0 #FF0000, 0.5 #00FF00 easeInQuad, 1.0 #0000FF
