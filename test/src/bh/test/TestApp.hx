@@ -110,7 +110,7 @@ class TestApp extends hxd.App {
 				}
 				#end
 				if (pool.isComplete()) {
-					pool.shutdownAndWait();
+					pool.shutdown();
 					HtmlReportGenerator.addCompletedResults(pool.getResults());
 					poolDrained = true;
 					visualTestEndTime = Sys.time();
