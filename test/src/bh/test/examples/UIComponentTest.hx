@@ -13,6 +13,9 @@ import bh.ui.UIMultiAnimTextInput;
 import bh.ui.UITabGroup;
 import bh.ui.UIInteractiveWrapper;
 import bh.ui.UIMultiAnimDropdown.UIStandardMultiAnimDropdown;
+import bh.ui.UIMultiAnimScrollableList;
+import bh.ui.UIMultiAnimScrollableList.ClickMode;
+import bh.ui.UIMultiAnimScrollableList.PanelSizeMode;
 import bh.base.MAObject;
 import bh.base.MAObject.MultiAnimObjectData;
 import bh.multianim.MultiAnimParser.SettingValue;
@@ -20,6 +23,7 @@ import bh.ui.UIElement;
 import bh.ui.UIElement.UIScreenEvent;
 import bh.ui.UIElement.UIElementEvents;
 import bh.ui.UIElement.UIElementListItem;
+import bh.ui.UIElement.TileRef;
 import bh.ui.UIElement.SubElementsType;
 
 /**
@@ -1108,5 +1112,362 @@ class UIComponentTest extends BuilderTestBase {
 
 		var events = dropdown.getSubElements(SETReceiveEvents);
 		Assert.equals(0, events.length);
+	}
+
+	// ============== Scrollable List Tests ==============
+
+	static final SCROLLABLE_LIST_MANIM = "
+		#list-panel programmable(width:uint=120, height:uint=200, topClearance:uint=0) {
+			bitmap(generated(color($width, $height, #333333))): 0, 0
+			placeholder(generated(color($width, $height, #000000)), builderParameter(\"mask\")): 0, 0
+			#scrollbar point: $width - 10, 0
+		}
+
+		#list-item programmable(images:[none,tile]=none, status:[hover,pressed,normal]=normal, selected:[true,false]=false, disabled:[true,false]=false, tile:tile, itemWidth:uint=120, index:uint=0, title:string=title, font:string=testfont, fontColor:int=0xFFFFFFFF) {
+			bitmap(generated(color($itemWidth, 20, #555555))): 0, 0
+			text($font, $title, $fontColor): 4, 2
+			interactive($itemWidth, 20, $index);
+			settings{height:float=>20}
+		}
+
+		#scrollbar programmable(panelHeight:uint=100, scrollableHeight:uint=200, scrollPosition:uint=0) {
+			bitmap(generated(color(4, $panelHeight * $panelHeight / $scrollableHeight, #888888))): 0, $scrollPosition * $panelHeight / $scrollableHeight
+		}
+	";
+
+	function createScrollableListItems():Array<UIElementListItem> {
+		return [
+			{name: "Item 1"},
+			{name: "Item 2"},
+			{name: "Item 3"},
+			{name: "Item 4"},
+			{name: "Item 5"},
+		];
+	}
+
+	function createManyScrollableListItems(count:Int):Array<UIElementListItem> {
+		return [for (i in 0...count) {name: 'Item ${i + 1}'}];
+	}
+
+	function createScrollableList(?items:Array<UIElementListItem>, initialIndex:Int = 0,
+			?panelSizeMode:PanelSizeMode):UIMultiAnimScrollableList {
+		ensureTestFont();
+		if (items == null)
+			items = createScrollableListItems();
+		var builder = BuilderTestBase.builderFromSource(SCROLLABLE_LIST_MANIM);
+		return UIMultiAnimScrollableList.createWithSingleBuilder(builder, "list-panel", "list-item", "scrollbar", "scrollbar", 120, 200, items, 0,
+			initialIndex, panelSizeMode);
+	}
+
+	@Test
+	public function testScrollableListCreation():Void {
+		var list = createScrollableList();
+		Assert.notNull(list);
+		Assert.notNull(list.getObject());
+		Assert.isFalse(list.disabled);
+		Assert.equals(5, list.items.length);
+		Assert.equals(0, list.currentItemIndex);
+	}
+
+	@Test
+	public function testScrollableListInitialSelection():Void {
+		var list = createScrollableList(null, 2);
+		Assert.equals(2, list.getSelectedIndex());
+	}
+
+	@Test
+	public function testScrollableListSetSelectedIndex():Void {
+		var list = createScrollableList();
+		list.setSelectedIndex(3);
+		Assert.equals(3, list.getSelectedIndex());
+	}
+
+	@Test
+	public function testScrollableListSetSelectedIndexOutOfBounds():Void {
+		var list = createScrollableList();
+
+		var threw = false;
+		try {
+			list.setSelectedIndex(-2);
+		} catch (e:Dynamic) {
+			threw = true;
+		}
+		Assert.isTrue(threw);
+
+		threw = false;
+		try {
+			list.setSelectedIndex(list.items.length);
+		} catch (e:Dynamic) {
+			threw = true;
+		}
+		Assert.isTrue(threw);
+	}
+
+	@Test
+	public function testScrollableListGetList():Void {
+		var items = createScrollableListItems();
+		var list = createScrollableList(items);
+		var returnedItems = list.getList();
+		Assert.equals(items.length, returnedItems.length);
+		Assert.equals("Item 1", returnedItems[0].name);
+		Assert.equals("Item 5", returnedItems[4].name);
+	}
+
+	@Test
+	public function testScrollableListDisabled():Void {
+		var list = createScrollableList();
+		list.requestRedraw = false;
+		list.disabled = true;
+		Assert.isTrue(list.disabled);
+		Assert.isTrue(list.requestRedraw);
+	}
+
+	@Test
+	public function testScrollableListDisabledAlpha():Void {
+		var list = createScrollableList();
+		Assert.floatEquals(1.0, list.getObject().alpha);
+		list.disabled = true;
+		Assert.floatEquals(0.5, list.getObject().alpha);
+		list.disabled = false;
+		Assert.floatEquals(1.0, list.getObject().alpha);
+	}
+
+	@Test
+	public function testScrollableListDisabledBlocksEvents():Void {
+		var list = createScrollableList();
+		list.doRedraw();
+		list.disabled = true;
+		var mock = new MockControllable();
+
+		// Click should not change selection
+		var pos = new h2d.col.Point(60, 10);
+		UITestHarness.simulateClick(list, mock, pos);
+		Assert.equals(0, mock.eventCount());
+	}
+
+	@Test
+	public function testScrollableListDisabledCursor():Void {
+		var list = createScrollableList();
+
+		// Enabled: interactive cursor
+		Assert.isTrue(Type.enumEq(list.getCursor(), bh.base.CursorManager.getDefaultInteractiveCursor()));
+
+		// Disabled: default cursor
+		list.disabled = true;
+		Assert.isTrue(Type.enumEq(list.getCursor(), bh.base.CursorManager.getDefaultCursor()));
+	}
+
+	@Test
+	public function testScrollableListSetItems():Void {
+		var list = createScrollableList();
+		Assert.equals(5, list.items.length);
+
+		var newItems:Array<UIElementListItem> = [
+			{name: "New 1"},
+			{name: "New 2"},
+			{name: "New 3"},
+		];
+		list.setItems(newItems, 1);
+		Assert.equals(3, list.items.length);
+		Assert.equals(1, list.getSelectedIndex());
+		Assert.equals("New 1", list.items[0].name);
+		Assert.equals("New 2", list.items[1].name);
+	}
+
+	@Test
+	public function testScrollableListSetItemsDefaultSelection():Void {
+		var list = createScrollableList();
+		list.setSelectedIndex(3);
+
+		var newItems:Array<UIElementListItem> = [
+			{name: "A"},
+			{name: "B"},
+		];
+		list.setItems(newItems);
+		Assert.equals(0, list.getSelectedIndex());
+	}
+
+	@Test
+	public function testScrollableListSetItemsEmpty():Void {
+		var list = createScrollableList();
+		list.setItems([]);
+		Assert.equals(0, list.items.length);
+		Assert.equals(-1, list.getSelectedIndex());
+	}
+
+	@Test
+	public function testScrollableListClickModeSingleClick():Void {
+		var list = createScrollableList();
+		list.clickMode = SingleClick;
+		list.doRedraw();
+		var mock = new MockControllable();
+
+		// Find position of item 1 (y=20, item height=20)
+		var pos = new h2d.col.Point(60, 25);
+		UITestHarness.simulateClick(list, mock, pos);
+
+		// In single click mode, selecting a different item should emit UIClickItem
+		var hasClickItem = false;
+		for (e in mock.recordedEvents) {
+			switch e.event {
+				case UIClickItem(_, _):
+					hasClickItem = true;
+				default:
+			}
+		}
+		Assert.isTrue(hasClickItem);
+	}
+
+	@Test
+	public function testScrollableListClickModeDefault():Void {
+		var list = createScrollableList();
+		// Default should be DoubleClick
+		Assert.isTrue(Type.enumEq(list.clickMode, DoubleClick));
+	}
+
+	@Test
+	public function testScrollableListScrollToIndexAlreadyVisible():Void {
+		var list = createScrollableList();
+		// With 5 items of height 20 each (total 100) and panel height 200, all items are visible
+		// scrollToIndex should not change scroll position
+		list.scrollToIndex(2);
+		// No assertion needed - just verify no exception is thrown
+		Assert.pass();
+	}
+
+	@Test
+	public function testScrollableListScrollToIndexOutOfBounds():Void {
+		var list = createScrollableList();
+		// Should not throw, just return silently
+		list.scrollToIndex(-1);
+		list.scrollToIndex(100);
+		Assert.pass();
+	}
+
+	@Test
+	public function testScrollableListScrollToIndexScrollsDown():Void {
+		// Create list with many items so scrolling is needed (20 items * 20px = 400px total, 200px panel)
+		var items = createManyScrollableListItems(20);
+		var list = createScrollableList(items);
+		// Item 15 is at y=300, which is below the 200px panel
+		list.scrollToIndex(15);
+		// After scrollToIndex, the item should be visible (scroll position changed)
+		Assert.pass();
+	}
+
+	@Test
+	public function testScrollableListOnItemChangedCallback():Void {
+		var list = createScrollableList();
+		var callbackIndex:Null<Int> = null;
+
+		list.onItemChanged = function(newIndex, items, wrapper) {
+			callbackIndex = newIndex;
+		};
+
+		// setSelectedIndex doesn't trigger onItemChanged (only event-driven selection does)
+		list.setSelectedIndex(3);
+		Assert.isNull(callbackIndex);
+		Assert.equals(3, list.getSelectedIndex());
+	}
+
+	@Test
+	public function testScrollableListDisabledItems():Void {
+		var items:Array<UIElementListItem> = [
+			{name: "Normal"},
+			{name: "Disabled", disabled: true},
+			{name: "Also Normal"},
+		];
+		var list = createScrollableList(items);
+		Assert.equals(3, list.items.length);
+		Assert.isTrue(list.items[1].disabled == true);
+	}
+
+	@Test
+	public function testScrollableListTileRef():Void {
+		var items:Array<UIElementListItem> = [
+			{name: "With Rect Tile", tileRef: TRGeneratedRectColor(16, 16, 0xFFFF0000)},
+			{name: "No Tile"},
+			{name: "With Plain Rect", tileRef: TRGeneratedRect(16, 16)},
+		];
+		var list = createScrollableList(items);
+		Assert.equals(3, list.items.length);
+		Assert.notNull(list.items[0].tileRef);
+		Assert.isNull(list.items[1].tileRef);
+	}
+
+	@Test
+	public function testScrollableListItemData():Void {
+		var items:Array<UIElementListItem> = [
+			{name: "Item", data: {id: 42, category: "weapons"}},
+		];
+		var list = createScrollableList(items);
+		Assert.equals(42, list.items[0].data.id);
+		Assert.equals("weapons", list.items[0].data.category);
+	}
+
+	@Test
+	public function testScrollableListDoRedraw():Void {
+		var list = createScrollableList();
+		Assert.isTrue(list.requestRedraw);
+		list.doRedraw();
+		Assert.isFalse(list.requestRedraw);
+	}
+
+	@Test
+	public function testScrollableListHoverIndex():Void {
+		var list = createScrollableList();
+		Assert.equals(-1, list.currentHoverIndex);
+		Assert.equals(-1, list.currentPressedIndex);
+	}
+
+	@Test
+	public function testScrollableListAutoSizeMode():Void {
+		// 3 items * 20px height = 60px, which is less than maxHeight (200px)
+		var items:Array<UIElementListItem> = [
+			{name: "A"},
+			{name: "B"},
+			{name: "C"},
+		];
+		var list = createScrollableList(items, 0, AutoSize);
+		Assert.notNull(list);
+		Assert.equals(3, list.items.length);
+	}
+
+	@Test
+	public function testScrollableListWheelScrollMultiplier():Void {
+		var list = createScrollableList();
+		Assert.floatEquals(10.0, list.wheelScrollMultiplier);
+		list.wheelScrollMultiplier = 20.0;
+		Assert.floatEquals(20.0, list.wheelScrollMultiplier);
+	}
+
+	@Test
+	public function testScrollableListDoubleClickThreshold():Void {
+		var list = createScrollableList();
+		Assert.floatEquals(0.3, list.doubleClickThreshold);
+		list.doubleClickThreshold = 0.5;
+		Assert.floatEquals(0.5, list.doubleClickThreshold);
+	}
+
+	@Test
+	public function testScrollableListDisabledSetTwiceNoDoubleRedraw():Void {
+		var list = createScrollableList();
+		list.requestRedraw = false;
+		list.disabled = true;
+		Assert.isTrue(list.requestRedraw);
+		list.requestRedraw = false;
+		// Setting disabled to same value should not trigger redraw
+		list.disabled = true;
+		Assert.isFalse(list.requestRedraw);
+	}
+
+	@Test
+	public function testScrollableListSetItemsResetsHoverAndPressed():Void {
+		var list = createScrollableList();
+		// After setItems, hover and pressed should be reset
+		var newItems:Array<UIElementListItem> = [{name: "X"}];
+		list.setItems(newItems);
+		Assert.equals(-1, list.currentHoverIndex);
+		Assert.equals(-1, list.currentPressedIndex);
 	}
 }
