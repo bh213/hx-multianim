@@ -12,11 +12,14 @@ import bh.ui.UIMultiAnimSlider.UIStandardMultiAnimSlider;
 import bh.ui.UIMultiAnimTextInput;
 import bh.ui.UITabGroup;
 import bh.ui.UIInteractiveWrapper;
+import bh.ui.UIMultiAnimDropdown.UIStandardMultiAnimDropdown;
 import bh.base.MAObject;
 import bh.base.MAObject.MultiAnimObjectData;
 import bh.multianim.MultiAnimParser.SettingValue;
 import bh.ui.UIElement;
 import bh.ui.UIElement.UIScreenEvent;
+import bh.ui.UIElement.UIElementEvents;
+import bh.ui.UIElement.UIElementListItem;
 import bh.ui.UIElement.SubElementsType;
 
 /**
@@ -797,5 +800,313 @@ class UIComponentTest extends BuilderTestBase {
 		var group = new UITabGroup();
 		group.enterAdvances = false;
 		Assert.isFalse(group.handleEnter());
+	}
+
+	// ============== Dropdown Tests ==============
+
+	static final DROPDOWN_MANIM = "
+		#dropdown programmable(status:[normal,hover,pressed,disabled]=normal, panel:[open,closed]=closed, font:string=testfont, fontColor:int=0xFFFFFFFF) {
+			bitmap(generated(color(120, 30, #444444))): 0, 0
+			#panelPoint (updatable) point: 0, 30
+			#selectedName(updatable) text($font, callback(\"selectedName\"), $fontColor): 2, 4
+			settings{transitionTimer:float=>0.2}
+		}
+
+		#list-panel programmable(width:uint=120, height:uint=200, topClearance:uint=0) {
+			bitmap(generated(color($width, $height, #333333))): 0, 0
+			placeholder(generated(color($width, $height, #000000)), builderParameter(\"mask\")): 0, 0
+			#scrollbar point: $width - 10, 0
+		}
+
+		#list-item programmable(images:[none,tile]=none, status:[hover,pressed,normal]=normal, selected:[true,false]=false, disabled:[true,false]=false, tile:tile, itemWidth:uint=120, index:uint=0, title:string=title, font:string=testfont, fontColor:int=0xFFFFFFFF) {
+			bitmap(generated(color($itemWidth, 20, #555555))): 0, 0
+			text($font, $title, $fontColor): 4, 2
+			interactive($itemWidth, 20, $index);
+			settings{height:float=>20}
+		}
+
+		#scrollbar programmable(panelHeight:uint=100, scrollableHeight:uint=200, scrollPosition:uint=0) {
+			bitmap(generated(color(4, $panelHeight * $panelHeight / $scrollableHeight, #888888))): 0, $scrollPosition * $panelHeight / $scrollableHeight
+		}
+	";
+
+	function createDropdownItems():Array<UIElementListItem> {
+		return [
+			{name: "Item 1"},
+			{name: "Item 2"},
+			{name: "Item 3"},
+			{name: "Item 4"},
+			{name: "Item 5"},
+		];
+	}
+
+	function createDropdown(?items:Array<UIElementListItem>, initialIndex:Int = 0):UIStandardMultiAnimDropdown {
+		ensureTestFont();
+		if (items == null)
+			items = createDropdownItems();
+		var builder = BuilderTestBase.builderFromSource(DROPDOWN_MANIM);
+		return UIStandardMultiAnimDropdown.createWithSingleBuilder(builder, items, initialIndex, "dropdown", "list-panel", "list-item", "scrollbar",
+			"scrollbar", 120, 200);
+	}
+
+	function getDropdownPanelObject(dropdown:UIStandardMultiAnimDropdown):h2d.Object {
+		var subElements = dropdown.getSubElements(SETReceiveUpdates);
+		return subElements[0].getObject();
+	}
+
+	@Test
+	public function testDropdownCreation():Void {
+		var dropdown = createDropdown();
+		Assert.notNull(dropdown);
+		Assert.notNull(dropdown.getObject());
+		Assert.isFalse(dropdown.disabled);
+		Assert.equals(5, dropdown.items.length);
+		Assert.equals(0, dropdown.currentItemIndex);
+	}
+
+	@Test
+	public function testDropdownInitialSelection():Void {
+		var dropdown = createDropdown(null, 2);
+		Assert.equals(2, dropdown.getSelectedIndex());
+	}
+
+	@Test
+	public function testDropdownClickTogglesOpen():Void {
+		var dropdown = createDropdown();
+		dropdown.doRedraw();
+		var mock = new MockControllable();
+		var panelObj = getDropdownPanelObject(dropdown);
+		// Use a position above the panel area so clicks reach the dropdown handler
+		// (when panel is open, events inside panel bounds are forwarded to the panel)
+		var btnPos = new h2d.col.Point(60, -100);
+
+		// Initially closed
+		Assert.isFalse(panelObj.visible);
+
+		// Click to open
+		UITestHarness.simulateClick(dropdown, mock, btnPos);
+		Assert.isTrue(panelObj.visible);
+
+		// Click again to start closing
+		UITestHarness.simulateClick(dropdown, mock, btnPos);
+		// Panel still visible during close animation
+		Assert.isTrue(panelObj.visible);
+
+		// Complete close animation
+		dropdown.update(2.0);
+		Assert.isFalse(panelObj.visible);
+	}
+
+	@Test
+	public function testDropdownAutoOpenOnEnter():Void {
+		var dropdown = createDropdown();
+		dropdown.doRedraw();
+		dropdown.autoOpen = true;
+		var mock = new MockControllable();
+		var panelObj = getDropdownPanelObject(dropdown);
+
+		Assert.isFalse(panelObj.visible);
+		UITestHarness.simulateEnter(dropdown, mock);
+		Assert.isTrue(panelObj.visible);
+	}
+
+	@Test
+	public function testDropdownAutoCloseOnLeave():Void {
+		var dropdown = createDropdown();
+		dropdown.doRedraw();
+		dropdown.autoCloseOnLeave = true;
+		var mock = new MockControllable();
+		var panelObj = getDropdownPanelObject(dropdown);
+		var outerPos = new h2d.col.Point(60, -100);
+
+		// Open via click
+		UITestHarness.simulateClick(dropdown, mock, outerPos);
+		Assert.isTrue(panelObj.visible);
+
+		// Leave starts close (position outside panel bounds)
+		UITestHarness.simulateLeave(dropdown, mock, outerPos);
+		// Complete close animation
+		dropdown.update(2.0);
+		Assert.isFalse(panelObj.visible);
+	}
+
+	@Test
+	public function testDropdownNoAutoOpenWhenDisabled():Void {
+		var dropdown = createDropdown();
+		dropdown.doRedraw();
+		dropdown.autoOpen = true;
+		dropdown.disabled = true;
+		var mock = new MockControllable();
+		var panelObj = getDropdownPanelObject(dropdown);
+
+		UITestHarness.simulateEnter(dropdown, mock);
+		Assert.isFalse(panelObj.visible);
+	}
+
+	@Test
+	public function testDropdownCloseOnOutsideClick():Void {
+		var dropdown = createDropdown();
+		dropdown.doRedraw();
+		dropdown.closeOnOutsideClick = true;
+		var mock = new MockControllable();
+		var panelObj = getDropdownPanelObject(dropdown);
+		var outerPos = new h2d.col.Point(60, -100);
+
+		// Open
+		UITestHarness.simulateClick(dropdown, mock, outerPos);
+		Assert.isTrue(panelObj.visible);
+
+		// Outside click (position far from panel)
+		dropdown.onEvent(UITestHarness.createEventWrapper(OnReleaseOutside(0), mock, new h2d.col.Point(500, 500)));
+		// Complete close animation
+		dropdown.update(2.0);
+		Assert.isFalse(panelObj.visible);
+	}
+
+	@Test
+	public function testDropdownNoCloseOnOutsideClickWhenFlagFalse():Void {
+		var dropdown = createDropdown();
+		dropdown.doRedraw();
+		dropdown.closeOnOutsideClick = false;
+		var mock = new MockControllable();
+		var panelObj = getDropdownPanelObject(dropdown);
+		var outerPos = new h2d.col.Point(60, -100);
+
+		// Open
+		UITestHarness.simulateClick(dropdown, mock, outerPos);
+		Assert.isTrue(panelObj.visible);
+
+		// Outside click with flag disabled
+		dropdown.onEvent(UITestHarness.createEventWrapper(OnReleaseOutside(0), mock, new h2d.col.Point(500, 500)));
+		dropdown.update(2.0);
+		// Panel should remain open
+		Assert.isTrue(panelObj.visible);
+	}
+
+	@Test
+	public function testDropdownSetSelectedIndex():Void {
+		var dropdown = createDropdown();
+		dropdown.setSelectedIndex(2);
+		Assert.equals(2, dropdown.getSelectedIndex());
+	}
+
+	@Test
+	public function testDropdownSetSelectedIndexOutOfBounds():Void {
+		var dropdown = createDropdown();
+
+		var threw = false;
+		try {
+			dropdown.setSelectedIndex(-1);
+		} catch (e:Dynamic) {
+			threw = true;
+		}
+		Assert.isTrue(threw);
+
+		threw = false;
+		try {
+			dropdown.setSelectedIndex(dropdown.items.length);
+		} catch (e:Dynamic) {
+			threw = true;
+		}
+		Assert.isTrue(threw);
+	}
+
+	@Test
+	public function testDropdownListValueInterface():Void {
+		var items = createDropdownItems();
+		var dropdown = createDropdown(items);
+		var returnedItems = dropdown.getList();
+		Assert.equals(items.length, returnedItems.length);
+		Assert.equals("Item 1", returnedItems[0].name);
+	}
+
+	@Test
+	public function testDropdownDisabled():Void {
+		var dropdown = createDropdown();
+		dropdown.requestRedraw = false;
+		dropdown.disabled = true;
+		Assert.isTrue(dropdown.disabled);
+		Assert.isTrue(dropdown.requestRedraw);
+	}
+
+	@Test
+	public function testDropdownDisabledBlocksAllEvents():Void {
+		var dropdown = createDropdown();
+		dropdown.doRedraw();
+		dropdown.disabled = true;
+		var mock = new MockControllable();
+		var panelObj = getDropdownPanelObject(dropdown);
+
+		// Click should not open
+		UITestHarness.simulateClick(dropdown, mock);
+		Assert.isFalse(panelObj.visible);
+
+		// Enter should not open
+		UITestHarness.simulateEnter(dropdown, mock);
+		Assert.isFalse(panelObj.visible);
+	}
+
+	@Test
+	public function testDropdownDisabledCursor():Void {
+		var dropdown = createDropdown();
+
+		// Enabled: interactive cursor
+		Assert.isTrue(Type.enumEq(dropdown.getCursor(), bh.base.CursorManager.getDefaultInteractiveCursor()));
+
+		// Disabled: default cursor
+		dropdown.disabled = true;
+		Assert.isTrue(Type.enumEq(dropdown.getCursor(), bh.base.CursorManager.getDefaultCursor()));
+	}
+
+	@Test
+	public function testDropdownOnItemChangedCallback():Void {
+		var dropdown = createDropdown();
+		var callbackIndex:Null<Int> = null;
+
+		dropdown.onItemChanged = function(newIndex, items) {
+			callbackIndex = newIndex;
+		};
+
+		// setSelectedIndex doesn't trigger onItemChanged (only panel selection does)
+		dropdown.setSelectedIndex(3);
+		Assert.isNull(callbackIndex);
+		Assert.equals(3, dropdown.getSelectedIndex());
+	}
+
+	@Test
+	public function testDropdownTransitionTimerOverride():Void {
+		var dropdown = createDropdown();
+		dropdown.transitionTimerOverride = 0.5;
+		dropdown.doRedraw();
+		var mock = new MockControllable();
+		var panelObj = getDropdownPanelObject(dropdown);
+		var btnPos = new h2d.col.Point(60, -100);
+
+		// Open
+		UITestHarness.simulateClick(dropdown, mock, btnPos);
+		Assert.isTrue(panelObj.visible);
+
+		// Start close
+		UITestHarness.simulateClick(dropdown, mock, btnPos);
+
+		// After 0.4s, panel should still be visible (closing in progress)
+		dropdown.update(0.4);
+		Assert.isTrue(panelObj.visible);
+
+		// After 0.6s total (> 0.5 override), panel should be closed
+		dropdown.update(0.2);
+		Assert.isFalse(panelObj.visible);
+	}
+
+	@Test
+	public function testDropdownSubElements():Void {
+		var dropdown = createDropdown();
+
+		var updates = dropdown.getSubElements(SETReceiveUpdates);
+		Assert.equals(1, updates.length);
+		Assert.notNull(updates[0]);
+
+		var events = dropdown.getSubElements(SETReceiveEvents);
+		Assert.equals(0, events.length);
 	}
 }
