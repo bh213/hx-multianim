@@ -2,7 +2,7 @@
 
 | # | Item | Summary | Priority |
 |---|------|---------|----------|
-| 1 | Dropdown tests | Creation, open/close, selection, disabled, prefixed settings | High |
+| 1 | ~~Dropdown tests~~ | ~~Creation, open/close, selection, disabled, prefixed settings~~ | ~~Done~~ |
 | 2 | Scrollable List tests | Creation, setItems, scrollToIndex, click modes, TileRef | High |
 | 3 | Tabs tests | Creation, tab switching, ContentTarget, contentRoot, events | High |
 | 4 | Drag-and-Drop tests | Drop zones from slots, createFromSlot, swapMode, highlights | Medium |
@@ -26,8 +26,8 @@ General visual test issues that need attention.
 
 ## Missing UI Component Tests
 
-### Dropdown (`UIMultiAnimDropdown`) — HIGH
-No visual or unit tests. Needs at minimum: creation test, open/close state, item selection, disabled state, prefixed settings (`item.*`, `scrollbar.*`).
+### ~~Dropdown (`UIMultiAnimDropdown`) — DONE~~
+~~17 unit tests added in `UIComponentTest.hx`: creation, initial selection, open/close toggle, auto-open/close, disabled state, outside click, selection index, list value interface, transition timer, sub-elements, cursor, callback.~~
 
 ### Scrollable List (`UIMultiAnimScrollableList`) — HIGH
 No visual or unit tests. Needs: creation, `setItems()` runtime update, `scrollToIndex()`, click mode (single/double), disabled state, scroll position, `TileRef` item tiles.
