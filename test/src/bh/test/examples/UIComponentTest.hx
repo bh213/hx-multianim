@@ -4,6 +4,10 @@ import utest.Assert;
 import bh.test.BuilderTestBase;
 import bh.test.UITestHarness;
 import bh.test.UITestHarness.MockControllable;
+import bh.test.UITestHarness.MockNumberElement;
+import bh.test.UITestHarness.MockFloatElement;
+import bh.test.UITestHarness.MockListElement;
+import bh.test.UITestHarness.MockSelectableElement;
 import bh.test.UITestHarness.UITestScreen;
 import bh.ui.UIMultiAnimButton.UIStandardMultiAnimButton;
 import bh.ui.UIMultiAnimCheckbox.UIStandardMultiCheckbox;
@@ -2411,5 +2415,160 @@ class UIComponentTest extends BuilderTestBase {
 		// Right button should work
 		draggable.onEvent(UITestHarness.createEventWrapper(OnPush(2), mock, new Point(10, 10)));
 		Assert.isTrue(draggable.isCurrentlyDragging());
+	}
+
+	// ============== autoSyncInitialState Tests ==============
+
+	@Test
+	public function testAutoSyncDisabledByDefault():Void {
+		var screen = new UITestScreen();
+		var el = new MockNumberElement(42);
+		screen.testAddElement(el);
+
+		screen.update(0);
+
+		Assert.equals(0, screen.eventCount());
+	}
+
+	@Test
+	public function testAutoSyncNumberElement():Void {
+		var screen = new UITestScreen();
+		screen.testSetAutoSyncInitialState(true);
+		var el = new MockNumberElement(42);
+		screen.testAddElement(el);
+
+		screen.update(0);
+
+		Assert.isTrue(screen.hasEvent(UIChangeValue(42)));
+	}
+
+	@Test
+	public function testAutoSyncFloatElement():Void {
+		var screen = new UITestScreen();
+		screen.testSetAutoSyncInitialState(true);
+		var el = new MockFloatElement(3.14, 3);
+		screen.testAddElement(el);
+
+		screen.update(0);
+
+		// Float element implements both UIElementFloatValue and UIElementNumberValue
+		Assert.isTrue(screen.hasEvent(UIChangeFloatValue(3.14)));
+		Assert.isTrue(screen.hasEvent(UIChangeValue(3)));
+	}
+
+	@Test
+	public function testAutoSyncListElement():Void {
+		var screen = new UITestScreen();
+		screen.testSetAutoSyncInitialState(true);
+		final items:Array<UIElementListItem> = [{name: "Alpha"}, {name: "Beta"}, {name: "Gamma"}];
+		var el = new MockListElement(1, items);
+		screen.testAddElement(el);
+
+		screen.update(0);
+
+		Assert.isTrue(screen.hasEvent(UIChangeItem(1, items)));
+	}
+
+	@Test
+	public function testAutoSyncSelectableElement():Void {
+		var screen = new UITestScreen();
+		screen.testSetAutoSyncInitialState(true);
+		var el = new MockSelectableElement(true);
+		screen.testAddElement(el);
+
+		screen.update(0);
+
+		Assert.isTrue(screen.hasEvent(UIToggle(true)));
+	}
+
+	@Test
+	public function testAutoSyncSelectableElementFalse():Void {
+		var screen = new UITestScreen();
+		screen.testSetAutoSyncInitialState(true);
+		var el = new MockSelectableElement(false);
+		screen.testAddElement(el);
+
+		screen.update(0);
+
+		Assert.isTrue(screen.hasEvent(UIToggle(false)));
+	}
+
+	@Test
+	public function testAutoSyncMultipleElements():Void {
+		var screen = new UITestScreen();
+		screen.testSetAutoSyncInitialState(true);
+		var numEl = new MockNumberElement(10);
+		var selEl = new MockSelectableElement(true);
+		screen.testAddElement(numEl);
+		screen.testAddElement(selEl);
+
+		screen.update(0);
+
+		Assert.isTrue(screen.hasEvent(UIChangeValue(10)));
+		Assert.isTrue(screen.hasEvent(UIToggle(true)));
+		Assert.equals(2, screen.eventCount());
+	}
+
+	@Test
+	public function testAutoSyncOnlyOnFirstUpdate():Void {
+		var screen = new UITestScreen();
+		screen.testSetAutoSyncInitialState(true);
+		var el = new MockNumberElement(5);
+		screen.testAddElement(el);
+
+		screen.update(0);
+		Assert.equals(1, screen.eventCount());
+
+		screen.clearEvents();
+		screen.update(0);
+		Assert.equals(0, screen.eventCount());
+	}
+
+	@Test
+	public function testAutoSyncThrowsAfterSyncDone():Void {
+		var screen = new UITestScreen();
+		screen.testSetAutoSyncInitialState(true);
+		screen.update(0);
+
+		// Changing the flag after sync has run should throw
+		var threw = false;
+		try {
+			screen.testSetAutoSyncInitialState(false);
+		} catch (e:Dynamic) {
+			threw = true;
+		}
+		Assert.isTrue(threw);
+	}
+
+	@Test
+	public function testAutoSyncResetOnClear():Void {
+		var screen = new UITestScreen();
+		screen.testSetAutoSyncInitialState(true);
+		var el = new MockNumberElement(7);
+		screen.testAddElement(el);
+
+		screen.update(0);
+		Assert.equals(1, screen.eventCount());
+
+		// Clear resets initialSyncDone, so re-adding and updating should sync again
+		screen.clear();
+		screen.clearEvents();
+
+		screen.testSetAutoSyncInitialState(true);
+		var el2 = new MockNumberElement(99);
+		screen.testAddElement(el2);
+
+		screen.update(0);
+		Assert.isTrue(screen.hasEvent(UIChangeValue(99)));
+	}
+
+	@Test
+	public function testAutoSyncNoElementsNoEvents():Void {
+		var screen = new UITestScreen();
+		screen.testSetAutoSyncInitialState(true);
+
+		screen.update(0);
+
+		Assert.equals(0, screen.eventCount());
 	}
 }
