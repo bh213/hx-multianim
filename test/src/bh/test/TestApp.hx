@@ -134,10 +134,10 @@ class TestApp extends hxd.App {
 			}
 		}
 
-		// Safety timeout: exit after 200 frames or 60 seconds wall-clock
+		// Safety timeout: exit after 60 seconds wall-clock
 		var elapsed = Sys.time() - startTime;
-		if (frameCount >= 200 || elapsed >= WALL_CLOCK_TIMEOUT_SEC) {
-			trace('Warning: Safety timeout reached (frames: $frameCount, elapsed: ${Math.round(elapsed)}s), '
+		if (elapsed >= WALL_CLOCK_TIMEOUT_SEC) {
+			trace('Warning: Safety timeout reached (elapsed: ${Math.round(elapsed)}s, frames: $frameCount), '
 				+ 'pending visual tests: ${VisualTestBase.pendingVisualTests}');
 			if (!poolDrained && VisualTestBase.imagePool != null) {
 				if (!testsCompleted) {
