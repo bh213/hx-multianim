@@ -3,7 +3,6 @@
 | # | Item | Summary | Priority |
 |---|------|---------|----------|
 | 5 | `UIRichInteractiveHelper` tests | register() bind scanning, handleEvent() state machine, setDisabled | Medium |
-| 6 | `UITooltipHelper` tests | startHover/cancelHover, delay, show/hide, positioning | Medium |
 | 7 | `UIPanelHelper` tests | open/close, isOpen, outsideClick, close modes, named panels | Medium |
 | 10 | Interactive event tests | Event filtering, bind metadata, UIClickOutside, disabled gating | Medium |
 | 11 | `UIClickOutside` event | Documented but not tested | Low |
@@ -25,16 +24,12 @@ General visual test issues that need attention.
 ### `UIRichInteractiveHelper` — MEDIUM
 No dedicated test for state binding auto-wiring. Needs: `register()` scanning bind metadata, `handleEvent()` driving Normal->Hover->Pressed->Normal, `setDisabled()`.
 
-### `UITooltipHelper` — MEDIUM
-No tests. Needs: `startHover`/`cancelHover`, delay behavior, `show`/`hide`, position/offset configuration.
-
 ### `UIPanelHelper` — MEDIUM
 No tests. Needs: `open`/`close`, `isOpen`, `handleOutsideClick`, `OutsideClick`/`Manual` close modes.
 
 ## Missing Interactive Tests
 
 - **UIRichInteractiveHelper** — no tests for `register()`, `handleEvent()`, `setDisabled()`
-- **UITooltipHelper** — no tests for delay, show/hide, positioning
 - **UIPanelHelper** — no tests for open/close, outside-click, deferred close, named panels
 - **Event filtering** (`events: [hover, click, push]`) — no unit test
 - **`bind` metadata** — no unit test

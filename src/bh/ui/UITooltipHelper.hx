@@ -171,7 +171,7 @@ class UITooltipHelper {
 		if (wrapper == null)
 			return;
 
-		final result = builder.buildWithParameters(buildName, params ?? []);
+		final result = builder.buildWithParameters(buildName, params ?? [], null, null, true);
 		final position = positionOverrides.get(interactiveId) ?? defaultPosition;
 		final offset = offsetOverrides.get(interactiveId) ?? defaultOffset;
 

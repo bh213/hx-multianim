@@ -67,7 +67,10 @@
   - Per-zone: `DropZone.onZoneHighlight` callback for hover state
 - **Drag-and-drop unit tests** — comprehensive `UIComponentTest` coverage: creation, drop zones, drag lifecycle, constraints, drop behavior, swap mode, slot integration, zone hover tracking, highlight callbacks, alpha behavior, button filtering
 - **Scrollable list scrollbar** — built with incremental mode, scroll events use `setParameter("scrollPosition", ...)` instead of full rebuild
-- **Parser error tests** — `ParserErrorTest.hx` for comprehensive parser error validation
+- **Tab unit tests** — `UIComponentTest.hx` coverage: creation, tab switching, content routing, disabled tabs, settings, events
+- **Builder unit tests** — `BuilderUnitTest.hx` extended: data blocks, curves, paths, animated paths, slot parameters, dynamic refs
+- **Parser error tests** — `ParserErrorTest.hx` for comprehensive parser error validation (extended with additional edge cases)
+- **UITooltipHelper unit tests** — 26 tests in `UITooltipHelperTest.hx` covering hover delay lifecycle, show/hide, per-interactive overrides, positioning, updateParams, rebuild
 - **Inline easing in animatedPath curve slots** — `alphaCurve: easeInQuad` works directly without requiring a `curves{}` block
 - **AnimatedPath `easing:` shorthand** — `easing: easeOutCubic` as shortcut for `0.0: progressCurve: easeOutCubic`
 - **Multi-color curve stops** — per-segment color pairs in animatedPath: multiple `colorCurve` assignments at different rates, each with its own start/end colors (e.g. red→green at 0.0, green→blue at 0.5)
@@ -266,6 +269,7 @@
 - **TabButton incremental rewrite** — `UIMultiAnimTabButton` same pattern; selected/disabled states via `setParameter()`
 
 ### Fixed
+- **UITooltipHelper incremental mode** — `showTooltip()` now builds with `incremental: true`, enabling `updateParams()` to work at runtime (previously always threw because `setParameter()` requires incremental mode)
 - **Named range codegen loop variable** — macro codegen for named range iterators (`range(from:, to:)`) now produces correct loop variable values and positions
   - `tryResolveStaticInt` extended to evaluate constant `EBinop`/`RVParenthesis`/`EUnaryOp` expressions (fixes named `to:` creating unresolvable `EBinop(OpAdd, N, 1)`)
   - `poolRepeatChildren` now computes `rangeStart + _rt_i * rangeStep` for `RangeIterator` (previously used raw iteration index as loop variable)
