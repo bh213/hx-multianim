@@ -65,6 +65,7 @@
   - `swapMode` swaps contents when dropping onto an occupied slot
   - Zone highlight callbacks: `onDragStartHighlightZones`, `onDragEndHighlightZones`
   - Per-zone: `DropZone.onZoneHighlight` callback for hover state
+- **Drag-and-drop unit tests** — comprehensive `UIComponentTest` coverage: creation, drop zones, drag lifecycle, constraints, drop behavior, swap mode, slot integration, zone hover tracking, highlight callbacks, alpha behavior, button filtering
 - **Scrollable list scrollbar** — built with incremental mode, scroll events use `setParameter("scrollPosition", ...)` instead of full rebuild
 - **Parser error tests** — `ParserErrorTest.hx` for comprehensive parser error validation
 - **Inline easing in animatedPath curve slots** — `alphaCurve: easeInQuad` works directly without requiring a `curves{}` block
