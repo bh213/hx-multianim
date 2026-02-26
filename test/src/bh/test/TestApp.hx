@@ -22,10 +22,13 @@ class TestApp extends hxd.App {
 	// Frames to wait after all visual tests complete (for async callbacks to flush)
 	private static inline var POST_COMPLETION_FRAMES = 3;
 	private var postCompletionCounter:Int = 0;
+	private var poolDrained:Bool = false;
+	private var statusText:h2d.Text = null;
+	private var poolTotal:Int = 0;
 
 	override function init() {
 		hxd.Res.initLocal();
-
+		
 		FontManager.registerFont("dd", hxd.Res.fonts.digitaldisco.toFont(), 0, -3);
 		FontManager.registerFont("pixeled6", hxd.Res.fonts.pixeled_6.toFont(), 0, -4);
 		FontManager.registerFont("m3x6", hxd.Res.fonts.m3x6.toFont(), 0, -5);
@@ -36,6 +39,7 @@ class TestApp extends hxd.App {
 		FontManager.registerFont("m6x11", hxd.Res.fonts.m6x11.toFont());
 
 		VisualTestBase.appInstance = this;
+		VisualTestBase.imagePool = new ImageProcessingPool();
 
 		HtmlReportGenerator.clear();
 
@@ -58,6 +62,7 @@ class TestApp extends hxd.App {
 		// Capture unit test results in memory for HTML report
 		// (not using Report.create which calls Sys.exit on completion)
 		HtmlReportGenerator.setUnitTestAggregator(new utest.ui.common.ResultAggregator(testRunner, true));
+		hxd.Window.getInstance().vsync = false;
 	}
 
 	public function subscribeToUpdate(callback:Float -> Void):Void {
@@ -81,25 +86,39 @@ class TestApp extends hxd.App {
 		// After tests started, wait for all visual tests to complete
 		if (testsStarted && !testsCompleted) {
 			if (VisualTestBase.pendingVisualTests <= 0 && frameCount > 2) {
-				visualTestEndTime = Sys.time();
 				testsCompleted = true;
-				postCompletionCounter = 0;
+				showStatus("Processing images...");
+				poolTotal = VisualTestBase.imagePool != null ? VisualTestBase.imagePool.getTotalEnqueued() : 0;
 			}
 		}
 
-		// After all visual tests complete, wait a few more frames then exit
-		if (testsCompleted) {
+		// After all visual tests complete, poll pool and update status each frame
+		if (testsCompleted && !poolDrained) {
+			var pool = VisualTestBase.imagePool;
+			if (pool != null) {
+				if (pool.isComplete()) {
+					pool.shutdownAndWait();
+					HtmlReportGenerator.addCompletedResults(pool.getResults());
+					poolDrained = true;
+					visualTestEndTime = Sys.time();
+					showStatus('Processing complete ($poolTotal images). Generating report...');
+					trace('Image processing complete ($poolTotal images).');
+					postCompletionCounter = 0;
+				} else {
+					var done = pool.getCompletedCount();
+					var pct = if (poolTotal > 0) Math.round(done * 100 / poolTotal) else 0;
+					showStatus('Processing images... $done/$poolTotal ($pct%)');
+				}
+			} else {
+				poolDrained = true;
+				visualTestEndTime = Sys.time();
+			}
+		}
+
+		if (poolDrained) {
 			postCompletionCounter++;
 			if (postCompletionCounter >= POST_COMPLETION_FRAMES) {
-				var elapsedSec = Math.round(Sys.time() - startTime);
-				var unitSec = Math.round((unitTestEndTime - startTime) * 10) / 10;
-				var visualSec = Math.round((visualTestEndTime - unitTestEndTime) * 10) / 10;
-				HtmlReportGenerator.enableUnitTestReport();
-				HtmlReportGenerator.setTiming(unitSec, visualSec);
-				HtmlReportGenerator.generateReport();
-				var structured = HtmlReportGenerator.getStructuredSummary(elapsedSec, null, unitSec, visualSec);
-				sys.io.File.saveContent("build/test_result.txt", structured);
-				Sys.exit(structured.indexOf("status: FAILED") >= 0 ? 1 : 0);
+				finishAndExit(null);
 			}
 		}
 
@@ -108,16 +127,40 @@ class TestApp extends hxd.App {
 		if (frameCount >= 200 || elapsed >= WALL_CLOCK_TIMEOUT_SEC) {
 			trace('Warning: Safety timeout reached (frames: $frameCount, elapsed: ${Math.round(elapsed)}s), '
 				+ 'pending visual tests: ${VisualTestBase.pendingVisualTests}');
-			var elapsedSec = Math.round(elapsed);
-			var unitSec = if (unitTestEndTime > 0) Math.round((unitTestEndTime - startTime) * 10) / 10 else 0.0;
-			var visualSec = if (visualTestEndTime > 0) Math.round((visualTestEndTime - unitTestEndTime) * 10) / 10 else 0.0;
-			HtmlReportGenerator.enableUnitTestReport();
-			HtmlReportGenerator.setTiming(unitSec, visualSec);
-			HtmlReportGenerator.generateReport();
-			var structured = HtmlReportGenerator.getStructuredSummary(elapsedSec, "TIMEOUT", unitSec, visualSec);
-			sys.io.File.saveContent("build/test_result.txt", structured);
-			Sys.exit(1);
+			if (!poolDrained && VisualTestBase.imagePool != null) {
+				VisualTestBase.imagePool.shutdownAndWait();
+				HtmlReportGenerator.addCompletedResults(VisualTestBase.imagePool.getResults());
+				poolDrained = true;
+				visualTestEndTime = Sys.time();
+			}
+			finishAndExit("TIMEOUT");
 		}
+	}
+
+	private function showStatus(msg:String):Void {
+		if (statusText == null) {
+			s2d.removeChildren();
+			statusText = new h2d.Text(hxd.res.DefaultFont.get(), s2d);
+			statusText.textColor = 0xFFFFFF;
+			statusText.setScale(2);
+			statusText.setPosition(20, 20);
+		}
+		statusText.text = msg;
+	}
+
+	private function finishAndExit(?statusOverride:String):Void {
+		var elapsedSec = Math.round(Sys.time() - startTime);
+		// unit_seconds = start to first visual capture (pure unit tests)
+		// visual_seconds = first visual capture to pool drain complete (captures + processing)
+		var visualStart = VisualTestBase.firstVisualCaptureTime;
+		var unitSec = if (visualStart > 0) Math.round((visualStart - startTime) * 10) / 10 else Math.round((unitTestEndTime - startTime) * 10) / 10;
+		var visualSec = if (visualStart > 0 && visualTestEndTime > 0) Math.round((visualTestEndTime - visualStart) * 10) / 10 else 0.0;
+		HtmlReportGenerator.enableUnitTestReport();
+		HtmlReportGenerator.setTiming(unitSec, visualSec);
+		HtmlReportGenerator.generateReport();
+		var structured = HtmlReportGenerator.getStructuredSummary(elapsedSec, statusOverride, unitSec, visualSec);
+		sys.io.File.saveContent("build/test_result.txt", structured);
+		Sys.exit(structured.indexOf("status: FAILED") >= 0 ? 1 : 0);
 	}
 
 	override function render(e:h3d.Engine) {

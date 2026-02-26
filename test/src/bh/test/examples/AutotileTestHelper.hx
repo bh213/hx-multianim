@@ -83,25 +83,20 @@ class AutotileTestHelper {
 		Assert.notNull(tileGroup, 'Failed to build autotile "$autotileName" from $animFilePath');
 
 		if (result != null && tileGroup != null) {
-			testBase.waitForUpdate(function(dt:Float) {
-				var actualPath = testBase.getActualImagePath();
-				var referencePath = testBase.getReferenceImagePath();
+			var actualPath = testBase.getActualImagePath();
+			var referencePath = testBase.getReferenceImagePath();
 
-				var success = testBase.screenshot(actualPath, sizeX, sizeY);
-				Assert.isTrue(success, 'Screenshot should be created at $actualPath');
+			var success = testBase.screenshot(actualPath, sizeX, sizeY);
+			Assert.isTrue(success, 'Screenshot should be created at $actualPath');
 
-				if (success) {
-					var match = testBase.compareImages(actualPath, referencePath, threshold);
-					Assert.isTrue(match, 'Screenshot should match reference image');
-				}
-
-				VisualTestBase.pendingVisualTests--;
-				async.done();
-			});
-		} else {
-			VisualTestBase.pendingVisualTests--;
-			async.done();
+			if (success) {
+				var match = testBase.compareImages(actualPath, referencePath, threshold);
+				Assert.isTrue(match, 'Screenshot should match reference image');
+			}
 		}
+
+		VisualTestBase.pendingVisualTests--;
+		async.done();
 	}
 
 	/**
@@ -142,25 +137,20 @@ class AutotileTestHelper {
 		}
 
 		if (result != null && allBuilt) {
-			testBase.waitForUpdate(function(dt:Float) {
-				var actualPath = testBase.getActualImagePath();
-				var referencePath = testBase.getReferenceImagePath();
+			var actualPath = testBase.getActualImagePath();
+			var referencePath = testBase.getReferenceImagePath();
 
-				var success = testBase.screenshot(actualPath, sizeX, sizeY);
-				Assert.isTrue(success, 'Screenshot should be created at $actualPath');
+			var success = testBase.screenshot(actualPath, sizeX, sizeY);
+			Assert.isTrue(success, 'Screenshot should be created at $actualPath');
 
-				if (success) {
-					var match = testBase.compareImages(actualPath, referencePath, threshold);
-					Assert.isTrue(match, 'Screenshot should match reference image');
-				}
-
-				VisualTestBase.pendingVisualTests--;
-				async.done();
-			});
-		} else {
-			VisualTestBase.pendingVisualTests--;
-			async.done();
+			if (success) {
+				var match = testBase.compareImages(actualPath, referencePath, threshold);
+				Assert.isTrue(match, 'Screenshot should match reference image');
+			}
 		}
+
+		VisualTestBase.pendingVisualTests--;
+		async.done();
 	}
 
 	/**
@@ -176,25 +166,20 @@ class AutotileTestHelper {
 		Assert.notNull(tileGroup, 'Failed to build autotile "$autotileName" from $animFilePath');
 
 		if (tileGroup != null) {
-			testBase.waitForUpdate(function(dt:Float) {
-				var actualPath = testBase.getActualImagePath();
-				var referencePath = testBase.getReferenceImagePath();
+			var actualPath = testBase.getActualImagePath();
+			var referencePath = testBase.getReferenceImagePath();
 
-				var success = testBase.screenshot(actualPath, sizeX, sizeY);
-				Assert.isTrue(success, 'Screenshot should be created at $actualPath');
+			var success = testBase.screenshot(actualPath, sizeX, sizeY);
+			Assert.isTrue(success, 'Screenshot should be created at $actualPath');
 
-				if (success) {
-					var match = testBase.compareImages(actualPath, referencePath);
-					Assert.isTrue(match, 'Screenshot should match reference image');
-				}
-
-				VisualTestBase.pendingVisualTests--;
-				async.done();
-			});
-		} else {
-			VisualTestBase.pendingVisualTests--;
-			async.done();
+			if (success) {
+				var match = testBase.compareImages(actualPath, referencePath);
+				Assert.isTrue(match, 'Screenshot should match reference image');
+			}
 		}
+
+		VisualTestBase.pendingVisualTests--;
+		async.done();
 	}
 
 	// =========================================================================

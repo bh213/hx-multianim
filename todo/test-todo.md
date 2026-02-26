@@ -2,7 +2,6 @@
 
 | # | Item | Summary | Priority |
 |---|------|---------|----------|
-| 3 | Tabs tests | Creation, tab switching, ContentTarget, contentRoot, events | High |
 | 4 | Drag-and-Drop tests | Drop zones from slots, createFromSlot, swapMode, highlights | Medium |
 | 5 | `UIRichInteractiveHelper` tests | register() bind scanning, handleEvent() state machine, setDisabled | Medium |
 | 6 | `UITooltipHelper` tests | startHover/cancelHover, delay, show/hide, positioning | Medium |
