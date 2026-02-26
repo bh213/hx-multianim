@@ -184,7 +184,23 @@ Graphics shapes can also be used as standalone elements (shorthand for `graphics
 | `overflow` | Overflow behavior: `expand`, `limit`, `scroll`, `hidden` |
 | `fillWidth`, `fillHeight` | Expand to fill container dimension |
 | `reverse` | Reverse child order |
+| `horizontalAlign` | Default horizontal alignment: `left`, `right`, `middle` |
+| `verticalAlign` | Default vertical alignment: `top`, `bottom`, `middle` |
 | `debug` | Show debug layout borders |
+
+### Per-Element Flow Properties (`@flow.*`)
+
+Annotations on direct children of `flow()` to override per-element layout:
+
+| Syntax | Description |
+|--------|-------------|
+| `@flow.halign(left\|right\|middle)` | Override horizontal alignment for this child |
+| `@flow.valign(top\|bottom\|middle)` | Override vertical alignment for this child |
+| `@flow.offset(x, y)` | Pixel offset within the flow layout |
+| `@flow.absolute` | Remove from flow layout, position freely (overlays) |
+
+Chainable: `@flow.halign(middle) @flow.offset(2, 4) bitmap(...)`
+Parse-time error when used outside a flow ancestor.
 
 ---
 
@@ -335,7 +351,7 @@ Applied to any element via long-form body or inline syntax.
 | `blendMode: mode` | Blend mode |
 
 ### Inline Property Prefixes (before element at `@`)
-`@layer(index)`, `@alpha(value)`, `@scale(value)`, `@rotate(angle)`, `@tint(color)`
+`@layer(index)`, `@alpha(value)`, `@scale(value)`, `@rotate(angle)`, `@tint(color)`, `@flow.halign(align)`, `@flow.valign(align)`, `@flow.offset(x, y)`, `@flow.absolute`
 
 ---
 

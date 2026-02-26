@@ -33,19 +33,97 @@ if ($Command -match '^\d+$') {
     $Command = "run"
 }
 
-function Write-Status($msg) {
-    if (-not $AIOutput) {
-        Write-Host $msg -ForegroundColor Cyan
-    }
-}
-
 function Write-Line($msg) {
     [Console]::WriteLine($msg)
 }
 
+function Format-TestResults($content, $Label) {
+    # Parse key fields
+    $status = if ($content -match 'status:\s*(\S+)') { $Matches[1] } else { "UNKNOWN" }
+    $vTotal = if ($content -match 'visual_total:\s*(\d+)') { [int]$Matches[1] } else { 0 }
+    $vPassed = if ($content -match 'visual_passed:\s*(\d+)') { [int]$Matches[1] } else { 0 }
+    $vFailed = if ($content -match 'visual_failed:\s*(\d+)') { [int]$Matches[1] } else { 0 }
+    $uAssert = if ($content -match 'unit_assertions:\s*(\d+)') { [int]$Matches[1] } else { 0 }
+    $uFail = if ($content -match 'unit_failures:\s*(\d+)') { [int]$Matches[1] } else { 0 }
+    $uErr = if ($content -match 'unit_errors:\s*(\d+)') { [int]$Matches[1] } else { 0 }
+    $macroMM = if ($content -match 'macro_mismatches:\s*(\d+)') { [int]$Matches[1] } else { 0 }
+    $elapsed = if ($content -match 'elapsed_seconds:\s*(\d+)') { $Matches[1] + "s" } else { "?" }
+
+    # Status line
+    if ($status -eq "OK") {
+        Write-Host "PASS$Label`: " -ForegroundColor Green -NoNewline
+    } else {
+        Write-Host "FAIL$Label`: " -ForegroundColor Red -NoNewline
+    }
+
+    # Summary parts
+    $parts = @()
+    if ($vTotal -gt 0) {
+        $vColor = if ($vFailed -eq 0) { "Green" } else { "Red" }
+        $parts += @{ text = "$vPassed/$vTotal visual"; color = $vColor }
+    }
+    if ($uAssert -gt 0) {
+        $uColor = if ($uFail -eq 0 -and $uErr -eq 0) { "Green" } else { "Red" }
+        $uText = "$uAssert unit assertions"
+        if ($uFail -gt 0 -or $uErr -gt 0) { $uText += " ($uFail failures, $uErr errors)" }
+        $parts += @{ text = $uText; color = $uColor }
+    }
+    if ($macroMM -gt 0) {
+        $parts += @{ text = "$macroMM macro mismatches"; color = "Yellow" }
+    }
+
+    for ($i = 0; $i -lt $parts.Count; $i++) {
+        Write-Host $parts[$i].text -ForegroundColor $parts[$i].color -NoNewline
+        if ($i -lt $parts.Count - 1) { Write-Host ", " -NoNewline }
+    }
+    Write-Host " ($elapsed)"
+
+    # Detail lines for failures
+    $hasDetails = $false
+
+    # Visual failure details
+    $visualDetails = [regex]::Matches($content, '^\s+visual_detail:\s*(.+)$', 'Multiline')
+    foreach ($m in $visualDetails) {
+        if (-not $hasDetails) { $hasDetails = $true }
+        $detail = $m.Groups[1].Value.Trim()
+        $parts = $detail -split '\s*\|\s*', 2
+        $testName = $parts[0]
+        $reason = if ($parts.Count -gt 1) { $parts[1] } else { "failed" }
+        # Color-code the reason
+        $reasonColor = "Red"
+        if ($reason -eq "no_reference") { $reasonColor = "Yellow"; $reason = "no reference image" }
+        elseif ($reason -match '^low_similarity') { $reason = $reason -replace '^low_similarity ', 'similarity ' }
+        elseif ($reason -match '^error:') { $reasonColor = "Red" }
+        Write-Host "  VISUAL " -ForegroundColor DarkGray -NoNewline
+        Write-Host "$testName" -ForegroundColor White -NoNewline
+        Write-Host " - $reason" -ForegroundColor $reasonColor
+    }
+
+    # Macro mismatch details
+    $macroDetails = [regex]::Matches($content, '^\s+macro_detail:\s*(.+)$', 'Multiline')
+    foreach ($m in $macroDetails) {
+        if (-not $hasDetails) { $hasDetails = $true }
+        $detail = $m.Groups[1].Value.Trim()
+        $parts = $detail -split '\s*\|\s*', 2
+        $testName = $parts[0]
+        $info = if ($parts.Count -gt 1) { $parts[1] } else { "mismatch" }
+        Write-Host "  MACRO  " -ForegroundColor DarkGray -NoNewline
+        Write-Host "$testName" -ForegroundColor White -NoNewline
+        Write-Host " - $info" -ForegroundColor Yellow
+    }
+
+    # Unit test failure details
+    $unitDetails = [regex]::Matches($content, '^\s+unit_detail:\s*(.+)$', 'Multiline')
+    foreach ($m in $unitDetails) {
+        if (-not $hasDetails) { $hasDetails = $true }
+        $detail = $m.Groups[1].Value.Trim()
+        Write-Host "  UNIT   " -ForegroundColor DarkGray -NoNewline
+        Write-Host "$detail" -ForegroundColor Red
+    }
+}
+
 function Invoke-TestRun {
-    Write-Status "--- TEST BEGIN ---"
-    if ($TestNum) { Write-Status "Running test #$TestNum only" }
+    if ($TestNum -and -not $AIOutput) { Write-Host "Running test #$TestNum only" -ForegroundColor Cyan }
 
     Push-Location $Root
     try {
@@ -82,24 +160,32 @@ function Do-Run($BaseHxml, $HlBinary, $ResultFileName, $Label) {
         $hxml = $tmpHxml
     }
 
+    # Log file for trace output (always captured, shown only with -v)
+    $logFile = Join-Path $Root "build/test_output$($Label.Replace(' ', '_')).log"
+    if (Test-Path $logFile) { Remove-Item $logFile }
+
     # --- PHASE 1: Compilation ---
-    Write-Status "Compiling$Label..."
+    if (-not $AIOutput) { Write-Host "Compiling$Label..." -ForegroundColor Cyan }
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     # Use cmd.exe /c to support haxe installed as .cmd/.ps1 wrapper (e.g. lix/npm shims)
     $psi.FileName = "cmd.exe"
     $psi.Arguments = "/c haxe $hxml"
     $psi.UseShellExecute = $false
     $psi.WorkingDirectory = $Root
-    if ($AIOutput) {
-        $psi.RedirectStandardOutput = $true
-        $psi.RedirectStandardError = $true
-    }
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
     $compileProc = [System.Diagnostics.Process]::Start($psi)
-    if ($AIOutput) {
-        $compileStdout = $compileProc.StandardOutput.ReadToEnd()
-        $compileStderr = $compileProc.StandardError.ReadToEnd()
-    }
+    $compileStdout = $compileProc.StandardOutput.ReadToEnd()
+    $compileStderr = $compileProc.StandardError.ReadToEnd()
     $compileProc.WaitForExit()
+
+    # Save compile output to log
+    if ($compileStdout -or $compileStderr) {
+        $logContent = "=== COMPILE$Label ===`n"
+        if ($compileStdout) { $logContent += $compileStdout }
+        if ($compileStderr) { $logContent += $compileStderr }
+        [System.IO.File]::AppendAllText($logFile, $logContent)
+    }
 
     if ($compileProc.ExitCode -ne 0) {
         if ($tmpHxml -and (Test-Path $tmpHxml)) { Remove-Item $tmpHxml }
@@ -113,30 +199,46 @@ function Do-Run($BaseHxml, $HlBinary, $ResultFileName, $Label) {
             Write-Line "--- END TEST RESULT ---"
         } else {
             Write-Host "ERROR:$Label Compilation failed (exit code $($compileProc.ExitCode))" -ForegroundColor Red
+            if ($compileStderr) { Write-Host $compileStderr.TrimEnd() -ForegroundColor Red }
         }
         return $compileProc.ExitCode
     }
 
     # --- PHASE 2: Execution with timeout ---
-    Write-Status "Running tests$Label..."
+    if (-not $AIOutput) { Write-Host "Running tests$Label..." -ForegroundColor Cyan }
     $psi2 = New-Object System.Diagnostics.ProcessStartInfo
     $psi2.FileName = "hl"
     $psi2.Arguments = $HlBinary
     $psi2.UseShellExecute = $false
     $psi2.WorkingDirectory = $Root
-    if ($AIOutput) {
-        $psi2.RedirectStandardOutput = $true
-        $psi2.RedirectStandardError = $true
-    }
+    $psi2.RedirectStandardOutput = $true
+    $psi2.RedirectStandardError = $true
     $hlProc = [System.Diagnostics.Process]::Start($psi2)
-    if ($AIOutput) {
-        $hlStdoutTask = $hlProc.StandardOutput.ReadToEndAsync()
-        $hlStderrTask = $hlProc.StandardError.ReadToEndAsync()
-    }
+    $hlStdoutTask = $hlProc.StandardOutput.ReadToEndAsync()
+    $hlStderrTask = $hlProc.StandardError.ReadToEndAsync()
     $exited = $hlProc.WaitForExit($HlTimeout * 1000)
 
-    if (-not $exited) {
+    # Save HL output to log
+    if ($exited) {
+        $hlStdout = $hlStdoutTask.Result
+        $hlStderr = $hlStderrTask.Result
+    } else {
         $hlProc.Kill()
+        $hlStdout = $hlStdoutTask.Result
+        $hlStderr = $hlStderrTask.Result
+    }
+    if ($hlStdout -or $hlStderr) {
+        $logContent = "=== HL RUN$Label ===`n"
+        if ($hlStdout) { $logContent += $hlStdout }
+        if ($hlStderr) { $logContent += $hlStderr }
+        [System.IO.File]::AppendAllText($logFile, $logContent)
+    }
+    if ($VerboseOutput -and -not $AIOutput) {
+        if ($hlStdout) { Write-Host $hlStdout.TrimEnd() }
+        if ($hlStderr) { Write-Host $hlStderr.TrimEnd() -ForegroundColor Yellow }
+    }
+
+    if (-not $exited) {
         if ($tmpHxml -and (Test-Path $tmpHxml)) { Remove-Item $tmpHxml }
         if ($AIOutput) {
             Write-Line "--- TEST RESULT$Label ---"
@@ -157,19 +259,7 @@ function Do-Run($BaseHxml, $HlBinary, $ResultFileName, $Label) {
         if ($AIOutput) {
             Write-Line ($content.TrimEnd())
         } else {
-            if ($content -match 'status:\s*(\S+)') {
-                $status = $Matches[1]
-                if ($status -eq "OK") {
-                    $vTotal = if ($content -match 'visual_total:\s*(\d+)') { $Matches[1] } else { "?" }
-                    $vPassed = if ($content -match 'visual_passed:\s*(\d+)') { $Matches[1] } else { "?" }
-                    $uAssert = if ($content -match 'unit_assertions:\s*(\d+)') { $Matches[1] } else { "0" }
-                    Write-Host "OK$Label`: $vPassed/$vTotal visual tests passed, $uAssert unit assertions passed" -ForegroundColor Green
-                } else {
-                    Write-Host $content -ForegroundColor Red
-                }
-            } else {
-                Write-Line ($content)
-            }
+            Format-TestResults $content $Label
         }
     } else {
         if ($AIOutput) {
@@ -178,12 +268,12 @@ function Do-Run($BaseHxml, $HlBinary, $ResultFileName, $Label) {
             Write-Line "error: test did not produce results ($ResultFileName missing)"
             Write-Line "--- END TEST RESULT ---"
         } else {
-            Write-Host "Error:$Label test did not produce results ($ResultFileName missing)" -ForegroundColor Red
+            Write-Host "ERROR:$Label test did not produce results ($ResultFileName missing)" -ForegroundColor Red
         }
         return 1
     }
 
-    Write-Status "--- TEST END$Label ---"
+    # --- PHASE 3 complete ---
     return $hlProc.ExitCode
 }
 

@@ -164,6 +164,28 @@ flow([optional params])
 * `fillWidth`: `true` | `false` — children fill available width
 * `fillHeight`: `true` | `false` — children fill available height
 * `reverse`: `true` | `false` — reverses child rendering order
+* `horizontalAlign`: `left` | `right` | `middle` — default horizontal alignment for children
+* `verticalAlign`: `top` | `bottom` | `middle` — default vertical alignment for children
+
+#### Per-element flow properties
+
+Children of a `flow()` can use `@flow.*` annotations to override layout properties per-element:
+
+```
+flow(layout: vertical, minWidth: 100) {
+    bitmap(...): 0, 0                                      // default alignment
+    @flow.halign(right) bitmap(...): 0, 0                  // right-aligned in flow
+    @flow.halign(middle) @flow.offset(5, 0) bitmap(...): 0, 0  // centered + offset
+    @flow.absolute bitmap(...): 20, 10                     // removed from layout, freely positioned
+}
+```
+
+* `@flow.halign(left|right|middle)` — override horizontal alignment
+* `@flow.valign(top|bottom|middle)` — override vertical alignment
+* `@flow.offset(x, y)` — pixel offset within the flow
+* `@flow.absolute` — exclude from flow layout (for overlays, badges, indicators)
+
+Multiple `@flow.*` annotations can be chained. Parser validates that `@flow.*` is only used on children of a flow (or inside `repeatable` within a flow).
 
 ### spacer
 Inserts empty space inside a `flow` container. Only valid as a child of `flow`.

@@ -5,6 +5,7 @@ import bh.multianim.CoordinateSystems;
 import bh.multianim.MacroCompatTypes.MacroBlendMode;
 import bh.multianim.MacroCompatTypes.MacroFlowLayout;
 import bh.multianim.MacroCompatTypes.MacroFlowOverflow;
+import bh.multianim.MacroCompatTypes.MacroFlowAlign;
 import bh.multianim.layouts.LayoutTypes;
 import bh.base.Hex;
 
@@ -2608,6 +2609,7 @@ class MacroManimParser {
 			conditionals: conditional,
 			uniqueNodeName: generateUniqueName(uniqueCounter, nameStr, Std.string(type)),
 			settings: null,
+			flowProperties: null,
 			#if MULTIANIM_TRACE
 			parserPos: posString()
 			#end
@@ -2624,8 +2626,14 @@ class MacroManimParser {
 		var rotation:Null<ReferenceableValue> = null;
 		var tint:Null<ReferenceableValue> = null;
 		var conditional:NodeConditionalValues = NoConditional;
+		var flowHAlign:Null<MacroFlowAlign> = null;
+		var flowVAlign:Null<MacroFlowAlign> = null;
+		var flowOffsetX:Null<ReferenceableValue> = null;
+		var flowOffsetY:Null<ReferenceableValue> = null;
+		var flowIsAbsolute = false;
+		var hasFlowProps = false;
 
-		// Parse @ prefix (conditionals, layer, alpha, scale, tint)
+		// Parse @ prefix (conditionals, layer, alpha, scale, tint, flow properties)
 		if (match(TAt)) {
 			var atCount = 0;
 			while (true) {
@@ -2686,6 +2694,32 @@ class MacroManimParser {
 						advance();
 						conditional = ConditionalDefault;
 						atCount++;
+					case TIdentifier(s) if (isKeyword(s, "flow")):
+						advance();
+						expect(TDot);
+						final flowProp = expectIdentifierOrString();
+						switch (flowProp.toLowerCase()) {
+							case "halign":
+								expect(TOpen);
+								flowHAlign = parseFlowAlign();
+								expect(TClosed);
+							case "valign":
+								expect(TOpen);
+								flowVAlign = parseFlowAlign();
+								expect(TClosed);
+							case "offset":
+								expect(TOpen);
+								flowOffsetX = parseIntegerOrReference();
+								expect(TComma);
+								flowOffsetY = parseIntegerOrReference();
+								expect(TClosed);
+							case "absolute":
+								flowIsAbsolute = true;
+							default:
+								error('unknown flow property: $flowProp (expected halign, valign, offset, absolute)');
+						}
+						hasFlowProps = true;
+						atCount++;
 					case TIdentifier(s) if (isKeyword(s, "final")):
 						advance();
 						final name = expectIdentifierOrString();
@@ -2712,6 +2746,24 @@ class MacroManimParser {
 					default:
 				}
 			default:
+		}
+
+		// Validate @flow.* properties require a flow ancestor
+		if (hasFlowProps) {
+			var p = parent;
+			var foundFlow = false;
+			while (p != null) {
+				switch (p.type) {
+					case FLOW(_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _):
+						foundFlow = true;
+						break;
+					case REPEAT(_, _) | REPEAT2D(_, _, _, _):
+						p = p.parent; // transparent — children go into parent container
+					default:
+						break; // opaque container — flow properties won't apply
+				}
+			}
+			if (!foundFlow) error("@flow.* properties can only be used on direct children of a flow element");
 		}
 
 		// Allow #name after @ modifiers: @(condition) #name element(...)
@@ -2988,6 +3040,8 @@ class MacroManimParser {
 				var fillWidth = false;
 				var fillHeight = false;
 				var reverse = false;
+				var hAlign:Null<MacroFlowAlign> = null;
+				var vAlign:Null<MacroFlowAlign> = null;
 				while (!match(TClosed)) {
 					eatComma();
 					if (match(TClosed)) break;
@@ -3029,10 +3083,12 @@ class MacroManimParser {
 						case "fillwidth": fillWidth = parseBool();
 						case "fillheight": fillHeight = parseBool();
 						case "reverse": reverse = parseBool();
+						case "horizontalalign": hAlign = parseFlowAlign();
+						case "verticalalign": vAlign = parseFlowAlign();
 						default: error('unknown flow param: $pname');
 					}
 				}
-				createNode(FLOW(maxWidth, maxHeight, minWidth, minHeight, lineHeight, colWidth, layout, paddingTop, paddingBottom, paddingLeft, paddingRight, hSpacing, vSpacing, debug, multiline, bgSheet, bgTile, overflow, fillWidth, fillHeight, reverse), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
+				createNode(FLOW(maxWidth, maxHeight, minWidth, minHeight, lineHeight, colWidth, layout, paddingTop, paddingBottom, paddingLeft, paddingRight, hSpacing, vSpacing, debug, multiline, bgSheet, bgTile, overflow, fillWidth, fillHeight, reverse, hAlign, vAlign), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 
 			case TIdentifier(s) if (isKeyword(s, "programmable")):
 				advance();
@@ -3377,6 +3433,10 @@ class MacroManimParser {
 			default:
 				error('expected valid node type, got ${peek()}');
 		}
+
+		// Apply per-element flow properties parsed from @ prefix
+		if (hasFlowProps)
+			node.flowProperties = NodeFlowPropertiesTools.create(flowHAlign, flowVAlign, flowOffsetX, flowOffsetY, flowIsAbsolute);
 
 		// Position or children
 		switch (peek()) {
@@ -4211,6 +4271,17 @@ class MacroManimParser {
 			case TIdentifier(s) if (isKeyword(s, "scroll")): advance(); return MFOScroll;
 			case TIdentifier(s) if (isKeyword(s, "hidden")): advance(); return MFOHidden;
 			default: return error("expected expand, limit, scroll, or hidden");
+		}
+	}
+
+	function parseFlowAlign():MacroFlowAlign {
+		switch (peek()) {
+			case TIdentifier(s) if (isKeyword(s, "left")): advance(); return MFALeft;
+			case TIdentifier(s) if (isKeyword(s, "right")): advance(); return MFARight;
+			case TIdentifier(s) if (isKeyword(s, "middle")): advance(); return MFAMiddle;
+			case TIdentifier(s) if (isKeyword(s, "top")): advance(); return MFATop;
+			case TIdentifier(s) if (isKeyword(s, "bottom")): advance(); return MFABottom;
+			default: return error("expected left, right, middle, top, or bottom");
 		}
 	}
 

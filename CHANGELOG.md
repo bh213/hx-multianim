@@ -3,6 +3,18 @@
 ## [0.13-dev] - 2026-02-25
 
 ### Added
+- **Flow alignment** — `horizontalAlign` and `verticalAlign` params on `flow()` container for default child alignment
+  - Values: `left`, `right`, `middle`, `top`, `bottom`
+  - Example: `flow(layout: vertical, horizontalAlign: middle, minWidth: 100) { ... }`
+- **Per-element flow properties** — `@flow.*` prefix annotations on children of flow containers
+  - `@flow.halign(left|right|middle)` — override horizontal alignment for a single child
+  - `@flow.valign(top|bottom|middle)` — override vertical alignment for a single child
+  - `@flow.offset(x, y)` — pixel offset within flow layout
+  - `@flow.absolute` — remove from flow layout, position freely (for overlays/badges)
+  - Parse-time validation: error when used outside a flow ancestor
+  - Chainable: `@flow.halign(middle) @flow.offset(2, 4) bitmap(...)`
+- **`NodeFlowProperties` typedef** — per-element flow properties extracted into a single nullable struct on `Node`, replacing 5 individual fields
+- **Spacer validation** — `spacer()` now throws at build time when used outside of a `flow()` container (previously silently ignored)
 - **`@rotate(angle)` element modifier** — rotate any element by an angle, matching `@scale`/`@alpha`/`@tint` pattern
   - Inline prefix: `@rotate(45deg) bitmap(...)`, property syntax: `rotate: 90deg`
   - Supports angle units (`deg`, `rad`, `turn`), direction constants (`right`, `down`, `left`, `up`), expressions

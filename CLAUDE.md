@@ -415,7 +415,13 @@ Metadata supports typed values matching the settings system: `key => val` (strin
 
 **Flow improvements** — new optional params on `flow()`:
 - `overflow: expand|limit|scroll|hidden`, `fillWidth: true`, `fillHeight: true`, `reverse: true`
+- `horizontalAlign: left|right|middle`, `verticalAlign: top|bottom|middle` — default child alignment
 - `spacer(w, h)` element for fixed spacing inside flows
+- Per-element flow properties via `@flow.*` prefix on children:
+  - `@flow.halign(left|right|middle)`, `@flow.valign(top|bottom|middle)` — per-child alignment override
+  - `@flow.offset(x, y)` — pixel offset, `@flow.absolute` — remove from layout (overlays)
+  - Parse-time validation: must be inside a flow ancestor (REPEAT/REPEAT2D are transparent)
+  - `NodeFlowProperties` typedef on `Node` — single nullable struct, created via `NodeFlowPropertiesTools.create()`
 
 ## Playground
 
