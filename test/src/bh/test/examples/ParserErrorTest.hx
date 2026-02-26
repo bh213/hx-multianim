@@ -2568,4 +2568,252 @@ class ParserErrorTest extends utest.Test {
 			}
 		'), "Positional range with step should parse");
 	}
+
+	// ==================== Malformed expression tests ====================
+
+	@Test
+	public function testUnaryMinusWithoutValue() {
+		var error = parseExpectingError('
+			#test programmable(x:uint=10) {
+				@final v = -
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		');
+		Assert.notNull(error, "Should throw error for unary minus without value");
+		Assert.isTrue(error.indexOf("expected value after unary minus") >= 0,
+			'Error should mention unary minus, got: $error');
+	}
+
+	@Test
+	public function testGarbageInNumericPosition() {
+		var error = parseExpectingError('
+			#test programmable() {
+				bitmap(generated(color(abc, 10, #f00))): 0, 0
+			}
+		');
+		Assert.notNull(error, "Should throw error for non-numeric in numeric position");
+	}
+
+	@Test
+	public function testMalformedTernaryMissingColon() {
+		var error = parseExpectingError('
+			#test programmable(big:bool=true) {
+				@final size = ?($$big) 100
+				bitmap(generated(color($$size, $$size, #f00))): 0, 0
+			}
+		');
+		Assert.notNull(error, "Should throw error for ternary missing colon/false branch");
+	}
+
+	@Test
+	public function testIncompleteArithmeticExpression() {
+		var error = parseExpectingError('
+			#test programmable(x:uint=10) {
+				bitmap(generated(color($$x + , 10, #f00))): 0, 0
+			}
+		');
+		Assert.notNull(error, "Should throw error for incomplete arithmetic (trailing +)");
+	}
+
+	@Test
+	public function testUnaryMinusWithoutValueInFloat() {
+		var error = parseExpectingError('
+			#test programmable() {
+				bitmap(generated(color(10, 10, #f00))) {
+					pos: 0, 0
+					alpha: -
+				}
+			}
+		');
+		Assert.notNull(error, "Should throw error for unary minus without value in float context");
+	}
+
+	// ==================== Invalid type tests ====================
+
+	@Test
+	public function testInvalidColorFormat() {
+		var error = parseExpectingError('
+			#test programmable() {
+				bitmap(generated(color(10, 10, #GGGG))): 0, 0
+			}
+		');
+		Assert.notNull(error, "Should throw error for invalid color format");
+	}
+
+	@Test
+	public function testInvalidColorDigitCount() {
+		var error = parseExpectingError('
+			#test programmable() {
+				bitmap(generated(color(10, 10, #FF00))): 0, 0
+			}
+		');
+		Assert.notNull(error, "Should throw error for color with wrong digit count");
+		Assert.isTrue(error.indexOf("Invalid color") >= 0,
+			'Error should mention invalid color, got: $error');
+	}
+
+	@Test
+	public function testUnknownParameterType() {
+		var error = parseExpectingError('
+			#test programmable(x:foobar=1) {
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		');
+		Assert.notNull(error, "Should throw error for unknown parameter type");
+		Assert.isTrue(error.indexOf("unknown parameter type") >= 0,
+			'Error should mention unknown parameter type, got: $error');
+	}
+
+	@Test
+	public function testInvalidBoolDefault() {
+		var error = parseExpectingError('
+			#test programmable(flag:bool=maybe) {
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		');
+		Assert.notNull(error, "Should throw error for invalid bool default");
+		Assert.isTrue(error.indexOf("invalid bool default") >= 0,
+			'Error should mention invalid bool default, got: $error');
+	}
+
+	@Test
+	public function testInvalidFloatDefault() {
+		var error = parseExpectingError('
+			#test programmable(speed:float=abc) {
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		');
+		Assert.notNull(error, "Should throw error for invalid float default");
+		Assert.isTrue(error.indexOf("expected float for default") >= 0,
+			'Error should mention expected float, got: $error');
+	}
+
+	@Test
+	public function testEnumDefaultNotInValues() {
+		var error = parseExpectingError('
+			#test programmable(mode:[a,b]=c) {
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		');
+		Assert.notNull(error, "Should throw error for enum default not in values");
+		Assert.isTrue(error.indexOf("does not contain value") >= 0,
+			'Error should mention value not in enum, got: $error');
+	}
+
+	@Test
+	public function testUnknownFilterType() {
+		var error = parseExpectingError('
+			#test programmable() {
+				bitmap(generated(color(10, 10, #f00))) {
+					filter: notAFilter(1)
+					pos: 0, 0
+				}
+			}
+		');
+		Assert.notNull(error, "Should throw error for unknown filter type");
+		Assert.isTrue(error.indexOf("unknown filter type") >= 0,
+			'Error should mention unknown filter type, got: $error');
+	}
+
+	@Test
+	public function testUnknownGeneratedTileType() {
+		var error = parseExpectingError('
+			#test programmable() {
+				bitmap(generated(hexagon(10, 10, #f00))): 0, 0
+			}
+		');
+		Assert.notNull(error, "Should throw error for unknown generated tile type");
+		Assert.isTrue(error.indexOf("unknown generated tile type") >= 0,
+			'Error should mention unknown generated tile type, got: $error');
+	}
+
+	// ==================== Duplicate tests (additional) ====================
+
+	@Test
+	public function testDuplicateRootNodeName() {
+		var error = parseExpectingError('
+			#test programmable() {
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+			#test programmable() {
+				bitmap(generated(color(10, 10, #00f))): 0, 0
+			}
+		');
+		Assert.notNull(error, "Should throw error for duplicate root node #name");
+		Assert.isTrue(error.indexOf("duplicate node") >= 0,
+			'Error should mention duplicate node, got: $error');
+	}
+
+	@Test
+	public function testDuplicateSettingKey() {
+		var error = parseExpectingError('
+			#test programmable() {
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+				settings {
+					buildName => "test"
+					buildName => "test2"
+				}
+			}
+		');
+		Assert.notNull(error, "Should throw error for duplicate setting key");
+		Assert.isTrue(error.indexOf("already defined") >= 0,
+			'Error should mention already defined, got: $error');
+	}
+
+	// ==================== Circular / self-reference tests ====================
+
+	@Test
+	public function testFinalSelfReference() {
+		// @final referencing itself — should fail at parse or build time
+		var error = parseExpectingError('
+			#test programmable() {
+				@final x = $$x + 1
+				bitmap(generated(color($$x, $$x, #f00))): 0, 0
+			}
+		');
+		// The parser's variable validation should catch $$x as undefined at this point
+		Assert.notNull(error, "Should throw error for @final self-reference");
+		Assert.isTrue(error.indexOf("unknown variable") >= 0,
+			'Error should mention unknown variable, got: $error');
+	}
+
+	@Test
+	public function testFinalForwardReference() {
+		// @final referencing a later @final — $$y is not yet defined when $$x is parsed
+		var error = parseExpectingError('
+			#test programmable() {
+				@final x = $$y + 1
+				@final y = 10
+				bitmap(generated(color($$x, $$x, #f00))): 0, 0
+			}
+		');
+		Assert.notNull(error, "Should throw error for @final forward reference");
+		Assert.isTrue(error.indexOf("unknown variable") >= 0,
+			'Error should mention unknown variable, got: $error');
+	}
+
+	@Test
+	public function testUndefinedRefInExpression() {
+		var error = parseExpectingError('
+			#test programmable(x:uint=10) {
+				bitmap(generated(color($$y, 10, #f00))): 0, 0
+			}
+		');
+		Assert.notNull(error, "Should throw error for undefined $$y reference");
+		Assert.isTrue(error.indexOf("unknown variable") >= 0,
+			'Error should mention unknown variable, got: $error');
+	}
+
+	@Test
+	public function testUndefinedRefInFinalExpression() {
+		var error = parseExpectingError('
+			#test programmable(x:uint=10) {
+				@final v = $$x + $$z
+				bitmap(generated(color($$v, 10, #f00))): 0, 0
+			}
+		');
+		Assert.notNull(error, "Should throw error for undefined $$z in @final");
+		Assert.isTrue(error.indexOf("unknown variable") >= 0,
+			'Error should mention unknown variable, got: $error');
+	}
 }
