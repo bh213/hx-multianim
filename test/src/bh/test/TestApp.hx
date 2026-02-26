@@ -25,6 +25,7 @@ class TestApp extends hxd.App {
 	private var poolDrained:Bool = false;
 	private var statusText:h2d.Text = null;
 	private var poolTotal:Int = 0;
+	private var lastTracedDone:Int = -1;
 
 	override function init() {
 		hxd.Res.initLocal();
@@ -87,8 +88,11 @@ class TestApp extends hxd.App {
 		if (testsStarted && !testsCompleted) {
 			if (VisualTestBase.pendingVisualTests <= 0 && frameCount > 2) {
 				testsCompleted = true;
-				showStatus("Processing images...");
-				poolTotal = VisualTestBase.imagePool != null ? VisualTestBase.imagePool.getTotalEnqueued() : 0;
+				if (VisualTestBase.imagePool != null) {
+					poolTotal = VisualTestBase.imagePool.getTotalEnqueued();
+					showStatus('Processing $poolTotal images...');
+					VisualTestBase.imagePool.startProcessing();
+				}
 			}
 		}
 
@@ -96,17 +100,25 @@ class TestApp extends hxd.App {
 		if (testsCompleted && !poolDrained) {
 			var pool = VisualTestBase.imagePool;
 			if (pool != null) {
+				var done = pool.getCompletedCount();
+				var pct = if (poolTotal > 0) Math.round(done * 100 / poolTotal) else 0;
+				#if (VERBOSE || PROGRESS)
+				if (done != lastTracedDone) {
+					lastTracedDone = done;
+					Sys.stderr().writeString('Processing images... $done/$poolTotal ($pct%)\r\n');
+					Sys.stderr().flush();
+				}
+				#end
 				if (pool.isComplete()) {
 					pool.shutdownAndWait();
 					HtmlReportGenerator.addCompletedResults(pool.getResults());
 					poolDrained = true;
 					visualTestEndTime = Sys.time();
 					showStatus('Processing complete ($poolTotal images). Generating report...');
-					trace('Image processing complete ($poolTotal images).');
+					Sys.stderr().writeString('Image processing complete ($poolTotal images).\r\n');
+					Sys.stderr().flush();
 					postCompletionCounter = 0;
 				} else {
-					var done = pool.getCompletedCount();
-					var pct = if (poolTotal > 0) Math.round(done * 100 / poolTotal) else 0;
 					showStatus('Processing images... $done/$poolTotal ($pct%)');
 				}
 			} else {
@@ -128,6 +140,10 @@ class TestApp extends hxd.App {
 			trace('Warning: Safety timeout reached (frames: $frameCount, elapsed: ${Math.round(elapsed)}s), '
 				+ 'pending visual tests: ${VisualTestBase.pendingVisualTests}');
 			if (!poolDrained && VisualTestBase.imagePool != null) {
+				if (!testsCompleted) {
+					// Timeout before captures finished — start processing what we have
+					VisualTestBase.imagePool.startProcessing();
+				}
 				VisualTestBase.imagePool.shutdownAndWait();
 				HtmlReportGenerator.addCompletedResults(VisualTestBase.imagePool.getResults());
 				poolDrained = true;

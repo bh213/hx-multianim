@@ -1,7 +1,6 @@
 package bh.test;
 
-import sys.thread.Thread;
-import sys.thread.Deque;
+import sys.thread.FixedThreadPool;
 import sys.thread.Mutex;
 import sys.thread.Lock;
 
@@ -47,52 +46,75 @@ typedef CompletedResult = {
 }
 
 class ImageProcessingPool {
-	private static inline var NUM_WORKERS = 8;
+	private static inline var NUM_WORKERS = 16;
 
-	private var workQueue:Deque<WorkItem>;
-	private var resultsMutex:Mutex;
+	private var pool:Null<FixedThreadPool> = null;
+	private var mutex:Mutex;
+	private var pendingItems:Array<WorkItem>;
 	private var completedResults:Array<CompletedResult>;
 	private var pendingCount:Int = 0;
 	private var totalEnqueued:Int = 0;
-	private var pendingMutex:Mutex;
-	private var finishedLock:Lock;
-	private var poisonCount:Int = 0;
+	private var allDone:Lock;
 
 	public function new() {
-		workQueue = new Deque();
-		resultsMutex = new Mutex();
-		pendingMutex = new Mutex();
-		finishedLock = new Lock();
+		mutex = new Mutex();
+		allDone = new Lock();
+		pendingItems = [];
 		completedResults = [];
-
-		for (i in 0...NUM_WORKERS) {
-			Thread.create(workerLoop);
-		}
 	}
 
+	/** Collect work item for later processing. No threads are started yet. */
 	public function enqueue(item:WorkItem):Void {
-		pendingMutex.acquire();
-		pendingCount++;
+		pendingItems.push(item);
 		totalEnqueued++;
-		pendingMutex.release();
-		workQueue.add(item);
+	}
+
+	/** Start the thread pool and submit all collected work items. */
+	public function startProcessing():Void {
+		pendingCount = pendingItems.length;
+		if (pendingCount == 0) {
+			allDone.release();
+			return;
+		}
+
+		pool = new FixedThreadPool(NUM_WORKERS);
+		for (item in pendingItems) {
+			pool.run(() -> {
+				var result:CompletedResult = null;
+				try {
+					result = processWorkItem(item);
+				} catch (e:Dynamic) {
+					result = {
+						testName: item.displayName,
+						referencePath: item.referencePath,
+						actualPath: item.actualPath,
+						passed: false,
+						similarity: 0.0,
+						errorMessage: 'Worker exception: $e',
+						orderIndex: item.orderIndex,
+						threshold: item.threshold,
+					};
+				}
+
+				mutex.acquire();
+				completedResults.push(result);
+				pendingCount--;
+				if (pendingCount <= 0) allDone.release();
+				mutex.release();
+			});
+		}
+		pendingItems = [];
 	}
 
 	public function shutdownAndWait():Void {
-		// Send poison pills (null items)
-		for (i in 0...NUM_WORKERS) {
-			workQueue.add(null);
-		}
-		// Wait for all workers to signal done
-		for (i in 0...NUM_WORKERS) {
-			finishedLock.wait();
-		}
+		allDone.wait();
+		if (pool != null) pool.shutdown();
 	}
 
 	public function isComplete():Bool {
-		pendingMutex.acquire();
+		mutex.acquire();
 		var done = pendingCount <= 0;
-		pendingMutex.release();
+		mutex.release();
 		return done;
 	}
 
@@ -101,55 +123,14 @@ class ImageProcessingPool {
 	}
 
 	public function getTotalEnqueued():Int {
-		pendingMutex.acquire();
-		var t = totalEnqueued;
-		pendingMutex.release();
-		return t;
+		return totalEnqueued;
 	}
 
 	public function getCompletedCount():Int {
-		resultsMutex.acquire();
+		mutex.acquire();
 		var c = completedResults.length;
-		resultsMutex.release();
+		mutex.release();
 		return c;
-	}
-
-	// ==================== Worker thread ====================
-
-	private function workerLoop():Void {
-		while (true) {
-			var item:WorkItem = workQueue.pop(true);
-
-			// Poison pill — null signals shutdown
-			if (item == null) {
-				finishedLock.release();
-				return;
-			}
-
-			var result:CompletedResult = null;
-			try {
-				result = processWorkItem(item);
-			} catch (e:Dynamic) {
-				result = {
-					testName: item.displayName,
-					referencePath: item.referencePath,
-					actualPath: item.actualPath,
-					passed: false,
-					similarity: 0.0,
-					errorMessage: 'Worker exception: $e',
-					orderIndex: item.orderIndex,
-					threshold: item.threshold,
-				};
-			}
-
-			resultsMutex.acquire();
-			completedResults.push(result);
-			resultsMutex.release();
-
-			pendingMutex.acquire();
-			pendingCount--;
-			pendingMutex.release();
-		}
 	}
 
 	private function processWorkItem(item:WorkItem):CompletedResult {

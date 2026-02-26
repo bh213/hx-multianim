@@ -23,6 +23,13 @@ class VisualTestBase extends utest.Test {
 		#end
 	}
 
+	private static inline function progress(msg:String):Void {
+		#if (VERBOSE || PROGRESS)
+		Sys.stderr().writeString(msg + "\r\n");
+		Sys.stderr().flush();
+		#end
+	}
+
 	public function new(testName:String, s2d:Scene) {
 		super();
 		if (s2d == null) {
@@ -289,6 +296,7 @@ class VisualTestBase extends utest.Test {
 		var referencePath = getReferenceImagePath();
 		var displayName = getDisplayName();
 		var raw = captureScreenshotRaw(sizeX, sizeY);
+		progress('Captured $displayName');
 
 		if (raw == null) {
 			Assert.fail('Screenshot was empty at $actualPath');
@@ -409,6 +417,7 @@ class VisualTestBase extends utest.Test {
 		var macroRaw = captureScreenshotRaw(sizeX, sizeY);
 		var displayName = getDisplayName();
 		var th = threshold;
+		progress('Captured $displayName');
 
 		Assert.pass();
 		if (imagePool != null) {
@@ -514,6 +523,7 @@ class VisualTestBase extends utest.Test {
 		var macroRaw = captureScreenshotRaw(1280, 720);
 		var displayName = getDisplayName();
 		var th:Float = if (tolerance != null) tolerance else 1.0;
+		progress('Captured $displayName');
 
 		Assert.pass();
 		if (imagePool != null) {
@@ -623,6 +633,7 @@ class VisualTestBase extends utest.Test {
 		var macroRaw = captureScreenshotRaw(1280, 720);
 		var displayName = getDisplayName();
 		var th:Float = if (tolerance != null) tolerance else 1.0;
+		progress('Captured $displayName');
 
 		Assert.pass();
 		if (imagePool != null) {
