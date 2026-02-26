@@ -1,13 +1,13 @@
 # test.ps1 - Test utility script for hx-multianim
-# Usage: .\test.ps1 [run|gen-refs|report|rr] [testNum] [-v] [-aioutput]
+# Usage: .\test.ps1 [run|gen-refs|report|rr] [testNum] [-v] [-p]
 #
 # Examples:
 #   .\test.ps1 run              Run all tests
 #   .\test.ps1 run 7            Run only test #7
 #   .\test.ps1 rr 7             Run test #7 and open report
-#   .\test.ps1 run -v           Run all tests with verbose output
+#   .\test.ps1 run -v           Run all tests with verbose output (streamed live)
+#   .\test.ps1 run -p           Run all tests with progress output (streamed live)
 #   .\test.ps1 rr 7 -v          Run test #7 verbose and open report
-#   .\test.ps1 run -aioutput    Run tests with structured machine-readable output
 #   .\test.ps1 gen-refs         Generate reference images from latest screenshots
 
 param(
@@ -20,7 +20,8 @@ param(
     [Alias("v")]
     [switch]$VerboseOutput,
 
-    [switch]$AIOutput
+    [Alias("p")]
+    [switch]$Progress
 )
 
 $ErrorActionPreference = "Stop"
@@ -135,7 +136,7 @@ function Format-TestResults($content, $Label) {
 }
 
 function Invoke-TestRun {
-    if ($TestNum -and -not $AIOutput) { Write-Host "Running test #$TestNum only" -ForegroundColor Cyan }
+    if ($TestNum) { Write-Host "Running test #$TestNum only" -ForegroundColor Cyan }
 
     Push-Location $Root
     try {
@@ -152,10 +153,6 @@ function Invoke-TestRun {
 }
 
 function Do-Run($BaseHxml, $HlBinary, $ResultFileName, $Label) {
-    # Select hxml config
-    $hxml = $BaseHxml
-    if ($VerboseOutput -and $Label -eq "") { $hxml = "test-hx-multianim-verbose.hxml" }
-
     # Prepare result file
     $resultFile = Join-Path $Root $ResultFileName
     if (Test-Path $resultFile) { Remove-Item $resultFile }
@@ -164,20 +161,25 @@ function Do-Run($BaseHxml, $HlBinary, $ResultFileName, $Label) {
         New-Item -ItemType Directory -Path $buildDir | Out-Null
     }
 
-    # Single-test override via temp hxml
+    # Build temp hxml with optional defines (single-test, verbose, progress)
+    $hxml = $BaseHxml
     $tmpHxml = $null
-    if ($TestNum) {
+    $extraDefines = @()
+    if ($TestNum) { $extraDefines += "-D SINGLE_TEST=$TestNum" }
+    if ($VerboseOutput -and $Label -eq "") { $extraDefines += "-D VERBOSE" }
+    if ($Progress -and -not $VerboseOutput -and $Label -eq "") { $extraDefines += "-D PROGRESS" }
+    if ($extraDefines.Count -gt 0) {
         $tmpHxml = Join-Path $Root "build\_test_single.hxml"
-        Set-Content $tmpHxml "$hxml`n-D SINGLE_TEST=$TestNum"
+        Set-Content $tmpHxml ("$hxml`n" + ($extraDefines -join "`n"))
         $hxml = $tmpHxml
     }
 
-    # Log file for trace output (always captured, shown only with -v)
+    # Log file for trace output (always captured)
     $logFile = Join-Path $Root "build/test_output$($Label.Replace(' ', '_')).log"
     if (Test-Path $logFile) { Remove-Item $logFile }
 
     # --- PHASE 1: Compilation ---
-    if (-not $AIOutput) { Write-Host "Compiling$Label..." -ForegroundColor Cyan }
+    Write-Host "Compiling$Label..." -ForegroundColor Cyan
     $compileStart = Get-Date
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     # Use cmd.exe /c to support haxe installed as .cmd/.ps1 wrapper (e.g. lix/npm shims)
@@ -203,23 +205,13 @@ function Do-Run($BaseHxml, $HlBinary, $ResultFileName, $Label) {
 
     if ($compileProc.ExitCode -ne 0) {
         if ($tmpHxml -and (Test-Path $tmpHxml)) { Remove-Item $tmpHxml }
-        if ($AIOutput) {
-            Write-Line "--- TEST RESULT$Label ---"
-            Write-Line "status: COMPILE_ERROR"
-            Write-Line "haxe_exit_code: $($compileProc.ExitCode)"
-            if ($compileStderr) {
-                Write-Line "error_output: $($compileStderr.TrimEnd())"
-            }
-            Write-Line "--- END TEST RESULT ---"
-        } else {
-            Write-Host "ERROR:$Label Compilation failed (exit code $($compileProc.ExitCode))" -ForegroundColor Red
-            if ($compileStderr) { Write-Host $compileStderr.TrimEnd() -ForegroundColor Red }
-        }
+        Write-Host "ERROR:$Label Compilation failed (exit code $($compileProc.ExitCode))" -ForegroundColor Red
+        if ($compileStderr) { Write-Host $compileStderr.TrimEnd() -ForegroundColor Red }
         return $compileProc.ExitCode
     }
 
     # --- PHASE 2: Execution with timeout ---
-    if (-not $AIOutput) { Write-Host "Running tests$Label..." -ForegroundColor Cyan }
+    Write-Host "Running tests$Label..." -ForegroundColor Cyan
     $psi2 = New-Object System.Diagnostics.ProcessStartInfo
     $psi2.FileName = "hl"
     $psi2.Arguments = $HlBinary
@@ -227,41 +219,55 @@ function Do-Run($BaseHxml, $HlBinary, $ResultFileName, $Label) {
     $psi2.WorkingDirectory = $Root
     $psi2.RedirectStandardOutput = $true
     $psi2.RedirectStandardError = $true
-    $hlProc = [System.Diagnostics.Process]::Start($psi2)
-    $hlStdoutTask = $hlProc.StandardOutput.ReadToEndAsync()
-    $hlStderrTask = $hlProc.StandardError.ReadToEndAsync()
-    $exited = $hlProc.WaitForExit($HlTimeout * 1000)
+    $streamLive = ($VerboseOutput -or $Progress) -and $Label -eq ""
+    if ($streamLive) {
+        # Stream stderr line-by-line in real time (progress output goes to stderr)
+        # Read stdout asynchronously to prevent pipe blocking
+        $filterProgress = $Progress -and -not $VerboseOutput
+        $hlProc = [System.Diagnostics.Process]::Start($psi2)
+        $stdoutTask = $hlProc.StandardOutput.ReadToEndAsync()
+        $stderrReader = $hlProc.StandardError
+        $hlStderrBuf = [System.Text.StringBuilder]::new()
+        while ($null -ne ($line = $stderrReader.ReadLine())) {
+            $hlStderrBuf.AppendLine($line)
+            if (-not $filterProgress -or $line -match 'Captured |Processing images\.\.\.|Image processing complete') {
+                [Console]::Error.WriteLine($line)
+            }
+        }
+        $exited = $hlProc.WaitForExit($HlTimeout * 1000)
+        if (-not $exited) { $hlProc.Kill() }
+        $hlStdout = $stdoutTask.Result
+        $hlStderr = $hlStderrBuf.ToString()
+        # In verbose mode, also print stdout (already finished by now)
+        if ($VerboseOutput -and $hlStdout) {
+            [Console]::Write($hlStdout)
+        }
+    } else {
+        $hlProc = [System.Diagnostics.Process]::Start($psi2)
+        $hlStdoutTask = $hlProc.StandardOutput.ReadToEndAsync()
+        $hlStderrTask = $hlProc.StandardError.ReadToEndAsync()
+        $exited = $hlProc.WaitForExit($HlTimeout * 1000)
+        if ($exited) {
+            $hlStdout = $hlStdoutTask.Result
+            $hlStderr = $hlStderrTask.Result
+        } else {
+            $hlProc.Kill()
+            $hlStdout = $hlStdoutTask.Result
+            $hlStderr = $hlStderrTask.Result
+        }
+    }
 
     # Save HL output to log
-    if ($exited) {
-        $hlStdout = $hlStdoutTask.Result
-        $hlStderr = $hlStderrTask.Result
-    } else {
-        $hlProc.Kill()
-        $hlStdout = $hlStdoutTask.Result
-        $hlStderr = $hlStderrTask.Result
-    }
     if ($hlStdout -or $hlStderr) {
         $logContent = "=== HL RUN$Label ===`n"
         if ($hlStdout) { $logContent += $hlStdout }
         if ($hlStderr) { $logContent += $hlStderr }
         [System.IO.File]::AppendAllText($logFile, $logContent)
     }
-    if ($VerboseOutput -and -not $AIOutput) {
-        if ($hlStdout) { Write-Host $hlStdout.TrimEnd() }
-        if ($hlStderr) { Write-Host $hlStderr.TrimEnd() -ForegroundColor Yellow }
-    }
 
     if (-not $exited) {
         if ($tmpHxml -and (Test-Path $tmpHxml)) { Remove-Item $tmpHxml }
-        if ($AIOutput) {
-            Write-Line "--- TEST RESULT$Label ---"
-            Write-Line "status: TIMEOUT"
-            Write-Line "elapsed_seconds: $HlTimeout"
-            Write-Line "--- END TEST RESULT ---"
-        } else {
-            Write-Host "ERROR:$Label hl process did not exit within $HlTimeout seconds" -ForegroundColor Red
-        }
+        Write-Host "ERROR:$Label hl process did not exit within $HlTimeout seconds" -ForegroundColor Red
         return 124
     }
 
@@ -270,22 +276,9 @@ function Do-Run($BaseHxml, $HlBinary, $ResultFileName, $Label) {
     # --- PHASE 3: Read results ---
     if (Test-Path $resultFile) {
         $content = Get-Content $resultFile -Raw
-        if ($AIOutput) {
-            # Inject compile_seconds before the end marker
-            $content = $content -replace '--- END TEST RESULT ---', "compile_seconds: $($script:lastCompileSeconds)`n--- END TEST RESULT ---"
-            Write-Line ($content.TrimEnd())
-        } else {
-            Format-TestResults $content $Label
-        }
+        Format-TestResults $content $Label
     } else {
-        if ($AIOutput) {
-            Write-Line "--- TEST RESULT$Label ---"
-            Write-Line "status: FAILED"
-            Write-Line "error: test did not produce results ($ResultFileName missing)"
-            Write-Line "--- END TEST RESULT ---"
-        } else {
-            Write-Host "ERROR:$Label test did not produce results ($ResultFileName missing)" -ForegroundColor Red
-        }
+        Write-Host "ERROR:$Label test did not produce results ($ResultFileName missing)" -ForegroundColor Red
         return 1
     }
 
@@ -363,7 +356,7 @@ switch ($Command.ToLower()) {
     }
     default {
         Write-Host "Unknown command: $Command"
-        Write-Host "Usage: .\test.ps1 [run|gen-refs|report|rr] [testNum] [-v] [-aioutput]"
+        Write-Host "Usage: .\test.ps1 [run|gen-refs|report|rr] [testNum] [-v] [-p]"
         $exitCode = 1
     }
 }
