@@ -3107,7 +3107,7 @@ class MacroManimParser {
 				scopeVars = [];
 				createNode(PROGRAMMABLE(isTileGroup, parsed.defs, parsed.order), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 
-			case TIdentifier(s) if (isKeyword(s, "layouts") || isKeyword(s, "relativelayouts")):
+			case TIdentifier(s) if (isKeyword(s, "layouts")):
 				advance();
 				expect(TCurlyOpen);
 				final layoutsDef = parseLayouts();
@@ -3126,7 +3126,7 @@ class MacroManimParser {
 				final n = createNode(PARTICLES(p), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 				return n;
 
-			case TIdentifier(s) if (isKeyword(s, "staticRef") || isKeyword(s, "reference")):
+			case TIdentifier(s) if (isKeyword(s, "staticRef")):
 				advance();
 				expect(TOpen);
 				var extRef:Null<String> = null;
@@ -3147,7 +3147,7 @@ class MacroManimParser {
 				expect(TClosed);
 				createNode(STATIC_REF(extRef, progRef, params), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 
-			case TIdentifier(s) if (isKeyword(s, "dynamicRef") || isKeyword(s, "component")):
+			case TIdentifier(s) if (isKeyword(s, "dynamicRef")):
 				advance();
 				expect(TOpen);
 				var extRef:Null<String> = null;
