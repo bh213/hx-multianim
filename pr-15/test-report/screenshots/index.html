@@ -327,15 +327,15 @@
 </head>
 <body>
     <h1>Visual Test Report</h1>
-    <div class="timestamp">Generated: 2026-02-26 19:10:33</div>
+    <div class="timestamp">Generated: 2026-02-26 19:44:43</div>
     <div class="summary">
         <strong>Summary:</strong> 89 tests,         <span style="color: #4CAF50;">89 passed</span>,         <span style="color: #f44336;">0 failed</span>
-        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 0.6s, visual 19.5s)</span>
+        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 0.6s, visual 20.2s)</span>
     </div>
     <div class="unit-tests-section">
         <h2>Unit Tests</h2>
         <div class="unit-tests-summary all-passed">
-            <strong>1647 assertions:</strong>             <span style="color: #4CAF50;">1647 passed</span>
+            <strong>1740 assertions:</strong>             <span style="color: #4CAF50;">1740 passed</span>
             <button class="expand-btn" id="unitToggleBtn" onclick="toggleUnitDetails()">Show Details</button>
         </div>
         <div class="unit-details" id="unitDetails">
@@ -1123,6 +1123,57 @@
                 <div class="unit-method pass">testTextInputInitialText: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testTextInputOnChangeCallback: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testTextInputSetGetText: OK <span class="dots">..</span></div>
+            </div>
+            <div class="unit-class">
+                <div class="unit-class-name">UIPanelHelperTest</div>
+                <div class="unit-method pass">testAllPositions: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testCheckPendingCloseWhenNoPanelOpen: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testCheckPendingCloseWhenNoPending: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testClickOnPanelInteractiveCancelsPendingClose: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testClickOnTriggerInteractiveCancelsPendingClose: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testClickOnUnrelatedInteractiveClosesImmediately: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testCloseAllNamed: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testCloseAllNamedDoesNotAffectSingle: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testCloseAllNamedEmitsEvents: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testCloseAllNamedWhenNoneOpen: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testCloseDoesNotEmitWhenNothingOpen: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testCloseEmitsPanelCloseEvent: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testCloseNamedPanel: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testCloseNamedPanelEmitsEvent: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testCloseNonexistentNamedSlot: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testClosePanel: OK <span class="dots">.....</span></div>
+                <div class="unit-method pass">testCloseWhenNothingOpen: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testDefaultCloseModeIsOutsideClick: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testGetNamedPanelResultWhenNotOpen: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testHandleOutsideClickWhenNoPanelOpen: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testInitialState: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testIsOwnInteractiveMatchesBothSingleAndNamed: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testIsOwnInteractiveMatchesNamedPanelPrefix: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testIsOwnInteractiveMatchesPrefix: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testIsOwnInteractiveNoPanel: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testIsOwnInteractiveRejectsUnrelated: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testManualCloseModeIgnoresOutsideClick: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testManualCloseModeRequiresExplicitClose: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testMultipleNamedPanelsIndependent: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testNamedPanelClickOnOwnInteractiveCancelsPending: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testNamedPanelDoesNotAffectSinglePanelApi: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testNamedPanelManualCloseIgnoresOutsideClick: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testNamedPanelOutsideClickClose: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testOpenForUnregisteredInteractive: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testOpenNamedForUnregisteredInteractive: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testOpenNamedPanel: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testOpenNamedReplacesExistingInSameSlot: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testOpenNamedWithParams: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testOpenPanel: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testOpenReplacementEmitsCloseForPrevious: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testOpenReplacesExistingPanel: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testOpenSameInteractiveTwice: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testOpenWithParams: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testOutsideClickDeferredClose: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testPerOpenCloseModeOverride: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testSetOffsetOverride: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testSetPositionOverride: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testSingleAndNamedPanelsCoexist: OK <span class="dots">....</span></div>
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">UITooltipHelperTest</div>
