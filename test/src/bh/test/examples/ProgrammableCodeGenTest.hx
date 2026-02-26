@@ -3973,4 +3973,11 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		VisualTestBase.pendingVisualTests--;
 		async.done();
 	}
+
+	// ==================== Named range: visual ====================
+
+	@Test
+	public function test91_NamedRange(async:utest.Async):Void {
+		simpleMacroTest(91, "namedRange", () -> createMp().namedRange.create(), async, null, null, null, 0.999);
+	}
 }

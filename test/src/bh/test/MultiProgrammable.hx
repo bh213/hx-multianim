@@ -227,26 +227,14 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 	@:manim("test/examples/74-dynamicRefScope/dynamicRefScope.manim", "dynamicRefScope")
 	public var dynamicRefScope;
 
+	@:manim("test/examples/76-comboUnconditional/comboUnconditional.manim", "comboUnconditional")
+	public var comboUnconditional;
+
+	@:manim("test/examples/63-finalVarDemo/finalVarDemo.manim", "finalVarDemo")
+	public var finalVarDemo;
+
 	@:manim("test/examples/69-manimImport/manimImport.manim", "manimImport")
 	public var manimImport;
-
-	@:manim("test/examples/75-progressBarDemo/progressBarDemo.manim", "progressBar")
-	public var progressBar;
-
-	@:manim("test/examples/75-progressBarDemo/progressBarDemo.manim", "progressBarBelow")
-	public var progressBarBelow;
-
-	@:manim("test/examples/75-progressBarDemo/progressBarDemo.manim", "progressBarInside")
-	public var progressBarInside;
-
-	@:manim("test/examples/75-progressBarDemo/progressBarDemo.manim", "progressBarLayout")
-	public var progressBarLayout;
-
-	@:manim("test/examples/78-characterSheetDemo/characterSheetDemo.manim", "characterSheetDemo")
-	public var characterSheetDemo;
-
-	@:manim("test/examples/79-tileParamDemo/tileParamDemo.manim", "tileParamDemo")
-	public var tileParamDemo;
 
 	@:manim("test/examples/80-codegenColorDiv/codegenColorDiv.manim", "codegenColorDiv")
 	public var colorDiv;
@@ -266,12 +254,6 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 	@:manim("test/examples/85-fontHeight/fontHeight.manim", "fontHeight")
 	public var fontHeight;
 
-	@:manim("test/examples/63-finalVarDemo/finalVarDemo.manim", "finalVarDemo")
-	public var finalVarDemo;
-
-	@:manim("test/examples/76-comboUnconditional/comboUnconditional.manim", "comboUnconditional")
-	public var comboUnconditional;
-
 	@:manim("test/examples/86-layoutAlign/layoutAlign.manim", "layoutAlign")
 	public var layoutAlign;
 
@@ -283,4 +265,16 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/90-rotateDemo/rotateDemo.manim", "rotateDemo")
 	public var rotateDemo;
+
+	@:manim("test/examples/75-progressBarDemo/progressBarDemo.manim", "progressBarLayout")
+	public var progressBarLayout;
+
+	@:manim("test/examples/78-characterSheetDemo/characterSheetDemo.manim", "characterSheetDemo")
+	public var characterSheetDemo;
+
+	@:manim("test/examples/79-tileParamDemo/tileParamDemo.manim", "tileParamDemo")
+	public var tileParamDemo;
+
+	@:manim("test/examples/91-namedRange/namedRange.manim", "namedRange")
+	public var namedRange;
 }

@@ -3528,16 +3528,44 @@ class MacroManimParser {
 			case TIdentifier(s) if (isKeyword(s, "range")):
 				advance();
 				expect(TOpen);
-				final start = parseIntegerOrReference();
-				expect(TComma);
-				final end = parseIntegerOrReference();
-				if (match(TComma)) {
-					final step = parseIntegerOrReference();
-					expect(TClosed);
-					return RangeIterator(start, end, step);
+				switch (peek()) {
+					case TIdentifier(fromId) if (isKeyword(fromId, "from")):
+						// Named syntax: range(from: X, to: Y) or range(from: X, until: Y [, step: S])
+						advance();
+						expect(TColon);
+						final start = parseIntegerOrReference();
+						expect(TComma);
+						final endKeyword = expectIdentifierOrString();
+						expect(TColon);
+						final endVal = parseIntegerOrReference();
+						final adjustedEnd = switch (endKeyword.toLowerCase()) {
+							case "to": EBinop(OpAdd, endVal, RVInteger(1));
+							case "until": endVal;
+							default: error('expected "to" or "until", got "$endKeyword"'); endVal;
+						};
+						if (match(TComma)) {
+							final stepKeyword = expectIdentifierOrString();
+							if (!isKeyword(stepKeyword, "step")) error('expected "step", got "$stepKeyword"');
+							expect(TColon);
+							final step = parseIntegerOrReference();
+							expect(TClosed);
+							return RangeIterator(start, adjustedEnd, step);
+						}
+						expect(TClosed);
+						return RangeIterator(start, adjustedEnd, RVInteger(1));
+					default:
+						// Positional syntax: range(start, end [, step])
+						final start = parseIntegerOrReference();
+						expect(TComma);
+						final end = parseIntegerOrReference();
+						if (match(TComma)) {
+							final step = parseIntegerOrReference();
+							expect(TClosed);
+							return RangeIterator(start, end, step);
+						}
+						expect(TClosed);
+						return RangeIterator(start, end, RVInteger(1));
 				}
-				expect(TClosed);
-				return RangeIterator(start, end, RVInteger(1));
 			case TIdentifier(s) if (isKeyword(s, "stateanim")):
 				advance();
 				expect(TOpen);

@@ -275,8 +275,18 @@ repeatable($varname, array(arrayName))
 
 **Range iterator:**
 ```
+// Positional (exclusive end):
 repeatable($varname, range(start, end[, step]))
+
+// Named parameters — inclusive end (to:) or exclusive end (until:):
+repeatable($varname, range(from: start, to: end[, step: s]))
+repeatable($varname, range(from: start, until: end[, step: s]))
 ```
+
+- `from:` — start value (required for named syntax)
+- `to:` — inclusive end (`to: 5` includes 5)
+- `until:` — exclusive end (`until: 5` excludes 5, same as positional)
+- `step:` — step increment (optional, defaults to 1)
 
 **Stateanim iterator:**
 Iterates over all frames of an animation from a `.anim` file. Exposes `$bitmap` (the tile source) and `$index`.
@@ -308,6 +318,16 @@ Note: `stateanim` and `tiles` iterators are not supported in `repeatable2d`.
 ```
 repeatable($i, range(0, 3)) {
   text(pikzel, 'Index: $i', #fff, left, 100): $i*20, 0
+}
+
+repeatable($i, range(from: 0, to: 5)) {
+  // inclusive: 0,1,2,3,4,5
+  text(pikzel, $i, #fff, left, 20): $i*25, 0
+}
+
+repeatable($i, range(from: 1, to: 10, step: 2)) {
+  // inclusive with step: 1,3,5,7,9
+  text(pikzel, $i, #fff, left, 20): $i*25, 0
 }
 
 repeatable($i, step(10, dx:10)) {
