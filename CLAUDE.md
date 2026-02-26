@@ -104,7 +104,7 @@ animation {
 | Element | Description |
 |---------|-------------|
 | `bitmap(source, [center])` | Display image |
-| `text(font, text, color, [align, maxWidth])` | Text element |
+| `text(font, text, color, [align, maxWidth, options])` | Text element (supports `styles:`, `images:`, `condenseWhite:`, `${markup}`) |
 | `ninepatch(sheet, tile, w, h)` | 9-patch scalable |
 | `placeholder(size, source)` | Dynamic placeholder |
 | `staticRef($ref)` | Static embed of another programmable |
@@ -335,7 +335,7 @@ Enable debug traces by adding to HXML:
 
 ### Fixes Needed
 - Repeatable step scale for dx/dy
-- HTML text: standalone `HTMLTEXT` element type is deprecated/commented out (the `text(..., html: true)` parameter approach works)
+- HTML text: standalone `HTMLTEXT` element type is deprecated/commented out. Rich text uses `${tag}...${/}` markup with `styles:` definitions (see `.manim Language Quick Reference` below)
 - Double reload issue
 
 

@@ -4021,4 +4021,11 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 			Assert.equals("9", orangeTexts[3].text);
 		}
 	}
+
+	// ==================== Rich text: visual ====================
+
+	@Test
+	public function test92_RichText(async:utest.Async):Void {
+		simpleMacroTest(92, "richText", () -> createMp().richText.create(), async);
+	}
 }

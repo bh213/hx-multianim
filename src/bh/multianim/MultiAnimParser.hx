@@ -942,19 +942,38 @@ enum StateAnimConstruct {
 }
 
 @:nullSafety
+typedef TextStyleDef = {
+	var name:String;
+	var color:Null<Int>; // 0xAARRGGBB format, null if not specified
+	var fontName:Null<String>; // null if not specified
+}
+
+@:nullSafety
+typedef TextImageDef = {
+	var name:String;
+	var tileSource:TileSource;
+	var valign:Null<String>; // "top", "middle", "bottom" or null
+	var spacing:Null<Float>; // pixels after image, or null
+}
+
+@:nullSafety
 typedef TextDef = {
 	var fontName:ReferenceableValue;
 	var text:ReferenceableValue;
 	var color:ReferenceableValue;
 	var halign:Null<HorizontalAlign>;
-	var textAlignWidth: TextAlignWidth;
+	var textAlignWidth:TextAlignWidth;
 	var letterSpacing:Float;
 	var lineSpacing:Float;
 	var lineBreak:Bool;
 	var dropShadowXY:Null<bh.base.FPoint>;
 	var dropShadowColor:Int;
 	var dropShadowAlpha:Float;
-	var isHtml:Bool;
+	// Rich text (replaces isHtml)
+	var styles:Null<Array<TextStyleDef>>;
+	var images:Null<Array<TextImageDef>>;
+	var condenseWhite:Null<Bool>;
+	var hasMarkup:Bool; // auto-detected from text literal
 }
 
 // ========== Data block types ==========

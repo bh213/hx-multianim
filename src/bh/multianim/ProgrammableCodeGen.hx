@@ -4292,12 +4292,61 @@ class ProgrammableCodeGen {
 		final exprUpdates:Array<{fieldName:String, updateExpr:Expr, paramRefs:Array<String>}> = [];
 
 		final fontExpr = rvToExpr(textDef.fontName);
-		if (textDef.isHtml) {
+		final needsHtml = textDef.styles != null || textDef.images != null || textDef.hasMarkup || textDef.condenseWhite != null;
+
+		if (needsHtml) {
 			createExprs.push(macro {
 				final font = this._pb.loadFont($fontExpr);
 				final t = new h2d.HtmlText(font);
 				t.loadFont = (name) -> this._pb.loadFont(name);
 				$fieldRef = t;
+			});
+
+			// Layer 1: Named styles — defineHtmlTag for each style
+			if (textDef.styles != null) {
+				for (style in textDef.styles) {
+					final nameExpr = macro $v{style.name};
+					final colorExpr2:Expr = if (style.color != null) { final c:Int = style.color & 0xFFFFFF; macro $v{c}; } else macro null;
+					final fontExpr2:Expr = if (style.fontName != null) macro $v{style.fontName} else macro null;
+					createExprs.push(macro {
+						final ht:h2d.HtmlText = cast $fieldRef;
+						ht.defineHtmlTag($nameExpr, $colorExpr2, $fontExpr2);
+					});
+				}
+			}
+
+			// Layer 2: Inline images — loadImage callback
+			if (textDef.images != null) {
+				final mapExprs:Array<Expr> = [];
+				for (img in textDef.images) {
+					final imgNameExpr = macro $v{img.name};
+					final tileExpr = tileSourceToExpr(img.tileSource);
+					mapExprs.push(macro _imgMap.set($imgNameExpr, $tileExpr));
+				}
+				final mapBlock:Expr = {expr: EBlock(mapExprs), pos: pos};
+				createExprs.push(macro {
+					final _imgMap = new haxe.ds.StringMap<h2d.Tile>();
+					$mapBlock;
+					final ht:h2d.HtmlText = cast $fieldRef;
+					ht.loadImage = (url) -> _imgMap.get(url);
+				});
+			}
+
+			// Layer 3: condenseWhite
+			if (textDef.condenseWhite != null) {
+				final cwExpr = macro $v{textDef.condenseWhite};
+				createExprs.push(macro {
+					final ht:h2d.HtmlText = cast $fieldRef;
+					ht.condenseWhite = $cwExpr;
+				});
+			}
+
+			// Layer 4: Hyperlinks — onHyperlink fires builder callback("link:id")
+			createExprs.push(macro {
+				final ht:h2d.HtmlText = cast $fieldRef;
+				ht.onHyperlink = (url) -> {
+					this._pb.resolveCallback("link:" + url, "");
+				};
 			});
 		} else {
 			createExprs.push(macro $fieldRef = new h2d.Text(this._pb.loadFont($fontExpr)));
@@ -4349,15 +4398,35 @@ class ProgrammableCodeGen {
 		createExprs.push(macro $fieldRef.textColor = $colorExpr);
 
 		final textExpr = rvToExpr(textDef.text, true);
-		// Wrap with Std.string() to handle non-string params (e.g. uint used as text)
-		final textAssign = isStringRV(textDef.text) ? macro $fieldRef.text = $textExpr : macro $fieldRef.text = Std.string($textExpr);
+		final rawTextExpr = isStringRV(textDef.text) ? textExpr : macro Std.string($textExpr);
+
+		// Text assignment — with markup conversion if rich text
+		final textAssign = if (needsHtml) {
+			// For static text, pre-convert at macro time
+			switch (textDef.text) {
+				case RVString(s):
+					final converted = TextMarkupConverter.convert(s);
+					macro $fieldRef.text = $v{converted};
+				default:
+					// Runtime conversion for dynamic text
+					macro $fieldRef.text = bh.multianim.TextMarkupConverter.convert($rawTextExpr);
+			}
+		} else {
+			isStringRV(textDef.text) ? macro $fieldRef.text = $textExpr : macro $fieldRef.text = Std.string($textExpr);
+		}
 		createExprs.push(textAssign);
 
 		final textParamRefs = collectParamRefs(textDef.text);
 		if (textParamRefs.length > 0) {
+			// For incremental updates, always use runtime conversion for rich text
+			final updateExpr = if (needsHtml) {
+				macro $fieldRef.text = bh.multianim.TextMarkupConverter.convert($rawTextExpr);
+			} else {
+				textAssign;
+			}
 			exprUpdates.push({
 				fieldName: fieldName,
-				updateExpr: textAssign,
+				updateExpr: updateExpr,
 				paramRefs: textParamRefs,
 			});
 		}

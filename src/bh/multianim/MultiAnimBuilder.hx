@@ -2186,8 +2186,10 @@ class MultiAnimBuilder {
 					final t = switch builtObject { case HeapsText(t): t; default: null; };
 					if (t != null) {
 						final textDefCapture = textDef;
+						final needsConversion = textDefCapture.styles != null || textDefCapture.images != null || textDefCapture.hasMarkup || textDefCapture.condenseWhite != null;
 						ctx.trackExpression(() -> {
-							t.text = resolveAsString(textDefCapture.text);
+							final rawText = resolveAsString(textDefCapture.text);
+							t.text = if (needsConversion) TextMarkupConverter.convert(rawText) else rawText;
 							t.textColor = resolveAsColorInteger(textDefCapture.color);
 						}, textRefs);
 					}
@@ -3098,10 +3100,40 @@ class MultiAnimBuilder {
 				HeapsBitmap(b);
 			case TEXT(textDef):
 				final font = resourceLoader.loadFont(resolveAsString(textDef.fontName));
-				var t = if (textDef.isHtml) {
+				final needsHtml = textDef.styles != null || textDef.images != null || textDef.hasMarkup || textDef.condenseWhite != null;
+				var t = if (needsHtml) {
 					createHtmlText(font);
 				} else {
 					new h2d.Text(font);
+				}
+
+				if (needsHtml) {
+					final ht:HtmlText = cast t;
+					// Layer 1: Named styles
+					if (textDef.styles != null) {
+						for (style in textDef.styles) {
+							final color:Null<Int> = if (style.color != null) style.color & 0xFFFFFF else null;
+							ht.defineHtmlTag(style.name, color, style.fontName);
+						}
+					}
+					// Layer 2: Inline images
+					if (textDef.images != null) {
+						final imageMap = new haxe.ds.StringMap<h2d.Tile>();
+						for (img in textDef.images) {
+							imageMap.set(img.name, loadTileSource(img.tileSource));
+						}
+						ht.loadImage = (url) -> imageMap.get(url);
+					}
+					// Layer 3: condenseWhite
+					if (textDef.condenseWhite != null) {
+						ht.condenseWhite = textDef.condenseWhite;
+					}
+					// Layer 4: Hyperlinks — fire callback("link:id") where id is the href
+					ht.onHyperlink = (url) -> {
+						if (builderParams != null && builderParams.callback != null) {
+							try builderParams.callback(Name("link:" + url)) catch(_:Dynamic) {};
+						}
+					};
 				}
 
 				t.textAlign = switch textDef.halign {
@@ -3123,7 +3155,7 @@ class MultiAnimBuilder {
 						case TAWAuto:
 							t.maxWidth = null;
 					}
-				} 
+				}
 				t.letterSpacing = textDef.letterSpacing;
 				t.lineSpacing = textDef.lineSpacing;
 				t.lineBreak = textDef.lineBreak;
@@ -3137,7 +3169,8 @@ class MultiAnimBuilder {
 				}
 
 				t.textColor = resolveAsColorInteger(textDef.color);
-				t.text = resolveAsString(textDef.text);
+				final rawText = resolveAsString(textDef.text);
+				t.text = if (needsHtml) TextMarkupConverter.convert(rawText) else rawText;
 
 				HeapsText(t);
 			// case HTMLTEXT(fontname, textRef, color, align, textAlignWidth):

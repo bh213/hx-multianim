@@ -277,4 +277,7 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/91-namedRange/namedRange.manim", "namedRange")
 	public var namedRange;
+
+	@:manim("test/examples/92-richText/richText.manim", "richText")
+	public var richText;
 }
