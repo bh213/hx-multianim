@@ -327,15 +327,15 @@
 </head>
 <body>
     <h1>Visual Test Report</h1>
-    <div class="timestamp">Generated: 2026-02-26 16:20:06</div>
+    <div class="timestamp">Generated: 2026-02-26 18:45:19</div>
     <div class="summary">
         <strong>Summary:</strong> 89 tests,         <span style="color: #4CAF50;">89 passed</span>,         <span style="color: #f44336;">0 failed</span>
-        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 0.6s, visual 19.9s)</span>
+        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 0.6s, visual 20.2s)</span>
     </div>
     <div class="unit-tests-section">
         <h2>Unit Tests</h2>
         <div class="unit-tests-summary all-passed">
-            <strong>1502 assertions:</strong>             <span style="color: #4CAF50;">1502 passed</span>
+            <strong>1588 assertions:</strong>             <span style="color: #4CAF50;">1588 passed</span>
             <button class="expand-btn" id="unitToggleBtn" onclick="toggleUnitDetails()">Show Details</button>
         </div>
         <div class="unit-details" id="unitDetails">
@@ -410,6 +410,26 @@
                 <div class="unit-method pass">testDataRecord: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testDataScalars: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testDataSingleRecord: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testErrorBeginUpdateWithoutIncrementalMode: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testErrorEndUpdateWithoutIncrementalMode: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testErrorFinalShadowsParam: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testErrorGetDynamicRefNotFound: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testErrorGetUpdatableNotFound: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testErrorMissingProgrammable: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testErrorMissingProgrammableEmptySource: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testErrorNoDynamicRefsInResult: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testErrorNoSlotsInResult: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testErrorSetParameterWithoutIncrementalMode: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testErrorSlotIndexOutOfBounds: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testErrorSlotIndexedAccessedWithoutIndex: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testErrorSlotNonIndexedAccessedWithIndex: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testErrorSlotNotFoundInResult: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testErrorSpacerOutsideFlow: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testErrorUndefinedReference: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testErrorUndefinedReferenceInExpression: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testErrorUnknownParamListsAvailable: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testErrorWrongParamTypeBoolGetsGarbage: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testErrorWrongParamTypeUintGetsString: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testExprAddSubtract: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testExprCombined: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testExprDiv: OK <span class="dots">..</span></div>
@@ -592,6 +612,8 @@
                 <div class="unit-method pass">testDropShadowAngleUnit: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testDuplicateEnumValue: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testDuplicateParameterName: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testDuplicateRootNodeName: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testDuplicateSettingKey: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testElseAfterElse: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testElseAfterUnconditionalSibling: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testElseBeforeNameParseSuccess: OK <span class="dots">.</span></div>
@@ -600,10 +622,13 @@
                 <div class="unit-method pass">testEmitBoxCenter: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testEmitNamedParams: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testEmptyProgrammable: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testEnumDefaultNotInValues: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testFinalBasicInteger: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testFinalChaining: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testFinalForwardReference: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testFinalInsideFlow: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testFinalInsideRepeatable: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testFinalSelfReference: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testFinalVarIsValid: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testFinalVarNotValidBeforeDeclaration: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testFinalWithArray: OK <span class="dots">.</span></div>
@@ -611,6 +636,7 @@
                 <div class="unit-method pass">testFinalWithString: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testFinalWithTernary: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testFlowUnexpectedTokenError: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testGarbageInNumericPosition: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testGraphicsArcAngleUnits: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testGridPosParseSuccess: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testGridPosWithOffsetParseSuccess: OK <span class="dots">.</span></div>
@@ -625,6 +651,7 @@
                 <div class="unit-method pass">testHexOffsetParseSuccess: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testHexPixelParseSuccess: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testHexWidthHeightParseSuccess: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testIncompleteArithmeticExpression: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testIndexedNameInsideRepeatableIsValid: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testInterpolationAdjacentToText: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testInterpolationArithmeticAdd: OK <span class="dots">.</span></div>
@@ -658,6 +685,10 @@
                 <div class="unit-method pass">testInterpolationWithPrefixAndSuffix: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testInterpolationWithSuffix: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testInterpolationWithSuffixText: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testInvalidBoolDefault: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testInvalidColorDigitCount: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testInvalidColorFormat: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testInvalidFloatDefault: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testIteratorOutputVarIsValid: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testLayoutAlignCenter: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testLayoutAlignCenterAfterOther: OK <span class="dots">..</span></div>
@@ -673,6 +704,7 @@
                 <div class="unit-method pass">testLayoutAlignRightBottom: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testLoopVarIsValid: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testLoopVarNotValidOutsideScope: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testMalformedTernaryMissingColon: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testMissingElementName: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testMissingVersionDeclaration: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testMixedNamedSystemsParseSuccess: OK <span class="dots">.</span></div>
@@ -741,12 +773,19 @@
                 <div class="unit-method pass">testTileParameterCannotHaveDefault: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testTileParameterTypeParsesSuccessfully: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testTileParameterWithBitmapRef: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testUnaryMinusWithoutValue: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testUnaryMinusWithoutValueInFloat: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testUnclosedBrace: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testUndefinedRefInExpression: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testUndefinedRefInFinalExpression: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testUndefinedVarInAlpha: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testUndefinedVarInInterpolation: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testUndefinedVarInPosition: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testUndefinedVarInText: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testUndefinedVarShowsAvailable: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testUnknownFilterType: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testUnknownGeneratedTileType: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testUnknownParameterType: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testValidDefaultAfterConditionals: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testValidElseAfterConditional: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testValidElseIfChain: OK <span class="dots">.</span></div>
