@@ -2,6 +2,11 @@ package bh.test;
 
 import bh.ui.UIElement;
 import bh.ui.UIElement.UIElementEvents;
+import bh.ui.UIElement.UIElementFloatValue;
+import bh.ui.UIElement.UIElementNumberValue;
+import bh.ui.UIElement.UIElementListValue;
+import bh.ui.UIElement.UIElementListItem;
+import bh.ui.UIElement.UIElementSelectable;
 import bh.ui.screens.UIScreen;
 import h2d.col.Point;
 import bh.multianim.MultiAnimParser.ResolvedSettings;
@@ -120,6 +125,11 @@ class UITestScreen extends UIScreenBase {
 		return recordedEvents.length;
 	}
 
+	/** Expose autoSyncInitialState for testing. */
+	public function testSetAutoSyncInitialState(value:Bool):Void {
+		autoSyncInitialState = value;
+	}
+
 	/** Expose addElement for testing. */
 	public function testAddElement(element:UIElement, ?layer:LayersEnum):UIElement {
 		return addElement(element, layer);
@@ -156,6 +166,88 @@ class UITestScreen extends UIScreenBase {
 			elementName:String):{main:Null<Map<String, Dynamic>>, prefixed:Map<String, Map<String, Dynamic>>} {
 		return splitSettings(settings, controlSettings, behavioralSettings, registeredPrefixes, multiForwardSettings, elementName);
 	}
+}
+
+/**
+ * Mock UIElement that implements UIElementNumberValue for testing syncInitialState.
+ */
+class MockNumberElement implements UIElement implements UIElementNumberValue {
+	var obj:h2d.Object;
+	var value:Int;
+
+	public function new(initialValue:Int) {
+		obj = new h2d.Object();
+		value = initialValue;
+	}
+
+	public function getObject():h2d.Object return obj;
+	public function containsPoint(pos:Point):Bool return false;
+	public function clear():Void {}
+	public function setIntValue(v:Int):Void { value = v; }
+	public function getIntValue():Int return value;
+}
+
+/**
+ * Mock UIElement that implements UIElementFloatValue and UIElementNumberValue for testing syncInitialState.
+ */
+class MockFloatElement implements UIElement implements UIElementFloatValue implements UIElementNumberValue {
+	var obj:h2d.Object;
+	var floatVal:Float;
+	var intVal:Int;
+
+	public function new(initialFloat:Float, initialInt:Int) {
+		obj = new h2d.Object();
+		floatVal = initialFloat;
+		intVal = initialInt;
+	}
+
+	public function getObject():h2d.Object return obj;
+	public function containsPoint(pos:Point):Bool return false;
+	public function clear():Void {}
+	public function setFloatValue(v:Float):Void { floatVal = v; }
+	public function getFloatValue():Float return floatVal;
+	public function setIntValue(v:Int):Void { intVal = v; }
+	public function getIntValue():Int return intVal;
+}
+
+/**
+ * Mock UIElement that implements UIElementListValue for testing syncInitialState.
+ */
+class MockListElement implements UIElement implements UIElementListValue {
+	var obj:h2d.Object;
+	var selectedIndex:Int;
+	var items:Array<UIElementListItem>;
+
+	public function new(index:Int, items:Array<UIElementListItem>) {
+		obj = new h2d.Object();
+		this.selectedIndex = index;
+		this.items = items;
+	}
+
+	public function getObject():h2d.Object return obj;
+	public function containsPoint(pos:Point):Bool return false;
+	public function clear():Void {}
+	public function setSelectedIndex(idx:Int):Void { selectedIndex = idx; }
+	public function getSelectedIndex():Int return selectedIndex;
+	public function getList():Array<UIElementListItem> return items;
+}
+
+/**
+ * Mock UIElement that implements UIElementSelectable for testing syncInitialState.
+ */
+class MockSelectableElement implements UIElement implements UIElementSelectable {
+	var obj:h2d.Object;
+	public var selected(default, set):Bool;
+
+	public function new(initialSelected:Bool) {
+		obj = new h2d.Object();
+		selected = initialSelected;
+	}
+
+	function set_selected(v:Bool):Bool return selected = v;
+	public function getObject():h2d.Object return obj;
+	public function containsPoint(pos:Point):Bool return false;
+	public function clear():Void {}
 }
 
 /**

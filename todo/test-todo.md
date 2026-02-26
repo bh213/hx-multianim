@@ -9,7 +9,6 @@
 | 13 | Hex offset/doubled coordinates | $hex.offset and $hex.doubled not specifically tested | Low |
 | 14 | Animated path events | pathStart/End, cycleStart/End not asserted programmatically | Low |
 | 15 | Particle runtime API | addForceField, removeForceFieldAt, sub-emitters untested | Low |
-| 16 | `autoSyncInitialState` | No test verifying initial sync behavior | Low |
 | 17 | Test numbering audit | Tests 62, 77 are unit-only in visual test dirs, consider moving | Low |
 
 ## Visual Tests Fixes
@@ -60,5 +59,3 @@ Documented in CLAUDE.md but not tested. Add a `UIComponentTest` case verifying `
 ### Particle Runtime API — LOW
 `addForceField`, `removeForceFieldAt`, `clearForceFields`, sub-emitters — no unit tests. Only visual particle test (51) with seeded comparison.
 
-### `autoSyncInitialState` — LOW
-Referenced in commit history but no test verifying the behavior.
