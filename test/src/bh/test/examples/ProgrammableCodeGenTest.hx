@@ -1193,7 +1193,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	public function test32_NamedFilterParams(async:utest.Async):Void {
 		setupTest(32, "namedFilterParams");
 		builderAndMacroScreenshotAndCompare("test/examples/32-namedFilterParams/namedFilterParams.manim", "namedFilterParams",
-			() -> createMp().namedFilterParams.create(), async);
+			() -> createMp().namedFilterParams.create(), async, 1280, 720, 1.0, 0.999);
 	}
 
 	// ==================== InlineAtlas2Demo: macro comparison ====================
@@ -3905,7 +3905,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	@Test
 	public function test88_ColorVerification(async:utest.Async):Void {
-		simpleMacroTest(88, "colorVerification", () -> createMp().colorVerification.create(), async);
+		simpleMacroTest(88, "colorVerification", () -> createMp().colorVerification.create(), async, null, null, null, 0.999);
 	}
 
 	// ==================== RotateDemo: macro comparison ====================
