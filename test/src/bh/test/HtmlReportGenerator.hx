@@ -949,6 +949,29 @@ class HtmlReportGenerator {
 		return '${percent}%';
 	}
 
+	/** Bulk-add pre-computed results from ImageProcessingPool. Call after pool.shutdownAndWait(). */
+	public static function addCompletedResults(items:Array<ImageProcessingPool.CompletedResult>):Void {
+		for (item in items) {
+			results.push({
+				testName: item.testName,
+				referencePath: item.referencePath,
+				actualPath: item.actualPath,
+				passed: item.passed,
+				similarity: item.similarity,
+				errorMessage: item.errorMessage,
+				manimPath: item.manimPath,
+				manimContent: item.manimContent,
+				macroPath: item.macroPath,
+				macroSimilarity: item.macroSimilarity,
+				macroPassed: item.macroPassed,
+				threshold: item.threshold,
+				macroThreshold: item.macroThreshold,
+				builderVsMacroSimilarity: item.builderVsMacroSimilarity,
+				orderIndex: item.orderIndex,
+			});
+		}
+	}
+
 	public static function clear():Void {
 		results = [];
 		unitAggregator = null;
@@ -963,25 +986,23 @@ class HtmlReportGenerator {
 	public static function generateDiffImage(path1:String, path2:String, outputPath:String):Bool {
 		if (!FileSystem.exists(path1) || !FileSystem.exists(path2)) return false;
 		try {
-			var bytes1 = File.getBytes(path1);
-			var bytes2 = File.getBytes(path2);
-			var p1 = hxd.res.Any.fromBytes(path1, bytes1).toImage().getPixels();
-			var p2 = hxd.res.Any.fromBytes(path2, bytes2).toImage().getPixels();
-			if (p1.width != p2.width || p1.height != p2.height) return false;
-			// Direct bytes access for diff generation
-			p1.convert(BGRA);
-			p2.convert(BGRA);
-			var b1 = p1.bytes;
-			var b2 = p2.bytes;
-			var o1 = p1.offset;
-			var o2 = p2.offset;
-			var total = p1.width * p1.height;
+			var d1 = decodePngBytes(File.getBytes(path1));
+			var d2 = decodePngBytes(File.getBytes(path2));
+			if (d1.width != d2.width || d1.height != d2.height) return false;
+
+			var b1 = d1.bytes;
+			var b2 = d2.bytes;
+			var w = d1.width;
+			var h = d1.height;
+			var total = w * h;
+			var diffBytes = haxe.io.Bytes.alloc(total * 4);
+
 			for (i in 0...total) {
 				var p = i << 2;
-				var c1 = b1.getInt32(p + o1);
-				var c2 = b2.getInt32(p + o2);
+				var c1 = b1.getInt32(p);
+				var c2 = b2.getInt32(p);
 				if (c1 == c2) {
-					b1.setInt32(p + o1, 0xFF000000);
+					diffBytes.setInt32(p, 0xFF000000);
 				} else {
 					var dr = ((c1 >> 16) & 0xFF) - ((c2 >> 16) & 0xFF);
 					var dg = ((c1 >> 8) & 0xFF) - ((c2 >> 8) & 0xFF);
@@ -994,10 +1015,14 @@ class HtmlReportGenerator {
 					if (db > v) v = db;
 					v = v * 5;
 					if (v > 255) v = 255;
-					b1.setInt32(p + o1, 0xFF000000 | (v << 16) | (v << 8) | v);
+					diffBytes.setInt32(p, 0xFF000000 | (v << 16) | (v << 8) | v);
 				}
 			}
-			File.saveBytes(outputPath, p1.toPNG());
+
+			var pngData = format.png.Tools.build32BGRA(w, h, diffBytes);
+			var out = new haxe.io.BytesOutput();
+			new format.png.Writer(out).write(pngData);
+			File.saveBytes(outputPath, out.getBytes());
 			return true;
 		} catch (e:Dynamic) {
 			return false;
@@ -1010,24 +1035,18 @@ class HtmlReportGenerator {
 	public static function computeSimilarity(path1:String, path2:String):Float {
 		if (!FileSystem.exists(path1) || !FileSystem.exists(path2)) return 0.0;
 		try {
-			var bytes1 = File.getBytes(path1);
-			var bytes2 = File.getBytes(path2);
-			var p1 = hxd.res.Any.fromBytes(path1, bytes1).toImage().getPixels();
-			var p2 = hxd.res.Any.fromBytes(path2, bytes2).toImage().getPixels();
-			if (p1.width != p2.width || p1.height != p2.height) return 0.0;
-			// Direct bytes access for similarity computation
-			p1.convert(BGRA);
-			p2.convert(BGRA);
-			var b1 = p1.bytes;
-			var b2 = p2.bytes;
-			var o1 = p1.offset;
-			var o2 = p2.offset;
-			var totalPixels = p1.width * p1.height;
+			var d1 = decodePngBytes(File.getBytes(path1));
+			var d2 = decodePngBytes(File.getBytes(path2));
+			if (d1.width != d2.width || d1.height != d2.height) return 0.0;
+
+			var b1 = d1.bytes;
+			var b2 = d2.bytes;
+			var totalPixels = d1.width * d1.height;
 			var matchingPixels = 0;
 			for (i in 0...totalPixels) {
 				var p = i << 2;
-				var c1 = b1.getInt32(p + o1);
-				var c2 = b2.getInt32(p + o2);
+				var c1 = b1.getInt32(p);
+				var c2 = b2.getInt32(p);
 				if (c1 == c2) {
 					matchingPixels++;
 				} else {
@@ -1050,6 +1069,14 @@ class HtmlReportGenerator {
 		} catch (e:Dynamic) {
 			return 0.0;
 		}
+	}
+
+	private static function decodePngBytes(pngBytes:haxe.io.Bytes):{bytes:haxe.io.Bytes, width:Int, height:Int} {
+		var reader = new format.png.Reader(new haxe.io.BytesInput(pngBytes));
+		var data = reader.read();
+		var header = format.png.Tools.getHeader(data);
+		var pixels = format.png.Tools.extract32(data);
+		return {bytes: pixels, width: header.width, height: header.height};
 	}
 
 	private static function generateUnitTestSection(html:StringBuf):Void {

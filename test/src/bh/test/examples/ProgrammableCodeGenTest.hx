@@ -4,6 +4,7 @@ import utest.Assert;
 import h2d.Scene;
 import bh.test.VisualTestBase;
 import bh.test.HtmlReportGenerator;
+import bh.test.ImageProcessingPool;
 import bh.test.examples.AutotileTestHelper;
 import bh.multianim.MultiAnimBuilder.PlaceholderValues;
 import bh.multianim.MultiAnimParser.SettingValue;
@@ -653,50 +654,28 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 			advanceParticles(allBuilderParticles[idx], 1.5);
 		}
 
-		waitForUpdate(function(dt:Float) {
-			var builderPath = getActualImagePath();
-			var builderSuccess = screenshot(builderPath, sizeX, sizeY);
-			Assert.isTrue(builderSuccess, "Builder should produce non-empty screenshot");
+		var orderIdx = HtmlReportGenerator.reserveOrderIndex();
+		var builderRaw = captureScreenshotRaw(sizeX, sizeY);
 
-			// Phase 2: macro — create, advance particles, screenshot
-			clearScene();
-			var macroRoot = createMp().particles.create();
-			s2d.addChild(macroRoot);
-			if (testTitle != null && testTitle.length > 0) addTitleOverlay();
+		// Phase 2: macro — create, advance particles, screenshot
+		clearScene();
+		var macroRoot = createMp().particles.create();
+		s2d.addChild(macroRoot);
+		if (testTitle != null && testTitle.length > 0) addTitleOverlay();
 
-			var allMacroParticles = new Array<bh.base.Particles>();
-			findAllParticles(macroRoot, allMacroParticles);
-			for (idx in 0...allMacroParticles.length) {
-				allMacroParticles[idx].setRandomFunc(seededRandom(42));
-				advanceParticles(allMacroParticles[idx], 1.5);
-			}
+		var allMacroParticles = new Array<bh.base.Particles>();
+		findAllParticles(macroRoot, allMacroParticles);
+		for (idx in 0...allMacroParticles.length) {
+			allMacroParticles[idx].setRandomFunc(seededRandom(42));
+			advanceParticles(allMacroParticles[idx], 1.5);
+		}
 
-			waitForUpdate(function(dt2:Float) {
-				var macroPath = 'test/screenshots/codegenParticles_macro.png';
-				var macroSuccess = screenshot(macroPath, sizeX, sizeY);
-				Assert.isTrue(macroSuccess, "Macro should produce non-empty screenshot");
+		var macroRaw = captureScreenshotRaw(sizeX, sizeY);
+		Assert.pass();
+		enqueueBuilderAndMacro(builderRaw, macroRaw, 0.98, 0.80, orderIdx);
 
-				// Both should produce visible particles — compare loosely to reference
-				var referencePath = getReferenceImagePath();
-				var builderSim = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
-				var macroSim = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
-
-				var builderThreshold = 0.98;
-				var macroThreshold = 0.80;
-				var builderOk = builderSim >= builderThreshold;
-				var macroOk = macroSim >= macroThreshold;
-
-				HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath, builderOk && macroOk,
-					builderSim, null, macroPath, macroSim, macroOk, builderThreshold, macroThreshold);
-				HtmlReportGenerator.generateReport();
-
-				Assert.isTrue(builderOk, 'Builder should match reference (similarity: ${VisualTestBase.fmtSim(builderSim)})');
-				Assert.isTrue(macroOk, 'Macro should match reference (similarity: ${VisualTestBase.fmtSim(macroSim)})');
-
-				VisualTestBase.pendingVisualTests--;
-				async.done();
-			});
-		});
+		VisualTestBase.pendingVisualTests--;
+		async.done();
 	}
 
 	static function findParticles(obj:h2d.Object):Null<bh.base.Particles> {
@@ -1141,45 +1120,26 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		for (a in findAllAnimSM(builderResult.object))
 			a.externallyDriven = true;
 
-		waitForUpdate(function(dt:Float) {
-			var builderPath = getActualImagePath();
-			var builderSuccess = screenshot(builderPath, sizeX, sizeY);
+		var orderIdx = HtmlReportGenerator.reserveOrderIndex();
+		var builderRaw = captureScreenshotRaw(sizeX, sizeY);
 
-			// Phase 2: macro — create, freeze AnimSMs, screenshot
-			clearScene();
-			var macroRoot = createMp().stateAnimDemo.create();
-			s2d.addChild(macroRoot);
+		// Phase 2: macro — create, freeze AnimSMs, screenshot
+		clearScene();
+		var macroRoot = createMp().stateAnimDemo.create();
+		s2d.addChild(macroRoot);
 
-			for (a in findAllAnimSM(macroRoot))
-				a.externallyDriven = true;
+		for (a in findAllAnimSM(macroRoot))
+			a.externallyDriven = true;
 
-			if (testTitle != null && testTitle.length > 0)
-				addTitleOverlay();
+		if (testTitle != null && testTitle.length > 0)
+			addTitleOverlay();
 
-			waitForUpdate(function(dt2:Float) {
-				var macroPath = 'test/screenshots/stateAnimDemo_macro.png';
-				var referencePath = getReferenceImagePath();
-				var macroSuccess = screenshot(macroPath, sizeX, sizeY);
+		var macroRaw = captureScreenshotRaw(sizeX, sizeY);
+		Assert.pass();
+		enqueueBuilderAndMacro(builderRaw, macroRaw, 1.0, 1.0, orderIdx);
 
-				var builderSim = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
-				var macroSim = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
-
-				var threshold = 1.0;
-				var builderOk = builderSim >= threshold;
-				var macroOk = macroSim >= threshold;
-
-				HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath, builderOk && macroOk, builderSim, null,
-					macroPath, macroSim, macroOk, threshold, threshold);
-				HtmlReportGenerator.generateReport();
-
-				Assert.isTrue(builderOk,
-					'Builder should match reference (similarity: ${VisualTestBase.fmtSim(builderSim)})');
-				Assert.isTrue(macroOk, 'Macro should match reference (similarity: ${VisualTestBase.fmtSim(macroSim)})');
-
-				VisualTestBase.pendingVisualTests--;
-				async.done();
-			});
-		});
+		VisualTestBase.pendingVisualTests--;
+		async.done();
 	}
 
 	// ==================== PaletteDemo: macro comparison ====================
@@ -1262,45 +1222,26 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		for (a in findAllAnimSM(builderResult.object))
 			a.externallyDriven = true;
 
-		waitForUpdate(function(dt:Float) {
-			var builderPath = getActualImagePath();
-			var builderSuccess = screenshot(builderPath, sizeX, sizeY);
+		var orderIdx = HtmlReportGenerator.reserveOrderIndex();
+		var builderRaw = captureScreenshotRaw(sizeX, sizeY);
 
-			// Phase 2: macro — create, freeze AnimSMs, screenshot
-			clearScene();
-			var macroRoot = createMp().inlineAtlas2Demo.create();
-			s2d.addChild(macroRoot);
+		// Phase 2: macro — create, freeze AnimSMs, screenshot
+		clearScene();
+		var macroRoot = createMp().inlineAtlas2Demo.create();
+		s2d.addChild(macroRoot);
 
-			for (a in findAllAnimSM(macroRoot))
-				a.externallyDriven = true;
+		for (a in findAllAnimSM(macroRoot))
+			a.externallyDriven = true;
 
-			if (testTitle != null && testTitle.length > 0)
-				addTitleOverlay();
+		if (testTitle != null && testTitle.length > 0)
+			addTitleOverlay();
 
-			waitForUpdate(function(dt2:Float) {
-				var macroPath = 'test/screenshots/inlineAtlas2Demo_macro.png';
-				var referencePath = getReferenceImagePath();
-				var macroSuccess = screenshot(macroPath, sizeX, sizeY);
+		var macroRaw = captureScreenshotRaw(sizeX, sizeY);
+		Assert.pass();
+		enqueueBuilderAndMacro(builderRaw, macroRaw, 1.0, 1.0, orderIdx);
 
-				var builderSim = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
-				var macroSim = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
-
-				var threshold = 1.0;
-				var builderOk = builderSim >= threshold;
-				var macroOk = macroSim >= threshold;
-
-				HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath, builderOk && macroOk, builderSim, null,
-					macroPath, macroSim, macroOk, threshold, threshold);
-				HtmlReportGenerator.generateReport();
-
-				Assert.isTrue(builderOk,
-					'Builder should match reference (similarity: ${VisualTestBase.fmtSim(builderSim)})');
-				Assert.isTrue(macroOk, 'Macro should match reference (similarity: ${VisualTestBase.fmtSim(macroSim)})');
-
-				VisualTestBase.pendingVisualTests--;
-				async.done();
-			});
-		});
+		VisualTestBase.pendingVisualTests--;
+		async.done();
 	}
 
 	// ==================== MaskDemo: macro comparison ====================
@@ -1347,39 +1288,23 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		}
 		addAutotileOverlays(animFilePath, autotileConfigs, scale);
 
-		waitForUpdate(function(dt:Float) {
-			var builderPath = getActualImagePath();
-			var builderSuccess = screenshot(builderPath, 1280, 720);
+		var orderIdx = HtmlReportGenerator.reserveOrderIndex();
+		var builderRaw = captureScreenshotRaw(1280, 720);
 
-			// Phase 2: macro + autotile grids
-			clearScene();
-			var macroRoot = createMp().autotileCross.create();
-			macroRoot.setScale(scale);
-			s2d.addChild(macroRoot);
-			addAutotileOverlays(animFilePath, autotileConfigs, scale);
-			if (testTitle != null && testTitle.length > 0) addTitleOverlay();
+		// Phase 2: macro + autotile grids
+		clearScene();
+		var macroRoot = createMp().autotileCross.create();
+		macroRoot.setScale(scale);
+		s2d.addChild(macroRoot);
+		addAutotileOverlays(animFilePath, autotileConfigs, scale);
+		if (testTitle != null && testTitle.length > 0) addTitleOverlay();
 
-			waitForUpdate(function(dt2:Float) {
-				var macroPath = 'test/screenshots/autotileCross_macro.png';
-				var referencePath = getReferenceImagePath();
-				var macroSuccess = screenshot(macroPath, 1280, 720);
+		var macroRaw = captureScreenshotRaw(1280, 720);
+		Assert.pass();
+		enqueueBuilderAndMacro(builderRaw, macroRaw, threshold, threshold, orderIdx);
 
-				var builderSim = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
-				var macroSim = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
-				var builderOk = builderSim >= threshold;
-				var macroOk = macroSim >= threshold;
-
-				HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath, builderOk && macroOk,
-					builderSim, null, macroPath, macroSim, macroOk, threshold, threshold);
-				HtmlReportGenerator.generateReport();
-
-				Assert.isTrue(builderOk, 'Builder should match reference (similarity: ${VisualTestBase.fmtSim(builderSim)})');
-				Assert.isTrue(macroOk, 'Macro should match reference (similarity: ${VisualTestBase.fmtSim(macroSim)})');
-
-				VisualTestBase.pendingVisualTests--;
-				async.done();
-			});
-		});
+		VisualTestBase.pendingVisualTests--;
+		async.done();
 	}
 
 	// ==================== AutotileBlob47: macro comparison ====================
@@ -1408,39 +1333,23 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		}
 		addAutotileOverlays(animFilePath, autotileConfigs, scale);
 
-		waitForUpdate(function(dt:Float) {
-			var builderPath = getActualImagePath();
-			var builderSuccess = screenshot(builderPath, 1280, 720);
+		var orderIdx = HtmlReportGenerator.reserveOrderIndex();
+		var builderRaw = captureScreenshotRaw(1280, 720);
 
-			// Phase 2: macro + autotile grids
-			clearScene();
-			var macroRoot = createMp().autotileBlob47.create();
-			macroRoot.setScale(scale);
-			s2d.addChild(macroRoot);
-			addAutotileOverlays(animFilePath, autotileConfigs, scale);
-			if (testTitle != null && testTitle.length > 0) addTitleOverlay();
+		// Phase 2: macro + autotile grids
+		clearScene();
+		var macroRoot = createMp().autotileBlob47.create();
+		macroRoot.setScale(scale);
+		s2d.addChild(macroRoot);
+		addAutotileOverlays(animFilePath, autotileConfigs, scale);
+		if (testTitle != null && testTitle.length > 0) addTitleOverlay();
 
-			waitForUpdate(function(dt2:Float) {
-				var macroPath = 'test/screenshots/autotileBlob47_macro.png';
-				var referencePath = getReferenceImagePath();
-				var macroSuccess = screenshot(macroPath, 1280, 720);
+		var macroRaw = captureScreenshotRaw(1280, 720);
+		Assert.pass();
+		enqueueBuilderAndMacro(builderRaw, macroRaw, threshold, threshold, orderIdx);
 
-				var builderSim = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
-				var macroSim = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
-				var builderOk = builderSim >= threshold;
-				var macroOk = macroSim >= threshold;
-
-				HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath, builderOk && macroOk,
-					builderSim, null, macroPath, macroSim, macroOk, threshold, threshold);
-				HtmlReportGenerator.generateReport();
-
-				Assert.isTrue(builderOk, 'Builder should match reference (similarity: ${VisualTestBase.fmtSim(builderSim)})');
-				Assert.isTrue(macroOk, 'Macro should match reference (similarity: ${VisualTestBase.fmtSim(macroSim)})');
-
-				VisualTestBase.pendingVisualTests--;
-				async.done();
-			});
-		});
+		VisualTestBase.pendingVisualTests--;
+		async.done();
 	}
 
 	// ==================== AutotileDemoSyntax: macro comparison ====================
@@ -1468,39 +1377,23 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		}
 		addAutotileOverlays(animFilePath, autotileConfigs, scale);
 
-		waitForUpdate(function(dt:Float) {
-			var builderPath = getActualImagePath();
-			var builderSuccess = screenshot(builderPath, 1280, 720);
+		var orderIdx = HtmlReportGenerator.reserveOrderIndex();
+		var builderRaw = captureScreenshotRaw(1280, 720);
 
-			// Phase 2: macro + autotile grids
-			clearScene();
-			var macroRoot = createMp().autotileDemoSyntax.create();
-			macroRoot.setScale(scale);
-			s2d.addChild(macroRoot);
-			addAutotileOverlays(animFilePath, autotileConfigs, scale);
-			if (testTitle != null && testTitle.length > 0) addTitleOverlay();
+		// Phase 2: macro + autotile grids
+		clearScene();
+		var macroRoot = createMp().autotileDemoSyntax.create();
+		macroRoot.setScale(scale);
+		s2d.addChild(macroRoot);
+		addAutotileOverlays(animFilePath, autotileConfigs, scale);
+		if (testTitle != null && testTitle.length > 0) addTitleOverlay();
 
-			waitForUpdate(function(dt2:Float) {
-				var macroPath = 'test/screenshots/autotileDemoSyntax_macro.png';
-				var referencePath = getReferenceImagePath();
-				var macroSuccess = screenshot(macroPath, 1280, 720);
+		var macroRaw = captureScreenshotRaw(1280, 720);
+		Assert.pass();
+		enqueueBuilderAndMacro(builderRaw, macroRaw, threshold, threshold, orderIdx);
 
-				var builderSim = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
-				var macroSim = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
-				var builderOk = builderSim >= threshold;
-				var macroOk = macroSim >= threshold;
-
-				HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath, builderOk && macroOk,
-					builderSim, null, macroPath, macroSim, macroOk, threshold, threshold);
-				HtmlReportGenerator.generateReport();
-
-				Assert.isTrue(builderOk, 'Builder should match reference (similarity: ${VisualTestBase.fmtSim(builderSim)})');
-				Assert.isTrue(macroOk, 'Macro should match reference (similarity: ${VisualTestBase.fmtSim(macroSim)})');
-
-				VisualTestBase.pendingVisualTests--;
-				async.done();
-			});
-		});
+		VisualTestBase.pendingVisualTests--;
+		async.done();
 	}
 
 	// ==================== ForgottenPlainsTerrain: macro comparison ====================
@@ -1529,39 +1422,23 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		}
 		addAutotileOverlays(animFilePath, autotileConfigs, scale);
 
-		waitForUpdate(function(dt:Float) {
-			var builderPath = getActualImagePath();
-			var builderSuccess = screenshot(builderPath, 1280, 720);
+		var orderIdx = HtmlReportGenerator.reserveOrderIndex();
+		var builderRaw = captureScreenshotRaw(1280, 720);
 
-			// Phase 2: macro + autotile grids
-			clearScene();
-			var macroRoot = createMp().forgottenPlainsTerrain.create();
-			macroRoot.setScale(scale);
-			s2d.addChild(macroRoot);
-			addAutotileOverlays(animFilePath, autotileConfigs, scale);
-			if (testTitle != null && testTitle.length > 0) addTitleOverlay();
+		// Phase 2: macro + autotile grids
+		clearScene();
+		var macroRoot = createMp().forgottenPlainsTerrain.create();
+		macroRoot.setScale(scale);
+		s2d.addChild(macroRoot);
+		addAutotileOverlays(animFilePath, autotileConfigs, scale);
+		if (testTitle != null && testTitle.length > 0) addTitleOverlay();
 
-			waitForUpdate(function(dt2:Float) {
-				var macroPath = 'test/screenshots/forgottenPlainsTerrain_macro.png';
-				var referencePath = getReferenceImagePath();
-				var macroSuccess = screenshot(macroPath, 1280, 720);
+		var macroRaw = captureScreenshotRaw(1280, 720);
+		Assert.pass();
+		enqueueBuilderAndMacro(builderRaw, macroRaw, threshold, threshold, orderIdx);
 
-				var builderSim = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
-				var macroSim = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
-				var builderOk = builderSim >= threshold;
-				var macroOk = macroSim >= threshold;
-
-				HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath, builderOk && macroOk,
-					builderSim, null, macroPath, macroSim, macroOk, threshold, threshold);
-				HtmlReportGenerator.generateReport();
-
-				Assert.isTrue(builderOk, 'Builder should match reference (similarity: ${VisualTestBase.fmtSim(builderSim)})');
-				Assert.isTrue(macroOk, 'Macro should match reference (similarity: ${VisualTestBase.fmtSim(macroSim)})');
-
-				VisualTestBase.pendingVisualTests--;
-				async.done();
-			});
-		});
+		VisualTestBase.pendingVisualTests--;
+		async.done();
 	}
 
 	// ==================== Blob47Fallback: macro comparison ====================
@@ -1590,39 +1467,23 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		}
 		addAutotileOverlays(animFilePath, autotileConfigs, scale);
 
-		waitForUpdate(function(dt:Float) {
-			var builderPath = getActualImagePath();
-			var builderSuccess = screenshot(builderPath, 1280, 720);
+		var orderIdx = HtmlReportGenerator.reserveOrderIndex();
+		var builderRaw = captureScreenshotRaw(1280, 720);
 
-			// Phase 2: macro + autotile grids
-			clearScene();
-			var macroRoot = createMp().blob47Fallback.create();
-			macroRoot.setScale(scale);
-			s2d.addChild(macroRoot);
-			addAutotileOverlays(animFilePath, autotileConfigs, scale);
-			if (testTitle != null && testTitle.length > 0) addTitleOverlay();
+		// Phase 2: macro + autotile grids
+		clearScene();
+		var macroRoot = createMp().blob47Fallback.create();
+		macroRoot.setScale(scale);
+		s2d.addChild(macroRoot);
+		addAutotileOverlays(animFilePath, autotileConfigs, scale);
+		if (testTitle != null && testTitle.length > 0) addTitleOverlay();
 
-			waitForUpdate(function(dt2:Float) {
-				var macroPath = 'test/screenshots/blob47Fallback_macro.png';
-				var referencePath = getReferenceImagePath();
-				var macroSuccess = screenshot(macroPath, 1280, 720);
+		var macroRaw = captureScreenshotRaw(1280, 720);
+		Assert.pass();
+		enqueueBuilderAndMacro(builderRaw, macroRaw, threshold, threshold, orderIdx);
 
-				var builderSim = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
-				var macroSim = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
-				var builderOk = builderSim >= threshold;
-				var macroOk = macroSim >= threshold;
-
-				HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath, builderOk && macroOk,
-					builderSim, null, macroPath, macroSim, macroOk, threshold, threshold);
-				HtmlReportGenerator.generateReport();
-
-				Assert.isTrue(builderOk, 'Builder should match reference (similarity: ${VisualTestBase.fmtSim(builderSim)})');
-				Assert.isTrue(macroOk, 'Macro should match reference (similarity: ${VisualTestBase.fmtSim(macroSim)})');
-
-				VisualTestBase.pendingVisualTests--;
-				async.done();
-			});
-		});
+		VisualTestBase.pendingVisualTests--;
+		async.done();
 	}
 
 	// ==================== Autotile helper ====================
@@ -1714,85 +1575,65 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 			return;
 		}
 
-		waitForUpdate(function(dt:Float) {
-			var builderPath = getActualImagePath();
-			var builderSuccess = false;
-			try {
-				builderSuccess = screenshot(builderPath, sizeX, sizeY);
-			} catch (e:Dynamic) {
-				Assert.fail('Builder screenshot threw: $e');
-				VisualTestBase.pendingVisualTests--;
-				async.done();
-				return;
-			}
+		var orderIdx = HtmlReportGenerator.reserveOrderIndex();
+		var builderRaw:Null<ImageProcessingPool.RawPixels> = null;
+		try {
+			builderRaw = captureScreenshotRaw(sizeX, sizeY);
+		} catch (e:Dynamic) {
+			Assert.fail('Builder screenshot threw: $e');
+			VisualTestBase.pendingVisualTests--;
+			async.done();
+			return;
+		}
 
-			// Phase 2: macro — use generated factory methods
-			clearScene();
-			try {
-				final mp = createMp();
-				final g = new h2d.Graphics(s2d);
-				final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
-				final font = loader.loadFont("m3x6");
+		// Phase 2: macro — use generated factory methods
+		clearScene();
+		try {
+			final mp = createMp();
+			final g = new h2d.Graphics(s2d);
+			final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+			final font = loader.loadFont("m3x6");
 
-				// Initialize the builder (needed for path/curve methods that delegate to it)
-				mp.easingCurves.create();
+			// Initialize the builder (needed for path/curve methods that delegate to it)
+			mp.easingCurves.create();
 
-				// Get curves via macro-generated methods
-				final macroCurves = new Map<String, bh.paths.Curve.ICurve>();
-				macroCurves.set("linear", mp.easingCurves.getCurve_linear());
-				macroCurves.set("easeInQuad", mp.easingCurves.getCurve_easeInQuad());
-				macroCurves.set("easeOutQuad", mp.easingCurves.getCurve_easeOutQuad());
-				macroCurves.set("easeInOutCubic", mp.easingCurves.getCurve_easeInOutCubic());
-				macroCurves.set("easeOutBounce", mp.easingCurves.getCurve_easeOutBounce());
-				macroCurves.set("easeOutElastic", mp.easingCurves.getCurve_easeOutElastic());
-				macroCurves.set("easeInBack", mp.easingCurves.getCurve_easeInBack());
-				macroCurves.set("easeOutBack", mp.easingCurves.getCurve_easeOutBack());
-				macroCurves.set("customPoints", mp.easingCurves.getCurve_customPoints());
-				drawEasingCurvesVisualization(g, font, macroCurves, curveNames, s2d);
+			// Get curves via macro-generated methods
+			final macroCurves = new Map<String, bh.paths.Curve.ICurve>();
+			macroCurves.set("linear", mp.easingCurves.getCurve_linear());
+			macroCurves.set("easeInQuad", mp.easingCurves.getCurve_easeInQuad());
+			macroCurves.set("easeOutQuad", mp.easingCurves.getCurve_easeOutQuad());
+			macroCurves.set("easeInOutCubic", mp.easingCurves.getCurve_easeInOutCubic());
+			macroCurves.set("easeOutBounce", mp.easingCurves.getCurve_easeOutBounce());
+			macroCurves.set("easeOutElastic", mp.easingCurves.getCurve_easeOutElastic());
+			macroCurves.set("easeInBack", mp.easingCurves.getCurve_easeInBack());
+			macroCurves.set("easeOutBack", mp.easingCurves.getCurve_easeOutBack());
+			macroCurves.set("customPoints", mp.easingCurves.getCurve_customPoints());
+			drawEasingCurvesVisualization(g, font, macroCurves, curveNames, s2d);
 
-				// Get paths via macro-generated methods
-				final macroPathMap = new Map<String, bh.paths.MultiAnimPaths.Path>();
-				macroPathMap.set("arc", mp.easingCurves.getPath_arc());
-				macroPathMap.set("bezierS", mp.easingCurves.getPath_bezierS());
-				macroPathMap.set("zigzag", mp.easingCurves.getPath_zigzag());
-				drawPathVisualization(g, font, macroPathMap, pathNames, s2d);
+			// Get paths via macro-generated methods
+			final macroPathMap = new Map<String, bh.paths.MultiAnimPaths.Path>();
+			macroPathMap.set("arc", mp.easingCurves.getPath_arc());
+			macroPathMap.set("bezierS", mp.easingCurves.getPath_bezierS());
+			macroPathMap.set("zigzag", mp.easingCurves.getPath_zigzag());
+			drawPathVisualization(g, font, macroPathMap, pathNames, s2d);
 
-				// Normalization via macro: get arc path, then normalize it
-				final macroArc = mp.easingCurves.getPath_arc();
-				drawNormalizationVisualizationFromPath(g, font, macroArc, s2d);
+			// Normalization via macro: get arc path, then normalize it
+			final macroArc = mp.easingCurves.getPath_arc();
+			drawNormalizationVisualizationFromPath(g, font, macroArc, s2d);
 
-				if (testTitle != null && testTitle.length > 0) addTitleOverlay();
-			} catch (e:Dynamic) {
-				Assert.fail('Macro threw: $e');
-				VisualTestBase.pendingVisualTests--;
-				async.done();
-				return;
-			}
+			if (testTitle != null && testTitle.length > 0) addTitleOverlay();
+		} catch (e:Dynamic) {
+			Assert.fail('Macro threw: $e');
+			VisualTestBase.pendingVisualTests--;
+			async.done();
+			return;
+		}
 
-			waitForUpdate(function(dt2:Float) {
-				try {
-					var macroPath = 'test/screenshots/easingCurvesDemo_macro.png';
-					var referencePath = getReferenceImagePath();
-					var macroSuccess = screenshot(macroPath, sizeX, sizeY);
-
-					var builderSim = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
-					var macroSim = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
-					var builderOk = builderSim >= 1.0;
-					var macroOk = macroSim >= 1.0;
-
-					HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath, builderOk && macroOk,
-						builderSim, null, macroPath, macroSim, macroOk, 1.0, 1.0);
-					HtmlReportGenerator.generateReport();
-
-					Assert.isTrue(builderOk, 'Builder should match reference (${VisualTestBase.fmtSim(builderSim)})');
-					Assert.isTrue(macroOk, 'Macro should match reference (${VisualTestBase.fmtSim(macroSim)})');
-				} catch (e:Dynamic) {
-					Assert.fail('Screenshot/compare threw: $e');
-				}
-				VisualTestBase.pendingVisualTests--;
-				async.done();
-			});
-		});
+		var macroRaw = captureScreenshotRaw(sizeX, sizeY);
+		Assert.pass();
+		enqueueBuilderAndMacro(builderRaw, macroRaw, 1.0, 1.0, orderIdx);
+		VisualTestBase.pendingVisualTests--;
+		async.done();
 	}
 
 	@Test
@@ -1833,69 +1674,49 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 			return;
 		}
 
-		waitForUpdate(function(dt:Float) {
-			var builderPath = getActualImagePath();
-			var builderSuccess = false;
-			try {
-				builderSuccess = screenshot(builderPath, sizeX, sizeY);
-			} catch (e:Dynamic) {
-				Assert.fail('Builder screenshot threw: $e');
-				VisualTestBase.pendingVisualTests--;
-				async.done();
-				return;
-			}
+		var orderIdx = HtmlReportGenerator.reserveOrderIndex();
+		var builderRaw:Null<ImageProcessingPool.RawPixels> = null;
+		try {
+			builderRaw = captureScreenshotRaw(sizeX, sizeY);
+		} catch (e:Dynamic) {
+			Assert.fail('Builder screenshot threw: $e');
+			VisualTestBase.pendingVisualTests--;
+			async.done();
+			return;
+		}
 
-			// Phase 2: macro
-			clearScene();
-			try {
-				final mp = createMp();
-				final g = new h2d.Graphics(s2d);
-				final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
-				final font = loader.loadFont("m3x6");
+		// Phase 2: macro
+		clearScene();
+		try {
+			final mp = createMp();
+			final g = new h2d.Graphics(s2d);
+			final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+			final font = loader.loadFont("m3x6");
 
-				mp.segmentedCurves.create();
+			mp.segmentedCurves.create();
 
-				final macroCurves = new Map<String, bh.paths.Curve.ICurve>();
-				macroCurves.set("simpleEasing", mp.segmentedCurves.getCurve_simpleEasing());
-				macroCurves.set("pointsCurve", mp.segmentedCurves.getCurve_pointsCurve());
-				macroCurves.set("segDefaultValues", mp.segmentedCurves.getCurve_segDefaultValues());
-				macroCurves.set("segExplicitValues", mp.segmentedCurves.getCurve_segExplicitValues());
-				macroCurves.set("segOverlapping", mp.segmentedCurves.getCurve_segOverlapping());
-				macroCurves.set("segGapped", mp.segmentedCurves.getCurve_segGapped());
-				drawEasingCurvesVisualization(g, font, macroCurves, curveNames, s2d);
+			final macroCurves = new Map<String, bh.paths.Curve.ICurve>();
+			macroCurves.set("simpleEasing", mp.segmentedCurves.getCurve_simpleEasing());
+			macroCurves.set("pointsCurve", mp.segmentedCurves.getCurve_pointsCurve());
+			macroCurves.set("segDefaultValues", mp.segmentedCurves.getCurve_segDefaultValues());
+			macroCurves.set("segExplicitValues", mp.segmentedCurves.getCurve_segExplicitValues());
+			macroCurves.set("segOverlapping", mp.segmentedCurves.getCurve_segOverlapping());
+			macroCurves.set("segGapped", mp.segmentedCurves.getCurve_segGapped());
+			drawEasingCurvesVisualization(g, font, macroCurves, curveNames, s2d);
 
-				if (testTitle != null && testTitle.length > 0) addTitleOverlay();
-			} catch (e:Dynamic) {
-				Assert.fail('Macro threw: $e');
-				VisualTestBase.pendingVisualTests--;
-				async.done();
-				return;
-			}
+			if (testTitle != null && testTitle.length > 0) addTitleOverlay();
+		} catch (e:Dynamic) {
+			Assert.fail('Macro threw: $e');
+			VisualTestBase.pendingVisualTests--;
+			async.done();
+			return;
+		}
 
-			waitForUpdate(function(dt2:Float) {
-				try {
-					var macroPath = 'test/screenshots/segmentedCurvesDemo_macro.png';
-					var referencePath = getReferenceImagePath();
-					var macroSuccess = screenshot(macroPath, sizeX, sizeY);
-
-					var builderSim = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
-					var macroSim = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
-					var builderOk = builderSim >= 1.0;
-					var macroOk = macroSim >= 1.0;
-
-					HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath, builderOk && macroOk,
-						builderSim, null, macroPath, macroSim, macroOk, 1.0, 1.0);
-					HtmlReportGenerator.generateReport();
-
-					Assert.isTrue(builderOk, 'Builder should match reference (${VisualTestBase.fmtSim(builderSim)})');
-					Assert.isTrue(macroOk, 'Macro should match reference (${VisualTestBase.fmtSim(macroSim)})');
-				} catch (e:Dynamic) {
-					Assert.fail('Screenshot/compare threw: $e');
-				}
-				VisualTestBase.pendingVisualTests--;
-				async.done();
-			});
-		});
+		var macroRaw = captureScreenshotRaw(sizeX, sizeY);
+		Assert.pass();
+		enqueueBuilderAndMacro(builderRaw, macroRaw, 1.0, 1.0, orderIdx);
+		VisualTestBase.pendingVisualTests--;
+		async.done();
 	}
 
 	@Test
@@ -1938,77 +1759,57 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 			return;
 		}
 
-		waitForUpdate(function(dt:Float) {
-			var builderPath = getActualImagePath();
-			var builderSuccess = false;
-			try {
-				builderSuccess = screenshot(builderPath, sizeX, sizeY);
-			} catch (e:Dynamic) {
-				Assert.fail('Builder screenshot threw: $e');
-				VisualTestBase.pendingVisualTests--;
-				async.done();
-				return;
-			}
+		var orderIdx = HtmlReportGenerator.reserveOrderIndex();
+		var builderRaw:Null<ImageProcessingPool.RawPixels> = null;
+		try {
+			builderRaw = captureScreenshotRaw(sizeX, sizeY);
+		} catch (e:Dynamic) {
+			Assert.fail('Builder screenshot threw: $e');
+			VisualTestBase.pendingVisualTests--;
+			async.done();
+			return;
+		}
 
-			// Phase 2: macro
-			clearScene();
-			try {
-				final mp = createMp();
-				final g = new h2d.Graphics(s2d);
-				final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
-				final font = loader.loadFont("m3x6");
+		// Phase 2: macro
+		clearScene();
+		try {
+			final mp = createMp();
+			final g = new h2d.Graphics(s2d);
+			final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+			final font = loader.loadFont("m3x6");
 
-				mp.newPathCommands.create();
+			mp.newPathCommands.create();
 
-				final macroPathMap = new Map<String, bh.paths.MultiAnimPaths.Path>();
-				macroPathMap.set("triangle", mp.newPathCommands.getPath_triangle());
-				macroPathMap.set("pentagon", mp.newPathCommands.getPath_pentagon());
-				macroPathMap.set("moveToRel", mp.newPathCommands.getPath_moveToRel());
-				macroPathMap.set("moveToAbs", mp.newPathCommands.getPath_moveToAbs());
-				macroPathMap.set("spiralExpand", mp.newPathCommands.getPath_spiralExpand());
-				macroPathMap.set("spiralShrink", mp.newPathCommands.getPath_spiralShrink());
-				macroPathMap.set("waveBasic", mp.newPathCommands.getPath_waveBasic());
-				macroPathMap.set("waveAngled", mp.newPathCommands.getPath_waveAngled());
-				macroPathMap.set("lineRel", mp.newPathCommands.getPath_lineRel());
-				macroPathMap.set("lineAbs", mp.newPathCommands.getPath_lineAbs());
-				macroPathMap.set("arcTurn", mp.newPathCommands.getPath_arcTurn());
-				macroPathMap.set("bezierSmooth", mp.newPathCommands.getPath_bezierSmooth());
-				macroPathMap.set("combined", mp.newPathCommands.getPath_combined());
-				macroPathMap.set("checkpointClose", mp.newPathCommands.getPath_checkpointClose());
-				drawPathGrid(g, font, macroPathMap, pathNames, s2d);
+			final macroPathMap = new Map<String, bh.paths.MultiAnimPaths.Path>();
+			macroPathMap.set("triangle", mp.newPathCommands.getPath_triangle());
+			macroPathMap.set("pentagon", mp.newPathCommands.getPath_pentagon());
+			macroPathMap.set("moveToRel", mp.newPathCommands.getPath_moveToRel());
+			macroPathMap.set("moveToAbs", mp.newPathCommands.getPath_moveToAbs());
+			macroPathMap.set("spiralExpand", mp.newPathCommands.getPath_spiralExpand());
+			macroPathMap.set("spiralShrink", mp.newPathCommands.getPath_spiralShrink());
+			macroPathMap.set("waveBasic", mp.newPathCommands.getPath_waveBasic());
+			macroPathMap.set("waveAngled", mp.newPathCommands.getPath_waveAngled());
+			macroPathMap.set("lineRel", mp.newPathCommands.getPath_lineRel());
+			macroPathMap.set("lineAbs", mp.newPathCommands.getPath_lineAbs());
+			macroPathMap.set("arcTurn", mp.newPathCommands.getPath_arcTurn());
+			macroPathMap.set("bezierSmooth", mp.newPathCommands.getPath_bezierSmooth());
+			macroPathMap.set("combined", mp.newPathCommands.getPath_combined());
+			macroPathMap.set("checkpointClose", mp.newPathCommands.getPath_checkpointClose());
+			drawPathGrid(g, font, macroPathMap, pathNames, s2d);
 
-				if (testTitle != null && testTitle.length > 0) addTitleOverlay();
-			} catch (e:Dynamic) {
-				Assert.fail('Macro threw: $e');
-				VisualTestBase.pendingVisualTests--;
-				async.done();
-				return;
-			}
+			if (testTitle != null && testTitle.length > 0) addTitleOverlay();
+		} catch (e:Dynamic) {
+			Assert.fail('Macro threw: $e');
+			VisualTestBase.pendingVisualTests--;
+			async.done();
+			return;
+		}
 
-			waitForUpdate(function(dt2:Float) {
-				try {
-					var macroPath = 'test/screenshots/newPathCommands_macro.png';
-					var referencePath = getReferenceImagePath();
-					var macroSuccess = screenshot(macroPath, sizeX, sizeY);
-
-					var builderSim = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
-					var macroSim = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
-					var builderOk = builderSim >= 1.0;
-					var macroOk = macroSim >= 1.0;
-
-					HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath, builderOk && macroOk,
-						builderSim, null, macroPath, macroSim, macroOk, 1.0, 1.0);
-					HtmlReportGenerator.generateReport();
-
-					Assert.isTrue(builderOk, 'Builder should match reference (${VisualTestBase.fmtSim(builderSim)})');
-					Assert.isTrue(macroOk, 'Macro should match reference (${VisualTestBase.fmtSim(macroSim)})');
-				} catch (e:Dynamic) {
-					Assert.fail('Screenshot/compare threw: $e');
-				}
-				VisualTestBase.pendingVisualTests--;
-				async.done();
-			});
-		});
+		var macroRaw = captureScreenshotRaw(sizeX, sizeY);
+		Assert.pass();
+		enqueueBuilderAndMacro(builderRaw, macroRaw, 1.0, 1.0, orderIdx);
+		VisualTestBase.pendingVisualTests--;
+		async.done();
 	}
 
 	// ==================== AnimatedPath Curves: macro codegen (3-image) ====================
@@ -2055,70 +1856,50 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 			return;
 		}
 
-		waitForUpdate(function(dt:Float) {
-			var builderPath = getActualImagePath();
-			var builderSuccess = false;
-			try {
-				builderSuccess = screenshot(builderPath, sizeX, sizeY);
-			} catch (e:Dynamic) {
-				Assert.fail('Builder screenshot threw: $e');
-				VisualTestBase.pendingVisualTests--;
-				async.done();
-				return;
-			}
+		var orderIdx = HtmlReportGenerator.reserveOrderIndex();
+		var builderRaw:Null<ImageProcessingPool.RawPixels> = null;
+		try {
+			builderRaw = captureScreenshotRaw(sizeX, sizeY);
+		} catch (e:Dynamic) {
+			Assert.fail('Builder screenshot threw: $e');
+			VisualTestBase.pendingVisualTests--;
+			async.done();
+			return;
+		}
 
-			// Phase 2: macro
-			clearScene();
-			try {
-				final mp = createMp();
-				final g = new h2d.Graphics(s2d);
-				final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
-				final font = loader.loadFont("m3x6");
+		// Phase 2: macro
+		clearScene();
+		try {
+			final mp = createMp();
+			final g = new h2d.Graphics(s2d);
+			final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+			final font = loader.loadFont("m3x6");
 
-				mp.animatedPathCurves.create();
+			mp.animatedPathCurves.create();
 
-				g.lineStyle(0);
-				g.beginFill(0xC8B896);
-				g.drawRect(0, 0, sizeX, sizeY);
-				g.endFill();
+			g.lineStyle(0);
+			g.beginFill(0xC8B896);
+			g.drawRect(0, 0, sizeX, sizeY);
+			g.endFill();
 
-				final animNames = ["distAnim", "timeAnim", "customAnim", "checkpointAnim"];
+			final animNames = ["distAnim", "timeAnim", "customAnim", "checkpointAnim"];
 
-				drawAnimatedPathGridMacro(g, font, s2d, mp, animNames);
-				drawAnimatedPathLegend(g, font, s2d);
+			drawAnimatedPathGridMacro(g, font, s2d, mp, animNames);
+			drawAnimatedPathLegend(g, font, s2d);
 
-				if (testTitle != null && testTitle.length > 0) addTitleOverlay();
-			} catch (e:Dynamic) {
-				Assert.fail('Macro threw: $e');
-				VisualTestBase.pendingVisualTests--;
-				async.done();
-				return;
-			}
+			if (testTitle != null && testTitle.length > 0) addTitleOverlay();
+		} catch (e:Dynamic) {
+			Assert.fail('Macro threw: $e');
+			VisualTestBase.pendingVisualTests--;
+			async.done();
+			return;
+		}
 
-			waitForUpdate(function(dt2:Float) {
-				try {
-					var macroPath = 'test/screenshots/animatedPathCurves_macro.png';
-					var referencePath = getReferenceImagePath();
-					var macroSuccess = screenshot(macroPath, sizeX, sizeY);
-
-					var builderSim = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
-					var macroSim = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
-					var builderOk = builderSim >= 1.0;
-					var macroOk = macroSim >= 1.0;
-
-					HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath, builderOk && macroOk,
-						builderSim, null, macroPath, macroSim, macroOk, 1.0, 1.0);
-					HtmlReportGenerator.generateReport();
-
-					Assert.isTrue(builderOk, 'Builder should match reference (${VisualTestBase.fmtSim(builderSim)})');
-					Assert.isTrue(macroOk, 'Macro should match reference (${VisualTestBase.fmtSim(macroSim)})');
-				} catch (e:Dynamic) {
-					Assert.fail('Screenshot/compare threw: $e');
-				}
-				VisualTestBase.pendingVisualTests--;
-				async.done();
-			});
-		});
+		var macroRaw = captureScreenshotRaw(sizeX, sizeY);
+		Assert.pass();
+		enqueueBuilderAndMacro(builderRaw, macroRaw, 1.0, 1.0, orderIdx);
+		VisualTestBase.pendingVisualTests--;
+		async.done();
 	}
 
 	// ==================== AnimatedPath visualization helpers ====================
@@ -3298,51 +3079,30 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 			return;
 		}
 
-		waitForUpdate(function(dt:Float) {
-			var builderPath = getActualImagePath();
-			var builderSuccess = screenshot(builderPath);
+		var orderIdx = HtmlReportGenerator.reserveOrderIndex();
+		var builderRaw = captureScreenshotRaw();
 
-			// Phase 2: codegen
-			clearScene();
-			try {
-				final mp = createMp();
-				final instance = mp.progressBarLayout.create([
-					"bar" => PVFactory(barFactory),
-				]);
-				s2d.addChild(instance);
-				addTitleOverlay();
-			} catch (e:Dynamic) {
-				Assert.fail('Progress bar codegen threw: $e');
-				VisualTestBase.pendingVisualTests--;
-				async.done();
-				return;
-			}
+		// Phase 2: codegen
+		clearScene();
+		try {
+			final mp = createMp();
+			final instance = mp.progressBarLayout.create([
+				"bar" => PVFactory(barFactory),
+			]);
+			s2d.addChild(instance);
+			addTitleOverlay();
+		} catch (e:Dynamic) {
+			Assert.fail('Progress bar codegen threw: $e');
+			VisualTestBase.pendingVisualTests--;
+			async.done();
+			return;
+		}
 
-			waitForUpdate(function(dt2:Float) {
-				try {
-					var macroPath = 'test/screenshots/${testName}_macro.png';
-					var referencePath = getReferenceImagePath();
-					var macroSuccess = screenshot(macroPath);
-
-					var builderSimilarity = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
-					var macroSimilarity = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
-
-					HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath,
-						builderSimilarity >= 1.0 && macroSimilarity >= 1.0, builderSimilarity, null, macroPath, macroSimilarity,
-						macroSimilarity >= 1.0);
-					HtmlReportGenerator.generateReport();
-
-					Assert.isTrue(builderSimilarity >= 1.0,
-						'Builder should match reference (similarity: ${VisualTestBase.fmtSim(builderSimilarity)})');
-					Assert.isTrue(macroSimilarity >= 1.0,
-						'Macro should match reference (similarity: ${VisualTestBase.fmtSim(macroSimilarity)})');
-				} catch (e:Dynamic) {
-					Assert.fail('Screenshot/compare threw: $e');
-				}
-				VisualTestBase.pendingVisualTests--;
-				async.done();
-			});
-		});
+		var macroRaw = captureScreenshotRaw();
+		Assert.pass();
+		enqueueBuilderAndMacro(builderRaw, macroRaw, 1.0, 1.0, orderIdx);
+		VisualTestBase.pendingVisualTests--;
+		async.done();
 	}
 
 	// ==================== Combo unconditional children: visual ====================
@@ -3558,58 +3318,37 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 			return;
 		}
 
-		waitForUpdate(function(dt:Float) {
-			var builderPath = getActualImagePath();
-			var builderSuccess = screenshot(builderPath);
+		var orderIdx = HtmlReportGenerator.reserveOrderIndex();
+		var builderRaw = captureScreenshotRaw();
 
-			// Phase 2: codegen
-			clearScene();
-			try {
-				final mp = createMp();
-				final buttonObj = new h2d.Object();
-				final instance = mp.characterSheetDemo.createFrom({
-					hp: 75, maxHp: 100, mp: 30, maxMp: 50,
-					strStat: 12, dexStat: 9, intStat: 7,
-					xp: 60, xpMax: 100, level: 3
-				}, ["levelUpButton" => PVObject(buttonObj)]);
+		// Phase 2: codegen
+		clearScene();
+		try {
+			final mp = createMp();
+			final buttonObj = new h2d.Object();
+			final instance = mp.characterSheetDemo.createFrom({
+				hp: 75, maxHp: 100, mp: 30, maxMp: 50,
+				strStat: 12, dexStat: 9, intStat: 7,
+				xp: 60, xpMax: 100, level: 3
+			}, ["levelUpButton" => PVObject(buttonObj)]);
 
-				// Root pos: 50, 80 from .manim is not applied in codegen (caller sets position)
-				instance.x = 50;
-				instance.y = 80;
-				s2d.addChild(instance);
-				addTitleOverlay();
-			} catch (e:Dynamic) {
-				Assert.fail('Character sheet codegen threw: $e');
-				VisualTestBase.pendingVisualTests--;
-				async.done();
-				return;
-			}
+			// Root pos: 50, 80 from .manim is not applied in codegen (caller sets position)
+			instance.x = 50;
+			instance.y = 80;
+			s2d.addChild(instance);
+			addTitleOverlay();
+		} catch (e:Dynamic) {
+			Assert.fail('Character sheet codegen threw: $e');
+			VisualTestBase.pendingVisualTests--;
+			async.done();
+			return;
+		}
 
-			waitForUpdate(function(dt2:Float) {
-				try {
-					var macroPath = 'test/screenshots/${testName}_macro.png';
-					var referencePath = getReferenceImagePath();
-					var macroSuccess = screenshot(macroPath);
-
-					var builderSimilarity = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
-					var macroSimilarity = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
-
-					HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath,
-						builderSimilarity >= 1.0 && macroSimilarity >= 1.0, builderSimilarity, null, macroPath, macroSimilarity,
-						macroSimilarity >= 1.0);
-					HtmlReportGenerator.generateReport();
-
-					Assert.isTrue(builderSimilarity >= 1.0,
-						'Builder should match reference (similarity: ${VisualTestBase.fmtSim(builderSimilarity)})');
-					Assert.isTrue(macroSimilarity >= 1.0,
-						'Macro should match reference (similarity: ${VisualTestBase.fmtSim(macroSimilarity)})');
-				} catch (e:Dynamic) {
-					Assert.fail('Screenshot/compare threw: $e');
-				}
-				VisualTestBase.pendingVisualTests--;
-				async.done();
-			});
-		});
+		var macroRaw = captureScreenshotRaw();
+		Assert.pass();
+		enqueueBuilderAndMacro(builderRaw, macroRaw, 1.0, 1.0, orderIdx);
+		VisualTestBase.pendingVisualTests--;
+		async.done();
 	}
 
 	// ==================== Tile Parameter Demo: tile:tile type with sheet tiles ====================
@@ -3735,45 +3474,22 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 		populateSlotParamsDemo(result);
 
-		waitForUpdate(function(dt:Float) {
-			var builderPath = 'test/screenshots/${testName}_actual.png';
-			var builderSuccess = screenshot(builderPath, 1280, 720);
+		var orderIdx = HtmlReportGenerator.reserveOrderIndex();
+		var builderRaw = captureScreenshotRaw(1280, 720);
 
-			// Phase 2: macro version
-			clearScene();
-			var macroInstance = createMp().slotParams.create();
-			macroInstance.setScale(4.0);
-			s2d.addChild(macroInstance);
-			populateSlotParamsCodegen(macroInstance);
-			if (testTitle != null && testTitle.length > 0) addTitleOverlay();
+		// Phase 2: macro version
+		clearScene();
+		var macroInstance = createMp().slotParams.create();
+		macroInstance.setScale(4.0);
+		s2d.addChild(macroInstance);
+		populateSlotParamsCodegen(macroInstance);
+		if (testTitle != null && testTitle.length > 0) addTitleOverlay();
 
-			waitForUpdate(function(dt2:Float) {
-				try {
-					var macroPath = 'test/screenshots/${testName}_macro.png';
-					var referencePath = getReferenceImagePath();
-					var threshold = 1.0;
-
-					var macroSuccess = screenshot(macroPath, 1280, 720);
-
-					var builderSimilarity = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
-					var builderPassed = builderSuccess ? builderSimilarity >= threshold : false;
-					var macroSimilarity = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
-					var macroPassed = macroSuccess ? macroSimilarity >= threshold : false;
-
-					HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath,
-						builderPassed && macroPassed, builderSimilarity, null, macroPath,
-						macroSimilarity, macroPassed, threshold, threshold);
-					HtmlReportGenerator.generateReport();
-
-					Assert.isTrue(builderPassed, 'Builder should match reference (similarity: ${VisualTestBase.fmtSim(builderSimilarity)})');
-					Assert.isTrue(macroPassed, 'Macro should match reference (similarity: ${VisualTestBase.fmtSim(macroSimilarity)})');
-				} catch (e:Dynamic) {
-					Assert.fail('Screenshot/compare threw: $e');
-				}
-				VisualTestBase.pendingVisualTests--;
-				async.done();
-			});
-		});
+		var macroRaw = captureScreenshotRaw(1280, 720);
+		Assert.pass();
+		enqueueBuilderAndMacro(builderRaw, macroRaw, 1.0, 1.0, orderIdx);
+		VisualTestBase.pendingVisualTests--;
+		async.done();
 	}
 
 	function buildContentBall():h2d.Object {
@@ -3933,45 +3649,22 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		// Set content on cell [2,1] to prove 2D indexing routes correctly
 		populateSlot2dDemo(result);
 
-		waitForUpdate(function(dt:Float) {
-			var builderPath = 'test/screenshots/${testName}_actual.png';
-			var builderSuccess = screenshot(builderPath, 1280, 720);
+		var orderIdx = HtmlReportGenerator.reserveOrderIndex();
+		var builderRaw = captureScreenshotRaw(1280, 720);
 
-			// Phase 2: macro version
-			clearScene();
-			var macroInstance = createMp().slot2dIndex.create();
-			macroInstance.setScale(3.0);
-			s2d.addChild(macroInstance);
-			populateSlot2dCodegen(macroInstance);
-			if (testTitle != null && testTitle.length > 0) addTitleOverlay();
+		// Phase 2: macro version
+		clearScene();
+		var macroInstance = createMp().slot2dIndex.create();
+		macroInstance.setScale(3.0);
+		s2d.addChild(macroInstance);
+		populateSlot2dCodegen(macroInstance);
+		if (testTitle != null && testTitle.length > 0) addTitleOverlay();
 
-			waitForUpdate(function(dt2:Float) {
-				try {
-					var macroPath = 'test/screenshots/${testName}_macro.png';
-					var referencePath = getReferenceImagePath();
-					var threshold = 0.9999;
-
-					var macroSuccess = screenshot(macroPath, 1280, 720);
-
-					var builderSimilarity = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
-					var builderPassed = builderSuccess ? builderSimilarity >= threshold : false;
-					var macroSimilarity = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
-					var macroPassed = macroSuccess ? macroSimilarity >= threshold : false;
-
-					HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath,
-						builderPassed && macroPassed, builderSimilarity, null, macroPath,
-						macroSimilarity, macroPassed, threshold, threshold);
-					HtmlReportGenerator.generateReport();
-
-					Assert.isTrue(builderPassed, 'Builder should match reference (similarity: ${VisualTestBase.fmtSim(builderSimilarity)})');
-					Assert.isTrue(macroPassed, 'Macro should match reference (similarity: ${VisualTestBase.fmtSim(macroSimilarity)})');
-				} catch (e:Dynamic) {
-					Assert.fail('Screenshot/compare threw: $e');
-				}
-				VisualTestBase.pendingVisualTests--;
-				async.done();
-			});
-		});
+		var macroRaw = captureScreenshotRaw(1280, 720);
+		Assert.pass();
+		enqueueBuilderAndMacro(builderRaw, macroRaw, 0.9999, 0.9999, orderIdx);
+		VisualTestBase.pendingVisualTests--;
+		async.done();
 	}
 
 	function buildContentRect():h2d.Object {
@@ -4079,45 +3772,22 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		// Populate slots with content to visually demonstrate slotContent
 		populateSlotContentDemo(result);
 
-		waitForUpdate(function(dt:Float) {
-			var builderPath = 'test/screenshots/${testName}_actual.png';
-			var builderSuccess = screenshot(builderPath, 1280, 720);
+		var orderIdx = HtmlReportGenerator.reserveOrderIndex();
+		var builderRaw = captureScreenshotRaw(1280, 720);
 
-			// Phase 2: macro version
-			clearScene();
-			var macroInstance = createMp().slotContentDemo.create();
-			macroInstance.setScale(3.0);
-			s2d.addChild(macroInstance);
-			populateSlotContentCodegen(macroInstance);
-			if (testTitle != null && testTitle.length > 0) addTitleOverlay();
+		// Phase 2: macro version
+		clearScene();
+		var macroInstance = createMp().slotContentDemo.create();
+		macroInstance.setScale(3.0);
+		s2d.addChild(macroInstance);
+		populateSlotContentCodegen(macroInstance);
+		if (testTitle != null && testTitle.length > 0) addTitleOverlay();
 
-			waitForUpdate(function(dt2:Float) {
-				try {
-					var macroPath = 'test/screenshots/${testName}_macro.png';
-					var referencePath = getReferenceImagePath();
-					var threshold = 0.9999;
-
-					var macroSuccess = screenshot(macroPath, 1280, 720);
-
-					var builderSimilarity = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
-					var builderPassed = builderSuccess ? builderSimilarity >= threshold : false;
-					var macroSimilarity = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
-					var macroPassed = macroSuccess ? macroSimilarity >= threshold : false;
-
-					HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath,
-						builderPassed && macroPassed, builderSimilarity, null, macroPath,
-						macroSimilarity, macroPassed, threshold, threshold);
-					HtmlReportGenerator.generateReport();
-
-					Assert.isTrue(builderPassed, 'Builder should match reference (similarity: ${VisualTestBase.fmtSim(builderSimilarity)})');
-					Assert.isTrue(macroPassed, 'Macro should match reference (similarity: ${VisualTestBase.fmtSim(macroSimilarity)})');
-				} catch (e:Dynamic) {
-					Assert.fail('Screenshot/compare threw: $e');
-				}
-				VisualTestBase.pendingVisualTests--;
-				async.done();
-			});
-		});
+		var macroRaw = captureScreenshotRaw(1280, 720);
+		Assert.pass();
+		enqueueBuilderAndMacro(builderRaw, macroRaw, 0.9999, 0.9999, orderIdx);
+		VisualTestBase.pendingVisualTests--;
+		async.done();
 	}
 
 	function buildContentBlock():h2d.Object {
@@ -4296,21 +3966,11 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 			return;
 		}
 
-		waitForUpdate(function(dt:Float) {
-			try {
-				var actualPath = getActualImagePath();
-				var referencePath = getReferenceImagePath();
-				var success = screenshot(actualPath, 1280, 720);
-				Assert.isTrue(success, 'Screenshot should be created at $actualPath');
-				if (success) {
-					var match = compareImages(actualPath, referencePath);
-					Assert.isTrue(match, 'Screenshot should match reference image');
-				}
-			} catch (e:Dynamic) {
-				Assert.fail('Screenshot/compare threw: $e');
-			}
-			VisualTestBase.pendingVisualTests--;
-			async.done();
-		});
+		var orderIdx = HtmlReportGenerator.reserveOrderIndex();
+		var builderRaw = captureScreenshotRaw(1280, 720);
+		Assert.notNull(builderRaw, "Screenshot should be non-empty");
+		enqueueBuilder(builderRaw, 1.0, orderIdx);
+		VisualTestBase.pendingVisualTests--;
+		async.done();
 	}
 }

@@ -141,11 +141,11 @@ function Invoke-TestRun {
     try {
         # Run standard tests
         $result = Do-Run "test-hx-multianim.hxml" "build/hl-test.hl" "build/test_result.txt" ""
-        if ($result -ne 0) { return $result }
 
-        # Run dev-mode tests (hot-reload)
-        $result = Do-Run "test-hx-multianim-dev.hxml" "build/hl-test-dev.hl" "build/test_result.txt" " [DEV]"
-        return $result
+        # Run dev-mode tests (hot-reload) regardless of standard test result
+        $devResult = Do-Run "test-hx-multianim-dev.hxml" "build/hl-test-dev.hl" "build/test_result.txt" " [DEV]"
+        if ($result -ne 0) { return $result }
+        return $devResult
     } finally {
         Pop-Location
     }

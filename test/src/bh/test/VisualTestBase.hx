@@ -14,6 +14,8 @@ class VisualTestBase extends utest.Test {
 	private var updateWaiter:Null<Float -> Void>;
 	public static var appInstance:hxd.App;
 	public static var pendingVisualTests:Int = 0;
+	public static var imagePool:ImageProcessingPool = null;
+	public static var firstVisualCaptureTime:Float = 0;
 
 	private static inline function verbose(msg:String):Void {
 		#if VERBOSE
@@ -141,10 +143,12 @@ class VisualTestBase extends utest.Test {
 	// ==================== Screenshot ====================
 
 	/**
-	 * Render scene to off-screen texture, encode PNG on main thread.
-	 * Returns PNG bytes or null if image is empty. No Heaps objects leak out.
+	 * Render scene to off-screen texture and return raw BGRA pixel data.
+	 * Returns {bytes, width, height} or null if image is empty. No Heaps objects leak out.
+	 * PNG encoding is deferred to worker threads for performance.
 	 */
-	public function captureScreenshotPng(?sizeX:Int, ?sizeY:Int):Null<haxe.io.Bytes> {
+	public function captureScreenshotRaw(?sizeX:Int, ?sizeY:Int):Null<ImageProcessingPool.RawPixels> {
+		if (firstVisualCaptureTime == 0) firstVisualCaptureTime = Sys.time();
 		if (appInstance == null) {
 			trace("Warning: App instance not available for screenshot");
 			return null;
@@ -183,10 +187,30 @@ class VisualTestBase extends utest.Test {
 			return null;
 		}
 
-		// Encode PNG on main thread — only raw Bytes leave this method
-		var pngBytes = pixels.toPNG();
+		// Extract raw BGRA bytes (copy to decouple from Heaps Pixels object)
+		var rawLen = total * 4;
+		var rawBytes:haxe.io.Bytes;
+		if (off == 0 && b.length == rawLen) {
+			rawBytes = b;
+		} else {
+			rawBytes = haxe.io.Bytes.alloc(rawLen);
+			rawBytes.blit(0, b, off, rawLen);
+		}
+		var w = pixels.width;
+		var h = pixels.height;
 		pixels.dispose();
-		return pngBytes;
+
+		return {bytes: rawBytes, width: w, height: h};
+	}
+
+	/**
+	 * Legacy: capture and encode PNG on main thread.
+	 * Used by AutotileTestHelper which does its own synchronous comparison.
+	 */
+	public function captureScreenshotPng(?sizeX:Int, ?sizeY:Int):Null<haxe.io.Bytes> {
+		var raw = captureScreenshotRaw(sizeX, sizeY);
+		if (raw == null) return null;
+		return ImageProcessingPool.encodePng(raw);
 	}
 
 	// ==================== Path helpers ====================
@@ -213,13 +237,25 @@ class VisualTestBase extends utest.Test {
 	}
 
 	private function reportBuildFailure(errorMessage:String, ?orderIndex:Int):Void {
-		HtmlReportGenerator.addResult(getDisplayName(), getReferenceImagePath(), getActualImagePath(), false, 0.0, errorMessage, null, orderIndex);
+		if (imagePool != null) {
+			imagePool.enqueue({
+				displayName: getDisplayName(),
+				orderIndex: orderIndex,
+				referencePath: getReferenceImagePath(),
+				actualPath: getActualImagePath(),
+				threshold: 1.0,
+				errorMessage: errorMessage,
+			});
+		} else {
+			HtmlReportGenerator.addResult(getDisplayName(), getReferenceImagePath(), getActualImagePath(), false, 0.0, errorMessage, null, orderIndex);
+		}
 	}
 
 	// ==================== Async visual test methods ====================
 
 	/**
 	 * Build, render, capture, and enqueue comparison with reference.
+	 * Captures immediately via off-screen render (no frame wait needed).
 	 */
 	public function buildRenderScreenshotAndCompare(animFilePath:String, elementName:String,
 			async:utest.Async, ?sizeX:Int, ?sizeY:Int, ?scale:Float):Void {
@@ -249,28 +285,49 @@ class VisualTestBase extends utest.Test {
 			return;
 		}
 
-		waitForUpdate(function(dt:Float) {
-			var actualPath = getActualImagePath();
-			var referencePath = getReferenceImagePath();
-			var displayName = getDisplayName();
-			var pngBytes = captureScreenshotPng(sizeX, sizeY);
+		var actualPath = getActualImagePath();
+		var referencePath = getReferenceImagePath();
+		var displayName = getDisplayName();
+		var raw = captureScreenshotRaw(sizeX, sizeY);
 
-			if (pngBytes == null) {
-				Assert.fail('Screenshot was empty at $actualPath');
+		if (raw == null) {
+			Assert.fail('Screenshot was empty at $actualPath');
+			if (imagePool != null) {
+				imagePool.enqueue({
+					displayName: displayName,
+					orderIndex: orderIdx,
+					referencePath: referencePath,
+					actualPath: actualPath,
+					threshold: 1.0,
+					errorMessage: "Screenshot was empty",
+				});
+			}
+		} else {
+			Assert.pass();
+			if (imagePool != null) {
+				imagePool.enqueue({
+					displayName: displayName,
+					orderIndex: orderIdx,
+					referencePath: referencePath,
+					actualPath: actualPath,
+					actualRaw: raw,
+					threshold: 1.0,
+				});
 			} else {
-				Assert.pass();
+				var pngBytes = ImageProcessingPool.encodePng(raw);
 				sys.io.File.saveBytes(actualPath, pngBytes);
 				var similarity = computeSimilarityFromPngFiles(actualPath, referencePath);
 				var passed = similarity >= 1.0;
 				HtmlReportGenerator.addResult(displayName, referencePath, actualPath, passed, similarity, null, 1.0, orderIdx);
 			}
-			pendingVisualTests--;
-			async.done();
-		});
+		}
+		pendingVisualTests--;
+		async.done();
 	}
 
 	/**
 	 * Build builder + macro, capture both, enqueue comparison.
+	 * Both captures use off-screen render (no frame waits needed).
 	 */
 	public function builderAndMacroScreenshotAndCompare(animFilePath:String, elementName:String, createMacroRoot:() -> h2d.Object,
 			async:utest.Async, ?sizeX:Int, ?sizeY:Int, ?scale:Float, ?threshold:Float):Void {
@@ -305,62 +362,86 @@ class VisualTestBase extends utest.Test {
 			return;
 		}
 
-		waitForUpdate(function(dt:Float) {
-			var builderPath = 'test/screenshots/${testName}_actual.png';
-			var builderPng = captureScreenshotPng(sizeX, sizeY);
+		var builderPath = 'test/screenshots/${testName}_actual.png';
+		var builderRaw = captureScreenshotRaw(sizeX, sizeY);
 
-			// Phase 2: macro
-			clearScene();
-			var macroRoot:h2d.Object = null;
-			try {
-				macroRoot = createMacroRoot();
-			} catch (e:Dynamic) {
-				Assert.fail('Macro createRoot() threw: $e');
-				if (builderPng != null) {
-					var referencePath = getReferenceImagePath();
-					var displayName = getDisplayName();
-					var th = threshold;
+		// Phase 2: macro
+		clearScene();
+		var macroRoot:h2d.Object = null;
+		try {
+			macroRoot = createMacroRoot();
+		} catch (e:Dynamic) {
+			Assert.fail('Macro createRoot() threw: $e');
+			if (builderRaw != null) {
+				var referencePath = getReferenceImagePath();
+				var displayName = getDisplayName();
+				var th = threshold;
+				if (imagePool != null) {
+					imagePool.enqueue({
+						displayName: displayName,
+						orderIndex: orderIdx,
+						referencePath: referencePath,
+						actualPath: builderPath,
+						actualRaw: builderRaw,
+						threshold: th,
+					});
+				} else {
+					var builderPng = ImageProcessingPool.encodePng(builderRaw);
 					sys.io.File.saveBytes(builderPath, builderPng);
 					var sim = computeSimilarityFromPngFiles(builderPath, referencePath);
 					HtmlReportGenerator.addResult(displayName, referencePath, builderPath, sim >= th, sim, null, th, orderIdx);
 				}
-				pendingVisualTests--;
-				async.done();
-				return;
 			}
+			pendingVisualTests--;
+			async.done();
+			return;
+		}
 
-			s2d.addChild(macroRoot);
-			macroRoot.setScale(scale);
+		s2d.addChild(macroRoot);
+		macroRoot.setScale(scale);
 
-			if (testTitle != null && testTitle.length > 0) {
-				addTitleOverlay();
-			}
+		if (testTitle != null && testTitle.length > 0) {
+			addTitleOverlay();
+		}
 
-			waitForUpdate(function(dt2:Float) {
-				var macroPath = 'test/screenshots/${testName}_macro.png';
-				var referencePath = getReferenceImagePath();
-				var macroPng = captureScreenshotPng(sizeX, sizeY);
-				var displayName = getDisplayName();
-				var th = threshold;
+		var macroPath = 'test/screenshots/${testName}_macro.png';
+		var referencePath = getReferenceImagePath();
+		var macroRaw = captureScreenshotRaw(sizeX, sizeY);
+		var displayName = getDisplayName();
+		var th = threshold;
 
-				Assert.pass();
-				if (builderPng != null)
-					sys.io.File.saveBytes(builderPath, builderPng);
-				if (macroPng != null)
-					sys.io.File.saveBytes(macroPath, macroPng);
-
-				var builderSim = builderPng != null ? computeSimilarityFromPngFiles(builderPath, referencePath) : 0.0;
-				var macroSim = macroPng != null ? computeSimilarityFromPngFiles(macroPath, referencePath) : 0.0;
-				var builderOk = builderSim >= th;
-				var macroOk = macroSim >= th;
-
-				HtmlReportGenerator.addResultWithMacro(displayName, referencePath, builderPath, builderOk && macroOk,
-					builderSim, null, macroPath, macroSim, macroOk, th, th, orderIdx);
-
-				pendingVisualTests--;
-				async.done();
+		Assert.pass();
+		if (imagePool != null) {
+			imagePool.enqueue({
+				displayName: displayName,
+				orderIndex: orderIdx,
+				referencePath: referencePath,
+				actualPath: builderPath,
+				actualRaw: builderRaw,
+				macroPath: macroPath,
+				macroRaw: macroRaw,
+				threshold: th,
+				macroThreshold: th,
 			});
-		});
+		} else {
+			var builderPng = builderRaw != null ? ImageProcessingPool.encodePng(builderRaw) : null;
+			var macroPng = macroRaw != null ? ImageProcessingPool.encodePng(macroRaw) : null;
+			if (builderPng != null)
+				sys.io.File.saveBytes(builderPath, builderPng);
+			if (macroPng != null)
+				sys.io.File.saveBytes(macroPath, macroPng);
+
+			var builderSim = builderPng != null ? computeSimilarityFromPngFiles(builderPath, referencePath) : 0.0;
+			var macroSim = macroPng != null ? computeSimilarityFromPngFiles(macroPath, referencePath) : 0.0;
+			var builderOk = builderSim >= th;
+			var macroOk = macroSim >= th;
+
+			HtmlReportGenerator.addResultWithMacro(displayName, referencePath, builderPath, builderOk && macroOk,
+				builderSim, null, macroPath, macroSim, macroOk, th, th, orderIdx);
+		}
+
+		pendingVisualTests--;
+		async.done();
 	}
 
 	/**
@@ -405,55 +486,67 @@ class VisualTestBase extends utest.Test {
 
 		if (testTitle != null && testTitle.length > 0) addTitleOverlay();
 
-		waitForUpdate(function(dt:Float) {
-			var builderPath = getActualImagePath();
-			var builderPng = captureScreenshotPng(1280, 720);
+		var builderPath = getActualImagePath();
+		var builderRaw = captureScreenshotRaw(1280, 720);
 
-			// Phase 2: macro
-			clearScene();
-			var mc = new h2d.Object(s2d);
-			mc.setScale(scale);
+		// Phase 2: macro
+		clearScene();
+		var mc = new h2d.Object(s2d);
+		mc.setScale(scale);
 
-			try {
-				for (i in 0...variantCount) {
-					var root = createMacroRoots(i);
-					root.setPosition(0, i * spacing);
-					mc.addChild(root);
-				}
-			} catch (e:Dynamic) {
-				Assert.fail('Macro createRoot() threw: $e');
-				pendingVisualTests--;
-				async.done();
-				return;
+		try {
+			for (i in 0...variantCount) {
+				var root = createMacroRoots(i);
+				root.setPosition(0, i * spacing);
+				mc.addChild(root);
 			}
+		} catch (e:Dynamic) {
+			Assert.fail('Macro createRoot() threw: $e');
+			pendingVisualTests--;
+			async.done();
+			return;
+		}
 
-			if (testTitle != null && testTitle.length > 0) addTitleOverlay();
+		if (testTitle != null && testTitle.length > 0) addTitleOverlay();
 
-			waitForUpdate(function(dt2:Float) {
-				var macroPath = 'test/screenshots/${testName}_macro.png';
-				var referencePath = getReferenceImagePath();
-				var macroPng = captureScreenshotPng(1280, 720);
-				var displayName = getDisplayName();
-				var th:Float = if (tolerance != null) tolerance else 1.0;
+		var macroPath = 'test/screenshots/${testName}_macro.png';
+		var referencePath = getReferenceImagePath();
+		var macroRaw = captureScreenshotRaw(1280, 720);
+		var displayName = getDisplayName();
+		var th:Float = if (tolerance != null) tolerance else 1.0;
 
-				Assert.pass();
-				if (builderPng != null)
-					sys.io.File.saveBytes(builderPath, builderPng);
-				if (macroPng != null)
-					sys.io.File.saveBytes(macroPath, macroPng);
-
-				var builderSim = builderPng != null ? computeSimilarityFromPngFiles(builderPath, referencePath) : 0.0;
-				var macroSim = macroPng != null ? computeSimilarityFromPngFiles(macroPath, referencePath) : 0.0;
-				var builderOk = builderSim >= th;
-				var macroOk = macroSim >= th;
-
-				HtmlReportGenerator.addResultWithMacro(displayName, referencePath, builderPath, builderOk && macroOk,
-					builderSim, null, macroPath, macroSim, macroOk, th, th, orderIdx);
-
-				pendingVisualTests--;
-				async.done();
+		Assert.pass();
+		if (imagePool != null) {
+			imagePool.enqueue({
+				displayName: displayName,
+				orderIndex: orderIdx,
+				referencePath: referencePath,
+				actualPath: builderPath,
+				actualRaw: builderRaw,
+				macroPath: macroPath,
+				macroRaw: macroRaw,
+				threshold: th,
+				macroThreshold: th,
 			});
-		});
+		} else {
+			var builderPng = builderRaw != null ? ImageProcessingPool.encodePng(builderRaw) : null;
+			var macroPng = macroRaw != null ? ImageProcessingPool.encodePng(macroRaw) : null;
+			if (builderPng != null)
+				sys.io.File.saveBytes(builderPath, builderPng);
+			if (macroPng != null)
+				sys.io.File.saveBytes(macroPath, macroPng);
+
+			var builderSim = builderPng != null ? computeSimilarityFromPngFiles(builderPath, referencePath) : 0.0;
+			var macroSim = macroPng != null ? computeSimilarityFromPngFiles(macroPath, referencePath) : 0.0;
+			var builderOk = builderSim >= th;
+			var macroOk = macroSim >= th;
+
+			HtmlReportGenerator.addResultWithMacro(displayName, referencePath, builderPath, builderOk && macroOk,
+				builderSim, null, macroPath, macroSim, macroOk, th, th, orderIdx);
+		}
+
+		pendingVisualTests--;
+		async.done();
 	}
 
 	/**
@@ -502,55 +595,146 @@ class VisualTestBase extends utest.Test {
 
 		if (testTitle != null && testTitle.length > 0) addTitleOverlay();
 
-		waitForUpdate(function(dt:Float) {
-			var builderPath = getActualImagePath();
-			var builderPng = captureScreenshotPng(1280, 720);
+		var builderPath = getActualImagePath();
+		var builderRaw = captureScreenshotRaw(1280, 720);
 
-			// Phase 2: macro
-			clearScene();
-			var mc = new h2d.Object(s2d);
-			mc.setScale(scale);
+		// Phase 2: macro
+		clearScene();
+		var mc = new h2d.Object(s2d);
+		mc.setScale(scale);
 
-			try {
-				for (i in 0...variantCount) {
-					var root = createMacroRoots(i);
-					root.setPosition(layoutPoints[i].x, layoutPoints[i].y);
-					mc.addChild(root);
-				}
-			} catch (e:Dynamic) {
-				Assert.fail('Macro createRoot() threw: $e');
-				pendingVisualTests--;
-				async.done();
-				return;
+		try {
+			for (i in 0...variantCount) {
+				var root = createMacroRoots(i);
+				root.setPosition(layoutPoints[i].x, layoutPoints[i].y);
+				mc.addChild(root);
 			}
+		} catch (e:Dynamic) {
+			Assert.fail('Macro createRoot() threw: $e');
+			pendingVisualTests--;
+			async.done();
+			return;
+		}
 
-			if (testTitle != null && testTitle.length > 0) addTitleOverlay();
+		if (testTitle != null && testTitle.length > 0) addTitleOverlay();
 
-			waitForUpdate(function(dt2:Float) {
-				var macroPath = 'test/screenshots/${testName}_macro.png';
-				var referencePath = getReferenceImagePath();
-				var macroPng = captureScreenshotPng(1280, 720);
-				var displayName = getDisplayName();
-				var th:Float = if (tolerance != null) tolerance else 1.0;
+		var macroPath = 'test/screenshots/${testName}_macro.png';
+		var referencePath = getReferenceImagePath();
+		var macroRaw = captureScreenshotRaw(1280, 720);
+		var displayName = getDisplayName();
+		var th:Float = if (tolerance != null) tolerance else 1.0;
 
-				Assert.pass();
-				if (builderPng != null)
-					sys.io.File.saveBytes(builderPath, builderPng);
-				if (macroPng != null)
-					sys.io.File.saveBytes(macroPath, macroPng);
-
-				var builderSim = builderPng != null ? computeSimilarityFromPngFiles(builderPath, referencePath) : 0.0;
-				var macroSim = macroPng != null ? computeSimilarityFromPngFiles(macroPath, referencePath) : 0.0;
-				var builderOk = builderSim >= th;
-				var macroOk = macroSim >= th;
-
-				HtmlReportGenerator.addResultWithMacro(displayName, referencePath, builderPath, builderOk && macroOk,
-					builderSim, null, macroPath, macroSim, macroOk, th, th, orderIdx);
-
-				pendingVisualTests--;
-				async.done();
+		Assert.pass();
+		if (imagePool != null) {
+			imagePool.enqueue({
+				displayName: displayName,
+				orderIndex: orderIdx,
+				referencePath: referencePath,
+				actualPath: builderPath,
+				actualRaw: builderRaw,
+				macroPath: macroPath,
+				macroRaw: macroRaw,
+				threshold: th,
+				macroThreshold: th,
 			});
-		});
+		} else {
+			var builderPng = builderRaw != null ? ImageProcessingPool.encodePng(builderRaw) : null;
+			var macroPng = macroRaw != null ? ImageProcessingPool.encodePng(macroRaw) : null;
+			if (builderPng != null)
+				sys.io.File.saveBytes(builderPath, builderPng);
+			if (macroPng != null)
+				sys.io.File.saveBytes(macroPath, macroPng);
+
+			var builderSim = builderPng != null ? computeSimilarityFromPngFiles(builderPath, referencePath) : 0.0;
+			var macroSim = macroPng != null ? computeSimilarityFromPngFiles(macroPath, referencePath) : 0.0;
+			var builderOk = builderSim >= th;
+			var macroOk = macroSim >= th;
+
+			HtmlReportGenerator.addResultWithMacro(displayName, referencePath, builderPath, builderOk && macroOk,
+				builderSim, null, macroPath, macroSim, macroOk, th, th, orderIdx);
+		}
+
+		pendingVisualTests--;
+		async.done();
+	}
+
+	// ==================== Pool-based enqueue for custom tests ====================
+
+	/**
+	 * Enqueue builder + macro screenshots to the image processing pool.
+	 * If pool is null, falls back to synchronous processing.
+	 * Returns immediately — comparison happens in worker thread.
+	 */
+	public function enqueueBuilderAndMacro(builderRaw:Null<ImageProcessingPool.RawPixels>, macroRaw:Null<ImageProcessingPool.RawPixels>,
+			?builderThreshold:Float, ?macroThreshold:Float, ?orderIndex:Int):Void {
+		if (builderThreshold == null) builderThreshold = 1.0;
+		if (macroThreshold == null) macroThreshold = builderThreshold;
+
+		var actualPath = getActualImagePath();
+		var macroPath = 'test/screenshots/${testName}_macro.png';
+		var referencePath = getReferenceImagePath();
+		var displayName = getDisplayName();
+
+		if (imagePool != null) {
+			imagePool.enqueue({
+				displayName: displayName,
+				orderIndex: orderIndex,
+				referencePath: referencePath,
+				actualPath: actualPath,
+				actualRaw: builderRaw,
+				macroPath: macroPath,
+				macroRaw: macroRaw,
+				threshold: builderThreshold,
+				macroThreshold: macroThreshold,
+			});
+		} else {
+			var builderPng = builderRaw != null ? ImageProcessingPool.encodePng(builderRaw) : null;
+			var macroPng = macroRaw != null ? ImageProcessingPool.encodePng(macroRaw) : null;
+			if (builderPng != null) sys.io.File.saveBytes(actualPath, builderPng);
+			if (macroPng != null) sys.io.File.saveBytes(macroPath, macroPng);
+			var builderSim = builderPng != null ? ImageProcessingPool.computeSimilarityFromBytes(builderPng, loadFileBytes(referencePath)) : 0.0;
+			var macroSim = macroPng != null ? ImageProcessingPool.computeSimilarityFromBytes(macroPng, loadFileBytes(referencePath)) : 0.0;
+			var builderOk = builderSim >= builderThreshold;
+			var macroOk = macroSim >= macroThreshold;
+			HtmlReportGenerator.addResultWithMacro(displayName, referencePath, actualPath, builderOk && macroOk,
+				builderSim, null, macroPath, macroSim, macroOk, builderThreshold, macroThreshold, orderIndex);
+		}
+	}
+
+	/**
+	 * Enqueue builder-only screenshot to the image processing pool.
+	 */
+	public function enqueueBuilder(builderRaw:Null<ImageProcessingPool.RawPixels>, ?threshold:Float, ?orderIndex:Int):Void {
+		if (threshold == null) threshold = 1.0;
+
+		var actualPath = getActualImagePath();
+		var referencePath = getReferenceImagePath();
+		var displayName = getDisplayName();
+
+		if (imagePool != null) {
+			imagePool.enqueue({
+				displayName: displayName,
+				orderIndex: orderIndex,
+				referencePath: referencePath,
+				actualPath: actualPath,
+				actualRaw: builderRaw,
+				threshold: threshold,
+			});
+		} else {
+			var builderPng = builderRaw != null ? ImageProcessingPool.encodePng(builderRaw) : null;
+			if (builderPng != null) sys.io.File.saveBytes(actualPath, builderPng);
+			var sim = builderPng != null ? ImageProcessingPool.computeSimilarityFromBytes(builderPng, loadFileBytes(referencePath)) : 0.0;
+			HtmlReportGenerator.addResult(displayName, referencePath, actualPath, sim >= threshold, sim, null, threshold, orderIndex);
+		}
+	}
+
+	private static function loadFileBytes(path:String):Null<haxe.io.Bytes> {
+		if (path == null || !sys.FileSystem.exists(path)) return null;
+		try {
+			return sys.io.File.getBytes(path);
+		} catch (e:Dynamic) {
+			return null;
+		}
 	}
 
 	// ==================== Synchronous screenshot/compare (for custom test patterns) ====================
