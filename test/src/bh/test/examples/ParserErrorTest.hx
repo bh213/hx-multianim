@@ -2474,4 +2474,98 @@ class ParserErrorTest extends utest.Test {
 			}
 		"), "DropShadow with angle unit should parse");
 	}
+
+	// ==================== Named range syntax ====================
+
+	@Test
+	public function testNamedRangeInclusiveParsesOk() {
+		Assert.isTrue(parseExpectingSuccess('
+			#test programmable() {
+				repeatable($$i, range(from: 0, to: 5)) {
+					bitmap(generated(color(10, 10, #f00))): 0, 0
+				}
+			}
+		'), "Named range with from/to should parse");
+	}
+
+	@Test
+	public function testNamedRangeExclusiveParsesOk() {
+		Assert.isTrue(parseExpectingSuccess('
+			#test programmable() {
+				repeatable($$i, range(from: 0, until: 5)) {
+					bitmap(generated(color(10, 10, #f00))): 0, 0
+				}
+			}
+		'), "Named range with from/until should parse");
+	}
+
+	@Test
+	public function testNamedRangeWithStepParsesOk() {
+		Assert.isTrue(parseExpectingSuccess('
+			#test programmable() {
+				repeatable($$i, range(from: 0, to: 10, step: 2)) {
+					bitmap(generated(color(10, 10, #f00))): 0, 0
+				}
+			}
+		'), "Named range with from/to/step should parse");
+	}
+
+	@Test
+	public function testNamedRangeWithParamRefParsesOk() {
+		Assert.isTrue(parseExpectingSuccess('
+			#test programmable(n:uint=5) {
+				repeatable($$i, range(from: 0, to: $$n)) {
+					bitmap(generated(color(10, 10, #f00))): 0, 0
+				}
+			}
+		'), "Named range with param reference should parse");
+	}
+
+	@Test
+	public function testNamedRangeInvalidEndKeyword() {
+		final err = parseExpectingError('
+			#test programmable() {
+				repeatable($$i, range(from: 0, end: 5)) {
+					bitmap(generated(color(10, 10, #f00))): 0, 0
+				}
+			}
+		');
+		Assert.notNull(err, "Named range with invalid keyword 'end' should fail");
+		Assert.isTrue(err.indexOf("to") >= 0 || err.indexOf("until") >= 0, 'Error should mention "to" or "until": $err');
+	}
+
+	@Test
+	public function testNamedRangeInvalidStepKeyword() {
+		final err = parseExpectingError('
+			#test programmable() {
+				repeatable($$i, range(from: 0, to: 10, stride: 2)) {
+					bitmap(generated(color(10, 10, #f00))): 0, 0
+				}
+			}
+		');
+		Assert.notNull(err, "Named range with invalid keyword 'stride' should fail");
+		Assert.isTrue(err.indexOf("step") >= 0, 'Error should mention "step": $err');
+	}
+
+	@Test
+	public function testNamedRangeNegativeStartParsesOk() {
+		Assert.isTrue(parseExpectingSuccess('
+			#test programmable() {
+				repeatable($$i, range(from: -3, to: 3)) {
+					bitmap(generated(color(10, 10, #f00))): 0, 0
+				}
+			}
+		'), "Named range with negative start should parse");
+	}
+
+	@Test
+	public function testPositionalRangeWithStepParsesOk() {
+		Assert.isTrue(parseExpectingSuccess('
+			#test programmable() {
+				repeatable($$i, range(0, 10, 3)) {
+					bitmap(generated(color(10, 10, #f00))): 0, 0
+				}
+			}
+		'), "Positional range with step should parse");
+	}
 }

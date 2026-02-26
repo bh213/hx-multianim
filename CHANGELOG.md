@@ -266,6 +266,9 @@
 - **TabButton incremental rewrite** — `UIMultiAnimTabButton` same pattern; selected/disabled states via `setParameter()`
 
 ### Fixed
+- **Named range codegen loop variable** — macro codegen for named range iterators (`range(from:, to:)`) now produces correct loop variable values and positions
+  - `tryResolveStaticInt` extended to evaluate constant `EBinop`/`RVParenthesis`/`EUnaryOp` expressions (fixes named `to:` creating unresolvable `EBinop(OpAdd, N, 1)`)
+  - `poolRepeatChildren` now computes `rangeStart + _rt_i * rangeStep` for `RangeIterator` (previously used raw iteration index as loop variable)
 - **Selected tab hover/cursor** — selected tab no longer shows clickable cursor or hover highlight on mouse re-enter; `getCursor()` returns default arrow, `OnEnter`/`OnLeave`/`OnRelease` skip state changes, and `set_selected(true)` resets status to "normal"
 - **`outsideClick.handle()` called on every event** — now guarded to only fire on `OnPush`/`OnRelease`/`OnReleaseOutside` (was unnecessarily processing hover/wheel/move events)
 - **Hex integer in `parseAnything()`** — `THexInteger` tokens now reconstruct `0x` prefix before `stringToInt()` (fixes `0xAA8844` in untyped settings)

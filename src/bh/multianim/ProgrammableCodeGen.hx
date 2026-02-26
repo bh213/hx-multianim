@@ -1157,6 +1157,23 @@ class ProgrammableCodeGen {
 		return switch (rv) {
 			case RVInteger(i): i;
 			case RVFloat(f): Math.round(f);
+			case EBinop(op, e1, e2):
+				final left = tryResolveStaticInt(e1);
+				final right = tryResolveStaticInt(e2);
+				if (left != null && right != null) {
+					switch (op) {
+						case OpAdd: left + right;
+						case OpSub: left - right;
+						case OpMul: left * right;
+						case OpDiv: right != 0 ? Math.round(left / right) : null;
+						case OpMod: right != 0 ? left % right : null;
+						default: null;
+					};
+				} else null;
+			case RVParenthesis(e): tryResolveStaticInt(e);
+			case EUnaryOp(_, e):
+				final inner = tryResolveStaticInt(e);
+				if (inner != null) -inner else null;
 			default: null;
 		};
 	}
@@ -1307,8 +1324,12 @@ class ProgrammableCodeGen {
 				rvToExpr(countRV);
 		};
 
+		// For RangeIterator, the loop variable should be rangeStart + _rt_i * rangeStep, not just _rt_i
+		final isRange = switch (repeatType) { case RangeIterator(_, _, _): true; default: false; };
+		final loopVarIdent = isRange ? "_rt_val" : "_rt_i";
+
 		// Use runtimeLoopVars so rvToExpr generates runtime references for the loop variable
-		runtimeLoopVars.set(varName, "_rt_i");
+		runtimeLoopVars.set(varName, loopVarIdent);
 
 		// Build loop body expressions from child nodes
 		final containerRef = macro _rt_cont;
@@ -1323,11 +1344,14 @@ class ProgrammableCodeGen {
 
 		// Build the for-loop body: create container, position, add children
 		final forBodyExprs:Array<Expr> = [];
+		if (isRange) {
+			final rangeStartFloat:Float = rangeStart;
+			final rangeStepFloat:Float = rangeStep;
+			forBodyExprs.push(macro final _rt_val = Std.int($v{rangeStartFloat} + _rt_i * $v{rangeStepFloat}));
+		}
 		forBodyExprs.push(macro final _rt_cont = new h2d.Object());
 		final dxFloat:Float = dx;
 		final dyFloat:Float = dy;
-		final rangeStartFloat:Float = rangeStart;
-		final rangeStepFloat:Float = rangeStep;
 		if (dx != 0 || dy != 0) {
 			forBodyExprs.push(macro _rt_cont.setPosition($v{dxFloat} * _rt_i, $v{dyFloat} * _rt_i));
 		}

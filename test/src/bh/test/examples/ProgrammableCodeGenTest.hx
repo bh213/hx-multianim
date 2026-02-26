@@ -3978,6 +3978,47 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	@Test
 	public function test91_NamedRange(async:utest.Async):Void {
-		simpleMacroTest(91, "namedRange", () -> createMp().namedRange.create(), async, null, null, null, 0.999);
+		simpleMacroTest(91, "namedRange", () -> createMp().namedRange.create(), async);
+	}
+
+	// ==================== Named range: macro unit tests ====================
+
+	@Test
+	public function test91_NamedRangeMacroLoopVarValues():Void {
+		// Verify macro codegen produces correct loop variable values (not raw iteration indices).
+		final instance = createMp().namedRange.create();
+		final allTexts = findAllTextDescendants(instance);
+
+		// Row 3: range(from: 1, to: 10, step: 2) => text should show 1,3,5,7,9 (green #00ff00)
+		final greenTexts = allTexts.filter(t -> t.textColor == 0xFF00ff00);
+		Assert.equals(5, greenTexts.length);
+		if (greenTexts.length == 5) {
+			Assert.equals("1", greenTexts[0].text);
+			Assert.equals("3", greenTexts[1].text);
+			Assert.equals("5", greenTexts[2].text);
+			Assert.equals("7", greenTexts[3].text);
+			Assert.equals("9", greenTexts[4].text);
+		}
+
+		// Row 9: range(from: 0, to: 20, step: 5) => text should show 0,5,10,15,20 (red #ff4444)
+		final redTexts = allTexts.filter(t -> t.textColor == 0xFFff4444);
+		Assert.equals(5, redTexts.length);
+		if (redTexts.length == 5) {
+			Assert.equals("0", redTexts[0].text);
+			Assert.equals("5", redTexts[1].text);
+			Assert.equals("10", redTexts[2].text);
+			Assert.equals("15", redTexts[3].text);
+			Assert.equals("20", redTexts[4].text);
+		}
+
+		// Row 4: range(from: 0, until: 10, step: 3) => text should show 0,3,6,9 (orange #ff8800)
+		final orangeTexts = allTexts.filter(t -> t.textColor == 0xFFff8800);
+		Assert.equals(4, orangeTexts.length);
+		if (orangeTexts.length == 4) {
+			Assert.equals("0", orangeTexts[0].text);
+			Assert.equals("3", orangeTexts[1].text);
+			Assert.equals("6", orangeTexts[2].text);
+			Assert.equals("9", orangeTexts[3].text);
+		}
 	}
 }

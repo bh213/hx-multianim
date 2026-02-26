@@ -3022,4 +3022,196 @@ class BuilderUnitTest extends BuilderTestBase {
 			", "test");
 		});
 	}
+
+	// ==================== Named range iterators ====================
+
+	@Test
+	public function testNamedRangeInclusive():Void {
+		// range(from: 0, to: 3) => 0,1,2,3 (4 items)
+		final result = buildFromSource("
+			#test programmable() {
+				repeatable($i, range(from: 0, to: 3)) {
+					bitmap(generated(color(10, 10, #f00))): $i * 20, 0
+				}
+			}
+		", "test");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(4, bitmaps.length);
+	}
+
+	@Test
+	public function testNamedRangeExclusive():Void {
+		// range(from: 0, until: 3) => 0,1,2 (3 items)
+		final result = buildFromSource("
+			#test programmable() {
+				repeatable($i, range(from: 0, until: 3)) {
+					bitmap(generated(color(10, 10, #f00))): $i * 20, 0
+				}
+			}
+		", "test");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(3, bitmaps.length);
+	}
+
+	@Test
+	public function testNamedRangeInclusiveWithStep():Void {
+		// range(from: 0, to: 10, step: 3) => 0,3,6,9 (4 items; 10 not reached)
+		final result = buildFromSource("
+			#test programmable() {
+				repeatable($i, range(from: 0, to: 10, step: 3)) {
+					bitmap(generated(color(10, 10, #f00))): 0, 0
+				}
+			}
+		", "test");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		// to: 10 means end = 11, step = 3, so: ceil((11-0)/3) = 4
+		Assert.equals(4, bitmaps.length);
+	}
+
+	@Test
+	public function testNamedRangeExclusiveWithStep():Void {
+		// range(from: 0, until: 10, step: 3) => 0,3,6,9 (4 items)
+		final result = buildFromSource("
+			#test programmable() {
+				repeatable($i, range(from: 0, until: 10, step: 3)) {
+					bitmap(generated(color(10, 10, #f00))): 0, 0
+				}
+			}
+		", "test");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		// until: 10 means end = 10, step = 3, so: ceil((10-0)/3) = 4
+		Assert.equals(4, bitmaps.length);
+	}
+
+	@Test
+	public function testNamedRangeLoopVarValues():Void {
+		// range(from: 2, to: 5) => loop var should be 2,3,4,5
+		final result = buildFromSource("
+			#test programmable() {
+				repeatable($i, range(from: 2, to: 5)) {
+					text(dd, $i, #fff): $i * 20, 0
+				}
+			}
+		", "test");
+		final texts = findAllTextDescendants(result.object);
+		Assert.equals(4, texts.length);
+		Assert.equals("2", texts[0].text);
+		Assert.equals("3", texts[1].text);
+		Assert.equals("4", texts[2].text);
+		Assert.equals("5", texts[3].text);
+	}
+
+	@Test
+	public function testNamedRangeStepLoopVarValues():Void {
+		// range(from: 1, to: 9, step: 2) => loop var should be 1,3,5,7,9
+		final result = buildFromSource("
+			#test programmable() {
+				repeatable($i, range(from: 1, to: 9, step: 2)) {
+					text(dd, $i, #fff): 0, 0
+				}
+			}
+		", "test");
+		final texts = findAllTextDescendants(result.object);
+		Assert.equals(5, texts.length);
+		Assert.equals("1", texts[0].text);
+		Assert.equals("3", texts[1].text);
+		Assert.equals("5", texts[2].text);
+		Assert.equals("7", texts[3].text);
+		Assert.equals("9", texts[4].text);
+	}
+
+	@Test
+	public function testNamedRangeNegativeStart():Void {
+		// range(from: -2, to: 1) => -2,-1,0,1 (4 items)
+		final result = buildFromSource("
+			#test programmable() {
+				repeatable($i, range(from: -2, to: 1)) {
+					text(dd, $i, #fff): 0, 0
+				}
+			}
+		", "test");
+		final texts = findAllTextDescendants(result.object);
+		Assert.equals(4, texts.length);
+		Assert.equals("-2", texts[0].text);
+		Assert.equals("-1", texts[1].text);
+		Assert.equals("0", texts[2].text);
+		Assert.equals("1", texts[3].text);
+	}
+
+	@Test
+	public function testNamedRangeWithParamRef():Void {
+		// range with $param references for start/end
+		final params = new Map<String, Dynamic>();
+		params.set("start", 2);
+		params.set("count", 6);
+		final result = buildFromSource("
+			#test programmable(start:uint=0, count:uint=5) {
+				repeatable($i, range(from: $start, until: $count)) {
+					text(dd, $i, #fff): 0, 0
+				}
+			}
+		", "test", params);
+		final texts = findAllTextDescendants(result.object);
+		// from: 2, until: 6 => 2,3,4,5 (4 items)
+		Assert.equals(4, texts.length);
+		Assert.equals("2", texts[0].text);
+		Assert.equals("5", texts[3].text);
+	}
+
+	@Test
+	public function testNamedRangeConditionalOnLoopVar():Void {
+		// Conditional comparison on loop var inside named range body
+		final result = buildFromSource("
+			#test programmable() {
+				repeatable($i, range(from: 0, to: 5)) {
+					@($i >= 3) bitmap(generated(color(10, 10, #0f0))): 0, 0
+				}
+			}
+		", "test");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		// Only iterations 3, 4, 5 produce visible bitmaps
+		Assert.equals(3, bitmaps.length);
+	}
+
+	@Test
+	public function testPositionalRangeWithStep():Void {
+		// Positional syntax: range(0, 9, 3) => 0,3,6 (3 items, end exclusive)
+		final result = buildFromSource("
+			#test programmable() {
+				repeatable($i, range(0, 9, 3)) {
+					text(dd, $i, #fff): 0, 0
+				}
+			}
+		", "test");
+		final texts = findAllTextDescendants(result.object);
+		Assert.equals(3, texts.length);
+		Assert.equals("0", texts[0].text);
+		Assert.equals("3", texts[1].text);
+		Assert.equals("6", texts[2].text);
+	}
+
+	@Test
+	public function testNamedRangeInclusiveVsExclusiveCountDifference():Void {
+		// to: N includes N, until: N excludes N
+		final resultTo = buildFromSource("
+			#test programmable() {
+				repeatable($i, range(from: 0, to: 4)) {
+					bitmap(generated(color(10, 10, #f00))): 0, 0
+				}
+			}
+		", "test");
+		final resultUntil = buildFromSource("
+			#test programmable() {
+				repeatable($i, range(from: 0, until: 4)) {
+					bitmap(generated(color(10, 10, #f00))): 0, 0
+				}
+			}
+		", "test");
+		final countTo = findVisibleBitmapDescendants(resultTo.object).length;
+		final countUntil = findVisibleBitmapDescendants(resultUntil.object).length;
+		// to: 4 => 0,1,2,3,4 = 5 items; until: 4 => 0,1,2,3 = 4 items
+		Assert.equals(5, countTo);
+		Assert.equals(4, countUntil);
+		Assert.equals(countTo - 1, countUntil);
+	}
 }
