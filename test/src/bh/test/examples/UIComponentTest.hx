@@ -16,6 +16,8 @@ import bh.ui.UIMultiAnimDropdown.UIStandardMultiAnimDropdown;
 import bh.ui.UIMultiAnimScrollableList;
 import bh.ui.UIMultiAnimScrollableList.ClickMode;
 import bh.ui.UIMultiAnimScrollableList.PanelSizeMode;
+import bh.ui.UIMultiAnimTabs;
+import bh.ui.UIMultiAnimTabs.UIMultiAnimTabButton;
 import bh.base.MAObject;
 import bh.base.MAObject.MultiAnimObjectData;
 import bh.multianim.MultiAnimParser.SettingValue;
@@ -1469,5 +1471,398 @@ class UIComponentTest extends BuilderTestBase {
 		list.setItems(newItems);
 		Assert.equals(-1, list.currentHoverIndex);
 		Assert.equals(-1, list.currentPressedIndex);
+	}
+
+	// ============== Tabs Tests ==============
+
+	static final TABS_MANIM = "
+		#tabBar programmable(count:uint=3) {
+			repeatable($i, step($count, dx: 80)) {
+				placeholder(generated(color(80, 30, #555555)), callback(\"tabButton\", $i)): 0, 0
+			}
+		}
+
+		#tab programmable(status:[normal,hover,pressed]=normal, disabled:bool=false, checked:bool=false, buttonText:string=Tab) {
+			bitmap(generated(color(80, 30, #444444))): 0, 0
+		}
+	";
+
+	static final TABS_CONTENTROOT_MANIM = "
+		#tabBar programmable(count:uint=3) {
+			repeatable($i, step($count, dx: 80)) {
+				placeholder(generated(color(80, 30, #555555)), callback(\"tabButton\", $i)): 0, 0
+			}
+			#contentRoot point: 0, 30
+		}
+
+		#tab programmable(status:[normal,hover,pressed]=normal, disabled:bool=false, checked:bool=false, buttonText:string=Tab) {
+			bitmap(generated(color(80, 30, #444444))): 0, 0
+		}
+	";
+
+	function createTabItems():Array<UIElementListItem> {
+		return [
+			{name: "Tab 1"},
+			{name: "Tab 2"},
+			{name: "Tab 3"},
+		];
+	}
+
+	function createTabs(?items:Array<UIElementListItem>, initialIndex:Int = 0):{tabs:UIMultiAnimTabs, screen:UITestScreen} {
+		if (items == null)
+			items = createTabItems();
+		var builder = BuilderTestBase.builderFromSource(TABS_MANIM);
+		var screen = new UITestScreen();
+		var tabs = new UIMultiAnimTabs(builder, "tabBar", "tab", items, initialIndex, screen);
+		return {tabs: tabs, screen: screen};
+	}
+
+	function getTabButton(tabs:UIMultiAnimTabs, index:Int):UIMultiAnimTabButton {
+		var subElements = tabs.getSubElements(SETReceiveEvents);
+		return cast subElements[index];
+	}
+
+	@Test
+	public function testTabsCreation():Void {
+		var result = createTabs();
+		Assert.notNull(result.tabs);
+		Assert.notNull(result.tabs.getObject());
+		Assert.isFalse(result.tabs.disabled);
+		Assert.equals(0, result.tabs.getSelectedIndex());
+		Assert.equals(3, result.tabs.getList().length);
+	}
+
+	@Test
+	public function testTabsInitialSelection():Void {
+		var result = createTabs(null, 1);
+		Assert.equals(1, result.tabs.getSelectedIndex());
+
+		var btn0 = getTabButton(result.tabs, 0);
+		var btn1 = getTabButton(result.tabs, 1);
+		Assert.isFalse(btn0.selected);
+		Assert.isTrue(btn1.selected);
+	}
+
+	@Test
+	public function testTabsGetList():Void {
+		var items = createTabItems();
+		var result = createTabs(items);
+		var list = result.tabs.getList();
+		Assert.equals(items.length, list.length);
+		Assert.equals("Tab 1", list[0].name);
+		Assert.equals("Tab 2", list[1].name);
+		Assert.equals("Tab 3", list[2].name);
+	}
+
+	@Test
+	public function testTabsSetSelectedIndex():Void {
+		var result = createTabs();
+		result.tabs.setSelectedIndex(2);
+		Assert.equals(2, result.tabs.getSelectedIndex());
+
+		var btn0 = getTabButton(result.tabs, 0);
+		var btn2 = getTabButton(result.tabs, 2);
+		Assert.isFalse(btn0.selected);
+		Assert.isTrue(btn2.selected);
+	}
+
+	@Test
+	public function testTabsSetSelectedIndexSameNoOp():Void {
+		var result = createTabs();
+		var btn0 = getTabButton(result.tabs, 0);
+		Assert.isTrue(btn0.selected);
+
+		// Setting same index should be a no-op
+		result.tabs.setSelectedIndex(0);
+		Assert.equals(0, result.tabs.getSelectedIndex());
+		Assert.isTrue(btn0.selected);
+	}
+
+	@Test
+	public function testTabsClickSwitchesTab():Void {
+		var result = createTabs();
+		var mock = new MockControllable();
+
+		// Click second tab (index 1)
+		UITestHarness.simulateClick(cast getTabButton(result.tabs, 1), mock);
+
+		Assert.equals(1, result.tabs.getSelectedIndex());
+		Assert.equals(1, mock.eventCount());
+		Assert.isTrue(mock.hasEvent(UIChangeItem(1, result.tabs.getList())));
+	}
+
+	@Test
+	public function testTabsClickSelectedTabNoOp():Void {
+		var result = createTabs();
+		var mock = new MockControllable();
+
+		// Click first tab (already selected)
+		UITestHarness.simulateClick(cast getTabButton(result.tabs, 0), mock);
+
+		Assert.equals(0, result.tabs.getSelectedIndex());
+		Assert.equals(0, mock.eventCount());
+	}
+
+	@Test
+	public function testTabsOnTabChangedCallback():Void {
+		var result = createTabs();
+		var callbackIndex:Null<Int> = null;
+
+		result.tabs.onTabChanged = function(index, items) {
+			callbackIndex = index;
+		};
+
+		var mock = new MockControllable();
+		UITestHarness.simulateClick(cast getTabButton(result.tabs, 1), mock);
+
+		Assert.equals(1, callbackIndex);
+	}
+
+	@Test
+	public function testTabsDisabled():Void {
+		var result = createTabs();
+		result.tabs.disabled = true;
+		Assert.isTrue(result.tabs.disabled);
+
+		for (i in 0...3) {
+			Assert.isTrue(getTabButton(result.tabs, i).disabled);
+		}
+	}
+
+	@Test
+	public function testTabsDisabledBlocksClick():Void {
+		var result = createTabs();
+		result.tabs.disabled = true;
+		var mock = new MockControllable();
+
+		UITestHarness.simulateClick(cast getTabButton(result.tabs, 1), mock);
+
+		Assert.equals(0, result.tabs.getSelectedIndex());
+		Assert.equals(0, mock.eventCount());
+	}
+
+	@Test
+	public function testTabsPerItemDisabled():Void {
+		var items:Array<UIElementListItem> = [
+			{name: "Tab 1"},
+			{name: "Tab 2", disabled: true},
+			{name: "Tab 3"},
+		];
+		var result = createTabs(items);
+
+		Assert.isFalse(getTabButton(result.tabs, 0).disabled);
+		Assert.isTrue(getTabButton(result.tabs, 1).disabled);
+		Assert.isFalse(getTabButton(result.tabs, 2).disabled);
+	}
+
+	@Test
+	public function testTabsPerItemDisabledBlocksClick():Void {
+		var items:Array<UIElementListItem> = [
+			{name: "Tab 1"},
+			{name: "Tab 2", disabled: true},
+			{name: "Tab 3"},
+		];
+		var result = createTabs(items);
+		var mock = new MockControllable();
+
+		// Click disabled tab — should not switch
+		UITestHarness.simulateClick(cast getTabButton(result.tabs, 1), mock);
+
+		Assert.equals(0, result.tabs.getSelectedIndex());
+		Assert.equals(0, mock.eventCount());
+	}
+
+	@Test
+	public function testTabsRefreshDisabledState():Void {
+		var items:Array<UIElementListItem> = [
+			{name: "Tab 1"},
+			{name: "Tab 2"},
+			{name: "Tab 3"},
+		];
+		var result = createTabs(items);
+
+		Assert.isFalse(getTabButton(result.tabs, 1).disabled);
+
+		// Mark tab 2 as disabled in the items array
+		items[1].disabled = true;
+		result.tabs.refreshDisabledState();
+
+		Assert.isTrue(getTabButton(result.tabs, 1).disabled);
+	}
+
+	@Test
+	public function testTabsContentRouting():Void {
+		var result = createTabs();
+		var tabs = result.tabs;
+
+		var builder = BuilderTestBase.builderFromSource(BUTTON_MANIM);
+		var btn0 = UIStandardMultiAnimButton.create(builder, "button", "Content0");
+		var btn1 = UIStandardMultiAnimButton.create(builder, "button", "Content1");
+
+		tabs.beginTab(0);
+		tabs.registerElement(btn0);
+		tabs.endTab();
+
+		tabs.beginTab(1);
+		tabs.registerElement(btn1);
+		tabs.endTab();
+
+		// Sub-elements: 3 tab buttons + active tab content (btn0)
+		var subElements = tabs.getSubElements(SETReceiveEvents);
+		Assert.equals(4, subElements.length);
+	}
+
+	@Test
+	public function testTabsContentVisibility():Void {
+		var result = createTabs();
+		var tabs = result.tabs;
+
+		var builder = BuilderTestBase.builderFromSource(BUTTON_MANIM);
+		var btn0 = UIStandardMultiAnimButton.create(builder, "button", "Content0");
+		var btn1 = UIStandardMultiAnimButton.create(builder, "button", "Content1");
+
+		tabs.beginTab(0);
+		tabs.registerElement(btn0);
+		tabs.endTab();
+
+		tabs.beginTab(1);
+		tabs.registerElement(btn1);
+		tabs.endTab();
+
+		// Tab 0 selected — btn0 visible, btn1 hidden
+		Assert.isTrue(btn0.getObject().visible);
+		Assert.isFalse(btn1.getObject().visible);
+
+		// Switch to tab 1
+		tabs.setSelectedIndex(1);
+		Assert.isFalse(btn0.getObject().visible);
+		Assert.isTrue(btn1.getObject().visible);
+	}
+
+	@Test
+	public function testTabsSubElementsActiveContent():Void {
+		var result = createTabs();
+		var tabs = result.tabs;
+
+		var builder = BuilderTestBase.builderFromSource(BUTTON_MANIM);
+		var btn0 = UIStandardMultiAnimButton.create(builder, "button", "Content0");
+		var btn1 = UIStandardMultiAnimButton.create(builder, "button", "Content1");
+
+		tabs.beginTab(0);
+		tabs.registerElement(btn0);
+		tabs.endTab();
+
+		tabs.beginTab(1);
+		tabs.registerElement(btn1);
+		tabs.endTab();
+
+		// Tab 0 active: 3 buttons + btn0
+		var subElements = tabs.getSubElements(SETReceiveEvents);
+		Assert.equals(4, subElements.length);
+
+		// Switch to tab 1: 3 buttons + btn1
+		tabs.setSelectedIndex(1);
+		subElements = tabs.getSubElements(SETReceiveEvents);
+		Assert.equals(4, subElements.length);
+
+		// Switch to tab 2 (no content): 3 buttons only
+		tabs.setSelectedIndex(2);
+		subElements = tabs.getSubElements(SETReceiveEvents);
+		Assert.equals(3, subElements.length);
+	}
+
+	@Test
+	public function testTabsBeginTabOutOfRange():Void {
+		var result = createTabs();
+
+		var threw = false;
+		try {
+			result.tabs.beginTab(-1);
+		} catch (e:Dynamic) {
+			threw = true;
+		}
+		Assert.isTrue(threw);
+
+		threw = false;
+		try {
+			result.tabs.beginTab(3);
+		} catch (e:Dynamic) {
+			threw = true;
+		}
+		Assert.isTrue(threw);
+	}
+
+	@Test
+	public function testTabsEndTabWithoutBegin():Void {
+		var result = createTabs();
+
+		var threw = false;
+		try {
+			result.tabs.endTab();
+		} catch (e:Dynamic) {
+			threw = true;
+		}
+		Assert.isTrue(threw);
+	}
+
+	@Test
+	public function testTabsBeginTabNested():Void {
+		var result = createTabs();
+
+		result.tabs.beginTab(0);
+
+		var threw = false;
+		try {
+			result.tabs.beginTab(1);
+		} catch (e:Dynamic) {
+			threw = true;
+		}
+		Assert.isTrue(threw);
+
+		result.tabs.endTab();
+	}
+
+	@Test
+	public function testTabsCursorBehavior():Void {
+		var result = createTabs();
+
+		// Unselected, enabled: interactive cursor
+		var btn1 = getTabButton(result.tabs, 1);
+		Assert.isTrue(Type.enumEq(btn1.getCursor(), bh.base.CursorManager.getDefaultInteractiveCursor()));
+
+		// Selected: default cursor
+		var btn0 = getTabButton(result.tabs, 0);
+		Assert.isTrue(Type.enumEq(btn0.getCursor(), bh.base.CursorManager.getDefaultCursor()));
+
+		// Disabled: default cursor
+		btn1.disabled = true;
+		Assert.isTrue(Type.enumEq(btn1.getCursor(), bh.base.CursorManager.getDefaultCursor()));
+	}
+
+	@Test
+	public function testTabsContentRootRelativeMode():Void {
+		var items = createTabItems();
+		var builder = BuilderTestBase.builderFromSource(TABS_CONTENTROOT_MANIM);
+		var screen = new UITestScreen();
+		var tabs = new UIMultiAnimTabs(builder, "tabBar", "tab", items, 0, screen, null, null, "contentRoot");
+
+		Assert.notNull(tabs);
+		Assert.notNull(tabs.getObject());
+		Assert.equals(0, tabs.getSelectedIndex());
+	}
+
+	@Test
+	public function testTabsContentRootInvalidThrows():Void {
+		var items = createTabItems();
+		var builder = BuilderTestBase.builderFromSource(TABS_MANIM);
+		var screen = new UITestScreen();
+
+		var threw = false;
+		try {
+			new UIMultiAnimTabs(builder, "tabBar", "tab", items, 0, screen, null, null, "contentRoot");
+		} catch (e:Dynamic) {
+			threw = true;
+		}
+		Assert.isTrue(threw);
 	}
 }
