@@ -106,6 +106,12 @@ class ImageProcessingPool {
 		pendingItems = [];
 	}
 
+	/** Shut down the thread pool without blocking. Call only after isComplete() returns true. */
+	public function shutdown():Void {
+		if (pool != null) pool.shutdown();
+	}
+
+	/** Block until all work items are processed, then shut down the pool. */
 	public function shutdownAndWait():Void {
 		allDone.wait();
 		if (pool != null) pool.shutdown();

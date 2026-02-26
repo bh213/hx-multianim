@@ -1,13 +1,15 @@
 # test.ps1 - Test utility script for hx-multianim
-# Usage: .\test.ps1 [run|gen-refs|report|rr] [testNum] [-v] [-p]
+# Usage: .\test.ps1 [run|gen-refs|report|rr] [testNum] [-v] [-p] [-s] [-d]
 #
 # Examples:
-#   .\test.ps1 run              Run all tests
+#   .\test.ps1 run              Run all tests (standard + dev)
 #   .\test.ps1 run 7            Run only test #7
 #   .\test.ps1 rr 7             Run test #7 and open report
 #   .\test.ps1 run -v           Run all tests with verbose output (streamed live)
 #   .\test.ps1 run -p           Run all tests with progress output (streamed live)
 #   .\test.ps1 rr 7 -v          Run test #7 verbose and open report
+#   .\test.ps1 run -s           Run standard tests only (skip dev/hot-reload)
+#   .\test.ps1 run -d           Run dev tests only (skip standard)
 #   .\test.ps1 gen-refs         Generate reference images from latest screenshots
 
 param(
@@ -21,7 +23,13 @@ param(
     [switch]$VerboseOutput,
 
     [Alias("p")]
-    [switch]$Progress
+    [switch]$Progress,
+
+    [Alias("s")]
+    [switch]$StandardOnly,
+
+    [Alias("d")]
+    [switch]$DevOnly
 )
 
 $ErrorActionPreference = "Stop"
@@ -140,11 +148,17 @@ function Invoke-TestRun {
 
     Push-Location $Root
     try {
-        # Run standard tests
-        $result = Do-Run "test-hx-multianim.hxml" "build/hl-test.hl" "build/test_result.txt" ""
+        $result = 0
+        $devResult = 0
 
-        # Run dev-mode tests (hot-reload) regardless of standard test result
-        $devResult = Do-Run "test-hx-multianim-dev.hxml" "build/hl-test-dev.hl" "build/test_result.txt" " [DEV]"
+        if (-not $DevOnly) {
+            $result = Do-Run "test-hx-multianim.hxml" "build/hl-test.hl" "build/test_result.txt" ""
+        }
+
+        if (-not $StandardOnly) {
+            $devResult = Do-Run "test-hx-multianim-dev.hxml" "build/hl-test-dev.hl" "build/test_result.txt" " [DEV]"
+        }
+
         if ($result -ne 0) { return $result }
         return $devResult
     } finally {
