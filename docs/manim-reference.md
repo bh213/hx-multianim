@@ -116,8 +116,8 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | `letterSpacing` | Space between characters |
 | `lineSpacing` | Space between lines |
 | `lineBreak` | Enable word wrapping |
-| `styles: {name: color "font", ...}` | Named text styles (color and/or font per style) |
-| `images: [name tileSource, ...]` | Named inline images for `${img:name}` markup |
+| `styles: {name: color "font", ...}` | Named text styles (color/`$param` and/or font per style) |
+| `images: [name tileSource, ...]` | Named inline images for `%{img:name}` markup |
 | `condenseWhite: true` | Collapse whitespace in rich text |
 | `dropShadowXY` | Shadow offset (x, y) |
 | `dropShadowColor` | Shadow color |
@@ -131,22 +131,23 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 
 ### Rich Text Markup
 
-Text strings support `${tag}...${/}` markup. When markup or `styles:`/`images:`/`condenseWhite:` is present, `h2d.HtmlText` is used automatically.
+Text strings support `%{tag}...%{/}` markup. When markup or `styles:`/`images:`/`condenseWhite:` is present, `h2d.HtmlText` is used automatically. Unlike `${expr}` interpolation, `%{tag}` markup works in both single and double-quoted strings.
 
 | Markup | Description |
 |--------|-------------|
-| `${styleName}...${/}` | Apply named style (defined in `styles:`) |
-| `${c:#FF0000}...${/}` | Inline color (hex) |
-| `${c:red}...${/}` | Inline color (named) |
-| `${f:fontName}...${/}` | Inline font switch |
-| `${img:name}` | Inline image (self-closing, defined in `images:`) |
-| `${align:center}...${/}` | Paragraph alignment (`left`, `center`, `right`) |
-| `${link:id}...${/}` | Hyperlink (fires `callback("link:id")`) |
-| `${/}` | Close most recently opened tag |
+| `%{styleName}...%{/}` | Apply named style (defined in `styles:`) |
+| `%{c:#FF0000}...%{/}` | Inline color (hex) |
+| `%{c:red}...%{/}` | Inline color (named) |
+| `%{f:fontName}...%{/}` | Inline font switch |
+| `%{img:name}` | Inline image (self-closing, defined in `images:`) |
+| `%{align:center}...%{/}` | Paragraph alignment (`left`, `center`, `right`) |
+| `%{link:id}...%{/}` | Hyperlink (fires `callback("link:id")`) |
+| `%{/}` | Close most recently opened tag |
+| `%%{` | Literal `%{` (escape sequence) |
 
-**Style definitions:** Each style needs at least a color or font name.
+**Style definitions:** Each style needs at least a color or font name. Colors accept `$param` references for incremental updates.
 ```manim
-styles: {damage: #FF0000, gold: #FFD700 "boldFont", emphasis: "italicFont"}
+styles: {damage: #FF0000, gold: #FFD700 "boldFont", emphasis: "italicFont", highlight: $hlColor}
 ```
 
 **Image definitions:** Reuses standard tile source syntax.

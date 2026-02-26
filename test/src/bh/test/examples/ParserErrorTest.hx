@@ -2835,7 +2835,7 @@ class ParserErrorTest extends utest.Test {
 	public function testRichTextStylesColorOnly() {
 		var success = parseExpectingSuccess('
 			#test programmable() {
-				text(dd, "hello $${damage}world$${/}", white, left, 200,
+				text(dd, "hello %{damage}world%{/}", white, left, 200,
 					styles: {damage: #FF0000}): 0, 0
 			}
 		');
@@ -2846,7 +2846,7 @@ class ParserErrorTest extends utest.Test {
 	public function testRichTextStylesFontOnly() {
 		var success = parseExpectingSuccess('
 			#test programmable() {
-				text(dd, "hello $${em}world$${/}", white, left, 200,
+				text(dd, "hello %{em}world%{/}", white, left, 200,
 					styles: {em: "dd"}): 0, 0
 			}
 		');
@@ -2857,7 +2857,7 @@ class ParserErrorTest extends utest.Test {
 	public function testRichTextStylesColorAndFont() {
 		var success = parseExpectingSuccess('
 			#test programmable() {
-				text(dd, "hello $${gold}100g$${/}", white, left, 200,
+				text(dd, "hello %{gold}100g%{/}", white, left, 200,
 					styles: {gold: #FFD700 "dd"}): 0, 0
 			}
 		');
@@ -2868,7 +2868,7 @@ class ParserErrorTest extends utest.Test {
 	public function testRichTextStylesMultiple() {
 		var success = parseExpectingSuccess('
 			#test programmable() {
-				text(dd, "$${a}x$${/} $${b}y$${/} $${c}z$${/}", white, left, 200,
+				text(dd, "%{a}x%{/} %{b}y%{/} %{c}z%{/}", white, left, 200,
 					styles: {a: #FF0000, b: #00FF00 "dd", c: "dd"}): 0, 0
 			}
 		');
@@ -2879,7 +2879,7 @@ class ParserErrorTest extends utest.Test {
 	public function testRichTextStylesNamedColor() {
 		var success = parseExpectingSuccess('
 			#test programmable() {
-				text(dd, "$${fire}flames$${/}", white, left, 200,
+				text(dd, "%{fire}flames%{/}", white, left, 200,
 					styles: {fire: red}): 0, 0
 			}
 		');
@@ -2901,7 +2901,7 @@ class ParserErrorTest extends utest.Test {
 	public function testRichTextUnknownStyleRef() {
 		var error = parseExpectingError('
 			#test programmable() {
-				text(dd, "hello $${unknown}world$${/}", white, left, 200,
+				text(dd, "hello %{unknown}world%{/}", white, left, 200,
 					styles: {damage: #FF0000}): 0, 0
 			}
 		');
@@ -2914,7 +2914,7 @@ class ParserErrorTest extends utest.Test {
 	public function testRichTextInlineColorParses() {
 		var success = parseExpectingSuccess('
 			#test programmable() {
-				text(dd, "$${c:#FF0000}red$${/} $${c:blue}blue$${/}", white, left, 200): 0, 0
+				text(dd, "%{c:#FF0000}red%{/} %{c:blue}blue%{/}", white, left, 200): 0, 0
 			}
 		');
 		Assert.isTrue(success, "inline color markup should parse");
@@ -2924,7 +2924,7 @@ class ParserErrorTest extends utest.Test {
 	public function testRichTextInlineFontParses() {
 		var success = parseExpectingSuccess('
 			#test programmable() {
-				text(dd, "normal $${f:dd}bold$${/} normal", white, left, 200): 0, 0
+				text(dd, "normal %{f:dd}bold%{/} normal", white, left, 200): 0, 0
 			}
 		');
 		Assert.isTrue(success, "inline font markup should parse");
@@ -2934,7 +2934,7 @@ class ParserErrorTest extends utest.Test {
 	public function testRichTextImageParses() {
 		var success = parseExpectingSuccess('
 			#test programmable() {
-				text(dd, "Cost $${img:coin} 100", white, left, 200,
+				text(dd, "Cost %{img:coin} 100", white, left, 200,
 					images: [coin generated(color(14, 14, #FFD700))]): 0, 0
 			}
 		');
@@ -2945,7 +2945,7 @@ class ParserErrorTest extends utest.Test {
 	public function testRichTextAlignParses() {
 		var success = parseExpectingSuccess('
 			#test programmable() {
-				text(dd, "left\n$${align:center}center$${/}", white, left, 200): 0, 0
+				text(dd, "left\n%{align:center}center%{/}", white, left, 200): 0, 0
 			}
 		');
 		Assert.isTrue(success, "align markup should parse");
@@ -2955,7 +2955,7 @@ class ParserErrorTest extends utest.Test {
 	public function testRichTextLinkParses() {
 		var success = parseExpectingSuccess('
 			#test programmable() {
-				text(dd, "$${link:shop}click$${/}", white, left, 200): 0, 0
+				text(dd, "%{link:shop}click%{/}", white, left, 200): 0, 0
 			}
 		');
 		Assert.isTrue(success, "link markup should parse");
@@ -2975,7 +2975,7 @@ class ParserErrorTest extends utest.Test {
 	public function testRichTextNestingParses() {
 		var success = parseExpectingSuccess('
 			#test programmable() {
-				text(dd, "$${damage}crit $${c:yellow}50$${/} dmg$${/}", white, left, 200,
+				text(dd, "%{damage}crit %{c:yellow}50%{/} dmg%{/}", white, left, 200,
 					styles: {damage: #FF0000}): 0, 0
 			}
 		');
@@ -3007,7 +3007,7 @@ class ParserErrorTest extends utest.Test {
 	public function testRichTextMixedStylesAndInlineColor() {
 		var success = parseExpectingSuccess('
 			#test programmable() {
-				text(dd, "$${warn}Warning:$${/} costs $${c:gold}100g$${/}", white, left, 200,
+				text(dd, "%{warn}Warning:%{/} costs %{c:gold}100g%{/}", white, left, 200,
 					styles: {warn: #FF4444}): 0, 0
 			}
 		');

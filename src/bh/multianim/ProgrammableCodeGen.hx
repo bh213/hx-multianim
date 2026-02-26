@@ -4306,7 +4306,19 @@ class ProgrammableCodeGen {
 			if (textDef.styles != null) {
 				for (style in textDef.styles) {
 					final nameExpr = macro $v{style.name};
-					final colorExpr2:Expr = if (style.color != null) { final c:Int = style.color & 0xFFFFFF; macro $v{c}; } else macro null;
+					final colorExpr2:Expr = if (style.color != null) {
+						final colorRV = style.color;
+						final refs = collectParamRefs(colorRV);
+						if (refs.length == 0) {
+							// Static — bake value
+							final c:Int = Std.int(resolveRVStatic(colorRV)) & 0xFFFFFF;
+							macro $v{c};
+						} else {
+							// Dynamic — generate expression
+							final rvExpr = rvToExpr(colorRV);
+							macro ($rvExpr & 0xFFFFFF);
+						}
+					} else macro null;
 					final fontExpr2:Expr = if (style.fontName != null) macro $v{style.fontName} else macro null;
 					createExprs.push(macro {
 						final ht:h2d.HtmlText = cast $fieldRef;
@@ -4437,6 +4449,28 @@ class ProgrammableCodeGen {
 				updateExpr: macro $fieldRef.textColor = $colorExpr,
 				paramRefs: colorParamRefs,
 			});
+		}
+
+		// Track style color param refs for incremental updates
+		if (textDef.styles != null) {
+			for (style in textDef.styles) {
+				if (style.color != null) {
+					final styleColorRefs = collectParamRefs(style.color);
+					if (styleColorRefs.length > 0) {
+						final sNameExpr = macro $v{style.name};
+						final sColorExpr = rvToExpr(style.color);
+						final sFontExpr:Expr = if (style.fontName != null) macro $v{style.fontName} else macro null;
+						exprUpdates.push({
+							fieldName: fieldName,
+							updateExpr: macro {
+								final ht:h2d.HtmlText = cast $fieldRef;
+								ht.defineHtmlTag($sNameExpr, $sColorExpr & 0xFFFFFF, $sFontExpr);
+							},
+							paramRefs: styleColorRefs,
+						});
+					}
+				}
+			}
 		}
 
 		return {

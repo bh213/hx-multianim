@@ -2930,14 +2930,14 @@ class MacroManimParser {
 					default:
 				}
 
-				// Validate ${styleName} references against defined styles for literal text
+				// Validate %{styleName} references against defined styles for literal text
 				if (styles != null) {
 					switch (text) {
 						case RVString(s):
 							final styleNames = [for (st in styles) st.name];
 							for (ref in TextMarkupConverter.extractStyleReferences(s)) {
 								if (styleNames.indexOf(ref) < 0) {
-									error('unknown style "$${$ref}" in text markup; defined styles: [${styleNames.join(", ")}]');
+									error('unknown style "%{$ref}" in text markup; defined styles: [${styleNames.join(", ")}]');
 								}
 							}
 						default:
@@ -3814,7 +3814,7 @@ class MacroManimParser {
 		}
 	}
 
-	// styles: {damage: #FF0000, gold: #FFD700 "boldFont", emphasis: "italicFont"}
+	// styles: {damage: #FF0000, gold: #FFD700 "boldFont", emphasis: "italicFont", highlight: $hlColor}
 	function parseTextStyles():Array<TextStyleDef> {
 		expect(TCurlyOpen);
 		var styles:Array<TextStyleDef> = [];
@@ -3825,12 +3825,17 @@ class MacroManimParser {
 			}
 			final name = expectIdentifierOrString();
 			expect(TColon);
-			var color:Null<Int> = null;
+			var color:Null<ReferenceableValue> = null;
 			var fontName:Null<String> = null;
 
-			// Try to parse optional color (hex or named)
-			final c = tryParseColor();
-			if (c != null) color = c;
+			// Try to parse optional color — literal, $param reference, or ternary
+			switch (peek()) {
+				case TReference(_), TQuestion:
+					color = parseColorOrReference();
+				default:
+					final c = tryParseColor();
+					if (c != null) color = RVInteger(c);
+			}
 
 			// Try to parse optional font name (quoted string)
 			switch (peek()) {

@@ -2182,6 +2182,11 @@ class MultiAnimBuilder {
 				final textRefs:Array<String> = [];
 				collectParamRefs(textDef.text, textRefs);
 				collectParamRefs(textDef.color, textRefs);
+				if (textDef.styles != null) {
+					for (style in textDef.styles) {
+						if (style.color != null) collectParamRefs(style.color, textRefs);
+					}
+				}
 				if (textRefs.length > 0) {
 					final t = switch builtObject { case HeapsText(t): t; default: null; };
 					if (t != null) {
@@ -2191,6 +2196,14 @@ class MultiAnimBuilder {
 							final rawText = resolveAsString(textDefCapture.text);
 							t.text = if (needsConversion) TextMarkupConverter.convert(rawText) else rawText;
 							t.textColor = resolveAsColorInteger(textDefCapture.color);
+							if (textDefCapture.styles != null) {
+								final ht:HtmlText = cast t;
+								for (style in textDefCapture.styles) {
+									if (style.color != null) {
+										ht.defineHtmlTag(style.name, resolveAsColorInteger(style.color) & 0xFFFFFF, style.fontName);
+									}
+								}
+							}
 						}, textRefs);
 					}
 				}
@@ -3112,7 +3125,7 @@ class MultiAnimBuilder {
 					// Layer 1: Named styles
 					if (textDef.styles != null) {
 						for (style in textDef.styles) {
-							final color:Null<Int> = if (style.color != null) style.color & 0xFFFFFF else null;
+							final color:Null<Int> = if (style.color != null) resolveAsColorInteger(style.color) & 0xFFFFFF else null;
 							ht.defineHtmlTag(style.name, color, style.fontName);
 						}
 					}
