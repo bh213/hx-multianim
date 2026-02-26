@@ -5,7 +5,6 @@
 | 5 | `UIRichInteractiveHelper` tests | register() bind scanning, handleEvent() state machine, setDisabled | Medium |
 | 6 | `UITooltipHelper` tests | startHover/cancelHover, delay, show/hide, positioning | Medium |
 | 7 | `UIPanelHelper` tests | open/close, isOpen, outsideClick, close modes, named panels | Medium |
-| 8 | Parser error coverage | Malformed expressions, invalid types, duplicates, circular refs | Medium |
 | 10 | Interactive event tests | Event filtering, bind metadata, UIClickOutside, disabled gating | Medium |
 | 11 | `UIClickOutside` event | Documented but not tested | Low |
 | 12 | AnimMetadata API | State-selector getInt/getString methods untested | Low |
@@ -31,14 +30,6 @@ No tests. Needs: `startHover`/`cancelHover`, delay behavior, `show`/`hide`, posi
 
 ### `UIPanelHelper` — MEDIUM
 No tests. Needs: `open`/`close`, `isOpen`, `handleOutsideClick`, `OutsideClick`/`Manual` close modes.
-
-## Missing Parser / Builder Error Tests
-
-### Parser Error Coverage — MEDIUM
-Current `ParserErrorTest` only covers conditional validation (`@else`/`@default` ordering). Missing error cases: malformed expressions, invalid parameter types, unknown element types, duplicate programmable names, circular references, invalid coordinate system syntax.
-
-### Builder Error Paths — MEDIUM
-No negative tests for builder. Missing: reference to non-existent programmable, wrong parameter types, undefined `$ref`, invalid filter parameters, slot name mismatches (indexed vs non-indexed).
 
 ## Missing Interactive Tests
 
