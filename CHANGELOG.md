@@ -3,6 +3,10 @@
 ## [0.13-dev] - 2026-02-25
 
 ### Added
+- **Named range parameters** — `range(from: X, to: Y)` and `range(from: X, until: Y [, step: S])` syntax for repeatable iterators
+  - `to:` is inclusive (`to: 5` produces 0..5), `until:` is exclusive (`until: 5` produces 0..4)
+  - Optional `step:` parameter for custom increments
+  - Positional syntax `range(start, end)` still works for backward compatibility
 - **Flow alignment** — `horizontalAlign` and `verticalAlign` params on `flow()` container for default child alignment
   - Values: `left`, `right`, `middle`, `top`, `bottom`
   - Example: `flow(layout: vertical, horizontalAlign: middle, minWidth: 100) { ... }`

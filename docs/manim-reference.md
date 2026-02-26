@@ -85,7 +85,9 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | `step(count, dx: N, dy: N)` | Fixed step offset, repeated `count` times |
 | `layout("blockName", "entryName")` | Position from named relative layout (blockName is label only, entryName is the `#name` used in layout) |
 | `array(arrayName)` | Iterate over data array |
-| `range(start, end, step)` | Numeric range with optional step |
+| `range(start, end [, step])` | Numeric range (exclusive end), optional step |
+| `range(from: X, to: Y [, step: S])` | Named range (inclusive end: `to: 5` includes 5) |
+| `range(from: X, until: Y [, step: S])` | Named range (exclusive end: `until: 5` excludes 5) |
 | `stateanim(file, anim, selector)` | Iterate animation frames; exposes `$bitmap`, `$tilename` |
 | `tiles(sheet, prefix)` | Iterate all tiles from sheet; exposes `$bitmap`, `$tilename` |
 
