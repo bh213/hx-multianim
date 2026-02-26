@@ -6,7 +6,6 @@
 | 6 | `UITooltipHelper` tests | startHover/cancelHover, delay, show/hide, positioning | Medium |
 | 7 | `UIPanelHelper` tests | open/close, isOpen, outsideClick, close modes, named panels | Medium |
 | 8 | Parser error coverage | Malformed expressions, invalid types, duplicates, circular refs | Medium |
-| 9 | Builder error paths | Missing programmable, wrong types, undefined $ref, slot mismatches | Medium |
 | 10 | Interactive event tests | Event filtering, bind metadata, UIClickOutside, disabled gating | Medium |
 | 11 | `UIClickOutside` event | Documented but not tested | Low |
 | 12 | AnimMetadata API | State-selector getInt/getString methods untested | Low |
@@ -21,9 +20,6 @@
 General visual test issues that need attention.
 
 ## Missing UI Component Tests
-
-### Tabs (`UIMultiAnimTabs`) — HIGH
-No visual or unit tests. Needs: creation, tab switching (`beginTab`/`endTab`), `ContentTarget` routing, `tabPanel.contentRoot` relative mode, `UIChangeItem` event.
 
 ## Missing Helper Tests
 
