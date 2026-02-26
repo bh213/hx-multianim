@@ -11,8 +11,6 @@
 | 10 | `closeAllNamed()` iterator | Mutating map during iteration, fragile | Bugs | Low |
 | 11 | Named panel outside-click | Wrong panel's close cancelled on click | Bugs | Medium |
 | 12 | Legacy particle syntax | Remove `boundsMode`/`colorCurve`/positional emit | Deprecation | Low |
-| 13 | `relativeLayouts` alias | Remove, keep only `layouts` | Deprecation | Low |
-| 14 | `reference`/`component` alias | Remove, keep only `staticRef`/`dynamicRef` | Deprecation | Low |
 | 15 | Text input codegen | `@:manim` factory with `createTextInput()` | After 1.0 | Low |
 
 ## Main Goals
@@ -76,8 +74,6 @@ In `handleOutsideClick`, clicking inside *any* panel cancels the pending close f
   - `boundsMode`/`boundsMinX`/`boundsMaxX`/`boundsMinY`/`boundsMaxY`/`boundsLine` → `bounds:` combined syntax only
   - `rate: colorCurve: easing, #start, #end` → `colorStops:` only
   - Positional emit args `cone(dist, distRand, angle, angleRand)` → named params only
-- Remove `relativeLayouts` keyword alias (currently accepted alongside `layouts`)
-- Remove `reference`/`component` keyword aliases (currently accepted alongside `staticRef`/`dynamicRef`)
 
 ## After 1.0
 - Generic components support
