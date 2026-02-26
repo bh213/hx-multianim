@@ -97,20 +97,22 @@
 - **AnimatedPath non-visual unit tests** — 15 new tests in BuilderUnitTest covering time/distance modes, inline easing, easing shorthand, events, loop, pingPong, seek, checkpoints, custom curves, multi-color stops, projectile helper, getClosestRate
 - **Font metrics context** — `$ctx.font("name").lineHeight` and `$ctx.font("name").baseLine` for querying font metrics at build time (both builder and codegen)
 - **Pixel data unit tests** — filledRect pixel verification and incremental pixel update sweep tests
-- **Native rich text markup** — `${tag}...${/}` markup system for `text()` elements, replacing `html: true`
-  - `styles: {name: color "font", ...}` named param — define named text styles with color and/or font
-  - `${styleName}...${/}` in text strings — apply named styles (maps to `defineHtmlTag`)
-  - `${c:#FF0000}...${/}` / `${c:red}...${/}` — inline color (hex or named)
-  - `${f:fontName}...${/}` — inline font switch
-  - `${img:name}` — inline images via `images: [name tileSource]` definitions
-  - `${align:center}...${/}` — paragraph alignment
-  - `${link:id}...${/}` — hyperlinks firing `callback("link:id")`
+- **Native rich text markup** — `%{tag}...%{/}` markup system for `text()` elements, replacing `html: true`
+  - `styles: {name: color "font", ...}` named param — define named text styles with color, `$param` reference, and/or font
+  - `%{styleName}...%{/}` in text strings — apply named styles (maps to `defineHtmlTag`)
+  - `%{c:#FF0000}...%{/}` / `%{c:red}...%{/}` — inline color (hex or named)
+  - `%{f:fontName}...%{/}` — inline font switch
+  - `%{img:name}` — inline images via `images: [name tileSource]` definitions
+  - `%{align:center}...%{/}` — paragraph alignment
+  - `%{link:id}...%{/}` — hyperlinks firing `callback("link:id")`
   - `condenseWhite: true` — collapse whitespace in rich text
   - Auto-detection: HtmlText created automatically when markup or styles present
-  - Parse-time validation: `${styleName}` references checked against defined styles
+  - Parse-time validation: `%{styleName}` references checked against defined styles
+  - `%%{` escape sequence — produces literal `%{` in output without triggering markup
+  - `%{markup}` and `${param}` coexist in single-quoted strings — e.g., `'%{damage}${dmg}%{/} damage'`
   - `TextMarkupConverter` utility: converts markup to HTML at macro time (static) or runtime (dynamic `$param`)
-  - Builder + codegen support with incremental update tracking
-  - Rich text unit tests — 17 parser tests + 12 builder tests covering all markup types, error cases, and HtmlText verification
+  - Builder + codegen support with incremental update tracking for text, color, and style colors
+  - Rich text unit tests — 17 parser tests + 16 builder tests covering all markup types, error cases, and HtmlText verification
   - Visual test 92 (richText) — 10-row coverage of all markup features
 - **Generic settings pass-through** — settings not recognized as control or behavioral are automatically forwarded as extra parameters to the underlying programmable
   - Dotted setting keys (`item.fontColor`, `scrollbar.thickness`) for targeting sub-builders in multi-programmable components
@@ -282,7 +284,7 @@
 - **`LAYOUT` index now `Null<ReferenceableValue>`** — `layout(name)` without index properly represented as null instead of requiring a dummy value
 
 ### Changed
-- **`html: true` removed** — `text(..., html: true)` is no longer supported and produces a parser error. Use `styles:` definitions and `${...}` markup instead. `TextDef.isHtml` replaced by `styles`/`images`/`condenseWhite`/`hasMarkup` fields.
+- **`html: true` removed** — `text(..., html: true)` is no longer supported and produces a parser error. Use `styles:` definitions and `%{...}` markup instead. `TextDef.isHtml` replaced by `styles`/`images`/`condenseWhite`/`hasMarkup` fields.
 - **Button incremental rewrite** — `UIStandardMultiAnimButton` now uses single incremental `BuilderResult` with `setParameter()` instead of `MultiAnimMultiResult` (pre-built combo swap). Removes `doRedraw()`, `requestRedraw`, and `UIElementSyncRedraw`.
 - **Checkbox incremental rewrite** — `UIStandardMultiCheckbox` same pattern; uses `beginUpdate()`/`endUpdate()` for batched status+checked changes on toggle
 - **TabButton incremental rewrite** — `UIMultiAnimTabButton` same pattern; selected/disabled states via `setParameter()`

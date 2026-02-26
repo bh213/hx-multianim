@@ -6,7 +6,7 @@ version: 0.5
   point {
     pos: 10, 30
     bitmap(generated(color(600, 40, #333)));
-    @scale(2) text(dd, "Deal ${damage}50${/} for ${gold}100g${/} ${em}now${/}", white, left, 600,
+    @scale(2) text(dd, "Deal %{damage}50%{/} for %{gold}100g%{/} %{em}now%{/}", white, left, 600,
         styles: {damage: #FF0000, gold: #FFD700 "dd", em: "dd"}): 4, 4;
   }
 
@@ -14,21 +14,21 @@ version: 0.5
   point {
     pos: 10, 80
     bitmap(generated(color(600, 40, #333)));
-    @scale(2) text(dd, "${c:#FF0000}red${/} ${c:blue}blue${/} ${c:gold}gold${/} ${c:#00FF00}green${/}", white, left, 600): 4, 4;
+    @scale(2) text(dd, "%{c:#FF0000}red%{/} %{c:blue}blue%{/} %{c:gold}gold%{/} %{c:#00FF00}green%{/}", white, left, 600): 4, 4;
   }
 
   // Row 3: Inline font override
   point {
     pos: 10, 130
     bitmap(generated(color(600, 40, #333)));
-    @scale(2) text(dd, "normal ${f:dd}switched${/} normal", white, left, 600): 4, 4;
+    @scale(2) text(dd, "normal %{f:dd}switched%{/} normal", white, left, 600): 4, 4;
   }
 
   // Row 4: Mixed styles + inline color
   point {
     pos: 10, 180
     bitmap(generated(color(600, 40, #333)));
-    @scale(2) text(dd, "${warn}Warning:${/} costs ${c:gold}100g${/}", white, left, 600,
+    @scale(2) text(dd, "%{warn}Warning:%{/} costs %{c:gold}100g%{/}", white, left, 600,
         styles: {warn: #FF4444}): 4, 4;
   }
 
@@ -36,7 +36,7 @@ version: 0.5
   point {
     pos: 10, 230
     bitmap(generated(color(600, 40, #333)));
-    @scale(2) text(dd, "${damage}crit ${c:yellow}50${/} dmg${/}", white, left, 600,
+    @scale(2) text(dd, "%{damage}crit %{c:yellow}50%{/} dmg%{/}", white, left, 600,
         styles: {damage: #FF0000}): 4, 4;
   }
 
@@ -44,7 +44,7 @@ version: 0.5
   point {
     pos: 10, 280
     bitmap(generated(color(600, 40, #333)));
-    @scale(2) text(dd, "${fire}fire${/} ${ice}ice${/} ${nature}nature${/}", white, left, 600,
+    @scale(2) text(dd, "%{fire}fire%{/} %{ice}ice%{/} %{nature}nature%{/}", white, left, 600,
         styles: {fire: red, ice: cyan, nature: lime}): 4, 4;
   }
 
@@ -52,7 +52,7 @@ version: 0.5
   point {
     pos: 10, 330
     bitmap(generated(color(600, 40, #333)));
-    @scale(2) text(dd, "Cost ${img:coin} 100 gold", white, left, 600,
+    @scale(2) text(dd, "Cost %{img:coin} 100 gold", white, left, 600,
         images: [coin generated(color(14, 14, #FFD700))]): 4, 4;
   }
 
@@ -60,7 +60,7 @@ version: 0.5
   point {
     pos: 10, 380
     bitmap(generated(color(300, 100, #333)));
-    @scale(2) text(dd, "left\n${align:center}center${/}\n${align:right}right${/}", white, left, 300): 4, 4;
+    @scale(2) text(dd, "left\n%{align:center}center%{/}\n%{align:right}right%{/}", white, left, 300): 4, 4;
   }
 
   // Row 9: condenseWhite

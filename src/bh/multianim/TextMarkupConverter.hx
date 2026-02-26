@@ -1,28 +1,29 @@
 package bh.multianim;
 
 /**
- * Converts manim-native ${tag}...${/} rich text markup to HTML for h2d.HtmlText.
+ * Converts manim-native %{tag}...%{/} rich text markup to HTML for h2d.HtmlText.
  *
  * Supported markup:
- *   ${styleName}...${/}        → <styleName>...</styleName>     (requires defineHtmlTag)
- *   ${c:#FF0000}...${/}        → <font color="#FF0000">...</font>
- *   ${c:red}...${/}            → <font color="#FF0000">...</font>  (named color)
- *   ${f:fontName}...${/}       → <font face="fontName">...</font>
- *   ${img:name}                → <img src="name"/>               (self-closing)
- *   ${align:left|center|right}...${/} → <p align="...">...</p>
- *   ${link:id}...${/}          → <a href="id">...</a>
- *   ${/}                       → closes most recently opened tag (stack-based)
+ *   %{styleName}...%{/}        → <styleName>...</styleName>     (requires defineHtmlTag)
+ *   %{c:#FF0000}...%{/}        → <font color="#FF0000">...</font>
+ *   %{c:red}...%{/}            → <font color="#FF0000">...</font>  (named color)
+ *   %{f:fontName}...%{/}       → <font face="fontName">...</font>
+ *   %{img:name}                → <img src="name"/>               (self-closing)
+ *   %{align:left|center|right}...%{/} → <p align="...">...</p>
+ *   %{link:id}...%{/}          → <a href="id">...</a>
+ *   %{/}                       → closes most recently opened tag (stack-based)
+ *   %%{                         → literal %{ (escape sequence)
  *
  * Works at both macro time and runtime (no runtime-only APIs).
  */
 class TextMarkupConverter {
 	/**
-	 * Convert ${tag}...${/} markup to HTML.
+	 * Convert %{tag}...%{/} markup to HTML.
 	 * If no markup found, returns input unchanged.
 	 */
 	public static function convert(text:String):String {
 		if (text == null || text.length == 0) return text;
-		if (text.indexOf("${") < 0) return text;
+		if (text.indexOf("%{") < 0) return text;
 
 		var buf = new StringBuf();
 		var tagStack:Array<String> = [];
@@ -31,7 +32,11 @@ class TextMarkupConverter {
 
 		while (i < len) {
 			var ch = text.charCodeAt(i);
-			if (ch == "$".code && i + 1 < len && text.charCodeAt(i + 1) == "{".code) {
+			if (ch == "%".code && i + 1 < len && text.charCodeAt(i + 1) == "%".code && i + 2 < len && text.charCodeAt(i + 2) == "{".code) {
+				// %%{ → literal %{
+				buf.add("%{");
+				i += 3;
+			} else if (ch == "%".code && i + 1 < len && text.charCodeAt(i + 1) == "{".code) {
 				var closeIdx = text.indexOf("}", i + 2);
 				if (closeIdx < 0) {
 					buf.addChar(ch);
@@ -86,7 +91,7 @@ class TextMarkupConverter {
 					tagStack.push("a");
 					i = closeIdx + 1;
 				} else {
-					// Named style: ${damage} → <damage>
+					// Named style: %{damage} → <damage>
 					buf.add("<");
 					buf.add(tag);
 					buf.add(">");
@@ -102,11 +107,16 @@ class TextMarkupConverter {
 		return buf.toString();
 	}
 
-	/** Check if a text string contains any ${markup} patterns. */
+	/** Check if a text string contains any %{markup} patterns. */
 	public static function hasMarkup(text:String):Bool {
 		if (text == null) return false;
-		var idx = text.indexOf("${");
+		var idx = text.indexOf("%{");
 		while (idx >= 0 && idx + 2 < text.length) {
+			// Skip %%{ escape sequences
+			if (idx > 0 && text.charCodeAt(idx - 1) == "%".code) {
+				idx = text.indexOf("%{", idx + 1);
+				continue;
+			}
 			var closeIdx = text.indexOf("}", idx + 2);
 			if (closeIdx > idx + 2) {
 				var tag = text.substring(idx + 2, closeIdx);
@@ -115,20 +125,25 @@ class TextMarkupConverter {
 					return true;
 				}
 			}
-			idx = text.indexOf("${", idx + 1);
+			idx = text.indexOf("%{", idx + 1);
 		}
 		return false;
 	}
 
 	/**
-	 * Extract all ${styleName} references from text (not c:, f:, img:, align:, link:).
+	 * Extract all %{styleName} references from text (not c:, f:, img:, align:, link:).
 	 * Used for parse-time validation against defined styles.
 	 */
 	public static function extractStyleReferences(text:String):Array<String> {
 		var refs:Array<String> = [];
 		if (text == null) return refs;
-		var idx = text.indexOf("${");
+		var idx = text.indexOf("%{");
 		while (idx >= 0 && idx + 2 < text.length) {
+			// Skip %%{ escape sequences
+			if (idx > 0 && text.charCodeAt(idx - 1) == "%".code) {
+				idx = text.indexOf("%{", idx + 1);
+				continue;
+			}
 			var closeIdx = text.indexOf("}", idx + 2);
 			if (closeIdx > idx + 2) {
 				var tag = text.substring(idx + 2, closeIdx);
@@ -137,7 +152,7 @@ class TextMarkupConverter {
 					refs.push(tag);
 				}
 			}
-			idx = text.indexOf("${", closeIdx > idx ? closeIdx : idx + 1);
+			idx = text.indexOf("%{", closeIdx > idx ? closeIdx : idx + 1);
 		}
 		return refs;
 	}

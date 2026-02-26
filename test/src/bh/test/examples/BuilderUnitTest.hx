@@ -3501,7 +3501,7 @@ class BuilderUnitTest extends BuilderTestBase {
 	public function testRichTextStylesCreatesHtmlText():Void {
 		final result = buildFromSource("
 			#test programmable() {
-				text(dd, \"Deal $${damage}50$${/} damage\", white, left, 200,
+				text(dd, \"Deal %{damage}50%{/} damage\", white, left, 200,
 					styles: {damage: #FF0000}): 0, 0
 			}
 		", "test");
@@ -3515,7 +3515,7 @@ class BuilderUnitTest extends BuilderTestBase {
 	public function testRichTextMarkupConverted():Void {
 		final result = buildFromSource("
 			#test programmable() {
-				text(dd, \"Deal $${damage}50$${/} damage\", white, left, 200,
+				text(dd, \"Deal %{damage}50%{/} damage\", white, left, 200,
 					styles: {damage: #FF0000}): 0, 0
 			}
 		", "test");
@@ -3530,7 +3530,7 @@ class BuilderUnitTest extends BuilderTestBase {
 	public function testRichTextInlineColorConverted():Void {
 		final result = buildFromSource("
 			#test programmable() {
-				text(dd, \"$${c:#FF0000}red$${/} text\", white, left, 200): 0, 0
+				text(dd, \"%{c:#FF0000}red%{/} text\", white, left, 200): 0, 0
 			}
 		", "test");
 		final texts = findAllTextDescendants(result.object);
@@ -3544,7 +3544,7 @@ class BuilderUnitTest extends BuilderTestBase {
 	public function testRichTextInlineFontConverted():Void {
 		final result = buildFromSource("
 			#test programmable() {
-				text(dd, \"normal $${f:dd}switched$${/} end\", white, left, 200): 0, 0
+				text(dd, \"normal %{f:dd}switched%{/} end\", white, left, 200): 0, 0
 			}
 		", "test");
 		final texts = findAllTextDescendants(result.object);
@@ -3557,7 +3557,7 @@ class BuilderUnitTest extends BuilderTestBase {
 	public function testRichTextImageMarkupConverted():Void {
 		final result = buildFromSource("
 			#test programmable() {
-				text(dd, \"Cost $${img:coin} gold\", white, left, 200,
+				text(dd, \"Cost %{img:coin} gold\", white, left, 200,
 					images: [coin generated(color(14, 14, #FFD700))]): 0, 0
 			}
 		", "test");
@@ -3571,7 +3571,7 @@ class BuilderUnitTest extends BuilderTestBase {
 	public function testRichTextAlignMarkupConverted():Void {
 		final result = buildFromSource("
 			#test programmable() {
-				text(dd, \"left\\n$${align:center}center$${/}\", white, left, 200): 0, 0
+				text(dd, \"left\\n%{align:center}center%{/}\", white, left, 200): 0, 0
 			}
 		", "test");
 		final texts = findAllTextDescendants(result.object);
@@ -3585,7 +3585,7 @@ class BuilderUnitTest extends BuilderTestBase {
 	public function testRichTextLinkMarkupConverted():Void {
 		final result = buildFromSource("
 			#test programmable() {
-				text(dd, \"$${link:shop}click$${/}\", white, left, 200): 0, 0
+				text(dd, \"%{link:shop}click%{/}\", white, left, 200): 0, 0
 			}
 		", "test");
 		final texts = findAllTextDescendants(result.object);
@@ -3623,7 +3623,7 @@ class BuilderUnitTest extends BuilderTestBase {
 	public function testRichTextNestingConverted():Void {
 		final result = buildFromSource("
 			#test programmable() {
-				text(dd, \"$${damage}crit $${c:yellow}50$${/} dmg$${/}\", white, left, 200,
+				text(dd, \"%{damage}crit %{c:yellow}50%{/} dmg%{/}\", white, left, 200,
 					styles: {damage: #FF0000}): 0, 0
 			}
 		", "test");
@@ -3640,7 +3640,7 @@ class BuilderUnitTest extends BuilderTestBase {
 	public function testRichTextColorOnlyStyle():Void {
 		final result = buildFromSource("
 			#test programmable() {
-				text(dd, \"$${fire}flames$${/}\", white, left, 200,
+				text(dd, \"%{fire}flames%{/}\", white, left, 200,
 					styles: {fire: red}): 0, 0
 			}
 		", "test");
@@ -3653,12 +3653,90 @@ class BuilderUnitTest extends BuilderTestBase {
 	public function testRichTextFontOnlyStyle():Void {
 		final result = buildFromSource("
 			#test programmable() {
-				text(dd, \"$${em}emphasis$${/}\", white, left, 200,
+				text(dd, \"%{em}emphasis%{/}\", white, left, 200,
 					styles: {em: \"dd\"}): 0, 0
 			}
 		", "test");
 		final texts = findAllTextDescendants(result.object);
 		Assert.equals(1, texts.length);
 		Assert.isTrue(Std.isOfType(texts[0], h2d.HtmlText), "Font-only style should create HtmlText");
+	}
+
+	@Test
+	public function testRichTextMarkupWithInterpolation():Void {
+		// Key test: %{markup} and ${param} interpolation combined in single-quoted string
+		final params = new Map<String, Dynamic>();
+		params.set("dmg", 75);
+		final result = buildFromSource("
+			#test programmable(dmg:int=50) {
+				text(dd, '%{damage}${dmg}%{/} damage', white, left, 200,
+					styles: {damage: #FF0000}): 0, 0
+			}
+		", "test", params);
+		final texts = findAllTextDescendants(result.object);
+		Assert.equals(1, texts.length);
+		final ht:h2d.HtmlText = cast texts[0];
+		Assert.isTrue(ht.text.indexOf("<damage>") >= 0, 'HTML should contain <damage>, got: ${ht.text}');
+		Assert.isTrue(ht.text.indexOf("75") >= 0, 'HTML should contain interpolated value 75, got: ${ht.text}');
+		Assert.isTrue(ht.text.indexOf("</damage>") >= 0, 'HTML should contain </damage>, got: ${ht.text}');
+	}
+
+	@Test
+	public function testRichTextDynamicStyleColor():Void {
+		// Dynamic style color via $param reference with incremental update
+		final params = new Map<String, Dynamic>();
+		params.set("hlColor", 0xFFFF0000); // red
+		final result = buildFromSource("
+			#test programmable(hlColor:color=blue) {
+				text(dd, \"%{hl}highlighted%{/}\", white, left, 200,
+					styles: {hl: $hlColor}): 0, 0
+			}
+		", "test", params, Incremental);
+		final texts = findAllTextDescendants(result.object);
+		Assert.equals(1, texts.length);
+		Assert.isTrue(Std.isOfType(texts[0], h2d.HtmlText), "Dynamic style color should create HtmlText");
+
+		// Verify setParameter updates without error
+		result.setParameter("hlColor", 0xFF00FF00); // green
+		Assert.isTrue(true, "setParameter on style color should not throw");
+	}
+
+	@Test
+	public function testRichTextEscapePercent():Void {
+		// %%{ should produce literal %{ in output, not trigger markup
+		final result = buildFromSource("
+			#test programmable() {
+				text(dd, \"use %%{tag} for markup\", white, left, 200): 0, 0
+			}
+		", "test");
+		final texts = findAllTextDescendants(result.object);
+		Assert.equals(1, texts.length);
+		// Should be plain h2d.Text (no markup detected), with literal %{ in text
+		Assert.isFalse(Std.isOfType(texts[0], h2d.HtmlText), "Escaped %%{ should not trigger HtmlText mode");
+		Assert.isTrue(texts[0].text.indexOf("%{") >= 0, 'Text should contain literal %{, got: ${texts[0].text}');
+	}
+
+	@Test
+	public function testRichTextMarkupWithIntParamInterpolation():Void {
+		// Single-quoted manim string: %{markup} + ${param} coexist
+		// dmg is int param — ${dmg} should interpolate to "75" inside the markup
+		final params = new Map<String, Dynamic>();
+		params.set("dmg", 75);
+		final result = buildFromSource("
+			#test programmable(dmg:int=50) {
+				text(dd, 'Dealt %{dmg}${dmg}%{/} damage to %{c:#FF8844}Dragon%{/}', white, left, 540,
+					styles: {dmg: #FF0000}): 0, 0
+			}
+		", "test", params);
+		final texts = findAllTextDescendants(result.object);
+		Assert.equals(1, texts.length);
+		Assert.isTrue(Std.isOfType(texts[0], h2d.HtmlText), "Should create HtmlText for markup");
+		final ht:h2d.HtmlText = cast texts[0];
+		// After TextMarkupConverter: %{dmg}75%{/} → <dmg>75</dmg>, %{c:#FF8844} → <font color="#FF8844">
+		Assert.isTrue(ht.text.indexOf("75") >= 0, 'Should contain interpolated int 75, got: ${ht.text}');
+		Assert.isTrue(ht.text.indexOf("<dmg>") >= 0, 'Should contain <dmg> tag, got: ${ht.text}');
+		Assert.isTrue(ht.text.indexOf("</dmg>") >= 0, 'Should contain </dmg> tag, got: ${ht.text}');
+		Assert.isTrue(ht.text.indexOf("Dragon") >= 0, 'Should contain Dragon, got: ${ht.text}');
+		Assert.isTrue(ht.text.indexOf("#FF8844") >= 0, 'Should contain inline color, got: ${ht.text}');
 	}
 }
