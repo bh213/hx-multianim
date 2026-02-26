@@ -246,6 +246,7 @@
 - **`UIController.clearState()`** — new interface method; resets hover/capture state in `UIControllerBase` during screen clear (prevents stale state after nuclear reload)
 
 - **Dropdown unit tests** — 17 new tests in `UIComponentTest.hx` covering creation, initial selection, open/close toggle, auto-open/close, disabled state, outside click, selection index, list value interface, transition timer override, sub-elements, cursor states, and item changed callback
+- **Scrollable list unit tests** — 27 new tests in `UIComponentTest.hx` covering creation, initial selection, setSelectedIndex, getList, disabled state/alpha/events/cursor, setItems/default selection/empty, click modes (single/double), scrollToIndex, onItemChanged callback, disabled items, TileRef, itemData, doRedraw, hover index, auto-size mode, wheel scroll multiplier, double-click threshold
 
 - **`@:nullSafety` on parser and builder** — applied `@:nullSafety` to `MacroManimParser`, `AnimParser`, `MultiAnimBuilder`, `MultiAnimParser`, `ProgrammableBuilder` and all public enums/typedefs
   - Explicit `Null<T>` annotations for nullable variables; null narrowing via local finals
