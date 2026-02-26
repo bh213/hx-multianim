@@ -495,7 +495,9 @@ class HtmlReportGenerator {
 
 		// Builder vs Macro mismatch errors section
 		var macroMismatches = results.filter(function(r) {
-			return r.builderVsMacroSimilarity != null && r.builderVsMacroSimilarity < 1.0;
+			if (r.builderVsMacroSimilarity == null) return false;
+			var mth:Float = r.macroThreshold != null ? r.macroThreshold : 1.0;
+			return r.builderVsMacroSimilarity < mth;
 		});
 		if (macroMismatches.length > 0) {
 			html.add('    <div class="failed-links" style="border-left-color:#b71c1c;background:#ffcdd2;">\n');
@@ -618,12 +620,15 @@ class HtmlReportGenerator {
 				var dpRel = FileSystem.exists(dp) ? makeRelativePath(dp) : "";
 				diffLinks.push('<a class="diff-link" onclick="showDiff(\'${macRel}\',\'${refRel}\',\'Macro\',\'Reference\',\'${dpRel}\')">Diff: Macro vs Ref</a>');
 			}
-			if (result.builderVsMacroSimilarity != null && result.builderVsMacroSimilarity < 1.0) {
-				var actRel = makeRelativePath(result.actualPath);
-				var macRel = makeRelativePath(result.macroPath);
-				var dp = diffBase + "_diff_bm.png";
-				var dpRel = FileSystem.exists(dp) ? makeRelativePath(dp) : "";
-				diffLinks.push('<a class="diff-link-error" onclick="showDiff(\'${actRel}\',\'${macRel}\',\'Builder\',\'Macro\',\'${dpRel}\')">ERROR: Builder vs Macro differ</a>');
+			if (result.builderVsMacroSimilarity != null) {
+				var mth:Float = result.macroThreshold != null ? result.macroThreshold : 1.0;
+				if (result.builderVsMacroSimilarity < mth) {
+					var actRel = makeRelativePath(result.actualPath);
+					var macRel = makeRelativePath(result.macroPath);
+					var dp = diffBase + "_diff_bm.png";
+					var dpRel = FileSystem.exists(dp) ? makeRelativePath(dp) : "";
+					diffLinks.push('<a class="diff-link-error" onclick="showDiff(\'${actRel}\',\'${macRel}\',\'Builder\',\'Macro\',\'${dpRel}\')">ERROR: Builder vs Macro differ</a>');
+				}
 			}
 			if (diffLinks.length > 0) {
 				html.add('        <div class="diff-links">\n');
@@ -825,7 +830,9 @@ class HtmlReportGenerator {
 			parts.push('FAILED: ${failed}/${results.length} visual tests failed [${failedNames.join(", ")}]');
 		}
 		var macroMismatchCount = results.filter(function(r) {
-			return r.builderVsMacroSimilarity != null && r.builderVsMacroSimilarity < 1.0;
+			if (r.builderVsMacroSimilarity == null) return false;
+			var mth:Float = r.macroThreshold != null ? r.macroThreshold : 1.0;
+			return r.builderVsMacroSimilarity < mth;
 		}).length;
 		if (macroMismatchCount > 0) {
 			parts.push('ERROR: ${macroMismatchCount} builder vs macro mismatches');
@@ -860,7 +867,9 @@ class HtmlReportGenerator {
 
 		// Builder vs Macro mismatches
 		var macroMismatchNames = results.filter(function(r) {
-			return r.builderVsMacroSimilarity != null && r.builderVsMacroSimilarity < 1.0;
+			if (r.builderVsMacroSimilarity == null) return false;
+			var mth:Float = r.macroThreshold != null ? r.macroThreshold : 1.0;
+			return r.builderVsMacroSimilarity < mth;
 		}).map(r -> r.testName);
 		if (macroMismatchNames.length > 0) hasFailures = true;
 
@@ -898,7 +907,9 @@ class HtmlReportGenerator {
 		if (macroMismatchNames.length > 0) {
 			buf.add('macro_mismatch_tests: [${macroMismatchNames.join(", ")}]\n');
 			for (r in results) {
-				if (r.builderVsMacroSimilarity == null || r.builderVsMacroSimilarity >= 1.0) continue;
+				if (r.builderVsMacroSimilarity == null) continue;
+				var mth:Float = r.macroThreshold != null ? r.macroThreshold : 1.0;
+				if (r.builderVsMacroSimilarity >= mth) continue;
 				var simPct = Math.round(r.builderVsMacroSimilarity * 10000) / 100;
 				buf.add('  macro_detail: ${r.testName} | builder_vs_macro: ${simPct}%\n');
 			}
