@@ -3214,4 +3214,284 @@ class BuilderUnitTest extends BuilderTestBase {
 		Assert.equals(4, countUntil);
 		Assert.equals(countTo - 1, countUntil);
 	}
+
+	// ==================== Builder error paths ====================
+
+	/** Helper: run a closure and return the error message string, or null if no error. */
+	private static function expectError(fn:() -> Void):String {
+		try {
+			fn();
+			return null;
+		} catch (e:Dynamic) {
+			return Std.string(e);
+		}
+	}
+
+	@Test
+	public function testErrorMissingProgrammable():Void {
+		final err = expectError(() -> buildFromSource("
+			#test programmable() {
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		", "nonexistent"));
+		Assert.notNull(err, "Should throw for missing programmable");
+		Assert.isTrue(err.indexOf("nonexistent") >= 0, 'Error should mention "nonexistent", got: $err');
+		Assert.isTrue(err.indexOf("could find element") >= 0, 'Error should say could not find element, got: $err');
+	}
+
+	@Test
+	public function testErrorMissingProgrammableEmptySource():Void {
+		final err = expectError(() -> buildFromSource("
+			#other programmable() {
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		", "test"));
+		Assert.notNull(err, "Should throw when building a name that doesn't exist");
+		Assert.isTrue(err.indexOf("test") >= 0, 'Error should mention "test", got: $err');
+	}
+
+	@Test
+	public function testErrorWrongParamTypeUintGetsString():Void {
+		final err = expectError(() -> buildFromSource("
+			#test programmable(x:uint=10) {
+				bitmap(generated(color($x, $x, #f00))): 0, 0
+			}
+		", "test", ["x" => "notanumber"]));
+		Assert.notNull(err, "Should throw for wrong param type");
+	}
+
+	@Test
+	public function testErrorWrongParamTypeBoolGetsGarbage():Void {
+		final err = expectError(() -> buildFromSource("
+			#test programmable(flag:bool=true) {
+				@(flag=>true) bitmap(generated(color(10, 10, #f00))): 0, 0
+				@else bitmap(generated(color(20, 20, #00f))): 0, 0
+			}
+		", "test", ["flag" => "notabool"]));
+		Assert.notNull(err, "Should throw for unparseable bool value");
+	}
+
+	@Test
+	public function testErrorUndefinedReference():Void {
+		final err = expectError(() -> buildFromSource("
+			#test programmable() {
+				bitmap(generated(color($undefined, 10, #f00))): 0, 0
+			}
+		", "test"));
+		Assert.notNull(err, "Should throw for undefined $ref");
+		Assert.isTrue(err.indexOf("undefined") >= 0, 'Error should mention "undefined", got: $err');
+	}
+
+	@Test
+	public function testErrorUndefinedReferenceInExpression():Void {
+		final err = expectError(() -> buildFromSource("
+			#test programmable(x:uint=10) {
+				bitmap(generated(color($x + $missing, 10, #f00))): 0, 0
+			}
+		", "test"));
+		Assert.notNull(err, "Should throw for undefined $missing in expression");
+		Assert.isTrue(err.indexOf("missing") >= 0, 'Error should mention "missing", got: $err');
+	}
+
+	@Test
+	public function testErrorSlotNotFoundInResult():Void {
+		final result = buildFromSource("
+			#test programmable() {
+				#mySlot slot {
+					bitmap(generated(color(10, 10, #555))): 0, 0
+				}
+			}
+		", "test");
+		Assert.notNull(result);
+		final err = expectError(() -> result.getSlot("nonexistent"));
+		Assert.notNull(err, "Should throw for nonexistent slot");
+		Assert.isTrue(err.indexOf("nonexistent") >= 0, 'Error should mention "nonexistent", got: $err');
+	}
+
+	@Test
+	public function testErrorSlotIndexedAccessedWithoutIndex():Void {
+		final result = buildFromSource("
+			#test programmable() {
+				repeatable($i, step(3, dx: 20)) {
+					#item[$i] slot {
+						bitmap(generated(color(10, 10, #555))): 0, 0
+					}
+				}
+			}
+		", "test");
+		Assert.notNull(result);
+		final err = expectError(() -> result.getSlot("item"));
+		Assert.notNull(err, "Should throw when accessing indexed slot without index");
+		Assert.isTrue(err.indexOf("indexed") >= 0, 'Error should mention "indexed", got: $err');
+		Assert.isTrue(err.indexOf("item") >= 0, 'Error should mention slot name "item", got: $err');
+	}
+
+	@Test
+	public function testErrorSlotNonIndexedAccessedWithIndex():Void {
+		final result = buildFromSource("
+			#test programmable() {
+				#mySlot slot {
+					bitmap(generated(color(10, 10, #555))): 0, 0
+				}
+			}
+		", "test");
+		Assert.notNull(result);
+		final err = expectError(() -> result.getSlot("mySlot", 0));
+		Assert.notNull(err, "Should throw when accessing non-indexed slot with index");
+		Assert.isTrue(err.indexOf("not indexed") >= 0, 'Error should mention "not indexed", got: $err');
+	}
+
+	@Test
+	public function testErrorSlotIndexOutOfBounds():Void {
+		final result = buildFromSource("
+			#test programmable() {
+				repeatable($i, step(2, dx: 20)) {
+					#item[$i] slot {
+						bitmap(generated(color(10, 10, #555))): 0, 0
+					}
+				}
+			}
+		", "test");
+		Assert.notNull(result);
+		// Valid indices are 0 and 1; index 99 should not exist
+		final err = expectError(() -> result.getSlot("item", 99));
+		Assert.notNull(err, "Should throw for out-of-bounds slot index");
+		Assert.isTrue(err.indexOf("item") >= 0, 'Error should mention slot name, got: $err');
+	}
+
+	@Test
+	public function testErrorSetParameterWithoutIncrementalMode():Void {
+		final result = buildFromSource("
+			#test programmable(x:uint=10) {
+				bitmap(generated(color($x, $x, #f00))): 0, 0
+			}
+		", "test");
+		Assert.notNull(result);
+		final err = expectError(() -> result.setParameter("x", 20));
+		Assert.notNull(err, "Should throw when setParameter called without incremental mode");
+		Assert.isTrue(err.indexOf("incremental") >= 0, 'Error should mention "incremental", got: $err');
+	}
+
+	@Test
+	public function testErrorBeginUpdateWithoutIncrementalMode():Void {
+		final result = buildFromSource("
+			#test programmable(x:uint=10) {
+				bitmap(generated(color($x, $x, #f00))): 0, 0
+			}
+		", "test");
+		Assert.notNull(result);
+		final err = expectError(() -> result.beginUpdate());
+		Assert.notNull(err, "Should throw when beginUpdate called without incremental mode");
+		Assert.isTrue(err.indexOf("incremental") >= 0, 'Error should mention "incremental", got: $err');
+	}
+
+	@Test
+	public function testErrorEndUpdateWithoutIncrementalMode():Void {
+		final result = buildFromSource("
+			#test programmable(x:uint=10) {
+				bitmap(generated(color($x, $x, #f00))): 0, 0
+			}
+		", "test");
+		Assert.notNull(result);
+		final err = expectError(() -> result.endUpdate());
+		Assert.notNull(err, "Should throw when endUpdate called without incremental mode");
+		Assert.isTrue(err.indexOf("incremental") >= 0, 'Error should mention "incremental", got: $err');
+	}
+
+	@Test
+	public function testErrorGetDynamicRefNotFound():Void {
+		final result = buildFromSource("
+			#inner programmable() {
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+			#test programmable() {
+				dynamicRef($inner): 0, 0
+			}
+		", "test");
+		Assert.notNull(result);
+		final err = expectError(() -> result.getDynamicRef("nonexistent"));
+		Assert.notNull(err, "Should throw for nonexistent dynamic ref");
+		Assert.isTrue(err.indexOf("nonexistent") >= 0, 'Error should mention "nonexistent", got: $err');
+	}
+
+	@Test
+	public function testErrorGetUpdatableNotFound():Void {
+		final result = buildFromSource("
+			#test programmable() {
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		", "test");
+		Assert.notNull(result);
+		final err = expectError(() -> result.getUpdatable("nonexistent"));
+		Assert.notNull(err, "Should throw for nonexistent updatable name");
+		Assert.isTrue(err.indexOf("nonexistent") >= 0, 'Error should mention "nonexistent", got: $err');
+	}
+
+	@Test
+	public function testErrorFinalShadowsParam():Void {
+		final err = expectError(() -> buildFromSource("
+			#test programmable(x:uint=10) {
+				@final x = 20
+				bitmap(generated(color($x, $x, #f00))): 0, 0
+			}
+		", "test"));
+		Assert.notNull(err, "Should throw when @final shadows a parameter");
+		Assert.isTrue(err.indexOf("shadows") >= 0, 'Error should mention "shadows", got: $err');
+	}
+
+	@Test
+	public function testErrorUnknownParamListsAvailable():Void {
+		var err:String = null;
+		try {
+			buildFromSource("
+				#test programmable(width:uint=10, height:uint=20, color:string=\"red\") {
+					bitmap(generated(color($width, $height, #f00))): 0, 0
+				}
+			", "test", ["typo" => 42]);
+		} catch (e:Dynamic) {
+			err = Std.string(e);
+		}
+		Assert.notNull(err, "Should throw for unknown param");
+		Assert.isTrue(err.indexOf("typo") >= 0, 'Error should mention "typo", got: $err');
+		Assert.isTrue(err.indexOf("width") >= 0, 'Error should list available param "width", got: $err');
+		Assert.isTrue(err.indexOf("height") >= 0, 'Error should list available param "height", got: $err');
+	}
+
+	@Test
+	public function testErrorNoSlotsInResult():Void {
+		final result = buildFromSource("
+			#test programmable() {
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		", "test");
+		Assert.notNull(result);
+		final err = expectError(() -> result.getSlot("anything"));
+		Assert.notNull(err, "Should throw when no slots exist");
+		Assert.isTrue(err.indexOf("No slots") >= 0 || err.indexOf("not found") >= 0,
+			'Error should indicate no slots, got: $err');
+	}
+
+	@Test
+	public function testErrorNoDynamicRefsInResult():Void {
+		final result = buildFromSource("
+			#test programmable() {
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		", "test");
+		Assert.notNull(result);
+		final err = expectError(() -> result.getDynamicRef("anything"));
+		Assert.notNull(err, "Should throw when no dynamic refs exist");
+	}
+
+	@Test
+	public function testErrorSpacerOutsideFlow():Void {
+		final err = expectError(() -> buildFromSource("
+			#test programmable() {
+				spacer(10, 10): 0, 0
+			}
+		", "test"));
+		Assert.notNull(err, "Should throw when spacer used outside flow");
+		Assert.isTrue(err.indexOf("spacer") >= 0, 'Error should mention "spacer", got: $err');
+		Assert.isTrue(err.indexOf("flow") >= 0, 'Error should mention "flow", got: $err');
+	}
 }
