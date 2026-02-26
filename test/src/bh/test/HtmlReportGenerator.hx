@@ -20,6 +20,7 @@ typedef TestResult = {
 	var ?threshold:Float;
 	var ?macroThreshold:Float;
 	var ?builderVsMacroSimilarity:Float;
+	var ?orderIndex:Int;
 }
 
 class HtmlReportGenerator {
@@ -27,6 +28,14 @@ class HtmlReportGenerator {
 	private static var reportPath:String = "test/screenshots/index.html";
 	private static var unitAggregator:Null<utest.ui.common.ResultAggregator> = null;
 	private static var includeUnitTests:Bool = false;
+	private static var unitSeconds:Null<Float> = null;
+	private static var visualSeconds:Null<Float> = null;
+	private static var nextOrderIndex:Int = 0;
+
+	public static function setTiming(unitSec:Float, visualSec:Float):Void {
+		unitSeconds = unitSec;
+		visualSeconds = visualSec;
+	}
 
 	public static function setUnitTestAggregator(aggregator:utest.ui.common.ResultAggregator):Void {
 		unitAggregator = aggregator;
@@ -36,13 +45,19 @@ class HtmlReportGenerator {
 		includeUnitTests = true;
 	}
 
+	/** Reserve an order index on the main thread to preserve test ordering. */
+	public static function reserveOrderIndex():Int {
+		return nextOrderIndex++;
+	}
+
 	public static function addResult(testName:String, referencePath:String, actualPath:String, passed:Bool, similarity:Float, ?errorMessage:String,
-			?threshold:Float):Void {
-		addResultWithMacro(testName, referencePath, actualPath, passed, similarity, errorMessage, null, null, null, threshold, null);
+			?threshold:Float, ?orderIndex:Int):Void {
+		addResultWithMacro(testName, referencePath, actualPath, passed, similarity, errorMessage, null, null, null, threshold, null, orderIndex);
 	}
 
 	public static function addResultWithMacro(testName:String, referencePath:String, actualPath:String, passed:Bool, similarity:Float,
-			?errorMessage:String, ?macroPath:String, ?macroSimilarity:Float, ?macroPassed:Bool, ?threshold:Float, ?macroThreshold:Float):Void {
+			?errorMessage:String, ?macroPath:String, ?macroSimilarity:Float, ?macroPassed:Bool, ?threshold:Float, ?macroThreshold:Float,
+			?orderIndex:Int):Void {
 		// Find manim file in the same directory as reference
 		var manimPath:String = null;
 		var manimContent:String = null;
@@ -98,6 +113,7 @@ class HtmlReportGenerator {
 			threshold: threshold,
 			macroThreshold: macroThreshold,
 			builderVsMacroSimilarity: bvmSimilarity,
+			orderIndex: orderIndex,
 		});
 	}
 
@@ -449,6 +465,12 @@ class HtmlReportGenerator {
 		html.add('        <strong>Summary:</strong> ${results.length} tests, ');
 		html.add('        <span style="color: #4CAF50;">${passed} passed</span>, ');
 		html.add('        <span style="color: #f44336;">${failed} failed</span>\n');
+		if (unitSeconds != null || visualSeconds != null) {
+			var timeParts:Array<String> = [];
+			if (unitSeconds != null) timeParts.push('unit ${unitSeconds}s');
+			if (visualSeconds != null) timeParts.push('visual ${visualSeconds}s');
+			html.add('        <span style="color: #999; font-size: 13px; margin-left: 10px;">(${timeParts.join(", ")})</span>\n');
+		}
 		html.add('    </div>\n');
 
 		// Unit test results section (before visual tests, details hidden by default)
@@ -486,11 +508,11 @@ class HtmlReportGenerator {
 			html.add('    </div>\n');
 		}
 
-		// Sort results by test number for consistent ordering
+		// Sort results by order index (if set) or test number for consistent ordering
 		results.sort(function(a, b) {
-			var numA = extractTestNumber(a.testName);
-			var numB = extractTestNumber(b.testName);
-			return numA - numB;
+			var idxA = a.orderIndex != null ? a.orderIndex : extractTestNumber(a.testName);
+			var idxB = b.orderIndex != null ? b.orderIndex : extractTestNumber(b.testName);
+			return idxA - idxB;
 		});
 
 		// Individual test results
@@ -816,7 +838,7 @@ class HtmlReportGenerator {
 		return 'OK: ${passed}/${results.length} visual tests passed';
 	}
 
-	public static function getStructuredSummary(elapsedSeconds:Int, ?statusOverride:String):String {
+	public static function getStructuredSummary(elapsedSeconds:Int, ?statusOverride:String, ?unitSeconds:Float, ?visualSeconds:Float):String {
 		var buf = new StringBuf();
 		buf.add("--- TEST RESULT ---\n");
 
@@ -908,6 +930,8 @@ class HtmlReportGenerator {
 		}
 
 		buf.add('elapsed_seconds: ${elapsedSeconds}\n');
+		if (unitSeconds != null) buf.add('unit_seconds: ${unitSeconds}\n');
+		if (visualSeconds != null) buf.add('visual_seconds: ${visualSeconds}\n');
 		buf.add("--- END TEST RESULT ---");
 		return buf.toString();
 	}
@@ -929,6 +953,7 @@ class HtmlReportGenerator {
 		results = [];
 		unitAggregator = null;
 		includeUnitTests = false;
+		nextOrderIndex = 0;
 	}
 
 	/**
@@ -943,15 +968,33 @@ class HtmlReportGenerator {
 			var p1 = hxd.res.Any.fromBytes(path1, bytes1).toImage().getPixels();
 			var p2 = hxd.res.Any.fromBytes(path2, bytes2).toImage().getPixels();
 			if (p1.width != p2.width || p1.height != p2.height) return false;
-			for (x in 0...p1.width) {
-				for (y in 0...p1.height) {
-					var c1 = p1.getPixel(x, y);
-					var c2 = p2.getPixel(x, y);
-					var dr = Std.int(Math.abs(((c1 >> 16) & 0xFF) - ((c2 >> 16) & 0xFF)));
-					var dg = Std.int(Math.abs(((c1 >> 8) & 0xFF) - ((c2 >> 8) & 0xFF)));
-					var db = Std.int(Math.abs((c1 & 0xFF) - (c2 & 0xFF)));
-					var v = Std.int(Math.min(255, Math.max(dr, Math.max(dg, db)) * 5));
-					p1.setPixel(x, y, 0xFF000000 | (v << 16) | (v << 8) | v);
+			// Direct bytes access for diff generation
+			p1.convert(BGRA);
+			p2.convert(BGRA);
+			var b1 = p1.bytes;
+			var b2 = p2.bytes;
+			var o1 = p1.offset;
+			var o2 = p2.offset;
+			var total = p1.width * p1.height;
+			for (i in 0...total) {
+				var p = i << 2;
+				var c1 = b1.getInt32(p + o1);
+				var c2 = b2.getInt32(p + o2);
+				if (c1 == c2) {
+					b1.setInt32(p + o1, 0xFF000000);
+				} else {
+					var dr = ((c1 >> 16) & 0xFF) - ((c2 >> 16) & 0xFF);
+					var dg = ((c1 >> 8) & 0xFF) - ((c2 >> 8) & 0xFF);
+					var db = (c1 & 0xFF) - (c2 & 0xFF);
+					if (dr < 0) dr = -dr;
+					if (dg < 0) dg = -dg;
+					if (db < 0) db = -db;
+					var v = dr;
+					if (dg > v) v = dg;
+					if (db > v) v = db;
+					v = v * 5;
+					if (v > 255) v = 255;
+					b1.setInt32(p + o1, 0xFF000000 | (v << 16) | (v << 8) | v);
 				}
 			}
 			File.saveBytes(outputPath, p1.toPNG());
@@ -972,17 +1015,35 @@ class HtmlReportGenerator {
 			var p1 = hxd.res.Any.fromBytes(path1, bytes1).toImage().getPixels();
 			var p2 = hxd.res.Any.fromBytes(path2, bytes2).toImage().getPixels();
 			if (p1.width != p2.width || p1.height != p2.height) return 0.0;
+			// Direct bytes access for similarity computation
+			p1.convert(BGRA);
+			p2.convert(BGRA);
+			var b1 = p1.bytes;
+			var b2 = p2.bytes;
+			var o1 = p1.offset;
+			var o2 = p2.offset;
 			var totalPixels = p1.width * p1.height;
 			var matchingPixels = 0;
-			for (x in 0...p1.width) {
-				for (y in 0...p1.height) {
-					var c1 = p1.getPixel(x, y);
-					var c2 = p2.getPixel(x, y);
-					var dr = Std.int(Math.abs(((c1 >> 16) & 0xFF) - ((c2 >> 16) & 0xFF)));
-					var dg = Std.int(Math.abs(((c1 >> 8) & 0xFF) - ((c2 >> 8) & 0xFF)));
-					var db = Std.int(Math.abs((c1 & 0xFF) - (c2 & 0xFF)));
-					var da = Std.int(Math.abs(((c1 >> 24) & 0xFF) - ((c2 >> 24) & 0xFF)));
-					if (Math.max(da, Math.max(dr, Math.max(dg, db))) < 5) matchingPixels++;
+			for (i in 0...totalPixels) {
+				var p = i << 2;
+				var c1 = b1.getInt32(p + o1);
+				var c2 = b2.getInt32(p + o2);
+				if (c1 == c2) {
+					matchingPixels++;
+				} else {
+					var dr = ((c1 >> 16) & 0xFF) - ((c2 >> 16) & 0xFF);
+					var dg = ((c1 >> 8) & 0xFF) - ((c2 >> 8) & 0xFF);
+					var db = (c1 & 0xFF) - (c2 & 0xFF);
+					var da = ((c1 >> 24) & 0xFF) - ((c2 >> 24) & 0xFF);
+					if (dr < 0) dr = -dr;
+					if (dg < 0) dg = -dg;
+					if (db < 0) db = -db;
+					if (da < 0) da = -da;
+					var m = da;
+					if (dr > m) m = dr;
+					if (dg > m) m = dg;
+					if (db > m) m = db;
+					if (m < 5) matchingPixels++;
 				}
 			}
 			return matchingPixels / totalPixels;

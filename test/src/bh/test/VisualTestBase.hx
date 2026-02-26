@@ -2,11 +2,8 @@ package bh.test;
 
 import h3d.mat.Texture;
 import hxd.Pixels;
-import hxd.File;
 import utest.Assert;
 import h2d.col.IBounds;
-import hxd.res.Image;
-import hxd.Res;
 import h2d.Scene;
 
 class VisualTestBase extends utest.Test {
@@ -63,34 +60,18 @@ class VisualTestBase extends utest.Test {
 
 	// ==================== Setup helpers ====================
 
-	/**
-	 * Configure test metadata from a test number and name.
-	 * Derives testName, testTitle, and referenceDir from the number and name.
-	 */
 	private function setupTest(num:Int, name:String, ?title:String):Void {
 		this.testName = name;
 		this.testTitle = title != null ? title : '#$num: $name';
 		this.referenceDir = 'test/examples/$num-$name';
 	}
 
-	/**
-	 * Get the manim file path for a test number and name.
-	 */
 	private static function manimPath(num:Int, name:String):String {
 		return 'test/examples/$num-$name/$name.manim';
 	}
 
 	// ==================== Simple visual test ====================
 
-	/**
-	 * One-liner for simple builder-only visual tests.
-	 * @param num Test number
-	 * @param name Test name (used for directory, manim file, and programmable name)
-	 * @param async utest async handle
-	 * @param programmableName Override programmable name if different from test name
-	 * @param title Override title if desired
-	 * @param scale Scale factor (default 1.0)
-	 */
 	public function simpleTest(num:Int, name:String, async:utest.Async, ?programmableName:String,
 			?title:String, ?scale:Float):Void {
 		setupTest(num, name, title);
@@ -99,16 +80,6 @@ class VisualTestBase extends utest.Test {
 		buildRenderScreenshotAndCompare(manimPath(num, name), progName, async, 1280, 720, s);
 	}
 
-	/**
-	 * One-liner for macro vs builder visual tests.
-	 * @param num Test number
-	 * @param name Test name
-	 * @param createMacroRoot Function that creates the macro-generated root object
-	 * @param async utest async handle
-	 * @param programmableName Override programmable name if different from test name
-	 * @param title Override title if desired
-	 * @param scale Scale factor (default 1.0)
-	 */
 	public function simpleMacroTest(num:Int, name:String, createMacroRoot:() -> h2d.Object,
 			async:utest.Async, ?programmableName:String, ?title:String, ?scale:Float, ?threshold:Float):Void {
 		setupTest(num, name, title);
@@ -119,10 +90,6 @@ class VisualTestBase extends utest.Test {
 
 	// ==================== Build and render ====================
 
-	/**
-	 * Build a manim file and add it to the scene.
-	 * @param scale Scale factor (default 1.0)
-	 */
 	public function buildAndAddToScene(animFilePath:String, name:String, ?scale:Float):Dynamic {
 		s2d.removeChildren();
 
@@ -152,9 +119,6 @@ class VisualTestBase extends utest.Test {
 		}
 	}
 
-	/**
-	 * Add a title text overlay to the top-right of the scene.
-	 */
 	private function addTitleOverlay():Void {
 		var loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
 		var font = loader.loadFont("dd");
@@ -176,10 +140,14 @@ class VisualTestBase extends utest.Test {
 
 	// ==================== Screenshot ====================
 
-	public function screenshot(outputFile:String, ?sizeX:Int, ?sizeY:Int):Bool {
+	/**
+	 * Render scene to off-screen texture, encode PNG on main thread.
+	 * Returns PNG bytes or null if image is empty. No Heaps objects leak out.
+	 */
+	public function captureScreenshotPng(?sizeX:Int, ?sizeY:Int):Null<haxe.io.Bytes> {
 		if (appInstance == null) {
 			trace("Warning: App instance not available for screenshot");
-			return false;
+			return null;
 		}
 
 		if (sizeX == null) sizeX = 1280;
@@ -193,103 +161,35 @@ class VisualTestBase extends utest.Test {
 		s2d.render(e);
 
 		var pixels = renderTexture.capturePixels(0, 0, IBounds.fromValues(0, 0, sizeX, sizeY));
-		var empty = true;
-		for (x in 0...pixels.width) {
-			for (y in 0...pixels.height) {
-				if (pixels.getPixel(x, y) != 0xff1f1f1f) {
-					empty = false;
-					break;
-				}
-			}
-			if (!empty) break;
-		}
 
-		if (!empty) {
-			File.saveBytes(outputFile, pixels.toPNG());
-			verbose('Screenshot saved: $outputFile');
-		}
 		e.popTarget();
 		renderTexture.dispose();
 
-		return !empty;
-	}
-
-	// ==================== Image comparison ====================
-
-	public function compareImages(actual:String, reference:String, ?threshold:Float):Bool {
-		if (threshold == null) threshold = 1.0;
-		var similarity = 1.0;
-		var passed = true;
-
-		if (!sys.FileSystem.exists(reference)) {
-			trace('Reference image not found: $reference — run gen-refs to create it');
-			passed = false;
-			similarity = 0.0;
-		} else if (!sys.FileSystem.exists(actual)) {
-			trace('Error: Actual image not found: $actual');
-			passed = false;
-			similarity = 0.0;
-		} else {
-			try {
-				var actualBytes = sys.io.File.getBytes(actual);
-				var referenceBytes = sys.io.File.getBytes(reference);
-
-				var p1 = hxd.res.Any.fromBytes(actual, actualBytes).toImage().getPixels();
-				var p2 = hxd.res.Any.fromBytes(reference, referenceBytes).toImage().getPixels();
-
-				if (p1.width != p2.width || p1.height != p2.height) {
-					trace('Image dimensions mismatch: actual ${p1.width}x${p1.height} vs reference ${p2.width}x${p2.height}');
-					passed = false;
-					similarity = 0.0;
-				} else {
-					var totalPixels = p1.width * p1.height;
-					var matchingPixels = 0;
-
-					for (x in 0...p1.width) {
-						for (y in 0...p1.height) {
-							if (colorDistance(p1.getPixel(x, y), p2.getPixel(x, y)) < 5) {
-								matchingPixels++;
-							}
-						}
-					}
-
-					similarity = matchingPixels / totalPixels;
-					var diffPixels = totalPixels - matchingPixels;
-					var pct = Math.round(similarity * 10000) / 100;
-					if (pct >= 100.0 && similarity < 1.0)
-						verbose('Image similarity: ${pct}% (${diffPixels}px differ)');
-					else
-						verbose('Image similarity: ${pct}%');
-					passed = similarity >= threshold;
-				}
-			} catch (e:Dynamic) {
-				trace('Error comparing images: $e');
-				passed = false;
-				similarity = 0.0;
+		// Quick empty check
+		pixels.convert(BGRA);
+		var b = pixels.bytes;
+		var off = pixels.offset;
+		var total = pixels.width * pixels.height;
+		var empty = true;
+		for (i in 0...total) {
+			if (b.getInt32((i << 2) + off) != 0xff1f1f1f) {
+				empty = false;
+				break;
 			}
 		}
 
-		HtmlReportGenerator.addResult(getDisplayName(), reference, actual, passed, similarity, null, threshold);
-		HtmlReportGenerator.generateReport();
+		if (empty) {
+			pixels.dispose();
+			return null;
+		}
 
-		return passed;
+		// Encode PNG on main thread — only raw Bytes leave this method
+		var pngBytes = pixels.toPNG();
+		pixels.dispose();
+		return pngBytes;
 	}
 
-	private function colorDistance(c1:Int, c2:Int):Float {
-		var r1 = (c1 >> 16) & 0xFF;
-		var g1 = (c1 >> 8) & 0xFF;
-		var b1 = c1 & 0xFF;
-
-		var r2 = (c2 >> 16) & 0xFF;
-		var g2 = (c2 >> 8) & 0xFF;
-		var b2 = c2 & 0xFF;
-
-		var dr = r1 - r2;
-		var dg = g1 - g2;
-		var db = b1 - b2;
-
-		return Math.sqrt(dr * dr + dg * dg + db * db);
-	}
+	// ==================== Path helpers ====================
 
 	public function getReferenceImagePath():String {
 		return '$referenceDir/reference.png';
@@ -312,19 +212,18 @@ class VisualTestBase extends utest.Test {
 		return displayName;
 	}
 
-	private function reportBuildFailure(errorMessage:String):Void {
-		HtmlReportGenerator.addResult(getDisplayName(), getReferenceImagePath(), getActualImagePath(), false, 0.0, errorMessage);
-		HtmlReportGenerator.generateReport();
+	private function reportBuildFailure(errorMessage:String, ?orderIndex:Int):Void {
+		HtmlReportGenerator.addResult(getDisplayName(), getReferenceImagePath(), getActualImagePath(), false, 0.0, errorMessage, null, orderIndex);
 	}
 
 	// ==================== Async visual test methods ====================
 
 	/**
-	 * Build, render, screenshot, and compare with reference.
-	 * Handles errors gracefully — if build fails, the test fails with an assertion rather than getting stuck.
+	 * Build, render, capture, and enqueue comparison with reference.
 	 */
 	public function buildRenderScreenshotAndCompare(animFilePath:String, elementName:String,
 			async:utest.Async, ?sizeX:Int, ?sizeY:Int, ?scale:Float):Void {
+		var orderIdx = HtmlReportGenerator.reserveOrderIndex();
 		pendingVisualTests++;
 		async.setTimeout(10000);
 		clearScene();
@@ -334,7 +233,7 @@ class VisualTestBase extends utest.Test {
 			result = buildAndAddToScene(animFilePath, elementName, scale);
 		} catch (e:Dynamic) {
 			var msg = 'Build threw exception for "$elementName" from $animFilePath: $e';
-			reportBuildFailure(msg);
+			reportBuildFailure(msg, orderIdx);
 			Assert.fail(msg);
 			pendingVisualTests--;
 			async.done();
@@ -343,7 +242,7 @@ class VisualTestBase extends utest.Test {
 
 		if (result == null) {
 			var msg = 'Failed to build element "$elementName" from $animFilePath';
-			reportBuildFailure(msg);
+			reportBuildFailure(msg, orderIdx);
 			Assert.fail(msg);
 			pendingVisualTests--;
 			async.done();
@@ -351,19 +250,19 @@ class VisualTestBase extends utest.Test {
 		}
 
 		waitForUpdate(function(dt:Float) {
-			try {
-				var actualPath = getActualImagePath();
-				var referencePath = getReferenceImagePath();
+			var actualPath = getActualImagePath();
+			var referencePath = getReferenceImagePath();
+			var displayName = getDisplayName();
+			var pngBytes = captureScreenshotPng(sizeX, sizeY);
 
-				var success = screenshot(actualPath, sizeX, sizeY);
-				Assert.isTrue(success, 'Screenshot should be created at $actualPath');
-
-				if (success) {
-					var match = compareImages(actualPath, referencePath);
-					Assert.isTrue(match, 'Screenshot should match reference image');
-				}
-			} catch (e:Dynamic) {
-				Assert.fail('Screenshot/compare threw: $e');
+			if (pngBytes == null) {
+				Assert.fail('Screenshot was empty at $actualPath');
+			} else {
+				Assert.pass();
+				sys.io.File.saveBytes(actualPath, pngBytes);
+				var similarity = computeSimilarityFromPngFiles(actualPath, referencePath);
+				var passed = similarity >= 1.0;
+				HtmlReportGenerator.addResult(displayName, referencePath, actualPath, passed, similarity, null, 1.0, orderIdx);
 			}
 			pendingVisualTests--;
 			async.done();
@@ -371,12 +270,11 @@ class VisualTestBase extends utest.Test {
 	}
 
 	/**
-	 * Build builder output, take screenshot, then build macro output, take screenshot,
-	 * compare both to reference. Reports as a single result with 3 images.
-	 * Handles errors gracefully — if build or macro creation fails, the test fails with an assertion.
+	 * Build builder + macro, capture both, enqueue comparison.
 	 */
 	public function builderAndMacroScreenshotAndCompare(animFilePath:String, elementName:String, createMacroRoot:() -> h2d.Object,
 			async:utest.Async, ?sizeX:Int, ?sizeY:Int, ?scale:Float, ?threshold:Float):Void {
+		var orderIdx = HtmlReportGenerator.reserveOrderIndex();
 		pendingVisualTests++;
 		async.setTimeout(15000);
 		if (sizeX == null) sizeX = 1280;
@@ -384,14 +282,14 @@ class VisualTestBase extends utest.Test {
 		if (scale == null) scale = 1.0;
 		if (threshold == null) threshold = 1.0;
 
-		// Phase 1: builder screenshot
+		// Phase 1: builder
 		clearScene();
 		var result:Dynamic = null;
 		try {
 			result = buildAndAddToScene(animFilePath, elementName, scale);
 		} catch (e:Dynamic) {
 			var msg = 'Builder build threw exception for "$elementName": $e';
-			reportBuildFailure(msg);
+			reportBuildFailure(msg, orderIdx);
 			Assert.fail(msg);
 			pendingVisualTests--;
 			async.done();
@@ -400,7 +298,7 @@ class VisualTestBase extends utest.Test {
 
 		if (result == null) {
 			var msg = 'Failed to build element "$elementName" from $animFilePath';
-			reportBuildFailure(msg);
+			reportBuildFailure(msg, orderIdx);
 			Assert.fail(msg);
 			pendingVisualTests--;
 			async.done();
@@ -409,26 +307,22 @@ class VisualTestBase extends utest.Test {
 
 		waitForUpdate(function(dt:Float) {
 			var builderPath = 'test/screenshots/${testName}_actual.png';
-			var builderSuccess = false;
-			try {
-				builderSuccess = screenshot(builderPath, sizeX, sizeY);
-			} catch (e:Dynamic) {
-				Assert.fail('Builder screenshot threw: $e');
-				pendingVisualTests--;
-				async.done();
-				return;
-			}
+			var builderPng = captureScreenshotPng(sizeX, sizeY);
 
-			// Phase 2: macro screenshot
+			// Phase 2: macro
 			clearScene();
 			var macroRoot:h2d.Object = null;
 			try {
 				macroRoot = createMacroRoot();
 			} catch (e:Dynamic) {
 				Assert.fail('Macro createRoot() threw: $e');
-				var referencePath = getReferenceImagePath();
-				if (builderSuccess) {
-					compareImages(builderPath, referencePath);
+				if (builderPng != null) {
+					var referencePath = getReferenceImagePath();
+					var displayName = getDisplayName();
+					var th = threshold;
+					sys.io.File.saveBytes(builderPath, builderPng);
+					var sim = computeSimilarityFromPngFiles(builderPath, referencePath);
+					HtmlReportGenerator.addResult(displayName, referencePath, builderPath, sim >= th, sim, null, th, orderIdx);
 				}
 				pendingVisualTests--;
 				async.done();
@@ -443,29 +337,26 @@ class VisualTestBase extends utest.Test {
 			}
 
 			waitForUpdate(function(dt2:Float) {
-				try {
-					var macroPath = 'test/screenshots/${testName}_macro.png';
-					var referencePath = getReferenceImagePath();
+				var macroPath = 'test/screenshots/${testName}_macro.png';
+				var referencePath = getReferenceImagePath();
+				var macroPng = captureScreenshotPng(sizeX, sizeY);
+				var displayName = getDisplayName();
+				var th = threshold;
 
-					var macroSuccess = screenshot(macroPath, sizeX, sizeY);
+				Assert.pass();
+				if (builderPng != null)
+					sys.io.File.saveBytes(builderPath, builderPng);
+				if (macroPng != null)
+					sys.io.File.saveBytes(macroPath, macroPng);
 
-					var builderSimilarity = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
-					var builderPassed = builderSuccess ? builderSimilarity >= threshold : false;
+				var builderSim = builderPng != null ? computeSimilarityFromPngFiles(builderPath, referencePath) : 0.0;
+				var macroSim = macroPng != null ? computeSimilarityFromPngFiles(macroPath, referencePath) : 0.0;
+				var builderOk = builderSim >= th;
+				var macroOk = macroSim >= th;
 
-					var macroSimilarity = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
-					var macroPassed = macroSuccess ? macroSimilarity >= threshold : false;
+				HtmlReportGenerator.addResultWithMacro(displayName, referencePath, builderPath, builderOk && macroOk,
+					builderSim, null, macroPath, macroSim, macroOk, th, th, orderIdx);
 
-					var overallPassed = builderPassed && macroPassed;
-
-					HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath, overallPassed, builderSimilarity, null, macroPath,
-						macroSimilarity, macroPassed, threshold, threshold);
-					HtmlReportGenerator.generateReport();
-
-					Assert.isTrue(builderPassed, 'Builder should match reference (similarity: ${Math.round(builderSimilarity * 10000) / 100}%)');
-					Assert.isTrue(macroPassed, 'Macro should match reference (similarity: ${Math.round(macroSimilarity * 10000) / 100}%)');
-				} catch (e:Dynamic) {
-					Assert.fail('Screenshot/compare threw: $e');
-				}
 				pendingVisualTests--;
 				async.done();
 			});
@@ -473,27 +364,20 @@ class VisualTestBase extends utest.Test {
 	}
 
 	/**
-	 * Multi-instance macro vs builder test. Renders N variants with different parameters
-	 * side-by-side, comparing builder and macro outputs against reference.
-	 * @param num Test number
-	 * @param name Test name
-	 * @param scale Scale factor
-	 * @param spacing Vertical spacing between variants
-	 * @param builderParams Array of parameter maps for each builder variant
-	 * @param createMacroRoots Function that creates macro roots for each variant index
-	 * @param async utest async handle
+	 * Multi-instance macro vs builder test.
 	 */
 	public function multiInstanceMacroTest(num:Int, name:String, scale:Float, spacing:Float,
 			builderParams:Array<Map<String, Dynamic>>, createMacroRoots:(index:Int) -> h2d.Object,
 			async:utest.Async, ?tolerance:Null<Float>):Void {
 		setupTest(num, name);
+		var orderIdx = HtmlReportGenerator.reserveOrderIndex();
 		pendingVisualTests++;
 		async.setTimeout(15000);
 
 		var animFilePath = manimPath(num, name);
 		var variantCount = builderParams.length;
 
-		// Phase 1: builder — N variants with different params
+		// Phase 1: builder
 		clearScene();
 		var container = new h2d.Object(s2d);
 		container.setScale(scale);
@@ -512,7 +396,7 @@ class VisualTestBase extends utest.Test {
 			}
 		} catch (e:Dynamic) {
 			var msg = 'Builder build threw exception for "$name": $e';
-			reportBuildFailure(msg);
+			reportBuildFailure(msg, orderIdx);
 			Assert.fail(msg);
 			pendingVisualTests--;
 			async.done();
@@ -523,17 +407,9 @@ class VisualTestBase extends utest.Test {
 
 		waitForUpdate(function(dt:Float) {
 			var builderPath = getActualImagePath();
-			var builderSuccess = false;
-			try {
-				builderSuccess = screenshot(builderPath, 1280, 720);
-			} catch (e:Dynamic) {
-				Assert.fail('Builder screenshot threw: $e');
-				pendingVisualTests--;
-				async.done();
-				return;
-			}
+			var builderPng = captureScreenshotPng(1280, 720);
 
-			// Phase 2: macro — same N variants
+			// Phase 2: macro
 			clearScene();
 			var mc = new h2d.Object(s2d);
 			mc.setScale(scale);
@@ -554,27 +430,26 @@ class VisualTestBase extends utest.Test {
 			if (testTitle != null && testTitle.length > 0) addTitleOverlay();
 
 			waitForUpdate(function(dt2:Float) {
-				try {
-					var macroPath = 'test/screenshots/${testName}_macro.png';
-					var referencePath = getReferenceImagePath();
+				var macroPath = 'test/screenshots/${testName}_macro.png';
+				var referencePath = getReferenceImagePath();
+				var macroPng = captureScreenshotPng(1280, 720);
+				var displayName = getDisplayName();
+				var th:Float = if (tolerance != null) tolerance else 1.0;
 
-					var macroSuccess = screenshot(macroPath, 1280, 720);
+				Assert.pass();
+				if (builderPng != null)
+					sys.io.File.saveBytes(builderPath, builderPng);
+				if (macroPng != null)
+					sys.io.File.saveBytes(macroPath, macroPng);
 
-					var builderSim = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
-					var macroSim = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
-					var threshold = if (tolerance != null) tolerance else 1.0;
-					var builderOk = builderSim >= threshold;
-					var macroOk = macroSim >= threshold;
+				var builderSim = builderPng != null ? computeSimilarityFromPngFiles(builderPath, referencePath) : 0.0;
+				var macroSim = macroPng != null ? computeSimilarityFromPngFiles(macroPath, referencePath) : 0.0;
+				var builderOk = builderSim >= th;
+				var macroOk = macroSim >= th;
 
-					HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath, builderOk && macroOk,
-						builderSim, null, macroPath, macroSim, macroOk, threshold, threshold);
-					HtmlReportGenerator.generateReport();
+				HtmlReportGenerator.addResultWithMacro(displayName, referencePath, builderPath, builderOk && macroOk,
+					builderSim, null, macroPath, macroSim, macroOk, th, th, orderIdx);
 
-					Assert.isTrue(builderOk, 'Builder should match reference (${Math.round(builderSim * 10000) / 100}%)');
-					Assert.isTrue(macroOk, 'Macro should match reference (${Math.round(macroSim * 10000) / 100}%)');
-				} catch (e:Dynamic) {
-					Assert.fail('Screenshot/compare threw: $e');
-				}
 				pendingVisualTests--;
 				async.done();
 			});
@@ -583,19 +458,19 @@ class VisualTestBase extends utest.Test {
 
 	/**
 	 * Multi-instance macro vs builder test using .manim layout for positioning.
-	 * Like multiInstanceMacroTest but reads layout points from the .manim file instead of using fixed spacing.
 	 */
 	public function layoutMacroTest(num:Int, name:String, layoutName:String, scale:Float,
 			builderParams:Array<Map<String, Dynamic>>, createMacroRoots:(index:Int) -> h2d.Object,
 			async:utest.Async, ?tolerance:Null<Float>):Void {
 		setupTest(num, name);
+		var orderIdx = HtmlReportGenerator.reserveOrderIndex();
 		pendingVisualTests++;
 		async.setTimeout(15000);
 
 		var animFilePath = manimPath(num, name);
 		var variantCount = builderParams.length;
 
-		// Phase 1: builder — N variants positioned by layout
+		// Phase 1: builder
 		clearScene();
 		var container = new h2d.Object(s2d);
 		container.setScale(scale);
@@ -618,7 +493,7 @@ class VisualTestBase extends utest.Test {
 			}
 		} catch (e:Dynamic) {
 			var msg = 'Builder build threw exception for "$name": $e';
-			reportBuildFailure(msg);
+			reportBuildFailure(msg, orderIdx);
 			Assert.fail(msg);
 			pendingVisualTests--;
 			async.done();
@@ -629,17 +504,9 @@ class VisualTestBase extends utest.Test {
 
 		waitForUpdate(function(dt:Float) {
 			var builderPath = getActualImagePath();
-			var builderSuccess = false;
-			try {
-				builderSuccess = screenshot(builderPath, 1280, 720);
-			} catch (e:Dynamic) {
-				Assert.fail('Builder screenshot threw: $e');
-				pendingVisualTests--;
-				async.done();
-				return;
-			}
+			var builderPng = captureScreenshotPng(1280, 720);
 
-			// Phase 2: macro — same N variants positioned by layout
+			// Phase 2: macro
 			clearScene();
 			var mc = new h2d.Object(s2d);
 			mc.setScale(scale);
@@ -660,50 +527,101 @@ class VisualTestBase extends utest.Test {
 			if (testTitle != null && testTitle.length > 0) addTitleOverlay();
 
 			waitForUpdate(function(dt2:Float) {
-				try {
-					var macroPath = 'test/screenshots/${testName}_macro.png';
-					var referencePath = getReferenceImagePath();
+				var macroPath = 'test/screenshots/${testName}_macro.png';
+				var referencePath = getReferenceImagePath();
+				var macroPng = captureScreenshotPng(1280, 720);
+				var displayName = getDisplayName();
+				var th:Float = if (tolerance != null) tolerance else 1.0;
 
-					var macroSuccess = screenshot(macroPath, 1280, 720);
+				Assert.pass();
+				if (builderPng != null)
+					sys.io.File.saveBytes(builderPath, builderPng);
+				if (macroPng != null)
+					sys.io.File.saveBytes(macroPath, macroPng);
 
-					var builderSim = builderSuccess ? computeSimilarity(builderPath, referencePath) : 0.0;
-					var macroSim = macroSuccess ? computeSimilarity(macroPath, referencePath) : 0.0;
-					var threshold = if (tolerance != null) tolerance else 1.0;
-					var builderOk = builderSim >= threshold;
-					var macroOk = macroSim >= threshold;
+				var builderSim = builderPng != null ? computeSimilarityFromPngFiles(builderPath, referencePath) : 0.0;
+				var macroSim = macroPng != null ? computeSimilarityFromPngFiles(macroPath, referencePath) : 0.0;
+				var builderOk = builderSim >= th;
+				var macroOk = macroSim >= th;
 
-					HtmlReportGenerator.addResultWithMacro(getDisplayName(), referencePath, builderPath, builderOk && macroOk,
-						builderSim, null, macroPath, macroSim, macroOk, threshold, threshold);
-					HtmlReportGenerator.generateReport();
+				HtmlReportGenerator.addResultWithMacro(displayName, referencePath, builderPath, builderOk && macroOk,
+					builderSim, null, macroPath, macroSim, macroOk, th, th, orderIdx);
 
-					Assert.isTrue(builderOk, 'Builder should match reference (${Math.round(builderSim * 10000) / 100}%)');
-					Assert.isTrue(macroOk, 'Macro should match reference (${Math.round(macroSim * 10000) / 100}%)');
-				} catch (e:Dynamic) {
-					Assert.fail('Screenshot/compare threw: $e');
-				}
 				pendingVisualTests--;
 				async.done();
 			});
 		});
 	}
 
+	// ==================== Synchronous screenshot/compare (for custom test patterns) ====================
+
+	/**
+	 * Capture screenshot and save synchronously. Returns true if non-empty.
+	 */
+	public function screenshot(outputFile:String, ?sizeX:Int, ?sizeY:Int):Bool {
+		var pngBytes = captureScreenshotPng(sizeX, sizeY);
+		if (pngBytes == null) return false;
+		sys.io.File.saveBytes(outputFile, pngBytes);
+		return true;
+	}
+
+	/**
+	 * Compare actual vs reference image synchronously. Returns true if similarity >= threshold.
+	 */
+	public function compareImages(actual:String, reference:String, ?threshold:Float):Bool {
+		if (threshold == null) threshold = 1.0;
+		var similarity = computeSimilarityFromPngFiles(actual, reference);
+		return similarity >= threshold;
+	}
+
+	/**
+	 * Compute similarity between two image files synchronously.
+	 */
 	public function computeSimilarity(actual:String, reference:String):Float {
+		return computeSimilarityFromPngFiles(actual, reference);
+	}
+
+	// ==================== Pixel comparison ====================
+
+	/** Decode PNG bytes to raw pixel data. */
+	private static function decodePng(pngBytes:haxe.io.Bytes):{bytes:haxe.io.Bytes, width:Int, height:Int} {
+		var reader = new format.png.Reader(new haxe.io.BytesInput(pngBytes));
+		var data = reader.read();
+		var header = format.png.Tools.getHeader(data);
+		var pixels = format.png.Tools.extract32(data);
+		return {bytes: pixels, width: header.width, height: header.height};
+	}
+
+	/**
+	 * Load two PNGs from disk and compute pixel similarity (0.0 to 1.0).
+	 */
+	public static function computeSimilarityFromPngFiles(actual:String, reference:String):Float {
 		if (!sys.FileSystem.exists(reference)) return 0.0;
 		if (!sys.FileSystem.exists(actual)) return 0.0;
 
 		try {
-			var actualBytes = sys.io.File.getBytes(actual);
-			var referenceBytes = sys.io.File.getBytes(reference);
-			var p1 = hxd.res.Any.fromBytes(actual, actualBytes).toImage().getPixels();
-			var p2 = hxd.res.Any.fromBytes(reference, referenceBytes).toImage().getPixels();
-
+			var p1 = decodePng(sys.io.File.getBytes(actual));
+			var p2 = decodePng(sys.io.File.getBytes(reference));
 			if (p1.width != p2.width || p1.height != p2.height) return 0.0;
 
+			var b1 = p1.bytes;
+			var b2 = p2.bytes;
 			var totalPixels = p1.width * p1.height;
 			var matchingPixels = 0;
-			for (x in 0...p1.width) {
-				for (y in 0...p1.height) {
-					if (colorDistance(p1.getPixel(x, y), p2.getPixel(x, y)) < 5)
+			for (i in 0...totalPixels) {
+				var p = i << 2;
+				var c1 = b1.getInt32(p);
+				var c2 = b2.getInt32(p);
+				if (c1 == c2) {
+					matchingPixels++;
+				} else {
+					var dr = ((c1 >> 16) & 0xFF) - ((c2 >> 16) & 0xFF);
+					var dg = ((c1 >> 8) & 0xFF) - ((c2 >> 8) & 0xFF);
+					var db = (c1 & 0xFF) - (c2 & 0xFF);
+					if (dr < 0) dr = -dr;
+					if (dg < 0) dg = -dg;
+					if (db < 0) db = -db;
+					if (Math.sqrt(dr * dr + dg * dg + db * db) < 5)
 						matchingPixels++;
 				}
 			}
