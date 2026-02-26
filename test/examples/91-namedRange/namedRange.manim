@@ -1,33 +1,73 @@
 version: 0.5
 
 #namedRange programmable() {
-  // Named inclusive: range(from: 0, to: 5) => 0,1,2,3,4,5 (6 items)
+  // Row 1: Named inclusive: range(from: 0, to: 5) => 0,1,2,3,4,5 (6 items)
+  text(dd, "inclusive to:", #888888, left, 100): 10, 10
   repeatable($i, range(from: 0, to: 5)) {
-    pos: 10, 10
+    pos: 130, 10
     text(dd, $i, white, left, 20): $i * 25, 0
   }
 
-  // Named exclusive: range(from: 0, until: 5) => 0,1,2,3,4 (5 items)
+  // Row 2: Named exclusive: range(from: 0, until: 5) => 0,1,2,3,4 (5 items)
+  text(dd, "exclusive until:", #888888, left, 100): 10, 40
   repeatable($j, range(from: 0, until: 5)) {
-    pos: 10, 40
+    pos: 130, 40
     text(dd, $j, yellow, left, 20): $j * 25, 0
   }
 
-  // Named inclusive with step: range(from: 1, to: 10, step: 2) => 1,3,5,7,9
+  // Row 3: Named inclusive with step: range(from: 1, to: 10, step: 2) => 1,3,5,7,9
+  text(dd, "step 2:", #888888, left, 100): 10, 70
   repeatable($k, range(from: 1, to: 10, step: 2)) {
-    pos: 10, 70
+    pos: 130, 70
     text(dd, $k, #00ff00, left, 20): ($k - 1) / 2 * 25, 0
   }
 
-  // Named exclusive with step: range(from: 0, until: 10, step: 3) => 0,3,6,9
+  // Row 4: Named exclusive with step: range(from: 0, until: 10, step: 3) => 0,3,6,9
+  text(dd, "step 3:", #888888, left, 100): 10, 100
   repeatable($m, range(from: 0, until: 10, step: 3)) {
-    pos: 10, 100
+    pos: 130, 100
     text(dd, $m, #ff8800, left, 20): $m / 3 * 25, 0
   }
 
-  // Old positional (still works): range(0, 4) => 0,1,2,3
+  // Row 5: Old positional (still works): range(0, 4) => 0,1,2,3
+  text(dd, "positional:", #888888, left, 100): 10, 130
   repeatable($p, range(0, 4)) {
-    pos: 10, 130
+    pos: 130, 130
     text(dd, $p, #8888ff, left, 20): $p * 25, 0
+  }
+
+  // Row 6: Positional with step: range(2, 12, 3) => 2,5,8,11
+  text(dd, "pos step 3:", #888888, left, 100): 10, 160
+  repeatable($q, range(2, 12, 3)) {
+    pos: 130, 160
+    text(dd, $q, #ff88ff, left, 20): ($q - 2) / 3 * 25, 0
+  }
+
+  // Row 7: Conditional on named range loop var with comparison
+  text(dd, "cond >=4:", #888888, left, 100): 10, 190
+  repeatable($r, range(from: 0, to: 7)) {
+    pos: 130, 190
+    @($r >= 4) text(dd, $r, #00ffff, left, 20): ($r - 4) * 25, 0
+  }
+
+  // Row 8: Named range starting from negative: range(from: -2, to: 2)
+  text(dd, "neg start:", #888888, left, 100): 10, 220
+  repeatable($s, range(from: -2, to: 2)) {
+    pos: 130, 220
+    text(dd, $s, #ffff00, left, 20): ($s + 2) * 25, 0
+  }
+
+  // Row 9: Large step: range(from: 0, to: 20, step: 5) => 0,5,10,15,20
+  text(dd, "step 5:", #888888, left, 100): 10, 250
+  repeatable($t, range(from: 0, to: 20, step: 5)) {
+    pos: 130, 250
+    text(dd, $t, #ff4444, left, 20): ($t / 5) * 25, 0
+  }
+
+  // Row 10: Indexed names inside named range: #dot[$u]
+  text(dd, "indexed:", #888888, left, 100): 10, 280
+  repeatable($u, range(from: 0, to: 3)) {
+    pos: 130, 280
+    #dot[$u] bitmap(generated(color(8, 8, #44ff44))): $u * 25, 0
   }
 }

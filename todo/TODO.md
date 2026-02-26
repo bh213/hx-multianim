@@ -2,14 +2,11 @@
 
 | # | Item | Summary | Section | Priority |
 |---|------|---------|---------|----------|
-| 1 | ~~Hot reload~~ | ~~Live .manim reload without restart~~ | V1 | ~~Done~~ |
 | 2 | Transitions & animations | Tween manager + .manim transition declarations | V1 | High |
 | 3 | Visual tests fixes | Fix existing visual test issues | V1 | High |
 | 4 | Haxelib release | Publish to haxelib + CI automation | V1 | High |
 | 5 | Blob47 utils | Autotile mapping utilities | V1 | Medium |
 | 6 | In-text colors & html text | Review color/html text support in .manim | V1 | Medium |
-| 7 | ~~Missing h2d.flow features~~ | ~~Investigate unsupported flow properties~~ | V1 | ~~Done~~ |
-| 8 | Step repeatable without dx/dy | Allow repeatable without requiring dx or dy | V1 | Low |
 | 9 | Dropdown z-ordering | Panel renders behind other UI elements | Bugs | Medium |
 | 10 | `closeAllNamed()` iterator | Mutating map during iteration, fragile | Bugs | Low |
 | 11 | Named panel outside-click | Wrong panel's close cancelled on click | Bugs | Medium |
@@ -23,10 +20,7 @@
 - Code generation: programmable elements should always work via `builder.buildWithParameters` or via macro system (`@:manim(...)`)
 
 ## V1
-- ~~hot reload~~ (done — see CHANGELOG and [docs/hot-reload.md](../docs/hot-reload.md))
 - more hot reload integration tests needed — see [docs/hot-reload.md "Missing Tests"](../docs/hot-reload.md#missing-tests-needed) for full list
-- ~~nullsafety parser, builder~~ (done)
-- ~~add @rotate()~~ (done)
 - transitions & animations (see [transitions-planning.md](transitions-planning.md))
 - visual tests fixes (see [test-todo.md](test-todo.md))
 - haxelib release (see details below)

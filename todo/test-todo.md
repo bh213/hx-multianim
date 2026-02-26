@@ -2,7 +2,6 @@
 
 | # | Item | Summary | Priority |
 |---|------|---------|----------|
-| ~~4~~ | ~~Drag-and-Drop tests~~ | ~~Drop zones from slots, createFromSlot, swapMode, highlights~~ | ~~Done~~ |
 | 5 | `UIRichInteractiveHelper` tests | register() bind scanning, handleEvent() state machine, setDisabled | Medium |
 | 6 | `UITooltipHelper` tests | startHover/cancelHover, delay, show/hide, positioning | Medium |
 | 7 | `UIPanelHelper` tests | open/close, isOpen, outsideClick, close modes, named panels | Medium |
@@ -23,13 +22,8 @@ General visual test issues that need attention.
 
 ## Missing UI Component Tests
 
-
-
 ### Tabs (`UIMultiAnimTabs`) — HIGH
 No visual or unit tests. Needs: creation, tab switching (`beginTab`/`endTab`), `ContentTarget` routing, `tabPanel.contentRoot` relative mode, `UIChangeItem` event.
-
-### ~~Drag-and-Drop (`UIMultiAnimDraggable`) — DONE~~
-~~Unit tests added in `UIComponentTest.hx`: creation, drop zones, drag lifecycle, constraints, swap mode, slot integration, zone callbacks, alpha behavior, button filtering.~~
 
 ## Missing Helper Tests
 
@@ -62,7 +56,7 @@ No negative tests for builder. Missing: reference to non-existent programmable, 
 
 ## Test Numbering Audit
 
-Tests 1-88 exist as directories. Numbering is **continuous with no gaps**.
+Tests 1-91 exist as directories. Numbering is **continuous with no gaps**.
 
 Two directories have no visual test method (unit-only, by design):
 - **62** — `dataBlock` — used via `builder.getData()` in unit tests only
@@ -70,7 +64,7 @@ Two directories have no visual test method (unit-only, by design):
 
 These are non-visual tests living inside the visual test numbering scheme (`test/examples/`). Consider refactoring: either move their unit tests out of `ProgrammableCodeGenTest.hx` into `BuilderUnitTest.hx` where other non-visual builder tests live, or relocate their data files out of `test/examples/` to avoid confusion with the visual test sequence.
 
-All other 86 directories (1-88 minus 62, 77) have both a `testNN_` method in `ProgrammableCodeGenTest.hx` and a `@:manim` registration in `MultiProgrammable.hx`.
+All other 89 directories (1-91 minus 62, 77) have both a `testNN_` method in `ProgrammableCodeGenTest.hx` and a `@:manim` registration in `MultiProgrammable.hx`.
 
 ## Missing Feature Coverage
 
