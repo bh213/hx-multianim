@@ -16,6 +16,8 @@ class TestApp extends hxd.App {
 	private var testsStarted:Bool = false;
 	private var testsCompleted:Bool = false;
 	private var startTime:Float = 0;
+	private var unitTestEndTime:Float = 0;
+	private var visualTestEndTime:Float = 0;
 	private static inline var WALL_CLOCK_TIMEOUT_SEC = 60.0;
 	// Frames to wait after all visual tests complete (for async callbacks to flush)
 	private static inline var POST_COMPLETION_FRAMES = 3;
@@ -72,12 +74,14 @@ class TestApp extends hxd.App {
 		// Start tests on first frame
 		if (frameCount == 1) {
 			testRunner.run();
+			unitTestEndTime = Sys.time();
 			testsStarted = true;
 		}
 
 		// After tests started, wait for all visual tests to complete
 		if (testsStarted && !testsCompleted) {
 			if (VisualTestBase.pendingVisualTests <= 0 && frameCount > 2) {
+				visualTestEndTime = Sys.time();
 				testsCompleted = true;
 				postCompletionCounter = 0;
 			}
@@ -87,10 +91,13 @@ class TestApp extends hxd.App {
 		if (testsCompleted) {
 			postCompletionCounter++;
 			if (postCompletionCounter >= POST_COMPLETION_FRAMES) {
-				HtmlReportGenerator.enableUnitTestReport();
-				HtmlReportGenerator.generateReport();
 				var elapsedSec = Math.round(Sys.time() - startTime);
-				var structured = HtmlReportGenerator.getStructuredSummary(elapsedSec);
+				var unitSec = Math.round((unitTestEndTime - startTime) * 10) / 10;
+				var visualSec = Math.round((visualTestEndTime - unitTestEndTime) * 10) / 10;
+				HtmlReportGenerator.enableUnitTestReport();
+				HtmlReportGenerator.setTiming(unitSec, visualSec);
+				HtmlReportGenerator.generateReport();
+				var structured = HtmlReportGenerator.getStructuredSummary(elapsedSec, null, unitSec, visualSec);
 				sys.io.File.saveContent("build/test_result.txt", structured);
 				Sys.exit(structured.indexOf("status: FAILED") >= 0 ? 1 : 0);
 			}
@@ -101,10 +108,13 @@ class TestApp extends hxd.App {
 		if (frameCount >= 200 || elapsed >= WALL_CLOCK_TIMEOUT_SEC) {
 			trace('Warning: Safety timeout reached (frames: $frameCount, elapsed: ${Math.round(elapsed)}s), '
 				+ 'pending visual tests: ${VisualTestBase.pendingVisualTests}');
-			HtmlReportGenerator.enableUnitTestReport();
-			HtmlReportGenerator.generateReport();
 			var elapsedSec = Math.round(elapsed);
-			var structured = HtmlReportGenerator.getStructuredSummary(elapsedSec, "TIMEOUT");
+			var unitSec = if (unitTestEndTime > 0) Math.round((unitTestEndTime - startTime) * 10) / 10 else 0.0;
+			var visualSec = if (visualTestEndTime > 0) Math.round((visualTestEndTime - unitTestEndTime) * 10) / 10 else 0.0;
+			HtmlReportGenerator.enableUnitTestReport();
+			HtmlReportGenerator.setTiming(unitSec, visualSec);
+			HtmlReportGenerator.generateReport();
+			var structured = HtmlReportGenerator.getStructuredSummary(elapsedSec, "TIMEOUT", unitSec, visualSec);
 			sys.io.File.saveContent("build/test_result.txt", structured);
 			Sys.exit(1);
 		}

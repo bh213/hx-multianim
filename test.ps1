@@ -47,7 +47,9 @@ function Format-TestResults($content, $Label) {
     $uFail = if ($content -match 'unit_failures:\s*(\d+)') { [int]$Matches[1] } else { 0 }
     $uErr = if ($content -match 'unit_errors:\s*(\d+)') { [int]$Matches[1] } else { 0 }
     $macroMM = if ($content -match 'macro_mismatches:\s*(\d+)') { [int]$Matches[1] } else { 0 }
-    $elapsed = if ($content -match 'elapsed_seconds:\s*(\d+)') { $Matches[1] + "s" } else { "?" }
+    $compileSec = $script:lastCompileSeconds
+    $unitSec = if ($content -match 'unit_seconds:\s*([\d.]+)') { $Matches[1] } else { $null }
+    $visualSec = if ($content -match 'visual_seconds:\s*([\d.]+)') { $Matches[1] } else { $null }
 
     # Status line
     if ($status -eq "OK") {
@@ -76,7 +78,17 @@ function Format-TestResults($content, $Label) {
         Write-Host $parts[$i].text -ForegroundColor $parts[$i].color -NoNewline
         if ($i -lt $parts.Count - 1) { Write-Host ", " -NoNewline }
     }
-    Write-Host " ($elapsed)"
+
+    # Timing breakdown
+    $timeParts = @()
+    if ($compileSec -ne $null) { $timeParts += "compile ${compileSec}s" }
+    if ($unitSec -ne $null) { $timeParts += "unit ${unitSec}s" }
+    if ($visualSec -ne $null) { $timeParts += "visual ${visualSec}s" }
+    if ($timeParts.Count -gt 0) {
+        Write-Host " ($($timeParts -join ', '))" -ForegroundColor DarkGray
+    } else {
+        Write-Host ""
+    }
 
     # Detail lines for failures
     $hasDetails = $false
@@ -166,6 +178,7 @@ function Do-Run($BaseHxml, $HlBinary, $ResultFileName, $Label) {
 
     # --- PHASE 1: Compilation ---
     if (-not $AIOutput) { Write-Host "Compiling$Label..." -ForegroundColor Cyan }
+    $compileStart = Get-Date
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     # Use cmd.exe /c to support haxe installed as .cmd/.ps1 wrapper (e.g. lix/npm shims)
     $psi.FileName = "cmd.exe"
@@ -178,6 +191,7 @@ function Do-Run($BaseHxml, $HlBinary, $ResultFileName, $Label) {
     $compileStdout = $compileProc.StandardOutput.ReadToEnd()
     $compileStderr = $compileProc.StandardError.ReadToEnd()
     $compileProc.WaitForExit()
+    $script:lastCompileSeconds = [math]::Round(((Get-Date) - $compileStart).TotalSeconds, 1)
 
     # Save compile output to log
     if ($compileStdout -or $compileStderr) {
@@ -257,6 +271,8 @@ function Do-Run($BaseHxml, $HlBinary, $ResultFileName, $Label) {
     if (Test-Path $resultFile) {
         $content = Get-Content $resultFile -Raw
         if ($AIOutput) {
+            # Inject compile_seconds before the end marker
+            $content = $content -replace '--- END TEST RESULT ---', "compile_seconds: $($script:lastCompileSeconds)`n--- END TEST RESULT ---"
             Write-Line ($content.TrimEnd())
         } else {
             Format-TestResults $content $Label
