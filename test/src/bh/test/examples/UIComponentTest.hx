@@ -18,6 +18,11 @@ import bh.ui.UIMultiAnimScrollableList.ClickMode;
 import bh.ui.UIMultiAnimScrollableList.PanelSizeMode;
 import bh.ui.UIMultiAnimTabs;
 import bh.ui.UIMultiAnimTabs.UIMultiAnimTabButton;
+import bh.ui.UIMultiAnimDraggable;
+import bh.ui.UIMultiAnimDraggable.DropZone;
+import bh.ui.UIMultiAnimDraggable.DragEvent;
+import bh.ui.UIMultiAnimDraggable.DraggableState;
+import bh.ui.UIMultiAnimDraggable.DragDropResult;
 import bh.base.MAObject;
 import bh.base.MAObject.MultiAnimObjectData;
 import bh.multianim.MultiAnimParser.SettingValue;
@@ -27,6 +32,8 @@ import bh.ui.UIElement.UIElementEvents;
 import bh.ui.UIElement.UIElementListItem;
 import bh.ui.UIElement.TileRef;
 import bh.ui.UIElement.SubElementsType;
+import h2d.col.Bounds;
+import h2d.col.Point;
 
 /**
  * Non-visual unit tests for UI components.
@@ -1864,5 +1871,545 @@ class UIComponentTest extends BuilderTestBase {
 			threw = true;
 		}
 		Assert.isTrue(threw);
+	}
+
+	// ============== Drag-and-Drop Tests ==============
+
+	static final DRAGGABLE_MANIM = "
+		#dragContainer programmable(count:uint=3) {
+			repeatable($i, step($count, dx: 60)) {
+				#item[$i] slot: 0, 0
+				bitmap(generated(color(50, 50, #333333))): 0, 0
+			}
+		}
+	";
+
+	function createDraggable():UIMultiAnimDraggable {
+		var target = new h2d.Object();
+		return new UIMultiAnimDraggable(target);
+	}
+
+	function createDropZoneBounds(x:Float, y:Float, w:Float, h:Float):Bounds {
+		return Bounds.fromValues(x, y, w, h);
+	}
+
+	function createDraggableWithZones():{draggable:UIMultiAnimDraggable, zones:Array<DropZone>} {
+		var draggable = createDraggable();
+		var zone1:DropZone = {id: "zone1", bounds: createDropZoneBounds(100, 100, 50, 50)};
+		var zone2:DropZone = {id: "zone2", bounds: createDropZoneBounds(200, 100, 50, 50)};
+		draggable.addDropZone(zone1);
+		draggable.addDropZone(zone2);
+		return {draggable: draggable, zones: [zone1, zone2]};
+	}
+
+	function simulateDrag(draggable:UIMultiAnimDraggable, mock:MockControllable, from:Point, to:Point):Void {
+		draggable.onEvent(UITestHarness.createEventWrapper(OnPush(0), mock, from));
+		draggable.onEvent(UITestHarness.createEventWrapper(OnMouseMove, mock, to));
+		draggable.onEvent(UITestHarness.createEventWrapper(OnRelease(0), mock, to));
+	}
+
+	function hasCustomEvent(mock:MockControllable, eventName:String):Bool {
+		for (e in mock.recordedEvents) {
+			switch e.event {
+				case UICustomEvent(name, _):
+					if (name == eventName) return true;
+				default:
+			}
+		}
+		return false;
+	}
+
+	// --- Creation & State ---
+
+	@Test
+	public function testDraggableCreation():Void {
+		var draggable = createDraggable();
+		Assert.notNull(draggable);
+		Assert.notNull(draggable.getObject());
+		Assert.isTrue(Type.enumEq(draggable.getState(), Idle));
+		Assert.isFalse(draggable.isCurrentlyDragging());
+	}
+
+	@Test
+	public function testDraggableCreateFromSlot():Void {
+		var result = BuilderTestBase.buildFromSource(DRAGGABLE_MANIM, "dragContainer");
+		var slot = result.getSlot("item", 0);
+		var content = new h2d.Object();
+		slot.setContent(content);
+		Assert.isTrue(slot.isOccupied());
+
+		var draggable = UIMultiAnimDraggable.createFromSlot(slot);
+		Assert.notNull(draggable);
+		Assert.isTrue(slot.isEmpty());
+		Assert.equals(slot, draggable.sourceSlot);
+	}
+
+	@Test
+	public function testDraggableCreateFromEmptySlot():Void {
+		var result = BuilderTestBase.buildFromSource(DRAGGABLE_MANIM, "dragContainer");
+		var slot = result.getSlot("item", 0);
+
+		var draggable = UIMultiAnimDraggable.createFromSlot(slot);
+		Assert.isNull(draggable);
+	}
+
+	@Test
+	public function testDraggableInitialState():Void {
+		var draggable = createDraggable();
+		Assert.isFalse(draggable.isCurrentlyDragging());
+		Assert.isFalse(draggable.isAnimating());
+		Assert.isTrue(Type.enumEq(draggable.getState(), Idle));
+	}
+
+	// --- Drop Zone Management ---
+
+	@Test
+	public function testDraggableAddDropZone():Void {
+		var draggable = createDraggable();
+		var zone:DropZone = {id: "testZone", bounds: createDropZoneBounds(0, 0, 100, 100)};
+
+		draggable.addDropZone(zone);
+
+		Assert.equals(1, draggable.dropZones.length);
+		Assert.equals("testZone", draggable.dropZones[0].id);
+	}
+
+	@Test
+	public function testDraggableRemoveDropZone():Void {
+		var draggable = createDraggable();
+		var zone:DropZone = {id: "testZone", bounds: createDropZoneBounds(0, 0, 100, 100)};
+		draggable.addDropZone(zone);
+		Assert.equals(1, draggable.dropZones.length);
+
+		draggable.removeDropZone("testZone");
+
+		Assert.equals(0, draggable.dropZones.length);
+	}
+
+	@Test
+	public function testDraggableClearDropZones():Void {
+		var draggable = createDraggable();
+		draggable.addDropZone({id: "z1", bounds: createDropZoneBounds(0, 0, 50, 50)});
+		draggable.addDropZone({id: "z2", bounds: createDropZoneBounds(100, 0, 50, 50)});
+		draggable.addDropZone({id: "z3", bounds: createDropZoneBounds(200, 0, 50, 50)});
+		Assert.equals(3, draggable.dropZones.length);
+
+		draggable.clearDropZones();
+
+		Assert.equals(0, draggable.dropZones.length);
+	}
+
+	@Test
+	public function testDraggableAddDropZonesFromSlots():Void {
+		var result = BuilderTestBase.buildFromSource(DRAGGABLE_MANIM, "dragContainer");
+		var draggable = createDraggable();
+
+		draggable.addDropZonesFromSlots("item", result);
+
+		Assert.equals(3, draggable.dropZones.length);
+		Assert.equals("item_0", draggable.dropZones[0].id);
+		Assert.equals("item_1", draggable.dropZones[1].id);
+		Assert.equals("item_2", draggable.dropZones[2].id);
+	}
+
+	// --- Basic Drag Lifecycle ---
+
+	@Test
+	public function testDraggableDragStart():Void {
+		var draggable = createDraggable();
+		var mock = new MockControllable();
+
+		draggable.onEvent(UITestHarness.createEventWrapper(OnPush(0), mock, new Point(10, 10)));
+
+		Assert.isTrue(draggable.isCurrentlyDragging());
+		Assert.isTrue(Type.enumEq(draggable.getState(), Dragging));
+		Assert.isTrue(hasCustomEvent(mock, "dragStart"));
+	}
+
+	@Test
+	public function testDraggableDisabledNoDrag():Void {
+		var draggable = createDraggable();
+		draggable.enabled = false;
+		var mock = new MockControllable();
+
+		draggable.onEvent(UITestHarness.createEventWrapper(OnPush(0), mock, new Point(10, 10)));
+
+		Assert.isFalse(draggable.isCurrentlyDragging());
+		Assert.isTrue(Type.enumEq(draggable.getState(), Idle));
+		Assert.equals(0, mock.eventCount());
+	}
+
+	@Test
+	public function testDraggableDragStartDenied():Void {
+		var draggable = createDraggable();
+		draggable.onDragStart = (pos, wrapper) -> false;
+		var mock = new MockControllable();
+
+		draggable.onEvent(UITestHarness.createEventWrapper(OnPush(0), mock, new Point(10, 10)));
+
+		Assert.isFalse(draggable.isCurrentlyDragging());
+		Assert.isTrue(Type.enumEq(draggable.getState(), Idle));
+	}
+
+	@Test
+	public function testDraggableDragMove():Void {
+		var draggable = createDraggable();
+		var mock = new MockControllable();
+		var startPos = new Point(10, 10);
+
+		draggable.onEvent(UITestHarness.createEventWrapper(OnPush(0), mock, startPos));
+		Assert.isTrue(draggable.isCurrentlyDragging());
+
+		// Move to a new position
+		var movePos = new Point(50, 50);
+		draggable.onEvent(UITestHarness.createEventWrapper(OnMouseMove, mock, movePos));
+
+		// Root should have moved (offset from start = root.x - startPos.x originally)
+		var obj = draggable.getObject();
+		Assert.notNull(obj);
+	}
+
+	@Test
+	public function testDraggableDragConstraint():Void {
+		var draggable = createDraggable();
+		draggable.dragConstraint = (pos) -> new Point(Math.max(0, Math.min(100, pos.x)), Math.max(0, Math.min(100, pos.y)));
+		var mock = new MockControllable();
+
+		// Start drag at origin
+		draggable.onEvent(UITestHarness.createEventWrapper(OnPush(0), mock, new Point(0, 0)));
+
+		// Move beyond constraint
+		draggable.onEvent(UITestHarness.createEventWrapper(OnMouseMove, mock, new Point(200, 200)));
+
+		var obj = draggable.getObject();
+		Assert.floatEquals(100.0, obj.x);
+		Assert.floatEquals(100.0, obj.y);
+	}
+
+	// --- Drop Behavior ---
+
+	@Test
+	public function testDraggableDropOnZone():Void {
+		var setup = createDraggableWithZones();
+		var draggable = setup.draggable;
+		var mock = new MockControllable();
+
+		// Drag from outside zones to inside zone1 (100-150, 100-150)
+		simulateDrag(draggable, mock, new Point(10, 10), new Point(125, 125));
+
+		Assert.isTrue(hasCustomEvent(mock, "dragDrop"));
+		Assert.isFalse(hasCustomEvent(mock, "dragCancel"));
+	}
+
+	@Test
+	public function testDraggableDropOutsideZone():Void {
+		var setup = createDraggableWithZones();
+		var draggable = setup.draggable;
+		draggable.returnToOrigin = false;
+		var mock = new MockControllable();
+
+		// Drag to area outside all zones
+		simulateDrag(draggable, mock, new Point(10, 10), new Point(500, 500));
+
+		Assert.isFalse(draggable.isCurrentlyDragging());
+		Assert.isTrue(hasCustomEvent(mock, "dragCancel"));
+	}
+
+	@Test
+	public function testDraggableDropRejectedByCallback():Void {
+		var setup = createDraggableWithZones();
+		var draggable = setup.draggable;
+		draggable.returnToOrigin = false;
+		draggable.onDragDrop = (result, wrapper) -> false;
+		var mock = new MockControllable();
+
+		// Drop on zone1, but callback rejects
+		simulateDrag(draggable, mock, new Point(10, 10), new Point(125, 125));
+
+		Assert.isTrue(hasCustomEvent(mock, "dragCancel"));
+		Assert.isFalse(hasCustomEvent(mock, "dragDrop"));
+	}
+
+	@Test
+	public function testDraggableReturnToOriginFalse():Void {
+		var setup = createDraggableWithZones();
+		var draggable = setup.draggable;
+		draggable.returnToOrigin = false;
+		var mock = new MockControllable();
+
+		// Start at specific position
+		draggable.getObject().setPosition(50, 50);
+
+		// Drag to outside zones
+		simulateDrag(draggable, mock, new Point(50, 50), new Point(500, 500));
+
+		// Should stay at dropped position (not return to origin)
+		Assert.isTrue(Type.enumEq(draggable.getState(), Idle));
+		Assert.isFalse(draggable.isCurrentlyDragging());
+	}
+
+	// --- Zone Hover Tracking ---
+
+	@Test
+	public function testDraggableZoneEnterLeave():Void {
+		var setup = createDraggableWithZones();
+		var draggable = setup.draggable;
+		var mock = new MockControllable();
+		var events:Array<String> = [];
+
+		draggable.onDragEvent = (event, pos, wrapper) -> {
+			switch event {
+				case ZoneEnter(zone): events.push("enter:" + zone.id);
+				case ZoneLeave(zone): events.push("leave:" + zone.id);
+				default:
+			}
+		};
+
+		// Start drag
+		draggable.onEvent(UITestHarness.createEventWrapper(OnPush(0), mock, new Point(10, 10)));
+
+		// Move into zone1
+		draggable.onEvent(UITestHarness.createEventWrapper(OnMouseMove, mock, new Point(125, 125)));
+		Assert.equals(1, events.filter(e -> e == "enter:zone1").length);
+
+		// Move out of zone1 to empty space
+		draggable.onEvent(UITestHarness.createEventWrapper(OnMouseMove, mock, new Point(500, 500)));
+		Assert.equals(1, events.filter(e -> e == "leave:zone1").length);
+	}
+
+	@Test
+	public function testDraggableZoneHighlightCallback():Void {
+		var draggable = createDraggable();
+		var highlightCalls:Array<{id:String, highlight:Bool}> = [];
+
+		var zone:DropZone = {
+			id: "hlZone",
+			bounds: createDropZoneBounds(100, 100, 50, 50),
+			onZoneHighlight: (z, hl) -> highlightCalls.push({id: z.id, highlight: hl})
+		};
+		draggable.addDropZone(zone);
+		var mock = new MockControllable();
+
+		// Start drag
+		draggable.onEvent(UITestHarness.createEventWrapper(OnPush(0), mock, new Point(10, 10)));
+
+		// Move into zone
+		draggable.onEvent(UITestHarness.createEventWrapper(OnMouseMove, mock, new Point(125, 125)));
+		Assert.equals(1, highlightCalls.length);
+		Assert.isTrue(highlightCalls[0].highlight);
+
+		// Move out of zone
+		draggable.onEvent(UITestHarness.createEventWrapper(OnMouseMove, mock, new Point(500, 500)));
+		Assert.equals(2, highlightCalls.length);
+		Assert.isFalse(highlightCalls[1].highlight);
+	}
+
+	// --- Zone Selection ---
+
+	@Test
+	public function testDraggableZonePriority():Void {
+		var draggable = createDraggable();
+		var droppedZone:Null<String> = null;
+
+		// Two overlapping zones at same area, different priorities
+		var lowZone:DropZone = {id: "low", bounds: createDropZoneBounds(100, 100, 50, 50), priority: 0};
+		var highZone:DropZone = {id: "high", bounds: createDropZoneBounds(100, 100, 50, 50), priority: 10};
+		draggable.addDropZone(lowZone);
+		draggable.addDropZone(highZone);
+
+		draggable.onDragDrop = (result, wrapper) -> {
+			droppedZone = result.zone != null ? result.zone.id : null;
+			return true;
+		};
+
+		var mock = new MockControllable();
+		simulateDrag(draggable, mock, new Point(10, 10), new Point(125, 125));
+
+		Assert.equals("high", droppedZone);
+	}
+
+	@Test
+	public function testDraggableZoneAcceptsFilter():Void {
+		var draggable = createDraggable();
+		draggable.returnToOrigin = false;
+
+		// Zone that rejects all drops
+		var zone:DropZone = {
+			id: "rejecting",
+			bounds: createDropZoneBounds(100, 100, 50, 50),
+			accepts: (d, z) -> false
+		};
+		draggable.addDropZone(zone);
+
+		var mock = new MockControllable();
+		simulateDrag(draggable, mock, new Point(10, 10), new Point(125, 125));
+
+		// Should be treated as drop outside zone (cancel)
+		Assert.isTrue(hasCustomEvent(mock, "dragCancel"));
+		Assert.isFalse(hasCustomEvent(mock, "dragDrop"));
+	}
+
+	// --- Drag Alpha & Highlight Alpha ---
+
+	@Test
+	public function testDraggableDragAlpha():Void {
+		var draggable = createDraggable();
+		draggable.dragAlpha = 0.5;
+		draggable.returnToOrigin = false;
+		var mock = new MockControllable();
+
+		var target = draggable.getTarget();
+		Assert.floatEquals(1.0, target.alpha);
+
+		// Start drag — alpha should change
+		draggable.onEvent(UITestHarness.createEventWrapper(OnPush(0), mock, new Point(10, 10)));
+		Assert.floatEquals(0.5, target.alpha);
+
+		// Release — alpha should restore
+		draggable.onEvent(UITestHarness.createEventWrapper(OnRelease(0), mock, new Point(500, 500)));
+		Assert.floatEquals(1.0, target.alpha);
+	}
+
+	@Test
+	public function testDraggableZoneHighlightAlpha():Void {
+		var draggable = createDraggable();
+		draggable.dragAlpha = 0.5;
+		draggable.zoneHighlightAlpha = 0.8;
+		var zone:DropZone = {id: "z", bounds: createDropZoneBounds(100, 100, 50, 50)};
+		draggable.addDropZone(zone);
+		var mock = new MockControllable();
+
+		var target = draggable.getTarget();
+
+		// Start drag
+		draggable.onEvent(UITestHarness.createEventWrapper(OnPush(0), mock, new Point(10, 10)));
+		Assert.floatEquals(0.5, target.alpha);
+
+		// Move into zone — should apply zoneHighlightAlpha
+		draggable.onEvent(UITestHarness.createEventWrapper(OnMouseMove, mock, new Point(125, 125)));
+		Assert.floatEquals(0.8, target.alpha);
+
+		// Move out of zone — back to dragAlpha
+		draggable.onEvent(UITestHarness.createEventWrapper(OnMouseMove, mock, new Point(500, 500)));
+		Assert.floatEquals(0.5, target.alpha);
+	}
+
+	// --- Highlight Zone Callbacks ---
+
+	@Test
+	public function testDraggableDragStartHighlightZones():Void {
+		var setup = createDraggableWithZones();
+		var draggable = setup.draggable;
+		var highlightedZones:Null<Array<DropZone>> = null;
+
+		draggable.onDragStartHighlightZones = (zones) -> highlightedZones = zones;
+
+		var mock = new MockControllable();
+		draggable.onEvent(UITestHarness.createEventWrapper(OnPush(0), mock, new Point(10, 10)));
+
+		Assert.notNull(highlightedZones);
+		Assert.equals(2, highlightedZones.length);
+	}
+
+	@Test
+	public function testDraggableDragEndHighlightZones():Void {
+		var setup = createDraggableWithZones();
+		var draggable = setup.draggable;
+		draggable.returnToOrigin = false;
+		var endZones:Null<Array<DropZone>> = null;
+
+		draggable.onDragEndHighlightZones = (zones) -> endZones = zones;
+
+		var mock = new MockControllable();
+		simulateDrag(draggable, mock, new Point(10, 10), new Point(500, 500));
+
+		Assert.notNull(endZones);
+		Assert.equals(2, endZones.length);
+	}
+
+	// --- Swap Mode ---
+
+	@Test
+	public function testDraggableSwapMode():Void {
+		var result = BuilderTestBase.buildFromSource(DRAGGABLE_MANIM, "dragContainer");
+		var slot0 = result.getSlot("item", 0);
+		var slot1 = result.getSlot("item", 1);
+
+		var contentA = new h2d.Object();
+		var contentB = new h2d.Object();
+		slot0.setContent(contentA);
+		slot1.setContent(contentB);
+
+		// Create draggable from slot0
+		var draggable = UIMultiAnimDraggable.createFromSlot(slot0);
+		Assert.notNull(draggable);
+		draggable.swapMode = true;
+
+		// Add slot1 as drop zone with known bounds
+		var zone:DropZone = {
+			id: "slot1",
+			bounds: createDropZoneBounds(100, 100, 50, 50),
+			slot: slot1,
+			snapX: 100.0,
+			snapY: 100.0
+		};
+		draggable.addDropZone(zone);
+
+		var mock = new MockControllable();
+		simulateDrag(draggable, mock, new Point(10, 10), new Point(125, 125));
+
+		// After swap: contentA in slot1, contentB in slot0 (sourceSlot)
+		Assert.equals(contentA, slot1.getContent());
+		Assert.equals(contentB, slot0.getContent());
+	}
+
+	// --- Slot Integration ---
+
+	@Test
+	public function testDraggableDropIntoSlot():Void {
+		var result = BuilderTestBase.buildFromSource(DRAGGABLE_MANIM, "dragContainer");
+		var slot0 = result.getSlot("item", 0);
+		var slot1 = result.getSlot("item", 1);
+
+		var content = new h2d.Object();
+		slot0.setContent(content);
+
+		var draggable = UIMultiAnimDraggable.createFromSlot(slot0);
+		Assert.notNull(draggable);
+
+		// Add slot1 as drop zone
+		var zone:DropZone = {
+			id: "slot1",
+			bounds: createDropZoneBounds(100, 100, 50, 50),
+			slot: slot1,
+			snapX: 100.0,
+			snapY: 100.0
+		};
+		draggable.addDropZone(zone);
+
+		var mock = new MockControllable();
+		simulateDrag(draggable, mock, new Point(10, 10), new Point(125, 125));
+
+		// Content should be in slot1 now
+		Assert.isTrue(hasCustomEvent(mock, "dragDrop"));
+		Assert.equals(content, slot1.getContent());
+		Assert.isTrue(slot0.isEmpty());
+	}
+
+	// --- Button Config ---
+
+	@Test
+	public function testDraggableButtonFilter():Void {
+		var draggable = createDraggable();
+		draggable.draggableButtons = [2]; // Only right button
+		var mock = new MockControllable();
+
+		// Left button should be ignored
+		draggable.onEvent(UITestHarness.createEventWrapper(OnPush(0), mock, new Point(10, 10)));
+		Assert.isFalse(draggable.isCurrentlyDragging());
+
+		// Right button should work
+		draggable.onEvent(UITestHarness.createEventWrapper(OnPush(2), mock, new Point(10, 10)));
+		Assert.isTrue(draggable.isCurrentlyDragging());
 	}
 }

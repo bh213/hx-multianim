@@ -2,7 +2,7 @@
 
 | # | Item | Summary | Priority |
 |---|------|---------|----------|
-| 4 | Drag-and-Drop tests | Drop zones from slots, createFromSlot, swapMode, highlights | Medium |
+| ~~4~~ | ~~Drag-and-Drop tests~~ | ~~Drop zones from slots, createFromSlot, swapMode, highlights~~ | ~~Done~~ |
 | 5 | `UIRichInteractiveHelper` tests | register() bind scanning, handleEvent() state machine, setDisabled | Medium |
 | 6 | `UITooltipHelper` tests | startHover/cancelHover, delay, show/hide, positioning | Medium |
 | 7 | `UIPanelHelper` tests | open/close, isOpen, outsideClick, close modes, named panels | Medium |
@@ -28,8 +28,8 @@ General visual test issues that need attention.
 ### Tabs (`UIMultiAnimTabs`) — HIGH
 No visual or unit tests. Needs: creation, tab switching (`beginTab`/`endTab`), `ContentTarget` routing, `tabPanel.contentRoot` relative mode, `UIChangeItem` event.
 
-### Drag-and-Drop (`UIMultiAnimDraggable`) — MEDIUM
-No tests. Needs: `addDropZonesFromSlots`, `createFromSlot`, `swapMode`, zone highlight callbacks.
+### ~~Drag-and-Drop (`UIMultiAnimDraggable`) — DONE~~
+~~Unit tests added in `UIComponentTest.hx`: creation, drop zones, drag lifecycle, constraints, swap mode, slot integration, zone callbacks, alpha behavior, button filtering.~~
 
 ## Missing Helper Tests
 
