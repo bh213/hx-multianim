@@ -71,6 +71,8 @@
 - **Builder unit tests** — `BuilderUnitTest.hx` extended: data blocks, curves, paths, animated paths, slot parameters, dynamic refs
 - **Parser error tests** — `ParserErrorTest.hx` for comprehensive parser error validation (extended with additional edge cases)
 - **UITooltipHelper unit tests** — 26 tests in `UITooltipHelperTest.hx` covering hover delay lifecycle, show/hide, per-interactive overrides, positioning, updateParams, rebuild
+- **UIPanelHelper unit tests** — 40 tests in `UIPanelHelperTest.hx` covering open/close lifecycle, isOpen, outside-click handling (deferred close, cancel-on-own-click), close modes (OutsideClick/Manual), per-open override, named multi-panel API (openNamed/closeNamed/closeAllNamed), per-interactive position/offset overrides, close event emission, mixed single+named coexistence
+- **Test reporting: unit warnings** — structured test output now includes `unit_warnings` count and per-warning detail lines; `test.ps1` displays warnings in summary and detail (yellow for warnings, red for failures)
 - **Inline easing in animatedPath curve slots** — `alphaCurve: easeInQuad` works directly without requiring a `curves{}` block
 - **AnimatedPath `easing:` shorthand** — `easing: easeOutCubic` as shortcut for `0.0: progressCurve: easeOutCubic`
 - **Multi-color curve stops** — per-segment color pairs in animatedPath: multiple `colorCurve` assignments at different rates, each with its own start/end colors (e.g. red→green at 0.0, green→blue at 0.5)

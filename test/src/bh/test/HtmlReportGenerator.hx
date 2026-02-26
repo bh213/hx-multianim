@@ -856,11 +856,13 @@ class HtmlReportGenerator {
 		// Unit test stats
 		var unitFail = 0;
 		var unitErr = 0;
+		var unitWarn = 0;
 		var unitAssert = 0;
 		if (includeUnitTests && unitAggregator != null && unitAggregator.root != null) {
 			var us = unitAggregator.root.stats;
 			unitFail = us.failures;
 			unitErr = us.errors;
+			unitWarn = us.warnings;
 			unitAssert = us.assertations;
 			if (!us.isOk) hasFailures = true;
 		}
@@ -917,9 +919,10 @@ class HtmlReportGenerator {
 		buf.add('unit_assertions: ${unitAssert}\n');
 		buf.add('unit_failures: ${unitFail}\n');
 		buf.add('unit_errors: ${unitErr}\n');
+		buf.add('unit_warnings: ${unitWarn}\n');
 
-		// Per-failure details for unit tests
-		if ((unitFail > 0 || unitErr > 0) && unitAggregator != null && unitAggregator.root != null) {
+		// Per-failure/warning details for unit tests
+		if ((unitFail > 0 || unitErr > 0 || unitWarn > 0) && unitAggregator != null && unitAggregator.root != null) {
 			var allClasses:Array<utest.ui.common.ClassResult> = [];
 			collectClasses(unitAggregator.root, allClasses);
 			for (cls in allClasses) {
@@ -932,6 +935,8 @@ class HtmlReportGenerator {
 									buf.add('  unit_detail: ${cls.className}.${methodName}: ${pos.fileName}:${pos.lineNumber}: ${msg}\n');
 								case Error(e, stack):
 									buf.add('  unit_detail: ${cls.className}.${methodName}: ${Std.string(e)}\n');
+								case Warning(msg):
+									buf.add('  unit_detail: ${cls.className}.${methodName}: warning: ${msg}\n');
 								default:
 							}
 						}

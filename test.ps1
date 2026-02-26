@@ -55,6 +55,7 @@ function Format-TestResults($content, $Label) {
     $uAssert = if ($content -match 'unit_assertions:\s*(\d+)') { [int]$Matches[1] } else { 0 }
     $uFail = if ($content -match 'unit_failures:\s*(\d+)') { [int]$Matches[1] } else { 0 }
     $uErr = if ($content -match 'unit_errors:\s*(\d+)') { [int]$Matches[1] } else { 0 }
+    $uWarn = if ($content -match 'unit_warnings:\s*(\d+)') { [int]$Matches[1] } else { 0 }
     $macroMM = if ($content -match 'macro_mismatches:\s*(\d+)') { [int]$Matches[1] } else { 0 }
     $compileSec = $script:lastCompileSeconds
     $unitSec = if ($content -match 'unit_seconds:\s*([\d.]+)') { $Matches[1] } else { $null }
@@ -73,10 +74,16 @@ function Format-TestResults($content, $Label) {
         $vColor = if ($vFailed -eq 0) { "Green" } else { "Red" }
         $parts += @{ text = "$vPassed/$vTotal visual"; color = $vColor }
     }
-    if ($uAssert -gt 0) {
-        $uColor = if ($uFail -eq 0 -and $uErr -eq 0) { "Green" } else { "Red" }
+    if ($uAssert -gt 0 -or $uWarn -gt 0) {
+        $uColor = if ($uFail -eq 0 -and $uErr -eq 0 -and $uWarn -eq 0) { "Green" } else { "Red" }
         $uText = "$uAssert unit assertions"
-        if ($uFail -gt 0 -or $uErr -gt 0) { $uText += " ($uFail failures, $uErr errors)" }
+        if ($uFail -gt 0 -or $uErr -gt 0 -or $uWarn -gt 0) {
+            $uParts = @()
+            if ($uFail -gt 0) { $uParts += "$uFail failures" }
+            if ($uErr -gt 0) { $uParts += "$uErr errors" }
+            if ($uWarn -gt 0) { $uParts += "$uWarn warnings" }
+            $uText += " ($($uParts -join ', '))"
+        }
         $parts += @{ text = $uText; color = $uColor }
     }
     if ($macroMM -gt 0) {
@@ -133,13 +140,14 @@ function Format-TestResults($content, $Label) {
         Write-Host " - $info" -ForegroundColor Yellow
     }
 
-    # Unit test failure details
+    # Unit test failure/warning details
     $unitDetails = [regex]::Matches($content, '^\s+unit_detail:\s*(.+)$', 'Multiline')
     foreach ($m in $unitDetails) {
         if (-not $hasDetails) { $hasDetails = $true }
         $detail = $m.Groups[1].Value.Trim()
+        $detailColor = if ($detail -match ': warning:') { "Yellow" } else { "Red" }
         Write-Host "  UNIT   " -ForegroundColor DarkGray -NoNewline
-        Write-Host "$detail" -ForegroundColor Red
+        Write-Host "$detail" -ForegroundColor $detailColor
     }
 }
 
