@@ -56,6 +56,7 @@ class TestApp extends hxd.App {
 		testRunner.addCase(new bh.test.examples.BuilderUnitTest());
 		testRunner.addCase(new bh.test.examples.UIComponentTest());
 		testRunner.addCase(new bh.test.examples.UITooltipHelperTest());
+		testRunner.addCase(new bh.test.examples.UIPanelHelperTest());
 		testRunner.addCase(new bh.test.examples.ProgrammableCodeGenTest(s2d));
 		#if MULTIANIM_DEV
 		testRunner.addCase(new bh.test.examples.HotReloadTest());
