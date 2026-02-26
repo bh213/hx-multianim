@@ -1005,7 +1005,8 @@ enum NodeType {
 		paddingTop:Null<ReferenceableValue>,paddingBottom:Null<ReferenceableValue>, paddingLeft:Null<ReferenceableValue>, paddingRight:Null<ReferenceableValue>,
 		horizontalSpacing:Null<ReferenceableValue>, verticalSpacing:Null<ReferenceableValue>, debug:Bool, multiline:Bool,
 		bgSheet:Null<ReferenceableValue>, bgTile:Null<ReferenceableValue>,
-		overflow:Null<MacroFlowOverflow>, fillWidth:Bool, fillHeight:Bool, reverse:Bool
+		overflow:Null<MacroFlowOverflow>, fillWidth:Bool, fillHeight:Bool, reverse:Bool,
+		hAlign:Null<MacroFlowAlign>, vAlign:Null<MacroFlowAlign>
 		);
 	SPACER(width:Null<ReferenceableValue>, height:Null<ReferenceableValue>);
 	BITMAP(tileSource:TileSource, hAlign:HorizontalAlign, vAlign:VerticalAlign);
@@ -1076,6 +1077,23 @@ enum PixelOutlineModeDef {
 }
 
 @:nullSafety
+typedef NodeFlowProperties = {
+	hAlign:Null<MacroFlowAlign>,
+	vAlign:Null<MacroFlowAlign>,
+	offsetX:Null<ReferenceableValue>,
+	offsetY:Null<ReferenceableValue>,
+	isAbsolute:Bool,
+}
+
+@:nullSafety
+class NodeFlowPropertiesTools {
+	public static function create(hAlign:Null<MacroFlowAlign> = null, vAlign:Null<MacroFlowAlign> = null,
+			offsetX:Null<ReferenceableValue> = null, offsetY:Null<ReferenceableValue> = null, isAbsolute:Bool = false):NodeFlowProperties {
+		return {hAlign: hAlign, vAlign: vAlign, offsetX: offsetX, offsetY: offsetY, isAbsolute: isAbsolute};
+	}
+}
+
+@:nullSafety
 typedef Node = {
 	parent:Null<Node>,
 	pos:Coordinates,
@@ -1095,7 +1113,8 @@ typedef Node = {
 	conditionals: NodeConditionalValues,
 	uniqueNodeName:String,
 	settings:Null<Map<String, ParsedSettingValue>>,
-	#if MULTIANIM_TRACE	
+	flowProperties:Null<NodeFlowProperties>,
+	#if MULTIANIM_TRACE
 	parserPos:String
 	#end
 }

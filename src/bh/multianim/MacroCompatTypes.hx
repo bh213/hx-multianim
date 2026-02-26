@@ -33,6 +33,14 @@ enum MacroFlowOverflow {
 	MFOHidden;
 }
 
+enum MacroFlowAlign {
+	MFALeft;
+	MFARight;
+	MFAMiddle;
+	MFATop;
+	MFABottom;
+}
+
 #if !macro
 class MacroCompatConvert {
 	public static function toH2dBlendMode(m:MacroBlendMode):h2d.BlendMode {
@@ -66,6 +74,16 @@ class MacroCompatConvert {
 			case MFOLimit: Limit;
 			case MFOScroll: Scroll;
 			case MFOHidden: Hidden;
+		}
+	}
+
+	public static function toH2dFlowAlign(m:MacroFlowAlign):h2d.Flow.FlowAlign {
+		return switch m {
+			case MFALeft: Left;
+			case MFARight: Right;
+			case MFAMiddle: Middle;
+			case MFATop: Top;
+			case MFABottom: Bottom;
 		}
 	}
 }

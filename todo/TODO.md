@@ -8,7 +8,7 @@
 | 4 | Haxelib release | Publish to haxelib + CI automation | V1 | High |
 | 5 | Blob47 utils | Autotile mapping utilities | V1 | Medium |
 | 6 | In-text colors & html text | Review color/html text support in .manim | V1 | Medium |
-| 7 | Missing h2d.flow features | Investigate unsupported flow properties | V1 | Medium |
+| 7 | ~~Missing h2d.flow features~~ | ~~Investigate unsupported flow properties~~ | V1 | ~~Done~~ |
 | 8 | Step repeatable without dx/dy | Allow repeatable without requiring dx or dy | V1 | Low |
 | 9 | Dropdown z-ordering | Panel renders behind other UI elements | Bugs | Medium |
 | 10 | `closeAllNamed()` iterator | Mutating map during iteration, fragile | Bugs | Low |
@@ -32,8 +32,6 @@
 - haxelib release (see details below)
 - blob47 utils?
 - review in-text colors & html text support for manim
-- investigate missing h2d.flow features
-- step repeatable requires dx or dy but we might need just repeatable
 
 ### Haxelib Release
 

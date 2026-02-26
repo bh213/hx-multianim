@@ -27,6 +27,7 @@ import bh.multianim.MultiAnimParser.DataFieldDef;
 import bh.multianim.CoordinateSystems;
 import bh.multianim.MacroCompatTypes.MacroFlowLayout;
 import bh.multianim.MacroCompatTypes.MacroFlowOverflow;
+import bh.multianim.MacroCompatTypes.MacroFlowAlign;
 import bh.multianim.MacroCompatTypes.MacroBlendMode;
 import bh.multianim.layouts.LayoutTypes.LayoutContent;
 import bh.multianim.layouts.LayoutTypes.Layout;
@@ -1017,22 +1018,36 @@ class ProgrammableCodeGen {
 			ctorExprs.push(macro $parentRef.addChild($fieldRef));
 		}
 
-		// Set flow properties for spacer elements after addChild
-		switch (node.type) {
-			case SPACER(width, height):
-				if (parentField != null) {
-					final wExpr = width != null ? rvToExpr(width) : macro 0;
-					final hExpr = height != null ? rvToExpr(height) : macro 0;
-					ctorExprs.push(macro {
-						final _fp = Std.downcast($parentRef, h2d.Flow);
-						if (_fp != null) {
-							final _props = _fp.getProperties($fieldRef);
-							_props.minWidth = $wExpr;
-							_props.minHeight = $hExpr;
-						}
-					});
+		// Set flow properties for spacer and per-element flow annotations after addChild
+		{
+			final fp = node.flowProperties;
+			final isSpacer = node.type.match(SPACER(_, _));
+
+			if (isSpacer || fp != null) {
+				if (parentField == null) {
+					Context.error(isSpacer ? 'spacer used outside of flow' : 'per-element flow properties used outside of flow', pos);
 				}
-			default:
+				final propStmts:Array<Expr> = [];
+				propStmts.push(macro final _fp = Std.downcast($parentRef, h2d.Flow));
+				propStmts.push(macro if (_fp == null) throw $v{isSpacer ? 'spacer used outside of flow' : 'per-element flow properties used outside of flow'});
+				propStmts.push(macro final _props = _fp.getProperties($fieldRef));
+				switch (node.type) {
+					case SPACER(width, height):
+						final wExpr = width != null ? rvToExpr(width) : macro 0;
+						final hExpr = height != null ? rvToExpr(height) : macro 0;
+						propStmts.push(macro _props.minWidth = $wExpr);
+						propStmts.push(macro _props.minHeight = $hExpr);
+					default:
+				}
+				if (fp != null) {
+					if (fp.hAlign != null) propStmts.push(macro _props.horizontalAlign = ${flowAlignToExpr(fp.hAlign)});
+					if (fp.vAlign != null) propStmts.push(macro _props.verticalAlign = ${flowAlignToExpr(fp.vAlign)});
+					if (fp.offsetX != null) propStmts.push(macro _props.offsetX = ${rvToExpr(fp.offsetX)});
+					if (fp.offsetY != null) propStmts.push(macro _props.offsetY = ${rvToExpr(fp.offsetY)});
+					if (fp.isAbsolute) propStmts.push(macro _props.isAbsolute = true);
+				}
+				ctorExprs.push({expr: EBlock(propStmts), pos: pos});
+			}
 		}
 
 		// Named element
@@ -2225,7 +2240,7 @@ class ProgrammableCodeGen {
 				}
 				bodyExprs.push({expr: EBlock(stmts), pos: pos});
 
-			case FLOW(maxWidth, maxHeight, minWidth, minHeight, lineHeight, colWidth, layout, paddingTop, paddingBottom, paddingLeft, paddingRight, horizontalSpacing, verticalSpacing, debug, multiline, bgSheet, bgTile, overflow, fillWidth, fillHeight, reverse):
+			case FLOW(maxWidth, maxHeight, minWidth, minHeight, lineHeight, colWidth, layout, paddingTop, paddingBottom, paddingLeft, paddingRight, horizontalSpacing, verticalSpacing, debug, multiline, bgSheet, bgTile, overflow, fillWidth, fillHeight, reverse, hAlign, vAlign):
 				final stmts:Array<Expr> = [];
 				stmts.push(macro final _rt_flow = new h2d.Flow());
 				stmts.push(macro $containerRef.addChild(_rt_flow));
@@ -2263,6 +2278,8 @@ class ProgrammableCodeGen {
 				if (fillWidth) stmts.push(macro _rt_flow.fillWidth = true);
 				if (fillHeight) stmts.push(macro _rt_flow.fillHeight = true);
 				if (reverse) stmts.push(macro _rt_flow.reverse = true);
+				if (hAlign != null) stmts.push(macro _rt_flow.horizontalAlign = ${flowAlignToExpr(hAlign)});
+				if (vAlign != null) stmts.push(macro _rt_flow.verticalAlign = ${flowAlignToExpr(vAlign)});
 				if (bgSheet != null && bgTile != null) {
 					final sheetExpr = rvToExpr(bgSheet, true);
 					final tileExpr = rvToExpr(bgTile, true);
@@ -2519,8 +2536,8 @@ class ProgrammableCodeGen {
 					exprUpdates: [],
 				};
 
-			case FLOW(maxWidth, maxHeight, minWidth, minHeight, lineHeight, colWidth, layout, paddingTop, paddingBottom, paddingLeft, paddingRight, horizontalSpacing, verticalSpacing, debug, multiline, bgSheet, bgTile, overflow, fillWidth, fillHeight, reverse):
-				generateFlowCreate(node, fieldName, maxWidth, maxHeight, minWidth, minHeight, lineHeight, colWidth, layout, paddingTop, paddingBottom, paddingLeft, paddingRight, horizontalSpacing, verticalSpacing, debug, multiline, bgSheet, bgTile, overflow, fillWidth, fillHeight, reverse, pos);
+			case FLOW(maxWidth, maxHeight, minWidth, minHeight, lineHeight, colWidth, layout, paddingTop, paddingBottom, paddingLeft, paddingRight, horizontalSpacing, verticalSpacing, debug, multiline, bgSheet, bgTile, overflow, fillWidth, fillHeight, reverse, hAlign, vAlign):
+				generateFlowCreate(node, fieldName, maxWidth, maxHeight, minWidth, minHeight, lineHeight, colWidth, layout, paddingTop, paddingBottom, paddingLeft, paddingRight, horizontalSpacing, verticalSpacing, debug, multiline, bgSheet, bgTile, overflow, fillWidth, fillHeight, reverse, hAlign, vAlign, pos);
 
 			case SPACER(width, height):
 				generateSpacerCreate(node, fieldName, width, height, pos);
@@ -4380,7 +4397,17 @@ class ProgrammableCodeGen {
 		};
 	}
 
-	static function generateFlowCreate(node:Node, fieldName:String, maxWidth:Null<ReferenceableValue>, maxHeight:Null<ReferenceableValue>, minWidth:Null<ReferenceableValue>, minHeight:Null<ReferenceableValue>, lineHeight:Null<ReferenceableValue>, colWidth:Null<ReferenceableValue>, layout:Null<MacroFlowLayout>, paddingTop:Null<ReferenceableValue>, paddingBottom:Null<ReferenceableValue>, paddingLeft:Null<ReferenceableValue>, paddingRight:Null<ReferenceableValue>, horizontalSpacing:Null<ReferenceableValue>, verticalSpacing:Null<ReferenceableValue>, debug:Bool, multiline:Bool, bgSheet:Null<ReferenceableValue>, bgTile:Null<ReferenceableValue>, overflow:Null<MacroFlowOverflow>, fillWidth:Bool, fillHeight:Bool, reverse:Bool, pos:Position):CreateResult {
+	static function flowAlignToExpr(align:MacroFlowAlign):Expr {
+		return switch (align) {
+			case MFALeft: macro h2d.Flow.FlowAlign.Left;
+			case MFARight: macro h2d.Flow.FlowAlign.Right;
+			case MFAMiddle: macro h2d.Flow.FlowAlign.Middle;
+			case MFATop: macro h2d.Flow.FlowAlign.Top;
+			case MFABottom: macro h2d.Flow.FlowAlign.Bottom;
+		};
+	}
+
+	static function generateFlowCreate(node:Node, fieldName:String, maxWidth:Null<ReferenceableValue>, maxHeight:Null<ReferenceableValue>, minWidth:Null<ReferenceableValue>, minHeight:Null<ReferenceableValue>, lineHeight:Null<ReferenceableValue>, colWidth:Null<ReferenceableValue>, layout:Null<MacroFlowLayout>, paddingTop:Null<ReferenceableValue>, paddingBottom:Null<ReferenceableValue>, paddingLeft:Null<ReferenceableValue>, paddingRight:Null<ReferenceableValue>, horizontalSpacing:Null<ReferenceableValue>, verticalSpacing:Null<ReferenceableValue>, debug:Bool, multiline:Bool, bgSheet:Null<ReferenceableValue>, bgTile:Null<ReferenceableValue>, overflow:Null<MacroFlowOverflow>, fillWidth:Bool, fillHeight:Bool, reverse:Bool, hAlign:Null<MacroFlowAlign>, vAlign:Null<MacroFlowAlign>, pos:Position):CreateResult {
 		final fieldRef = macro $p{["this", fieldName]};
 		final createExprs:Array<Expr> = [macro $fieldRef = new h2d.Flow()];
 
@@ -4418,6 +4445,8 @@ class ProgrammableCodeGen {
 		if (fillWidth) createExprs.push(macro $fieldRef.fillWidth = true);
 		if (fillHeight) createExprs.push(macro $fieldRef.fillHeight = true);
 		if (reverse) createExprs.push(macro $fieldRef.reverse = true);
+		if (hAlign != null) createExprs.push(macro $fieldRef.horizontalAlign = ${flowAlignToExpr(hAlign)});
+		if (vAlign != null) createExprs.push(macro $fieldRef.verticalAlign = ${flowAlignToExpr(vAlign)});
 		if (bgSheet != null && bgTile != null) {
 			final sheetExpr = rvToExpr(bgSheet, true);
 			final tileExpr = rvToExpr(bgTile, true);

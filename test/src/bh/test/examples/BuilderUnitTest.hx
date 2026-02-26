@@ -2898,4 +2898,128 @@ class BuilderUnitTest extends BuilderTestBase {
 		result.setParameter("zoom", 50);
 		Assert.floatEquals(0.5, bmp.scaleX);
 	}
+
+	// ==================== Flow alignment ====================
+
+	@Test
+	public function testFlowHorizontalAlign():Void {
+		final result = buildFromSource("
+			#test programmable() {
+				flow(layout: vertical, horizontalAlign: middle, minWidth: 100) {
+					bitmap(generated(color(20, 10, #f00))): 0, 0
+				}
+			}
+		", "test");
+		Assert.notNull(result, "Build should succeed");
+		final flow = Std.downcast(result.object.getChildAt(0), h2d.Flow);
+		Assert.notNull(flow);
+		Assert.equals(h2d.Flow.FlowAlign.Middle, flow.horizontalAlign);
+	}
+
+	@Test
+	public function testFlowVerticalAlign():Void {
+		final result = buildFromSource("
+			#test programmable() {
+				flow(layout: horizontal, verticalAlign: bottom, minHeight: 100) {
+					bitmap(generated(color(20, 10, #f00))): 0, 0
+				}
+			}
+		", "test");
+		final flow = Std.downcast(result.object.getChildAt(0), h2d.Flow);
+		Assert.notNull(flow);
+		Assert.equals(h2d.Flow.FlowAlign.Bottom, flow.verticalAlign);
+	}
+
+	@Test
+	public function testPerElementFlowHAlign():Void {
+		final result = buildFromSource("
+			#test programmable() {
+				flow(layout: vertical, minWidth: 200) {
+					@flow.halign(right) bitmap(generated(color(20, 10, #f00))): 0, 0
+				}
+			}
+		", "test");
+		final flow = Std.downcast(result.object.getChildAt(0), h2d.Flow);
+		Assert.notNull(flow);
+		final bmp = flow.getChildAt(0);
+		final props = flow.getProperties(bmp);
+		Assert.equals(h2d.Flow.FlowAlign.Right, props.horizontalAlign);
+	}
+
+	@Test
+	public function testPerElementFlowOffset():Void {
+		final result = buildFromSource("
+			#test programmable() {
+				flow(layout: vertical) {
+					@flow.offset(5, -3) bitmap(generated(color(20, 10, #f00))): 0, 0
+				}
+			}
+		", "test");
+		final flow = Std.downcast(result.object.getChildAt(0), h2d.Flow);
+		Assert.notNull(flow);
+		final bmp = flow.getChildAt(0);
+		final props = flow.getProperties(bmp);
+		Assert.equals(5, props.offsetX);
+		Assert.equals(-3, props.offsetY);
+	}
+
+	@Test
+	public function testPerElementFlowAbsolute():Void {
+		final result = buildFromSource("
+			#test programmable() {
+				flow(layout: vertical) {
+					@flow.absolute bitmap(generated(color(20, 10, #f00))): 0, 0
+				}
+			}
+		", "test");
+		final flow = Std.downcast(result.object.getChildAt(0), h2d.Flow);
+		Assert.notNull(flow);
+		final bmp = flow.getChildAt(0);
+		final props = flow.getProperties(bmp);
+		Assert.isTrue(props.isAbsolute);
+	}
+
+	@Test
+	public function testPerElementCombinedFlowProps():Void {
+		// Test chaining multiple per-element flow annotations
+		final result = buildFromSource("
+			#test programmable() {
+				flow(layout: vertical, minWidth: 200) {
+					@flow.halign(middle) @flow.valign(bottom) @flow.offset(2, 4) bitmap(generated(color(20, 10, #f00))): 0, 0
+				}
+			}
+		", "test");
+		final flow = Std.downcast(result.object.getChildAt(0), h2d.Flow);
+		Assert.notNull(flow);
+		final bmp = flow.getChildAt(0);
+		final props = flow.getProperties(bmp);
+		Assert.equals(h2d.Flow.FlowAlign.Middle, props.horizontalAlign);
+		Assert.equals(h2d.Flow.FlowAlign.Bottom, props.verticalAlign);
+		Assert.equals(2, props.offsetX);
+		Assert.equals(4, props.offsetY);
+	}
+
+	@Test
+	public function testSpacerOutsideFlowThrows():Void {
+		// spacer outside of flow should throw
+		Assert.raises(function() {
+			buildFromSource("
+				#test programmable() {
+					spacer(10, 10): 0, 0
+				}
+			", "test");
+		});
+	}
+
+	@Test
+	public function testFlowPropOutsideFlowThrows():Void {
+		// per-element flow properties outside of flow should throw at parse time
+		Assert.raises(function() {
+			buildFromSource("
+				#test programmable() {
+					@flow.halign(middle) bitmap(generated(color(20, 10, #f00))): 0, 0
+				}
+			", "test");
+		});
+	}
 }

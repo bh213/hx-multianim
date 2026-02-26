@@ -850,10 +850,36 @@ class HtmlReportGenerator {
 		if (visualFailed > 0) {
 			var failedNames = results.filter(r -> !r.passed).map(r -> r.testName);
 			buf.add('visual_failures: [${failedNames.join(", ")}]\n');
+			// Per-visual-failure details
+			for (r in results) {
+				if (r.passed) continue;
+				var reason:String;
+				if (r.errorMessage != null) {
+					reason = 'error: ${r.errorMessage}';
+				} else if (!FileSystem.exists(r.referencePath)) {
+					reason = "no_reference";
+				} else {
+					var simPct = Math.round(r.similarity * 10000) / 100;
+					var thrPct = r.threshold != null ? Math.round(r.threshold * 10000) / 100 : 99.0;
+					reason = 'low_similarity (${simPct}%, threshold: ${thrPct}%)';
+				}
+				buf.add('  visual_detail: ${r.testName} | ${reason}\n');
+				// Report macro sub-failure if applicable
+				if (r.macroPassed != null && !r.macroPassed) {
+					var macroSimPct = r.macroSimilarity != null ? Math.round(r.macroSimilarity * 10000) / 100 : 0.0;
+					var macroThrPct = r.macroThreshold != null ? Math.round(r.macroThreshold * 10000) / 100 : 99.0;
+					buf.add('  visual_detail: ${r.testName} (macro) | low_similarity (${macroSimPct}%, threshold: ${macroThrPct}%)\n');
+				}
+			}
 		}
 		buf.add('macro_mismatches: ${macroMismatchNames.length}\n');
 		if (macroMismatchNames.length > 0) {
 			buf.add('macro_mismatch_tests: [${macroMismatchNames.join(", ")}]\n');
+			for (r in results) {
+				if (r.builderVsMacroSimilarity == null || r.builderVsMacroSimilarity >= 1.0) continue;
+				var simPct = Math.round(r.builderVsMacroSimilarity * 10000) / 100;
+				buf.add('  macro_detail: ${r.testName} | builder_vs_macro: ${simPct}%\n');
+			}
 		}
 		buf.add('unit_assertions: ${unitAssert}\n');
 		buf.add('unit_failures: ${unitFail}\n');
@@ -861,7 +887,6 @@ class HtmlReportGenerator {
 
 		// Per-failure details for unit tests
 		if ((unitFail > 0 || unitErr > 0) && unitAggregator != null && unitAggregator.root != null) {
-			var details:Array<String> = [];
 			var allClasses:Array<utest.ui.common.ClassResult> = [];
 			collectClasses(unitAggregator.root, allClasses);
 			for (cls in allClasses) {
@@ -871,17 +896,14 @@ class HtmlReportGenerator {
 						for (assertation in fixture) {
 							switch (assertation) {
 								case Failure(msg, pos):
-									details.push('${cls.className}.${methodName}: ${pos.fileName}:${pos.lineNumber}: ${msg}');
+									buf.add('  unit_detail: ${cls.className}.${methodName}: ${pos.fileName}:${pos.lineNumber}: ${msg}\n');
 								case Error(e, stack):
-									details.push('${cls.className}.${methodName}: ${Std.string(e)}');
+									buf.add('  unit_detail: ${cls.className}.${methodName}: ${Std.string(e)}\n');
 								default:
 							}
 						}
 					}
 				}
-			}
-			if (details.length > 0) {
-				buf.add('unit_error_details: [${details.join(", ")}]\n');
 			}
 		}
 

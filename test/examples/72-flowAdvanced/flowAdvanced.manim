@@ -61,5 +61,36 @@ version: 0.5
         staticRef($flowBox, w=>30, h=>15, color=>#8844ff);
       }
     }
+
+    // Row 4: per-element flow properties
+    text(m3x6, "@flow.halign", #888): 0, 120
+    point {
+      pos: 0, 130
+      flow(minWidth: 60, layout: vertical, verticalSpacing: 1, debug: true) {
+        staticRef($flowBox, w=>40, h=>10, color=>#ff8844);
+        @flow.halign(right) staticRef($flowBox, w=>25, h=>10, color=>#44ff88);
+        @flow.halign(middle) staticRef($flowBox, w=>30, h=>10, color=>#8844ff);
+      }
+    }
+
+    text(m3x6, "@flow.offset", #888): 80, 120
+    point {
+      pos: 80, 130
+      flow(layout: vertical, verticalSpacing: 1, debug: true) {
+        staticRef($flowBox, w=>40, h=>10, color=>#ff4488);
+        @flow.offset(10, 0) staticRef($flowBox, w=>40, h=>10, color=>#44ff88);
+        staticRef($flowBox, w=>40, h=>10, color=>#8844ff);
+      }
+    }
+
+    text(m3x6, "@flow.absolute", #888): 170, 120
+    point {
+      pos: 170, 130
+      flow(layout: vertical, verticalSpacing: 1, debug: true) {
+        staticRef($flowBox, w=>40, h=>10, color=>#ff4488);
+        staticRef($flowBox, w=>40, h=>10, color=>#44ff88);
+        @flow.absolute staticRef($flowBox, w=>15, h=>15, color=>#8844ff): 30, 2
+      }
+    }
   }
 }

@@ -2994,7 +2994,7 @@ class MultiAnimBuilder {
 
 		final builtObject:BuiltHeapsComponent = switch node.type {
 			case FLOW(maxWidth, maxHeight, minWidth, minHeight, lineHeight, colWidth, layout, paddingTop, paddingBottom, paddingLeft, paddingRight,
-				horizontalSpacing, verticalSpacing, debug, multiline, bgSheet, bgTile, overflow, fillWidth, fillHeight, reverse):
+				horizontalSpacing, verticalSpacing, debug, multiline, bgSheet, bgTile, overflow, fillWidth, fillHeight, reverse, hAlign, vAlign):
 				var f = new h2d.Flow();
 
 				if (maxWidth != null)
@@ -3033,6 +3033,11 @@ class MultiAnimBuilder {
 				if (fillWidth) f.fillWidth = true;
 				if (fillHeight) f.fillHeight = true;
 				if (reverse) f.reverse = true;
+
+				if (hAlign != null)
+					f.horizontalAlign = MacroCompatConvert.toH2dFlowAlign(hAlign);
+				if (vAlign != null)
+					f.verticalAlign = MacroCompatConvert.toH2dFlowAlign(vAlign);
 
 				if (bgSheet != null && bgTile != null) {
 					final sg = load9Patch(resolveAsString(bgSheet), resolveAsString(bgTile));
@@ -3748,18 +3753,40 @@ class MultiAnimBuilder {
 			}
 		}
 
-		// Set flow properties for spacer elements after addChild
-		switch node.type {
-			case SPACER(width, height):
+		// Set flow properties for spacer and per-element flow annotations after addChild
+		{
+			final fp = node.flowProperties;
+			final isSpacer = node.type.match(SPACER(_, _));
+
+			if (isSpacer || fp != null) {
 				final flowParent = Std.downcast(current, h2d.Flow);
-				if (flowParent != null) {
-					final props = flowParent.getProperties(object);
-					if (width != null) props.minWidth = resolveAsInteger(width);
-					if (height != null) props.minHeight = resolveAsInteger(height);
+				if (flowParent == null) {
+					if (isSpacer)
+						throw 'spacer used outside of flow' + MacroUtils.nodePos(node);
+					else
+						throw 'per-element flow properties (@halign/@valign/@flowOffset/@absolute) used outside of flow' + MacroUtils.nodePos(node);
 				}
-			default:
+				final props = flowParent.getProperties(object);
+				switch node.type {
+					case SPACER(width, height):
+						if (width != null) props.minWidth = resolveAsInteger(width);
+						if (height != null) props.minHeight = resolveAsInteger(height);
+					default:
+				}
+				if (fp != null) {
+					if (fp.hAlign != null)
+						props.horizontalAlign = MacroCompatConvert.toH2dFlowAlign(fp.hAlign);
+					if (fp.vAlign != null)
+						props.verticalAlign = MacroCompatConvert.toH2dFlowAlign(fp.vAlign);
+					if (fp.offsetX != null)
+						props.offsetX = resolveAsInteger(fp.offsetX);
+					if (fp.offsetY != null)
+						props.offsetY = resolveAsInteger(fp.offsetY);
+					if (fp.isAbsolute)
+						props.isAbsolute = true;
+				}
+			}
 		}
-		//		trace(object.name);
 
 		final n = updatableName.getNameString();
 		if (n != null) {
