@@ -76,11 +76,12 @@ class TextMarkupConverter {
 					tagStack.push("a");
 					i = closeIdx + 1;
 				} else if (isValidStyleName(tag)) {
-					// Named style: [damage] → <damage>
+					// Named style: [damage] → <damage>, [b] → <_s_b> (escape HTML built-ins)
+					var safeTag = escapeStyleName(tag);
 					buf.add("<");
-					buf.add(tag);
+					buf.add(safeTag);
 					buf.add(">");
-					tagStack.push(tag);
+					tagStack.push(safeTag);
 					i = closeIdx + 1;
 				} else {
 					// Not a recognized tag — emit literal [tag]
@@ -185,6 +186,18 @@ class TextMarkupConverter {
 
 		// Fallback: return as-is (let Heaps try to parse it)
 		return colorStr;
+	}
+
+	/** Escape a style name that collides with built-in HtmlText tags (b, i, bold, italic, font).
+	 *  Returns the safe internal name for use in HTML output and defineHtmlTag. */
+	public static function escapeStyleName(name:String):String {
+		return if (isReservedHtmlTag(name)) "_s_" + name else name;
+	}
+
+	static function isReservedHtmlTag(name:String):Bool {
+		return name == "b" || name == "i" || name == "u" || name == "s"
+			|| name == "bold" || name == "italic"
+			|| name == "font";
 	}
 
 	static function isValidStyleName(name:String):Bool {

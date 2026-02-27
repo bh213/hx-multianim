@@ -3552,7 +3552,7 @@ class BuilderUnitTest extends BuilderTestBase {
 		final texts = findAllTextDescendants(result.object);
 		Assert.equals(1, texts.length);
 		final ht:h2d.HtmlText = cast texts[0];
-		Assert.isTrue(ht.text.indexOf("<bold>") >= 0, 'HTML should contain <bold>, got: ${ht.text}');
+		Assert.isTrue(ht.text.indexOf("<_s_bold>") >= 0, 'HTML should contain <_s_bold> (escaped reserved tag), got: ${ht.text}');
 	}
 
 	@Test

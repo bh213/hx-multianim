@@ -719,6 +719,35 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		return wrappers;
 	}
 
+	/** Wires hyperlink events from rich text `[link:id]` markup to UIInteractiveEvent.
+	 *  Events arrive in `onScreenEvent` as `UIInteractiveEvent(UIClick/UIEntering/UILeaving, "link:<id>", emptyMeta)`.
+	 *  Cursor is already handled at builder level; this method adds UIInteractiveEvent emission for screen integration. */
+	@:nullSafety(Off)
+	public function enableLinkEvents(r:BuilderResult, ?prefix:String):Void {
+		if (r.htmlTextsWithLinks == null) return;
+		final emptyMeta = new BuilderResolvedSettings(null);
+		for (ht in r.htmlTextsWithLinks) {
+			final prevClick = ht.onHyperlink;
+			ht.onHyperlink = (url) -> {
+				if (prevClick != null) prevClick(url);
+				final id = prefix != null ? prefix + ".link:" + url : "link:" + url;
+				getController().onScreenEvent(UIInteractiveEvent(UIClick, id, emptyMeta), null);
+			};
+			final prevOver = ht.onOverHyperlink;
+			ht.onOverHyperlink = (url) -> {
+				if (prevOver != null) prevOver(url);
+				final id = prefix != null ? prefix + ".link:" + url : "link:" + url;
+				getController().onScreenEvent(UIInteractiveEvent(UIEntering, id, emptyMeta), null);
+			};
+			final prevOut = ht.onOutHyperlink;
+			ht.onOutHyperlink = (url) -> {
+				if (prevOut != null) prevOut(url);
+				final id = prefix != null ? prefix + ".link:" + url : "link:" + url;
+				getController().onScreenEvent(UIInteractiveEvent(UILeaving, id, emptyMeta), null);
+			};
+		}
+	}
+
 	public function removeInteractives(?prefix:String):Void {
 		var toRemove:Array<UIInteractiveWrapper> = [];
 		for (w in interactiveWrappers) {
