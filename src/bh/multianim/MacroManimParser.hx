@@ -3052,7 +3052,7 @@ class MacroManimParser {
 
 			case TIdentifier(s) if (isKeyword(s, "slot")):
 				advance();
-				if (updatableName == null)
+				if (updatableName.match(UNTObject(null)))
 					error("slot requires a #name prefix");
 				if (match(TOpen)) {
 					final parsed = parseDefines();
@@ -3192,6 +3192,8 @@ class MacroManimParser {
 						isTileGroup = true;
 					default:
 				}
+				if (updatableName.match(UNTObject(null)))
+					error("programmable requires a #name prefix");
 				expect(TOpen);
 				final parsed = parseDefines();
 				currentDefs = parsed.defs;
