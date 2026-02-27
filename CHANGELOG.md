@@ -97,17 +97,16 @@
 - **AnimatedPath non-visual unit tests** — 15 new tests in BuilderUnitTest covering time/distance modes, inline easing, easing shorthand, events, loop, pingPong, seek, checkpoints, custom curves, multi-color stops, projectile helper, getClosestRate
 - **Font metrics context** — `$ctx.font("name").lineHeight` and `$ctx.font("name").baseLine` for querying font metrics at build time (both builder and codegen)
 - **Pixel data unit tests** — filledRect pixel verification and incremental pixel update sweep tests
-- **Native rich text markup** — `%{tag}...%{/}` markup system for `text()` elements, replacing `html: true`
+- **`richText()` element** — new dedicated element for rich text with `[tag]...[/]` BBCode-style markup, always creates `h2d.HtmlText`
   - `styles: {name: color(#hex) font("name"), ...}` — named text styles with `color()` and/or `font()` wrappers
-  - `%{styleName}...%{/}` in text strings — apply named styles (maps to `defineHtmlTag`)
-  - `%{img:name}` — inline images via `images: {name: tileSource}` definitions (curly brace map)
-  - `%{align:center}...%{/}` — paragraph alignment
-  - `%{link:id}...%{/}` — hyperlinks firing `callback("link:id")`
+  - `[styleName]...[/]` in text strings — apply named styles (maps to `defineHtmlTag`)
+  - `[img:name]` — inline images via `images: {name: tileSource}` definitions (curly brace map)
+  - `[align:center]...[/]` — paragraph alignment
+  - `[link:id]...[/]` — hyperlinks firing `callback("link:id")`
   - `condenseWhite: true` — collapse whitespace in rich text
-  - Auto-detection: HtmlText created automatically when markup or styles present
-  - Parse-time validation: `%{styleName}` references checked against defined styles
-  - `%%{` escape sequence — produces literal `%{` in output without triggering markup
-  - `%{markup}` and `${param}` coexist in single-quoted strings — e.g., `'%{damage}${dmg}%{/} damage'`
+  - Parse-time validation: `[styleName]` references checked against defined styles
+  - `[[` escape sequence — produces literal `[` in output without triggering markup
+  - `[markup]` and `${param}` coexist in single-quoted strings — e.g., `'[damage]${dmg}[/] damage'`
   - Dynamic style colors and fonts: `color($param)` / `font($param)` with incremental `setParameter()` support
   - Dynamic image tiles: `TSReference($param)` in image definitions with incremental tracking
   - Codegen typed setters: `setStyleColor_<name>()`, `setStyleFont_<name>()`, `setImageTile_<name>()` for direct API access
@@ -285,7 +284,8 @@
 - **`LAYOUT` index now `Null<ReferenceableValue>`** — `layout(name)` without index properly represented as null instead of requiring a dummy value
 
 ### Changed
-- **`html: true` removed** — `text(..., html: true)` is no longer supported and produces a parser error. Use `styles:` definitions and `%{...}` markup instead. `TextDef.isHtml` replaced by `styles`/`images`/`condenseWhite`/`hasMarkup` fields.
+- **`text()` / `richText()` split** — `text()` reverted to simple text (font, string, color, align, maxWidth, letterSpacing, lineSpacing, lineBreak, dropShadow). Rich text features (`styles:`, `images:`, `condenseWhite:`, `[markup]`) moved to new `richText()` element which always creates `h2d.HtmlText`.
+- **`html: true` removed** — no longer supported. Use `richText()` with `styles:` definitions and `[...]` markup instead.
 - **Button incremental rewrite** — `UIStandardMultiAnimButton` now uses single incremental `BuilderResult` with `setParameter()` instead of `MultiAnimMultiResult` (pre-built combo swap). Removes `doRedraw()`, `requestRedraw`, and `UIElementSyncRedraw`.
 - **Checkbox incremental rewrite** — `UIStandardMultiCheckbox` same pattern; uses `beginUpdate()`/`endUpdate()` for batched status+checked changes on toggle
 - **TabButton incremental rewrite** — `UIMultiAnimTabButton` same pattern; selected/disabled states via `setParameter()`

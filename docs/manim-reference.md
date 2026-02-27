@@ -28,7 +28,8 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | Element | Description |
 |---------|-------------|
 | `bitmap(source, hAlign, vAlign)` | Display image tile with optional alignment |
-| `text(font, text, color, align, maxWidth, options)` | Render text with font, color, and formatting options |
+| `text(font, text, color, align, maxWidth, options)` | Simple text with font, color, and formatting options |
+| `richText(font, text, color, align, maxWidth, options)` | Rich text with `[markup]`, styles, images — always `h2d.HtmlText` |
 | `ninepatch(sheet, tile, w, h)` | 9-patch scalable image for resizable panels |
 | `pixels(...)` | Pixel-level drawing primitives |
 | `graphics(...)` | Vector graphics shapes |
@@ -109,7 +110,22 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 
 ---
 
-## Text Options
+## Text Options (`text()`)
+
+| Option | Description |
+|--------|-------------|
+| `letterSpacing` | Space between characters |
+| `lineSpacing` | Space between lines |
+| `lineBreak` | Enable word wrapping |
+| `dropShadowXY` | Shadow offset (x, y) |
+| `dropShadowColor` | Shadow color |
+| `dropShadowAlpha` | Shadow opacity |
+
+`text()` creates plain `h2d.Text`. Does not support markup, styles, images, or condenseWhite.
+
+---
+
+## Rich Text Options (`richText()`)
 
 | Option | Description |
 |--------|-------------|
@@ -117,8 +133,8 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | `lineSpacing` | Space between lines |
 | `lineBreak` | Enable word wrapping |
 | `styles: {name: color(#hex) font("name"), ...}` | Named text styles with `color()` and/or `font()` wrappers |
-| `images: {name: tileSource, ...}` | Named inline images for `%{img:name}` markup (curly brace map) |
-| `condenseWhite: true` | Collapse whitespace in rich text |
+| `images: {name: tileSource, ...}` | Named inline images for `[img:name]` markup (curly brace map) |
+| `condenseWhite: true` | Collapse whitespace |
 | `dropShadowXY` | Shadow offset (x, y) |
 | `dropShadowColor` | Shadow color |
 | `dropShadowAlpha` | Shadow opacity |
@@ -129,18 +145,20 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | `lineHeight` | Fixed line height override |
 | `colWidth` | Column width for layout |
 
+`richText()` always creates `h2d.HtmlText`. Markup is always processed via `TextMarkupConverter`.
+
 ### Rich Text Markup
 
-Text strings support `%{tag}...%{/}` markup. When markup or `styles:`/`images:`/`condenseWhite:` is present, `h2d.HtmlText` is used automatically. Unlike `${expr}` interpolation, `%{tag}` markup works in both single and double-quoted strings.
+Text strings support `[tag]...[/]` BBCode-style markup. Unlike `${expr}` interpolation, `[tag]` markup works in both single and double-quoted strings.
 
 | Markup | Description |
 |--------|-------------|
-| `%{styleName}...%{/}` | Apply named style (defined in `styles:`) |
-| `%{img:name}` | Inline image (self-closing, defined in `images:`) |
-| `%{align:center}...%{/}` | Paragraph alignment (`left`, `center`, `right`) |
-| `%{link:id}...%{/}` | Hyperlink (fires `callback("link:id")`) |
-| `%{/}` | Close most recently opened tag |
-| `%%{` | Literal `%{` (escape sequence) |
+| `[styleName]...[/]` | Apply named style (defined in `styles:`) |
+| `[img:name]` | Inline image (self-closing, defined in `images:`) |
+| `[align:center]...[/]` | Paragraph alignment (`left`, `center`, `right`) |
+| `[link:id]...[/]` | Hyperlink (fires `callback("link:id")`) |
+| `[/]` | Close most recently opened tag |
+| `[[` | Literal `[` (escape sequence) |
 
 **Style definitions:** Each style needs at least `color()` or `font()`. Both accept `$param` references for incremental updates.
 ```manim

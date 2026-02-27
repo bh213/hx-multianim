@@ -6,7 +6,7 @@ version: 0.5
   point {
     pos: 10, 30
     bitmap(generated(color(600, 40, #333)));
-    @scale(2) text(dd, "Deal %{damage}50%{/} for %{gold}100g%{/} %{em}now%{/}", white, left, 600,
+    @scale(2) richText(dd, "Deal [damage]50[/] for [gold]100g[/] [em]now[/]", white, left, 600,
         styles: {damage: color(#FF0000), gold: color(#FFD700) font("dd"), em: font("dd")}): 4, 4;
   }
 
@@ -14,7 +14,7 @@ version: 0.5
   point {
     pos: 10, 80
     bitmap(generated(color(600, 40, #333)));
-    @scale(2) text(dd, "%{fire}fire%{/} %{ice}ice%{/} %{nature}nature%{/}", white, left, 600,
+    @scale(2) richText(dd, "[fire]fire[/] [ice]ice[/] [nature]nature[/]", white, left, 600,
         styles: {fire: color(red), ice: color(cyan), nature: color(lime)}): 4, 4;
   }
 
@@ -22,7 +22,7 @@ version: 0.5
   point {
     pos: 10, 130
     bitmap(generated(color(600, 40, #333)));
-    @scale(2) text(dd, "%{warn}Warning:%{/} costs %{price}100g%{/}", white, left, 600,
+    @scale(2) richText(dd, "[warn]Warning:[/] costs [price]100g[/]", white, left, 600,
         styles: {warn: color(#FF4444), price: color(gold)}): 4, 4;
   }
 
@@ -30,7 +30,7 @@ version: 0.5
   point {
     pos: 10, 180
     bitmap(generated(color(600, 40, #333)));
-    @scale(2) text(dd, "%{damage}crit %{highlight}50%{/} dmg%{/}", white, left, 600,
+    @scale(2) richText(dd, "[damage]crit [highlight]50[/] dmg[/]", white, left, 600,
         styles: {damage: color(#FF0000), highlight: color(yellow)}): 4, 4;
   }
 
@@ -38,7 +38,7 @@ version: 0.5
   point {
     pos: 10, 230
     bitmap(generated(color(600, 40, #333)));
-    @scale(2) text(dd, "Cost %{img:coin} 100 gold", white, left, 600,
+    @scale(2) richText(dd, "Cost [img:coin] 100 gold", white, left, 600,
         images: {coin: generated(color(14, 14, #FFD700))}): 4, 4;
   }
 
@@ -46,21 +46,21 @@ version: 0.5
   point {
     pos: 10, 280
     bitmap(generated(color(300, 100, #333)));
-    @scale(2) text(dd, "left\n%{align:center}center%{/}\n%{align:right}right%{/}", white, left, 300): 4, 4;
+    @scale(2) richText(dd, "left\n[align:center]center[/]\n[align:right]right[/]", white, left, 300): 4, 4;
   }
 
   // Row 7: condenseWhite
   point {
     pos: 330, 280
     bitmap(generated(color(300, 40, #333)));
-    @scale(2) text(dd, "spaces   condensed   here", white, left, 300,
+    @scale(2) richText(dd, "spaces   condensed   here", white, left, 300,
         condenseWhite: true): 4, 4;
   }
 
-  // Row 8: Plain text — no markup, stays as h2d.Text
+  // Row 8: Plain text — no markup, still uses h2d.HtmlText
   point {
     pos: 10, 400
     bitmap(generated(color(600, 40, #333)));
-    @scale(2) text(dd, "plain text no markup", yellow, left, 600): 4, 4;
+    @scale(2) richText(dd, "plain text no markup", yellow, left, 600): 4, 4;
   }
 }

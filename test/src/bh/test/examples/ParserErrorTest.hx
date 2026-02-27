@@ -2820,22 +2820,10 @@ class ParserErrorTest extends utest.Test {
 	// ===== Rich text markup tests =====
 
 	@Test
-	public function testRichTextHtmlRemoved() {
-		var error = parseExpectingError('
-			#test programmable() {
-				text(dd, "hello", white, left, 200, html: true): 0, 0
-			}
-		');
-		Assert.notNull(error, "Should throw error for html: true");
-		Assert.isTrue(error.indexOf("no longer supported") >= 0,
-			'Error should mention no longer supported, got: $error');
-	}
-
-	@Test
 	public function testRichTextStylesColorOnly() {
 		var success = parseExpectingSuccess('
 			#test programmable() {
-				text(dd, "hello %{damage}world%{/}", white, left, 200,
+				richText(dd, "hello [damage]world[/]", white, left, 200,
 					styles: {damage: color(#FF0000)}): 0, 0
 			}
 		');
@@ -2846,7 +2834,7 @@ class ParserErrorTest extends utest.Test {
 	public function testRichTextStylesFontOnly() {
 		var success = parseExpectingSuccess('
 			#test programmable() {
-				text(dd, "hello %{em}world%{/}", white, left, 200,
+				richText(dd, "hello [em]world[/]", white, left, 200,
 					styles: {em: font("dd")}): 0, 0
 			}
 		');
@@ -2857,7 +2845,7 @@ class ParserErrorTest extends utest.Test {
 	public function testRichTextStylesColorAndFont() {
 		var success = parseExpectingSuccess('
 			#test programmable() {
-				text(dd, "hello %{gold}100g%{/}", white, left, 200,
+				richText(dd, "hello [gold]100g[/]", white, left, 200,
 					styles: {gold: color(#FFD700) font("dd")}): 0, 0
 			}
 		');
@@ -2868,7 +2856,7 @@ class ParserErrorTest extends utest.Test {
 	public function testRichTextStylesMultiple() {
 		var success = parseExpectingSuccess('
 			#test programmable() {
-				text(dd, "%{a}x%{/} %{b}y%{/} %{c}z%{/}", white, left, 200,
+				richText(dd, "[a]x[/] [b]y[/] [c]z[/]", white, left, 200,
 					styles: {a: color(#FF0000), b: color(#00FF00) font("dd"), c: font("dd")}): 0, 0
 			}
 		');
@@ -2879,7 +2867,7 @@ class ParserErrorTest extends utest.Test {
 	public function testRichTextStylesNamedColor() {
 		var success = parseExpectingSuccess('
 			#test programmable() {
-				text(dd, "%{fire}flames%{/}", white, left, 200,
+				richText(dd, "[fire]flames[/]", white, left, 200,
 					styles: {fire: color(red)}): 0, 0
 			}
 		');
@@ -2890,7 +2878,7 @@ class ParserErrorTest extends utest.Test {
 	public function testRichTextStyleNoColorNoFont() {
 		var error = parseExpectingError('
 			#test programmable() {
-				text(dd, "hello", white, left, 200,
+				richText(dd, "hello", white, left, 200,
 					styles: {bad: }): 0, 0
 			}
 		');
@@ -2901,7 +2889,7 @@ class ParserErrorTest extends utest.Test {
 	public function testRichTextUnknownStyleRef() {
 		var error = parseExpectingError('
 			#test programmable() {
-				text(dd, "hello %{unknown}world%{/}", white, left, 200,
+				richText(dd, "hello [unknown]world[/]", white, left, 200,
 					styles: {damage: color(#FF0000)}): 0, 0
 			}
 		');
@@ -2910,35 +2898,12 @@ class ParserErrorTest extends utest.Test {
 			'Error should mention unknown style, got: $error');
 	}
 
-	@Test
-	public function testRichTextInlineColorRejected() {
-		var error = parseExpectingError('
-			#test programmable() {
-				text(dd, "%{c:#FF0000}red%{/}", white, left, 200): 0, 0
-			}
-		');
-		Assert.notNull(error, "Should throw error for inline %{c:} markup");
-		Assert.isTrue(error.indexOf("no longer supported") >= 0,
-			'Error should mention no longer supported, got: $error');
-	}
-
-	@Test
-	public function testRichTextInlineFontRejected() {
-		var error = parseExpectingError('
-			#test programmable() {
-				text(dd, "%{f:dd}bold%{/}", white, left, 200): 0, 0
-			}
-		');
-		Assert.notNull(error, "Should throw error for inline %{f:} markup");
-		Assert.isTrue(error.indexOf("no longer supported") >= 0,
-			'Error should mention no longer supported, got: $error');
-	}
 
 	@Test
 	public function testRichTextImageParses() {
 		var success = parseExpectingSuccess('
 			#test programmable() {
-				text(dd, "Cost %{img:coin} 100", white, left, 200,
+				richText(dd, "Cost [img:coin] 100", white, left, 200,
 					images: {coin: generated(color(14, 14, #FFD700))}): 0, 0
 			}
 		');
@@ -2949,7 +2914,7 @@ class ParserErrorTest extends utest.Test {
 	public function testRichTextAlignParses() {
 		var success = parseExpectingSuccess('
 			#test programmable() {
-				text(dd, "left\n%{align:center}center%{/}", white, left, 200): 0, 0
+				richText(dd, "left\n[align:center]center[/]", white, left, 200): 0, 0
 			}
 		');
 		Assert.isTrue(success, "align markup should parse");
@@ -2959,7 +2924,7 @@ class ParserErrorTest extends utest.Test {
 	public function testRichTextLinkParses() {
 		var success = parseExpectingSuccess('
 			#test programmable() {
-				text(dd, "%{link:shop}click%{/}", white, left, 200): 0, 0
+				richText(dd, "[link:shop]click[/]", white, left, 200): 0, 0
 			}
 		');
 		Assert.isTrue(success, "link markup should parse");
@@ -2969,7 +2934,7 @@ class ParserErrorTest extends utest.Test {
 	public function testRichTextCondenseWhiteParses() {
 		var success = parseExpectingSuccess('
 			#test programmable() {
-				text(dd, "spaces   here", white, left, 200, condenseWhite: true): 0, 0
+				richText(dd, "spaces   here", white, left, 200, condenseWhite: true): 0, 0
 			}
 		');
 		Assert.isTrue(success, "condenseWhite should parse");
@@ -2979,7 +2944,7 @@ class ParserErrorTest extends utest.Test {
 	public function testRichTextNestingParses() {
 		var success = parseExpectingSuccess('
 			#test programmable() {
-				text(dd, "%{damage}crit %{highlight}50%{/} dmg%{/}", white, left, 200,
+				richText(dd, "[damage]crit [highlight]50[/] dmg[/]", white, left, 200,
 					styles: {damage: color(#FF0000), highlight: color(yellow)}): 0, 0
 			}
 		');
@@ -2987,7 +2952,7 @@ class ParserErrorTest extends utest.Test {
 	}
 
 	@Test
-	public function testRichTextNoMarkupStaysPlain() {
+	public function testPlainTextParses() {
 		var success = parseExpectingSuccess('
 			#test programmable() {
 				text(dd, "plain text no markup", white, left, 200): 0, 0
@@ -2997,10 +2962,48 @@ class ParserErrorTest extends utest.Test {
 	}
 
 	@Test
-	public function testRichTextStylesBracketSyntaxFails() {
+	public function testTextRejectsStyles() {
 		var error = parseExpectingError('
 			#test programmable() {
 				text(dd, "hello", white, left, 200,
+					styles: {warn: color(#FF0000)}): 0, 0
+			}
+		');
+		Assert.notNull(error, "text() should reject styles");
+		Assert.isTrue(error.indexOf("richText") >= 0,
+			'Error should mention richText(), got: $error');
+	}
+
+	@Test
+	public function testTextRejectsImages() {
+		var error = parseExpectingError('
+			#test programmable() {
+				text(dd, "hello", white, left, 200,
+					images: {coin: generated(color(14, 14, #FFD700))}): 0, 0
+			}
+		');
+		Assert.notNull(error, "text() should reject images");
+		Assert.isTrue(error.indexOf("richText") >= 0,
+			'Error should mention richText(), got: $error');
+	}
+
+	@Test
+	public function testTextRejectsCondenseWhite() {
+		var error = parseExpectingError('
+			#test programmable() {
+				text(dd, "hello", white, left, 200, condenseWhite: true): 0, 0
+			}
+		');
+		Assert.notNull(error, "text() should reject condenseWhite");
+		Assert.isTrue(error.indexOf("richText") >= 0,
+			'Error should mention richText(), got: $error');
+	}
+
+	@Test
+	public function testRichTextStylesBracketSyntaxFails() {
+		var error = parseExpectingError('
+			#test programmable() {
+				richText(dd, "hello", white, left, 200,
 					styles: [damage #FF0000]): 0, 0
 			}
 		');
@@ -3011,7 +3014,7 @@ class ParserErrorTest extends utest.Test {
 	public function testRichTextOldStyleSyntaxFails() {
 		var error = parseExpectingError('
 			#test programmable() {
-				text(dd, "%{warn}Warning%{/}", white, left, 200,
+				richText(dd, "[warn]Warning[/]", white, left, 200,
 					styles: {warn: #FF4444}): 0, 0
 			}
 		');
@@ -3022,7 +3025,7 @@ class ParserErrorTest extends utest.Test {
 	public function testRichTextStylesFontAndColor() {
 		var success = parseExpectingSuccess('
 			#test programmable() {
-				text(dd, "%{warn}Warning:%{/} costs %{price}100g%{/}", white, left, 200,
+				richText(dd, "[warn]Warning:[/] costs [price]100g[/]", white, left, 200,
 					styles: {warn: color(#FF4444), price: color(gold)}): 0, 0
 			}
 		');
