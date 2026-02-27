@@ -1,29 +1,29 @@
 package bh.multianim;
 
 /**
- * Converts manim-native %{tag}...%{/} rich text markup to HTML for h2d.HtmlText.
+ * Converts manim-native [tag]...[/] rich text markup to HTML for h2d.HtmlText.
  *
  * Supported markup:
- *   %{styleName}...%{/}        → <styleName>...</styleName>     (requires defineHtmlTag)
- *   %{img:name}                → <img src="name"/>               (self-closing)
- *   %{align:left|center|right}...%{/} → <p align="...">...</p>
- *   %{link:id}...%{/}          → <a href="id">...</a>
- *   %{/}                       → closes most recently opened tag (stack-based)
- *   %%{                         → literal %{ (escape sequence)
+ *   [styleName]...[/]            → <styleName>...</styleName>     (requires defineHtmlTag)
+ *   [img:name]                   → <img src="name"/>               (self-closing)
+ *   [align:left|center|right]...[/] → <p align="...">...</p>
+ *   [link:id]...[/]              → <a href="id">...</a>
+ *   [/]                          → closes most recently opened tag (stack-based)
+ *   [[                           → literal [ (escape sequence)
  *
  * Colors and fonts are set via named styles (styles: {name: color(...) font(...)}).
- * Inline %{c:} and %{f:} are no longer supported.
+ * Inline [c:] and [f:] are no longer supported.
  *
  * Works at both macro time and runtime (no runtime-only APIs).
  */
 class TextMarkupConverter {
 	/**
-	 * Convert %{tag}...%{/} markup to HTML.
+	 * Convert [tag]...[/] markup to HTML.
 	 * If no markup found, returns input unchanged.
 	 */
 	public static function convert(text:String):String {
 		if (text == null || text.length == 0) return text;
-		if (text.indexOf("%{") < 0) return text;
+		if (text.indexOf("[") < 0) return text;
 
 		var buf = new StringBuf();
 		var tagStack:Array<String> = [];
@@ -32,19 +32,19 @@ class TextMarkupConverter {
 
 		while (i < len) {
 			var ch = text.charCodeAt(i);
-			if (ch == "%".code && i + 1 < len && text.charCodeAt(i + 1) == "%".code && i + 2 < len && text.charCodeAt(i + 2) == "{".code) {
-				// %%{ → literal %{
-				buf.add("%{");
-				i += 3;
-			} else if (ch == "%".code && i + 1 < len && text.charCodeAt(i + 1) == "{".code) {
-				var closeIdx = text.indexOf("}", i + 2);
+			if (ch == "[".code && i + 1 < len && text.charCodeAt(i + 1) == "[".code) {
+				// [[ → literal [
+				buf.add("[");
+				i += 2;
+			} else if (ch == "[".code) {
+				var closeIdx = text.indexOf("]", i + 1);
 				if (closeIdx < 0) {
 					buf.addChar(ch);
 					i++;
 					continue;
 				}
 
-				var tag = text.substring(i + 2, closeIdx);
+				var tag = text.substring(i + 1, closeIdx);
 
 				if (tag == "/") {
 					if (tagStack.length > 0) {
@@ -75,13 +75,17 @@ class TextMarkupConverter {
 					buf.add('">');
 					tagStack.push("a");
 					i = closeIdx + 1;
-				} else {
-					// Named style: %{damage} → <damage>
+				} else if (isValidStyleName(tag)) {
+					// Named style: [damage] → <damage>
 					buf.add("<");
 					buf.add(tag);
 					buf.add(">");
 					tagStack.push(tag);
 					i = closeIdx + 1;
+				} else {
+					// Not a recognized tag — emit literal [tag]
+					buf.addChar(ch);
+					i++;
 				}
 			} else {
 				buf.addChar(ch);
@@ -92,52 +96,63 @@ class TextMarkupConverter {
 		return buf.toString();
 	}
 
-	/** Check if a text string contains any %{markup} patterns. */
+	/**
+	 * Check if a text string contains any [markup] patterns.
+	 * To avoid false positives from natural text like "[red]" or "[note]",
+	 * standalone [styleName] only counts as markup if there's also a [/] close tag.
+	 * Self-closing tags ([img:], [align:], [link:]) are detected independently.
+	 */
 	public static function hasMarkup(text:String):Bool {
 		if (text == null) return false;
-		var idx = text.indexOf("%{");
-		while (idx >= 0 && idx + 2 < text.length) {
-			// Skip %%{ escape sequences
-			if (idx > 0 && text.charCodeAt(idx - 1) == "%".code) {
-				idx = text.indexOf("%{", idx + 1);
+		if (text.indexOf("[") < 0) return false;
+
+		// Quick checks for definitive markup indicators
+		var hasCloseTag = text.indexOf("[/]") >= 0;
+		var hasSpecial = false;
+		var idx = text.indexOf("[");
+		while (idx >= 0 && idx + 1 < text.length) {
+			// Skip [[ escape sequences
+			if (text.charCodeAt(idx + 1) == "[".code) {
+				idx = text.indexOf("[", idx + 2);
 				continue;
 			}
-			var closeIdx = text.indexOf("}", idx + 2);
-			if (closeIdx > idx + 2) {
-				var tag = text.substring(idx + 2, closeIdx);
-				if (tag == "/" || StringTools.startsWith(tag, "img:")
-					|| StringTools.startsWith(tag, "align:") || StringTools.startsWith(tag, "link:") || isValidStyleName(tag)) {
-					return true;
+			var closeIdx = text.indexOf("]", idx + 1);
+			if (closeIdx > idx + 1) {
+				var tag = text.substring(idx + 1, closeIdx);
+				if (StringTools.startsWith(tag, "img:") || StringTools.startsWith(tag, "align:")
+					|| StringTools.startsWith(tag, "link:")) {
+					hasSpecial = true;
+					break;
 				}
 			}
-			idx = text.indexOf("%{", idx + 1);
+			idx = text.indexOf("[", idx + 1);
 		}
-		return false;
+		return hasCloseTag || hasSpecial;
 	}
 
 	/**
-	 * Extract all %{styleName} references from text (not img:, align:, link:).
+	 * Extract all [styleName] references from text (not img:, align:, link:).
 	 * Used for parse-time validation against defined styles.
 	 */
 	public static function extractStyleReferences(text:String):Array<String> {
 		var refs:Array<String> = [];
 		if (text == null) return refs;
-		var idx = text.indexOf("%{");
-		while (idx >= 0 && idx + 2 < text.length) {
-			// Skip %%{ escape sequences
-			if (idx > 0 && text.charCodeAt(idx - 1) == "%".code) {
-				idx = text.indexOf("%{", idx + 1);
+		var idx = text.indexOf("[");
+		while (idx >= 0 && idx + 1 < text.length) {
+			// Skip [[ escape sequences
+			if (idx + 1 < text.length && text.charCodeAt(idx + 1) == "[".code) {
+				idx = text.indexOf("[", idx + 2);
 				continue;
 			}
-			var closeIdx = text.indexOf("}", idx + 2);
-			if (closeIdx > idx + 2) {
-				var tag = text.substring(idx + 2, closeIdx);
+			var closeIdx = text.indexOf("]", idx + 1);
+			if (closeIdx > idx + 1) {
+				var tag = text.substring(idx + 1, closeIdx);
 				if (tag != "/" && !StringTools.startsWith(tag, "img:")
 					&& !StringTools.startsWith(tag, "align:") && !StringTools.startsWith(tag, "link:") && isValidStyleName(tag)) {
 					refs.push(tag);
 				}
 			}
-			idx = text.indexOf("%{", closeIdx > idx ? closeIdx : idx + 1);
+			idx = text.indexOf("[", closeIdx > idx ? closeIdx : idx + 1);
 		}
 		return refs;
 	}
@@ -174,7 +189,10 @@ class TextMarkupConverter {
 
 	static function isValidStyleName(name:String):Bool {
 		if (name.length == 0) return false;
-		for (i in 0...name.length) {
+		// First character must be a letter or underscore (not a digit)
+		var first = name.charCodeAt(0);
+		if (!((first >= "a".code && first <= "z".code) || (first >= "A".code && first <= "Z".code) || first == "_".code)) return false;
+		for (i in 1...name.length) {
 			var c = name.charCodeAt(i);
 			if (!((c >= "a".code && c <= "z".code) || (c >= "A".code && c <= "Z".code) || (c >= "0".code && c <= "9".code) || c == "_".code)) {
 				return false;
