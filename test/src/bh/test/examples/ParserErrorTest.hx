@@ -2,6 +2,9 @@ package bh.test.examples;
 
 import utest.Assert;
 import bh.multianim.MultiAnimParser;
+import bh.multianim.MultiAnimParser.MultiAnimResult;
+import bh.multianim.MultiAnimParser.NodeType;
+import bh.multianim.MultiAnimParser.NodeConditionalValues;
 
 /**
  * Non-visual tests that parse invalid .manim files and assert on parser errors.
@@ -50,6 +53,21 @@ class ParserErrorTest extends utest.Test {
 		} catch (e:Dynamic) {
 			trace('Unexpected parse error: $e');
 			return false;
+		}
+	}
+
+	/**
+	 * Helper: parse a .manim string and return the parsed result for AST inspection.
+	 */
+	static function parseExpectingResult(manimSource:String):MultiAnimResult {
+		try {
+			var source = 'version: 0.5\n$manimSource';
+			var input = byte.ByteData.ofString(source);
+			var loader = new bh.base.ResourceLoader.CachingResourceLoader();
+			return MultiAnimParser.parseFile(input, "test-input", loader);
+		} catch (e:Dynamic) {
+			trace('Unexpected parse error: $e');
+			return null;
 		}
 	}
 
@@ -115,22 +133,28 @@ class ParserErrorTest extends utest.Test {
 			}
 		');
 		Assert.notNull(error, "Should throw error for @else on root element");
+		Assert.stringContains("root", error);
 	}
 
 	@Test
 	public function testValidElseAfterConditional() {
-		var success = parseExpectingSuccess('
+		var result = parseExpectingResult('
 			#test programmable(mode:[on,off]=on) {
 				@(mode=>on) bitmap(generated(color(10, 10, #f00))): 0,0
 				@else bitmap(generated(color(10, 10, #f00))): 0,10
 			}
 		');
-		Assert.isTrue(success, "Valid @else after conditional should parse successfully");
+		Assert.notNull(result, "Valid @else after conditional should parse successfully");
+		var node = result.nodes.get("test");
+		Assert.notNull(node);
+		Assert.equals(2, node.children.length);
+		Assert.isTrue(node.children[0].conditionals.match(Conditional(_, _)), "first child should have @() conditional");
+		Assert.isTrue(node.children[1].conditionals.match(ConditionalElse(_)), "second child should have @else conditional");
 	}
 
 	@Test
 	public function testValidElseIfChain() {
-		var success = parseExpectingSuccess('
+		var result = parseExpectingResult('
 			#test programmable(level:uint=1) {
 				@(level=>0) bitmap(generated(color(10, 10, #f00))): 0,0
 				@else(level=>1) bitmap(generated(color(10, 10, #f00))): 0,10
@@ -138,19 +162,30 @@ class ParserErrorTest extends utest.Test {
 				@else bitmap(generated(color(10, 10, #f00))): 0,30
 			}
 		');
-		Assert.isTrue(success, "Valid else-if chain should parse successfully");
+		Assert.notNull(result, "Valid else-if chain should parse successfully");
+		var node = result.nodes.get("test");
+		Assert.notNull(node);
+		Assert.equals(4, node.children.length);
+		Assert.isTrue(node.children[0].conditionals.match(Conditional(_, _)), "first should be @()");
+		Assert.isTrue(node.children[1].conditionals.match(ConditionalElse(_)), "second should be @else()");
+		Assert.isTrue(node.children[2].conditionals.match(ConditionalElse(_)), "third should be @else()");
+		Assert.isTrue(node.children[3].conditionals.match(ConditionalElse(_)), "fourth should be @else");
 	}
 
 	@Test
 	public function testValidDefaultAfterConditionals() {
-		var success = parseExpectingSuccess('
+		var result = parseExpectingResult('
 			#test programmable(mode:[idle,hover,pressed,disabled]=idle) {
 				@(mode=>idle) bitmap(generated(color(10, 10, #f00))): 0,0
 				@(mode=>hover) bitmap(generated(color(10, 10, #f00))): 0,10
 				@default bitmap(generated(color(10, 10, #f00))): 0,20
 			}
 		');
-		Assert.isTrue(success, "Valid @default after conditionals should parse successfully");
+		Assert.notNull(result, "Valid @default after conditionals should parse successfully");
+		var node = result.nodes.get("test");
+		Assert.notNull(node);
+		Assert.equals(3, node.children.length);
+		Assert.isTrue(node.children[2].conditionals.match(ConditionalDefault), "third child should be @default");
 	}
 
 	// ===== Conditional parameter validation tests =====
@@ -197,6 +232,7 @@ class ParserErrorTest extends utest.Test {
 				bitmap(generated(color(10, 10, #f00))): 0,0
 		');
 		Assert.notNull(error, "Should throw error for unclosed brace");
+		Assert.stringContains("end of file", error);
 	}
 
 	@Test
@@ -206,6 +242,8 @@ class ParserErrorTest extends utest.Test {
 			}
 		');
 		Assert.notNull(error, "Should throw error for missing # element name");
+		Assert.isTrue(error.indexOf("programmable requires a #name prefix") >= 0,
+			'Error should mention missing #name prefix, got: $error');
 	}
 
 	@Test
@@ -251,6 +289,7 @@ class ParserErrorTest extends utest.Test {
 			}
 		');
 		Assert.notNull(error, "Should throw error for bare @ without conditional or inline property");
+		Assert.stringContains("after @", error);
 	}
 
 	// ===== Nested conditional tests (valid) =====
@@ -687,14 +726,17 @@ class ParserErrorTest extends utest.Test {
 
 	@Test
 	public function testDataParseSuccess() {
-		var success = parseExpectingSuccess('
+		var result = parseExpectingResult('
 			#test data {
 				maxLevel: 5
 				name: "Warrior"
 				costs: [10, 20, 40, 80]
 			}
 		');
-		Assert.isTrue(success, "Simple data block should parse successfully");
+		Assert.notNull(result, "Simple data block should parse successfully");
+		var node = result.nodes.get("test");
+		Assert.notNull(node);
+		Assert.isTrue(node.type.match(DATA(_)), "should be DATA node");
 	}
 
 	@Test
@@ -1588,17 +1630,23 @@ class ParserErrorTest extends utest.Test {
 			}
 		');
 		Assert.notNull(error, "Should throw error for ctx as parameter name");
+		Assert.stringContains("reserved", error);
 	}
 
 	@Test
 	public function testGridPosParseSuccess() {
-		var success = parseExpectingSuccess('
+		var result = parseExpectingResult('
 			#test programmable(n:uint=0) {
 				grid: 20, 20
 				bitmap(generated(color(10, 10, #f00))): $$grid.pos($$n, 0)
 			}
 		');
-		Assert.isTrue(success, "grid.pos() coordinate should parse");
+		Assert.notNull(result, "grid.pos() coordinate should parse");
+		var node = result.nodes.get("test");
+		Assert.notNull(node);
+		Assert.isTrue(node.type.match(PROGRAMMABLE(_, _, _)), "should be PROGRAMMABLE");
+		Assert.equals(1, node.children.length);
+		Assert.isTrue(node.children[0].type.match(BITMAP(_, _, _)), "child should be BITMAP");
 	}
 
 	@Test
@@ -1625,13 +1673,18 @@ class ParserErrorTest extends utest.Test {
 
 	@Test
 	public function testHexCubeParseSuccess() {
-		var success = parseExpectingSuccess('
+		var result = parseExpectingResult('
 			#test programmable(n:uint=0) {
 				hex: pointy(16, 16)
 				bitmap(generated(color(10, 10, #f00))): $$hex.cube(0, 0, 0)
 			}
 		');
-		Assert.isTrue(success, "hex.cube() coordinate should parse");
+		Assert.notNull(result, "hex.cube() coordinate should parse");
+		var node = result.nodes.get("test");
+		Assert.notNull(node);
+		Assert.isTrue(node.type.match(PROGRAMMABLE(_, _, _)), "should be PROGRAMMABLE");
+		Assert.equals(1, node.children.length);
+		Assert.isTrue(node.children[0].type.match(BITMAP(_, _, _)), "child should be BITMAP");
 	}
 
 	@Test
@@ -2023,6 +2076,7 @@ class ParserErrorTest extends utest.Test {
 
 	// ===== .offset(x, y) suffix tests =====
 
+	@Test
 	public function testOffsetOnLayout() {
 		var success = parseExpectingSuccess("
 			layouts {
@@ -2035,6 +2089,7 @@ class ParserErrorTest extends utest.Test {
 		Assert.isTrue(success, "layout().offset() should parse successfully");
 	}
 
+	@Test
 	public function testOffsetOnGridPos() {
 		var success = parseExpectingSuccess("
 			#test programmable() {
@@ -2045,6 +2100,7 @@ class ParserErrorTest extends utest.Test {
 		Assert.isTrue(success, "grid.pos().offset() should parse successfully");
 	}
 
+	@Test
 	public function testOffsetInvalidSuffix() {
 		var error = parseExpectingError("
 			layouts {
@@ -2224,6 +2280,7 @@ class ParserErrorTest extends utest.Test {
 			}
 		');
 		Assert.notNull(error, "Should throw error for unexpected token in flow parameters");
+		Assert.stringContains("unexpected token", error);
 	}
 
 	@Test
@@ -2592,6 +2649,7 @@ class ParserErrorTest extends utest.Test {
 			}
 		');
 		Assert.notNull(error, "Should throw error for non-numeric in numeric position");
+		Assert.stringContains("expected integer", error);
 	}
 
 	@Test
@@ -2603,6 +2661,7 @@ class ParserErrorTest extends utest.Test {
 			}
 		');
 		Assert.notNull(error, "Should throw error for ternary missing colon/false branch");
+		Assert.stringContains("Colon", error);
 	}
 
 	@Test
@@ -2613,6 +2672,7 @@ class ParserErrorTest extends utest.Test {
 			}
 		');
 		Assert.notNull(error, "Should throw error for incomplete arithmetic (trailing +)");
+		Assert.stringContains("expected", error);
 	}
 
 	@Test
@@ -2626,6 +2686,7 @@ class ParserErrorTest extends utest.Test {
 			}
 		');
 		Assert.notNull(error, "Should throw error for unary minus without value in float context");
+		Assert.stringContains("unary minus", error);
 	}
 
 	// ==================== Invalid type tests ====================
@@ -2638,6 +2699,7 @@ class ParserErrorTest extends utest.Test {
 			}
 		');
 		Assert.notNull(error, "Should throw error for invalid color format");
+		Assert.stringContains("Invalid color", error);
 	}
 
 	@Test
@@ -2883,6 +2945,7 @@ class ParserErrorTest extends utest.Test {
 			}
 		');
 		Assert.notNull(error, "Should throw error for style with no color() or font()");
+		Assert.stringContains("color()", error);
 	}
 
 	@Test
@@ -3008,6 +3071,7 @@ class ParserErrorTest extends utest.Test {
 			}
 		');
 		Assert.notNull(error, "Should throw error for bracket syntax on styles");
+		Assert.stringContains("expected", error);
 	}
 
 	@Test
@@ -3019,6 +3083,7 @@ class ParserErrorTest extends utest.Test {
 			}
 		');
 		Assert.notNull(error, "Should throw error for old style syntax (bare color without color())");
+		Assert.stringContains("color()", error);
 	}
 
 	@Test
@@ -3030,5 +3095,70 @@ class ParserErrorTest extends utest.Test {
 			}
 		');
 		Assert.isTrue(success, "styles with color() function should parse");
+	}
+
+	// ===== Coordinate system negative tests =====
+
+	@Test
+	public function testGridUnknownMethod() {
+		var error = parseExpectingError('
+			#test programmable() {
+				grid: 20, 20
+				bitmap(generated(color(10, 10, #f00))): $$grid.invalid(0, 0)
+			}
+		');
+		Assert.notNull(error, "Should throw error for unknown grid method");
+		Assert.stringContains("Unknown grid method", error);
+	}
+
+	@Test
+	public function testHexUnknownMethod() {
+		var error = parseExpectingError('
+			#test programmable() {
+				hex: pointy(16, 16)
+				bitmap(generated(color(10, 10, #f00))): $$hex.invalid(0, 0)
+			}
+		');
+		Assert.notNull(error, "Should throw error for unknown hex method");
+		Assert.stringContains("Unknown hex method", error);
+	}
+
+	@Test
+	public function testUnknownCoordinateSystem() {
+		var error = parseExpectingError('
+			#test programmable() {
+				bitmap(generated(color(10, 10, #f00))): $$unknown.pos(0, 0)
+			}
+		');
+		Assert.notNull(error, "Should throw error for unknown coordinate system");
+	}
+
+	@Test
+	public function testGridNotOnRoot() {
+		var error = parseExpectingError('
+			grid: 20, 20
+		');
+		Assert.notNull(error, "Should throw error for grid on root level");
+		Assert.stringContains("grid not supported on root", error);
+	}
+
+	@Test
+	public function testHexNotOnRoot() {
+		var error = parseExpectingError('
+			hex: pointy(16, 16)
+		');
+		Assert.notNull(error, "Should throw error for hex on root level");
+		Assert.stringContains("hex not supported on root", error);
+	}
+
+	@Test
+	public function testUnknownHexChainMethod() {
+		var error = parseExpectingError('
+			#test programmable() {
+				hex: pointy(16, 16)
+				bitmap(generated(color(10, 10, #f00))): $$hex.cube(1, 0, -1).invalid(0, 1)
+			}
+		');
+		Assert.notNull(error, "Should throw error for unknown hex chain method");
 	}
 }

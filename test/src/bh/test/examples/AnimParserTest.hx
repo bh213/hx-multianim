@@ -3,6 +3,7 @@ package bh.test.examples;
 import utest.Assert;
 import bh.stateanim.AnimParser;
 import bh.stateanim.AnimParser.AnimMetadata;
+import bh.stateanim.AnimParser.AnimParserResult;
 import bh.stateanim.AnimationSM.AnimationFrameState;
 import bh.stateanim.AnimationSM.AnimationPlaylistEvent;
 
@@ -178,15 +179,14 @@ class AnimParserTest extends utest.Test {
 
 	// ===== .anim parse integration tests =====
 
-	static function parseAnimExpectingSuccess(animSource:String):Bool {
+	static function parseAnimExpectingSuccess(animSource:String):AnimParserResult {
 		try {
 			var input = byte.ByteData.ofString(animSource);
 			var loader = new bh.base.ResourceLoader.CachingResourceLoader();
-			AnimParser.parseFile(input, "test-input", loader);
-			return true;
+			return AnimParser.parseFile(input, "test-input", loader);
 		} catch (e:Dynamic) {
 			trace('Unexpected parse error: $e');
-			return false;
+			return null;
 		}
 	}
 
@@ -203,7 +203,7 @@ class AnimParserTest extends utest.Test {
 
 	@Test
 	public function testParseBasicConditional() {
-		var success = parseAnimExpectingSuccess('
+		var result = parseAnimExpectingSuccess('
 sheet: testSheet
 states: direction(l, r)
 animation @(direction=>l) {
@@ -223,13 +223,16 @@ animation @(direction=>r) {
     }
 }
 ');
-		Assert.isTrue(success, "Basic @(state=>value) conditional should parse");
+		Assert.notNull(result, "Basic @(state=>value) conditional should parse");
+		Assert.notNull(result.definedStates);
+		Assert.notNull(result.definedStates["direction"]);
+		Assert.equals(2, result.definedStates["direction"].length);
 	}
 
 	@Test
 	public function testParseNotEqualsConditional() {
 		// @(direction != l) matches direction=r
-		var success = parseAnimExpectingSuccess('
+		var result = parseAnimExpectingSuccess('
 sheet: testSheet
 states: direction(l, r)
 allowedExtraPoints: [fire]
@@ -246,12 +249,14 @@ animation {
     }
 }
 ');
-		Assert.isTrue(success, "@(state != value) negation should parse");
+		Assert.notNull(result, "@(state != value) negation should parse");
+		Assert.notNull(result.definedStates);
+		Assert.notNull(result.definedStates["direction"]);
 	}
 
 	@Test
 	public function testParseMultiValueConditional() {
-		var success = parseAnimExpectingSuccess('
+		var result = parseAnimExpectingSuccess('
 sheet: testSheet
 states: direction(l, r, u, d)
 animation @(direction=>[l,r]) {
@@ -271,12 +276,14 @@ animation @(direction=>[u,d]) {
     }
 }
 ');
-		Assert.isTrue(success, "@(state=>[v1,v2]) multi-value should parse");
+		Assert.notNull(result, "@(state=>[v1,v2]) multi-value should parse");
+		Assert.notNull(result.definedStates["direction"]);
+		Assert.equals(4, result.definedStates["direction"].length);
 	}
 
 	@Test
 	public function testParseNotEqualsMultiValueConditional() {
-		var success = parseAnimExpectingSuccess('
+		var result = parseAnimExpectingSuccess('
 sheet: testSheet
 states: direction(l, r, u, d)
 animation @(direction != [u,d]) {
@@ -296,12 +303,13 @@ animation @(direction=>[u,d]) {
     }
 }
 ');
-		Assert.isTrue(success, "@(state != [v1,v2]) negated multi-value should parse");
+		Assert.notNull(result, "@(state != [v1,v2]) negated multi-value should parse");
+		Assert.notNull(result.definedStates["direction"]);
 	}
 
 	@Test
 	public function testParseNotEqualsInMetadata() {
-		var success = parseAnimExpectingSuccess('
+		var result = parseAnimExpectingSuccess('
 sheet: testSheet
 states: direction(l, r)
 metadata {
@@ -317,7 +325,10 @@ animation {
     }
 }
 ');
-		Assert.isTrue(success, "@(state != value) should work in metadata");
+		Assert.notNull(result, "@(state != value) should work in metadata");
+		Assert.notNull(result.metadata);
+		Assert.equals(-5, result.metadata.getIntOrDefault("offsetX", 0, ["direction" => "l"]));
+		Assert.equals(5, result.metadata.getIntOrDefault("offsetX", 0, ["direction" => "r"]));
 	}
 
 	@Test
@@ -358,7 +369,7 @@ animation @(direction=>[l,x]) {
 
 	@Test
 	public function testParseComparisonConditional() {
-		var success = parseAnimExpectingSuccess('
+		var result = parseAnimExpectingSuccess('
 sheet: testSheet
 states: level(1, 2, 3, 4, 5)
 animation @(level >= 3) {
@@ -378,12 +389,14 @@ animation @(level < 3) {
     }
 }
 ');
-		Assert.isTrue(success, "@(state >= N) comparison should parse");
+		Assert.notNull(result, "@(state >= N) comparison should parse");
+		Assert.notNull(result.definedStates["level"]);
+		Assert.equals(5, result.definedStates["level"].length);
 	}
 
 	@Test
 	public function testParseRangeConditional() {
-		var success = parseAnimExpectingSuccess('
+		var result = parseAnimExpectingSuccess('
 sheet: testSheet
 states: level(1, 2, 3, 4, 5)
 animation @(level => 1..2) {
@@ -403,12 +416,13 @@ animation @(level => 3..5) {
     }
 }
 ');
-		Assert.isTrue(success, "@(state => 1..5) range should parse");
+		Assert.notNull(result, "@(state => 1..5) range should parse");
+		Assert.notNull(result.definedStates["level"]);
 	}
 
 	@Test
 	public function testParseMetadataWithTypes() {
-		var success = parseAnimExpectingSuccess('
+		var result = parseAnimExpectingSuccess('
 sheet: testSheet
 metadata {
     offsetX: 10
@@ -425,7 +439,11 @@ animation {
     }
 }
 ');
-		Assert.isTrue(success, "Metadata with int, float, string, color should parse");
+		Assert.notNull(result, "Metadata with int, float, string, color should parse");
+		Assert.notNull(result.metadata);
+		Assert.equals(10, result.metadata.getIntOrDefault("offsetX", 0));
+		Assert.floatEquals(1.5, result.metadata.getFloatOrDefault("speed", 0.0));
+		Assert.equals("hello", result.metadata.getStringOrDefault("label", ""));
 	}
 
 	@Test
@@ -458,7 +476,7 @@ animation {
 
 	@Test
 	public function testParseHeaderName() {
-		var success = parseAnimExpectingSuccess('
+		var result = parseAnimExpectingSuccess('
 sheet: testSheet
 animation idle {
     fps: 4
@@ -468,12 +486,12 @@ animation idle {
     }
 }
 ');
-		Assert.isTrue(success, "Animation with header name should parse");
+		Assert.notNull(result, "Animation with header name should parse");
 	}
 
 	@Test
 	public function testParseCenter() {
-		var success = parseAnimExpectingSuccess('
+		var result = parseAnimExpectingSuccess('
 sheet: testSheet
 center: 32, 48
 animation {
@@ -485,12 +503,12 @@ animation {
     }
 }
 ');
-		Assert.isTrue(success, "center: x,y should parse");
+		Assert.notNull(result, "center: x,y should parse");
 	}
 
 	@Test
 	public function testParseFileLevelDefaults() {
-		var success = parseAnimExpectingSuccess('
+		var result = parseAnimExpectingSuccess('
 sheet: testSheet
 fps: 10
 loop: yes
@@ -507,12 +525,12 @@ animation {
     }
 }
 ');
-		Assert.isTrue(success, "File-level fps/loop defaults should parse");
+		Assert.notNull(result, "File-level fps/loop defaults should parse");
 	}
 
 	@Test
 	public function testParseLoopCount() {
-		var success = parseAnimExpectingSuccess('
+		var result = parseAnimExpectingSuccess('
 sheet: testSheet
 animation {
     name: idle
@@ -523,12 +541,12 @@ animation {
     }
 }
 ');
-		Assert.isTrue(success, "loop: N should parse");
+		Assert.notNull(result, "loop: N should parse");
 	}
 
 	@Test
 	public function testParsePlaylistFrameRange() {
-		var success = parseAnimExpectingSuccess('
+		var result = parseAnimExpectingSuccess('
 sheet: testSheet
 animation {
     name: dodge
@@ -538,13 +556,13 @@ animation {
     }
 }
 ');
-		Assert.isTrue(success, "playlist with frames: range should parse");
+		Assert.notNull(result, "playlist with frames: range should parse");
 	}
 
 	@Test
 	public function testParseEventTrigger() {
 		// Bare trigger: just "event <name>" (no keyword after name)
-		var success = parseAnimExpectingSuccess('
+		var result = parseAnimExpectingSuccess('
 sheet: testSheet
 animation {
     name: hit
@@ -556,12 +574,12 @@ animation {
     }
 }
 ');
-		Assert.isTrue(success, "event trigger should parse");
+		Assert.notNull(result, "event trigger should parse");
 	}
 
 	@Test
 	public function testParseEventRandomPoint() {
-		var success = parseAnimExpectingSuccess('
+		var result = parseAnimExpectingSuccess('
 sheet: testSheet
 animation {
     name: hit
@@ -573,12 +591,12 @@ animation {
     }
 }
 ');
-		Assert.isTrue(success, "event random with point and radius should parse");
+		Assert.notNull(result, "event random with point and radius should parse");
 	}
 
 	@Test
 	public function testParseEventPoint() {
-		var success = parseAnimExpectingSuccess('
+		var result = parseAnimExpectingSuccess('
 sheet: testSheet
 animation {
     name: fire
@@ -589,12 +607,12 @@ animation {
     }
 }
 ');
-		Assert.isTrue(success, "event with point should parse");
+		Assert.notNull(result, "event with point should parse");
 	}
 
 	@Test
 	public function testParseElseConditionalInExtrapoints() {
-		var success = parseAnimExpectingSuccess('
+		var result = parseAnimExpectingSuccess('
 sheet: testSheet
 states: direction(l, r)
 allowedExtraPoints: [fire]
@@ -611,24 +629,25 @@ animation {
     }
 }
 ');
-		Assert.isTrue(success, "@else in extrapoints should parse");
+		Assert.notNull(result, "@else in extrapoints should parse");
+		Assert.notNull(result.definedStates["direction"]);
 	}
 
 	@Test
 	public function testParseAnimShorthand() {
-		var success = parseAnimExpectingSuccess('
+		var result = parseAnimExpectingSuccess('
 sheet: testSheet
 fps: 10
 anim idle(loop: yes): "test_idle"
 anim walk: "test_walk"
 anim hit(fps: 20, loop: 2): "test_hit"
 ');
-		Assert.isTrue(success, "anim shorthand should parse");
+		Assert.notNull(result, "anim shorthand should parse");
 	}
 
 	@Test
 	public function testParseFinalConstants() {
-		var success = parseAnimExpectingSuccess("
+		var result = parseAnimExpectingSuccess("
 sheet: testSheet
 @final OFFSET_X = 5
 @final OFFSET_Y = -10
@@ -645,12 +664,12 @@ animation {
     }
 }
 ");
-		Assert.isTrue(success, "@final constants should parse");
+		Assert.notNull(result, "@final constants should parse");
 	}
 
 	@Test
 	public function testParseStateInterpolation() {
-		var success = parseAnimExpectingSuccess("
+		var result = parseAnimExpectingSuccess("
 sheet: testSheet
 states: direction(l, r)
 animation {
@@ -662,7 +681,8 @@ animation {
     }
 }
 ");
-		Assert.isTrue(success, "state interpolation in sheet names should parse");
+		Assert.notNull(result, "state interpolation in sheet names should parse");
+		Assert.notNull(result.definedStates["direction"]);
 	}
 
 	// ===== Additional .anim parse negative tests =====

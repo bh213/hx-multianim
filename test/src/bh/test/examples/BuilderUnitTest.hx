@@ -825,6 +825,114 @@ class BuilderUnitTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testConditionalRangeBoundaryLower():Void {
+		// Test exact lower boundary: value=0 should match @(value => 0..25)
+		final params = new Map<String, Dynamic>();
+		params.set("value", 0);
+		final result = buildFromSource("
+			#test programmable(value:0..100=0) {
+				@(value => 0..25) bitmap(generated(color(10, 10, #f00))): 0, 0
+				@(value => 26..50) bitmap(generated(color(20, 10, #0f0))): 0, 0
+				@(value => 51..75) bitmap(generated(color(30, 10, #00f))): 0, 0
+				@(value > 75) bitmap(generated(color(40, 10, #ff0))): 0, 0
+			}
+		", "test", params);
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testConditionalRangeBoundaryUpper():Void {
+		// Test exact upper boundary: value=25 should match @(value => 0..25)
+		final params = new Map<String, Dynamic>();
+		params.set("value", 25);
+		final result = buildFromSource("
+			#test programmable(value:0..100=0) {
+				@(value => 0..25) bitmap(generated(color(10, 10, #f00))): 0, 0
+				@(value => 26..50) bitmap(generated(color(20, 10, #0f0))): 0, 0
+				@(value => 51..75) bitmap(generated(color(30, 10, #00f))): 0, 0
+				@(value > 75) bitmap(generated(color(40, 10, #ff0))): 0, 0
+			}
+		", "test", params);
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testConditionalRangeBoundaryTransition():Void {
+		// Test boundary transition: value=26 should match @(value => 26..50), not 0..25
+		final params = new Map<String, Dynamic>();
+		params.set("value", 26);
+		final result = buildFromSource("
+			#test programmable(value:0..100=0) {
+				@(value => 0..25) bitmap(generated(color(10, 10, #f00))): 0, 0
+				@(value => 26..50) bitmap(generated(color(20, 10, #0f0))): 0, 0
+				@(value => 51..75) bitmap(generated(color(30, 10, #00f))): 0, 0
+				@(value > 75) bitmap(generated(color(40, 10, #ff0))): 0, 0
+			}
+		", "test", params);
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(20, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testConditionalRangeBoundaryExact50():Void {
+		// Test exact boundary: value=50 should match @(value => 26..50)
+		final params = new Map<String, Dynamic>();
+		params.set("value", 50);
+		final result = buildFromSource("
+			#test programmable(value:0..100=0) {
+				@(value => 0..25) bitmap(generated(color(10, 10, #f00))): 0, 0
+				@(value => 26..50) bitmap(generated(color(20, 10, #0f0))): 0, 0
+				@(value => 51..75) bitmap(generated(color(30, 10, #00f))): 0, 0
+				@(value > 75) bitmap(generated(color(40, 10, #ff0))): 0, 0
+			}
+		", "test", params);
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(20, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testConditionalRangeBoundaryExact51():Void {
+		// Test transition: value=51 should match @(value => 51..75)
+		final params = new Map<String, Dynamic>();
+		params.set("value", 51);
+		final result = buildFromSource("
+			#test programmable(value:0..100=0) {
+				@(value => 0..25) bitmap(generated(color(10, 10, #f00))): 0, 0
+				@(value => 26..50) bitmap(generated(color(20, 10, #0f0))): 0, 0
+				@(value => 51..75) bitmap(generated(color(30, 10, #00f))): 0, 0
+				@(value > 75) bitmap(generated(color(40, 10, #ff0))): 0, 0
+			}
+		", "test", params);
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(30, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testConditionalRangeBoundaryExact75():Void {
+		// Test upper boundary: value=75 should match @(value => 51..75)
+		final params = new Map<String, Dynamic>();
+		params.set("value", 75);
+		final result = buildFromSource("
+			#test programmable(value:0..100=0) {
+				@(value => 0..25) bitmap(generated(color(10, 10, #f00))): 0, 0
+				@(value => 26..50) bitmap(generated(color(20, 10, #0f0))): 0, 0
+				@(value => 51..75) bitmap(generated(color(30, 10, #00f))): 0, 0
+				@(value > 75) bitmap(generated(color(40, 10, #ff0))): 0, 0
+			}
+		", "test", params);
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(30, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
 	public function testConditionalIfElseDefault():Void {
 		final params = new Map<String, Dynamic>();
 		params.set("value", 50);
@@ -989,10 +1097,17 @@ class BuilderUnitTest extends BuilderTestBase {
 			}
 		", "test", null, Incremental);
 		Assert.notNull(result, "Incremental build should succeed");
-		final bitmaps = findVisibleBitmapDescendants(result.object);
+		var bitmaps = findVisibleBitmapDescendants(result.object);
 		Assert.equals(1, bitmaps.length);
 		Assert.equals(30, Std.int(bitmaps[0].tile.width));
 		Assert.equals(20, Std.int(bitmaps[0].tile.height));
+
+		// Verify setParameter updates the generated bitmap
+		result.setParameter("x", 20);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(60, Std.int(bitmaps[0].tile.width));
+		Assert.equals(40, Std.int(bitmaps[0].tile.height));
 	}
 
 	@Test
@@ -1002,9 +1117,15 @@ class BuilderUnitTest extends BuilderTestBase {
 				bitmap(generated(color($x * 2 + 5, $x * 3 - 10, #f00))): 0, 0
 			}
 		", "test", null, Incremental);
-		final bitmaps = findVisibleBitmapDescendants(result.object);
+		var bitmaps = findVisibleBitmapDescendants(result.object);
 		Assert.equals(25, Std.int(bitmaps[0].tile.width));
 		Assert.equals(20, Std.int(bitmaps[0].tile.height));
+
+		// x=20: width=20*2+5=45, height=20*3-10=50
+		result.setParameter("x", 20);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(45, Std.int(bitmaps[0].tile.width));
+		Assert.equals(50, Std.int(bitmaps[0].tile.height));
 	}
 
 	@Test
@@ -1016,8 +1137,13 @@ class BuilderUnitTest extends BuilderTestBase {
 				text(dd, 'Value: ${value}', #fff): 0, 0
 			}
 		", "test", params, Incremental);
-		final texts = findAllTextDescendants(result.object);
+		var texts = findAllTextDescendants(result.object);
 		Assert.equals("Value: 42", texts[0].text);
+
+		// Verify setParameter updates interpolated text
+		result.setParameter("value", 99);
+		texts = findAllTextDescendants(result.object);
+		Assert.equals("Value: 99", texts[0].text);
 	}
 
 	@Test
@@ -1032,9 +1158,15 @@ class BuilderUnitTest extends BuilderTestBase {
 				@(value > 75) bitmap(generated(color(40, 10, #ff0))): 0, 0
 			}
 		", "test", params, Incremental);
-		final bitmaps = findVisibleBitmapDescendants(result.object);
+		var bitmaps = findVisibleBitmapDescendants(result.object);
 		Assert.equals(1, bitmaps.length);
 		Assert.equals(20, Std.int(bitmaps[0].tile.width));
+
+		// Switch to different range: value=60 → 51..75 branch (30px wide)
+		result.setParameter("value", 60);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(30, Std.int(bitmaps[0].tile.width));
 	}
 
 	@Test
@@ -1046,8 +1178,13 @@ class BuilderUnitTest extends BuilderTestBase {
 				text(dd, ?($value >= 50) \"HIGH\" : \"low\", #fff): 0, 0
 			}
 		", "test", params, Incremental);
-		final texts = findAllTextDescendants(result.object);
+		var texts = findAllTextDescendants(result.object);
 		Assert.equals("HIGH", texts[0].text);
+
+		// Switch to false branch: value=30 < 50
+		result.setParameter("value", 30);
+		texts = findAllTextDescendants(result.object);
+		Assert.equals("low", texts[0].text);
 	}
 
 	@Test
@@ -1061,8 +1198,13 @@ class BuilderUnitTest extends BuilderTestBase {
 				}
 			}
 		", "test", params, Incremental);
-		final bitmaps = findVisibleBitmapDescendants(result.object);
+		var bitmaps = findVisibleBitmapDescendants(result.object);
 		Assert.equals(4, bitmaps.length);
+
+		// Change to value=20 → 20 div 10 = 2 items
+		result.setParameter("value", 20);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(2, bitmaps.length);
 	}
 
 	@Test
@@ -1075,8 +1217,21 @@ class BuilderUnitTest extends BuilderTestBase {
 				text(dd, '${hp}/${maxHp}', #fff): 0, 0
 			}
 		", "test", params, Incremental);
-		final texts = findAllTextDescendants(result.object);
+		var texts = findAllTextDescendants(result.object);
 		Assert.equals("60/200", texts[0].text);
+
+		// Update one parameter
+		result.setParameter("hp", 80);
+		texts = findAllTextDescendants(result.object);
+		Assert.equals("80/200", texts[0].text);
+
+		// Batch update both
+		result.beginUpdate();
+		result.setParameter("hp", 150);
+		result.setParameter("maxHp", 300);
+		result.endUpdate();
+		texts = findAllTextDescendants(result.object);
+		Assert.equals("150/300", texts[0].text);
 	}
 
 	@Test
@@ -1088,7 +1243,14 @@ class BuilderUnitTest extends BuilderTestBase {
 				bitmap(generated(color($b, $a, #f00))): 0, 0
 			}
 		", "test", null, Incremental);
-		final bitmaps = findVisibleBitmapDescendants(result.object);
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(20, Std.int(bitmaps[0].tile.width));
+		Assert.equals(10, Std.int(bitmaps[0].tile.height));
+
+		// @final constants are immutable — they are computed once at build time
+		// setParameter("x") should not change @final-derived values
+		result.setParameter("x", 10);
+		bitmaps = findVisibleBitmapDescendants(result.object);
 		Assert.equals(20, Std.int(bitmaps[0].tile.width));
 		Assert.equals(10, Std.int(bitmaps[0].tile.height));
 	}
@@ -1273,10 +1435,9 @@ class BuilderUnitTest extends BuilderTestBase {
 		", "test");
 		final bitmaps = findVisibleBitmapDescendants(result.object);
 		Assert.equals(1, bitmaps.length);
-		// Position should not be at origin
-		final x = bitmaps[0].x;
-		final y = bitmaps[0].y;
-		Assert.isTrue(x != 0 || y != 0, "cube(1,-1,0) should not be at origin");
+		// cube(1,-1,0) pointy(16,16): x = (√3*1 + √3/2*(-1))*16 = √3/2*16 ≈ 13.856, y = (3/2*(-1))*16 = -24
+		Assert.floatEquals(13.856, bitmaps[0].x, 0.01);
+		Assert.floatEquals(-24.0, bitmaps[0].y, 0.01);
 	}
 
 	@Test
@@ -1290,12 +1451,12 @@ class BuilderUnitTest extends BuilderTestBase {
 		", "test");
 		final bitmaps = findVisibleBitmapDescendants(result.object);
 		Assert.equals(1, bitmaps.length);
-		// corner(0, 1.0) at pointy size 16 produces specific values
-		// The +50 offset ensures positive bitmap dimensions
+		// corner(0, 1.0) pointy(16,16): x = 16*cos(π/6) ≈ 13.856, y = 16*sin(π/6) ≈ 8.0
+		// +50 offset: w = Std.int(63.856) = 63, h = Std.int(~57.999) = 57 (IEEE 754 sin(π/6) < 0.5)
 		final w = Std.int(bitmaps[0].tile.width);
 		final h = Std.int(bitmaps[0].tile.height);
-		Assert.isTrue(w > 0, "corner .x + 50 should produce positive width, got: " + w);
-		Assert.isTrue(h > 0, "corner .y + 50 should produce positive height, got: " + h);
+		Assert.equals(63, w);
+		Assert.equals(57, h);
 	}
 
 	@Test
@@ -1309,10 +1470,12 @@ class BuilderUnitTest extends BuilderTestBase {
 		", "test");
 		final bitmaps = findVisibleBitmapDescendants(result.object);
 		Assert.equals(1, bitmaps.length);
+		// edge(0, 0.5): midpoint of corners 0,1 scaled by 0.5 → x ≈ 6.928, y = 0.0
+		// +50: w = Std.int(56.928) = 56, h = Std.int(50.0) = 50
 		final w = Std.int(bitmaps[0].tile.width);
 		final h = Std.int(bitmaps[0].tile.height);
-		Assert.isTrue(w > 0, "edge .x + 50 should produce positive width, got: " + w);
-		Assert.isTrue(h > 0, "edge .y + 50 should produce positive height, got: " + h);
+		Assert.equals(56, w);
+		Assert.equals(50, h);
 	}
 
 	@Test
@@ -1342,12 +1505,12 @@ class BuilderUnitTest extends BuilderTestBase {
 			}
 		", "test");
 		final bitmaps = findVisibleBitmapDescendants(result.object);
+		// cube(1,0,-1) pointy(16,16): x = √3*16 ≈ 27.713, y = 0.0
+		// +50: w = Std.int(77.713) = 77, h = Std.int(50.0) = 50
 		final w = Std.int(bitmaps[0].tile.width);
 		final h = Std.int(bitmaps[0].tile.height);
-		Assert.isTrue(w > 0, "cube(1,0,-1).x + 50 should be positive, got: " + w);
-		Assert.isTrue(h > 0, "cube(1,0,-1).y + 50 should be positive, got: " + h);
-		// cube(1,0,-1) moves right in pointy hex, so x should be > 50
-		Assert.isTrue(w > 50, "cube(1,0,-1).x should be positive, got value+50: " + w);
+		Assert.equals(77, w);
+		Assert.equals(50, h);
 	}
 
 	@Test
@@ -1361,8 +1524,9 @@ class BuilderUnitTest extends BuilderTestBase {
 		", "test");
 		final bitmaps = findVisibleBitmapDescendants(result.object);
 		Assert.equals(1, bitmaps.length);
-		final x = bitmaps[0].x;
-		Assert.isTrue(x != 0, "offset(1,0,even) should not be at x=0");
+		// offset(1, 0, even) → cube(1, -1, 0) → x ≈ 13.856, y = -24.0
+		Assert.floatEquals(13.856, bitmaps[0].x, 0.01);
+		Assert.floatEquals(-24.0, bitmaps[0].y, 0.01);
 	}
 
 	@Test
@@ -1398,7 +1562,9 @@ class BuilderUnitTest extends BuilderTestBase {
 		", "test");
 		final bitmaps = findVisibleBitmapDescendants(result.object);
 		Assert.equals(1, bitmaps.length);
-		Assert.isTrue(bitmaps[0].x != 0, "doubled(2,0) should not be at x=0");
+		// doubled(2, 0) → cube(2, -1, -1) → x = (3√3/2)*16 ≈ 41.569, y = -24.0
+		Assert.floatEquals(41.569, bitmaps[0].x, 0.01);
+		Assert.floatEquals(-24.0, bitmaps[0].y, 0.01);
 	}
 
 	@Test
@@ -1411,10 +1577,11 @@ class BuilderUnitTest extends BuilderTestBase {
 			}
 		", "test");
 		final bitmaps = findVisibleBitmapDescendants(result.object);
+		// hex(pointy, 16, 16): width = size.x = 16, height = size.y = 16
 		final w = Std.int(bitmaps[0].tile.width);
 		final h = Std.int(bitmaps[0].tile.height);
-		Assert.isTrue(w > 0, "hex.width should be positive, got: " + w);
-		Assert.isTrue(h > 0, "hex.height should be positive, got: " + h);
+		Assert.equals(16, w);
+		Assert.equals(16, h);
 	}
 
 	@Test
@@ -1981,10 +2148,11 @@ class BuilderUnitTest extends BuilderTestBase {
 		");
 		final ap = builder.createAnimatedPath("test");
 
-		ap.update(1.5);
+		// Test at t=1.75: first cycle 0→1 (1.0s), then reversed, 0.75s into reversed cycle
+		// PingPong rate = 1.0 - 0.75 = 0.25 (NOT 0.75 which non-pingPong loop would give)
+		ap.update(1.75);
 		final state = ap.getState();
-		// After first cycle (0→1), reversed, now 0.5s into reversed cycle → rate = 1.0 - 0.5 = 0.5
-		Assert.floatEquals(0.5, state.rate);
+		Assert.floatEquals(0.25, state.rate);
 		Assert.equals(1, state.cycle);
 	}
 
@@ -2315,9 +2483,11 @@ class BuilderUnitTest extends BuilderTestBase {
 		final g = findGraphicsChild(result.object);
 		Assert.notNull(g, "Should find h2d.Graphics child");
 
-		// setParameter should trigger clear+redraw without crashing
+		// setParameter should trigger clear+redraw
 		result.setParameter("val", 50);
-		Assert.pass();
+		final g2 = findGraphicsChild(result.object);
+		Assert.notNull(g2, "Graphics child should still exist after setParameter");
+		Assert.isTrue(g2.visible, "Graphics should be visible after redraw");
 	}
 
 	@Test
@@ -2361,7 +2531,9 @@ class BuilderUnitTest extends BuilderTestBase {
 		result.setParameter("val", 25);
 		result.setParameter("maxVal", 200);
 		result.endUpdate();
-		Assert.pass();
+		final g = findGraphicsChild(result.object);
+		Assert.notNull(g, "Graphics child should still exist after batch update");
+		Assert.isTrue(g.visible, "Graphics should be visible after batch update");
 	}
 
 	// ==================== Pixels actual pixel data verification ====================
@@ -2560,12 +2732,13 @@ class BuilderUnitTest extends BuilderTestBase {
 			}
 		", "parent", null, Incremental);
 		Assert.notNull(result);
+		Assert.isTrue(result.object.numChildren > 0, "Parent should have dynamicRef children");
 
 		// setParameter on parent should propagate to dynamicRef child
 		result.beginUpdate();
 		result.setParameter("hp", 50);
 		result.endUpdate();
-		Assert.pass();
+		Assert.isTrue(result.object.numChildren > 0, "Children should survive parameter propagation");
 	}
 
 	// ==================== Bool settings ====================
@@ -3698,9 +3871,11 @@ class BuilderUnitTest extends BuilderTestBase {
 		Assert.equals(1, texts.length);
 		Assert.isTrue(Std.isOfType(texts[0], h2d.HtmlText), "Dynamic style color should create HtmlText");
 
-		// Verify setParameter updates without error
+		// Verify setParameter updates without error and HtmlText still exists
 		result.setParameter("hlColor", 0xFF00FF00); // green
-		Assert.isTrue(true, "setParameter on style color should not throw");
+		final textsAfter = findAllTextDescendants(result.object);
+		Assert.equals(1, textsAfter.length);
+		Assert.isTrue(Std.isOfType(textsAfter[0], h2d.HtmlText), "Should still be HtmlText after color update");
 	}
 
 	@Test
