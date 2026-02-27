@@ -116,8 +116,8 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | `letterSpacing` | Space between characters |
 | `lineSpacing` | Space between lines |
 | `lineBreak` | Enable word wrapping |
-| `styles: {name: color "font", ...}` | Named text styles (color/`$param` and/or font per style) |
-| `images: [name tileSource, ...]` | Named inline images for `%{img:name}` markup |
+| `styles: {name: color(#hex) font("name"), ...}` | Named text styles with `color()` and/or `font()` wrappers |
+| `images: {name: tileSource, ...}` | Named inline images for `%{img:name}` markup (curly brace map) |
 | `condenseWhite: true` | Collapse whitespace in rich text |
 | `dropShadowXY` | Shadow offset (x, y) |
 | `dropShadowColor` | Shadow color |
@@ -136,24 +136,23 @@ Text strings support `%{tag}...%{/}` markup. When markup or `styles:`/`images:`/
 | Markup | Description |
 |--------|-------------|
 | `%{styleName}...%{/}` | Apply named style (defined in `styles:`) |
-| `%{c:#FF0000}...%{/}` | Inline color (hex) |
-| `%{c:red}...%{/}` | Inline color (named) |
-| `%{f:fontName}...%{/}` | Inline font switch |
 | `%{img:name}` | Inline image (self-closing, defined in `images:`) |
 | `%{align:center}...%{/}` | Paragraph alignment (`left`, `center`, `right`) |
 | `%{link:id}...%{/}` | Hyperlink (fires `callback("link:id")`) |
 | `%{/}` | Close most recently opened tag |
 | `%%{` | Literal `%{` (escape sequence) |
 
-**Style definitions:** Each style needs at least a color or font name. Colors accept `$param` references for incremental updates.
+**Style definitions:** Each style needs at least `color()` or `font()`. Both accept `$param` references for incremental updates.
 ```manim
-styles: {damage: #FF0000, gold: #FFD700 "boldFont", emphasis: "italicFont", highlight: $hlColor}
+styles: {damage: color(#FF0000), gold: color(#FFD700) font("boldFont"), emphasis: font("italicFont"), highlight: color($hlColor)}
 ```
 
-**Image definitions:** Reuses standard tile source syntax.
+**Image definitions:** Curly brace map with colon separators. Reuses standard tile source syntax.
 ```manim
-images: [coin generated(color(14, 14, #FFD700)), sword sheet("items", "sword_16")]
+images: {coin: generated(color(14, 14, #FFD700)), sword: sheet("items", "sword_16")}
 ```
+
+**Codegen setters:** For each style, `setStyleColor_<name>(color:Null<Int>)` and `setStyleFont_<name>(fontName:Null<String>)` are generated. For each image, `setImageTile_<name>(tile:h2d.Tile)` is generated.
 
 ---
 

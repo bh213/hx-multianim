@@ -2836,10 +2836,10 @@ class ParserErrorTest extends utest.Test {
 		var success = parseExpectingSuccess('
 			#test programmable() {
 				text(dd, "hello %{damage}world%{/}", white, left, 200,
-					styles: {damage: #FF0000}): 0, 0
+					styles: {damage: color(#FF0000)}): 0, 0
 			}
 		');
-		Assert.isTrue(success, "styles with color should parse");
+		Assert.isTrue(success, "styles with color() should parse");
 	}
 
 	@Test
@@ -2847,10 +2847,10 @@ class ParserErrorTest extends utest.Test {
 		var success = parseExpectingSuccess('
 			#test programmable() {
 				text(dd, "hello %{em}world%{/}", white, left, 200,
-					styles: {em: "dd"}): 0, 0
+					styles: {em: font("dd")}): 0, 0
 			}
 		');
-		Assert.isTrue(success, "styles with font only should parse");
+		Assert.isTrue(success, "styles with font() only should parse");
 	}
 
 	@Test
@@ -2858,10 +2858,10 @@ class ParserErrorTest extends utest.Test {
 		var success = parseExpectingSuccess('
 			#test programmable() {
 				text(dd, "hello %{gold}100g%{/}", white, left, 200,
-					styles: {gold: #FFD700 "dd"}): 0, 0
+					styles: {gold: color(#FFD700) font("dd")}): 0, 0
 			}
 		');
-		Assert.isTrue(success, "styles with color and font should parse");
+		Assert.isTrue(success, "styles with color() and font() should parse");
 	}
 
 	@Test
@@ -2869,7 +2869,7 @@ class ParserErrorTest extends utest.Test {
 		var success = parseExpectingSuccess('
 			#test programmable() {
 				text(dd, "%{a}x%{/} %{b}y%{/} %{c}z%{/}", white, left, 200,
-					styles: {a: #FF0000, b: #00FF00 "dd", c: "dd"}): 0, 0
+					styles: {a: color(#FF0000), b: color(#00FF00) font("dd"), c: font("dd")}): 0, 0
 			}
 		');
 		Assert.isTrue(success, "multiple styles should parse");
@@ -2880,7 +2880,7 @@ class ParserErrorTest extends utest.Test {
 		var success = parseExpectingSuccess('
 			#test programmable() {
 				text(dd, "%{fire}flames%{/}", white, left, 200,
-					styles: {fire: red}): 0, 0
+					styles: {fire: color(red)}): 0, 0
 			}
 		');
 		Assert.isTrue(success, "styles with named color should parse");
@@ -2894,7 +2894,7 @@ class ParserErrorTest extends utest.Test {
 					styles: {bad: }): 0, 0
 			}
 		');
-		Assert.notNull(error, "Should throw error for style with no color or font");
+		Assert.notNull(error, "Should throw error for style with no color() or font()");
 	}
 
 	@Test
@@ -2902,7 +2902,7 @@ class ParserErrorTest extends utest.Test {
 		var error = parseExpectingError('
 			#test programmable() {
 				text(dd, "hello %{unknown}world%{/}", white, left, 200,
-					styles: {damage: #FF0000}): 0, 0
+					styles: {damage: color(#FF0000)}): 0, 0
 			}
 		');
 		Assert.notNull(error, "Should throw error for unknown style reference");
@@ -2911,23 +2911,27 @@ class ParserErrorTest extends utest.Test {
 	}
 
 	@Test
-	public function testRichTextInlineColorParses() {
-		var success = parseExpectingSuccess('
+	public function testRichTextInlineColorRejected() {
+		var error = parseExpectingError('
 			#test programmable() {
-				text(dd, "%{c:#FF0000}red%{/} %{c:blue}blue%{/}", white, left, 200): 0, 0
+				text(dd, "%{c:#FF0000}red%{/}", white, left, 200): 0, 0
 			}
 		');
-		Assert.isTrue(success, "inline color markup should parse");
+		Assert.notNull(error, "Should throw error for inline %{c:} markup");
+		Assert.isTrue(error.indexOf("no longer supported") >= 0,
+			'Error should mention no longer supported, got: $error');
 	}
 
 	@Test
-	public function testRichTextInlineFontParses() {
-		var success = parseExpectingSuccess('
+	public function testRichTextInlineFontRejected() {
+		var error = parseExpectingError('
 			#test programmable() {
-				text(dd, "normal %{f:dd}bold%{/} normal", white, left, 200): 0, 0
+				text(dd, "%{f:dd}bold%{/}", white, left, 200): 0, 0
 			}
 		');
-		Assert.isTrue(success, "inline font markup should parse");
+		Assert.notNull(error, "Should throw error for inline %{f:} markup");
+		Assert.isTrue(error.indexOf("no longer supported") >= 0,
+			'Error should mention no longer supported, got: $error');
 	}
 
 	@Test
@@ -2935,7 +2939,7 @@ class ParserErrorTest extends utest.Test {
 		var success = parseExpectingSuccess('
 			#test programmable() {
 				text(dd, "Cost %{img:coin} 100", white, left, 200,
-					images: [coin generated(color(14, 14, #FFD700))]): 0, 0
+					images: {coin: generated(color(14, 14, #FFD700))}): 0, 0
 			}
 		');
 		Assert.isTrue(success, "image markup should parse");
@@ -2975,8 +2979,8 @@ class ParserErrorTest extends utest.Test {
 	public function testRichTextNestingParses() {
 		var success = parseExpectingSuccess('
 			#test programmable() {
-				text(dd, "%{damage}crit %{c:yellow}50%{/} dmg%{/}", white, left, 200,
-					styles: {damage: #FF0000}): 0, 0
+				text(dd, "%{damage}crit %{highlight}50%{/} dmg%{/}", white, left, 200,
+					styles: {damage: color(#FF0000), highlight: color(yellow)}): 0, 0
 			}
 		');
 		Assert.isTrue(success, "nested markup should parse");
@@ -3004,13 +3008,24 @@ class ParserErrorTest extends utest.Test {
 	}
 
 	@Test
-	public function testRichTextMixedStylesAndInlineColor() {
-		var success = parseExpectingSuccess('
+	public function testRichTextOldStyleSyntaxFails() {
+		var error = parseExpectingError('
 			#test programmable() {
-				text(dd, "%{warn}Warning:%{/} costs %{c:gold}100g%{/}", white, left, 200,
+				text(dd, "%{warn}Warning%{/}", white, left, 200,
 					styles: {warn: #FF4444}): 0, 0
 			}
 		');
-		Assert.isTrue(success, "mixed styles and inline color should parse");
+		Assert.notNull(error, "Should throw error for old style syntax (bare color without color())");
+	}
+
+	@Test
+	public function testRichTextStylesFontAndColor() {
+		var success = parseExpectingSuccess('
+			#test programmable() {
+				text(dd, "%{warn}Warning:%{/} costs %{price}100g%{/}", white, left, 200,
+					styles: {warn: color(#FF4444), price: color(gold)}): 0, 0
+			}
+		');
+		Assert.isTrue(success, "styles with color() function should parse");
 	}
 }

@@ -98,11 +98,9 @@
 - **Font metrics context** — `$ctx.font("name").lineHeight` and `$ctx.font("name").baseLine` for querying font metrics at build time (both builder and codegen)
 - **Pixel data unit tests** — filledRect pixel verification and incremental pixel update sweep tests
 - **Native rich text markup** — `%{tag}...%{/}` markup system for `text()` elements, replacing `html: true`
-  - `styles: {name: color "font", ...}` named param — define named text styles with color, `$param` reference, and/or font
+  - `styles: {name: color(#hex) font("name"), ...}` — named text styles with `color()` and/or `font()` wrappers
   - `%{styleName}...%{/}` in text strings — apply named styles (maps to `defineHtmlTag`)
-  - `%{c:#FF0000}...%{/}` / `%{c:red}...%{/}` — inline color (hex or named)
-  - `%{f:fontName}...%{/}` — inline font switch
-  - `%{img:name}` — inline images via `images: [name tileSource]` definitions
+  - `%{img:name}` — inline images via `images: {name: tileSource}` definitions (curly brace map)
   - `%{align:center}...%{/}` — paragraph alignment
   - `%{link:id}...%{/}` — hyperlinks firing `callback("link:id")`
   - `condenseWhite: true` — collapse whitespace in rich text
@@ -110,10 +108,13 @@
   - Parse-time validation: `%{styleName}` references checked against defined styles
   - `%%{` escape sequence — produces literal `%{` in output without triggering markup
   - `%{markup}` and `${param}` coexist in single-quoted strings — e.g., `'%{damage}${dmg}%{/} damage'`
+  - Dynamic style colors and fonts: `color($param)` / `font($param)` with incremental `setParameter()` support
+  - Dynamic image tiles: `TSReference($param)` in image definitions with incremental tracking
+  - Codegen typed setters: `setStyleColor_<name>()`, `setStyleFont_<name>()`, `setImageTile_<name>()` for direct API access
   - `TextMarkupConverter` utility: converts markup to HTML at macro time (static) or runtime (dynamic `$param`)
-  - Builder + codegen support with incremental update tracking for text, color, and style colors
+  - Builder + codegen support with incremental update tracking for text, color, font, style and image params
   - Rich text unit tests — 17 parser tests + 16 builder tests covering all markup types, error cases, and HtmlText verification
-  - Visual test 92 (richText) — 10-row coverage of all markup features
+  - Visual test 92 (richText) — 8-row coverage of all markup features
 - **Generic settings pass-through** — settings not recognized as control or behavioral are automatically forwarded as extra parameters to the underlying programmable
   - Dotted setting keys (`item.fontColor`, `scrollbar.thickness`) for targeting sub-builders in multi-programmable components
   - Prefixed routing: dropdown supports `dropdown.*`, `item.*`, `scrollbar.*` prefixes; scrollableList supports `item.*`, `scrollbar.*`

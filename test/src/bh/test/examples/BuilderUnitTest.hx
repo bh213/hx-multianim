@@ -3502,7 +3502,7 @@ class BuilderUnitTest extends BuilderTestBase {
 		final result = buildFromSource("
 			#test programmable() {
 				text(dd, \"Deal %{damage}50%{/} damage\", white, left, 200,
-					styles: {damage: #FF0000}): 0, 0
+					styles: {damage: color(#FF0000)}): 0, 0
 			}
 		", "test");
 		Assert.notNull(result);
@@ -3516,7 +3516,7 @@ class BuilderUnitTest extends BuilderTestBase {
 		final result = buildFromSource("
 			#test programmable() {
 				text(dd, \"Deal %{damage}50%{/} damage\", white, left, 200,
-					styles: {damage: #FF0000}): 0, 0
+					styles: {damage: color(#FF0000)}): 0, 0
 			}
 		", "test");
 		final texts = findAllTextDescendants(result.object);
@@ -3527,30 +3527,32 @@ class BuilderUnitTest extends BuilderTestBase {
 	}
 
 	@Test
-	public function testRichTextInlineColorConverted():Void {
+	public function testRichTextColorFunctionStyle():Void {
 		final result = buildFromSource("
 			#test programmable() {
-				text(dd, \"%{c:#FF0000}red%{/} text\", white, left, 200): 0, 0
+				text(dd, \"%{warn}red%{/} text\", white, left, 200,
+					styles: {warn: color(#FF0000)}): 0, 0
 			}
 		", "test");
 		final texts = findAllTextDescendants(result.object);
 		Assert.equals(1, texts.length);
 		final ht:h2d.HtmlText = cast texts[0];
-		Assert.isTrue(ht.text.indexOf("<font color=") >= 0, 'HTML should contain font color, got: ${ht.text}');
-		Assert.isTrue(ht.text.indexOf("</font>") >= 0, 'HTML should contain </font>, got: ${ht.text}');
+		Assert.isTrue(ht.text.indexOf("<warn>") >= 0, 'HTML should contain <warn>, got: ${ht.text}');
+		Assert.isTrue(ht.text.indexOf("</warn>") >= 0, 'HTML should contain </warn>, got: ${ht.text}');
 	}
 
 	@Test
-	public function testRichTextInlineFontConverted():Void {
+	public function testRichTextFontFunctionStyle():Void {
 		final result = buildFromSource("
 			#test programmable() {
-				text(dd, \"normal %{f:dd}switched%{/} end\", white, left, 200): 0, 0
+				text(dd, \"normal %{bold}switched%{/} end\", white, left, 200,
+					styles: {bold: font(\"dd\")}): 0, 0
 			}
 		", "test");
 		final texts = findAllTextDescendants(result.object);
 		Assert.equals(1, texts.length);
 		final ht:h2d.HtmlText = cast texts[0];
-		Assert.isTrue(ht.text.indexOf("<font face=") >= 0, 'HTML should contain font face, got: ${ht.text}');
+		Assert.isTrue(ht.text.indexOf("<bold>") >= 0, 'HTML should contain <bold>, got: ${ht.text}');
 	}
 
 	@Test
@@ -3558,7 +3560,7 @@ class BuilderUnitTest extends BuilderTestBase {
 		final result = buildFromSource("
 			#test programmable() {
 				text(dd, \"Cost %{img:coin} gold\", white, left, 200,
-					images: [coin generated(color(14, 14, #FFD700))]): 0, 0
+					images: {coin: generated(color(14, 14, #FFD700))}): 0, 0
 			}
 		", "test");
 		final texts = findAllTextDescendants(result.object);
@@ -3623,16 +3625,16 @@ class BuilderUnitTest extends BuilderTestBase {
 	public function testRichTextNestingConverted():Void {
 		final result = buildFromSource("
 			#test programmable() {
-				text(dd, \"%{damage}crit %{c:yellow}50%{/} dmg%{/}\", white, left, 200,
-					styles: {damage: #FF0000}): 0, 0
+				text(dd, \"%{damage}crit %{highlight}50%{/} dmg%{/}\", white, left, 200,
+					styles: {damage: color(#FF0000), highlight: color(yellow)}): 0, 0
 			}
 		", "test");
 		final texts = findAllTextDescendants(result.object);
 		Assert.equals(1, texts.length);
 		final ht:h2d.HtmlText = cast texts[0];
 		Assert.isTrue(ht.text.indexOf("<damage>") >= 0, 'Should have <damage> tag');
-		Assert.isTrue(ht.text.indexOf("<font color=") >= 0, 'Should have nested font color');
-		Assert.isTrue(ht.text.indexOf("</font>") >= 0, 'Should have </font> closing');
+		Assert.isTrue(ht.text.indexOf("<highlight>") >= 0, 'Should have nested <highlight> tag');
+		Assert.isTrue(ht.text.indexOf("</highlight>") >= 0, 'Should have </highlight> closing');
 		Assert.isTrue(ht.text.indexOf("</damage>") >= 0, 'Should have </damage> closing');
 	}
 
@@ -3641,7 +3643,7 @@ class BuilderUnitTest extends BuilderTestBase {
 		final result = buildFromSource("
 			#test programmable() {
 				text(dd, \"%{fire}flames%{/}\", white, left, 200,
-					styles: {fire: red}): 0, 0
+					styles: {fire: color(red)}): 0, 0
 			}
 		", "test");
 		final texts = findAllTextDescendants(result.object);
@@ -3654,7 +3656,7 @@ class BuilderUnitTest extends BuilderTestBase {
 		final result = buildFromSource("
 			#test programmable() {
 				text(dd, \"%{em}emphasis%{/}\", white, left, 200,
-					styles: {em: \"dd\"}): 0, 0
+					styles: {em: font(\"dd\")}): 0, 0
 			}
 		", "test");
 		final texts = findAllTextDescendants(result.object);
@@ -3670,7 +3672,7 @@ class BuilderUnitTest extends BuilderTestBase {
 		final result = buildFromSource("
 			#test programmable(dmg:int=50) {
 				text(dd, '%{damage}${dmg}%{/} damage', white, left, 200,
-					styles: {damage: #FF0000}): 0, 0
+					styles: {damage: color(#FF0000)}): 0, 0
 			}
 		", "test", params);
 		final texts = findAllTextDescendants(result.object);
@@ -3689,7 +3691,7 @@ class BuilderUnitTest extends BuilderTestBase {
 		final result = buildFromSource("
 			#test programmable(hlColor:color=blue) {
 				text(dd, \"%{hl}highlighted%{/}\", white, left, 200,
-					styles: {hl: $hlColor}): 0, 0
+					styles: {hl: color($hlColor)}): 0, 0
 			}
 		", "test", params, Incremental);
 		final texts = findAllTextDescendants(result.object);
@@ -3718,25 +3720,24 @@ class BuilderUnitTest extends BuilderTestBase {
 
 	@Test
 	public function testRichTextMarkupWithIntParamInterpolation():Void {
-		// Single-quoted manim string: %{markup} + ${param} coexist
+		// Single-quoted manim string: %{markup} + ${param} interpolation combined
 		// dmg is int param — ${dmg} should interpolate to "75" inside the markup
 		final params = new Map<String, Dynamic>();
 		params.set("dmg", 75);
 		final result = buildFromSource("
 			#test programmable(dmg:int=50) {
-				text(dd, 'Dealt %{dmg}${dmg}%{/} damage to %{c:#FF8844}Dragon%{/}', white, left, 540,
-					styles: {dmg: #FF0000}): 0, 0
+				text(dd, 'Dealt %{dmgStyle}${dmg}%{/} damage to %{dragon}Dragon%{/}', white, left, 540,
+					styles: {dmgStyle: color(#FF0000), dragon: color(#FF8844)}): 0, 0
 			}
 		", "test", params);
 		final texts = findAllTextDescendants(result.object);
 		Assert.equals(1, texts.length);
 		Assert.isTrue(Std.isOfType(texts[0], h2d.HtmlText), "Should create HtmlText for markup");
 		final ht:h2d.HtmlText = cast texts[0];
-		// After TextMarkupConverter: %{dmg}75%{/} → <dmg>75</dmg>, %{c:#FF8844} → <font color="#FF8844">
+		// After TextMarkupConverter: %{dmgStyle}75%{/} → <dmgStyle>75</dmgStyle>, %{dragon} → <dragon>
 		Assert.isTrue(ht.text.indexOf("75") >= 0, 'Should contain interpolated int 75, got: ${ht.text}');
-		Assert.isTrue(ht.text.indexOf("<dmg>") >= 0, 'Should contain <dmg> tag, got: ${ht.text}');
-		Assert.isTrue(ht.text.indexOf("</dmg>") >= 0, 'Should contain </dmg> tag, got: ${ht.text}');
+		Assert.isTrue(ht.text.indexOf("<dmgStyle>") >= 0, 'Should contain <dmgStyle> tag, got: ${ht.text}');
+		Assert.isTrue(ht.text.indexOf("</dmgStyle>") >= 0, 'Should contain </dmgStyle> tag, got: ${ht.text}');
 		Assert.isTrue(ht.text.indexOf("Dragon") >= 0, 'Should contain Dragon, got: ${ht.text}');
-		Assert.isTrue(ht.text.indexOf("#FF8844") >= 0, 'Should contain inline color, got: ${ht.text}');
 	}
 }
