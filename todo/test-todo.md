@@ -2,10 +2,10 @@
 
 | # | Item | Summary | Priority |
 |---|------|---------|----------|
-| 5 | `UIRichInteractiveHelper` tests | register() bind scanning, handleEvent() state machine, setDisabled | Medium |
+
 | 10 | Interactive event tests | Event filtering, bind metadata, UIClickOutside, disabled gating | Medium |
 | 11 | `UIClickOutside` event | Documented but not tested | Low |
-| 12 | AnimMetadata API | State-selector getInt/getString methods untested | Low |
+
 | 13 | Hex offset/doubled coordinates | $hex.offset and $hex.doubled not specifically tested | Low |
 | 14 | Animated path events | pathStart/End, cycleStart/End not asserted programmatically | Low |
 | 15 | Particle runtime API | addForceField, removeForceFieldAt, sub-emitters untested | Low |
