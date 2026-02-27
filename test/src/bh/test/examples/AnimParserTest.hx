@@ -2,10 +2,12 @@ package bh.test.examples;
 
 import utest.Assert;
 import bh.stateanim.AnimParser;
+import bh.stateanim.AnimParser.AnimMetadata;
+import bh.stateanim.AnimationSM.AnimationFrameState;
+import bh.stateanim.AnimationSM.AnimationPlaylistEvent;
 
 /**
- * Tests for .anim parser conditional features: negation (!=) and multi-value ([v1,v2]).
- * Also tests countStateMatch logic with AnimConditionalValue types.
+ * Tests for .anim parser: conditionals, metadata API, and AnimationSM state machine.
  */
 class AnimParserTest extends utest.Test {
 	// ===== countStateMatch unit tests =====
@@ -101,6 +103,77 @@ class AnimParserTest extends utest.Test {
 	public function testMatchConditionalValueNot() {
 		Assert.isTrue(AnimParser.matchConditionalValue(ACVNot(ACVSingle("l")), "r"));
 		Assert.isFalse(AnimParser.matchConditionalValue(ACVNot(ACVSingle("l")), "l"));
+	}
+
+	@Test
+	public function testMatchConditionalValueCompareGte() {
+		Assert.isTrue(AnimParser.matchConditionalValue(ACVCompare(ACmpGte, "3"), "3"));
+		Assert.isTrue(AnimParser.matchConditionalValue(ACVCompare(ACmpGte, "3"), "5"));
+		Assert.isFalse(AnimParser.matchConditionalValue(ACVCompare(ACmpGte, "3"), "2"));
+	}
+
+	@Test
+	public function testMatchConditionalValueCompareLte() {
+		Assert.isTrue(AnimParser.matchConditionalValue(ACVCompare(ACmpLte, "3"), "3"));
+		Assert.isTrue(AnimParser.matchConditionalValue(ACVCompare(ACmpLte, "3"), "1"));
+		Assert.isFalse(AnimParser.matchConditionalValue(ACVCompare(ACmpLte, "3"), "5"));
+	}
+
+	@Test
+	public function testMatchConditionalValueCompareGt() {
+		Assert.isTrue(AnimParser.matchConditionalValue(ACVCompare(ACmpGt, "3"), "4"));
+		Assert.isFalse(AnimParser.matchConditionalValue(ACVCompare(ACmpGt, "3"), "3"));
+		Assert.isFalse(AnimParser.matchConditionalValue(ACVCompare(ACmpGt, "3"), "2"));
+	}
+
+	@Test
+	public function testMatchConditionalValueCompareLt() {
+		Assert.isTrue(AnimParser.matchConditionalValue(ACVCompare(ACmpLt, "3"), "2"));
+		Assert.isFalse(AnimParser.matchConditionalValue(ACVCompare(ACmpLt, "3"), "3"));
+		Assert.isFalse(AnimParser.matchConditionalValue(ACVCompare(ACmpLt, "3"), "4"));
+	}
+
+	@Test
+	public function testMatchConditionalValueCompareNonNumeric() {
+		// Non-numeric values should return false for comparisons
+		Assert.isFalse(AnimParser.matchConditionalValue(ACVCompare(ACmpGte, "3"), "abc"));
+		Assert.isFalse(AnimParser.matchConditionalValue(ACVCompare(ACmpGte, "abc"), "3"));
+	}
+
+	@Test
+	public function testMatchConditionalValueRange() {
+		Assert.isTrue(AnimParser.matchConditionalValue(ACVRange("1", "5"), "1"));
+		Assert.isTrue(AnimParser.matchConditionalValue(ACVRange("1", "5"), "3"));
+		Assert.isTrue(AnimParser.matchConditionalValue(ACVRange("1", "5"), "5"));
+		Assert.isFalse(AnimParser.matchConditionalValue(ACVRange("1", "5"), "0"));
+		Assert.isFalse(AnimParser.matchConditionalValue(ACVRange("1", "5"), "6"));
+	}
+
+	@Test
+	public function testMatchConditionalValueRangeNonNumeric() {
+		Assert.isFalse(AnimParser.matchConditionalValue(ACVRange("1", "5"), "abc"));
+	}
+
+	// ===== countStateMatch with Compare/Range =====
+
+	@Test
+	public function testMatchCompareInStateSelector() {
+		var condSelector:AnimConditionalSelector = ["level" => ACVCompare(ACmpGte, "3")];
+		var runtimeState:AnimationStateSelector = ["level" => "5"];
+		Assert.equals(1, AnimParser.countStateMatch(condSelector, runtimeState));
+
+		runtimeState = ["level" => "1"];
+		Assert.isTrue(AnimParser.countStateMatch(condSelector, runtimeState) < 0);
+	}
+
+	@Test
+	public function testMatchRangeInStateSelector() {
+		var condSelector:AnimConditionalSelector = ["level" => ACVRange("2", "8")];
+		var runtimeState:AnimationStateSelector = ["level" => "5"];
+		Assert.equals(1, AnimParser.countStateMatch(condSelector, runtimeState));
+
+		runtimeState = ["level" => "10"];
+		Assert.isTrue(AnimParser.countStateMatch(condSelector, runtimeState) < 0);
 	}
 
 	// ===== .anim parse integration tests =====
@@ -279,5 +352,1114 @@ animation @(direction=>[l,x]) {
 }
 ');
 		Assert.notNull(error, "Should throw error for undefined state value 'x' in multi-value");
+	}
+
+	// ===== Additional .anim parse positive tests =====
+
+	@Test
+	public function testParseComparisonConditional() {
+		var success = parseAnimExpectingSuccess('
+sheet: testSheet
+states: level(1, 2, 3, 4, 5)
+animation @(level >= 3) {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist {
+        sheet: "test_high"
+    }
+}
+animation @(level < 3) {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist {
+        sheet: "test_low"
+    }
+}
+');
+		Assert.isTrue(success, "@(state >= N) comparison should parse");
+	}
+
+	@Test
+	public function testParseRangeConditional() {
+		var success = parseAnimExpectingSuccess('
+sheet: testSheet
+states: level(1, 2, 3, 4, 5)
+animation @(level => 1..2) {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist {
+        sheet: "test_low"
+    }
+}
+animation @(level => 3..5) {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist {
+        sheet: "test_high"
+    }
+}
+');
+		Assert.isTrue(success, "@(state => 1..5) range should parse");
+	}
+
+	@Test
+	public function testParseMetadataWithTypes() {
+		var success = parseAnimExpectingSuccess('
+sheet: testSheet
+metadata {
+    offsetX: 10
+    speed: 1.5
+    label: "hello"
+    tint: #FF0000
+}
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist {
+        sheet: "test_idle"
+    }
+}
+');
+		Assert.isTrue(success, "Metadata with int, float, string, color should parse");
+	}
+
+	@Test
+	public function testParseMetadataWithConditionals() {
+		// Parse and verify metadata values are accessible
+		var input = byte.ByteData.ofString('
+sheet: testSheet
+states: direction(l, r)
+metadata {
+    @(direction=>l) offsetX: -5
+    @(direction=>r) offsetX: 5
+    speed: 10
+}
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist {
+        sheet: "test_idle"
+    }
+}
+');
+		var loader = new bh.base.ResourceLoader.CachingResourceLoader();
+		var result = AnimParser.parseFile(input, "test-input", loader);
+		Assert.notNull(result.metadata, "Should have metadata");
+		Assert.equals(-5, result.metadata.getIntOrDefault("offsetX", 0, ["direction" => "l"]));
+		Assert.equals(5, result.metadata.getIntOrDefault("offsetX", 0, ["direction" => "r"]));
+		Assert.equals(10, result.metadata.getIntOrDefault("speed", 0));
+	}
+
+	@Test
+	public function testParseHeaderName() {
+		var success = parseAnimExpectingSuccess('
+sheet: testSheet
+animation idle {
+    fps: 4
+    loop: yes
+    playlist {
+        sheet: "test_idle"
+    }
+}
+');
+		Assert.isTrue(success, "Animation with header name should parse");
+	}
+
+	@Test
+	public function testParseCenter() {
+		var success = parseAnimExpectingSuccess('
+sheet: testSheet
+center: 32, 48
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist {
+        sheet: "test_idle"
+    }
+}
+');
+		Assert.isTrue(success, "center: x,y should parse");
+	}
+
+	@Test
+	public function testParseFileLevelDefaults() {
+		var success = parseAnimExpectingSuccess('
+sheet: testSheet
+fps: 10
+loop: yes
+animation {
+    name: idle
+    playlist {
+        sheet: "test_idle"
+    }
+}
+animation {
+    name: walk
+    playlist {
+        sheet: "test_walk"
+    }
+}
+');
+		Assert.isTrue(success, "File-level fps/loop defaults should parse");
+	}
+
+	@Test
+	public function testParseLoopCount() {
+		var success = parseAnimExpectingSuccess('
+sheet: testSheet
+animation {
+    name: idle
+    fps: 4
+    loop: 3
+    playlist {
+        sheet: "test_idle"
+    }
+}
+');
+		Assert.isTrue(success, "loop: N should parse");
+	}
+
+	@Test
+	public function testParsePlaylistFrameRange() {
+		var success = parseAnimExpectingSuccess('
+sheet: testSheet
+animation {
+    name: dodge
+    fps: 4
+    playlist {
+        sheet: "test_dodge" frames: 0..3
+    }
+}
+');
+		Assert.isTrue(success, "playlist with frames: range should parse");
+	}
+
+	@Test
+	public function testParseEventTrigger() {
+		// Bare trigger: just "event <name>" (no keyword after name)
+		var success = parseAnimExpectingSuccess('
+sheet: testSheet
+animation {
+    name: hit
+    fps: 10
+    loop: yes
+    playlist {
+        sheet: "test_hit"
+        event hit
+    }
+}
+');
+		Assert.isTrue(success, "event trigger should parse");
+	}
+
+	@Test
+	public function testParseEventRandomPoint() {
+		var success = parseAnimExpectingSuccess('
+sheet: testSheet
+animation {
+    name: hit
+    fps: 10
+    loop: yes
+    playlist {
+        sheet: "test_hit"
+        event hit random 0,-10, 10
+    }
+}
+');
+		Assert.isTrue(success, "event random with point and radius should parse");
+	}
+
+	@Test
+	public function testParseEventPoint() {
+		var success = parseAnimExpectingSuccess('
+sheet: testSheet
+animation {
+    name: fire
+    fps: 10
+    playlist {
+        sheet: "test_fire"
+        event fire 5, -10
+    }
+}
+');
+		Assert.isTrue(success, "event with point should parse");
+	}
+
+	@Test
+	public function testParseElseConditionalInExtrapoints() {
+		var success = parseAnimExpectingSuccess('
+sheet: testSheet
+states: direction(l, r)
+allowedExtraPoints: [fire]
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist {
+        sheet: "test_idle"
+    }
+    extrapoints {
+        @(direction=>l) fire: -5, -19
+        @else fire: 5, -19
+    }
+}
+');
+		Assert.isTrue(success, "@else in extrapoints should parse");
+	}
+
+	@Test
+	public function testParseAnimShorthand() {
+		var success = parseAnimExpectingSuccess('
+sheet: testSheet
+fps: 10
+anim idle(loop: yes): "test_idle"
+anim walk: "test_walk"
+anim hit(fps: 20, loop: 2): "test_hit"
+');
+		Assert.isTrue(success, "anim shorthand should parse");
+	}
+
+	@Test
+	public function testParseFinalConstants() {
+		var success = parseAnimExpectingSuccess("
+sheet: testSheet
+@final OFFSET_X = 5
+@final OFFSET_Y = -10
+allowedExtraPoints: [fire]
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist {
+        sheet: \"test_idle\"
+    }
+    extrapoints {
+        fire: $OFFSET_X, $OFFSET_Y
+    }
+}
+");
+		Assert.isTrue(success, "@final constants should parse");
+	}
+
+	@Test
+	public function testParseStateInterpolation() {
+		var success = parseAnimExpectingSuccess("
+sheet: testSheet
+states: direction(l, r)
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist {
+        sheet: \"test_${direction}_idle\"
+    }
+}
+");
+		Assert.isTrue(success, "state interpolation in sheet names should parse");
+	}
+
+	// ===== Additional .anim parse negative tests =====
+
+	@Test
+	public function testParseEmptyAnimation() {
+		var error = parseAnimExpectingError('
+sheet: testSheet
+animation {
+}
+');
+		Assert.notNull(error, "Should error when animation body has no name/playlist");
+	}
+
+	@Test
+	public function testParseMissingFps() {
+		var error = parseAnimExpectingError('
+sheet: testSheet
+animation {
+    name: idle
+    loop: yes
+    playlist {
+        sheet: "test_idle"
+    }
+}
+');
+		Assert.notNull(error, "Should error when fps is not set anywhere");
+	}
+
+	@Test
+	public function testParseMissingPlaylist() {
+		var error = parseAnimExpectingError('
+sheet: testSheet
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+}
+');
+		Assert.notNull(error, "Should error when playlist is missing");
+	}
+
+	@Test
+	public function testParseMissingAnimName() {
+		var error = parseAnimExpectingError('
+sheet: testSheet
+animation {
+    fps: 4
+    loop: yes
+    playlist {
+        sheet: "test_idle"
+    }
+}
+');
+		Assert.notNull(error, "Should error when animation name is missing");
+	}
+
+	@Test
+	public function testParseDuplicateSheet() {
+		var error = parseAnimExpectingError('
+sheet: testSheet
+sheet: testSheet2
+animation {
+    name: idle
+    fps: 4
+    playlist {
+        sheet: "test_idle"
+    }
+}
+');
+		Assert.notNull(error, "Should error on duplicate sheet declaration");
+	}
+
+	@Test
+	public function testParseDuplicateStates() {
+		var error = parseAnimExpectingError('
+sheet: testSheet
+states: direction(l, r)
+states: color(red, blue)
+animation {
+    name: idle
+    fps: 4
+    playlist {
+        sheet: "test_idle"
+    }
+}
+');
+		Assert.notNull(error, "Should error on duplicate states declaration");
+	}
+
+	@Test
+	public function testParseExtraPointNotDeclared() {
+		var error = parseAnimExpectingError('
+sheet: testSheet
+allowedExtraPoints: [fire]
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist {
+        sheet: "test_idle"
+    }
+    extrapoints {
+        missile: 5, -10
+    }
+}
+');
+		Assert.notNull(error, "Should error when extra point is not in allowedExtraPoints");
+	}
+
+	@Test
+	public function testParseInvalidFps() {
+		var error = parseAnimExpectingError('
+sheet: testSheet
+animation {
+    name: idle
+    fps: 0
+    loop: yes
+    playlist {
+        sheet: "test_idle"
+    }
+}
+');
+		Assert.notNull(error, "Should error when fps is 0");
+	}
+
+	@Test
+	public function testParseInvalidLoopCount() {
+		var error = parseAnimExpectingError('
+sheet: testSheet
+animation {
+    name: idle
+    fps: 4
+    loop: 0
+    playlist {
+        sheet: "test_idle"
+    }
+}
+');
+		Assert.notNull(error, "Should error when loop count is 0");
+	}
+
+	@Test
+	public function testParseUndeclaredState() {
+		var error = parseAnimExpectingError('
+sheet: testSheet
+states: direction(l, r)
+animation @(color=>red) {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist {
+        sheet: "test_idle"
+    }
+}
+');
+		Assert.notNull(error, "Should error on undeclared state name");
+	}
+
+	@Test
+	public function testParseDuplicateFinalConstant() {
+		var error = parseAnimExpectingError('
+sheet: testSheet
+@final X = 5
+@final X = 10
+animation {
+    name: idle
+    fps: 4
+    playlist {
+        sheet: "test_idle"
+    }
+}
+');
+		Assert.notNull(error, "Should error on duplicate @final constant");
+	}
+
+	@Test
+	public function testParseUndefinedConstantRef() {
+		var error = parseAnimExpectingError("
+sheet: testSheet
+allowedExtraPoints: [fire]
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist {
+        sheet: \"test_idle\"
+    }
+    extrapoints {
+        fire: $UNDEFINED, 0
+    }
+}
+");
+		Assert.notNull(error, "Should error on undefined $constant reference");
+	}
+
+	@Test
+	public function testParseSheetAfterAnimation() {
+		var error = parseAnimExpectingError('
+sheet: testSheet
+animation {
+    name: idle
+    fps: 4
+    playlist {
+        sheet: "test_idle"
+    }
+}
+sheet: anotherSheet
+');
+		Assert.notNull(error, "Should error when sheet: appears after animation");
+	}
+
+	// ===== AnimMetadata API tests =====
+
+	static function parseAnimWithMetadata(animSource:String):AnimMetadata {
+		var input = byte.ByteData.ofString(animSource);
+		var loader = new bh.base.ResourceLoader.CachingResourceLoader();
+		var result = AnimParser.parseFile(input, "test-input", loader);
+		Assert.notNull(result.metadata, "Should have metadata");
+		return result.metadata;
+	}
+
+	@Test
+	public function testMetadataGetIntOrDefault() {
+		var meta = parseAnimWithMetadata('
+sheet: testSheet
+metadata {
+    health: 100
+    speed: 5
+}
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist {
+        sheet: "test_idle"
+    }
+}
+');
+		Assert.equals(100, meta.getIntOrDefault("health", 0));
+		Assert.equals(5, meta.getIntOrDefault("speed", 0));
+		Assert.equals(42, meta.getIntOrDefault("missing", 42));
+	}
+
+	@Test
+	public function testMetadataGetIntOrException() {
+		var meta = parseAnimWithMetadata('
+sheet: testSheet
+metadata {
+    health: 100
+}
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist {
+        sheet: "test_idle"
+    }
+}
+');
+		Assert.equals(100, meta.getIntOrException("health"));
+		var threw = false;
+		try {
+			meta.getIntOrException("missing");
+		} catch (e:Dynamic) {
+			threw = true;
+		}
+		Assert.isTrue(threw, "getIntOrException should throw for missing key");
+	}
+
+	@Test
+	public function testMetadataGetIntWithStateSelector() {
+		var meta = parseAnimWithMetadata('
+sheet: testSheet
+states: direction(l, r)
+metadata {
+    @(direction=>l) offsetX: -5
+    @(direction=>r) offsetX: 5
+    health: 100
+}
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist {
+        sheet: "test_idle"
+    }
+}
+');
+		Assert.equals(-5, meta.getIntOrDefault("offsetX", 0, ["direction" => "l"]));
+		Assert.equals(5, meta.getIntOrDefault("offsetX", 0, ["direction" => "r"]));
+		// Without selector, should still find unconditional entry
+		Assert.equals(100, meta.getIntOrDefault("health", 0));
+		Assert.equals(100, meta.getIntOrDefault("health", 0, ["direction" => "l"]));
+	}
+
+	@Test
+	public function testMetadataGetFloatOrDefault() {
+		var meta = parseAnimWithMetadata('
+sheet: testSheet
+metadata {
+    speed: 1.5
+    intVal: 10
+}
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist {
+        sheet: "test_idle"
+    }
+}
+');
+		Assert.floatEquals(1.5, meta.getFloatOrDefault("speed", 0.0));
+		// Int should be returned as float
+		Assert.floatEquals(10.0, meta.getFloatOrDefault("intVal", 0.0));
+		Assert.floatEquals(3.14, meta.getFloatOrDefault("missing", 3.14));
+	}
+
+	@Test
+	public function testMetadataGetFloatOrException() {
+		var meta = parseAnimWithMetadata('
+sheet: testSheet
+metadata {
+    speed: 2.5
+}
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist {
+        sheet: "test_idle"
+    }
+}
+');
+		Assert.floatEquals(2.5, meta.getFloatOrException("speed"));
+		var threw = false;
+		try {
+			meta.getFloatOrException("missing");
+		} catch (e:Dynamic) {
+			threw = true;
+		}
+		Assert.isTrue(threw, "getFloatOrException should throw for missing key");
+	}
+
+	@Test
+	public function testMetadataGetStringOrDefault() {
+		var meta = parseAnimWithMetadata('
+sheet: testSheet
+metadata {
+    label: "hello"
+    count: 42
+    rate: 1.5
+}
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist {
+        sheet: "test_idle"
+    }
+}
+');
+		Assert.equals("hello", meta.getStringOrDefault("label", ""));
+		// Int/Float should be convertible to string
+		Assert.equals("42", meta.getStringOrDefault("count", ""));
+		Assert.equals("1.5", meta.getStringOrDefault("rate", ""));
+		Assert.equals("default", meta.getStringOrDefault("missing", "default"));
+	}
+
+	@Test
+	public function testMetadataGetStringOrException() {
+		var meta = parseAnimWithMetadata('
+sheet: testSheet
+metadata {
+    label: "world"
+}
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist {
+        sheet: "test_idle"
+    }
+}
+');
+		Assert.equals("world", meta.getStringOrException("label"));
+		var threw = false;
+		try {
+			meta.getStringOrException("missing");
+		} catch (e:Dynamic) {
+			threw = true;
+		}
+		Assert.isTrue(threw, "getStringOrException should throw for missing key");
+	}
+
+	@Test
+	public function testMetadataGetStringWithStateSelector() {
+		var meta = parseAnimWithMetadata('
+sheet: testSheet
+states: direction(l, r)
+metadata {
+    @(direction=>l) facing: "left"
+    @(direction=>r) facing: "right"
+}
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist {
+        sheet: "test_idle"
+    }
+}
+');
+		Assert.equals("left", meta.getStringOrDefault("facing", "", ["direction" => "l"]));
+		Assert.equals("right", meta.getStringOrDefault("facing", "", ["direction" => "r"]));
+	}
+
+	@Test
+	public function testMetadataGetColorOrDefault() {
+		var meta = parseAnimWithMetadata('
+sheet: testSheet
+metadata {
+    tint: #FF0000
+}
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist {
+        sheet: "test_idle"
+    }
+}
+');
+		Assert.equals(0xFF0000, meta.getColorOrDefault("tint", 0));
+		Assert.equals(0xFFFFFF, meta.getColorOrDefault("missing", 0xFFFFFF));
+	}
+
+	@Test
+	public function testMetadataGetColorOrException() {
+		var meta = parseAnimWithMetadata('
+sheet: testSheet
+metadata {
+    tint: #00FF00
+}
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist {
+        sheet: "test_idle"
+    }
+}
+');
+		Assert.equals(0x00FF00, meta.getColorOrException("tint"));
+		var threw = false;
+		try {
+			meta.getColorOrException("missing");
+		} catch (e:Dynamic) {
+			threw = true;
+		}
+		Assert.isTrue(threw, "getColorOrException should throw for missing key");
+	}
+
+	@Test
+	public function testMetadataTypeMismatchIntFromString() {
+		var meta = parseAnimWithMetadata('
+sheet: testSheet
+metadata {
+    label: "hello"
+}
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist {
+        sheet: "test_idle"
+    }
+}
+');
+		var threw = false;
+		try {
+			meta.getIntOrDefault("label", 0);
+		} catch (e:Dynamic) {
+			threw = true;
+		}
+		Assert.isTrue(threw, "getIntOrDefault should throw for string value");
+	}
+
+	@Test
+	public function testMetadataTypeMismatchColorFromString() {
+		var meta = parseAnimWithMetadata('
+sheet: testSheet
+metadata {
+    label: "hello"
+}
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist {
+        sheet: "test_idle"
+    }
+}
+');
+		var threw = false;
+		try {
+			meta.getColorOrDefault("label", 0);
+		} catch (e:Dynamic) {
+			threw = true;
+		}
+		Assert.isTrue(threw, "getColorOrDefault should throw for string value");
+	}
+
+	@Test
+	public function testMetadataBestMatchPriority() {
+		// More specific state match should win over less specific
+		var meta = parseAnimWithMetadata('
+sheet: testSheet
+states: direction(l, r), color(red, blue)
+metadata {
+    score: 1
+    @(direction=>l) score: 10
+    @(direction=>l) @(color=>red) score: 100
+}
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist {
+        sheet: "test_idle"
+    }
+}
+');
+		// Two-state match should win over single-state match
+		Assert.equals(100, meta.getIntOrDefault("score", 0, ["direction" => "l", "color" => "red"]));
+		// Single-state match should win over unconditional
+		Assert.equals(10, meta.getIntOrDefault("score", 0, ["direction" => "l", "color" => "blue"]));
+	}
+
+	@Test
+	public function testMetadataNullSelector() {
+		var meta = parseAnimWithMetadata('
+sheet: testSheet
+metadata {
+    health: 100
+}
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist {
+        sheet: "test_idle"
+    }
+}
+');
+		// Null state selector should match unconditional entries
+		Assert.equals(100, meta.getIntOrDefault("health", 0, null));
+	}
+
+	// ===== AnimationSM unit tests =====
+
+	@Test
+	public function testAnimSMAddAndPlay() {
+		var sm = new bh.stateanim.AnimationSM([]);
+		var dummyTile = h2d.Tile.fromColor(0xFF0000, 8, 8);
+		var frame = new bh.stateanim.AnimationFrame(dummyTile, 0.1, 0, 0, 8, 8);
+		sm.addAnimationState("idle", [Frame(frame)], -1, []);
+		sm.play("idle");
+		Assert.equals("idle", sm.getCurrentAnimName());
+	}
+
+	@Test
+	public function testAnimSMPlayUnknownThrows() {
+		var sm = new bh.stateanim.AnimationSM([]);
+		var threw = false;
+		try {
+			sm.play("nonexistent");
+		} catch (e:Dynamic) {
+			threw = true;
+		}
+		Assert.isTrue(threw, "play() should throw for unknown animation");
+	}
+
+	@Test
+	public function testAnimSMDuplicateStateThrows() {
+		var sm = new bh.stateanim.AnimationSM([]);
+		var dummyTile = h2d.Tile.fromColor(0xFF0000, 8, 8);
+		var frame = new bh.stateanim.AnimationFrame(dummyTile, 0.1, 0, 0, 8, 8);
+		sm.addAnimationState("idle", [Frame(frame)], -1, []);
+		var threw = false;
+		try {
+			sm.addAnimationState("idle", [Frame(frame)], -1, []);
+		} catch (e:Dynamic) {
+			threw = true;
+		}
+		Assert.isTrue(threw, "addAnimationState should throw on duplicate name");
+	}
+
+	@Test
+	public function testAnimSMIsFinishedNoLoop() {
+		var sm = new bh.stateanim.AnimationSM([], true);
+		var dummyTile = h2d.Tile.fromColor(0xFF0000, 8, 8);
+		var frame = new bh.stateanim.AnimationFrame(dummyTile, 0.1, 0, 0, 8, 8);
+		sm.addAnimationState("once", [Frame(frame)], 0, []);
+		sm.play("once");
+		Assert.isFalse(sm.isFinished());
+		sm.update(0.2); // advance past frame duration
+		Assert.isTrue(sm.isFinished());
+	}
+
+	@Test
+	public function testAnimSMIsFinishedInfiniteLoop() {
+		var sm = new bh.stateanim.AnimationSM([], true);
+		var dummyTile = h2d.Tile.fromColor(0xFF0000, 8, 8);
+		var frame = new bh.stateanim.AnimationFrame(dummyTile, 0.1, 0, 0, 8, 8);
+		sm.addAnimationState("loop", [Frame(frame)], -1, []);
+		sm.play("loop");
+		sm.update(1.0);
+		Assert.isFalse(sm.isFinished());
+	}
+
+	@Test
+	public function testAnimSMFinishedCallback() {
+		var sm = new bh.stateanim.AnimationSM([], true);
+		var dummyTile = h2d.Tile.fromColor(0xFF0000, 8, 8);
+		var frame = new bh.stateanim.AnimationFrame(dummyTile, 0.1, 0, 0, 8, 8);
+		sm.addAnimationState("once", [Frame(frame)], 0, []);
+		var finished = false;
+		sm.onFinished = function() { finished = true; };
+		sm.play("once");
+		sm.update(0.2);
+		Assert.isTrue(finished, "onFinished should fire when animation ends");
+	}
+
+	@Test
+	public function testAnimSMEventCallback() {
+		var sm = new bh.stateanim.AnimationSM([], true);
+		var dummyTile = h2d.Tile.fromColor(0xFF0000, 8, 8);
+		var frame = new bh.stateanim.AnimationFrame(dummyTile, 0.1, 0, 0, 8, 8);
+		var events:Array<bh.stateanim.AnimationSM.AnimationEvent> = [];
+		sm.onAnimationEvent = function(e) { events.push(e); };
+		sm.addAnimationState("fire", [
+			Frame(frame),
+			Event(Trigger("hit")),
+			Frame(frame)
+		], 0, []);
+		sm.play("fire");
+		sm.update(0.15); // past first frame, trigger event
+		Assert.equals(1, events.length);
+		switch events[0] {
+			case Trigger(data): Assert.equals("hit", data);
+			default: Assert.fail("Expected Trigger event");
+		}
+	}
+
+	@Test
+	public function testAnimSMPaused() {
+		var sm = new bh.stateanim.AnimationSM([], true);
+		var dummyTile = h2d.Tile.fromColor(0xFF0000, 8, 8);
+		var frame = new bh.stateanim.AnimationFrame(dummyTile, 0.5, 0, 0, 8, 8);
+		sm.addAnimationState("idle", [Frame(frame)], 0, []);
+		sm.play("idle");
+		sm.paused = true;
+		sm.update(1.0);
+		Assert.isFalse(sm.isFinished(), "Paused animation should not advance");
+	}
+
+	@Test
+	public function testAnimSMGetExtraPoint() {
+		var sm = new bh.stateanim.AnimationSM([], true);
+		var dummyTile = h2d.Tile.fromColor(0xFF0000, 8, 8);
+		var frame = new bh.stateanim.AnimationFrame(dummyTile, 0.1, 0, 0, 8, 8);
+		var extraPts:Map<String, h2d.col.IPoint> = ["fire" => new h2d.col.IPoint(5, -10)];
+		sm.addAnimationState("idle", [Frame(frame)], -1, extraPts);
+		sm.play("idle");
+		var pt = sm.getExtraPoint("fire");
+		Assert.notNull(pt);
+		Assert.equals(5, pt.x);
+		Assert.equals(-10, pt.y);
+		Assert.isNull(sm.getExtraPoint("nonexistent"));
+	}
+
+	@Test
+	public function testAnimSMLoopCount() {
+		var sm = new bh.stateanim.AnimationSM([], true);
+		var dummyTile = h2d.Tile.fromColor(0xFF0000, 8, 8);
+		var frame = new bh.stateanim.AnimationFrame(dummyTile, 0.1, 0, 0, 8, 8);
+		sm.addAnimationState("blink", [Frame(frame)], 2, []);
+		sm.play("blink");
+		Assert.isFalse(sm.isFinished());
+		sm.update(0.15); // loop 1
+		Assert.isFalse(sm.isFinished());
+		sm.update(0.1); // loop 2
+		Assert.isFalse(sm.isFinished());
+		sm.update(0.1); // done
+		Assert.isTrue(sm.isFinished());
+	}
+
+	@Test
+	public function testAnimSMNoCurrentAnim() {
+		var sm = new bh.stateanim.AnimationSM([]);
+		Assert.isNull(sm.getCurrentAnimName());
+		Assert.isTrue(sm.isFinished());
+	}
+
+	@Test
+	public function testAnimSMGetExtraPointNames() {
+		var sm = new bh.stateanim.AnimationSM([], true);
+		var dummyTile = h2d.Tile.fromColor(0xFF0000, 8, 8);
+		var frame = new bh.stateanim.AnimationFrame(dummyTile, 0.1, 0, 0, 8, 8);
+		var extraPts:Map<String, h2d.col.IPoint> = [
+			"fire" => new h2d.col.IPoint(5, -10),
+			"targeting" => new h2d.col.IPoint(0, -12)
+		];
+		sm.addAnimationState("idle", [Frame(frame)], -1, extraPts);
+		sm.play("idle");
+		var names = sm.getExtraPointNames();
+		Assert.equals(2, names.length);
+		Assert.isTrue(names.contains("fire"));
+		Assert.isTrue(names.contains("targeting"));
+	}
+
+	@Test
+	public function testAnimSMPointEvent() {
+		var sm = new bh.stateanim.AnimationSM([], true);
+		var dummyTile = h2d.Tile.fromColor(0xFF0000, 8, 8);
+		var frame = new bh.stateanim.AnimationFrame(dummyTile, 0.1, 0, 0, 8, 8);
+		var events:Array<bh.stateanim.AnimationSM.AnimationEvent> = [];
+		sm.onAnimationEvent = function(e) { events.push(e); };
+		sm.addAnimationState("fire", [
+			Frame(frame),
+			Event(PointEvent("muzzle", new h2d.col.IPoint(10, -5)))
+		], 0, []);
+		sm.play("fire");
+		sm.update(0.15);
+		Assert.equals(1, events.length);
+		switch events[0] {
+			case PointEvent(name, pt):
+				Assert.equals("muzzle", name);
+				Assert.equals(10, pt.x);
+				Assert.equals(-5, pt.y);
+			default: Assert.fail("Expected PointEvent");
+		}
+	}
+
+	@Test
+	public function testAnimSMRandomPointEvent() {
+		var sm = new bh.stateanim.AnimationSM([], true);
+		sm.randomFunc = function() { return 0.5; }; // deterministic
+		var dummyTile = h2d.Tile.fromColor(0xFF0000, 8, 8);
+		var frame = new bh.stateanim.AnimationFrame(dummyTile, 0.1, 0, 0, 8, 8);
+		var events:Array<bh.stateanim.AnimationSM.AnimationEvent> = [];
+		sm.onAnimationEvent = function(e) { events.push(e); };
+		sm.addAnimationState("hit", [
+			Frame(frame),
+			Event(RandomPointEvent("spark", new h2d.col.IPoint(0, 0), 10.0))
+		], 0, []);
+		sm.play("hit");
+		sm.update(0.15);
+		Assert.equals(1, events.length);
+		switch events[0] {
+			case PointEvent(name, pt):
+				Assert.equals("spark", name);
+				// With random=0.5: angle=PI, radius=5 => x=~-5, y=~0
+				Assert.isTrue(pt != null);
+			default: Assert.fail("Expected PointEvent from random");
+		}
+	}
+
+	// ===== Full integration: parse .anim and create AnimSM =====
+
+	@Test
+	public function testParseAndCreateAnimSM() {
+		var input = byte.ByteData.ofString('
+sheet: testSheet
+states: direction(l, r)
+metadata {
+    @(direction=>l) offsetX: -5
+    @(direction=>r) offsetX: 5
+}
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist {
+        sheet: "test_idle"
+    }
+}
+');
+		var loader = new bh.base.ResourceLoader.CachingResourceLoader();
+		var result = AnimParser.parseFile(input, "test-input", loader);
+		Assert.notNull(result.definedStates);
+		Assert.notNull(result.definedStates["direction"]);
+		Assert.equals(2, result.definedStates["direction"].length);
+		Assert.notNull(result.metadata);
+		Assert.equals(-5, result.metadata.getIntOrDefault("offsetX", 0, ["direction" => "l"]));
+		Assert.equals(5, result.metadata.getIntOrDefault("offsetX", 0, ["direction" => "r"]));
 	}
 }
