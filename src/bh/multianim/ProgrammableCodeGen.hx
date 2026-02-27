@@ -4331,7 +4331,8 @@ class ProgrammableCodeGen {
 			// Layer 1: Named styles — defineHtmlTag for each style + shadow fields + setters
 			if (textDef.styles != null) {
 				for (style in textDef.styles) {
-					final nameExpr = macro $v{style.name};
+					final safeName = TextMarkupConverter.escapeStyleName(style.name);
+					final nameExpr = macro $v{safeName};
 					final colorExpr2:Expr = if (style.color != null) {
 						final colorRV = style.color;
 						final refs = collectParamRefs(colorRV);
@@ -4434,11 +4435,17 @@ class ProgrammableCodeGen {
 				});
 			}
 
-			// Layer 4: Hyperlinks — onHyperlink fires builder callback("link:id")
+			// Layer 4: Hyperlinks — onHyperlink fires builder callback("link:id"), hover sets cursor
 			createExprs.push(macro {
 				final ht:h2d.HtmlText = cast $fieldRef;
 				ht.onHyperlink = (url) -> {
 					this._pb.resolveCallback("link:" + url, "");
+				};
+				ht.onOverHyperlink = (url) -> {
+					hxd.System.setCursor(Button);
+				};
+				ht.onOutHyperlink = (url) -> {
+					hxd.System.setCursor(Default);
 				};
 			});
 		} else {

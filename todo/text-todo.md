@@ -2,7 +2,7 @@
 
 ## Remaining
 
-- [ ] `onOverHyperlink` / `onOutHyperlink` for hover states on links
+- [ ] Fix tilegroup codegen path to respect rich text mode (currently always creates plain `h2d.Text`)
 
 ## Completed
 
@@ -22,7 +22,7 @@ All 4 layers of native rich text markup are implemented:
 - [x] Builder support with incremental update tracking
 - [x] Codegen support with static pre-conversion optimization
 - [x] Parser unit tests (17 tests) + builder unit tests (16 tests)
-- [x] Visual test 92 (richText) — 8-row coverage
+- [x] Visual test 92 (richText) — 9-row coverage (added hyperlink row)
 - [x] Test 48 migrated from `html: true` to `styles:` syntax
 - [x] Markup syntax changed from `${tag}` to `%{tag}` to `[tag]...[/]` BBCode-style — no conflict with `$param` interpolation
 - [x] Dynamic style colors — `color($param)` with incremental update support
@@ -35,3 +35,4 @@ All 4 layers of native rich text markup are implemented:
 - [x] Codegen typed setters: `setStyleColor_<name>()`, `setStyleFont_<name>()`, `setImageTile_<name>()`
 - [x] Image map promoted to instance field in codegen for setter access
 - [x] Style shadow fields `_sc_<name>`, `_sf_<name>` for cross-referencing in setters
+- [x] `onOverHyperlink` / `onOutHyperlink` — pointer cursor on link hover + `enableLinkEvents()` for UIInteractiveEvent emission
