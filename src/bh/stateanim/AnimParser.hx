@@ -28,17 +28,24 @@ enum APToken {
 	APComma;
 	APColon;
 	APSemiColon;
-	APNumber(s:String);
+	APNumber(s:String); // integers and floats (#6)
 	APIdentifier(s:String, keyword:Null<APKeywords>, identType:APIdentifierType);
 	APCurlyClosed;
 	APCurlyOpen;
 	APBracketClosed;
 	APBracketOpen;
-	APNewLine;
+	// APNewLine removed (#10) - newlines are now whitespace
 	APDoubleDot;
 	APAt;
 	APArrow;
 	APNotEquals;
+	APGreater; // (#8)
+	APLess; // (#8)
+	APGreaterEq; // (#8)
+	APLessEq; // (#8)
+	APColor(i:Int); // (#11) #RRGGBB color literals
+	APMinus; // (#7) unary minus before $ref
+	APEquals; // (#7) = for @final assignment
 }
 
 @:nullSafety
@@ -46,6 +53,16 @@ enum AnimConditionalValue {
 	ACVSingle(value:String);
 	ACVMulti(values:Array<String>);
 	ACVNot(inner:AnimConditionalValue);
+	ACVCompare(op:AnimCompareOp, value:String); // (#8) @(level >= 3)
+	ACVRange(min:String, max:String); // (#8) @(level => 1..5)
+}
+
+@:nullSafety
+enum AnimCompareOp { // (#8)
+	ACmpGte;
+	ACmpLte;
+	ACmpGt;
+	ACmpLt;
 }
 
 @:nullSafety
@@ -69,6 +86,11 @@ enum APKeywords {
 	APRandom;
 	APFrames;
 	APMetadata;
+	APAnim; // (#5) compact shorthand
+	APFinal; // (#7) @final constants
+	APElse; // (#1) @else
+	APDefault; // (#1) @default
+	APFilters; // (#12) filter declarations
 }
 
 // ===================== Hand-coded Lexer =====================
@@ -78,6 +100,7 @@ private class AnimToken {
 	public var type:APToken;
 	public var line:Int;
 	public var col:Int;
+
 	public function new(type:APToken, line:Int, col:Int) {
 		this.type = type;
 		this.line = line;
@@ -111,18 +134,31 @@ private class AnimLexerHC {
 		"animation" => APAnimation, "name" => APName, "fps" => APFps,
 		"event" => APEvent, "duration" => APDuration, "random" => APRandom,
 		"frames" => APFrames, "metadata" => APMetadata,
+		"anim" => APAnim, "final" => APFinal,
+		"else" => APElse, "default" => APDefault, "filters" => APFilters,
 	];
 
 	inline function ch():Int {
 		return pos < len ? src.charCodeAt(pos) : -1;
 	}
 
+	static inline function isHexChar(c:Int):Bool {
+		return (c >= '0'.code && c <= '9'.code) || (c >= 'a'.code && c <= 'f'.code) || (c >= 'A'.code && c <= 'F'.code);
+	}
+
 	public function nextToken():AnimToken {
-		// Skip spaces and tabs (NOT newlines)
+		// Skip spaces, tabs, AND newlines (#10 - newlines are now whitespace)
 		while (pos < len) {
 			final c = ch();
-			if (c == ' '.code || c == '\t'.code) { pos++; col++; }
-			else break;
+			if (c == ' '.code || c == '\t'.code) {
+				pos++; col++;
+			} else if (c == '\n'.code) {
+				pos++; line++; col = 1; lineStart = pos;
+			} else if (c == '\r'.code) {
+				pos++;
+				if (pos < len && ch() == '\n'.code) pos++;
+				line++; col = 1; lineStart = pos;
+			} else break;
 		}
 
 		final startLine = line;
@@ -153,19 +189,12 @@ private class AnimLexerHC {
 			return nextToken();
 		}
 
-		// Newline
-		if (c == '\n'.code) { pos++; line++; col = 1; lineStart = pos; return new AnimToken(APNewLine, startLine, startCol); }
-		if (c == '\r'.code) {
-			pos++;
-			if (pos < len && ch() == '\n'.code) pos++;
-			line++; col = 1; lineStart = pos;
-			return new AnimToken(APNewLine, startLine, startCol);
-		}
-
-		// Two-char tokens
+		// Two-char tokens (must check before single-char)
 		if (c == '!'.code && pos + 1 < len && src.charCodeAt(pos + 1) == '='.code) { pos += 2; col += 2; return new AnimToken(APNotEquals, startLine, startCol); }
 		if (c == '='.code && pos + 1 < len && src.charCodeAt(pos + 1) == '>'.code) { pos += 2; col += 2; return new AnimToken(APArrow, startLine, startCol); }
 		if (c == '.'.code && pos + 1 < len && src.charCodeAt(pos + 1) == '.'.code) { pos += 2; col += 2; return new AnimToken(APDoubleDot, startLine, startCol); }
+		if (c == '>'.code && pos + 1 < len && src.charCodeAt(pos + 1) == '='.code) { pos += 2; col += 2; return new AnimToken(APGreaterEq, startLine, startCol); } // (#8)
+		if (c == '<'.code && pos + 1 < len && src.charCodeAt(pos + 1) == '='.code) { pos += 2; col += 2; return new AnimToken(APLessEq, startLine, startCol); } // (#8)
 
 		// Single-char tokens
 		switch (c) {
@@ -179,6 +208,9 @@ private class AnimLexerHC {
 			case ':'.code: pos++; col++; return new AnimToken(APColon, startLine, startCol);
 			case ';'.code: pos++; col++; return new AnimToken(APSemiColon, startLine, startCol);
 			case '@'.code: pos++; col++; return new AnimToken(APAt, startLine, startCol);
+			case '>'.code: pos++; col++; return new AnimToken(APGreater, startLine, startCol); // (#8)
+			case '<'.code: pos++; col++; return new AnimToken(APLess, startLine, startCol); // (#8)
+			case '='.code: pos++; col++; return new AnimToken(APEquals, startLine, startCol); // (#7)
 			default:
 		}
 
@@ -203,16 +235,57 @@ private class AnimLexerHC {
 			return new AnimToken(APIdentifier(buf.toString(), null, AITQuotedString), startLine, startCol);
 		}
 
-		// Number (including negative)
+		// Minus sign: produce APMinus if not followed by digit (digit case handled below as negative number) (#7)
+		if (c == '-'.code) {
+			if (pos + 1 < len && src.charCodeAt(pos + 1) >= '0'.code && src.charCodeAt(pos + 1) <= '9'.code) {
+				// fall through to number parsing below
+			} else {
+				pos++; col++;
+				return new AnimToken(APMinus, startLine, startCol);
+			}
+		}
+
+		// Number (integer or float) (#6 adds float support)
 		if ((c >= '0'.code && c <= '9'.code) || (c == '-'.code && pos + 1 < len && src.charCodeAt(pos + 1) >= '0'.code && src.charCodeAt(pos + 1) <= '9'.code)) {
 			var start = pos;
 			if (c == '-'.code) { pos++; col++; }
 			while (pos < len && ch() >= '0'.code && ch() <= '9'.code) { pos++; col++; }
-			// Skip underscore digit separators
+			// Float: decimal part (#6)
+			if (pos < len && ch() == '.'.code && pos + 1 < len && src.charCodeAt(pos + 1) >= '0'.code && src.charCodeAt(pos + 1) <= '9'.code) {
+				pos++; col++; // consume '.'
+				while (pos < len && ch() >= '0'.code && ch() <= '9'.code) { pos++; col++; }
+			}
 			return new AnimToken(APNumber(src.substring(start, pos).replace("_", "")), startLine, startCol);
 		}
 
-		// Identifier (includes @, #, !, $)
+		// Color literal: #RRGGBB or #RGB or #RRGGBBAA (#11)
+		if (c == '#'.code) {
+			pos++; col++;
+			var hexStart = pos;
+			while (pos < len && isHexChar(ch())) { pos++; col++; }
+			final hexStr = src.substring(hexStart, pos);
+			if (hexStr.length == 3) {
+				// #RGB → #RRGGBB
+				final r = ("0x" + hexStr.charAt(0) + hexStr.charAt(0)).toInt();
+				final g = ("0x" + hexStr.charAt(1) + hexStr.charAt(1)).toInt();
+				final b = ("0x" + hexStr.charAt(2) + hexStr.charAt(2)).toInt();
+				return new AnimToken(APColor((r << 16) | (g << 8) | b), startLine, startCol);
+			} else if (hexStr.length == 6) {
+				return new AnimToken(APColor(("0x" + hexStr).toInt()), startLine, startCol);
+			} else if (hexStr.length == 8) {
+				// #RRGGBBAA → store as 0xAARRGGBB
+				final rr = ("0x" + hexStr.substring(0, 2)).toInt();
+				final gg = ("0x" + hexStr.substring(2, 4)).toInt();
+				final bb = ("0x" + hexStr.substring(4, 6)).toInt();
+				final aa = ("0x" + hexStr.substring(6, 8)).toInt();
+				return new AnimToken(APColor((aa << 24) | (rr << 16) | (gg << 8) | bb), startLine, startCol);
+			} else {
+				// Unknown # sequence - treat as identifier starting with #
+				return new AnimToken(APIdentifier("#" + hexStr, null, AITString), startLine, startCol);
+			}
+		}
+
+		// Identifier (includes $)
 		if (isIdentStart(c)) {
 			var start = pos;
 			pos++; col++;
@@ -228,8 +301,7 @@ private class AnimLexerHC {
 	}
 
 	static inline function isIdentStart(c:Int):Bool {
-		return (c >= 'a'.code && c <= 'z'.code) || (c >= 'A'.code && c <= 'Z'.code) || c == '_'.code
-			|| c == '@'.code || c == '#'.code || c == '!'.code || c == '$'.code;
+		return (c >= 'a'.code && c <= 'z'.code) || (c >= 'A'.code && c <= 'Z'.code) || c == '_'.code || c == '$'.code;
 	}
 
 	static inline function isIdentContinue(c:Int):Bool {
@@ -243,7 +315,9 @@ private class AnimLexerHC {
 @:nullSafety
 enum MetadataValue {
 	MVInt(i:Int);
+	MVFloat(f:Float); // (#6)
 	MVString(s:String);
+	MVColor(c:Int); // (#11) stored as 0xRRGGBB or 0xAARRGGBB
 }
 
 @:nullSafety
@@ -295,7 +369,9 @@ class AnimMetadata {
 			return defaultValue;
 		return switch value {
 			case MVInt(i): i;
+			case MVFloat(f): Std.int(f);
 			case MVString(s): throw 'expected int for metadata key ${key} but was string $s';
+			case MVColor(c): throw 'expected int for metadata key ${key} but was color $c';
 		};
 	}
 
@@ -305,7 +381,33 @@ class AnimMetadata {
 			throw 'metadata key ${key} not found';
 		return switch value {
 			case MVInt(i): i;
+			case MVFloat(f): Std.int(f);
 			case MVString(s): throw 'expected int for metadata key ${key} but was string $s';
+			case MVColor(c): throw 'expected int for metadata key ${key} but was color $c';
+		};
+	}
+
+	public function getFloatOrDefault(key:String, defaultValue:Float, ?stateSelector:AnimationStateSelector):Float { // (#6)
+		final value = findBestMatch(key, stateSelector);
+		if (value == null)
+			return defaultValue;
+		return switch value {
+			case MVInt(i): i;
+			case MVFloat(f): f;
+			case MVString(s): throw 'expected float for metadata key ${key} but was string $s';
+			case MVColor(c): throw 'expected float for metadata key ${key} but was color $c';
+		};
+	}
+
+	public function getFloatOrException(key:String, ?stateSelector:AnimationStateSelector):Float { // (#6)
+		final value = findBestMatch(key, stateSelector);
+		if (value == null)
+			throw 'metadata key ${key} not found';
+		return switch value {
+			case MVInt(i): i;
+			case MVFloat(f): f;
+			case MVString(s): throw 'expected float for metadata key ${key} but was string $s';
+			case MVColor(c): throw 'expected float for metadata key ${key} but was color $c';
 		};
 	}
 
@@ -316,6 +418,8 @@ class AnimMetadata {
 		return switch value {
 			case MVString(s): s;
 			case MVInt(i): '$i';
+			case MVFloat(f): '$f';
+			case MVColor(c): '#${StringTools.hex(c, 6)}';
 		};
 	}
 
@@ -326,6 +430,32 @@ class AnimMetadata {
 		return switch value {
 			case MVString(s): s;
 			case MVInt(i): '$i';
+			case MVFloat(f): '$f';
+			case MVColor(c): '#${StringTools.hex(c, 6)}';
+		};
+	}
+
+	public function getColorOrDefault(key:String, defaultValue:Int, ?stateSelector:AnimationStateSelector):Int { // (#11)
+		final value = findBestMatch(key, stateSelector);
+		if (value == null)
+			return defaultValue;
+		return switch value {
+			case MVColor(c): c;
+			case MVInt(i): i;
+			case MVString(s): throw 'expected color for metadata key ${key} but was string $s';
+			case MVFloat(f): throw 'expected color for metadata key ${key} but was float $f';
+		};
+	}
+
+	public function getColorOrException(key:String, ?stateSelector:AnimationStateSelector):Int { // (#11)
+		final value = findBestMatch(key, stateSelector);
+		if (value == null)
+			throw 'metadata key ${key} not found';
+		return switch value {
+			case MVColor(c): c;
+			case MVInt(i): i;
+			case MVString(s): throw 'expected color for metadata key ${key} but was string $s';
+			case MVFloat(f): throw 'expected color for metadata key ${key} but was float $f';
 		};
 	}
 }
@@ -344,6 +474,7 @@ enum AnimPlaylistFrames {
 	SheetFrameAnimWithIndex(name:String, from:Null<Int>, to:Null<Int>, durationMilliseconds:Null<Int>);
 	FileSingleFrame(filename:String, durationMilliseconds:Null<Int>);
 	PlaylistEvent(playlistEvent:AnimationPlaylistEvent);
+	PlaylistEventData(name:String, meta:Map<String, MetadataValue>); // (#9) event with typed metadata
 }
 
 @:nullSafety
@@ -351,6 +482,12 @@ typedef Playlist = {
 	var states:AnimConditionalSelector;
 	var anims:Array<AnimPlaylistFrames>;
 	var ?visited:Bool;
+}
+
+@:nullSafety
+typedef AnimFilterDecl = { // (#12)
+	var type:String;
+	var params:Map<String, String>;
 }
 
 @:nullSafety
@@ -362,6 +499,7 @@ typedef AnimationState = {
 	var extraPoint:Map<String, Array<ExtraPoints>>;
 	var playlist:Array<Playlist>;
 	var ?visited:Bool;
+	var ?filters:Array<AnimFilterDecl>; // (#12)
 }
 
 @:nullSafety
@@ -407,6 +545,7 @@ typedef AnimationStateSelector = Map<String, String>;
 interface AnimParserResult {
 	var definedStates(default, never):Map<String, Array<String>>;
 	var metadata(default, never):Null<AnimMetadata>;
+
 	function createAnimSM(stateSelector:AnimationStateSelector):AnimationSM;
 }
 
@@ -427,6 +566,9 @@ class AnimParser implements AnimParserResult {
 	var center:Null<Point> = null;
 	var metadataMap:Map<String, Array<MetadataEntry>> = [];
 	public var metadata(default, null):Null<AnimMetadata> = null;
+	var constants:Map<String, Float> = []; // (#7) @final named constants
+	var defaultFps:Null<Int> = null; // (#3) file-level fps default
+	var defaultLoop:Null<Int> = null; // (#3) file-level loop default
 	var cache:Map<String, Array<{name:String, states:Array<AnimationFrameState>, loopCount:Int, extraPoints:Map<String, h2d.col.IPoint>}>> = [];
 	final resourceLoader:bh.base.ResourceLoader;
 
@@ -434,6 +576,11 @@ class AnimParser implements AnimParserResult {
 
 	inline function peek():APToken {
 		return tokens[tpos].type;
+	}
+
+	function peekAt(offset:Int):APToken { // lookahead
+		final idx = tpos + offset;
+		return idx < tokens.length ? tokens[idx].type : APEof;
 	}
 
 	function advance():AnimToken {
@@ -454,10 +601,6 @@ class AnimParser implements AnimParserResult {
 			return true;
 		}
 		return false;
-	}
-
-	function skipNewlines():Void {
-		while (Type.enumEq(peek(), APNewLine)) advance();
 	}
 
 	function curPos():ParsePosition {
@@ -516,15 +659,12 @@ class AnimParser implements AnimParserResult {
 		var animationParsingStarted = false;
 		while (true) {
 			switch (peek()) {
-				case APNewLine:
-					advance();
 				case APEof:
 					break;
 				case APIdentifier(_, APSheet, AITString):
 					advance();
 					expect(APColon);
 					final value = expectIdentifier();
-					expectNewline();
 					if (animationParsingStarted) syntaxError("sheet must be defined before animations");
 					if (sheetName != null) syntaxError("sheet already defined");
 					sheetName = value;
@@ -552,26 +692,69 @@ class AnimParser implements AnimParserResult {
 					if (animationParsingStarted) syntaxError("metadata must be defined before animations");
 					if (metadataMap.count() > 0) syntaxError("metadata already defined");
 					parseMetadata();
-				case APIdentifier(_, APAnimation, AITString):
+				case APIdentifier(_, APFps, AITString): // (#3) file-level fps default
+					advance();
+					expect(APColon);
+					if (animationParsingStarted) syntaxError("file-level fps default must be before animations");
+					if (defaultFps != null) syntaxError("default fps already set");
+					final parsedDefaultFps = parseIntNumber();
+					if (parsedDefaultFps <= 0) syntaxError("default fps must be greater than 0");
+					defaultFps = parsedDefaultFps;
+				case APIdentifier(_, APLoop, AITString): // (#3) file-level loop default
+					advance();
+					expect(APColon);
+					if (animationParsingStarted) syntaxError("file-level loop default must be before animations");
+					defaultLoop = parseLoopValue();
+				case APAt: // (#7) @final constants, or other @ at top level
+					advance();
+					switch peek() {
+						case APIdentifier(_, APFinal, _): // @final name = expr
+							advance();
+							if (animationParsingStarted) syntaxError("@final must be declared before animations");
+							final constName = expectIdentifier();
+							expect(APEquals);
+							final constVal = parseConstantExpr();
+							if (constants.exists(constName)) syntaxError('@final "${constName}" already defined');
+							constants.set(constName, constVal);
+						default:
+							unexpectedError("expected 'final' after @");
+					}
+				case APIdentifier(_, APAnimation, AITString): // full animation block
 					advance();
 					animationParsingStarted = true;
-					final animationStates = parseStates();
+
+					// (#2) Optional name in header: animation name { } or animation name @(cond) { }
+					var headerName:Null<String> = null;
+					switch [peek(), peekAt(1)] {
+						case [APIdentifier(s, _, AITString), APCurlyOpen | APAt]:
+							advance();
+							headerName = s;
+						case _:
+					}
+
+					final animationStates = parseStates(); // (#1) handles @else, @default
 					for (key => value in animationStates) {
 						parserValidateConditionalState(definedStates, key, value);
 					}
 					expect(APCurlyOpen);
 					final startOfAnim = curPos();
-					var parsedAnim = parseAnimation(definedStates, animationStates, allowedExtraPoints);
-					if (parsedAnim.fps == null) syntaxError("fps expected", startOfAnim);
+					var parsedAnim = parseAnimation(definedStates, animationStates, allowedExtraPoints, headerName);
+					final animFps = parsedAnim.fps ?? defaultFps;
+					if (animFps == null) syntaxError("fps expected (set fps in animation body or as file-level default)", startOfAnim);
 					var anim:AnimationState = {
 						states: animationStates,
 						name: parsedAnim.name,
-						loop: parsedAnim.loop,
-						fps: parsedAnim.fps,
+						loop: parsedAnim.loop ?? defaultLoop,
+						fps: animFps,
 						extraPoint: parsedAnim.extraPoints,
-						playlist: parsedAnim.playlist
+						playlist: parsedAnim.playlist,
+						filters: parsedAnim.filters,
 					};
 					animations.push(anim);
+				case APIdentifier(_, APAnim, AITString): // (#5) compact shorthand: anim name(fps:N, loop:yes): "sheet"
+					advance();
+					animationParsingStarted = true;
+					parseAnimShorthand();
 				default:
 					unexpectedError();
 			}
@@ -633,30 +816,66 @@ class AnimParser implements AnimParserResult {
 		}
 	}
 
-	function expectNewline():Void {
-		switch (peek()) {
-			case APNewLine:
+	// (#6) Parse a number (integer or float) and return as string
+	function parseIntNumber():Int {
+		switch peek() {
+			case APNumber(s):
 				advance();
-			case APEof:
+				return Std.parseInt(s) ?? syntaxError('expected integer, got "$s"');
 			default:
-				syntaxError('expected newline, got ${peek()}');
+				return unexpectedError("expected integer number");
 		}
 	}
 
-	function parseCoordinates():Point {
-		switch (peek()) {
-			case APNumber(x):
+	// (#7) Parse a constant expression: number, -number, $ref, -$ref
+	@:nullSafety(Off)
+	function parseConstantExpr():Float {
+		var isNeg = match(APMinus);
+		switch peek() {
+			case APNumber(s):
 				advance();
-				expect(APComma);
-				switch (peek()) {
-					case APNumber(y):
-						advance();
-						return {x: x.toInt(), y: y.toInt()};
-					default:
-						return unexpectedError("expected y coordinate");
-				}
+				final f = Std.parseFloat(s);
+				return isNeg ? -f : f;
+			case APIdentifier(s, _, AITString) if (s.charAt(0) == '$'):
+				advance();
+				final refName = s.substring(1);
+				final cv = constants.get(refName);
+				if (cv == null) syntaxError('constant "${refName}" not defined. Defined constants: ${[for (k in constants.keys()) k]}');
+				return isNeg ? -(cv : Float) : (cv : Float);
 			default:
-				return unexpectedError("expected coordinates");
+				return unexpectedError("expected number or $constant");
+		}
+	}
+
+	// (#6) Parse coordinate component: integer, float-rounded-to-int, or $ref
+	function parseIntCoord():Int {
+		return Std.int(parseConstantExpr());
+	}
+
+	function parseCoordinates():Point {
+		final x = parseIntCoord();
+		expect(APComma);
+		final y = parseIntCoord();
+		return {x: x, y: y};
+	}
+
+	// (#3) Parse a loop value (yes/no/number)
+	@:nullSafety(Off)
+	function parseLoopValue():Null<Int> {
+		switch peek() {
+			case APIdentifier("true" | "yes", _, _):
+				advance();
+				return -1;
+			case APIdentifier("false" | "no", _, _):
+				advance();
+				return null;
+			case APNumber(number):
+				advance();
+				final cnt = Std.parseInt(number);
+				if (cnt == null || cnt <= 0) syntaxError("loop counter must be greater than 0");
+				return cnt;
+			default:
+				return unexpectedError("expected loop value (yes/no/true/false/number)");
 		}
 	}
 
@@ -687,15 +906,32 @@ class AnimParser implements AnimParserResult {
 		return states;
 	}
 
+	// (#1) parseStates: handles @(cond), @else, @else(cond), @default
 	function parseStates():AnimConditionalSelector {
 		var states:AnimConditionalSelector = [];
 		while (true) {
-			skipNewlines();
 			switch (peek()) {
 				case APAt:
 					advance();
-					expect(APOpen);
-					parseConditionalState(states);
+					switch peek() {
+						case APIdentifier(_, APElse, _): // @else or @else(cond)
+							advance();
+							if (match(APOpen)) {
+								// @else(condition) - parse just that condition
+								var elseStates:AnimConditionalSelector = [];
+								parseConditionalState(elseStates);
+								return elseStates;
+							}
+							return []; // bare @else = empty selector (fallback, matches everything)
+						case APIdentifier(_, APDefault, _): // @default
+							advance();
+							return []; // empty selector (matches everything, lowest priority)
+						case APOpen: // @(cond)
+							advance();
+							parseConditionalState(states);
+						default:
+							return unexpectedError("expected (, else, or default after @");
+					}
 				default:
 					return states;
 			}
@@ -705,37 +941,73 @@ class AnimParser implements AnimParserResult {
 	function parseConditionalState(states:AnimConditionalSelector):Void {
 		final stateName = expectIdentifier();
 
-		var negated = false;
-		switch (peek()) {
-			case APArrow:
-				advance();
-			case APNotEquals:
-				advance();
-				negated = true;
-			default:
-				unexpectedError("Expected => or !=");
-		}
-
 		var condValue:AnimConditionalValue;
 		switch (peek()) {
-			case APBracketOpen:
+			case APArrow: // =>  — single value, multi-value [a,b], or range a..b
 				advance();
-				condValue = ACVMulti(parseConditionalValueList());
-			case APIdentifier(value, _, AITString | AITQuotedString):
+				switch peek() {
+					case APBracketOpen: // @(state=>[a,b])
+						advance();
+						condValue = ACVMulti(parseConditionalValueList());
+					case APNumber(v):
+						advance();
+						if (match(APDoubleDot)) { // @(state=>1..5) range
+							final val2 = expectIdentifier();
+							condValue = ACVRange(v, val2);
+						} else {
+							condValue = ACVSingle(v);
+						}
+					case APIdentifier(v, _, AITString | AITQuotedString):
+						advance();
+						if (match(APDoubleDot)) { // @(state=>a..b) range
+							final val2 = expectIdentifier();
+							condValue = ACVRange(v, val2);
+						} else {
+							condValue = ACVSingle(v);
+						}
+					default:
+						condValue = syntaxError("Expected value, [values], or range after =>");
+				}
+			case APNotEquals: // !=
 				advance();
-				condValue = ACVSingle(value);
-			case APNumber(value):
+				var innerVal:AnimConditionalValue;
+				switch peek() {
+					case APBracketOpen:
+						advance();
+						innerVal = ACVMulti(parseConditionalValueList());
+					case APIdentifier(value, _, AITString | AITQuotedString):
+						advance();
+						innerVal = ACVSingle(value);
+					case APNumber(value):
+						advance();
+						innerVal = ACVSingle(value);
+					default:
+						innerVal = syntaxError("Expected value or [values] after !=");
+				}
+				condValue = ACVNot(innerVal);
+			case APGreaterEq: // >= (#8)
 				advance();
-				condValue = ACVSingle(value);
+				condValue = ACVCompare(ACmpGte, expectIdentifier());
+			case APLessEq: // <= (#8)
+				advance();
+				condValue = ACVCompare(ACmpLte, expectIdentifier());
+			case APGreater: // > (#8)
+				advance();
+				condValue = ACVCompare(ACmpGt, expectIdentifier());
+			case APLess: // < (#8)
+				advance();
+				condValue = ACVCompare(ACmpLt, expectIdentifier());
 			default:
-				condValue = syntaxError("Expected value or [values]");
+				condValue = syntaxError("Expected =>, !=, >=, <=, >, or < in conditional");
 		}
-
-		if (negated) condValue = ACVNot(condValue);
 
 		expect(APClosed);
 		states.set(stateName, condValue);
 	}
+
+	// Fix: properly handle @(state=>[a,b]) multi-value case
+	// The above parseConditionalState has a bug for =>[a,b] - let me rewrite cleanly:
+	// Actually the fix is: after advancing past =>, check if next is [ before reading val
 
 	function parseConditionalValueList():Array<String> {
 		var values:Array<String> = [];
@@ -771,83 +1043,73 @@ class AnimParser implements AnimParserResult {
 
 	function parseMetadata():Void {
 		while (true) {
-			skipNewlines();
 			if (match(APCurlyClosed)) break;
 			final states = parseStates();
 			final key = expectIdentifier();
 			expect(APColon);
+			var entryValue:MetadataValue;
 			switch (peek()) {
 				case APNumber(numStr):
 					advance();
-					var entry:MetadataEntry = {states: states, value: MVInt(numStr.toInt())};
-					final existing = metadataMap.get(key);
-					if (existing != null) existing.push(entry);
-					else metadataMap[key] = [entry];
+					// (#6) detect float vs int
+					if (numStr.contains(".")) {
+						entryValue = MVFloat(Std.parseFloat(numStr));
+					} else {
+						entryValue = MVInt(numStr.toInt());
+					}
 				case APIdentifier(strVal, _, AITQuotedString):
 					advance();
-					var entry:MetadataEntry = {states: states, value: MVString(strVal)};
-					final existing = metadataMap.get(key);
-					if (existing != null) existing.push(entry);
-					else metadataMap[key] = [entry];
+					entryValue = MVString(strVal);
+				case APColor(c): // (#11)
+					advance();
+					entryValue = MVColor(c);
 				default:
-					unexpectedError("Expected number or string value in metadata");
+					entryValue = unexpectedError("Expected number, string, or color value in metadata");
 			}
+			var entry:MetadataEntry = {states: states, value: entryValue};
+			final existing = metadataMap.get(key);
+			if (existing != null) existing.push(entry);
+			else metadataMap[key] = [entry];
 		}
 	}
 
 	@:nullSafety(Off)
-	function parseAnimation(statesDefinitions, animationStates, allowedExtraPointsList) {
+	function parseAnimation(statesDefinitions, animationStates, allowedExtraPointsList, ?headerName:String) {
 		var extraPoints:Map<String, Array<ExtraPoints>> = [];
-		var ret = {loop: (null : Null<Int>), name: (null : Null<String>), fps: (null : Null<Int>), extraPoints: extraPoints, playlist: ([] : Array<Playlist>)};
+		var filters:Array<AnimFilterDecl> = []; // (#12)
+		var ret = {
+			loop: (null : Null<Int>),
+			name: headerName, // (#2) name may come from header
+			fps: (null : Null<Int>),
+			extraPoints: extraPoints,
+			playlist: ([] : Array<Playlist>),
+			filters: filters,
+		};
 
 		while (true) {
-			skipNewlines();
 			switch (peek()) {
 				case APCurlyClosed:
 					advance();
 					break;
-				case APIdentifier(_, APName, AITString):
+				case APIdentifier(_, APName, AITString): // (#2) backward compat: name: inside body
 					advance();
 					expect(APColon);
-					ret.name = expectIdentifier();
+					final bodyName = expectIdentifier();
+					if (ret.name != null && ret.name != bodyName)
+						syntaxError('animation name "${ret.name}" (in header) conflicts with name: "${bodyName}" (in body)');
+					ret.name = bodyName;
 					if (!animationNames.contains(ret.name)) animationNames.push(ret.name);
 				case APIdentifier(_, APLoop, AITString):
 					advance();
-					switch (peek()) {
-						case APNewLine:
-							ret.loop = -1;
-						case APColon:
-							advance();
-							switch (peek()) {
-								case APIdentifier("true" | "yes", _, _):
-									advance();
-									ret.loop = -1;
-								case APIdentifier("false" | "no", _, _):
-									advance();
-									ret.loop = null;
-								case APNumber(number):
-									advance();
-									final cnt = number.toInt();
-									if (cnt <= 0) syntaxError("loop counter must be greater than 0");
-									ret.loop = cnt;
-								default:
-									syntaxError('unknown loop value ${peek()}');
-							}
-						default:
-							unexpectedError();
-					}
+					expect(APColon);
+					ret.loop = parseLoopValue();
 				case APIdentifier(_, APFps, AITString):
 					advance();
 					expect(APColon);
-					switch (peek()) {
-						case APNumber(number):
-							advance();
-							if (ret.fps != null) syntaxError("fps already set");
-							ret.fps = number.toInt();
-							if (ret.fps <= 0) syntaxError("fps must be greater than 0");
-						default:
-							unexpectedError("expected fps number");
-					}
+					if (ret.fps != null) syntaxError("fps already set");
+					final parsedFps = parseIntNumber();
+					if (parsedFps <= 0) syntaxError("fps must be greater than 0");
+					ret.fps = parsedFps;
 				case APIdentifier(_, APExtrapoints, AITString):
 					advance();
 					expect(APCurlyOpen);
@@ -856,7 +1118,7 @@ class AnimParser implements AnimParserResult {
 					if (extraPoints.count() == 0) syntaxError("extraPoints must not be empty");
 				case APIdentifier(_, APPlaylist, AITString):
 					advance();
-					final playlistStates = parseStates();
+					final playlistStates = parseStates(); // (#1) @else/@default in playlist
 					for (key => value in playlistStates)
 						parserValidateConditionalState(statesDefinitions, key, value);
 					checkForUnreachableState(animationStates, playlistStates);
@@ -864,22 +1126,77 @@ class AnimParser implements AnimParserResult {
 					var playlist:Playlist = {anims: [], states: playlistStates};
 					parseFrames(playlist.anims);
 					ret.playlist.push(playlist);
+				case APIdentifier(_, APFilters, AITString): // (#12) filter declarations
+					advance();
+					expect(APCurlyOpen);
+					ret.filters = parseFilterBlock();
 				default:
 					unexpectedError();
 			}
 		}
 
-		if (ret.name == null) syntaxError("name not defined");
+		if (ret.name == null) syntaxError("animation name not set (use 'animation name { }' or 'name:' inside body)");
+		if (!animationNames.contains(ret.name)) animationNames.push(ret.name);
 		if (ret.playlist.length == 0) syntaxError("animation requires playlist");
 		return ret;
+	}
+
+	// (#5) Parse compact animation shorthand: anim name(fps:N, loop:yes): "sheet"
+	@:nullSafety(Off)
+	function parseAnimShorthand():Void {
+		final name = expectIdentifier();
+		var overrideFps:Null<Int> = null;
+		var overrideLoop:Null<Int> = null;
+
+		if (match(APOpen)) {
+			var first = true;
+			while (!match(APClosed)) {
+				if (!first) expect(APComma);
+				first = false;
+				switch peek() {
+					case APIdentifier(_, APFps, _):
+						advance();
+						expect(APColon);
+						final fps = parseIntNumber();
+						if (fps <= 0) syntaxError("fps must be greater than 0");
+						overrideFps = fps;
+					case APIdentifier(_, APLoop, _):
+						advance();
+						expect(APColon);
+						overrideLoop = parseLoopValue();
+					default:
+						unexpectedError("expected fps or loop modifier in anim shorthand");
+				}
+			}
+		}
+
+		expect(APColon);
+		final sheetStr = expectIdentifier();
+		final sheetPos = curPos();
+		validateSheetName(sheetStr, sheetPos);
+
+		final animFps = overrideFps ?? defaultFps;
+		if (animFps == null) syntaxError('anim shorthand "${name}" requires fps (set in modifiers or file-level default)');
+		final animLoop:Null<Int> = overrideLoop ?? defaultLoop;
+
+		final playlist:Playlist = {anims: [SheetFrameAnim(sheetStr, null)], states: []};
+		final anim:AnimationState = {
+			states: [],
+			name: name,
+			loop: animLoop,
+			fps: animFps,
+			extraPoint: [],
+			playlist: [playlist],
+		};
+		if (!animationNames.contains(name)) animationNames.push(name);
+		animations.push(anim);
 	}
 
 	function parseExtraPoints(statesDefinitions:Map<String, Array<String>>, animationStates:AnimConditionalSelector,
 			extraPoints:Map<String, Array<ExtraPoints>>, allowedExtraPointsList:Array<String>):Void {
 		while (true) {
-			skipNewlines();
 			if (match(APCurlyClosed)) break;
-			final states = parseStates();
+			final states = parseStates(); // (#1) @else/@default in extrapoints
 			final pointName = expectIdentifier();
 			expect(APColon);
 			final c = parseCoordinates();
@@ -899,7 +1216,6 @@ class AnimParser implements AnimParserResult {
 
 	function parseFrames(anims:Array<AnimPlaylistFrames>):Void {
 		while (true) {
-			skipNewlines();
 			switch (peek()) {
 				case APCurlyClosed:
 					advance();
@@ -926,24 +1242,42 @@ class AnimParser implements AnimParserResult {
 							switch (peek()) {
 								case APNumber(randomRadius):
 									advance();
-									final r = randomRadius.toInt();
-									anims.push(PlaylistEvent(RandomPointEvent(eventName, new h2d.col.IPoint(p.x, p.y), r)));
+									final r = Std.parseFloat(randomRadius);
+									// (#9) optional metadata payload after random event
+									if (match(APCurlyOpen)) {
+										final meta = parseEventMeta();
+										anims.push(PlaylistEventData(eventName, meta));
+									} else {
+										anims.push(PlaylistEvent(RandomPointEvent(eventName, new h2d.col.IPoint(p.x, p.y), r)));
+									}
 								default:
 									unexpectedError("expected radius");
 							}
-						case APNewLine | APSemiColon:
-							advance();
-							anims.push(PlaylistEvent(Trigger(eventName)));
 						case APNumber(_):
 							final p = parseCoordinates();
-							anims.push(PlaylistEvent(PointEvent(eventName, new h2d.col.IPoint(p.x, p.y))));
+							if (match(APCurlyOpen)) { // (#9) metadata on point event
+								final meta = parseEventMeta();
+								anims.push(PlaylistEventData(eventName, meta));
+							} else {
+								anims.push(PlaylistEvent(PointEvent(eventName, new h2d.col.IPoint(p.x, p.y))));
+							}
+						case APSemiColon: // explicit statement terminator
+							advance();
+							anims.push(PlaylistEvent(Trigger(eventName)));
+						case APCurlyOpen: // (#9) metadata on bare trigger event
+							advance();
+							final meta = parseEventMeta();
+							anims.push(PlaylistEventData(eventName, meta));
 						default:
+							// Bare trigger: self-terminated by next keyword, } or EOF
 							anims.push(PlaylistEvent(Trigger(eventName)));
 					}
 				case APIdentifier(_, APSheet, AITString):
 					advance();
 					expect(APColon);
 					final frameName = expectIdentifier();
+					final sheetPos = curPos();
+					validateSheetName(frameName, sheetPos); // (#4) validate ${state} and error on $$
 					match(APComma); // optional comma
 					var start:Null<Int> = null;
 					var end:Null<Int> = null;
@@ -955,13 +1289,13 @@ class AnimParser implements AnimParserResult {
 							switch (peek()) {
 								case APNumber(startIndex):
 									advance();
-									final startN = startIndex.toInt();
+									final startN = Std.parseInt(startIndex) ?? 0;
 									start = startN;
 									expect(APDoubleDot);
 									switch (peek()) {
 										case APNumber(endIndex):
 											advance();
-											final endN = endIndex.toInt();
+											final endN = Std.parseInt(endIndex) ?? 0;
 											end = endN;
 											if (startN < 0) syntaxError('frame index must be non-negative, was $startN');
 											if (endN < 0) syntaxError('frame index must be non-negative, was $endN');
@@ -973,12 +1307,10 @@ class AnimParser implements AnimParserResult {
 							}
 							match(APComma);
 							duration = tryParseDuration();
-						case APNewLine:
-							advance();
-						case APCurlyClosed:
-						// don't advance - let the outer loop handle it
+						case APCurlyClosed | APEof | APIdentifier(_, APSheet | APFile | APEvent, _):
+							// sheet name is self-terminating in context
 						default:
-							unexpectedError("expected frames, newline or }");
+							duration = tryParseDuration();
 					}
 					if (start == null && end == null)
 						anims.push(SheetFrameAnim(frameName, duration));
@@ -987,6 +1319,81 @@ class AnimParser implements AnimParserResult {
 				default:
 					unexpectedError();
 			}
+		}
+	}
+
+	// (#9) Parse typed event metadata: key => val, key:type => val, ...
+	function parseEventMeta():Map<String, MetadataValue> {
+		var meta:Map<String, MetadataValue> = [];
+		while (true) {
+			if (match(APCurlyClosed)) break;
+			final key = expectIdentifier();
+			// Optional type annotation: key:type => val
+			var typeHint:Null<String> = null;
+			if (match(APColon)) {
+				typeHint = expectIdentifier();
+			}
+			expect(APArrow);
+			var val:MetadataValue;
+			switch peek() {
+				case APNumber(s):
+					advance();
+					if (typeHint == "float" || s.contains(".")) {
+						val = MVFloat(Std.parseFloat(s));
+					} else {
+						val = MVInt(s.toInt());
+					}
+				case APIdentifier(s, _, AITQuotedString):
+					advance();
+					val = MVString(s);
+				case APIdentifier("true" | "false", _, _):
+					final b = expectIdentifier();
+					val = MVInt(b == "true" ? 1 : 0);
+				case APColor(c): // (#11)
+					advance();
+					val = MVColor(c);
+				default:
+					val = unexpectedError("expected metadata value");
+			}
+			meta.set(key, val);
+			match(APComma);
+		}
+		return meta;
+	}
+
+	// (#12) Parse filter declarations
+	function parseFilterBlock():Array<AnimFilterDecl> {
+		var filters:Array<AnimFilterDecl> = [];
+		while (!match(APCurlyClosed)) {
+			final filterType = expectIdentifier();
+			expect(APColon);
+			var params:Map<String, String> = [];
+			final v1 = parseFilterValue();
+			if (match(APArrow)) {
+				final v2 = parseFilterValue();
+				params.set("from", v1);
+				params.set("to", v2);
+			} else {
+				params.set("value", v1);
+			}
+			filters.push({type: filterType, params: params});
+		}
+		return filters;
+	}
+
+	function parseFilterValue():String {
+		switch peek() {
+			case APColor(c):
+				advance();
+				return '#${StringTools.hex(c, 6)}';
+			case APNumber(n):
+				advance();
+				return n;
+			case APIdentifier(s, _, _):
+				advance();
+				return s;
+			default:
+				return unexpectedError("expected filter value");
 		}
 	}
 
@@ -1008,25 +1415,53 @@ class AnimParser implements AnimParserResult {
 				switch (peek()) {
 					case APIdentifier("ms", _, AITString):
 						advance();
-						final d = duration.toInt();
+						final d = Std.parseInt(duration) ?? 0;
 						if (d <= 0) return syntaxError("duration must be greater than 0");
 						return d;
 					default:
-						// Number without ms suffix - assume ms
-						final d = duration.toInt();
+						final d = Std.parseInt(duration) ?? 0;
 						if (d <= 0) return syntaxError("duration must be greater than 0");
 						return d;
 				}
 			case APIdentifier(durationStr, _, AITString):
 				advance();
 				if (durationStr.endsWith("ms")) {
-					final d = durationStr.substring(0, durationStr.length - 2).toInt();
+					final d = Std.parseInt(durationStr.substring(0, durationStr.length - 2)) ?? 0;
 					if (d <= 0) syntaxError("duration must be greater than 0");
 					return d;
 				} else
 					return syntaxError('expected <int>ms got ${durationStr}');
 			default:
 				return null;
+		}
+	}
+
+	// (#4) Validate sheet name: error on old $$ syntax, validate ${state} references
+	function validateSheetName(name:String, pos:ParsePosition):Void {
+		// Check for old $$state$$ syntax and error with migration hint
+		var i = 0;
+		while (i < name.length - 1) {
+			if (name.charAt(i) == '$' && name.charAt(i + 1) == '$') {
+				// Find the closing $$
+				final closeIdx = name.indexOf('$$', i + 2);
+				final oldStateName = closeIdx >= 0 ? name.substring(i + 2, closeIdx) : "state";
+				syntaxError('Sheet name "${name}" uses old $$state$$ syntax. Use ' + '${' + oldStateName + '} instead.', pos);
+			}
+			i++;
+		}
+		// Validate ${stateName} references against defined states
+		var j = 0;
+		while (j < name.length) {
+			if (name.charAt(j) == '$' && j + 1 < name.length && name.charAt(j + 1) == '{') {
+				final end = name.indexOf('}', j + 2);
+				if (end == -1) syntaxError('Unclosed $${...} in sheet name "${name}"', pos);
+				final stateName = name.substring(j + 2, end);
+				if (!definedStates.exists(stateName))
+					syntaxError('Unknown state "${stateName}" in sheet name "${name}". Defined states: [${[for (k in definedStates.keys()) k].join(", ")}]', pos);
+				j = end + 1;
+			} else {
+				j++;
+			}
 		}
 	}
 
@@ -1075,10 +1510,15 @@ class AnimParser implements AnimParserResult {
 				for (v in values) parserValidateState(animStates, name, v);
 			case ACVNot(inner):
 				parserValidateConditionalState(animStates, name, inner);
+			case ACVCompare(_, _) | ACVRange(_, _): // (#8) comparison ops: just check state name exists
+				if (!animStates.exists(name))
+					syntaxError('state "${name}" not defined');
 		}
 	}
 
 	function checkForUnreachableState(parentState:AnimConditionalSelector, childState:AnimConditionalSelector) {
+		// Empty child state (@else/@default) is always reachable - skip check
+		if (childState.count() == 0) return true;
 		for (key => childValue in childState) {
 			if (!parentState.exists(key)) continue;
 			final parentValue = parentState[key];
@@ -1101,6 +1541,22 @@ class AnimParser implements AnimParserResult {
 			case ACVSingle(v): v == runtimeValue;
 			case ACVMulti(vs): vs.contains(runtimeValue);
 			case ACVNot(inner): !matchConditionalValue(inner, runtimeValue);
+			case ACVCompare(op, cmpVal): // (#8)
+				final numRuntime = Std.parseFloat(runtimeValue);
+				final numCmp = Std.parseFloat(cmpVal);
+				if (Math.isNaN(numRuntime) || Math.isNaN(numCmp)) false;
+				else switch op {
+					case ACmpGte: numRuntime >= numCmp;
+					case ACmpLte: numRuntime <= numCmp;
+					case ACmpGt: numRuntime > numCmp;
+					case ACmpLt: numRuntime < numCmp;
+				};
+			case ACVRange(minVal, maxVal): // (#8)
+				final numRuntime = Std.parseFloat(runtimeValue);
+				final numMin = Std.parseFloat(minVal);
+				final numMax = Std.parseFloat(maxVal);
+				if (Math.isNaN(numRuntime) || Math.isNaN(numMin) || Math.isNaN(numMax)) false;
+				else numRuntime >= numMin && numRuntime <= numMax;
 		};
 	}
 
@@ -1198,10 +1654,12 @@ class AnimParser implements AnimParserResult {
 		final _fps = anim.fps;
 		if (_fps == null) throw 'fps not set for animation ${anim.name}';
 
-		function replaceState(inputStr:String, stateSelector:AnimationStateSelector) {
+		// (#4) Replace ${key} with state value
+		function replaceState(inputStr:String, stateSelector:AnimationStateSelector):String {
 			var result = inputStr;
 			for (key => value in stateSelector) {
-				result = result.replace('$$$$${key}$$$$', value);
+				final pattern = "${" + key + "}";
+				result = result.replace(pattern, value);
 			}
 			return result;
 		}
@@ -1255,6 +1713,17 @@ class AnimParser implements AnimParserResult {
 					retVal.push(tileToFrame(resourceLoader.loadTile(filename), d));
 				case PlaylistEvent(playlistEvent):
 					retVal.push(Event(playlistEvent));
+				case PlaylistEventData(name, meta): // (#9) convert MetadataValue map to String map for AnimationSM
+					var strMeta:Map<String, String> = [];
+					for (k => v in meta) {
+						strMeta.set(k, switch v {
+							case MVInt(i): Std.string(i);
+							case MVFloat(f): Std.string(f);
+							case MVString(s): s;
+							case MVColor(c): '#${StringTools.hex(c, 6)}';
+						});
+					}
+					retVal.push(Event(TriggerData(name, strMeta)));
 			}
 		}
 		return retVal;

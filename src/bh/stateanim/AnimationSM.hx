@@ -10,6 +10,7 @@ import h2d.RenderContext;
 **/
 enum AnimationPlaylistEvent {
 	Trigger(data:Dynamic);
+	TriggerData(name:String, meta:Map<String, String>); // (#9) typed event metadata
 	PointEvent(name:String, point:h2d.col.IPoint);
 	RandomPointEvent(name:String, point:h2d.col.IPoint, randomRadius:Float);
 }
@@ -19,6 +20,7 @@ enum AnimationPlaylistEvent {
 **/
 enum AnimationEvent {
 	Trigger(data:Dynamic);
+	TriggerData(name:String, meta:Map<String, String>); // (#9) typed event metadata
 	PointEvent(name:String, point:h2d.col.IPoint);
 }
 
@@ -222,6 +224,8 @@ class AnimationSM extends h2d.Object {
 					switch event {
 						case Trigger(name):
 							onAnimationEvent(Trigger(name));
+						case TriggerData(name, meta): // (#9)
+							onAnimationEvent(TriggerData(name, meta));
 						case PointEvent(name, point):
 							onAnimationEvent(PointEvent(name, point));
 						case RandomPointEvent(name, point, randomRadius):
