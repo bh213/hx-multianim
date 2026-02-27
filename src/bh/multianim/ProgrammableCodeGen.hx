@@ -131,6 +131,10 @@ class ProgrammableCodeGen {
 	// Type deduplication cache: signature → fully qualified type name (for mergeTypes)
 	static var mergedTypeCache:Map<String, {pack:Array<String>, name:String}> = new Map();
 
+	// Track generated style/image setters to avoid duplicates across text elements
+	static var generatedStyleSetters:Map<String, Bool> = new Map();
+	static var generatedImageSetters:Map<String, Bool> = new Map();
+
 	static function resetState():Void {
 		elementCounter = 0;
 		expressionUpdates = [];
@@ -160,6 +164,8 @@ class ProgrammableCodeGen {
 		tileGroupCounter = 0;
 		particlesCounter = 0;
 		instanceClassName = "";
+		generatedStyleSetters = new Map();
+		generatedImageSetters = new Map();
 	}
 
 	/**
@@ -863,6 +869,10 @@ class ProgrammableCodeGen {
 		fields.push(makeField(fieldName, FVar(createResult.fieldType, null), [APrivate], pos));
 		for (expr in createResult.createExprs)
 			ctorExprs.push(expr);
+		if (createResult.extraFields != null) {
+			for (ef in createResult.extraFields)
+				fields.push(ef);
+		}
 
 		// Position
 		ensureHexLayoutIfNeeded(node.pos, node, fields, ctorExprs, pos);
@@ -4290,6 +4300,7 @@ class ProgrammableCodeGen {
 		final fieldRef = macro $p{["this", fieldName]};
 		final createExprs:Array<Expr> = [];
 		final exprUpdates:Array<{fieldName:String, updateExpr:Expr, paramRefs:Array<String>}> = [];
+		final extraFields:Array<Field> = [];
 
 		final fontExpr = rvToExpr(textDef.fontName);
 		final needsHtml = textDef.styles != null || textDef.images != null || textDef.hasMarkup || textDef.condenseWhite != null;
@@ -4302,7 +4313,7 @@ class ProgrammableCodeGen {
 				$fieldRef = t;
 			});
 
-			// Layer 1: Named styles — defineHtmlTag for each style
+			// Layer 1: Named styles — defineHtmlTag for each style + shadow fields + setters
 			if (textDef.styles != null) {
 				for (style in textDef.styles) {
 					final nameExpr = macro $v{style.name};
@@ -4319,29 +4330,84 @@ class ProgrammableCodeGen {
 							macro ($rvExpr & 0xFFFFFF);
 						}
 					} else macro null;
-					final fontExpr2:Expr = if (style.fontName != null) macro $v{style.fontName} else macro null;
+					final fontExpr2:Expr = if (style.fontName != null) {
+						final fontRV = style.fontName;
+						final refs = collectParamRefs(fontRV);
+						if (refs.length == 0) {
+							rvToExpr(fontRV);
+						} else {
+							rvToExpr(fontRV);
+						}
+					} else macro null;
 					createExprs.push(macro {
 						final ht:h2d.HtmlText = cast $fieldRef;
 						ht.defineHtmlTag($nameExpr, $colorExpr2, $fontExpr2);
 					});
+
+					// Shadow fields + setters for each style (only once per style name)
+					if (!generatedStyleSetters.exists(style.name)) {
+						generatedStyleSetters.set(style.name, true);
+						final colorShadow = "_sc_" + style.name;
+						final fontShadow = "_sf_" + style.name;
+						extraFields.push(makeField(colorShadow, FVar(macro :Null<Int>, null), [APrivate], pos));
+						extraFields.push(makeField(fontShadow, FVar(macro :Null<String>, null), [APrivate], pos));
+						// Initialize shadow fields
+						createExprs.push(macro $p{["this", colorShadow]} = $colorExpr2);
+						createExprs.push(macro $p{["this", fontShadow]} = $fontExpr2);
+						// setStyleColor_<name>(color:Null<Int>)
+						final colorShadowRef = macro $p{["this", colorShadow]};
+						final fontShadowRef = macro $p{["this", fontShadow]};
+						extraFields.push(makeMethod("setStyleColor_" + style.name, [
+							macro $colorShadowRef = color,
+							macro {
+								final ht:h2d.HtmlText = cast $fieldRef;
+								ht.defineHtmlTag($nameExpr, if (color != null) color & 0xFFFFFF else null, $fontShadowRef);
+							},
+						], [{name: "color", type: macro :Null<Int>}], macro :Void, [APublic], pos));
+						// setStyleFont_<name>(fontName:Null<String>)
+						extraFields.push(makeMethod("setStyleFont_" + style.name, [
+							macro $fontShadowRef = fontName,
+							macro {
+								final ht:h2d.HtmlText = cast $fieldRef;
+								ht.defineHtmlTag($nameExpr, $colorShadowRef, fontName);
+							},
+						], [{name: "fontName", type: macro :Null<String>}], macro :Void, [APublic], pos));
+					}
 				}
 			}
 
-			// Layer 2: Inline images — loadImage callback
+			// Layer 2: Inline images — loadImage callback (instance field for setter access)
 			if (textDef.images != null) {
-				final mapExprs:Array<Expr> = [];
+				final imgMapField = "_imgMap_" + fieldName;
+				extraFields.push(makeField(imgMapField, FVar(macro :haxe.ds.StringMap<h2d.Tile>, null), [APrivate], pos));
+				final imgMapRef = macro $p{["this", imgMapField]};
+				final mapExprs:Array<Expr> = [macro $imgMapRef = new haxe.ds.StringMap<h2d.Tile>()];
 				for (img in textDef.images) {
 					final imgNameExpr = macro $v{img.name};
 					final tileExpr = tileSourceToExpr(img.tileSource);
-					mapExprs.push(macro _imgMap.set($imgNameExpr, $tileExpr));
+					mapExprs.push(macro $imgMapRef.set($imgNameExpr, $tileExpr));
 				}
-				final mapBlock:Expr = {expr: EBlock(mapExprs), pos: pos};
-				createExprs.push(macro {
-					final _imgMap = new haxe.ds.StringMap<h2d.Tile>();
-					$mapBlock;
+				mapExprs.push(macro {
 					final ht:h2d.HtmlText = cast $fieldRef;
-					ht.loadImage = (url) -> _imgMap.get(url);
+					ht.loadImage = (url) -> $imgMapRef.get(url);
 				});
+				final mapBlock:Expr = {expr: EBlock(mapExprs), pos: pos};
+				createExprs.push(mapBlock);
+
+				// Generate setImageTile_<name>(tile:h2d.Tile) for each image
+				for (img in textDef.images) {
+					if (!generatedImageSetters.exists(img.name)) {
+						generatedImageSetters.set(img.name, true);
+						final imgNameExpr2 = macro $v{img.name};
+						extraFields.push(makeMethod("setImageTile_" + img.name, [
+							macro $imgMapRef.set($imgNameExpr2, tile),
+							macro {
+								final ht:h2d.HtmlText = cast $fieldRef;
+								ht.text = ht.text;
+						},
+					], [{name: "tile", type: macro :h2d.Tile}], macro :Void, [APublic], pos));
+					}
+				}
 			}
 
 			// Layer 3: condenseWhite
@@ -4451,24 +4517,25 @@ class ProgrammableCodeGen {
 			});
 		}
 
-		// Track style color param refs for incremental updates
+		// Track style color and font param refs for incremental updates
 		if (textDef.styles != null) {
 			for (style in textDef.styles) {
-				if (style.color != null) {
-					final styleColorRefs = collectParamRefs(style.color);
-					if (styleColorRefs.length > 0) {
-						final sNameExpr = macro $v{style.name};
-						final sColorExpr = rvToExpr(style.color);
-						final sFontExpr:Expr = if (style.fontName != null) macro $v{style.fontName} else macro null;
-						exprUpdates.push({
-							fieldName: fieldName,
-							updateExpr: macro {
-								final ht:h2d.HtmlText = cast $fieldRef;
-								ht.defineHtmlTag($sNameExpr, $sColorExpr & 0xFFFFFF, $sFontExpr);
-							},
-							paramRefs: styleColorRefs,
-						});
-					}
+				final sNameExpr = macro $v{style.name};
+				final sColorExpr:Expr = if (style.color != null) { final e = rvToExpr(style.color); macro ($e & 0xFFFFFF); } else macro null;
+				final sFontExpr:Expr = if (style.fontName != null) rvToExpr(style.fontName) else macro null;
+				// Collect all param refs from both color and font
+				var styleRefs:Array<String> = [];
+				if (style.color != null) styleRefs = styleRefs.concat(collectParamRefs(style.color));
+				if (style.fontName != null) styleRefs = styleRefs.concat(collectParamRefs(style.fontName));
+				if (styleRefs.length > 0) {
+					exprUpdates.push({
+						fieldName: fieldName,
+						updateExpr: macro {
+							final ht:h2d.HtmlText = cast $fieldRef;
+							ht.defineHtmlTag($sNameExpr, $sColorExpr, $sFontExpr);
+						},
+						paramRefs: styleRefs,
+					});
 				}
 			}
 		}
@@ -4478,6 +4545,7 @@ class ProgrammableCodeGen {
 			createExprs: createExprs,
 			isContainer: false,
 			exprUpdates: exprUpdates,
+			extraFields: extraFields.length > 0 ? extraFields : null,
 		};
 	}
 
@@ -7228,5 +7296,6 @@ private typedef CreateResult = {
 	createExprs:Array<Expr>,
 	isContainer:Bool,
 	exprUpdates:Array<{fieldName:String, updateExpr:Expr, paramRefs:Array<String>}>,
+	?extraFields:Array<Field>,
 };
 #end

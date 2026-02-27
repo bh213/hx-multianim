@@ -230,11 +230,36 @@ text(fontname, text, textcolor[, align, maxWidth], options)
 * `dropShadowXY` - float, float
 * `dropShadowColor` - color
 * `dropShadowAlpha` - float
-* `html` - bool (use h2d.HtmlText)
+* `styles: {name: color(#hex) font("name"), ...}` — named text styles with `color()` and/or `font()` wrappers
+* `images: {name: tileSource, ...}` — named inline images for `%{img:name}` markup
+* `condenseWhite: true` — collapse whitespace in rich text
+* `maxHeight`, `minWidth`, `minHeight`, `lineHeight`, `colWidth` — additional sizing options
+
+**Rich text markup:** Text strings support `%{tag}...%{/}` markup. When markup or `styles:`/`images:`/`condenseWhite:` is present, `h2d.HtmlText` is used automatically.
+* `%{styleName}...%{/}` — apply named style (defined in `styles:`)
+* `%{img:name}` — inline image (self-closing, defined in `images:`)
+* `%{align:center}...%{/}` — paragraph alignment (`left`, `center`, `right`)
+* `%{link:id}...%{/}` — hyperlink (fires `callback("link:id")`)
+* `%%{` — escape sequence for literal `%{`
+* `%{markup}` and `${param}` coexist in single-quoted strings — e.g., `'%{damage}${dmg}%{/}'`
+
+**Style definitions:** Each style needs at least `color()` or `font()`. Both accept `$param` for dynamic updates.
+```
+styles: {damage: color(#FF0000), gold: color(#FFD700) font("boldFont"), highlight: color($hlColor)}
+```
+
+**Image definitions:** Curly brace map with colon separators.
+```
+images: {coin: generated(color(14, 14, #FFD700)), sword: sheet("items", "sword_16")}
+```
+
+**Codegen setters:** `setStyleColor_<name>()`, `setStyleFont_<name>()`, `setImageTile_<name>()` are generated for direct API access.
 
 **Example:**
 ```
 @(status=>hover) text(dd, $buttonText, 0xffffff12, center, 200): 0,10
+text(dd, "Deal %{damage}50%{/} for %{gold}100g%{/}", white, left, 600,
+    styles: {damage: color(#FF0000), gold: color(#FFD700) font("dd")}): 4, 4
 ```
 
 ### tilegroup

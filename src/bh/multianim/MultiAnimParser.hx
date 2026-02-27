@@ -945,7 +945,7 @@ enum StateAnimConstruct {
 typedef TextStyleDef = {
 	var name:String;
 	var color:Null<ReferenceableValue>; // RVInteger(0xAARRGGBB) or $param reference, null if not specified
-	var fontName:Null<String>; // null if not specified
+	var fontName:Null<ReferenceableValue>; // font() value or $param, null if not specified
 }
 
 @:nullSafety

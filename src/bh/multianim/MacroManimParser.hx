@@ -2930,6 +2930,13 @@ class MacroManimParser {
 					default:
 				}
 
+				// Validate: reject removed %{c:} and %{f:} inline markup
+				switch (text) {
+					case RVString(s):
+						validateNoInlineColorFont(s);
+					default:
+				}
+
 				// Validate %{styleName} references against defined styles for literal text
 				if (styles != null) {
 					switch (text) {
@@ -3814,7 +3821,32 @@ class MacroManimParser {
 		}
 	}
 
-	// styles: {damage: #FF0000, gold: #FFD700 "boldFont", emphasis: "italicFont", highlight: $hlColor}
+	/** Reject removed %{c:...} and %{f:...} inline markup with migration message. */
+	function validateNoInlineColorFont(text:String):Void {
+		var idx = text.indexOf("%{");
+		while (idx >= 0 && idx + 2 < text.length) {
+			// Skip %%{ escape sequences
+			if (idx > 0 && text.charCodeAt(idx - 1) == "%".code) {
+				idx = text.indexOf("%{", idx + 1);
+				continue;
+			}
+			var closeIdx = text.indexOf("}", idx + 2);
+			if (closeIdx > idx + 2) {
+				var tag = text.substring(idx + 2, closeIdx);
+				if (StringTools.startsWith(tag, "c:")) {
+					var colorVal = tag.substring(2);
+					error('%{c:$colorVal} inline color is no longer supported — define a named style instead: styles: {myStyle: color($colorVal)}');
+				}
+				if (StringTools.startsWith(tag, "f:")) {
+					var fontVal = tag.substring(2);
+					error('%{f:$fontVal} inline font is no longer supported — define a named style instead: styles: {myStyle: font("$fontVal")}');
+				}
+			}
+			idx = text.indexOf("%{", idx + 1);
+		}
+	}
+
+	// styles: {damage: color(#FF0000), gold: color(#FFD700) font("boldFont"), emphasis: font("italicFont"), highlight: color($hlColor)}
 	function parseTextStyles():Array<TextStyleDef> {
 		expect(TCurlyOpen);
 		var styles:Array<TextStyleDef> = [];
@@ -3826,43 +3858,61 @@ class MacroManimParser {
 			final name = expectIdentifierOrString();
 			expect(TColon);
 			var color:Null<ReferenceableValue> = null;
-			var fontName:Null<String> = null;
+			var fontName:Null<ReferenceableValue> = null;
 
-			// Try to parse optional color — literal, $param reference, or ternary
-			switch (peek()) {
-				case TReference(_), TQuestion:
-					color = parseColorOrReference();
-				default:
-					final c = tryParseColor();
-					if (c != null) color = RVInteger(c);
-			}
-
-			// Try to parse optional font name (quoted string)
-			switch (peek()) {
-				case TQuotedString(s):
-					advance();
-					fontName = s;
-				default:
+			// Parse color() and/or font() in any order
+			for (_ in 0...2) {
+				switch (peek()) {
+					case TIdentifier(s) if (isKeyword(s, "color")):
+						advance();
+						expect(TOpen);
+						switch (peek()) {
+							case TReference(_), TQuestion:
+								color = parseColorOrReference();
+							default:
+								final c = tryParseColor();
+								if (c != null) color = RVInteger(c);
+								else error("expected color value inside color()");
+						}
+						expect(TClosed);
+					case TIdentifier(s) if (isKeyword(s, "font")):
+						advance();
+						expect(TOpen);
+						switch (peek()) {
+							case TQuotedString(s2):
+								advance();
+								fontName = RVString(s2);
+							case TReference(r):
+								advance();
+								fontName = RVReference(r);
+							default:
+								error('expected font name string or $$param inside font()');
+						}
+						expect(TClosed);
+					default:
+						break;
+				}
 			}
 
 			if (color == null && fontName == null)
-				error('style "$name" must have at least a color or a font name');
+				error('style "$name" must have at least color() or font() — example: styles: {$name: color(#FF0000) font("myFont")}');
 
 			styles.push({name: name, color: color, fontName: fontName});
 		}
 		return styles;
 	}
 
-	// images: [gold file("gold.png"), sword sheet("items", "sword_16") middle, 2.0]
+	// images: {gold: file("gold.png"), sword: sheet("items", "sword_16") middle 2.0}
 	function parseTextImages():Array<TextImageDef> {
-		expect(TBracketOpen);
+		expect(TCurlyOpen);
 		var images:Array<TextImageDef> = [];
-		while (!match(TBracketClosed)) {
+		while (!match(TCurlyClosed)) {
 			if (images.length > 0) {
 				eatComma();
-				if (match(TBracketClosed)) break;
+				if (match(TCurlyClosed)) break;
 			}
 			final name = expectIdentifierOrString();
+			expect(TColon);
 			final ts = parseTileSource();
 			var valign:Null<String> = null;
 			var spacing:Null<Float> = null;
