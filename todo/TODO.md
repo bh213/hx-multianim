@@ -23,7 +23,7 @@
 - visual tests fixes (see [test-todo.md](test-todo.md))
 - haxelib release (see details below)
 - blob47 utils?
-- reconsider %{} {/} for rich text, maybe $[] or [] would work better
+- ~~reconsider %{} {/} for rich text~~ (decided: `%{tag}...%{/}` with named styles via `color()`/`font()` syntax)
 - ~~review in-text colors & html text support for manim~~ (done — native rich text markup)
 
 ### Haxelib Release

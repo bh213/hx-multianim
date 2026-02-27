@@ -5,14 +5,14 @@ package bh.multianim;
  *
  * Supported markup:
  *   %{styleName}...%{/}        → <styleName>...</styleName>     (requires defineHtmlTag)
- *   %{c:#FF0000}...%{/}        → <font color="#FF0000">...</font>
- *   %{c:red}...%{/}            → <font color="#FF0000">...</font>  (named color)
- *   %{f:fontName}...%{/}       → <font face="fontName">...</font>
  *   %{img:name}                → <img src="name"/>               (self-closing)
  *   %{align:left|center|right}...%{/} → <p align="...">...</p>
  *   %{link:id}...%{/}          → <a href="id">...</a>
  *   %{/}                       → closes most recently opened tag (stack-based)
  *   %%{                         → literal %{ (escape sequence)
+ *
+ * Colors and fonts are set via named styles (styles: {name: color(...) font(...)}).
+ * Inline %{c:} and %{f:} are no longer supported.
  *
  * Works at both macro time and runtime (no runtime-only APIs).
  */
@@ -53,21 +53,6 @@ class TextMarkupConverter {
 						buf.add(openTag);
 						buf.add(">");
 					}
-					i = closeIdx + 1;
-				} else if (StringTools.startsWith(tag, "c:")) {
-					var colorVal = tag.substring(2);
-					var hexColor = resolveColorToHex(colorVal);
-					buf.add('<font color="');
-					buf.add(hexColor);
-					buf.add('">');
-					tagStack.push("font");
-					i = closeIdx + 1;
-				} else if (StringTools.startsWith(tag, "f:")) {
-					var fontName = tag.substring(2);
-					buf.add('<font face="');
-					buf.add(fontName);
-					buf.add('">');
-					tagStack.push("font");
 					i = closeIdx + 1;
 				} else if (StringTools.startsWith(tag, "img:")) {
 					var imgName = tag.substring(4);
@@ -120,7 +105,7 @@ class TextMarkupConverter {
 			var closeIdx = text.indexOf("}", idx + 2);
 			if (closeIdx > idx + 2) {
 				var tag = text.substring(idx + 2, closeIdx);
-				if (tag == "/" || StringTools.startsWith(tag, "c:") || StringTools.startsWith(tag, "f:") || StringTools.startsWith(tag, "img:")
+				if (tag == "/" || StringTools.startsWith(tag, "img:")
 					|| StringTools.startsWith(tag, "align:") || StringTools.startsWith(tag, "link:") || isValidStyleName(tag)) {
 					return true;
 				}
@@ -131,7 +116,7 @@ class TextMarkupConverter {
 	}
 
 	/**
-	 * Extract all %{styleName} references from text (not c:, f:, img:, align:, link:).
+	 * Extract all %{styleName} references from text (not img:, align:, link:).
 	 * Used for parse-time validation against defined styles.
 	 */
 	public static function extractStyleReferences(text:String):Array<String> {
@@ -147,7 +132,7 @@ class TextMarkupConverter {
 			var closeIdx = text.indexOf("}", idx + 2);
 			if (closeIdx > idx + 2) {
 				var tag = text.substring(idx + 2, closeIdx);
-				if (tag != "/" && !StringTools.startsWith(tag, "c:") && !StringTools.startsWith(tag, "f:") && !StringTools.startsWith(tag, "img:")
+				if (tag != "/" && !StringTools.startsWith(tag, "img:")
 					&& !StringTools.startsWith(tag, "align:") && !StringTools.startsWith(tag, "link:") && isValidStyleName(tag)) {
 					refs.push(tag);
 				}

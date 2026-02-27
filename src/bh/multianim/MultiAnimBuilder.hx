@@ -2185,6 +2185,15 @@ class MultiAnimBuilder {
 				if (textDef.styles != null) {
 					for (style in textDef.styles) {
 						if (style.color != null) collectParamRefs(style.color, textRefs);
+						if (style.fontName != null) collectParamRefs(style.fontName, textRefs);
+					}
+				}
+				if (textDef.images != null) {
+					for (img in textDef.images) {
+						switch img.tileSource {
+							case TSReference(varName): if (textRefs.indexOf(varName) < 0) textRefs.push(varName);
+							default:
+						}
 					}
 				}
 				if (textRefs.length > 0) {
@@ -2199,10 +2208,19 @@ class MultiAnimBuilder {
 							if (textDefCapture.styles != null) {
 								final ht:HtmlText = cast t;
 								for (style in textDefCapture.styles) {
-									if (style.color != null) {
-										ht.defineHtmlTag(style.name, resolveAsColorInteger(style.color) & 0xFFFFFF, style.fontName);
-									}
+									final c:Null<Int> = if (style.color != null) resolveAsColorInteger(style.color) & 0xFFFFFF else null;
+									final f:Null<String> = if (style.fontName != null) resolveAsString(style.fontName) else null;
+									ht.defineHtmlTag(style.name, c, f);
 								}
+							}
+							if (textDefCapture.images != null) {
+								final ht:HtmlText = cast t;
+								final imageMap = new haxe.ds.StringMap<h2d.Tile>();
+								for (img in textDefCapture.images) {
+									imageMap.set(img.name, loadTileSource(img.tileSource));
+								}
+								ht.loadImage = (url) -> cast imageMap.get(url);
+								ht.text = ht.text; // force re-render after image map change
 							}
 						}, textRefs);
 					}
@@ -3126,7 +3144,8 @@ class MultiAnimBuilder {
 					if (textDef.styles != null) {
 						for (style in textDef.styles) {
 							final color:Null<Int> = if (style.color != null) resolveAsColorInteger(style.color) & 0xFFFFFF else null;
-							ht.defineHtmlTag(style.name, color, style.fontName);
+							final fontStr:Null<String> = if (style.fontName != null) resolveAsString(style.fontName) else null;
+							ht.defineHtmlTag(style.name, color, fontStr);
 						}
 					}
 					// Layer 2: Inline images
