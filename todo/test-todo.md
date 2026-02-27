@@ -47,9 +47,6 @@ All other 89 directories (1-91 minus 62, 77) have both a `testNN_` method in `Pr
 ### `UIClickOutside` Event — LOW
 Documented in CLAUDE.md but not tested. Add a `UIComponentTest` case verifying `UIInteractiveEvent(UIClickOutside, ...)` fires correctly.
 
-### AnimMetadata API (`.anim`) — LOW
-`getIntOrDefault`, `getStringOrDefault`, `getIntOrException`, `getStringOrException` with state selectors — no unit tests in `AnimParserTest`.
-
 ### Hex Offset/Doubled Coordinates — LOW
 `$hex.offset(col, row, even|odd)` and `$hex.doubled(col, row)` not specifically tested. Tests 47/87 cover hex cube/corner/edge only.
 
