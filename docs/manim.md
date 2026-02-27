@@ -217,7 +217,7 @@ ninepatch("cards", "card-base-patch9", 150,200) {
 Supports `filter`, `scale`, `alpha`, and `blendMode`.
 
 ### text
-Creates text with font, content, and color.
+Creates simple text with font, content, and color. Always creates plain `h2d.Text`.
 
 ```
 text(fontname, text, textcolor[, align, maxWidth], options)
@@ -230,18 +230,41 @@ text(fontname, text, textcolor[, align, maxWidth], options)
 * `dropShadowXY` - float, float
 * `dropShadowColor` - color
 * `dropShadowAlpha` - float
+
+Does not support markup, `styles:`, `images:`, or `condenseWhite:`. Use `richText()` for rich text features.
+
+**Example:**
+```
+@(status=>hover) text(dd, $buttonText, 0xffffff12, center, 200): 0,10
+text(dd, "Hello world", white, left, 600): 4, 4
+```
+
+### richText
+Creates rich text with `[tag]...[/]` BBCode-style markup. Always creates `h2d.HtmlText`.
+
+```
+richText(fontname, text, textcolor[, align, maxWidth], options)
+```
+
+**Options:**
+* `letterSpacing` - float
+* `lineSpacing` - float
+* `lineBreak` - bool
+* `dropShadowXY` - float, float
+* `dropShadowColor` - color
+* `dropShadowAlpha` - float
 * `styles: {name: color(#hex) font("name"), ...}` — named text styles with `color()` and/or `font()` wrappers
-* `images: {name: tileSource, ...}` — named inline images for `%{img:name}` markup
-* `condenseWhite: true` — collapse whitespace in rich text
+* `images: {name: tileSource, ...}` — named inline images for `[img:name]` markup
+* `condenseWhite: true` — collapse whitespace
 * `maxHeight`, `minWidth`, `minHeight`, `lineHeight`, `colWidth` — additional sizing options
 
-**Rich text markup:** Text strings support `%{tag}...%{/}` markup. When markup or `styles:`/`images:`/`condenseWhite:` is present, `h2d.HtmlText` is used automatically.
-* `%{styleName}...%{/}` — apply named style (defined in `styles:`)
-* `%{img:name}` — inline image (self-closing, defined in `images:`)
-* `%{align:center}...%{/}` — paragraph alignment (`left`, `center`, `right`)
-* `%{link:id}...%{/}` — hyperlink (fires `callback("link:id")`)
-* `%%{` — escape sequence for literal `%{`
-* `%{markup}` and `${param}` coexist in single-quoted strings — e.g., `'%{damage}${dmg}%{/}'`
+**Rich text markup:** Text strings support `[tag]...[/]` BBCode-style markup. Markup is always processed via `TextMarkupConverter`.
+* `[styleName]...[/]` — apply named style (defined in `styles:`)
+* `[img:name]` — inline image (self-closing, defined in `images:`)
+* `[align:center]...[/]` — paragraph alignment (`left`, `center`, `right`)
+* `[link:id]...[/]` — hyperlink (fires `callback("link:id")`)
+* `[[` — escape sequence for literal `[`
+* `[markup]` and `${param}` coexist in single-quoted strings — e.g., `'[damage]${dmg}[/]'`
 
 **Style definitions:** Each style needs at least `color()` or `font()`. Both accept `$param` for dynamic updates.
 ```
@@ -257,8 +280,7 @@ images: {coin: generated(color(14, 14, #FFD700)), sword: sheet("items", "sword_1
 
 **Example:**
 ```
-@(status=>hover) text(dd, $buttonText, 0xffffff12, center, 200): 0,10
-text(dd, "Deal %{damage}50%{/} for %{gold}100g%{/}", white, left, 600,
+richText(dd, "Deal [damage]50[/] for [gold]100g[/]", white, left, 600,
     styles: {damage: color(#FF0000), gold: color(#FFD700) font("dd")}): 4, 4
 ```
 

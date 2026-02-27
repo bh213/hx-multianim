@@ -2873,6 +2873,73 @@ class MacroManimParser {
 				var letterSpacing:Float = 0.;
 				var lineSpacing:Float = 0.;
 				var lineBreak:Bool = true;
+				var dropShadowXY:Null<bh.base.FPoint> = null;
+				var dropShadowColor:Int = 0;
+				var dropShadowAlpha:Float = 0.5;
+				if (match(TComma)) {
+					halign = parseHAlign();
+					if (halign != null && match(TComma)) {
+						// Check for grid or maxWidth
+						switch (peek()) {
+							case TIdentifier(gs) if (isKeyword(gs, "grid")):
+								advance();
+								textAlignWidth = TAWGrid;
+							case TInteger(_), TMinus, THexInteger(_), TReference(_), TQuestion:
+								textAlignWidth = TAWValue(parseIntegerOrReference());
+							default:
+						}
+					}
+				}
+				// Parse remaining optional named params until )
+				while (true) {
+					if (match(TClosed)) break;
+					eatComma();
+					if (match(TClosed)) break;
+					if (isNamedParamNext()) {
+						final pname = expectIdentifierOrString();
+						expect(TColon);
+						switch (pname.toLowerCase()) {
+							case "letterspacing": letterSpacing = parseFloat_();
+							case "linespacing": lineSpacing = parseFloat_();
+							case "linebreak": lineBreak = parseBool();
+							case "styles", "images", "condensewhite":
+								error('text() does not support rich text features. Use richText() instead.');
+							case "dropshadowxy":
+								final dx = parseFloat_();
+								expect(TComma);
+								final dy = parseFloat_();
+								dropShadowXY = {x: dx, y: dy};
+							case "dropshadowcolor":
+								final c = tryParseColor();
+								if (c != null) dropShadowColor = c;
+								else error("expected color value for dropShadowColor");
+							case "dropshadowalpha": dropShadowAlpha = parseFloat_();
+							default: error('unknown text param: $pname');
+						}
+					} else break;
+				}
+
+				final textDef:TextDef = {
+					fontName: fontname, text: text, color: color, halign: halign,
+					textAlignWidth: textAlignWidth, letterSpacing: letterSpacing, lineSpacing: lineSpacing,
+					lineBreak: lineBreak, dropShadowXY: dropShadowXY, dropShadowColor: dropShadowColor, dropShadowAlpha: dropShadowAlpha,
+					styles: null, images: null, condenseWhite: null, hasMarkup: false
+				};
+				createNode(TEXT(textDef), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
+
+			case TIdentifier(s) if (isKeyword(s, "richtext")):
+				advance();
+				expect(TOpen);
+				final fontname = parseStringOrReference();
+				expect(TComma);
+				final text = parseStringOrReference();
+				expect(TComma);
+				final color = parseColorOrReference();
+				var halign:Null<HorizontalAlign> = null;
+				var textAlignWidth:TextAlignWidth = TAWAuto;
+				var letterSpacing:Float = 0.;
+				var lineSpacing:Float = 0.;
+				var lineBreak:Bool = true;
 				var styles:Null<Array<TextStyleDef>> = null;
 				var images:Null<Array<TextImageDef>> = null;
 				var condenseWhite:Null<Bool> = null;
@@ -2905,7 +2972,6 @@ class MacroManimParser {
 							case "letterspacing": letterSpacing = parseFloat_();
 							case "linespacing": lineSpacing = parseFloat_();
 							case "linebreak": lineBreak = parseBool();
-							case "html": error('"html: true" is no longer supported. Use styles: [...] or {c:color}/{f:font} markup instead.');
 							case "styles": styles = parseTextStyles();
 							case "images": images = parseTextImages();
 							case "condensewhite": condenseWhite = parseBool();
@@ -2919,7 +2985,7 @@ class MacroManimParser {
 								if (c != null) dropShadowColor = c;
 								else error("expected color value for dropShadowColor");
 							case "dropshadowalpha": dropShadowAlpha = parseFloat_();
-							default: error('unknown text param: $pname');
+							default: error('unknown richText param: $pname');
 						}
 					} else break;
 				}
@@ -2930,34 +2996,27 @@ class MacroManimParser {
 					default:
 				}
 
-				// Validate: reject removed %{c:} and %{f:} inline markup
-				switch (text) {
-					case RVString(s):
-						validateNoInlineColorFont(s);
-					default:
-				}
-
-				// Validate %{styleName} references against defined styles for literal text
+				// Validate [styleName] references against defined styles for literal text
 				if (styles != null) {
 					switch (text) {
 						case RVString(s):
 							final styleNames = [for (st in styles) st.name];
 							for (ref in TextMarkupConverter.extractStyleReferences(s)) {
 								if (styleNames.indexOf(ref) < 0) {
-									error('unknown style "%{$ref}" in text markup; defined styles: [${styleNames.join(", ")}]');
+									error('unknown style "[$ref]" in text markup; defined styles: [${styleNames.join(", ")}]');
 								}
 							}
 						default:
 					}
 				}
 
-				final textDef:TextDef = {
+				final richTextDef:TextDef = {
 					fontName: fontname, text: text, color: color, halign: halign,
 					textAlignWidth: textAlignWidth, letterSpacing: letterSpacing, lineSpacing: lineSpacing,
 					lineBreak: lineBreak, dropShadowXY: dropShadowXY, dropShadowColor: dropShadowColor, dropShadowAlpha: dropShadowAlpha,
 					styles: styles, images: images, condenseWhite: condenseWhite, hasMarkup: hasMarkup
 				};
-				createNode(TEXT(textDef), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
+				createNode(RICHTEXT(richTextDef), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 
 			case TIdentifier(s) if (isKeyword(s, "apply")):
 				advance();
@@ -3818,31 +3877,6 @@ class MacroManimParser {
 				p.animStates.push({atRate: atRate, animName: animName});
 			default:
 				error('unknown particle rate action: $actionName');
-		}
-	}
-
-	/** Reject removed %{c:...} and %{f:...} inline markup with migration message. */
-	function validateNoInlineColorFont(text:String):Void {
-		var idx = text.indexOf("%{");
-		while (idx >= 0 && idx + 2 < text.length) {
-			// Skip %%{ escape sequences
-			if (idx > 0 && text.charCodeAt(idx - 1) == "%".code) {
-				idx = text.indexOf("%{", idx + 1);
-				continue;
-			}
-			var closeIdx = text.indexOf("}", idx + 2);
-			if (closeIdx > idx + 2) {
-				var tag = text.substring(idx + 2, closeIdx);
-				if (StringTools.startsWith(tag, "c:")) {
-					var colorVal = tag.substring(2);
-					error('%{c:$colorVal} inline color is no longer supported — define a named style instead: styles: {myStyle: color($colorVal)}');
-				}
-				if (StringTools.startsWith(tag, "f:")) {
-					var fontVal = tag.substring(2);
-					error('%{f:$fontVal} inline font is no longer supported — define a named style instead: styles: {myStyle: font("$fontVal")}');
-				}
-			}
-			idx = text.indexOf("%{", idx + 1);
 		}
 	}
 

@@ -2182,6 +2182,20 @@ class MultiAnimBuilder {
 				final textRefs:Array<String> = [];
 				collectParamRefs(textDef.text, textRefs);
 				collectParamRefs(textDef.color, textRefs);
+				if (textRefs.length > 0) {
+					final t = switch builtObject { case HeapsText(t): t; default: null; };
+					if (t != null) {
+						final textDefCapture = textDef;
+						ctx.trackExpression(() -> {
+							t.text = resolveAsString(textDefCapture.text);
+							t.textColor = resolveAsColorInteger(textDefCapture.color);
+						}, textRefs);
+					}
+				}
+			case RICHTEXT(textDef):
+				final textRefs:Array<String> = [];
+				collectParamRefs(textDef.text, textRefs);
+				collectParamRefs(textDef.color, textRefs);
 				if (textDef.styles != null) {
 					for (style in textDef.styles) {
 						if (style.color != null) collectParamRefs(style.color, textRefs);
@@ -2200,10 +2214,9 @@ class MultiAnimBuilder {
 					final t = switch builtObject { case HeapsText(t): t; default: null; };
 					if (t != null) {
 						final textDefCapture = textDef;
-						final needsConversion = textDefCapture.styles != null || textDefCapture.images != null || textDefCapture.hasMarkup || textDefCapture.condenseWhite != null;
 						ctx.trackExpression(() -> {
 							final rawText = resolveAsString(textDefCapture.text);
-							t.text = if (needsConversion) TextMarkupConverter.convert(rawText) else rawText;
+							t.text = TextMarkupConverter.convert(rawText);
 							t.textColor = resolveAsColorInteger(textDefCapture.color);
 							if (textDefCapture.styles != null) {
 								final ht:HtmlText = cast t;
@@ -3131,43 +3144,7 @@ class MultiAnimBuilder {
 				HeapsBitmap(b);
 			case TEXT(textDef):
 				final font = resourceLoader.loadFont(resolveAsString(textDef.fontName));
-				final needsHtml = textDef.styles != null || textDef.images != null || textDef.hasMarkup || textDef.condenseWhite != null;
-				var t = if (needsHtml) {
-					createHtmlText(font);
-				} else {
-					new h2d.Text(font);
-				}
-
-				if (needsHtml) {
-					final ht:HtmlText = cast t;
-					// Layer 1: Named styles
-					if (textDef.styles != null) {
-						for (style in textDef.styles) {
-							final color:Null<Int> = if (style.color != null) resolveAsColorInteger(style.color) & 0xFFFFFF else null;
-							final fontStr:Null<String> = if (style.fontName != null) resolveAsString(style.fontName) else null;
-							ht.defineHtmlTag(style.name, color, fontStr);
-						}
-					}
-					// Layer 2: Inline images
-					if (textDef.images != null) {
-						final imageMap = new haxe.ds.StringMap<h2d.Tile>();
-						for (img in textDef.images) {
-							imageMap.set(img.name, loadTileSource(img.tileSource));
-						}
-						ht.loadImage = (url) -> imageMap.get(url);
-					}
-					// Layer 3: condenseWhite
-					if (textDef.condenseWhite != null) {
-						ht.condenseWhite = textDef.condenseWhite;
-					}
-					// Layer 4: Hyperlinks — fire callback("link:id") where id is the href
-					ht.onHyperlink = (url) -> {
-						if (builderParams != null && builderParams.callback != null) {
-							try builderParams.callback(Name("link:" + url)) catch(_:Dynamic) {};
-						}
-					};
-				}
-
+				var t = new h2d.Text(font);
 				t.textAlign = switch textDef.halign {
 					case null: Left;
 					case Left: Left;
@@ -3175,8 +3152,6 @@ class MultiAnimBuilder {
 					case Center: Center;
 				}
 				if (textDef.textAlignWidth != null) {
-					// When text has scale applied, maxWidth needs to be divided by scale
-					// so that alignment (center/right) is calculated correctly before scaling
 					final scaleAdjust = if (node.scale != null) resolveAsNumber(node.scale) else 1.0;
 					switch textDef.textAlignWidth {
 						case TAWValue(value):
@@ -3199,12 +3174,71 @@ class MultiAnimBuilder {
 						alpha: textDef.dropShadowAlpha,
 					};
 				}
-
 				t.textColor = resolveAsColorInteger(textDef.color);
-				final rawText = resolveAsString(textDef.text);
-				t.text = if (needsHtml) TextMarkupConverter.convert(rawText) else rawText;
-
+				t.text = resolveAsString(textDef.text);
 				HeapsText(t);
+			case RICHTEXT(textDef):
+				final font = resourceLoader.loadFont(resolveAsString(textDef.fontName));
+				final ht = createHtmlText(font);
+
+				if (textDef.styles != null) {
+					for (style in textDef.styles) {
+						final color:Null<Int> = if (style.color != null) resolveAsColorInteger(style.color) & 0xFFFFFF else null;
+						final fontStr:Null<String> = if (style.fontName != null) resolveAsString(style.fontName) else null;
+						ht.defineHtmlTag(style.name, color, fontStr);
+					}
+				}
+				if (textDef.images != null) {
+					final imageMap = new haxe.ds.StringMap<h2d.Tile>();
+					for (img in textDef.images) {
+						imageMap.set(img.name, loadTileSource(img.tileSource));
+					}
+					ht.loadImage = (url) -> imageMap.get(url);
+				}
+				if (textDef.condenseWhite != null) {
+					ht.condenseWhite = textDef.condenseWhite;
+				}
+				ht.onHyperlink = (url) -> {
+					if (builderParams != null && builderParams.callback != null) {
+						try builderParams.callback(Name("link:" + url)) catch(_:Dynamic) {};
+					}
+				};
+
+				ht.textAlign = switch textDef.halign {
+					case null: Left;
+					case Left: Left;
+					case Right: Right;
+					case Center: Center;
+				}
+				if (textDef.textAlignWidth != null) {
+					final scaleAdjust = if (node.scale != null) resolveAsNumber(node.scale) else 1.0;
+					switch textDef.textAlignWidth {
+						case TAWValue(value):
+								ht.maxWidth = resolveAsNumber(value) / scaleAdjust;
+						case TAWGrid:
+							if (gridCoordinateSystem != null)
+								ht.maxWidth = gridCoordinateSystem.spacingX / scaleAdjust;
+						case TAWAuto:
+							ht.maxWidth = null;
+					}
+				}
+				ht.letterSpacing = textDef.letterSpacing;
+				ht.lineSpacing = textDef.lineSpacing;
+				ht.lineBreak = textDef.lineBreak;
+				if (textDef.dropShadowXY != null) {
+					ht.dropShadow = {
+						dx: textDef.dropShadowXY.x,
+						dy: textDef.dropShadowXY.y,
+						color: textDef.dropShadowColor,
+						alpha: textDef.dropShadowAlpha,
+					};
+				}
+
+				ht.textColor = resolveAsColorInteger(textDef.color);
+				final rawText = resolveAsString(textDef.text);
+				ht.text = TextMarkupConverter.convert(rawText);
+
+				HeapsText(ht);
 			// case HTMLTEXT(fontname, textRef, color, align, textAlignWidth):
 			// 	final font = resourceLoader.loadFont(resolveAsString(fontname));
 			// 	var t = new h2d.HtmlText(font);

@@ -71,7 +71,7 @@ version: 0.5
   point {
     pos: 10, 470
     bitmap(generated(color(420, 32, #333)));
-    @scale(2) text(dd, "Deal %{damage}50%{/} for %{gold}100g%{/}", #FF88FF, left, 420,
+    @scale(2) richText(dd, "Deal [damage]50[/] for [gold]100g[/]", #FF88FF, left, 420,
         styles: {damage: color(#FF0000), gold: color(#FFD700)}): 4, 4;
   }
 }

@@ -161,6 +161,7 @@ enum MPKeywords {
 	MPError;
 	MPNothing;
 	MPText;
+	MPRichText;
 	MPVersion;
 	MPPlaceholder;
 	MPDebug;
@@ -1034,6 +1035,7 @@ enum NodeType {
 	STATEANIM_CONSTRUCT(initialState:ReferenceableValue, construct:Map<String, StateAnimConstruct>, externallyDriven:Bool);
 	PIXELS(shapes:Array<PixelShapes>);
 	TEXT(textDef:TextDef);
+	RICHTEXT(textDef:TextDef);
 	PROGRAMMABLE(isTileGroup:Bool, parameters:ParametersDefinitions, paramOrder:Array<String>);
 	TILEGROUP;
 	RELATIVE_LAYOUTS(layoutsDef:LayoutsDef);

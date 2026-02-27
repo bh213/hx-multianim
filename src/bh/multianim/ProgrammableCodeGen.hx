@@ -1969,17 +1969,30 @@ class ProgrammableCodeGen {
 				}
 				bodyExprs.push({expr: EBlock(ptStmts), pos: pos});
 
-			case TEXT(textDef):
+			case TEXT(textDef) | RICHTEXT(textDef):
+				final isRichText = child.type.match(RICHTEXT(_));
 				final stmts:Array<Expr> = [];
 				final fontExpr = rvToExpr(textDef.fontName);
-				stmts.push(macro final _rt_txt = new h2d.Text(this._pb.loadFont($fontExpr)));
+				if (isRichText) {
+					stmts.push(macro final _rt_txt = new h2d.HtmlText(this._pb.loadFont($fontExpr)));
+					stmts.push(macro {
+						final ht:h2d.HtmlText = cast _rt_txt;
+						ht.loadFont = (name) -> this._pb.loadFont(name);
+					});
+				} else {
+					stmts.push(macro final _rt_txt = new h2d.Text(this._pb.loadFont($fontExpr)));
+				}
 				stmts.push(macro $containerRef.addChild(_rt_txt));
 
 				final colorExpr = rvToExpr(textDef.color);
 				stmts.push(macro _rt_txt.textColor = $colorExpr);
 
 				final textExpr = rvToExpr(textDef.text, true);
-				stmts.push(macro _rt_txt.text = Std.string($textExpr));
+				if (isRichText) {
+					stmts.push(macro _rt_txt.text = bh.multianim.TextMarkupConverter.convert(Std.string($textExpr)));
+				} else {
+					stmts.push(macro _rt_txt.text = Std.string($textExpr));
+				}
 
 				switch (textDef.halign) {
 					case Right: stmts.push(macro _rt_txt.textAlign = Right);
@@ -2555,7 +2568,10 @@ class ProgrammableCodeGen {
 				generateBitmapCreate(node, fieldName, tileSource, hAlign, vAlign, pos);
 
 			case TEXT(textDef):
-				generateTextCreate(node, fieldName, textDef, pos);
+				generateTextCreate(node, fieldName, textDef, false, pos);
+
+			case RICHTEXT(textDef):
+				generateTextCreate(node, fieldName, textDef, true, pos);
 
 			case NINEPATCH(sheet, tilename, width, height):
 				generateNinepatchCreate(node, fieldName, sheet, tilename, width, height, pos);
@@ -4296,16 +4312,15 @@ class ProgrammableCodeGen {
 		};
 	}
 
-	static function generateTextCreate(node:Node, fieldName:String, textDef:TextDef, pos:Position):CreateResult {
+	static function generateTextCreate(node:Node, fieldName:String, textDef:TextDef, isRichText:Bool, pos:Position):CreateResult {
 		final fieldRef = macro $p{["this", fieldName]};
 		final createExprs:Array<Expr> = [];
 		final exprUpdates:Array<{fieldName:String, updateExpr:Expr, paramRefs:Array<String>}> = [];
 		final extraFields:Array<Field> = [];
 
 		final fontExpr = rvToExpr(textDef.fontName);
-		final needsHtml = textDef.styles != null || textDef.images != null || textDef.hasMarkup || textDef.condenseWhite != null;
 
-		if (needsHtml) {
+		if (isRichText) {
 			createExprs.push(macro {
 				final font = this._pb.loadFont($fontExpr);
 				final t = new h2d.HtmlText(font);
@@ -4479,7 +4494,7 @@ class ProgrammableCodeGen {
 		final rawTextExpr = isStringRV(textDef.text) ? textExpr : macro Std.string($textExpr);
 
 		// Text assignment — with markup conversion if rich text
-		final textAssign = if (needsHtml) {
+		final textAssign = if (isRichText) {
 			// For static text, pre-convert at macro time
 			switch (textDef.text) {
 				case RVString(s):
@@ -4497,7 +4512,7 @@ class ProgrammableCodeGen {
 		final textParamRefs = collectParamRefs(textDef.text);
 		if (textParamRefs.length > 0) {
 			// For incremental updates, always use runtime conversion for rich text
-			final updateExpr = if (needsHtml) {
+			final updateExpr = if (isRichText) {
 				macro $fieldRef.text = bh.multianim.TextMarkupConverter.convert($rawTextExpr);
 			} else {
 				textAssign;
