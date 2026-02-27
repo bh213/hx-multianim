@@ -653,6 +653,7 @@ class BuilderResult {
 	public var slots:Array<{key:SlotKey, handle:SlotHandle}>;
 	public var dynamicRefs:Map<String, BuilderResult>;
 	public var incrementalContext:Null<IncrementalUpdateContext>;
+	public var htmlTextsWithLinks:Null<Array<h2d.HtmlText>>;
 	#if MULTIANIM_DEV
 	public var reloadable:Bool = true;
 	public var reloadHandle:Null<bh.multianim.dev.HotReload.ReloadableHandle> = null;
@@ -673,6 +674,7 @@ class BuilderResult {
 		this.slots = other.slots;
 		this.dynamicRefs = other.dynamicRefs;
 		this.incrementalContext = other.incrementalContext;
+		this.htmlTextsWithLinks = other.htmlTextsWithLinks;
 	}
 	#end
 
@@ -841,7 +843,8 @@ private typedef InternalBuilderResults = {
 	names:Map<String, Array<NamedBuildResult>>,
 	interactives:Array<MAObject>,
 	slots:Array<{key:SlotKey, handle:SlotHandle}>,
-	dynamicRefs:Map<String, BuilderResult>
+	dynamicRefs:Map<String, BuilderResult>,
+	htmlTextsWithLinks:Array<h2d.HtmlText>
 }
 
 @:nullSafety
@@ -3185,7 +3188,7 @@ class MultiAnimBuilder {
 					for (style in textDef.styles) {
 						final color:Null<Int> = if (style.color != null) resolveAsColorInteger(style.color) & 0xFFFFFF else null;
 						final fontStr:Null<String> = if (style.fontName != null) resolveAsString(style.fontName) else null;
-						ht.defineHtmlTag(style.name, color, fontStr);
+						ht.defineHtmlTag(TextMarkupConverter.escapeStyleName(style.name), color, fontStr);
 					}
 				}
 				if (textDef.images != null) {
@@ -3203,6 +3206,13 @@ class MultiAnimBuilder {
 						try builderParams.callback(Name("link:" + url)) catch(_:Dynamic) {};
 					}
 				};
+				ht.onOverHyperlink = (url) -> {
+					hxd.System.setCursor(Button);
+				};
+				ht.onOutHyperlink = (url) -> {
+					hxd.System.setCursor(Default);
+				};
+				internalResults.htmlTextsWithLinks.push(ht);
 
 				ht.textAlign = switch textDef.halign {
 					case null: Left;
@@ -3599,7 +3609,7 @@ class MultiAnimBuilder {
 						capturedObject.removeChildren();
 						final gcs = MultiAnimParser.getGridCoordinateSystem(capturedNode);
 						final hcs = MultiAnimParser.getHexCoordinateSystem(capturedNode);
-						final ir:InternalBuilderResults = {names: [], interactives: [], slots: [], dynamicRefs: new Map()};
+						final ir:InternalBuilderResults = {names: [], interactives: [], slots: [], dynamicRefs: new Map(), htmlTextsWithLinks: []};
 						for (count in 0...newCount) {
 							final resolvedIndex = switch capturedRepeatType {
 								case RangeIterator(_, _, _): newRangeStart + count * newRangeStep;
@@ -4172,6 +4182,7 @@ class MultiAnimBuilder {
 			interactives: [],
 			slots: [],
 			dynamicRefs: new Map(),
+			htmlTextsWithLinks: [],
 		}
 
 		if (isTileGroup) {
@@ -4240,6 +4251,7 @@ class MultiAnimBuilder {
 			slots: internalResults.slots,
 			dynamicRefs: internalResults.dynamicRefs,
 			incrementalContext: null,
+			htmlTextsWithLinks: if (internalResults.htmlTextsWithLinks.length > 0) internalResults.htmlTextsWithLinks else null,
 		};
 	}
 
@@ -5396,7 +5408,7 @@ class MultiAnimBuilder {
 		this.incrementalContext = slotCtx;
 
 		// Build slot children into container
-		final internalResults:InternalBuilderResults = {names: [], interactives: [], slots: [], dynamicRefs: new Map()};
+		final internalResults:InternalBuilderResults = {names: [], interactives: [], slots: [], dynamicRefs: new Map(), htmlTextsWithLinks: []};
 		for (childNode in resolveConditionalChildren(slotNode.children)) {
 			build(childNode, ObjectMode(container), cast null, cast null, internalResults, builderParams);
 		}
@@ -5474,7 +5486,7 @@ class MultiAnimBuilder {
 	 *  repeatable node types to the builder at runtime. */
 	function buildSingleNode(node:Node):Null<h2d.Object> {
 		final parent = new h2d.Object();
-		final ir:InternalBuilderResults = {names: [], interactives: [], slots: [], dynamicRefs: new Map()};
+		final ir:InternalBuilderResults = {names: [], interactives: [], slots: [], dynamicRefs: new Map(), htmlTextsWithLinks: []};
 		build(node, ObjectMode(parent), cast null, cast null, ir, builderParams);
 		return if (parent.numChildren > 0) parent.getChildAt(0) else null;
 	}

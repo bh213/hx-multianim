@@ -63,4 +63,12 @@ version: 0.5
     bitmap(generated(color(600, 40, #333)));
     @scale(2) richText(dd, "plain text no markup", yellow, left, 600): 4, 4;
   }
+
+  // Row 9: Hyperlinks
+  point {
+    pos: 10, 450
+    bitmap(generated(color(600, 40, #333)));
+    @scale(2) richText(dd, "Visit [link:shop][hl]the shop[/][/] or [link:inv][hl]inventory[/][/]", white, left, 600,
+        styles: {hl: color(cyan)}): 4, 4;
+  }
 }
