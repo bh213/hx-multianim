@@ -4071,8 +4071,10 @@ class MultiAnimBuilder {
 			object.alpha = resolveAsNumber(node.alpha);
 		if (node.blendMode != null)
 			object.blendMode = MacroCompatConvert.toH2dBlendMode(node.blendMode);
-		if (node.filter != null)
-			object.filter = buildFilter(node.filter);
+		if (node.filter != null) {
+			final f = buildFilter(node.filter);
+			if (f != null) object.filter = f;
+		}
 		if (node.tint != null) {
 			if (Std.isOfType(object, h2d.Drawable)) {
 				final d:h2d.Drawable = cast object;
@@ -4085,13 +4087,15 @@ class MultiAnimBuilder {
 		return [for (value in colors) resolveAsColorInteger(value)];
 	}
 
-	function buildFilter(type:FilterType):h2d.filter.Filter {
+	function buildFilter(type:FilterType):Null<h2d.filter.Filter> {
 		return switch type {
 			case FilterNone: null;
 			case FilterGroup(filters):
 				var ret = new h2d.filter.Group();
-				for (f in filters)
-					ret.add(buildFilter(f));
+				for (f in filters) {
+					final built = buildFilter(f);
+					if (built != null) ret.add(built);
+				}
 				ret;
 			case FilterOutline(size, color): new h2d.filter.Outline(resolveAsNumber(size), resolveAsColorInteger(color));
 			case FilterPaletteReplace(paletteName, sourceRow, replacementRow):
