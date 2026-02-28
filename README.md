@@ -68,11 +68,10 @@ npm install -g lix
    sheet: characters
    states: direction(l, r)
 
-   animation {
-       name: idle
+   animation idle {
        fps: 4
        playlist {
-           sheet: "player_$$direction$$_idle"
+           sheet: "player_${direction}_idle"
        }
    }
    ```
