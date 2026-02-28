@@ -73,6 +73,7 @@
 - **UITooltipHelper unit tests** — 26 tests in `UITooltipHelperTest.hx` covering hover delay lifecycle, show/hide, per-interactive overrides, positioning, updateParams, rebuild
 - **UIPanelHelper unit tests** — 40 tests in `UIPanelHelperTest.hx` covering open/close lifecycle, isOpen, outside-click handling (deferred close, cancel-on-own-click), close modes (OutsideClick/Manual), per-open override, named multi-panel API (openNamed/closeNamed/closeAllNamed), per-interactive position/offset overrides, close event emission, mixed single+named coexistence
 - **`autoSyncInitialState` unit tests** — 11 tests in `UIComponentTest.hx` covering initial sync for number, float, list, and selectable elements; disabled-by-default, once-only firing, reset-on-clear, throw-after-sync guard
+- **Particle runtime API unit tests** — 15 tests in `ParticleRuntimeTest.hx` covering force field array API (add/remove/clear), emitBurst/emitBurstAt, force field physics (wind, attractor), and sub-emitters (onDeath, onBirth, probability gate, missing group)
 - **Test reporting: unit warnings** — structured test output now includes `unit_warnings` count and per-warning detail lines; `test.ps1` displays warnings in summary and detail (yellow for warnings, red for failures)
 - **Inline easing in animatedPath curve slots** — `alphaCurve: easeInQuad` works directly without requiring a `curves{}` block
 - **AnimatedPath `easing:` shorthand** — `easing: easeOutCubic` as shortcut for `0.0: progressCurve: easeOutCubic`
