@@ -3915,4 +3915,317 @@ class BuilderUnitTest extends BuilderTestBase {
 		Assert.isTrue(ht.text.indexOf("</dmgStyle>") >= 0, 'Should contain </dmgStyle> tag, got: ${ht.text}');
 		Assert.isTrue(ht.text.indexOf("Dragon") >= 0, 'Should contain Dragon, got: ${ht.text}');
 	}
+
+	// ==================== Multi-value match @(param=>[v1,v2]) ====================
+
+	@Test
+	public function testMultiValueMatchFirst():Void {
+		final params = new Map<String, Dynamic>();
+		params.set("rarity", "rare");
+		final result = buildFromSource("
+			#test programmable(rarity:[common,rare,epic,legendary]=common) {
+				@(rarity=>[rare, epic]) bitmap(generated(color(20, 20, #ff0))): 0, 0
+				@(rarity=>legendary) bitmap(generated(color(30, 30, #f0f))): 0, 0
+				@default bitmap(generated(color(10, 10, #fff))): 0, 0
+			}
+		", "test", params);
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(20, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testMultiValueMatchSecond():Void {
+		final params = new Map<String, Dynamic>();
+		params.set("rarity", "epic");
+		final result = buildFromSource("
+			#test programmable(rarity:[common,rare,epic,legendary]=common) {
+				@(rarity=>[rare, epic]) bitmap(generated(color(20, 20, #ff0))): 0, 0
+				@(rarity=>legendary) bitmap(generated(color(30, 30, #f0f))): 0, 0
+				@default bitmap(generated(color(10, 10, #fff))): 0, 0
+			}
+		", "test", params);
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(20, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testMultiValueMatchNoMatch():Void {
+		final params = new Map<String, Dynamic>();
+		params.set("rarity", "common");
+		final result = buildFromSource("
+			#test programmable(rarity:[common,rare,epic,legendary]=common) {
+				@(rarity=>[rare, epic]) bitmap(generated(color(20, 20, #ff0))): 0, 0
+				@(rarity=>legendary) bitmap(generated(color(30, 30, #f0f))): 0, 0
+				@default bitmap(generated(color(10, 10, #fff))): 0, 0
+			}
+		", "test", params);
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testMultiValueMatchLegendary():Void {
+		final params = new Map<String, Dynamic>();
+		params.set("rarity", "legendary");
+		final result = buildFromSource("
+			#test programmable(rarity:[common,rare,epic,legendary]=common) {
+				@(rarity=>[rare, epic]) bitmap(generated(color(20, 20, #ff0))): 0, 0
+				@(rarity=>legendary) bitmap(generated(color(30, 30, #f0f))): 0, 0
+				@default bitmap(generated(color(10, 10, #fff))): 0, 0
+			}
+		", "test", params);
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(30, Std.int(bitmaps[0].tile.width));
+	}
+
+	// ==================== Bit flag conditionals @(param => bit[N]) ====================
+
+	@Test
+	public function testBitFlagBit0Set():Void {
+		// flags=5 (binary 101) → bit[0]=1 set, bit[1]=0 not set, bit[2]=1 set
+		final params = new Map<String, Dynamic>();
+		params.set("flags", 5);
+		final result = buildFromSource("
+			#test programmable(flags:flags(8)=0) {
+				@(flags => bit[0]) bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		", "test", params);
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testBitFlagBit1NotSet():Void {
+		// flags=5 (binary 101) → bit[1] not set
+		final params = new Map<String, Dynamic>();
+		params.set("flags", 5);
+		final result = buildFromSource("
+			#test programmable(flags:flags(8)=0) {
+				@(flags => bit[1]) bitmap(generated(color(20, 20, #0f0))): 0, 0
+				@default bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		", "test", params);
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testBitFlagBit2Set():Void {
+		// flags=5 (binary 101) → bit[2] set
+		final params = new Map<String, Dynamic>();
+		params.set("flags", 5);
+		final result = buildFromSource("
+			#test programmable(flags:flags(8)=0) {
+				@(flags => bit[2]) bitmap(generated(color(30, 30, #00f))): 0, 0
+				@default bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		", "test", params);
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(30, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testBitFlagZero():Void {
+		// flags=0 → no bits set
+		final result = buildFromSource("
+			#test programmable(flags:flags(8)=0) {
+				@(flags => bit[0]) bitmap(generated(color(20, 20, #0f0))): 0, 0
+				@default bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		", "test");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testBitFlagMultipleBitsShown():Void {
+		// flags=7 (binary 111) → bit[0], bit[1], bit[2] all set; all 3 bitmaps should be visible
+		final params = new Map<String, Dynamic>();
+		params.set("flags", 7);
+		final result = buildFromSource("
+			#test programmable(flags:flags(8)=0) {
+				@(flags => bit[0]) bitmap(generated(color(10, 10, #f00))): 0, 0
+				@(flags => bit[1]) bitmap(generated(color(20, 20, #0f0))): 10, 0
+				@(flags => bit[2]) bitmap(generated(color(30, 30, #00f))): 20, 0
+			}
+		", "test", params);
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(3, bitmaps.length);
+	}
+
+	// ==================== .offset() coordinate suffix ====================
+
+	@Test
+	public function testOffsetOnLayoutPosition():Void {
+		final result = buildFromSource("
+			layouts {
+				#base point: 100, 200
+			}
+			#test programmable() {
+				bitmap(generated(color(10, 10, #f00))): layout(base).offset(5, 10)
+			}
+		", "test");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.floatEquals(105, bitmaps[0].x);
+		Assert.floatEquals(210, bitmaps[0].y);
+	}
+
+	@Test
+	public function testOffsetOnGridPos():Void {
+		final result = buildFromSource("
+			#test programmable() {
+				grid: 32, 32
+				bitmap(generated(color(10, 10, #f00))): " + "$" + "grid.pos(1, 2).offset(3, 4)
+			}
+		", "test");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		// grid.pos(1,2) = (32, 64), offset (3,4) = (35, 68)
+		Assert.floatEquals(35, bitmaps[0].x);
+		Assert.floatEquals(68, bitmaps[0].y);
+	}
+
+	@Test
+	public function testOffsetWithParamReference():Void {
+		final params = new Map<String, Dynamic>();
+		params.set("ox", 15);
+		params.set("oy", 25);
+		final result = buildFromSource("
+			layouts {
+				#base point: 50, 50
+			}
+			#test programmable(ox:int=0, oy:int=0) {
+				bitmap(generated(color(10, 10, #f00))): layout(base).offset(" + "$" + "ox, " + "$" + "oy)
+			}
+		", "test", params);
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.floatEquals(65, bitmaps[0].x);
+		Assert.floatEquals(75, bitmaps[0].y);
+	}
+
+	// ==================== Animated path event emissions ====================
+
+	@Test
+	public function testAnimatedPathPathEndEvent():Void {
+		final builder = builderFromSource("
+			paths {
+				#straight path { lineTo(100, 0) }
+			}
+			#test animatedPath {
+				path: straight
+				type: time
+				duration: 1.0
+			}
+		");
+		final ap = builder.createAnimatedPath("test");
+
+		var events:Array<String> = [];
+		ap.onEvent = function(name:String, state:bh.paths.AnimatedPath.AnimatedPathState) {
+			events.push(name);
+		};
+
+		// Advance past the end
+		ap.update(1.1);
+		Assert.isTrue(events.indexOf("pathStart") >= 0, "Should fire pathStart");
+		Assert.isTrue(events.indexOf("pathEnd") >= 0, "Should fire pathEnd");
+	}
+
+	@Test
+	public function testAnimatedPathCycleEvents():Void {
+		final builder = builderFromSource("
+			paths {
+				#straight path { lineTo(100, 0) }
+			}
+			#test animatedPath {
+				path: straight
+				type: time
+				duration: 1.0
+				loop: true
+			}
+		");
+		final ap = builder.createAnimatedPath("test");
+
+		var events:Array<String> = [];
+		ap.onEvent = function(name:String, state:bh.paths.AnimatedPath.AnimatedPathState) {
+			events.push(name);
+		};
+
+		// Advance past first cycle into second
+		ap.update(1.5);
+		Assert.isTrue(events.indexOf("pathStart") >= 0, "Should fire pathStart");
+		Assert.isTrue(events.indexOf("cycleEnd") >= 0, "Should fire cycleEnd at end of first cycle");
+		Assert.isTrue(events.indexOf("cycleStart") >= 0, "Should fire cycleStart at beginning of second cycle");
+		// looping path should NOT fire pathEnd
+		Assert.isTrue(events.indexOf("pathEnd") < 0, "Looping path should not fire pathEnd");
+	}
+
+	@Test
+	public function testAnimatedPathCustomAndBuiltinEventOrder():Void {
+		final builder = builderFromSource("
+			paths {
+				#straight path { lineTo(100, 0) }
+			}
+			#test animatedPath {
+				path: straight
+				type: time
+				duration: 1.0
+				0.0: event(\"launch\")
+				0.5: event(\"halfway\")
+				1.0: event(\"arrived\")
+			}
+		");
+		final ap = builder.createAnimatedPath("test");
+
+		var events:Array<String> = [];
+		ap.onEvent = function(name:String, state:bh.paths.AnimatedPath.AnimatedPathState) {
+			events.push(name);
+		};
+
+		// Run to completion
+		ap.update(1.1);
+		// pathStart should come before custom events
+		Assert.isTrue(events.indexOf("pathStart") < events.indexOf("launch"),
+			'pathStart should fire before launch, order: $events');
+		Assert.isTrue(events.indexOf("launch") < events.indexOf("halfway"),
+			'launch should fire before halfway, order: $events');
+		Assert.isTrue(events.indexOf("halfway") < events.indexOf("arrived"),
+			'halfway should fire before arrived, order: $events');
+		Assert.isTrue(events.indexOf("pathEnd") >= 0, "Should fire pathEnd");
+	}
+
+	@Test
+	public function testAnimatedPathEventState():Void {
+		final builder = builderFromSource("
+			paths {
+				#straight path { lineTo(100, 0) }
+			}
+			#test animatedPath {
+				path: straight
+				type: time
+				duration: 1.0
+				0.5: event(\"mid\")
+			}
+		");
+		final ap = builder.createAnimatedPath("test");
+
+		var midRate:Float = -1;
+		ap.onEvent = function(name:String, state:bh.paths.AnimatedPath.AnimatedPathState) {
+			if (name == "mid") {
+				midRate = state.rate;
+			}
+		};
+
+		ap.update(0.6);
+		Assert.floatEquals(0.5, midRate, "Event state should have rate=0.5 at mid event");
+	}
 }
