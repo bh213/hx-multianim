@@ -1892,4 +1892,168 @@ animation {
 ');
 		Assert.notNull(result, "negative float in filter should parse");
 	}
+
+	// ===== @default conditional tests =====
+
+	@Test
+	public function testDefaultConditionalInExtrapoints() {
+		var result = parseAnimExpectingSuccess('
+sheet: testSheet
+states: direction(l, r, u, d)
+allowedExtraPoints: [fire]
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist {
+        sheet: "test_idle"
+    }
+    extrapoints {
+        @(direction=>l) fire: -5, -19
+        @(direction=>r) fire: 5, -19
+        @default fire: 0, -19
+    }
+}
+');
+		Assert.notNull(result, "@default in extrapoints should parse");
+		Assert.notNull(result.definedStates["direction"]);
+	}
+
+	@Test
+	public function testDefaultConditionalInMetadata() {
+		var input = byte.ByteData.ofString('
+sheet: testSheet
+states: team(red, blue, green)
+metadata {
+    @(team=>red) tint: #FF0000
+    @(team=>blue) tint: #0000FF
+    @default tint: #FFFFFF
+    speed: 10
+}
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist {
+        sheet: "test_idle"
+    }
+}
+');
+		var loader = new bh.base.ResourceLoader.CachingResourceLoader();
+		var result = AnimParser.parseFile(input, "test-input", loader);
+		Assert.notNull(result.metadata, "Should have metadata");
+		Assert.equals(0xFF0000, result.metadata.getColorOrDefault("tint", 0, ["team" => "red"]));
+		Assert.equals(0x0000FF, result.metadata.getColorOrDefault("tint", 0, ["team" => "blue"]));
+		Assert.equals(0xFFFFFF, result.metadata.getColorOrDefault("tint", 0, ["team" => "green"]));
+		Assert.equals(10, result.metadata.getIntOrDefault("speed", 0));
+	}
+
+	@Test
+	public function testDefaultConditionalInPlaylist() {
+		var result = parseAnimExpectingSuccess('
+sheet: testSheet
+states: team(red, blue, green)
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist @(team=>red) {
+        sheet: "test_idle_red"
+    }
+    playlist @default {
+        sheet: "test_idle_default"
+    }
+}
+');
+		Assert.notNull(result, "@default in playlist should parse");
+	}
+
+	@Test
+	public function testElseAndDefaultCombined() {
+		var result = parseAnimExpectingSuccess('
+sheet: testSheet
+states: level(1, 2, 3, 4, 5)
+allowedExtraPoints: [fire]
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist {
+        sheet: "test_idle"
+    }
+    extrapoints {
+        @(level=>1) fire: -5, -19
+        @else(level=>2) fire: 5, -19
+        @default fire: 0, -10
+    }
+}
+');
+		Assert.notNull(result, "@else and @default combined in extrapoints should parse");
+	}
+
+	// ===== Typed event metadata tests =====
+
+	@Test
+	public function testEventMetadataTrigger() {
+		var result = parseAnimExpectingSuccess('
+sheet: testSheet
+animation {
+    name: hit
+    fps: 10
+    playlist {
+        sheet: "test_hit"
+        event impact { damage:int => 5, element => "fire" }
+    }
+}
+');
+		Assert.notNull(result, "trigger event with typed metadata should parse");
+	}
+
+	@Test
+	public function testEventMetadataPoint() {
+		var result = parseAnimExpectingSuccess('
+sheet: testSheet
+animation {
+    name: hit
+    fps: 10
+    playlist {
+        sheet: "test_hit"
+        event spark 10, -5 { intensity:float => 0.8, color => "red" }
+    }
+}
+');
+		Assert.notNull(result, "point event with typed metadata should parse");
+	}
+
+	@Test
+	public function testEventMetadataAllTypes() {
+		var result = parseAnimExpectingSuccess('
+sheet: testSheet
+animation {
+    name: hit
+    fps: 10
+    playlist {
+        sheet: "test_hit"
+        event hit { damage:int => 42, speed:float => 1.5, label => "crit", tint => #FF0000, active => true }
+    }
+}
+');
+		Assert.notNull(result, "event metadata with int, float, string, color, bool types should parse");
+	}
+
+	@Test
+	public function testEventMetadataRandomPoint() {
+		var result = parseAnimExpectingSuccess('
+sheet: testSheet
+animation {
+    name: explode
+    fps: 10
+    playlist {
+        sheet: "test_explode"
+        event debris random 0, 0, 50 { count:int => 3, size:float => 0.5 }
+    }
+}
+');
+		Assert.notNull(result, "random point event with metadata should parse");
+	}
 }

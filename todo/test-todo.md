@@ -3,12 +3,9 @@
 | # | Item | Summary | Priority |
 |---|------|---------|----------|
 
-| 13 | Hex offset/doubled coordinates | $hex.offset and $hex.doubled not specifically tested | Low |
+
 | 15 | Particle runtime API | addForceField, removeForceFieldAt, sub-emitters untested | Low |
 | 17 | Test numbering audit | Tests 62, 77 are unit-only in visual test dirs, consider moving | Low |
-| 18 | .anim @default conditional | No test for @default fallback behavior in AnimParserTest | Low |
-| ~~19~~ | ~~.anim filter declarations~~ | ~~DONE — 20 typed filter tests added~~ | ~~Low~~ |
-| 20 | .anim typed event metadata | Event metadata payload (`event hit { damage:int => 5 }`) untested | Low |
 
 ## Visual Tests Fixes
 
@@ -28,18 +25,18 @@ All other 89 directories (1-91 minus 62, 77) have both a `testNN_` method in `Pr
 
 ## Missing Feature Coverage
 
-### Hex Offset/Doubled Coordinates — LOW
-`$hex.offset(col, row, even|odd)` and `$hex.doubled(col, row)` not specifically tested. Tests 47/87 cover hex cube/corner/edge only.
+### ~~Hex Offset/Doubled Coordinates~~ — DONE
+6 unit tests added in `BuilderUnitTest.hx`: flat orientation offset/doubled, non-zero row offset, named hex offset/doubled. Existing tests cover pointy orientation, even/odd parity, XY extraction. Note: `.offset()` suffix cannot chain on `$hex.offset()`/`$hex.doubled()` — parser treats trailing `.offset` as hex chain method.
 
 ### Particle Runtime API — LOW
 `addForceField`, `removeForceFieldAt`, `clearForceFields`, sub-emitters — no unit tests. Only visual particle test (51) with seeded comparison.
 
-### .anim @default Conditional — LOW
-`@default` fallback in extrapoints/animation blocks. `@else` is tested but `@default` has no dedicated test.
+### ~~.anim @default Conditional~~ — DONE
+4 tests added in `AnimParserTest.hx`: `@default` in extrapoints, metadata (with value assertions), playlist conditionals, and combined `@else`+`@default` chains.
 
 ### ~~.anim Filter Declarations~~ — DONE
 20 typed filter tests added: all filter types (`tint`, `brightness`, `saturate`, `grayscale`, `hue`, `outline`, `pixelOutline`, `replaceColor`, `none`), conditionals, playlist filters, error cases.
 
-### .anim Typed Event Metadata — LOW
-`event hit { damage:int => 5, element => "fire" }` — events with typed metadata payload. Parser has `parseEventMeta()` but no test exercises it.
+### ~~.anim Typed Event Metadata~~ — DONE
+4 tests added in `AnimParserTest.hx`: trigger event with metadata, point event with metadata, all types (int/float/string/color/bool), random point event with metadata.
 
