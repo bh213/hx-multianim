@@ -82,6 +82,15 @@ animation animationName {
     playlist {
         sheet: "sprite_${state}_name"
         event <name> trigger | random x,y,radius | x,y
+        filter tint: #FF0000
+        filter none
+    }
+    filters {
+        tint: #FF0000
+        brightness: 0.8
+        @(state=>value) outline: 2.0, #FFFF00
+        @else pixelOutline: #00FF00
+        replaceColor: [#FF0000] => [#0000FF]
     }
     extrapoints {
         @(state=>value) pointName: x,y
@@ -108,7 +117,8 @@ animation animationName {
 - File-level defaults: `fps:`, `loop:`, `center:` can be set once at file level
 - Metadata types: int, float, string, color (`#RRGGBB`)
 - Event metadata: `event name { key:type => value, ... }` with typed payload (`TriggerData` event)
-- Filter declarations: `filters { type: value }` in animation blocks
+- Typed filters: `filters { }` block with `tint`, `brightness`, `saturate`, `grayscale`, `hue`, `outline`, `pixelOutline`, `replaceColor`, `none`. Supports state conditionals (`@()`, `@else`, `@default`). Applied at runtime via `AnimationSM`.
+- Playlist filters: `filter tint: #FF0000` / `filter none` entries in playlist for per-frame filter changes
 - `AnimMetadata` - Typed metadata access with state-aware matching: `getIntOrDefault(key, default, ?stateSelector)`, `getIntOrException(key, ?stateSelector)`, `getFloatOrDefault(key, default, ?stateSelector)`, `getFloatOrException(key, ?stateSelector)`, `getStringOrDefault(key, default, ?stateSelector)`, `getStringOrException(key, ?stateSelector)`, `getColorOrDefault(key, default, ?stateSelector)`, `getColorOrException(key, ?stateSelector)`. Accessed via `parsed.metadata`.
 
 ## .manim Language Quick Reference

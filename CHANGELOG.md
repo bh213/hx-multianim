@@ -286,12 +286,17 @@
   - Float metadata values
   - `AnimMetadata` API: `getFloatOrDefault`, `getFloatOrException`, `getColorOrDefault`, `getColorOrException`
   - `PlaylistEventData` — events with typed metadata
-  - `filters` declarations on animations
+  - **Typed filters** — `filters { }` block with `tint`, `brightness`, `saturate`, `grayscale`, `hue`, `outline`, `pixelOutline`, `replaceColor`, `none`
+  - Supports state conditionals (`@()`, `@else`, `@default`) in filter blocks
+  - `replaceColor: [#src1, #src2] => [#dst1, #dst2]` for color replacement
+  - Runtime application via `AnimationSM` (builds Heaps filters, sets tint color)
+  - **Playlist-level filters** — `filter tint: #FF0000` / `filter none` entries in playlist for per-frame filter changes
+  - `filter none` reverts to animation-level filter (or clears if none defined)
 - **Rich text hyperlink cursor** — `[link:id]` markup now shows pointer cursor on hover and reverts on mouse-out (both builder and codegen)
 - **`enableLinkEvents()`** — screen method routes `[link:id]` clicks to `UIInteractiveEvent(UIClick, "link:<id>", ...)` for consistent event handling
 - **`TextMarkupConverter.escapeStyleName()`** — escapes reserved HTML tags (`b`, `i`, `u`, `s`, `bold`, `italic`, `font`) to prevent collision with HtmlText built-in tags
 - **UIRichInteractiveHelper unit tests** — 30 tests covering state machine transitions, disabled state, bind/unbind, event handling
-- **AnimParser test suite** — comprehensive `.anim` parser tests: conditionals (comparison, range, not, multi-value), metadata typed API, `@final` constants, state interpolation, error validation, AnimSM integration
+- **AnimParser test suite** — comprehensive `.anim` parser tests: conditionals (comparison, range, not, multi-value), metadata typed API, `@final` constants, state interpolation, error validation, AnimSM integration, typed filters (all types, conditionals, playlist filters, error cases)
 - **Test review improvements** — systematic upgrade of existing tests: fixed dead code (@Test annotations), replaced Assert.pass()/Assert.isTrue(true) with actual assertions, added AST verification to parse-success tests, added exact hex coordinate values, range boundary tests, drag position verification
 - **Low-priority test coverage** — multi-value match `@(param=>[v1,v2])`, bit flag `@(param => bit[N])`, `.offset()` suffix, `@ifstrict` error cases, `import` error cases, animated path events (pathEnd, cycleStart/cycleEnd, event ordering), AnimMetadata state-selector API (float+state, color+state, exception messages)
 
