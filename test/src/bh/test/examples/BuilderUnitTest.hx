@@ -1809,6 +1809,97 @@ class BuilderUnitTest extends BuilderTestBase {
 		Assert.equals(posY + 50, dimH);
 	}
 
+	// ==================== Hex offset/doubled extended tests ====================
+
+	@Test
+	public function testHexOffsetFlatOrientation():Void {
+		// flat orientation: offset(1, 0, even) should produce different position than pointy
+		final resultFlat = buildFromSource("
+			#test programmable() {
+				hex: flat(16, 16)
+				bitmap(generated(color(5, 5, #f00))): $hex.offset(1, 0, even)
+			}
+		", "test");
+		final resultPointy = buildFromSource("
+			#test programmable() {
+				hex: pointy(16, 16)
+				bitmap(generated(color(5, 5, #f00))): $hex.offset(1, 0, even)
+			}
+		", "test");
+		final flatBitmaps = findVisibleBitmapDescendants(resultFlat.object);
+		final pointyBitmaps = findVisibleBitmapDescendants(resultPointy.object);
+		Assert.equals(1, flatBitmaps.length);
+		Assert.isTrue(flatBitmaps[0].x != pointyBitmaps[0].x || flatBitmaps[0].y != pointyBitmaps[0].y,
+			"flat and pointy offset should produce different positions");
+	}
+
+	@Test
+	public function testHexDoubledFlatOrientation():Void {
+		// flat orientation: doubled(2, 0) should produce different position than pointy
+		final resultFlat = buildFromSource("
+			#test programmable() {
+				hex: flat(16, 16)
+				bitmap(generated(color(5, 5, #f00))): $hex.doubled(2, 0)
+			}
+		", "test");
+		final resultPointy = buildFromSource("
+			#test programmable() {
+				hex: pointy(16, 16)
+				bitmap(generated(color(5, 5, #f00))): $hex.doubled(2, 0)
+			}
+		", "test");
+		final flatBitmaps = findVisibleBitmapDescendants(resultFlat.object);
+		final pointyBitmaps = findVisibleBitmapDescendants(resultPointy.object);
+		Assert.equals(1, flatBitmaps.length);
+		Assert.isTrue(flatBitmaps[0].x != pointyBitmaps[0].x || flatBitmaps[0].y != pointyBitmaps[0].y,
+			"flat and pointy doubled should produce different positions");
+	}
+
+	@Test
+	public function testHexOffsetNonZeroRow():Void {
+		// offset(0, 2, even) — row 2 should have y offset
+		final result = buildFromSource("
+			#test programmable() {
+				hex: pointy(16, 16)
+				bitmap(generated(color(5, 5, #f00))): $hex.offset(0, 2, even)
+			}
+		", "test");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.isTrue(bitmaps[0].y != 0, "offset row 2 should have non-zero y");
+	}
+
+	@Test
+	public function testNamedHexOffset():Void {
+		// Named hex system with offset coordinates
+		final result = buildFromSource("
+			#test programmable() {
+				hex: #myHex pointy(16, 16)
+				bitmap(generated(color(5, 5, #f00))): $myHex.offset(1, 0, even)
+			}
+		", "test");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		// Should match default hex offset(1, 0, even) position
+		Assert.floatEquals(13.856, bitmaps[0].x, 0.01);
+		Assert.floatEquals(-24.0, bitmaps[0].y, 0.01);
+	}
+
+	@Test
+	public function testNamedHexDoubled():Void {
+		// Named hex system with doubled coordinates
+		final result = buildFromSource("
+			#test programmable() {
+				hex: #myHex pointy(16, 16)
+				bitmap(generated(color(5, 5, #f00))): $myHex.doubled(2, 0)
+			}
+		", "test");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.floatEquals(41.569, bitmaps[0].x, 0.01);
+		Assert.floatEquals(-24.0, bitmaps[0].y, 0.01);
+	}
+
 	// ==================== Coordinate system scoping / nesting ====================
 
 	@Test
