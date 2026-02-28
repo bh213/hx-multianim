@@ -2261,7 +2261,7 @@ class ParserErrorTest extends utest.Test {
 					count: 50
 					maxLife: 2.0
 					speed: 100
-					emit: point(0, 0)
+					emit: point(dist: 0, distRand: 0)
 					tiles: generated(color(4, 4, #ff0000))
 				}
 			}

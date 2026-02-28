@@ -707,15 +707,6 @@ typedef ParticleCurveRef = {
 	var inlineEasing:Null<EasingType>;
 }
 
-// Color curve segment for particles (rate-based, like AnimatedPath)
-@:nullSafety
-typedef ParticleColorCurveSegment = {
-	var atRate:ReferenceableValue;
-	var curveName:Null<String>;
-	var inlineEasing:Null<EasingType>;
-	var startColor:ReferenceableValue;
-	var endColor:ReferenceableValue;
-}
 
 // Color stop for particles (rate + color + optional interpolation curve to next stop)
 @:nullSafety
@@ -806,9 +797,7 @@ typedef ParticlesDef = {
 	var rotationSpeedRandom:Null<ReferenceableValue>;
 	var rotateAuto:Null<Bool>;
 	var forwardAngle:Null<ReferenceableValue>;
-	// Color curves (AnimatedPath-style segments) — legacy rate-prefixed syntax
-	var colorCurves:Null<Array<ParticleColorCurveSegment>>;
-	// Color stops — new syntax: colorStops: 0.0 #FF0000, 0.5 #00FF00 easeInQuad, 1.0 #0000FF
+	// Color stops: colorStops: 0.0 #FF0000, 0.5 #00FF00 easeInQuad, 1.0 #0000FF
 	var colorStops:Null<Array<ParticleColorStop>>;
 	// Force fields
 	var forceFields:Null<Array<ParticleForceFieldDef>>;

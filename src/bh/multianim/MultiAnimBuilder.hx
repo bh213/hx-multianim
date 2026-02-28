@@ -4351,28 +4351,7 @@ class MultiAnimBuilder {
 		if (particlesDef.animationRepeat != null)
 			group.animationRepeat = resolveAsNumber(particlesDef.animationRepeat);
 
-		// Color curves
-		if (particlesDef.colorCurves != null) {
-			group.colorEnabled = true;
-			var colorCurvesArray:Array<ParticleColorCurveSegment> = particlesDef.colorCurves;
-			for (cc in colorCurvesArray) {
-				var curve:bh.paths.Curve.ICurve;
-				if (cc.inlineEasing != null) {
-					curve = new bh.paths.Curve(null, cc.inlineEasing, null);
-				} else if (cc.curveName != null) {
-					var curves = getCurves();
-					var found = curves.get(cc.curveName);
-					if (found == null)
-						throw 'color curve not found: ${cc.curveName}' + currentNodePos();
-					curve = found;
-				} else {
-					throw 'color curve must have either curveName or inlineEasing' + currentNodePos();
-				}
-				group.addColorCurveSegment(resolveAsNumber(cc.atRate), curve, resolveAsColorInteger(cc.startColor), resolveAsColorInteger(cc.endColor));
-			}
-		}
-
-		// Color stops (new syntax — converted to color curve segments)
+		// Color stops (converted to color curve segments)
 		if (particlesDef.colorStops != null) {
 			group.colorEnabled = true;
 			var stops:Array<ParticleColorStop> = particlesDef.colorStops;

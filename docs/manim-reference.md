@@ -617,13 +617,12 @@ Angle units also work in graphics `arc()`, `dropShadow` filter angle, and path `
 
 | Mode | Description |
 |------|-------------|
-| `point(distance, distRand)` | Emit from a point with optional spread |
-| `cone(dist, distRand, angle, angleRand)` | Directional cone emission |
-| `box(w, h, angle, angleRand)` | Rectangular area emission |
-| `circle(radius, radiusRand, angle, angleRand)` | Circular area emission |
-| `path(pathName, tangent)` | Emit along a path, optionally tangent-aligned |
+| `point(dist: N, distRand: N)` | Emit from a point with optional spread |
+| `cone(dist: N, distRand: N, angle: A, angleSpread: A)` | Directional cone emission |
+| `box(w: N, h: N, angle: A, angleSpread: A [, center: true])` | Rectangular area emission |
+| `circle(r: N, rRand: N, angle: A, angleSpread: A)` | Circular area emission |
+| `path(pathName [, tangent])` | Emit along a path, optionally tangent-aligned |
 
-**Named parameters** (alternative syntax):
 ```
 emit: cone(dist: 50, distRand: 10, angle: right, angleSpread: 90deg)
 emit: box(w: 100, h: 100, center: true, angle: down, angleSpread: 45deg)
@@ -684,16 +683,10 @@ emit: circle(r: 50, rRand: 10, angle: 0deg, angleSpread: 180deg)
 
 ### Color
 
-**Color stops** (preferred):
 ```
 colorStops: 0.0 #FF4400, 0.5 #FFAA00 easeInQuad, 1.0 #FFFF88
 ```
 Each stop: `rate color [curve]`. Curve specifies interpolation to next stop (default: linear).
-
-**Legacy color curves** (still supported):
-```
-rate: colorCurve: easing, #startColor, #endColor
-```
 
 ### Lifetime Curves
 
@@ -709,19 +702,10 @@ rate: colorCurve: easing, #startColor, #endColor
 
 ### Bounds
 
-**Combined syntax** (preferred):
 ```
 bounds: kill, box(x: 0, y: 0, w: 800, h: 600)
 bounds: bounce(0.6), box(x: -50, y: -50, w: 250, h: 250), line(0, 0, 100, 0)
 ```
-
-**Legacy syntax** (still supported):
-
-| Property | Description |
-|----------|-------------|
-| `boundsMode` | `none`, `kill`, `bounce(damping)`, `wrap` |
-| `boundsMinX/MaxX/MinY/MaxY` | Rectangular boundary |
-| `boundsLine` | Line boundary: `x1, y1, x2, y2` |
 
 ### Force Fields
 

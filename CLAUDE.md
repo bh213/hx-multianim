@@ -261,8 +261,6 @@ animation animationName {
 
 **Property aliases:** `lifeRand`, `sizeRand`, `speedRand`, `speedIncr`/`acceleration`, `rotSpeed`, `rotSpeedRand`, `rotInitial`, `autoRotate`, `delay`, `animRepeat`.
 
-**Legacy syntax** (`boundsMode`/`boundsMinX`/etc., `0.0: colorCurve: ...`) still works for backward compatibility.
-
 **Runtime API:** `group.emitBurst(count)`, `group.addForceField(ff)`, `group.removeForceFieldAt(i)`, `group.clearForceFields()`
 
 See `docs/manim.md` for full particles documentation.

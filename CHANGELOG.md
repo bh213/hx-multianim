@@ -33,12 +33,12 @@
 - **Particle emit named parameters** — `emit: cone(dist: 50, distRand: 10, angle: right, angleSpread: 90deg)`
   - All emit modes support named params: `point`, `cone`, `box`, `circle`
   - `box(center: true)` for centered spawning (default: top-left aligned)
-  - Positional syntax still works for backward compatibility
+  - Legacy positional syntax removed — use named params
 - **Particle `colorStops`** — `colorStops: 0.0 #FF0000, 0.5 #00FF00 easeInQuad, 1.0 #0000FF`
   - Each stop is `rate color [curve]` — curve specifies interpolation to next stop
-  - Replaces verbose `rate: colorCurve: easing, #start, #end` segments (old syntax still works)
+  - Legacy `rate: colorCurve: easing, #start, #end` syntax removed
 - **Particle `bounds:` combined syntax** — `bounds: kill, box(x: 0, y: 0, w: 800, h: 600), line(0, 0, 100, 0)`
-  - Replaces separate `boundsMode`/`boundsMinX`/`boundsMaxX`/etc. properties (old syntax still works)
+  - Legacy individual `boundsMode`/`boundsMinX`/`boundsMaxX`/etc. properties removed
   - `box()` supports both positional `box(x, y, w, h)` and named `box(x: ..., y: ..., w: ..., h: ...)` params
 - **Particle property aliases** — shorter names for common properties
   - `lifeRand`, `sizeRand`, `speedRand`, `speedIncr`/`acceleration`, `rotSpeed`, `rotSpeedRand`, `rotInitial`, `autoRotate`, `delay`, `animRepeat`
