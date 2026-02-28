@@ -364,15 +364,15 @@ There are no tests combining multiple helpers (e.g., UIRichInteractiveHelper dri
 - [x] Test AnimatedPath pingPong at non-ambiguous time points — DONE: changed from t=1.5 (rate=0.5 ambiguous) to t=1.75 (rate=0.25 which differs from non-pingPong rate=0.75)
 
 ### Low Priority (missing feature tests)
-- [ ] AnimMetadata state-selector API
-- [ ] Animated path event emissions
+- [x] AnimMetadata state-selector API — DONE: 3 tests (float+state, color+state, exception message content)
+- [x] Animated path event emissions — DONE: 4 tests (pathEnd, cycleStart/cycleEnd, custom+builtin order, event state rate)
 - [ ] Particle runtime API (addForceField, sub-emitters)
 - [ ] Slider-specific .manim tests (currently using BUTTON_MANIM)
 - [ ] Progress bar unit tests
 - [ ] Text input unit tests (post-1.0)
 - [ ] Hot reload integration tests
-- [ ] Multi-value match `@(param=>[v1,v2])` builder tests
-- [ ] Bit flag conditionals `@(param => bit[N])` builder tests
-- [ ] `.offset()` coordinate suffix builder tests
-- [ ] `@ifstrict` error cases
-- [ ] `import` statement error cases
+- [x] Multi-value match `@(param=>[v1,v2])` builder tests — DONE: 4 tests (match first/second value, no-match fallback, single value)
+- [x] Bit flag conditionals `@(param => bit[N])` builder tests — DONE: 5 tests (bit0 set, bit1 not set, bit2 set, zero flags, multiple bits)
+- [x] `.offset()` coordinate suffix builder tests — DONE: 3 tests (layout+offset, grid+offset, param reference offset)
+- [x] `@ifstrict` error cases — DONE: 4 tests (parse success, with @else, missing paren, unknown param)
+- [x] `import` statement error cases — DONE: 3 tests (missing as, missing filename, file not found)

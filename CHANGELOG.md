@@ -275,6 +275,25 @@
 
 - **Dropdown unit tests** — 17 new tests in `UIComponentTest.hx` covering creation, initial selection, open/close toggle, auto-open/close, disabled state, outside click, selection index, list value interface, transition timer override, sub-elements, cursor states, and item changed callback
 - **Scrollable list unit tests** — 27 new tests in `UIComponentTest.hx` covering creation, initial selection, setSelectedIndex, getList, disabled state/alpha/events/cursor, setItems/default selection/empty, click modes (single/double), scrollToIndex, onItemChanged callback, disabled items, TileRef, itemData, doRedraw, hover index, auto-size mode, wheel scroll multiplier, double-click threshold
+- **`.anim` format overhaul** — major rework of `.anim` state animation format:
+  - Newlines are now whitespace (free-form layout, no mandatory line breaks)
+  - Compact shorthand: `animation name { ... }` instead of `animation { name: myName ... }`
+  - `@final` named constants: `@final X = 42`, usable as `$X` in metadata and extrapoints
+  - `@else` / `@default` conditionals in extrapoints
+  - Comparison conditionals: `@(level >= 3)`, `@(level <= 5)`, `@(level > 0)`, `@(level < 10)`
+  - Range conditionals: `@(level => 1..5)`
+  - Color literal metadata: `tint: #FF0000`
+  - Float metadata values
+  - `AnimMetadata` API: `getFloatOrDefault`, `getFloatOrException`, `getColorOrDefault`, `getColorOrException`
+  - `PlaylistEventData` — events with typed metadata
+  - `filters` declarations on animations
+- **Rich text hyperlink cursor** — `[link:id]` markup now shows pointer cursor on hover and reverts on mouse-out (both builder and codegen)
+- **`enableLinkEvents()`** — screen method routes `[link:id]` clicks to `UIInteractiveEvent(UIClick, "link:<id>", ...)` for consistent event handling
+- **`TextMarkupConverter.escapeStyleName()`** — escapes reserved HTML tags (`b`, `i`, `u`, `s`, `bold`, `italic`, `font`) to prevent collision with HtmlText built-in tags
+- **UIRichInteractiveHelper unit tests** — 30 tests covering state machine transitions, disabled state, bind/unbind, event handling
+- **AnimParser test suite** — comprehensive `.anim` parser tests: conditionals (comparison, range, not, multi-value), metadata typed API, `@final` constants, state interpolation, error validation, AnimSM integration
+- **Test review improvements** — systematic upgrade of existing tests: fixed dead code (@Test annotations), replaced Assert.pass()/Assert.isTrue(true) with actual assertions, added AST verification to parse-success tests, added exact hex coordinate values, range boundary tests, drag position verification
+- **Low-priority test coverage** — multi-value match `@(param=>[v1,v2])`, bit flag `@(param => bit[N])`, `.offset()` suffix, `@ifstrict` error cases, `import` error cases, animated path events (pathEnd, cycleStart/cycleEnd, event ordering), AnimMetadata state-selector API (float+state, color+state, exception messages)
 
 - **`@:nullSafety` on parser and builder** — applied `@:nullSafety` to `MacroManimParser`, `AnimParser`, `MultiAnimBuilder`, `MultiAnimParser`, `ProgrammableBuilder` and all public enums/typedefs
   - Explicit `Null<T>` annotations for nullable variables; null narrowing via local finals
@@ -322,6 +341,7 @@
 - **`generated(cross())` rendering** — corrected cross generation in multiple files
 - **Expression priority** — fixed operator precedence in conditional expressions
 - **PixelOutline shader passthrough** — transparent pixels outside outline area now correctly pass through the original color instead of being left unset (fixes visual artifacts with pixelOutline filter)
+- **`programmable()` / `slot` without `#name`** — parser now produces proper error message instead of NPE when `#name` is missing before `programmable()` or `slot`
 
 ### Changed
 - **Slot storage refactored** — changed from `Map<String, SlotHandle>` to array-based `SlotKey` storage supporting `Named(name)` and `Indexed(name, index)` keys

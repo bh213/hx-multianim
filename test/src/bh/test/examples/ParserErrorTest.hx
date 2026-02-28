@@ -3161,4 +3161,73 @@ class ParserErrorTest extends utest.Test {
 		');
 		Assert.notNull(error, "Should throw error for unknown hex chain method");
 	}
+
+	// ===== @ifstrict error cases =====
+
+	@Test
+	public function testIfstrictParseSuccess() {
+		var success = parseExpectingSuccess("
+			#test programmable(status:[idle,hover]=idle) {
+				@ifstrict(status=>hover) bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		");
+		Assert.isTrue(success, "@ifstrict should parse successfully");
+	}
+
+	@Test
+	public function testIfstrictWithElse() {
+		var success = parseExpectingSuccess("
+			#test programmable(status:[idle,hover]=idle) {
+				@ifstrict(status=>hover) bitmap(generated(color(10, 10, #f00))): 0, 0
+				@else bitmap(generated(color(20, 20, #00f))): 0, 0
+			}
+		");
+		Assert.isTrue(success, "@ifstrict with @else should parse successfully");
+	}
+
+	@Test
+	public function testIfstrictMissingParen() {
+		var error = parseExpectingError("
+			#test programmable(status:[idle,hover]=idle) {
+				@ifstrict bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		");
+		Assert.notNull(error, "Should throw error for @ifstrict without parens");
+	}
+
+	@Test
+	public function testIfstrictUnknownParam() {
+		var error = parseExpectingError("
+			#test programmable(status:[idle,hover]=idle) {
+				@ifstrict(unknown=>value) bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		");
+		Assert.notNull(error, "Should throw error for @ifstrict with undefined parameter");
+	}
+
+	// ===== import statement error cases =====
+
+	@Test
+	public function testImportMissingAs() {
+		var error = parseExpectingError('
+			import "file.manim"
+		');
+		Assert.notNull(error, "Should throw error for import without as");
+	}
+
+	@Test
+	public function testImportMissingFilename() {
+		var error = parseExpectingError('
+			import as "name"
+		');
+		Assert.notNull(error, "Should throw error for import without filename");
+	}
+
+	@Test
+	public function testImportFileNotFound() {
+		var error = parseExpectingError('
+			import "nonexistent-file.manim" as "ext"
+		');
+		Assert.notNull(error, "Should throw error for import with missing file");
+	}
 }

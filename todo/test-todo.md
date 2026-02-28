@@ -3,32 +3,13 @@
 | # | Item | Summary | Priority |
 |---|------|---------|----------|
 
-| 10 | Interactive event tests | Event filtering, bind metadata, UIClickOutside, disabled gating | Medium |
-| 11 | `UIClickOutside` event | Documented but not tested | Low |
-
 | 13 | Hex offset/doubled coordinates | $hex.offset and $hex.doubled not specifically tested | Low |
-| 14 | Animated path events | pathStart/End, cycleStart/End not asserted programmatically | Low |
 | 15 | Particle runtime API | addForceField, removeForceFieldAt, sub-emitters untested | Low |
 | 17 | Test numbering audit | Tests 62, 77 are unit-only in visual test dirs, consider moving | Low |
 
 ## Visual Tests Fixes
 
 General visual test issues that need attention.
-
-## Missing UI Component Tests
-
-## Missing Helper Tests
-
-### `UIRichInteractiveHelper` — MEDIUM
-No dedicated test for state binding auto-wiring. Needs: `register()` scanning bind metadata, `handleEvent()` driving Normal->Hover->Pressed->Normal, `setDisabled()`.
-
-## Missing Interactive Tests
-
-- **UIRichInteractiveHelper** — no tests for `register()`, `handleEvent()`, `setDisabled()`
-- **Event filtering** (`events: [hover, click, push]`) — no unit test
-- **`bind` metadata** — no unit test
-- **`UIClickOutside`** — no unit or visual test
-- **Disabled interactive** gating events — no test
 
 ## Test Numbering Audit
 
@@ -44,14 +25,8 @@ All other 89 directories (1-91 minus 62, 77) have both a `testNN_` method in `Pr
 
 ## Missing Feature Coverage
 
-### `UIClickOutside` Event — LOW
-Documented in CLAUDE.md but not tested. Add a `UIComponentTest` case verifying `UIInteractiveEvent(UIClickOutside, ...)` fires correctly.
-
 ### Hex Offset/Doubled Coordinates — LOW
 `$hex.offset(col, row, even|odd)` and `$hex.doubled(col, row)` not specifically tested. Tests 47/87 cover hex cube/corner/edge only.
-
-### Animated Path Events — LOW
-`pathStart`, `pathEnd`, `cycleStart`, `cycleEnd` events not asserted programmatically. Test 61 only does visual sampling.
 
 ### Particle Runtime API — LOW
 `addForceField`, `removeForceFieldAt`, `clearForceFields`, sub-emitters — no unit tests. Only visual particle test (51) with seeded comparison.

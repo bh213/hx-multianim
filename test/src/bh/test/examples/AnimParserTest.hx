@@ -1482,4 +1482,94 @@ animation {
 		Assert.equals(-5, result.metadata.getIntOrDefault("offsetX", 0, ["direction" => "l"]));
 		Assert.equals(5, result.metadata.getIntOrDefault("offsetX", 0, ["direction" => "r"]));
 	}
+
+	// ===== AnimMetadata state-selector API (additional coverage) =====
+
+	@Test
+	public function testMetadataGetFloatWithStateSelector() {
+		// Existing tests cover float without state selector; this tests float WITH state
+		var input = byte.ByteData.ofString('
+sheet: testSheet
+states: size(small, large)
+metadata {
+    @(size=>small) scale: 0.5
+    @(size=>large) scale: 2.0
+}
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist {
+        sheet: "test_idle"
+    }
+}
+');
+		var loader = new bh.base.ResourceLoader.CachingResourceLoader();
+		var result = AnimParser.parseFile(input, "test-input", loader);
+		var meta = result.metadata;
+		Assert.notNull(meta);
+		Assert.floatEquals(0.5, meta.getFloatOrDefault("scale", 1.0, ["size" => "small"]));
+		Assert.floatEquals(2.0, meta.getFloatOrDefault("scale", 1.0, ["size" => "large"]));
+		Assert.floatEquals(1.0, meta.getFloatOrDefault("missing", 1.0));
+	}
+
+	@Test
+	public function testMetadataGetColorWithStateSelector() {
+		// Existing testMetadataGetColorOrDefault tests color without state; this tests WITH state
+		var input = byte.ByteData.ofString('
+sheet: testSheet
+states: type(fire, ice)
+metadata {
+    @(type=>fire) tint: #FF0000
+    @(type=>ice) tint: #0000FF
+}
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist {
+        sheet: "test_idle"
+    }
+}
+');
+		var loader = new bh.base.ResourceLoader.CachingResourceLoader();
+		var result = AnimParser.parseFile(input, "test-input", loader);
+		var meta = result.metadata;
+		Assert.notNull(meta);
+		Assert.equals(0xFF0000, meta.getColorOrDefault("tint", 0, ["type" => "fire"]));
+		Assert.equals(0x0000FF, meta.getColorOrDefault("tint", 0, ["type" => "ice"]));
+		Assert.equals(0xFFFFFF, meta.getColorOrDefault("missing", 0xFFFFFF));
+	}
+
+	@Test
+	public function testMetadataExceptionMessageContent() {
+		// Existing testMetadataGetIntOrException checks throws but not message content
+		var input = byte.ByteData.ofString('
+sheet: testSheet
+metadata {
+    damage: 50
+}
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist {
+        sheet: "test_idle"
+    }
+}
+');
+		var loader = new bh.base.ResourceLoader.CachingResourceLoader();
+		var result = AnimParser.parseFile(input, "test-input", loader);
+		var meta = result.metadata;
+		Assert.notNull(meta);
+		Assert.equals(50, meta.getIntOrException("damage"));
+		var threw = false;
+		try {
+			meta.getIntOrException("missing");
+		} catch (e:Dynamic) {
+			threw = true;
+			Assert.stringContains("missing", Std.string(e));
+		}
+		Assert.isTrue(threw, "getIntOrException should throw for missing key");
+	}
 }

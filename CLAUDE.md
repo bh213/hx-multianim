@@ -57,16 +57,26 @@ The `.anim` state animation parser in `AnimParser.hx` is a separate hand-written
 Used for programmable UI components, layouts, palettes, and paths.
 
 ### `.anim` - State Animations
-Used for sprite state animations with playlists. Structure:
+Used for sprite state animations with playlists. Free-form layout (newlines are whitespace). Structure:
 
 ```anim
 sheet: sheetName
 states: stateName(value1, value2)
 center: x,y
 allowedExtraPoints: [point1, point2]
+fps: 20
 
-animation {
-    name: animationName
+@final OFFSET_X = 5
+
+metadata {
+    health: 100
+    speed: 1.5
+    tint: #FF0000
+    @(state=>value) damage: 50
+    @(state=>other) damage: 30
+}
+
+animation animationName {
     fps: 20
     loop: yes | <number>
     playlist {
@@ -77,6 +87,10 @@ animation {
         @(state=>value) pointName: x,y
         @(state != value) pointName: x,y
         @(state=>[v1,v2]) pointName: x,y
+        @(state >= 3) pointName: x,y
+        @(state => 1..5) pointName: x,y
+        @else pointName: x,y
+        @default pointName: x,y
     }
 }
 ```
@@ -85,7 +99,14 @@ animation {
 - `$$stateName$$` - State variable interpolation in sheet names
 - `extrapoints` - Named points for effects/interactions (bullets, particles, etc.)
 - Conditionals: `@(state=>value)`, `@(state != value)` negation, `@(state=>[v1,v2])` multi-value, `@(state != [v1,v2])` negated multi-value
-- `AnimMetadata` - Typed metadata access with state-aware matching: `getIntOrDefault(key, default, ?stateSelector)`, `getIntOrException(key, ?stateSelector)`, `getStringOrDefault(key, default, ?stateSelector)`, `getStringOrException(key, ?stateSelector)`. Accessed via `parsed.metadata`.
+- Comparison conditionals: `@(state >= N)`, `@(state <= N)`, `@(state > N)`, `@(state < N)`
+- Range conditionals: `@(state => min..max)`
+- `@else` / `@default` conditionals in extrapoints
+- `@final` named constants: `@final X = 42`, usable as `$X`
+- Compact shorthand: `animation name { ... }` (name as keyword after `animation`)
+- File-level defaults: `fps:`, `center:` can be set once at file level
+- Metadata types: int, float, string, color (`#RRGGBB`)
+- `AnimMetadata` - Typed metadata access with state-aware matching: `getIntOrDefault(key, default, ?stateSelector)`, `getIntOrException(key, ?stateSelector)`, `getFloatOrDefault(key, default, ?stateSelector)`, `getFloatOrException(key, ?stateSelector)`, `getStringOrDefault(key, default, ?stateSelector)`, `getStringOrException(key, ?stateSelector)`, `getColorOrDefault(key, default, ?stateSelector)`, `getColorOrException(key, ?stateSelector)`. Accessed via `parsed.metadata`.
 
 ## .manim Language Quick Reference
 
