@@ -1572,4 +1572,324 @@ animation {
 		}
 		Assert.isTrue(threw, "getIntOrException should throw for missing key");
 	}
+
+	// ===== .anim filter parsing tests (#12) =====
+
+	@Test
+	public function testFilterTint() {
+		var result = parseAnimExpectingSuccess('
+sheet: testSheet
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle" }
+    filters {
+        tint: #FF0000
+    }
+}
+');
+		Assert.notNull(result, "tint filter should parse");
+	}
+
+	@Test
+	public function testFilterBrightness() {
+		var result = parseAnimExpectingSuccess('
+sheet: testSheet
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle" }
+    filters {
+        brightness: 0.8
+    }
+}
+');
+		Assert.notNull(result, "brightness filter should parse");
+	}
+
+	@Test
+	public function testFilterSaturate() {
+		var result = parseAnimExpectingSuccess('
+sheet: testSheet
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle" }
+    filters {
+        saturate: 0.5
+    }
+}
+');
+		Assert.notNull(result, "saturate filter should parse");
+	}
+
+	@Test
+	public function testFilterGrayscale() {
+		var result = parseAnimExpectingSuccess('
+sheet: testSheet
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle" }
+    filters {
+        grayscale: 1.0
+    }
+}
+');
+		Assert.notNull(result, "grayscale filter should parse");
+	}
+
+	@Test
+	public function testFilterHue() {
+		var result = parseAnimExpectingSuccess('
+sheet: testSheet
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle" }
+    filters {
+        hue: 90.0
+    }
+}
+');
+		Assert.notNull(result, "hue filter should parse");
+	}
+
+	@Test
+	public function testFilterOutline() {
+		var result = parseAnimExpectingSuccess('
+sheet: testSheet
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle" }
+    filters {
+        outline: 2.0, #FFFF00
+    }
+}
+');
+		Assert.notNull(result, "outline filter should parse");
+	}
+
+	@Test
+	public function testFilterPixelOutline() {
+		var result = parseAnimExpectingSuccess('
+sheet: testSheet
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle" }
+    filters {
+        pixelOutline: #00FF00
+    }
+}
+');
+		Assert.notNull(result, "pixelOutline filter should parse");
+	}
+
+	@Test
+	public function testFilterReplaceColor() {
+		var result = parseAnimExpectingSuccess('
+sheet: testSheet
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle" }
+    filters {
+        replaceColor: [#FF0000, #00FF00] => [#0000FF, #FFFF00]
+    }
+}
+');
+		Assert.notNull(result, "replaceColor filter should parse");
+	}
+
+	@Test
+	public function testFilterMultiple() {
+		var result = parseAnimExpectingSuccess('
+sheet: testSheet
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle" }
+    filters {
+        tint: #FF4444
+        brightness: 0.8
+        outline: 1.0, #FFFFFF
+    }
+}
+');
+		Assert.notNull(result, "multiple filters should parse");
+	}
+
+	@Test
+	public function testFilterWithConditionals() {
+		var result = parseAnimExpectingSuccess('
+sheet: testSheet
+states: level(1, 2, 3, 4, 5)
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle" }
+    filters {
+        @(level >= 3) outline: 2.0, #FFFF00
+        @else pixelOutline: #00FF00
+        tint: #FF0000
+    }
+}
+');
+		Assert.notNull(result, "filters with state conditionals should parse");
+	}
+
+	@Test
+	public function testFilterWithDefault() {
+		var result = parseAnimExpectingSuccess('
+sheet: testSheet
+states: team(red, blue)
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle" }
+    filters {
+        @(team=>red) tint: #FF0000
+        @(team=>blue) tint: #0000FF
+        @default tint: #FFFFFF
+    }
+}
+');
+		Assert.notNull(result, "filters with @default should parse");
+	}
+
+	@Test
+	public function testFilterNone() {
+		var result = parseAnimExpectingSuccess('
+sheet: testSheet
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle" }
+    filters {
+        none
+    }
+}
+');
+		Assert.notNull(result, "filter none should parse");
+	}
+
+	@Test
+	public function testPlaylistFilter() {
+		var result = parseAnimExpectingSuccess('
+sheet: testSheet
+animation {
+    name: hit
+    fps: 10
+    playlist {
+        sheet: "test_hit_01"
+        filter tint: #FF0000
+        sheet: "test_hit_02"
+        filter none
+        sheet: "test_hit_03"
+    }
+}
+');
+		Assert.notNull(result, "playlist filter entries should parse");
+	}
+
+	@Test
+	public function testPlaylistFilterMultiple() {
+		var result = parseAnimExpectingSuccess('
+sheet: testSheet
+animation {
+    name: hit
+    fps: 10
+    playlist {
+        filter tint: #FF0000
+        filter outline: 1.0, #FFFFFF
+        sheet: "test_hit_01"
+        filter none
+        sheet: "test_hit_02"
+    }
+}
+');
+		Assert.notNull(result, "multiple playlist filter entries should parse");
+	}
+
+	@Test
+	public function testFilterUnknownType() {
+		var error = parseAnimExpectingError('
+sheet: testSheet
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle" }
+    filters {
+        blur: 5.0
+    }
+}
+');
+		Assert.notNull(error, "unknown filter type should fail");
+	}
+
+	@Test
+	public function testFilterOutlineMissingColor() {
+		var error = parseAnimExpectingError('
+sheet: testSheet
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle" }
+    filters {
+        outline: 1.0
+    }
+}
+');
+		Assert.notNull(error, "outline missing color should fail");
+	}
+
+	@Test
+	public function testFilterReplaceColorMismatchLength() {
+		var error = parseAnimExpectingError('
+sheet: testSheet
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle" }
+    filters {
+        replaceColor: [#FF0000, #00FF00] => [#0000FF]
+    }
+}
+');
+		Assert.notNull(error, "replaceColor length mismatch should fail");
+	}
+
+	@Test
+	public function testFilterNegativeFloat() {
+		var result = parseAnimExpectingSuccess('
+sheet: testSheet
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle" }
+    filters {
+        brightness: -0.5
+    }
+}
+');
+		Assert.notNull(result, "negative float in filter should parse");
+	}
 }

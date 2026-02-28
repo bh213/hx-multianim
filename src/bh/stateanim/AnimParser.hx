@@ -8,6 +8,9 @@ import bh.base.ResourceLoader;
 import haxe.io.Bytes;
 import bh.stateanim.AnimationSM;
 import bh.base.Point;
+import bh.base.filters.PixelOutline;
+import bh.base.filters.PixelOutline.PixelOutlineFilterMode;
+import bh.base.filters.ReplacePaletteShader;
 
 using StringTools;
 using bh.base.MapTools;
@@ -91,6 +94,8 @@ enum APKeywords {
 	APElse; // (#1) @else
 	APDefault; // (#1) @default
 	APFilters; // (#12) filter declarations
+	APFilter; // (#12) per-frame filter in playlist
+	APNone; // (#12) filter none
 }
 
 // ===================== Hand-coded Lexer =====================
@@ -136,6 +141,7 @@ private class AnimLexerHC {
 		"frames" => APFrames, "metadata" => APMetadata,
 		"anim" => APAnim, "final" => APFinal,
 		"else" => APElse, "default" => APDefault, "filters" => APFilters,
+		"filter" => APFilter, "none" => APNone,
 	];
 
 	inline function ch():Int {
@@ -475,6 +481,7 @@ enum AnimPlaylistFrames {
 	FileSingleFrame(filename:String, durationMilliseconds:Null<Int>);
 	PlaylistEvent(playlistEvent:AnimationPlaylistEvent);
 	PlaylistEventData(name:String, meta:Map<String, MetadataValue>); // (#9) event with typed metadata
+	PlaylistFilter(filter:AnimFilterType); // (#12) per-frame filter change
 }
 
 @:nullSafety
@@ -485,9 +492,22 @@ typedef Playlist = {
 }
 
 @:nullSafety
-typedef AnimFilterDecl = { // (#12)
-	var type:String;
-	var params:Map<String, String>;
+enum AnimFilterType { // (#12)
+	AFTint(color:Int);
+	AFBrightness(v:Float);
+	AFSaturate(v:Float);
+	AFGrayscale(v:Float);
+	AFHue(v:Float);
+	AFOutline(size:Float, color:Int);
+	AFPixelOutline(color:Int);
+	AFReplaceColor(sourceColors:Array<Int>, replacementColors:Array<Int>);
+	AFNone;
+}
+
+@:nullSafety
+typedef AnimFilterEntry = { // (#12)
+	var states:AnimConditionalSelector;
+	var filter:AnimFilterType;
 }
 
 @:nullSafety
@@ -499,7 +519,7 @@ typedef AnimationState = {
 	var extraPoint:Map<String, Array<ExtraPoints>>;
 	var playlist:Array<Playlist>;
 	var ?visited:Bool;
-	var ?filters:Array<AnimFilterDecl>; // (#12)
+	var ?filters:Array<AnimFilterEntry>; // (#12)
 }
 
 @:nullSafety
@@ -569,7 +589,7 @@ class AnimParser implements AnimParserResult {
 	var constants:Map<String, Float> = []; // (#7) @final named constants
 	var defaultFps:Null<Int> = null; // (#3) file-level fps default
 	var defaultLoop:Null<Int> = null; // (#3) file-level loop default
-	var cache:Map<String, Array<{name:String, states:Array<AnimationFrameState>, loopCount:Int, extraPoints:Map<String, h2d.col.IPoint>}>> = [];
+	var cache:Map<String, Array<{name:String, states:Array<AnimationFrameState>, loopCount:Int, extraPoints:Map<String, h2d.col.IPoint>, filter:Null<h2d.filter.Filter>, tintColor:Null<Int>}>> = [];
 	final resourceLoader:bh.base.ResourceLoader;
 
 	// ===================== Token Access =====================
@@ -1076,7 +1096,7 @@ class AnimParser implements AnimParserResult {
 	@:nullSafety(Off)
 	function parseAnimation(statesDefinitions, animationStates, allowedExtraPointsList, ?headerName:String) {
 		var extraPoints:Map<String, Array<ExtraPoints>> = [];
-		var filters:Array<AnimFilterDecl> = []; // (#12)
+		var filters:Array<AnimFilterEntry> = []; // (#12)
 		var ret = {
 			loop: (null : Null<Int>),
 			name: headerName, // (#2) name may come from header
@@ -1129,7 +1149,7 @@ class AnimParser implements AnimParserResult {
 				case APIdentifier(_, APFilters, AITString): // (#12) filter declarations
 					advance();
 					expect(APCurlyOpen);
-					ret.filters = parseFilterBlock();
+					ret.filters = parseFilterBlock(statesDefinitions, animationStates);
 				default:
 					unexpectedError();
 			}
@@ -1307,7 +1327,7 @@ class AnimParser implements AnimParserResult {
 							}
 							match(APComma);
 							duration = tryParseDuration();
-						case APCurlyClosed | APEof | APIdentifier(_, APSheet | APFile | APEvent, _):
+						case APCurlyClosed | APEof | APIdentifier(_, APSheet | APFile | APEvent | APFilter, _):
 							// sheet name is self-terminating in context
 						default:
 							duration = tryParseDuration();
@@ -1316,6 +1336,10 @@ class AnimParser implements AnimParserResult {
 						anims.push(SheetFrameAnim(frameName, duration));
 					else
 						anims.push(SheetFrameAnimWithIndex(frameName, start, end, duration));
+				case APIdentifier(_, APFilter, AITString): // (#12) per-frame filter
+					advance();
+					final filter = parseFilterEntry();
+					anims.push(PlaylistFilter(filter));
 				default:
 					unexpectedError();
 			}
@@ -1361,40 +1385,95 @@ class AnimParser implements AnimParserResult {
 		return meta;
 	}
 
-	// (#12) Parse filter declarations
-	function parseFilterBlock():Array<AnimFilterDecl> {
-		var filters:Array<AnimFilterDecl> = [];
+	// (#12) Parse filter declarations block with typed filters and state conditionals
+	function parseFilterBlock(statesDefinitions, animationStates):Array<AnimFilterEntry> {
+		var filters:Array<AnimFilterEntry> = [];
 		while (!match(APCurlyClosed)) {
-			final filterType = expectIdentifier();
-			expect(APColon);
-			var params:Map<String, String> = [];
-			final v1 = parseFilterValue();
-			if (match(APArrow)) {
-				final v2 = parseFilterValue();
-				params.set("from", v1);
-				params.set("to", v2);
-			} else {
-				params.set("value", v1);
-			}
-			filters.push({type: filterType, params: params});
+			final states = parseStates();
+			for (key => value in states)
+				parserValidateConditionalState(statesDefinitions, key, value);
+			checkForUnreachableState(animationStates, states);
+			final filter = parseFilterEntry();
+			filters.push({states: states, filter: filter});
 		}
 		return filters;
 	}
 
-	function parseFilterValue():String {
+	// (#12) Parse a single filter entry: type: params
+	function parseFilterEntry():AnimFilterType {
+		final filterName = expectIdentifier();
+		switch filterName {
+			case "none":
+				return AFNone;
+			case "tint":
+				expect(APColon);
+				return AFTint(expectColor());
+			case "brightness":
+				expect(APColon);
+				return AFBrightness(expectFloat());
+			case "saturate":
+				expect(APColon);
+				return AFSaturate(expectFloat());
+			case "grayscale":
+				expect(APColon);
+				return AFGrayscale(expectFloat());
+			case "hue":
+				expect(APColon);
+				return AFHue(expectFloat());
+			case "outline":
+				expect(APColon);
+				final size = expectFloat();
+				expect(APComma);
+				final color = expectColor();
+				return AFOutline(size, color);
+			case "pixelOutline":
+				expect(APColon);
+				return AFPixelOutline(expectColor());
+			case "replaceColor":
+				expect(APColon);
+				final sourceColors = parseFilterColorList();
+				expect(APArrow);
+				final replacementColors = parseFilterColorList();
+				if (sourceColors.length != replacementColors.length)
+					syntaxError('replaceColor: source and replacement color lists must have same length (${sourceColors.length} vs ${replacementColors.length})');
+				return AFReplaceColor(sourceColors, replacementColors);
+			default:
+				return syntaxError('unknown filter type: $filterName');
+		}
+	}
+
+	function expectColor():Int {
 		switch peek() {
 			case APColor(c):
 				advance();
-				return '#${StringTools.hex(c, 6)}';
+				return c;
+			default:
+				return unexpectedError("expected color (#RRGGBB)");
+		}
+	}
+
+	function expectFloat():Float {
+		final negative = match(APMinus);
+		switch peek() {
 			case APNumber(n):
 				advance();
-				return n;
-			case APIdentifier(s, _, _):
-				advance();
-				return s;
+				final v = Std.parseFloat(n);
+				return negative ? -v : v;
 			default:
-				return unexpectedError("expected filter value");
+				return unexpectedError("expected number");
 		}
+	}
+
+	// (#12) Parse [#color, #color, ...] list
+	function parseFilterColorList():Array<Int> {
+		expect(APBracketOpen);
+		var colors:Array<Int> = [];
+		while (!match(APBracketClosed)) {
+			if (colors.length > 0) expect(APComma);
+			colors.push(expectColor());
+		}
+		if (colors.length == 0) syntaxError("color list must not be empty");
+		return colors;
 	}
 
 	function tryParseDuration():Null<Int> {
@@ -1724,6 +1803,13 @@ class AnimParser implements AnimParserResult {
 						});
 					}
 					retVal.push(Event(TriggerData(name, strMeta)));
+				case PlaylistFilter(filterType): // (#12) per-frame filter change
+					final builtFilter = buildAnimFilter(filterType);
+					final tint:Null<Int> = switch filterType {
+						case AFTint(c): c;
+						default: null;
+					};
+					retVal.push(SetFilter(builtFilter, tint));
 			}
 		}
 		return retVal;
@@ -1757,6 +1843,71 @@ class AnimParser implements AnimParserResult {
 		return selector;
 	}
 
+	// (#12) Build a Heaps filter from an AnimFilterType. Returns null for tint (handled separately) and none.
+	public static function buildAnimFilter(filter:AnimFilterType):Null<h2d.filter.Filter> {
+		return switch filter {
+			case AFTint(_): null;
+			case AFNone: null;
+			case AFBrightness(v):
+				var m = new h3d.Matrix();
+				m.identity();
+				m.colorLightness(v);
+				new h2d.filter.ColorMatrix(m);
+			case AFSaturate(v):
+				var m = new h3d.Matrix();
+				m.identity();
+				m.colorSaturate(v);
+				new h2d.filter.ColorMatrix(m);
+			case AFGrayscale(v):
+				var m = new h3d.Matrix();
+				m.identity();
+				m.colorSaturate(-v);
+				new h2d.filter.ColorMatrix(m);
+			case AFHue(v):
+				var m = new h3d.Matrix();
+				m.identity();
+				m.colorHue(v);
+				new h2d.filter.ColorMatrix(m);
+			case AFOutline(size, color):
+				new h2d.filter.Outline(size, color);
+			case AFPixelOutline(color):
+				new PixelOutline(Knockout(color, 1.0), false);
+			case AFReplaceColor(src, dst):
+				ReplacePaletteShader.createAsColorsFilter(src, dst);
+		};
+	}
+
+	// (#12) Resolve animation-level filters against state selector.
+	// Returns matching filters and optional tint color.
+	static function resolveAnimFilters(filters:Null<Array<AnimFilterEntry>>,
+			stateSelector:AnimationStateSelector):{filter:Null<h2d.filter.Filter>, tintColor:Null<Int>} {
+		if (filters == null || filters.length == 0) return {filter: null, tintColor: null};
+
+		var tintColor:Null<Int> = null;
+		var heapsFilters:Array<h2d.filter.Filter> = [];
+		for (entry in filters) {
+			if (countStateMatch(entry.states, stateSelector) >= 0) {
+				switch entry.filter {
+					case AFTint(color):
+						tintColor = color;
+					case AFNone: // skip
+					default:
+						final f = buildAnimFilter(entry.filter);
+						if (f != null) heapsFilters.push(f);
+				}
+			}
+		}
+		var filter:Null<h2d.filter.Filter> = null;
+		if (heapsFilters.length == 1)
+			filter = heapsFilters[0];
+		else if (heapsFilters.length > 1) {
+			var group = new h2d.filter.Group();
+			for (f in heapsFilters) group.add(f);
+			filter = group;
+		}
+		return {filter: filter, tintColor: tintColor};
+	}
+
 	public function load(stateSelector:AnimationStateSelector, animSM:AnimationSM) {
 		var hex = selectorToHex(stateSelector);
 		if (!cache.exists(hex)) {
@@ -1773,7 +1924,8 @@ class AnimParser implements AnimParserResult {
 					if (pt != null) extraPoints.set(pointName, pt.toPoint());
 				}
 				final loopCount:Int = anim.loop ?? 0;
-				cacheArray.push({name: name, states: states, loopCount: loopCount, extraPoints: extraPoints});
+				final resolved = resolveAnimFilters(anim.filters, stateSelector);
+				cacheArray.push({name: name, states: states, loopCount: loopCount, extraPoints: extraPoints, filter: resolved.filter, tintColor: resolved.tintColor});
 			}
 			cache.set(hex, cacheArray);
 		}
@@ -1781,7 +1933,7 @@ class AnimParser implements AnimParserResult {
 		final cacheEntries = cache.get(hex);
 		if (cacheEntries == null) throw 'cache miss for hex ${hex}';
 		for (e in cacheEntries) {
-			animSM.addAnimationState(e.name, e.states, e.loopCount, e.extraPoints);
+			animSM.addAnimationState(e.name, e.states, e.loopCount, e.extraPoints, e.filter, e.tintColor);
 		}
 	}
 

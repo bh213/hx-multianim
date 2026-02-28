@@ -73,7 +73,7 @@ In `handleOutsideClick`, clicking inside *any* panel cancels the pending close f
 ## After 1.0
 - Text input codegen support (`@:manim` factory with `createTextInput()`)
 - Bit expression: support for any-bit and all-bits (e.g. grid direction)
-- StateAnim: color replace (replaceColor filter exists in MultiAnimParser, not fully exposed for stateanim)
+- ~~StateAnim: color replace~~ — DONE: typed filters in `.anim` with `replaceColor`, `tint`, `outline`, etc.
 - Radio: paired UIElement (click on label to change radio)
 - Subelements: handle nested subelements, keep state, don't query each time (cache `Std.isOfType`)
 - Layouts: absoluteScreens / layers support

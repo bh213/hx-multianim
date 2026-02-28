@@ -343,21 +343,71 @@ extrapoints {
 
 ## Filters
 
-Animation blocks can declare filters:
+Animation blocks can declare typed filters that are applied at runtime. Filters support state conditionals.
+
+### Supported filter types
+
+| Filter | Syntax | Description |
+|--------|--------|-------------|
+| `tint` | `tint: #RRGGBB` | Color multiply (sets Drawable.color) |
+| `brightness` | `brightness: <float>` | Lightness adjustment (0=black, 1=normal) |
+| `saturate` | `saturate: <float>` | Saturation (0=grayscale, 1=normal) |
+| `grayscale` | `grayscale: <float>` | Desaturation (0=none, 1=full grayscale) |
+| `hue` | `hue: <float>` | Hue rotation angle |
+| `outline` | `outline: <size>, #color` | Stroke outline |
+| `pixelOutline` | `pixelOutline: #color` | Pixel-level outline |
+| `replaceColor` | `replaceColor: [#src1, #src2] => [#dst1, #dst2]` | Color replacement |
+| `none` | `none` | Clear all filters |
+
+### Animation-level filters
+
+Applied to the whole animation when it plays. Supports state conditionals.
 
 ```anim
 animation idle {
     fps: 4
     loop: yes
-    playlist { ... }
+    playlist { sheet: "marine_idle" }
     filters {
-        replaceColor: #FF0000 => #00FF00
-        brightness: 1.2
+        tint: #FF4444
+        brightness: 0.8
+        @(level >= 3) outline: 2.0, #FFFF00
+        @else pixelOutline: #00FF00
+        replaceColor: [#FF0000, #00FF00] => [#0000FF, #FFFF00]
     }
 }
 ```
 
-Each filter is `type: value` or `type: from => to` for replacement filters.
+### Playlist-level filters (per-frame)
+
+`filter` entries inside a playlist act as state changes — they set or clear the active filter for subsequent frames.
+
+```anim
+animation hit {
+    fps: 10
+    playlist {
+        sheet: "marine_hit_01"
+        filter tint: #FF0000
+        sheet: "marine_hit_02"
+        filter none
+        sheet: "marine_hit_03"
+    }
+}
+```
+
+`filter none` reverts to the animation-level filter (or clears if none defined).
+
+Multiple per-frame filters accumulate:
+
+```anim
+playlist {
+    filter tint: #FF0000
+    filter outline: 1.0, #FFFFFF
+    sheet: "frame_01"
+    filter none
+    sheet: "frame_02"
+}
+```
 
 ---
 

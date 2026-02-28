@@ -33,6 +33,8 @@ typedef AnimationDescriptor = {
 	final states:Array<AnimationFrameState>;
 	final loopCount:Int; // -1 = forever, 0 = no loop, N = loop N times
 	final extraPoints:Map<String, h2d.col.IPoint>;
+	final ?filter:Null<h2d.filter.Filter>; // (#12) animation-level filter
+	final ?tintColor:Null<Int>; // (#12) animation-level tint color
 };
 
 /**
@@ -107,7 +109,8 @@ class AnimationSM extends h2d.Object {
 		return current.extraPoints.get(name);
 	}
 
-	public function addAnimationState(name:String, states:Array<AnimationFrameState>, loopCount:Int, extraPoints:Map<String, h2d.col.IPoint>) {
+	public function addAnimationState(name:String, states:Array<AnimationFrameState>, loopCount:Int, extraPoints:Map<String, h2d.col.IPoint>,
+			?filter:Null<h2d.filter.Filter>, ?tintColor:Null<Int>) {
 		if (animationStates.exists(name))
 			throw 'animation state ${name} already exists';
 
@@ -115,7 +118,9 @@ class AnimationSM extends h2d.Object {
 			name: name,
 			states: states,
 			loopCount: loopCount,
-			extraPoints: extraPoints
+			extraPoints: extraPoints,
+			filter: filter,
+			tintColor: tintColor,
 		};
 		animationStates.set(name, animDesc);
 	}
@@ -134,6 +139,15 @@ class AnimationSM extends h2d.Object {
 		currentStateIndex = 0;
 		loopsRemaining = state.loopCount;
 		clip.setFrames([]);
+		// (#12) Apply animation-level filters
+		@:nullSafety(Off) {
+			clip.filter = state.filter;
+		}
+		final tc = state.tintColor;
+		if (tc != null)
+			clip.color.setColor(tc | (tc >>> 24 == 0 ? 0xFF000000 : 0));
+		else
+			clip.color.setColor(0xFFFFFFFF);
 		handleCurrent(hxd.Math.EPSILON);
 	}
 
@@ -236,6 +250,28 @@ class AnimationSM extends h2d.Object {
 							randomPoint.y += Std.int(r * Math.sin(randomAngle));
 							onAnimationEvent(PointEvent(name, randomPoint));
 					}
+
+				case SetFilter(filter, tintColor): // (#12) per-frame filter change
+					@:nullSafety(Off) {
+						final _current = current;
+						if (filter != null)
+							clip.filter = filter;
+						else
+							clip.filter = _current != null ? _current.filter : null;
+						if (tintColor != null) {
+							final tc = tintColor;
+							clip.color.setColor(tc | (tc >>> 24 == 0 ? 0xFF000000 : 0));
+						} else {
+							final animTint = _current != null ? _current.tintColor : null;
+							if (animTint != null)
+								clip.color.setColor(animTint | (animTint >>> 24 == 0 ? 0xFF000000 : 0));
+							else
+								clip.color.setColor(0xFFFFFFFF);
+						}
+					}
+					// Advance past SetFilter when no previous frame triggers the top-of-loop advance
+					if (currentFrame == null)
+						currentStateIndex++;
 			}
 		}
 
@@ -277,11 +313,13 @@ class AnimationSM extends h2d.Object {
 enum AnimationFrameState {
 	Frame(frame:AnimationFrame);
 	Event(event:AnimationPlaylistEvent);
+	SetFilter(filter:Null<h2d.filter.Filter>, tintColor:Null<Int>); // (#12) per-frame filter change
 }
 
 function animationFrameStateToString(frame:AnimationFrameState):String {
 	return switch frame {
 		case Frame(frame): 'Frame("${frame.tile.getTexture().name}", ${frame.width} x ${frame.height})';
 		case Event(event): 'Event(${event})';
+		case SetFilter(filter, tintColor): 'SetFilter(filter=${filter != null}, tint=${tintColor})';
 	}
 }
