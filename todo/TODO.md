@@ -7,7 +7,6 @@
 | 9 | Dropdown z-ordering | Panel renders behind other UI elements | Bugs | Medium |
 | 10 | `closeAllNamed()` iterator | Mutating map during iteration, fragile | Bugs | Low |
 | 11 | Named panel outside-click | Wrong panel's close cancelled on click | Bugs | Medium |
-| 12 | Legacy particle syntax | Remove `boundsMode`/`colorCurve`/positional emit | Deprecation | Low |
 | 15 | Text input codegen | `@:manim` factory with `createTextInput()` | After 1.0 | Low |
 
 ## Main Goals
@@ -73,7 +72,6 @@ In `handleOutsideClick`, clicking inside *any* panel cancels the pending close f
 ## After 1.0
 - Text input codegen support (`@:manim` factory with `createTextInput()`)
 - Bit expression: support for any-bit and all-bits (e.g. grid direction)
-- ~~StateAnim: color replace~~ — DONE: typed filters in `.anim` with `replaceColor`, `tint`, `outline`, etc.
 - Radio: paired UIElement (click on label to change radio)
 - Subelements: handle nested subelements, keep state, don't query each time (cache `Std.isOfType`)
 - Layouts: absoluteScreens / layers support

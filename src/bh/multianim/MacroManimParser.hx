@@ -3727,7 +3727,7 @@ class MacroManimParser {
 			speed: null, speedRandom: null, speedIncrease: null, gravity: null, gravityAngle: null,
 			fadeIn: null, fadeOut: null, fadePower: null, tiles: [], emit: Point(RVFloat(0), RVFloat(0)),
 			rotationInitial: null, rotationSpeed: null, rotationSpeedRandom: null, rotateAuto: null, forwardAngle: null,
-			colorCurves: null, colorStops: null,
+			colorStops: null,
 			forceFields: null, velocityCurve: null, sizeCurve: null,
 			boundsMode: null, boundsMinX: null, boundsMaxX: null, boundsMinY: null, boundsMaxY: null, boundsLines: null,
 			subEmitters: null, animationRepeat: null,
@@ -3822,26 +3822,8 @@ class MacroManimParser {
 					p.forceFields = parseForceFields();
 				case "bounds":
 					parseBoundsCombined(p);
-				case "boundsmode":
-					p.boundsMode = parseBoundsMode();
-				case "boundsminx":
-					p.boundsMinX = parseFloatOrReference();
-				case "boundsmaxx":
-					p.boundsMaxX = parseFloatOrReference();
-				case "boundsminy":
-					p.boundsMinY = parseFloatOrReference();
-				case "boundsmaxy":
-					p.boundsMaxY = parseFloatOrReference();
-				case "boundsline":
-					final x1 = parseFloatOrReference();
-					expect(TComma);
-					final y1 = parseFloatOrReference();
-					expect(TComma);
-					final x2 = parseFloatOrReference();
-					expect(TComma);
-					final y2 = parseFloatOrReference();
-					if (p.boundsLines == null) p.boundsLines = [];
-					p.boundsLines.push({x1: x1, y1: y1, x2: x2, y2: y2});
+				case "boundsmode" | "boundsminx" | "boundsmaxx" | "boundsminy" | "boundsmaxy" | "boundsline":
+					error('legacy "$name" syntax removed — use combined "bounds: kill, box(x: 0, y: 0, w: 800, h: 600)" instead');
 				case "subemitters":
 					p.subEmitters = parseSubEmitters();
 				default:
@@ -3857,20 +3839,7 @@ class MacroManimParser {
 		final actionName = expectIdentifierOrString();
 		switch (actionName.toLowerCase()) {
 			case "colorcurve":
-				expect(TColon);
-				final c = parseCurveNameOrEasing();
-				expect(TComma);
-				final startColor = parseColorOrReference();
-				expect(TComma);
-				final endColor = parseColorOrReference();
-				if (p.colorCurves == null) p.colorCurves = [];
-				p.colorCurves.push({
-					atRate: atRate,
-					curveName: c.curveName,
-					inlineEasing: c.inlineEasing,
-					startColor: startColor,
-					endColor: endColor
-				});
+				error('legacy "N.N: colorCurve:" syntax removed — use "colorStops: 0.0 #FF0000, 0.5 #00FF00 easeInQuad, 1.0 #0000FF" instead');
 			case "anim":
 				expect(TOpen);
 				final animName = expectIdentifierOrString();
@@ -4022,59 +3991,31 @@ class MacroManimParser {
 			case TIdentifier(s) if (isKeyword(s, "point")):
 				advance();
 				expect(TOpen);
-				if (isNamedParamNext()) {
-					return parseEmitModeNamed("point");
+				if (!isNamedParamNext()) {
+					return error('positional emit syntax removed — use named params: point(dist: 0, distRand: 0)');
 				}
-				final dist = parseFloatOrReference();
-				expect(TComma);
-				final distRand = parseFloatOrReference();
-				expect(TClosed);
-				return Point(dist, distRand);
+				return parseEmitModeNamed("point");
 			case TIdentifier(s) if (isKeyword(s, "cone")):
 				advance();
 				expect(TOpen);
-				if (isNamedParamNext()) {
-					return parseEmitModeNamed("cone");
+				if (!isNamedParamNext()) {
+					return error('positional emit syntax removed — use named params: cone(dist: 0, distRand: 0, angle: 0, angleSpread: 0)');
 				}
-				final dist = parseFloatOrReference();
-				expect(TComma);
-				final distRand = parseFloatOrReference();
-				expect(TComma);
-				final angle = parseAngleOrReference();
-				expect(TComma);
-				final angleRand = parseAngleOrReference();
-				expect(TClosed);
-				return Cone(dist, distRand, angle, angleRand);
+				return parseEmitModeNamed("cone");
 			case TIdentifier(s) if (isKeyword(s, "box")):
 				advance();
 				expect(TOpen);
-				if (isNamedParamNext()) {
-					return parseEmitModeNamed("box");
+				if (!isNamedParamNext()) {
+					return error('positional emit syntax removed — use named params: box(w: 0, h: 0, angle: 0, angleSpread: 0)');
 				}
-				final w = parseFloatOrReference();
-				expect(TComma);
-				final h = parseFloatOrReference();
-				expect(TComma);
-				final angle = parseAngleOrReference();
-				expect(TComma);
-				final angleRand = parseAngleOrReference();
-				expect(TClosed);
-				return Box(w, h, angle, angleRand, false);
+				return parseEmitModeNamed("box");
 			case TIdentifier(s) if (isKeyword(s, "circle")):
 				advance();
 				expect(TOpen);
-				if (isNamedParamNext()) {
-					return parseEmitModeNamed("circle");
+				if (!isNamedParamNext()) {
+					return error('positional emit syntax removed — use named params: circle(r: 0, rRand: 0, angle: 0, angleSpread: 0)');
 				}
-				final r = parseFloatOrReference();
-				expect(TComma);
-				final rRand = parseFloatOrReference();
-				expect(TComma);
-				final angle = parseAngleOrReference();
-				expect(TComma);
-				final angleRand = parseAngleOrReference();
-				expect(TClosed);
-				return Circle(r, rRand, angle, angleRand);
+				return parseEmitModeNamed("circle");
 			case TIdentifier(s) if (isKeyword(s, "path")):
 				advance();
 				expect(TOpen);

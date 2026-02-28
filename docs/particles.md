@@ -13,7 +13,7 @@ A minimal particle effect — sparks shooting upward:
 ```manim
 #sparks particles {
     count: 50
-    emit: cone(0, 0, -90, 30)
+    emit: cone(dist: 0, distRand: 0, angle: -90deg, angleSpread: 30deg)
     tiles: file("spark.png")
     maxLife: 1.5
     speed: 100
@@ -31,16 +31,15 @@ Add color, gravity, and fading to make it look better:
 ```manim
 #sparks particles {
     count: 50
-    emit: cone(0, 0, -90, 30)
+    emit: cone(dist: 0, distRand: 0, angle: -90deg, angleSpread: 30deg)
     tiles: file("spark.png")
     maxLife: 1.5
     speed: 100
     gravity: 80
-    gravityAngle: 90
+    gravityAngle: 90deg
     fadeIn: 0.1
     fadeOut: 0.7
-    0.0: colorCurve: linear, #FF4400, #FFAA00
-    0.5: colorCurve: linear, #FFAA00, #FFFF88
+    colorStops: 0.0 #FF4400, 0.5 #FFAA00, 1.0 #FFFF88
 }
 ```
 
@@ -124,20 +123,20 @@ emit: mode(params)
 Emit from a single point in all random directions.
 
 ```
-emit: point(distance, distanceRandom)
+emit: point(dist: N, distRand: N)
 ```
 
 | Parameter | Description |
 |-----------|-------------|
-| `distance` | Minimum spawn distance from the emitter |
-| `distanceRandom` | Additional random spawn distance |
+| `dist` | Minimum spawn distance from the emitter |
+| `distRand` | Additional random spawn distance |
 
 ```manim
 // Emit right at the emitter, random directions
-emit: point(0, 0)
+emit: point(dist: 0, distRand: 0)
 
 // Emit in a ring 10-30px from center
-emit: point(10, 20)
+emit: point(dist: 10, distRand: 20)
 ```
 
 ### Cone
@@ -145,27 +144,27 @@ emit: point(10, 20)
 Emit within a directed arc.
 
 ```
-emit: cone(distance, distanceRandom, angle, angleRandom)
+emit: cone(dist: N, distRand: N, angle: A, angleSpread: A)
 ```
 
 | Parameter | Description |
 |-----------|-------------|
-| `distance` | Minimum spawn distance along the cone direction |
-| `distanceRandom` | Additional random spawn distance |
-| `angle` | Center direction in degrees |
-| `angleRandom` | Half-width of the cone spread |
+| `dist` | Minimum spawn distance along the cone direction |
+| `distRand` | Additional random spawn distance |
+| `angle` | Center direction (supports `deg`, `rad`, `turn` suffixes and direction constants) |
+| `angleSpread` | Half-width of the cone spread |
 
-Angle reference: **0 = right**, **-90 = up**, **90 = down**, **180 = left**.
+Direction constants: `right` (0°), `down` (90°), `left` (180°), `up` (270°).
 
 ```manim
 // Upward cone with 30-degree spread
-emit: cone(0, 10, -90, 30)
+emit: cone(dist: 0, distRand: 10, angle: up, angleSpread: 30deg)
 
 // Rightward narrow beam
-emit: cone(5, 5, 0, 10)
+emit: cone(dist: 5, distRand: 5, angle: right, angleSpread: 10deg)
 
 // Downward wide spray
-emit: cone(0, 0, 90, 60)
+emit: cone(dist: 0, distRand: 0, angle: down, angleSpread: 60deg)
 ```
 
 ### Box
@@ -173,22 +172,23 @@ emit: cone(0, 0, 90, 60)
 Emit from random positions within a rectangle.
 
 ```
-emit: box(width, height, angle, angleRandom)
+emit: box(w: N, h: N, angle: A, angleSpread: A [, center: true])
 ```
 
 | Parameter | Description |
 |-----------|-------------|
-| `width` | Rectangle width |
-| `height` | Rectangle height |
-| `angle` | Emission direction in degrees |
-| `angleRandom` | Direction spread |
+| `w` | Rectangle width |
+| `h` | Rectangle height |
+| `angle` | Emission direction |
+| `angleSpread` | Direction spread |
+| `center` | Center-aligned spawning (default: top-left) |
 
 ```manim
 // Rain from a wide strip, falling down
-emit: box(500, 10, 90, 5)
+emit: box(w: 500, h: 10, angle: down, angleSpread: 5deg)
 
 // Snow from a wide strip, drifting down-left
-emit: box(400, 5, 100, 15)
+emit: box(w: 400, h: 5, angle: 100deg, angleSpread: 15deg)
 ```
 
 ### Circle
@@ -196,24 +196,24 @@ emit: box(400, 5, 100, 15)
 Emit from the edge of a circle or ring.
 
 ```
-emit: circle(radius, radiusRandom, angle, angleRandom)
+emit: circle(r: N, rRand: N, angle: A, angleSpread: A)
 ```
 
 | Parameter | Description |
 |-----------|-------------|
-| `radius` | Base circle radius |
-| `radiusRandom` | Additional random radius |
+| `r` | Base circle radius |
+| `rRand` | Additional random radius |
 | `angle` | Emission direction (0, 0 = radial outward) |
-| `angleRandom` | Direction spread |
+| `angleSpread` | Direction spread |
 
-When both `angle` and `angleRandom` are 0, particles emit **radially outward** from the circle center. Otherwise, the specified angle overrides.
+When both `angle` and `angleSpread` are 0, particles emit **radially outward** from the circle center. Otherwise, the specified angle overrides.
 
 ```manim
 // Expanding ring - particles fly outward
-emit: circle(50, 10, 0, 0)
+emit: circle(r: 50, rRand: 10, angle: 0, angleSpread: 0)
 
 // Ring with upward emission
-emit: circle(30, 5, -90, 20)
+emit: circle(r: 30, rRand: 5, angle: up, angleSpread: 20deg)
 ```
 
 ### Path
@@ -284,38 +284,34 @@ Tile images should be similar in size for consistent appearance.
 
 ---
 
-## Color Curves
+## Color Stops
 
-Particles can transition through colors over their lifetime using per-segment color curves.
+Particles can transition through colors over their lifetime using color stops.
 
 ### Syntax
 
 ```
-rate: colorCurve: curveName, #startColor, #endColor
+colorStops: rate1 #color1, rate2 #color2 [curve], rate3 #color3
 ```
 
-The `rate` is a normalized lifetime value (0.0 to 1.0). Multiple segments at different rates create multi-stop color gradients. The curve reference controls interpolation speed within each segment — use a named curve from a `curves{}` block or an inline easing name.
+Each stop is `rate color [curve]`. The `rate` is a normalized lifetime value (0.0 to 1.0). The optional curve specifies interpolation to the next stop — use a named curve from a `curves{}` block or an inline easing name. Default interpolation is linear.
 
 ### Examples
 
 **Simple two-color fade:**
 ```manim
-0.0: colorCurve: linear, #FF0000, #0000FF
+colorStops: 0.0 #FF0000, 1.0 #0000FF
 ```
 
 **Fire gradient (orange to yellow to white):**
 ```manim
-0.0: colorCurve: linear, #FF4400, #FFAA00
-0.4: colorCurve: linear, #FFAA00, #FFFF88
+colorStops: 0.0 #FF4400, 0.4 #FFAA00, 1.0 #FFFF88
 ```
 
 **Two-phase color with easing:**
 ```manim
-0.0: colorCurve: easeInQuad, #FF0000, #00FF00
-0.5: colorCurve: easeOutQuad, #00FF00, #0000FF
+colorStops: 0.0 #FF0000 easeInQuad, 0.5 #00FF00 easeOutQuad, 1.0 #0000FF
 ```
-
-Each segment's curve runs from its rate to the next segment's rate (or 1.0 for the last segment).
 
 ---
 
@@ -419,60 +415,35 @@ group.clearForceFields();
 
 Control what happens when particles reach boundaries.
 
-### Bounds Mode
-
-| Mode | Syntax | Description |
-|------|--------|-------------|
-| None | `boundsMode: none` | No boundary checking (default) |
-| Kill | `boundsMode: kill` | Remove particle on exit |
-| Bounce | `boundsMode: bounce(damping)` | Reflect velocity (damping 0-1) |
-| Wrap | `boundsMode: wrap` | Teleport to opposite side |
-
-### Rectangular Bounds
-
-| Property | Type | Default | Description |
-|----------|------|---------|-------------|
-| `boundsMinX` | float | 0 | Left boundary |
-| `boundsMaxX` | float | 800 | Right boundary |
-| `boundsMinY` | float | 0 | Top boundary |
-| `boundsMaxY` | float | 600 | Bottom boundary |
-
-### Line Bounds
+### Combined Bounds Syntax
 
 ```
-boundsLine: x1, y1, x2, y2
+bounds: mode, box(x: X, y: Y, w: W, h: H), line(x1, y1, x2, y2)
 ```
 
-Line boundaries define one-sided walls. The "out" side is the **left side** of the direction from (x1,y1) to (x2,y2). Multiple `boundsLine` entries can be used for complex shapes. Line bounds work with `kill` and `bounce` modes (not `wrap`).
+| Mode | Description |
+|------|-------------|
+| `none` | No boundary checking (default) |
+| `kill` | Remove particle on exit |
+| `bounce(damping)` | Reflect velocity (damping 0-1) |
+| `wrap` | Teleport to opposite side |
+
+The `box()` defines rectangular bounds (supports both positional `box(x, y, w, h)` and named params). The `line()` defines one-sided wall boundaries. Multiple `line()` entries can be combined. Line bounds work with `kill` and `bounce` modes (not `wrap`).
 
 ### Examples
 
 ```manim
 // Kill at boundaries
-boundsMode: kill
-boundsMinX: -100
-boundsMaxX: 300
-boundsMinY: -50
-boundsMaxY: 250
+bounds: kill, box(x: -100, y: -50, w: 400, h: 300)
 
 // Bounce with energy loss
-boundsMode: bounce(0.6)
-boundsMinX: 0
-boundsMaxX: 200
-boundsMinY: 0
-boundsMaxY: 200
+bounds: bounce(0.6), box(x: 0, y: 0, w: 200, h: 200)
 
 // Wrap-around rain
-boundsMode: wrap
-boundsMinX: -50
-boundsMaxX: 450
-boundsMinY: -20
-boundsMaxY: 350
+bounds: wrap, box(x: -50, y: -20, w: 500, h: 370)
 
 // Bounce off line walls
-boundsMode: bounce(0.8)
-boundsLine: 0, 200, 300, 200
-boundsLine: 300, 200, 300, 0
+bounds: bounce(0.8), line(0, 200, 300, 200), line(300, 200, 300, 0)
 ```
 
 ---
@@ -499,7 +470,7 @@ Assign animation states at different lifetime rates. Each state plays from its s
 
 ```manim
 #sparks particles {
-    emit: point(0, 10)
+    emit: point(dist: 0, distRand: 10)
     tiles: file("fallback.png")
     animFile: "spark.anim"
     animSelector: type => fire
@@ -517,7 +488,7 @@ Override the current animation state when specific events occur:
 
 ```manim
 #bouncing particles {
-    emit: cone(0, 0, -45, 30)
+    emit: cone(dist: 0, distRand: 0, angle: -45deg, angleSpread: 30deg)
     tiles: file("ball.png")
     animFile: "ball.anim"
     animSelector: type => default
@@ -552,7 +523,7 @@ paths {
 }
 
 #trailParticles particles {
-    emit: point(0, 5)
+    emit: point(dist: 0, distRand: 5)
     tiles: file("smoke.png")
     maxLife: 1.0
     speed: 20
@@ -572,7 +543,7 @@ curves {
 }
 
 #effect particles {
-    emit: point(0, 0)
+    emit: point(dist: 0, distRand: 0)
     tiles: file("spark.png")
     attachTo: myAnimPath
     spawnCurve: burstAtEnd
@@ -634,15 +605,15 @@ subEmitters: [
 ```manim
 #mainBurst particles {
     count: 20
-    emit: point(0, 20)
+    emit: point(dist: 0, distRand: 20)
     tiles: file("orb.png")
     maxLife: 1.0
     speed: 150
     gravity: 100
-    gravityAngle: 90
+    gravityAngle: 90deg
     loop: false
     fadeOut: 0.7
-    0.0: colorCurve: linear, #FFAA00, #FF4400
+    colorStops: 0.0 #FFAA00, 1.0 #FF4400
     subEmitters: [
         {
             groupId: "sparks",
@@ -655,7 +626,7 @@ subEmitters: [
 
 #sparks particles {
     count: 5
-    emit: point(0, 5)
+    emit: point(dist: 0, distRand: 5)
     tiles: file("spark.png")
     maxLife: 0.5
     speed: 40
@@ -671,7 +642,7 @@ subEmitters: [
 ```manim
 #bullet particles {
     count: 1
-    emit: point(0, 0)
+    emit: point(dist: 0, distRand: 0)
     tiles: file("bullet.png")
     maxLife: 2.0
     speed: 200
@@ -687,14 +658,14 @@ subEmitters: [
 
 #trail particles {
     count: 3
-    emit: point(0, 3)
+    emit: point(dist: 0, distRand: 3)
     tiles: file("smoke_small.png")
     maxLife: 0.4
     speed: 5
     size: 0.3
     loop: false
     fadeOut: 0.3
-    0.0: colorCurve: linear, #FFFFFF, #888888
+    colorStops: 0.0 #FFFFFF, 1.0 #888888
 }
 ```
 
@@ -713,7 +684,7 @@ curves {
 
 #fire particles {
     count: 100
-    emit: cone(0, 10, -90, 30)
+    emit: cone(dist: 0, distRand: 10, angle: -90deg, angleSpread: 30deg)
     maxLife: 2.0
     lifeRandom: 0.3
     speed: 80
@@ -727,8 +698,7 @@ curves {
     fadeIn: 0.1
     fadeOut: 0.6
     fadePower: 1.5
-    0.0: colorCurve: linear, #FF4400, #FFAA00
-    0.4: colorCurve: linear, #FFAA00, #FFFF88
+    colorStops: 0.0 #FF4400, 0.4 #FFAA00, 1.0 #FFFF88
     sizeCurve: fireGrowShrink
     forceFields: [turbulence(30, 0.02, 2.0)]
 }
@@ -739,7 +709,7 @@ curves {
 ```manim
 #rain particles {
     count: 200
-    emit: box(500, 10, 100, 5)
+    emit: box(w: 500, h: 10, angle: 100deg, angleSpread: 5deg)
     maxLife: 1.5
     lifeRandom: 0.2
     speed: 400
@@ -750,14 +720,10 @@ curves {
     blendMode: alpha
     fadeIn: 0.1
     fadeOut: 0.9
-    0.0: colorCurve: linear, #AACCFF, #6688CC
+    colorStops: 0.0 #AACCFF, 1.0 #6688CC
     gravity: 100
-    gravityAngle: 90
-    boundsMode: wrap
-    boundsMinX: -50
-    boundsMaxX: 450
-    boundsMinY: -20
-    boundsMaxY: 350
+    gravityAngle: 90deg
+    bounds: wrap, box(x: -50, y: -20, w: 500, h: 370)
     rotateAuto: true
 }
 ```
@@ -767,7 +733,7 @@ curves {
 ```manim
 #vortex particles {
     count: 80
-    emit: circle(60, 20, 0, 0)
+    emit: circle(r: 60, rRand: 20, angle: 0, angleSpread: 0)
     maxLife: 3.0
     speed: 30
     tiles: file("star.png")
@@ -777,8 +743,7 @@ curves {
     blendMode: add
     fadeIn: 0.2
     fadeOut: 0.7
-    0.0: colorCurve: linear, #4400FF, #FF00FF
-    0.5: colorCurve: easeInQuad, #FF00FF, #00FFFF
+    colorStops: 0.0 #4400FF, 0.5 #FF00FF easeInQuad, 1.0 #00FFFF
     sizeCurve: easeOutQuad
     forceFields: [vortex(0, 0, 150, 200), attractor(0, 0, 40, 180)]
 }
@@ -789,7 +754,7 @@ curves {
 ```manim
 #explosion particles {
     count: 60
-    emit: point(0, 30)
+    emit: point(dist: 0, distRand: 30)
     maxLife: 0.8
     speed: 200
     speedRandom: 0.4
@@ -801,9 +766,8 @@ curves {
     fadeIn: 0.05
     fadeOut: 0.5
     gravity: 150
-    gravityAngle: 90
-    0.0: colorCurve: linear, #FFFFFF, #FFAA00
-    0.3: colorCurve: easeInQuad, #FFAA00, #FF2200
+    gravityAngle: 90deg
+    colorStops: 0.0 #FFFFFF, 0.3 #FFAA00 easeInQuad, 1.0 #FF2200
     velocityCurve: easeOutCubic
 }
 ```
@@ -830,7 +794,7 @@ paths {
     size: 0.4
     sizeRandom: 0.2
     fadeOut: 0.8
-    0.0: colorCurve: linear, #88CCFF, #4488CC
+    colorStops: 0.0 #88CCFF, 1.0 #4488CC
     forceFields: [pathguide(river, 60, 80, 40)]
 }
 ```
@@ -840,7 +804,7 @@ paths {
 ```manim
 #balls particles {
     count: 15
-    emit: box(200, 5, -90, 20)
+    emit: box(w: 200, h: 5, angle: -90deg, angleSpread: 20deg)
     maxLife: 5.0
     speed: 100
     tiles: file("ball.png")
@@ -848,13 +812,8 @@ paths {
     size: 0.8
     sizeRandom: 0.3
     gravity: 200
-    gravityAngle: 90
-    boundsMode: bounce(0.7)
-    boundsMinX: 0
-    boundsMaxX: 300
-    boundsMinY: 0
-    boundsMaxY: 250
-    boundsLine: 0, 250, 300, 250
+    gravityAngle: 90deg
+    bounds: bounce(0.7), box(x: 0, y: 0, w: 300, h: 250), line(0, 250, 300, 250)
     rotateAuto: true
     forwardAngle: 90
 }
@@ -896,7 +855,7 @@ Particles can be placed inside a programmable block:
         pos: 200, 150
         #fireEffect particles {
             count: 50
-            emit: cone(0, 0, -90, 20)
+            emit: cone(dist: 0, distRand: 0, angle: up, angleSpread: 20deg)
             tiles: file("spark.png")
             maxLife: 1.5
             speed: 60

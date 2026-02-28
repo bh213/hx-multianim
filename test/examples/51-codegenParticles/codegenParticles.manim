@@ -6,7 +6,7 @@ version: 0.5
         pos: 200, 200
         particles {
             count: 60
-            emit: cone(0, 0, 270, 45)
+            emit: cone(dist: 0, distRand: 0, angle: 270deg, angleSpread: 45deg)
             maxLife: 2.0
             speed: 120
             speedRandom: 0.3
@@ -16,7 +16,7 @@ version: 0.5
             loop: false
             size: 2.0
             gravity: 80
-            gravityAngle: 90
+            gravityAngle: 90deg
             fadeOut: 0.7
             emitSync: 0.9
         }
@@ -27,7 +27,7 @@ version: 0.5
         pos: 640, 200
         particles {
             count: 50
-            emit: point(0, 0)
+            emit: point(dist: 0, distRand: 0)
             maxLife: 1.5
             speed: 80
             speedRandom: 0.5
@@ -46,7 +46,7 @@ version: 0.5
         pos: 1000, 200
         particles {
             count: 40
-            emit: box(100, 50, 0, 0)
+            emit: box(w: 100, h: 50, angle: 0, angleSpread: 0)
             maxLife: 2.5
             speed: 60
             speedRandom: 0.2
@@ -56,7 +56,7 @@ version: 0.5
             loop: false
             size: 1.8
             gravity: 40
-            gravityAngle: 90
+            gravityAngle: 90deg
             fadeOut: 0.5
             emitSync: 0.7
         }

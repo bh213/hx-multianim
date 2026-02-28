@@ -1719,18 +1719,6 @@ colorStops: 0.0 #FF4400, 0.5 #FFAA00 easeInQuad, 1.0 #FFFF88
 colorStops: 0.0 red, 0.3 yellow easeOutCubic, 1.0 transparent
 ```
 
-**Legacy color curves** (still supported):
-```
-rate: colorCurve: curveName, #startColor, #endColor
-```
-
-Multiple segments at different rates create per-segment color interpolation.
-
-```
-0.0: colorCurve: linear, #FF4400, #FFAA00
-0.4: colorCurve: linear, #FFAA00, #FFFF88
-```
-
 ### Force Fields
 
 Apply physics forces to particles. Multiple force fields can be combined.
@@ -1815,17 +1803,6 @@ bounds: bounce(0.6), box(x: -50, y: -50, w: 250, h: 250), line(0, 0, 100, 0)
 bounds: wrap, box(0, 0, 500, 400)
 ```
 
-**Legacy syntax** (still supported):
-
-| Property | Type | Description |
-|----------|------|-------------|
-| `boundsMode` | enum | `none`, `kill`, `bounce(damping)`, `wrap` |
-| `boundsMinX` | float | Left boundary |
-| `boundsMaxX` | float | Right boundary |
-| `boundsMinY` | float | Top boundary |
-| `boundsMaxY` | float | Bottom boundary |
-| `boundsLine` | x1, y1, x2, y2 | One-sided line boundary (multiple allowed) |
-
 **Line bounds:** The "out" side is the left side of the direction from (x1,y1) to (x2,y2).
 
 ### Rotation: Forward Angle
@@ -1871,7 +1848,7 @@ Use state animation frames as particle tile source, with lifetime-driven and eve
 **Example:**
 ```
 #sparks particles {
-    emit: point(0, 10)
+    emit: point(dist: 0, distRand: 10)
     tiles: file("fallback.png")
     animFile: "spark.anim"
     animSelector: type => fire
