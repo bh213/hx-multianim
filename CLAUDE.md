@@ -80,7 +80,7 @@ animation animationName {
     fps: 20
     loop: yes | <number>
     playlist {
-        sheet: "sprite_$$state$$_name"
+        sheet: "sprite_${state}_name"
         event <name> trigger | random x,y,radius | x,y
     }
     extrapoints {
@@ -96,16 +96,19 @@ animation animationName {
 ```
 
 **Key `.anim` features:**
-- `$$stateName$$` - State variable interpolation in sheet names
+- `${stateName}` - State variable interpolation in sheet names (validated against defined states; old `$$state$$` syntax errors with migration hint)
 - `extrapoints` - Named points for effects/interactions (bullets, particles, etc.)
 - Conditionals: `@(state=>value)`, `@(state != value)` negation, `@(state=>[v1,v2])` multi-value, `@(state != [v1,v2])` negated multi-value
 - Comparison conditionals: `@(state >= N)`, `@(state <= N)`, `@(state > N)`, `@(state < N)`
 - Range conditionals: `@(state => min..max)`
-- `@else` / `@default` conditionals in extrapoints
-- `@final` named constants: `@final X = 42`, usable as `$X`
+- `@else` / `@else(condition)` / `@default` conditionals in extrapoints, metadata, and playlists
+- `@final` named constants: `@final X = 42`, usable as `$X` in coordinates
 - Compact shorthand: `animation name { ... }` (name as keyword after `animation`)
-- File-level defaults: `fps:`, `center:` can be set once at file level
+- `anim` one-liner: `anim name(fps:N, loop:yes): "sheetName"` for simple single-sheet animations
+- File-level defaults: `fps:`, `loop:`, `center:` can be set once at file level
 - Metadata types: int, float, string, color (`#RRGGBB`)
+- Event metadata: `event name { key:type => value, ... }` with typed payload (`TriggerData` event)
+- Filter declarations: `filters { type: value }` in animation blocks
 - `AnimMetadata` - Typed metadata access with state-aware matching: `getIntOrDefault(key, default, ?stateSelector)`, `getIntOrException(key, ?stateSelector)`, `getFloatOrDefault(key, default, ?stateSelector)`, `getFloatOrException(key, ?stateSelector)`, `getStringOrDefault(key, default, ?stateSelector)`, `getStringOrException(key, ?stateSelector)`, `getColorOrDefault(key, default, ?stateSelector)`, `getColorOrException(key, ?stateSelector)`. Accessed via `parsed.metadata`.
 
 ## .manim Language Quick Reference

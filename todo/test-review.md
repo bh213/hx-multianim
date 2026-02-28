@@ -1,6 +1,6 @@
 # Non-Visual Test Review
 
-Reviewed: 2026-02-27
+Reviewed: 2026-02-27 | Updated: 2026-02-28
 
 This is a detailed review of all non-visual (unit/logic) tests, covering correctness of test intent,
 assertion quality, and coverage gaps. Tests are organized by file.
@@ -9,226 +9,161 @@ assertion quality, and coverage gaps. Tests are organized by file.
 
 ## Summary Statistics
 
-| File | Tests | Strong | Weak/No-crash | Critical Issues |
+| File | Tests | Strong | Weak/No-crash | Remaining Issues |
 |------|-------|--------|---------------|-----------------|
-| ParserErrorTest.hx | 238 | ~158 error tests | ~163 parse-success-only | Parse-success tests don't verify AST |
-| AnimParserTest.hx | 19 | 12 | 7 | Integration parse tests are all no-crash |
-| BuilderUnitTest.hx | 217 | ~195 | ~22 | Some `Assert.pass()` on graphics/pixels setParameter |
-| UIComponentTest.hx | ~90 | ~80 | ~10 | ScrollableList scroll tests use Assert.pass() |
-| UITooltipHelperTest.hx | 24 | 18 | 6 | Position tests can't verify positioning |
-| UIPanelHelperTest.hx | 38 | 33 | 5 | Unused variable in testOpenSameInteractiveTwice |
-| UIRichInteractiveHelperTest.hx | 30 | 16 | 14 | State machine tests don't verify actual transitions |
+| ParserErrorTest.hx | 227 | ~170 | ~57 parse-success-only | Some success tests still don't verify AST |
+| AnimParserTest.hx | 89 | ~85 | ~4 | ~~Integration parse tests are all no-crash~~ Fixed: returns result, AST verified. Gaps: @default, filters, typed event metadata |
+| BuilderUnitTest.hx | 207 | ~203 | ~4 | ~~Assert.pass() on graphics~~ Reduced to 4 remaining Assert.pass() |
+| UIComponentTest.hx | 68 | ~67 | ~1 | ~~ScrollableList scroll Assert.pass()~~ Fixed. 1 remaining Assert.pass() |
+| UITooltipHelperTest.hx | 20 | 14 | 6 | Position tests can't verify positioning (headless limitation) |
+| UIPanelHelperTest.hx | 48 | 43 | 5 | Unused variable in testOpenSameInteractiveTwice |
+| UIRichInteractiveHelperTest.hx | 40 | 40 | 0 | ~~State machine not tested~~ Fixed: assertState() helper, all no-ops replaced |
 
 ---
 
-## File: ParserErrorTest.hx (238 tests)
+## File: ParserErrorTest.hx (227 tests)
 
-### Overall Assessment: Mixed
+### Overall Assessment: Mixed (improved — critical issues fixed)
 
-The file has two categories of tests with very different quality levels.
+### Error Tests - GOOD
+Error tests via `parseExpectingError()` are well-done. ~~9 tests didn't validate error message content~~ — fixed: 14 tests upgraded to `Assert.stringContains()`.
 
-### Error Tests (~79 tests) - GOOD
+### Success Tests - STILL WEAK
+Most `parseExpectingSuccess()` tests still only verify parsing doesn't throw — no AST verification. 6 key tests were upgraded to use `parseExpectingResult` with node type/count checks, but the majority (~50+) remain no-crash-only.
 
-Tests that verify parse errors via `parseExpectingError()` are generally well-done:
-- They verify the error is not null
-- ~68 of them also verify error message content with `error.indexOf("expectedString")`
-- ~9 check only `Assert.notNull(error)` without verifying the message
-
-**Issue: ~9 error tests don't validate error message content.** Any exception (including NPE) would satisfy `Assert.notNull(error)`. These should check that the error message contains a relevant keyword.
-
-### Success Tests (~163 tests) - WEAK
-
-The `parseExpectingSuccess()` pattern only verifies that parsing doesn't throw. These tests:
-- Don't verify the parsed AST structure
-- Don't verify number of elements, parameter types, conditional structures
-- Would silently pass if the parser started ignoring parts of the syntax
-
-**These are "no-crash" tests, not correctness tests.** A parser that silently skips an `@(mode != off)` conditional would still pass all success tests.
-
-### CRITICAL: 3 Tests Missing @Test Annotations (Dead Code)
-
-Lines 2026, 2038, 2048: `testOffsetOnLayout()`, `testOffsetOnGridPos()`, `testOffsetInvalidSuffix()` are **missing the `@Test` annotation** and will never be executed by the test runner. `testOffsetInvalidSuffix` is the only error test for the `.offset()` suffix feature, so this error path has zero coverage.
+### ~~CRITICAL: 3 Tests Missing @Test Annotations~~ — FIXED
+`testOffsetOnLayout`, `testOffsetOnGridPos`, `testOffsetInvalidSuffix` now have `@Test`.
 
 ### Infrastructure Issue: Duplicated Helpers
+Still present — class extends `utest.Test` directly, duplicating helpers from `BuilderTestBase`.
 
-The class defines its own `parseExpectingError()`, `parseRawExpectingError()`, `doParse()`, and `parseExpectingSuccess()` helpers (lines 15-54), duplicating the same methods in `BuilderTestBase`. The class extends `utest.Test` directly instead of `BuilderTestBase`. Bug fixes to one copy won't propagate to the other.
+### ~~Missing Negative Tests~~ — Partially Fixed
+- ~~Coordinate systems~~ — DONE: 6 tests added
+- ~~`@ifstrict` error cases~~ — DONE: 4 tests added
+- ~~`import` statement errors~~ — DONE: 3 tests added
+- **`@else` after `@default`** — still untested
+- **Duplicate `@default`** — still untested
+- **`staticRef`/`dynamicRef` errors** — still untested
+- **`slot` parsing errors** — still untested
 
-### Missing Negative Tests by Section
+### Remaining Recommendations
 
-- **Coordinate systems**: Zero negative tests (missing `grid:` declaration, wrong arg count, unknown method)
-- **`@else` after `@default`**: Should be invalid, untested
-- **Duplicate `@default`**: Untested
-- **`@ifstrict` error cases**: Documented in CLAUDE.md, untested
-- **`staticRef`/`dynamicRef` errors**: Missing reference, wrong param count
-- **`slot` parsing errors**: Invalid parameter type
-- **`import` statement errors**: Invalid path, circular import
-
-### Recommendations for ParserErrorTest.hx
-
-1. **Fix the 3 missing `@Test` annotations** — this is the highest-priority fix as these tests are dead code
-2. **Upgrade ~13 error tests** that use only `Assert.notNull(error)` to also check `error.indexOf(...)` for relevant keywords (includes `testUnclosedBrace`, `testMissingElementName`, `testAtSignWithoutContent`, `testGarbageInNumericPosition`, `testMalformedTernaryMissingColon`, `testIncompleteArithmeticExpression`, `testUnaryMinusWithoutValueInFloat`, `testInvalidColorFormat`, `testRichTextStyleNoColorNoFont`, `testRichTextStylesBracketSyntaxFails`, `testRichTextOldStyleSyntaxFails`, `testElseOnRootElement`)
-3. **Add AST verification to key success tests** — at minimum verify the node count and node types after parsing
-4. **Add negative tests for coordinate systems, `@ifstrict`, imports, refs**
-5. **Consider extending `BuilderTestBase`** instead of duplicating helper methods
+1. **Add AST verification to more success tests** — most still only check no-crash
+2. **Add negative tests** for `@else` after `@default`, duplicate `@default`, ref/slot errors
+3. **Consider extending `BuilderTestBase`** instead of duplicating helpers
 
 ---
 
-## File: AnimParserTest.hx (19 tests)
+## File: AnimParserTest.hx (89 tests)
 
-### Overall Assessment: Unit tests good, integration tests weak
+### Overall Assessment: STRONG (was: weak — significantly expanded in commit `217ff7c`)
 
-### Unit Tests (tests 1-12) - GOOD
-`countStateMatch` and `matchConditionalValue` tests are well-structured with exact value assertions.
+Grew from 19 to 89 tests. `parseAnimExpectingSuccess` now returns `AnimParserResult`. Tests verify AST structure, metadata types, conditional matching, and new `.anim` format features.
 
-**Minor issue:** Mismatch tests use `Assert.isTrue(result < 0)` instead of exact penalty value `-10000`. Acceptable if the contract is "negative = no match," but if the exact penalty matters for priority scoring, the assertion should be exact.
+### Unit Tests - GOOD
+`countStateMatch`, `matchConditionalValue`, and comparison operator tests are well-structured with exact value assertions. Metadata accessor tests cover int, float, string, color types with state selectors.
 
-### Integration Parse Tests (tests 13-17) - WEAK
-All 5 parse tests only verify `Assert.isTrue(success)` where success = didn't throw.
+### Integration Parse Tests - GOOD (was: WEAK)
+Tests now capture and verify the `AnimParserResult`: `definedStates`, metadata values, animation counts.
 
-**The `parseAnimExpectingSuccess` helper discards the return value**, making it impossible for callers to inspect the result. None of these tests verify:
-- Correct number of animations parsed
-- Correct conditional selectors (`ACVNot`, `ACVMulti`, `ACVSingle`)
-- Correct coordinate values, fps, loop settings
-- Correct extra point positions
+### New .anim Feature Coverage
 
-### Error Tests (tests 18-19) - ACCEPTABLE
-Check `Assert.notNull(error)` but don't verify error message content.
+| Feature | Tested | Notes |
+|---------|--------|-------|
+| `@else` conditional | Yes | `testParseElseConditionalInExtrapoints` |
+| `@default` conditional | **No** | Gap — no test |
+| `@final` constants | Yes | Declaration + duplicate error |
+| `${state}` interpolation | Yes | `testParseStateInterpolation` |
+| Compact shorthand (`anim name:`) | Yes | `testParseAnimShorthand` |
+| Comparison operators | Yes | 6+ tests for `>=`, `<=`, `>`, `<` |
+| Range conditionals | Yes | `testParseRangeConditional` |
+| Float metadata | Yes | 3 tests (default, exception, state selector) |
+| Color metadata | Yes | 3 tests (default, exception, state selector) |
+| Typed event metadata | **No** | Events parse but no metadata payload tests |
+| Filter declarations | **No** | No tests |
 
-### Missing Coverage
+### Remaining Gaps
 
-1. **End-to-end parse + query**: Parse a `.anim` file then use `findAnimation`/`findExtraPoint` with state selectors to verify conditional dispatch works at runtime
-2. **`$$stateName$$` interpolation** in sheet names
-3. **`countStateMatch` partial match**: Two conditions where one matches and one doesn't
-4. **`countStateMatch` asymmetric keys**: condSelector has keys not in runtimeState
-5. **`matchConditionalValue` with `ACVNot(ACVMulti(...))`** directly
-6. **AnimMetadata API**: `getIntOrDefault`, `getStringOrDefault` with state selectors (noted in test-todo.md)
-7. **`findBestStateMatch` ambiguity**: Two selectors with equal scores
-
-### Recommendations for AnimParserTest.hx
-
-1. **Modify `parseAnimExpectingSuccess` to return the parsed result** so callers can inspect it
-2. **Add AST verification to integration tests** — check animation count, conditional types, coordinates
-3. **Add an end-to-end test** that parses and queries with state selectors
+1. **`@default` conditional** — no test for fallback behavior
+2. **Filter declarations** — `filters { }` block untested
+3. **Typed event metadata** — `event hit { damage:int => 5 }` payload untested
+4. **`findBestStateMatch` ambiguity** — two selectors with equal scores
 
 ---
 
-## File: BuilderUnitTest.hx (217 tests)
+## File: BuilderUnitTest.hx (207 tests)
 
-### Overall Assessment: STRONG
+### Overall Assessment: STRONG (improved)
 
-This is the strongest test file. Tests build actual `.manim` sources and verify concrete output properties (bitmap dimensions, positions, text content, visibility, children count).
+This is the strongest test file. Tests build actual `.manim` sources and verify concrete output properties.
 
-### Strengths
-- Tests verify **actual rendered values**: tile widths, positions, text strings, visibility flags
-- Incremental update tests verify state before AND after `setParameter()` calls
-- Grid and hex coordinate tests verify exact computed positions
-- Conditional range tests verify correct branch selection
-- Pixel data tests verify actual pixel values at specific coordinates
-- Expression tests verify computed dimensions from formulas
+### Issues Found — Status
 
-### Issues Found
+1. ~~**Assert.pass() in graphics/pixels tests**~~ — Mostly fixed. 4 `Assert.pass()` calls remain (graphics-related where visual state is hard to verify in headless mode).
 
-1. **~7 tests use `Assert.pass()`** after graphics/pixels `setParameter()`. These verify "no crash" but not the resulting visual state:
-   - `testIncrementalGraphicsRedrawsOnSetParameter` (line 2320) — should verify the graphics were actually redrawn
-   - `testIncrementalGraphicsBatchUpdate` (line 2364) — same issue
-   - `testIncrementalDynamicRefWithGraphics` (line 2568) — same issue
-   - `testRichTextDynamicStyleColor` (line 3687) — uses `Assert.isTrue(true, ...)` after setParameter
+2. ~~**Hex coordinate tests use `isTrue(x != 0)`**~~ — FIXED: all 7 tests now assert exact computed values using `floatEquals`.
 
-2. **Hex coordinate tests use `isTrue(x != 0)` instead of exact values** (7 tests: `testHexCubeNonOrigin`, `testHexCornerXYExtraction`, `testHexEdgeXYExtraction`, `testHexCubeXYExtraction`, `testHexOffsetEven`, `testHexDoubled`, `testHexWidthHeightValues`). For a deterministic hex system, exact values should be asserted. Example: pointy(16,16) width = sqrt(3)*16 ≈ 27, height = 2*16 = 32.
+3. ~~**8 incremental mode tests don't test incremental behavior**~~ — FIXED: all 8 now call `setParameter()` and verify updated output.
 
-3. **8 incremental mode tests (Section 14, lines 984-1094) don't test incremental behavior**: They only verify the initial build output in incremental mode but never call `setParameter()`. They are functional duplicates of the non-incremental tests.
+4. **Duplicate test**: `testExprMultiVarDivPercent` is identical to `testInterpolMultiVarExpression` — still present.
 
-4. **Duplicate test**: `testExprMultiVarDivPercent` (line 730) is identical to `testInterpolMultiVarExpression` (line 582) — same source, same params, same assertion.
+5. ~~**`testAnimatedPathPingPong` ambiguous time**~~ — FIXED: tests at t=1.75 where forward vs backward rates differ.
 
-5. **`testAnimatedPathPingPong`** (line 1969): Rate 0.5 at t=1.5 is the same whether pingPong works or not. Should test at a time where forward vs backward rates differ.
+6. ~~**No boundary-value testing for range conditionals**~~ — FIXED: 6 boundary tests added.
 
-6. **No boundary-value testing for range conditionals**: Tests in the range section never test exact boundary values (e.g., value=25 at boundary of `@(val => 0..25)`).
+7. **Misplaced test**: `testInterpolMultiVarExpression` tests expressions, not interpolation — still in wrong section.
 
-7. **Misplaced test**: `testInterpolMultiVarExpression` (line 582) tests expression resolution, not string interpolation, but lives in the interpolation section.
+8. **`testBoolParamFalse`**: Passes string `"false"` not boolean `false` — naming still misleading.
 
-8. **`testBoolParamFalse`** (line 420): Passes string `"false"` not boolean `false`. Tests coercion but name doesn't indicate this.
+### Missing Coverage — Status
 
-### Missing Coverage
+1. **Named hex `$hex.offset()` / `$hex.doubled()`** with named systems — still untested
+2. **Error cases for grid/hex** — still no builder-level error tests (parser tests added)
+3. **Incremental `@else` / `@default`** conditionals — still untested
+4. **`@flow.*` properties** — still no unit tests, only visual
+5. **`tilegroup` element** — still no unit tests
+6. **`dynamicRef` parameter propagation** — still weak
+7. **Multi-branch conditional re-evaluation** (A→B→C) — still untested
+8. **Incremental repeatable count changes** — still untested
+9. **`beginUpdate()`/`endUpdate()` batching** — still untested
+10. ~~**Multi-value match `@(param=>[v1,v2])`**~~ — DONE: 4 tests
+11. ~~**Bit flag conditionals `@(param => bit[N])`**~~ — DONE: 5 tests
+12. ~~**Coordinate `.offset()` suffix**~~ — DONE: 3 tests
 
-1. **Named hex `$hex.offset()` and `$hex.doubled()`** with named systems — only tested with default hex system
-2. **Error cases**: No tests for invalid grid/hex usage (e.g., `$grid.pos()` without a `grid:` declaration)
-3. **Incremental `@else` / `@default`** conditionals — only `@(condition)` tested
-4. **`@flow.*` properties** (halign, valign, offset, absolute) — no unit tests, only visual
-5. **`tilegroup` element** — no unit tests
-6. **`dynamicRef` with parameter propagation** — only one test, doesn't verify the child received correct values
-7. **`setParameter()` with conditional re-evaluation across multiple branches** (switching from branch A to B to C)
-8. **Incremental repeatable count changes** (adding/removing elements)
-9. **`beginUpdate()`/`endUpdate()` batching semantics** (verify intermediate states not rendered)
-10. **Multi-value match** `@(param=>[v1,v2])` — not tested in builder
-11. **Bit flag conditionals** `@(param => bit[N])` — not tested in builder
-12. **Coordinate `.offset()` suffix** — documented in CLAUDE.md, no builder tests
+### Remaining Recommendations
 
-### Recommendations for BuilderUnitTest.hx
-
-1. **Replace `Assert.pass()` in graphics/pixels tests** with actual verification of the rendered state
-2. **Add exact expected values for hex coordinate tests** — these are mathematically deterministic
-3. **Add error-path tests** for invalid coordinate system usage
-4. **Add `setParameter()` calls to the 8 incremental-mode-only tests** or remove them as duplicates
-5. **Add boundary-value tests** for range conditionals (test exact endpoints)
+1. **Remove or rename duplicate** `testExprMultiVarDivPercent`
+2. **Replace 4 remaining `Assert.pass()`** in graphics tests if possible
+3. **Add incremental `@else`/`@default` tests**
 
 ---
 
-## File: UIComponentTest.hx (~90 tests)
+## File: UIComponentTest.hx (68 tests)
 
-### Overall Assessment: STRONG
+### Overall Assessment: STRONG (improved)
 
-Comprehensive test coverage for Button, Checkbox, Slider, Dropdown, ScrollableList, Tabs, Drag-and-Drop, and AutoSync.
+### Issues Found — Status
 
-### Strengths
-- Good lifecycle testing (create, interact, verify state)
-- Uses `UITestHarness` for event simulation — proper integration testing
-- Tests both happy path and error paths (out-of-bounds, disabled, etc.)
-- Event emission is verified with `MockControllable.hasEvent()`
-- Drag-and-drop tests are thorough: zones, priorities, constraints, swap mode, highlights
+1. ~~**ScrollableList scroll tests use `Assert.pass()`**~~ — FIXED: verify `mask.scrollY` via `@:privateAccess`.
+2. ~~**Dropdown/ScrollableList only test negative callback case**~~ — FIXED: positive tests added.
+3. **`testScrollableListAutoSizeMode`** — still only checks creation succeeds.
+4. ~~**`testDraggableDragMove` no position check**~~ — FIXED: asserts root moved to (40,40).
+5. ~~**`testButtonStateTransitions` no state check**~~ — FIXED: verifies status param transitions.
+6. ~~**`testTextInputDisabledBlocksEvents` no verification**~~ — FIXED: verifies status stays "disabled".
+7. ~~**`testTextInputHoverState` no state check**~~ — FIXED: verifies status param transitions.
+8. ~~**`testTextInputContainsPoint` never calls containsPoint()**~~ — FIXED: now calls it.
+9. **`testTextInputOnChangeCallback`** — still only tests negative case (setText doesn't fire). Positive case (user typing) untested.
+10. **All slider tests use `BUTTON_MANIM`** — still no slider-specific `.manim`.
+11. 1 remaining `Assert.pass()` call.
 
-### Issues Found
+### Missing Coverage (unchanged)
 
-1. **ScrollableList scroll tests use `Assert.pass()`** with no actual verification:
-   - `testScrollableListScrollToIndexAlreadyVisible` (line 1348) — "No assertion needed" comment, but should verify scroll position didn't change
-   - `testScrollableListScrollToIndexOutOfBounds` (line 1357) — should verify no state change
-   - `testScrollableListScrollToIndexScrollsDown` (line 1368) — should verify scroll position actually changed
-
-2. **`testDropdownOnItemChangedCallback`** (line 1079) — only tests that `setSelectedIndex()` does NOT trigger the callback. Missing: test that panel selection DOES trigger it.
-
-3. **`testScrollableListOnItemChangedCallback`** (line 1372) — same issue: only tests the negative case.
-
-4. **`testScrollableListAutoSizeMode`** (line 1437) — only checks creation succeeds, doesn't verify panel was actually auto-sized
-
-5. **`testDraggableDragMove`** (line 2059) — only checks `Assert.notNull(obj)`, doesn't verify the object actually moved to the new position
-
-6. **`testButtonStateTransitions`** (line 104) — only asserts `notNull(getObject())` after enter/leave. Does NOT verify the status parameter changed to "hover" or back to "normal". This is a "no exception" test disguised as a state test.
-
-7. **`testTextInputDisabledBlocksEvents`** (line 713) — only checks `notNull(getObject())`. Does not verify events were actually blocked (compare with `testButtonDisabledNoClick` which correctly checks `mock.eventCount() == 0`).
-
-8. **`testTextInputHoverState`** (line 726) — same problem as `testButtonStateTransitions`: only `notNull` checks, no state verification.
-
-9. **`testTextInputContainsPoint`** (line 768) — named "containsPoint" but never calls `containsPoint()`. Only checks `notNull(getBounds())`.
-
-10. **`testTextInputOnChangeCallback`** (line 752) — misleading name: actually tests that `setText()` does NOT fire onChange. The positive case (user typing fires onChange) is never tested.
-
-11. **All slider tests use `BUTTON_MANIM`** instead of a slider-specific `.manim` definition. Tests logical value management but not slider-specific visual integration.
-
-### Missing Coverage
-
-1. **Dropdown panel opening/closing via keyboard Enter** — `testDropdownDisabledBlocksAllEvents` tests it in disabled mode, but no positive test for Enter opening
-2. **ScrollableList mouse wheel scrolling** — `wheelScrollMultiplier` property is tested, but actual wheel event processing is not
-3. **ScrollableList disabled item click** — no test verifying that clicking a disabled item doesn't select it
-4. **Slider component** — tests exist in the visual suite but no dedicated unit tests for the slider value interface
-5. **Text input component** — no unit tests (noted in TODO.md as post-1.0)
-6. **Progress bar component** — no unit tests
-7. **Tab content routing with contentRoot mode** — `testTabsContentRootRelativeMode` only checks creation, not that content is positioned correctly
-
-### Recommendations for UIComponentTest.hx
-
-1. **Fix scroll tests** to verify actual scroll state changes
-2. **Add positive callback tests** for dropdown/scrollable list `onItemChanged`
-3. **Add Slider unit tests** for value range, step, and event emission
-4. **Verify drag move positions** with exact coordinate checks
+1. Dropdown panel opening via keyboard Enter (positive test)
+2. ScrollableList mouse wheel scrolling
+3. ScrollableList disabled item click
+4. Slider-specific unit tests
+5. Progress bar unit tests
+6. Tab content routing with contentRoot mode
 
 ---
 
@@ -280,47 +215,25 @@ The most thorough of the UI helper test files, with good coverage of single pane
 
 ---
 
-## File: UIRichInteractiveHelperTest.hx (30 tests)
+## File: UIRichInteractiveHelperTest.hx (40 tests)
 
-### Overall Assessment: CRITICAL ISSUE — State machine not properly tested
+### Overall Assessment: STRONG (was: CRITICAL — all issues fixed)
 
-### Critical Systemic Problem
+Grew from 30 to 40 tests. All critical issues resolved.
 
-**The entire state machine section (14 tests) only checks `handleEvent()` return values.** The return value means "this interactive is registered," NOT "a state transition happened." These tests would all pass even if the state machine was completely broken and never transitioned.
+- ~~**State machine not tested**~~ — FIXED: `assertState()` helper using `@:privateAccess` verifies `InteractiveState` after each event
+- ~~**6 `Assert.isTrue(true)` no-ops**~~ — FIXED: all 6 replaced with actual state/binding assertions
+- ~~**UIClickOutside untested**~~ — FIXED: 2 tests verify behavior
+- ~~**Bind metadata untested**~~ — FIXED: 2 tests verify full chain through state machine to visual output
 
-Tests that need actual state verification:
-- `testEnterSetsHover` — should verify parameter set to "hover"
-- `testPushAfterEnterSetPressed` — should verify parameter set to "pressed"
-- `testClickAfterPushReturnsToHover` — should verify parameter set to "hover"
-- `testLeaveFromHoverReturnsToNormal` — should verify parameter set to "normal"
-- `testLeaveFromPressedReturnsToNormal` — should verify parameter set to "normal"
-- `testFullCycleEnterPushClickLeave` — should verify all four transitions
-
-### 6 Tests Use `Assert.isTrue(true)` (Literal No-Op)
-
-These tests provide ZERO regression safety:
-1. `testPushWithoutEnterIsIgnored` (line 166)
-2. `testClickWithoutPushIsIgnored` (line 177)
-3. `testSetDisabledOnUnknownInteractive` (line 242)
-4. `testDisabledDoesNotTransitionOnEnter` (line 257)
-5. `testSetParameterOnBoundInteractive` (line 361)
-6. `testSetParameterOnUnknownInteractive` (line 369)
-
-### Recommendations for UIRichInteractiveHelperTest.hx
-
-1. **Add state observation** — either expose the current state or inspect the `BuilderResult` after each event to verify `setParameter("status", expectedValue)` was called. The simplest approach would be reading the parameter back from the incremental result if the API supports it.
-2. **Replace all `Assert.isTrue(true)` with actual assertions**
-3. **Test disabled blocking for all event types** (Push, Click, Leave), not just Enter
-4. **Test `UIClickOutside` event handling**
+### No remaining critical issues.
 
 ---
 
 ## Cross-Cutting Issues
 
-### 1. The `parseExpectingSuccess` / `parseAnimExpectingSuccess` Pattern
-Both discard the return value, preventing callers from inspecting the parsed result. This is the single biggest architectural issue in the test infrastructure — it makes it impossible to write meaningful parse result tests without using the separate `builderFromSource` path.
-
-**Recommendation:** Have these helpers return the parsed result (or at least store it) so tests can optionally inspect the AST.
+### 1. ~~The `parseExpectingSuccess` / `parseAnimExpectingSuccess` Pattern~~ — Partially Fixed
+~~Both discard the return value.~~ `parseAnimExpectingSuccess` now returns `AnimParserResult`. `parseExpectingSuccess` in ParserErrorTest still discards the result (a `parseExpectingResult` variant was added for 6 key tests but most still use the old pattern).
 
 ### 2. Headless Positioning Limitation
 Multiple tests across tooltip, panel, and some UI component files cannot verify positioning because `getBounds()` returns zeros in headless mode. These tests are currently smoke tests disguised as functionality tests.

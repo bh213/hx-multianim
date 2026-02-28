@@ -3,10 +3,7 @@
 | # | Item | Summary | Section | Priority |
 |---|------|---------|---------|----------|
 | 2 | Transitions & animations | Tween manager + .manim transition declarations | V1 | High |
-| 3 | Visual tests fixes | Fix existing visual test issues | V1 | High |
 | 4 | Haxelib release | Publish to haxelib + CI automation | V1 | High |
-| 5 | Blob47 utils | Autotile mapping utilities | V1 | Medium |
-| ~~6~~ | ~~In-text colors & html text~~ | Done — native `[markup]` + `styles:` system (see [text-todo.md](text-todo.md)) | V1 | Done |
 | 9 | Dropdown z-ordering | Panel renders behind other UI elements | Bugs | Medium |
 | 10 | `closeAllNamed()` iterator | Mutating map during iteration, fragile | Bugs | Low |
 | 11 | Named panel outside-click | Wrong panel's close cancelled on click | Bugs | Medium |
@@ -20,11 +17,8 @@
 ## V1
 - more hot reload integration tests needed — see [docs/hot-reload.md "Missing Tests"](../docs/hot-reload.md#missing-tests-needed) for full list
 - transitions & animations (see [transitions-planning.md](transitions-planning.md))
-- visual tests fixes (see [test-todo.md](test-todo.md))
 - haxelib release (see details below)
-- blob47 utils?
-- ~~reconsider rich text delimiters~~ (decided: `[tag]...[/]` BBCode-style with named styles via `color()`/`font()` syntax)
-- ~~review in-text colors & html text support for manim~~ (done — native rich text markup)
+- add some blob47 utils for easier testing/dev/selection
 
 ### Haxelib Release
 
@@ -77,14 +71,12 @@ In `handleOutsideClick`, clicking inside *any* panel cancels the pending close f
   - Positional emit args `cone(dist, distRand, angle, angleRand)` → named params only
 
 ## After 1.0
-- Generic components support
 - Text input codegen support (`@:manim` factory with `createTextInput()`)
 - Bit expression: support for any-bit and all-bits (e.g. grid direction)
 - StateAnim: color replace (replaceColor filter exists in MultiAnimParser, not fully exposed for stateanim)
 - Radio: paired UIElement (click on label to change radio)
 - Subelements: handle nested subelements, keep state, don't query each time (cache `Std.isOfType`)
 - Layouts: absoluteScreens / layers support
-- ~~UIElements: send initial change event so control value can be synced to logic~~ (done — `autoSyncInitialState` on UIScreenBase)
 - UIElements: move to separate list, don't check interfaces all the time
 - Hex/grid XY: enable scale & translate
 - Custom `h2d.Object` subclasses with repeats-to-index or grid-to-index functionality
