@@ -80,6 +80,15 @@ class UIRichInteractiveHelper {
 		binding.result.setParameter(binding.stateParam, "normal");
 	}
 
+	/** Set binding state to Hover and set the parameter to "hover".
+	 *  Used by position-based hover detection that bypasses Interactive events. */
+	public function setHoverState(interactiveId:String):Void {
+		final binding = bindings.get(interactiveId);
+		if (binding == null) return;
+		binding.currentState = Hover;
+		binding.result.setParameter(binding.stateParam, "hover");
+	}
+
 	/** Set disabled state. Also disables the UIInteractiveWrapper to gate events. */
 	public function setDisabled(interactiveId:String, disabled:Bool):Void {
 		final binding = bindings.get(interactiveId);

@@ -9,7 +9,10 @@ import bh.paths.MultiAnimPaths.Path;
 import bh.ui.UICardHandLayout;
 import bh.ui.UICardHandTargeting;
 import bh.ui.UICardHandTypes;
+import bh.ui.UICardHandTypes.TargetHighlightCallback;
+import bh.ui.UICardHandTypes.TargetAcceptsCallback;
 import bh.ui.UIElement.UIScreenEvent;
+import bh.ui.UIInteractiveWrapper;
 import bh.ui.UIRichInteractiveHelper;
 import bh.ui.screens.UIScreen.LayersEnum;
 import bh.ui.screens.UIScreen.UIScreenBase;
@@ -154,6 +157,7 @@ class UICardHandHelper {
 
 	// Scene graph
 	final handContainer:h2d.Layers;
+	final dragContainer:h2d.Layers; // Same local space as handContainer, higher z-layer for dragged cards
 	final targeting:UICardHandTargeting;
 
 	// Card state — uses entry references instead of indices to avoid stale-index bugs
@@ -165,8 +169,10 @@ class UICardHandHelper {
 	var draggedEntry:Null<CardEntry> = null;
 	var dragOffsetX:Float = 0;
 	var dragOffsetY:Float = 0;
-	var cursorX:Float = 0;
+	var cursorX:Float = 0; // local (handContainer) space — for drag, threshold, arrow
 	var cursorY:Float = 0;
+	var sceneCursorX:Float = 0; // scene space — for interactive containsPoint
+	var sceneCursorY:Float = 0;
 	var cardToCardTarget:Null<CardEntry> = null;
 	var currentTargetId:Null<String> = null;
 	var nextCardSeq:Int = 0;
@@ -225,17 +231,21 @@ class UICardHandHelper {
 		returnPathName = config != null ? config.returnPathName : null;
 		rearrangePathName = config != null ? config.rearrangePathName : null;
 
-		// Scene graph
+		// Scene graph — both containers are added via screen.addObjectToLayer so they
+		// end up in the same coordinate space (important when inside tab contentRoot).
+		// dragContainer uses a higher layer so dragged cards render above the hand.
 		handContainer = new h2d.Layers();
 		screen.addObjectToLayer(handContainer, handLayer);
+		dragContainer = new h2d.Layers();
+		screen.addObjectToLayer(dragContainer, dragLayer);
 
 		var segName = config != null ? config.arrowSegmentName : null;
 		var headName = config != null ? config.arrowHeadName : null;
 		var arrowPath = config != null ? config.arrowPathName : null;
 		var arrowSpacing = config != null && config.arrowSegmentSpacing != null ? config.arrowSegmentSpacing : 25.0;
 		targeting = new UICardHandTargeting(builder, segName, headName, arrowPath, arrowSpacing);
-		var targetingLayer = config != null && config.targetingLineLayer != null ? config.targetingLineLayer : ModalLayer;
-		screen.addObjectToLayer(targeting.getObject(), targetingLayer);
+		// Targeting line goes into dragContainer so it shares the same local space
+		dragContainer.addChild(targeting.getObject());
 	}
 
 	// === Public API: Card Management ===
@@ -378,16 +388,29 @@ class UICardHandHelper {
 
 	// === Public API: Targeting ===
 
-	public function registerTarget(target:CardTarget):Void {
-		targeting.registerTarget(target);
+	/** Register a single target interactive wrapper. */
+	public function registerTargetInteractive(wrapper:UIInteractiveWrapper):Void {
+		targeting.registerTarget(wrapper);
 	}
 
-	public function unregisterTarget(id:String):Void {
+	/** Register multiple target interactive wrappers (batch). */
+	public function registerTargetInteractives(wrappers:Array<UIInteractiveWrapper>):Void {
+		targeting.registerTargets(wrappers);
+	}
+
+	/** Unregister a target by its interactive id. */
+	public function unregisterTargetInteractive(id:String):Void {
 		targeting.unregisterTarget(id);
 	}
 
-	public function setTargetHighlightCallback(cb:(targetId:String, highlight:Bool) -> Void):Void {
+	/** Set callback for target highlight state changes. Includes metadata for programmatic updates. */
+	public function setTargetHighlightCallback(cb:TargetHighlightCallback):Void {
 		targeting.onTargetHighlight = cb;
+	}
+
+	/** Set filter callback to determine which targets accept which cards. */
+	public function setTargetAcceptsFilter(cb:TargetAcceptsCallback):Void {
+		targeting.acceptsFilter = cb;
 	}
 
 	// === Public API: Configuration ===
@@ -413,14 +436,11 @@ class UICardHandHelper {
 	// === Event Routing ===
 
 	/** Handle screen events (UIInteractiveEvent from card interactives).
-	 *  Call from screen's `onScreenEvent`. Returns true if consumed. */
+	 *  Call from screen's `onScreenEvent`. Returns true if consumed.
+	 *  Note: hover detection is handled by position-based logic in `onMouseMove`,
+	 *  not by Interactive UIEntering/UILeaving events. This avoids z-order issues
+	 *  when the hovered card is brought to the top layer for rendering. */
 	public function handleScreenEvent(event:UIScreenEvent):Bool {
-		// Let UIRichInteractiveHelper handle hover/press state changes
-		// (only when not dragging — during drag we manage state ourselves)
-		if (!isDragging) {
-			interactiveHelper.handleEvent(event);
-		}
-
 		switch event {
 			case UIInteractiveEvent(innerEvent, id, meta):
 				var entry = findCardByInteractiveId(id);
@@ -428,16 +448,6 @@ class UICardHandHelper {
 					return false;
 
 				switch innerEvent {
-					case UIEntering:
-						if (!isDragging) {
-							setHoveredEntry(entry);
-							return true;
-						}
-					case UILeaving:
-						if (!isDragging && hoveredEntry == entry) {
-							setHoveredEntry(null);
-							return true;
-						}
 					case UIPush:
 						if (!isDragging)
 							return startDragFromInteractive(entry);
@@ -449,22 +459,38 @@ class UICardHandHelper {
 		}
 	}
 
-	/** Handle mouse move for drag tracking. Call from screen's mouse handling. */
+	/** Handle mouse move for drag tracking. Call from screen's mouse handling.
+	 *  Coordinates are in scene space — automatically converted to handContainer's local space
+	 *  so targeting, drag offsets, and bounds checks work correctly when the hand is inside
+	 *  a tab panel or other offset container. */
 	public function onMouseMove(screenX:Float, screenY:Float):Bool {
-		cursorX = screenX;
-		cursorY = screenY;
+		sceneCursorX = screenX;
+		sceneCursorY = screenY;
+		var local = handContainer.globalToLocal(new h2d.col.Point(screenX, screenY));
+		cursorX = local.x;
+		cursorY = local.y;
 
 		if (isDragging) {
 			updateDrag();
 			return true;
 		}
-		return false;
+
+		// Position-based hover detection using base layout (no hover pop) so the
+		// popped/scaled hovered card doesn't block neighbor detection
+		var hit = getCardAtBasePosition(cursorX, cursorY);
+		if (hit != hoveredEntry)
+			setHoveredEntry(hit);
+
+		return hoveredEntry != null;
 	}
 
 	/** Handle mouse release for ending drags. Call from screen's mouse handling. */
 	public function onMouseRelease(screenX:Float, screenY:Float):Bool {
-		cursorX = screenX;
-		cursorY = screenY;
+		sceneCursorX = screenX;
+		sceneCursorY = screenY;
+		var local = handContainer.globalToLocal(new h2d.col.Point(screenX, screenY));
+		cursorX = local.x;
+		cursorY = local.y;
 
 		if (isDragging)
 			return endDrag();
@@ -483,9 +509,9 @@ class UICardHandHelper {
 
 			// Interpolate rotation alongside path
 			var rate = state.rate;
-			anim.entry.container.rotation = anim.startRotation + (anim.endRotation - anim.startRotation) * rate;
+			anim.entry.container.rotation = anim.startRotation + (anim.endRotation - anim.startRotation) * rate + state.rotation;
 
-			// Apply scale/alpha/color from animated path curves (defined in .manim)
+			// Apply scale/alpha from animated path curves (defined in .manim)
 			anim.entry.container.scaleX = state.scale;
 			anim.entry.container.scaleY = state.scale;
 			anim.entry.container.alpha = state.alpha;
@@ -502,7 +528,7 @@ class UICardHandHelper {
 	public function dispose():Void {
 		clearHand();
 		handContainer.remove();
-		targeting.getObject().remove();
+		dragContainer.remove();
 		targeting.clearTargets();
 		interactiveHelper.unbindAll();
 	}
@@ -615,6 +641,8 @@ class UICardHandHelper {
 				animateCardTo(entry, new FPoint(entry.container.x, entry.container.y), new FPoint(pos.x, pos.y), entry.container.rotation,
 					pos.rotation, rearrangePathName, () -> {});
 			} else if (entry.state != Animating) {
+				// Cancel any lingering rearrange animation so it doesn't override this instant position
+				activeAnimations = activeAnimations.filter(a -> a.entry != entry);
 				entry.container.setPosition(pos.x, pos.y);
 				entry.container.rotation = pos.rotation;
 				entry.container.scaleX = pos.scale;
@@ -653,6 +681,8 @@ class UICardHandHelper {
 		if (hoveredEntry != null) {
 			if (hoveredEntry.state == Hovered) {
 				hoveredEntry.state = InHand;
+				interactiveHelper.resetState(hoveredEntry.interactiveId); // Visual: normal
+				addToHandLayer(hoveredEntry); // Restore z-order
 				emitEvent(CardHoverEnd(hoveredEntry.descriptor.id));
 			}
 		}
@@ -663,6 +693,8 @@ class UICardHandHelper {
 		if (hoveredEntry != null) {
 			if (hoveredEntry.state == InHand) {
 				hoveredEntry.state = Hovered;
+				interactiveHelper.setHoverState(hoveredEntry.interactiveId); // Visual: hover
+				handContainer.add(hoveredEntry.container, cards.length); // Bring to top
 				emitEvent(CardHoverStart(hoveredEntry.descriptor.id));
 			}
 		}
@@ -691,9 +723,8 @@ class UICardHandHelper {
 		interactiveHelper.resetState(entry.interactiveId);
 		entry.container.rotation = 0;
 
-		// Reparent to drag layer (addObjectToLayer handles safe reparenting;
-		// explicit remove() would trigger h2d.Graphics.onRemove() → clear(), destroying drawn content)
-		screen.addObjectToLayer(entry.container, dragLayer);
+		// Reparent to drag container (same local space, higher z-layer)
+		dragContainer.addChild(entry.container);
 
 		isDragging = true;
 		hoveredEntry = null;
@@ -717,12 +748,14 @@ class UICardHandHelper {
 				if (cardToCardTarget != null) {
 					cardToCardTarget.container.scaleX = cardToCardTarget.layoutPos.scale;
 					cardToCardTarget.container.scaleY = cardToCardTarget.layoutPos.scale;
+					addToHandLayer(cardToCardTarget); // Restore z-order
 				}
 				cardToCardTarget = targetEntry;
 				// Highlight new
 				if (cardToCardTarget != null) {
 					cardToCardTarget.container.scaleX = cardToCardTarget.layoutPos.scale * cardToCardHighlightScale;
 					cardToCardTarget.container.scaleY = cardToCardTarget.layoutPos.scale * cardToCardHighlightScale;
+					handContainer.add(cardToCardTarget.container, cards.length); // Bring to top
 				}
 			}
 			if (cardToCardTarget != null) {
@@ -742,7 +775,7 @@ class UICardHandHelper {
 			// Card stays at hand position, arrow points from card to cursor
 			var originX = entry.layoutPos.x + entry.layoutPos.normalX * hoverPopDistance;
 			var originY = entry.layoutPos.y + entry.layoutPos.normalY * hoverPopDistance;
-			currentTargetId = targeting.updateTargetingLine(originX, originY, cursorX, cursorY, entry.descriptor.id);
+			currentTargetId = targeting.updateTargetingLine(originX, originY, cursorX, cursorY, sceneCursorX, sceneCursorY, entry.descriptor.id);
 		} else {
 			// Normal drag — card follows cursor
 			entry.container.setPosition(cursorX + dragOffsetX, cursorY + dragOffsetY);
@@ -751,6 +784,9 @@ class UICardHandHelper {
 				exitTargetingMode(entry);
 				currentTargetId = null;
 			}
+			// Highlight targets under cursor during normal drag (no arrow)
+			if (!targeting.arrowEnabled)
+				currentTargetId = targeting.updateHighlight(sceneCursorX, sceneCursorY, entry.descriptor.id);
 		}
 	}
 
@@ -764,15 +800,14 @@ class UICardHandHelper {
 		entry.container.rotation = entry.layoutPos.rotation;
 		entry.container.scaleX = hoverScale;
 		entry.container.scaleY = hoverScale;
-		// Ensure arrow renders above everything
-		screen.addObjectToLayer(targeting.getObject(), dragLayer);
+		// Arrow is already in dragContainer — no reparenting needed
 	}
 
 	function exitTargetingMode(entry:CardEntry):Void {
 		isTargeting = false;
 		entry.state = Dragging;
-		// Reparent card back to drag layer
-		screen.addObjectToLayer(entry.container, dragLayer);
+		// Reparent card back to drag container
+		dragContainer.addChild(entry.container);
 		entry.container.rotation = 0;
 	}
 
@@ -791,6 +826,7 @@ class UICardHandHelper {
 		if (cardToCardTarget != null) {
 			cardToCardTarget.container.scaleX = cardToCardTarget.layoutPos.scale;
 			cardToCardTarget.container.scaleY = cardToCardTarget.layoutPos.scale;
+			addToHandLayer(cardToCardTarget); // Restore z-order
 		}
 
 		var result:TargetingResult = NoTarget;
@@ -811,7 +847,7 @@ class UICardHandHelper {
 			}
 		} else {
 			// Direct drag mode (arrow disabled) — check if card was dropped on a target
-			var dropTarget = targeting.hitTestTargets(cursorX, cursorY, cardId);
+			var dropTarget = targeting.hitTestTargets(sceneCursorX, sceneCursorY, cardId);
 			if (dropTarget != null) {
 				result = TargetZone(dropTarget);
 				if (canPlayCard == null || canPlayCard(cardId, result)) {
@@ -837,8 +873,8 @@ class UICardHandHelper {
 			if (spliceIdx >= 0)
 				cards.splice(spliceIdx, 1);
 
-			// Move card to drag layer for discard animation
-			screen.addObjectToLayer(entry.container, dragLayer);
+			// Move card to drag container for discard animation (same local space)
+			dragContainer.addChild(entry.container);
 
 			var fromPos = new FPoint(entry.container.x, entry.container.y);
 			animateCardTo(entry, fromPos, discardPilePosition, 0, 0, discardPathName, () -> {
@@ -881,6 +917,7 @@ class UICardHandHelper {
 		if (cardToCardTarget != null) {
 			cardToCardTarget.container.scaleX = cardToCardTarget.layoutPos.scale;
 			cardToCardTarget.container.scaleY = cardToCardTarget.layoutPos.scale;
+			addToHandLayer(cardToCardTarget); // Restore z-order
 			cardToCardTarget = null;
 		}
 
@@ -896,7 +933,46 @@ class UICardHandHelper {
 		emitEvent(CardDragEnd(entry.descriptor.id));
 	}
 
-	// === Internal: Hit testing (fallback for card-to-card only) ===
+	// === Internal: Hit testing ===
+
+	/** Hit-test using base layout (hoverIdx=-1) for hover detection.
+	 *  Uses nearest-center selection: among all cards whose OBB contains the cursor,
+	 *  the one with the closest center wins. This prevents the popped/scaled hovered
+	 *  card from blocking neighbors and handles tightly stacked/overlapping cards
+	 *  where multiple bounding boxes cover the same point. */
+	function getCardAtBasePosition(x:Float, y:Float):Null<CardEntry> {
+		var basePositions = computeLayout(-1);
+		var bestEntry:Null<CardEntry> = null;
+		var bestDistSq = Math.POSITIVE_INFINITY;
+
+		for (i in 0...cards.length) {
+			var entry = cards[i];
+			if (i >= basePositions.length || entry.state == Animating || entry.state == Disabled)
+				continue;
+
+			var pos = basePositions[i];
+			var halfW = cardWidth * pos.scale / 2.0;
+			var halfH = cardHeight * pos.scale / 2.0;
+
+			var dx = x - pos.x;
+			var dy = y - pos.y;
+			var cos = Math.cos(-pos.rotation);
+			var sin = Math.sin(-pos.rotation);
+			var localX = dx * cos - dy * sin;
+			var localY = dx * sin + dy * cos;
+
+			if (localX < -halfW || localX > halfW || localY < -halfH || localY > halfH)
+				continue;
+
+			// Among overlapping cards, pick nearest center
+			var distSq = dx * dx + dy * dy;
+			if (distSq < bestDistSq) {
+				bestDistSq = distSq;
+				bestEntry = entry;
+			}
+		}
+		return bestEntry;
+	}
 
 	function getCardAtPosition(x:Float, y:Float, ?skipEntry:CardEntry):Null<CardEntry> {
 		var i = cards.length - 1;

@@ -422,18 +422,22 @@ paths {
 
 **Events:** `CardHandEvent` enum — `CardPlayed(id, TargetZone(targetId)|NoTarget)`, `CardCombined(source, target)`, `CardHoverStart/End`, `CardDragStart/End`, `DrawAnimComplete`, `DiscardAnimComplete`.
 
-**API:** `setHand(descriptors)`, `drawCard(descriptor)`, `discardCard(id)`, `updateCardParams(id, params)`, `setCardEnabled(id, bool)`, `getCardResult(id)`, `registerTarget(target)`, `handleScreenEvent(event)`, `onMouseMove(x,y)`, `onMouseRelease(x,y)`, `update(dt)`, `dispose()`.
+**API:** `setHand(descriptors)`, `drawCard(descriptor)`, `discardCard(id)`, `updateCardParams(id, params)`, `setCardEnabled(id, bool)`, `getCardResult(id)`, `registerTargetInteractive(wrapper)`, `registerTargetInteractives(wrappers)`, `unregisterTargetInteractive(id)`, `setTargetHighlightCallback(cb)`, `setTargetAcceptsFilter(cb)`, `handleScreenEvent(event)`, `onMouseMove(x,y)`, `onMouseRelease(x,y)`, `update(dt)`, `dispose()`.
 
 **Callbacks:** `onCardEvent`, `canPlayCard:(CardId, TargetingResult)->Bool` (veto), `canDragCard:(CardId)->Bool` (veto), `onCardBuilt:(CardId, BuilderResult, h2d.Object)->Void` (customize card after build — add buttons, slots, overlays via `result.getSlot()`, `result.getDynamicRef()`, `result.setParameter()`).
 
 **Concurrent animations:** Multiple cards can animate simultaneously (draw, discard, rearrange all run in parallel). Cards in `Animating` state skip layout and reject drag, but do NOT block hover/drag of other `InHand` cards. Only one drag at a time (single mouse pointer). No global `HandState` lock — uses per-card `CardState` + `isDragging`/`isTargeting` flags.
 
 **Drag state machine:**
-1. `interactive()` emits `UIPush` → helper starts drag, reparents card to dragLayer
+1. `interactive()` emits `UIPush` → helper starts drag, reparents card to `dragContainer`
 2. Mouse move: card-to-card check first → targeting threshold check → normal drag
 3. Release: card-to-card hover → `CardCombined`; targeting mode + target → `CardPlayed(TargetZone)`; above threshold no target → `CardPlayed(NoTarget)`; below threshold → return animation
 
-**Hit detection:** `UIInteractiveWrapper.containsPoint()` uses `globalToLocal()` for OBB (Oriented Bounding Box) hit testing — correctly handles rotated interactives via Heaps' transform hierarchy. Card-to-card hit test (`getCardAtPosition`) uses inverse-rotation OBB in reverse z-order (front card wins).
+**Hover detection:** Position-based via `getCardAtBasePosition()` in `onMouseMove` — uses base layout (no hover pop) with nearest-center selection among overlapping OBBs. Does NOT rely on Interactive UIEntering/UILeaving events (which would be blocked by z-order changes). Hovered card is brought to top render layer; z-order restored on un-hover. Card-to-card targets also z-reordered during highlight.
+
+**Hit detection:** `UIInteractiveWrapper.containsPoint()` uses `globalToLocal()` for OBB (Oriented Bounding Box) hit testing — correctly handles rotated interactives via Heaps' transform hierarchy. Card-to-card hit test (`getCardAtPosition`) uses inverse-rotation OBB in reverse z-order (front card wins). Target zones use `UIInteractiveWrapper.containsPoint()` for automatic coordinate transforms.
+
+**Target registration:** Targets are `UIInteractiveWrapper` instances registered via `registerTargetInteractive(wrapper)`. `TargetHighlightCallback(targetId, highlight, metadata)` includes interactive metadata. `TargetAcceptsCallback(cardId, targetId, metadata) -> Bool` filters which targets accept which cards.
 
 ## UI Notes — Interactives
 
