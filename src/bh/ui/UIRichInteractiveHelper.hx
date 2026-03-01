@@ -71,6 +71,15 @@ class UIRichInteractiveHelper {
 		bindings.clear();
 	}
 
+	/** Reset binding state to Normal and set the parameter to "normal".
+	 *  Used after external code (e.g. drag helpers) bypasses the normal state machine. */
+	public function resetState(interactiveId:String):Void {
+		final binding = bindings.get(interactiveId);
+		if (binding == null) return;
+		binding.currentState = Normal;
+		binding.result.setParameter(binding.stateParam, "normal");
+	}
+
 	/** Set disabled state. Also disables the UIInteractiveWrapper to gate events. */
 	public function setDisabled(interactiveId:String, disabled:Bool):Void {
 		final binding = bindings.get(interactiveId);

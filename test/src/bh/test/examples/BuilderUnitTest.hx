@@ -2832,6 +2832,138 @@ class BuilderUnitTest extends BuilderTestBase {
 		Assert.isTrue(result.object.numChildren > 0, "Children should survive parameter propagation");
 	}
 
+	// ==================== Incremental conditional graphics content ====================
+
+	@Test
+	public function testIncrementalConditionalGraphicsHasContent():Void {
+		// Bug: incremental mode with conditional graphics produces empty h2d.Graphics objects.
+		// The graphics element is created and drawGraphicsElements IS called, but the content
+		// may end up empty due to build ordering issues.
+		final result = buildFromSource("
+			#test programmable(status:[normal,hover]=normal) {
+				@(status=>normal) graphics(rect(#0000ff, filled, 100, 50): 0, 0): 0, 0
+				@(status=>hover) graphics(rect(#00ff00, filled, 100, 50): 0, 0): 0, 0
+			}
+		", "test", null, Incremental);
+		Assert.notNull(result);
+		Assert.equals(2, result.object.numChildren);
+
+		// Normal graphics should be visible, hover graphics hidden
+		final normalGfx:h2d.Graphics = cast result.object.getChildAt(0);
+		final hoverGfx:h2d.Graphics = cast result.object.getChildAt(1);
+		Assert.isTrue(normalGfx.visible, "Normal graphics should be visible");
+		Assert.isFalse(hoverGfx.visible, "Hover graphics should be hidden");
+
+		// Both should have drawn content (not empty buffers)
+		Assert.isTrue(hasGraphicsContent(normalGfx), "Normal graphics should have drawn content");
+		Assert.isTrue(hasGraphicsContent(hoverGfx), "Hover graphics (initially hidden) should still have drawn content");
+
+		// Toggle to hover (enum params need string values)
+		result.setParameter("status", "hover");
+		Assert.isFalse(normalGfx.visible, "Normal should now be hidden");
+		Assert.isTrue(hoverGfx.visible, "Hover should now be visible");
+
+		// Content should still be present in both
+		Assert.isTrue(hasGraphicsContent(normalGfx), "Normal graphics content should survive visibility toggle");
+		Assert.isTrue(hasGraphicsContent(hoverGfx), "Hover graphics content should survive visibility toggle");
+	}
+
+	@Test
+	public function testIncrementalDefaultGraphicsHasContent():Void {
+		// @default catch-all: only fires when NO conditional sibling matched.
+		// With @else (follows immediately preceding sibling), use @default for "none of the above".
+		final result = buildFromSource("
+			#test programmable(status:[normal,hover,pressed]=normal) {
+				@(status=>normal) graphics(rect(#ff0000, filled, 80, 40): 0, 0): 0, 0
+				@(status=>hover) graphics(rect(#00ff00, filled, 80, 40): 0, 0): 0, 0
+				@default graphics(rect(#0000ff, filled, 80, 40): 0, 0): 0, 0
+			}
+		", "test", null, Incremental);
+		Assert.notNull(result);
+		Assert.equals(3, result.object.numChildren);
+
+		final normalGfx:h2d.Graphics = cast result.object.getChildAt(0);
+		final hoverGfx:h2d.Graphics = cast result.object.getChildAt(1);
+		final defaultGfx:h2d.Graphics = cast result.object.getChildAt(2);
+
+		// Initially: normal visible, others hidden
+		Assert.isTrue(normalGfx.visible, "Normal should be visible");
+		Assert.isFalse(hoverGfx.visible, "Hover should be hidden");
+		Assert.isFalse(defaultGfx.visible, "@default should be hidden");
+
+		// All should have content regardless of visibility
+		Assert.isTrue(hasGraphicsContent(normalGfx), "Normal graphics should have content");
+		Assert.isTrue(hasGraphicsContent(hoverGfx), "Hover graphics should have content");
+		Assert.isTrue(hasGraphicsContent(defaultGfx), "@default graphics should have content");
+
+		// Switch to pressed (triggers @default)
+		result.setParameter("status", "pressed");
+		Assert.isFalse(normalGfx.visible);
+		Assert.isFalse(hoverGfx.visible);
+		Assert.isTrue(defaultGfx.visible, "@default should now be visible");
+		Assert.isTrue(hasGraphicsContent(defaultGfx), "@default graphics should have content when visible");
+	}
+
+	@Test
+	public function testIncrementalElseGraphicsHasContent():Void {
+		// @else follows immediately preceding sibling: fires when that sibling didn't match.
+		final result = buildFromSource("
+			#test programmable(status:[normal,hover]=normal) {
+				@(status=>normal) graphics(rect(#ff0000, filled, 80, 40): 0, 0): 0, 0
+				@else graphics(rect(#0000ff, filled, 80, 40): 0, 0): 0, 0
+			}
+		", "test", null, Incremental);
+		Assert.notNull(result);
+		Assert.equals(2, result.object.numChildren);
+
+		final normalGfx:h2d.Graphics = cast result.object.getChildAt(0);
+		final elseGfx:h2d.Graphics = cast result.object.getChildAt(1);
+
+		// Initially: normal matches, @else hidden
+		Assert.isTrue(normalGfx.visible, "Normal should be visible");
+		Assert.isFalse(elseGfx.visible, "@else should be hidden");
+
+		// Both should have content
+		Assert.isTrue(hasGraphicsContent(normalGfx), "Normal graphics should have content");
+		Assert.isTrue(hasGraphicsContent(elseGfx), "@else graphics should have content");
+
+		// Switch to hover (normal no longer matches, @else fires)
+		result.setParameter("status", "hover");
+		Assert.isFalse(normalGfx.visible, "Normal should be hidden");
+		Assert.isTrue(elseGfx.visible, "@else should now be visible");
+		Assert.isTrue(hasGraphicsContent(elseGfx), "@else graphics should have content when visible");
+	}
+
+	@Test
+	public function testIncrementalConditionalGraphicsWithDynamicContent():Void {
+		// Conditional graphics where the content itself references a parameter
+		final result = buildFromSource("
+			#test programmable(status:[normal,hover]=normal, w:uint=100) {
+				@(status=>normal) graphics(rect(#ff0000, filled, $w, 30): 0, 0): 0, 0
+				@(status=>hover) graphics(rect(#00ff00, filled, $w, 30): 0, 0): 0, 0
+			}
+		", "test", null, Incremental);
+		Assert.notNull(result);
+
+		final normalGfx:h2d.Graphics = cast result.object.getChildAt(0);
+		final hoverGfx:h2d.Graphics = cast result.object.getChildAt(1);
+
+		// Both should have content after initial build
+		Assert.isTrue(hasGraphicsContent(normalGfx), "Normal dynamic graphics should have content");
+		Assert.isTrue(hasGraphicsContent(hoverGfx), "Hover dynamic graphics (hidden) should have content");
+
+		// Change the width parameter — tracked expression should redraw both
+		result.setParameter("w", 50);
+		Assert.isTrue(hasGraphicsContent(normalGfx), "Normal graphics should have content after param change");
+		Assert.isTrue(hasGraphicsContent(hoverGfx), "Hover graphics should have content after param change");
+
+		// Now toggle visibility
+		result.setParameter("status", "hover");
+		Assert.isFalse(normalGfx.visible);
+		Assert.isTrue(hoverGfx.visible);
+		Assert.isTrue(hasGraphicsContent(hoverGfx), "Hover graphics should have content when made visible");
+	}
+
 	// ==================== Bool settings ====================
 
 	@Test
@@ -2951,6 +3083,14 @@ class BuilderUnitTest extends BuilderTestBase {
 				return cast child;
 		}
 		return null;
+	}
+
+	/** Check if an h2d.Graphics has any drawn content by inspecting its internal bounds tracking. */
+	@:access(h2d.Graphics)
+	static function hasGraphicsContent(g:h2d.Graphics):Bool {
+		// After drawing, xMin/yMin are updated from their initial POSITIVE_INFINITY values.
+		// If still at POSITIVE_INFINITY, no vertices were ever added.
+		return g.xMin != Math.POSITIVE_INFINITY;
 	}
 
 	static function findPixelLinesChild(obj:h2d.Object):Null<bh.base.PixelLine.PixelLines> {
