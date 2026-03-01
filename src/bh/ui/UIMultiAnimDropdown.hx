@@ -244,7 +244,8 @@ class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisab
 			case Closed: "closed";
 		}
 		// trace('${standardUIElementStatusToString(this.status)} ${pStatus}');
-		final currentResult = mainPartImages.findResultByCombo(standardUIElementStatusToString(this.status), pStatus);
+		final statusStr = if (this.disabled) "disabled" else standardUIElementStatusToString(this.status);
+		final currentResult = mainPartImages.findResultByCombo(statusStr, pStatus);
 		var updatable = currentResult.getUpdatable("panelPoint");
 
 		transitionTimer = transitionTimerOverride ?? currentResult.rootSettings.getFloatOrDefault("transitionTimer", 1.0);

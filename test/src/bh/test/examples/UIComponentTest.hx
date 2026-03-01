@@ -39,6 +39,9 @@ import bh.ui.UIElement.SubElementsType;
 import h2d.col.Bounds;
 import h2d.col.Point;
 import bh.multianim.MultiAnimParser.ResolvedIndexParameters;
+import bh.paths.MultiAnimPaths.PathType;
+import bh.ui.UICardHandTypes.PathDistribution;
+import bh.ui.UICardHandTypes.PathOrientation;
 
 /**
  * Non-visual unit tests for UI components.
@@ -2652,5 +2655,238 @@ class UIComponentTest extends BuilderTestBase {
 		screen.update(0);
 
 		Assert.equals(0, screen.eventCount());
+	}
+
+	// ============== Card Hand Layout Tests ==============
+
+	@Test
+	public function testCardHandFanLayoutEmpty():Void {
+		var result = bh.ui.UICardHandLayout.computeFanLayout(0, 640, 680, 800, 40, -1, 30, 1.15, 3);
+		Assert.equals(0, result.length);
+	}
+
+	@Test
+	public function testCardHandFanLayoutSingleCard():Void {
+		var result = bh.ui.UICardHandLayout.computeFanLayout(1, 640, 680, 800, 40, -1, 30, 1.15, 3);
+		Assert.equals(1, result.length);
+		Assert.floatEquals(640.0, result[0].x);
+		Assert.floatEquals(680.0, result[0].y);
+		Assert.floatEquals(0.0, result[0].rotation);
+		Assert.floatEquals(1.0, result[0].scale);
+	}
+
+	@Test
+	public function testCardHandFanLayoutSymmetric():Void {
+		// 5 cards should be symmetric around center
+		var result = bh.ui.UICardHandLayout.computeFanLayout(5, 640, 680, 800, 40, -1, 30, 1.15, 3);
+		Assert.equals(5, result.length);
+
+		// Center card should be at anchorX
+		Assert.floatEquals(640.0, result[2].x);
+
+		// Left and right cards should be symmetric around center
+		var leftOffset = 640.0 - result[0].x;
+		var rightOffset = result[4].x - 640.0;
+		Assert.isTrue(Math.abs(leftOffset - rightOffset) < 0.01);
+
+		// Rotations should be symmetric: left negative, center zero, right positive
+		Assert.isTrue(result[0].rotation < 0);
+		Assert.floatEquals(0.0, result[2].rotation);
+		Assert.isTrue(result[4].rotation > 0);
+		Assert.isTrue(Math.abs(result[0].rotation + result[4].rotation) < 0.01);
+	}
+
+	@Test
+	public function testCardHandFanLayoutHover():Void {
+		// Hovering middle card should scale it up
+		var result = bh.ui.UICardHandLayout.computeFanLayout(3, 640, 680, 800, 40, 1, 30, 1.15, 3);
+		Assert.equals(3, result.length);
+		Assert.floatEquals(1.15, result[1].scale);
+		Assert.floatEquals(1.0, result[0].scale);
+		Assert.floatEquals(1.0, result[2].scale);
+	}
+
+	@Test
+	public function testCardHandLinearLayoutEmpty():Void {
+		var result = bh.ui.UICardHandLayout.computeLinearLayout(0, 640, 680, 80, 8, 600, -1, 30, 1.15, 20);
+		Assert.equals(0, result.length);
+	}
+
+	@Test
+	public function testCardHandLinearLayoutCentered():Void {
+		// 3 cards should be centered around anchorX
+		var result = bh.ui.UICardHandLayout.computeLinearLayout(3, 640, 680, 80, 8, 600, -1, 30, 1.15, 20);
+		Assert.equals(3, result.length);
+
+		// Center card at anchor
+		Assert.floatEquals(640.0, result[1].x);
+
+		// All at same Y
+		Assert.floatEquals(680.0, result[0].y);
+		Assert.floatEquals(680.0, result[1].y);
+		Assert.floatEquals(680.0, result[2].y);
+
+		// No rotation in linear mode
+		Assert.floatEquals(0.0, result[0].rotation);
+		Assert.floatEquals(0.0, result[1].rotation);
+		Assert.floatEquals(0.0, result[2].rotation);
+	}
+
+	@Test
+	public function testCardHandLinearLayoutHover():Void {
+		var result = bh.ui.UICardHandLayout.computeLinearLayout(3, 640, 680, 80, 8, 600, 1, 30, 1.15, 20);
+		Assert.equals(3, result.length);
+
+		// Hovered card pops up
+		Assert.floatEquals(650.0, result[1].y); // 680 - 30
+		Assert.floatEquals(1.15, result[1].scale);
+
+		// Non-hovered cards at normal Y
+		Assert.floatEquals(680.0, result[0].y);
+		Assert.floatEquals(680.0, result[2].y);
+	}
+
+	@Test
+	public function testCardHandLinearLayoutCompression():Void {
+		// Many cards should compress to fit maxWidth
+		var result = bh.ui.UICardHandLayout.computeLinearLayout(10, 640, 680, 80, 8, 400, -1, 30, 1.15, 20);
+		Assert.equals(10, result.length);
+
+		// Total span should not exceed maxWidth
+		var leftMost = result[0].x;
+		var rightMost = result[9].x;
+		Assert.isTrue((rightMost - leftMost) <= 400.0);
+	}
+
+	@Test
+	public function testCardHandFanLayoutNeighborSpread():Void {
+		// Hover should push neighbors apart
+		var noHover = bh.ui.UICardHandLayout.computeFanLayout(5, 640, 680, 800, 40, -1, 30, 1.15, 3);
+		var withHover = bh.ui.UICardHandLayout.computeFanLayout(5, 640, 680, 800, 40, 2, 30, 1.15, 3);
+
+		// Left neighbor should be pushed further left
+		Assert.isTrue(withHover[1].x < noHover[1].x);
+		// Right neighbor should be pushed further right
+		Assert.isTrue(withHover[3].x > noHover[3].x);
+	}
+
+	@Test
+	public function testCardHandFanLayoutNormals():Void {
+		// Fan layout normals should point outward (toward arc center = upward for small angles)
+		var result = bh.ui.UICardHandLayout.computeFanLayout(3, 640, 680, 800, 40, -1, 30, 1.15, 3);
+		// Center card normal should point straight up
+		Assert.floatEquals(0.0, result[1].normalX);
+		Assert.isTrue(result[1].normalY < 0); // upward
+	}
+
+	@Test
+	public function testCardHandLinearLayoutNormals():Void {
+		// Linear layout normals should point straight up
+		var result = bh.ui.UICardHandLayout.computeLinearLayout(3, 640, 680, 80, 8, 600, -1, 30, 1.15, 20);
+		for (pos in result) {
+			Assert.floatEquals(0.0, pos.normalX);
+			Assert.floatEquals(-1.0, pos.normalY);
+		}
+	}
+
+	// ============== Path Layout Tests ==============
+
+	@Test
+	public function testCardHandPathLayoutEmpty():Void {
+		var path = createLinePath(0, 0, 400, 0);
+		var result = bh.ui.UICardHandLayout.computePathLayout(0, path, EvenRate, Straight, -1, 30, 1.15, 0.05);
+		Assert.equals(0, result.length);
+	}
+
+	@Test
+	public function testCardHandPathLayoutSingleCard():Void {
+		// Single card should be at path midpoint
+		var path = createLinePath(0, 0, 400, 0);
+		var result = bh.ui.UICardHandLayout.computePathLayout(1, path, EvenRate, Straight, -1, 30, 1.15, 0.05);
+		Assert.equals(1, result.length);
+		Assert.floatEquals(200.0, result[0].x); // midpoint of 0..400
+		Assert.floatEquals(0.0, result[0].y);
+		Assert.floatEquals(0.0, result[0].rotation); // Straight orientation
+	}
+
+	@Test
+	public function testCardHandPathLayoutEvenRate():Void {
+		// 3 cards on a horizontal line should be at 0, 200, 400
+		var path = createLinePath(0, 0, 400, 0);
+		var result = bh.ui.UICardHandLayout.computePathLayout(3, path, EvenRate, Straight, -1, 30, 1.15, 0.05);
+		Assert.equals(3, result.length);
+		Assert.floatEquals(0.0, result[0].x);
+		Assert.floatEquals(200.0, result[1].x);
+		Assert.floatEquals(400.0, result[2].x);
+	}
+
+	@Test
+	public function testCardHandPathLayoutEvenArcLength():Void {
+		// For a straight line, EvenArcLength should give same result as EvenRate
+		var path = createLinePath(0, 0, 400, 0);
+		var result = bh.ui.UICardHandLayout.computePathLayout(3, path, EvenArcLength, Straight, -1, 30, 1.15, 0.05);
+		Assert.equals(3, result.length);
+		Assert.isTrue(Math.abs(result[0].x - 0.0) < 1.0);
+		Assert.isTrue(Math.abs(result[1].x - 200.0) < 1.0);
+		Assert.isTrue(Math.abs(result[2].x - 400.0) < 1.0);
+	}
+
+	@Test
+	public function testCardHandPathLayoutTangentOrientation():Void {
+		// Horizontal line: tangent angle should be ~0 radians (pointing right)
+		var path = createLinePath(0, 0, 400, 0);
+		var result = bh.ui.UICardHandLayout.computePathLayout(3, path, EvenRate, Tangent, -1, 30, 1.15, 0.05);
+		for (pos in result) {
+			Assert.isTrue(Math.abs(pos.rotation) < 0.1); // near zero for horizontal line
+		}
+	}
+
+	@Test
+	public function testCardHandPathLayoutStraightOrientation():Void {
+		// Straight orientation: all rotations should be 0 regardless of path
+		var path = createLinePath(0, 0, 400, 400); // diagonal line
+		var result = bh.ui.UICardHandLayout.computePathLayout(3, path, EvenRate, Straight, -1, 30, 1.15, 0.05);
+		for (pos in result) {
+			Assert.floatEquals(0.0, pos.rotation);
+		}
+	}
+
+	@Test
+	public function testCardHandPathLayoutTangentClamped():Void {
+		// Diagonal line at 45 degrees; clamp at 10 degrees should limit rotation
+		var path = createLinePath(0, 0, 400, 400);
+		var result = bh.ui.UICardHandLayout.computePathLayout(3, path, EvenRate, TangentClamped(10.0), -1, 30, 1.15, 0.05);
+		var maxRad = 10.0 * Math.PI / 180.0;
+		for (pos in result) {
+			Assert.isTrue(pos.rotation >= -maxRad - 0.001);
+			Assert.isTrue(pos.rotation <= maxRad + 0.001);
+		}
+	}
+
+	@Test
+	public function testCardHandPathLayoutHover():Void {
+		var path = createLinePath(0, 0, 400, 0);
+		var result = bh.ui.UICardHandLayout.computePathLayout(3, path, EvenRate, Straight, 1, 30, 1.15, 0.05);
+		Assert.floatEquals(1.15, result[1].scale);
+		Assert.floatEquals(1.0, result[0].scale);
+		Assert.floatEquals(1.0, result[2].scale);
+	}
+
+	@Test
+	public function testCardHandPathLayoutNormals():Void {
+		// For a horizontal line (tangent pointing right), normal should be perpendicular
+		var path = createLinePath(0, 0, 400, 0);
+		var result = bh.ui.UICardHandLayout.computePathLayout(3, path, EvenRate, Straight, -1, 30, 1.15, 0.05);
+		for (pos in result) {
+			// Normal perpendicular to horizontal tangent: normalX ~= 0, normalY ~= 1 (or -1)
+			Assert.isTrue(Math.abs(pos.normalX) < 0.1);
+			Assert.isTrue(Math.abs(pos.normalY) > 0.9);
+		}
+	}
+
+	// Helper: create a simple line path from (x1,y1) to (x2,y2)
+	static function createLinePath(x1:Float, y1:Float, x2:Float, y2:Float):bh.paths.MultiAnimPaths.Path {
+		var sp = new bh.paths.MultiAnimPaths.SinglePath(new bh.base.FPoint(x1, y1), new bh.base.FPoint(x2, y2), Line);
+		return new bh.paths.MultiAnimPaths.Path([sp]);
 	}
 }

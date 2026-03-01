@@ -61,6 +61,8 @@ class AnimatedPath {
 
 	public var loop:Bool = false;
 	public var pingPong:Bool = false;
+	/** Override the animatedPath's duration at runtime. Only applies to Time mode. */
+	public var durationOverride:Null<Float> = null;
 
 	var time:Float = 0.;
 	var distance:Float = 0.;
@@ -206,7 +208,8 @@ class AnimatedPath {
 				rate = getDistanceRate();
 				modeComplete = rate >= 1.0;
 
-			case Time(duration):
+			case Time(baseDuration):
+				var duration = if (durationOverride != null) durationOverride else baseDuration;
 				var timeRate = Math.min(time / duration, 1.0);
 				// Progress curve maps time-rate to path-rate
 				rate = if (progressCurveSegments.length > 0)
@@ -245,7 +248,7 @@ class AnimatedPath {
 				cycleCount++;
 				currentEventIndex = 0;
 				switch mode {
-					case Time(duration): time -= duration;
+					case Time(baseDuration): time -= if (durationOverride != null) durationOverride else baseDuration;
 					case Distance(_): distance -= pathLength;
 				}
 				if (pingPong) reversed = !reversed;
@@ -254,7 +257,8 @@ class AnimatedPath {
 				switch mode {
 					case Distance(baseSpeed):
 						rate = getDistanceRate();
-					case Time(duration):
+					case Time(baseDuration):
+						var duration = if (durationOverride != null) durationOverride else baseDuration;
 						var timeRate = Math.min(time / duration, 1.0);
 						rate = if (progressCurveSegments.length > 0) evaluateCurveSlot(progressCurveSegments, timeRate) else timeRate;
 				}
