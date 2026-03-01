@@ -1,6 +1,7 @@
 package bh.ui;
 
 import bh.base.FPoint;
+import bh.multianim.MultiAnimBuilder.BuilderResolvedSettings;
 import bh.multianim.MultiAnimBuilder.BuilderResult;
 import bh.ui.screens.UIScreen.LayersEnum;
 
@@ -69,13 +70,11 @@ enum CardHandEvent {
 	DiscardAnimComplete(cardId:CardId);
 }
 
-@:structInit
-@:nullSafety
-class CardTarget {
-	public var id:String;
-	public var boundsProvider:() -> h2d.col.Bounds;
-	public var accepts:Null<(cardId:CardId) -> Bool> = null;
-}
+/** Callback for target highlight state changes. Receives the interactive id, highlight on/off, and the interactive's metadata. */
+typedef TargetHighlightCallback = (targetId:String, highlight:Bool, metadata:BuilderResolvedSettings) -> Void;
+
+/** Callback to filter which targets accept a card. Return true to accept. */
+typedef TargetAcceptsCallback = (cardId:CardId, targetId:String, metadata:BuilderResolvedSettings) -> Bool;
 
 /** Configuration for UICardHandHelper.
  *
@@ -133,7 +132,6 @@ typedef CardHandConfig = {
 	// Layers
 	var ?handLayer:LayersEnum;
 	var ?dragLayer:LayersEnum;
-	var ?targetingLineLayer:LayersEnum;
 
 	// .manim element names for animated paths (null = no animation, instant)
 	var ?drawPathName:String;

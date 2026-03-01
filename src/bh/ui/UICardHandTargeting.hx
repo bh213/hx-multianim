@@ -6,13 +6,18 @@ import bh.multianim.MultiAnimBuilder.BuilderResult;
 import bh.paths.MultiAnimPaths;
 import bh.paths.MultiAnimPaths.PathNormalization;
 import bh.ui.UICardHandTypes.CardId;
-import bh.ui.UICardHandTypes.CardTarget;
+import bh.ui.UICardHandTypes.TargetHighlightCallback;
+import bh.ui.UICardHandTypes.TargetAcceptsCallback;
+import bh.ui.UIInteractiveWrapper;
 
 /** Manages targeting arrow visual and target zone hit-testing.
  *
  *  The arrow is rendered as a chain of `.manim` programmable instances placed along a
  *  `.manim` path (Stretch-normalized from origin to cursor). Each segment and the
  *  arrowhead receive a `valid:bool` parameter for color switching.
+ *
+ *  Target zones are `.manim` interactives (`UIInteractiveWrapper`) — hit testing uses
+ *  `containsPoint()` which handles coordinate transforms automatically via `globalToLocal`.
  *
  *  When no segment/head names are provided, no arrow visual is drawn but target
  *  detection still works. */
@@ -32,7 +37,7 @@ class UICardHandTargeting {
 	var activeSegmentCount:Int = 0;
 	var hasArrowVisual:Bool = false;
 
-	var targets:Array<CardTarget> = [];
+	var targets:Array<UIInteractiveWrapper> = [];
 	var activeTargetId:Null<String> = null;
 	var currentValid:Bool = false;
 
@@ -42,7 +47,10 @@ class UICardHandTargeting {
 	public var arrowEnabled:Bool = true;
 
 	/** Called when a target becomes highlighted or unhighlighted during targeting. */
-	public var onTargetHighlight:Null<(targetId:String, highlight:Bool) -> Void> = null;
+	public var onTargetHighlight:Null<TargetHighlightCallback> = null;
+
+	/** Optional filter: return false to reject a card from a target. */
+	public var acceptsFilter:Null<TargetAcceptsCallback> = null;
 
 	public function new(builder:MultiAnimBuilder, ?segmentName:String, ?headName:String, ?pathName:String, spacing:Float = 25.0) {
 		this.builder = builder;
@@ -81,14 +89,21 @@ class UICardHandTargeting {
 		return arrowContainer;
 	}
 
-	public function registerTarget(target:CardTarget):Void {
+	// === Target registration (interactive-based) ===
+
+	public function registerTarget(wrapper:UIInteractiveWrapper):Void {
 		for (i in 0...targets.length) {
-			if (targets[i].id == target.id) {
-				targets[i] = target;
+			if (targets[i].id == wrapper.id) {
+				targets[i] = wrapper;
 				return;
 			}
 		}
-		targets.push(target);
+		targets.push(wrapper);
+	}
+
+	public function registerTargets(wrappers:Array<UIInteractiveWrapper>):Void {
+		for (w in wrappers)
+			registerTarget(w);
 	}
 
 	public function unregisterTarget(id:String):Void {
@@ -103,20 +118,53 @@ class UICardHandTargeting {
 	}
 
 	public function clearTargets():Void {
-		if (activeTargetId != null && onTargetHighlight != null)
-			onTargetHighlight(activeTargetId, false);
+		if (activeTargetId != null && onTargetHighlight != null) {
+			var wrapper = findTarget(activeTargetId);
+			if (wrapper != null)
+				onTargetHighlight(activeTargetId, false, wrapper.metadata);
+		}
 		activeTargetId = null;
 		targets = [];
 	}
 
-	/** Hit-test targets at a position without updating any visuals.
-	 *  Used for direct-drag mode (arrow disabled). */
-	public function hitTestTargets(x:Float, y:Float, cardId:CardId):Null<String> {
-		for (target in targets) {
-			var bounds = target.boundsProvider();
-			if (bounds.contains(new h2d.col.Point(x, y))) {
-				if (target.accepts == null || target.accepts(cardId))
-					return target.id;
+	/** Hit-test targets and update highlight state (no arrow visual).
+	 *  Used during normal drag (arrow disabled) for continuous target feedback.
+	 *  @return The ID of the target under cursor, or null if none. */
+	public function updateHighlight(sceneX:Float, sceneY:Float, cardId:CardId):Null<String> {
+		var hoveredWrapper:Null<UIInteractiveWrapper> = null;
+		var pt = new h2d.col.Point(sceneX, sceneY);
+		for (wrapper in targets) {
+			if (wrapper.containsPoint(pt)) {
+				if (acceptsFilter == null || acceptsFilter(cardId, wrapper.id, wrapper.metadata)) {
+					hoveredWrapper = wrapper;
+					break;
+				}
+			}
+		}
+
+		var newTargetId = if (hoveredWrapper != null) hoveredWrapper.id else null;
+		if (newTargetId != activeTargetId) {
+			if (activeTargetId != null && onTargetHighlight != null) {
+				var oldWrapper = findTarget(activeTargetId);
+				if (oldWrapper != null)
+					onTargetHighlight(activeTargetId, false, oldWrapper.metadata);
+			}
+			activeTargetId = newTargetId;
+			if (activeTargetId != null && onTargetHighlight != null && hoveredWrapper != null)
+				onTargetHighlight(activeTargetId, true, hoveredWrapper.metadata);
+		}
+
+		return newTargetId;
+	}
+
+	/** Hit-test targets at a scene-space position without updating any visuals or highlight state.
+	 *  Used for final drop check in direct-drag mode. */
+	public function hitTestTargets(sceneX:Float, sceneY:Float, cardId:CardId):Null<String> {
+		var pt = new h2d.col.Point(sceneX, sceneY);
+		for (wrapper in targets) {
+			if (wrapper.containsPoint(pt)) {
+				if (acceptsFilter == null || acceptsFilter(cardId, wrapper.id, wrapper.metadata))
+					return wrapper.id;
 			}
 		}
 		return null;
@@ -124,35 +172,42 @@ class UICardHandTargeting {
 
 	/** Update the targeting visual from origin to cursor.
 	 *  Places segment programmables along the Stretch-normalized arrow path.
+	 *  @param originX, originY — local-space coords for arrow start position
+	 *  @param cursorX, cursorY — local-space coords for arrow end position
+	 *  @param sceneX, sceneY — scene-space coords for target hit testing
 	 *  @return The ID of the target under cursor, or null if none. */
-	public function updateTargetingLine(originX:Float, originY:Float, cursorX:Float, cursorY:Float, cardId:CardId):Null<String> {
+	public function updateTargetingLine(originX:Float, originY:Float, cursorX:Float, cursorY:Float, sceneX:Float, sceneY:Float,
+			cardId:CardId):Null<String> {
 		arrowContainer.visible = arrowEnabled;
 
-		// Find target under cursor
-		var hoveredTarget:Null<CardTarget> = null;
-		for (target in targets) {
-			var bounds = target.boundsProvider();
-			if (bounds.contains(new h2d.col.Point(cursorX, cursorY))) {
-				if (target.accepts == null || target.accepts(cardId)) {
-					hoveredTarget = target;
+		// Find target under cursor (scene-space coords for containsPoint)
+		var hoveredWrapper:Null<UIInteractiveWrapper> = null;
+		var pt = new h2d.col.Point(sceneX, sceneY);
+		for (wrapper in targets) {
+			if (wrapper.containsPoint(pt)) {
+				if (acceptsFilter == null || acceptsFilter(cardId, wrapper.id, wrapper.metadata)) {
+					hoveredWrapper = wrapper;
 					break;
 				}
 			}
 		}
 
 		// Update highlight state
-		var newTargetId = if (hoveredTarget != null) hoveredTarget.id else null;
+		var newTargetId = if (hoveredWrapper != null) hoveredWrapper.id else null;
 		if (newTargetId != activeTargetId) {
-			if (activeTargetId != null && onTargetHighlight != null)
-				onTargetHighlight(activeTargetId, false);
+			if (activeTargetId != null && onTargetHighlight != null) {
+				var oldWrapper = findTarget(activeTargetId);
+				if (oldWrapper != null)
+					onTargetHighlight(activeTargetId, false, oldWrapper.metadata);
+			}
 			activeTargetId = newTargetId;
-			if (activeTargetId != null && onTargetHighlight != null)
-				onTargetHighlight(activeTargetId, true);
+			if (activeTargetId != null && onTargetHighlight != null && hoveredWrapper != null)
+				onTargetHighlight(activeTargetId, true, hoveredWrapper.metadata);
 		}
 
-		var valid = hoveredTarget != null;
+		var valid = hoveredWrapper != null;
 
-		// Update arrow visuals
+		// Update arrow visuals (uses local-space coords for positioning)
 		if (hasArrowVisual && arrowEnabled && arrowPathName != null) {
 			var paths = builder.getPaths();
 			var origin = new FPoint(originX, originY);
@@ -173,16 +228,16 @@ class UICardHandTargeting {
 			// Place segments along path
 			for (i in 0...count) {
 				var rate = (i + 0.5) / (count + 1); // evenly spaced, leaving room for head
-				var pt = path.getPoint(rate);
+				var pt2 = path.getPoint(rate);
 				var angle = path.getTangentAngle(rate);
 
 				var inv = segmentPoolInvalid[i];
 				var val = segmentPoolValid[i];
 				inv.object.visible = !currentValid;
 				val.object.visible = currentValid;
-				inv.object.setPosition(pt.x, pt.y);
+				inv.object.setPosition(pt2.x, pt2.y);
 				inv.object.rotation = angle;
-				val.object.setPosition(pt.x, pt.y);
+				val.object.setPosition(pt2.x, pt2.y);
 				val.object.rotation = angle;
 			}
 
@@ -226,8 +281,18 @@ class UICardHandTargeting {
 		if (headInvalid != null) headInvalid.object.visible = false;
 		if (headValid != null) headValid.object.visible = false;
 
-		if (activeTargetId != null && onTargetHighlight != null)
-			onTargetHighlight(activeTargetId, false);
+		if (activeTargetId != null && onTargetHighlight != null) {
+			var wrapper = findTarget(activeTargetId);
+			if (wrapper != null)
+				onTargetHighlight(activeTargetId, false, wrapper.metadata);
+		}
 		activeTargetId = null;
+	}
+
+	function findTarget(id:String):Null<UIInteractiveWrapper> {
+		for (w in targets)
+			if (w.id == id)
+				return w;
+		return null;
 	}
 }

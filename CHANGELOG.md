@@ -3,6 +3,22 @@
 ## [0.13-dev] - 2026-02-25
 
 ### Added
+- **Card hand helper improvements** — `UICardHandHelper` targeting and hover enhancements
+  - **Interactive-based targets** — targets are now `UIInteractiveWrapper` instances instead of manual `CardTarget` with `boundsProvider`; hit testing uses `containsPoint()` for automatic coordinate transforms
+  - `registerTargetInteractive(wrapper)`, `registerTargetInteractives(wrappers)`, `unregisterTargetInteractive(id)` replace old `registerTarget`/`unregisterTarget`
+  - `TargetHighlightCallback` now includes `metadata:BuilderResolvedSettings` for programmatic target updates
+  - `TargetAcceptsCallback` — new filter callback `(cardId, targetId, metadata) -> Bool` for per-card target filtering
+  - **Drag container** — dedicated `dragContainer` (h2d.Layers) for dragged cards and targeting line, sharing local space with `handContainer`; replaces ad-hoc `screen.addObjectToLayer` reparenting
+  - **Scene-space coordinates** — `onMouseMove`/`onMouseRelease` now convert scene coords to `handContainer` local space via `globalToLocal`, fixing targeting and drag in offset containers (tab panels, etc.)
+  - **No-arrow target highlight** — targets highlight during normal drag (arrow disabled) via `updateHighlight()` with full highlight/unhighlight lifecycle
+  - **Position-based hover detection** — hover now uses `getCardAtBasePosition()` in `onMouseMove` instead of relying on Interactive UIEntering/UILeaving events; prevents z-order issues when hovered card is brought to top layer
+  - **Nearest-center hover selection** — among overlapping card bounding boxes, the card whose center is closest to cursor wins; handles tightly stacked cards naturally
+  - **Hover z-order** — hovered card is brought to top render layer for proper visual stacking; restored on un-hover
+  - **Card-to-card z-order** — card-to-card combine target is brought to top layer when highlighted; restored in all un-highlight paths
+  - **Animation cancellation on instant position** — `applyLayout` now cancels lingering rearrange animations before instant positioning, fixing hover pop failures during fast mouse movement
+  - `UIRichInteractiveHelper.setHoverState()` — new method for external callers that bypass Interactive events
+  - **BREAKING**: Removed `CardTarget` class — use `UIInteractiveWrapper` directly
+  - **BREAKING**: Removed `targetingLineLayer` from `CardHandConfig` — targeting line now lives in `dragContainer`
 - **Named range parameters** — `range(from: X, to: Y)` and `range(from: X, until: Y [, step: S])` syntax for repeatable iterators
   - `to:` is inclusive (`to: 5` produces 0..5), `until:` is exclusive (`until: 5` produces 0..4)
   - Optional `step:` parameter for custom increments
