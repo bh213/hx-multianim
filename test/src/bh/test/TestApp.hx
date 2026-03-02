@@ -61,6 +61,16 @@ class TestApp extends hxd.App {
 		testRunner.addCase(new bh.test.examples.ParticleRuntimeTest());
 		testRunner.addCase(new bh.test.examples.TweenManagerTest());
 		testRunner.addCase(new bh.test.examples.ProgrammableCodeGenTest(s2d));
+		testRunner.addCase(new bh.test.examples.ScreenTransitionTest());
+		testRunner.addCase(new bh.test.examples.AnimatedPathTest());
+		testRunner.addCase(new bh.test.examples.CardHandOrchestratorTest());
+		testRunner.addCase(new bh.test.examples.AnimFilterRuntimeTest());
+		testRunner.addCase(new bh.test.examples.RichTextTest());
+		testRunner.addCase(new bh.test.examples.ParameterizedSlotTest());
+		testRunner.addCase(new bh.test.examples.InteractiveEventTest());
+		testRunner.addCase(new bh.test.examples.FlowOverflowTest());
+		testRunner.addCase(new bh.test.examples.DynamicRefTest());
+		testRunner.addCase(new bh.test.examples.BitFlagTest());
 		#if MULTIANIM_DEV
 		testRunner.addCase(new bh.test.examples.HotReloadTest());
 		#end

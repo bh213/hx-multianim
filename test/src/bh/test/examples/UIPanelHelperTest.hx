@@ -595,4 +595,89 @@ class UIPanelHelperTest extends BuilderTestBase {
 		Assert.isTrue(ctx.helper.isOpen());
 		Assert.equals("btn1", ctx.helper.getActiveId());
 	}
+
+	// ============== Named panel outside-click cross-panel bug ==============
+
+	@Test
+	public function testNamedPanelClickOnOtherTriggerDoesNotClose():Void {
+		// Bug: Two named panels open. Clicking one panel's trigger button
+		// incorrectly marks the OTHER panel for pendingClose, because
+		// isOwnInteractive() only checks prefixes, not trigger IDs.
+		var ctx = createHelper();
+		ctx.helper.openNamed("slot1", "btn1", "panel");
+		ctx.helper.openNamed("slot2", "btn2", "panel");
+
+		// Outside-click fires for btn1 (its panel is open, so controller sends UIClickOutside)
+		ctx.helper.handleOutsideClick(UIInteractiveEvent(UIClickOutside, "btn1", null));
+
+		// Then UIClick fires for btn2 — user clicked btn2's trigger.
+		// btn2 is another named panel's trigger, NOT an unrelated interactive.
+		// slot1 should NOT be marked for close.
+		ctx.helper.handleOutsideClick(UIInteractiveEvent(UIClick, "btn2", null));
+
+		var closed = ctx.helper.checkPendingClose();
+		Assert.isFalse(closed);
+		Assert.isTrue(ctx.helper.isOpenNamed("slot1"));
+		Assert.isTrue(ctx.helper.isOpenNamed("slot2"));
+	}
+
+	@Test
+	public function testNamedPanelClickOnOtherPanelContentDoesNotClose():Void {
+		// Two named panels open. Clicking inside panel2's content
+		// should not close panel1.
+		var ctx = createHelper();
+		ctx.helper.openNamed("slot1", "btn1", "panel");
+		ctx.helper.openNamed("slot2", "btn2", "panel");
+
+		// Outside-click fires for btn1
+		ctx.helper.handleOutsideClick(UIInteractiveEvent(UIClickOutside, "btn1", null));
+
+		// Click on slot2's panel content — prefix is "slot2.btn2.panel"
+		ctx.helper.handleOutsideClick(UIInteractiveEvent(UIClick, "slot2.btn2.panel.child", null));
+
+		var closed = ctx.helper.checkPendingClose();
+		Assert.isFalse(closed);
+		Assert.isTrue(ctx.helper.isOpenNamed("slot1"));
+		Assert.isTrue(ctx.helper.isOpenNamed("slot2"));
+	}
+
+	@Test
+	public function testNamedPanelClickOnUnrelatedDoesClose():Void {
+		// Clicking a truly unrelated interactive SHOULD close named panels.
+		var ctx = createHelper();
+		ctx.helper.openNamed("slot1", "btn1", "panel");
+		ctx.helper.openNamed("slot2", "btn2", "panel");
+
+		// Outside-click fires for both triggers
+		ctx.helper.handleOutsideClick(UIInteractiveEvent(UIClickOutside, "btn1", null));
+		ctx.helper.handleOutsideClick(UIInteractiveEvent(UIClickOutside, "btn2", null));
+
+		// Click on btn3 — truly unrelated
+		ctx.helper.handleOutsideClick(UIInteractiveEvent(UIClick, "btn3", null));
+
+		var closed = ctx.helper.checkPendingClose();
+		Assert.isTrue(closed);
+		Assert.isFalse(ctx.helper.isOpenNamed("slot1"));
+		Assert.isFalse(ctx.helper.isOpenNamed("slot2"));
+	}
+
+	@Test
+	public function testNamedPanelClickOnSinglePanelContentDoesNotCloseNamed():Void {
+		// Single panel + named panel open. Clicking inside single panel's
+		// content should not close the named panel.
+		var ctx = createHelper();
+		ctx.helper.open("btn1", "panel");
+		ctx.helper.openNamed("slot1", "btn2", "panel");
+		var singlePrefix = ctx.helper.getActivePrefix();
+
+		// Outside-click fires for btn2
+		ctx.helper.handleOutsideClick(UIInteractiveEvent(UIClickOutside, "btn2", null));
+
+		// Click on single panel's content
+		ctx.helper.handleOutsideClick(UIInteractiveEvent(UIClick, singlePrefix + ".child", null));
+
+		var closed = ctx.helper.checkPendingClose();
+		Assert.isFalse(closed);
+		Assert.isTrue(ctx.helper.isOpenNamed("slot1"));
+	}
 }

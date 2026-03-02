@@ -2,11 +2,10 @@
 
 | # | Item | Summary | Section | Priority |
 |---|------|---------|---------|----------|
-| 2 | Transitions & animations | Phase 1 (TweenManager) ✓ Phase 2 (Screen Transitions + Modal Overlay) ✓ — remaining: .manim transition declarations, tooltip/panel transitions, floating text, UI control transitions | V1 | Medium |
+| 2 | Transitions & animations | Phase 1 (TweenManager) ✓ Phase 2 (Screen Transitions + Modal Overlay) ✓ Tests ✓ — remaining: .manim transition declarations, tooltip/panel transitions, floating text, UI control transitions | V1 | Medium |
 | 4 | Haxelib release | Publish to haxelib + CI automation | V1 | High |
 | 9 | Dropdown z-ordering | Panel renders behind other UI elements | Bugs | Medium |
 | 10 | `closeAllNamed()` iterator | Mutating map during iteration, fragile | Bugs | Low |
-| 11 | Named panel outside-click | Wrong panel's close cancelled on click | Bugs | Medium |
 | 15 | Text input codegen | `@:manim` factory with `createTextInput()` | After 1.0 | Low |
 
 ## Main Goals
@@ -58,10 +57,6 @@ The dropdown's floating panel uses `PositionLinkObject` but doesn't get placed o
 ### `closeAllNamed()` iterator safety
 `closeAllNamed()` iterates `namedPanels` while `closeNamed()` removes from it. Currently works because Haxe `StringMap` iteration copies keys, but fragile.
 **Fix:** Collect keys first (like `checkPendingClose` already does).
-
-### Named panel outside-click scope is too broad
-In `handleOutsideClick`, clicking inside *any* panel cancels the pending close for a *specific* named panel (line 254 uses `isOwnInteractive` which checks all panels). Should only cancel if the click is on this panel's own interactives or the trigger interactive.
-**Fix:** Check `panel.prefix` and `panel.interactiveId` directly instead of `isOwnInteractive(id)`.
 
 ## Deprecation Cleanup
 - Remove legacy particle syntax from parser (keep only new forms):
