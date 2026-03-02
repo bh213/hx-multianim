@@ -11,6 +11,8 @@ import bh.ui.screens.UIScreen;
 import h2d.col.Point;
 import bh.multianim.MultiAnimParser.ResolvedSettings;
 import bh.multianim.MultiAnimParser.SettingValue;
+import bh.multianim.MultiAnimBuilder.BuilderResolvedSettings;
+import bh.ui.screens.UIScreen.ModalOverlayConfig;
 
 /**
  * Mock CaptureEventsControl for testing UI components.
@@ -165,6 +167,11 @@ class UITestScreen extends UIScreenBase {
 			registeredPrefixes:Array<String>, multiForwardSettings:Array<String>,
 			elementName:String):{main:Null<Map<String, Dynamic>>, prefixed:Map<String, Map<String, Dynamic>>} {
 		return splitSettings(settings, controlSettings, behavioralSettings, registeredPrefixes, multiForwardSettings, elementName);
+	}
+
+	/** Expose parseOverlaySettings for testing. */
+	public function testParseOverlaySettings(rootSettings:BuilderResolvedSettings):Null<ModalOverlayConfig> {
+		return parseOverlaySettings(rootSettings);
 	}
 }
 

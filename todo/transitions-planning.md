@@ -469,17 +469,19 @@ The `transition` property on a group or root means "when this element's visibili
 
 ## Implementation Phases
 
-### Phase 1: TweenManager (foundation)
-- New file: `src/bh/base/TweenManager.hx`
-- Core: Tween, TweenSequence, TweenGroup, TweenManager
-- Uses existing `TweenUtils` easing functions
-- Integration point: `ScreenManager.update(dt)` calls `tweenManager.update(dt)`
-- Access: `screenManager.tweens` or `screen.tweens`
+### Phase 1: TweenManager (foundation) ✅ DONE
+- `src/bh/base/TweenManager.hx` — Tween, TweenSequence, TweenGroup, TweenManager
+- Uses `FloatTools.applyEasing()` (existing easing functions)
+- Integration: `ScreenManager.update(dt)` calls `tweens.update(dt)`
+- Access: `screenManager.tweens`
+- 57 unit tests in `TweenManagerTest.hx`
 
-### Phase 2: Screen Transitions
-- `ScreenTransition` enum on ScreenManager
-- `switchTo(screen, ?transition)`, `openDialog(dialog, ?transition)`, `closeDialog(?transition)`
-- Both screens in scene during transition, input routing rules
+### Phase 2: Screen Transitions + Modal Overlay ✅ DONE
+- `ScreenTransition` enum: None, Fade, SlideLeft/Right/Up/Down, Custom
+- `switchScreen()`, `switchTo()`, `modalDialogWithTransition()`, `closeDialogWithTransition()`
+- `ModalOverlayConfig` typedef + `parseOverlaySettings()` for `.manim` settings integration
+- Overlay at layer 5 (between master=4 and dialog=6), blur filter support
+- `OkCancelDialog` reads overlay from `.manim`, supports `closeTransition`
 
 ### Phase 3: Tooltip/Panel Transitions
 - Integrate with tooltip-planning.md
@@ -505,8 +507,7 @@ The `transition` property on a group or root means "when this element's visibili
 
 ## Open Questions
 
-1. **TweenManager ownership** — one global (on ScreenManager) or one per screen? Per-screen means transitions auto-cancel when screen is removed. Global means cross-screen transitions work.
-   - Recommendation: one on ScreenManager (global), screens get a reference via `this.tweens`
+1. **TweenManager ownership** — ✅ Resolved: one on ScreenManager (global), accessed via `screenManager.tweens`
 
 2. **Combo-build transition** — combo-built elements pre-build all permutations. During transition, both old and new need to be in scene. Currently `doRedraw()` removes old and adds new. Need to keep old temporarily.
    - Solution: `doRedraw()` checks for transition spec. If present, adds new alongside old, starts tween, removes old on complete.
@@ -514,8 +515,7 @@ The `transition` property on a group or root means "when this element's visibili
 3. **Transition + incremental** — incremental updates toggle visibility instantly. A transition-aware version would need to animate alpha instead of toggling `.visible`.
    - Solution: wrap `obj.visible = true/false` with `obj.alpha = 0 -> tween to 1` / `tween alpha to 0 -> visible = false`.
 
-4. **Interrupted transitions** — what if a state changes again mid-transition? (e.g., mouse leaves during hover fade-in)
-   - Solution: cancel current tween, start new transition from current interpolated value. The `from` value is captured at tween creation from the current property value.
+4. **Interrupted transitions** — ✅ Resolved: `Tween.init()` captures current property value as "from", so interrupted tweens pick up from current state. `finalizeTransition()` immediately completes any in-progress transition if a new one starts.
 
 5. **Floating text pooling** — for damage numbers in a game, creating/destroying h2d.Text objects per hit is wasteful.
    - Solution: optional object pool in FloatingText. Or leave to application code.

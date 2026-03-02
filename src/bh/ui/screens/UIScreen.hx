@@ -22,6 +22,16 @@ import bh.multianim.MultiAnimBuilder;
 import bh.stateanim.AnimParser;
 import bh.ui.controllers.UIController;
 import bh.base.FPoint;
+import bh.base.TweenManager;
+import bh.multianim.MultiAnimBuilder.BuilderResolvedSettings;
+
+typedef ModalOverlayConfig = {
+	var ?color:Int;
+	var ?alpha:Float;
+	var ?fadeIn:Float;
+	var ?fadeOut:Float;
+	var ?blur:Float;
+}
 
 enum LayersEnum {
 	ModalLayer;
@@ -56,12 +66,15 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	final root:h2d.Layers;
 	final screenManager:ScreenManager;
 	final layers:Map<LayersEnum, Int>;
+	var tweens(get, never):TweenManager;
 	var groups:Map<String, Array<UIElement>> = [];
 	var postCustomAddToLayer:Map<h2d.Object, UIElementCustomAddToLayer> = [];
 	var interactiveWrappers:Array<UIInteractiveWrapper> = [];
 	var interactiveMap:Map<String, UIInteractiveWrapper> = [];
 	var tabGroup:Null<UITabGroup> = null;
 	var tabAutoWired:Bool = false;
+	/** When set, ScreenManager creates a darkening overlay behind this dialog. */
+	public var modalOverlayConfig:Null<ModalOverlayConfig> = null;
 	private var _autoSyncInitialState:Bool = false;
 	var autoSyncInitialState(never, set):Bool;
 	var initialSyncDone:Bool = false;
@@ -93,6 +106,10 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		}
 
 		this.controllersStack = [new DefaultUIController(this)];
+	}
+
+	function get_tweens():TweenManager {
+		return screenManager.tweens;
 	}
 
 	public function setExitCode(exitResponse) {
@@ -140,6 +157,20 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	}
 
 	public function onClear() {}
+
+	/** Override to provide a custom enter transition animation.
+	 *  Return a Tween that controls the enter animation, or null to use the default.
+	 *  The screen root is already in the scene when this is called. */
+	public function onEnterTransition(tweens:TweenManager):Null<Tween> {
+		return null;
+	}
+
+	/** Override to provide a custom exit transition animation.
+	 *  Return a Tween that controls the exit animation, or null to use the default.
+	 *  The returned Tween's onComplete should NOT be set — the ScreenManager handles cleanup. */
+	public function onExitTransition(tweens:TweenManager):Null<Tween> {
+		return null;
+	}
 
 	public abstract function load():Void;
 
@@ -275,6 +306,36 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		}
 	}
 
+	/** Parse modal overlay settings from a BuilderResult's root settings.
+	 *  Recognized keys: overlay.color, overlay.alpha, overlay.fadeIn, overlay.fadeOut, overlay.blur. */
+	function parseOverlaySettings(rootSettings:BuilderResolvedSettings):Null<ModalOverlayConfig> {
+		if (rootSettings == null || !rootSettings.hasSettings())
+			return null;
+		var hasAny = false;
+		var config:ModalOverlayConfig = {};
+		if (rootSettings.has("overlay.color")) {
+			config.color = rootSettings.getIntOrDefault("overlay.color", 0x000000);
+			hasAny = true;
+		}
+		if (rootSettings.has("overlay.alpha")) {
+			config.alpha = rootSettings.getFloatOrDefault("overlay.alpha", 0.5);
+			hasAny = true;
+		}
+		if (rootSettings.has("overlay.fadeIn")) {
+			config.fadeIn = rootSettings.getFloatOrDefault("overlay.fadeIn", 0.3);
+			hasAny = true;
+		}
+		if (rootSettings.has("overlay.fadeOut")) {
+			config.fadeOut = rootSettings.getFloatOrDefault("overlay.fadeOut", 0.3);
+			hasAny = true;
+		}
+		if (rootSettings.has("overlay.blur")) {
+			config.blur = rootSettings.getFloatOrDefault("overlay.blur", 0.0);
+			hasAny = true;
+		}
+		return hasAny ? config : null;
+	}
+
 	function settingValueToDynamic(v:SettingValue):Dynamic {
 		return switch (v) {
 			case RSVInt(i): i;
@@ -315,7 +376,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 				final prefix = key.substr(0, dotIdx);
 				final paramName = key.substr(dotIdx + 1);
 				if (!registeredPrefixes.contains(prefix))
-					throw 'Unknown sub-component prefix "$prefix" in setting "$key" for $elementName. Valid prefixes: ${registeredPrefixes.join(", ")}';
+					continue; // Skip unknown prefixes (may be inherited from parent, e.g. overlay.*)
 				var prefixMap = prefixed.get(prefix);
 				if (prefixMap == null) {
 					prefixMap = new Map<String, Dynamic>();

@@ -30,6 +30,7 @@ import bh.ui.UIMultiAnimDraggable.DragDropResult;
 import bh.base.MAObject;
 import bh.base.MAObject.MultiAnimObjectData;
 import bh.multianim.MultiAnimParser.SettingValue;
+import bh.multianim.MultiAnimBuilder.BuilderResolvedSettings;
 import bh.ui.UIElement;
 import bh.ui.UIElement.UIScreenEvent;
 import bh.ui.UIElement.UIElementEvents;
@@ -636,13 +637,10 @@ class UIComponentTest extends BuilderTestBase {
 		var settings:Map<String, SettingValue> = new Map();
 		settings.set("unknown.key", RSVString("val"));
 
-		var threw = false;
-		try {
-			screen.testSplitSettings(settings, [], [], ["item"], [], "test");
-		} catch (e:Dynamic) {
-			threw = true;
-		}
-		Assert.isTrue(threw);
+		// Unknown prefixes are silently skipped (they may be inherited from parent, e.g. overlay.*)
+		var result = screen.testSplitSettings(settings, [], [], ["item"], [], "test");
+		Assert.isNull(result.main);
+		Assert.isFalse(result.prefixed.exists("unknown"));
 	}
 
 	@Test
@@ -662,6 +660,88 @@ class UIComponentTest extends BuilderTestBase {
 		var scrollbarMap = result.prefixed.get("scrollbar");
 		Assert.notNull(scrollbarMap);
 		Assert.isTrue(scrollbarMap.exists("font"));
+	}
+
+	// ============== Modal Overlay Settings Tests ==============
+
+	@Test
+	public function testParseOverlaySettingsAllKeys():Void {
+		var screen = new UITestScreen();
+		var settings:Map<String, SettingValue> = new Map();
+		settings.set("overlay.color", RSVColor(0xFF112233));
+		settings.set("overlay.alpha", RSVFloat(0.7));
+		settings.set("overlay.fadeIn", RSVFloat(0.4));
+		settings.set("overlay.fadeOut", RSVFloat(0.25));
+		settings.set("overlay.blur", RSVFloat(3.0));
+
+		var config = screen.testParseOverlaySettings(new BuilderResolvedSettings(settings));
+		Assert.notNull(config);
+		Assert.equals(0xFF112233, config.color);
+		Assert.floatEquals(0.7, config.alpha);
+		Assert.floatEquals(0.4, config.fadeIn);
+		Assert.floatEquals(0.25, config.fadeOut);
+		Assert.floatEquals(3.0, config.blur);
+	}
+
+	@Test
+	public function testParseOverlaySettingsPartialKeys():Void {
+		var screen = new UITestScreen();
+		var settings:Map<String, SettingValue> = new Map();
+		settings.set("overlay.color", RSVColor(0xFF000000));
+		settings.set("overlay.alpha", RSVFloat(0.5));
+
+		var config = screen.testParseOverlaySettings(new BuilderResolvedSettings(settings));
+		Assert.notNull(config);
+		Assert.equals(0xFF000000, config.color);
+		Assert.floatEquals(0.5, config.alpha);
+		Assert.isNull(config.fadeIn);
+		Assert.isNull(config.fadeOut);
+		Assert.isNull(config.blur);
+	}
+
+	@Test
+	public function testParseOverlaySettingsNoOverlayKeys():Void {
+		var screen = new UITestScreen();
+		var settings:Map<String, SettingValue> = new Map();
+		settings.set("font", RSVString("arial"));
+		settings.set("fontColor", RSVInt(0xFFFFFF));
+
+		var config = screen.testParseOverlaySettings(new BuilderResolvedSettings(settings));
+		Assert.isNull(config);
+	}
+
+	@Test
+	public function testParseOverlaySettingsNullSettings():Void {
+		var screen = new UITestScreen();
+
+		var config = screen.testParseOverlaySettings(new BuilderResolvedSettings(null));
+		Assert.isNull(config);
+	}
+
+	@Test
+	public function testParseOverlaySettingsEmptySettings():Void {
+		var screen = new UITestScreen();
+
+		var config = screen.testParseOverlaySettings(new BuilderResolvedSettings(new Map()));
+		Assert.isNull(config);
+	}
+
+	@Test
+	public function testParseOverlaySettingsMixedKeys():Void {
+		var screen = new UITestScreen();
+		var settings:Map<String, SettingValue> = new Map();
+		settings.set("overlay.alpha", RSVFloat(0.6));
+		settings.set("font", RSVString("arial"));
+		settings.set("overlay.fadeIn", RSVFloat(0.3));
+		settings.set("width", RSVInt(200));
+
+		var config = screen.testParseOverlaySettings(new BuilderResolvedSettings(settings));
+		Assert.notNull(config);
+		Assert.floatEquals(0.6, config.alpha);
+		Assert.floatEquals(0.3, config.fadeIn);
+		Assert.isNull(config.color);
+		Assert.isNull(config.fadeOut);
+		Assert.isNull(config.blur);
 	}
 
 	// ============== TextInput Tests ==============
