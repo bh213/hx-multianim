@@ -1,0 +1,107 @@
+# UI Components Reference
+
+## UI Elements Notes
+
+- **Generic settings pass-through**: Any setting not recognized as control or behavioral is automatically forwarded to the underlying programmable as an extra parameter. The programmable must declare a matching parameter; mismatches throw with programmable name + available params.
+- **Prefixed settings**: `item.fontColor`, `scrollbar.thickness` — dotted keys route to sub-builders in multi-programmable components (dropdown, scrollableList). Registered prefixes: dropdown has `dropdown`, `item`, `scrollbar` (main=panel); scrollableList has `item`, `scrollbar` (main=panel).
+- **Multi-forward settings**: Unprefixed `font`/`fontColor` on dropdown/scrollableList forward to ALL relevant sub-builders for backwards compatibility.
+- **Button**: `buildName` and `text` are control settings; everything else (e.g. `width`, `height`, `font`, `fontColor`) passes through to `#button` programmable. Uses incremental `BuilderResult` with `setParameter("status", ...)` for state changes (no `MultiAnimMultiResult` combo swap).
+- **Checkbox**: Same incremental approach as button; uses `beginUpdate()`/`endUpdate()` when toggling both `status` and `checked` parameters.
+- **TabButton**: Same incremental approach; `selected`/`disabled` via `setParameter("checked"/"disabled", ...)`.
+- **Scrollable list / Dropdown**: `font`, `fontColor` forwarded to both item builder and dropdown button builder. The `#dropdown` programmable accepts `font`/`fontColor` params for the selected item text.
+- **Settings `color` type**: `fontColor:color=>white` — parsed via `parseColorOrReference()`, stored as `SVTColor`/`RSVColor`. Supports named colors (`white`, `red`, `transparent`, etc.), hex (`#RGB`, `#RRGGBB`, `#RRGGBBAA`), and native Heaps format (`0xAARRGGBB`). `SettingValueTools.asColorInt()` helper matches both `RSVColor` and `RSVInt` for backward compatibility.
+- **Dropdown**: Uses closed button + scrollable panel, moves panel to different layer
+- **UIScreen**: If elements don't show or react to events, check if added to UIScreen's elements
+- **Macros**: `MacroUtils.macroBuildWithParameters` maps `.manim` elements to Haxe code — auto-injects `ResolvedSettings` parameter
+- **Settings naming**: `buildName` for single builder override, `<element>BuildName` for multiple (e.g. `radioBuildName`, `radioButtonBuildName`)
+- **Slider**: Supports custom float range (`min`, `max`, `step` settings). Internally maps to 0-100 grid. Implements both `UIElementNumberValue` (int) and `UIElementFloatValue` (float). Uses incremental mode for efficient redraws. Emits both `UIChangeValue(Int)` and `UIChangeFloatValue(Float)`.
+- **Progress bar**: Display-only component (`UIMultiAnimProgressBar`). Uses full rebuild (not incremental) because `bitmap(generated(color(...)))` is not tracked. Screen helper: `addProgressBar(builder, settings, initialValue)`.
+- **Scrollable list scrollbar**: Built with incremental mode — scroll events use `setParameter("scrollPosition", ...)` instead of full rebuild.
+- **Scrollable list runtime API**: `setItems(newItems, ?selectedIndex)` replaces content at runtime; `scrollToIndex(idx)` scrolls to make item visible; `clickMode` (`SingleClick`/`DoubleClick`) controls action event; `disabled` dims list (alpha 0.5) and shows selected in disabled variant. Events: `UIClickItem` (single-click mode), `UIDoubleClickItem` (double-click mode). Setting: `clickMode => "single"` or `"double"`.
+- **List item tiles**: `UIElementListItem.tileRef` uses `TileRef` enum (`TRFile`, `TRSheet`, `TRSheetIndex`, `TRTile`, `TRGeneratedRect`, `TRGeneratedRectColor`) for structured tile references. Legacy `tileName` (plain string) still works. `TileHelper` class provides static helpers for builder params: `TileHelper.sheet("atlas", "tile")`, `TileHelper.file("img.png")`, `TileHelper.generatedRect(w, h)`, `TileHelper.generatedRectColor(w, h, color)`.
+- **`tile` parameter type**: `.manim` `name:tile` declares a tile parameter (no default allowed). Use with `bitmap($name)`. In codegen maps to `Dynamic` (pass `h2d.Tile`). In builder pass via `TileHelper`.
+- **Full component reference**: See `docs/manim.md` "UI Components" section for all parameter contracts, settings, and events
+- **Tabs**: `UIMultiAnimTabs` — tab bar with per-tab content management via `beginTab()`/`endTab()`. Uses `ContentTarget` interface for screen element routing. Settings: `buildName` (tabBar), `tabButtonBuildName` (tab), `tabButton.*` (prefixed to buttons), `tabPanel.width`/`tabPanel.height` (panel size), `tabPanel.contentRoot` (behavioral — enables relative coordinate mode by naming a `#point` element in the tabBar programmable). In relative mode, each tab gets its own `h2d.Layers` at the named element's position, so screen layers work within the panel. Events: `UIChangeItem(index, items)`.
+- **Text input**: `UIMultiAnimTextInput` wraps `h2d.TextInput` inside a `.manim` programmable frame. Requires programmable with `status:[normal,hover,focused,disabled]=normal`, `placeholder:bool=true`, and `#textArea point`. Settings: `buildName`, `font`, `fontColor`, `cursorColor`, `selectionColor`, `text`, `placeholder`, `maxLength`, `multiline`, `readOnly`, `disabled`, `filter` (`numeric`/`alphanumeric`/`none`), `inputWidth`, `tabIndex`. `TextInputFilter` enum: `FNumericOnly`, `FAlphanumeric`, `FCustom(fn)`. Screen helper: `addTextInput(builder, settings, ?initialText)`. Events: `UITextChange(text)`, `UITextSubmit(text)`, `UIFocusChange(focused)`. `textInput.insertTabs = null` so Tab is not consumed. Enter-advance deferred to `update(dt)` to avoid Heaps event conflicts.
+- **Tab navigation**: `UITabGroup` — Tab/Shift+Tab cycling between `UIMultiAnimTextInput` elements. `enableTabNavigation(mode:TabWireMode = Autowire)` creates tab group; `Autowire` mode handles Tab key automatically in `onKey()`. `tabIndex` setting for explicit ordering (auto-assigned if omitted). `enterAdvances:Bool` flag advances focus on Enter. `advanceFrom(source)` for deferred enter-advance. Duplicate `tabIndex` values throw. Skips disabled inputs.
+
+## Interactives
+
+`interactive()` elements create hit-test regions with optional typed metadata:
+
+```manim
+interactive(200, 30, "myBtn")
+interactive(200, 30, "myBtn", debug)
+interactive(200, 30, "myBtn", action => "buy", label => "Buy Item")
+interactive(200, 30, $idx, price:int => 100, weight:float => 1.5, action => "craft")
+```
+
+Metadata supports typed values matching the settings system: `key => val` (string default), `key:int => N`, `key:float => N`, `key:string => "s"`, `key:bool => true`, `key:color => #RGB`. Untyped `key => true`/`key => false` auto-infers bool type. Keys and values can be `$references`. Access: `metadata.has(key)`, `metadata.getStringOrDefault(key, default)`, `metadata.getIntOrDefault(key, default)`, `metadata.getBoolOrDefault(key, default)`, etc.
+
+**UI integration:**
+- `UIInteractiveWrapper` — thin wrapper implementing `UIElement`, `StandardUIElementEvents`, `UIElementIdentifiable`
+- `UIElementIdentifiable` — opt-in interface with `id`, `prefix`, `metadata:BuilderResolvedSettings`
+- Screen methods: `addInteractive()`, `addInteractives(result, prefix)`, `removeInteractives(prefix)`, `getInteractive(id)` (O(1) map lookup), `getInteractivesByPrefix(prefix)`
+- Events: emits `UIInteractiveEvent(event, id, metadata)` — pattern match in `onScreenEvent`:
+  ```haxe
+  case UIInteractiveEvent(UIClick, id, meta): // clicked interactive
+  case UIInteractiveEvent(UIEntering, id, meta): // hover enter
+  case UIInteractiveEvent(UILeaving, id, meta): // hover leave
+  case UIInteractiveEvent(UIPush, id, meta): // mouse down
+  case UIInteractiveEvent(UIClickOutside, id, meta): // clicked outside
+  ```
+- **Event filtering**: `events: [hover, click, push]` metadata controls which events are emitted. `EVENT_HOVER=1`, `EVENT_CLICK=2`, `EVENT_PUSH=4`, `EVENT_ALL=7` (default)
+- **Bind metadata**: `bind => "status"` declares which programmable parameter the interactive drives for `UIRichInteractiveHelper` auto-wiring
+- **`UIRichInteractiveHelper`** — state binding helper: `register(result, ?prefix)` auto-scans bind metadata; `handleEvent(event)` drives Normal→Hover→Pressed→Normal state machine via `setParameter()`; `setDisabled(id, disabled)` for disabled state; `bind()`/`unbind()`/`setParameter()`/`getResult()` for manual control
+- **`UITooltipHelper`** — screen-driven tooltip helper: `startHover(id, buildName, ?params)`, `cancelHover(id)`, `show()`, `hide()`, `update(dt)`; configurable delay, position, offset, layer; per-interactive overrides: `setDelay()`, `setPosition()`, `setOffset()`; `updateParams(params)` for incremental parameter update on active tooltip; `rebuild(?params)` for full rebuild with new or original params
+- **`UIPanelHelper`** — screen-driven panel helper: `open(id, buildName, ?params)`, `close()`, `isOpen()`, `getPanelResult()`, `handleOutsideClick(event)`; auto-registers panel interactives with prefix; `OutsideClick` / `Manual` close modes; per-interactive overrides: `setPosition()`, `setOffset()`; pushes `UICustomEvent(EVENT_PANEL_CLOSE, interactiveId)` on close; multi-panel support via named slots: `openNamed(slot, ...)`, `closeNamed(slot)`, `closeAllNamed()`, `isOpenNamed(slot)`, `getNamedPanelResult(slot)`
+- **Cursor support** — `UIElementCursor` interface with `getCursor():hxd.Cursor` for state-dependent cursor
+  - `CursorManager` — static registry (like `FontManager`); pre-registers Heaps cursors: `default`, `pointer`/`button`, `move`, `text`, `hide`/`none`
+  - `registerCursor(name, cursor)` / `unregisterCursor(name)` / `getCursor(name)` for custom cursors
+  - `setDefaultInteractiveCursor(cursor)` — global default for UI elements (defaults to `Button`/pointer)
+  - `setDefaultCursor(cursor)` — fallback when not hovering any element (defaults to `Default`)
+  - All built-in components (Button, Checkbox, Slider, Dropdown, TabButton, ScrollableList) implement `UIElementCursor`
+  - Interactive per-state cursors via metadata: `cursor => "pointer"`, `cursor.hover => "move"`, `cursor.disabled => "default"`
+  - Unknown `cursor.*` suffixes throw (valid: `cursor.hover`, `cursor.disabled`)
+  - Controller plumbing in `UIControllerBase.handleMove()` — calls `hxd.System.setCursor()`
+
+## Indexed Names, Slots, Components
+
+**Indexed named elements** — `#name[$i]` inside `repeatable` creates per-iteration named entries (`name_0`, `name_1`, ...):
+- Builder: `result.getUpdatableByIndex("name", index)`
+- Codegen: `instance.get_name(index)` returns `h2d.Object`
+
+**Slots** — `#name slot` or `#name[$i] slot` for swappable containers:
+- Builder: `result.getSlot("name")` or `result.getSlot("name", index)` returns `SlotHandle`
+- Codegen: `instance.getSlot("name")` or `instance.getSlot("name", index)`
+- `SlotHandle` API: `setContent(obj)`, `clear()`, `getContent()`, `isEmpty()`, `isOccupied()`, `data` (arbitrary payload)
+- Mismatched access (index on non-indexed or vice versa) throws
+
+**Parameterized slots** — `#name slot(param:type=default, ...)` for visual state management:
+- Same parameter types as `programmable()`: `uint`, `int`, `float`, `bool`, `string`, `color`, enum, range, flags
+- Conditionals (`@()`, `@else`, `@default`) and expressions (`$param`) work inside the slot body
+- `SlotHandle.setParameter("name", value)` updates visuals via `IncrementalUpdateContext`
+- Content goes into a separate `contentRoot` (decoration always visible, not hidden by `setContent`)
+- Codegen: `setParameter()` supported — parameterized slots built via `buildParameterizedSlot()` at runtime with full incremental support
+
+**Drag-and-drop** — `UIMultiAnimDraggable` with slot integration:
+- `addDropZonesFromSlots("baseName", builderResult, ?accepts)` — batch drop zone creation
+- `createFromSlot(slot)` — creates draggable from slot content, tracks `sourceSlot`
+- `swapMode` — swaps contents when dropping onto an occupied slot
+- Zone highlight callbacks: `onDragStartHighlightZones`, `onDragEndHighlightZones` on draggable
+- Per-zone: `DropZone.onZoneHighlight` callback for hover state
+
+**Dynamic refs** — `dynamicRef($ref, params)` embeds with incremental mode for runtime parameter updates:
+- Builder: `result.getDynamicRef("name").setParameter("param", value)`
+- Batch updates: `beginUpdate()` / `endUpdate()` defers re-evaluation
+- Codegen: generates runtime builder call, returns `BuilderResult`
+
+**Flow improvements** — new optional params on `flow()`:
+- `overflow: expand|limit|scroll|hidden`, `fillWidth: true`, `fillHeight: true`, `reverse: true`
+- `horizontalAlign: left|right|middle`, `verticalAlign: top|bottom|middle` — default child alignment
+- `spacer(w, h)` element for fixed spacing inside flows
+- Per-element flow properties via `@flow.*` prefix on children:
+  - `@flow.halign(left|right|middle)`, `@flow.valign(top|bottom|middle)` — per-child alignment override
+  - `@flow.offset(x, y)` — pixel offset, `@flow.absolute` — remove from layout (overlays)
+  - Parse-time validation: must be inside a flow ancestor (REPEAT/REPEAT2D are transparent)
+  - `NodeFlowProperties` typedef on `Node` — single nullable struct, created via `NodeFlowPropertiesTools.create()`
