@@ -344,6 +344,17 @@
   - `OkCancelDialog` supports `closeTransition` and `.manim` overlay settings
 - **TweenManager unit tests** — 57 tests covering properties, easing, sequences, groups, cancellation, convenience methods, edge cases
 - **Modal overlay settings unit tests** — parseOverlaySettings tests covering all/partial/no/null/mixed settings
+- **Standalone unit test suites** — 10 new dedicated test files (217 total methods) for focused coverage of specific features:
+  - `ScreenTransitionTest` (11 methods) — enum variants, pattern matching, custom callbacks, duration extraction
+  - `AnimatedPathTest` (40 methods) — time/distance modes, seek, reset, events, all curve types, loop, pingPong, color, custom curves
+  - `CardHandOrchestratorTest` (26 methods) — fan/linear/path layout math, hover scale/pop, compression, type enums
+  - `AnimFilterRuntimeTest` (26 methods) — AnimationSM registration, playback, loops, filters, tint, events, extra points, pause
+  - `RichTextTest` (46 methods) — TextMarkupConverter: convert, hasMarkup, extractStyleReferences, resolveColorToHex, escapeStyleName
+  - `ParameterizedSlotTest` (14 methods) — slot lifecycle, parameterized slots with setParameter, indexed slots, content/clear/data
+  - `InteractiveEventTest` (14 methods) — event bitmask flags, id/prefix, metadata, disabled/hovered state, event constants
+  - `FlowOverflowTest` (17 methods) — overflow modes (expand/limit/hidden/scroll), fill, reverse, alignment, spacer, @flow.* properties
+  - `DynamicRefTest` (10 methods) — dynamicRef build, getDynamicRef, setParameter propagation, multiple/nested refs, static values
+  - `BitFlagTest` (13 methods) — bit[N] conditionals, multi-bit combinations, zero flags, @else after bit, high bit
 
 ### Changed
 - **`text()` / `richText()` split** — `text()` reverted to simple text (font, string, color, align, maxWidth, letterSpacing, lineSpacing, lineBreak, dropShadow). Rich text features (`styles:`, `images:`, `condenseWhite:`, `[markup]`) moved to new `richText()` element which always creates `h2d.HtmlText`.
@@ -353,6 +364,7 @@
 - **TabButton incremental rewrite** — `UIMultiAnimTabButton` same pattern; selected/disabled states via `setParameter()`
 
 ### Fixed
+- **Named panel outside-click cross-panel** — clicking another named panel's trigger or content no longer incorrectly closes unrelated named panels; added `isNamedPanelTrigger()` check and changed condition to cancel `pendingClose` for any panel-related click
 - **UITooltipHelper incremental mode** — `showTooltip()` now builds with `incremental: true`, enabling `updateParams()` to work at runtime (previously always threw because `setParameter()` requires incremental mode)
 - **Named range codegen loop variable** — macro codegen for named range iterators (`range(from:, to:)`) now produces correct loop variable values and positions
   - `tryResolveStaticInt` extended to evaluate constant `EBinop`/`RVParenthesis`/`EUnaryOp` expressions (fixes named `to:` creating unresolvable `EBinop(OpAdd, N, 1)`)

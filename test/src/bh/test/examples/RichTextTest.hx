@@ -1,0 +1,298 @@
+package bh.test.examples;
+
+import utest.Assert;
+import bh.multianim.TextMarkupConverter;
+
+/**
+ * Unit tests for TextMarkupConverter:
+ * convert(), hasMarkup(), extractStyleReferences(), resolveColorToHex(), isValidStyleName(), escapeStyleName().
+ */
+class RichTextTest extends utest.Test {
+	// ==================== convert() — basic tags ====================
+
+	@Test
+	public function testConvertSimpleStyleTag():Void {
+		var result = TextMarkupConverter.convert("[damage]50[/]");
+		Assert.equals("<damage>50</damage>", result);
+	}
+
+	@Test
+	public function testConvertNestedTags():Void {
+		var result = TextMarkupConverter.convert("[outer][inner]text[/][/]");
+		Assert.equals("<outer><inner>text</inner></outer>", result);
+	}
+
+	@Test
+	public function testConvertNoMarkup():Void {
+		var result = TextMarkupConverter.convert("plain text");
+		Assert.equals("plain text", result);
+	}
+
+	@Test
+	public function testConvertEmptyString():Void {
+		var result = TextMarkupConverter.convert("");
+		Assert.equals("", result);
+	}
+
+	@Test
+	public function testConvertNull():Void {
+		var result = TextMarkupConverter.convert(null);
+		Assert.isNull(result);
+	}
+
+	// ==================== convert() — special tags ====================
+
+	@Test
+	public function testConvertImgTag():Void {
+		var result = TextMarkupConverter.convert("[img:sword]");
+		Assert.equals('<img src="sword"/>', result);
+	}
+
+	@Test
+	public function testConvertAlignTag():Void {
+		var result = TextMarkupConverter.convert("[align:center]text[/]");
+		Assert.equals('<p align="center">text</p>', result);
+	}
+
+	@Test
+	public function testConvertLinkTag():Void {
+		var result = TextMarkupConverter.convert("[link:help]click here[/]");
+		Assert.equals('<a href="help">click here</a>', result);
+	}
+
+	// ==================== convert() — escape sequences ====================
+
+	@Test
+	public function testConvertEscapeBracket():Void {
+		var result = TextMarkupConverter.convert("[[escaped]]");
+		Assert.equals("[escaped]]", result);
+	}
+
+	@Test
+	public function testConvertDoubleEscapeBracket():Void {
+		var result = TextMarkupConverter.convert("[[text[[");
+		Assert.equals("[text[", result);
+	}
+
+	// ==================== convert() — reserved HTML tags ====================
+
+	@Test
+	public function testConvertReservedBoldTag():Void {
+		var result = TextMarkupConverter.convert("[b]bold[/]");
+		Assert.equals("<_s_b>bold</_s_b>", result);
+	}
+
+	@Test
+	public function testConvertReservedItalicTag():Void {
+		var result = TextMarkupConverter.convert("[i]italic[/]");
+		Assert.equals("<_s_i>italic</_s_i>", result);
+	}
+
+	@Test
+	public function testConvertReservedFontTag():Void {
+		var result = TextMarkupConverter.convert("[font]text[/]");
+		Assert.equals("<_s_font>text</_s_font>", result);
+	}
+
+	// ==================== convert() — unrecognized tags ====================
+
+	@Test
+	public function testConvertUnrecognizedTag():Void {
+		// Tags starting with digit are not valid style names
+		var result = TextMarkupConverter.convert("[1]text[/]");
+		// [1] is not a valid style name, so it's emitted literally
+		Assert.isTrue(result.indexOf("[1]") >= 0);
+	}
+
+	@Test
+	public function testConvertTagWithSpaces():Void {
+		// Spaces in tag name make it invalid
+		var result = TextMarkupConverter.convert("[text with spaces]hello[/]");
+		Assert.isTrue(result.indexOf("[text with spaces]") >= 0);
+	}
+
+	// ==================== convert() — unclosed bracket ====================
+
+	@Test
+	public function testConvertUnclosedBracket():Void {
+		var result = TextMarkupConverter.convert("[unclosed");
+		Assert.equals("[unclosed", result);
+	}
+
+	// ==================== hasMarkup() ====================
+
+	@Test
+	public function testHasMarkupWithCloseTag():Void {
+		Assert.isTrue(TextMarkupConverter.hasMarkup("[damage]50[/]"));
+	}
+
+	@Test
+	public function testHasMarkupWithImgTag():Void {
+		Assert.isTrue(TextMarkupConverter.hasMarkup("[img:sword]"));
+	}
+
+	@Test
+	public function testHasMarkupWithAlignTag():Void {
+		Assert.isTrue(TextMarkupConverter.hasMarkup("[align:center]text[/]"));
+	}
+
+	@Test
+	public function testHasMarkupWithLinkTag():Void {
+		Assert.isTrue(TextMarkupConverter.hasMarkup("[link:help]text[/]"));
+	}
+
+	@Test
+	public function testHasMarkupPlainText():Void {
+		Assert.isFalse(TextMarkupConverter.hasMarkup("just plain text"));
+	}
+
+	@Test
+	public function testHasMarkupNoBrackets():Void {
+		Assert.isFalse(TextMarkupConverter.hasMarkup("no brackets here"));
+	}
+
+	@Test
+	public function testHasMarkupNull():Void {
+		Assert.isFalse(TextMarkupConverter.hasMarkup(null));
+	}
+
+	@Test
+	public function testHasMarkupBracketsButNoCloseTag():Void {
+		// [note] without [/] is not markup (could be natural text)
+		Assert.isFalse(TextMarkupConverter.hasMarkup("[note] just a note"));
+	}
+
+	@Test
+	public function testHasMarkupEscapeSequence():Void {
+		// [[ is escape, not markup
+		Assert.isFalse(TextMarkupConverter.hasMarkup("[[not markup]]"));
+	}
+
+	// ==================== extractStyleReferences() ====================
+
+	@Test
+	public function testExtractStyleReferences():Void {
+		var refs = TextMarkupConverter.extractStyleReferences("[damage]50[/] [heal]20[/]");
+		Assert.equals(2, refs.length);
+		Assert.equals("damage", refs[0]);
+		Assert.equals("heal", refs[1]);
+	}
+
+	@Test
+	public function testExtractStyleReferencesSkipsSpecialTags():Void {
+		var refs = TextMarkupConverter.extractStyleReferences("[img:sword] [align:center] [link:help] [style]text[/]");
+		Assert.equals(1, refs.length);
+		Assert.equals("style", refs[0]);
+	}
+
+	@Test
+	public function testExtractStyleReferencesEmpty():Void {
+		var refs = TextMarkupConverter.extractStyleReferences("no markup");
+		Assert.equals(0, refs.length);
+	}
+
+	@Test
+	public function testExtractStyleReferencesNull():Void {
+		var refs = TextMarkupConverter.extractStyleReferences(null);
+		Assert.equals(0, refs.length);
+	}
+
+	@Test
+	public function testExtractStyleReferencesSkipsCloseTag():Void {
+		var refs = TextMarkupConverter.extractStyleReferences("[style]text[/]");
+		Assert.equals(1, refs.length);
+		Assert.equals("style", refs[0]);
+	}
+
+	// ==================== resolveColorToHex() ====================
+
+	@Test
+	public function testResolveColorRGB():Void {
+		var result = TextMarkupConverter.resolveColorToHex("#F00");
+		Assert.equals("#FF0000", result);
+	}
+
+	@Test
+	public function testResolveColorRRGGBB():Void {
+		var result = TextMarkupConverter.resolveColorToHex("#FF8800");
+		Assert.equals("#FF8800", result);
+	}
+
+	@Test
+	public function testResolveColorRRGGBBAA():Void {
+		// Alpha is stripped
+		var result = TextMarkupConverter.resolveColorToHex("#FF880088");
+		Assert.equals("#FF8800", result);
+	}
+
+	@Test
+	public function testResolveColorEmptyString():Void {
+		var result = TextMarkupConverter.resolveColorToHex("");
+		Assert.equals("#000000", result);
+	}
+
+	@Test
+	public function testResolveColorNull():Void {
+		var result = TextMarkupConverter.resolveColorToHex(null);
+		Assert.equals("#000000", result);
+	}
+
+	@Test
+	public function testResolveColorNamedRed():Void {
+		var result = TextMarkupConverter.resolveColorToHex("red");
+		Assert.equals("#FF0000", result);
+	}
+
+	@Test
+	public function testResolveColorNamedWhite():Void {
+		var result = TextMarkupConverter.resolveColorToHex("white");
+		Assert.equals("#FFFFFF", result);
+	}
+
+	// ==================== escapeStyleName() ====================
+
+	@Test
+	public function testEscapeStyleNameNormal():Void {
+		Assert.equals("damage", TextMarkupConverter.escapeStyleName("damage"));
+	}
+
+	@Test
+	public function testEscapeStyleNameReservedB():Void {
+		Assert.equals("_s_b", TextMarkupConverter.escapeStyleName("b"));
+	}
+
+	@Test
+	public function testEscapeStyleNameReservedI():Void {
+		Assert.equals("_s_i", TextMarkupConverter.escapeStyleName("i"));
+	}
+
+	@Test
+	public function testEscapeStyleNameReservedU():Void {
+		Assert.equals("_s_u", TextMarkupConverter.escapeStyleName("u"));
+	}
+
+	@Test
+	public function testEscapeStyleNameReservedS():Void {
+		Assert.equals("_s_s", TextMarkupConverter.escapeStyleName("s"));
+	}
+
+	@Test
+	public function testEscapeStyleNameReservedBold():Void {
+		Assert.equals("_s_bold", TextMarkupConverter.escapeStyleName("bold"));
+	}
+
+	@Test
+	public function testEscapeStyleNameReservedItalic():Void {
+		Assert.equals("_s_italic", TextMarkupConverter.escapeStyleName("italic"));
+	}
+
+	@Test
+	public function testEscapeStyleNameReservedFont():Void {
+		Assert.equals("_s_font", TextMarkupConverter.escapeStyleName("font"));
+	}
+
+	@Test
+	public function testEscapeStyleNameNotReserved():Void {
+		Assert.equals("myStyle", TextMarkupConverter.escapeStyleName("myStyle"));
+	}
+}

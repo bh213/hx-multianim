@@ -249,10 +249,10 @@ class UIPanelHelper {
 					if (id == panel.interactiveId)
 						panel.pendingClose = true;
 				case UIInteractiveEvent(UIClick, id, _):
-					if (id == panel.interactiveId || StringTools.startsWith(id, panel.prefix)) {
+					if (id == panel.interactiveId || StringTools.startsWith(id, panel.prefix)
+						|| isOwnInteractive(id) || isNamedPanelTrigger(id)) {
 						panel.pendingClose = false;
-					} else if (!isOwnInteractive(id)) {
-						panel.pendingClose = false;
+					} else {
 						// Defer named panel close to checkPendingClose to avoid iterator invalidation
 						panel.pendingClose = true;
 					}
@@ -289,6 +289,14 @@ class UIPanelHelper {
 	function isNamedPanelInteractive(id:String):Bool {
 		for (_ => panel in namedPanels) {
 			if (StringTools.startsWith(id, panel.prefix))
+				return true;
+		}
+		return false;
+	}
+
+	function isNamedPanelTrigger(id:String):Bool {
+		for (_ => panel in namedPanels) {
+			if (id == panel.interactiveId)
 				return true;
 		}
 		return false;
