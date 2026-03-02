@@ -124,6 +124,9 @@ typedef CardHandConfig = {
 	// Card-to-card
 	var ?allowCardToCard:Bool;
 	var ?cardToCardHighlightScale:Float;
+	var ?cardToCardHoverPop:Bool;
+	var ?cardToCardHoverScale:Bool;
+	var ?cardToCardSpread:Bool;
 
 	// Pile positions
 	var ?drawPilePosition:FPoint;
