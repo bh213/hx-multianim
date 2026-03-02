@@ -10,6 +10,11 @@ import bh.stateanim.AnimParser;
 import bh.ui.controllers.UIController;
 import bh.ui.screens.UIScreen;
 import bh.base.ResourceLoader;
+import bh.base.TweenManager;
+import bh.base.TweenManager.TweenProperty;
+import bh.ui.screens.ScreenTransition;
+import bh.ui.screens.UIScreen.ModalOverlayConfig;
+import bh.multianim.MultiAnimParser.EasingType;
 import byte.ByteData;
 import haxe.io.Bytes;
 #if hl
@@ -49,6 +54,13 @@ class ScreenManager {
 	final configuredScreens:Map<String, UIScreen> = [];
 	final failedScreens:Map<String, String> = [];
 	var builders:Map<hxd.res.Resource, MultiAnimBuilder> = [];
+	public var tweens(default, null):TweenManager = new TweenManager();
+	public var isTransitioning(default, null):Bool = false;
+	var transitionCleanup:Null<Void -> Void> = null;
+	var modalOverlay:Null<h2d.Bitmap> = null;
+	var modalOverlayTargetAlpha:Float = 0.0;
+	var modalOverlayBlurTargets:Array<{root:h2d.Object, saved:Null<h2d.filter.Filter>}> = [];
+	final layerOverlay:Int = 5;
 	#if MULTIANIM_DEV
 	var hotReloadRegistry:bh.multianim.dev.HotReload.ReloadableRegistry = new bh.multianim.dev.HotReload.ReloadableRegistry();
 	var fileChangeDetector:bh.multianim.dev.HotReload.FileChangeDetector = new bh.multianim.dev.HotReload.FileChangeDetector();
@@ -169,6 +181,7 @@ class ScreenManager {
 	public dynamic function onReload(?resource:hxd.res.Resource) {}
 
 	public function update(dt:Float):Void {
+		tweens.update(dt);
 		for (screen in activeScreens) {
 			final result = screen.getController().update(dt);
 			switch result {
@@ -382,6 +395,13 @@ class ScreenManager {
 
 	public function modalDialog(dialog:UIScreen, caller:UIScreen, dialogName:String) {
 		dialog.load();
+		final overlayConfig = readOverlayConfig(dialog);
+		if (overlayConfig != null) {
+			modalOverlay = createModalOverlay(overlayConfig);
+			if (overlayConfig.blur != null && overlayConfig.blur > 0)
+				applyBlurToUnderlyingScreens(overlayConfig.blur);
+			modalOverlay.alpha = modalOverlayTargetAlpha; // no transition — show immediately
+		}
 		updateScreenMode(Dialog(dialog, caller, mode, dialogName));
 	}
 
@@ -403,6 +423,7 @@ class ScreenManager {
 			this.activeScreens.push(newScreen);
 		}
 		function removeScreen(screen:UIScreen) {
+			tweens.cancelAllChildren(screen.getSceneRoot());
 			this.activeScreens.remove(screen);
 			screen.getSceneRoot().remove();
 		}
@@ -483,6 +504,7 @@ class ScreenManager {
 				}
 
 			case Dialog(oldDialog, caller, previousMode, dialogName):
+				removeModalOverlay();
 				switch newScreenMode {
 					case None:
 						removedScreens = [oldDialog];
@@ -530,9 +552,503 @@ class ScreenManager {
 		mode = newScreenMode;
 	}
 
+	/** Finalize any in-progress transition immediately (jump to end state). */
+	public function finalizeTransition():Void {
+		if (!isTransitioning)
+			return;
+		// Jump overlay to final state before cleanup
+		final overlay = modalOverlay;
+		if (overlay != null) {
+			tweens.cancelAll(overlay);
+			// If cleanup will remove the overlay (closing), leave alpha as-is — cleanup handles it.
+			// If opening, jump to target alpha.
+			overlay.alpha = modalOverlayTargetAlpha;
+		}
+		final cleanup = transitionCleanup;
+		isTransitioning = false;
+		transitionCleanup = null;
+		if (cleanup != null)
+			cleanup();
+	}
+
+	/** Switch to a new screen mode with an optional visual transition. */
+	public function switchScreen(newScreenMode:ScreenManagerMode, ?transition:ScreenTransition):Void {
+		if (transition == null || transition.match(None)) {
+			finalizeTransition();
+			updateScreenMode(newScreenMode);
+			return;
+		}
+
+		// If already transitioning, finalize immediately
+		finalizeTransition();
+
+		// If currently in Dialog mode, close the dialog instantly first so the
+		// transition runs from the underlying mode (not from the dialog overlay).
+		switch mode {
+			case Dialog(_, _, _, _):
+				closeDialogWithTransition(None);
+			default:
+		}
+
+		// Validate
+		switch newScreenMode {
+			case ScreenManagerMode.None:
+			case Single(single):
+				assertScreenNotFailed(single);
+			case MasterAndSingle(master, single):
+				assertScreenNotFailed(master);
+				assertScreenNotFailed(single);
+			case Dialog(dialog, caller, previousMode, dialogName):
+				assertScreenNotFailed(dialog);
+		}
+
+		// Compute diff: what screens to add and remove
+		final layerContent = 2;
+		final layerMaster = 4;
+		final layerDialog = 6;
+
+		var screensToAdd:Map<UIScreen, Int> = [];
+		var screensToRemove:Array<UIScreen> = [];
+
+		computeScreenDiff(mode, newScreenMode, layerContent, layerMaster, layerDialog, screensToAdd, screensToRemove);
+
+		if (screensToRemove.length == 0 && Lambda.count(screensToAdd) == 0) {
+			// No actual change
+			mode = newScreenMode;
+			return;
+		}
+
+		// Add new screens to scene and fire lifecycle events
+		for (screen => layerIndex in screensToAdd) {
+			app.s2d.add(screen.getSceneRoot(), layerIndex);
+			this.activeScreens.push(screen);
+			screen.onScreenEvent(UIEntering, null);
+			screen.onScreenEvent(UIOnControllerEvent(Entering), null);
+			screen.getController().lifecycleEvent(LifecycleControllerStarted);
+			this.activeScreenControllers.push(screen);
+		}
+
+		// Remove old screens from update loop and input routing (but keep roots in scene for animation)
+		for (screen in screensToRemove) {
+			this.activeScreens.remove(screen);
+			this.activeScreenControllers.remove(screen);
+		}
+
+		// When opening a dialog, only the dialog should receive input — restrict
+		// controllers so the underlying screens can't be clicked during the transition.
+		switch newScreenMode {
+			case Dialog(dialog, _, _, _):
+				activeScreenControllers = [dialog];
+			default:
+		}
+
+		isTransitioning = true;
+
+		// Build cleanup function that removes old screens after animation
+		final oldMode = mode;
+		transitionCleanup = () -> {
+			for (screen in screensToRemove) {
+				screen.getController().lifecycleEvent(LifecycleControllerFinished);
+				screen.onScreenEvent(UILeaving, null);
+				screen.onScreenEvent(UIOnControllerEvent(Leaving), null);
+				tweens.cancelAllChildren(screen.getSceneRoot());
+				// Reset any transition-applied properties
+				screen.getSceneRoot().alpha = 1.0;
+				screen.getSceneRoot().x = 0;
+				screen.getSceneRoot().y = 0;
+				screen.getSceneRoot().remove();
+			}
+		};
+
+		mode = newScreenMode;
+
+		// Execute the visual transition
+		executeTransition(transition, screensToRemove, screensToAdd);
+	}
+
+	/** Convenience: switch to a Single screen with optional transition. */
+	public function switchTo(screen:UIScreen, ?transition:ScreenTransition):Void {
+		switchScreen(Single(screen), transition);
+	}
+
+	/** Open a modal dialog with an optional transition. */
+	public function modalDialogWithTransition(dialog:UIScreen, caller:UIScreen, dialogName:String, ?transition:ScreenTransition):Void {
+		dialog.load();
+		final overlayConfig = readOverlayConfig(dialog);
+		if (overlayConfig != null) {
+			modalOverlay = createModalOverlay(overlayConfig);
+			if (overlayConfig.blur != null && overlayConfig.blur > 0)
+				applyBlurToUnderlyingScreens(overlayConfig.blur);
+			tweenOverlayIn(overlayConfig, transition);
+		}
+		switchScreen(Dialog(dialog, caller, mode, dialogName), transition);
+	}
+
+	/** Close the current dialog with an optional transition. Returns to previous mode. */
+	public function closeDialogWithTransition(?transition:ScreenTransition):Void {
+		switch mode {
+			case Dialog(dialog, caller, previousMode, dialogName):
+				final result = dialog.getController().exitResponse;
+				if (transition == null || transition.match(None)) {
+					removeModalOverlay();
+					caller.onScreenEvent(UIOnControllerEvent(OnDialogResult(dialogName, result)), null);
+					updateScreenMode(previousMode);
+					return;
+				}
+				// Animated close: transition the dialog out, then restore previous mode
+				finalizeTransition();
+
+				isTransitioning = true;
+				final dialogRoot = dialog.getSceneRoot();
+
+				// Remove dialog from active lists
+				this.activeScreens.remove(dialog);
+				this.activeScreenControllers.remove(dialog);
+
+				// Restore previous mode's controllers for input
+				switch previousMode {
+					case Single(single):
+						if (!activeScreenControllers.contains(single))
+							activeScreenControllers.push(single);
+					case MasterAndSingle(master, single):
+						if (!activeScreenControllers.contains(master))
+							activeScreenControllers.push(master);
+						if (!activeScreenControllers.contains(single))
+							activeScreenControllers.push(single);
+					default:
+				}
+
+				// Tween overlay out
+				final overlayConfig = readOverlayConfig(dialog);
+				if (overlayConfig != null)
+					tweenOverlayOut(overlayConfig, transition);
+
+				transitionCleanup = () -> {
+					removeModalOverlay();
+					dialog.getController().lifecycleEvent(LifecycleControllerFinished);
+					dialog.onScreenEvent(UILeaving, null);
+					dialog.onScreenEvent(UIOnControllerEvent(Leaving), null);
+					tweens.cancelAllChildren(dialogRoot);
+					dialogRoot.alpha = 1.0;
+					dialogRoot.x = 0;
+					dialogRoot.y = 0;
+					dialogRoot.remove();
+					caller.onScreenEvent(UIOnControllerEvent(OnDialogResult(dialogName, result)), null);
+				};
+
+				mode = previousMode;
+
+				// Animate only the dialog root out
+				executeExitTransition(transition, dialogRoot);
+
+			default:
+				throw 'closeDialogWithTransition called but not in Dialog mode';
+		}
+	}
+
+	/** Compute which screens to add and remove for a mode transition. */
+	function computeScreenDiff(
+		oldMode:ScreenManagerMode,
+		newMode:ScreenManagerMode,
+		layerContent:Int,
+		layerMaster:Int,
+		layerDialog:Int,
+		screensToAdd:Map<UIScreen, Int>,
+		screensToRemove:Array<UIScreen>
+	):Void {
+		switch oldMode {
+			case ScreenManagerMode.None:
+				switch newMode {
+					case Single(single):
+						screensToAdd.set(single, layerContent);
+					case MasterAndSingle(master, single):
+						screensToAdd.set(master, layerMaster);
+						screensToAdd.set(single, layerContent);
+					case Dialog(dialog, _, _, _):
+						screensToAdd.set(dialog, layerDialog);
+					case ScreenManagerMode.None:
+				}
+			case Single(oldSingle):
+				switch newMode {
+					case ScreenManagerMode.None:
+						screensToRemove.push(oldSingle);
+					case Single(single):
+						if (single != oldSingle) {
+							screensToRemove.push(oldSingle);
+							screensToAdd.set(single, layerContent);
+						}
+					case MasterAndSingle(master, single):
+						screensToAdd.set(master, layerMaster);
+						if (single != oldSingle) {
+							screensToRemove.push(oldSingle);
+							screensToAdd.set(single, layerContent);
+						}
+					case Dialog(dialog, _, _, _):
+						screensToAdd.set(dialog, layerDialog);
+				}
+			case MasterAndSingle(oldMaster, oldSingle):
+				switch newMode {
+					case ScreenManagerMode.None:
+						screensToRemove.push(oldMaster);
+						screensToRemove.push(oldSingle);
+					case Single(single):
+						screensToRemove.push(oldMaster);
+						if (oldSingle != single) {
+							screensToRemove.push(oldSingle);
+							screensToAdd.set(single, layerContent);
+						}
+					case MasterAndSingle(master, single):
+						if (oldMaster != master) {
+							screensToRemove.push(oldMaster);
+							screensToAdd.set(master, layerMaster);
+						}
+						if (oldSingle != single) {
+							screensToRemove.push(oldSingle);
+							screensToAdd.set(single, layerContent);
+						}
+					case Dialog(dialog, _, _, _):
+						screensToAdd.set(dialog, layerDialog);
+				}
+			case Dialog(oldDialog, _, _, _):
+				switch newMode {
+					case ScreenManagerMode.None:
+						screensToRemove.push(oldDialog);
+					case Single(single):
+						screensToRemove.push(oldDialog);
+						screensToAdd.set(single, layerContent);
+					case MasterAndSingle(master, single):
+						screensToRemove.push(oldDialog);
+						screensToAdd.set(single, layerContent);
+						screensToAdd.set(master, layerMaster);
+					case Dialog(dialog, _, _, _):
+						screensToRemove.push(oldDialog);
+						screensToAdd.set(dialog, layerDialog);
+				}
+		}
+	}
+
+	/** Execute the visual transition animation. */
+	function executeTransition(transition:ScreenTransition, screensToRemove:Array<UIScreen>, screensToAdd:Map<UIScreen, Int>):Void {
+		// Use scene (logical) dimensions — not window pixels — so slides
+		// match the coordinate space screens are laid out in.
+		final screenWidth:Float = app.s2d.width;
+		final screenHeight:Float = app.s2d.height;
+
+		final onComplete = () -> {
+			final cleanup = transitionCleanup;
+			isTransitioning = false;
+			transitionCleanup = null;
+			if (cleanup != null)
+				cleanup();
+		};
+
+		// Helper: create all enter/exit tweens for a directional transition.
+		// skipFirstDt avoids a stutter on the first frame after scene graph changes.
+		inline function createDirectionalTweens(
+			duration:Float,
+			easing:Null<bh.multianim.MultiAnimParser.EasingType>,
+			enterProp:h2d.Object -> TweenProperty,
+			enterStart:h2d.Object -> Void,
+			exitProp:h2d.Object -> TweenProperty
+		):Void {
+			var lastTween:Null<Tween> = null;
+			for (screen => _ in screensToAdd) {
+				final root = screen.getSceneRoot();
+				enterStart(root);
+				lastTween = tweens.tween(root, duration, [enterProp(root)], easing);
+				lastTween.skipFirstDt = true;
+			}
+			for (screen in screensToRemove) {
+				final root = screen.getSceneRoot();
+				lastTween = tweens.tween(root, duration, [exitProp(root)], easing);
+				lastTween.skipFirstDt = true;
+			}
+			if (lastTween != null)
+				lastTween.setOnComplete(onComplete);
+			else
+				onComplete();
+		}
+
+		switch transition {
+			case Fade(duration, easing):
+				createDirectionalTweens(duration, easing,
+					(_) -> Alpha(1.0),
+					(root) -> root.alpha = 0.0,
+					(_) -> Alpha(0.0)
+				);
+
+			case SlideLeft(duration, easing):
+				createDirectionalTweens(duration, easing,
+					(_) -> X(0.0),
+					(root) -> root.x = screenWidth,
+					(_) -> X(-screenWidth)
+				);
+
+			case SlideRight(duration, easing):
+				createDirectionalTweens(duration, easing,
+					(_) -> X(0.0),
+					(root) -> root.x = -screenWidth,
+					(_) -> X(screenWidth)
+				);
+
+			case SlideUp(duration, easing):
+				createDirectionalTweens(duration, easing,
+					(_) -> Y(0.0),
+					(root) -> root.y = screenHeight,
+					(_) -> Y(-screenHeight)
+				);
+
+			case SlideDown(duration, easing):
+				createDirectionalTweens(duration, easing,
+					(_) -> Y(0.0),
+					(root) -> root.y = -screenHeight,
+					(_) -> Y(screenHeight)
+				);
+
+			case Custom(fn):
+				var oldRoot:Null<h2d.Object> = null;
+				var newRoot:Null<h2d.Object> = null;
+				if (screensToRemove.length > 0)
+					oldRoot = screensToRemove[0].getSceneRoot();
+				for (s => _ in screensToAdd) {
+					newRoot = s.getSceneRoot();
+					break;
+				}
+				if (oldRoot != null && newRoot != null)
+					fn(tweens, oldRoot, newRoot, onComplete);
+				else
+					onComplete();
+
+			case None:
+				onComplete();
+		}
+	}
+
+	/** Execute an exit-only transition on a single root (used for dialog close). */
+	function executeExitTransition(transition:ScreenTransition, root:h2d.Object):Void {
+		// Use scene (logical) dimensions — not window pixels — so slides
+		// match the coordinate space screens are laid out in.
+		final screenWidth:Float = app.s2d.width;
+		final screenHeight:Float = app.s2d.height;
+
+		final onComplete = () -> {
+			final cleanup = transitionCleanup;
+			isTransitioning = false;
+			transitionCleanup = null;
+			if (cleanup != null)
+				cleanup();
+		};
+
+		switch transition {
+			case Fade(duration, easing):
+				tweens.tween(root, duration, [Alpha(0.0)], easing).setOnComplete(onComplete);
+			case SlideLeft(duration, easing):
+				tweens.tween(root, duration, [X(-screenWidth)], easing).setOnComplete(onComplete);
+			case SlideRight(duration, easing):
+				tweens.tween(root, duration, [X(screenWidth)], easing).setOnComplete(onComplete);
+			case SlideUp(duration, easing):
+				tweens.tween(root, duration, [Y(-screenHeight)], easing).setOnComplete(onComplete);
+			case SlideDown(duration, easing):
+				tweens.tween(root, duration, [Y(screenHeight)], easing).setOnComplete(onComplete);
+			case Custom(fn):
+				fn(tweens, root, root, onComplete);
+			case None:
+				onComplete();
+		}
+	}
+
+	// ==================== Modal Overlay ====================
+
+	function readOverlayConfig(dialog:UIScreen):Null<ModalOverlayConfig> {
+		if (Std.isOfType(dialog, UIScreenBase)) {
+			return cast(dialog, UIScreenBase).modalOverlayConfig;
+		}
+		return null;
+	}
+
+	function createModalOverlay(config:ModalOverlayConfig):h2d.Bitmap {
+		final color = config.color ?? 0x000000;
+		final overlay = new h2d.Bitmap(h2d.Tile.fromColor(color, 4096, 4096));
+		overlay.alpha = 0.0;
+		app.s2d.add(overlay, layerOverlay);
+		modalOverlayTargetAlpha = config.alpha ?? 0.5;
+		return overlay;
+	}
+
+	function removeModalOverlay():Void {
+		final overlay = modalOverlay;
+		if (overlay == null) return;
+		tweens.cancelAll(overlay);
+		overlay.remove();
+		modalOverlay = null;
+		modalOverlayTargetAlpha = 0.0;
+		// Restore blur filters
+		@:nullSafety(Off) for (entry in modalOverlayBlurTargets) {
+			entry.root.filter = entry.saved;
+		}
+		modalOverlayBlurTargets = [];
+	}
+
+	function applyBlurToUnderlyingScreens(blurRadius:Float):Void {
+		for (screen in activeScreens) {
+			final root = screen.getSceneRoot();
+			modalOverlayBlurTargets.push({root: root, saved: root.filter});
+			root.filter = new h2d.filter.Blur(blurRadius, 1.0, 1.0);
+		}
+	}
+
+	function getTransitionDurationAndEasing(transition:ScreenTransition):{duration:Float, easing:Null<EasingType>} {
+		return switch transition {
+			case Fade(duration, easing): {duration: duration, easing: easing};
+			case SlideLeft(duration, easing): {duration: duration, easing: easing};
+			case SlideRight(duration, easing): {duration: duration, easing: easing};
+			case SlideUp(duration, easing): {duration: duration, easing: easing};
+			case SlideDown(duration, easing): {duration: duration, easing: easing};
+			case Custom(_): {duration: 0.3, easing: null};
+			case None: {duration: 0.0, easing: null};
+		};
+	}
+
+	function tweenOverlayIn(config:ModalOverlayConfig, ?transition:ScreenTransition):Void {
+		final overlay = modalOverlay;
+		if (overlay == null) return;
+		final targetAlpha = config.alpha ?? 0.5;
+		if (transition == null || transition.match(None)) {
+			overlay.alpha = targetAlpha;
+			return;
+		}
+		final te = getTransitionDurationAndEasing(transition);
+		final duration = config.fadeIn ?? te.duration;
+		if (duration <= 0) {
+			overlay.alpha = targetAlpha;
+			return;
+		}
+		final tween = tweens.tween(overlay, duration, [Alpha(targetAlpha)], te.easing);
+		tween.skipFirstDt = true;
+	}
+
+	function tweenOverlayOut(config:ModalOverlayConfig, ?transition:ScreenTransition):Void {
+		final overlay = modalOverlay;
+		if (overlay == null) return;
+		if (transition == null || transition.match(None)) {
+			removeModalOverlay();
+			return;
+		}
+		final te = getTransitionDurationAndEasing(transition);
+		final duration = config.fadeOut ?? te.duration;
+		if (duration <= 0) {
+			removeModalOverlay();
+			return;
+		}
+		tweens.cancelAll(overlay);
+		tweens.tween(overlay, duration, [Alpha(0.0)], te.easing);
+		// Actual removal happens in transitionCleanup
+	}
+
 	#if MULTIANIM_DEV
 	@:nullSafety(Off)
 	public function hotReload(?resource:hxd.res.Resource):bh.multianim.dev.HotReload.ReloadReport {
+		finalizeTransition();
 		final startTime = haxe.Timer.stamp();
 
 		// Determine which files to process

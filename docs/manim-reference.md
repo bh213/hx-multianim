@@ -880,6 +880,11 @@ When `tabPanel.contentRoot` is set, tab content coordinates are relative to the 
 | `scrollSpeed` | Scroll velocity |
 | `clickMode` | `"single"` or `"double"` — action event mode (scrollable list) |
 | `prefix.setting` | Route setting to sub-builder (`item.font`, `scrollbar.thickness`) |
+| `overlay.color` | Modal overlay color (`:color`, e.g. `#000000`) |
+| `overlay.alpha` | Modal overlay opacity (`:float`, 0.0–1.0) |
+| `overlay.fadeIn` | Overlay fade-in duration in seconds (`:float`) |
+| `overlay.fadeOut` | Overlay fade-out duration in seconds (`:float`) |
+| `overlay.blur` | Blur radius on underlying screens (`:float`, 0 = none) |
 
 ---
 

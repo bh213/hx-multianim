@@ -323,6 +323,27 @@
 - **`ParseUtils.toInt()` helper** — new `static inline` function using `Std.parseInt(s) ?? throw` pattern; replaces all `Std.parseInt(...) ?? 0` workarounds across parser and builder files
   - Used as `using bh.multianim.ParseUtils` extension method: `value.toInt()`, `numStr.toInt()`
 - **`LAYOUT` index now `Null<ReferenceableValue>`** — `layout(name)` without index properly represented as null instead of requiring a dummy value
+- **TweenManager** — lightweight tween/animation system for `h2d.Object` properties
+  - Core classes: `Tween`, `TweenSequence` (sequential), `TweenGroup` (parallel), `TweenManager` (orchestrator)
+  - Animatable properties: `Alpha`, `X`, `Y`, `ScaleX`, `ScaleY`, `Scale`, `Rotation`, `Custom(getter, setter, to)`
+  - Convenience: `fadeIn()`, `fadeOut()`, `moveTo()`, `scaleTo()`
+  - Cancellation: `cancel(tween)`, `cancelAll(target)`, `cancelAllChildren(root)`, `clear()`
+  - `skipFirstDt` flag prevents stutter when objects are added to scene graph mid-frame
+  - Uses existing `EasingType` via `FloatTools.applyEasing()`; accessed via `screenManager.tweens`
+- **Screen transitions** — animated transitions between screens and dialogs
+  - `ScreenTransition` enum: `None`, `Fade`, `SlideLeft`, `SlideRight`, `SlideUp`, `SlideDown`, `Custom`
+  - `switchScreen(mode, ?transition)`, `switchTo(screen, ?transition)` for screen switching
+  - `modalDialogWithTransition(dialog, caller, name, ?transition)` and `closeDialogWithTransition(?transition)`
+  - `isTransitioning` flag, `finalizeTransition()` for immediate completion
+  - Both screens in scene during transition; input routed to new screen only
+- **Modal dialog overlay** — configurable darkening/blur behind modal dialogs
+  - `ModalOverlayConfig` typedef: `color`, `alpha`, `fadeIn`, `fadeOut`, `blur`
+  - `parseOverlaySettings()` reads `overlay.*` keys from `.manim` `settings{}` block
+  - Overlay at layer 5 (between master=4 and dialog=6), animated via TweenManager
+  - Optional blur filter on underlying screen roots
+  - `OkCancelDialog` supports `closeTransition` and `.manim` overlay settings
+- **TweenManager unit tests** — 57 tests covering properties, easing, sequences, groups, cancellation, convenience methods, edge cases
+- **Modal overlay settings unit tests** — parseOverlaySettings tests covering all/partial/no/null/mixed settings
 
 ### Changed
 - **`text()` / `richText()` split** — `text()` reverted to simple text (font, string, color, align, maxWidth, letterSpacing, lineSpacing, lineBreak, dropShadow). Rich text features (`styles:`, `images:`, `condenseWhite:`, `[markup]`) moved to new `richText()` element which always creates `h2d.HtmlText`.

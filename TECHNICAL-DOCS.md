@@ -109,6 +109,23 @@ Screen methods for managing interactives:
 - `addInteractives(result, prefix)` — Wraps all interactives from a BuilderResult
 - `removeInteractives(prefix)` — Removes wrappers by prefix
 
+### Screen Transitions & Modal Overlay
+
+**TweenManager** (`src/bh/base/TweenManager.hx`) — owned by `ScreenManager`, updated in `ScreenManager.update(dt)`. Provides `Tween`, `TweenSequence`, `TweenGroup` for animating `h2d.Object` properties (alpha, position, scale, rotation, custom). Accessed via `screenManager.tweens`.
+
+**ScreenTransition** (`src/bh/ui/screens/ScreenTransition.hx`) — enum defining transition types: `None`, `Fade`, `SlideLeft/Right/Up/Down`, `Custom`. Used with `switchTo()`, `switchScreen()`, `modalDialogWithTransition()`, `closeDialogWithTransition()`.
+
+**Transition execution flow:**
+1. `switchScreen()` computes screen diff (screens to add/remove)
+2. New screens added to scene with lifecycle events; old screens removed from input routing
+3. `executeTransition()` creates tweens on screen roots (fade alpha, slide position)
+4. All tweens use `skipFirstDt = true` to prevent stutter
+5. On complete, `transitionCleanup` removes old screens from scene
+
+**Modal overlay:** When a dialog has `modalOverlayConfig` set, `ScreenManager` creates an `h2d.Bitmap` overlay at layer 5 (between master=4 and dialog=6). Overlay alpha animates in/out via TweenManager synchronized with dialog transition. Optional blur filter applied to underlying screen roots.
+
+**Layer ordering:** `layerContent=2`, `layerMaster=4`, `layerOverlay=5`, `layerDialog=6`
+
 ## Macros
 
 ### macroBuildWithParameters
