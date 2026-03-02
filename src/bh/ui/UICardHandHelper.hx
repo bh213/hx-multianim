@@ -128,6 +128,9 @@ class UICardHandHelper {
 	final targetingThresholdY:Float;
 	final allowCardToCard:Bool;
 	final cardToCardHighlightScale:Float;
+	final cardToCardHoverPop:Bool;
+	final cardToCardHoverScale:Bool;
+	final cardToCardSpread:Bool;
 	final drawPilePosition:FPoint;
 	final discardPilePosition:FPoint;
 	final handLayer:LayersEnum;
@@ -212,6 +215,9 @@ class UICardHandHelper {
 		targetingThresholdY = config != null && config.targetingThresholdY != null ? config.targetingThresholdY : 100.0;
 		allowCardToCard = config != null && config.allowCardToCard != null ? config.allowCardToCard : false;
 		cardToCardHighlightScale = config != null && config.cardToCardHighlightScale != null ? config.cardToCardHighlightScale : 1.1;
+		cardToCardHoverPop = config != null && config.cardToCardHoverPop != null ? config.cardToCardHoverPop : false;
+		cardToCardHoverScale = config != null && config.cardToCardHoverScale != null ? config.cardToCardHoverScale : false;
+		cardToCardSpread = config != null && config.cardToCardSpread != null ? config.cardToCardSpread : false;
 		drawPilePosition = config != null && config.drawPilePosition != null ? config.drawPilePosition : new FPoint(50, 680);
 		discardPilePosition = config != null && config.discardPilePosition != null ? config.discardPilePosition : new FPoint(1230, 680);
 		handLayer = config != null && config.handLayer != null ? config.handLayer : DefaultLayer;
@@ -734,6 +740,78 @@ class UICardHandHelper {
 		return true;
 	}
 
+	/** Restore visual effects applied by applyCardToCardEffects(). */
+	function restoreCardToCardEffects():Void {
+		if (cardToCardTarget == null)
+			return;
+		// Restore target scale + z-order
+		cardToCardTarget.container.scaleX = cardToCardTarget.layoutPos.scale;
+		cardToCardTarget.container.scaleY = cardToCardTarget.layoutPos.scale;
+		addToHandLayer(cardToCardTarget);
+		// Restore target position if pop was applied
+		if (cardToCardHoverPop) {
+			cardToCardTarget.container.setPosition(cardToCardTarget.layoutPos.x, cardToCardTarget.layoutPos.y);
+			cardToCardTarget.container.rotation = cardToCardTarget.layoutPos.rotation;
+		}
+		// Restore neighbor positions if spread was applied
+		if (cardToCardSpread) {
+			for (entry in cards) {
+				if (entry.state == Dragging || entry.state == Targeting || entry.state == Animating)
+					continue;
+				if (entry == cardToCardTarget)
+					continue;
+				entry.container.setPosition(entry.layoutPos.x, entry.layoutPos.y);
+				entry.container.rotation = entry.layoutPos.rotation;
+				entry.container.scaleX = entry.layoutPos.scale;
+				entry.container.scaleY = entry.layoutPos.scale;
+			}
+		}
+	}
+
+	/** Apply hover-like effects to the current card-to-card target. */
+	function applyCardToCardEffects():Void {
+		if (cardToCardTarget == null)
+			return;
+		var targetIdx = cards.indexOf(cardToCardTarget);
+
+		if (cardToCardSpread || cardToCardHoverPop) {
+			var hoverPositions = computeLayout(targetIdx);
+			// Spread: move neighbors
+			if (cardToCardSpread) {
+				for (i in 0...cards.length) {
+					if (i >= hoverPositions.length)
+						break;
+					var entry = cards[i];
+					if (entry.state == Dragging || entry.state == Targeting || entry.state == Animating)
+						continue;
+					if (i == targetIdx)
+						continue;
+					entry.container.setPosition(hoverPositions[i].x, hoverPositions[i].y);
+					entry.container.rotation = hoverPositions[i].rotation;
+					entry.container.scaleX = hoverPositions[i].scale;
+					entry.container.scaleY = hoverPositions[i].scale;
+				}
+			}
+			// Pop: offset target position
+			if (cardToCardHoverPop) {
+				cardToCardTarget.container.setPosition(hoverPositions[targetIdx].x, hoverPositions[targetIdx].y);
+				cardToCardTarget.container.rotation = hoverPositions[targetIdx].rotation;
+			}
+			// Scale: hoverScale or cardToCardHighlightScale
+			var scale = if (cardToCardHoverScale) hoverPositions[targetIdx].scale else cardToCardTarget.layoutPos.scale * cardToCardHighlightScale;
+			cardToCardTarget.container.scaleX = scale;
+			cardToCardTarget.container.scaleY = scale;
+		} else {
+			// Only scale (existing behavior, possibly with hoverScale)
+			var scale = if (cardToCardHoverScale) hoverScale else cardToCardTarget.layoutPos.scale * cardToCardHighlightScale;
+			cardToCardTarget.container.scaleX = scale;
+			cardToCardTarget.container.scaleY = scale;
+		}
+
+		// Z-order: bring to top
+		handContainer.add(cardToCardTarget.container, cards.length);
+	}
+
 	function updateDrag():Void {
 		if (draggedEntry == null)
 			return;
@@ -744,19 +822,9 @@ class UICardHandHelper {
 		if (allowCardToCard) {
 			var targetEntry = getCardAtPosition(cursorX, cursorY, entry);
 			if (targetEntry != cardToCardTarget) {
-				// Un-highlight old
-				if (cardToCardTarget != null) {
-					cardToCardTarget.container.scaleX = cardToCardTarget.layoutPos.scale;
-					cardToCardTarget.container.scaleY = cardToCardTarget.layoutPos.scale;
-					addToHandLayer(cardToCardTarget); // Restore z-order
-				}
+				restoreCardToCardEffects();
 				cardToCardTarget = targetEntry;
-				// Highlight new
-				if (cardToCardTarget != null) {
-					cardToCardTarget.container.scaleX = cardToCardTarget.layoutPos.scale * cardToCardHighlightScale;
-					cardToCardTarget.container.scaleY = cardToCardTarget.layoutPos.scale * cardToCardHighlightScale;
-					handContainer.add(cardToCardTarget.container, cards.length); // Bring to top
-				}
+				applyCardToCardEffects();
 			}
 			if (cardToCardTarget != null) {
 				entry.container.setPosition(cursorX + dragOffsetX, cursorY + dragOffsetY);
@@ -823,11 +891,7 @@ class UICardHandHelper {
 		entry.container.alpha = 1.0;
 
 		// Un-highlight card-to-card target
-		if (cardToCardTarget != null) {
-			cardToCardTarget.container.scaleX = cardToCardTarget.layoutPos.scale;
-			cardToCardTarget.container.scaleY = cardToCardTarget.layoutPos.scale;
-			addToHandLayer(cardToCardTarget); // Restore z-order
-		}
+		restoreCardToCardEffects();
 
 		var result:TargetingResult = NoTarget;
 		var cardPlayed = false;
@@ -914,12 +978,8 @@ class UICardHandHelper {
 		targeting.clearLine();
 
 		// Un-highlight card-to-card target
-		if (cardToCardTarget != null) {
-			cardToCardTarget.container.scaleX = cardToCardTarget.layoutPos.scale;
-			cardToCardTarget.container.scaleY = cardToCardTarget.layoutPos.scale;
-			addToHandLayer(cardToCardTarget); // Restore z-order
-			cardToCardTarget = null;
-		}
+		restoreCardToCardEffects();
+		cardToCardTarget = null;
 
 		currentTargetId = null;
 		isDragging = false;
