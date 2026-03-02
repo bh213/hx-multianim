@@ -327,18 +327,47 @@
 </head>
 <body>
     <h1>Visual Test Report</h1>
-    <div class="timestamp">Generated: 2026-03-02 16:12:11</div>
+    <div class="timestamp">Generated: 2026-03-02 19:47:28</div>
     <div class="summary">
         <strong>Summary:</strong> 90 tests,         <span style="color: #4CAF50;">90 passed</span>,         <span style="color: #f44336;">0 failed</span>
-        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 0.6s, visual 19.9s)</span>
+        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 0.6s, visual 20.3s)</span>
     </div>
     <div class="unit-tests-section">
         <h2>Unit Tests</h2>
         <div class="unit-tests-summary all-passed">
-            <strong>2527 assertions:</strong>             <span style="color: #4CAF50;">2527 passed</span>
+            <strong>2932 assertions:</strong>             <span style="color: #4CAF50;">2932 passed</span>
             <button class="expand-btn" id="unitToggleBtn" onclick="toggleUnitDetails()">Show Details</button>
         </div>
         <div class="unit-details" id="unitDetails">
+            <div class="unit-class">
+                <div class="unit-class-name">AnimFilterRuntimeTest</div>
+                <div class="unit-method pass">testAddAnimationState: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testCountedLoopFinishes: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testDuplicateAnimNameThrows: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testExternallyDrivenFlag: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testExtraPointMissing: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testExtraPointRetrieval: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testGetCurrentAnimNameBeforePlay: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testGetExtraPointForAnim: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testGetExtraPointForAnimUnknownThrows: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testGetExtraPointNames: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testGetExtraPointNamesBeforePlay: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testInfiniteLoopNeverFinishes: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testNoLoopFinishes: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testOnFinishedCallback: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testPausedDoesNotAdvance: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testPlayAppliesNullFilter: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testPlaySetsCurrentName: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testPlayUnknownThrows: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testPlayWithNullTintSetsWhite: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testPlayWithTintColor: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testPointEvent: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testRandomPointEventDeterministic: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testSetFilterNullFallsBackToAnimFilter: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testSetFilterNullTintFallsBackToAnimTint: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testTriggerDataEvent: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testTriggerEvent: OK <span class="dots">.</span></div>
+            </div>
             <div class="unit-class">
                 <div class="unit-class-name">AnimParserTest</div>
                 <div class="unit-method pass">testAnimSMAddAndPlay: OK <span class="dots">.</span></div>
@@ -456,6 +485,65 @@
                 <div class="unit-method pass">testParseUndefinedConstantRef: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testPlaylistFilter: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testPlaylistFilterMultiple: OK <span class="dots">.</span></div>
+            </div>
+            <div class="unit-class">
+                <div class="unit-class-name">AnimatedPathTest</div>
+                <div class="unit-method pass">testAlphaCurve: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testAngleOnHorizontalPath: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testAngleOnVerticalPath: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testColorCurve: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testColorCurveMidpoint: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testConstructionDistanceMode: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testConstructionTimeMode: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testCustomCurve: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testCustomEventAtRate: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testCycleCountInitiallyZero: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testDefaultAlphaWithoutCurve: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testDefaultColorWithoutCurve: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testDefaultRotationWithoutCurve: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testDefaultScaleWithoutCurve: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testDistanceModeCompletion: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testDistanceModeProgression: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testDurationOverride: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testLoopContinues: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testLoopCycleEvents: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testMultipleCustomCurves: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testMultipleEventsOrdered: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testOnUpdateCallback: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testPathEndEvent: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testPathStartEvent: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testPingPongReverses: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testReset: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testResetAfterCompletion: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testRotationCurve: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testScaleCurve: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testSeekAtEnd: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testSeekAtMidpoint: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testSeekAtStart: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testSeekDoesNotFireEvents: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testSpeedCurveInDistanceMode: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testTimeModeCompletion: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testTimeModeOvershoot: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testTimeModeProgressionLinear: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testTimeModeZeroDtIgnored: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testUpdateAfterDoneIsNoop: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testZeroLengthPathThrows: OK <span class="dots">.</span></div>
+            </div>
+            <div class="unit-class">
+                <div class="unit-class-name">BitFlagTest</div>
+                <div class="unit-method pass">testBit0NotSet: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testBit0Set: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testBit1NotSet: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testBit1Set: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testBit3NotSet: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testBit3Set: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testBit7Set: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testDefaultFlagsValueZero: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testElseAfterBitConditional: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testElseAfterBitConditionalNotFired: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testMultipleBitsAllSet: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testMultipleBitsSomeSet: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testZeroFlagsNoBitsMatch: OK <span class="dots">.</span></div>
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">BuilderUnitTest</div>
@@ -707,6 +795,102 @@
                 <div class="unit-method pass">testTernaryStringGt: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testTextCreatesPlainText: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testTwoGridSystems: OK <span class="dots">.....</span></div>
+            </div>
+            <div class="unit-class">
+                <div class="unit-class-name">CardHandOrchestratorTest</div>
+                <div class="unit-method pass">testCardHandEventEnum: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testCardStateEnum: OK <span class="dots">.......</span></div>
+                <div class="unit-method pass">testFanLayoutHoverScale: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testFanLayoutMultipleCards: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testFanLayoutNeighborSpread: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testFanLayoutNormals: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testFanLayoutSingleCard: OK <span class="dots">.....</span></div>
+                <div class="unit-method pass">testFanLayoutSingleCardHover: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testFanLayoutZeroCards: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testHandLayoutModeEnum: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testLinearLayoutCompression: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testLinearLayoutHoverPop: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testLinearLayoutSingleCard: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testLinearLayoutSpacing: OK <span class="dots">......</span></div>
+                <div class="unit-method pass">testLinearLayoutZeroCards: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testPathDistributionEnum: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testPathLayoutEvenArcLength: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testPathLayoutEvenRate: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testPathLayoutHoverPop: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testPathLayoutSingleCard: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testPathLayoutStraightOrientation: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testPathLayoutTangentClamped: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testPathLayoutTangentOrientation: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testPathLayoutZeroCards: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testPathOrientationEnum: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testTargetingResultEnum: OK <span class="dots">...</span></div>
+            </div>
+            <div class="unit-class">
+                <div class="unit-class-name">DynamicRefTest</div>
+                <div class="unit-method pass">testBasicDynamicRefBuilds: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testBeginEndUpdateBatch: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testDynamicRefSetParameter: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testDynamicRefSetParameterOnSubResult: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testDynamicRefWithParams: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testDynamicRefWithStaticValues: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testGetDynamicRefNotFoundThrows: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testGetDynamicRefReturnsSubResult: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testMultipleDynamicRefs: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testNestedDynamicRef: OK <span class="dots">..</span></div>
+            </div>
+            <div class="unit-class">
+                <div class="unit-class-name">FlowOverflowTest</div>
+                <div class="unit-method pass">testDefaultOverflowIsLimit: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testFillHeightTrue: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testFillWidthDefault: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testFillWidthTrue: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testFlowAbsoluteChild: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testFlowHalignPerChild: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testFlowOffsetPerChild: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testFlowPropertiesOutsideFlowErrors: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testHorizontalAlignRight: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testOverflowExpand: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testOverflowHidden: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testOverflowLimit: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testOverflowScroll: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testReverseDefault: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testReverseTrue: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testSpacerInFlow: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testVerticalAlignBottom: OK <span class="dots">..</span></div>
+            </div>
+            <div class="unit-class">
+                <div class="unit-class-name">InteractiveEventTest</div>
+                <div class="unit-method pass">testAllEventsExplicit: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testClickOnlyEventFlags: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testDefaultEventFlags: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testDisabledCanBeSet: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testDisabledInitiallyFalse: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testEventConstants: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testHoverAndClickEventFlags: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testHoverOnlyEventFlags: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testHoveredInitiallyFalse: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testInteractiveBindMetadata: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testInteractiveId: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testInteractiveIdWithPrefix: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testInteractiveMetadataString: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testPushOnlyEventFlags: OK <span class="dots">.</span></div>
+            </div>
+            <div class="unit-class">
+                <div class="unit-class-name">ParameterizedSlotTest</div>
+                <div class="unit-method pass">testBasicSlotBuilds: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testIndexedSlotBuilds: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testIndexedSlotIndependence: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testNonIndexedSlotAccessedWithIndexThrows: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testNonParameterizedSlotSetParameterThrows: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testParameterizedSlotBuilds: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testParameterizedSlotSetContent: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testParameterizedSlotSetParameter: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testParameterizedSlotWithBoolParam: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testSlotClear: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testSlotData: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testSlotIsEmptyInitially: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testSlotNonexistentThrows: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testSlotSetContent: OK <span class="dots">...</span></div>
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">ParserErrorTest</div>
@@ -1163,6 +1347,69 @@
                 <div class="unit-method pass">testTilesIterHasBitmaps: OK <span class="dots">.</span></div>
             </div>
             <div class="unit-class">
+                <div class="unit-class-name">RichTextTest</div>
+                <div class="unit-method pass">testConvertAlignTag: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testConvertDoubleEscapeBracket: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testConvertEmptyString: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testConvertEscapeBracket: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testConvertImgTag: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testConvertLinkTag: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testConvertNestedTags: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testConvertNoMarkup: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testConvertNull: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testConvertReservedBoldTag: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testConvertReservedFontTag: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testConvertReservedItalicTag: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testConvertSimpleStyleTag: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testConvertTagWithSpaces: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testConvertUnclosedBracket: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testConvertUnrecognizedTag: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testEscapeStyleNameNormal: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testEscapeStyleNameNotReserved: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testEscapeStyleNameReservedB: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testEscapeStyleNameReservedBold: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testEscapeStyleNameReservedFont: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testEscapeStyleNameReservedI: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testEscapeStyleNameReservedItalic: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testEscapeStyleNameReservedS: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testEscapeStyleNameReservedU: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testExtractStyleReferences: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testExtractStyleReferencesEmpty: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testExtractStyleReferencesNull: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testExtractStyleReferencesSkipsCloseTag: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testExtractStyleReferencesSkipsSpecialTags: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testHasMarkupBracketsButNoCloseTag: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testHasMarkupEscapeSequence: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testHasMarkupNoBrackets: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testHasMarkupNull: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testHasMarkupPlainText: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testHasMarkupWithAlignTag: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testHasMarkupWithCloseTag: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testHasMarkupWithImgTag: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testHasMarkupWithLinkTag: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testResolveColorEmptyString: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testResolveColorNamedRed: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testResolveColorNamedWhite: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testResolveColorNull: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testResolveColorRGB: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testResolveColorRRGGBB: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testResolveColorRRGGBBAA: OK <span class="dots">.</span></div>
+            </div>
+            <div class="unit-class">
+                <div class="unit-class-name">ScreenTransitionTest</div>
+                <div class="unit-method pass">testCustomTransitionCallbackSignature: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testCustomVariant: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testExtractDurationFromVariants: OK <span class="dots">.......</span></div>
+                <div class="unit-method pass">testFadeVariant: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testFadeWithEasing: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testNoneVariant: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testPatternMatchAllVariants: OK <span class="dots">........</span></div>
+                <div class="unit-method pass">testSlideDownVariant: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testSlideLeftVariant: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testSlideRightVariant: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testSlideUpVariant: OK <span class="dots">..</span></div>
+            </div>
+            <div class="unit-class">
                 <div class="unit-class-name">TweenManagerTest</div>
                 <div class="unit-method pass">testAlreadyAtTarget: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testBasicAlphaTween: OK <span class="dots">..</span></div>
@@ -1427,7 +1674,11 @@
                 <div class="unit-method pass">testManualCloseModeIgnoresOutsideClick: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testManualCloseModeRequiresExplicitClose: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testMultipleNamedPanelsIndependent: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testNamedPanelClickOnOtherPanelContentDoesNotClose: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testNamedPanelClickOnOtherTriggerDoesNotClose: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testNamedPanelClickOnOwnInteractiveCancelsPending: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testNamedPanelClickOnSinglePanelContentDoesNotCloseNamed: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testNamedPanelClickOnUnrelatedDoesClose: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testNamedPanelDoesNotAffectSinglePanelApi: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testNamedPanelManualCloseIgnoresOutsideClick: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testNamedPanelOutsideClickClose: OK <span class="dots">...</span></div>
