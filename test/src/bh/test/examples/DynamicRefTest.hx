@@ -92,9 +92,16 @@ class DynamicRefTest extends BuilderTestBase {
 		var subResult = result.getDynamicRef("inner");
 		Assert.notNull(subResult);
 		if (subResult == null) return;
+		// Capture visible bitmaps before parameter change
+		var bitmapsBefore = findVisibleBitmapDescendants(subResult.object);
+		Assert.isTrue(bitmapsBefore.length > 0);
 		// setParameter on the sub-result
 		subResult.setParameter("color", "green");
-		Assert.isTrue(true); // If we got here, no exception
+		// After changing color from red to green, the visible bitmaps should still exist
+		var bitmapsAfter = findVisibleBitmapDescendants(subResult.object);
+		Assert.isTrue(bitmapsAfter.length > 0);
+		// The object tree should still be intact
+		Assert.isTrue(subResult.object.numChildren > 0);
 	}
 
 	// ==================== Multiple Dynamic Refs ====================
@@ -266,12 +273,16 @@ class DynamicRefTest extends BuilderTestBase {
 				dynamicRef($inner, visible=>$show): 0, 0
 			}
 		", "test", null, Incremental);
-		// Toggle parent parameter
+		// Capture visible bitmaps before toggling (show=true, so inner bitmap should be visible)
+		var bitmapsBefore = findVisibleBitmapDescendants(result.object);
+		Assert.isTrue(bitmapsBefore.length > 0);
+		// Toggle parent parameter to hide inner content
 		result.beginUpdate();
 		result.setParameter("show", false);
 		result.endUpdate();
-		// Should not crash
-		Assert.isTrue(true);
+		// After setting visible=>false via show=>false, the bitmap should no longer be visible
+		var bitmapsAfter = findVisibleBitmapDescendants(result.object);
+		Assert.isTrue(bitmapsAfter.length < bitmapsBefore.length);
 	}
 
 	@Test

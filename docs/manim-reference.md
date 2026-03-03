@@ -59,9 +59,9 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | Element | Description |
 |---------|-------------|
 | `placeholder(type, source)` | Dynamic content slot resolved at build time |
-| `staticRef($ref, params)` | Static embed of another programmable (alias: `reference`) |
+| `staticRef($ref, params)` | Static embed of another programmable |
 | `staticRef(external("importName"), $ref, params)` | Static embed from imported .manim file |
-| `dynamicRef($ref, params)` | Dynamic embed with runtime `setParameter()` support (alias: `component`) |
+| `dynamicRef($ref, params)` | Dynamic embed with runtime `setParameter()` support |
 | `dynamicRef(external("importName"), $ref, params)` | Dynamic embed from imported .manim file |
 | `#name slot` | Swappable content container |
 | `#name[$i] slot` | Indexed slot inside repeatable |
@@ -85,12 +85,14 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 |----------|-------------|
 | `step(count, dx: N, dy: N)` | Fixed step offset, repeated `count` times |
 | `layout("blockName", "entryName")` | Position from named relative layout (blockName is label only, entryName is the `#name` used in layout) |
-| `array(arrayName)` | Iterate over data array |
+| `array($valueVar, $arrayName)` | Iterate over data array |
 | `range(start, end [, step])` | Numeric range (exclusive end), optional step |
 | `range(from: X, to: Y [, step: S])` | Named range (inclusive end: `to: 5` includes 5) |
 | `range(from: X, until: Y [, step: S])` | Named range (exclusive end: `until: 5` excludes 5) |
-| `stateanim(file, anim, selector)` | Iterate animation frames; exposes `$bitmap`, `$tilename` |
-| `tiles(sheet, prefix)` | Iterate all tiles from sheet; exposes `$bitmap`, `$tilename` |
+| `stateanim($bitmapVar, "file.anim", "animName", key=>value)` | Iterate animation frames; exposes `$bitmapVar` and `$index` |
+| `tiles($bitmapVar, $tilenameVar, "sheetName")` | Iterate all tiles from sheet; exposes `$bitmapVar`, `$tilenameVar`, and `$index` |
+| `tiles($bitmapVar, "sheetName", "exactTile")` | Iterate frames of a specific tile; exposes `$bitmapVar` and `$index` |
+| `tiles($bitmapVar, "sheetName")` | Iterate all tiles (without tilename var); exposes `$bitmapVar` and `$index` |
 
 ---
 
@@ -138,12 +140,6 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | `dropShadowXY` | Shadow offset (x, y) |
 | `dropShadowColor` | Shadow color |
 | `dropShadowAlpha` | Shadow opacity |
-| `maxWidth` | Maximum text width (triggers wrapping) |
-| `maxHeight` | Maximum text height |
-| `minWidth` | Minimum text width |
-| `minHeight` | Minimum text height |
-| `lineHeight` | Fixed line height override |
-| `colWidth` | Column width for layout |
 
 `richText()` always creates `h2d.HtmlText`. Markup is always processed via `TextMarkupConverter`.
 
@@ -746,6 +742,7 @@ bounds: bounce(0.6), box(x: -50, y: -50, w: 250, h: 250), line(0, 0, 100, 0)
 | `groupId` | Particle group reference |
 | `trigger` | `onbirth`, `ondeath`, `oncollision`, `oninterval(seconds)` |
 | `probability` | Spawn chance (0-1) |
+| `burstCount` | Number of particles to emit per trigger |
 | `inheritVelocity` | Velocity inheritance factor |
 | `offsetX`, `offsetY` | Spawn offset |
 

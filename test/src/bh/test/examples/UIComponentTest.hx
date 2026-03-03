@@ -602,6 +602,8 @@ class UIComponentTest extends BuilderTestBase {
 			screen.testGetBoolSettings(settings, "flag", false);
 		} catch (e:Dynamic) {
 			threw = true;
+			var msg = Std.string(e);
+			Assert.isTrue(msg.indexOf("bool") >= 0 || msg.indexOf("invalid") >= 0 || msg.indexOf("expected") >= 0, 'Expected error about "bool"/"invalid"/"expected", got: $msg');
 		}
 		Assert.isTrue(threw);
 	}
@@ -632,7 +634,7 @@ class UIComponentTest extends BuilderTestBase {
 	}
 
 	@Test
-	public function testSplitSettingsUnknownPrefixThrows():Void {
+	public function testSplitSettingsUnknownPrefixSilentlySkipped():Void {
 		var screen = new UITestScreen();
 		var settings:Map<String, SettingValue> = new Map();
 		settings.set("unknown.key", RSVString("val"));
@@ -852,7 +854,7 @@ class UIComponentTest extends BuilderTestBase {
 	}
 
 	@Test
-	public function testTextInputOnChangeCallback():Void {
+	public function testTextInputSetTextDoesNotFireOnChange():Void {
 		ensureTestFont();
 		var builder = BuilderTestBase.builderFromSource(TEXTINPUT_MANIM);
 		var input = UIMultiAnimTextInput.create(builder, "textInput", {font: "testfont"});
@@ -1121,6 +1123,8 @@ class UIComponentTest extends BuilderTestBase {
 			dropdown.setSelectedIndex(-1);
 		} catch (e:Dynamic) {
 			threw = true;
+			var msg = Std.string(e);
+			Assert.isTrue(msg.indexOf("index") >= 0 || msg.indexOf("bounds") >= 0 || msg.indexOf("range") >= 0, 'Expected error about "index"/"bounds"/"range", got: $msg');
 		}
 		Assert.isTrue(threw);
 
@@ -1129,6 +1133,8 @@ class UIComponentTest extends BuilderTestBase {
 			dropdown.setSelectedIndex(dropdown.items.length);
 		} catch (e:Dynamic) {
 			threw = true;
+			var msg = Std.string(e);
+			Assert.isTrue(msg.indexOf("index") >= 0 || msg.indexOf("bounds") >= 0 || msg.indexOf("range") >= 0, 'Expected error about "index"/"bounds"/"range", got: $msg');
 		}
 		Assert.isTrue(threw);
 	}
@@ -1309,6 +1315,8 @@ class UIComponentTest extends BuilderTestBase {
 			list.setSelectedIndex(-2);
 		} catch (e:Dynamic) {
 			threw = true;
+			var msg = Std.string(e);
+			Assert.isTrue(msg.indexOf("index") >= 0 || msg.indexOf("bounds") >= 0 || msg.indexOf("range") >= 0, 'Expected error about "index"/"bounds"/"range", got: $msg');
 		}
 		Assert.isTrue(threw);
 
@@ -1317,6 +1325,8 @@ class UIComponentTest extends BuilderTestBase {
 			list.setSelectedIndex(list.items.length);
 		} catch (e:Dynamic) {
 			threw = true;
+			var msg = Std.string(e);
+			Assert.isTrue(msg.indexOf("index") >= 0 || msg.indexOf("bounds") >= 0 || msg.indexOf("range") >= 0, 'Expected error about "index"/"bounds"/"range", got: $msg');
 		}
 		Assert.isTrue(threw);
 	}
@@ -1540,9 +1550,8 @@ class UIComponentTest extends BuilderTestBase {
 		if (callbackIndex != null) {
 			Assert.isTrue(callbackIndex >= 0, "Callback index should be valid");
 		} else {
-			// Panel click may not work in headless mode due to zero bounds; verify at least the setup
-			Assert.isNull(callbackIndex);
-			Assert.pass();
+			// Panel click may not work in headless mode due to zero bounds
+			Assert.pass("headless mode -- click simulation not supported");
 		}
 	}
 
@@ -1590,7 +1599,7 @@ class UIComponentTest extends BuilderTestBase {
 	}
 
 	@Test
-	public function testScrollableListHoverIndex():Void {
+	public function testScrollableListHoverIndexDefaultValues():Void {
 		var list = createScrollableList();
 		Assert.equals(-1, list.currentHoverIndex);
 		Assert.equals(-1, list.currentPressedIndex);
@@ -1954,6 +1963,8 @@ class UIComponentTest extends BuilderTestBase {
 			result.tabs.beginTab(-1);
 		} catch (e:Dynamic) {
 			threw = true;
+			var msg = Std.string(e);
+			Assert.isTrue(msg.indexOf("range") >= 0 || msg.indexOf("index") >= 0 || msg.indexOf("tab") >= 0, 'Expected error about "range"/"index"/"tab", got: $msg');
 		}
 		Assert.isTrue(threw);
 
@@ -1962,6 +1973,8 @@ class UIComponentTest extends BuilderTestBase {
 			result.tabs.beginTab(3);
 		} catch (e:Dynamic) {
 			threw = true;
+			var msg = Std.string(e);
+			Assert.isTrue(msg.indexOf("range") >= 0 || msg.indexOf("index") >= 0 || msg.indexOf("tab") >= 0, 'Expected error about "range"/"index"/"tab", got: $msg');
 		}
 		Assert.isTrue(threw);
 	}
@@ -1975,6 +1988,8 @@ class UIComponentTest extends BuilderTestBase {
 			result.tabs.endTab();
 		} catch (e:Dynamic) {
 			threw = true;
+			var msg = Std.string(e);
+			Assert.isTrue(msg.indexOf("not populating") >= 0 || msg.indexOf("tab") >= 0 || msg.indexOf("begin") >= 0, 'Expected error about tab state, got: $msg');
 		}
 		Assert.isTrue(threw);
 	}
@@ -1990,6 +2005,8 @@ class UIComponentTest extends BuilderTestBase {
 			result.tabs.beginTab(1);
 		} catch (e:Dynamic) {
 			threw = true;
+			var msg = Std.string(e);
+			Assert.isTrue(msg.indexOf("nested") >= 0 || msg.indexOf("already") >= 0 || msg.indexOf("begin") >= 0, 'Expected error about "nested"/"already"/"begin", got: $msg');
 		}
 		Assert.isTrue(threw);
 
@@ -2036,6 +2053,8 @@ class UIComponentTest extends BuilderTestBase {
 			new UIMultiAnimTabs(builder, "tabBar", "tab", items, 0, screen, null, null, "contentRoot");
 		} catch (e:Dynamic) {
 			threw = true;
+			var msg = Std.string(e);
+			Assert.isTrue(msg.indexOf("content") >= 0 || msg.indexOf("root") >= 0 || msg.indexOf("invalid") >= 0 || msg.indexOf("not found") >= 0, 'Expected error about "content"/"root"/"invalid"/"not found", got: $msg');
 		}
 		Assert.isTrue(threw);
 	}
@@ -2095,6 +2114,7 @@ class UIComponentTest extends BuilderTestBase {
 		Assert.notNull(draggable.getObject());
 		Assert.isTrue(Type.enumEq(draggable.getState(), Idle));
 		Assert.isFalse(draggable.isCurrentlyDragging());
+		Assert.isFalse(draggable.isAnimating());
 	}
 
 	@Test
@@ -2118,14 +2138,6 @@ class UIComponentTest extends BuilderTestBase {
 
 		var draggable = UIMultiAnimDraggable.createFromSlot(slot);
 		Assert.isNull(draggable);
-	}
-
-	@Test
-	public function testDraggableInitialState():Void {
-		var draggable = createDraggable();
-		Assert.isFalse(draggable.isCurrentlyDragging());
-		Assert.isFalse(draggable.isAnimating());
-		Assert.isTrue(Type.enumEq(draggable.getState(), Idle));
 	}
 
 	// --- Drop Zone Management ---

@@ -1135,6 +1135,8 @@ class ParserErrorTest extends utest.Test {
 		// The error should NOT report line 1 (sub-lexer default) — it should report the actual line
 		Assert.isFalse(error.indexOf("test-input:1:") >= 0,
 			'Error position should not be line 1 (sub-lexer default), got: $error');
+		Assert.isTrue(error.indexOf("test-input:") >= 0,
+			'Error should contain a file:line reference, got: $error');
 	}
 
 	@Test
@@ -2957,7 +2959,7 @@ class ParserErrorTest extends utest.Test {
 			}
 		');
 		Assert.notNull(error, "Should throw error for unknown style reference");
-		Assert.isTrue(error.indexOf("unknown") >= 0,
+		Assert.isTrue(error.indexOf("unknown style") >= 0,
 			'Error should mention unknown style, got: $error');
 	}
 
@@ -3087,7 +3089,7 @@ class ParserErrorTest extends utest.Test {
 	}
 
 	@Test
-	public function testRichTextStylesFontAndColor() {
+	public function testRichTextStylesMultipleColors() {
 		var success = parseExpectingSuccess('
 			#test programmable() {
 				richText(dd, "[warn]Warning:[/] costs [price]100g[/]", white, left, 200,
@@ -3131,6 +3133,8 @@ class ParserErrorTest extends utest.Test {
 			}
 		');
 		Assert.notNull(error, "Should throw error for unknown coordinate system");
+		Assert.isTrue(error.indexOf("unknown") >= 0,
+			'Error should mention the unknown coordinate system, got: $$error');
 	}
 
 	@Test
@@ -3160,6 +3164,8 @@ class ParserErrorTest extends utest.Test {
 			}
 		');
 		Assert.notNull(error, "Should throw error for unknown hex chain method");
+		Assert.isTrue(error.indexOf("invalid") >= 0 || error.indexOf("unknown") >= 0 || error.indexOf("Unknown") >= 0,
+			'Error should mention the unknown method, got: $$error');
 	}
 
 	// ===== @ifstrict error cases =====
@@ -3193,6 +3199,8 @@ class ParserErrorTest extends utest.Test {
 			}
 		");
 		Assert.notNull(error, "Should throw error for @ifstrict without parens");
+		Assert.isTrue(error.indexOf("(") >= 0 || error.indexOf("expected") >= 0 || error.indexOf("paren") >= 0,
+			'Error should mention expected parenthesis, got: $$error');
 	}
 
 	@Test
@@ -3203,6 +3211,8 @@ class ParserErrorTest extends utest.Test {
 			}
 		");
 		Assert.notNull(error, "Should throw error for @ifstrict with undefined parameter");
+		Assert.isTrue(error.indexOf("unknown") >= 0 || error.indexOf("Unknown") >= 0 || error.indexOf("param") >= 0,
+			'Error should mention the unknown parameter, got: $$error');
 	}
 
 	// ===== import statement error cases =====
@@ -3213,6 +3223,8 @@ class ParserErrorTest extends utest.Test {
 			import "file.manim"
 		');
 		Assert.notNull(error, "Should throw error for import without as");
+		Assert.isTrue(error.indexOf("as") >= 0 || error.indexOf("expected") >= 0 || error.indexOf("import") >= 0,
+			'Error should mention expected "as" keyword, got: $$error');
 	}
 
 	@Test
@@ -3221,6 +3233,8 @@ class ParserErrorTest extends utest.Test {
 			import as "name"
 		');
 		Assert.notNull(error, "Should throw error for import without filename");
+		Assert.isTrue(error.indexOf("expected") >= 0 || error.indexOf("filename") >= 0 || error.indexOf("import") >= 0 || error.indexOf("string") >= 0,
+			'Error should mention expected filename, got: $$error');
 	}
 
 	@Test
@@ -3229,5 +3243,7 @@ class ParserErrorTest extends utest.Test {
 			import "nonexistent-file.manim" as "ext"
 		');
 		Assert.notNull(error, "Should throw error for import with missing file");
+		Assert.isTrue(error.indexOf("nonexistent") >= 0 || error.indexOf("import") >= 0 || error.indexOf("load") >= 0 || error.indexOf("not found") >= 0 || error.indexOf("file") >= 0,
+			'Error should mention the file not found, got: $error');
 	}
 }

@@ -325,7 +325,7 @@ class RichTextTest extends BuilderTestBase {
 	public function testRichTextWithMarkup():Void {
 		var result = BuilderTestBase.buildFromSource("
 			#test programmable() {
-				richText(\"m3x6\", \"[damage]50[/]\", #FFFFFF, styles: {damage: color(#FF0000)}): 0, 0
+				richText(\"m3x6\", \"[heal]20[/] and [crit]50[/]\", #FFFFFF, styles: {heal: color(#00FF00), crit: color(#FF4444)}): 0, 0
 			}
 		", "test");
 		Assert.notNull(result);
@@ -354,7 +354,6 @@ class RichTextTest extends BuilderTestBase {
 		Assert.notNull(result);
 		// setParameter should not throw
 		result.setParameter("hlColor", 0x00FF00);
-		Assert.isTrue(true);
 	}
 
 	@Test

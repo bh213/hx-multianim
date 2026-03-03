@@ -3984,7 +3984,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	// ==================== Named range: macro unit tests ====================
 
 	@Test
-	public function test91_NamedRangeMacroLoopVarValues():Void {
+	public function testNamedRangeMacroLoopVarValues():Void {
 		// Verify macro codegen produces correct loop variable values (not raw iteration indices).
 		final instance = createMp().namedRange.create();
 		final allTexts = findAllTextDescendants(instance);

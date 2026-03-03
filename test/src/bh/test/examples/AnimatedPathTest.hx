@@ -59,7 +59,7 @@ class AnimatedPathTest extends BuilderTestBase {
 			var ap = new AnimatedPath(zeroPath, Time(1.0));
 			Assert.fail("Should have thrown for zero-length path");
 		} catch (e:Dynamic) {
-			Assert.isTrue(true);
+			Assert.stringContains("pathLength", Std.string(e));
 		}
 	}
 

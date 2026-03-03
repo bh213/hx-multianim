@@ -111,7 +111,7 @@ Operations reference other named curves **or built-in easing names** (e.g. `mult
 ```manim
 #effectName particles {
     count: 100
-    emit: point(0, 0) | cone(dist, distRand, angle, angleRand) | box(w, h, angle, angleRand) | circle(r, rRand, angle, angleRand) | path(pathName [, tangent])
+    emit: point(dist: 0, distRand: 0) | cone(dist: N, distRand: N, angle: A, angleSpread: A) | box(w: N, h: N, angle: A, angleSpread: A) | circle(r: N, rRand: N, angle: A, angleSpread: A) | path(pathName [, tangent])
     tiles: file("particle.png")
     loop: true
     maxLife: 2.0

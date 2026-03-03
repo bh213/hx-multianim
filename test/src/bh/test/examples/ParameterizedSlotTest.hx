@@ -120,9 +120,13 @@ class ParameterizedSlotTest extends BuilderTestBase {
 		var slot = result.getSlot("mySlot");
 		Assert.notNull(slot);
 		if (slot == null) return;
-		// Should not throw when setting parameter
+		// Slot should still be empty (no content set), but decoration should be visible
+		Assert.isTrue(slot.isEmpty());
+		// Change parameter from green to red
 		slot.setParameter("color", "red");
-		Assert.isTrue(true); // If we got here, it worked
+		// Slot should still be structurally intact after parameter change
+		Assert.isTrue(slot.isEmpty());
+		Assert.notNull(slot);
 	}
 
 	@Test
@@ -138,8 +142,13 @@ class ParameterizedSlotTest extends BuilderTestBase {
 		var slot = result.getSlot("mySlot");
 		Assert.notNull(slot);
 		if (slot == null) return;
+		// Verify slot is intact before parameter change
+		Assert.isTrue(slot.isEmpty());
+		// Toggle active from false to true
 		slot.setParameter("active", true);
-		Assert.isTrue(true);
+		// Slot should remain structurally valid after boolean parameter change
+		Assert.isTrue(slot.isEmpty());
+		Assert.notNull(result.getSlot("mySlot"));
 	}
 
 	@Test

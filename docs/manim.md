@@ -308,7 +308,6 @@ Repeats children with various iterators.
 ```
 repeatable($varname, step(repeatCount, dx, dy))
 ```
-Note: `grid` is accepted as a deprecated alias for `step`.
 
 **Layout iterator:**
 ```
@@ -696,8 +695,8 @@ Requires a `hex:` declaration inside the element body:
 
 Cell-relative hex methods (position relative to a specific hex cell):
 
-* `$hex.cube(q, r, s).corner(index, scale)` - corner of a specific hex cell
-* `$hex.cube(q, r, s).edge(direction, scale)` - edge of a specific hex cell
+* `$hex.cube(q, r, s).hexCorner(index, scale)` - corner of a specific hex cell
+* `$hex.cube(q, r, s).hexEdge(direction, scale)` - edge of a specific hex cell
 
 ### Coordinate Value Extraction (.x / .y)
 

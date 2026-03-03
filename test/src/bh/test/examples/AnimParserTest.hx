@@ -185,7 +185,7 @@ class AnimParserTest extends utest.Test {
 			var loader = new bh.base.ResourceLoader.CachingResourceLoader();
 			return AnimParser.parseFile(input, "test-input", loader);
 		} catch (e:Dynamic) {
-			trace('Unexpected parse error: $e');
+			Assert.fail('Unexpected parse error: $e');
 			return null;
 		}
 	}
@@ -346,6 +346,7 @@ animation @(direction=>x) {
 }
 ');
 		Assert.notNull(error, "Should throw error for undefined state value 'x'");
+		Assert.stringContains("x", error);
 	}
 
 	@Test
@@ -363,6 +364,7 @@ animation @(direction=>[l,x]) {
 }
 ');
 		Assert.notNull(error, "Should throw error for undefined state value 'x' in multi-value");
+		Assert.stringContains("x", error);
 	}
 
 	// ===== Additional .anim parse positive tests =====
@@ -487,6 +489,9 @@ animation idle {
 }
 ');
 		Assert.notNull(result, "Animation with header name should parse");
+		var d:Dynamic = result;
+		Assert.equals(1, d.animations.length);
+		Assert.equals("idle", d.animations[0].name);
 	}
 
 	@Test
@@ -504,6 +509,10 @@ animation {
 }
 ');
 		Assert.notNull(result, "center: x,y should parse");
+		var d:Dynamic = result;
+		Assert.notNull(d.center);
+		Assert.equals(32, d.center.x);
+		Assert.equals(48, d.center.y);
 	}
 
 	@Test
@@ -526,6 +535,10 @@ animation {
 }
 ');
 		Assert.notNull(result, "File-level fps/loop defaults should parse");
+		var d:Dynamic = result;
+		Assert.equals(10, d.defaultFps);
+		Assert.equals(-1, d.defaultLoop);
+		Assert.equals(2, d.animations.length);
 	}
 
 	@Test
@@ -542,6 +555,8 @@ animation {
 }
 ');
 		Assert.notNull(result, "loop: N should parse");
+		var d:Dynamic = result;
+		Assert.equals(3, d.animations[0].loop);
 	}
 
 	@Test
@@ -557,11 +572,14 @@ animation {
 }
 ');
 		Assert.notNull(result, "playlist with frames: range should parse");
+		var d:Dynamic = result;
+		Assert.equals(1, d.animations.length);
+		Assert.equals("dodge", d.animations[0].name);
 	}
 
 	@Test
-	public function testParseEventTrigger() {
-		// Bare trigger: just "event <name>" (no keyword after name)
+	public function testParseEventBare() {
+		// Bare event: just "event <name>" (no keyword after name)
 		var result = parseAnimExpectingSuccess('
 sheet: testSheet
 animation {
@@ -574,7 +592,9 @@ animation {
     }
 }
 ');
-		Assert.notNull(result, "event trigger should parse");
+		Assert.notNull(result, "bare event should parse");
+		var d:Dynamic = result;
+		Assert.equals("hit", d.animations[0].name);
 	}
 
 	@Test
@@ -592,6 +612,8 @@ animation {
 }
 ');
 		Assert.notNull(result, "event random with point and radius should parse");
+		var d:Dynamic = result;
+		Assert.equals("hit", d.animations[0].name);
 	}
 
 	@Test
@@ -608,6 +630,8 @@ animation {
 }
 ');
 		Assert.notNull(result, "event with point should parse");
+		var d:Dynamic = result;
+		Assert.equals("fire", d.animations[0].name);
 	}
 
 	@Test
@@ -643,6 +667,11 @@ anim walk: "test_walk"
 anim hit(fps: 20, loop: 2): "test_hit"
 ');
 		Assert.notNull(result, "anim shorthand should parse");
+		var d:Dynamic = result;
+		Assert.equals(3, d.animations.length);
+		Assert.equals("idle", d.animations[0].name);
+		Assert.equals("walk", d.animations[1].name);
+		Assert.equals("hit", d.animations[2].name);
 	}
 
 	@Test
@@ -665,6 +694,9 @@ animation {
 }
 ");
 		Assert.notNull(result, "@final constants should parse");
+		var d:Dynamic = result;
+		Assert.floatEquals(5.0, d.constants.get("OFFSET_X"));
+		Assert.floatEquals(-10.0, d.constants.get("OFFSET_Y"));
 	}
 
 	@Test
@@ -683,6 +715,9 @@ animation {
 ");
 		Assert.notNull(result, "state interpolation in sheet names should parse");
 		Assert.notNull(result.definedStates["direction"]);
+		var d:Dynamic = result;
+		Assert.equals(1, d.animations.length);
+		Assert.equals("idle", d.animations[0].name);
 	}
 
 	// ===== Additional .anim parse negative tests =====
@@ -695,6 +730,7 @@ animation {
 }
 ');
 		Assert.notNull(error, "Should error when animation body has no name/playlist");
+		Assert.stringContains("name", error);
 	}
 
 	@Test
@@ -710,6 +746,7 @@ animation {
 }
 ');
 		Assert.notNull(error, "Should error when fps is not set anywhere");
+		Assert.stringContains("fps", error);
 	}
 
 	@Test
@@ -723,6 +760,7 @@ animation {
 }
 ');
 		Assert.notNull(error, "Should error when playlist is missing");
+		Assert.stringContains("playlist", error);
 	}
 
 	@Test
@@ -738,6 +776,7 @@ animation {
 }
 ');
 		Assert.notNull(error, "Should error when animation name is missing");
+		Assert.stringContains("name", error);
 	}
 
 	@Test
@@ -754,6 +793,7 @@ animation {
 }
 ');
 		Assert.notNull(error, "Should error on duplicate sheet declaration");
+		Assert.stringContains("sheet", error);
 	}
 
 	@Test
@@ -771,6 +811,7 @@ animation {
 }
 ');
 		Assert.notNull(error, "Should error on duplicate states declaration");
+		Assert.stringContains("states", error);
 	}
 
 	@Test
@@ -791,6 +832,7 @@ animation {
 }
 ');
 		Assert.notNull(error, "Should error when extra point is not in allowedExtraPoints");
+		Assert.stringContains("missile", error);
 	}
 
 	@Test
@@ -807,6 +849,7 @@ animation {
 }
 ');
 		Assert.notNull(error, "Should error when fps is 0");
+		Assert.stringContains("fps", error);
 	}
 
 	@Test
@@ -823,6 +866,7 @@ animation {
 }
 ');
 		Assert.notNull(error, "Should error when loop count is 0");
+		Assert.stringContains("loop", error);
 	}
 
 	@Test
@@ -840,6 +884,7 @@ animation @(color=>red) {
 }
 ');
 		Assert.notNull(error, "Should error on undeclared state name");
+		Assert.stringContains("color", error);
 	}
 
 	@Test
@@ -857,6 +902,7 @@ animation {
 }
 ');
 		Assert.notNull(error, "Should error on duplicate @final constant");
+		Assert.stringContains("X", error);
 	}
 
 	@Test
@@ -877,6 +923,7 @@ animation {
 }
 ");
 		Assert.notNull(error, "Should error on undefined $constant reference");
+		Assert.stringContains("UNDEFINED", error);
 	}
 
 	@Test
@@ -893,6 +940,7 @@ animation {
 sheet: anotherSheet
 ');
 		Assert.notNull(error, "Should error when sheet: appears after animation");
+		Assert.stringContains("sheet", error);
 	}
 
 	// ===== AnimMetadata API tests =====
@@ -1456,7 +1504,7 @@ animation {
 	// ===== Full integration: parse .anim and create AnimSM =====
 
 	@Test
-	public function testParseAndCreateAnimSM() {
+	public function testParseMetadataConditionalFullExample() {
 		var input = byte.ByteData.ofString('
 sheet: testSheet
 states: direction(l, r)
@@ -1590,6 +1638,9 @@ animation {
 }
 ');
 		Assert.notNull(result, "tint filter should parse");
+		var d:Dynamic = result;
+		Assert.notNull(d.animations[0].filters);
+		Assert.equals(1, d.animations[0].filters.length);
 	}
 
 	@Test
@@ -1607,6 +1658,9 @@ animation {
 }
 ');
 		Assert.notNull(result, "brightness filter should parse");
+		var d:Dynamic = result;
+		Assert.notNull(d.animations[0].filters);
+		Assert.equals(1, d.animations[0].filters.length);
 	}
 
 	@Test
@@ -1624,6 +1678,9 @@ animation {
 }
 ');
 		Assert.notNull(result, "saturate filter should parse");
+		var d:Dynamic = result;
+		Assert.notNull(d.animations[0].filters);
+		Assert.equals(1, d.animations[0].filters.length);
 	}
 
 	@Test
@@ -1641,6 +1698,9 @@ animation {
 }
 ');
 		Assert.notNull(result, "grayscale filter should parse");
+		var d:Dynamic = result;
+		Assert.notNull(d.animations[0].filters);
+		Assert.equals(1, d.animations[0].filters.length);
 	}
 
 	@Test
@@ -1658,6 +1718,9 @@ animation {
 }
 ');
 		Assert.notNull(result, "hue filter should parse");
+		var d:Dynamic = result;
+		Assert.notNull(d.animations[0].filters);
+		Assert.equals(1, d.animations[0].filters.length);
 	}
 
 	@Test
@@ -1675,6 +1738,9 @@ animation {
 }
 ');
 		Assert.notNull(result, "outline filter should parse");
+		var d:Dynamic = result;
+		Assert.notNull(d.animations[0].filters);
+		Assert.equals(1, d.animations[0].filters.length);
 	}
 
 	@Test
@@ -1692,6 +1758,9 @@ animation {
 }
 ');
 		Assert.notNull(result, "pixelOutline filter should parse");
+		var d:Dynamic = result;
+		Assert.notNull(d.animations[0].filters);
+		Assert.equals(1, d.animations[0].filters.length);
 	}
 
 	@Test
@@ -1709,6 +1778,9 @@ animation {
 }
 ');
 		Assert.notNull(result, "replaceColor filter should parse");
+		var d:Dynamic = result;
+		Assert.notNull(d.animations[0].filters);
+		Assert.equals(1, d.animations[0].filters.length);
 	}
 
 	@Test
@@ -1728,6 +1800,9 @@ animation {
 }
 ');
 		Assert.notNull(result, "multiple filters should parse");
+		var d:Dynamic = result;
+		Assert.notNull(d.animations[0].filters);
+		Assert.equals(3, d.animations[0].filters.length);
 	}
 
 	@Test
@@ -1748,6 +1823,9 @@ animation {
 }
 ');
 		Assert.notNull(result, "filters with state conditionals should parse");
+		var d:Dynamic = result;
+		Assert.notNull(d.animations[0].filters);
+		Assert.equals(3, d.animations[0].filters.length);
 	}
 
 	@Test
@@ -1768,6 +1846,9 @@ animation {
 }
 ');
 		Assert.notNull(result, "filters with @default should parse");
+		var d:Dynamic = result;
+		Assert.notNull(d.animations[0].filters);
+		Assert.equals(3, d.animations[0].filters.length);
 	}
 
 	@Test
@@ -1785,6 +1866,9 @@ animation {
 }
 ');
 		Assert.notNull(result, "filter none should parse");
+		var d:Dynamic = result;
+		Assert.notNull(d.animations[0].filters);
+		Assert.equals(1, d.animations[0].filters.length);
 	}
 
 	@Test
@@ -1804,6 +1888,8 @@ animation {
 }
 ');
 		Assert.notNull(result, "playlist filter entries should parse");
+		var d:Dynamic = result;
+		Assert.equals("hit", d.animations[0].name);
 	}
 
 	@Test
@@ -1823,6 +1909,8 @@ animation {
 }
 ');
 		Assert.notNull(result, "multiple playlist filter entries should parse");
+		var d:Dynamic = result;
+		Assert.equals("hit", d.animations[0].name);
 	}
 
 	@Test
@@ -1840,6 +1928,7 @@ animation {
 }
 ');
 		Assert.notNull(error, "unknown filter type should fail");
+		Assert.stringContains("blur", error);
 	}
 
 	@Test
@@ -1857,6 +1946,7 @@ animation {
 }
 ');
 		Assert.notNull(error, "outline missing color should fail");
+		Assert.stringContains("expected", error);
 	}
 
 	@Test
@@ -1874,6 +1964,7 @@ animation {
 }
 ');
 		Assert.notNull(error, "replaceColor length mismatch should fail");
+		Assert.stringContains("replaceColor", error);
 	}
 
 	@Test
@@ -1891,6 +1982,9 @@ animation {
 }
 ');
 		Assert.notNull(result, "negative float in filter should parse");
+		var d:Dynamic = result;
+		Assert.notNull(d.animations[0].filters);
+		Assert.equals(1, d.animations[0].filters.length);
 	}
 
 	// ===== @default conditional tests =====
@@ -1917,6 +2011,7 @@ animation {
 ');
 		Assert.notNull(result, "@default in extrapoints should parse");
 		Assert.notNull(result.definedStates["direction"]);
+		Assert.equals(4, result.definedStates["direction"].length);
 	}
 
 	@Test
@@ -1966,6 +2061,8 @@ animation {
 }
 ');
 		Assert.notNull(result, "@default in playlist should parse");
+		var d:Dynamic = result;
+		Assert.equals(1, d.animations.length);
 	}
 
 	@Test
@@ -1989,6 +2086,7 @@ animation {
 }
 ');
 		Assert.notNull(result, "@else and @default combined in extrapoints should parse");
+		Assert.equals(5, result.definedStates["level"].length);
 	}
 
 	// ===== Typed event metadata tests =====
@@ -2007,6 +2105,8 @@ animation {
 }
 ');
 		Assert.notNull(result, "trigger event with typed metadata should parse");
+		var d:Dynamic = result;
+		Assert.equals("hit", d.animations[0].name);
 	}
 
 	@Test
@@ -2023,6 +2123,8 @@ animation {
 }
 ');
 		Assert.notNull(result, "point event with typed metadata should parse");
+		var d:Dynamic = result;
+		Assert.equals("hit", d.animations[0].name);
 	}
 
 	@Test
@@ -2039,6 +2141,8 @@ animation {
 }
 ');
 		Assert.notNull(result, "event metadata with int, float, string, color, bool types should parse");
+		var d:Dynamic = result;
+		Assert.equals("hit", d.animations[0].name);
 	}
 
 	@Test
@@ -2055,5 +2159,7 @@ animation {
 }
 ');
 		Assert.notNull(result, "random point event with metadata should parse");
+		var d:Dynamic = result;
+		Assert.equals("explode", d.animations[0].name);
 	}
 }

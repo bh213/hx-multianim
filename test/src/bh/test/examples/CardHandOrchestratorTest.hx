@@ -403,9 +403,13 @@ class CardHandOrchestratorTest extends BuilderTestBase {
 	public function testUpdateCardParams():Void {
 		var h = createHelper();
 		h.helper.setHand([desc("a")]);
-		// Should not throw
+		// Card should exist before update
+		Assert.notNull(h.helper.getCardResult("a"));
+		// Update the card's status parameter
 		h.helper.updateCardParams("a", ["status" => "hover"]);
-		Assert.isTrue(true);
+		// Card should still exist and be retrievable after param update
+		Assert.notNull(h.helper.getCardResult("a"));
+		Assert.equals(1, h.helper.getCardCount());
 	}
 
 	@Test
@@ -463,8 +467,12 @@ class CardHandOrchestratorTest extends BuilderTestBase {
 	@Test
 	public function testCanDragCardVeto():Void {
 		var h = createHelper();
-		h.helper.canDragCard = function(cardId) { return false; };
+		h.helper.setHand([desc("a"), desc("b")]);
+		h.helper.canDragCard = function(cardId) { return cardId != "a"; };
 		Assert.notNull(h.helper.canDragCard);
+		// Verify the veto callback returns expected values
+		Assert.isFalse(h.helper.canDragCard("a"));
+		Assert.isTrue(h.helper.canDragCard("b"));
 	}
 
 	// ==================== drawCard at index ====================
