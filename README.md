@@ -1,22 +1,31 @@
 # hx-multianim
 
-A Haxe library for creating animations and pixel art UI elements using the [Heaps](https://heaps.io/) framework. This library provides custom languages for defining state animations and programmable UI components.
+[![Build](https://github.com/bh213/hx-multianim/actions/workflows/build.yml/badge.svg)](https://github.com/bh213/hx-multianim/actions/workflows/build.yml)
+[![Visual Tests](https://github.com/bh213/hx-multianim/actions/workflows/visual-tests.yml/badge.svg)](https://github.com/bh213/hx-multianim/actions/workflows/visual-tests.yml)
+[![Haxelib](https://img.shields.io/badge/haxelib-hx--multianim-orange)](https://lib.haxe.org/p/hx-multianim/)
+[![License](https://img.shields.io/badge/license-BSD--3--Clause-blue)](LICENSE)
 
-## Documentation
-
-- **[.manim Format Reference](docs/manim.md)** - UI elements, programmables, layouts, graphics, particles, and data blocks
-- **[Animated Paths Guide](docs/animpaths.md)** - Paths, curves, easing, animated path traversal, projectiles, and examples
-- **[Programmable Macros](docs/manim.md#programmable-macros-compile-time-code-generation)** - Compile-time code generation tutorial and reference
-- **[Data Blocks](docs/manim.md#data)** - Static typed data definitions with macro codegen
-- **[.anim Format Reference](docs/anim.md)** - State animations with playlists and extra points
-
-## Visual Test Report
-
-Latest test results: [Visual Test Report](https://bh213.github.io/hx-multianim/test-report/screenshots/index.html)
+A Haxe library for creating animations and pixel art UI elements using the [Heaps](https://heaps.io/) framework. Define state animations and programmable UI components with a custom `.manim` DSL.
 
 ## Interactive Playground
 
-Playground is available at [gh-pages](https://bh213.github.io/hx-multianim-playground/) and lives in a separate repository: `../hx-multianim-playground`.
+Try it live: **[hx-multianim Playground](https://bh213.github.io/hx-multianim-playground/)**
+
+Edit `.manim` files in the browser and see results instantly. Source: [hx-multianim-playground](https://github.com/bh213/hx-multianim-playground).
+
+## Visual Test Report
+
+Browse all rendered examples: **[Visual Test Report](https://bh213.github.io/hx-multianim/test-report/screenshots/index.html)**
+
+90+ visual tests covering UI components, layouts, filters, particles, animated paths, and more. Tests run automatically on every push via GitHub Actions.
+
+## Documentation
+
+- **[.manim Format Reference](docs/manim.md)** — UI elements, programmables, layouts, graphics, particles, and data blocks
+- **[Animated Paths Guide](docs/animpaths.md)** — Paths, curves, easing, animated path traversal, projectiles, and examples
+- **[Programmable Macros](docs/manim.md#programmable-macros-compile-time-code-generation)** — Compile-time code generation tutorial and reference
+- **[Data Blocks](docs/manim.md#data)** — Static typed data definitions with macro codegen
+- **[.anim Format Reference](docs/anim.md)** — State animations with playlists and extra points
 
 ## Getting Started
 
@@ -242,4 +251,4 @@ public override function onScreenEvent(event:UIScreenEvent, source:UIElement) {
 
 ## License
 
-See LICENSE file for details.
+BSD 3-Clause — see [LICENSE](LICENSE) for details.
