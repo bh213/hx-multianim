@@ -586,6 +586,43 @@ result.getDynamicRef("statusBar").setParameter("value", 25);
 
 Calling `setParameter()` without incremental mode throws an error.
 
+### Transition Declarations
+
+Programmable elements can declare animated transitions for parameter changes. When a parameter with a transition is changed, visibility changes are animated via TweenManager instead of being instant.
+
+```manim
+#checkbox programmable(checked:bool=false, status:[normal,hover,pressed]=normal) {
+    transition {
+        checked: flipX(0.15, easeOutQuad)
+        status: crossfade(0.1)
+    }
+    @(status => normal) @(checked => true) bitmap(sheet("ui"), "check_on_normal"): 0, 0
+    @(status => hover)  @(checked => true) bitmap(sheet("ui"), "check_on_hover"): 0, 0
+    @(status => normal) @(checked => false) bitmap(sheet("ui"), "check_off_normal"): 0, 0
+    @(status => hover)  @(checked => false) bitmap(sheet("ui"), "check_off_hover"): 0, 0
+}
+```
+
+**Transition types:**
+- `none` — instant (default behavior)
+- `fade(duration, ?easing)` — one-sided alpha animation (showing fades in, hiding fades out)
+- `crossfade(duration, ?easing)` — simultaneous alpha blend of old and new states
+- `flipX(duration, ?easing)` — horizontal flip (scaleX to 0 then back to 1)
+- `flipY(duration, ?easing)` — vertical flip (scaleY to 0 then back to 1)
+- `slide(direction, duration, ?distance, ?easing)` — position + alpha offset (directions: `left`, `right`, `up`, `down`; distance defaults to 50px)
+
+**Requirements:**
+- `transition {}` block must be inside a `programmable` body
+- Parameter names in the transition block must match declared programmable parameters
+- TweenManager must be available (auto-injected via `ScreenManager.buildFromResource()`)
+- Without TweenManager, falls back to instant visibility (backward compatible)
+
+**Behavior:**
+- In-progress transitions are finished immediately when a new parameter change occurs
+- Property values (alpha, scale, position) are preserved across transitions
+- Works with all UI controls that use incremental mode (button, checkbox, slider, etc.)
+- Codegen path (`@:manim`) does not yet support transitions
+
 ### interactive
 Creates a hit-test region for UI interaction. Optionally carries an identifier and typed metadata.
 

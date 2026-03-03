@@ -4,11 +4,16 @@
 
 ```manim
 #name programmable(param:type=default) {
+  transition {
+      param: crossfade(0.1, easeOutQuad)
+  }
   @(condition) element(params): x,y
 }
 ```
 
 **Parameter types**: `uint`, `int`, `float`, `bool`, `string`, `color`, `tile`, enum (`[val1,val2]`), range (`1..5`), flags
+
+**Transition types**: `none`, `fade(duration, ?easing)`, `crossfade(duration, ?easing)`, `flipX(duration, ?easing)`, `flipY(duration, ?easing)`, `slide(direction, duration, ?distance, ?easing)` (directions: `left`, `right`, `up`, `down`; distance defaults to 50px). Requires TweenManager (auto-injected via ScreenManager). Falls back to instant without TweenManager.
 
 ## Common Elements
 

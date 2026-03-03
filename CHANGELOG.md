@@ -1,8 +1,16 @@
 # Changelog
 
-## [0.13-dev] - 2026-02-25
+## [0.13-dev] - 2026-03-03
 
 ### Added
+- **Transition declarations** — `transition {}` block in programmable body for animated parameter changes
+  - Transition types: `none`, `fade(duration, ?easing)`, `crossfade(duration, ?easing)`, `flipX(duration, ?easing)`, `flipY(duration, ?easing)`, `slide(direction, duration, ?distance, ?easing)`
+  - Slide directions: `left`, `right`, `up`, `down`
+  - Auto-injected TweenManager via `ScreenManager.buildFromResource()` or `MultiAnimBuilder.tweenManager`
+  - Backward compatible: falls back to instant visibility without TweenManager or without `transition {}` block
+  - In-progress transitions are finished immediately on new parameter changes
+  - Property values (alpha, scale, position) preserved across transitions
+  - Works with all UI controls using incremental mode (button, checkbox, slider, tabs, etc.)
 - **Card hand helper improvements** — `UICardHandHelper` targeting and hover enhancements
   - **Interactive-based targets** — targets are now `UIInteractiveWrapper` instances instead of manual `CardTarget` with `boundsProvider`; hit testing uses `containsPoint()` for automatic coordinate transforms
   - `registerTargetInteractive(wrapper)`, `registerTargetInteractives(wrappers)`, `unregisterTargetInteractive(id)` replace old `registerTarget`/`unregisterTarget`

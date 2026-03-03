@@ -24,18 +24,18 @@
       "Bash(git stash:*)",
       "Bash(git show:*)",
       "Bash(sort:*)",
-	  "Bash(find:*)",
-	  "Bash(cat:*)",
-    "Bash(cd:*)",
-	  "Bash(ls:*)",
-	  "Bash(sed:*)"
+      "Bash(find:*)",
+      "Bash(cat:*)",
+      "Bash(cd:*)",
+      "Bash(ls:*)",
+      "Bash(sed:*)",
+      "mcp__playwright__browser_take_screenshot",
+      "mcp__playwright__browser_evaluate",
+      "mcp__playwright__browser_run_code",
+      "mcp__playwright__browser_wait_for",
+      "mcp__playwright__browser_close",
+      "mcp__playwright__browser_click",
+      "mcp__playwright__browser_snapshot"
     ]
   }
 }
-
-
- 
-      
-      
-      
-      

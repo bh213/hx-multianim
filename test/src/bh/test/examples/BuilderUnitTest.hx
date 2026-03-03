@@ -4470,4 +4470,69 @@ class BuilderUnitTest extends BuilderTestBase {
 		ap.update(0.6);
 		Assert.floatEquals(0.5, midRate, "Event state should have rate=0.5 at mid event");
 	}
+
+	// ==================== Transition support ====================
+
+	@Test
+	public function testTransitionNoTweenManagerFallsBackToInstant():Void {
+		final result = buildFromSource("
+			#test programmable(status:[a,b]=a) {
+				transition {
+					status: crossfade(0.2)
+				}
+				@(status=>a) bitmap(generated(color(10, 10, #f00))): 0,0
+				@(status=>b) bitmap(generated(color(10, 10, #0f0))): 0,0
+			}
+		", "test", ["status" => "a"], Incremental);
+		Assert.notNull(result);
+		// First child visible (status=a), second hidden
+		final children = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, children.length);
+		// Change parameter without TweenManager — should be instant
+		result.setParameter("status", "b");
+		final children2 = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, children2.length);
+	}
+
+	@Test
+	public function testTransitionWithTweenManagerCreatesTween():Void {
+		final tm = new bh.base.TweenManager();
+		final builder = builderFromSource("
+			#test programmable(status:[a,b]=a) {
+				transition {
+					status: fade(0.5)
+				}
+				@(status=>a) bitmap(generated(color(10, 10, #f00))): 0,0
+				@(status=>b) bitmap(generated(color(10, 10, #0f0))): 0,0
+			}
+		");
+		builder.tweenManager = tm;
+		final result = builder.buildWithParameters("test", ["status" => "a"], null, null, true);
+		Assert.notNull(result);
+		// Change parameter — should create tween instead of instant
+		result.setParameter("status", "b");
+		// The hiding element should still be visible (fading out)
+		Assert.isTrue(tm.hasTweens(result.object.getChildAt(0))
+			|| tm.hasTweens(result.object.getChildAt(1)),
+			"TweenManager should have active tweens during transition");
+	}
+
+	@Test
+	public function testTransitionWithoutTransitionBlockIsInstant():Void {
+		final tm = new bh.base.TweenManager();
+		final builder = builderFromSource("
+			#test programmable(status:[a,b]=a) {
+				@(status=>a) bitmap(generated(color(10, 10, #f00))): 0,0
+				@(status=>b) bitmap(generated(color(10, 10, #0f0))): 0,0
+			}
+		");
+		builder.tweenManager = tm;
+		final result = builder.buildWithParameters("test", ["status" => "a"], null, null, true);
+		result.setParameter("status", "b");
+		// No transition block means instant — no tweens
+		final child0 = result.object.getChildAt(0);
+		final child1 = result.object.getChildAt(1);
+		Assert.isFalse(tm.hasTweens(child0), "No tweens expected without transition block");
+		Assert.isFalse(tm.hasTweens(child1), "No tweens expected without transition block");
+	}
 }

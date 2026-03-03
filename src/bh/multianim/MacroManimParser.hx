@@ -2609,6 +2609,7 @@ class MacroManimParser {
 			conditionals: conditional,
 			uniqueNodeName: generateUniqueName(uniqueCounter, nameStr, Std.string(type)),
 			settings: null,
+			transitions: null,
 			flowProperties: null,
 			#if MULTIANIM_TRACE
 			parserPos: posString()
@@ -3493,6 +3494,28 @@ class MacroManimParser {
 				n.pos = nodePos;
 				eatSemicolon();
 				return n;
+
+			case TIdentifier(s) if (isKeyword(s, "transition")):
+				advance();
+				expect(TCurlyOpen);
+				if (parent == null) error("transition must be inside a programmable");
+				final transParamDefs = switch (parent.type) {
+					case PROGRAMMABLE(_, defs, _): defs;
+					default: error("transition block only valid inside programmable"); null;
+				}
+				if (parent.transitions == null) parent.transitions = new Map();
+				while (!match(TCurlyClosed)) {
+					final paramName = expectIdentifierOrString();
+					if (transParamDefs != null && !transParamDefs.exists(paramName))
+						error('transition references unknown parameter "$paramName"');
+					expect(TColon);
+					final transType = parseTransitionType();
+					if (parent.transitions.exists(paramName))
+						error('duplicate transition for parameter "$paramName"');
+					parent.transitions.set(paramName, transType);
+					eatComma();
+				}
+				return null;
 
 			case TIdentifier(s) if (isKeyword(s, "settings")):
 				advance();
@@ -5458,6 +5481,69 @@ class MacroManimParser {
 			case "easeoutelastic": EaseOutElastic;
 			default: null;
 		};
+	}
+
+	// ===================== Transitions =====================
+
+	function parseTransitionType():TransitionType {
+		switch (peek()) {
+			case TIdentifier(s) if (isKeyword(s, "none")):
+				advance();
+				return TransNone;
+			case TIdentifier(s) if (isKeyword(s, "fade")):
+				advance();
+				return parseTransitionArgs((dur, eas) -> TransFade(dur, eas));
+			case TIdentifier(s) if (isKeyword(s, "crossfade")):
+				advance();
+				return parseTransitionArgs((dur, eas) -> TransCrossfade(dur, eas));
+			case TIdentifier(s) if (isKeyword(s, "flipx")):
+				advance();
+				return parseTransitionArgs((dur, eas) -> TransFlipX(dur, eas));
+			case TIdentifier(s) if (isKeyword(s, "flipy")):
+				advance();
+				return parseTransitionArgs((dur, eas) -> TransFlipY(dur, eas));
+			case TIdentifier(s) if (isKeyword(s, "slide")):
+				advance();
+				expect(TOpen);
+				final dir = parseTransitionDirection();
+				expect(TComma);
+				final dur = parseFloat_();
+				var dist:Null<Float> = null;
+				var eas:Null<EasingType> = null;
+				if (match(TComma)) {
+					// Next token could be a number (distance) or an identifier (easing)
+					switch (peek()) {
+						case TInteger(_) | TFloat(_) | TMinus:
+							dist = parseFloat_();
+							if (match(TComma)) eas = parseEasingType();
+						default:
+							eas = parseEasingType();
+					}
+				}
+				expect(TClosed);
+				return TransSlide(dir, dur, dist, eas);
+			default:
+				return error('expected transition type (none, fade, crossfade, flipX, flipY, slide), got ${peek()}');
+		}
+	}
+
+	function parseTransitionArgs(ctor:(Float, Null<EasingType>) -> TransitionType):TransitionType {
+		expect(TOpen);
+		final dur = parseFloat_();
+		var eas:Null<EasingType> = null;
+		if (match(TComma)) eas = parseEasingType();
+		expect(TClosed);
+		return ctor(dur, eas);
+	}
+
+	function parseTransitionDirection():TransitionDirection {
+		switch (peek()) {
+			case TIdentifier(s) if (isKeyword(s, "left")): advance(); return TDLeft;
+			case TIdentifier(s) if (isKeyword(s, "right")): advance(); return TDRight;
+			case TIdentifier(s) if (isKeyword(s, "up")): advance(); return TDUp;
+			case TIdentifier(s) if (isKeyword(s, "down")): advance(); return TDDown;
+			default: return error('expected direction (left, right, up, down), got ${peek()}');
+		}
 	}
 
 	// ===================== Curves =====================
