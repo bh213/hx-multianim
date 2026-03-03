@@ -4457,7 +4457,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		var macroRaw = captureScreenshotRaw(sizeX, sizeY);
 
 		Assert.pass();
-		enqueueBuilderAndMacro(builderRaw, macroRaw, null, null, orderIdx);
+		enqueueBuilderAndMacro(builderRaw, macroRaw, 0.998, 0.998, orderIdx);
 
 		VisualTestBase.pendingVisualTests--;
 		async.done();
