@@ -35,6 +35,7 @@ import bh.stateanim.AnimationSM.AnimationFrameState;
 class ProgrammableBuilder {
 	public final resourceLoader:ResourceLoader;
 	var _builder:Null<Dynamic> = null;
+	public var tweenManager:Null<bh.base.TweenManager> = null;
 
 	public function new(resourceLoader:ResourceLoader) {
 		this.resourceLoader = resourceLoader;

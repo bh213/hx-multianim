@@ -286,4 +286,7 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/94-builtinCurves/builtinCurves.manim", "builtinCurves")
 	public var builtinCurves;
+
+	@:manim("test/examples/95-transition/transition.manim", "transition")
+	public var transition;
 }

@@ -3509,6 +3509,21 @@ class ParserErrorTest extends utest.Test {
 	}
 
 	@Test
+	public function testTransitionErrorInvalidEasing() {
+		var error = parseExpectingError('
+			#test programmable(status:[a,b]=a) {
+				transition {
+					status: fade(0.2, unknownEasing)
+				}
+				bitmap(generated(color(10, 10, #f00))): 0,0
+			}
+		');
+		Assert.notNull(error, "Should throw error for invalid easing name in transition");
+		Assert.isTrue(error.indexOf("easing") >= 0 || error.indexOf("expected") >= 0,
+			'Error should mention invalid easing, got: $error');
+	}
+
+	@Test
 	public function testTransitionSlideDirections() {
 		for (dir in ["left", "right", "up", "down"]) {
 			var result = parseExpectingResult('

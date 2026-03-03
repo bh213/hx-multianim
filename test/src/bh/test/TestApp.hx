@@ -62,10 +62,14 @@ class TestApp extends hxd.App {
 		testRunner.addCase(new bh.test.examples.TweenManagerTest());
 		testRunner.addCase(new bh.test.examples.ProgrammableCodeGenTest(s2d));
 		testRunner.addCase(new bh.test.examples.ScreenTransitionTest());
+		testRunner.addCase(new bh.test.examples.ScreenTransitionIntegrationTest());
 		testRunner.addCase(new bh.test.examples.AnimatedPathTest());
+		testRunner.addCase(new bh.test.examples.AnimatedPathBuilderTest());
 		testRunner.addCase(new bh.test.examples.FloatingTextHelperTest());
 		testRunner.addCase(new bh.test.examples.CardHandOrchestratorTest());
+		testRunner.addCase(new bh.test.examples.CardHandIntegrationTest());
 		testRunner.addCase(new bh.test.examples.AnimFilterRuntimeTest());
+		testRunner.addCase(new bh.test.examples.AnimFilterStateConditionalTest());
 		testRunner.addCase(new bh.test.examples.RichTextTest());
 		testRunner.addCase(new bh.test.examples.ParameterizedSlotTest());
 		testRunner.addCase(new bh.test.examples.InteractiveEventTest());

@@ -1,0 +1,74 @@
+name: Release and Publish to Haxelib
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Haxe
+      uses: krdlab/setup-haxe@v1
+      with:
+        haxe-version: '4.3.6'
+
+    - name: Setup Lix
+      uses: lix-pm/setup-lix@5d98ddc5d00ee5ebf9bd3095dc36b1c9fb50a98f
+
+    - name: Cache Lix dependencies
+      uses: actions/cache@v4
+      with:
+        path: ~/.lix
+        key: ${{ runner.os }}-lix-${{ hashFiles('**/haxe_libraries/*.hxml') }}
+        restore-keys: |
+          ${{ runner.os }}-lix-
+
+    - name: Install dependencies
+      run: lix download
+
+    - name: Create build directory
+      run: mkdir -p build
+
+    - name: Build library (HashLink)
+      run: haxe hx-multianim.hxml -hl build/hl-manim.hl -D message.reporting=pretty -D resourcesPath=test/res
+
+    - name: Build library (JavaScript)
+      run: haxe hx-multianim.hxml -js build/js-manim.js -D message.reporting=pretty -D resourcesPath=test/res
+
+    - name: Verify build output
+      run: |
+        test -f build/hl-manim.hl || (echo "ERROR: HL build failed" && exit 1)
+        test -f build/js-manim.js || (echo "ERROR: JS build failed" && exit 1)
+
+    - name: Extract version from haxelib.json
+      id: version
+      run: |
+        VERSION=$(python3 -c "import json; print(json.load(open('haxelib.json'))['version'])")
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        TAG_VERSION=${GITHUB_REF#refs/tags/v}
+        if [ "$VERSION" != "$TAG_VERSION" ]; then
+          echo "ERROR: Tag version ($TAG_VERSION) does not match haxelib.json version ($VERSION)"
+          exit 1
+        fi
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        generate_release_notes: false
+        body: |
+          Release ${{ steps.version.outputs.version }}
+
+          See [CHANGELOG.md](CHANGELOG.md) for details.
+
+    - name: Publish to Haxelib
+      if: ${{ !contains(steps.version.outputs.version, 'rc') }}
+      env:
+        HAXELIB_PASSWORD: ${{ secrets.HAXELIB_PASSWORD }}
+      run: |
+        haxelib submit . $HAXELIB_PASSWORD

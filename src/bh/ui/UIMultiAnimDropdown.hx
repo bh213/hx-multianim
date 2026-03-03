@@ -48,6 +48,8 @@ class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisab
 	public var autoOpen:Bool = true;
 	public var autoCloseOnLeave:Bool = true;
 	public var closeOnOutsideClick:Bool = true;
+	var panelScreen:Null<UIScreen> = null;
+	var panelLayer:Null<LayersEnum> = null;
 
 	@:nullSafety(Off)
 	function new(builder:UIElementBuilder, builtPanel, items, initialIndex = 0) {
@@ -77,6 +79,8 @@ class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisab
 	public function clear() {
 		this.items = [];
 		this.currentMainPart = null;
+		this.panelScreen = null;
+		this.panelLayer = null;
 	}
 
 	public function getCursor():hxd.Cursor {
@@ -251,8 +255,11 @@ class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisab
 		transitionTimer = transitionTimerOverride ?? currentResult.rootSettings.getFloatOrDefault("transitionTimer", 1.0);
 		currentMainPart = currentResult.object;
 		root.addChild(currentMainPart);
-		if (panelObject != null)
-			updatable.setObject(new PositionLinkObject(panelObject)); // TODO: Set modal layer
+		if (panelObject != null) {
+			updatable.setObject(new PositionLinkObject(panelObject));
+			if (panelScreen != null && panelLayer != null)
+				panelScreen.addObjectToLayer(panelObject, panelScreen.getHigherLayer(panelLayer));
+		}
 	}
 
 	function set_status(value:StandardUIElementStates):StandardUIElementStates {
@@ -349,6 +356,8 @@ class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisab
 		}
 		if (!updateMode && this.root.parent == null)
 			screen.addObjectToLayer(this.root, requestedLayer);
+		panelScreen = screen;
+		panelLayer = requestedLayer;
 		var higherLayer = screen.getHigherLayer(requestedLayer);
 		screen.addObjectToLayer(this.panel.getObject(), higherLayer);
 		return Added;
