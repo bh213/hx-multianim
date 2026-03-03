@@ -1,9 +1,8 @@
 package bh.ui;
-import bh.multianim.MultiAnimMultiResult;
 import bh.multianim.MultiAnimBuilder;
+import bh.multianim.MultiAnimBuilder.BuilderResult;
 import bh.multianim.MultiAnimParser.ResolvedIndexParameters;
 import bh.multianim.MultiAnimParser.TileSource;
-import bh.multianim.MultiAnimParser.GeneratedTileType;
 import bh.multianim.MultiAnimParser.ReferenceableValue;
 import bh.ui.UIElement.UIElementListItem;
 import bh.ui.UIElement.TileRef;
@@ -38,11 +37,14 @@ class UIElementBuilder {
 		return b;
 	}
 
-	public function buildItem(index:Int, item:UIElementListItem, itemWidth:Int, itemHeight:Int):MultiAnimMultiResult {
+	public function buildItem(index:Int, item:UIElementListItem, itemWidth:Int, itemHeight:Int):BuilderResult {
 		var params:Map<String, Dynamic> = [
 			"itemWidth" => itemWidth,
 			"index" => index,
 			"title" => item.name,
+			"status" => "normal",
+			"selected" => "false",
+			"disabled" => item.disabled == true ? "true" : "false",
 		];
 
 		var tileSource:Null<TileSource> = null;
@@ -73,6 +75,6 @@ class UIElementBuilder {
 				params.set(key, value);
 		}
 
-		return builder.buildWithComboParameters(name, params, ["status", "selected", "disabled"], builderParams);
+		return builder.buildWithParameters(name, params, builderParams, null, true);
 	}
 }

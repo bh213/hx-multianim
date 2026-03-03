@@ -393,7 +393,14 @@ class IncrementalUpdateContext {
 			indexedParams.set(name, StringValue(cast value));
 		} else if (Std.isOfType(value, Bool)) {
 			indexedParams.set(name, Value(cast(value, Bool) ? 1 : 0));
+		} else if (Std.isOfType(value, ResolvedIndexParameters)) {
+			indexedParams.set(name, value);
 		}
+		#if !macro
+		else if (Std.isOfType(value, h2d.Tile)) {
+			indexedParams.set(name, TileSourceValue(TSTile(value)));
+		}
+		#end
 		changedParams.set(name, true);
 		if (!batchMode)
 			applyUpdates();
@@ -1087,6 +1094,9 @@ class MultiAnimBuilder {
 	final resourceLoader:bh.base.ResourceLoader;
 	public final sourceName:String;
 	var multiParserResult:MultiAnimResult;
+
+	/** 1x1 transparent tile shared across all builders, used as fallback for unresolvable tile params in incremental mode. */
+	static var incrementalFallbackTile:Null<h2d.Tile> = null;
 
 	var indexedParams:Map<String, ResolvedIndexParameters> = [];
 	var builderParams:BuilderParameters = {};
@@ -2101,9 +2111,16 @@ class MultiAnimBuilder {
 			case TSReference(varName):
 				// Resolve tile source from indexed params (e.g., $bitmap from stateanim/tiles iterator)
 				final param = indexedParams.get(varName);
-				if (param == null)
-					throw 'TileSource reference "$varName" not found in indexed params' + currentNodePos();
-				switch param {
+				if (param == null) {
+					// In incremental mode, inactive conditional branches are pre-built for visibility toggling.
+					// Tile params (tile:tile with no default) may not have a value yet — use a shared fallback tile.
+					if (incrementalMode) {
+						if (incrementalFallbackTile == null)
+							incrementalFallbackTile = h2d.Tile.fromColor(0x00000000, 1, 1, 0.0);
+						incrementalFallbackTile.clone();
+					} else
+						throw 'TileSource reference "$varName" not found in indexed params' + currentNodePos();
+				} else switch param {
 					case TileSourceValue(ts): loadTileSource(ts);
 					case _: throw 'TileSource reference "$varName" is not a TileSourceValue, got: $param' + currentNodePos();
 				}
@@ -2377,6 +2394,27 @@ class MultiAnimBuilder {
 		}
 	}
 
+	static function collectTileSourceParamRefs(tileSource:TileSource, result:Array<String>):Void {
+		switch tileSource {
+			case TSFile(filename): collectParamRefs(filename, result);
+			case TSSheet(sheet, name): collectParamRefs(sheet, result); collectParamRefs(name, result);
+			case TSSheetWithIndex(sheet, name, index): collectParamRefs(sheet, result); collectParamRefs(name, result); collectParamRefs(index, result);
+			case TSGenerated(type):
+				switch type {
+					case SolidColor(w, h, color): collectParamRefs(w, result); collectParamRefs(h, result); collectParamRefs(color, result);
+					case Cross(w, h, color, thickness): collectParamRefs(w, result); collectParamRefs(h, result); collectParamRefs(color, result); collectParamRefs(thickness, result);
+					case SolidColorWithText(w, h, color, text, textColor, font):
+						collectParamRefs(w, result); collectParamRefs(h, result); collectParamRefs(color, result);
+						collectParamRefs(text, result); collectParamRefs(textColor, result); collectParamRefs(font, result);
+					default:
+				}
+			case TSReference(varName): result.push(varName);
+			#if !macro
+			case TSTile(_):
+			#end
+		}
+	}
+
 	static function collectPixelShapesParamRefs(shapes:Array<PixelShapes>, result:Array<String>):Void {
 		for (s in shapes) {
 			switch s {
@@ -2477,30 +2515,41 @@ class MultiAnimBuilder {
 						}, npRefs);
 					}
 				}
-			case BITMAP(tileSource, _, _):
-				switch tileSource {
-					case TSGenerated(type):
-						switch type {
-							case SolidColor(w, h, color):
-								final bmpRefs:Array<String> = [];
-								collectParamRefs(w, bmpRefs);
-								collectParamRefs(h, bmpRefs);
-								collectParamRefs(color, bmpRefs);
-								if (bmpRefs.length > 0) {
-									final bmp = switch builtObject { case HeapsBitmap(bmp): bmp; default: null; };
-									if (bmp != null) {
-										final wCapture = w;
-										final hCapture = h;
-										final colorCapture = color;
-										ctx.trackExpression(() -> {
-											bmp.tile = h2d.Tile.fromColor(resolveAsColorInteger(colorCapture),
-												resolveAsInteger(wCapture), resolveAsInteger(hCapture));
-										}, bmpRefs);
-									}
-								}
+			case BITMAP(tileSource, hAlign, vAlign):
+				final bmpRefs:Array<String> = [];
+				collectTileSourceParamRefs(tileSource, bmpRefs);
+				if (bmpRefs.length > 0) {
+					final bmp = switch builtObject { case HeapsBitmap(bmp): bmp; default: null; };
+					if (bmp != null) {
+						switch tileSource {
+							case TSGenerated(SolidColor(w, h, color)):
+								final wCapture = w;
+								final hCapture = h;
+								final colorCapture = color;
+								ctx.trackExpression(() -> {
+									bmp.tile = h2d.Tile.fromColor(resolveAsColorInteger(colorCapture),
+										resolveAsInteger(wCapture), resolveAsInteger(hCapture));
+								}, bmpRefs);
 							default:
+								final tileSourceCapture = tileSource;
+								final hAlignCapture = hAlign;
+								final vAlignCapture = vAlign;
+								ctx.trackExpression(() -> {
+									final tile = loadTileSource(tileSourceCapture);
+									final dh:Float = switch vAlignCapture {
+										case Top: 0.;
+										case Center: -(tile.height * .5);
+										case Bottom: -tile.height;
+									};
+									final wh:Float = switch hAlignCapture {
+										case Left: 0.;
+										case Right: -tile.width;
+										case Center: -(tile.width * .5);
+									};
+									bmp.tile = tile.sub(0, 0, tile.width, tile.height, wh, dh);
+								}, bmpRefs);
 						}
-					default:
+					}
 				}
 			case GRAPHICS(elements):
 				final gfxRefs:Array<String> = [];
@@ -3521,8 +3570,10 @@ class MultiAnimBuilder {
 							switch param {
 								case null: null;
 								case PVObject(obj):
+									#if MULTIANIM_TRACE
 									if (settings != null)
 										trace('Warning: PVObject placeholder "${resolveAsString(callbackName)}" ignores .manim settings — use PVFactory instead to receive settings');
+									#end
 									obj;
 								case PVFactory(factoryMethod):
 									var res = factoryMethod(settings);
@@ -4369,7 +4420,7 @@ class MultiAnimBuilder {
 		return n.toInt();
 	}
 
-	public function hasMultiAnimWithName(name) {
+	public function hasMultiAnimWithName(name:String) {
 		return multiParserResult.nodes.exists(name);
 	}
 
@@ -5573,7 +5624,9 @@ class MultiAnimBuilder {
 		var node = multiParserResult.nodes.get(name);
 		if (node == null) {
 			final error = 'buildWithParameters ${inputParameters}: could find element "$name" to build';
+			#if MULTIANIM_TRACE
 			trace(error);
+			#end
 			popBuilderState();
 			throw error;
 		}
@@ -5757,105 +5810,6 @@ class MultiAnimBuilder {
 		final ir:InternalBuilderResults = {names: [], interactives: [], slots: [], dynamicRefs: new Map(), htmlTextsWithLinks: []};
 		build(node, ObjectMode(parent), cast null, cast null, ir, builderParams);
 		return if (parent.numChildren > 0) parent.getChildAt(0) else null;
-	}
-
-	public function buildWithComboParameters(name:String, inputParameters:Map<String, Dynamic>, allCombos:Array<String>, ?builderParams:BuilderParameters) {
-		pushBuilderState();
-		try {
-			if (builderParams == null)
-				builderParams = {callback: defaultCallback};
-			else if (builderParams.callback == null)
-				builderParams.callback = defaultCallback;
-
-			final node = multiParserResult.nodes.get(name);
-			if (node == null) {
-				throw 'buildWithComboParameters ${allCombos}: could not build ${name} with parameters ${inputParameters} and builderParameters ${builderParams}' + currentNodePos();
-			}
-			if (inputParameters.count() + allCombos.length == 0) {
-				throw 'parameters are required for buildWithComboParameters ${name}' + MacroUtils.nodePos(node);
-			}
-
-			final definitions = getProgrammableParameterDefinitions(node, true);
-
-			var allOptions:Map<String, Array<String>> = [];
-			var totalStates = 1;
-
-			var comboCounts = [];
-			var comboNames = [];
-
-			for (prop in allCombos) {
-				if (!definitions.exists(prop))
-					throw 'definition for "${prop}" does not exist' + MacroUtils.nodePos(node);
-				if (inputParameters.exists(prop))
-					throw 'Prop "${prop}" set both as parameter and combo' + MacroUtils.nodePos(node);
-				if (allOptions.exists(prop))
-					throw 'Duplicate combo "${prop}"' + MacroUtils.nodePos(node);
-				final def = definitions[prop];
-				if (def == null) throw 'definition for "${prop}" not found' + MacroUtils.nodePos(node);
-				var allValues = switch def.type {
-					case PPTHexDirection: [for (i in 0...6) '$i}'];
-					case PPTGridDirection: [for (i in 0...8) '$i}'];
-					case PPTFlags(bits): [for (i in 0...bits) '$i}'];
-					case PPTEnum(values): values;
-					case PPTBool: ["0", "1"];
-					case PPTRange(from, to):
-						if (Math.abs(from - to) > 50)
-							trace('WARNING: range ${from}..${to} is very large');
-						[for (i in from...to) '$i}'];
-					case PPTInt: throw 'Prop "${prop}" is int and cannot be used as combo' + MacroUtils.nodePos(node);
-					case PPTUnsignedInt: throw 'Prop "${prop}" is uint and cannot be used as combo' + MacroUtils.nodePos(node);
-					case PPTString: throw 'Prop "${prop}" is string and cannot be used as combo' + MacroUtils.nodePos(node);
-					case PPTColor: throw 'Prop "${prop}" is color and cannot be used as combo' + MacroUtils.nodePos(node);
-					case PPTFloat: throw 'Prop "${prop}" is float and cannot be used as combo' + MacroUtils.nodePos(node);
-					case PPTArray: throw 'Prop "${prop}" is array and cannot be used as combo' + MacroUtils.nodePos(node);
-					case PPTTile: throw 'Prop "${prop}" is tile and cannot be used as combo' + MacroUtils.nodePos(node);
-				}
-				allOptions.set(prop, allValues);
-				totalStates *= allValues.length;
-				comboNames.push(prop);
-				comboCounts.push(allValues.length);
-
-				if (totalStates > 32)
-					trace('more than 100 combination for build all');
-				else if (totalStates > 1000)
-					throw 'more than 1000 combinations for buildAll' + MacroUtils.nodePos(node);
-			}
-			final gridCoordinateSystem = MultiAnimParser.getGridCoordinateSystem(node);
-			final hexCoordinateSystem = MultiAnimParser.getHexCoordinateSystem(node);
-
-			var result = new MultiAnimMultiResult(name, allCombos);
-			for (i in 0...totalStates) {
-				final comboParams:Map<String, ResolvedIndexParameters> = [];
-				var ci = i;
-				for (ki in 0...comboNames.length) {
-					final vi = ci % comboCounts[ki];
-					ci = Std.int(ci / comboCounts[ki]);
-					var key = comboNames[ki];
-					final opts = allOptions[key];
-					if (opts == null) throw 'combo options for "${key}" not found';
-					comboParams.set(key, StringValue(opts[vi]));
-				}
-
-				updateIndexedParamsFromDynamicMap(node, inputParameters, definitions, comboParams, true);
-				this.builderParams = builderParams;
-				var c = startBuild(name, node, cast gridCoordinateSystem, cast hexCoordinateSystem, builderParams);
-				result.addResult(c, [
-					for (combo in allCombos) {
-						switch comboParams[combo] {
-							case StringValue(s):
-								s;
-							default:
-								throw 'comboParams [${combo}] is not string' + MacroUtils.nodePos(node);
-						}
-					}
-				]);
-			}
-			popBuilderState();
-			return result;
-		} catch (e) {
-			popBuilderState();
-			throw e;
-		}
 	}
 
 	function loadTileImpl(sheetName:String, tilename:String, ?index:Int) {

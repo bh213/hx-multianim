@@ -404,9 +404,26 @@
 - **Button incremental rewrite** — `UIStandardMultiAnimButton` now uses single incremental `BuilderResult` with `setParameter()` instead of `MultiAnimMultiResult` (pre-built combo swap). Removes `doRedraw()`, `requestRedraw`, and `UIElementSyncRedraw`.
 - **Checkbox incremental rewrite** — `UIStandardMultiCheckbox` same pattern; uses `beginUpdate()`/`endUpdate()` for batched status+checked changes on toggle
 - **TabButton incremental rewrite** — `UIMultiAnimTabButton` same pattern; selected/disabled states via `setParameter()`
+- **Dropdown incremental rewrite** — `UIStandardMultiAnimDropdown` now uses single incremental `BuilderResult` with `setParameter("status", ...)` and `setParameter("panel", "open"/"closed")` instead of `MultiAnimMultiResult` combo swap. Removes `doRedraw()`, `requestRedraw`, and `UIElementSyncRedraw`.
+- **Scrollable list item incremental rewrite** — `UIMultiAnimScrollableList` items now built with incremental `BuilderResult`; status/selected/disabled changes use `setParameter()` directly instead of pre-built combos. `UIElementBuilder.buildItem()` returns `BuilderResult` instead of `MultiAnimMultiResult`.
+- **`MultiAnimMultiResult` removed** — class deleted entirely; all UI components now use incremental `BuilderResult` with `setParameter()`
+- **`buildWithComboParameters()` removed** — replaced by `buildWithParameters()` with incremental mode (`true` as last parameter)
+- **`UIElementContainer` removed** — unused utility class deleted from `UIElement.hx`
+- **`addCheckboxWithText()` removed** — removed from `UIScreenBase`
+- **Legacy parser error messages removed** — removed migration hints for `$$state$$` syntax, `boundsmode`/`boundsminx`/etc. legacy particle properties, positional emit syntax, and legacy particle `colorCurve` rate action
+- **Trace statements guarded** — all `trace()` calls across parser, builder, codegen, and screen manager now wrapped in `#if MULTIANIM_TRACE` to prevent console noise in production
+- **Codegen repeat strategy renamed** — pool-based repeats renamed to rebuild-based repeats (`poolRepeatChildren` → `rebuildRepeatChildren`, `poolRepeat2DChildren` → `rebuildRepeat2DChildren`); pool visibility tracking removed (`repeatPoolEntries`)
+- **Codegen layout iteration refactored** — extracted `emitLayoutIterationContainer()` helper method from duplicated layout iteration code; layout not found is now a compile error instead of warning+fallback
+- **Codegen array expression error** — array values in expression context now produce explicit error message instead of silently returning `0`
+- **Incremental bitmap tile tracking** — builder now tracks param refs in all tile source types (file, sheet, sheet+index, reference, generated cross/colorWithText) for incremental `setParameter()` updates, not just generated solid color
+- **Incremental `setParameter()` for `tile` type** — `IncrementalUpdateContext.setParameter` now accepts `h2d.Tile` values and `ResolvedIndexParameters` directly, enabling `setParameter("icon", tile)` for `tile`-typed params
+- **Codegen tile param `setParameter()`** — codegen-generated setter (e.g. `setIcon(tile)`) now supports runtime tile updates in `@:manim` path
 
 ### Fixed
-- **Dropdown z-ordering** — dropdown panel now re-applies higher layer after `doRedraw()` rebuilds the main visual; stores screen/layer references from `customAddToLayer()` and reuses them when creating `PositionLinkObject`
+- **Dropdown incremental mode** — dropdown no longer requires `doRedraw()` call before use; state changes are immediate via `setParameter()`
+- **`UIPanelHelper.closeAllNamed()` concurrent modification** — fixed crash when closing all named panels by copying keys before iterating
+- **Builder incremental tile fallback** — `incrementalFallbackTile` (1x1 transparent) used for unresolvable tile params in inactive conditional branches during incremental pre-build, preventing crashes
+- **Dropdown z-ordering** — dropdown panel now re-applies higher layer after rebuild; stores screen/layer references from `customAddToLayer()` and reuses them when creating `PositionLinkObject`
 - **Named panel outside-click cross-panel** — clicking another named panel's trigger or content no longer incorrectly closes unrelated named panels; added `isNamedPanelTrigger()` check and changed condition to cancel `pendingClose` for any panel-related click
 - **UITooltipHelper incremental mode** — `showTooltip()` now builds with `incremental: true`, enabling `updateParams()` to work at runtime (previously always threw because `setParameter()` requires incremental mode)
 - **Named range codegen loop variable** — macro codegen for named range iterators (`range(from:, to:)`) now produces correct loop variable values and positions

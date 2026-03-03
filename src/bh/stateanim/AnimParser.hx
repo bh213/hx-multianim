@@ -631,13 +631,17 @@ class AnimParser implements AnimParserResult {
 	function syntaxError(error:String, ?pos:ParsePosition):Dynamic {
 		final p = pos != null ? pos : curPos();
 		final err = new InvalidSyntax(error, p);
-		trace(err);
+		#if MULTIANIM_TRACE
+		trace('AnimParser syntax error in $sourceName: $err');
+		#end
 		throw err;
 	}
 
 	function unexpectedError(?message:String):Dynamic {
 		final err = new AnimUnexpected(peek(), curPos(), message ?? "unexpected");
-		trace(err);
+		#if MULTIANIM_TRACE
+		trace('AnimParser unexpected token in $sourceName: $err');
+		#end
 		throw err;
 	}
 
@@ -660,7 +664,9 @@ class AnimParser implements AnimParserResult {
 			p.parse();
 			return p;
 		} catch (e) {
-			trace(e);
+			#if MULTIANIM_TRACE
+			trace('AnimParser.parseString failed for $sourceName: $e');
+			#end
 			throw e;
 		}
 	}
@@ -785,9 +791,11 @@ class AnimParser implements AnimParserResult {
 			definedStatesIndexes.push(key);
 		}
 		final allStates = createAllStates(definedStates);
+		#if MULTIANIM_TRACE
 		if (allStates.length > 50) {
 			trace('Warning: large number of states in AnimParser: ${allStates.length}}');
 		}
+		#end
 
 		for (state in allStates) {
 			for (name in animationNames) {
@@ -1515,19 +1523,8 @@ class AnimParser implements AnimParserResult {
 		}
 	}
 
-	// (#4) Validate sheet name: error on old $$ syntax, validate ${state} references
+	// (#4) Validate sheet name: validate ${state} references
 	function validateSheetName(name:String, pos:ParsePosition):Void {
-		// Check for old $$state$$ syntax and error with migration hint
-		var i = 0;
-		while (i < name.length - 1) {
-			if (name.charAt(i) == '$' && name.charAt(i + 1) == '$') {
-				// Find the closing $$
-				final closeIdx = name.indexOf('$$', i + 2);
-				final oldStateName = closeIdx >= 0 ? name.substring(i + 2, closeIdx) : "state";
-				syntaxError('Sheet name "${name}" uses old $$state$$ syntax. Use ' + '${' + oldStateName + '} instead.', pos);
-			}
-			i++;
-		}
 		// Validate ${stateName} references against defined states
 		var j = 0;
 		while (j < name.length) {

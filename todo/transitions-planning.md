@@ -2,26 +2,10 @@
 
 All 6 phases implemented. See `.claude/rules/runtime-systems.md` for API reference.
 
-## Summary
-
-| System | Status | Tests |
-|--------|--------|-------|
-| TweenManager | Done | 57 unit tests |
-| Screen Transitions + Modal Overlay | Done | 9 unit tests (ScreenTransitionTest) |
-| Tooltip/Panel Fade | Done | — |
-| FloatingTextHelper | Done | 13 unit tests |
-| .manim `transition {}` Declarations | Done | 15 parser + 3 builder + 1 visual |
-| UI Control Integration | Done | Auto via incremental mode |
-
 ## Open Items
 
-### Codegen does not support transitions
-
-`ProgrammableCodeGen` does not generate transition-aware code. `transition {}` blocks are parsed but ignored by the macro path — only builder mode animates parameter changes.
-
-**Impact:** Any `@:manim` codegen instance with a `transition {}` block will work functionally (conditionals switch instantly) but won't animate. This is documented in `docs/manim.md` and `docs/manim-reference.md`.
-
-**What would be needed:** Codegen-generated classes would need to carry `TransitionType` metadata and use `IncrementalUpdateContext` (or equivalent) at runtime. Non-trivial — transitions depend on TweenManager injection and the builder's visibility tracking.
+### ~~Codegen does not support transitions~~ — DONE
+Implemented in v1.0.0-rc.1. `CodegenTransitionHelper` runtime class mirrors `IncrementalUpdateContext` transition logic. Generated instances get `setTweenManager(tm)` and `cancelAllTransitions()`.
 
 ### `slide()` inside `flow()` is broken
 
@@ -41,7 +25,7 @@ Slide transitions modify `x`/`y` directly on the child object. `h2d.Flow.sync()`
 
 ### Missing test coverage
 
-- **No codegen comparison test** — test95 uses `simpleTest()` (builder-only). Should add `simpleMacroTest()` variant to verify codegen renders correctly (instant, no animation) and matches builder's static frame.
+- ~~**No codegen comparison test**~~ — DONE. test95 now has builder+macro comparison.
 - **No builder test for mid-transition interruption** — changing a parameter while a transition is still animating (cancellation + restart).
 - **No builder test for slide inside flow** — would document the known conflict.
 - **No parser test for invalid easing name in transition** — e.g. `fade(0.2, unknownEasing)`.

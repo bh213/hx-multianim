@@ -10,6 +10,7 @@ import bh.test.BuilderTestBase.findVisibleBitmapDescendants;
 import bh.test.BuilderTestBase.findAllTextDescendants;
 import bh.test.BuilderTestBase.countVisibleChildren;
 import bh.multianim.MultiAnimParser.SettingValue;
+import bh.ui.UIElement.TileHelper;
 
 /**
  * Non-visual builder tests.
@@ -1253,6 +1254,96 @@ class BuilderUnitTest extends BuilderTestBase {
 		bitmaps = findVisibleBitmapDescendants(result.object);
 		Assert.equals(20, Std.int(bitmaps[0].tile.width));
 		Assert.equals(10, Std.int(bitmaps[0].tile.height));
+	}
+
+	// ==================== Incremental bitmap tile expression tracking ====================
+
+	@Test
+	public function testIncrementalBitmapColorSetParameter():Void {
+		final result = buildFromSource("
+			#test programmable(bg:color=#FF0000) {
+				bitmap(generated(color(10, 10, $bg))): 0, 0
+			}
+		", "test", null, Incremental);
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+
+		// setParameter should update the generated color tile
+		result.setParameter("bg", 0x0000FF);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+	}
+
+	@Test
+	public function testIncrementalBitmapSizeSetParameter():Void {
+		final result = buildFromSource("
+			#test programmable(w:uint=10) {
+				bitmap(generated(color($w, 10, #FF0000))): 0, 0
+			}
+		", "test", null, Incremental);
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+
+		// setParameter should update tile dimensions
+		result.setParameter("w", 20);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(20, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testIncrementalBitmapGeneratedCrossSetParameter():Void {
+		final result = buildFromSource("
+			#test programmable(w:uint=15) {
+				bitmap(generated(cross($w, 10, #FF0000, 1))): 0, 0
+			}
+		", "test", null, Incremental);
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+
+		// setParameter should re-resolve through loadTileSource
+		result.setParameter("w", 25);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+	}
+
+	@Test
+	public function testIncrementalBitmapTileParamSetParameter():Void {
+		final params = new Map<String, Dynamic>();
+		params.set("icon", TileHelper.generatedRectColor(10, 10, 0xFF0000));
+		final result = buildFromSource("
+			#test programmable(icon:tile) {
+				bitmap($icon): 0, 0
+			}
+		", "test", params, Incremental);
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+
+		// setParameter with a different tile — should update the bitmap
+		result.setParameter("icon", TileHelper.generatedRectColor(20, 15, 0x0000FF));
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(20, Std.int(bitmaps[0].tile.width));
+		Assert.equals(15, Std.int(bitmaps[0].tile.height));
+	}
+
+	@Test
+	public function testIncrementalBitmapTileParamWithRawTile():Void {
+		final params = new Map<String, Dynamic>();
+		params.set("icon", TileHelper.generatedRectColor(10, 10, 0xFF0000));
+		final result = buildFromSource("
+			#test programmable(icon:tile) {
+				bitmap($icon): 0, 0
+			}
+		", "test", params, Incremental);
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+
+		// setParameter with a raw h2d.Tile — should also work
+		result.setParameter("icon", h2d.Tile.fromColor(0x00FF00, 30, 25));
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(30, Std.int(bitmaps[0].tile.width));
+		Assert.equals(25, Std.int(bitmaps[0].tile.height));
 	}
 
 	// ==================== Grid coordinate system tests ====================

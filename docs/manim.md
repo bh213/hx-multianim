@@ -2114,8 +2114,8 @@ Components are typically created either:
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `buttonText` | string | Display text |
-| `status` | combo: `normal`, `hover`, `pressed` | Interaction state |
-| `disabled` | combo: `true`, `false` | Disabled state |
+| `status` | enum: `normal`, `hover`, `pressed` | Interaction state |
+| `disabled` | enum: `true`, `false` | Disabled state |
 
 **Optional `.manim` parameters:**
 
@@ -2163,9 +2163,9 @@ placeholder(generated(cross(300, 40, white)), builderParameter("myBtn")) {
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `status` | combo: `normal`, `hover`, `pressed` | Interaction state |
-| `disabled` | combo: `true`, `false` | Disabled state |
-| `checked` | combo: `true`, `false` | Checked state |
+| `status` | enum: `normal`, `hover`, `pressed` | Interaction state |
+| `disabled` | enum: `true`, `false` | Disabled state |
+| `checked` | enum: `true`, `false` | Checked state |
 
 **UIScreenBase settings:**
 
@@ -2182,36 +2182,11 @@ var cb = UIStandardMultiCheckbox.create(builder, "checkbox", true);
 var cb = addCheckbox(builder, false);
 ```
 
-### Checkbox with Text
-
-**Haxe class:** `UIElementContainer` (wraps checkbox + text)
-
-**Required `.manim` parameters:**
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `textColor` | int | Text color |
-| `title` | string | Label text |
-| `font` | string | Font name |
-
-**Required `.manim` placeholder:** `checkbox` — resolved via factory to a checkbox widget
-
-**UIScreenBase settings:**
-
-| Setting | Category | Type | Default | Description |
-|---------|----------|------|---------|-------------|
-| `buildName` | control | string | `"checkboxWithText"` | Programmable name |
-| *any other* | pass-through | — | — | Forwarded to checkboxWithText programmable (e.g. `textColor`, `font`, `title`) |
-
-```haxe
-var cbText = addCheckboxWithText(builder, "my label", "m6x11", true);
-```
-
 ### Slider
 
 **Haxe class:** `UIStandardMultiAnimSlider`
 
-**Interfaces:** `UIElement`, `UIElementDisablable`, `StandardUIElementEvents`, `UIElementNumberValue`, `UIElementFloatValue`, `UIElementSyncRedraw`
+**Interfaces:** `UIElement`, `UIElementDisablable`, `StandardUIElementEvents`, `UIElementNumberValue`, `UIElementFloatValue`
 
 **Required `.manim` parameters:**
 
@@ -2243,7 +2218,7 @@ var cbText = addCheckboxWithText(builder, "my label", "m6x11", true);
 
 **Custom range:** The slider maps any external `min`..`max` float range to the internal 0-100 `.manim` grid. For example, setting `min=0, max=1, step=0.1` gives a 0.0–1.0 slider with 0.1 increments, while the `.manim` grid still uses 0-100.
 
-**Incremental updates:** The slider uses incremental build mode — the first `doRedraw()` builds the full visual tree, subsequent redraws only update changed parameters (`status`, `value`, `disabled`) via `setParameter()`.
+**Incremental updates:** The slider uses incremental build mode — parameters (`status`, `value`, `disabled`) update via `setParameter()` without full rebuild.
 
 ```haxe
 var slider = UIStandardMultiAnimSlider.create(builder, "slider", 200, 50);
@@ -2293,7 +2268,7 @@ var radio = addRadio(builder, items, true, 0); // vertical, selected index 0
 
 **Haxe class:** `UIMultiAnimProgressBar`
 
-**Interfaces:** `UIElement`, `UIElementNumberValue`, `UIElementSyncRedraw`
+**Interfaces:** `UIElement`, `UIElementNumberValue`
 
 A display-only component for health bars, XP bars, loading indicators, etc. The `.manim` definition receives a `value` (0-100) parameter and can use conditionals to change colors at different thresholds.
 
@@ -2356,9 +2331,9 @@ var v:Int = bar.getIntValue();
 | `index` | int | Item index |
 | `title` | string | Item display text |
 | `tile` | tile | Item icon (if available) |
-| `status` | combo: `normal`, `hover`, `pressed` | Interaction state |
-| `selected` | combo: `true`, `false` | Selection state |
-| `disabled` | combo: `true`, `false` | Disabled state |
+| `status` | enum: `normal`, `hover`, `pressed` | Interaction state |
+| `selected` | enum: `true`, `false` | Selection state |
+| `disabled` | enum: `true`, `false` | Disabled state |
 
 **Required `.manim` root setting (item):** `height` — item height in pixels
 
@@ -2451,8 +2426,8 @@ Combines a closed/open button with a `UIMultiAnimScrollableList` panel. Supports
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `status` | combo: `normal`, `hover`, `pressed` | Interaction state |
-| `panel` | combo: `open`, `closed` | Panel visibility state |
+| `status` | enum: `normal`, `hover`, `pressed` | Interaction state |
+| `panel` | enum: `open`, `closed` | Panel visibility state |
 
 **Optional `.manim` parameters (dropdown):**
 

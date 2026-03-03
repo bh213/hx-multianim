@@ -2,7 +2,7 @@
 
 | # | Item | Summary | Priority |
 |---|------|---------|----------|
-| 10 | `closeAllNamed()` iterator | Mutating map during iteration, fragile | Low |
+| ~~10~~ | ~~`closeAllNamed()` iterator~~ | ~~Mutating map during iteration, fragile~~ | ~~DONE~~ |
 | 15 | Text input codegen | `@:manim` factory with `createTextInput()` | Low |
 
 ## Main Goals
@@ -22,15 +22,11 @@
 
 ## Bugs
 
-### `closeAllNamed()` iterator safety
-`closeAllNamed()` iterates `namedPanels` while `closeNamed()` removes from it. Currently works because Haxe `StringMap` iteration copies keys, but fragile.
-**Fix:** Collect keys first (like `checkPendingClose` already does).
+### ~~`closeAllNamed()` iterator safety~~ — FIXED
+Collected keys into array before iterating, so `closeNamed()` can safely remove from the map.
 
-## Deprecation Cleanup
-- Remove legacy particle syntax from parser (keep only new forms):
-  - `boundsMode`/`boundsMinX`/`boundsMaxX`/`boundsMinY`/`boundsMaxY`/`boundsLine` → `bounds:` combined syntax only
-  - `rate: colorCurve: easing, #start, #end` → `colorStops:` only
-  - Positional emit args `cone(dist, distRand, angle, angleRand)` → named params only
+## ~~Deprecation Cleanup~~ — DONE
+Legacy parser error messages removed: `boundsMode`/etc, `colorCurve` rate action, positional emit syntax, `$$state$$`.
 
 ## After 1.0
 - Text input codegen support (`@:manim` factory with `createTextInput()`)

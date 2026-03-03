@@ -3520,7 +3520,9 @@ class MacroManimParser {
 							while (p != null) {
 								switch (p.type) {
 									case FLOW(_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _):
+										#if MULTIANIM_TRACE
 										trace('Warning: $sourceName: slide() transition inside flow() may not work as expected — flow recalculates child positions each frame');
+										#end
 										break;
 									default:
 								}
@@ -3860,8 +3862,6 @@ class MacroManimParser {
 					p.forceFields = parseForceFields();
 				case "bounds":
 					parseBoundsCombined(p);
-				case "boundsmode" | "boundsminx" | "boundsmaxx" | "boundsminy" | "boundsmaxy" | "boundsline":
-					error('legacy "$name" syntax removed — use combined "bounds: kill, box(x: 0, y: 0, w: 800, h: 600)" instead');
 				case "subemitters":
 					p.subEmitters = parseSubEmitters();
 				default:
@@ -3876,8 +3876,6 @@ class MacroManimParser {
 	function parseParticleRateAction(atRate:ReferenceableValue, p:ParticlesDef):Void {
 		final actionName = expectIdentifierOrString();
 		switch (actionName.toLowerCase()) {
-			case "colorcurve":
-				error('legacy "N.N: colorCurve:" syntax removed — use "colorStops: 0.0 #FF0000, 0.5 #00FF00 easeInQuad, 1.0 #0000FF" instead');
 			case "anim":
 				expect(TOpen);
 				final animName = expectIdentifierOrString();
@@ -4029,30 +4027,18 @@ class MacroManimParser {
 			case TIdentifier(s) if (isKeyword(s, "point")):
 				advance();
 				expect(TOpen);
-				if (!isNamedParamNext()) {
-					return error('positional emit syntax removed — use named params: point(dist: 0, distRand: 0)');
-				}
 				return parseEmitModeNamed("point");
 			case TIdentifier(s) if (isKeyword(s, "cone")):
 				advance();
 				expect(TOpen);
-				if (!isNamedParamNext()) {
-					return error('positional emit syntax removed — use named params: cone(dist: 0, distRand: 0, angle: 0, angleSpread: 0)');
-				}
 				return parseEmitModeNamed("cone");
 			case TIdentifier(s) if (isKeyword(s, "box")):
 				advance();
 				expect(TOpen);
-				if (!isNamedParamNext()) {
-					return error('positional emit syntax removed — use named params: box(w: 0, h: 0, angle: 0, angleSpread: 0)');
-				}
 				return parseEmitModeNamed("box");
 			case TIdentifier(s) if (isKeyword(s, "circle")):
 				advance();
 				expect(TOpen);
-				if (!isNamedParamNext()) {
-					return error('positional emit syntax removed — use named params: circle(r: 0, rRand: 0, angle: 0, angleSpread: 0)');
-				}
 				return parseEmitModeNamed("circle");
 			case TIdentifier(s) if (isKeyword(s, "path")):
 				advance();

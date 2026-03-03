@@ -997,7 +997,6 @@ class UIComponentTest extends BuilderTestBase {
 	@Test
 	public function testDropdownClickTogglesOpen():Void {
 		var dropdown = createDropdown();
-		dropdown.doRedraw();
 		var mock = new MockControllable();
 		var panelObj = getDropdownPanelObject(dropdown);
 		// Use a position above the panel area so clicks reach the dropdown handler
@@ -1024,7 +1023,6 @@ class UIComponentTest extends BuilderTestBase {
 	@Test
 	public function testDropdownAutoOpenOnEnter():Void {
 		var dropdown = createDropdown();
-		dropdown.doRedraw();
 		dropdown.autoOpen = true;
 		var mock = new MockControllable();
 		var panelObj = getDropdownPanelObject(dropdown);
@@ -1037,7 +1035,6 @@ class UIComponentTest extends BuilderTestBase {
 	@Test
 	public function testDropdownAutoCloseOnLeave():Void {
 		var dropdown = createDropdown();
-		dropdown.doRedraw();
 		dropdown.autoCloseOnLeave = true;
 		var mock = new MockControllable();
 		var panelObj = getDropdownPanelObject(dropdown);
@@ -1057,7 +1054,6 @@ class UIComponentTest extends BuilderTestBase {
 	@Test
 	public function testDropdownNoAutoOpenWhenDisabled():Void {
 		var dropdown = createDropdown();
-		dropdown.doRedraw();
 		dropdown.autoOpen = true;
 		dropdown.disabled = true;
 		var mock = new MockControllable();
@@ -1070,7 +1066,6 @@ class UIComponentTest extends BuilderTestBase {
 	@Test
 	public function testDropdownCloseOnOutsideClick():Void {
 		var dropdown = createDropdown();
-		dropdown.doRedraw();
 		dropdown.closeOnOutsideClick = true;
 		var mock = new MockControllable();
 		var panelObj = getDropdownPanelObject(dropdown);
@@ -1090,7 +1085,6 @@ class UIComponentTest extends BuilderTestBase {
 	@Test
 	public function testDropdownNoCloseOnOutsideClickWhenFlagFalse():Void {
 		var dropdown = createDropdown();
-		dropdown.doRedraw();
 		dropdown.closeOnOutsideClick = false;
 		var mock = new MockControllable();
 		var panelObj = getDropdownPanelObject(dropdown);
@@ -1151,16 +1145,13 @@ class UIComponentTest extends BuilderTestBase {
 	@Test
 	public function testDropdownDisabled():Void {
 		var dropdown = createDropdown();
-		dropdown.requestRedraw = false;
 		dropdown.disabled = true;
 		Assert.isTrue(dropdown.disabled);
-		Assert.isTrue(dropdown.requestRedraw);
 	}
 
 	@Test
 	public function testDropdownDisabledBlocksAllEvents():Void {
 		var dropdown = createDropdown();
-		dropdown.doRedraw();
 		dropdown.disabled = true;
 		var mock = new MockControllable();
 		var panelObj = getDropdownPanelObject(dropdown);
@@ -1205,7 +1196,6 @@ class UIComponentTest extends BuilderTestBase {
 	public function testDropdownTransitionTimerOverride():Void {
 		var dropdown = createDropdown();
 		dropdown.transitionTimerOverride = 0.5;
-		dropdown.doRedraw();
 		var mock = new MockControllable();
 		var panelObj = getDropdownPanelObject(dropdown);
 		var btnPos = new h2d.col.Point(60, -100);
@@ -1344,10 +1334,8 @@ class UIComponentTest extends BuilderTestBase {
 	@Test
 	public function testScrollableListDisabled():Void {
 		var list = createScrollableList();
-		list.requestRedraw = false;
 		list.disabled = true;
 		Assert.isTrue(list.disabled);
-		Assert.isTrue(list.requestRedraw);
 	}
 
 	@Test
@@ -1363,7 +1351,6 @@ class UIComponentTest extends BuilderTestBase {
 	@Test
 	public function testScrollableListDisabledBlocksEvents():Void {
 		var list = createScrollableList();
-		list.doRedraw();
 		list.disabled = true;
 		var mock = new MockControllable();
 
@@ -1427,7 +1414,6 @@ class UIComponentTest extends BuilderTestBase {
 	public function testScrollableListClickModeSingleClick():Void {
 		var list = createScrollableList();
 		list.clickMode = SingleClick;
-		list.doRedraw();
 		var mock = new MockControllable();
 
 		// Find position of item 1 (y=20, item height=20)
@@ -1507,7 +1493,6 @@ class UIComponentTest extends BuilderTestBase {
 	public function testScrollableListOnItemChangedCallbackPositive():Void {
 		var list = createScrollableList();
 		list.clickMode = SingleClick;
-		list.doRedraw();
 		var callbackIndex:Null<Int> = null;
 
 		list.onItemChanged = function(newIndex, items, wrapper) {
@@ -1591,14 +1576,6 @@ class UIComponentTest extends BuilderTestBase {
 	}
 
 	@Test
-	public function testScrollableListDoRedraw():Void {
-		var list = createScrollableList();
-		Assert.isTrue(list.requestRedraw);
-		list.doRedraw();
-		Assert.isFalse(list.requestRedraw);
-	}
-
-	@Test
 	public function testScrollableListHoverIndexDefaultValues():Void {
 		var list = createScrollableList();
 		Assert.equals(-1, list.currentHoverIndex);
@@ -1635,15 +1612,15 @@ class UIComponentTest extends BuilderTestBase {
 	}
 
 	@Test
-	public function testScrollableListDisabledSetTwiceNoDoubleRedraw():Void {
+	public function testScrollableListDisabledIdempotent():Void {
 		var list = createScrollableList();
-		list.requestRedraw = false;
 		list.disabled = true;
-		Assert.isTrue(list.requestRedraw);
-		list.requestRedraw = false;
-		// Setting disabled to same value should not trigger redraw
+		Assert.isTrue(list.disabled);
+		Assert.floatEquals(0.5, list.getObject().alpha);
+		// Setting disabled to same value should be idempotent
 		list.disabled = true;
-		Assert.isFalse(list.requestRedraw);
+		Assert.isTrue(list.disabled);
+		Assert.floatEquals(0.5, list.getObject().alpha);
 	}
 
 	@Test

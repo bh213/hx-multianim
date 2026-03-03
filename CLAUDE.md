@@ -101,7 +101,7 @@ animation animationName {
 ```
 
 **Key `.anim` features:**
-- `${stateName}` - State variable interpolation in sheet names (validated against defined states; old `$$state$$` syntax errors with migration hint)
+- `${stateName}` - State variable interpolation in sheet names (validated against defined states)
 - `extrapoints` - Named points for effects/interactions (bullets, particles, etc.)
 - Conditionals: `@(state=>value)`, `@(state != value)` negation, `@(state=>[v1,v2])` multi-value, `@(state != [v1,v2])` negated multi-value
 - Comparison conditionals: `@(state >= N)`, `@(state <= N)`, `@(state > N)`, `@(state < N)`

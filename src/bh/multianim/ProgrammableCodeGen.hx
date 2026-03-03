@@ -96,9 +96,6 @@ class ProgrammableCodeGen {
 	// @final variable expressions: maps name -> expression for inline expansion in rvToExpr
 	static var finalVarExprs:Map<String, ReferenceableValue> = new Map();
 
-	// Repeat pool entries: for param-dependent repeats, tracks which pool containers to show/hide
-	static var repeatPoolEntries:Array<{containerField:String, iterIndex:Int, countParamRefs:Array<String>, countExpr:Expr}> = [];
-
 	// Repeat rebuild entries: for param-dependent repeats that need runtime rebuild when count changes
 	static var repeatRebuildEntries:Array<{callExpr:Expr}> = [];
 
@@ -157,7 +154,6 @@ class ProgrammableCodeGen {
 		loopVarSubstitutions = new Map();
 		runtimeLoopVars = new Map();
 		finalVarExprs = new Map();
-		repeatPoolEntries = [];
 		repeatRebuildEntries = [];
 		applyEntries = [];
 		allParsedNodes = new Map();
@@ -530,19 +526,6 @@ class ProgrammableCodeGen {
 				});
 			} else {
 				visExprs.push(macro $fieldRef.visible = ${entry.condition});
-			}
-		}
-		// Pool-based repeat visibility: show/hide based on count param
-		for (entry in repeatPoolEntries) {
-			final fieldRef = macro $p{["this", entry.containerField]};
-			if (entry.iterIndex == -1) {
-				// 2D pool: countExpr is already a boolean (ix < countX && iy < countY)
-				visExprs.push(macro $fieldRef.visible = ${entry.countExpr});
-			} else {
-				// 1D pool: show if iterIndex < count
-				final idx = entry.iterIndex;
-				final countE = entry.countExpr;
-				visExprs.push(macro $fieldRef.visible = ($v{idx} < $countE));
 			}
 		}
 		// Repeat rebuild: call rebuild method when count param changes
@@ -1326,30 +1309,10 @@ class ProgrammableCodeGen {
 			// Static unroll: generate children N times with loop var substituted
 			unrollRepeatChildren(node, varName, info.staticCount, info.dx, info.dy, info.rangeStart, info.rangeStep, containerName, fields, ctorExprs, pos);
 		} else {
-			// Param-dependent: determine max from param default, pre-allocate pool
+			// Param-dependent: generate runtime rebuild method
 			final countParamRefs = collectParamRefs(info.countRV);
-			final maxCount = resolveMaxCount(info.countRV);
-			poolRepeatChildren(node, varName, maxCount, info.dx, info.dy, info.rangeStart, info.rangeStep, containerName, fields, ctorExprs, countParamRefs, info.countRV, repeatType, pos);
+			rebuildRepeatChildren(node, varName, info.dx, info.dy, info.rangeStart, info.rangeStep, containerName, fields, ctorExprs, countParamRefs, info.countRV, repeatType, pos);
 		}
-	}
-
-	/** Resolve max pool size from a param-dependent count expression */
-	static function resolveMaxCount(countRV:ReferenceableValue):Int {
-		if (countRV == null) return 10;
-		switch (countRV) {
-			case RVReference(ref):
-				// Use the param's default value as the max
-				final def = paramDefs.get(ref);
-				if (def != null && def.defaultValue != null) {
-					return switch (def.defaultValue) {
-						case Value(v): v;
-						case Index(idx, _): idx;
-						default: 10;
-					};
-				}
-			default:
-		}
-		return 10;
 	}
 
 	/** Unroll repeat children: generate N copies with loop var substituted to literal values */
@@ -1383,7 +1346,7 @@ class ProgrammableCodeGen {
 	}
 
 	/** Runtime rebuild repeat: generates a method that creates/recreates children based on count param */
-	static function poolRepeatChildren(node:Node, varName:String, maxCount:Int, dx:Int, dy:Int, rangeStart:Int, rangeStep:Int, containerField:String, fields:Array<Field>, ctorExprs:Array<Expr>, countParamRefs:Array<String>, countRV:ReferenceableValue, repeatType:RepeatType, pos:Position):Void {
+	static function rebuildRepeatChildren(node:Node, varName:String, dx:Int, dy:Int, rangeStart:Int, rangeStep:Int, containerField:String, fields:Array<Field>, ctorExprs:Array<Expr>, countParamRefs:Array<String>, countRV:ReferenceableValue, repeatType:RepeatType, pos:Position):Void {
 		if (node.children == null) return;
 
 		// Generate the count expression: for StepIterator it's the count directly, for RangeIterator it needs calculation
@@ -1464,27 +1427,9 @@ class ProgrammableCodeGen {
 	/** Process LayoutIterator: resolve layout points at compile time from parsed AST */
 	static function processLayoutRepeat(node:Node, varName:String, layoutName:String, parentField:String, fields:Array<Field>, ctorExprs:Array<Expr>,
 			siblings:Array<{node:Node, fieldName:String}>, pos:Position):Void {
-		// Look up the #defaultLayout node from allParsedNodes
-		final layoutNode = allParsedNodes.get("#defaultLayout");
-		if (layoutNode == null) {
-			Context.warning('ProgrammableCodeGen: no layouts block found for layout "$layoutName", using fallback', Context.currentPos());
-			processRepeatFallback(node, parentField, fields, ctorExprs, siblings, pos);
-			return;
-		}
-
-		// Extract layouts definition
-		final layoutsDef = switch (layoutNode.type) {
-			case RELATIVE_LAYOUTS(ld): ld;
-			default:
-				Context.warning('ProgrammableCodeGen: unexpected layout node type', Context.currentPos());
-				processRepeatFallback(node, parentField, fields, ctorExprs, siblings, pos);
-				return;
-		};
-
-		final layout = layoutsDef.get(layoutName);
+		final layout = getLayoutDef(layoutName);
 		if (layout == null) {
-			Context.warning('ProgrammableCodeGen: layout "$layoutName" not found', Context.currentPos());
-			processRepeatFallback(node, parentField, fields, ctorExprs, siblings, pos);
+			Context.error('ProgrammableCodeGen: layout "$layoutName" not found in layouts block', Context.currentPos());
 			return;
 		}
 
@@ -1511,117 +1456,70 @@ class ProgrammableCodeGen {
 		if (isAligned) needsLayoutAlign = true;
 		final alignXInt = isAligned ? alignXToInt(layout.alignX) : 0;
 		final alignYInt = isAligned ? alignYToInt(layout.alignY) : 0;
+		final offsetX:Float = layout.offset != null ? layout.offset.x : 0;
+		final offsetY:Float = layout.offset != null ? layout.offset.y : 0;
 
 		switch (layout.type) {
 			case List(list):
-				final offsetX:Float = layout.offset != null ? layout.offset.x : 0;
-				final offsetY:Float = layout.offset != null ? layout.offset.y : 0;
 				for (i in 0...list.length) {
 					loopVarSubstitutions.set(varName, i);
 					final pt = resolveLayoutPoint(list[i], layout, i);
-					if (pt != null) {
-						final px:Float = pt.x + offsetX;
-						final py:Float = pt.y + offsetY;
-						if (px != 0 || py != 0 || isAligned) {
-							final iterContainerName = "_e" + (elementCounter++);
-							fields.push(makeField(iterContainerName, FVar(macro :h2d.Object, null), [APrivate], pos));
-							ctorExprs.push(macro $p{["this", iterContainerName]} = new h2d.Object());
-							if (isAligned)
-								ctorExprs.push(macro this.addAlignEntry($p{["this", iterContainerName]}, $v{px}, $v{py}, $v{alignXInt}, $v{alignYInt}, 0.0, 0.0))
-							else
-								ctorExprs.push(macro $p{["this", iterContainerName]}.setPosition($v{px}, $v{py}));
-							ctorExprs.push(macro $p{["this", containerName]}.addChild($p{["this", iterContainerName]}));
-							processChildren(node.children, iterContainerName, fields, ctorExprs, [], pos);
-						} else {
-							processChildren(node.children, containerName, fields, ctorExprs, [], pos);
-						}
-					} else {
+					if (pt != null)
+						emitLayoutIterationContainer(node, containerName, pt.x + offsetX, pt.y + offsetY, isAligned, alignXInt, alignYInt, fields, ctorExprs, pos);
+					else
 						processChildren(node.children, containerName, fields, ctorExprs, [], pos);
-					}
 					loopVarSubstitutions.remove(varName);
 				}
 
 			case Single(content):
 				loopVarSubstitutions.set(varName, 0);
-				final offsetX:Float = layout.offset != null ? layout.offset.x : 0;
-				final offsetY:Float = layout.offset != null ? layout.offset.y : 0;
 				final pt = resolveLayoutPoint(content, layout, 0);
-				if (pt != null) {
-					final px:Float = pt.x + offsetX;
-					final py:Float = pt.y + offsetY;
-					if (px != 0 || py != 0 || isAligned) {
-						final iterContainerName = "_e" + (elementCounter++);
-						fields.push(makeField(iterContainerName, FVar(macro :h2d.Object, null), [APrivate], pos));
-						ctorExprs.push(macro $p{["this", iterContainerName]} = new h2d.Object());
-						if (isAligned)
-							ctorExprs.push(macro this.addAlignEntry($p{["this", iterContainerName]}, $v{px}, $v{py}, $v{alignXInt}, $v{alignYInt}, 0.0, 0.0))
-						else
-							ctorExprs.push(macro $p{["this", iterContainerName]}.setPosition($v{px}, $v{py}));
-						ctorExprs.push(macro $p{["this", containerName]}.addChild($p{["this", iterContainerName]}));
-						processChildren(node.children, iterContainerName, fields, ctorExprs, [], pos);
-					} else {
-						processChildren(node.children, containerName, fields, ctorExprs, [], pos);
-					}
-				} else {
+				if (pt != null)
+					emitLayoutIterationContainer(node, containerName, pt.x + offsetX, pt.y + offsetY, isAligned, alignXInt, alignYInt, fields, ctorExprs, pos);
+				else
 					processChildren(node.children, containerName, fields, ctorExprs, [], pos);
-				}
 				loopVarSubstitutions.remove(varName);
 
 			case Sequence(seqVarName, from, to, content):
-				final offsetX:Float = layout.offset != null ? layout.offset.x : 0;
-				final offsetY:Float = layout.offset != null ? layout.offset.y : 0;
 				for (i in from...(to + 1)) {
 					loopVarSubstitutions.set(varName, i - from);
 					loopVarSubstitutions.set(seqVarName, i);
 					final pt = resolveLayoutPointSequence(content, layout, seqVarName, i);
-					if (pt != null) {
-						final px:Float = pt.x + offsetX;
-						final py:Float = pt.y + offsetY;
-						if (px != 0 || py != 0 || isAligned) {
-							final iterContainerName = "_e" + (elementCounter++);
-							fields.push(makeField(iterContainerName, FVar(macro :h2d.Object, null), [APrivate], pos));
-							ctorExprs.push(macro $p{["this", iterContainerName]} = new h2d.Object());
-							if (isAligned)
-								ctorExprs.push(macro this.addAlignEntry($p{["this", iterContainerName]}, $v{px}, $v{py}, $v{alignXInt}, $v{alignYInt}, 0.0, 0.0))
-							else
-								ctorExprs.push(macro $p{["this", iterContainerName]}.setPosition($v{px}, $v{py}));
-							ctorExprs.push(macro $p{["this", containerName]}.addChild($p{["this", iterContainerName]}));
-							processChildren(node.children, iterContainerName, fields, ctorExprs, [], pos);
-						} else {
-							processChildren(node.children, containerName, fields, ctorExprs, [], pos);
-						}
-					} else {
+					if (pt != null)
+						emitLayoutIterationContainer(node, containerName, pt.x + offsetX, pt.y + offsetY, isAligned, alignXInt, alignYInt, fields, ctorExprs, pos);
+					else
 						processChildren(node.children, containerName, fields, ctorExprs, [], pos);
-					}
 					loopVarSubstitutions.remove(varName);
 					loopVarSubstitutions.remove(seqVarName);
 				}
 
 			case Grid(cols, rows, cellW, cellH):
-				final offsetX:Float = layout.offset != null ? layout.offset.x : 0;
-				final offsetY:Float = layout.offset != null ? layout.offset.y : 0;
 				final total = cols * rows;
 				for (i in 0...total) {
 					loopVarSubstitutions.set(varName, i);
 					final col = i % cols;
 					final row = Std.int(i / cols);
-					final px:Float = col * cellW + offsetX;
-					final py:Float = row * cellH + offsetY;
-					if (px != 0 || py != 0 || isAligned) {
-						final iterContainerName = "_e" + (elementCounter++);
-						fields.push(makeField(iterContainerName, FVar(macro :h2d.Object, null), [APrivate], pos));
-						ctorExprs.push(macro $p{["this", iterContainerName]} = new h2d.Object());
-						if (isAligned)
-							ctorExprs.push(macro this.addAlignEntry($p{["this", iterContainerName]}, $v{px}, $v{py}, $v{alignXInt}, $v{alignYInt}, 0.0, 0.0))
-						else
-							ctorExprs.push(macro $p{["this", iterContainerName]}.setPosition($v{px}, $v{py}));
-						ctorExprs.push(macro $p{["this", containerName]}.addChild($p{["this", iterContainerName]}));
-						processChildren(node.children, iterContainerName, fields, ctorExprs, [], pos);
-					} else {
-						processChildren(node.children, containerName, fields, ctorExprs, [], pos);
-					}
+					emitLayoutIterationContainer(node, containerName, col * cellW + offsetX, row * cellH + offsetY, isAligned, alignXInt, alignYInt, fields, ctorExprs, pos);
 					loopVarSubstitutions.remove(varName);
 				}
+		}
+	}
+
+	/** Emit a positioned container for one layout iteration, or add children directly if at origin */
+	static function emitLayoutIterationContainer(node:Node, containerName:String, px:Float, py:Float, isAligned:Bool, alignXInt:Int, alignYInt:Int,
+			fields:Array<Field>, ctorExprs:Array<Expr>, pos:Position):Void {
+		if (px != 0 || py != 0 || isAligned) {
+			final iterContainerName = "_e" + (elementCounter++);
+			fields.push(makeField(iterContainerName, FVar(macro :h2d.Object, null), [APrivate], pos));
+			ctorExprs.push(macro $p{["this", iterContainerName]} = new h2d.Object());
+			if (isAligned)
+				ctorExprs.push(macro this.addAlignEntry($p{["this", iterContainerName]}, $v{px}, $v{py}, $v{alignXInt}, $v{alignYInt}, 0.0, 0.0))
+			else
+				ctorExprs.push(macro $p{["this", iterContainerName]}.setPosition($v{px}, $v{py}));
+			ctorExprs.push(macro $p{["this", containerName]}.addChild($p{["this", iterContainerName]}));
+			processChildren(node.children, iterContainerName, fields, ctorExprs, [], pos);
+		} else {
+			processChildren(node.children, containerName, fields, ctorExprs, [], pos);
 		}
 	}
 
@@ -2488,8 +2386,8 @@ class ProgrammableCodeGen {
 			// Both axes static: fully unroll
 			unrollRepeat2DChildren(node, varNameX, varNameY, infoX, infoY, containerName, fields, ctorExprs, pos);
 		} else {
-			// At least one axis is param-dependent: pool
-			poolRepeat2DChildren(node, varNameX, varNameY, infoX, infoY, repeatTypeX, repeatTypeY, containerName, fields, ctorExprs, pos);
+			// At least one axis is param-dependent: runtime rebuild
+			rebuildRepeat2DChildren(node, varNameX, varNameY, infoX, infoY, repeatTypeX, repeatTypeY, containerName, fields, ctorExprs, pos);
 		}
 	}
 
@@ -2526,7 +2424,7 @@ class ProgrammableCodeGen {
 	}
 
 	/** Runtime rebuild 2D repeat: generates a method that creates/recreates children based on count params */
-	static function poolRepeat2DChildren(node:Node, varNameX:String, varNameY:String, infoX:{staticCount:Null<Int>, dx:Int, dy:Int, rangeStart:Int, rangeStep:Int, countRV:Null<ReferenceableValue>}, infoY:{staticCount:Null<Int>, dx:Int, dy:Int, rangeStart:Int, rangeStep:Int, countRV:Null<ReferenceableValue>}, repeatTypeX:RepeatType, repeatTypeY:RepeatType, containerField:String, fields:Array<Field>, ctorExprs:Array<Expr>, pos:Position):Void {
+	static function rebuildRepeat2DChildren(node:Node, varNameX:String, varNameY:String, infoX:{staticCount:Null<Int>, dx:Int, dy:Int, rangeStart:Int, rangeStep:Int, countRV:Null<ReferenceableValue>}, infoY:{staticCount:Null<Int>, dx:Int, dy:Int, rangeStart:Int, rangeStep:Int, countRV:Null<ReferenceableValue>}, repeatTypeX:RepeatType, repeatTypeY:RepeatType, containerField:String, fields:Array<Field>, ctorExprs:Array<Expr>, pos:Position):Void {
 		if (node.children == null) return;
 
 		final countXExpr:Expr = if (infoX.staticCount != null) macro $v{infoX.staticCount} else switch (repeatTypeX) {
@@ -4349,6 +4247,7 @@ class ProgrammableCodeGen {
 		final tileExpr = tileSourceToExpr(tileSource);
 		final fieldRef = macro $p{["this", fieldName]};
 		final createExprs:Array<Expr> = [];
+		final exprUpdates:Array<{fieldName:String, updateExpr:Expr, paramRefs:Array<String>}> = [];
 		// Always use tile.sub() to get an independent copy with correct dx/dy.
 		// Atlas tiles may have dx/dy mutated by AnimParser, so we must reset them.
 		// This matches the builder which always calls tile.sub() (MultiAnimBuilder line 1481).
@@ -4369,11 +4268,23 @@ class ProgrammableCodeGen {
 			createExprs.push(macro $b{block});
 		}
 
+		final tileRefs = collectTileSourceParamRefs(tileSource);
+		if (tileRefs.length > 0) {
+			exprUpdates.push({
+				fieldName: fieldName,
+				updateExpr: macro {
+					var tile = $tileExpr;
+					$fieldRef.tile = tile.sub(0, 0, tile.width, tile.height, $dxExpr, $dyExpr);
+				},
+				paramRefs: tileRefs,
+			});
+		}
+
 		return {
 			fieldType: macro :h2d.Bitmap,
 			createExprs: createExprs,
 			isContainer: false,
-			exprUpdates: [],
+			exprUpdates: exprUpdates,
 		};
 	}
 
@@ -5110,7 +5021,8 @@ class ProgrammableCodeGen {
 						}
 					}
 				}
-			default:
+			case RVArray(_), RVArrayReference(_):
+				Context.error('Array values are not supported in expression context — use repeatable() with array iterator instead', Context.currentPos());
 				macro 0;
 		};
 	}
@@ -5172,6 +5084,31 @@ class ProgrammableCodeGen {
 				for (a in args) collectParamRefsImpl(a, refs);
 			default:
 		}
+	}
+
+	static function collectTileSourceParamRefs(ts:TileSource):Array<String> {
+		final refs:Array<String> = [];
+		switch (ts) {
+			case TSFile(filename): collectParamRefsImpl(filename, refs);
+			case TSSheet(sheet, name): collectParamRefsImpl(sheet, refs); collectParamRefsImpl(name, refs);
+			case TSSheetWithIndex(sheet, name, index): collectParamRefsImpl(sheet, refs); collectParamRefsImpl(name, refs); collectParamRefsImpl(index, refs);
+			case TSGenerated(type):
+				switch (type) {
+					case SolidColor(w, h, color): collectParamRefsImpl(w, refs); collectParamRefsImpl(h, refs); collectParamRefsImpl(color, refs);
+					case Cross(w, h, color, thickness):
+						collectParamRefsImpl(w, refs); collectParamRefsImpl(h, refs);
+						collectParamRefsImpl(color, refs); collectParamRefsImpl(thickness, refs);
+					case SolidColorWithText(w, h, color, text, textColor, font):
+						collectParamRefsImpl(w, refs); collectParamRefsImpl(h, refs); collectParamRefsImpl(color, refs);
+						collectParamRefsImpl(text, refs); collectParamRefsImpl(textColor, refs); collectParamRefsImpl(font, refs);
+					default:
+				}
+			case TSReference(ref):
+				if (paramDefs != null && paramDefs.exists(ref) && !loopVarSubstitutions.exists(ref) && !refs.contains(ref))
+					refs.push(ref);
+			default:
+		}
+		return refs;
 	}
 
 	// ==================== Node Settings ====================

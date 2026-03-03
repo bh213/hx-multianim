@@ -571,26 +571,6 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		return addObjectToLayer(textObj, layer);
 	}
 
-	// TODO: needs work
-	function addCheckboxWithText(providedBuilder:MultiAnimBuilder, settings:ResolvedSettings, label:String, fontName:String, checked:Bool) {
-		var checkbox;
-		final checkboxWithNameBuildName = getSettings(settings, "buildName", "checkboxWithText");
-		final split = splitSettings(settings, ["buildName"], [], [], [], "checkboxWithText");
-		var params:Map<String, Dynamic> = ["title" => label, "font" => fontName];
-		if (split.main != null)
-			for (key => value in split.main)
-				params.set(key, value);
-
-		final factory = (settings) -> {
-			checkbox = addCheckbox(providedBuilder, settings, checked);
-			addElement(checkbox, null);
-			return checkbox.getObject();
-		}
-		var built = providedBuilder.buildWithParameters(checkboxWithNameBuildName, params,
-			{placeholderObjects: ["checkbox" => PVFactory(factory)]});
-		return new UIElementContainer(checkbox, built.object);
-	}
-
 
 
     function addScrollableListWithSingleBuilder(builder:MultiAnimBuilder, panelBuilderName:String, itemBuilderName:String, scrollbarBuilderName:String, scrollbarInPanelName:String, items, settings:ResolvedSettings, initialIndex:Int = 0, width:Int = 100, height:Int = 100):UIMultiAnimScrollableList {

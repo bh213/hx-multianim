@@ -259,7 +259,9 @@ class ScreenManager {
 				buildFromResource(key, true); // TODO: enable reload
 			}
 		} catch (e) {
-			trace(e);
+			#if MULTIANIM_TRACE
+			trace('ScreenManager.rebuildAll failed: $e');
+			#end
 			loader.clearCache();
 			builders = oldBuilders;
 			if (throwOnError)
@@ -317,7 +319,9 @@ class ScreenManager {
 				currentlyLoadingScreen = null;
 				#end
 				failedScreens[name] = e.toString();
+				#if MULTIANIM_TRACE
 				trace('Failed to reload screen ${name}: ${e}');
+				#end
 				return {
 					success: false,
 					error: e.toString(),
@@ -359,7 +363,9 @@ class ScreenManager {
 			currentlyLoadingScreen = null;
 			#end
 			failedScreens[name] = e.toString();
+			#if MULTIANIM_TRACE
 			trace('Failed to load screen ${name}: ${e}');
+			#end
 		}
 		return screen;
 	}

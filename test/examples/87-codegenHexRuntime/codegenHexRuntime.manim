@@ -145,4 +145,22 @@ version: 0.5
       rect $hex.cube($q, 0, -$q).hexEdge($ci, 1.0), 4, 4, #FF00FF
     );
   }
+
+  // === .x/.y extraction: param-dependent grid ===
+  point {
+    grid: 20, 15
+    pos: 80, 640
+    scale: 2
+    // col=1, row=0: pos(col, 1).x = 20, pos(1, 1).y = 15
+    bitmap(generated(color($grid.pos($col, 1).x, $grid.pos(1, 1).y, #44FF44))): 0, 0
+  }
+
+  // === .x/.y extraction: static hex corner ===
+  point {
+    hex: pointy(24, 24)
+    pos: 280, 640
+    scale: 2
+    // corner(0, 1.0).x + 50, corner(0, 1.0).y + 50 as dimensions
+    bitmap(generated(color($hex.corner(0, 1.0).x + 50, $hex.corner(0, 1.0).y + 50, #FF44FF))): 0, 0
+  }
 }

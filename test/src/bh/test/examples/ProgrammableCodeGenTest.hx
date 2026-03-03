@@ -3390,6 +3390,24 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		}, async);
 	}
 
+	@Test
+	public function testCodegenTileParamSetParameter():Void {
+		final mp = createMp();
+		final tile1 = h2d.Tile.fromColor(0xFF0000, 10, 10);
+		final inst = mp.tileParamDemo.create(tile1, "test");
+
+		final bitmaps = findVisibleBitmapDescendants(inst);
+		Assert.isTrue(bitmaps.length >= 1, "Should have at least 1 bitmap");
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+
+		// setIcon should update the bitmap tile
+		final tile2 = h2d.Tile.fromColor(0x0000FF, 25, 20);
+		inst.setIcon(tile2);
+		final bitmapsAfter = findVisibleBitmapDescendants(inst);
+		Assert.equals(25, Std.int(bitmapsAfter[0].tile.width));
+		Assert.equals(20, Std.int(bitmapsAfter[0].tile.height));
+	}
+
 	// ==================== ColorDiv: generated(color()) with / division ====================
 
 	@Test
