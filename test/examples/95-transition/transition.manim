@@ -1,13 +1,37 @@
 version: 0.5
 
-#transition programmable(status:[normal,hover,pressed]=normal, checked:bool=false) {
-    transition {
-        status: crossfade(0.1, easeOutQuad)
-        checked: flipX(0.15)
-    }
-    @(status => normal) bitmap(generated(color(40, 20, #4444ff))): 0, 0
-    @(status => hover) bitmap(generated(color(40, 20, #44ff44))): 10, 0
-    @(status => pressed) bitmap(generated(color(40, 20, #ff4444))): 20, 0
-    @(checked => true) bitmap(generated(color(20, 20, #ffff00))): 0, 25
-    @(checked => false) bitmap(generated(color(20, 20, #888888))): 0, 25
+#transFade programmable(mode:[a,b]=a) {
+    transition { mode: fade(1.0) }
+    @(mode => a) bitmap(generated(color(60, 40, #ff4444))): 0, 0
+    @(mode => b) bitmap(generated(color(60, 40, #4444ff))): 0, 0
+}
+
+#transCrossfade programmable(mode:[a,b]=a) {
+    transition { mode: crossfade(1.0) }
+    @(mode => a) bitmap(generated(color(60, 40, #ff8800))): 0, 0
+    @(mode => b) bitmap(generated(color(60, 40, #0088ff))): 0, 0
+}
+
+#transFlipX programmable(mode:[a,b]=a) {
+    transition { mode: flipX(1.0) }
+    @(mode => a) bitmap(generated(color(60, 40, #44ff44))): 0, 0
+    @(mode => b) bitmap(generated(color(60, 40, #ff44ff))): 0, 0
+}
+
+#transFlipY programmable(mode:[a,b]=a) {
+    transition { mode: flipY(1.0) }
+    @(mode => a) bitmap(generated(color(60, 40, #ffff44))): 0, 0
+    @(mode => b) bitmap(generated(color(60, 40, #44ffff))): 0, 0
+}
+
+#transSlideLeft programmable(mode:[a,b]=a) {
+    transition { mode: slide(left, 1.0, 80) }
+    @(mode => a) bitmap(generated(color(60, 40, #ff4488))): 0, 0
+    @(mode => b) bitmap(generated(color(60, 40, #88ff44))): 0, 0
+}
+
+#transSlideDown programmable(mode:[a,b]=a) {
+    transition { mode: slide(down, 1.0, 80) }
+    @(mode => a) bitmap(generated(color(60, 40, #8844ff))): 0, 0
+    @(mode => b) bitmap(generated(color(60, 40, #44ff88))): 0, 0
 }
