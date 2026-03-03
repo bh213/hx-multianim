@@ -4202,8 +4202,175 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	// ==================== Transition declarations: visual ====================
 
+	/**
+	 * Visual test for all 6 transition types captured mid-animation.
+	 * Layout per row: [label] [state A] [mid-transition at t=0.25] [state B]
+	 * Builder and codegen paths are compared for parity.
+	 */
 	@Test
 	public function test95_Transition(async:utest.Async):Void {
-		simpleMacroTest(95, "transition", () -> createMp().transition.create(), async);
+		setupTest(95, "transition");
+		VisualTestBase.pendingVisualTests++;
+		async.setTimeout(15000);
+
+		final animFilePath = "test/examples/95-transition/transition.manim";
+		final sizeX = 1280;
+		final sizeY = 720;
+		final scale = 2.5;
+		final rowH = 48.0;
+		final colLabel = 0.0;
+		final colA = 45.0; // "before" static state
+		final colMid = 120.0; // mid-transition
+		final colB = 195.0; // "after" static state
+		final names = ["transFade", "transCrossfade", "transFlipX", "transFlipY", "transSlideLeft", "transSlideDown"];
+		final labels = ["fade", "crossfade", "flipX", "flipY", "slideLeft", "slideDown"];
+
+		// Phase 1: builder
+		clearScene();
+		var container = new h2d.Object(s2d);
+		container.setScale(scale);
+
+		var tm = new bh.base.TweenManager();
+		try {
+			final fileContent = byte.ByteData.ofString(sys.io.File.getContent(animFilePath));
+			final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+			final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, animFilePath);
+			builder.tweenManager = tm;
+
+			final font = loader.loadFont("dd");
+
+			for (i in 0...names.length) {
+				final y = i * rowH;
+
+				// Label
+				if (font != null) {
+					var text = new h2d.Text(font, container);
+					text.text = labels[i];
+					text.textColor = 0xFFFFFF;
+					text.setPosition(colLabel, y + 10);
+				}
+
+				// State A (default, no transition needed)
+				final stateA = builder.buildWithParameters(names[i], new Map());
+				stateA.object.setPosition(colA, y);
+				container.addChild(stateA.object);
+
+				// Mid-transition (incremental, trigger change, advance time)
+				final mid = builder.buildWithParameters(names[i], new Map(), null, null, true);
+				mid.object.setPosition(colMid, y);
+				container.addChild(mid.object);
+				mid.setParameter("mode", "b");
+
+				// State B (built with mode=b, no transition)
+				final paramsB = new Map<String, Dynamic>();
+				paramsB.set("mode", "b");
+				final stateB = builder.buildWithParameters(names[i], paramsB);
+				stateB.object.setPosition(colB, y);
+				container.addChild(stateB.object);
+			}
+		} catch (e:Dynamic) {
+			Assert.fail('Builder threw: $e');
+			VisualTestBase.pendingVisualTests--;
+			async.done();
+			return;
+		}
+
+		tm.update(0.001); // skip first dt
+		tm.update(0.25); // advance to 25% of 1.0s transitions
+
+		if (testTitle != null && testTitle.length > 0) addTitleOverlay();
+		var orderIdx = HtmlReportGenerator.reserveOrderIndex();
+		var builderRaw = captureScreenshotRaw(sizeX, sizeY);
+
+		// Phase 2: codegen
+		clearScene();
+		var mc = new h2d.Object(s2d);
+		mc.setScale(scale);
+
+		var tm2 = new bh.base.TweenManager();
+		try {
+			final mp = createMp();
+			final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+			final font = loader.loadFont("dd");
+
+			// Each row: label, state A, mid-transition, state B
+			// Row 0: fade
+			addTransLabel(mc, font, "fade", colLabel, 0 * rowH + 10);
+			addAt(mc, mp.transFade.create(), colA, 0 * rowH);
+			mp.transFade.tweenManager = tm2;
+			var m0 = mp.transFade.create(); m0.setPosition(colMid, 0 * rowH); mc.addChild(m0); m0.setMode(1);
+			mp.transFade.tweenManager = null;
+			addAt(mc, mp.transFade.create(1), colB, 0 * rowH);
+
+			// Row 1: crossfade
+			addTransLabel(mc, font, "crossfade", colLabel, 1 * rowH + 10);
+			addAt(mc, mp.transCrossfade.create(), colA, 1 * rowH);
+			mp.transCrossfade.tweenManager = tm2;
+			var m1 = mp.transCrossfade.create(); m1.setPosition(colMid, 1 * rowH); mc.addChild(m1); m1.setMode(1);
+			mp.transCrossfade.tweenManager = null;
+			addAt(mc, mp.transCrossfade.create(1), colB, 1 * rowH);
+
+			// Row 2: flipX
+			addTransLabel(mc, font, "flipX", colLabel, 2 * rowH + 10);
+			addAt(mc, mp.transFlipX.create(), colA, 2 * rowH);
+			mp.transFlipX.tweenManager = tm2;
+			var m2 = mp.transFlipX.create(); m2.setPosition(colMid, 2 * rowH); mc.addChild(m2); m2.setMode(1);
+			mp.transFlipX.tweenManager = null;
+			addAt(mc, mp.transFlipX.create(1), colB, 2 * rowH);
+
+			// Row 3: flipY
+			addTransLabel(mc, font, "flipY", colLabel, 3 * rowH + 10);
+			addAt(mc, mp.transFlipY.create(), colA, 3 * rowH);
+			mp.transFlipY.tweenManager = tm2;
+			var m3 = mp.transFlipY.create(); m3.setPosition(colMid, 3 * rowH); mc.addChild(m3); m3.setMode(1);
+			mp.transFlipY.tweenManager = null;
+			addAt(mc, mp.transFlipY.create(1), colB, 3 * rowH);
+
+			// Row 4: slideLeft
+			addTransLabel(mc, font, "slideLeft", colLabel, 4 * rowH + 10);
+			addAt(mc, mp.transSlideLeft.create(), colA, 4 * rowH);
+			mp.transSlideLeft.tweenManager = tm2;
+			var m4 = mp.transSlideLeft.create(); m4.setPosition(colMid, 4 * rowH); mc.addChild(m4); m4.setMode(1);
+			mp.transSlideLeft.tweenManager = null;
+			addAt(mc, mp.transSlideLeft.create(1), colB, 4 * rowH);
+
+			// Row 5: slideDown
+			addTransLabel(mc, font, "slideDown", colLabel, 5 * rowH + 10);
+			addAt(mc, mp.transSlideDown.create(), colA, 5 * rowH);
+			mp.transSlideDown.tweenManager = tm2;
+			var m5 = mp.transSlideDown.create(); m5.setPosition(colMid, 5 * rowH); mc.addChild(m5); m5.setMode(1);
+			mp.transSlideDown.tweenManager = null;
+			addAt(mc, mp.transSlideDown.create(1), colB, 5 * rowH);
+		} catch (e:Dynamic) {
+			Assert.fail('Codegen threw: $e');
+			VisualTestBase.pendingVisualTests--;
+			async.done();
+			return;
+		}
+
+		tm2.update(0.001);
+		tm2.update(0.25);
+
+		if (testTitle != null && testTitle.length > 0) addTitleOverlay();
+		var macroRaw = captureScreenshotRaw(sizeX, sizeY);
+
+		Assert.pass();
+		enqueueBuilderAndMacro(builderRaw, macroRaw, null, null, orderIdx);
+
+		VisualTestBase.pendingVisualTests--;
+		async.done();
+	}
+
+	static function addTransLabel(parent:h2d.Object, font:Null<h2d.Font>, label:String, x:Float, y:Float):Void {
+		if (font == null) return;
+		var text = new h2d.Text(font, parent);
+		text.text = label;
+		text.textColor = 0xFFFFFF;
+		text.setPosition(x, y);
+	}
+
+	static function addAt(parent:h2d.Object, obj:h2d.Object, x:Float, y:Float):Void {
+		obj.setPosition(x, y);
+		parent.addChild(obj);
 	}
 }

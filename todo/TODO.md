@@ -2,8 +2,6 @@
 
 | # | Item | Summary | Priority |
 |---|------|---------|----------|
-| 4 | Haxelib release | Publish to haxelib + CI automation | High |
-| 9 | Dropdown z-ordering | Panel renders behind other UI elements | Medium |
 | 10 | `closeAllNamed()` iterator | Mutating map during iteration, fragile | Low |
 | 15 | Text input codegen | `@:manim` factory with `createTextInput()` | Low |
 
@@ -12,46 +10,17 @@
 - Code generation: programmable elements should always work via `builder.buildWithParameters` or via macro system (`@:manim(...)`)
 
 ## V1
-- Haxelib release (see details below)
+- ~~Haxelib release~~ — DONE (1.0.0-rc.1, see [release.md](release.md))
 - More hot reload integration tests — see [docs/hot-reload.md "Missing Tests"](../docs/hot-reload.md#missing-tests-needed)
 - Add blob47 utils for easier testing/dev/selection
-- Add disabled demo for all controls in playground
+- change.manim version to 1.0
 
-### Haxelib Release
 
-**haxelib.json gaps** (current: [haxelib.json](../haxelib.json), version `0.12.0`):
-- [ ] Fill `releasenote` for each release
-
-**CI/test matrix:**
+**CI remaining:**
+- [ ] Add `HAXELIB_PASSWORD` secret to GitHub repo settings (required before first tag push)
 - [ ] Dev mode tests (`-D MULTIANIM_DEV`) need matrix build or sequential run in CI (currently `test.ps1` runs both)
-- [ ] Consider if dev-mode tests should run in release builds or only in dev CI stage
-
-**Pre-release checklist:**
-- [ ] Register haxelib account if not done (`haxelib register`)
-- [ ] Test locally: `haxelib dev hx-multianim .` to simulate installation
-- [ ] Bump version in haxelib.json
-- [ ] Manual submit: `haxelib submit .` (auto-zips, excludes dotfiles)
-
-**Automation (GitHub Actions):**
-- [ ] Add `HAXELIB_PASSWORD` secret to GitHub repo settings
-- [ ] Create `.github/workflows/release-and-publish.yml`:
-  - Triggers on push to `main`
-  - `EndBug/version-check@v2` detects version bump in haxelib.json
-  - `softprops/action-gh-release@v1` creates GitHub Release `vX.Y.Z`
-  - `haxelib submit . ${{ secrets.HAXELIB_PASSWORD }}` publishes
-  - Reuse build/test steps from existing [build.yml](../.github/workflows/build.yml)
-
-**Versioning notes:**
-- Haxelib uses restricted SemVer: `major.minor.patch[-alpha|beta|rc[.N]]`
-- Current `0.x.y` signals unstable API — use `1.0.0` when stable
-- Submitted versions **cannot be overwritten** — must bump for any change
 
 ## Bugs
-
-### Dropdown panel not on modal layer
-**File:** `UIMultiAnimDropdown.hx:246`
-The dropdown's floating panel uses `PositionLinkObject` but doesn't get placed on the modal layer. This can cause z-ordering issues where other UI elements render on top of the dropdown.
-**Fix:** Route through `UIElementCustomAddToLayer` or `screen.addObjectToLayer(obj, ModalLayer)`.
 
 ### `closeAllNamed()` iterator safety
 `closeAllNamed()` iterates `namedPanels` while `closeNamed()` removes from it. Currently works because Haxe `StringMap` iteration copies keys, but fragile.
