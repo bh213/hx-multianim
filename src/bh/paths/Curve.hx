@@ -116,3 +116,62 @@ typedef CurveSegment = {
 	var valueStart:Float;
 	var valueEnd:Float;
 };
+
+/** Multiplies the output of multiple curves: a(t) * b(t) * ... */
+class MultiplyCurve implements ICurve {
+	var curves:Array<ICurve>;
+
+	public function new(curves:Array<ICurve>) {
+		this.curves = curves;
+	}
+
+	public function getValue(t:Float):Float {
+		var result:Float = 1.0;
+		for (c in curves)
+			result *= c.getValue(t);
+		return result;
+	}
+}
+
+/** Composes two curves: outer(inner(t)) */
+class ComposeCurve implements ICurve {
+	var outer:ICurve;
+	var inner:ICurve;
+
+	public function new(outer:ICurve, inner:ICurve) {
+		this.outer = outer;
+		this.inner = inner;
+	}
+
+	public function getValue(t:Float):Float {
+		return outer.getValue(inner.getValue(t));
+	}
+}
+
+/** Inverts a curve: 1.0 - curve(t) */
+class InvertCurve implements ICurve {
+	var source:ICurve;
+
+	public function new(source:ICurve) {
+		this.source = source;
+	}
+
+	public function getValue(t:Float):Float {
+		return 1.0 - source.getValue(t);
+	}
+}
+
+/** Scales a curve's output: curve(t) * factor */
+class ScaleCurve implements ICurve {
+	var source:ICurve;
+	var factor:Float;
+
+	public function new(source:ICurve, factor:Float) {
+		this.source = source;
+		this.factor = factor;
+	}
+
+	public function getValue(t:Float):Float {
+		return source.getValue(t) * factor;
+	}
+}

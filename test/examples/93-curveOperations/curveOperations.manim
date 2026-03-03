@@ -1,0 +1,23 @@
+version: 0.5
+
+curves {
+    #base curve {
+        easing: easeoutquad
+    }
+    #envelope curve {
+        points: [(0, 0), (0.1, 1.0), (0.9, 1.0), (1.0, 0)]
+    }
+    #linear curve {
+        easing: linear
+    }
+
+    #multiplied curve { multiply: [base, envelope] }
+    #composed curve { apply: base, linear }
+    #inverted curve { invert: base }
+    #scaled curve { scale: base, 1.5 }
+    #invertedScaled curve { scale: inverted, 0.8 }
+}
+
+#curveOperations programmable() {
+    text(m3x6, "Curve Ops", white, left): 10, 5
+}

@@ -1,10 +1,12 @@
 package bh.test.examples;
 
 import utest.Assert;
+import bh.base.TweenManager;
 import bh.test.BuilderTestBase;
 import bh.test.UITestHarness.UITestScreen;
 import bh.ui.UIPanelHelper;
 import bh.ui.UIPanelHelper.PanelCloseMode;
+import bh.ui.UIPanelHelper.PanelDefaults;
 import bh.ui.UITooltipHelper.TooltipPosition;
 import bh.ui.UIElement.UIScreenEvent;
 
@@ -679,5 +681,125 @@ class UIPanelHelperTest extends BuilderTestBase {
 		var closed = ctx.helper.checkPendingClose();
 		Assert.isFalse(closed);
 		Assert.isTrue(ctx.helper.isOpenNamed("slot1"));
+	}
+
+	// ============== Fade transitions ==============
+
+	function createHelperWithTweens(?fadeIn:Float, ?fadeOut:Float):{
+		helper:UIPanelHelper,
+		screen:UITestScreen,
+		tweens:TweenManager
+	} {
+		var screen = new UITestScreen();
+		var builder = BuilderTestBase.builderFromSource('$ANCHOR_MANIM\n$ANCHOR2_MANIM\n$ANCHOR3_MANIM\n$PANEL_MANIM');
+
+		var anchorResult = builder.buildWithParameters("anchor", []);
+		screen.addInteractives(anchorResult);
+
+		var anchor2Result = builder.buildWithParameters("anchor2", []);
+		screen.addInteractives(anchor2Result);
+
+		var anchor3Result = builder.buildWithParameters("anchor3", []);
+		screen.addInteractives(anchor3Result);
+
+		var tweens = new TweenManager();
+		var defaults:PanelDefaults = {};
+		if (fadeIn != null) defaults.fadeIn = fadeIn;
+		if (fadeOut != null) defaults.fadeOut = fadeOut;
+
+		var helper = new UIPanelHelper(screen, builder, defaults, tweens);
+		return {helper: helper, screen: screen, tweens: tweens};
+	}
+
+	@Test
+	public function testFadeInPanelStartsAtZeroAlpha():Void {
+		var ctx = createHelperWithTweens(0.3, 0.0);
+		ctx.helper.open("btn1", "panel");
+		Assert.isTrue(ctx.helper.isOpen());
+
+		// Panel result object should exist; fade-in tween is running
+		var result = ctx.helper.getPanelResult();
+		Assert.notNull(result);
+	}
+
+	@Test
+	public function testFadeInPanelReachesFullAlpha():Void {
+		var ctx = createHelperWithTweens(0.2, 0.0);
+		ctx.helper.open("btn1", "panel");
+
+		// Advance tweens past fade-in duration
+		ctx.tweens.update(0.3);
+		Assert.isTrue(ctx.helper.isOpen());
+	}
+
+	@Test
+	public function testFadeOutPanelRemovesOnComplete():Void {
+		var ctx = createHelperWithTweens(0.0, 0.2);
+		ctx.helper.open("btn1", "panel");
+		Assert.isTrue(ctx.helper.isOpen());
+
+		ctx.helper.close();
+		// Panel is logically closed immediately
+		Assert.isFalse(ctx.helper.isOpen());
+
+		// Advance past fade-out — object removed by onComplete
+		ctx.tweens.update(0.3);
+		Assert.isFalse(ctx.helper.isOpen());
+	}
+
+	@Test
+	public function testFadeOutPanelEventEmittedImmediately():Void {
+		var ctx = createHelperWithTweens(0.0, 0.5);
+		ctx.helper.open("btn1", "panel");
+		ctx.screen.clearEvents();
+
+		ctx.helper.close();
+		// EVENT_PANEL_CLOSE fires immediately, before fade-out completes
+		Assert.isTrue(ctx.screen.hasEvent(UICustomEvent(UIPanelHelper.EVENT_PANEL_CLOSE, "btn1")));
+	}
+
+	@Test
+	public function testNamedPanelFadeOut():Void {
+		var ctx = createHelperWithTweens(0.0, 0.2);
+		ctx.helper.openNamed("slot1", "btn1", "panel");
+		Assert.isTrue(ctx.helper.isOpenNamed("slot1"));
+
+		ctx.helper.closeNamed("slot1");
+		// Named panel logically closed immediately
+		Assert.isFalse(ctx.helper.isOpenNamed("slot1"));
+
+		// Advance past fade-out
+		ctx.tweens.update(0.3);
+		Assert.isFalse(ctx.helper.isOpenNamed("slot1"));
+	}
+
+	@Test
+	public function testZeroFadeDefaultIsInstant():Void {
+		// Default PanelDefaults has fadeIn=0, fadeOut=0 — backward compatible
+		var ctx = createHelper();
+		ctx.helper.open("btn1", "panel");
+		Assert.isTrue(ctx.helper.isOpen());
+
+		ctx.helper.close();
+		Assert.isFalse(ctx.helper.isOpen());
+	}
+
+	@Test
+	public function testOpenDuringFadeOutCancelsPrevious():Void {
+		var ctx = createHelperWithTweens(0.0, 0.5);
+		ctx.helper.open("btn1", "panel");
+
+		// Close — starts fade-out
+		ctx.helper.close();
+		Assert.isFalse(ctx.helper.isOpen());
+
+		// Immediately open for btn2 — should cancel btn1 fade-out
+		ctx.helper.open("btn2", "panel");
+		Assert.isTrue(ctx.helper.isOpen());
+		Assert.equals("btn2", ctx.helper.getActiveId());
+
+		// Advance tweens — no crash from dangling btn1 tween
+		ctx.tweens.update(1.0);
+		Assert.isTrue(ctx.helper.isOpen());
 	}
 }

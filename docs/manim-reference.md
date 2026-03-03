@@ -585,9 +585,20 @@ Bezier smoothing options: `auto`, `distance(value)`, or none.
 | Style | Description |
 |-------|-------------|
 | `easing: easingName` | Single easing function |
-| Point-based | Key-value pairs: `0.0: 100`, `0.5: 50`, `1.0: 100` |
-| Segment-based | `0.0->0.5: easing from startVal to endVal` |
+| `points: [(t,v), ...]` | Linear interpolation between control points |
+| `[start..end] easing` | Segmented easing (optionally with explicit value range) |
 | `cubicBezier(x1, y1, x2, y2)` | Custom cubic bezier curve |
+
+### Curve Operations
+
+| Operation | Syntax | Result |
+|-----------|--------|--------|
+| `multiply: [a, b, ...]` | N-ary product | `a(t) * b(t) * ...` |
+| `apply: inner, outer` | Composition | `outer(inner(t))` |
+| `invert: a` | Inversion | `1.0 - a(t)` |
+| `scale: a, factor` | Scaling | `a(t) * factor` |
+
+Operations reference other named curves. Forward references and chaining allowed. Circular references error.
 
 ### Easing Names
 `linear`, `easeInQuad`, `easeOutQuad`, `easeInOutQuad`, `easeInCubic`, `easeOutCubic`, `easeInOutCubic`, `easeInBack`, `easeOutBack`, `easeInOutBack`, `easeOutBounce`, `easeOutElastic`

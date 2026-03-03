@@ -663,10 +663,19 @@ typedef CurveSegmentDef = {
 };
 
 @:nullSafety
+enum CurveOperation {
+	Multiply(curveNames:Array<String>);
+	Compose(outerName:String, innerName:String);
+	Invert(curveName:String);
+	Scale(curveName:String, factor:ReferenceableValue);
+}
+
+@:nullSafety
 typedef CurveDef = {
 	var easing:Null<EasingType>;
 	var points:Null<Array<ParticleCurvePoint>>;
 	var segments:Null<Array<CurveSegmentDef>>;
+	var operation:Null<CurveOperation>;
 };
 
 @:nullSafety

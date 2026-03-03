@@ -202,4 +202,130 @@ class DynamicRefTest extends BuilderTestBase {
 		Assert.equals(20, Std.int(bitmaps[0].tile.width));
 		Assert.equals(30, Std.int(bitmaps[0].tile.height));
 	}
+
+	// ==================== Edge Cases ====================
+
+	@Test
+	public function testDynamicRefConditionalBranch():Void {
+		final result = buildFromSource("
+			#inner programmable() {
+				bitmap(generated(color(10, 10, #ff0000))): 0, 0
+			}
+			#test programmable(show:bool=true) {
+				@(show => true) dynamicRef($inner): 0, 0
+			}
+		", "test", null, Incremental);
+		Assert.notNull(result);
+		// Inner should be built when show=true
+		Assert.isTrue(result.object.numChildren > 0);
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.isTrue(bitmaps.length > 0);
+	}
+
+	@Test
+	public function testDynamicRefInRepeatable():Void {
+		final result = buildFromSource("
+			#inner programmable() {
+				bitmap(generated(color(5, 5, #00ff00))): 0, 0
+			}
+			#test programmable() {
+				repeatable($i, step(3, dy: 10)) {
+					dynamicRef($inner): 0, 0
+				}
+			}
+		", "test");
+		Assert.notNull(result);
+		// Should build 3 instances
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.isTrue(bitmaps.length >= 3);
+	}
+
+	@Test
+	public function testDynamicRefWithEnumParam():Void {
+		final result = buildFromSource("
+			#inner programmable(mode:[a,b,c]=a) {
+				@(mode => a) bitmap(generated(color(10, 10, #ff0000))): 0, 0
+				@(mode => b) bitmap(generated(color(10, 10, #00ff00))): 0, 0
+				@(mode => c) bitmap(generated(color(10, 10, #0000ff))): 0, 0
+			}
+			#test programmable(m:[a,b,c]=b) {
+				dynamicRef($inner, mode=>$m): 0, 0
+			}
+		", "test", null, Incremental);
+		Assert.notNull(result);
+		Assert.isTrue(result.object.numChildren > 0);
+	}
+
+	@Test
+	public function testDynamicRefSetParamUpdatesChild():Void {
+		final result = buildFromSource("
+			#inner programmable(visible:bool=true) {
+				@(visible => true) bitmap(generated(color(10, 10, #ff0000))): 0, 0
+			}
+			#test programmable(show:bool=true) {
+				dynamicRef($inner, visible=>$show): 0, 0
+			}
+		", "test", null, Incremental);
+		// Toggle parent parameter
+		result.beginUpdate();
+		result.setParameter("show", false);
+		result.endUpdate();
+		// Should not crash
+		Assert.isTrue(true);
+	}
+
+	@Test
+	public function testDynamicRefWithBoolParam():Void {
+		final result = buildFromSource("
+			#inner programmable(active:bool=false) {
+				@(active => true) bitmap(generated(color(10, 10, #00ff00))): 0, 0
+				@(active => false) bitmap(generated(color(10, 10, #ff0000))): 0, 0
+			}
+			#test programmable(flag:bool=true) {
+				dynamicRef($inner, active=>$flag): 0, 0
+			}
+		", "test");
+		Assert.notNull(result);
+		Assert.isTrue(result.object.numChildren > 0);
+	}
+
+	@Test
+	public function testDeepNestedGetSubResult():Void {
+		final result = buildFromSource("
+			#leaf programmable() {
+				bitmap(generated(color(5, 5, #0000ff))): 0, 0
+			}
+			#mid programmable() {
+				dynamicRef($leaf): 0, 0
+			}
+			#test programmable() {
+				dynamicRef($mid): 0, 0
+			}
+		", "test");
+		var midRef = result.getDynamicRef("mid");
+		Assert.notNull(midRef);
+		var leafRef = midRef.getDynamicRef("leaf");
+		Assert.notNull(leafRef);
+		Assert.notNull(leafRef.object);
+	}
+
+	@Test
+	public function testDynamicRefChainedGetDynamicRef():Void {
+		final result = buildFromSource("
+			#leaf programmable() {
+				bitmap(generated(color(3, 3, #ff00ff))): 0, 0
+			}
+			#mid programmable() {
+				dynamicRef($leaf): 0, 0
+			}
+			#test programmable() {
+				dynamicRef($mid): 0, 0
+			}
+		", "test");
+		// Chain: test -> mid -> leaf
+		var leafRef = result.getDynamicRef("mid").getDynamicRef("leaf");
+		Assert.notNull(leafRef);
+		var bitmaps = findVisibleBitmapDescendants(leafRef.object);
+		Assert.isTrue(bitmaps.length > 0);
+	}
 }

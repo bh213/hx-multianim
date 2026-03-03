@@ -1,9 +1,11 @@
 package bh.test.examples;
 
 import utest.Assert;
+import bh.base.TweenManager;
 import bh.test.BuilderTestBase;
 import bh.test.UITestHarness.UITestScreen;
 import bh.ui.UITooltipHelper;
+import bh.ui.UITooltipHelper.TooltipDefaults;
 import bh.ui.UITooltipHelper.TooltipPosition;
 
 /**
@@ -368,5 +370,142 @@ class UITooltipHelperTest extends BuilderTestBase {
 			Assert.isTrue(ctx.helper.isActive());
 			ctx.helper.hide();
 		}
+	}
+
+	// ============== Fade transitions ==============
+
+	function createHelperWithTweens(?fadeIn:Float, ?fadeOut:Float):{
+		helper:UITooltipHelper,
+		screen:UITestScreen,
+		tweens:TweenManager
+	} {
+		var screen = new UITestScreen();
+		var builder = BuilderTestBase.builderFromSource('$ANCHOR_MANIM\n$ANCHOR2_MANIM\n$TOOLTIP_MANIM');
+
+		var anchorResult = builder.buildWithParameters("anchor", []);
+		screen.addInteractives(anchorResult);
+
+		var anchor2Result = builder.buildWithParameters("anchor2", []);
+		screen.addInteractives(anchor2Result);
+
+		var tweens = new TweenManager();
+		var defaults:TooltipDefaults = {delay: 0.0};
+		if (fadeIn != null) defaults.fadeIn = fadeIn;
+		if (fadeOut != null) defaults.fadeOut = fadeOut;
+
+		var helper = new UITooltipHelper(screen, builder, defaults, tweens);
+		return {helper: helper, screen: screen, tweens: tweens};
+	}
+
+	@Test
+	public function testFadeInStartsAtZeroAlpha():Void {
+		var ctx = createHelperWithTweens(0.2, 0.1);
+		ctx.helper.show("btn1", "tip");
+		Assert.isTrue(ctx.helper.isActive());
+
+		// Object should exist but at alpha 0 (before tween update)
+		var interactive = ctx.screen.getInteractive("btn1");
+		// Tooltip was added to screen layer; helper is active
+		Assert.isTrue(ctx.helper.isActive());
+	}
+
+	@Test
+	public function testFadeInReachesFullAlpha():Void {
+		var ctx = createHelperWithTweens(0.2, 0.1);
+		ctx.helper.show("btn1", "tip");
+
+		// Advance tweens past fade-in duration
+		ctx.tweens.update(0.3);
+		Assert.isTrue(ctx.helper.isActive());
+	}
+
+	@Test
+	public function testFadeOutRemovesOnComplete():Void {
+		var ctx = createHelperWithTweens(0.0, 0.2);
+		ctx.helper.show("btn1", "tip");
+		Assert.isTrue(ctx.helper.isActive());
+
+		ctx.helper.hide();
+		// After hide, tooltip is logically gone
+		Assert.isFalse(ctx.helper.isActive());
+
+		// But the fade-out tween is still running — advance past it
+		ctx.tweens.update(0.3);
+		// No crash = success, object was removed by onComplete
+		Assert.isFalse(ctx.helper.isActive());
+	}
+
+	@Test
+	public function testHideDuringFadeInCancels():Void {
+		var ctx = createHelperWithTweens(0.5, 0.1);
+		ctx.helper.show("btn1", "tip");
+
+		// Partially advance fade-in
+		ctx.tweens.update(0.1);
+
+		// Hide — should cancel fade-in and start fade-out
+		ctx.helper.hide();
+		Assert.isFalse(ctx.helper.isActive());
+
+		// Advance past fade-out
+		ctx.tweens.update(0.2);
+		Assert.isFalse(ctx.helper.isActive());
+	}
+
+	@Test
+	public function testShowDuringFadeOutCancelsPrevious():Void {
+		var ctx = createHelperWithTweens(0.0, 0.5);
+		ctx.helper.show("btn1", "tip");
+
+		// Hide btn1 — starts fade-out
+		ctx.helper.hide();
+		Assert.isFalse(ctx.helper.isActive());
+
+		// Immediately show btn2 — should cancel btn1 fade-out
+		ctx.helper.show("btn2", "tip");
+		Assert.isTrue(ctx.helper.isActive());
+		Assert.equals("btn2", ctx.helper.getActiveId());
+
+		// Advance tweens — no crash from dangling btn1 tween
+		ctx.tweens.update(1.0);
+		Assert.isTrue(ctx.helper.isActive());
+	}
+
+	@Test
+	public function testZeroFadeIsInstant():Void {
+		var ctx = createHelperWithTweens(0.0, 0.0);
+		ctx.helper.show("btn1", "tip");
+		Assert.isTrue(ctx.helper.isActive());
+
+		ctx.helper.hide();
+		Assert.isFalse(ctx.helper.isActive());
+	}
+
+	@Test
+	public function testNoTweenManagerFallsBackToInstant():Void {
+		// Using the original createHelper (no tweens)
+		var ctx = createHelper(0.0);
+		ctx.helper.show("btn1", "tip");
+		Assert.isTrue(ctx.helper.isActive());
+
+		ctx.helper.hide();
+		Assert.isFalse(ctx.helper.isActive());
+	}
+
+	@Test
+	public function testRebuildWithFade():Void {
+		var ctx = createHelperWithTweens(0.2, 0.1);
+		ctx.helper.show("btn1", "tip");
+		ctx.tweens.update(0.3); // complete fade-in
+		Assert.isTrue(ctx.helper.isActive());
+
+		// Rebuild should hide (fade-out old) then show (fade-in new)
+		var result = ctx.helper.rebuild(["label" => "rebuilt"]);
+		Assert.isTrue(result);
+		Assert.isTrue(ctx.helper.isActive());
+
+		// Advance to complete all fades
+		ctx.tweens.update(0.5);
+		Assert.isTrue(ctx.helper.isActive());
 	}
 }

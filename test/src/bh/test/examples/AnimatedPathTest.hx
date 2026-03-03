@@ -1,6 +1,7 @@
 package bh.test.examples;
 
 import utest.Assert;
+import bh.test.BuilderTestBase;
 import bh.paths.AnimatedPath;
 import bh.paths.MultiAnimPaths.Path;
 import bh.paths.MultiAnimPaths.SinglePath;
@@ -10,8 +11,9 @@ import bh.base.FPoint;
 /**
  * Unit tests for AnimatedPath:
  * time/distance modes, seek, reset, events, curves, loops, pingPong, color.
+ * Also builder integration tests for createAnimatedPath/createProjectilePath.
  */
-class AnimatedPathTest extends utest.Test {
+class AnimatedPathTest extends BuilderTestBase {
 	// ==================== Helpers ====================
 
 	/** Create a straight-line path from (0,0) to (100,0), length = 100. */
@@ -526,5 +528,137 @@ class AnimatedPathTest extends utest.Test {
 		var state2 = ap.update(0.5);
 		Assert.isTrue(state2.done);
 		Assert.floatEquals(100.0, state2.position.x);
+	}
+
+	// ==================== Builder Integration ====================
+
+	static final AP_MANIM = "
+		paths { #testLine path { lineTo(100, 0) } }
+		#testAP animatedPath {
+			path: testLine
+			type: time
+			duration: 1.0
+		}
+	";
+
+	static final AP_LOOP_MANIM = "
+		paths { #loopLine path { lineTo(100, 0) } }
+		#loopAP animatedPath {
+			path: loopLine
+			type: time
+			duration: 1.0
+			loop: true
+		}
+	";
+
+	static final AP_EASED_MANIM = "
+		paths { #easedLine path { lineTo(100, 0) } }
+		#easedAP animatedPath {
+			path: easedLine
+			type: time
+			duration: 1.0
+			easing: easeOutCubic
+		}
+	";
+
+	static final AP_EVENT_MANIM = "
+		paths { #evLine path { lineTo(100, 0) } }
+		#evAP animatedPath {
+			path: evLine
+			type: time
+			duration: 1.0
+			0.5: event(\"halfway\")
+		}
+	";
+
+	@Test
+	public function testBuilderCreateAnimatedPath():Void {
+		var builder = BuilderTestBase.builderFromSource(AP_MANIM);
+		var ap = builder.createAnimatedPath("testAP");
+		Assert.notNull(ap);
+	}
+
+	@Test
+	public function testBuilderAnimPathDuration():Void {
+		var builder = BuilderTestBase.builderFromSource(AP_MANIM);
+		var ap = builder.createAnimatedPath("testAP");
+		var state = ap.update(1.0);
+		Assert.isTrue(state.done);
+	}
+
+	@Test
+	public function testBuilderAnimPathLoop():Void {
+		var builder = BuilderTestBase.builderFromSource(AP_LOOP_MANIM);
+		var ap = builder.createAnimatedPath("loopAP");
+		var state = ap.update(1.5);
+		Assert.isFalse(state.done);
+		Assert.isTrue(state.cycle > 0);
+	}
+
+	@Test
+	public function testBuilderCreateProjectilePath():Void {
+		var builder = BuilderTestBase.builderFromSource(AP_MANIM);
+		var start = new FPoint(10, 20);
+		var end = new FPoint(200, 50);
+		var ap = builder.createProjectilePath("testAP", start, end);
+		Assert.notNull(ap);
+		if (ap == null) return;
+		var state = ap.seek(0.0);
+		// Start position should be near the start point
+		Assert.isTrue(Math.abs(state.position.x - 10.0) < 5.0);
+		Assert.isTrue(Math.abs(state.position.y - 20.0) < 5.0);
+	}
+
+	@Test
+	public function testBuilderProjectilePathEndpoint():Void {
+		var builder = BuilderTestBase.builderFromSource(AP_MANIM);
+		var start = new FPoint(0, 0);
+		var end = new FPoint(200, 100);
+		var ap = builder.createProjectilePath("testAP", start, end);
+		var state = ap.seek(1.0);
+		Assert.isTrue(Math.abs(state.position.x - 200.0) < 5.0);
+		Assert.isTrue(Math.abs(state.position.y - 100.0) < 5.0);
+	}
+
+	@Test
+	public function testBuilderAnimPathEasing():Void {
+		var builder = BuilderTestBase.builderFromSource(AP_EASED_MANIM);
+		var ap = builder.createAnimatedPath("easedAP");
+		// Easing applies via update(), not seek(). easeOutCubic at t=0.5 > 0.5
+		var state = ap.update(0.5);
+		Assert.isTrue(state.position.x > 55.0);
+	}
+
+	@Test
+	public function testBuilderAnimPathEvents():Void {
+		var builder = BuilderTestBase.builderFromSource(AP_EVENT_MANIM);
+		var ap = builder.createAnimatedPath("evAP");
+		var firedEvents:Array<String> = [];
+		ap.onEvent = function(name, state) {
+			firedEvents.push(name);
+		};
+		ap.update(0.6); // past 0.5
+		Assert.isTrue(firedEvents.indexOf("halfway") >= 0);
+	}
+
+	@Test
+	public function testGetClosestRateAtStart():Void {
+		var path = createLinePath(); // (0,0) to (100,0)
+		var rate = path.getClosestRate(new FPoint(0, 0));
+		Assert.isTrue(rate < 0.05);
+	}
+
+	@Test
+	public function testGetClosestRateAtEnd():Void {
+		var path = createLinePath(); // (0,0) to (100,0)
+		var rate = path.getClosestRate(new FPoint(100, 0));
+		Assert.isTrue(rate > 0.95);
+	}
+
+	@Test
+	public function testGetClosestRateAtMid():Void {
+		var path = createLinePath(); // (0,0) to (100,0)
+		var rate = path.getClosestRate(new FPoint(50, 0));
+		Assert.isTrue(Math.abs(rate - 0.5) < 0.05);
 	}
 }

@@ -16,6 +16,7 @@ import bh.multianim.MultiAnimParser.EasingType;
 import bh.multianim.MultiAnimParser.ReferenceableValue;
 import bh.multianim.MultiAnimParser.SettingValueType;
 import bh.multianim.MultiAnimParser.CurveDef;
+import bh.multianim.MultiAnimParser.CurveOperation;
 import bh.multianim.MultiAnimParser.CurveSegmentDef;
 import bh.multianim.MultiAnimParser.CurvesDef;
 import bh.multianim.MultiAnimParser.PathsDef;
@@ -7142,6 +7143,10 @@ class ProgrammableCodeGen {
 
 	/** Generate the body of an inline getValue function with all curve math baked in. */
 	static function generateInlineCurveBody(curveDef:CurveDef, pos:Position):Expr {
+		if (curveDef.operation != null) {
+			return generateOperationCurveBody(curveDef.operation, pos);
+		}
+
 		// Clamp t to [0, 1]
 		var bodyExprs:Array<Expr> = [
 			macro t = bh.base.TweenUtils.FloatTools.clamp(t, 0.0, 1.0)
@@ -7199,6 +7204,31 @@ class ProgrammableCodeGen {
 		}
 
 		return macro $b{bodyExprs};
+	}
+
+	/** Generate inline code for curve operations (multiply, compose, invert, scale). */
+	static function generateOperationCurveBody(op:CurveOperation, pos:Position):Expr {
+		switch (op) {
+			case Multiply(names):
+				var expr:Expr = null;
+				for (name in names) {
+					var methodName = "getCurve_" + sanitizeIdentifier(name);
+					var call = macro $i{methodName}().getValue(t);
+					expr = if (expr == null) call else macro $expr * $call;
+				}
+				return macro return $expr;
+			case Compose(outerName, innerName):
+				var outerMethod = "getCurve_" + sanitizeIdentifier(outerName);
+				var innerMethod = "getCurve_" + sanitizeIdentifier(innerName);
+				return macro return $i{outerMethod}().getValue($i{innerMethod}().getValue(t));
+			case Invert(curveName):
+				var method = "getCurve_" + sanitizeIdentifier(curveName);
+				return macro return 1.0 - $i{method}().getValue(t);
+			case Scale(curveName, factor):
+				var method = "getCurve_" + sanitizeIdentifier(curveName);
+				var factorVal = tryResolveFloat(factor);
+				return macro return $i{method}().getValue(t) * $v{factorVal};
+		}
 	}
 
 	/** Generate inline code for evaluating easing segments (weighted blend with gap interpolation). */

@@ -3,6 +3,7 @@ package bh.test.examples;
 import utest.Assert;
 import bh.test.BuilderTestBase;
 import bh.test.UITestHarness.UITestScreen;
+import bh.base.CursorManager;
 import bh.ui.UIInteractiveWrapper;
 import bh.ui.UIRichInteractiveHelper;
 import bh.ui.UIElement.UIScreenEvent;
@@ -208,5 +209,103 @@ class InteractiveEventTest extends BuilderTestBase {
 		', "test");
 		var wrapper = new UIInteractiveWrapper(result.interactives[0], null);
 		Assert.isFalse(wrapper.hovered);
+	}
+
+	// ==================== Cursor Support ====================
+
+	@Test
+	public function testCursorDefaultPointer():Void {
+		var result = BuilderTestBase.buildFromSource('
+			#test programmable() {
+				bitmap(generated(color(100, 30, #666666))): 0, 0
+				interactive(100, 30, "btn1"): 0, 0
+			}
+		', "test");
+		var wrapper = new UIInteractiveWrapper(result.interactives[0], null);
+		// Default interactive cursor is Button (pointer)
+		Assert.equals(hxd.Cursor.Button, wrapper.getCursor());
+	}
+
+	@Test
+	public function testCursorExplicitPointer():Void {
+		var result = BuilderTestBase.buildFromSource('
+			#test programmable() {
+				bitmap(generated(color(100, 30, #666666))): 0, 0
+				interactive(100, 30, "btn1", cursor => "pointer"): 0, 0
+			}
+		', "test");
+		var wrapper = new UIInteractiveWrapper(result.interactives[0], null);
+		Assert.equals(hxd.Cursor.Button, wrapper.getCursor());
+	}
+
+	@Test
+	public function testCursorDisabledFallback():Void {
+		// Without cursor.disabled metadata, disabled state falls back to getDefaultCursor (= Default)
+		var result = BuilderTestBase.buildFromSource('
+			#test programmable() {
+				bitmap(generated(color(100, 30, #666666))): 0, 0
+				interactive(100, 30, "btn1"): 0, 0
+			}
+		', "test");
+		var wrapper = new UIInteractiveWrapper(result.interactives[0], null);
+		wrapper.disabled = true;
+		Assert.equals(hxd.Cursor.Default, wrapper.getCursor());
+	}
+
+	@Test
+	public function testCursorHoveredFallback():Void {
+		// Without cursor.hover metadata, hovered state falls back to base cursor (= Button)
+		var result = BuilderTestBase.buildFromSource('
+			#test programmable() {
+				bitmap(generated(color(100, 30, #666666))): 0, 0
+				interactive(100, 30, "btn1"): 0, 0
+			}
+		', "test");
+		var wrapper = new UIInteractiveWrapper(result.interactives[0], null);
+		// Simulate hover via Dynamic cast
+		var dyn:Dynamic = wrapper;
+		dyn.hovered = true;
+		// Hovered cursor defaults to base cursor (Button) when no cursor.hover metadata
+		Assert.equals(hxd.Cursor.Button, wrapper.getCursor());
+	}
+
+	@Test
+	public function testCursorExplicitMove():Void {
+		var result = BuilderTestBase.buildFromSource('
+			#test programmable() {
+				bitmap(generated(color(100, 30, #666666))): 0, 0
+				interactive(100, 30, "btn1", cursor => "move"): 0, 0
+			}
+		', "test");
+		var wrapper = new UIInteractiveWrapper(result.interactives[0], null);
+		Assert.equals(hxd.Cursor.Move, wrapper.getCursor());
+	}
+
+	@Test
+	public function testCursorManagerGetRegistered():Void {
+		var cursor = CursorManager.getCursor("pointer");
+		Assert.equals(hxd.Cursor.Button, cursor);
+	}
+
+	@Test
+	public function testCursorManagerGetUnregistered():Void {
+		var cursor = CursorManager.getCursor("nonexistent");
+		Assert.isNull(cursor);
+	}
+
+	@Test
+	public function testCursorUnknownNameThrows():Void {
+		var result = BuilderTestBase.buildFromSource('
+			#test programmable() {
+				bitmap(generated(color(100, 30, #666666))): 0, 0
+				interactive(100, 30, "btn1", cursor => "xyzzy"): 0, 0
+			}
+		', "test");
+		try {
+			var wrapper = new UIInteractiveWrapper(result.interactives[0], null);
+			Assert.fail("Should throw for unregistered cursor name");
+		} catch (e:Dynamic) {
+			Assert.isTrue(Std.string(e).indexOf("xyzzy") >= 0);
+		}
 	}
 }

@@ -4028,4 +4028,91 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	public function test92_RichText(async:utest.Async):Void {
 		simpleMacroTest(92, "richText", () -> createMp().richText.create(), async);
 	}
+
+	// ==================== Curve operations: visual ====================
+
+	@Test
+	public function test93_CurveOperations(async:utest.Async):Void {
+		setupTest(93, "curveOperations");
+		VisualTestBase.pendingVisualTests++;
+		async.setTimeout(15000);
+
+		final animFilePath = "test/examples/93-curveOperations/curveOperations.manim";
+		final sizeX = 1280;
+		final sizeY = 720;
+		final curveNames = [
+			"base", "envelope", "linear",
+			"multiplied", "composed", "inverted", "scaled", "invertedScaled"
+		];
+
+		// Phase 1: builder
+		clearScene();
+		try {
+			final fileContent = byte.ByteData.ofString(sys.io.File.getContent(animFilePath));
+			final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+			final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, animFilePath);
+
+			final curves = builder.getCurves();
+
+			final g = new h2d.Graphics(s2d);
+			final font = loader.loadFont("m3x6");
+
+			drawEasingCurvesVisualization(g, font, curves, curveNames, s2d);
+
+			if (testTitle != null && testTitle.length > 0) addTitleOverlay();
+		} catch (e:Dynamic) {
+			var msg = 'Builder threw: $e';
+			reportBuildFailure(msg);
+			Assert.fail(msg);
+			VisualTestBase.pendingVisualTests--;
+			async.done();
+			return;
+		}
+
+		var orderIdx = HtmlReportGenerator.reserveOrderIndex();
+		var builderRaw:Null<ImageProcessingPool.RawPixels> = null;
+		try {
+			builderRaw = captureScreenshotRaw(sizeX, sizeY);
+		} catch (e:Dynamic) {
+			Assert.fail('Builder screenshot threw: $e');
+			VisualTestBase.pendingVisualTests--;
+			async.done();
+			return;
+		}
+
+		// Phase 2: macro
+		clearScene();
+		try {
+			final mp = createMp();
+			final g = new h2d.Graphics(s2d);
+			final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+			final font = loader.loadFont("m3x6");
+
+			mp.curveOperations.create();
+
+			final macroCurves = new Map<String, bh.paths.Curve.ICurve>();
+			macroCurves.set("base", mp.curveOperations.getCurve_base());
+			macroCurves.set("envelope", mp.curveOperations.getCurve_envelope());
+			macroCurves.set("linear", mp.curveOperations.getCurve_linear());
+			macroCurves.set("multiplied", mp.curveOperations.getCurve_multiplied());
+			macroCurves.set("composed", mp.curveOperations.getCurve_composed());
+			macroCurves.set("inverted", mp.curveOperations.getCurve_inverted());
+			macroCurves.set("scaled", mp.curveOperations.getCurve_scaled());
+			macroCurves.set("invertedScaled", mp.curveOperations.getCurve_invertedScaled());
+			drawEasingCurvesVisualization(g, font, macroCurves, curveNames, s2d);
+
+			if (testTitle != null && testTitle.length > 0) addTitleOverlay();
+		} catch (e:Dynamic) {
+			Assert.fail('Macro threw: $e');
+			VisualTestBase.pendingVisualTests--;
+			async.done();
+			return;
+		}
+
+		var macroRaw = captureScreenshotRaw(sizeX, sizeY);
+		Assert.pass();
+		enqueueBuilderAndMacro(builderRaw, macroRaw, 1.0, 1.0, orderIdx);
+		VisualTestBase.pendingVisualTests--;
+		async.done();
+	}
 }

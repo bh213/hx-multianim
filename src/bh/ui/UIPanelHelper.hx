@@ -1,5 +1,8 @@
 package bh.ui;
 
+import bh.base.TweenManager;
+import bh.base.TweenManager.Tween;
+import bh.base.TweenManager.TweenProperty;
 import bh.ui.UITooltipHelper.TooltipPosition;
 import bh.ui.UIElement.UIScreenEvent;
 import bh.ui.screens.UIScreen;
@@ -18,6 +21,8 @@ typedef PanelDefaults = {
 	var ?offset:Int;
 	var ?layer:LayersEnum;
 	var ?closeOn:PanelCloseMode;
+	var ?fadeIn:Float;
+	var ?fadeOut:Float;
 }
 
 @:nullSafety
@@ -39,6 +44,9 @@ class UIPanelHelper {
 	final defaultOffset:Int;
 	final layer:LayersEnum;
 	final defaultCloseMode:PanelCloseMode;
+	final defaultFadeIn:Float;
+	final defaultFadeOut:Float;
+	var tweens:Null<TweenManager>;
 
 	// Per-interactive overrides
 	var positionOverrides:Map<String, TooltipPosition> = [];
@@ -50,10 +58,15 @@ class UIPanelHelper {
 	var activePanelPrefix:Null<String> = null;
 	var activeCloseMode:PanelCloseMode;
 
+	// Single-panel fade state
+	var activeFadeInTween:Null<Tween> = null;
+	var fadingOutObj:Null<h2d.Object> = null;
+	var activeFadeOutTween:Null<Tween> = null;
+
 	// Named panel slots for multi-panel support
 	var namedPanels:Map<String, PanelState> = [];
 
-	public function new(screen:UIScreenBase, builder:MultiAnimBuilder, ?defaults:PanelDefaults) {
+	public function new(screen:UIScreenBase, builder:MultiAnimBuilder, ?defaults:PanelDefaults, ?tweens:TweenManager) {
 		this.screen = screen;
 		this.builder = builder;
 		this.defaultPosition = defaults?.position ?? Below;
@@ -61,6 +74,9 @@ class UIPanelHelper {
 		this.layer = defaults?.layer ?? ModalLayer;
 		this.defaultCloseMode = defaults?.closeOn ?? OutsideClick;
 		this.activeCloseMode = this.defaultCloseMode;
+		this.defaultFadeIn = defaults?.fadeIn ?? 0;
+		this.defaultFadeOut = defaults?.fadeOut ?? 0;
+		this.tweens = tweens;
 	}
 
 	/** Set custom position for a specific interactive. */
@@ -95,6 +111,15 @@ class UIPanelHelper {
 		if (result.interactives.length > 0)
 			screen.addInteractives(result, prefix);
 
+		// Apply fade-in
+		if (defaultFadeIn > 0 && tweens != null) {
+			result.object.alpha = 0;
+			activeFadeInTween = tweens.tween(result.object, defaultFadeIn, [Alpha(1.0)]);
+			activeFadeInTween.setOnComplete(() -> {
+				activeFadeInTween = null;
+			});
+		}
+
 		activeInteractiveId = interactiveId;
 		activeResult = result;
 		activePanelPrefix = prefix;
@@ -103,11 +128,32 @@ class UIPanelHelper {
 
 	/** Close the active panel. Pushes `UICustomEvent(EVENT_PANEL_CLOSE, interactiveId)` to the screen. */
 	public function close():Void {
+		// Cancel any in-progress fade-in
+		if (activeFadeInTween != null) {
+			activeFadeInTween.cancel();
+			activeFadeInTween = null;
+		}
+		// Cancel any in-progress fade-out of previous panel
+		cancelActiveFadeOut();
+
 		if (activeResult != null) {
 			final closedId = activeInteractiveId;
 			if (activePanelPrefix != null)
 				screen.removeInteractives(activePanelPrefix);
-			activeResult.object.remove();
+
+			final obj = activeResult.object;
+			if (defaultFadeOut > 0 && tweens != null) {
+				fadingOutObj = obj;
+				activeFadeOutTween = tweens.tween(obj, defaultFadeOut, [Alpha(0.0)]);
+				activeFadeOutTween.setOnComplete(() -> {
+					obj.remove();
+					fadingOutObj = null;
+					activeFadeOutTween = null;
+				});
+			} else {
+				obj.remove();
+			}
+
 			activeResult = null;
 			activeInteractiveId = null;
 			activePanelPrefix = null;
@@ -172,6 +218,12 @@ class UIPanelHelper {
 		if (result.interactives.length > 0)
 			screen.addInteractives(result, prefix);
 
+		// Apply fade-in
+		if (defaultFadeIn > 0 && tweens != null) {
+			result.object.alpha = 0;
+			tweens.tween(result.object, defaultFadeIn, [Alpha(1.0)]);
+		}
+
 		namedPanels.set(slot, {
 			interactiveId: interactiveId,
 			result: result,
@@ -187,9 +239,16 @@ class UIPanelHelper {
 		if (panel == null)
 			return;
 		screen.removeInteractives(panel.prefix);
-		panel.result.object.remove();
 		namedPanels.remove(slot);
 		screen.onScreenEvent(UICustomEvent(EVENT_PANEL_CLOSE, panel.interactiveId), null);
+
+		final obj = panel.result.object;
+		if (defaultFadeOut > 0 && tweens != null) {
+			final t = tweens.tween(obj, defaultFadeOut, [Alpha(0.0)]);
+			t.setOnComplete(() -> obj.remove());
+		} else {
+			obj.remove();
+		}
 	}
 
 	/** Close all named panels. */
@@ -284,6 +343,17 @@ class UIPanelHelper {
 				closed = true;
 			}
 		return closed;
+	}
+
+	function cancelActiveFadeOut():Void {
+		if (activeFadeOutTween != null) {
+			activeFadeOutTween.cancel();
+			activeFadeOutTween = null;
+		}
+		if (fadingOutObj != null) {
+			fadingOutObj.remove();
+			fadingOutObj = null;
+		}
 	}
 
 	function isNamedPanelInteractive(id:String):Bool {
