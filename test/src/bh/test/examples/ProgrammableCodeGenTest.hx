@@ -2820,6 +2820,43 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		simpleMacroTest(74, "dynamicRefScope", () -> createMp().dynamicRefScope.create(), async, null, null, 2.0);
 	}
 
+	// ==================== Dynamic ref codegen: unit tests ====================
+
+	@Test
+	public function testDynamicRefCodegenGetDynamicRef():Void {
+		final mp = createMp();
+		final instance = mp.dynamicRefs.create();
+		Assert.notNull(instance, "DynamicRefs instance should be created");
+		final dynRef = instance.getDynamicRef("statusBar");
+		Assert.notNull(dynRef, "Should have statusBar dynamicRef via codegen");
+	}
+
+	@Test
+	public function testDynamicRefCodegenSubResultHasObject():Void {
+		final mp = createMp();
+		final instance = mp.dynamicRefs.create();
+		final dynRef = instance.getDynamicRef("statusBar");
+		Assert.notNull(dynRef, "getDynamicRef should return non-null");
+		Assert.notNull(dynRef.object, "DynamicRef sub-result should have an object");
+	}
+
+	@Test
+	public function testDynamicRefCodegenSubResultIsIncremental():Void {
+		final mp = createMp();
+		final instance = mp.dynamicRefs.create();
+		final dynRef = instance.getDynamicRef("statusBar");
+		Assert.notNull(dynRef, "getDynamicRef should return non-null");
+		Assert.notNull(dynRef.incrementalContext, "DynamicRef should be built incrementally");
+	}
+
+	@Test
+	public function testDynamicRefCodegenNotFoundReturnsNull():Void {
+		final mp = createMp();
+		final instance = mp.dynamicRefs.create();
+		final dynRef = instance.getDynamicRef("nonexistent");
+		Assert.isNull(dynRef, "getDynamicRef with unknown name should return null");
+	}
+
 	// ==================== Indexed named: unit tests ====================
 
 	@Test
@@ -4045,6 +4082,53 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	@Test
 	public function test92_RichText(async:utest.Async):Void {
 		simpleMacroTest(92, "richText", () -> createMp().richText.create(), async);
+	}
+
+	// ==================== Rich text codegen: unit tests ====================
+
+	@Test
+	public function testRichTextCodegenCreate():Void {
+		final mp = createMp();
+		final rt = mp.richText.create();
+		Assert.notNull(rt, "RichText should be created");
+		Assert.isTrue(rt.numChildren > 0, "Root should have children");
+	}
+
+	@Test
+	public function testRichTextCodegenSetStyleColor():Void {
+		final mp = createMp();
+		final rt = mp.richText.create();
+		// setStyleColor_damage should exist and not throw
+		rt.setStyleColor_damage(0xFF0000);
+		Assert.isTrue(rt.numChildren > 0, "Should still have children after style color change");
+	}
+
+	@Test
+	public function testRichTextCodegenSetStyleFont():Void {
+		final mp = createMp();
+		final rt = mp.richText.create();
+		// setStyleFont_em should exist and not throw (em has font("dd"))
+		rt.setStyleFont_em("dd");
+		Assert.isTrue(rt.numChildren > 0, "Should still have children after style font change");
+	}
+
+	@Test
+	public function testRichTextCodegenSetImageTile():Void {
+		final mp = createMp();
+		final rt = mp.richText.create();
+		// setImageTile_coin should exist and not throw
+		final tile = h2d.Tile.fromColor(0xFF0000, 8, 8);
+		rt.setImageTile_coin(tile);
+		Assert.isTrue(rt.numChildren > 0, "Should still have children after image tile change");
+	}
+
+	@Test
+	public function testRichTextCodegenSetStyleColorNull():Void {
+		final mp = createMp();
+		final rt = mp.richText.create();
+		// Setting null should remove the style color override
+		rt.setStyleColor_damage(null);
+		Assert.isTrue(rt.numChildren > 0, "Should still have children after null color");
 	}
 
 	// ==================== Curve operations: visual ====================

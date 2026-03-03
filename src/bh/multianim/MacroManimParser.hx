@@ -4364,7 +4364,13 @@ class MacroManimParser {
 					if (isKeyword(name, "events")) {
 						metadata.push(parseInteractiveEventsMetadata());
 					} else {
-						metadata.push(parseMetadataValue(RVString(name)));
+						// Support dotted keys for per-state metadata: cursor.hover, cursor.disabled
+						var key = name;
+						if (match(TDot)) {
+							final suffix = expectIdentifierOrString();
+							key = key + "." + suffix;
+						}
+						metadata.push(parseMetadataValue(RVString(key)));
 					}
 					eatComma();
 				case TReference(name):

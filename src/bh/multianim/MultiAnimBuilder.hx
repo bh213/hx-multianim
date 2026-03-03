@@ -384,8 +384,11 @@ class IncrementalUpdateContext {
 	}
 
 	public function setParameter(name:String, value:Dynamic):Void {
-		// Convert to ResolvedIndexParameters — preserve float precision for float values
-		if (Std.isOfType(value, Int)) {
+		// Look up the parameter type definition for type-aware conversion (flags only — other types handled below)
+		final paramDef = getParamDefinition(name);
+		if (paramDef != null && paramDef.type.match(PPTFlags(_))) {
+			indexedParams.set(name, MultiAnimParser.dynamicValueToIndex(name, paramDef.type, value, s -> throw s));
+		} else if (Std.isOfType(value, Int)) {
 			indexedParams.set(name, Value(value));
 		} else if (Std.isOfType(value, Float)) {
 			indexedParams.set(name, ValueF(value));
@@ -416,6 +419,13 @@ class IncrementalUpdateContext {
 		if (Lambda.count(changedParams) > 0)
 			applyUpdates();
 		changedParams = new Map();
+	}
+
+	function getParamDefinition(name:String):Null<{type:MultiAnimParser.DefinitionType, defaultValue:Null<ResolvedIndexParameters>}> {
+		return switch rootNode.type {
+			case PROGRAMMABLE(_, defs, _): defs.get(name);
+			default: null;
+		};
 	}
 
 	public function setTweenManager(tm:TweenManager):Void {
