@@ -5,8 +5,8 @@ import bh.ui.screens.UIScreen;
 import bh.base.PositionLinkObject;
 import bh.multianim.MultiAnimBuilder.CallbackRequest;
 import bh.multianim.MultiAnimBuilder.CallbackResult;
+import bh.multianim.MultiAnimBuilder.BuilderResult;
 import hxd.Rand;
-import bh.multianim.MultiAnimMultiResult;
 import bh.base.MAObject;
 import bh.ui.UIElement;
 import bh.multianim.MultiAnimBuilder.MultiAnimBuilder;
@@ -24,12 +24,11 @@ private enum AnimState {
 
 @:nullSafety
 class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisablable implements UIElementUpdatable implements StandardUIElementEvents
-		implements UIElementSyncRedraw implements UIElementListValue implements UIElementSubElements implements UIElementCustomAddToLayer
+		implements UIElementListValue implements UIElementSubElements implements UIElementCustomAddToLayer
 		implements UIElementCursor {
-	final mainPartImages:MultiAnimMultiResult;
+	final result:BuilderResult;
 	var status(default, set):StandardUIElementStates = SUINormal;
 	var root:h2d.Object;
-	var currentMainPart:Null<h2d.Object> = null;
 	final builder:UIElementBuilder;
 	var panel:UIMultiAnimScrollableList;
 	var panelObject:h2d.Object;
@@ -37,9 +36,7 @@ class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisab
 	var timer:Float = 0;
 	var timerTotal:Float = 0;
 
-	public var requestRedraw = true;
-
-	var transitionTimer = 1.0;
+	var transitionTimerBase = 1.0;
 	public var transitionTimerOverride:Null<Float> = null;
 
 	public var disabled(default, set):Bool = false;
@@ -58,27 +55,29 @@ class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisab
 		this.root = new h2d.Object();
 		this.items = items;
 
-		var inputParams:Map<String, Dynamic> = [];
+		var inputParams:Map<String, Dynamic> = ["status" => "normal", "panel" => "closed"];
 		if (builder.extraParams != null) {
 			for (key => value in builder.extraParams)
 				inputParams.set(key, value);
 		}
-		this.mainPartImages = this.builder.builder.buildWithComboParameters(builder.name, inputParams, ["status", "panel"], {callback: @:nullSafety(Off) callback});
+		this.result = this.builder.builder.buildWithParameters(builder.name, inputParams, {callback: @:nullSafety(Off) callback}, null, true);
 
-		if (this.mainPartImages == null)
-			throw 'could not build combo #${builder.name}';
+		transitionTimerBase = result.rootSettings.getFloatOrDefault("transitionTimer", 1.0);
+		root.addChild(result.object);
+
+		var updatable = result.getUpdatable("panelPoint");
 
 		this.panelStatus = Closed;
 		this.panel = builtPanel;
 		this.panelObject = this.panel.getObject();
 		this.panelObject.visible = false;
+		updatable.setObject(new PositionLinkObject(panelObject));
 		this.panel.onItemChanged = onPanelItemChanged;
 		@:nullSafety(Off) this.currentItemIndex = initialIndex;
 	}
 
 	public function clear() {
 		this.items = [];
-		this.currentMainPart = null;
 		this.panelScreen = null;
 		this.panelLayer = null;
 	}
@@ -94,8 +93,7 @@ class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisab
 			throw 'currentItemIndex ${value} is out of bounds [0..${items.length}].';
 		if (this.currentItemIndex != value) {
 			this.currentItemIndex = value;
-			requestRedraw = true;
-			mainPartImages.updateAllText("selectedName", items[this.currentItemIndex].name);
+			result.getUpdatable("selectedName").updateText(items[this.currentItemIndex].name);
 		}
 		return value;
 	}
@@ -103,7 +101,7 @@ class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisab
 	public function set_disabled(value:Bool):Bool {
 		if (this.disabled != value) {
 			this.disabled = value;
-			this.requestRedraw = true;
+			result.setParameter("status", value ? "disabled" : standardUIElementStatusToString(status));
 		}
 		return value;
 	}
@@ -190,16 +188,6 @@ class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisab
 					startOpen()
 				else
 					startClose();
-			// var obj = findInteractiveIndex(eventPos);
-			// if (obj != null) {
-			//     final newIndex = parseInteractiveId(obj);
-			//     if (this.currentItemIndex != newIndex) {
-			//         this.currentItemIndex = newIndex;
-			//         triggerItemChanged(newIndex, control);
-			//     }
-			//     startClose();
-			// }
-			// else if (!isOpen()) startOpen() else startClose(); // toggle
 
 			case OnReleaseOutside(_) | OnPushOutside(_):
 				this.status = SUINormal;
@@ -224,48 +212,14 @@ class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisab
 			case OnMouseMove:
 				if (!isOpen())
 					return;
-				// final obj = findInteractiveIndex(eventPos);
-
-				// if (obj != null) {
-				//     final newIndex = parseInteractiveId(obj);
-				//     if (newIndex != this.hoverIndex) {
-				//         this.hoverIndex = newIndex;
-				//         buildPanel(newIndex);
-				//     }
-				// }
-		}
-	}
-
-	public function doRedraw() {
-		this.requestRedraw = false;
-		if (currentMainPart != null)
-			currentMainPart.remove();
-
-		var pStatus = switch this.panelStatus {
-			case Opening: "open";
-			case Closing: "closed";
-			case Open: "open";
-			case Closed: "closed";
-		}
-		// trace('${standardUIElementStatusToString(this.status)} ${pStatus}');
-		final statusStr = if (this.disabled) "disabled" else standardUIElementStatusToString(this.status);
-		final currentResult = mainPartImages.findResultByCombo(statusStr, pStatus);
-		var updatable = currentResult.getUpdatable("panelPoint");
-
-		transitionTimer = transitionTimerOverride ?? currentResult.rootSettings.getFloatOrDefault("transitionTimer", 1.0);
-		currentMainPart = currentResult.object;
-		root.addChild(currentMainPart);
-		if (panelObject != null) {
-			updatable.setObject(new PositionLinkObject(panelObject));
-			if (panelScreen != null && panelLayer != null)
-				panelScreen.addObjectToLayer(panelObject, panelScreen.getHigherLayer(panelLayer));
 		}
 	}
 
 	function set_status(value:StandardUIElementStates):StandardUIElementStates {
 		if (this.status != value) {
 			this.status = value;
-			this.requestRedraw = true;
+			if (!disabled)
+				result.setParameter("status", standardUIElementStatusToString(value));
 		}
 		return value;
 	}
@@ -276,22 +230,25 @@ class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisab
 		panel.currentHoverIndex = -1;
 		panel.currentItemIndex = this.currentItemIndex;
 		panel.currentPressedIndex = -1;
-		// panel.
 
+		final effectiveTimer = transitionTimerOverride ?? transitionTimerBase;
 		this.panelObject.visible = true;
 		this.panelObject.alpha = 0;
 		this.panelStatus = Opening;
-		this.timer = transitionTimer;
+		this.timer = effectiveTimer;
 		this.timerTotal = this.timer;
+		result.setParameter("panel", "open");
 	}
 
 	function startClose() {
 		if (this.panelObject == null)
 			return;
+		final effectiveTimer = transitionTimerOverride ?? transitionTimerBase;
 		this.panelObject.alpha = 1.0;
 		this.panelStatus = Closing;
-		this.timer = transitionTimer;
+		this.timer = effectiveTimer;
 		this.timerTotal = this.timer;
+		result.setParameter("panel", "closed");
 	}
 
 	public function update(dt:Float) {

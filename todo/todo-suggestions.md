@@ -83,8 +83,6 @@ Panel interactives get compound prefix: `{parentId}.{panelName}.{childId}`. Part
 
 ## TextInput
 
-### Password mode
-Not in v1. If needed later: add `password:bool` setting, override `h2d.TextInput` to display dots/asterisks while keeping real text internally.
 
 ### Auto-grow multiline
 Fixed-size multiline works now. Auto-grow would need to notify parent layout (Flow) of size changes. Start with fixed-size, add auto-grow later if needed.

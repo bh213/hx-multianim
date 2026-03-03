@@ -253,7 +253,8 @@ class UIPanelHelper {
 
 	/** Close all named panels. */
 	public function closeAllNamed():Void {
-		for (slot => _ in namedPanels)
+		final slots = [for (slot in namedPanels.keys()) slot];
+		for (slot in slots)
 			closeNamed(slot);
 	}
 

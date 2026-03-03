@@ -307,8 +307,10 @@ class ProgrammableBuilder {
 		return switch param {
 			case null: null;
 			case PVObject(obj):
+				#if MULTIANIM_TRACE
 				if (settings != null)
 					trace('Warning: PVObject placeholder "$name" ignores .manim settings — use PVFactory instead to receive settings');
+				#end
 				obj;
 			case PVFactory(factoryMethod): factoryMethod(settings);
 		};

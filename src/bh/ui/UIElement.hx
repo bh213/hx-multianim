@@ -2,7 +2,6 @@ package bh.ui;
 
 import bh.multianim.MultiAnimBuilder;
 import bh.multianim.MultiAnimBuilder.BuilderResolvedSettings;
-import bh.multianim.MultiAnimMultiResult;
 import bh.multianim.MultiAnimParser.ReferenceableValue;
 import bh.multianim.MultiAnimParser.ResolvedIndexParameters;
 import bh.multianim.MultiAnimParser.TileSource;
@@ -314,28 +313,4 @@ enum SubElementsType {
  */
 interface UIElementSubElements {
 	function getSubElements(type:SubElementsType):Array<UIElement>;
-}
-
-/**
- * Utility container for wrapping a UIElement and its associated h2d.Object.
- * Used for cases where a UIElement needs to be paired with a specific display object.
- */
-class UIElementContainer<T:UIElement> implements UIElement {
-	public final element:T;
-	public final object:h2d.Object;
-
-	public function new(element:T, object:h2d.Object) {
-		this.element = element;
-		this.object = object;
-	}
-
-	public function getObject():Object {
-		return object;
-	}
-
-	public function containsPoint(pos:Point):Bool {
-		return false;
-	}
-
-	public function clear() {}
 }
