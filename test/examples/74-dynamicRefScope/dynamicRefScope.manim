@@ -1,4 +1,4 @@
-version: 0.5
+version: 1.0
 
 // Child with params a, b, c — defaults are 10, 20, 30
 // Displays colored bars (width = param value) and text values

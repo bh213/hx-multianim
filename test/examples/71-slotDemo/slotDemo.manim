@@ -1,4 +1,4 @@
-version: 0.5
+version: 1.0
 
 #slotDemo programmable() {
   text(f3x5, "slot demo", #aaaaaa): 5, 3

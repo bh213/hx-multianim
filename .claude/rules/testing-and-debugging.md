@@ -26,7 +26,7 @@ Tests are visual screenshot comparisons. To add a new test:
 ## Testing Pitfalls
 
 - **utest 2.0-alpha**: Test methods MUST start with `test` prefix to be discovered by the runner. `@Test` metadata alone is NOT sufficient.
-- **manim version header**: Parser tests need `version: 0.5` header — prepend to test strings or they'll fail with "version expected".
+- **manim version header**: Parser tests need `version: 1.0` header — prepend to test strings or they'll fail with "version expected".
 - **Bitmap syntax for tests**: Use `bitmap(generated(color(w, h, #color)))` for tests without real assets. `bitmap("name")` is NOT valid syntax.
 - **Never blindly gen-refs on failures**: When tests fail, ALWAYS investigate each failure first — open the `.manim` file, trace the color/value through the code, and confirm the new visual is correct before regenerating references. A visual change could be a bug, not just an expected consequence.
 - **utest warnings = FAIL**: Tests with 0 assertions are utest "warnings" which make `stats.isOk` false → status FAILED. Always add at least one `Assert.*` call per test method.

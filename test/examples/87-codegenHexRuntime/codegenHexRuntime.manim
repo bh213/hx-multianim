@@ -1,4 +1,4 @@
-version: 0.5
+version: 1.0
 
 #codegenHexRuntime programmable(col:int=1, row:int=0, ci:int=2, q:int=1) {
 

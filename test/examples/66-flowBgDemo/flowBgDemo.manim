@@ -1,4 +1,4 @@
-version: 0.5
+version: 1.0
 
 // Panel with ninepatch background that auto-sizes based on item count
 #flowPanel programmable(count:uint=3) {

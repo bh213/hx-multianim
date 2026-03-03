@@ -1,4 +1,4 @@
-version: 0.5
+version: 1.0
 
 layouts {
     // Default (top-left) - red box at 40,40

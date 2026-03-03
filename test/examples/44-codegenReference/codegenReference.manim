@@ -1,4 +1,4 @@
-version: 0.5
+version: 1.0
 
 #codegenReferenceItem programmable(width:int, height:int, c1:color=white) {
   bitmap(generated(color($width, $height, $c1)));

@@ -1,4 +1,4 @@
-version: 0.5
+version: 1.0
 
 #fontHeight programmable() {
   // 3 columns x 3 rows, each font: green lineHeight bar, red baseLine bar, sample text, numeric values below

@@ -1,4 +1,4 @@
-version: 0.5
+version: 1.0
 
 #pvFactorySettings programmable() {
       placeholder(generated(cross(50, 20, #FF0000)), builderParameter("noSettings")):0,0

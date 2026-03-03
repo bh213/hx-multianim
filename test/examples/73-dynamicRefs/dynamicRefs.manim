@@ -1,4 +1,4 @@
-version: 0.5
+version: 1.0
 
 // Simple status bar — conditional color based on value
 #statusBar programmable(value:uint=50, label:string="HP") {

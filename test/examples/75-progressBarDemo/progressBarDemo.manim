@@ -1,4 +1,4 @@
-version: 0.5
+version: 1.0
 
 #progressBar programmable(value:0..100=50) {
     bitmap(generated(color(202, 20, #333333))): 0, 0

@@ -37,7 +37,7 @@ class BuilderTestBase extends utest.Test {
 	 * Parse inline .manim source and return the builder (for getData, getPaths, getCurves, etc.).
 	 */
 	public static function builderFromSource(manimSource:String):MultiAnimBuilder {
-		var source = 'version: 0.5\n$manimSource';
+		var source = 'version: 1.0\n$manimSource';
 		var input = byte.ByteData.ofString(source);
 		var loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
 		return MultiAnimBuilder.load(input, loader, "test-input");
@@ -83,7 +83,7 @@ class BuilderTestBase extends utest.Test {
 	 */
 	public static function parseExpectingError(manimSource:String):String {
 		try {
-			var source = 'version: 0.5\n$manimSource';
+			var source = 'version: 1.0\n$manimSource';
 			var input = byte.ByteData.ofString(source);
 			var loader = new bh.base.ResourceLoader.CachingResourceLoader();
 			MultiAnimParser.parseFile(input, "test-input", loader);
@@ -100,7 +100,7 @@ class BuilderTestBase extends utest.Test {
 	 */
 	public static function parseExpectingSuccess(manimSource:String):Bool {
 		try {
-			var source = 'version: 0.5\n$manimSource';
+			var source = 'version: 1.0\n$manimSource';
 			var input = byte.ByteData.ofString(source);
 			var loader = new bh.base.ResourceLoader.CachingResourceLoader();
 			MultiAnimParser.parseFile(input, "test-input", loader);

@@ -1,4 +1,4 @@
-version: 0.5
+version: 1.0
 
 #contentBlock programmable() {
   bitmap(generated(color(30, 20, #ff4444ff))): 0, 0

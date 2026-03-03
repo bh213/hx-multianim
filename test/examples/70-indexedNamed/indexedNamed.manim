@@ -1,4 +1,4 @@
-version: 0.5
+version: 1.0
 
 #indexedNamed programmable() {
   text(f3x5, "indexed named elements", #aaaaaa): 5, 3

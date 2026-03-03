@@ -1,4 +1,4 @@
-version: 0.5
+version: 1.0
 
 // Colored box for flow items
 #flowBox programmable(w:uint=40, h:uint=20, color:color=#448) {
