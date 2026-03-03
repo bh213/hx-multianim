@@ -327,15 +327,15 @@
 </head>
 <body>
     <h1>Visual Test Report</h1>
-    <div class="timestamp">Generated: 2026-03-03 20:41:12</div>
+    <div class="timestamp">Generated: 2026-03-03 21:24:13</div>
     <div class="summary">
         <strong>Summary:</strong> 93 tests,         <span style="color: #4CAF50;">92 passed</span>,         <span style="color: #f44336;">1 failed</span>
-        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 0.8s, visual 23.4s)</span>
+        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 0.7s, visual 21.9s)</span>
     </div>
     <div class="unit-tests-section">
         <h2>Unit Tests</h2>
         <div class="unit-tests-summary all-passed">
-            <strong>3559 assertions:</strong>             <span style="color: #4CAF50;">3559 passed</span>
+            <strong>3603 assertions:</strong>             <span style="color: #4CAF50;">3603 passed</span>
             <button class="expand-btn" id="unitToggleBtn" onclick="toggleUnitDetails()">Show Details</button>
         </div>
         <div class="unit-details" id="unitDetails">
@@ -624,6 +624,12 @@
                 <div class="unit-method pass">testDefaultFlagsValueZero: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testElseAfterBitConditional: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testElseAfterBitConditionalNotFired: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testIncrementalBitToggleWithDefault: OK <span class="dots">......</span></div>
+                <div class="unit-method pass">testIncrementalClearFlags: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testIncrementalMultiValueMatch: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testIncrementalMultiValueNegation: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testIncrementalMultiValueWithElse: OK <span class="dots">......</span></div>
+                <div class="unit-method pass">testIncrementalSetFlagsTogglesVisibility: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testMultipleBitsAllSet: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testMultipleBitsSomeSet: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testZeroFlagsNoBitsMatch: OK <span class="dots">.</span></div>
@@ -1035,9 +1041,13 @@
                 <div class="unit-method pass">testClickOnlyEventFlags: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testCursorDefaultPointer: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testCursorDisabledFallback: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testCursorExplicitDisabledState: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testCursorExplicitHoverState: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testCursorExplicitMove: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testCursorExplicitPointer: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testCursorHoverAndDisabledCombined: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testCursorHoveredFallback: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testCursorInvalidSuffixThrows: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testCursorManagerGetRegistered: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testCursorManagerGetUnregistered: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testCursorUnknownNameThrows: OK <span class="dots">.</span></div>
@@ -1490,6 +1500,10 @@
                 <div class="unit-method pass">testDialogSetTitle: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testDynamicRefBuilderGetComponent: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testDynamicRefChildUsesOwnDefaults: OK <span class="dots">.....</span></div>
+                <div class="unit-method pass">testDynamicRefCodegenGetDynamicRef: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testDynamicRefCodegenNotFoundReturnsNull: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testDynamicRefCodegenSubResultHasObject: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testDynamicRefCodegenSubResultIsIncremental: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testDynamicRefExplicitParamsPassedCorrectly: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testDynamicRefOverlappingParamNamesNoThrow: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testFilterParamCreate: OK <span class="dots">..</span></div>
@@ -1533,6 +1547,11 @@
                 <div class="unit-method pass">testRepeatChildCount: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testRepeatCreate: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testRepeatSetCount: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testRichTextCodegenCreate: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testRichTextCodegenSetImageTile: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testRichTextCodegenSetStyleColor: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testRichTextCodegenSetStyleColorNull: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testRichTextCodegenSetStyleFont: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testSlot2dIndexBuilder: OK <span class="dots">.........</span></div>
                 <div class="unit-method pass">testSlot2dIndexCodegen: OK <span class="dots">......</span></div>
                 <div class="unit-method pass">testSlotBuilderSetContent: OK <span class="dots">...............</span></div>
