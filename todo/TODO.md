@@ -17,6 +17,8 @@
 - transitions & animations — Phase 1-4 done (see [transitions-planning.md](transitions-planning.md)); remaining phases: .manim transition declarations, UI control transitions
 - haxelib release (see details below)
 - add some blob47 utils for easier testing/dev/selection
+- add disabled demo for all controls in playground
+- add predefined curves, maybe $ctx.easeInBack
 
 ### Haxelib Release
 
