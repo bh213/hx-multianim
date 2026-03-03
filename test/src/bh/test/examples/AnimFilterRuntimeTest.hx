@@ -48,7 +48,7 @@ class AnimFilterRuntimeTest extends utest.Test {
 			sm.play("nonexistent");
 			Assert.fail("Should throw for unknown animation");
 		} catch (e:Dynamic) {
-			Assert.isTrue(true);
+			Assert.stringContains("unknown", Std.string(e));
 		}
 	}
 
@@ -61,7 +61,7 @@ class AnimFilterRuntimeTest extends utest.Test {
 			sm.addAnimationState("idle", [Frame(frame)], -1, new Map());
 			Assert.fail("Should throw for duplicate name");
 		} catch (e:Dynamic) {
-			Assert.isTrue(true);
+			Assert.stringContains("already exists", Std.string(e));
 		}
 	}
 
@@ -412,7 +412,7 @@ class AnimFilterRuntimeTest extends utest.Test {
 			sm.getExtraPointForAnim("pt", "nonexistent");
 			Assert.fail("Should throw for unknown anim state");
 		} catch (e:Dynamic) {
-			Assert.isTrue(true);
+			Assert.stringContains("not found", Std.string(e));
 		}
 	}
 

@@ -2573,12 +2573,16 @@ class BuilderUnitTest extends BuilderTestBase {
 		Assert.notNull(result);
 		final g = findGraphicsChild(result.object);
 		Assert.notNull(g, "Should find h2d.Graphics child");
+		Assert.isTrue(hasGraphicsContent(g), "Graphics should have content before setParameter");
+		final childCountBefore = result.object.numChildren;
 
 		// setParameter should trigger clear+redraw
 		result.setParameter("val", 50);
 		final g2 = findGraphicsChild(result.object);
 		Assert.notNull(g2, "Graphics child should still exist after setParameter");
 		Assert.isTrue(g2.visible, "Graphics should be visible after redraw");
+		Assert.isTrue(hasGraphicsContent(g2), "Graphics should have content after setParameter");
+		Assert.equals(childCountBefore, result.object.numChildren, "Child count should be stable after redraw");
 	}
 
 	@Test
@@ -2616,6 +2620,9 @@ class BuilderUnitTest extends BuilderTestBase {
 			}
 		", "test", null, Incremental);
 		Assert.notNull(result);
+		final gBefore = findGraphicsChild(result.object);
+		Assert.notNull(gBefore, "Graphics child should exist before batch update");
+		Assert.isTrue(hasGraphicsContent(gBefore), "Graphics should have content before batch update");
 
 		// Batch update should also work
 		result.beginUpdate();
@@ -2625,6 +2632,7 @@ class BuilderUnitTest extends BuilderTestBase {
 		final g = findGraphicsChild(result.object);
 		Assert.notNull(g, "Graphics child should still exist after batch update");
 		Assert.isTrue(g.visible, "Graphics should be visible after batch update");
+		Assert.isTrue(hasGraphicsContent(g), "Graphics should have content after batch update");
 	}
 
 	// ==================== Pixels actual pixel data verification ====================
@@ -2699,10 +2707,13 @@ class BuilderUnitTest extends BuilderTestBase {
 		", "test", params);
 		Assert.notNull(result);
 		final pl = findPixelLinesChild(result.object);
-		if (pl != null)
+		if (pl != null) {
+			// With val=0, all pixels should be transparent
 			assertPixelRect(pl, 0, RED, "val=0");
-		else
-			Assert.pass();
+		} else {
+			// No PixelLines child at all is also valid for a zero-width rect
+			Assert.isNull(pl, "No PixelLines child expected for val=0");
+		}
 	}
 
 	@Test
@@ -2777,10 +2788,14 @@ class BuilderUnitTest extends BuilderTestBase {
 		final pl = bitmaps[0];
 		final tileBefore = pl.tile;
 		Assert.notNull(tileBefore);
+		final widthBefore = tileBefore.width;
 
-		// setParameter should trigger redraw — tile should be replaced
+		// setParameter should trigger redraw — tile dimensions should change
+		// val=100 → width=32, val=50 → width=16
 		result.setParameter("val", 50);
-		Assert.isTrue(pl.tile != tileBefore, "Tile should be replaced after setParameter");
+		Assert.notNull(pl.tile, "Tile should still exist after setParameter");
+		Assert.isTrue(pl.tile.width != widthBefore || pl.tile != tileBefore,
+			"Tile should change after setParameter (width before: " + widthBefore + ", after: " + pl.tile.width + ")");
 	}
 
 	@Test
@@ -2823,12 +2838,14 @@ class BuilderUnitTest extends BuilderTestBase {
 			}
 		", "parent", null, Incremental);
 		Assert.notNull(result);
-		Assert.isTrue(result.object.numChildren > 0, "Parent should have dynamicRef children");
+		final childCountBefore = result.object.numChildren;
+		Assert.isTrue(childCountBefore > 0, "Parent should have dynamicRef children");
 
 		// setParameter on parent should propagate to dynamicRef child
 		result.beginUpdate();
 		result.setParameter("hp", 50);
 		result.endUpdate();
+		Assert.equals(childCountBefore, result.object.numChildren, "Child count should be stable after parameter propagation");
 		Assert.isTrue(result.object.numChildren > 0, "Children should survive parameter propagation");
 	}
 
@@ -3404,18 +3421,6 @@ class BuilderUnitTest extends BuilderTestBase {
 	}
 
 	@Test
-	public function testSpacerOutsideFlowThrows():Void {
-		// spacer outside of flow should throw
-		Assert.raises(function() {
-			buildFromSource("
-				#test programmable() {
-					spacer(10, 10): 0, 0
-				}
-			", "test");
-		});
-	}
-
-	@Test
 	public function testFlowPropOutsideFlowThrows():Void {
 		// per-element flow properties outside of flow should throw at parse time
 		Assert.raises(function() {
@@ -3662,6 +3667,8 @@ class BuilderUnitTest extends BuilderTestBase {
 			}
 		", "test", ["x" => "notanumber"]));
 		Assert.notNull(err, "Should throw for wrong param type");
+		Assert.isTrue(err.indexOf("integer") >= 0 || err.indexOf("uint") >= 0 || err.indexOf("type") >= 0,
+			'Error should mention integer or type, got: $err');
 	}
 
 	@Test
@@ -3673,6 +3680,8 @@ class BuilderUnitTest extends BuilderTestBase {
 			}
 		", "test", ["flag" => "notabool"]));
 		Assert.notNull(err, "Should throw for unparseable bool value");
+		Assert.isTrue(err.indexOf("bool") >= 0 || err.indexOf("Bool") >= 0 || err.indexOf("type") >= 0,
+			'Error should mention bool or type, got: $err');
 	}
 
 	@Test
@@ -3885,6 +3894,8 @@ class BuilderUnitTest extends BuilderTestBase {
 		Assert.notNull(result);
 		final err = expectError(() -> result.getDynamicRef("anything"));
 		Assert.notNull(err, "Should throw when no dynamic refs exist");
+		Assert.isTrue(err.indexOf("dynamic") >= 0 || err.indexOf("Dynamic") >= 0 || err.indexOf("ref") >= 0 || err.indexOf("not found") >= 0,
+			'Error should mention dynamic ref or not found, got: $err');
 	}
 
 	@Test

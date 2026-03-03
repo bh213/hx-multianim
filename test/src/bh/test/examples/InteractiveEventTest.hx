@@ -2,33 +2,15 @@ package bh.test.examples;
 
 import utest.Assert;
 import bh.test.BuilderTestBase;
-import bh.test.UITestHarness.UITestScreen;
 import bh.base.CursorManager;
 import bh.ui.UIInteractiveWrapper;
 import bh.ui.UIRichInteractiveHelper;
-import bh.ui.UIElement.UIScreenEvent;
 
 /**
  * Unit tests for interactive event filtering, metadata, and cursor support.
  * Tests event flag parsing, UIInteractiveWrapper construction, event filtering logic.
  */
 class InteractiveEventTest extends BuilderTestBase {
-	// ==================== Helpers ====================
-
-	/** Build and return screen + wrappers for the given manim. */
-	static function buildWithScreen(manim:String, name:String):{screen:UITestScreen, wrappers:Array<UIInteractiveWrapper>} {
-		var screen = new UITestScreen();
-		var result = BuilderTestBase.buildFromSource(manim, name, null, Incremental);
-		screen.addInteractives(result, null);
-		// Collect wrappers from screen
-		var wrappers:Array<UIInteractiveWrapper> = [];
-		for (interactive in result.interactives) {
-			var wrapper = new UIInteractiveWrapper(interactive, null);
-			wrappers.push(wrapper);
-		}
-		return {screen: screen, wrappers: wrappers};
-	}
-
 	// ==================== Event Flag Parsing ====================
 
 	@Test
@@ -254,19 +236,23 @@ class InteractiveEventTest extends BuilderTestBase {
 
 	@Test
 	public function testCursorHoveredFallback():Void {
-		// Without cursor.hover metadata, hovered state falls back to base cursor (= Button)
+		// Without cursor.hover metadata, hovered state falls back to base cursor.
+		// Use cursor => "move" so base cursor is Move (not default Button),
+		// proving that hover actually returns the base cursor, not a hardcoded default.
 		var result = BuilderTestBase.buildFromSource('
 			#test programmable() {
 				bitmap(generated(color(100, 30, #666666))): 0, 0
-				interactive(100, 30, "btn1"): 0, 0
+				interactive(100, 30, "btn1", cursor => "move"): 0, 0
 			}
 		', "test");
 		var wrapper = new UIInteractiveWrapper(result.interactives[0], null);
-		// Simulate hover via Dynamic cast
+		// Before hover: base cursor is Move
+		Assert.equals(hxd.Cursor.Move, wrapper.getCursor());
+		// Simulate hover via Dynamic cast (hovered is (default, null) property)
 		var dyn:Dynamic = wrapper;
 		dyn.hovered = true;
-		// Hovered cursor defaults to base cursor (Button) when no cursor.hover metadata
-		Assert.equals(hxd.Cursor.Button, wrapper.getCursor());
+		// Hovered cursor should fall back to base cursor (Move), not default interactive cursor (Button)
+		Assert.equals(hxd.Cursor.Move, wrapper.getCursor());
 	}
 
 	@Test

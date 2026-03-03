@@ -588,6 +588,7 @@ subEmitters: [
 | `trigger` | enum | required | When to spawn (see triggers below) |
 | `probability` | float | 1.0 | Spawn chance (0.0 to 1.0) |
 | `inheritVelocity` | float | 0 | Fraction of parent particle's velocity to inherit |
+| `burstCount` | int | 1 | Number of particles to emit per trigger |
 | `offsetX` | float | 0 | Horizontal offset from parent particle |
 | `offsetY` | float | 0 | Vertical offset from parent particle |
 
