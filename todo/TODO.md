@@ -2,7 +2,6 @@
 
 | # | Item | Summary | Priority |
 |---|------|---------|----------|
-| ~~10~~ | ~~`closeAllNamed()` iterator~~ | ~~Mutating map during iteration, fragile~~ | ~~DONE~~ |
 | 15 | Text input codegen | `@:manim` factory with `createTextInput()` | Low |
 
 ## Main Goals
@@ -19,14 +18,6 @@
 **CI remaining:**
 - [ ] Add `HAXELIB_PASSWORD` secret to GitHub repo settings (required before first tag push)
 - [ ] Dev mode tests (`-D MULTIANIM_DEV`) need matrix build or sequential run in CI (currently `test.ps1` runs both)
-
-## Bugs
-
-### ~~`closeAllNamed()` iterator safety~~ — FIXED
-Collected keys into array before iterating, so `closeNamed()` can safely remove from the map.
-
-## ~~Deprecation Cleanup~~ — DONE
-Legacy parser error messages removed: `boundsMode`/etc, `colorCurve` rate action, positional emit syntax, `$$state$$`.
 
 ## After 1.0
 - Text input codegen support (`@:manim` factory with `createTextInput()`)

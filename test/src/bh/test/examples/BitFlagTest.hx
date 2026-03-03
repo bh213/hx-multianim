@@ -2,6 +2,7 @@ package bh.test.examples;
 
 import utest.Assert;
 import bh.test.BuilderTestBase;
+import bh.test.BuilderTestBase.BuildMode;
 import bh.test.BuilderTestBase.buildFromSource;
 import bh.test.BuilderTestBase.findVisibleBitmapDescendants;
 
@@ -211,5 +212,157 @@ class BitFlagTest extends BuilderTestBase {
 		", "test", params);
 		final bitmaps = findVisibleBitmapDescendants(result.object);
 		Assert.equals(1, bitmaps.length);
+	}
+
+	// ==================== Incremental Bit Flag Tests ====================
+
+	@Test
+	public function testIncrementalSetFlagsTogglesVisibility():Void {
+		// Build in Incremental mode with flags=0 and 3 bitmaps for bit[0], bit[1], bit[2]
+		final result = buildFromSource("
+			#test programmable(flags:flags(8)=0) {
+				@(flags => bit[0]) bitmap(generated(color(10, 10, #ff0000))): 0, 0
+				@(flags => bit[1]) bitmap(generated(color(10, 10, #00ff00))): 10, 0
+				@(flags => bit[2]) bitmap(generated(color(10, 10, #0000ff))): 20, 0
+			}
+		", "test", null, Incremental);
+
+		// Initially flags=0: no bits set, no visible bitmaps
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(0, bitmaps.length);
+
+		// Set flags=1 (bit[0]) → 1 visible bitmap
+		result.setParameter("flags", 1);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+
+		// Set flags=3 (bit[0]+bit[1]) → 2 visible bitmaps
+		result.setParameter("flags", 3);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(2, bitmaps.length);
+	}
+
+	@Test
+	public function testIncrementalClearFlags():Void {
+		// Build in Incremental mode with initial flags=7 (all 3 bits set)
+		final params = new Map<String, Dynamic>();
+		params.set("flags", 7);
+		final result = buildFromSource("
+			#test programmable(flags:flags(8)=0) {
+				@(flags => bit[0]) bitmap(generated(color(10, 10, #ff0000))): 0, 0
+				@(flags => bit[1]) bitmap(generated(color(10, 10, #00ff00))): 10, 0
+				@(flags => bit[2]) bitmap(generated(color(10, 10, #0000ff))): 20, 0
+			}
+		", "test", params, Incremental);
+
+		// Initially flags=7: all 3 bits set → 3 visible bitmaps
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(3, bitmaps.length);
+
+		// Clear all flags → 0 visible
+		result.setParameter("flags", 0);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(0, bitmaps.length);
+	}
+
+	@Test
+	public function testIncrementalBitToggleWithDefault():Void {
+		// Build in Incremental mode with @(flags => bit[0]) bitmap 20x20 and @default bitmap 10x10
+		final result = buildFromSource("
+			#test programmable(flags:flags(8)=0) {
+				@(flags => bit[0]) bitmap(generated(color(20, 20, #00ff00))): 0, 0
+				@default bitmap(generated(color(10, 10, #ff0000))): 0, 0
+			}
+		", "test", null, Incremental);
+
+		// Initially flags=0: bit[0] not set → @default fires (10x10)
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+
+		// Set flags=1 (bit[0]) → bit[0] match fires (20x20)
+		result.setParameter("flags", 1);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(20, Std.int(bitmaps[0].tile.width));
+
+		// Clear flags back to 0 → @default fires again (10x10)
+		result.setParameter("flags", 0);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+	}
+
+	// ==================== Incremental Multi-Value Match Tests ====================
+
+	@Test
+	public function testIncrementalMultiValueMatch():Void {
+		// @(color=>[red,green]) matches when color is red OR green
+		final result = buildFromSource("
+			#test programmable(color:[red,green,blue]=red) {
+				@(color=>[red,green]) bitmap(generated(color(10, 10, #ff0000))): 0, 0
+			}
+		", "test", null, Incremental);
+
+		// Initially color="red": matches [red,green] → 1 visible bitmap
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+
+		// Switch to "green": still matches [red,green] → 1 visible
+		result.setParameter("color", "green");
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+
+		// Switch to "blue": does NOT match [red,green] → 0 visible
+		result.setParameter("color", "blue");
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(0, bitmaps.length);
+	}
+
+	@Test
+	public function testIncrementalMultiValueNegation():Void {
+		// @(color != [red,green]) matches when color is NOT red and NOT green
+		final result = buildFromSource("
+			#test programmable(color:[red,green,blue]=blue) {
+				@(color != [red,green]) bitmap(generated(color(10, 10, #0000ff))): 0, 0
+			}
+		", "test", null, Incremental);
+
+		// Initially color="blue": blue is NOT in [red,green] → 1 visible
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+
+		// Switch to "red": red IS in [red,green], so != fails → 0 visible
+		result.setParameter("color", "red");
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(0, bitmaps.length);
+	}
+
+	@Test
+	public function testIncrementalMultiValueWithElse():Void {
+		// @(mode=>[a,b]) bitmap 20x20 and @else bitmap 10x10
+		final result = buildFromSource("
+			#test programmable(mode:[a,b,c]=a) {
+				@(mode=>[a,b]) bitmap(generated(color(20, 20, #00ff00))): 0, 0
+				@else bitmap(generated(color(10, 10, #ff0000))): 0, 0
+			}
+		", "test", null, Incremental);
+
+		// Initially mode="a": matches [a,b] → 20x20 visible
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(20, Std.int(bitmaps[0].tile.width));
+
+		// Switch to "c": does NOT match [a,b] → @else fires (10x10)
+		result.setParameter("mode", "c");
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+
+		// Switch to "b": matches [a,b] again → 20x20
+		result.setParameter("mode", "b");
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(20, Std.int(bitmaps[0].tile.width));
 	}
 }

@@ -434,6 +434,7 @@
 - **Hex integer in `parseAnything()`** — `THexInteger` tokens now reconstruct `0x` prefix before `stringToInt()` (fixes `0xAA8844` in untyped settings)
 - **Named colors in staticRef/dynamicRef params** — `resolveAsColorInteger()` now handles `RVString` for named colors like `c=>red`
 - **Particle/animatedPath colorCurve resolution** — changed from `resolveAsInteger` to `resolveAsColorInteger`, enabling palette colors in color curves
+- **Incremental `setParameter` for flags type** — `IncrementalUpdateContext.setParameter` now looks up parameter type definition and converts flags values via `dynamicValueToIndex` (previously treated flags as plain int, breaking bit-conditional visibility)
 - **PixelOutline `inlineColor` alpha** — `Vec4` shader param now applies `addAlphaIfNotPresent()` (previously alpha was 0, making inline color invisible for 6-digit hex)
 - **Unnecessary `addAlphaIfNotPresent()` calls removed** — removed from `Tile.fromColor`, `Graphics`, and other APIs where Heaps ignores the top byte
 - **Grid coord lookup in nested elements** — `$grid.pos()` in codegen now traverses parent chain to find the correct grid coordinate system instead of only checking the default layout (fixes grid positioning in nested/conditional elements)

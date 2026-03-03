@@ -294,4 +294,81 @@ class InteractiveEventTest extends BuilderTestBase {
 			Assert.isTrue(Std.string(e).indexOf("xyzzy") >= 0);
 		}
 	}
+
+	// ==================== Cursor State Metadata ====================
+
+	@Test
+	public function testCursorExplicitHoverState():Void {
+		var result = BuilderTestBase.buildFromSource('
+			#test programmable() {
+				bitmap(generated(color(100, 30, #666666))): 0, 0
+				interactive(100, 30, "btn1", cursor.hover => "move"): 0, 0
+			}
+		', "test");
+		var wrapper = new UIInteractiveWrapper(result.interactives[0], null);
+		// Non-hovered: default interactive cursor (Button)
+		Assert.equals(hxd.Cursor.Button, wrapper.getCursor());
+		// Simulate hover via Dynamic cast (hovered is (default, null) property)
+		var dyn:Dynamic = wrapper;
+		dyn.hovered = true;
+		// Hovered: explicit cursor.hover => "move" overrides base cursor
+		Assert.equals(hxd.Cursor.Move, wrapper.getCursor());
+	}
+
+	@Test
+	public function testCursorExplicitDisabledState():Void {
+		var result = BuilderTestBase.buildFromSource('
+			#test programmable() {
+				bitmap(generated(color(100, 30, #666666))): 0, 0
+				interactive(100, 30, "btn1", cursor.disabled => "text"): 0, 0
+			}
+		', "test");
+		var wrapper = new UIInteractiveWrapper(result.interactives[0], null);
+		// Non-disabled: default interactive cursor (Button)
+		Assert.equals(hxd.Cursor.Button, wrapper.getCursor());
+		// Set disabled
+		wrapper.disabled = true;
+		// Disabled: explicit cursor.disabled => "text" overrides default disabled cursor
+		Assert.equals(hxd.Cursor.TextInput, wrapper.getCursor());
+	}
+
+	@Test
+	public function testCursorHoverAndDisabledCombined():Void {
+		var result = BuilderTestBase.buildFromSource('
+			#test programmable() {
+				bitmap(generated(color(100, 30, #666666))): 0, 0
+				interactive(100, 30, "btn1", cursor.hover => "move", cursor.disabled => "text"): 0, 0
+			}
+		', "test");
+		var wrapper = new UIInteractiveWrapper(result.interactives[0], null);
+		// Base state: default interactive cursor (Button)
+		Assert.equals(hxd.Cursor.Button, wrapper.getCursor());
+		// Hovered: cursor.hover => "move"
+		var dyn:Dynamic = wrapper;
+		dyn.hovered = true;
+		Assert.equals(hxd.Cursor.Move, wrapper.getCursor());
+		// Clear hover, set disabled
+		dyn.hovered = false;
+		wrapper.disabled = true;
+		Assert.equals(hxd.Cursor.TextInput, wrapper.getCursor());
+		// Both hovered AND disabled: disabled takes priority
+		dyn.hovered = true;
+		Assert.equals(hxd.Cursor.TextInput, wrapper.getCursor());
+	}
+
+	@Test
+	public function testCursorInvalidSuffixThrows():Void {
+		var result = BuilderTestBase.buildFromSource('
+			#test programmable() {
+				bitmap(generated(color(100, 30, #666666))): 0, 0
+				interactive(100, 30, "btn1", cursor.foobar => "pointer"): 0, 0
+			}
+		', "test");
+		try {
+			var wrapper = new UIInteractiveWrapper(result.interactives[0], null);
+			Assert.fail("Should throw for invalid cursor suffix");
+		} catch (e:Dynamic) {
+			Assert.isTrue(Std.string(e).indexOf("foobar") >= 0);
+		}
+	}
 }
