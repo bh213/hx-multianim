@@ -213,6 +213,8 @@ class ScreenManager {
 		var built = loader.loadMultiAnim(resource.entry.path);
 		if (built == null)
 			throw 'failed to load multianim ${resource.name}';
+		// Auto-inject TweenManager for transition support in incremental builds
+		built.tweenManager = tweens;
 		#if MULTIANIM_TRACE
 		trace('Built ${resource.entry.name} with reload $enableReload');
 		#end

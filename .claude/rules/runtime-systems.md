@@ -110,6 +110,14 @@ mgr.hasTweens(obj);
 - `finish()` jumps to final state immediately
 - Cancelled tweens do not fire `onComplete`
 
+**`.manim` transition integration:**
+- `transition {}` block in programmable body declares animated transitions for parameter changes
+- `IncrementalUpdateContext` uses TweenManager to animate visibility changes instead of instant toggling
+- TweenManager auto-injected via `ScreenManager.buildFromResource()` (sets `MultiAnimBuilder.tweenManager`)
+- Also injectable via `BuilderResult.setTweenManager()` or `IncrementalUpdateContext.setTweenManager()`
+- Falls back to instant visibility without TweenManager (backward compatible)
+- See `docs/manim-reference.md` "Transition Declarations" for syntax reference
+
 ## Screen Transitions
 
 Animated transitions between screens and dialogs via `ScreenTransition` enum.

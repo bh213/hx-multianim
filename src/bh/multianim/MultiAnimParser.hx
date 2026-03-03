@@ -636,6 +636,24 @@ enum EasingType {
 }
 
 @:nullSafety
+enum TransitionType {
+	TransNone;
+	TransFade(duration:Float, easing:Null<EasingType>);
+	TransCrossfade(duration:Float, easing:Null<EasingType>);
+	TransFlipX(duration:Float, easing:Null<EasingType>);
+	TransFlipY(duration:Float, easing:Null<EasingType>);
+	TransSlide(direction:TransitionDirection, duration:Float, distance:Null<Float>, easing:Null<EasingType>);
+}
+
+@:nullSafety
+enum TransitionDirection {
+	TDLeft;
+	TDRight;
+	TDUp;
+	TDDown;
+}
+
+@:nullSafety
 enum ParsedPaths {
 	LineTo(end:Coordinates, mode:Null<PathCoordinateMode>);
 	Forward(distance:ReferenceableValue);
@@ -1132,6 +1150,7 @@ typedef Node = {
 	conditionals: NodeConditionalValues,
 	uniqueNodeName:String,
 	settings:Null<Map<String, ParsedSettingValue>>,
+	transitions:Null<Map<String, TransitionType>>,
 	flowProperties:Null<NodeFlowProperties>,
 	#if MULTIANIM_TRACE
 	parserPos:String

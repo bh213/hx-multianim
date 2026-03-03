@@ -1,0 +1,13 @@
+version: 0.5
+
+#transition programmable(status:[normal,hover,pressed]=normal, checked:bool=false) {
+    transition {
+        status: crossfade(0.1, easeOutQuad)
+        checked: flipX(0.15)
+    }
+    @(status => normal) bitmap(generated(color(40, 20, #4444ff))): 0, 0
+    @(status => hover) bitmap(generated(color(40, 20, #44ff44))): 10, 0
+    @(status => pressed) bitmap(generated(color(40, 20, #ff4444))): 20, 0
+    @(checked => true) bitmap(generated(color(20, 20, #ffff00))): 0, 25
+    @(checked => false) bitmap(generated(color(20, 20, #888888))): 0, 25
+}

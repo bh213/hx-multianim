@@ -5,6 +5,9 @@ import bh.multianim.MultiAnimParser;
 import bh.multianim.MultiAnimParser.MultiAnimResult;
 import bh.multianim.MultiAnimParser.NodeType;
 import bh.multianim.MultiAnimParser.NodeConditionalValues;
+import bh.multianim.MultiAnimParser.TransitionType;
+import bh.multianim.MultiAnimParser.TransitionDirection;
+import bh.multianim.MultiAnimParser.EasingType;
 
 /**
  * Non-visual tests that parse invalid .manim files and assert on parser errors.
@@ -3245,5 +3248,278 @@ class ParserErrorTest extends utest.Test {
 		Assert.notNull(error, "Should throw error for import with missing file");
 		Assert.isTrue(error.indexOf("nonexistent") >= 0 || error.indexOf("import") >= 0 || error.indexOf("load") >= 0 || error.indexOf("not found") >= 0 || error.indexOf("file") >= 0,
 			'Error should mention the file not found, got: $error');
+	}
+
+	// ===== Transition block tests =====
+
+	@Test
+	public function testTransitionValidFade() {
+		var result = parseExpectingResult('
+			#test programmable(status:[normal,hover]=normal) {
+				transition {
+					status: fade(0.2)
+				}
+				@(status=>normal) bitmap(generated(color(10, 10, #f00))): 0,0
+				@(status=>hover) bitmap(generated(color(10, 10, #0f0))): 0,0
+			}
+		');
+		Assert.notNull(result);
+		var node = result.nodes.get("test");
+		Assert.notNull(node);
+		Assert.notNull(node.transitions);
+		var trans = node.transitions.get("status");
+		Assert.notNull(trans);
+		Assert.isTrue(trans.match(TransFade(0.2, null)));
+	}
+
+	@Test
+	public function testTransitionValidCrossfadeWithEasing() {
+		var result = parseExpectingResult('
+			#test programmable(status:[normal,hover,pressed]=normal) {
+				transition {
+					status: crossfade(0.1, easeOutQuad)
+				}
+				@(status=>normal) bitmap(generated(color(10, 10, #f00))): 0,0
+			}
+		');
+		Assert.notNull(result);
+		var node = result.nodes.get("test");
+		Assert.notNull(node);
+		Assert.notNull(node.transitions);
+		var trans = node.transitions.get("status");
+		Assert.notNull(trans);
+		Assert.isTrue(trans.match(TransCrossfade(0.1, _)));
+	}
+
+	@Test
+	public function testTransitionValidFlipX() {
+		var result = parseExpectingResult('
+			#test programmable(checked:bool=false) {
+				transition {
+					checked: flipX(0.15, easeOutQuad)
+				}
+				@(checked => true) bitmap(generated(color(10, 10, #f00))): 0,0
+				@default bitmap(generated(color(10, 10, #0f0))): 0,0
+			}
+		');
+		Assert.notNull(result);
+		var node = result.nodes.get("test");
+		Assert.notNull(node);
+		var trans = node.transitions.get("checked");
+		Assert.notNull(trans);
+		Assert.isTrue(trans.match(TransFlipX(0.15, _)));
+	}
+
+	@Test
+	public function testTransitionValidFlipY() {
+		var result = parseExpectingResult('
+			#test programmable(checked:bool=false) {
+				transition {
+					checked: flipY(0.3)
+				}
+				@(checked => true) bitmap(generated(color(10, 10, #f00))): 0,0
+			}
+		');
+		Assert.notNull(result);
+		var node = result.nodes.get("test");
+		var trans = node.transitions.get("checked");
+		Assert.notNull(trans);
+		Assert.isTrue(trans.match(TransFlipY(0.3, null)));
+	}
+
+	@Test
+	public function testTransitionValidSlide() {
+		var result = parseExpectingResult('
+			#test programmable(visible:bool=true) {
+				transition {
+					visible: slide(left, 0.25, easeInOutCubic)
+				}
+				@(visible => true) bitmap(generated(color(10, 10, #f00))): 0,0
+			}
+		');
+		Assert.notNull(result);
+		var node = result.nodes.get("test");
+		var trans = node.transitions.get("visible");
+		Assert.notNull(trans);
+		Assert.isTrue(trans.match(TransSlide(TDLeft, 0.25, _, _)));
+	}
+
+	@Test
+	public function testTransitionSlideWithDistance() {
+		var result = parseExpectingResult('
+			#test programmable(visible:bool=true) {
+				transition {
+					visible: slide(right, 0.3, 80)
+				}
+				@(visible => true) bitmap(generated(color(10, 10, #f00))): 0,0
+			}
+		');
+		Assert.notNull(result);
+		var node = result.nodes.get("test");
+		var trans = node.transitions.get("visible");
+		Assert.notNull(trans);
+		switch (trans) {
+			case TransSlide(dir, dur, dist, eas):
+				Assert.equals(TDRight, dir);
+				Assert.floatEquals(0.3, dur);
+				Assert.floatEquals(80.0, dist);
+				Assert.isNull(eas);
+			default:
+				Assert.fail("Expected TransSlide");
+		}
+	}
+
+	@Test
+	public function testTransitionSlideWithDistanceAndEasing() {
+		var result = parseExpectingResult('
+			#test programmable(visible:bool=true) {
+				transition {
+					visible: slide(down, 0.5, 120, easeOutBack)
+				}
+				@(visible => true) bitmap(generated(color(10, 10, #f00))): 0,0
+			}
+		');
+		Assert.notNull(result);
+		var node = result.nodes.get("test");
+		var trans = node.transitions.get("visible");
+		Assert.notNull(trans);
+		switch (trans) {
+			case TransSlide(dir, dur, dist, eas):
+				Assert.equals(TDDown, dir);
+				Assert.floatEquals(0.5, dur);
+				Assert.floatEquals(120.0, dist);
+				Assert.equals(EaseOutBack, eas);
+			default:
+				Assert.fail("Expected TransSlide");
+		}
+	}
+
+	@Test
+	public function testTransitionSlideNoDistanceNoEasing() {
+		var result = parseExpectingResult('
+			#test programmable(visible:bool=true) {
+				transition {
+					visible: slide(up, 0.2)
+				}
+				@(visible => true) bitmap(generated(color(10, 10, #f00))): 0,0
+			}
+		');
+		Assert.notNull(result);
+		var node = result.nodes.get("test");
+		var trans = node.transitions.get("visible");
+		Assert.notNull(trans);
+		switch (trans) {
+			case TransSlide(dir, dur, dist, eas):
+				Assert.equals(TDUp, dir);
+				Assert.floatEquals(0.2, dur);
+				Assert.isNull(dist);
+				Assert.isNull(eas);
+			default:
+				Assert.fail("Expected TransSlide");
+		}
+	}
+
+	@Test
+	public function testTransitionValidNone() {
+		var result = parseExpectingResult('
+			#test programmable(status:[a,b]=a) {
+				transition {
+					status: none
+				}
+				bitmap(generated(color(10, 10, #f00))): 0,0
+			}
+		');
+		Assert.notNull(result);
+		var node = result.nodes.get("test");
+		var trans = node.transitions.get("status");
+		Assert.notNull(trans);
+		Assert.isTrue(trans.match(TransNone));
+	}
+
+	@Test
+	public function testTransitionMultipleParams() {
+		var result = parseExpectingResult('
+			#test programmable(status:[normal,hover]=normal, checked:bool=false) {
+				transition {
+					status: crossfade(0.1)
+					checked: flipX(0.15)
+				}
+				@(status=>normal) bitmap(generated(color(10, 10, #f00))): 0,0
+			}
+		');
+		Assert.notNull(result);
+		var node = result.nodes.get("test");
+		Assert.notNull(node.transitions);
+		Assert.isTrue(node.transitions.get("status").match(TransCrossfade(0.1, null)));
+		Assert.isTrue(node.transitions.get("checked").match(TransFlipX(0.15, null)));
+	}
+
+	@Test
+	public function testTransitionErrorUnknownParameter() {
+		var error = parseExpectingError('
+			#test programmable(status:[a,b]=a) {
+				transition {
+					nonexistent: fade(0.2)
+				}
+				bitmap(generated(color(10, 10, #f00))): 0,0
+			}
+		');
+		Assert.notNull(error);
+		Assert.isTrue(error.indexOf("nonexistent") >= 0, 'Error should mention unknown param, got: $error');
+	}
+
+	@Test
+	public function testTransitionErrorDuplicate() {
+		var error = parseExpectingError('
+			#test programmable(status:[a,b]=a) {
+				transition {
+					status: fade(0.2)
+					status: crossfade(0.1)
+				}
+				bitmap(generated(color(10, 10, #f00))): 0,0
+			}
+		');
+		Assert.notNull(error);
+		Assert.isTrue(error.indexOf("duplicate") >= 0 || error.indexOf("already") >= 0, 'Error should mention duplicate, got: $error');
+	}
+
+	@Test
+	public function testTransitionErrorOutsideProgrammable() {
+		var error = parseExpectingError('
+			transition {
+				status: fade(0.2)
+			}
+		');
+		Assert.notNull(error);
+		Assert.isTrue(error.indexOf("programmable") >= 0, 'Error should mention programmable, got: $error');
+	}
+
+	@Test
+	public function testTransitionErrorInvalidType() {
+		var error = parseExpectingError('
+			#test programmable(status:[a,b]=a) {
+				transition {
+					status: wobble(0.2)
+				}
+				bitmap(generated(color(10, 10, #f00))): 0,0
+			}
+		');
+		Assert.notNull(error);
+		Assert.isTrue(error.indexOf("transition type") >= 0 || error.indexOf("expected") >= 0, 'Error should mention invalid type, got: $error');
+	}
+
+	@Test
+	public function testTransitionSlideDirections() {
+		for (dir in ["left", "right", "up", "down"]) {
+			var result = parseExpectingResult('
+				#test programmable(v:bool=true) {
+					transition {
+						v: slide($dir, 0.3)
+					}
+					bitmap(generated(color(10, 10, #f00))): 0,0
+				}
+			');
+			Assert.notNull(result, 'slide($dir) should parse');
+		}
 	}
 }

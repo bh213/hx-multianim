@@ -1,24 +1,21 @@
 # TODO
 
-| # | Item | Summary | Section | Priority |
-|---|------|---------|---------|----------|
-| 2 | Transitions & animations | Phase 1 (TweenManager) ✓ Phase 2 (Screen Transitions + Modal Overlay) ✓ Phase 3 (Tooltip/Panel Transitions) ✓ Phase 4 (FloatingTextHelper) ✓ Tests ✓ — remaining: .manim transition declarations, UI control transitions | V1 | Medium |
-| 4 | Haxelib release | Publish to haxelib + CI automation | V1 | High |
-| 9 | Dropdown z-ordering | Panel renders behind other UI elements | Bugs | Medium |
-| 10 | `closeAllNamed()` iterator | Mutating map during iteration, fragile | Bugs | Low |
-| 15 | Text input codegen | `@:manim` factory with `createTextInput()` | After 1.0 | Low |
+| # | Item | Summary | Priority |
+|---|------|---------|----------|
+| 4 | Haxelib release | Publish to haxelib + CI automation | High |
+| 9 | Dropdown z-ordering | Panel renders behind other UI elements | Medium |
+| 10 | `closeAllNamed()` iterator | Mutating map during iteration, fragile | Low |
+| 15 | Text input codegen | `@:manim` factory with `createTextInput()` | Low |
 
 ## Main Goals
 
 - Code generation: programmable elements should always work via `builder.buildWithParameters` or via macro system (`@:manim(...)`)
 
 ## V1
-- more hot reload integration tests needed — see [docs/hot-reload.md "Missing Tests"](../docs/hot-reload.md#missing-tests-needed) for full list
-- transitions & animations — Phase 1-4 done (see [transitions-planning.md](transitions-planning.md)); remaining phases: .manim transition declarations, UI control transitions
-- haxelib release (see details below)
-- add some blob47 utils for easier testing/dev/selection
-- add disabled demo for all controls in playground
-- ~~add predefined curves~~ ✓ easing names auto-resolve in curve operations
+- Haxelib release (see details below)
+- More hot reload integration tests — see [docs/hot-reload.md "Missing Tests"](../docs/hot-reload.md#missing-tests-needed)
+- Add blob47 utils for easier testing/dev/selection
+- Add disabled demo for all controls in playground
 
 ### Haxelib Release
 

@@ -4199,4 +4199,11 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		VisualTestBase.pendingVisualTests--;
 		async.done();
 	}
+
+	// ==================== Transition declarations: visual ====================
+
+	@Test
+	public function test95_Transition(async:utest.Async):Void {
+		simpleTest(95, "transition", async);
+	}
 }

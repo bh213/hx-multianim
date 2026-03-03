@@ -28,6 +28,9 @@ import bh.base.PixelLine;
 import h2d.Object;
 import bh.multianim.MultiAnimParser;
 import bh.base.ResourceLoader;
+import bh.base.TweenManager;
+import bh.base.TweenManager.Tween;
+import bh.base.TweenManager.TweenProperty;
 import bh.base.Particles.ForceField;
 import bh.base.Particles.BoundsMode;
 import bh.base.Particles.SubEmitTrigger;
@@ -277,6 +280,9 @@ class IncrementalUpdateContext {
 	var rootNode:Node;
 	var batchMode:Bool = false;
 	var changedParams:Map<String, Bool> = new Map();
+	var transitionsDef:Null<Map<String, TransitionType>>;
+	public var tweenManager:Null<TweenManager> = null;
+	var activeTransitionTweens:Array<{obj:h2d.Object, tween:Tween, savedAlpha:Float, savedScaleX:Float, savedScaleY:Float, savedX:Float, savedY:Float}> = [];
 
 	public function new(builder:MultiAnimBuilder, indexedParams:Map<String, ResolvedIndexParameters>,
 			builderParams:BuilderParameters, rootNode:Node) {
@@ -287,6 +293,7 @@ class IncrementalUpdateContext {
 			this.indexedParams.set(k, v);
 		this.builderParams = builderParams;
 		this.rootNode = rootNode;
+		this.transitionsDef = rootNode.transitions;
 	}
 
 	#if MULTIANIM_DEV
@@ -404,6 +411,206 @@ class IncrementalUpdateContext {
 		changedParams = new Map();
 	}
 
+	public function setTweenManager(tm:TweenManager):Void {
+		this.tweenManager = tm;
+	}
+
+	public function cancelAllTransitions():Void {
+		for (entry in activeTransitionTweens) {
+			entry.tween.onComplete = null;
+			entry.tween.cancel();
+			entry.obj.alpha = entry.savedAlpha;
+			entry.obj.scaleX = entry.savedScaleX;
+			entry.obj.scaleY = entry.savedScaleY;
+			entry.obj.x = entry.savedX;
+			entry.obj.y = entry.savedY;
+		}
+		activeTransitionTweens = [];
+	}
+
+	function findTransitionSpec():Null<TransitionType> {
+		if (transitionsDef == null) return null;
+		for (paramName => _ in changedParams) {
+			final spec = transitionsDef.get(paramName);
+			if (spec != null) return spec;
+		}
+		return null;
+	}
+
+	function cancelActiveTransition(obj:h2d.Object):Void {
+		var i = 0;
+		while (i < activeTransitionTweens.length) {
+			if (activeTransitionTweens[i].obj == obj) {
+				final entry = activeTransitionTweens[i];
+				entry.tween.onComplete = null; // Prevent delayed onComplete from TweenManager
+				entry.tween.cancel();
+				// Restore pre-transition properties so the next transition starts from clean state
+				obj.alpha = entry.savedAlpha;
+				obj.scaleX = entry.savedScaleX;
+				obj.scaleY = entry.savedScaleY;
+				obj.x = entry.savedX;
+				obj.y = entry.savedY;
+				activeTransitionTweens.splice(i, 1);
+			} else {
+				i++;
+			}
+		}
+	}
+
+	function trackTransitionTween(obj:h2d.Object, tween:Tween, savedAlpha:Float, savedScaleX:Float, savedScaleY:Float, savedX:Float, savedY:Float):Void {
+		activeTransitionTweens.push({obj: obj, tween: tween, savedAlpha: savedAlpha, savedScaleX: savedScaleX, savedScaleY: savedScaleY, savedX: savedX, savedY: savedY});
+		final origOnComplete = tween.onComplete;
+		tween.onComplete = () -> {
+			var i = 0;
+			while (i < activeTransitionTweens.length) {
+				if (activeTransitionTweens[i].tween == tween) {
+					activeTransitionTweens.splice(i, 1);
+					break;
+				}
+				i++;
+			}
+			if (origOnComplete != null) origOnComplete();
+		};
+	}
+
+	function hasActiveTransition(obj:h2d.Object):Bool {
+		for (entry in activeTransitionTweens)
+			if (entry.obj == obj) return true;
+		return false;
+	}
+
+	function setVisibilityWithTransition(obj:h2d.Object, newVisible:Bool):Void {
+		// Skip only if state matches AND no transition is in progress.
+		// A mid-hide element has visible=true but should accept show requests.
+		if (obj.visible == newVisible && !hasActiveTransition(obj)) return;
+
+		final transSpec = findTransitionSpec();
+		if (transSpec == null || tweenManager == null || transSpec.match(TransNone)) {
+			cancelActiveTransition(obj); // Cancel any in-progress transition
+			obj.visible = newVisible;
+			return;
+		}
+
+		cancelActiveTransition(obj);
+		executeTransition(obj, newVisible, transSpec);
+	}
+
+	function executeTransition(obj:h2d.Object, show:Bool, spec:TransitionType):Void {
+		final tm = tweenManager;
+		if (tm == null) { obj.visible = show; return; }
+
+		// Capture pre-transition state for all properties (used by cancelActiveTransition to restore)
+		final preAlpha = obj.alpha;
+		final preScaleX = obj.scaleX;
+		final preScaleY = obj.scaleY;
+		final preX = obj.x;
+		final preY = obj.y;
+
+		switch (spec) {
+			case TransFade(duration, easing):
+				if (show) {
+					obj.visible = true;
+					obj.alpha = 0.0;
+					final t = tm.tween(obj, duration, [Alpha(preAlpha)], easing);
+					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
+				} else {
+					final t = tm.tween(obj, duration, [Alpha(0.0)], easing);
+					final capturedObj = obj;
+					t.onComplete = () -> {
+						capturedObj.visible = false;
+						capturedObj.alpha = preAlpha;
+					};
+					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
+				}
+
+			case TransCrossfade(duration, easing):
+				if (show) {
+					obj.visible = true;
+					obj.alpha = 0.0;
+					final t = tm.tween(obj, duration, [Alpha(preAlpha)], easing);
+					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
+				} else {
+					final t = tm.tween(obj, duration, [Alpha(0.0)], easing);
+					final capturedObj = obj;
+					t.onComplete = () -> {
+						capturedObj.visible = false;
+						capturedObj.alpha = preAlpha;
+					};
+					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
+				}
+
+			case TransFlipX(duration, easing):
+				final halfDuration = duration / 2.0;
+				if (show) {
+					obj.visible = true;
+					obj.scaleX = 0.0;
+					final t = tm.tween(obj, halfDuration, [ScaleX(preScaleX)], easing);
+					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
+				} else {
+					final t = tm.tween(obj, halfDuration, [ScaleX(0.0)], easing);
+					final capturedObj = obj;
+					t.onComplete = () -> {
+						capturedObj.visible = false;
+						capturedObj.scaleX = preScaleX;
+					};
+					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
+				}
+
+			case TransFlipY(duration, easing):
+				final halfDuration = duration / 2.0;
+				if (show) {
+					obj.visible = true;
+					obj.scaleY = 0.0;
+					final t = tm.tween(obj, halfDuration, [ScaleY(preScaleY)], easing);
+					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
+				} else {
+					final t = tm.tween(obj, halfDuration, [ScaleY(0.0)], easing);
+					final capturedObj = obj;
+					t.onComplete = () -> {
+						capturedObj.visible = false;
+						capturedObj.scaleY = preScaleY;
+					};
+					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
+				}
+
+			case TransSlide(dir, duration, distance, easing):
+				final slideOffset:Float = distance != null ? distance : 50.0;
+				if (show) {
+					obj.visible = true;
+					obj.alpha = 0.0;
+					switch (dir) {
+						case TDLeft: obj.x -= slideOffset;
+						case TDRight: obj.x += slideOffset;
+						case TDUp: obj.y -= slideOffset;
+						case TDDown: obj.y += slideOffset;
+					}
+					final t = tm.tween(obj, duration, [X(preX), Y(preY), Alpha(preAlpha)], easing);
+					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
+				} else {
+					var targetX = obj.x;
+					var targetY = obj.y;
+					switch (dir) {
+						case TDLeft: targetX -= slideOffset;
+						case TDRight: targetX += slideOffset;
+						case TDUp: targetY -= slideOffset;
+						case TDDown: targetY += slideOffset;
+					}
+					final t = tm.tween(obj, duration, [X(targetX), Y(targetY), Alpha(0.0)], easing);
+					final capturedObj = obj;
+					t.onComplete = () -> {
+						capturedObj.visible = false;
+						capturedObj.alpha = preAlpha;
+						capturedObj.x = preX;
+						capturedObj.y = preY;
+					};
+					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
+				}
+
+			case TransNone:
+				obj.visible = show;
+		}
+	}
+
 	function applyUpdates():Void {
 		builder.pushBuilderState();
 		builder.indexedParams = indexedParams;
@@ -411,7 +618,8 @@ class IncrementalUpdateContext {
 
 		// Re-evaluate visibility for all conditional elements
 		for (entry in conditionalEntries) {
-			entry.object.visible = builder.isMatch(entry.node, indexedParams);
+			final shouldBeVisible = builder.isMatch(entry.node, indexedParams);
+			setVisibilityWithTransition(entry.object, shouldBeVisible);
 		}
 		// Re-evaluate conditional apply entries
 		for (entry in conditionalApplyEntries) {
@@ -494,7 +702,7 @@ class IncrementalUpdateContext {
 					var matched = builder.matchConditions(conditions, strict, indexedParams);
 					prevSiblingMatched = matched;
 					if (matched) anyConditionalSiblingMatched = true;
-					if (trackedObj != null) trackedObj.visible = matched;
+					if (trackedObj != null) setVisibilityWithTransition(trackedObj, matched);
 					if (trackedApply != null) {
 						if (matched) applyConditionalApplyEntry(trackedApply);
 						else unapplyConditionalApplyEntry(trackedApply);
@@ -505,13 +713,13 @@ class IncrementalUpdateContext {
 						if (extraConditions == null) {
 							prevSiblingMatched = true;
 							anyConditionalSiblingMatched = true;
-							if (trackedObj != null) trackedObj.visible = true;
+							if (trackedObj != null) setVisibilityWithTransition(trackedObj, true);
 							if (trackedApply != null) applyConditionalApplyEntry(trackedApply);
 						} else {
 							var matched = builder.matchConditions(extraConditions, false, indexedParams);
 							prevSiblingMatched = matched;
 							if (matched) anyConditionalSiblingMatched = true;
-							if (trackedObj != null) trackedObj.visible = matched;
+							if (trackedObj != null) setVisibilityWithTransition(trackedObj, matched);
 							if (trackedApply != null) {
 								if (matched) applyConditionalApplyEntry(trackedApply);
 								else unapplyConditionalApplyEntry(trackedApply);
@@ -519,12 +727,12 @@ class IncrementalUpdateContext {
 						}
 					} else {
 						prevSiblingMatched = true;
-						if (trackedObj != null) trackedObj.visible = false;
+						if (trackedObj != null) setVisibilityWithTransition(trackedObj, false);
 						if (trackedApply != null) unapplyConditionalApplyEntry(trackedApply);
 					}
 
 				case ConditionalDefault:
-					if (trackedObj != null) trackedObj.visible = !anyConditionalSiblingMatched;
+					if (trackedObj != null) setVisibilityWithTransition(trackedObj, !anyConditionalSiblingMatched);
 					if (trackedApply != null) {
 						if (!anyConditionalSiblingMatched) applyConditionalApplyEntry(trackedApply);
 						else unapplyConditionalApplyEntry(trackedApply);
@@ -662,6 +870,8 @@ class BuilderResult {
 	// Adopt internals from another result, keeping this instance as the stable reference.
 	// The scene graph object is swapped via SceneSwapper (caller responsibility).
 	public function adoptFrom(other:BuilderResult):Void {
+		// Preserve TweenManager reference across hot reload
+		final prevTweenManager = if (this.incrementalContext != null) this.incrementalContext.tweenManager else null;
 		this.object = other.object;
 		this.name = other.name;
 		this.names = other.names;
@@ -675,8 +885,17 @@ class BuilderResult {
 		this.dynamicRefs = other.dynamicRefs;
 		this.incrementalContext = other.incrementalContext;
 		this.htmlTextsWithLinks = other.htmlTextsWithLinks;
+		// Re-inject TweenManager into new incremental context
+		if (prevTweenManager != null && this.incrementalContext != null)
+			this.incrementalContext.setTweenManager(prevTweenManager);
 	}
 	#end
+
+	public function setTweenManager(tm:TweenManager):Void {
+		if (incrementalContext == null)
+			throw 'setTweenManager requires incremental mode';
+		incrementalContext.setTweenManager(tm);
+	}
 
 	public function setParameter(name:String, value:Dynamic):Void {
 		if (incrementalContext == null)
@@ -876,6 +1095,8 @@ class MultiAnimBuilder {
 	var inlineAtlases:Map<String, IAtlas2> = [];
 	var incrementalMode:Bool = false;
 	var incrementalContext:Null<IncrementalUpdateContext> = null;
+	/** When set, automatically injected into IncrementalUpdateContext for transition support. */
+	public var tweenManager:Null<TweenManager> = null;
 
 	/** Returns position string for error messages when MULTIANIM_TRACE is enabled */
 	inline function currentNodePos():String {
@@ -5367,6 +5588,9 @@ class MultiAnimBuilder {
 		if (incremental) {
 			this.incrementalMode = true;
 			this.incrementalContext = new IncrementalUpdateContext(this, indexedParams, builderParams, node);
+			// Auto-inject TweenManager for transition support
+			if (tweenManager != null)
+				this.incrementalContext.setTweenManager(tweenManager);
 		}
 
 		var retVal = startBuild(name, node, cast MultiAnimParser.getGridCoordinateSystem(node), cast MultiAnimParser.getHexCoordinateSystem(node), builderParams);

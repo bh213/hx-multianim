@@ -918,6 +918,52 @@ Used by: dynamic refs, slider, scrollbar, parameterized slots, button, checkbox,
 
 ---
 
+## Transition Declarations
+
+Declare animated transitions for parameter changes inside programmable elements. When a parameter with a transition is changed via `setParameter()`, visibility changes are animated instead of instant.
+
+```manim
+#button programmable(status:[normal,hover,pressed]=normal) {
+    transition {
+        status: crossfade(0.1, easeOutQuad)
+    }
+    @(status => normal)  bitmap(...): 0, 0
+    @(status => hover)   bitmap(...): 0, 0
+    @(status => pressed) bitmap(...): 0, 0
+}
+```
+
+### Transition Types
+
+| Type | Description |
+|------|-------------|
+| `none` | Instant visibility (default behavior) |
+| `fade(duration, ?easing)` | One-sided alpha fade (showing element fades in, hiding fades out independently) |
+| `crossfade(duration, ?easing)` | Both old and new states overlap with simultaneous alpha blend |
+| `flipX(duration, ?easing)` | Scale X to 0 then back to 1 (half-duration each) |
+| `flipY(duration, ?easing)` | Scale Y to 0 then back to 1 (half-duration each) |
+| `slide(direction, duration, ?distance, ?easing)` | Position + alpha offset animation (distance defaults to 50px) |
+
+### Slide Directions
+
+`left`, `right`, `up`, `down`
+
+### Requirements
+
+- Must be inside a `programmable` body
+- Parameter names must match declared parameters
+- Requires `TweenManager` — auto-injected when using `ScreenManager.buildFromResource()` or when `MultiAnimBuilder.tweenManager` is set
+- Falls back to instant visibility when no TweenManager is available
+- Codegen path (`@:manim`) does not support transitions (builder-only)
+
+### Behavior
+
+- In-progress transitions are finished immediately when a new parameter change occurs
+- Alpha, scaleX, scaleY, position values are saved before transition and restored on completion
+- Works with incremental update mode (used by all UI controls)
+
+---
+
 ## Interactive Event Filtering & Bind
 
 ### Event Filtering
