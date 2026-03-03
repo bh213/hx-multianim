@@ -621,7 +621,7 @@ Programmable elements can declare animated transitions for parameter changes. Wh
 - In-progress transitions are finished immediately when a new parameter change occurs
 - Property values (alpha, scale, position) are preserved across transitions
 - Works with all UI controls that use incremental mode (button, checkbox, slider, etc.)
-- Codegen path (`@:manim`) does not yet support transitions
+- Codegen path (`@:manim`): transitions are fully supported via `CodegenTransitionHelper`; `setTweenManager(tm)` and `cancelAllTransitions()` methods are generated on instances; factory auto-injects `tweenManager` from `ProgrammableBuilder`
 
 ### interactive
 Creates a hit-test region for UI interaction. Optionally carries an identifier and typed metadata.

@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.13-dev] - 2026-03-03
+## [1.0.0-rc.1] - 2026-03-03
 
 ### Added
 - **Transition declarations** — `transition {}` block in programmable body for animated parameter changes
@@ -11,6 +11,12 @@
   - In-progress transitions are finished immediately on new parameter changes
   - Property values (alpha, scale, position) preserved across transitions
   - Works with all UI controls using incremental mode (button, checkbox, slider, tabs, etc.)
+- **Codegen transition support** — `transition {}` blocks now work in `@:manim` codegen path
+  - `CodegenTransitionHelper` runtime class mirrors `IncrementalUpdateContext` transition logic
+  - Generated instances get `setTweenManager(tm)` and `cancelAllTransitions()` methods
+  - Factory `create()`/`createFrom()` auto-inject TweenManager from `ProgrammableBuilder.tweenManager`
+  - Zero overhead when no `transition {}` block is present (no helper generated)
+  - Instant fallback when TweenManager is null or for initial render
 - **Card hand helper improvements** — `UICardHandHelper` targeting and hover enhancements
   - **Interactive-based targets** — targets are now `UIInteractiveWrapper` instances instead of manual `CardTarget` with `boundsProvider`; hit testing uses `containsPoint()` for automatic coordinate transforms
   - `registerTargetInteractive(wrapper)`, `registerTargetInteractives(wrappers)`, `unregisterTargetInteractive(id)` replace old `registerTarget`/`unregisterTarget`
@@ -400,6 +406,7 @@
 - **TabButton incremental rewrite** — `UIMultiAnimTabButton` same pattern; selected/disabled states via `setParameter()`
 
 ### Fixed
+- **Dropdown z-ordering** — dropdown panel now re-applies higher layer after `doRedraw()` rebuilds the main visual; stores screen/layer references from `customAddToLayer()` and reuses them when creating `PositionLinkObject`
 - **Named panel outside-click cross-panel** — clicking another named panel's trigger or content no longer incorrectly closes unrelated named panels; added `isNamedPanelTrigger()` check and changed condition to cancel `pendingClose` for any panel-related click
 - **UITooltipHelper incremental mode** — `showTooltip()` now builds with `incremental: true`, enabling `updateParams()` to work at runtime (previously always threw because `setParameter()` requires incremental mode)
 - **Named range codegen loop variable** — macro codegen for named range iterators (`range(from:, to:)`) now produces correct loop variable values and positions

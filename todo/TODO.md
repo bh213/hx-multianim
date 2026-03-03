@@ -75,3 +75,4 @@ The dropdown's floating panel uses `PositionLinkObject` but doesn't get placed o
 - Optimize grid/hex coordinate system so it doesn't walk the tree each time
 - Text width for align revisit
 - Setting editor
+- apply animPath tweening to element?

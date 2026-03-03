@@ -3513,6 +3513,21 @@ class MacroManimParser {
 					if (parent.transitions.exists(paramName))
 						error('duplicate transition for parameter "$paramName"');
 					parent.transitions.set(paramName, transType);
+					// Warn if slide() transition is used inside a flow() ancestor
+					switch (transType) {
+						case TransSlide(_, _, _, _):
+							var p = parent.parent;
+							while (p != null) {
+								switch (p.type) {
+									case FLOW(_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _):
+										trace('Warning: $sourceName: slide() transition inside flow() may not work as expected — flow recalculates child positions each frame');
+										break;
+									default:
+								}
+								p = p.parent;
+							}
+						default:
+					}
 					eatComma();
 				}
 				return null;

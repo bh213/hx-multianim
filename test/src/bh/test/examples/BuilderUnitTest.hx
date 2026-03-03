@@ -4518,6 +4518,55 @@ class BuilderUnitTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testTransitionInterruptionCancelsOldAndStartsNew():Void {
+		final tm = new bh.base.TweenManager();
+		final builder = builderFromSource("
+			#test programmable(status:[a,b,c]=a) {
+				transition {
+					status: fade(0.5)
+				}
+				@(status=>a) bitmap(generated(color(10, 10, #ff0000))): 0,0
+				@(status=>b) bitmap(generated(color(10, 10, #00ff00))): 10,0
+				@(status=>c) bitmap(generated(color(10, 10, #0000ff))): 20,0
+			}
+		");
+		builder.tweenManager = tm;
+		final result = builder.buildWithParameters("test", ["status" => "a"], null, null, true);
+		Assert.notNull(result);
+
+		// Initial state: A visible, B and C hidden
+		final childA = result.object.getChildAt(0);
+		final childB = result.object.getChildAt(1);
+		final childC = result.object.getChildAt(2);
+		Assert.isTrue(childA.visible, "A should be visible initially");
+		Assert.isFalse(childB.visible, "B should be hidden initially");
+		Assert.isFalse(childC.visible, "C should be hidden initially");
+
+		// Start transition to B
+		result.setParameter("status", "b");
+		// Transition should be active (A fading out, B fading in)
+		Assert.isTrue(tm.hasTweens(childA) || tm.hasTweens(childB),
+			"Should have active tweens after first parameter change");
+
+		// Advance a bit (skip first dt + partial advance)
+		tm.update(0.0); // consumed by skipFirstDt
+		tm.update(0.1); // advance 0.1s into 0.5s fade
+
+		// Interrupt: change to C before fade completes
+		result.setParameter("status", "c");
+
+		// Old tweens for A→B should be cancelled, new tweens for C should start
+		// Advance past full duration to complete new transition
+		tm.update(0.0); // consumed by skipFirstDt of new tweens
+		tm.update(1.0); // advance well past 0.5s duration
+
+		// Final state: only C should be visible, A and B hidden
+		Assert.isFalse(childA.visible, "A should be hidden after interruption completes");
+		Assert.isFalse(childB.visible, "B should be hidden after interruption completes");
+		Assert.isTrue(childC.visible, "C should be visible after interruption completes");
+	}
+
+	@Test
 	public function testTransitionWithoutTransitionBlockIsInstant():Void {
 		final tm = new bh.base.TweenManager();
 		final builder = builderFromSource("

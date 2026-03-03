@@ -954,7 +954,7 @@ Declare animated transitions for parameter changes inside programmable elements.
 - Parameter names must match declared parameters
 - Requires `TweenManager` — auto-injected when using `ScreenManager.buildFromResource()` or when `MultiAnimBuilder.tweenManager` is set
 - Falls back to instant visibility when no TweenManager is available
-- Codegen path (`@:manim`) does not support transitions (builder-only)
+- Codegen path (`@:manim`): generates `CodegenTransitionHelper` with `setTweenManager(tm)` and `cancelAllTransitions()` methods; factory auto-injects `tweenManager` from `ProgrammableBuilder`
 
 ### Behavior
 

@@ -13,6 +13,8 @@ import bh.multianim.MultiAnimParser.ParsedPaths;
 import bh.multianim.MultiAnimParser.PathCoordinateMode;
 import bh.multianim.MultiAnimParser.SmoothingType;
 import bh.multianim.MultiAnimParser.EasingType;
+import bh.multianim.MultiAnimParser.TransitionType;
+import bh.multianim.MultiAnimParser.TransitionDirection;
 import bh.multianim.MultiAnimParser.ReferenceableValue;
 import bh.multianim.MultiAnimParser.SettingValueType;
 import bh.multianim.MultiAnimParser.CurveDef;
@@ -67,7 +69,7 @@ private enum MacroSlotKey {
 class ProgrammableCodeGen {
 	static var elementCounter:Int = 0;
 	static var expressionUpdates:Array<{fieldName:String, updateExpr:Expr, paramRefs:Array<String>}> = [];
-	static var visibilityEntries:Array<{fieldName:String, condition:Expr}> = [];
+	static var visibilityEntries:Array<{fieldName:String, condition:Expr, paramRefs:Array<String>}> = [];
 	static var namedElements:Map<String, Array<String>> = [];
 	static var indexedNamedElements:Map<String, Array<{index:Int, fieldName:String}>> = new Map();
 	static var indexed2DNamedElements:Map<String, Array<{indexX:Int, indexY:Int, fieldName:String}>> = new Map();
@@ -136,6 +138,9 @@ class ProgrammableCodeGen {
 	static var generatedStyleSetters:Map<String, Bool> = new Map();
 	static var generatedImageSetters:Map<String, Bool> = new Map();
 
+	// Transition declarations from the current programmable's transition{} block
+	static var currentTransitions:Null<Map<String, TransitionType>> = null;
+
 	static function resetState():Void {
 		elementCounter = 0;
 		expressionUpdates = [];
@@ -167,6 +172,7 @@ class ProgrammableCodeGen {
 		instanceClassName = "";
 		generatedStyleSetters = new Map();
 		generatedImageSetters = new Map();
+		currentTransitions = null;
 	}
 
 	/**
@@ -243,6 +249,9 @@ class ProgrammableCodeGen {
 					instanceClassName = instName;
 
 					classifyParamTypes();
+
+					// Store transition declarations for codegen
+					currentTransitions = node.transitions;
 
 					// Generate fields for both factory and instance classes
 					final result = generateFields(node);
@@ -455,6 +464,11 @@ class ProgrammableCodeGen {
 		// 1. _pb reference to ProgrammableBuilder (for runtime builder calls)
 		instanceFields.push(makeField("_pb", FVar(macro :bh.multianim.ProgrammableBuilder, null), [APrivate], pos));
 
+		// 1b. _transHelper field when transitions exist
+		final hasTransitions = currentTransitions != null && currentTransitions.iterator().hasNext();
+		if (hasTransitions)
+			instanceFields.push(makeField("_transHelper", FVar(macro :Null<bh.multianim.CodegenTransitionHelper>, null), [APrivate], pos));
+
 		// 2. Parameter fields
 		for (name in paramNames) {
 			final def = paramDefs.get(name);
@@ -487,11 +501,36 @@ class ProgrammableCodeGen {
 			}
 		}
 
-		// 4. _applyVisibility()
+		// 4. _applyVisibility(?_changedParam)
+		// Collect the set of param names that have transitions
+		final transParamNames:Map<String, Bool> = new Map();
+		if (hasTransitions) {
+			for (pName in currentTransitions.keys())
+				transParamNames.set(pName, true);
+		}
+
 		final visExprs:Array<Expr> = [];
 		for (entry in visibilityEntries) {
 			final fieldRef = macro $p{["this", entry.fieldName]};
-			visExprs.push(macro $fieldRef.visible = ${entry.condition});
+			// Check if this entry's paramRefs intersect with transition-declared params
+			var usesTransition = false;
+			if (hasTransitions) {
+				for (ref in entry.paramRefs) {
+					if (transParamNames.exists(ref)) { usesTransition = true; break; }
+				}
+			}
+			if (usesTransition) {
+				// Transition-aware: delegate to helper when changedParam is set and matches
+				visExprs.push(macro {
+					final _newVis = ${entry.condition};
+					if (this._transHelper != null && _changedParam != null && this._transHelper.tweenManager != null)
+						this._transHelper.setVisibilityWithTransition($fieldRef, _newVis, _changedParam)
+					else
+						$fieldRef.visible = _newVis;
+				});
+			} else {
+				visExprs.push(macro $fieldRef.visible = ${entry.condition});
+			}
 		}
 		// Pool-based repeat visibility: show/hide based on count param
 		for (entry in repeatPoolEntries) {
@@ -519,7 +558,11 @@ class ProgrammableCodeGen {
 		}
 		if (visExprs.length == 0)
 			visExprs.push(macro {});
-		instanceFields.push(makeMethod("_applyVisibility", visExprs, [], macro :Void, [APrivate], pos));
+		// When transitions exist, _applyVisibility takes optional param name
+		final visArgs:Array<FunctionArg> = [];
+		if (hasTransitions)
+			visArgs.push({name: "_changedParam", type: macro :String, opt: true, value: null});
+		instanceFields.push(makeMethod("_applyVisibility", visExprs, visArgs, macro :Void, [APrivate], pos));
 
 		// 5. _updateExpressions()
 		final exprUpdateExprs:Array<Expr> = [];
@@ -573,6 +616,11 @@ class ProgrammableCodeGen {
 			}
 		}
 
+		// 6b. Transition helper initialization
+		if (hasTransitions) {
+			constructorExprs.push(generateTransitionHelperInit(pos));
+		}
+
 		// 7. Instance constructor: (pb, params...) -> builds tree
 		instanceFields.push(generateInstanceConstructor(constructorExprs, pos));
 
@@ -588,7 +636,13 @@ class ProgrammableCodeGen {
 			} else {
 				setterExprs.push(macro $p{["this", paramField]} = $i{"v"});
 			}
-			setterExprs.push(macro this._applyVisibility());
+			// Pass param name to _applyVisibility when transitions exist for this param
+			if (hasTransitions && transParamNames.exists(name)) {
+				final nameStr = name;
+				setterExprs.push(macro this._applyVisibility($v{nameStr}));
+			} else {
+				setterExprs.push(macro this._applyVisibility());
+			}
 
 			var refsParam = false;
 			for (update in expressionUpdates) {
@@ -604,7 +658,17 @@ class ProgrammableCodeGen {
 			instanceFields.push(makeMethod("set" + toPascalCase(name), setterExprs, [{name: "v", type: setterParamType}], macro :Void, [APublic], pos));
 		}
 
-		// 8. Named element accessors (on instance)
+		// 8b. Transition control methods (on instance)
+		if (hasTransitions) {
+			instanceFields.push(makeMethod("setTweenManager", [
+				macro { if (this._transHelper != null) this._transHelper.tweenManager = tm; }
+			], [{name: "tm", type: macro :Null<bh.base.TweenManager>}], macro :Void, [APublic], pos));
+			instanceFields.push(makeMethod("cancelAllTransitions", [
+				macro { if (this._transHelper != null) this._transHelper.cancelAllTransitions(); }
+			], [], macro :Void, [APublic], pos));
+		}
+
+		// 8c. Named element accessors (on instance)
 		for (name => elementFieldsList in namedElements) {
 			// Skip names that have indexed accessors — they get the indexed get_name(index/x,y) method instead
 			if (indexedNamedElements.exists(name) || indexed2DNamedElements.exists(name))
@@ -1145,7 +1209,7 @@ class ProgrammableCodeGen {
 		// Visibility
 		final visCond = generateVisibilityCondition(node, siblings, fieldName, pos);
 		if (visCond != null) {
-			visibilityEntries.push({fieldName: fieldName, condition: visCond});
+			visibilityEntries.push({fieldName: fieldName, condition: visCond, paramRefs: extractConditionalParamRefs(node, siblings)});
 		}
 
 		siblings.push({node: node, fieldName: fieldName});
@@ -1255,7 +1319,7 @@ class ProgrammableCodeGen {
 		// Visibility for the container itself
 		final visCond = generateVisibilityCondition(node, siblings, containerName, pos);
 		if (visCond != null)
-			visibilityEntries.push({fieldName: containerName, condition: visCond});
+			visibilityEntries.push({fieldName: containerName, condition: visCond, paramRefs: extractConditionalParamRefs(node, siblings)});
 		siblings.push({node: node, fieldName: containerName});
 
 		if (info.staticCount != null) {
@@ -1439,7 +1503,7 @@ class ProgrammableCodeGen {
 
 		final visCond = generateVisibilityCondition(node, siblings, containerName, pos);
 		if (visCond != null)
-			visibilityEntries.push({fieldName: containerName, condition: visCond});
+			visibilityEntries.push({fieldName: containerName, condition: visCond, paramRefs: extractConditionalParamRefs(node, siblings)});
 		siblings.push({node: node, fieldName: containerName});
 
 		// Resolve layout points and unroll
@@ -1789,7 +1853,7 @@ class ProgrammableCodeGen {
 
 		final visCond = generateVisibilityCondition(node, siblings, containerName, pos);
 		if (visCond != null)
-			visibilityEntries.push({fieldName: containerName, condition: visCond});
+			visibilityEntries.push({fieldName: containerName, condition: visCond, paramRefs: extractConditionalParamRefs(node, siblings)});
 		siblings.push({node: node, fieldName: containerName});
 
 		final containerRef = macro $p{["this", containerName]};
@@ -2417,7 +2481,7 @@ class ProgrammableCodeGen {
 
 		final visCond = generateVisibilityCondition(node, siblings, containerName, pos);
 		if (visCond != null)
-			visibilityEntries.push({fieldName: containerName, condition: visCond});
+			visibilityEntries.push({fieldName: containerName, condition: visCond, paramRefs: extractConditionalParamRefs(node, siblings)});
 		siblings.push({node: node, fieldName: containerName});
 
 		if (infoX.staticCount != null && infoY.staticCount != null) {
@@ -4722,6 +4786,48 @@ class ProgrammableCodeGen {
 		};
 	}
 
+	/** Extract parameter names referenced by a node's conditionals (and prior siblings for @else/@default). */
+	static function extractConditionalParamRefs(node:Node, siblings:Array<{node:Node, fieldName:String}>):Array<String> {
+		final refs:Array<String> = [];
+		switch (node.conditionals) {
+			case NoConditional:
+			case Conditional(values, _):
+				for (key in values.keys())
+					if (!refs.contains(key)) refs.push(key);
+			case ConditionalElse(values):
+				// Collects from prior siblings too (since @else depends on them)
+				for (sib in siblings) {
+					switch (sib.node.conditionals) {
+						case Conditional(sValues, _):
+							for (key in sValues.keys())
+								if (!refs.contains(key)) refs.push(key);
+						case ConditionalElse(sValues):
+							if (sValues != null)
+								for (key in sValues.keys())
+									if (!refs.contains(key)) refs.push(key);
+						default:
+					}
+				}
+				if (values != null)
+					for (key in values.keys())
+						if (!refs.contains(key)) refs.push(key);
+			case ConditionalDefault:
+				for (sib in siblings) {
+					switch (sib.node.conditionals) {
+						case Conditional(sValues, _):
+							for (key in sValues.keys())
+								if (!refs.contains(key)) refs.push(key);
+						case ConditionalElse(sValues):
+							if (sValues != null)
+								for (key in sValues.keys())
+									if (!refs.contains(key)) refs.push(key);
+						default:
+					}
+				}
+		}
+		return refs;
+	}
+
 	static function negatePriorSiblings(siblings:Array<{node:Node, fieldName:String}>):Expr {
 		var result:Expr = macro true;
 		for (sib in siblings) {
@@ -6035,6 +6141,7 @@ class ProgrammableCodeGen {
 
 	/** Generate factory create() method: loads builder, creates new instance, returns it. */
 	static function generateFactoryCreate(pos:Position):Field {
+		final hasTransitions = currentTransitions != null && currentTransitions.iterator().hasNext();
 		// Build create() args (same typed params as instance constructor, minus _pb)
 		final createArgs:Array<FunctionArg> = [];
 		final orderedParams = getOrderedParams();
@@ -6076,7 +6183,13 @@ class ProgrammableCodeGen {
 		];
 		if (hasBuilderParameterPlaceholders)
 			createBody.push(macro this.setPlaceholderObjects(placeholders));
-		createBody.push(macro return $newExpr);
+		if (hasTransitions) {
+			createBody.push(macro final _inst = $newExpr);
+			createBody.push(macro if (this.tweenManager != null) _inst.setTweenManager(this.tweenManager));
+			createBody.push(macro return _inst);
+		} else {
+			createBody.push(macro return $newExpr);
+		}
 
 		final instType:ComplexType = TPath(instTypePath);
 		return {
@@ -6150,7 +6263,14 @@ class ProgrammableCodeGen {
 
 		final instTypePath = {pack: localClassPack, name: instanceClassName};
 		final newExpr:Expr = {expr: ENew(instTypePath, newArgs), pos: pos};
-		bodyExprs.push(macro return $newExpr);
+		final hasTransitions = currentTransitions != null && currentTransitions.iterator().hasNext();
+		if (hasTransitions) {
+			bodyExprs.push(macro final _inst = $newExpr);
+			bodyExprs.push(macro if (this.tweenManager != null) _inst.setTweenManager(this.tweenManager));
+			bodyExprs.push(macro return _inst);
+		} else {
+			bodyExprs.push(macro return $newExpr);
+		}
 
 		final instType:ComplexType = TPath(instTypePath);
 		final createFromArgs:Array<FunctionArg> = [{name: "params", type: paramStructType}];
@@ -7326,6 +7446,51 @@ class ProgrammableCodeGen {
 			case CubicBezier(x1, y1, x2, y2):
 				macro bh.multianim.MultiAnimParser.EasingType.CubicBezier($v{x1}, $v{y1}, $v{x2}, $v{y2});
 		};
+	}
+
+	static function transitionDirToExpr(dir:TransitionDirection):Expr {
+		return switch dir {
+			case TDLeft: macro bh.multianim.MultiAnimParser.TransitionDirection.TDLeft;
+			case TDRight: macro bh.multianim.MultiAnimParser.TransitionDirection.TDRight;
+			case TDUp: macro bh.multianim.MultiAnimParser.TransitionDirection.TDUp;
+			case TDDown: macro bh.multianim.MultiAnimParser.TransitionDirection.TDDown;
+		};
+	}
+
+	static function transitionTypeToExpr(tt:TransitionType):Expr {
+		return switch tt {
+			case TransNone:
+				macro bh.multianim.MultiAnimParser.TransitionType.TransNone;
+			case TransFade(duration, easing):
+				final easingExpr = easing != null ? easingTypeToExpr(easing) : macro null;
+				macro bh.multianim.MultiAnimParser.TransitionType.TransFade($v{duration}, $easingExpr);
+			case TransCrossfade(duration, easing):
+				final easingExpr = easing != null ? easingTypeToExpr(easing) : macro null;
+				macro bh.multianim.MultiAnimParser.TransitionType.TransCrossfade($v{duration}, $easingExpr);
+			case TransFlipX(duration, easing):
+				final easingExpr = easing != null ? easingTypeToExpr(easing) : macro null;
+				macro bh.multianim.MultiAnimParser.TransitionType.TransFlipX($v{duration}, $easingExpr);
+			case TransFlipY(duration, easing):
+				final easingExpr = easing != null ? easingTypeToExpr(easing) : macro null;
+				macro bh.multianim.MultiAnimParser.TransitionType.TransFlipY($v{duration}, $easingExpr);
+			case TransSlide(dir, duration, distance, easing):
+				final dirExpr = transitionDirToExpr(dir);
+				final distExpr:Expr = if (distance != null) { final d:Float = distance; macro $v{d}; } else macro null;
+				final easingExpr = easing != null ? easingTypeToExpr(easing) : macro null;
+				macro bh.multianim.MultiAnimParser.TransitionType.TransSlide($dirExpr, $v{duration}, $distExpr, $easingExpr);
+		};
+	}
+
+	/** Generate constructor expression that initializes _transHelper with the transition map. */
+	static function generateTransitionHelperInit(pos:Position):Expr {
+		final mapExprs:Array<Expr> = [macro final _tm = new Map<String, bh.multianim.MultiAnimParser.TransitionType>()];
+		for (paramName => transType in currentTransitions) {
+			final keyExpr:Expr = macro $v{paramName};
+			final valExpr = transitionTypeToExpr(transType);
+			mapExprs.push(macro _tm.set($keyExpr, $valExpr));
+		}
+		mapExprs.push(macro this._transHelper = new bh.multianim.CodegenTransitionHelper(_tm));
+		return macro $b{mapExprs};
 	}
 
 	/** Sanitize a name for use as a Haxe identifier (strip leading #, replace non-alphanumeric) */
