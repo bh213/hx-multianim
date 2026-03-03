@@ -5442,7 +5442,7 @@ class MacroManimParser {
 	}
 
 	/** Check if a string identifier is a known easing name. Returns null if not. */
-	static function tryMatchEasingName(s:String):Null<EasingType> {
+	public static function tryMatchEasingName(s:String):Null<EasingType> {
 		return switch (s.toLowerCase()) {
 			case "linear": Linear;
 			case "easeinquad": EaseInQuad;

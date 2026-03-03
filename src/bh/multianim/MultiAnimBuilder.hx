@@ -4366,8 +4366,13 @@ class MultiAnimBuilder {
 				} else if (s.curveName != null) {
 					var curves = getCurves();
 					var found = curves.get(s.curveName);
-					if (found == null)
-						throw 'color curve not found: ${s.curveName}' + currentNodePos();
+					if (found == null) {
+						var easing = MacroManimParser.tryMatchEasingName(s.curveName);
+						if (easing == null)
+							throw 'color curve not found: ${s.curveName}' + currentNodePos();
+						found = new bh.paths.Curve(null, easing, null);
+						curves.set(s.curveName, found);
+					}
 					curve = found;
 				} else {
 					curve = new bh.paths.Curve(null, Linear, null);
@@ -4675,9 +4680,14 @@ class MultiAnimBuilder {
 						curve = new bh.paths.Curve(null, ca.inlineEasing, null);
 					} else if (ca.curveName != null) {
 						if (allCurves == null) allCurves = getCurves();
-						final resolved = allCurves.get(ca.curveName);
-						if (resolved == null)
-							throw 'curve not found: ${ca.curveName}' + MacroUtils.nodePos(node);
+						var resolved = allCurves.get(ca.curveName);
+						if (resolved == null) {
+							var easing = MacroManimParser.tryMatchEasingName(ca.curveName);
+							if (easing == null)
+								throw 'curve not found: ${ca.curveName}' + MacroUtils.nodePos(node);
+							resolved = new bh.paths.Curve(null, easing, null);
+							allCurves.set(ca.curveName, resolved);
+						}
 						curve = resolved;
 					} else {
 						throw 'curve assignment must have either curveName or inlineEasing' + MacroUtils.nodePos(node);
@@ -4757,8 +4767,15 @@ class MultiAnimBuilder {
 					if (resolving.exists(name))
 						throw 'circular curve reference: $name';
 					var def = curvesDef.get(name);
-					if (def == null)
-						throw 'unknown curve reference: $name';
+					if (def == null) {
+						// Auto-resolve easing names as built-in curves
+						var easing = MacroManimParser.tryMatchEasingName(name);
+						if (easing == null)
+							throw 'unknown curve reference: $name';
+						var curve = new bh.paths.Curve(null, easing, null);
+						result.set(name, curve);
+						return curve;
+					}
 
 					resolving.set(name, true);
 
@@ -4813,8 +4830,13 @@ class MultiAnimBuilder {
 	public function getCurve(name:String):bh.paths.Curve.ICurve {
 		var curves = getCurves();
 		var curve = curves.get(name);
-		if (curve == null)
-			throw 'curve not found: $name';
+		if (curve == null) {
+			var easing = MacroManimParser.tryMatchEasingName(name);
+			if (easing == null)
+				throw 'curve not found: $name';
+			curve = new bh.paths.Curve(null, easing, null);
+			curves.set(name, curve);
+		}
 		return curve;
 	}
 
@@ -4824,8 +4846,13 @@ class MultiAnimBuilder {
 		if (ref.curveName != null) {
 			var curves = getCurves();
 			var curve = curves.get(ref.curveName);
-			if (curve == null)
-				throw 'curve not found: ${ref.curveName}' + currentNodePos();
+			if (curve == null) {
+				var easing = MacroManimParser.tryMatchEasingName(ref.curveName);
+				if (easing == null)
+					throw 'curve not found: ${ref.curveName}' + currentNodePos();
+				curve = new bh.paths.Curve(null, easing, null);
+				curves.set(ref.curveName, curve);
+			}
 			return curve;
 		}
 		throw 'curve reference must have either curveName or inlineEasing' + currentNodePos();

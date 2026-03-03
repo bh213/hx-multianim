@@ -1,0 +1,16 @@
+version: 0.5
+
+curves {
+    #envelope curve {
+        points: [(0, 0), (0.1, 1.0), (0.9, 1.0), (1.0, 0)]
+    }
+
+    #mulEasing curve { multiply: [easeInBack, envelope] }
+    #compEasing curve { apply: easeOutBounce, easeInQuad }
+    #invEasing curve { invert: easeOutElastic }
+    #scaleEasing curve { scale: easeInOutCubic, 0.7 }
+}
+
+#builtinCurves programmable() {
+    text(m3x6, "Builtin Curves", white, left): 10, 5
+}

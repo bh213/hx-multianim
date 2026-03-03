@@ -104,7 +104,7 @@ curves {
 }
 ```
 
-Operations reference other named curves. Forward references and chaining allowed. Circular references error.
+Operations reference other named curves **or built-in easing names** (e.g. `multiply: [easeInBack, envelope]`). Forward references and chaining allowed. Circular references error.
 
 ## Particles Quick Reference
 

@@ -1367,7 +1367,7 @@ var value = curve.getValue(0.5); // returns eased value at t=0.5
 
 ### Curve Operations
 
-Curves can reference other named curves via operations. This enables combining curves without duplicating definitions.
+Curves can reference other named curves **or built-in easing names** via operations. This enables combining curves without duplicating definitions.
 
 ```
 curves {
@@ -1379,6 +1379,10 @@ curves {
     #fadeOut curve { invert: base }
     #boosted curve { scale: base, 1.5 }
     #chained curve { scale: fadeOut, 0.8 }
+
+    // Easing names work directly in operations — no need to wrap in a named curve:
+    #pulseFade curve { multiply: [easeInBack, envelope] }
+    #gentle curve { scale: easeOutBounce, 0.7 }
 }
 ```
 

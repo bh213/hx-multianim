@@ -92,6 +92,7 @@
 - **Particle runtime API unit tests** — 15 tests in `ParticleRuntimeTest.hx` covering force field array API (add/remove/clear), emitBurst/emitBurstAt, force field physics (wind, attractor), and sub-emitters (onDeath, onBirth, probability gate, missing group)
 - **Test reporting: unit warnings** — structured test output now includes `unit_warnings` count and per-warning detail lines; `test.ps1` displays warnings in summary and detail (yellow for warnings, red for failures)
 - **Inline easing in animatedPath curve slots** — `alphaCurve: easeInQuad` works directly without requiring a `curves{}` block
+- **Built-in easing names in curve operations** — easing names (e.g. `easeInBack`, `easeOutBounce`) auto-resolve as curves in `multiply`, `apply`, `invert`, `scale` operations and all curve-by-name lookups, without needing explicit `#name curve { easing: ... }` definitions
 - **AnimatedPath `easing:` shorthand** — `easing: easeOutCubic` as shortcut for `0.0: progressCurve: easeOutCubic`
 - **Multi-color curve stops** — per-segment color pairs in animatedPath: multiple `colorCurve` assignments at different rates, each with its own start/end colors (e.g. red→green at 0.0, green→blue at 0.5)
 - **`pathGuide` force field** — `pathguide(pathName, attractStrength, flowStrength, radius)` attracts particles toward a named path and nudges them along its direction
