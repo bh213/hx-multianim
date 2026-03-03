@@ -1,13 +1,14 @@
 package bh.test.examples;
 
 import utest.Assert;
+import bh.test.BuilderTestBase;
 import bh.multianim.TextMarkupConverter;
 
 /**
- * Unit tests for TextMarkupConverter:
- * convert(), hasMarkup(), extractStyleReferences(), resolveColorToHex(), isValidStyleName(), escapeStyleName().
+ * Unit tests for TextMarkupConverter (convert, hasMarkup, extractStyleReferences, etc.)
+ * and builder-level richText element construction (styles, images, markup, parameters).
  */
-class RichTextTest extends utest.Test {
+class RichTextTest extends BuilderTestBase {
 	// ==================== convert() — basic tags ====================
 
 	@Test
@@ -294,5 +295,121 @@ class RichTextTest extends utest.Test {
 	@Test
 	public function testEscapeStyleNameNotReserved():Void {
 		Assert.equals("myStyle", TextMarkupConverter.escapeStyleName("myStyle"));
+	}
+
+	// ==================== Builder-Level richText Tests ====================
+
+	@Test
+	public function testRichTextBuilds():Void {
+		var result = BuilderTestBase.buildFromSource("
+			#test programmable() {
+				richText(\"m3x6\", \"hello\", #FFFFFF): 0, 0
+			}
+		", "test");
+		Assert.notNull(result);
+		Assert.isTrue(result.object.numChildren > 0);
+	}
+
+	@Test
+	public function testRichTextWithStyles():Void {
+		var result = BuilderTestBase.buildFromSource("
+			#test programmable() {
+				richText(\"m3x6\", \"[damage]50[/]\", #FFFFFF, styles: {damage: color(#FF0000)}): 0, 0
+			}
+		", "test");
+		Assert.notNull(result);
+		Assert.isTrue(result.object.numChildren > 0);
+	}
+
+	@Test
+	public function testRichTextWithMarkup():Void {
+		var result = BuilderTestBase.buildFromSource("
+			#test programmable() {
+				richText(\"m3x6\", \"[damage]50[/]\", #FFFFFF, styles: {damage: color(#FF0000)}): 0, 0
+			}
+		", "test");
+		Assert.notNull(result);
+		var texts = BuilderTestBase.findAllTextDescendants(result.object);
+		Assert.isTrue(texts.length > 0);
+	}
+
+	@Test
+	public function testRichTextWithImages():Void {
+		var result = BuilderTestBase.buildFromSource("
+			#test programmable() {
+				richText(\"m3x6\", \"hello\", #FFFFFF, images: {sword: generated(color(8, 8, #FF0000))}): 0, 0
+			}
+		", "test");
+		Assert.notNull(result);
+		Assert.isTrue(result.object.numChildren > 0);
+	}
+
+	@Test
+	public function testRichTextParamStyleColor():Void {
+		var result = BuilderTestBase.buildFromSource("
+			#test programmable(hlColor:color=#FF0000) {
+				richText(\"m3x6\", \"[hl]text[/]\", #FFFFFF, styles: {hl: color($hlColor)}): 0, 0
+			}
+		", "test", null, Incremental);
+		Assert.notNull(result);
+		// setParameter should not throw
+		result.setParameter("hlColor", 0x00FF00);
+		Assert.isTrue(true);
+	}
+
+	@Test
+	public function testPlainTextRejectsStyles():Void {
+		var err = BuilderTestBase.parseExpectingError("
+			#test programmable() {
+				text(\"m3x6\", \"hello\", #FFFFFF, styles: {damage: color(#FF0000)}): 0, 0
+			}
+		");
+		Assert.notNull(err);
+		Assert.isTrue(err.indexOf("richText") >= 0);
+	}
+
+	@Test
+	public function testPlainTextBuilds():Void {
+		var result = BuilderTestBase.buildFromSource("
+			#test programmable() {
+				text(\"m3x6\", \"hello\", #FFFFFF): 0, 0
+			}
+		", "test");
+		Assert.notNull(result);
+		var texts = BuilderTestBase.findAllTextDescendants(result.object);
+		Assert.isTrue(texts.length > 0);
+	}
+
+	@Test
+	public function testRichTextMultipleStyles():Void {
+		var result = BuilderTestBase.buildFromSource("
+			#test programmable() {
+				richText(\"m3x6\", \"[a]x[/][b]y[/]\", #FFFFFF, styles: {a: color(#FF0000), b: color(#00FF00)}): 0, 0
+			}
+		", "test");
+		Assert.notNull(result);
+		Assert.isTrue(result.object.numChildren > 0);
+	}
+
+	@Test
+	public function testRichTextEscapeBrackets():Void {
+		var result = BuilderTestBase.buildFromSource("
+			#test programmable() {
+				richText(\"m3x6\", \"[[escaped]]\", #FFFFFF): 0, 0
+			}
+		", "test");
+		Assert.notNull(result);
+		Assert.isTrue(result.object.numChildren > 0);
+	}
+
+	@Test
+	public function testRichTextCondenseWhite():Void {
+		var result = BuilderTestBase.buildFromSource("
+			#test programmable() {
+				richText(\"m3x6\", \"hello  world\", #FFFFFF, condenseWhite: true): 0, 0
+			}
+		", "test");
+		Assert.notNull(result);
+		Assert.isTrue(result.object.numChildren > 0);
 	}
 }

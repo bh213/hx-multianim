@@ -90,6 +90,22 @@
 
 `outline`, `glow`, `blur`, `saturate`, `brightness`, `grayscale`, `hue`, `dropShadow`, `replacePalette`, `replaceColor`, `pixelOutline`, `group`
 
+## Curves Quick Reference
+
+```manim
+curves {
+    #name curve { easing: easingName }
+    #name curve { points: [(0, 0), (0.5, 1.0), (1.0, 0)] }
+    #name curve { [0.0 .. 0.5] easeInQuad, [0.5 .. 1.0] easeOutQuad }
+    #name curve { multiply: [a, b] }        // a(t) * b(t), N-ary
+    #name curve { apply: inner, outer }      // outer(inner(t))
+    #name curve { invert: a }               // 1.0 - a(t)
+    #name curve { scale: a, 1.5 }           // a(t) * factor
+}
+```
+
+Operations reference other named curves. Forward references and chaining allowed. Circular references error.
+
 ## Particles Quick Reference
 
 ```manim

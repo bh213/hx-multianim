@@ -4747,29 +4747,63 @@ class MultiAnimBuilder {
 		switch node.type {
 			case CURVES(curvesDef):
 				var result = new Map<String, bh.paths.Curve.ICurve>();
-				for (name => def in curvesDef) {
-					var resolvedPoints:Null<Array<bh.paths.Curve.CurvePoint>> = null;
-					if (def.points != null) {
-						resolvedPoints = [];
-						for (p in def.points) {
-							resolvedPoints.push({time: resolveAsNumber(p.time), value: resolveAsNumber(p.value)});
+				var resolving = new Map<String, Bool>();
+
+				var resolveCurve:String->bh.paths.Curve.ICurve = function(_:String):bh.paths.Curve.ICurve throw "unreachable";
+				resolveCurve = function(name:String):bh.paths.Curve.ICurve {
+					var existing = result.get(name);
+					if (existing != null) return existing;
+
+					if (resolving.exists(name))
+						throw 'circular curve reference: $name';
+					var def = curvesDef.get(name);
+					if (def == null)
+						throw 'unknown curve reference: $name';
+
+					resolving.set(name, true);
+
+					var curve:bh.paths.Curve.ICurve;
+					if (def.operation != null) {
+						curve = switch (def.operation) {
+							case Multiply(names):
+								new bh.paths.Curve.MultiplyCurve([for (n in names) resolveCurve(n)]);
+							case Compose(outerName, innerName):
+								new bh.paths.Curve.ComposeCurve(resolveCurve(outerName), resolveCurve(innerName));
+							case Invert(curveName):
+								new bh.paths.Curve.InvertCurve(resolveCurve(curveName));
+							case Scale(curveName, factor):
+								new bh.paths.Curve.ScaleCurve(resolveCurve(curveName), resolveAsNumber(factor));
+						};
+					} else {
+						var resolvedPoints:Null<Array<bh.paths.Curve.CurvePoint>> = null;
+						if (def.points != null) {
+							resolvedPoints = [];
+							for (p in def.points) {
+								resolvedPoints.push({time: resolveAsNumber(p.time), value: resolveAsNumber(p.value)});
+							}
 						}
+						var resolvedSegments:Null<Array<bh.paths.Curve.CurveSegment>> = null;
+						if (def.segments != null) {
+							resolvedSegments = [];
+							for (s in def.segments) {
+								resolvedSegments.push({
+									timeStart: resolveAsNumber(s.timeStart),
+									timeEnd: resolveAsNumber(s.timeEnd),
+									easing: s.easing,
+									valueStart: resolveAsNumber(s.valueStart),
+									valueEnd: resolveAsNumber(s.valueEnd)
+								});
+							}
+						}
+						curve = new bh.paths.Curve(resolvedPoints, def.easing, resolvedSegments);
 					}
-					var resolvedSegments:Null<Array<bh.paths.Curve.CurveSegment>> = null;
-				if (def.segments != null) {
-					resolvedSegments = [];
-					for (s in def.segments) {
-						resolvedSegments.push({
-							timeStart: resolveAsNumber(s.timeStart),
-							timeEnd: resolveAsNumber(s.timeEnd),
-							easing: s.easing,
-							valueStart: resolveAsNumber(s.valueStart),
-							valueEnd: resolveAsNumber(s.valueEnd)
-						});
-					}
-				}
-				result.set(name, new bh.paths.Curve(resolvedPoints, def.easing, resolvedSegments));
-				}
+
+					resolving.remove(name);
+					result.set(name, curve);
+					return curve;
+				};
+
+				for (name => _ in curvesDef) resolveCurve(name);
 				return result;
 			default:
 				throw 'curves is of unexpected type ${node.type}' + MacroUtils.nodePos(node);

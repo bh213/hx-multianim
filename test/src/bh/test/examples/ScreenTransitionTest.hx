@@ -3,6 +3,7 @@ package bh.test.examples;
 import utest.Assert;
 import bh.ui.screens.ScreenTransition;
 import bh.base.TweenManager;
+import bh.base.TweenManager.TweenProperty;
 import bh.multianim.MultiAnimParser.EasingType;
 
 /**
@@ -197,5 +198,103 @@ class ScreenTransitionTest extends utest.Test {
 		Assert.floatEquals(0.1, getDuration(SlideUp(0.1)));
 		Assert.floatEquals(1.0, getDuration(SlideDown(1.0)));
 		Assert.floatEquals(-1.0, getDuration(ScreenTransition.Custom(function(t:TweenManager, o:h2d.Object, n:h2d.Object, c:Void -> Void) { c(); })));
+	}
+
+	// ==================== TweenManager Transition Patterns ====================
+
+	@Test
+	public function testTweenFadePattern():Void {
+		var mgr = new TweenManager();
+		var obj = new h2d.Object();
+		obj.alpha = 1.0;
+		mgr.tween(obj, 0.3, [Alpha(0.0)]);
+		mgr.update(0.35);
+		Assert.floatEquals(0.0, obj.alpha);
+	}
+
+	@Test
+	public function testTweenSlidePattern():Void {
+		var mgr = new TweenManager();
+		var obj = new h2d.Object();
+		obj.x = 0.0;
+		mgr.tween(obj, 0.3, [X(-800.0)]);
+		mgr.update(0.35);
+		Assert.floatEquals(-800.0, obj.x);
+	}
+
+	@Test
+	public function testTweenCompletionCallback():Void {
+		var mgr = new TweenManager();
+		var obj = new h2d.Object();
+		var completed = false;
+		mgr.tween(obj, 0.3, [Alpha(0.0)]).setOnComplete(function() { completed = true; });
+		mgr.update(0.35);
+		Assert.isTrue(completed);
+	}
+
+	@Test
+	public function testTweenFinishJumpsToEnd():Void {
+		var mgr = new TweenManager();
+		var obj = new h2d.Object();
+		obj.alpha = 1.0;
+		obj.x = 0.0;
+		var t = mgr.tween(obj, 1.0, [Alpha(0.0), X(200.0)]);
+		t.finish();
+		Assert.floatEquals(0.0, obj.alpha);
+		Assert.floatEquals(200.0, obj.x);
+	}
+
+	@Test
+	public function testTweenCancelNoCallback():Void {
+		var mgr = new TweenManager();
+		var obj = new h2d.Object();
+		var completed = false;
+		var t = mgr.tween(obj, 1.0, [Alpha(0.0)]).setOnComplete(function() { completed = true; });
+		mgr.cancel(t);
+		mgr.update(2.0);
+		Assert.isFalse(completed);
+	}
+
+	@Test
+	public function testConcurrentTweens():Void {
+		var mgr = new TweenManager();
+		var obj1 = new h2d.Object();
+		var obj2 = new h2d.Object();
+		obj1.alpha = 1.0;
+		obj2.x = 0.0;
+		mgr.tween(obj1, 0.5, [Alpha(0.0)]);
+		mgr.tween(obj2, 0.5, [X(100.0)]);
+		mgr.update(0.5);
+		Assert.floatEquals(0.0, obj1.alpha);
+		Assert.floatEquals(100.0, obj2.x);
+	}
+
+	@Test
+	public function testSequenceTweens():Void {
+		var mgr = new TweenManager();
+		var obj = new h2d.Object();
+		obj.x = 0.0;
+		var t1 = mgr.createTween(obj, 0.3, [X(100.0)]);
+		var t2 = mgr.createTween(obj, 0.3, [X(200.0)]);
+		mgr.sequence([t1, t2]);
+		mgr.update(0.3);
+		Assert.floatEquals(100.0, obj.x);
+		mgr.update(0.3);
+		Assert.floatEquals(200.0, obj.x);
+	}
+
+	@Test
+	public function testGroupTweens():Void {
+		var mgr = new TweenManager();
+		var obj1 = new h2d.Object();
+		var obj2 = new h2d.Object();
+		obj1.alpha = 1.0;
+		obj2.x = 0.0;
+		var t1 = mgr.createTween(obj1, 0.5, [Alpha(0.0)]);
+		var t2 = mgr.createTween(obj2, 0.5, [X(100.0)]);
+		mgr.group([t1, t2]);
+		mgr.update(0.5);
+		Assert.floatEquals(0.0, obj1.alpha);
+		Assert.floatEquals(100.0, obj2.x);
 	}
 }

@@ -5480,6 +5480,7 @@ class MacroManimParser {
 			var easing:Null<EasingType> = null;
 			var points:Null<Array<ParticleCurvePoint>> = null;
 			var segments:Null<Array<CurveSegmentDef>> = null;
+			var operation:Null<CurveOperation> = null;
 			var segExplicit:Array<Bool> = [];
 			while (!match(TCurlyClosed)) {
 				eatSemicolon();
@@ -5493,15 +5494,47 @@ class MacroManimParser {
 						advance();
 						expect(TColon);
 						points = parseCurvePoints();
+					case TIdentifier(s) if (isKeyword(s, "multiply")):
+						advance();
+						expect(TColon);
+						expect(TBracketOpen);
+						var names:Array<String> = [];
+						while (!match(TBracketClosed)) {
+							if (names.length > 0) expect(TComma);
+							names.push(expectIdentifierOrString());
+						}
+						if (names.length < 2) error("multiply requires at least 2 curve names");
+						operation = Multiply(names);
+					case TIdentifier(s) if (isKeyword(s, "apply")):
+						advance();
+						expect(TColon);
+						final innerName = expectIdentifierOrString();
+						expect(TComma);
+						final outerName = expectIdentifierOrString();
+						operation = Compose(outerName, innerName);
+					case TIdentifier(s) if (isKeyword(s, "invert")):
+						advance();
+						expect(TColon);
+						final invertCurveName = expectIdentifierOrString();
+						operation = Invert(invertCurveName);
+					case TIdentifier(s) if (isKeyword(s, "scale")):
+						advance();
+						expect(TColon);
+						final scaleCurveName = expectIdentifierOrString();
+						expect(TComma);
+						final factor = parseFloatOrReference();
+						operation = Scale(scaleCurveName, factor);
 					case TBracketOpen:
 						if (segments == null) segments = [];
 						var explicit = [false];
 						segments.push(parseCurveSegment(explicit));
 						segExplicit.push(explicit[0]);
 					default:
-						error('expected easing, points, or segment [start..end] in curve definition, got ${peek()}');
+						error('expected easing, points, multiply, apply, invert, scale, or segment [start..end] in curve definition, got ${peek()}');
 				}
 			}
+			if (operation != null && (easing != null || points != null || segments != null))
+				error("cannot mix curve operation with easing/points/segments");
 			if (segments != null && (easing != null || points != null))
 				error("cannot mix segments with easing/points in the same curve");
 			// Auto-chain segments without explicit values: each gets equal fraction of 0..1 output
@@ -5516,7 +5549,7 @@ class MacroManimParser {
 					}
 				}
 			}
-			curves.set(curveName, {easing: easing, points: points, segments: segments});
+			curves.set(curveName, {easing: easing, points: points, segments: segments, operation: operation});
 		}
 		return curves;
 	}

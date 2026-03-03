@@ -198,3 +198,70 @@ if (overlayFromManim != null)
 **Priority:** `.manim` settings override code-set config (set `modalOverlayConfig` before `load()`, then `.manim` settings overwrite in `load()`).
 
 **Overlay lifecycle:** ScreenManager reads `modalOverlayConfig` after `dialog.load()` → creates overlay bitmap → tweens alpha in sync with transition → tweens alpha out on close → removes overlay in cleanup.
+
+## Tooltip/Panel Fade Transitions
+
+Both `UITooltipHelper` and `UIPanelHelper` support optional fade-in/fade-out animations via TweenManager.
+
+**Constructor:** Pass optional `TweenManager` as last parameter:
+```haxe
+var tooltip = new UITooltipHelper(screen, builder, {fadeIn: 0.15, fadeOut: 0.1}, screenManager.tweens);
+var panel = new UIPanelHelper(screen, builder, {fadeIn: 0.2, fadeOut: 0.15}, screenManager.tweens);
+```
+
+**TooltipDefaults:** `?fadeIn:Float` (default 0.15), `?fadeOut:Float` (default 0.1). Tooltip fades in on show, fades out on hide.
+
+**PanelDefaults:** `?fadeIn:Float` (default 0), `?fadeOut:Float` (default 0). Panels default to instant (backward compatible).
+
+**Behavior:**
+- Interactives are unregistered immediately on close (before fade-out completes) — panel is logically dead during fade
+- `EVENT_PANEL_CLOSE` fires immediately on close, not after fade
+- If TweenManager is null or fade duration is 0, instant behavior is preserved (backward compatible)
+- Edge cases handled: hide during fade-in cancels tween; show during fade-out cancels previous and removes immediately
+
+## FloatingTextHelper
+
+AnimatedPath-driven floating text manager for damage numbers, heal text, status effects, etc.
+
+**File:** `src/bh/ui/FloatingTextHelper.hx`
+
+**API:**
+```haxe
+var helper = new FloatingTextHelper(?parent);
+
+// Spawn text driven by AnimatedPath
+helper.spawn(text, font, x, y, animPath, ?color, absolutePosition);
+
+// Spawn arbitrary h2d.Object
+helper.spawnObject(obj, x, y, animPath, absolutePosition);
+
+// Update all instances (call from game loop)
+helper.update(dt);
+
+// Remove all immediately
+helper.clear();
+
+// Instance count
+helper.count;
+```
+
+**Position modes:**
+- `absolutePosition = false` (default): path position is offset from spawn (x, y). Use with `Anchor` normalization.
+- `absolutePosition = true`: path position IS world coordinates. Use with `Stretch(startPoint, endPoint)` normalization.
+
+**AnimatedPath state applied:** position, alpha, scale, rotation. Color applied to `h2d.Text` only when colorCurve is active.
+
+**Usage pattern:**
+```haxe
+// In .manim:
+paths { #dmgPath path { bezier(60, -25, 30, -50) } }
+curves { #dmgAlpha curve { points: [(0, 1.0), (0.6, 0.8), (1.0, 0.0)] } }
+#dmgAnim animatedPath { path: dmgPath, duration: 1.0, 0.0: alphaCurve: dmgAlpha }
+
+// In game code:
+var floatingText = new FloatingTextHelper(overlayRoot);
+var ap = builder.createAnimatedPath("dmgAnim", Stretch(startPos, endPos));
+floatingText.spawn("-42", font, startPos.x, startPos.y, ap, 0xFF0000, true);
+```
+
+**Instance lifecycle:** `onComplete` callback fires when AnimatedPath is done. Completed instances auto-removed from manager and object removed from scene.

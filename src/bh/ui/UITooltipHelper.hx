@@ -1,5 +1,8 @@
 package bh.ui;
 
+import bh.base.TweenManager;
+import bh.base.TweenManager.Tween;
+import bh.base.TweenManager.TweenProperty;
 import bh.ui.screens.UIScreen;
 import bh.multianim.MultiAnimBuilder;
 import bh.multianim.MultiAnimBuilder.BuilderResult;
@@ -18,6 +21,8 @@ typedef TooltipDefaults = {
 	var ?position:TooltipPosition;
 	var ?offset:Int;
 	var ?layer:LayersEnum;
+	var ?fadeIn:Float;
+	var ?fadeOut:Float;
 }
 
 @:nullSafety
@@ -28,6 +33,9 @@ class UITooltipHelper {
 	final defaultPosition:TooltipPosition;
 	final defaultOffset:Int;
 	final layer:LayersEnum;
+	final defaultFadeIn:Float;
+	final defaultFadeOut:Float;
+	var tweens:Null<TweenManager>;
 
 	// Per-interactive overrides
 	var delayOverrides:Map<String, Float> = [];
@@ -46,13 +54,21 @@ class UITooltipHelper {
 	var activeBuildName:Null<String> = null;
 	var activeParams:Null<Map<String, Dynamic>> = null;
 
-	public function new(screen:UIScreenBase, builder:MultiAnimBuilder, ?defaults:TooltipDefaults) {
+	// Fade state
+	var fadeInTween:Null<Tween> = null;
+	var fadingOutObj:Null<h2d.Object> = null;
+	var fadeOutTween:Null<Tween> = null;
+
+	public function new(screen:UIScreenBase, builder:MultiAnimBuilder, ?defaults:TooltipDefaults, ?tweens:TweenManager) {
 		this.screen = screen;
 		this.builder = builder;
 		this.defaultDelay = defaults?.delay ?? 0.3;
 		this.defaultPosition = defaults?.position ?? Above;
 		this.defaultOffset = defaults?.offset ?? 4;
 		this.layer = defaults?.layer ?? ModalLayer;
+		this.defaultFadeIn = defaults?.fadeIn ?? 0.15;
+		this.defaultFadeOut = defaults?.fadeOut ?? 0.1;
+		this.tweens = tweens;
 	}
 
 	/** Start hover timer for an interactive. Call from UIInteractiveEvent(UIEntering, ...) handler. */
@@ -90,8 +106,28 @@ class UITooltipHelper {
 
 	/** Hide the currently active tooltip. */
 	public function hide():Void {
+		// Cancel any in-progress fade-in
+		if (fadeInTween != null) {
+			fadeInTween.cancel();
+			fadeInTween = null;
+		}
+
+		// Cancel any in-progress fade-out of previous tooltip
+		cancelFadeOut();
+
 		if (activeResult != null) {
-			activeResult.object.remove();
+			final obj = activeResult.object;
+			if (defaultFadeOut > 0 && tweens != null) {
+				fadingOutObj = obj;
+				fadeOutTween = tweens.tween(obj, defaultFadeOut, [Alpha(0.0)]);
+				fadeOutTween.setOnComplete(() -> {
+					obj.remove();
+					fadingOutObj = null;
+					fadeOutTween = null;
+				});
+			} else {
+				obj.remove();
+			}
 			activeResult = null;
 		}
 		activeTooltipId = null;
@@ -167,6 +203,9 @@ class UITooltipHelper {
 	}
 
 	function showTooltip(interactiveId:String, buildName:String, params:Null<Map<String, Dynamic>>):Void {
+		// Cancel any in-progress fade-out of a previous tooltip
+		cancelFadeOut();
+
 		final wrapper = screen.getInteractive(interactiveId);
 		if (wrapper == null)
 			return;
@@ -178,10 +217,30 @@ class UITooltipHelper {
 		positionTooltip(result.object, wrapper.interactive, position, offset);
 		screen.addObjectToLayer(result.object, layer);
 
+		// Apply fade-in
+		if (defaultFadeIn > 0 && tweens != null) {
+			result.object.alpha = 0;
+			fadeInTween = tweens.tween(result.object, defaultFadeIn, [Alpha(1.0)]);
+			fadeInTween.setOnComplete(() -> {
+				fadeInTween = null;
+			});
+		}
+
 		activeTooltipId = interactiveId;
 		activeResult = result;
 		activeBuildName = buildName;
 		activeParams = params;
+	}
+
+	function cancelFadeOut():Void {
+		if (fadeOutTween != null) {
+			fadeOutTween.cancel();
+			fadeOutTween = null;
+		}
+		if (fadingOutObj != null) {
+			fadingOutObj.remove();
+			fadingOutObj = null;
+		}
 	}
 
 	function positionTooltip(tooltip:h2d.Object, anchor:h2d.Object, position:TooltipPosition, offset:Int):Void {

@@ -483,15 +483,21 @@ The `transition` property on a group or root means "when this element's visibili
 - Overlay at layer 5 (between master=4 and dialog=6), blur filter support
 - `OkCancelDialog` reads overlay from `.manim`, supports `closeTransition`
 
-### Phase 3: Tooltip/Panel Transitions
-- Integrate with tooltip-planning.md
-- Tooltip controller uses tween manager for show/hide
-- Default: fade-in 0.15s, fade-out 0.1s
+### Phase 3: Tooltip/Panel Transitions ✅ DONE
+- `UITooltipHelper`: optional `?tweens:TweenManager` constructor param, `TooltipDefaults.fadeIn/fadeOut`
+- `UIPanelHelper`: optional `?tweens:TweenManager` constructor param, `PanelDefaults.fadeIn/fadeOut`
+- Tooltip defaults: fadeIn 0.15s, fadeOut 0.1s; Panel defaults: 0 (backward compatible)
+- Interactives unregistered immediately on close; fade is purely visual
+- Edge cases: hide during fade-in, show during fade-out, null TweenManager fallback
+- 8 tooltip + 7 panel fade tests
 
-### Phase 4: FloatingText Utility
-- `FloatingText` class with presets
-- Uses tween manager internally
-- Or: consider if AnimatedPath is a better fit
+### Phase 4: FloatingTextHelper ✅ DONE
+- `FloatingTextHelper` class using AnimatedPath (not TweenManager presets)
+- `spawn(text, font, x, y, animPath)` and `spawnObject(obj, x, y, animPath)` APIs
+- Two position modes: relative (default, offset from start) and absolute (Stretch-normalized)
+- `update(dt)` drives all instances, auto-removes completed
+- Paths/curves/animations defined in `.manim`, created via `builder.createAnimatedPath()`
+- 13 unit tests
 
 ### Phase 5: .manim Transition Declarations (optional)
 - Parser: `transition` keyword in programmable body

@@ -2,7 +2,7 @@
 
 | # | Item | Summary | Section | Priority |
 |---|------|---------|---------|----------|
-| 2 | Transitions & animations | Phase 1 (TweenManager) ✓ Phase 2 (Screen Transitions + Modal Overlay) ✓ Tests ✓ — remaining: .manim transition declarations, tooltip/panel transitions, floating text, UI control transitions | V1 | Medium |
+| 2 | Transitions & animations | Phase 1 (TweenManager) ✓ Phase 2 (Screen Transitions + Modal Overlay) ✓ Phase 3 (Tooltip/Panel Transitions) ✓ Phase 4 (FloatingTextHelper) ✓ Tests ✓ — remaining: .manim transition declarations, UI control transitions | V1 | Medium |
 | 4 | Haxelib release | Publish to haxelib + CI automation | V1 | High |
 | 9 | Dropdown z-ordering | Panel renders behind other UI elements | Bugs | Medium |
 | 10 | `closeAllNamed()` iterator | Mutating map during iteration, fragile | Bugs | Low |
@@ -14,7 +14,7 @@
 
 ## V1
 - more hot reload integration tests needed — see [docs/hot-reload.md "Missing Tests"](../docs/hot-reload.md#missing-tests-needed) for full list
-- transitions & animations — Phase 1+2 done (see [transitions-planning.md](transitions-planning.md)); remaining phases: .manim transition declarations, tooltip/panel/floating text transitions, UI control transitions
+- transitions & animations — Phase 1-4 done (see [transitions-planning.md](transitions-planning.md)); remaining phases: .manim transition declarations, UI control transitions
 - haxelib release (see details below)
 - add some blob47 utils for easier testing/dev/selection
 

@@ -1,6 +1,9 @@
 package bh.test.examples;
 
 import utest.Assert;
+import bh.test.BuilderTestBase;
+import bh.test.UITestHarness.UITestScreen;
+import bh.ui.UICardHandHelper;
 import bh.ui.UICardHandLayout;
 import bh.ui.UICardHandTypes;
 import bh.paths.MultiAnimPaths.Path;
@@ -8,10 +11,10 @@ import bh.paths.MultiAnimPaths.SinglePath;
 import bh.base.FPoint;
 
 /**
- * Unit tests for UICardHandLayout math and UICardHandTypes enums.
- * All layout methods are pure static math with no scene graph dependency.
+ * Unit tests for UICardHandLayout math, UICardHandTypes enums,
+ * and UICardHandHelper orchestration (setHand, drawCard, discardCard, etc.).
  */
-class CardHandOrchestratorTest extends utest.Test {
+class CardHandOrchestratorTest extends BuilderTestBase {
 	// ==================== Helpers ====================
 
 	/** Create a horizontal line path from (0,0) to (400,0). */
@@ -325,5 +328,176 @@ class CardHandOrchestratorTest extends utest.Test {
 		}
 		Assert.notNull(straight);
 		Assert.notNull(tangent);
+	}
+
+	// ==================== Helpers for Orchestration Tests ====================
+
+	static final CARD_MANIM = "
+		#card programmable(status:[normal,hover,pressed,disabled]=normal) {
+			bitmap(generated(color(80, 110, #444444))): 0, 0
+			interactive(80, 110, \"card\", bind => \"status\"): 0, 0
+		}
+	";
+
+	/** Create a UICardHandHelper with minimal config for testing. */
+	static function createHelper(?config:CardHandConfig):{helper:UICardHandHelper, screen:UITestScreen} {
+		var builder = BuilderTestBase.builderFromSource(CARD_MANIM);
+		var screen = new UITestScreen();
+		var helper = new UICardHandHelper(screen, builder, config);
+		return {helper: helper, screen: screen};
+	}
+
+	/** Create a simple card descriptor. */
+	static function desc(id:String):CardDescriptor {
+		return {id: id, buildName: "card"};
+	}
+
+	// ==================== setHand ====================
+
+	@Test
+	public function testSetHandAddsCards():Void {
+		var h = createHelper();
+		h.helper.setHand([desc("a"), desc("b"), desc("c")]);
+		Assert.equals(3, h.helper.getCardCount());
+		Assert.equals(3, h.helper.getCardIds().length);
+	}
+
+	@Test
+	public function testSetHandReplacesExisting():Void {
+		var h = createHelper();
+		h.helper.setHand([desc("a"), desc("b"), desc("c")]);
+		Assert.equals(3, h.helper.getCardCount());
+		h.helper.setHand([desc("x"), desc("y")]);
+		Assert.equals(2, h.helper.getCardCount());
+	}
+
+	// ==================== drawCard / discardCard ====================
+
+	@Test
+	public function testDrawCardIncrementsCount():Void {
+		var h = createHelper();
+		h.helper.setHand([desc("a"), desc("b")]);
+		h.helper.drawCard(desc("c"));
+		Assert.equals(3, h.helper.getCardCount());
+	}
+
+	@Test
+	public function testDiscardCardDecrementsCount():Void {
+		var h = createHelper();
+		h.helper.setHand([desc("a"), desc("b"), desc("c")]);
+		h.helper.discardCard("b");
+		Assert.equals(2, h.helper.getCardCount());
+	}
+
+	@Test
+	public function testDiscardUnknownIdSafe():Void {
+		var h = createHelper();
+		h.helper.setHand([desc("a"), desc("b")]);
+		h.helper.discardCard("nonexistent");
+		Assert.equals(2, h.helper.getCardCount());
+	}
+
+	// ==================== updateCardParams / setCardEnabled ====================
+
+	@Test
+	public function testUpdateCardParams():Void {
+		var h = createHelper();
+		h.helper.setHand([desc("a")]);
+		// Should not throw
+		h.helper.updateCardParams("a", ["status" => "hover"]);
+		Assert.isTrue(true);
+	}
+
+	@Test
+	public function testSetCardEnabledFalse():Void {
+		var h = createHelper();
+		h.helper.setHand([desc("a")]);
+		h.helper.setCardEnabled("a", false);
+		// Card should still exist
+		Assert.equals(1, h.helper.getCardCount());
+		Assert.notNull(h.helper.getCardResult("a"));
+	}
+
+	@Test
+	public function testSetCardEnabledTrue():Void {
+		var h = createHelper();
+		h.helper.setHand([desc("a")]);
+		h.helper.setCardEnabled("a", false);
+		h.helper.setCardEnabled("a", true);
+		Assert.notNull(h.helper.getCardResult("a"));
+	}
+
+	// ==================== getCardResult ====================
+
+	@Test
+	public function testGetCardResultReturnsResult():Void {
+		var h = createHelper();
+		h.helper.setHand([desc("a")]);
+		Assert.notNull(h.helper.getCardResult("a"));
+	}
+
+	@Test
+	public function testGetCardResultUnknownNull():Void {
+		var h = createHelper();
+		h.helper.setHand([desc("a")]);
+		Assert.isNull(h.helper.getCardResult("missing"));
+	}
+
+	// ==================== onCardBuilt callback ====================
+
+	@Test
+	public function testOnCardBuiltCallback():Void {
+		var counter = 0;
+		var config:CardHandConfig = {
+			onCardBuilt: function(cardId, result, container) {
+				counter++;
+			}
+		};
+		var h = createHelper(config);
+		h.helper.setHand([desc("a"), desc("b"), desc("c")]);
+		Assert.equals(3, counter);
+	}
+
+	// ==================== canDragCard callback ====================
+
+	@Test
+	public function testCanDragCardVeto():Void {
+		var h = createHelper();
+		h.helper.canDragCard = function(cardId) { return false; };
+		Assert.notNull(h.helper.canDragCard);
+	}
+
+	// ==================== drawCard at index ====================
+
+	@Test
+	public function testDrawCardAtIndex():Void {
+		var h = createHelper();
+		h.helper.setHand([desc("a"), desc("b")]);
+		h.helper.drawCard(desc("c"), 0);
+		var ids = h.helper.getCardIds();
+		Assert.equals(3, ids.length);
+		Assert.equals("c", ids[0]);
+	}
+
+	// ==================== dispose ====================
+
+	@Test
+	public function testDispose():Void {
+		var h = createHelper();
+		h.helper.setHand([desc("a"), desc("b"), desc("c")]);
+		h.helper.dispose();
+		Assert.equals(0, h.helper.getCardCount());
+	}
+
+	// ==================== getCardIds order ====================
+
+	@Test
+	public function testGetCardIdsOrder():Void {
+		var h = createHelper();
+		h.helper.setHand([desc("a"), desc("b"), desc("c")]);
+		var ids = h.helper.getCardIds();
+		Assert.equals("a", ids[0]);
+		Assert.equals("b", ids[1]);
+		Assert.equals("c", ids[2]);
 	}
 }

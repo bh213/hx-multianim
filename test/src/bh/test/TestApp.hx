@@ -63,6 +63,7 @@ class TestApp extends hxd.App {
 		testRunner.addCase(new bh.test.examples.ProgrammableCodeGenTest(s2d));
 		testRunner.addCase(new bh.test.examples.ScreenTransitionTest());
 		testRunner.addCase(new bh.test.examples.AnimatedPathTest());
+		testRunner.addCase(new bh.test.examples.FloatingTextHelperTest());
 		testRunner.addCase(new bh.test.examples.CardHandOrchestratorTest());
 		testRunner.addCase(new bh.test.examples.AnimFilterRuntimeTest());
 		testRunner.addCase(new bh.test.examples.RichTextTest());

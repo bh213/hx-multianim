@@ -280,4 +280,7 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/92-richText/richText.manim", "richText")
 	public var richText;
+
+	@:manim("test/examples/93-curveOperations/curveOperations.manim", "curveOperations")
+	public var curveOperations;
 }

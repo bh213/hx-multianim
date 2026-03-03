@@ -415,4 +415,144 @@ class AnimFilterRuntimeTest extends utest.Test {
 			Assert.isTrue(true);
 		}
 	}
+
+	// ==================== SetFilter with ColorMatrix ====================
+
+	@Test
+	public function testSetFilterAppliesFilter():Void {
+		var sm = createSM();
+		var frame = createFrame(0.1);
+		var filter = new h2d.filter.ColorMatrix();
+		var states:Array<AnimationFrameState> = [SetFilter(filter, null), Frame(frame)];
+		sm.addAnimationState("test", states, 0, new Map(), null, null);
+		sm.play("test");
+		Assert.notNull(sm.clip.filter);
+	}
+
+	@Test
+	public function testSetFilterWithTint():Void {
+		var sm = createSM();
+		var frame = createFrame(0.1);
+		var states:Array<AnimationFrameState> = [SetFilter(null, 0xFF0000), Frame(frame)];
+		sm.addAnimationState("test", states, 0, new Map(), null, null);
+		sm.play("test");
+		@:privateAccess {
+			var r = sm.clip.color.r;
+			Assert.isTrue(r > 0.9);
+		}
+	}
+
+	@Test
+	public function testSetFilterBothParams():Void {
+		var sm = createSM();
+		var frame = createFrame(0.1);
+		var filter = new h2d.filter.ColorMatrix();
+		var states:Array<AnimationFrameState> = [SetFilter(filter, 0x00FF00), Frame(frame)];
+		sm.addAnimationState("test", states, 0, new Map(), null, null);
+		sm.play("test");
+		Assert.notNull(sm.clip.filter);
+		@:privateAccess {
+			var g = sm.clip.color.g;
+			Assert.isTrue(g > 0.9);
+		}
+	}
+
+	@Test
+	public function testSetFilterNullReturnsToAnimFilter():Void {
+		var sm = createSM();
+		var frame = createFrame(0.1);
+		var animFilter = new h2d.filter.ColorMatrix();
+		// Animation registered with a filter
+		sm.addAnimationState("test", [Frame(frame)], -1, new Map(), animFilter, null);
+		sm.play("test");
+		// After play, filter should be the anim-level filter
+		Assert.notNull(sm.clip.filter);
+	}
+
+	@Test
+	public function testMultipleSetFiltersSequence():Void {
+		var sm = createSM();
+		var shortFrame = createFrame(0.001);
+		var frame = createFrame(0.5);
+		var filter1 = new h2d.filter.ColorMatrix();
+		var filter2 = new h2d.filter.ColorMatrix();
+		var states:Array<AnimationFrameState> = [
+			SetFilter(filter1, null), Frame(shortFrame),
+			SetFilter(filter2, 0x0000FF), Frame(frame)
+		];
+		sm.addAnimationState("test", states, 0, new Map(), null, null);
+		sm.play("test");
+		sm.update(0.01); // past shortFrame, second SetFilter applied
+		@:privateAccess {
+			var b = sm.clip.color.b;
+			Assert.isTrue(b > 0.9);
+		}
+	}
+
+	@Test
+	public function testNewPlayResetsFilter():Void {
+		var sm = createSM();
+		var frame = createFrame(0.1);
+		var filter = new h2d.filter.ColorMatrix();
+		// anim1 has a filter
+		sm.addAnimationState("anim1", [Frame(frame)], -1, new Map(), filter, null);
+		// anim2 has no filter
+		sm.addAnimationState("anim2", [Frame(frame)], -1, new Map(), null, null);
+		sm.play("anim1");
+		Assert.notNull(sm.clip.filter);
+		sm.play("anim2");
+		Assert.isNull(sm.clip.filter);
+	}
+
+	@Test
+	public function testSetFilterAsFirstState():Void {
+		var sm = createSM();
+		var frame = createFrame(0.1);
+		var filter = new h2d.filter.ColorMatrix();
+		var states:Array<AnimationFrameState> = [SetFilter(filter, 0xFF0000), Frame(frame)];
+		sm.addAnimationState("test", states, 0, new Map(), null, null);
+		// Should not crash — SetFilter before any Frame
+		sm.play("test");
+		Assert.notNull(sm.clip.filter);
+	}
+
+	@Test
+	public function testAnimLevelFilterOnPlay():Void {
+		var sm = createSM();
+		var frame = createFrame(0.1);
+		var animFilter = new h2d.filter.ColorMatrix();
+		sm.addAnimationState("test", [Frame(frame)], -1, new Map(), animFilter, null);
+		sm.play("test");
+		Assert.notNull(sm.clip.filter);
+	}
+
+	@Test
+	public function testAnimLevelTintOnPlay():Void {
+		var sm = createSM();
+		var frame = createFrame(0.1);
+		sm.addAnimationState("test", [Frame(frame)], -1, new Map(), null, 0x00FF00);
+		sm.play("test");
+		@:privateAccess {
+			var g = sm.clip.color.g;
+			Assert.isTrue(g > 0.9);
+		}
+	}
+
+	@Test
+	public function testSetFilterTintFallbackToAnimTint():Void {
+		var sm = createSM();
+		var frame = createFrame(0.1);
+		var filter = new h2d.filter.ColorMatrix();
+		// Animation has tint 0x0000FF; SetFilter provides filter but null tint
+		var states:Array<AnimationFrameState> = [SetFilter(filter, null), Frame(frame)];
+		sm.addAnimationState("test", states, 0, new Map(), null, 0x0000FF);
+		sm.play("test");
+		// Filter is from SetFilter
+		Assert.notNull(sm.clip.filter);
+		// Tint falls back to animation-level 0x0000FF
+		@:privateAccess {
+			var b = sm.clip.color.b;
+			Assert.isTrue(b > 0.9);
+		}
+	}
 }

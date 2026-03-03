@@ -1365,6 +1365,37 @@ var value = curve.getValue(0.5); // returns eased value at t=0.5
 
 **Macro codegen** generates `getCurve_<name>():Curve` factory methods. Easing-only curves are baked inline at compile time.
 
+### Curve Operations
+
+Curves can reference other named curves via operations. This enables combining curves without duplicating definitions.
+
+```
+curves {
+    #base curve { easing: easeoutquad }
+    #envelope curve { points: [(0, 0), (0.1, 1.0), (0.9, 1.0), (1.0, 0)] }
+
+    #shaped curve { multiply: [base, envelope] }
+    #remapped curve { apply: base, envelope }
+    #fadeOut curve { invert: base }
+    #boosted curve { scale: base, 1.5 }
+    #chained curve { scale: fadeOut, 0.8 }
+}
+```
+
+**Operations:**
+
+| Operation | Syntax | Result |
+|-----------|--------|--------|
+| `multiply` | `multiply: [a, b, ...]` | `a(t) * b(t) * ...` (N-ary, min 2) |
+| `apply` | `apply: inner, outer` | `outer(inner(t))` — remap time |
+| `invert` | `invert: a` | `1.0 - a(t)` |
+| `scale` | `scale: a, factor` | `a(t) * factor` |
+
+* Operations can reference other operation curves (chaining)
+* Forward references within the same `curves {}` block are allowed
+* Circular references are detected and produce an error
+* Cannot mix operations with `easing:`, `points:`, or segments in the same curve
+
 ---
 
 ## Data

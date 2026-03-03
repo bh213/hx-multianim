@@ -355,6 +355,33 @@
   - `FlowOverflowTest` (17 methods) — overflow modes (expand/limit/hidden/scroll), fill, reverse, alignment, spacer, @flow.* properties
   - `DynamicRefTest` (10 methods) — dynamicRef build, getDynamicRef, setParameter propagation, multiple/nested refs, static values
   - `BitFlagTest` (13 methods) — bit[N] conditionals, multi-bit combinations, zero flags, @else after bit, high bit
+- **Curve operations** — `multiply`, `apply` (compose), `invert`, `scale` operations on named curves
+  - Syntax: `#name curve { multiply: [a, b] }`, `apply: inner, outer`, `invert: a`, `scale: a, 1.5`
+  - Operations reference other named curves; forward references allowed, circular references detected
+  - Cannot mix operations with `easing:`/`points:`/segments in the same curve
+  - Runtime: `MultiplyCurve`, `ComposeCurve`, `InvertCurve`, `ScaleCurve` classes implementing `ICurve`
+  - Builder: recursive resolution with circular dependency detection
+  - Codegen: inline code generation for all four operations
+  - Visual test 93 (curveOperations)
+- **FloatingTextHelper** — AnimatedPath-driven floating text manager for damage numbers, heal text, status effects
+  - `spawn(text, font, x, y, animPath, ?color, absolutePosition)` for text
+  - `spawnObject(obj, x, y, animPath, absolutePosition)` for arbitrary objects
+  - Two position modes: relative (default, offset from spawn point) and absolute (Stretch-normalized)
+  - Auto-removal on path completion; `clear()` for immediate removal
+  - Color applied from `colorCurve` to `h2d.Text` instances
+- **Tooltip/Panel fade transitions** — optional TweenManager-based fade-in/fade-out animations
+  - `UITooltipHelper`: `fadeIn`/`fadeOut` in `TooltipDefaults` (defaults: 0.15s/0.1s), optional `?tweens:TweenManager` constructor param
+  - `UIPanelHelper`: `fadeIn`/`fadeOut` in `PanelDefaults` (defaults: 0/0, backward compatible), optional `?tweens:TweenManager` constructor param
+  - Edge cases handled: hide during fade-in cancels tween; show during fade-out cancels and removes immediately
+  - If TweenManager is null or fade duration is 0, instant behavior preserved
+- **Extended unit test coverage** — additional tests across existing suites:
+  - `FloatingTextHelperTest` (13 methods) — spawn, update, completion, clear, position modes, alpha
+  - `AnimatedPathTest` (+13 methods) — builder integration: createAnimatedPath, projectilePath, easing, events, getClosestRate
+  - `CardHandOrchestratorTest` (+17 methods) — orchestration: setHand, drawCard, discardCard, updateCardParams, setCardEnabled, dispose
+  - `AnimFilterRuntimeTest` (+10 methods) — SetFilter with ColorMatrix, tint, both params, sequence, anim-level filter/tint
+  - `DynamicRefTest` (+8 methods) — conditional branches, repeatables, enum params, setParameter propagation, nested/chained refs
+  - `InteractiveEventTest` (+9 methods) — cursor support: default, explicit, disabled/hovered fallback, CursorManager
+  - `UITooltipHelperTest`/`UIPanelHelperTest` — fade transition tests
 
 ### Changed
 - **`text()` / `richText()` split** — `text()` reverted to simple text (font, string, color, align, maxWidth, letterSpacing, lineSpacing, lineBreak, dropShadow). Rich text features (`styles:`, `images:`, `condenseWhite:`, `[markup]`) moved to new `richText()` element which always creates `h2d.HtmlText`.
