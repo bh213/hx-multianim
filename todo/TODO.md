@@ -18,7 +18,7 @@
 - haxelib release (see details below)
 - add some blob47 utils for easier testing/dev/selection
 - add disabled demo for all controls in playground
-- add predefined curves, maybe $ctx.easeInBack
+- ~~add predefined curves~~ ✓ easing names auto-resolve in curve operations
 
 ### Haxelib Release
 

@@ -4115,4 +4115,88 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		VisualTestBase.pendingVisualTests--;
 		async.done();
 	}
+
+	// ==================== Built-in easing names in curve operations: visual ====================
+
+	@Test
+	public function test94_BuiltinCurves(async:utest.Async):Void {
+		setupTest(94, "builtinCurves");
+		VisualTestBase.pendingVisualTests++;
+		async.setTimeout(15000);
+
+		final animFilePath = "test/examples/94-builtinCurves/builtinCurves.manim";
+		final sizeX = 1280;
+		final sizeY = 720;
+		final curveNames = [
+			"envelope",
+			"mulEasing", "compEasing", "invEasing", "scaleEasing"
+		];
+
+		// Phase 1: builder
+		clearScene();
+		try {
+			final fileContent = byte.ByteData.ofString(sys.io.File.getContent(animFilePath));
+			final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+			final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, animFilePath);
+
+			final curves = builder.getCurves();
+
+			final g = new h2d.Graphics(s2d);
+			final font = loader.loadFont("m3x6");
+
+			drawEasingCurvesVisualization(g, font, curves, curveNames, s2d);
+
+			if (testTitle != null && testTitle.length > 0) addTitleOverlay();
+		} catch (e:Dynamic) {
+			var msg = 'Builder threw: $e';
+			reportBuildFailure(msg);
+			Assert.fail(msg);
+			VisualTestBase.pendingVisualTests--;
+			async.done();
+			return;
+		}
+
+		var orderIdx = HtmlReportGenerator.reserveOrderIndex();
+		var builderRaw:Null<ImageProcessingPool.RawPixels> = null;
+		try {
+			builderRaw = captureScreenshotRaw(sizeX, sizeY);
+		} catch (e:Dynamic) {
+			Assert.fail('Builder screenshot threw: $e');
+			VisualTestBase.pendingVisualTests--;
+			async.done();
+			return;
+		}
+
+		// Phase 2: macro
+		clearScene();
+		try {
+			final mp = createMp();
+			final g = new h2d.Graphics(s2d);
+			final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+			final font = loader.loadFont("m3x6");
+
+			mp.builtinCurves.create();
+
+			final macroCurves = new Map<String, bh.paths.Curve.ICurve>();
+			macroCurves.set("envelope", mp.builtinCurves.getCurve_envelope());
+			macroCurves.set("mulEasing", mp.builtinCurves.getCurve_mulEasing());
+			macroCurves.set("compEasing", mp.builtinCurves.getCurve_compEasing());
+			macroCurves.set("invEasing", mp.builtinCurves.getCurve_invEasing());
+			macroCurves.set("scaleEasing", mp.builtinCurves.getCurve_scaleEasing());
+			drawEasingCurvesVisualization(g, font, macroCurves, curveNames, s2d);
+
+			if (testTitle != null && testTitle.length > 0) addTitleOverlay();
+		} catch (e:Dynamic) {
+			Assert.fail('Macro threw: $e');
+			VisualTestBase.pendingVisualTests--;
+			async.done();
+			return;
+		}
+
+		var macroRaw = captureScreenshotRaw(sizeX, sizeY);
+		Assert.pass();
+		enqueueBuilderAndMacro(builderRaw, macroRaw, 1.0, 1.0, orderIdx);
+		VisualTestBase.pendingVisualTests--;
+		async.done();
+	}
 }

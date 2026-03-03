@@ -7065,8 +7065,14 @@ class ProgrammableCodeGen {
 				var easingExpr = easingTypeToExpr(ca.inlineEasing);
 				curveExpr = macro new bh.paths.Curve(null, $easingExpr, null);
 			} else if (ca.curveName != null) {
-				final curveMethodName = "getCurve_" + sanitizeIdentifier(ca.curveName);
-				curveExpr = macro $i{curveMethodName}();
+				var easing = MacroManimParser.tryMatchEasingName(ca.curveName);
+				if (easing != null) {
+					var easingExpr = easingTypeToExpr(easing);
+					curveExpr = macro new bh.paths.Curve(null, $easingExpr, null);
+				} else {
+					final curveMethodName = "getCurve_" + sanitizeIdentifier(ca.curveName);
+					curveExpr = macro $i{curveMethodName}();
+				}
 			} else {
 				continue;
 			}
@@ -7206,28 +7212,44 @@ class ProgrammableCodeGen {
 		return macro $b{bodyExprs};
 	}
 
+	/** Generate an expression that evaluates a named curve at `t`. Falls back to inline easing if name matches a built-in easing. */
+	static function curveGetValueExpr(name:String):Expr {
+		var easing = MacroManimParser.tryMatchEasingName(name);
+		if (easing != null) {
+			var easingExpr = easingTypeToExpr(easing);
+			return macro bh.base.TweenUtils.FloatTools.applyEasing($easingExpr, bh.base.TweenUtils.FloatTools.clamp(t, 0.0, 1.0));
+		}
+		var methodName = "getCurve_" + sanitizeIdentifier(name);
+		return macro $i{methodName}().getValue(t);
+	}
+
 	/** Generate inline code for curve operations (multiply, compose, invert, scale). */
 	static function generateOperationCurveBody(op:CurveOperation, pos:Position):Expr {
 		switch (op) {
 			case Multiply(names):
 				var expr:Expr = null;
 				for (name in names) {
-					var methodName = "getCurve_" + sanitizeIdentifier(name);
-					var call = macro $i{methodName}().getValue(t);
+					var call = curveGetValueExpr(name);
 					expr = if (expr == null) call else macro $expr * $call;
 				}
 				return macro return $expr;
 			case Compose(outerName, innerName):
+				// outer(inner(t)) — inner evaluates at t, outer evaluates at inner's result
+				var innerExpr = curveGetValueExpr(innerName);
+				var outerEasing = MacroManimParser.tryMatchEasingName(outerName);
+				if (outerEasing != null) {
+					var easingExpr = easingTypeToExpr(outerEasing);
+					return macro return bh.base.TweenUtils.FloatTools.applyEasing($easingExpr, bh.base.TweenUtils.FloatTools.clamp($innerExpr, 0.0, 1.0));
+				}
 				var outerMethod = "getCurve_" + sanitizeIdentifier(outerName);
-				var innerMethod = "getCurve_" + sanitizeIdentifier(innerName);
-				return macro return $i{outerMethod}().getValue($i{innerMethod}().getValue(t));
+				return macro return $i{outerMethod}().getValue($innerExpr);
 			case Invert(curveName):
-				var method = "getCurve_" + sanitizeIdentifier(curveName);
-				return macro return 1.0 - $i{method}().getValue(t);
+				var call = curveGetValueExpr(curveName);
+				return macro return 1.0 - $call;
 			case Scale(curveName, factor):
-				var method = "getCurve_" + sanitizeIdentifier(curveName);
+				var call = curveGetValueExpr(curveName);
 				var factorVal = tryResolveFloat(factor);
-				return macro return $i{method}().getValue(t) * $v{factorVal};
+				return macro return $call * $v{factorVal};
 		}
 	}
 

@@ -598,7 +598,17 @@ Bezier smoothing options: `auto`, `distance(value)`, or none.
 | `invert: a` | Inversion | `1.0 - a(t)` |
 | `scale: a, factor` | Scaling | `a(t) * factor` |
 
-Operations reference other named curves. Forward references and chaining allowed. Circular references error.
+Operations reference other named curves **or built-in easing names**. Forward references and chaining allowed. Circular references error.
+
+Example using easing names directly in operations:
+```manim
+curves {
+    #env curve { points: [(0, 0), (0.1, 1.0), (0.9, 1.0), (1.0, 0)] }
+    #shaped curve { multiply: [easeInBack, env] }
+    #gentle curve { scale: easeOutBounce, 0.7 }
+    #composed curve { apply: easeOutBounce, easeInQuad }
+}
+```
 
 ### Easing Names
 `linear`, `easeInQuad`, `easeOutQuad`, `easeInOutQuad`, `easeInCubic`, `easeOutCubic`, `easeInOutCubic`, `easeInBack`, `easeOutBack`, `easeInOutBack`, `easeOutBounce`, `easeOutElastic`
