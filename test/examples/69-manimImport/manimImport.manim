@@ -1,4 +1,4 @@
-version: 0.5
+version: 1.0
 
 import "test/examples/69-manimImport/helpers.manim" as "helpers"
 

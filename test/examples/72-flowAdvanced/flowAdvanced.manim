@@ -1,4 +1,4 @@
-version: 0.5
+version: 1.0
 
 #flowBox programmable(w:uint=30, h:uint=15, color:color=#884422) {
   bitmap(generated(color($w, $h, $color))): 0, 0

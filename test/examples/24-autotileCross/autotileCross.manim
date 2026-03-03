@@ -1,4 +1,4 @@
-version: 0.5
+version: 1.0
 
 // =============================================================================
 // AUTOTILE CROSS FORMAT TEST - Tests buildAutotile() with cross format

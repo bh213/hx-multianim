@@ -31,7 +31,7 @@ class ParserErrorTest extends utest.Test {
 
 	static function doParse(manimSource:String, addVersion:Bool):String {
 		try {
-			var source = addVersion ? 'version: 0.5\n$manimSource' : manimSource;
+			var source = addVersion ? 'version: 1.0\n$manimSource' : manimSource;
 			var input = byte.ByteData.ofString(source);
 			var loader = new bh.base.ResourceLoader.CachingResourceLoader();
 			MultiAnimParser.parseFile(input, "test-input", loader);
@@ -48,7 +48,7 @@ class ParserErrorTest extends utest.Test {
 	 */
 	static function parseExpectingSuccess(manimSource:String):Bool {
 		try {
-			var source = 'version: 0.5\n$manimSource';
+			var source = 'version: 1.0\n$manimSource';
 			var input = byte.ByteData.ofString(source);
 			var loader = new bh.base.ResourceLoader.CachingResourceLoader();
 			MultiAnimParser.parseFile(input, "test-input", loader);
@@ -64,7 +64,7 @@ class ParserErrorTest extends utest.Test {
 	 */
 	static function parseExpectingResult(manimSource:String):MultiAnimResult {
 		try {
-			var source = 'version: 0.5\n$manimSource';
+			var source = 'version: 1.0\n$manimSource';
 			var input = byte.ByteData.ofString(source);
 			var loader = new bh.base.ResourceLoader.CachingResourceLoader();
 			return MultiAnimParser.parseFile(input, "test-input", loader);
@@ -345,7 +345,7 @@ class ParserErrorTest extends utest.Test {
 		Assert.notNull(error, "Should throw error for missing version declaration");
 		Assert.isTrue(error.indexOf("Missing version declaration") >= 0,
 			'Error should mention missing version declaration, got: $error');
-		Assert.isTrue(error.indexOf("version: 0.5") >= 0,
+		Assert.isTrue(error.indexOf("version: 1.0") >= 0,
 			'Error should mention the required version syntax, got: $error');
 	}
 

@@ -2609,7 +2609,7 @@ Both approaches render identically — the macro system generates the same h2d t
 **1. Define a programmable in a `.manim` file:**
 
 ```
-version: 0.5
+version: 1.0
 
 #myButton programmable(status:[hover, pressed, normal]=normal, buttonText="Click") {
     @(status=>normal)  ninepatch("ui", "button-idle", 200, 30):    0, 0

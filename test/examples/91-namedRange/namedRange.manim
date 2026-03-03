@@ -1,4 +1,4 @@
-version: 0.5
+version: 1.0
 
 #namedRange programmable() {
   // Row 1: Named inclusive: range(from: 0, to: 5) => 0,1,2,3,4,5 (6 items)

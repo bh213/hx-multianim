@@ -1,4 +1,4 @@
-version: 0.5
+version: 1.0
 
 #transFade programmable(mode:[a,b]=a) {
     transition { mode: fade(1.0) }

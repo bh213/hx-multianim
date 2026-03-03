@@ -1,4 +1,4 @@
-version: 0.5
+version: 1.0
 
 // Test: generated(color()) with division produces correct Int dimensions
 // The / operator yields Float in codegen; Std.int() wrapping is required for h2d.Tile.fromColor.

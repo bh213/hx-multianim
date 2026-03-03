@@ -1,4 +1,4 @@
-version: 0.5
+version: 1.0
 
 #interactiveMetadata programmable(cols:uint=3) {
   pos: 0, 0

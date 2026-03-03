@@ -1,4 +1,4 @@
-version: 0.5
+version: 1.0
 
 layouts {
   #demoLayout sequence($i: 0..5) point: 20 + $i div 3 * 150, 10 + ($i * 35) % 105

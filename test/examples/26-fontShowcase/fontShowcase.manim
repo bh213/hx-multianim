@@ -1,4 +1,4 @@
-version: 0.5
+version: 1.0
 
 // =============================================================================
 // FONT SHOWCASE - Using $ctx.font().lineHeight and .baseLine for layout

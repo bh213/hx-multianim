@@ -477,7 +477,7 @@
   - Builder API: `getComponent("name")` → `getDynamicRef("name")`, `components` map → `dynamicRefs`
   - Codegen API: `buildReference()` → `buildStaticRef()`, `buildComponent()` → `buildDynamicRef()`
   - Parser accepts both old and new keywords for backward compatibility
-- **BREAKING: `.manim` version bump 0.3 → 0.5** — All `.manim` files must use `version: 0.5`
+- **BREAKING: `.manim` version bump 0.3 → 0.5** — All `.manim` files must use `version: 1.0`
 
 ### Added
 - **Interactive metadata** — `interactive()` now supports optional key=>value metadata with typed values

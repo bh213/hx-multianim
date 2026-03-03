@@ -4768,15 +4768,15 @@ class MacroManimParser {
 				switch (peek()) {
 					case TFloat(v):
 						advance();
-						if (v != "0.5") error('version 0.5 expected, got $v');
+						if (v != "1.0") error('version 1.0 expected, got $v');
 					case TInteger(v):
 						advance();
-						if (v != "0") error('version 0.5 expected, got $v');
+						if (v != "1") error('version 1.0 expected, got $v');
 					default:
 						error("expected version number");
 				}
 			default:
-				error("Missing version declaration. Files must start with 'version: 0.5'");
+				error("Missing version declaration. Files must start with 'version: 1.0'");
 		}
 
 		// Parse root nodes

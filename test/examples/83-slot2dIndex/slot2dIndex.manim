@@ -1,4 +1,4 @@
-version: 0.5
+version: 1.0
 
 #contentRect programmable() {
   bitmap(generated(color(24, 16, #cccc00ff))): 0, 0

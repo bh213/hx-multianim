@@ -1,4 +1,4 @@
-version: 0.5
+version: 1.0
 
 // Character Sheet Demo - Dynamic References
 // Reusable child programmables embedded via dynamicRef for automatic parameter-driven updates.

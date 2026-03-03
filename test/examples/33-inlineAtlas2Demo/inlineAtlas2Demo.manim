@@ -1,4 +1,4 @@
-version: 0.5
+version: 1.0
 
 #sheetAtlas atlas2(sheet("demo")) {
   my-center: 2, 2, 24, 24

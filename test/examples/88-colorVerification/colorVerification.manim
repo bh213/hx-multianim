@@ -1,4 +1,4 @@
-version: 0.5
+version: 1.0
 
 #colorParam programmable(c:color=#FF0000) {
   bitmap(generated(color(80, 50, $c))): 0, 0

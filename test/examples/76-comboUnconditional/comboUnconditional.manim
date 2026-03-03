@@ -1,4 +1,4 @@
-version: 0.5
+version: 1.0
 
 #comboBtn programmable(status:[hover, pressed, normal]=normal, disabled:[true, false]=false) {
     @(status=>normal, disabled=>false) bitmap(generated(color(120, 30, #446688))): 0, 0

@@ -8,7 +8,7 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 
 | Construct | Description |
 |-----------|-------------|
-| `version: 0.5` | Required file header declaring format version |
+| `version: 1.0` | Required file header declaring format version |
 | `import "file" as "name"` | Import external .manim file for cross-file references |
 | `#name programmable(params) { ... }` | Define a parameterized component (the main building block) |
 | `#name data { ... }` | Define static typed data block with records and fields |
