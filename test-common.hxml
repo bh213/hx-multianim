@@ -1,0 +1,13 @@
+# Shared test configuration — included by test-hx-multianim*.hxml
+# Does not include display library (-lib hldx/hlsdl) or output target (-hl)
+
+-lib heaps
+-lib utest
+
+-cp test/src
+-p src
+-main bh.test.TestApp
+-debug
+-D resourcesPath=test/res
+-D windowSize=1280x720
+-D MULTIANIM_TRACE
