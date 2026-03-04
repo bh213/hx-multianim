@@ -17,7 +17,6 @@
 
 **CI remaining:**
 - [ ] Add `HAXELIB_PASSWORD` secret to GitHub repo settings (required before first tag push)
-- [ ] Dev mode tests (`-D MULTIANIM_DEV`) need matrix build or sequential run in CI (currently `test.ps1` runs both)
 
 ## After 1.0
 - Text input codegen support (`@:manim` factory with `createTextInput()`)
