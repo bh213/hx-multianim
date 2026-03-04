@@ -5677,7 +5677,7 @@ class MultiAnimBuilder {
 		}
 
 		#if MULTIANIM_DEV
-		if (incremental && retVal.incrementalContext != null && retVal.reloadable) {
+		if (retVal.reloadable) {
 			if (Std.isOfType(resourceLoader, bh.base.ResourceLoader.CachingResourceLoader)) {
 				final cachingLoader = cast(resourceLoader, bh.base.ResourceLoader.CachingResourceLoader);
 				if (cachingLoader.hotReloadRegistry != null) {
