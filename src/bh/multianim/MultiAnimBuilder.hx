@@ -386,9 +386,13 @@ class IncrementalUpdateContext {
 	public function setParameter(name:String, value:Dynamic):Void {
 		// Look up the parameter type definition for type-aware conversion (flags only — other types handled below)
 		final paramDef = getParamDefinition(name);
-		if (paramDef != null && paramDef.type.match(PPTFlags(_))) {
-			indexedParams.set(name, MultiAnimParser.dynamicValueToIndex(name, paramDef.type, value, s -> throw s));
-		} else if (Std.isOfType(value, Int)) {
+		if (paramDef != null) {
+			if (paramDef.type.match(PPTFlags(_))) {
+				indexedParams.set(name, MultiAnimParser.dynamicValueToIndex(name, paramDef.type, value, s -> throw s));
+				return;
+			}
+		}
+		if (Std.isOfType(value, Int)) {
 			indexedParams.set(name, Value(value));
 		} else if (Std.isOfType(value, Float)) {
 			indexedParams.set(name, ValueF(value));
