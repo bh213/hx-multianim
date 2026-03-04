@@ -15,10 +15,6 @@
 - MCP server?
 
 
-
-**CI remaining:**
-- [ ] Add `HAXELIB_PASSWORD` secret to GitHub repo settings (required before first tag push)
-
 ## After 1.0
 - Text input codegen support (`@:manim` factory with `createTextInput()`)
 - Bit expression: support for any-bit and all-bits (e.g. grid direction)
