@@ -1,7 +1,6 @@
 # hx-multianim
 
-[![Build](https://github.com/bh213/hx-multianim/actions/workflows/build.yml/badge.svg)](https://github.com/bh213/hx-multianim/actions/workflows/build.yml)
-[![Visual Tests](https://github.com/bh213/hx-multianim/actions/workflows/visual-tests.yml/badge.svg)](https://github.com/bh213/hx-multianim/actions/workflows/visual-tests.yml)
+[![Tests](https://github.com/bh213/hx-multianim/actions/workflows/tests.yml/badge.svg)](https://github.com/bh213/hx-multianim/actions/workflows/tests.yml)
 [![Haxelib](https://img.shields.io/badge/haxelib-hx--multianim-orange)](https://lib.haxe.org/p/hx-multianim/)
 [![License](https://img.shields.io/badge/license-BSD--3--Clause-blue)](LICENSE)
 
