@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.0.0-rc.2] - 2026-03-04
+
+### Added
+- **MCP DevBridge** — HTTP server for AI tool integration (`DevBridge.hx`, compiles with `-D MULTIANIM_DEV`)
+  - 12 tools: `performance`, `list_screens`, `list_builders`, `scene_graph`, `inspect_element`, `screenshot`, `set_parameter`, `set_visibility`, `reload`, `eval_manim`, `list_resources`, `send_event`
+  - JSON-RPC over HTTP POST on port 9001 using `hxd.net.Socket` (libuv async)
+  - `send_event` — inject mouse clicks, key presses, wheel, and text input events into the running application
+  - `screenshot` — capture current frame as base64 PNG
+  - `set_parameter` — update live programmable parameters via `ReloadableRegistry`
+  - Zero overhead in release builds (all code guarded by `#if MULTIANIM_DEV`)
+- **ResourceLoader.getCacheKeys()** — returns cached resource names by category (sheets, fonts, .manim, .anim files)
+- **ReloadableRegistry.getAllHandles()** — returns all live reloadable handles across all source paths
+- **`.mcp.json`** — project-level MCP server configuration for Claude Code
+
+### Fixed
+- **TSFile empty filename in incremental mode** — returns transparent fallback tile instead of throwing when `bitmap($param)` has an empty/null filename during incremental updates
+
 ## [1.0.0-rc.1] - 2026-03-03
 
 ### Added

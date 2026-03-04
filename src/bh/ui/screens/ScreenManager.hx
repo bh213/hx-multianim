@@ -43,6 +43,7 @@ private enum ScreenManagerMode {
 @:nullSafety
 @:allow(bh.ui.screens.UIScreen)
 @:allow(bh.ui.ControllerEventHandler)
+@:allow(bh.multianim.dev.DevBridge)
 class ScreenManager {
 	final loader:CachingResourceLoader;
 	final handler:ControllerEventHandler;

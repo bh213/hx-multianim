@@ -2104,7 +2104,17 @@ class MultiAnimBuilder {
 
 	function loadTileSource(tileSource):h2d.Tile {
 		final tile = switch tileSource {
-			case TSFile(filename): resourceLoader.loadTile(resolveAsString(filename));
+			case TSFile(filename):
+				final resolved = resolveAsString(filename);
+				if (resolved == null || resolved.length == 0) {
+					if (incrementalMode) {
+						if (incrementalFallbackTile == null)
+							incrementalFallbackTile = h2d.Tile.fromColor(0x00000000, 1, 1, 0.0);
+						incrementalFallbackTile.clone();
+					} else
+						throw 'TSFile: empty filename' + currentNodePos();
+				} else
+					resourceLoader.loadTile(resolved);
 			case TSSheet(sheet, name): loadTileImpl(resolveAsString(sheet), resolveAsString(name)).tile;
 			case TSSheetWithIndex(sheet, name, index): loadTileImpl(resolveAsString(sheet), resolveAsString(name), resolveAsInteger(index)).tile;
 			case TSGenerated(type):
