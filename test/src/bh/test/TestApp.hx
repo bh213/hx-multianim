@@ -78,6 +78,7 @@ class TestApp extends hxd.App {
 		testRunner.addCase(new bh.test.examples.BitFlagTest());
 		#if MULTIANIM_DEV
 		testRunner.addCase(new bh.test.examples.HotReloadTest());
+		testRunner.addCase(new bh.test.examples.DevBridgeTest());
 		#end
 
 		// Capture unit test results in memory for HTML report

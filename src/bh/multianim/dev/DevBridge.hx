@@ -13,23 +13,52 @@ import bh.multianim.MultiAnimParser;
 import bh.multianim.MultiAnimParser.DefinitionType;
 import bh.multianim.MultiAnimParser.Definition;
 import bh.multianim.MultiAnimParser.ParametersDefinitions;
+import bh.multianim.MultiAnimParser.ResolvedIndexParameters;
 import bh.multianim.dev.HotReload;
+import bh.base.TweenManager;
 
 @:access(bh.ui.screens.ScreenManager)
+@:access(bh.ui.screens.UIScreen.UIScreenBase)
 @:access(bh.multianim.MultiAnimBuilder)
+@:access(bh.base.TweenManager)
 @:access(hxd.Window)
 class DevBridge {
 	final screenManager:ScreenManager;
 	final port:Int;
 	var serverSocket:Null<Socket>;
 
-	public function new(screenManager:ScreenManager, port:Int = 9001) {
+	// ---- Pause state ----
+	var paused:Bool = false;
+	var savedLoopFunc:Null<Void -> Void> = null;
+	var stepRemaining:Int = 0;
+
+	// ---- Trace capture ----
+	static final TRACE_BUFFER_SIZE = 200;
+	var traceBuffer:Array<String> = [];
+	var traceDropped:Int = 0;
+	var originalTrace:Dynamic = null;
+
+	// ---- Error capture ----
+	var errorBuffer:Array<{message:String, stack:String, timestamp:Float}> = [];
+
+	public function new(screenManager:ScreenManager, port:Int = 0) {
 		this.screenManager = screenManager;
-		this.port = port;
+		this.port = if (port != 0) port else resolvePort();
+	}
+
+	static function resolvePort():Int {
+		var envPort = Sys.getEnv("HX_DEV_PORT");
+		if (envPort != null) {
+			var parsed = Std.parseInt(envPort);
+			if (parsed != null && parsed > 0 && parsed < 65536) return parsed;
+			trace('[DevBridge] Invalid HX_DEV_PORT="$envPort", using default 9001');
+		}
+		return 9001;
 	}
 
 	public function start():Void {
 		if (serverSocket != null) return;
+		installTraceCapture();
 		serverSocket = new Socket();
 		try {
 			serverSocket.bind("0.0.0.0", port, onClientConnected);
@@ -45,6 +74,36 @@ class DevBridge {
 			serverSocket.close();
 			serverSocket = null;
 			trace("[DevBridge] Stopped");
+		}
+		restoreTrace();
+	}
+
+	// ---- Trace capture ----
+
+	function installTraceCapture():Void {
+		originalTrace = haxe.Log.trace;
+		var self = this;
+		haxe.Log.trace = (v:Dynamic, ?infos:haxe.PosInfos) -> {
+			// Call original trace
+			var orig = self.originalTrace;
+			if (orig != null) orig(v, infos);
+			// Buffer the message
+			var msg = if (infos != null)
+				'${infos.fileName}:${infos.lineNumber}: $v'
+			else
+				'$v';
+			if (self.traceBuffer.length >= TRACE_BUFFER_SIZE) {
+				self.traceBuffer.shift();
+				self.traceDropped++;
+			}
+			self.traceBuffer.push(msg);
+		};
+	}
+
+	function restoreTrace():Void {
+		if (originalTrace != null) {
+			Reflect.setField(haxe.Log, "trace", originalTrace);
+			originalTrace = null;
 		}
 	}
 
@@ -138,6 +197,7 @@ class DevBridge {
 
 	function dispatch(method:String, params:Dynamic):Dynamic {
 		return switch method {
+			// v1 tools
 			case "performance": handlePerformance(params);
 			case "list_screens": handleListScreens(params);
 			case "list_builders": handleListBuilders(params);
@@ -150,11 +210,26 @@ class DevBridge {
 			case "eval_manim": handleEvalManim(params);
 			case "list_resources": handleListResources(params);
 			case "send_event": handleSendEvent(params);
+			// v2: game control
+			case "pause": handlePause(params);
+			case "step": handleStep(params);
+			case "quit": handleQuit(params);
+			// v2: trace & error capture
+			case "get_traces": handleGetTraces(params);
+			case "get_errors": handleGetErrors(params);
+			// v2: deep inspection
+			case "get_parameters": handleGetParameters(params);
+			case "list_interactives": handleListInteractives(params);
+			case "list_slots": handleListSlots(params);
+			case "get_tween_state": handleGetTweenState(params);
+			case "get_screen_state": handleGetScreenState(params);
+			case "find_element_at": handleFindElementAt(params);
+			case "inspect_programmable": handleInspectProgrammable(params);
 			default: throw 'Unknown method: $method';
 		};
 	}
 
-	// ---- Tool handlers ----
+	// ---- v1 tool handlers ----
 
 	function handlePerformance(params:Dynamic):Dynamic {
 		var engine = screenManager.app.engine;
@@ -495,6 +570,389 @@ class DevBridge {
 		}
 	}
 
+	// ---- v2: Game control ----
+
+	function handlePause(params:Dynamic):Dynamic {
+		var shouldPause:Bool = params.paused != null ? params.paused : true;
+
+		if (shouldPause && !paused) {
+			// Save current loop and replace with no-op (rendering continues via engine.present)
+			savedLoopFunc = @:privateAccess hxd.System.loopFunc;
+			@:privateAccess hxd.System.loopFunc = () -> {};
+			paused = true;
+			trace("[DevBridge] Game paused");
+		} else if (!shouldPause && paused) {
+			if (savedLoopFunc != null) {
+				@:privateAccess hxd.System.loopFunc = savedLoopFunc;
+				savedLoopFunc = null;
+			}
+			paused = false;
+			trace("[DevBridge] Game resumed");
+		}
+
+		return {paused: paused};
+	}
+
+	function handleStep(params:Dynamic):Dynamic {
+		var frames:Int = params.frames != null ? Std.int(params.frames) : 1;
+		if (frames < 1) frames = 1;
+		if (frames > 100) frames = 100;
+
+		if (!paused)
+			throw "Game is not paused. Call pause first.";
+
+		if (savedLoopFunc == null)
+			throw "No saved loop function — cannot step.";
+
+		// Run N frames by temporarily restoring the loop
+		var loopFn = savedLoopFunc;
+		for (_ in 0...frames) {
+			loopFn();
+		}
+
+		return {paused: true, framesAdvanced: frames};
+	}
+
+	function handleQuit(params:Dynamic):Dynamic {
+		trace("[DevBridge] Quit requested — exiting in 100ms");
+		// Delay exit so HTTP response can be sent
+		haxe.Timer.delay(() -> {
+			hxd.System.exit();
+		}, 100);
+		return {success: true};
+	}
+
+	// ---- v2: Trace & error capture ----
+
+	function handleGetTraces(params:Dynamic):Dynamic {
+		var clear:Bool = params.clear != null ? params.clear : false;
+		var limit:Int = params.limit != null ? Std.int(params.limit) : 50;
+		if (limit < 1) limit = 1;
+		if (limit > TRACE_BUFFER_SIZE) limit = TRACE_BUFFER_SIZE;
+
+		var lines:Array<String>;
+		if (limit >= traceBuffer.length) {
+			lines = traceBuffer.copy();
+		} else {
+			lines = traceBuffer.slice(traceBuffer.length - limit);
+		}
+
+		var total = traceBuffer.length;
+		var dropped = traceDropped;
+
+		if (clear) {
+			traceBuffer = [];
+			traceDropped = 0;
+		}
+
+		return {lines: lines, total: total, dropped: dropped};
+	}
+
+	function handleGetErrors(params:Dynamic):Dynamic {
+		var clear:Bool = params.clear != null ? params.clear : true;
+		var errors = [
+			for (err in errorBuffer)
+				{message: err.message, stack: err.stack, timestamp: err.timestamp}
+		];
+		var count = errorBuffer.length;
+		if (clear) errorBuffer = [];
+		return {errors: errors, count: count};
+	}
+
+	/** Called externally to report a caught runtime error. */
+	public function reportError(message:String, ?stack:String):Void {
+		errorBuffer.push({
+			message: message,
+			stack: stack != null ? stack : "",
+			timestamp: haxe.Timer.stamp(),
+		});
+		// Cap buffer size
+		if (errorBuffer.length > 100) errorBuffer.shift();
+	}
+
+	// ---- v2: Deep inspection ----
+
+	function handleGetParameters(params:Dynamic):Dynamic {
+		var programmable:String = params.programmable;
+		if (programmable == null)
+			throw "Required param: programmable";
+
+		var found = findBuilderResult(programmable);
+		if (found == null)
+			throw 'No live BuilderResult found for programmable: $programmable';
+
+		var parameters:Array<Dynamic> = [];
+
+		// Get definitions from the builder
+		var handle = findHandle(programmable);
+		if (handle != null) {
+			var builder = findBuilderForHandle(handle);
+			if (builder != null) {
+				var defs = builder.getParameterDefinitions(programmable);
+				var currentParams:Null<Map<String, ResolvedIndexParameters>> = null;
+				if (found.incrementalContext != null)
+					currentParams = found.incrementalContext.snapshotParams();
+
+				for (paramName => def in defs) {
+					if (def == null) continue;
+					var entry:Dynamic = {
+						name: paramName,
+						type: defTypeToString(def.type),
+					};
+					// Add current value if available
+					if (currentParams != null) {
+						var resolved = currentParams.get(paramName);
+						if (resolved != null) {
+							entry.currentValue = resolvedParamToDynamic(resolved);
+						}
+					}
+					parameters.push(entry);
+				}
+			}
+		}
+
+		return {programmable: programmable, parameters: parameters};
+	}
+
+	function handleListInteractives(params:Dynamic):Dynamic {
+		var screenName:String = params.screen;
+		if (screenName == null)
+			throw "Required param: screen";
+
+		var screen = screenManager.configuredScreens.get(screenName);
+		if (screen == null)
+			throw 'Screen not found: $screenName';
+
+		var interactives:Array<Dynamic> = [];
+		var wrappers:Array<bh.ui.UIInteractiveWrapper> = @:privateAccess (cast screen : bh.ui.screens.UIScreen.UIScreenBase).interactiveWrappers;
+		for (wrapper in wrappers) {
+			var entry:Dynamic = {
+				id: wrapper.id,
+				x: wrapper.interactive.x,
+				y: wrapper.interactive.y,
+				disabled: wrapper.disabled,
+			};
+
+			// Add metadata key-values
+			if (wrapper.metadata != null) {
+				var meta:Dynamic = {};
+				var hasMeta = false;
+				for (key in wrapper.metadata.keys()) {
+					Reflect.setField(meta, key, wrapper.metadata.getStringOrDefault(key, ""));
+					hasMeta = true;
+				}
+				if (hasMeta) entry.metadata = meta;
+			}
+			interactives.push(entry);
+		}
+
+		return {screen: screenName, interactives: interactives};
+	}
+
+	function handleListSlots(params:Dynamic):Dynamic {
+		var programmable:String = params.programmable;
+		if (programmable == null)
+			throw "Required param: programmable";
+
+		var found = findBuilderResult(programmable);
+		if (found == null)
+			throw 'No live BuilderResult found for programmable: $programmable';
+
+		var slots:Array<Dynamic> = [];
+		if (found.slots != null) {
+			for (entry in found.slots) {
+				var slotInfo:Dynamic = {
+					occupied: entry.handle.isOccupied(),
+				};
+				switch entry.key {
+					case Named(name):
+						slotInfo.name = name;
+					case Indexed(name, index):
+						slotInfo.name = name;
+						slotInfo.index = index;
+					case Indexed2D(name, indexX, indexY):
+						slotInfo.name = name;
+						slotInfo.indexX = indexX;
+						slotInfo.indexY = indexY;
+				}
+				if (entry.handle.incrementalContext != null)
+					slotInfo.hasParameters = true;
+				slots.push(slotInfo);
+			}
+		}
+
+		return {programmable: programmable, slots: slots};
+	}
+
+	function handleGetTweenState(params:Dynamic):Dynamic {
+		var tweenInfos:Array<Dynamic> = [];
+		for (handle in screenManager.tweens.handles) {
+			switch handle {
+				case HTween(tween):
+					if (!tween.cancelled)
+						tweenInfos.push(tweenToInfo(tween));
+				case HSequence(seq):
+					if (!seq.cancelled) {
+						for (t in seq.tweens)
+							tweenInfos.push(tweenToInfo(t));
+					}
+				case HGroup(group):
+					if (!group.cancelled) {
+						for (t in group.tweens)
+							tweenInfos.push(tweenToInfo(t));
+					}
+			}
+		}
+		return {activeTweens: tweenInfos.length, tweens: tweenInfos};
+	}
+
+	function handleGetScreenState(params:Dynamic):Dynamic {
+		var modeStr = switch screenManager.mode {
+			case None: "none";
+			case Single(_): "single";
+			case MasterAndSingle(_, _): "masterAndSingle";
+			case Dialog(_, _, _, dialogName): 'dialog:$dialogName';
+		};
+
+		var activeNames:Array<String> = [];
+		for (s in screenManager.activeScreens) {
+			for (name => screen in screenManager.configuredScreens) {
+				if (screen == s) {
+					activeNames.push(name);
+					break;
+				}
+			}
+		}
+
+		var screenDetails:Array<Dynamic> = [];
+		for (s in screenManager.activeScreens) {
+			var name = "unknown";
+			for (n => screen in screenManager.configuredScreens) {
+				if (screen == s) {
+					name = n;
+					break;
+				}
+			}
+			var sb = (cast s : bh.ui.screens.UIScreen.UIScreenBase);
+			screenDetails.push({
+				name: name,
+				elementCount: @:privateAccess sb.elements.length,
+				interactiveCount: @:privateAccess sb.interactiveWrappers.length,
+			});
+		}
+
+		return {
+			mode: modeStr,
+			isTransitioning: screenManager.isTransitioning,
+			paused: paused,
+			activeTweens: screenManager.tweens.handles.length,
+			activeScreens: screenDetails,
+		};
+	}
+
+	function handleFindElementAt(params:Dynamic):Dynamic {
+		var x:Float = params.x != null ? params.x : 0;
+		var y:Float = params.y != null ? params.y : 0;
+
+		var hits:Array<Dynamic> = [];
+		var root = screenManager.app.s2d;
+		findObjectsAt(root, x, y, 0, hits);
+
+		// Sort by depth descending (front-most first)
+		hits.sort((a, b) -> {
+			if (a.depth > b.depth) return -1;
+			if (a.depth < b.depth) return 1;
+			return 0;
+		});
+
+		return {x: x, y: y, elements: hits};
+	}
+
+	function handleInspectProgrammable(params:Dynamic):Dynamic {
+		var programmable:String = params.programmable;
+		if (programmable == null)
+			throw "Required param: programmable";
+
+		var found = findBuilderResult(programmable);
+		if (found == null)
+			throw 'No live BuilderResult found for programmable: $programmable';
+
+		var result:Dynamic = {
+			name: found.name,
+			objectType: Type.getClassName(Type.getClass(found.object)),
+			x: found.object.x,
+			y: found.object.y,
+			visible: found.object.visible,
+		};
+
+		// Parameters (current values)
+		if (found.incrementalContext != null) {
+			var snapshot = found.incrementalContext.snapshotParams();
+			var paramValues:Dynamic = {};
+			for (paramName => resolved in snapshot) {
+				var val = resolvedParamToDynamic(resolved);
+				if (val != null)
+					Reflect.setField(paramValues, paramName, val);
+			}
+			result.currentParameters = paramValues;
+		}
+
+		// Slots
+		if (found.slots != null && found.slots.length > 0) {
+			var slotList:Array<Dynamic> = [];
+			for (entry in found.slots) {
+				var slotInfo:Dynamic = {occupied: entry.handle.isOccupied()};
+				switch entry.key {
+					case Named(name): slotInfo.name = name;
+					case Indexed(name, index):
+						slotInfo.name = name;
+						slotInfo.index = index;
+					case Indexed2D(name, ix, iy):
+						slotInfo.name = name;
+						slotInfo.indexX = ix;
+						slotInfo.indexY = iy;
+				}
+				slotList.push(slotInfo);
+			}
+			result.slots = slotList;
+		}
+
+		// Dynamic refs
+		if (found.dynamicRefs != null) {
+			var refs:Array<String> = [];
+			for (name => _ in found.dynamicRefs)
+				refs.push(name);
+			if (refs.length > 0)
+				result.dynamicRefs = refs;
+		}
+
+		// Named elements
+		if (found.names != null) {
+			var names:Array<String> = [];
+			for (name => _ in found.names)
+				names.push(name);
+			if (names.length > 0)
+				result.namedElements = names;
+		}
+
+		// Interactives
+		if (found.interactives != null && found.interactives.length > 0)
+			result.interactiveCount = found.interactives.length;
+
+		// Settings
+		if (found.rootSettings != null) {
+			var settings:Dynamic = {};
+			var hasSettings = false;
+			for (key in found.rootSettings.keys()) {
+				Reflect.setField(settings, key, found.rootSettings.getStringOrDefault(key, ""));
+				hasSettings = true;
+			}
+			if (hasSettings) result.settings = settings;
+		}
+
+		return result;
+	}
+
 	// ---- Helpers ----
 
 	function walkSceneGraph(obj:h2d.Object, depth:Int, maxDepth:Int):Dynamic {
@@ -549,6 +1007,70 @@ class DevBridge {
 				return handle.result;
 		}
 		return null;
+	}
+
+	function findHandle(programmableName:String):Null<HotReload.ReloadableHandle> {
+		for (handle in screenManager.hotReloadRegistry.getAllHandles()) {
+			if (handle.programmableName == programmableName)
+				return handle;
+		}
+		return null;
+	}
+
+	function findBuilderForHandle(handle:HotReload.ReloadableHandle):Null<MultiAnimBuilder> {
+		for (resource => builder in screenManager.builders) {
+			if (resource.name == handle.sourcePath)
+				return builder;
+		}
+		return null;
+	}
+
+	function tweenToInfo(tween:bh.base.TweenManager.Tween):Dynamic {
+		var info:Dynamic = {
+			duration: tween.duration,
+			elapsed: tween.elapsed,
+			progress: if (tween.duration > 0) tween.elapsed / tween.duration else 1.0,
+		};
+		if (tween.target != null && tween.target.name != null)
+			info.target = tween.target.name;
+		return info;
+	}
+
+	function findObjectsAt(obj:h2d.Object, x:Float, y:Float, depth:Int, hits:Array<Dynamic>):Void {
+		if (!obj.visible) return;
+
+		var bounds = obj.getBounds();
+		if (bounds != null && bounds.contains(new h2d.col.Point(x, y))) {
+			var entry:Dynamic = {
+				type: Type.getClassName(Type.getClass(obj)),
+				depth: depth,
+				x: obj.x,
+				y: obj.y,
+			};
+			if (obj.name != null) entry.name = obj.name;
+			if (Std.isOfType(obj, h2d.Text)) {
+				var t:h2d.Text = cast obj;
+				entry.text = t.text;
+			}
+			hits.push(entry);
+		}
+
+		for (i in 0...obj.numChildren) {
+			findObjectsAt(obj.getChildAt(i), x, y, depth + 1, hits);
+		}
+	}
+
+	static function resolvedParamToDynamic(p:ResolvedIndexParameters):Null<Dynamic> {
+		return switch p {
+			case Value(val): val;
+			case ValueF(val): val;
+			case StringValue(s): s;
+			case Flag(f): f;
+			case Index(_, name): name;
+			case ArrayString(arr): arr;
+			case ExpressionAlias(_): null;
+			case TileSourceValue(_): null;
+		};
 	}
 
 	static function defTypeToString(t:DefinitionType):Dynamic {
