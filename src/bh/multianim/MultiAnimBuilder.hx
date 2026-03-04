@@ -383,10 +383,11 @@ class IncrementalUpdateContext {
 		entry.applied = false;
 	}
 
+	@:nullSafety(Off)
 	public function setParameter(name:String, value:Dynamic):Void {
 		// Look up the parameter type definition for type-aware conversion (flags need special handling)
 		final paramDef = getParamDefinition(name);
-		final paramType = paramDef != null ? paramDef.type : null;
+		final paramType = paramDef?.type;
 		if (paramType != null && paramType.match(PPTFlags(_))) {
 			indexedParams.set(name, MultiAnimParser.dynamicValueToIndex(name, paramType, value, s -> throw s));
 		} else if (Std.isOfType(value, Int)) {
