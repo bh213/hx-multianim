@@ -209,6 +209,8 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 			switch entry.key {
 				case Indexed(name, index) if (name == baseName):
 					addDropZoneFromSlot(baseName + "_" + index, entry.handle, accepts);
+				case Indexed2D(name, indexX, indexY) if (name == baseName):
+					addDropZoneFromSlot('${baseName}_${indexX}_${indexY}', entry.handle, accepts);
 				case Named(name) if (name == baseName):
 					addDropZoneFromSlot(baseName, entry.handle, accepts);
 				default:

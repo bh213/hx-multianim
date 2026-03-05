@@ -869,6 +869,7 @@ These are pre-built UI components used through the builder/screen system.
 | **Progress bar** | Display-only value indicator (0-100) |
 | **Interactive** | Hit-test region with ID and optional typed metadata |
 | **Draggable** | Drag-and-drop with drop zones, slot integration, swap mode |
+| **Grid** | 2D grid (rect or hex) with cell state, drag-drop zones, card targeting |
 | **Tabs** | Tab bar with per-tab content management, relative coordinates mode |
 
 ### Tabs Settings
@@ -883,6 +884,27 @@ These are pre-built UI components used through the builder/screen system.
 | `tabPanel.contentRoot` | behavioral | Named element for relative coordinates (e.g. `contentArea`) |
 
 When `tabPanel.contentRoot` is set, tab content coordinates are relative to the named element's position. Each tab gets its own `h2d.Layers` for proper layer support within the panel.
+
+### Grid Component (`UIMultiAnimGrid`)
+
+2D grid (rectangular or hexagonal) managing cell state, rendering, drag-drop, and card targeting.
+
+| Config field | Description |
+|-------------|-------------|
+| `gridType` | `Rect(cellW, cellH, ?gap)` or `Hex(orientation, sizeX, sizeY)` |
+| `cellBuildName` | Default `.manim` programmable name for cells |
+| `cellBuildDelegate` | Optional `(col, row, data) -> {?buildName, ?params}` per-cell override |
+| `originX`, `originY` | Grid root position |
+| `snapPathName` | AnimatedPath for drop snap (null = instant) |
+| `returnPathName` | AnimatedPath for drag cancel return (null = instant) |
+| `highlightParam` | Cell param for drag highlight (default: `"highlight"`) |
+| `statusParam` | Cell param for hover status (default: `"status"`) |
+
+**Cell programmable contract:** Must have `col:int`, `row:int`, plus matching `highlightParam` (bool) and `statusParam` (enum with `normal`/`hover`).
+
+**Events** (`GridEvent` enum via `onGridEvent`): `CellClick`, `CellHoverEnter`, `CellHoverLeave`, `CellDrop`, `CellCardPlayed`, `CellDataChanged`.
+
+**Key API:** `addRectRegion(cols, rows)`, `addHexRegion(center, radius)`, `set(col, row, data, ?params)`, `get()`, `clear()`, `isOccupied()`, `forEach()`, `cellAtPoint(sceneX, sceneY)`, `cellPosition(col, row)`, `neighbors()`, `distance()`, `acceptDrops(draggable, ?filter)`, `registerAsCardTarget(cardHand, ?filter)`, `dispose()`.
 
 ### Common UI Settings
 

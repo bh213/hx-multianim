@@ -2081,6 +2081,25 @@ Enable debug traces by adding to your HXML file:
 -D MULTIANIM_TRACE
 ```
 
+## Strict Mode
+
+Fail-fast on `.manim`/`.anim` errors — prints a structured error to stderr and exits with code 1 instead of silently storing errors. Useful for CI pipelines and AI agent workflows.
+
+```hxml
+-D MULTIANIM_STRICT
+```
+
+Error output format:
+```
+=== MANIM STRICT ERROR ===
+context: screen "myScreen"
+file: res/ui/menu.manim
+line: 42
+col: 15
+error: Unknown font "missing"
+=== END MANIM STRICT ERROR ===
+```
+
 ---
 
 ## UI Components

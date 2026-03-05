@@ -44,6 +44,13 @@ Enable debug traces by adding to HXML:
 -D MULTIANIM_TRACE
 ```
 
+## Strict Mode
+
+Fail-fast on `.manim`/`.anim` errors — prints structured error to stderr and `Sys.exit(1)`. For CI/AI workflows:
+```hxml
+-D MULTIANIM_STRICT
+```
+
 ## Haxe Language Pitfalls
 
 - **`@:access` does NOT bypass `(default, null)` property setters.** It only bypasses visibility (private/public), not property access restrictions. To write `(default, null)` properties from outside the class, cast to `Dynamic`: `var dg:Dynamic = group; dg.speed = value;`

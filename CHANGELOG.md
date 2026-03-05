@@ -3,6 +3,18 @@
 ## [1.0.0-rc.2] - 2026-03-04
 
 ### Added
+- **UIMultiAnimGrid** — 2D grid component (rectangular or hexagonal) for cell state management, `.manim` programmable rendering, drag-drop integration, and card hand targeting
+  - `GridType` enum: `Rect(cellWidth, cellHeight, ?gap)` and `Hex(orientation, sizeX, sizeY)`
+  - Cell structure: `addCell`, `removeCell`, `addRectRegion`, `addHexRegion` (batch creation)
+  - Cell data: `set`, `get`, `clear`, `isOccupied`, `forEach`, `setCellParameter`, `getCellResult`, `rebuildCell`
+  - Coordinate queries: `cellAtPoint` (hit-test via `globalToLocal`), `cellPosition`, `neighbors`, `distance`
+  - Mouse routing: `onMouseMove` (hover enter/leave with status param), `onMouseClick` (click events)
+  - Drag-drop: `acceptDrops` (auto-creates `DropZone` per cell with highlight), `makeDraggableFromCell`, cross-grid chaining
+  - Card targeting: `registerAsCardTarget` (creates synthetic interactives for card hand targeting system)
+  - Events: `CellClick`, `CellHoverEnter`, `CellHoverLeave`, `CellDrop`, `CellCardPlayed`, `CellDataChanged`
+  - `CellBuildDelegate` for per-cell programmable/param customization
+  - `onCellBuilt` callback for post-build customization
+- **MULTIANIM_STRICT mode** — compile flag (`-D MULTIANIM_STRICT`) for fail-fast on `.manim`/`.anim` errors. Prints structured error to stderr and calls `Sys.exit(1)` instead of storing errors in `failedScreens`. Covers `addScreen()`, `reload()` builder rebuild, and screen reload paths.
 - **MCP DevBridge** — HTTP server for AI tool integration (`DevBridge.hx`, compiles with `-D MULTIANIM_DEV`)
   - 12 core tools: `performance`, `list_screens`, `list_builders`, `scene_graph`, `inspect_element`, `screenshot`, `set_parameter`, `set_visibility`, `reload`, `eval_manim`, `list_resources`, `send_event`
   - 3 control tools: `pause`, `step`, `quit`

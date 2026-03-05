@@ -92,6 +92,121 @@ Metadata supports typed values matching the settings system: `key => val` (strin
 - Zone highlight callbacks: `onDragStartHighlightZones`, `onDragEndHighlightZones` on draggable
 - Per-zone: `DropZone.onZoneHighlight` callback for hover state
 
+## Grid Component
+
+`UIMultiAnimGrid` — 2D grid component (rectangular or hexagonal) that manages cell state, rendering via `.manim` programmables, drag-drop integration, and card hand targeting. Follows the helper/manager pattern (like `UICardHandHelper`).
+
+**Files:**
+- `src/bh/ui/UIMultiAnimGrid.hx` — main component
+- `src/bh/ui/UIMultiAnimGridTypes.hx` — types: `GridType`, `GridEvent`, `GridConfig`, `CellCoord`, delegates
+
+**Construction:**
+```haxe
+var grid = new UIMultiAnimGrid(builder, {
+    gridType: Rect(50, 50, 4),      // Rect(cellWidth, cellHeight, ?gap) or Hex(orientation, sizeX, sizeY)
+    cellBuildName: "gridCell",       // .manim programmable name for cells
+    cellBuildDelegate: null,         // optional per-cell override (buildName + params)
+    originX: 0, originY: 0,         // grid root position
+    snapPathName: "snapAnim",       // animatedPath for drop snap (null = instant)
+    returnPathName: "returnAnim",   // animatedPath for drag cancel return (null = instant)
+    highlightParam: "highlight",    // cell param for drag highlight state (default: "highlight")
+    statusParam: "status",          // cell param for hover status (default: "status")
+});
+```
+
+**Cell programmable contract:** Must have parameters matching `highlightParam` (bool) and `statusParam` (enum with "normal"/"hover"). Receives `col:int` and `row:int` automatically.
+
+**GridType enum:**
+- `Rect(cellWidth:Float, cellHeight:Float, ?gap:Float)` — rectangular grid
+- `Hex(orientation:HexOrientation, sizeX:Float, sizeY:Float)` — hexagonal grid (POINTY or FLAT)
+
+**Cell structure API:**
+- `addCell(col, row, ?data, ?params)` — add single cell
+- `removeCell(col, row)` — remove cell
+- `hasCell(col, row)` — check existence
+- `cellCount()` — total cells
+- `addRectRegion(cols, rows)` — batch add 0..cols-1, 0..rows-1
+- `addHexRegion(centerCol, centerRow, radius)` — batch add hex ring (radius 1 = 7 cells, radius 2 = 19 cells)
+
+**Cell data API:**
+- `set(col, row, data, ?params)` — set data + optional visual params
+- `get(col, row)` — get data (null if empty)
+- `clear(col, row)` — clear data, reset visuals to defaults
+- `isOccupied(col, row)` — check if data is non-null
+- `forEach((col, row, data) -> Void)` — iterate all cells
+- `setCellParameter(col, row, param, value)` — set single visual param
+- `setCellParameters(col, row, params)` — batch set visual params
+- `getCellResult(col, row)` — get raw `BuilderResult` for advanced customization
+- `rebuildCell(col, row)` — full rebuild (e.g. when delegate returns different programmable)
+
+**Coordinate queries:**
+- `cellAtPoint(sceneX, sceneY)` — hit-test which cell is at scene coords (uses `globalToLocal`)
+- `cellPosition(col, row)` — world (scene) position of cell origin
+- `neighbors(col, row)` — existing neighbor cells (rect: 4-dir, hex: 6-dir)
+- `distance(c1, r1, c2, r2)` — grid distance (rect: Manhattan, hex: hex distance)
+
+**Mouse event routing** — call from screen overrides:
+- `onMouseMove(sceneX, sceneY)` — handles hover enter/leave, returns true if over a cell
+- `onMouseClick(sceneX, sceneY, button)` — emits `CellClick`, returns true if cell clicked
+
+**GridEvent enum** (via `onGridEvent` callback):
+- `CellClick(cell, button)` — cell was clicked
+- `CellHoverEnter(cell)` / `CellHoverLeave(cell)` — hover state changes
+- `CellDrop(cell, draggable, sourceGrid, sourceCell)` — draggable dropped on cell
+- `CellCardPlayed(cell, cardId)` — card played on cell (from card hand targeting)
+- `CellDataChanged(cell, oldData, newData)` — data changed via `set()` or `clear()`
+
+**Drag-drop integration:**
+- `acceptDrops(draggable, ?accepts)` — register a `UIMultiAnimDraggable` to drop onto this grid's cells. Auto-creates `DropZone` per cell, manages highlight state. `accepts: (cell, draggable) -> Bool` filters valid targets
+- `removeDrops(draggable)` — unregister draggable
+- `makeDraggableFromCell(col, row, ?visualOverride)` — create draggable from cell content with source tracking
+
+**Card hand integration:**
+- `registerAsCardTarget(cardHand, ?accepts)` — register grid cells as card play targets. Creates synthetic `UIInteractiveWrapper` per cell for the card hand's targeting system. `accepts: (cell, cardId) -> Bool` filters valid targets
+- `unregisterAsCardTarget(cardHand)` — unregister
+
+**Lifecycle:**
+- `getObject()` — root `h2d.Object`, add to scene via `addObjectToLayer(grid.getObject(), layer)`
+- `update(dt)` — reserved for future animation support
+- `dispose()` — clean up all resources, zones, and scene graph
+
+**Callbacks:**
+- `onGridEvent:(GridEvent) -> Void` — main event callback
+- `onCellBuilt:(CellCoord, BuilderResult) -> Void` — called after each cell build (customize overlays etc.)
+
+**Cross-grid drag pattern:**
+```haxe
+// Both grids accept drops from the same draggable
+storageGrid.acceptDrops(drag, (cell, _) -> !storageGrid.isOccupied(cell.col, cell.row));
+loadoutGrid.acceptDrops(drag, (cell, _) -> !loadoutGrid.isOccupied(cell.col, cell.row));
+
+// In DragStart callback: clear source, store source info
+drag.onDragEvent = (event, _, _) -> switch event {
+    case DragStart: srcGrid.clear(srcCol, srcRow);
+    case DragCancel: srcGrid.set(srcCol, srcRow, data); // restore on cancel
+    default:
+};
+
+// In onGridEvent CellDrop: set data on target, rebuild draggables
+```
+
+**Card targeting wiring pattern:**
+```haxe
+hexGrid.registerAsCardTarget(cardHand, (cell, cardId) -> !hexGrid.isOccupied(cell.col, cell.row));
+
+// In screen: route mouse events, check card hand first
+override public function onMouseMove(pos) {
+    if (cardHand.onMouseMove(pos.x, pos.y)) return false; // card hand consumes during drag
+    hexGrid.onMouseMove(pos.x, pos.y);
+    return super.onMouseMove(pos);
+}
+override public function onMouseClick(pos, button, release) {
+    if (release && cardHand.onMouseRelease(pos.x, pos.y)) return false;
+    if (release) hexGrid.onMouseClick(pos.x, pos.y, button);
+    return super.onMouseClick(pos, button, release);
+}
+```
+
 **Dynamic refs** — `dynamicRef($ref, params)` embeds with incremental mode for runtime parameter updates:
 - Builder: `result.getDynamicRef("name").setParameter("param", value)`
 - Batch updates: `beginUpdate()` / `endUpdate()` defers re-evaluation

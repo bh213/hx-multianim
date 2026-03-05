@@ -16,6 +16,7 @@ A pattern-based guide for building UIs and game elements. Always start with `.ma
 - [Inventory Grids](#inventory-grids)
 - [Drag and Drop](#drag-and-drop)
 - [Card Hand System](#card-hand-system)
+- [Grid Component](#grid-component)
 - [Dialogue System](#dialogue-system)
 - [Skill Trees](#skill-trees)
 - [Particles](#particles)
@@ -696,6 +697,148 @@ cardHand.drawCard({id: "card1", params: ["cardName" => "Fireball", "cost" => 3]}
 // onMouseClick -> cardHand.onMouseRelease(x, y)
 // update(dt) -> cardHand.update(dt)
 // onClear -> cardHand.dispose()
+```
+
+---
+
+## Grid Component
+
+### .manim Cell Programmables
+
+```manim
+// Rect grid cell
+#rectCell programmable(col:int=0, row:int=0, status:[normal,hover]=normal, highlight:bool=false) {
+    @(highlight=>true)  bitmap(generated(color(52, 52, #2a3a2a))): 0, 0
+    @(highlight=>false)  bitmap(generated(color(52, 52, #1a1a2e))): 0, 0
+    @(status=>hover) apply { filter: glow(#FFFF00, 0.3, 4) }
+    graphics(rect(#333355, 1.0, 52, 52)): 0, 0
+}
+
+// Hex grid cell
+#hexCell programmable(col:int=0, row:int=0, status:[normal,hover]=normal, highlight:bool=false,
+                      occupied:bool=false, cellColor:color=#222244) {
+    @(highlight=>true)  graphics(polygon(#2a3a2a, filled, 24, 0, 45, 12, 45, 36, 24, 48, 3, 36, 3, 12)): -24, -24
+    @(highlight=>false) graphics(polygon(#1a1a2e, filled, 24, 0, 45, 12, 45, 36, 24, 48, 3, 36, 3, 12)): -24, -24
+    @(occupied=>true)   graphics(polygon($cellColor, filled, 24, 6, 39, 15, 39, 33, 24, 42, 9, 33, 9, 15)): -24, -24
+    @(status=>hover) apply { filter: glow(#44FFFF, 0.3, 4) }
+    graphics(polygon(#334466, 1.0, 24, 0, 45, 12, 45, 36, 24, 48, 3, 36, 3, 12)): -24, -24
+}
+```
+
+**Key patterns:**
+- `col:int=0, row:int=0` — auto-set by grid, useful for per-cell customization
+- `status:[normal,hover]=normal` — driven by `onMouseMove` hover detection
+- `highlight:bool=false` — driven by drag-drop zone highlight system
+- Extra params like `occupied`, `cellColor` — game-specific, set via `set()` with params
+
+### Basic Rect Grid
+
+```haxe
+var grid = new UIMultiAnimGrid(builder, {
+    gridType: Rect(52, 52, 4),
+    cellBuildName: "rectCell",
+});
+grid.addRectRegion(5, 4);  // 5 columns × 4 rows
+grid.onGridEvent = (event) -> switch event {
+    case CellClick(cell, _): trace('Clicked (${cell.col}, ${cell.row})');
+    case CellHoverEnter(cell): trace('Hover ${cell.col}, ${cell.row}');
+    default:
+};
+grid.getObject().setPosition(100, 100);
+addObjectToLayer(grid.getObject(), DefaultLayer);
+
+// Route mouse events from screen
+override public function onMouseMove(pos:Point):Bool {
+    grid.onMouseMove(pos.x, pos.y);
+    return super.onMouseMove(pos);
+}
+override public function onMouseClick(pos:Point, button:Int, release:Bool):Bool {
+    if (release) grid.onMouseClick(pos.x, pos.y, button);
+    return super.onMouseClick(pos, button, release);
+}
+```
+
+### Hex Grid
+
+```haxe
+var hexGrid = new UIMultiAnimGrid(builder, {
+    gridType: Hex(POINTY, 30, 30),
+    cellBuildName: "hexCell",
+});
+hexGrid.addHexRegion(0, 0, 2);  // radius 2 = 19 cells
+
+// Set cell data with visual params
+hexGrid.set(0, 0, {color: 0xFF0000},
+    ["occupied" => (true : Dynamic), "cellColor" => (0xFF0000 : Dynamic)]);
+
+// Clear cell
+hexGrid.clear(0, 0);
+hexGrid.getCellResult(0, 0).setParameter("occupied", false);
+```
+
+### Internal Drag-Drop (within one grid)
+
+```haxe
+// Create draggable for each occupied cell
+grid.forEach((col, row, data) -> {
+    if (data == null) return;
+    var itemObj = buildItemVisual(data);
+    var drag = UIMultiAnimDraggable.create(itemObj);
+    drag.setReturnAnimPath(builder, "returnAnim");
+    drag.setSnapAnimPath(builder, "snapAnim");
+    drag.dragAlpha = 0.7;
+    drag.returnToOrigin = true;
+
+    drag.onDragEvent = (event, _, _) -> switch event {
+        case DragStart: grid.clear(col, row);  // clear source on drag start
+        case DragCancel: grid.set(col, row, data);  // restore on cancel
+        default:
+    };
+    grid.acceptDrops(drag, (cell, _) -> !grid.isOccupied(cell.col, cell.row));
+
+    var pos = grid.cellPosition(col, row);
+    addElementWithPos(drag, pos.x, pos.y, DefaultLayer);
+});
+
+// Handle drop event
+grid.onGridEvent = (event) -> switch event {
+    case CellDrop(cell, _, _, _):
+        grid.set(cell.col, cell.row, dragSourceData);
+        rebuildDraggables();  // rebuild after state change
+    default:
+};
+```
+
+### Grid-to-Grid Transfer
+
+```haxe
+// Both grids accept drops from the same draggable
+storageGrid.acceptDrops(drag, (cell, _) -> !storageGrid.isOccupied(cell.col, cell.row));
+loadoutGrid.acceptDrops(drag, (cell, _) -> !loadoutGrid.isOccupied(cell.col, cell.row));
+
+// Grid handles chaining: if drop zone doesn't match first grid's prefix, tries second grid
+```
+
+### Hex Grid + Card Targeting
+
+```haxe
+// Register hex grid cells as card play targets
+hexGrid.registerAsCardTarget(cardHand, (cell, cardId) -> !hexGrid.isOccupied(cell.col, cell.row));
+
+// Card hand consumes mouse events during drag — check before grid
+override public function onMouseMove(pos:Point):Bool {
+    if (cardHand.onMouseMove(pos.x, pos.y)) return false;
+    hexGrid.onMouseMove(pos.x, pos.y);
+    return super.onMouseMove(pos);
+}
+
+// Handle card play in onCardEvent
+case CardPlayed(cardId, TargetZone(targetId)):
+    // targetId format: "gridN_col_row"
+    var parts = targetId.split("_");
+    var col = Std.parseInt(parts[parts.length - 2]);
+    var row = Std.parseInt(parts[parts.length - 1]);
+    hexGrid.set(col, row, itemData, visualParams);
 ```
 
 ---

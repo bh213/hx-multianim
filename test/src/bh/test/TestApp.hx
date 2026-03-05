@@ -76,6 +76,7 @@ class TestApp extends hxd.App {
 		testRunner.addCase(new bh.test.examples.FlowOverflowTest());
 		testRunner.addCase(new bh.test.examples.DynamicRefTest());
 		testRunner.addCase(new bh.test.examples.BitFlagTest());
+		testRunner.addCase(new bh.test.examples.UIMultiAnimGridTest());
 		#if MULTIANIM_DEV
 		testRunner.addCase(new bh.test.examples.HotReloadTest());
 		testRunner.addCase(new bh.test.examples.DevBridgeTest());

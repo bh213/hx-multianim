@@ -263,6 +263,9 @@ class ScreenManager {
 			#if MULTIANIM_TRACE
 			trace('ScreenManager.rebuildAll failed: $e');
 			#end
+			#if MULTIANIM_STRICT
+			strictFail('builder rebuild', e);
+			#end
 			loader.clearCache();
 			builders = oldBuilders;
 			if (throwOnError)
@@ -319,6 +322,9 @@ class ScreenManager {
 				#if MULTIANIM_DEV
 				currentlyLoadingScreen = null;
 				#end
+				#if MULTIANIM_STRICT
+				strictFail('screen "$name" (reload)', e);
+				#end
 				failedScreens[name] = e.toString();
 				#if MULTIANIM_TRACE
 				trace('Failed to reload screen ${name}: ${e}');
@@ -362,6 +368,9 @@ class ScreenManager {
 		} catch (e) {
 			#if MULTIANIM_DEV
 			currentlyLoadingScreen = null;
+			#end
+			#if MULTIANIM_STRICT
+			strictFail('screen "$name"', e);
 			#end
 			failedScreens[name] = e.toString();
 			#if MULTIANIM_TRACE
@@ -1421,6 +1430,35 @@ class ScreenManager {
 			if (list.length == 0)
 				screenSourceMap.remove(path);
 		}
+	}
+	#end
+
+	#if MULTIANIM_STRICT
+	function strictFail(context:String, e:Dynamic):Void {
+		var msg = new StringBuf();
+		msg.add("=== MANIM STRICT ERROR ===\n");
+		msg.add('context: $context\n');
+
+		if (Std.isOfType(e, InvalidSyntax)) {
+			final err = cast(e, InvalidSyntax);
+			msg.add('file: ${err.pos.psource}\n');
+			msg.add('line: ${err.pos.line}\n');
+			msg.add('col: ${err.pos.col}\n');
+			msg.add('error: ${err.toString()}\n');
+		} else if (Std.isOfType(e, MultiAnimUnexpected)) {
+			final err:MultiAnimUnexpected<Dynamic> = cast e;
+			msg.add('file: ${err.pos.psource}\n');
+			msg.add('line: ${err.pos.line}\n');
+			msg.add('col: ${err.pos.col}\n');
+			msg.add('error: ${err.toString()}\n');
+		} else {
+			msg.add('error: $e\n');
+		}
+
+		msg.add("=== END MANIM STRICT ERROR ===\n");
+		Sys.stderr().writeString(msg.toString());
+		Sys.stderr().flush();
+		Sys.exit(1);
 	}
 	#end
 }

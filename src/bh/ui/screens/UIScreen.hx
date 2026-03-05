@@ -13,6 +13,8 @@ import bh.ui.UITabGroup;
 import bh.ui.UITabGroup.TabWireMode;
 import bh.ui.UIMultiAnimTabs;
 import bh.ui.UIMultiAnimTabs.ContentTarget;
+import bh.ui.UIMultiAnimGrid;
+import bh.ui.UIMultiAnimGridTypes;
 import bh.multianim.MultiAnimParser.ResolvedSettings;
 import bh.multianim.MultiAnimParser.SettingValue;
 import bh.ui.UIElement;
@@ -569,6 +571,12 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		final textObj = new h2d.Text(bh.base.FontManager.getFontByName(fontName));
 		textObj.text = textValue;
 		return addObjectToLayer(textObj, layer);
+	}
+
+	function addGrid(builder:MultiAnimBuilder, config:UIMultiAnimGridTypes.GridConfig, ?layer:LayersEnum):UIMultiAnimGrid {
+		final grid = new UIMultiAnimGrid(builder, config);
+		addObjectToLayer(grid.getObject(), layer);
+		return grid;
 	}
 
 
