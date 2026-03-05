@@ -54,25 +54,44 @@ if (activeTooltipId == interactiveId && activeBuildName == buildName)
     return;
 ```
 
-### 1.4 UICardHandHelper: CardCombined event uses TargetCard type but emits without it
-**File:** `src/bh/ui/UICardHandHelper.hx:903-904` vs `src/bh/ui/UICardHandTypes.hx:58`
+### 1.4 UICardHandHelper: setCardEnabled breaks state for animating cards
+**File:** `src/bh/ui/UICardHandHelper.hx:366-375`
+**Severity:** Medium
+
+Comment says "enabling is deferred to onComplete" for animating cards, but code sets `InHand` immediately:
+```haxe
+if (entry.state == Animating) {
+    if (!enabled)
+        entry.state = Disabled;  // only disable overrides
+} else {
+    entry.state = if (enabled) InHand else Disabled;  // re-enable goes here even during animation
+}
+```
+If a card is disabled while animating, then re-enabled before animation completes, it becomes `InHand` prematurely — the animation's `onComplete` callback checks `if (entry.state == Animating)` and won't reset it properly.
+
+### 1.5 UICardHandHelper: TargetCard enum variant is dead code
+**File:** `src/bh/ui/UICardHandTypes.hx:58`
 **Severity:** Low (API consistency)
 
-`TargetingResult` has a `TargetCard(targetCardId)` variant (line 58 of Types), but `CardCombined` is a separate event enum. When card-to-card combining occurs (line 903), only `CardCombined` is emitted — `CardPlayed` with `TargetCard` is never used anywhere. The `TargetCard` variant appears dead.
+`TargetingResult` has a `TargetCard(targetCardId)` variant, but `CardCombined` is a separate event. When card-to-card combining occurs, only `CardCombined` is emitted — `CardPlayed` with `TargetCard` is never used. Dead variant.
 
-### 1.5 UIMultiAnimDraggable: clear() nullifies target but doesn't remove root
+### 1.6 UICardHandHelper: concurrent multi-draw produces stale layout positions
+**File:** `src/bh/ui/UICardHandHelper.hx:282-306`
+**Severity:** Medium
+
+`drawCard()` computes layout at line 282 and captures `targetIdx` at line 283. If another `drawCard()` is called before the first animation completes, the second call's `computeLayout` produces different positions (array now has the first card). Meanwhile, `rearrangeCards` from draw #1 may still be animating cards toward positions that are no longer correct. Cards can briefly animate to wrong positions during rapid multi-draw sequences.
+
+### 1.7 UIMultiAnimDraggable: clear() nullifies target but doesn't remove root
 **File:** `src/bh/ui/UIMultiAnimDraggable.hx:353-372`
 **Severity:** Low
 
 `clear()` removes and nullifies `target` (lines 368-371), but `root` remains in the scene graph as an empty wrapper. The draggable is left in a half-cleaned state — `root` is alive but `target` is null, which could cause NPE if `update()` or `onEvent()` is called after `clear()`.
 
-### 1.6 UIMultiAnimGrid: refreshAllDraggableZones called per cell in addRectRegion
-**File:** `src/bh/ui/UIMultiAnimGrid.hx:199-207`
-**Severity:** Low (performance)
+### 1.8 UICardHandHelper: dispose() doesn't cancel active animations
+**File:** `src/bh/ui/UICardHandHelper.hx:534-540`
+**Severity:** Low
 
-`addRectRegion` calls `addCell` in a loop, and each `addCell` calls `refreshAllDraggableZones()` + `refreshAllCardTargets()`. For a 10x10 grid, that's 100 zone rebuilds. The batch method `addRectRegion` uses `addCellInternal` which avoids this, but `addHexRegion` also calls the internal variant correctly. This is handled correctly — confirmed `addCellInternal` is used. No bug here.
-
-**Correction:** Re-reading: `addRectRegion` calls `addCellInternal` (line 203), then `refreshAllDraggableZones` once at end (line 205). This is correct. No issue.
+`dispose()` calls `clearHand()` which sets `activeAnimations = []`, dropping animation references without calling any cleanup. If animated path objects hold Heaps resources, they leak. The `onComplete` callbacks captured in `ActiveAnimation` may also reference disposed card entries.
 
 ---
 
@@ -211,8 +230,11 @@ Tooltips and panels are positioned once at show time. If the anchor interactive 
 | 1.1 | Bug | Medium | RichInteractive | setDisabled(false) loses hover |
 | 1.2 | Bug | Medium | Tooltip | rebuild() loses params |
 | 1.3 | Bug | Low | Tooltip | startHover ignores changed buildName |
-| 1.4 | Bug | Low | CardHand | TargetCard enum variant unused |
-| 1.5 | Bug | Low | Draggable | clear() partial cleanup |
+| 1.4 | Bug | Medium | CardHand | setCardEnabled breaks animating cards |
+| 1.5 | Bug | Low | CardHand | TargetCard enum variant dead code |
+| 1.6 | Bug | Medium | CardHand | Concurrent multi-draw stale positions |
+| 1.7 | Bug | Low | Draggable | clear() partial cleanup |
+| 1.8 | Bug | Low | CardHand | dispose() doesn't cancel animations |
 | 2.1 | Duplication | Medium | Tooltip+Panel | Identical positioning logic |
 | 2.2 | Duplication | Low | Tooltip+Panel | Fade pattern repeated |
 | 2.3 | Duplication | Low | CardHand | OBB hit-test duplicated |
