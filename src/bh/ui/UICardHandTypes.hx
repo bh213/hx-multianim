@@ -55,7 +55,6 @@ class CardLayoutPosition {
 
 enum TargetingResult {
 	TargetZone(targetId:String);
-	TargetCard(targetCardId:CardId);
 	NoTarget;
 }
 

@@ -37,6 +37,13 @@ class UITooltipHelperTest extends BuilderTestBase {
 		}
 	';
 
+	// A second tooltip programmable with a different name.
+	static final TOOLTIP2_MANIM = '
+		#tip2 programmable(label:string=hello) {
+			bitmap(generated(color(60, 15, #00AAFF))): 0, 0
+		}
+	';
+
 	// ============== Helper ==============
 
 	function createHelper(?delay:Float, ?position:TooltipPosition, ?offset:Int):{
@@ -44,7 +51,7 @@ class UITooltipHelperTest extends BuilderTestBase {
 		screen:UITestScreen
 	} {
 		var screen = new UITestScreen();
-		var builder = BuilderTestBase.builderFromSource('$ANCHOR_MANIM\n$ANCHOR2_MANIM\n$TOOLTIP_MANIM');
+		var builder = BuilderTestBase.builderFromSource('$ANCHOR_MANIM\n$ANCHOR2_MANIM\n$TOOLTIP_MANIM\n$TOOLTIP2_MANIM');
 
 		// Build anchor and register its interactive on the screen
 		var anchorResult = builder.buildWithParameters("anchor", []);
@@ -335,6 +342,27 @@ class UITooltipHelperTest extends BuilderTestBase {
 		Assert.isTrue(ctx.helper.isActive());
 	}
 
+	@Test
+	public function testStartHoverWithChangedBuildNameUpdatesTooltip():Void {
+		// Bug 1.3: startHover returns early if activeTooltipId matches,
+		// even if the buildName is different. The tooltip stays as the old buildName.
+		var ctx = createHelper(0.0);
+		ctx.helper.show("btn1", "tip");
+		Assert.isTrue(ctx.helper.isActive());
+		@:privateAccess Assert.equals("tip", ctx.helper.activeBuildName);
+
+		// startHover with same ID but DIFFERENT buildName should not return early —
+		// it should hide the old tooltip and start a new hover timer for the new buildName.
+		ctx.helper.startHover("btn1", "tip2");
+		// The old tooltip should be hidden (startHover calls hide())
+		// and hover timer should be pending for tip2
+		ctx.helper.update(0.01);
+		// After delay, tooltip should show with new buildName
+		Assert.isTrue(ctx.helper.isActive());
+		Assert.equals("btn1", ctx.helper.getActiveId());
+		@:privateAccess Assert.equals("tip2", ctx.helper.activeBuildName);
+	}
+
 	// ============== Zero delay ==============
 
 	@Test
@@ -380,7 +408,7 @@ class UITooltipHelperTest extends BuilderTestBase {
 		tweens:TweenManager
 	} {
 		var screen = new UITestScreen();
-		var builder = BuilderTestBase.builderFromSource('$ANCHOR_MANIM\n$ANCHOR2_MANIM\n$TOOLTIP_MANIM');
+		var builder = BuilderTestBase.builderFromSource('$ANCHOR_MANIM\n$ANCHOR2_MANIM\n$TOOLTIP_MANIM\n$TOOLTIP2_MANIM');
 
 		var anchorResult = builder.buildWithParameters("anchor", []);
 		screen.addInteractives(anchorResult);

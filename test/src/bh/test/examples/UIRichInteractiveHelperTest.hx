@@ -511,6 +511,33 @@ class UIRichInteractiveHelperTest extends BuilderTestBase {
 		Assert.equals(10, Std.int(bitmaps[0].tile.width));
 	}
 
+	// ============== setDisabled hover awareness (Bug 1.1) ==============
+
+	@Test
+	public function testSetDisabledFalseRestoresHoverWhenMouseOver():Void {
+		// Bug 1.1: setDisabled(false) always resets to Normal, even if mouse is over the interactive.
+		// When UIInteractiveWrapper.hovered is true, re-enabling should set Hover, not Normal.
+		var ctx = createHelper(BOUND_MANIM, "bound");
+		var wrapper = ctx.screen.getInteractive("btn1");
+		Assert.notNull(wrapper);
+
+		// Simulate hover enter — set wrapper.hovered directly since handleEvent
+		// processes screen-level events (wrapper.hovered is set by UIInteractiveWrapper.onEvent)
+		ctx.helper.handleEvent(UIInteractiveEvent(UIEntering, "btn1", null));
+		assertState(ctx.helper, "btn1", Hover);
+		@:privateAccess wrapper.hovered = true;
+		Assert.isTrue(wrapper.hovered);
+
+		// Disable while hovered
+		ctx.helper.setDisabled("btn1", true);
+		assertState(ctx.helper, "btn1", Disabled);
+
+		// Re-enable — mouse is still over (wrapper.hovered is still true because no UILeaving fired)
+		ctx.helper.setDisabled("btn1", false);
+		// Should be Hover since mouse is still over, not Normal
+		assertState(ctx.helper, "btn1", Hover, "Bug 1.1: setDisabled(false) should restore Hover when mouse is over");
+	}
+
 	// ============== UIClickOutside ==============
 
 	@Test

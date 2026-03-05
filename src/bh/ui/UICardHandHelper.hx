@@ -24,6 +24,9 @@ private class CardEntry {
 	public var state:CardState = InHand;
 	public var layoutPos:CardLayoutPosition;
 	public var interactiveId:String;
+	/** Deferred enable: if card is disabled during animation and re-enabled before it completes,
+	 *  this flag causes the onComplete handler to restore InHand instead of staying Disabled. */
+	public var enableAfterAnimation:Bool = false;
 
 	public function new(descriptor:CardDescriptor, result:BuilderResult, container:h2d.Object, interactiveId:String) {
 		this.descriptor = descriptor;
@@ -291,8 +294,7 @@ class UICardHandHelper {
 			entry.layoutPos = targetPos;
 			animateCardTo(entry, new FPoint(drawPilePosition.x, drawPilePosition.y), new FPoint(targetPos.x, targetPos.y), 0,
 				targetPos.rotation, drawPathName, () -> {
-					if (entry.state == Animating)
-						entry.state = InHand;
+					resolveAnimationComplete(entry);
 					entry.container.scaleX = targetPos.scale;
 					entry.container.scaleY = targetPos.scale;
 					emitEvent(DrawAnimComplete(descriptor.id));
@@ -363,12 +365,21 @@ class UICardHandHelper {
 		if (!enabled && draggedEntry == entry)
 			cancelDrag();
 
-		// During animation, only Disabled overrides — enabling is deferred to onComplete
+		// During animation or disabled-while-animating: defer state changes
 		if (entry.state == Animating) {
-			if (!enabled)
+			if (!enabled) {
 				entry.state = Disabled;
+				entry.enableAfterAnimation = false;
+			} else {
+				// Already animating and enabled — no state change needed
+				entry.enableAfterAnimation = false;
+			}
+		} else if (entry.state == Disabled && isAnimatingEntry(entry)) {
+			// Card was disabled mid-animation; re-enabling defers to onComplete
+			entry.enableAfterAnimation = enabled;
 		} else {
 			entry.state = if (enabled) InHand else Disabled;
+			entry.enableAfterAnimation = false;
 		}
 
 		interactiveHelper.setDisabled(entry.interactiveId, !enabled);
@@ -669,8 +680,7 @@ class UICardHandHelper {
 			entry.layoutPos = pos;
 			animateCardTo(entry, new FPoint(entry.container.x, entry.container.y), new FPoint(pos.x, pos.y), entry.container.rotation,
 				pos.rotation, rearrangePathName, () -> {
-					if (entry.state == Animating)
-						entry.state = InHand;
+					resolveAnimationComplete(entry);
 					entry.container.scaleX = pos.scale;
 					entry.container.scaleY = pos.scale;
 				});
@@ -957,8 +967,7 @@ class UICardHandHelper {
 			var targetPos = entry.layoutPos;
 			animateCardTo(entry, new FPoint(entry.container.x, entry.container.y), new FPoint(targetPos.x, targetPos.y),
 				entry.container.rotation, targetPos.rotation, returnPathName, () -> {
-					if (entry.state == Animating)
-						entry.state = InHand;
+					resolveAnimationComplete(entry);
 					entry.container.scaleX = targetPos.scale;
 					entry.container.scaleY = targetPos.scale;
 					interactiveHelper.resetState(entry.interactiveId);
@@ -1102,9 +1111,38 @@ class UICardHandHelper {
 
 	// === Internal: Events ===
 
+	/** Emit event to all listeners (including chained grid listeners). */
 	function emitEvent(event:CardHandEvent):Void {
+		// Notify chained listeners first (grids that convert CardPlayed → CellCardPlayed)
+		for (listener in chainedListeners)
+			listener(event);
 		if (onCardEvent != null)
 			onCardEvent(event);
+	}
+
+	/** Chained event listeners added by UIMultiAnimGrid for CellCardPlayed conversion. */
+	@:allow(bh.ui.UIMultiAnimGrid)
+	final chainedListeners:Array<(event:CardHandEvent) -> Void> = [];
+
+	/** Resolve card state when animation completes.
+	 *  Handles deferred enable/disable from setCardEnabled called during animation. */
+	function resolveAnimationComplete(entry:CardEntry):Void {
+		if (entry.state == Animating) {
+			entry.state = InHand;
+		} else if (entry.state == Disabled && entry.enableAfterAnimation) {
+			entry.state = InHand;
+			entry.enableAfterAnimation = false;
+			interactiveHelper.setDisabled(entry.interactiveId, false);
+		}
+		// If Disabled without enableAfterAnimation, stay Disabled
+	}
+
+	/** Check whether an entry has an active animation running. */
+	function isAnimatingEntry(entry:CardEntry):Bool {
+		for (anim in activeAnimations)
+			if (anim.entry == entry)
+				return true;
+		return false;
 	}
 
 	// === Internal: Utilities ===

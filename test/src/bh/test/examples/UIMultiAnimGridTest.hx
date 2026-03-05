@@ -2,8 +2,15 @@ package bh.test.examples;
 
 import utest.Assert;
 import bh.test.BuilderTestBase;
+import bh.test.UITestHarness.UITestScreen;
 import bh.ui.UIMultiAnimGrid;
 import bh.ui.UIMultiAnimGridTypes;
+import bh.ui.UICardHandHelper;
+import bh.ui.UICardHandTypes;
+import bh.ui.UICardHandTypes.CardHandEvent;
+import bh.ui.UICardHandTypes.CardState;
+import bh.ui.UICardHandTypes.TargetingResult;
+import bh.ui.UIMultiAnimDraggable;
 import bh.base.Hex.HexOrientation;
 
 /**
@@ -440,6 +447,75 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 		Assert.equals("data", grid.get(-1, -2));
 	}
 
+	// ============== Non-square cell hit testing (Bug 1.12) ==============
+
+	function createNonSquareRectGrid():UIMultiAnimGrid {
+		var builder = BuilderTestBase.builderFromSource(CELL_MANIM);
+		return new UIMultiAnimGrid(builder, {
+			gridType: Rect(60, 30, 4), // wide cells: 60w x 30h, gap=4
+			cellBuildName: "cell",
+			originX: 0,
+			originY: 0,
+		});
+	}
+
+	@Test
+	public function testHitTestNonSquareCellYGap():Void {
+		// Bug 1.12: hitTestRect uses `stride` (cellW+gap) instead of `strideY` (cellH+gap)
+		// for cellLocalY calculation. With non-square cells (60w x 30h, gap=4):
+		// stride = 64, strideY = 34
+		// Row 1 cells occupy Y=34..63. Y gap between row 1 and row 2 is Y=64..67.
+		// Row 2 cells start at Y=68.
+		// Bug: cellLocalY = localY - row * stride (uses 64 not 34)
+		// At Y=65 (gap): row=floor(65/34)=1, cellLocalY=65-1*64=1 which is < 30 → incorrectly hits.
+		var grid = createNonSquareRectGrid();
+		grid.addRectRegion(2, 3);
+
+		// Point inside cell (0,1) at Y=50 — should hit
+		var cell01 = grid.cellAtPoint(10, 50);
+		Assert.notNull(cell01);
+		Assert.equals(0, cell01.col);
+		Assert.equals(1, cell01.row);
+
+		// Point in the Y gap between row 1 (Y=34..63) and row 2 (Y=68..97)
+		// Y=65 is in the gap. Should return null.
+		var gapCell = grid.cellAtPoint(10, 65);
+		Assert.isNull(gapCell); // BUG: returns cell because cellLocalY uses wrong stride
+	}
+
+	// ============== Negative coordinate hit testing (Bug 1.13) ==============
+
+	@Test
+	public function testCellAtPointNegativeCoordinates():Void {
+		// Bug 1.13: hitTestRect early-returns null for negative localX/localY,
+		// making cells at negative coordinates invisible to cellAtPoint.
+		var grid = createRectGrid();
+		grid.addCell(-1, 0);
+		grid.addCell(0, 0);
+		grid.addCell(-1, -1);
+
+		// Cell (-1, 0) should be at x = -1 * (50+2) = -52. Center at (-27, 25).
+		var pos = grid.cellPosition(-1, 0);
+		var cell = grid.cellAtPoint(pos.x + 5, pos.y + 5);
+		Assert.notNull(cell); // BUG: returns null because localX < 0
+		Assert.equals(-1, cell.col);
+		Assert.equals(0, cell.row);
+	}
+
+	// ============== rebuildCell refresh (Bug 1.11) ==============
+
+	@Test
+	public function testRebuildCellCallsOnCellBuilt():Void {
+		// rebuildCell should invoke onCellBuilt callback (it does this already)
+		var grid = createRectGrid(2, 2);
+		var builtCount = 0;
+		grid.onCellBuilt = (coord, result) -> {
+			builtCount++;
+		};
+		grid.rebuildCell(0, 0);
+		Assert.equals(1, builtCount);
+	}
+
 	// ============== Remove and re-add ==============
 
 	@Test
@@ -451,5 +527,246 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 		grid.addCell(0, 0);
 		Assert.isTrue(grid.hasCell(0, 0));
 		Assert.isNull(grid.get(0, 0)); // data should not persist
+	}
+
+	// ============== Multiple card hand registrations (Bug 1.10) ==============
+
+	static final CARD_MANIM = "
+		#card programmable(status:[normal,hover,pressed,disabled]=normal) {
+			bitmap(generated(color(80, 110, #AA0000))): 0, 0
+			interactive(80, 110, \"card\", bind => \"status\"): 0, 0
+		}
+	";
+
+	// ============== CellCardPlayed event (Bug 1.9) ==============
+
+	@Test
+	public function testCellCardPlayedEventEmitted():Void {
+		// Bug 1.9: CellCardPlayed event defined but never emitted.
+		// After fix, grid wires a chained listener on the card hand that converts
+		// CardPlayed(id, TargetZone(targetId)) → CellCardPlayed(cell, cardId).
+		var screen = new UITestScreen();
+		var builder = BuilderTestBase.builderFromSource('$CELL_MANIM\n$CARD_MANIM');
+
+		var grid = new UIMultiAnimGrid(builder, {
+			gridType: Rect(50, 50),
+			cellBuildName: "cell",
+		});
+		grid.addRectRegion(2, 2);
+
+		var cardHand = new UICardHandHelper(screen, builder);
+		grid.registerAsCardTarget(cardHand);
+
+		var receivedEvent:Null<GridEvent> = null;
+		grid.onGridEvent = (event) -> {
+			switch event {
+				case CellCardPlayed(_, _): receivedEvent = event;
+				default:
+			}
+		};
+
+		// Simulate card hand emitting CardPlayed targeting a grid cell.
+		// The grid's chained listener should convert this to CellCardPlayed.
+		// Target ID format: grid{N}ch{M}_{col}_{row}
+		@:privateAccess var prefix = grid.registeredCardHands[0].targetPrefix;
+		var targetId = '${prefix}_1_0';
+		@:privateAccess cardHand.emitEvent(CardHandEvent.CardPlayed("testCard", TargetingResult.TargetZone(targetId)));
+
+		Assert.notNull(receivedEvent);
+		switch receivedEvent {
+			case CellCardPlayed(cell, cardId):
+				Assert.equals(1, cell.col);
+				Assert.equals(0, cell.row);
+				Assert.equals("testCard", cardId);
+			default:
+				Assert.fail("Expected CellCardPlayed event");
+		}
+	}
+
+	@Test
+	public function testCellCardPlayedNotEmittedForForeignTarget():Void {
+		// Card played on a target that doesn't belong to this grid → no event
+		var screen = new UITestScreen();
+		var builder = BuilderTestBase.builderFromSource('$CELL_MANIM\n$CARD_MANIM');
+
+		var grid = new UIMultiAnimGrid(builder, {
+			gridType: Rect(50, 50),
+			cellBuildName: "cell",
+		});
+		grid.addRectRegion(2, 2);
+
+		var cardHand = new UICardHandHelper(screen, builder);
+		grid.registerAsCardTarget(cardHand);
+
+		var eventFired = false;
+		grid.onGridEvent = (event) -> {
+			switch event {
+				case CellCardPlayed(_, _): eventFired = true;
+				default:
+			}
+		};
+
+		// Emit with a target ID that doesn't match this grid
+		@:privateAccess cardHand.emitEvent(CardHandEvent.CardPlayed("testCard", TargetingResult.TargetZone("otherGrid_0_0")));
+
+		Assert.isFalse(eventFired);
+	}
+
+	// ============== setCardEnabled during animation (Bug 1.4) ==============
+
+	@Test
+	public function testSetCardEnabledDuringAnimationDefersEnable():Void {
+		// Bug 1.4: setCardEnabled(true) during animation sets InHand prematurely.
+		// After fix: re-enabling a card disabled mid-animation defers to onComplete.
+		var screen = new UITestScreen();
+		var builder = BuilderTestBase.builderFromSource('$CELL_MANIM\n$CARD_MANIM');
+
+		var cardHand = new UICardHandHelper(screen, builder);
+
+		// Build a card manually and simulate animation state
+		cardHand.setHand([{id: "c1", buildName: "card"}]);
+
+		// Access private cards array to verify state transitions
+		@:privateAccess var entry = cardHand.cards[0];
+		Assert.equals(CardState.InHand, entry.state);
+
+		// Simulate card entering animation state (as drawCard would do)
+		entry.state = CardState.Animating;
+
+		// Disable during animation — should set Disabled
+		cardHand.setCardEnabled("c1", false);
+		Assert.equals(CardState.Disabled, entry.state);
+		Assert.isFalse(entry.enableAfterAnimation);
+
+		// Re-enable while still "animating" — should stay Disabled, flag deferred enable
+		// The entry.state is Disabled but there's no active animation tracked,
+		// so isAnimatingEntry returns false → goes to else branch → InHand directly.
+		// This test verifies the simpler case where state is not Animating.
+		// The full scenario requires actual animations (integration test).
+		cardHand.setCardEnabled("c1", true);
+
+		// Without active animation, re-enable goes through the normal path
+		Assert.equals(CardState.InHand, entry.state);
+	}
+
+	@Test
+	public function testResolveAnimationCompleteWithDeferredEnable():Void {
+		// Test the resolveAnimationComplete helper directly
+		var screen = new UITestScreen();
+		var builder = BuilderTestBase.builderFromSource('$CELL_MANIM\n$CARD_MANIM');
+
+		var cardHand = new UICardHandHelper(screen, builder);
+		cardHand.setHand([{id: "c1", buildName: "card"}]);
+
+		@:privateAccess var entry = cardHand.cards[0];
+
+		// Simulate: card was disabled during animation, then re-enable was deferred
+		entry.state = CardState.Disabled;
+		entry.enableAfterAnimation = true;
+
+		// resolveAnimationComplete should restore InHand
+		@:privateAccess cardHand.resolveAnimationComplete(entry);
+		Assert.equals(CardState.InHand, entry.state);
+		Assert.isFalse(entry.enableAfterAnimation);
+	}
+
+	@Test
+	public function testResolveAnimationCompleteStaysDisabled():Void {
+		// When disabled during animation without re-enable, should stay Disabled
+		var screen = new UITestScreen();
+		var builder = BuilderTestBase.builderFromSource('$CELL_MANIM\n$CARD_MANIM');
+
+		var cardHand = new UICardHandHelper(screen, builder);
+		cardHand.setHand([{id: "c1", buildName: "card"}]);
+
+		@:privateAccess var entry = cardHand.cards[0];
+
+		entry.state = CardState.Disabled;
+		entry.enableAfterAnimation = false;
+
+		@:privateAccess cardHand.resolveAnimationComplete(entry);
+		Assert.equals(CardState.Disabled, entry.state);
+	}
+
+	@Test
+	public function testCellCardPlayedListenerRemovedOnUnregister():Void {
+		// After unregistering, the chained listener should be removed
+		var screen = new UITestScreen();
+		var builder = BuilderTestBase.builderFromSource('$CELL_MANIM\n$CARD_MANIM');
+
+		var grid = new UIMultiAnimGrid(builder, {
+			gridType: Rect(50, 50),
+			cellBuildName: "cell",
+		});
+		grid.addRectRegion(2, 2);
+
+		var cardHand = new UICardHandHelper(screen, builder);
+		grid.registerAsCardTarget(cardHand);
+
+		@:privateAccess Assert.equals(1, cardHand.chainedListeners.length);
+
+		grid.unregisterAsCardTarget(cardHand);
+
+		@:privateAccess Assert.equals(0, cardHand.chainedListeners.length);
+	}
+
+	// ============== Multiple card hand registrations (Bug 1.10) ==============
+
+	@Test
+	public function testMultipleCardHandRegistrationsDontCorrupt():Void {
+		// Bug 1.10: clearCardTargetsForBinding clears the ENTIRE shared map,
+		// corrupting targets belonging to other card hands.
+		var screen = new UITestScreen();
+		var builder = BuilderTestBase.builderFromSource('$CELL_MANIM\n$CARD_MANIM');
+
+		var grid = new UIMultiAnimGrid(builder, {
+			gridType: Rect(50, 50),
+			cellBuildName: "cell",
+		});
+		grid.addRectRegion(2, 2); // 4 cells
+
+		var cardHand1 = new UICardHandHelper(screen, builder);
+		var cardHand2 = new UICardHandHelper(screen, builder);
+
+		grid.registerAsCardTarget(cardHand1);
+		// After first registration: 4 targets in shared maps
+		@:privateAccess var mapSize1 = 0;
+		@:privateAccess for (_ in grid.cardTargetInteractives) mapSize1++;
+		Assert.equals(4, mapSize1);
+
+		grid.registerAsCardTarget(cardHand2);
+		// After second registration: should have 8 targets (4 per card hand)
+		@:privateAccess var mapSize2 = 0;
+		@:privateAccess for (_ in grid.cardTargetInteractives) mapSize2++;
+		Assert.equals(8, mapSize2);
+
+		// Unregister first card hand — should only remove its 4 targets, not all 8
+		grid.unregisterAsCardTarget(cardHand1);
+		@:privateAccess var mapSize3 = 0;
+		@:privateAccess for (_ in grid.cardTargetInteractives) mapSize3++;
+		// Bug 1.10: clearCardTargetsForBinding calls .clear() on the ENTIRE map,
+		// so this returns 0 instead of 4
+		Assert.equals(4, mapSize3);
+	}
+
+	// ============== acceptDrops duplicate registration (Bug 1.14) ==============
+
+	@Test
+	public function testAcceptDropsDuplicateIgnored():Void {
+		// Bug 1.14: calling acceptDrops twice with the same draggable
+		// would push duplicate bindings and create duplicate drop zones.
+		var grid = createRectGrid(2, 2);
+
+		var dragTarget = new h2d.Object();
+		var drag = UIMultiAnimDraggable.create(dragTarget);
+
+		grid.acceptDrops(drag);
+		@:privateAccess var count1 = grid.registeredDraggables.length;
+		Assert.equals(1, count1);
+
+		// Second call with same draggable should be ignored
+		grid.acceptDrops(drag);
+		@:privateAccess var count2 = grid.registeredDraggables.length;
+		Assert.equals(1, count2);
 	}
 }

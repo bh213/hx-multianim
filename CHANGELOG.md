@@ -43,6 +43,20 @@
 
 ### Fixed
 - **TSFile empty filename in incremental mode** — returns transparent fallback tile instead of throwing when `bitmap($param)` has an empty/null filename during incremental updates
+- **UIMultiAnimGrid: hitTestRect Y gap uses wrong stride** — non-square cells (e.g. 60×30) used X stride for Y gap check, causing false hits in Y gaps
+- **UIMultiAnimGrid: hitTestRect rejects negative coordinates** — removed early return for negative coords; `Math.floor` handles them correctly
+- **UIMultiAnimGrid: CellCardPlayed event never emitted** — grid now wires chained listener on card hand that converts `CardPlayed(TargetZone)` → `CellCardPlayed`
+- **UIMultiAnimGrid: multiple card hand registrations corrupt shared target state** — each card hand binding now gets a unique `targetPrefix`; `clearCardTargetsForBinding` only removes matching entries
+- **UIMultiAnimGrid: rebuildCell doesn't refresh drag zones or card targets** — now calls `refreshAllDraggableZones()` and `refreshAllCardTargets()` after rebuild
+- **UIMultiAnimGrid: acceptDrops allows duplicate registration** — duplicate calls for the same draggable are now silently ignored
+- **UICardHandHelper: setCardEnabled breaks state for animating cards** — added `enableAfterAnimation` flag and `resolveAnimationComplete()` to properly defer enable/disable during animations
+- **UICardHandTypes: removed dead `TargetCard` enum variant** — card-to-card combining uses `CardCombined` event; `TargetCard` was never used
+- **UIMultiAnimDraggable: clear() partial cleanup** — now also removes `root` from scene, sets `enabled=false`, clears `sourceSlot`/`sourceData`
+- **UIMultiAnimDraggable: swap mode reads stale sourceSlot.data** — added `sourceData` snapshot captured at `createFromSlot()` time; swap and cancel paths use snapshot instead of live slot data
+- **UIRichInteractiveHelper: setDisabled(false) loses hover state** — now checks `wrapper.hovered` and restores `Hover` state when mouse is still over the interactive
+- **UITooltipHelper: startHover ignores changed buildName** — early return now also compares `activeBuildName`; changing buildName for the same interactive re-triggers tooltip
+- **UIPanelHelper: named panel fade-in tween not tracked** — `closeNamed()` now cancels in-progress fade-in before starting fade-out
+- **UIMultiAnimCheckbox/UIMultiAnimTabs: set_disabled inconsistent** — `set_disabled` now uses `beginUpdate/endUpdate` and sets both `status` and `disabled` parameters, matching `UIMultiAnimButton` pattern
 
 ## [1.0.0-rc.1] - 2026-03-03
 

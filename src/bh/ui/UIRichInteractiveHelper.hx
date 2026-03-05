@@ -102,8 +102,9 @@ class UIRichInteractiveHelper {
 			binding.currentState = Disabled;
 			binding.result.setParameter(binding.stateParam, "disabled");
 		} else {
-			binding.currentState = Normal;
-			binding.result.setParameter(binding.stateParam, "normal");
+			final isHovered = wrapper != null && wrapper.hovered;
+			binding.currentState = isHovered ? Hover : Normal;
+			binding.result.setParameter(binding.stateParam, isHovered ? "hover" : "normal");
 		}
 	}
 

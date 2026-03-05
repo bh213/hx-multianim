@@ -774,6 +774,61 @@ class UIPanelHelperTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testNamedPanelFadeInCancelledOnClose():Void {
+		// Bug 4.4: Named panel fade-in tween is fire-and-forget.
+		// If closeNamed() is called during fade-in, the fade-in tween continues
+		// running and fights with the fade-out tween (both mutate alpha).
+		var ctx = createHelperWithTweens(0.5, 0.2);
+		ctx.helper.openNamed("slot1", "btn1", "panel");
+		Assert.isTrue(ctx.helper.isOpenNamed("slot1"));
+
+		// Get the panel object to track its alpha
+		var panelObj = ctx.helper.getNamedPanelResult("slot1").object;
+
+		// Partially advance fade-in (alpha should be increasing toward 1.0)
+		ctx.tweens.update(0.1);
+
+		// Close during fade-in — should cancel fade-in, start fade-out
+		ctx.helper.closeNamed("slot1");
+		Assert.isFalse(ctx.helper.isOpenNamed("slot1"));
+
+		// After fade-out completes, alpha should reach 0 (not be stuck > 0 from competing fade-in)
+		ctx.tweens.update(0.3); // past fade-out duration
+
+		// The object should have been removed (parent set to null)
+		Assert.isNull(panelObj.parent);
+
+		// Advance further to check fade-in tween doesn't resurrect the alpha
+		ctx.tweens.update(0.5);
+		// Alpha should stay at 0 (fade-out target), NOT be set back to 1.0 by lingering fade-in
+		Assert.floatEquals(0.0, panelObj.alpha);
+	}
+
+	@Test
+	public function testNamedPanelReplaceInSameSlotCancelsFadeIn():Void {
+		// Opening a new panel in the same slot should cancel the previous fade-in
+		var ctx = createHelperWithTweens(0.5, 0.2);
+		ctx.helper.openNamed("slot1", "btn1", "panel");
+
+		// Get first panel object
+		var firstObj = ctx.helper.getNamedPanelResult("slot1").object;
+
+		// Partially advance fade-in
+		ctx.tweens.update(0.1);
+
+		// Replace with different panel in same slot
+		ctx.helper.openNamed("slot1", "btn2", "panel");
+		Assert.isTrue(ctx.helper.isOpenNamed("slot1"));
+
+		// Advance past all durations — first panel's fade-in should be cancelled
+		ctx.tweens.update(2.0);
+		Assert.isTrue(ctx.helper.isOpenNamed("slot1"));
+
+		// First panel should have been removed and not reanimated by lingering tween
+		Assert.isNull(firstObj.parent);
+	}
+
+	@Test
 	public function testZeroFadeDefaultIsInstant():Void {
 		// Default PanelDefaults has fadeIn=0, fadeOut=0 — backward compatible
 		var ctx = createHelper();

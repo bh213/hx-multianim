@@ -156,6 +156,9 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 	/** Source slot this draggable was taken from (for drag-from-slot). Null if not from a slot. */
 	public var sourceSlot:Null<SlotHandle> = null;
 
+	/** Snapshot of sourceSlot.data captured at drag start, used by swap mode to avoid stale data. */
+	public var sourceData:Dynamic = null;
+
 	/** Whether to swap contents when dropping onto an occupied slot. Default: false. */
 	public var swapMode:Bool = false;
 
@@ -171,14 +174,17 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 		return new UIMultiAnimDraggable(target);
 	}
 
-	/** Creates a draggable from a slot's content. Returns null if slot is empty. */
+	/** Creates a draggable from a slot's content. Returns null if slot is empty.
+	 *  Snapshots sourceSlot.data at creation time so swap mode is safe against external modification. */
 	public static function createFromSlot(slot:SlotHandle):Null<UIMultiAnimDraggable> {
 		var content = slot.getContent();
 		if (content == null)
 			return null;
+		var savedData = slot.data;
 		slot.clear();
 		var drag = new UIMultiAnimDraggable(content);
 		drag.sourceSlot = slot;
+		drag.sourceData = savedData;
 		drag.returnToOrigin = true;
 		return drag;
 	}
@@ -365,10 +371,14 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 				target.alpha = savedAlpha;
 		}
 		state = Idle;
+		enabled = false;
 		if (target != null) {
 			target.remove();
 			target = null;
 		}
+		sourceSlot = null;
+		sourceData = null;
+		root.remove();
 	}
 
 	// --- UIElementCustomAddToLayer ---
@@ -484,7 +494,7 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 									var displacedData = zone.slot.data;
 									zone.slot.clear();
 									zone.slot.setContent(target);
-									zone.slot.data = sourceSlot.data;
+									zone.slot.data = sourceData;
 									sourceSlot.setContent(displaced);
 									sourceSlot.data = displacedData;
 								} else {
@@ -492,6 +502,7 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 								}
 							}
 							sourceSlot = null;
+							sourceData = null;
 						});
 					} else {
 						// Failed drop — return to source slot if applicable
@@ -510,7 +521,9 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 								// Return to source slot on failed drop
 								if (sourceSlot != null) {
 									sourceSlot.setContent(target);
+									sourceSlot.data = sourceData;
 									sourceSlot = null;
+									sourceData = null;
 								}
 							});
 						} else {

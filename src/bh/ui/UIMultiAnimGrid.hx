@@ -12,6 +12,7 @@ import bh.multianim.MultiAnimBuilder;
 import bh.multianim.MultiAnimBuilder.BuilderResolvedSettings;
 import bh.multianim.MultiAnimBuilder.BuilderResult;
 import bh.paths.MultiAnimPaths.PathNormalization;
+import bh.ui.UICardHandTypes;
 import bh.ui.UIMultiAnimDraggable;
 import bh.ui.UIMultiAnimGridTypes;
 import h2d.col.Bounds;
@@ -46,6 +47,8 @@ private typedef DraggableBinding = {
 private typedef CardHandBinding = {
 	var cardHand:UICardHandHelper;
 	var accepts:Null<GridCardAccepts>;
+	var targetPrefix:String;
+	var eventListener:Null<(event:UICardHandTypes.CardHandEvent) -> Void>;
 }
 
 /**
@@ -107,6 +110,7 @@ class UIMultiAnimGrid {
 	// --- Instance counter for unique zone IDs ---
 	static var instanceCounter:Int = 0;
 	final instanceId:Int;
+	var cardHandBindingCounter:Int = 0;
 
 	// --- Callbacks ---
 
@@ -314,6 +318,9 @@ class UIMultiAnimGrid {
 
 		if (onCellBuilt != null)
 			onCellBuilt(newEntry.coord, newEntry.result);
+
+		refreshAllDraggableZones();
+		refreshAllCardTargets();
 	}
 
 	// ============================================================
@@ -420,8 +427,14 @@ class UIMultiAnimGrid {
 	// ============================================================
 
 	/** Register a draggable to drop onto this grid's cells.
-	 *  The grid auto-creates DropZone per cell and manages highlight state. */
+	 *  The grid auto-creates DropZone per cell and manages highlight state.
+	 *  Duplicate registrations for the same draggable are ignored. */
 	public function acceptDrops(draggable:UIMultiAnimDraggable, ?accepts:GridDropAccepts):Void {
+		// Guard against duplicate registration
+		for (existing in registeredDraggables)
+			if (existing.draggable == draggable)
+				return;
+
 		final binding:DraggableBinding = {
 			draggable: draggable,
 			accepts: accepts,
@@ -488,6 +501,8 @@ class UIMultiAnimGrid {
 		final binding:CardHandBinding = {
 			cardHand: cardHand,
 			accepts: accepts,
+			targetPrefix: 'grid${instanceId}ch${cardHandBindingCounter++}',
+			eventListener: null,
 		};
 		registeredCardHands.push(binding);
 		createCardTargetsForBinding(binding);
@@ -637,15 +652,12 @@ class UIMultiAnimGrid {
 		final stride = rectCellW + rectGap;
 		final strideY = rectCellH + rectGap;
 
-		if (localX < 0 || localY < 0)
-			return null;
-
 		final col = Math.floor(localX / stride);
 		final row = Math.floor(localY / strideY);
 
 		// Check if in the gap area
 		final cellLocalX = localX - col * stride;
-		final cellLocalY = localY - row * stride;
+		final cellLocalY = localY - row * strideY;
 		if (cellLocalX > rectCellW || cellLocalY > rectCellH)
 			return null;
 
@@ -801,9 +813,10 @@ class UIMultiAnimGrid {
 	// ============================================================
 
 	function createCardTargetsForBinding(binding:CardHandBinding):Void {
+		final prefix = binding.targetPrefix;
 		for (_ => entry in cells) {
 			final coord = entry.coord;
-			final targetId = 'grid${instanceId}_${coord.col}_${coord.row}';
+			final targetId = '${prefix}_${coord.col}_${coord.row}';
 			final cellSize = getCellBoundingSize();
 
 			// Create a synthetic MAObject with MAInteractive for the card hand system
@@ -842,15 +855,46 @@ class UIMultiAnimGrid {
 					e.result.setParameter(highlightParam, highlight);
 			}
 		});
+
+		// Wire card played event → CellCardPlayed conversion
+		final listener = (event:UICardHandTypes.CardHandEvent) -> {
+			switch event {
+				case CardPlayed(cardId, target):
+					switch target {
+						case TargetZone(targetId):
+							final coord = parseCardTargetId(targetId);
+							if (coord != null)
+								emitEvent(CellCardPlayed(coord, cardId));
+						default:
+					}
+				default:
+			}
+		};
+		binding.cardHand.chainedListeners.push(listener);
+		binding.eventListener = listener;
 	}
 
 	function clearCardTargetsForBinding(binding:CardHandBinding):Void {
-		for (targetId => interactive in cardTargetInteractives) {
-			binding.cardHand.unregisterTargetInteractive(targetId);
-			interactive.remove();
+		final prefix = binding.targetPrefix + "_";
+		final toRemove:Array<String> = [];
+		for (targetId => _ in cardTargetInteractives) {
+			if (StringTools.startsWith(targetId, prefix))
+				toRemove.push(targetId);
 		}
-		cardTargetInteractives.clear();
-		cardTargetWrappers.clear();
+		for (targetId in toRemove) {
+			final interactive = cardTargetInteractives.get(targetId);
+			if (interactive != null)
+				interactive.remove();
+			binding.cardHand.unregisterTargetInteractive(targetId);
+			cardTargetInteractives.remove(targetId);
+			cardTargetWrappers.remove(targetId);
+		}
+
+		// Remove chained event listener
+		if (binding.eventListener != null) {
+			binding.cardHand.chainedListeners.remove(binding.eventListener);
+			binding.eventListener = null;
+		}
 	}
 
 	function refreshAllCardTargets():Void {
@@ -868,7 +912,20 @@ class UIMultiAnimGrid {
 	}
 
 	function parseCardTargetId(targetId:String):Null<CellCoord> {
-		return parseZoneId(targetId, 'grid${instanceId}');
+		// Target IDs have format: grid{instanceId}ch{N}_{col}_{row}
+		// Match any binding's prefix by checking grid instance prefix
+		final gridPrefix = 'grid${instanceId}ch';
+		if (!StringTools.startsWith(targetId, gridPrefix))
+			return null;
+		// Find the col_row suffix: last two underscore-separated parts
+		final parts = targetId.split("_");
+		if (parts.length < 2)
+			return null;
+		final row = Std.parseInt(parts[parts.length - 1]);
+		final col = Std.parseInt(parts[parts.length - 2]);
+		if (col == null || row == null)
+			return null;
+		return {col: col, row: row};
 	}
 
 	// ============================================================
