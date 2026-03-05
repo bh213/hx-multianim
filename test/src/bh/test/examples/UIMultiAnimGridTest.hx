@@ -749,6 +749,76 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 		Assert.equals(4, mapSize3);
 	}
 
+	// ============== Card target interactive positioning ==============
+
+	@Test
+	public function testCardTargetPositionRect():Void {
+		// Card target interactives for rect grids should be positioned at
+		// getCellLocalPosition (top-left), NOT offset by -cellSize/2.
+		var screen = new UITestScreen();
+		var builder = BuilderTestBase.builderFromSource('$CELL_MANIM\n$CARD_MANIM');
+
+		var grid = new UIMultiAnimGrid(builder, {
+			gridType: Rect(50, 50, 2),
+			cellBuildName: "cell",
+		});
+		grid.addRectRegion(2, 2);
+
+		var cardHand = new UICardHandHelper(screen, builder);
+		grid.registerAsCardTarget(cardHand);
+
+		// Check interactive positions via @:privateAccess
+		@:privateAccess var prefix = grid.registeredCardHands[0].targetPrefix;
+
+		// Cell (0,0): local pos = (0, 0). Interactive should be at (0, 0).
+		var i00 = '${prefix}_0_0';
+		@:privateAccess var obj00 = grid.cardTargetInteractives.get(i00);
+		Assert.notNull(obj00);
+		Assert.floatEquals(0.0, obj00.x);
+		Assert.floatEquals(0.0, obj00.y);
+
+		// Cell (1,0): local pos = (52, 0). Interactive should be at (52, 0).
+		var i10 = '${prefix}_1_0';
+		@:privateAccess var obj10 = grid.cardTargetInteractives.get(i10);
+		Assert.notNull(obj10);
+		Assert.floatEquals(52.0, obj10.x);
+		Assert.floatEquals(0.0, obj10.y);
+
+		// Cell (0,1): local pos = (0, 52). Interactive should be at (0, 52).
+		var i01 = '${prefix}_0_1';
+		@:privateAccess var obj01 = grid.cardTargetInteractives.get(i01);
+		Assert.notNull(obj01);
+		Assert.floatEquals(0.0, obj01.x);
+		Assert.floatEquals(52.0, obj01.y);
+	}
+
+	@Test
+	public function testCardTargetPositionHex():Void {
+		// Card target interactives for hex grids should be at center - cellSize/2
+		// because getCellLocalPosition returns the hex center.
+		var screen = new UITestScreen();
+		var builder = BuilderTestBase.builderFromSource('$HEX_CELL_MANIM\n$CARD_MANIM');
+
+		var grid = new UIMultiAnimGrid(builder, {
+			gridType: Hex(POINTY, 30, 30),
+			cellBuildName: "hexCell",
+		});
+		grid.addCell(0, 0);
+
+		var cardHand = new UICardHandHelper(screen, builder);
+		grid.registerAsCardTarget(cardHand);
+
+		@:privateAccess var prefix = grid.registeredCardHands[0].targetPrefix;
+		var i00 = '${prefix}_0_0';
+		@:privateAccess var obj00 = grid.cardTargetInteractives.get(i00);
+		Assert.notNull(obj00);
+
+		// Hex center for (0,0) is at origin (0,0). CellBoundingSize = (60, 60).
+		// Interactive should be at (0 - 30, 0 - 30) = (-30, -30).
+		Assert.floatEquals(-30.0, obj00.x);
+		Assert.floatEquals(-30.0, obj00.y);
+	}
+
 	// ============== acceptDrops duplicate registration (Bug 1.14) ==============
 
 	@Test

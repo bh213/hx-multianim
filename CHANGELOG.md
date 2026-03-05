@@ -49,6 +49,7 @@
 - **UIMultiAnimGrid: multiple card hand registrations corrupt shared target state** — each card hand binding now gets a unique `targetPrefix`; `clearCardTargetsForBinding` only removes matching entries
 - **UIMultiAnimGrid: rebuildCell doesn't refresh drag zones or card targets** — now calls `refreshAllDraggableZones()` and `refreshAllCardTargets()` after rebuild
 - **UIMultiAnimGrid: acceptDrops allows duplicate registration** — duplicate calls for the same draggable are now silently ignored
+- **UIMultiAnimGrid: rect grid card targeting offset by half cell** — `registerAsCardTarget()` applied `-cellSize/2` offset unconditionally; rect grids return top-left from `getCellLocalPosition` (no offset needed), only hex grids return center (offset needed)
 - **UICardHandHelper: setCardEnabled breaks state for animating cards** — added `enableAfterAnimation` flag and `resolveAnimationComplete()` to properly defer enable/disable during animations
 - **UICardHandTypes: removed dead `TargetCard` enum variant** — card-to-card combining uses `CardCombined` event; `TargetCard` was never used
 - **UIMultiAnimDraggable: clear() partial cleanup** — now also removes `root` from scene, sets `enabled=false`, clears `sourceSlot`/`sourceData`

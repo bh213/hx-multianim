@@ -822,10 +822,16 @@ class UIMultiAnimGrid {
 			// Create a synthetic MAObject with MAInteractive for the card hand system
 			final interactive = new MAObject(MAInteractive(Math.ceil(cellSize.x), Math.ceil(cellSize.y), targetId, null), false);
 
-			// Position at cell center offset by half-size (interactive origin is top-left)
-			// Use local coordinates (relative to root), not cellPosition which includes root offset
+			// Position interactive at cell top-left in local coordinates.
+			// Rect: getCellLocalPosition already returns top-left, no offset needed.
+			// Hex: getCellLocalPosition returns center, offset by half-size to get top-left.
 			final localPos = getCellLocalPosition(coord);
-			interactive.setPosition(localPos.x - cellSize.x / 2, localPos.y - cellSize.y / 2);
+			switch gridType {
+				case Rect(_, _, _):
+					interactive.setPosition(localPos.x, localPos.y);
+				case Hex(_, _, _):
+					interactive.setPosition(localPos.x - cellSize.x / 2, localPos.y - cellSize.y / 2);
+			}
 			root.addChild(interactive);
 
 			final wrapper = new UIInteractiveWrapper(interactive, null);
