@@ -22,10 +22,15 @@ import bh.base.TweenManager;
 @:access(bh.multianim.MultiAnimBuilder)
 @:access(bh.base.TweenManager)
 @:access(hxd.Window)
+@:access(bh.base.CachingResourceLoader)
 class DevBridge {
 	final screenManager:ScreenManager;
 	final port:Int;
 	var serverSocket:Null<Socket>;
+
+	// ---- Startup ----
+	var startTime:Float = 0;
+	var actualPort:Int = 0;
 
 	// ---- Pause state ----
 	var paused:Bool = false;
@@ -58,14 +63,44 @@ class DevBridge {
 
 	public function start():Void {
 		if (serverSocket != null) return;
+		startTime = haxe.Timer.stamp();
 		installTraceCapture();
 		serverSocket = new Socket();
-		try {
-			serverSocket.bind("0.0.0.0", port, onClientConnected);
-			trace('[DevBridge] Listening on port $port');
-		} catch (e:Dynamic) {
-			trace('[DevBridge] Failed to bind port $port: $e');
+
+		var bound = false;
+		var tryPort = port;
+		for (_ in 0...10) {
+			try {
+				serverSocket.bind("0.0.0.0", tryPort, onClientConnected);
+				actualPort = tryPort;
+				bound = true;
+				trace('[DevBridge] Listening on port $tryPort');
+				break;
+			} catch (e:Dynamic) {
+				trace('[DevBridge] Port $tryPort busy, trying next...');
+				tryPort++;
+			}
+		}
+
+		if (!bound) {
+			trace('[DevBridge] Failed to bind after 10 attempts (tried ports $port-${port + 9})');
 			serverSocket = null;
+			return;
+		}
+
+		// Write ready file if env var set
+		var readyFilePath = Sys.getEnv("HX_DEV_READY_FILE");
+		if (readyFilePath != null && readyFilePath != "") {
+			try {
+				var json = haxe.Json.stringify({
+					port: actualPort,
+					timestamp: Date.now().getTime() / 1000,
+				});
+				sys.io.File.saveContent(readyFilePath, json);
+				trace('[DevBridge] Ready file written to $readyFilePath');
+			} catch (e:Dynamic) {
+				trace('[DevBridge] Failed to write ready file: $e');
+			}
 		}
 	}
 
@@ -225,6 +260,12 @@ class DevBridge {
 			case "get_screen_state": handleGetScreenState(params);
 			case "find_element_at": handleFindElementAt(params);
 			case "inspect_programmable": handleInspectProgrammable(params);
+			// v3: health, resources, coordinates, idle
+			case "ping": handlePing(params);
+			case "list_fonts": handleListFonts(params);
+			case "list_atlases": handleListAtlases(params);
+			case "coordinate_transform": handleCoordinateTransform(params);
+			case "wait_for_idle": handleWaitForIdle(params);
 			default: throw 'Unknown method: $method';
 		};
 	}
@@ -310,6 +351,10 @@ class DevBridge {
 		var s2d = screenManager.app.s2d;
 		var width:Int = params.width != null ? Std.int(params.width) : s2d.width;
 		var height:Int = params.height != null ? Std.int(params.height) : s2d.height;
+
+		// When paused, freeze elapsed time so render doesn't advance particles/animations
+		if (paused)
+			s2d.setElapsedTime(0);
 
 		var renderTexture = new h3d.mat.Texture(width, height, [Target]);
 		engine.pushTarget(renderTexture);
@@ -428,12 +473,26 @@ class DevBridge {
 		}
 
 		var report = screenManager.hotReload(resource);
+		if (report == null) {
+			return {
+				success: true,
+				file: file,
+				programmablesRebuilt: ([]:Array<String>),
+				rebuiltCount: 0,
+				elapsedMs: 0.0,
+				needsFullRestart: null,
+				paramsAdded: ([]:Array<String>),
+				errors: ([]:Array<Dynamic>),
+			};
+		}
 		return {
 			success: report.success,
 			file: report.file,
 			programmablesRebuilt: report.programmablesRebuilt,
 			rebuiltCount: report.rebuiltCount,
 			elapsedMs: report.elapsedMs,
+			needsFullRestart: report.needsFullRestart,
+			paramsAdded: report.paramsAdded,
 			errors: [
 				for (err in report.errors)
 					{
@@ -441,6 +500,12 @@ class DevBridge {
 						file: err.file,
 						line: err.line,
 						col: err.col,
+						errorType: switch err.errorType {
+							case ParseError: "parse";
+							case BuildError: "build";
+							case SignatureIncompatible: "signatureIncompatible";
+						},
+						context: err.context,
 					}
 			],
 		};
@@ -451,18 +516,43 @@ class DevBridge {
 		if (source == null)
 			throw "Required param: source";
 
+		// Phase 1: Parse
+		var parseResult:bh.multianim.MultiAnimParser.MultiAnimResult;
 		try {
-			var result = bh.multianim.MacroManimParser.parseFile(source, "<eval>");
-			var nodeNames:Array<String> = [];
-			if (result.nodes != null) {
-				for (name => _ in result.nodes) {
-					nodeNames.push(name);
-				}
-			}
-			return {success: true, nodes: nodeNames};
+			parseResult = bh.multianim.MacroManimParser.parseFile(source, "<eval>");
 		} catch (e:Dynamic) {
-			return {success: false, error: '$e'};
+			return {success: false, parseError: '$e', nodes: ([]:Array<String>), buildErrors: ([]:Array<Dynamic>)};
 		}
+
+		var nodeNames:Array<String> = [];
+		if (parseResult.nodes != null) {
+			for (name => _ in parseResult.nodes)
+				nodeNames.push(name);
+		}
+
+		// Phase 2: Attempt build for semantic validation
+		var buildErrors:Array<Dynamic> = [];
+		var builder = new MultiAnimBuilder(parseResult, screenManager.loader, "<eval>");
+
+		for (nodeName in nodeNames) {
+			try {
+				var result = builder.buildWithParameters(nodeName, new Map());
+				// Clean up built objects to avoid scene graph pollution
+				if (result != null && result.object != null)
+					result.object.remove();
+			} catch (e:Dynamic) {
+				buildErrors.push({
+					node: nodeName,
+					error: '$e',
+				});
+			}
+		}
+
+		return {
+			success: buildErrors.length == 0,
+			nodes: nodeNames,
+			buildErrors: buildErrors,
+		};
 	}
 
 	function handleListResources(params:Dynamic):Dynamic {
@@ -716,13 +806,33 @@ class DevBridge {
 
 	function handleListInteractives(params:Dynamic):Dynamic {
 		var screenName:String = params.screen;
-		if (screenName == null)
-			throw "Required param: screen";
 
-		var screen = screenManager.configuredScreens.get(screenName);
-		if (screen == null)
-			throw 'Screen not found: $screenName';
+		if (screenName != null) {
+			// Single screen mode
+			var screen = screenManager.configuredScreens.get(screenName);
+			if (screen == null)
+				throw 'Screen not found: $screenName';
+			return {screen: screenName, interactives: getScreenInteractives(screen, null)};
+		}
 
+		// Aggregate across all active screens
+		var allInteractives:Array<Dynamic> = [];
+		for (s in screenManager.activeScreens) {
+			var name = "unknown";
+			for (n => screen in screenManager.configuredScreens) {
+				if (screen == s) {
+					name = n;
+					break;
+				}
+			}
+			var screenInteractives = getScreenInteractives(s, name);
+			for (entry in screenInteractives)
+				allInteractives.push(entry);
+		}
+		return {interactives: allInteractives};
+	}
+
+	function getScreenInteractives(screen:bh.ui.screens.UIScreen.UIScreen, screenName:Null<String>):Array<Dynamic> {
 		var interactives:Array<Dynamic> = [];
 		var wrappers:Array<bh.ui.UIInteractiveWrapper> = @:privateAccess (cast screen : bh.ui.screens.UIScreen.UIScreenBase).interactiveWrappers;
 		for (wrapper in wrappers) {
@@ -732,6 +842,8 @@ class DevBridge {
 				y: wrapper.interactive.y,
 				disabled: wrapper.disabled,
 			};
+			if (screenName != null)
+				entry.screen = screenName;
 
 			// Add metadata key-values
 			if (wrapper.metadata != null) {
@@ -745,8 +857,7 @@ class DevBridge {
 			}
 			interactives.push(entry);
 		}
-
-		return {screen: screenName, interactives: interactives};
+		return interactives;
 	}
 
 	function handleListSlots(params:Dynamic):Dynamic {
@@ -853,6 +964,17 @@ class DevBridge {
 	function handleFindElementAt(params:Dynamic):Dynamic {
 		var x:Float = params.x != null ? params.x : 0;
 		var y:Float = params.y != null ? params.y : 0;
+		var relativeTo:String = params.relative_to;
+
+		// Transform coordinates if relative_to is specified
+		if (relativeTo != null) {
+			var refObj = screenManager.app.s2d.getObjectByName(relativeTo);
+			if (refObj == null)
+				throw 'Element not found for relative_to: $relativeTo';
+			var global = refObj.localToGlobal(new h2d.col.Point(x, y));
+			x = global.x;
+			y = global.y;
+		}
 
 		var hits:Array<Dynamic> = [];
 		var root = screenManager.app.s2d;
@@ -951,6 +1073,101 @@ class DevBridge {
 		}
 
 		return result;
+	}
+
+	// ---- v3: health, resources, coordinates, idle ----
+
+	function handlePing(params:Dynamic):Dynamic {
+		return {
+			ok: true,
+			uptime: haxe.Timer.stamp() - startTime,
+			port: actualPort,
+		};
+	}
+
+	function handleListFonts(params:Dynamic):Dynamic {
+		return {fonts: bh.base.FontManager.getRegisteredFontNames()};
+	}
+
+	function handleListAtlases(params:Dynamic):Dynamic {
+		var atlases:Array<Dynamic> = [];
+		for (name => atlas in screenManager.loader.atlas2Cache) {
+			var tileNames:Array<String> = [];
+			try {
+				var contents = atlas.getContents();
+				if (contents != null) {
+					for (tileName => _ in contents)
+						tileNames.push(tileName);
+				}
+			} catch (e:Dynamic) {
+				// Atlas may not be parsed yet; skip tile listing
+			}
+			tileNames.sort((a, b) -> a < b ? -1 : a > b ? 1 : 0);
+			atlases.push({name: name, tiles: tileNames});
+		}
+		return {atlases: atlases};
+	}
+
+	function handleCoordinateTransform(params:Dynamic):Dynamic {
+		var elementName:String = params.element;
+		var x:Float = params.x != null ? params.x : 0;
+		var y:Float = params.y != null ? params.y : 0;
+		var direction:String = params.direction;
+		var screenName:String = params.screen;
+		if (elementName == null || direction == null)
+			throw "Required params: element, direction (to_local|to_global)";
+
+		// Find the element
+		var obj:h2d.Object = null;
+		if (screenName != null) {
+			var screen = screenManager.configuredScreens.get(screenName);
+			if (screen == null)
+				throw 'Screen not found: $screenName';
+			obj = screen.getSceneRoot().getObjectByName(elementName);
+		} else {
+			obj = screenManager.app.s2d.getObjectByName(elementName);
+		}
+		if (obj == null)
+			throw 'Element not found: $elementName';
+
+		var point = new h2d.col.Point(x, y);
+		var result:h2d.col.Point;
+		if (direction == "to_local") {
+			result = obj.globalToLocal(point);
+		} else if (direction == "to_global") {
+			result = obj.localToGlobal(point);
+		} else {
+			throw 'Invalid direction: $direction. Use "to_local" or "to_global"';
+		}
+
+		return {
+			element: elementName,
+			direction: direction,
+			inputX: x,
+			inputY: y,
+			resultX: result.x,
+			resultY: result.y,
+		};
+	}
+
+	function handleWaitForIdle(params:Dynamic):Dynamic {
+		var activeTweenCount = 0;
+		for (handle in screenManager.tweens.handles) {
+			switch handle {
+				case HTween(t):
+					if (!t.cancelled) activeTweenCount++;
+				case HSequence(s):
+					if (!s.cancelled) activeTweenCount++;
+				case HGroup(g):
+					if (!g.cancelled) activeTweenCount++;
+			}
+		}
+		return {
+			idle: activeTweenCount == 0 && !screenManager.isTransitioning && !paused,
+			activeTweens: activeTweenCount,
+			isTransitioning: screenManager.isTransitioning,
+			isPaused: paused,
+		};
 	}
 
 	// ---- Helpers ----
@@ -1052,12 +1269,36 @@ class DevBridge {
 				var t:h2d.Text = cast obj;
 				entry.text = t.text;
 			}
+			// Check if this is an interactive MAObject
+			if (Std.isOfType(obj, bh.base.MAObject)) {
+				var ma:bh.base.MAObject = cast obj;
+				switch ma.multiAnimType {
+					case MAInteractive(_, _, identifier, _):
+						entry.isInteractive = true;
+						entry.interactiveId = identifier;
+						var wrapperDisabled = lookupInteractiveDisabled(identifier);
+						if (wrapperDisabled != null)
+							entry.disabled = wrapperDisabled;
+					default:
+				}
+			}
 			hits.push(entry);
 		}
 
 		for (i in 0...obj.numChildren) {
 			findObjectsAt(obj.getChildAt(i), x, y, depth + 1, hits);
 		}
+	}
+
+	function lookupInteractiveDisabled(id:String):Null<Bool> {
+		for (s in screenManager.activeScreens) {
+			var sb = (cast s : bh.ui.screens.UIScreen.UIScreenBase);
+			var wrappers:Array<bh.ui.UIInteractiveWrapper> = @:privateAccess sb.interactiveWrappers;
+			for (w in wrappers) {
+				if (w.id == id) return w.disabled;
+			}
+		}
+		return null;
 	}
 
 	static function resolvedParamToDynamic(p:ResolvedIndexParameters):Null<Dynamic> {

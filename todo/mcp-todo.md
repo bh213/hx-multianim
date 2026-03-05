@@ -1,41 +1,38 @@
-# MCP Improvements for AI Agent Usability
+# MCP DevBridge — Remaining TODO
 
-Improvements identified from analyzing proto-brick (a real game using hx-multianim) and the current MCP tooling.
+Merged from: `mcp.md`, `mcp-review.md`, old `mcp-todo.md`, `mcp-v2.md`.
+All v1/v2 tools (29 total) are implemented. This file tracks what's left.
 
-## P0 - Critical for Agent Productivity
+## Implemented Tools (29)
 
-### Semantic validation in `eval_manim`
-Currently `eval_manim` only parses and returns node names. Extend it to validate:
-- Font names against registered fonts
-- Atlas/tile references against loaded sheets
-- Parameter type compatibility
-- `builderParameter` name collisions
-- Expression correctness (undefined `$refs`, type mismatches)
+Core (12): performance, list_screens, list_builders, scene_graph, inspect_element, screenshot, set_parameter, set_visibility, reload, eval_manim, list_resources, send_event
+Control (3): pause, step, quit
+Trace (2): get_traces, get_errors
+Inspection (7): get_parameters, list_interactives, list_slots, get_tween_state, get_screen_state, find_element_at, inspect_programmable
+Added post-v2 (5): ping, list_fonts, list_atlases, coordinate_transform, wait_for_idle
 
-### `reload` should return errors directly
-Currently requires a separate `get_errors` call after reload. The reload response should include any parse/build errors with structured data: `{ file, line, col, message, suggestion, context_snippet }`.
+---
+
+## P0 — Critical for Agent Productivity
 
 ### `describe_wiring` tool
-Given a `.manim` programmable name, return the expected Haxe wiring code:
+Given a `.manim` programmable name, return expected Haxe wiring code:
 - Which `builderParameter()` placeholders exist and their names
 - Which callbacks are needed
 - What settings are available
 - Generate example Haxe code for `MacroUtils.macroBuildWithParameters`
 
-This is the biggest knowledge gap for AI agents — the mapping between `.manim` `builderParameter("name")` and Haxe lambda parameters is opaque without deep framework knowledge.
+Biggest knowledge gap for AI agents — mapping between `.manim` `builderParameter("name")` and Haxe lambda parameters is opaque.
 
-## P1 - High Value
+---
 
-### Resource discovery tools
+## P1 — High Value
 
-**`list_fonts`** - Return all registered font names with type (bitmap/SDF) and properties (size, lineHeight).
+### `suggest_completion` tool
+Given a partial `.manim` snippet and cursor position, return valid completions (element types, parameter names, font names, tile names). LSP-like but via MCP.
 
-**`list_atlases`** - Return loaded atlas names and their tile/sprite names. Essential for agents to pick sprites when building `.manim` UI.
-
-**`suggest_completion`** - Given a partial `.manim` snippet and cursor position, return valid completions (element types, parameter names, font names, tile names). LSP-like but via MCP.
-
-### Screen scaffolding
-**`create_screen`** tool or template that generates:
+### Screen scaffolding (`create_screen` tool)
+Generate:
 - `res/manim/screenname.manim` skeleton with `#ui programmable() {}`
 - `src/screens/ScreenName.hx` extending `UIScreenBase` with `load()` and `onScreenEvent()`
 - Registration code for `Main.hx`
@@ -43,42 +40,63 @@ This is the biggest knowledge gap for AI agents — the mapping between `.manim`
 Reduces the 3-file ceremony to a single tool call.
 
 ### Live element manipulation
+- **`modify_element`** — Change position, visibility, text, color of a live element without editing files
+- **`add_element`** — Dynamically add a new programmable instance to the scene without file edits
 
-**`modify_element`** - Change position, visibility, text, color of a live element without editing files. For rapid prototyping.
+### Scene graph semantic metadata
+`walkSceneGraph()` lacks semantic info (programmable identity, component type). Partially addressed: `find_element_at` now annotates MAObject interactives (`isInteractive`, `interactiveId`, `disabled`). Remaining:
+- **DevAnnotation objects** (attach invisible metadata children behind `#if MULTIANIM_DEV`)
+- **Better `object.name` format** (e.g. `#myButton` or `programmable:myButton` instead of `myButton_PROGRAMMABLE_3`)
 
-**`add_element`** - Dynamically add a new programmable instance to the scene without file edits.
+### `list_ui_elements` tool
+List high-level UI components (buttons, checkboxes, sliders) on a screen, not just raw interactives.
 
-## P2 - Nice to Have
+---
 
-### Higher-level drag-drop DSL
-The drag-drop wiring in GameScreen.hx is ~80 lines of Haxe for what is conceptually "drag sidebar bricks to grid cells." Consider:
-- `.manim` syntax: `draggable(source: "sidebarBrick", dropZones: grid(10, 8))`
-- Or a helper class that takes grid dimensions and a builder name
-
-### Named anchor points / coordinate sharing
-Allow `.manim` to define named positions (`#gridOrigin point: 160, 360`) queryable from Haxe, so coordinates are defined in one place instead of duplicated between `.manim` and `.hx`.
+## P2 — Nice to Have
 
 ### `run_action` tool
-Game-defined action registry that agents can trigger (e.g., "start wave", "place brick at 3,2", "reset game"). Screens would register named actions with the DevBridge.
+Game-defined action registry that agents can trigger (e.g., "start wave", "place brick at 3,2"). Screens register named actions with DevBridge.
 
 ### `get_screen_layout` tool
-Return a structured JSON of all elements with positions, sizes, types, and hierarchy — a machine-readable layout description rather than the raw scene graph.
+Structured JSON of all elements with positions, sizes, types, hierarchy — machine-readable layout description.
 
 ### `diff_preview` tool
 Given a `.manim` change, preview what would change visually without committing the edit.
 
+### `switch_screen` tool
+Navigate to a registered screen with optional transition.
+
+### `eval_manim_full` tool
+~~Parse + build a `.manim` snippet (dry-run).~~ `eval_manim` now does parse + build validation. Remaining: return parameter definitions, element tree, settings — richer than just node names + errors.
+
+### `get_animated_path_state` tool
+Query AnimatedPath progress — position, rate, done, cycle count.
+
+### MCP server: process management
+MCP server owns app process lifecycle (`start_app` / `stop_app` tools). Eliminates the "agent starts app, then needs to find it" problem.
+
+### Multi-instance support
+- ~~Auto-port selection (try next port if configured is busy)~~ — DONE (tries 10 ports)
+- ~~Ready signal file on DevBridge.start()~~ — DONE (`HX_DEV_READY_FILE` env var, writes JSON with port/timestamp)
+- Instance discovery via ready files (`.dev-bridge-9001.json`, etc.)
+- MCP server instance routing (`list_instances` / `select_instance` tools)
+
+### SSE/WebSocket push events
+Stream events (screen changes, animation completion, errors) to eliminate polling.
+
 ### Contextual documentation tools
+- `help("topic")` — return relevant subset of docs
+- `examples("element")` — return working `.manim` snippets
 
-**`help("topic")`** - Return relevant subset of docs (e.g., `help("particles")` returns particle properties).
+### Higher-level drag-drop DSL
+`.manim` syntax for drag-drop or helper class that takes grid dimensions and a builder name.
 
-**`examples("element")`** - Return working `.manim` snippets (e.g., `examples("button")` returns button patterns).
+---
 
-### Error fix suggestions
-When a font name is wrong, suggest the closest match. When a parameter type is wrong, show valid types. Structured: `{ message, suggestion, valid_alternatives[] }`.
+## Architecture Notes
 
-## Notes
-
-- Current MCP tools (24 total) are strong for inspection but weak for creation/modification
-- The biggest friction for AI agents is the multi-file coordination: `.manim` + `.hx` + `Main.hx` registration
-- `MacroUtils.macroBuildWithParameters` is the most AI-unfriendly API — agents need `describe_wiring` to bridge the gap
-- Semantic validation would prevent most iteration cycles (edit -> reload -> error -> fix -> repeat)
+- MCP server (`hx-multianim-mcp/`) is separate npm package `@bh213/hx-multianim-mcp`
+- Every DevBridge method needs a corresponding TypeScript registration in MCP server
+- All Haxe dev code behind `#if MULTIANIM_DEV`
+- HTTP POST protocol to `localhost:9001` (configurable via `HX_DEV_PORT`)

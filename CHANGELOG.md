@@ -4,11 +4,26 @@
 
 ### Added
 - **MCP DevBridge** — HTTP server for AI tool integration (`DevBridge.hx`, compiles with `-D MULTIANIM_DEV`)
-  - 12 tools: `performance`, `list_screens`, `list_builders`, `scene_graph`, `inspect_element`, `screenshot`, `set_parameter`, `set_visibility`, `reload`, `eval_manim`, `list_resources`, `send_event`
+  - 12 core tools: `performance`, `list_screens`, `list_builders`, `scene_graph`, `inspect_element`, `screenshot`, `set_parameter`, `set_visibility`, `reload`, `eval_manim`, `list_resources`, `send_event`
+  - 3 control tools: `pause`, `step`, `quit`
+  - 2 trace tools: `get_traces`, `get_errors`
+  - 7 inspection tools: `get_parameters`, `list_interactives`, `list_slots`, `get_tween_state`, `get_screen_state`, `find_element_at`, `inspect_programmable`
+  - 5 post-v2 tools: `ping`, `list_fonts`, `list_atlases`, `coordinate_transform`, `wait_for_idle`
   - JSON-RPC over HTTP POST on port 9001 using `hxd.net.Socket` (libuv async)
   - `send_event` — inject mouse clicks, key presses, wheel, and text input events into the running application
-  - `screenshot` — capture current frame as base64 PNG
+  - `screenshot` — capture current frame as base64 PNG; freezes elapsed time when paused to avoid advancing animations
   - `set_parameter` — update live programmable parameters via `ReloadableRegistry`
+  - `eval_manim` — parse + build validation (Phase 1: parse errors, Phase 2: semantic build errors per node)
+  - `reload` — returns `needsFullRestart`, `paramsAdded`, structured `errorType` and `context` in error details; graceful null-report handling
+  - `list_interactives` — optional `screen` param; aggregates across all active screens when omitted
+  - `find_element_at` — `relative_to` param for coordinate transforms relative to a named element; annotates MAObject interactives with `isInteractive`/`interactiveId`/`disabled`
+  - `coordinate_transform` — convert between local and global coordinates for a named element
+  - `ping` — health check returning uptime and actual port
+  - `list_fonts` — registered font names via `FontManager`
+  - `list_atlases` — loaded atlas names with tile listings via `CachingResourceLoader`
+  - `wait_for_idle` — check for active tweens, transitions, and pause state
+  - Auto-port selection: tries up to 10 ports if configured port is busy
+  - Ready signal file: writes JSON with port/timestamp to `HX_DEV_READY_FILE` env var path on startup
   - Zero overhead in release builds (all code guarded by `#if MULTIANIM_DEV`)
 - **ResourceLoader.getCacheKeys()** — returns cached resource names by category (sheets, fonts, .manim, .anim files)
 - **ReloadableRegistry.getAllHandles()** — returns all live reloadable handles across all source paths

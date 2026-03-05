@@ -264,7 +264,7 @@ class DevBridgeTest extends BuilderTestBase {
 		var bridge = createTestBridge();
 		var result:Dynamic = bridge.dispatch("eval_manim", {source: "this is not valid manim"});
 		Assert.isFalse(result.success);
-		Assert.notNull(result.error);
+		Assert.notNull(result.parseError);
 	}
 
 	@Test
@@ -555,6 +555,202 @@ class DevBridgeTest extends BuilderTestBase {
 		var result:Dynamic = bridge.dispatch("get_tween_state", {});
 		Assert.equals(0, result.activeTweens);
 		Assert.equals(0, (result.tweens : Array<Dynamic>).length);
+	}
+
+	// ==================== ping ====================
+
+	@Test
+	public function testPing_returnsUptime():Void {
+		var bridge = createTestBridge();
+		bridge.startTime = haxe.Timer.stamp() - 5.0;
+		var result:Dynamic = bridge.dispatch("ping", {});
+		Assert.isTrue(result.ok);
+		Assert.isTrue(result.uptime >= 4.0);
+	}
+
+	@Test
+	public function testPing_returnsPort():Void {
+		var bridge = createTestBridge();
+		bridge.actualPort = 9001;
+		var result:Dynamic = bridge.dispatch("ping", {});
+		Assert.equals(9001, result.port);
+	}
+
+	// ==================== list_fonts ====================
+
+	@Test
+	public function testListFonts_returnsArray():Void {
+		var bridge = createTestBridge();
+		var result:Dynamic = bridge.dispatch("list_fonts", {});
+		Assert.notNull(result.fonts);
+	}
+
+	// ==================== list_atlases ====================
+
+	@Test
+	public function testListAtlases_empty():Void {
+		var bridge = createTestBridge();
+		var result:Dynamic = bridge.dispatch("list_atlases", {});
+		Assert.notNull(result.atlases);
+	}
+
+	// ==================== wait_for_idle ====================
+
+	@Test
+	public function testWaitForIdle_initialState():Void {
+		var bridge = createTestBridge();
+		var result:Dynamic = bridge.dispatch("wait_for_idle", {});
+		Assert.isTrue(result.idle);
+		Assert.equals(0, result.activeTweens);
+		Assert.isFalse(result.isTransitioning);
+		Assert.isFalse(result.isPaused);
+	}
+
+	// ==================== coordinate_transform ====================
+
+	@Test
+	public function testCoordinateTransform_toLocal():Void {
+		var bridge = createTestBridge();
+		var screen = addTestScreen(bridge, "testScreen");
+		var obj = new h2d.Object(screen.getSceneRoot());
+		obj.name = "offsetObj";
+		obj.x = 100;
+		obj.y = 50;
+
+		var result:Dynamic = bridge.dispatch("coordinate_transform", {
+			element: "offsetObj",
+			x: 150,
+			y: 75,
+			direction: "to_local",
+			screen: "testScreen",
+		});
+		Assert.equals("offsetObj", result.element);
+		Assert.equals("to_local", result.direction);
+		Assert.floatEquals(50.0, result.resultX);
+		Assert.floatEquals(25.0, result.resultY);
+
+		obj.remove();
+	}
+
+	@Test
+	public function testCoordinateTransform_toGlobal():Void {
+		var bridge = createTestBridge();
+		var screen = addTestScreen(bridge, "testScreen");
+		var obj = new h2d.Object(screen.getSceneRoot());
+		obj.name = "offsetObj";
+		obj.x = 100;
+		obj.y = 50;
+
+		var result:Dynamic = bridge.dispatch("coordinate_transform", {
+			element: "offsetObj",
+			x: 10,
+			y: 20,
+			direction: "to_global",
+			screen: "testScreen",
+		});
+		Assert.floatEquals(110.0, result.resultX);
+		Assert.floatEquals(70.0, result.resultY);
+
+		obj.remove();
+	}
+
+	@Test
+	public function testCoordinateTransform_elementNotFound():Void {
+		var bridge = createTestBridge();
+		addTestScreen(bridge, "testScreen");
+		var threw = false;
+		try {
+			bridge.dispatch("coordinate_transform", {element: "missing", x: 0, y: 0, direction: "to_local", screen: "testScreen"});
+		} catch (e:haxe.Exception) {
+			threw = true;
+			Assert.isTrue(e.message.indexOf("Element not found") >= 0);
+		}
+		Assert.isTrue(threw);
+	}
+
+	@Test
+	public function testCoordinateTransform_invalidDirection():Void {
+		var bridge = createTestBridge();
+		var screen = addTestScreen(bridge, "testScreen");
+		var obj = new h2d.Object(screen.getSceneRoot());
+		obj.name = "testObj";
+		var threw = false;
+		try {
+			bridge.dispatch("coordinate_transform", {element: "testObj", x: 0, y: 0, direction: "invalid", screen: "testScreen"});
+		} catch (e:haxe.Exception) {
+			threw = true;
+			Assert.isTrue(e.message.indexOf("Invalid direction") >= 0);
+		}
+		Assert.isTrue(threw);
+		obj.remove();
+	}
+
+	// ==================== eval_manim semantic validation ====================
+
+	@Test
+	public function testEvalManim_semanticValid():Void {
+		var bridge = createTestBridge();
+		var source = "version: 1.0\n#test programmable(x:int=0) {\n  bitmap(generated(color(10, 10, #FF0000))): 0,0\n}";
+		var result:Dynamic = bridge.dispatch("eval_manim", {source: source});
+		Assert.isTrue(result.success);
+		Assert.equals(0, (result.buildErrors : Array<Dynamic>).length);
+	}
+
+	@Test
+	public function testEvalManim_semanticBuildError():Void {
+		var bridge = createTestBridge();
+		// Use a font that doesn't exist — will fail at build time
+		var source = "version: 1.0\n#test programmable() {\n  text(nonexistentFont, \"hello\", #FFF): 0,0\n}";
+		var result:Dynamic = bridge.dispatch("eval_manim", {source: source});
+		Assert.isFalse(result.success);
+		var errors:Array<Dynamic> = result.buildErrors;
+		Assert.isTrue(errors.length > 0);
+		Assert.equals("test", errors[0].node);
+	}
+
+	@Test
+	public function testEvalManim_parseErrorFormat():Void {
+		var bridge = createTestBridge();
+		var result:Dynamic = bridge.dispatch("eval_manim", {source: "this is not valid manim"});
+		Assert.isFalse(result.success);
+		Assert.notNull(result.parseError);
+		Assert.equals(0, (result.nodes : Array<Dynamic>).length);
+	}
+
+	// ==================== reload error enrichment ====================
+
+	@Test
+	public function testReload_noBuilders():Void {
+		var bridge = createTestBridge();
+		var result:Dynamic = bridge.dispatch("reload", {});
+		// With no builders, hotReload returns null — handler should handle gracefully
+		Assert.isTrue(result.success);
+		Assert.equals(0, result.rebuiltCount);
+	}
+
+	// ==================== list_interactives optional screen ====================
+
+	@Test
+	public function testListInteractives_allScreens():Void {
+		var bridge = createTestBridge();
+		addTestScreen(bridge, "screen1", true);
+		addTestScreen(bridge, "screen2", true);
+		// No interactives registered, should return empty aggregation
+		var result:Dynamic = bridge.dispatch("list_interactives", {});
+		Assert.equals(0, (result.interactives : Array<Dynamic>).length);
+	}
+
+	@Test
+	public function testListInteractives_screenNotFoundThrows():Void {
+		var bridge = createTestBridge();
+		var threw = false;
+		try {
+			bridge.dispatch("list_interactives", {screen: "nonexistent"});
+		} catch (e:haxe.Exception) {
+			threw = true;
+			Assert.isTrue(e.message.indexOf("Screen not found") >= 0);
+		}
+		Assert.isTrue(threw);
 	}
 }
 
