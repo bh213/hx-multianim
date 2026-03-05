@@ -29,7 +29,7 @@ jobs:
     - name: Cache Lix dependencies
       uses: actions/cache@v4
       with:
-        path: ~/.lix
+        path: ~/haxe_libraries
         key: ${{ runner.os }}-lix-${{ hashFiles('**/haxe_libraries/*.hxml') }}
         restore-keys: |
           ${{ runner.os }}-lix-
@@ -82,7 +82,7 @@ jobs:
     - name: Cache Lix dependencies
       uses: actions/cache@v4
       with:
-        path: ~/.lix
+        path: ~/haxe_libraries
         key: ${{ runner.os }}-lix-${{ hashFiles('**/haxe_libraries/*.hxml') }}
         restore-keys: |
           ${{ runner.os }}-lix-
