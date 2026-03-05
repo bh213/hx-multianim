@@ -327,15 +327,15 @@
 </head>
 <body>
     <h1>Visual Test Report</h1>
-    <div class="timestamp">Generated: 2026-03-05 14:18:31</div>
+    <div class="timestamp">Generated: 2026-03-05 16:01:08</div>
     <div class="summary">
         <strong>Summary:</strong> 93 tests,         <span style="color: #4CAF50;">93 passed</span>,         <span style="color: #f44336;">0 failed</span>
-        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 0.7s, visual 20.6s)</span>
+        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 0.7s, visual 21s)</span>
     </div>
     <div class="unit-tests-section">
         <h2>Unit Tests</h2>
         <div class="unit-tests-summary all-passed">
-            <strong>3689 assertions:</strong>             <span style="color: #4CAF50;">3689 passed</span>
+            <strong>3750 assertions:</strong>             <span style="color: #4CAF50;">3750 passed</span>
             <button class="expand-btn" id="unitToggleBtn" onclick="toggleUnitDetails()">Show Details</button>
         </div>
         <div class="unit-details" id="unitDetails">
@@ -976,7 +976,7 @@
                 <div class="unit-method pass">testSetCardEnabledTrue: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testSetHandAddsCards: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testSetHandReplacesExisting: OK <span class="dots">..</span></div>
-                <div class="unit-method pass">testTargetingResultEnum: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testTargetingResultEnum: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testUpdateCardParams: OK <span class="dots">...</span></div>
             </div>
             <div class="unit-class">
@@ -1913,17 +1913,31 @@
                 <div class="unit-method pass">testTextInputSetTextDoesNotFireOnChange: OK <span class="dots">.</span></div>
             </div>
             <div class="unit-class">
+                <div class="unit-class-name">UIDraggableTest</div>
+                <div class="unit-method pass">testClearDisablesElement: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testClearRemovesRootFromScene: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testClearSetsTargetNull: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testSwapModePreservesSnapshotAfterExternalModification: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testSwapModeSnapshotsCapturedBeforeAnimation: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testTargetingResultOnlyHasTargetZoneAndNoTarget: OK <span class="dots">..</span></div>
+            </div>
+            <div class="unit-class">
                 <div class="unit-class-name">UIMultiAnimGridTest</div>
+                <div class="unit-method pass">testAcceptDropsDuplicateIgnored: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testAddCell: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testAddCellDuplicate: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testAddHexRegion: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testAddHexRegionRadius2: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testAddRectRegion: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testCellAtPointHex: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testCellAtPointNegativeCoordinates: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testCellAtPointRect: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testCellAtPointRectGap: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testCellAtPointRectOutside: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testCellAtPointRectSecondCell: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testCellCardPlayedEventEmitted: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testCellCardPlayedListenerRemovedOnUnregister: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testCellCardPlayedNotEmittedForForeignTarget: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testCellPositionRect: OK <span class="dots">......</span></div>
                 <div class="unit-method pass">testClear: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testClearEmitsDataChangedEvent: OK <span class="dots">...</span></div>
@@ -1935,18 +1949,24 @@
                 <div class="unit-method pass">testGetCellResult: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testGetCellResultNonexistent: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testGetEmptyCell: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testHitTestNonSquareCellYGap: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testIsOccupied: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testMouseClickFiresEvent: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testMouseMoveHoverEvents: OK <span class="dots">..........</span></div>
                 <div class="unit-method pass">testMouseMoveOutside: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testMultipleCardHandRegistrationsDontCorrupt: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testNegativeCoordinates: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testNeighborsHex: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testNeighborsRect: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testOnCellBuiltCallback: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testRebuildCellCallsOnCellBuilt: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testRemoveAndReaddCell: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testRemoveCell: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testRemoveNonexistentCell: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testResolveAnimationCompleteStaysDisabled: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testResolveAnimationCompleteWithDeferredEnable: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testSetAndGetData: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testSetCardEnabledDuringAnimationDefersEnable: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testSetEmitsDataChangedEvent: OK <span class="dots">.....</span></div>
             </div>
             <div class="unit-class">
@@ -1990,9 +2010,11 @@
                 <div class="unit-method pass">testNamedPanelClickOnSinglePanelContentDoesNotCloseNamed: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testNamedPanelClickOnUnrelatedDoesClose: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testNamedPanelDoesNotAffectSinglePanelApi: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testNamedPanelFadeInCancelledOnClose: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testNamedPanelFadeOut: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testNamedPanelManualCloseIgnoresOutsideClick: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testNamedPanelOutsideClickClose: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testNamedPanelReplaceInSameSlotCancelsFadeIn: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testOpenDuringFadeOutCancelsPrevious: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testOpenForUnregisteredInteractive: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testOpenNamedForUnregisteredInteractive: OK <span class="dots">.</span></div>
@@ -2043,6 +2065,7 @@
                 <div class="unit-method pass">testRepeatedCycles: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testSetDisabledBlocksEvents: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testSetDisabledDisablesWrapper: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testSetDisabledFalseRestoresHoverWhenMouseOver: OK <span class="dots">........</span></div>
                 <div class="unit-method pass">testSetDisabledOnUnknownInteractive: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testSetDisabledThenEnabled: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testSetEnabledEnablesWrapper: OK <span class="dots">..</span></div>
@@ -2085,6 +2108,7 @@
                 <div class="unit-method pass">testStartHoverDoesNotShowImmediately: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testStartHoverForDifferentIdHidesFirst: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testStartHoverWhileAlreadyActiveForSameId: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testStartHoverWithChangedBuildNameUpdatesTooltip: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testUpdateParamsWhenActive: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testUpdateParamsWhenNotActive: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testUpdateWithNoPendingHover: OK <span class="dots">.</span></div>
