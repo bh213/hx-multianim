@@ -93,6 +93,40 @@ If a card is disabled while animating, then re-enabled before animation complete
 
 `dispose()` calls `clearHand()` which sets `activeAnimations = []`, dropping animation references without calling any cleanup. If animated path objects hold Heaps resources, they leak. The `onComplete` callbacks captured in `ActiveAnimation` may also reference disposed card entries.
 
+### 1.9 UIMultiAnimGrid: CellCardPlayed event defined but never emitted
+**File:** `src/bh/ui/UIMultiAnimGridTypes.hx:46`, `src/bh/ui/UIMultiAnimGrid.hx:803-844`
+**Severity:** High
+
+`GridEvent.CellCardPlayed(cell, cardId)` is defined in the enum but the grid never emits it. `createCardTargetsForBinding()` (line 803) wires highlight callbacks but has no mechanism to detect when a card is actually played on a target. The card hand emits `CardPlayed` events via its own callback, but the grid never listens for or converts them. Game code relying on `CellCardPlayed` in `onGridEvent` will never receive it.
+
+### 1.10 UIMultiAnimGrid: multiple card hand registrations corrupt shared target state
+**File:** `src/bh/ui/UIMultiAnimGrid.hx:104-105, 847-854`
+**Severity:** High
+
+`cardTargetInteractives` and `cardTargetWrappers` are single shared maps (lines 104-105) across all registered card hands. `clearCardTargetsForBinding()` (line 847) iterates the **entire** shared map and unregisters all targets from the specific binding's card hand — then **clears the entire map** (lines 852-853). If two card hands are registered, clearing one wipes targets belonging to the other.
+
+### 1.11 UIMultiAnimGrid: rebuildCell doesn't refresh drag zones or card targets
+**File:** `src/bh/ui/UIMultiAnimGrid.hx:302-317`
+**Severity:** Medium
+
+`rebuildCell()` replaces the cell's scene object but does NOT call `refreshAllDraggableZones()` or `refreshAllCardTargets()`. Compare with `addCell()` (line 171-172) and `removeCell()` (line 189-190) which both refresh. Drop zones and card targets still reference the old cell object after rebuild.
+
+### 1.12 UIMultiAnimGrid: hitTestRect rejects negative coordinates
+**File:** `src/bh/ui/UIMultiAnimGrid.hx:640-641`
+**Severity:** Medium
+
+```haxe
+if (localX < 0 || localY < 0)
+    return null;
+```
+Cells can be added at negative coordinates (e.g., `addCell(-1, -2)`), but `hitTestRect` early-returns `null` for any negative local coords. Those cells are invisible to `cellAtPoint()`, `onMouseMove()`, and `onMouseClick()`.
+
+### 1.13 UIMultiAnimGrid: acceptDrops allows duplicate registration
+**File:** `src/bh/ui/UIMultiAnimGrid.hx:424-432`
+**Severity:** Low
+
+Calling `acceptDrops(draggable)` twice pushes the same draggable twice into `registeredDraggables`. Creates duplicate drop zones and overwrites the draggable's highlight callbacks via chaining (line 712-756).
+
 ---
 
 ## 2. CODE DUPLICATION
@@ -263,6 +297,11 @@ Tooltips and panels are positioned once at show time. If the anchor interactive 
 | 1.6 | Bug | Medium | CardHand | Concurrent multi-draw stale positions |
 | 1.7 | Bug | Low | Draggable | clear() partial cleanup |
 | 1.8 | Bug | Low | CardHand | dispose() doesn't cancel animations |
+| 1.9 | Bug | **High** | Grid | CellCardPlayed event never emitted |
+| 1.10 | Bug | **High** | Grid | Multiple card hand registrations corrupt targets |
+| 1.11 | Bug | Medium | Grid | rebuildCell doesn't refresh zones/targets |
+| 1.12 | Bug | Medium | Grid | hitTestRect rejects negative coordinates |
+| 1.13 | Bug | Low | Grid | acceptDrops allows duplicate registration |
 | 2.1 | Duplication | Medium | Tooltip+Panel | Identical positioning logic |
 | 2.2 | Duplication | Low | Tooltip+Panel | Fade pattern repeated |
 | 2.3 | Duplication | Low | CardHand | OBB hit-test duplicated |
