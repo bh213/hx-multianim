@@ -200,6 +200,34 @@ Single-panel API tracks `activeFadeInTween` (line 117) for cancellation, but nam
 
 `spawnObject()` allows spawning arbitrary `h2d.Object`, but color from `AnimatedPathState.color` is only applied to `h2d.Text` instances. No way to apply color curves to custom objects.
 
+### 4.6 beginUpdate/endUpdate wrapping inconsistent across UI components
+**Files:** Multiple UI components
+
+Some components batch multi-parameter changes with `beginUpdate()`/`endUpdate()`, others don't:
+
+| Component | Method | Uses batching? |
+|-----------|--------|---------------|
+| UIMultiAnimButton | `set_disabled` | Yes |
+| UIMultiAnimCheckbox | `set_disabled` | No |
+| UIMultiAnimCheckbox | `set_selected` | No |
+| UIMultiAnimTextInput | `set_disabled` | Yes |
+| UIMultiAnimTabs | `set_selected` | Only when `value==true` |
+| UIMultiAnimTabs | `set_disabled` | No |
+
+The tabs `set_selected` is particularly odd — it wraps in `beginUpdate/endUpdate` only when selecting (setting `checked` + `status`), but not when deselecting (only `checked`). This is technically correct since deselection sets one param, but the asymmetric pattern is confusing.
+
+### 4.7 Slider/ProgressBar clear() nullifies builder, preventing reuse
+**Files:**
+- `src/bh/ui/UIMultiAnimSlider.hx` (`clear()`)
+- `src/bh/ui/UIMultiAnimProgressBar.hx` (`clear()`)
+
+These components nullify their `builder` reference in `clear()`, making them permanently unusable after cleanup. Other components' `clear()` methods either do nothing or just reset state without destroying the ability to rebuild.
+
+### 4.8 Cursor implementation duplicated across all interactive components
+**Files:** Button, Checkbox, TextInput, Slider, Dropdown, ScrollableList, Tabs
+
+All implement `UIElementCursor` with identical logic: return `Default` if disabled, else `defaultInteractiveCursor()`. This is consistent (good) but could be extracted to a shared base or mixin to avoid the duplication.
+
 ---
 
 ## 5. MISSING FEATURES / IMPROVEMENTS
@@ -249,6 +277,9 @@ Tooltips and panels are positioned once at show time. If the anchor interactive 
 | 4.3 | Inconsistency | Low | Tooltip+Panel | Param passing to builder |
 | 4.4 | Inconsistency | Low | Panel | Named panel fade not tracked |
 | 4.5 | Inconsistency | Low | FloatingText | Color only for h2d.Text |
+| 4.6 | Inconsistency | Low | UI Components | beginUpdate/endUpdate wrapping inconsistent |
+| 4.7 | Inconsistency | Low | Slider+ProgressBar | clear() nullifies builder, prevents reuse |
+| 4.8 | Duplication | Low | UI Components | Cursor implementation duplicated in all components |
 | 5.1 | Missing | Low | RichInteractive | No state change callbacks |
 | 5.2 | Missing | Low | Tooltip+Panel | No reposition API |
 | 5.3 | Missing | Low | CardHand | No card reorder API |
