@@ -111,7 +111,21 @@ If a card is disabled while animating, then re-enabled before animation complete
 
 `rebuildCell()` replaces the cell's scene object but does NOT call `refreshAllDraggableZones()` or `refreshAllCardTargets()`. Compare with `addCell()` (line 171-172) and `removeCell()` (line 189-190) which both refresh. Drop zones and card targets still reference the old cell object after rebuild.
 
-### 1.12 UIMultiAnimGrid: hitTestRect rejects negative coordinates
+### 1.12 UIMultiAnimGrid: hitTestRect uses wrong stride for Y gap check
+**File:** `src/bh/ui/UIMultiAnimGrid.hx:648`
+**Severity:** High
+
+```haxe
+final stride = rectCellW + rectGap;    // line 637
+final strideY = rectCellH + rectGap;   // line 638
+// ...
+final cellLocalY = localY - row * stride;  // line 648 — BUG: uses stride, not strideY
+```
+Line 648 calculates the Y offset within a cell using `stride` (which is `rectCellW + rectGap`) instead of `strideY` (`rectCellH + rectGap`). For non-square cells (width != height), this produces wrong gap detection on the Y axis — clicks in valid cell area can be rejected, or clicks in gap area can be accepted.
+
+**Fix:** Change line 648 to `final cellLocalY = localY - row * strideY;`
+
+### 1.13 UIMultiAnimGrid: hitTestRect rejects negative coordinates
 **File:** `src/bh/ui/UIMultiAnimGrid.hx:640-641`
 **Severity:** Medium
 
@@ -121,11 +135,17 @@ if (localX < 0 || localY < 0)
 ```
 Cells can be added at negative coordinates (e.g., `addCell(-1, -2)`), but `hitTestRect` early-returns `null` for any negative local coords. Those cells are invisible to `cellAtPoint()`, `onMouseMove()`, and `onMouseClick()`.
 
-### 1.13 UIMultiAnimGrid: acceptDrops allows duplicate registration
+### 1.14 UIMultiAnimGrid: acceptDrops allows duplicate registration
 **File:** `src/bh/ui/UIMultiAnimGrid.hx:424-432`
 **Severity:** Low
 
 Calling `acceptDrops(draggable)` twice pushes the same draggable twice into `registeredDraggables`. Creates duplicate drop zones and overwrites the draggable's highlight callbacks via chaining (line 712-756).
+
+### 1.15 UIMultiAnimDraggable: swap mode doesn't validate sourceSlot state
+**File:** `src/bh/ui/UIMultiAnimDraggable.hx:480-494`
+**Severity:** Medium
+
+In swap mode, after the snap animation completes, the callback (lines 482-494) reads `sourceSlot.data` and `zone.slot.getContent()`. But `sourceSlot` is only cleared at line 494. If the slot is manipulated externally before the animation completes (e.g., another drag starts from the same slot), the swap operates on stale data.
 
 ---
 
@@ -300,8 +320,10 @@ Tooltips and panels are positioned once at show time. If the anchor interactive 
 | 1.9 | Bug | **High** | Grid | CellCardPlayed event never emitted |
 | 1.10 | Bug | **High** | Grid | Multiple card hand registrations corrupt targets |
 | 1.11 | Bug | Medium | Grid | rebuildCell doesn't refresh zones/targets |
-| 1.12 | Bug | Medium | Grid | hitTestRect rejects negative coordinates |
-| 1.13 | Bug | Low | Grid | acceptDrops allows duplicate registration |
+| 1.12 | Bug | **High** | Grid | hitTestRect Y gap uses wrong stride variable |
+| 1.13 | Bug | Medium | Grid | hitTestRect rejects negative coordinates |
+| 1.14 | Bug | Low | Grid | acceptDrops allows duplicate registration |
+| 1.15 | Bug | Medium | Draggable | swap mode doesn't validate sourceSlot state |
 | 2.1 | Duplication | Medium | Tooltip+Panel | Identical positioning logic |
 | 2.2 | Duplication | Low | Tooltip+Panel | Fade pattern repeated |
 | 2.3 | Duplication | Low | CardHand | OBB hit-test duplicated |
