@@ -713,8 +713,24 @@ class UIMultiAnimGrid {
 				},
 				onZoneHighlight: (zone, highlight) -> {
 					final e = cells.get(cellKey(capturedCoord.col, capturedCoord.row));
-					if (e != null)
-						e.result.setParameter(highlightParam, highlight);
+					if (e != null) {
+						// Set hover status for visual feedback during drag
+						e.result.setParameter(statusParam, if (highlight) "hover" else "normal");
+						if (highlight) {
+							e.result.setParameter(highlightParam, true);
+						} else {
+							// Don't clear highlight if cell is still globally highlighted (drag in progress)
+							var keepHighlight = false;
+							for (c in activeHighlightedCells) {
+								if (c.col == capturedCoord.col && c.row == capturedCoord.row) {
+									keepHighlight = true;
+									break;
+								}
+							}
+							if (!keepHighlight)
+								e.result.setParameter(highlightParam, false);
+						}
+					}
 				},
 			});
 		}
