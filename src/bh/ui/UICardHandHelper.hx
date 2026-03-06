@@ -11,6 +11,7 @@ import bh.ui.UICardHandTargeting;
 import bh.ui.UICardHandTypes;
 import bh.ui.UICardHandTypes.TargetHighlightCallback;
 import bh.ui.UICardHandTypes.TargetAcceptsCallback;
+import bh.ui.UICardHandTypes.TargetingZone;
 import bh.ui.UIElement.UIScreenEvent;
 import bh.ui.UIInteractiveWrapper;
 import bh.ui.UIRichInteractiveHelper;
@@ -129,6 +130,7 @@ class UICardHandHelper {
 	final hoverScale:Float;
 	final hoverNeighborSpread:Float;
 	final targetingThresholdY:Float;
+	var targetingZones:Array<TargetingZone>;
 	final allowCardToCard:Bool;
 	final cardToCardHighlightScale:Float;
 	final cardToCardHoverPop:Bool;
@@ -216,6 +218,14 @@ class UICardHandHelper {
 		hoverScale = config != null && config.hoverScale != null ? config.hoverScale : 1.15;
 		hoverNeighborSpread = config != null && config.hoverNeighborSpread != null ? config.hoverNeighborSpread : 20.0;
 		targetingThresholdY = config != null && config.targetingThresholdY != null ? config.targetingThresholdY : 100.0;
+
+		// Targeting zones: explicit zones override the legacy Y-threshold
+		if (config != null && config.targetingZones != null) {
+			targetingZones = config.targetingZones.copy();
+		} else {
+			targetingZones = [];
+		}
+
 		allowCardToCard = config != null && config.allowCardToCard != null ? config.allowCardToCard : false;
 		cardToCardHighlightScale = config != null && config.cardToCardHighlightScale != null ? config.cardToCardHighlightScale : 1.1;
 		cardToCardHoverPop = config != null && config.cardToCardHoverPop != null ? config.cardToCardHoverPop : false;
@@ -428,6 +438,38 @@ class UICardHandHelper {
 	/** Set filter callback to determine which targets accept which cards. */
 	public function setTargetAcceptsFilter(cb:TargetAcceptsCallback):Void {
 		targeting.acceptsFilter = cb;
+	}
+
+	// === Public API: Targeting Zones ===
+
+	/** Add a targeting zone. When the cursor enters any zone during drag, targeting mode activates.
+	 *  Coordinates are in handContainer's local space. */
+	public function addTargetingZone(zone:TargetingZone):Void {
+		// Replace existing zone with same id
+		for (i in 0...targetingZones.length) {
+			if (targetingZones[i].id == zone.id) {
+				targetingZones[i] = zone;
+				return;
+			}
+		}
+		targetingZones.push(zone);
+	}
+
+	/** Remove a targeting zone by id. */
+	public function removeTargetingZone(id:String):Void {
+		var i = 0;
+		while (i < targetingZones.length) {
+			if (targetingZones[i].id == id) {
+				targetingZones.splice(i, 1);
+				return;
+			}
+			i++;
+		}
+	}
+
+	/** Remove all targeting zones. Falls back to legacy Y-threshold behavior. */
+	public function clearTargetingZones():Void {
+		targetingZones = [];
 	}
 
 	// === Public API: Configuration ===
@@ -846,8 +888,8 @@ class UICardHandHelper {
 			}
 		}
 
-		// Priority 2: Targeting threshold (only when arrow enabled)
-		if (targeting.arrowEnabled && cursorY < anchorY - targetingThresholdY) {
+		// Priority 2: Targeting zones / threshold (only when arrow enabled)
+		if (targeting.arrowEnabled && isInTargetingZone(cursorX, cursorY)) {
 			if (!isTargeting)
 				enterTargetingMode(entry);
 			// Card stays at hand position, arrow points from card to cursor
@@ -1143,6 +1185,24 @@ class UICardHandHelper {
 			if (anim.entry == entry)
 				return true;
 		return false;
+	}
+
+	// === Internal: Targeting zone check ===
+
+	/** Check whether cursor position is in a targeting zone.
+	 *  If explicit zones are registered, checks those.
+	 *  Otherwise falls back to legacy Y-threshold (full-width zone above anchorY - threshold). */
+	function isInTargetingZone(x:Float, y:Float):Bool {
+		if (targetingZones.length > 0) {
+			for (zone in targetingZones) {
+				if (x >= zone.x && x <= zone.x + zone.w && y >= zone.y && y <= zone.y + zone.h)
+					return true;
+			}
+			// Fallback: also check registered targets directly (cursor over a target = targeting)
+			return targeting.hitTestTargets(sceneCursorX, sceneCursorY, draggedEntry != null ? draggedEntry.descriptor.id : "") != null;
+		}
+		// Legacy: simple Y threshold
+		return y < anchorY - targetingThresholdY;
 	}
 
 	// === Internal: Utilities ===

@@ -64,7 +64,7 @@ Metadata supports typed values matching the settings system: `key => val` (strin
   - All built-in components (Button, Checkbox, Slider, Dropdown, TabButton, ScrollableList) implement `UIElementCursor`
   - Interactive per-state cursors via metadata: `cursor => "pointer"`, `cursor.hover => "move"`, `cursor.disabled => "default"`
   - Unknown `cursor.*` suffixes throw (valid: `cursor.hover`, `cursor.disabled`)
-  - Controller plumbing in `UIControllerBase.handleMove()` — calls `hxd.System.setCursor()`
+  - Controller plumbing in `UIDefaultController.handleMove()` — calls `hxd.System.setCursor()`
 
 ## Indexed Names, Slots, Components
 

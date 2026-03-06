@@ -41,13 +41,15 @@ paths {
 }
 ```
 
-**Config:** `CardHandConfig` typedef — layout mode (Fan/Linear/PathLayout), anchor position, fan radius/angle, hover pop/scale, targeting threshold, pile positions, layers, `.manim` element names for paths/arrow, interactive prefix, `onCardBuilt` callback, `cardToCardHighlightScale`.
+**Config:** `CardHandConfig` typedef — layout mode (Fan/Linear/PathLayout), anchor position, fan radius/angle, hover pop/scale, targeting zones/threshold, pile positions, layers, `.manim` element names for paths/arrow, interactive prefix, `onCardBuilt` callback, `cardToCardHighlightScale`.
 
 **Path layout config:** `layoutPathName` (name of path in `paths{}` block), `pathDistribution` (`EvenArcLength` for uniform visual spacing, `EvenRate` for equal rate increments), `pathOrientation` (`Tangent`, `Straight`, `TangentClamped(maxDeg)`).
 
 **Events:** `CardHandEvent` enum — `CardPlayed(id, TargetZone(targetId)|NoTarget)`, `CardCombined(source, target)`, `CardHoverStart/End`, `CardDragStart/End`, `DrawAnimComplete`, `DiscardAnimComplete`.
 
-**API:** `setHand(descriptors)`, `drawCard(descriptor)`, `discardCard(id)`, `updateCardParams(id, params)`, `setCardEnabled(id, bool)`, `getCardResult(id)`, `registerTargetInteractive(wrapper)`, `registerTargetInteractives(wrappers)`, `unregisterTargetInteractive(id)`, `setTargetHighlightCallback(cb)`, `setTargetAcceptsFilter(cb)`, `handleScreenEvent(event)`, `onMouseMove(x,y)`, `onMouseRelease(x,y)`, `update(dt)`, `dispose()`.
+**API:** `setHand(descriptors)`, `drawCard(descriptor)`, `discardCard(id)`, `updateCardParams(id, params)`, `setCardEnabled(id, bool)`, `getCardResult(id)`, `registerTargetInteractive(wrapper)`, `registerTargetInteractives(wrappers)`, `unregisterTargetInteractive(id)`, `setTargetHighlightCallback(cb)`, `setTargetAcceptsFilter(cb)`, `addTargetingZone(zone)`, `removeTargetingZone(id)`, `clearTargetingZones()`, `handleScreenEvent(event)`, `onMouseMove(x,y)`, `onMouseRelease(x,y)`, `update(dt)`, `dispose()`.
+
+**Targeting zones:** `TargetingZone` typedef — `{id, x, y, w, h}` rectangles in handContainer local space. When cursor enters any zone during drag, targeting mode activates (card snaps to hand, arrow draws). Multiple zones supported (e.g., one per game panel). Fallback: if cursor is directly over a registered target interactive, targeting also activates regardless of zones. Legacy: if no explicit zones are set, `targetingThresholdY` creates an implicit full-width zone above `anchorY - threshold` (backward compatible). Config: `targetingZones` array in `CardHandConfig`, or runtime via `addTargetingZone()`/`removeTargetingZone()`/`clearTargetingZones()`.
 
 **Callbacks:** `onCardEvent`, `canPlayCard:(CardId, TargetingResult)->Bool` (veto), `canDragCard:(CardId)->Bool` (veto), `onCardBuilt:(CardId, BuilderResult, h2d.Object)->Void` (customize card after build — add buttons, slots, overlays via `result.getSlot()`, `result.getDynamicRef()`, `result.setParameter()`).
 
@@ -55,8 +57,8 @@ paths {
 
 **Drag state machine:**
 1. `interactive()` emits `UIPush` → helper starts drag, reparents card to `dragContainer`
-2. Mouse move: card-to-card check first → targeting threshold check → normal drag
-3. Release: card-to-card hover → `CardCombined`; targeting mode + target → `CardPlayed(TargetZone)`; above threshold no target → `CardPlayed(NoTarget)`; below threshold → return animation
+2. Mouse move: card-to-card check first → targeting zone check (bounds + target fallback) → normal drag
+3. Release: card-to-card hover → `CardCombined`; targeting mode + target → `CardPlayed(TargetZone)`; in zone no target → `CardPlayed(NoTarget)`; outside zones → return animation
 
 **Hover detection:** Position-based via `getCardAtBasePosition()` in `onMouseMove` — uses base layout (no hover pop) with nearest-center selection among overlapping OBBs. Does NOT rely on Interactive UIEntering/UILeaving events (which would be blocked by z-order changes). Hovered card is brought to top render layer; z-order restored on un-hover. Card-to-card targets also z-reordered during highlight.
 

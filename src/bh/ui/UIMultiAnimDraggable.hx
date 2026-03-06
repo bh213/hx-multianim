@@ -14,6 +14,7 @@ import bh.ui.screens.UIScreen;
 import bh.ui.screens.UIScreen.LayersEnum;
 import h2d.Object;
 import h2d.col.Bounds;
+import h2d.col.Collider;
 import h2d.col.Point;
 import bh.ui.UIElement;
 
@@ -59,13 +60,13 @@ enum DragEvent {
 @:structInit
 class DropZone {
 	public var id:String;
-	public var bounds:Bounds;
+	public var bounds:Collider;
 	public var slot:Null<SlotHandle> = null;
 	public var snapX:Null<Float> = null;
 	public var snapY:Null<Float> = null;
 	public var accepts:Null<(draggable:UIMultiAnimDraggable, zone:DropZone) -> Bool> = null;
 	public var priority:Int = 0;
-	public var boundsProvider:Null<() -> Bounds> = null;
+	public var boundsProvider:Null<() -> Collider> = null;
 	public var snapProvider:Null<() -> Point> = null;
 	public var onZoneHighlight:Null<(zone:DropZone, highlight:Bool) -> Void> = null;
 }

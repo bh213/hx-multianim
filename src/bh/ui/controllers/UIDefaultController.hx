@@ -91,7 +91,7 @@ private class ControllableImpl implements Controllable {
 }
 
 @:nullSafety
-abstract class UIControllerBase implements UIController {
+class UIDefaultController implements UIController {
 	var currentOver:Null<UIElement> = null;
 	final controllable:ControllableImpl;
 	final integration:bh.ui.controllers.UIController.UIControllerScreenIntegration;
@@ -101,6 +101,10 @@ abstract class UIControllerBase implements UIController {
 	public function new(integration) {
 		this.integration = integration;
 		this.controllable = new ControllableImpl(this);
+	}
+
+	public function getDebugName():String {
+		return "default UI controller";
 	}
 
 	function handleEvent(element:UIElement, event, eventPos:Point) {
@@ -153,7 +157,15 @@ abstract class UIControllerBase implements UIController {
 		handleEvent(element, OnWheel(wheelDelta), mousePoint);
 	}
 
-	abstract function getEventElement(pos:Point):Null<UIElement>;
+	function getEventElement(pos:Point):Null<UIElement> {
+		if (controllable.captureEvents.target != null)
+			return controllable.captureEvents.target;
+		for (element in integration.getElements(SETReceiveEvents)) {
+			if (element.containsPoint(pos))
+				return element;
+		}
+		return null;
+	}
 
 	public function handleMove(mousePoint:Point, eventWrapper:EventWrapper) {
 		if (integration.onMouseMove(mousePoint) == false) return;

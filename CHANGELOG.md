@@ -1,8 +1,9 @@
 # Changelog
 
-## [1.0.0-rc.2] - 2026-03-04
+## [1.0.0-rc.2] - 2026-03-06
 
 ### Added
+- **UICardHandHelper: targeting zones** — replace single Y-threshold with multiple named `TargetingZone` rectangles for triggering targeting mode during drag. Fallback: cursor directly over a registered target also activates targeting. Legacy `targetingThresholdY` preserved for backward compatibility (used when no explicit zones set). Runtime API: `addTargetingZone()`, `removeTargetingZone()`, `clearTargetingZones()`.
 - **UIMultiAnimGrid** — 2D grid component (rectangular or hexagonal) for cell state management, `.manim` programmable rendering, drag-drop integration, and card hand targeting
   - `GridType` enum: `Rect(cellWidth, cellHeight, ?gap)` and `Hex(orientation, sizeX, sizeY)`
   - Cell structure: `addCell`, `removeCell`, `addRectRegion`, `addHexRegion` (batch creation)
@@ -58,6 +59,10 @@
 - **UITooltipHelper: startHover ignores changed buildName** — early return now also compares `activeBuildName`; changing buildName for the same interactive re-triggers tooltip
 - **UIPanelHelper: named panel fade-in tween not tracked** — `closeNamed()` now cancels in-progress fade-in before starting fade-out
 - **UIMultiAnimCheckbox/UIMultiAnimTabs: set_disabled inconsistent** — `set_disabled` now uses `beginUpdate/endUpdate` and sets both `status` and `disabled` parameters, matching `UIMultiAnimButton` pattern
+
+### Changed
+- **UIDefaultController** — merged `DefaultUIController` into `UIControllerBase` and renamed to `UIDefaultController`. Made `getEventElement()` non-abstract with the default capture-or-hit-test implementation. One fewer class to understand; no behavioral change.
+- **DropZone.bounds** — changed type from `h2d.col.Bounds` to `h2d.col.Collider` to support non-rectangular drop zones (e.g. circles, polygons). `Bounds` implements `Collider`, so existing code is backward compatible.
 
 ## [1.0.0-rc.1] - 2026-03-03
 

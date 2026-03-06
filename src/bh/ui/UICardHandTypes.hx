@@ -75,6 +75,19 @@ typedef TargetHighlightCallback = (targetId:String, highlight:Bool, metadata:Bui
 /** Callback to filter which targets accept a card. Return true to accept. */
 typedef TargetAcceptsCallback = (cardId:CardId, targetId:String, metadata:BuilderResolvedSettings) -> Bool;
 
+/** A rectangular zone that triggers targeting mode when the cursor enters it during drag.
+ *  Multiple zones can be registered (e.g., one per panel that accepts cards).
+ *  Coordinates are in handContainer's local space (same as anchor/layout positions). */
+@:structInit
+@:nullSafety
+typedef TargetingZone = {
+	var id:String;
+	var x:Float;
+	var y:Float;
+	var w:Float;
+	var h:Float;
+}
+
 /** Configuration for UICardHandHelper.
  *
  *  `.manim` element names (the game's `.manim` file must define these):
@@ -117,8 +130,9 @@ typedef CardHandConfig = {
 	var ?hoverScale:Float;
 	var ?hoverNeighborSpread:Float;
 
-	// Drag
-	var ?targetingThresholdY:Float;
+	// Targeting zones — regions that trigger targeting mode when cursor enters during drag
+	var ?targetingThresholdY:Float; // Legacy: auto-creates a full-width zone above anchorY - threshold (default: 100)
+	var ?targetingZones:Array<TargetingZone>; // Explicit zones (if set, replaces the threshold-based zone)
 
 	// Card-to-card
 	var ?allowCardToCard:Bool;

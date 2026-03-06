@@ -683,7 +683,12 @@ cardHand = new UICardHandHelper(this, builder, {
     interactivePrefix: "card",
     hoverPopDistance: 30,
     hoverScale: 1.05,
-    targetingThresholdY: 380,
+    // Targeting zones: rects where dragging activates targeting arrow
+    // (cursor over a registered target also activates targeting as fallback)
+    targetingZones: [
+        {id: "board", x: 50, y: 50, w: 600, h: 400},
+    ],
+    // Legacy alternative: targetingThresholdY: 380 (full-width zone above anchor)
 });
 cardHand.onCardEvent = onCardEvent;
 cardHand.canPlayCard = (id, target) -> true;

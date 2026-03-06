@@ -107,7 +107,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 			this.layers = layers;
 		}
 
-		this.controllersStack = [new DefaultUIController(this)];
+		this.controllersStack = [new bh.ui.controllers.UIDefaultController(this)];
 	}
 
 	function get_tweens():TweenManager {
