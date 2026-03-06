@@ -327,15 +327,15 @@
 </head>
 <body>
     <h1>Visual Test Report</h1>
-    <div class="timestamp">Generated: 2026-03-06 12:16:04</div>
+    <div class="timestamp">Generated: 2026-03-06 13:45:18</div>
     <div class="summary">
         <strong>Summary:</strong> 93 tests,         <span style="color: #4CAF50;">93 passed</span>,         <span style="color: #f44336;">0 failed</span>
-        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 0.7s, visual 22.6s)</span>
+        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 0.7s, visual 21.4s)</span>
     </div>
     <div class="unit-tests-section">
         <h2>Unit Tests</h2>
         <div class="unit-tests-summary all-passed">
-            <strong>3850 assertions:</strong>             <span style="color: #4CAF50;">3850 passed</span>
+            <strong>3863 assertions:</strong>             <span style="color: #4CAF50;">3863 passed</span>
             <button class="expand-btn" id="unitToggleBtn" onclick="toggleUnitDetails()">Show Details</button>
         </div>
         <div class="unit-details" id="unitDetails">
@@ -1974,8 +1974,15 @@
             <div class="unit-class">
                 <div class="unit-class-name">UIPanelHelperTest</div>
                 <div class="unit-method pass">testAllPositions: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testAutoWiredClickOnTriggerCancelsPending: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testAutoWiredClickOnUnrelatedClosesImmediately: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testAutoWiredCreatePanelHelper: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testAutoWiredDispatchHandlesOutsideClick: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testAutoWiredEventStillReachesScreen: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testAutoWiredUpdateCallsCheckPendingClose: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testCheckPendingCloseWhenNoPanelOpen: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testCheckPendingCloseWhenNoPending: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testClearResetsAutoWiring: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testClickOnPanelInteractiveCancelsPendingClose: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testClickOnTriggerInteractiveCancelsPendingClose: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testClickOnUnrelatedInteractiveClosesImmediately: OK <span class="dots">..</span></div>
@@ -1991,6 +1998,7 @@
                 <div class="unit-method pass">testClosePanel: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testCloseWhenNothingOpen: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testDefaultCloseModeIsOutsideClick: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testDoubleRegisterDoesNotDuplicate: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testFadeInPanelReachesFullAlpha: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testFadeInPanelStartsAtZeroAlpha: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testFadeOutPanelEventEmittedImmediately: OK <span class="dots">.</span></div>
@@ -2003,6 +2011,7 @@
                 <div class="unit-method pass">testIsOwnInteractiveMatchesPrefix: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testIsOwnInteractiveNoPanel: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testIsOwnInteractiveRejectsUnrelated: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testManualCloseModeAutoWired: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testManualCloseModeIgnoresOutsideClick: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testManualCloseModeRequiresExplicitClose: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testMultipleNamedPanelsIndependent: OK <span class="dots">....</span></div>
@@ -2030,9 +2039,11 @@
                 <div class="unit-method pass">testOpenWithParams: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testOutsideClickDeferredClose: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testPerOpenCloseModeOverride: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testRegisterExistingHelper: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testSetOffsetOverride: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testSetPositionOverride: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testSingleAndNamedPanelsCoexist: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testUnregisterStopsAutoWiring: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testZeroFadeDefaultIsInstant: OK <span class="dots">..</span></div>
             </div>
             <div class="unit-class">
