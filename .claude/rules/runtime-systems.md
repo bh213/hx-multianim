@@ -219,6 +219,18 @@ var tooltip = new UITooltipHelper(screen, builder, {fadeIn: 0.15, fadeOut: 0.1},
 var panel = new UIPanelHelper(screen, builder, {fadeIn: 0.2, fadeOut: 0.15}, screenManager.tweens);
 ```
 
+**Auto-wired PanelHelper** (recommended): `createPanelHelper()` creates a `UIPanelHelper` that is auto-wired for outside-click handling. `handleOutsideClick()` runs in `dispatchScreenEvent()`, `checkPendingClose()` runs in `update()`. No manual boilerplate needed.
+```haxe
+// In screen's load():
+panelHelper = createPanelHelper(builder, {fadeIn: 0.2});
+
+// In onScreenEvent — just handle clicks, no handleOutsideClick() needed:
+case UIInteractiveEvent(UIClick, id, _): panelHelper.open(id, "panel");
+
+// No checkPendingClose() in update() needed — super.update(dt) handles it.
+```
+Manual wiring via `new UIPanelHelper(...)` still works. Auto-wiring only activates with `createPanelHelper()` or explicit `registerPanelHelper(helper)` / `unregisterPanelHelper(helper)`.
+
 **TooltipDefaults:** `?fadeIn:Float` (default 0.15), `?fadeOut:Float` (default 0.1). Tooltip fades in on show, fades out on hide.
 
 **PanelDefaults:** `?fadeIn:Float` (default 0), `?fadeOut:Float` (default 0). Panels default to instant (backward compatible).

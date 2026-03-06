@@ -46,6 +46,11 @@
 - **ResourceLoader.getCacheKeys()** — returns cached resource names by category (sheets, fonts, .manim, .anim files)
 - **ReloadableRegistry.getAllHandles()** — returns all live reloadable handles across all source paths
 - **`.mcp.json`** — project-level MCP server configuration for Claude Code
+- **PanelHelper auto-wiring** — `createPanelHelper(builder, ?defaults)` on `UIScreenBase` creates and registers a `UIPanelHelper` with automatic outside-click handling. `handleOutsideClick()` runs in `dispatchScreenEvent()`, `checkPendingClose()` runs in `update()` — no manual boilerplate needed. Also: `registerPanelHelper()` / `unregisterPanelHelper()` for existing helpers. `clear()` unregisters all.
+- **Controllable.trackOutsideClick()** — `OutsideClickControl` interface removed; `trackOutsideClick(enabled)` is now a direct method on `Controllable`. Call sites simplified from `wrapper.control.outsideClick.trackOutsideClick(true)` to `wrapper.control.trackOutsideClick(true)`.
+
+### Changed
+- **UIDefaultController: simplified outside-click mechanism** — removed `OutsideClickImpl` class and tri-state `enabledChanged` flag. Outside-click subscriber tracking is now inlined into `ControllableImpl` with a context-based approach: controller sets `currentElement` before dispatching `onEvent`, `trackOutsideClick()` uses it directly.
 
 ### Fixed
 - **TSFile empty filename in incremental mode** — returns transparent fallback tile instead of throwing when `bitmap($param)` has an empty/null filename during incremental updates

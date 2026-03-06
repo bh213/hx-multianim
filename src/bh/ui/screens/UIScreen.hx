@@ -27,6 +27,8 @@ import bh.base.FPoint;
 import bh.base.TweenManager;
 import bh.multianim.MultiAnimBuilder.BuilderResolvedSettings;
 import bh.ui.UIRichInteractiveHelper;
+import bh.ui.UIPanelHelper;
+import bh.ui.UIPanelHelper.PanelDefaults;
 
 typedef ModalOverlayConfig = {
 	var ?color:Int;
@@ -75,6 +77,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	var interactiveWrappers:Array<UIInteractiveWrapper> = [];
 	var interactiveMap:Map<String, UIInteractiveWrapper> = [];
 	var autoStatusHelper:Null<UIRichInteractiveHelper> = null;
+	var panelHelpers:Array<UIPanelHelper> = [];
 	var tabGroup:Null<UITabGroup> = null;
 	var tabAutoWired:Bool = false;
 	/** When set, ScreenManager creates a darkening overlay behind this dialog. */
@@ -151,6 +154,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		if (autoStatusHelper != null)
 			autoStatusHelper.unbindAll();
 		autoStatusHelper = null;
+		panelHelpers = [];
 		postCustomAddToLayer.clear();
 		contentTarget = null;
 		contentTargetOwnership.clear();
@@ -188,6 +192,8 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	public function dispatchScreenEvent(event:UIScreenEvent, source:Null<UIElement>):Void {
 		if (autoStatusHelper != null)
 			autoStatusHelper.handleEvent(event);
+		for (helper in panelHelpers)
+			helper.handleOutsideClick(event);
 		onScreenEvent(event, source);
 	}
 
@@ -213,6 +219,8 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 			for (el in elements)
 				syncInitialState(el);
 		}
+		for (helper in panelHelpers)
+			helper.checkPendingClose();
 		// controller.update(dt) is already called by ScreenManager.update() before screen.update()
 		for (obj => v in postCustomAddToLayer) {
 			var insertedLayer = findLayerFromObject(obj);
@@ -591,7 +599,25 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		return grid;
 	}
 
+	/** Create a PanelHelper that is auto-wired for outside-click handling.
+	 *  handleOutsideClick() runs in dispatchScreenEvent(), checkPendingClose() runs in update(). */
+	function createPanelHelper(builder:MultiAnimBuilder, ?defaults:PanelDefaults, ?tweenManager:TweenManager):UIPanelHelper {
+		final tw = tweenManager != null ? tweenManager : (screenManager != null ? tweens : null);
+		final helper = new UIPanelHelper(this, builder, defaults, tw);
+		registerPanelHelper(helper);
+		return helper;
+	}
 
+	/** Register an existing PanelHelper for auto-wired outside-click handling. */
+	function registerPanelHelper(helper:UIPanelHelper):Void {
+		if (!panelHelpers.contains(helper))
+			panelHelpers.push(helper);
+	}
+
+	/** Unregister a PanelHelper from auto-wired outside-click handling. */
+	function unregisterPanelHelper(helper:UIPanelHelper):Void {
+		panelHelpers.remove(helper);
+	}
 
     function addScrollableListWithSingleBuilder(builder:MultiAnimBuilder, panelBuilderName:String, itemBuilderName:String, scrollbarBuilderName:String, scrollbarInPanelName:String, items, settings:ResolvedSettings, initialIndex:Int = 0, width:Int = 100, height:Int = 100):UIMultiAnimScrollableList {
         return addScrollableList(builder.createElementBuilder(panelBuilderName), builder.createElementBuilder(itemBuilderName), builder.createElementBuilder(scrollbarBuilderName), scrollbarInPanelName, items, settings, initialIndex, width, height);

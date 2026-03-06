@@ -857,4 +857,168 @@ class UIPanelHelperTest extends BuilderTestBase {
 		ctx.tweens.update(1.0);
 		Assert.isTrue(ctx.helper.isOpen());
 	}
+
+	// ============== Auto-wiring via registerPanelHelper ==============
+
+	function createAutoWiredHelper(?closeOn:PanelCloseMode):{
+		helper:UIPanelHelper,
+		screen:UITestScreen
+	} {
+		var screen = new UITestScreen();
+		var builder = BuilderTestBase.builderFromSource('$ANCHOR_MANIM\n$ANCHOR2_MANIM\n$ANCHOR3_MANIM\n$PANEL_MANIM');
+
+		var anchorResult = builder.buildWithParameters("anchor", []);
+		screen.addInteractives(anchorResult);
+
+		var anchor2Result = builder.buildWithParameters("anchor2", []);
+		screen.addInteractives(anchor2Result);
+
+		var anchor3Result = builder.buildWithParameters("anchor3", []);
+		screen.addInteractives(anchor3Result);
+
+		var helper = screen.testCreatePanelHelper(builder, closeOn != null ? {closeOn: closeOn} : {});
+		return {helper: helper, screen: screen};
+	}
+
+	@Test
+	public function testAutoWiredCreatePanelHelper():Void {
+		var ctx = createAutoWiredHelper();
+		Assert.notNull(ctx.helper);
+		ctx.helper.open("btn1", "panel");
+		Assert.isTrue(ctx.helper.isOpen());
+	}
+
+	@Test
+	public function testAutoWiredDispatchHandlesOutsideClick():Void {
+		var ctx = createAutoWiredHelper();
+		ctx.helper.open("btn1", "panel");
+
+		// dispatchScreenEvent should auto-call handleOutsideClick
+		ctx.screen.dispatchScreenEvent(UIInteractiveEvent(UIClickOutside, "btn1", null), null);
+		// Pending close set by auto-wiring — resolve via update
+		ctx.screen.update(0.016);
+		Assert.isFalse(ctx.helper.isOpen());
+	}
+
+	@Test
+	public function testAutoWiredClickOnTriggerCancelsPending():Void {
+		var ctx = createAutoWiredHelper();
+		ctx.helper.open("btn1", "panel");
+
+		// UIClickOutside sets pending
+		ctx.screen.dispatchScreenEvent(UIInteractiveEvent(UIClickOutside, "btn1", null), null);
+		// UIClick on trigger cancels pending
+		ctx.screen.dispatchScreenEvent(UIInteractiveEvent(UIClick, "btn1", null), null);
+
+		ctx.screen.update(0.016);
+		Assert.isTrue(ctx.helper.isOpen());
+	}
+
+	@Test
+	public function testAutoWiredClickOnUnrelatedClosesImmediately():Void {
+		var ctx = createAutoWiredHelper();
+		ctx.helper.open("btn1", "panel");
+
+		// Click on a different interactive — immediate close in handleOutsideClick
+		ctx.screen.dispatchScreenEvent(UIInteractiveEvent(UIClick, "btn2", null), null);
+		Assert.isFalse(ctx.helper.isOpen());
+	}
+
+	@Test
+	public function testAutoWiredUpdateCallsCheckPendingClose():Void {
+		var ctx = createAutoWiredHelper();
+		ctx.helper.open("btn1", "panel");
+
+		// Set pending via direct call (simulating controller path)
+		ctx.helper.handleOutsideClick(UIInteractiveEvent(UIClickOutside, "btn1", null));
+		Assert.isTrue(ctx.helper.isOpen()); // Still open — deferred
+
+		// update() should resolve the pending close
+		ctx.screen.update(0.016);
+		Assert.isFalse(ctx.helper.isOpen());
+	}
+
+	@Test
+	public function testAutoWiredEventStillReachesScreen():Void {
+		var ctx = createAutoWiredHelper();
+		ctx.helper.open("btn1", "panel");
+		ctx.screen.clearEvents();
+
+		ctx.screen.dispatchScreenEvent(UIInteractiveEvent(UIClickOutside, "btn1", null), null);
+		// Event should still reach screen's onScreenEvent
+		Assert.isTrue(ctx.screen.hasEvent(UIInteractiveEvent(UIClickOutside, "btn1", null)));
+	}
+
+	@Test
+	public function testUnregisterStopsAutoWiring():Void {
+		var ctx = createAutoWiredHelper();
+		ctx.screen.testUnregisterPanelHelper(ctx.helper);
+
+		ctx.helper.open("btn1", "panel");
+		// dispatchScreenEvent should NOT auto-call handleOutsideClick
+		ctx.screen.dispatchScreenEvent(UIInteractiveEvent(UIClickOutside, "btn1", null), null);
+		ctx.screen.update(0.016);
+		// Panel should still be open — no auto-wiring
+		Assert.isTrue(ctx.helper.isOpen());
+	}
+
+	@Test
+	public function testClearResetsAutoWiring():Void {
+		var ctx = createAutoWiredHelper();
+		ctx.helper.open("btn1", "panel");
+		ctx.screen.clear();
+
+		// After clear, auto-wiring should be gone.
+		// Create a new helper manually (not registered) to verify clear worked.
+		var builder = BuilderTestBase.builderFromSource('$ANCHOR_MANIM\n$PANEL_MANIM');
+		var anchorResult = builder.buildWithParameters("anchor", []);
+		ctx.screen.addInteractives(anchorResult);
+		var manualHelper = new UIPanelHelper(ctx.screen, builder);
+		manualHelper.open("btn1", "panel");
+
+		// dispatchScreenEvent should not call handleOutsideClick on any helper
+		ctx.screen.dispatchScreenEvent(UIInteractiveEvent(UIClickOutside, "btn1", null), null);
+		ctx.screen.update(0.016);
+		Assert.isTrue(manualHelper.isOpen());
+	}
+
+	@Test
+	public function testManualCloseModeAutoWired():Void {
+		var ctx = createAutoWiredHelper(Manual);
+		ctx.helper.open("btn1", "panel");
+
+		// Outside click should NOT close in Manual mode even with auto-wiring
+		ctx.screen.dispatchScreenEvent(UIInteractiveEvent(UIClickOutside, "btn1", null), null);
+		ctx.screen.update(0.016);
+		Assert.isTrue(ctx.helper.isOpen());
+	}
+
+	@Test
+	public function testRegisterExistingHelper():Void {
+		var screen = new UITestScreen();
+		var builder = BuilderTestBase.builderFromSource('$ANCHOR_MANIM\n$PANEL_MANIM');
+		var anchorResult = builder.buildWithParameters("anchor", []);
+		screen.addInteractives(anchorResult);
+
+		// Create manually, then register
+		var helper = new UIPanelHelper(screen, builder);
+		screen.testRegisterPanelHelper(helper);
+
+		helper.open("btn1", "panel");
+		screen.dispatchScreenEvent(UIInteractiveEvent(UIClickOutside, "btn1", null), null);
+		screen.update(0.016);
+		Assert.isFalse(helper.isOpen());
+	}
+
+	@Test
+	public function testDoubleRegisterDoesNotDuplicate():Void {
+		var ctx = createAutoWiredHelper();
+		// Register again — should not duplicate
+		ctx.screen.testRegisterPanelHelper(ctx.helper);
+
+		ctx.helper.open("btn1", "panel");
+		ctx.screen.dispatchScreenEvent(UIInteractiveEvent(UIClickOutside, "btn1", null), null);
+		ctx.screen.update(0.016);
+		Assert.isFalse(ctx.helper.isOpen());
+	}
 }

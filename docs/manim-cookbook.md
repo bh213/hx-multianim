@@ -394,17 +394,12 @@ tooltipHelper.update(dt);
 ```
 
 ```haxe
-panelHelper = new UIPanelHelper(this, builder,
-    {fadeIn: 0.2, fadeOut: 0.15},
-    screenManager.tweens
-);
+// Auto-wired (recommended) — no manual handleOutsideClick/checkPendingClose needed:
+panelHelper = createPanelHelper(builder, {fadeIn: 0.2, fadeOut: 0.15});
 
 // Open panel on interactive click:
 case UIInteractiveEvent(UIClick, id, _):
     panelHelper.open(id, "infoPanel", ["title" => "Item Details"]);
-
-// Close on outside click:
-panelHelper.handleOutsideClick(event);  // in onScreenEvent
 
 // Close programmatically:
 panelHelper.close();

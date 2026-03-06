@@ -286,11 +286,11 @@ class UIPanelHelper {
 	// ---- Outside-click handling ----
 
 	/**
-	 * Call from onScreenEvent for every UIInteractiveEvent to handle outside-click close.
-	 * Uses OutsideClickControl: the trigger interactive subscribes on push, so clicking
-	 * elsewhere fires UIClickOutside. Because the controller sends OnReleaseOutside before
-	 * OnRelease, we defer the close to allow panel's own interactives to cancel it.
-	 * Call `checkPendingClose()` from the screen's update().
+	 * Handle outside-click close for UIInteractiveEvents.
+	 * The trigger interactive subscribes on push, so clicking elsewhere fires UIClickOutside.
+	 * Because the controller sends OnReleaseOutside before OnRelease, we defer the close
+	 * to allow panel's own interactives to cancel it.
+	 * Auto-wired when created via `createPanelHelper()`, or call manually from onScreenEvent.
 	 * Returns true if any panel was closed immediately (click on unrelated interactive).
 	 */
 	var _pendingClose:Bool = false;
