@@ -95,7 +95,7 @@ case UIClick:
 
 ```manim
 #simpleBtn programmable(status:[normal,hover,pressed]=normal) {
-    interactive(120, 40, "btn", bind => "status")
+    interactive(120, 40, "btn", autoStatus => "status")
     @(status=>normal)  graphics(rect(#334466, filled, 120, 40)): 0, 0
     @(status=>hover)   graphics(rect(#445588, filled, 120, 40)): 0, 0
     @(status=>pressed) graphics(rect(#283a54, filled, 120, 40)): 0, 0

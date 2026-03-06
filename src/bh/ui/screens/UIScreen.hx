@@ -26,6 +26,7 @@ import bh.ui.controllers.UIController;
 import bh.base.FPoint;
 import bh.base.TweenManager;
 import bh.multianim.MultiAnimBuilder.BuilderResolvedSettings;
+import bh.ui.UIRichInteractiveHelper;
 
 typedef ModalOverlayConfig = {
 	var ?color:Int;
@@ -73,6 +74,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	var postCustomAddToLayer:Map<h2d.Object, UIElementCustomAddToLayer> = [];
 	var interactiveWrappers:Array<UIInteractiveWrapper> = [];
 	var interactiveMap:Map<String, UIInteractiveWrapper> = [];
+	var autoStatusHelper:Null<UIRichInteractiveHelper> = null;
 	var tabGroup:Null<UITabGroup> = null;
 	var tabAutoWired:Bool = false;
 	/** When set, ScreenManager creates a darkening overlay behind this dialog. */
@@ -146,6 +148,9 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		subElementProviders = [];
 		interactiveWrappers = [];
 		interactiveMap.clear();
+		if (autoStatusHelper != null)
+			autoStatusHelper.unbindAll();
+		autoStatusHelper = null;
 		postCustomAddToLayer.clear();
 		contentTarget = null;
 		contentTargetOwnership.clear();
@@ -178,6 +183,13 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 
 
 	public abstract function onScreenEvent(event:UIScreenEvent, source:Null<UIElement>):Void;
+
+	/** Dispatch event with auto-wiring handled before onScreenEvent. Called by controllers. */
+	public function dispatchScreenEvent(event:UIScreenEvent, source:Null<UIElement>):Void {
+		if (autoStatusHelper != null)
+			autoStatusHelper.handleEvent(event);
+		onScreenEvent(event, source);
+	}
 
 	public function onMouseMove(pos:h2d.col.Point):Bool { return true;}
 	public function onMouseClick(pos:h2d.col.Point, button:Int, release:Bool):Bool {return true;}
@@ -759,11 +771,32 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		return wrapper;
 	}
 
-	/** Registers all `interactive()` elements from a builder result. Events arrive in `onScreenEvent` as `UIInteractiveEvent(event, id, metadata)`. */
+	/** Registers all `interactive()` elements from a builder result. Events arrive in `onScreenEvent` as `UIInteractiveEvent(event, id, metadata)`.
+	 *  Interactives with `autoStatus` metadata are automatically wired for Normal→Hover→Pressed state management. */
 	public function addInteractives(r:BuilderResult, ?prefix:String):Array<UIInteractiveWrapper> {
 		var wrappers:Array<UIInteractiveWrapper> = [];
 		for (obj in r.interactives) {
 			wrappers.push(addInteractive(obj, prefix));
+		}
+		// Auto-wire interactives with autoStatus metadata
+		var hasAutoStatus = false;
+		for (obj in r.interactives) {
+			switch obj.multiAnimType {
+				case MAInteractive(_, _, _, meta):
+					if (meta != null) {
+						final brs = new BuilderResolvedSettings(meta);
+						if (brs.getStringOrDefault(UIRichInteractiveHelper.RESERVED_KEY, "") != "") {
+							hasAutoStatus = true;
+							break;
+						}
+					}
+				default:
+			}
+		}
+		if (hasAutoStatus) {
+			if (autoStatusHelper == null)
+				autoStatusHelper = new UIRichInteractiveHelper(this);
+			autoStatusHelper.registerAutoStatus(r, prefix);
 		}
 		return wrappers;
 	}
@@ -808,6 +841,13 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 			interactiveMap.remove(w.id);
 			removeElement(w);
 		}
+		// Auto-unregister from autoStatus helper
+		if (autoStatusHelper != null) {
+			if (prefix != null)
+				autoStatusHelper.unregisterByPrefix(prefix);
+			else
+				autoStatusHelper.unbindAll();
+		}
 	}
 
 	/** O(1) lookup of interactive wrapper by id. */
@@ -818,6 +858,12 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	/** Returns all interactive wrappers with the given prefix. */
 	public function getInteractivesByPrefix(prefix:String):Array<UIInteractiveWrapper> {
 		return [for (w in interactiveWrappers) if (w.prefix == prefix) w];
+	}
+
+	/** Returns the screen's auto-wiring helper for `autoStatus` interactives, or null if none registered.
+	 *  Use for advanced operations like `setDisabled()` or `setParameter()` on auto-wired interactives. */
+	public function getAutoInteractiveHelper():Null<UIRichInteractiveHelper> {
+		return autoStatusHelper;
 	}
 
 	public function addElement(element:UIElement, layer:Null<LayersEnum>) {

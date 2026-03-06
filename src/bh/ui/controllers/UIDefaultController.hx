@@ -246,6 +246,6 @@ class UIDefaultController implements UIController {
 
 	public function onScreenEvent(event:UIScreenEvent, source:Null<UIElement>):Void {
 		// trace('user event ${event} from ${source}');
-		integration.onScreenEvent(event, source);
+		integration.dispatchScreenEvent(event, source);
 	}
 }

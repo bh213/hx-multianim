@@ -210,7 +210,7 @@ Dropdown control consists of a closed-like button and scrollable panel. The drop
 
 ### UIRichInteractiveHelper
 
-Auto-wires `interactive()` elements with `bind => "status"` metadata to a Normal→Hover→Pressed→Disabled state machine. `register(result, ?prefix)` scans interactives for bind metadata and sets up event handling. `handleEvent(event)` drives state transitions via `setParameter()` on the parent `BuilderResult`. `setDisabled(id, bool)` toggles disabled state. Manual control via `bind()`/`unbind()`/`setParameter()`/`getResult()`.
+Auto-wires `interactive()` elements to a Normal→Hover→Pressed→Disabled state machine. Two metadata keys: `autoStatus => "status"` for screen-level auto-wiring (zero boilerplate — `addInteractives()` detects it and handles events via `dispatchScreenEvent()`), and `bind => "status"` for manual wiring (e.g., `UICardHandHelper`). `register(result, ?prefix, metadataKey)` scans interactives for the given key (default: `"bind"`). `handleEvent(event)` drives state transitions via `setParameter()` on the parent `BuilderResult`. `setDisabled(id, bool)` toggles disabled state. `hasBinding(id)`, `unregisterByPrefix(prefix)`, `bind()`/`unbind()`/`setParameter()`/`getResult()` for manual control. Collision detection throws if an interactive is managed by both `autoStatus` and `bind`.
 
 ### UITooltipHelper
 

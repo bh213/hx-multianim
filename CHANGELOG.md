@@ -3,6 +3,11 @@
 ## [1.0.0-rc.2] - 2026-03-06
 
 ### Added
+- **autoStatus interactive metadata** — `interactive(w, h, id, autoStatus => "status")` auto-wires Normal→Hover→Pressed state machine at screen level. No manual `UIRichInteractiveHelper` needed — `addInteractives()` detects `autoStatus` metadata and handles events automatically via `dispatchScreenEvent()`. Advanced API: `screen.getAutoInteractiveHelper()` for `setDisabled()`, `setParameter()`, etc.
+- **UIRichInteractiveHelper: configurable metadata key** — `register(result, ?prefix, metadataKey)` accepts custom metadata key (default: `"bind"`). The key `"autoStatus"` is reserved for screen auto-wiring and throws if used manually.
+- **UIRichInteractiveHelper: collision detection** — `register()` throws if an interactive is already managed by the screen's auto-wiring (`autoStatus`), preventing two helpers from fighting over state.
+- **UIRichInteractiveHelper: new methods** — `hasBinding(id)` checks if a binding exists; `unregisterByPrefix(prefix)` removes all bindings with a given prefix.
+- **dispatchScreenEvent()** — new method on `UIControllerScreenIntegration` and `UIScreenBase`. Controllers call `dispatchScreenEvent()` instead of `onScreenEvent()` directly. It runs auto-wiring first, then delegates to the screen's `onScreenEvent()`. Events still reach `onScreenEvent()` unchanged.
 - **UICardHandHelper: targeting zones** — replace single Y-threshold with multiple named `TargetingZone` rectangles for triggering targeting mode during drag. Fallback: cursor directly over a registered target also activates targeting. Legacy `targetingThresholdY` preserved for backward compatibility (used when no explicit zones set). Runtime API: `addTargetingZone()`, `removeTargetingZone()`, `clearTargetingZones()`.
 - **UIMultiAnimGrid** — 2D grid component (rectangular or hexagonal) for cell state management, `.manim` programmable rendering, drag-drop integration, and card hand targeting
   - `GridType` enum: `Rect(cellWidth, cellHeight, ?gap)` and `Hex(orientation, sizeX, sizeY)`

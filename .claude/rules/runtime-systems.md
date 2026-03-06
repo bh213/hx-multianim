@@ -11,7 +11,7 @@
 - `src/bh/ui/UICardHandTypes.hx` — enums, typedefs, config
 
 **`.manim` integration points:**
-- **Card visuals**: programmables with `interactive(w, h, id, bind => "status")` — `UIRichInteractiveHelper` auto-wires Normal→Hover→Pressed state machine
+- **Card visuals**: programmables with `interactive(w, h, id, bind => "status")` — CardHandHelper's internal `UIRichInteractiveHelper` auto-wires Normal→Hover→Pressed state machine (uses `bind` metadata key, not `autoStatus`)
 - **Visual states**: filters in `.manim` conditionals (`@(status=>hover) filter: glow(...)`, `@(status=>disabled) filter: grayscale(...)`) — no manual alpha/scale
 - **Animations**: `animatedPath` elements via `createProjectilePath()` with Stretch normalization for draw/discard/rearrange/return
 - **Targeting arrow**: `.manim` programmable (receives `valid:bool` param, positioned+rotated+scaled between origin and cursor). Falls back to `h2d.Graphics` bezier if no programmable provided

@@ -1005,15 +1005,29 @@ interactive(200, 30, "tooltip-trigger", events: [hover])
 
 Default: all events enabled. Omitting `events:` emits all event types.
 
-### Bind Metadata
+### autoStatus Metadata (Screen Auto-Wiring)
 
-Declare which programmable parameter an interactive drives for `UIRichInteractiveHelper` auto-wiring:
+Auto-wire Normal→Hover→Pressed state management at screen level — no manual `UIRichInteractiveHelper` needed:
+
+```manim
+interactive(200, 30, "shopBtn", autoStatus => "status", events: [hover, click, push])
+```
+
+When `screen.addInteractives(result)` detects `autoStatus` metadata, it automatically creates an internal `UIRichInteractiveHelper` and wires hover/press/leave state transitions. Events still reach `onScreenEvent()` for game logic.
+
+Advanced: `screen.getAutoInteractiveHelper()` returns the internal helper for `setDisabled()`, `setParameter()`, etc.
+
+### Bind Metadata (Manual Wiring)
+
+For custom state management (e.g., `UICardHandHelper`), use `bind` with a manually-created `UIRichInteractiveHelper`:
 
 ```manim
 interactive(200, 30, "shopBtn", bind => "status", events: [hover, click, push])
 ```
 
-`UIRichInteractiveHelper.register(result)` scans interactives for `bind` metadata and auto-wires hover/press/leave state transitions to `setParameter()` calls on the bound `BuilderResult`.
+`UIRichInteractiveHelper.register(result, ?prefix, metadataKey)` scans interactives for the given metadata key (default: `"bind"`) and auto-wires state transitions. The key `"autoStatus"` is reserved and throws if used manually.
+
+**Important:** An interactive cannot have both `autoStatus` and `bind` — `register()` throws if the screen already manages the interactive via `autoStatus`.
 
 ### Cursor Metadata
 
