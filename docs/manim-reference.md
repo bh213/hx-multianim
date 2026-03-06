@@ -898,13 +898,17 @@ When `tabPanel.contentRoot` is set, tab content coordinates are relative to the 
 | `snapPathName` | AnimatedPath for drop snap (null = instant) |
 | `returnPathName` | AnimatedPath for drag cancel return (null = instant) |
 | `highlightParam` | Cell param for drag highlight (default: `"highlight"`) |
+| `rejectHighlightParam` | Cell param for rejected drop highlight (default: null = no reject visual) |
 | `statusParam` | Cell param for hover status (default: `"status"`) |
+| `tweenManager` | Optional `TweenManager` for cell lifecycle animations (null = instant) |
 
-**Cell programmable contract:** Must have `col:int`, `row:int`, plus matching `highlightParam` (bool) and `statusParam` (enum with `normal`/`hover`).
+**Cell programmable contract:** Must have `col:int`, `row:int`, plus matching `highlightParam` (bool) and `statusParam` (enum with `normal`/`hover`). Optionally `rejectHighlightParam` (bool) for wrong-type reject glow.
 
-**Events** (`GridEvent` enum via `onGridEvent`): `CellClick`, `CellHoverEnter`, `CellHoverLeave`, `CellDrop`, `CellCardPlayed`, `CellDataChanged`.
+**Events** (`GridEvent` enum via `onGridEvent`): `CellClick`, `CellHoverEnter`, `CellHoverLeave`, `CellDrop(cell, draggable, sourceGrid, sourceCell)`, `CellCardPlayed`, `CellDataChanged`.
 
-**Key API:** `addRectRegion(cols, rows)`, `addHexRegion(center, radius)`, `set(col, row, data, ?params)`, `get()`, `clear()`, `isOccupied()`, `forEach()`, `cellAtPoint(sceneX, sceneY)`, `cellPosition(col, row)`, `neighbors()`, `distance()`, `acceptDrops(draggable, ?filter)`, `registerAsCardTarget(cardHand, ?filter)`, `dispose()`.
+**Key API:** `addRectRegion(cols, rows)`, `addHexRegion(center, radius)`, `set(col, row, data, ?params)`, `get()`, `clear()`, `isOccupied()`, `forEach()`, `cellAtPoint(sceneX, sceneY)`, `cellPosition(col, row)`, `neighbors()`, `distance()`, `acceptDrops(draggable, ?filter)`, `registerAsCardTarget(cardHand, ?filter)`, `makeDraggableFromCell(col, row, ?visual, cloneMode)`, `dispose()`.
+
+**Cell animations** (require `tweenManager`): `tweenCell(col, row, duration, props, ?easing)`, `addCellAnimated(col, row, ?data, ?params, duration, initProps, ?easing)`, `removeCellAnimated(col, row, duration, props, ?easing, ?onComplete)`. **Detach/reattach**: `detachCellVisual(col, row)` → `{object, data, sceneX, sceneY}`, `reattachCellVisual(col, row, ?obj)`.
 
 ### Common UI Settings
 

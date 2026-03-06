@@ -20,6 +20,23 @@
   - Events: `CellClick`, `CellHoverEnter`, `CellHoverLeave`, `CellDrop`, `CellCardPlayed`, `CellDataChanged`
   - `CellBuildDelegate` for per-cell programmable/param customization
   - `onCellBuilt` callback for post-build customization
+  - `rejectHighlightParam` config — cells where `accepts` returns false show a distinct "wrong type" highlight (red) during drag, separate from "not a target" (no highlight)
+  - `tweenManager` config — optional TweenManager for cell lifecycle animations
+  - `tweenCell(col, row, duration, properties, ?easing)` — one-shot tween on cell visual
+  - `addCellAnimated(col, row, ?data, ?params, duration, initProperties, ?easing)` — entrance animation (scale/fade in)
+  - `removeCellAnimated(col, row, duration, properties, ?easing, ?onComplete)` — exit animation (shrink/fade out, delays removal)
+  - `detachCellVisual(col, row)` — extract cell visual for free animation (fly-to-inventory pattern)
+  - `reattachCellVisual(col, row, ?obj)` — reattach or rebuild detached visual
+  - `makeDraggableFromCell()` now populates `sourceGrid`, `sourceCellCoord`, `payload` on the draggable; added `cloneMode` parameter
+  - `CellDrop` event now includes source grid and source cell from draggable fields
+- **UIMultiAnimDraggable: drag payload and reject zones**
+  - `payload:Dynamic` — general-purpose data field, auto-populated by grid's `makeDraggableFromCell()`
+  - `sourceGrid:Dynamic`, `sourceCellCoord:Dynamic` — source tracking fields for cross-grid transfers
+  - `ZoneRejectEnter(zone)` / `ZoneRejectLeave(zone)` — new `DragEvent` variants for rejected zones
+  - `DropZone.onZoneReject` callback — fired when cursor enters/leaves a zone where `accepts` returned false
+  - `onDragStartRejectZones` callback — provides list of rejected zones at drag start
+  - `findDropZoneResult()` tracks both best accepted and best rejected zone (accepted takes precedence)
+- **AnimatedPath: error on Color slot misuse** — `addCurveSegment(Color, ...)` now throws with guidance to use `addColorCurveSegment()` instead
 - **MULTIANIM_STRICT mode** — compile flag (`-D MULTIANIM_STRICT`) for fail-fast on `.manim`/`.anim` errors. Prints structured error to stderr and calls `Sys.exit(1)` instead of storing errors in `failedScreens`. Covers `addScreen()`, `reload()` builder rebuild, and screen reload paths.
 - **MCP DevBridge** — HTTP server for AI tool integration (`DevBridge.hx`, compiles with `-D MULTIANIM_DEV`)
   - 12 core tools: `performance`, `list_screens`, `list_builders`, `scene_graph`, `inspect_element`, `screenshot`, `set_parameter`, `set_visibility`, `reload`, `eval_manim`, `list_resources`, `send_event`

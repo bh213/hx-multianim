@@ -11,6 +11,10 @@ import bh.base.MAObject.MultiAnimObjectData;
 import bh.multianim.MultiAnimBuilder;
 import bh.multianim.MultiAnimBuilder.BuilderResolvedSettings;
 import bh.multianim.MultiAnimBuilder.BuilderResult;
+import bh.base.TweenManager;
+import bh.base.TweenManager.Tween;
+import bh.base.TweenManager.TweenProperty;
+import bh.multianim.MultiAnimParser.EasingType;
 import bh.paths.MultiAnimPaths.PathNormalization;
 import bh.ui.UICardHandTypes;
 import bh.ui.UIMultiAnimDraggable;
@@ -79,9 +83,11 @@ class UIMultiAnimGrid {
 	final defaultBuildName:String;
 	final cellBuildDelegate:Null<CellBuildDelegate>;
 	final highlightParam:String;
+	final rejectHighlightParam:Null<String>;
 	final statusParam:String;
 	final snapPathName:Null<String>;
 	final returnPathName:Null<String>;
+	final tweenManager:Null<TweenManager>;
 
 	// --- Geometry ---
 	final hexLayout:Null<HexLayout>;
@@ -101,6 +107,7 @@ class UIMultiAnimGrid {
 	// --- Drag-drop ---
 	final registeredDraggables:Array<DraggableBinding> = [];
 	var activeHighlightedCells:Array<CellCoord> = [];
+	var activeRejectedCells:Array<CellCoord> = [];
 
 	// --- Card hand ---
 	final registeredCardHands:Array<CardHandBinding> = [];
@@ -130,9 +137,11 @@ class UIMultiAnimGrid {
 		this.defaultBuildName = config.cellBuildName;
 		this.cellBuildDelegate = config.cellBuildDelegate;
 		this.highlightParam = config.highlightParam != null ? config.highlightParam : "highlight";
+		this.rejectHighlightParam = config.rejectHighlightParam;
 		this.statusParam = config.statusParam != null ? config.statusParam : "status";
 		this.snapPathName = config.snapPathName;
 		this.returnPathName = config.returnPathName;
+		this.tweenManager = config.tweenManager;
 
 		this.root = new h2d.Object();
 		this.root.setPosition(config.originX != null ? config.originX : 0, config.originY != null ? config.originY : 0);
@@ -324,6 +333,145 @@ class UIMultiAnimGrid {
 	}
 
 	// ============================================================
+	// Cell animations
+	// ============================================================
+
+	/** Tween a cell's visual properties (position, alpha, scale, rotation).
+	 *  Requires TweenManager in GridConfig. Returns the Tween for chaining/cancellation, or null if no TweenManager. */
+	public function tweenCell(col:Int, row:Int, duration:Float, properties:Array<TweenProperty>, ?easing:EasingType):Null<Tween> {
+		if (tweenManager == null)
+			return null;
+		final entry = getEntry(col, row);
+		return tweenManager.tween(entry.result.object, duration, properties, easing);
+	}
+
+	/** Remove a cell with an exit animation (fade out, scale down, etc.).
+	 *  Cell is removed from the grid data immediately but visual lingers until animation completes.
+	 *  Requires TweenManager. Falls back to instant removal without one. */
+	public function removeCellAnimated(col:Int, row:Int, duration:Float, properties:Array<TweenProperty>,
+			?easing:EasingType, ?onComplete:Void -> Void):Void {
+		final key = cellKey(col, row);
+		final entry = cells.get(key);
+		if (entry == null)
+			return;
+
+		// Remove from grid data immediately (no longer hittable or interactive)
+		cells.remove(key);
+		if (hoveredCell != null && hoveredCell.col == col && hoveredCell.row == row)
+			hoveredCell = null;
+		refreshAllDraggableZones();
+		refreshAllCardTargets();
+
+		if (tweenManager != null && duration > 0) {
+			// Animate, then remove scene object
+			final obj = entry.result.object;
+			final tween = tweenManager.tween(obj, duration, properties, easing);
+			tween.onComplete = () -> {
+				obj.remove();
+				if (onComplete != null)
+					onComplete();
+			};
+		} else {
+			entry.result.object.remove();
+			if (onComplete != null)
+				onComplete();
+		}
+	}
+
+	/** Add a cell with an entrance animation.
+	 *  The cell is added to the grid immediately (hittable), then animated from the given initial properties
+	 *  to their natural values. `initProperties` sets the starting state (e.g. alpha=0, scale=0).
+	 *  Requires TweenManager. Falls back to instant addition without one.
+	 *  @param initProperties Starting property values — the tween targets are the "natural" values (alpha=1, scale=1, etc.) */
+	public function addCellAnimated(col:Int, row:Int, ?data:Dynamic, ?params:Map<String, Dynamic>, duration:Float = 0.3,
+			?initProperties:Array<TweenProperty>, ?easing:EasingType):Void {
+		addCell(col, row, data, params);
+
+		if (tweenManager != null && initProperties != null && duration > 0) {
+			final entry = cells.get(cellKey(col, row));
+			if (entry == null)
+				return;
+			final obj = entry.result.object;
+
+			// Set to initial state, tween to natural values
+			// The properties passed are the TARGET (natural) state.
+			// We need to swap: set object to "from" values, tween to "to" values.
+			// Convention: initProperties contains the STARTING values.
+			// E.g. addCellAnimated(..., [Alpha(0), Scale(0)]) means start at alpha=0/scale=0, tween to current (1.0/1.0).
+			var tweenProps:Array<TweenProperty> = [];
+			for (prop in initProperties) {
+				switch prop {
+					case Alpha(from):
+						tweenProps.push(Alpha(obj.alpha));
+						obj.alpha = from;
+					case Scale(from):
+						tweenProps.push(Scale(obj.scaleX));
+						obj.scaleX = from;
+						obj.scaleY = from;
+					case ScaleX(from):
+						tweenProps.push(ScaleX(obj.scaleX));
+						obj.scaleX = from;
+					case ScaleY(from):
+						tweenProps.push(ScaleY(obj.scaleY));
+						obj.scaleY = from;
+					case X(from):
+						tweenProps.push(X(obj.x));
+						obj.x = from;
+					case Y(from):
+						tweenProps.push(Y(obj.y));
+						obj.y = from;
+					case Rotation(from):
+						tweenProps.push(Rotation(obj.rotation));
+						obj.rotation = from;
+					case Custom(getter, setter, from):
+						tweenProps.push(Custom(getter, setter, getter()));
+						setter(from);
+				}
+			}
+			tweenManager.tween(obj, duration, tweenProps, easing);
+		}
+	}
+
+	// ============================================================
+	// Detach / reattach cell visual
+	// ============================================================
+
+	/** Detach a cell's visual for free animation (e.g. fly to another location).
+	 *  The cell stays in the grid (data preserved) but shows as empty.
+	 *  Returns the detached object and its scene position, or null if cell doesn't exist.
+	 *  Call `reattachCellVisual()` to put it back, or `rebuildCell()` to create a fresh visual. */
+	public function detachCellVisual(col:Int, row:Int):Null<{object:h2d.Object, data:Dynamic, sceneX:Float, sceneY:Float}> {
+		final entry = cells.get(cellKey(col, row));
+		if (entry == null)
+			return null;
+
+		final obj = entry.result.object;
+		final pos = cellPosition(col, row);
+
+		// Reparent to keep in scene but outside grid root (caller should reparent to desired container)
+		obj.remove();
+
+		return {object: obj, data: entry.data, sceneX: pos.x, sceneY: pos.y};
+	}
+
+	/** Reattach a previously detached cell visual (or rebuild if the object was disposed).
+	 *  If `obj` is provided, it's placed back at the cell position.
+	 *  If `obj` is null, the cell is fully rebuilt from scratch. */
+	public function reattachCellVisual(col:Int, row:Int, ?obj:h2d.Object):Void {
+		final entry = cells.get(cellKey(col, row));
+		if (entry == null)
+			throw 'Cell ($col, $row) does not exist';
+
+		if (obj != null) {
+			root.addChild(obj);
+			positionCell(entry);
+		} else {
+			// Full rebuild
+			rebuildCell(col, row);
+		}
+	}
+
+	// ============================================================
 	// Coordinate queries
 	// ============================================================
 
@@ -461,9 +609,10 @@ class UIMultiAnimGrid {
 	// ============================================================
 
 	/** Create a UIMultiAnimDraggable from a cell's content.
-	 *  Tracks source grid+cell. On successful drop elsewhere, source auto-clears.
-	 *  On cancel, returns to source cell. */
-	public function makeDraggableFromCell(col:Int, row:Int, ?visualOverride:h2d.Object):UIMultiAnimDraggable {
+	 *  Populates draggable's `sourceGrid`, `sourceCellCoord`, and `payload` fields.
+	 *  @param cloneMode If true, source cell data is preserved (for unlimited stock / shop items).
+	 *                   If false (default), source cell is cleared on drag start. */
+	public function makeDraggableFromCell(col:Int, row:Int, ?visualOverride:h2d.Object, cloneMode:Bool = false):UIMultiAnimDraggable {
 		final entry = getEntry(col, row);
 		final target = visualOverride != null ? visualOverride : entry.result.object;
 
@@ -475,18 +624,10 @@ class UIMultiAnimGrid {
 		if (returnPathName != null)
 			drag.setReturnAnimPath(builder, returnPathName);
 
-		// Store source info for CellDrop event
-		final sourceGrid = this;
-		final sourceCell:CellCoord = {col: col, row: row};
-
-		// Wire drop callback to emit CellDrop with source info
-		final prevDrop = drag.onDragDrop;
-		drag.onDragDrop = (result, wrapper) -> {
-			if (prevDrop != null && !prevDrop(result, wrapper))
-				return false;
-			// Source clearing is handled by the receiving grid's CellDrop event handler
-			return true;
-		};
+		// Populate source tracking and payload
+		drag.sourceGrid = this;
+		drag.sourceCellCoord = ({col: col, row: row} : CellCoord);
+		drag.payload = entry.data;
 
 		return drag;
 	}
@@ -732,6 +873,12 @@ class UIMultiAnimGrid {
 						}
 					}
 				},
+				onZoneReject: if (rejectHighlightParam != null) (zone, reject) -> {
+					final e = cells.get(cellKey(capturedCoord.col, capturedCoord.row));
+					if (e != null) {
+						e.result.setParameter(statusParam, if (reject) "hover" else "normal");
+					}
+				} else null,
 			});
 		}
 	}
@@ -751,6 +898,24 @@ class UIMultiAnimGrid {
 			}
 		};
 
+		// Wire reject highlight on drag start
+		if (rejectHighlightParam != null) {
+			final rejectParam = rejectHighlightParam;
+			final prevRejectStart = binding.draggable.onDragStartRejectZones;
+			binding.draggable.onDragStartRejectZones = (zones) -> {
+				if (prevRejectStart != null)
+					prevRejectStart(zones);
+				// Highlight all rejected cells
+				for (_ => entry in cells) {
+					final accepts = binding.accepts == null || binding.accepts(entry.coord, binding.draggable);
+					if (!accepts) {
+						entry.result.setParameter(rejectParam, true);
+						activeRejectedCells.push({col: entry.coord.col, row: entry.coord.row});
+					}
+				}
+			};
+		}
+
 		final prevEnd = binding.draggable.onDragEndHighlightZones;
 		binding.draggable.onDragEndHighlightZones = (zones) -> {
 			if (prevEnd != null)
@@ -762,6 +927,15 @@ class UIMultiAnimGrid {
 					e.result.setParameter(highlightParam, false);
 			}
 			activeHighlightedCells = [];
+			// Clear all reject highlights
+			if (rejectHighlightParam != null) {
+				for (cell in activeRejectedCells) {
+					final e = cells.get(cellKey(cell.col, cell.row));
+					if (e != null)
+						e.result.setParameter(rejectHighlightParam, false);
+				}
+				activeRejectedCells = [];
+			}
 		};
 
 		// Wire drop event to emit GridEvent
@@ -775,7 +949,12 @@ class UIMultiAnimGrid {
 			if (result.zone != null) {
 				final coord = parseZoneId(result.zone.id, binding.zonePrefix);
 				if (coord != null) {
-					emitEvent(CellDrop(coord, binding.draggable, null, null));
+					// Read source info from draggable fields (set by makeDraggableFromCell)
+					final srcGrid:Null<UIMultiAnimGrid> = Std.isOfType(binding.draggable.sourceGrid, UIMultiAnimGrid)
+						? cast binding.draggable.sourceGrid
+						: null;
+					final srcCell:Null<CellCoord> = binding.draggable.sourceCellCoord;
+					emitEvent(CellDrop(coord, binding.draggable, srcGrid, srcCell));
 					return true;
 				}
 			}

@@ -98,6 +98,15 @@ typedef GridConfig = {
 	/** Cell parameter name used for drag-drop highlight state (default: "highlight"). */
 	var ?highlightParam:String;
 
+	/** Cell parameter name used for rejected drop highlight (default: null = no reject visual).
+	 *  When set, cells where `accepts` returns false get this param set to `true` during drag,
+	 *  enabling "wrong item type" red highlight distinct from "not a target." */
+	var ?rejectHighlightParam:String;
+
 	/** Cell parameter name used for hover/click status (default: "status"). */
 	var ?statusParam:String;
+
+	/** Optional TweenManager for cell lifecycle animations (entrance, exit, effects).
+	 *  If null, all cell additions/removals are instant. */
+	var ?tweenManager:Dynamic;
 }

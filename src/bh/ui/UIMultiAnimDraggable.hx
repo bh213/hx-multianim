@@ -55,6 +55,8 @@ enum DragEvent {
 	DragCancel;
 	ZoneEnter(zone:DropZone);
 	ZoneLeave(zone:DropZone);
+	ZoneRejectEnter(zone:DropZone);
+	ZoneRejectLeave(zone:DropZone);
 }
 
 @:structInit
@@ -69,6 +71,10 @@ class DropZone {
 	public var boundsProvider:Null<() -> Collider> = null;
 	public var snapProvider:Null<() -> Point> = null;
 	public var onZoneHighlight:Null<(zone:DropZone, highlight:Bool) -> Void> = null;
+
+	/** Called when cursor enters/leaves this zone AND accepts() returned false.
+	 *  Use for "wrong item type" red highlight (vs no highlight for non-targets). */
+	public var onZoneReject:Null<(zone:DropZone, reject:Bool) -> Void> = null;
 }
 
 @:structInit
@@ -105,6 +111,7 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 	var animOnComplete:Null<() -> Void> = null;
 	var activeWrapper:Null<UIElementEventWrapper> = null;
 	var currentHoverZone:Null<DropZone> = null;
+	var currentRejectZone:Null<DropZone> = null;
 
 	// Layer support
 	var screen:Null<UIScreen> = null;
@@ -119,7 +126,10 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 	/** Called on drag start with all valid zones (filtered by accepts). Use to highlight available drop targets. */
 	public var onDragStartHighlightZones:Null<(zones:Array<DropZone>) -> Void> = null;
 
-	/** Called on drop/cancel to clear all zone highlights. */
+	/** Called on drag start with all rejected zones (accepts returned false). Use to show "wrong type" indicators. */
+	public var onDragStartRejectZones:Null<(zones:Array<DropZone>) -> Void> = null;
+
+	/** Called on drop/cancel to clear all zone highlights (both valid and rejected). */
 	public var onDragEndHighlightZones:Null<(zones:Array<DropZone>) -> Void> = null;
 
 	// Path factories for animations (null = instant teleport)
@@ -162,6 +172,16 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 
 	/** Whether to swap contents when dropping onto an occupied slot. Default: false. */
 	public var swapMode:Bool = false;
+
+	/** General-purpose data payload. Auto-populated by grid's makeDraggableFromCell().
+	 *  Use in accepts callbacks: `(drag, zone) -> drag.payload.itemType == "weapon"`. */
+	public var payload:Dynamic = null;
+
+	/** Source grid this draggable was taken from (for grid-to-grid drag). Null if not from a grid cell. */
+	public var sourceGrid:Dynamic = null;
+
+	/** Source cell coordinate this draggable was taken from. Null if not from a grid cell. */
+	public var sourceCellCoord:Dynamic = null;
 
 	var savedAlpha:Float = 1.0;
 
@@ -247,9 +267,17 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 	}
 
 	function findDropZone(pos:Point):Null<DropZone> {
+		return findDropZoneResult(pos).accepted;
+	}
+
+	/** Find both the best accepted zone and best rejected zone at a position. */
+	function findDropZoneResult(pos:Point):{accepted:Null<DropZone>, rejected:Null<DropZone>} {
 		var best:Null<DropZone> = null;
 		var bestPriority = -2147483648;
 		var bestIndex = -1;
+		var bestRejected:Null<DropZone> = null;
+		var bestRejectPriority = -2147483648;
+		var bestRejectIndex = -1;
 		for (i in 0...dropZones.length) {
 			var zone = dropZones[i];
 			var b = zone.boundsProvider != null ? zone.boundsProvider() : zone.bounds;
@@ -260,10 +288,18 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 						bestPriority = zone.priority;
 						bestIndex = i;
 					}
+				} else {
+					// Zone contains cursor but accepts returned false — rejected
+					if (zone.priority > bestRejectPriority || (zone.priority == bestRejectPriority && i > bestRejectIndex)) {
+						bestRejected = zone;
+						bestRejectPriority = zone.priority;
+						bestRejectIndex = i;
+					}
 				}
 			}
 		}
-		return best;
+		// If an accepted zone was found, don't report rejected (accepted takes precedence)
+		return {accepted: best, rejected: if (best != null) null else bestRejected};
 	}
 
 	function getSnapPosition(zone:DropZone, fallback:Point):{x:Float, y:Float} {
@@ -365,6 +401,7 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 		activeAnim = null;
 		animOnComplete = null;
 		currentHoverZone = null;
+		currentRejectZone = null;
 		draggingButton = -1;
 		if (state == Dragging) {
 			restoreLayer();
@@ -438,9 +475,19 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 					}
 
 					// Notify zone highlight callbacks
-					if (onDragStartHighlightZones != null) {
-						var validZones = dropZones.filter(z -> z.accepts == null || z.accepts(this, z));
-						onDragStartHighlightZones(validZones);
+					if (onDragStartHighlightZones != null || onDragStartRejectZones != null) {
+						var validZones:Array<DropZone> = [];
+						var rejectedZones:Array<DropZone> = [];
+						for (z in dropZones) {
+							if (z.accepts == null || z.accepts(this, z))
+								validZones.push(z);
+							else
+								rejectedZones.push(z);
+						}
+						if (onDragStartHighlightZones != null)
+							onDragStartHighlightZones(validZones);
+						if (onDragStartRejectZones != null)
+							onDragStartRejectZones(rejectedZones);
 					}
 				}
 
@@ -457,6 +504,15 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 						if (onDragEvent != null)
 							onDragEvent(ZoneLeave(currentHoverZone), wrapper.eventPos, wrapper);
 						currentHoverZone = null;
+					}
+
+					// Clear reject zone hover
+					if (currentRejectZone != null) {
+						if (currentRejectZone.onZoneReject != null)
+							currentRejectZone.onZoneReject(currentRejectZone, false);
+						if (onDragEvent != null)
+							onDragEvent(ZoneRejectLeave(currentRejectZone), wrapper.eventPos, wrapper);
+						currentRejectZone = null;
 					}
 
 					// Clear all zone highlights
@@ -543,8 +599,11 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 					}
 					root.setPosition(newPos.x, newPos.y);
 
-					// Zone hover tracking
-					var hoverZone = findDropZone(wrapper.eventPos);
+					// Zone hover tracking (accepted + rejected)
+					var result = findDropZoneResult(wrapper.eventPos);
+					var hoverZone = result.accepted;
+					var rejectZone = result.rejected;
+
 					if (hoverZone != currentHoverZone) {
 						if (currentHoverZone != null) {
 							if (currentHoverZone.onZoneHighlight != null)
@@ -562,6 +621,23 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 						// Update alpha for zone highlight
 						if (zoneHighlightAlpha != null) {
 							target.alpha = if (currentHoverZone != null) zoneHighlightAlpha else if (dragAlpha != null) dragAlpha else savedAlpha;
+						}
+					}
+
+					// Reject zone tracking
+					if (rejectZone != currentRejectZone) {
+						if (currentRejectZone != null) {
+							if (currentRejectZone.onZoneReject != null)
+								currentRejectZone.onZoneReject(currentRejectZone, false);
+							if (onDragEvent != null)
+								onDragEvent(ZoneRejectLeave(currentRejectZone), wrapper.eventPos, wrapper);
+						}
+						currentRejectZone = rejectZone;
+						if (currentRejectZone != null) {
+							if (currentRejectZone.onZoneReject != null)
+								currentRejectZone.onZoneReject(currentRejectZone, true);
+							if (onDragEvent != null)
+								onDragEvent(ZoneRejectEnter(currentRejectZone), wrapper.eventPos, wrapper);
 						}
 					}
 

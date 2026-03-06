@@ -90,8 +90,12 @@ Metadata supports typed values matching the settings system: `key => val` (strin
 - `addDropZonesFromSlots("baseName", builderResult, ?accepts)` — batch drop zone creation
 - `createFromSlot(slot)` — creates draggable from slot content, tracks `sourceSlot`
 - `swapMode` — swaps contents when dropping onto an occupied slot
+- `payload:Dynamic` — general-purpose data field for `accepts` callbacks (auto-set by `makeDraggableFromCell`)
+- `sourceGrid:Null<UIMultiAnimGrid>` / `sourceCellCoord:Null<CellCoord>` — source tracking for cross-grid transfers (auto-set by `makeDraggableFromCell`)
 - Zone highlight callbacks: `onDragStartHighlightZones`, `onDragEndHighlightZones` on draggable
+- Zone reject callbacks: `onDragStartRejectZones` on draggable, `DropZone.onZoneReject` per-zone
 - Per-zone: `DropZone.onZoneHighlight` callback for hover state
+- `DragEvent` enum includes `ZoneRejectEnter(zone)` / `ZoneRejectLeave(zone)` for three-state feedback
 
 ## Grid Component
 
@@ -111,11 +115,13 @@ var grid = new UIMultiAnimGrid(builder, {
     snapPathName: "snapAnim",       // animatedPath for drop snap (null = instant)
     returnPathName: "returnAnim",   // animatedPath for drag cancel return (null = instant)
     highlightParam: "highlight",    // cell param for drag highlight state (default: "highlight")
+    rejectHighlightParam: "rejectHighlight", // cell param for rejected drop highlight (default: null = no reject visual)
     statusParam: "status",          // cell param for hover status (default: "status")
+    tweenManager: screenManager.tweens, // optional TweenManager for cell lifecycle animations (null = instant)
 });
 ```
 
-**Cell programmable contract:** Must have parameters matching `highlightParam` (bool) and `statusParam` (enum with "normal"/"hover"). Receives `col:int` and `row:int` automatically.
+**Cell programmable contract:** Must have parameters matching `highlightParam` (bool) and `statusParam` (enum with "normal"/"hover"). Optionally `rejectHighlightParam` (bool) for three-state drop feedback (valid/rejected/not-a-target). Receives `col:int` and `row:int` automatically.
 
 **GridType enum:**
 - `Rect(cellWidth:Float, cellHeight:Float, ?gap:Float)` — rectangular grid
@@ -158,17 +164,26 @@ var grid = new UIMultiAnimGrid(builder, {
 - `CellDataChanged(cell, oldData, newData)` — data changed via `set()` or `clear()`
 
 **Drag-drop integration:**
-- `acceptDrops(draggable, ?accepts)` — register a `UIMultiAnimDraggable` to drop onto this grid's cells. Auto-creates `DropZone` per cell, manages highlight state. `accepts: (cell, draggable) -> Bool` filters valid targets
+- `acceptDrops(draggable, ?accepts)` — register a `UIMultiAnimDraggable` to drop onto this grid's cells. Auto-creates `DropZone` per cell, manages highlight state. `accepts: (cell, draggable) -> Bool` filters valid targets. When `rejectHighlightParam` is set, cells where `accepts` returns false show rejected state (red) distinct from "not a target"
 - `removeDrops(draggable)` — unregister draggable
-- `makeDraggableFromCell(col, row, ?visualOverride)` — create draggable from cell content with source tracking
+- `makeDraggableFromCell(col, row, ?cloneMode, ?visualOverride)` — create draggable from cell content. Sets `sourceGrid`, `sourceCellCoord`, and `payload` on the draggable. `cloneMode = true` skips clearing source cell data
 
 **Card hand integration:**
 - `registerAsCardTarget(cardHand, ?accepts)` — register grid cells as card play targets. Creates synthetic `UIInteractiveWrapper` per cell for the card hand's targeting system. `accepts: (cell, cardId) -> Bool` filters valid targets
 - `unregisterAsCardTarget(cardHand)` — unregister
 
+**Cell animations** (require `tweenManager` in config):
+- `tweenCell(col, row, duration, properties, ?easing)` — animate cell object properties (e.g. shake, pulse). Non-destructive — cell stays in grid
+- `addCellAnimated(col, row, duration, properties, ?easing, ?data, ?params)` — add cell with entrance animation. Properties are FROM values (e.g. `[Scale(0.0), Alpha(0.0)]` → cell scales/fades in from 0)
+- `removeCellAnimated(col, row, duration, properties, ?easing)` — animate cell then remove. Properties are TO values (e.g. `[Scale(0.0), Alpha(0.0)]` → cell shrinks/fades out)
+
+**Detach/reattach cell visual:**
+- `detachCellVisual(col, row) -> h2d.Object` — remove visual from cell for free animation (e.g. fly to another location). Cell data preserved but shows empty
+- `reattachCellVisual(col, row)` — rebuild cell visual from existing data
+
 **Lifecycle:**
 - `getObject()` — root `h2d.Object`, add to scene via `addObjectToLayer(grid.getObject(), layer)`
-- `update(dt)` — reserved for future animation support
+- `update(dt)` — call from screen update for animation support
 - `dispose()` — clean up all resources, zones, and scene graph
 
 **Callbacks:**
@@ -177,18 +192,20 @@ var grid = new UIMultiAnimGrid(builder, {
 
 **Cross-grid drag pattern:**
 ```haxe
-// Both grids accept drops from the same draggable
-storageGrid.acceptDrops(drag, (cell, _) -> !storageGrid.isOccupied(cell.col, cell.row));
-loadoutGrid.acceptDrops(drag, (cell, _) -> !loadoutGrid.isOccupied(cell.col, cell.row));
+// Both grids accept drops — use payload for typed filtering
+storageGrid.acceptDrops(drag, (cell, d) -> {
+    if (storageGrid.isOccupied(cell.col, cell.row)) return false;
+    return d.payload != null ? d.payload.type == "weapon" : true;
+});
+loadoutGrid.acceptDrops(drag, (cell, d) -> !loadoutGrid.isOccupied(cell.col, cell.row));
 
-// In DragStart callback: clear source, store source info
-drag.onDragEvent = (event, _, _) -> switch event {
-    case DragStart: srcGrid.clear(srcCol, srcRow);
-    case DragCancel: srcGrid.set(srcCol, srcRow, data); // restore on cancel
-    default:
-};
+// makeDraggableFromCell auto-sets payload, sourceGrid, sourceCellCoord
+var drag = srcGrid.makeDraggableFromCell(col, row);
 
-// In onGridEvent CellDrop: set data on target, rebuild draggables
+// In onGridEvent CellDrop: source tracking available
+case CellDrop(cell, draggable, sourceGrid, sourceCell):
+    targetGrid.set(cell.col, cell.row, draggable.payload);
+    // sourceGrid/sourceCell identify where the drag started
 ```
 
 **Card targeting wiring pattern:**
