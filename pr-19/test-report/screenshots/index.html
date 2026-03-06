@@ -327,15 +327,15 @@
 </head>
 <body>
     <h1>Visual Test Report</h1>
-    <div class="timestamp">Generated: 2026-03-06 11:25:30</div>
+    <div class="timestamp">Generated: 2026-03-06 12:16:04</div>
     <div class="summary">
         <strong>Summary:</strong> 93 tests,         <span style="color: #4CAF50;">93 passed</span>,         <span style="color: #f44336;">0 failed</span>
-        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 0.7s, visual 20.7s)</span>
+        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 0.7s, visual 22.6s)</span>
     </div>
     <div class="unit-tests-section">
         <h2>Unit Tests</h2>
         <div class="unit-tests-summary all-passed">
-            <strong>3762 assertions:</strong>             <span style="color: #4CAF50;">3762 passed</span>
+            <strong>3850 assertions:</strong>             <span style="color: #4CAF50;">3850 passed</span>
             <button class="expand-btn" id="unitToggleBtn" onclick="toggleUnitDetails()">Show Details</button>
         </div>
         <div class="unit-details" id="unitDetails">
@@ -2037,12 +2037,35 @@
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">UIRichInteractiveHelperTest</div>
+                <div class="unit-method pass">testAutoStatusClearResetsHelper: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testAutoStatusEventsStillReachScreen: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testAutoStatusFullCycle: OK <span class="dots">.........</span></div>
+                <div class="unit-method pass">testAutoStatusHandlesEventsAutomatically: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testAutoStatusIgnoresBindMetadata: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testAutoStatusMixedOnlyAutoWiresAutoStatus: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testAutoStatusMixedPlainInteractiveEventsPassThrough: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testAutoStatusMultipleResultsIndependentState: OK <span class="dots">.....</span></div>
+                <div class="unit-method pass">testAutoStatusMultipleResultsShareHelper: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testAutoStatusNoHelperWithoutMetadata: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testAutoStatusPressedVisual: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testAutoStatusReAddAfterClear: OK <span class="dots">......</span></div>
+                <div class="unit-method pass">testAutoStatusRegistersViaAddInteractives: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testAutoStatusRemoveInteractivesUnregisters: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testAutoStatusResetState: OK <span class="dots">.....</span></div>
+                <div class="unit-method pass">testAutoStatusSetDisabled: OK <span class="dots">.....</span></div>
+                <div class="unit-method pass">testAutoStatusSetDisabledThenReEnabled: OK <span class="dots">.....</span></div>
+                <div class="unit-method pass">testAutoStatusUpdatesVisual: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testAutoStatusWithPrefix: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testBindAutoWiringFullCycleVisual: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testBindAutoWiringUpdatesVisual: OK <span class="dots">......</span></div>
                 <div class="unit-method pass">testClickAfterPushReturnsToHover: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testClickOutsideDoesNotChangeState: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testClickOutsideOnUnregisteredReturnsFalse: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testClickWithoutPushIsIgnored: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testCollisionBindFirstThenAutoStatus: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testCollisionCustomKeyWhenAutoStatusExists: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testCollisionThrowsWhenAutoStatusAlreadyRegistered: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testCollisionWithPrefixedAutoStatus: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testDefaultEventFlagsAreAll: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testDisabledDoesNotTransitionOnEnter: OK <span class="dots">..........</span></div>
                 <div class="unit-method pass">testEnterSetsHover: OK <span class="dots">.....</span></div>
@@ -2052,10 +2075,13 @@
                 <div class="unit-method pass">testGetResultReturnsBoundResult: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testGetResultReturnsNullAfterUnbind: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testGetResultReturnsNullForUnknown: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testHasBinding: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testLeaveFromHoverReturnsToNormal: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testLeaveFromPressedReturnsToNormal: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testManualBind: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testMultipleInteractivesIndependent: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testNoCollisionDifferentIds: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testNoCollisionDifferentPrefixes: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testNonInteractiveEventReturnsFalse: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testPushAfterEnterSetPressed: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testPushWithoutEnterIsIgnored: OK <span class="dots">..</span></div>
@@ -2065,6 +2091,9 @@
                 <div class="unit-method pass">testRegisterMultipleInteractives: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testRegisterWithPrefix: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testRepeatedCycles: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testReservedKeyBlocksEvenWithoutAutoStatusInteractives: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testReservedKeyConstantValue: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testReservedKeyThrowsOnManualRegister: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testSetDisabledBlocksEvents: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testSetDisabledDisablesWrapper: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testSetDisabledFalseRestoresHoverWhenMouseOver: OK <span class="dots">........</span></div>
@@ -2077,6 +2106,7 @@
                 <div class="unit-method pass">testUnbindAll: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testUnknownInteractiveReturnsFalse: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testUnregister: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testUnregisterByPrefix: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testUnregisterOnlyRemovesMatchingResult: OK <span class="dots">..</span></div>
             </div>
             <div class="unit-class">
