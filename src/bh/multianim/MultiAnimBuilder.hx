@@ -383,11 +383,13 @@ class IncrementalUpdateContext {
 		entry.applied = false;
 	}
 
+	@:nullSafety(Off)
 	public function setParameter(name:String, value:Dynamic):Void {
-		// Look up the parameter type definition for type-aware conversion (flags only — other types handled below)
+		// Look up the parameter type definition for type-aware conversion (flags need special handling)
 		final paramDef = getParamDefinition(name);
-		if (paramDef != null && paramDef.type.match(PPTFlags(_))) {
-			indexedParams.set(name, MultiAnimParser.dynamicValueToIndex(name, paramDef.type, value, s -> throw s));
+		final paramType = paramDef?.type;
+		if (paramType != null && paramType.match(PPTFlags(_))) {
+			indexedParams.set(name, MultiAnimParser.dynamicValueToIndex(name, paramType, value, s -> throw s));
 		} else if (Std.isOfType(value, Int)) {
 			indexedParams.set(name, Value(value));
 		} else if (Std.isOfType(value, Float)) {
@@ -2104,7 +2106,17 @@ class MultiAnimBuilder {
 
 	function loadTileSource(tileSource):h2d.Tile {
 		final tile = switch tileSource {
-			case TSFile(filename): resourceLoader.loadTile(resolveAsString(filename));
+			case TSFile(filename):
+				final resolved = resolveAsString(filename);
+				if (resolved == null || resolved.length == 0) {
+					if (incrementalMode) {
+						if (incrementalFallbackTile == null)
+							incrementalFallbackTile = h2d.Tile.fromColor(0x00000000, 1, 1, 0.0);
+						incrementalFallbackTile.clone();
+					} else
+						throw 'TSFile: empty filename' + currentNodePos();
+				} else
+					resourceLoader.loadTile(resolved);
 			case TSSheet(sheet, name): loadTileImpl(resolveAsString(sheet), resolveAsString(name)).tile;
 			case TSSheetWithIndex(sheet, name, index): loadTileImpl(resolveAsString(sheet), resolveAsString(name), resolveAsInteger(index)).tile;
 			case TSGenerated(type):
@@ -5667,7 +5679,7 @@ class MultiAnimBuilder {
 		}
 
 		#if MULTIANIM_DEV
-		if (incremental && retVal.incrementalContext != null && retVal.reloadable) {
+		if (retVal.reloadable) {
 			if (Std.isOfType(resourceLoader, bh.base.ResourceLoader.CachingResourceLoader)) {
 				final cachingLoader = cast(resourceLoader, bh.base.ResourceLoader.CachingResourceLoader);
 				if (cachingLoader.hotReloadRegistry != null) {

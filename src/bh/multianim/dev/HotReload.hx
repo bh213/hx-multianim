@@ -176,6 +176,16 @@ class ReloadableRegistry {
 		return list != null && list.length > 0;
 	}
 
+	/** Returns all live handles across all source paths. Used by DevBridge. */
+	public function getAllHandles():Array<ReloadableHandle> {
+		var all:Array<ReloadableHandle> = [];
+		for (_ => handles in liveObjects) {
+			for (h in handles)
+				all.push(h);
+		}
+		return all;
+	}
+
 	// Remove the ReloadSentinel child from an object (used before scene swap
 	// to prevent stale auto-unregister when old root is removed).
 	public static function removeSentinel(obj:h2d.Object):Void {

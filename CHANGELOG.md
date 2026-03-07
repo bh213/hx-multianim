@@ -1,5 +1,99 @@
 # Changelog
 
+## [1.0.0-rc.2] - 2026-03-06
+
+### Added
+- **autoStatus interactive metadata** — `interactive(w, h, id, autoStatus => "status")` auto-wires Normal→Hover→Pressed state machine at screen level. No manual `UIRichInteractiveHelper` needed — `addInteractives()` detects `autoStatus` metadata and handles events automatically via `dispatchScreenEvent()`. Advanced API: `screen.getAutoInteractiveHelper()` for `setDisabled()`, `setParameter()`, etc.
+- **UIRichInteractiveHelper: configurable metadata key** — `register(result, ?prefix, metadataKey)` accepts custom metadata key (default: `"bind"`). The key `"autoStatus"` is reserved for screen auto-wiring and throws if used manually.
+- **UIRichInteractiveHelper: collision detection** — `register()` throws if an interactive is already managed by the screen's auto-wiring (`autoStatus`), preventing two helpers from fighting over state.
+- **UIRichInteractiveHelper: new methods** — `hasBinding(id)` checks if a binding exists; `unregisterByPrefix(prefix)` removes all bindings with a given prefix.
+- **dispatchScreenEvent()** — new method on `UIControllerScreenIntegration` and `UIScreenBase`. Controllers call `dispatchScreenEvent()` instead of `onScreenEvent()` directly. It runs auto-wiring first, then delegates to the screen's `onScreenEvent()`. Events still reach `onScreenEvent()` unchanged.
+- **UICardHandHelper: targeting zones** — replace single Y-threshold with multiple named `TargetingZone` rectangles for triggering targeting mode during drag. Fallback: cursor directly over a registered target also activates targeting. Legacy `targetingThresholdY` preserved for backward compatibility (used when no explicit zones set). Runtime API: `addTargetingZone()`, `removeTargetingZone()`, `clearTargetingZones()`.
+- **UIMultiAnimGrid** — 2D grid component (rectangular or hexagonal) for cell state management, `.manim` programmable rendering, drag-drop integration, and card hand targeting
+  - `GridType` enum: `Rect(cellWidth, cellHeight, ?gap)` and `Hex(orientation, sizeX, sizeY)`
+  - Cell structure: `addCell`, `removeCell`, `addRectRegion`, `addHexRegion` (batch creation)
+  - Cell data: `set`, `get`, `clear`, `isOccupied`, `forEach`, `setCellParameter`, `getCellResult`, `rebuildCell`
+  - Coordinate queries: `cellAtPoint` (hit-test via `globalToLocal`), `cellPosition`, `neighbors`, `distance`
+  - Mouse routing: `onMouseMove` (hover enter/leave with status param), `onMouseClick` (click events)
+  - Drag-drop: `acceptDrops` (auto-creates `DropZone` per cell with highlight), `makeDraggableFromCell`, cross-grid chaining
+  - Card targeting: `registerAsCardTarget` (creates synthetic interactives for card hand targeting system)
+  - Events: `CellClick`, `CellHoverEnter`, `CellHoverLeave`, `CellDrop`, `CellCardPlayed`, `CellDataChanged`
+  - `CellBuildDelegate` for per-cell programmable/param customization
+  - `onCellBuilt` callback for post-build customization
+  - `rejectHighlightParam` config — cells where `accepts` returns false show a distinct "wrong type" highlight (red) during drag, separate from "not a target" (no highlight)
+  - `tweenManager` config — optional TweenManager for cell lifecycle animations
+  - `tweenCell(col, row, duration, properties, ?easing)` — one-shot tween on cell visual
+  - `addCellAnimated(col, row, ?data, ?params, duration, initProperties, ?easing)` — entrance animation (scale/fade in)
+  - `removeCellAnimated(col, row, duration, properties, ?easing, ?onComplete)` — exit animation (shrink/fade out, delays removal)
+  - `detachCellVisual(col, row)` — extract cell visual for free animation (fly-to-inventory pattern)
+  - `reattachCellVisual(col, row, ?obj)` — reattach or rebuild detached visual
+  - `makeDraggableFromCell()` now populates `sourceGrid`, `sourceCellCoord`, `payload` on the draggable; added `cloneMode` parameter
+  - `CellDrop` event now includes source grid and source cell from draggable fields
+- **UIMultiAnimDraggable: drag payload and reject zones**
+  - `payload:Dynamic` — general-purpose data field, auto-populated by grid's `makeDraggableFromCell()`
+  - `sourceGrid:Dynamic`, `sourceCellCoord:Dynamic` — source tracking fields for cross-grid transfers
+  - `ZoneRejectEnter(zone)` / `ZoneRejectLeave(zone)` — new `DragEvent` variants for rejected zones
+  - `DropZone.onZoneReject` callback — fired when cursor enters/leaves a zone where `accepts` returned false
+  - `onDragStartRejectZones` callback — provides list of rejected zones at drag start
+  - `findDropZoneResult()` tracks both best accepted and best rejected zone (accepted takes precedence)
+- **AnimatedPath: error on Color slot misuse** — `addCurveSegment(Color, ...)` now throws with guidance to use `addColorCurveSegment()` instead
+- **MULTIANIM_STRICT mode** — compile flag (`-D MULTIANIM_STRICT`) for fail-fast on `.manim`/`.anim` errors. Prints structured error to stderr and calls `Sys.exit(1)` instead of storing errors in `failedScreens`. Covers `addScreen()`, `reload()` builder rebuild, and screen reload paths.
+- **MCP DevBridge** — HTTP server for AI tool integration (`DevBridge.hx`, compiles with `-D MULTIANIM_DEV`)
+  - 12 core tools: `performance`, `list_screens`, `list_builders`, `scene_graph`, `inspect_element`, `screenshot`, `set_parameter`, `set_visibility`, `reload`, `eval_manim`, `list_resources`, `send_event`
+  - 3 control tools: `pause`, `step`, `quit`
+  - 2 trace tools: `get_traces`, `get_errors`
+  - 7 inspection tools: `get_parameters`, `list_interactives`, `list_slots`, `get_tween_state`, `get_screen_state`, `find_element_at`, `inspect_programmable`
+  - 5 post-v2 tools: `ping`, `list_fonts`, `list_atlases`, `coordinate_transform`, `wait_for_idle`
+  - JSON-RPC over HTTP POST on port 9001 using `hxd.net.Socket` (libuv async)
+  - `send_event` — inject mouse clicks, key presses, wheel, and text input events into the running application
+  - `screenshot` — capture current frame as base64 PNG; freezes elapsed time when paused to avoid advancing animations
+  - `set_parameter` — update live programmable parameters via `ReloadableRegistry`
+  - `eval_manim` — parse + build validation (Phase 1: parse errors, Phase 2: semantic build errors per node)
+  - `reload` — returns `needsFullRestart`, `paramsAdded`, structured `errorType` and `context` in error details; graceful null-report handling
+  - `list_interactives` — optional `screen` param; aggregates across all active screens when omitted
+  - `find_element_at` — `relative_to` param for coordinate transforms relative to a named element; annotates MAObject interactives with `isInteractive`/`interactiveId`/`disabled`
+  - `coordinate_transform` — convert between local and global coordinates for a named element
+  - `ping` — health check returning uptime and actual port
+  - `list_fonts` — registered font names via `FontManager`
+  - `list_atlases` — loaded atlas names with tile listings via `CachingResourceLoader`
+  - `wait_for_idle` — check for active tweens, transitions, and pause state
+  - Auto-port selection: tries up to 10 ports if configured port is busy
+  - Ready signal file: writes JSON with port/timestamp to `HX_DEV_READY_FILE` env var path on startup
+  - Zero overhead in release builds (all code guarded by `#if MULTIANIM_DEV`)
+- **ResourceLoader.getCacheKeys()** — returns cached resource names by category (sheets, fonts, .manim, .anim files)
+- **ReloadableRegistry.getAllHandles()** — returns all live reloadable handles across all source paths
+- **`.mcp.json`** — project-level MCP server configuration for Claude Code
+- **PanelHelper auto-wiring** — `createPanelHelper(builder, ?defaults)` on `UIScreenBase` creates and registers a `UIPanelHelper` with automatic outside-click handling. `handleOutsideClick()` runs in `dispatchScreenEvent()`, `checkPendingClose()` runs in `update()` — no manual boilerplate needed. Also: `registerPanelHelper()` / `unregisterPanelHelper()` for existing helpers. `clear()` unregisters all.
+- **UIScrollableScreen** — abstract screen base class with whole-screen mousewheel scrolling. Uses a `scrollContent:h2d.Layers` child of `root` so scroll offset (`scrollContent.y`) doesn't conflict with transition animations (`root.y`). Auto-measures content height via `getBounds`; disables scroll when content fits viewport. Configurable via `ScrollConfig` (speed, smoothing). `setContentHeight()` for manual override. Preserves `contentTarget` logic for tabs.
+- **ScreenManager.sceneWidth/sceneHeight** — getters returning actual visible scene dimensions (`s2d.width`/`s2d.height`), which differ from configured dimensions when using AutoZoom with integer scaling.
+- **UIScrollHelper** — standalone scroll helper with `h2d.Mask` for use outside the screen system. `ScrollConfig` typedef shared with `UIScrollableScreen`.
+- **Controllable.trackOutsideClick()** — `OutsideClickControl` interface removed; `trackOutsideClick(enabled)` is now a direct method on `Controllable`. Call sites simplified from `wrapper.control.outsideClick.trackOutsideClick(true)` to `wrapper.control.trackOutsideClick(true)`.
+
+### Changed
+- **UIDefaultController: simplified outside-click mechanism** — removed `OutsideClickImpl` class and tri-state `enabledChanged` flag. Outside-click subscriber tracking is now inlined into `ControllableImpl` with a context-based approach: controller sets `currentElement` before dispatching `onEvent`, `trackOutsideClick()` uses it directly.
+
+### Fixed
+- **TSFile empty filename in incremental mode** — returns transparent fallback tile instead of throwing when `bitmap($param)` has an empty/null filename during incremental updates
+- **UIMultiAnimGrid: hitTestRect Y gap uses wrong stride** — non-square cells (e.g. 60×30) used X stride for Y gap check, causing false hits in Y gaps
+- **UIMultiAnimGrid: hitTestRect rejects negative coordinates** — removed early return for negative coords; `Math.floor` handles them correctly
+- **UIMultiAnimGrid: CellCardPlayed event never emitted** — grid now wires chained listener on card hand that converts `CardPlayed(TargetZone)` → `CellCardPlayed`
+- **UIMultiAnimGrid: multiple card hand registrations corrupt shared target state** — each card hand binding now gets a unique `targetPrefix`; `clearCardTargetsForBinding` only removes matching entries
+- **UIMultiAnimGrid: rebuildCell doesn't refresh drag zones or card targets** — now calls `refreshAllDraggableZones()` and `refreshAllCardTargets()` after rebuild
+- **UIMultiAnimGrid: acceptDrops allows duplicate registration** — duplicate calls for the same draggable are now silently ignored
+- **UIMultiAnimGrid: rect grid card targeting offset by half cell** — `registerAsCardTarget()` applied `-cellSize/2` offset unconditionally; rect grids return top-left from `getCellLocalPosition` (no offset needed), only hex grids return center (offset needed)
+- **UICardHandHelper: setCardEnabled breaks state for animating cards** — added `enableAfterAnimation` flag and `resolveAnimationComplete()` to properly defer enable/disable during animations
+- **UICardHandTypes: removed dead `TargetCard` enum variant** — card-to-card combining uses `CardCombined` event; `TargetCard` was never used
+- **UIMultiAnimDraggable: clear() partial cleanup** — now also removes `root` from scene, sets `enabled=false`, clears `sourceSlot`/`sourceData`
+- **UIMultiAnimDraggable: swap mode reads stale sourceSlot.data** — added `sourceData` snapshot captured at `createFromSlot()` time; swap and cancel paths use snapshot instead of live slot data
+- **UIRichInteractiveHelper: setDisabled(false) loses hover state** — now checks `wrapper.hovered` and restores `Hover` state when mouse is still over the interactive
+- **UITooltipHelper: startHover ignores changed buildName** — early return now also compares `activeBuildName`; changing buildName for the same interactive re-triggers tooltip
+- **UIPanelHelper: named panel fade-in tween not tracked** — `closeNamed()` now cancels in-progress fade-in before starting fade-out
+- **UIMultiAnimCheckbox/UIMultiAnimTabs: set_disabled inconsistent** — `set_disabled` now uses `beginUpdate/endUpdate` and sets both `status` and `disabled` parameters, matching `UIMultiAnimButton` pattern
+
+### Changed
+- **UIDefaultController** — merged `DefaultUIController` into `UIControllerBase` and renamed to `UIDefaultController`. Made `getEventElement()` non-abstract with the default capture-or-hit-test implementation. One fewer class to understand; no behavioral change.
+- **DropZone.bounds** — changed type from `h2d.col.Bounds` to `h2d.col.Collider` to support non-rectangular drop zones (e.g. circles, polygons). `Bounds` implements `Collider`, so existing code is backward compatible.
+
 ## [1.0.0-rc.1] - 2026-03-03
 
 ### Added

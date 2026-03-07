@@ -32,6 +32,7 @@ private typedef PanelState = {
 	var prefix:String;
 	var closeMode:PanelCloseMode;
 	var pendingClose:Bool;
+	var fadeInTween:Null<Tween>;
 }
 
 @:nullSafety
@@ -218,10 +219,17 @@ class UIPanelHelper {
 		if (result.interactives.length > 0)
 			screen.addInteractives(result, prefix);
 
-		// Apply fade-in
+		// Apply fade-in (tracked so closeNamed can cancel it)
+		var fadeInTween:Null<Tween> = null;
 		if (defaultFadeIn > 0 && tweens != null) {
 			result.object.alpha = 0;
-			tweens.tween(result.object, defaultFadeIn, [Alpha(1.0)]);
+			fadeInTween = tweens.tween(result.object, defaultFadeIn, [Alpha(1.0)]);
+			fadeInTween.setOnComplete(() -> {
+				// Clear reference once complete so closeNamed doesn't cancel a finished tween
+				final panel = namedPanels.get(slot);
+				if (panel != null)
+					panel.fadeInTween = null;
+			});
 		}
 
 		namedPanels.set(slot, {
@@ -230,6 +238,7 @@ class UIPanelHelper {
 			prefix: prefix,
 			closeMode: closeMode ?? defaultCloseMode,
 			pendingClose: false,
+			fadeInTween: fadeInTween,
 		});
 	}
 
@@ -238,6 +247,11 @@ class UIPanelHelper {
 		final panel = namedPanels.get(slot);
 		if (panel == null)
 			return;
+		// Cancel any in-progress fade-in before starting fade-out
+		if (panel.fadeInTween != null) {
+			panel.fadeInTween.cancel();
+			panel.fadeInTween = null;
+		}
 		screen.removeInteractives(panel.prefix);
 		namedPanels.remove(slot);
 		screen.onScreenEvent(UICustomEvent(EVENT_PANEL_CLOSE, panel.interactiveId), null);
@@ -272,11 +286,11 @@ class UIPanelHelper {
 	// ---- Outside-click handling ----
 
 	/**
-	 * Call from onScreenEvent for every UIInteractiveEvent to handle outside-click close.
-	 * Uses OutsideClickControl: the trigger interactive subscribes on push, so clicking
-	 * elsewhere fires UIClickOutside. Because the controller sends OnReleaseOutside before
-	 * OnRelease, we defer the close to allow panel's own interactives to cancel it.
-	 * Call `checkPendingClose()` from the screen's update().
+	 * Handle outside-click close for UIInteractiveEvents.
+	 * The trigger interactive subscribes on push, so clicking elsewhere fires UIClickOutside.
+	 * Because the controller sends OnReleaseOutside before OnRelease, we defer the close
+	 * to allow panel's own interactives to cancel it.
+	 * Auto-wired when created via `createPanelHelper()`, or call manually from onScreenEvent.
 	 * Returns true if any panel was closed immediately (click on unrelated interactive).
 	 */
 	var _pendingClose:Bool = false;

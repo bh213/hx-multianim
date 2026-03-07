@@ -11,6 +11,7 @@ import bh.ui.UICardHandTargeting;
 import bh.ui.UICardHandTypes;
 import bh.ui.UICardHandTypes.TargetHighlightCallback;
 import bh.ui.UICardHandTypes.TargetAcceptsCallback;
+import bh.ui.UICardHandTypes.TargetingZone;
 import bh.ui.UIElement.UIScreenEvent;
 import bh.ui.UIInteractiveWrapper;
 import bh.ui.UIRichInteractiveHelper;
@@ -24,6 +25,9 @@ private class CardEntry {
 	public var state:CardState = InHand;
 	public var layoutPos:CardLayoutPosition;
 	public var interactiveId:String;
+	/** Deferred enable: if card is disabled during animation and re-enabled before it completes,
+	 *  this flag causes the onComplete handler to restore InHand instead of staying Disabled. */
+	public var enableAfterAnimation:Bool = false;
 
 	public function new(descriptor:CardDescriptor, result:BuilderResult, container:h2d.Object, interactiveId:String) {
 		this.descriptor = descriptor;
@@ -126,6 +130,7 @@ class UICardHandHelper {
 	final hoverScale:Float;
 	final hoverNeighborSpread:Float;
 	final targetingThresholdY:Float;
+	var targetingZones:Array<TargetingZone>;
 	final allowCardToCard:Bool;
 	final cardToCardHighlightScale:Float;
 	final cardToCardHoverPop:Bool;
@@ -213,6 +218,14 @@ class UICardHandHelper {
 		hoverScale = config != null && config.hoverScale != null ? config.hoverScale : 1.15;
 		hoverNeighborSpread = config != null && config.hoverNeighborSpread != null ? config.hoverNeighborSpread : 20.0;
 		targetingThresholdY = config != null && config.targetingThresholdY != null ? config.targetingThresholdY : 100.0;
+
+		// Targeting zones: explicit zones override the legacy Y-threshold
+		if (config != null && config.targetingZones != null) {
+			targetingZones = config.targetingZones.copy();
+		} else {
+			targetingZones = [];
+		}
+
 		allowCardToCard = config != null && config.allowCardToCard != null ? config.allowCardToCard : false;
 		cardToCardHighlightScale = config != null && config.cardToCardHighlightScale != null ? config.cardToCardHighlightScale : 1.1;
 		cardToCardHoverPop = config != null && config.cardToCardHoverPop != null ? config.cardToCardHoverPop : false;
@@ -291,8 +304,7 @@ class UICardHandHelper {
 			entry.layoutPos = targetPos;
 			animateCardTo(entry, new FPoint(drawPilePosition.x, drawPilePosition.y), new FPoint(targetPos.x, targetPos.y), 0,
 				targetPos.rotation, drawPathName, () -> {
-					if (entry.state == Animating)
-						entry.state = InHand;
+					resolveAnimationComplete(entry);
 					entry.container.scaleX = targetPos.scale;
 					entry.container.scaleY = targetPos.scale;
 					emitEvent(DrawAnimComplete(descriptor.id));
@@ -363,12 +375,21 @@ class UICardHandHelper {
 		if (!enabled && draggedEntry == entry)
 			cancelDrag();
 
-		// During animation, only Disabled overrides — enabling is deferred to onComplete
+		// During animation or disabled-while-animating: defer state changes
 		if (entry.state == Animating) {
-			if (!enabled)
+			if (!enabled) {
 				entry.state = Disabled;
+				entry.enableAfterAnimation = false;
+			} else {
+				// Already animating and enabled — no state change needed
+				entry.enableAfterAnimation = false;
+			}
+		} else if (entry.state == Disabled && isAnimatingEntry(entry)) {
+			// Card was disabled mid-animation; re-enabling defers to onComplete
+			entry.enableAfterAnimation = enabled;
 		} else {
 			entry.state = if (enabled) InHand else Disabled;
+			entry.enableAfterAnimation = false;
 		}
 
 		interactiveHelper.setDisabled(entry.interactiveId, !enabled);
@@ -417,6 +438,38 @@ class UICardHandHelper {
 	/** Set filter callback to determine which targets accept which cards. */
 	public function setTargetAcceptsFilter(cb:TargetAcceptsCallback):Void {
 		targeting.acceptsFilter = cb;
+	}
+
+	// === Public API: Targeting Zones ===
+
+	/** Add a targeting zone. When the cursor enters any zone during drag, targeting mode activates.
+	 *  Coordinates are in handContainer's local space. */
+	public function addTargetingZone(zone:TargetingZone):Void {
+		// Replace existing zone with same id
+		for (i in 0...targetingZones.length) {
+			if (targetingZones[i].id == zone.id) {
+				targetingZones[i] = zone;
+				return;
+			}
+		}
+		targetingZones.push(zone);
+	}
+
+	/** Remove a targeting zone by id. */
+	public function removeTargetingZone(id:String):Void {
+		var i = 0;
+		while (i < targetingZones.length) {
+			if (targetingZones[i].id == id) {
+				targetingZones.splice(i, 1);
+				return;
+			}
+			i++;
+		}
+	}
+
+	/** Remove all targeting zones. Falls back to legacy Y-threshold behavior. */
+	public function clearTargetingZones():Void {
+		targetingZones = [];
 	}
 
 	// === Public API: Configuration ===
@@ -669,8 +722,7 @@ class UICardHandHelper {
 			entry.layoutPos = pos;
 			animateCardTo(entry, new FPoint(entry.container.x, entry.container.y), new FPoint(pos.x, pos.y), entry.container.rotation,
 				pos.rotation, rearrangePathName, () -> {
-					if (entry.state == Animating)
-						entry.state = InHand;
+					resolveAnimationComplete(entry);
 					entry.container.scaleX = pos.scale;
 					entry.container.scaleY = pos.scale;
 				});
@@ -836,8 +888,8 @@ class UICardHandHelper {
 			}
 		}
 
-		// Priority 2: Targeting threshold (only when arrow enabled)
-		if (targeting.arrowEnabled && cursorY < anchorY - targetingThresholdY) {
+		// Priority 2: Targeting zones / threshold (only when arrow enabled)
+		if (targeting.arrowEnabled && isInTargetingZone(cursorX, cursorY)) {
 			if (!isTargeting)
 				enterTargetingMode(entry);
 			// Card stays at hand position, arrow points from card to cursor
@@ -957,8 +1009,7 @@ class UICardHandHelper {
 			var targetPos = entry.layoutPos;
 			animateCardTo(entry, new FPoint(entry.container.x, entry.container.y), new FPoint(targetPos.x, targetPos.y),
 				entry.container.rotation, targetPos.rotation, returnPathName, () -> {
-					if (entry.state == Animating)
-						entry.state = InHand;
+					resolveAnimationComplete(entry);
 					entry.container.scaleX = targetPos.scale;
 					entry.container.scaleY = targetPos.scale;
 					interactiveHelper.resetState(entry.interactiveId);
@@ -1102,9 +1153,56 @@ class UICardHandHelper {
 
 	// === Internal: Events ===
 
+	/** Emit event to all listeners (including chained grid listeners). */
 	function emitEvent(event:CardHandEvent):Void {
+		// Notify chained listeners first (grids that convert CardPlayed → CellCardPlayed)
+		for (listener in chainedListeners)
+			listener(event);
 		if (onCardEvent != null)
 			onCardEvent(event);
+	}
+
+	/** Chained event listeners added by UIMultiAnimGrid for CellCardPlayed conversion. */
+	@:allow(bh.ui.UIMultiAnimGrid)
+	final chainedListeners:Array<(event:CardHandEvent) -> Void> = [];
+
+	/** Resolve card state when animation completes.
+	 *  Handles deferred enable/disable from setCardEnabled called during animation. */
+	function resolveAnimationComplete(entry:CardEntry):Void {
+		if (entry.state == Animating) {
+			entry.state = InHand;
+		} else if (entry.state == Disabled && entry.enableAfterAnimation) {
+			entry.state = InHand;
+			entry.enableAfterAnimation = false;
+			interactiveHelper.setDisabled(entry.interactiveId, false);
+		}
+		// If Disabled without enableAfterAnimation, stay Disabled
+	}
+
+	/** Check whether an entry has an active animation running. */
+	function isAnimatingEntry(entry:CardEntry):Bool {
+		for (anim in activeAnimations)
+			if (anim.entry == entry)
+				return true;
+		return false;
+	}
+
+	// === Internal: Targeting zone check ===
+
+	/** Check whether cursor position is in a targeting zone.
+	 *  If explicit zones are registered, checks those.
+	 *  Otherwise falls back to legacy Y-threshold (full-width zone above anchorY - threshold). */
+	function isInTargetingZone(x:Float, y:Float):Bool {
+		if (targetingZones.length > 0) {
+			for (zone in targetingZones) {
+				if (x >= zone.x && x <= zone.x + zone.w && y >= zone.y && y <= zone.y + zone.h)
+					return true;
+			}
+			// Fallback: also check registered targets directly (cursor over a target = targeting)
+			return targeting.hitTestTargets(sceneCursorX, sceneCursorY, draggedEntry != null ? draggedEntry.descriptor.id : "") != null;
+		}
+		// Legacy: simple Y threshold
+		return y < anchorY - targetingThresholdY;
 	}
 
 	// === Internal: Utilities ===

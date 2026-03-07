@@ -257,18 +257,13 @@ class CardHandOrchestratorTest extends BuilderTestBase {
 	@Test
 	public function testTargetingResultEnum():Void {
 		var t1 = TargetZone("zone1");
-		var t2 = TargetCard("card1");
-		var t3 = NoTarget;
+		var t2 = NoTarget;
 
 		switch (t1) {
 			case TargetZone(id): Assert.equals("zone1", id);
 			default: Assert.fail("Expected TargetZone");
 		}
 		switch (t2) {
-			case TargetCard(id): Assert.equals("card1", id);
-			default: Assert.fail("Expected TargetCard");
-		}
-		switch (t3) {
 			case NoTarget: Assert.isTrue(true);
 			default: Assert.fail("Expected NoTarget");
 		}

@@ -110,7 +110,7 @@ class UIInteractiveWrapper implements UIElement implements StandardUIElementEven
 		switch wrapper.event {
 			case OnPush(_):
 				if (eventFlags & EVENT_PUSH != 0) {
-					wrapper.control.outsideClick.trackOutsideClick(true);
+					wrapper.control.trackOutsideClick(true);
 					wrapper.control.pushEvent(UIInteractiveEvent(UIPush, this.id, this.metadata), this);
 				}
 			case OnRelease(_):

@@ -11,7 +11,7 @@
 - `src/bh/ui/UICardHandTypes.hx` — enums, typedefs, config
 
 **`.manim` integration points:**
-- **Card visuals**: programmables with `interactive(w, h, id, bind => "status")` — `UIRichInteractiveHelper` auto-wires Normal→Hover→Pressed state machine
+- **Card visuals**: programmables with `interactive(w, h, id, bind => "status")` — CardHandHelper's internal `UIRichInteractiveHelper` auto-wires Normal→Hover→Pressed state machine (uses `bind` metadata key, not `autoStatus`)
 - **Visual states**: filters in `.manim` conditionals (`@(status=>hover) filter: glow(...)`, `@(status=>disabled) filter: grayscale(...)`) — no manual alpha/scale
 - **Animations**: `animatedPath` elements via `createProjectilePath()` with Stretch normalization for draw/discard/rearrange/return
 - **Targeting arrow**: `.manim` programmable (receives `valid:bool` param, positioned+rotated+scaled between origin and cursor). Falls back to `h2d.Graphics` bezier if no programmable provided
@@ -41,13 +41,15 @@ paths {
 }
 ```
 
-**Config:** `CardHandConfig` typedef — layout mode (Fan/Linear/PathLayout), anchor position, fan radius/angle, hover pop/scale, targeting threshold, pile positions, layers, `.manim` element names for paths/arrow, interactive prefix, `onCardBuilt` callback, `cardToCardHighlightScale`.
+**Config:** `CardHandConfig` typedef — layout mode (Fan/Linear/PathLayout), anchor position, fan radius/angle, hover pop/scale, targeting zones/threshold, pile positions, layers, `.manim` element names for paths/arrow, interactive prefix, `onCardBuilt` callback, `cardToCardHighlightScale`.
 
 **Path layout config:** `layoutPathName` (name of path in `paths{}` block), `pathDistribution` (`EvenArcLength` for uniform visual spacing, `EvenRate` for equal rate increments), `pathOrientation` (`Tangent`, `Straight`, `TangentClamped(maxDeg)`).
 
 **Events:** `CardHandEvent` enum — `CardPlayed(id, TargetZone(targetId)|NoTarget)`, `CardCombined(source, target)`, `CardHoverStart/End`, `CardDragStart/End`, `DrawAnimComplete`, `DiscardAnimComplete`.
 
-**API:** `setHand(descriptors)`, `drawCard(descriptor)`, `discardCard(id)`, `updateCardParams(id, params)`, `setCardEnabled(id, bool)`, `getCardResult(id)`, `registerTargetInteractive(wrapper)`, `registerTargetInteractives(wrappers)`, `unregisterTargetInteractive(id)`, `setTargetHighlightCallback(cb)`, `setTargetAcceptsFilter(cb)`, `handleScreenEvent(event)`, `onMouseMove(x,y)`, `onMouseRelease(x,y)`, `update(dt)`, `dispose()`.
+**API:** `setHand(descriptors)`, `drawCard(descriptor)`, `discardCard(id)`, `updateCardParams(id, params)`, `setCardEnabled(id, bool)`, `getCardResult(id)`, `registerTargetInteractive(wrapper)`, `registerTargetInteractives(wrappers)`, `unregisterTargetInteractive(id)`, `setTargetHighlightCallback(cb)`, `setTargetAcceptsFilter(cb)`, `addTargetingZone(zone)`, `removeTargetingZone(id)`, `clearTargetingZones()`, `handleScreenEvent(event)`, `onMouseMove(x,y)`, `onMouseRelease(x,y)`, `update(dt)`, `dispose()`.
+
+**Targeting zones:** `TargetingZone` typedef — `{id, x, y, w, h}` rectangles in handContainer local space. When cursor enters any zone during drag, targeting mode activates (card snaps to hand, arrow draws). Multiple zones supported (e.g., one per game panel). Fallback: if cursor is directly over a registered target interactive, targeting also activates regardless of zones. Legacy: if no explicit zones are set, `targetingThresholdY` creates an implicit full-width zone above `anchorY - threshold` (backward compatible). Config: `targetingZones` array in `CardHandConfig`, or runtime via `addTargetingZone()`/`removeTargetingZone()`/`clearTargetingZones()`.
 
 **Callbacks:** `onCardEvent`, `canPlayCard:(CardId, TargetingResult)->Bool` (veto), `canDragCard:(CardId)->Bool` (veto), `onCardBuilt:(CardId, BuilderResult, h2d.Object)->Void` (customize card after build — add buttons, slots, overlays via `result.getSlot()`, `result.getDynamicRef()`, `result.setParameter()`).
 
@@ -55,8 +57,8 @@ paths {
 
 **Drag state machine:**
 1. `interactive()` emits `UIPush` → helper starts drag, reparents card to `dragContainer`
-2. Mouse move: card-to-card check first → targeting threshold check → normal drag
-3. Release: card-to-card hover → `CardCombined`; targeting mode + target → `CardPlayed(TargetZone)`; above threshold no target → `CardPlayed(NoTarget)`; below threshold → return animation
+2. Mouse move: card-to-card check first → targeting zone check (bounds + target fallback) → normal drag
+3. Release: card-to-card hover → `CardCombined`; targeting mode + target → `CardPlayed(TargetZone)`; in zone no target → `CardPlayed(NoTarget)`; outside zones → return animation
 
 **Hover detection:** Position-based via `getCardAtBasePosition()` in `onMouseMove` — uses base layout (no hover pop) with nearest-center selection among overlapping OBBs. Does NOT rely on Interactive UIEntering/UILeaving events (which would be blocked by z-order changes). Hovered card is brought to top render layer; z-order restored on un-hover. Card-to-card targets also z-reordered during highlight.
 
@@ -217,6 +219,18 @@ var tooltip = new UITooltipHelper(screen, builder, {fadeIn: 0.15, fadeOut: 0.1},
 var panel = new UIPanelHelper(screen, builder, {fadeIn: 0.2, fadeOut: 0.15}, screenManager.tweens);
 ```
 
+**Auto-wired PanelHelper** (recommended): `createPanelHelper()` creates a `UIPanelHelper` that is auto-wired for outside-click handling. `handleOutsideClick()` runs in `dispatchScreenEvent()`, `checkPendingClose()` runs in `update()`. No manual boilerplate needed.
+```haxe
+// In screen's load():
+panelHelper = createPanelHelper(builder, {fadeIn: 0.2});
+
+// In onScreenEvent — just handle clicks, no handleOutsideClick() needed:
+case UIInteractiveEvent(UIClick, id, _): panelHelper.open(id, "panel");
+
+// No checkPendingClose() in update() needed — super.update(dt) handles it.
+```
+Manual wiring via `new UIPanelHelper(...)` still works. Auto-wiring only activates with `createPanelHelper()` or explicit `registerPanelHelper(helper)` / `unregisterPanelHelper(helper)`.
+
 **TooltipDefaults:** `?fadeIn:Float` (default 0.15), `?fadeOut:Float` (default 0.1). Tooltip fades in on show, fades out on hide.
 
 **PanelDefaults:** `?fadeIn:Float` (default 0), `?fadeOut:Float` (default 0). Panels default to instant (backward compatible).
@@ -226,6 +240,33 @@ var panel = new UIPanelHelper(screen, builder, {fadeIn: 0.2, fadeOut: 0.15}, scr
 - `EVENT_PANEL_CLOSE` fires immediately on close, not after fade
 - If TweenManager is null or fade duration is 0, instant behavior is preserved (backward compatible)
 - Edge cases handled: hide during fade-in cancels tween; show during fade-out cancels previous and removes immediately
+
+## Scrollable Screen
+
+`UIScrollableScreen` — abstract screen base class with whole-screen mousewheel scrolling. Extends `UIScreenBase`.
+
+**File:** `src/bh/ui/screens/UIScrollableScreen.hx`
+
+**Architecture:** Uses `scrollContent:h2d.Layers` as a child of `root`. All content is added to `scrollContent` (via `addObjectToLayer` override). Scroll adjusts `scrollContent.y` while `root.y` stays at 0, preventing conflicts with transition animations that tween `root`.
+
+**Usage:**
+```haxe
+class MyScreen extends UIScrollableScreen {
+    public function new(sm:ScreenManager) {
+        super(sm, {scrollSpeed: 30, smoothing: 12});
+    }
+}
+```
+
+**Config:** `ScrollConfig` typedef — `?scrollSpeed:Float` (default 30), `?smoothing:Float` (default 12, 0 = instant).
+
+**Auto-measure:** Content height auto-measured via `getBounds` each frame. Scroll disabled when content fits viewport. `setContentHeight(h)` for manual override (disables auto-measure).
+
+**Key implementation detail:** `UIScreenBase.clear()` calls `root.removeChildren()` which detaches `scrollContent`. The `onClear()` override re-attaches it and resets scroll state. Subclasses MUST call `super.onClear()`.
+
+**ScreenManager.sceneWidth/sceneHeight:** Getters returning actual visible scene dimensions (`s2d.width`/`s2d.height`). With AutoZoom integer scaling, these differ from configured dimensions (e.g., configured 1280×720 but actual 2310×1260 on hi-DPI).
+
+**Standalone helper:** `UIScrollHelper` (`src/bh/ui/UIScrollHelper.hx`) — mask-based scroll for use outside the screen system. Shares `ScrollConfig` typedef.
 
 ## FloatingTextHelper
 

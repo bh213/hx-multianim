@@ -13,6 +13,8 @@ import bh.ui.UITabGroup;
 import bh.ui.UITabGroup.TabWireMode;
 import bh.ui.UIMultiAnimTabs;
 import bh.ui.UIMultiAnimTabs.ContentTarget;
+import bh.ui.UIMultiAnimGrid;
+import bh.ui.UIMultiAnimGridTypes;
 import bh.multianim.MultiAnimParser.ResolvedSettings;
 import bh.multianim.MultiAnimParser.SettingValue;
 import bh.ui.UIElement;
@@ -24,6 +26,9 @@ import bh.ui.controllers.UIController;
 import bh.base.FPoint;
 import bh.base.TweenManager;
 import bh.multianim.MultiAnimBuilder.BuilderResolvedSettings;
+import bh.ui.UIRichInteractiveHelper;
+import bh.ui.UIPanelHelper;
+import bh.ui.UIPanelHelper.PanelDefaults;
 
 typedef ModalOverlayConfig = {
 	var ?color:Int;
@@ -71,6 +76,8 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	var postCustomAddToLayer:Map<h2d.Object, UIElementCustomAddToLayer> = [];
 	var interactiveWrappers:Array<UIInteractiveWrapper> = [];
 	var interactiveMap:Map<String, UIInteractiveWrapper> = [];
+	var autoStatusHelper:Null<UIRichInteractiveHelper> = null;
+	var panelHelpers:Array<UIPanelHelper> = [];
 	var tabGroup:Null<UITabGroup> = null;
 	var tabAutoWired:Bool = false;
 	/** When set, ScreenManager creates a darkening overlay behind this dialog. */
@@ -105,7 +112,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 			this.layers = layers;
 		}
 
-		this.controllersStack = [new DefaultUIController(this)];
+		this.controllersStack = [new bh.ui.controllers.UIDefaultController(this)];
 	}
 
 	function get_tweens():TweenManager {
@@ -144,6 +151,10 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		subElementProviders = [];
 		interactiveWrappers = [];
 		interactiveMap.clear();
+		if (autoStatusHelper != null)
+			autoStatusHelper.unbindAll();
+		autoStatusHelper = null;
+		panelHelpers = [];
 		postCustomAddToLayer.clear();
 		contentTarget = null;
 		contentTargetOwnership.clear();
@@ -177,6 +188,15 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 
 	public abstract function onScreenEvent(event:UIScreenEvent, source:Null<UIElement>):Void;
 
+	/** Dispatch event with auto-wiring handled before onScreenEvent. Called by controllers. */
+	public function dispatchScreenEvent(event:UIScreenEvent, source:Null<UIElement>):Void {
+		if (autoStatusHelper != null)
+			autoStatusHelper.handleEvent(event);
+		for (helper in panelHelpers)
+			helper.handleOutsideClick(event);
+		onScreenEvent(event, source);
+	}
+
 	public function onMouseMove(pos:h2d.col.Point):Bool { return true;}
 	public function onMouseClick(pos:h2d.col.Point, button:Int, release:Bool):Bool {return true;}
 	public function onMouseWheel(pos:h2d.col.Point, delta:Float):Bool { return true;}
@@ -199,6 +219,8 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 			for (el in elements)
 				syncInitialState(el);
 		}
+		for (helper in panelHelpers)
+			helper.checkPendingClose();
 		// controller.update(dt) is already called by ScreenManager.update() before screen.update()
 		for (obj => v in postCustomAddToLayer) {
 			var insertedLayer = findLayerFromObject(obj);
@@ -571,7 +593,31 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		return addObjectToLayer(textObj, layer);
 	}
 
+	function addGrid(builder:MultiAnimBuilder, config:UIMultiAnimGridTypes.GridConfig, ?layer:LayersEnum):UIMultiAnimGrid {
+		final grid = new UIMultiAnimGrid(builder, config);
+		addObjectToLayer(grid.getObject(), layer);
+		return grid;
+	}
 
+	/** Create a PanelHelper that is auto-wired for outside-click handling.
+	 *  handleOutsideClick() runs in dispatchScreenEvent(), checkPendingClose() runs in update(). */
+	function createPanelHelper(builder:MultiAnimBuilder, ?defaults:PanelDefaults, ?tweenManager:TweenManager):UIPanelHelper {
+		final tw = tweenManager != null ? tweenManager : (screenManager != null ? tweens : null);
+		final helper = new UIPanelHelper(this, builder, defaults, tw);
+		registerPanelHelper(helper);
+		return helper;
+	}
+
+	/** Register an existing PanelHelper for auto-wired outside-click handling. */
+	function registerPanelHelper(helper:UIPanelHelper):Void {
+		if (!panelHelpers.contains(helper))
+			panelHelpers.push(helper);
+	}
+
+	/** Unregister a PanelHelper from auto-wired outside-click handling. */
+	function unregisterPanelHelper(helper:UIPanelHelper):Void {
+		panelHelpers.remove(helper);
+	}
 
     function addScrollableListWithSingleBuilder(builder:MultiAnimBuilder, panelBuilderName:String, itemBuilderName:String, scrollbarBuilderName:String, scrollbarInPanelName:String, items, settings:ResolvedSettings, initialIndex:Int = 0, width:Int = 100, height:Int = 100):UIMultiAnimScrollableList {
         return addScrollableList(builder.createElementBuilder(panelBuilderName), builder.createElementBuilder(itemBuilderName), builder.createElementBuilder(scrollbarBuilderName), scrollbarInPanelName, items, settings, initialIndex, width, height);
@@ -751,11 +797,32 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		return wrapper;
 	}
 
-	/** Registers all `interactive()` elements from a builder result. Events arrive in `onScreenEvent` as `UIInteractiveEvent(event, id, metadata)`. */
+	/** Registers all `interactive()` elements from a builder result. Events arrive in `onScreenEvent` as `UIInteractiveEvent(event, id, metadata)`.
+	 *  Interactives with `autoStatus` metadata are automatically wired for Normal→Hover→Pressed state management. */
 	public function addInteractives(r:BuilderResult, ?prefix:String):Array<UIInteractiveWrapper> {
 		var wrappers:Array<UIInteractiveWrapper> = [];
 		for (obj in r.interactives) {
 			wrappers.push(addInteractive(obj, prefix));
+		}
+		// Auto-wire interactives with autoStatus metadata
+		var hasAutoStatus = false;
+		for (obj in r.interactives) {
+			switch obj.multiAnimType {
+				case MAInteractive(_, _, _, meta):
+					if (meta != null) {
+						final brs = new BuilderResolvedSettings(meta);
+						if (brs.getStringOrDefault(UIRichInteractiveHelper.RESERVED_KEY, "") != "") {
+							hasAutoStatus = true;
+							break;
+						}
+					}
+				default:
+			}
+		}
+		if (hasAutoStatus) {
+			if (autoStatusHelper == null)
+				autoStatusHelper = new UIRichInteractiveHelper(this);
+			autoStatusHelper.registerAutoStatus(r, prefix);
 		}
 		return wrappers;
 	}
@@ -800,6 +867,13 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 			interactiveMap.remove(w.id);
 			removeElement(w);
 		}
+		// Auto-unregister from autoStatus helper
+		if (autoStatusHelper != null) {
+			if (prefix != null)
+				autoStatusHelper.unregisterByPrefix(prefix);
+			else
+				autoStatusHelper.unbindAll();
+		}
 	}
 
 	/** O(1) lookup of interactive wrapper by id. */
@@ -810,6 +884,12 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	/** Returns all interactive wrappers with the given prefix. */
 	public function getInteractivesByPrefix(prefix:String):Array<UIInteractiveWrapper> {
 		return [for (w in interactiveWrappers) if (w.prefix == prefix) w];
+	}
+
+	/** Returns the screen's auto-wiring helper for `autoStatus` interactives, or null if none registered.
+	 *  Use for advanced operations like `setDisabled()` or `setParameter()` on auto-wired interactives. */
+	public function getAutoInteractiveHelper():Null<UIRichInteractiveHelper> {
+		return autoStatusHelper;
 	}
 
 	public function addElement(element:UIElement, layer:Null<LayersEnum>) {

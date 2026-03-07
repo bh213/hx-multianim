@@ -869,6 +869,7 @@ These are pre-built UI components used through the builder/screen system.
 | **Progress bar** | Display-only value indicator (0-100) |
 | **Interactive** | Hit-test region with ID and optional typed metadata |
 | **Draggable** | Drag-and-drop with drop zones, slot integration, swap mode |
+| **Grid** | 2D grid (rect or hex) with cell state, drag-drop zones, card targeting |
 | **Tabs** | Tab bar with per-tab content management, relative coordinates mode |
 
 ### Tabs Settings
@@ -883,6 +884,31 @@ These are pre-built UI components used through the builder/screen system.
 | `tabPanel.contentRoot` | behavioral | Named element for relative coordinates (e.g. `contentArea`) |
 
 When `tabPanel.contentRoot` is set, tab content coordinates are relative to the named element's position. Each tab gets its own `h2d.Layers` for proper layer support within the panel.
+
+### Grid Component (`UIMultiAnimGrid`)
+
+2D grid (rectangular or hexagonal) managing cell state, rendering, drag-drop, and card targeting.
+
+| Config field | Description |
+|-------------|-------------|
+| `gridType` | `Rect(cellW, cellH, ?gap)` or `Hex(orientation, sizeX, sizeY)` |
+| `cellBuildName` | Default `.manim` programmable name for cells |
+| `cellBuildDelegate` | Optional `(col, row, data) -> {?buildName, ?params}` per-cell override |
+| `originX`, `originY` | Grid root position |
+| `snapPathName` | AnimatedPath for drop snap (null = instant) |
+| `returnPathName` | AnimatedPath for drag cancel return (null = instant) |
+| `highlightParam` | Cell param for drag highlight (default: `"highlight"`) |
+| `rejectHighlightParam` | Cell param for rejected drop highlight (default: null = no reject visual) |
+| `statusParam` | Cell param for hover status (default: `"status"`) |
+| `tweenManager` | Optional `TweenManager` for cell lifecycle animations (null = instant) |
+
+**Cell programmable contract:** Must have `col:int`, `row:int`, plus matching `highlightParam` (bool) and `statusParam` (enum with `normal`/`hover`). Optionally `rejectHighlightParam` (bool) for wrong-type reject glow.
+
+**Events** (`GridEvent` enum via `onGridEvent`): `CellClick`, `CellHoverEnter`, `CellHoverLeave`, `CellDrop(cell, draggable, sourceGrid, sourceCell)`, `CellCardPlayed`, `CellDataChanged`.
+
+**Key API:** `addRectRegion(cols, rows)`, `addHexRegion(center, radius)`, `set(col, row, data, ?params)`, `get()`, `clear()`, `isOccupied()`, `forEach()`, `cellAtPoint(sceneX, sceneY)`, `cellPosition(col, row)`, `neighbors()`, `distance()`, `acceptDrops(draggable, ?filter)`, `registerAsCardTarget(cardHand, ?filter)`, `makeDraggableFromCell(col, row, ?visual, cloneMode)`, `dispose()`.
+
+**Cell animations** (require `tweenManager`): `tweenCell(col, row, duration, props, ?easing)`, `addCellAnimated(col, row, ?data, ?params, duration, initProps, ?easing)`, `removeCellAnimated(col, row, duration, props, ?easing, ?onComplete)`. **Detach/reattach**: `detachCellVisual(col, row)` → `{object, data, sceneX, sceneY}`, `reattachCellVisual(col, row, ?obj)`.
 
 ### Common UI Settings
 
@@ -983,15 +1009,29 @@ interactive(200, 30, "tooltip-trigger", events: [hover])
 
 Default: all events enabled. Omitting `events:` emits all event types.
 
-### Bind Metadata
+### autoStatus Metadata (Screen Auto-Wiring)
 
-Declare which programmable parameter an interactive drives for `UIRichInteractiveHelper` auto-wiring:
+Auto-wire Normal→Hover→Pressed state management at screen level — no manual `UIRichInteractiveHelper` needed:
+
+```manim
+interactive(200, 30, "shopBtn", autoStatus => "status", events: [hover, click, push])
+```
+
+When `screen.addInteractives(result)` detects `autoStatus` metadata, it automatically creates an internal `UIRichInteractiveHelper` and wires hover/press/leave state transitions. Events still reach `onScreenEvent()` for game logic.
+
+Advanced: `screen.getAutoInteractiveHelper()` returns the internal helper for `setDisabled()`, `setParameter()`, etc.
+
+### Bind Metadata (Manual Wiring)
+
+For custom state management (e.g., `UICardHandHelper`), use `bind` with a manually-created `UIRichInteractiveHelper`:
 
 ```manim
 interactive(200, 30, "shopBtn", bind => "status", events: [hover, click, push])
 ```
 
-`UIRichInteractiveHelper.register(result)` scans interactives for `bind` metadata and auto-wires hover/press/leave state transitions to `setParameter()` calls on the bound `BuilderResult`.
+`UIRichInteractiveHelper.register(result, ?prefix, metadataKey)` scans interactives for the given metadata key (default: `"bind"`) and auto-wires state transitions. The key `"autoStatus"` is reserved and throws if used manually.
+
+**Important:** An interactive cannot have both `autoStatus` and `bind` — `register()` throws if the screen already manages the interactive via `autoStatus`.
 
 ### Cursor Metadata
 

@@ -73,8 +73,8 @@ class UITooltipHelper {
 
 	/** Start hover timer for an interactive. Call from UIInteractiveEvent(UIEntering, ...) handler. */
 	public function startHover(interactiveId:String, buildName:String, ?params:Map<String, Dynamic>):Void {
-		// If already showing tooltip for this interactive, do nothing
-		if (activeTooltipId == interactiveId)
+		// If already showing tooltip for this interactive with the same buildName, do nothing
+		if (activeTooltipId == interactiveId && activeBuildName == buildName)
 			return;
 
 		// Hide any existing tooltip first
