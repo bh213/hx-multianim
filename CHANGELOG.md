@@ -64,6 +64,9 @@
 - **ReloadableRegistry.getAllHandles()** — returns all live reloadable handles across all source paths
 - **`.mcp.json`** — project-level MCP server configuration for Claude Code
 - **PanelHelper auto-wiring** — `createPanelHelper(builder, ?defaults)` on `UIScreenBase` creates and registers a `UIPanelHelper` with automatic outside-click handling. `handleOutsideClick()` runs in `dispatchScreenEvent()`, `checkPendingClose()` runs in `update()` — no manual boilerplate needed. Also: `registerPanelHelper()` / `unregisterPanelHelper()` for existing helpers. `clear()` unregisters all.
+- **UIScrollableScreen** — abstract screen base class with whole-screen mousewheel scrolling. Uses a `scrollContent:h2d.Layers` child of `root` so scroll offset (`scrollContent.y`) doesn't conflict with transition animations (`root.y`). Auto-measures content height via `getBounds`; disables scroll when content fits viewport. Configurable via `ScrollConfig` (speed, smoothing). `setContentHeight()` for manual override. Preserves `contentTarget` logic for tabs.
+- **ScreenManager.sceneWidth/sceneHeight** — getters returning actual visible scene dimensions (`s2d.width`/`s2d.height`), which differ from configured dimensions when using AutoZoom with integer scaling.
+- **UIScrollHelper** — standalone scroll helper with `h2d.Mask` for use outside the screen system. `ScrollConfig` typedef shared with `UIScrollableScreen`.
 - **Controllable.trackOutsideClick()** — `OutsideClickControl` interface removed; `trackOutsideClick(enabled)` is now a direct method on `Controllable`. Call sites simplified from `wrapper.control.outsideClick.trackOutsideClick(true)` to `wrapper.control.trackOutsideClick(true)`.
 
 ### Changed

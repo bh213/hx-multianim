@@ -241,6 +241,33 @@ Manual wiring via `new UIPanelHelper(...)` still works. Auto-wiring only activat
 - If TweenManager is null or fade duration is 0, instant behavior is preserved (backward compatible)
 - Edge cases handled: hide during fade-in cancels tween; show during fade-out cancels previous and removes immediately
 
+## Scrollable Screen
+
+`UIScrollableScreen` — abstract screen base class with whole-screen mousewheel scrolling. Extends `UIScreenBase`.
+
+**File:** `src/bh/ui/screens/UIScrollableScreen.hx`
+
+**Architecture:** Uses `scrollContent:h2d.Layers` as a child of `root`. All content is added to `scrollContent` (via `addObjectToLayer` override). Scroll adjusts `scrollContent.y` while `root.y` stays at 0, preventing conflicts with transition animations that tween `root`.
+
+**Usage:**
+```haxe
+class MyScreen extends UIScrollableScreen {
+    public function new(sm:ScreenManager) {
+        super(sm, {scrollSpeed: 30, smoothing: 12});
+    }
+}
+```
+
+**Config:** `ScrollConfig` typedef — `?scrollSpeed:Float` (default 30), `?smoothing:Float` (default 12, 0 = instant).
+
+**Auto-measure:** Content height auto-measured via `getBounds` each frame. Scroll disabled when content fits viewport. `setContentHeight(h)` for manual override (disables auto-measure).
+
+**Key implementation detail:** `UIScreenBase.clear()` calls `root.removeChildren()` which detaches `scrollContent`. The `onClear()` override re-attaches it and resets scroll state. Subclasses MUST call `super.onClear()`.
+
+**ScreenManager.sceneWidth/sceneHeight:** Getters returning actual visible scene dimensions (`s2d.width`/`s2d.height`). With AutoZoom integer scaling, these differ from configured dimensions (e.g., configured 1280×720 but actual 2310×1260 on hi-DPI).
+
+**Standalone helper:** `UIScrollHelper` (`src/bh/ui/UIScrollHelper.hx`) — mask-based scroll for use outside the screen system. Shares `ScrollConfig` typedef.
+
 ## FloatingTextHelper
 
 AnimatedPath-driven floating text manager for damage numbers, heal text, status effects, etc.

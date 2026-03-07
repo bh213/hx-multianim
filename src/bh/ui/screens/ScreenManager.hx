@@ -85,6 +85,17 @@ class ScreenManager {
 		#end
 	}
 
+	public var sceneWidth(get, never):Float;
+	public var sceneHeight(get, never):Float;
+
+	function get_sceneWidth():Float {
+		return app.s2d.width;
+	}
+
+	function get_sceneHeight():Float {
+		return app.s2d.height;
+	}
+
 	static function createLoader() {
 		final loader = new bh.base.ResourceLoader.CachingResourceLoader();
 
