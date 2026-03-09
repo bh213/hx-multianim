@@ -25,6 +25,10 @@ class UIStandardMultiAnimButton implements UIElement implements UIElementDisabla
 		this.result = builder.buildWithParameters(name, params, null, null, true);
 	}
 
+	public function setText(text:String) {
+		result.setParameter("buttonText", text);
+	}
+
 	public function set_disabled(value:Bool):Bool {
 		if (this.disabled != value) {
 			this.disabled = value;

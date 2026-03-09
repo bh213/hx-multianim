@@ -51,14 +51,18 @@ import bh.ui.UICardHandTypes.PathOrientation;
  */
 class UIComponentTest extends BuilderTestBase {
 	/** Read a string parameter from an incremental BuilderResult's internal state. */
-	static function getStatusParam(result:bh.multianim.MultiAnimBuilder.BuilderResult):String {
+	static function getStringParam(result:bh.multianim.MultiAnimBuilder.BuilderResult, name:String):String {
 		@:privateAccess var params = result.incrementalContext.indexedParams;
-		return switch params.get("status") {
+		return switch params.get(name) {
 			case StringValue(s): s;
 			case Index(_, v): v;
 			case Value(v): Std.string(v);
 			case _: null;
 		};
+	}
+
+	static function getStatusParam(result:bh.multianim.MultiAnimBuilder.BuilderResult):String {
+		return getStringParam(result, "status");
 	}
 	// --- Inline .manim definitions for test components ---
 
@@ -156,6 +160,18 @@ class UIComponentTest extends BuilderTestBase {
 		UITestHarness.simulateClick(button, mock);
 
 		Assert.isTrue(callbackFired);
+	}
+
+	@Test
+	public function testButtonSetText():Void {
+		var builder = BuilderTestBase.builderFromSource(BUTTON_MANIM);
+		var button = UIStandardMultiAnimButton.create(builder, "button", "Original");
+
+		@:privateAccess var result = button.result;
+		Assert.equals("Original", getStringParam(result, "buttonText"));
+
+		button.setText("Updated");
+		Assert.equals("Updated", getStringParam(result, "buttonText"));
 	}
 
 	// ============== Checkbox Tests ==============
