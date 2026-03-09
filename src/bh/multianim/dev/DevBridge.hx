@@ -16,6 +16,7 @@ import bh.multianim.MultiAnimParser.ParametersDefinitions;
 import bh.multianim.MultiAnimParser.ResolvedIndexParameters;
 import bh.multianim.dev.HotReload;
 import bh.base.TweenManager;
+import bh.ui.UIElement.UIScreenEvent;
 
 @:access(bh.ui.screens.ScreenManager)
 @:access(bh.ui.screens.UIScreen.UIScreenBase)
@@ -268,6 +269,8 @@ class DevBridge {
 			case "wait_for_idle": handleWaitForIdle(params);
 			// v4: layout validation
 			case "check_overlaps": handleCheckOverlaps(params);
+			// v5: direct actions
+			case "click_interactive": handleClickInteractive(params);
 			default: throw 'Unknown method: $method';
 		};
 	}
@@ -836,7 +839,8 @@ class DevBridge {
 
 	function getScreenInteractives(screen:bh.ui.screens.UIScreen.UIScreen, screenName:Null<String>):Array<Dynamic> {
 		var interactives:Array<Dynamic> = [];
-		var wrappers:Array<bh.ui.UIInteractiveWrapper> = @:privateAccess (cast screen : bh.ui.screens.UIScreen.UIScreenBase).interactiveWrappers;
+		var sb:bh.ui.screens.UIScreen.UIScreenBase = cast screen;
+		var wrappers:Array<bh.ui.UIInteractiveWrapper> = @:privateAccess sb.interactiveWrappers;
 		for (wrapper in wrappers) {
 			var entry:Dynamic = {
 				id: wrapper.id,
@@ -858,6 +862,31 @@ class DevBridge {
 				if (hasMeta) entry.metadata = meta;
 			}
 			interactives.push(entry);
+		}
+
+		// Also include UI elements that are buttons (implement UIElementText)
+		var elements:Array<bh.ui.UIElement.UIElement> = @:privateAccess sb.elements;
+		for (element in elements) {
+			if (Std.isOfType(element, bh.ui.UIElement.UIElementText)) {
+				var textElement:bh.ui.UIElement.UIElementText = cast element;
+				var obj = element.getObject();
+				var bounds = obj.getBounds();
+				var entry:Dynamic = {
+					id: textElement.getText(),
+					type: "button",
+					x: bounds.xMin,
+					y: bounds.yMin,
+					width: bounds.width,
+					height: bounds.height,
+				};
+				if (Std.isOfType(element, bh.ui.UIElement.UIElementDisablable)) {
+					var disablable:bh.ui.UIElement.UIElementDisablable = cast element;
+					entry.disabled = disablable.disabled;
+				}
+				if (screenName != null)
+					entry.screen = screenName;
+				interactives.push(entry);
+			}
 		}
 		return interactives;
 	}
@@ -1280,6 +1309,66 @@ class DevBridge {
 			overlaps: overlaps,
 			summary: {total: overlaps.length, interactive_overlaps: interactiveCount, visual_overlaps: visualCount},
 		};
+	}
+
+	// ---- v5: Direct Actions ----
+
+	function handleClickInteractive(params:Dynamic):Dynamic {
+		var id:String = params.id;
+		if (id == null)
+			throw "Required param: id (interactive identifier)";
+		var screenName:String = params.screen;
+
+		// Search for the interactive wrapper by id across screens
+		var screensToSearch:Array<{screen:bh.ui.screens.UIScreen.UIScreen, name:String}> = [];
+		if (screenName != null) {
+			var screen = screenManager.configuredScreens.get(screenName);
+			if (screen == null)
+				throw 'Screen not found: $screenName';
+			screensToSearch.push({screen: screen, name: screenName});
+		} else {
+			for (s in screenManager.activeScreens) {
+				var name = "unknown";
+				for (n => screen in screenManager.configuredScreens) {
+					if (screen == s) {
+						name = n;
+						break;
+					}
+				}
+				screensToSearch.push({screen: s, name: name});
+			}
+		}
+
+		for (entry in screensToSearch) {
+			var sb:bh.ui.screens.UIScreen.UIScreenBase = cast entry.screen;
+			var wrapper = sb.getInteractive(id);
+			if (wrapper != null) {
+				if (wrapper.disabled)
+					return {success: false, error: 'Interactive "$id" is disabled', id: id, screen: entry.name};
+				var emptyMeta = new bh.multianim.MultiAnimBuilder.BuilderResolvedSettings(null);
+				sb.dispatchScreenEvent(UIInteractiveEvent(UIClick, id, wrapper.metadata), wrapper);
+				return {success: true, id: id, screen: entry.name};
+			}
+
+			// Also search UI elements (buttons) by text
+			var elements:Array<bh.ui.UIElement.UIElement> = @:privateAccess sb.elements;
+			for (element in elements) {
+				if (Std.isOfType(element, bh.ui.UIElement.UIElementText)) {
+					var textElement:bh.ui.UIElement.UIElementText = cast element;
+					if (textElement.getText() == id) {
+						if (Std.isOfType(element, bh.ui.UIElement.UIElementDisablable)) {
+							var disablable:bh.ui.UIElement.UIElementDisablable = cast element;
+							if (disablable.disabled)
+								return {success: false, error: 'Button "$id" is disabled', id: id, screen: entry.name};
+						}
+						sb.dispatchScreenEvent(UIClick, element);
+						return {success: true, id: id, screen: entry.name, type: "button"};
+					}
+				}
+			}
+		}
+
+		throw 'Interactive not found: $id';
 	}
 
 	function collectVisualOverlaps(parent:h2d.Object, overlaps:Array<Dynamic>, minArea:Int, includeHidden:Bool):Void {
