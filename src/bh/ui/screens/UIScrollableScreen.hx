@@ -89,11 +89,14 @@ abstract class UIScrollableScreen extends UIScreenBase {
 
 	override public function onClear():Void {
 		// clear() calls root.removeChildren() which detaches scrollContent.
-		// Re-attach it so the next load() can add content into it.
+		// Clear scrollContent's own children (not removed by root.removeChildren()),
+		// then re-attach it so the next load() can add content into it.
+		scrollContent.removeChildren();
 		root.addChild(scrollContent);
 		scrollY = 0;
 		targetScrollY = 0;
 		scrollContentHeight = 0;
 		scrollAutoMeasure = true;
+		scrollContent.y = 0;
 	}
 }
