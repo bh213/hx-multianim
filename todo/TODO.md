@@ -17,6 +17,7 @@
 
 ## After 1.0
 - Text input codegen support (`@:manim` factory with `createTextInput()`)
+- Negative codegen tests: `RVArray`/`RVArrayReference` throws, runtime `.x`/`.y` extraction throws
 - Bit expression: support for any-bit and all-bits (e.g. grid direction)
 - Radio: paired UIElement (click on label to change radio)
 - Subelements: handle nested subelements, keep state, don't query each time (cache `Std.isOfType`)
