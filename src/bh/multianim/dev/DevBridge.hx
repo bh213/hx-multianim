@@ -266,6 +266,8 @@ class DevBridge {
 			case "list_atlases": handleListAtlases(params);
 			case "coordinate_transform": handleCoordinateTransform(params);
 			case "wait_for_idle": handleWaitForIdle(params);
+			// v4: layout validation
+			case "check_overlaps": handleCheckOverlaps(params);
 			default: throw 'Unknown method: $method';
 		};
 	}
@@ -1168,6 +1170,181 @@ class DevBridge {
 			isTransitioning: screenManager.isTransitioning,
 			isPaused: paused,
 		};
+	}
+
+	// ---- v4: layout validation ----
+
+	function handleCheckOverlaps(params:Dynamic):Dynamic {
+		var screenName:String = params.screen;
+		var mode:String = params.mode != null ? params.mode : "all";
+		var minArea:Int = params.min_overlap_area != null ? Std.int(params.min_overlap_area) : 1;
+		var includeHidden:Bool = params.include_hidden != null ? params.include_hidden : false;
+
+		var overlaps:Array<Dynamic> = [];
+
+		// Collect interactives with their global bounds
+		if (mode == "all" || mode == "interactives") {
+			var interactiveBounds:Array<{id:String, x:Float, y:Float, w:Float, h:Float, disabled:Bool, screen:String}> = [];
+
+			var screensToCheck:Array<{screen:bh.ui.screens.UIScreen.UIScreen, name:String}> = [];
+			if (screenName != null) {
+				var screen = screenManager.configuredScreens.get(screenName);
+				if (screen == null)
+					throw 'Screen not found: $screenName';
+				screensToCheck.push({screen: screen, name: screenName});
+			} else {
+				for (s in screenManager.activeScreens) {
+					var name = "unknown";
+					for (n => screen in screenManager.configuredScreens) {
+						if (screen == s) {
+							name = n;
+							break;
+						}
+					}
+					screensToCheck.push({screen: s, name: name});
+				}
+			}
+
+			for (entry in screensToCheck) {
+				var wrappers:Array<bh.ui.UIInteractiveWrapper> = @:privateAccess (cast entry.screen : bh.ui.screens.UIScreen.UIScreenBase).interactiveWrappers;
+				for (wrapper in wrappers) {
+					if (!includeHidden && !wrapper.interactive.visible) continue;
+					if (!includeHidden && wrapper.disabled) continue;
+
+					switch wrapper.interactive.multiAnimType {
+						case MAInteractive(width, height, _, _):
+							// Transform local corners to global
+							var topLeft = wrapper.interactive.localToGlobal(new h2d.col.Point(0, 0));
+							var bottomRight = wrapper.interactive.localToGlobal(new h2d.col.Point(width, height));
+							var gx = Math.min(topLeft.x, bottomRight.x);
+							var gy = Math.min(topLeft.y, bottomRight.y);
+							var gw = Math.abs(bottomRight.x - topLeft.x);
+							var gh = Math.abs(bottomRight.y - topLeft.y);
+							interactiveBounds.push({
+								id: wrapper.id,
+								x: gx,
+								y: gy,
+								w: gw,
+								h: gh,
+								disabled: wrapper.disabled,
+								screen: entry.name,
+							});
+						default:
+					}
+				}
+			}
+
+			// Pairwise intersection test
+			for (i in 0...interactiveBounds.length) {
+				for (j in (i + 1)...interactiveBounds.length) {
+					var a = interactiveBounds[i];
+					var b = interactiveBounds[j];
+					var ox = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x));
+					var oy = Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+					var area = Std.int(ox * oy);
+					if (area >= minArea) {
+						overlaps.push({
+							type: "interactive",
+							severity: "high",
+							elementA: {id: a.id, screen: a.screen, bounds: {x: round2(a.x), y: round2(a.y), w: round2(a.w), h: round2(a.h)}},
+							elementB: {id: b.id, screen: b.screen, bounds: {x: round2(b.x), y: round2(b.y), w: round2(b.w), h: round2(b.h)}},
+							overlapArea: area,
+							overlapRect: {
+								x: round2(Math.max(a.x, b.x)),
+								y: round2(Math.max(a.y, b.y)),
+								w: round2(ox),
+								h: round2(oy),
+							},
+						});
+					}
+				}
+			}
+		}
+
+		// Collect visual siblings with overlapping bounds
+		if (mode == "all" || mode == "visual") {
+			collectVisualOverlaps(screenManager.app.s2d, overlaps, minArea, includeHidden);
+		}
+
+		// Build summary
+		var interactiveCount = 0;
+		var visualCount = 0;
+		for (o in overlaps) {
+			if (o.type == "interactive")
+				interactiveCount++;
+			else
+				visualCount++;
+		}
+
+		return {
+			overlaps: overlaps,
+			summary: {total: overlaps.length, interactive_overlaps: interactiveCount, visual_overlaps: visualCount},
+		};
+	}
+
+	function collectVisualOverlaps(parent:h2d.Object, overlaps:Array<Dynamic>, minArea:Int, includeHidden:Bool):Void {
+		if (parent.numChildren < 2) {
+			// Still recurse into single children
+			for (i in 0...parent.numChildren)
+				collectVisualOverlaps(parent.getChildAt(i), overlaps, minArea, includeHidden);
+			return;
+		}
+
+		// Collect sibling bounds
+		var siblings:Array<{obj:h2d.Object, bounds:h2d.col.Bounds, name:String}> = [];
+		for (i in 0...parent.numChildren) {
+			var child = parent.getChildAt(i);
+			if (!includeHidden && !child.visible) continue;
+			if (!includeHidden && child.alpha == 0) continue;
+			var bounds = child.getBounds();
+			if (bounds == null || bounds.isEmpty()) continue;
+			var name = child.name != null ? child.name : '[$i]${Type.getClassName(Type.getClass(child))}';
+			siblings.push({obj: child, bounds: bounds, name: name});
+		}
+
+		// Pairwise test siblings
+		for (i in 0...siblings.length) {
+			for (j in (i + 1)...siblings.length) {
+				var a = siblings[i];
+				var b = siblings[j];
+				var ax = a.bounds.xMin;
+				var ay = a.bounds.yMin;
+				var aw = a.bounds.xMax - a.bounds.xMin;
+				var ah = a.bounds.yMax - a.bounds.yMin;
+				var bx = b.bounds.xMin;
+				var by = b.bounds.yMin;
+				var bw = b.bounds.xMax - b.bounds.xMin;
+				var bh = b.bounds.yMax - b.bounds.yMin;
+
+				var ox = Math.max(0, Math.min(ax + aw, bx + bw) - Math.max(ax, bx));
+				var oy = Math.max(0, Math.min(ay + ah, by + bh) - Math.max(ay, by));
+				var area = Std.int(ox * oy);
+				if (area >= minArea) {
+					overlaps.push({
+						type: "visual",
+						severity: "low",
+						elementA: {name: a.name, bounds: {x: round2(ax), y: round2(ay), w: round2(aw), h: round2(ah)}},
+						elementB: {name: b.name, bounds: {x: round2(bx), y: round2(by), w: round2(bw), h: round2(bh)}},
+						overlapArea: area,
+						overlapRect: {
+							x: round2(Math.max(ax, bx)),
+							y: round2(Math.max(ay, by)),
+							w: round2(ox),
+							h: round2(oy),
+						},
+					});
+				}
+			}
+		}
+
+		// Recurse into children
+		for (i in 0...parent.numChildren) {
+			collectVisualOverlaps(parent.getChildAt(i), overlaps, minArea, includeHidden);
+		}
+	}
+
+	static function round2(v:Float):Float {
+		return Math.round(v * 100) / 100;
 	}
 
 	// ---- Helpers ----
