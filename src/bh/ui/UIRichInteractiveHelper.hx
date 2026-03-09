@@ -171,7 +171,7 @@ class UIRichInteractiveHelper {
 				if (binding.currentState == Disabled) return true;
 
 				switch innerEvent {
-					case UIEntering:
+					case UIEntering(_):
 						if (binding.currentState == Normal) {
 							binding.currentState = Hover;
 							binding.result.setParameter(binding.stateParam, "hover");

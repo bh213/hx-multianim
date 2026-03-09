@@ -354,7 +354,7 @@ tooltipHelper = new UITooltipHelper(this, builder,
 tooltipHelper.setPosition("hlpItem", Above);
 
 // In onScreenEvent:
-case UIInteractiveEvent(UIEntering, id, meta):
+case UIInteractiveEvent(UIEntering(_), id, meta):
     var data = getTooltipData(id);
     if (data != null) tooltipHelper.startHover(id, "myTooltip", data);
 case UIInteractiveEvent(UILeaving, id, _):
@@ -1355,7 +1355,7 @@ class MyScreen extends UIScreenBase {
         switch event {
             case UIClick:
                 if (source == startButton) onStart();
-            case UIInteractiveEvent(UIEntering, id, meta):
+            case UIInteractiveEvent(UIEntering(_), id, meta):
                 tooltipHelper.startHover(id, "tooltip", getTooltipParams(id));
             case UIInteractiveEvent(UILeaving, id, _):
                 tooltipHelper.cancelHover(id);

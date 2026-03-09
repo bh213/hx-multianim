@@ -153,37 +153,37 @@ class UIRichInteractiveHelperTest extends BuilderTestBase {
 	public function testRegisterFindsBindMetadata():Void {
 		var ctx = createHelper(BOUND_MANIM, "bound");
 		// handleEvent should return true for bound interactive
-		Assert.isTrue(ctx.helper.handleEvent(UIInteractiveEvent(UIEntering, "btn1", null)));
+		Assert.isTrue(ctx.helper.handleEvent(UIInteractiveEvent(UIEntering(), "btn1", null)));
 	}
 
 	@Test
 	public function testRegisterIgnoresInteractiveWithoutBind():Void {
 		var ctx = createHelper(UNBOUND_MANIM, "unbound");
 		// handleEvent should return false for unbound interactive
-		Assert.isFalse(ctx.helper.handleEvent(UIInteractiveEvent(UIEntering, "btnNoBind", null)));
+		Assert.isFalse(ctx.helper.handleEvent(UIInteractiveEvent(UIEntering(), "btnNoBind", null)));
 	}
 
 	@Test
 	public function testRegisterWithPrefix():Void {
 		var ctx = createHelper(BOUND_MANIM, "bound", "pfx");
 		// With prefix, full id is "pfx.btn1"
-		Assert.isTrue(ctx.helper.handleEvent(UIInteractiveEvent(UIEntering, "pfx.btn1", null)));
+		Assert.isTrue(ctx.helper.handleEvent(UIInteractiveEvent(UIEntering(), "pfx.btn1", null)));
 		// Without prefix should not match
-		Assert.isFalse(ctx.helper.handleEvent(UIInteractiveEvent(UIEntering, "btn1", null)));
+		Assert.isFalse(ctx.helper.handleEvent(UIInteractiveEvent(UIEntering(), "btn1", null)));
 	}
 
 	@Test
 	public function testRegisterMultipleInteractives():Void {
 		var ctx = createHelper(MULTI_BOUND_MANIM, "multi");
-		Assert.isTrue(ctx.helper.handleEvent(UIInteractiveEvent(UIEntering, "btnA", null)));
-		Assert.isTrue(ctx.helper.handleEvent(UIInteractiveEvent(UIEntering, "btnB", null)));
+		Assert.isTrue(ctx.helper.handleEvent(UIInteractiveEvent(UIEntering(), "btnA", null)));
+		Assert.isTrue(ctx.helper.handleEvent(UIInteractiveEvent(UIEntering(), "btnB", null)));
 	}
 
 	@Test
 	public function testRegisterCustomBindParam():Void {
 		var ctx = createHelper(CUSTOM_BIND_MANIM, "custom");
 		// Should bind to "myState" parameter — handleEvent returns true
-		Assert.isTrue(ctx.helper.handleEvent(UIInteractiveEvent(UIEntering, "btnCustom", null)));
+		Assert.isTrue(ctx.helper.handleEvent(UIInteractiveEvent(UIEntering(), "btnCustom", null)));
 	}
 
 	// ============== handleEvent() state machine ==============
@@ -192,7 +192,7 @@ class UIRichInteractiveHelperTest extends BuilderTestBase {
 	public function testEnterSetsHover():Void {
 		var ctx = createHelper(BOUND_MANIM, "bound");
 		assertState(ctx.helper, "btn1", Normal);
-		var handled = ctx.helper.handleEvent(UIInteractiveEvent(UIEntering, "btn1", null));
+		var handled = ctx.helper.handleEvent(UIInteractiveEvent(UIEntering(), "btn1", null));
 		Assert.isTrue(handled);
 		assertState(ctx.helper, "btn1", Hover);
 	}
@@ -200,7 +200,7 @@ class UIRichInteractiveHelperTest extends BuilderTestBase {
 	@Test
 	public function testPushAfterEnterSetPressed():Void {
 		var ctx = createHelper(BOUND_MANIM, "bound");
-		ctx.helper.handleEvent(UIInteractiveEvent(UIEntering, "btn1", null));
+		ctx.helper.handleEvent(UIInteractiveEvent(UIEntering(), "btn1", null));
 		assertState(ctx.helper, "btn1", Hover);
 		var handled = ctx.helper.handleEvent(UIInteractiveEvent(UIPush, "btn1", null));
 		Assert.isTrue(handled);
@@ -210,7 +210,7 @@ class UIRichInteractiveHelperTest extends BuilderTestBase {
 	@Test
 	public function testClickAfterPushReturnsToHover():Void {
 		var ctx = createHelper(BOUND_MANIM, "bound");
-		ctx.helper.handleEvent(UIInteractiveEvent(UIEntering, "btn1", null));
+		ctx.helper.handleEvent(UIInteractiveEvent(UIEntering(), "btn1", null));
 		ctx.helper.handleEvent(UIInteractiveEvent(UIPush, "btn1", null));
 		assertState(ctx.helper, "btn1", Pressed);
 		var handled = ctx.helper.handleEvent(UIInteractiveEvent(UIClick, "btn1", null));
@@ -221,7 +221,7 @@ class UIRichInteractiveHelperTest extends BuilderTestBase {
 	@Test
 	public function testLeaveFromHoverReturnsToNormal():Void {
 		var ctx = createHelper(BOUND_MANIM, "bound");
-		ctx.helper.handleEvent(UIInteractiveEvent(UIEntering, "btn1", null));
+		ctx.helper.handleEvent(UIInteractiveEvent(UIEntering(), "btn1", null));
 		assertState(ctx.helper, "btn1", Hover);
 		ctx.helper.handleEvent(UIInteractiveEvent(UILeaving, "btn1", null));
 		assertState(ctx.helper, "btn1", Normal);
@@ -230,7 +230,7 @@ class UIRichInteractiveHelperTest extends BuilderTestBase {
 	@Test
 	public function testLeaveFromPressedReturnsToNormal():Void {
 		var ctx = createHelper(BOUND_MANIM, "bound");
-		ctx.helper.handleEvent(UIInteractiveEvent(UIEntering, "btn1", null));
+		ctx.helper.handleEvent(UIInteractiveEvent(UIEntering(), "btn1", null));
 		ctx.helper.handleEvent(UIInteractiveEvent(UIPush, "btn1", null));
 		assertState(ctx.helper, "btn1", Pressed);
 		ctx.helper.handleEvent(UIInteractiveEvent(UILeaving, "btn1", null));
@@ -249,7 +249,7 @@ class UIRichInteractiveHelperTest extends BuilderTestBase {
 	@Test
 	public function testClickWithoutPushIsIgnored():Void {
 		var ctx = createHelper(BOUND_MANIM, "bound");
-		ctx.helper.handleEvent(UIInteractiveEvent(UIEntering, "btn1", null));
+		ctx.helper.handleEvent(UIInteractiveEvent(UIEntering(), "btn1", null));
 		assertState(ctx.helper, "btn1", Hover);
 		// Click without Push — requires Pressed state
 		ctx.helper.handleEvent(UIInteractiveEvent(UIClick, "btn1", null));
@@ -262,7 +262,7 @@ class UIRichInteractiveHelperTest extends BuilderTestBase {
 		var ctx = createHelper(BOUND_MANIM, "bound");
 		// Full interaction cycle: Normal → Hover → Pressed → Hover → Normal
 		assertState(ctx.helper, "btn1", Normal);
-		ctx.helper.handleEvent(UIInteractiveEvent(UIEntering, "btn1", null));
+		ctx.helper.handleEvent(UIInteractiveEvent(UIEntering(), "btn1", null));
 		assertState(ctx.helper, "btn1", Hover);
 		ctx.helper.handleEvent(UIInteractiveEvent(UIPush, "btn1", null));
 		assertState(ctx.helper, "btn1", Pressed);
@@ -275,7 +275,7 @@ class UIRichInteractiveHelperTest extends BuilderTestBase {
 	@Test
 	public function testUnknownInteractiveReturnsFalse():Void {
 		var ctx = createHelper(BOUND_MANIM, "bound");
-		Assert.isFalse(ctx.helper.handleEvent(UIInteractiveEvent(UIEntering, "unknown", null)));
+		Assert.isFalse(ctx.helper.handleEvent(UIInteractiveEvent(UIEntering(), "unknown", null)));
 	}
 
 	@Test
@@ -288,9 +288,9 @@ class UIRichInteractiveHelperTest extends BuilderTestBase {
 	public function testMultipleInteractivesIndependent():Void {
 		var ctx = createHelper(MULTI_BOUND_MANIM, "multi");
 		// Enter A — should not affect B
-		ctx.helper.handleEvent(UIInteractiveEvent(UIEntering, "btnA", null));
+		ctx.helper.handleEvent(UIInteractiveEvent(UIEntering(), "btnA", null));
 		// B can still enter independently
-		Assert.isTrue(ctx.helper.handleEvent(UIInteractiveEvent(UIEntering, "btnB", null)));
+		Assert.isTrue(ctx.helper.handleEvent(UIInteractiveEvent(UIEntering(), "btnB", null)));
 		// Leave A
 		ctx.helper.handleEvent(UIInteractiveEvent(UILeaving, "btnA", null));
 		// B should still respond (still in Hover)
@@ -305,7 +305,7 @@ class UIRichInteractiveHelperTest extends BuilderTestBase {
 		ctx.helper.setDisabled("btn1", true);
 		assertState(ctx.helper, "btn1", Disabled);
 		// Events should return true (bound) but not change state
-		var handled = ctx.helper.handleEvent(UIInteractiveEvent(UIEntering, "btn1", null));
+		var handled = ctx.helper.handleEvent(UIInteractiveEvent(UIEntering(), "btn1", null));
 		Assert.isTrue(handled); // Still returns true because it IS bound
 		assertState(ctx.helper, "btn1", Disabled); // State unchanged
 	}
@@ -316,7 +316,7 @@ class UIRichInteractiveHelperTest extends BuilderTestBase {
 		ctx.helper.setDisabled("btn1", true);
 		ctx.helper.setDisabled("btn1", false);
 		// Should work normally after re-enabling
-		ctx.helper.handleEvent(UIInteractiveEvent(UIEntering, "btn1", null));
+		ctx.helper.handleEvent(UIInteractiveEvent(UIEntering(), "btn1", null));
 		ctx.helper.handleEvent(UIInteractiveEvent(UIPush, "btn1", null));
 		Assert.isTrue(ctx.helper.handleEvent(UIInteractiveEvent(UIClick, "btn1", null)));
 	}
@@ -333,7 +333,7 @@ class UIRichInteractiveHelperTest extends BuilderTestBase {
 	public function testDisabledDoesNotTransitionOnEnter():Void {
 		var ctx = createHelper(BOUND_MANIM, "bound");
 		// Enter first, then disable
-		ctx.helper.handleEvent(UIInteractiveEvent(UIEntering, "btn1", null));
+		ctx.helper.handleEvent(UIInteractiveEvent(UIEntering(), "btn1", null));
 		assertState(ctx.helper, "btn1", Hover);
 		ctx.helper.setDisabled("btn1", true);
 		assertState(ctx.helper, "btn1", Disabled);
@@ -344,7 +344,7 @@ class UIRichInteractiveHelperTest extends BuilderTestBase {
 		ctx.helper.setDisabled("btn1", false);
 		assertState(ctx.helper, "btn1", Normal);
 		// After re-enable, entering should work from Normal
-		ctx.helper.handleEvent(UIInteractiveEvent(UIEntering, "btn1", null));
+		ctx.helper.handleEvent(UIInteractiveEvent(UIEntering(), "btn1", null));
 		assertState(ctx.helper, "btn1", Hover);
 	}
 
@@ -377,29 +377,29 @@ class UIRichInteractiveHelperTest extends BuilderTestBase {
 		var helper = new UIRichInteractiveHelper(screen);
 		// Manually bind the unbound interactive
 		helper.bind("btnNoBind", result, "status");
-		Assert.isTrue(helper.handleEvent(UIInteractiveEvent(UIEntering, "btnNoBind", null)));
+		Assert.isTrue(helper.handleEvent(UIInteractiveEvent(UIEntering(), "btnNoBind", null)));
 	}
 
 	@Test
 	public function testUnbind():Void {
 		var ctx = createHelper(BOUND_MANIM, "bound");
 		ctx.helper.unbind("btn1");
-		Assert.isFalse(ctx.helper.handleEvent(UIInteractiveEvent(UIEntering, "btn1", null)));
+		Assert.isFalse(ctx.helper.handleEvent(UIInteractiveEvent(UIEntering(), "btn1", null)));
 	}
 
 	@Test
 	public function testUnbindAll():Void {
 		var ctx = createHelper(MULTI_BOUND_MANIM, "multi");
 		ctx.helper.unbindAll();
-		Assert.isFalse(ctx.helper.handleEvent(UIInteractiveEvent(UIEntering, "btnA", null)));
-		Assert.isFalse(ctx.helper.handleEvent(UIInteractiveEvent(UIEntering, "btnB", null)));
+		Assert.isFalse(ctx.helper.handleEvent(UIInteractiveEvent(UIEntering(), "btnA", null)));
+		Assert.isFalse(ctx.helper.handleEvent(UIInteractiveEvent(UIEntering(), "btnB", null)));
 	}
 
 	@Test
 	public function testUnregister():Void {
 		var ctx = createHelper(BOUND_MANIM, "bound");
 		ctx.helper.unregister(ctx.result);
-		Assert.isFalse(ctx.helper.handleEvent(UIInteractiveEvent(UIEntering, "btn1", null)));
+		Assert.isFalse(ctx.helper.handleEvent(UIInteractiveEvent(UIEntering(), "btn1", null)));
 	}
 
 	@Test
@@ -417,8 +417,8 @@ class UIRichInteractiveHelperTest extends BuilderTestBase {
 
 		// Unregister only result1
 		helper.unregister(result1);
-		Assert.isFalse(helper.handleEvent(UIInteractiveEvent(UIEntering, "btn1", null)));
-		Assert.isTrue(helper.handleEvent(UIInteractiveEvent(UIEntering, "btnCustom", null)));
+		Assert.isFalse(helper.handleEvent(UIInteractiveEvent(UIEntering(), "btn1", null)));
+		Assert.isTrue(helper.handleEvent(UIInteractiveEvent(UIEntering(), "btnCustom", null)));
 	}
 
 	// ============== getResult ==============
@@ -469,13 +469,13 @@ class UIRichInteractiveHelperTest extends BuilderTestBase {
 		var ctx = createHelper(BOUND_MANIM, "bound");
 		// Run multiple interaction cycles
 		for (_ in 0...3) {
-			ctx.helper.handleEvent(UIInteractiveEvent(UIEntering, "btn1", null));
+			ctx.helper.handleEvent(UIInteractiveEvent(UIEntering(), "btn1", null));
 			ctx.helper.handleEvent(UIInteractiveEvent(UIPush, "btn1", null));
 			ctx.helper.handleEvent(UIInteractiveEvent(UIClick, "btn1", null));
 			ctx.helper.handleEvent(UIInteractiveEvent(UILeaving, "btn1", null));
 		}
 		// Should still work after multiple cycles
-		Assert.isTrue(ctx.helper.handleEvent(UIInteractiveEvent(UIEntering, "btn1", null)));
+		Assert.isTrue(ctx.helper.handleEvent(UIInteractiveEvent(UIEntering(), "btn1", null)));
 	}
 
 	// ============== Event filtering ==============
@@ -520,7 +520,7 @@ class UIRichInteractiveHelperTest extends BuilderTestBase {
 		Assert.equals(10, Std.int(bitmaps[0].tile.width));
 
 		// Enter → hover → should now show 20px wide bitmap
-		ctx.helper.handleEvent(UIInteractiveEvent(UIEntering, "btnVis", null));
+		ctx.helper.handleEvent(UIInteractiveEvent(UIEntering(), "btnVis", null));
 		assertState(ctx.helper, "btnVis", Hover);
 		bitmaps = findVisibleBitmapDescendants(ctx.result.object);
 		Assert.equals(1, bitmaps.length);
@@ -531,7 +531,7 @@ class UIRichInteractiveHelperTest extends BuilderTestBase {
 	public function testBindAutoWiringFullCycleVisual():Void {
 		var ctx = createHelper(VISUAL_BIND_MANIM, "visual");
 		// Enter → 20px
-		ctx.helper.handleEvent(UIInteractiveEvent(UIEntering, "btnVis", null));
+		ctx.helper.handleEvent(UIInteractiveEvent(UIEntering(), "btnVis", null));
 		var bitmaps = findVisibleBitmapDescendants(ctx.result.object);
 		Assert.equals(20, Std.int(bitmaps[0].tile.width));
 
@@ -558,7 +558,7 @@ class UIRichInteractiveHelperTest extends BuilderTestBase {
 
 		// Simulate hover enter — set wrapper.hovered directly since handleEvent
 		// processes screen-level events (wrapper.hovered is set by UIInteractiveWrapper.onEvent)
-		ctx.helper.handleEvent(UIInteractiveEvent(UIEntering, "btn1", null));
+		ctx.helper.handleEvent(UIInteractiveEvent(UIEntering(), "btn1", null));
 		assertState(ctx.helper, "btn1", Hover);
 		@:privateAccess wrapper.hovered = true;
 		Assert.isTrue(wrapper.hovered);
@@ -579,7 +579,7 @@ class UIRichInteractiveHelperTest extends BuilderTestBase {
 	public function testClickOutsideDoesNotChangeState():Void {
 		var ctx = createHelper(BOUND_MANIM, "bound");
 		// Enter to set Hover, then push to set Pressed
-		ctx.helper.handleEvent(UIInteractiveEvent(UIEntering, "btn1", null));
+		ctx.helper.handleEvent(UIInteractiveEvent(UIEntering(), "btn1", null));
 		ctx.helper.handleEvent(UIInteractiveEvent(UIPush, "btn1", null));
 		assertState(ctx.helper, "btn1", Pressed);
 
@@ -617,7 +617,7 @@ class UIRichInteractiveHelperTest extends BuilderTestBase {
 		var autoHelper = screen.getAutoInteractiveHelper();
 		Assert.notNull(autoHelper);
 		// Simulate event via dispatchScreenEvent (as controller would)
-		screen.dispatchScreenEvent(UIInteractiveEvent(UIEntering, "btn1", null), null);
+		screen.dispatchScreenEvent(UIInteractiveEvent(UIEntering(), "btn1", null), null);
 		assertState(autoHelper, "btn1", Hover);
 	}
 
@@ -629,7 +629,7 @@ class UIRichInteractiveHelperTest extends BuilderTestBase {
 		var autoHelper = screen.getAutoInteractiveHelper();
 		Assert.notNull(autoHelper);
 		// Full cycle via dispatchScreenEvent
-		screen.dispatchScreenEvent(UIInteractiveEvent(UIEntering, "btn1", null), null);
+		screen.dispatchScreenEvent(UIInteractiveEvent(UIEntering(), "btn1", null), null);
 		assertState(autoHelper, "btn1", Hover);
 		screen.dispatchScreenEvent(UIInteractiveEvent(UIPush, "btn1", null), null);
 		assertState(autoHelper, "btn1", Pressed);
@@ -645,8 +645,8 @@ class UIRichInteractiveHelperTest extends BuilderTestBase {
 		var result = BuilderTestBase.buildFromSource(AUTO_STATUS_MANIM, "autoBtn", null, Incremental);
 		screen.addInteractives(result);
 		// dispatchScreenEvent should call onScreenEvent too
-		screen.dispatchScreenEvent(UIInteractiveEvent(UIEntering, "btn1", null), null);
-		Assert.isTrue(screen.hasEvent(UIInteractiveEvent(UIEntering, "btn1", null)),
+		screen.dispatchScreenEvent(UIInteractiveEvent(UIEntering(), "btn1", null), null);
+		Assert.isTrue(screen.hasEvent(UIInteractiveEvent(UIEntering(), "btn1", null)),
 			"Event should still reach screen's onScreenEvent");
 	}
 
@@ -660,7 +660,7 @@ class UIRichInteractiveHelperTest extends BuilderTestBase {
 		Assert.equals(1, bitmaps.length);
 		Assert.equals(10, Std.int(bitmaps[0].tile.width));
 		// Hover → 20px wide
-		screen.dispatchScreenEvent(UIInteractiveEvent(UIEntering, "btn1", null), null);
+		screen.dispatchScreenEvent(UIInteractiveEvent(UIEntering(), "btn1", null), null);
 		bitmaps = findVisibleBitmapDescendants(result.object);
 		Assert.equals(1, bitmaps.length);
 		Assert.equals(20, Std.int(bitmaps[0].tile.width));
@@ -806,7 +806,7 @@ class UIRichInteractiveHelperTest extends BuilderTestBase {
 		var autoHelper = screen.getAutoInteractiveHelper();
 		Assert.notNull(autoHelper);
 		// Hover on first should not affect second
-		screen.dispatchScreenEvent(UIInteractiveEvent(UIEntering, "a.btn1", null), null);
+		screen.dispatchScreenEvent(UIInteractiveEvent(UIEntering(), "a.btn1", null), null);
 		assertState(autoHelper, "a.btn1", Hover);
 		assertState(autoHelper, "b.btn2", Normal, "Second interactive should remain Normal");
 	}
@@ -830,8 +830,8 @@ class UIRichInteractiveHelperTest extends BuilderTestBase {
 		var result = BuilderTestBase.buildFromSource(MIXED_MANIM, "mixed", null, Incremental);
 		screen.addInteractives(result);
 		// plainBtn events should still reach screen even though autoHelper exists
-		screen.dispatchScreenEvent(UIInteractiveEvent(UIEntering, "plainBtn", null), null);
-		Assert.isTrue(screen.hasEvent(UIInteractiveEvent(UIEntering, "plainBtn", null)),
+		screen.dispatchScreenEvent(UIInteractiveEvent(UIEntering(), "plainBtn", null), null);
+		Assert.isTrue(screen.hasEvent(UIInteractiveEvent(UIEntering(), "plainBtn", null)),
 			"plainBtn event should reach screen's onScreenEvent");
 	}
 
@@ -847,7 +847,7 @@ class UIRichInteractiveHelperTest extends BuilderTestBase {
 		autoHelper.setDisabled("btn1", true);
 		assertState(autoHelper, "btn1", Disabled);
 		// Events should not change state while disabled
-		screen.dispatchScreenEvent(UIInteractiveEvent(UIEntering, "btn1", null), null);
+		screen.dispatchScreenEvent(UIInteractiveEvent(UIEntering(), "btn1", null), null);
 		assertState(autoHelper, "btn1", Disabled, "Disabled should block hover via auto-wiring");
 	}
 
@@ -862,7 +862,7 @@ class UIRichInteractiveHelperTest extends BuilderTestBase {
 		autoHelper.setDisabled("btn1", false);
 		assertState(autoHelper, "btn1", Normal);
 		// Should respond to events again
-		screen.dispatchScreenEvent(UIInteractiveEvent(UIEntering, "btn1", null), null);
+		screen.dispatchScreenEvent(UIInteractiveEvent(UIEntering(), "btn1", null), null);
 		assertState(autoHelper, "btn1", Hover, "Re-enabled interactive should respond to hover");
 	}
 
@@ -883,7 +883,7 @@ class UIRichInteractiveHelperTest extends BuilderTestBase {
 		Assert.notNull(autoHelper, "Re-adding autoStatus interactives should recreate helper");
 		Assert.isTrue(autoHelper.hasBinding("btn1"));
 		// Should work normally
-		screen.dispatchScreenEvent(UIInteractiveEvent(UIEntering, "btn1", null), null);
+		screen.dispatchScreenEvent(UIInteractiveEvent(UIEntering(), "btn1", null), null);
 		assertState(autoHelper, "btn1", Hover);
 	}
 
@@ -984,7 +984,7 @@ class UIRichInteractiveHelperTest extends BuilderTestBase {
 		var autoHelper = screen.getAutoInteractiveHelper();
 		Assert.notNull(autoHelper);
 		// Drive to Pressed state
-		screen.dispatchScreenEvent(UIInteractiveEvent(UIEntering, "btn1", null), null);
+		screen.dispatchScreenEvent(UIInteractiveEvent(UIEntering(), "btn1", null), null);
 		screen.dispatchScreenEvent(UIInteractiveEvent(UIPush, "btn1", null), null);
 		assertState(autoHelper, "btn1", Pressed);
 		// Reset
@@ -1000,7 +1000,7 @@ class UIRichInteractiveHelperTest extends BuilderTestBase {
 		var result = BuilderTestBase.buildFromSource(AUTO_STATUS_MANIM, "autoBtn", null, Incremental);
 		screen.addInteractives(result);
 		// Drive to Pressed → should show 30px wide bitmap
-		screen.dispatchScreenEvent(UIInteractiveEvent(UIEntering, "btn1", null), null);
+		screen.dispatchScreenEvent(UIInteractiveEvent(UIEntering(), "btn1", null), null);
 		screen.dispatchScreenEvent(UIInteractiveEvent(UIPush, "btn1", null), null);
 		var bitmaps = findVisibleBitmapDescendants(result.object);
 		Assert.equals(1, bitmaps.length);

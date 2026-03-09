@@ -498,7 +498,7 @@ class UIComponentTest extends BuilderTestBase {
 		var mock = new MockControllable();
 
 		UITestHarness.simulateEnter(wrapper, mock);
-		Assert.isTrue(mock.hasInteractiveEvent(UIEntering));
+		Assert.isTrue(mock.hasInteractiveEvent(UIEntering()));
 	}
 
 	@Test

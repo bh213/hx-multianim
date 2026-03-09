@@ -122,7 +122,7 @@ class UIInteractiveWrapper implements UIElement implements StandardUIElementEven
 			case OnEnter:
 				if (eventFlags & EVENT_HOVER != 0) {
 					hovered = true;
-					wrapper.control.pushEvent(UIInteractiveEvent(UIEntering, this.id, this.metadata), this);
+					wrapper.control.pushEvent(UIInteractiveEvent(UIEntering(), this.id, this.metadata), this);
 				}
 			case OnLeave:
 				if (eventFlags & EVENT_HOVER != 0) {

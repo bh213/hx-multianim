@@ -69,8 +69,13 @@
 - **UIScrollHelper** — standalone scroll helper with `h2d.Mask` for use outside the screen system. `ScrollConfig` typedef shared with `UIScrollableScreen`.
 - **Controllable.trackOutsideClick()** — `OutsideClickControl` interface removed; `trackOutsideClick(enabled)` is now a direct method on `Controllable`. Call sites simplified from `wrapper.control.outsideClick.trackOutsideClick(true)` to `wrapper.control.trackOutsideClick(true)`.
 
+- **Screen navigation data passing** — `switchTo()`, `switchScreen()`, `modalDialog()`, and `modalDialogWithTransition()` now accept an optional `?data:Dynamic` parameter. Data flows through to entering screens via the `UIEntering(data)` event. Enables passing context (e.g., selected item, game state) between screens without shared global state.
+- **`UIEntering` event carries optional data** — `UIEntering` enum variant changed from no-arg to `UIEntering(?data:Dynamic)`. Pattern match with `UIEntering(_)` to ignore data, or `UIEntering(data)` to extract it.
+
 ### Changed
 - **UIDefaultController: simplified outside-click mechanism** — removed `OutsideClickImpl` class and tri-state `enabledChanged` flag. Outside-click subscriber tracking is now inlined into `ControllableImpl` with a context-based approach: controller sets `currentElement` before dispatching `onEvent`, `trackOutsideClick()` uses it directly.
+- **`switchTo()` parameter order** — signature changed from `switchTo(screen, ?transition)` to `switchTo(screen, ?data, ?transition)`. Callers passing transitions must add `null` for data or use named-style: `switchTo(screen, null, Fade(0.3))`.
+- **`modalDialogWithTransition()` parameter order** — signature changed from `modalDialogWithTransition(dialog, caller, name, ?transition)` to `modalDialogWithTransition(dialog, caller, name, ?data, ?transition)`.
 
 ### Fixed
 - **TSFile empty filename in incremental mode** — returns transparent fallback tile instead of throwing when `bitmap($param)` has an empty/null filename during incremental updates
@@ -89,6 +94,7 @@
 - **UITooltipHelper: startHover ignores changed buildName** — early return now also compares `activeBuildName`; changing buildName for the same interactive re-triggers tooltip
 - **UIPanelHelper: named panel fade-in tween not tracked** — `closeNamed()` now cancels in-progress fade-in before starting fade-out
 - **UIMultiAnimCheckbox/UIMultiAnimTabs: set_disabled inconsistent** — `set_disabled` now uses `beginUpdate/endUpdate` and sets both `status` and `disabled` parameters, matching `UIMultiAnimButton` pattern
+- **test.ps1: compile stderr deadlock** — reads stderr asynchronously to prevent potential deadlock when compiler output exceeds buffer. Also shows stdout on compile errors for better diagnostics.
 
 ### Changed
 - **UIDefaultController** — merged `DefaultUIController` into `UIControllerBase` and renamed to `UIDefaultController`. Made `getEventElement()` non-abstract with the default capture-or-hit-test implementation. One fewer class to understand; no behavioral change.

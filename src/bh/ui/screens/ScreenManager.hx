@@ -422,7 +422,7 @@ class ScreenManager {
 		}
 	}
 
-	public function modalDialog(dialog:UIScreen, caller:UIScreen, dialogName:String) {
+	public function modalDialog(dialog:UIScreen, caller:UIScreen, dialogName:String, ?data:Dynamic) {
 		dialog.load();
 		final overlayConfig = readOverlayConfig(dialog);
 		if (overlayConfig != null) {
@@ -431,10 +431,10 @@ class ScreenManager {
 				applyBlurToUnderlyingScreens(overlayConfig.blur);
 			modalOverlay.alpha = modalOverlayTargetAlpha; // no transition — show immediately
 		}
-		updateScreenMode(Dialog(dialog, caller, mode, dialogName));
+		updateScreenMode(Dialog(dialog, caller, mode, dialogName), data);
 	}
 
-	public function updateScreenMode(newScreenMode:ScreenManagerMode) {
+	public function updateScreenMode(newScreenMode:ScreenManagerMode, ?data:Dynamic) {
 		// Validate that no failed screens are being activated
 		switch newScreenMode {
 			case None:
@@ -566,7 +566,7 @@ class ScreenManager {
 			for (screen => layerIndex in addedScreens) {
 				final controller = screen.getController();
 				addScreen(screen, layerIndex);
-				screen.onScreenEvent(UIEntering, null);
+				screen.onScreenEvent(UIEntering(data), null);
 				screen.onScreenEvent(UIOnControllerEvent(Entering), null);
 				controller.lifecycleEvent(LifecycleControllerStarted);
 				if (overrideActiveScreenControllers == null) {
@@ -600,11 +600,12 @@ class ScreenManager {
 			cleanup();
 	}
 
-	/** Switch to a new screen mode with an optional visual transition. */
-	public function switchScreen(newScreenMode:ScreenManagerMode, ?transition:ScreenTransition):Void {
+	/** Switch to a new screen mode with an optional visual transition.
+	 *  Optional `data` is passed to entering screens via `UIEntering(data)` event. */
+	public function switchScreen(newScreenMode:ScreenManagerMode, ?transition:ScreenTransition, ?data:Dynamic):Void {
 		if (transition == null || transition.match(None)) {
 			finalizeTransition();
-			updateScreenMode(newScreenMode);
+			updateScreenMode(newScreenMode, data);
 			return;
 		}
 
@@ -651,7 +652,7 @@ class ScreenManager {
 		for (screen => layerIndex in screensToAdd) {
 			app.s2d.add(screen.getSceneRoot(), layerIndex);
 			this.activeScreens.push(screen);
-			screen.onScreenEvent(UIEntering, null);
+			screen.onScreenEvent(UIEntering(data), null);
 			screen.onScreenEvent(UIOnControllerEvent(Entering), null);
 			screen.getController().lifecycleEvent(LifecycleControllerStarted);
 			this.activeScreenControllers.push(screen);
@@ -695,13 +696,15 @@ class ScreenManager {
 		executeTransition(transition, screensToRemove, screensToAdd);
 	}
 
-	/** Convenience: switch to a Single screen with optional transition. */
-	public function switchTo(screen:UIScreen, ?transition:ScreenTransition):Void {
-		switchScreen(Single(screen), transition);
+	/** Convenience: switch to a Single screen with optional transition.
+	 *  Optional `data` is passed to the screen via `UIEntering(data)` event. */
+	public function switchTo(screen:UIScreen, ?data:Dynamic, ?transition:ScreenTransition):Void {
+		switchScreen(Single(screen), transition, data);
 	}
 
 	/** Open a modal dialog with an optional transition. */
-	public function modalDialogWithTransition(dialog:UIScreen, caller:UIScreen, dialogName:String, ?transition:ScreenTransition):Void {
+	public function modalDialogWithTransition(dialog:UIScreen, caller:UIScreen, dialogName:String, ?data:Dynamic,
+			?transition:ScreenTransition):Void {
 		dialog.load();
 		final overlayConfig = readOverlayConfig(dialog);
 		if (overlayConfig != null) {
@@ -710,7 +713,7 @@ class ScreenManager {
 				applyBlurToUnderlyingScreens(overlayConfig.blur);
 			tweenOverlayIn(overlayConfig, transition);
 		}
-		switchScreen(Dialog(dialog, caller, mode, dialogName), transition);
+		switchScreen(Dialog(dialog, caller, mode, dialogName), transition, data);
 	}
 
 	/** Close the current dialog with an optional transition. Returns to previous mode. */

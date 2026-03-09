@@ -142,9 +142,11 @@ enum ScreenTransition {
 
 **Usage with ScreenManager:**
 ```haxe
-screenManager.switchTo(newScreen, Fade(0.3, EaseOutCubic));
+screenManager.switchTo(newScreen, null, Fade(0.3, EaseOutCubic));
+screenManager.switchTo(newScreen, myData, Fade(0.3));  // pass data to entering screen
 screenManager.switchScreen(MasterAndSingle(master, single), SlideLeft(0.5));
-screenManager.modalDialogWithTransition(dialog, caller, "confirm", SlideUp(0.3));
+screenManager.modalDialogWithTransition(dialog, caller, "confirm", null, SlideUp(0.3));
+screenManager.modalDialogWithTransition(dialog, caller, "confirm", myData, SlideUp(0.3));
 screenManager.closeDialogWithTransition(Fade(0.2));
 screenManager.finalizeTransition(); // jump to end immediately
 ```

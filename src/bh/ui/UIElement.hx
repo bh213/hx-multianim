@@ -216,7 +216,7 @@ enum UIScreenEvent {
 	UIClickItem(index:Int, items:Array<UIElementListItem>);
 	UIKeyPress(keyCode:Int, release:Bool);
 	UIOnControllerEvent(event:ControllerEvents);
-	UIEntering;
+	UIEntering(?data:Dynamic);
 	UILeaving;
 	UIClickOutside;
 	UIInteractiveEvent(event:UIScreenEvent, id:String, metadata:BuilderResolvedSettings);

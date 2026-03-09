@@ -266,7 +266,7 @@ Lightweight tween system (`src/bh/base/TweenManager.hx`) owned by `ScreenManager
 
 ### Screen Transitions & Modal Overlay
 
-**ScreenTransition** (`src/bh/ui/screens/ScreenTransition.hx`) — enum defining transition types: `None`, `Fade`, `SlideLeft/Right/Up/Down`, `Custom`. Used with `switchTo()`, `switchScreen()`, `modalDialogWithTransition()`, `closeDialogWithTransition()`.
+**ScreenTransition** (`src/bh/ui/screens/ScreenTransition.hx`) — enum defining transition types: `None`, `Fade`, `SlideLeft/Right/Up/Down`, `Custom`. Used with `switchTo()`, `switchScreen()`, `modalDialogWithTransition()`, `closeDialogWithTransition()`. All navigation methods accept optional `?data:Dynamic` that flows through to entering screens via `UIEntering(data)` event.
 
 **Transition execution flow:**
 1. `switchScreen()` computes screen diff (screens to add/remove)

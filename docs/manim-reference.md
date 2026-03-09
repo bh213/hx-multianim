@@ -1003,7 +1003,7 @@ interactive(200, 30, "tooltip-trigger", events: [hover])
 
 | Flag | Events controlled |
 |------|-------------------|
-| `hover` | `UIEntering` + `UILeaving` |
+| `hover` | `UIEntering(?data)` + `UILeaving` |
 | `click` | `UIClick` |
 | `push` | `UIPush` + `UIClickOutside` + outside-click tracking |
 

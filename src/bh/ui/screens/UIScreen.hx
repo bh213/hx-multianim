@@ -845,7 +845,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 			ht.onOverHyperlink = (url) -> {
 				if (prevOver != null) prevOver(url);
 				final id = prefix != null ? prefix + ".link:" + url : "link:" + url;
-				getController().onScreenEvent(UIInteractiveEvent(UIEntering, id, emptyMeta), null);
+				getController().onScreenEvent(UIInteractiveEvent(UIEntering(), id, emptyMeta), null);
 			};
 			final prevOut = ht.onOutHyperlink;
 			ht.onOutHyperlink = (url) -> {
