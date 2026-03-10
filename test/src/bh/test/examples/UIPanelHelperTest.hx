@@ -1021,4 +1021,142 @@ class UIPanelHelperTest extends BuilderTestBase {
 		ctx.screen.update(0.016);
 		Assert.isFalse(ctx.helper.isOpen());
 	}
+
+	// ============== openAt ==============
+
+	@Test
+	public function testOpenAtBasic():Void {
+		var ctx = createHelper();
+		ctx.helper.openAt(100, 200, "panel");
+
+		Assert.isTrue(ctx.helper.isOpen());
+		Assert.notNull(ctx.helper.getPanelResult());
+		// openAt has no interactive, so getActiveId returns null
+		Assert.isNull(ctx.helper.getActiveId());
+	}
+
+	@Test
+	public function testOpenAtPositionsPanel():Void {
+		var ctx = createHelper();
+		ctx.helper.openAt(150, 250, "panel");
+
+		var result = ctx.helper.getPanelResult();
+		Assert.notNull(result);
+		Assert.floatEquals(150.0, result.object.x);
+		Assert.floatEquals(250.0, result.object.y);
+	}
+
+	@Test
+	public function testOpenAtWithParams():Void {
+		var ctx = createHelper();
+		ctx.helper.openAt(0, 0, "panel", ["label" => "custom"]);
+
+		Assert.isTrue(ctx.helper.isOpen());
+		Assert.notNull(ctx.helper.getPanelResult());
+	}
+
+	@Test
+	public function testOpenAtCloseDoesNotEmitEvent():Void {
+		var ctx = createHelper();
+		ctx.helper.openAt(0, 0, "panel");
+		ctx.screen.clearEvents();
+
+		ctx.helper.close();
+		Assert.isFalse(ctx.helper.isOpen());
+		// No EVENT_PANEL_CLOSE because there is no interactiveId
+		Assert.equals(0, ctx.screen.eventCount());
+	}
+
+	@Test
+	public function testOpenAtReplacesExistingPanel():Void {
+		var ctx = createHelper();
+		ctx.helper.open("btn1", "panel");
+		Assert.equals("btn1", ctx.helper.getActiveId());
+
+		ctx.helper.openAt(50, 50, "panel");
+		Assert.isTrue(ctx.helper.isOpen());
+		Assert.isNull(ctx.helper.getActiveId());
+	}
+
+	@Test
+	public function testOpenAtReplacesExistingOpenAt():Void {
+		var ctx = createHelper();
+		ctx.helper.openAt(10, 20, "panel");
+		var first = ctx.helper.getPanelResult();
+
+		ctx.helper.openAt(30, 40, "panel");
+		Assert.isTrue(ctx.helper.isOpen());
+		var second = ctx.helper.getPanelResult();
+		Assert.floatEquals(30.0, second.object.x);
+		Assert.floatEquals(40.0, second.object.y);
+	}
+
+	@Test
+	public function testOpenReplacesOpenAt():Void {
+		var ctx = createHelper();
+		ctx.helper.openAt(10, 20, "panel");
+		Assert.isNull(ctx.helper.getActiveId());
+
+		ctx.helper.open("btn1", "panel");
+		Assert.isTrue(ctx.helper.isOpen());
+		Assert.equals("btn1", ctx.helper.getActiveId());
+	}
+
+	@Test
+	public function testOpenAtPrefix():Void {
+		var ctx = createHelper();
+		ctx.helper.openAt(0, 0, "panel");
+		var prefix = ctx.helper.getActivePrefix();
+		Assert.notNull(prefix);
+		Assert.isTrue(StringTools.startsWith(prefix, "pos."));
+	}
+
+	@Test
+	public function testOpenAtIsOwnInteractive():Void {
+		var ctx = createHelper();
+		ctx.helper.openAt(0, 0, "panel");
+		var prefix = ctx.helper.getActivePrefix();
+		Assert.isTrue(ctx.helper.isOwnInteractive(prefix + ".child"));
+		Assert.isFalse(ctx.helper.isOwnInteractive("unrelated"));
+	}
+
+	@Test
+	public function testOpenAtWithCloseMode():Void {
+		var ctx = createHelper();
+		ctx.helper.openAt(0, 0, "panel", null, Manual);
+		Assert.isTrue(ctx.helper.isOpen());
+		// Manual mode — explicit close required
+		ctx.helper.close();
+		Assert.isFalse(ctx.helper.isOpen());
+	}
+
+	@Test
+	public function testOpenAtFadeIn():Void {
+		var ctx = createHelperWithTweens(0.3, 0.0);
+		ctx.helper.openAt(100, 200, "panel");
+		Assert.isTrue(ctx.helper.isOpen());
+
+		// Panel should start with alpha 0 (fade-in running)
+		var result = ctx.helper.getPanelResult();
+		Assert.notNull(result);
+		Assert.floatEquals(0.0, result.object.alpha);
+
+		// After fade-in completes, alpha should be 1.0
+		ctx.tweens.update(0.5);
+		Assert.floatEquals(1.0, result.object.alpha);
+	}
+
+	@Test
+	public function testOpenAtFadeOut():Void {
+		var ctx = createHelperWithTweens(0.0, 0.3);
+		ctx.helper.openAt(100, 200, "panel");
+		var obj = ctx.helper.getPanelResult().object;
+
+		ctx.helper.close();
+		Assert.isFalse(ctx.helper.isOpen());
+
+		// After fade-out, object should be removed
+		ctx.tweens.update(0.5);
+		Assert.isNull(obj.parent);
+	}
 }

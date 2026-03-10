@@ -71,6 +71,8 @@
 
 - **Screen navigation data passing** — `switchTo()`, `switchScreen()`, `modalDialog()`, and `modalDialogWithTransition()` now accept an optional `?data:Dynamic` parameter. Data flows through to entering screens via the `UIEntering(data)` event. Enables passing context (e.g., selected item, game state) between screens without shared global state.
 - **`UIEntering` event carries optional data** — `UIEntering` enum variant changed from no-arg to `UIEntering(?data:Dynamic)`. Pattern match with `UIEntering(_)` to ignore data, or `UIEntering(data)` to extract it.
+- **UIPanelHelper.openAt()** — `openAt(x, y, buildName, ?params, ?closeMode)` opens a panel at explicit coordinates instead of anchored to an interactive. Supports fade transitions, panel interactives, and close modes. Note: `EVENT_PANEL_CLOSE` is not emitted on close since there is no associated interactive ID.
+- **UICardHandTargeting: arrow snaps to target center** — when hovering a valid target, the targeting arrow endpoint snaps to the target interactive's center instead of following the cursor. Uses `localToGlobal`/`globalToLocal` coordinate transforms for correct positioning across scene hierarchies.
 
 ### Changed
 - **UIDefaultController: simplified outside-click mechanism** — removed `OutsideClickImpl` class and tri-state `enabledChanged` flag. Outside-click subscriber tracking is now inlined into `ControllableImpl` with a context-based approach: controller sets `currentElement` before dispatching `onEvent`, `trackOutsideClick()` uses it directly.

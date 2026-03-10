@@ -207,11 +207,26 @@ class UICardHandTargeting {
 
 		var valid = hoveredWrapper != null;
 
+		// Snap arrow endpoint to target center when hovering a valid target
+		var endX = cursorX;
+		var endY = cursorY;
+		if (valid && hoveredWrapper != null) {
+			switch hoveredWrapper.interactive.multiAnimType {
+				case MAInteractive(width, height, _, _):
+					// Get center of target interactive in scene space, then convert to arrow local space
+					var centerScene = hoveredWrapper.interactive.localToGlobal(new h2d.col.Point(width * 0.5, height * 0.5));
+					var centerLocal = arrowContainer.globalToLocal(centerScene);
+					endX = centerLocal.x;
+					endY = centerLocal.y;
+				default:
+			}
+		}
+
 		// Update arrow visuals (uses local-space coords for positioning)
 		if (hasArrowVisual && arrowEnabled && arrowPathName != null) {
 			var paths = builder.getPaths();
 			var origin = new FPoint(originX, originY);
-			var cursor = new FPoint(cursorX, cursorY);
+			var cursor = new FPoint(endX, endY);
 			var path = paths.getPath(arrowPathName, Stretch(origin, cursor));
 
 			// Calculate how many segments fit

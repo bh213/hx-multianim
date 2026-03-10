@@ -68,6 +68,7 @@ class TestApp extends hxd.App {
 		testRunner.addCase(new bh.test.examples.FloatingTextHelperTest());
 		testRunner.addCase(new bh.test.examples.CardHandOrchestratorTest());
 		testRunner.addCase(new bh.test.examples.CardHandIntegrationTest());
+		testRunner.addCase(new bh.test.examples.CardHandTargetingTest());
 		testRunner.addCase(new bh.test.examples.AnimFilterRuntimeTest());
 		testRunner.addCase(new bh.test.examples.AnimFilterStateConditionalTest());
 		testRunner.addCase(new bh.test.examples.RichTextTest());

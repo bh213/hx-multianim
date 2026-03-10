@@ -14,7 +14,7 @@
 - **Card visuals**: programmables with `interactive(w, h, id, bind => "status")` — CardHandHelper's internal `UIRichInteractiveHelper` auto-wires Normal→Hover→Pressed state machine (uses `bind` metadata key, not `autoStatus`)
 - **Visual states**: filters in `.manim` conditionals (`@(status=>hover) filter: glow(...)`, `@(status=>disabled) filter: grayscale(...)`) — no manual alpha/scale
 - **Animations**: `animatedPath` elements via `createProjectilePath()` with Stretch normalization for draw/discard/rearrange/return
-- **Targeting arrow**: `.manim` programmable (receives `valid:bool` param, positioned+rotated+scaled between origin and cursor). Falls back to `h2d.Graphics` bezier if no programmable provided
+- **Targeting arrow**: `.manim` programmable (receives `valid:bool` param, positioned+rotated+scaled between origin and target). Arrow endpoint snaps to target interactive center when hovering a valid target (coordinate-transformed via `localToGlobal`/`globalToLocal`); falls back to cursor position when no target hovered. Falls back to `h2d.Graphics` bezier if no programmable provided
 - **Curves**: easing defined in `.manim` `animatedPath` `easing:` property — no hardcoded `EasingType` enums
 - **Path-based layout**: cards distributed along a `.manim` `paths {}` path instead of hardcoded fan/linear
 

@@ -127,6 +127,34 @@ class UIPanelHelper {
 		activeCloseMode = closeMode ?? defaultCloseMode;
 	}
 
+	/** Open a panel at an explicit position. Closes any existing panel first. */
+	public function openAt(x:Float, y:Float, buildName:String, ?params:Map<String, Dynamic>, ?closeMode:PanelCloseMode):Void {
+		close();
+
+		final result = builder.buildWithParameters(buildName, params ?? [], null, null, true);
+		result.object.setPosition(x, y);
+		screen.addObjectToLayer(result.object, layer);
+
+		// Register panel interactives with a prefix so the screen can identify them
+		final prefix = 'pos.$buildName';
+		if (result.interactives.length > 0)
+			screen.addInteractives(result, prefix);
+
+		// Apply fade-in
+		if (defaultFadeIn > 0 && tweens != null) {
+			result.object.alpha = 0;
+			activeFadeInTween = tweens.tween(result.object, defaultFadeIn, [Alpha(1.0)]);
+			activeFadeInTween.setOnComplete(() -> {
+				activeFadeInTween = null;
+			});
+		}
+
+		activeInteractiveId = null;
+		activeResult = result;
+		activePanelPrefix = prefix;
+		activeCloseMode = closeMode ?? defaultCloseMode;
+	}
+
 	/** Close the active panel. Pushes `UICustomEvent(EVENT_PANEL_CLOSE, interactiveId)` to the screen. */
 	public function close():Void {
 		// Cancel any in-progress fade-in
