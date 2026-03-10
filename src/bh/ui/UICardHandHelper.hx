@@ -559,9 +559,15 @@ class UICardHandHelper {
 
 	/** Update animations. Call from screen's update(dt). */
 	public function update(dt:Float):Void {
+		if (activeAnimations.length == 0)
+			return;
 		var i = activeAnimations.length - 1;
 		while (i >= 0) {
 			var anim = activeAnimations[i];
+			if (anim == null) {
+				i--;
+				continue;
+			}
 			var state = anim.anim.update(dt);
 
 			anim.entry.container.setPosition(state.position.x, state.position.y);
@@ -888,8 +894,9 @@ class UICardHandHelper {
 			}
 		}
 
-		// Priority 2: Targeting zones / threshold (only when arrow enabled)
-		if (targeting.arrowEnabled && isInTargetingZone(cursorX, cursorY)) {
+		// Priority 2: Targeting zones / threshold (only when arrow enabled AND card supports targeting)
+		var cardCanTarget = entry.descriptor.canTarget != null ? entry.descriptor.canTarget : true;
+		if (targeting.arrowEnabled && cardCanTarget && isInTargetingZone(cursorX, cursorY)) {
 			if (!isTargeting)
 				enterTargetingMode(entry);
 			// Card stays at hand position, arrow points from card to cursor
@@ -905,7 +912,7 @@ class UICardHandHelper {
 				currentTargetId = null;
 			}
 			// Highlight targets under cursor during normal drag (no arrow)
-			if (!targeting.arrowEnabled)
+			if (!targeting.arrowEnabled || !cardCanTarget)
 				currentTargetId = targeting.updateHighlight(sceneCursorX, sceneCursorY, entry.descriptor.id);
 		}
 	}
@@ -962,10 +969,17 @@ class UICardHandHelper {
 				cardPlayed = true;
 			}
 		} else {
-			// Direct drag mode (arrow disabled) — check if card was dropped on a target
+			// Direct drag mode (arrow disabled or card canTarget=false) — check drop target or threshold
 			var dropTarget = targeting.hitTestTargets(sceneCursorX, sceneCursorY, cardId);
 			if (dropTarget != null) {
 				result = TargetZone(dropTarget);
+				if (canPlayCard == null || canPlayCard(cardId, result)) {
+					emitEvent(CardPlayed(cardId, result));
+					cardPlayed = true;
+				}
+			} else if (isInTargetingZone(cursorX, cursorY)) {
+				// Card dragged past threshold without a specific target — play with NoTarget
+				result = NoTarget;
 				if (canPlayCard == null || canPlayCard(cardId, result)) {
 					emitEvent(CardPlayed(cardId, result));
 					cardPlayed = true;
