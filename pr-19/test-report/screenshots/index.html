@@ -327,15 +327,15 @@
 </head>
 <body>
     <h1>Visual Test Report</h1>
-    <div class="timestamp">Generated: 2026-03-11 08:21:41</div>
+    <div class="timestamp">Generated: 2026-03-11 12:05:17</div>
     <div class="summary">
         <strong>Summary:</strong> 93 tests,         <span style="color: #4CAF50;">93 passed</span>,         <span style="color: #f44336;">0 failed</span>
-        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1s, visual 21.2s)</span>
+        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1s, visual 20.6s)</span>
     </div>
     <div class="unit-tests-section">
         <h2>Unit Tests</h2>
         <div class="unit-tests-summary all-passed">
-            <strong>4003 assertions:</strong>             <span style="color: #4CAF50;">4003 passed</span>
+            <strong>4075 assertions:</strong>             <span style="color: #4CAF50;">4075 passed</span>
             <button class="expand-btn" id="unitToggleBtn" onclick="toggleUnitDetails()">Show Details</button>
         </div>
         <div class="unit-details" id="unitDetails">
@@ -913,6 +913,7 @@
                 <div class="unit-method pass">testGetCardResultAfterDiscard: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testGetCardResultAfterDraw: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testGetCardResultAfterSetHand: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testGetTargetingObject: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testIsDraggingInitiallyFalse: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testIsTargetingInitiallyFalse: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testMultipleDrawsPreserveOrder: OK <span class="dots">...</span></div>
@@ -924,6 +925,8 @@
                 <div class="unit-method pass">testOnCardEventCallbackIsNullByDefault: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testReenabledCardState: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testSetAnchorUpdatesPosition: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testSetArrowSnapPointProvider: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testSetArrowSnapPointProviderNull: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testSetCardEnabledDoubleFalse: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testSetCardEnabledDoubleTrue: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testSetCardEnabledUnknownIdSafe: OK <span class="dots">.</span></div>
@@ -983,10 +986,14 @@
                 <div class="unit-class-name">CardHandTargetingTest</div>
                 <div class="unit-method pass">testArrowEnabledDefault: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testArrowEnabledToggle: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testArrowSnapProviderCustomOffset: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testArrowSnapProviderNullFallsBackToCenter: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testClearLineHidesArrowContainer: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testClearLineResetsHighlight: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testClearTargets: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testClearTargetsUnhighlightsActive: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testCustomArrowSnapProvider: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testGetObjectReturnsArrowContainer: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testHitTestTargetsHit: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testHitTestTargetsMiss: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testHitTestTargetsWithAcceptsFilter: OK <span class="dots">..</span></div>
@@ -997,6 +1004,7 @@
                 <div class="unit-method pass">testRegisterTarget: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testRegisterTargetReplacesExisting: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testRegisterTargets: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testSnapDisabledIgnoresProvider: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testUnregisterNonexistentTarget: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testUnregisterTarget: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testUpdateHighlightEnter: OK <span class="dots">...</span></div>
@@ -1957,8 +1965,11 @@
                 <div class="unit-method pass">testAcceptDropsDuplicateIgnored: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testAddCell: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testAddCellDuplicate: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testAddExternalObject: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testAddHexRegion: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testAddHexRegionRadius2: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testAddLayer: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testAddLayerDuplicateThrows: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testAddRectRegion: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testCardTargetPositionHex: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testCardTargetPositionRect: OK <span class="dots">.........</span></div>
@@ -1973,15 +1984,30 @@
                 <div class="unit-method pass">testCellCardPlayedNotEmittedForForeignTarget: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testCellPositionRect: OK <span class="dots">......</span></div>
                 <div class="unit-method pass">testClear: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testClearAllLayers: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testClearEmitsDataChangedEvent: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testClearLayerAll: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testClearLayerNonexistentDoesNotThrow: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testClearLayerSingle: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testConstruction: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testDispose: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testDisposeClearsLayers: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testDistanceHex: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testDistanceRect: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testDropContextAccept: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testDropContextAcceptThenOnComplete: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testDropContextAcceptWithPath: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testDropContextDefaultState: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testDropContextOnComplete: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testDropContextReject: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testDropContextRejectWithPath: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testForEach: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testForEachLayer: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testForEachLayerUnregistered: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testGetCellResult: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testGetCellResultNonexistent: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testGetEmptyCell: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testHasLayerFalseWhenNotSet: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testHitTestNonSquareCellYGap: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testIsOccupied: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testMouseClickFiresEvent: OK <span class="dots">....</span></div>
@@ -1995,12 +2021,19 @@
                 <div class="unit-method pass">testRebuildCellCallsOnCellBuilt: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testRemoveAndReaddCell: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testRemoveCell: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testRemoveCellAutoClearsLayers: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testRemoveExternalObject: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testRemoveNonexistentCell: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testResolveAnimationCompleteStaysDisabled: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testResolveAnimationCompleteWithDeferredEnable: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testSetAndGetData: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testSetCardEnabledDuringAnimationDefersEnable: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testSetEmitsDataChangedEvent: OK <span class="dots">.....</span></div>
+                <div class="unit-method pass">testSetLayerOnCell: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testSetLayerOnNonexistentCellThrows: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testSetLayerRebuildsExisting: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testSetLayerUnregisteredThrows: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testSetLayerWithParams: OK <span class="dots">.</span></div>
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">UIPanelHelperTest</div>
