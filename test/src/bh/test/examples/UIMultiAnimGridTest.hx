@@ -1008,6 +1008,23 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testSetLayerBuildsIncremental():Void {
+		var grid = createRectGridWithLayers(2, 2);
+		grid.addLayer("overlay", {buildName: "overlay", zOrder: 1});
+		grid.setLayer(0, 0, "overlay", ["state" => "active"]);
+		var result = grid.getLayerResult(0, 0, "overlay");
+		Assert.notNull(result);
+		// Layer results should support setParameter (incremental mode)
+		var threw = false;
+		try {
+			result.setParameter("state", "normal");
+		} catch (e:Dynamic) {
+			threw = true;
+		}
+		Assert.isFalse(threw);
+	}
+
+	@Test
 	public function testSetLayerRebuildsExisting():Void {
 		var grid = createRectGridWithLayers(2, 2);
 		grid.addLayer("overlay", {buildName: "overlay", zOrder: 1});

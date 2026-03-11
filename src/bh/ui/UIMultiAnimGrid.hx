@@ -489,7 +489,7 @@ class UIMultiAnimGrid {
 		// Build the layer programmable (only user-supplied params — no auto col/row injection)
 		final buildParams:Map<String, Dynamic> = if (params != null) params else new Map();
 
-		final result = builder.buildWithParameters(config.buildName, buildParams);
+		final result = builder.buildWithParameters(config.buildName, buildParams, null, null, true);
 		final obj = result.object;
 
 		// Position at cell coordinates
