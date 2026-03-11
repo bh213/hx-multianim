@@ -97,9 +97,45 @@ Metadata supports typed values matching the settings system: `key => val` (strin
 - Per-zone: `DropZone.onZoneHighlight` callback for hover state
 - `DragEvent` enum includes `ZoneRejectEnter(zone)` / `ZoneRejectLeave(zone)` for three-state feedback
 
+## Higher-Order Components (UIHigherOrderComponent)
+
+`UIHigherOrderComponent` interface (`src/bh/ui/UIHigherOrderComponent.hx`) — lifecycle auto-wiring for complex UI components (Grid, CardHand) that manage their own scene graph and span multiple layers.
+
+**Interface methods:** `update(dt)`, `onMouseMove(x, y):Bool`, `onMouseClick(x, y, button):Bool`, `onMouseRelease(x, y):Bool`, `handleScreenEvent(event):Bool`, `getObject():h2d.Object`, `dispose()`.
+
+**Implementors:** `UIMultiAnimGrid`, `UICardHandHelper`
+
+**Screen auto-wiring:** `registerComponent(comp)` / `unregisterComponent(comp)` on `UIScreenBase`. Registered components auto-receive:
+- `update(dt)` — called in `super.update(dt)` after panel helpers
+- Mouse events — `dispatchMouseMove()` / `dispatchMouseClick()` try components first (registration order), fall through to screen overrides
+- Screen events — `dispatchScreenEvent()` forwards to components before `onScreenEvent()`
+- Disposal — `clear()` calls `dispose()` on all registered components
+
+**Factory methods on UIScreenBase:**
+- `createGrid(builder, config, ?settings)` — creates + registers, no scene graph add (for macro use)
+- `addGrid(builder, config, ?layer, ?settings)` — creates + adds to layer
+- `addCardHand(builder, ?config, ?settings)` — creates + registers + returns helper
+
+**Settings integration:** `applyGridSettings(config, settings)` and `applyCardHandSettings(config, settings)` apply `.manim` `settings {}` values to config fields. Grid: `originX/Y`, `cellBuildName`, `highlightParam`, `statusParam`, `rejectHighlightParam`. CardHand: `anchorX/Y`, card dimensions, fan/linear layout, hover/targeting, pile positions, path/arrow names.
+
+**Macro support (`macroBuildWithParameters`):** `PVComponent` placeholder value for component-returning factories. Macro detects `UIHigherOrderComponent` return type and generates `PVComponent(factory, null)` wrapper. Builder calls `getObject()` for scene graph placement. Grid works in macro; CardHand uses `addCardHand()` only (multi-layer architecture prevents single-placeholder representation).
+
+**Dispatch pattern:** `UIControllerScreenIntegration` uses `dispatchMouseMove()` / `dispatchMouseClick()` instead of direct `onMouseMove()` / `onMouseClick()` — enables component event interception before screen handlers. Key coexistence semantics:
+- `dispatchMouseMove()` — notifies components but always returns true (never blocks interactive processing)
+- `dispatchMouseClick()` — push (non-release) notifies components but never blocks; only release can block (returns false when consumed, e.g. card hand drag end). Controller preserves outside-click tracking even when consumed.
+- `dispatchScreenEvent()` — runs autoStatus + panelHelpers first, then tries components. Skips `onScreenEvent()` when a component consumed the event.
+
+**UIComponentHost interface** (`src/bh/ui/UIComponentHost.hx`): Decouples CardHand and UIRichInteractiveHelper from concrete UIScreenBase. Methods: `addObjectToLayer`, `addInteractives`, `removeInteractives`, `getInteractive`, `getAutoInteractiveHelper`. UIScreenBase implements it.
+
+**Hot reload** (`#if MULTIANIM_DEV`):
+- `wireGridReload(parentResult, grid, ?prefix)` — hooks `onReload` to re-apply `originX`/`originY` from settings
+- `wireCardHandReload(parentResult, cardHand, ?prefix)` — hooks `onReload` to re-apply `anchorX`/`anchorY`
+- Grid layers: `setLayer()` uses incremental mode for hot-reload of layer programmables
+- Grid: `setOrigin(x, y)` repositions root (all children move automatically)
+
 ## Grid Component
 
-`UIMultiAnimGrid` — 2D grid component (rectangular or hexagonal) that manages cell state, rendering via `.manim` programmables, drag-drop integration, and card hand targeting. Follows the helper/manager pattern (like `UICardHandHelper`).
+`UIMultiAnimGrid` — 2D grid component (rectangular or hexagonal) that manages cell state, rendering via `.manim` programmables, drag-drop integration, and card hand targeting. Follows the helper/manager pattern (like `UICardHandHelper`). Implements `UIHigherOrderComponent`.
 
 **Files:**
 - `src/bh/ui/UIMultiAnimGrid.hx` — main component

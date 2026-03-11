@@ -17,6 +17,8 @@ import bh.base.TweenManager.TweenProperty;
 import bh.multianim.MultiAnimParser.EasingType;
 import bh.paths.MultiAnimPaths.PathNormalization;
 import bh.ui.UICardHandTypes;
+import bh.ui.UIElement.UIScreenEvent;
+import bh.ui.UIHigherOrderComponent;
 import bh.ui.UIMultiAnimDraggable;
 import bh.ui.UIMultiAnimGridTypes;
 import h2d.col.Bounds;
@@ -76,7 +78,7 @@ private typedef CardHandBinding = {
  * };
  * ```
  */
-class UIMultiAnimGrid {
+class UIMultiAnimGrid implements UIHigherOrderComponent {
 	// --- Config ---
 	final builder:MultiAnimBuilder;
 	final gridType:GridType;
@@ -734,6 +736,16 @@ class UIMultiAnimGrid {
 		return false;
 	}
 
+	/** Route mouse release events. Grid does not consume release events. */
+	public function onMouseRelease(sceneX:Float, sceneY:Float):Bool {
+		return false;
+	}
+
+	/** Route screen events. Grid does not consume screen events. */
+	public function handleScreenEvent(event:UIScreenEvent):Bool {
+		return false;
+	}
+
 	// ============================================================
 	// Drag-drop: receiving drops
 	// ============================================================
@@ -827,6 +839,11 @@ class UIMultiAnimGrid {
 	// ============================================================
 	// Lifecycle
 	// ============================================================
+
+	/** Reposition the grid origin. All cells and layers move automatically (they are children of root). */
+	public function setOrigin(x:Float, y:Float):Void {
+		root.setPosition(x, y);
+	}
 
 	/** Get the root scene graph object. Add to scene via addObjectToLayer(grid.getObject(), layer). */
 	public function getObject():h2d.Object {

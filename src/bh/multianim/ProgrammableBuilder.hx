@@ -313,6 +313,7 @@ class ProgrammableBuilder {
 				#end
 				obj;
 			case PVFactory(factoryMethod): factoryMethod(settings);
+			case PVComponent(factoryMethod, _): factoryMethod(settings);
 		};
 	}
 

@@ -1056,6 +1056,8 @@ enum CallbackResult {
 enum PlaceholderValues {
 	PVObject(obj:h2d.Object);
 	PVFactory(factoryMethod:ResolvedSettings->h2d.Object);
+	/** Higher-order component (e.g. Grid). Factory returns scene graph object, component holds the typed reference. */
+	PVComponent(factoryMethod:ResolvedSettings->h2d.Object, component:Dynamic);
 }
 
 @:nullSafety
@@ -3601,6 +3603,8 @@ class MultiAnimBuilder {
 									var res = factoryMethod(settings);
 									// trace('FACTORY', settings, res, type, source);
 									res;
+								case PVComponent(factoryMethod, _):
+									factoryMethod(settings);
 							}
 						}
 				}

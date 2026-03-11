@@ -2,7 +2,7 @@
 
 ## Card Hand Helper
 
-`UICardHandHelper` — Slay the Spire-style card hand with drag-to-play, targeting line, and card-to-card combining. Maximum `.manim` integration:
+`UICardHandHelper` — Slay the Spire-style card hand with drag-to-play, targeting line, and card-to-card combining. Implements `UIHigherOrderComponent` for screen auto-wiring. Maximum `.manim` integration:
 
 **Files:**
 - `src/bh/ui/UICardHandHelper.hx` — main orchestrator (state machine, event routing, animation coordination)
@@ -40,6 +40,8 @@ paths {
     ninepatch(cards, cardBg, 80, 110): 0, 0
 }
 ```
+
+**Constructor:** `new UICardHandHelper(host:UIComponentHost, builder, ?config)` — takes `UIComponentHost` interface (not `UIScreenBase` directly). `UIScreenBase` implements `UIComponentHost`. Use `addCardHand(builder, config)` on screen for auto-wiring.
 
 **Config:** `CardHandConfig` typedef — layout mode (Fan/Linear/PathLayout), anchor position, fan radius/angle, hover pop/scale, targeting zones/threshold, pile positions, layers, `.manim` element names for paths/arrow, interactive prefix, `onCardBuilt` callback, `cardToCardHighlightScale`.
 

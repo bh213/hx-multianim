@@ -137,7 +137,16 @@ class UIDefaultController implements UIController {
 
 	public function handleClick(mousePoint:Point, button:Int, release:Bool, eventWrapper:EventWrapper) {
 		final element = getEventElement(mousePoint);
-		if (integration.onMouseClick(mousePoint, button, release) == false) return;
+		if (integration.dispatchMouseClick(mousePoint, button, release) == false) {
+			// Consumed by a component (e.g. card hand drag release).
+			// Still process outside-click so panels/dropdowns close correctly.
+			if (release) {
+				final triggeredElements = controllable.triggerOutsideEvents(element);
+				for (value in triggeredElements)
+					handleEvent(value, OnReleaseOutside(button), mousePoint);
+			}
+			return;
+		}
 		if (release) {
 			final triggeredElements = controllable.triggerOutsideEvents(element);
 			for (value in triggeredElements) {
@@ -168,7 +177,7 @@ class UIDefaultController implements UIController {
 	}
 
 	public function handleMove(mousePoint:Point, eventWrapper:EventWrapper) {
-		if (integration.onMouseMove(mousePoint) == false) return;
+		if (integration.dispatchMouseMove(mousePoint) == false) return;
 		final element = getEventElement(mousePoint);
 
 		if (element != null)

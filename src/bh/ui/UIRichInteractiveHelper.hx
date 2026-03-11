@@ -2,7 +2,7 @@ package bh.ui;
 
 import bh.base.MAObject.MultiAnimObjectData;
 import bh.ui.UIElement.UIScreenEvent;
-import bh.ui.screens.UIScreen;
+import bh.ui.UIComponentHost;
 import bh.multianim.MultiAnimBuilder.BuilderResult;
 import bh.multianim.MultiAnimBuilder.BuilderResolvedSettings;
 
@@ -17,10 +17,10 @@ enum InteractiveState {
 class UIRichInteractiveHelper {
 	public static inline final RESERVED_KEY = "autoStatus";
 
-	final screen:UIScreenBase;
+	final screen:UIComponentHost;
 	final bindings:Map<String, InteractiveBinding> = [];
 
-	public function new(screen:UIScreenBase) {
+	public function new(screen:UIComponentHost) {
 		this.screen = screen;
 	}
 

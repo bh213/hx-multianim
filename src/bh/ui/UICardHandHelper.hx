@@ -13,10 +13,11 @@ import bh.ui.UICardHandTypes.TargetHighlightCallback;
 import bh.ui.UICardHandTypes.TargetAcceptsCallback;
 import bh.ui.UICardHandTypes.TargetingZone;
 import bh.ui.UIElement.UIScreenEvent;
+import bh.ui.UIHigherOrderComponent;
 import bh.ui.UIInteractiveWrapper;
+import bh.ui.UIComponentHost;
 import bh.ui.UIRichInteractiveHelper;
 import bh.ui.screens.UIScreen.LayersEnum;
-import bh.ui.screens.UIScreen.UIScreenBase;
 
 private class CardEntry {
 	public var descriptor:CardDescriptor;
@@ -111,8 +112,8 @@ private class ActiveAnimation {
  *  };
  *  cardHand.drawCard({ id: "card1", buildName: "card", params: [...] });
  *  ``` */
-class UICardHandHelper {
-	final screen:UIScreenBase;
+class UICardHandHelper implements UIHigherOrderComponent {
+	final screen:UIComponentHost;
 	final builder:MultiAnimBuilder;
 	final interactiveHelper:UIRichInteractiveHelper;
 
@@ -202,7 +203,7 @@ class UICardHandHelper {
 	/** Called before a card drag starts. Return false to prevent dragging. */
 	public var canDragCard:Null<(cardId:CardId) -> Bool> = null;
 
-	public function new(screen:UIScreenBase, builder:MultiAnimBuilder, ?config:CardHandConfig) {
+	public function new(screen:UIComponentHost, builder:MultiAnimBuilder, ?config:CardHandConfig) {
 		this.screen = screen;
 		this.builder = builder;
 		this.interactiveHelper = new UIRichInteractiveHelper(screen);
@@ -579,6 +580,11 @@ class UICardHandHelper {
 		return false;
 	}
 
+	/** Route mouse click events. Card hand does not consume raw click events. */
+	public function onMouseClick(sceneX:Float, sceneY:Float, button:Int):Bool {
+		return false;
+	}
+
 	/** Update animations. Call from screen's update(dt). */
 	public function update(dt:Float):Void {
 		if (activeAnimations.length == 0)
@@ -609,6 +615,11 @@ class UICardHandHelper {
 			}
 			i--;
 		}
+	}
+
+	/** Get the hand container. Note: CardHand also has a dragContainer at a higher layer. */
+	public function getObject():h2d.Object {
+		return handContainer;
 	}
 
 	/** Clean up all resources. */
