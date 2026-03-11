@@ -46,9 +46,13 @@ class UICardHandTargeting {
 	/** When false, the targeting visual is suppressed (target detection still works). */
 	public var arrowEnabled:Bool = true;
 
-	/** When true, arrow endpoint snaps to the center of the hovered target (default).
+	/** When true, arrow endpoint snaps to a point on the hovered target (default: center).
 	 *  When false, arrow follows cursor freely — target detection still works. */
 	public var snapToTarget:Bool = true;
+
+	/** Optional callback to compute the arrow snap point for a target in the target's local space.
+	 *  When null, arrow snaps to interactive center. Receives the target wrapper, returns local-space point. */
+	public var arrowSnapPointProvider:Null<(UIInteractiveWrapper) -> FPoint> = null;
 
 	/** Called when a target becomes highlighted or unhighlighted during targeting. */
 	public var onTargetHighlight:Null<TargetHighlightCallback> = null;
@@ -211,18 +215,28 @@ class UICardHandTargeting {
 
 		var valid = hoveredWrapper != null;
 
-		// Snap arrow endpoint to target center when hovering a valid target (if snap enabled)
+		// Snap arrow endpoint to target when hovering a valid target (if snap enabled)
 		var endX = cursorX;
 		var endY = cursorY;
 		if (snapToTarget && valid && hoveredWrapper != null) {
-			switch hoveredWrapper.interactive.multiAnimType {
-				case MAInteractive(width, height, _, _):
-					// Get center of target interactive in scene space, then convert to arrow local space
-					var centerScene = hoveredWrapper.interactive.localToGlobal(new h2d.col.Point(width * 0.5, height * 0.5));
-					var centerLocal = arrowContainer.globalToLocal(centerScene);
-					endX = centerLocal.x;
-					endY = centerLocal.y;
-				default:
+			// Get snap point in target's local space (default: interactive center)
+			var localPoint:Null<h2d.col.Point> = null;
+			if (arrowSnapPointProvider != null) {
+				final fp = arrowSnapPointProvider(hoveredWrapper);
+				localPoint = new h2d.col.Point(fp.x, fp.y);
+			} else {
+				switch hoveredWrapper.interactive.multiAnimType {
+					case MAInteractive(width, height, _, _):
+						localPoint = new h2d.col.Point(width * 0.5, height * 0.5);
+					default:
+				}
+			}
+			if (localPoint != null) {
+				// Convert from target local space to arrow local space
+				var centerScene = hoveredWrapper.interactive.localToGlobal(localPoint);
+				var centerLocal = arrowContainer.globalToLocal(centerScene);
+				endX = centerLocal.x;
+				endY = centerLocal.y;
 			}
 		}
 

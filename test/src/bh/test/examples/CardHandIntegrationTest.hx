@@ -428,4 +428,29 @@ class CardHandIntegrationTest extends BuilderTestBase {
 		Assert.isNull(h.helper.getCardResult("a"));
 		Assert.notNull(h.helper.getCardResult("c"));
 	}
+
+	// ==================== Arrow Snap Point Provider ====================
+
+	@Test
+	public function testSetArrowSnapPointProvider():Void {
+		var h = createHelper();
+		Assert.isNull(h.helper.targeting.arrowSnapPointProvider);
+		h.helper.setArrowSnapPointProvider((w) -> new FPoint(10, 20));
+		Assert.notNull(h.helper.targeting.arrowSnapPointProvider);
+	}
+
+	@Test
+	public function testSetArrowSnapPointProviderNull():Void {
+		var h = createHelper();
+		h.helper.setArrowSnapPointProvider((w) -> new FPoint(10, 20));
+		h.helper.setArrowSnapPointProvider(null);
+		Assert.isNull(h.helper.targeting.arrowSnapPointProvider);
+	}
+
+	@Test
+	public function testGetTargetingObject():Void {
+		var h = createHelper();
+		var obj = h.helper.getTargetingObject();
+		Assert.notNull(obj);
+	}
 }

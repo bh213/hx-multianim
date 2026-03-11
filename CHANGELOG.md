@@ -73,6 +73,22 @@
 - **`UIEntering` event carries optional data** — `UIEntering` enum variant changed from no-arg to `UIEntering(?data:Dynamic)`. Pattern match with `UIEntering(_)` to ignore data, or `UIEntering(data)` to extract it.
 - **UIPanelHelper.openAt()** — `openAt(x, y, buildName, ?params, ?closeMode)` opens a panel at explicit coordinates instead of anchored to an interactive. Supports fade transitions, panel interactives, and close modes. Note: `EVENT_PANEL_CLOSE` is not emitted on close since there is no associated interactive ID.
 - **UICardHandTargeting: arrow snaps to target center** — when hovering a valid target, the targeting arrow endpoint snaps to the target interactive's center instead of following the cursor. Uses `localToGlobal`/`globalToLocal` coordinate transforms for correct positioning across scene hierarchies.
+- **UICardHandHelper: configurable arrow snap point** — `setArrowSnapPointProvider(callback)` allows customizing where the targeting arrow endpoint snaps to on a target. Callback receives `UIInteractiveWrapper`, returns `FPoint` in target's local space. Default (null): arrow snaps to interactive center.
+- **UICardHandHelper: getTargetingObject()** — exposes the targeting arrow's scene object for reparenting into custom layer hierarchies.
+- **UIMultiAnimGrid: named layers** — per-cell stacked programmable overlays with z-ordering via `h2d.Layers`. Base cells at z-order 0; layers at configurable z-orders.
+  - `addLayer(name, {buildName, zOrder})` — register a named layer
+  - `setLayer(col, row, layerName, ?params)` — build layer instance on a cell (rebuild if exists)
+  - `clearLayer(col, row, layerName)` — remove layer from a cell
+  - `clearLayerAll(layerName)` — remove layer from all cells
+  - `clearAllLayers()` — remove all layers from all cells
+  - `getLayerResult(col, row, layerName)` — get `BuilderResult` for incremental updates
+  - `hasLayer(col, row, layerName)` — check if layer exists on cell
+  - `forEachLayer(layerName, fn)` — iterate cells with a given layer
+  - `removeCell()` / `removeCellAnimated()` auto-clear layers on the removed cell
+  - `dispose()` clears all layers
+- **UIMultiAnimGrid: external objects in layer hierarchy** — `addExternalObject(obj, zOrder)` / `removeExternalObject(obj)` to insert arbitrary objects (e.g. targeting arrows) between grid layers
+- **UIMultiAnimGrid: DropContext for CellDrop events** — `CellDrop` event now includes a `DropContext` parameter. Game calls `ctx.accept()` / `ctx.reject()` to control post-drop animation (snap vs return). `ctx.onComplete(cb)` fires after the animation finishes. Custom paths: `ctx.acceptWithPath(name)` / `ctx.rejectWithPath(name)`.
+- **UIMultiAnimDraggable: DragSnapComplete event** — new `DragEvent` variant that fires after the snap animation completes (after `DragEnd`). Used by grid's `DropContext.onComplete()` to defer work until the draggable's snap animation finishes.
 
 ### Changed
 - **UIDefaultController: simplified outside-click mechanism** — removed `OutsideClickImpl` class and tri-state `enabledChanged` flag. Outside-click subscriber tracking is now inlined into `ControllableImpl` with a context-based approach: controller sets `currentElement` before dispatching `onEvent`, `trackOutsideClick()` uses it directly.

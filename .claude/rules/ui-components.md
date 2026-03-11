@@ -159,9 +159,15 @@ var grid = new UIMultiAnimGrid(builder, {
 **GridEvent enum** (via `onGridEvent` callback):
 - `CellClick(cell, button)` — cell was clicked
 - `CellHoverEnter(cell)` / `CellHoverLeave(cell)` — hover state changes
-- `CellDrop(cell, draggable, sourceGrid, sourceCell)` — draggable dropped on cell
+- `CellDrop(cell, draggable, sourceGrid, sourceCell, ctx)` — draggable dropped on cell. `ctx:DropContext` controls post-drop animation
 - `CellCardPlayed(cell, cardId)` — card played on cell (from card hand targeting)
 - `CellDataChanged(cell, oldData, newData)` — data changed via `set()` or `clear()`
+
+**DropContext** (passed in `CellDrop` event):
+- `ctx.accept()` — play snap animation (default)
+- `ctx.reject()` — play return animation (draggable returns to origin)
+- `ctx.acceptWithPath(pathName)` / `ctx.rejectWithPath(pathName)` — custom animation paths
+- `ctx.onComplete(cb)` — fires after snap/return animation completes (accept: `DragSnapComplete`, reject: `DragCancel`)
 
 **Drag-drop integration:**
 - `acceptDrops(draggable, ?accepts)` — register a `UIMultiAnimDraggable` to drop onto this grid's cells. Auto-creates `DropZone` per cell, manages highlight state. `accepts: (cell, draggable) -> Bool` filters valid targets. When `rejectHighlightParam` is set, cells where `accepts` returns false show rejected state (red) distinct from "not a target"
@@ -171,6 +177,21 @@ var grid = new UIMultiAnimGrid(builder, {
 **Card hand integration:**
 - `registerAsCardTarget(cardHand, ?accepts)` — register grid cells as card play targets. Creates synthetic `UIInteractiveWrapper` per cell for the card hand's targeting system. `accepts: (cell, cardId) -> Bool` filters valid targets
 - `unregisterAsCardTarget(cardHand)` — unregister
+
+**Grid layers** — named per-cell overlays with z-ordering:
+- `addLayer(name, {buildName, zOrder})` — register a named layer (base cells at z-order 0)
+- `setLayer(col, row, layerName, ?params)` — build/rebuild layer programmable on a cell
+- `clearLayer(col, row, layerName)` — remove layer from a cell
+- `clearLayerAll(layerName)` — remove layer from all cells
+- `clearAllLayers()` — remove all layers
+- `getLayerResult(col, row, layerName)` — `BuilderResult` for incremental updates
+- `hasLayer(col, row, layerName)` — check existence
+- `forEachLayer(layerName, fn)` — iterate cells with a given layer
+- `removeCell()` / `removeCellAnimated()` auto-clear layers on the cell
+
+**External objects in layer hierarchy:**
+- `addExternalObject(obj, zOrder)` — insert arbitrary object into grid's `h2d.Layers` at a z-order
+- `removeExternalObject(obj)` — remove it
 
 **Cell animations** (require `tweenManager` in config):
 - `tweenCell(col, row, duration, properties, ?easing)` — animate cell object properties (e.g. shake, pulse). Non-destructive — cell stays in grid
@@ -202,9 +223,11 @@ loadoutGrid.acceptDrops(drag, (cell, d) -> !loadoutGrid.isOccupied(cell.col, cel
 // makeDraggableFromCell auto-sets payload, sourceGrid, sourceCellCoord
 var drag = srcGrid.makeDraggableFromCell(col, row);
 
-// In onGridEvent CellDrop: source tracking available
-case CellDrop(cell, draggable, sourceGrid, sourceCell):
+// In onGridEvent CellDrop: source tracking + animation control
+case CellDrop(cell, draggable, sourceGrid, sourceCell, ctx):
+    ctx.accept();
     targetGrid.set(cell.col, cell.row, draggable.payload);
+    ctx.onComplete(() -> rebuildDraggables());
     // sourceGrid/sourceCell identify where the drag started
 ```
 

@@ -97,10 +97,15 @@ class UIMultiAnimGrid {
 	final rectGap:Float;
 
 	// --- Scene graph ---
-	final root:h2d.Object;
+	final root:h2d.Layers;
 
 	// --- Cell storage: Map<"col_row", CellEntry> ---
 	final cells:Map<String, CellEntry> = new Map();
+
+	// --- Grid layers: named overlays rendered per-cell ---
+	final layerConfigs:Map<String, GridLayerConfig> = new Map();
+	// layerEntries: Map<"layerName", Map<"col_row", {result:BuilderResult, object:h2d.Object}>>
+	final layerEntries:Map<String, Map<String, {result:BuilderResult, object:h2d.Object}>> = new Map();
 
 	// --- Hover state ---
 	var hoveredCell:Null<CellCoord> = null;
@@ -158,7 +163,7 @@ class UIMultiAnimGrid {
 		this.returnPathName = config.returnPathName;
 		this.tweenManager = config.tweenManager;
 
-		this.root = new h2d.Object();
+		this.root = new h2d.Layers();
 		this.root.setPosition(config.originX != null ? config.originX : 0, config.originY != null ? config.originY : 0);
 
 		this.instanceId = instanceCounter++;
@@ -190,7 +195,7 @@ class UIMultiAnimGrid {
 		final coord:CellCoord = {col: col, row: row};
 		final entry = buildCell(coord, data, params);
 		cells.set(key, entry);
-		root.addChild(entry.result.object);
+		root.add(entry.result.object, 0);
 		positionCell(entry);
 
 		if (onCellBuilt != null)
@@ -200,7 +205,7 @@ class UIMultiAnimGrid {
 		refreshAllCardTargets();
 	}
 
-	/** Remove a cell at (col, row). */
+	/** Remove a cell at (col, row). Also clears all layers on this cell. */
 	public function removeCell(col:Int, row:Int):Void {
 		final key = cellKey(col, row);
 		final entry = cells.get(key);
@@ -209,6 +214,7 @@ class UIMultiAnimGrid {
 
 		entry.result.object.remove();
 		cells.remove(key);
+		clearAllLayersOnCell(col, row);
 
 		// Clear hover if this was the hovered cell
 		if (hoveredCell != null && hoveredCell.col == col && hoveredCell.row == row)
@@ -337,7 +343,7 @@ class UIMultiAnimGrid {
 
 		final newEntry = buildCell(oldEntry.coord, oldEntry.data, null);
 		cells.set(key, newEntry);
-		root.addChild(newEntry.result.object);
+		root.add(newEntry.result.object, 0);
 		positionCell(newEntry);
 
 		if (onCellBuilt != null)
@@ -372,6 +378,7 @@ class UIMultiAnimGrid {
 
 		// Remove from grid data immediately (no longer hittable or interactive)
 		cells.remove(key);
+		clearAllLayersOnCell(col, row);
 		if (hoveredCell != null && hoveredCell.col == col && hoveredCell.row == row)
 			hoveredCell = null;
 		refreshAllDraggableZones();
@@ -448,6 +455,148 @@ class UIMultiAnimGrid {
 	}
 
 	// ============================================================
+	// Grid layers — per-cell stacked programmables
+	// ============================================================
+
+	/** Register a named layer. Layers are rendered per-cell at the given z-order using a separate programmable.
+	 *  Base cells render at z-order 0. Call setLayer() to build layer instances on individual cells. */
+	public function addLayer(name:String, config:GridLayerConfig):Void {
+		if (layerConfigs.exists(name))
+			throw 'Grid layer "$name" already registered';
+		layerConfigs.set(name, config);
+		layerEntries.set(name, new Map());
+	}
+
+	/** Build (or rebuild) a layer instance on a cell. Creates the programmable at the cell's position.
+	 *  If the layer already exists on this cell, it's cleared first. */
+	public function setLayer(col:Int, row:Int, layerName:String, ?params:Map<String, Dynamic>):Void {
+		final config = layerConfigs.get(layerName);
+		if (config == null)
+			throw 'Grid layer "$layerName" not registered';
+		if (!cells.exists(cellKey(col, row)))
+			throw 'Cell ($col, $row) does not exist';
+
+		final entries = layerEntries.get(layerName);
+		final key = cellKey(col, row);
+
+		// Clear existing if present
+		final existing = entries.get(key);
+		if (existing != null) {
+			existing.object.remove();
+			entries.remove(key);
+		}
+
+		// Build the layer programmable (only user-supplied params — no auto col/row injection)
+		final buildParams:Map<String, Dynamic> = if (params != null) params else new Map();
+
+		final result = builder.buildWithParameters(config.buildName, buildParams);
+		final obj = result.object;
+
+		// Position at cell coordinates
+		final localPos = getCellLocalPosition({col: col, row: row});
+		obj.setPosition(localPos.x, localPos.y);
+		root.add(obj, config.zOrder);
+
+		entries.set(key, {result: result, object: obj});
+	}
+
+	/** Clear a layer instance from a cell. */
+	public function clearLayer(col:Int, row:Int, layerName:String):Void {
+		final entries = layerEntries.get(layerName);
+		if (entries == null)
+			return;
+
+		final key = cellKey(col, row);
+		final entry = entries.get(key);
+		if (entry != null) {
+			entry.object.remove();
+			entries.remove(key);
+		}
+	}
+
+	/** Clear a layer from all cells. */
+	public function clearLayerAll(layerName:String):Void {
+		final entries = layerEntries.get(layerName);
+		if (entries == null)
+			return;
+
+		for (_ => entry in entries)
+			entry.object.remove();
+		entries.clear();
+	}
+
+	/** Clear all layers from all cells. */
+	public function clearAllLayers():Void {
+		for (_ => entries in layerEntries) {
+			for (_ => entry in entries)
+				entry.object.remove();
+			entries.clear();
+		}
+	}
+
+	/** Get the BuilderResult for a layer instance on a cell (for incremental setParameter updates).
+	 *  Returns null if the layer doesn't exist on this cell. */
+	public function getLayerResult(col:Int, row:Int, layerName:String):Null<BuilderResult> {
+		final entries = layerEntries.get(layerName);
+		if (entries == null)
+			return null;
+		final entry = entries.get(cellKey(col, row));
+		return entry != null ? entry.result : null;
+	}
+
+	/** Check if a layer instance exists on a cell. */
+	public function hasLayer(col:Int, row:Int, layerName:String):Bool {
+		final entries = layerEntries.get(layerName);
+		if (entries == null)
+			return false;
+		return entries.exists(cellKey(col, row));
+	}
+
+	/** Iterate all cells that have a given layer active. */
+	public function forEachLayer(layerName:String, fn:(col:Int, row:Int, result:BuilderResult) -> Void):Void {
+		final entries = layerEntries.get(layerName);
+		if (entries == null)
+			return;
+		for (key => entry in entries) {
+			final parts = key.split("_");
+			if (parts.length == 2) {
+				final col = Std.parseInt(parts[0]);
+				final row = Std.parseInt(parts[1]);
+				if (col != null && row != null)
+					fn(col, row, entry.result);
+			}
+		}
+	}
+
+	/** Clear all layers on a specific cell. */
+	function clearAllLayersOnCell(col:Int, row:Int):Void {
+		final key = cellKey(col, row);
+		for (_ => entries in layerEntries) {
+			final entry = entries.get(key);
+			if (entry != null) {
+				entry.object.remove();
+				entries.remove(key);
+			}
+		}
+	}
+
+	// ============================================================
+	// External objects at layer z-order
+	// ============================================================
+
+	/** Add an external object to the grid's layer hierarchy at the given z-order.
+	 *  Use this to insert objects (e.g. targeting arrows) between grid layers.
+	 *  The object's position is in grid-local coordinates. */
+	public function addExternalObject(obj:h2d.Object, zOrder:Int):Void {
+		root.add(obj, zOrder);
+	}
+
+	/** Remove a previously added external object from the grid. */
+	public function removeExternalObject(obj:h2d.Object):Void {
+		obj.remove();
+	}
+
+	// ============================================================
 	// Detach / reattach cell visual
 	// ============================================================
 
@@ -478,7 +627,7 @@ class UIMultiAnimGrid {
 			throw 'Cell ($col, $row) does not exist';
 
 		if (obj != null) {
-			root.addChild(obj);
+			root.add(obj, 0);
 			positionCell(entry);
 		} else {
 			// Full rebuild
@@ -701,6 +850,10 @@ class UIMultiAnimGrid {
 			clearCardTargetsForBinding(binding);
 		registeredCardHands.resize(0);
 
+		// Clear all layers
+		clearAllLayers();
+		layerConfigs.clear();
+
 		// Remove scene graph
 		root.remove();
 		cells.clear();
@@ -793,7 +946,7 @@ class UIMultiAnimGrid {
 		final coord:CellCoord = {col: col, row: row};
 		final entry = buildCell(coord, data, params);
 		cells.set(key, entry);
-		root.addChild(entry.result.object);
+		root.add(entry.result.object, 0);
 		positionCell(entry);
 
 		if (onCellBuilt != null)
@@ -920,7 +1073,7 @@ class UIMultiAnimGrid {
 			activeDragHighlightedCells = [];
 		};
 
-		// Wire drop event to emit GridEvent
+		// Wire drop event to emit GridEvent with DropContext for animation control.
 		// Chaining: if prevDrop handled it (returned true), skip this grid.
 		// If prevDrop returned false (zone not for that grid), try this grid.
 		final prevDrop = binding.draggable.onDragDrop;
@@ -936,7 +1089,50 @@ class UIMultiAnimGrid {
 						? cast binding.draggable.sourceGrid
 						: null;
 					final srcCell:Null<CellCoord> = binding.draggable.sourceCellCoord;
-					emitEvent(CellDrop(coord, binding.draggable, srcGrid, srcCell));
+					final ctx = new DropContext();
+					emitEvent(CellDrop(coord, binding.draggable, srcGrid, srcCell, ctx));
+
+					// Handle rejection: if game called ctx.reject(), cancel the snap
+					if (ctx._handled && !ctx._accepted) {
+						// Save current return path factory, override if custom reject path provided
+						if (ctx._pathName != null)
+							binding.draggable.setReturnAnimPath(builder, ctx._pathName);
+						// Wire onComplete into the cancel callback
+						if (ctx._onComplete != null) {
+							final onComplete = ctx._onComplete;
+							final prevCancel = binding.draggable.onDragCancel;
+							binding.draggable.onDragCancel = (pos, w) -> {
+								// Restore original cancel handler
+								binding.draggable.onDragCancel = prevCancel;
+								if (prevCancel != null)
+									prevCancel(pos, w);
+								onComplete();
+							};
+						}
+						return false; // Returning false causes draggable to treat as failed drop → return animation
+					}
+
+					// Accept path: override snap path if custom accept path provided
+					if (ctx._handled && ctx._pathName != null)
+						binding.draggable.setSnapAnimPath(builder, ctx._pathName);
+
+					// Wire onComplete for accepted drops via DragSnapComplete event
+					if (ctx._onComplete != null) {
+						final onComplete = ctx._onComplete;
+						final prevEvent = binding.draggable.onDragEvent;
+						binding.draggable.onDragEvent = (event, pos, w) -> {
+							if (prevEvent != null)
+								prevEvent(event, pos, w);
+							switch event {
+								case DragSnapComplete | DragCancel:
+									// Restore original event handler and fire completion
+									binding.draggable.onDragEvent = prevEvent;
+									onComplete();
+								default:
+							}
+						};
+					}
+
 					return true;
 				}
 			}
@@ -1009,7 +1205,7 @@ class UIMultiAnimGrid {
 				case Hex(_, _, _):
 					interactive.setPosition(localPos.x - cellSize.x / 2, localPos.y - cellSize.y / 2);
 			}
-			root.addChild(interactive);
+			root.add(interactive, 1000);
 
 			final wrapper = new UIInteractiveWrapper(interactive, null);
 			cardTargetInteractives.set(targetId, interactive);

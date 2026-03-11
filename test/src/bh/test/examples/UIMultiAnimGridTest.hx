@@ -839,4 +839,291 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 		@:privateAccess var count2 = grid.registeredDraggables.length;
 		Assert.equals(1, count2);
 	}
+
+	// ============== Grid layers ==============
+
+	static final LAYER_MANIM = "
+		#overlay programmable(state:[normal,active]=normal) {
+			bitmap(generated(color(50, 50, #FF0000))): 0, 0
+		}
+		#highlight programmable() {
+			bitmap(generated(color(50, 50, #00FF00))): 0, 0
+		}
+	";
+
+	function createRectGridWithLayers(?cols:Int, ?rows:Int):UIMultiAnimGrid {
+		var builder = BuilderTestBase.builderFromSource('$CELL_MANIM\n$LAYER_MANIM');
+		var grid = new UIMultiAnimGrid(builder, {
+			gridType: Rect(50, 50, 2),
+			cellBuildName: "cell",
+			originX: 0,
+			originY: 0,
+		});
+		if (cols != null && rows != null)
+			grid.addRectRegion(cols, rows);
+		return grid;
+	}
+
+	@Test
+	public function testAddLayer():Void {
+		var grid = createRectGridWithLayers(2, 2);
+		grid.addLayer("overlay", {buildName: "overlay", zOrder: 1});
+		// Should not throw — layer is registered
+		Assert.isTrue(true);
+	}
+
+	@Test
+	public function testAddLayerDuplicateThrows():Void {
+		var grid = createRectGridWithLayers(2, 2);
+		grid.addLayer("overlay", {buildName: "overlay", zOrder: 1});
+		var threw = false;
+		try {
+			grid.addLayer("overlay", {buildName: "overlay", zOrder: 2});
+		} catch (e:Dynamic) {
+			threw = true;
+		}
+		Assert.isTrue(threw);
+	}
+
+	@Test
+	public function testSetLayerOnCell():Void {
+		var grid = createRectGridWithLayers(2, 2);
+		grid.addLayer("overlay", {buildName: "overlay", zOrder: 1});
+		grid.setLayer(0, 0, "overlay");
+		Assert.isTrue(grid.hasLayer(0, 0, "overlay"));
+		Assert.notNull(grid.getLayerResult(0, 0, "overlay"));
+	}
+
+	@Test
+	public function testSetLayerOnNonexistentCellThrows():Void {
+		var grid = createRectGridWithLayers(2, 2);
+		grid.addLayer("overlay", {buildName: "overlay", zOrder: 1});
+		var threw = false;
+		try {
+			grid.setLayer(5, 5, "overlay");
+		} catch (e:Dynamic) {
+			threw = true;
+		}
+		Assert.isTrue(threw);
+	}
+
+	@Test
+	public function testSetLayerUnregisteredThrows():Void {
+		var grid = createRectGridWithLayers(2, 2);
+		var threw = false;
+		try {
+			grid.setLayer(0, 0, "unknown");
+		} catch (e:Dynamic) {
+			threw = true;
+		}
+		Assert.isTrue(threw);
+	}
+
+	@Test
+	public function testSetLayerWithParams():Void {
+		var grid = createRectGridWithLayers(2, 2);
+		grid.addLayer("overlay", {buildName: "overlay", zOrder: 1});
+		grid.setLayer(0, 0, "overlay", ["state" => "active"]);
+		Assert.notNull(grid.getLayerResult(0, 0, "overlay"));
+	}
+
+	@Test
+	public function testClearLayerSingle():Void {
+		var grid = createRectGridWithLayers(2, 2);
+		grid.addLayer("overlay", {buildName: "overlay", zOrder: 1});
+		grid.setLayer(0, 0, "overlay");
+		Assert.isTrue(grid.hasLayer(0, 0, "overlay"));
+		grid.clearLayer(0, 0, "overlay");
+		Assert.isFalse(grid.hasLayer(0, 0, "overlay"));
+		Assert.isNull(grid.getLayerResult(0, 0, "overlay"));
+	}
+
+	@Test
+	public function testClearLayerNonexistentDoesNotThrow():Void {
+		var grid = createRectGridWithLayers(2, 2);
+		grid.addLayer("overlay", {buildName: "overlay", zOrder: 1});
+		// Should not throw — no layer set on this cell
+		grid.clearLayer(0, 0, "overlay");
+		Assert.isFalse(grid.hasLayer(0, 0, "overlay"));
+	}
+
+	@Test
+	public function testClearLayerAll():Void {
+		var grid = createRectGridWithLayers(2, 2);
+		grid.addLayer("overlay", {buildName: "overlay", zOrder: 1});
+		grid.setLayer(0, 0, "overlay");
+		grid.setLayer(1, 0, "overlay");
+		Assert.isTrue(grid.hasLayer(0, 0, "overlay"));
+		Assert.isTrue(grid.hasLayer(1, 0, "overlay"));
+		grid.clearLayerAll("overlay");
+		Assert.isFalse(grid.hasLayer(0, 0, "overlay"));
+		Assert.isFalse(grid.hasLayer(1, 0, "overlay"));
+	}
+
+	@Test
+	public function testClearAllLayers():Void {
+		var grid = createRectGridWithLayers(2, 2);
+		grid.addLayer("overlay", {buildName: "overlay", zOrder: 1});
+		grid.addLayer("hl", {buildName: "highlight", zOrder: 2});
+		grid.setLayer(0, 0, "overlay");
+		grid.setLayer(0, 0, "hl");
+		Assert.isTrue(grid.hasLayer(0, 0, "overlay"));
+		Assert.isTrue(grid.hasLayer(0, 0, "hl"));
+		grid.clearAllLayers();
+		Assert.isFalse(grid.hasLayer(0, 0, "overlay"));
+		Assert.isFalse(grid.hasLayer(0, 0, "hl"));
+	}
+
+	@Test
+	public function testForEachLayer():Void {
+		var grid = createRectGridWithLayers(3, 2);
+		grid.addLayer("overlay", {buildName: "overlay", zOrder: 1});
+		grid.setLayer(0, 0, "overlay");
+		grid.setLayer(1, 0, "overlay");
+		grid.setLayer(1, 1, "overlay");
+		var count = 0;
+		grid.forEachLayer("overlay", (col, row, result) -> {
+			count++;
+			Assert.notNull(result);
+		});
+		Assert.equals(3, count);
+	}
+
+	@Test
+	public function testForEachLayerUnregistered():Void {
+		var grid = createRectGridWithLayers(2, 2);
+		var count = 0;
+		grid.forEachLayer("nonexistent", (col, row, result) -> count++);
+		Assert.equals(0, count);
+	}
+
+	@Test
+	public function testRemoveCellAutoClearsLayers():Void {
+		var grid = createRectGridWithLayers(2, 2);
+		grid.addLayer("overlay", {buildName: "overlay", zOrder: 1});
+		grid.setLayer(0, 0, "overlay");
+		Assert.isTrue(grid.hasLayer(0, 0, "overlay"));
+		grid.removeCell(0, 0);
+		Assert.isFalse(grid.hasLayer(0, 0, "overlay"));
+	}
+
+	@Test
+	public function testSetLayerRebuildsExisting():Void {
+		var grid = createRectGridWithLayers(2, 2);
+		grid.addLayer("overlay", {buildName: "overlay", zOrder: 1});
+		grid.setLayer(0, 0, "overlay");
+		var result1 = grid.getLayerResult(0, 0, "overlay");
+		grid.setLayer(0, 0, "overlay");
+		var result2 = grid.getLayerResult(0, 0, "overlay");
+		Assert.notNull(result1);
+		Assert.notNull(result2);
+		// After rebuild, the result should be a different object
+		Assert.isFalse(result1 == result2);
+	}
+
+	@Test
+	public function testHasLayerFalseWhenNotSet():Void {
+		var grid = createRectGridWithLayers(2, 2);
+		grid.addLayer("overlay", {buildName: "overlay", zOrder: 1});
+		Assert.isFalse(grid.hasLayer(0, 0, "overlay"));
+	}
+
+	@Test
+	public function testDisposeClearsLayers():Void {
+		var grid = createRectGridWithLayers(2, 2);
+		grid.addLayer("overlay", {buildName: "overlay", zOrder: 1});
+		grid.setLayer(0, 0, "overlay");
+		grid.dispose();
+		Assert.equals(0, grid.cellCount());
+	}
+
+	// ============== External objects ==============
+
+	@Test
+	public function testAddExternalObject():Void {
+		var grid = createRectGrid(2, 2);
+		var obj = new h2d.Object();
+		grid.addExternalObject(obj, 5);
+		Assert.notNull(obj.parent);
+	}
+
+	@Test
+	public function testRemoveExternalObject():Void {
+		var grid = createRectGrid(2, 2);
+		var obj = new h2d.Object();
+		grid.addExternalObject(obj, 5);
+		Assert.notNull(obj.parent);
+		grid.removeExternalObject(obj);
+		Assert.isNull(obj.parent);
+	}
+
+	// ============== DropContext ==============
+
+	@Test
+	public function testDropContextDefaultState():Void {
+		var ctx = new DropContext();
+		Assert.isFalse(ctx._handled);
+		Assert.isTrue(ctx._accepted);
+		Assert.isNull(ctx._pathName);
+		Assert.isNull(ctx._onComplete);
+	}
+
+	@Test
+	public function testDropContextAccept():Void {
+		var ctx = new DropContext();
+		ctx.accept();
+		Assert.isTrue(ctx._handled);
+		Assert.isTrue(ctx._accepted);
+		Assert.isNull(ctx._pathName);
+	}
+
+	@Test
+	public function testDropContextReject():Void {
+		var ctx = new DropContext();
+		ctx.reject();
+		Assert.isTrue(ctx._handled);
+		Assert.isFalse(ctx._accepted);
+		Assert.isNull(ctx._pathName);
+	}
+
+	@Test
+	public function testDropContextAcceptWithPath():Void {
+		var ctx = new DropContext();
+		ctx.acceptWithPath("customSnap");
+		Assert.isTrue(ctx._handled);
+		Assert.isTrue(ctx._accepted);
+		Assert.equals("customSnap", ctx._pathName);
+	}
+
+	@Test
+	public function testDropContextRejectWithPath():Void {
+		var ctx = new DropContext();
+		ctx.rejectWithPath("customReturn");
+		Assert.isTrue(ctx._handled);
+		Assert.isFalse(ctx._accepted);
+		Assert.equals("customReturn", ctx._pathName);
+	}
+
+	@Test
+	public function testDropContextOnComplete():Void {
+		var ctx = new DropContext();
+		var fired = false;
+		ctx.onComplete(() -> fired = true);
+		Assert.notNull(ctx._onComplete);
+		ctx._onComplete();
+		Assert.isTrue(fired);
+	}
+
+	@Test
+	public function testDropContextAcceptThenOnComplete():Void {
+		var ctx = new DropContext();
+		ctx.accept();
+		var fired = false;
+		ctx.onComplete(() -> fired = true);
+		Assert.isTrue(ctx._handled);
+		Assert.isTrue(ctx._accepted);
+		Assert.notNull(ctx._onComplete);
+		ctx._onComplete();
+		Assert.isTrue(fired);
+	}
 }

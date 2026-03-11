@@ -366,4 +366,106 @@ class CardHandTargetingTest extends BuilderTestBase {
 		t.clearTargets();
 		Assert.equals("t1", unhighlightedId);
 	}
+
+	// ============== Custom arrow snap provider ==============
+
+	@Test
+	public function testCustomArrowSnapProvider():Void {
+		// Custom provider: snap to top-left (0, 0) instead of center
+		var t = createTargetingWithArrow();
+		var target = createInteractive("t1", 60, 40, 100, 80);
+		t.registerTarget(target);
+
+		t.arrowSnapPointProvider = (w) -> new bh.base.FPoint(0, 0);
+
+		// Cursor inside target
+		var result = t.updateTargetingLine(0, 0, 110, 90, 110, 90, "card1");
+		Assert.equals("t1", result);
+
+		// Arrow head should snap to target's top-left (100, 80), not center (130, 100)
+		if (t.headValid != null) {
+			var headX = t.headValid.object.x;
+			var headY = t.headValid.object.y;
+			Assert.isTrue(Math.abs(headX - 100) < 2.0, 'headX=$headX expected ~100 (top-left)');
+			Assert.isTrue(Math.abs(headY - 80) < 2.0, 'headY=$headY expected ~80 (top-left)');
+		}
+	}
+
+	@Test
+	public function testArrowSnapProviderNullFallsBackToCenter():Void {
+		var t = createTargetingWithArrow();
+		var target = createInteractive("t1", 60, 40, 100, 80);
+		t.registerTarget(target);
+
+		// Explicitly null — should use default center snap
+		t.arrowSnapPointProvider = null;
+
+		var result = t.updateTargetingLine(0, 0, 110, 90, 110, 90, "card1");
+		Assert.equals("t1", result);
+
+		if (t.headValid != null) {
+			var headX = t.headValid.object.x;
+			var headY = t.headValid.object.y;
+			// Center of 60x40 interactive at (100, 80) = (130, 100)
+			Assert.isTrue(Math.abs(headX - 130) < 2.0, 'headX=$headX expected ~130 (center)');
+			Assert.isTrue(Math.abs(headY - 100) < 2.0, 'headY=$headY expected ~100 (center)');
+		}
+	}
+
+	@Test
+	public function testArrowSnapProviderCustomOffset():Void {
+		// Snap to bottom-right corner of the interactive
+		var t = createTargetingWithArrow();
+		var target = createInteractive("t1", 60, 40, 100, 80);
+		t.registerTarget(target);
+
+		t.arrowSnapPointProvider = (w) -> {
+			// Return bottom-right in local space
+			switch w.interactive.multiAnimType {
+				case MAInteractive(width, height, _, _):
+					return new bh.base.FPoint(width, height);
+				default:
+					return new bh.base.FPoint(0, 0);
+			}
+		};
+
+		var result = t.updateTargetingLine(0, 0, 110, 90, 110, 90, "card1");
+		Assert.equals("t1", result);
+
+		if (t.headValid != null) {
+			var headX = t.headValid.object.x;
+			var headY = t.headValid.object.y;
+			// Bottom-right of 60x40 interactive at (100, 80) = (160, 120)
+			Assert.isTrue(Math.abs(headX - 160) < 2.0, 'headX=$headX expected ~160 (bottom-right)');
+			Assert.isTrue(Math.abs(headY - 120) < 2.0, 'headY=$headY expected ~120 (bottom-right)');
+		}
+	}
+
+	@Test
+	public function testSnapDisabledIgnoresProvider():Void {
+		// When snapToTarget is false, provider should be ignored
+		var t = createTargetingWithArrow();
+		var target = createInteractive("t1", 60, 40, 100, 80);
+		t.registerTarget(target);
+
+		var providerCalled = false;
+		t.arrowSnapPointProvider = (w) -> {
+			providerCalled = true;
+			return new bh.base.FPoint(0, 0);
+		};
+		t.snapToTarget = false;
+
+		t.updateTargetingLine(0, 0, 110, 90, 110, 90, "card1");
+		Assert.isFalse(providerCalled);
+	}
+
+	// ============== getObject ==============
+
+	@Test
+	public function testGetObjectReturnsArrowContainer():Void {
+		var t = createTargetingWithArrow();
+		var obj = t.getObject();
+		Assert.notNull(obj);
+		Assert.equals(t.arrowContainer, obj);
+	}
 }

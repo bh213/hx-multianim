@@ -904,9 +904,11 @@ When `tabPanel.contentRoot` is set, tab content coordinates are relative to the 
 
 **Cell programmable contract:** Must have `col:int`, `row:int`, plus matching `highlightParam` (bool) and `statusParam` (enum with `normal`/`hover`). Optionally `rejectHighlightParam` (bool) for wrong-type reject glow.
 
-**Events** (`GridEvent` enum via `onGridEvent`): `CellClick`, `CellHoverEnter`, `CellHoverLeave`, `CellDrop(cell, draggable, sourceGrid, sourceCell)`, `CellCardPlayed`, `CellDataChanged`.
+**Events** (`GridEvent` enum via `onGridEvent`): `CellClick`, `CellHoverEnter`, `CellHoverLeave`, `CellDrop(cell, draggable, sourceGrid, sourceCell, ctx)`, `CellCardPlayed`, `CellDataChanged`. `CellDrop` includes `DropContext`: `ctx.accept()` / `ctx.reject()` controls snap vs return animation; `ctx.onComplete(cb)` fires after animation; `ctx.acceptWithPath(name)` / `ctx.rejectWithPath(name)` for custom paths.
 
 **Key API:** `addRectRegion(cols, rows)`, `addHexRegion(center, radius)`, `set(col, row, data, ?params)`, `get()`, `clear()`, `isOccupied()`, `forEach()`, `cellAtPoint(sceneX, sceneY)`, `cellPosition(col, row)`, `neighbors()`, `distance()`, `acceptDrops(draggable, ?filter)`, `registerAsCardTarget(cardHand, ?filter)`, `makeDraggableFromCell(col, row, ?visual, cloneMode)`, `dispose()`.
+
+**Grid layers:** `addLayer(name, {buildName, zOrder})`, `setLayer(col, row, name, ?params)`, `clearLayer(col, row, name)`, `clearLayerAll(name)`, `clearAllLayers()`, `getLayerResult(col, row, name)`, `hasLayer()`, `forEachLayer()`. Base cells at z-order 0; layers at configurable z-orders. `removeCell()` auto-clears layers. **External objects:** `addExternalObject(obj, zOrder)` / `removeExternalObject(obj)`.
 
 **Cell animations** (require `tweenManager`): `tweenCell(col, row, duration, props, ?easing)`, `addCellAnimated(col, row, ?data, ?params, duration, initProps, ?easing)`, `removeCellAnimated(col, row, duration, props, ?easing, ?onComplete)`. **Detach/reattach**: `detachCellVisual(col, row)` → `{object, data, sceneX, sceneY}`, `reattachCellVisual(col, row, ?obj)`.
 

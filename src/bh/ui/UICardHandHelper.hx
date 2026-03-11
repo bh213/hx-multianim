@@ -482,9 +482,23 @@ class UICardHandHelper {
 		targeting.arrowEnabled = visible;
 	}
 
-	/** Enable or disable arrow snap-to-target (arrow endpoint locks to target center). */
+	/** Enable or disable arrow snap-to-target (arrow endpoint locks to target center by default). */
 	public function setArrowSnap(snap:Bool):Void {
 		targeting.snapToTarget = snap;
+	}
+
+	/** Set a custom arrow snap point provider. The callback receives the target wrapper and returns
+	 *  a point in the target's local space. When null (default), arrow snaps to interactive center.
+	 *  Example: snap to top-center of a 48x48 hex cell: `(w) -> new FPoint(24, 0)` */
+	public function setArrowSnapPointProvider(provider:Null<(UIInteractiveWrapper) -> FPoint>):Void {
+		targeting.arrowSnapPointProvider = provider;
+	}
+
+	/** Get the targeting arrow's scene object for reparenting into a grid layer hierarchy.
+	 *  Use with `grid.addExternalObject(cardHand.getTargetingObject(), zOrder)` to control
+	 *  arrow z-ordering relative to grid layers. */
+	public function getTargetingObject():h2d.Object {
+		return targeting.getObject();
 	}
 
 	/** Show or hide the entire card hand (hand container + targeting arrow). */

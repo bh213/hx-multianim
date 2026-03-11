@@ -52,6 +52,7 @@ enum DragEvent {
 	DragStart;
 	DragMove;
 	DragEnd;
+	DragSnapComplete;
 	DragCancel;
 	ZoneEnter(zone:DropZone);
 	ZoneLeave(zone:DropZone);
@@ -560,6 +561,8 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 							}
 							sourceSlot = null;
 							sourceData = null;
+							if (onDragEvent != null)
+								onDragEvent(DragSnapComplete, wrapper.eventPos, wrapper);
 						});
 					} else {
 						// Failed drop — return to source slot if applicable
