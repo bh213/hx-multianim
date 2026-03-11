@@ -83,7 +83,8 @@ class UIMultiAnimGrid {
 	final defaultBuildName:String;
 	final cellBuildDelegate:Null<CellBuildDelegate>;
 	final highlightParam:String;
-	final rejectHighlightParam:Null<String>;
+	final highlightDefault:String;
+	final highlightDelegate:Null<GridHighlightDelegate>;
 	final statusParam:String;
 	final snapPathName:Null<String>;
 	final returnPathName:Null<String>;
@@ -106,13 +107,26 @@ class UIMultiAnimGrid {
 
 	// --- Drag-drop ---
 	final registeredDraggables:Array<DraggableBinding> = [];
-	var activeHighlightedCells:Array<CellCoord> = [];
-	var activeRejectedCells:Array<CellCoord> = [];
+	var activeDragHighlightedCells:Array<CellCoord> = [];
+
+	function isCellDragHighlighted(col:Int, row:Int):Bool {
+		for (c in activeDragHighlightedCells)
+			if (c.col == col && c.row == row)
+				return true;
+		return false;
+	}
+
+	function resolveHighlightValue(cell:CellCoord, accepts:Bool):String {
+		if (highlightDelegate != null)
+			return highlightDelegate(cell, accepts);
+		return if (accepts) "accept" else "reject";
+	}
 
 	// --- Card hand ---
 	final registeredCardHands:Array<CardHandBinding> = [];
 	final cardTargetInteractives:Map<String, MAObject> = new Map();
 	final cardTargetWrappers:Map<String, UIInteractiveWrapper> = new Map();
+	var activeCardDragId:Null<String> = null;
 
 	// --- Instance counter for unique zone IDs ---
 	static var instanceCounter:Int = 0;
@@ -137,7 +151,8 @@ class UIMultiAnimGrid {
 		this.defaultBuildName = config.cellBuildName;
 		this.cellBuildDelegate = config.cellBuildDelegate;
 		this.highlightParam = config.highlightParam != null ? config.highlightParam : "highlight";
-		this.rejectHighlightParam = config.rejectHighlightParam;
+		this.highlightDefault = "none";
+		this.highlightDelegate = config.highlightDelegate;
 		this.statusParam = config.statusParam != null ? config.statusParam : "status";
 		this.snapPathName = config.snapPathName;
 		this.returnPathName = config.returnPathName;
@@ -267,7 +282,7 @@ class UIMultiAnimGrid {
 
 		// Reset to defaults
 		entry.result.beginUpdate();
-		entry.result.setParameter(highlightParam, false);
+		entry.result.setParameter(highlightParam, highlightDefault);
 		entry.result.setParameter(statusParam, "normal");
 		entry.result.endUpdate();
 
@@ -546,14 +561,14 @@ class UIMultiAnimGrid {
 				final entry = cells.get(cellKey(hoveredCell.col, hoveredCell.row));
 				if (entry != null)
 					entry.result.setParameter(statusParam, "normal");
-				emitEvent(CellHoverLeave(hoveredCell));
+				emitEvent(CellTargetLeave(hoveredCell, Mouse));
 			}
 			hoveredCell = hit;
 			if (hoveredCell != null) {
 				final entry = cells.get(cellKey(hoveredCell.col, hoveredCell.row));
 				if (entry != null)
 					entry.result.setParameter(statusParam, "hover");
-				emitEvent(CellHoverEnter(hoveredCell));
+				emitEvent(CellTargetEnter(hoveredCell, Mouse));
 			}
 		}
 
@@ -727,7 +742,7 @@ class UIMultiAnimGrid {
 		final params:Map<String, Dynamic> = new Map();
 		params.set("col", coord.col);
 		params.set("row", coord.row);
-		params.set(highlightParam, false);
+		params.set(highlightParam, highlightDefault);
 		params.set(statusParam, "normal");
 
 		// Apply delegate params
@@ -855,30 +870,24 @@ class UIMultiAnimGrid {
 				onZoneHighlight: (zone, highlight) -> {
 					final e = cells.get(cellKey(capturedCoord.col, capturedCoord.row));
 					if (e != null) {
-						// Set hover status for visual feedback during drag
 						e.result.setParameter(statusParam, if (highlight) "hover" else "normal");
-						if (highlight) {
-							e.result.setParameter(highlightParam, true);
-						} else {
-							// Don't clear highlight if cell is still globally highlighted (drag in progress)
-							var keepHighlight = false;
-							for (c in activeHighlightedCells) {
-								if (c.col == capturedCoord.col && c.row == capturedCoord.row) {
-									keepHighlight = true;
-									break;
-								}
-							}
-							if (!keepHighlight)
-								e.result.setParameter(highlightParam, false);
+						if (!highlight) {
+							// Restore to drag-start highlight value if cell is still globally highlighted
+							if (!isCellDragHighlighted(capturedCoord.col, capturedCoord.row))
+								e.result.setParameter(highlightParam, highlightDefault);
 						}
 					}
+					if (highlight)
+						emitEvent(CellTargetEnter(capturedCoord, Drag(binding.draggable)));
+					else
+						emitEvent(CellTargetLeave(capturedCoord, Drag(binding.draggable)));
 				},
-				onZoneReject: if (rejectHighlightParam != null) (zone, reject) -> {
+				onZoneReject: (zone, reject) -> {
 					final e = cells.get(cellKey(capturedCoord.col, capturedCoord.row));
 					if (e != null) {
 						e.result.setParameter(statusParam, if (reject) "hover" else "normal");
 					}
-				} else null,
+				},
 			});
 		}
 	}
@@ -888,54 +897,27 @@ class UIMultiAnimGrid {
 		binding.draggable.onDragStartHighlightZones = (zones) -> {
 			if (prevStart != null)
 				prevStart(zones);
-			// Highlight all accepting cells
+			// Set highlight value for all cells via delegate
 			for (_ => entry in cells) {
 				final accepts = binding.accepts == null || binding.accepts(entry.coord, binding.draggable);
-				if (accepts) {
-					entry.result.setParameter(highlightParam, true);
-					activeHighlightedCells.push({col: entry.coord.col, row: entry.coord.row});
+				final value = resolveHighlightValue(entry.coord, accepts);
+				if (value != highlightDefault) {
+					entry.result.setParameter(highlightParam, value);
+					activeDragHighlightedCells.push({col: entry.coord.col, row: entry.coord.row});
 				}
 			}
 		};
-
-		// Wire reject highlight on drag start
-		if (rejectHighlightParam != null) {
-			final rejectParam = rejectHighlightParam;
-			final prevRejectStart = binding.draggable.onDragStartRejectZones;
-			binding.draggable.onDragStartRejectZones = (zones) -> {
-				if (prevRejectStart != null)
-					prevRejectStart(zones);
-				// Highlight all rejected cells
-				for (_ => entry in cells) {
-					final accepts = binding.accepts == null || binding.accepts(entry.coord, binding.draggable);
-					if (!accepts) {
-						entry.result.setParameter(rejectParam, true);
-						activeRejectedCells.push({col: entry.coord.col, row: entry.coord.row});
-					}
-				}
-			};
-		}
 
 		final prevEnd = binding.draggable.onDragEndHighlightZones;
 		binding.draggable.onDragEndHighlightZones = (zones) -> {
 			if (prevEnd != null)
 				prevEnd(zones);
-			// Clear all highlights
-			for (cell in activeHighlightedCells) {
+			for (cell in activeDragHighlightedCells) {
 				final e = cells.get(cellKey(cell.col, cell.row));
 				if (e != null)
-					e.result.setParameter(highlightParam, false);
+					e.result.setParameter(highlightParam, highlightDefault);
 			}
-			activeHighlightedCells = [];
-			// Clear all reject highlights
-			if (rejectHighlightParam != null) {
-				for (cell in activeRejectedCells) {
-					final e = cells.get(cellKey(cell.col, cell.row));
-					if (e != null)
-						e.result.setParameter(rejectHighlightParam, false);
-				}
-				activeRejectedCells = [];
-			}
+			activeDragHighlightedCells = [];
 		};
 
 		// Wire drop event to emit GridEvent
@@ -1047,17 +1029,29 @@ class UIMultiAnimGrid {
 			});
 		}
 
-		// Wire highlight callback
+		// Wire highlight callback — respect activeDragHighlightedCells
 		binding.cardHand.setTargetHighlightCallback((targetId, highlight, meta) -> {
 			final coord = parseCardTargetId(targetId);
 			if (coord != null) {
 				final e = cells.get(cellKey(coord.col, coord.row));
-				if (e != null)
-					e.result.setParameter(highlightParam, highlight);
+				if (e != null) {
+					// Set hover status for visual feedback during targeting
+					e.result.setParameter(statusParam, if (highlight) "hover" else "normal");
+					if (!highlight) {
+						// Restore to drag-start highlight value if cell is still globally highlighted
+						if (!isCellDragHighlighted(coord.col, coord.row))
+							e.result.setParameter(highlightParam, highlightDefault);
+					}
+				}
+				final cardId = activeCardDragId != null ? activeCardDragId : "";
+				if (highlight)
+					emitEvent(CellTargetEnter(coord, Card(cardId)));
+				else
+					emitEvent(CellTargetLeave(coord, Card(cardId)));
 			}
 		});
 
-		// Wire card played event → CellCardPlayed conversion
+		// Wire card drag events → highlight all valid targets on drag start
 		final listener = (event:UICardHandTypes.CardHandEvent) -> {
 			switch event {
 				case CardPlayed(cardId, target):
@@ -1068,6 +1062,26 @@ class UIMultiAnimGrid {
 								emitEvent(CellCardPlayed(coord, cardId));
 						default:
 					}
+				case CardDragStart(cardId):
+					activeCardDragId = cardId;
+					// Set highlight value for all cells via delegate
+					for (_ => entry in cells) {
+						final coord = entry.coord;
+						final accepts = binding.accepts == null || binding.accepts(coord, cardId);
+						final value = resolveHighlightValue(coord, accepts);
+						if (value != highlightDefault) {
+							entry.result.setParameter(highlightParam, value);
+							activeDragHighlightedCells.push({col: coord.col, row: coord.row});
+						}
+					}
+				case CardDragEnd(_):
+					for (cell in activeDragHighlightedCells) {
+						final e = cells.get(cellKey(cell.col, cell.row));
+						if (e != null)
+							e.result.setParameter(highlightParam, highlightDefault);
+					}
+					activeDragHighlightedCells = [];
+					activeCardDragId = null;
 				default:
 			}
 		};

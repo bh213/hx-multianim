@@ -163,6 +163,9 @@ class UICardHandHelper {
 	public var returnDuration:Float = 0;
 	public var rearrangeDuration:Float = 0;
 
+	/** When true, the system cursor is hidden while in targeting mode (arrow replaces cursor). */
+	public var hideCursorWhileTargeting:Bool = false;
+
 	// Scene graph
 	final handContainer:h2d.Layers;
 	final dragContainer:h2d.Layers; // Same local space as handContainer, higher z-layer for dragged cards
@@ -477,6 +480,11 @@ class UICardHandHelper {
 	/** Enable or disable the targeting arrow visual (target detection still works). */
 	public function setArrowVisible(visible:Bool):Void {
 		targeting.arrowEnabled = visible;
+	}
+
+	/** Enable or disable arrow snap-to-target (arrow endpoint locks to target center). */
+	public function setArrowSnap(snap:Bool):Void {
+		targeting.snapToTarget = snap;
 	}
 
 	/** Show or hide the entire card hand (hand container + targeting arrow). */
@@ -928,6 +936,8 @@ class UICardHandHelper {
 		entry.container.scaleX = hoverScale;
 		entry.container.scaleY = hoverScale;
 		// Arrow is already in dragContainer — no reparenting needed
+		if (hideCursorWhileTargeting)
+			hxd.System.setCursor(Hide);
 	}
 
 	function exitTargetingMode(entry:CardEntry):Void {
@@ -936,6 +946,8 @@ class UICardHandHelper {
 		// Reparent card back to drag container
 		dragContainer.addChild(entry.container);
 		entry.container.rotation = 0;
+		if (hideCursorWhileTargeting)
+			hxd.System.setCursor(Default);
 	}
 
 	function endDrag():Bool {
@@ -948,6 +960,8 @@ class UICardHandHelper {
 		var wasTargeting = isTargeting;
 		targeting.clearLine();
 		entry.container.alpha = 1.0;
+		if (wasTargeting && hideCursorWhileTargeting)
+			hxd.System.setCursor(Default);
 
 		// Un-highlight card-to-card target
 		restoreCardToCardEffects();
@@ -1041,6 +1055,8 @@ class UICardHandHelper {
 		var entry = draggedEntry;
 
 		targeting.clearLine();
+		if (isTargeting && hideCursorWhileTargeting)
+			hxd.System.setCursor(Default);
 
 		// Un-highlight card-to-card target
 		restoreCardToCardEffects();

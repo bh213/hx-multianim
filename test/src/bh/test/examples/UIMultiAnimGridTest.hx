@@ -19,13 +19,13 @@ import bh.base.Hex.HexOrientation;
  */
 class UIMultiAnimGridTest extends BuilderTestBase {
 	static final CELL_MANIM = "
-		#cell programmable(col:int=0, row:int=0, status:[normal,hover]=normal, highlight:bool=false) {
+		#cell programmable(col:int=0, row:int=0, status:[normal,hover]=normal, highlight:[none,accept,reject]=none) {
 			bitmap(generated(color(50, 50, #666666))): 0, 0
 		}
 	";
 
 	static final HEX_CELL_MANIM = "
-		#hexCell programmable(col:int=0, row:int=0, status:[normal,hover]=normal, highlight:bool=false) {
+		#hexCell programmable(col:int=0, row:int=0, status:[normal,hover]=normal, highlight:[none,accept,reject]=none) {
 			bitmap(generated(color(30, 30, #888888))): 0, 0
 		}
 	";
@@ -348,9 +348,9 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 		var leaves:Array<CellCoord> = [];
 		grid.onGridEvent = (event) -> {
 			switch event {
-				case CellHoverEnter(cell):
+				case CellTargetEnter(cell, Mouse):
 					enters.push(cell);
-				case CellHoverLeave(cell):
+				case CellTargetLeave(cell, Mouse):
 					leaves.push(cell);
 				default:
 			}
@@ -379,7 +379,7 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 		var leaveCount = 0;
 		grid.onGridEvent = (event) -> {
 			switch event {
-				case CellHoverLeave(_):
+				case CellTargetLeave(_, Mouse):
 					leaveCount++;
 				default:
 			}

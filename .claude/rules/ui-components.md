@@ -121,7 +121,7 @@ var grid = new UIMultiAnimGrid(builder, {
 });
 ```
 
-**Cell programmable contract:** Must have parameters matching `highlightParam` (bool) and `statusParam` (enum with "normal"/"hover"). Optionally `rejectHighlightParam` (bool) for three-state drop feedback (valid/rejected/not-a-target). Receives `col:int` and `row:int` automatically.
+**Cell programmable contract:** Must have parameters matching `highlightParam` (enum, default values "none"/"accept"/"reject") and `statusParam` (enum with "normal"/"hover"). Custom highlight values supported via `highlightDelegate`. Receives `col:int` and `row:int` automatically.
 
 **GridType enum:**
 - `Rect(cellWidth:Float, cellHeight:Float, ?gap:Float)` — rectangular grid

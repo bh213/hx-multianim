@@ -28,16 +28,28 @@ enum GridType {
 	Hex(orientation:HexOrientation, sizeX:Float, sizeY:Float);
 }
 
+/** What is targeting a cell. */
+enum CellTargetSource {
+	/** Plain mouse hover (no drag/card active). */
+	Mouse;
+
+	/** A draggable is being dragged over this cell. */
+	Drag(draggable:UIMultiAnimDraggable);
+
+	/** A card targeting arrow is hovering over this cell. */
+	Card(cardId:String);
+}
+
 /** Events emitted by UIMultiAnimGrid via the onGridEvent callback. */
 enum GridEvent {
 	/** Cell was clicked. */
 	CellClick(cell:CellCoord, button:Int);
 
-	/** Mouse entered a cell. */
-	CellHoverEnter(cell:CellCoord);
+	/** Something started targeting a cell (mouse hover, drag hover, or card targeting). */
+	CellTargetEnter(cell:CellCoord, source:CellTargetSource);
 
-	/** Mouse left a cell. */
-	CellHoverLeave(cell:CellCoord);
+	/** Something stopped targeting a cell. */
+	CellTargetLeave(cell:CellCoord, source:CellTargetSource);
 
 	/** A draggable was dropped onto a cell. sourceGrid/sourceCell are set when the drop originated from makeDraggableFromCell. */
 	CellDrop(cell:CellCoord, draggable:UIMultiAnimDraggable, sourceGrid:Null<UIMultiAnimGrid>, sourceCell:Null<CellCoord>);
@@ -70,6 +82,12 @@ typedef GridDropAccepts = (cell:CellCoord, draggable:UIMultiAnimDraggable) -> Bo
 /** Delegate to determine whether a cell accepts a card play. */
 typedef GridCardAccepts = (cell:CellCoord, cardId:String) -> Bool;
 
+/** Delegate to determine the highlight value for a cell during drag/card targeting.
+ *  Return a string matching the cell programmable's highlight enum values (e.g. "valid", "reject", "expensive").
+ *  Return "none" (or the configured default) to leave the cell unhighlighted.
+ *  When null, the grid uses default behavior: accepts → "accept", !accepts → "reject". */
+typedef GridHighlightDelegate = (cell:CellCoord, accepts:Bool) -> String;
+
 /** Configuration for UIMultiAnimGrid construction. */
 @:structInit
 @:nullSafety
@@ -95,13 +113,14 @@ typedef GridConfig = {
 	/** .manim animated path name for return animation on failed drop (null = instant). */
 	var ?returnPathName:String;
 
-	/** Cell parameter name used for drag-drop highlight state (default: "highlight"). */
+	/** Cell parameter name used for drag-drop highlight state (default: "highlight").
+	 *  This is a string/enum parameter on the cell programmable. Values are set by the
+	 *  highlightDelegate, or default to "none"/"accept"/"reject". */
 	var ?highlightParam:String;
 
-	/** Cell parameter name used for rejected drop highlight (default: null = no reject visual).
-	 *  When set, cells where `accepts` returns false get this param set to `true` during drag,
-	 *  enabling "wrong item type" red highlight distinct from "not a target." */
-	var ?rejectHighlightParam:String;
+	/** Optional delegate to determine per-cell highlight value during drag/card targeting.
+	 *  When null, uses default: accepts → "accept", !accepts → "reject". */
+	var ?highlightDelegate:GridHighlightDelegate;
 
 	/** Cell parameter name used for hover/click status (default: "status"). */
 	var ?statusParam:String;

@@ -46,6 +46,10 @@ class UICardHandTargeting {
 	/** When false, the targeting visual is suppressed (target detection still works). */
 	public var arrowEnabled:Bool = true;
 
+	/** When true, arrow endpoint snaps to the center of the hovered target (default).
+	 *  When false, arrow follows cursor freely — target detection still works. */
+	public var snapToTarget:Bool = true;
+
 	/** Called when a target becomes highlighted or unhighlighted during targeting. */
 	public var onTargetHighlight:Null<TargetHighlightCallback> = null;
 
@@ -207,10 +211,10 @@ class UICardHandTargeting {
 
 		var valid = hoveredWrapper != null;
 
-		// Snap arrow endpoint to target center when hovering a valid target
+		// Snap arrow endpoint to target center when hovering a valid target (if snap enabled)
 		var endX = cursorX;
 		var endY = cursorY;
-		if (valid && hoveredWrapper != null) {
+		if (snapToTarget && valid && hoveredWrapper != null) {
 			switch hoveredWrapper.interactive.multiAnimType {
 				case MAInteractive(width, height, _, _):
 					// Get center of target interactive in scene space, then convert to arrow local space
