@@ -812,6 +812,11 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 	// Card hand targeting
 	// ============================================================
 
+	/** Get all registered card target wrappers for sharing with other targeting systems. */
+	public function getCardTargetWrappers():Array<UIInteractiveWrapper> {
+		return [for (_ => w in cardTargetWrappers) w];
+	}
+
 	/** Register this grid's cells as card play targets.
 	 *  Creates UIInteractiveWrapper per cell for the card hand's targeting system. */
 	public function registerAsCardTarget(cardHand:UICardHandHelper, ?accepts:GridCardAccepts):Void {

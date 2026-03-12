@@ -60,6 +60,9 @@ class UICardHandTargeting {
 	/** Optional filter: return false to reject a card from a target. */
 	public var acceptsFilter:Null<TargetAcceptsCallback> = null;
 
+	/** When non-null, overrides the valid/invalid arrow state (bypasses target hit-testing for visuals). */
+	public var forceValid:Null<Bool> = null;
+
 	public function new(builder:MultiAnimBuilder, ?segmentName:String, ?headName:String, ?pathName:String, spacing:Float = 25.0) {
 		this.builder = builder;
 		this.arrowPathName = pathName;
@@ -213,7 +216,7 @@ class UICardHandTargeting {
 				onTargetHighlight(activeTargetId, true, hoveredWrapper.metadata);
 		}
 
-		var valid = hoveredWrapper != null;
+		var valid = if (forceValid != null) forceValid else hoveredWrapper != null;
 
 		// Snap arrow endpoint to target when hovering a valid target (if snap enabled)
 		var endX = cursorX;

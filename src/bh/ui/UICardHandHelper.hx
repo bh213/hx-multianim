@@ -409,6 +409,14 @@ class UICardHandHelper implements UIHigherOrderComponent {
 		return [for (entry in cards) entry.descriptor.id];
 	}
 
+	/** Hit-test hand cards at scene coordinates. Returns the card ID under the point, or null.
+	 *  Uses base layout positions (no hover pop) for consistent detection. */
+	public function getCardIdAtPosition(sceneX:Float, sceneY:Float):Null<CardId> {
+		var local = handContainer.globalToLocal(new h2d.col.Point(sceneX, sceneY));
+		var entry = getCardAtBasePosition(local.x, local.y);
+		return entry != null ? entry.descriptor.id : null;
+	}
+
 	/** Get the BuilderResult for a card (for direct parameter/slot access). */
 	public function getCardResult(cardId:CardId):Null<BuilderResult> {
 		var idx = findCardIndex(cardId);
@@ -493,6 +501,12 @@ class UICardHandHelper implements UIHigherOrderComponent {
 	 *  Example: snap to top-center of a 48x48 hex cell: `(w) -> new FPoint(24, 0)` */
 	public function setArrowSnapPointProvider(provider:Null<(UIInteractiveWrapper) -> FPoint>):Void {
 		targeting.arrowSnapPointProvider = provider;
+	}
+
+	/** Get the underlying targeting instance for direct access (e.g., sharing targets
+	 *  with other targeting systems like reactor click-to-target). */
+	public function getTargeting():UICardHandTargeting {
+		return targeting;
 	}
 
 	/** Get the targeting arrow's scene object for reparenting into a grid layer hierarchy.
