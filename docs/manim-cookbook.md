@@ -16,6 +16,7 @@ A pattern-based guide for building UIs and game elements. Always start with `.ma
 - [Inventory Grids](#inventory-grids)
 - [Drag and Drop](#drag-and-drop)
 - [Card Hand System](#card-hand-system)
+- [Interaction Controllers](#interaction-controllers-modal-card-selection--targeting)
 - [Grid Component](#grid-component)
 - [Dialogue System](#dialogue-system)
 - [Skill Trees](#skill-trees)
@@ -691,12 +692,87 @@ cardHand.canPlayCard = (id, target) -> true;
 // Draw cards
 cardHand.drawCard({id: "card1", params: ["cardName" => "Fireball", "cost" => 3]});
 
-// Must wire these in screen:
+// Auto-wired via addCardHand() — no manual event routing needed.
+// Or with manual wiring (if not using addCardHand):
 // onScreenEvent -> cardHand.handleScreenEvent(event)
 // onMouseMove -> cardHand.onMouseMove(x, y)
 // onMouseClick -> cardHand.onMouseRelease(x, y)
 // update(dt) -> cardHand.update(dt)
 // onClear -> cardHand.dispose()
+```
+
+### Interaction Controllers (Modal Card Selection & Targeting)
+
+Instead of tracking selection/targeting state manually in `onScreenEvent()`, use interaction controllers. They push onto the controller stack, handle the interaction, and auto-pop with a typed result.
+
+**Select cards from hand** (exhaust, discard, sacrifice):
+```haxe
+// Card programmable needs a "selected" param for visual feedback:
+// #card programmable(status:..., selected:bool=false) { ... }
+
+// "Exhaust 1 card" — auto-confirms when 1 card clicked
+UISelectFromHandController.start(this, cardHand, {maxCount: 1, selectedParam: "selected"}, (result) -> {
+    if (result != null) exhaustCard(result.cards[0]);
+    // else: cancelled (Escape or right-click)
+});
+
+// "Discard 2 cards" — auto-confirms when 2 cards clicked
+UISelectFromHandController.start(this, cardHand, {maxCount: 2}, (result) -> {
+    if (result != null) for (id in result.cards) discardCard(id);
+});
+
+// "Select 1-3 cards" with manual confirm button
+var ctrl = UISelectFromHandController.start(this, cardHand, {
+    minCount: 1, maxCount: 3, autoConfirm: false,
+    filter: (id) -> getCardCost(id) <= currentEnergy,
+}, (result) -> {
+    if (result != null) playCards(result.cards);
+});
+// Call ctrl.confirm() from a confirm button click
+```
+
+**Pick a target** (grid cell, interactive, or card):
+```haxe
+// Pick a grid cell
+UIPickTargetController.start(this, {
+    grid: hexGrid,
+    cellFilter: (col, row) -> hexGrid.isOccupied(col, row),
+    highlightParam: "highlight", highlightValue: "valid",
+}, (result) -> {
+    if (result != null) switch result {
+        case TargetCell(col, row): castSpellAt(col, row);
+        default:
+    }
+});
+
+// Pick an interactive (button, slot, etc.)
+UIPickTargetController.start(this, {targetPrefix: "enemy_"}, (result) -> {
+    if (result != null) switch result {
+        case TargetInteractive(id): attackTarget(id);
+        default:
+    }
+});
+
+// Pick a card in hand (for card-to-card effects)
+UIPickTargetController.start(this, {
+    cardHand: cardHand,
+    cardFilter: (id) -> id != sourceCardId,
+}, (result) -> {
+    if (result != null) switch result {
+        case TargetCard(targetId): combineCards(sourceCardId, targetId);
+        default:
+    }
+});
+```
+
+**Composable flows** (select then target):
+```haxe
+// "Select a card, then pick where to play it"
+UISelectFromHandController.start(this, cardHand, {maxCount: 1}, (sel) -> {
+    if (sel != null) UIPickTargetController.start(this, {grid: hexGrid}, (tgt) -> {
+        if (tgt != null) playCard(sel.cards[0], tgt);
+    });
+});
 ```
 
 ---

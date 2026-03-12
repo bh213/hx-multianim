@@ -70,6 +70,64 @@ paths {
 
 **Target registration:** Targets are `UIInteractiveWrapper` instances registered via `registerTargetInteractive(wrapper)`. `TargetHighlightCallback(targetId, highlight, metadata)` includes interactive metadata. `TargetAcceptsCallback(cardId, targetId, metadata) -> Bool` filters which targets accept which cards.
 
+## Interaction Controllers
+
+Modal interaction controllers for common targeting/selection flows. Extend `UIDefaultController` to inherit all default behavior (hover, cursor, outside-click) while overriding specific interactions.
+
+**Files:**
+- `src/bh/ui/controllers/UIInteractionController.hx` — base class with deferred completion, lifecycle hooks, Escape/right-click cancel
+- `src/bh/ui/controllers/UISelectFromHandController.hx` — "select N cards from hand"
+- `src/bh/ui/controllers/UIPickTargetController.hx` — "pick a target" (interactive, grid cell, or card)
+- `src/bh/ui/controllers/UIInteractionTypes.hx` — result types and config typedefs
+
+**Architecture:** Controllers use the existing `pushController()`/`popController()` stack on `UIScreenBase`. When pushed, the interaction controller intercepts events via `onScreenEvent()` override — consuming card clicks for selection or target picks, while delegating everything else to `super` (default controller behavior). Result delivery is deferred to `update()` for safety (never fires mid-event-processing).
+
+**UIInteractionController** (base class):
+- `complete(result)` / `cancel()` — deferred to next `update()` frame
+- `onActivate()` / `onDeactivate()` — lifecycle hooks for setup/teardown (restore card states, clear highlights)
+- Escape key and right-click cancel built-in
+- Callback-based result delivery — callback wraps `popController()` automatically via static `start()` methods
+
+**UISelectFromHandController** — click cards to select/deselect:
+- Config: `minCount`, `maxCount`, `filter`, `selectedParam`, `selectedValue`/`deselectedValue`, `autoConfirm`
+- Suppresses card drag (`canDragCard = (_) -> false`) during selection
+- Dims non-selectable cards via `setCardEnabled(false)` when filter provided
+- Auto-confirms when `maxCount` reached (configurable)
+- Restores all card visual states and drag on deactivation
+- `confirm()` for manual confirmation, `getSelectedCards()`, `getRemainingCount()`
+
+**UIPickTargetController** — pick a target from interactives, grid cells, or cards:
+- Config: `validTargetIds`/`targetPrefix`/`filter` for interactives, `grid`+`cellFilter` for cells, `cardHand`+`cardFilter` for cards
+- Highlights valid grid cells on activation via `setCellParameter()`
+- Intercepts `UIInteractiveEvent(UIClick, ...)` for interactive/card targets
+- Overrides `handleClick()` with `grid.cellAtPoint()` for grid cell targets
+- Routes mouse move to grid for hover feedback
+- Returns `PickTargetResult` enum: `TargetInteractive(id)`, `TargetCell(col, row)`, `TargetCard(cardId)`
+
+**Usage (static `start()` methods handle push/pop automatically):**
+```haxe
+// Select 2 cards to discard
+UISelectFromHandController.start(this, cardHand, {maxCount: 2}, (result) -> {
+    if (result != null) discardCards(result.cards);
+});
+
+// Pick a target hex
+UIPickTargetController.start(this, {grid: hexGrid, cellFilter: (c, r) -> hexGrid.isOccupied(c, r)}, (result) -> {
+    if (result != null) switch result { case TargetCell(c, r): attack(c, r); default: }
+});
+
+// Composable: select card, then pick target
+UISelectFromHandController.start(this, cardHand, {maxCount: 1}, (sel) -> {
+    if (sel != null) UIPickTargetController.start(this, {grid: hexGrid}, (tgt) -> {
+        if (tgt != null) playCard(sel.cards[0], tgt);
+    });
+});
+```
+
+**CardHandHelper additions for controllers:**
+- `findCardIdByInteractiveId(id):Null<CardId>` — maps interactive ID back to card ID
+- `isCardInHand(cardId):Bool` — checks if card is in `InHand` or `Hovered` state (not animating/disabled/dragging)
+
 ## TweenManager
 
 Lightweight tween/animation system for `h2d.Object` properties. Owned by `ScreenManager`, updated in `ScreenManager.update(dt)`.

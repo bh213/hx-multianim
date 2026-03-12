@@ -1,8 +1,14 @@
 # Changelog
 
-## [1.0.0-rc.2] - 2026-03-06
+## [1.0.0-rc.2] - 2026-03-12
 
 ### Added
+- **Interaction controllers** — modal controller stack for targeting and card selection flows. `UIInteractionController` base class extends `UIDefaultController` with deferred `complete()`/`cancel()`, `onActivate()`/`onDeactivate()` lifecycle hooks, Escape/right-click cancellation, and callback-based result delivery.
+- **`UISelectFromHandController`** — "select N cards from hand" controller. Click-to-select with toggle visual state, drag suppression, optional card filter with dimming, auto-confirm when target count reached. Static `start(screen, cardHand, config, callback)` handles push/pop automatically.
+- **`UIPickTargetController`** — "pick a target" controller supporting three composable target sources: interactives (by ID list, prefix, or filter), grid cells (via `cellAtPoint` hit-test with cell filter), and cards in hand (via card filter). Highlights valid targets on activation and cleans up on deactivation. Static `start(screen, config, callback)`.
+- **`UICardHandHelper.findCardIdByInteractiveId()`** — public method mapping interactive ID back to card ID. Used by interaction controllers to identify which card was clicked.
+- **`UICardHandHelper.isCardInHand()`** — checks if a card is in `InHand` or `Hovered` state (not animating, disabled, or dragging).
+
 - **UIHigherOrderComponent interface** — lifecycle auto-wiring for Grid and CardHand. Interface defines `update(dt)`, `onMouseMove`, `onMouseClick`, `onMouseRelease`, `handleScreenEvent`, `getObject()`, `dispose()`. Both `UIMultiAnimGrid` and `UICardHandHelper` implement it.
 - **Screen auto-wiring for higher-order components** — `registerComponent()` / `unregisterComponent()` on `UIScreenBase`. Registered components auto-receive `update(dt)`, mouse events, screen events, and `dispose()` via `clear()`. New dispatch methods with coexistence semantics: `dispatchMouseMove()` notifies components but never blocks interactive processing (always returns true). `dispatchMouseClick()` notifies on push but never blocks; only release can block (e.g. card hand drag end). `dispatchScreenEvent()` skips `onScreenEvent()` when a component consumed the event.
 - **`createGrid()` / `addGrid()`** — factory methods on `UIScreenBase`. `createGrid()` creates + registers without scene graph add (for macro use). `addGrid()` creates + adds to layer. Both accept optional `ResolvedSettings` for `.manim`-driven config override.

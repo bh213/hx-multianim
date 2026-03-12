@@ -425,6 +425,20 @@ class UICardHandHelper implements UIHigherOrderComponent {
 		return cards[idx].result;
 	}
 
+	/** Find card ID by interactive ID. Returns null if no card owns this interactive. */
+	public function findCardIdByInteractiveId(interactiveId:String):Null<CardId> {
+		var entry = findCardByInteractiveId(interactiveId);
+		return entry != null ? entry.descriptor.id : null;
+	}
+
+	/** Check if a card is currently in hand (not animating, disabled, or dragging). */
+	public function isCardInHand(cardId:CardId):Bool {
+		var idx = findCardIndex(cardId);
+		if (idx < 0)
+			return false;
+		return cards[idx].state == InHand || cards[idx].state == Hovered;
+	}
+
 	// === Public API: Targeting ===
 
 	/** Register a single target interactive wrapper. */

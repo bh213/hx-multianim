@@ -80,6 +80,7 @@ class TestApp extends hxd.App {
 		testRunner.addCase(new bh.test.examples.UIMultiAnimGridTest());
 		testRunner.addCase(new bh.test.examples.UIDraggableTest());
 		testRunner.addCase(new bh.test.examples.UIScrollableScreenTest());
+		testRunner.addCase(new bh.test.examples.InteractionControllerTest());
 		#if MULTIANIM_DEV
 		testRunner.addCase(new bh.test.examples.HotReloadTest());
 		testRunner.addCase(new bh.test.examples.DevBridgeTest());
