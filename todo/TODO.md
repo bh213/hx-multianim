@@ -3,6 +3,7 @@
 | # | Item | Summary | Priority |
 |---|------|---------|----------|
 | 15 | Text input codegen | `@:manim` factory with `createTextInput()` | Low |
+| 16 | ScreenManager: auto-reload on re-entry | `h2d.Graphics.onRemove()` calls `clear()`, wiping draw data. ScreenManager re-adds the same root without calling `clear()`+`load()`, so Graphics objects render empty. Every re-enterable screen must manually handle `UIEntering` → `clear()`+`load()`. ScreenManager should do this automatically. | Medium |
 
 ## Main Goals
 

@@ -4536,6 +4536,13 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		async.done();
 	}
 
+	// ==================== Auto-fit text: visual ====================
+
+	@Test
+	public function test96_AutoFit(async:utest.Async):Void {
+		simpleMacroTest(96, "autoFit", () -> createMp().autoFit.create(), async, null, null, null, 0.99);
+	}
+
 	static function addTransLabel(parent:h2d.Object, font:Null<h2d.Font>, label:String, x:Float, y:Float):Void {
 		if (font == null) return;
 		var text = new h2d.Text(font, parent);

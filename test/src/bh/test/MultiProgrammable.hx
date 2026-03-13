@@ -304,4 +304,7 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/95-transition/transition.manim", "transSlideDown")
 	public var transSlideDown;
+
+	@:manim("test/examples/96-autoFit/autoFit.manim", "autoFit")
+	public var autoFit;
 }

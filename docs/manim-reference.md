@@ -122,8 +122,35 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | `dropShadowXY` | Shadow offset (x, y) |
 | `dropShadowColor` | Shadow color |
 | `dropShadowAlpha` | Shadow opacity |
+| `autoFit: <mode> [font1, font2, ...]` | Automatic font fallback when text exceeds available space |
 
 `text()` creates plain `h2d.Text`. Does not support markup, styles, images, or condenseWhite.
+
+### autoFit Modes
+
+| Mode | Description |
+|------|-------------|
+| `autoFit: width [f1, f2]` | Try primary font, then f1, f2 — use first that fits `maxWidth` |
+| `autoFit: box(w, h) [f1, f2]` | Try fonts in order — use first that fits width AND height |
+| `autoFit: fill [f1, f2, ...]` | Try ALL fonts (including primary) — pick the largest that fits `maxWidth` |
+| `autoFit: fill box(w, h) [f1, f2, ...]` | Try ALL fonts — pick the largest that fits both dimensions |
+
+**Width/fill modes require `maxWidth` to be set.** Box dimensions are absolute pixels (divided by `@scale` internally). The font list is fallback-only for `width`/`box` modes; for `fill` modes, the primary font is also a candidate.
+
+```manim
+// Width mode: try dd first, fall back to m3x6, then f3x5
+text(dd, "Hello", #44FF44, left, 100, lineBreak: false,
+    autoFit: width [m3x6, f3x5]): 1, 1;
+
+// Fill mode: pick largest font that fits 150px
+text(f3x5, "Fill this", #44BBFF, left, 150, lineBreak: false,
+    autoFit: fill [pixellari, dd, m6x11, m3x6, f3x5]): 1, 1;
+
+// Box mode with richText
+richText(dd, "Deal [dmg]50[/] fire damage", white, left, 150, lineBreak: false,
+    autoFit: width [m3x6, f3x5],
+    styles: {dmg: color(#FF4444)}): 1, 1;
+```
 
 ---
 
@@ -140,6 +167,7 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | `dropShadowXY` | Shadow offset (x, y) |
 | `dropShadowColor` | Shadow color |
 | `dropShadowAlpha` | Shadow opacity |
+| `autoFit: <mode> [font1, font2, ...]` | Automatic font fallback (see [autoFit Modes](#autofit-modes) above) |
 
 `richText()` always creates `h2d.HtmlText`. Markup is always processed via `TextMarkupConverter`.
 

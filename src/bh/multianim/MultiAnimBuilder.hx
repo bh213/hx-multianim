@@ -2161,6 +2161,68 @@ class MultiAnimBuilder {
 		return t;
 	}
 
+	function applyAutoFit(t:h2d.Text, textDef:TextDef, node:Node):Void {
+		final autoFitFonts = textDef.autoFitFonts;
+		final autoFitMode = textDef.autoFitMode;
+		if (autoFitFonts == null || autoFitMode == null) return;
+
+		final scaleAdjust = if (node.scale != null) resolveAsNumber(node.scale) else 1.0;
+
+		// Determine fit constraints
+		var fitWidth:Null<Float> = null;
+		var fitHeight:Null<Float> = null;
+		switch autoFitMode {
+			case AFWidth | AFFillWidth:
+				fitWidth = if (t.maxWidth != null) t.maxWidth else null;
+			case AFBox(w, h) | AFFillBox(w, h):
+				fitWidth = resolveAsNumber(w) / scaleAdjust;
+				fitHeight = resolveAsNumber(h) / scaleAdjust;
+		}
+		if (fitWidth == null) return;
+
+		final isFill = switch autoFitMode {
+			case AFFillWidth | AFFillBox(_, _): true;
+			default: false;
+		};
+
+		// Build full font candidate list: primary font + fallback fonts
+		var allFonts = new Array<h2d.Font>();
+		allFonts.push(t.font);
+		for (fontRef in autoFitFonts) {
+			allFonts.push(resourceLoader.loadFont(resolveAsString(fontRef)));
+		}
+
+		if (isFill) {
+			// Best-fit: try all fonts, pick largest that fits
+			var bestFont:Null<h2d.Font> = null;
+			var bestWidth:Float = -1;
+			for (font in allFonts) {
+				t.font = font;
+				if (textFits(t, fitWidth, fitHeight)) {
+					if (t.textWidth > bestWidth) {
+						bestWidth = t.textWidth;
+						bestFont = font;
+					}
+				}
+			}
+			t.font = if (bestFont != null) bestFont else allFonts[allFonts.length - 1];
+		} else {
+			// First-fit: use primary font if it fits, otherwise try fallbacks in order
+			if (!textFits(t, fitWidth, fitHeight)) {
+				for (fontRef in autoFitFonts) {
+					t.font = resourceLoader.loadFont(resolveAsString(fontRef));
+					if (textFits(t, fitWidth, fitHeight)) break;
+				}
+			}
+		}
+	}
+
+	static function textFits(t:h2d.Text, fitWidth:Null<Float>, fitHeight:Null<Float>):Bool {
+		if (fitWidth != null && t.textWidth > fitWidth) return false;
+		if (fitHeight != null && t.textHeight > fitHeight) return false;
+		return true;
+	}
+
 	function matchSingleCondition(condValue:ConditionalValues, currentValue:ResolvedIndexParameters):Bool {
 		switch condValue {
 			case CoNot(inner):
@@ -2472,9 +2534,12 @@ class MultiAnimBuilder {
 					final t = switch builtObject { case HeapsText(t): t; default: null; };
 					if (t != null) {
 						final textDefCapture = textDef;
+						final nodeCapture = node;
 						ctx.trackExpression(() -> {
 							t.text = resolveAsString(textDefCapture.text);
 							t.textColor = resolveAsColorInteger(textDefCapture.color);
+							if (textDefCapture.autoFitFonts != null)
+								applyAutoFit(t, textDefCapture, nodeCapture);
 						}, textRefs);
 					}
 				}
@@ -2500,6 +2565,7 @@ class MultiAnimBuilder {
 					final t = switch builtObject { case HeapsText(t): t; default: null; };
 					if (t != null) {
 						final textDefCapture = textDef;
+						final nodeCapture = node;
 						ctx.trackExpression(() -> {
 							final rawText = resolveAsString(textDefCapture.text);
 							t.text = TextMarkupConverter.convert(rawText);
@@ -2521,6 +2587,8 @@ class MultiAnimBuilder {
 								ht.loadImage = (url) -> cast imageMap.get(url);
 								ht.text = ht.text; // force re-render after image map change
 							}
+							if (textDefCapture.autoFitFonts != null)
+								applyAutoFit(t, textDefCapture, nodeCapture);
 						}, textRefs);
 					}
 				}
@@ -3473,6 +3541,8 @@ class MultiAnimBuilder {
 				}
 				t.textColor = resolveAsColorInteger(textDef.color);
 				t.text = resolveAsString(textDef.text);
+				if (textDef.autoFitFonts != null)
+					applyAutoFit(t, textDef, node);
 				HeapsText(t);
 			case RICHTEXT(textDef):
 				final font = resourceLoader.loadFont(resolveAsString(textDef.fontName));
@@ -3541,6 +3611,8 @@ class MultiAnimBuilder {
 				ht.textColor = resolveAsColorInteger(textDef.color);
 				final rawText = resolveAsString(textDef.text);
 				ht.text = TextMarkupConverter.convert(rawText);
+				if (textDef.autoFitFonts != null)
+					applyAutoFit(ht, textDef, node);
 
 				HeapsText(ht);
 			// case HTMLTEXT(fontname, textRef, color, align, textAlignWidth):

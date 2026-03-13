@@ -4492,6 +4492,72 @@ class ProgrammableCodeGen {
 		}
 		createExprs.push(textAssign);
 
+		// Auto-fit: generate font fallback logic
+		if (textDef.autoFitFonts != null && textDef.autoFitMode != null) {
+			// Build array of fallback font load expressions
+			final fontLoadExprs:Array<Expr> = [];
+			for (fontRef in textDef.autoFitFonts) {
+				final fontNameExpr = rvToExpr(fontRef);
+				fontLoadExprs.push(macro this._pb.loadFont($fontNameExpr));
+			}
+			final fontsArrayExpr:Expr = {expr: EArrayDecl(fontLoadExprs), pos: pos};
+
+			// Determine fit dimensions
+			final scaleAdjust:Float = if (node.scale != null) {
+				final s = resolveRVStatic(node.scale);
+				if (s != null) s else 1.0;
+			} else 1.0;
+
+			var fitWidthExpr:Expr = macro null;
+			var fitHeightExpr:Expr = macro null;
+			switch (textDef.autoFitMode) {
+				case AFWidth | AFFillWidth:
+					switch (textDef.textAlignWidth) {
+						case TAWValue(value):
+							final staticVal = resolveRVStatic(value);
+							if (staticVal != null) {
+								final adj:Float = staticVal / scaleAdjust;
+								fitWidthExpr = macro $v{adj};
+							} else {
+								final valExpr = rvToExpr(value);
+								final scExpr = macro $v{scaleAdjust};
+								fitWidthExpr = macro $valExpr / $scExpr;
+							}
+						default:
+					}
+				case AFBox(w, h) | AFFillBox(w, h):
+					final wStatic = resolveRVStatic(w);
+					final hStatic = resolveRVStatic(h);
+					if (wStatic != null) {
+						final adj:Float = wStatic / scaleAdjust;
+						fitWidthExpr = macro $v{adj};
+					} else {
+						final wExpr2 = rvToExpr(w);
+						final scExpr = macro $v{scaleAdjust};
+						fitWidthExpr = macro $wExpr2 / $scExpr;
+					}
+					if (hStatic != null) {
+						final adj:Float = hStatic / scaleAdjust;
+						fitHeightExpr = macro $v{adj};
+					} else {
+						final hExpr2 = rvToExpr(h);
+						final scExpr = macro $v{scaleAdjust};
+						fitHeightExpr = macro $hExpr2 / $scExpr;
+					}
+			}
+
+			final isFill = switch (textDef.autoFitMode) {
+				case AFFillWidth | AFFillBox(_, _): true;
+				default: false;
+			};
+
+			if (isFill) {
+				createExprs.push(macro bh.multianim.ProgrammableBuilder.autoFitFill($fieldRef, $fontsArrayExpr, $fitWidthExpr, $fitHeightExpr));
+			} else {
+				createExprs.push(macro bh.multianim.ProgrammableBuilder.autoFitFirstFit($fieldRef, $fontsArrayExpr, $fitWidthExpr, $fitHeightExpr));
+			}
+		}
+
 		final textParamRefs = collectParamRefs(textDef.text);
 		if (textParamRefs.length > 0) {
 			// For incremental updates, always use runtime conversion for rich text

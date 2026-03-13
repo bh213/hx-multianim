@@ -528,6 +528,14 @@ enum TextAlignWidth {
 }
 
 @:nullSafety
+enum AutoFitMode {
+	AFWidth;
+	AFBox(w:ReferenceableValue, h:ReferenceableValue);
+	AFFillWidth;
+	AFFillBox(w:ReferenceableValue, h:ReferenceableValue);
+}
+
+@:nullSafety
 enum HorizontalAlign {
 	Left;
 	Right;
@@ -991,6 +999,9 @@ typedef TextDef = {
 	var images:Null<Array<TextImageDef>>;
 	var condenseWhite:Null<Bool>;
 	var hasMarkup:Bool; // auto-detected from text literal
+	// Auto-fit: try fallback fonts when text overflows
+	var autoFitFonts:Null<Array<ReferenceableValue>>;
+	var autoFitMode:Null<AutoFitMode>;
 }
 
 // ========== Data block types ==========
