@@ -2,33 +2,55 @@
 
 ## Architecture Overview
 
+Following the same pattern as the Haxe Language Server (hx-language-server): **write the server in Haxe, compile to JS, run as Node.js process**. This reuses the existing parsers directly — no TypeScript port, no parser drift.
+
 ```
 ┌─────────────────────────────────────┐
 │  VSCode Extension (TypeScript)      │
-│  - Language client                  │
+│  - Language client (thin)           │
 │  - TextMate grammar (syntax HL)     │
 │  - Language configuration           │
-│  - Extension activation on .manim   │
-│    and .anim files                  │
 └──────────┬──────────────────────────┘
            │ LSP (stdio)
 ┌──────────▼──────────────────────────┐
-│  Language Server (TypeScript/Node)  │
-│  - Parses .manim and .anim files   │
-│  - Diagnostics (errors/warnings)   │
-│  - Completions                     │
-│  - Hover info                      │
-│  - Go-to-definition               │
-│  - Document symbols                │
-│  - Bracket matching/folding        │
-│  - Optional: MCP bridge to running │
-│    app for live preview/inspect    │
+│  Language Server (Haxe → JS/Node)   │
+│  - MacroManimParser (reused as-is)  │
+│  - AnimParser (refactored parse-only│
+│    layer, no Heaps deps)            │
+│  - LSP handlers in Haxe             │
+│  - Optional: MCP bridge to running  │
+│    app for live resource completion  │
 └─────────────────────────────────────┘
 ```
 
+**Why Haxe→JS instead of TypeScript rewrite:**
+- Single source of truth — `MacroManimParser.hx` is already the parser
+- No maintenance burden from keeping two parsers in sync
+- MacroManimParser is already macro-safe (no Heaps deps in parse path)
+- Proven pattern: hx-language-server does exactly this
+- Haxe's JS target produces clean, fast JavaScript
+
+## JS Compilation Feasibility
+
+### MacroManimParser (.manim) — READY
+- Pure lexer + recursive descent parser + AST
+- All Heaps imports are behind `#if !macro` guards
+- Output is `MultiAnimResult` (pure data: `Map<String, Node>`)
+- Dependencies are all JS-compatible: `ParsePosition`, `ParseError`, `ColorUtils`, `ParseUtils`, `CoordinateSystems`, `LayoutTypes`, `MacroCompatTypes`
+
+### AnimParser (.anim) — NEEDS REFACTORING
+- Has hard Heaps deps: `AnimationSM extends h2d.Object`, `h2d.filter.*`, `h3d.Matrix`, `h2d.col.IPoint`
+- **Required refactoring**: Split into two layers:
+  1. `AnimParserCore` — pure parsing → `AnimParseResult` (AST data only, no Heaps types)
+  2. `AnimParser` — existing class, imports `AnimParserCore`, adds `createAnimSM()` and Heaps-dependent runtime
+- The LSP only needs `AnimParserCore`
+- Refactoring scope: ~200-300 lines of type extraction, rest stays unchanged
+
 ## Components
 
-### 1. VSCode Extension Package (`vscode-manim/`)
+### 1. VSCode Extension Client (`vscode-manim/`)
+
+Minimal TypeScript — just launches the Haxe-compiled LSP server.
 
 **Files:**
 - `package.json` — Extension manifest, language contributions, activation events
@@ -36,39 +58,68 @@
 - `syntaxes/anim.tmLanguage.json` — TextMate grammar for .anim
 - `language-configuration-manim.json` — Bracket pairs, auto-close, comments, folding
 - `language-configuration-anim.json` — Same for .anim
-- `src/extension.ts` — Extension entry point, starts LSP client
-- `tsconfig.json`, `.vscodeignore`
+- `src/extension.ts` — Starts LSP client, points to `server/bin/server.js`
 
 ### 2. Language Server (`vscode-manim/server/`)
 
-**Technology choice: TypeScript + `vscode-languageserver`**
+Written in Haxe, compiled to JS via `haxe -js bin/server.js`.
 
-Rationale: The Haxe parser runs at compile-time (macros) and at runtime (HashLink VM). Neither is practical to run as a long-lived LSP server process. A TypeScript reimplementation of the parser subset needed for LSP is the pragmatic choice — it runs natively in Node.js, starts instantly, and integrates cleanly with the VSCode LSP ecosystem. We only need parsing for diagnostics/completions, not the full builder/renderer pipeline.
+**Haxe source files:**
+- `src/ManimLanguageServer.hx` — LSP server main: stdio transport, JSON-RPC, capability registration
+- `src/ManimDiagnostics.hx` — Parse errors → LSP Diagnostics
+- `src/ManimCompletions.hx` — Context-aware completions
+- `src/ManimHover.hx` — Hover documentation
+- `src/ManimSymbols.hx` — Document outline (symbols)
+- `src/ManimDefinitions.hx` — Go-to-definition
+- `src/LspTypes.hx` — LSP protocol types (Position, Range, Diagnostic, etc.)
+- `src/LspTransport.hx` — stdio JSON-RPC transport layer
+- `src/McpBridge.hx` — Optional DevBridge HTTP client for live resource queries
 
-**Files:**
-- `server/src/server.ts` — LSP server entry, document sync, capability registration
-- `server/src/manim-parser.ts` — Simplified .manim parser (tokenizer + recursive descent)
-- `server/src/anim-parser.ts` — Simplified .anim parser
-- `server/src/diagnostics.ts` — Error → LSP Diagnostic conversion
-- `server/src/completions.ts` — Context-aware completions
-- `server/src/hover.ts` — Hover documentation provider
-- `server/src/symbols.ts` — Document symbol provider (outline)
-- `server/src/types.ts` — Shared types
+**Build:**
+```hxml
+# lsp-server.hxml
+-cp server/src
+-cp src                          # reuse existing parser source
+-lib format
+-main ManimLanguageServer
+-js server/bin/server.js
+-D lsp                          # conditional flag to exclude runtime-only code
+```
 
-### 3. MCP Tool (optional, phase 2)
+### 3. MCP Integration (phase 2)
 
-Extend the existing DevBridge (or the npm MCP wrapper `@bh213/hx-multianim-mcp`) with LSP-adjacent tools:
-- `manim_validate` — Send .manim source, get parse errors (already exists as `eval_manim`)
-- `manim_completions` — Get completions at a cursor position
-- `manim_hover` — Get hover info for a position
-
-This bridges the running game with the editor for live validation against actual loaded resources (fonts, sprite sheets, etc.).
+Extend the existing DevBridge / `@bh213/hx-multianim-mcp` with LSP-adjacent tools:
+- `eval_manim` already exists for validation
+- Add `manim_completions` — completions at cursor position (resource-aware)
+- LSP server optionally connects to `localhost:9001` for live resource data
 
 ---
 
 ## Implementation Plan
 
-### Phase 1: TextMate Grammar + Language Configuration (syntax highlighting only)
+### Phase 0: AnimParser Refactoring (prerequisite)
+
+**Goal:** Split AnimParser so the pure parsing layer compiles to JS.
+
+**Step 0.1: Extract `AnimParseResult` types**
+- Create `AnimParserTypes.hx` with pure data types:
+  - `AnimParseResult` — states, metadata, animation descriptors, constants (no `AnimationSM`)
+  - `AnimationDef` — parsed animation data (fps, loop, playlist entries, filters, extrapoints)
+  - `AnimFilterDef` — filter descriptors (enum, no `h2d.filter.*`)
+  - `AnimConditionalSelector` — already pure, just needs separation
+- Replace `h2d.col.IPoint` with `{x:Int, y:Int}` in parse output
+
+**Step 0.2: Split AnimParser**
+- `AnimParserCore.hx` — pure parsing, returns `AnimParseResult` (no Heaps imports)
+- `AnimParser.hx` — extends/wraps core, adds `createAnimSM()`, filter construction, tile loading
+- Existing callers unchanged — `AnimParser` API preserved
+
+**Step 0.3: Verify JS compilation**
+- Create `lsp-server.hxml` targeting JS
+- Compile `MacroManimParser` + `AnimParserCore` → verify no Heaps deps leak through
+- Run basic parse test in Node.js
+
+### Phase 1: TextMate Grammar + Language Configuration
 
 **Step 1.1: Create extension scaffold**
 - `vscode-manim/package.json` with language contributions for `.manim` and `.anim`
@@ -112,62 +163,46 @@ Scopes:
 - Folding markers: `{`/`}` blocks
 - Word pattern: includes `$`, `#`, `@` characters
 
-### Phase 2: Language Server (diagnostics + completions)
+### Phase 2: Language Server Core (Haxe → JS)
 
-**Step 2.1: LSP server scaffold**
-- `vscode-languageserver` + `vscode-languageclient` npm packages
-- Full document sync (open/change/close)
-- Wire diagnostics on document change (debounced)
+**Step 2.1: LSP transport layer (Haxe)**
+- Implement stdio JSON-RPC reader/writer in Haxe
+- `Content-Length` header parsing
+- JSON-RPC message dispatch (method → handler map)
+- LSP lifecycle: `initialize` → `initialized` → `shutdown` → `exit`
 
-**Step 2.2: .manim tokenizer (TypeScript port)**
+**Step 2.2: Document sync**
+- `textDocument/didOpen` — store document text in memory
+- `textDocument/didChange` — update stored text (full sync mode initially)
+- `textDocument/didClose` — remove from memory
+- On change: debounced re-parse (300ms)
 
-Port the essential parts of `MacroManimParser`'s lexer:
-- Token types: `Identifier`, `Reference` (`$name`), `Name` (`#name`), `QuotedString`, `Number`, `Color`, `OpenBrace`, `CloseBrace`, `OpenParen`, `CloseParen`, `Comma`, `Colon`, `At`, `Arrow` (`=>`), `Operator`, `EOF`
-- Track line/column for every token
-- Handle string interpolation markers
+**Step 2.3: Diagnostics**
+- On document change, call `MacroManimParser.parseFile()` or `AnimParserCore.parse()`
+- Catch `InvalidSyntax` / `MultiAnimUnexpected` / `AnimUnexpected`
+- Map `ParsePosition` (line, col, source) → LSP `Diagnostic` (range, severity, message)
+- Push via `textDocument/publishDiagnostics`
 
-**Step 2.3: .manim parser (TypeScript port)**
+**Step 2.4: Completions**
 
-Simplified recursive descent — enough to identify:
-- Top-level definitions (programmable, data, curves, paths, animatedPath, import, @final)
-- Parameter declarations with types
-- Element types in body (bitmap, text, flow, etc.)
-- Conditional blocks `@()`
-- Nested `{}` block structure
-- Settings blocks
-- Transition blocks
-
-We do NOT need to replicate the full builder/resolver pipeline. The parser needs to:
-1. Produce a lightweight AST with positions
-2. Detect and report syntax errors with line/column
-3. Track which context we're in (for completions)
-
-**Step 2.4: Diagnostics**
-- Parse on every document change (debounced 300ms)
-- Map parser errors to LSP `Diagnostic` objects with severity, range, message
-- Report: missing braces, unknown element types, type mismatches in parameters, missing required fields
-
-**Step 2.5: Completions**
-
-Context-aware completion based on cursor position:
+Context-aware completion based on cursor position. The server needs a lightweight "where am I?" analysis — walk the token stream up to cursor position and determine the enclosing context.
 
 | Context | Completions |
 |---------|------------|
 | Top level | `#name programmable`, `#name data`, `#name curves`, `#name paths`, `#name animatedPath`, `import`, `@final`, `version:` |
 | Inside programmable body | Element keywords: `bitmap`, `text`, `richText`, `ninepatch`, `flow`, `layers`, `mask`, `interactive`, `slot`, `spacer`, `point`, `apply`, `graphics`, `pixels`, `particles`, `repeatable`, `staticRef`, `dynamicRef`, `placeholder`, `tilegroup`, `stateanim`, `settings`, `transition` |
-| After `filter:` | Filter types: `outline`, `glow`, `blur`, `saturate`, `brightness`, `grayscale`, `hue`, `dropShadow`, `pixelOutline`, `replacePalette`, `replaceColor`, `group`, `none` |
+| After `filter:` | `outline`, `glow`, `blur`, `saturate`, `brightness`, `grayscale`, `hue`, `dropShadow`, `pixelOutline`, `replacePalette`, `replaceColor`, `group`, `none` |
 | Parameter type position | `int`, `uint`, `float`, `bool`, `string`, `color`, `tile` |
-| Inside `particles {}` | Particle properties: `count`, `emit`, `tiles`, `loop`, `maxLife`, `speed`, `gravity`, `size`, `blendMode`, `fadeIn`, `fadeOut`, `colorStops`, `forceFields`, etc. |
-| Inside `paths {}` | Path commands: `moveTo`, `lineTo`, `bezier`, `quadratic`, `arc`, `close` |
-| Inside `curves {}` | Curve properties: `easing`, `points`, `multiply`, `apply`, `invert`, `scale` |
-| Inside `animatedPath {}` | Properties: `path`, `type`, `duration`, `speed`, `loop`, `pingPong`, `easing` + curve slots |
-| After `@(` | Available parameter names from enclosing programmable |
-| After `$` | Parameter references from enclosing programmable + `$grid`, `$hex`, `$ctx` |
-| After easing position | All easing function names |
-| Inside `transition {}` | Transition types: `none`, `fade`, `crossfade`, `flipX`, `flipY`, `slide` |
-| Inside `settings {}` | Setting keys based on context |
+| Inside `particles {}` | `count`, `emit`, `tiles`, `loop`, `maxLife`, `speed`, `gravity`, `size`, `blendMode`, `fadeIn`, `fadeOut`, `colorStops`, `forceFields`, `bounds`, etc. |
+| Inside `paths {}` | `moveTo`, `lineTo`, `bezier`, `quadratic`, `arc`, `close` |
+| Inside `curves {}` | `easing`, `points`, `multiply`, `apply`, `invert`, `scale` |
+| Inside `animatedPath {}` | `path`, `type`, `duration`, `speed`, `loop`, `pingPong`, `easing` + curve slots |
+| After `@(` | Parameter names from enclosing programmable |
+| After `$` | Parameter refs + `$grid`, `$hex`, `$ctx` |
+| Easing position | All easing function names |
+| Inside `transition {}` | `none`, `fade`, `crossfade`, `flipX`, `flipY`, `slide` |
 
-**Step 2.6: Hover information**
+**Step 2.5: Hover information**
 - Element keywords → brief description + syntax
 - Parameter types → description + valid values
 - Filter types → parameter list
@@ -176,61 +211,39 @@ Context-aware completion based on cursor position:
 - Color values → color preview swatch (via markdown)
 - `#names` → definition location
 
-**Step 2.7: Document symbols (outline)**
-- Top-level `#name programmable(...)` → Symbol kind: Class
-- `#name data {...}` → Symbol kind: Struct
-- `#name curves {...}` → Symbol kind: Namespace
-- `#name paths {...}` → Symbol kind: Namespace
-- `#name animatedPath {...}` → Symbol kind: Function
-- `@final name = ...` → Symbol kind: Constant
-- Named elements `#name` inside body → Symbol kind: Field
-- `import` statements → Symbol kind: Module
+**Step 2.6: Document symbols (outline)**
+- `#name programmable(...)` → Class
+- `#name data {...}` → Struct
+- `#name curves {...}` → Namespace
+- `#name paths {...}` → Namespace
+- `#name animatedPath {...}` → Function
+- `@final name = ...` → Constant
+- Named `#name` elements → Field
+- `import` → Module
 
-**Step 2.8: Go-to-definition**
-- `$paramName` → jump to parameter declaration in `programmable()` header
-- `staticRef($ref)` / `dynamicRef($ref)` → jump to referenced programmable definition
-- `#name` references → jump to named element definition
+**Step 2.7: Go-to-definition**
+- `$paramName` → parameter declaration in `programmable()` header
+- `staticRef($ref)` / `dynamicRef($ref)` → referenced programmable
 - `import "file"` → open imported file
-- `path: pathName` in animatedPath → jump to path definition in `paths {}`
-- Curve references → jump to curve definition in `curves {}`
+- `path: pathName` → path definition in `paths {}`
+- Curve references → curve definition in `curves {}`
 
-### Phase 3: .anim Language Server Support
+### Phase 3: MCP Integration
 
-**Step 3.1: .anim tokenizer + parser (TypeScript)**
-- Similar approach to .manim but simpler grammar
-- Track: `sheet:`, `states:`, `animation {}`, `playlist {}`, `filters {}`, `extrapoints {}`, `metadata {}`
-- Validate state variable references `${stateName}` against `states:` declarations
-- Validate `@final` constant usage
+**Step 3.1: Live resource validation via DevBridge**
+- LSP optionally connects to `localhost:9001` (DevBridge HTTP)
+- Use `eval_manim` for validation against actual loaded resources
+- Show warnings for missing fonts, unknown sprite sheets
 
-**Step 3.2: .anim diagnostics**
-- Undefined state variable in `${...}` interpolation
-- Invalid filter names
-- Missing required fields (`sheet:`)
-- Duplicate animation names
+**Step 3.2: Resource completions from running app**
+- `list_fonts` → complete font names in `text()` calls
+- `list_atlases` → complete sprite sheet + tile names in `bitmap()`
+- `list_builders` → complete `staticRef`/`dynamicRef` targets
+- `list_resources` → complete file references
 
-**Step 3.3: .anim completions**
-- Top level: `sheet:`, `states:`, `center:`, `fps:`, `loop:`, `animation`, `anim`, `@final`, `metadata`, `allowedExtraPoints:`
-- Inside `animation {}`: `fps:`, `loop:`, `playlist {}`, `filters {}`, `extrapoints {}`
-- Inside `filters {}`: filter type names
-- Inside `playlist {}`: `sheet:`, `event`, `filter`
-- Conditional triggers: `@(`, `@else`, `@default`
-
-### Phase 4: MCP Integration (optional)
-
-**Step 4.1: Live validation via DevBridge**
-- When the game is running with DevBridge, the LSP can optionally connect to `localhost:9001`
-- Use `eval_manim` tool to validate against actual loaded resources (real font names, sprite sheet tiles)
-- Show warnings for resources that exist syntactically but aren't loaded in the running app
-
-**Step 4.2: Resource completions from running app**
-- Query `list_resources` → complete `bitmap()` tile names, font names
-- Query `list_fonts` → complete font references in `text()` calls
-- Query `list_atlases` → complete sprite sheet + tile names
-- Query `list_builders` → complete `staticRef`/`dynamicRef` targets
-
-**Step 4.3: Live preview**
-- On save, trigger `reload` to hot-reload changed .manim in running app
-- Show `screenshot` thumbnail in hover/sidebar
+**Step 3.3: Live preview**
+- On save, trigger `reload` for hot-reload
+- Show `screenshot` in hover/sidebar
 
 ---
 
@@ -239,7 +252,7 @@ Context-aware completion based on cursor position:
 ```
 vscode-manim/
 ├── package.json                         # Extension manifest
-├── tsconfig.json
+├── tsconfig.json                        # For extension client only
 ├── .vscodeignore
 ├── language-configuration-manim.json
 ├── language-configuration-anim.json
@@ -247,54 +260,49 @@ vscode-manim/
 │   ├── manim.tmLanguage.json
 │   └── anim.tmLanguage.json
 ├── src/
-│   └── extension.ts                     # LSP client startup
+│   └── extension.ts                     # LSP client (thin, just starts server)
 ├── server/
-│   ├── package.json
-│   ├── tsconfig.json
-│   └── src/
-│       ├── server.ts                    # LSP server main
-│       ├── manim-parser.ts              # .manim tokenizer + parser
-│       ├── anim-parser.ts               # .anim tokenizer + parser
-│       ├── diagnostics.ts               # Error → Diagnostic mapping
-│       ├── completions.ts               # Context completions
-│       ├── hover.ts                     # Hover docs
-│       ├── symbols.ts                   # Document outline
-│       ├── definitions.ts               # Go-to-definition
-│       ├── mcp-bridge.ts               # Optional DevBridge connection
-│       └── types.ts                     # Shared types
+│   ├── lsp-server.hxml                  # Haxe → JS build config
+│   ├── src/
+│   │   ├── ManimLanguageServer.hx       # LSP main: init, dispatch, shutdown
+│   │   ├── LspTransport.hx             # stdio JSON-RPC transport
+│   │   ├── LspTypes.hx                 # LSP protocol types
+│   │   ├── DocumentStore.hx            # Open document text storage
+│   │   ├── ManimDiagnostics.hx         # Parse errors → Diagnostics
+│   │   ├── ManimCompletions.hx         # Context completions
+│   │   ├── ManimHover.hx              # Hover docs
+│   │   ├── ManimSymbols.hx            # Document outline
+│   │   ├── ManimDefinitions.hx        # Go-to-definition
+│   │   └── McpBridge.hx               # Optional DevBridge client
+│   └── bin/
+│       └── server.js                    # Compiled output (git-tracked or built)
 └── README.md
+```
+
+**Changes to existing hx-multianim source:**
+```
+src/bh/stateanim/
+├── AnimParserTypes.hx                   # NEW: Pure parse result types
+├── AnimParserCore.hx                    # NEW: Pure parsing (no Heaps)
+└── AnimParser.hx                        # MODIFIED: wraps AnimParserCore
 ```
 
 ## Implementation Priority
 
-1. **TextMate grammars** (highest value per effort — instant syntax highlighting)
-2. **Diagnostics** (catch errors without compiling)
-3. **Completions** (productivity boost — language has many keywords)
-4. **Document symbols** (navigate large .manim files)
-5. **Hover** (inline documentation)
-6. **Go-to-definition** (cross-reference navigation)
-7. **MCP bridge** (live resource validation — nice-to-have)
+1. **Phase 0: AnimParser refactoring** (unblocks .anim LSP, small scope)
+2. **Phase 1: TextMate grammars** (highest value/effort — instant syntax highlighting)
+3. **Phase 2: LSP core** (diagnostics first, then completions, then the rest)
+4. **Phase 3: MCP bridge** (nice-to-have, requires running game)
 
-## Dependencies
+## Build & Distribution
 
-```json
-{
-  "devDependencies": {
-    "@types/vscode": "^1.85.0",
-    "@types/node": "^20.0.0",
-    "typescript": "^5.3.0",
-    "esbuild": "^0.19.0"
-  },
-  "dependencies": {
-    "vscode-languageclient": "^9.0.0",
-    "vscode-languageserver": "^9.0.0",
-    "vscode-languageserver-textdocument": "^1.0.0"
-  }
-}
-```
+- Extension published to VS Code Marketplace as `vscode-manim`
+- Server JS bundled inside extension (no separate install)
+- `vsce package` to create `.vsix`
+- CI: compile Haxe server → build extension → package
 
-## Risk / Notes
+## Risks & Mitigations
 
-- **Parser fidelity**: The TypeScript parser does NOT need to be 100% compatible with the Haxe parser. It needs to handle ~95% of valid syntax for completions/diagnostics. Edge cases in expressions and macro codegen paths can be skipped.
-- **Maintenance burden**: As the .manim language evolves, the TypeScript parser needs updating. Mitigate by keeping it simple and documenting which Haxe parser features map to which TS code.
-- **Alternative**: Could use the existing `eval_manim` MCP tool for validation instead of a local parser, but this requires a running game instance and adds latency. The local parser is better for the core editing loop; MCP is a supplement.
+- **LSP in Haxe**: Haxe's JS output is clean but we need to implement JSON-RPC transport from scratch (or use a minimal npm package via Haxe externs). The Haxe language server itself does this, so there's prior art.
+- **Completions need error recovery**: The parser currently throws on first error. For completions, we need to parse partial/incomplete files. Mitigation: wrap parse in try/catch, use token-level context analysis for completions (don't need full AST for "where am I?").
+- **AnimParser refactoring**: Moderate risk — need to ensure no behavioral change for existing callers. Mitigation: existing tests cover parser output thoroughly.
