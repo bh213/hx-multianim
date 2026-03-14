@@ -1,6 +1,8 @@
 package bh.base;
 import bh.base.Hex;
+#if !noheaps
 import hxd.Math;
+#end
 
 
 abstract Degree(Float) {
@@ -149,7 +151,8 @@ enum abstract GridDirection(Int) {
 	}
 
 	public static function getRelativeDirection(attackDirection:GridDirection, objectDirection:GridDirection):RelativeDirection {
-		var relativeDirection = Math.iabs(attackDirection.toInt() - objectDirection.toInt());		
+		var diff = attackDirection.toInt() - objectDirection.toInt();
+		var relativeDirection = diff < 0 ? -diff : diff;		
 		switch relativeDirection {
 			case 0 : return BACK;
 			case 3 : return FRONT;
