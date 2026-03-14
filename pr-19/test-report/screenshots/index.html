@@ -327,15 +327,15 @@
 </head>
 <body>
     <h1>Visual Test Report</h1>
-    <div class="timestamp">Generated: 2026-03-13 17:53:08</div>
+    <div class="timestamp">Generated: 2026-03-14 11:36:18</div>
     <div class="summary">
         <strong>Summary:</strong> 94 tests,         <span style="color: #4CAF50;">94 passed</span>,         <span style="color: #f44336;">0 failed</span>
-        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1s, visual 20.7s)</span>
+        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1s, visual 21s)</span>
     </div>
     <div class="unit-tests-section">
         <h2>Unit Tests</h2>
         <div class="unit-tests-summary all-passed">
-            <strong>4155 assertions:</strong>             <span style="color: #4CAF50;">4155 passed</span>
+            <strong>4169 assertions:</strong>             <span style="color: #4CAF50;">4169 passed</span>
             <button class="expand-btn" id="unitToggleBtn" onclick="toggleUnitDetails()">Show Details</button>
         </div>
         <div class="unit-details" id="unitDetails">
@@ -531,6 +531,8 @@
                 <div class="unit-method pass">testParseUndefinedConstantRef: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testPlaylistFilter: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testPlaylistFilterMultiple: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testReachablePlaylistWithNoExtraPointsStillPasses: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testUnreachablePlaylistWithNoExtraPointsDetected: OK <span class="dots">.</span></div>
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">AnimatedPathBuilderTest</div>
@@ -944,6 +946,7 @@
                 <div class="unit-method pass">testCardHandEventEnum: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testCardStateEnum: OK <span class="dots">.......</span></div>
                 <div class="unit-method pass">testDiscardCardDecrementsCount: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testDiscardHoveredCardEmitsHoverEnd: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testDiscardUnknownIdSafe: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testDispose: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testDrawCardAtIndex: OK <span class="dots">..</span></div>
@@ -2123,6 +2126,8 @@
                 <div class="unit-method pass">testNamedPanelDoesNotAffectSinglePanelApi: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testNamedPanelFadeInCancelledOnClose: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testNamedPanelFadeOut: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testNamedPanelFadeOutNotOrphaned: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testNamedPanelFadeOutTweenCancelledOnCloseAll: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testNamedPanelManualCloseIgnoresOutsideClick: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testNamedPanelOutsideClickClose: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testNamedPanelReplaceInSameSlotCancelsFadeIn: OK <span class="dots">...</span></div>
@@ -2279,7 +2284,9 @@
                 <div class="unit-method pass">testFadeInStartsAtZeroAlpha: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testFadeOutRemovesOnComplete: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testHide: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testHideAfterShowDoesNotReshow: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testHideDuringFadeInCancels: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testHideResetsHoverTimer: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testHideWhenNothingActive: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testHoverShowsAfterDelay: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testInitialState: OK <span class="dots">..</span></div>
