@@ -1,6 +1,6 @@
 # hx-multianim Code Review Report
 
-**Date:** 2026-03-14
+**Date:** 2026-03-14 (updated with second-pass findings)
 **Scope:** Full codebase review — bugs, consistency, test coverage, API/language issues
 **Codebase:** 97 source files, ~45,500 lines across parser, builder, codegen, UI, and runtime systems
 
@@ -66,21 +66,25 @@ This suggests either dead code from a refactor, or an intended differentiation t
 
 ---
 
-### 1.3 POTENTIAL: UIPanelHelper Tween Cleanup in Named Panels
+### 1.3 CONFIRMED BUG: UIPanelHelper Named Panel Tween Cleanup
 
-**File:** `src/bh/ui/UIPanelHelper.hx` (closeNamed/closeAllNamed)
+**File:** `src/bh/ui/UIPanelHelper.hx:288-290` (closeNamed/closeAllNamed)
 **Severity:** Low
 
-When closing named panels with fade-out animations, if `closeAllNamed()` is called while individual panel fade-outs are still animating, the orphaned tweens may continue running with references to removed objects. The main (non-named) panel handles this correctly via `cancelActiveFadeOut()`, but the named panel paths may not.
+Confirmed in second pass: Named panels (`PanelState` instances in the `namedPanels` map) do NOT track their fade-out tweens. The single-panel API correctly uses `activeFadeOutTween` to cancel in-progress fade-outs, but `PanelState` has no equivalent field. When `closeAllNamed()` is called while individual panel fade-outs are still animating, the orphaned tweens continue running with references to removed objects.
+
+**Fix:** Add a `fadeOutTween` field to `PanelState` and cancel it in `closeNamed()`/`closeAllNamed()` before starting new animations.
 
 ---
 
-### 1.4 POTENTIAL: UICardHandHelper Stale Interactive State
+### 1.4 CONFIRMED BUG: UICardHandHelper Hover Event Ordering in discardCard()
 
-**File:** `src/bh/ui/UICardHandHelper.hx`
+**File:** `src/bh/ui/UICardHandHelper.hx:337-347`
 **Severity:** Low
 
-When a card with an active hover state is discarded via `discardCard()`, the `UIRichInteractiveHelper` binding is unregistered, but if the helper's internal `currentOver` reference points to the just-removed interactive, subsequent hover events may reference stale state. This is mitigated by the card being removed from the scene graph (so no new events arrive), but the helper's internal state may be inconsistent until the next valid hover.
+When a hovered card is discarded via `discardCard()`, the hover state is cleared BEFORE the interactive is unregistered. This means the `CardHoverEnd` event that would normally fire during un-hover may be missed — the card transitions from `Hovered` to `Animating` (discard) without emitting `CardHoverEnd`.
+
+**Note:** The original "stale interactive" concern from the first pass was a false positive — `UIRichInteractiveHelper` properly validates binding existence before processing events. The actual issue is the missing hover-end event.
 
 ---
 
@@ -93,6 +97,107 @@ The following patterns were investigated and confirmed as **correct Haxe idioms*
 - **TweenManager swap-and-pop in `update()`**: The pattern at lines 357-362 correctly does NOT increment `i` after removal, so the swapped-in element is properly visited on the next iteration. This is a standard safe removal pattern.
 
 - **`resolveAsColorInteger` calling `resolveAsInteger` for references**: Colors ARE integers in Heaps (0xAARRGGBB format), so delegating to `resolveAsInteger` for `RVReference` is correct behavior.
+
+- **Particle rotation accumulation (`life * vr`)**: `Particles.hx:183` uses `rotation = atan2(vy, vx) - forwardAngle + life * vr`. The `life * vr` term is mathematically correct — it's the integral of constant rotational velocity over elapsed time.
+
+- **`sanitizeIdentifier` null/empty check**: Macro code; `charAt(0)` on empty string returns `""` in Haxe, which doesn't match any letter case and falls through safely.
+
+- **UICardHandHelper stale interactive state**: `UIRichInteractiveHelper` properly validates binding existence via `hasBinding(id)` before processing events. The `currentOver` reference cannot cause stale state issues because events on removed scene graph objects don't fire.
+
+---
+
+### 1.6 CONFIRMED BUG: ProgrammableCodeGen Bezier Control Point Typo (CRITICAL)
+
+**File:** `src/bh/multianim/ProgrammableCodeGen.hx:6914`
+**Severity:** Critical
+
+In the codegen for bezier curve control points in `PCMRelative` mode, a copy-paste typo uses `px` instead of `py` for the Y coordinate of control point 1:
+
+```haxe
+case PCMRelative | null:
+    ex = px + end.x;
+    ey = py + end.y;
+    c1x = px + c1.x;
+    c1y = px + c1.y;  // BUG: should be py + c1.y
+    c2x = px + c2.x;
+    c2y = py + c2.y;
+```
+
+**Verified against runtime equivalent** in `MultiAnimPaths.hx:160` which correctly uses `point.y + control1.y`.
+
+**Impact:** All bezier curves using relative coordinates in codegen-generated code will have incorrect control point 1 Y positions. The control point will be offset by `(px - py)` pixels vertically — only correct when `px == py`. This affects the visual shape of every relative bezier path in macro-generated code.
+
+**Fix:** Change `c1y = px + c1.y` to `c1y = py + c1.y`.
+
+---
+
+### 1.7 CONFIRMED ISSUE: ScreenManager Dialog Cleanup Incomplete
+
+**File:** `src/bh/ui/screens/ScreenManager.hx:454-458`
+**Severity:** Medium (resource leak potential)
+
+The private `removeScreen()` method, used for dialog removal, does not call `screen.clear()` or fire lifecycle events:
+
+```haxe
+function removeScreen(screen:UIScreen) {
+    tweens.cancelAllChildren(screen.getSceneRoot());
+    this.activeScreens.remove(screen);
+    screen.getSceneRoot().remove();
+    // Missing: screen.clear(), lifecycle events
+}
+```
+
+Meanwhile, `screen.clear()` is only called in two places (lines 321 and 1201), both in hot-reload-only paths. Normal screen transitions (lines 557-564) fire lifecycle events but don't call `clear()`.
+
+**Impact:** Screens removed via `removeScreen()` may retain registered interactives, component references, and other state that `clear()` would clean up. In practice, the scene graph removal + tween cancellation handles most cleanup, but any screen-level bookkeeping in `clear()` is skipped.
+
+---
+
+### 1.8 CONFIRMED: UITooltipHelper Timer Not Reset on hide()
+
+**File:** `src/bh/ui/UITooltipHelper.hx:107-136`
+**Severity:** Low
+
+The `hide()` method does not reset `hoverTimer = 0`. Only `cancelHover()` resets the timer. If `hide()` is called directly (not through `cancelHover()`), the stale timer value persists. On the next `startHover()`, the timer continues from the old value rather than starting fresh, potentially causing the tooltip to appear faster than intended.
+
+**Fix:** Add `hoverTimer = 0` to the `hide()` method.
+
+---
+
+### 1.9 LOW: Error Message Grammar Issues in MultiAnimBuilder
+
+**File:** `src/bh/multianim/MultiAnimBuilder.hx:169-234`
+**Severity:** Low (cosmetic)
+
+Multiple error messages have grammatical issues — missing "be" in infinitive phrases:
+
+- `"to present"` → `"to be present"` (6+ instances)
+- Similar patterns in parameter validation error messages
+
+These don't affect functionality but produce slightly awkward error messages for users.
+
+---
+
+### 1.10 LOW: Particle Sub-Emitter Probability Timing
+
+**File:** `src/bh/base/Particles.hx:1061`
+**Severity:** Low
+
+In the sub-emitter system, `lastSubEmitTime` is updated before the probability check. If the probability roll fails, the time window is consumed without emitting, effectively skipping that interval. This means at low probabilities, the actual emission rate is lower than `probability * (1/interval)` — a single failed roll delays the next attempt by a full interval.
+
+This may be intentional (prevents burst catchup), but the behavior is subtle and undocumented.
+
+---
+
+### 1.11 NOT BUGS (Second Pass False Positives)
+
+The following patterns were investigated in the second pass and confirmed as correct:
+
+- **Particle rotation formula** (`Particles.hx:183`): `life * vr` is the correct integral of constant rotational velocity. Not an accumulation bug.
+
+- **`sanitizeIdentifier` empty string handling** (ProgrammableCodeGen): Macro-context code; `charAt(0)` on empty string returns `""` which falls through the letter check safely.
+
+- **UICardHandHelper `currentOver` stale reference**: UIRichInteractiveHelper validates binding existence before processing, and removed scene graph objects don't generate new events.
 
 ---
 
@@ -271,37 +376,53 @@ Investigated — these are NOT lazy tests. They appear in visual comparison test
 
 ### Priority 1: Fix Confirmed Bugs
 
-1. **Fix AnimParser playlist validation nesting** (`AnimParser.hx:823`) — Move the playlist loop out of the extraPoint iteration. Low risk, high confidence fix.
+1. **Fix ProgrammableCodeGen bezier typo** (`ProgrammableCodeGen.hx:6914`) — Change `c1y = px + c1.y` to `c1y = py + c1.y`. **Critical** — affects all relative bezier paths in codegen output. One-character fix with high confidence.
 
-2. **Simplify redundant conditional** (`MultiAnimBuilder.hx:1313`) — Remove the dead `if` branch.
+2. **Fix AnimParser playlist validation nesting** (`AnimParser.hx:823`) — Move the playlist loop out of the extraPoint iteration. Low risk, high confidence fix.
 
-3. **Clean up parser comment artifacts** (`AnimParser.hx:1036-1039`) — Remove misleading debug comments.
+3. **Simplify redundant conditional** (`MultiAnimBuilder.hx:1313`) — Remove the dead `if` branch.
 
-### Priority 2: Documentation Updates
+4. **Clean up parser comment artifacts** (`AnimParser.hx:1036-1039`) — Remove misleading debug comments.
 
-4. **Fix cookbook API signatures** (`docs/manim-cookbook.md`) — Correct `addButtonWithSingleBuilder` and `addDropdownWithSingleBuilder` examples, or simplify the APIs with wrapper functions.
+### Priority 2: Bug Fixes (Low Severity)
 
-5. **Document missing CardHandHelper methods** — Add `setArrowVisible`, `setArrowSnap`, `getTargeting` to runtime-systems.md.
+5. **Fix UIPanelHelper named panel tween tracking** — Add `fadeOutTween` field to `PanelState`, cancel on close.
 
-6. **Clarify `onCardBuilt` config semantics** — Distinguish config-set callbacks from public property callbacks.
+6. **Fix UITooltipHelper timer reset** — Add `hoverTimer = 0` to `hide()`.
 
-### Priority 3: Test Coverage Improvements
+7. **Fix UICardHandHelper hover event ordering** — Emit `CardHoverEnd` before state transition in `discardCard()`.
 
-7. **Add tests for animations with 0 extra points** — Verify playlist validation works when no extra points are defined (currently skipped due to bug 1.1).
+8. **Review ScreenManager dialog cleanup** — Consider calling `clear()` in `removeScreen()` or auditing what `clear()` does that `remove()` doesn't.
 
-8. **Add multi-component integration tests** — Test Grid + CardHand + Tooltip combinations.
+### Priority 3: Documentation Updates
 
-9. **Add dispose/cleanup verification tests** — Verify resource release on component disposal.
+9. **Fix cookbook API signatures** (`docs/manim-cookbook.md`) — Correct `addButtonWithSingleBuilder` and `addDropdownWithSingleBuilder` examples, or simplify the APIs with wrapper functions.
 
-10. **Add error recovery tests** — Test runtime behavior with malformed parameters, missing resources, etc.
+10. **Document missing CardHandHelper methods** — Add `setArrowVisible`, `setArrowSnap`, `getTargeting` to runtime-systems.md.
 
-### Priority 4: API Improvements (Future)
+11. **Clarify `onCardBuilt` config semantics** — Distinguish config-set callbacks from public property callbacks.
 
-11. **Unify callback patterns** — Consider making all CardHandHelper callbacks settable via public properties (or all via config) for consistency.
+12. **Fix error message grammar** (`MultiAnimBuilder.hx:169-234`) — Add missing "be" in infinitive phrases.
 
-12. **Add `dispose()` to all helpers** — Implement `UIHigherOrderComponent` or a simpler `Disposable` interface on tooltip/panel helpers.
+### Priority 4: Test Coverage Improvements
 
-13. **Consider particle expressions** — Allow `$param` references in particle properties for dynamic particle configuration.
+13. **Add tests for animations with 0 extra points** — Verify playlist validation works when no extra points are defined (currently skipped due to bug 1.1).
+
+14. **Add codegen bezier path tests** — Verify macro-generated bezier curves match runtime builder output (would have caught bug 1.6).
+
+15. **Add multi-component integration tests** — Test Grid + CardHand + Tooltip combinations.
+
+16. **Add dispose/cleanup verification tests** — Verify resource release on component disposal.
+
+17. **Add error recovery tests** — Test runtime behavior with malformed parameters, missing resources, etc.
+
+### Priority 5: API Improvements (Future)
+
+18. **Unify callback patterns** — Consider making all CardHandHelper callbacks settable via public properties (or all via config) for consistency.
+
+19. **Add `dispose()` to all helpers** — Implement `UIHigherOrderComponent` or a simpler `Disposable` interface on tooltip/panel helpers.
+
+20. **Consider particle expressions** — Allow `$param` references in particle properties for dynamic particle configuration.
 
 ---
 
@@ -310,13 +431,18 @@ Investigated — these are NOT lazy tests. They appear in visual comparison test
 ### Source Files (key files, ~45,500 lines total)
 - `src/bh/multianim/MacroManimParser.hx` (6,263 lines)
 - `src/bh/multianim/MultiAnimBuilder.hx` (6,011 lines)
-- `src/bh/multianim/ProgrammableCodeGen.hx` (7,543 lines)
+- `src/bh/multianim/ProgrammableCodeGen.hx` (7,543 lines) — **deep dive in second pass** (codegen paths, bezier generation)
 - `src/bh/multianim/MultiAnimParser.hx` (1,315 lines)
+- `src/bh/multianim/MultiAnimPaths.hx` — cross-referenced with codegen for bezier verification
+- `src/bh/multianim/IncrementalUpdateContext.hx` — reviewed in second pass
 - `src/bh/stateanim/AnimParser.hx` (1,942 lines)
 - `src/bh/base/TweenManager.hx` (526 lines)
-- `src/bh/ui/UICardHandHelper.hx` (1,320 lines)
+- `src/bh/base/Particles.hx` — **deep dive in second pass** (rotation, sub-emitters, force fields)
+- `src/bh/ui/UICardHandHelper.hx` (1,320 lines) — **re-examined in second pass** (discard hover ordering)
+- `src/bh/ui/UIPanelHelper.hx` — **verified in second pass** (named panel tween tracking)
+- `src/bh/ui/UITooltipHelper.hx` — **verified in second pass** (timer reset issue)
 - `src/bh/ui/UIMultiAnimGrid.hx` (1,384 lines)
-- `src/bh/ui/screens/ScreenManager.hx` (1,478 lines)
+- `src/bh/ui/screens/ScreenManager.hx` (1,478 lines) — **deep dive in second pass** (dialog cleanup, screen lifecycle)
 - `src/bh/ui/screens/UIScreen.hx` (1,254 lines)
 - All UI helper files, controllers, and component files
 
