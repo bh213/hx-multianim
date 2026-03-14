@@ -6911,7 +6911,7 @@ class ProgrammableCodeGen {
 							ex = px + end.x;
 							ey = py + end.y;
 							c1x = px + c1.x;
-							c1y = px + c1.y;
+							c1y = py + c1.y;
 							c2x = px + c2.x;
 							c2y = py + c2.y;
 					}

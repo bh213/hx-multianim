@@ -233,6 +233,7 @@ placeholder(generated(cross(200, 24, #FF0000)), builderParameter("myDropdown")) 
 
 // In macro:
 myDropdown => addDropdownWithSingleBuilder(stdBuilder, "dropdown",
+    "list-panel", "list-item-120", "scrollbar", "scrollbar",
     ["Option A", "Option B", "Option C"], 0),
 
 // In onScreenEvent:

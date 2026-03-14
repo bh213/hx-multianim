@@ -335,8 +335,10 @@ class UICardHandHelper implements UIHigherOrderComponent {
 			cancelDrag();
 
 		// Clear references to this card
-		if (hoveredEntry == entry)
+		if (hoveredEntry == entry) {
+			emitEvent(CardHoverEnd(entry.descriptor.id));
 			hoveredEntry = null;
+		}
 		if (cardToCardTarget == entry)
 			cardToCardTarget = null;
 

@@ -133,6 +133,11 @@ class UITooltipHelper {
 		activeTooltipId = null;
 		activeBuildName = null;
 		activeParams = null;
+		// Clear pending hover state so update() doesn't re-trigger the tooltip
+		hoverInteractiveId = null;
+		hoverBuildName = null;
+		hoverParams = null;
+		hoverTimer = 0;
 	}
 
 	/** Set custom delay for a specific interactive. */

@@ -520,6 +520,43 @@ class UITooltipHelperTest extends BuilderTestBase {
 		Assert.isFalse(ctx.helper.isActive());
 	}
 
+	// ============== Bug: hide() does not reset hover timer ==============
+
+	@Test
+	public function testHideResetsHoverTimer():Void {
+		// Bug: hide() does not reset hoverTimer or clear pending hover state.
+		// After hide(), the next update() should NOT re-show the tooltip.
+		var ctx = createHelper(0.3);
+		ctx.helper.startHover("btn1", "tip");
+
+		// Advance partially (not enough to show)
+		ctx.helper.update(0.2);
+		Assert.isFalse(ctx.helper.isActive());
+
+		// Call hide() directly — should cancel pending hover
+		ctx.helper.hide();
+
+		// Now update past the original delay — tooltip should NOT appear
+		ctx.helper.update(0.2);
+		Assert.isFalse(ctx.helper.isActive(), "Tooltip should not appear after hide() cancelled pending hover");
+	}
+
+	@Test
+	public function testHideAfterShowDoesNotReshow():Void {
+		// After show() + hide(), a subsequent update() should NOT re-show the tooltip
+		var ctx = createHelper(0.1);
+		ctx.helper.startHover("btn1", "tip");
+		ctx.helper.update(0.2); // tooltip shows
+		Assert.isTrue(ctx.helper.isActive());
+
+		ctx.helper.hide(); // direct hide
+		Assert.isFalse(ctx.helper.isActive());
+
+		// update should not re-trigger
+		ctx.helper.update(0.5);
+		Assert.isFalse(ctx.helper.isActive(), "Tooltip should not reappear after hide()");
+	}
+
 	@Test
 	public function testRebuildWithFade():Void {
 		var ctx = createHelperWithTweens(0.2, 0.1);

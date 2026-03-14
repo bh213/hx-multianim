@@ -503,4 +503,49 @@ class CardHandOrchestratorTest extends BuilderTestBase {
 		Assert.equals("b", ids[1]);
 		Assert.equals("c", ids[2]);
 	}
+
+	// ==================== Bug: discardCard missing CardHoverEnd ====================
+
+	@Test
+	public function testDiscardHoveredCardEmitsHoverEnd():Void {
+		// Bug: When a hovered card is discarded, CardHoverEnd is never emitted.
+		// The hoveredEntry is cleared before the event fires.
+		var h = createHelper();
+		h.helper.setHand([desc("a"), desc("b"), desc("c")]);
+
+		var events:Array<CardHandEvent> = [];
+		h.helper.onCardEvent = function(e) { events.push(e); };
+
+		// Simulate hover by using @:privateAccess to set hoveredEntry
+		@:privateAccess {
+			var entry = h.helper.cards[1]; // card "b"
+			h.helper.setHoveredEntry(entry);
+		}
+
+		// Verify hover started
+		var hasHoverStart = false;
+		for (e in events) {
+			switch (e) {
+				case CardHoverStart(id):
+					if (id == "b") hasHoverStart = true;
+				default:
+			}
+		}
+		Assert.isTrue(hasHoverStart, "CardHoverStart should have been emitted");
+		events.resize(0);
+
+		// Discard the hovered card
+		h.helper.discardCard("b");
+
+		// Check that CardHoverEnd was emitted
+		var hasHoverEnd = false;
+		for (e in events) {
+			switch (e) {
+				case CardHoverEnd(id):
+					if (id == "b") hasHoverEnd = true;
+				default:
+			}
+		}
+		Assert.isTrue(hasHoverEnd, "CardHoverEnd should be emitted when discarding a hovered card");
+	}
 }

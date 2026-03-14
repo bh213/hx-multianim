@@ -2162,4 +2162,54 @@ animation {
 		var d:Dynamic = result;
 		Assert.equals("explode", d.animations[0].name);
 	}
+
+	// ===== Playlist reachability validation (bug 1.1) =====
+
+	@Test
+	public function testUnreachablePlaylistWithNoExtraPointsDetected() {
+		// Bug: playlist validation is nested inside the extraPoint loop.
+		// When an animation has 0 extra points, the playlist validation is
+		// skipped entirely. This test has an unreachable playlist @(direction=>up)
+		// but no extra points — should still be caught.
+		var error = parseAnimExpectingError('
+sheet: testSheet
+states: direction(l, r)
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist @(direction=>l) {
+        sheet: "test_idle_l"
+    }
+    playlist @(direction=>r) {
+        sheet: "test_idle_r"
+    }
+    playlist @(direction=>up) {
+        sheet: "test_idle_up"
+    }
+}
+');
+		Assert.notNull(error, "Unreachable playlist with no extra points should be detected");
+	}
+
+	@Test
+	public function testReachablePlaylistWithNoExtraPointsStillPasses() {
+		// Verify that the fix doesn't break valid animations with no extra points.
+		var result = parseAnimExpectingSuccess('
+sheet: testSheet
+states: direction(l, r)
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist @(direction=>l) {
+        sheet: "test_idle_l"
+    }
+    playlist @(direction=>r) {
+        sheet: "test_idle_r"
+    }
+}
+');
+		Assert.notNull(result, "Valid animation with no extra points should parse");
+	}
 }

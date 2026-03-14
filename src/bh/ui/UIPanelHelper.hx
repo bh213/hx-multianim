@@ -33,6 +33,7 @@ private typedef PanelState = {
 	var closeMode:PanelCloseMode;
 	var pendingClose:Bool;
 	var fadeInTween:Null<Tween>;
+	var fadeOutTween:Null<Tween>;
 }
 
 @:nullSafety
@@ -267,6 +268,7 @@ class UIPanelHelper {
 			closeMode: closeMode ?? defaultCloseMode,
 			pendingClose: false,
 			fadeInTween: fadeInTween,
+			fadeOutTween: null,
 		});
 	}
 
@@ -280,14 +282,18 @@ class UIPanelHelper {
 			panel.fadeInTween.cancel();
 			panel.fadeInTween = null;
 		}
+		// Cancel any in-progress fade-out from a previous close
+		if (panel.fadeOutTween != null) {
+			panel.fadeOutTween.cancel();
+			panel.fadeOutTween = null;
+		}
 		screen.removeInteractives(panel.prefix);
 		namedPanels.remove(slot);
 		screen.onScreenEvent(UICustomEvent(EVENT_PANEL_CLOSE, panel.interactiveId), null);
 
 		final obj = panel.result.object;
 		if (defaultFadeOut > 0 && tweens != null) {
-			final t = tweens.tween(obj, defaultFadeOut, [Alpha(0.0)]);
-			t.setOnComplete(() -> obj.remove());
+			tweens.tween(obj, defaultFadeOut, [Alpha(0.0)]).setOnComplete(() -> obj.remove());
 		} else {
 			obj.remove();
 		}

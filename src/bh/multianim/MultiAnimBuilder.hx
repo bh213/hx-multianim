@@ -166,7 +166,7 @@ class BuilderResolvedSettings {
 			throw 'settings not found, was looking for $settingName';
 		final r = settings[settingName];
 		if (r == null)
-			throw 'expected string setting ${settingName} to present but was not';
+			throw 'expected string setting ${settingName} to be present but was not';
 		return switch r {
 			case RSVString(s): s;
 			case RSVInt(i): '$i';
@@ -181,7 +181,7 @@ class BuilderResolvedSettings {
 			throw 'settings not found, was looking for $settingName';
 		var r = settings[settingName];
 		if (r == null)
-			throw 'expected int setting ${settingName} to present but was not';
+			throw 'expected int setting ${settingName} to be present but was not';
 		return switch r {
 			case RSVInt(i): i;
 			case RSVColor(c): c;
@@ -211,7 +211,7 @@ class BuilderResolvedSettings {
 			throw 'settings not found, was looking for $settingName';
 		var r = settings[settingName];
 		if (r == null)
-			throw 'expected float setting ${settingName} to present but was not';
+			throw 'expected float setting ${settingName} to be present but was not';
 		return switch r {
 			case RSVFloat(f): f;
 			case RSVInt(i): cast i;
@@ -1310,7 +1310,7 @@ class MultiAnimBuilder {
 			case "grid" | "ctx.grid":
 				final node = currentNode;
 				if (node == null) throw 'currentNode is null in resolveRVPropertyAccess' + currentNodePos();
-				final gcs = if (ref == "ctx.grid") MultiAnimParser.getGridCoordinateSystem(node) else MultiAnimParser.getGridCoordinateSystem(node);
+				final gcs = MultiAnimParser.getGridCoordinateSystem(node);
 				if (gcs == null) throw 'no grid coordinate system in scope for $ref.$property' + currentNodePos();
 				switch (property) {
 					case "width": return gcs.spacingX;

@@ -1121,6 +1121,56 @@ class UIPanelHelperTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testNamedPanelFadeOutTweenCancelledOnCloseAll():Void {
+		// Bug: Named panels don't track fade-out tweens. When closeAllNamed()
+		// is called while fade-outs are animating, orphaned tweens continue
+		// running with references to removed objects.
+		var ctx = createHelperWithTweens(0.0, 0.3);
+		ctx.helper.openNamed("slot1", "btn1", "panel");
+		ctx.helper.openNamed("slot2", "btn2", "panel");
+
+		var obj1 = ctx.helper.getNamedPanelResult("slot1").object;
+		var obj2 = ctx.helper.getNamedPanelResult("slot2").object;
+
+		// Close slot1 — starts fade-out
+		ctx.helper.closeNamed("slot1");
+		Assert.isFalse(ctx.helper.isOpenNamed("slot1"));
+
+		// Close all (slot2 remains) — should also work cleanly
+		ctx.helper.closeAllNamed();
+
+		// Advance past all fade-outs — should not crash
+		ctx.tweens.update(0.5);
+
+		// Both objects should be removed (parent null)
+		Assert.isNull(obj1.parent, "First panel should be removed after fade-out");
+		Assert.isNull(obj2.parent, "Second panel should be removed after fade-out");
+	}
+
+	@Test
+	public function testNamedPanelFadeOutNotOrphaned():Void {
+		// Close a named panel during fade-out, then open a new one in same slot.
+		// The old fade-out should be cancelled.
+		var ctx = createHelperWithTweens(0.0, 0.5);
+		ctx.helper.openNamed("slot1", "btn1", "panel");
+		var obj1 = ctx.helper.getNamedPanelResult("slot1").object;
+
+		// Close — starts fade-out
+		ctx.helper.closeNamed("slot1");
+
+		// Advance partially into fade-out
+		ctx.tweens.update(0.1);
+
+		// Open new panel in same slot
+		ctx.helper.openNamed("slot1", "btn2", "panel");
+		Assert.isTrue(ctx.helper.isOpenNamed("slot1"));
+
+		// Advance past old fade-out duration — old tween should not cause issues
+		ctx.tweens.update(1.0);
+		Assert.isTrue(ctx.helper.isOpenNamed("slot1"));
+	}
+
+	@Test
 	public function testOpenAtWithCloseMode():Void {
 		var ctx = createHelper();
 		ctx.helper.openAt(0, 0, "panel", null, Manual);

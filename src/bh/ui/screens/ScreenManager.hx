@@ -545,13 +545,13 @@ class ScreenManager {
 						removedScreens = [oldDialog];
 						addedScreens = [single => layerContent, master => layerMaster];
 
-					case Dialog(dialog, caller, previousMode, dialogName):
+					case Dialog(newDialog, newCaller, newPreviousMode, newDialogName):
 						removedScreens = [oldDialog];
-						addedScreens = [dialog => layerDialog];
-						overrideActiveScreenControllers = [dialog];
-						final result = dialog.getController().exitResponse;
+						addedScreens = [newDialog => layerDialog];
+						overrideActiveScreenControllers = [newDialog];
+						final result = oldDialog.getController().exitResponse;
 						caller.onScreenEvent(UIOnControllerEvent(OnDialogResult(dialogName, result)), null);
-						removeScreen(dialog);
+						removeScreen(oldDialog);
 				}
 		}
 		if (removedScreens != null)

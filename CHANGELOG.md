@@ -132,6 +132,13 @@
 - **UIPanelHelper: named panel fade-in tween not tracked** — `closeNamed()` now cancels in-progress fade-in before starting fade-out
 - **UIMultiAnimCheckbox/UIMultiAnimTabs: set_disabled inconsistent** — `set_disabled` now uses `beginUpdate/endUpdate` and sets both `status` and `disabled` parameters, matching `UIMultiAnimButton` pattern
 - **test.ps1: compile stderr deadlock** — reads stderr asynchronously to prevent potential deadlock when compiler output exceeds buffer. Also shows stdout on compile errors for better diagnostics.
+- **ProgrammableCodeGen: bezier control point typo** — relative bezier path codegen used `px` instead of `py` for first control point's Y coordinate, producing incorrect curves
+- **ScreenManager: Dialog→Dialog variable shadowing** — switching from one dialog to another shadowed outer `dialog`/`caller` variables, causing `exitResponse` to be read from the new dialog (always null) and the new dialog to be removed instead of the old one
+- **AnimParser: playlist reachability validation mis-nested** — playlist `visited` check was inside the extra-points loop; animations with no extra points silently skipped playlist reachability validation
+- **MultiAnimBuilder: redundant conditional** — `ctx.grid` vs `grid` ref both called `getGridCoordinateSystem(node)` via an unnecessary ternary
+- **UIPanelHelper: named panel fade-out tween not cancelled on re-open** — `closeNamed()` didn't track fade-out tweens; re-opening the same slot during fade-out left orphaned tweens running
+- **UITooltipHelper: hide() doesn't reset hover timer** — calling `hide()` left pending hover state intact, causing `update()` to re-show the tooltip after the delay elapsed
+- **UICardHandHelper: discardCard missing CardHoverEnd** — discarding a hovered card cleared `hoveredEntry` without emitting `CardHoverEnd`, leaving listeners in a stale hover state
 
 ### Changed
 - **UIDefaultController** — merged `DefaultUIController` into `UIControllerBase` and renamed to `UIDefaultController`. Made `getEventElement()` non-abstract with the default capture-or-hit-test implementation. One fewer class to understand; no behavioral change.
