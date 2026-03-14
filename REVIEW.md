@@ -131,29 +131,61 @@ case PCMRelative | null:
 
 ---
 
-### 1.7 CONFIRMED ISSUE: ScreenManager Dialog Cleanup Incomplete
+### 1.7 CONFIRMED BUG: ScreenManager Dialog→Dialog Variable Shadowing
+
+**File:** `src/bh/ui/screens/ScreenManager.hx:548-554`
+**Severity:** High (wrong dialog referenced in Dialog→Dialog transitions)
+
+In the `updateScreenMode()` method, when transitioning from one Dialog to another (Dialog→Dialog), the inner pattern match shadows the outer variables:
+
+```haxe
+case Dialog(oldDialog, caller, previousMode, dialogName):  // line 535: OLD dialog
+    removeModalOverlay();
+    switch newScreenMode {
+        // ...
+        case Dialog(dialog, caller, previousMode, dialogName):  // line 548: NEW dialog
+            removedScreens = [oldDialog];
+            addedScreens = [dialog => layerDialog];
+            overrideActiveScreenControllers = [dialog];
+            final result = dialog.getController().exitResponse;  // BUG: reads NEW dialog's result
+            caller.onScreenEvent(...OnDialogResult(dialogName, result)...);  // BUG: NEW caller/name
+            removeScreen(dialog);  // BUG: removes NEW dialog (no-op since not added yet)
+    }
+```
+
+The inner `case Dialog(dialog, caller, previousMode, dialogName)` at line 548 shadows `caller`, `previousMode`, and `dialogName` from line 535. Lines 552-554 should reference the OLD dialog's data but instead reference the NEW dialog's:
+
+- `dialog.getController().exitResponse` → reads exit response of the **new** dialog (which hasn't been displayed yet)
+- `caller` → the **new** dialog's caller, not the old one's
+- `dialogName` → the **new** dialog's name
+- `removeScreen(dialog)` → tries to remove the **new** dialog (effectively a no-op)
+
+**Impact:** In Dialog→Dialog transitions, the old dialog's exit result is never sent to its caller. Instead, the new dialog's (likely uninitialized) exit response is sent to the wrong caller. The `removeScreen(dialog)` call on the not-yet-added new dialog is a no-op, so the old dialog still gets properly removed via `removedScreens` at line 557-563. The bug is primarily a lost/incorrect dialog result.
+
+---
+
+### 1.8 CONFIRMED ISSUE: ScreenManager Screen Cleanup Design Gap
 
 **File:** `src/bh/ui/screens/ScreenManager.hx:454-458`
 **Severity:** Medium (resource leak potential)
 
-The private `removeScreen()` method, used for dialog removal, does not call `screen.clear()` or fire lifecycle events:
+The private `removeScreen()` method, used for screen removal, does not call `screen.clear()` or fire lifecycle events:
 
 ```haxe
 function removeScreen(screen:UIScreen) {
     tweens.cancelAllChildren(screen.getSceneRoot());
     this.activeScreens.remove(screen);
     screen.getSceneRoot().remove();
-    // Missing: screen.clear(), lifecycle events
 }
 ```
 
-Meanwhile, `screen.clear()` is only called in two places (lines 321 and 1201), both in hot-reload-only paths. Normal screen transitions (lines 557-564) fire lifecycle events but don't call `clear()`.
+The normal removal path (lines 557-563) does fire lifecycle events before calling `removeScreen()`, but `screen.clear()` is never called in any non-hot-reload path. `clear()` is only called at lines 321 and 1201, both in `#if MULTIANIM_DEV` hot-reload paths.
 
-**Impact:** Screens removed via `removeScreen()` may retain registered interactives, component references, and other state that `clear()` would clean up. In practice, the scene graph removal + tween cancellation handles most cleanup, but any screen-level bookkeeping in `clear()` is skipped.
+**Impact:** Screens removed via normal transitions retain registered interactives, component references, panel helpers, and other state that `clear()` would clean up. Higher-order components (Grid, CardHand) are not `dispose()`d. In practice, the scene graph removal + tween cancellation handles most visible cleanup, but screen-level bookkeeping accumulates.
 
 ---
 
-### 1.8 CONFIRMED: UITooltipHelper Timer Not Reset on hide()
+### 1.9 CONFIRMED: UITooltipHelper Timer Not Reset on hide()
 
 **File:** `src/bh/ui/UITooltipHelper.hx:107-136`
 **Severity:** Low
@@ -164,7 +196,7 @@ The `hide()` method does not reset `hoverTimer = 0`. Only `cancelHover()` resets
 
 ---
 
-### 1.9 LOW: Error Message Grammar Issues in MultiAnimBuilder
+### 1.10 LOW: Error Message Grammar Issues in MultiAnimBuilder
 
 **File:** `src/bh/multianim/MultiAnimBuilder.hx:169-234`
 **Severity:** Low (cosmetic)
@@ -178,7 +210,7 @@ These don't affect functionality but produce slightly awkward error messages for
 
 ---
 
-### 1.10 LOW: Particle Sub-Emitter Probability Timing
+### 1.11 LOW: Particle Sub-Emitter Probability Timing
 
 **File:** `src/bh/base/Particles.hx:1061`
 **Severity:** Low
@@ -189,7 +221,7 @@ This may be intentional (prevents burst catchup), but the behavior is subtle and
 
 ---
 
-### 1.11 NOT BUGS (Second Pass False Positives)
+### 1.12 NOT BUGS (Second Pass False Positives)
 
 The following patterns were investigated in the second pass and confirmed as correct:
 
@@ -378,51 +410,55 @@ Investigated — these are NOT lazy tests. They appear in visual comparison test
 
 1. **Fix ProgrammableCodeGen bezier typo** (`ProgrammableCodeGen.hx:6914`) — Change `c1y = px + c1.y` to `c1y = py + c1.y`. **Critical** — affects all relative bezier paths in codegen output. One-character fix with high confidence.
 
-2. **Fix AnimParser playlist validation nesting** (`AnimParser.hx:823`) — Move the playlist loop out of the extraPoint iteration. Low risk, high confidence fix.
+2. **Fix ScreenManager Dialog→Dialog variable shadowing** (`ScreenManager.hx:548-554`) — Rename inner pattern variables to avoid shadowing, fix references to use old dialog's data. **High** — wrong dialog result sent to wrong caller.
 
-3. **Simplify redundant conditional** (`MultiAnimBuilder.hx:1313`) — Remove the dead `if` branch.
+3. **Fix AnimParser playlist validation nesting** (`AnimParser.hx:823`) — Move the playlist loop out of the extraPoint iteration. Low risk, high confidence fix.
 
-4. **Clean up parser comment artifacts** (`AnimParser.hx:1036-1039`) — Remove misleading debug comments.
+4. **Simplify redundant conditional** (`MultiAnimBuilder.hx:1313`) — Remove the dead `if` branch.
+
+5. **Clean up parser comment artifacts** (`AnimParser.hx:1036-1039`) — Remove misleading debug comments.
 
 ### Priority 2: Bug Fixes (Low Severity)
 
-5. **Fix UIPanelHelper named panel tween tracking** — Add `fadeOutTween` field to `PanelState`, cancel on close.
+6. **Fix UIPanelHelper named panel tween tracking** — Add `fadeOutTween` field to `PanelState`, cancel on close.
 
-6. **Fix UITooltipHelper timer reset** — Add `hoverTimer = 0` to `hide()`.
+7. **Fix UITooltipHelper timer reset** — Add `hoverTimer = 0` to `hide()`.
 
-7. **Fix UICardHandHelper hover event ordering** — Emit `CardHoverEnd` before state transition in `discardCard()`.
+8. **Fix UICardHandHelper hover event ordering** — Emit `CardHoverEnd` before state transition in `discardCard()`.
 
-8. **Review ScreenManager dialog cleanup** — Consider calling `clear()` in `removeScreen()` or auditing what `clear()` does that `remove()` doesn't.
+9. **Review ScreenManager screen cleanup** — Consider calling `clear()` in the normal screen removal path or auditing what `clear()` does that scene graph removal doesn't.
 
 ### Priority 3: Documentation Updates
 
-9. **Fix cookbook API signatures** (`docs/manim-cookbook.md`) — Correct `addButtonWithSingleBuilder` and `addDropdownWithSingleBuilder` examples, or simplify the APIs with wrapper functions.
+10. **Fix cookbook API signatures** (`docs/manim-cookbook.md`) — Correct `addButtonWithSingleBuilder` and `addDropdownWithSingleBuilder` examples, or simplify the APIs with wrapper functions.
 
-10. **Document missing CardHandHelper methods** — Add `setArrowVisible`, `setArrowSnap`, `getTargeting` to runtime-systems.md.
+11. **Document missing CardHandHelper methods** — Add `setArrowVisible`, `setArrowSnap`, `getTargeting` to runtime-systems.md.
 
-11. **Clarify `onCardBuilt` config semantics** — Distinguish config-set callbacks from public property callbacks.
+12. **Clarify `onCardBuilt` config semantics** — Distinguish config-set callbacks from public property callbacks.
 
-12. **Fix error message grammar** (`MultiAnimBuilder.hx:169-234`) — Add missing "be" in infinitive phrases.
+13. **Fix error message grammar** (`MultiAnimBuilder.hx:169-234`) — Add missing "be" in infinitive phrases.
 
 ### Priority 4: Test Coverage Improvements
 
-13. **Add tests for animations with 0 extra points** — Verify playlist validation works when no extra points are defined (currently skipped due to bug 1.1).
+14. **Add tests for animations with 0 extra points** — Verify playlist validation works when no extra points are defined (currently skipped due to bug 1.1).
 
-14. **Add codegen bezier path tests** — Verify macro-generated bezier curves match runtime builder output (would have caught bug 1.6).
+15. **Add codegen bezier path tests** — Verify macro-generated bezier curves match runtime builder output (would have caught bug 1.6).
 
-15. **Add multi-component integration tests** — Test Grid + CardHand + Tooltip combinations.
+16. **Add Dialog→Dialog transition test** — Verify correct dialog result delivery and cleanup when replacing one dialog with another.
 
-16. **Add dispose/cleanup verification tests** — Verify resource release on component disposal.
+17. **Add multi-component integration tests** — Test Grid + CardHand + Tooltip combinations.
 
-17. **Add error recovery tests** — Test runtime behavior with malformed parameters, missing resources, etc.
+18. **Add dispose/cleanup verification tests** — Verify resource release on component disposal.
+
+19. **Add error recovery tests** — Test runtime behavior with malformed parameters, missing resources, etc.
 
 ### Priority 5: API Improvements (Future)
 
-18. **Unify callback patterns** — Consider making all CardHandHelper callbacks settable via public properties (or all via config) for consistency.
+20. **Unify callback patterns** — Consider making all CardHandHelper callbacks settable via public properties (or all via config) for consistency.
 
-19. **Add `dispose()` to all helpers** — Implement `UIHigherOrderComponent` or a simpler `Disposable` interface on tooltip/panel helpers.
+21. **Add `dispose()` to all helpers** — Implement `UIHigherOrderComponent` or a simpler `Disposable` interface on tooltip/panel helpers.
 
-20. **Consider particle expressions** — Allow `$param` references in particle properties for dynamic particle configuration.
+22. **Consider particle expressions** — Allow `$param` references in particle properties for dynamic particle configuration.
 
 ---
 
