@@ -199,7 +199,7 @@ class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisab
 				if (autoOpen && !isOpen()) {
 					startOpen();
 					if (closeOnOutsideClick)
-						wrapper.control.outsideClick.trackOutsideClick(true);
+						wrapper.control.trackOutsideClick(true);
 				}
 				this.status = SUIHover;
 			case OnLeave:

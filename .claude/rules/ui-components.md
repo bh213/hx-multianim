@@ -46,16 +46,17 @@ Metadata supports typed values matching the settings system: `key => val` (strin
 - Events: emits `UIInteractiveEvent(event, id, metadata)` — pattern match in `onScreenEvent`:
   ```haxe
   case UIInteractiveEvent(UIClick, id, meta): // clicked interactive
-  case UIInteractiveEvent(UIEntering, id, meta): // hover enter
+  case UIInteractiveEvent(UIEntering(_), id, meta): // hover enter
   case UIInteractiveEvent(UILeaving, id, meta): // hover leave
   case UIInteractiveEvent(UIPush, id, meta): // mouse down
   case UIInteractiveEvent(UIClickOutside, id, meta): // clicked outside
   ```
 - **Event filtering**: `events: [hover, click, push]` metadata controls which events are emitted. `EVENT_HOVER=1`, `EVENT_CLICK=2`, `EVENT_PUSH=4`, `EVENT_ALL=7` (default)
-- **Bind metadata**: `bind => "status"` declares which programmable parameter the interactive drives for `UIRichInteractiveHelper` auto-wiring
-- **`UIRichInteractiveHelper`** — state binding helper: `register(result, ?prefix)` auto-scans bind metadata; `handleEvent(event)` drives Normal→Hover→Pressed→Normal state machine via `setParameter()`; `setDisabled(id, disabled)` for disabled state; `bind()`/`unbind()`/`setParameter()`/`getResult()` for manual control
+- **autoStatus metadata**: `autoStatus => "status"` auto-wires Normal→Hover→Pressed state machine at screen level. `addInteractives()` detects it, creates internal `UIRichInteractiveHelper`, and handles events automatically via `dispatchScreenEvent()`. Advanced: `screen.getAutoInteractiveHelper()` for `setDisabled()`, `setParameter()`, etc.
+- **Bind metadata**: `bind => "status"` for manual wiring with a custom `UIRichInteractiveHelper` (e.g., `UICardHandHelper`). Cannot coexist with `autoStatus` on the same interactive.
+- **`UIRichInteractiveHelper`** — state binding helper: `register(result, ?prefix, metadataKey)` scans for given metadata key (default: `"bind"`); `handleEvent(event)` drives Normal→Hover→Pressed→Normal state machine via `setParameter()`; `setDisabled(id, disabled)` for disabled state; `hasBinding(id)`, `unregisterByPrefix(prefix)`, `bind()`/`unbind()`/`setParameter()`/`getResult()` for manual control. Key `"autoStatus"` is reserved for screen auto-wiring.
 - **`UITooltipHelper`** — screen-driven tooltip helper: `startHover(id, buildName, ?params)`, `cancelHover(id)`, `show()`, `hide()`, `update(dt)`; configurable delay, position, offset, layer; per-interactive overrides: `setDelay()`, `setPosition()`, `setOffset()`; `updateParams(params)` for incremental parameter update on active tooltip; `rebuild(?params)` for full rebuild with new or original params
-- **`UIPanelHelper`** — screen-driven panel helper: `open(id, buildName, ?params)`, `close()`, `isOpen()`, `getPanelResult()`, `handleOutsideClick(event)`; auto-registers panel interactives with prefix; `OutsideClick` / `Manual` close modes; per-interactive overrides: `setPosition()`, `setOffset()`; pushes `UICustomEvent(EVENT_PANEL_CLOSE, interactiveId)` on close; multi-panel support via named slots: `openNamed(slot, ...)`, `closeNamed(slot)`, `closeAllNamed()`, `isOpenNamed(slot)`, `getNamedPanelResult(slot)`
+- **`UIPanelHelper`** — screen-driven panel helper: `open(id, buildName, ?params)`, `openAt(x, y, buildName, ?params, ?closeMode)`, `close()`, `isOpen()`, `getPanelResult()`, `handleOutsideClick(event)`; auto-registers panel interactives with prefix; `OutsideClick` / `Manual` close modes; per-interactive overrides: `setPosition()`, `setOffset()`; pushes `UICustomEvent(EVENT_PANEL_CLOSE, interactiveId)` on close (not emitted for `openAt` since there is no interactiveId); multi-panel support via named slots: `openNamed(slot, ...)`, `closeNamed(slot)`, `closeAllNamed()`, `isOpenNamed(slot)`, `getNamedPanelResult(slot)`. **Auto-wiring** (recommended): `createPanelHelper(builder, ?defaults, ?tweens)` creates and registers the helper — `handleOutsideClick()` runs automatically in `dispatchScreenEvent()`, `checkPendingClose()` runs in `update()`. Manual: `registerPanelHelper(helper)` / `unregisterPanelHelper(helper)`. `clear()` unregisters all.
 - **Cursor support** — `UIElementCursor` interface with `getCursor():hxd.Cursor` for state-dependent cursor
   - `CursorManager` — static registry (like `FontManager`); pre-registers Heaps cursors: `default`, `pointer`/`button`, `move`, `text`, `hide`/`none`
   - `registerCursor(name, cursor)` / `unregisterCursor(name)` / `getCursor(name)` for custom cursors
@@ -64,7 +65,7 @@ Metadata supports typed values matching the settings system: `key => val` (strin
   - All built-in components (Button, Checkbox, Slider, Dropdown, TabButton, ScrollableList) implement `UIElementCursor`
   - Interactive per-state cursors via metadata: `cursor => "pointer"`, `cursor.hover => "move"`, `cursor.disabled => "default"`
   - Unknown `cursor.*` suffixes throw (valid: `cursor.hover`, `cursor.disabled`)
-  - Controller plumbing in `UIControllerBase.handleMove()` — calls `hxd.System.setCursor()`
+  - Controller plumbing in `UIDefaultController.handleMove()` — calls `hxd.System.setCursor()`
 
 ## Indexed Names, Slots, Components
 
@@ -89,8 +90,199 @@ Metadata supports typed values matching the settings system: `key => val` (strin
 - `addDropZonesFromSlots("baseName", builderResult, ?accepts)` — batch drop zone creation
 - `createFromSlot(slot)` — creates draggable from slot content, tracks `sourceSlot`
 - `swapMode` — swaps contents when dropping onto an occupied slot
+- `payload:Dynamic` — general-purpose data field for `accepts` callbacks (auto-set by `makeDraggableFromCell`)
+- `sourceGrid:Null<UIMultiAnimGrid>` / `sourceCellCoord:Null<CellCoord>` — source tracking for cross-grid transfers (auto-set by `makeDraggableFromCell`)
 - Zone highlight callbacks: `onDragStartHighlightZones`, `onDragEndHighlightZones` on draggable
+- Zone reject callbacks: `onDragStartRejectZones` on draggable, `DropZone.onZoneReject` per-zone
 - Per-zone: `DropZone.onZoneHighlight` callback for hover state
+- `DragEvent` enum includes `ZoneRejectEnter(zone)` / `ZoneRejectLeave(zone)` for three-state feedback
+
+## Higher-Order Components (UIHigherOrderComponent)
+
+`UIHigherOrderComponent` interface (`src/bh/ui/UIHigherOrderComponent.hx`) — lifecycle auto-wiring for complex UI components (Grid, CardHand) that manage their own scene graph and span multiple layers.
+
+**Interface methods:** `update(dt)`, `onMouseMove(x, y):Bool`, `onMouseClick(x, y, button):Bool`, `onMouseRelease(x, y):Bool`, `handleScreenEvent(event):Bool`, `getObject():h2d.Object`, `dispose()`.
+
+**Implementors:** `UIMultiAnimGrid`, `UICardHandHelper`
+
+**Screen auto-wiring:** `registerComponent(comp)` / `unregisterComponent(comp)` on `UIScreenBase`. Registered components auto-receive:
+- `update(dt)` — called in `super.update(dt)` after panel helpers
+- Mouse events — `dispatchMouseMove()` / `dispatchMouseClick()` try components first (registration order), fall through to screen overrides
+- Screen events — `dispatchScreenEvent()` forwards to components before `onScreenEvent()`
+- Disposal — `clear()` calls `dispose()` on all registered components
+
+**Factory methods on UIScreenBase:**
+- `createGrid(builder, config, ?settings)` — creates + registers, no scene graph add (for macro use)
+- `addGrid(builder, config, ?layer, ?settings)` — creates + adds to layer
+- `addCardHand(builder, ?config, ?settings)` — creates + registers + returns helper
+
+**Settings integration:** `applyGridSettings(config, settings)` and `applyCardHandSettings(config, settings)` apply `.manim` `settings {}` values to config fields. Grid: `originX/Y`, `cellBuildName`, `highlightParam`, `statusParam`, `rejectHighlightParam`. CardHand: `anchorX/Y`, card dimensions, fan/linear layout, hover/targeting, pile positions, path/arrow names.
+
+**Macro support (`macroBuildWithParameters`):** `PVComponent` placeholder value for component-returning factories. Macro detects `UIHigherOrderComponent` return type and generates `PVComponent(factory, null)` wrapper. Builder calls `getObject()` for scene graph placement. Grid works in macro; CardHand uses `addCardHand()` only (multi-layer architecture prevents single-placeholder representation).
+
+**Dispatch pattern:** `UIControllerScreenIntegration` uses `dispatchMouseMove()` / `dispatchMouseClick()` instead of direct `onMouseMove()` / `onMouseClick()` — enables component event interception before screen handlers. Key coexistence semantics:
+- `dispatchMouseMove()` — notifies components but always returns true (never blocks interactive processing)
+- `dispatchMouseClick()` — push (non-release) notifies components but never blocks; only release can block (returns false when consumed, e.g. card hand drag end). Controller preserves outside-click tracking even when consumed.
+- `dispatchScreenEvent()` — runs autoStatus + panelHelpers first, then tries components. Skips `onScreenEvent()` when a component consumed the event.
+
+**UIComponentHost interface** (`src/bh/ui/UIComponentHost.hx`): Decouples CardHand and UIRichInteractiveHelper from concrete UIScreenBase. Methods: `addObjectToLayer`, `addInteractives`, `removeInteractives`, `getInteractive`, `getAutoInteractiveHelper`. UIScreenBase implements it.
+
+**Hot reload** (`#if MULTIANIM_DEV`):
+- `wireGridReload(parentResult, grid, ?prefix)` — hooks `onReload` to re-apply `originX`/`originY` from settings
+- `wireCardHandReload(parentResult, cardHand, ?prefix)` — hooks `onReload` to re-apply `anchorX`/`anchorY`
+- Grid layers: `setLayer()` uses incremental mode for hot-reload of layer programmables
+- Grid: `setOrigin(x, y)` repositions root (all children move automatically)
+
+## Grid Component
+
+`UIMultiAnimGrid` — 2D grid component (rectangular or hexagonal) that manages cell state, rendering via `.manim` programmables, drag-drop integration, and card hand targeting. Follows the helper/manager pattern (like `UICardHandHelper`). Implements `UIHigherOrderComponent`.
+
+**Files:**
+- `src/bh/ui/UIMultiAnimGrid.hx` — main component
+- `src/bh/ui/UIMultiAnimGridTypes.hx` — types: `GridType`, `GridEvent`, `GridConfig`, `CellCoord`, delegates
+
+**Construction:**
+```haxe
+var grid = new UIMultiAnimGrid(builder, {
+    gridType: Rect(50, 50, 4),      // Rect(cellWidth, cellHeight, ?gap) or Hex(orientation, sizeX, sizeY)
+    cellBuildName: "gridCell",       // .manim programmable name for cells
+    cellBuildDelegate: null,         // optional per-cell override (buildName + params)
+    originX: 0, originY: 0,         // grid root position
+    snapPathName: "snapAnim",       // animatedPath for drop snap (null = instant)
+    returnPathName: "returnAnim",   // animatedPath for drag cancel return (null = instant)
+    highlightParam: "highlight",    // cell param for drag highlight state (default: "highlight")
+    rejectHighlightParam: "rejectHighlight", // cell param for rejected drop highlight (default: null = no reject visual)
+    statusParam: "status",          // cell param for hover status (default: "status")
+    tweenManager: screenManager.tweens, // optional TweenManager for cell lifecycle animations (null = instant)
+});
+```
+
+**Cell programmable contract:** Must have parameters matching `highlightParam` (enum, default values "none"/"accept"/"reject") and `statusParam` (enum with "normal"/"hover"). Custom highlight values supported via `highlightDelegate`. Receives `col:int` and `row:int` automatically.
+
+**GridType enum:**
+- `Rect(cellWidth:Float, cellHeight:Float, ?gap:Float)` — rectangular grid
+- `Hex(orientation:HexOrientation, sizeX:Float, sizeY:Float)` — hexagonal grid (POINTY or FLAT)
+
+**Cell structure API:**
+- `addCell(col, row, ?data, ?params)` — add single cell
+- `removeCell(col, row)` — remove cell
+- `hasCell(col, row)` — check existence
+- `cellCount()` — total cells
+- `addRectRegion(cols, rows)` — batch add 0..cols-1, 0..rows-1
+- `addHexRegion(centerCol, centerRow, radius)` — batch add hex ring (radius 1 = 7 cells, radius 2 = 19 cells)
+
+**Cell data API:**
+- `set(col, row, data, ?params)` — set data + optional visual params
+- `get(col, row)` — get data (null if empty)
+- `clear(col, row)` — clear data, reset visuals to defaults
+- `isOccupied(col, row)` — check if data is non-null
+- `forEach((col, row, data) -> Void)` — iterate all cells
+- `setCellParameter(col, row, param, value)` — set single visual param
+- `setCellParameters(col, row, params)` — batch set visual params
+- `getCellResult(col, row)` — get raw `BuilderResult` for advanced customization
+- `rebuildCell(col, row)` — full rebuild (e.g. when delegate returns different programmable)
+
+**Coordinate queries:**
+- `cellAtPoint(sceneX, sceneY)` — hit-test which cell is at scene coords (uses `globalToLocal`)
+- `cellPosition(col, row)` — world (scene) position of cell origin
+- `neighbors(col, row)` — existing neighbor cells (rect: 4-dir, hex: 6-dir)
+- `distance(c1, r1, c2, r2)` — grid distance (rect: Manhattan, hex: hex distance)
+
+**Mouse event routing** — call from screen overrides:
+- `onMouseMove(sceneX, sceneY)` — handles hover enter/leave, returns true if over a cell
+- `onMouseClick(sceneX, sceneY, button)` — emits `CellClick`, returns true if cell clicked
+
+**GridEvent enum** (via `onGridEvent` callback):
+- `CellClick(cell, button)` — cell was clicked
+- `CellHoverEnter(cell)` / `CellHoverLeave(cell)` — hover state changes
+- `CellDrop(cell, draggable, sourceGrid, sourceCell, ctx)` — draggable dropped on cell. `ctx:DropContext` controls post-drop animation
+- `CellCardPlayed(cell, cardId)` — card played on cell (from card hand targeting)
+- `CellDataChanged(cell, oldData, newData)` — data changed via `set()` or `clear()`
+
+**DropContext** (passed in `CellDrop` event):
+- `ctx.accept()` — play snap animation (default)
+- `ctx.reject()` — play return animation (draggable returns to origin)
+- `ctx.acceptWithPath(pathName)` / `ctx.rejectWithPath(pathName)` — custom animation paths
+- `ctx.onComplete(cb)` — fires after snap/return animation completes (accept: `DragSnapComplete`, reject: `DragCancel`)
+
+**Drag-drop integration:**
+- `acceptDrops(draggable, ?accepts)` — register a `UIMultiAnimDraggable` to drop onto this grid's cells. Auto-creates `DropZone` per cell, manages highlight state. `accepts: (cell, draggable) -> Bool` filters valid targets. When `rejectHighlightParam` is set, cells where `accepts` returns false show rejected state (red) distinct from "not a target"
+- `removeDrops(draggable)` — unregister draggable
+- `makeDraggableFromCell(col, row, ?cloneMode, ?visualOverride)` — create draggable from cell content. Sets `sourceGrid`, `sourceCellCoord`, and `payload` on the draggable. `cloneMode = true` skips clearing source cell data
+
+**Card hand integration:**
+- `registerAsCardTarget(cardHand, ?accepts)` — register grid cells as card play targets. Creates synthetic `UIInteractiveWrapper` per cell for the card hand's targeting system. `accepts: (cell, cardId) -> Bool` filters valid targets
+- `unregisterAsCardTarget(cardHand)` — unregister
+
+**Grid layers** — named per-cell overlays with z-ordering:
+- `addLayer(name, {buildName, zOrder})` — register a named layer (base cells at z-order 0)
+- `setLayer(col, row, layerName, ?params)` — build/rebuild layer programmable on a cell
+- `clearLayer(col, row, layerName)` — remove layer from a cell
+- `clearLayerAll(layerName)` — remove layer from all cells
+- `clearAllLayers()` — remove all layers
+- `getLayerResult(col, row, layerName)` — `BuilderResult` for incremental updates
+- `hasLayer(col, row, layerName)` — check existence
+- `forEachLayer(layerName, fn)` — iterate cells with a given layer
+- `removeCell()` / `removeCellAnimated()` auto-clear layers on the cell
+
+**External objects in layer hierarchy:**
+- `addExternalObject(obj, zOrder)` — insert arbitrary object into grid's `h2d.Layers` at a z-order
+- `removeExternalObject(obj)` — remove it
+
+**Cell animations** (require `tweenManager` in config):
+- `tweenCell(col, row, duration, properties, ?easing)` — animate cell object properties (e.g. shake, pulse). Non-destructive — cell stays in grid
+- `addCellAnimated(col, row, duration, properties, ?easing, ?data, ?params)` — add cell with entrance animation. Properties are FROM values (e.g. `[Scale(0.0), Alpha(0.0)]` → cell scales/fades in from 0)
+- `removeCellAnimated(col, row, duration, properties, ?easing)` — animate cell then remove. Properties are TO values (e.g. `[Scale(0.0), Alpha(0.0)]` → cell shrinks/fades out)
+
+**Detach/reattach cell visual:**
+- `detachCellVisual(col, row) -> h2d.Object` — remove visual from cell for free animation (e.g. fly to another location). Cell data preserved but shows empty
+- `reattachCellVisual(col, row)` — rebuild cell visual from existing data
+
+**Lifecycle:**
+- `getObject()` — root `h2d.Object`, add to scene via `addObjectToLayer(grid.getObject(), layer)`
+- `update(dt)` — call from screen update for animation support
+- `dispose()` — clean up all resources, zones, and scene graph
+
+**Callbacks:**
+- `onGridEvent:(GridEvent) -> Void` — main event callback
+- `onCellBuilt:(CellCoord, BuilderResult) -> Void` — called after each cell build (customize overlays etc.)
+
+**Cross-grid drag pattern:**
+```haxe
+// Both grids accept drops — use payload for typed filtering
+storageGrid.acceptDrops(drag, (cell, d) -> {
+    if (storageGrid.isOccupied(cell.col, cell.row)) return false;
+    return d.payload != null ? d.payload.type == "weapon" : true;
+});
+loadoutGrid.acceptDrops(drag, (cell, d) -> !loadoutGrid.isOccupied(cell.col, cell.row));
+
+// makeDraggableFromCell auto-sets payload, sourceGrid, sourceCellCoord
+var drag = srcGrid.makeDraggableFromCell(col, row);
+
+// In onGridEvent CellDrop: source tracking + animation control
+case CellDrop(cell, draggable, sourceGrid, sourceCell, ctx):
+    ctx.accept();
+    targetGrid.set(cell.col, cell.row, draggable.payload);
+    ctx.onComplete(() -> rebuildDraggables());
+    // sourceGrid/sourceCell identify where the drag started
+```
+
+**Card targeting wiring pattern:**
+```haxe
+hexGrid.registerAsCardTarget(cardHand, (cell, cardId) -> !hexGrid.isOccupied(cell.col, cell.row));
+
+// In screen: route mouse events, check card hand first
+override public function onMouseMove(pos) {
+    if (cardHand.onMouseMove(pos.x, pos.y)) return false; // card hand consumes during drag
+    hexGrid.onMouseMove(pos.x, pos.y);
+    return super.onMouseMove(pos);
+}
+override public function onMouseClick(pos, button, release) {
+    if (release && cardHand.onMouseRelease(pos.x, pos.y)) return false;
+    if (release) hexGrid.onMouseClick(pos.x, pos.y, button);
+    return super.onMouseClick(pos, button, release);
+}
+```
 
 **Dynamic refs** — `dynamicRef($ref, params)` embeds with incremental mode for runtime parameter updates:
 - Builder: `result.getDynamicRef("name").setParameter("param", value)`

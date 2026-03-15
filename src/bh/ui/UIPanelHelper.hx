@@ -32,6 +32,8 @@ private typedef PanelState = {
 	var prefix:String;
 	var closeMode:PanelCloseMode;
 	var pendingClose:Bool;
+	var fadeInTween:Null<Tween>;
+	var fadeOutTween:Null<Tween>;
 }
 
 @:nullSafety
@@ -121,6 +123,34 @@ class UIPanelHelper {
 		}
 
 		activeInteractiveId = interactiveId;
+		activeResult = result;
+		activePanelPrefix = prefix;
+		activeCloseMode = closeMode ?? defaultCloseMode;
+	}
+
+	/** Open a panel at an explicit position. Closes any existing panel first. */
+	public function openAt(x:Float, y:Float, buildName:String, ?params:Map<String, Dynamic>, ?closeMode:PanelCloseMode):Void {
+		close();
+
+		final result = builder.buildWithParameters(buildName, params ?? [], null, null, true);
+		result.object.setPosition(x, y);
+		screen.addObjectToLayer(result.object, layer);
+
+		// Register panel interactives with a prefix so the screen can identify them
+		final prefix = 'pos.$buildName';
+		if (result.interactives.length > 0)
+			screen.addInteractives(result, prefix);
+
+		// Apply fade-in
+		if (defaultFadeIn > 0 && tweens != null) {
+			result.object.alpha = 0;
+			activeFadeInTween = tweens.tween(result.object, defaultFadeIn, [Alpha(1.0)]);
+			activeFadeInTween.setOnComplete(() -> {
+				activeFadeInTween = null;
+			});
+		}
+
+		activeInteractiveId = null;
 		activeResult = result;
 		activePanelPrefix = prefix;
 		activeCloseMode = closeMode ?? defaultCloseMode;
@@ -218,10 +248,17 @@ class UIPanelHelper {
 		if (result.interactives.length > 0)
 			screen.addInteractives(result, prefix);
 
-		// Apply fade-in
+		// Apply fade-in (tracked so closeNamed can cancel it)
+		var fadeInTween:Null<Tween> = null;
 		if (defaultFadeIn > 0 && tweens != null) {
 			result.object.alpha = 0;
-			tweens.tween(result.object, defaultFadeIn, [Alpha(1.0)]);
+			fadeInTween = tweens.tween(result.object, defaultFadeIn, [Alpha(1.0)]);
+			fadeInTween.setOnComplete(() -> {
+				// Clear reference once complete so closeNamed doesn't cancel a finished tween
+				final panel = namedPanels.get(slot);
+				if (panel != null)
+					panel.fadeInTween = null;
+			});
 		}
 
 		namedPanels.set(slot, {
@@ -230,6 +267,8 @@ class UIPanelHelper {
 			prefix: prefix,
 			closeMode: closeMode ?? defaultCloseMode,
 			pendingClose: false,
+			fadeInTween: fadeInTween,
+			fadeOutTween: null,
 		});
 	}
 
@@ -238,14 +277,23 @@ class UIPanelHelper {
 		final panel = namedPanels.get(slot);
 		if (panel == null)
 			return;
+		// Cancel any in-progress fade-in before starting fade-out
+		if (panel.fadeInTween != null) {
+			panel.fadeInTween.cancel();
+			panel.fadeInTween = null;
+		}
+		// Cancel any in-progress fade-out from a previous close
+		if (panel.fadeOutTween != null) {
+			panel.fadeOutTween.cancel();
+			panel.fadeOutTween = null;
+		}
 		screen.removeInteractives(panel.prefix);
 		namedPanels.remove(slot);
 		screen.onScreenEvent(UICustomEvent(EVENT_PANEL_CLOSE, panel.interactiveId), null);
 
 		final obj = panel.result.object;
 		if (defaultFadeOut > 0 && tweens != null) {
-			final t = tweens.tween(obj, defaultFadeOut, [Alpha(0.0)]);
-			t.setOnComplete(() -> obj.remove());
+			tweens.tween(obj, defaultFadeOut, [Alpha(0.0)]).setOnComplete(() -> obj.remove());
 		} else {
 			obj.remove();
 		}
@@ -272,11 +320,11 @@ class UIPanelHelper {
 	// ---- Outside-click handling ----
 
 	/**
-	 * Call from onScreenEvent for every UIInteractiveEvent to handle outside-click close.
-	 * Uses OutsideClickControl: the trigger interactive subscribes on push, so clicking
-	 * elsewhere fires UIClickOutside. Because the controller sends OnReleaseOutside before
-	 * OnRelease, we defer the close to allow panel's own interactives to cancel it.
-	 * Call `checkPendingClose()` from the screen's update().
+	 * Handle outside-click close for UIInteractiveEvents.
+	 * The trigger interactive subscribes on push, so clicking elsewhere fires UIClickOutside.
+	 * Because the controller sends OnReleaseOutside before OnRelease, we defer the close
+	 * to allow panel's own interactives to cancel it.
+	 * Auto-wired when created via `createPanelHelper()`, or call manually from onScreenEvent.
 	 * Returns true if any panel was closed immediately (click on unrelated interactive).
 	 */
 	var _pendingClose:Bool = false;

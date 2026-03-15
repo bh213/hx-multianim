@@ -112,6 +112,7 @@ class AnimatedPath {
 	}
 
 	public function addCurveSegment(slot:CurveSlot, startRate:Float, curve:ICurve):Void {
+		if (slot == Color) throw 'addCurveSegment() does not support Color slot — use addColorCurveSegment(startRate, curve, startColor, endColor) instead';
 		var segments = getSegmentsForSlot(slot);
 		insertSorted(segments, {startRate: startRate, curve: curve});
 	}

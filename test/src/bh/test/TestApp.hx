@@ -68,6 +68,7 @@ class TestApp extends hxd.App {
 		testRunner.addCase(new bh.test.examples.FloatingTextHelperTest());
 		testRunner.addCase(new bh.test.examples.CardHandOrchestratorTest());
 		testRunner.addCase(new bh.test.examples.CardHandIntegrationTest());
+		testRunner.addCase(new bh.test.examples.CardHandTargetingTest());
 		testRunner.addCase(new bh.test.examples.AnimFilterRuntimeTest());
 		testRunner.addCase(new bh.test.examples.AnimFilterStateConditionalTest());
 		testRunner.addCase(new bh.test.examples.RichTextTest());
@@ -76,8 +77,13 @@ class TestApp extends hxd.App {
 		testRunner.addCase(new bh.test.examples.FlowOverflowTest());
 		testRunner.addCase(new bh.test.examples.DynamicRefTest());
 		testRunner.addCase(new bh.test.examples.BitFlagTest());
+		testRunner.addCase(new bh.test.examples.UIMultiAnimGridTest());
+		testRunner.addCase(new bh.test.examples.UIDraggableTest());
+		testRunner.addCase(new bh.test.examples.UIScrollableScreenTest());
+		testRunner.addCase(new bh.test.examples.InteractionControllerTest());
 		#if MULTIANIM_DEV
 		testRunner.addCase(new bh.test.examples.HotReloadTest());
+		testRunner.addCase(new bh.test.examples.DevBridgeTest());
 		#end
 
 		// Capture unit test results in memory for HTML report

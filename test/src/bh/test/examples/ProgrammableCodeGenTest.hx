@@ -3306,6 +3306,79 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		Assert.notNull(directObj.parent, "PVObject should be added to scene despite ignoring settings");
 	}
 
+	// ==================== PVComponent: unit tests ====================
+
+	@Test
+	public function testPVComponentFactoryCalled():Void {
+		// PVComponent factory should be called and its returned object placed in scene graph
+		final fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/96-pvComponent/pvComponent.manim"));
+		final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+		final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "pvComponent.manim");
+
+		var factoryCalled = false;
+		final compObj = new h2d.Object();
+		final result = builder.buildWithParameters("pvComponent", new Map(), {
+			placeholderObjects: [
+				"compNoSettings" => PVComponent((settings) -> {
+					factoryCalled = true;
+					return compObj;
+				}, null),
+				"compWithSettings" => PVComponent((_) -> new h2d.Object(), null),
+			]
+		});
+
+		Assert.isTrue(factoryCalled, "PVComponent factory should be called");
+		Assert.notNull(compObj.parent, "PVComponent object should be placed in scene graph");
+	}
+
+	@Test
+	public function testPVComponentReceivesSettings():Void {
+		// PVComponent factory should receive .manim-defined settings when the placeholder has a settings{} block
+		final fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/96-pvComponent/pvComponent.manim"));
+		final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+		final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "pvComponent.manim");
+
+		var receivedSettings:bh.multianim.MultiAnimParser.ResolvedSettings = null;
+		final result = builder.buildWithParameters("pvComponent", new Map(), {
+			placeholderObjects: [
+				"compNoSettings" => PVComponent((_) -> new h2d.Object(), null),
+				"compWithSettings" => PVComponent((settings) -> {
+					receivedSettings = settings;
+					return new h2d.Object();
+				}, null),
+			]
+		});
+
+		Assert.notNull(receivedSettings, "PVComponent should receive non-null settings from .manim settings{} block");
+		Assert.notNull(receivedSettings.get("buildName"), "Settings should contain 'buildName'");
+		Assert.notNull(receivedSettings.get("originX"), "Settings should contain 'originX'");
+		Assert.notNull(receivedSettings.get("originY"), "Settings should contain 'originY'");
+	}
+
+	@Test
+	public function testPVComponentNoSettingsWhenNoneInManim():Void {
+		// PVComponent factory should receive null settings when the placeholder has no settings{} block
+		final fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/96-pvComponent/pvComponent.manim"));
+		final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+		final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "pvComponent.manim");
+
+		var receivedSettings:bh.multianim.MultiAnimParser.ResolvedSettings = null;
+		var factoryCalled = false;
+		final result = builder.buildWithParameters("pvComponent", new Map(), {
+			placeholderObjects: [
+				"compNoSettings" => PVComponent((settings) -> {
+					factoryCalled = true;
+					receivedSettings = settings;
+					return new h2d.Object();
+				}, null),
+				"compWithSettings" => PVComponent((_) -> new h2d.Object(), null),
+			]
+		});
+
+		Assert.isTrue(factoryCalled, "PVComponent factory for 'compNoSettings' should have been called");
+		Assert.isNull(receivedSettings, "PVComponent should receive null settings when placeholder has no settings{} block");
+	}
+
 	// ==================== Character Sheet Demo: dynamicRef + params + placeholder ====================
 
 	@Test
@@ -4461,6 +4534,13 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 		VisualTestBase.pendingVisualTests--;
 		async.done();
+	}
+
+	// ==================== Auto-fit text: visual ====================
+
+	@Test
+	public function test96_AutoFit(async:utest.Async):Void {
+		simpleMacroTest(96, "autoFit", () -> createMp().autoFit.create(), async, null, null, null, 0.99);
 	}
 
 	static function addTransLabel(parent:h2d.Object, font:Null<h2d.Font>, label:String, x:Float, y:Float):Void {

@@ -43,6 +43,7 @@ private enum ScreenManagerMode {
 @:nullSafety
 @:allow(bh.ui.screens.UIScreen)
 @:allow(bh.ui.ControllerEventHandler)
+@:allow(bh.multianim.dev.DevBridge)
 class ScreenManager {
 	final loader:CachingResourceLoader;
 	final handler:ControllerEventHandler;
@@ -82,6 +83,17 @@ class ScreenManager {
 			hotReload(resource);
 		};
 		#end
+	}
+
+	public var sceneWidth(get, never):Float;
+	public var sceneHeight(get, never):Float;
+
+	function get_sceneWidth():Float {
+		return app.s2d.width;
+	}
+
+	function get_sceneHeight():Float {
+		return app.s2d.height;
 	}
 
 	static function createLoader() {
@@ -262,6 +274,9 @@ class ScreenManager {
 			#if MULTIANIM_TRACE
 			trace('ScreenManager.rebuildAll failed: $e');
 			#end
+			#if MULTIANIM_STRICT
+			strictFail('builder rebuild', e);
+			#end
 			loader.clearCache();
 			builders = oldBuilders;
 			if (throwOnError)
@@ -318,6 +333,9 @@ class ScreenManager {
 				#if MULTIANIM_DEV
 				currentlyLoadingScreen = null;
 				#end
+				#if MULTIANIM_STRICT
+				strictFail('screen "$name" (reload)', e);
+				#end
 				failedScreens[name] = e.toString();
 				#if MULTIANIM_TRACE
 				trace('Failed to reload screen ${name}: ${e}');
@@ -362,6 +380,9 @@ class ScreenManager {
 			#if MULTIANIM_DEV
 			currentlyLoadingScreen = null;
 			#end
+			#if MULTIANIM_STRICT
+			strictFail('screen "$name"', e);
+			#end
 			failedScreens[name] = e.toString();
 			#if MULTIANIM_TRACE
 			trace('Failed to load screen ${name}: ${e}');
@@ -401,7 +422,7 @@ class ScreenManager {
 		}
 	}
 
-	public function modalDialog(dialog:UIScreen, caller:UIScreen, dialogName:String) {
+	public function modalDialog(dialog:UIScreen, caller:UIScreen, dialogName:String, ?data:Dynamic) {
 		dialog.load();
 		final overlayConfig = readOverlayConfig(dialog);
 		if (overlayConfig != null) {
@@ -410,10 +431,10 @@ class ScreenManager {
 				applyBlurToUnderlyingScreens(overlayConfig.blur);
 			modalOverlay.alpha = modalOverlayTargetAlpha; // no transition — show immediately
 		}
-		updateScreenMode(Dialog(dialog, caller, mode, dialogName));
+		updateScreenMode(Dialog(dialog, caller, mode, dialogName), data);
 	}
 
-	public function updateScreenMode(newScreenMode:ScreenManagerMode) {
+	public function updateScreenMode(newScreenMode:ScreenManagerMode, ?data:Dynamic) {
 		// Validate that no failed screens are being activated
 		switch newScreenMode {
 			case None:
@@ -524,13 +545,13 @@ class ScreenManager {
 						removedScreens = [oldDialog];
 						addedScreens = [single => layerContent, master => layerMaster];
 
-					case Dialog(dialog, caller, previousMode, dialogName):
+					case Dialog(newDialog, newCaller, newPreviousMode, newDialogName):
 						removedScreens = [oldDialog];
-						addedScreens = [dialog => layerDialog];
-						overrideActiveScreenControllers = [dialog];
-						final result = dialog.getController().exitResponse;
+						addedScreens = [newDialog => layerDialog];
+						overrideActiveScreenControllers = [newDialog];
+						final result = oldDialog.getController().exitResponse;
 						caller.onScreenEvent(UIOnControllerEvent(OnDialogResult(dialogName, result)), null);
-						removeScreen(dialog);
+						removeScreen(oldDialog);
 				}
 		}
 		if (removedScreens != null)
@@ -545,7 +566,7 @@ class ScreenManager {
 			for (screen => layerIndex in addedScreens) {
 				final controller = screen.getController();
 				addScreen(screen, layerIndex);
-				screen.onScreenEvent(UIEntering, null);
+				screen.onScreenEvent(UIEntering(data), null);
 				screen.onScreenEvent(UIOnControllerEvent(Entering), null);
 				controller.lifecycleEvent(LifecycleControllerStarted);
 				if (overrideActiveScreenControllers == null) {
@@ -579,11 +600,12 @@ class ScreenManager {
 			cleanup();
 	}
 
-	/** Switch to a new screen mode with an optional visual transition. */
-	public function switchScreen(newScreenMode:ScreenManagerMode, ?transition:ScreenTransition):Void {
+	/** Switch to a new screen mode with an optional visual transition.
+	 *  Optional `data` is passed to entering screens via `UIEntering(data)` event. */
+	public function switchScreen(newScreenMode:ScreenManagerMode, ?transition:ScreenTransition, ?data:Dynamic):Void {
 		if (transition == null || transition.match(None)) {
 			finalizeTransition();
-			updateScreenMode(newScreenMode);
+			updateScreenMode(newScreenMode, data);
 			return;
 		}
 
@@ -630,7 +652,7 @@ class ScreenManager {
 		for (screen => layerIndex in screensToAdd) {
 			app.s2d.add(screen.getSceneRoot(), layerIndex);
 			this.activeScreens.push(screen);
-			screen.onScreenEvent(UIEntering, null);
+			screen.onScreenEvent(UIEntering(data), null);
 			screen.onScreenEvent(UIOnControllerEvent(Entering), null);
 			screen.getController().lifecycleEvent(LifecycleControllerStarted);
 			this.activeScreenControllers.push(screen);
@@ -674,13 +696,15 @@ class ScreenManager {
 		executeTransition(transition, screensToRemove, screensToAdd);
 	}
 
-	/** Convenience: switch to a Single screen with optional transition. */
-	public function switchTo(screen:UIScreen, ?transition:ScreenTransition):Void {
-		switchScreen(Single(screen), transition);
+	/** Convenience: switch to a Single screen with optional transition.
+	 *  Optional `data` is passed to the screen via `UIEntering(data)` event. */
+	public function switchTo(screen:UIScreen, ?data:Dynamic, ?transition:ScreenTransition):Void {
+		switchScreen(Single(screen), transition, data);
 	}
 
 	/** Open a modal dialog with an optional transition. */
-	public function modalDialogWithTransition(dialog:UIScreen, caller:UIScreen, dialogName:String, ?transition:ScreenTransition):Void {
+	public function modalDialogWithTransition(dialog:UIScreen, caller:UIScreen, dialogName:String, ?data:Dynamic,
+			?transition:ScreenTransition):Void {
 		dialog.load();
 		final overlayConfig = readOverlayConfig(dialog);
 		if (overlayConfig != null) {
@@ -689,7 +713,7 @@ class ScreenManager {
 				applyBlurToUnderlyingScreens(overlayConfig.blur);
 			tweenOverlayIn(overlayConfig, transition);
 		}
-		switchScreen(Dialog(dialog, caller, mode, dialogName), transition);
+		switchScreen(Dialog(dialog, caller, mode, dialogName), transition, data);
 	}
 
 	/** Close the current dialog with an optional transition. Returns to previous mode. */
@@ -1247,14 +1271,21 @@ class ScreenManager {
 				bh.multianim.dev.HotReload.ReloadableRegistry.removeSentinel(oldResult.object);
 				hotReloadRegistry.unregister(handle);
 
-				// Try rebuild with new builder, preserving original builderParams
+				// Try rebuild with new builder, preserving original builderParams.
+				// Wrap params to reuse captured placeholder objects instead of re-invoking callbacks.
+				// Use devBuilderParams (stored on result) — works even for non-incremental builds.
 				var newResult:BuilderResult;
-				final oldBuilderParams = oldResult.incrementalContext != null ? oldResult.incrementalContext.getBuilderParams() : null;
+				final oldBuilderParams = oldResult.devBuilderParams;
+				final capturedPlaceholders = oldResult.devCapturedPlaceholders;
+				final reloadBuilderParams = if (oldBuilderParams != null && capturedPlaceholders != null && capturedPlaceholders.length > 0)
+					bh.multianim.dev.HotReload.PlaceholderReuser.wrapBuilderParams(oldBuilderParams, capturedPlaceholders);
+				else
+					oldBuilderParams;
 				try {
 					newResult = newBuilder.buildWithParameters(
 						handle.programmableName,
 						bh.multianim.dev.HotReload.StateRestorer.snapshotToInputMap(snapshot.params),
-						oldBuilderParams,
+						reloadBuilderParams,
 						null,
 						true
 					);
@@ -1420,6 +1451,35 @@ class ScreenManager {
 			if (list.length == 0)
 				screenSourceMap.remove(path);
 		}
+	}
+	#end
+
+	#if MULTIANIM_STRICT
+	function strictFail(context:String, e:Dynamic):Void {
+		var msg = new StringBuf();
+		msg.add("=== MANIM STRICT ERROR ===\n");
+		msg.add('context: $context\n');
+
+		if (Std.isOfType(e, InvalidSyntax)) {
+			final err = cast(e, InvalidSyntax);
+			msg.add('file: ${err.pos.psource}\n');
+			msg.add('line: ${err.pos.line}\n');
+			msg.add('col: ${err.pos.col}\n');
+			msg.add('error: ${err.toString()}\n');
+		} else if (Std.isOfType(e, MultiAnimUnexpected)) {
+			final err:MultiAnimUnexpected<Dynamic> = cast e;
+			msg.add('file: ${err.pos.psource}\n');
+			msg.add('line: ${err.pos.line}\n');
+			msg.add('col: ${err.pos.col}\n');
+			msg.add('error: ${err.toString()}\n');
+		} else {
+			msg.add('error: $e\n');
+		}
+
+		msg.add("=== END MANIM STRICT ERROR ===\n");
+		Sys.stderr().writeString(msg.toString());
+		Sys.stderr().flush();
+		Sys.exit(1);
 	}
 	#end
 }

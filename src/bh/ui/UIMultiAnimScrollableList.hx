@@ -327,7 +327,7 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 				this.hoverMode = true;
 
 			case OnEnter:
-				wrapper.control.outsideClick.trackOutsideClick(true);
+				wrapper.control.trackOutsideClick(true);
 
 			case OnLeave:
 				this.currentHoverIndex = -1;

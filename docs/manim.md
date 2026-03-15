@@ -230,6 +230,7 @@ text(fontname, text, textcolor[, align, maxWidth], options)
 * `dropShadowXY` - float, float
 * `dropShadowColor` - color
 * `dropShadowAlpha` - float
+* `autoFit: <mode> [font1, font2, ...]` — automatic font fallback (see below)
 
 Does not support markup, `styles:`, `images:`, or `condenseWhite:`. Use `richText()` for rich text features.
 
@@ -257,6 +258,7 @@ richText(fontname, text, textcolor[, align, maxWidth], options)
 * `images: {name: tileSource, ...}` — named inline images for `[img:name]` markup
 * `condenseWhite: true` — collapse whitespace
 * `maxHeight`, `minWidth`, `minHeight`, `lineHeight`, `colWidth` — additional sizing options
+* `autoFit: <mode> [font1, font2, ...]` — automatic font fallback (see below)
 
 **Rich text markup:** Text strings support `[tag]...[/]` BBCode-style markup. Markup is always processed via `TextMarkupConverter`.
 * `[styleName]...[/]` — apply named style (defined in `styles:`)
@@ -282,6 +284,35 @@ images: {coin: generated(color(14, 14, #FFD700)), sword: sheet("items", "sword_1
 ```
 richText(dd, "Deal [damage]50[/] for [gold]100g[/]", white, left, 600,
     styles: {damage: color(#FF0000), gold: color(#FFD700) font("dd")}): 4, 4
+```
+
+### autoFit (text and richText)
+
+Automatic font fallback when text exceeds available space. Works with both `text()` and `richText()`.
+
+**Modes:**
+* `autoFit: width [font1, font2]` — try primary font, then fallbacks in order; use first that fits `maxWidth`
+* `autoFit: box(w, h) [font1, font2]` — try fonts in order; use first that fits width AND height
+* `autoFit: fill [font1, font2, ...]` — try ALL fonts (including primary); pick the largest that fits `maxWidth`
+* `autoFit: fill box(w, h) [font1, font2, ...]` — try ALL fonts; pick the largest that fits both dimensions
+
+Width/fill modes require `maxWidth` to be set. Box dimensions are absolute pixels (divided by `@scale` internally). For `width`/`box` modes, the font list contains fallback fonts only. For `fill` modes, the primary font is also a candidate.
+
+Supports incremental updates — re-runs font selection when `$param` text changes at runtime. Full codegen/macro parity.
+
+```
+// Width mode: dd first, fall back to m3x6, then f3x5
+text(dd, "Hello", #44FF44, left, 100, lineBreak: false,
+    autoFit: width [m3x6, f3x5]): 1, 1;
+
+// Fill mode: pick largest fitting font
+text(f3x5, "Fill this", #44BBFF, left, 150, lineBreak: false,
+    autoFit: fill [pixellari, dd, m6x11, m3x6, f3x5]): 1, 1;
+
+// Box mode with richText
+richText(dd, "Deal [dmg]50[/] fire", white, left, 150, lineBreak: false,
+    autoFit: width [m3x6, f3x5],
+    styles: {dmg: color(#FF4444)}): 1, 1;
 ```
 
 ### tilegroup
@@ -2079,6 +2110,25 @@ Enable debug traces by adding to your HXML file:
 
 ```hxml
 -D MULTIANIM_TRACE
+```
+
+## Strict Mode
+
+Fail-fast on `.manim`/`.anim` errors — prints a structured error to stderr and exits with code 1 instead of silently storing errors. Useful for CI pipelines and AI agent workflows.
+
+```hxml
+-D MULTIANIM_STRICT
+```
+
+Error output format:
+```
+=== MANIM STRICT ERROR ===
+context: screen "myScreen"
+file: res/ui/menu.manim
+line: 42
+col: 15
+error: Unknown font "missing"
+=== END MANIM STRICT ERROR ===
 ```
 
 ---

@@ -313,6 +313,7 @@ class ProgrammableBuilder {
 				#end
 				obj;
 			case PVFactory(factoryMethod): factoryMethod(settings);
+			case PVComponent(factoryMethod, _): factoryMethod(settings);
 		};
 	}
 
@@ -466,5 +467,36 @@ class ProgrammableBuilder {
 			case null: null;
 			default: null;
 		};
+	}
+
+	/** Auto-fit: first-fit mode — try fallback fonts in order, use first that fits. */
+	public static function autoFitFirstFit(t:h2d.Text, fonts:Array<Font>, fitWidth:Null<Float>, fitHeight:Null<Float>):Void {
+		if (fitWidth != null && t.textWidth <= fitWidth && (fitHeight == null || t.textHeight <= fitHeight)) return;
+		for (font in fonts) {
+			t.font = font;
+			if ((fitWidth == null || t.textWidth <= fitWidth) && (fitHeight == null || t.textHeight <= fitHeight)) return;
+		}
+	}
+
+	/** Auto-fit: fill mode — try all fonts (including current), pick largest that fits. */
+	public static function autoFitFill(t:h2d.Text, fonts:Array<Font>, fitWidth:Null<Float>, fitHeight:Null<Float>):Void {
+		var bestFont:Null<Font> = null;
+		var bestWidth:Float = -1;
+		final origFont = t.font;
+		// Try original font first
+		if ((fitWidth == null || t.textWidth <= fitWidth) && (fitHeight == null || t.textHeight <= fitHeight)) {
+			bestFont = origFont;
+			bestWidth = t.textWidth;
+		}
+		for (font in fonts) {
+			t.font = font;
+			if ((fitWidth == null || t.textWidth <= fitWidth) && (fitHeight == null || t.textHeight <= fitHeight)) {
+				if (t.textWidth > bestWidth) {
+					bestWidth = t.textWidth;
+					bestFont = font;
+				}
+			}
+		}
+		t.font = if (bestFont != null) bestFont else fonts[fonts.length - 1];
 	}
 }

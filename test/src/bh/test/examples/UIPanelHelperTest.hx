@@ -774,6 +774,61 @@ class UIPanelHelperTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testNamedPanelFadeInCancelledOnClose():Void {
+		// Bug 4.4: Named panel fade-in tween is fire-and-forget.
+		// If closeNamed() is called during fade-in, the fade-in tween continues
+		// running and fights with the fade-out tween (both mutate alpha).
+		var ctx = createHelperWithTweens(0.5, 0.2);
+		ctx.helper.openNamed("slot1", "btn1", "panel");
+		Assert.isTrue(ctx.helper.isOpenNamed("slot1"));
+
+		// Get the panel object to track its alpha
+		var panelObj = ctx.helper.getNamedPanelResult("slot1").object;
+
+		// Partially advance fade-in (alpha should be increasing toward 1.0)
+		ctx.tweens.update(0.1);
+
+		// Close during fade-in — should cancel fade-in, start fade-out
+		ctx.helper.closeNamed("slot1");
+		Assert.isFalse(ctx.helper.isOpenNamed("slot1"));
+
+		// After fade-out completes, alpha should reach 0 (not be stuck > 0 from competing fade-in)
+		ctx.tweens.update(0.3); // past fade-out duration
+
+		// The object should have been removed (parent set to null)
+		Assert.isNull(panelObj.parent);
+
+		// Advance further to check fade-in tween doesn't resurrect the alpha
+		ctx.tweens.update(0.5);
+		// Alpha should stay at 0 (fade-out target), NOT be set back to 1.0 by lingering fade-in
+		Assert.floatEquals(0.0, panelObj.alpha);
+	}
+
+	@Test
+	public function testNamedPanelReplaceInSameSlotCancelsFadeIn():Void {
+		// Opening a new panel in the same slot should cancel the previous fade-in
+		var ctx = createHelperWithTweens(0.5, 0.2);
+		ctx.helper.openNamed("slot1", "btn1", "panel");
+
+		// Get first panel object
+		var firstObj = ctx.helper.getNamedPanelResult("slot1").object;
+
+		// Partially advance fade-in
+		ctx.tweens.update(0.1);
+
+		// Replace with different panel in same slot
+		ctx.helper.openNamed("slot1", "btn2", "panel");
+		Assert.isTrue(ctx.helper.isOpenNamed("slot1"));
+
+		// Advance past all durations — first panel's fade-in should be cancelled
+		ctx.tweens.update(2.0);
+		Assert.isTrue(ctx.helper.isOpenNamed("slot1"));
+
+		// First panel should have been removed and not reanimated by lingering tween
+		Assert.isNull(firstObj.parent);
+	}
+
+	@Test
 	public function testZeroFadeDefaultIsInstant():Void {
 		// Default PanelDefaults has fadeIn=0, fadeOut=0 — backward compatible
 		var ctx = createHelper();
@@ -801,5 +856,357 @@ class UIPanelHelperTest extends BuilderTestBase {
 		// Advance tweens — no crash from dangling btn1 tween
 		ctx.tweens.update(1.0);
 		Assert.isTrue(ctx.helper.isOpen());
+	}
+
+	// ============== Auto-wiring via registerPanelHelper ==============
+
+	function createAutoWiredHelper(?closeOn:PanelCloseMode):{
+		helper:UIPanelHelper,
+		screen:UITestScreen
+	} {
+		var screen = new UITestScreen();
+		var builder = BuilderTestBase.builderFromSource('$ANCHOR_MANIM\n$ANCHOR2_MANIM\n$ANCHOR3_MANIM\n$PANEL_MANIM');
+
+		var anchorResult = builder.buildWithParameters("anchor", []);
+		screen.addInteractives(anchorResult);
+
+		var anchor2Result = builder.buildWithParameters("anchor2", []);
+		screen.addInteractives(anchor2Result);
+
+		var anchor3Result = builder.buildWithParameters("anchor3", []);
+		screen.addInteractives(anchor3Result);
+
+		var helper = screen.testCreatePanelHelper(builder, closeOn != null ? {closeOn: closeOn} : {});
+		return {helper: helper, screen: screen};
+	}
+
+	@Test
+	public function testAutoWiredCreatePanelHelper():Void {
+		var ctx = createAutoWiredHelper();
+		Assert.notNull(ctx.helper);
+		ctx.helper.open("btn1", "panel");
+		Assert.isTrue(ctx.helper.isOpen());
+	}
+
+	@Test
+	public function testAutoWiredDispatchHandlesOutsideClick():Void {
+		var ctx = createAutoWiredHelper();
+		ctx.helper.open("btn1", "panel");
+
+		// dispatchScreenEvent should auto-call handleOutsideClick
+		ctx.screen.dispatchScreenEvent(UIInteractiveEvent(UIClickOutside, "btn1", null), null);
+		// Pending close set by auto-wiring — resolve via update
+		ctx.screen.update(0.016);
+		Assert.isFalse(ctx.helper.isOpen());
+	}
+
+	@Test
+	public function testAutoWiredClickOnTriggerCancelsPending():Void {
+		var ctx = createAutoWiredHelper();
+		ctx.helper.open("btn1", "panel");
+
+		// UIClickOutside sets pending
+		ctx.screen.dispatchScreenEvent(UIInteractiveEvent(UIClickOutside, "btn1", null), null);
+		// UIClick on trigger cancels pending
+		ctx.screen.dispatchScreenEvent(UIInteractiveEvent(UIClick, "btn1", null), null);
+
+		ctx.screen.update(0.016);
+		Assert.isTrue(ctx.helper.isOpen());
+	}
+
+	@Test
+	public function testAutoWiredClickOnUnrelatedClosesImmediately():Void {
+		var ctx = createAutoWiredHelper();
+		ctx.helper.open("btn1", "panel");
+
+		// Click on a different interactive — immediate close in handleOutsideClick
+		ctx.screen.dispatchScreenEvent(UIInteractiveEvent(UIClick, "btn2", null), null);
+		Assert.isFalse(ctx.helper.isOpen());
+	}
+
+	@Test
+	public function testAutoWiredUpdateCallsCheckPendingClose():Void {
+		var ctx = createAutoWiredHelper();
+		ctx.helper.open("btn1", "panel");
+
+		// Set pending via direct call (simulating controller path)
+		ctx.helper.handleOutsideClick(UIInteractiveEvent(UIClickOutside, "btn1", null));
+		Assert.isTrue(ctx.helper.isOpen()); // Still open — deferred
+
+		// update() should resolve the pending close
+		ctx.screen.update(0.016);
+		Assert.isFalse(ctx.helper.isOpen());
+	}
+
+	@Test
+	public function testAutoWiredEventStillReachesScreen():Void {
+		var ctx = createAutoWiredHelper();
+		ctx.helper.open("btn1", "panel");
+		ctx.screen.clearEvents();
+
+		ctx.screen.dispatchScreenEvent(UIInteractiveEvent(UIClickOutside, "btn1", null), null);
+		// Event should still reach screen's onScreenEvent
+		Assert.isTrue(ctx.screen.hasEvent(UIInteractiveEvent(UIClickOutside, "btn1", null)));
+	}
+
+	@Test
+	public function testUnregisterStopsAutoWiring():Void {
+		var ctx = createAutoWiredHelper();
+		ctx.screen.testUnregisterPanelHelper(ctx.helper);
+
+		ctx.helper.open("btn1", "panel");
+		// dispatchScreenEvent should NOT auto-call handleOutsideClick
+		ctx.screen.dispatchScreenEvent(UIInteractiveEvent(UIClickOutside, "btn1", null), null);
+		ctx.screen.update(0.016);
+		// Panel should still be open — no auto-wiring
+		Assert.isTrue(ctx.helper.isOpen());
+	}
+
+	@Test
+	public function testClearResetsAutoWiring():Void {
+		var ctx = createAutoWiredHelper();
+		ctx.helper.open("btn1", "panel");
+		ctx.screen.clear();
+
+		// After clear, auto-wiring should be gone.
+		// Create a new helper manually (not registered) to verify clear worked.
+		var builder = BuilderTestBase.builderFromSource('$ANCHOR_MANIM\n$PANEL_MANIM');
+		var anchorResult = builder.buildWithParameters("anchor", []);
+		ctx.screen.addInteractives(anchorResult);
+		var manualHelper = new UIPanelHelper(ctx.screen, builder);
+		manualHelper.open("btn1", "panel");
+
+		// dispatchScreenEvent should not call handleOutsideClick on any helper
+		ctx.screen.dispatchScreenEvent(UIInteractiveEvent(UIClickOutside, "btn1", null), null);
+		ctx.screen.update(0.016);
+		Assert.isTrue(manualHelper.isOpen());
+	}
+
+	@Test
+	public function testManualCloseModeAutoWired():Void {
+		var ctx = createAutoWiredHelper(Manual);
+		ctx.helper.open("btn1", "panel");
+
+		// Outside click should NOT close in Manual mode even with auto-wiring
+		ctx.screen.dispatchScreenEvent(UIInteractiveEvent(UIClickOutside, "btn1", null), null);
+		ctx.screen.update(0.016);
+		Assert.isTrue(ctx.helper.isOpen());
+	}
+
+	@Test
+	public function testRegisterExistingHelper():Void {
+		var screen = new UITestScreen();
+		var builder = BuilderTestBase.builderFromSource('$ANCHOR_MANIM\n$PANEL_MANIM');
+		var anchorResult = builder.buildWithParameters("anchor", []);
+		screen.addInteractives(anchorResult);
+
+		// Create manually, then register
+		var helper = new UIPanelHelper(screen, builder);
+		screen.testRegisterPanelHelper(helper);
+
+		helper.open("btn1", "panel");
+		screen.dispatchScreenEvent(UIInteractiveEvent(UIClickOutside, "btn1", null), null);
+		screen.update(0.016);
+		Assert.isFalse(helper.isOpen());
+	}
+
+	@Test
+	public function testDoubleRegisterDoesNotDuplicate():Void {
+		var ctx = createAutoWiredHelper();
+		// Register again — should not duplicate
+		ctx.screen.testRegisterPanelHelper(ctx.helper);
+
+		ctx.helper.open("btn1", "panel");
+		ctx.screen.dispatchScreenEvent(UIInteractiveEvent(UIClickOutside, "btn1", null), null);
+		ctx.screen.update(0.016);
+		Assert.isFalse(ctx.helper.isOpen());
+	}
+
+	// ============== openAt ==============
+
+	@Test
+	public function testOpenAtBasic():Void {
+		var ctx = createHelper();
+		ctx.helper.openAt(100, 200, "panel");
+
+		Assert.isTrue(ctx.helper.isOpen());
+		Assert.notNull(ctx.helper.getPanelResult());
+		// openAt has no interactive, so getActiveId returns null
+		Assert.isNull(ctx.helper.getActiveId());
+	}
+
+	@Test
+	public function testOpenAtPositionsPanel():Void {
+		var ctx = createHelper();
+		ctx.helper.openAt(150, 250, "panel");
+
+		var result = ctx.helper.getPanelResult();
+		Assert.notNull(result);
+		Assert.floatEquals(150.0, result.object.x);
+		Assert.floatEquals(250.0, result.object.y);
+	}
+
+	@Test
+	public function testOpenAtWithParams():Void {
+		var ctx = createHelper();
+		ctx.helper.openAt(0, 0, "panel", ["label" => "custom"]);
+
+		Assert.isTrue(ctx.helper.isOpen());
+		Assert.notNull(ctx.helper.getPanelResult());
+	}
+
+	@Test
+	public function testOpenAtCloseDoesNotEmitEvent():Void {
+		var ctx = createHelper();
+		ctx.helper.openAt(0, 0, "panel");
+		ctx.screen.clearEvents();
+
+		ctx.helper.close();
+		Assert.isFalse(ctx.helper.isOpen());
+		// No EVENT_PANEL_CLOSE because there is no interactiveId
+		Assert.equals(0, ctx.screen.eventCount());
+	}
+
+	@Test
+	public function testOpenAtReplacesExistingPanel():Void {
+		var ctx = createHelper();
+		ctx.helper.open("btn1", "panel");
+		Assert.equals("btn1", ctx.helper.getActiveId());
+
+		ctx.helper.openAt(50, 50, "panel");
+		Assert.isTrue(ctx.helper.isOpen());
+		Assert.isNull(ctx.helper.getActiveId());
+	}
+
+	@Test
+	public function testOpenAtReplacesExistingOpenAt():Void {
+		var ctx = createHelper();
+		ctx.helper.openAt(10, 20, "panel");
+		var first = ctx.helper.getPanelResult();
+
+		ctx.helper.openAt(30, 40, "panel");
+		Assert.isTrue(ctx.helper.isOpen());
+		var second = ctx.helper.getPanelResult();
+		Assert.floatEquals(30.0, second.object.x);
+		Assert.floatEquals(40.0, second.object.y);
+	}
+
+	@Test
+	public function testOpenReplacesOpenAt():Void {
+		var ctx = createHelper();
+		ctx.helper.openAt(10, 20, "panel");
+		Assert.isNull(ctx.helper.getActiveId());
+
+		ctx.helper.open("btn1", "panel");
+		Assert.isTrue(ctx.helper.isOpen());
+		Assert.equals("btn1", ctx.helper.getActiveId());
+	}
+
+	@Test
+	public function testOpenAtPrefix():Void {
+		var ctx = createHelper();
+		ctx.helper.openAt(0, 0, "panel");
+		var prefix = ctx.helper.getActivePrefix();
+		Assert.notNull(prefix);
+		Assert.isTrue(StringTools.startsWith(prefix, "pos."));
+	}
+
+	@Test
+	public function testOpenAtIsOwnInteractive():Void {
+		var ctx = createHelper();
+		ctx.helper.openAt(0, 0, "panel");
+		var prefix = ctx.helper.getActivePrefix();
+		Assert.isTrue(ctx.helper.isOwnInteractive(prefix + ".child"));
+		Assert.isFalse(ctx.helper.isOwnInteractive("unrelated"));
+	}
+
+	@Test
+	public function testNamedPanelFadeOutTweenCancelledOnCloseAll():Void {
+		// Bug: Named panels don't track fade-out tweens. When closeAllNamed()
+		// is called while fade-outs are animating, orphaned tweens continue
+		// running with references to removed objects.
+		var ctx = createHelperWithTweens(0.0, 0.3);
+		ctx.helper.openNamed("slot1", "btn1", "panel");
+		ctx.helper.openNamed("slot2", "btn2", "panel");
+
+		var obj1 = ctx.helper.getNamedPanelResult("slot1").object;
+		var obj2 = ctx.helper.getNamedPanelResult("slot2").object;
+
+		// Close slot1 — starts fade-out
+		ctx.helper.closeNamed("slot1");
+		Assert.isFalse(ctx.helper.isOpenNamed("slot1"));
+
+		// Close all (slot2 remains) — should also work cleanly
+		ctx.helper.closeAllNamed();
+
+		// Advance past all fade-outs — should not crash
+		ctx.tweens.update(0.5);
+
+		// Both objects should be removed (parent null)
+		Assert.isNull(obj1.parent, "First panel should be removed after fade-out");
+		Assert.isNull(obj2.parent, "Second panel should be removed after fade-out");
+	}
+
+	@Test
+	public function testNamedPanelFadeOutNotOrphaned():Void {
+		// Close a named panel during fade-out, then open a new one in same slot.
+		// The old fade-out should be cancelled.
+		var ctx = createHelperWithTweens(0.0, 0.5);
+		ctx.helper.openNamed("slot1", "btn1", "panel");
+		var obj1 = ctx.helper.getNamedPanelResult("slot1").object;
+
+		// Close — starts fade-out
+		ctx.helper.closeNamed("slot1");
+
+		// Advance partially into fade-out
+		ctx.tweens.update(0.1);
+
+		// Open new panel in same slot
+		ctx.helper.openNamed("slot1", "btn2", "panel");
+		Assert.isTrue(ctx.helper.isOpenNamed("slot1"));
+
+		// Advance past old fade-out duration — old tween should not cause issues
+		ctx.tweens.update(1.0);
+		Assert.isTrue(ctx.helper.isOpenNamed("slot1"));
+	}
+
+	@Test
+	public function testOpenAtWithCloseMode():Void {
+		var ctx = createHelper();
+		ctx.helper.openAt(0, 0, "panel", null, Manual);
+		Assert.isTrue(ctx.helper.isOpen());
+		// Manual mode — explicit close required
+		ctx.helper.close();
+		Assert.isFalse(ctx.helper.isOpen());
+	}
+
+	@Test
+	public function testOpenAtFadeIn():Void {
+		var ctx = createHelperWithTweens(0.3, 0.0);
+		ctx.helper.openAt(100, 200, "panel");
+		Assert.isTrue(ctx.helper.isOpen());
+
+		// Panel should start with alpha 0 (fade-in running)
+		var result = ctx.helper.getPanelResult();
+		Assert.notNull(result);
+		Assert.floatEquals(0.0, result.object.alpha);
+
+		// After fade-in completes, alpha should be 1.0
+		ctx.tweens.update(0.5);
+		Assert.floatEquals(1.0, result.object.alpha);
+	}
+
+	@Test
+	public function testOpenAtFadeOut():Void {
+		var ctx = createHelperWithTweens(0.0, 0.3);
+		ctx.helper.openAt(100, 200, "panel");
+		var obj = ctx.helper.getPanelResult().object;
+
+		ctx.helper.close();
+		Assert.isFalse(ctx.helper.isOpen());
+
+		// After fade-out, object should be removed
+		ctx.tweens.update(0.5);
+		Assert.isNull(obj.parent);
 	}
 }

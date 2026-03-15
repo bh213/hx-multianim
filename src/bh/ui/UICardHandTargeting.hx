@@ -46,11 +46,22 @@ class UICardHandTargeting {
 	/** When false, the targeting visual is suppressed (target detection still works). */
 	public var arrowEnabled:Bool = true;
 
+	/** When true, arrow endpoint snaps to a point on the hovered target (default: center).
+	 *  When false, arrow follows cursor freely — target detection still works. */
+	public var snapToTarget:Bool = true;
+
+	/** Optional callback to compute the arrow snap point for a target in the target's local space.
+	 *  When null, arrow snaps to interactive center. Receives the target wrapper, returns local-space point. */
+	public var arrowSnapPointProvider:Null<(UIInteractiveWrapper) -> FPoint> = null;
+
 	/** Called when a target becomes highlighted or unhighlighted during targeting. */
 	public var onTargetHighlight:Null<TargetHighlightCallback> = null;
 
 	/** Optional filter: return false to reject a card from a target. */
 	public var acceptsFilter:Null<TargetAcceptsCallback> = null;
+
+	/** When non-null, overrides the valid/invalid arrow state (bypasses target hit-testing for visuals). */
+	public var forceValid:Null<Bool> = null;
 
 	public function new(builder:MultiAnimBuilder, ?segmentName:String, ?headName:String, ?pathName:String, spacing:Float = 25.0) {
 		this.builder = builder;
@@ -205,13 +216,38 @@ class UICardHandTargeting {
 				onTargetHighlight(activeTargetId, true, hoveredWrapper.metadata);
 		}
 
-		var valid = hoveredWrapper != null;
+		var valid = if (forceValid != null) forceValid else hoveredWrapper != null;
+
+		// Snap arrow endpoint to target when hovering a valid target (if snap enabled)
+		var endX = cursorX;
+		var endY = cursorY;
+		if (snapToTarget && valid && hoveredWrapper != null) {
+			// Get snap point in target's local space (default: interactive center)
+			var localPoint:Null<h2d.col.Point> = null;
+			if (arrowSnapPointProvider != null) {
+				final fp = arrowSnapPointProvider(hoveredWrapper);
+				localPoint = new h2d.col.Point(fp.x, fp.y);
+			} else {
+				switch hoveredWrapper.interactive.multiAnimType {
+					case MAInteractive(width, height, _, _):
+						localPoint = new h2d.col.Point(width * 0.5, height * 0.5);
+					default:
+				}
+			}
+			if (localPoint != null) {
+				// Convert from target local space to arrow local space
+				var centerScene = hoveredWrapper.interactive.localToGlobal(localPoint);
+				var centerLocal = arrowContainer.globalToLocal(centerScene);
+				endX = centerLocal.x;
+				endY = centerLocal.y;
+			}
+		}
 
 		// Update arrow visuals (uses local-space coords for positioning)
 		if (hasArrowVisual && arrowEnabled && arrowPathName != null) {
 			var paths = builder.getPaths();
 			var origin = new FPoint(originX, originY);
-			var cursor = new FPoint(cursorX, cursorY);
+			var cursor = new FPoint(endX, endY);
 			var path = paths.getPath(arrowPathName, Stretch(origin, cursor));
 
 			// Calculate how many segments fit

@@ -3,6 +3,7 @@
 | # | Item | Summary | Priority |
 |---|------|---------|----------|
 | 15 | Text input codegen | `@:manim` factory with `createTextInput()` | Low |
+| 16 | ScreenManager: auto-reload on re-entry | `h2d.Graphics.onRemove()` calls `clear()`, wiping draw data. ScreenManager re-adds the same root without calling `clear()`+`load()`, so Graphics objects render empty. Every re-enterable screen must manually handle `UIEntering` → `clear()`+`load()`. ScreenManager should do this automatically. | Medium |
 
 ## Main Goals
 
@@ -12,15 +13,12 @@
 - ~~Haxelib release~~ — DONE (1.0.0-rc.1, see [release.md](release.md))
 - More hot reload integration tests — see [docs/hot-reload.md "Missing Tests"](../docs/hot-reload.md#missing-tests-needed)
 - Add blob47 utils for easier testing/dev/selection
-- change.manim version to 1.0
+- ~~MCP server~~ — DONE (DevBridge 29 tools)
 
-
-**CI remaining:**
-- [ ] Add `HAXELIB_PASSWORD` secret to GitHub repo settings (required before first tag push)
-- [ ] Dev mode tests (`-D MULTIANIM_DEV`) need matrix build or sequential run in CI (currently `test.ps1` runs both)
 
 ## After 1.0
 - Text input codegen support (`@:manim` factory with `createTextInput()`)
+- Negative codegen tests: `RVArray`/`RVArrayReference` throws, runtime `.x`/`.y` extraction throws
 - Bit expression: support for any-bit and all-bits (e.g. grid direction)
 - Radio: paired UIElement (click on label to change radio)
 - Subelements: handle nested subelements, keep state, don't query each time (cache `Std.isOfType`)

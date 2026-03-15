@@ -820,10 +820,10 @@ class AnimParser implements AnimParserResult {
 					if (ePoint.visited == false)
 						throw 'Extra point ${ek} in anim ${anim.name} not reachable ${ePoint.states}';
 				}
-				for (pl in anim.playlist) {
-					if (pl.visited == false)
-						throw 'Playlist in anim ${anim.name} not reachable ${pl.states}';
-				}
+			}
+			for (pl in anim.playlist) {
+				if (pl.visited == false)
+					throw 'Playlist in anim ${anim.name} not reachable ${pl.states}';
 			}
 		}
 		this.metadata = metadataMap.count() > 0 ? new AnimMetadata(metadataMap) : null;
@@ -1032,10 +1032,6 @@ class AnimParser implements AnimParserResult {
 		expect(APClosed);
 		states.set(stateName, condValue);
 	}
-
-	// Fix: properly handle @(state=>[a,b]) multi-value case
-	// The above parseConditionalState has a bug for =>[a,b] - let me rewrite cleanly:
-	// Actually the fix is: after advancing past =>, check if next is [ before reading val
 
 	function parseConditionalValueList():Array<String> {
 		var values:Array<String> = [];

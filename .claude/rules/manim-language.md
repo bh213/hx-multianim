@@ -20,8 +20,8 @@
 | Element | Description |
 |---------|-------------|
 | `bitmap(source, [center])` | Display image |
-| `text(font, text, color, [align, maxWidth, options])` | Simple text element (plain `h2d.Text`) |
-| `richText(font, text, color, [align, maxWidth, options])` | Rich text with `[markup]`, `styles:`, `images:` (always `h2d.HtmlText`) |
+| `text(font, text, color, [align, maxWidth, options])` | Simple text element (plain `h2d.Text`). Options: `letterSpacing`, `lineSpacing`, `lineBreak`, `dropShadow*`, `autoFit` |
+| `richText(font, text, color, [align, maxWidth, options])` | Rich text with `[markup]`, `styles:`, `images:` (always `h2d.HtmlText`). Options: same as text + `styles:`, `images:`, `condenseWhite` |
 | `ninepatch(sheet, tile, w, h)` | 9-patch scalable |
 | `placeholder(size, source)` | Dynamic placeholder |
 | `staticRef($ref)` | Static embed of another programmable |

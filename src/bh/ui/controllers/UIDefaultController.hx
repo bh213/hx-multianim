@@ -34,55 +34,53 @@ private class CaptureEventsImpl implements CaptureEventsControl {
 	}
 }
 
-private class OutsideClickImpl implements OutsideClickControl {
-	var trackOutsideClickSubscribers:Array<UIElement> = [];
-
-	public var enabledChanged:Null<Bool> = null;
-
-	public function trackOutsideClick(enabled:Bool) {
-		enabledChanged = enabled;
-	}
-
-	public function handle(element:UIElement) {
-		if (enabledChanged == null)
-			return;
-		else if (enabledChanged && !trackOutsideClickSubscribers.contains(element))
-			trackOutsideClickSubscribers.push(element);
-		else if (enabledChanged == false)
-			trackOutsideClickSubscribers.remove(element);
-		enabledChanged = null;
-	}
-
-	public function triggerOutsideEvents(notThisElement:Null<UIElement>) {
-		if (notThisElement == null) {
-			final ret = trackOutsideClickSubscribers;
-			trackOutsideClickSubscribers = [];
-			return ret;
-		} else if (trackOutsideClickSubscribers.remove(notThisElement)) {
-			final ret = trackOutsideClickSubscribers;
-			trackOutsideClickSubscribers = [notThisElement];
-			return ret;
-		} else {
-			final ret = trackOutsideClickSubscribers;
-			trackOutsideClickSubscribers = [];
-			return ret;
-		}
-	}
-
-	public function new() {}
-}
-
 @:nullSafety
 private class ControllableImpl implements Controllable {
 	public var captureEvents(default, null):CaptureEventsImpl;
-	public var outsideClick(default, null):OutsideClickImpl;
 
 	final controller:UIController;
+
+	// Outside-click subscriber tracking (inlined from former OutsideClickImpl)
+	var subscribers:Array<UIElement> = [];
+	// Set by controller before dispatching onEvent, cleared after.
+	var currentElement:Null<UIElement> = null;
 
 	public function new(controller:UIController) {
 		this.controller = controller;
 		this.captureEvents = new CaptureEventsImpl();
-		this.outsideClick = new OutsideClickImpl();
+	}
+
+	public function trackOutsideClick(enabled:Bool) {
+		if (currentElement == null)
+			return;
+		if (enabled && !subscribers.contains(currentElement))
+			subscribers.push(currentElement);
+		else if (!enabled)
+			subscribers.remove(currentElement);
+	}
+
+	public function setContext(element:UIElement) {
+		currentElement = element;
+	}
+
+	public function clearContext() {
+		currentElement = null;
+	}
+
+	public function triggerOutsideEvents(notThisElement:Null<UIElement>) {
+		if (notThisElement == null) {
+			final ret = subscribers;
+			subscribers = [];
+			return ret;
+		} else if (subscribers.remove(notThisElement)) {
+			final ret = subscribers;
+			subscribers = [notThisElement];
+			return ret;
+		} else {
+			final ret = subscribers;
+			subscribers = [];
+			return ret;
+		}
 	}
 
 	public function pushEvent(event:UIScreenEvent, source:UIElement) {
@@ -91,7 +89,7 @@ private class ControllableImpl implements Controllable {
 }
 
 @:nullSafety
-abstract class UIControllerBase implements UIController {
+class UIDefaultController implements UIController {
 	var currentOver:Null<UIElement> = null;
 	final controllable:ControllableImpl;
 	final integration:bh.ui.controllers.UIController.UIControllerScreenIntegration;
@@ -101,6 +99,10 @@ abstract class UIControllerBase implements UIController {
 	public function new(integration) {
 		this.integration = integration;
 		this.controllable = new ControllableImpl(this);
+	}
+
+	public function getDebugName():String {
+		return "default UI controller";
 	}
 
 	function handleEvent(element:UIElement, event, eventPos:Point) {
@@ -114,12 +116,14 @@ abstract class UIControllerBase implements UIController {
 			};
 
 			final captureEvents = controllable.captureEvents;
-			cast(element, StandardUIElementEvents).onEvent(wrapper);
+			// Set context so trackOutsideClick() knows which element is calling
 			switch (event) {
 				case OnPush(_), OnRelease(_), OnReleaseOutside(_):
-					controllable.outsideClick.handle(element);
+					controllable.setContext(element);
 				default:
 			}
+			cast(element, StandardUIElementEvents).onEvent(wrapper);
+			controllable.clearContext();
 			if (captureEvents.start == false && captureEvents.stop == false)
 				return;
 			if (captureEvents.start && captureEvents.target == null)
@@ -133,9 +137,18 @@ abstract class UIControllerBase implements UIController {
 
 	public function handleClick(mousePoint:Point, button:Int, release:Bool, eventWrapper:EventWrapper) {
 		final element = getEventElement(mousePoint);
-		if (integration.onMouseClick(mousePoint, button, release) == false) return;
+		if (integration.dispatchMouseClick(mousePoint, button, release) == false) {
+			// Consumed by a component (e.g. card hand drag release).
+			// Still process outside-click so panels/dropdowns close correctly.
+			if (release) {
+				final triggeredElements = controllable.triggerOutsideEvents(element);
+				for (value in triggeredElements)
+					handleEvent(value, OnReleaseOutside(button), mousePoint);
+			}
+			return;
+		}
 		if (release) {
-			final triggeredElements = controllable.outsideClick.triggerOutsideEvents(element);
+			final triggeredElements = controllable.triggerOutsideEvents(element);
 			for (value in triggeredElements) {
 				handleEvent(value, OnReleaseOutside(button), mousePoint);
 			}
@@ -153,10 +166,18 @@ abstract class UIControllerBase implements UIController {
 		handleEvent(element, OnWheel(wheelDelta), mousePoint);
 	}
 
-	abstract function getEventElement(pos:Point):Null<UIElement>;
+	function getEventElement(pos:Point):Null<UIElement> {
+		if (controllable.captureEvents.target != null)
+			return controllable.captureEvents.target;
+		for (element in integration.getElements(SETReceiveEvents)) {
+			if (element.containsPoint(pos))
+				return element;
+		}
+		return null;
+	}
 
 	public function handleMove(mousePoint:Point, eventWrapper:EventWrapper) {
-		if (integration.onMouseMove(mousePoint) == false) return;
+		if (integration.dispatchMouseMove(mousePoint) == false) return;
 		final element = getEventElement(mousePoint);
 
 		if (element != null)
@@ -234,6 +255,6 @@ abstract class UIControllerBase implements UIController {
 
 	public function onScreenEvent(event:UIScreenEvent, source:Null<UIElement>):Void {
 		// trace('user event ${event} from ${source}');
-		integration.onScreenEvent(event, source);
+		integration.dispatchScreenEvent(event, source);
 	}
 }

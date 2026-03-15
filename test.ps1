@@ -212,8 +212,9 @@ function Do-Run($BaseHxml, $HlBinary, $ResultFileName, $Label) {
     $psi.RedirectStandardOutput = $true
     $psi.RedirectStandardError = $true
     $compileProc = [System.Diagnostics.Process]::Start($psi)
+    $compileStderrTask = $compileProc.StandardError.ReadToEndAsync()
     $compileStdout = $compileProc.StandardOutput.ReadToEnd()
-    $compileStderr = $compileProc.StandardError.ReadToEnd()
+    $compileStderr = $compileStderrTask.Result
     $compileProc.WaitForExit()
     $script:lastCompileSeconds = [math]::Round(((Get-Date) - $compileStart).TotalSeconds, 1)
 
@@ -228,6 +229,7 @@ function Do-Run($BaseHxml, $HlBinary, $ResultFileName, $Label) {
     if ($compileProc.ExitCode -ne 0) {
         if ($tmpHxml -and (Test-Path $tmpHxml)) { Remove-Item $tmpHxml }
         Write-Host "ERROR:$Label Compilation failed (exit code $($compileProc.ExitCode))" -ForegroundColor Red
+        if ($compileStdout) { Write-Host $compileStdout.TrimEnd() -ForegroundColor Red }
         if ($compileStderr) { Write-Host $compileStderr.TrimEnd() -ForegroundColor Red }
         return $compileProc.ExitCode
     }

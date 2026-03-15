@@ -2877,6 +2877,8 @@ class MacroManimParser {
 				var dropShadowXY:Null<bh.base.FPoint> = null;
 				var dropShadowColor:Int = 0;
 				var dropShadowAlpha:Float = 0.5;
+				var autoFitFonts:Null<Array<ReferenceableValue>> = null;
+				var autoFitMode:Null<AutoFitMode> = null;
 				if (match(TComma)) {
 					halign = parseHAlign();
 					if (halign != null && match(TComma)) {
@@ -2905,6 +2907,10 @@ class MacroManimParser {
 							case "linebreak": lineBreak = parseBool();
 							case "styles", "images", "condensewhite":
 								error('text() does not support rich text features. Use richText() instead.');
+							case "autofit":
+								final af = parseAutoFit();
+								autoFitFonts = af.fonts;
+								autoFitMode = af.mode;
 							case "dropshadowxy":
 								final dx = parseFloat_();
 								expect(TComma);
@@ -2920,11 +2926,21 @@ class MacroManimParser {
 					} else break;
 				}
 
+				if (autoFitFonts != null) {
+					switch autoFitMode {
+						case AFWidth, AFFillWidth:
+							if (textAlignWidth == TAWAuto)
+								error("autoFit: width mode requires maxWidth to be set");
+						default:
+					}
+				}
+
 				final textDef:TextDef = {
 					fontName: fontname, text: text, color: color, halign: halign,
 					textAlignWidth: textAlignWidth, letterSpacing: letterSpacing, lineSpacing: lineSpacing,
 					lineBreak: lineBreak, dropShadowXY: dropShadowXY, dropShadowColor: dropShadowColor, dropShadowAlpha: dropShadowAlpha,
-					styles: null, images: null, condenseWhite: null, hasMarkup: false
+					styles: null, images: null, condenseWhite: null, hasMarkup: false,
+					autoFitFonts: autoFitFonts, autoFitMode: autoFitMode
 				};
 				createNode(TEXT(textDef), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 
@@ -2947,6 +2963,8 @@ class MacroManimParser {
 				var dropShadowXY:Null<bh.base.FPoint> = null;
 				var dropShadowColor:Int = 0;
 				var dropShadowAlpha:Float = 0.5;
+				var autoFitFonts:Null<Array<ReferenceableValue>> = null;
+				var autoFitMode:Null<AutoFitMode> = null;
 				if (match(TComma)) {
 					halign = parseHAlign();
 					if (halign != null && match(TComma)) {
@@ -2976,6 +2994,10 @@ class MacroManimParser {
 							case "styles": styles = parseTextStyles();
 							case "images": images = parseTextImages();
 							case "condensewhite": condenseWhite = parseBool();
+							case "autofit":
+								final af = parseAutoFit();
+								autoFitFonts = af.fonts;
+								autoFitMode = af.mode;
 							case "dropshadowxy":
 								final dx = parseFloat_();
 								expect(TComma);
@@ -2990,6 +3012,16 @@ class MacroManimParser {
 						}
 					} else break;
 				}
+
+				if (autoFitFonts != null) {
+					switch autoFitMode {
+						case AFWidth, AFFillWidth:
+							if (textAlignWidth == TAWAuto)
+								error("autoFit: width mode requires maxWidth to be set");
+						default:
+					}
+				}
+
 				// Auto-detect markup in literal text
 				var hasMarkup = false;
 				switch (text) {
@@ -3015,7 +3047,8 @@ class MacroManimParser {
 					fontName: fontname, text: text, color: color, halign: halign,
 					textAlignWidth: textAlignWidth, letterSpacing: letterSpacing, lineSpacing: lineSpacing,
 					lineBreak: lineBreak, dropShadowXY: dropShadowXY, dropShadowColor: dropShadowColor, dropShadowAlpha: dropShadowAlpha,
-					styles: styles, images: images, condenseWhite: condenseWhite, hasMarkup: hasMarkup
+					styles: styles, images: images, condenseWhite: condenseWhite, hasMarkup: hasMarkup,
+					autoFitFonts: autoFitFonts, autoFitMode: autoFitMode
 				};
 				createNode(RICHTEXT(richTextDef), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 
@@ -3976,6 +4009,57 @@ class MacroManimParser {
 			images.push({name: name, tileSource: ts, valign: valign, spacing: spacing});
 		}
 		return images;
+	}
+
+	// autoFit: width [dd_small, dd_tiny]
+	// autoFit: box(200, 60) [dd_small, dd_tiny]
+	// autoFit: fill [dd_large, dd, dd_small]
+	// autoFit: fill box(200, 80) [dd_large, dd, dd_small]
+	function parseAutoFit():{fonts:Array<ReferenceableValue>, mode:AutoFitMode} {
+		var fill = false;
+		var mode:AutoFitMode = AFWidth;
+
+		// Parse mode keywords: fill, width, box(w, h)
+		switch (peek()) {
+			case TIdentifier(s) if (isKeyword(s, "fill")):
+				advance();
+				fill = true;
+			default:
+		}
+
+		switch (peek()) {
+			case TIdentifier(s) if (isKeyword(s, "width")):
+				advance();
+				mode = if (fill) AFFillWidth else AFWidth;
+			case TIdentifier(s) if (isKeyword(s, "box")):
+				advance();
+				expect(TOpen);
+				final w = parseIntegerOrReference();
+				expect(TComma);
+				final h = parseIntegerOrReference();
+				expect(TClosed);
+				mode = if (fill) AFFillBox(w, h) else AFBox(w, h);
+			default:
+				if (fill) {
+					mode = AFFillWidth;
+				} else {
+					error('autoFit: expected "width", "box(w, h)", or "fill"');
+				}
+		}
+
+		// Parse font list: [font1, font2, ...]
+		expect(TBracketOpen);
+		var fonts:Array<ReferenceableValue> = [];
+		while (!match(TBracketClosed)) {
+			if (fonts.length > 0) {
+				eatComma();
+				if (match(TBracketClosed)) break;
+			}
+			fonts.push(parseStringOrReference());
+		}
+		if (fonts.length == 0) error("autoFit: font list must not be empty");
+
+		return {fonts: fonts, mode: mode};
 	}
 
 	// colorStops: 0.0 #FF0000, 0.5 #00FF00 easeInQuad, 1.0 #0000FF

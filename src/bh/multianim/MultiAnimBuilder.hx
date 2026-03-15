@@ -166,7 +166,7 @@ class BuilderResolvedSettings {
 			throw 'settings not found, was looking for $settingName';
 		final r = settings[settingName];
 		if (r == null)
-			throw 'expected string setting ${settingName} to present but was not';
+			throw 'expected string setting ${settingName} to be present but was not';
 		return switch r {
 			case RSVString(s): s;
 			case RSVInt(i): '$i';
@@ -181,7 +181,7 @@ class BuilderResolvedSettings {
 			throw 'settings not found, was looking for $settingName';
 		var r = settings[settingName];
 		if (r == null)
-			throw 'expected int setting ${settingName} to present but was not';
+			throw 'expected int setting ${settingName} to be present but was not';
 		return switch r {
 			case RSVInt(i): i;
 			case RSVColor(c): c;
@@ -211,7 +211,7 @@ class BuilderResolvedSettings {
 			throw 'settings not found, was looking for $settingName';
 		var r = settings[settingName];
 		if (r == null)
-			throw 'expected float setting ${settingName} to present but was not';
+			throw 'expected float setting ${settingName} to be present but was not';
 		return switch r {
 			case RSVFloat(f): f;
 			case RSVInt(i): cast i;
@@ -307,6 +307,7 @@ class IncrementalUpdateContext {
 	public function getBuilderParams():BuilderParameters {
 		return builderParams;
 	}
+
 	#end
 
 	public function trackConditional(object:h2d.Object, node:Node):Void {
@@ -383,11 +384,13 @@ class IncrementalUpdateContext {
 		entry.applied = false;
 	}
 
+	@:nullSafety(Off)
 	public function setParameter(name:String, value:Dynamic):Void {
-		// Look up the parameter type definition for type-aware conversion (flags only — other types handled below)
+		// Look up the parameter type definition for type-aware conversion (flags need special handling)
 		final paramDef = getParamDefinition(name);
-		if (paramDef != null && paramDef.type.match(PPTFlags(_))) {
-			indexedParams.set(name, MultiAnimParser.dynamicValueToIndex(name, paramDef.type, value, s -> throw s));
+		final paramType = paramDef?.type;
+		if (paramType != null && paramType.match(PPTFlags(_))) {
+			indexedParams.set(name, MultiAnimParser.dynamicValueToIndex(name, paramType, value, s -> throw s));
 		} else if (Std.isOfType(value, Int)) {
 			indexedParams.set(name, Value(value));
 		} else if (Std.isOfType(value, Float)) {
@@ -883,6 +886,11 @@ class BuilderResult {
 	public var reloadable:Bool = true;
 	public var reloadHandle:Null<bh.multianim.dev.HotReload.ReloadableHandle> = null;
 	public var onReload:Null<(BuilderResult, bh.multianim.dev.HotReload.ReloadReport) -> Void> = null;
+	// Stored for hot reload: allows rebuilding with same callback/placeholderObjects
+	// even when original build was not incremental.
+	public var devBuilderParams:Null<BuilderParameters> = null;
+	// Captured placeholder objects for hot reload reuse
+	public var devCapturedPlaceholders:Array<{name:String, index:Null<Int>, object:h2d.Object}> = [];
 
 	// Adopt internals from another result, keeping this instance as the stable reference.
 	// The scene graph object is swapped via SceneSwapper (caller responsibility).
@@ -902,6 +910,8 @@ class BuilderResult {
 		this.dynamicRefs = other.dynamicRefs;
 		this.incrementalContext = other.incrementalContext;
 		this.htmlTextsWithLinks = other.htmlTextsWithLinks;
+		this.devBuilderParams = other.devBuilderParams;
+		this.devCapturedPlaceholders = other.devCapturedPlaceholders;
 		// Re-inject TweenManager into new incremental context
 		if (prevTweenManager != null && this.incrementalContext != null)
 			this.incrementalContext.setTweenManager(prevTweenManager);
@@ -1054,6 +1064,8 @@ enum CallbackResult {
 enum PlaceholderValues {
 	PVObject(obj:h2d.Object);
 	PVFactory(factoryMethod:ResolvedSettings->h2d.Object);
+	/** Higher-order component (e.g. Grid). Factory returns scene graph object, component holds the typed reference. */
+	PVComponent(factoryMethod:ResolvedSettings->h2d.Object, component:Dynamic);
 }
 
 @:nullSafety
@@ -1117,6 +1129,9 @@ class MultiAnimBuilder {
 	var incrementalContext:Null<IncrementalUpdateContext> = null;
 	/** When set, automatically injected into IncrementalUpdateContext for transition support. */
 	public var tweenManager:Null<TweenManager> = null;
+	#if MULTIANIM_DEV
+	var devPlaceholderCapture:Array<{name:String, index:Null<Int>, object:h2d.Object}> = [];
+	#end
 
 	/** Returns position string for error messages when MULTIANIM_TRACE is enabled */
 	inline function currentNodePos():String {
@@ -1306,7 +1321,7 @@ class MultiAnimBuilder {
 			case "grid" | "ctx.grid":
 				final node = currentNode;
 				if (node == null) throw 'currentNode is null in resolveRVPropertyAccess' + currentNodePos();
-				final gcs = if (ref == "ctx.grid") MultiAnimParser.getGridCoordinateSystem(node) else MultiAnimParser.getGridCoordinateSystem(node);
+				final gcs = MultiAnimParser.getGridCoordinateSystem(node);
 				if (gcs == null) throw 'no grid coordinate system in scope for $ref.$property' + currentNodePos();
 				switch (property) {
 					case "width": return gcs.spacingX;
@@ -2104,7 +2119,17 @@ class MultiAnimBuilder {
 
 	function loadTileSource(tileSource):h2d.Tile {
 		final tile = switch tileSource {
-			case TSFile(filename): resourceLoader.loadTile(resolveAsString(filename));
+			case TSFile(filename):
+				final resolved = resolveAsString(filename);
+				if (resolved == null || resolved.length == 0) {
+					if (incrementalMode) {
+						if (incrementalFallbackTile == null)
+							incrementalFallbackTile = h2d.Tile.fromColor(0x00000000, 1, 1, 0.0);
+						incrementalFallbackTile.clone();
+					} else
+						throw 'TSFile: empty filename' + currentNodePos();
+				} else
+					resourceLoader.loadTile(resolved);
 			case TSSheet(sheet, name): loadTileImpl(resolveAsString(sheet), resolveAsString(name)).tile;
 			case TSSheetWithIndex(sheet, name, index): loadTileImpl(resolveAsString(sheet), resolveAsString(name), resolveAsInteger(index)).tile;
 			case TSGenerated(type):
@@ -2145,6 +2170,68 @@ class MultiAnimBuilder {
 		final t = new HtmlText(font);
 		t.loadFont = (name) -> resourceLoader.loadFont(name);
 		return t;
+	}
+
+	function applyAutoFit(t:h2d.Text, textDef:TextDef, node:Node):Void {
+		final autoFitFonts = textDef.autoFitFonts;
+		final autoFitMode = textDef.autoFitMode;
+		if (autoFitFonts == null || autoFitMode == null) return;
+
+		final scaleAdjust = if (node.scale != null) resolveAsNumber(node.scale) else 1.0;
+
+		// Determine fit constraints
+		var fitWidth:Null<Float> = null;
+		var fitHeight:Null<Float> = null;
+		switch autoFitMode {
+			case AFWidth | AFFillWidth:
+				fitWidth = if (t.maxWidth != null) t.maxWidth else null;
+			case AFBox(w, h) | AFFillBox(w, h):
+				fitWidth = resolveAsNumber(w) / scaleAdjust;
+				fitHeight = resolveAsNumber(h) / scaleAdjust;
+		}
+		if (fitWidth == null) return;
+
+		final isFill = switch autoFitMode {
+			case AFFillWidth | AFFillBox(_, _): true;
+			default: false;
+		};
+
+		// Build full font candidate list: primary font + fallback fonts
+		var allFonts = new Array<h2d.Font>();
+		allFonts.push(t.font);
+		for (fontRef in autoFitFonts) {
+			allFonts.push(resourceLoader.loadFont(resolveAsString(fontRef)));
+		}
+
+		if (isFill) {
+			// Best-fit: try all fonts, pick largest that fits
+			var bestFont:Null<h2d.Font> = null;
+			var bestWidth:Float = -1;
+			for (font in allFonts) {
+				t.font = font;
+				if (textFits(t, fitWidth, fitHeight)) {
+					if (t.textWidth > bestWidth) {
+						bestWidth = t.textWidth;
+						bestFont = font;
+					}
+				}
+			}
+			t.font = if (bestFont != null) bestFont else allFonts[allFonts.length - 1];
+		} else {
+			// First-fit: use primary font if it fits, otherwise try fallbacks in order
+			if (!textFits(t, fitWidth, fitHeight)) {
+				for (fontRef in autoFitFonts) {
+					t.font = resourceLoader.loadFont(resolveAsString(fontRef));
+					if (textFits(t, fitWidth, fitHeight)) break;
+				}
+			}
+		}
+	}
+
+	static function textFits(t:h2d.Text, fitWidth:Null<Float>, fitHeight:Null<Float>):Bool {
+		if (fitWidth != null && t.textWidth > fitWidth) return false;
+		if (fitHeight != null && t.textHeight > fitHeight) return false;
+		return true;
 	}
 
 	function matchSingleCondition(condValue:ConditionalValues, currentValue:ResolvedIndexParameters):Bool {
@@ -2458,9 +2545,12 @@ class MultiAnimBuilder {
 					final t = switch builtObject { case HeapsText(t): t; default: null; };
 					if (t != null) {
 						final textDefCapture = textDef;
+						final nodeCapture = node;
 						ctx.trackExpression(() -> {
 							t.text = resolveAsString(textDefCapture.text);
 							t.textColor = resolveAsColorInteger(textDefCapture.color);
+							if (textDefCapture.autoFitFonts != null)
+								applyAutoFit(t, textDefCapture, nodeCapture);
 						}, textRefs);
 					}
 				}
@@ -2486,6 +2576,7 @@ class MultiAnimBuilder {
 					final t = switch builtObject { case HeapsText(t): t; default: null; };
 					if (t != null) {
 						final textDefCapture = textDef;
+						final nodeCapture = node;
 						ctx.trackExpression(() -> {
 							final rawText = resolveAsString(textDefCapture.text);
 							t.text = TextMarkupConverter.convert(rawText);
@@ -2507,6 +2598,8 @@ class MultiAnimBuilder {
 								ht.loadImage = (url) -> cast imageMap.get(url);
 								ht.text = ht.text; // force re-render after image map change
 							}
+							if (textDefCapture.autoFitFonts != null)
+								applyAutoFit(t, textDefCapture, nodeCapture);
 						}, textRefs);
 					}
 				}
@@ -3459,6 +3552,8 @@ class MultiAnimBuilder {
 				}
 				t.textColor = resolveAsColorInteger(textDef.color);
 				t.text = resolveAsString(textDef.text);
+				if (textDef.autoFitFonts != null)
+					applyAutoFit(t, textDef, node);
 				HeapsText(t);
 			case RICHTEXT(textDef):
 				final font = resourceLoader.loadFont(resolveAsString(textDef.fontName));
@@ -3527,6 +3622,8 @@ class MultiAnimBuilder {
 				ht.textColor = resolveAsColorInteger(textDef.color);
 				final rawText = resolveAsString(textDef.text);
 				ht.text = TextMarkupConverter.convert(rawText);
+				if (textDef.autoFitFonts != null)
+					applyAutoFit(ht, textDef, node);
 
 				HeapsText(ht);
 			// case HTMLTEXT(fontname, textRef, color, align, textAlignWidth):
@@ -3589,9 +3686,25 @@ class MultiAnimBuilder {
 									var res = factoryMethod(settings);
 									// trace('FACTORY', settings, res, type, source);
 									res;
+								case PVComponent(factoryMethod, _):
+									factoryMethod(settings);
 							}
 						}
 				}
+				#if MULTIANIM_DEV
+				// Track callback-provided objects for hot reload reuse
+				if (callbackResultH2dObject != null) {
+					switch source {
+						case PRSCallback(callbackName):
+							devPlaceholderCapture.push({name: resolveAsString(callbackName), index: null, object: callbackResultH2dObject});
+						case PRSCallbackWithIndex(callbackName, index):
+							devPlaceholderCapture.push({name: resolveAsString(callbackName), index: resolveAsInteger(index), object: callbackResultH2dObject});
+						case PRSBuilderParameterSource(callbackName):
+							devPlaceholderCapture.push({name: resolveAsString(callbackName), index: null, object: callbackResultH2dObject});
+					}
+				}
+				#end
+
 				if (callbackResultH2dObject == null) {
 					switch type {
 						case PHTileSource(source):
@@ -5667,7 +5780,11 @@ class MultiAnimBuilder {
 		}
 
 		#if MULTIANIM_DEV
-		if (incremental && retVal.incrementalContext != null && retVal.reloadable) {
+		// Store builderParams and captured placeholders for hot reload
+		retVal.devBuilderParams = builderParams;
+		retVal.devCapturedPlaceholders = devPlaceholderCapture;
+		devPlaceholderCapture = [];
+		if (retVal.reloadable) {
 			if (Std.isOfType(resourceLoader, bh.base.ResourceLoader.CachingResourceLoader)) {
 				final cachingLoader = cast(resourceLoader, bh.base.ResourceLoader.CachingResourceLoader);
 				if (cachingLoader.hotReloadRegistry != null) {

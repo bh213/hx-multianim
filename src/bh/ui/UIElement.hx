@@ -139,7 +139,7 @@ interface UIElementListValue {
  */
 interface Controllable {
 	public var captureEvents(default, null):CaptureEventsControl;
-	public var outsideClick(default, null):OutsideClickControl;
+	public function trackOutsideClick(enabled:Bool):Void;
 	public function pushEvent(event:UIScreenEvent, source:UIElement):Void;
 }
 
@@ -150,13 +150,6 @@ interface CaptureEventsControl {
 	function startCapture():Void;
 	function stopCapture():Void;
 	function isCapturing():Bool;
-}
-
-/**
- * Interface for tracking clicks outside a UI element (e.g., closing popups).
- */
-interface OutsideClickControl {
-	function trackOutsideClick(enabled:Bool):Void;
 }
 
 // ---- events ----
@@ -223,7 +216,7 @@ enum UIScreenEvent {
 	UIClickItem(index:Int, items:Array<UIElementListItem>);
 	UIKeyPress(keyCode:Int, release:Bool);
 	UIOnControllerEvent(event:ControllerEvents);
-	UIEntering;
+	UIEntering(?data:Dynamic);
 	UILeaving;
 	UIClickOutside;
 	UIInteractiveEvent(event:UIScreenEvent, id:String, metadata:BuilderResolvedSettings);
