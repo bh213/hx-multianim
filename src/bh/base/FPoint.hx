@@ -19,7 +19,7 @@ class FPoint {
 		
 	}
 
-	#if !macro
+	#if (!macro && !noheaps)
 	public static inline function fromh2dPoint(p:h2d.col.Point) {
 		return new FPoint(p.x, p.y);
 	}

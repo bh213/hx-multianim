@@ -1,12 +1,12 @@
 package bh.base;
 import bh.base.GridDirection;
-#if !macro
+#if (!macro && !noheaps)
 import h2d.col.Point;
 #end
 
 // Macro-safe Point substitute: matches h2d.col.Point's public API (x, y, new)
 // so HexLayout compiles in macro context without h2d.
-#if macro
+#if (macro || noheaps)
 private class Point {
 	public var x:Float;
 	public var y:Float;

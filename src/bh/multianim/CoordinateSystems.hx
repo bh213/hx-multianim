@@ -110,7 +110,7 @@ class HexCoordinateSystemHelper {
 	}
 
 	public static function resolveHexPixel(system:HexCoordinateSystem, x:Float, y:Float):FPoint {
-		#if !macro
+		#if (!macro && !noheaps)
 		final hex = system.hexLayout.pixelToHex(new h2d.col.Point(x, y)).round();
 		final pos = system.hexLayout.hexToPixel(hex);
 		return returnPosition(pos.x, pos.y);

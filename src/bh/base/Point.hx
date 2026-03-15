@@ -16,7 +16,7 @@ class Point {
 		return this;
 	}
 
-	#if !macro
+	#if (!macro && !noheaps)
 	public inline function toh2dPoint() {
 		return new h2d.col.IPoint(x, y);
 	}
