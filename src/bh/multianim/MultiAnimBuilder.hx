@@ -307,6 +307,7 @@ class IncrementalUpdateContext {
 	public function getBuilderParams():BuilderParameters {
 		return builderParams;
 	}
+
 	#end
 
 	public function trackConditional(object:h2d.Object, node:Node):Void {
@@ -885,6 +886,11 @@ class BuilderResult {
 	public var reloadable:Bool = true;
 	public var reloadHandle:Null<bh.multianim.dev.HotReload.ReloadableHandle> = null;
 	public var onReload:Null<(BuilderResult, bh.multianim.dev.HotReload.ReloadReport) -> Void> = null;
+	// Stored for hot reload: allows rebuilding with same callback/placeholderObjects
+	// even when original build was not incremental.
+	public var devBuilderParams:Null<BuilderParameters> = null;
+	// Captured placeholder objects for hot reload reuse
+	public var devCapturedPlaceholders:Array<{name:String, index:Null<Int>, object:h2d.Object}> = [];
 
 	// Adopt internals from another result, keeping this instance as the stable reference.
 	// The scene graph object is swapped via SceneSwapper (caller responsibility).
@@ -904,6 +910,8 @@ class BuilderResult {
 		this.dynamicRefs = other.dynamicRefs;
 		this.incrementalContext = other.incrementalContext;
 		this.htmlTextsWithLinks = other.htmlTextsWithLinks;
+		this.devBuilderParams = other.devBuilderParams;
+		this.devCapturedPlaceholders = other.devCapturedPlaceholders;
 		// Re-inject TweenManager into new incremental context
 		if (prevTweenManager != null && this.incrementalContext != null)
 			this.incrementalContext.setTweenManager(prevTweenManager);
@@ -1121,6 +1129,9 @@ class MultiAnimBuilder {
 	var incrementalContext:Null<IncrementalUpdateContext> = null;
 	/** When set, automatically injected into IncrementalUpdateContext for transition support. */
 	public var tweenManager:Null<TweenManager> = null;
+	#if MULTIANIM_DEV
+	var devPlaceholderCapture:Array<{name:String, index:Null<Int>, object:h2d.Object}> = [];
+	#end
 
 	/** Returns position string for error messages when MULTIANIM_TRACE is enabled */
 	inline function currentNodePos():String {
@@ -3680,6 +3691,20 @@ class MultiAnimBuilder {
 							}
 						}
 				}
+				#if MULTIANIM_DEV
+				// Track callback-provided objects for hot reload reuse
+				if (callbackResultH2dObject != null) {
+					switch source {
+						case PRSCallback(callbackName):
+							devPlaceholderCapture.push({name: resolveAsString(callbackName), index: null, object: callbackResultH2dObject});
+						case PRSCallbackWithIndex(callbackName, index):
+							devPlaceholderCapture.push({name: resolveAsString(callbackName), index: resolveAsInteger(index), object: callbackResultH2dObject});
+						case PRSBuilderParameterSource(callbackName):
+							devPlaceholderCapture.push({name: resolveAsString(callbackName), index: null, object: callbackResultH2dObject});
+					}
+				}
+				#end
+
 				if (callbackResultH2dObject == null) {
 					switch type {
 						case PHTileSource(source):
@@ -5755,6 +5780,10 @@ class MultiAnimBuilder {
 		}
 
 		#if MULTIANIM_DEV
+		// Store builderParams and captured placeholders for hot reload
+		retVal.devBuilderParams = builderParams;
+		retVal.devCapturedPlaceholders = devPlaceholderCapture;
+		devPlaceholderCapture = [];
 		if (retVal.reloadable) {
 			if (Std.isOfType(resourceLoader, bh.base.ResourceLoader.CachingResourceLoader)) {
 				final cachingLoader = cast(resourceLoader, bh.base.ResourceLoader.CachingResourceLoader);

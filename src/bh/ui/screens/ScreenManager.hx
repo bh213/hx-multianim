@@ -1271,14 +1271,21 @@ class ScreenManager {
 				bh.multianim.dev.HotReload.ReloadableRegistry.removeSentinel(oldResult.object);
 				hotReloadRegistry.unregister(handle);
 
-				// Try rebuild with new builder, preserving original builderParams
+				// Try rebuild with new builder, preserving original builderParams.
+				// Wrap params to reuse captured placeholder objects instead of re-invoking callbacks.
+				// Use devBuilderParams (stored on result) — works even for non-incremental builds.
 				var newResult:BuilderResult;
-				final oldBuilderParams = oldResult.incrementalContext != null ? oldResult.incrementalContext.getBuilderParams() : null;
+				final oldBuilderParams = oldResult.devBuilderParams;
+				final capturedPlaceholders = oldResult.devCapturedPlaceholders;
+				final reloadBuilderParams = if (oldBuilderParams != null && capturedPlaceholders != null && capturedPlaceholders.length > 0)
+					bh.multianim.dev.HotReload.PlaceholderReuser.wrapBuilderParams(oldBuilderParams, capturedPlaceholders);
+				else
+					oldBuilderParams;
 				try {
 					newResult = newBuilder.buildWithParameters(
 						handle.programmableName,
 						bh.multianim.dev.HotReload.StateRestorer.snapshotToInputMap(snapshot.params),
-						oldBuilderParams,
+						reloadBuilderParams,
 						null,
 						true
 					);

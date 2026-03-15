@@ -78,6 +78,7 @@
   - Ready signal file: writes JSON with port/timestamp to `HX_DEV_READY_FILE` env var path on startup
   - Zero overhead in release builds (all code guarded by `#if MULTIANIM_DEV`)
 - **ResourceLoader.getCacheKeys()** — returns cached resource names by category (sheets, fonts, .manim, .anim files)
+- **Hot reload: placeholder object reuse** — `PlaceholderReuser` wraps `BuilderParameters` during Strategy B (in-place) reload to reuse previously-captured placeholder objects (grids, card hands, etc.) instead of re-invoking callbacks/factories. Captured objects are safely detached via `safeDetach()` (bypasses Heaps' `onRemove()` cascade) and position-reset before reuse. New placeholders added in the updated `.manim` fall through to the original callback/factory. `BuilderResult` stores `devBuilderParams` and `devCapturedPlaceholders` for reload, transferred via `adoptFrom()`.
 - **ReloadableRegistry.getAllHandles()** — returns all live reloadable handles across all source paths
 - **`.mcp.json`** — project-level MCP server configuration for Claude Code
 - **PanelHelper auto-wiring** — `createPanelHelper(builder, ?defaults)` on `UIScreenBase` creates and registers a `UIPanelHelper` with automatic outside-click handling. `handleOutsideClick()` runs in `dispatchScreenEvent()`, `checkPendingClose()` runs in `update()` — no manual boilerplate needed. Also: `registerPanelHelper()` / `unregisterPanelHelper()` for existing helpers. `clear()` unregisters all.
@@ -114,6 +115,7 @@
 - **`modalDialogWithTransition()` parameter order** — signature changed from `modalDialogWithTransition(dialog, caller, name, ?transition)` to `modalDialogWithTransition(dialog, caller, name, ?data, ?transition)`.
 
 ### Fixed
+- **SceneSwapper: onRemove() cascade during child swap** — `replaceChildren()` now uses `addChild()` for reparenting (auto-detaches from old parent) instead of `remove()` + `addChild()`, which triggered Heaps' `onRemove()` cascade and destroyed `h2d.Graphics` content
 - **TSFile empty filename in incremental mode** — returns transparent fallback tile instead of throwing when `bitmap($param)` has an empty/null filename during incremental updates
 - **UIMultiAnimGrid: hitTestRect Y gap uses wrong stride** — non-square cells (e.g. 60×30) used X stride for Y gap check, causing false hits in Y gaps
 - **UIMultiAnimGrid: hitTestRect rejects negative coordinates** — removed early return for negative coords; `Math.floor` handles them correctly
