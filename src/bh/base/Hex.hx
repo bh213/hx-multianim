@@ -127,6 +127,10 @@ class Hex
         return new Hex(0,0,0);
     }
 
+    inline public static function fromAxial(q:Int, r:Int) {
+        return new Hex(q, r, -q - r);
+    }
+
     inline public static function fromKey(key:HexKey):Hex {
         switch key {
             case HEX(q, r, s): return new Hex(q,r,s);
