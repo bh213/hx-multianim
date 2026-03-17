@@ -141,6 +141,7 @@
 - **UIPanelHelper: named panel fade-out tween not cancelled on re-open** — `closeNamed()` didn't track fade-out tweens; re-opening the same slot during fade-out left orphaned tweens running
 - **UITooltipHelper: hide() doesn't reset hover timer** — calling `hide()` left pending hover state intact, causing `update()` to re-show the tooltip after the delay elapsed
 - **UICardHandHelper: discardCard missing CardHoverEnd** — discarding a hovered card cleared `hoveredEntry` without emitting `CardHoverEnd`, leaving listeners in a stale hover state
+- **DevBridge: screenshot captures at engine resolution** — `handleScreenshot` now uses `engine.width`/`engine.height` instead of `s2d.width`/`s2d.height`, fixing `h2d.Mask` scissor calculation mismatches when scene and engine dimensions differ (e.g. AutoZoom integer scaling)
 
 ### Changed
 - **UIDefaultController** — merged `DefaultUIController` into `UIControllerBase` and renamed to `UIDefaultController`. Made `getEventElement()` non-abstract with the default capture-or-hit-test implementation. One fewer class to understand; no behavioral change.

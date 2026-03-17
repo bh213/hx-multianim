@@ -36,7 +36,9 @@
       "mcp__playwright__browser_close",
       "mcp__playwright__browser_click",
       "mcp__playwright__browser_snapshot",
-      "mcp__hx-multianim__get_errors"
+      "mcp__hx-multianim__get_errors",
+      "mcp__hx-multianim__get_screen_state",
+      "mcp__hx-multianim__get_traces"
     ],
     "additionalDirectories": [
       "../"

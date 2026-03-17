@@ -352,14 +352,17 @@ class DevBridge {
 	}
 
 	function handleScreenshot(params:Dynamic):Dynamic {
-		var engine = screenManager.app.engine;
 		var s2d = screenManager.app.s2d;
-		var width:Int = params.width != null ? Std.int(params.width) : s2d.width;
-		var height:Int = params.height != null ? Std.int(params.height) : s2d.height;
 
 		// When paused, freeze elapsed time so render doesn't advance particles/animations
 		if (paused)
 			s2d.setElapsedTime(0);
+
+		// Capture at the engine's native resolution (physical window size) so that
+		// h2d.Mask scissor calculations (which use engine.width/height) stay correct.
+		var engine = screenManager.app.engine;
+		var width:Int = engine.width;
+		var height:Int = engine.height;
 
 		var renderTexture = new h3d.mat.Texture(width, height, [Target]);
 		engine.pushTarget(renderTexture);
