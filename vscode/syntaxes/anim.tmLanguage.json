@@ -1,0 +1,198 @@
+{
+	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+	"name": "Anim",
+	"patterns": [
+		{
+			"include": "#comments"
+		},
+		{
+			"include": "#strings"
+		},
+		{
+			"include": "#conditionals"
+		},
+		{
+			"include": "#numbers"
+		},
+		{
+			"include": "#operators"
+		},
+		{
+			"include": "#keywords"
+		},
+		{
+			"include": "#brackets"
+		}
+	],
+	"repository": {
+		"comments": {
+			"patterns": [
+				{
+					"name": "comment.line.double-slash.anim",
+					"match": "//.*$"
+				},
+				{
+					"name": "comment.block.anim",
+					"begin": "/\\*",
+					"end": "\\*/"
+				}
+			]
+		},
+		"conditionals": {
+			"patterns": [
+				{
+					"begin": "(@if|@ifStrict|@)\\(",
+					"beginCaptures": {
+						"1": {
+							"name": "keyword.control.conditional.anim"
+						}
+					},
+					"end": "\\)",
+					"endCaptures": {
+						"0": {
+							"name": "keyword.control.conditional.anim"
+						}
+					},
+					"name": "meta.condition-block.anim",
+					"patterns": [
+						{
+							"match": "=>",
+							"name": "keyword.operator.arrow.anim"
+						},
+						{
+							"match": "(==|!=|<=|>=|<|>)",
+							"name": "keyword.operator.comparison.anim"
+						},
+						{
+							"match": "!",
+							"name": "keyword.operator.negation.anim"
+						},
+						{
+							"match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b",
+							"name": "variable.parameter.anim"
+						},
+						{
+							"include": "#numbers"
+						},
+						{
+							"match": ",",
+							"name": "punctuation.separator.comma.anim"
+						}
+					]
+				},
+				{
+					"match": "@(else|default|final)\\b",
+					"name": "keyword.control.conditional.anim"
+				}
+			]
+		},
+		"numbers": {
+			"patterns": [
+				{
+					"name": "constant.numeric.hex.anim",
+					"match": "0x[0-9A-Fa-f]+"
+				},
+				{
+					"name": "constant.numeric.float.anim",
+					"match": "-?\\d*\\.\\d+"
+				},
+				{
+					"name": "constant.numeric.integer.anim",
+					"match": "-?\\d+"
+				}
+			]
+		},
+		"operators": {
+			"patterns": [
+				{
+					"name": "keyword.operator.arrow.anim",
+					"match": "=>"
+				},
+				{
+					"name": "keyword.operator.range.anim",
+					"match": "\\.\\."
+				}
+			]
+		},
+		"keywords": {
+			"patterns": [
+				{
+					"name": "entity.name.class.anim",
+					"match": "\\b(animation|metadata)\\b"
+				},
+				{
+					"name": "keyword.control.anim",
+					"match": "\\b(loop|goto|command|untilCommand)\\b"
+				},
+				{
+					"name": "keyword.other.anim",
+					"match": "\\b(sheet|states|allowedExtraPoints|center|name|fps|playlist|frames|duration|file|event|extrapoints|hit|random|trigger|anim|filters)\\b"
+				},
+				{
+					"name": "constant.language.anim",
+					"match": "\\b(true|false|yes|no)\\b"
+				}
+			]
+		},
+		"strings": {
+			"patterns": [
+				{
+					"name": "string.quoted.double.anim",
+					"begin": "\"",
+					"end": "\"",
+					"patterns": [
+						{
+							"name": "constant.character.escape.anim",
+							"match": "\\\\."
+						},
+						{
+							"name": "variable.other.interpolated.anim",
+							"match": "\\$\\$[A-Za-z_][A-Za-z0-9_]*\\$\\$"
+						}
+					]
+				}
+			]
+		},
+		"brackets": {
+			"patterns": [
+				{
+					"name": "punctuation.definition.block.begin.anim",
+					"match": "\\{"
+				},
+				{
+					"name": "punctuation.definition.block.end.anim",
+					"match": "\\}"
+				},
+				{
+					"name": "punctuation.definition.parameters.begin.anim",
+					"match": "\\("
+				},
+				{
+					"name": "punctuation.definition.parameters.end.anim",
+					"match": "\\)"
+				},
+				{
+					"name": "punctuation.definition.array.begin.anim",
+					"match": "\\["
+				},
+				{
+					"name": "punctuation.definition.array.end.anim",
+					"match": "\\]"
+				},
+				{
+					"name": "punctuation.separator.comma.anim",
+					"match": ","
+				},
+				{
+					"name": "punctuation.separator.colon.anim",
+					"match": ":"
+				},
+				{
+					"name": "punctuation.terminator.semicolon.anim",
+					"match": ";"
+				}
+			]
+		}
+	},
+	"scopeName": "source.anim"
+}

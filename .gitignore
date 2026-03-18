@@ -7,3 +7,6 @@ test/screenshots/
 test/res/.tmp
 .playwright-mcp/
 
+vscode/node_modules/
+vscode/out/
+vscode/*.vsix

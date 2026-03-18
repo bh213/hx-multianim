@@ -1,0 +1,68 @@
+{
+  "name": "multianim",
+  "displayName": "haxe heaps MultiAnim",
+  "description": "heaps multi animation system — syntax highlighting and language server for .manim and .anim files",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bh213/hx-multianim",
+    "directory": "vscode"
+  },
+  "version": "2.0.0",
+  "engines": {
+    "vscode": "^1.87.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "languages": [
+      {
+        "id": "multianim",
+        "aliases": [
+          "MultiAnim",
+          "manim"
+        ],
+        "extensions": [
+          "manim"
+        ],
+        "configuration": "./language-configuration.json"
+      },
+      {
+        "id": "anim",
+        "extensions": [
+          "anim"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "multianim",
+        "scopeName": "source.multianim",
+        "path": "./syntaxes/multianim.tmLanguage.json"
+      },
+      {
+        "language": "anim",
+        "scopeName": "source.anim",
+        "path": "./syntaxes/anim.tmLanguage.json"
+      }
+    ]
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.87.0",
+    "esbuild": "^0.27.4",
+    "typescript": "^5.3.0"
+  },
+  "scripts": {
+    "compile": "esbuild src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node --sourcemap",
+    "watch": "esbuild src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node --sourcemap --watch",
+    "build-server": "cd .. && haxe lsp/lsp-server.hxml && cp lsp/bin/server.js vscode/server/server.js",
+    "package": "npm run compile && npx @vscode/vsce package --allow-missing-repository"
+  }
+}

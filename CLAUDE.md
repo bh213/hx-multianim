@@ -23,6 +23,8 @@
 | `src/bh/multianim/LayoutAlignRoot.hx` | Base class for codegen instances with aligned layouts |
 | `src/bh/stateanim/AnimParser.hx` | Parser for `.anim` state animation files |
 | `test/` | Test suite |
+| `lsp/` | Language Server Protocol implementation (Haxe→JS) |
+| `vscode/` | VS Code extension (syntax highlighting + LSP client) |
 
 ## Build & Run Commands
 
