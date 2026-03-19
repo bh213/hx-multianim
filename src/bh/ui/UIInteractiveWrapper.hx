@@ -86,6 +86,7 @@ class UIInteractiveWrapper implements UIElement implements StandardUIElementEven
 	}
 
 	public function containsPoint(pos:Point):Bool {
+		if (disabled) return false;
 		switch interactive.multiAnimType {
 			case MAInteractive(width, height, _, _):
 				var local = interactive.globalToLocal(new Point(pos.x, pos.y));

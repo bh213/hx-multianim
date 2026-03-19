@@ -142,6 +142,9 @@
 - **UITooltipHelper: hide() doesn't reset hover timer** — calling `hide()` left pending hover state intact, causing `update()` to re-show the tooltip after the delay elapsed
 - **UICardHandHelper: discardCard missing CardHoverEnd** — discarding a hovered card cleared `hoveredEntry` without emitting `CardHoverEnd`, leaving listeners in a stale hover state
 - **DevBridge: screenshot captures at engine resolution** — `handleScreenshot` now uses `engine.width`/`engine.height` instead of `s2d.width`/`s2d.height`, fixing `h2d.Mask` scissor calculation mismatches when scene and engine dimensions differ (e.g. AutoZoom integer scaling)
+- **ScreenManager: Dialog exit duplicates activeScreens** — closing a dialog unconditionally re-added underlying screens (master, single) that were never removed, causing duplicate `activeScreens` entries, spurious `UIEntering` events, and accumulating duplicates on each open/close cycle. Now checks `activeScreens.contains()` before re-adding, uses `overrideActiveScreenControllers` to restore correct controller list, and cleans up stale screens from `previousMode` when transitioning to a different mode. Also fixes Dialog→None leaving orphaned underlying screens
+- **UIInteractiveWrapper: containsPoint ignores disabled state** — `containsPoint()` now returns false when the interactive is disabled, preventing hit-test matches on disabled interactives (e.g. card hand targeting, grid cell picking)
+- **UIMultiAnimButton: containsPoint ignores disabled state** — same fix as UIInteractiveWrapper for button `containsPoint()`
 
 ### Changed
 - **UIDefaultController** — merged `DefaultUIController` into `UIControllerBase` and renamed to `UIDefaultController`. Made `getEventElement()` non-abstract with the default capture-or-hit-test implementation. One fewer class to understand; no behavioral change.

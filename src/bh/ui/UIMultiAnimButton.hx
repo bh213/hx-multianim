@@ -53,6 +53,7 @@ class UIStandardMultiAnimButton implements UIElement implements UIElementDisabla
 	}
 
 	public function containsPoint(pos:Point):Bool {
+		if (disabled) return false;
 		return getObject().getBounds().contains(pos);
 	}
 

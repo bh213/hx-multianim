@@ -537,13 +537,46 @@ class ScreenManager {
 				switch newScreenMode {
 					case None:
 						removedScreens = [oldDialog];
+						// Also remove underlying screens that were kept in scene while dialog was open
+						switch previousMode {
+							case Single(single): removedScreens.push(single);
+							case MasterAndSingle(master, single): removedScreens.push(master); removedScreens.push(single);
+							default:
+						}
 
 					case Single(single):
 						removedScreens = [oldDialog];
-						addedScreens = [single => layerContent];
+						if (!activeScreens.contains(single))
+							addedScreens = [single => layerContent];
+						else
+							overrideActiveScreenControllers = [single];
+						// Remove screens from previousMode that aren't part of newScreenMode
+						switch previousMode {
+							case MasterAndSingle(master, _oldSingle):
+								if (master != single) removedScreens.push(master);
+								if (_oldSingle != single) removedScreens.push(_oldSingle);
+							case Single(_oldSingle):
+								if (_oldSingle != single) removedScreens.push(_oldSingle);
+							default:
+						}
 					case MasterAndSingle(master, single):
 						removedScreens = [oldDialog];
-						addedScreens = [single => layerContent, master => layerMaster];
+						addedScreens = [];
+						if (!activeScreens.contains(single))
+							addedScreens.set(single, layerContent);
+						if (!activeScreens.contains(master))
+							addedScreens.set(master, layerMaster);
+						// Restore controllers for screens already in scene
+						overrideActiveScreenControllers = [single, master];
+						// Remove screens from previousMode that aren't part of newScreenMode
+						switch previousMode {
+							case MasterAndSingle(_oldMaster, _oldSingle):
+								if (_oldMaster != master && _oldMaster != single) removedScreens.push(_oldMaster);
+								if (_oldSingle != single && _oldSingle != master) removedScreens.push(_oldSingle);
+							case Single(_oldSingle):
+								if (_oldSingle != single && _oldSingle != master) removedScreens.push(_oldSingle);
+							default:
+						}
 
 					case Dialog(newDialog, newCaller, newPreviousMode, newDialogName):
 						removedScreens = [oldDialog];
