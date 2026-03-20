@@ -114,7 +114,14 @@
 - **`switchTo()` parameter order** — signature changed from `switchTo(screen, ?transition)` to `switchTo(screen, ?data, ?transition)`. Callers passing transitions must add `null` for data or use named-style: `switchTo(screen, null, Fade(0.3))`.
 - **`modalDialogWithTransition()` parameter order** — signature changed from `modalDialogWithTransition(dialog, caller, name, ?transition)` to `modalDialogWithTransition(dialog, caller, name, ?data, ?transition)`.
 
+- **UICardHandHelper: custom animation callbacks** — two new public callback fields for overriding default card animations:
+  - `customPlayAnimation:(cardId, container, fromX, fromY, onDone) -> Bool` — overrides the default discard animation when a card is played via drag-release. Return true to handle the animation, false to fall through to default.
+  - `customDiscardAnimation:(cardId, container, fromX, fromY, onDone) -> Bool` — overrides the default discard animation when `discardCard()` is called via API. Same return convention.
+
+### Changed
+
 ### Fixed
+- **Test window DPI scaling** — test app now forces window to 1280×720 on init, fixing visual test failures on hi-DPI displays where the OS would resize the window after creation
 - **SceneSwapper: onRemove() cascade during child swap** — `replaceChildren()` now uses `addChild()` for reparenting (auto-detaches from old parent) instead of `remove()` + `addChild()`, which triggered Heaps' `onRemove()` cascade and destroyed `h2d.Graphics` content
 - **TSFile empty filename in incremental mode** — returns transparent fallback tile instead of throwing when `bitmap($param)` has an empty/null filename during incremental updates
 - **UIMultiAnimGrid: hitTestRect Y gap uses wrong stride** — non-square cells (e.g. 60×30) used X stride for Y gap check, causing false hits in Y gaps

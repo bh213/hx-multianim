@@ -203,6 +203,19 @@ class UICardHandHelper implements UIHigherOrderComponent {
 	/** Called before a card drag starts. Return false to prevent dragging. */
 	public var canDragCard:Null<(cardId:CardId) -> Bool> = null;
 
+	/** Custom animation override for card PLAY (drag-release that succeeds).
+	 *  When set and returns true, replaces the default discard animation after a card is played.
+	 *  The container is already reparented to dragContainer at (fromX, fromY).
+	 *  You MUST call onDone() when the animation finishes to clean up the container.
+	 *  Return false to fall through to the default discardPath animation. */
+	public var customPlayAnimation:Null<(cardId:CardId, container:h2d.Object, fromX:Float, fromY:Float, onDone:() -> Void) -> Bool> = null;
+
+	/** Custom animation override for card DISCARD via API (end-of-turn, forced discard).
+	 *  When set and returns true, replaces the default discard animation.
+	 *  You MUST call onDone() when the animation finishes to clean up the container.
+	 *  Return false to fall through to the default discardPath animation. */
+	public var customDiscardAnimation:Null<(cardId:CardId, container:h2d.Object, fromX:Float, fromY:Float, onDone:() -> Void) -> Bool> = null;
+
 	public function new(screen:UIComponentHost, builder:MultiAnimBuilder, ?config:CardHandConfig) {
 		this.screen = screen;
 		this.builder = builder;
@@ -351,10 +364,17 @@ class UICardHandHelper implements UIHigherOrderComponent {
 		cards.splice(idx, 1);
 
 		var fromPos = new FPoint(entry.container.x, entry.container.y);
-		animateCardTo(entry, fromPos, discardPilePosition, entry.container.rotation, 0, discardPathName, () -> {
+		if (customDiscardAnimation != null && customDiscardAnimation(cardId, entry.container, fromPos.x, fromPos.y, () -> {
 			entry.container.remove();
 			emitEvent(DiscardAnimComplete(cardId));
-		});
+		})) {
+			// Custom discard animation took over
+		} else {
+			animateCardTo(entry, fromPos, discardPilePosition, entry.container.rotation, 0, discardPathName, () -> {
+				entry.container.remove();
+				emitEvent(DiscardAnimComplete(cardId));
+			});
+		}
 
 		// Rearrange remaining cards
 		var positions = computeLayout(-1);
@@ -1076,9 +1096,15 @@ class UICardHandHelper implements UIHigherOrderComponent {
 			dragContainer.addChild(entry.container);
 
 			var fromPos = new FPoint(entry.container.x, entry.container.y);
-			animateCardTo(entry, fromPos, discardPilePosition, 0, 0, discardPathName, () -> {
+			if (customPlayAnimation != null && customPlayAnimation(cardId, entry.container, fromPos.x, fromPos.y, () -> {
 				entry.container.remove();
-			});
+			})) {
+				// Custom play animation took over
+			} else {
+				animateCardTo(entry, fromPos, discardPilePosition, 0, 0, discardPathName, () -> {
+					entry.container.remove();
+				});
+			}
 			applyLayout(true);
 		} else {
 			// Return to hand

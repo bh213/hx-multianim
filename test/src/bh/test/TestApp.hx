@@ -29,7 +29,11 @@ class TestApp extends hxd.App {
 
 	override function init() {
 		hxd.Res.initLocal();
-		
+
+		// Force window to 1280x720 — on hi-DPI displays, the OS may resize the window
+		// after creation, causing scene dimensions to differ from the -D windowSize define.
+		hxd.Window.getInstance().resize(1280, 720);
+
 		FontManager.registerFont("dd", hxd.Res.fonts.digitaldisco.toFont(), 0, -3);
 		FontManager.registerFont("pixeled6", hxd.Res.fonts.pixeled_6.toFont(), 0, -4);
 		FontManager.registerFont("m3x6", hxd.Res.fonts.m3x6.toFont(), 0, -5);

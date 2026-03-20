@@ -57,6 +57,10 @@ paths {
 
 **Callbacks:** `onCardEvent`, `canPlayCard:(CardId, TargetingResult)->Bool` (veto), `canDragCard:(CardId)->Bool` (veto). `onCardBuilt:(CardId, BuilderResult, h2d.Object)->Void` is set via `CardHandConfig` at construction time (final field, not assignable later) — customize card after build by adding buttons, slots, overlays via `result.getSlot()`, `result.getDynamicRef()`, `result.setParameter()`.
 
+**Custom animation callbacks:** Override default card animations for play and discard:
+- `customPlayAnimation:(cardId, container, fromX, fromY, onDone) -> Bool` — overrides the default discard-path animation when a card is played via drag-release. Container is in `dragContainer` at `(fromX, fromY)`. Return `true` to handle (MUST call `onDone()` when done), `false` to fall through to default.
+- `customDiscardAnimation:(cardId, container, fromX, fromY, onDone) -> Bool` — overrides the default discard-path animation when `discardCard()` is called via API. Same convention.
+
 **Concurrent animations:** Multiple cards can animate simultaneously (draw, discard, rearrange all run in parallel). Cards in `Animating` state skip layout and reject drag, but do NOT block hover/drag of other `InHand` cards. Only one drag at a time (single mouse pointer). No global `HandState` lock — uses per-card `CardState` + `isDragging`/`isTargeting` flags.
 
 **Drag state machine:**
