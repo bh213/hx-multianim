@@ -130,6 +130,7 @@ animation animationName {
 
 - **`docs/manim.md`**: Full language documentation for `.manim` and `.anim` formats, particles, animated paths, UI components.
 - **`docs/manim-reference.md`**: Comprehensive quick-lookup reference of ALL `.manim` elements, properties, and operations. **Always update this file** when adding/changing parser elements, builder features, filters, blend modes, coordinate systems, particle properties, path commands, or any other `.manim` language construct.
+- **`docs/anim-reference.md`**: Quick-lookup reference for the `.anim` state animation format — declarations, conditionals, filters, metadata API, and `AnimationSM` Haxe API. **Always update this file** when adding/changing `.anim` parser features.
 - **`docs/manim-cookbook.md`**: Practical pattern-based guide — buttons, tooltips, sidebars, panels, health bars, inventory grids, drag-drop, card hand, dialogue, skill trees, particles, animated paths, character sheets, status effects, data blocks, and Haxe wiring. **Consult this first** when building new screens or UI features.
 - **Heaps framework**: https://heaps.io/documentation/home.html — Source: https://github.com/heapsIO/heaps
 
