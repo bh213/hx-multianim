@@ -90,6 +90,8 @@
 - Offset suffix: `.offset(x, y)` on any coordinate expression adds a pixel offset (e.g., `layout(name).offset(5, 10)`, `$grid.pos(1, 2).offset(3, 4)`)
 - Context: `$ctx.width`, `$ctx.height`, `$ctx.random(min, max)`, `$ctx.font("name").lineHeight`, `$ctx.font("name").baseLine`
 - Layout: `layout(layoutName [, index])`
+- Extra point (from named stateanim): `$ref.extraPoint("pointName")`, `$ref.extraPoint("pointName", fallback: x, y)`
+- Extra point (from .anim file): `extraPoint("file.anim", "animName", "pointName", "key"=>"value"...)`, with optional `fallback: x, y`
 
 ## Filters
 

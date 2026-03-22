@@ -1,5 +1,15 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- **Extra point coordinate expressions** — query `.anim` extra points as positioning coordinates in `.manim`. Two modes: `$ref.extraPoint("pointName")` (from named stateanim element's current animation) and `extraPoint("file.anim", "animName", "pointName", selectors...)` (direct .anim file query). Optional `fallback: coords` for graceful handling when point not found. `.offset()` suffix supported. Works in both builder and codegen (runtime-resolved).
+- **Extra point `.x`/`.y` extraction** — use `$ref.extraPoint("name").x` and `.y` in expression context (e.g., text interpolation: `'${$ref.extraPoint("fire").x + $OFFSET}'`). Supports arithmetic, fallback args, and works in both builder and codegen.
+- **Named element reference validation** — parser tracks `#name element(...)` declarations within programmable scope. `$name.extraPoint()` references are validated at parse time (unknown/forward references rejected with clear errors).
+
+### Fixed
+- **Codegen `WITH_OFFSET` for non-static bases** — `generatePositionExpr` now correctly handles `.offset()` on non-static coordinate expressions (e.g. `$ref.extraPoint(...).offset(x, y)`). Previously returned null when the base couldn't be resolved at compile time, causing elements to be positioned at (0, 0).
+
 ## [1.0.0-rc.2] - 2026-03-12
 
 ### Added

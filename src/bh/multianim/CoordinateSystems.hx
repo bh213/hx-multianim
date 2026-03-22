@@ -30,6 +30,9 @@ enum Coordinates {
 	SELECTED_HEX_CELL_EDGE(cell:Coordinates, direction:ReferenceableValue, factor:ReferenceableValue);
 	NAMED_COORD(name:String, coord:Coordinates);
 	WITH_OFFSET(base:Coordinates, offsetX:ReferenceableValue, offsetY:ReferenceableValue);
+	EXTRA_POINT_REF(elementName:String, pointName:String, fallback:Null<Coordinates>);
+	EXTRA_POINT_ANIM(filename:String, animName:String, pointName:String, selector:Map<String, ReferenceableValue>,
+		fallback:Null<Coordinates>);
 }
 
 @:using(bh.multianim.CoordinateSystems.HexCoordinateSystemHelper)

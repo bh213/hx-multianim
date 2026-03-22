@@ -1102,6 +1102,7 @@ private typedef StoredBuilderState = {
 	currentNode:Null<Node>,
 	incrementalMode:Bool,
 	incrementalContext:Null<IncrementalUpdateContext>,
+	currentInternalResults:Null<InternalBuilderResults>,
 }
 
 @:nullSafety
@@ -1127,6 +1128,7 @@ class MultiAnimBuilder {
 	var inlineAtlases:Map<String, IAtlas2> = [];
 	var incrementalMode:Bool = false;
 	var incrementalContext:Null<IncrementalUpdateContext> = null;
+	var currentInternalResults:Null<InternalBuilderResults> = null;
 	/** When set, automatically injected into IncrementalUpdateContext for transition support. */
 	public var tweenManager:Null<TweenManager> = null;
 	#if MULTIANIM_DEV
@@ -1166,6 +1168,7 @@ class MultiAnimBuilder {
 		this.currentNode = state.currentNode;
 		this.incrementalMode = state.incrementalMode;
 		this.incrementalContext = state.incrementalContext;
+		this.currentInternalResults = state.currentInternalResults;
 	}
 
 	function pushBuilderState() {
@@ -1175,6 +1178,7 @@ class MultiAnimBuilder {
 			currentNode: this.currentNode,
 			incrementalMode: this.incrementalMode,
 			incrementalContext: this.incrementalContext,
+			currentInternalResults: this.currentInternalResults,
 		});
 		this.indexedParams = [];
 		this.builderParams = {};
@@ -1381,10 +1385,17 @@ class MultiAnimBuilder {
 		}
 	}
 
-	/** Resolves a coordinate method call ($hex.corner(), $hex.edge(), $hex.cube(), $grid.pos(), etc.) to an FPoint. */
+	/** Resolves a coordinate method call ($hex.corner(), $hex.edge(), $hex.cube(), $grid.pos(), $ref.extraPoint(), etc.) to an FPoint. */
 	function resolveRVMethodCallToPoint(ref:String, method:String, args:Array<ReferenceableValue>):FPoint {
 		final node = currentNode;
 		if (node == null) throw 'currentNode is null in resolveRVMethodCallToPoint' + currentNodePos();
+		// $ref.extraPoint("pointName" [, fallbackX, fallbackY]) — resolve extra point from named stateanim element
+		if (method == "extraPoint") {
+			if (args.length < 1) throw '$$$ref.extraPoint() requires at least 1 argument (pointName)' + currentNodePos();
+			final pointName = resolveAsString(args[0]);
+			final fallback = if (args.length >= 3) OFFSET(args[1], args[2]) else null;
+			return resolveExtraPointRef(ref, pointName, fallback, null, null);
+		}
 		final namedCS = if (ref != "grid" && ref != "ctx.grid" && ref != "hex" && ref != "ctx.hex") MultiAnimParser.getNamedCoordinateSystem(ref, node) else null;
 		final isNamedGrid = switch (namedCS) { case NamedGrid(_): true; default: false; };
 		// Grid methods
@@ -2840,8 +2851,47 @@ class MultiAnimBuilder {
 			case WITH_OFFSET(base, offsetX, offsetY):
 				final basePt = calculatePosition(base, gridCoordinateSystem, hexCoordinateSystem);
 				returnPosition(basePt.x + resolveAsNumber(offsetX), basePt.y + resolveAsNumber(offsetY));
+			case EXTRA_POINT_REF(elementName, pointName, fallback):
+				resolveExtraPointRef(elementName, pointName, fallback, gridCoordinateSystem, hexCoordinateSystem);
+			case EXTRA_POINT_ANIM(filename, animName, pointName, selectorRefs, fallback):
+				resolveExtraPointAnim(filename, animName, pointName, selectorRefs, fallback, gridCoordinateSystem, hexCoordinateSystem);
 		}
 		return pos;
+	}
+
+	function resolveExtraPointRef(elementName:String, pointName:String, fallback:Null<Coordinates>,
+			gridCoordinateSystem:Null<GridCoordinateSystem>, hexCoordinateSystem:Null<HexCoordinateSystem>):FPoint {
+		if (currentInternalResults == null)
+			throw 'extraPoint reference $$${elementName}.extraPoint("$pointName"): no build context available' + currentNodePos();
+		final named = currentInternalResults.names.get(elementName);
+		if (named == null || named.length == 0)
+			throw 'extraPoint reference $$${elementName}.extraPoint("$pointName"): element "$elementName" not found. '
+				+ 'Ensure it is defined before this element' + currentNodePos();
+		final animSM = switch named[0].object {
+			case StateAnim(a): a;
+			default: throw 'extraPoint reference $$${elementName}.extraPoint("$pointName"): "$elementName" is not a stateanim element' + currentNodePos();
+		}
+		final pt = animSM.getExtraPoint(pointName);
+		if (pt != null)
+			return new FPoint(pt.x, pt.y);
+		if (fallback != null)
+			return calculatePosition(fallback, gridCoordinateSystem, hexCoordinateSystem);
+		throw 'extraPoint $$${elementName}.extraPoint("$pointName"): point "$pointName" not found in current animation '
+			+ '"${animSM.current != null ? animSM.current.name : "(none)"}"' + currentNodePos();
+	}
+
+	function resolveExtraPointAnim(filename:String, animName:String, pointName:String,
+			selectorRefs:Map<String, ReferenceableValue>, fallback:Null<Coordinates>,
+			gridCoordinateSystem:Null<GridCoordinateSystem>, hexCoordinateSystem:Null<HexCoordinateSystem>):FPoint {
+		final selector:Map<String, String> = [for (k => v in selectorRefs) k => resolveAsString(v)];
+		final animSM = resourceLoader.createAnimSM(filename, selector);
+		animSM.play(animName);
+		final pt = animSM.getExtraPoint(pointName);
+		if (pt != null)
+			return new FPoint(pt.x, pt.y);
+		if (fallback != null)
+			return calculatePosition(fallback, gridCoordinateSystem, hexCoordinateSystem);
+		throw 'extraPoint("$filename", "$animName", "$pointName"): point "$pointName" not found' + currentNodePos();
 	}
 
 	function resolveToHex(cell:Coordinates, hexCoordinateSystem:HexCoordinateSystem):bh.base.Hex {
@@ -3385,6 +3435,7 @@ class MultiAnimBuilder {
 		if (!nodeVisible && !incrementalMode)
 			return null;
 		this.currentNode = node;
+		this.currentInternalResults = internalResults;
 		var skipChildren = false;
 		var layersParent:Null<h2d.Layers> = null;
 

@@ -3537,4 +3537,92 @@ class ParserErrorTest extends utest.Test {
 			Assert.notNull(result, 'slide($dir) should parse');
 		}
 	}
+
+	// ===== Named element reference validation tests =====
+
+	@Test
+	public function testNamedElementExtraPointRefParses() {
+		var success = parseExpectingSuccess("
+			#test programmable() {
+				#player stateanim(\"marine.anim\", \"idle\", direction=>\"l\"): 100, 200
+				bitmap(generated(color(5, 5, #FF0000))): $player.extraPoint(\"targeting\")
+			}
+		");
+		Assert.isTrue(success, "Named element extraPoint ref should parse");
+	}
+
+	@Test
+	public function testNamedElementExtraPointXYExtraction() {
+		var success = parseExpectingSuccess("
+			#test programmable() {
+				#player stateanim(\"marine.anim\", \"idle\", direction=>\"l\"): 100, 200
+				text(dd, '${$player.extraPoint(\"targeting\").x},${$player.extraPoint(\"targeting\").y}', #FF0000): 0, 0
+			}
+		");
+		Assert.isTrue(success, "extraPoint .x/.y extraction in text interpolation should parse");
+	}
+
+	@Test
+	public function testNamedElementExtraPointWithFallbackInInterpolation() {
+		var success = parseExpectingSuccess("
+			#test programmable() {
+				#player stateanim(\"marine.anim\", \"idle\", direction=>\"l\"): 100, 200
+				text(dd, '${$player.extraPoint(\"nonexistent\", 99, 88).x}', #FF0000): 0, 0
+			}
+		");
+		Assert.isTrue(success, "extraPoint with fallback args in interpolation should parse");
+	}
+
+	@Test
+	public function testNamedElementExtraPointWithArithmetic() {
+		var success = parseExpectingSuccess("
+			#test programmable() {
+				@final OX = 50
+				#player stateanim(\"marine.anim\", \"idle\", direction=>\"l\"): 100, 200
+				text(dd, '${$player.extraPoint(\"targeting\").x + $OX}', #FF0000): 0, 0
+			}
+		");
+		Assert.isTrue(success, "extraPoint .x with arithmetic in interpolation should parse");
+	}
+
+	@Test
+	public function testNamedElementUnknownRefFails() {
+		var error = parseExpectingError("
+			#test programmable() {
+				#player stateanim(\"marine.anim\", \"idle\", direction=>\"l\"): 100, 200
+				bitmap(generated(color(5, 5, #FF0000))): $unknown.extraPoint(\"targeting\")
+			}
+		");
+		Assert.notNull(error, "Unknown element ref should fail");
+		Assert.isTrue(error.indexOf("unknown variable") >= 0,
+			'Error should mention unknown variable, got: $error');
+		Assert.isTrue(error.indexOf("unknown") >= 0,
+			'Error should name the bad reference, got: $error');
+	}
+
+	@Test
+	public function testNamedElementUnknownRefInInterpolationFails() {
+		var error = parseExpectingError("
+			#test programmable() {
+				#player stateanim(\"marine.anim\", \"idle\", direction=>\"l\"): 100, 200
+				text(dd, '${$ghost.extraPoint(\"fire\").x}', #FF0000): 0, 0
+			}
+		");
+		Assert.notNull(error, "Unknown element ref in interpolation should fail");
+		Assert.isTrue(error.indexOf("unknown variable") >= 0,
+			'Error should mention unknown variable, got: $error');
+	}
+
+	@Test
+	public function testNamedElementForwardRefFails() {
+		var error = parseExpectingError("
+			#test programmable() {
+				bitmap(generated(color(5, 5, #FF0000))): $player.extraPoint(\"targeting\")
+				#player stateanim(\"marine.anim\", \"idle\", direction=>\"l\"): 100, 200
+			}
+		");
+		Assert.notNull(error, "Forward reference to named element should fail");
+		Assert.isTrue(error.indexOf("unknown variable") >= 0,
+			'Error should mention unknown variable, got: $error');
+	}
 }

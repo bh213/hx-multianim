@@ -3149,6 +3149,8 @@ class ProgrammableCodeGen {
 				final ox = resolveRVStatic(offsetX);
 				final oy = resolveRVStatic(offsetY);
 				if (basePt != null && ox != null && oy != null) {x: basePt.x + ox, y: basePt.y + oy} else null;
+			case EXTRA_POINT_REF(_, _, _) | EXTRA_POINT_ANIM(_, _, _, _, _):
+				null; // requires runtime resolution — not available at macro time
 		};
 	}
 
@@ -3424,6 +3426,30 @@ class ProgrammableCodeGen {
 			}
 		}
 
+		// $ref.extraPoint("name" [, fallbackX, fallbackY]).x / .y — runtime resolution via named element
+		if (method == "extraPoint") {
+			final elementFields = namedElements.get(ref);
+			if (elementFields == null || elementFields.length == 0) {
+				Context.error('ProgrammableCodeGen: extraPoint reference: element "$ref" not found in named elements', Context.currentPos());
+				return macro 0;
+			}
+			final elemRef = macro $p{["this", elementFields[0]]};
+			final pointNameExpr = argExprs[0];
+			final hasFallback = argExprs.length >= 3;
+			final fbExpr = if (hasFallback) (component == "x" ? argExprs[1] : argExprs[2]) else null;
+			if (hasFallback) {
+				if (component == "x")
+					return macro { final _ep = (cast $elemRef : bh.stateanim.AnimationSM).getExtraPoint($pointNameExpr); if (_ep != null) (_ep.x : Float) else $fbExpr; };
+				else
+					return macro { final _ep = (cast $elemRef : bh.stateanim.AnimationSM).getExtraPoint($pointNameExpr); if (_ep != null) (_ep.y : Float) else $fbExpr; };
+			} else {
+				if (component == "x")
+					return macro { final _ep = (cast $elemRef : bh.stateanim.AnimationSM).getExtraPoint($pointNameExpr); if (_ep == null) throw "extraPoint not found"; (_ep.x : Float); };
+				else
+					return macro { final _ep = (cast $elemRef : bh.stateanim.AnimationSM).getExtraPoint($pointNameExpr); if (_ep == null) throw "extraPoint not found"; (_ep.y : Float); };
+			}
+		}
+
 		// Hex methods — need _hexLayout field
 		if (hexLayoutFieldCount == 0) {
 			Context.error('Runtime hex .$component extraction requires hex coordinate system with runtime parameters in scope', Context.currentPos());
@@ -3691,6 +3717,58 @@ class ProgrammableCodeGen {
 					Context.error('ProgrammableCodeGen: hex cell edge requires hex coordinate system', pos);
 					{x: macro 0.0, y: macro 0.0};
 				}
+			case EXTRA_POINT_REF(elementName, pointName, fallback):
+				final elementFields = namedElements.get(elementName);
+				if (elementFields == null || elementFields.length == 0) {
+					Context.error('ProgrammableCodeGen: extraPoint reference: element "$elementName" not found in named elements', pos);
+					{x: macro 0.0, y: macro 0.0};
+				} else {
+					final elemRef = macro $p{["this", elementFields[0]]};
+					final fallbackXY = fallback != null ? coordsToXYExprs(fallback, pos, node) : null;
+					final fbX = fallbackXY != null ? fallbackXY.x : null;
+					final fbY = fallbackXY != null ? fallbackXY.y : null;
+					{
+						x: if (fbX != null)
+							macro { final _ep = (cast $elemRef : bh.stateanim.AnimationSM).getExtraPoint($v{pointName}); if (_ep != null) (_ep.x : Float) else $fbX; }
+						else
+							macro { final _ep = (cast $elemRef : bh.stateanim.AnimationSM).getExtraPoint($v{pointName}); if (_ep == null) throw $v{'extraPoint: point "$pointName" not found'}; (_ep.x : Float); },
+						y: if (fbY != null)
+							macro { final _ep = (cast $elemRef : bh.stateanim.AnimationSM).getExtraPoint($v{pointName}); if (_ep != null) (_ep.y : Float) else $fbY; }
+						else
+							macro { final _ep = (cast $elemRef : bh.stateanim.AnimationSM).getExtraPoint($v{pointName}); if (_ep == null) throw $v{'extraPoint: point "$pointName" not found'}; (_ep.y : Float); }
+					};
+				}
+			case EXTRA_POINT_ANIM(filename, animName, pointName, selectorRefs, fallback):
+				final fallbackXY = fallback != null ? coordsToXYExprs(fallback, pos, node) : null;
+				final fbX = fallbackXY != null ? fallbackXY.x : null;
+				final fbY = fallbackXY != null ? fallbackXY.y : null;
+				// Build selector map expressions
+				final selExprs:Array<Expr> = [macro final _selMap = new Map<String, String>()];
+				for (k => v in selectorRefs) {
+					final keyExpr:Expr = macro $v{k};
+					final valExpr = rvToExpr(v);
+					selExprs.push(macro _selMap.set($keyExpr, Std.string($valExpr)));
+				}
+				selExprs.push(macro final _animSM = this._pb.resourceLoader.createAnimSM($v{filename}, _selMap));
+				selExprs.push(macro _animSM.play($v{animName}));
+				{
+					x: {
+						final block = selExprs.copy();
+						if (fbX != null)
+							block.push(macro { final _ep = _animSM.getExtraPoint($v{pointName}); if (_ep != null) (_ep.x : Float) else $fbX; })
+						else
+							block.push(macro { final _ep = _animSM.getExtraPoint($v{pointName}); if (_ep == null) throw $v{'extraPoint: point "$pointName" not found'}; (_ep.x : Float); });
+						macro $b{block};
+					},
+					y: {
+						final block = selExprs.copy();
+						if (fbY != null)
+							block.push(macro { final _ep = _animSM.getExtraPoint($v{pointName}); if (_ep != null) (_ep.y : Float) else $fbY; })
+						else
+							block.push(macro { final _ep = _animSM.getExtraPoint($v{pointName}); if (_ep == null) throw $v{'extraPoint: point "$pointName" not found'}; (_ep.y : Float); });
+						macro $b{block};
+					}
+				};
 		};
 	}
 
@@ -5574,13 +5652,63 @@ class ProgrammableCodeGen {
 							final basePt = coordsToStaticXY(base, pos, node);
 							if (basePt != null)
 								macro $fieldRef.setPosition($v{basePt.x + ox}, $v{basePt.y + oy})
-							else
-								null;
+							else {
+								// Base is non-static (e.g. EXTRA_POINT_REF) — resolve at runtime with static offset
+								final baseXY = coordsToXYExprs(base, pos, node);
+								final oxV = ox;
+								final oyV = oy;
+								macro $fieldRef.setPosition(${baseXY.x} + $v{oxV}, ${baseXY.y} + $v{oyV});
+							}
 					}
 				} else {
-					final baseExpr = generatePositionExpr(base, fieldName, pos, node);
-					if (baseExpr != null) baseExpr else null;
+					// Non-static offsets — resolve everything at runtime
+					final baseXY = coordsToXYExprs(base, pos, node);
+					final oxExpr = rvToExpr(offsetX);
+					final oyExpr = rvToExpr(offsetY);
+					macro $fieldRef.setPosition(${baseXY.x} + $oxExpr, ${baseXY.y} + $oyExpr);
 				};
+			case EXTRA_POINT_REF(elementName, pointName, fallback):
+				final elementFields = namedElements.get(elementName);
+				if (elementFields == null || elementFields.length == 0) {
+					Context.error('ProgrammableCodeGen: extraPoint reference: element "$elementName" not found in named elements', pos);
+					null;
+				} else {
+					final elemRef = macro $p{["this", elementFields[0]]};
+					final fallbackExpr = fallback != null ? generatePositionExpr(fallback, fieldName, pos, node) : null;
+					if (fallbackExpr != null)
+						macro {
+							final _ep = (cast $elemRef : bh.stateanim.AnimationSM).getExtraPoint($v{pointName});
+							if (_ep != null) $fieldRef.setPosition(_ep.x, _ep.y) else $fallbackExpr;
+						}
+					else
+						macro {
+							final _ep = (cast $elemRef : bh.stateanim.AnimationSM).getExtraPoint($v{pointName});
+							if (_ep == null) throw $v{'extraPoint: point "$pointName" not found'};
+							$fieldRef.setPosition(_ep.x, _ep.y);
+						};
+				}
+			case EXTRA_POINT_ANIM(filename, animName, pointName, selectorRefs, fallback):
+				final fallbackExpr = fallback != null ? generatePositionExpr(fallback, fieldName, pos, node) : null;
+				final selExprs:Array<Expr> = [macro final _selMap = new Map<String, String>()];
+				for (k => v in selectorRefs) {
+					final keyExpr:Expr = macro $v{k};
+					final valExpr = rvToExpr(v);
+					selExprs.push(macro _selMap.set($keyExpr, Std.string($valExpr)));
+				}
+				selExprs.push(macro final _animSM = this._pb.resourceLoader.createAnimSM($v{filename}, _selMap));
+				selExprs.push(macro _animSM.play($v{animName}));
+				if (fallbackExpr != null)
+					selExprs.push(macro {
+						final _ep = _animSM.getExtraPoint($v{pointName});
+						if (_ep != null) $fieldRef.setPosition(_ep.x, _ep.y) else $fallbackExpr;
+					})
+				else
+					selExprs.push(macro {
+						final _ep = _animSM.getExtraPoint($v{pointName});
+						if (_ep == null) throw $v{'extraPoint: point "$pointName" not found'};
+						$fieldRef.setPosition(_ep.x, _ep.y);
+					});
+				macro $b{selExprs};
 		};
 	}
 

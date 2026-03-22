@@ -442,6 +442,7 @@ class MacroManimParser {
 	var activeDefs:Null<ParametersDefinitions>; // null = not inside programmable, set to currentDefs when entering programmable scope
 	var scopeVars:Null<Array<String>>; // loop vars, iterator output vars, @final vars (not in activeDefs)
 	var namedCoordSystems:Null<Array<String>>; // names registered via hex: #name or grid: #name
+	var namedElements:Null<Array<String>>; // names registered via #name element(...)
 
 	static final defaultLayoutNodeName = "#defaultLayout";
 	static final defaultPathNodeName = "#defaultPaths";
@@ -467,6 +468,7 @@ class MacroManimParser {
 		if (scopeVars != null && scopeVars.indexOf(name) >= 0) return;
 		if (implicitRefs.indexOf(name) >= 0) return;
 		if (namedCoordSystems != null && namedCoordSystems.indexOf(name) >= 0) return;
+		if (namedElements != null && namedElements.indexOf(name) >= 0) return;
 		final paramNames = [for (k in activeDefs.keys()) k];
 		final allVars = scopeVars != null ? paramNames.concat(scopeVars) : paramNames;
 		final available = allVars.length > 0 ? allVars.join(", ") : "(none)";
@@ -1132,10 +1134,11 @@ class MacroManimParser {
 				// Check if this is $ref.method() (coordinate method chain) or just $ref as part of OFFSET
 				// We need to peek ahead: if the token after $ref is TDot, it's a coordinate method chain
 				advance();
-				validateRef(s);
 				if (match(TDot)) {
+					validateRef(s);
 					parseCoordinateMethodChain(s);
 				} else {
+					validateRef(s);
 					// Not a dot — this is a plain reference used in OFFSET(x, y) position
 					// Put back as an expression and parse as OFFSET
 					final x = parseNextExpression(RVReference(s), EInt);
@@ -1143,6 +1146,9 @@ class MacroManimParser {
 					final y = parseIntegerOrReference();
 					OFFSET(x, y);
 				}
+			case TIdentifier(s) if (isKeyword(s, "extrapoint")):
+				advance();
+				parseExtraPointFromAnim();
 			case TIdentifier(s) if (isKeyword(s, "layout")):
 				advance();
 				expect(TOpen);
@@ -1190,6 +1196,21 @@ class MacroManimParser {
 		}
 
 		final method = expectIdentifierOrString();
+
+		// Extra point method — $ref.extraPoint("pointName" [, fallback: coords])
+		if (isKeyword(method, "extrapoint")) {
+			expect(TOpen);
+			final pointName = expectIdentifierOrString();
+			var fallback:Null<Coordinates> = null;
+			if (match(TComma)) {
+				expectKeyword("fallback");
+				expect(TColon);
+				fallback = parseXY();
+			}
+			expect(TClosed);
+			return EXTRA_POINT_REF(ref, pointName, fallback);
+		}
+
 		expect(TOpen);
 
 		// Grid methods
@@ -1307,6 +1328,34 @@ class MacroManimParser {
 		}
 	}
 
+	// extraPoint("file.anim", "animName", "pointName", "key"=>"value"..., [fallback: coords])
+	function parseExtraPointFromAnim():Coordinates {
+		expect(TOpen);
+		final filename = expectIdentifierOrString();
+		expect(TComma);
+		final animName = expectIdentifierOrString();
+		expect(TComma);
+		final pointName = expectIdentifierOrString();
+		var selector:Map<String, ReferenceableValue> = new Map();
+		var fallback:Null<Coordinates> = null;
+		while (match(TComma)) {
+			// Check for "fallback:" keyword
+			switch (peek()) {
+				case TIdentifier(s) if (isKeyword(s, "fallback")):
+					advance();
+					expect(TColon);
+					fallback = parseXY();
+				default:
+					final key = expectIdentifierOrString();
+					expect(TArrow);
+					final val = parseStringOrReference();
+					selector.set(key, val);
+			}
+		}
+		expect(TClosed);
+		return EXTRA_POINT_ANIM(filename, animName, pointName, selector, fallback);
+	}
+
 	function isNamedGrid(name:String):Bool {
 		if (namedCoordSystems == null) return false;
 		// We can't easily distinguish grid vs hex by name at parse time.
@@ -1403,6 +1452,11 @@ class MacroManimParser {
 				advance();
 				return s;
 			case TQuotedString(s):
+				advance();
+				return s;
+			case TReference(s):
+				// Inside ${} interpolation, bare identifiers are converted to TReference
+				// by the lexer. Accept them here so method/property names work in interpolated expressions.
 				advance();
 				return s;
 			default:
@@ -2620,7 +2674,7 @@ class MacroManimParser {
 	@:nullSafety(Off)
 	function parseNode(updatableName:UpdatableNameType, parent:Null<Node>, currentDefs:ParametersDefinitions):Node {
 		// Reset reference validation scope for each root-level node
-		if (parent == null) { activeDefs = null; scopeVars = null; }
+		if (parent == null) { activeDefs = null; scopeVars = null; namedElements = null; }
 		var layerIndex = -1;
 		var alpha:Null<ReferenceableValue> = null;
 		var scale:Null<ReferenceableValue> = null;
@@ -2824,6 +2878,14 @@ class MacroManimParser {
 						}
 					default:
 				}
+			default:
+		}
+
+		// Track named elements for reference validation (e.g. $name.extraPoint())
+		switch (updatableName) {
+			case UNTObject(name) | UNTUpdatable(name) if (name != null):
+				if (namedElements != null && namedElements.indexOf(name) < 0)
+					namedElements.push(name);
 			default:
 		}
 
@@ -3093,6 +3155,7 @@ class MacroManimParser {
 					currentDefs = parsed.defs;
 					activeDefs = parsed.defs;
 					scopeVars = [];
+					namedElements = [];
 					createNode(SLOT(parsed.defs, parsed.order), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 				} else {
 					createNode(SLOT(null, null), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
@@ -3233,6 +3296,7 @@ class MacroManimParser {
 				currentDefs = parsed.defs;
 				activeDefs = parsed.defs;
 				scopeVars = [];
+				namedElements = [];
 				createNode(PROGRAMMABLE(isTileGroup, parsed.defs, parsed.order), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 
 			case TIdentifier(s) if (isKeyword(s, "layouts")):

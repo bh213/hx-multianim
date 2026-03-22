@@ -4675,4 +4675,191 @@ class BuilderUnitTest extends BuilderTestBase {
 		Assert.isFalse(tm.hasTweens(child0), "No tweens expected without transition block");
 		Assert.isFalse(tm.hasTweens(child1), "No tweens expected without transition block");
 	}
+
+	// ==================== extraPoint coordinates ====================
+
+	@Test
+	public function testExtraPointRef():Void {
+		// marine.anim idle animation with direction=>l has targeting: -1, -12
+		// The stateanim is at 100, 200, and the bitmap should be at the extra point coords
+		final result = buildFromSource("
+			#test programmable() {
+				#player stateanim(\"marine.anim\", \"idle\", direction=>\"l\"): 100, 200
+				bitmap(generated(color(5, 5, #FF0000))): $player.extraPoint(\"targeting\")
+			}
+		", "test");
+		Assert.notNull(result, "Build should succeed");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		// Extra point targeting for direction=l is (-1, -12)
+		Assert.equals(-1, Std.int(bitmaps[0].x));
+		Assert.equals(-12, Std.int(bitmaps[0].y));
+	}
+
+	@Test
+	public function testExtraPointRefWithFallback():Void {
+		// Reference a point that doesn't exist in idle animation, should use fallback
+		final result = buildFromSource("
+			#test programmable() {
+				#player stateanim(\"marine.anim\", \"idle\", direction=>\"l\"): 100, 200
+				bitmap(generated(color(5, 5, #00FF00))): $player.extraPoint(\"fire\", fallback: 99, 88)
+			}
+		", "test");
+		Assert.notNull(result, "Build should succeed");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		// "fire" not in idle animation, fallback to 99, 88
+		Assert.equals(99, Std.int(bitmaps[0].x));
+		Assert.equals(88, Std.int(bitmaps[0].y));
+	}
+
+	@Test
+	public function testExtraPointRefThrowsOnMissing():Void {
+		// Reference a point that doesn't exist without fallback — should throw
+		var threw = false;
+		try {
+			buildFromSource("
+				#test programmable() {
+					#player stateanim(\"marine.anim\", \"idle\", direction=>\"l\"): 100, 200
+					bitmap(generated(color(5, 5, #0000FF))): $player.extraPoint(\"fire\")
+				}
+			", "test");
+		} catch (e:Dynamic) {
+			threw = true;
+			Assert.stringContains("fire", Std.string(e));
+		}
+		Assert.isTrue(threw, "Should throw when extra point not found without fallback");
+	}
+
+	@Test
+	public function testExtraPointAnim():Void {
+		// Direct reference to anim file: fire-up animation has fire: 5, -19
+		final result = buildFromSource("
+			#test programmable() {
+				bitmap(generated(color(5, 5, #FF0000))): extraPoint(\"marine.anim\", \"fire-up\", \"fire\", direction=>\"r\")
+			}
+		", "test");
+		Assert.notNull(result, "Build should succeed");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(5, Std.int(bitmaps[0].x));
+		Assert.equals(-19, Std.int(bitmaps[0].y));
+	}
+
+	@Test
+	public function testExtraPointAnimWithFallback():Void {
+		// Direct reference to anim with missing point — should use fallback
+		final result = buildFromSource("
+			#test programmable() {
+				bitmap(generated(color(5, 5, #FF0000))): extraPoint(\"marine.anim\", \"idle\", \"fire\", direction=>\"l\", fallback: 77, 66)
+			}
+		", "test");
+		Assert.notNull(result, "Build should succeed");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(77, Std.int(bitmaps[0].x));
+		Assert.equals(66, Std.int(bitmaps[0].y));
+	}
+
+	@Test
+	public function testExtraPointRefWithOffset():Void {
+		// Extra point with .offset() suffix
+		final result = buildFromSource("
+			#test programmable() {
+				#player stateanim(\"marine.anim\", \"idle\", direction=>\"l\"): 100, 200
+				bitmap(generated(color(5, 5, #FF0000))): $player.extraPoint(\"targeting\").offset(10, 5)
+			}
+		", "test");
+		Assert.notNull(result, "Build should succeed");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		// targeting: -1, -12 + offset(10, 5) = 9, -7
+		Assert.equals(9, Std.int(bitmaps[0].x));
+		Assert.equals(-7, Std.int(bitmaps[0].y));
+	}
+
+	@Test
+	public function testExtraPointRefDirectionR():Void {
+		// Test with direction=r: @else targeting: 5, -12
+		final result = buildFromSource("
+			#test programmable() {
+				#player stateanim(\"marine.anim\", \"idle\", direction=>\"r\"): 0, 0
+				bitmap(generated(color(5, 5, #FF0000))): $player.extraPoint(\"targeting\")
+			}
+		", "test");
+		Assert.notNull(result, "Build should succeed");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(5, Std.int(bitmaps[0].x));
+		Assert.equals(-12, Std.int(bitmaps[0].y));
+	}
+
+	// ==================== extraPoint .x/.y extraction in expressions ====================
+
+	@Test
+	public function testExtraPointXYExtractionInText():Void {
+		// $ref.extraPoint("name").x / .y should resolve to the point's coordinates
+		// marine.anim idle direction=l targeting: -1, -12
+		final result = buildFromSource("
+			#test programmable() {
+				#player stateanim(\"marine.anim\", \"idle\", direction=>\"l\"): 100, 200
+				text(dd, '${$player.extraPoint(\"targeting\").x},${$player.extraPoint(\"targeting\").y}', #FF0000): 0, 0
+			}
+		", "test");
+		Assert.notNull(result, "Build should succeed");
+		final texts = findAllTextDescendants(result.object);
+		Assert.equals(1, texts.length);
+		Assert.equals("-1,-12", texts[0].text);
+	}
+
+	@Test
+	public function testExtraPointXYWithArithmeticInText():Void {
+		// .x + offset should compute correctly
+		final result = buildFromSource("
+			#test programmable() {
+				@final OX = 150
+				@final OY = 200
+				#player stateanim(\"marine.anim\", \"idle\", direction=>\"l\"): $OX, $OY
+				text(dd, '${$player.extraPoint(\"targeting\").x + $OX},${$player.extraPoint(\"targeting\").y + $OY}', #FF0000): 0, 0
+			}
+		", "test");
+		Assert.notNull(result, "Build should succeed");
+		final texts = findAllTextDescendants(result.object);
+		Assert.equals(1, texts.length);
+		// targeting: -1, -12 + offset 150, 200 = 149, 188
+		Assert.equals("149,188", texts[0].text);
+	}
+
+	@Test
+	public function testExtraPointXYFallbackInExpression():Void {
+		// $ref.extraPoint("nonexistent", fbX, fbY).x should use fallback
+		final result = buildFromSource("
+			#test programmable() {
+				#player stateanim(\"marine.anim\", \"idle\", direction=>\"l\"): 100, 200
+				text(dd, '${$player.extraPoint(\"nonexistent\", 99, 88).x},${$player.extraPoint(\"nonexistent\", 99, 88).y}', #FF0000): 0, 0
+			}
+		", "test");
+		Assert.notNull(result, "Build should succeed");
+		final texts = findAllTextDescendants(result.object);
+		Assert.equals(1, texts.length);
+		Assert.equals("99,88", texts[0].text);
+	}
+
+	@Test
+	public function testExtraPointXYThrowsOnMissingNoFallback():Void {
+		// $ref.extraPoint("nonexistent").x without fallback should throw
+		var threw = false;
+		try {
+			buildFromSource("
+				#test programmable() {
+					#player stateanim(\"marine.anim\", \"idle\", direction=>\"l\"): 100, 200
+					text(dd, '${$player.extraPoint(\"nonexistent\").x}', #FF0000): 0, 0
+				}
+			", "test");
+		} catch (e:Dynamic) {
+			threw = true;
+			Assert.stringContains("nonexistent", Std.string(e));
+		}
+		Assert.isTrue(threw, "Should throw when extra point not found without fallback in expression context");
+	}
 }

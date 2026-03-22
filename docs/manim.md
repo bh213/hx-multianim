@@ -779,6 +779,48 @@ Any coordinate method call can have `.x` or `.y` appended to extract a single co
 }
 ```
 
+### Extra Point Coordinates
+
+Query extra points from `.anim` state animations as positioning coordinates. Resolved at build time from the animation's initial state.
+
+**From a named stateanim element** (Mode 1):
+
+```manim
+#player stateanim("player.anim", "idle", direction=>"l"): 100, 100
+bitmap(...): $player.extraPoint("bulletSpawn")
+bitmap(...): $player.extraPoint("bulletSpawn", fallback: 50, 50)
+bitmap(...): $player.extraPoint("bulletSpawn").offset(10, 0)
+```
+
+* `$ref.extraPoint("pointName")` - position from current animation's extra point
+* `$ref.extraPoint("pointName", fallback: coords)` - with fallback if point not found
+
+**Directly from an .anim file** (Mode 2):
+
+```manim
+bitmap(...): extraPoint("player.anim", "fire-up", "fire", direction=>"r")
+bitmap(...): extraPoint("player.anim", "idle", "fire", direction=>"l", fallback: 0, 0)
+```
+
+* `extraPoint("file", "animName", "pointName", selectors...)` - load anim, play animation, query point
+* Optional `fallback: coords` as last argument
+
+When a point is not found: throws if no `fallback:` specified, uses fallback coordinates otherwise. Fallback accepts any coordinate type. `.offset()` suffix supported on both modes. Works in both builder and codegen.
+
+**`.x`/`.y` extraction in expressions:**
+
+Extra point coordinates can be extracted as scalar values for use in text interpolation and arithmetic:
+
+```manim
+#player stateanim("player.anim", "idle", direction=>"l"): $PX, $PY
+text(font, '${$player.extraPoint("fire").x + $PX},${$player.extraPoint("fire").y + $PY}', #FF0000): 0, 0
+```
+
+With fallback (positional args instead of `fallback:` keyword):
+```manim
+text(font, '${$ref.extraPoint("missing", 99, 88).x}', #00FF00): 0, 0
+```
+
 ### Context Properties
 
 * `$ctx.width` - width of the programmable element

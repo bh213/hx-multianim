@@ -393,6 +393,36 @@ Works with all coordinate types: `layout(name).offset(5, 10)`, `$grid.pos(1, 2).
 ### Value Extraction
 `.x` or `.y` suffix on any coordinate method extracts a single component for use in expressions.
 
+### Extra Point Coordinates
+Query extra points from `.anim` state animations as positioning coordinates (resolved at build time).
+
+**From a named stateanim element:**
+```manim
+#player stateanim("player.anim", "idle", direction=>"l"): 100, 100
+bitmap(...): $player.extraPoint("bulletSpawn")
+bitmap(...): $player.extraPoint("bulletSpawn", fallback: 50, 50)
+bitmap(...): $player.extraPoint("bulletSpawn").offset(10, 0)
+```
+
+**Directly from a .anim file:**
+```manim
+bitmap(...): extraPoint("player.anim", "fire-up", "fire", direction=>"r")
+bitmap(...): extraPoint("player.anim", "idle", "fire", direction=>"l", fallback: 0, 0)
+```
+
+When a point is not found: throws if no `fallback:` specified, uses fallback coordinates otherwise. Fallback accepts any coordinate type (literal, layout, grid, etc.).
+
+When a point is not found: throws if no `fallback:` specified, uses fallback coordinates otherwise. Fallback accepts any coordinate type (literal, layout, grid, etc.).
+
+**`.x`/`.y` extraction in expressions:**
+```manim
+text(font, '${$player.extraPoint("fire").x + $OFFSET_X}', #FF0000): 0, 0
+text(font, '${$ref.extraPoint("name", 99, 88).y}', #00FF00): 0, 0
+```
+Use `$ref.extraPoint("name").x` / `.y` to extract a single coordinate component for use in text interpolation and arithmetic expressions. Fallback via positional args: `$ref.extraPoint("name", fallbackX, fallbackY).x`.
+
+Note: coordinates are static — resolved from the initial animation state at build time.
+
 ### Context Properties
 | Property | Description |
 |----------|-------------|
