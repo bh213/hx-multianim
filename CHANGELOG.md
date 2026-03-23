@@ -12,6 +12,7 @@
 
 ### Fixed
 - **Codegen `WITH_OFFSET` for non-static bases** — `generatePositionExpr` now correctly handles `.offset()` on non-static coordinate expressions (e.g. `$ref.extraPoint(...).offset(x, y)`). Previously returned null when the base couldn't be resolved at compile time, causing elements to be positioned at (0, 0).
+- **`safeDetach` for h2d.Graphics reparenting** — extracted `HeapsUtils.safeDetach()` utility that detaches objects without triggering `onRemove()` cascade (which destroys `h2d.Graphics` draw commands). Applied to `UIMultiAnimDraggable` (constructor, `moveToLayer`, `restoreLayer`) and `UIMultiAnimGrid.detachCellVisual()`. `HotReload.PlaceholderReuser` now delegates to the shared utility.
 
 ## [1.0.0-rc.2] - 2026-03-12
 

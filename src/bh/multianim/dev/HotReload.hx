@@ -375,20 +375,11 @@ class StateRestorer {
 // Wraps BuilderParameters to reuse previously-captured placeholder objects
 // instead of re-invoking callbacks/factories during hot reload rebuild.
 
-@:access(h2d.Object.allocated)
 class PlaceholderReuser {
-	// Detach object from parent without triggering onRemove().
-	// Heaps' onRemove() cascade destroys h2d.Graphics content,
-	// so we must bypass it when reparenting live scene objects.
-	static function safeDetach(obj:h2d.Object):Void {
-		if (obj.parent != null) {
-			obj.allocated = false;
-			obj.parent.removeChild(obj);
-			// Leave allocated=false so the builder can addChild to the
-			// unallocated new tree without triggering onRemove again.
-			// allocated is restored to true when SceneSwapper moves
-			// children into the allocated oldRoot via addChild.
-		}
+	// Delegate to shared HeapsUtils.safeDetach — detaches object from parent
+	// without triggering onRemove() cascade that destroys h2d.Graphics content.
+	static inline function safeDetach(obj:h2d.Object):Void {
+		bh.base.HeapsUtils.safeDetach(obj);
 	}
 
 	// Create wrapped BuilderParameters that returns captured objects for matching placeholders.

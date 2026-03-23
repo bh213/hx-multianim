@@ -18,6 +18,8 @@ import h2d.col.Collider;
 import h2d.col.Point;
 import bh.ui.UIElement;
 
+using bh.base.HeapsUtils;
+
 /**
  * Delegate function type for checking if drag start is allowed.
  * Returns true if dragging should be allowed to start.
@@ -189,6 +191,7 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 	public function new(target:h2d.Object) {
 		this.target = target;
 		this.root = new MAObject(MADraggable(0, 0), false);
+		target.safeDetach(); // Prevent h2d.Graphics.onRemove() from clearing draw commands
 		this.root.addChild(target);
 	}
 
@@ -342,13 +345,13 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 	function moveToLayer(layer:Null<LayersEnum>):Void {
 		if (screen == null || layer == null)
 			return;
-		root.remove();
+		root.safeDetach();
 		screen.addObjectToLayer(root, layer);
 	}
 
 	function restoreLayer():Void {
 		if (dragLayer != null && screen != null && currentLayer != null) {
-			root.remove();
+			root.safeDetach();
 			screen.addObjectToLayer(root, currentLayer);
 		}
 	}

@@ -24,6 +24,8 @@ import bh.ui.UIMultiAnimGridTypes;
 import h2d.col.Bounds;
 import h2d.col.Point;
 
+using bh.base.HeapsUtils;
+
 // Alias to avoid name shadowing with GridType.Hex enum constructor
 private typedef HexUtil = bh.base.Hex.Hex;
 
@@ -614,8 +616,8 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 		final obj = entry.result.object;
 		final pos = cellPosition(col, row);
 
-		// Reparent to keep in scene but outside grid root (caller should reparent to desired container)
-		obj.remove();
+		// Safe detach: prevent h2d.Graphics.onRemove() from clearing draw commands
+		obj.safeDetach();
 
 		return {object: obj, data: entry.data, sceneX: pos.x, sceneY: pos.y};
 	}
