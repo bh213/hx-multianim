@@ -15,6 +15,7 @@ import bh.base.TweenManager;
 import bh.base.TweenManager.Tween;
 import bh.base.TweenManager.TweenProperty;
 import bh.multianim.MultiAnimParser.EasingType;
+import bh.paths.AnimatedPath;
 import bh.paths.MultiAnimPaths.PathNormalization;
 import bh.ui.UICardHandTypes;
 import bh.ui.UIElement.UIScreenEvent;
@@ -41,6 +42,21 @@ private class CellEntry {
 		this.result = result;
 		this.data = data;
 		this.buildName = buildName;
+	}
+}
+
+/** Internal entry for an in-flight swap animation (displaced item moving to new cell). */
+private class SwapAnimEntry {
+	public var animPath:AnimatedPath;
+	public var object:h2d.Object;
+	public var targetCoord:CellCoord;
+	public var onComplete:Null<Void -> Void>;
+
+	public function new(animPath:AnimatedPath, object:h2d.Object, targetCoord:CellCoord, ?onComplete:Void -> Void) {
+		this.animPath = animPath;
+		this.object = object;
+		this.targetCoord = targetCoord;
+		this.onComplete = onComplete;
 	}
 }
 
@@ -92,6 +108,10 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 	final statusParam:String;
 	final snapPathName:Null<String>;
 	final returnPathName:Null<String>;
+	final swapPathName:Null<String>;
+	final swapEnabled:Bool;
+	final swapAnimContainer:Null<h2d.Object>;
+	final swapVisualProvider:Null<SwapVisualProvider>;
 	final tweenManager:Null<TweenManager>;
 
 	// --- Geometry ---
@@ -137,6 +157,9 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 	final cardTargetWrappers:Map<String, UIInteractiveWrapper> = new Map();
 	var activeCardDragId:Null<String> = null;
 
+	// --- Active swap animations ---
+	final activeSwapAnims:Array<SwapAnimEntry> = [];
+
 	// --- Instance counter for unique zone IDs ---
 	static var instanceCounter:Int = 0;
 	final instanceId:Int;
@@ -165,6 +188,10 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 		this.statusParam = config.statusParam != null ? config.statusParam : "status";
 		this.snapPathName = config.snapPathName;
 		this.returnPathName = config.returnPathName;
+		this.swapPathName = config.swapPathName;
+		this.swapEnabled = config.swapEnabled != null ? config.swapEnabled : false;
+		this.swapAnimContainer = config.swapAnimContainer;
+		this.swapVisualProvider = config.swapVisualProvider;
 		this.tweenManager = config.tweenManager;
 
 		this.root = new h2d.Layers();
@@ -297,6 +324,128 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 		entry.result.endUpdate();
 
 		emitEvent(CellDataChanged(entry.coord, oldData, null));
+	}
+
+	/** Swap two cells' data and visuals, optionally animated.
+	 *  Emits CellSwap with ctx.programmatic=true. Both cells must exist.
+	 *  @param animated If true (default), uses swapPathName (or returnPathName fallback) for both items.
+	 *                  If false, swaps instantly. */
+	public function swapCells(col1:Int, row1:Int, col2:Int, row2:Int, animated:Bool = true):Void {
+		if (col1 == col2 && row1 == row2)
+			return;
+
+		final coord1:CellCoord = {col: col1, row: row1};
+		final coord2:CellCoord = {col: col2, row: row2};
+		final ctx = new SwapContext(true);
+		emitEvent(CellSwap(coord1, coord2, null, ctx));
+
+		if (ctx.handled && !ctx.accepted)
+			return;
+
+		// Resolve swap path
+		final resolvedSwapPath = if (ctx.swapPath != null) ctx.swapPath
+			else if (swapPathName != null) swapPathName
+			else returnPathName;
+
+		// Snapshot data before swap
+		final entry1 = getEntry(col1, row1);
+		final entry2 = getEntry(col2, row2);
+		final data1 = entry1.data;
+		final data2 = entry2.data;
+
+		if (animated && resolvedSwapPath != null) {
+			// Detach both visuals WITHOUT rebuilding — we control rebuild timing
+			final det1 = detachCellVisualRaw(col1, row1);
+			final det2 = detachCellVisualRaw(col2, row2);
+
+			// Swap data and rebuild both cells so they show correct data immediately
+			entry1.data = data2;
+			entry2.data = data1;
+			rebuildCell(col1, row1);
+			rebuildCell(col2, row2);
+
+			var pendingAnims = 2;
+			final onBothDone = () -> {
+				pendingAnims--;
+				if (pendingAnims <= 0) {
+					if (ctx.completeCb != null)
+						ctx.completeCb();
+				}
+			};
+
+			// Animate cell1 visual → cell2 position
+			if (det1 != null) {
+				animateSwapVisual(det1, col1, row1, col2, row2, resolvedSwapPath, onBothDone);
+			} else {
+				onBothDone();
+			}
+
+			// Animate cell2 visual → cell1 position
+			if (det2 != null) {
+				animateSwapVisual(det2, col2, row2, col1, row1, resolvedSwapPath, onBothDone);
+			} else {
+				onBothDone();
+			}
+		} else {
+			// Instant swap — just swap data and rebuild both
+			entry1.data = data2;
+			entry2.data = data1;
+			rebuildCell(col1, row1);
+			rebuildCell(col2, row2);
+			if (ctx.completeCb != null)
+				ctx.completeCb();
+		}
+
+		emitEvent(CellDataChanged(coord1, data1, data2));
+		emitEvent(CellDataChanged(coord2, data2, data1));
+	}
+
+	/** Internal: animate a detached visual from one cell position to another, then rebuild target. */
+	/** Internal: animate a detached visual from one cell position to another.
+	 *  Callers must rebuild cells BEFORE calling this — onDone does NOT rebuild. */
+	function animateSwapVisual(detached:{object:h2d.Object, data:Dynamic, sceneX:Float, sceneY:Float}, fromCol:Int,
+			fromRow:Int, toCol:Int, toRow:Int, pathName:String, onDone:Void -> Void):Void {
+		// Use custom swap visual if provider is set, otherwise use detached cell visual
+		final animObj = if (swapVisualProvider != null) {
+			final coord:CellCoord = {col: fromCol, row: fromRow};
+			final custom = swapVisualProvider(coord, detached.data);
+			if (custom != null) {
+				detached.object.remove();
+				custom;
+			} else {
+				detached.object;
+			}
+		} else {
+			detached.object;
+		}
+
+		final toScenePos = cellPosition(toCol, toRow);
+
+		final dx = toScenePos.x - detached.sceneX;
+		final dy = toScenePos.y - detached.sceneY;
+		if (dx * dx + dy * dy < 0.25) {
+			animObj.remove();
+			onDone();
+			return;
+		}
+
+		// Reparent first so we can convert scene-space endpoints to parent-local space
+		final animParent = reparentForSwapAnim(animObj);
+		final localFrom = sceneToLocal(animParent, detached.sceneX, detached.sceneY);
+		final localTo = sceneToLocal(animParent, toScenePos.x, toScenePos.y);
+
+		// Position object at start immediately (prevents one-frame flash at wrong position)
+		animObj.setPosition(localFrom.x, localFrom.y);
+
+		// AnimatedPath outputs in parent-local space — no conversion needed in update()
+		final animPath = builder.createAnimatedPath(pathName, Stretch(localFrom, localTo));
+
+		final targetCoord:CellCoord = {col: toCol, row: toRow};
+		final swapAnim = new SwapAnimEntry(animPath, animObj, targetCoord, () -> {
+			animObj.remove();
+			onDone();
+		});
+		activeSwapAnims.push(swapAnim);
 	}
 
 	/** Check if cell has non-null data. */
@@ -609,17 +758,46 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 	 *  Returns the detached object and its scene position, or null if cell doesn't exist.
 	 *  Call `reattachCellVisual()` to put it back, or `rebuildCell()` to create a fresh visual. */
 	public function detachCellVisual(col:Int, row:Int):Null<{object:h2d.Object, data:Dynamic, sceneX:Float, sceneY:Float}> {
-		final entry = cells.get(cellKey(col, row));
+		final key = cellKey(col, row);
+		final entry = cells.get(key);
 		if (entry == null)
 			return null;
 
 		final obj = entry.result.object;
 		final pos = cellPosition(col, row);
+		final data = entry.data;
 
 		// Safe detach: prevent h2d.Graphics.onRemove() from clearing draw commands
 		obj.safeDetach();
 
-		return {object: obj, data: entry.data, sceneX: pos.x, sceneY: pos.y};
+		// Rebuild the cell entry immediately so the detached object is fully severed
+		// from the grid. This ensures later `rebuildCell()` won't remove our detached object.
+		final freshEntry = buildCell(entry.coord, entry.data, null);
+		cells.set(key, freshEntry);
+		root.add(freshEntry.result.object, 0);
+		positionCell(freshEntry);
+
+		return {object: obj, data: data, sceneX: pos.x, sceneY: pos.y};
+	}
+
+	/** Internal: detach cell visual without rebuilding. Used by swap to control rebuild timing.
+	 *  Replaces entry.result.object with a dummy so subsequent rebuildCell() won't destroy the detached object. */
+	function detachCellVisualRaw(col:Int, row:Int):Null<{object:h2d.Object, data:Dynamic, sceneX:Float, sceneY:Float}> {
+		final key = cellKey(col, row);
+		final entry = cells.get(key);
+		if (entry == null)
+			return null;
+
+		final obj = entry.result.object;
+		final pos = cellPosition(col, row);
+		final data = entry.data;
+
+		obj.safeDetach();
+
+		// Replace with a dummy so rebuildCell's oldEntry.result.object.remove() is harmless
+		entry.result.object = new h2d.Object();
+
+		return {object: obj, data: data, sceneX: pos.x, sceneY: pos.y};
 	}
 
 	/** Reattach a previously detached cell visual (or rebuild if the object was disposed).
@@ -857,13 +1035,33 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 		return root;
 	}
 
-	/** Update — call from game loop if using animations. */
+	/** Update — call from game loop for swap animations. */
 	public function update(dt:Float):Void {
-		// Reserved for future animation support
+		if (activeSwapAnims.length == 0)
+			return;
+
+		var i = activeSwapAnims.length;
+		while (i-- > 0) {
+			final entry = activeSwapAnims[i];
+			final s = entry.animPath.update(dt);
+			// AnimatedPath outputs parent-local positions (Stretch endpoints converted at creation)
+			entry.object.setPosition(s.position.x, s.position.y);
+			if (s.done) {
+				final cb = entry.onComplete;
+				activeSwapAnims.splice(i, 1);
+				if (cb != null)
+					cb();
+			}
+		}
 	}
 
 	/** Clean up all resources. */
 	public function dispose():Void {
+		// Cancel active swap animations
+		for (entry in activeSwapAnims)
+			entry.object.remove();
+		activeSwapAnims.resize(0);
+
 		// Clear all drag bindings
 		for (binding in registeredDraggables)
 			clearZonesForBinding(binding);
@@ -1113,17 +1311,23 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 						? cast binding.draggable.sourceGrid
 						: null;
 					final srcCell:Null<CellCoord> = binding.draggable.sourceCellCoord;
+
+					// Check for swap: swapEnabled + target occupied + has source cell
+					if (swapEnabled && isOccupied(coord.col, coord.row) && srcCell != null) {
+						return handleSwapDrop(binding, coord, srcGrid, srcCell);
+					}
+
 					final ctx = new DropContext();
 					emitEvent(CellDrop(coord, binding.draggable, srcGrid, srcCell, ctx));
 
 					// Handle rejection: if game called ctx.reject(), cancel the snap
-					if (ctx._handled && !ctx._accepted) {
+					if (ctx.handled && !ctx.accepted) {
 						// Save current return path factory, override if custom reject path provided
-						if (ctx._pathName != null)
-							binding.draggable.setReturnAnimPath(builder, ctx._pathName);
+						if (ctx.pathName != null)
+							binding.draggable.setReturnAnimPath(builder, ctx.pathName);
 						// Wire onComplete into the cancel callback
-						if (ctx._onComplete != null) {
-							final onComplete = ctx._onComplete;
+						if (ctx.completeCb != null) {
+							final onComplete = ctx.completeCb;
 							final prevCancel = binding.draggable.onDragCancel;
 							binding.draggable.onDragCancel = (pos, w) -> {
 								// Restore original cancel handler
@@ -1137,12 +1341,12 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 					}
 
 					// Accept path: override snap path if custom accept path provided
-					if (ctx._handled && ctx._pathName != null)
-						binding.draggable.setSnapAnimPath(builder, ctx._pathName);
+					if (ctx.handled && ctx.pathName != null)
+						binding.draggable.setSnapAnimPath(builder, ctx.pathName);
 
 					// Wire onComplete for accepted drops via DragSnapComplete event
-					if (ctx._onComplete != null) {
-						final onComplete = ctx._onComplete;
+					if (ctx.completeCb != null) {
+						final onComplete = ctx.completeCb;
 						final prevEvent = binding.draggable.onDragEvent;
 						binding.draggable.onDragEvent = (event, pos, w) -> {
 							if (prevEvent != null)
@@ -1162,6 +1366,134 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 			}
 			return false;
 		};
+	}
+
+	/** Handle a drop-on-occupied-cell as a swap. Returns true if accepted (snap), false if rejected (return). */
+	function handleSwapDrop(binding:DraggableBinding, targetCoord:CellCoord, srcGrid:Null<UIMultiAnimGrid>,
+			srcCell:CellCoord):Bool {
+		final draggable = binding.draggable;
+		final ctx = new SwapContext(false);
+		emitEvent(CellSwap(srcCell, targetCoord, draggable, ctx));
+
+		// Rejected — return draggable to origin
+		if (ctx.handled && !ctx.accepted) {
+			return false;
+		}
+
+		// Resolve which grid owns the source cell (could be cross-grid)
+		final sourceGrid:UIMultiAnimGrid = srcGrid != null ? srcGrid : this;
+
+		// Resolve swap path: ctx override > config swapPathName > config returnPathName > null (instant)
+		final resolvedSwapPath = if (ctx.swapPath != null) ctx.swapPath
+			else if (swapPathName != null) swapPathName
+			else returnPathName;
+
+		// Override snap path if ctx provided one
+		if (ctx.snapPath != null)
+			draggable.setSnapAnimPath(builder, ctx.snapPath);
+
+		// Snapshot current state before swapping data
+		final targetEntry = cells.get(cellKey(targetCoord.col, targetCoord.row));
+		if (targetEntry == null)
+			return false;
+
+		final displacedData = targetEntry.data;
+		final dragPayload = draggable.payload;
+
+		// Detach displaced item visual WITHOUT rebuilding — we control rebuild timing
+		final detached = detachCellVisualRaw(targetCoord.col, targetCoord.row);
+
+		// Swap data atomically: dragged data → target, displaced data → source
+		set(targetCoord.col, targetCoord.row, dragPayload);
+		sourceGrid.set(srcCell.col, srcCell.row, displacedData);
+
+		// Rebuild target cell — it's behind the snapping draggable, so the user won't see it
+		// until snap completes. Do NOT rebuild source cell — its visual should stay as-is
+		// (the displaced animation covers it). Source is rebuilt when displaced anim completes
+		// or via onSnapComplete/onComplete from the game.
+		rebuildCell(targetCoord.col, targetCoord.row);
+
+		// Track whether displaced animation is done (for coordinating onComplete with snap)
+		var displacedDone = false;
+		var snapDone = false;
+		final onBothDone = () -> {
+			if (displacedDone && snapDone && ctx.completeCb != null)
+				ctx.completeCb();
+		};
+
+		// Animate displaced item to source cell
+		if (detached != null && resolvedSwapPath != null) {
+			// Use custom swap visual if provider is set, otherwise use detached cell visual
+			final animObj = if (swapVisualProvider != null) {
+				final custom = swapVisualProvider(targetCoord, displacedData);
+				if (custom != null) {
+					detached.object.remove();
+					custom;
+				} else {
+					detached.object;
+				}
+			} else {
+				detached.object;
+			}
+
+			final sourceScenePos = sourceGrid.cellPosition(srcCell.col, srcCell.row);
+
+			// Don't animate zero-distance
+			final dx = sourceScenePos.x - detached.sceneX;
+			final dy = sourceScenePos.y - detached.sceneY;
+			if (dx * dx + dy * dy < 0.25) {
+				animObj.remove();
+				sourceGrid.rebuildCell(srcCell.col, srcCell.row);
+				displacedDone = true;
+			} else {
+				// Reparent first, then convert scene-space endpoints to parent-local
+				final animParent = reparentForSwapAnim(animObj);
+				final localFrom = sceneToLocal(animParent, detached.sceneX, detached.sceneY);
+				final localTo = sceneToLocal(animParent, sourceScenePos.x, sourceScenePos.y);
+
+				// Position at start immediately
+				animObj.setPosition(localFrom.x, localFrom.y);
+
+				final animPath = builder.createAnimatedPath(resolvedSwapPath, Stretch(localFrom, localTo));
+
+				activeSwapAnims.push(new SwapAnimEntry(animPath, animObj, srcCell, () -> {
+					animObj.remove();
+					sourceGrid.rebuildCell(srcCell.col, srcCell.row);
+					displacedDone = true;
+					onBothDone();
+				}));
+			}
+		} else {
+			// No animation — rebuild source cell immediately
+			if (detached != null)
+				detached.object.remove();
+			sourceGrid.rebuildCell(srcCell.col, srcCell.row);
+			displacedDone = true;
+		}
+
+		// Wire DragSnapComplete to clean up draggable visual.
+		// Target cell is already rebuilt with correct data above.
+		final prevEvent = draggable.onDragEvent;
+		draggable.onDragEvent = (event, pos, w) -> {
+			if (prevEvent != null)
+				prevEvent(event, pos, w);
+			switch event {
+				case DragSnapComplete:
+					draggable.onDragEvent = prevEvent;
+					draggable.getObject().remove();
+					if (ctx.snapCompleteCb != null)
+						ctx.snapCompleteCb();
+					snapDone = true;
+					onBothDone();
+				case DragCancel:
+					draggable.onDragEvent = prevEvent;
+					snapDone = true;
+					onBothDone();
+				default:
+			}
+		};
+
+		return true; // Accept — draggable snaps to target
 	}
 
 	function clearZonesForBinding(binding:DraggableBinding):Void {
@@ -1366,6 +1698,27 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 	// ============================================================
 	// Internal: utility
 	// ============================================================
+
+	/** Place an object into the swap animation container for in-flight rendering.
+	 *  Uses the configured swapAnimContainer if set, otherwise falls back to the grid's own root.
+	 *  Returns the parent object (for coordinate conversion). */
+	function reparentForSwapAnim(obj:h2d.Object):h2d.Object {
+		if (swapAnimContainer != null) {
+			swapAnimContainer.addChild(obj);
+			return swapAnimContainer;
+		} else {
+			// Fallback: add to grid root at high z-order (above cells and layers)
+			root.add(obj, 1000);
+			return root;
+		}
+	}
+
+	/** Convert a scene-space point into a parent object's local coordinate space. */
+	function sceneToLocal(parent:h2d.Object, sceneX:Float, sceneY:Float):FPoint {
+		final local = parent.globalToLocal(new h2d.col.Point(sceneX, sceneY));
+		return new FPoint(local.x, local.y);
+	}
+
 
 	function emitEvent(event:GridEvent):Void {
 		if (onGridEvent != null)

@@ -955,6 +955,10 @@ When `tabPanel.contentRoot` is set, tab content coordinates are relative to the 
 | `originX`, `originY` | Grid root position |
 | `snapPathName` | AnimatedPath for drop snap (null = instant) |
 | `returnPathName` | AnimatedPath for drag cancel return (null = instant) |
+| `swapPathName` | AnimatedPath for displaced item during swap (null = falls back to `returnPathName`, then instant) |
+| `swapEnabled` | Enable swap semantics on occupied cell drops (default: false) |
+| `swapAnimContainer` | Parent container for in-flight swap visuals (null = grid root at high z-order) |
+| `swapVisualProvider` | `(cell, data) -> Null<h2d.Object>` delegate for custom displaced-item visuals |
 | `highlightParam` | Cell param for drag highlight (default: `"highlight"`) |
 | `rejectHighlightParam` | Cell param for rejected drop highlight (default: null = no reject visual) |
 | `statusParam` | Cell param for hover status (default: `"status"`) |
@@ -962,11 +966,13 @@ When `tabPanel.contentRoot` is set, tab content coordinates are relative to the 
 
 **Cell programmable contract:** Must have `col:int`, `row:int`, plus matching `highlightParam` (bool) and `statusParam` (enum with `normal`/`hover`). Optionally `rejectHighlightParam` (bool) for wrong-type reject glow.
 
-**Events** (`GridEvent` enum via `onGridEvent`): `CellClick`, `CellHoverEnter`, `CellHoverLeave`, `CellDrop(cell, draggable, sourceGrid, sourceCell, ctx)`, `CellCardPlayed`, `CellDataChanged`. `CellDrop` includes `DropContext`: `ctx.accept()` / `ctx.reject()` controls snap vs return animation; `ctx.onComplete(cb)` fires after animation; `ctx.acceptWithPath(name)` / `ctx.rejectWithPath(name)` for custom paths.
+**Events** (`GridEvent` enum via `onGridEvent`): `CellClick`, `CellHoverEnter`, `CellHoverLeave`, `CellDrop(cell, draggable, sourceGrid, sourceCell, ctx)`, `CellSwap(source, target, draggable, ctx)`, `CellCardPlayed`, `CellDataChanged`. `CellDrop` includes `DropContext`: `ctx.accept()` / `ctx.reject()` controls snap vs return animation; `ctx.onComplete(cb)` fires after animation; `ctx.acceptWithPath(name)` / `ctx.rejectWithPath(name)` for custom paths. `CellSwap` includes `SwapContext`: `ctx.accept()` / `ctx.reject()`, `ctx.acceptWithSwapPath(name)` / `ctx.acceptWithPaths(snap, swap)` for custom paths, `ctx.onComplete(cb)` / `ctx.onSnapComplete(cb)`, `ctx.programmatic` flag (true for `swapCells()`, false for drag-drop).
 
 **Key API:** `addRectRegion(cols, rows)`, `addHexRegion(center, radius)`, `set(col, row, data, ?params)`, `get()`, `clear()`, `isOccupied()`, `forEach()`, `cellAtPoint(sceneX, sceneY)`, `cellPosition(col, row)`, `neighbors()`, `distance()`, `acceptDrops(draggable, ?filter)`, `registerAsCardTarget(cardHand, ?filter)`, `makeDraggableFromCell(col, row, ?visual, cloneMode)`, `dispose()`.
 
 **Grid layers:** `addLayer(name, {buildName, zOrder})`, `setLayer(col, row, name, ?params)`, `clearLayer(col, row, name)`, `clearLayerAll(name)`, `clearAllLayers()`, `getLayerResult(col, row, name)`, `hasLayer()`, `forEachLayer()`. Base cells at z-order 0; layers at configurable z-orders. `removeCell()` auto-clears layers. **External objects:** `addExternalObject(obj, zOrder)` / `removeExternalObject(obj)`.
+
+**Cell swap:** `swapCells(col1, row1, col2, row2, ?animated)` — swap data and visuals between two cells. Animated mode uses `swapPathName` (fallback: `returnPathName`) for both items. Emits `CellSwap` with `ctx.programmatic=true`. Drag-drop swap: when `swapEnabled=true` and a draggable drops on an occupied cell with a source cell, emits `CellSwap` instead of `CellDrop`.
 
 **Cell animations** (require `tweenManager`): `tweenCell(col, row, duration, props, ?easing)`, `addCellAnimated(col, row, ?data, ?params, duration, initProps, ?easing)`, `removeCellAnimated(col, row, duration, props, ?easing, ?onComplete)`. **Detach/reattach**: `detachCellVisual(col, row)` → `{object, data, sceneX, sceneY}`, `reattachCellVisual(col, row, ?obj)`.
 

@@ -217,7 +217,7 @@ screenManager.closeDialogWithTransition(Fade(0.2));
 screenManager.finalizeTransition(); // jump to end immediately
 ```
 
-**Layer ordering constants:** `layerContent=2`, `layerMaster=4`, `layerOverlay=5`, `layerDialog=6`
+**Layer ordering defaults** (configurable via `SceneLayerConfig`): `content=2`, `master=4`, `overlay=5`, `dialog=6`. Must satisfy `content < master < overlay < dialog`.
 
 **Transition behavior:**
 - Both old and new screen roots are in scene during transition

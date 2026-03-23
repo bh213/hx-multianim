@@ -5,6 +5,7 @@ import bh.test.BuilderTestBase;
 import bh.test.UITestHarness.UITestScreen;
 import bh.ui.UIMultiAnimGrid;
 import bh.ui.UIMultiAnimGridTypes;
+import bh.ui.UIMultiAnimGridTypes.SwapContext;
 import bh.ui.UICardHandHelper;
 import bh.ui.UICardHandTypes;
 import bh.ui.UICardHandTypes.CardHandEvent;
@@ -19,6 +20,21 @@ import bh.base.Hex.HexOrientation;
  */
 class UIMultiAnimGridTest extends BuilderTestBase {
 	static final CELL_MANIM = "
+		#cell programmable(col:int=0, row:int=0, status:[normal,hover]=normal, highlight:[none,accept,reject]=none) {
+			bitmap(generated(color(50, 50, #666666))): 0, 0
+		}
+	";
+
+	// Cell + animated path for swap animation position tests
+	static final CELL_WITH_PATH_MANIM = "
+		paths {
+			#swapLine path { lineTo(100, 0) }
+		}
+		#swapAnim animatedPath {
+			path: swapLine
+			type: time
+			duration: 1.0
+		}
 		#cell programmable(col:int=0, row:int=0, status:[normal,hover]=normal, highlight:[none,accept,reject]=none) {
 			bitmap(generated(color(50, 50, #666666))): 0, 0
 		}
@@ -1079,46 +1095,46 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 	@Test
 	public function testDropContextDefaultState():Void {
 		var ctx = new DropContext();
-		Assert.isFalse(ctx._handled);
-		Assert.isTrue(ctx._accepted);
-		Assert.isNull(ctx._pathName);
-		Assert.isNull(ctx._onComplete);
+		Assert.isFalse(ctx.handled);
+		Assert.isTrue(ctx.accepted);
+		Assert.isNull(ctx.pathName);
+		Assert.isNull(ctx.completeCb);
 	}
 
 	@Test
 	public function testDropContextAccept():Void {
 		var ctx = new DropContext();
 		ctx.accept();
-		Assert.isTrue(ctx._handled);
-		Assert.isTrue(ctx._accepted);
-		Assert.isNull(ctx._pathName);
+		Assert.isTrue(ctx.handled);
+		Assert.isTrue(ctx.accepted);
+		Assert.isNull(ctx.pathName);
 	}
 
 	@Test
 	public function testDropContextReject():Void {
 		var ctx = new DropContext();
 		ctx.reject();
-		Assert.isTrue(ctx._handled);
-		Assert.isFalse(ctx._accepted);
-		Assert.isNull(ctx._pathName);
+		Assert.isTrue(ctx.handled);
+		Assert.isFalse(ctx.accepted);
+		Assert.isNull(ctx.pathName);
 	}
 
 	@Test
 	public function testDropContextAcceptWithPath():Void {
 		var ctx = new DropContext();
 		ctx.acceptWithPath("customSnap");
-		Assert.isTrue(ctx._handled);
-		Assert.isTrue(ctx._accepted);
-		Assert.equals("customSnap", ctx._pathName);
+		Assert.isTrue(ctx.handled);
+		Assert.isTrue(ctx.accepted);
+		Assert.equals("customSnap", ctx.pathName);
 	}
 
 	@Test
 	public function testDropContextRejectWithPath():Void {
 		var ctx = new DropContext();
 		ctx.rejectWithPath("customReturn");
-		Assert.isTrue(ctx._handled);
-		Assert.isFalse(ctx._accepted);
-		Assert.equals("customReturn", ctx._pathName);
+		Assert.isTrue(ctx.handled);
+		Assert.isFalse(ctx.accepted);
+		Assert.equals("customReturn", ctx.pathName);
 	}
 
 	@Test
@@ -1126,8 +1142,8 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 		var ctx = new DropContext();
 		var fired = false;
 		ctx.onComplete(() -> fired = true);
-		Assert.notNull(ctx._onComplete);
-		ctx._onComplete();
+		Assert.notNull(ctx.completeCb);
+		ctx.completeCb();
 		Assert.isTrue(fired);
 	}
 
@@ -1137,10 +1153,554 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 		ctx.accept();
 		var fired = false;
 		ctx.onComplete(() -> fired = true);
-		Assert.isTrue(ctx._handled);
-		Assert.isTrue(ctx._accepted);
-		Assert.notNull(ctx._onComplete);
-		ctx._onComplete();
+		Assert.isTrue(ctx.handled);
+		Assert.isTrue(ctx.accepted);
+		Assert.notNull(ctx.completeCb);
+		ctx.completeCb();
 		Assert.isTrue(fired);
+	}
+
+	// ============== SwapContext ==============
+
+	@Test
+	public function testSwapContextDefaultState():Void {
+		var ctx = new SwapContext();
+		Assert.isFalse(ctx.handled);
+		Assert.isTrue(ctx.accepted);
+		Assert.isNull(ctx.swapPath);
+		Assert.isNull(ctx.snapPath);
+		Assert.isNull(ctx.completeCb);
+		Assert.isFalse(ctx.programmatic);
+	}
+
+	@Test
+	public function testSwapContextProgrammaticFlag():Void {
+		var ctx = new SwapContext(true);
+		Assert.isTrue(ctx.programmatic);
+		var ctx2 = new SwapContext(false);
+		Assert.isFalse(ctx2.programmatic);
+	}
+
+	@Test
+	public function testSwapContextAccept():Void {
+		var ctx = new SwapContext();
+		ctx.accept();
+		Assert.isTrue(ctx.handled);
+		Assert.isTrue(ctx.accepted);
+	}
+
+	@Test
+	public function testSwapContextReject():Void {
+		var ctx = new SwapContext();
+		ctx.reject();
+		Assert.isTrue(ctx.handled);
+		Assert.isFalse(ctx.accepted);
+	}
+
+	@Test
+	public function testSwapContextAcceptWithSwapPath():Void {
+		var ctx = new SwapContext();
+		ctx.acceptWithSwapPath("customSwap");
+		Assert.isTrue(ctx.handled);
+		Assert.isTrue(ctx.accepted);
+		Assert.equals("customSwap", ctx.swapPath);
+		Assert.isNull(ctx.snapPath);
+	}
+
+	@Test
+	public function testSwapContextAcceptWithPaths():Void {
+		var ctx = new SwapContext();
+		ctx.acceptWithPaths("snapPath", "swapPath");
+		Assert.isTrue(ctx.handled);
+		Assert.isTrue(ctx.accepted);
+		Assert.equals("snapPath", ctx.snapPath);
+		Assert.equals("swapPath", ctx.swapPath);
+	}
+
+	@Test
+	public function testSwapContextOnComplete():Void {
+		var ctx = new SwapContext();
+		var fired = false;
+		ctx.onComplete(() -> fired = true);
+		Assert.notNull(ctx.completeCb);
+		ctx.completeCb();
+		Assert.isTrue(fired);
+	}
+
+	// ============== swapCells (programmatic) ==============
+
+	function createSwapGrid(?cols:Int, ?rows:Int):UIMultiAnimGrid {
+		var builder = BuilderTestBase.builderFromSource(CELL_MANIM);
+		var grid = new UIMultiAnimGrid(builder, {
+			gridType: Rect(50, 50, 2),
+			cellBuildName: "cell",
+			originX: 0,
+			originY: 0,
+			swapEnabled: true,
+		});
+		if (cols != null && rows != null)
+			grid.addRectRegion(cols, rows);
+		return grid;
+	}
+
+	@Test
+	public function testSwapCellsData():Void {
+		var grid = createSwapGrid(3, 1);
+		grid.set(0, 0, "apple");
+		grid.set(1, 0, "banana");
+		grid.swapCells(0, 0, 1, 0, false);
+		Assert.equals("banana", grid.get(0, 0));
+		Assert.equals("apple", grid.get(1, 0));
+	}
+
+	@Test
+	public function testSwapCellsWithNullData():Void {
+		var grid = createSwapGrid(3, 1);
+		grid.set(0, 0, "apple");
+		// cell (1,0) has null data
+		grid.swapCells(0, 0, 1, 0, false);
+		Assert.isNull(grid.get(0, 0));
+		Assert.equals("apple", grid.get(1, 0));
+	}
+
+	@Test
+	public function testSwapCellsSameCell():Void {
+		var grid = createSwapGrid(2, 1);
+		grid.set(0, 0, "test");
+		grid.swapCells(0, 0, 0, 0, false);
+		Assert.equals("test", grid.get(0, 0));
+	}
+
+	@Test
+	public function testSwapCellsEmitsCellSwapEvent():Void {
+		var grid = createSwapGrid(2, 1);
+		grid.set(0, 0, "a");
+		grid.set(1, 0, "b");
+
+		var swapFired = false;
+		var isProgrammatic = false;
+		grid.onGridEvent = (event) -> {
+			switch event {
+				case CellSwap(source, target, draggable, ctx):
+					swapFired = true;
+					isProgrammatic = ctx.programmatic;
+					Assert.equals(0, source.col);
+					Assert.equals(0, source.row);
+					Assert.equals(1, target.col);
+					Assert.equals(0, target.row);
+					Assert.isNull(draggable);
+				default:
+			}
+		};
+
+		grid.swapCells(0, 0, 1, 0, false);
+		Assert.isTrue(swapFired);
+		Assert.isTrue(isProgrammatic);
+	}
+
+	@Test
+	public function testSwapCellsEmitsDataChangedEvents():Void {
+		var grid = createSwapGrid(2, 1);
+		grid.set(0, 0, "a");
+		grid.set(1, 0, "b");
+
+		var changeCount = 0;
+		grid.onGridEvent = (event) -> {
+			switch event {
+				case CellDataChanged(_, _, _):
+					changeCount++;
+				default:
+			}
+		};
+
+		grid.swapCells(0, 0, 1, 0, false);
+		Assert.equals(2, changeCount);
+	}
+
+	@Test
+	public function testSwapCellsRejected():Void {
+		var grid = createSwapGrid(2, 1);
+		grid.set(0, 0, "a");
+		grid.set(1, 0, "b");
+
+		grid.onGridEvent = (event) -> {
+			switch event {
+				case CellSwap(_, _, _, ctx):
+					ctx.reject();
+				default:
+			}
+		};
+
+		grid.swapCells(0, 0, 1, 0, false);
+		// Data should NOT have changed
+		Assert.equals("a", grid.get(0, 0));
+		Assert.equals("b", grid.get(1, 0));
+	}
+
+	@Test
+	public function testSwapCellsOnCompleteInstant():Void {
+		var grid = createSwapGrid(2, 1);
+		grid.set(0, 0, "a");
+		grid.set(1, 0, "b");
+
+		var completeFired = false;
+		grid.onGridEvent = (event) -> {
+			switch event {
+				case CellSwap(_, _, _, ctx):
+					ctx.onComplete(() -> completeFired = true);
+				default:
+			}
+		};
+
+		grid.swapCells(0, 0, 1, 0, false);
+		Assert.isTrue(completeFired);
+	}
+
+	@Test
+	public function testSwapCellsAnimatedNoPath():Void {
+		// animated=true but no swapPathName or returnPathName → instant
+		var grid = createSwapGrid(2, 1);
+		grid.set(0, 0, "x");
+		grid.set(1, 0, "y");
+		grid.swapCells(0, 0, 1, 0, true);
+		Assert.equals("y", grid.get(0, 0));
+		Assert.equals("x", grid.get(1, 0));
+	}
+
+	// ============== swapEnabled drop behavior ==============
+
+	@Test
+	public function testSwapEnabledConfigStored():Void {
+		var grid = createSwapGrid(2, 1);
+		@:privateAccess Assert.isTrue(grid.swapEnabled);
+	}
+
+	@Test
+	public function testSwapEnabledDefaultFalse():Void {
+		var grid = createRectGrid(2, 1);
+		@:privateAccess Assert.isFalse(grid.swapEnabled);
+	}
+
+	@Test
+	public function testSwapPathNameStored():Void {
+		var builder = BuilderTestBase.builderFromSource(CELL_MANIM);
+		var grid = new UIMultiAnimGrid(builder, {
+			gridType: Rect(50, 50),
+			cellBuildName: "cell",
+			swapPathName: "mySwapPath",
+			swapEnabled: true,
+		});
+		@:privateAccess Assert.equals("mySwapPath", grid.swapPathName);
+	}
+
+	@Test
+	public function testSwapPathNameFallsBackToReturn():Void {
+		var builder = BuilderTestBase.builderFromSource(CELL_MANIM);
+		var grid = new UIMultiAnimGrid(builder, {
+			gridType: Rect(50, 50),
+			cellBuildName: "cell",
+			returnPathName: "retPath",
+			swapEnabled: true,
+		});
+		@:privateAccess Assert.isNull(grid.swapPathName);
+		@:privateAccess Assert.equals("retPath", grid.returnPathName);
+	}
+
+	@Test
+	public function testSwapHexGrid():Void {
+		var builder = BuilderTestBase.builderFromSource(HEX_CELL_MANIM);
+		var grid = new UIMultiAnimGrid(builder, {
+			gridType: Hex(POINTY, 30, 30),
+			cellBuildName: "hexCell",
+			swapEnabled: true,
+		});
+		grid.addHexRegion(0, 0, 1);
+		grid.set(0, 0, "center");
+		grid.set(1, 0, "right");
+		grid.swapCells(0, 0, 1, 0, false);
+		Assert.equals("right", grid.get(0, 0));
+		Assert.equals("center", grid.get(1, 0));
+	}
+
+	@Test
+	public function testSwapCellsNonexistentThrows():Void {
+		var grid = createSwapGrid(2, 1);
+		grid.set(0, 0, "a");
+		var threw = false;
+		try {
+			grid.swapCells(0, 0, 5, 5, false);
+		} catch (e:Dynamic) {
+			threw = true;
+		}
+		Assert.isTrue(threw);
+	}
+
+	@Test
+	public function testSwapCellsPreservesOtherCells():Void {
+		var grid = createSwapGrid(3, 1);
+		grid.set(0, 0, "a");
+		grid.set(1, 0, "b");
+		grid.set(2, 0, "c");
+		grid.swapCells(0, 0, 2, 0, false);
+		Assert.equals("c", grid.get(0, 0));
+		Assert.equals("b", grid.get(1, 0));
+		Assert.equals("a", grid.get(2, 0));
+	}
+
+	@Test
+	public function testSwapCellsDoubleSwapRestores():Void {
+		var grid = createSwapGrid(2, 1);
+		grid.set(0, 0, "a");
+		grid.set(1, 0, "b");
+		grid.swapCells(0, 0, 1, 0, false);
+		grid.swapCells(0, 0, 1, 0, false);
+		Assert.equals("a", grid.get(0, 0));
+		Assert.equals("b", grid.get(1, 0));
+	}
+
+	@Test
+	public function testSwapActiveAnimsCleanedOnDispose():Void {
+		var grid = createSwapGrid(2, 1);
+		grid.set(0, 0, "a");
+		grid.set(1, 0, "b");
+		grid.dispose();
+		@:privateAccess Assert.equals(0, grid.activeSwapAnims.length);
+	}
+
+	// ============== Swap animation position verification ==============
+
+	function createSwapGridWithPath(?originX:Float, ?originY:Float, ?swapContainer:h2d.Object):UIMultiAnimGrid {
+		var builder = BuilderTestBase.builderFromSource(CELL_WITH_PATH_MANIM);
+		var grid = new UIMultiAnimGrid(builder, {
+			gridType: Rect(50, 50, 2),
+			cellBuildName: "cell",
+			originX: originX != null ? originX : 0,
+			originY: originY != null ? originY : 0,
+			swapEnabled: true,
+			swapPathName: "swapAnim",
+		});
+		return grid;
+	}
+
+	static function assertApprox(expected:Float, actual:Float, ?msg:String, tolerance:Float = 1.0):Void {
+		if (Math.abs(expected - actual) > tolerance)
+			Assert.fail('Expected ~$expected but got $actual (tolerance $tolerance)${msg != null ? ": " + msg : ""}');
+		else
+			Assert.pass();
+	}
+
+	@Test
+	public function testSwapAnimStartsAtSourceCellPosition():Void {
+		// Grid at origin (100, 50), cell (0,0) at local (0,0) → scene (100, 50)
+		// Cell (1,0) at local (52, 0) → scene (152, 50)
+		// Swap (0,0) ↔ (1,0): object from cell0 should start at cell0's local position in grid root
+		var grid = createSwapGridWithPath(100, 50);
+		grid.addRectRegion(3, 1);
+		grid.set(0, 0, "a");
+		grid.set(1, 0, "b");
+
+		grid.swapCells(0, 0, 1, 0, true);
+
+		// Should have 2 active animations (one per direction)
+		@:privateAccess {
+			Assert.equals(2, grid.activeSwapAnims.length);
+
+			// Both objects should be positioned at their source cell's local position in grid root
+			// (since no swapAnimContainer, they're reparented to grid root)
+			var anim0 = grid.activeSwapAnims[0]; // cell0 visual → cell1
+			var anim1 = grid.activeSwapAnims[1]; // cell1 visual → cell0
+
+			// Object from cell (0,0) starts at local (0, 0) in grid root
+			assertApprox(0, anim0.object.x, "anim0 start x");
+			assertApprox(0, anim0.object.y, "anim0 start y");
+
+			// Object from cell (1,0) starts at local (52, 0) in grid root
+			assertApprox(52, anim1.object.x, "anim1 start x");
+			assertApprox(0, anim1.object.y, "anim1 start y");
+		}
+
+		grid.dispose();
+	}
+
+	@Test
+	public function testSwapAnimMidpointPosition():Void {
+		// Linear path, duration 1.0s. At t=0.5s, position should be halfway between from and to.
+		var grid = createSwapGridWithPath(100, 50);
+		grid.addRectRegion(3, 1);
+		grid.set(0, 0, "a");
+		grid.set(1, 0, "b");
+
+		grid.swapCells(0, 0, 1, 0, true);
+
+		// Step animation to t=0.5 (halfway)
+		grid.update(0.5);
+
+		@:privateAccess {
+			Assert.equals(2, grid.activeSwapAnims.length);
+
+			// cell (0,0) local = (0, 0), cell (1,0) local = (52, 0)
+			// Midpoint in grid-root local space = (26, 0)
+			var anim0 = grid.activeSwapAnims[0]; // cell0 → cell1
+			assertApprox(26, anim0.object.x, "anim0 mid x");
+			assertApprox(0, anim0.object.y, "anim0 mid y");
+
+			// cell1 → cell0: midpoint is also (26, 0)
+			var anim1 = grid.activeSwapAnims[1]; // cell1 → cell0
+			assertApprox(26, anim1.object.x, "anim1 mid x");
+			assertApprox(0, anim1.object.y, "anim1 mid y");
+		}
+
+		grid.dispose();
+	}
+
+	@Test
+	public function testSwapAnimEndsAtTargetCellPosition():Void {
+		var grid = createSwapGridWithPath(100, 50);
+		grid.addRectRegion(3, 1);
+		grid.set(0, 0, "a");
+		grid.set(1, 0, "b");
+
+		grid.swapCells(0, 0, 1, 0, true);
+
+		// Step past completion (duration = 1.0s)
+		grid.update(1.1);
+
+		// Animations should be complete — activeSwapAnims cleared
+		@:privateAccess Assert.equals(0, grid.activeSwapAnims.length);
+
+		// Cells should have rebuilt with swapped data
+		Assert.equals("b", grid.get(0, 0));
+		Assert.equals("a", grid.get(1, 0));
+	}
+
+	@Test
+	public function testSwapAnimWithExternalContainer():Void {
+		// When swapAnimContainer is set, objects are reparented there.
+		// Container at (200, 100) → scene-space coords converted to container-local.
+		var container = new h2d.Object();
+		container.setPosition(200, 100);
+
+		var builder = BuilderTestBase.builderFromSource(CELL_WITH_PATH_MANIM);
+		var grid = new UIMultiAnimGrid(builder, {
+			gridType: Rect(50, 50, 2),
+			cellBuildName: "cell",
+			originX: 100,
+			originY: 50,
+			swapEnabled: true,
+			swapPathName: "swapAnim",
+			swapAnimContainer: container,
+		});
+		grid.addRectRegion(2, 1);
+		grid.set(0, 0, "a");
+		grid.set(1, 0, "b");
+
+		grid.swapCells(0, 0, 1, 0, true);
+
+		@:privateAccess {
+			Assert.equals(2, grid.activeSwapAnims.length);
+
+			// Cell (0,0) scene pos = (100, 50). Container at (200, 100).
+			// Container-local = (100 - 200, 50 - 100) = (-100, -50)
+			var anim0 = grid.activeSwapAnims[0];
+			assertApprox(-100, anim0.object.x, "container anim0 start x");
+			assertApprox(-50, anim0.object.y, "container anim0 start y");
+
+			// Cell (1,0) scene pos = (152, 50). Container-local = (-48, -50)
+			var anim1 = grid.activeSwapAnims[1];
+			assertApprox(-48, anim1.object.x, "container anim1 start x");
+			assertApprox(-50, anim1.object.y, "container anim1 start y");
+		}
+
+		// Step to midpoint
+		grid.update(0.5);
+
+		@:privateAccess {
+			// anim0: (-100, -50) → (-48, -50), midpoint = (-74, -50)
+			var anim0 = grid.activeSwapAnims[0];
+			assertApprox(-74, anim0.object.x, "container anim0 mid x");
+			assertApprox(-50, anim0.object.y, "container anim0 mid y");
+
+			// anim1: (-48, -50) → (-100, -50), midpoint = (-74, -50)
+			var anim1 = grid.activeSwapAnims[1];
+			assertApprox(-74, anim1.object.x, "container anim1 mid x");
+			assertApprox(-50, anim1.object.y, "container anim1 mid y");
+		}
+
+		grid.dispose();
+	}
+
+	@Test
+	public function testSwapAnimObjectParentedCorrectly():Void {
+		// Without container: objects should be children of grid root
+		var grid = createSwapGridWithPath(100, 50);
+		grid.addRectRegion(2, 1);
+		grid.set(0, 0, "a");
+		grid.set(1, 0, "b");
+		grid.swapCells(0, 0, 1, 0, true);
+
+		@:privateAccess {
+			var anim0 = grid.activeSwapAnims[0];
+			Assert.isTrue(anim0.object.parent == cast grid.root);
+		}
+
+		grid.dispose();
+
+		// With container: objects should be children of container
+		var container = new h2d.Object();
+		var builder2 = BuilderTestBase.builderFromSource(CELL_WITH_PATH_MANIM);
+		var grid2 = new UIMultiAnimGrid(builder2, {
+			gridType: Rect(50, 50, 2),
+			cellBuildName: "cell",
+			swapEnabled: true,
+			swapPathName: "swapAnim",
+			swapAnimContainer: container,
+		});
+		grid2.addRectRegion(2, 1);
+		grid2.set(0, 0, "x");
+		grid2.set(1, 0, "y");
+		grid2.swapCells(0, 0, 1, 0, true);
+
+		@:privateAccess {
+			var anim0 = grid2.activeSwapAnims[0];
+			Assert.equals(container, anim0.object.parent);
+		}
+
+		grid2.dispose();
+	}
+
+	@Test
+	public function testSwapAnimNonZeroOriginNoJump():Void {
+		// Verify no position jump between cell's original scene position and animation start.
+		// Grid at (300, 200), cell (2,0) at local (104, 0) → scene (404, 200)
+		var grid = createSwapGridWithPath(300, 200);
+		grid.addRectRegion(3, 1);
+		grid.set(2, 0, "c");
+		grid.set(0, 0, "a");
+
+		// Record cell (2,0) scene position before swap
+		var cellScenePos = grid.cellPosition(2, 0);
+		assertApprox(404, cellScenePos.x, "cell scene x");
+		assertApprox(200, cellScenePos.y, "cell scene y");
+
+		grid.swapCells(2, 0, 0, 0, true);
+
+		@:privateAccess {
+			// anim0 is cell (2,0) visual → cell (0,0) position
+			// Object reparented to grid root at (300, 200)
+			// Start position should be cell (2,0) local = (104, 0)
+			var anim0 = grid.activeSwapAnims[0];
+			assertApprox(104, anim0.object.x, "large origin anim start x");
+			assertApprox(0, anim0.object.y, "large origin anim start y");
+
+			// Object scene position should match original cell scene position
+			// obj scene = parent.x + obj.x = 300 + 104 = 404
+			// (We can't call localToGlobal in test easily, so verify via arithmetic)
+			var objSceneX = grid.root.x + anim0.object.x;
+			var objSceneY = grid.root.y + anim0.object.y;
+			assertApprox(cellScenePos.x, objSceneX, "no jump scene x");
+			assertApprox(cellScenePos.y, objSceneY, "no jump scene y");
+		}
+
+		grid.dispose();
 	}
 }

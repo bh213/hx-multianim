@@ -116,7 +116,7 @@ Metadata supports typed values matching the settings system: `key => val` (strin
 - `addGrid(builder, config, ?layer, ?settings)` — creates + adds to layer
 - `addCardHand(builder, ?config, ?settings)` — creates + registers + returns helper
 
-**Settings integration:** `applyGridSettings(config, settings)` and `applyCardHandSettings(config, settings)` apply `.manim` `settings {}` values to config fields. Grid: `originX/Y`, `cellBuildName`, `highlightParam`, `statusParam`, `rejectHighlightParam`. CardHand: `anchorX/Y`, card dimensions, fan/linear layout, hover/targeting, pile positions, path/arrow names.
+**Settings integration:** `applyGridSettings(config, settings)` and `applyCardHandSettings(config, settings)` apply `.manim` `settings {}` values to config fields. Grid: `originX/Y`, `cellBuildName`, `highlightParam`, `statusParam`, `rejectHighlightParam`, `swapPathName`, `swapEnabled`. CardHand: `anchorX/Y`, card dimensions, fan/linear layout, hover/targeting, pile positions, path/arrow names.
 
 **Macro support (`macroBuildWithParameters`):** `PVComponent` placeholder value for component-returning factories. Macro detects `UIHigherOrderComponent` return type and generates `PVComponent(factory, null)` wrapper. Builder calls `getObject()` for scene graph placement. Grid works in macro; CardHand uses `addCardHand()` only (multi-layer architecture prevents single-placeholder representation).
 
@@ -150,6 +150,9 @@ var grid = new UIMultiAnimGrid(builder, {
     originX: 0, originY: 0,         // grid root position
     snapPathName: "snapAnim",       // animatedPath for drop snap (null = instant)
     returnPathName: "returnAnim",   // animatedPath for drag cancel return (null = instant)
+    swapPathName: "swapAnim",       // animatedPath for displaced item during swap (null = falls back to returnPathName, then instant)
+    swapEnabled: true,              // enable swap semantics on occupied cell drops (default: false)
+    swapAnimContainer: swapLayer,   // h2d.Object parent for in-flight swap visuals (null = grid root fallback)
     highlightParam: "highlight",    // cell param for drag highlight state (default: "highlight")
     rejectHighlightParam: "rejectHighlight", // cell param for rejected drop highlight (default: null = no reject visual)
     statusParam: "status",          // cell param for hover status (default: "status")
@@ -196,6 +199,7 @@ var grid = new UIMultiAnimGrid(builder, {
 - `CellClick(cell, button)` — cell was clicked
 - `CellHoverEnter(cell)` / `CellHoverLeave(cell)` — hover state changes
 - `CellDrop(cell, draggable, sourceGrid, sourceCell, ctx)` — draggable dropped on cell. `ctx:DropContext` controls post-drop animation
+- `CellSwap(source, target, draggable, ctx)` — draggable dropped on occupied cell with `swapEnabled=true`, or programmatic `swapCells()`. `ctx:SwapContext` controls swap animation. `draggable` is null for programmatic swaps. `ctx.programmatic` distinguishes drag vs API
 - `CellCardPlayed(cell, cardId)` — card played on cell (from card hand targeting)
 - `CellDataChanged(cell, oldData, newData)` — data changed via `set()` or `clear()`
 
@@ -204,6 +208,19 @@ var grid = new UIMultiAnimGrid(builder, {
 - `ctx.reject()` — play return animation (draggable returns to origin)
 - `ctx.acceptWithPath(pathName)` / `ctx.rejectWithPath(pathName)` — custom animation paths
 - `ctx.onComplete(cb)` — fires after snap/return animation completes (accept: `DragSnapComplete`, reject: `DragCancel`)
+
+**SwapContext** (passed in `CellSwap` event):
+- `ctx.accept()` — swap both items (default). Dropped item snaps to target, displaced item animates to source via `swapPathName`
+- `ctx.acceptWithSwapPath(pathName)` — custom animation path for displaced item
+- `ctx.acceptWithPaths(snapPathName, swapPathName)` — custom paths for both dropped and displaced items
+- `ctx.reject()` — cancel swap, draggable returns to origin
+- `ctx.onComplete(cb)` — fires after both animations complete
+- `ctx.programmatic` — `true` if triggered by `swapCells()`, `false` if triggered by drag-drop
+
+**Cell swap API:**
+- `swapCells(col1, row1, col2, row2, ?animated:Bool=true)` — swap two cells' data and visuals. Emits `CellSwap` with `ctx.programmatic=true`. If animated, uses `swapPathName` (fallback: `returnPathName`) for both items moving simultaneously. Both cells must exist
+- Swap on drop: when `swapEnabled=true` and a draggable is dropped on an occupied cell with a source cell, emits `CellSwap` instead of `CellDrop`. The dragged item snaps to target, the displaced item animates to the source cell. Cross-grid swaps work when `sourceGrid` is set (via `makeDraggableFromCell`)
+- Swap path fallback chain: `SwapContext._swapPathName` > `GridConfig.swapPathName` > `GridConfig.returnPathName` > instant
 
 **Drag-drop integration:**
 - `acceptDrops(draggable, ?accepts)` — register a `UIMultiAnimDraggable` to drop onto this grid's cells. Auto-creates `DropZone` per cell, manages highlight state. `accepts: (cell, draggable) -> Bool` filters valid targets. When `rejectHighlightParam` is set, cells where `accepts` returns false show rejected state (red) distinct from "not a target"
@@ -265,6 +282,31 @@ case CellDrop(cell, draggable, sourceGrid, sourceCell, ctx):
     targetGrid.set(cell.col, cell.row, draggable.payload);
     ctx.onComplete(() -> rebuildDraggables());
     // sourceGrid/sourceCell identify where the drag started
+```
+
+**Cross-grid swap pattern:**
+```haxe
+// Enable swap on inventory grid — dropping on occupied cell swaps items
+// swapAnimContainer: provide an h2d.Object at a layer above the grid so displaced items render on top
+var swapLayer = new h2d.Layers();
+addObjectToLayer(swapLayer, NamedLayer("swapAnim")); // register layer if needed
+var grid = addGrid(builder, {
+    gridType: Rect(64, 64), cellBuildName: "cell",
+    snapPathName: "snapPath", swapPathName: "swapPath", swapEnabled: true,
+    swapAnimContainer: swapLayer,
+});
+grid.onGridEvent = (event) -> switch event {
+    case CellSwap(source, target, draggable, ctx):
+        ctx.accept(); // default — both items animate
+        ctx.onComplete(() -> trace("swap done"));
+    case CellDrop(cell, draggable, _, _, ctx):
+        // Only fires for drops on EMPTY cells (swapEnabled redirects occupied)
+        grid.set(cell.col, cell.row, draggable.payload);
+    default:
+};
+// Programmatic swap (e.g. sort inventory)
+grid.swapCells(0, 0, 1, 0); // animated
+grid.swapCells(0, 0, 1, 0, false); // instant
 ```
 
 **Card targeting wiring pattern:**

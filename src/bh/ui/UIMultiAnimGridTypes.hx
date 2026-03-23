@@ -56,6 +56,12 @@ enum GridEvent {
 	CellDrop(cell:CellCoord, draggable:UIMultiAnimDraggable, sourceGrid:Null<UIMultiAnimGrid>, sourceCell:Null<CellCoord>,
 		ctx:DropContext);
 
+	/** A draggable was dropped onto an occupied cell with swapEnabled=true.
+	 *  The dropped item snaps to the target cell; the displaced item animates to the source cell.
+	 *  Call ctx.accept()/ctx.reject() to control swap. Default is accept.
+	 *  Also emitted by programmatic swapCells() — check ctx.programmatic to distinguish. */
+	CellSwap(source:CellCoord, target:CellCoord, draggable:Null<UIMultiAnimDraggable>, ctx:SwapContext);
+
 	/** A card was played on a cell (from UICardHandHelper targeting). */
 	CellCardPlayed(cell:CellCoord, cardId:String);
 
@@ -77,6 +83,11 @@ typedef CellBuildInfo = {
 	/** Extra or override parameters for this cell. */
 	var ?params:Map<String, Dynamic>;
 }
+
+/** Delegate to provide a custom visual for the displaced item during swap animation.
+ *  Receives the cell coordinate and its data. Returns an h2d.Object to animate,
+ *  or null to fall back to the detached cell visual (default behavior). */
+typedef SwapVisualProvider = (cell:CellCoord, data:Dynamic) -> Null<h2d.Object>;
 
 /** Delegate to determine whether a cell accepts a draggable drop. */
 typedef GridDropAccepts = (cell:CellCoord, draggable:UIMultiAnimDraggable) -> Bool;
@@ -104,45 +115,105 @@ typedef GridLayerConfig = {
 
 /** Context object passed to onGridEvent for CellDrop events.
  *  Allows the game to control post-drop animation (accept/reject). */
+@:allow(bh.ui.UIMultiAnimGrid)
+@:allow(bh.test.examples.UIMultiAnimGridTest)
 class DropContext {
-	// Internal state — read by UIMultiAnimGrid, not for game code.
-	public var _handled:Bool = false;
-	public var _accepted:Bool = true;
-	public var _pathName:Null<String> = null;
-	public var _onComplete:Null<Void -> Void> = null;
+	var handled:Bool = false;
+	var accepted:Bool = true;
+	var pathName:Null<String> = null;
+	var completeCb:Null<Void -> Void> = null;
 
 	public function new() {}
 
 	/** Accept the drop — plays the snap animation (default behavior). */
 	public function accept():Void {
-		_handled = true;
-		_accepted = true;
+		handled = true;
+		accepted = true;
 	}
 
 	/** Accept with a custom success animation path. */
-	public function acceptWithPath(pathName:String):Void {
-		_handled = true;
-		_accepted = true;
-		_pathName = pathName;
+	public function acceptWithPath(path:String):Void {
+		handled = true;
+		accepted = true;
+		pathName = path;
 	}
 
 	/** Reject the drop — plays the return animation (draggable returns to origin). */
 	public function reject():Void {
-		_handled = true;
-		_accepted = false;
+		handled = true;
+		accepted = false;
 	}
 
 	/** Reject with a custom failure animation path. */
-	public function rejectWithPath(pathName:String):Void {
-		_handled = true;
-		_accepted = false;
-		_pathName = pathName;
+	public function rejectWithPath(path:String):Void {
+		handled = true;
+		accepted = false;
+		pathName = path;
 	}
 
 	/** Register a callback that fires after the snap/return animation completes.
 	 *  For accept: fires on DragSnapComplete. For reject: fires on DragCancel. */
 	public function onComplete(cb:Void -> Void):Void {
-		_onComplete = cb;
+		completeCb = cb;
+	}
+}
+
+/** Context object passed to onGridEvent for CellSwap events.
+ *  Allows the game to accept/reject the swap and control animation. */
+@:allow(bh.ui.UIMultiAnimGrid)
+@:allow(bh.test.examples.UIMultiAnimGridTest)
+class SwapContext {
+	var handled:Bool = false;
+	var accepted:Bool = true;
+	var swapPath:Null<String> = null;
+	var snapPath:Null<String> = null;
+	var completeCb:Null<Void -> Void> = null;
+	var snapCompleteCb:Null<Void -> Void> = null;
+
+	/** True when this swap was triggered by programmatic swapCells(), false for drag-drop. */
+	public final programmatic:Bool;
+
+	public function new(programmatic:Bool = false) {
+		this.programmatic = programmatic;
+	}
+
+	/** Accept the swap — dropped item snaps to target, displaced item animates to source (default). */
+	public function accept():Void {
+		handled = true;
+		accepted = true;
+	}
+
+	/** Accept with a custom animation path for the displaced item. */
+	public function acceptWithSwapPath(swapPathName:String):Void {
+		handled = true;
+		accepted = true;
+		swapPath = swapPathName;
+	}
+
+	/** Accept with custom paths for both the dropped item (snap) and displaced item (swap). */
+	public function acceptWithPaths(snapPathName:String, swapPathName:String):Void {
+		handled = true;
+		accepted = true;
+		snapPath = snapPathName;
+		swapPath = swapPathName;
+	}
+
+	/** Reject the swap — draggable returns to origin, nothing changes. */
+	public function reject():Void {
+		handled = true;
+		accepted = false;
+	}
+
+	/** Register a callback that fires after the snap animation completes (draggable lands on target).
+	 *  The displaced item may still be animating. Useful for rebuilding game overlays (e.g. draggable items)
+	 *  that need to appear at the new positions before the displaced animation finishes. */
+	public function onSnapComplete(cb:Void -> Void):Void {
+		snapCompleteCb = cb;
+	}
+
+	/** Register a callback that fires after both animations complete. */
+	public function onComplete(cb:Void -> Void):Void {
+		completeCb = cb;
 	}
 }
 
@@ -171,6 +242,19 @@ typedef GridConfig = {
 	/** .manim animated path name for return animation on failed drop (null = instant). */
 	var ?returnPathName:String;
 
+	/** .manim animated path name for displaced item animation during swap (null = falls back to returnPathName, then instant). */
+	var ?swapPathName:String;
+
+	/** Enable swap semantics: dropping onto an occupied cell emits CellSwap instead of CellDrop.
+	 *  When false (default), occupied cells are handled by CellDrop as usual. */
+	var ?swapEnabled:Bool;
+
+	/** Parent container for swap animation visuals. During swap, the displaced item is reparented
+	 *  here so it renders above grid content. Typically an h2d.Layers added at a screen layer above
+	 *  the grid (e.g. ModalLayer or a NamedLayer). If null, falls back to the grid's own root at
+	 *  a high z-order (works for simple cases but may render behind overlays/dialogs). */
+	var ?swapAnimContainer:h2d.Object;
+
 	/** Cell parameter name used for drag-drop highlight state (default: "highlight").
 	 *  This is a string/enum parameter on the cell programmable. Values are set by the
 	 *  highlightDelegate, or default to "none"/"accept"/"reject". */
@@ -190,4 +274,10 @@ typedef GridConfig = {
 	/** Cell parameter name used for reject-drop highlight (default: null = no reject visual).
 	 *  When set, cells where `accepts` returns false show this param during drag. */
 	var ?rejectHighlightParam:String;
+
+	/** Optional delegate to provide a custom visual for the displaced item during swap animation.
+	 *  When set, the delegate builds the visual to animate instead of using the raw detached cell.
+	 *  This is useful when cell programmables include backgrounds that shouldn't animate.
+	 *  Return null from the delegate to fall back to the detached cell visual for that cell. */
+	var ?swapVisualProvider:SwapVisualProvider;
 }

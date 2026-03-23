@@ -10,9 +10,19 @@
 - **DevBridge `send_events` batch method** — process multiple events and frame steps in a single call. Accepts an array of event/step objects with optional `auto_pause`/resume. Limits: max 200 entries, max 100 frames per step. Auto-pause/resume ensures deterministic frame stepping for multi-step interaction sequences.
 - **DevBridge `list_active_programmables`** — lists all live incremental-mode programmables on screen with current parameter values, definitions, named elements, slots, and interactive count. Optional `programmable` filter and `sceneGraph`/`depth` params for per-programmable scene graph output.
 
+- **Grid cell swap** — `swapCells(col1, row1, col2, row2, ?animated)` for programmatic cell swapping with optional animated transitions. `swapEnabled` config flag enables drag-drop swap semantics (dropping on occupied cell emits `CellSwap` instead of `CellDrop`). `SwapContext` controls accept/reject, custom paths (`acceptWithSwapPath`, `acceptWithPaths`), `onComplete`/`onSnapComplete` callbacks. Supports cross-grid swaps, `SwapVisualProvider` delegate for custom displaced-item visuals, and `swapAnimContainer` for z-order control during animation.
+- **Configurable scene layers** — `SceneLayerConfig` typedef on `ScreenManager` constructor allows overriding default layer indices (content=2, master=4, overlay=5, dialog=6). Validates ordering constraint `content < master < overlay < dialog`. Screen-level layer validation added (BackgroundLayer < DefaultLayer < ModalLayer).
+- **`applyGridSettings` swap fields** — `swapPathName` and `swapEnabled` can now be configured via `.manim` `settings {}` blocks.
+- **`applyCardHandSettings` handLayerIndex** — `handLayerIndex` setting allows overriding the card hand layer index from `.manim`.
+- **Dynamic cardHand layer derivation** — `addCardHand()` now computes the cardHand layer index as midpoint between DefaultLayer and ModalLayer instead of hardcoded 4.
+
+### Changed
+- **DropContext internals** — internal fields renamed from `_handled`/`_accepted`/`_pathName`/`_onComplete` to private fields with `@:allow` access (no public API change).
+
 ### Fixed
 - **Codegen `WITH_OFFSET` for non-static bases** — `generatePositionExpr` now correctly handles `.offset()` on non-static coordinate expressions (e.g. `$ref.extraPoint(...).offset(x, y)`). Previously returned null when the base couldn't be resolved at compile time, causing elements to be positioned at (0, 0).
 - **`safeDetach` for h2d.Graphics reparenting** — extracted `HeapsUtils.safeDetach()` utility that detaches objects without triggering `onRemove()` cascade (which destroys `h2d.Graphics` draw commands). Applied to `UIMultiAnimDraggable` (constructor, `moveToLayer`, `restoreLayer`) and `UIMultiAnimGrid.detachCellVisual()`. `HotReload.PlaceholderReuser` now delegates to the shared utility.
+- **`detachCellVisual` immediate rebuild** — `detachCellVisual()` now rebuilds the cell entry immediately after detaching, fully severing the detached object from the grid. Prevents `rebuildCell()` from removing the detached object.
 
 ## [1.0.0-rc.2] - 2026-03-12
 

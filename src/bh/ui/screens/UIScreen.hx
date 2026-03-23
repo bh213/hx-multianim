@@ -113,6 +113,11 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 				throw 'DefaultLayer not set';
 			if (layers.exists(ModalLayer) == false)
 				throw 'ModalLayer not set';
+			final bg = layers.get(BackgroundLayer) ?? 0;
+			final def = layers.get(DefaultLayer) ?? 0;
+			final modal = layers.get(ModalLayer) ?? 0;
+			if (!(bg < def && def < modal))
+				throw 'Screen layers: must satisfy BackgroundLayer($bg) < DefaultLayer($def) < ModalLayer($modal)';
 			this.layers = layers;
 		}
 
@@ -669,8 +674,12 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		// Auto-register card hand layer above DefaultLayer if no explicit handLayer set
 		if (config.handLayer == null) {
 			final cardHandLayer = NamedLayer("cardHand");
-			if (!layers.exists(cardHandLayer))
-				layers.set(cardHandLayer, 4);
+			if (!layers.exists(cardHandLayer)) {
+				// Derive layer index midway between DefaultLayer and ModalLayer
+				final defaultVal = layers.get(DefaultLayer) ?? 3;
+				final modalVal = layers.get(ModalLayer) ?? 5;
+				layers.set(cardHandLayer, defaultVal + Std.int((modalVal - defaultVal) / 2));
+			}
 			config.handLayer = cardHandLayer;
 		}
 		final hand = new UICardHandHelper(this, builder, config);
@@ -686,6 +695,8 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		if (settings.exists("highlightParam")) config.highlightParam = getSettings(settings, "highlightParam", "highlight");
 		if (settings.exists("statusParam")) config.statusParam = getSettings(settings, "statusParam", "status");
 		if (settings.exists("rejectHighlightParam")) config.rejectHighlightParam = getSettings(settings, "rejectHighlightParam", "");
+		if (settings.exists("swapPathName")) config.swapPathName = getSettings(settings, "swapPathName", "");
+		if (settings.exists("swapEnabled")) config.swapEnabled = getBoolSettings(settings, "swapEnabled", false);
 	}
 
 	function applyCardHandSettings(config:UICardHandTypes.CardHandConfig, settings:ResolvedSettings):Void {
@@ -710,6 +721,12 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		if (settings.exists("arrowSegmentName")) config.arrowSegmentName = getSettings(settings, "arrowSegmentName", "");
 		if (settings.exists("arrowHeadName")) config.arrowHeadName = getSettings(settings, "arrowHeadName", "");
 		if (settings.exists("arrowPathName")) config.arrowPathName = getSettings(settings, "arrowPathName", "");
+		if (settings.exists("handLayerIndex")) {
+			final idx = getIntSettings(settings, "handLayerIndex", 4);
+			final cardHandLayer = NamedLayer("cardHand");
+			layers.set(cardHandLayer, idx);
+			config.handLayer = cardHandLayer;
+		}
 	}
 
 	/** Register a higher-order component for auto-wired lifecycle management.

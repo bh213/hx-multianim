@@ -33,6 +33,18 @@ extern class FileLoader {
 }
 #end
 
+/** Global scene layer indices for ScreenManager. All values must satisfy content < master < overlay < dialog. */
+typedef SceneLayerConfig = {
+	/** Main game screen layer (default 2). */
+	var ?content:Int;
+	/** Persistent overlay screen layer, e.g. top bar (default 4). */
+	var ?master:Int;
+	/** Modal darkening overlay layer (default 5). */
+	var ?overlay:Int;
+	/** Modal dialog screen layer (default 6). */
+	var ?dialog:Int;
+}
+
 private enum ScreenManagerMode {
 	None;
 	Single(single:UIScreen);
@@ -61,7 +73,7 @@ class ScreenManager {
 	var modalOverlay:Null<h2d.Bitmap> = null;
 	var modalOverlayTargetAlpha:Float = 0.0;
 	var modalOverlayBlurTargets:Array<{root:h2d.Object, saved:Null<h2d.filter.Filter>}> = [];
-	final layerOverlay:Int = 5;
+	final sceneLayers:{content:Int, master:Int, overlay:Int, dialog:Int};
 	#if MULTIANIM_DEV
 	var hotReloadRegistry:bh.multianim.dev.HotReload.ReloadableRegistry = new bh.multianim.dev.HotReload.ReloadableRegistry();
 	var fileChangeDetector:bh.multianim.dev.HotReload.FileChangeDetector = new bh.multianim.dev.HotReload.FileChangeDetector();
@@ -71,10 +83,18 @@ class ScreenManager {
 	var currentlyLoadingScreen:Null<UIScreen> = null;
 	#end
 
-	public function new(app:hxd.App, ?loader) {
+	public function new(app:hxd.App, ?loader, ?sceneLayerConfig:SceneLayerConfig) {
 		this.app = app;
 		this.loader = loader ?? createLoader();
 		this.window = hxd.Window.getInstance();
+		final sl = sceneLayerConfig;
+		final content = sl?.content ?? 2;
+		final master = sl?.master ?? 4;
+		final overlay = sl?.overlay ?? 5;
+		final dialog = sl?.dialog ?? 6;
+		if (!(content < master && master < overlay && overlay < dialog))
+			throw 'SceneLayerConfig: must satisfy content($content) < master($master) < overlay($overlay) < dialog($dialog)';
+		this.sceneLayers = {content: content, master: master, overlay: overlay, dialog: dialog};
 		this.handler = new ControllerEventHandler(app.s2d, window, this);
 		#if MULTIANIM_DEV
 		this.loader.hotReloadRegistry = hotReloadRegistry;
@@ -461,13 +481,9 @@ class ScreenManager {
 		var removedScreens:Null<Array<UIScreen>> = null;
 		var overrideActiveScreenControllers:Null<Array<UIScreen>> = null;
 
-		// Global scene layer indices (added to app.s2d)
-		// layerContent: main game screen (e.g. CombatScreen) - bottom
-		// layerMaster: persistent overlay screen (e.g. top bar) - above content
-		// layerDialog: modal dialog screens - above everything
-		final layerContent = 2;
-		final layerMaster = 4;
-		final layerDialog = 6;
+		final layerContent = sceneLayers.content;
+		final layerMaster = sceneLayers.master;
+		final layerDialog = sceneLayers.dialog;
 		switch mode {
 			case None:
 				switch newScreenMode {
@@ -666,14 +682,10 @@ class ScreenManager {
 		}
 
 		// Compute diff: what screens to add and remove
-		final layerContent = 2;
-		final layerMaster = 4;
-		final layerDialog = 6;
-
 		var screensToAdd:Map<UIScreen, Int> = [];
 		var screensToRemove:Array<UIScreen> = [];
 
-		computeScreenDiff(mode, newScreenMode, layerContent, layerMaster, layerDialog, screensToAdd, screensToRemove);
+		computeScreenDiff(mode, newScreenMode, sceneLayers.content, sceneLayers.master, sceneLayers.dialog, screensToAdd, screensToRemove);
 
 		if (screensToRemove.length == 0 && Lambda.count(screensToAdd) == 0) {
 			// No actual change
@@ -1035,7 +1047,7 @@ class ScreenManager {
 		final color = config.color ?? 0x000000;
 		final overlay = new h2d.Bitmap(h2d.Tile.fromColor(color, 4096, 4096));
 		overlay.alpha = 0.0;
-		app.s2d.add(overlay, layerOverlay);
+		app.s2d.add(overlay, sceneLayers.overlay);
 		modalOverlayTargetAlpha = config.alpha ?? 0.5;
 		return overlay;
 	}
