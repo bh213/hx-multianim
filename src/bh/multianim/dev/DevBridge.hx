@@ -271,6 +271,8 @@ class DevBridge {
 			case "check_overlaps": handleCheckOverlaps(params);
 			// v5: direct actions
 			case "click_interactive": handleClickInteractive(params);
+			// v6: batch events
+			case "send_events": handleSendEvents(params);
 			default: throw 'Unknown method: $method';
 		};
 	}
@@ -1372,6 +1374,87 @@ class DevBridge {
 		}
 
 		throw 'Interactive not found: $id';
+	}
+
+	// ---- v6: Batch events ----
+
+	function handleSendEvents(params:Dynamic):Dynamic {
+		var events:Array<Dynamic> = params.events;
+		if (events == null)
+			throw "Required param: events (array of event/step objects)";
+		if (events.length == 0)
+			throw "events array must not be empty";
+		if (events.length > 200)
+			throw "events array too large (max 200 entries)";
+
+		var autoPause:Bool = params.auto_pause != null ? params.auto_pause : false;
+		var wasAlreadyPaused = paused;
+
+		// Auto-pause if requested and not already paused
+		if (autoPause && !paused) {
+			savedLoopFunc = @:privateAccess hxd.System.loopFunc;
+			@:privateAccess hxd.System.loopFunc = () -> {};
+			paused = true;
+		}
+
+		var window = hxd.Window.getInstance();
+		var results:Array<Dynamic> = [];
+		var totalFramesStepped = 0;
+
+		try {
+			for (entry in events) {
+				if (entry.step != null) {
+					// Step: run N game frames
+					var frames:Int = Std.int(entry.step);
+					if (frames < 1) frames = 1;
+					if (frames > 100) frames = 100;
+
+					if (!paused)
+						throw "Cannot step frames when not paused. Use auto_pause:true or pause first.";
+					if (savedLoopFunc == null)
+						throw "No saved loop function — cannot step.";
+
+					for (_ in 0...frames) {
+						savedLoopFunc();
+					}
+					totalFramesStepped += frames;
+					results.push({step: frames});
+				} else if (entry.type != null) {
+					// Event: dispatch via same logic as send_event
+					var result = handleSendEvent(entry);
+					results.push(result);
+				} else {
+					throw "Each entry must have either 'type' (event) or 'step' (frame count)";
+				}
+			}
+		} catch (e:haxe.Exception) {
+			// Resume if we auto-paused, even on error
+			if (autoPause && !wasAlreadyPaused && paused) {
+				if (savedLoopFunc != null) {
+					@:privateAccess hxd.System.loopFunc = savedLoopFunc;
+					savedLoopFunc = null;
+				}
+				paused = false;
+			}
+			throw e;
+		}
+
+		// Auto-resume if we auto-paused
+		if (autoPause && !wasAlreadyPaused && paused) {
+			if (savedLoopFunc != null) {
+				@:privateAccess hxd.System.loopFunc = savedLoopFunc;
+				savedLoopFunc = null;
+			}
+			paused = false;
+		}
+
+		return {
+			success: true,
+			eventsProcessed: events.length,
+			totalFramesStepped: totalFramesStepped,
+			results: results,
+			paused: paused,
+		};
 	}
 
 	function collectVisualOverlaps(parent:h2d.Object, overlaps:Array<Dynamic>, minArea:Int, includeHidden:Bool):Void {
