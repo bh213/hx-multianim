@@ -318,12 +318,14 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 
 	function startAnimation(fromX:Float, fromY:Float, toX:Float, toY:Float, factory:Null<AnimatedPathFactory>, onComplete:() -> Void):Void {
 		if (factory == null) {
+			state = Idle;
 			onComplete();
 			return;
 		}
 
 		// Don't animate zero-distance
 		if (Math.abs(toX - fromX) < 0.5 && Math.abs(toY - fromY) < 0.5) {
+			state = Idle;
 			onComplete();
 			return;
 		}
