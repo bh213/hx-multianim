@@ -752,6 +752,95 @@ class DevBridgeTest extends BuilderTestBase {
 		}
 		Assert.isTrue(threw);
 	}
+
+	// ==================== list_active_programmables ====================
+
+	@Test
+	public function testListActiveProgrammables_empty():Void {
+		var bridge = createTestBridge();
+		var result:Dynamic = bridge.dispatch("list_active_programmables", {});
+		Assert.equals(0, result.count);
+		Assert.equals(0, (result.programmables : Array<Dynamic>).length);
+		Assert.notNull(result.note);
+	}
+
+	@Test
+	public function testListActiveProgrammables_singleProgrammable():Void {
+		var setup = createBridgeWithProgrammable(
+			"#test programmable(x:int=5, mode:[a,b]=a) {\n  bitmap(generated(color(10, 10, #FF0000))): 0,0\n}",
+			"test"
+		);
+		var result:Dynamic = setup.bridge.dispatch("list_active_programmables", {});
+		Assert.equals(1, result.count);
+		var entries:Array<Dynamic> = result.programmables;
+		Assert.equals(1, entries.length);
+		var entry:Dynamic = entries[0];
+		Assert.equals("test", entry.name);
+		Assert.equals("test-source", entry.source);
+		Assert.isTrue(entry.visible);
+		// Check current parameter values are present
+		Assert.notNull(entry.currentParameters);
+		Assert.equals(5, Reflect.field(entry.currentParameters, "x"));
+		Assert.equals("a", Reflect.field(entry.currentParameters, "mode"));
+		// parameterDefinitions requires builder in screenManager.builders (not set up in test helper)
+		// In production, definitions are always available because ScreenManager loads builders
+	}
+
+	@Test
+	public function testListActiveProgrammables_filterByName():Void {
+		var bridge = createTestBridge();
+		var src = "#a programmable(x:int=1) {\n  bitmap(generated(color(10, 10, #FF0000))): 0,0\n}\n"
+			+ "#b programmable(y:int=2) {\n  bitmap(generated(color(10, 10, #00FF00))): 0,0\n}";
+		var builder = builderFromSource(src);
+		var resultA = builder.buildWithParameters("a", new Map(), null, null, true);
+		var resultB = builder.buildWithParameters("b", new Map(), null, null, true);
+		bridge.screenManager.hotReloadRegistry.register("test-source", resultA, "a");
+		bridge.screenManager.hotReloadRegistry.register("test-source", resultB, "b");
+
+		// Filter to just "a"
+		var result:Dynamic = bridge.dispatch("list_active_programmables", {programmable: "a"});
+		Assert.equals(1, result.count);
+		var entries:Array<Dynamic> = result.programmables;
+		Assert.equals("a", entries[0].name);
+	}
+
+	@Test
+	public function testListActiveProgrammables_withSceneGraph():Void {
+		var setup = createBridgeWithProgrammable(
+			"#test programmable(x:int=0) {\n  bitmap(generated(color(10, 10, #FF0000))): 0,0\n}",
+			"test"
+		);
+		var result:Dynamic = setup.bridge.dispatch("list_active_programmables", {sceneGraph: true, depth: 3});
+		var entries:Array<Dynamic> = result.programmables;
+		Assert.equals(1, entries.length);
+		Assert.notNull(entries[0].sceneGraph);
+		Assert.notNull(entries[0].sceneGraph.type);
+	}
+
+	@Test
+	public function testListActiveProgrammables_noSceneGraphByDefault():Void {
+		var setup = createBridgeWithProgrammable(
+			"#test programmable(x:int=0) {\n  bitmap(generated(color(10, 10, #FF0000))): 0,0\n}",
+			"test"
+		);
+		var result:Dynamic = setup.bridge.dispatch("list_active_programmables", {});
+		var entries:Array<Dynamic> = result.programmables;
+		Assert.isNull(entries[0].sceneGraph);
+	}
+
+	@Test
+	public function testListActiveProgrammables_withSlots():Void {
+		var setup = createBridgeWithProgrammable(
+			"#test programmable(x:int=0) {\n  #s1 slot: 0,0\n  #s2 slot: 10,10\n}",
+			"test"
+		);
+		var result:Dynamic = setup.bridge.dispatch("list_active_programmables", {});
+		var entries:Array<Dynamic> = result.programmables;
+		var entry:Dynamic = entries[0];
+		Assert.notNull(entry.slots);
+		var slots:Array<Dynamic> = entry.slots;
+		Assert.equals(2, slots.length);
+	}
 }
 
 // ---- Private inner class for test screens ----

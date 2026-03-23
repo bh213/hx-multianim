@@ -13,7 +13,7 @@
 - ~~Haxelib release~~ — DONE (1.0.0-rc.1, see [release.md](release.md))
 - More hot reload integration tests — see [docs/hot-reload.md "Missing Tests"](../docs/hot-reload.md#missing-tests-needed)
 - Add blob47 utils for easier testing/dev/selection
-- ~~MCP server~~ — DONE (DevBridge 30 tools)
+- ~~MCP server~~ — DONE (DevBridge 31 tools)
 
 
 ## After 1.0

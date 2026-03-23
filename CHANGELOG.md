@@ -8,6 +8,7 @@
 - **Named element reference validation** — parser tracks `#name element(...)` declarations within programmable scope. `$name.extraPoint()` references are validated at parse time (unknown/forward references rejected with clear errors).
 
 - **DevBridge `send_events` batch method** — process multiple events and frame steps in a single call. Accepts an array of event/step objects with optional `auto_pause`/resume. Limits: max 200 entries, max 100 frames per step. Auto-pause/resume ensures deterministic frame stepping for multi-step interaction sequences.
+- **DevBridge `list_active_programmables`** — lists all live incremental-mode programmables on screen with current parameter values, definitions, named elements, slots, and interactive count. Optional `programmable` filter and `sceneGraph`/`depth` params for per-programmable scene graph output.
 
 ### Fixed
 - **Codegen `WITH_OFFSET` for non-static bases** — `generatePositionExpr` now correctly handles `.offset()` on non-static coordinate expressions (e.g. `$ref.extraPoint(...).offset(x, y)`). Previously returned null when the base couldn't be resolved at compile time, causing elements to be positioned at (0, 0).

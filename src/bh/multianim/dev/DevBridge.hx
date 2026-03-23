@@ -273,6 +273,8 @@ class DevBridge {
 			case "click_interactive": handleClickInteractive(params);
 			// v6: batch events
 			case "send_events": handleSendEvents(params);
+			// v7: active programmables listing
+			case "list_active_programmables": handleListActiveProgrammables(params);
 			default: throw 'Unknown method: $method';
 		};
 	}
@@ -1520,6 +1522,106 @@ class DevBridge {
 
 	static function round2(v:Float):Float {
 		return Math.round(v * 100) / 100;
+	}
+
+	// ---- v7: active programmables listing ----
+
+	function handleListActiveProgrammables(params:Dynamic):Dynamic {
+		// Only programmables built with incremental:true are tracked in the registry
+		// (via ReloadSentinel auto-registration). Non-incremental builds will not appear.
+		var handles = screenManager.hotReloadRegistry.getAllHandles();
+
+		var programmableName:Null<String> = params.programmable;
+		var includeSceneGraph:Bool = params.sceneGraph == true;
+		var sceneGraphDepth:Int = params.depth != null ? Std.int(params.depth) : 6;
+
+		var entries:Array<Dynamic> = [];
+		for (handle in handles) {
+			if (programmableName != null && handle.programmableName != programmableName)
+				continue;
+
+			var entry:Dynamic = {
+				name: handle.programmableName,
+				source: handle.sourcePath,
+				x: handle.result.object.x,
+				y: handle.result.object.y,
+				visible: handle.result.object.visible,
+			};
+
+			// Current parameter values (from incremental context)
+			if (handle.result.incrementalContext != null) {
+				var snapshot = handle.result.incrementalContext.snapshotParams();
+				var paramValues:Dynamic = {};
+				var hasParams = false;
+				for (paramName => resolved in snapshot) {
+					var val = resolvedParamToDynamic(resolved);
+					if (val != null) {
+						Reflect.setField(paramValues, paramName, val);
+						hasParams = true;
+					}
+				}
+				if (hasParams)
+					entry.currentParameters = paramValues;
+			}
+
+			// Parameter definitions (types and defaults) from the builder
+			var builder = findBuilderForHandle(handle);
+			if (builder != null) {
+				var defs = builder.getParameterDefinitions(handle.programmableName);
+				var defList:Array<Dynamic> = [];
+				for (pName => def in defs) {
+					if (def == null) continue;
+					defList.push({name: pName, type: defTypeToString(def.type)});
+				}
+				if (defList.length > 0)
+					entry.parameterDefinitions = defList;
+			}
+
+			// Named elements summary
+			if (handle.result.names != null) {
+				var names:Array<String> = [];
+				for (name => _ in handle.result.names)
+					names.push(name);
+				if (names.length > 0)
+					entry.namedElements = names;
+			}
+
+			// Slot summary
+			if (handle.result.slots != null && handle.result.slots.length > 0) {
+				var slotList:Array<Dynamic> = [];
+				for (s in handle.result.slots) {
+					var slotInfo:Dynamic = {occupied: s.handle.isOccupied()};
+					switch s.key {
+						case Named(name): slotInfo.name = name;
+						case Indexed(name, index):
+							slotInfo.name = name;
+							slotInfo.index = index;
+						case Indexed2D(name, ix, iy):
+							slotInfo.name = name;
+							slotInfo.indexX = ix;
+							slotInfo.indexY = iy;
+					}
+					slotList.push(slotInfo);
+				}
+				entry.slots = slotList;
+			}
+
+			// Interactive count
+			if (handle.result.interactives != null && handle.result.interactives.length > 0)
+				entry.interactiveCount = handle.result.interactives.length;
+
+			// Optional: scene graph for this programmable's object tree
+			if (includeSceneGraph)
+				entry.sceneGraph = walkSceneGraph(handle.result.object, 0, sceneGraphDepth);
+
+			entries.push(entry);
+		}
+
+		return {
+			count: entries.length,
+			note: "Only incremental-mode programmables are tracked (built with incremental:true via screen helpers or ReloadableRegistry)",
+			programmables: entries,
+		};
 	}
 
 	// ---- Helpers ----
