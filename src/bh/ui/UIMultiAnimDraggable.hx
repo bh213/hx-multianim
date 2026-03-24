@@ -50,6 +50,32 @@ typedef DragCancelDelegate = (pos:Point, wrapper:UIElementEventWrapper) -> Void;
  */
 typedef AnimatedPathFactory = (from:FPoint, to:FPoint) -> AnimatedPath;
 
+/** Structured identifier for drop zones, replacing string-based IDs. */
+enum DropZoneId {
+	/** Grid cell zone — created by UIMultiAnimGrid.acceptDrops(). */
+	GridCell(grid:Dynamic, col:Int, row:Int);
+
+	/** Slot-based zone — created by addDropZoneFromSlot/addDropZonesFromSlots. */
+	SlotZone(baseName:String, ?index:Int);
+
+	/** 2D-indexed slot zone — for Indexed2D slots. */
+	SlotZone2D(baseName:String, indexX:Int, indexY:Int);
+
+	/** Arbitrary named zone — for game-level custom zones. */
+	Named(name:String);
+}
+
+class DropZoneIdTools {
+	public static function format(id:DropZoneId):String {
+		return switch id {
+			case GridCell(_, col, row): 'grid($col,$row)';
+			case SlotZone(name, idx): idx != null ? '${name}_$idx' : name;
+			case SlotZone2D(name, x, y): '${name}_${x}_$y';
+			case Named(name): name;
+		};
+	}
+}
+
 enum DragEvent {
 	DragStart;
 	DragMove;
@@ -64,7 +90,7 @@ enum DragEvent {
 
 @:structInit
 class DropZone {
-	public var id:String;
+	public var id:DropZoneId;
 	public var bounds:Collider;
 	public var slot:Null<SlotHandle> = null;
 	public var snapX:Null<Float> = null;
@@ -221,7 +247,7 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 		return this;
 	}
 
-	public function addDropZoneFromSlot(id:String, slot:SlotHandle,
+	public function addDropZoneFromSlot(id:DropZoneId, slot:SlotHandle,
 			?accepts:(draggable:UIMultiAnimDraggable, zone:DropZone) -> Bool):UIMultiAnimDraggable {
 		dropZones.push({
 			id: id,
@@ -239,19 +265,19 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 		for (entry in builderResult.slots) {
 			switch entry.key {
 				case Indexed(name, index) if (name == baseName):
-					addDropZoneFromSlot(baseName + "_" + index, entry.handle, accepts);
+					addDropZoneFromSlot(SlotZone(baseName, index), entry.handle, accepts);
 				case Indexed2D(name, indexX, indexY) if (name == baseName):
-					addDropZoneFromSlot('${baseName}_${indexX}_${indexY}', entry.handle, accepts);
+					addDropZoneFromSlot(SlotZone2D(baseName, indexX, indexY), entry.handle, accepts);
 				case Named(name) if (name == baseName):
-					addDropZoneFromSlot(baseName, entry.handle, accepts);
+					addDropZoneFromSlot(SlotZone(baseName), entry.handle, accepts);
 				default:
 			}
 		}
 		return this;
 	}
 
-	public function removeDropZone(id:String):Void {
-		dropZones = dropZones.filter(z -> z.id != id);
+	public function removeDropZone(id:DropZoneId):Void {
+		dropZones = dropZones.filter(z -> !Type.enumEq(z.id, id));
 	}
 
 	public function clearDropZones():Void {
@@ -542,7 +568,7 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 						// Successful drop
 						var snap = getSnapPosition(zone, dropPos);
 
-						wrapper.control.pushEvent(UICustomEvent("dragDrop", {zone: zone.id}), this);
+						wrapper.control.pushEvent(UICustomEvent("dragDrop", {zone: zone}), this);
 						if (onDragEvent != null) {
 							onDragEvent(DragEnd, wrapper.eventPos, wrapper);
 						}

@@ -1,6 +1,8 @@
 package bh.ui;
 
 import bh.base.Hex.HexOrientation;
+import bh.multianim.MultiAnimBuilder;
+import bh.multianim.MultiAnimBuilder.BuilderResult;
 import bh.ui.UIMultiAnimDraggable;
 
 /** Identifies a cell in the grid. For rect grids, col/row map directly.
@@ -41,7 +43,7 @@ enum CellTargetSource {
 }
 
 /** Events emitted by UIMultiAnimGrid via the onGridEvent callback. */
-enum GridEvent {
+enum GridEvent<T> {
 	/** Cell was clicked. */
 	CellClick(cell:CellCoord, button:Int);
 
@@ -53,7 +55,7 @@ enum GridEvent {
 
 	/** A draggable was dropped onto a cell. sourceGrid/sourceCell are set when the drop originated from makeDraggableFromCell.
 	 *  Call ctx.accept()/ctx.reject() to control post-drop animation. Default is accept (snap). */
-	CellDrop(cell:CellCoord, draggable:UIMultiAnimDraggable, sourceGrid:Null<UIMultiAnimGrid>, sourceCell:Null<CellCoord>,
+	CellDrop(cell:CellCoord, draggable:UIMultiAnimDraggable, sourceGrid:Null<UIMultiAnimGrid<T>>, sourceCell:Null<CellCoord>,
 		ctx:DropContext);
 
 	/** A draggable was dropped onto an occupied cell with swapEnabled=true.
@@ -66,12 +68,12 @@ enum GridEvent {
 	CellCardPlayed(cell:CellCoord, cardId:String);
 
 	/** Cell data changed via set() or clear(). */
-	CellDataChanged(cell:CellCoord, oldData:Dynamic, newData:Dynamic);
+	CellDataChanged(cell:CellCoord, oldData:Null<T>, newData:Null<T>);
 }
 
 /** Delegate to customize per-cell programmable and parameters.
  *  Return null to use grid defaults. */
-typedef CellBuildDelegate = (col:Int, row:Int, data:Dynamic) -> Null<CellBuildInfo>;
+typedef CellBuildDelegate<T> = (col:Int, row:Int, data:T) -> Null<CellBuildInfo>;
 
 /** Override info returned by CellBuildDelegate. */
 @:structInit
@@ -87,7 +89,7 @@ typedef CellBuildInfo = {
 /** Delegate to provide a custom visual for the displaced item during swap animation.
  *  Receives the cell coordinate and its data. Returns an h2d.Object to animate,
  *  or null to fall back to the detached cell visual (default behavior). */
-typedef SwapVisualProvider = (cell:CellCoord, data:Dynamic) -> Null<h2d.Object>;
+typedef SwapVisualProvider<T> = (cell:CellCoord, data:T) -> Null<h2d.Object>;
 
 /** Delegate to determine whether a cell accepts a draggable drop. */
 typedef GridDropAccepts = (cell:CellCoord, draggable:UIMultiAnimDraggable) -> Bool;
@@ -95,11 +97,192 @@ typedef GridDropAccepts = (cell:CellCoord, draggable:UIMultiAnimDraggable) -> Bo
 /** Delegate to determine whether a cell accepts a card play. */
 typedef GridCardAccepts = (cell:CellCoord, cardId:String) -> Bool;
 
+/** Delegate to determine whether a swap should occur when dropping on a cell.
+ *  Only called when swapEnabled=true AND the draggable has a source cell.
+ *  Return true to emit CellSwap, false to fall through to CellDrop.
+ *  When null, defaults to isOccupied() check. */
+typedef GridSwapAccepts = (cell:CellCoord, draggable:UIMultiAnimDraggable) -> Bool;
+
 /** Delegate to determine the highlight value for a cell during drag/card targeting.
  *  Return a string matching the cell programmable's highlight enum values (e.g. "valid", "reject", "expensive").
  *  Return "none" (or the configured default) to leave the cell unhighlighted.
  *  When null, the grid uses default behavior: accepts → "accept", !accepts → "reject". */
 typedef GridHighlightDelegate = (cell:CellCoord, accepts:Bool) -> String;
+
+// ============================================================
+// Cell visual abstraction
+// ============================================================
+
+/** Wraps the visual representation of a grid cell.
+ *  The grid manages highlight/status state through typed methods.
+ *  Game-specific parameters (slots, dynamic refs) are accessible via getResult(). */
+interface CellVisual<T> {
+	/** The scene graph object for this cell. */
+	var object(get, never):h2d.Object;
+
+	/** Set the highlight state (e.g. "none", "accept", "reject"). */
+	function setHighlight(value:String):Void;
+
+	/** Set the hover/interaction status (e.g. "normal", "hover"). */
+	function setStatus(value:String):Void;
+
+	/** Begin a batched update. Multiple setHighlight/setStatus calls between
+	 *  begin/end are applied as a single evaluation. Optional data parameter
+	 *  notifies the visual of a data change (set or clear). */
+	function beginUpdate(?data:T):Void;
+
+	/** End a batched update, flushing all changes. */
+	function endUpdate():Void;
+
+	/** Get the underlying BuilderResult for game-specific params (slots, dynamic refs, etc.).
+	 *  Returns null for non-manim implementations. */
+	function getResult():Null<BuilderResult>;
+}
+
+/** Default CellVisual backed by a BuilderResult from MultiAnimBuilder.
+ *  Maps setHighlight/setStatus to setParameter calls using the configured param names. */
+class DefaultCellVisual<T> implements CellVisual<T> {
+	final result:BuilderResult;
+	final highlightParam:String;
+	final statusParam:String;
+
+	public var object(get, never):h2d.Object;
+
+	inline function get_object():h2d.Object
+		return result.object;
+
+	public function new(result:BuilderResult, highlightParam:String, statusParam:String) {
+		this.result = result;
+		this.highlightParam = highlightParam;
+		this.statusParam = statusParam;
+	}
+
+	public function setHighlight(value:String):Void {
+		result.setParameter(highlightParam, value);
+	}
+
+	public function setStatus(value:String):Void {
+		result.setParameter(statusParam, value);
+	}
+
+	public function beginUpdate(?data:T):Void {
+		result.beginUpdate();
+	}
+
+	public function endUpdate():Void {
+		result.endUpdate();
+	}
+
+	public function getResult():Null<BuilderResult> {
+		return result;
+	}
+}
+
+/** Factory that creates CellVisual instances for a grid.
+ *  Owns the highlight default value and highlight resolution logic. */
+interface CellVisualFactory<T> {
+	/** The default (reset) value for the highlight parameter (e.g. "none"). */
+	var highlightDefault(get, never):String;
+
+	/** Build a cell visual for the given coordinate and data. */
+	function buildCell(coord:CellCoord, data:Null<T>, extraParams:Null<Map<String, Dynamic>>):CellVisual<T>;
+
+	/** Determine the highlight value for a cell during drag/card targeting.
+	 *  Return a string matching the cell programmable's highlight enum values. */
+	function resolveHighlightValue(coord:CellCoord, accepts:Bool):String;
+}
+
+/** Configuration for DefaultCellVisualFactory construction. */
+@:structInit
+@:nullSafety
+typedef CellVisualFactoryConfig<T> = {
+	/** Default programmable name used to build each cell. */
+	var cellBuildName:String;
+
+	/** Optional delegate to override programmable name or params per cell. */
+	var ?cellBuildDelegate:CellBuildDelegate<T>;
+
+	/** Cell parameter name used for highlight state (default: "highlight"). */
+	var ?highlightParam:String;
+
+	/** Cell parameter name used for hover status (default: "status"). */
+	var ?statusParam:String;
+
+	/** Optional delegate to determine per-cell highlight value during drag/card targeting. */
+	var ?highlightDelegate:GridHighlightDelegate;
+}
+
+/** Default factory that builds cells via MultiAnimBuilder.buildWithParameters().
+ *  Injects col, row, highlight, and status params automatically. */
+class DefaultCellVisualFactory<T> implements CellVisualFactory<T> {
+	final builder:MultiAnimBuilder;
+	final defaultBuildName:String;
+	final cellBuildDelegate:Null<CellBuildDelegate<T>>;
+	final _highlightParam:String;
+	final _statusParam:String;
+	final _highlightDefault:String;
+	final highlightDelegate:Null<GridHighlightDelegate>;
+
+	public var highlightDefault(get, never):String;
+
+	inline function get_highlightDefault():String
+		return _highlightDefault;
+
+	public function new(builder:MultiAnimBuilder, config:CellVisualFactoryConfig<T>) {
+		this.builder = builder;
+		this.defaultBuildName = config.cellBuildName;
+		this.cellBuildDelegate = config.cellBuildDelegate;
+		this._highlightParam = config.highlightParam != null ? config.highlightParam : "highlight";
+		this._highlightDefault = "none";
+		this._statusParam = config.statusParam != null ? config.statusParam : "status";
+		this.highlightDelegate = config.highlightDelegate;
+	}
+
+	public function buildCell(coord:CellCoord, data:Null<T>, extraParams:Null<Map<String, Dynamic>>):CellVisual<T> {
+		var buildName = defaultBuildName;
+		var delegateParams:Null<Map<String, Dynamic>> = null;
+
+		if (cellBuildDelegate != null) {
+			final info = cellBuildDelegate(coord.col, coord.row, data);
+			if (info != null) {
+				if (info.buildName != null)
+					buildName = info.buildName;
+				delegateParams = info.params;
+			}
+		}
+
+		final params:Map<String, Dynamic> = new Map();
+		params.set("col", coord.col);
+		params.set("row", coord.row);
+		params.set(_highlightParam, _highlightDefault);
+		params.set(_statusParam, "normal");
+
+		if (delegateParams != null)
+			for (key => value in delegateParams)
+				params.set(key, value);
+
+		if (extraParams != null)
+			for (key => value in extraParams)
+				params.set(key, value);
+
+		final result = builder.buildWithParameters(buildName, params, null, null, true);
+		return new DefaultCellVisual<T>(result, _highlightParam, _statusParam);
+	}
+
+	public function resolveHighlightValue(coord:CellCoord, accepts:Bool):String {
+		if (highlightDelegate != null)
+			return highlightDelegate(coord, accepts);
+		return if (accepts) "accept" else "reject";
+	}
+
+	/** Get the highlight param name (for layer construction). */
+	public inline function getHighlightParam():String
+		return _highlightParam;
+
+	/** Get the status param name (for layer construction). */
+	public inline function getStatusParam():String
+		return _statusParam;
+}
 
 /** Configuration for a named grid layer. */
 @:structInit
@@ -220,15 +403,12 @@ class SwapContext {
 /** Configuration for UIMultiAnimGrid construction. */
 @:structInit
 @:nullSafety
-typedef GridConfig = {
+typedef GridConfig<T> = {
 	/** Grid geometry (Rect or Hex). */
 	var gridType:GridType;
 
-	/** Default programmable name used to build each cell. */
-	var cellBuildName:String;
-
-	/** Optional delegate to override programmable name or params per cell. */
-	var ?cellBuildDelegate:CellBuildDelegate;
+	/** Factory that builds cell visuals and owns highlight/status semantics. */
+	var cellVisualFactory:CellVisualFactory<T>;
 
 	/** X origin offset where cell (0,0) renders in scene coordinates. */
 	var ?originX:Float;
@@ -249,35 +429,24 @@ typedef GridConfig = {
 	 *  When false (default), occupied cells are handled by CellDrop as usual. */
 	var ?swapEnabled:Bool;
 
+	/** Optional delegate to control when a swap occurs. Called when swapEnabled=true and the
+	 *  draggable has a source cell. Return true to emit CellSwap, false to fall through to CellDrop.
+	 *  When null, defaults to isOccupied() — swap whenever the target cell has data. */
+	var ?swapAccepts:GridSwapAccepts;
+
 	/** Parent container for swap animation visuals. During swap, the displaced item is reparented
 	 *  here so it renders above grid content. Typically an h2d.Layers added at a screen layer above
 	 *  the grid (e.g. ModalLayer or a NamedLayer). If null, falls back to the grid's own root at
 	 *  a high z-order (works for simple cases but may render behind overlays/dialogs). */
 	var ?swapAnimContainer:h2d.Object;
 
-	/** Cell parameter name used for drag-drop highlight state (default: "highlight").
-	 *  This is a string/enum parameter on the cell programmable. Values are set by the
-	 *  highlightDelegate, or default to "none"/"accept"/"reject". */
-	var ?highlightParam:String;
-
-	/** Optional delegate to determine per-cell highlight value during drag/card targeting.
-	 *  When null, uses default: accepts → "accept", !accepts → "reject". */
-	var ?highlightDelegate:GridHighlightDelegate;
-
-	/** Cell parameter name used for hover/click status (default: "status"). */
-	var ?statusParam:String;
-
 	/** Optional TweenManager for cell lifecycle animations (entrance, exit, effects).
 	 *  If null, all cell additions/removals are instant. */
 	var ?tweenManager:Dynamic;
-
-	/** Cell parameter name used for reject-drop highlight (default: null = no reject visual).
-	 *  When set, cells where `accepts` returns false show this param during drag. */
-	var ?rejectHighlightParam:String;
 
 	/** Optional delegate to provide a custom visual for the displaced item during swap animation.
 	 *  When set, the delegate builds the visual to animate instead of using the raw detached cell.
 	 *  This is useful when cell programmables include backgrounds that shouldn't animate.
 	 *  Return null from the delegate to fall back to the detached cell visual for that cell. */
-	var ?swapVisualProvider:SwapVisualProvider;
+	var ?swapVisualProvider:SwapVisualProvider<T>;
 }

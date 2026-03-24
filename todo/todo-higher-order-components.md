@@ -35,7 +35,7 @@ New features that affect the design:
 **Grid Layers** — Grid now uses `h2d.Layers` (was `h2d.Object`). New per-cell layer system:
 - `addLayer(name, {buildName, zOrder})` — register named overlay layers
 - `setLayer(col, row, layerName, ?params)` — build layer instance on a cell
-- `clearLayer()`, `clearLayerAll()`, `clearAllLayers()`, `getLayerResult()`, `hasLayer()`, `forEachLayer()`
+- `clearLayer()`, `clearLayerAll()`, `clearAllLayers()`, `getLayerVisual()`, `hasLayer()`
 - Base cells render at z-order 0, layers at custom z-orders
 - Auto-cleared on `removeCell()`, `removeCellAnimated()`, `dispose()`
 
@@ -56,7 +56,7 @@ New features that affect the design:
 
 **DragSnapComplete** — New `DragEvent.DragSnapComplete` variant, fired when snap animation completes.
 
-**rejectHighlightParam** — New `GridConfig` field for per-cell rejected-drop visual state.
+**GridSwapAccepts** — New `GridConfig` field for configurable swap decision logic (replaces string-based zone IDs with `DropZoneId` enum).
 
 ### Auto-Wired Helpers (PanelHelper — middle ground)
 - NOT a UIElement, but has screen auto-wiring via `createPanelHelper()` / `registerPanelHelper()`
@@ -182,20 +182,20 @@ Allow `.manim` `settings {}` blocks to override component config fields.
 | Setting | Type | Rationale |
 |---------|------|-----------|
 | `originX`, `originY` | float | Position varies by screen layout |
-| `cellBuildName` | string | Visual theme switching |
-| `highlightParam` | string | Rarely changes, but could |
-| `statusParam` | string | Rarely changes |
-| `rejectHighlightParam` | string | New feature — reject visual state name |
+| `swapPathName` | string | Animation path reference |
+| `swapEnabled` | bool | Enable/disable swap semantics |
 
 **Grid — NOT overridable (code-only):**
 
 | Setting | Rationale |
 |---------|-----------|
 | `gridType` (Rect/Hex + dimensions) | Structural — affects coordinate math, hit testing, everything |
-| `cellBuildDelegate` | Function reference, can't come from .manim |
-| `highlightDelegate` | Function reference |
+| `cellVisualFactory` | Object reference, can't come from .manim |
 | `tweenManager` | Runtime object reference |
 | `snapPathName`, `returnPathName` | String references to .manim elements — could be overridable but low value |
+| `swapAccepts` | Function reference |
+
+**Note:** `cellBuildName`, `highlightParam`, `statusParam`, and delegates moved to `CellVisualFactoryConfig` (owned by `DefaultCellVisualFactory`). These are factory concerns, not grid config.
 
 **Grid layers** — Layer configs (`addLayer()` calls) are structural and code-only. The layer build names and z-orders define the grid's layer architecture. However, individual layer _parameters_ (passed to `setLayer()`) could be settings-overridable in the future.
 
@@ -465,7 +465,7 @@ But if cell dimensions change (cellWidth/cellHeight), cells need repositioning w
 - [x] Priority: registration order (card hand registered before grid consumes first)
 
 ### Step 3: Settings integration — DONE
-- [x] Add `applyGridSettings(config, settings)` — applies `originX`, `originY`, `cellBuildName`, `highlightParam`, `statusParam`, `rejectHighlightParam`
+- [x] Add `applyGridSettings(config, settings)` — applies `originX`, `originY`, `swapPathName`, `swapEnabled` (cell build settings moved to `CellVisualFactoryConfig`)
 - [x] Add `applyCardHandSettings(config, settings)` — applies `anchorX/Y`, card dimensions, fan/linear layout, hover/targeting params, pile positions, path/arrow names
 - [x] Factory methods (`addGrid`, `addCardHand`, `createGrid`) accept and apply settings
 

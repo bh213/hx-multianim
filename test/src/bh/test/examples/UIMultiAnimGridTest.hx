@@ -5,6 +5,7 @@ import bh.test.BuilderTestBase;
 import bh.test.UITestHarness.UITestScreen;
 import bh.ui.UIMultiAnimGrid;
 import bh.ui.UIMultiAnimGridTypes;
+import bh.ui.UIMultiAnimGridTypes.DefaultCellVisualFactory;
 import bh.ui.UIMultiAnimGridTypes.SwapContext;
 import bh.ui.UICardHandHelper;
 import bh.ui.UICardHandTypes;
@@ -46,11 +47,11 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 		}
 	";
 
-	function createRectGrid(?cols:Int, ?rows:Int):UIMultiAnimGrid {
+	function createRectGrid(?cols:Int, ?rows:Int):UIMultiAnimGrid<Dynamic> {
 		var builder = BuilderTestBase.builderFromSource(CELL_MANIM);
 		var grid = new UIMultiAnimGrid(builder, {
 			gridType: Rect(50, 50, 2),
-			cellBuildName: "cell",
+			cellVisualFactory: new DefaultCellVisualFactory(builder, {cellBuildName: "cell"}),
 			originX: 0,
 			originY: 0,
 		});
@@ -59,11 +60,11 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 		return grid;
 	}
 
-	function createHexGrid(?radius:Int):UIMultiAnimGrid {
+	function createHexGrid(?radius:Int):UIMultiAnimGrid<Dynamic> {
 		var builder = BuilderTestBase.builderFromSource(HEX_CELL_MANIM);
 		var grid = new UIMultiAnimGrid(builder, {
 			gridType: Hex(POINTY, 30, 30),
-			cellBuildName: "hexCell",
+			cellVisualFactory: new DefaultCellVisualFactory(builder, {cellBuildName: "hexCell"}),
 			originX: 0,
 			originY: 0,
 		});
@@ -411,16 +412,16 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 	// ============== Cell visual params ==============
 
 	@Test
-	public function testGetCellResult():Void {
+	public function testGetCellVisual():Void {
 		var grid = createRectGrid(2, 2);
-		var result = grid.getCellResult(0, 0);
+		var result = grid.getCellVisual(0, 0);
 		Assert.notNull(result);
 	}
 
 	@Test
-	public function testGetCellResultNonexistent():Void {
+	public function testGetCellVisualNonexistent():Void {
 		var grid = createRectGrid(2, 2);
-		var result = grid.getCellResult(5, 5);
+		var result = grid.getCellVisual(5, 5);
 		Assert.isNull(result);
 	}
 
@@ -431,7 +432,7 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 		var builder = BuilderTestBase.builderFromSource(CELL_MANIM);
 		var grid = new UIMultiAnimGrid(builder, {
 			gridType: Rect(50, 50),
-			cellBuildName: "cell",
+			cellVisualFactory: new DefaultCellVisualFactory(builder, {cellBuildName: "cell"}),
 		});
 		var builtCells:Array<CellCoord> = [];
 		grid.onCellBuilt = (coord, result) -> {
@@ -465,11 +466,11 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 
 	// ============== Non-square cell hit testing (Bug 1.12) ==============
 
-	function createNonSquareRectGrid():UIMultiAnimGrid {
+	function createNonSquareRectGrid():UIMultiAnimGrid<Dynamic> {
 		var builder = BuilderTestBase.builderFromSource(CELL_MANIM);
 		return new UIMultiAnimGrid(builder, {
 			gridType: Rect(60, 30, 4), // wide cells: 60w x 30h, gap=4
-			cellBuildName: "cell",
+			cellVisualFactory: new DefaultCellVisualFactory(builder, {cellBuildName: "cell"}),
 			originX: 0,
 			originY: 0,
 		});
@@ -566,14 +567,14 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 
 		var grid = new UIMultiAnimGrid(builder, {
 			gridType: Rect(50, 50),
-			cellBuildName: "cell",
+			cellVisualFactory: new DefaultCellVisualFactory(builder, {cellBuildName: "cell"}),
 		});
 		grid.addRectRegion(2, 2);
 
 		var cardHand = new UICardHandHelper(screen, builder);
 		grid.registerAsCardTarget(cardHand);
 
-		var receivedEvent:Null<GridEvent> = null;
+		var receivedEvent:Null<GridEvent<Dynamic>> = null;
 		grid.onGridEvent = (event) -> {
 			switch event {
 				case CellCardPlayed(_, _): receivedEvent = event;
@@ -607,7 +608,7 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 
 		var grid = new UIMultiAnimGrid(builder, {
 			gridType: Rect(50, 50),
-			cellBuildName: "cell",
+			cellVisualFactory: new DefaultCellVisualFactory(builder, {cellBuildName: "cell"}),
 		});
 		grid.addRectRegion(2, 2);
 
@@ -712,7 +713,7 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 
 		var grid = new UIMultiAnimGrid(builder, {
 			gridType: Rect(50, 50),
-			cellBuildName: "cell",
+			cellVisualFactory: new DefaultCellVisualFactory(builder, {cellBuildName: "cell"}),
 		});
 		grid.addRectRegion(2, 2);
 
@@ -737,7 +738,7 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 
 		var grid = new UIMultiAnimGrid(builder, {
 			gridType: Rect(50, 50),
-			cellBuildName: "cell",
+			cellVisualFactory: new DefaultCellVisualFactory(builder, {cellBuildName: "cell"}),
 		});
 		grid.addRectRegion(2, 2); // 4 cells
 
@@ -776,7 +777,7 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 
 		var grid = new UIMultiAnimGrid(builder, {
 			gridType: Rect(50, 50, 2),
-			cellBuildName: "cell",
+			cellVisualFactory: new DefaultCellVisualFactory(builder, {cellBuildName: "cell"}),
 		});
 		grid.addRectRegion(2, 2);
 
@@ -817,7 +818,7 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 
 		var grid = new UIMultiAnimGrid(builder, {
 			gridType: Hex(POINTY, 30, 30),
-			cellBuildName: "hexCell",
+			cellVisualFactory: new DefaultCellVisualFactory(builder, {cellBuildName: "hexCell"}),
 		});
 		grid.addCell(0, 0);
 
@@ -867,11 +868,11 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 		}
 	";
 
-	function createRectGridWithLayers(?cols:Int, ?rows:Int):UIMultiAnimGrid {
+	function createRectGridWithLayers(?cols:Int, ?rows:Int):UIMultiAnimGrid<Dynamic> {
 		var builder = BuilderTestBase.builderFromSource('$CELL_MANIM\n$LAYER_MANIM');
 		var grid = new UIMultiAnimGrid(builder, {
 			gridType: Rect(50, 50, 2),
-			cellBuildName: "cell",
+			cellVisualFactory: new DefaultCellVisualFactory(builder, {cellBuildName: "cell"}),
 			originX: 0,
 			originY: 0,
 		});
@@ -907,7 +908,7 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 		grid.addLayer("overlay", {buildName: "overlay", zOrder: 1});
 		grid.setLayer(0, 0, "overlay");
 		Assert.isTrue(grid.hasLayer(0, 0, "overlay"));
-		Assert.notNull(grid.getLayerResult(0, 0, "overlay"));
+		Assert.notNull(grid.getLayerVisual(0, 0, "overlay"));
 	}
 
 	@Test
@@ -940,7 +941,7 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 		var grid = createRectGridWithLayers(2, 2);
 		grid.addLayer("overlay", {buildName: "overlay", zOrder: 1});
 		grid.setLayer(0, 0, "overlay", ["state" => "active"]);
-		Assert.notNull(grid.getLayerResult(0, 0, "overlay"));
+		Assert.notNull(grid.getLayerVisual(0, 0, "overlay"));
 	}
 
 	@Test
@@ -951,7 +952,7 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 		Assert.isTrue(grid.hasLayer(0, 0, "overlay"));
 		grid.clearLayer(0, 0, "overlay");
 		Assert.isFalse(grid.hasLayer(0, 0, "overlay"));
-		Assert.isNull(grid.getLayerResult(0, 0, "overlay"));
+		Assert.isNull(grid.getLayerVisual(0, 0, "overlay"));
 	}
 
 	@Test
@@ -991,29 +992,6 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 	}
 
 	@Test
-	public function testForEachLayer():Void {
-		var grid = createRectGridWithLayers(3, 2);
-		grid.addLayer("overlay", {buildName: "overlay", zOrder: 1});
-		grid.setLayer(0, 0, "overlay");
-		grid.setLayer(1, 0, "overlay");
-		grid.setLayer(1, 1, "overlay");
-		var count = 0;
-		grid.forEachLayer("overlay", (col, row, result) -> {
-			count++;
-			Assert.notNull(result);
-		});
-		Assert.equals(3, count);
-	}
-
-	@Test
-	public function testForEachLayerUnregistered():Void {
-		var grid = createRectGridWithLayers(2, 2);
-		var count = 0;
-		grid.forEachLayer("nonexistent", (col, row, result) -> count++);
-		Assert.equals(0, count);
-	}
-
-	@Test
 	public function testRemoveCellAutoClearsLayers():Void {
 		var grid = createRectGridWithLayers(2, 2);
 		grid.addLayer("overlay", {buildName: "overlay", zOrder: 1});
@@ -1028,12 +1006,14 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 		var grid = createRectGridWithLayers(2, 2);
 		grid.addLayer("overlay", {buildName: "overlay", zOrder: 1});
 		grid.setLayer(0, 0, "overlay", ["state" => "active"]);
-		var result = grid.getLayerResult(0, 0, "overlay");
-		Assert.notNull(result);
-		// Layer results should support setParameter (incremental mode)
+		var visual = grid.getLayerVisual(0, 0, "overlay");
+		Assert.notNull(visual);
+		// Layer visuals should support setParameter via getResult() (incremental mode)
 		var threw = false;
 		try {
-			result.setParameter("state", "normal");
+			var result = visual.getResult();
+			if (result != null)
+				result.setParameter("state", "normal");
 		} catch (e:Dynamic) {
 			threw = true;
 		}
@@ -1045,9 +1025,9 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 		var grid = createRectGridWithLayers(2, 2);
 		grid.addLayer("overlay", {buildName: "overlay", zOrder: 1});
 		grid.setLayer(0, 0, "overlay");
-		var result1 = grid.getLayerResult(0, 0, "overlay");
+		var result1 = grid.getLayerVisual(0, 0, "overlay");
 		grid.setLayer(0, 0, "overlay");
-		var result2 = grid.getLayerResult(0, 0, "overlay");
+		var result2 = grid.getLayerVisual(0, 0, "overlay");
 		Assert.notNull(result1);
 		Assert.notNull(result2);
 		// After rebuild, the result should be a different object
@@ -1229,11 +1209,11 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 
 	// ============== swapCells (programmatic) ==============
 
-	function createSwapGrid(?cols:Int, ?rows:Int):UIMultiAnimGrid {
+	function createSwapGrid(?cols:Int, ?rows:Int):UIMultiAnimGrid<Dynamic> {
 		var builder = BuilderTestBase.builderFromSource(CELL_MANIM);
 		var grid = new UIMultiAnimGrid(builder, {
 			gridType: Rect(50, 50, 2),
-			cellBuildName: "cell",
+			cellVisualFactory: new DefaultCellVisualFactory(builder, {cellBuildName: "cell"}),
 			originX: 0,
 			originY: 0,
 			swapEnabled: true,
@@ -1386,7 +1366,7 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 		var builder = BuilderTestBase.builderFromSource(CELL_MANIM);
 		var grid = new UIMultiAnimGrid(builder, {
 			gridType: Rect(50, 50),
-			cellBuildName: "cell",
+			cellVisualFactory: new DefaultCellVisualFactory(builder, {cellBuildName: "cell"}),
 			swapPathName: "mySwapPath",
 			swapEnabled: true,
 		});
@@ -1398,7 +1378,7 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 		var builder = BuilderTestBase.builderFromSource(CELL_MANIM);
 		var grid = new UIMultiAnimGrid(builder, {
 			gridType: Rect(50, 50),
-			cellBuildName: "cell",
+			cellVisualFactory: new DefaultCellVisualFactory(builder, {cellBuildName: "cell"}),
 			returnPathName: "retPath",
 			swapEnabled: true,
 		});
@@ -1411,7 +1391,7 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 		var builder = BuilderTestBase.builderFromSource(HEX_CELL_MANIM);
 		var grid = new UIMultiAnimGrid(builder, {
 			gridType: Hex(POINTY, 30, 30),
-			cellBuildName: "hexCell",
+			cellVisualFactory: new DefaultCellVisualFactory(builder, {cellBuildName: "hexCell"}),
 			swapEnabled: true,
 		});
 		grid.addHexRegion(0, 0, 1);
@@ -1469,11 +1449,11 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 
 	// ============== Swap animation position verification ==============
 
-	function createSwapGridWithPath(?originX:Float, ?originY:Float, ?swapContainer:h2d.Object):UIMultiAnimGrid {
+	function createSwapGridWithPath(?originX:Float, ?originY:Float, ?swapContainer:h2d.Object):UIMultiAnimGrid<Dynamic> {
 		var builder = BuilderTestBase.builderFromSource(CELL_WITH_PATH_MANIM);
 		var grid = new UIMultiAnimGrid(builder, {
 			gridType: Rect(50, 50, 2),
-			cellBuildName: "cell",
+			cellVisualFactory: new DefaultCellVisualFactory(builder, {cellBuildName: "cell"}),
 			originX: originX != null ? originX : 0,
 			originY: originY != null ? originY : 0,
 			swapEnabled: true,
@@ -1583,7 +1563,7 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 		var builder = BuilderTestBase.builderFromSource(CELL_WITH_PATH_MANIM);
 		var grid = new UIMultiAnimGrid(builder, {
 			gridType: Rect(50, 50, 2),
-			cellBuildName: "cell",
+			cellVisualFactory: new DefaultCellVisualFactory(builder, {cellBuildName: "cell"}),
 			originX: 100,
 			originY: 50,
 			swapEnabled: true,
@@ -1650,7 +1630,7 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 		var builder2 = BuilderTestBase.builderFromSource(CELL_WITH_PATH_MANIM);
 		var grid2 = new UIMultiAnimGrid(builder2, {
 			gridType: Rect(50, 50, 2),
-			cellBuildName: "cell",
+			cellVisualFactory: new DefaultCellVisualFactory(builder2, {cellBuildName: "cell"}),
 			swapEnabled: true,
 			swapPathName: "swapAnim",
 			swapAnimContainer: container,

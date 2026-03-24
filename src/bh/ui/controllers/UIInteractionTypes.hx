@@ -58,7 +58,7 @@ typedef PickTargetConfig = {
 	var ?filter:(id:String) -> Bool;
 
 	/** Grid to use for cell targeting (null = interactive-only targeting). */
-	var ?grid:bh.ui.UIMultiAnimGrid;
+	var ?grid:bh.ui.UIMultiAnimGrid<Dynamic>;
 
 	/** Grid cell filter — which cells are valid targets. */
 	var ?cellFilter:(col:Int, row:Int) -> Bool;

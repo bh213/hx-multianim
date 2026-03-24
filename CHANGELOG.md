@@ -16,10 +16,22 @@
 - **`applyCardHandSettings` handLayerIndex** — `handLayerIndex` setting allows overriding the card hand layer index from `.manim`.
 - **Dynamic cardHand layer derivation** — `addCardHand()` now computes the cardHand layer index as midpoint between DefaultLayer and ModalLayer instead of hardcoded 4.
 
+- **`CellVisual<T>` / `CellVisualFactory<T>` abstraction** — extracted cell building and visual state management from `UIMultiAnimGrid` into an interface + default implementation pattern. `CellVisual<T>` provides typed `setHighlight()`/`setStatus()` methods with `beginUpdate(?data:T)`/`endUpdate()` batching and `getResult()` escape hatch for game-specific params. `DefaultCellVisualFactory<T>` wraps `MultiAnimBuilder` with the previous behavior. Grid construction now requires `cellVisualFactory` in `GridConfig<T>` — cell build name, delegate, highlight/status params moved to `CellVisualFactoryConfig<T>`.
+- **`DropZoneId` enum** — structured zone identifiers replacing string-based IDs. Variants: `GridCell(grid, col, row)`, `SlotZone(baseName, ?index)`, `SlotZone2D(baseName, indexX, indexY)`, `Named(name)`. `DropZoneIdTools.format()` for debug display. `removeDropZone()` uses `Type.enumEq` for comparison.
+- **`GridSwapAccepts` delegate** — configurable swap decision logic via `swapAccepts` field on `GridConfig`. When set, overrides the default `isOccupied()` check to decide whether a drop-on-cell should emit `CellSwap` vs `CellDrop`.
+- **Grid generic type parameter** — `UIMultiAnimGrid<T>` is now generic. `GridEvent<T>`, `GridConfig<T>`, `CellBuildDelegate<T>`, `SwapVisualProvider<T>` are all parameterized. Cell data uses `T` instead of `Dynamic`.
+
 ### Changed
 - **DropContext internals** — internal fields renamed from `_handled`/`_accepted`/`_pathName`/`_onComplete` to private fields with `@:allow` access (no public API change).
+- **Grid public API renames** — `getCellResult()` → `getCellVisual()`, `getLayerResult()` → `getLayerVisual()`. Both now return `CellVisual<T>` (use `.getResult()` for `BuilderResult`). `onCellBuilt` callback second param changed from `BuilderResult` to `CellVisual<T>`.
+- **GridConfig fields removed** — `cellBuildName`, `cellBuildDelegate`, `highlightParam`, `statusParam`, `highlightDelegate`, `rejectHighlightParam` removed from `GridConfig`. These are now part of `CellVisualFactoryConfig<T>` (except `rejectHighlightParam` which was dead code).
+- **`applyGridSettings` simplified** — removed `cellBuildName`, `highlightParam`, `statusParam`, `rejectHighlightParam` from settings pass-through (now owned by factory).
+- **`forEachLayer` removed** — use `clearLayerAll(name)` or iterate cells with `forEach()` + `hasLayer()`/`getLayerVisual()` instead.
+- **Grid `cellCount()` O(1)** — now uses a counter field instead of iterating the cell map.
+- **Grid `rebuildCell` no longer refreshes drag/card zones** — rebuilding a cell's visual doesn't change cell existence, so the O(cells × zones) refresh was unnecessary.
 
 ### Fixed
+- **Card hand callback chaining for multi-grid targeting** — `registerAsCardTarget()` now chains accepts/highlight callbacks instead of overwriting, so multiple grids can coexist as card targets on the same card hand.
 - **Codegen `WITH_OFFSET` for non-static bases** — `generatePositionExpr` now correctly handles `.offset()` on non-static coordinate expressions (e.g. `$ref.extraPoint(...).offset(x, y)`). Previously returned null when the base couldn't be resolved at compile time, causing elements to be positioned at (0, 0).
 - **`safeDetach` for h2d.Graphics reparenting** — extracted `HeapsUtils.safeDetach()` utility that detaches objects without triggering `onRemove()` cascade (which destroys `h2d.Graphics` draw commands). Applied to `UIMultiAnimDraggable` (constructor, `moveToLayer`, `restoreLayer`) and `UIMultiAnimGrid.detachCellVisual()`. `HotReload.PlaceholderReuser` now delegates to the shared utility.
 - **`detachCellVisual` immediate rebuild** — `detachCellVisual()` now rebuilds the cell entry immediately after detaching, fully severing the detached object from the grid. Prevents `rebuildCell()` from removing the detached object.
@@ -37,7 +49,7 @@
 - **Screen auto-wiring for higher-order components** — `registerComponent()` / `unregisterComponent()` on `UIScreenBase`. Registered components auto-receive `update(dt)`, mouse events, screen events, and `dispose()` via `clear()`. New dispatch methods with coexistence semantics: `dispatchMouseMove()` notifies components but never blocks interactive processing (always returns true). `dispatchMouseClick()` notifies on push but never blocks; only release can block (e.g. card hand drag end). `dispatchScreenEvent()` skips `onScreenEvent()` when a component consumed the event.
 - **`createGrid()` / `addGrid()`** — factory methods on `UIScreenBase`. `createGrid()` creates + registers without scene graph add (for macro use). `addGrid()` creates + adds to layer. Both accept optional `ResolvedSettings` for `.manim`-driven config override.
 - **`addCardHand()`** — factory method on `UIScreenBase` with auto-registration and optional `ResolvedSettings`. Auto-registers `NamedLayer("cardHand")` at layer index 4 (above `DefaultLayer=3`, below `ModalLayer=5`) when no explicit `handLayer` is set, ensuring cards render above grid content.
-- **`applyGridSettings()` / `applyCardHandSettings()`** — apply `.manim` settings to Grid/CardHand config. Grid: `originX/Y`, `cellBuildName`, `highlightParam`, `statusParam`, `rejectHighlightParam`. CardHand: `anchorX/Y`, card dimensions, fan/linear layout, hover/targeting, pile positions, path/arrow names.
+- **`applyGridSettings()` / `applyCardHandSettings()`** — apply `.manim` settings to Grid/CardHand config. Grid: `originX/Y`, `swapPathName`, `swapEnabled`. CardHand: `anchorX/Y`, card dimensions, fan/linear layout, hover/targeting, pile positions, path/arrow names.
 - **`PVComponent` placeholder value** — new `PlaceholderValues` enum variant for higher-order components in `macroBuildWithParameters`. Macro detects `UIHigherOrderComponent` return types and generates `PVComponent` wrappers that call `getObject()` for scene graph placement.
 - **`UIControllerScreenIntegration` dispatch methods** — `dispatchMouseMove()` and `dispatchMouseClick()` replace direct `onMouseMove()`/`onMouseClick()` calls, enabling component event interception before screen handlers.
 - **`UIComponentHost` interface** — decouples `UICardHandHelper` and `UIRichInteractiveHelper` from concrete `UIScreenBase`. Interface defines `addObjectToLayer`, `addInteractives`, `removeInteractives`, `getInteractive`, `getAutoInteractiveHelper`. `UIScreenBase` implements it. Enables standalone usage and testing of higher-order components without a full screen.
@@ -53,7 +65,7 @@
 - **UIMultiAnimGrid** — 2D grid component (rectangular or hexagonal) for cell state management, `.manim` programmable rendering, drag-drop integration, and card hand targeting
   - `GridType` enum: `Rect(cellWidth, cellHeight, ?gap)` and `Hex(orientation, sizeX, sizeY)`
   - Cell structure: `addCell`, `removeCell`, `addRectRegion`, `addHexRegion` (batch creation)
-  - Cell data: `set`, `get`, `clear`, `isOccupied`, `forEach`, `setCellParameter`, `getCellResult`, `rebuildCell`
+  - Cell data: `set`, `get`, `clear`, `isOccupied`, `forEach`, `setCellParameter`, `getCellVisual`, `rebuildCell`
   - Coordinate queries: `cellAtPoint` (hit-test via `globalToLocal`), `cellPosition`, `neighbors`, `distance`
   - Mouse routing: `onMouseMove` (hover enter/leave with status param), `onMouseClick` (click events)
   - Drag-drop: `acceptDrops` (auto-creates `DropZone` per cell with highlight), `makeDraggableFromCell`, cross-grid chaining
@@ -61,14 +73,14 @@
   - Events: `CellClick`, `CellHoverEnter`, `CellHoverLeave`, `CellDrop`, `CellCardPlayed`, `CellDataChanged`
   - `CellBuildDelegate` for per-cell programmable/param customization
   - `onCellBuilt` callback for post-build customization
-  - `rejectHighlightParam` config — cells where `accepts` returns false show a distinct "wrong type" highlight (red) during drag, separate from "not a target" (no highlight)
+  - `CellVisualFactory<T>` interface — pluggable cell building with `DefaultCellVisualFactory<T>` wrapping `MultiAnimBuilder`. Highlight resolution delegated to factory
   - `tweenManager` config — optional TweenManager for cell lifecycle animations
   - `tweenCell(col, row, duration, properties, ?easing)` — one-shot tween on cell visual
   - `addCellAnimated(col, row, ?data, ?params, duration, initProperties, ?easing)` — entrance animation (scale/fade in)
   - `removeCellAnimated(col, row, duration, properties, ?easing, ?onComplete)` — exit animation (shrink/fade out, delays removal)
   - `detachCellVisual(col, row)` — extract cell visual for free animation (fly-to-inventory pattern)
   - `reattachCellVisual(col, row, ?obj)` — reattach or rebuild detached visual
-  - `makeDraggableFromCell()` now populates `sourceGrid`, `sourceCellCoord`, `payload` on the draggable; added `cloneMode` parameter
+  - `makeDraggableFromCell()` now populates `sourceGrid`, `sourceCellCoord`, `payload` on the draggable
   - `CellDrop` event now includes source grid and source cell from draggable fields
 - **UIMultiAnimDraggable: drag payload and reject zones**
   - `payload:Dynamic` — general-purpose data field, auto-populated by grid's `makeDraggableFromCell()`

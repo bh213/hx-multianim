@@ -87,7 +87,9 @@ Metadata supports typed values matching the settings system: `key => val` (strin
 - Codegen: `setParameter()` supported — parameterized slots built via `buildParameterizedSlot()` at runtime with full incremental support
 
 **Drag-and-drop** — `UIMultiAnimDraggable` with slot integration:
-- `addDropZonesFromSlots("baseName", builderResult, ?accepts)` — batch drop zone creation
+- **`DropZoneId` enum** — structured zone identifiers: `GridCell(grid, col, row)` for grid cells, `SlotZone(baseName, ?index)` for slot-based zones, `SlotZone2D(baseName, indexX, indexY)` for 2D-indexed slots, `Named(name)` for custom zones. `DropZoneIdTools.format(id)` for debug display
+- `addDropZonesFromSlots("baseName", builderResult, ?accepts)` — batch drop zone creation (auto-generates `SlotZone`/`SlotZone2D` IDs)
+- `removeDropZone(id:DropZoneId)` — uses `Type.enumEq` for comparison
 - `createFromSlot(slot)` — creates draggable from slot content, tracks `sourceSlot`
 - `swapMode` — swaps contents when dropping onto an occupied slot
 - `payload:Dynamic` — general-purpose data field for `accepts` callbacks (auto-set by `makeDraggableFromCell`)
@@ -116,7 +118,7 @@ Metadata supports typed values matching the settings system: `key => val` (strin
 - `addGrid(builder, config, ?layer, ?settings)` — creates + adds to layer
 - `addCardHand(builder, ?config, ?settings)` — creates + registers + returns helper
 
-**Settings integration:** `applyGridSettings(config, settings)` and `applyCardHandSettings(config, settings)` apply `.manim` `settings {}` values to config fields. Grid: `originX/Y`, `cellBuildName`, `highlightParam`, `statusParam`, `rejectHighlightParam`, `swapPathName`, `swapEnabled`. CardHand: `anchorX/Y`, card dimensions, fan/linear layout, hover/targeting, pile positions, path/arrow names.
+**Settings integration:** `applyGridSettings(config, settings)` and `applyCardHandSettings(config, settings)` apply `.manim` `settings {}` values to config fields. Grid: `originX/Y`, `swapPathName`, `swapEnabled`. CardHand: `anchorX/Y`, card dimensions, fan/linear layout, hover/targeting, pile positions, path/arrow names.
 
 **Macro support (`macroBuildWithParameters`):** `PVComponent` placeholder value for component-returning factories. Macro detects `UIHigherOrderComponent` return type and generates `PVComponent(factory, null)` wrapper. Builder calls `getObject()` for scene graph placement. Grid works in macro; CardHand uses `addCardHand()` only (multi-layer architecture prevents single-placeholder representation).
 
@@ -139,28 +141,43 @@ Metadata supports typed values matching the settings system: `key => val` (strin
 
 **Files:**
 - `src/bh/ui/UIMultiAnimGrid.hx` — main component
-- `src/bh/ui/UIMultiAnimGridTypes.hx` — types: `GridType`, `GridEvent`, `GridConfig`, `CellCoord`, delegates
+- `src/bh/ui/UIMultiAnimGridTypes.hx` — types: `GridType`, `GridEvent`, `GridConfig`, `CellCoord`, `CellVisual<T>`, `CellVisualFactory<T>`, delegates
 
 **Construction:**
 ```haxe
-var grid = new UIMultiAnimGrid(builder, {
-    gridType: Rect(50, 50, 4),      // Rect(cellWidth, cellHeight, ?gap) or Hex(orientation, sizeX, sizeY)
+var factory = new DefaultCellVisualFactory(builder, {
     cellBuildName: "gridCell",       // .manim programmable name for cells
     cellBuildDelegate: null,         // optional per-cell override (buildName + params)
+    highlightParam: "highlight",     // cell param for drag highlight state (default: "highlight")
+    statusParam: "status",           // cell param for hover status (default: "status")
+    highlightDelegate: null,         // optional per-cell highlight value delegate
+});
+var grid = new UIMultiAnimGrid(builder, {
+    gridType: Rect(50, 50, 4),      // Rect(cellWidth, cellHeight, ?gap) or Hex(orientation, sizeX, sizeY)
+    cellVisualFactory: factory,      // factory that builds cell visuals
     originX: 0, originY: 0,         // grid root position
     snapPathName: "snapAnim",       // animatedPath for drop snap (null = instant)
     returnPathName: "returnAnim",   // animatedPath for drag cancel return (null = instant)
     swapPathName: "swapAnim",       // animatedPath for displaced item during swap (null = falls back to returnPathName, then instant)
     swapEnabled: true,              // enable swap semantics on occupied cell drops (default: false)
+    swapAccepts: null,              // (cell, draggable) -> Bool; null = isOccupied() default
     swapAnimContainer: swapLayer,   // h2d.Object parent for in-flight swap visuals (null = grid root fallback)
-    highlightParam: "highlight",    // cell param for drag highlight state (default: "highlight")
-    rejectHighlightParam: "rejectHighlight", // cell param for rejected drop highlight (default: null = no reject visual)
-    statusParam: "status",          // cell param for hover status (default: "status")
     tweenManager: screenManager.tweens, // optional TweenManager for cell lifecycle animations (null = instant)
 });
 ```
 
-**Cell programmable contract:** Must have parameters matching `highlightParam` (enum, default values "none"/"accept"/"reject") and `statusParam` (enum with "normal"/"hover"). Custom highlight values supported via `highlightDelegate`. Receives `col:int` and `row:int` automatically.
+**CellVisual<T> interface:** Wraps the visual representation of a grid cell. The grid manages highlight/status state through typed methods. Game-specific parameters accessible via `getResult()`.
+- `object:h2d.Object` — scene graph object
+- `setHighlight(value)` / `setStatus(value)` — typed state updates
+- `beginUpdate(?data:T)` / `endUpdate()` — batch multiple state changes + data awareness
+- `getResult():Null<BuilderResult>` — escape hatch for game-specific params
+
+**CellVisualFactory<T> interface:** Factory for creating cell visuals. `DefaultCellVisualFactory<T>` wraps `MultiAnimBuilder`.
+- `highlightDefault:String` — default highlight value (e.g. "none")
+- `buildCell(coord, data, extraParams)` — create a cell visual
+- `resolveHighlightValue(coord, accepts)` — determine highlight during drag/card targeting
+
+**Cell programmable contract:** Must have parameters matching `highlightParam` (enum, default values "none"/"accept"/"reject") and `statusParam` (enum with "normal"/"hover"). Custom highlight values supported via `highlightDelegate` on factory config. Receives `col:int` and `row:int` automatically.
 
 **GridType enum:**
 - `Rect(cellWidth:Float, cellHeight:Float, ?gap:Float)` — rectangular grid
@@ -182,7 +199,7 @@ var grid = new UIMultiAnimGrid(builder, {
 - `forEach((col, row, data) -> Void)` — iterate all cells
 - `setCellParameter(col, row, param, value)` — set single visual param
 - `setCellParameters(col, row, params)` — batch set visual params
-- `getCellResult(col, row)` — get raw `BuilderResult` for advanced customization
+- `getCellVisual(col, row)` — get `CellVisual<T>` for the cell (use `getResult()` for raw `BuilderResult`)
 - `rebuildCell(col, row)` — full rebuild (e.g. when delegate returns different programmable)
 
 **Coordinate queries:**
@@ -219,13 +236,13 @@ var grid = new UIMultiAnimGrid(builder, {
 
 **Cell swap API:**
 - `swapCells(col1, row1, col2, row2, ?animated:Bool=true)` — swap two cells' data and visuals. Emits `CellSwap` with `ctx.programmatic=true`. If animated, uses `swapPathName` (fallback: `returnPathName`) for both items moving simultaneously. Both cells must exist
-- Swap on drop: when `swapEnabled=true` and a draggable is dropped on an occupied cell with a source cell, emits `CellSwap` instead of `CellDrop`. The dragged item snaps to target, the displaced item animates to the source cell. Cross-grid swaps work when `sourceGrid` is set (via `makeDraggableFromCell`)
+- Swap on drop: when `swapEnabled=true` and a draggable has a source cell, the `swapAccepts` delegate (or `isOccupied()` by default) decides whether to emit `CellSwap` or fall through to `CellDrop`. The dragged item snaps to target, the displaced item animates to the source cell. Cross-grid swaps work when `sourceGrid` is set (via `makeDraggableFromCell`)
 - Swap path fallback chain: `SwapContext._swapPathName` > `GridConfig.swapPathName` > `GridConfig.returnPathName` > instant
 
 **Drag-drop integration:**
-- `acceptDrops(draggable, ?accepts)` — register a `UIMultiAnimDraggable` to drop onto this grid's cells. Auto-creates `DropZone` per cell, manages highlight state. `accepts: (cell, draggable) -> Bool` filters valid targets. When `rejectHighlightParam` is set, cells where `accepts` returns false show rejected state (red) distinct from "not a target"
+- `acceptDrops(draggable, ?accepts)` — register a `UIMultiAnimDraggable` to drop onto this grid's cells. Auto-creates `DropZone` per cell, manages highlight state. `accepts: (cell, draggable) -> Bool` filters valid targets. Highlight values determined by factory's `resolveHighlightValue()`
 - `removeDrops(draggable)` — unregister draggable
-- `makeDraggableFromCell(col, row, ?cloneMode, ?visualOverride)` — create draggable from cell content. Sets `sourceGrid`, `sourceCellCoord`, and `payload` on the draggable. `cloneMode = true` skips clearing source cell data
+- `makeDraggableFromCell(col, row, ?visualOverride)` — create draggable from cell content. Sets `sourceGrid`, `sourceCellCoord`, and `payload` on the draggable
 
 **Card hand integration:**
 - `registerAsCardTarget(cardHand, ?accepts)` — register grid cells as card play targets. Creates synthetic `UIInteractiveWrapper` per cell for the card hand's targeting system. `accepts: (cell, cardId) -> Bool` filters valid targets
@@ -237,9 +254,8 @@ var grid = new UIMultiAnimGrid(builder, {
 - `clearLayer(col, row, layerName)` — remove layer from a cell
 - `clearLayerAll(layerName)` — remove layer from all cells
 - `clearAllLayers()` — remove all layers
-- `getLayerResult(col, row, layerName)` — `BuilderResult` for incremental updates
+- `getLayerVisual(col, row, layerName)` — `CellVisual<T>` for incremental updates (use `getResult()` for `BuilderResult`)
 - `hasLayer(col, row, layerName)` — check existence
-- `forEachLayer(layerName, fn)` — iterate cells with a given layer
 - `removeCell()` / `removeCellAnimated()` auto-clear layers on the cell
 
 **External objects in layer hierarchy:**
@@ -262,7 +278,7 @@ var grid = new UIMultiAnimGrid(builder, {
 
 **Callbacks:**
 - `onGridEvent:(GridEvent) -> Void` — main event callback
-- `onCellBuilt:(CellCoord, BuilderResult) -> Void` — called after each cell build (customize overlays etc.)
+- `onCellBuilt:(CellCoord, CellVisual<T>) -> Void` — called after each cell build (customize overlays etc.)
 
 **Cross-grid drag pattern:**
 ```haxe
@@ -291,7 +307,7 @@ case CellDrop(cell, draggable, sourceGrid, sourceCell, ctx):
 var swapLayer = new h2d.Layers();
 addObjectToLayer(swapLayer, NamedLayer("swapAnim")); // register layer if needed
 var grid = addGrid(builder, {
-    gridType: Rect(64, 64), cellBuildName: "cell",
+    gridType: Rect(64, 64), cellVisualFactory: new DefaultCellVisualFactory(builder, {cellBuildName: "cell"}),
     snapPathName: "snapPath", swapPathName: "swapPath", swapEnabled: true,
     swapAnimContainer: swapLayer,
 });

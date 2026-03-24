@@ -21,6 +21,7 @@ import bh.ui.UICardHandTypes;
 import bh.ui.UIElement.UIScreenEvent;
 import bh.ui.UIHigherOrderComponent;
 import bh.ui.UIMultiAnimDraggable;
+import bh.ui.UIMultiAnimDraggable.DropZoneId;
 import bh.ui.UIMultiAnimGridTypes;
 import h2d.col.Bounds;
 import h2d.col.Point;
@@ -30,18 +31,42 @@ using bh.base.HeapsUtils;
 // Alias to avoid name shadowing with GridType.Hex enum constructor
 private typedef HexUtil = bh.base.Hex.Hex;
 
-/** Internal cell entry storing the built result and game data. */
-private class CellEntry {
+/** Internal cell entry storing the visual and game data. */
+private class CellEntry<T> {
 	public var coord:CellCoord;
-	public var result:BuilderResult;
-	public var data:Dynamic;
-	public var buildName:String;
+	public var visual:CellVisual<T>;
+	public var data:Null<T>;
 
-	public function new(coord:CellCoord, result:BuilderResult, data:Dynamic, buildName:String) {
+	public function new(coord:CellCoord, visual:CellVisual<T>, data:Null<T>) {
 		this.coord = coord;
-		this.result = result;
+		this.visual = visual;
 		this.data = data;
-		this.buildName = buildName;
+	}
+}
+
+/** No-op CellVisual used as a placeholder during swap detach operations. */
+private class DummyCellVisual<T> implements CellVisual<T> {
+	public var object(get, never):h2d.Object;
+
+	final _object:h2d.Object;
+
+	inline function get_object():h2d.Object
+		return _object;
+
+	public function new() {
+		_object = new h2d.Object();
+	}
+
+	public function setHighlight(value:String):Void {}
+
+	public function setStatus(value:String):Void {}
+
+	public function beginUpdate(?data:T):Void {}
+
+	public function endUpdate():Void {}
+
+	public function getResult():Null<BuilderResult> {
+		return null;
 	}
 }
 
@@ -64,7 +89,6 @@ private class SwapAnimEntry {
 private typedef DraggableBinding = {
 	var draggable:UIMultiAnimDraggable;
 	var accepts:Null<GridDropAccepts>;
-	var zonePrefix:String;
 }
 
 /** Internal binding for a registered card hand. */
@@ -86,7 +110,7 @@ private typedef CardHandBinding = {
  * ```haxe
  * var grid = new UIMultiAnimGrid(builder, {
  *     gridType: Rect(50, 50, 4),
- *     cellBuildName: "gridCell",
+ *     cellVisualFactory: new DefaultCellVisualFactory(builder, {cellBuildName: "gridCell"}),
  *     originX: 100, originY: 100,
  * });
  * grid.addRectRegion(5, 4);
@@ -96,22 +120,18 @@ private typedef CardHandBinding = {
  * };
  * ```
  */
-class UIMultiAnimGrid implements UIHigherOrderComponent {
+class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 	// --- Config ---
 	final builder:MultiAnimBuilder;
 	final gridType:GridType;
-	final defaultBuildName:String;
-	final cellBuildDelegate:Null<CellBuildDelegate>;
-	final highlightParam:String;
-	final highlightDefault:String;
-	final highlightDelegate:Null<GridHighlightDelegate>;
-	final statusParam:String;
+	final cellFactory:CellVisualFactory<T>;
 	final snapPathName:Null<String>;
 	final returnPathName:Null<String>;
 	final swapPathName:Null<String>;
 	final swapEnabled:Bool;
+	final swapAccepts:Null<GridSwapAccepts>;
 	final swapAnimContainer:Null<h2d.Object>;
-	final swapVisualProvider:Null<SwapVisualProvider>;
+	final swapVisualProvider:Null<SwapVisualProvider<T>>;
 	final tweenManager:Null<TweenManager>;
 
 	// --- Geometry ---
@@ -123,13 +143,14 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 	// --- Scene graph ---
 	final root:h2d.Layers;
 
-	// --- Cell storage: Map<"col_row", CellEntry> ---
-	final cells:Map<String, CellEntry> = new Map();
+	// --- Cell storage: Map<"col_row", CellEntry<T>> ---
+	final cells:Map<String, CellEntry<T>> = new Map();
+	var _cellCount:Int = 0;
 
 	// --- Grid layers: named overlays rendered per-cell ---
 	final layerConfigs:Map<String, GridLayerConfig> = new Map();
-	// layerEntries: Map<"layerName", Map<"col_row", {result:BuilderResult, object:h2d.Object}>>
-	final layerEntries:Map<String, Map<String, {result:BuilderResult, object:h2d.Object}>> = new Map();
+	// layerEntries: Map<"layerName", Map<"col_row", CellVisual<T>>>
+	final layerEntries:Map<String, Map<String, CellVisual<T>>> = new Map();
 
 	// --- Hover state ---
 	var hoveredCell:Null<CellCoord> = null;
@@ -146,9 +167,45 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 	}
 
 	function resolveHighlightValue(cell:CellCoord, accepts:Bool):String {
-		if (highlightDelegate != null)
-			return highlightDelegate(cell, accepts);
-		return if (accepts) "accept" else "reject";
+		return cellFactory.resolveHighlightValue(cell, accepts);
+	}
+
+	/** Apply highlight values to all cells based on an accept predicate (drag start / card drag start). */
+	function applyDragHighlights(acceptsFn:(coord:CellCoord) -> Bool):Void {
+		for (_ => entry in cells) {
+			final accepts = acceptsFn(entry.coord);
+			final value = resolveHighlightValue(entry.coord, accepts);
+			if (value != cellFactory.highlightDefault) {
+				entry.visual.setHighlight(value);
+				activeDragHighlightedCells.push({col: entry.coord.col, row: entry.coord.row});
+			}
+		}
+	}
+
+	/** Clear all drag/card highlight values on cells. */
+	function clearDragHighlights():Void {
+		for (cell in activeDragHighlightedCells) {
+			final e = cells.get(cellKey(cell.col, cell.row));
+			if (e != null)
+				e.visual.setHighlight(cellFactory.highlightDefault);
+		}
+		activeDragHighlightedCells = [];
+	}
+
+	/** Apply hover/unhover visual feedback on a cell (shared by drag zone hover and card targeting). */
+	function applyCellTargetFeedback(coord:CellCoord, highlight:Bool, source:CellTargetSource):Void {
+		final e = cells.get(cellKey(coord.col, coord.row));
+		if (e != null) {
+			e.visual.beginUpdate();
+			e.visual.setStatus(if (highlight) "hover" else "normal");
+			if (!highlight && !isCellDragHighlighted(coord.col, coord.row))
+				e.visual.setHighlight(cellFactory.highlightDefault);
+			e.visual.endUpdate();
+		}
+		if (highlight)
+			emitEvent(CellTargetEnter(coord, source));
+		else
+			emitEvent(CellTargetLeave(coord, source));
 	}
 
 	// --- Card hand ---
@@ -160,36 +217,32 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 	// --- Active swap animations ---
 	final activeSwapAnims:Array<SwapAnimEntry> = [];
 
-	// --- Instance counter for unique zone IDs ---
-	static var instanceCounter:Int = 0;
-	final instanceId:Int;
+	// --- Instance counter for unique card hand target IDs ---
+	static var cardTargetCounter:Int = 0;
+	final cardTargetId:Int;
 	var cardHandBindingCounter:Int = 0;
 
 	// --- Callbacks ---
 
 	/** Called when a grid event occurs (click, hover, drop, card play). */
-	public var onGridEvent:Null<(event:GridEvent) -> Void> = null;
+	public var onGridEvent:Null<(event:GridEvent<T>) -> Void> = null;
 
-	/** Called after a cell is built. Use to customize the BuilderResult (add overlays, etc.). */
-	public var onCellBuilt:Null<(coord:CellCoord, result:BuilderResult) -> Void> = null;
+	/** Called after a cell is built. Use to customize the cell visual (add overlays, etc.). */
+	public var onCellBuilt:Null<(coord:CellCoord, visual:CellVisual<T>) -> Void> = null;
 
 	// ============================================================
 	// Construction
 	// ============================================================
 
-	public function new(builder:MultiAnimBuilder, config:GridConfig) {
+	public function new(builder:MultiAnimBuilder, config:GridConfig<T>) {
 		this.builder = builder;
 		this.gridType = config.gridType;
-		this.defaultBuildName = config.cellBuildName;
-		this.cellBuildDelegate = config.cellBuildDelegate;
-		this.highlightParam = config.highlightParam != null ? config.highlightParam : "highlight";
-		this.highlightDefault = "none";
-		this.highlightDelegate = config.highlightDelegate;
-		this.statusParam = config.statusParam != null ? config.statusParam : "status";
+		this.cellFactory = config.cellVisualFactory;
 		this.snapPathName = config.snapPathName;
 		this.returnPathName = config.returnPathName;
 		this.swapPathName = config.swapPathName;
 		this.swapEnabled = config.swapEnabled != null ? config.swapEnabled : false;
+		this.swapAccepts = config.swapAccepts;
 		this.swapAnimContainer = config.swapAnimContainer;
 		this.swapVisualProvider = config.swapVisualProvider;
 		this.tweenManager = config.tweenManager;
@@ -197,7 +250,7 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 		this.root = new h2d.Layers();
 		this.root.setPosition(config.originX != null ? config.originX : 0, config.originY != null ? config.originY : 0);
 
-		this.instanceId = instanceCounter++;
+		this.cardTargetId = cardTargetCounter++;
 
 		switch gridType {
 			case Rect(w, h, gap):
@@ -218,7 +271,7 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 	// ============================================================
 
 	/** Add a cell at (col, row) with optional initial data and parameters. */
-	public function addCell(col:Int, row:Int, ?data:Dynamic, ?params:Map<String, Dynamic>):Void {
+	public function addCell(col:Int, row:Int, ?data:T, ?params:Map<String, Dynamic>):Void {
 		final key = cellKey(col, row);
 		if (cells.exists(key))
 			return;
@@ -226,11 +279,12 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 		final coord:CellCoord = {col: col, row: row};
 		final entry = buildCell(coord, data, params);
 		cells.set(key, entry);
-		root.add(entry.result.object, 0);
+		_cellCount++;
+		root.add(entry.visual.object, 0);
 		positionCell(entry);
 
 		if (onCellBuilt != null)
-			onCellBuilt(coord, entry.result);
+			onCellBuilt(coord, entry.visual);
 
 		refreshAllDraggableZones();
 		refreshAllCardTargets();
@@ -243,8 +297,9 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 		if (entry == null)
 			return;
 
-		entry.result.object.remove();
+		entry.visual.object.remove();
 		cells.remove(key);
+		_cellCount--;
 		clearAllLayersOnCell(col, row);
 
 		// Clear hover if this was the hovered cell
@@ -290,23 +345,23 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 	// ============================================================
 
 	/** Set cell data and optionally update visual parameters. */
-	public function set(col:Int, row:Int, data:Dynamic, ?params:Map<String, Dynamic>):Void {
+	public function set(col:Int, row:Int, data:T, ?params:Map<String, Dynamic>):Void {
 		final entry = getEntry(col, row);
 		final oldData = entry.data;
 		entry.data = data;
 
-		if (params != null) {
-			entry.result.beginUpdate();
+		entry.visual.beginUpdate(data);
+		final result = entry.visual.getResult();
+		if (result != null && params != null)
 			for (key => value in params)
-				entry.result.setParameter(key, value);
-			entry.result.endUpdate();
-		}
+				result.setParameter(key, value);
+		entry.visual.endUpdate();
 
 		emitEvent(CellDataChanged(entry.coord, oldData, data));
 	}
 
 	/** Get cell data at (col, row). Returns null if cell is empty. */
-	public function get(col:Int, row:Int):Dynamic {
+	public function get(col:Int, row:Int):Null<T> {
 		final entry = cells.get(cellKey(col, row));
 		return entry != null ? entry.data : null;
 	}
@@ -318,10 +373,10 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 		entry.data = null;
 
 		// Reset to defaults
-		entry.result.beginUpdate();
-		entry.result.setParameter(highlightParam, highlightDefault);
-		entry.result.setParameter(statusParam, "normal");
-		entry.result.endUpdate();
+		entry.visual.beginUpdate(null);
+		entry.visual.setHighlight(cellFactory.highlightDefault);
+		entry.visual.setStatus("normal");
+		entry.visual.endUpdate();
 
 		emitEvent(CellDataChanged(entry.coord, oldData, null));
 	}
@@ -375,14 +430,14 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 
 			// Animate cell1 visual → cell2 position
 			if (det1 != null) {
-				animateSwapVisual(det1, col1, row1, col2, row2, resolvedSwapPath, onBothDone);
+				animateSwapVisual(det1, {col: col1, row: row1}, cellPosition(col2, row2), resolvedSwapPath, onBothDone);
 			} else {
 				onBothDone();
 			}
 
 			// Animate cell2 visual → cell1 position
 			if (det2 != null) {
-				animateSwapVisual(det2, col2, row2, col1, row1, resolvedSwapPath, onBothDone);
+				animateSwapVisual(det2, {col: col2, row: row2}, cellPosition(col1, row1), resolvedSwapPath, onBothDone);
 			} else {
 				onBothDone();
 			}
@@ -400,15 +455,14 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 		emitEvent(CellDataChanged(coord2, data2, data1));
 	}
 
-	/** Internal: animate a detached visual from one cell position to another, then rebuild target. */
-	/** Internal: animate a detached visual from one cell position to another.
+	/** Internal: animate a detached visual from its scene position to a target scene position.
+	 *  Handles swapVisualProvider, zero-distance skip, reparenting, and AnimatedPath creation.
 	 *  Callers must rebuild cells BEFORE calling this — onDone does NOT rebuild. */
-	function animateSwapVisual(detached:{object:h2d.Object, data:Dynamic, sceneX:Float, sceneY:Float}, fromCol:Int,
-			fromRow:Int, toCol:Int, toRow:Int, pathName:String, onDone:Void -> Void):Void {
+	function animateSwapVisual(detached:{object:h2d.Object, data:Null<T>, sceneX:Float, sceneY:Float},
+			sourceCoord:CellCoord, toScenePos:FPoint, pathName:String, onDone:Void -> Void):Void {
 		// Use custom swap visual if provider is set, otherwise use detached cell visual
 		final animObj = if (swapVisualProvider != null) {
-			final coord:CellCoord = {col: fromCol, row: fromRow};
-			final custom = swapVisualProvider(coord, detached.data);
+			final custom = swapVisualProvider(sourceCoord, detached.data);
 			if (custom != null) {
 				detached.object.remove();
 				custom;
@@ -418,8 +472,6 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 		} else {
 			detached.object;
 		}
-
-		final toScenePos = cellPosition(toCol, toRow);
 
 		final dx = toScenePos.x - detached.sceneX;
 		final dy = toScenePos.y - detached.sceneY;
@@ -440,12 +492,10 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 		// AnimatedPath outputs in parent-local space — no conversion needed in update()
 		final animPath = builder.createAnimatedPath(pathName, Stretch(localFrom, localTo));
 
-		final targetCoord:CellCoord = {col: toCol, row: toRow};
-		final swapAnim = new SwapAnimEntry(animPath, animObj, targetCoord, () -> {
+		activeSwapAnims.push(new SwapAnimEntry(animPath, animObj, sourceCoord, () -> {
 			animObj.remove();
 			onDone();
-		});
-		activeSwapAnims.push(swapAnim);
+		}));
 	}
 
 	/** Check if cell has non-null data. */
@@ -455,7 +505,7 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 	}
 
 	/** Iterate all cells. Callback receives (col, row, data) — data may be null. */
-	public function forEach(fn:(col:Int, row:Int, data:Dynamic) -> Void):Void {
+	public function forEach(fn:(col:Int, row:Int, data:Null<T>) -> Void):Void {
 		for (_ => entry in cells)
 			fn(entry.coord.col, entry.coord.row, entry.data);
 	}
@@ -464,25 +514,30 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 	// Cell visual params
 	// ============================================================
 
-	/** Set a single parameter on the cell's BuilderResult. */
+	/** Set a single game-specific parameter on the cell's underlying BuilderResult.
+	 *  No-op if the cell visual does not use BuilderResult. */
 	public function setCellParameter(col:Int, row:Int, param:String, value:Dynamic):Void {
-		final entry = getEntry(col, row);
-		entry.result.setParameter(param, value);
+		final result = getEntry(col, row).visual.getResult();
+		if (result != null)
+			result.setParameter(param, value);
 	}
 
-	/** Set multiple parameters on the cell's BuilderResult (batched). */
+	/** Set multiple game-specific parameters on the cell's BuilderResult (batched).
+	 *  No-op if the cell visual does not use BuilderResult. */
 	public function setCellParameters(col:Int, row:Int, params:Map<String, Dynamic>):Void {
-		final entry = getEntry(col, row);
-		entry.result.beginUpdate();
-		for (key => value in params)
-			entry.result.setParameter(key, value);
-		entry.result.endUpdate();
+		final result = getEntry(col, row).visual.getResult();
+		if (result != null) {
+			result.beginUpdate();
+			for (key => value in params)
+				result.setParameter(key, value);
+			result.endUpdate();
+		}
 	}
 
-	/** Get the raw BuilderResult for a cell (for advanced customization). */
-	public function getCellResult(col:Int, row:Int):Null<BuilderResult> {
+	/** Get the cell's visual abstraction. */
+	public function getCellVisual(col:Int, row:Int):Null<CellVisual<T>> {
 		final entry = cells.get(cellKey(col, row));
-		return entry != null ? entry.result : null;
+		return entry != null ? entry.visual : null;
 	}
 
 	/** Fully rebuild a cell (e.g., when the delegate returns a different programmable). */
@@ -492,18 +547,15 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 		if (oldEntry == null)
 			throw 'Cell ($col, $row) does not exist';
 
-		oldEntry.result.object.remove();
+		oldEntry.visual.object.remove();
 
 		final newEntry = buildCell(oldEntry.coord, oldEntry.data, null);
 		cells.set(key, newEntry);
-		root.add(newEntry.result.object, 0);
+		root.add(newEntry.visual.object, 0);
 		positionCell(newEntry);
 
 		if (onCellBuilt != null)
-			onCellBuilt(newEntry.coord, newEntry.result);
-
-		refreshAllDraggableZones();
-		refreshAllCardTargets();
+			onCellBuilt(newEntry.coord, newEntry.visual);
 	}
 
 	// ============================================================
@@ -516,7 +568,7 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 		if (tweenManager == null)
 			return null;
 		final entry = getEntry(col, row);
-		return tweenManager.tween(entry.result.object, duration, properties, easing);
+		return tweenManager.tween(entry.visual.object, duration, properties, easing);
 	}
 
 	/** Remove a cell with an exit animation (fade out, scale down, etc.).
@@ -531,6 +583,7 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 
 		// Remove from grid data immediately (no longer hittable or interactive)
 		cells.remove(key);
+		_cellCount--;
 		clearAllLayersOnCell(col, row);
 		if (hoveredCell != null && hoveredCell.col == col && hoveredCell.row == row)
 			hoveredCell = null;
@@ -539,7 +592,7 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 
 		if (tweenManager != null && duration > 0) {
 			// Animate, then remove scene object
-			final obj = entry.result.object;
+			final obj = entry.visual.object;
 			final tween = tweenManager.tween(obj, duration, properties, easing);
 			tween.onComplete = () -> {
 				obj.remove();
@@ -547,7 +600,7 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 					onComplete();
 			};
 		} else {
-			entry.result.object.remove();
+			entry.visual.object.remove();
 			if (onComplete != null)
 				onComplete();
 		}
@@ -558,7 +611,7 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 	 *  to their natural values. `initProperties` sets the starting state (e.g. alpha=0, scale=0).
 	 *  Requires TweenManager. Falls back to instant addition without one.
 	 *  @param initProperties Starting property values — the tween targets are the "natural" values (alpha=1, scale=1, etc.) */
-	public function addCellAnimated(col:Int, row:Int, ?data:Dynamic, ?params:Map<String, Dynamic>, duration:Float = 0.3,
+	public function addCellAnimated(col:Int, row:Int, ?data:T, ?params:Map<String, Dynamic>, duration:Float = 0.3,
 			?initProperties:Array<TweenProperty>, ?easing:EasingType):Void {
 		addCell(col, row, data, params);
 
@@ -566,7 +619,7 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 			final entry = cells.get(cellKey(col, row));
 			if (entry == null)
 				return;
-			final obj = entry.result.object;
+			final obj = entry.visual.object;
 
 			// Set to initial state, tween to natural values
 			// The properties passed are the TARGET (natural) state.
@@ -643,14 +696,14 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 		final buildParams:Map<String, Dynamic> = if (params != null) params else new Map();
 
 		final result = builder.buildWithParameters(config.buildName, buildParams, null, null, true);
-		final obj = result.object;
+		final visual = new DefaultCellVisual<T>(result, "", "");
 
 		// Position at cell coordinates
 		final localPos = getCellLocalPosition({col: col, row: row});
-		obj.setPosition(localPos.x, localPos.y);
-		root.add(obj, config.zOrder);
+		visual.object.setPosition(localPos.x, localPos.y);
+		root.add(visual.object, config.zOrder);
 
-		entries.set(key, {result: result, object: obj});
+		entries.set(key, visual);
 	}
 
 	/** Clear a layer instance from a cell. */
@@ -660,9 +713,9 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 			return;
 
 		final key = cellKey(col, row);
-		final entry = entries.get(key);
-		if (entry != null) {
-			entry.object.remove();
+		final visual = entries.get(key);
+		if (visual != null) {
+			visual.object.remove();
 			entries.remove(key);
 		}
 	}
@@ -673,28 +726,27 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 		if (entries == null)
 			return;
 
-		for (_ => entry in entries)
-			entry.object.remove();
+		for (_ => visual in entries)
+			visual.object.remove();
 		entries.clear();
 	}
 
 	/** Clear all layers from all cells. */
 	public function clearAllLayers():Void {
 		for (_ => entries in layerEntries) {
-			for (_ => entry in entries)
-				entry.object.remove();
+			for (_ => visual in entries)
+				visual.object.remove();
 			entries.clear();
 		}
 	}
 
-	/** Get the BuilderResult for a layer instance on a cell (for incremental setParameter updates).
+	/** Get the CellVisual for a layer instance on a cell (for incremental updates).
 	 *  Returns null if the layer doesn't exist on this cell. */
-	public function getLayerResult(col:Int, row:Int, layerName:String):Null<BuilderResult> {
+	public function getLayerVisual(col:Int, row:Int, layerName:String):Null<CellVisual<T>> {
 		final entries = layerEntries.get(layerName);
 		if (entries == null)
 			return null;
-		final entry = entries.get(cellKey(col, row));
-		return entry != null ? entry.result : null;
+		return entries.get(cellKey(col, row));
 	}
 
 	/** Check if a layer instance exists on a cell. */
@@ -703,22 +755,6 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 		if (entries == null)
 			return false;
 		return entries.exists(cellKey(col, row));
-	}
-
-	/** Iterate all cells that have a given layer active. */
-	public function forEachLayer(layerName:String, fn:(col:Int, row:Int, result:BuilderResult) -> Void):Void {
-		final entries = layerEntries.get(layerName);
-		if (entries == null)
-			return;
-		for (key => entry in entries) {
-			final parts = key.split("_");
-			if (parts.length == 2) {
-				final col = Std.parseInt(parts[0]);
-				final row = Std.parseInt(parts[1]);
-				if (col != null && row != null)
-					fn(col, row, entry.result);
-			}
-		}
 	}
 
 	/** Clear all layers on a specific cell. */
@@ -757,13 +793,13 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 	 *  The cell stays in the grid (data preserved) but shows as empty.
 	 *  Returns the detached object and its scene position, or null if cell doesn't exist.
 	 *  Call `reattachCellVisual()` to put it back, or `rebuildCell()` to create a fresh visual. */
-	public function detachCellVisual(col:Int, row:Int):Null<{object:h2d.Object, data:Dynamic, sceneX:Float, sceneY:Float}> {
+	public function detachCellVisual(col:Int, row:Int):Null<{object:h2d.Object, data:Null<T>, sceneX:Float, sceneY:Float}> {
 		final key = cellKey(col, row);
 		final entry = cells.get(key);
 		if (entry == null)
 			return null;
 
-		final obj = entry.result.object;
+		final obj = entry.visual.object;
 		final pos = cellPosition(col, row);
 		final data = entry.data;
 
@@ -774,28 +810,28 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 		// from the grid. This ensures later `rebuildCell()` won't remove our detached object.
 		final freshEntry = buildCell(entry.coord, entry.data, null);
 		cells.set(key, freshEntry);
-		root.add(freshEntry.result.object, 0);
+		root.add(freshEntry.visual.object, 0);
 		positionCell(freshEntry);
 
 		return {object: obj, data: data, sceneX: pos.x, sceneY: pos.y};
 	}
 
 	/** Internal: detach cell visual without rebuilding. Used by swap to control rebuild timing.
-	 *  Replaces entry.result.object with a dummy so subsequent rebuildCell() won't destroy the detached object. */
-	function detachCellVisualRaw(col:Int, row:Int):Null<{object:h2d.Object, data:Dynamic, sceneX:Float, sceneY:Float}> {
+	 *  Replaces entry.visual.object with a dummy so subsequent rebuildCell() won't destroy the detached object. */
+	function detachCellVisualRaw(col:Int, row:Int):Null<{object:h2d.Object, data:Null<T>, sceneX:Float, sceneY:Float}> {
 		final key = cellKey(col, row);
 		final entry = cells.get(key);
 		if (entry == null)
 			return null;
 
-		final obj = entry.result.object;
+		final obj = entry.visual.object;
 		final pos = cellPosition(col, row);
 		final data = entry.data;
 
 		obj.safeDetach();
 
-		// Replace with a dummy so rebuildCell's oldEntry.result.object.remove() is harmless
-		entry.result.object = new h2d.Object();
+		// Replace with a dummy so rebuildCell's oldEntry.visual.object.remove() is harmless
+		entry.visual = new DummyCellVisual<T>();
 
 		return {object: obj, data: data, sceneX: pos.x, sceneY: pos.y};
 	}
@@ -872,11 +908,8 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 	}
 
 	/** Number of cells in the grid. */
-	public function cellCount():Int {
-		var count = 0;
-		for (_ in cells)
-			count++;
-		return count;
+	public inline function cellCount():Int {
+		return _cellCount;
 	}
 
 	// ============================================================
@@ -891,14 +924,14 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 			if (hoveredCell != null) {
 				final entry = cells.get(cellKey(hoveredCell.col, hoveredCell.row));
 				if (entry != null)
-					entry.result.setParameter(statusParam, "normal");
+					entry.visual.setStatus("normal");
 				emitEvent(CellTargetLeave(hoveredCell, Mouse));
 			}
 			hoveredCell = hit;
 			if (hoveredCell != null) {
 				final entry = cells.get(cellKey(hoveredCell.col, hoveredCell.row));
 				if (entry != null)
-					entry.result.setParameter(statusParam, "hover");
+					entry.visual.setStatus("hover");
 				emitEvent(CellTargetEnter(hoveredCell, Mouse));
 			}
 		}
@@ -942,7 +975,6 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 		final binding:DraggableBinding = {
 			draggable: draggable,
 			accepts: accepts,
-			zonePrefix: 'grid${instanceId}',
 		};
 		registeredDraggables.push(binding);
 		createDropZonesForDraggable(binding);
@@ -965,12 +997,10 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 	// ============================================================
 
 	/** Create a UIMultiAnimDraggable from a cell's content.
-	 *  Populates draggable's `sourceGrid`, `sourceCellCoord`, and `payload` fields.
-	 *  @param cloneMode If true, source cell data is preserved (for unlimited stock / shop items).
-	 *                   If false (default), source cell is cleared on drag start. */
-	public function makeDraggableFromCell(col:Int, row:Int, ?visualOverride:h2d.Object, cloneMode:Bool = false):UIMultiAnimDraggable {
+	 *  Populates draggable's `sourceGrid`, `sourceCellCoord`, and `payload` fields. */
+	public function makeDraggableFromCell(col:Int, row:Int, ?visualOverride:h2d.Object):UIMultiAnimDraggable {
 		final entry = getEntry(col, row);
-		final target = visualOverride != null ? visualOverride : entry.result.object;
+		final target = visualOverride != null ? visualOverride : entry.visual.object;
 
 		final drag = UIMultiAnimDraggable.create(target);
 		drag.returnToOrigin = true;
@@ -1003,7 +1033,7 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 		final binding:CardHandBinding = {
 			cardHand: cardHand,
 			accepts: accepts,
-			targetPrefix: 'grid${instanceId}ch${cardHandBindingCounter++}',
+			targetPrefix: 'grid${cardTargetId}ch${cardHandBindingCounter++}',
 			eventListener: null,
 		};
 		registeredCardHands.push(binding);
@@ -1079,6 +1109,7 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 		// Remove scene graph
 		root.remove();
 		cells.clear();
+		_cellCount = 0;
 		hoveredCell = null;
 	}
 
@@ -1090,7 +1121,7 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 		return '${col}_${row}';
 	}
 
-	function getEntry(col:Int, row:Int):CellEntry {
+	function getEntry(col:Int, row:Int):CellEntry<T> {
 		final entry = cells.get(cellKey(col, row));
 		if (entry == null)
 			throw 'Cell ($col, $row) does not exist';
@@ -1101,49 +1132,14 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 	// Internal: cell building
 	// ============================================================
 
-	function buildCell(coord:CellCoord, data:Dynamic, ?extraParams:Map<String, Dynamic>):CellEntry {
-		var buildName = defaultBuildName;
-		var delegateParams:Null<Map<String, Dynamic>> = null;
-
-		if (cellBuildDelegate != null) {
-			final info = cellBuildDelegate(coord.col, coord.row, data);
-			if (info != null) {
-				if (info.buildName != null)
-					buildName = info.buildName;
-				delegateParams = info.params;
-			}
-		}
-
-		final params:Map<String, Dynamic> = new Map();
-		params.set("col", coord.col);
-		params.set("row", coord.row);
-		params.set(highlightParam, highlightDefault);
-		params.set(statusParam, "normal");
-
-		// Apply delegate params
-		if (delegateParams != null)
-			for (key => value in delegateParams)
-				params.set(key, value);
-
-		// Apply extra params (from addCell/set)
-		if (extraParams != null)
-			for (key => value in extraParams)
-				params.set(key, value);
-
-		final result = builder.buildWithParameters(buildName, params, null, null, true);
-		return new CellEntry(coord, result, data, buildName);
+	function buildCell(coord:CellCoord, data:Null<T>, ?extraParams:Map<String, Dynamic>):CellEntry<T> {
+		final visual = cellFactory.buildCell(coord, data, extraParams);
+		return new CellEntry(coord, visual, data);
 	}
 
-	function positionCell(entry:CellEntry):Void {
-		switch gridType {
-			case Rect(w, h, gap):
-				final g = gap != null ? gap : 0.0;
-				entry.result.object.setPosition(entry.coord.col * (w + g), entry.coord.row * (h + g));
-			case Hex(_, _, _):
-				final hex = toHex(entry.coord.col, entry.coord.row);
-				final p = hexLayout.hexToPixel(hex);
-				entry.result.object.setPosition(p.x, p.y);
-		}
+	function positionCell(entry:CellEntry<T>):Void {
+		final p = getCellLocalPosition(entry.coord);
+		entry.visual.object.setPosition(p.x, p.y);
 	}
 
 	/** Get cell position in local coordinates (relative to grid root). */
@@ -1160,7 +1156,7 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 	}
 
 	/** Internal addCell that doesn't refresh zones (for batch operations). */
-	function addCellInternal(col:Int, row:Int, data:Dynamic, params:Null<Map<String, Dynamic>>):Void {
+	function addCellInternal(col:Int, row:Int, data:Null<T>, params:Null<Map<String, Dynamic>>):Void {
 		final key = cellKey(col, row);
 		if (cells.exists(key))
 			return;
@@ -1168,11 +1164,12 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 		final coord:CellCoord = {col: col, row: row};
 		final entry = buildCell(coord, data, params);
 		cells.set(key, entry);
-		root.add(entry.result.object, 0);
+		_cellCount++;
+		root.add(entry.visual.object, 0);
 		positionCell(entry);
 
 		if (onCellBuilt != null)
-			onCellBuilt(coord, entry.result);
+			onCellBuilt(coord, entry.visual);
 	}
 
 	// ============================================================
@@ -1223,7 +1220,7 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 	function createDropZonesForDraggable(binding:DraggableBinding):Void {
 		for (_ => entry in cells) {
 			final coord = entry.coord;
-			final zoneId = '${binding.zonePrefix}_${coord.col}_${coord.row}';
+			final zoneId = GridCell(this, coord.col, coord.row);
 
 			final cellBounds = computeCellBounds(coord);
 			final snapPos = cellPosition(coord.col, coord.row);
@@ -1243,24 +1240,12 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 					return new Point(p.x, p.y);
 				},
 				onZoneHighlight: (zone, highlight) -> {
-					final e = cells.get(cellKey(capturedCoord.col, capturedCoord.row));
-					if (e != null) {
-						e.result.setParameter(statusParam, if (highlight) "hover" else "normal");
-						if (!highlight) {
-							// Restore to drag-start highlight value if cell is still globally highlighted
-							if (!isCellDragHighlighted(capturedCoord.col, capturedCoord.row))
-								e.result.setParameter(highlightParam, highlightDefault);
-						}
-					}
-					if (highlight)
-						emitEvent(CellTargetEnter(capturedCoord, Drag(binding.draggable)));
-					else
-						emitEvent(CellTargetLeave(capturedCoord, Drag(binding.draggable)));
+					applyCellTargetFeedback(capturedCoord, highlight, Drag(binding.draggable));
 				},
 				onZoneReject: (zone, reject) -> {
 					final e = cells.get(cellKey(capturedCoord.col, capturedCoord.row));
 					if (e != null) {
-						e.result.setParameter(statusParam, if (reject) "hover" else "normal");
+						e.visual.setStatus(if (reject) "hover" else "normal");
 					}
 				},
 			});
@@ -1272,27 +1257,14 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 		binding.draggable.onDragStartHighlightZones = (zones) -> {
 			if (prevStart != null)
 				prevStart(zones);
-			// Set highlight value for all cells via delegate
-			for (_ => entry in cells) {
-				final accepts = binding.accepts == null || binding.accepts(entry.coord, binding.draggable);
-				final value = resolveHighlightValue(entry.coord, accepts);
-				if (value != highlightDefault) {
-					entry.result.setParameter(highlightParam, value);
-					activeDragHighlightedCells.push({col: entry.coord.col, row: entry.coord.row});
-				}
-			}
+			applyDragHighlights((coord) -> binding.accepts == null || binding.accepts(coord, binding.draggable));
 		};
 
 		final prevEnd = binding.draggable.onDragEndHighlightZones;
 		binding.draggable.onDragEndHighlightZones = (zones) -> {
 			if (prevEnd != null)
 				prevEnd(zones);
-			for (cell in activeDragHighlightedCells) {
-				final e = cells.get(cellKey(cell.col, cell.row));
-				if (e != null)
-					e.result.setParameter(highlightParam, highlightDefault);
-			}
-			activeDragHighlightedCells = [];
+			clearDragHighlights();
 		};
 
 		// Wire drop event to emit GridEvent with DropContext for animation control.
@@ -1304,16 +1276,19 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 				return true;
 
 			if (result.zone != null) {
-				final coord = parseZoneId(result.zone.id, binding.zonePrefix);
+				final coord:Null<CellCoord> = switch result.zone.id {
+					case GridCell(g, col, row) if (g == this): ({col: col, row: row} : CellCoord);
+					default: null;
+				};
 				if (coord != null) {
 					// Read source info from draggable fields (set by makeDraggableFromCell)
-					final srcGrid:Null<UIMultiAnimGrid> = Std.isOfType(binding.draggable.sourceGrid, UIMultiAnimGrid)
+					final srcGrid:Null<UIMultiAnimGrid<T>> = Std.isOfType(binding.draggable.sourceGrid, UIMultiAnimGrid)
 						? cast binding.draggable.sourceGrid
 						: null;
 					final srcCell:Null<CellCoord> = binding.draggable.sourceCellCoord;
 
-					// Check for swap: swapEnabled + target occupied + has source cell
-					if (swapEnabled && isOccupied(coord.col, coord.row) && srcCell != null) {
+					// Check for swap: swapEnabled + has source cell + swapAccepts (or default isOccupied)
+					if (swapEnabled  && (swapAccepts != null ? swapAccepts(coord, binding.draggable) : isOccupied(coord.col, coord.row))) {
 						return handleSwapDrop(binding, coord, srcGrid, srcCell);
 					}
 
@@ -1369,7 +1344,7 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 	}
 
 	/** Handle a drop-on-occupied-cell as a swap. Returns true if accepted (snap), false if rejected (return). */
-	function handleSwapDrop(binding:DraggableBinding, targetCoord:CellCoord, srcGrid:Null<UIMultiAnimGrid>,
+	function handleSwapDrop(binding:DraggableBinding, targetCoord:CellCoord, srcGrid:Null<UIMultiAnimGrid<T>>,
 			srcCell:CellCoord):Bool {
 		final draggable = binding.draggable;
 		final ctx = new SwapContext(false);
@@ -1381,7 +1356,7 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 		}
 
 		// Resolve which grid owns the source cell (could be cross-grid)
-		final sourceGrid:UIMultiAnimGrid = srcGrid != null ? srcGrid : this;
+		final sourceGrid:UIMultiAnimGrid<T> = srcGrid != null ? srcGrid : this;
 
 		// Resolve swap path: ctx override > config swapPathName > config returnPathName > null (instant)
 		final resolvedSwapPath = if (ctx.swapPath != null) ctx.swapPath
@@ -1423,46 +1398,12 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 
 		// Animate displaced item to source cell
 		if (detached != null && resolvedSwapPath != null) {
-			// Use custom swap visual if provider is set, otherwise use detached cell visual
-			final animObj = if (swapVisualProvider != null) {
-				final custom = swapVisualProvider(targetCoord, displacedData);
-				if (custom != null) {
-					detached.object.remove();
-					custom;
-				} else {
-					detached.object;
-				}
-			} else {
-				detached.object;
-			}
-
 			final sourceScenePos = sourceGrid.cellPosition(srcCell.col, srcCell.row);
-
-			// Don't animate zero-distance
-			final dx = sourceScenePos.x - detached.sceneX;
-			final dy = sourceScenePos.y - detached.sceneY;
-			if (dx * dx + dy * dy < 0.25) {
-				animObj.remove();
+			animateSwapVisual(detached, targetCoord, sourceScenePos, resolvedSwapPath, () -> {
 				sourceGrid.rebuildCell(srcCell.col, srcCell.row);
 				displacedDone = true;
-			} else {
-				// Reparent first, then convert scene-space endpoints to parent-local
-				final animParent = reparentForSwapAnim(animObj);
-				final localFrom = sceneToLocal(animParent, detached.sceneX, detached.sceneY);
-				final localTo = sceneToLocal(animParent, sourceScenePos.x, sourceScenePos.y);
-
-				// Position at start immediately
-				animObj.setPosition(localFrom.x, localFrom.y);
-
-				final animPath = builder.createAnimatedPath(resolvedSwapPath, Stretch(localFrom, localTo));
-
-				activeSwapAnims.push(new SwapAnimEntry(animPath, animObj, srcCell, () -> {
-					animObj.remove();
-					sourceGrid.rebuildCell(srcCell.col, srcCell.row);
-					displacedDone = true;
-					onBothDone();
-				}));
-			}
+				onBothDone();
+			});
 		} else {
 			// No animation — rebuild source cell immediately
 			if (detached != null)
@@ -1497,11 +1438,8 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 	}
 
 	function clearZonesForBinding(binding:DraggableBinding):Void {
-		final prefix = binding.zonePrefix;
-		// Remove all zones matching our prefix
 		for (_ => entry in cells) {
-			final zoneId = '${prefix}_${entry.coord.col}_${entry.coord.row}';
-			binding.draggable.removeDropZone(zoneId);
+			binding.draggable.removeDropZone(GridCell(this, entry.coord.col, entry.coord.row));
 		}
 	}
 
@@ -1521,20 +1459,6 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 			case Hex(_, sx, sy):
 				Bounds.fromValues(global.x - sx, global.y - sy, sx * 2, sy * 2);
 		};
-	}
-
-	function parseZoneId(zoneId:String, prefix:String):Null<CellCoord> {
-		if (!StringTools.startsWith(zoneId, prefix + "_"))
-			return null;
-		final rest = zoneId.substr(prefix.length + 1);
-		final parts = rest.split("_");
-		if (parts.length != 2)
-			return null;
-		final col = Std.parseInt(parts[0]);
-		final row = Std.parseInt(parts[1]);
-		if (col == null || row == null)
-			return null;
-		return {col: col, row: row};
 	}
 
 	// ============================================================
@@ -1570,37 +1494,26 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 			binding.cardHand.registerTargetInteractive(wrapper);
 		}
 
-		// Wire accepts filter
+		// Wire accepts filter — chain with previous so multiple grids can coexist
 		if (binding.accepts != null) {
 			final accepts = binding.accepts;
+			final prevAccepts = binding.cardHand.getTargeting().acceptsFilter;
 			binding.cardHand.setTargetAcceptsFilter((cardId, targetId, meta) -> {
 				final coord = parseCardTargetId(targetId);
-				if (coord == null)
-					return true; // Not our target, don't block
-				return accepts(coord, cardId);
+				if (coord != null)
+					return accepts(coord, cardId);
+				return if (prevAccepts != null) prevAccepts(cardId, targetId, meta) else true;
 			});
 		}
 
-		// Wire highlight callback — respect activeDragHighlightedCells
+		// Wire highlight callback — chain with previous and use shared feedback helper
+		final prevHighlight = binding.cardHand.getTargeting().onTargetHighlight;
 		binding.cardHand.setTargetHighlightCallback((targetId, highlight, meta) -> {
+			if (prevHighlight != null)
+				prevHighlight(targetId, highlight, meta);
 			final coord = parseCardTargetId(targetId);
-			if (coord != null) {
-				final e = cells.get(cellKey(coord.col, coord.row));
-				if (e != null) {
-					// Set hover status for visual feedback during targeting
-					e.result.setParameter(statusParam, if (highlight) "hover" else "normal");
-					if (!highlight) {
-						// Restore to drag-start highlight value if cell is still globally highlighted
-						if (!isCellDragHighlighted(coord.col, coord.row))
-							e.result.setParameter(highlightParam, highlightDefault);
-					}
-				}
-				final cardId = activeCardDragId != null ? activeCardDragId : "";
-				if (highlight)
-					emitEvent(CellTargetEnter(coord, Card(cardId)));
-				else
-					emitEvent(CellTargetLeave(coord, Card(cardId)));
-			}
+			if (coord != null)
+				applyCellTargetFeedback(coord, highlight, Card(if (activeCardDragId != null) activeCardDragId else ""));
 		});
 
 		// Wire card drag events → highlight all valid targets on drag start
@@ -1616,23 +1529,9 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 					}
 				case CardDragStart(cardId):
 					activeCardDragId = cardId;
-					// Set highlight value for all cells via delegate
-					for (_ => entry in cells) {
-						final coord = entry.coord;
-						final accepts = binding.accepts == null || binding.accepts(coord, cardId);
-						final value = resolveHighlightValue(coord, accepts);
-						if (value != highlightDefault) {
-							entry.result.setParameter(highlightParam, value);
-							activeDragHighlightedCells.push({col: coord.col, row: coord.row});
-						}
-					}
+					applyDragHighlights((coord) -> binding.accepts == null || binding.accepts(coord, cardId));
 				case CardDragEnd(_):
-					for (cell in activeDragHighlightedCells) {
-						final e = cells.get(cellKey(cell.col, cell.row));
-						if (e != null)
-							e.result.setParameter(highlightParam, highlightDefault);
-					}
-					activeDragHighlightedCells = [];
+					clearDragHighlights();
 					activeCardDragId = null;
 				default:
 			}
@@ -1679,9 +1578,9 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 	}
 
 	function parseCardTargetId(targetId:String):Null<CellCoord> {
-		// Target IDs have format: grid{instanceId}ch{N}_{col}_{row}
+		// Target IDs have format: grid{cardTargetId}ch{N}_{col}_{row}
 		// Match any binding's prefix by checking grid instance prefix
-		final gridPrefix = 'grid${instanceId}ch';
+		final gridPrefix = 'grid${cardTargetId}ch';
 		if (!StringTools.startsWith(targetId, gridPrefix))
 			return null;
 		// Find the col_row suffix: last two underscore-separated parts
@@ -1720,7 +1619,7 @@ class UIMultiAnimGrid implements UIHigherOrderComponent {
 	}
 
 
-	function emitEvent(event:GridEvent):Void {
+	function emitEvent(event:GridEvent<T>):Void {
 		if (onGridEvent != null)
 			onGridEvent(event);
 	}

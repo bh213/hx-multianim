@@ -645,8 +645,8 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 
 	/** Create a grid and register it for auto-wired lifecycle (update, mouse, events, dispose).
 	 *  Does NOT add to scene graph — use addGrid() for that, or let macroBuildWithParameters handle placement.
-	 *  Settings override config fields: originX, originY, cellBuildName, highlightParam, statusParam, rejectHighlightParam. */
-	function createGrid(builder:MultiAnimBuilder, config:UIMultiAnimGridTypes.GridConfig, ?settings:ResolvedSettings):UIMultiAnimGrid {
+	 *  Settings override config fields: originX, originY, swapPathName, swapEnabled. */
+	function createGrid<GT>(builder:MultiAnimBuilder, config:UIMultiAnimGridTypes.GridConfig<GT>, ?settings:ResolvedSettings):UIMultiAnimGrid<GT> {
 		applyGridSettings(config, settings);
 		final grid = new UIMultiAnimGrid(builder, config);
 		registerComponent(grid);
@@ -654,7 +654,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	}
 
 	/** Create a grid, add it to the scene layer, and register for auto-wired lifecycle. */
-	function addGrid(builder:MultiAnimBuilder, config:UIMultiAnimGridTypes.GridConfig, ?layer:LayersEnum, ?settings:ResolvedSettings):UIMultiAnimGrid {
+	function addGrid<GT>(builder:MultiAnimBuilder, config:UIMultiAnimGridTypes.GridConfig<GT>, ?layer:LayersEnum, ?settings:ResolvedSettings):UIMultiAnimGrid<GT> {
 		final grid = createGrid(builder, config, settings);
 		addObjectToLayer(grid.getObject(), layer);
 		return grid;
@@ -687,14 +687,10 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		return hand;
 	}
 
-	function applyGridSettings(config:UIMultiAnimGridTypes.GridConfig, settings:ResolvedSettings):Void {
+	function applyGridSettings<GT>(config:UIMultiAnimGridTypes.GridConfig<GT>, settings:ResolvedSettings):Void {
 		if (settings == null) return;
 		if (settings.exists("originX")) config.originX = getFloatSettings(settings, "originX", 0);
 		if (settings.exists("originY")) config.originY = getFloatSettings(settings, "originY", 0);
-		if (settings.exists("cellBuildName")) config.cellBuildName = getSettings(settings, "cellBuildName", config.cellBuildName);
-		if (settings.exists("highlightParam")) config.highlightParam = getSettings(settings, "highlightParam", "highlight");
-		if (settings.exists("statusParam")) config.statusParam = getSettings(settings, "statusParam", "status");
-		if (settings.exists("rejectHighlightParam")) config.rejectHighlightParam = getSettings(settings, "rejectHighlightParam", "");
 		if (settings.exists("swapPathName")) config.swapPathName = getSettings(settings, "swapPathName", "");
 		if (settings.exists("swapEnabled")) config.swapEnabled = getBoolSettings(settings, "swapEnabled", false);
 	}
@@ -744,7 +740,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	#if MULTIANIM_DEV
 	/** Wire hot-reload settings re-application for a grid.
 	 *  When the parent BuilderResult reloads, reads new settings and calls grid.setOrigin(). */
-	function wireGridReload(parentResult:bh.multianim.MultiAnimBuilder.BuilderResult, grid:UIMultiAnimGrid, settingsPrefix:String = "grid"):Void {
+	function wireGridReload<GT>(parentResult:bh.multianim.MultiAnimBuilder.BuilderResult, grid:UIMultiAnimGrid<GT>, settingsPrefix:String = "grid"):Void {
 		final prevOnReload = parentResult.onReload;
 		parentResult.onReload = (result, report) -> {
 			if (prevOnReload != null) prevOnReload(result, report);

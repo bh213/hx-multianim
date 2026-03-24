@@ -589,10 +589,10 @@ drag.setSnapAnimPath(builder, "snapAnim");
 drag.dragAlpha = 0.7;
 drag.returnToOrigin = true;
 
-// Register drop zones from slots
+// Register drop zones from slots (zone IDs are DropZoneId enums: SlotZone, Named, GridCell, etc.)
 drag.addDropZonesFromSlots("inv", result);
 drag.addDropZonesFromSlots("equip", result, (d, zone) -> {
-    return EQUIP_ACCEPTS[zoneIdx(zone.id)] == itemDef.equipType;
+    return switch zone.id { case SlotZone(_, idx): EQUIP_ACCEPTS[idx] == itemDef.equipType; default: false; };
 });
 
 // Highlight callbacks
