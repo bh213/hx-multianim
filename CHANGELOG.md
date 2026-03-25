@@ -21,6 +21,9 @@
 - **`GridSwapAccepts` delegate** — configurable swap decision logic via `swapAccepts` field on `GridConfig`. When set, overrides the default `isOccupied()` check to decide whether a drop-on-cell should emit `CellSwap` vs `CellDrop`.
 - **Grid generic type parameter** — `UIMultiAnimGrid<T>` is now generic. `GridEvent<T>`, `GridConfig<T>`, `CellBuildDelegate<T>`, `SwapVisualProvider<T>` are all parameterized. Cell data uses `T` instead of `Dynamic`.
 
+- **`UIMultiAnimDraggable.cancelDrag()`** — public method to programmatically cancel an in-progress drag. Restores origin position, alpha, layer, source slot, clears zone highlights, and fires `DragCancel` event. No-op when not dragging.
+- **`UICardHandHelper.invalidateLayoutCache()`** — clears the cached `resolvedPath` for PathLayout mode, allowing hot-reload to pick up changed paths.
+
 ### Changed
 - **DropContext internals** — internal fields renamed from `_handled`/`_accepted`/`_pathName`/`_onComplete` to private fields with `@:allow` access (no public API change).
 - **Grid public API renames** — `getCellResult()` → `getCellVisual()`, `getLayerResult()` → `getLayerVisual()`. Both now return `CellVisual<T>` (use `.getResult()` for `BuilderResult`). `onCellBuilt` callback second param changed from `BuilderResult` to `CellVisual<T>`.
@@ -31,6 +34,12 @@
 - **Grid `rebuildCell` no longer refreshes drag/card zones** — rebuilding a cell's visual doesn't change cell existence, so the O(cells × zones) refresh was unnecessary.
 
 ### Fixed
+- **Draggable: disable during drag orphans state** — setting `enabled = false` while dragging now calls `cancelDrag()` via property setter, properly restoring capture, alpha, layer, origin, and source slot instead of leaving the drag orphaned.
+- **Draggable: zero-distance animation skip ignores visual effects** — `startAnimation()` no longer skips zero-distance paths when `animApplyScale`, `animApplyAlpha`, or `animApplyRotation` flags are set, allowing in-place fade/scale/rotation animations.
+- **Draggable: `swapMode = true` without `sourceSlot` silently degrades** — now throws with a clear error message via property setter validation.
+- **CardHand: invalid path names deferred to animation time** — `drawPathName`, `discardPathName`, `returnPathName`, `rearrangePathName` are now validated at construction via `builder.hasNode()`, failing fast with a descriptive error instead of throwing during the first animation.
+- **CardHand: layout path cache not invalidated on hot-reload** — `wireCardHandReload()` now calls `invalidateLayoutCache()` so PathLayout mode picks up changed `.manim` paths after reload.
+
 - **Card hand callback chaining for multi-grid targeting** — `registerAsCardTarget()` now chains accepts/highlight callbacks instead of overwriting, so multiple grids can coexist as card targets on the same card hand.
 - **Codegen `WITH_OFFSET` for non-static bases** — `generatePositionExpr` now correctly handles `.offset()` on non-static coordinate expressions (e.g. `$ref.extraPoint(...).offset(x, y)`). Previously returned null when the base couldn't be resolved at compile time, causing elements to be positioned at (0, 0).
 - **`safeDetach` for h2d.Graphics reparenting** — extracted `HeapsUtils.safeDetach()` utility that detaches objects without triggering `onRemove()` cascade (which destroys `h2d.Graphics` draw commands). Applied to `UIMultiAnimDraggable` (constructor, `moveToLayer`, `restoreLayer`) and `UIMultiAnimGrid.detachCellVisual()`. `HotReload.PlaceholderReuser` now delegates to the shared utility.

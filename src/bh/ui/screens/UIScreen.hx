@@ -758,6 +758,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		final prevOnReload = parentResult.onReload;
 		parentResult.onReload = (result, report) -> {
 			if (prevOnReload != null) prevOnReload(result, report);
+			cardHand.invalidateLayoutCache();
 			final s = result.rootSettings;
 			if (s == null) return;
 			final p = settingsPrefix.length > 0 ? settingsPrefix + "." : "";

@@ -3,7 +3,12 @@ package bh.test.examples;
 import utest.Assert;
 import bh.test.BuilderTestBase;
 import bh.ui.UIMultiAnimDraggable;
+import bh.ui.UIMultiAnimDraggable.DragEvent;
+import bh.ui.UIMultiAnimDraggable.DraggableState;
+import bh.ui.UIMultiAnimDraggable.AnimatedPathFactory;
 import bh.multianim.MultiAnimBuilder.SlotHandle;
+import bh.paths.AnimatedPath.AnimatedPathMode;
+import bh.paths.MultiAnimPaths.PathType;
 import h2d.col.Bounds;
 
 /**
@@ -124,6 +129,240 @@ class UIDraggableTest extends BuilderTestBase {
 		drag.clear();
 
 		Assert.isNull(drag.getTarget());
+	}
+
+	// ============== cancelDrag: programmatic drag cancellation ==============
+
+	@Test
+	public function testCancelDragFromDraggingState():Void {
+		var content = createContentObject("content");
+		var drag = new UIMultiAnimDraggable(content);
+		var control = new bh.test.UITestHarness.MockControllable();
+
+		// Start drag
+		bh.test.UITestHarness.simulatePush(drag, control, new h2d.col.Point(10, 10));
+
+		// Verify we're dragging
+		@:privateAccess Assert.isTrue(drag.state == Dragging);
+		var mockCapture:bh.test.UITestHarness.MockCaptureEvents = cast control.captureEvents;
+		Assert.isTrue(mockCapture.capturing);
+
+		// Cancel drag
+		drag.cancelDrag();
+
+		// Verify state restored
+		@:privateAccess Assert.isTrue(drag.state == Idle);
+		Assert.isFalse(mockCapture.capturing);
+	}
+
+	@Test
+	public function testCancelDragRestoresAlpha():Void {
+		var content = createContentObject("content");
+		content.alpha = 0.9;
+		var drag = new UIMultiAnimDraggable(content);
+		drag.dragAlpha = 0.5;
+		var control = new bh.test.UITestHarness.MockControllable();
+
+		bh.test.UITestHarness.simulatePush(drag, control, new h2d.col.Point(10, 10));
+		Assert.floatEquals(0.5, content.alpha);
+
+		drag.cancelDrag();
+		Assert.floatEquals(0.9, content.alpha);
+	}
+
+	@Test
+	public function testCancelDragFiresDragCancelEvent():Void {
+		var content = createContentObject("content");
+		var drag = new UIMultiAnimDraggable(content);
+		var control = new bh.test.UITestHarness.MockControllable();
+		var events:Array<DragEvent> = [];
+		drag.onDragEvent = (e, _, _) -> events.push(e);
+
+		bh.test.UITestHarness.simulatePush(drag, control, new h2d.col.Point(10, 10));
+		events.resize(0); // clear DragStart
+
+		drag.cancelDrag();
+
+		var hasCancelEvent = false;
+		for (e in events) {
+			switch e {
+				case DragCancel: hasCancelEvent = true;
+				default:
+			}
+		}
+		Assert.isTrue(hasCancelEvent);
+	}
+
+	@Test
+	public function testCancelDragNoopWhenIdle():Void {
+		var content = createContentObject("content");
+		var drag = new UIMultiAnimDraggable(content);
+
+		// Should not throw when not dragging
+		drag.cancelDrag();
+		@:privateAccess Assert.isTrue(drag.state == Idle);
+	}
+
+	@Test
+	public function testCancelDragRestoresOrigin():Void {
+		var content = createContentObject("content");
+		var drag = new UIMultiAnimDraggable(content);
+		var control = new bh.test.UITestHarness.MockControllable();
+
+		drag.getObject().setPosition(100, 200);
+		bh.test.UITestHarness.simulatePush(drag, control, new h2d.col.Point(100, 200));
+
+		// Move the root to simulate drag motion
+		drag.getObject().setPosition(300, 400);
+
+		drag.cancelDrag();
+
+		// Should return to origin
+		Assert.floatEquals(100.0, drag.getObject().x);
+		Assert.floatEquals(200.0, drag.getObject().y);
+	}
+
+	// ============== enabled setter: cancel drag on disable ==============
+
+	@Test
+	public function testSetEnabledFalseCancelsDrag():Void {
+		var content = createContentObject("content");
+		var drag = new UIMultiAnimDraggable(content);
+		var control = new bh.test.UITestHarness.MockControllable();
+
+		bh.test.UITestHarness.simulatePush(drag, control, new h2d.col.Point(10, 10));
+		@:privateAccess Assert.isTrue(drag.state == Dragging);
+
+		drag.enabled = false;
+
+		@:privateAccess Assert.isTrue(drag.state == Idle);
+		var mockCapture:bh.test.UITestHarness.MockCaptureEvents = cast control.captureEvents;
+		Assert.isFalse(mockCapture.capturing);
+	}
+
+	@Test
+	public function testSetEnabledFalseWhenIdleDoesNotThrow():Void {
+		var content = createContentObject("content");
+		var drag = new UIMultiAnimDraggable(content);
+
+		drag.enabled = false;
+		Assert.isFalse(drag.enabled);
+		drag.enabled = true;
+		Assert.isTrue(drag.enabled);
+	}
+
+	// ============== Zero-distance animation with visual flags ==============
+
+	@Test
+	public function testZeroDistanceSkipsWithoutVisualFlags():Void {
+		var content = createContentObject("content");
+		var drag = new UIMultiAnimDraggable(content);
+		var completed = false;
+		var factory:AnimatedPathFactory = (from, to) -> {
+			var sp = new bh.paths.MultiAnimPaths.SinglePath(from, to, Line);
+			var path = new bh.paths.MultiAnimPaths.Path([sp]);
+			return new bh.paths.AnimatedPath(path, Time(1.0));
+		};
+
+		// Zero distance, no visual flags → should skip animation and complete immediately
+		@:privateAccess drag.startAnimation(100, 100, 100, 100, factory, () -> completed = true);
+		Assert.isTrue(completed);
+		@:privateAccess Assert.isTrue(drag.state == Idle);
+	}
+
+	@Test
+	public function testZeroDistanceAnimatesWithScaleFlag():Void {
+		var content = createContentObject("content");
+		var drag = new UIMultiAnimDraggable(content);
+		drag.animApplyScale = true;
+		var completed = false;
+
+		// Need a real path with non-zero length for AnimatedPath
+		var from = new bh.base.FPoint(100, 100);
+		var to = new bh.base.FPoint(100, 100);
+		var factory:AnimatedPathFactory = (f, t) -> {
+			// Create a short path so AnimatedPath doesn't throw for zero length
+			var sp = new bh.paths.MultiAnimPaths.SinglePath(new bh.base.FPoint(0, 0), new bh.base.FPoint(10, 0), Line);
+			var path = new bh.paths.MultiAnimPaths.Path([sp]);
+			return new bh.paths.AnimatedPath(path, Time(1.0));
+		};
+
+		// Zero distance but animApplyScale=true → should NOT skip, should start animating
+		@:privateAccess drag.startAnimation(100, 100, 100, 100, factory, () -> completed = true);
+		Assert.isFalse(completed);
+		@:privateAccess Assert.isTrue(drag.state == Animating);
+	}
+
+	@Test
+	public function testZeroDistanceAnimatesWithAlphaFlag():Void {
+		var content = createContentObject("content");
+		var drag = new UIMultiAnimDraggable(content);
+		drag.animApplyAlpha = true;
+		var completed = false;
+		var factory:AnimatedPathFactory = (f, t) -> {
+			var sp = new bh.paths.MultiAnimPaths.SinglePath(new bh.base.FPoint(0, 0), new bh.base.FPoint(10, 0), Line);
+			var path = new bh.paths.MultiAnimPaths.Path([sp]);
+			return new bh.paths.AnimatedPath(path, Time(1.0));
+		};
+
+		@:privateAccess drag.startAnimation(100, 100, 100, 100, factory, () -> completed = true);
+		Assert.isFalse(completed);
+		@:privateAccess Assert.isTrue(drag.state == Animating);
+	}
+
+	@Test
+	public function testZeroDistanceAnimatesWithRotationFlag():Void {
+		var content = createContentObject("content");
+		var drag = new UIMultiAnimDraggable(content);
+		drag.animApplyRotation = true;
+		var completed = false;
+		var factory:AnimatedPathFactory = (f, t) -> {
+			var sp = new bh.paths.MultiAnimPaths.SinglePath(new bh.base.FPoint(0, 0), new bh.base.FPoint(10, 0), Line);
+			var path = new bh.paths.MultiAnimPaths.Path([sp]);
+			return new bh.paths.AnimatedPath(path, Time(1.0));
+		};
+
+		@:privateAccess drag.startAnimation(100, 100, 100, 100, factory, () -> completed = true);
+		Assert.isFalse(completed);
+		@:privateAccess Assert.isTrue(drag.state == Animating);
+	}
+
+	// ============== swapMode validation ==============
+
+	@Test
+	public function testSwapModeThrowsWithoutSourceSlot():Void {
+		var content = createContentObject("content");
+		var drag = new UIMultiAnimDraggable(content);
+
+		// swapMode=true without sourceSlot should throw
+		Assert.exception(() -> {
+			drag.swapMode = true;
+		}, String, e -> e == "swapMode requires sourceSlot (use createFromSlot)");
+	}
+
+	@Test
+	public function testSwapModeAllowedWithSourceSlot():Void {
+		var sourceSlot = createSlot();
+		var contentA = createContentObject("A");
+		sourceSlot.setContent(contentA);
+		sourceSlot.data = "dataA";
+
+		var drag = UIMultiAnimDraggable.createFromSlot(sourceSlot);
+		Assert.notNull(drag);
+
+		// swapMode=true with sourceSlot should succeed
+		drag.swapMode = true;
+		Assert.isTrue(drag.swapMode);
+	}
+
+	@Test
+	public function testSwapModeFalseAlwaysAllowed():Void {
+		var content = createContentObject("content");
+		var drag = new UIMultiAnimDraggable(content);
+
+		// swapMode=false should always work, even without sourceSlot
+		drag.swapMode = false;
+		Assert.isFalse(drag.swapMode);
 	}
 
 	// ============== Bug 1.5: TargetCard dead code (verified via grep, tested in types) ==============

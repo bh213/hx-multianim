@@ -504,6 +504,39 @@ class CardHandOrchestratorTest extends BuilderTestBase {
 		Assert.equals("c", ids[2]);
 	}
 
+	// ==================== Path name validation at construction ====================
+
+	@Test
+	public function testInvalidDrawPathNameThrows():Void {
+		Assert.exception(() -> createHelper({drawPathName: "nonExistentPath"}), String,
+			e -> e == 'CardHandHelper: drawPathName "nonExistentPath" not found in .manim');
+	}
+
+	@Test
+	public function testInvalidDiscardPathNameThrows():Void {
+		Assert.exception(() -> createHelper({discardPathName: "nonExistentPath"}), String,
+			e -> e == 'CardHandHelper: discardPathName "nonExistentPath" not found in .manim');
+	}
+
+	@Test
+	public function testInvalidReturnPathNameThrows():Void {
+		Assert.exception(() -> createHelper({returnPathName: "nonExistentPath"}), String,
+			e -> e == 'CardHandHelper: returnPathName "nonExistentPath" not found in .manim');
+	}
+
+	@Test
+	public function testInvalidRearrangePathNameThrows():Void {
+		Assert.exception(() -> createHelper({rearrangePathName: "nonExistentPath"}), String,
+			e -> e == 'CardHandHelper: rearrangePathName "nonExistentPath" not found in .manim');
+	}
+
+	@Test
+	public function testNullPathNamesAllowed():Void {
+		// null path names should not throw (instant snap behavior)
+		var h = createHelper({drawPathName: null, discardPathName: null, returnPathName: null, rearrangePathName: null});
+		Assert.notNull(h.helper);
+	}
+
 	// ==================== Bug: discardCard missing CardHoverEnd ====================
 
 	@Test

@@ -169,7 +169,7 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 	public var dropZones:Array<DropZone> = [];
 
 	// Configuration
-	public var enabled:Bool = true;
+	public var enabled(default, set):Bool = true;
 	public var dragConstraint:Null<(pos:Point) -> Point> = null;
 
 	/** Optional layer to reparent to while dragging (null = stay on current layer). */
@@ -199,8 +199,9 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 	/** Snapshot of sourceSlot.data captured at drag start, used by swap mode to avoid stale data. */
 	public var sourceData:Dynamic = null;
 
-	/** Whether to swap contents when dropping onto an occupied slot. Default: false. */
-	public var swapMode:Bool = false;
+	/** Whether to swap contents when dropping onto an occupied slot. Default: false.
+	 *  Requires sourceSlot (use createFromSlot). */
+	public var swapMode(default, set):Bool = false;
 
 	/** General-purpose data payload. Auto-populated by grid's makeDraggableFromCell().
 	 *  Use in accepts callbacks: `(drag, zone) -> drag.payload.itemType == "weapon"`. */
@@ -352,8 +353,8 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 			return;
 		}
 
-		// Don't animate zero-distance
-		if (Math.abs(toX - fromX) < 0.5 && Math.abs(toY - fromY) < 0.5) {
+		// Don't animate zero-distance unless visual effects (scale/alpha/rotation) are active
+		if (Math.abs(toX - fromX) < 0.5 && Math.abs(toY - fromY) < 0.5 && !animApplyScale && !animApplyAlpha && !animApplyRotation) {
 			state = Idle;
 			onComplete();
 			return;
@@ -449,6 +450,67 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 		sourceSlot = null;
 		sourceData = null;
 		root.remove();
+	}
+
+	/** Programmatically cancel an in-progress drag, restoring origin position and firing DragCancel. */
+	public function cancelDrag():Void {
+		if (state != Dragging)
+			return;
+
+		if (activeWrapper != null) {
+			activeWrapper.control.captureEvents.stopCapture();
+		}
+		draggingButton = -1;
+
+		// Clear zone hover states
+		if (currentHoverZone != null) {
+			if (currentHoverZone.onZoneHighlight != null)
+				currentHoverZone.onZoneHighlight(currentHoverZone, false);
+			currentHoverZone = null;
+		}
+		if (currentRejectZone != null) {
+			if (currentRejectZone.onZoneReject != null)
+				currentRejectZone.onZoneReject(currentRejectZone, false);
+			currentRejectZone = null;
+		}
+
+		// Clear all zone highlights
+		if (onDragEndHighlightZones != null)
+			onDragEndHighlightZones(dropZones);
+
+		// Restore alpha
+		target.alpha = savedAlpha;
+
+		// Fire DragCancel events (no wrapper available for positional info)
+		if (onDragEvent != null)
+			onDragEvent(DragCancel, new Point(root.x, root.y), null);
+
+		// Return to origin
+		root.setPosition(originX, originY);
+		restoreLayer();
+
+		// Return to source slot on cancel
+		if (sourceSlot != null) {
+			sourceSlot.setContent(target);
+			sourceSlot.data = sourceData;
+			sourceSlot = null;
+			sourceData = null;
+		}
+
+		activeWrapper = null;
+		state = Idle;
+	}
+
+	function set_enabled(v:Bool):Bool {
+		if (!v && state == Dragging)
+			cancelDrag();
+		return enabled = v;
+	}
+
+	function set_swapMode(v:Bool):Bool {
+		if (v && sourceSlot == null)
+			throw "swapMode requires sourceSlot (use createFromSlot)";
+		return swapMode = v;
 	}
 
 	// --- UIElementCustomAddToLayer ---

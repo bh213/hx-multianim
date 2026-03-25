@@ -267,6 +267,12 @@ class UICardHandHelper implements UIHigherOrderComponent {
 		returnPathName = config != null ? config.returnPathName : null;
 		rearrangePathName = config != null ? config.rearrangePathName : null;
 
+		// Validate path names exist in the builder (fail-fast vs deferred error at animation time)
+		validatePathName(drawPathName, "drawPathName");
+		validatePathName(discardPathName, "discardPathName");
+		validatePathName(returnPathName, "returnPathName");
+		validatePathName(rearrangePathName, "rearrangePathName");
+
 		// Scene graph — both containers are added via screen.addObjectToLayer so they
 		// end up in the same coordinate space (important when inside tab contentRoot).
 		// dragContainer uses a higher layer so dragged cards render above the hand.
@@ -563,6 +569,11 @@ class UICardHandHelper implements UIHigherOrderComponent {
 		anchorX = x;
 		anchorY = y;
 		applyLayout(false);
+	}
+
+	/** Invalidate cached layout path (for hot-reload when .manim paths change). */
+	public function invalidateLayoutCache():Void {
+		resolvedPath = null;
 	}
 
 	// === Event Routing ===
@@ -1226,6 +1237,11 @@ class UICardHandHelper implements UIHigherOrderComponent {
 			i--;
 		}
 		return null;
+	}
+
+	function validatePathName(name:Null<String>, configField:String):Void {
+		if (name != null && !builder.hasNode(name))
+			throw 'CardHandHelper: ${configField} "${name}" not found in .manim';
 	}
 
 	// === Internal: Animation via .manim paths ===

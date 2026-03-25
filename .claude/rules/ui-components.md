@@ -91,7 +91,8 @@ Metadata supports typed values matching the settings system: `key => val` (strin
 - `addDropZonesFromSlots("baseName", builderResult, ?accepts)` — batch drop zone creation (auto-generates `SlotZone`/`SlotZone2D` IDs)
 - `removeDropZone(id:DropZoneId)` — uses `Type.enumEq` for comparison
 - `createFromSlot(slot)` — creates draggable from slot content, tracks `sourceSlot`
-- `swapMode` — swaps contents when dropping onto an occupied slot
+- `cancelDrag()` — programmatically cancel an in-progress drag. Restores origin, alpha, layer, source slot, clears zone highlights, fires `DragCancel`. No-op when not dragging. Also triggered automatically when `enabled` is set to `false` during drag
+- `swapMode` — swaps contents when dropping onto an occupied slot. Requires `sourceSlot` (use `createFromSlot`); setting `true` without `sourceSlot` throws
 - `payload:Dynamic` — general-purpose data field for `accepts` callbacks (auto-set by `makeDraggableFromCell`)
 - `sourceGrid:Null<UIMultiAnimGrid>` / `sourceCellCoord:Null<CellCoord>` — source tracking for cross-grid transfers (auto-set by `makeDraggableFromCell`)
 - Zone highlight callbacks: `onDragStartHighlightZones`, `onDragEndHighlightZones` on draggable
