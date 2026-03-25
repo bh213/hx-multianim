@@ -327,15 +327,15 @@
 </head>
 <body>
     <h1>Visual Test Report</h1>
-    <div class="timestamp">Generated: 2026-03-25 07:58:19</div>
+    <div class="timestamp">Generated: 2026-03-25 11:30:46</div>
     <div class="summary">
         <strong>Summary:</strong> 94 tests,         <span style="color: #4CAF50;">94 passed</span>,         <span style="color: #f44336;">0 failed</span>
-        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1.1s, visual 21s)</span>
+        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1s, visual 20.7s)</span>
     </div>
     <div class="unit-tests-section">
         <h2>Unit Tests</h2>
         <div class="unit-tests-summary all-passed">
-            <strong>4360 assertions:</strong>             <span style="color: #4CAF50;">4360 passed</span>
+            <strong>4480 assertions:</strong>             <span style="color: #4CAF50;">4480 passed</span>
             <button class="expand-btn" id="unitToggleBtn" onclick="toggleUnitDetails()">Show Details</button>
         </div>
         <div class="unit-details" id="unitDetails">
@@ -2029,14 +2029,68 @@
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">UIDraggableTest</div>
+                <div class="unit-method pass">testAcceptedZoneTakesPrecedenceOverRejected: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testAddDropZoneIncreasesCount: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testAnimationNullFactoryCompletesInstantly: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testAnimationUpdateAdvancesAndCompletes: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testCancelDragFiresDragCancelEvent: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testCancelDragFromDraggingState: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testCancelDragNoopWhenIdle: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testCancelDragRestoresAlpha: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testCancelDragRestoresOrigin: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testCancelDragRestoresSourceSlot: OK <span class="dots">.....</span></div>
+                <div class="unit-method pass">testChainedDropZoneAddition: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testClearDisablesElement: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testClearDropZonesRemovesAll: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testClearDuringDragRestoresAlpha: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testClearDuringDragStopsCapture: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testClearRemovesRootFromScene: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testClearSetsTargetNull: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testCreateFromSlotClearsSourceSlot: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testCreateFromSlotReturnsNullForEmptySlot: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testCreateStaticFactoryMethod: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testCustomButtonConfigured: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testDragAlphaAppliedOnDragStart: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testDragAlphaRestoredOnRelease: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testDragConstraintApplied: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testDragMoveFiresDragMoveEvent: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testDragMoveUpdatesPosition: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testDragStartCapturesEvents: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testDragStartFiresDragStartEvent: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testDragStartPushesCustomEvent: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testDragStartSetsStateToDragging: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testDropZoneAcceptsFilterRejects: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testDropZoneIdFormatGridCell: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testDropZoneIdFormatNamed: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testDropZoneIdFormatSlotZone: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testDropZoneIdFormatSlotZone2D: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testDropZoneIdFormatSlotZoneNoIndex: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testDropZonePriorityHigherWins: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testDropZoneSamePriorityLaterIndexWins: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testDropZoneSnapPosition: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testFailedDropRestoresSourceSlot: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testGetOriginReturnsStartPosition: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testGetStateReturnsCurrentState: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testNonConfiguredButtonIgnored: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testOnDragCancelCallbackFired: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testOnDragDropVetoCausesDragCancel: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testOnDragEndHighlightZonesCalledOnCancel: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testOnDragEndHighlightZonesCalledOnRelease: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testOnDragStartAllowsWhenTrue: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testOnDragStartHighlightZonesCalled: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testOnDragStartVetoPrevents: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testOnEventIgnoredWhenAnimating: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testOnEventIgnoredWhenDisabled: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testOnZoneHighlightCallbackFired: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testOnZoneRejectCallbackFired: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testPayloadField: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testReleaseOnValidZoneFiresDragEnd: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testReleaseOutsideZoneFiresDragCancel: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testReleaseOutsideZoneReturnsToOrigin: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testReleaseStopsCapture: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testRemoveDropZoneByIdRemovesCorrectZone: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testRemoveDropZoneUsesEnumEq: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testReturnToOriginFalseStaysAtDropPosition: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testSetEnabledFalseCancelsDrag: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testSetEnabledFalseWhenIdleDoesNotThrow: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testSwapModeAllowedWithSourceSlot: OK <span class="dots">..</span></div>
@@ -2044,11 +2098,17 @@
                 <div class="unit-method pass">testSwapModePreservesSnapshotAfterExternalModification: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testSwapModeSnapshotsCapturedBeforeAnimation: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testSwapModeThrowsWithoutSourceSlot: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testSwapOnDropExchangesSlotContents: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testTargetingResultOnlyHasTargetZoneAndNoTarget: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testUpdateNoopWhenNotAnimating: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testWrongButtonReleaseIgnored: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testZeroDistanceAnimatesWithAlphaFlag: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testZeroDistanceAnimatesWithRotationFlag: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testZeroDistanceAnimatesWithScaleFlag: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testZeroDistanceSkipsWithoutVisualFlags: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testZoneEnterAndLeaveEventsDuringDrag: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testZoneHighlightAlphaAppliedOnZoneEnter: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testZoneRejectEnterAndLeaveEvents: OK <span class="dots">..</span></div>
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">UIMultiAnimGridTest</div>
