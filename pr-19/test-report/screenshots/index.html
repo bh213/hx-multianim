@@ -327,15 +327,15 @@
 </head>
 <body>
     <h1>Visual Test Report</h1>
-    <div class="timestamp">Generated: 2026-03-24 22:34:16</div>
+    <div class="timestamp">Generated: 2026-03-25 07:58:19</div>
     <div class="summary">
         <strong>Summary:</strong> 94 tests,         <span style="color: #4CAF50;">94 passed</span>,         <span style="color: #f44336;">0 failed</span>
-        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1s, visual 21.5s)</span>
+        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1.1s, visual 21s)</span>
     </div>
     <div class="unit-tests-section">
         <h2>Unit Tests</h2>
         <div class="unit-tests-summary all-passed">
-            <strong>4323 assertions:</strong>             <span style="color: #4CAF50;">4323 passed</span>
+            <strong>4360 assertions:</strong>             <span style="color: #4CAF50;">4360 passed</span>
             <button class="expand-btn" id="unitToggleBtn" onclick="toggleUnitDetails()">Show Details</button>
         </div>
         <div class="unit-details" id="unitDetails">
@@ -988,11 +988,16 @@
                 <div class="unit-method pass">testGetCardResultReturnsResult: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testGetCardResultUnknownNull: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testHandLayoutModeEnum: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testInvalidDiscardPathNameThrows: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testInvalidDrawPathNameThrows: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testInvalidRearrangePathNameThrows: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testInvalidReturnPathNameThrows: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testLinearLayoutCompression: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testLinearLayoutHoverPop: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testLinearLayoutSingleCard: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testLinearLayoutSpacing: OK <span class="dots">......</span></div>
                 <div class="unit-method pass">testLinearLayoutZeroCards: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testNullPathNamesAllowed: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testOnCardBuiltCallback: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testPathDistributionEnum: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testPathLayoutEvenArcLength: OK <span class="dots">...</span></div>
@@ -2024,12 +2029,26 @@
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">UIDraggableTest</div>
+                <div class="unit-method pass">testCancelDragFiresDragCancelEvent: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testCancelDragFromDraggingState: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testCancelDragNoopWhenIdle: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testCancelDragRestoresAlpha: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testCancelDragRestoresOrigin: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testClearDisablesElement: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testClearRemovesRootFromScene: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testClearSetsTargetNull: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testSetEnabledFalseCancelsDrag: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testSetEnabledFalseWhenIdleDoesNotThrow: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testSwapModeAllowedWithSourceSlot: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testSwapModeFalseAlwaysAllowed: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testSwapModePreservesSnapshotAfterExternalModification: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testSwapModeSnapshotsCapturedBeforeAnimation: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testSwapModeThrowsWithoutSourceSlot: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testTargetingResultOnlyHasTargetZoneAndNoTarget: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testZeroDistanceAnimatesWithAlphaFlag: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testZeroDistanceAnimatesWithRotationFlag: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testZeroDistanceAnimatesWithScaleFlag: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testZeroDistanceSkipsWithoutVisualFlags: OK <span class="dots">..</span></div>
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">UIMultiAnimGridTest</div>
