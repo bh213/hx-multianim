@@ -132,6 +132,7 @@ animation animationName {
 - **`docs/manim-reference.md`**: Comprehensive quick-lookup reference of ALL `.manim` elements, properties, and operations. **Always update this file** when adding/changing parser elements, builder features, filters, blend modes, coordinate systems, particle properties, path commands, or any other `.manim` language construct.
 - **`docs/anim-reference.md`**: Quick-lookup reference for the `.anim` state animation format — declarations, conditionals, filters, metadata API, and `AnimationSM` Haxe API. **Always update this file** when adding/changing `.anim` parser features.
 - **`docs/manim-cookbook.md`**: Practical pattern-based guide — buttons, tooltips, sidebars, panels, health bars, inventory grids, drag-drop, card hand, dialogue, skill trees, particles, animated paths, character sheets, status effects, data blocks, and Haxe wiring. **Consult this first** when building new screens or UI features.
+- **`docs/devbridge.md`**: DevBridge MCP server — 33 JSON-RPC tools for runtime inspection, manipulation, input injection, and hot-reload. Only compiles with `-D MULTIANIM_DEV`. Default port 9001, configurable via `HX_DEV_PORT` env var.
 - **Heaps framework**: https://heaps.io/documentation/home.html — Source: https://github.com/heapsIO/heaps
 
 ## Split Documentation

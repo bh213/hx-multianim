@@ -654,8 +654,13 @@ paths {
     text(m5x7, '${$cost}', #FFDD44, center, 30): 5, 5
 }
 
+// Targeting arrow — chain of segment programmables + head at endpoint
+// Both receive valid:bool for valid/invalid target visual state
 #arrowSegment programmable(valid:bool=false) {
     graphics(?($valid) #44FF44 : #FF4444, 2.0) { line(0, 0, 12, 0) }
+}
+#arrowHead programmable(valid:bool=false) {
+    graphics(?($valid) #44FF44 : #FF4444, 2.0) { line(0, -4, 8, 0), line(0, 4, 8, 0) }
 }
 
 #targetZone programmable(highlighted:bool=false) {
@@ -674,9 +679,9 @@ cardHand = new UICardHandHelper(this, builder, {
     rearrangePathName: "rearrangePath",
     arrowSegmentName: "arrowSegment",
     arrowHeadName: "arrowHead",
+    arrowSegmentSpacing: 20.0,   // px between segments (default: 25)
     layoutPathName: "handCurve",
     pathDistribution: EvenArcLength,
-    cardProgrammableName: "card",
     interactivePrefix: "card",
     hoverPopDistance: 30,
     hoverScale: 1.05,
@@ -1455,6 +1460,35 @@ class MyScreen extends UIScreenBase {
         startButton = null;
         tooltipHelper = null;
     }
+}
+```
+
+### Passing Data Between Screens
+
+Use the optional `data` parameter on `switchTo()` / `modalDialogWithTransition()` to pass context to the target screen. The data arrives via the `UIEntering(?data)` event.
+
+```haxe
+// Navigating with data:
+screenManager.switchTo(shopScreen, {itemId: 42, category: "weapons"}, Fade(0.3));
+
+// Opening a dialog with data:
+screenManager.modalDialogWithTransition(confirmDialog, this, "confirm",
+    {action: "delete", targetId: selectedId}, SlideUp(0.3));
+
+// Receiving data in the target screen:
+override public function onScreenEvent(event:UIScreenEvent, source:Null<UIElement>) {
+    switch event {
+        case UIEntering(data):
+            if (data != null) applyScreenData(data);
+        default:
+    }
+    super.onScreenEvent(event, source);
+}
+
+function applyScreenData(data:Dynamic) {
+    var itemId:Int = data.itemId;
+    var category:String = data.category;
+    // populate UI with received data...
 }
 ```
 

@@ -14,7 +14,7 @@
 - **Card visuals**: programmables with `interactive(w, h, id, bind => "status")` — CardHandHelper's internal `UIRichInteractiveHelper` auto-wires Normal→Hover→Pressed state machine (uses `bind` metadata key, not `autoStatus`)
 - **Visual states**: filters in `.manim` conditionals (`@(status=>hover) filter: glow(...)`, `@(status=>disabled) filter: grayscale(...)`) — no manual alpha/scale
 - **Animations**: `animatedPath` elements via `createProjectilePath()` with Stretch normalization for draw/discard/rearrange/return
-- **Targeting arrow**: `.manim` programmable (receives `valid:bool` param, positioned+rotated+scaled between origin and target). Arrow endpoint snaps to target interactive center when hovering a valid target (coordinate-transformed via `localToGlobal`/`globalToLocal`); falls back to cursor position when no target hovered. Falls back to `h2d.Graphics` bezier if no programmable provided
+- **Targeting arrow**: chain of `.manim` programmable instances (`arrowSegmentName` + `arrowHeadName`, each receives `valid:bool`) placed evenly along a Stretch-normalized path from origin to cursor. Segments rotated to follow path tangent; head placed at endpoint. `arrowSegmentSpacing` controls density (default 25px, max 30 segments). Arrow endpoint snaps to target interactive center when hovering a valid target (coordinate-transformed via `localToGlobal`/`globalToLocal`); falls back to cursor position when no target hovered. No visual drawn when segment/head names are null (target detection still works)
 - **Curves**: easing defined in `.manim` `animatedPath` `easing:` property — no hardcoded `EasingType` enums
 - **Path-based layout**: cards distributed along a `.manim` `paths {}` path instead of hardcoded fan/linear
 
@@ -29,8 +29,11 @@ paths {
 #returnPath animatedPath { path: cardArc, type: time, duration: 0.2, easing: easeOutCubic }
 #rearrangePath animatedPath { path: cardArc, type: time, duration: 0.15, easing: easeInOutCubic }
 
-#targetingArrow programmable(valid:bool=false) {
-    graphics(?(valid) #44FF44 : #FF4444, 2.0) { line(0, 0, 100, 0) }
+#arrowSegment programmable(valid:bool=false) {
+    graphics(?(valid) #44FF44 : #FF4444, 2.0) { line(0, 0, 12, 0) }
+}
+#arrowHead programmable(valid:bool=false) {
+    graphics(?(valid) #44FF44 : #FF4444, 2.0) { line(0, -4, 8, 0), line(0, 4, 8, 0) }
 }
 
 #card programmable(status:[normal,hover,pressed,disabled]=normal, name:string="") {
@@ -43,7 +46,7 @@ paths {
 
 **Constructor:** `new UICardHandHelper(host:UIComponentHost, builder, ?config)` — takes `UIComponentHost` interface (not `UIScreenBase` directly). `UIScreenBase` implements `UIComponentHost`. Use `addCardHand(builder, config)` on screen for auto-wiring.
 
-**Config:** `CardHandConfig` typedef — layout mode (Fan/Linear/PathLayout), anchor position, fan radius/angle, hover pop/scale, targeting zones/threshold, pile positions, layers, `.manim` element names for paths/arrow, interactive prefix, `onCardBuilt` callback, `cardToCardHighlightScale`.
+**Config:** `CardHandConfig` typedef — layout mode (Fan/Linear/PathLayout), anchor position, card dimensions, fan radius/angle, linear spacing/maxWidth, hover pop/scale/neighborSpread, targeting zones/threshold, card-to-card (allow/highlightScale/hoverPop/hoverScale/spread), pile positions, hand/drag layers, `.manim` element names for paths, segmented arrow chain (segmentName/headName/pathName/segmentSpacing), interactive prefix, `onCardBuilt` callback. See `docs/manim-reference.md` "Card Hand Config" for full field reference.
 
 **Path layout config:** `layoutPathName` (name of path in `paths{}` block), `pathDistribution` (`EvenArcLength` for uniform visual spacing, `EvenRate` for equal rate increments), `pathOrientation` (`Tangent`, `Straight`, `TangentClamped(maxDeg)`).
 

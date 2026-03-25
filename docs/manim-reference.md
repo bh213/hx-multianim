@@ -963,6 +963,17 @@ When `tabPanel.contentRoot` is set, tab content coordinates are relative to the 
 
 **`DefaultCellVisualFactory` config** (`CellVisualFactoryConfig`): `cellBuildName` (programmable name), `?cellBuildDelegate`, `?highlightParam` (default `"highlight"`), `?statusParam` (default `"status"`), `?highlightDelegate`.
 
+**`CellVisual<T>` interface** — wraps the visual representation of a grid cell:
+
+| Method | Description |
+|--------|-------------|
+| `object:h2d.Object` | Scene graph object |
+| `setHighlight(value)` | Set highlight state (e.g. `"none"`, `"accept"`, `"reject"`) |
+| `setStatus(value)` | Set status state (e.g. `"normal"`, `"hover"`) |
+| `beginUpdate(?data:T)` | Begin batch update — defers re-evaluation. Optional `data` for typed payload |
+| `endUpdate()` | End batch update — applies all deferred changes |
+| `getResult():Null<BuilderResult>` | Escape hatch for game-specific parameter access |
+
 **Cell programmable contract:** Must have `col:int`, `row:int`, plus matching `highlightParam` (enum with "none"/"accept"/"reject") and `statusParam` (enum with `normal`/`hover`). Custom highlight values supported via `highlightDelegate` on factory config.
 
 **Events** (`GridEvent` enum via `onGridEvent`): `CellClick`, `CellHoverEnter`, `CellHoverLeave`, `CellDrop(cell, draggable, sourceGrid, sourceCell, ctx)`, `CellSwap(source, target, draggable, ctx)`, `CellCardPlayed`, `CellDataChanged`. `CellDrop` includes `DropContext`: `ctx.accept()` / `ctx.reject()` controls snap vs return animation; `ctx.onComplete(cb)` fires after animation; `ctx.acceptWithPath(name)` / `ctx.rejectWithPath(name)` for custom paths. `CellSwap` includes `SwapContext`: `ctx.accept()` / `ctx.reject()`, `ctx.acceptWithSwapPath(name)` / `ctx.acceptWithPaths(snap, swap)` for custom paths, `ctx.onComplete(cb)` / `ctx.onSnapComplete(cb)`, `ctx.programmatic` flag (true for `swapCells()`, false for drag-drop).
@@ -1126,3 +1137,143 @@ Pre-registered cursor names: `default`, `pointer`/`button`, `move`, `text`, `hid
 | `@:build(ProgrammableCodeGen.buildAll())` | Trigger code generation on class |
 
 Generated factories provide type-safe `create()`, `createFrom()`, parameter setters, and element accessors.
+
+---
+
+## Card Hand Config (`CardHandConfig`)
+
+All fields are optional. Used with `UICardHandHelper` / `addCardHand()`.
+
+### Layout
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `layoutMode` | `HandLayoutMode` | `Fan`, `Linear`, or `PathLayout` |
+| `anchorX` | Float | Hand anchor X position |
+| `anchorY` | Float | Hand anchor Y position |
+| `cardWidth` | Float | Card width for layout calculations |
+| `cardHeight` | Float | Card height for layout calculations |
+
+### Fan Layout
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `fanRadius` | Float | Arc radius for fan spread |
+| `fanMaxAngle` | Float | Maximum total angle of fan arc |
+
+### Linear Layout
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `linearSpacing` | Float | Horizontal spacing between cards |
+| `linearMaxWidth` | Float | Maximum total width — cards compress spacing to fit |
+
+### Path Layout
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `layoutPathName` | String | Name of path in `paths{}` block |
+| `pathDistribution` | `PathDistribution` | `EvenArcLength` (uniform visual spacing) or `EvenRate` (equal rate increments) |
+| `pathOrientation` | `PathOrientation` | `Tangent`, `Straight`, or `TangentClamped(maxDeg)` |
+
+### Hover
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `hoverPopDistance` | Float | Vertical pop distance on hover |
+| `hoverScale` | Float | Scale multiplier on hover |
+| `hoverNeighborSpread` | Float | Extra spacing pushed to neighbor cards during hover |
+
+### Targeting
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `targetingThresholdY` | Float | Legacy: auto-creates full-width zone above `anchorY - threshold` (default: 100) |
+| `targetingZones` | `Array<TargetingZone>` | Explicit zones — `{id, x, y, w, h}` rects in handContainer local space. Replaces threshold when set |
+
+### Card-to-Card
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `allowCardToCard` | Bool | Enable card-to-card combining interactions |
+| `cardToCardHighlightScale` | Float | Scale applied to target card during card-to-card hover |
+| `cardToCardHoverPop` | Bool | Pop the target card upward during card-to-card hover |
+| `cardToCardHoverScale` | Bool | Scale the target card during card-to-card hover |
+| `cardToCardSpread` | Bool | Spread neighbor cards when hovering over a card-to-card target |
+
+### Pile Positions
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `drawPilePosition` | `FPoint` | Off-screen origin for draw animations |
+| `discardPilePosition` | `FPoint` | Off-screen destination for discard animations |
+
+### Layers
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `handLayer` | `LayersEnum` | Scene layer for the hand container |
+| `dragLayer` | `LayersEnum` | Scene layer for dragged cards and targeting arrow |
+
+### Animation Paths
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `drawPathName` | String | `animatedPath` name for draw animation (null = instant) |
+| `discardPathName` | String | `animatedPath` name for discard animation (null = instant) |
+| `returnPathName` | String | `animatedPath` name for return-to-hand animation (null = instant) |
+| `rearrangePathName` | String | `animatedPath` name for rearrange animation (null = instant) |
+
+### Targeting Arrow (Segmented Chain)
+
+The targeting arrow renders as a **chain of `.manim` programmable instances** placed evenly along a Stretch-normalized path from the card's origin to the cursor (or snapped target).
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `arrowSegmentName` | String | null | Programmable name for arrow body segments (receives `valid:bool`) |
+| `arrowHeadName` | String | null | Programmable name for arrow tip (receives `valid:bool`) |
+| `arrowPathName` | String | null | Path name for arrow curve shape |
+| `arrowSegmentSpacing` | Float | 25.0 | Pixel spacing between segments |
+
+Segments are placed at evenly-spaced rates along the path, rotated to follow the tangent. The head is placed at the endpoint. Max 30 segments. When `arrowSegmentName` is null, no arrow visual is drawn (target detection still works). Both segment and head programmables must accept a `valid:bool` parameter for valid/invalid target state.
+
+### Other
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `interactivePrefix` | String | Prefix for card interactive IDs (default: `"card"`) |
+| `onCardBuilt` | `(CardId, BuilderResult, h2d.Object) -> Void` | Callback after each card is built — customize via `result.getSlot()`, `result.setParameter()` |
+
+---
+
+## Screen Manager
+
+### `SceneLayerConfig`
+
+Configures scene layer ordering for `ScreenManager`. All fields optional. Passed to `new ScreenManager(s2d, ?sceneLayerConfig)`.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `content` | Int | 2 | Main game screen layer |
+| `master` | Int | 4 | Persistent overlay screen layer (e.g. top bar) |
+| `overlay` | Int | 5 | Modal darkening overlay layer |
+| `dialog` | Int | 6 | Modal dialog screen layer |
+
+**Validation:** Must satisfy strict ordering `content < master < overlay < dialog`. Throws at construction if violated.
+
+### Screen Data Passing
+
+`switchTo()` and `modalDialogWithTransition()` accept an optional `data:Dynamic` parameter that is delivered to the target screen via the `UIEntering(?data)` event:
+
+```haxe
+// Sending data:
+screenManager.switchTo(shopScreen, {itemId: 42, category: "weapons"}, Fade(0.3));
+screenManager.modalDialogWithTransition(confirmDialog, this, "confirm", {action: "delete"}, SlideUp(0.3));
+
+// Receiving data in target screen's onScreenEvent:
+case UIEntering(data):
+    if (data != null) {
+        var itemId:Int = data.itemId;
+        // use data...
+    }
+```

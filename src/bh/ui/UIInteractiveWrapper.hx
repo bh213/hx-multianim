@@ -54,9 +54,9 @@ class UIInteractiveWrapper implements UIElement implements StandardUIElementEven
 	}
 
 	static function validateCursorKeys(metadata:BuilderResolvedSettings):Void {
-		@:nullSafety(Off) if (!metadata.hasSettings())
+		if (!metadata.hasSettings())
 			return;
-		@:nullSafety(Off) for (key in metadata.keys()) {
+		for (key in metadata.keys()) {
 			if (StringTools.startsWith(key, "cursor.")) {
 				final suffix = key.substr(7);
 				if (VALID_CURSOR_SUFFIXES.indexOf(suffix) == -1)
