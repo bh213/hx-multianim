@@ -327,15 +327,15 @@
 </head>
 <body>
     <h1>Visual Test Report</h1>
-    <div class="timestamp">Generated: 2026-03-26 21:25:28</div>
+    <div class="timestamp">Generated: 2026-03-26 21:58:45</div>
     <div class="summary">
         <strong>Summary:</strong> 95 tests,         <span style="color: #4CAF50;">94 passed</span>,         <span style="color: #f44336;">1 failed</span>
-        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1s, visual 21.8s)</span>
+        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1s, visual 21.1s)</span>
     </div>
     <div class="unit-tests-section">
         <h2>Unit Tests</h2>
         <div class="unit-tests-summary all-passed">
-            <strong>4549 assertions:</strong>             <span style="color: #4CAF50;">4549 passed</span>
+            <strong>4558 assertions:</strong>             <span style="color: #4CAF50;">4558 passed</span>
             <button class="expand-btn" id="unitToggleBtn" onclick="toggleUnitDetails()">Show Details</button>
         </div>
         <div class="unit-details" id="unitDetails">
@@ -697,6 +697,7 @@
                 <div class="unit-method pass">testCustomFilterBasic: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testCustomFilterCaseInsensitive: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testCustomFilterInsideGroup: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testCustomFilterParamRefSkipsTypeValidation: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testCustomFilterRegistrationBlocksBuiltins: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testCustomFilterUnregisteredThrows: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testCustomFilterValidation: OK <span class="dots">...</span></div>
@@ -1707,10 +1708,16 @@
                 <div class="unit-method pass">testConvertDoubleEscapeBracket: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testConvertEmptyString: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testConvertEscapeBracket: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testConvertEscapesAmpersand: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testConvertEscapesGreaterThan: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testConvertEscapesLessThan: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testConvertEscapesMultipleXmlChars: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testConvertEscapesXmlWithMarkup: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testConvertImgTag: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testConvertLinkTag: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testConvertNestedTags: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testConvertNoMarkup: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testConvertNoXmlCharsUnchanged: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testConvertNull: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testConvertReservedBoldTag: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testConvertReservedFontTag: OK <span class="dots">.</span></div>
