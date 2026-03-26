@@ -63,7 +63,10 @@ class DevBridge {
 	}
 
 	public function start():Void {
-		if (serverSocket != null) return;
+		if (serverSocket != null) {
+			trace('[DevBridge] Error, Already started on port $actualPort');
+			return;
+		}
 		startTime = haxe.Timer.stamp();
 		installTraceCapture();
 		serverSocket = new Socket();

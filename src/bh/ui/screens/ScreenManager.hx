@@ -81,6 +81,7 @@ class ScreenManager {
 	var builderConsumers:Array<bh.multianim.dev.HotReload.IBuilderConsumer> = [];
 	var screenSourceMap:Map<String, Array<UIScreen>> = []; // resource path → screens that loaded it
 	var currentlyLoadingScreen:Null<UIScreen> = null;
+	public var devBridge(default, null):Null<bh.multianim.dev.DevBridge> = null;
 	#end
 
 	public function new(app:hxd.App, ?loader, ?sceneLayerConfig:SceneLayerConfig) {
@@ -102,6 +103,8 @@ class ScreenManager {
 		this.onReload = (?resource) -> {
 			hotReload(resource);
 		};
+		this.devBridge = new bh.multianim.dev.DevBridge(this);
+		this.devBridge.start();
 		#end
 	}
 

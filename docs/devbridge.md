@@ -14,6 +14,8 @@ Runtime inspection and manipulation server for hx-multianim applications. Design
 
 **Default port:** 9001
 
+**Autostart:** DevBridge starts automatically when `ScreenManager` is constructed with `-D MULTIANIM_DEV`. Accessible via `screenManager.devBridge`. No manual setup needed.
+
 **Port configuration:**
 1. **Environment variable** `HX_DEV_PORT` — parsed as integer (1–65535), falls back to 9001
 2. **Constructor parameter** `new DevBridge(screenManager, port)` — if `port != 0`, uses that value; if `0`, checks env var
