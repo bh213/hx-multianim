@@ -635,7 +635,7 @@ class AnimParser implements AnimParserResult {
 	function syntaxError(error:String, ?pos:ParsePosition):Dynamic {
 		final p = pos != null ? pos : curPos();
 		final err = new InvalidSyntax(error, p);
-		#if MULTIANIM_TRACE
+		#if MULTIANIM_DEV
 		trace('AnimParser syntax error in $sourceName: $err');
 		#end
 		throw err;
@@ -643,7 +643,7 @@ class AnimParser implements AnimParserResult {
 
 	function unexpectedError(?message:String):Dynamic {
 		final err = new AnimUnexpected(peek(), curPos(), message ?? "unexpected");
-		#if MULTIANIM_TRACE
+		#if MULTIANIM_DEV
 		trace('AnimParser unexpected token in $sourceName: $err');
 		#end
 		throw err;
@@ -668,7 +668,7 @@ class AnimParser implements AnimParserResult {
 			p.parse();
 			return p;
 		} catch (e) {
-			#if MULTIANIM_TRACE
+			#if MULTIANIM_DEV
 			trace('AnimParser.parseString failed for $sourceName: $e');
 			#end
 			throw e;
@@ -795,7 +795,7 @@ class AnimParser implements AnimParserResult {
 			definedStatesIndexes.push(key);
 		}
 		final allStates = createAllStates(definedStates);
-		#if MULTIANIM_TRACE
+		#if MULTIANIM_DEV
 		if (allStates.length > 50) {
 			trace('Warning: large number of states in AnimParser: ${allStates.length}}');
 		}

@@ -291,13 +291,13 @@ return null;
     }
 
     /**
-     * Returns a string with the node's parser position when MULTIANIM_TRACE is defined.
-     * Returns empty string when MULTIANIM_TRACE is not set.
+     * Returns a string with the node's parser position when MULTIANIM_DEV is defined.
+     * Returns empty string when MULTIANIM_DEV is not set.
      * Usage: throw 'error message' + MacroUtils.nodePos(node);
      */
     public static macro function nodePos(node:Expr):Expr {
         #if macro
-        if (Context.defined("MULTIANIM_TRACE")) {
+        if (Context.defined("MULTIANIM_DEV")) {
             return macro ' at ' + $node.parserPos;
         } else {
             return macro '';
@@ -308,13 +308,13 @@ return null;
     }
 
     /**
-     * Returns a string with the node's parser position prefixed by custom text when MULTIANIM_TRACE is defined.
-     * Returns empty string when MULTIANIM_TRACE is not set.
+     * Returns a string with the node's parser position prefixed by custom text when MULTIANIM_DEV is defined.
+     * Returns empty string when MULTIANIM_DEV is not set.
      * Usage: throw 'error message' + MacroUtils.nodePosWithPrefix(node, " (defined at ");
      */
     public static macro function nodePosWithPrefix(node:Expr, prefix:ExprOf<String>):Expr {
         #if macro
-        if (Context.defined("MULTIANIM_TRACE")) {
+        if (Context.defined("MULTIANIM_DEV")) {
             return macro $prefix + $node.parserPos + ')';
         } else {
             return macro '';

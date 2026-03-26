@@ -250,7 +250,7 @@ class ScreenManager {
 			throw 'failed to load multianim ${resource.name}';
 		// Auto-inject TweenManager for transition support in incremental builds
 		built.tweenManager = tweens;
-		#if MULTIANIM_TRACE
+		#if MULTIANIM_DEV
 		trace('Built ${resource.entry.name} with reload $enableReload');
 		#end
 		builders.set(resource, built);
@@ -288,13 +288,13 @@ class ScreenManager {
 			for (key => value in oldBuilders) {
 				if (resource != null && key != resource)
 					continue;
-				#if MULTIANIM_TRACE
+				#if MULTIANIM_DEV
 				trace('rebuild $key'); // don't trace $value, js gets stack overflow
 				#end
 				buildFromResource(key, true); // TODO: enable reload
 			}
 		} catch (e) {
-			#if MULTIANIM_TRACE
+			#if MULTIANIM_DEV
 			trace('ScreenManager.rebuildAll failed: $e');
 			#end
 			#if MULTIANIM_STRICT
@@ -360,7 +360,7 @@ class ScreenManager {
 				strictFail('screen "$name" (reload)', e);
 				#end
 				failedScreens[name] = e.toString();
-				#if MULTIANIM_TRACE
+				#if MULTIANIM_DEV
 				trace('Failed to reload screen ${name}: ${e}');
 				#end
 				return {
@@ -374,7 +374,7 @@ class ScreenManager {
 			reloadedScreenNames.push(name);
 		}
 		updateScreenMode(this.mode);
-		#if MULTIANIM_TRACE
+		#if MULTIANIM_DEV
 		trace('reloaded ${reloadedScreenNames.join(",")}');
 		#end
 		return {
@@ -407,7 +407,7 @@ class ScreenManager {
 			strictFail('screen "$name"', e);
 			#end
 			failedScreens[name] = e.toString();
-			#if MULTIANIM_TRACE
+			#if MULTIANIM_DEV
 			trace('Failed to load screen ${name}: ${e}');
 			#end
 		}

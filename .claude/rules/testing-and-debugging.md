@@ -39,10 +39,7 @@ Tests are visual screenshot comparisons. To add a new test:
 
 ## Debug Tracing
 
-Enable debug traces by adding to HXML:
-```hxml
--D MULTIANIM_TRACE
-```
+Debug traces are included with `-D MULTIANIM_DEV` (same flag that enables hot reload and DevBridge).
 
 ## Strict Mode
 

@@ -1163,7 +1163,7 @@ typedef Node = {
 	settings:Null<Map<String, ParsedSettingValue>>,
 	transitions:Null<Map<String, TransitionType>>,
 	flowProperties:Null<NodeFlowProperties>,
-	#if MULTIANIM_TRACE
+	#if MULTIANIM_DEV
 	parserPos:String
 	#end
 }

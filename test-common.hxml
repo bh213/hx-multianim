@@ -10,4 +10,4 @@
 -debug
 -D resourcesPath=test/res
 -D windowSize=1280x720
--D MULTIANIM_TRACE
+

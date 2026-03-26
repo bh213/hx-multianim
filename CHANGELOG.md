@@ -27,6 +27,7 @@
 - **`UICardHandHelper.invalidateLayoutCache()`** — clears the cached `resolvedPath` for PathLayout mode, allowing hot-reload to pick up changed paths.
 
 ### Changed
+- **`MULTIANIM_TRACE` → `MULTIANIM_DEV`** — consolidated debug trace flag. All `#if MULTIANIM_TRACE` guards now use `#if MULTIANIM_DEV` (same flag as hot reload and DevBridge). Removed `MULTIANIM_TRACE` from `test-common.hxml`. Cleaned up redundant debug traces in `MultiAnimBuilder`.
 - **DropContext internals** — internal fields renamed from `_handled`/`_accepted`/`_pathName`/`_onComplete` to private fields with `@:allow` access (no public API change).
 - **Grid public API renames** — `getCellResult()` → `getCellVisual()`, `getLayerResult()` → `getLayerVisual()`. Both now return `CellVisual<T>` (use `.getResult()` for `BuilderResult`). `onCellBuilt` callback second param changed from `BuilderResult` to `CellVisual<T>`.
 - **GridConfig fields removed** — `cellBuildName`, `cellBuildDelegate`, `highlightParam`, `statusParam`, `highlightDelegate`, `rejectHighlightParam` removed from `GridConfig`. These are now part of `CellVisualFactoryConfig<T>` (except `rejectHighlightParam` which was dead code).

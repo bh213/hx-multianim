@@ -2669,7 +2669,7 @@ class MacroManimParser {
 			settings: null,
 			transitions: null,
 			flowProperties: null,
-			#if MULTIANIM_TRACE
+			#if MULTIANIM_DEV
 			parserPos: posString()
 			#end
 		};
@@ -3621,7 +3621,7 @@ class MacroManimParser {
 							while (p != null) {
 								switch (p.type) {
 									case FLOW(_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _):
-										#if MULTIANIM_TRACE
+										#if MULTIANIM_DEV
 										trace('Warning: $sourceName: slide() transition inside flow() may not work as expected — flow recalculates child positions each frame');
 										#end
 										break;

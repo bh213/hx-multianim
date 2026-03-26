@@ -2148,11 +2148,7 @@ Supported fonts: `f3x5`, `m3x6`, `pixeled6`, `pikzel`, `cnc_inet_12`, `m5x7`, `f
 
 ## Debug Tracing
 
-Enable debug traces by adding to your HXML file:
-
-```hxml
--D MULTIANIM_TRACE
-```
+Debug traces are included with `-D MULTIANIM_DEV` (same flag that enables hot reload and DevBridge).
 
 ## Strict Mode
 

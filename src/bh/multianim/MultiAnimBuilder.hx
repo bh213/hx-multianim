@@ -1135,9 +1135,9 @@ class MultiAnimBuilder {
 	var devPlaceholderCapture:Array<{name:String, index:Null<Int>, object:h2d.Object}> = [];
 	#end
 
-	/** Returns position string for error messages when MULTIANIM_TRACE is enabled */
+	/** Returns position string for error messages when MULTIANIM_DEV is enabled */
 	inline function currentNodePos():String {
-		#if MULTIANIM_TRACE
+		#if MULTIANIM_DEV
 		return if (currentNode != null) ' at ${currentNode.parserPos}' else '';
 		#else
 		return '';
@@ -1238,9 +1238,6 @@ class MultiAnimBuilder {
 				return [for (v in array) resolveAsString(v)];
 			case RVArrayReference(refArr):
 				final arrayVal = indexedParams.get(refArr);
-				#if MULTIANIM_TRACE
-				trace(indexedParams);
-				#end
 				switch arrayVal {
 					case ArrayString(strArray): return strArray;
 					case ExpressionAlias(expr): return resolveAsArray(expr);
@@ -3746,7 +3743,7 @@ class MultiAnimBuilder {
 							switch param {
 								case null: null;
 								case PVObject(obj):
-									#if MULTIANIM_TRACE
+									#if MULTIANIM_DEV
 									if (settings != null)
 										trace('Warning: PVObject placeholder "${resolveAsString(callbackName)}" ignores .manim settings — use PVFactory instead to receive settings');
 									#end
@@ -3793,10 +3790,6 @@ class MultiAnimBuilder {
 						throw 'could not find builder for external staticRef ${externalReference}' + MacroUtils.nodePos(node);
 					builder;
 				} else this;
-
-				#if MULTIANIM_TRACE
-				trace('build staticRef ${reference} with parameters ${parameters} and builderParams ${builderParams} and indexedParams ${indexedParams}');
-				#end
 
 				var result = builder.buildWithParameters(reference, parameters, builderParams, indexedParams);
 				var object = result?.object;
@@ -5816,9 +5809,6 @@ class MultiAnimBuilder {
 		var node = multiParserResult.nodes.get(name);
 		if (node == null) {
 			final error = 'buildWithParameters ${inputParameters}: could find element "$name" to build';
-			#if MULTIANIM_TRACE
-			trace(error);
-			#end
 			popBuilderState();
 			throw error;
 		}
