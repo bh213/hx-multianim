@@ -27,6 +27,8 @@
 - **`UICardHandHelper.invalidateLayoutCache()`** — clears the cached `resolvedPath` for PathLayout mode, allowing hot-reload to pick up changed paths.
 
 ### Changed
+- **Incremental conditionals use scene graph removal** — conditional elements (`@()`, `@if`, `@else`, `@default`) are now removed from the scene graph when their condition doesn't match, instead of toggling `visible = false`. A lightweight sentinel object marks each conditional's insertion point so elements re-add at the correct position. Reduces scene graph size for complex conditionals. Both builder and codegen paths updated. Flow properties (`@flow.halign`, `@flow.valign`, `@flow.offset`, `@flow.absolute`) are saved before removal and restored after re-add. Transition animations (`transition {}` block) use `addToGraph`/`removeFromGraph` instead of visibility toggling.
+
 - **`MULTIANIM_TRACE` → `MULTIANIM_DEV`** — consolidated debug trace flag. All `#if MULTIANIM_TRACE` guards now use `#if MULTIANIM_DEV` (same flag as hot reload and DevBridge). Removed `MULTIANIM_TRACE` from `test-common.hxml`. Cleaned up redundant debug traces in `MultiAnimBuilder`.
 - **DropContext internals** — internal fields renamed from `_handled`/`_accepted`/`_pathName`/`_onComplete` to private fields with `@:allow` access (no public API change).
 - **Grid public API renames** — `getCellResult()` → `getCellVisual()`, `getLayerResult()` → `getLayerVisual()`. Both now return `CellVisual<T>` (use `.getResult()` for `BuilderResult`). `onCellBuilt` callback second param changed from `BuilderResult` to `CellVisual<T>`.
@@ -45,6 +47,7 @@
 
 - **Unterminated block comments detected** — both `.manim` and `.anim` parsers now throw a clear error (`Unterminated block comment, missing closing */`) instead of silently dropping content after an unclosed `/*`.
 - **Division/modulo by zero** — `MultiAnimBuilder` now throws `Division by zero` / `Modulo by zero` for `/`, `div`, `%` operators in both integer and float expression paths, instead of crashing (HashLink) or producing `Infinity`/`NaN`.
+- **Incremental mode evaluates expressions in non-visible conditional nodes** — deferred build pattern now skips expression evaluation entirely for conditional nodes that don't match, matching non-incremental/codegen behavior. Previously, incremental mode built all nodes and toggled visibility, which caused division-by-zero crashes when expressions referenced parameters guarded by range conditionals (e.g., `$baseShield * 36 / $maxShield` inside `@(maxShield=>1..99)`). Deferred nodes materialize on first visibility with current parameter values and register tracked expressions for future updates. Hidden tracked expressions are also skipped during `applyUpdates()`.
 
 - **Card hand callback chaining for multi-grid targeting** — `registerAsCardTarget()` now chains accepts/highlight callbacks instead of overwriting, so multiple grids can coexist as card targets on the same card hand.
 - **Codegen `WITH_OFFSET` for non-static bases** — `generatePositionExpr` now correctly handles `.offset()` on non-static coordinate expressions (e.g. `$ref.extraPoint(...).offset(x, y)`). Previously returned null when the base couldn't be resolved at compile time, causing elements to be positioned at (0, 0).

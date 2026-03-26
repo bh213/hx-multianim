@@ -263,19 +263,34 @@ class BuilderResolvedSettings {
 	}
 }
 
+private typedef SavedFlowProperties = {
+	horizontalAlign:Null<h2d.Flow.FlowAlign>,
+	verticalAlign:Null<h2d.Flow.FlowAlign>,
+	offsetX:Int, offsetY:Int,
+	isAbsolute:Bool,
+	minWidth:Null<Int>, minHeight:Null<Int>,
+	paddingLeft:Int, paddingTop:Int, paddingRight:Int, paddingBottom:Int,
+};
+
 @:nullSafety
 class IncrementalUpdateContext {
 	var builder:MultiAnimBuilder;
 	var indexedParams:Map<String, ResolvedIndexParameters>;
 	var builderParams:BuilderParameters;
-	var conditionalEntries:Array<{object:h2d.Object, node:Node}> = [];
+	var conditionalEntries:Array<{object:h2d.Object, node:Node, sentinel:h2d.Object, parent:h2d.Object, layer:Int,
+		savedFlowProps:Null<SavedFlowProperties>}> = [];
 	var conditionalApplyEntries:Array<{
 		parent:h2d.Object, node:Node, applied:Bool,
 		savedFilter:Null<h2d.filter.Filter>, savedAlpha:Null<Float>,
 		savedScaleX:Null<Float>, savedScaleY:Null<Float>, savedRotation:Null<Float>,
 		appliedPosX:Float, appliedPosY:Float,
 	}> = [];
-	var trackedExpressions:Array<{updateFn:Void->Void, paramRefs:Array<String>}> = [];
+	var trackedExpressions:Array<{updateFn:Void->Void, paramRefs:Array<String>, object:Null<h2d.Object>}> = [];
+	var deferredEntries:Array<{
+		wrapper:h2d.Object, node:Node, sentinel:h2d.Object, parent:h2d.Object, layer:Int,
+		gridCS:GridCoordinateSystem, hexCS:HexCoordinateSystem,
+		internalResults:InternalBuilderResults, builderParams:BuilderParameters,
+	}> = [];
 	var dynamicRefBindings:Array<{childContext:IncrementalUpdateContext, childParam:String, resolveFn:Void->Dynamic, referencedParams:Array<String>}> = [];
 	var rootNode:Node;
 	var batchMode:Bool = false;
@@ -310,12 +325,60 @@ class IncrementalUpdateContext {
 
 	#end
 
-	public function trackConditional(object:h2d.Object, node:Node):Void {
-		conditionalEntries.push({object: object, node: node});
+	public function trackConditional(object:h2d.Object, node:Node, sentinel:h2d.Object, parent:h2d.Object, layer:Int):Void {
+		conditionalEntries.push({object: object, node: node, sentinel: sentinel, parent: parent, layer: layer,
+			savedFlowProps: saveFlowProperties(object, parent)});
 	}
 
-	public function trackExpression(updateFn:Void->Void, paramRefs:Array<String>):Void {
-		trackedExpressions.push({updateFn: updateFn, paramRefs: paramRefs});
+	public function trackDeferredConditional(wrapper:h2d.Object, node:Node, sentinel:h2d.Object, parent:h2d.Object, layer:Int,
+			gridCS:GridCoordinateSystem, hexCS:HexCoordinateSystem,
+			internalResults:InternalBuilderResults, builderParams:BuilderParameters):Void {
+		conditionalEntries.push({object: wrapper, node: node, sentinel: sentinel, parent: parent, layer: layer,
+			savedFlowProps: saveFlowProperties(wrapper, parent)});
+		deferredEntries.push({
+			wrapper: wrapper, node: node, sentinel: sentinel, parent: parent, layer: layer,
+			gridCS: gridCS, hexCS: hexCS,
+			internalResults: internalResults, builderParams: builderParams,
+		});
+	}
+
+	/** Save Flow layout properties of an object so they can be restored when re-adding to a Flow parent. */
+	function saveFlowProperties(object:h2d.Object, parent:h2d.Object):Null<SavedFlowProperties> {
+		if (!Std.isOfType(parent, h2d.Flow)) return null;
+		final flow:h2d.Flow = cast parent;
+		final props = flow.getProperties(object);
+		return {
+			horizontalAlign: props.horizontalAlign,
+			verticalAlign: props.verticalAlign,
+			offsetX: props.offsetX, offsetY: props.offsetY,
+			isAbsolute: props.isAbsolute,
+			minWidth: props.minWidth, minHeight: props.minHeight,
+			paddingLeft: props.paddingLeft, paddingTop: props.paddingTop,
+			paddingRight: props.paddingRight, paddingBottom: props.paddingBottom,
+		};
+	}
+
+	/** Restore saved Flow layout properties after re-adding a child to a Flow parent. */
+	function restoreFlowProperties(object:h2d.Object, parent:h2d.Object, saved:Null<SavedFlowProperties>):Void {
+		if (saved == null) return;
+		if (!Std.isOfType(parent, h2d.Flow)) return;
+		final flow:h2d.Flow = cast parent;
+		final props = flow.getProperties(object);
+		props.horizontalAlign = saved.horizontalAlign;
+		props.verticalAlign = saved.verticalAlign;
+		props.offsetX = saved.offsetX;
+		props.offsetY = saved.offsetY;
+		props.isAbsolute = saved.isAbsolute;
+		props.minWidth = saved.minWidth;
+		props.minHeight = saved.minHeight;
+		props.paddingLeft = saved.paddingLeft;
+		props.paddingTop = saved.paddingTop;
+		props.paddingRight = saved.paddingRight;
+		props.paddingBottom = saved.paddingBottom;
+	}
+
+	public function trackExpression(updateFn:Void->Void, paramRefs:Array<String>, ?object:h2d.Object):Void {
+		trackedExpressions.push({updateFn: updateFn, paramRefs: paramRefs, object: object});
 	}
 
 	public function trackDynamicRef(childContext:IncrementalUpdateContext, childParam:String, resolveFn:Void->Dynamic, referencedParams:Array<String>):Void {
@@ -332,6 +395,35 @@ class IncrementalUpdateContext {
 			savedScaleX: savedScaleX, savedScaleY: savedScaleY, savedRotation: savedRotation,
 			appliedPosX: appliedPosX, appliedPosY: appliedPosY,
 		});
+	}
+
+	/** Add a conditional element back into the scene graph, positioned right after its sentinel. */
+	function addToGraph(entry:{object:h2d.Object, sentinel:h2d.Object, parent:h2d.Object, layer:Int,
+			?savedFlowProps:Null<SavedFlowProperties>}):Void {
+		if (entry.object.parent != null) return; // already in graph
+		final sentinel = entry.sentinel;
+		final parent = entry.parent;
+		if (Std.isOfType(parent, h2d.Layers) && entry.layer != -1) {
+			final layersParent:h2d.Layers = cast parent;
+			// Layers.add index is relative to layer start
+			final sentinelIndex = layersParent.getChildIndexInLayer(sentinel);
+			layersParent.add(entry.object, entry.layer, sentinelIndex + 1);
+		} else {
+			final sentinelIndex = parent.getChildIndex(sentinel);
+			parent.addChildAt(entry.object, sentinelIndex + 1);
+		}
+		restoreFlowProperties(entry.object, parent, entry.savedFlowProps);
+	}
+
+	/** Remove a conditional element from the scene graph. Its sentinel stays. */
+	function removeFromGraph(entry:{object:h2d.Object}):Void {
+		if (entry.object.parent == null) return; // already removed
+		entry.object.parent.removeChild(entry.object);
+	}
+
+	/** Check if a conditional element is currently in the scene graph. */
+	static inline function isInGraph(obj:h2d.Object):Bool {
+		return obj.parent != null;
 	}
 
 	function applyConditionalApplyEntry(entry:{
@@ -499,25 +591,46 @@ class IncrementalUpdateContext {
 		return false;
 	}
 
-	function setVisibilityWithTransition(obj:h2d.Object, newVisible:Bool):Void {
+	/** Check if an object is effectively visible: in the scene graph and all ancestors visible. */
+	static function isEffectivelyVisible(obj:h2d.Object):Bool {
+		if (obj.parent == null) return false; // Not in scene graph
+		var cur = obj;
+		while (cur != null) {
+			if (!cur.visible) return false;
+			cur = cur.parent;
+		}
+		return true;
+	}
+
+	function setPresenceWithTransition(entry:{object:h2d.Object, sentinel:h2d.Object, parent:h2d.Object, layer:Int,
+			?savedFlowProps:Null<SavedFlowProperties>}, newVisible:Bool):Void {
+		final obj = entry.object;
+		final inGraph = isInGraph(obj);
 		// Skip only if state matches AND no transition is in progress.
-		// A mid-hide element has visible=true but should accept show requests.
-		if (obj.visible == newVisible && !hasActiveTransition(obj)) return;
+		if (inGraph == newVisible && !hasActiveTransition(obj)) return;
 
 		final transSpec = findTransitionSpec();
 		if (transSpec == null || tweenManager == null || transSpec.match(TransNone)) {
-			cancelActiveTransition(obj); // Cancel any in-progress transition
-			obj.visible = newVisible;
+			cancelActiveTransition(obj);
+			if (newVisible)
+				addToGraph(entry);
+			else
+				removeFromGraph(entry);
 			return;
 		}
 
 		cancelActiveTransition(obj);
-		executeTransition(obj, newVisible, transSpec);
+		executePresenceTransition(entry, newVisible, transSpec);
 	}
 
-	function executeTransition(obj:h2d.Object, show:Bool, spec:TransitionType):Void {
+	function executePresenceTransition(entry:{object:h2d.Object, sentinel:h2d.Object, parent:h2d.Object, layer:Int,
+			?savedFlowProps:Null<SavedFlowProperties>}, show:Bool, spec:TransitionType):Void {
+		final obj = entry.object;
 		final tm = tweenManager;
-		if (tm == null) { obj.visible = show; return; }
+		if (tm == null) {
+			if (show) addToGraph(entry); else removeFromGraph(entry);
+			return;
+		}
 
 		// Capture pre-transition state for all properties (used by cancelActiveTransition to restore)
 		final preAlpha = obj.alpha;
@@ -529,32 +642,32 @@ class IncrementalUpdateContext {
 		switch (spec) {
 			case TransFade(duration, easing):
 				if (show) {
-					obj.visible = true;
+					addToGraph(entry);
 					obj.alpha = 0.0;
 					final t = tm.tween(obj, duration, [Alpha(preAlpha)], easing);
 					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
 				} else {
 					final t = tm.tween(obj, duration, [Alpha(0.0)], easing);
-					final capturedObj = obj;
+					final capturedEntry = entry;
 					t.onComplete = () -> {
-						capturedObj.visible = false;
-						capturedObj.alpha = preAlpha;
+						removeFromGraph(capturedEntry);
+						capturedEntry.object.alpha = preAlpha;
 					};
 					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
 				}
 
 			case TransCrossfade(duration, easing):
 				if (show) {
-					obj.visible = true;
+					addToGraph(entry);
 					obj.alpha = 0.0;
 					final t = tm.tween(obj, duration, [Alpha(preAlpha)], easing);
 					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
 				} else {
 					final t = tm.tween(obj, duration, [Alpha(0.0)], easing);
-					final capturedObj = obj;
+					final capturedEntry = entry;
 					t.onComplete = () -> {
-						capturedObj.visible = false;
-						capturedObj.alpha = preAlpha;
+						removeFromGraph(capturedEntry);
+						capturedEntry.object.alpha = preAlpha;
 					};
 					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
 				}
@@ -562,16 +675,16 @@ class IncrementalUpdateContext {
 			case TransFlipX(duration, easing):
 				final halfDuration = duration / 2.0;
 				if (show) {
-					obj.visible = true;
+					addToGraph(entry);
 					obj.scaleX = 0.0;
 					final t = tm.tween(obj, halfDuration, [ScaleX(preScaleX)], easing);
 					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
 				} else {
 					final t = tm.tween(obj, halfDuration, [ScaleX(0.0)], easing);
-					final capturedObj = obj;
+					final capturedEntry = entry;
 					t.onComplete = () -> {
-						capturedObj.visible = false;
-						capturedObj.scaleX = preScaleX;
+						removeFromGraph(capturedEntry);
+						capturedEntry.object.scaleX = preScaleX;
 					};
 					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
 				}
@@ -579,16 +692,16 @@ class IncrementalUpdateContext {
 			case TransFlipY(duration, easing):
 				final halfDuration = duration / 2.0;
 				if (show) {
-					obj.visible = true;
+					addToGraph(entry);
 					obj.scaleY = 0.0;
 					final t = tm.tween(obj, halfDuration, [ScaleY(preScaleY)], easing);
 					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
 				} else {
 					final t = tm.tween(obj, halfDuration, [ScaleY(0.0)], easing);
-					final capturedObj = obj;
+					final capturedEntry = entry;
 					t.onComplete = () -> {
-						capturedObj.visible = false;
-						capturedObj.scaleY = preScaleY;
+						removeFromGraph(capturedEntry);
+						capturedEntry.object.scaleY = preScaleY;
 					};
 					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
 				}
@@ -596,7 +709,7 @@ class IncrementalUpdateContext {
 			case TransSlide(dir, duration, distance, easing):
 				final slideOffset:Float = distance != null ? distance : 50.0;
 				if (show) {
-					obj.visible = true;
+					addToGraph(entry);
 					obj.alpha = 0.0;
 					switch (dir) {
 						case TDLeft: obj.x -= slideOffset;
@@ -616,19 +729,85 @@ class IncrementalUpdateContext {
 						case TDDown: targetY += slideOffset;
 					}
 					final t = tm.tween(obj, duration, [X(targetX), Y(targetY), Alpha(0.0)], easing);
-					final capturedObj = obj;
+					final capturedEntry = entry;
 					t.onComplete = () -> {
-						capturedObj.visible = false;
-						capturedObj.alpha = preAlpha;
-						capturedObj.x = preX;
-						capturedObj.y = preY;
+						removeFromGraph(capturedEntry);
+						capturedEntry.object.alpha = preAlpha;
+						capturedEntry.object.x = preX;
+						capturedEntry.object.y = preY;
 					};
 					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
 				}
 
 			case TransNone:
-				obj.visible = show;
+				if (show) addToGraph(entry); else removeFromGraph(entry);
 		}
+	}
+
+	function findDeferred(obj:h2d.Object):Null<{
+		wrapper:h2d.Object, node:Node, sentinel:h2d.Object, parent:h2d.Object, layer:Int,
+		gridCS:GridCoordinateSystem, hexCS:HexCoordinateSystem,
+		internalResults:InternalBuilderResults, builderParams:BuilderParameters,
+	}> {
+		for (entry in deferredEntries)
+			if (entry.wrapper == obj) return entry;
+		return null;
+	}
+
+	function materializeDeferred(entry:{
+		wrapper:h2d.Object, node:Node, sentinel:h2d.Object, parent:h2d.Object, layer:Int,
+		gridCS:GridCoordinateSystem, hexCS:HexCoordinateSystem,
+		internalResults:InternalBuilderResults, builderParams:BuilderParameters,
+	}):Void {
+		// Build the deferred node's content into the wrapper (non-incremental, like repeatable rebuild).
+		// Register a tracked expression to rebuild when referenced params change.
+		rebuildDeferredContent(entry);
+		// Collect param refs from node expressions for future rebuild tracking
+		final paramRefs = builder.collectNodeParamRefs(entry.node);
+		if (paramRefs.length > 0) {
+			final capturedEntry = entry;
+			trackedExpressions.push({
+				updateFn: () -> {
+					capturedEntry.wrapper.removeChildren();
+					rebuildDeferredContent(capturedEntry);
+				},
+				paramRefs: paramRefs,
+				object: entry.wrapper,
+			});
+		}
+		// Remove from deferred list
+		deferredEntries.remove(entry);
+	}
+
+	function rebuildDeferredContent(entry:{
+		wrapper:h2d.Object, node:Node,
+		gridCS:GridCoordinateSystem, hexCS:HexCoordinateSystem,
+		internalResults:InternalBuilderResults, builderParams:BuilderParameters,
+	}):Void {
+		builder.incrementalMode = false;
+		builder.incrementalContext = null;
+		builder.builderParams = entry.builderParams;
+		builder.build(entry.node, ObjectMode(entry.wrapper), entry.gridCS, entry.hexCS, entry.internalResults, entry.builderParams);
+		builder.incrementalMode = false;
+		builder.incrementalContext = null;
+	}
+
+	function setPresenceOrMaterialize(entry:{object:h2d.Object, node:Node, sentinel:h2d.Object, parent:h2d.Object, layer:Int,
+			?savedFlowProps:Null<SavedFlowProperties>}, newVisible:Bool):Void {
+		if (newVisible) {
+			final deferred = findDeferred(entry.object);
+			if (deferred != null) {
+				// Add to graph first so materialization builds into a live parent
+				addToGraph(entry);
+				materializeDeferred(deferred);
+				// Apply transition animation if configured
+				final transSpec = findTransitionSpec();
+				if (transSpec != null && tweenManager != null && !transSpec.match(TransNone))
+					executePresenceTransition(entry, true, transSpec);
+				return;
+			}
+		}
+		setPresenceWithTransition(entry, newVisible);
 	}
 
 	function applyUpdates():Void {
@@ -636,10 +815,10 @@ class IncrementalUpdateContext {
 		builder.indexedParams = indexedParams;
 		builder.builderParams = builderParams;
 
-		// Re-evaluate visibility for all conditional elements
+		// Re-evaluate presence for all conditional elements
 		for (entry in conditionalEntries) {
 			final shouldBeVisible = builder.isMatch(entry.node, indexedParams);
-			setVisibilityWithTransition(entry.object, shouldBeVisible);
+			setPresenceOrMaterialize(entry, shouldBeVisible);
 		}
 		// Re-evaluate conditional apply entries
 		for (entry in conditionalApplyEntries) {
@@ -650,8 +829,12 @@ class IncrementalUpdateContext {
 		// Re-evaluate @else/@default chain visibility
 		applyConditionalChains();
 
-		// Re-evaluate tracked expressions
+		// Re-evaluate tracked expressions (skip for hidden objects)
 		for (tracked in trackedExpressions) {
+			// Skip expression evaluation for objects that are not effectively visible
+			final obj = tracked.object;
+			if (obj != null && !isEffectivelyVisible(obj))
+				continue;
 			var relevant = false;
 			for (ref in tracked.paramRefs) {
 				if (changedParams.exists(ref)) {
@@ -693,11 +876,12 @@ class IncrementalUpdateContext {
 		var anyConditionalSiblingMatched = false;
 
 		for (childNode in children) {
-			// Find the tracked object for this node
-			var trackedObj:Null<h2d.Object> = null;
+			// Find the tracked entry for this node
+			var trackedEntry:Null<{object:h2d.Object, node:Node, sentinel:h2d.Object, parent:h2d.Object, layer:Int,
+				savedFlowProps:Null<SavedFlowProperties>}> = null;
 			for (entry in conditionalEntries) {
 				if (entry.node == childNode) {
-					trackedObj = entry.object;
+					trackedEntry = entry;
 					break;
 				}
 			}
@@ -708,7 +892,7 @@ class IncrementalUpdateContext {
 				savedScaleX:Null<Float>, savedScaleY:Null<Float>, savedRotation:Null<Float>,
 				appliedPosX:Float, appliedPosY:Float,
 			}> = null;
-			if (trackedObj == null) {
+			if (trackedEntry == null) {
 				for (ae in conditionalApplyEntries) {
 					if (ae.node == childNode) {
 						trackedApply = ae;
@@ -722,7 +906,7 @@ class IncrementalUpdateContext {
 					var matched = builder.matchConditions(conditions, strict, indexedParams);
 					prevSiblingMatched = matched;
 					if (matched) anyConditionalSiblingMatched = true;
-					if (trackedObj != null) setVisibilityWithTransition(trackedObj, matched);
+					if (trackedEntry != null) setPresenceOrMaterialize(trackedEntry, matched);
 					if (trackedApply != null) {
 						if (matched) applyConditionalApplyEntry(trackedApply);
 						else unapplyConditionalApplyEntry(trackedApply);
@@ -733,13 +917,13 @@ class IncrementalUpdateContext {
 						if (extraConditions == null) {
 							prevSiblingMatched = true;
 							anyConditionalSiblingMatched = true;
-							if (trackedObj != null) setVisibilityWithTransition(trackedObj, true);
+							if (trackedEntry != null) setPresenceOrMaterialize(trackedEntry, true);
 							if (trackedApply != null) applyConditionalApplyEntry(trackedApply);
 						} else {
 							var matched = builder.matchConditions(extraConditions, false, indexedParams);
 							prevSiblingMatched = matched;
 							if (matched) anyConditionalSiblingMatched = true;
-							if (trackedObj != null) setVisibilityWithTransition(trackedObj, matched);
+							if (trackedEntry != null) setPresenceOrMaterialize(trackedEntry, matched);
 							if (trackedApply != null) {
 								if (matched) applyConditionalApplyEntry(trackedApply);
 								else unapplyConditionalApplyEntry(trackedApply);
@@ -747,12 +931,12 @@ class IncrementalUpdateContext {
 						}
 					} else {
 						prevSiblingMatched = true;
-						if (trackedObj != null) setVisibilityWithTransition(trackedObj, false);
+						if (trackedEntry != null) setPresenceOrMaterialize(trackedEntry, false);
 						if (trackedApply != null) unapplyConditionalApplyEntry(trackedApply);
 					}
 
 				case ConditionalDefault:
-					if (trackedObj != null) setVisibilityWithTransition(trackedObj, !anyConditionalSiblingMatched);
+					if (trackedEntry != null) setPresenceOrMaterialize(trackedEntry, !anyConditionalSiblingMatched);
 					if (trackedApply != null) {
 						if (!anyConditionalSiblingMatched) applyConditionalApplyEntry(trackedApply);
 						else unapplyConditionalApplyEntry(trackedApply);
@@ -2577,7 +2761,7 @@ class MultiAnimBuilder {
 							t.textColor = resolveAsColorInteger(textDefCapture.color);
 							if (textDefCapture.autoFitFonts != null)
 								applyAutoFit(t, textDefCapture, nodeCapture);
-						}, textRefs);
+						}, textRefs, object);
 					}
 				}
 			case RICHTEXT(textDef):
@@ -2626,7 +2810,7 @@ class MultiAnimBuilder {
 							}
 							if (textDefCapture.autoFitFonts != null)
 								applyAutoFit(t, textDefCapture, nodeCapture);
-						}, textRefs);
+						}, textRefs, object);
 					}
 				}
 			case NINEPATCH(_, _, width, height):
@@ -2641,7 +2825,7 @@ class MultiAnimBuilder {
 						ctx.trackExpression(() -> {
 							sg.width = resolveAsNumber(wCapture);
 							sg.height = resolveAsNumber(hCapture);
-						}, npRefs);
+						}, npRefs, object);
 					}
 				}
 			case BITMAP(tileSource, hAlign, vAlign):
@@ -2658,7 +2842,7 @@ class MultiAnimBuilder {
 								ctx.trackExpression(() -> {
 									bmp.tile = h2d.Tile.fromColor(resolveAsColorInteger(colorCapture),
 										resolveAsInteger(wCapture), resolveAsInteger(hCapture));
-								}, bmpRefs);
+								}, bmpRefs, object);
 							default:
 								final tileSourceCapture = tileSource;
 								final hAlignCapture = hAlign;
@@ -2676,7 +2860,7 @@ class MultiAnimBuilder {
 										case Center: -(tile.width * .5);
 									};
 									bmp.tile = tile.sub(0, 0, tile.width, tile.height, wh, dh);
-								}, bmpRefs);
+								}, bmpRefs, object);
 						}
 					}
 				}
@@ -2695,7 +2879,7 @@ class MultiAnimBuilder {
 						ctx.trackExpression(() -> {
 							g.clear();
 							drawGraphicsElements(g, elementsCapture, gridCapture, hexCapture);
-						}, gfxRefs);
+						}, gfxRefs, object);
 					}
 				}
 			case PIXELS(shapes):
@@ -2718,7 +2902,7 @@ class MultiAnimBuilder {
 							pl.height = result.pixelLines.tile.height;
 							// Update position for new bounds (minX/minY change when shapes have dynamic widths)
 							pl.setPosition(result.minX * pixelScaleCapture, result.minY * pixelScaleCapture);
-						}, pxRefs);
+						}, pxRefs, object);
 					}
 				}
 			default:
@@ -2774,7 +2958,7 @@ class MultiAnimBuilder {
 					final p = calculatePosition(posCapture, gcs, hcs);
 					object.x = p.x;
 					object.y = p.y;
-				}, posRefs);
+				}, posRefs, object);
 			}
 		}
 
@@ -2788,8 +2972,57 @@ class MultiAnimBuilder {
 		if (extRefs.length > 0) {
 			ctx.trackExpression(() -> {
 				applyExtendedFormProperties(object, node);
-			}, extRefs);
+			}, extRefs, object);
 		}
+	}
+
+	/** Collect all parameter references from a node's expressions (for deferred rebuild tracking). */
+	function collectNodeParamRefs(node:Node):Array<String> {
+		final refs:Array<String> = [];
+		inline function addRef(ref:String) {
+			if (refs.indexOf(ref) < 0) refs.push(ref);
+		}
+		inline function addRefs(arr:Array<String>) {
+			for (r in arr) addRef(r);
+		}
+		// Type-specific refs
+		switch node.type {
+			case TEXT(textDef) | RICHTEXT(textDef):
+				collectParamRefs(textDef.text, refs);
+				collectParamRefs(textDef.color, refs);
+			case NINEPATCH(_, _, width, height):
+				collectParamRefs(width, refs);
+				collectParamRefs(height, refs);
+			case BITMAP(tileSource, _, _):
+				collectTileSourceParamRefs(tileSource, refs);
+			case GRAPHICS(elements):
+				for (item in elements) {
+					collectCoordinateParamRefs(item.pos, refs);
+					collectGraphicsElementParamRefs(item.element, refs);
+				}
+			case PIXELS(shapes):
+				collectPixelShapesParamRefs(shapes, refs);
+			default:
+		}
+		// Position refs
+		final _pos = node.pos;
+		if (_pos != null) {
+			final posRefs:Array<String> = [];
+			collectCoordinateParamRefs(_pos, posRefs);
+			addRefs(posRefs);
+		}
+		// Extended property refs
+		if (node.scale != null) collectParamRefs(node.scale, refs);
+		if (node.rotation != null) collectParamRefs(node.rotation, refs);
+		if (node.alpha != null) collectParamRefs(node.alpha, refs);
+		if (node.tint != null) collectParamRefs(node.tint, refs);
+		if (node.filter != null) collectFilterParamRefs(node.filter, refs);
+		// Recurse into children
+		if (node.children != null) {
+			for (child in node.children)
+				addRefs(collectNodeParamRefs(child));
+		}
+		return refs;
 	}
 
 	function addPosition(obj:h2d.Object, x, y) {
@@ -3478,6 +3711,24 @@ class MultiAnimBuilder {
 			} else if (current != null)
 				current.addChild(toAdd);
 			// else do not add as this is root node
+		}
+
+		// Deferred build: skip expression evaluation for non-visible conditional nodes (like repeatables).
+		// APPLY and FINAL_VAR are excluded — APPLY modifies the parent (handled via conditionalApplyEntries),
+		// FINAL_VAR defines constants with no visual output.
+		if (!nodeVisible && incrementalMode && node.conditionals != NoConditional && incrementalContext != null
+				&& !node.type.match(APPLY) && !node.type.match(FINAL_VAR(_, _))) {
+			final sentinel = new h2d.Object();
+			addChild(sentinel);
+			var wrapper = new h2d.Object();
+			addChild(wrapper);
+			wrapper.name = node.uniqueNodeName;
+			final deferParent = if (node.layer != -1 && layersParent != null) cast(layersParent, h2d.Object) else current;
+			incrementalContext.trackDeferredConditional(wrapper, node, sentinel, deferParent, node.layer,
+				gridCoordinateSystem, hexCoordinateSystem, internalResults, builderParams);
+			// Remove from graph — sentinel stays as position anchor
+			if (deferParent != null) deferParent.removeChild(wrapper);
+			return wrapper;
 		}
 
 		final builtObject:BuiltHeapsComponent = switch node.type {
@@ -4308,16 +4559,16 @@ class MultiAnimBuilder {
 		final updatableName = node.updatableName;
 
 		final object = builtObject.toh2dObject();
+
+		// In incremental mode: insert sentinel before conditional elements for position tracking
+		var conditionalSentinel:Null<h2d.Object> = null;
+		if (incrementalMode && node.conditionals != NoConditional && incrementalContext != null && current != null) {
+			conditionalSentinel = new h2d.Object();
+			addChild(conditionalSentinel);
+		}
+
 		addChild(object);
 		object.name = node.uniqueNodeName;
-
-		// In incremental mode: set visibility and track conditional elements
-		if (incrementalMode) {
-			object.visible = nodeVisible;
-			if (node.conditionals != NoConditional && incrementalContext != null) {
-				incrementalContext.trackConditional(object, node);
-			}
-		}
 
 		// Set flow properties for spacer and per-element flow annotations after addChild
 		{
@@ -4401,6 +4652,14 @@ class MultiAnimBuilder {
 		// Track expressions for incremental updates
 		if (incrementalMode && incrementalContext != null) {
 			trackIncrementalExpressions(node, object, builtObject);
+		}
+
+		// In incremental mode: track conditional elements and remove non-visible ones from scene graph
+		if (conditionalSentinel != null && incrementalContext != null && current != null) {
+			final condParent = if (node.layer != -1 && layersParent != null) cast(layersParent, h2d.Object) else current;
+			incrementalContext.trackConditional(object, node, conditionalSentinel, condParent, node.layer);
+			if (!nodeVisible)
+				condParent.removeChild(object);
 		}
 
 		if (selectedBuildMode == null)

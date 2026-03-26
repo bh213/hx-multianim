@@ -69,7 +69,7 @@ private enum MacroSlotKey {
 class ProgrammableCodeGen {
 	static var elementCounter:Int = 0;
 	static var expressionUpdates:Array<{fieldName:String, updateExpr:Expr, paramRefs:Array<String>}> = [];
-	static var visibilityEntries:Array<{fieldName:String, condition:Expr, paramRefs:Array<String>}> = [];
+	static var visibilityEntries:Array<{fieldName:String, condition:Expr, paramRefs:Array<String>, sentinelField:String, parentField:String, layer:Int, restoreFlowPropsExpr:Null<Expr>}> = [];
 	static var namedElements:Map<String, Array<String>> = [];
 	static var indexedNamedElements:Map<String, Array<{index:Int, fieldName:String}>> = new Map();
 	static var indexed2DNamedElements:Map<String, Array<{indexX:Int, indexY:Int, fieldName:String}>> = new Map();
@@ -125,6 +125,9 @@ class ProgrammableCodeGen {
 	// Counter for particles elements within a programmable (for multi-particles support)
 	static var particlesCounter:Int = 0;
 
+	// Counter for sentinel objects (position anchors for conditional elements)
+	static var sentinelCounter:Int = 0;
+
 	// Cache parsed results to avoid re-running subprocess for same file
 	static var parsedCache:Map<String, Map<String, Node>> = new Map();
 
@@ -165,6 +168,7 @@ class ProgrammableCodeGen {
 		needsLayoutAlign = false;
 		tileGroupCounter = 0;
 		particlesCounter = 0;
+		sentinelCounter = 0;
 		instanceClassName = "";
 		generatedStyleSetters = new Map();
 		generatedImageSetters = new Map();
@@ -508,6 +512,8 @@ class ProgrammableCodeGen {
 		final visExprs:Array<Expr> = [];
 		for (entry in visibilityEntries) {
 			final fieldRef = macro $p{["this", entry.fieldName]};
+			final sentinelRef = entry.sentinelField != null ? macro $p{["this", entry.sentinelField]} : null;
+			final parentRef = entry.parentField != null ? macro $p{["this", entry.parentField]} : macro this;
 			// Check if this entry's paramRefs intersect with transition-declared params
 			var usesTransition = false;
 			if (hasTransitions) {
@@ -515,17 +521,61 @@ class ProgrammableCodeGen {
 					if (transParamNames.exists(ref)) { usesTransition = true; break; }
 				}
 			}
-			if (usesTransition) {
-				// Transition-aware: delegate to helper when changedParam is set and matches
-				visExprs.push(macro {
-					final _newVis = ${entry.condition};
-					if (this._transHelper != null && _changedParam != null && this._transHelper.tweenManager != null)
-						this._transHelper.setVisibilityWithTransition($fieldRef, _newVis, _changedParam)
-					else
-						$fieldRef.visible = _newVis;
-				});
+			if (sentinelRef != null) {
+				// Scene graph add/remove via sentinel
+				var addExpr = if (entry.layer != -1) {
+					final layerVal = entry.layer;
+					macro {
+						final _lp = cast($parentRef, h2d.Layers);
+						final _si = _lp.getChildIndexInLayer($sentinelRef);
+						_lp.add($fieldRef, $v{layerVal}, _si + 1);
+					};
+				} else {
+					macro $parentRef.addChildAt($fieldRef, $parentRef.getChildIndex($sentinelRef) + 1);
+				};
+				// Append flow property restore after re-add (Flow.removeChild discards FlowProperties)
+				if (entry.restoreFlowPropsExpr != null) {
+					final restoreExpr = entry.restoreFlowPropsExpr;
+					addExpr = macro { $addExpr; $restoreExpr; };
+				}
+				if (usesTransition) {
+					final transRestoreExpr = entry.restoreFlowPropsExpr;
+					visExprs.push(macro {
+						final _newVis = ${entry.condition};
+						if (this._transHelper != null && _changedParam != null && this._transHelper.tweenManager != null) {
+							this._transHelper.setPresenceWithTransition($fieldRef, _newVis, _changedParam, $parentRef, $sentinelRef);
+							${if (transRestoreExpr != null) macro { if ($fieldRef.parent != null) $transRestoreExpr; } else macro {}}
+						} else {
+							final _inGraph = $fieldRef.parent != null;
+							if (_newVis && !_inGraph)
+								$addExpr
+							else if (!_newVis && _inGraph)
+								$parentRef.removeChild($fieldRef);
+						}
+					});
+				} else {
+					visExprs.push(macro {
+						final _newVis = ${entry.condition};
+						final _inGraph = $fieldRef.parent != null;
+						if (_newVis && !_inGraph)
+							$addExpr
+						else if (!_newVis && _inGraph)
+							$parentRef.removeChild($fieldRef);
+					});
+				}
 			} else {
-				visExprs.push(macro $fieldRef.visible = ${entry.condition});
+				// Fallback: visibility toggle (no sentinel — shouldn't happen in practice)
+				if (usesTransition) {
+					visExprs.push(macro {
+						final _newVis = ${entry.condition};
+						if (this._transHelper != null && _changedParam != null && this._transHelper.tweenManager != null)
+							this._transHelper.setVisibilityWithTransition($fieldRef, _newVis, _changedParam)
+						else
+							$fieldRef.visible = _newVis;
+					});
+				} else {
+					visExprs.push(macro $fieldRef.visible = ${entry.condition});
+				}
 			}
 		}
 		// Repeat rebuild: call rebuild method when count param changes
@@ -1063,6 +1113,9 @@ class ProgrammableCodeGen {
 			}
 		}
 
+		// Create sentinel before adding conditional element to parent
+		final sentinelName = createSentinelIfConditional(node, parentField, fields, ctorExprs, pos);
+
 		// Add to parent (parentField == null means add to this directly)
 		final parentRef = parentField != null ? (macro $p{["this", parentField]}) : (macro this);
 		final fieldRef = macro $p{["this", fieldName]};
@@ -1077,6 +1130,7 @@ class ProgrammableCodeGen {
 		}
 
 		// Set flow properties for spacer and per-element flow annotations after addChild
+		var flowRestoreExpr:Null<Expr> = null;
 		{
 			final fp = node.flowProperties;
 			final isSpacer = node.type.match(SPACER(_, _));
@@ -1105,6 +1159,20 @@ class ProgrammableCodeGen {
 					if (fp.isAbsolute) propStmts.push(macro _props.isAbsolute = true);
 				}
 				ctorExprs.push({expr: EBlock(propStmts), pos: pos});
+				// Build restore expression for _applyVisibility (re-apply after addChildAt)
+				if (!isSpacer && fp != null && sentinelName != null) {
+					final restoreStmts:Array<Expr> = [];
+					restoreStmts.push(macro final _fp = Std.downcast($parentRef, h2d.Flow));
+					restoreStmts.push(macro if (_fp != null) {
+						final _props = _fp.getProperties($fieldRef);
+						${if (fp.hAlign != null) macro _props.horizontalAlign = ${flowAlignToExpr(fp.hAlign)} else macro {}}
+						${if (fp.vAlign != null) macro _props.verticalAlign = ${flowAlignToExpr(fp.vAlign)} else macro {}}
+						${if (fp.offsetX != null) macro _props.offsetX = ${rvToExpr(fp.offsetX)} else macro {}}
+						${if (fp.offsetY != null) macro _props.offsetY = ${rvToExpr(fp.offsetY)} else macro {}}
+						${if (fp.isAbsolute) macro _props.isAbsolute = true else macro {}}
+					});
+					flowRestoreExpr = {expr: EBlock(restoreStmts), pos: pos};
+				}
 			}
 		}
 
@@ -1192,7 +1260,8 @@ class ProgrammableCodeGen {
 		// Visibility
 		final visCond = generateVisibilityCondition(node, siblings, fieldName, pos);
 		if (visCond != null) {
-			visibilityEntries.push({fieldName: fieldName, condition: visCond, paramRefs: extractConditionalParamRefs(node, siblings)});
+			visibilityEntries.push({fieldName: fieldName, condition: visCond, paramRefs: extractConditionalParamRefs(node, siblings),
+				sentinelField: sentinelName, parentField: parentField, layer: node.layer, restoreFlowPropsExpr: flowRestoreExpr});
 		}
 
 		siblings.push({node: node, fieldName: fieldName});
@@ -1295,6 +1364,9 @@ class ProgrammableCodeGen {
 		if (posExpr != null)
 			ctorExprs.push(posExpr);
 
+		// Create sentinel before adding conditional container
+		final repeatSentinelName = createSentinelIfConditional(node, parentField, fields, ctorExprs, pos);
+
 		// Add to parent (parentField == null means add to this directly)
 		final parentRef = parentField != null ? (macro $p{["this", parentField]}) : (macro this);
 		ctorExprs.push(macro $parentRef.addChild($p{["this", containerName]}));
@@ -1302,7 +1374,8 @@ class ProgrammableCodeGen {
 		// Visibility for the container itself
 		final visCond = generateVisibilityCondition(node, siblings, containerName, pos);
 		if (visCond != null)
-			visibilityEntries.push({fieldName: containerName, condition: visCond, paramRefs: extractConditionalParamRefs(node, siblings)});
+			visibilityEntries.push({fieldName: containerName, condition: visCond, paramRefs: extractConditionalParamRefs(node, siblings),
+				sentinelField: repeatSentinelName, parentField: parentField, layer: node.layer, restoreFlowPropsExpr: null});
 		siblings.push({node: node, fieldName: containerName});
 
 		if (info.staticCount != null) {
@@ -1443,12 +1516,14 @@ class ProgrammableCodeGen {
 		if (posExpr != null)
 			ctorExprs.push(posExpr);
 
+		final layoutRepeatSentinel = createSentinelIfConditional(node, parentField, fields, ctorExprs, pos);
 		final parentRef = parentField != null ? (macro $p{["this", parentField]}) : (macro this);
 		ctorExprs.push(macro $parentRef.addChild($p{["this", containerName]}));
 
 		final visCond = generateVisibilityCondition(node, siblings, containerName, pos);
 		if (visCond != null)
-			visibilityEntries.push({fieldName: containerName, condition: visCond, paramRefs: extractConditionalParamRefs(node, siblings)});
+			visibilityEntries.push({fieldName: containerName, condition: visCond, paramRefs: extractConditionalParamRefs(node, siblings),
+				sentinelField: layoutRepeatSentinel, parentField: parentField, layer: node.layer, restoreFlowPropsExpr: null});
 		siblings.push({node: node, fieldName: containerName});
 
 		// Resolve layout points and unroll
@@ -1746,12 +1821,14 @@ class ProgrammableCodeGen {
 		if (posExpr != null)
 			ctorExprs.push(posExpr);
 
+		final runtimeRepeatSentinel = createSentinelIfConditional(node, parentField, fields, ctorExprs, pos);
 		final parentRef = parentField != null ? (macro $p{["this", parentField]}) : (macro this);
 		ctorExprs.push(macro $parentRef.addChild($p{["this", containerName]}));
 
 		final visCond = generateVisibilityCondition(node, siblings, containerName, pos);
 		if (visCond != null)
-			visibilityEntries.push({fieldName: containerName, condition: visCond, paramRefs: extractConditionalParamRefs(node, siblings)});
+			visibilityEntries.push({fieldName: containerName, condition: visCond, paramRefs: extractConditionalParamRefs(node, siblings),
+				sentinelField: runtimeRepeatSentinel, parentField: parentField, layer: node.layer, restoreFlowPropsExpr: null});
 		siblings.push({node: node, fieldName: containerName});
 
 		final containerRef = macro $p{["this", containerName]};
@@ -2374,12 +2451,14 @@ class ProgrammableCodeGen {
 		if (posExpr != null)
 			ctorExprs.push(posExpr);
 
+		final repeat2dSentinel = createSentinelIfConditional(node, parentField, fields, ctorExprs, pos);
 		final parentRef = parentField != null ? (macro $p{["this", parentField]}) : (macro this);
 		ctorExprs.push(macro $parentRef.addChild($p{["this", containerName]}));
 
 		final visCond = generateVisibilityCondition(node, siblings, containerName, pos);
 		if (visCond != null)
-			visibilityEntries.push({fieldName: containerName, condition: visCond, paramRefs: extractConditionalParamRefs(node, siblings)});
+			visibilityEntries.push({fieldName: containerName, condition: visCond, paramRefs: extractConditionalParamRefs(node, siblings),
+				sentinelField: repeat2dSentinel, parentField: parentField, layer: node.layer, restoreFlowPropsExpr: null});
 		siblings.push({node: node, fieldName: containerName});
 
 		if (infoX.staticCount != null && infoY.staticCount != null) {
@@ -4819,6 +4898,23 @@ class ProgrammableCodeGen {
 	}
 
 	// ==================== Condition/Visibility ====================
+
+	/** Create a sentinel field and emit constructor code to add it before a conditional element. Returns sentinel field name, or null if not conditional. */
+	static function createSentinelIfConditional(node:Node, parentField:String, fields:Array<Field>, ctorExprs:Array<Expr>, pos:Position):Null<String> {
+		if (node.conditionals.match(NoConditional)) return null;
+		final sentinelName = '_sentinel_${sentinelCounter++}';
+		fields.push(makeField(sentinelName, FVar(macro :h2d.Object, null), [APrivate], pos));
+		final sentinelRef = macro $p{["this", sentinelName]};
+		final parentRef = if (parentField != null) macro $p{["this", parentField]} else macro this;
+		ctorExprs.push(macro $sentinelRef = new h2d.Object());
+		if (node.layer != -1) {
+			final layerVal:Int = node.layer;
+			ctorExprs.push(macro cast($parentRef, h2d.Layers).add($sentinelRef, $v{layerVal}));
+		} else {
+			ctorExprs.push(macro $parentRef.addChild($sentinelRef));
+		}
+		return sentinelName;
+	}
 
 	static function generateVisibilityCondition(node:Node, siblings:Array<{node:Node, fieldName:String}>, fieldName:String, pos:Position):Null<Expr> {
 		return switch (node.conditionals) {

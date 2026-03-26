@@ -2685,22 +2685,25 @@ class BuilderUnitTest extends BuilderTestBase {
 				@(hp => 51..100) graphics(rect(#44cc44, filled, $hp * 200 / $maxHp, 20): 0, 0): 0, 0
 			}
 		", "test", null, Incremental);
-		// hp=80 → green bar visible, red bar hidden
-		Assert.equals(3, result.object.numChildren);
-		final redBar = result.object.getChildAt(1);
-		final greenBar = result.object.getChildAt(2);
-		Assert.isFalse(redBar.visible);
-		Assert.isTrue(greenBar.visible);
+		// hp=80 → green bar in graph, red bar not in graph
+		// children: bg + sentinel_red + sentinel_green + green_bar = 4
+		Assert.equals(4, result.object.numChildren);
+		// green bar is the last child (after its sentinel)
+		final greenBar = result.object.getChildAt(3);
+		Assert.isTrue(greenBar.parent != null);
 
-		// Change to hp=30 → red visible, green hidden
+		// Change to hp=30 → red in graph, green removed
 		result.setParameter("hp", 30);
-		Assert.isTrue(redBar.visible);
-		Assert.isFalse(greenBar.visible);
+		Assert.equals(4, result.object.numChildren); // bg + sentinel_red + red_bar + sentinel_green
+		final redBar = result.object.getChildAt(2); // red_bar is after sentinel_red
+		Assert.isTrue(redBar.parent != null);
+		Assert.isNull(greenBar.parent);
 
-		// Change to hp=70 → green visible, red hidden
+		// Change to hp=70 → green in graph, red removed
 		result.setParameter("hp", 70);
-		Assert.isFalse(redBar.visible);
-		Assert.isTrue(greenBar.visible);
+		Assert.equals(4, result.object.numChildren); // bg + sentinel_red + sentinel_green + green_bar
+		Assert.isNull(redBar.parent);
+		Assert.isTrue(greenBar.parent != null);
 	}
 
 	@Test
@@ -2904,17 +2907,18 @@ class BuilderUnitTest extends BuilderTestBase {
 				);
 			}
 		", "test", null, Incremental);
-		// hp=80 → green pixels visible, red hidden
-		Assert.equals(3, result.object.numChildren);
-		final redPixels = result.object.getChildAt(1);
-		final greenPixels = result.object.getChildAt(2);
-		Assert.isFalse(redPixels.visible);
-		Assert.isTrue(greenPixels.visible);
+		// hp=80 → green pixels in graph, red not in graph
+		// children: bg + sentinel_red + sentinel_green + green_pixels = 4
+		Assert.equals(4, result.object.numChildren);
+		final greenPixels = result.object.getChildAt(3);
+		Assert.isTrue(greenPixels.parent != null);
 
-		// Change to hp=30 → red visible, green hidden
+		// Change to hp=30 → red in graph, green removed
 		result.setParameter("hp", 30);
-		Assert.isTrue(redPixels.visible);
-		Assert.isFalse(greenPixels.visible);
+		Assert.equals(4, result.object.numChildren);
+		final redPixels = result.object.getChildAt(2);
+		Assert.isTrue(redPixels.parent != null);
+		Assert.isNull(greenPixels.parent);
 	}
 
 	@Test
@@ -2944,9 +2948,8 @@ class BuilderUnitTest extends BuilderTestBase {
 
 	@Test
 	public function testIncrementalConditionalGraphicsHasContent():Void {
-		// Bug: incremental mode with conditional graphics produces empty h2d.Graphics objects.
-		// The graphics element is created and drawGraphicsElements IS called, but the content
-		// may end up empty due to build ordering issues.
+		// Non-visible conditional nodes are deferred (built on demand when condition matches).
+		// This prevents expression evaluation errors (e.g. division by zero) for hidden nodes.
 		final result = buildFromSource("
 			#test programmable(status:[normal,hover]=normal) {
 				@(status=>normal) graphics(rect(#0000ff, filled, 100, 50): 0, 0): 0, 0
@@ -2954,32 +2957,35 @@ class BuilderUnitTest extends BuilderTestBase {
 			}
 		", "test", null, Incremental);
 		Assert.notNull(result);
-		Assert.equals(2, result.object.numChildren);
+		// children: sentinel_normal + normal_graphics + sentinel_hover = 3
+		Assert.equals(3, result.object.numChildren);
 
-		// Normal graphics should be visible, hover graphics hidden
-		final normalGfx:h2d.Graphics = cast result.object.getChildAt(0);
-		final hoverGfx:h2d.Graphics = cast result.object.getChildAt(1);
-		Assert.isTrue(normalGfx.visible, "Normal graphics should be visible");
-		Assert.isFalse(hoverGfx.visible, "Hover graphics should be hidden");
+		// Normal graphics should be in graph; hover is deferred (not in graph)
+		final normalChild = result.object.getChildAt(1); // after sentinel_normal
+		Assert.isTrue(normalChild.parent != null, "Normal graphics should be in graph");
 
-		// Both should have drawn content (not empty buffers)
+		final normalGfx = findGraphicsInTree(normalChild);
+		Assert.notNull(normalGfx, "Normal should be a Graphics");
 		Assert.isTrue(hasGraphicsContent(normalGfx), "Normal graphics should have drawn content");
-		Assert.isTrue(hasGraphicsContent(hoverGfx), "Hover graphics (initially hidden) should still have drawn content");
 
-		// Toggle to hover (enum params need string values)
+		// Toggle to hover — deferred node materializes and is added to graph
 		result.setParameter("status", "hover");
-		Assert.isFalse(normalGfx.visible, "Normal should now be hidden");
-		Assert.isTrue(hoverGfx.visible, "Hover should now be visible");
+		Assert.isNull(normalChild.parent, "Normal should be removed from graph");
+		// children: sentinel_normal + sentinel_hover + hover_graphics = 3
+		Assert.equals(3, result.object.numChildren);
+		final hoverChild = result.object.getChildAt(2); // after sentinel_hover
+		Assert.isTrue(hoverChild.parent != null, "Hover should be in graph");
 
-		// Content should still be present in both
-		Assert.isTrue(hasGraphicsContent(normalGfx), "Normal graphics content should survive visibility toggle");
-		Assert.isTrue(hasGraphicsContent(hoverGfx), "Hover graphics content should survive visibility toggle");
+		// Hover content should be present after materialization
+		final hoverGfx = findGraphicsInTree(hoverChild);
+		Assert.notNull(hoverGfx, "Hover should have Graphics after materialization");
+		Assert.isTrue(hasGraphicsContent(hoverGfx), "Hover graphics should have content after materialization");
 	}
 
 	@Test
 	public function testIncrementalDefaultGraphicsHasContent():Void {
 		// @default catch-all: only fires when NO conditional sibling matched.
-		// With @else (follows immediately preceding sibling), use @default for "none of the above".
+		// Non-visible conditional nodes are deferred; content appears after materialization.
 		final result = buildFromSource("
 			#test programmable(status:[normal,hover,pressed]=normal) {
 				@(status=>normal) graphics(rect(#ff0000, filled, 80, 40): 0, 0): 0, 0
@@ -2988,27 +2994,27 @@ class BuilderUnitTest extends BuilderTestBase {
 			}
 		", "test", null, Incremental);
 		Assert.notNull(result);
-		Assert.equals(3, result.object.numChildren);
+		// children: sentinel_normal + normal + sentinel_hover + sentinel_default = 4
+		Assert.equals(4, result.object.numChildren);
 
-		final normalGfx:h2d.Graphics = cast result.object.getChildAt(0);
-		final hoverGfx:h2d.Graphics = cast result.object.getChildAt(1);
-		final defaultGfx:h2d.Graphics = cast result.object.getChildAt(2);
+		// Normal is in graph (after its sentinel); others are not in graph
+		final normalChild = result.object.getChildAt(1); // after sentinel_normal
+		Assert.isTrue(normalChild.parent != null, "Normal should be in graph");
 
-		// Initially: normal visible, others hidden
-		Assert.isTrue(normalGfx.visible, "Normal should be visible");
-		Assert.isFalse(hoverGfx.visible, "Hover should be hidden");
-		Assert.isFalse(defaultGfx.visible, "@default should be hidden");
-
-		// All should have content regardless of visibility
+		// Only visible node has content
+		final normalGfx = findGraphicsInTree(normalChild);
+		Assert.notNull(normalGfx, "Normal should have Graphics");
 		Assert.isTrue(hasGraphicsContent(normalGfx), "Normal graphics should have content");
-		Assert.isTrue(hasGraphicsContent(hoverGfx), "Hover graphics should have content");
-		Assert.isTrue(hasGraphicsContent(defaultGfx), "@default graphics should have content");
 
-		// Switch to pressed (triggers @default)
+		// Switch to pressed (triggers @default — materializes it)
 		result.setParameter("status", "pressed");
-		Assert.isFalse(normalGfx.visible);
-		Assert.isFalse(hoverGfx.visible);
-		Assert.isTrue(defaultGfx.visible, "@default should now be visible");
+		Assert.isNull(normalChild.parent, "Normal should be removed from graph");
+		// children: sentinel_normal + sentinel_hover + sentinel_default + default = 4
+		Assert.equals(4, result.object.numChildren);
+		final defaultChild = result.object.getChildAt(3); // after sentinel_default
+		Assert.isTrue(defaultChild.parent != null, "@default should be in graph");
+		final defaultGfx = findGraphicsInTree(defaultChild);
+		Assert.notNull(defaultGfx, "@default should have Graphics after materialization");
 		Assert.isTrue(hasGraphicsContent(defaultGfx), "@default graphics should have content when visible");
 	}
 
@@ -3022,29 +3028,33 @@ class BuilderUnitTest extends BuilderTestBase {
 			}
 		", "test", null, Incremental);
 		Assert.notNull(result);
-		Assert.equals(2, result.object.numChildren);
+		// children: sentinel_normal + normal + sentinel_else = 3
+		Assert.equals(3, result.object.numChildren);
 
-		final normalGfx:h2d.Graphics = cast result.object.getChildAt(0);
-		final elseGfx:h2d.Graphics = cast result.object.getChildAt(1);
+		final normalChild = result.object.getChildAt(1); // after sentinel_normal
+		Assert.isTrue(normalChild.parent != null, "Normal should be in graph");
 
-		// Initially: normal matches, @else hidden
-		Assert.isTrue(normalGfx.visible, "Normal should be visible");
-		Assert.isFalse(elseGfx.visible, "@else should be hidden");
-
-		// Both should have content
+		// Normal should have graphics content
+		final normalGfx = findGraphicsInTree(normalChild);
+		Assert.notNull(normalGfx, "Normal should have Graphics");
 		Assert.isTrue(hasGraphicsContent(normalGfx), "Normal graphics should have content");
-		Assert.isTrue(hasGraphicsContent(elseGfx), "@else graphics should have content");
 
-		// Switch to hover (normal no longer matches, @else fires)
+		// Switch to hover (normal no longer matches, @else fires and materializes)
 		result.setParameter("status", "hover");
-		Assert.isFalse(normalGfx.visible, "Normal should be hidden");
-		Assert.isTrue(elseGfx.visible, "@else should now be visible");
+		Assert.isNull(normalChild.parent, "Normal should be removed from graph");
+		// children: sentinel_normal + sentinel_else + else_graphics = 3
+		Assert.equals(3, result.object.numChildren);
+		final elseChild = result.object.getChildAt(2); // after sentinel_else
+		Assert.isTrue(elseChild.parent != null, "@else should be in graph");
+		final elseGfx = findGraphicsInTree(elseChild);
+		Assert.notNull(elseGfx, "@else should have Graphics after materialization");
 		Assert.isTrue(hasGraphicsContent(elseGfx), "@else graphics should have content when visible");
 	}
 
 	@Test
 	public function testIncrementalConditionalGraphicsWithDynamicContent():Void {
-		// Conditional graphics where the content itself references a parameter
+		// Conditional graphics where the content itself references a parameter.
+		// Non-visible nodes are deferred; content built on materialization with current param values.
 		final result = buildFromSource("
 			#test programmable(status:[normal,hover]=normal, w:uint=100) {
 				@(status=>normal) graphics(rect(#ff0000, filled, $w, 30): 0, 0): 0, 0
@@ -3053,23 +3063,57 @@ class BuilderUnitTest extends BuilderTestBase {
 		", "test", null, Incremental);
 		Assert.notNull(result);
 
-		final normalGfx:h2d.Graphics = cast result.object.getChildAt(0);
-		final hoverGfx:h2d.Graphics = cast result.object.getChildAt(1);
+		// children: sentinel_normal + normal + sentinel_hover = 3
+		final normalChild = result.object.getChildAt(1); // after sentinel_normal
 
-		// Both should have content after initial build
+		// Normal should have content; hover is deferred (not in graph)
+		final normalGfx = findGraphicsInTree(normalChild);
+		Assert.notNull(normalGfx, "Normal should have Graphics");
 		Assert.isTrue(hasGraphicsContent(normalGfx), "Normal dynamic graphics should have content");
-		Assert.isTrue(hasGraphicsContent(hoverGfx), "Hover dynamic graphics (hidden) should have content");
 
-		// Change the width parameter — tracked expression should redraw both
+		// Change the width parameter — visible node updates, deferred node stays deferred
 		result.setParameter("w", 50);
 		Assert.isTrue(hasGraphicsContent(normalGfx), "Normal graphics should have content after param change");
-		Assert.isTrue(hasGraphicsContent(hoverGfx), "Hover graphics should have content after param change");
 
-		// Now toggle visibility
+		// Now toggle visibility — deferred node materializes with w=50
 		result.setParameter("status", "hover");
-		Assert.isFalse(normalGfx.visible);
-		Assert.isTrue(hoverGfx.visible);
+		Assert.isNull(normalChild.parent, "Normal should be removed from graph");
+		// children: sentinel_normal + sentinel_hover + hover = 3
+		final hoverChild = result.object.getChildAt(2); // after sentinel_hover
+		Assert.isTrue(hoverChild.parent != null, "Hover should be in graph");
+		final hoverGfx = findGraphicsInTree(hoverChild);
+		Assert.notNull(hoverGfx, "Hover should have Graphics after materialization");
 		Assert.isTrue(hasGraphicsContent(hoverGfx), "Hover graphics should have content when made visible");
+	}
+
+	@Test
+	public function testIncrementalConditionalDivisionByZeroDeferred():Void {
+		// Division by zero in a conditional expression must not crash when the condition doesn't match.
+		// In incremental mode, the node is deferred (not evaluated) when maxShield=0.
+		final result = buildFromSource("
+			#test programmable(maxShield:uint=0) {
+				@(maxShield=>1..99) graphics(rect(#4477CC, filled, 36 * 20 / $maxShield, 8): 0, 0): 0, 0
+			}
+		", "test", null, Incremental);
+		Assert.notNull(result);
+
+		// With maxShield=0, the conditional doesn't match — node is not in graph
+		// children: sentinel only = 1
+		Assert.equals(1, result.object.numChildren);
+
+		// Set maxShield to a valid value — node materializes and is added to graph
+		result.setParameter("maxShield", 50);
+		Assert.equals(2, result.object.numChildren); // sentinel + graphics
+		final child = result.object.getChildAt(1); // after sentinel
+		Assert.isTrue(child.parent != null, "Should be in graph when maxShield=50");
+		final gfx = findGraphicsInTree(child);
+		Assert.notNull(gfx, "Should have Graphics after materialization");
+		Assert.isTrue(hasGraphicsContent(gfx), "Graphics should have content");
+
+		// Set back to 0 — node removed from graph, no crash
+		result.setParameter("maxShield", 0);
+		Assert.isNull(child.parent, "Should be removed from graph when maxShield=0");
+		Assert.equals(1, result.object.numChildren); // sentinel only
 	}
 
 	// ==================== Bool settings ====================
@@ -3189,6 +3233,17 @@ class BuilderUnitTest extends BuilderTestBase {
 			final child = obj.getChildAt(i);
 			if (Std.isOfType(child, h2d.Graphics))
 				return cast child;
+		}
+		return null;
+	}
+
+	/** Recursively find an h2d.Graphics in the tree rooted at obj (depth-first). */
+	static function findGraphicsInTree(obj:h2d.Object):Null<h2d.Graphics> {
+		if (Std.isOfType(obj, h2d.Graphics))
+			return cast obj;
+		for (i in 0...obj.numChildren) {
+			final found = findGraphicsInTree(obj.getChildAt(i));
+			if (found != null) return found;
 		}
 		return null;
 	}
@@ -3509,6 +3564,83 @@ class BuilderUnitTest extends BuilderTestBase {
 		Assert.equals(h2d.Flow.FlowAlign.Bottom, props.verticalAlign);
 		Assert.equals(2, props.offsetX);
 		Assert.equals(4, props.offsetY);
+	}
+
+	@Test
+	public function testFlowConditionalPreservesPropsBuilder():Void {
+		// Builder path: conditional element inside flow with @flow.halign should preserve
+		// properties when removed and re-added to the scene graph.
+		// Uses @if/@else so both elements are initially built (no deferred path).
+		final result = buildFromSource("
+			#test programmable(mode:[a,b]=a) {
+				flow(layout: vertical, minWidth: 100, verticalSpacing: 2) {
+					bitmap(generated(color(80, 10, #ff0000))): 0, 0
+					@if(mode=>a) @flow.halign(right) bitmap(generated(color(40, 10, #00ff00))): 0, 0
+					@else @flow.halign(middle) bitmap(generated(color(40, 10, #0000ff))): 0, 0
+				}
+			}
+		", "test", null, Incremental);
+		Assert.notNull(result);
+		final flow = Std.downcast(result.object.getChildAt(0), h2d.Flow);
+		Assert.notNull(flow, "Root child should be a Flow");
+
+		// Flow children: bg + sentinel_A + elementA + sentinel_else + [elseElement removed] = 4
+		// elementA is at index 2 (after bg=0, sentinel_A=1)
+		final elementA = flow.getChildAt(2);
+		Assert.isTrue(elementA.parent != null, "Element A should be in graph initially");
+		final propsA = flow.getProperties(elementA);
+		Assert.equals(h2d.Flow.FlowAlign.Right, propsA.horizontalAlign);
+
+		// Switch to mode=b — A removed, @else element re-added
+		result.setParameter("mode", "b");
+		Assert.isNull(elementA.parent, "Element A should be removed from graph");
+
+		// @else element is after sentinel_else (index 3)
+		final elementElse = flow.getChildAt(3);
+		Assert.isTrue(elementElse.parent != null, "Else element should be in graph");
+		final propsElse = flow.getProperties(elementElse);
+		Assert.equals(h2d.Flow.FlowAlign.Middle, propsElse.horizontalAlign);
+
+		// Switch back to mode=a — A re-added. Its halign=right should be preserved.
+		result.setParameter("mode", "a");
+		Assert.isTrue(elementA.parent != null, "Element A should be back in graph");
+		Assert.isNull(elementElse.parent, "Else element should be removed");
+		final propsARestored = flow.getProperties(elementA);
+		Assert.equals(h2d.Flow.FlowAlign.Right, propsARestored.horizontalAlign);
+	}
+
+	@Test
+	public function testFlowConditionalPreservesPropsCodegen():Void {
+		// Codegen path: conditional elements inside flow with @flow.halign should preserve
+		// properties when removed and re-added via _applyVisibility().
+		final mp = new bh.test.MultiProgrammable(bh.test.TestResourceLoader.createLoader(false));
+		final instance = mp.flowConditional.create(bh.test.MultiProgrammable_FlowConditional.A);
+		Assert.notNull(instance, "Codegen create should succeed");
+		// Instance IS the h2d.Object root. First child is the Flow.
+		final flow = Std.downcast(instance.getChildAt(0), h2d.Flow);
+		Assert.notNull(flow, "Root child should be a Flow");
+
+		// Flow children: bg + sentinel_if + elementA + sentinel_else + [elseElement removed] = 4
+		final elementA = flow.getChildAt(2);
+		Assert.isTrue(elementA.parent != null, "Element A should be in graph initially");
+		final propsA = flow.getProperties(elementA);
+		Assert.equals(h2d.Flow.FlowAlign.Right, propsA.horizontalAlign);
+
+		// Switch to mode=b — A removed, @else element re-added
+		instance.setMode(bh.test.MultiProgrammable_FlowConditional.B);
+		Assert.isNull(elementA.parent, "Element A should be removed from graph");
+		final elementElse = flow.getChildAt(3);
+		Assert.isTrue(elementElse.parent != null, "Else element should be in graph");
+		final propsElse = flow.getProperties(elementElse);
+		Assert.equals(h2d.Flow.FlowAlign.Middle, propsElse.horizontalAlign);
+		Assert.equals(5, propsElse.offsetX);
+
+		// Switch back to mode=a — A re-added. Its halign=right should be preserved.
+		instance.setMode(bh.test.MultiProgrammable_FlowConditional.A);
+		Assert.isTrue(elementA.parent != null, "Element A should be back in graph");
+		Assert.isNull(elementElse.parent, "Else element should be removed");
+		final propsARestored = flow.getProperties(elementA);
+		Assert.equals(h2d.Flow.FlowAlign.Right, propsARestored.horizontalAlign);
 	}
 
 	@Test
@@ -4600,11 +4732,13 @@ class BuilderUnitTest extends BuilderTestBase {
 		builder.tweenManager = tm;
 		final result = builder.buildWithParameters("test", ["status" => "a"], null, null, true);
 		Assert.notNull(result);
+		// Initial: sentinel_a + bitmap_a + sentinel_b = 3 children
+		final bitmapA = result.object.getChildAt(1); // bitmap_a after sentinel_a
+		Assert.isTrue(bitmapA.parent != null, "A should be in graph initially");
 		// Change parameter — should create tween instead of instant
 		result.setParameter("status", "b");
-		// The hiding element should still be visible (fading out)
-		Assert.isTrue(tm.hasTweens(result.object.getChildAt(0))
-			|| tm.hasTweens(result.object.getChildAt(1)),
+		// During transition: both elements in graph (A fading out, B fading in)
+		Assert.isTrue(tm.hasTweens(bitmapA),
 			"TweenManager should have active tweens during transition");
 	}
 
@@ -4625,18 +4759,15 @@ class BuilderUnitTest extends BuilderTestBase {
 		final result = builder.buildWithParameters("test", ["status" => "a"], null, null, true);
 		Assert.notNull(result);
 
-		// Initial state: A visible, B and C hidden
-		final childA = result.object.getChildAt(0);
-		final childB = result.object.getChildAt(1);
-		final childC = result.object.getChildAt(2);
-		Assert.isTrue(childA.visible, "A should be visible initially");
-		Assert.isFalse(childB.visible, "B should be hidden initially");
-		Assert.isFalse(childC.visible, "C should be hidden initially");
+		// Initial state: A in graph, B and C not in graph
+		// children: sentinel_a + bitmap_a + sentinel_b + sentinel_c = 4
+		final childA = result.object.getChildAt(1); // bitmap_a after sentinel_a
+		Assert.isTrue(childA.parent != null, "A should be in graph initially");
 
 		// Start transition to B
 		result.setParameter("status", "b");
-		// Transition should be active (A fading out, B fading in)
-		Assert.isTrue(tm.hasTweens(childA) || tm.hasTweens(childB),
+		// Transition should be active (A fading out, B fading in — both in graph)
+		Assert.isTrue(tm.hasTweens(childA),
 			"Should have active tweens after first parameter change");
 
 		// Advance a bit (skip first dt + partial advance)
@@ -4651,10 +4782,11 @@ class BuilderUnitTest extends BuilderTestBase {
 		tm.update(0.0); // consumed by skipFirstDt of new tweens
 		tm.update(1.0); // advance well past 0.5s duration
 
-		// Final state: only C should be visible, A and B hidden
-		Assert.isFalse(childA.visible, "A should be hidden after interruption completes");
-		Assert.isFalse(childB.visible, "B should be hidden after interruption completes");
-		Assert.isTrue(childC.visible, "C should be visible after interruption completes");
+		// Final state: only C should be in graph, A and B removed
+		Assert.isNull(childA.parent, "A should not be in graph after interruption completes");
+		// Find C — it should be the only bitmap in the graph now
+		final visibleBitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, visibleBitmaps.length, "Only C should be visible after interruption");
 	}
 
 	@Test
@@ -4669,11 +4801,13 @@ class BuilderUnitTest extends BuilderTestBase {
 		builder.tweenManager = tm;
 		final result = builder.buildWithParameters("test", ["status" => "a"], null, null, true);
 		result.setParameter("status", "b");
-		// No transition block means instant — no tweens
-		final child0 = result.object.getChildAt(0);
-		final child1 = result.object.getChildAt(1);
-		Assert.isFalse(tm.hasTweens(child0), "No tweens expected without transition block");
-		Assert.isFalse(tm.hasTweens(child1), "No tweens expected without transition block");
+		// No transition block means instant — no tweens on any child
+		for (i in 0...result.object.numChildren) {
+			Assert.isFalse(tm.hasTweens(result.object.getChildAt(i)), "No tweens expected without transition block");
+		}
+		// B should be in graph, A should not
+		final visibleBitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, visibleBitmaps.length, "Only B bitmap should be in graph");
 	}
 
 	// ==================== extraPoint coordinates ====================

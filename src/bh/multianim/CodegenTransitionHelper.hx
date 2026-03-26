@@ -38,6 +38,27 @@ class CodegenTransitionHelper {
 		executeTransition(obj, newVisible, spec);
 	}
 
+	/** Set scene graph presence with optional transition animation.
+	 *  Uses addChildAt/removeChild instead of visible toggling.
+	 *  parent and sentinel define the insertion point. */
+	public function setPresenceWithTransition(obj:h2d.Object, newVisible:Bool, changedParam:String, parent:h2d.Object, sentinel:h2d.Object):Void {
+		final inGraph = obj.parent != null;
+		if (newVisible == inGraph && !hasActiveTransition(obj)) return;
+
+		final spec = transitionSpecs.get(changedParam);
+		if (spec == null || tweenManager == null || spec.match(TransNone)) {
+			cancelActiveTransition(obj);
+			if (newVisible && !inGraph)
+				addToGraph(obj, parent, sentinel)
+			else if (!newVisible && inGraph)
+				parent.removeChild(obj);
+			return;
+		}
+
+		cancelActiveTransition(obj);
+		executePresenceTransition(obj, newVisible, spec, parent, sentinel);
+	}
+
 	public function cancelActiveTransition(obj:h2d.Object):Void {
 		var i = 0;
 		while (i < activeTransitionTweens.length) {
@@ -205,6 +226,142 @@ class CodegenTransitionHelper {
 
 			case TransNone:
 				obj.visible = show;
+		}
+	}
+
+	function addToGraph(obj:h2d.Object, parent:h2d.Object, sentinel:h2d.Object):Void {
+		if (obj.parent != null) return;
+		final layersParent = Std.downcast(parent, h2d.Layers);
+		if (layersParent != null) {
+			final sentinelLayer = layersParent.getChildLayer(sentinel);
+			final sentinelIndex = layersParent.getChildIndexInLayer(sentinel);
+			layersParent.add(obj, sentinelLayer, sentinelIndex + 1);
+		} else {
+			final sentinelIndex = parent.getChildIndex(sentinel);
+			parent.addChildAt(obj, sentinelIndex + 1);
+		}
+	}
+
+	function executePresenceTransition(obj:h2d.Object, show:Bool, spec:TransitionType, parent:h2d.Object, sentinel:h2d.Object):Void {
+		final tm = tweenManager;
+		if (tm == null) {
+			if (show) addToGraph(obj, parent, sentinel) else parent.removeChild(obj);
+			return;
+		}
+
+		final preAlpha = obj.alpha;
+		final preScaleX = obj.scaleX;
+		final preScaleY = obj.scaleY;
+		final preX = obj.x;
+		final preY = obj.y;
+
+		switch (spec) {
+			case TransFade(duration, easing):
+				if (show) {
+					obj.alpha = 0.0;
+					addToGraph(obj, parent, sentinel);
+					final t = tm.tween(obj, duration, [Alpha(preAlpha)], easing);
+					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
+				} else {
+					final t = tm.tween(obj, duration, [Alpha(0.0)], easing);
+					final capturedObj = obj;
+					final capturedParent = parent;
+					t.onComplete = () -> {
+						capturedParent.removeChild(capturedObj);
+						capturedObj.alpha = preAlpha;
+					};
+					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
+				}
+
+			case TransCrossfade(duration, easing):
+				if (show) {
+					obj.alpha = 0.0;
+					addToGraph(obj, parent, sentinel);
+					final t = tm.tween(obj, duration, [Alpha(preAlpha)], easing);
+					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
+				} else {
+					final t = tm.tween(obj, duration, [Alpha(0.0)], easing);
+					final capturedObj = obj;
+					final capturedParent = parent;
+					t.onComplete = () -> {
+						capturedParent.removeChild(capturedObj);
+						capturedObj.alpha = preAlpha;
+					};
+					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
+				}
+
+			case TransFlipX(duration, easing):
+				final halfDuration = duration / 2.0;
+				if (show) {
+					obj.scaleX = 0.0;
+					addToGraph(obj, parent, sentinel);
+					final t = tm.tween(obj, halfDuration, [ScaleX(preScaleX)], easing);
+					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
+				} else {
+					final t = tm.tween(obj, halfDuration, [ScaleX(0.0)], easing);
+					final capturedObj = obj;
+					final capturedParent = parent;
+					t.onComplete = () -> {
+						capturedParent.removeChild(capturedObj);
+						capturedObj.scaleX = preScaleX;
+					};
+					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
+				}
+
+			case TransFlipY(duration, easing):
+				final halfDuration = duration / 2.0;
+				if (show) {
+					obj.scaleY = 0.0;
+					addToGraph(obj, parent, sentinel);
+					final t = tm.tween(obj, halfDuration, [ScaleY(preScaleY)], easing);
+					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
+				} else {
+					final t = tm.tween(obj, halfDuration, [ScaleY(0.0)], easing);
+					final capturedObj = obj;
+					final capturedParent = parent;
+					t.onComplete = () -> {
+						capturedParent.removeChild(capturedObj);
+						capturedObj.scaleY = preScaleY;
+					};
+					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
+				}
+
+			case TransSlide(dir, duration, distance, easing):
+				final slideOffset:Float = distance != null ? distance : 50.0;
+				if (show) {
+					obj.alpha = 0.0;
+					switch (dir) {
+						case TDLeft: obj.x -= slideOffset;
+						case TDRight: obj.x += slideOffset;
+						case TDUp: obj.y -= slideOffset;
+						case TDDown: obj.y += slideOffset;
+					}
+					addToGraph(obj, parent, sentinel);
+					final t = tm.tween(obj, duration, [X(preX), Y(preY), Alpha(preAlpha)], easing);
+					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
+				} else {
+					var targetX = obj.x;
+					var targetY = obj.y;
+					switch (dir) {
+						case TDLeft: targetX -= slideOffset;
+						case TDRight: targetX += slideOffset;
+						case TDUp: targetY -= slideOffset;
+						case TDDown: targetY += slideOffset;
+					}
+					final t = tm.tween(obj, duration, [X(targetX), Y(targetY), Alpha(0.0)], easing);
+					final capturedObj = obj;
+					final capturedParent = parent;
+					t.onComplete = () -> {
+						capturedParent.removeChild(capturedObj);
+						capturedObj.alpha = preAlpha;
+						capturedObj.x = preX;
+						capturedObj.y = preY;
+					};
+					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
+				}
+
+			case TransNone:
+				if (show) addToGraph(obj, parent, sentinel) else parent.removeChild(obj);
 		}
 	}
 }
