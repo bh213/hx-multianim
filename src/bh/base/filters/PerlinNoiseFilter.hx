@@ -61,10 +61,13 @@ private class PerlinNoiseShader extends h3d.shader.ScreenShader {
 		@param var noiseScale:Float;
 		@param var intensity:Float;
 
-		// Simple hash-based noise (deterministic, no texture lookups)
+		// Portable hash — arithmetic only, no sin() (deterministic across GPUs)
 		function hash(p:Vec2):Float {
-			var h = dot(p, vec2(127.1, 311.7));
-			return fract(sin(h + seed) * 43758.5453123);
+			var ax = fract(p.x * 0.1031 + seed * 0.1);
+			var ay = fract(p.y * 0.1030 + seed * 0.2);
+			var az = fract(p.x * 0.0973 + seed * 0.3);
+			var d = ax * (ay + 33.33) + ay * (az + 33.33) + az * (ax + 33.33);
+			return fract((ax + d + ay + d) * (az + d));
 		}
 
 		function noise(p:Vec2):Float {
@@ -82,8 +85,17 @@ private class PerlinNoiseShader extends h3d.shader.ScreenShader {
 
 		function fragment() {
 			var color:Vec4 = texture.get(input.uv);
-			var n = noise(input.uv * noiseScale);
-			// Blend noise with original color: shift toward noise gray
+			var p0 = input.uv * noiseScale;
+
+			// fBM — 4 octaves for smooth, detailed noise
+			var n = 0.5 * noise(p0);
+			var p1 = p0 * 2.0 + vec2(1.7, 9.2);
+			n = n + 0.25 * noise(p1);
+			var p2 = p1 * 2.0 + vec2(1.7, 9.2);
+			n = n + 0.125 * noise(p2);
+			var p3 = p2 * 2.0 + vec2(1.7, 9.2);
+			n = n + 0.0625 * noise(p3);
+
 			var noiseColor = vec3(n, n, n);
 			color.rgb = mix(color.rgb, noiseColor, intensity * color.a);
 			output.color = color;
