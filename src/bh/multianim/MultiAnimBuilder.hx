@@ -1597,9 +1597,18 @@ class MultiAnimBuilder {
 					case OpAdd: resolveAsInteger(e1) + resolveAsInteger(e2);
 					case OpMul: resolveAsInteger(e1) * resolveAsInteger(e2);
 					case OpSub: resolveAsInteger(e1) - resolveAsInteger(e2);
-					case OpDiv: Std.int(resolveAsInteger(e1) / resolveAsInteger(e2));
-					case OpMod: Std.int(resolveAsInteger(e1) % resolveAsInteger(e2));
-					case OpIntegerDiv: Std.int(resolveAsInteger(e1) / resolveAsInteger(e2));
+					case OpDiv:
+						final d = resolveAsInteger(e2);
+						if (d == 0) throw 'Division by zero' + currentNodePos();
+						Std.int(resolveAsInteger(e1) / d);
+					case OpMod:
+						final d = resolveAsInteger(e2);
+						if (d == 0) throw 'Modulo by zero' + currentNodePos();
+						Std.int(resolveAsInteger(e1) % d);
+					case OpIntegerDiv:
+						final d = resolveAsInteger(e2);
+						if (d == 0) throw 'Division by zero' + currentNodePos();
+						Std.int(resolveAsInteger(e1) / d);
 					case OpEq: resolveAsInteger(e1) == resolveAsInteger(e2) ? 1 : 0;
 					case OpNotEq: resolveAsInteger(e1) != resolveAsInteger(e2) ? 1 : 0;
 					case OpLess: resolveAsInteger(e1) < resolveAsInteger(e2) ? 1 : 0;
@@ -1674,9 +1683,18 @@ class MultiAnimBuilder {
 					case OpAdd: resolveAsNumber(e1) + resolveAsNumber(e2);
 					case OpMul: resolveAsNumber(e1) * resolveAsNumber(e2);
 					case OpSub: resolveAsNumber(e1) - resolveAsNumber(e2);
-					case OpDiv: resolveAsNumber(e1) / resolveAsNumber(e2);
-					case OpMod: resolveAsNumber(e1) % resolveAsNumber(e2);
-					case OpIntegerDiv: Std.int(resolveAsInteger(e1) / resolveAsInteger(e2));
+					case OpDiv:
+						final d = resolveAsNumber(e2);
+						if (d == 0) throw 'Division by zero' + currentNodePos();
+						resolveAsNumber(e1) / d;
+					case OpMod:
+						final d = resolveAsNumber(e2);
+						if (d == 0) throw 'Modulo by zero' + currentNodePos();
+						resolveAsNumber(e1) % d;
+					case OpIntegerDiv:
+						final d = resolveAsInteger(e2);
+						if (d == 0) throw 'Division by zero' + currentNodePos();
+						Std.int(resolveAsInteger(e1) / d);
 					case OpEq: resolveAsNumber(e1) == resolveAsNumber(e2) ? 1 : 0;
 					case OpNotEq: resolveAsNumber(e1) != resolveAsNumber(e2) ? 1 : 0;
 					case OpLess: resolveAsNumber(e1) < resolveAsNumber(e2) ? 1 : 0;

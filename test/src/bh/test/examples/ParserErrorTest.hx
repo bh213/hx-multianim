@@ -3625,4 +3625,30 @@ class ParserErrorTest extends utest.Test {
 		Assert.isTrue(error.indexOf("unknown variable") >= 0,
 			'Error should mention unknown variable, got: $error');
 	}
+
+	// ===== Unterminated block comment tests =====
+
+	@Test
+	public function testUnterminatedBlockComment() {
+		var error = parseExpectingError('
+			/* This comment is never closed
+			#test programmable() {
+				bitmap(generated(color(10, 10, #f00))): 0,0
+			}
+		');
+		Assert.notNull(error, "Should throw error for unterminated block comment");
+		Assert.stringContains("Unterminated block comment", error);
+	}
+
+	@Test
+	public function testUnterminatedBlockCommentAtEof() {
+		var error = parseExpectingError('
+			#test programmable() {
+				bitmap(generated(color(10, 10, #f00))): 0,0
+			}
+			/*
+		');
+		Assert.notNull(error, "Should throw error for unterminated block comment at EOF");
+		Assert.stringContains("Unterminated block comment", error);
+	}
 }

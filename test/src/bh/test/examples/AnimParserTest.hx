@@ -2212,4 +2212,36 @@ animation {
 ');
 		Assert.notNull(result, "Valid animation with no extra points should parse");
 	}
+
+	// ===== Unterminated block comment tests =====
+
+	@Test
+	public function testUnterminatedBlockComment() {
+		var error = parseAnimExpectingError('
+sheet: testSheet
+/* this comment is never closed
+animation idle {
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle" }
+}
+');
+		Assert.notNull(error, "Should throw error for unterminated block comment");
+		Assert.stringContains("Unterminated block comment", error);
+	}
+
+	@Test
+	public function testUnterminatedBlockCommentAtEof() {
+		var error = parseAnimExpectingError('
+sheet: testSheet
+animation idle {
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle" }
+}
+/*
+');
+		Assert.notNull(error, "Should throw error for unterminated block comment at EOF");
+		Assert.stringContains("Unterminated block comment", error);
+	}
 }

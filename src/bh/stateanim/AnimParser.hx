@@ -183,15 +183,19 @@ private class AnimLexerHC {
 		// Block comment
 		if (c == '/'.code && pos + 1 < len && src.charCodeAt(pos + 1) == '*'.code) {
 			pos += 2; col += 2;
+			var blockClosed = false;
 			while (pos < len) {
 				if (ch() == '*'.code && pos + 1 < len && src.charCodeAt(pos + 1) == '/'.code) {
 					pos += 2; col += 2;
+					blockClosed = true;
 					break;
 				}
 				if (ch() == '\n'.code) { line++; col = 1; lineStart = pos + 1; }
 				else { col++; }
 				pos++;
 			}
+			if (!blockClosed)
+				throw '$sourceName:$startLine:$startCol: Unterminated block comment, missing closing */';
 			return nextToken();
 		}
 

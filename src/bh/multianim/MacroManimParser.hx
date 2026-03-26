@@ -132,9 +132,11 @@ private class MacroLexer {
 				if (c2 == '*'.code) {
 					// Block comment
 					pos += 2;
+					var blockClosed = false;
 					while (pos + 1 < len) {
 						if (src.charCodeAt(pos) == '*'.code && src.charCodeAt(pos + 1) == '/'.code) {
 							pos += 2;
+							blockClosed = true;
 							break;
 						}
 						if (src.charCodeAt(pos) == '\n'.code) {
@@ -143,6 +145,8 @@ private class MacroLexer {
 						}
 						pos++;
 					}
+					if (!blockClosed)
+						throw '$sourceName:$startLine:$startCol: Unterminated block comment, missing closing */';
 					continue;
 				}
 			}

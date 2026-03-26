@@ -4862,4 +4862,61 @@ class BuilderUnitTest extends BuilderTestBase {
 		}
 		Assert.isTrue(threw, "Should throw when extra point not found without fallback in expression context");
 	}
+
+	// ==================== Division by zero error paths ====================
+
+	@Test
+	public function testErrorDivisionByZeroInt():Void {
+		final err = expectError(() -> buildFromSource("
+			#test programmable(x:uint=10, y:uint=0) {
+				bitmap(generated(color($x / $y, 10, #f00))): 0, 0
+			}
+		", "test"));
+		Assert.notNull(err, "Should throw for integer division by zero");
+		Assert.stringContains("Division by zero", err);
+	}
+
+	@Test
+	public function testErrorDivisionByZeroIntDiv():Void {
+		final err = expectError(() -> buildFromSource("
+			#test programmable(x:uint=10, y:uint=0) {
+				bitmap(generated(color($x div $y, 10, #f00))): 0, 0
+			}
+		", "test"));
+		Assert.notNull(err, "Should throw for integer div by zero");
+		Assert.stringContains("Division by zero", err);
+	}
+
+	@Test
+	public function testErrorModuloByZeroInt():Void {
+		final err = expectError(() -> buildFromSource("
+			#test programmable(x:uint=17, y:uint=0) {
+				bitmap(generated(color($x % $y, 10, #f00))): 0, 0
+			}
+		", "test"));
+		Assert.notNull(err, "Should throw for integer modulo by zero");
+		Assert.stringContains("Modulo by zero", err);
+	}
+
+	@Test
+	public function testErrorDivisionByZeroFloat():Void {
+		final err = expectError(() -> buildFromSource("
+			#test programmable(x:float=10.0, y:float=0.0) {
+				bitmap(generated(color(10, 10, #f00))): $x / $y, 0
+			}
+		", "test"));
+		Assert.notNull(err, "Should throw for float division by zero");
+		Assert.stringContains("Division by zero", err);
+	}
+
+	@Test
+	public function testErrorModuloByZeroFloat():Void {
+		final err = expectError(() -> buildFromSource("
+			#test programmable(x:float=17.0, y:float=0.0) {
+				bitmap(generated(color(10, 10, #f00))): $x % $y, 0
+			}
+		", "test"));
+		Assert.notNull(err, "Should throw for float modulo by zero");
+		Assert.stringContains("Modulo by zero", err);
+	}
 }
