@@ -169,7 +169,7 @@ richText(dd, "Deal [dmg]50[/] fire damage", white, left, 150, lineBreak: false,
 | `dropShadowAlpha` | Shadow opacity |
 | `autoFit: <mode> [font1, font2, ...]` | Automatic font fallback (see [autoFit Modes](#autofit-modes) above) |
 
-`richText()` always creates `h2d.HtmlText`. Markup is always processed via `TextMarkupConverter`.
+`richText()` always creates `h2d.HtmlText`. Markup is always processed via `TextMarkupConverter`. XML special characters (`<`, `>`, `&`) in text content are automatically escaped before conversion, so literal text like `"Hull<25%"` or `"fire & ice"` works safely.
 
 ### Rich Text Markup
 

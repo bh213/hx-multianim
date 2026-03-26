@@ -75,6 +75,44 @@ class RichTextTest extends BuilderTestBase {
 		Assert.equals("[text[", result);
 	}
 
+	// ==================== convert() — XML character escaping ====================
+
+	@Test
+	public function testConvertEscapesLessThan():Void {
+		var result = TextMarkupConverter.convert("Hull<25%");
+		Assert.equals("Hull&lt;25%", result);
+	}
+
+	@Test
+	public function testConvertEscapesGreaterThan():Void {
+		var result = TextMarkupConverter.convert("damage>100");
+		Assert.equals("damage&gt;100", result);
+	}
+
+	@Test
+	public function testConvertEscapesAmpersand():Void {
+		var result = TextMarkupConverter.convert("fire & ice");
+		Assert.equals("fire &amp; ice", result);
+	}
+
+	@Test
+	public function testConvertEscapesXmlWithMarkup():Void {
+		var result = TextMarkupConverter.convert("[damage]50>25[/]");
+		Assert.equals("<damage>50&gt;25</damage>", result);
+	}
+
+	@Test
+	public function testConvertEscapesMultipleXmlChars():Void {
+		var result = TextMarkupConverter.convert("a<b & c>d");
+		Assert.equals("a&lt;b &amp; c&gt;d", result);
+	}
+
+	@Test
+	public function testConvertNoXmlCharsUnchanged():Void {
+		var result = TextMarkupConverter.convert("plain text");
+		Assert.equals("plain text", result);
+	}
+
 	// ==================== convert() — reserved HTML tags ====================
 
 	@Test

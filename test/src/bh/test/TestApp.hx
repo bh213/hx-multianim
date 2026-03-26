@@ -30,6 +30,9 @@ class TestApp extends hxd.App {
 	private var lastTracedDone:Int = -1;
 
 	override function init() {
+		#if MULTIANIM_DEV
+		bh.multianim.dev.DevBridge.autoStart = false;
+		#end
 		hxd.Res.initLocal();
 
 		// Force window to 1280x720 — on hi-DPI displays, the OS may resize the window

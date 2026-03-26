@@ -1117,6 +1117,7 @@ typedef CustomFilterRef = {
 	name:String,
 	argCount:Int,
 	argTypes:Array<CustomFilterArgType>,
+	args:Array<CustomFilterArg>,
 	pos:String,
 };
 

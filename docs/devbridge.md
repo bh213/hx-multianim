@@ -14,7 +14,7 @@ Runtime inspection and manipulation server for hx-multianim applications. Design
 
 **Default port:** 9001
 
-**Autostart:** DevBridge starts automatically when `ScreenManager` is constructed with `-D MULTIANIM_DEV`. Accessible via `screenManager.devBridge`. No manual setup needed.
+**Autostart:** DevBridge starts automatically when `ScreenManager` is constructed with `-D MULTIANIM_DEV`. Accessible via `screenManager.devBridge`. No manual setup needed. Set `DevBridge.autoStart = false` before constructing `ScreenManager` to suppress auto-start (e.g., in test harnesses).
 
 **Port configuration:**
 1. **Environment variable** `HX_DEV_PORT` — parsed as integer (1–65535), falls back to 9001
@@ -63,6 +63,30 @@ Runtime inspection and manipulation server for hx-multianim applications. Design
 | `internal` | 500 | Unexpected server error (includes stack trace in trace output) |
 
 The MCP server adds `connection_failed` when the game is not running (fetch to DevBridge port fails).
+
+---
+
+## SSE Streaming
+
+**Endpoint:** `GET /sse`
+
+Real-time Server-Sent Events stream for trace messages and runtime errors. Connect with any SSE client (e.g., `EventSource` in browsers, `curl`).
+
+**Event types:**
+
+| Event | Data Fields | Description |
+|-------|-------------|-------------|
+| `trace` | `message`, `timestamp` | Trace output (same as captured by `get_traces`) |
+| `error` | `message`, `stack`, `timestamp` | Runtime errors reported via `reportError()` |
+
+**Usage:**
+```javascript
+const es = new EventSource("http://localhost:9001/sse");
+es.addEventListener("trace", (e) => console.log(JSON.parse(e.data).message));
+es.addEventListener("error", (e) => console.error(JSON.parse(e.data).message));
+```
+
+Multiple concurrent clients supported. Dead clients are automatically cleaned up on write failure. All SSE clients are closed when DevBridge stops.
 
 ---
 

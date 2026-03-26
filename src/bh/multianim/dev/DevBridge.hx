@@ -25,6 +25,8 @@ import bh.ui.UIElement.UIScreenEvent;
 @:access(hxd.Window)
 @:access(bh.base.CachingResourceLoader)
 class DevBridge {
+	public static var autoStart:Bool = true;
+
 	final screenManager:ScreenManager;
 	final port:Int;
 	var serverSocket:Null<Socket>;
@@ -46,6 +48,10 @@ class DevBridge {
 
 	// ---- Error capture ----
 	var errorBuffer:Array<{message:String, stack:String, timestamp:Float}> = [];
+
+	// ---- SSE clients ----
+	var sseClients:Array<Socket> = [];
+	var sseBroadcasting:Bool = false;
 
 	public function new(screenManager:ScreenManager, port:Int = 0) {
 		this.screenManager = screenManager;
@@ -109,6 +115,7 @@ class DevBridge {
 	}
 
 	public function stop():Void {
+		closeSseClients();
 		if (serverSocket != null) {
 			serverSocket.close();
 			serverSocket = null;
@@ -136,6 +143,8 @@ class DevBridge {
 				self.traceDropped++;
 			}
 			self.traceBuffer.push(msg);
+			// Push to SSE clients
+			self.broadcastSseEvent("trace", {message: msg, timestamp: haxe.Timer.stamp()});
 		};
 	}
 
@@ -144,6 +153,55 @@ class DevBridge {
 			Reflect.setField(haxe.Log, "trace", originalTrace);
 			originalTrace = null;
 		}
+	}
+
+	// ---- SSE broadcast ----
+
+	function handleSseConnect(clientSocket:Socket):Void {
+		var header = 'HTTP/1.1 200 OK\r\n'
+			+ 'Content-Type: text/event-stream\r\n'
+			+ 'Cache-Control: no-cache\r\n'
+			+ 'Connection: keep-alive\r\n'
+			+ 'Access-Control-Allow-Origin: *\r\n'
+			+ '\r\n';
+		var headerBytes = haxe.io.Bytes.ofString(header);
+		clientSocket.out.writeBytes(headerBytes, 0, headerBytes.length);
+		clientSocket.out.flush();
+		sseClients.push(clientSocket);
+		clientSocket.onError = (msg) -> {
+			sseClients.remove(clientSocket);
+			try clientSocket.close() catch (_:Dynamic) {};
+		};
+		trace('[DevBridge] SSE client connected (${sseClients.length} total)');
+	}
+
+	function broadcastSseEvent(event:String, data:Dynamic):Void {
+		if (sseBroadcasting || sseClients.length == 0) return;
+		sseBroadcasting = true;
+		var json = Json.stringify(data);
+		var payload = 'event: $event\ndata: $json\n\n';
+		var bytes = haxe.io.Bytes.ofString(payload);
+		var dead:Array<Socket> = [];
+		for (client in sseClients) {
+			try {
+				client.out.writeBytes(bytes, 0, bytes.length);
+				client.out.flush();
+			} catch (e:Dynamic) {
+				dead.push(client);
+			}
+		}
+		for (d in dead) {
+			sseClients.remove(d);
+			try d.close() catch (_:Dynamic) {};
+		}
+		sseBroadcasting = false;
+	}
+
+	function closeSseClients():Void {
+		for (client in sseClients) {
+			try client.close() catch (_:Dynamic) {};
+		}
+		sseClients = [];
 	}
 
 	// ---- HTTP handling ----
@@ -156,6 +214,8 @@ class DevBridge {
 					var httpMethod = conn.getHttpMethod();
 					if (httpMethod == "OPTIONS") {
 						sendResponse(clientSocket, 204, "");
+					} else if (httpMethod == "GET" && conn.getPath() == "/sse") {
+						handleSseConnect(clientSocket);
 					} else if (httpMethod == "POST") {
 						handleRequest(conn.getBody(), clientSocket);
 					} else {
@@ -782,13 +842,17 @@ class DevBridge {
 
 	/** Called externally to report a caught runtime error. */
 	public function reportError(message:String, ?stack:String):Void {
+		var stackStr = stack != null ? stack : "";
+		var timestamp = haxe.Timer.stamp();
 		errorBuffer.push({
 			message: message,
-			stack: stack != null ? stack : "",
-			timestamp: haxe.Timer.stamp(),
+			stack: stackStr,
+			timestamp: timestamp,
 		});
 		// Cap buffer size
 		if (errorBuffer.length > 100) errorBuffer.shift();
+		// Push to SSE clients
+		broadcastSseEvent("error", {message: message, stack: stackStr, timestamp: timestamp});
 	}
 
 	// ---- v2: Deep inspection ----
@@ -1841,6 +1905,7 @@ private class HttpConnection {
 	var bodyBuf:StringBuf;
 	var bodyReceived:Int = 0;
 	var httpMethod:String = "";
+	var httpPath:String = "/";
 
 	public function new(socket:Socket) {
 		this.socket = socket;
@@ -1859,6 +1924,7 @@ private class HttpConnection {
 				if (endIdx >= 0) {
 					headersDone = true;
 					httpMethod = parseHttpMethod(headers);
+					httpPath = parseRequestPath(headers);
 					contentLength = parseContentLength(headers);
 					// Anything after \r\n\r\n is body
 					var bodyStart = headers.substr(endIdx + 4);
@@ -1887,6 +1953,10 @@ private class HttpConnection {
 		return httpMethod;
 	}
 
+	public function getPath():String {
+		return httpPath;
+	}
+
 	public function getBody():String {
 		return bodyBuf.toString();
 	}
@@ -1895,6 +1965,18 @@ private class HttpConnection {
 		var spaceIdx = headers.indexOf(" ");
 		if (spaceIdx < 0) return "GET";
 		return headers.substr(0, spaceIdx);
+	}
+
+	static function parseRequestPath(headers:String):String {
+		var firstSpace = headers.indexOf(" ");
+		if (firstSpace < 0) return "/";
+		var secondSpace = headers.indexOf(" ", firstSpace + 1);
+		if (secondSpace < 0) secondSpace = headers.indexOf("\r", firstSpace + 1);
+		if (secondSpace < 0) return "/";
+		var path = headers.substring(firstSpace + 1, secondSpace);
+		var queryIdx = path.indexOf("?");
+		if (queryIdx >= 0) path = path.substr(0, queryIdx);
+		return path;
 	}
 
 	static function parseContentLength(headers:String):Int {

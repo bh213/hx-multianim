@@ -23,6 +23,12 @@ class TextMarkupConverter {
 	 */
 	public static function convert(text:String):String {
 		if (text == null || text.length == 0) return text;
+
+		// Escape XML special characters before markup conversion.
+		// Input text uses [markup] not <html>, so any literal <, >, & must be escaped
+		// to prevent h2d.HtmlText's XML parser from misinterpreting them.
+		text = escapeXmlChars(text);
+
 		if (text.indexOf("[") < 0) return text;
 
 		var buf = new StringBuf();
@@ -198,6 +204,24 @@ class TextMarkupConverter {
 		return name == "b" || name == "i" || name == "u" || name == "s"
 			|| name == "bold" || name == "italic"
 			|| name == "font";
+	}
+
+	static function escapeXmlChars(text:String):String {
+		if (text.indexOf("&") < 0 && text.indexOf("<") < 0 && text.indexOf(">") < 0) return text;
+		var buf = new StringBuf();
+		for (i in 0...text.length) {
+			switch (text.charCodeAt(i)) {
+				case "&".code:
+					buf.add("&amp;");
+				case "<".code:
+					buf.add("&lt;");
+				case ">".code:
+					buf.add("&gt;");
+				default:
+					buf.addChar(text.charCodeAt(i));
+			}
+		}
+		return buf.toString();
 	}
 
 	static function isValidStyleName(name:String):Bool {

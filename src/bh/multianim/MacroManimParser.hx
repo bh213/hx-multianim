@@ -2339,6 +2339,7 @@ class MacroManimParser {
 					name: filterName,
 					argCount: args.length,
 					argTypes: [for (a in args) a.type],
+					args: args,
 					pos: filterPos,
 				});
 				return FilterCustom(filterName, args);

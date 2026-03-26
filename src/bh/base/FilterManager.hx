@@ -1,7 +1,9 @@
 package bh.base;
 
+import bh.multianim.MultiAnimParser.CustomFilterArg;
 import bh.multianim.MultiAnimParser.CustomFilterArgType;
 import bh.multianim.MultiAnimParser.CustomFilterRef;
+import bh.multianim.MultiAnimParser.ReferenceableValue;
 
 typedef FilterParamDef = {
 	name:String,
@@ -74,15 +76,29 @@ class FilterManager {
 			if (ref.argCount > reg.params.length) {
 				throw 'Custom filter "${ref.name}" accepts at most ${reg.params.length} argument(s), got ${ref.argCount} at ${ref.pos}.';
 			}
-			// Validate types for provided args
+			// Validate types for provided args (skip $param references — type resolved at build time)
 			for (i in 0...ref.argCount) {
 				if (i < ref.argTypes.length && i < reg.params.length) {
-					if (ref.argTypes[i] != reg.params[i].type) {
+					if (!isRefArg(ref.args[i]) && ref.argTypes[i] != reg.params[i].type) {
 						throw 'Custom filter "${ref.name}" argument "${reg.params[i].name}" expects ${reg.params[i].type}, got ${ref.argTypes[i]} at ${ref.pos}.';
 					}
 				}
 			}
 		}
+	}
+
+	/** Check if a custom filter arg contains a $param reference (type resolved at build time, not parse time). */
+	static function isRefArg(arg:CustomFilterArg):Bool {
+		return containsReference(arg.value);
+	}
+
+	static function containsReference(v:ReferenceableValue):Bool {
+		return switch v {
+			case RVReference(_), RVPropertyAccess(_, _), RVMethodCall(_, _, _), RVTernary(_, _, _): true;
+			case EBinop(_, e1, e2): containsReference(e1) || containsReference(e2);
+			case EUnaryOp(_, e) | RVParenthesis(e): containsReference(e);
+			default: false;
+		};
 	}
 
 	/** Build a custom filter at runtime from resolved args. Called by codegen-generated code. */

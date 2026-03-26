@@ -104,7 +104,7 @@ class ScreenManager {
 			hotReload(resource);
 		};
 		this.devBridge = new bh.multianim.dev.DevBridge(this);
-		this.devBridge.start();
+		if (bh.multianim.dev.DevBridge.autoStart) this.devBridge.start();
 		#end
 	}
 

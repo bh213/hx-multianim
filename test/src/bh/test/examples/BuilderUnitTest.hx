@@ -5221,6 +5221,36 @@ class BuilderUnitTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testCustomFilterParamRefSkipsTypeValidation():Void {
+		FilterManager.registerFilter("reffilter", [
+			{name: "c", type: CFColor},
+			{name: "v", type: CFFloat},
+		], (params) -> new h2d.filter.Blur(1.0, 1.0, 1.0, 0.0));
+
+		// $param refs should skip type check — color param passed as $ref is valid
+		final builder = builderFromSource("
+			#test programmable(tint:color=#FF0000, size:float=1.0) {
+				filter: reffilter($tint, $size)
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		");
+		final valErr = expectError(() -> builder.validateCustomFilters());
+		Assert.isNull(valErr, "Validation should pass for $param ref args regardless of declared type");
+
+		// Literal with wrong type should still fail
+		final builder2 = builderFromSource("
+			#test programmable() {
+				filter: reffilter(1.0, 2.0)
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		");
+		final valErr2 = expectError(() -> builder2.validateCustomFilters());
+		Assert.notNull(valErr2, "Validation should still fail for literal type mismatch");
+		Assert.stringContains("expects CFColor", valErr2);
+		FilterManager.unregisterFilter("reffilter");
+	}
+
+	@Test
 	public function testCustomFilterRegistrationBlocksBuiltins():Void {
 		final err = expectError(() -> {
 			FilterManager.registerFilter("outline", [], (params) -> new h2d.filter.Blur(1.0, 1.0, 1.0, 0.0));
