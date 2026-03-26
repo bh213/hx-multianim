@@ -9,7 +9,20 @@
 
 - Code generation: programmable elements should always work via `builder.buildWithParameters` or via macro system (`@:manim(...)`)
 
-## V1
+
+v1.0
+
+## Known Issues
+
+### Dropdown click-through bug (hx-multianim library)
+
+When a dropdown panel is open (e.g. on TypeKit screen), buttons underneath still receive mouse events (click and hover). The dropdown panel should block all events to elements below it.
+
+**Root cause**: `UIDefaultController.getEventElement()` in `hx-multianim/src/bh/ui/controllers/UIDefaultController.hx:169` iterates elements and returns the first `containsPoint` match. It has no concept of layer priority. The dropdown's panel is rendered on ModalLayer (5) via `customAddToLayer`/`getHigherLayer`, but the dropdown element's `getObject()` root sits on DefaultLayer (3) — same priority as buttons. So whichever element was registered first wins, regardless of visual layering.
+
+**Fix needed in hx-multianim**: `getEventElement()` must become layer-aware. When multiple elements' `containsPoint` returns true, the element on the higher rendering layer should win. Key challenge: `UIElementCustomAddToLayer` elements (dropdowns, draggables) have their root on DefaultLayer but their panel/overlay on ModalLayer, and their `containsPoint` covers the panel area — so they need the higher layer's priority for event dispatch.
+
+
 - ~~Haxelib release~~ — DONE (1.0.0-rc.1, see [release.md](release.md))
 - More hot reload integration tests — see [docs/hot-reload.md "Missing Tests"](../docs/hot-reload.md#missing-tests-needed)
 - Add blob47 utils for easier testing/dev/selection

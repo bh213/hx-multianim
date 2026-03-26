@@ -47,8 +47,20 @@ Runtime inspection and manipulation server for hx-multianim applications. Design
 
 ```json
 {"ok": true, "result": { ... }}
-{"ok": false, "error": "message"}
+{"ok": false, "error": "message", "code": "error_code"}
 ```
+
+**Error codes:**
+
+| Code | HTTP | Description |
+|------|------|-------------|
+| `not_found` | 404 | Screen, element, programmable, resource, or interactive not found |
+| `invalid_params` | 400 | Missing or invalid parameters |
+| `invalid_state` | 409 | Precondition not met (e.g. game not paused for `step`) |
+| `unknown_method` | 404 | Unknown DevBridge method name |
+| `internal` | 500 | Unexpected server error (includes stack trace in trace output) |
+
+The MCP server adds `connection_failed` when the game is not running (fetch to DevBridge port fails).
 
 ---
 

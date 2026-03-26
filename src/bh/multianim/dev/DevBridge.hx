@@ -187,12 +187,19 @@ class DevBridge {
 			trace('[DevBridge] >> $method OK');
 			sendJsonResponse(clientSocket, 200, {ok: true, result: result});
 		} catch (e:haxe.Exception) {
-			trace('[DevBridge] >> $method ERROR: ${e.message}');
-			trace('[DevBridge]    Stack: ${e.stack}');
-			sendJsonResponse(clientSocket, 500, {ok: false, error: e.message});
+			var code = "internal";
+			var httpStatus = 500;
+			if (Std.isOfType(e, DevBridgeError)) {
+				var de:DevBridgeError = cast e;
+				code = de.code;
+				httpStatus = de.httpStatus;
+			}
+			trace('[DevBridge] >> $method ERROR [$code]: ${e.message}');
+			if (code == "internal") trace('[DevBridge]    Stack: ${e.stack}');
+			sendJsonResponse(clientSocket, httpStatus, {ok: false, error: e.message, code: code});
 		} catch (e:Dynamic) {
 			trace('[DevBridge] >> $method ERROR (dynamic): $e');
-			sendJsonResponse(clientSocket, 500, {ok: false, error: '$e'});
+			sendJsonResponse(clientSocket, 500, {ok: false, error: '$e', code: "internal"});
 		}
 	}
 
@@ -275,7 +282,7 @@ class DevBridge {
 			case "send_events": handleSendEvents(params);
 			// v7: active programmables listing
 			case "list_active_programmables": handleListActiveProgrammables(params);
-			default: throw 'Unknown method: $method';
+			default: throw DevBridgeError.unknownMethod('Unknown method: $method');
 		};
 	}
 
@@ -405,17 +412,17 @@ class DevBridge {
 		var screenName:String = params.screen;
 		var elementName:String = params.element;
 		if (screenName == null || elementName == null)
-			throw "Required params: screen, element";
+			throw DevBridgeError.invalidParams("Required params: screen, element");
 
 		var screen = screenManager.configuredScreens.get(screenName);
 		if (screen == null)
-			throw 'Screen not found: $screenName';
+			throw DevBridgeError.notFound('Screen not found: $screenName');
 
 		// Search through all builder results on the screen
 		var root = screen.getSceneRoot();
 		var obj = root.getObjectByName(elementName);
 		if (obj == null)
-			throw 'Element not found: $elementName';
+			throw DevBridgeError.notFound('Element not found: $elementName');
 
 		var result:Dynamic = {
 			name: elementName,
@@ -442,12 +449,12 @@ class DevBridge {
 		var paramName:String = params.param;
 		var paramValue:Dynamic = params.value;
 		if (programmable == null || paramName == null)
-			throw "Required params: programmable, param, value";
+			throw DevBridgeError.invalidParams("Required params: programmable, param, value");
 
 		// Search all live builder results via hot-reload registry
 		var found = findBuilderResult(programmable);
 		if (found == null)
-			throw 'No live BuilderResult found for programmable: $programmable';
+			throw DevBridgeError.notFound('No live BuilderResult found for programmable: $programmable');
 
 		found.setParameter(paramName, paramValue);
 		return {success: true};
@@ -458,16 +465,16 @@ class DevBridge {
 		var elementName:String = params.element;
 		var visible:Bool = params.visible != null ? params.visible : true;
 		if (screenName == null || elementName == null)
-			throw "Required params: screen, element, visible";
+			throw DevBridgeError.invalidParams("Required params: screen, element, visible");
 
 		var screen = screenManager.configuredScreens.get(screenName);
 		if (screen == null)
-			throw 'Screen not found: $screenName';
+			throw DevBridgeError.notFound('Screen not found: $screenName');
 
 		var root = screen.getSceneRoot();
 		var obj = root.getObjectByName(elementName);
 		if (obj == null)
-			throw 'Element not found: $elementName';
+			throw DevBridgeError.notFound('Element not found: $elementName');
 
 		obj.visible = visible;
 		return {success: true, visible: visible};
@@ -480,7 +487,7 @@ class DevBridge {
 			try {
 				resource = hxd.Res.load(file);
 			} catch (e:Dynamic) {
-				throw 'Resource not found: $file';
+				throw DevBridgeError.notFound('Resource not found: $file');
 			}
 		}
 
@@ -526,7 +533,7 @@ class DevBridge {
 	function handleEvalManim(params:Dynamic):Dynamic {
 		var source:String = params.source;
 		if (source == null)
-			throw "Required param: source";
+			throw DevBridgeError.invalidParams("Required param: source");
 
 		// Phase 1: Parse
 		var parseResult:bh.multianim.MultiAnimParser.MultiAnimResult;
@@ -579,7 +586,7 @@ class DevBridge {
 	function handleSendEvent(params:Dynamic):Dynamic {
 		var type:String = params.type;
 		if (type == null)
-			throw "Required param: type (click, key_down, key_up, move, wheel)";
+			throw DevBridgeError.invalidParams("Required param: type (click, key_down, key_up, move, wheel)");
 
 		var window = hxd.Window.getInstance();
 
@@ -668,7 +675,7 @@ class DevBridge {
 				return {success: true, type: type, delta: delta};
 
 			default:
-				throw 'Unknown event type: $type. Valid: click, mouse_down, mouse_up, move, key_down, key_up, key_press, text, wheel';
+				throw DevBridgeError.invalidParams('Unknown event type: $type. Valid: click, mouse_down, mouse_up, move, key_down, key_up, key_press, text, wheel');
 		}
 	}
 
@@ -701,10 +708,10 @@ class DevBridge {
 		if (frames > 100) frames = 100;
 
 		if (!paused)
-			throw "Game is not paused. Call pause first.";
+			throw DevBridgeError.invalidState("Game is not paused. Call pause first.");
 
 		if (savedLoopFunc == null)
-			throw "No saved loop function — cannot step.";
+			throw DevBridgeError.invalidState("No saved loop function — cannot step.");
 
 		// Run N frames by temporarily restoring the loop
 		var loopFn = savedLoopFunc;
@@ -777,11 +784,11 @@ class DevBridge {
 	function handleGetParameters(params:Dynamic):Dynamic {
 		var programmable:String = params.programmable;
 		if (programmable == null)
-			throw "Required param: programmable";
+			throw DevBridgeError.invalidParams("Required param: programmable");
 
 		var found = findBuilderResult(programmable);
 		if (found == null)
-			throw 'No live BuilderResult found for programmable: $programmable';
+			throw DevBridgeError.notFound('No live BuilderResult found for programmable: $programmable');
 
 		var parameters:Array<Dynamic> = [];
 
@@ -823,7 +830,7 @@ class DevBridge {
 			// Single screen mode
 			var screen = screenManager.configuredScreens.get(screenName);
 			if (screen == null)
-				throw 'Screen not found: $screenName';
+				throw DevBridgeError.notFound('Screen not found: $screenName');
 			return {screen: screenName, interactives: getScreenInteractives(screen, null)};
 		}
 
@@ -901,11 +908,11 @@ class DevBridge {
 	function handleListSlots(params:Dynamic):Dynamic {
 		var programmable:String = params.programmable;
 		if (programmable == null)
-			throw "Required param: programmable";
+			throw DevBridgeError.invalidParams("Required param: programmable");
 
 		var found = findBuilderResult(programmable);
 		if (found == null)
-			throw 'No live BuilderResult found for programmable: $programmable';
+			throw DevBridgeError.notFound('No live BuilderResult found for programmable: $programmable');
 
 		var slots:Array<Dynamic> = [];
 		if (found.slots != null) {
@@ -1008,7 +1015,7 @@ class DevBridge {
 		if (relativeTo != null) {
 			var refObj = screenManager.app.s2d.getObjectByName(relativeTo);
 			if (refObj == null)
-				throw 'Element not found for relative_to: $relativeTo';
+				throw DevBridgeError.notFound('Element not found for relative_to: $relativeTo');
 			var global = refObj.localToGlobal(new h2d.col.Point(x, y));
 			x = global.x;
 			y = global.y;
@@ -1031,11 +1038,11 @@ class DevBridge {
 	function handleInspectProgrammable(params:Dynamic):Dynamic {
 		var programmable:String = params.programmable;
 		if (programmable == null)
-			throw "Required param: programmable";
+			throw DevBridgeError.invalidParams("Required param: programmable");
 
 		var found = findBuilderResult(programmable);
 		if (found == null)
-			throw 'No live BuilderResult found for programmable: $programmable';
+			throw DevBridgeError.notFound('No live BuilderResult found for programmable: $programmable');
 
 		var result:Dynamic = {
 			name: found.name,
@@ -1153,20 +1160,20 @@ class DevBridge {
 		var direction:String = params.direction;
 		var screenName:String = params.screen;
 		if (elementName == null || direction == null)
-			throw "Required params: element, direction (to_local|to_global)";
+			throw DevBridgeError.invalidParams("Required params: element, direction (to_local|to_global)");
 
 		// Find the element
 		var obj:h2d.Object = null;
 		if (screenName != null) {
 			var screen = screenManager.configuredScreens.get(screenName);
 			if (screen == null)
-				throw 'Screen not found: $screenName';
+				throw DevBridgeError.notFound('Screen not found: $screenName');
 			obj = screen.getSceneRoot().getObjectByName(elementName);
 		} else {
 			obj = screenManager.app.s2d.getObjectByName(elementName);
 		}
 		if (obj == null)
-			throw 'Element not found: $elementName';
+			throw DevBridgeError.notFound('Element not found: $elementName');
 
 		var point = new h2d.col.Point(x, y);
 		var result:h2d.col.Point;
@@ -1175,7 +1182,7 @@ class DevBridge {
 		} else if (direction == "to_global") {
 			result = obj.localToGlobal(point);
 		} else {
-			throw 'Invalid direction: $direction. Use "to_local" or "to_global"';
+			throw DevBridgeError.invalidParams('Invalid direction: $direction. Use "to_local" or "to_global"');
 		}
 
 		return {
@@ -1226,7 +1233,7 @@ class DevBridge {
 			if (screenName != null) {
 				var screen = screenManager.configuredScreens.get(screenName);
 				if (screen == null)
-					throw 'Screen not found: $screenName';
+					throw DevBridgeError.notFound('Screen not found: $screenName');
 				screensToCheck.push({screen: screen, name: screenName});
 			} else {
 				for (s in screenManager.activeScreens) {
@@ -1323,7 +1330,7 @@ class DevBridge {
 	function handleClickInteractive(params:Dynamic):Dynamic {
 		var id:String = params.id;
 		if (id == null)
-			throw "Required param: id (interactive identifier)";
+			throw DevBridgeError.invalidParams("Required param: id (interactive identifier)");
 		var screenName:String = params.screen;
 
 		// Search for the interactive wrapper by id across screens
@@ -1331,7 +1338,7 @@ class DevBridge {
 		if (screenName != null) {
 			var screen = screenManager.configuredScreens.get(screenName);
 			if (screen == null)
-				throw 'Screen not found: $screenName';
+				throw DevBridgeError.notFound('Screen not found: $screenName');
 			screensToSearch.push({screen: screen, name: screenName});
 		} else {
 			for (s in screenManager.activeScreens) {
@@ -1375,7 +1382,7 @@ class DevBridge {
 			}
 		}
 
-		throw 'Interactive not found: $id';
+		throw DevBridgeError.notFound('Interactive not found: $id');
 	}
 
 	// ---- v6: Batch events ----
@@ -1383,11 +1390,11 @@ class DevBridge {
 	function handleSendEvents(params:Dynamic):Dynamic {
 		var events:Array<Dynamic> = params.events;
 		if (events == null)
-			throw "Required param: events (array of event/step objects)";
+			throw DevBridgeError.invalidParams("Required param: events (array of event/step objects)");
 		if (events.length == 0)
-			throw "events array must not be empty";
+			throw DevBridgeError.invalidParams("events array must not be empty");
 		if (events.length > 200)
-			throw "events array too large (max 200 entries)";
+			throw DevBridgeError.invalidParams("events array too large (max 200 entries)");
 
 		var autoPause:Bool = params.auto_pause != null ? params.auto_pause : false;
 		var wasAlreadyPaused = paused;
@@ -1412,9 +1419,9 @@ class DevBridge {
 					if (frames > 100) frames = 100;
 
 					if (!paused)
-						throw "Cannot step frames when not paused. Use auto_pause:true or pause first.";
+						throw DevBridgeError.invalidState("Cannot step frames when not paused. Use auto_pause:true or pause first.");
 					if (savedLoopFunc == null)
-						throw "No saved loop function — cannot step.";
+						throw DevBridgeError.invalidState("No saved loop function — cannot step.");
 
 					for (_ in 0...frames) {
 						savedLoopFunc();
@@ -1426,7 +1433,7 @@ class DevBridge {
 					var result = handleSendEvent(entry);
 					results.push(result);
 				} else {
-					throw "Each entry must have either 'type' (event) or 'step' (frame count)";
+					throw DevBridgeError.invalidParams("Each entry must have either 'type' (event) or 'step' (frame count)");
 				}
 			}
 		} catch (e:haxe.Exception) {
@@ -1785,6 +1792,31 @@ class DevBridge {
 			case PPTFlags(bits): {type: "flags", bits: bits};
 		};
 	}
+}
+
+// ---- Structured error for MCP error categorization ----
+
+private class DevBridgeError extends haxe.Exception {
+	public final code:String;
+	public final httpStatus:Int;
+
+	public function new(code:String, message:String, httpStatus:Int = 400) {
+		super(message);
+		this.code = code;
+		this.httpStatus = httpStatus;
+	}
+
+	public static inline function notFound(message:String):DevBridgeError
+		return new DevBridgeError("not_found", message, 404);
+
+	public static inline function invalidParams(message:String):DevBridgeError
+		return new DevBridgeError("invalid_params", message, 400);
+
+	public static inline function invalidState(message:String):DevBridgeError
+		return new DevBridgeError("invalid_state", message, 409);
+
+	public static inline function unknownMethod(message:String):DevBridgeError
+		return new DevBridgeError("unknown_method", message, 404);
 }
 
 // ---- HTTP connection state ----
