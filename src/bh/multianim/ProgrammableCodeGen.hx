@@ -6190,6 +6190,8 @@ class ProgrammableCodeGen {
 			case FilterColorListReplace(sourceColors, replacementColors):
 				for (c in sourceColors) collectParamRefsImpl(c, refs);
 				for (c in replacementColors) collectParamRefsImpl(c, refs);
+			case FilterCustom(_, args):
+				for (a in args) collectParamRefsImpl(a.value, refs);
 		}
 	}
 
@@ -6295,6 +6297,20 @@ class ProgrammableCodeGen {
 				final srcArr:Expr = {expr: EArrayDecl(srcExprs), pos: pos};
 				final dstArr:Expr = {expr: EArrayDecl(dstExprs), pos: pos};
 				macro bh.base.filters.ReplacePaletteShader.createAsColorsFilter($srcArr, $dstArr);
+			case FilterCustom(name, args):
+				// Generate runtime call to FilterManager — custom filters are resolved at runtime only
+				final argExprs:Array<Expr> = [];
+				for (a in args) {
+					final valExpr = rvToExpr(a.value);
+					final typeExpr = switch a.type {
+						case CFFloat: macro bh.multianim.MultiAnimParser.CustomFilterArgType.CFFloat;
+						case CFColor: macro bh.multianim.MultiAnimParser.CustomFilterArgType.CFColor;
+						case CFBool: macro bh.multianim.MultiAnimParser.CustomFilterArgType.CFBool;
+					};
+					argExprs.push(macro {value: $valExpr, type: $typeExpr});
+				}
+				final argsArr:Expr = {expr: EArrayDecl(argExprs), pos: pos};
+				macro bh.base.FilterManager.buildCustomFilter($v{name}, $argsArr);
 		};
 	}
 

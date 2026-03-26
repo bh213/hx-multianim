@@ -310,4 +310,7 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/97-flowConditional/flowConditional.manim", "flowConditional")
 	public var flowConditional;
+
+	@:manim("test/examples/98-customFilter/customFilter.manim", "customFilter")
+	public var customFilter;
 }

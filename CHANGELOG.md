@@ -3,6 +3,8 @@
 ## [Unreleased]
 
 ### Added
+- **Custom filters** — game code can register custom filters via `FilterManager.registerFilter(name, paramDefs, factory)`, following the same pattern as `FontManager`. Custom filter names are parsed as opaque in `.manim` and validated at build time against the registry. Supports typed parameters (`CFFloat`, `CFColor`, `CFBool`) with defaults, `$param` references in arguments, and composition via `group()`. Case-insensitive names; built-in filter names cannot be shadowed. Works in both builder and codegen paths.
+
 - **Extra point coordinate expressions** — query `.anim` extra points as positioning coordinates in `.manim`. Two modes: `$ref.extraPoint("pointName")` (from named stateanim element's current animation) and `extraPoint("file.anim", "animName", "pointName", selectors...)` (direct .anim file query). Optional `fallback: coords` for graceful handling when point not found. `.offset()` suffix supported. Works in both builder and codegen (runtime-resolved).
 - **Extra point `.x`/`.y` extraction** — use `$ref.extraPoint("name").x` and `.y` in expression context (e.g., text interpolation: `'${$ref.extraPoint("fire").x + $OFFSET}'`). Supports arithmetic, fallback args, and works in both builder and codegen.
 - **Named element reference validation** — parser tracks `#name element(...)` declarations within programmable scope. `$name.extraPoint()` references are validated at parse time (unknown/forward references rejected with clear errors).

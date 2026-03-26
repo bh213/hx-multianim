@@ -5,6 +5,8 @@ import h2d.Scene;
 import utest.Runner;
 import bh.test.VisualTestBase;
 import bh.base.FontManager;
+import bh.base.FilterManager;
+import bh.multianim.MultiAnimParser.CustomFilterArgType;
 
 class TestApp extends hxd.App {
 	// Force compilation of @:build macro generated class
@@ -42,6 +44,15 @@ class TestApp extends hxd.App {
 		FontManager.registerFont("peaberry-white", hxd.Res.fonts.WhitePeaberry.toFont(), -2, -9);
 		FontManager.registerFont("peaberry-white-outline", hxd.Res.fonts.WhitePeaberryOutline.toFont(), -2, -10);
 		FontManager.registerFont("m6x11", hxd.Res.fonts.m6x11.toFont());
+
+		// Register custom filters for testing
+		FilterManager.registerFilter("perlinNoise", [
+			{name: "seed", type: CFFloat, defaultValue: 0.0},
+			{name: "scale", type: CFFloat, defaultValue: 10.0},
+			{name: "intensity", type: CFFloat, defaultValue: 0.5},
+		], (params) -> {
+			return new bh.base.filters.PerlinNoiseFilter(params["seed"], params["scale"], params["intensity"]);
+		});
 
 		VisualTestBase.appInstance = this;
 		VisualTestBase.imagePool = new ImageProcessingPool();

@@ -2769,17 +2769,20 @@ class ParserErrorTest extends utest.Test {
 
 	@Test
 	public function testUnknownFilterType() {
+		// Unknown filter names are now parsed as custom filters (FilterCustom).
+		// They no longer cause parse errors — validation happens at build time.
+		// Verify that a non-identifier token (e.g. a number) still causes a parse error.
 		var error = parseExpectingError('
 			#test programmable() {
 				bitmap(generated(color(10, 10, #f00))) {
-					filter: notAFilter(1)
+					filter: 123
 					pos: 0, 0
 				}
 			}
 		');
-		Assert.notNull(error, "Should throw error for unknown filter type");
+		Assert.notNull(error, "Should throw error for non-identifier filter");
 		Assert.isTrue(error.indexOf("unknown filter type") >= 0,
-			'Error should mention unknown filter type, got: $error');
+			'Error should mention unknown filter type, got: $$error');
 	}
 
 	@Test

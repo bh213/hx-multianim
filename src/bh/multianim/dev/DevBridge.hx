@@ -556,6 +556,15 @@ class DevBridge {
 		var buildErrors:Array<Dynamic> = [];
 		var builder = new MultiAnimBuilder(parseResult, screenManager.loader, "<eval>");
 
+		// Validate custom filter references
+		if (parseResult.customFilterRefs.length > 0) {
+			try {
+				bh.base.FilterManager.validateCustomFilters(parseResult.customFilterRefs);
+			} catch (e:Dynamic) {
+				buildErrors.push({node: "<filters>", error: '$e'});
+			}
+		}
+
 		for (nodeName in nodeNames) {
 			try {
 				var result = builder.buildWithParameters(nodeName, new Map());

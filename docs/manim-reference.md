@@ -488,6 +488,32 @@ Applied to any element via long-form body or inline syntax.
 | `replaceColor(sourceColors[], replacementColors[])` | Replace specific colors |
 | `group(filter1, filter2, ...)` | Combine multiple filters |
 | `none` | No filter / remove inherited filter |
+| `customName(args...)` | Custom filter registered via `FilterManager` |
+
+### Custom Filters
+
+Game code can register custom filters via `FilterManager.registerFilter()`. Custom filters are parsed as opaque (unknown filter names are accepted) and validated at build time against registered filters.
+
+**Registration (Haxe):**
+```haxe
+FilterManager.registerFilter("perlinNoise", [
+    {name: "seed", type: CFFloat, defaultValue: 0.0},
+    {name: "scale", type: CFFloat, defaultValue: 10.0},
+    {name: "intensity", type: CFFloat, defaultValue: 0.5},
+], (params) -> {
+    return new PerlinNoiseFilter(params["seed"], params["scale"], params["intensity"]);
+});
+```
+
+**Usage in `.manim`:**
+```manim
+filter: perlinNoise(42.0, 8.0, 0.6)
+filter: group(perlinNoise(42.0, 12.0, 0.8), outline(1, #000000))
+```
+
+**Parameter types:** `CFFloat`, `CFColor` (hex colors), `CFBool` (true/false). Parameters support `$param` references. Extra args beyond the schema are ignored; missing args use defaults (or throw if no default). Filter names are case-insensitive and cannot shadow built-in filter names.
+
+**Validation:** `FilterManager.validateCustomFilters(parseResult.customFilterRefs)` checks all custom filter references against the registry. Called automatically by `MultiAnimBuilder` and `DevBridge.eval_manim`.
 
 ---
 

@@ -4543,6 +4543,11 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		simpleMacroTest(96, "autoFit", () -> createMp().autoFit.create(), async, null, null, null, 0.99);
 	}
 
+	@Test
+	public function test98_CustomFilter(async:utest.Async):Void {
+		simpleMacroTest(98, "customFilter", () -> createMp().customFilter.create(), async);
+	}
+
 	static function addTransLabel(parent:h2d.Object, font:Null<h2d.Font>, label:String, x:Float, y:Float):Void {
 		if (font == null) return;
 		var text = new h2d.Text(font, parent);

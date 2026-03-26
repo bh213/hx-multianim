@@ -1,6 +1,9 @@
 package bh.multianim;
 
 import bh.multianim.MultiAnimParser;
+import bh.multianim.MultiAnimParser.CustomFilterArg;
+import bh.multianim.MultiAnimParser.CustomFilterArgType;
+import bh.multianim.MultiAnimParser.CustomFilterRef;
 import bh.multianim.CoordinateSystems;
 import bh.multianim.MacroCompatTypes.MacroBlendMode;
 import bh.multianim.MacroCompatTypes.MacroFlowLayout;
@@ -447,6 +450,7 @@ class MacroManimParser {
 	var scopeVars:Null<Array<String>>; // loop vars, iterator output vars, @final vars (not in activeDefs)
 	var namedCoordSystems:Null<Array<String>>; // names registered via hex: #name or grid: #name
 	var namedElements:Null<Array<String>>; // names registered via #name element(...)
+	var customFilterRefs:Array<CustomFilterRef>; // accumulated custom filter references for post-parse validation
 
 	static final defaultLayoutNodeName = "#defaultLayout";
 	static final defaultPathNodeName = "#defaultPaths";
@@ -462,6 +466,7 @@ class MacroManimParser {
 		this.uniqueCounter = 654321;
 		this.activeDefs = null;
 		this.scopeVars = null;
+		this.customFilterRefs = [];
 	}
 
 	static final implicitRefs = ["ctx", "grid", "hex"];
@@ -2319,8 +2324,46 @@ class MacroManimParser {
 				final replacements = parseColorsList(TBracketClosed);
 				expect(TClosed);
 				return FilterColorListReplace(sources, replacements);
+			case TIdentifier(s):
+				// Unknown identifier — treat as custom filter
+				final filterName = s.toLowerCase();
+				final filterPos = posString();
+				advance();
+				expect(TOpen);
+				var args:Array<CustomFilterArg> = [];
+				while (!match(TClosed)) {
+					if (args.length > 0) eatComma();
+					args.push(parseCustomFilterArg());
+				}
+				customFilterRefs.push({
+					name: filterName,
+					argCount: args.length,
+					argTypes: [for (a in args) a.type],
+					pos: filterPos,
+				});
+				return FilterCustom(filterName, args);
 			default:
 				return error('unknown filter type: ${peek()}');
+		}
+	}
+
+	function parseCustomFilterArg():CustomFilterArg {
+		// Detect type from token: color (#hex), bool (true/false/yes/no), or float (everything else including $ref)
+		switch (peek()) {
+			case THexInteger(_) | TName(_):
+				// Try color first
+				final color = tryParseColor();
+				if (color != null) return {value: RVInteger(color), type: CFColor};
+				// Not a color — fall through to float
+				return {value: parseFloatOrReference(), type: CFFloat};
+			case TIdentifier(s) if (isKeyword(s, "true") || isKeyword(s, "yes")):
+				advance();
+				return {value: RVFloat(1.0), type: CFBool};
+			case TIdentifier(s) if (isKeyword(s, "false") || isKeyword(s, "no")):
+				advance();
+				return {value: RVFloat(0.0), type: CFBool};
+			default:
+				return {value: parseFloatOrReference(), type: CFFloat};
 		}
 	}
 
@@ -4941,7 +4984,7 @@ class MacroManimParser {
 				error('unexpected content after main body: ${peek()}');
 		}
 
-		return {nodes: nodes, imports: imports};
+		return {nodes: nodes, imports: imports, customFilterRefs: customFilterRefs};
 	}
 
 	// ===================== Graphics =====================

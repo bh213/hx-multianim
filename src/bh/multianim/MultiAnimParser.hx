@@ -1100,6 +1100,27 @@ enum NodeConditionalValues {
 }
 
 @:nullSafety
+enum CustomFilterArgType {
+	CFFloat;
+	CFColor;
+	CFBool;
+}
+
+@:nullSafety
+typedef CustomFilterArg = {
+	value:ReferenceableValue,
+	type:CustomFilterArgType,
+};
+
+@:nullSafety
+typedef CustomFilterRef = {
+	name:String,
+	argCount:Int,
+	argTypes:Array<CustomFilterArgType>,
+	pos:String,
+};
+
+@:nullSafety
 enum FilterType {
 	FilterNone;
 	FilterGroup(filters:Array<FilterType>);
@@ -1114,7 +1135,7 @@ enum FilterType {
 	FilterPixelOutline(mode:PixelOutlineModeDef, smoothColor:Bool);
 	FilterPaletteReplace(paletteName:String, sourceRow:ReferenceableValue, replacementRow:ReferenceableValue);
 	FilterColorListReplace(sourceColors:Array<ReferenceableValue>, replacementColors:Array<ReferenceableValue>);
-
+	FilterCustom(name:String, args:Array<CustomFilterArg>);
 }
 
 // Used to keep pixelOutline parameters referenceable until build time
@@ -1172,6 +1193,7 @@ typedef Node = {
 typedef MultiAnimResult = {
 	var nodes: Map<String, Node>;
 	var imports:Map<String, Dynamic>;
+	var customFilterRefs:Array<CustomFilterRef>;
 }
 
 #if !macro

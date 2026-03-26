@@ -10,6 +10,8 @@ import bh.test.BuilderTestBase.findVisibleBitmapDescendants;
 import bh.test.BuilderTestBase.findAllTextDescendants;
 import bh.test.BuilderTestBase.countVisibleChildren;
 import bh.multianim.MultiAnimParser.SettingValue;
+import bh.multianim.MultiAnimParser.CustomFilterArgType;
+import bh.base.FilterManager;
 import bh.ui.UIElement.TileHelper;
 
 /**
@@ -5052,5 +5054,196 @@ class BuilderUnitTest extends BuilderTestBase {
 		", "test"));
 		Assert.notNull(err, "Should throw for float modulo by zero");
 		Assert.stringContains("Modulo by zero", err);
+	}
+
+	// ==================== Custom filters ====================
+
+	@Test
+	public function testCustomFilterBasic():Void {
+		FilterManager.registerFilter("testfilter", [
+			{name: "intensity", type: CFFloat},
+		], (params) -> {
+			// Return a simple blur as the custom filter
+			return new h2d.filter.Blur(params["intensity"], 1.0, 1.0, 0.0);
+		});
+		final result = buildFromSource("
+			#test programmable() {
+				filter: testfilter(2.0)
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		", "test");
+		Assert.notNull(result, "Build should succeed");
+		Assert.notNull(result.object.filter, "Custom filter should be applied");
+		FilterManager.unregisterFilter("testfilter");
+	}
+
+	@Test
+	public function testCustomFilterWithColorParam():Void {
+		FilterManager.registerFilter("tintfilter", [
+			{name: "amount", type: CFFloat},
+			{name: "color", type: CFColor},
+		], (params) -> {
+			return new h2d.filter.Outline(params["amount"], params["color"]);
+		});
+		final result = buildFromSource("
+			#test programmable() {
+				filter: tintfilter(3.0, #FF0000)
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		", "test");
+		Assert.notNull(result, "Build should succeed");
+		Assert.notNull(result.object.filter, "Custom filter with color should be applied");
+		FilterManager.unregisterFilter("tintfilter");
+	}
+
+	@Test
+	public function testCustomFilterWithBoolParam():Void {
+		var capturedEnabled:Null<Bool> = null;
+		FilterManager.registerFilter("togglefilter", [
+			{name: "radius", type: CFFloat},
+			{name: "enabled", type: CFBool},
+		], (params) -> {
+			capturedEnabled = params["enabled"];
+			return new h2d.filter.Blur(params["radius"], 1.0, 1.0, 0.0);
+		});
+		final result = buildFromSource("
+			#test programmable() {
+				filter: togglefilter(1.0, true)
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		", "test");
+		Assert.notNull(result, "Build should succeed");
+		Assert.isTrue(capturedEnabled, "Bool param should be true");
+		FilterManager.unregisterFilter("togglefilter");
+	}
+
+	@Test
+	public function testCustomFilterWithDefaults():Void {
+		var capturedIntensity:Null<Float> = null;
+		FilterManager.registerFilter("defaultfilter", [
+			{name: "intensity", type: CFFloat, defaultValue: 5.0},
+		], (params) -> {
+			capturedIntensity = params["intensity"];
+			return new h2d.filter.Blur(params["intensity"], 1.0, 1.0, 0.0);
+		});
+		// Call with zero args — should use default
+		final result = buildFromSource("
+			#test programmable() {
+				filter: defaultfilter()
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		", "test");
+		Assert.notNull(result, "Build should succeed");
+		Assert.floatEquals(5.0, capturedIntensity, "Default value should be used");
+		FilterManager.unregisterFilter("defaultfilter");
+	}
+
+	@Test
+	public function testCustomFilterWithParamRef():Void {
+		var capturedIntensity:Null<Float> = null;
+		FilterManager.registerFilter("reffilter", [
+			{name: "intensity", type: CFFloat},
+		], (params) -> {
+			capturedIntensity = params["intensity"];
+			return new h2d.filter.Blur(params["intensity"], 1.0, 1.0, 0.0);
+		});
+		final params = new Map<String, Dynamic>();
+		params.set("val", 7);
+		final result = buildFromSource("
+			#test programmable(val:uint=3) {
+				filter: reffilter($val)
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		", "test", params);
+		Assert.notNull(result, "Build should succeed");
+		Assert.floatEquals(7.0, capturedIntensity, "Param ref should resolve to 7");
+		FilterManager.unregisterFilter("reffilter");
+	}
+
+	@Test
+	public function testCustomFilterInsideGroup():Void {
+		FilterManager.registerFilter("groupable", [
+			{name: "size", type: CFFloat},
+		], (params) -> {
+			return new h2d.filter.Blur(params["size"], 1.0, 1.0, 0.0);
+		});
+		final result = buildFromSource("
+			#test programmable() {
+				filter: group(outline(2, #FF0000), groupable(1.5))
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		", "test");
+		Assert.notNull(result, "Build should succeed");
+		Assert.notNull(result.object.filter, "Group filter with custom filter should be applied");
+		FilterManager.unregisterFilter("groupable");
+	}
+
+	@Test
+	public function testCustomFilterUnregisteredThrows():Void {
+		final err = expectError(() -> buildFromSource("
+			#test programmable() {
+				filter: unknownfilter(1.0)
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		", "test"));
+		Assert.notNull(err, "Should throw for unregistered custom filter");
+		Assert.stringContains("Unknown custom filter", err);
+	}
+
+	@Test
+	public function testCustomFilterValidation():Void {
+		FilterManager.registerFilter("valfilter", [
+			{name: "a", type: CFFloat},
+			{name: "b", type: CFFloat},
+		], (params) -> new h2d.filter.Blur(1.0, 1.0, 1.0, 0.0));
+
+		// Should pass validation
+		final builder = builderFromSource("
+			#test programmable() {
+				filter: valfilter(1.0, 2.0)
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		");
+		final valErr = expectError(() -> builder.validateCustomFilters());
+		Assert.isNull(valErr, "Validation should pass for registered filter with correct args");
+
+		// Wrong arg count
+		final builder2 = builderFromSource("
+			#test programmable() {
+				filter: valfilter(1.0)
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		");
+		final valErr2 = expectError(() -> builder2.validateCustomFilters());
+		Assert.notNull(valErr2, "Validation should fail for too few args");
+		Assert.stringContains("requires at least", valErr2);
+		FilterManager.unregisterFilter("valfilter");
+	}
+
+	@Test
+	public function testCustomFilterRegistrationBlocksBuiltins():Void {
+		final err = expectError(() -> {
+			FilterManager.registerFilter("outline", [], (params) -> new h2d.filter.Blur(1.0, 1.0, 1.0, 0.0));
+		});
+		Assert.notNull(err, "Should throw when registering built-in filter name");
+		Assert.stringContains("built-in", err);
+	}
+
+	@Test
+	public function testCustomFilterCaseInsensitive():Void {
+		FilterManager.registerFilter("MyFilter", [
+			{name: "v", type: CFFloat},
+		], (params) -> new h2d.filter.Blur(params["v"], 1.0, 1.0, 0.0));
+
+		// .manim uses lowercase — should still match
+		final result = buildFromSource("
+			#test programmable() {
+				filter: myfilter(2.0)
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		", "test");
+		Assert.notNull(result, "Build should succeed with case-insensitive match");
+		Assert.notNull(result.object.filter, "Custom filter should be applied");
+		FilterManager.unregisterFilter("MyFilter");
 	}
 }

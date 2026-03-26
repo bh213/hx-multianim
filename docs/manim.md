@@ -858,6 +858,7 @@ Filters can be applied to any visual element. Most parameters support expression
 * `dropShadow(distance, angle, color, alpha, radius, gain, quality)`
 * `glow(color, alpha, [radius], [gain], [quality], [smoothColor], [knockout])`
 * `group(filter1, filter2, ...)`
+* Custom filters registered via `FilterManager.registerFilter(name, paramDefs, factory)` — see below
 
 **Examples:**
 ```
@@ -865,6 +866,31 @@ filter: outline(2, red)
 filter: pixelOutline(knockout, ?($owner == "Player") #0f0 : #f00, 0.9)
 filter: group(outline(?($selected) 2 : 0, yellow), brightness(?($active) 1.2 : 0.8))
 ```
+
+### Custom Filters
+
+Register custom filters from game code via `FilterManager`, then use them by name in `.manim`:
+
+```haxe
+// Registration (game init)
+FilterManager.registerFilter("perlinNoise", [
+    {name: "seed", type: CFFloat, defaultValue: 0.0},
+    {name: "scale", type: CFFloat, defaultValue: 10.0},
+    {name: "intensity", type: CFFloat, defaultValue: 0.5},
+], (params) -> {
+    return new PerlinNoiseFilter(params["seed"], params["scale"], params["intensity"]);
+});
+```
+
+```manim
+// Usage in .manim
+filter: perlinNoise(42.0, 8.0, 0.6)
+filter: group(perlinNoise(42.0, 12.0, 0.8), outline(1, #000000))
+```
+
+Parameter types: `CFFloat`, `CFColor` (hex colors), `CFBool` (true/false). `$param` references work in arguments. Missing args use defaults; no default = required. Names are case-insensitive and cannot shadow built-in filters.
+
+Validation: `FilterManager.validateCustomFilters(parseResult.customFilterRefs)` or `builder.validateCustomFilters()`.
 
 ---
 

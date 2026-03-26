@@ -95,7 +95,25 @@
 
 ## Filters
 
-`outline`, `glow`, `blur`, `saturate`, `brightness`, `grayscale`, `hue`, `dropShadow`, `replacePalette`, `replaceColor`, `pixelOutline`, `group`
+`outline`, `glow`, `blur`, `saturate`, `brightness`, `grayscale`, `hue`, `dropShadow`, `replacePalette`, `replaceColor`, `pixelOutline`, `group`, custom filters via `FilterManager`
+
+### Custom Filters
+
+Register custom filters from game code, use them in `.manim` by name:
+
+```haxe
+FilterManager.registerFilter("perlinNoise", [
+    {name: "seed", type: CFFloat, defaultValue: 0.0},
+    {name: "scale", type: CFFloat, defaultValue: 10.0},
+], (params) -> new PerlinNoiseFilter(params["seed"], params["scale"]));
+```
+
+```manim
+filter: perlinNoise(42.0, 8.0)
+filter: group(perlinNoise(42.0, 12.0), outline(1, #000000))
+```
+
+Param types: `CFFloat`, `CFColor`, `CFBool`. `$param` refs supported. Parsed opaque, validated at build time.
 
 ## Curves Quick Reference
 

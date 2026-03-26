@@ -2664,6 +2664,8 @@ class MultiAnimBuilder {
 			case FilterColorListReplace(sourceColors, replacementColors):
 				for (c in sourceColors) collectParamRefs(c, result);
 				for (c in replacementColors) collectParamRefs(c, result);
+			case FilterCustom(_, args):
+				for (a in args) collectParamRefs(a.value, result);
 		}
 	}
 
@@ -4857,6 +4859,26 @@ class MultiAnimBuilder {
 					case POInlineColor(color, inlineColor): InlineColor(resolveAsColorInteger(color), resolveAsColorInteger(inlineColor));
 				};
 				new PixelOutline(resolvedMode, smoothColor);
+			case FilterCustom(name, args):
+				final reg = bh.base.FilterManager.getFilter(name);
+				if (reg == null)
+					throw 'Unknown custom filter "$name". Register it via FilterManager.registerFilter().' + currentNodePos();
+				final resolved = new Map<String, Dynamic>();
+				for (i in 0...reg.params.length) {
+					final paramDef = reg.params[i];
+					if (i < args.length) {
+						switch paramDef.type {
+							case CFFloat: resolved[paramDef.name] = resolveAsNumber(args[i].value);
+							case CFColor: resolved[paramDef.name] = resolveAsColorInteger(args[i].value);
+							case CFBool: resolved[paramDef.name] = resolveAsNumber(args[i].value) != 0;
+						}
+					} else if (paramDef.defaultValue != null) {
+						resolved[paramDef.name] = paramDef.defaultValue;
+					} else {
+						throw 'Custom filter "$name" missing required argument "${paramDef.name}"' + currentNodePos();
+					}
+				}
+				reg.factory(resolved);
 		}
 	}
 
@@ -6118,6 +6140,13 @@ class MultiAnimBuilder {
 
 	public function hasNode(name:String) {
 		return multiParserResult.nodes?.get(name) != null;
+	}
+
+	/** Validate all custom filter references against registered FilterManager filters. */
+	public function validateCustomFilters():Void {
+		if (multiParserResult.customFilterRefs.length > 0) {
+			bh.base.FilterManager.validateCustomFilters(multiParserResult.customFilterRefs);
+		}
 	}
 
 	public function getParameterDefinitions(programmableName:String):ParametersDefinitions {
