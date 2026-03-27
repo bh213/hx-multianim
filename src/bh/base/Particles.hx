@@ -292,6 +292,7 @@ class ParticleGroup {
 
 	var started = false;
 	var globalTime : Float = 0;
+	var _scratch : FPoint = new FPoint(0, 0);
 	/**
 		The group name.
 	**/
@@ -697,9 +698,9 @@ class ParticleGroup {
 
 			case ManimPath(path):
 				var rate = rand();
-				var pt = path.getPoint(rate);
-				p.x += pt.x;
-				p.y += pt.y;
+				path.getPointInto(rate, _scratch);
+				p.x += _scratch.x;
+				p.y += _scratch.y;
 				// Random velocity direction
 				p.vx = srand();
 				p.vy = srand();
@@ -708,9 +709,9 @@ class ParticleGroup {
 
 			case ManimPathTangent(path):
 				var rate = rand();
-				var pt = path.getPoint(rate);
-				p.x += pt.x;
-				p.y += pt.y;
+				path.getPointInto(rate, _scratch);
+				p.x += _scratch.x;
+				p.y += _scratch.y;
 				// Velocity follows path tangent
 				var tangent = path.getTangentAngle(rate);
 				p.vx = Math.cos(tangent);
@@ -883,10 +884,10 @@ class ParticleGroup {
 					p.vy += noiseY * strength * dt;
 
 				case PathGuide(path, attractStrength, flowStrength, radius):
-					var closestRate = path.getClosestRate(new bh.base.FPoint(p.x, p.y));
-					var closestPt = path.getPoint(closestRate);
-					var dx = closestPt.x - p.x;
-					var dy = closestPt.y - p.y;
+					var closestRate = path.getClosestRateXY(p.x, p.y);
+					path.getPointInto(closestRate, _scratch);
+					var dx = _scratch.x - p.x;
+					var dy = _scratch.y - p.y;
 					var dist = Math.sqrt(dx * dx + dy * dy);
 					if (dist < radius) {
 						var falloff = (1.0 - dist / radius);

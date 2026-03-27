@@ -70,7 +70,7 @@ The MCP server adds `connection_failed` when the game is not running (fetch to D
 
 **Endpoint:** `GET /sse`
 
-Real-time Server-Sent Events stream for trace messages and runtime errors. Connect with any SSE client (e.g., `EventSource` in browsers, `curl`).
+Real-time Server-Sent Events stream for game lifecycle events. Connect with any SSE client (e.g., `EventSource` in browsers, `curl`).
 
 **Event types:**
 
@@ -78,12 +78,28 @@ Real-time Server-Sent Events stream for trace messages and runtime errors. Conne
 |-------|-------------|-------------|
 | `trace` | `message`, `timestamp` | Trace output (same as captured by `get_traces`) |
 | `error` | `message`, `stack`, `timestamp` | Runtime errors reported via `reportError()` |
+| `screen_change` | `action`, `mode`, `previousMode`, `entering[]`, `leaving[]`, `dialogName`, `timestamp` | Screen switch, dialog open/close |
+| `reload` | `status`, `file`, `fileType`, `programmablesRebuilt[]`, `rebuiltCount`, `elapsedMs`, `errors[]`, `timestamp` | Hot reload lifecycle (`started`, `succeeded`, `failed`, `needs_restart`) |
+| `parameter_change` | `programmable`, `param`, `value`, `timestamp` | Parameter changed via DevBridge `set_parameter` tool |
+| `custom` | `name`, `data`, `timestamp` | Custom game event via `broadcastCustomEvent()` |
+
+**MCP logging levels:** `trace`→info, `error`→error, `screen_change`→info, `reload`→info/error/warning, `parameter_change`→debug, `custom`→info.
 
 **Usage:**
 ```javascript
 const es = new EventSource("http://localhost:9001/sse");
 es.addEventListener("trace", (e) => console.log(JSON.parse(e.data).message));
 es.addEventListener("error", (e) => console.error(JSON.parse(e.data).message));
+es.addEventListener("screen_change", (e) => console.log("Screen:", JSON.parse(e.data)));
+es.addEventListener("reload", (e) => console.log("Reload:", JSON.parse(e.data)));
+es.addEventListener("custom", (e) => console.log("Custom:", JSON.parse(e.data)));
+```
+
+**Custom events from game code:**
+```haxe
+#if MULTIANIM_DEV
+screenManager.devBridge.broadcastCustomEvent("playerDied", {reason: "lava", hp: 0});
+#end
 ```
 
 Multiple concurrent clients supported. Dead clients are automatically cleaned up on write failure. All SSE clients are closed when DevBridge stops.

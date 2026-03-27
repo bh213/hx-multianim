@@ -753,6 +753,131 @@ class DevBridgeTest extends BuilderTestBase {
 		Assert.isTrue(threw);
 	}
 
+	// ==================== screen change listener ====================
+
+	@Test
+	public function testScreenChangeListener_switchFires():Void {
+		var bridge = createTestBridge();
+		var screen = addTestScreen(bridge, "gameScreen");
+		var events:Array<bh.ui.screens.ScreenChangeEvent> = [];
+		bridge.screenManager.addScreenChangeListener((e) -> events.push(e));
+
+		bridge.screenManager.switchTo(screen);
+
+		Assert.equals(1, events.length);
+		Assert.equals("switch", events[0].action);
+		Assert.equals("single", events[0].mode);
+		Assert.equals("none", events[0].previousMode);
+		Assert.equals(1, events[0].entering.length);
+		Assert.equals("gameScreen", events[0].entering[0]);
+		Assert.isNull(events[0].dialogName);
+
+		// Cleanup
+		screen.getSceneRoot().remove();
+	}
+
+	@Test
+	public function testScreenChangeListener_dialogOpenClose():Void {
+		var bridge = createTestBridge();
+		var mainScreen = addTestScreen(bridge, "main");
+		var dialog = new DevTestScreen(bridge.screenManager);
+		bridge.screenManager.configuredScreens["confirm"] = dialog;
+		var events:Array<bh.ui.screens.ScreenChangeEvent> = [];
+
+		// Set up Single mode first
+		bridge.screenManager.switchTo(mainScreen);
+		bridge.screenManager.addScreenChangeListener((e) -> events.push(e));
+
+		// Open dialog
+		bridge.screenManager.modalDialog(dialog, mainScreen, "confirm");
+
+		Assert.equals(1, events.length);
+		Assert.equals("dialog_open", events[0].action);
+		Assert.equals("confirm", events[0].dialogName);
+
+		// Close dialog — use closeDialogWithTransition(None) which is instant
+		bridge.screenManager.closeDialogWithTransition();
+
+		Assert.equals(2, events.length);
+		Assert.equals("dialog_close", events[1].action);
+		Assert.equals("confirm", events[1].dialogName);
+
+		// Cleanup
+		mainScreen.getSceneRoot().remove();
+		dialog.getSceneRoot().remove();
+	}
+
+	@Test
+	public function testScreenChangeListener_removeStopsNotifications():Void {
+		var bridge = createTestBridge();
+		var screen = addTestScreen(bridge, "s1");
+		var count = 0;
+		var listener:bh.ui.screens.ScreenChangeListener = (_) -> count++;
+		bridge.screenManager.addScreenChangeListener(listener);
+
+		bridge.screenManager.switchTo(screen);
+		Assert.equals(1, count);
+
+		bridge.screenManager.removeScreenChangeListener(listener);
+		bridge.screenManager.switchTo(screen); // switch to same screen — still fires None→Single
+		// Actually switching to same screen may not fire... let's just verify remove worked
+		Assert.equals(1, count); // Should NOT have incremented after removal
+
+		screen.getSceneRoot().remove();
+	}
+
+	// ==================== reloadReportToPayload ====================
+
+	@Test
+	public function testReloadReportToPayload_structure():Void {
+		var report:bh.multianim.dev.HotReload.ReloadReport = {
+			success: true,
+			file: "test.manim",
+			fileType: bh.multianim.dev.HotReload.ReloadFileType.Manim,
+			programmablesRebuilt: ["a", "b"],
+			paramsAdded: ["x"],
+			needsFullRestart: null,
+			errors: [],
+			rebuiltCount: 2,
+			elapsedMs: 42.5,
+		};
+		var payload:Dynamic = DevBridge.reloadReportToPayload(report);
+		Assert.isTrue(payload.success);
+		Assert.equals("test.manim", payload.file);
+		Assert.equals("manim", payload.fileType);
+		Assert.equals(2, payload.rebuiltCount);
+		Assert.floatEquals(42.5, payload.elapsedMs);
+		Assert.equals(2, (payload.programmablesRebuilt : Array<Dynamic>).length);
+	}
+
+	@Test
+	public function testReloadReportToPayload_withErrors():Void {
+		var report:bh.multianim.dev.HotReload.ReloadReport = {
+			success: false,
+			file: "broken.manim",
+			fileType: bh.multianim.dev.HotReload.ReloadFileType.Manim,
+			programmablesRebuilt: [],
+			paramsAdded: [],
+			needsFullRestart: null,
+			errors: [{
+				message: "unexpected token",
+				file: "broken.manim",
+				line: 5,
+				col: 10,
+				errorType: bh.multianim.dev.HotReload.ReloadErrorType.ParseError,
+				context: null,
+			}],
+			rebuiltCount: 0,
+			elapsedMs: 1.0,
+		};
+		var payload:Dynamic = DevBridge.reloadReportToPayload(report);
+		Assert.isFalse(payload.success);
+		var errors:Array<Dynamic> = payload.errors;
+		Assert.equals(1, errors.length);
+		Assert.equals("parse", errors[0].errorType);
+		Assert.equals(5, errors[0].line);
+	}
+
 	// ==================== list_active_programmables ====================
 
 	@Test

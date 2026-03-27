@@ -1911,7 +1911,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		while (totalTime < 5.0) {
 			var state = ap.update(dt);
 			states.push({
-				position: state.position,
+				position: state.position.clone(),
 				angle: state.angle,
 				rate: state.rate,
 				speed: state.speed,

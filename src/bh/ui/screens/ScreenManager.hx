@@ -52,6 +52,24 @@ private enum ScreenManagerMode {
 	Dialog(dialog:UIScreen, caller:UIScreen, previousMode:ScreenManagerMode, dialogName:String);
 }
 
+/** Event payload for screen mode changes. */
+typedef ScreenChangeEvent = {
+	/** "switch", "dialog_open", or "dialog_close" */
+	action:String,
+	/** New mode string ("none", "single", "masterAndSingle", "dialog:<name>") */
+	mode:String,
+	/** Previous mode string */
+	previousMode:String,
+	/** Screen names entering the scene */
+	entering:Array<String>,
+	/** Screen names leaving the scene */
+	leaving:Array<String>,
+	/** Dialog name (for dialog_open/dialog_close), null otherwise */
+	dialogName:Null<String>,
+}
+
+typedef ScreenChangeListener = (event:ScreenChangeEvent) -> Void;
+
 @:nullSafety
 @:allow(bh.ui.screens.UIScreen)
 @:allow(bh.ui.ControllerEventHandler)
@@ -68,6 +86,7 @@ class ScreenManager {
 	final failedScreens:Map<String, String> = [];
 	var builders:Map<hxd.res.Resource, MultiAnimBuilder> = [];
 	public var tweens(default, null):TweenManager = new TweenManager();
+	var screenChangeListeners:Array<ScreenChangeListener> = [];
 	public var isTransitioning(default, null):Bool = false;
 	var transitionCleanup:Null<Void -> Void> = null;
 	var modalOverlay:Null<h2d.Bitmap> = null;
@@ -117,6 +136,55 @@ class ScreenManager {
 
 	function get_sceneHeight():Float {
 		return app.s2d.height;
+	}
+
+	function modeToString(m:ScreenManagerMode):String {
+		return switch m {
+			case None: "none";
+			case Single(_): "single";
+			case MasterAndSingle(_, _): "masterAndSingle";
+			case Dialog(_, _, _, dialogName): 'dialog:$dialogName';
+		};
+	}
+
+	function resolveScreenName(s:UIScreen):String {
+		for (name => screen in configuredScreens) {
+			if (screen == s) return name;
+		}
+		return "unknown";
+	}
+
+	public function addScreenChangeListener(listener:ScreenChangeListener):Void {
+		screenChangeListeners.push(listener);
+	}
+
+	public function removeScreenChangeListener(listener:ScreenChangeListener):Void {
+		screenChangeListeners.remove(listener);
+	}
+
+	function notifyScreenChange(previousMode:ScreenManagerMode, newMode:ScreenManagerMode,
+			entering:Null<Array<UIScreen>>, leaving:Null<Array<UIScreen>>):Void {
+		if (screenChangeListeners.length == 0) return;
+		var action = switch newMode {
+			case Dialog(_, _, _, _): "dialog_open";
+			case _ if (previousMode.match(Dialog(_, _, _, _))): "dialog_close";
+			default: "switch";
+		};
+		var event:ScreenChangeEvent = {
+			action: action,
+			mode: modeToString(newMode),
+			previousMode: modeToString(previousMode),
+			entering: entering != null ? [for (s in entering) resolveScreenName(s)] : [],
+			leaving: leaving != null ? [for (s in leaving) resolveScreenName(s)] : [],
+			dialogName: switch newMode {
+				case Dialog(_, _, _, name): name;
+				default: switch previousMode {
+					case Dialog(_, _, _, name): name;
+					default: null;
+				};
+			},
+		};
+		for (listener in screenChangeListeners) listener(event);
 	}
 
 	static function createLoader() {
@@ -458,6 +526,8 @@ class ScreenManager {
 	}
 
 	public function updateScreenMode(newScreenMode:ScreenManagerMode, ?data:Dynamic) {
+		final previousMode = mode;
+
 		// Validate that no failed screens are being activated
 		switch newScreenMode {
 			case None:
@@ -631,6 +701,8 @@ class ScreenManager {
 			activeScreenControllers = overrideActiveScreenControllers;
 
 		mode = newScreenMode;
+		notifyScreenChange(previousMode, newScreenMode,
+			addedScreens != null ? [for (s in addedScreens.keys()) s] : null, removedScreens);
 	}
 
 	/** Finalize any in-progress transition immediately (jump to end state). */
@@ -739,6 +811,7 @@ class ScreenManager {
 		};
 
 		mode = newScreenMode;
+		notifyScreenChange(oldMode, newScreenMode, [for (s in screensToAdd.keys()) s], screensToRemove);
 
 		// Execute the visual transition
 		executeTransition(transition, screensToRemove, screensToAdd);
@@ -817,6 +890,7 @@ class ScreenManager {
 				};
 
 				mode = previousMode;
+				notifyScreenChange(Dialog(dialog, caller, previousMode, dialogName), previousMode, null, [dialog]);
 
 				// Animate only the dialog root out
 				executeExitTransition(transition, dialogRoot);

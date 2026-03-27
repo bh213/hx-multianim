@@ -271,6 +271,7 @@ class MultiAnimPaths {
 class Path {
 	var singlePaths:Array<SinglePath>;
 	var checkpoints:Map<String, Float> = [];
+	var _scratch:FPoint = new FPoint(0, 0);
 	public var totalLength:Float;
 	public var endpoint:FPoint;
 
@@ -391,10 +392,39 @@ class Path {
 		return endpoint;
 	}
 
+	/** Write point at rate into the given FPoint (no allocation). */
+	public function getPointInto(rate:Float, out:FPoint):Void {
+		for (singlePath in singlePaths) {
+			if (rate >= singlePath.startRange && rate <= singlePath.endRange) {
+				singlePath.getPointInto((rate - singlePath.startRange) / (singlePath.endRange - singlePath.startRange), out);
+				return;
+			}
+		}
+		if (rate > 1.0 && singlePaths.length > 0) {
+			var last = singlePaths[singlePaths.length - 1];
+			last.getPointInto((rate - last.startRange) / (last.endRange - last.startRange), out);
+			return;
+		}
+		if (rate < 0.0 && singlePaths.length > 0) {
+			var first = singlePaths[0];
+			first.getPointInto((rate - first.startRange) / (first.endRange - first.startRange), out);
+			return;
+		}
+		throw 'rate out of range: $rate';
+	}
+
 	/** Find the rate (0..1) on this path closest to the given world point.
 	 *  Uses coarse sampling followed by golden-section refinement. */
 	public function getClosestRate(point:FPoint):Float {
+		return getClosestRateXY(point.x, point.y);
+	}
+
+	/** Find the rate (0..1) on this path closest to the given world coordinates.
+	 *  Allocation-free variant of getClosestRate — reuses internal scratch FPoint. */
+	public function getClosestRateXY(px:Float, py:Float):Float {
 		if (singlePaths.length == 0) return 0.0;
+
+		final scratch = _scratch;
 
 		// Phase 1: Coarse sampling
 		final samples = 50;
@@ -403,9 +433,9 @@ class Path {
 
 		for (i in 0...samples + 1) {
 			final rate = i / samples;
-			final pt = getPoint(rate);
-			final dx = pt.x - point.x;
-			final dy = pt.y - point.y;
+			getPointInto(rate, scratch);
+			final dx = scratch.x - px;
+			final dy = scratch.y - py;
 			final distSq = dx * dx + dy * dy;
 			if (distSq < closestDistSq) {
 				closestDistSq = distSq;
@@ -424,14 +454,16 @@ class Path {
 			final mid1 = right - (right - left) * phi;
 			final mid2 = left + (right - left) * phi;
 
-			final pt1 = getPoint(mid1);
-			final pt2 = getPoint(mid2);
-			final dx1 = pt1.x - point.x;
-			final dy1 = pt1.y - point.y;
-			final dx2 = pt2.x - point.x;
-			final dy2 = pt2.y - point.y;
+			getPointInto(mid1, scratch);
+			final dx1 = scratch.x - px;
+			final dy1 = scratch.y - py;
+			final distSq1 = dx1 * dx1 + dy1 * dy1;
 
-			if (dx1 * dx1 + dy1 * dy1 < dx2 * dx2 + dy2 * dy2) {
+			getPointInto(mid2, scratch);
+			final dx2 = scratch.x - px;
+			final dy2 = scratch.y - py;
+
+			if (distSq1 < dx2 * dx2 + dy2 * dy2) {
 				right = mid2;
 			} else {
 				left = mid1;
@@ -552,8 +584,8 @@ class Path {
 		var maxDist:Float = 0;
 		final steps = 50;
 		for (i in 0...steps + 1) {
-			var pt = getPoint(i / steps);
-			var d = hxd.Math.distance(pt.x, pt.y);
+			getPointInto(i / steps, _scratch);
+			var d = hxd.Math.distance(_scratch.x, _scratch.y);
 			if (d > maxDist) maxDist = d;
 		}
 		return maxDist;
@@ -565,9 +597,9 @@ class Path {
 		var sumY:Float = 0;
 		final steps = 50;
 		for (i in 0...steps + 1) {
-			var pt = getPoint(i / steps);
-			sumX += pt.x;
-			sumY += pt.y;
+			getPointInto(i / steps, _scratch);
+			sumX += _scratch.x;
+			sumY += _scratch.y;
 		}
 		final n = steps + 1;
 		return new FPoint(sumX / n, sumY / n);
@@ -581,11 +613,11 @@ class Path {
 		var maxY = Math.NEGATIVE_INFINITY;
 		final steps = 50;
 		for (i in 0...steps + 1) {
-			var pt = getPoint(i / steps);
-			if (pt.x < minX) minX = pt.x;
-			if (pt.y < minY) minY = pt.y;
-			if (pt.x > maxX) maxX = pt.x;
-			if (pt.y > maxY) maxY = pt.y;
+			getPointInto(i / steps, _scratch);
+			if (_scratch.x < minX) minX = _scratch.x;
+			if (_scratch.y < minY) minY = _scratch.y;
+			if (_scratch.x > maxX) maxX = _scratch.x;
+			if (_scratch.y > maxY) maxY = _scratch.y;
 		}
 		return {minX: minX, minY: minY, maxX: maxX, maxY: maxY};
 	}
@@ -628,13 +660,16 @@ class SinglePath {
 					center.y + radius * Math.sin(currentAngle)
 				);
 			case Bezier3(control1, control2, control3):
-				var xValues = [start.x, control1.x, control2.x, end.x];
-				var yValues = [start.y, control1.y, control2.y, end.y];
-				return new FPoint(rate.bezier(xValues), rate.bezier(yValues));
+				return new FPoint(rate.bezier3(start.x, control1.x, control2.x, end.x),
+					rate.bezier3(start.y, control1.y, control2.y, end.y));
 			case Bezier4(control1, control2, control3, control4):
-				var xValues = [start.x, control1.x, control2.x, control3.x, end.x];
-				var yValues = [start.y, control1.y, control2.y, control3.y, end.y];
-				return new FPoint(rate.bezier(xValues), rate.bezier(yValues));
+				// Quartic Bernstein: (1-t)^4*P0 + 4*(1-t)^3*t*P1 + 6*(1-t)^2*t^2*P2 + 4*(1-t)*t^3*P3 + t^4*P4
+				var mt = 1.0 - rate;
+				var mt2 = mt * mt;
+				var t2 = rate * rate;
+				return new FPoint(
+					mt2 * mt2 * start.x + 4 * mt2 * mt * rate * control1.x + 6 * mt2 * t2 * control2.x + 4 * mt * t2 * rate * control3.x + t2 * t2 * end.x,
+					mt2 * mt2 * start.y + 4 * mt2 * mt * rate * control1.y + 6 * mt2 * t2 * control2.y + 4 * mt * t2 * rate * control3.y + t2 * t2 * end.y);
 			case Spiral(center, startAngle, radiusStart, radiusEnd, angleDelta):
 				var angleDeltaRad = hxd.Math.degToRad(angleDelta);
 				var currentAngle = startAngle + angleDeltaRad * rate;
@@ -656,6 +691,47 @@ class SinglePath {
 				);
 		}
 	}
+	/** Write point at rate into the given FPoint (no allocation). */
+	public function getPointInto(rate:Float, out:FPoint):Void {
+		switch (path) {
+			case Checkpoint(name):
+				out.x = start.x;
+				out.y = start.y;
+			case Line:
+				out.x = rate.lerp(start.x, end.x);
+				out.y = rate.lerp(start.y, end.y);
+			case Arc(center, startAngle, radius, angleDelta):
+				var angleDeltaRad = hxd.Math.degToRad(angleDelta);
+				var currentAngle = startAngle + angleDeltaRad * rate;
+				out.x = center.x + radius * Math.cos(currentAngle);
+				out.y = center.y + radius * Math.sin(currentAngle);
+			case Bezier3(control1, control2, control3):
+				out.x = rate.bezier3(start.x, control1.x, control2.x, end.x);
+				out.y = rate.bezier3(start.y, control1.y, control2.y, end.y);
+			case Bezier4(control1, control2, control3, control4):
+				var mt = 1.0 - rate;
+				var mt2 = mt * mt;
+				var t2 = rate * rate;
+				out.x = mt2 * mt2 * start.x + 4 * mt2 * mt * rate * control1.x + 6 * mt2 * t2 * control2.x + 4 * mt * t2 * rate * control3.x + t2 * t2 * end.x;
+				out.y = mt2 * mt2 * start.y + 4 * mt2 * mt * rate * control1.y + 6 * mt2 * t2 * control2.y + 4 * mt * t2 * rate * control3.y + t2 * t2 * end.y;
+			case Spiral(center, startAngle, radiusStart, radiusEnd, angleDelta):
+				var angleDeltaRad = hxd.Math.degToRad(angleDelta);
+				var currentAngle = startAngle + angleDeltaRad * rate;
+				var r = rate.lerp(radiusStart, radiusEnd);
+				out.x = center.x + r * Math.cos(currentAngle);
+				out.y = center.y + r * Math.sin(currentAngle);
+			case Wave(amplitude, wavelength, count, dirAngle):
+				var totalLength = wavelength * count;
+				var forward = rate * totalLength;
+				var phase = rate * count * 2 * Math.PI;
+				var lateral = amplitude * Math.sin(phase);
+				var cosD = Math.cos(dirAngle);
+				var sinD = Math.sin(dirAngle);
+				out.x = start.x + forward * cosD - lateral * sinD;
+				out.y = start.y + forward * sinD + lateral * cosD;
+		}
+	}
+
 	/** Analytical tangent angle (radians) at the given local rate (0..1). */
 	public function getTangentAngle(rate:Float):Float {
 		switch (path) {
@@ -750,11 +826,14 @@ class SinglePath {
 	public function length():Float {
 		function estimate(steps:Int) {
 			var length = 0.;
-			var lastPoint = start;
+			var lastX = start.x;
+			var lastY = start.y;
+			var scratch = new FPoint(0, 0);
 			for (i in 1...steps + 1) {
-				var point = getPoint(i / steps);
-				length += hxd.Math.distance(lastPoint.x - point.x, lastPoint.y - point.y);
-				lastPoint = point;
+				getPointInto(i / steps, scratch);
+				length += hxd.Math.distance(lastX - scratch.x, lastY - scratch.y);
+				lastX = scratch.x;
+				lastY = scratch.y;
 			}
 			return length;
 		}

@@ -112,9 +112,11 @@ class DevBridge {
 				trace('[DevBridge] Failed to write ready file: $e');
 			}
 		}
+		registerListeners();
 	}
 
 	public function stop():Void {
+		unregisterListeners();
 		closeSseClients();
 		if (serverSocket != null) {
 			serverSocket.close();
@@ -204,6 +206,77 @@ class DevBridge {
 			try client.close() catch (_:Dynamic) {};
 		}
 		sseClients = [];
+	}
+
+	// ---- SSE event sources ----
+
+	var screenChangeListener:Null<bh.ui.screens.ScreenChangeListener> = null;
+	var reloadListener:Null<HotReload.ReloadListener> = null;
+
+	function registerListeners():Void {
+		screenChangeListener = onScreenChange;
+		screenManager.addScreenChangeListener(screenChangeListener);
+		reloadListener = onReloadEvent;
+		screenManager.addReloadListener(reloadListener);
+	}
+
+	function unregisterListeners():Void {
+		if (screenChangeListener != null) {
+			screenManager.removeScreenChangeListener(screenChangeListener);
+			screenChangeListener = null;
+		}
+		if (reloadListener != null) {
+			screenManager.removeReloadListener(reloadListener);
+			reloadListener = null;
+		}
+	}
+
+	function onScreenChange(event:bh.ui.screens.ScreenChangeEvent):Void {
+		broadcastSseEvent("screen_change", {
+			action: event.action,
+			mode: event.mode,
+			previousMode: event.previousMode,
+			entering: event.entering,
+			leaving: event.leaving,
+			dialogName: event.dialogName,
+			timestamp: haxe.Timer.stamp(),
+		});
+	}
+
+	function onReloadEvent(event:HotReload.ReloadEvent):Void {
+		switch event {
+			case ReloadStarted(file, fileType):
+				broadcastSseEvent("reload", {
+					status: "started",
+					file: file,
+					fileType: switch fileType {
+						case Manim: "manim";
+						case Anim: "anim";
+					},
+					timestamp: haxe.Timer.stamp(),
+				});
+			case ReloadSucceeded(report):
+				var payload = reloadReportToPayload(report);
+				payload.status = "succeeded";
+				payload.timestamp = haxe.Timer.stamp();
+				broadcastSseEvent("reload", payload);
+			case ReloadFailed(report):
+				var payload = reloadReportToPayload(report);
+				payload.status = "failed";
+				payload.timestamp = haxe.Timer.stamp();
+				broadcastSseEvent("reload", payload);
+			case ReloadNeedsRestart(report):
+				var payload = reloadReportToPayload(report);
+				payload.status = "needs_restart";
+				payload.timestamp = haxe.Timer.stamp();
+				broadcastSseEvent("reload", payload);
+		}
+	}
+
+	/** Broadcast a custom debug event to all connected MCP clients.
+	 *  Use from game code for debugging: `screenManager.devBridge.broadcastCustomEvent("myEvent", {key: "value"})` */
+	public function broadcastCustomEvent(name:String, data:Dynamic):Void {
+		broadcastSseEvent("custom", {name: name, data: data, timestamp: haxe.Timer.stamp()});
 	}
 
 	// ---- HTTP handling ----
@@ -368,18 +441,10 @@ class DevBridge {
 
 	function handleListScreens(params:Dynamic):Dynamic {
 		var screens:Array<Dynamic> = [];
-		var activeSet = new Map<String, Bool>();
-		for (s in screenManager.activeScreens) {
-			for (name => screen in screenManager.configuredScreens) {
-				if (screen == s) {
-					activeSet[name] = true;
-					break;
-				}
-			}
-		}
+		var activeNames = resolveScreenNames(screenManager.activeScreens);
 
 		for (name => screen in screenManager.configuredScreens) {
-			var entry:Dynamic = {name: name, active: activeSet.exists(name)};
+			var entry:Dynamic = {name: name, active: activeNames.contains(name)};
 			var failMsg = screenManager.failedScreens.get(name);
 			if (failMsg != null) {
 				entry.failed = true;
@@ -522,6 +587,12 @@ class DevBridge {
 			throw DevBridgeError.notFound('No live BuilderResult found for programmable: $programmable');
 
 		found.setParameter(paramName, paramValue);
+		broadcastSseEvent("parameter_change", {
+			programmable: programmable,
+			param: paramName,
+			value: paramValue,
+			timestamp: haxe.Timer.stamp(),
+		});
 		return {success: true};
 	}
 
@@ -569,9 +640,17 @@ class DevBridge {
 				errors: ([]:Array<Dynamic>),
 			};
 		}
+		return reloadReportToPayload(report);
+	}
+
+	static function reloadReportToPayload(report:HotReload.ReloadReport):Dynamic {
 		return {
 			success: report.success,
 			file: report.file,
+			fileType: switch report.fileType {
+				case Manim: "manim";
+				case Anim: "anim";
+			},
 			programmablesRebuilt: report.programmablesRebuilt,
 			rebuiltCount: report.rebuiltCount,
 			elapsedMs: report.elapsedMs,
@@ -1040,43 +1119,32 @@ class DevBridge {
 		return {activeTweens: tweenInfos.length, tweens: tweenInfos};
 	}
 
-	function handleGetScreenState(params:Dynamic):Dynamic {
-		var modeStr = switch screenManager.mode {
-			case None: "none";
-			case Single(_): "single";
-			case MasterAndSingle(_, _): "masterAndSingle";
-			case Dialog(_, _, _, dialogName): 'dialog:$dialogName';
-		};
+	// ---- Shared helpers ----
 
-		var activeNames:Array<String> = [];
-		for (s in screenManager.activeScreens) {
-			for (name => screen in screenManager.configuredScreens) {
-				if (screen == s) {
-					activeNames.push(name);
-					break;
-				}
-			}
+	function resolveScreenName(s:bh.ui.screens.UIScreen):String {
+		for (name => screen in screenManager.configuredScreens) {
+			if (screen == s) return name;
 		}
+		return "unknown";
+	}
 
+	function resolveScreenNames(screens:Iterable<bh.ui.screens.UIScreen>):Array<String> {
+		return [for (s in screens) resolveScreenName(s)];
+	}
+
+	function handleGetScreenState(params:Dynamic):Dynamic {
 		var screenDetails:Array<Dynamic> = [];
 		for (s in screenManager.activeScreens) {
-			var name = "unknown";
-			for (n => screen in screenManager.configuredScreens) {
-				if (screen == s) {
-					name = n;
-					break;
-				}
-			}
 			var sb = (cast s : bh.ui.screens.UIScreen.UIScreenBase);
 			screenDetails.push({
-				name: name,
+				name: resolveScreenName(s),
 				elementCount: @:privateAccess sb.elements.length,
 				interactiveCount: @:privateAccess sb.interactiveWrappers.length,
 			});
 		}
 
 		return {
-			mode: modeStr,
+			mode: screenManager.modeToString(screenManager.mode),
 			isTransitioning: screenManager.isTransitioning,
 			paused: paused,
 			activeTweens: screenManager.tweens.handles.length,

@@ -295,6 +295,7 @@ class IncrementalUpdateContext {
 	var rootNode:Node;
 	var batchMode:Bool = false;
 	var changedParams:Map<String, Bool> = new Map();
+	var hasChanges:Bool = false;
 	var transitionsDef:Null<Map<String, TransitionType>>;
 	public var tweenManager:Null<TweenManager> = null;
 	var activeTransitionTweens:Array<{obj:h2d.Object, tween:Tween, savedAlpha:Float, savedScaleX:Float, savedScaleY:Float, savedX:Float, savedY:Float}> = [];
@@ -523,20 +524,23 @@ class IncrementalUpdateContext {
 		}
 		#end
 		changedParams.set(name, true);
+		hasChanges = true;
 		if (!batchMode)
 			applyUpdates();
 	}
 
 	public function beginUpdate():Void {
 		batchMode = true;
-		changedParams = new Map();
+		changedParams.clear();
+		hasChanges = false;
 	}
 
 	public function endUpdate():Void {
 		batchMode = false;
-		if (Lambda.count(changedParams) > 0)
+		if (hasChanges)
 			applyUpdates();
-		changedParams = new Map();
+		changedParams.clear();
+		hasChanges = false;
 	}
 
 	function getParamDefinition(name:String):Null<{type:MultiAnimParser.DefinitionType, defaultValue:Null<ResolvedIndexParameters>}> {
@@ -867,7 +871,7 @@ class IncrementalUpdateContext {
 					break;
 				}
 			}
-			if (relevant || Lambda.count(changedParams) == 0) {
+			if (relevant || !hasChanges) {
 				tracked.updateFn();
 			}
 		}
@@ -887,7 +891,8 @@ class IncrementalUpdateContext {
 		}
 
 		builder.popBuilderState();
-		changedParams = new Map();
+		changedParams.clear();
+		hasChanges = false;
 	}
 
 	public function applyConditionalChains():Void {

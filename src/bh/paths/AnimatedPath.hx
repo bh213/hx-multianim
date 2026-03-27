@@ -11,6 +11,7 @@ enum AnimatedPathMode {
 
 @:structInit
 class AnimatedPathState {
+	/** Mutated in-place on each update. Clone if you need to store across frames. */
 	public var position:FPoint;
 	public var angle:Float;
 	public var rate:Float;
@@ -281,7 +282,7 @@ class AnimatedPath {
 
 	function computeState(rate:Float):Void {
 		currentState.rate = rate;
-		currentState.position = path.getPoint(rate);
+		path.getPointInto(rate, currentState.position);
 		currentState.angle = path.getTangentAngle(rate);
 		currentState.scale = evaluateCurveSlot(scaleCurveSegments, rate);
 		currentState.alpha = evaluateCurveSlot(alphaCurveSegments, rate);
