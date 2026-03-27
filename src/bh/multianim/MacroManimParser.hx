@@ -1608,14 +1608,7 @@ class MacroManimParser {
 	}
 
 	function parseAutotileTileSelector():AutotileTileSelector {
-		// Try integer index first
-		switch (peek()) {
-			case TInteger(_), TReference(_):
-				return ByIndex(parseIntegerOrReference());
-			default:
-				// TODO: ByEdges parsing if needed
-				return ByIndex(parseIntegerOrReference());
-		}
+		return ByIndex(parseIntegerOrReference());
 	}
 
 	// ===================== Parameter Definitions =====================
@@ -2893,7 +2886,7 @@ class MacroManimParser {
 										advance();
 										if (scopeVars == null || !scopeVars.contains(indexVar1))
 											error('#name[$$$indexVar1, $$$indexVar2]: index variable $$$indexVar1 is not a known loop variable in this scope');
-										if (!scopeVars.contains(indexVar2))
+										if (scopeVars == null || !scopeVars.contains(indexVar2))
 											error('#name[$$$indexVar1, $$$indexVar2]: index variable $$$indexVar2 is not a known loop variable in this scope');
 										expect(TBracketClosed);
 										updatableName = UNTIndexed2D(name, indexVar1, indexVar2);
@@ -4851,7 +4844,7 @@ class MacroManimParser {
 											advance();
 											if (scopeVars == null || !scopeVars.contains(indexVar1))
 												error('#name[$$$indexVar1, $$$indexVar2]: index variable $$$indexVar1 is not a known loop variable in this scope');
-											if (!scopeVars.contains(indexVar2))
+											if (scopeVars == null || !scopeVars.contains(indexVar2))
 												error('#name[$$$indexVar1, $$$indexVar2]: index variable $$$indexVar2 is not a known loop variable in this scope');
 											expect(TBracketClosed);
 											nameType = UNTIndexed2D(name, indexVar1, indexVar2);

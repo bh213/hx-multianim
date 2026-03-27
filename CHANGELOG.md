@@ -28,7 +28,10 @@
 - **`UIMultiAnimDraggable.cancelDrag()`** — public method to programmatically cancel an in-progress drag. Restores origin position, alpha, layer, source slot, clears zone highlights, and fires `DragCancel` event. No-op when not dragging.
 - **`UICardHandHelper.invalidateLayoutCache()`** — clears the cached `resolvedPath` for PathLayout mode, allowing hot-reload to pick up changed paths.
 
+- **Rich text `[br]` line break tag** — `[br]` in `richText()` strings produces a `<br/>` line break. Self-closing (no `[/]` needed). Works alongside existing markup tags.
+
 ### Changed
+- **Removed deprecated `AnimatedPath.setColorRange()`** — use `addColorCurveSegment()` for per-segment color animation instead.
 - **Incremental conditionals use scene graph removal** — conditional elements (`@()`, `@if`, `@else`, `@default`) are now removed from the scene graph when their condition doesn't match, instead of toggling `visible = false`. A lightweight sentinel object marks each conditional's insertion point so elements re-add at the correct position. Reduces scene graph size for complex conditionals. Both builder and codegen paths updated. Flow properties (`@flow.halign`, `@flow.valign`, `@flow.offset`, `@flow.absolute`) are saved before removal and restored after re-add. Transition animations (`transition {}` block) use `addToGraph`/`removeFromGraph` instead of visibility toggling.
 
 - **`MULTIANIM_TRACE` → `MULTIANIM_DEV`** — consolidated debug trace flag. All `#if MULTIANIM_TRACE` guards now use `#if MULTIANIM_DEV` (same flag as hot reload and DevBridge). Removed `MULTIANIM_TRACE` from `test-common.hxml`. Cleaned up redundant debug traces in `MultiAnimBuilder`.
@@ -57,6 +60,10 @@
 - **Codegen `WITH_OFFSET` for non-static bases** — `generatePositionExpr` now correctly handles `.offset()` on non-static coordinate expressions (e.g. `$ref.extraPoint(...).offset(x, y)`). Previously returned null when the base couldn't be resolved at compile time, causing elements to be positioned at (0, 0).
 - **`safeDetach` for h2d.Graphics reparenting** — extracted `HeapsUtils.safeDetach()` utility that detaches objects without triggering `onRemove()` cascade (which destroys `h2d.Graphics` draw commands). Applied to `UIMultiAnimDraggable` (constructor, `moveToLayer`, `restoreLayer`) and `UIMultiAnimGrid.detachCellVisual()`. `HotReload.PlaceholderReuser` now delegates to the shared utility.
 - **`detachCellVisual` immediate rebuild** — `detachCellVisual()` now rebuilds the cell entry immediately after detaching, fully severing the detached object from the grid. Prevents `rebuildCell()` from removing the detached object.
+- **Grid `dispose()` fires swap onComplete callbacks** — `dispose()` now fires `onComplete` on active swap animations before removing them, preventing game logic from being left in an inconsistent state.
+- **DevBridge SSE broadcast flag reset on error** — `broadcastSseEvent()` now wraps serialization in try/catch so `sseBroadcasting` is always reset, preventing a `Json.stringify` failure from permanently blocking SSE events.
+- **CardHand `applyCardToCardEffects()` bounds guard** — `indexOf` result is now checked for -1 before array access, preventing out-of-bounds access if the target card was removed externally.
+- **Parser 2D index variable null guard** — `#name[$x, $y]` parsing now checks `scopeVars == null` before the second variable lookup, matching the first variable's defensive check.
 
 ## [1.0.0-rc.2] - 2026-03-12
 

@@ -925,6 +925,8 @@ class UICardHandHelper implements UIHigherOrderComponent {
 		if (cardToCardTarget == null)
 			return;
 		var targetIdx = cards.indexOf(cardToCardTarget);
+		if (targetIdx < 0)
+			return;
 
 		if (cardToCardSpread || cardToCardHoverPop) {
 			var hoverPositions = computeLayout(targetIdx);

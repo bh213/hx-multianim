@@ -262,6 +262,7 @@ richText(fontname, text, textcolor[, align, maxWidth], options)
 
 **Rich text markup:** Text strings support `[tag]...[/]` BBCode-style markup. Markup is always processed via `TextMarkupConverter`.
 * `[styleName]...[/]` — apply named style (defined in `styles:`)
+* `[br]` — line break (self-closing)
 * `[img:name]` — inline image (self-closing, defined in `images:`)
 * `[align:center]...[/]` — paragraph alignment (`left`, `center`, `right`)
 * `[link:id]...[/]` — hyperlink (fires `callback("link:id")`)

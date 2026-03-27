@@ -41,6 +41,26 @@ class RichTextTest extends BuilderTestBase {
 		Assert.isNull(result);
 	}
 
+	// ==================== convert() — [br] line break ====================
+
+	@Test
+	public function testConvertBrTag():Void {
+		var result = TextMarkupConverter.convert("line1[br]line2");
+		Assert.equals("line1<br/>line2", result);
+	}
+
+	@Test
+	public function testConvertBrTagMultiple():Void {
+		var result = TextMarkupConverter.convert("a[br]b[br]c");
+		Assert.equals("a<br/>b<br/>c", result);
+	}
+
+	@Test
+	public function testConvertBrTagWithStyles():Void {
+		var result = TextMarkupConverter.convert("[damage]50[/][br]dealt");
+		Assert.equals("<damage>50</damage><br/>dealt", result);
+	}
+
 	// ==================== convert() — special tags ====================
 
 	@Test
@@ -181,6 +201,11 @@ class RichTextTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testHasMarkupWithBrTag():Void {
+		Assert.isTrue(TextMarkupConverter.hasMarkup("line1[br]line2"));
+	}
+
+	@Test
 	public function testHasMarkupPlainText():Void {
 		Assert.isFalse(TextMarkupConverter.hasMarkup("just plain text"));
 	}
@@ -222,6 +247,13 @@ class RichTextTest extends BuilderTestBase {
 		var refs = TextMarkupConverter.extractStyleReferences("[img:sword] [align:center] [link:help] [style]text[/]");
 		Assert.equals(1, refs.length);
 		Assert.equals("style", refs[0]);
+	}
+
+	@Test
+	public function testExtractStyleReferencesSkipsBr():Void {
+		var refs = TextMarkupConverter.extractStyleReferences("[damage]50[/][br]dealt");
+		Assert.equals(1, refs.length);
+		Assert.equals("damage", refs[0]);
 	}
 
 	@Test

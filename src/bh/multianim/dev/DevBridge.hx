@@ -178,22 +178,24 @@ class DevBridge {
 	function broadcastSseEvent(event:String, data:Dynamic):Void {
 		if (sseBroadcasting || sseClients.length == 0) return;
 		sseBroadcasting = true;
-		var json = Json.stringify(data);
-		var payload = 'event: $event\ndata: $json\n\n';
-		var bytes = haxe.io.Bytes.ofString(payload);
-		var dead:Array<Socket> = [];
-		for (client in sseClients) {
-			try {
-				client.out.writeBytes(bytes, 0, bytes.length);
-				client.out.flush();
-			} catch (e:Dynamic) {
-				dead.push(client);
+		try {
+			var json = Json.stringify(data);
+			var payload = 'event: $event\ndata: $json\n\n';
+			var bytes = haxe.io.Bytes.ofString(payload);
+			var dead:Array<Socket> = [];
+			for (client in sseClients) {
+				try {
+					client.out.writeBytes(bytes, 0, bytes.length);
+					client.out.flush();
+				} catch (e:Dynamic) {
+					dead.push(client);
+				}
 			}
-		}
-		for (d in dead) {
-			sseClients.remove(d);
-			try d.close() catch (_:Dynamic) {};
-		}
+			for (d in dead) {
+				sseClients.remove(d);
+				try d.close() catch (_:Dynamic) {};
+			}
+		} catch (_:Dynamic) {}
 		sseBroadcasting = false;
 	}
 

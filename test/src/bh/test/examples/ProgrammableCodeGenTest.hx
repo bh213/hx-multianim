@@ -3311,7 +3311,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	@Test
 	public function testPVComponentFactoryCalled():Void {
 		// PVComponent factory should be called and its returned object placed in scene graph
-		final fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/96-pvComponent/pvComponent.manim"));
+		final fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/99-pvComponent/pvComponent.manim"));
 		final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
 		final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "pvComponent.manim");
 
@@ -3334,7 +3334,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	@Test
 	public function testPVComponentReceivesSettings():Void {
 		// PVComponent factory should receive .manim-defined settings when the placeholder has a settings{} block
-		final fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/96-pvComponent/pvComponent.manim"));
+		final fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/99-pvComponent/pvComponent.manim"));
 		final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
 		final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "pvComponent.manim");
 
@@ -3358,7 +3358,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	@Test
 	public function testPVComponentNoSettingsWhenNoneInManim():Void {
 		// PVComponent factory should receive null settings when the placeholder has no settings{} block
-		final fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/96-pvComponent/pvComponent.manim"));
+		final fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/99-pvComponent/pvComponent.manim"));
 		final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
 		final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "pvComponent.manim");
 
@@ -4541,6 +4541,11 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	@Test
 	public function test96_AutoFit(async:utest.Async):Void {
 		simpleMacroTest(96, "autoFit", () -> createMp().autoFit.create(), async, null, null, null, 0.99);
+	}
+
+	@Test
+	public function test97_FlowConditional(async:utest.Async):Void {
+		simpleMacroTest(97, "flowConditional", () -> createMp().flowConditional.create(), async, null, null, null, 0.999);
 	}
 
 	@Test

@@ -178,6 +178,7 @@ Text strings support `[tag]...[/]` BBCode-style markup. Unlike `${expr}` interpo
 | Markup | Description |
 |--------|-------------|
 | `[styleName]...[/]` | Apply named style (defined in `styles:`) |
+| `[br]` | Line break (self-closing) |
 | `[img:name]` | Inline image (self-closing, defined in `images:`) |
 | `[align:center]...[/]` | Paragraph alignment (`left`, `center`, `right`) |
 | `[link:id]...[/]` | Hyperlink (fires `callback("link:id")`) |

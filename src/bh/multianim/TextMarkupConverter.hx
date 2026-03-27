@@ -5,6 +5,7 @@ package bh.multianim;
  *
  * Supported markup:
  *   [styleName]...[/]            → <styleName>...</styleName>     (requires defineHtmlTag)
+ *   [br]                         → <br/>                            (line break, self-closing)
  *   [img:name]                   → <img src="name"/>               (self-closing)
  *   [align:left|center|right]...[/] → <p align="...">...</p>
  *   [link:id]...[/]              → <a href="id">...</a>
@@ -52,7 +53,11 @@ class TextMarkupConverter {
 
 				var tag = text.substring(i + 1, closeIdx);
 
-				if (tag == "/") {
+				if (tag == "br") {
+					buf.add("<br/>");
+					// self-closing — no stack push
+					i = closeIdx + 1;
+				} else if (tag == "/") {
 					if (tagStack.length > 0) {
 						var openTag = tagStack.pop();
 						buf.add("</");
@@ -126,7 +131,7 @@ class TextMarkupConverter {
 			var closeIdx = text.indexOf("]", idx + 1);
 			if (closeIdx > idx + 1) {
 				var tag = text.substring(idx + 1, closeIdx);
-				if (StringTools.startsWith(tag, "img:") || StringTools.startsWith(tag, "align:")
+				if (tag == "br" || StringTools.startsWith(tag, "img:") || StringTools.startsWith(tag, "align:")
 					|| StringTools.startsWith(tag, "link:")) {
 					hasSpecial = true;
 					break;
@@ -154,7 +159,7 @@ class TextMarkupConverter {
 			var closeIdx = text.indexOf("]", idx + 1);
 			if (closeIdx > idx + 1) {
 				var tag = text.substring(idx + 1, closeIdx);
-				if (tag != "/" && !StringTools.startsWith(tag, "img:")
+				if (tag != "/" && tag != "br" && !StringTools.startsWith(tag, "img:")
 					&& !StringTools.startsWith(tag, "align:") && !StringTools.startsWith(tag, "link:") && isValidStyleName(tag)) {
 					refs.push(tag);
 				}

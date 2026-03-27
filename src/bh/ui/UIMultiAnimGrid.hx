@@ -1085,9 +1085,12 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 
 	/** Clean up all resources. */
 	public function dispose():Void {
-		// Cancel active swap animations
-		for (entry in activeSwapAnims)
+		// Cancel active swap animations — fire onComplete so game logic isn't left dangling
+		for (entry in activeSwapAnims) {
 			entry.object.remove();
+			if (entry.onComplete != null)
+				entry.onComplete();
+		}
 		activeSwapAnims.resize(0);
 
 		// Clear all drag bindings

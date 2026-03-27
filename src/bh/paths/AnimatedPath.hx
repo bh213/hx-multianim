@@ -131,15 +131,6 @@ class AnimatedPath {
 		colorCurveSegments.insert(left, {startRate: startRate, curve: curve, startColor: startColor, endColor: endColor});
 	}
 
-	/** @deprecated Use addColorCurveSegment() for per-segment colors. */
-	public function setColorRange(startColor:Int, endColor:Int):Void {
-		// Backward compat: set colors on all existing color segments
-		for (seg in colorCurveSegments) {
-			seg.startColor = startColor;
-			seg.endColor = endColor;
-		}
-	}
-
 	public function addCustomCurveSegment(name:String, startRate:Float, curve:ICurve):Void {
 		if (!customCurveSegments.exists(name)) {
 			customCurveSegments.set(name, []);
