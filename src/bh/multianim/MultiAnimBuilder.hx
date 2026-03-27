@@ -413,6 +413,9 @@ class IncrementalUpdateContext {
 			parent.addChildAt(entry.object, sentinelIndex + 1);
 		}
 		restoreFlowProperties(entry.object, parent, entry.savedFlowProps);
+		// Re-fire tracked expressions to restore content lost on removeChild.
+		// h2d.Graphics clears draw commands in onRemove(), so content must be re-drawn.
+		refreshTrackedExpressionsFor(entry.object);
 	}
 
 	/** Remove a conditional element from the scene graph. Its sentinel stays. */
@@ -424,6 +427,26 @@ class IncrementalUpdateContext {
 	/** Check if a conditional element is currently in the scene graph. */
 	static inline function isInGraph(obj:h2d.Object):Bool {
 		return obj.parent != null;
+	}
+
+	/** Re-fire tracked expressions for elements within a subtree that was just re-added.
+	    h2d.Graphics clears draw commands in onRemove(), so content must be re-drawn on re-add. */
+	function refreshTrackedExpressionsFor(target:h2d.Object):Void {
+		for (tracked in trackedExpressions) {
+			final obj = tracked.object;
+			if (obj == null) continue;
+			if (obj == target || isDescendantOf(obj, target))
+				tracked.updateFn();
+		}
+	}
+
+	static function isDescendantOf(obj:h2d.Object, ancestor:h2d.Object):Bool {
+		var p = obj.parent;
+		while (p != null) {
+			if (p == ancestor) return true;
+			p = p.parent;
+		}
+		return false;
 	}
 
 	function applyConditionalApplyEntry(entry:{
@@ -761,6 +784,7 @@ class IncrementalUpdateContext {
 	}):Void {
 		// Build the deferred node's content into the wrapper (non-incremental, like repeatable rebuild).
 		// Register a tracked expression to rebuild when referenced params change.
+		entry.wrapper.removeChildren(); // Clear stale children from previous materialization
 		rebuildDeferredContent(entry);
 		// Collect param refs from node expressions for future rebuild tracking
 		final paramRefs = builder.collectNodeParamRefs(entry.node);
@@ -774,9 +798,10 @@ class IncrementalUpdateContext {
 				paramRefs: paramRefs,
 				object: entry.wrapper,
 			});
+		// Remove from deferred list — tracked expression handles future rebuilds
+			deferredEntries.remove(entry);
 		}
-		// Remove from deferred list
-		deferredEntries.remove(entry);
+		// If no tracked expression, keep in deferredEntries so future show cycles re-materialize
 	}
 
 	function rebuildDeferredContent(entry:{
@@ -796,8 +821,8 @@ class IncrementalUpdateContext {
 			?savedFlowProps:Null<SavedFlowProperties>}, newVisible:Bool):Void {
 		if (newVisible) {
 			final deferred = findDeferred(entry.object);
-			if (deferred != null) {
-				// Add to graph first so materialization builds into a live parent
+			if (deferred != null && !isInGraph(entry.object)) {
+				// First show or re-show after hide: materialize deferred content and add to graph
 				addToGraph(entry);
 				materializeDeferred(deferred);
 				// Apply transition animation if configured
@@ -2867,22 +2892,23 @@ class MultiAnimBuilder {
 					}
 				}
 			case GRAPHICS(elements):
+				// Always register redraw for Graphics — h2d.Graphics clears content on
+				// onRemove(), so we need to re-draw after removeChild when a conditional
+				// element is re-added to the scene graph.
 				final gfxRefs:Array<String> = [];
 				for (item in elements) {
 					collectCoordinateParamRefs(item.pos, gfxRefs);
 					collectGraphicsElementParamRefs(item.element, gfxRefs);
 				}
-				if (gfxRefs.length > 0) {
-					final g:Null<h2d.Graphics> = switch builtObject { case HeapsObject(obj) if (Std.isOfType(obj, h2d.Graphics)): cast obj; default: null; };
-					if (g != null) {
-						final elementsCapture = elements;
-						final gridCapture = MultiAnimParser.getGridCoordinateSystem(node);
-						final hexCapture = MultiAnimParser.getHexCoordinateSystem(node);
-						ctx.trackExpression(() -> {
-							g.clear();
-							drawGraphicsElements(g, elementsCapture, gridCapture, hexCapture);
-						}, gfxRefs, object);
-					}
+				final g:Null<h2d.Graphics> = switch builtObject { case HeapsObject(obj) if (Std.isOfType(obj, h2d.Graphics)): cast obj; default: null; };
+				if (g != null) {
+					final elementsCapture = elements;
+					final gridCapture = MultiAnimParser.getGridCoordinateSystem(node);
+					final hexCapture = MultiAnimParser.getHexCoordinateSystem(node);
+					ctx.trackExpression(() -> {
+						g.clear();
+						drawGraphicsElements(g, elementsCapture, gridCapture, hexCapture);
+					}, gfxRefs, object);
 				}
 			case PIXELS(shapes):
 				final pxRefs:Array<String> = [];

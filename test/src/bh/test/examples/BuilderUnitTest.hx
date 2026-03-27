@@ -2985,6 +2985,35 @@ class BuilderUnitTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testIncrementalConditionalGraphicsReShowPreservesContent():Void {
+		// h2d.Graphics clears draw commands in onRemove(). When a conditional element is
+		// removed from the scene graph (condition false) and re-added (condition true again),
+		// the Graphics content must be restored via refreshTrackedExpressionsFor().
+		final result = buildFromSource("
+			#test programmable(status:[normal,hover]=normal) {
+				@(status=>normal) graphics(rect(#0000ff, filled, 100, 50): 0, 0): 0, 0
+				@(status=>hover) graphics(rect(#00ff00, filled, 100, 50): 0, 0): 0, 0
+			}
+		", "test", null, Incremental);
+		Assert.notNull(result);
+
+		// Initial: normal is in graph with content
+		final normalChild = result.object.getChildAt(1);
+		final normalGfx = findGraphicsInTree(normalChild);
+		Assert.notNull(normalGfx, "Normal should have Graphics");
+		Assert.isTrue(hasGraphicsContent(normalGfx), "Normal graphics should have content initially");
+
+		// Toggle to hover — normal removed from graph (Graphics cleared by onRemove)
+		result.setParameter("status", "hover");
+		Assert.isNull(normalChild.parent, "Normal should be removed from graph");
+
+		// Toggle back to normal — normal re-added, content must be restored
+		result.setParameter("status", "normal");
+		Assert.isTrue(normalChild.parent != null, "Normal should be back in graph");
+		Assert.isTrue(hasGraphicsContent(normalGfx), "Normal graphics should have content after re-show");
+	}
+
+	@Test
 	public function testIncrementalDefaultGraphicsHasContent():Void {
 		// @default catch-all: only fires when NO conditional sibling matched.
 		// Non-visible conditional nodes are deferred; content appears after materialization.
