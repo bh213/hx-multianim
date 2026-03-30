@@ -71,6 +71,8 @@ typedef UIElementListItem = {
 	var ?tileName:String;
 	var ?tileRef:TileRef;
 	var ?data:Dynamic;
+	var ?params:Map<String, Dynamic>;
+	var ?baseStatus:String;
 }
 
 function getAllStandardUIElementStatuses() {

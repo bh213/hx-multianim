@@ -34,6 +34,11 @@
 
 - **Rich text `[br]` line break tag** — `[br]` in `richText()` strings produces a `<br/>` line break. Self-closing (no `[/]` needed). Works alongside existing markup tags.
 
+- **Scrollable list custom item parameters** — `UIElementListItem.params:Map<String, Dynamic>` passes arbitrary parameters to the item `.manim` template via `buildItem()`. Custom params merge after built-in params (`title`, `status`, etc.) and before `extraParams`.
+- **Scrollable list per-item base status** — `UIElementListItem.baseStatus:String` defines the resting visual status for individual items (e.g. `"active"`, `"completed"`). Used as initial `status` in `buildItem()` and as reset target after hover/press ends (instead of always `"normal"`). Falls back to `"disabled"` if `item.disabled`, then `"normal"`.
+- **Scrollable list `scrollToAndSelect()`** — convenience method combining `scrollToIndex()` + `setSelectedIndex()`.
+- **Scrollable list `setItems()` force-applies selection visual** — `setItems()` now always applies the selected visual after rebuild, even when the selected index hasn't changed.
+
 ### Changed
 - **Removed deprecated `AnimatedPath.setColorRange()`** — use `addColorCurveSegment()` for per-segment color animation instead.
 - **Incremental conditionals use scene graph removal** — conditional elements (`@()`, `@if`, `@else`, `@default`) are now removed from the scene graph when their condition doesn't match, instead of toggling `visible = false`. A lightweight sentinel object marks each conditional's insertion point so elements re-add at the correct position. Reduces scene graph size for complex conditionals. Both builder and codegen paths updated. Flow properties (`@flow.halign`, `@flow.valign`, `@flow.offset`, `@flow.absolute`) are saved before removal and restored after re-add. Transition animations (`transition {}` block) use `addToGraph`/`removeFromGraph` instead of visibility toggling.

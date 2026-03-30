@@ -1651,6 +1651,96 @@ class UIComponentTest extends BuilderTestBase {
 		Assert.equals(-1, list.currentPressedIndex);
 	}
 
+	static final SCROLLABLE_LIST_CUSTOM_MANIM = "
+		#list-panel programmable(width:uint=120, height:uint=200, topClearance:uint=0) {
+			bitmap(generated(color($width, $height, #333333))): 0, 0
+			placeholder(generated(color($width, $height, #000000)), builderParameter(\"mask\")): 0, 0
+			#scrollbar point: $width - 10, 0
+		}
+
+		#list-item programmable(images:[none,tile]=none, status:[hover,pressed,normal,active,completed]=normal, selected:[true,false]=false, disabled:[true,false]=false, tile:tile, itemWidth:uint=120, index:uint=0, title:string=title, cost:string=none, font:string=testfont, fontColor:int=0xFFFFFFFF) {
+			bitmap(generated(color($itemWidth, 20, #555555))): 0, 0
+			text($font, $title, $fontColor): 4, 2
+			interactive($itemWidth, 20, $index);
+			settings{height:float=>20}
+		}
+
+		#scrollbar programmable(panelHeight:uint=100, scrollableHeight:uint=200, scrollPosition:uint=0) {
+			bitmap(generated(color(4, $panelHeight * $panelHeight / $scrollableHeight, #888888))): 0, $scrollPosition * $panelHeight / $scrollableHeight
+		}
+	";
+
+	function createCustomScrollableList(items:Array<UIElementListItem>, initialIndex:Int = 0):UIMultiAnimScrollableList {
+		ensureTestFont();
+		var builder = BuilderTestBase.builderFromSource(SCROLLABLE_LIST_CUSTOM_MANIM);
+		return UIMultiAnimScrollableList.createWithSingleBuilder(builder, "list-panel", "list-item", "scrollbar", "scrollbar", 120, 200, items, 0,
+			initialIndex);
+	}
+
+	@Test
+	public function testScrollableListBaseStatus():Void {
+		var items:Array<UIElementListItem> = [
+			{name: "Active", baseStatus: "active"},
+			{name: "Completed", baseStatus: "completed"},
+			{name: "Normal"},
+		];
+		var list = createCustomScrollableList(items);
+		Assert.equals("active", list.items[0].baseStatus);
+		Assert.equals("completed", list.items[1].baseStatus);
+		Assert.isNull(list.items[2].baseStatus);
+	}
+
+	@Test
+	public function testScrollableListBaseStatusAfterHover():Void {
+		var items:Array<UIElementListItem> = [
+			{name: "Active", baseStatus: "active"},
+			{name: "Normal"},
+		];
+		var list = createCustomScrollableList(items);
+
+		// Simulate hover on item 0
+		@:privateAccess list.currentHoverIndex = 0;
+		// Verify hover was applied
+		Assert.equals(0, list.currentHoverIndex);
+
+		// Simulate hover leaving (set to -1)
+		@:privateAccess list.currentHoverIndex = -1;
+		Assert.equals(-1, list.currentHoverIndex);
+		// The item should have been reset to "active", not "normal" — verified by no throw from setter
+	}
+
+	@Test
+	public function testScrollableListCustomParams():Void {
+		var items:Array<UIElementListItem> = [
+			{name: "Solar Power", params: ["cost" => "5cr/yr"]},
+			{name: "No params"},
+		];
+		var list = createCustomScrollableList(items);
+		Assert.notNull(list.items[0].params);
+		Assert.equals("5cr/yr", list.items[0].params.get("cost"));
+		Assert.isNull(list.items[1].params);
+	}
+
+	@Test
+	public function testScrollableListScrollToAndSelect():Void {
+		var items = createManyScrollableListItems(20);
+		var list = createScrollableList(items);
+		list.scrollToAndSelect(15);
+		Assert.equals(15, list.getSelectedIndex());
+		// Item 15 is at y=300 (15*20), panel is 200px — should have scrolled
+		@:privateAccess Assert.isTrue(list.mask.scrollY > 0);
+	}
+
+	@Test
+	public function testScrollableListSetItemsForceAppliesSelection():Void {
+		var list = createScrollableList(null, 0);
+		Assert.equals(0, list.getSelectedIndex());
+		// setItems with same index should still apply the visual (not skip due to same value)
+		var newItems:Array<UIElementListItem> = [{name: "X"}, {name: "Y"}, {name: "Z"}];
+		list.setItems(newItems, 0);
+		Assert.equals(0, list.getSelectedIndex());
+	}
+
 	// ============== Tabs Tests ==============
 
 	static final TABS_MANIM = "

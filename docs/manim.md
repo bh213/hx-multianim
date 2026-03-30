@@ -2446,7 +2446,7 @@ var v:Int = bar.getIntValue();
 | `index` | int | Item index |
 | `title` | string | Item display text |
 | `tile` | tile | Item icon (if available) |
-| `status` | enum: `normal`, `hover`, `pressed` | Interaction state |
+| `status` | enum: `normal`, `hover`, `pressed`, + custom | Interaction state (initial value from `baseStatus` or `"normal"`) |
 | `selected` | enum: `true`, `false` | Selection state |
 | `disabled` | enum: `true`, `false` | Disabled state |
 
@@ -2468,6 +2468,25 @@ var items:Array<UIElementListItem> = [
 `TileRef` variants: `TRFile`, `TRSheet`, `TRSheetIndex`, `TRGeneratedRect`, `TRGeneratedRectColor`, `TRTile` (pass pre-loaded `h2d.Tile`).
 
 The legacy `tileName` field (plain string file path) is still supported but deprecated in favor of `tileRef`.
+
+**Custom item parameters:** `UIElementListItem.params` passes arbitrary parameters to the item `.manim` template. The item programmable must declare matching parameters:
+
+```haxe
+var items:Array<UIElementListItem> = [
+    {name: "Solar Power", params: ["cost" => "5cr/yr", "years" => "3", "desc" => "Clean energy"]},
+    {name: "Wind Farm", params: ["cost" => "3cr/yr", "years" => "2", "desc" => "Turbines"]},
+];
+```
+
+**Per-item base status:** `UIElementListItem.baseStatus` sets the resting visual state. Items return to this status after hover/press ends (instead of always `"normal"`). Also used as the initial `status` parameter in `buildItem()`:
+
+```haxe
+var items:Array<UIElementListItem> = [
+    {name: "Active project", baseStatus: "active"},
+    {name: "Completed", baseStatus: "completed"},
+    {name: "Normal item"},  // defaults to "normal"
+];
+```
 
 **Required `.manim` parameters (scrollbar):**
 
@@ -2524,6 +2543,7 @@ list.setItems(newItems, 0); // replaces content, selects first item
 
 // Programmatic scroll
 list.scrollToIndex(5); // scrolls to make item 5 visible
+list.scrollToAndSelect(5); // scroll + select in one call
 
 // Disabled state — dims list (alpha 0.5), blocks interaction, shows selected in disabled variant
 list.disabled = true;

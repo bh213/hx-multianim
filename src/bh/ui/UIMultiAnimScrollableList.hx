@@ -135,8 +135,10 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 		// Rebuild items and scrollbar
 		buildItems();
 
-		// Set selection
-		this.currentItemIndex = if (newItems.length > 0) selectedIndex else -1;
+		// Set selection — force-apply visual even if index hasn't changed (items were rebuilt)
+		final idx = if (newItems.length > 0) selectedIndex else -1;
+		this.currentItemIndex = -1;
+		this.currentItemIndex = idx;
 	}
 
 	public static function createWithSingleBuilder(builder:MultiAnimBuilder, panelBuilderName:String, itemBuilderName:String, scrollbarBuilderName:String, scrollbarInPanelName:String, width:Int, height:Int, items, topClearance, initialIndex, ?panelSizeMode:PanelSizeMode) {
@@ -231,6 +233,11 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 		repositionScrollbar();
 	}
 
+	public function scrollToAndSelect(idx:Int) {
+		scrollToIndex(idx);
+		this.currentItemIndex = idx;
+	}
+
 	public function getObject():Object {
 		return root;
 	}
@@ -259,6 +266,14 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 				// Since scrollable lists typically don't use draggable objects, we'll throw an error
 				throw 'Draggable objects are not supported in scrollable lists';
 		}
+	}
+
+	function getBaseStatus(index:Int):String {
+		if (index < 0 || index >= items.length) return "normal";
+		final item = items[index];
+		if (item.baseStatus != null) return item.baseStatus;
+		if (item.disabled == true) return "disabled";
+		return "normal";
 	}
 
 	function setItemStatus(index:Int, status:String) {
@@ -365,7 +380,7 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 			throw 'currentPressedIndex ${value} is out of bounds [-1..${items.length}].';
 		if (this.currentPressedIndex != value) {
 			if (this.currentPressedIndex != -1)
-				setItemStatus(this.currentPressedIndex, "normal");
+				setItemStatus(this.currentPressedIndex, getBaseStatus(this.currentPressedIndex));
 			this.currentPressedIndex = value;
 			if (value != -1)
 				setItemStatus(value, "pressed");
@@ -379,7 +394,7 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 			throw 'currentHoverIndex ${value} is out of bounds [-1..${items.length}].';
 		if (this.currentHoverIndex != value) {
 			if (this.currentHoverIndex != -1)
-				setItemStatus(this.currentHoverIndex, "normal");
+				setItemStatus(this.currentHoverIndex, getBaseStatus(this.currentHoverIndex));
 			this.currentHoverIndex = value;
 			if (value != -1)
 				setItemStatus(value, "hover");
