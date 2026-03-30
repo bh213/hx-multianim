@@ -209,29 +209,6 @@ class MacroUtils {
             inputFields.set(key, macro PVComponent($updated, null));
         }
 
-        // for (key => value in factoryFunctions) {
-        //     localVars.push(macro var $key);
-        //     retValFields.push({field: key, expr: macro $i{key}});
-
-            
-        //     final isUIElement = TypeTools.unify(Context.typeof(value), uiElementType);
-        //     final isH2dObject = TypeTools.unify(Context.typeof(value), h2dObjectType);
-        //     trace(isUIElement, isH2dObject);
-            
-        //     if (isUIElement) {
-        //         final updated = macro (settings:bh.multianim.MultiAnimParser.ResolvedSettings)->{
-        //             final element = $value;
-        //             addElement(element, false);
-        //             $i{key} = element;
-        //             return element.getObject();
-        //         }
-
-        //         inputFields.set(key, macro PVFactory($updated));
-        //     }
-        //     // else {
-        //     //     inputFields.set(key, macro PVFactory($value));
-        //     // }
-        // }
         function buildBuildWithParams() {
             var map : Array<Expr> = [];
             for (name => expr in inputFields) {

@@ -197,7 +197,7 @@ class Atlas2 extends hxd.res.Resource.Resource implements IAtlas2 {
 						index = Std.parseInt(v);
 						if( index < 0 ) index = 0;
 					default:
-						#if MULTIANIM_DEV
+						#if MULTIANIM_TRACE
 						trace("Unknown prop " + prop[0]);
 						#end
 					}

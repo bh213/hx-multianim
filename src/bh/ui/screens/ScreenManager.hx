@@ -318,7 +318,7 @@ class ScreenManager {
 			throw 'failed to load multianim ${resource.name}';
 		// Auto-inject TweenManager for transition support in incremental builds
 		built.tweenManager = tweens;
-		#if MULTIANIM_DEV
+		#if MULTIANIM_TRACE
 		trace('Built ${resource.entry.name} with reload $enableReload');
 		#end
 		builders.set(resource, built);
@@ -356,7 +356,7 @@ class ScreenManager {
 			for (key => value in oldBuilders) {
 				if (resource != null && key != resource)
 					continue;
-				#if MULTIANIM_DEV
+				#if MULTIANIM_TRACE
 				trace('rebuild $key'); // don't trace $value, js gets stack overflow
 				#end
 				buildFromResource(key, true); // TODO: enable reload
