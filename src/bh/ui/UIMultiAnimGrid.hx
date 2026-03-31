@@ -89,6 +89,12 @@ private typedef DraggableBinding = {
 	var accepts:Null<GridDropAccepts>;
 }
 
+/** Internal binding for a linked grid (drop target for cell drag). */
+private typedef LinkedGridBinding<T> = {
+	var target:UIMultiAnimGrid<T>;
+	var accepts:Null<(targetCell:CellCoord, sourceCell:CellCoord, data:Dynamic) -> Bool>;
+}
+
 /** Internal binding for a registered card hand. */
 private typedef CardHandBinding = {
 	var cardHand:UICardHandHelper;
@@ -132,7 +138,13 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 	final swapVisualProvider:Null<SwapVisualProvider<T>>;
 	final tweenManager:Null<TweenManager>;
 
+	// --- Cell drag config ---
+	final cellDragEnabled:Bool;
+	final cellDragFilter:Null<CellDragFilter<T>>;
+	final cellDragContainer:Null<h2d.Object>;
+
 	// --- Geometry ---
+	final rectOrigin:RectOrigin;
 	final hexLayout:Null<HexLayout>;
 	final rectCellW:Float;
 	final rectCellH:Float;
@@ -156,6 +168,19 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 	// --- Drag-drop ---
 	final registeredDraggables:Array<DraggableBinding> = [];
 	var activeDragHighlightedCells:Array<CellCoord> = [];
+
+	// --- Cell drag (internal, no UIMultiAnimDraggable dependency) ---
+	var cellDragObj:Null<h2d.Object> = null;
+	var cellDragParent:Null<h2d.Object> = null;
+	var cellDragOffsetX:Float = 0;
+	var cellDragOffsetY:Float = 0;
+	var cellDragSourceCoord:Null<CellCoord> = null;
+	var cellDragSourceData:Null<T> = null;
+	var cellDragHoverGrid:Null<Dynamic> = null;
+	var cellDragHoverCoord:Null<CellCoord> = null;
+
+	// --- Linked grids (cross-grid cell drag) ---
+	final linkedGrids:Array<LinkedGridBinding<T>> = [];
 
 	function isCellDragHighlighted(col:Int, row:Int):Bool {
 		for (c in activeDragHighlightedCells)
@@ -244,6 +269,10 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 		this.swapAnimContainer = config.swapAnimContainer;
 		this.swapVisualProvider = config.swapVisualProvider;
 		this.tweenManager = config.tweenManager;
+		this.cellDragEnabled = config.cellDragEnabled != null ? config.cellDragEnabled : false;
+		this.cellDragFilter = config.cellDragFilter;
+		this.cellDragContainer = config.cellDragContainer;
+		this.rectOrigin = config.rectOrigin != null ? config.rectOrigin : TopLeft;
 
 		this.root = new h2d.Layers();
 		this.root.setPosition(config.originX != null ? config.originX : 0, config.originY != null ? config.originY : 0);
@@ -916,6 +945,12 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 
 	/** Route mouse move events. Call from game screen's onMouseMove. Returns true if over a cell. */
 	public function onMouseMove(sceneX:Float, sceneY:Float):Bool {
+		// Cell drag in progress — update position and hover tracking
+		if (cellDragObj != null) {
+			cellDragUpdateMove(sceneX, sceneY);
+			return true;
+		}
+
 		final hit = cellAtPoint(sceneX, sceneY);
 
 		if (!cellCoordsEqual(hit, hoveredCell)) {
@@ -937,24 +972,404 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 		return hoveredCell != null;
 	}
 
-	/** Route mouse click events. Call from game screen's onMouseClick. Returns true if a cell was clicked. */
+	/** Route mouse click events. Call from game screen's onMouseClick (push, not release). Returns true if a cell was clicked. */
 	public function onMouseClick(sceneX:Float, sceneY:Float, button:Int):Bool {
 		final hit = cellAtPoint(sceneX, sceneY);
 		if (hit != null) {
+			// Cell drag: intercept push on draggable cells
+			if (cellDragEnabled && button == 0 && cellDragObj == null) {
+				final entry = cells.get(cellKey(hit.col, hit.row));
+				if (entry != null && entry.data != null) {
+					final canDrag = cellDragFilter == null || cellDragFilter(hit.col, hit.row, entry.data);
+					if (canDrag) {
+						cellDragStart(hit, sceneX, sceneY);
+						return true;
+					}
+				}
+			}
 			emitEvent(CellClick(hit, button));
 			return true;
 		}
 		return false;
 	}
 
-	/** Route mouse release events. Grid does not consume release events. */
+	/** Route mouse release events. Returns true if consumed (cell drag drop). */
 	public function onMouseRelease(sceneX:Float, sceneY:Float):Bool {
+		if (cellDragObj != null) {
+			cellDragRelease(sceneX, sceneY);
+			return true;
+		}
 		return false;
 	}
 
 	/** Route screen events. Grid does not consume screen events. */
 	public function handleScreenEvent(event:UIScreenEvent):Bool {
 		return false;
+	}
+
+	// ============================================================
+	// Built-in cell drag (cellDragEnabled)
+	// ============================================================
+
+	/** Start a cell drag: detach visual, set up state, apply highlights. */
+	function cellDragStart(coord:CellCoord, sceneX:Float, sceneY:Float):Void {
+		final entry = getEntry(coord.col, coord.row);
+
+		// Detach the cell visual — cell stays in grid with empty visual
+		final detached = detachCellVisual(coord.col, coord.row);
+		if (detached == null)
+			return;
+
+		cellDragSourceCoord = {col: coord.col, row: coord.row};
+		cellDragSourceData = entry.data;
+		cellDragObj = detached.object;
+
+		// Reparent to drag container (or grid root at high z-order)
+		cellDragParent = cellDragContainer != null ? cellDragContainer : root;
+		if (cellDragContainer != null) {
+			cellDragContainer.addChild(cellDragObj);
+		} else {
+			root.add(cellDragObj, 999);
+		}
+
+		// Position in parent-local coordinates and compute offset
+		final parentPos = sceneToLocal(cellDragParent, detached.sceneX, detached.sceneY);
+		cellDragObj.setPosition(parentPos.x, parentPos.y);
+
+		final cursorLocal = sceneToLocal(cellDragParent, sceneX, sceneY);
+		cellDragOffsetX = parentPos.x - cursorLocal.x;
+		cellDragOffsetY = parentPos.y - cursorLocal.y;
+
+		// Apply highlights on self (source cell excluded)
+		applyDragHighlights((c) -> !(c.col == coord.col && c.row == coord.row));
+
+		// Apply highlights on linked grids
+		for (link in linkedGrids) {
+			link.target.applyDragHighlights((c) -> {
+				if (link.accepts != null)
+					return link.accepts(c, coord, entry.data);
+				return true;
+			});
+		}
+
+		// Create a data-carrier draggable for events (not used for drag mechanics)
+		final carrier = cellDragMakeCarrier();
+		emitEvent(CellDragStart(coord, carrier));
+	}
+
+	/** Update cell drag position and hover tracking (called from onMouseMove). */
+	function cellDragUpdateMove(sceneX:Float, sceneY:Float):Void {
+		if (cellDragObj == null || cellDragParent == null)
+			return;
+
+		// Update position in parent-local space
+		final cursorLocal = sceneToLocal(cellDragParent, sceneX, sceneY);
+		cellDragObj.setPosition(cursorLocal.x + cellDragOffsetX, cursorLocal.y + cellDragOffsetY);
+
+		// Find which cell is under cursor (self + linked grids)
+		final hit = cellDragFindTarget(sceneX, sceneY);
+		final hitGrid:Null<Dynamic> = hit != null ? hit.grid : null;
+		final hitCoord = hit != null ? hit.coord : null;
+
+		// Update hover visual
+		if (!cellCoordsEqual(hitCoord, cellDragHoverCoord) || hitGrid != cellDragHoverGrid) {
+			// Leave old hover
+			if (cellDragHoverCoord != null && cellDragHoverGrid != null) {
+				final g:UIMultiAnimGrid<T> = cast cellDragHoverGrid;
+				final e = g.cells.get(g.cellKey(cellDragHoverCoord.col, cellDragHoverCoord.row));
+				if (e != null)
+					e.visual.setStatus("normal");
+			}
+			cellDragHoverGrid = hitGrid;
+			cellDragHoverCoord = hitCoord;
+			// Enter new hover
+			if (cellDragHoverCoord != null && cellDragHoverGrid != null) {
+				final g:UIMultiAnimGrid<T> = cast cellDragHoverGrid;
+				final e = g.cells.get(g.cellKey(cellDragHoverCoord.col, cellDragHoverCoord.row));
+				if (e != null)
+					e.visual.setStatus("hover");
+			}
+		}
+	}
+
+	/** Find the target cell under cursor: check self (excluding source), then linked grids. */
+	function cellDragFindTarget(sceneX:Float, sceneY:Float):Null<{grid:Dynamic, coord:CellCoord}> {
+		// Check self first
+		final selfHit = cellAtPoint(sceneX, sceneY);
+		if (selfHit != null && cellDragSourceCoord != null
+			&& !(selfHit.col == cellDragSourceCoord.col && selfHit.row == cellDragSourceCoord.row)) {
+			return {grid: this, coord: selfHit};
+		}
+
+		// Check linked grids
+		for (link in linkedGrids) {
+			final hit = link.target.cellAtPoint(sceneX, sceneY);
+			if (hit != null) {
+				// Apply accepts filter
+				if (link.accepts != null && !link.accepts(hit, cellDragSourceCoord, cellDragSourceData))
+					continue;
+				return {grid: link.target, coord: hit};
+			}
+		}
+
+		return null;
+	}
+
+	/** Handle mouse release for cell drag. */
+	function cellDragRelease(sceneX:Float, sceneY:Float):Void {
+		if (cellDragObj == null)
+			return;
+
+		// Clear hover visual
+		if (cellDragHoverCoord != null && cellDragHoverGrid != null) {
+			final g:UIMultiAnimGrid<T> = cast cellDragHoverGrid;
+			final e = g.cells.get(g.cellKey(cellDragHoverCoord.col, cellDragHoverCoord.row));
+			if (e != null)
+				e.visual.setStatus("normal");
+		}
+
+		// Clear all highlights
+		clearDragHighlights();
+		for (link in linkedGrids)
+			link.target.clearDragHighlights();
+
+		// Find target cell
+		final hit = cellDragFindTarget(sceneX, sceneY);
+
+		if (hit != null) {
+			final targetGrid:UIMultiAnimGrid<T> = cast hit.grid;
+			final targetCoord = hit.coord;
+			final srcCoord = cellDragSourceCoord;
+
+			// Check swap case
+			if (targetGrid.swapEnabled
+				&& targetGrid.isOccupied(targetCoord.col, targetCoord.row)) {
+				cellDragHandleSwap(targetGrid, targetCoord);
+				return;
+			}
+
+			// Normal drop — emit CellDrop
+			cellDragHandleDrop(targetGrid, targetCoord);
+		} else {
+			// No target — return to source
+			cellDragReturnToSource();
+		}
+	}
+
+	/** Handle a normal (non-swap) drop during cell drag. */
+	function cellDragHandleDrop(targetGrid:UIMultiAnimGrid<T>, targetCoord:CellCoord):Void {
+		final carrier = cellDragMakeCarrier();
+		final ctx = new DropContext();
+		targetGrid.emitEvent(CellDrop(targetCoord, carrier, this, cellDragSourceCoord, ctx));
+
+		if (ctx.handled && !ctx.accepted) {
+			// Rejected — return to source (with optional custom path)
+			cellDragReturnToSource(ctx.pathName, ctx.completeCb);
+			return;
+		}
+
+		// Accepted — snap to target cell
+		final resolvedPath = if (ctx.handled && ctx.pathName != null) ctx.pathName else snapPathName;
+		final targetScenePos = targetGrid.cellPosition(targetCoord.col, targetCoord.row);
+		cellDragSnapTo(targetScenePos, resolvedPath, () -> {
+			cellDragRemoveObj();
+			if (ctx.completeCb != null)
+				ctx.completeCb();
+			cellDragFinish();
+		});
+	}
+
+	/** Handle a swap drop during cell drag. */
+	function cellDragHandleSwap(targetGrid:UIMultiAnimGrid<T>, targetCoord:CellCoord):Void {
+		final srcCoord = cellDragSourceCoord;
+		if (srcCoord == null)
+			return;
+
+		final ctx = new SwapContext(false);
+		targetGrid.emitEvent(CellSwap(srcCoord, targetCoord, null, ctx));
+
+		if (ctx.handled && !ctx.accepted) {
+			cellDragReturnToSource();
+			return;
+		}
+
+		// Resolve paths
+		final resolvedSnapPath = if (ctx.snapPath != null) ctx.snapPath else snapPathName;
+		final resolvedSwapPath = if (ctx.swapPath != null) ctx.swapPath
+			else if (targetGrid.swapPathName != null) targetGrid.swapPathName
+			else targetGrid.returnPathName;
+
+		// Snapshot displaced data
+		final displacedData = targetGrid.get(targetCoord.col, targetCoord.row);
+		final dragPayload = cellDragSourceData;
+
+		// Detach displaced visual
+		final detached = targetGrid.detachCellVisualRaw(targetCoord.col, targetCoord.row);
+
+		// Swap data atomically
+		targetGrid.set(targetCoord.col, targetCoord.row, dragPayload);
+		set(srcCoord.col, srcCoord.row, displacedData);
+
+		// Rebuild target cell (behind the snapping drag visual)
+		targetGrid.rebuildCell(targetCoord.col, targetCoord.row);
+
+		// Track completion of both animations
+		var displacedDone = false;
+		var snapDone = false;
+		final onBothDone = () -> {
+			if (displacedDone && snapDone && ctx.completeCb != null)
+				ctx.completeCb();
+		};
+
+		// Animate displaced item to source cell
+		if (detached != null && resolvedSwapPath != null) {
+			final sourceScenePos = cellPosition(srcCoord.col, srcCoord.row);
+			targetGrid.animateSwapVisual(detached, targetCoord, sourceScenePos, resolvedSwapPath, () -> {
+				rebuildCell(srcCoord.col, srcCoord.row);
+				displacedDone = true;
+				onBothDone();
+			});
+		} else {
+			if (detached != null)
+				detached.object.remove();
+			rebuildCell(srcCoord.col, srcCoord.row);
+			displacedDone = true;
+		}
+
+		// Snap drag visual to target cell
+		final targetScenePos = targetGrid.cellPosition(targetCoord.col, targetCoord.row);
+		cellDragSnapTo(targetScenePos, resolvedSnapPath, () -> {
+			cellDragRemoveObj();
+			if (ctx.snapCompleteCb != null)
+				ctx.snapCompleteCb();
+			snapDone = true;
+			onBothDone();
+			cellDragFinish();
+		});
+	}
+
+	/** Animate the drag visual to a scene position (snap). */
+	function cellDragSnapTo(targetScenePos:FPoint, pathName:Null<String>, onDone:Void -> Void):Void {
+		if (cellDragObj == null || cellDragParent == null) {
+			onDone();
+			return;
+		}
+
+		if (pathName == null) {
+			// Instant snap
+			final localTo = sceneToLocal(cellDragParent, targetScenePos.x, targetScenePos.y);
+			cellDragObj.setPosition(localTo.x, localTo.y);
+			onDone();
+			return;
+		}
+
+		final localFrom = new FPoint(cellDragObj.x, cellDragObj.y);
+		final localTo = sceneToLocal(cellDragParent, targetScenePos.x, targetScenePos.y);
+
+		// Skip animation for zero distance
+		final dx = localTo.x - localFrom.x;
+		final dy = localTo.y - localFrom.y;
+		if (dx * dx + dy * dy < 0.25) {
+			cellDragObj.setPosition(localTo.x, localTo.y);
+			onDone();
+			return;
+		}
+
+		final animPath = builder.createAnimatedPath(pathName, Stretch(localFrom, localTo));
+		activeSwapAnims.push(new SwapAnimEntry(animPath, cellDragObj, cellDragSourceCoord, onDone));
+	}
+
+	/** Animate the drag visual back to source cell. */
+	function cellDragReturnToSource(?customPath:String, ?onComplete:Void -> Void):Void {
+		if (cellDragObj == null || cellDragSourceCoord == null) {
+			cellDragRebuildSourceAndFinish();
+			if (onComplete != null)
+				onComplete();
+			return;
+		}
+
+		final resolvedPath = customPath != null ? customPath : returnPathName;
+		final sourceScenePos = cellPosition(cellDragSourceCoord.col, cellDragSourceCoord.row);
+
+		cellDragSnapTo(sourceScenePos, resolvedPath, () -> {
+			cellDragRemoveObj();
+			cellDragRebuildSourceAndFinish();
+			if (onComplete != null)
+				onComplete();
+		});
+	}
+
+	/** Remove the drag visual from the scene. */
+	function cellDragRemoveObj():Void {
+		if (cellDragObj != null) {
+			cellDragObj.remove();
+			cellDragObj = null;
+		}
+	}
+
+	/** Rebuild source cell (after cancel/return) and finish drag. */
+	function cellDragRebuildSourceAndFinish():Void {
+		if (cellDragSourceCoord != null)
+			rebuildCell(cellDragSourceCoord.col, cellDragSourceCoord.row);
+		cellDragFinish();
+	}
+
+	/** Reset all cell drag state and emit CellDragEnd. */
+	function cellDragFinish():Void {
+		final sourceCoord = cellDragSourceCoord;
+		cellDragRemoveObj();
+		cellDragParent = null;
+		cellDragSourceCoord = null;
+		cellDragSourceData = null;
+		cellDragHoverGrid = null;
+		cellDragHoverCoord = null;
+
+		if (sourceCoord != null)
+			emitEvent(CellDragEnd(sourceCoord));
+	}
+
+	/** Create a lightweight data-carrier UIMultiAnimDraggable for CellDrop/CellDragStart events.
+	 *  Not used for drag mechanics — only carries payload, sourceGrid, sourceCellCoord. */
+	function cellDragMakeCarrier():UIMultiAnimDraggable {
+		final carrier = new UIMultiAnimDraggable(new h2d.Object());
+		carrier.sourceGrid = this;
+		carrier.sourceCellCoord = cellDragSourceCoord;
+		carrier.payload = cellDragSourceData;
+		return carrier;
+	}
+
+	// ============================================================
+	// Cross-grid linking
+	// ============================================================
+
+	/** Link another grid as a drop target for this grid's cell drags.
+	 *  When a cell is dragged from this grid, the target grid's cells become valid drop zones.
+	 *  @param accepts Optional filter: (targetCell, sourceCell, sourceData) -> Bool */
+	public function linkDropTarget(target:UIMultiAnimGrid<T>,
+			?accepts:(targetCell:CellCoord, sourceCell:CellCoord, data:Dynamic) -> Bool):Void {
+		// Guard against duplicates
+		for (link in linkedGrids)
+			if (link.target == target)
+				return;
+
+		linkedGrids.push({target: target, accepts: accepts});
+	}
+
+	/** Unlink a previously linked drop target grid. */
+	public function unlinkDropTarget(target:UIMultiAnimGrid<T>):Void {
+		var i = linkedGrids.length;
+		while (i-- > 0) {
+			if (linkedGrids[i].target == target)
+				linkedGrids.splice(i, 1);
+		}
+	}
+
+	/** Convenience: bidirectionally link two grids so cells can be dragged between them.
+	 *  @param accepts Optional filter applied in both directions. */
+	public static function linkGrids<T>(a:UIMultiAnimGrid<T>, b:UIMultiAnimGrid<T>,
+			?accepts:(targetCell:CellCoord, sourceCell:CellCoord, data:Dynamic) -> Bool):Void {
+		a.linkDropTarget(b, accepts);
+		b.linkDropTarget(a, accepts);
 	}
 
 	// ============================================================
@@ -1085,6 +1500,19 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 
 	/** Clean up all resources. */
 	public function dispose():Void {
+		// Cancel active cell drag
+		if (cellDragObj != null) {
+			cellDragRemoveObj();
+			clearDragHighlights();
+			for (link in linkedGrids)
+				link.target.clearDragHighlights();
+			cellDragParent = null;
+			cellDragSourceCoord = null;
+			cellDragSourceData = null;
+			cellDragHoverGrid = null;
+			cellDragHoverCoord = null;
+		}
+
 		// Cancel active swap animations — fire onComplete so game logic isn't left dangling
 		for (entry in activeSwapAnims) {
 			entry.object.remove();
@@ -1097,6 +1525,9 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 		for (binding in registeredDraggables)
 			clearZonesForBinding(binding);
 		registeredDraggables.resize(0);
+
+		// Clear linked grids
+		linkedGrids.resize(0);
 
 		// Clear all card hand bindings
 		for (binding in registeredCardHands)
@@ -1181,12 +1612,16 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 		final stride = rectCellW + rectGap;
 		final strideY = rectCellH + rectGap;
 
-		final col = Math.floor(localX / stride);
-		final row = Math.floor(localY / strideY);
+		// Centered origin: hit area centered on cell position instead of top-left aligned
+		final testX = switch rectOrigin { case Centered: localX + rectCellW * 0.5; case TopLeft: localX; };
+		final testY = switch rectOrigin { case Centered: localY + rectCellH * 0.5; case TopLeft: localY; };
+
+		final col = Math.floor(testX / stride);
+		final row = Math.floor(testY / strideY);
 
 		// Check if in the gap area
-		final cellLocalX = localX - col * stride;
-		final cellLocalY = localY - row * strideY;
+		final cellLocalX = testX - col * stride;
+		final cellLocalY = testY - row * strideY;
 		if (cellLocalX > rectCellW || cellLocalY > rectCellH)
 			return null;
 
@@ -1456,7 +1891,10 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 		final global = root.localToGlobal(new h2d.col.Point(local.x, local.y));
 		return switch gridType {
 			case Rect(w, h, _):
-				Bounds.fromValues(global.x, global.y, w, h);
+				switch rectOrigin {
+					case Centered: Bounds.fromValues(global.x - w * 0.5, global.y - h * 0.5, w, h);
+					case TopLeft: Bounds.fromValues(global.x, global.y, w, h);
+				};
 			case Hex(_, sx, sy):
 				Bounds.fromValues(global.x - sx, global.y - sy, sx * 2, sy * 2);
 		};

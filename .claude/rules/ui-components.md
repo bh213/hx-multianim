@@ -166,6 +166,9 @@ var grid = new UIMultiAnimGrid(builder, {
     swapAccepts: null,              // (cell, draggable) -> Bool; null = isOccupied() default
     swapAnimContainer: swapLayer,   // h2d.Object parent for in-flight swap visuals (null = grid root fallback)
     tweenManager: screenManager.tweens, // optional TweenManager for cell lifecycle animations (null = instant)
+    cellDragEnabled: true,          // cells with data become draggable on press (default: false)
+    cellDragFilter: null,           // (col, row, data) -> Bool; null = all with data
+    cellDragContainer: dragLayer,   // h2d.Object parent for drag visual (null = grid root at high z-order)
 });
 ```
 
@@ -220,6 +223,8 @@ var grid = new UIMultiAnimGrid(builder, {
 - `CellHoverEnter(cell)` / `CellHoverLeave(cell)` — hover state changes
 - `CellDrop(cell, draggable, sourceGrid, sourceCell, ctx)` — draggable dropped on cell. `ctx:DropContext` controls post-drop animation
 - `CellSwap(source, target, draggable, ctx)` — draggable dropped on occupied cell with `swapEnabled=true`, or programmatic `swapCells()`. `ctx:SwapContext` controls swap animation. `draggable` is null for programmatic swaps. `ctx.programmatic` distinguishes drag vs API
+- `CellDragStart(cell, draggable)` — cell drag started (`cellDragEnabled`). Draggable is a data carrier (payload, sourceGrid, sourceCellCoord)
+- `CellDragEnd(cell)` — cell drag ended (drop, cancel, or swap complete)
 - `CellCardPlayed(cell, cardId)` — card played on cell (from card hand targeting)
 - `CellDataChanged(cell, oldData, newData)` — data changed via `set()` or `clear()`
 
@@ -242,7 +247,23 @@ var grid = new UIMultiAnimGrid(builder, {
 - Swap on drop: when `swapEnabled=true` and a draggable has a source cell, the `swapAccepts` delegate (or `isOccupied()` by default) decides whether to emit `CellSwap` or fall through to `CellDrop`. The dragged item snaps to target, the displaced item animates to the source cell. Cross-grid swaps work when `sourceGrid` is set (via `makeDraggableFromCell`)
 - Swap path fallback chain: `SwapContext._swapPathName` > `GridConfig.swapPathName` > `GridConfig.returnPathName` > instant
 
-**Drag-drop integration:**
+**Built-in cell drag** (`cellDragEnabled: true` in config):
+- Cells with data become draggable on left-click press — no external `UIMultiAnimDraggable` wiring needed
+- Grid internally detaches cell visual, tracks mouse, finds drop targets via `cellAtPoint()`, handles snap/return/swap animations
+- `cellDragFilter: (col, row, data) -> Bool` — optional filter for which cells can be dragged (null = all with data)
+- `cellDragContainer: h2d.Object` — parent for drag visual (null = grid root at high z-order)
+- Emits `CellDragStart(cell, carrier)` on drag begin, `CellDrop`/`CellSwap` on drop, `CellDragEnd(cell)` on completion
+- The `draggable` in `CellDrop` is a lightweight data carrier (access `.payload`, `.sourceGrid`, `.sourceCellCoord`)
+- The `draggable` in `CellSwap` is null for cell-drag-initiated swaps (same as programmatic swaps)
+- Self-drop: grid auto-registers its own cells as drop targets (source cell excluded)
+- Cross-grid drop: use `linkDropTarget()` to register other grids as drop targets
+
+**Cross-grid linking** (for `cellDragEnabled`):
+- `linkDropTarget(target, ?accepts)` — register another grid as a drop target for this grid's cell drags. `accepts: (targetCell, sourceCell, data) -> Bool`
+- `unlinkDropTarget(target)` — unregister
+- `UIMultiAnimGrid.linkGrids(a, b, ?accepts)` — static convenience for bidirectional linking
+
+**External drag-drop integration** (manual `UIMultiAnimDraggable` wiring):
 - `acceptDrops(draggable, ?accepts)` — register a `UIMultiAnimDraggable` to drop onto this grid's cells. Auto-creates `DropZone` per cell, manages highlight state. `accepts: (cell, draggable) -> Bool` filters valid targets. Highlight values determined by factory's `resolveHighlightValue()`
 - `removeDrops(draggable)` — unregister draggable
 - `makeDraggableFromCell(col, row, ?visualOverride)` — create draggable from cell content. Sets `sourceGrid`, `sourceCellCoord`, and `payload` on the draggable
@@ -283,7 +304,38 @@ var grid = new UIMultiAnimGrid(builder, {
 - `onGridEvent:(GridEvent) -> Void` — main event callback
 - `onCellBuilt:(CellCoord, CellVisual<T>) -> Void` — called after each cell build (customize overlays etc.)
 
-**Cross-grid drag pattern:**
+**Built-in cell drag pattern** (recommended for grid-to-grid):
+```haxe
+// Setup: two grids with built-in cell dragging
+shipGrid = addGrid(builder, {
+    gridType: Rect(64, 64), cellVisualFactory: factory,
+    cellDragEnabled: true, cellDragContainer: dragLayer,
+    snapPathName: "snapPath", returnPathName: "returnPath",
+    swapEnabled: true, swapPathName: "swapPath",
+});
+inventoryGrid = addGrid(builder, {
+    gridType: Rect(64, 64), cellVisualFactory: factory,
+    cellDragEnabled: true, cellDragContainer: dragLayer,
+    snapPathName: "snapPath", returnPathName: "returnPath",
+    swapEnabled: true, swapPathName: "swapPath",
+});
+
+// Link grids bidirectionally — cells can be dragged between them
+UIMultiAnimGrid.linkGrids(shipGrid, inventoryGrid);
+
+// Handle events — game state updates
+shipGrid.onGridEvent = (event) -> switch event {
+    case CellDrop(cell, carrier, sourceGrid, sourceCell, ctx):
+        ctx.accept();
+        shipGrid.set(cell.col, cell.row, carrier.payload);
+        if (sourceGrid != null && sourceCell != null) sourceGrid.clear(sourceCell.col, sourceCell.row);
+    case CellSwap(source, target, _, ctx):
+        ctx.accept();
+    default:
+};
+```
+
+**Cross-grid drag pattern (manual):**
 ```haxe
 // Both grids accept drops — use payload for typed filtering
 storageGrid.acceptDrops(drag, (cell, d) -> {

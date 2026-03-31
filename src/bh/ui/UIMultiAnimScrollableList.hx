@@ -405,7 +405,7 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 
 	function set_currentItemIndex(value:Int):Int {
 		if (value < -1 || value >= items.length)
-			throw 'currentItemIndex ${value} is out of bounds [0..${items.length}].';
+			throw 'currentItemIndex ${value} is out of bounds [-1..${items.length - 1}].';
 		if (this.currentItemIndex != value) {
 			if (this.currentItemIndex != -1)
 				setItemSelected(this.currentItemIndex, false);

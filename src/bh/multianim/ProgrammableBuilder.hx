@@ -192,6 +192,8 @@ class ProgrammableBuilder {
 		for (entry in constructData) {
 			final loadedSheet = getSheet(entry.sheet);
 			final anim = loadedSheet.getAnim(entry.animName);
+			if (anim == null)
+				throw 'Animation "${entry.animName}" not found in sheet "${entry.sheet}"';
 			if (entry.center) {
 				for (i in 0...anim.length) {
 					anim[i] = anim[i].cloneWithNewTile(anim[i].tile.center());

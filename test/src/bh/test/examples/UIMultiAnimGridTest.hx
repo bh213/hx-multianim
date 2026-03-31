@@ -1683,4 +1683,692 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 
 		grid.dispose();
 	}
+
+	// ============== cellDragEnabled config ==============
+
+	@Test
+	public function testCellDragEnabledDefaultFalse():Void {
+		var grid = createRectGrid(2, 2);
+		@:privateAccess Assert.isFalse(grid.cellDragEnabled);
+	}
+
+	@Test
+	public function testCellDragEnabledConfigStored():Void {
+		var grid = createCellDragGrid(2, 2);
+		@:privateAccess Assert.isTrue(grid.cellDragEnabled);
+	}
+
+	@Test
+	public function testCellDragFilterConfigStored():Void {
+		var builder = BuilderTestBase.builderFromSource(CELL_MANIM);
+		var filter = (col:Int, row:Int, data:Dynamic) -> col == 0;
+		var grid = new UIMultiAnimGrid(builder, {
+			gridType: Rect(50, 50, 2),
+			cellVisualFactory: new DefaultCellVisualFactory(builder, {cellBuildName: "cell"}),
+			cellDragEnabled: true,
+			cellDragFilter: filter,
+		});
+		@:privateAccess Assert.equals(filter, grid.cellDragFilter);
+	}
+
+	// ============== cellDragEnabled: drag start ==============
+
+	function createCellDragGrid(?cols:Int, ?rows:Int):UIMultiAnimGrid<Dynamic> {
+		var builder = BuilderTestBase.builderFromSource(CELL_MANIM);
+		var grid = new UIMultiAnimGrid(builder, {
+			gridType: Rect(50, 50, 2),
+			cellVisualFactory: new DefaultCellVisualFactory(builder, {cellBuildName: "cell"}),
+			originX: 0,
+			originY: 0,
+			cellDragEnabled: true,
+		});
+		if (cols != null && rows != null)
+			grid.addRectRegion(cols, rows);
+		return grid;
+	}
+
+	function createCellDragGridWithPaths(?cols:Int, ?rows:Int):UIMultiAnimGrid<Dynamic> {
+		var builder = BuilderTestBase.builderFromSource(CELL_WITH_PATH_MANIM);
+		var grid = new UIMultiAnimGrid(builder, {
+			gridType: Rect(50, 50, 2),
+			cellVisualFactory: new DefaultCellVisualFactory(builder, {cellBuildName: "cell"}),
+			originX: 0,
+			originY: 0,
+			cellDragEnabled: true,
+			snapPathName: "swapAnim",
+			returnPathName: "swapAnim",
+			swapEnabled: true,
+			swapPathName: "swapAnim",
+		});
+		if (cols != null && rows != null)
+			grid.addRectRegion(cols, rows);
+		return grid;
+	}
+
+	@Test
+	public function testCellDragStartOnOccupiedCell():Void {
+		var grid = createCellDragGrid(3, 1);
+		grid.set(1, 0, "item");
+
+		// Push on occupied cell (1,0) at local (52, 25) — center of cell 1
+		grid.onMouseClick(52, 25, 0);
+
+		@:privateAccess {
+			Assert.notNull(grid.cellDragObj);
+			Assert.notNull(grid.cellDragSourceCoord);
+			Assert.equals(1, grid.cellDragSourceCoord.col);
+			Assert.equals(0, grid.cellDragSourceCoord.row);
+			Assert.equals("item", grid.cellDragSourceData);
+		}
+
+		grid.dispose();
+	}
+
+	@Test
+	public function testCellDragNoStartOnEmptyCell():Void {
+		var grid = createCellDragGrid(3, 1);
+		// No data on any cell
+
+		grid.onMouseClick(25, 25, 0);
+
+		@:privateAccess Assert.isNull(grid.cellDragObj);
+		grid.dispose();
+	}
+
+	@Test
+	public function testCellDragNoStartWhenDisabled():Void {
+		var grid = createRectGrid(3, 1); // cellDragEnabled: false (default)
+		grid.set(0, 0, "item");
+
+		grid.onMouseClick(25, 25, 0);
+
+		@:privateAccess Assert.isNull(grid.cellDragObj);
+		grid.dispose();
+	}
+
+	@Test
+	public function testCellDragFilterPreventsStart():Void {
+		var builder = BuilderTestBase.builderFromSource(CELL_MANIM);
+		var grid = new UIMultiAnimGrid(builder, {
+			gridType: Rect(50, 50, 2),
+			cellVisualFactory: new DefaultCellVisualFactory(builder, {cellBuildName: "cell"}),
+			originX: 0,
+			originY: 0,
+			cellDragEnabled: true,
+			cellDragFilter: (col, row, data) -> col != 0, // Only allow dragging from col != 0
+		});
+		grid.addRectRegion(3, 1);
+		grid.set(0, 0, "blocked");
+		grid.set(1, 0, "allowed");
+
+		// Try to drag from filtered cell (0,0) — should fail
+		grid.onMouseClick(25, 25, 0);
+		@:privateAccess Assert.isNull(grid.cellDragObj);
+
+		// Drag from allowed cell (1,0) — should succeed
+		grid.onMouseClick(52 + 25, 25, 0);
+		@:privateAccess Assert.notNull(grid.cellDragObj);
+
+		grid.dispose();
+	}
+
+	@Test
+	public function testCellDragEmitsDragStartEvent():Void {
+		var grid = createCellDragGrid(3, 1);
+		grid.set(1, 0, "item");
+
+		var dragStartCoord:Null<CellCoord> = null;
+		grid.onGridEvent = (event) -> {
+			switch event {
+				case CellDragStart(cell, _):
+					dragStartCoord = cell;
+				default:
+			}
+		};
+
+		grid.onMouseClick(52 + 25, 25, 0);
+
+		Assert.notNull(dragStartCoord);
+		Assert.equals(1, dragStartCoord.col);
+		Assert.equals(0, dragStartCoord.row);
+
+		grid.dispose();
+	}
+
+	@Test
+	public function testCellDragConsumesMouseMove():Void {
+		var grid = createCellDragGrid(3, 1);
+		grid.set(1, 0, "item");
+
+		grid.onMouseClick(52 + 25, 25, 0);
+
+		// onMouseMove should return true when dragging
+		var consumed = grid.onMouseMove(100, 25);
+		Assert.isTrue(consumed);
+
+		grid.dispose();
+	}
+
+	// ============== cellDragEnabled: drag cancel ==============
+
+	@Test
+	public function testCellDragReturnOnMiss():Void {
+		var grid = createCellDragGrid(3, 1);
+		grid.set(1, 0, "item");
+
+		grid.onMouseClick(52 + 25, 25, 0);
+		@:privateAccess Assert.notNull(grid.cellDragObj);
+
+		// Release far outside grid — should cancel and rebuild source
+		grid.onMouseRelease(500, 500);
+
+		// After instant return (no returnPathName), source cell should be rebuilt
+		@:privateAccess Assert.isNull(grid.cellDragObj);
+		// Data should still be at original cell
+		Assert.equals("item", grid.get(1, 0));
+
+		grid.dispose();
+	}
+
+	@Test
+	public function testCellDragEmitsDragEndOnCancel():Void {
+		var grid = createCellDragGrid(3, 1);
+		grid.set(1, 0, "item");
+
+		var dragEndCoord:Null<CellCoord> = null;
+		grid.onGridEvent = (event) -> {
+			switch event {
+				case CellDragEnd(cell):
+					dragEndCoord = cell;
+				default:
+			}
+		};
+
+		grid.onMouseClick(52 + 25, 25, 0);
+		grid.onMouseRelease(500, 500);
+
+		Assert.notNull(dragEndCoord);
+		Assert.equals(1, dragEndCoord.col);
+		Assert.equals(0, dragEndCoord.row);
+
+		grid.dispose();
+	}
+
+	@Test
+	public function testCellDragCannotDropOnSourceCell():Void {
+		// Source cell is excluded from drop targets — dropping on it should return
+		var grid = createCellDragGrid(3, 1);
+		grid.set(1, 0, "item");
+
+		grid.onMouseClick(52 + 25, 25, 0);
+
+		// Release on the same cell (1,0)
+		grid.onMouseRelease(52 + 25, 25);
+
+		@:privateAccess Assert.isNull(grid.cellDragObj);
+		Assert.equals("item", grid.get(1, 0));
+
+		grid.dispose();
+	}
+
+	// ============== cellDragEnabled: drop on same grid ==============
+
+	@Test
+	public function testCellDragDropEmitsCellDrop():Void {
+		var grid = createCellDragGrid(3, 1);
+		grid.set(0, 0, "item");
+
+		var dropCoord:Null<CellCoord> = null;
+		var dropPayload:Dynamic = null;
+		var dropSourceCoord:Null<CellCoord> = null;
+		grid.onGridEvent = (event) -> {
+			switch event {
+				case CellDrop(cell, draggable, _, sourceCell, ctx):
+					dropCoord = cell;
+					dropPayload = draggable.payload;
+					dropSourceCoord = sourceCell;
+					ctx.accept();
+				default:
+			}
+		};
+
+		// Drag from (0,0) to (2,0)
+		grid.onMouseClick(25, 25, 0);
+		grid.onMouseRelease(104 + 25, 25); // cell (2,0) at local x = 2*(50+2) = 104
+
+		Assert.notNull(dropCoord);
+		Assert.equals(2, dropCoord.col);
+		Assert.equals(0, dropCoord.row);
+		Assert.equals("item", dropPayload);
+		Assert.notNull(dropSourceCoord);
+		Assert.equals(0, dropSourceCoord.col);
+
+		grid.dispose();
+	}
+
+	@Test
+	public function testCellDragDropRejected():Void {
+		var grid = createCellDragGrid(3, 1);
+		grid.set(0, 0, "item");
+
+		grid.onGridEvent = (event) -> {
+			switch event {
+				case CellDrop(_, _, _, _, ctx):
+					ctx.reject();
+				default:
+			}
+		};
+
+		grid.onMouseClick(25, 25, 0);
+		grid.onMouseRelease(104 + 25, 25);
+
+		// Item should return to source cell (instant — no return path)
+		@:privateAccess Assert.isNull(grid.cellDragObj);
+		Assert.equals("item", grid.get(0, 0));
+
+		grid.dispose();
+	}
+
+	@Test
+	public function testCellDragEmitsDragEndOnDrop():Void {
+		var grid = createCellDragGrid(3, 1);
+		grid.set(0, 0, "item");
+
+		var events:Array<String> = [];
+		grid.onGridEvent = (event) -> {
+			switch event {
+				case CellDrop(_, _, _, _, ctx):
+					events.push("drop");
+					ctx.accept();
+				case CellDragEnd(_):
+					events.push("end");
+				default:
+			}
+		};
+
+		grid.onMouseClick(25, 25, 0);
+		grid.onMouseRelease(104 + 25, 25);
+
+		Assert.equals(2, events.length);
+		Assert.equals("drop", events[0]);
+		Assert.equals("end", events[1]);
+
+		grid.dispose();
+	}
+
+	// ============== cellDragEnabled: swap ==============
+
+	function createCellDragSwapGrid(?cols:Int, ?rows:Int):UIMultiAnimGrid<Dynamic> {
+		var builder = BuilderTestBase.builderFromSource(CELL_MANIM);
+		var grid = new UIMultiAnimGrid(builder, {
+			gridType: Rect(50, 50, 2),
+			cellVisualFactory: new DefaultCellVisualFactory(builder, {cellBuildName: "cell"}),
+			originX: 0,
+			originY: 0,
+			cellDragEnabled: true,
+			swapEnabled: true,
+		});
+		if (cols != null && rows != null)
+			grid.addRectRegion(cols, rows);
+		return grid;
+	}
+
+	@Test
+	public function testCellDragSwapEmitsCellSwap():Void {
+		var grid = createCellDragSwapGrid(3, 1);
+		grid.set(0, 0, "A");
+		grid.set(1, 0, "B");
+
+		var swapSrc:Null<CellCoord> = null;
+		var swapTgt:Null<CellCoord> = null;
+		grid.onGridEvent = (event) -> {
+			switch event {
+				case CellSwap(source, target, _, ctx):
+					swapSrc = source;
+					swapTgt = target;
+					ctx.accept();
+				default:
+			}
+		};
+
+		// Drag from (0,0) to occupied (1,0)
+		grid.onMouseClick(25, 25, 0);
+		grid.onMouseRelease(52 + 25, 25);
+
+		Assert.notNull(swapSrc);
+		Assert.equals(0, swapSrc.col);
+		Assert.notNull(swapTgt);
+		Assert.equals(1, swapTgt.col);
+
+		// Data should be swapped (instant — no paths)
+		Assert.equals("B", grid.get(0, 0));
+		Assert.equals("A", grid.get(1, 0));
+
+		grid.dispose();
+	}
+
+	@Test
+	public function testCellDragSwapRejected():Void {
+		var grid = createCellDragSwapGrid(3, 1);
+		grid.set(0, 0, "A");
+		grid.set(1, 0, "B");
+
+		grid.onGridEvent = (event) -> {
+			switch event {
+				case CellSwap(_, _, _, ctx):
+					ctx.reject();
+				default:
+			}
+		};
+
+		grid.onMouseClick(25, 25, 0);
+		grid.onMouseRelease(52 + 25, 25);
+
+		// Rejected swap — data unchanged
+		Assert.equals("A", grid.get(0, 0));
+		Assert.equals("B", grid.get(1, 0));
+
+		grid.dispose();
+	}
+
+	// ============== cellDragEnabled: swap with animated paths ==============
+
+	@Test
+	public function testCellDragSwapWithPaths():Void {
+		var grid = createCellDragGridWithPaths(3, 1);
+		grid.set(0, 0, "A");
+		grid.set(1, 0, "B");
+
+		var swapDone = false;
+		grid.onGridEvent = (event) -> {
+			switch event {
+				case CellSwap(_, _, _, ctx):
+					ctx.accept();
+					ctx.onComplete(() -> swapDone = true);
+				default:
+			}
+		};
+
+		grid.onMouseClick(25, 25, 0);
+		grid.onMouseRelease(52 + 25, 25);
+
+		// Data swapped immediately
+		Assert.equals("B", grid.get(0, 0));
+		Assert.equals("A", grid.get(1, 0));
+
+		// Animations should be running
+		@:privateAccess Assert.isTrue(grid.activeSwapAnims.length > 0);
+
+		// Complete animations
+		grid.update(2.0);
+		Assert.isTrue(swapDone);
+
+		grid.dispose();
+	}
+
+	// ============== cellDragEnabled: right click does not drag ==============
+
+	@Test
+	public function testCellDragRightClickIgnored():Void {
+		var grid = createCellDragGrid(3, 1);
+		grid.set(0, 0, "item");
+
+		// Right-click (button 1) should not start drag
+		grid.onMouseClick(25, 25, 1);
+		@:privateAccess Assert.isNull(grid.cellDragObj);
+
+		grid.dispose();
+	}
+
+	// ============== linkDropTarget / linkGrids ==============
+
+	@Test
+	public function testLinkDropTargetStored():Void {
+		var gridA = createCellDragGrid(2, 1);
+		var gridB = createCellDragGrid(2, 1);
+
+		gridA.linkDropTarget(gridB);
+		@:privateAccess Assert.equals(1, gridA.linkedGrids.length);
+		@:privateAccess Assert.equals(gridB, gridA.linkedGrids[0].target);
+
+		gridA.dispose();
+		gridB.dispose();
+	}
+
+	@Test
+	public function testLinkDropTargetDuplicateIgnored():Void {
+		var gridA = createCellDragGrid(2, 1);
+		var gridB = createCellDragGrid(2, 1);
+
+		gridA.linkDropTarget(gridB);
+		gridA.linkDropTarget(gridB); // duplicate
+		@:privateAccess Assert.equals(1, gridA.linkedGrids.length);
+
+		gridA.dispose();
+		gridB.dispose();
+	}
+
+	@Test
+	public function testUnlinkDropTarget():Void {
+		var gridA = createCellDragGrid(2, 1);
+		var gridB = createCellDragGrid(2, 1);
+
+		gridA.linkDropTarget(gridB);
+		gridA.unlinkDropTarget(gridB);
+		@:privateAccess Assert.equals(0, gridA.linkedGrids.length);
+
+		gridA.dispose();
+		gridB.dispose();
+	}
+
+	@Test
+	public function testLinkGridsBidirectional():Void {
+		var gridA = createCellDragGrid(2, 1);
+		var gridB = createCellDragGrid(2, 1);
+
+		UIMultiAnimGrid.linkGrids(gridA, gridB);
+		@:privateAccess Assert.equals(1, gridA.linkedGrids.length);
+		@:privateAccess Assert.equals(1, gridB.linkedGrids.length);
+
+		gridA.dispose();
+		gridB.dispose();
+	}
+
+	// ============== Cross-grid cell drag ==============
+
+	@Test
+	public function testCrossGridDragFindTarget():Void {
+		// GridA at origin (0,0), gridB positioned so cellAtPoint can distinguish them
+		var builder = BuilderTestBase.builderFromSource(CELL_MANIM);
+		var gridA = new UIMultiAnimGrid(builder, {
+			gridType: Rect(50, 50, 2),
+			cellVisualFactory: new DefaultCellVisualFactory(builder, {cellBuildName: "cell"}),
+			originX: 0,
+			originY: 0,
+			cellDragEnabled: true,
+		});
+		gridA.addRectRegion(2, 1);
+		gridA.set(0, 0, "from_A");
+
+		var gridB = new UIMultiAnimGrid(builder, {
+			gridType: Rect(50, 50, 2),
+			cellVisualFactory: new DefaultCellVisualFactory(builder, {cellBuildName: "cell"}),
+			originX: 200,
+			originY: 0,
+			cellDragEnabled: true,
+		});
+		gridB.addRectRegion(2, 1);
+
+		gridA.linkDropTarget(gridB);
+
+		// Start drag from gridA cell (0,0)
+		gridA.onMouseClick(25, 25, 0);
+		@:privateAccess Assert.notNull(gridA.cellDragObj);
+
+		// Find target should locate gridB cell at (200+25, 25) = gridB's (0,0)
+		@:privateAccess {
+			var hit = gridA.cellDragFindTarget(225, 25);
+			Assert.notNull(hit);
+			Assert.equals(gridB, hit.grid);
+			Assert.equals(0, hit.coord.col);
+			Assert.equals(0, hit.coord.row);
+		}
+
+		gridA.dispose();
+		gridB.dispose();
+	}
+
+	@Test
+	public function testCrossGridDropEmitsCellDropOnTarget():Void {
+		var builder = BuilderTestBase.builderFromSource(CELL_MANIM);
+		var gridA = new UIMultiAnimGrid(builder, {
+			gridType: Rect(50, 50, 2),
+			cellVisualFactory: new DefaultCellVisualFactory(builder, {cellBuildName: "cell"}),
+			originX: 0,
+			originY: 0,
+			cellDragEnabled: true,
+		});
+		gridA.addRectRegion(2, 1);
+		gridA.set(0, 0, "payload");
+
+		var gridB = new UIMultiAnimGrid(builder, {
+			gridType: Rect(50, 50, 2),
+			cellVisualFactory: new DefaultCellVisualFactory(builder, {cellBuildName: "cell"}),
+			originX: 200,
+			originY: 0,
+			cellDragEnabled: true,
+		});
+		gridB.addRectRegion(2, 1);
+
+		gridA.linkDropTarget(gridB);
+
+		// Track events on gridB (the target)
+		var dropCoord:Null<CellCoord> = null;
+		var dropPayload:Dynamic = null;
+		var sourceGridRef:Dynamic = null;
+		gridB.onGridEvent = (event) -> {
+			switch event {
+				case CellDrop(cell, draggable, sourceGrid, _, ctx):
+					dropCoord = cell;
+					dropPayload = draggable.payload;
+					sourceGridRef = sourceGrid;
+					ctx.accept();
+				default:
+			}
+		};
+
+		// Drag from gridA (0,0), release on gridB (0,0) at scene (225, 25)
+		gridA.onMouseClick(25, 25, 0);
+		gridA.onMouseRelease(225, 25);
+
+		Assert.notNull(dropCoord);
+		Assert.equals(0, dropCoord.col);
+		Assert.equals("payload", dropPayload);
+		Assert.equals(gridA, sourceGridRef);
+
+		gridA.dispose();
+		gridB.dispose();
+	}
+
+	@Test
+	public function testCrossGridLinkAcceptsFilter():Void {
+		var builder = BuilderTestBase.builderFromSource(CELL_MANIM);
+		var gridA = new UIMultiAnimGrid(builder, {
+			gridType: Rect(50, 50, 2),
+			cellVisualFactory: new DefaultCellVisualFactory(builder, {cellBuildName: "cell"}),
+			originX: 0,
+			originY: 0,
+			cellDragEnabled: true,
+		});
+		gridA.addRectRegion(2, 1);
+		gridA.set(0, 0, "item");
+
+		var gridB = new UIMultiAnimGrid(builder, {
+			gridType: Rect(50, 50, 2),
+			cellVisualFactory: new DefaultCellVisualFactory(builder, {cellBuildName: "cell"}),
+			originX: 200,
+			originY: 0,
+			cellDragEnabled: true,
+		});
+		gridB.addRectRegion(2, 1);
+
+		// Link with accepts filter that rejects all
+		gridA.linkDropTarget(gridB, (targetCell, sourceCell, data) -> false);
+
+		// Start drag
+		gridA.onMouseClick(25, 25, 0);
+
+		// cellDragFindTarget should NOT find gridB cells (filtered out)
+		@:privateAccess {
+			var hit = gridA.cellDragFindTarget(225, 25);
+			Assert.isNull(hit);
+		}
+
+		gridA.dispose();
+		gridB.dispose();
+	}
+
+	@Test
+	public function testLinkedGridsClearedOnDispose():Void {
+		var gridA = createCellDragGrid(2, 1);
+		var gridB = createCellDragGrid(2, 1);
+
+		gridA.linkDropTarget(gridB);
+		gridA.dispose();
+
+		@:privateAccess Assert.equals(0, gridA.linkedGrids.length);
+
+		gridB.dispose();
+	}
+
+	@Test
+	public function testCellDragCleanedUpOnDispose():Void {
+		var grid = createCellDragGrid(3, 1);
+		grid.set(0, 0, "item");
+
+		// Start drag then dispose mid-drag
+		grid.onMouseClick(25, 25, 0);
+		@:privateAccess Assert.notNull(grid.cellDragObj);
+
+		grid.dispose();
+
+		@:privateAccess Assert.isNull(grid.cellDragObj);
+		@:privateAccess Assert.isNull(grid.cellDragSourceCoord);
+	}
+
+	@Test
+	public function testCellDragOnlyLeftButton():Void {
+		// Verify button 2 (middle) also does not start drag
+		var grid = createCellDragGrid(3, 1);
+		grid.set(0, 0, "item");
+
+		grid.onMouseClick(25, 25, 2);
+		@:privateAccess Assert.isNull(grid.cellDragObj);
+
+		grid.dispose();
+	}
+
+	@Test
+	public function testCellDragDropOnCompleteCallback():Void {
+		var grid = createCellDragGrid(3, 1);
+		grid.set(0, 0, "item");
+
+		var completeFired = false;
+		grid.onGridEvent = (event) -> {
+			switch event {
+				case CellDrop(_, _, _, _, ctx):
+					ctx.accept();
+					ctx.onComplete(() -> completeFired = true);
+				default:
+			}
+		};
+
+		grid.onMouseClick(25, 25, 0);
+		grid.onMouseRelease(104 + 25, 25);
+
+		// Instant snap (no snapPathName) → onComplete should fire immediately
+		Assert.isTrue(completeFired);
+
+		grid.dispose();
+	}
 }

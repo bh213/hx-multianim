@@ -67,6 +67,8 @@ class UIPanelHelper {
 
 	// Named panel slots for multi-panel support
 	var namedPanels:Map<String, PanelState> = [];
+	// In-flight fade-out tweens for named panels (keyed by slot, survives panel removal from namedPanels)
+	var namedFadeOutTweens:Map<String, Tween> = [];
 
 	public function new(screen:UIScreenBase, builder:MultiAnimBuilder, ?defaults:PanelDefaults, ?tweens:TweenManager) {
 		this.screen = screen;
@@ -274,6 +276,12 @@ class UIPanelHelper {
 
 	/** Close a specific named panel slot. */
 	public function closeNamed(slot:String):Void {
+		// Cancel any in-flight fade-out from a previous close of this slot
+		final prevFadeOut = namedFadeOutTweens.get(slot);
+		if (prevFadeOut != null) {
+			prevFadeOut.finish();
+			namedFadeOutTweens.remove(slot);
+		}
 		final panel = namedPanels.get(slot);
 		if (panel == null)
 			return;
@@ -293,7 +301,12 @@ class UIPanelHelper {
 
 		final obj = panel.result.object;
 		if (defaultFadeOut > 0 && tweens != null) {
-			tweens.tween(obj, defaultFadeOut, [Alpha(0.0)]).setOnComplete(() -> obj.remove());
+			final fadeOut = tweens.tween(obj, defaultFadeOut, [Alpha(0.0)]);
+			namedFadeOutTweens.set(slot, fadeOut);
+			fadeOut.setOnComplete(() -> {
+				obj.remove();
+				namedFadeOutTweens.remove(slot);
+			});
 		} else {
 			obj.remove();
 		}

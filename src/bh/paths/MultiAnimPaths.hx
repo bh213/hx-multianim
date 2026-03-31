@@ -803,22 +803,22 @@ class SinglePath {
 				// Calculate steps based on arc length: approximately 1 point per pixel
 				// For very small arcs, ensure at least 3 points for smooth rendering
 				var steps = hxd.Math.imax(3, cast arcLength);
-				[for(i in 0...steps) getPoint(1.0*i/steps)];
+				[for(i in 0...steps + 1) getPoint(1.0*i/steps)];
 			case Bezier3(control1, control2, control3):
 				var steps = hxd.Math.imax(8, cast length() / 4);
-				[for(i in 0...steps) getPoint(1.0*i/steps)];
+				[for(i in 0...steps + 1) getPoint(1.0*i/steps)];
 			case Bezier4(control1, control2, control3, control4):
 				var steps = hxd.Math.imax(12, cast length() / 4);
-				[for(i in 0...steps) getPoint(1.0*i/steps)];
+				[for(i in 0...steps + 1) getPoint(1.0*i/steps)];
 			case Spiral(center, startAngle, radiusStart, radiusEnd, angleDelta):
 				var steps = hxd.Math.imax(8, cast length() / 4);
-				[for(i in 0...steps) getPoint(1.0*i/steps)];
+				[for(i in 0...steps + 1) getPoint(1.0*i/steps)];
 			case Wave(amplitude, wavelength, count, dirAngle):
 				var steps = hxd.Math.imax(12, cast length() / 2);
-				[for(i in 0...steps) getPoint(1.0*i/steps)];
+				[for(i in 0...steps + 1) getPoint(1.0*i/steps)];
 			default:
 				var steps = hxd.Math.imax(2, cast length() / 4);
-				[for(i in 0...steps) getPoint(1.0*i/steps)];
+				[for(i in 0...steps + 1) getPoint(1.0*i/steps)];
 		}
 		
 	}

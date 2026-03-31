@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.0.0-rc.3] - 2026-03-31
 
 ### Added
 - **Custom filters** — game code can register custom filters via `FilterManager.registerFilter(name, paramDefs, factory)`, following the same pattern as `FontManager`. Custom filter names are parsed as opaque in `.manim` and validated at build time against the registry. Supports typed parameters (`CFFloat`, `CFColor`, `CFBool`) with defaults, `$param` references in arguments, and composition via `group()`. Case-insensitive names; built-in filter names cannot be shadowed. Works in both builder and codegen paths.
@@ -17,6 +17,10 @@
 - **ScreenManager change listeners** — `addScreenChangeListener()`/`removeScreenChangeListener()` for observing screen mode transitions. `ScreenChangeEvent` typedef with action, mode, entering/leaving screen names, and dialog name. Notified on `switchTo()`, `switchScreen()`, `modalDialog()`, and `closeDialogWithTransition()`.
 - **ScreenManager reload listeners** — `addReloadListener()`/`removeReloadListener()` for observing hot reload events. `ReloadEvent` enum with `ReloadStarted`, `ReloadSucceeded`, `ReloadFailed`, `ReloadNeedsRestart` variants.
 - **AllocProfiler** — lightweight wrapper around `hl.Profile` for tracking GC allocations. `start()`, `stop()`, `report()`, `dump()`, `measure()`, `reset()`. No-op stub on non-HashLink targets.
+
+- **Grid built-in cell drag** — `cellDragEnabled: true` in `GridConfig` makes cells with data draggable on mouse press. The grid internally manages the drag lifecycle (detach visual, track mouse, find drop targets via `cellAtPoint`, handle snap/return/swap animations) with zero external wiring. `cellDragFilter: (col, row, data) -> Bool` controls which cells can be dragged. `cellDragContainer` sets the parent for the drag visual. Emits `CellDragStart`/`CellDragEnd` events alongside existing `CellDrop`/`CellSwap`.
+- **Grid cross-grid linking** — `linkDropTarget(target, ?accepts)` registers another grid as a drop target for built-in cell drags. `unlinkDropTarget(target)` removes the link. `UIMultiAnimGrid.linkGrids(a, b, ?accepts)` is a static convenience for bidirectional linking. The `accepts` filter receives `(targetCell, sourceCell, sourceData)`.
+- **Grid `RectOrigin` enum** — `rectOrigin: Centered` in `GridConfig` centers the hit area on the cell position instead of the default top-left alignment. Useful when cell visuals are centered (e.g., hex sprites in a rect layout). Affects `cellAtPoint()` hit testing and `cellBounds()`.
 
 - **Grid cell swap** — `swapCells(col1, row1, col2, row2, ?animated)` for programmatic cell swapping with optional animated transitions. `swapEnabled` config flag enables drag-drop swap semantics (dropping on occupied cell emits `CellSwap` instead of `CellDrop`). `SwapContext` controls accept/reject, custom paths (`acceptWithSwapPath`, `acceptWithPaths`), `onComplete`/`onSnapComplete` callbacks. Supports cross-grid swaps, `SwapVisualProvider` delegate for custom displaced-item visuals, and `swapAnimContainer` for z-order control during animation.
 - **Configurable scene layers** — `SceneLayerConfig` typedef on `ScreenManager` constructor allows overriding default layer indices (content=2, master=4, overlay=5, dialog=6). Validates ordering constraint `content < master < overlay < dialog`. Screen-level layer validation added (BackgroundLayer < DefaultLayer < ModalLayer).
@@ -76,6 +80,12 @@
 - **`safeDetach` for h2d.Graphics reparenting** — extracted `HeapsUtils.safeDetach()` utility that detaches objects without triggering `onRemove()` cascade (which destroys `h2d.Graphics` draw commands). Applied to `UIMultiAnimDraggable` (constructor, `moveToLayer`, `restoreLayer`) and `UIMultiAnimGrid.detachCellVisual()`. `HotReload.PlaceholderReuser` now delegates to the shared utility.
 - **`detachCellVisual` immediate rebuild** — `detachCellVisual()` now rebuilds the cell entry immediately after detaching, fully severing the detached object from the grid. Prevents `rebuildCell()` from removing the detached object.
 - **Grid `dispose()` fires swap onComplete callbacks** — `dispose()` now fires `onComplete` on active swap animations before removing them, preventing game logic from being left in an inconsistent state.
+- **Path `toPoints()` off-by-one** — curve segment `toPoints()` now generates `steps + 1` points, including the endpoint. Previously the last point was missing, causing visual gaps at the end of arc, bezier, spiral, and wave segments.
+- **Parser `namedCoordSystems` leak across programmables** — `namedCoordSystems` (named `grid:`/`hex:` systems) is now reset on each root-level node parse, preventing systems from one programmable leaking into siblings.
+- **ProgrammableBuilder missing animation error** — `constructStateAnims()` now throws a descriptive error (`Animation "X" not found in sheet "Y"`) instead of null-reference crash when a state animation references a missing sheet animation.
+- **CardHand cursor not restored on `clearHand()`** — `clearHand()` now restores the system cursor to `Default` when called while targeting mode is active with `hideCursorWhileTargeting`.
+- **PanelHelper named panel fade-out race** — `closeNamed()` now tracks in-flight fade-out tweens and cancels the previous one before starting a new close, preventing orphaned scene graph objects when a named panel is rapidly closed/reopened.
+- **ScrollableList `currentItemIndex` error message** — corrected bounds description from `[0..length]` to `[-1..length-1]` to match the actual valid range.
 - **DevBridge SSE broadcast flag reset on error** — `broadcastSseEvent()` now wraps serialization in try/catch so `sseBroadcasting` is always reset, preventing a `Json.stringify` failure from permanently blocking SSE events.
 - **CardHand `applyCardToCardEffects()` bounds guard** — `indexOf` result is now checked for -1 before array access, preventing out-of-bounds access if the target card was removed externally.
 - **Parser 2D index variable null guard** — `#name[$x, $y]` parsing now checks `scopeVars == null` before the second variable lookup, matching the first variable's defensive check.

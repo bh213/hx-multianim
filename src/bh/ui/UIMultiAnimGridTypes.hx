@@ -30,6 +30,17 @@ enum GridType {
 	Hex(orientation:HexOrientation, sizeX:Float, sizeY:Float);
 }
 
+/** Cell origin point for Rect grids. Controls where the cell visual is anchored
+ *  relative to the hit area. Hex grids always use centered origin. */
+enum RectOrigin {
+	/** Cell visual origin is at the top-left of the hit area (default). */
+	TopLeft;
+
+	/** Cell visual origin is at the center of the hit area.
+	 *  Use when cell visuals are centered (e.g. hex sprites in a rect layout). */
+	Centered;
+}
+
 /** What is targeting a cell. */
 enum CellTargetSource {
 	/** Plain mouse hover (no drag/card active). */
@@ -67,6 +78,12 @@ enum GridEvent<T> {
 	/** A card was played on a cell (from UICardHandHelper targeting). */
 	CellCardPlayed(cell:CellCoord, cardId:String);
 
+	/** A cell drag started (cellDragEnabled). The draggable is managed internally. */
+	CellDragStart(cell:CellCoord, draggable:UIMultiAnimDraggable);
+
+	/** A cell drag ended (drop, cancel, or swap complete). */
+	CellDragEnd(cell:CellCoord);
+
 	/** Cell data changed via set() or clear(). */
 	CellDataChanged(cell:CellCoord, oldData:Null<T>, newData:Null<T>);
 }
@@ -90,6 +107,10 @@ typedef CellBuildInfo = {
  *  Receives the cell coordinate and its data. Returns an h2d.Object to animate,
  *  or null to fall back to the detached cell visual (default behavior). */
 typedef SwapVisualProvider<T> = (cell:CellCoord, data:T) -> Null<h2d.Object>;
+
+/** Delegate to determine whether a cell can be dragged (for cellDragEnabled).
+ *  Receives the cell coordinate and its data. Return true to allow dragging. */
+typedef CellDragFilter<T> = (col:Int, row:Int, data:T) -> Bool;
 
 /** Delegate to determine whether a cell accepts a draggable drop. */
 typedef GridDropAccepts = (cell:CellCoord, draggable:UIMultiAnimDraggable) -> Bool;
@@ -449,4 +470,26 @@ typedef GridConfig<T> = {
 	 *  This is useful when cell programmables include backgrounds that shouldn't animate.
 	 *  Return null from the delegate to fall back to the detached cell visual for that cell. */
 	var ?swapVisualProvider:SwapVisualProvider<T>;
+
+	// --- Rect layout options ---
+
+	/** Cell origin point for Rect grids. TopLeft (default): hit area starts at cell position.
+	 *  Centered: hit area is centered on cell position (for centered visuals like hex sprites). */
+	var ?rectOrigin:RectOrigin;
+
+	// --- Built-in cell dragging ---
+
+	/** Enable built-in cell dragging: cells with data become draggable on mouse press.
+	 *  The grid internally creates and manages a UIMultiAnimDraggable per drag operation,
+	 *  registers its own cells as drop zones, and emits CellDrop/CellSwap/CellDragStart/CellDragEnd events.
+	 *  No external draggable wiring needed. Default: false. */
+	var ?cellDragEnabled:Bool;
+
+	/** Optional filter for which cells can be dragged. Called on mouse press when cellDragEnabled=true.
+	 *  Return true to allow dragging. When null, all cells with non-null data are draggable. */
+	var ?cellDragFilter:CellDragFilter<T>;
+
+	/** Parent container for the drag visual during cell drag. The dragged cell is reparented here
+	 *  so it renders above other grid content. If null, falls back to the grid's own root at a high z-order. */
+	var ?cellDragContainer:h2d.Object;
 }

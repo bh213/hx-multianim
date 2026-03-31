@@ -734,6 +734,8 @@ class UICardHandHelper implements UIHigherOrderComponent {
 	}
 
 	function clearHand():Void {
+		if (isTargeting && hideCursorWhileTargeting)
+			hxd.System.setCursor(Default);
 		for (entry in cards) {
 			interactiveHelper.unbind(entry.interactiveId);
 			screen.removeInteractives(entry.interactiveId);

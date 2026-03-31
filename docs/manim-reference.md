@@ -987,6 +987,10 @@ When `tabPanel.contentRoot` is set, tab content coordinates are relative to the 
 | `swapAnimContainer` | Parent container for in-flight swap visuals (null = grid root at high z-order) |
 | `swapVisualProvider` | `(cell, data) -> Null<h2d.Object>` delegate for custom displaced-item visuals |
 | `tweenManager` | Optional `TweenManager` for cell lifecycle animations (null = instant) |
+| `rectOrigin` | Cell origin for Rect grids: `TopLeft` (default) or `Centered` (hit area centered on cell position) |
+| `cellDragEnabled` | Cells with data become draggable on press (default: false) |
+| `cellDragFilter` | `(col, row, data) -> Bool` filter for which cells can be dragged (null = all with data) |
+| `cellDragContainer` | Parent container for drag visual (null = grid root at high z-order) |
 
 **`DefaultCellVisualFactory` config** (`CellVisualFactoryConfig`): `cellBuildName` (programmable name), `?cellBuildDelegate`, `?highlightParam` (default `"highlight"`), `?statusParam` (default `"status"`), `?highlightDelegate`.
 
@@ -1003,9 +1007,9 @@ When `tabPanel.contentRoot` is set, tab content coordinates are relative to the 
 
 **Cell programmable contract:** Must have `col:int`, `row:int`, plus matching `highlightParam` (enum with "none"/"accept"/"reject") and `statusParam` (enum with `normal`/`hover`). Custom highlight values supported via `highlightDelegate` on factory config.
 
-**Events** (`GridEvent` enum via `onGridEvent`): `CellClick`, `CellHoverEnter`, `CellHoverLeave`, `CellDrop(cell, draggable, sourceGrid, sourceCell, ctx)`, `CellSwap(source, target, draggable, ctx)`, `CellCardPlayed`, `CellDataChanged`. `CellDrop` includes `DropContext`: `ctx.accept()` / `ctx.reject()` controls snap vs return animation; `ctx.onComplete(cb)` fires after animation; `ctx.acceptWithPath(name)` / `ctx.rejectWithPath(name)` for custom paths. `CellSwap` includes `SwapContext`: `ctx.accept()` / `ctx.reject()`, `ctx.acceptWithSwapPath(name)` / `ctx.acceptWithPaths(snap, swap)` for custom paths, `ctx.onComplete(cb)` / `ctx.onSnapComplete(cb)`, `ctx.programmatic` flag (true for `swapCells()`, false for drag-drop).
+**Events** (`GridEvent` enum via `onGridEvent`): `CellClick`, `CellHoverEnter`, `CellHoverLeave`, `CellDrop(cell, draggable, sourceGrid, sourceCell, ctx)`, `CellSwap(source, target, draggable, ctx)`, `CellDragStart(cell, draggable)`, `CellDragEnd(cell)`, `CellCardPlayed`, `CellDataChanged`. `CellDrop` includes `DropContext`: `ctx.accept()` / `ctx.reject()` controls snap vs return animation; `ctx.onComplete(cb)` fires after animation; `ctx.acceptWithPath(name)` / `ctx.rejectWithPath(name)` for custom paths. `CellSwap` includes `SwapContext`: `ctx.accept()` / `ctx.reject()`, `ctx.acceptWithSwapPath(name)` / `ctx.acceptWithPaths(snap, swap)` for custom paths, `ctx.onComplete(cb)` / `ctx.onSnapComplete(cb)`, `ctx.programmatic` flag (true for `swapCells()`, false for drag-drop). `CellDragStart`/`CellDragEnd` emitted by built-in cell drag (`cellDragEnabled`).
 
-**Key API:** `addRectRegion(cols, rows)`, `addHexRegion(center, radius)`, `set(col, row, data, ?params)`, `get()`, `clear()`, `isOccupied()`, `forEach()`, `cellAtPoint(sceneX, sceneY)`, `cellPosition(col, row)`, `neighbors()`, `distance()`, `acceptDrops(draggable, ?filter)`, `registerAsCardTarget(cardHand, ?filter)`, `makeDraggableFromCell(col, row, ?visual)`, `dispose()`.
+**Key API:** `addRectRegion(cols, rows)`, `addHexRegion(center, radius)`, `set(col, row, data, ?params)`, `get()`, `clear()`, `isOccupied()`, `forEach()`, `cellAtPoint(sceneX, sceneY)`, `cellPosition(col, row)`, `neighbors()`, `distance()`, `acceptDrops(draggable, ?filter)`, `registerAsCardTarget(cardHand, ?filter)`, `makeDraggableFromCell(col, row, ?visual)`, `linkDropTarget(target, ?accepts)`, `unlinkDropTarget(target)`, `UIMultiAnimGrid.linkGrids(a, b, ?accepts)`, `dispose()`.
 
 **Grid layers:** `addLayer(name, {buildName, zOrder})`, `setLayer(col, row, name, ?params)`, `clearLayer(col, row, name)`, `clearLayerAll(name)`, `clearAllLayers()`, `getLayerVisual(col, row, name)`, `hasLayer()`. Base cells at z-order 0; layers at configurable z-orders. `removeCell()` auto-clears layers. **External objects:** `addExternalObject(obj, zOrder)` / `removeExternalObject(obj)`.
 

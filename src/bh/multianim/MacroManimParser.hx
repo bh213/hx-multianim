@@ -2715,7 +2715,7 @@ class MacroManimParser {
 	@:nullSafety(Off)
 	function parseNode(updatableName:UpdatableNameType, parent:Null<Node>, currentDefs:ParametersDefinitions):Node {
 		// Reset reference validation scope for each root-level node
-		if (parent == null) { activeDefs = null; scopeVars = null; namedElements = null; }
+		if (parent == null) { activeDefs = null; scopeVars = null; namedElements = null; namedCoordSystems = null; }
 		var layerIndex = -1;
 		var alpha:Null<ReferenceableValue> = null;
 		var scale:Null<ReferenceableValue> = null;

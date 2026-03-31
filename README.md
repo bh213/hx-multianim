@@ -186,7 +186,7 @@ addObjectToLayer(sprite, BackgroundLayer);
 
 ```haxe
 // Buttons
-var btn = addButtonWithSingleBuilder(builder, "button", "Click Me");
+var btn = addButtonWithSingleBuilder(builder, "button", settings, "Click Me");
 // or with explicit builder
 var btn = addButton(builder.createElementBuilder("button"), "Click Me", settings);
 
