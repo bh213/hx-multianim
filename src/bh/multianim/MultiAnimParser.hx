@@ -488,7 +488,7 @@ enum ResolvedIndexParameters {
 @:nullSafety
 enum ConditionalValues {
 	CoEnums(a:Array<String>);
-	CoRange(from:Null<Float>, to:Null<Float>, fromExclusive:Bool, toExclusive:Bool);
+	CoRange(from:Null<ReferenceableValue>, to:Null<ReferenceableValue>, fromExclusive:Bool, toExclusive:Bool);
 	CoIndex(idx:Int, value:String);
 	CoValue(val:Int);
 	CoFlag(f:Int);

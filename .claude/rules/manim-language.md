@@ -65,6 +65,7 @@
 @(param => bit[N])        # Bit flag test (checks if bit N is set)
 @($loopVar => value)      # Match repeatable loop variable (inside repeatable body)
 @($loopVar >= N)          # Range/comparison on loop variable
+@($loopVar < $param)      # Comparison with $param reference (resolved at build time)
 @else                     # Matches when preceding @() didn't match
 @else(param=>value)       # Else-if with conditions
 @default                  # Final fallback

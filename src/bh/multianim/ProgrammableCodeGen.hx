@@ -5046,12 +5046,12 @@ class ProgrammableCodeGen {
 			case CoRange(from, to, fromExclusive, toExclusive):
 				var result:Expr = macro true;
 				if (from != null) {
-					final fromVal:Float = from;
-					result = if (fromExclusive) macro($paramExpr > $v{fromVal}) else macro($paramExpr >= $v{fromVal});
+					final fromExpr = rvToExpr(from);
+					result = if (fromExclusive) macro($paramExpr > $fromExpr) else macro($paramExpr >= $fromExpr);
 				}
 				if (to != null) {
-					final toVal:Float = to;
-					final toCond = if (toExclusive) macro($paramExpr < $v{toVal}) else macro($paramExpr <= $v{toVal});
+					final toExpr = rvToExpr(to);
+					final toCond = if (toExclusive) macro($paramExpr < $toExpr) else macro($paramExpr <= $toExpr);
 					result = macro($result && $toCond);
 				}
 				result;

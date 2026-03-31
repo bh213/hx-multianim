@@ -1211,6 +1211,118 @@ class BuilderUnitTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testIncrementalRepeatableChildConditions():Void {
+		// Reproduction case from issue: conditions inside repeatable compare $i against a parameter.
+		// Changing the parameter via setParameter should re-evaluate those conditions.
+		final params = new Map<String, Dynamic>();
+		params.set("level", 0);
+		params.set("max", 6);
+		final result = buildFromSource("
+			#test programmable(level:int=0, max:int=6) {
+				repeatable($i, step($max, dx: 14)) {
+					@($i < $level) bitmap(generated(color(12, 3, #55CC88))): 0, 0
+					@($i >= $level) bitmap(generated(color(12, 3, #556677))): 0, 0
+				}
+			}
+		", "test", params, Incremental);
+
+		// level=0: all 6 should be dim (12x3 #556677)
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(6, bitmaps.length);
+		// All should be dim — $i >= 0 is always true
+		for (b in bitmaps)
+			Assert.equals(3, Std.int(b.tile.height));
+
+		// Set level=3: first 3 should be green, last 3 dim
+		result.setParameter("level", 3);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(6, bitmaps.length);
+
+		// Set level=6: all 6 should be green
+		result.setParameter("level", 6);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(6, bitmaps.length);
+	}
+
+	@Test
+	public function testIncrementalRepeatableConstantCountChildConditions():Void {
+		// Variant: repeat count is constant (no param ref), but children have param conditions.
+		final result = buildFromSource("
+			#test programmable(level:int=0) {
+				repeatable($i, step(4, dx: 14)) {
+					@($i < $level) bitmap(generated(color(10, 10, #00ff00))): 0, 0
+					@($i >= $level) bitmap(generated(color(20, 10, #ff0000))): 0, 0
+				}
+			}
+		", "test", null, Incremental);
+
+		// level=0: all 4 should be red (20px wide)
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(4, bitmaps.length);
+		for (b in bitmaps)
+			Assert.equals(20, Std.int(b.tile.width));
+
+		// level=2: first 2 green (10px), last 2 red (20px)
+		result.setParameter("level", 2);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(4, bitmaps.length);
+		var greenCount = 0;
+		var redCount = 0;
+		for (b in bitmaps) {
+			if (Std.int(b.tile.width) == 10) greenCount++;
+			else if (Std.int(b.tile.width) == 20) redCount++;
+		}
+		Assert.equals(2, greenCount);
+		Assert.equals(2, redCount);
+
+		// level=4: all green (10px)
+		result.setParameter("level", 4);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(4, bitmaps.length);
+		for (b in bitmaps)
+			Assert.equals(10, Std.int(b.tile.width));
+	}
+
+	@Test
+	public function testIncrementalRepeatableRangeParamRef():Void {
+		// Range syntax with $param references: @($i => $from..$to)
+		final result = buildFromSource("
+			#test programmable(from:int=1, to:int=3) {
+				repeatable($i, step(5, dx: 14)) {
+					@($i => $from..$to) bitmap(generated(color(10, 10, #00ff00))): 0, 0
+					@else bitmap(generated(color(20, 10, #ff0000))): 0, 0
+				}
+			}
+		", "test", null, Incremental);
+
+		// from=1, to=3: indices 1,2,3 green (10px), indices 0,4 red (20px)
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(5, bitmaps.length);
+		var greenCount = 0;
+		for (b in bitmaps)
+			if (Std.int(b.tile.width) == 10) greenCount++;
+		Assert.equals(3, greenCount);
+
+		// Change to from=0, to=4: all green
+		result.setParameter("from", 0);
+		result.setParameter("to", 4);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		greenCount = 0;
+		for (b in bitmaps)
+			if (Std.int(b.tile.width) == 10) greenCount++;
+		Assert.equals(5, greenCount);
+
+		// Change to from=2, to=2: only index 2 green
+		result.setParameter("from", 2);
+		result.setParameter("to", 2);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		greenCount = 0;
+		for (b in bitmaps)
+			if (Std.int(b.tile.width) == 10) greenCount++;
+		Assert.equals(1, greenCount);
+	}
+
+	@Test
 	public function testIncrementalMultiVariable():Void {
 		final params = new Map<String, Dynamic>();
 		params.set("hp", 60);

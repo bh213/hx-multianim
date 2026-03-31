@@ -2489,13 +2489,15 @@ class MultiAnimBuilder {
 					default: throw 'invalid param types ${currentValue}, ${condValue}' + currentNodePos();
 				}
 			case CoRange(from, to, fromExclusive, toExclusive):
+				final fromF:Null<Float> = from != null ? resolveAsNumber(from) : null;
+				final toF:Null<Float> = to != null ? resolveAsNumber(to) : null;
 				switch currentValue {
 					case Value(val):
-						if (from != null && (fromExclusive ? val <= from : val < from)) return false;
-						if (to != null && (toExclusive ? val >= to : val > to)) return false;
+						if (fromF != null && (fromExclusive ? val <= fromF : val < fromF)) return false;
+						if (toF != null && (toExclusive ? val >= toF : val > toF)) return false;
 					case ValueF(val):
-						if (from != null && (fromExclusive ? val <= from : val < from)) return false;
-						if (to != null && (toExclusive ? val >= to : val > to)) return false;
+						if (fromF != null && (fromExclusive ? val <= fromF : val < fromF)) return false;
+						if (toF != null && (toExclusive ? val >= toF : val > toF)) return false;
 					default: throw 'invalid param types ${currentValue}, ${condValue}' + currentNodePos();
 				}
 
@@ -2623,6 +2625,41 @@ class MultiAnimBuilder {
 			case EUnaryOp(_, e): collectParamRefs(e, result);
 			case RVElementOfArray(_, idx): collectParamRefs(idx, result);
 			default:
+		}
+	}
+
+	/** Collects parameter references from a ConditionalValues (e.g. $ref in CoRange bounds). */
+	static function collectConditionalValueParamRefs(cv:ConditionalValues, result:Array<String>):Void {
+		switch cv {
+			case CoRange(from, to, _, _):
+				if (from != null) collectParamRefs(from, result);
+				if (to != null) collectParamRefs(to, result);
+			case CoNot(inner):
+				collectConditionalValueParamRefs(inner, result);
+			default: // CoEnums, CoIndex, CoValue, CoFlag, CoAny, CoStringValue — no RV refs
+		}
+	}
+
+	/** Recursively collects parameter names referenced in conditions of a node and its descendants.
+	    Includes both condition keys (param names) and value references (e.g. $level in CoRange bounds). */
+	static function collectChildConditionalParamRefs(nodes:Array<Node>, result:Array<String>):Void {
+		for (node in nodes) {
+			switch node.conditionals {
+				case Conditional(conditions, _):
+					for (paramName => condValue in conditions) {
+						if (result.indexOf(paramName) < 0) result.push(paramName);
+						collectConditionalValueParamRefs(condValue, result);
+					}
+				case ConditionalElse(values):
+					if (values != null)
+						for (paramName => condValue in values) {
+							if (result.indexOf(paramName) < 0) result.push(paramName);
+							collectConditionalValueParamRefs(condValue, result);
+						}
+				case ConditionalDefault | NoConditional:
+			}
+			if (node.children != null)
+				collectChildConditionalParamRefs(node.children, result);
 		}
 	}
 
@@ -4245,6 +4282,12 @@ class MultiAnimBuilder {
 						collectParamRefs(end, repeatParamRefs);
 						collectParamRefs(step, repeatParamRefs);
 					default:
+				}
+				// Also collect param refs from conditions inside children (e.g. @($i < $level) references $level).
+				// This ensures changing those params triggers a repeatable rebuild even if the count is constant.
+				if (incrementalMode && incrementalContext != null) {
+					collectChildConditionalParamRefs(node.children, repeatParamRefs);
+					repeatParamRefs.remove(varName); // exclude loop variable — not a settable parameter
 				}
 				final hasIncrementalRepeat = incrementalMode && incrementalContext != null && repeatParamRefs.length > 0;
 

@@ -298,6 +298,8 @@ Parse-time error when used outside a flow ancestor.
 
 Conditionals also work with **repeatable loop variables** (e.g., `@($i => 0)`, `@($i >= 3)`, `@($i != 1)`) inside `repeatable` bodies.
 
+**Comparison and range values support `$param` references** — e.g., `@($i < $level)`, `@(hp >= $threshold)`, `@(param => $from..$to)`, `between $min..$max`. The reference is resolved at build time from current parameter values.
+
 Additional condition keywords: `greaterthanorequal`, `lessthanorequal`, `bit`, `between`.
 
 ---

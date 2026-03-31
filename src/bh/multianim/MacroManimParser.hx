@@ -1849,19 +1849,19 @@ class MacroManimParser {
 				case TGreaterEquals:
 					advance();
 					final val = parseAnything();
-					result.set(paramName, CoRange(resolveToFloat(val), null, false, false));
+					result.set(paramName, CoRange(val, null, false, false));
 				case TLessEquals:
 					advance();
 					final val = parseAnything();
-					result.set(paramName, CoRange(null, resolveToFloat(val), false, false));
+					result.set(paramName, CoRange(null, val, false, false));
 				case TGreaterThan:
 					advance();
 					final val = parseAnything();
-					result.set(paramName, CoRange(resolveToFloat(val), null, true, false));
+					result.set(paramName, CoRange(val, null, true, false));
 				case TLessThan:
 					advance();
 					final val = parseAnything();
-					result.set(paramName, CoRange(null, resolveToFloat(val), false, true));
+					result.set(paramName, CoRange(null, val, false, true));
 				case TNotEquals:
 					advance();
 					// Negated match
@@ -1908,11 +1908,11 @@ class MacroManimParser {
 								case TIdentifier(s) if (isKeyword(s, "greaterthanorequal")):
 									advance();
 									final val = parseAnything();
-									result.set(paramName, CoRange(resolveToFloat(val), null, false, false));
+									result.set(paramName, CoRange(val, null, false, false));
 								case TIdentifier(s) if (isKeyword(s, "lessthanorequal")):
 									advance();
 									final val = parseAnything();
-									result.set(paramName, CoRange(null, resolveToFloat(val), false, false));
+									result.set(paramName, CoRange(null, val, false, false));
 								case TIdentifier(s) if (isKeyword(s, "bit")):
 									advance();
 									expect(TBracketOpen);
@@ -1921,28 +1921,25 @@ class MacroManimParser {
 									result.set(paramName, CoFlag(1 << bitIndex));
 								case TIdentifier(s) if (isKeyword(s, "between")):
 									advance();
-									final from = parseConditionalValue();
+									final from = parseAnything();
 									expect(TDoubleDot);
-									final to = parseConditionalValue();
-									final fromF = resolveCondToFloat(from);
-									final toF = resolveCondToFloat(to);
-									result.set(paramName, CoRange(fromF, toF, false, false));
+									final to = parseAnything();
+									result.set(paramName, CoRange(from, to, false, false));
 								default:
 									// Could be a range: from..to
-									final val = parseConditionalValue();
+									final val = parseAnything();
 									// Check for range
 									if (match(TDoubleDot)) {
-										final to = parseConditionalValue();
-										final fromF = resolveCondToFloat(val);
-										final toF = resolveCondToFloat(to);
-										result.set(paramName, CoRange(fromF, toF, false, false));
+										final to = parseAnything();
+										result.set(paramName, CoRange(val, to, false, false));
 									} else {
+										final valStr = rvToCondString(val);
 										final paramDef = defs.get(paramName);
 										if (paramDef != null) {
-											final cv = stringToConditional(val, paramDef.type);
+											final cv = stringToConditional(valStr, paramDef.type);
 											result.set(paramName, cv);
 										} else {
-											final cv2 = stringToConditionalGeneric(val);
+											final cv2 = stringToConditionalGeneric(valStr);
 											result.set(paramName, cv2);
 										}
 									}
@@ -2024,10 +2021,20 @@ class MacroManimParser {
 		}
 	}
 
-	function resolveCondToFloat(s:String):Null<Float> {
+	function resolveCondToFloat(s:String):Float {
 		final f = Std.parseFloat(s);
 		if (!Math.isNaN(f)) return f;
 		return 0;
+	}
+
+	/** Converts a simple ReferenceableValue back to a string for stringToConditional fallback. */
+	function rvToCondString(rv:ReferenceableValue):String {
+		return switch rv {
+			case RVInteger(i): Std.string(i);
+			case RVFloat(f): Std.string(f);
+			case RVString(s): s;
+			default: error('expected simple value for conditional, got ${rv}');
+		}
 	}
 
 	// ===================== Blend Mode =====================
