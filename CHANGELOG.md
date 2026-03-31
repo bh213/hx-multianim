@@ -42,6 +42,7 @@
 - **Scrollable list per-item base status** — `UIElementListItem.baseStatus:String` defines the resting visual status for individual items (e.g. `"active"`, `"completed"`). Used as initial `status` in `buildItem()` and as reset target after hover/press ends (instead of always `"normal"`). Falls back to `"disabled"` if `item.disabled`, then `"normal"`.
 - **Scrollable list `scrollToAndSelect()`** — convenience method combining `scrollToIndex()` + `setSelectedIndex()`.
 - **Scrollable list `setItems()` force-applies selection visual** — `setItems()` now always applies the selected visual after rebuild, even when the selected index hasn't changed.
+- **Scrollable list `setItems()` preserve scroll** — `setItems(newItems, selectedIndex, preserveScroll: true)` keeps the current scroll position instead of resetting to top. Useful when refreshing list content without losing the user's scroll context.
 
 ### Changed
 - **Removed deprecated `AnimatedPath.setColorRange()`** — use `addColorCurveSegment()` for per-segment color animation instead.
@@ -66,6 +67,9 @@
 - **Draggable: zero-distance animation skip ignores visual effects** — `startAnimation()` no longer skips zero-distance paths when `animApplyScale`, `animApplyAlpha`, or `animApplyRotation` flags are set, allowing in-place fade/scale/rotation animations.
 - **Draggable: `swapMode = true` without `sourceSlot` silently degrades** — now throws with a clear error message via property setter validation.
 - **CardHand: invalid path names deferred to animation time** — `drawPathName`, `discardPathName`, `returnPathName`, `rearrangePathName` are now validated at construction via `builder.hasNode()`, failing fast with a descriptive error instead of throwing during the first animation.
+- **Grid cell drag: source cell shows stale visual during drag** — `cellDragStart` now rebuilds the source cell with null data to show the empty slot visual while dragging, instead of leaving the previous cell appearance.
+- **Grid cell drag: swap target rebuilds too early** — target cell visual rebuild is now deferred until the snap animation completes, preventing a flash of the new content while the drag visual is still animating on top.
+- **Grid cell drag: source data lost on cancel** — `cellDragRebuildSourceAndFinish` now restores the original cell data before rebuilding, fixing an issue where cancelling a drag left the source cell empty.
 - **CardHand: layout path cache not invalidated on hot-reload** — `wireCardHandReload()` now calls `invalidateLayoutCache()` so PathLayout mode picks up changed `.manim` paths after reload.
 
 - **Unterminated block comments detected** — both `.manim` and `.anim` parsers now throw a clear error (`Unterminated block comment, missing closing */`) instead of silently dropping content after an unclosed `/*`.

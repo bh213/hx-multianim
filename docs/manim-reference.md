@@ -950,7 +950,7 @@ These are pre-built UI components used through the builder/screen system.
 | **Slider** | Draggable value selector with custom range (int or float) |
 | **Radio buttons** | Mutually exclusive selection group |
 | **Dropdown** | Collapsible selection list with scrollable panel |
-| **Scrollable list** | Scrollable list of selectable items with scrollbar. `setItems()`, `scrollToIndex()`, `clickMode`, disabled state |
+| **Scrollable list** | Scrollable list of selectable items with scrollbar. `setItems(?preserveScroll)`, `scrollToIndex()`, `clickMode`, disabled state |
 | **Progress bar** | Display-only value indicator (0-100) |
 | **Interactive** | Hit-test region with ID and optional typed metadata |
 | **Draggable** | Drag-and-drop with drop zones, slot integration, swap mode |

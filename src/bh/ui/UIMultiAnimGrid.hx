@@ -1015,13 +1015,18 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 	function cellDragStart(coord:CellCoord, sceneX:Float, sceneY:Float):Void {
 		final entry = getEntry(coord.col, coord.row);
 
-		// Detach the cell visual — cell stays in grid with empty visual
-		final detached = detachCellVisual(coord.col, coord.row);
+		// Detach the cell visual and show empty slot during drag
+		final detached = detachCellVisualRaw(coord.col, coord.row);
 		if (detached == null)
 			return;
 
 		cellDragSourceCoord = {col: coord.col, row: coord.row};
 		cellDragSourceData = entry.data;
+		// Rebuild with null data to show empty slot visual, then restore data
+		// so game handlers can still read the source cell's original value
+		set(coord.col, coord.row, null);
+		rebuildCell(coord.col, coord.row);
+		set(coord.col, coord.row, cellDragSourceData);
 		cellDragObj = detached.object;
 
 		// Reparent to drag container (or grid root at high z-order)
@@ -1210,8 +1215,7 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 		targetGrid.set(targetCoord.col, targetCoord.row, dragPayload);
 		set(srcCoord.col, srcCoord.row, displacedData);
 
-		// Rebuild target cell (behind the snapping drag visual)
-		targetGrid.rebuildCell(targetCoord.col, targetCoord.row);
+		// Target cell keeps DummyCellVisual (empty) during animation — rebuild deferred to snap completion
 
 		// Track completion of both animations
 		var displacedDone = false;
@@ -1240,6 +1244,7 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 		final targetScenePos = targetGrid.cellPosition(targetCoord.col, targetCoord.row);
 		cellDragSnapTo(targetScenePos, resolvedSnapPath, () -> {
 			cellDragRemoveObj();
+			targetGrid.rebuildCell(targetCoord.col, targetCoord.row);
 			if (ctx.snapCompleteCb != null)
 				ctx.snapCompleteCb();
 			snapDone = true;
@@ -1307,10 +1312,12 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 		}
 	}
 
-	/** Rebuild source cell (after cancel/return) and finish drag. */
+	/** Restore source cell data and rebuild (after cancel/return), then finish drag. */
 	function cellDragRebuildSourceAndFinish():Void {
-		if (cellDragSourceCoord != null)
+		if (cellDragSourceCoord != null) {
+			set(cellDragSourceCoord.col, cellDragSourceCoord.row, cellDragSourceData);
 			rebuildCell(cellDragSourceCoord.col, cellDragSourceCoord.row);
+		}
 		cellDragFinish();
 	}
 

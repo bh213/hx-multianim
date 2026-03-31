@@ -112,10 +112,12 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 		return CursorManager.getDefaultInteractiveCursor();
 	}
 
-	public function setItems(newItems:Array<UIElementListItem>, selectedIndex:Int = 0) {
+	public function setItems(newItems:Array<UIElementListItem>, selectedIndex:Int = 0, preserveScroll:Bool = false) {
 		// Reset interaction state before changing items (setter validates bounds)
 		this.currentHoverIndex = -1;
 		this.currentPressedIndex = -1;
+
+		final savedScrollY = this.mask.scrollY;
 
 		// Clear and repopulate (items is final, can't reassign)
 		this.items.resize(0);
@@ -129,11 +131,16 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 			this.panelResults = buildPanel();
 		}
 
-		// Reset scroll position
-		this.mask.scrollY = 0;
-
 		// Rebuild items and scrollbar
 		buildItems();
+
+		// Restore or reset scroll position
+		if (preserveScroll) {
+			this.mask.scrollY = savedScrollY;
+			repositionScrollbar();
+		} else {
+			this.mask.scrollY = 0;
+		}
 
 		// Set selection — force-apply visual even if index hasn't changed (items were rebuilt)
 		final idx = if (newItems.length > 0) selectedIndex else -1;

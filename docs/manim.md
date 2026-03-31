@@ -2540,6 +2540,7 @@ list.clickMode = SingleClick; // single-click fires UIClickItem
 
 // Replace items at runtime
 list.setItems(newItems, 0); // replaces content, selects first item
+list.setItems(newItems, 0, true); // preserveScroll: keep current scroll position
 
 // Programmatic scroll
 list.scrollToIndex(5); // scrolls to make item 5 visible

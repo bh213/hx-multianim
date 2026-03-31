@@ -2348,6 +2348,121 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 		grid.dispose();
 	}
 
+	// ============== cellDragEnabled: source cell visual during drag ==============
+
+	@Test
+	public function testCellDragSourceDataPreservedDuringDrag():Void {
+		var grid = createCellDragGrid(3, 1);
+		grid.set(1, 0, "item");
+
+		// Start drag from (1,0)
+		grid.onMouseClick(52 + 25, 25, 0);
+		@:privateAccess Assert.notNull(grid.cellDragObj);
+
+		// Data should still be readable at source cell during drag
+		Assert.equals("item", grid.get(1, 0));
+
+		grid.dispose();
+	}
+
+	@Test
+	public function testCellDragSourceCellShowsEmptyVisual():Void {
+		var grid = createCellDragGrid(3, 1);
+		grid.set(1, 0, "item");
+
+		// Start drag from (1,0)
+		grid.onMouseClick(52 + 25, 25, 0);
+		@:privateAccess Assert.notNull(grid.cellDragObj);
+
+		// Source cell visual should have been rebuilt (not a DummyCellVisual — getResult() non-null)
+		final visual = grid.getCellVisual(1, 0);
+		Assert.notNull(visual);
+		Assert.notNull(visual.getResult());
+
+		grid.dispose();
+	}
+
+	@Test
+	public function testCellDragCancelRestoresSourceVisual():Void {
+		var grid = createCellDragGrid(3, 1);
+		grid.set(1, 0, "item");
+
+		// Start drag
+		grid.onMouseClick(52 + 25, 25, 0);
+		@:privateAccess Assert.notNull(grid.cellDragObj);
+
+		// Cancel by releasing outside grid
+		grid.onMouseRelease(500, 500);
+
+		// Source cell data and visual should be fully restored
+		Assert.equals("item", grid.get(1, 0));
+		@:privateAccess Assert.isNull(grid.cellDragObj);
+		final visual = grid.getCellVisual(1, 0);
+		Assert.notNull(visual);
+		Assert.notNull(visual.getResult());
+
+		grid.dispose();
+	}
+
+	@Test
+	public function testCellDragDropRejectedRestoresSource():Void {
+		var grid = createCellDragGrid(3, 1);
+		grid.set(0, 0, "item");
+
+		grid.onGridEvent = (event) -> {
+			switch event {
+				case CellDrop(_, _, _, _, ctx):
+					ctx.reject();
+				default:
+			}
+		};
+
+		grid.onMouseClick(25, 25, 0);
+		grid.onMouseRelease(104 + 25, 25);
+
+		// After reject, source cell should be fully restored
+		Assert.equals("item", grid.get(0, 0));
+		final visual = grid.getCellVisual(0, 0);
+		Assert.notNull(visual);
+		Assert.notNull(visual.getResult());
+
+		grid.dispose();
+	}
+
+	@Test
+	public function testCellDragSwapTargetRebuildsAfterSnap():Void {
+		// With no paths (instant), target should be rebuilt after snap completes
+		var grid = createCellDragSwapGrid(3, 1);
+		grid.set(0, 0, "A");
+		grid.set(1, 0, "B");
+
+		grid.onGridEvent = (event) -> {
+			switch event {
+				case CellSwap(_, _, _, ctx):
+					ctx.accept();
+				default:
+			}
+		};
+
+		// Drag from (0,0) to occupied (1,0) — triggers swap
+		grid.onMouseClick(25, 25, 0);
+		grid.onMouseRelease(52 + 25, 25);
+
+		// After instant swap, both cells should have proper visuals (not DummyCellVisual)
+		Assert.equals("B", grid.get(0, 0));
+		Assert.equals("A", grid.get(1, 0));
+		final vis0 = grid.getCellVisual(0, 0);
+		final vis1 = grid.getCellVisual(1, 0);
+		Assert.notNull(vis0);
+		Assert.notNull(vis1);
+		Assert.notNull(vis0.getResult());
+		Assert.notNull(vis1.getResult());
+
+		grid.dispose();
+	}
+
+	// ============== cellDragEnabled: onComplete ==============
+
 	@Test
 	public function testCellDragDropOnCompleteCallback():Void {
 		var grid = createCellDragGrid(3, 1);
