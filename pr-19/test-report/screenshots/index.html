@@ -327,15 +327,15 @@
 </head>
 <body>
     <h1>Visual Test Report</h1>
-    <div class="timestamp">Generated: 2026-03-30 19:59:20</div>
+    <div class="timestamp">Generated: 2026-03-31 07:46:06</div>
     <div class="summary">
         <strong>Summary:</strong> 96 tests,         <span style="color: #4CAF50;">96 passed</span>,         <span style="color: #f44336;">0 failed</span>
-        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1.2s, visual 23.6s)</span>
+        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 0.9s, visual 22s)</span>
     </div>
     <div class="unit-tests-section">
         <h2>Unit Tests</h2>
         <div class="unit-tests-summary all-passed">
-            <strong>4583 assertions:</strong>             <span style="color: #4CAF50;">4583 passed</span>
+            <strong>4653 assertions:</strong>             <span style="color: #4CAF50;">4653 passed</span>
             <button class="expand-btn" id="unitToggleBtn" onclick="toggleUnitDetails()">Show Details</button>
         </div>
         <div class="unit-details" id="unitDetails">
@@ -2174,6 +2174,28 @@
                 <div class="unit-method pass">testCellCardPlayedEventEmitted: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testCellCardPlayedListenerRemovedOnUnregister: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testCellCardPlayedNotEmittedForForeignTarget: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testCellDragCannotDropOnSourceCell: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testCellDragCleanedUpOnDispose: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testCellDragConsumesMouseMove: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testCellDragDropEmitsCellDrop: OK <span class="dots">......</span></div>
+                <div class="unit-method pass">testCellDragDropOnCompleteCallback: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testCellDragDropRejected: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testCellDragEmitsDragEndOnCancel: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testCellDragEmitsDragEndOnDrop: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testCellDragEmitsDragStartEvent: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testCellDragEnabledConfigStored: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testCellDragEnabledDefaultFalse: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testCellDragFilterConfigStored: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testCellDragFilterPreventsStart: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testCellDragNoStartOnEmptyCell: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testCellDragNoStartWhenDisabled: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testCellDragOnlyLeftButton: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testCellDragReturnOnMiss: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testCellDragRightClickIgnored: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testCellDragStartOnOccupiedCell: OK <span class="dots">.....</span></div>
+                <div class="unit-method pass">testCellDragSwapEmitsCellSwap: OK <span class="dots">......</span></div>
+                <div class="unit-method pass">testCellDragSwapRejected: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testCellDragSwapWithPaths: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testCellPositionRect: OK <span class="dots">......</span></div>
                 <div class="unit-method pass">testClear: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testClearAllLayers: OK <span class="dots">....</span></div>
@@ -2182,6 +2204,9 @@
                 <div class="unit-method pass">testClearLayerNonexistentDoesNotThrow: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testClearLayerSingle: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testConstruction: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testCrossGridDragFindTarget: OK <span class="dots">.....</span></div>
+                <div class="unit-method pass">testCrossGridDropEmitsCellDropOnTarget: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testCrossGridLinkAcceptsFilter: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testDispose: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testDisposeClearsLayers: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testDistanceHex: OK <span class="dots">...</span></div>
@@ -2200,6 +2225,10 @@
                 <div class="unit-method pass">testHasLayerFalseWhenNotSet: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testHitTestNonSquareCellYGap: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testIsOccupied: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testLinkDropTargetDuplicateIgnored: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testLinkDropTargetStored: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testLinkGridsBidirectional: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testLinkedGridsClearedOnDispose: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testMouseClickFiresEvent: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testMouseMoveHoverEvents: OK <span class="dots">..........</span></div>
                 <div class="unit-method pass">testMouseMoveOutside: OK <span class="dots">.</span></div>
@@ -2255,6 +2284,7 @@
                 <div class="unit-method pass">testSwapHexGrid: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testSwapPathNameFallsBackToReturn: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testSwapPathNameStored: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testUnlinkDropTarget: OK <span class="dots">.</span></div>
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">UIPanelHelperTest</div>
