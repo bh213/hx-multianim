@@ -9,6 +9,7 @@ import bh.ui.UIMultiAnimDraggable.DropZone;
 import bh.ui.UIMultiAnimDraggable.DropZoneId;
 import bh.ui.UIMultiAnimDraggable.DropZoneIdTools;
 import bh.ui.UIMultiAnimDraggable.AnimatedPathFactory;
+import bh.ui.UIElement.UIElementEventWrapper;
 import bh.multianim.MultiAnimBuilder.SlotHandle;
 import bh.paths.AnimatedPath.AnimatedPathMode;
 import bh.paths.MultiAnimPaths.PathType;
@@ -224,6 +225,44 @@ class UIDraggableTest extends BuilderTestBase {
 			}
 		}
 		Assert.isTrue(hasCancelEvent);
+	}
+
+	@Test
+	public function testCancelDragPassesWrapperToEvent():Void {
+		var content = createContentObject("content");
+		var drag = new UIMultiAnimDraggable(content);
+		var control = new bh.test.UITestHarness.MockControllable();
+		var receivedWrapper:Null<UIElementEventWrapper> = null;
+		drag.onDragEvent = (e, _, w) -> {
+			switch e {
+				case DragCancel: receivedWrapper = w;
+				default:
+			}
+		};
+
+		bh.test.UITestHarness.simulatePush(drag, control, new h2d.col.Point(10, 10));
+		drag.cancelDrag();
+
+		Assert.notNull(receivedWrapper);
+	}
+
+	@Test
+	public function testCancelDragFiresOnDragCancelDelegate():Void {
+		var content = createContentObject("content");
+		var drag = new UIMultiAnimDraggable(content);
+		var control = new bh.test.UITestHarness.MockControllable();
+		var cancelFired = false;
+		var cancelWrapper:Null<UIElementEventWrapper> = null;
+		drag.onDragCancel = (pos, w) -> {
+			cancelFired = true;
+			cancelWrapper = w;
+		};
+
+		bh.test.UITestHarness.simulatePush(drag, control, new h2d.col.Point(10, 10));
+		drag.cancelDrag();
+
+		Assert.isTrue(cancelFired);
+		Assert.notNull(cancelWrapper);
 	}
 
 	@Test

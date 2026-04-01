@@ -238,12 +238,11 @@ class UIRichInteractiveHelperTest extends BuilderTestBase {
 	}
 
 	@Test
-	public function testPushWithoutEnterIsIgnored():Void {
+	public function testPushFromNormalGoesToPressed():Void {
 		var ctx = createHelper(BOUND_MANIM, "bound");
-		// Push without prior Enter — state is Normal, push requires Hover
+		// Push without prior Enter (touch input path) — should go to Pressed
 		ctx.helper.handleEvent(UIInteractiveEvent(UIPush, "btn1", null));
-		// State should remain Normal (push ignored from Normal)
-		assertState(ctx.helper, "btn1", Normal);
+		assertState(ctx.helper, "btn1", Pressed);
 	}
 
 	@Test

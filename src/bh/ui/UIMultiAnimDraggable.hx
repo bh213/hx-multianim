@@ -481,9 +481,12 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 		// Restore alpha
 		target.alpha = savedAlpha;
 
-		// Fire DragCancel events (no wrapper available for positional info)
+		// Fire DragCancel events
+		final cancelPos = if (activeWrapper != null) activeWrapper.eventPos else new Point(root.x, root.y);
 		if (onDragEvent != null)
-			onDragEvent(DragCancel, new Point(root.x, root.y), null);
+			onDragEvent(DragCancel, cancelPos, activeWrapper);
+		if (onDragCancel != null)
+			onDragCancel(cancelPos, activeWrapper);
 
 		// Return to origin
 		root.setPosition(originX, originY);

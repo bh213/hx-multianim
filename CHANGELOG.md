@@ -94,6 +94,9 @@
 - **CardHand `applyCardToCardEffects()` bounds guard** — `indexOf` result is now checked for -1 before array access, preventing out-of-bounds access if the target card was removed externally.
 - **Repeatable `$i` conditions not re-evaluated by `setParameter`** — conditions inside repeatables comparing the loop variable against a parameter (e.g., `@($i < $level)`) now correctly update when that parameter changes via `setParameter()`. Two fixes: (1) `CoRange` comparison/range bounds are now stored as `ReferenceableValue` and resolved at build time, so `$param` references in `@($i < $param)`, `@(param => $from..$to)`, and `between $from..$to` work instead of being baked to 0 at parse time; (2) incremental tracked expressions for repeatables now include parameter references from children's conditions, triggering a rebuild when those parameters change.
 - **Parser 2D index variable null guard** — `#name[$x, $y]` parsing now checks `scopeVars == null` before the second variable lookup, matching the first variable's defensive check.
+- **Touch input broken in UIRichInteractiveHelper** — `UIPush` handler now transitions from both `Normal` and `Hover` states to `Pressed`, fixing touch input which sends `UIPush` without prior `UIEntering`.
+- **`cancelDrag()` fires events with null wrapper** — external `cancelDrag()` now passes the active wrapper (and fires `onDragCancel`) instead of passing null to the `onDragEvent` delegate, preventing crashes in listeners accessing wrapper fields.
+- **Stale target highlight in UICardHandTargeting** — `unregisterTarget()` now clears the active highlight if the removed target is currently highlighted, preventing a permanently stuck highlight visual.
 
 ## [1.0.0-rc.2] - 2026-03-12
 

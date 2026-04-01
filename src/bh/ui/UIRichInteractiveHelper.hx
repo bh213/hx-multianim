@@ -177,15 +177,13 @@ class UIRichInteractiveHelper {
 							binding.result.setParameter(binding.stateParam, "hover");
 						}
 					case UIPush:
-						// NOTE: Only handles Hover→Pressed (mouse). Touch input sends UIPush
-						// without prior UIEntering, so Normal→Pressed is not handled — touch
-						// interactives will appear unresponsive. Add Normal case here if needed.
-						if (binding.currentState == Hover) {
+						if (binding.currentState == Hover || binding.currentState == Normal) {
 							binding.currentState = Pressed;
 							binding.result.setParameter(binding.stateParam, "pressed");
 						}
 					case UIClick:
 						if (binding.currentState == Pressed) {
+							// Touch: no prior hover, return to Normal. Mouse: return to Hover.
 							binding.currentState = Hover;
 							binding.result.setParameter(binding.stateParam, "hover");
 						}

@@ -118,6 +118,14 @@ class UICardHandTargeting {
 	}
 
 	public function unregisterTarget(id:String):Void {
+		if (id == activeTargetId) {
+			if (onTargetHighlight != null) {
+				var wrapper = findTarget(activeTargetId);
+				if (wrapper != null)
+					onTargetHighlight(activeTargetId, false, wrapper.metadata);
+			}
+			activeTargetId = null;
+		}
 		var i = 0;
 		while (i < targets.length) {
 			if (targets[i].id == id) {

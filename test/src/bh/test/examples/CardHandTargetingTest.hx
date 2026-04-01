@@ -120,6 +120,29 @@ class CardHandTargetingTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testUnregisterActiveTargetClearsHighlight():Void {
+		var t = createTargetingNoArrow();
+		t.registerTarget(createInteractive("t1", 50, 50, 0, 0));
+
+		var highlighted:Array<{id:String, on:Bool}> = [];
+		t.onTargetHighlight = (id, on, meta) -> highlighted.push({id: id, on: on});
+
+		// Highlight t1 by hovering over it
+		t.updateHighlight(25, 25, "card1");
+		Assert.equals(1, highlighted.length);
+		Assert.isTrue(highlighted[0].on);
+
+		// Unregister t1 while it's the active highlight
+		t.unregisterTarget("t1");
+
+		// Should have fired un-highlight callback
+		Assert.equals(2, highlighted.length);
+		Assert.equals("t1", highlighted[1].id);
+		Assert.isFalse(highlighted[1].on);
+		Assert.isNull(t.activeTargetId);
+	}
+
+	@Test
 	public function testUnregisterNonexistentTarget():Void {
 		var t = createTargetingNoArrow();
 		t.registerTarget(createInteractive("t1", 50, 50, 0, 0));
