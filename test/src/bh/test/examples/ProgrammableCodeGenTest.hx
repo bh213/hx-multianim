@@ -2597,6 +2597,58 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		Assert.equals("None", tier2.name);
 	}
 
+	// ==================== Data block enum codegen ====================
+
+	@Test
+	public function testDataEnumScalar():Void {
+		final mp = createMp();
+		final rarity:bh.test.GameDataRarity = mp.gameData.defaultRarity;
+		Assert.isTrue(rarity == Common);
+	}
+
+	@Test
+	public function testDataEnumArray():Void {
+		final mp = createMp();
+		final elements:Array<bh.test.GameDataElement> = mp.gameData.elements;
+		Assert.equals(3, elements.length);
+		Assert.isTrue(elements[0] == Fire);
+		Assert.isTrue(elements[1] == Water);
+		Assert.isTrue(elements[2] == Earth);
+	}
+
+	@Test
+	public function testDataEnumInRecord():Void {
+		final mp = createMp();
+		final sword:bh.test.GameDataItem = mp.gameData.sword;
+		Assert.equals("Flame Sword", sword.name);
+		Assert.isTrue(sword.rarity == Rare);
+		Assert.isTrue(sword.element == Fire);
+	}
+
+	@Test
+	public function testDataEnumOptionalInRecord():Void {
+		final mp = createMp();
+		final items:Array<bh.test.GameDataItem> = mp.gameData.items;
+		Assert.equals(2, items.length);
+		// Shield: no element (optional omitted)
+		Assert.equals("Shield", items[0].name);
+		Assert.isTrue(items[0].rarity == Common);
+		Assert.isNull(items[0].element, "element should be null when omitted");
+		// Staff: has element
+		Assert.equals("Staff", items[1].name);
+		Assert.isTrue(items[1].rarity == Epic);
+		Assert.isTrue(items[1].element == Air);
+	}
+
+	@Test
+	public function testDataEnumMergeTypes():Void {
+		// mergeTypes should reuse the same enum type for identical enum signatures
+		final mp = createMp();
+		final r1:bh.test.merged.GameDataRarity = mp.gameDataMerged1.defaultRarity;
+		final r2:bh.test.merged.GameDataRarity = mp.gameDataMerged2.defaultRarity;
+		Assert.isTrue(r1 == r2);
+	}
+
 	// ==================== @final variable declaration ====================
 
 	@Test

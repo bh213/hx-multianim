@@ -329,8 +329,9 @@ var res = MacroUtils.macroBuildWithParameters(componentsBuilder, "ui", [], [
 
 **`@:data("path", "name" [, "pkg" [, mergeTypes]])`** generates:
 - **Data class** with `public final` fields matching the data block
+- **Enum types** for named enums (e.g., `GameDataRarity` for `#rarity enum(...)` in `#gameData data`)
 - **Record classes** for named record types (e.g., `UpgradesTier` for `#tier record(...)` in `#upgrades data`)
-- Optional custom type package and `mergeTypes` deduplication
+- Optional custom type package and `mergeTypes` deduplication (applies to both enums and records)
 
 **MacroManimParser** is the compile-time parser used by `ProgrammableCodeGen`. It is NOT an hxparse `Parser` — it uses a simpler `peek()`/`match()`/`advance()` API on a pre-lexed token stream.
 
@@ -339,8 +340,9 @@ var res = MacroUtils.macroBuildWithParameters(componentsBuilder, "ui", [], [
 `#name data { ... }` defines static typed data at the `.manim` root level. Supports:
 - Scalar fields: int, float, string, bool (type-inferred)
 - Arrays: `costs: [10, 20, 40]`
+- Named enum types: `#rarity enum(common, uncommon, rare)` — generates Haxe `enum`
 - Named record types: `#tier record(name: string, cost: int, ?dmg: float)` with schema validation
-- Record-typed fields: `tier { name: "None", cost: 0 }` and arrays `tier[] [{ ... }]`
+- Enum/record-typed fields: `rarity common`, `tier { name: "None", cost: 0 }` and arrays `tier[] [{ ... }]`
 - Optional fields: `?field: type` — omitted values become `null`
 
 **Runtime access:** `builder.getData("name")` returns `Dynamic`.

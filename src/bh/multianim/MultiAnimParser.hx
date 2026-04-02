@@ -1012,6 +1012,7 @@ enum DataValueType {
 	DVTFloat;
 	DVTString;
 	DVTBool;
+	DVTEnum(enumName:String);
 	DVTRecord(recordName:String);
 	DVTArray(elementType:DataValueType);
 }
@@ -1024,6 +1025,13 @@ enum DataValue {
 	DVBool(v:Bool);
 	DVArray(elements:Array<DataValue>);
 	DVRecord(recordName:String, fields:Map<String, DataValue>);
+	DVEnumValue(enumName:String, value:String);
+}
+
+@:nullSafety
+typedef DataEnumDef = {
+	var name:String;
+	var values:Array<String>;
 }
 
 @:nullSafety
@@ -1041,6 +1049,7 @@ typedef DataFieldDef = {
 
 @:nullSafety
 typedef DataDef = {
+	var enums:Map<String, DataEnumDef>;
 	var records:Map<String, DataRecordDef>;
 	var fields:Array<DataFieldDef>;
 }

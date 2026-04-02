@@ -382,6 +382,63 @@ class BuilderUnitTest extends BuilderTestBase {
 		Assert.floatEquals(-3.5, data.negFloat);
 	}
 
+	// ==================== Data block enum tests ====================
+
+	@Test
+	public function testDataEnumScalar():Void {
+		final data:Dynamic = getDataFromSource("
+			#config data {
+				#rarity enum(common, uncommon, rare)
+				defaultRarity: rarity common
+			}
+		", "config");
+		Assert.equals("common", data.defaultRarity);
+	}
+
+	@Test
+	public function testDataEnumArray():Void {
+		final data:Dynamic = getDataFromSource("
+			#config data {
+				#element enum(fire, water, earth, air)
+				elements: element[] [fire, water, earth]
+			}
+		", "config");
+		final arr:Array<Dynamic> = data.elements;
+		Assert.equals(3, arr.length);
+		Assert.equals("fire", arr[0]);
+		Assert.equals("water", arr[1]);
+		Assert.equals("earth", arr[2]);
+	}
+
+	@Test
+	public function testDataEnumInRecord():Void {
+		final data:Dynamic = getDataFromSource("
+			#config data {
+				#rarity enum(common, uncommon, rare, epic)
+				#item record(name: string, rarity: rarity)
+				sword: item { name: \"Sword\", rarity: rare }
+			}
+		", "config");
+		Assert.equals("Sword", data.sword.name);
+		Assert.equals("rare", data.sword.rarity);
+	}
+
+	@Test
+	public function testDataEnumOptionalInRecord():Void {
+		final data:Dynamic = getDataFromSource("
+			#config data {
+				#element enum(fire, water, earth, air)
+				#item record(name: string, ?element: element)
+				shield: item { name: \"Shield\" }
+				staff: item { name: \"Staff\", element: air }
+			}
+		", "config");
+		Assert.equals("Shield", data.shield.name);
+		Assert.isNull(data.shield.element);
+		Assert.equals("Staff", data.staff.name);
+		Assert.equals("air", data.staff.element);
+	}
+
 	// ==================== Multiple programmables in one source ====================
 
 	@Test

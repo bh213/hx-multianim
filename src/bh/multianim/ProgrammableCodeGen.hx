@@ -23,6 +23,7 @@ import bh.multianim.MultiAnimParser.CurveSegmentDef;
 import bh.multianim.MultiAnimParser.CurvesDef;
 import bh.multianim.MultiAnimParser.PathsDef;
 import bh.multianim.MultiAnimParser.DataDef;
+import bh.multianim.MultiAnimParser.DataEnumDef;
 import bh.multianim.MultiAnimParser.DataValue;
 import bh.multianim.MultiAnimParser.DataValueType;
 import bh.multianim.MultiAnimParser.DataRecordDef;
@@ -6650,15 +6651,67 @@ class ProgrammableCodeGen {
 	// ==================== Data Block Codegen ====================
 
 	/** Generate fields for a data class from a DataDef.
-	 *  Record types become exposed classes, scalar/array fields become public final fields.
+	 *  Enum types become enum abstracts over Int, record types become exposed classes,
+	 *  scalar/array fields become public final fields.
 	 *  @param dataName The #name from the manim file (e.g., "gameData") — used for exposed type naming
 	 *  @param className The internal data class name (e.g., "MultiProgrammable_GameData")
-	 *  @param typePack Package for exposed record types
-	 *  @param mergeTypes Whether to deduplicate identical record types
+	 *  @param typePack Package for exposed record/enum types
+	 *  @param mergeTypes Whether to deduplicate identical record/enum types
 	 */
 	static function generateDataClass(dataDef:DataDef, dataName:String, className:String, typePack:Array<String>,
 			mergeTypes:Bool, pos:Position):Array<Field> {
 		var dataFields:Array<Field> = [];
+
+		// Map from enum name → exposed type {pack, name}
+		var enumTypeMap:Map<String, {pack:Array<String>, name:String}> = new Map();
+
+		// Generate enum abstract types (before records, since records may reference enums)
+		for (enumName => enumDef in dataDef.enums) {
+			final exposedName = toPascalCase(dataName) + toPascalCase(enumName);
+
+			// Check for mergeTypes dedup
+			if (mergeTypes) {
+				final sig = enumSignature(enumDef);
+				final existing = mergedTypeCache.get(sig);
+				if (existing != null) {
+					enumTypeMap.set(enumName, existing);
+					continue;
+				}
+			}
+
+			// Check for type collision
+			try {
+				Context.getType(typePack.join(".") + (typePack.length > 0 ? "." : "") + exposedName);
+				Context.fatalError('Type "$exposedName" already exists (collision with data enum "$enumName")', pos);
+			} catch (_:Dynamic) {
+				// Expected — type doesn't exist yet
+			}
+
+			final enumFields:Array<Field> = [];
+			for (i in 0...enumDef.values.length) {
+				enumFields.push({
+					name: toPascalCase(enumDef.values[i]),
+					kind: FVar(null),
+					pos: pos,
+				});
+			}
+
+			final typeInfo = {pack: typePack, name: exposedName};
+			enumTypeMap.set(enumName, typeInfo);
+
+			final enumTd:TypeDefinition = {
+				pack: typePack,
+				name: exposedName,
+				pos: pos,
+				kind: TDEnum,
+				fields: enumFields,
+			};
+			Context.defineType(enumTd);
+
+			if (mergeTypes) {
+				mergedTypeCache.set(enumSignature(enumDef), typeInfo);
+			}
+		}
 
 		// Map from record name → exposed type {pack, name}
 		var recordTypeMap:Map<String, {pack:Array<String>, name:String}> = new Map();
@@ -6689,7 +6742,7 @@ class ProgrammableCodeGen {
 
 			// Public final fields for each record field
 			for (rf in recordDef.fields) {
-				var ct = dataTypeToComplexType(rf.type, recordTypeMap);
+				var ct = dataTypeToComplexType(rf.type, enumTypeMap, recordTypeMap);
 				if (rf.optional) ct = TPath({pack: [], name: "Null", params: [TPType(ct)]});
 				recordFields.push({
 					name: rf.name,
@@ -6703,7 +6756,7 @@ class ProgrammableCodeGen {
 			final ctorArgs:Array<FunctionArg> = [];
 			final ctorAssigns:Array<Expr> = [];
 			for (rf in recordDef.fields) {
-				var ct = dataTypeToComplexType(rf.type, recordTypeMap);
+				var ct = dataTypeToComplexType(rf.type, enumTypeMap, recordTypeMap);
 				if (rf.optional) ct = TPath({pack: [], name: "Null", params: [TPType(ct)]});
 				ctorArgs.push({name: rf.name, type: ct, opt: rf.optional});
 				ctorAssigns.push(macro $p{["this", rf.name]} = $i{rf.name});
@@ -6734,10 +6787,10 @@ class ProgrammableCodeGen {
 
 		// Generate public final fields for each data entry
 		for (field in dataDef.fields) {
-			final initExpr = dataValueToExpr(field.value, recordTypeMap, dataDef.records, pos);
+			final initExpr = dataValueToExpr(field.value, enumTypeMap, recordTypeMap, dataDef.enums, dataDef.records, pos);
 			dataFields.push({
 				name: field.name,
-				kind: FVar(dataTypeToComplexType(field.type, recordTypeMap), initExpr),
+				kind: FVar(dataTypeToComplexType(field.type, enumTypeMap, recordTypeMap), initExpr),
 				access: [APublic, AFinal],
 				pos: pos,
 			});
@@ -6764,44 +6817,71 @@ class ProgrammableCodeGen {
 		return parts.join(",");
 	}
 
+	/** Build a signature string for an enum definition (for mergeTypes dedup) */
+	static function enumSignature(enumDef:DataEnumDef):String {
+		return 'Enum(${enumDef.values.join(",")})';
+	}
+
 	static function dataValueTypeSignature(type:DataValueType):String {
 		return switch (type) {
 			case DVTInt: "Int";
 			case DVTFloat: "Float";
 			case DVTString: "String";
 			case DVTBool: "Bool";
+			case DVTEnum(enumName): 'Enum($enumName)';
 			case DVTRecord(recordName): 'Record($recordName)';
 			case DVTArray(elemType): 'Array<${dataValueTypeSignature(elemType)}>';
 		};
 	}
 
 	/** Convert a DataValueType to a Haxe ComplexType */
-	static function dataTypeToComplexType(type:DataValueType, recordTypeMap:Map<String, {pack:Array<String>, name:String}>):ComplexType {
+	static function dataTypeToComplexType(type:DataValueType, enumTypeMap:Map<String, {pack:Array<String>, name:String}>,
+			recordTypeMap:Map<String, {pack:Array<String>, name:String}>):ComplexType {
 		return switch (type) {
 			case DVTInt: macro :Int;
 			case DVTFloat: macro :Float;
 			case DVTString: macro :String;
 			case DVTBool: macro :Bool;
+			case DVTEnum(enumName):
+				final info = enumTypeMap.get(enumName);
+				if (info == null) macro :Int;
+				else TPath({pack: info.pack, name: info.name});
 			case DVTRecord(recordName):
 				final info = recordTypeMap.get(recordName);
 				if (info == null) macro :Dynamic;
 				else TPath({pack: info.pack, name: info.name});
 			case DVTArray(elemType):
-				final elemCT = dataTypeToComplexType(elemType, recordTypeMap);
+				final elemCT = dataTypeToComplexType(elemType, enumTypeMap, recordTypeMap);
 				TPath({pack: [], name: "Array", params: [TPType(elemCT)]});
 		};
 	}
 
 	/** Convert a DataValue to a Haxe expression for field initialization */
-	static function dataValueToExpr(value:DataValue, recordTypeMap:Map<String, {pack:Array<String>, name:String}>,
-			records:Map<String, DataRecordDef>, pos:Position):Expr {
+	static function dataValueToExpr(value:DataValue, enumTypeMap:Map<String, {pack:Array<String>, name:String}>,
+			recordTypeMap:Map<String, {pack:Array<String>, name:String}>,
+			enums:Map<String, DataEnumDef>, records:Map<String, DataRecordDef>, pos:Position):Expr {
 		return switch (value) {
 			case DVInt(v): {expr: EConst(CInt('$v')), pos: pos};
 			case DVFloat(v): {expr: EConst(CFloat('$v')), pos: pos};
 			case DVString(v): {expr: EConst(CString(v)), pos: pos};
 			case DVBool(v): {expr: EConst(CIdent(v ? "true" : "false")), pos: pos};
+			case DVEnumValue(enumName, value):
+				final info = enumTypeMap.get(enumName);
+				if (info != null) {
+					// Build fully-qualified enum constructor: pack.EnumType.Constructor
+					var typeExpr:Expr = {expr: EConst(CIdent(info.pack.length > 0 ? info.pack[0] : info.name)), pos: pos};
+					if (info.pack.length > 0) {
+						for (i in 1...info.pack.length)
+							typeExpr = {expr: EField(typeExpr, info.pack[i]), pos: pos};
+						typeExpr = {expr: EField(typeExpr, info.name), pos: pos};
+					}
+					{expr: EField(typeExpr, toPascalCase(value)), pos: pos};
+				} else {
+					// Fallback: use string value
+					{expr: EConst(CString(value)), pos: pos};
+				}
 			case DVArray(elements):
-				final elemExprs = [for (e in elements) dataValueToExpr(e, recordTypeMap, records, pos)];
+				final elemExprs = [for (e in elements) dataValueToExpr(e, enumTypeMap, recordTypeMap, enums, records, pos)];
 				{expr: EArrayDecl(elemExprs), pos: pos};
 			case DVRecord(recordName, fields):
 				final info = recordTypeMap.get(recordName);
@@ -6811,7 +6891,7 @@ class ProgrammableCodeGen {
 					for (rf in recordDef.fields) {
 						final val = fields.get(rf.name);
 						if (val != null)
-							ctorArgs.push(dataValueToExpr(val, recordTypeMap, records, pos));
+							ctorArgs.push(dataValueToExpr(val, enumTypeMap, recordTypeMap, enums, records, pos));
 						else if (rf.optional)
 							ctorArgs.push(macro null);
 					}

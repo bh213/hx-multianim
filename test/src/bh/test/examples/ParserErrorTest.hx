@@ -806,6 +806,102 @@ class ParserErrorTest extends utest.Test {
 			'Error should mention "missing required field", got: $error');
 	}
 
+	// ===== Data block enum tests =====
+
+	@Test
+	public function testDataEnumInvalidValue() {
+		var error = parseExpectingError('
+			#test data {
+				#rarity enum(common, uncommon, rare)
+				value: rarity unknown
+			}
+		');
+		Assert.notNull(error, "Should throw error for invalid enum value");
+		Assert.isTrue(error.indexOf('invalid value') >= 0,
+			'Error should mention "invalid value", got: $error');
+	}
+
+	@Test
+	public function testDataEnumDuplicateValue() {
+		var error = parseExpectingError('
+			#test data {
+				#rarity enum(common, rare, common)
+			}
+		');
+		Assert.notNull(error, "Should throw error for duplicate enum value");
+		Assert.isTrue(error.indexOf('duplicate enum value') >= 0,
+			'Error should mention "duplicate enum value", got: $error');
+	}
+
+	@Test
+	public function testDataEnumRecordNameCollision() {
+		var error = parseExpectingError('
+			#test data {
+				#tier enum(a, b, c)
+				#tier record(name: string)
+			}
+		');
+		Assert.notNull(error, "Should throw error for enum/record name collision");
+		Assert.isTrue(error.indexOf('already defined') >= 0,
+			'Error should mention "already defined", got: $error');
+	}
+
+	@Test
+	public function testDataEnumDuplicateDefinition() {
+		var error = parseExpectingError('
+			#test data {
+				#rarity enum(common, rare)
+				#rarity enum(epic, legendary)
+			}
+		');
+		Assert.notNull(error, "Should throw error for duplicate enum definition");
+		Assert.isTrue(error.indexOf('already defined') >= 0,
+			'Error should mention "already defined", got: $error');
+	}
+
+	@Test
+	public function testDataEnumInvalidValueInRecord() {
+		var error = parseExpectingError('
+			#test data {
+				#rarity enum(common, rare)
+				#item record(name: string, rarity: rarity)
+				sword: item { name: "Sword", rarity: epic }
+			}
+		');
+		Assert.notNull(error, "Should throw error for invalid enum value in record");
+		Assert.isTrue(error.indexOf('invalid value') >= 0,
+			'Error should mention "invalid value", got: $error');
+	}
+
+	@Test
+	public function testDataEnumInvalidValueInArray() {
+		var error = parseExpectingError('
+			#test data {
+				#element enum(fire, water)
+				elements: element[] [fire, earth]
+			}
+		');
+		Assert.notNull(error, "Should throw error for invalid enum value in array");
+		Assert.isTrue(error.indexOf('invalid value') >= 0,
+			'Error should mention "invalid value", got: $error');
+	}
+
+	@Test
+	public function testDataEnumParseSuccess() {
+		var success = parseExpectingSuccess('
+			#test data {
+				#rarity enum(common, uncommon, rare)
+				#element enum(fire, water, earth)
+				#item record(name: string, rarity: rarity, ?element: element)
+				defaultRarity: rarity common
+				elements: element[] [fire, water]
+				sword: item { name: "Sword", rarity: rare, element: fire }
+				shield: item { name: "Shield", rarity: common }
+			}
+		');
+		Assert.isTrue(success, "Data block with enums should parse successfully");
+	}
+
 	// ===== @final tests =====
 
 	@Test

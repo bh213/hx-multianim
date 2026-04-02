@@ -5445,6 +5445,7 @@ class MultiAnimBuilder {
 					Reflect.setField(obj, key, resolveDataValue(val));
 				}
 				obj;
+			case DVEnumValue(_, value): value;
 		};
 	}
 

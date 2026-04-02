@@ -1558,13 +1558,35 @@ Field types are inferred from values:
 - `true` / `false` → bool
 - `[1, 2, 3]` → array (element type inferred from first element)
 
+### Enum Types
+
+Named enum types define finite sets of values. Declare them with `#name enum(val1, val2, ...)` inside a data block:
+
+```
+#gameData data {
+    #rarity enum(common, uncommon, rare, epic, legendary)
+    #element enum(fire, water, earth, air)
+
+    defaultRarity: rarity common
+    elements: element[] [fire, water, earth]
+}
+```
+
+Enum values are bare identifiers (not quoted strings). Values are validated at parse time — using a value not in the enum definition produces an error.
+
+**Enum-typed fields** require an explicit type prefix:
+- Single value: `fieldName: enumName value`
+- Array: `fieldName: enumName[] [val1, val2, ...]`
+
 ### Record Types
 
-Named record types define schemas for structured data. Declare them with `#name record(field: type, ...)` inside a data block:
+Named record types define schemas for structured data. Declare them with `#name record(field: type, ...)` inside a data block. Record fields can reference enum types:
 
 ```
 #upgrades data {
+    #rarity enum(common, uncommon, rare, epic)
     #tier record(name: string, cost: int, ?dmg: float)
+    #item record(name: string, rarity: rarity, ?element: string)
 
     maxLevel: 5
     name: "Warrior"
@@ -1577,10 +1599,11 @@ Named record types define schemas for structured data. Declare them with `#name 
     ]
     defaultTier: tier { name: "None", cost: 0, dmg: 0.0 }
     basicTier: tier { name: "Basic", cost: 5 }
+    sword: item { name: "Flame Sword", rarity: rare }
 }
 ```
 
-**Supported field types in records:** `int`, `float`, `string`, `bool`
+**Supported field types in records:** `int`, `float`, `string`, `bool`, enum names
 
 **Optional fields:** Prefix a field name with `?` to make it optional. Optional fields can be omitted from record values and default to `null`:
 ```
@@ -1617,9 +1640,17 @@ class MyScreen extends bh.multianim.ProgrammableBuilder {
 }
 ```
 
-The macro generates typed classes. Record types are exposed as top-level classes named `PascalCase(dataName) + PascalCase(recordName)`:
+The macro generates typed classes and enums. Enum types become Haxe `enum`, record types become classes. Both are named `PascalCase(dataName) + PascalCase(typeName)`:
 
 ```haxe
+// Generated enum: "upgrades" data + "rarity" enum → UpgradesRarity
+enum UpgradesRarity {
+    Common;
+    Uncommon;
+    Rare;
+    Epic;
+}
+
 // Generated record class: "upgrades" data + "tier" record → UpgradesTier
 class UpgradesTier {
     public final name:String;
@@ -1672,15 +1703,17 @@ public var mages;
 // If both have #tier record(name: string, cost: int) → single game.units.WarriorsTier is reused
 ```
 
-Records are considered identical when they have the same fields (name, type, optional flag) in the same order. A fatal error occurs if the generated type name collides with an existing type.
+Records are considered identical when they have the same fields (name, type, optional flag) in the same order. Enums are considered identical when they have the same values in the same order. A fatal error occurs if the generated type name collides with an existing type.
 
 ### Rules
 
 - Data blocks must be root-level (not nested inside programmables)
 - Data blocks require a `#name`
-- Record names must be unique within a data block
+- Enum and record names must be unique within a data block
+- Enums must be defined before records or fields that reference them
 - Commas between array elements and record fields are optional
 - Optional fields (`?name: type`) default to `null` when omitted from record values
+- Runtime builder returns enum values as strings; macro codegen returns typed Haxe `enum` values
 
 ---
 

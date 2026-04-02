@@ -597,12 +597,16 @@ Tile entry properties: `x, y, w, h`, plus optional `offset: ox, oy`, `orig: ow, 
 
 | Construct | Description |
 |-----------|-------------|
-| `record RecordName { field: type, ... }` | Define record schema |
-| `fieldName: RecordName { ... }` | Record instance |
+| `#name enum(val1, val2, ...)` | Define enum type with named values |
+| `#name record(field: type, ...)` | Define record schema |
+| `fieldName: enumName value` | Enum value |
+| `fieldName: recordName { ... }` | Record instance |
 | `fieldName: type[] [values]` | Typed array |
 | Optional fields with `?` prefix | Field not required |
 
-Types: `int`, `float`, `string`, `bool`, record names, `Type[]` arrays.
+Types: `int`, `float`, `string`, `bool`, enum names, record names, `type[]` arrays.
+
+Enums generate Haxe `enum` types at compile time (via `@:data`). Runtime builder returns enum values as strings.
 
 ---
 

@@ -3,6 +3,8 @@
 ## [1.0.0-rc.3] - 2026-03-31
 
 ### Added
+- **Data block enum types** — `#name enum(val1, val2, ...)` defines finite value sets in data blocks. Usable in record fields, standalone fields, and arrays. Validated at parse time. Codegen generates Haxe `enum` with PascalCase constructors. Runtime builder returns enum values as strings. Supports `mergeTypes` dedup across `@:data` fields.
+
 - **Custom filters** — game code can register custom filters via `FilterManager.registerFilter(name, paramDefs, factory)`, following the same pattern as `FontManager`. Custom filter names are parsed as opaque in `.manim` and validated at build time against the registry. Supports typed parameters (`CFFloat`, `CFColor`, `CFBool`) with defaults, `$param` references in arguments, and composition via `group()`. Case-insensitive names; built-in filter names cannot be shadowed. Works in both builder and codegen paths.
 
 - **Extra point coordinate expressions** — query `.anim` extra points as positioning coordinates in `.manim`. Two modes: `$ref.extraPoint("pointName")` (from named stateanim element's current animation) and `extraPoint("file.anim", "animName", "pointName", selectors...)` (direct .anim file query). Optional `fallback: coords` for graceful handling when point not found. `.offset()` suffix supported. Works in both builder and codegen (runtime-resolved).

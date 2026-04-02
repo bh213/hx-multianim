@@ -6077,6 +6077,7 @@ class MacroManimParser {
 	// ===================== Data =====================
 
 	function parseData():DataDef {
+		var enums:Map<String, DataEnumDef> = new Map();
 		var records:Map<String, DataRecordDef> = new Map();
 		var fields:Array<DataFieldDef> = [];
 
@@ -6086,51 +6087,80 @@ class MacroManimParser {
 
 			switch (peek()) {
 				case TName(name):
-					// #name record(...) — record type definition
 					advance();
-					expectKeyword("record");
-					expect(TOpen);
-					final recordFields = parseDataRecordFields();
-					if (records.exists(name)) error('record type "$name" already defined');
-					records.set(name, {name: name, fields: recordFields});
+					// Peek next keyword to dispatch between record and enum
+					switch (peek()) {
+						case TIdentifier(s) if (isKeyword(s, "record")):
+							// #name record(...) — record type definition
+							advance();
+							expect(TOpen);
+							final recordFields = parseDataRecordFields(enums);
+							if (records.exists(name)) error('record type "$name" already defined');
+							if (enums.exists(name)) error('"$name" is already defined as an enum');
+							records.set(name, {name: name, fields: recordFields});
+						case TIdentifier(s) if (isKeyword(s, "enum")):
+							// #name enum(...) — enum type definition
+							advance();
+							expect(TOpen);
+							final enumValues = parseDataEnumValues();
+							if (enums.exists(name)) error('enum type "$name" already defined');
+							if (records.exists(name)) error('"$name" is already defined as a record');
+							enums.set(name, {name: name, values: enumValues});
+						default:
+							error('expected "record" or "enum" after #$name');
+					}
 
 				default:
 					// Regular field: name: [type] value
 					final fieldName = expectIdentifierOrString();
 					expect(TColon);
-					final field = parseDataField(fieldName, records);
+					final field = parseDataField(fieldName, enums, records);
 					fields.push(field);
 			}
 			eatSemicolon();
 		}
 
-		return {records: records, fields: fields};
+		return {enums: enums, records: records, fields: fields};
 	}
 
-	function parseDataRecordFields():Array<{name:String, type:DataValueType, optional:Bool}> {
+	function parseDataEnumValues():Array<String> {
+		var result:Array<String> = [];
+		if (match(TClosed)) return result;
+		while (true) {
+			final value = expectIdentifierOrString();
+			if (result.contains(value)) error('duplicate enum value "$value"');
+			result.push(value);
+			if (match(TClosed)) return result;
+			expect(TComma);
+		}
+	}
+
+	function parseDataRecordFields(enums:Map<String, DataEnumDef>):Array<{name:String, type:DataValueType, optional:Bool}> {
 		var result:Array<{name:String, type:DataValueType, optional:Bool}> = [];
 		if (match(TClosed)) return result;
 		while (true) {
 			final isOptional = match(TQuestion);
 			final fieldName = expectIdentifierOrString();
 			expect(TColon);
-			final fieldType = parseDataType();
+			final fieldType = parseDataType(enums);
 			result.push({name: fieldName, type: fieldType, optional: isOptional});
 			if (match(TClosed)) return result;
 			expect(TComma);
 		}
 	}
 
-	/** Parse a type keyword: int, float, string, bool, or a record name.
+	/** Parse a type keyword: int, float, string, bool, enum name, or a record name.
 	 *  If followed by [], it becomes an array type. */
-	function parseDataType():DataValueType {
+	function parseDataType(enums:Map<String, DataEnumDef>):DataValueType {
 		final typeName = expectIdentifierOrString();
 		var baseType:DataValueType = switch (typeName.toLowerCase()) {
 			case "int": DVTInt;
 			case "float": DVTFloat;
 			case "string": DVTString;
 			case "bool": DVTBool;
-			default: DVTRecord(typeName);
+			default:
+				if (enums.exists(typeName)) DVTEnum(typeName)
+				else DVTRecord(typeName);
 		};
 		// Check for [] suffix making it an array type
 		if (match(TBracketOpen)) {
@@ -6140,14 +6170,32 @@ class MacroManimParser {
 		return baseType;
 	}
 
-	/** Parse a data field value, inferring type from value or using explicit type prefix for records. */
-	function parseDataField(fieldName:String, records:Map<String, DataRecordDef>):DataFieldDef {
-		// Check if next token is an identifier that could be a type prefix (record name)
+	/** Parse a data field value, inferring type from value or using explicit type prefix for records/enums. */
+	function parseDataField(fieldName:String, enums:Map<String, DataEnumDef>, records:Map<String, DataRecordDef>):DataFieldDef {
+		// Check if next token is an identifier that could be a type prefix (record/enum name)
 		switch (peek()) {
 			case TIdentifier(s) if (isKeyword(s, "true") || isKeyword(s, "false")):
 				// Bool value
 				final boolVal = parseBool();
 				return {name: fieldName, type: DVTBool, value: DVBool(boolVal)};
+
+			case TIdentifier(s) if (enums.exists(s)):
+				// Enum type prefix: enumName value or enumName[] [...]
+				advance();
+				switch (peek()) {
+					case TBracketOpen:
+						// enumName[] [ ... ]
+						advance();
+						expect(TBracketClosed);
+						expect(TBracketOpen);
+						final elements = parseDataArrayElements(DVTEnum(s), enums, records);
+						return {name: fieldName, type: DVTArray(DVTEnum(s)), value: DVArray(elements)};
+					default:
+						// enumName value
+						final valueStr = expectIdentifierOrString();
+						validateEnumValue(s, valueStr, enums);
+						return {name: fieldName, type: DVTEnum(s), value: DVEnumValue(s, valueStr)};
+				}
 
 			case TIdentifier(s):
 				// Could be: recordName { ... } or recordName[] [ ... ]
@@ -6159,14 +6207,14 @@ class MacroManimParser {
 						advance();
 						final recordDef = records.get(s);
 						if (recordDef == null) { error('unknown record type "$s"'); return cast null; }
-						final recordValue = parseDataRecordValue(s, recordDef, records);
+						final recordValue = parseDataRecordValue(s, recordDef, enums, records);
 						return {name: fieldName, type: DVTRecord(s), value: recordValue};
 					case TBracketOpen:
 						// recordName[] [ ... ]
 						advance();
 						expect(TBracketClosed);
 						expect(TBracketOpen);
-						final elements = parseDataArrayElements(DVTRecord(s), records);
+						final elements = parseDataArrayElements(DVTRecord(s), enums, records);
 						return {name: fieldName, type: DVTArray(DVTRecord(s)), value: DVArray(elements)};
 					default:
 						// Not a type prefix, restore position
@@ -6210,7 +6258,8 @@ class MacroManimParser {
 		}
 	}
 
-	function parseDataRecordValue(recordName:String, recordDef:DataRecordDef, records:Map<String, DataRecordDef>):DataValue {
+	function parseDataRecordValue(recordName:String, recordDef:DataRecordDef, enums:Map<String, DataEnumDef>,
+			records:Map<String, DataRecordDef>):DataValue {
 		var fieldValues:Map<String, DataValue> = new Map();
 		while (!match(TCurlyClosed)) {
 			eatComma();
@@ -6226,7 +6275,7 @@ class MacroManimParser {
 				}
 			}
 			if (expectedType == null) { error('unknown field "$name" in record "$recordName"'); return DVInt(0); }
-			final value = parseDataValueOfType(expectedType, records);
+			final value = parseDataValueOfType(expectedType, enums, records);
 			if (fieldValues.exists(name)) error('duplicate field "$name" in record');
 			fieldValues.set(name, value);
 		}
@@ -6238,7 +6287,7 @@ class MacroManimParser {
 		return DVRecord(recordName, fieldValues);
 	}
 
-	function parseDataValueOfType(type:DataValueType, records:Map<String, DataRecordDef>):DataValue {
+	function parseDataValueOfType(type:DataValueType, enums:Map<String, DataEnumDef>, records:Map<String, DataRecordDef>):DataValue {
 		return switch (type) {
 			case DVTInt: DVInt(parseInteger());
 			case DVTFloat: DVFloat(parseFloat_());
@@ -6248,25 +6297,37 @@ class MacroManimParser {
 					default: error('expected string value'); DVString("");
 				}
 			case DVTBool: DVBool(parseBool());
+			case DVTEnum(enumName):
+				final valueStr = expectIdentifierOrString();
+				validateEnumValue(enumName, valueStr, enums);
+				DVEnumValue(enumName, valueStr);
 			case DVTRecord(recordName):
 				expect(TCurlyOpen);
 				final recordDef = records.get(recordName);
 				if (recordDef == null) { error('unknown record type "$recordName"'); return DVInt(0); }
-				parseDataRecordValue(recordName, recordDef, records);
+				parseDataRecordValue(recordName, recordDef, enums, records);
 			case DVTArray(elemType):
 				expect(TBracketOpen);
-				DVArray(parseDataArrayElements(elemType, records));
+				DVArray(parseDataArrayElements(elemType, enums, records));
 		};
 	}
 
-	function parseDataArrayElements(elemType:DataValueType, records:Map<String, DataRecordDef>):Array<DataValue> {
+	function parseDataArrayElements(elemType:DataValueType, enums:Map<String, DataEnumDef>,
+			records:Map<String, DataRecordDef>):Array<DataValue> {
 		var result:Array<DataValue> = [];
 		while (!match(TBracketClosed)) {
 			eatComma();
 			if (match(TBracketClosed)) break;
-			result.push(parseDataValueOfType(elemType, records));
+			result.push(parseDataValueOfType(elemType, enums, records));
 		}
 		return result;
+	}
+
+	function validateEnumValue(enumName:String, value:String, enums:Map<String, DataEnumDef>):Void {
+		final def = enums.get(enumName);
+		if (def == null) { error('unknown enum type "$enumName"'); return; }
+		if (!def.values.contains(value))
+			error('invalid value "$value" for enum "$enumName", expected one of: ${def.values.join(", ")}');
 	}
 
 	function parseDataArrayInferred(records:Map<String, DataRecordDef>):Array<DataValue> {
@@ -6311,6 +6372,7 @@ class MacroManimParser {
 			case DVFloat(_): DVTFloat;
 			case DVString(_): DVTString;
 			case DVBool(_): DVTBool;
+			case DVEnumValue(enumName, _): DVTEnum(enumName);
 			case DVRecord(name, _): DVTRecord(name);
 			case DVArray(elements): DVTArray(if (elements.length > 0) inferDataValueType(elements[0]) else DVTInt);
 		};
