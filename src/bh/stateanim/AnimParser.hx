@@ -3,14 +3,16 @@ package bh.stateanim;
 import bh.base.ParseError;
 import bh.base.ParseError.ParseUnexpected;
 import bh.base.ParsePosition;
+import bh.base.Point;
+#if (!macro && !noheaps)
 import bh.base.Atlas2;
 import bh.base.ResourceLoader;
 import haxe.io.Bytes;
 import bh.stateanim.AnimationSM;
-import bh.base.Point;
 import bh.base.filters.PixelOutline;
 import bh.base.filters.PixelOutline.PixelOutlineFilterMode;
 import bh.base.filters.ReplacePaletteShader;
+#end
 
 using StringTools;
 using bh.base.MapTools;
@@ -96,6 +98,92 @@ enum APKeywords {
 	APFilters; // (#12) filter declarations
 	APFilter; // (#12) per-frame filter in playlist
 	APNone; // (#12) filter none
+}
+
+/**
+ * Keyword metadata for LSP/tooling use.
+ * Single source of truth for .anim keyword names, contexts, and descriptions.
+ */
+enum AnimKeywordContext {
+	AKTopLevel;
+	AKAnimationBody;
+	AKPlaylistBody;
+	AKFilterBody;
+	AKConditional;
+}
+
+@:nullSafety
+class AnimKeywordInfo {
+	public final name:String;
+	public final context:AnimKeywordContext;
+	public final description:String;
+	public final snippet:Null<String>;
+	public final isBlock:Bool;
+
+	public function new(name:String, context:AnimKeywordContext, description:String, ?snippet:String, isBlock:Bool = false) {
+		this.name = name;
+		this.context = context;
+		this.description = description;
+		this.snippet = snippet;
+		this.isBlock = isBlock;
+	}
+
+	// All .anim keywords with metadata — add new keywords here
+	public static final all:Array<AnimKeywordInfo> = [
+		// Top-level declarations
+		new AnimKeywordInfo("sheet", AKTopLevel, "Sprite sheet name", "sheet: "),
+		new AnimKeywordInfo("states", AKTopLevel, "State variable declaration: `states: stateName(value1, value2)`", "states: "),
+		new AnimKeywordInfo("center", AKTopLevel, "Default center point: `center: x,y`", "center: "),
+		new AnimKeywordInfo("fps", AKTopLevel, "Default frames per second", "fps: "),
+		new AnimKeywordInfo("loop", AKTopLevel, "Default loop count. `yes` = forever, number = N times", "loop: "),
+		new AnimKeywordInfo("allowedExtraPoints", AKTopLevel, "Declare valid extra point names for validation"),
+		new AnimKeywordInfo("animation", AKTopLevel, "Named animation definition with playlist, extrapoints, and filters",
+			"animation ${1:name} {\n\t$0\n}", true),
+		new AnimKeywordInfo("anim", AKTopLevel, "One-liner animation shorthand: `anim name(fps:N, loop:yes): \"sheetName\"`",
+			"anim ${1:name}(fps:${2:20}): \"${3:sheetName}\""),
+		new AnimKeywordInfo("metadata", AKTopLevel, "Typed key-value pairs (int, float, string, color). Supports state conditionals",
+			"metadata {\n\t$0\n}", true),
+		// Animation body
+		new AnimKeywordInfo("fps", AKAnimationBody, "Frames per second", "fps: "),
+		new AnimKeywordInfo("loop", AKAnimationBody, "Loop count (yes = forever)", "loop: "),
+		new AnimKeywordInfo("playlist", AKAnimationBody, "Frame playlist", "playlist {\n\tsheet: \"${1:name}\"\n\t$0\n}", true),
+		new AnimKeywordInfo("extrapoints", AKAnimationBody, "Named points for effects/interactions. Supports state conditionals",
+			"extrapoints {\n\t$0\n}", true),
+		new AnimKeywordInfo("filters", AKAnimationBody, "Per-animation filter block with state conditionals",
+			"filters {\n\t$0\n}", true),
+		// Playlist body
+		new AnimKeywordInfo("sheet", AKPlaylistBody, "Sheet name. Supports `${stateName}` interpolation", "sheet: \""),
+		new AnimKeywordInfo("event", AKPlaylistBody, "Trigger event: `event <name> trigger | random x,y,radius | x,y`"),
+		new AnimKeywordInfo("filter", AKPlaylistBody, "Per-frame filter change"),
+		// Filter body
+		new AnimKeywordInfo("tint", AKFilterBody, "Tint filter: `tint: #RRGGBB`", "tint: "),
+		new AnimKeywordInfo("brightness", AKFilterBody, "Brightness filter: `brightness: 0.0-1.0`", "brightness: "),
+		new AnimKeywordInfo("saturate", AKFilterBody, "Saturation filter", "saturate: "),
+		new AnimKeywordInfo("grayscale", AKFilterBody, "Grayscale filter", "grayscale: "),
+		new AnimKeywordInfo("hue", AKFilterBody, "Hue rotation filter", "hue: "),
+		new AnimKeywordInfo("outline", AKFilterBody, "Outline filter: `outline: size, #color`", "outline: "),
+		new AnimKeywordInfo("pixelOutline", AKFilterBody, "Pixel outline filter: `pixelOutline: #color`", "pixelOutline: "),
+		new AnimKeywordInfo("replaceColor", AKFilterBody, "Color replacement: `replaceColor: [#src] => [#dst]`", "replaceColor: "),
+		new AnimKeywordInfo("none", AKFilterBody, "Clear filters"),
+		// Conditionals (usable in multiple contexts)
+		new AnimKeywordInfo("@(", AKConditional, "Conditional: `@(state=>value)`", "@(${1:state}=>${2:value}) "),
+		new AnimKeywordInfo("@else", AKConditional, "Else branch"),
+		new AnimKeywordInfo("@else(", AKConditional, "Else-if with condition", "@else(${1:state}=>${2:value}) "),
+		new AnimKeywordInfo("@default", AKConditional, "Default fallback"),
+		new AnimKeywordInfo("@final", AKConditional, "Named constant", "@final ${1:NAME} = ${2:value}"),
+	];
+
+	public static function forContext(ctx:AnimKeywordContext):Array<AnimKeywordInfo> {
+		return [for (k in all) if (k.context == ctx) k];
+	}
+
+	public static function findByName(name:String):Null<AnimKeywordInfo> {
+		final lower = name.toLowerCase();
+		for (k in all) {
+			if (k.name.toLowerCase() == lower) return k;
+		}
+		return null;
+	}
 }
 
 // ===================== Hand-coded Lexer =====================
@@ -346,6 +434,50 @@ typedef LoadedAnimation = {
 	var animations:Array<AnimationState>;
 }
 
+/**
+ * Conditional matching logic, extracted so it's available in both
+ * full parser (heaps) and LSP (noheaps) modes.
+ */
+class AnimConditionalMatcher {
+	public static function matchConditionalValue(condValue:AnimConditionalValue, runtimeValue:String):Bool {
+		return switch condValue {
+			case ACVSingle(v): v == runtimeValue;
+			case ACVMulti(vs): vs.contains(runtimeValue);
+			case ACVNot(inner): !matchConditionalValue(inner, runtimeValue);
+			case ACVCompare(op, cmpVal):
+				final numRuntime = Std.parseFloat(runtimeValue);
+				final numCmp = Std.parseFloat(cmpVal);
+				if (Math.isNaN(numRuntime) || Math.isNaN(numCmp)) false;
+				else switch op {
+					case ACmpGte: numRuntime >= numCmp;
+					case ACmpLte: numRuntime <= numCmp;
+					case ACmpGt: numRuntime > numCmp;
+					case ACmpLt: numRuntime < numCmp;
+				};
+			case ACVRange(minVal, maxVal):
+				final numRuntime = Std.parseFloat(runtimeValue);
+				final numMin = Std.parseFloat(minVal);
+				final numMax = Std.parseFloat(maxVal);
+				if (Math.isNaN(numRuntime) || Math.isNaN(numMin) || Math.isNaN(numMax)) false;
+				else numRuntime >= numMin && numRuntime <= numMax;
+		};
+	}
+
+	public static function countStateMatch(match:AnimConditionalSelector, selector:AnimationStateSelector):Int {
+		var retVal = 0;
+		for (key => value in selector) {
+			final condVal = match.get(key);
+			if (condVal != null) {
+				if (matchConditionalValue(condVal, value))
+					retVal++;
+				else
+					retVal -= 10000;
+			}
+		}
+		return retVal;
+	}
+}
+
 @:nullSafety
 class AnimMetadata {
 	final metadata:Map<String, Array<MetadataEntry>>;
@@ -364,7 +496,7 @@ class AnimMetadata {
 		var bestScore = -1;
 		var best:Null<MetadataEntry> = null;
 		for (entry in entries) {
-			final score = stateSelector != null ? AnimParser.countStateMatch(entry.states, stateSelector) : 0;
+			final score = stateSelector != null ? AnimConditionalMatcher.countStateMatch(entry.states, stateSelector) : 0;
 			if (score > bestScore) {
 				best = entry;
 				bestScore = score;
@@ -471,7 +603,9 @@ class AnimMetadata {
 }
 
 @:nullSafety
+#if (!macro && !noheaps)
 @:using(AnimParser.ExtraPointsHelper)
+#end
 typedef ExtraPoints = {
 	var states:AnimConditionalSelector;
 	var point:Point;
@@ -483,7 +617,9 @@ enum AnimPlaylistFrames {
 	SheetFrameAnim(name:String, durationMilliseconds:Null<Int>);
 	SheetFrameAnimWithIndex(name:String, from:Null<Int>, to:Null<Int>, durationMilliseconds:Null<Int>);
 	FileSingleFrame(filename:String, durationMilliseconds:Null<Int>);
+	#if (!macro && !noheaps)
 	PlaylistEvent(playlistEvent:AnimationPlaylistEvent);
+	#end
 	PlaylistEventData(name:String, meta:Map<String, MetadataValue>); // (#9) event with typed metadata
 	PlaylistFilter(filter:AnimFilterType); // (#12) per-frame filter change
 }
@@ -526,12 +662,14 @@ typedef AnimationState = {
 	var ?filters:Array<AnimFilterEntry>; // (#12)
 }
 
+#if (!macro && !noheaps)
 @:nullSafety
 class ExtraPointsHelper {
 	public static function toPoint(pt:ExtraPoints) {
 		return new h2d.col.IPoint(pt.point.x, pt.point.y);
 	}
 }
+#end
 
 @:nullSafety
 class AnimUnexpected<Token> extends ParseUnexpected<Token> {
@@ -565,6 +703,7 @@ class InvalidSyntax extends ParseError {
 @:nullSafety
 typedef AnimationStateSelector = Map<String, String>;
 
+#if (!macro && !noheaps)
 @:nullSafety
 interface AnimParserResult {
 	var definedStates(default, never):Map<String, Array<String>>;
@@ -572,9 +711,11 @@ interface AnimParserResult {
 
 	function createAnimSM(stateSelector:AnimationStateSelector):AnimationSM;
 }
+#end
 
 // ===================== Parser =====================
 
+#if (!macro && !noheaps)
 @:nullSafety
 class AnimParser implements AnimParserResult {
 	var tokens:Array<AnimToken>;
@@ -1612,42 +1753,12 @@ class AnimParser implements AnimParserResult {
 
 	// ===================== Static Utility Methods =====================
 
-	public static function matchConditionalValue(condValue:AnimConditionalValue, runtimeValue:String):Bool {
-		return switch condValue {
-			case ACVSingle(v): v == runtimeValue;
-			case ACVMulti(vs): vs.contains(runtimeValue);
-			case ACVNot(inner): !matchConditionalValue(inner, runtimeValue);
-			case ACVCompare(op, cmpVal): // (#8)
-				final numRuntime = Std.parseFloat(runtimeValue);
-				final numCmp = Std.parseFloat(cmpVal);
-				if (Math.isNaN(numRuntime) || Math.isNaN(numCmp)) false;
-				else switch op {
-					case ACmpGte: numRuntime >= numCmp;
-					case ACmpLte: numRuntime <= numCmp;
-					case ACmpGt: numRuntime > numCmp;
-					case ACmpLt: numRuntime < numCmp;
-				};
-			case ACVRange(minVal, maxVal): // (#8)
-				final numRuntime = Std.parseFloat(runtimeValue);
-				final numMin = Std.parseFloat(minVal);
-				final numMax = Std.parseFloat(maxVal);
-				if (Math.isNaN(numRuntime) || Math.isNaN(numMin) || Math.isNaN(numMax)) false;
-				else numRuntime >= numMin && numRuntime <= numMax;
-		};
+	public static inline function matchConditionalValue(condValue:AnimConditionalValue, runtimeValue:String):Bool {
+		return AnimConditionalMatcher.matchConditionalValue(condValue, runtimeValue);
 	}
 
-	public static function countStateMatch(match:AnimConditionalSelector, selector:AnimationStateSelector):Int {
-		var retVal = 0;
-		for (key => value in selector) {
-			final condVal = match.get(key);
-			if (condVal != null) {
-				if (matchConditionalValue(condVal, value))
-					retVal++;
-				else
-					retVal -= 10000;
-			}
-		}
-		return retVal;
+	public static inline function countStateMatch(match:AnimConditionalSelector, selector:AnimationStateSelector):Int {
+		return AnimConditionalMatcher.countStateMatch(match, selector);
 	}
 
 	public static function findPlaylist(stateSelector:AnimationStateSelector, animation:AnimationState, definedStates:Map<String, Array<String>>) {
@@ -1938,5 +2049,164 @@ class AnimParser implements AnimParserResult {
 		var animSM = new AnimationSM(stateSelector);
 		load(stateSelector, animSM);
 		return animSM;
+	}
+}
+#end
+
+/**
+ * Lightweight .anim validator for LSP/noheaps mode.
+ * Tokenizes via AnimLexerHC, validates structure (matching braces,
+ * known top-level keywords), and extracts symbols.
+ * Does NOT build runtime objects — just checks syntax.
+ */
+class AnimParserLsp {
+	var tokens:Array<AnimToken>;
+	var tpos:Int;
+	var sourceName:String;
+
+	public var animationNames(default, null):Array<String> = [];
+	public var stateDeclarations(default, null):Array<{name:String, values:Array<String>}> = [];
+	public var hasMetadata(default, null):Bool = false;
+	public var constants(default, null):Array<String> = [];
+
+	public function new(src:String, sourceName:String) {
+		this.sourceName = sourceName;
+		final lexer = new AnimLexerHC(src, sourceName);
+		tokens = [];
+		while (true) {
+			final t = lexer.nextToken();
+			tokens.push(t);
+			if (t.type == APEof) break;
+		}
+		tpos = 0;
+	}
+
+	inline function peek():APToken {
+		return tokens[tpos].type;
+	}
+
+	function advance():Void {
+		if (tpos < tokens.length - 1) tpos++;
+	}
+
+	function currentPos():ParsePosition {
+		return new ParsePosition(sourceName, tokens[tpos].line, tokens[tpos].col);
+	}
+
+	function match(expected:APToken):Bool {
+		if (peek() == expected) {
+			advance();
+			return true;
+		}
+		return false;
+	}
+
+	function skipBlock():Void {
+		var depth = 1;
+		while (depth > 0 && peek() != APEof) {
+			switch (peek()) {
+				case APCurlyOpen: depth++;
+				case APCurlyClosed: depth--;
+				default:
+			}
+			if (depth > 0) advance();
+		}
+		if (peek() == APCurlyClosed) advance();
+	}
+
+	function skipToNextTopLevel():Void {
+		while (peek() != APEof) {
+			switch (peek()) {
+				case APIdentifier(_, kw, _) if (kw != null): return;
+				case APAt: return;
+				default: advance();
+			}
+		}
+	}
+
+	/**
+	 * Validate the .anim file structure. Throws InvalidSyntax or AnimUnexpected on errors.
+	 */
+	public function validate():Void {
+		while (peek() != APEof) {
+			switch (peek()) {
+				case APIdentifier(_, keyword, _):
+					switch (keyword) {
+						case APAnimation:
+							advance();
+							switch (peek()) {
+								case APIdentifier(name, _, _):
+									animationNames.push(name);
+									advance();
+								default:
+									throw new InvalidSyntax("expected animation name", currentPos());
+							}
+							if (!match(APCurlyOpen)) throw new InvalidSyntax("expected '{' after animation name", currentPos());
+							skipBlock();
+						case APAnim:
+							advance();
+							switch (peek()) {
+								case APIdentifier(name, _, _):
+									animationNames.push(name);
+									advance();
+								default:
+									throw new InvalidSyntax("expected anim name", currentPos());
+							}
+							skipToNextTopLevel();
+						case APMetadata:
+							advance();
+							hasMetadata = true;
+							if (!match(APCurlyOpen)) throw new InvalidSyntax("expected '{' after metadata", currentPos());
+							skipBlock();
+						case APStates:
+							advance();
+							if (!match(APColon)) throw new InvalidSyntax("expected ':' after states", currentPos());
+							switch (peek()) {
+								case APIdentifier(name, _, _):
+									advance();
+									final values:Array<String> = [];
+									if (match(APOpen)) {
+										while (peek() != APClosed && peek() != APEof) {
+											switch (peek()) {
+												case APIdentifier(v, _, _):
+													values.push(v);
+													advance();
+												case APComma:
+													advance();
+												default:
+													advance();
+											}
+										}
+										match(APClosed);
+									}
+									stateDeclarations.push({name: name, values: values});
+								default:
+							}
+						case APSheet | APCenter | APFps | APLoop | APAllowedExtraPoints:
+							advance();
+							if (!match(APColon)) throw new InvalidSyntax("expected ':'", currentPos());
+							skipToNextTopLevel();
+						default:
+							advance();
+					}
+				case APAt:
+					advance();
+					switch (peek()) {
+						case APIdentifier(_, APFinal, _):
+							advance();
+							switch (peek()) {
+								case APIdentifier(name, _, _):
+									constants.push(name);
+									advance();
+								default:
+							}
+							skipToNextTopLevel();
+						default:
+							advance();
+					}
+				default:
+					advance();
+			}
+		}
 	}
 }

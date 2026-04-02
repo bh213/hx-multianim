@@ -1,25 +1,6 @@
 package bh.base;
 import bh.base.GridDirection;
-#if !macro
-import h2d.col.Point;
-#end
-
-// Macro-safe Point substitute: matches h2d.col.Point's public API (x, y, new)
-// so HexLayout compiles in macro context without h2d.
-#if macro
-private class Point {
-	public var x:Float;
-	public var y:Float;
-	public function new(x:Float = 0, y:Float = 0) {
-		this.x = x;
-		this.y = y;
-	}
-	public function scale(f:Float):Void {
-		x *= f;
-		y *= f;
-	}
-}
-#end
+import bh.base.FPoint;
 
 enum HexKey {
 	HEX(q:Int, r:Int, s:Int);
@@ -429,12 +410,12 @@ class HexLayout
 
     var orientationData(default, null):HexOrientationData;
     public var orientation(default, null):HexOrientation;
-    public var size(default, null):Point;
-    public var origin(default, null):Point;
+    public var size(default, null):FPoint;
+    public var origin(default, null):FPoint;
     static public var pointy:HexOrientationData = new HexOrientationData(Math.sqrt(3.0), Math.sqrt(3.0) / 2.0, 0.0, 3.0 / 2.0, Math.sqrt(3.0) / 3.0, -1.0 / 3.0, 0.0, 2.0 / 3.0, 0.5);
     static public var flat:HexOrientationData = new HexOrientationData(3.0 / 2.0, 0.0, Math.sqrt(3.0) / 2.0, Math.sqrt(3.0), 2.0 / 3.0, 0.0, -1.0 / 3.0, Math.sqrt(3.0) / 3.0, 0.0);
 
-    public function new(orientation:HexOrientation, size:Point, origin:Point)
+    public function new(orientation:HexOrientation, size:FPoint, origin:FPoint)
     {
 
         this.orientation = orientation;
@@ -447,29 +428,30 @@ class HexLayout
         this.origin = origin;
     }
 
-    public function createDrawableHexLayout(size:Point, origin:Point) {
+    public function createDrawableHexLayout(size:FPoint, origin:FPoint) {
         return new HexLayout(this.orientation, size, origin);
     }
 
     /** Factory to create a HexLayout from raw floats, usable from outside the module */
     public static function createFromFloats(orientation:HexOrientation, sizeX:Float, sizeY:Float, originX:Float = 0, originY:Float = 0):HexLayout {
-        return new HexLayout(orientation, new Point(sizeX, sizeY), new Point(originX, originY));
+        return new HexLayout(orientation, new FPoint(sizeX, sizeY), new FPoint(originX, originY));
     }
 
 
-    public function hexToPixel(h:Hex):Point
+    public function hexToPixel(h:Hex):FPoint
     {
         var x:Float = (orientationData.f0 * h.q + orientationData.f1 * h.r) * size.x;
         var y:Float = (orientationData.f2 * h.q + orientationData.f3 * h.r) * size.y;
-        return new Point(x + origin.x, y + origin.y);
+        return new FPoint(x + origin.x, y + origin.y);
     }
 
 
-    public function pixelToHex(p:Point):FractionalHex
+    public function pixelToHex(p:FPoint):FractionalHex
     {
-        var pt:Point = new Point((p.x - origin.x) / size.x, (p.y - origin.y) / size.y);
-        var q:Float = orientationData.b0 * pt.x + orientationData.b1 * pt.y;
-        var r:Float = orientationData.b2 * pt.x + orientationData.b3 * pt.y;
+        var ptX:Float = (p.x - origin.x) / size.x;
+        var ptY:Float = (p.y - origin.y) / size.y;
+        var q:Float = orientationData.b0 * ptX + orientationData.b1 * ptY;
+        var r:Float = orientationData.b2 * ptX + orientationData.b3 * ptY;
         return new FractionalHex(q, r, -q - r);
     }
 
@@ -487,28 +469,28 @@ class HexLayout
 
 
 
-    public function hexCornerOffset(corner:Int, towardsCenter:Float = 1.0):Point
+    public function hexCornerOffset(corner:Int, towardsCenter:Float = 1.0):FPoint
     {
         var angle:Float = 2.0 * Math.PI * (orientationData.start_angle - corner) / 6.0;
-        return new Point(size.x * Math.cos(angle) * towardsCenter, size.y * Math.sin(angle) * towardsCenter);
+        return new FPoint(size.x * Math.cos(angle) * towardsCenter, size.y * Math.sin(angle) * towardsCenter);
     }
 
 
-    public function polygonCorner(h:Hex, corner:Int, ?towardCenter:Float = 1.0):Point {
+    public function polygonCorner(h:Hex, corner:Int, ?towardCenter:Float = 1.0):FPoint {
 
-        var center:Point = hexToPixel(h);
-        var offset:Point = hexCornerOffset(corner);
-        return new Point(center.x + towardCenter * offset.x, center.y + towardCenter * offset.y);
+        var center:FPoint = hexToPixel(h);
+        var offset:FPoint = hexCornerOffset(corner);
+        return new FPoint(center.x + towardCenter * offset.x, center.y + towardCenter * offset.y);
 
     }
 
-    public function outline(hexes:Array<Hex>):Array<Point> {
+    public function outline(hexes:Array<Hex>):Array<FPoint> {
         var outline = [];
         var unprocessed = hexes.copy();
 
         while(unprocessed.length > 0) {
             final currentHex = unprocessed.pop();
-            
+
             final corners = polygonCorners(currentHex);
             for (direction in GridDirection.allDirections()) {
                 final hexInDirection = Hex.add(currentHex, direction.toHex());
@@ -516,7 +498,7 @@ class HexLayout
                     outline.push(corners[direction.toInt()]);
                     outline.push(corners[(direction.toInt()+1) % GridDirection.totalDirections]);
                 }
-            
+
             }
 
         }
@@ -526,24 +508,24 @@ class HexLayout
     }
 
 
-    public function polygonEdge(h:Hex, corner:Int, ?towardCenter:Float = 1.0):Point {
-        var center:Point = hexToPixel(h);
-        var o1:Point = hexCornerOffset(corner);
-        var o2:Point = hexCornerOffset(corner+1);
-        var edge:Point = new Point((o1.x + o2.x)/2, (o1.y + o2.y)/2);
-        edge.scale(towardCenter);
-        return new Point(center.x + edge.x, center.y + edge.y);
+    public function polygonEdge(h:Hex, corner:Int, ?towardCenter:Float = 1.0):FPoint {
+        var center:FPoint = hexToPixel(h);
+        var o1:FPoint = hexCornerOffset(corner);
+        var o2:FPoint = hexCornerOffset(corner+1);
+        var edgeX:Float = (o1.x + o2.x) / 2 * towardCenter;
+        var edgeY:Float = (o1.y + o2.y) / 2 * towardCenter;
+        return new FPoint(center.x + edgeX, center.y + edgeY);
 
     }
 
-    public function polygonCorners(h:Hex, scale:Float = 1.):Array<Point>
+    public function polygonCorners(h:Hex, scale:Float = 1.):Array<FPoint>
     {
-        var corners:Array<Point> = [];
-        var center:Point = hexToPixel(h);
+        var corners:Array<FPoint> = [];
+        var center:FPoint = hexToPixel(h);
         for (i in 0...6)
         {
-            var offset:Point = hexCornerOffset(i, scale);
-            corners.push(new Point(center.x + offset.x, center.y + offset.y));
+            var offset:FPoint = hexCornerOffset(i, scale);
+            corners.push(new FPoint(center.x + offset.x, center.y + offset.y));
         }
         return corners;
     }

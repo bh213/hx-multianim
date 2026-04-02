@@ -1,7 +1,6 @@
 package bh.multianim;
 
 import bh.base.FPoint;
-import bh.base.Point;
 import bh.multianim.MultiAnimParser;
 import bh.base.Hex;
 
@@ -113,13 +112,9 @@ class HexCoordinateSystemHelper {
 	}
 
 	public static function resolveHexPixel(system:HexCoordinateSystem, x:Float, y:Float):FPoint {
-		#if !macro
-		final hex = system.hexLayout.pixelToHex(new h2d.col.Point(x, y)).round();
+		final hex = system.hexLayout.pixelToHex(new FPoint(x, y)).round();
 		final pos = system.hexLayout.hexToPixel(hex);
 		return returnPosition(pos.x, pos.y);
-		#else
-		return returnPosition(0, 0);
-		#end
 	}
 
 	public static function resolveHexToHex(system:HexCoordinateSystem, q:Float, r:Float, s:Float):Hex {

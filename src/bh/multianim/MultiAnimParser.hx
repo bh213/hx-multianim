@@ -11,7 +11,7 @@ import bh.multianim.layouts.LayoutTypes;
 using StringTools;
 using bh.base.ColorUtils;
 using bh.multianim.ParseUtils;
-#if !macro
+#if (!macro && !noheaps)
 import bh.base.Particles;
 import bh.base.PixelLine;
 import bh.stateanim.AnimationSM;
@@ -282,7 +282,7 @@ function getNameString(updatableNameType:UpdatableNameType) {
 	}
 }
 
-#if !macro
+#if (!macro && !noheaps)
 @:nullSafety
 @:using(bh.multianim.MultiAnimParser)
 typedef NamedBuildResult = {
@@ -321,7 +321,7 @@ function toh2dObject(builtHeapsComponent:BuiltHeapsComponent):h2d.Object {
 }
 #end
 
-#if !macro
+#if (!macro && !noheaps)
 @:nullSafety
 @:using(bh.multianim.MultiAnimParser)
 enum BuiltHeapsComponent {
@@ -894,7 +894,7 @@ enum TileSource {
 	TSSheet(sheet:ReferenceableValue, name:ReferenceableValue);
 	TSSheetWithIndex(sheet:ReferenceableValue, name:ReferenceableValue, index:ReferenceableValue);
 	TSGenerated(type:GeneratedTileType);
-	#if !macro
+	#if (!macro && !noheaps)
 	TSTile(tile:h2d.Tile); // Used for iterator-provided tiles (e.g., from stateanim iterator)
 	#end
 	TSReference(varName:String); // Reference to a TileSource variable (e.g., $bitmap from stateanim iterator)
@@ -1206,7 +1206,7 @@ typedef MultiAnimResult = {
 	var customFilterRefs:Array<CustomFilterRef>;
 }
 
-#if !macro
+#if (!macro && !noheaps)
 @:nullSafety
 class MultiAnimParser {
 	public static final defaultLayoutNodeName = "#defaultLayout";

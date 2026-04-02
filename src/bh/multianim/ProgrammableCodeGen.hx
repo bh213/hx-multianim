@@ -3171,8 +3171,7 @@ class ProgrammableCodeGen {
 					} else null;
 				} else null;
 			case SELECTED_HEX_PIXEL(px, py):
-				// pixelToHex requires h2d.col.Point which is not available at macro time
-				// Fall through to runtime resolution
+				// pixelToHex can't be statically resolved at macro time
 				null;
 			case SELECTED_HEX_CELL_CORNER(cell, cornerIndex, factor):
 				final hexLayout = getHexLayoutForNode(node);
@@ -3306,7 +3305,7 @@ class ProgrammableCodeGen {
 					};
 				} else null;
 			case SELECTED_HEX_PIXEL(_, _):
-				// pixelToHex requires h2d.col.Point — not available at macro time
+				// pixelToHex can't be statically resolved at macro time
 				null;
 			default: null;
 		};
@@ -3344,7 +3343,7 @@ class ProgrammableCodeGen {
 				final xExpr = rvToExpr(px);
 				final yExpr = rvToExpr(py);
 				final _hlRef = hexFieldRef(null, hexLayout);
-				macro $_hlRef.pixelToHex(new h2d.col.Point($xExpr, $yExpr)).round();
+				macro $_hlRef.pixelToHex(new bh.base.FPoint($xExpr, $yExpr)).round();
 			default: null;
 		};
 	}
@@ -3599,7 +3598,7 @@ class ProgrammableCodeGen {
 				if (argExprs.length != 2) Context.error('pixel() requires 2 arguments', Context.currentPos());
 				final xExpr = argExprs[0];
 				final yExpr = argExprs[1];
-				final ptExpr = macro $_hlRef.hexToPixel($_hlRef.pixelToHex(new h2d.col.Point($xExpr, $yExpr)).round());
+				final ptExpr = macro $_hlRef.hexToPixel($_hlRef.pixelToHex(new bh.base.FPoint($xExpr, $yExpr)).round());
 				if (component == "x")
 					return macro $ptExpr.x;
 				else
@@ -3681,8 +3680,8 @@ class ProgrammableCodeGen {
 				final xExpr = rvToExpr(px);
 				final yExpr = rvToExpr(py);
 				{
-					x: macro $_hlRef.hexToPixel($_hlRef.pixelToHex(new h2d.col.Point($xExpr, $yExpr)).round()).x,
-					y: macro $_hlRef.hexToPixel($_hlRef.pixelToHex(new h2d.col.Point($xExpr, $yExpr)).round()).y
+					x: macro $_hlRef.hexToPixel($_hlRef.pixelToHex(new bh.base.FPoint($xExpr, $yExpr)).round()).x,
+					y: macro $_hlRef.hexToPixel($_hlRef.pixelToHex(new bh.base.FPoint($xExpr, $yExpr)).round()).y
 				};
 			case ZERO:
 				{x: macro 0.0, y: macro 0.0};
@@ -5598,7 +5597,7 @@ class ProgrammableCodeGen {
 					final yExpr = rvToExpr(py);
 					final _hlRef = hexFieldRef(node, pos);
 					macro {
-						final _hex = $_hlRef.pixelToHex(new h2d.col.Point($xExpr, $yExpr)).round();
+						final _hex = $_hlRef.pixelToHex(new bh.base.FPoint($xExpr, $yExpr)).round();
 						final _p = $_hlRef.hexToPixel(_hex);
 						$fieldRef.setPosition(_p.x, _p.y);
 					};

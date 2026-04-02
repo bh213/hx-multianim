@@ -3228,7 +3228,7 @@ class MultiAnimBuilder {
 					case FLAT: DoubledCoord.rdoubledToCube(new DoubledCoord(resolveAsInteger(col), resolveAsInteger(row)));
 				};
 			case SELECTED_HEX_PIXEL(x, y):
-				hexCoordinateSystem.hexLayout.pixelToHex(new h2d.col.Point(resolveAsNumber(x), resolveAsNumber(y))).round();
+				hexCoordinateSystem.hexLayout.pixelToHex(new bh.base.FPoint(resolveAsNumber(x), resolveAsNumber(y))).round();
 			case NAMED_COORD(name, coord):
 				final node = currentNode;
 				if (node == null) throw 'currentNode is null in resolveToHex' + currentNodePos();

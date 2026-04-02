@@ -1637,7 +1637,7 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 	}
 
 	function hitTestHex(localX:Float, localY:Float):Null<CellCoord> {
-		final fractional = hexLayout.pixelToHex(new Point(localX, localY));
+		final fractional = hexLayout.pixelToHex(new FPoint(localX, localY));
 		final hex = fractional.round();
 		final coord = fromHex(hex);
 		final key = cellKey(coord.col, coord.row);
