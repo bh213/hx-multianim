@@ -22,6 +22,9 @@
 | `src/bh/multianim/ProgrammableBuilder.hx` | Base class for macro-generated factories |
 | `src/bh/multianim/LayoutAlignRoot.hx` | Base class for codegen instances with aligned layouts |
 | `src/bh/stateanim/AnimParser.hx` | Parser for `.anim` state animation files |
+| `src/bh/multianim/ManimKeywordInfo.hx` | Keyword metadata for LSP/tooling (exhaustive switch on parser enums) |
+| `lsp/` | LSP language server for `.manim`/`.anim` (compiles to JS via `-D noheaps`) |
+| `vscode/` | VS Code extension: syntax highlighting, language config, LSP client |
 | `test/` | Test suite |
 
 ## Build & Run Commands
@@ -38,6 +41,13 @@ test.bat report     # Open test report in browser
 ```
 
 `test.bat` output is optimized for AI parsing (structured key-value results). Running `hl build/hl-test.hl` directly produces raw trace output not designed for automated consumption.
+
+```bash
+# LSP server
+haxe lsp/lsp-server.hxml       # Compile LSP server to lsp/bin/server.js
+haxe lsp/test-lsp.hxml          # Compile LSP tests
+node lsp/bin/test.js             # Run LSP tests
+```
 
 Playground lives in a separate repository: `../hx-multianim-playground`. Usually running at: http://localhost:3000, if not you can `npm run dev`
 

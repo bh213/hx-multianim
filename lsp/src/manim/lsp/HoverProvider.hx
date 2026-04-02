@@ -83,6 +83,8 @@ class HoverProvider {
 
 		// Remaining keywords not covered by enums
 		return switch (word) {
+			case "record": "**record** — Named record type in data block\n\n```manim\n#name record(field:type, ...)\n```";
+			case "enum": "**enum** — Named enum type in data block\n\n```manim\n#name enum(val1, val2, ...)\n```";
 			case "settings": "**settings** — Component settings block\n\n```manim\nsettings {\n  key:type => value\n}\n```";
 			case "transition": "**transition** — Animated transitions for parameter changes\n\n```manim\ntransition {\n  param: crossfade(0.1, easeOutQuad)\n}\n```";
 			case "import": "**import** — Import external .manim file\n\n```manim\nimport \"file.manim\" as \"name\"\n```";

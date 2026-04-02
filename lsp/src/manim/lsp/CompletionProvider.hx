@@ -26,7 +26,7 @@ class CompletionProvider {
 			case TransitionBody: transitionCompletions();
 			case FilterPosition: filterCompletions();
 			case ProgrammableParams: paramTypeCompletions();
-			case DataBody: [];
+			case DataBody: dataCompletions();
 			case InteractiveParams: [];
 			case AfterDollar(prefix): referenceCompletions(ctx.paramNames, prefix);
 			case AfterAt: conditionalCompletions();
@@ -125,6 +125,17 @@ class CompletionProvider {
 			"colorCurve" => "Color curve: curve, startColor, endColor",
 		];
 		return [for (key => desc in props) kw(key, desc)];
+	}
+
+	static function dataCompletions():Array<LspCompletionItem> {
+		return [
+			snippet("record", "#${1:name} record(${2:field:type})", "Define a named record type"),
+			snippet("enum", "#${1:name} enum(${2:val1, val2})", "Define a named enum type"),
+			kw("int", "Integer field type"),
+			kw("float", "Float field type"),
+			kw("string", "String field type"),
+			kw("bool", "Boolean field type"),
+		];
 	}
 
 	static function settingsCompletions():Array<LspCompletionItem> {

@@ -13,6 +13,7 @@ class ManimAnalyzerTest {
 		testCompletions();
 		testHover();
 		testDefinition();
+		testDataEnumSymbols();
 	}
 
 	static function testValidFileNoDiagnostics():Void {
@@ -62,6 +63,34 @@ class ManimAnalyzerTest {
 		final text = "version: 1.0\nprogrammable";
 		final hover = ManimAnalyzer.getHover(text, "test.manim", 1, 5);
 		LspTestRunner.assert(hover != null, "Hover returned for 'programmable' keyword");
+	}
+
+	static function testDataEnumSymbols():Void {
+		final text = 'version: 1.0\n#items data {\n\t#rarity enum(common, rare, legendary)\n\t#stats record(hp:int, atk:int)\n\tname: "sword"\n\tgrade: rarity common\n}';
+		final diags = ManimAnalyzer.getDiagnostics(text, "test.manim");
+		LspTestRunner.assertEqual(diags.length, 0, "Data block with enum produces no diagnostics");
+
+		final syms = ManimAnalyzer.getSymbols(text, "test.manim");
+		var foundData = false;
+		var foundEnum = false;
+		var foundRecord = false;
+		var foundField = false;
+		for (s in syms) {
+			if (s.name == "items" && s.kind == SymbolKind.Struct) {
+				foundData = true;
+				if (s.children != null) {
+					for (c in s.children) {
+						if (c.name == "#rarity" && c.kind == SymbolKind.Enum) foundEnum = true;
+						if (c.name == "#stats" && c.kind == SymbolKind.Struct) foundRecord = true;
+						if (c.name == "name" && c.kind == SymbolKind.Field) foundField = true;
+					}
+				}
+			}
+		}
+		LspTestRunner.assert(foundData, "Symbol: data 'items' found");
+		LspTestRunner.assert(foundEnum, "Symbol: enum '#rarity' found as child of data");
+		LspTestRunner.assert(foundRecord, "Symbol: record '#stats' found as child of data");
+		LspTestRunner.assert(foundField, "Symbol: field 'name' found as child of data");
 	}
 
 	static function testDefinition():Void {

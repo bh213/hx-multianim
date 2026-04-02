@@ -77,6 +77,7 @@ class SymbolKind {
 	public static inline final Field = 8;
 	public static inline final Function = 12;
 	public static inline final Variable = 13;
+	public static inline final Enum = 10;
 	public static inline final Constant = 14;
 	public static inline final Struct = 23;
 }

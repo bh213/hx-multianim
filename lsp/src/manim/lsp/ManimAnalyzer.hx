@@ -5,6 +5,7 @@ import bh.multianim.MultiAnimParser.Node;
 import bh.multianim.MultiAnimParser.NodeType;
 import bh.multianim.MultiAnimParser.DefinitionType;
 import bh.multianim.MultiAnimParser.UpdatableNameType;
+import bh.multianim.MultiAnimParser.DataDef;
 import bh.multianim.MultiAnimParser.InvalidSyntax;
 import bh.multianim.MultiAnimParser.MultiAnimUnexpected;
 import bh.base.ParsePosition;
@@ -75,8 +76,14 @@ class ManimAnalyzer {
 							detail: paramList.length > 0 ? '(${paramList.join(", ")})' : null,
 							children: getChildSymbols(node, text)
 						};
-					case DATA(_):
-						{name: name, kind: SymbolKind.Struct, range: range, selectionRange: range};
+					case DATA(dataDef):
+						{
+							name: name,
+							kind: SymbolKind.Struct,
+							range: range,
+							selectionRange: range,
+							children: getDataChildren(dataDef, text)
+						};
 					case CURVES(_):
 						{name: name, kind: SymbolKind.Namespace, range: range, selectionRange: range, detail: "curves"};
 					case PATHS(_):
@@ -166,6 +173,59 @@ class ManimAnalyzer {
 			}
 		}
 		return children.length > 0 ? children : null;
+	}
+
+	static function getDataChildren(dataDef:DataDef, text:String):Null<Array<LspSymbolInformation>> {
+		if (dataDef == null) return null;
+		final children:Array<LspSymbolInformation> = [];
+
+		for (name => enumDef in dataDef.enums) {
+			final range = findNameInText(text, '#$name');
+			children.push({
+				name: '#$name',
+				kind: SymbolKind.Enum,
+				range: range,
+				selectionRange: range,
+				detail: 'enum(${enumDef.values.join(", ")})'
+			});
+		}
+
+		for (name => recordDef in dataDef.records) {
+			final range = findNameInText(text, '#$name');
+			final fieldNames = [for (f in recordDef.fields) f.name];
+			children.push({
+				name: '#$name',
+				kind: SymbolKind.Struct,
+				range: range,
+				selectionRange: range,
+				detail: 'record(${fieldNames.join(", ")})'
+			});
+		}
+
+		for (field in dataDef.fields) {
+			final range = findNameInText(text, field.name);
+			children.push({
+				name: field.name,
+				kind: SymbolKind.Field,
+				range: range,
+				selectionRange: range,
+				detail: dataTypeName(field.type)
+			});
+		}
+
+		return children.length > 0 ? children : null;
+	}
+
+	static function dataTypeName(type:bh.multianim.MultiAnimParser.DataValueType):String {
+		return switch (type) {
+			case DVTInt: "int";
+			case DVTFloat: "float";
+			case DVTString: "string";
+			case DVTBool: "bool";
+			case DVTEnum(name): name;
+			case DVTRecord(name): name;
+			case DVTArray(elemType): '${dataTypeName(elemType)}[]';
+		};
 	}
 
 	static function nodeTypeName(type:NodeType):String {

@@ -5,6 +5,9 @@
 ### Added
 - **Data block enum types** — `#name enum(val1, val2, ...)` defines finite value sets in data blocks. Usable in record fields, standalone fields, and arrays. Validated at parse time. Codegen generates Haxe `enum` with PascalCase constructors. Runtime builder returns enum values as strings. Supports `mergeTypes` dedup across `@:data` fields.
 
+- **LSP server** — language server for `.manim` and `.anim` files with diagnostics (parse errors), context-aware completions, hover documentation, document symbols (outline), and go-to-definition ($parameter, #name). Built on `ManimKeywordInfo` and `AnimKeywordInfo` metadata classes that derive keyword names, descriptions, and snippets from parser enums via exhaustive switch matching. Compiles to JS via `-D noheaps`. Data block symbols include enum/record/field children.
+- **VS Code extension** — syntax highlighting for `.manim` and `.anim` files (TextMate grammars), language configuration (brackets, comments, auto-closing), and LSP client integration. Bundled LSP server in `server/server.js`. Install via `install-local.ps1`.
+
 - **Custom filters** — game code can register custom filters via `FilterManager.registerFilter(name, paramDefs, factory)`, following the same pattern as `FontManager`. Custom filter names are parsed as opaque in `.manim` and validated at build time against the registry. Supports typed parameters (`CFFloat`, `CFColor`, `CFBool`) with defaults, `$param` references in arguments, and composition via `group()`. Case-insensitive names; built-in filter names cannot be shadowed. Works in both builder and codegen paths.
 
 - **Extra point coordinate expressions** — query `.anim` extra points as positioning coordinates in `.manim`. Two modes: `$ref.extraPoint("pointName")` (from named stateanim element's current animation) and `extraPoint("file.anim", "animName", "pointName", selectors...)` (direct .anim file query). Optional `fallback: coords` for graceful handling when point not found. `.offset()` suffix supported. Works in both builder and codegen (runtime-resolved).
@@ -104,6 +107,8 @@
 ### Internal
 - Removed dead code: `StringHelper.hx`, `OncePropertyParser.hx`, `GdxTile.hx` (unused files with no remaining references).
 - Removed stale TODO comments in `MultiAnimBuilder.hx` and `ScreenManager.hx`.
+- **HexLayout uses FPoint** — `HexLayout` now uses `bh.base.FPoint` instead of `h2d.col.Point`/private stub class. Removed `#if macro` / `#if !macro` conditionals from `Hex.hx`, `GridDirection.hx`, `FPoint.hx`, `Point.hx`, `CoordinateSystems.hx`, and `MacroCompatTypes.hx`. All hex coordinate APIs work identically in macro and non-macro contexts.
+- Removed unused `FPoint.toh2dPoint()`, `FPoint.fromh2dPoint()`, `Point.toh2dPoint()`.
 
 ## [1.0.0-rc.2] - 2026-03-12
 
