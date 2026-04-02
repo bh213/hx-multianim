@@ -3772,7 +3772,6 @@ class MultiAnimBuilder {
 		}
 
 		function addChild(toAdd:h2d.Object) {
-			// TODO: handle UIElementCustomAddToLayer
 			if (node.layer != -1) {
 				if (layersParent != null)
 					layersParent.add(toAdd, node.layer);

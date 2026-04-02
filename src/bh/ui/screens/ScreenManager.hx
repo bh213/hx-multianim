@@ -359,7 +359,7 @@ class ScreenManager {
 				#if MULTIANIM_TRACE
 				trace('rebuild $key'); // don't trace $value, js gets stack overflow
 				#end
-				buildFromResource(key, true); // TODO: enable reload
+				buildFromResource(key, true);
 			}
 		} catch (e) {
 			#if MULTIANIM_DEV

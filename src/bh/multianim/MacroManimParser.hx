@@ -4,6 +4,8 @@ import bh.multianim.MultiAnimParser;
 import bh.multianim.MultiAnimParser.CustomFilterArg;
 import bh.multianim.MultiAnimParser.CustomFilterArgType;
 import bh.multianim.MultiAnimParser.CustomFilterRef;
+import bh.multianim.MultiAnimParser.InvalidSyntax;
+import bh.base.ParsePosition;
 import bh.multianim.CoordinateSystems;
 import bh.multianim.MacroCompatTypes.MacroBlendMode;
 import bh.multianim.MacroCompatTypes.MacroFlowLayout;
@@ -526,7 +528,7 @@ class MacroManimParser {
 
 	function error(msg:String):Dynamic {
 		final t = peekToken();
-		throw '$sourceName:${t.line}:${t.col}: $msg';
+		throw new InvalidSyntax('$sourceName: $msg', new ParsePosition(sourceName, t.line, t.col));
 	}
 
 	function posString():String {

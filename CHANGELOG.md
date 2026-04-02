@@ -97,6 +97,11 @@
 - **Touch input broken in UIRichInteractiveHelper** — `UIPush` handler now transitions from both `Normal` and `Hover` states to `Pressed`, fixing touch input which sends `UIPush` without prior `UIEntering`.
 - **`cancelDrag()` fires events with null wrapper** — external `cancelDrag()` now passes the active wrapper (and fires `onDragCancel`) instead of passing null to the `onDragEvent` delegate, preventing crashes in listeners accessing wrapper fields.
 - **Stale target highlight in UICardHandTargeting** — `unregisterTarget()` now clears the active highlight if the removed target is currently highlighted, preventing a permanently stuck highlight visual.
+- **Parser `error()` throws plain string** — `MacroManimParser.error()` now throws `InvalidSyntax` with `ParsePosition` instead of a plain string, making all parser errors catchable via `catch(e:ParserError)` with line/column info. Previously only `syntaxError()` and `invalidSyntax()` produced structured errors.
+
+### Internal
+- Removed dead code: `StringHelper.hx`, `OncePropertyParser.hx`, `GdxTile.hx` (unused files with no remaining references).
+- Removed stale TODO comments in `MultiAnimBuilder.hx` and `ScreenManager.hx`.
 
 ## [1.0.0-rc.2] - 2026-03-12
 
