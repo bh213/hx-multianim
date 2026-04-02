@@ -28,6 +28,9 @@ try {
     node build.js
     if ($LASTEXITCODE -ne 0) { throw "TypeScript build failed" }
 
+    Write-Host "=== Removing old .vsix files ==="
+    Remove-Item *.vsix -ErrorAction SilentlyContinue
+
     Write-Host "=== Packaging extension ==="
     npx @vscode/vsce package --allow-missing-repository
     if ($LASTEXITCODE -ne 0) { throw "Packaging failed" }

@@ -228,15 +228,6 @@ bh_base_FPoint.prototype = {
 	}
 	,__class__: bh_base_FPoint
 };
-var bh_base__$GridDirection_Math = function() { };
-bh_base__$GridDirection_Math.__name__ = true;
-bh_base__$GridDirection_Math.iabs = function(v) {
-	if(v < 0) {
-		return -v;
-	} else {
-		return v;
-	}
-};
 var bh_base_Degree = {};
 bh_base_Degree.fromValue = function(value) {
 	return value;
@@ -245,17 +236,17 @@ bh_base_Degree._new = function(value) {
 	return value;
 };
 bh_base_Degree.toRadians = function(this1) {
-	return this1 / 180 * 3.14159265358979323;
+	return this1 / 180 * Math.PI;
 };
 bh_base_Degree.fromRadian = function(radians) {
-	return radians * 180.0 / 3.14159265358979323;
+	return radians * 180.0 / Math.PI;
 };
 bh_base_Degree.degreesValue = function(this1) {
 	return this1;
 };
 var bh_base_Radian = {};
 bh_base_Radian.fromDegreeValue = function(value) {
-	return value / 180.0 * 3.14159265358979323;
+	return value / 180.0 * Math.PI;
 };
 bh_base_Radian.fromValue = function(value) {
 	return value;
@@ -264,10 +255,10 @@ bh_base_Radian._new = function(value) {
 	return value;
 };
 bh_base_Radian.toDegrees = function(this1) {
-	return this1 * 180 / 3.14159265358979323;
+	return this1 * 180 / Math.PI;
 };
 bh_base_Radian.fromDegree = function(d) {
-	return d / 180.0 * 3.14159265358979323;
+	return d / 180.0 * Math.PI;
 };
 bh_base_Radian.radiansValue = function(this1) {
 	return this1;
@@ -459,8 +450,8 @@ bh_base_GridDirection.turn = function(this1,turn) {
 	}
 };
 bh_base_GridDirection.getRelativeDirection = function(attackDirection,objectDirection) {
-	var v = bh_base_GridDirection.toInt(attackDirection) - bh_base_GridDirection.toInt(objectDirection);
-	var relativeDirection = v < 0 ? -v : v;
+	var diff = bh_base_GridDirection.toInt(attackDirection) - bh_base_GridDirection.toInt(objectDirection);
+	var relativeDirection = diff < 0 ? -diff : diff;
 	switch(relativeDirection) {
 	case 0:
 		return 2;
@@ -524,24 +515,6 @@ bh_base_GridDirection.calculateSteps = function(this1,to) {
 };
 bh_base_GridDirection.opposite = function(this1) {
 	return (this1 + 3) % bh_base_GridDirection.totalDirections;
-};
-var bh_base__$Hex_Point = function(x,y) {
-	if(y == null) {
-		y = 0;
-	}
-	if(x == null) {
-		x = 0;
-	}
-	this.x = x;
-	this.y = y;
-};
-bh_base__$Hex_Point.__name__ = true;
-bh_base__$Hex_Point.prototype = {
-	scale: function(f) {
-		this.x *= f;
-		this.y *= f;
-	}
-	,__class__: bh_base__$Hex_Point
 };
 var bh_base_HexKey = $hxEnums["bh.base.HexKey"] = { __ename__:true,__constructs__:null
 	,HEX: ($_=function(q,r,s) { return {_hx_index:0,q:q,r:r,s:s,__enum__:"bh.base.HexKey",toString:$estr}; },$_._hx_name="HEX",$_.__params__ = ["q","r","s"],$_)
@@ -764,7 +737,7 @@ bh_base_HexLayout.createFromFloats = function(orientation,sizeX,sizeY,originX,or
 	if(originX == null) {
 		originX = 0;
 	}
-	return new bh_base_HexLayout(orientation,new bh_base__$Hex_Point(sizeX,sizeY),new bh_base__$Hex_Point(originX,originY));
+	return new bh_base_HexLayout(orientation,new bh_base_FPoint(sizeX,sizeY),new bh_base_FPoint(originX,originY));
 };
 bh_base_HexLayout.directionToAngle = function(gridDirection) {
 	var deg = 60 * (bh_base_GridDirection.totalDirections - bh_base_GridDirection.toInt(gridDirection));
@@ -777,12 +750,13 @@ bh_base_HexLayout.prototype = {
 	,hexToPixel: function(h) {
 		var x = (this.orientationData.f0 * h.q + this.orientationData.f1 * h.r) * this.size.x;
 		var y = (this.orientationData.f2 * h.q + this.orientationData.f3 * h.r) * this.size.y;
-		return new bh_base__$Hex_Point(x + this.origin.x,y + this.origin.y);
+		return new bh_base_FPoint(x + this.origin.x,y + this.origin.y);
 	}
 	,pixelToHex: function(p) {
-		var pt = new bh_base__$Hex_Point((p.x - this.origin.x) / this.size.x,(p.y - this.origin.y) / this.size.y);
-		var q = this.orientationData.b0 * pt.x + this.orientationData.b1 * pt.y;
-		var r = this.orientationData.b2 * pt.x + this.orientationData.b3 * pt.y;
+		var ptX = (p.x - this.origin.x) / this.size.x;
+		var ptY = (p.y - this.origin.y) / this.size.y;
+		var q = this.orientationData.b0 * ptX + this.orientationData.b1 * ptY;
+		var r = this.orientationData.b2 * ptX + this.orientationData.b3 * ptY;
 		return new bh_base_FractionalHex(q,r,-q - r);
 	}
 	,getStartAngleRad: function() {
@@ -793,7 +767,7 @@ bh_base_HexLayout.prototype = {
 			towardsCenter = 1.0;
 		}
 		var angle = 2.0 * Math.PI * (this.orientationData.start_angle - corner) / 6.0;
-		return new bh_base__$Hex_Point(this.size.x * Math.cos(angle) * towardsCenter,this.size.y * Math.sin(angle) * towardsCenter);
+		return new bh_base_FPoint(this.size.x * Math.cos(angle) * towardsCenter,this.size.y * Math.sin(angle) * towardsCenter);
 	}
 	,polygonCorner: function(h,corner,towardCenter) {
 		if(towardCenter == null) {
@@ -801,7 +775,7 @@ bh_base_HexLayout.prototype = {
 		}
 		var center = this.hexToPixel(h);
 		var offset = this.hexCornerOffset(corner);
-		return new bh_base__$Hex_Point(center.x + towardCenter * offset.x,center.y + towardCenter * offset.y);
+		return new bh_base_FPoint(center.x + towardCenter * offset.x,center.y + towardCenter * offset.y);
 	}
 	,outline: function(hexes) {
 		var outline = [];
@@ -850,9 +824,9 @@ bh_base_HexLayout.prototype = {
 		var center = this.hexToPixel(h);
 		var o1 = this.hexCornerOffset(corner);
 		var o2 = this.hexCornerOffset(corner + 1);
-		var edge = new bh_base__$Hex_Point((o1.x + o2.x) / 2,(o1.y + o2.y) / 2);
-		edge.scale(towardCenter);
-		return new bh_base__$Hex_Point(center.x + edge.x,center.y + edge.y);
+		var edgeX = (o1.x + o2.x) / 2 * towardCenter;
+		var edgeY = (o1.y + o2.y) / 2 * towardCenter;
+		return new bh_base_FPoint(center.x + edgeX,center.y + edgeY);
 	}
 	,polygonCorners: function(h,scale) {
 		if(scale == null) {
@@ -861,17 +835,17 @@ bh_base_HexLayout.prototype = {
 		var corners = [];
 		var center = this.hexToPixel(h);
 		var offset = this.hexCornerOffset(0,scale);
-		corners.push(new bh_base__$Hex_Point(center.x + offset.x,center.y + offset.y));
+		corners.push(new bh_base_FPoint(center.x + offset.x,center.y + offset.y));
 		var offset = this.hexCornerOffset(1,scale);
-		corners.push(new bh_base__$Hex_Point(center.x + offset.x,center.y + offset.y));
+		corners.push(new bh_base_FPoint(center.x + offset.x,center.y + offset.y));
 		var offset = this.hexCornerOffset(2,scale);
-		corners.push(new bh_base__$Hex_Point(center.x + offset.x,center.y + offset.y));
+		corners.push(new bh_base_FPoint(center.x + offset.x,center.y + offset.y));
 		var offset = this.hexCornerOffset(3,scale);
-		corners.push(new bh_base__$Hex_Point(center.x + offset.x,center.y + offset.y));
+		corners.push(new bh_base_FPoint(center.x + offset.x,center.y + offset.y));
 		var offset = this.hexCornerOffset(4,scale);
-		corners.push(new bh_base__$Hex_Point(center.x + offset.x,center.y + offset.y));
+		corners.push(new bh_base_FPoint(center.x + offset.x,center.y + offset.y));
 		var offset = this.hexCornerOffset(5,scale);
-		corners.push(new bh_base__$Hex_Point(center.x + offset.x,center.y + offset.y));
+		corners.push(new bh_base_FPoint(center.x + offset.x,center.y + offset.y));
 		return corners;
 	}
 	,toString: function() {
@@ -1055,7 +1029,9 @@ bh_multianim_HexCoordinateSystemHelper.resolveHexDoubled = function(system,col,r
 	return new bh_base_FPoint(pos.x,pos.y);
 };
 bh_multianim_HexCoordinateSystemHelper.resolveHexPixel = function(system,x,y) {
-	return new bh_base_FPoint(0,0);
+	var hex = system.hexLayout.pixelToHex(new bh_base_FPoint(x,y)).round();
+	var pos = system.hexLayout.hexToPixel(hex);
+	return new bh_base_FPoint(pos.x,pos.y);
 };
 bh_multianim_HexCoordinateSystemHelper.resolveHexToHex = function(system,q,r,s) {
 	if(q == Math.floor(q) && r == Math.floor(r) && s == Math.floor(s)) {
@@ -9930,6 +9906,7 @@ bh_multianim_MacroManimParser.prototype = {
 		return { source : source, entries : entries};
 	}
 	,parseData: function() {
+		var enums = new haxe_ds_StringMap();
 		var records = new haxe_ds_StringMap();
 		var fields = [];
 		while(!this.match(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyClosed)) {
@@ -9941,24 +9918,69 @@ bh_multianim_MacroManimParser.prototype = {
 			if(_g._hx_index == 32) {
 				var name = _g.s;
 				this.advance();
-				this.expectKeyword("record");
-				this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
-				var recordFields = this.parseDataRecordFields();
-				if(Object.prototype.hasOwnProperty.call(records.h,name)) {
-					this.error("record type \"" + name + "\" already defined");
+				var _g1 = this.tokens[this.tpos].type;
+				if(_g1._hx_index == 31) {
+					var _g2 = _g1.s;
+					var s = _g2;
+					if(bh_multianim_MacroManimParser.isKeyword(s,"record")) {
+						this.advance();
+						this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
+						var recordFields = this.parseDataRecordFields(enums);
+						if(Object.prototype.hasOwnProperty.call(records.h,name)) {
+							this.error("record type \"" + name + "\" already defined");
+						}
+						if(Object.prototype.hasOwnProperty.call(enums.h,name)) {
+							this.error("\"" + name + "\" is already defined as an enum");
+						}
+						records.h[name] = { name : name, fields : recordFields};
+					} else {
+						var s1 = _g2;
+						if(bh_multianim_MacroManimParser.isKeyword(s1,"enum")) {
+							this.advance();
+							this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
+							var enumValues = this.parseDataEnumValues();
+							if(Object.prototype.hasOwnProperty.call(enums.h,name)) {
+								this.error("enum type \"" + name + "\" already defined");
+							}
+							if(Object.prototype.hasOwnProperty.call(records.h,name)) {
+								this.error("\"" + name + "\" is already defined as a record");
+							}
+							enums.h[name] = { name : name, values : enumValues};
+						} else {
+							this.error("expected \"record\" or \"enum\" after #" + name);
+						}
+					}
+				} else {
+					this.error("expected \"record\" or \"enum\" after #" + name);
 				}
-				records.h[name] = { name : name, fields : recordFields};
 			} else {
 				var fieldName = this.expectIdentifierOrString();
 				this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
-				var field = this.parseDataField(fieldName,records);
+				var field = this.parseDataField(fieldName,enums,records);
 				fields.push(field);
 			}
 			this.eatSemicolon();
 		}
-		return { records : records, fields : fields};
+		return { enums : enums, records : records, fields : fields};
 	}
-	,parseDataRecordFields: function() {
+	,parseDataEnumValues: function() {
+		var result = [];
+		if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TClosed)) {
+			return result;
+		}
+		while(true) {
+			var value = this.expectIdentifierOrString();
+			if(result.indexOf(value) != -1) {
+				this.error("duplicate enum value \"" + value + "\"");
+			}
+			result.push(value);
+			if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TClosed)) {
+				return result;
+			}
+			this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
+		}
+	}
+	,parseDataRecordFields: function(enums) {
 		var result = [];
 		if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TClosed)) {
 			return result;
@@ -9967,7 +9989,7 @@ bh_multianim_MacroManimParser.prototype = {
 			var isOptional = this.match(bh_multianim__$MacroManimParser_MacroTokenType.TQuestion);
 			var fieldName = this.expectIdentifierOrString();
 			this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
-			var fieldType = this.parseDataType();
+			var fieldType = this.parseDataType(enums);
 			result.push({ name : fieldName, type : fieldType, optional : isOptional});
 			if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TClosed)) {
 				return result;
@@ -9975,7 +9997,7 @@ bh_multianim_MacroManimParser.prototype = {
 			this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
 		}
 	}
-	,parseDataType: function() {
+	,parseDataType: function(enums) {
 		var typeName = this.expectIdentifierOrString();
 		var baseType;
 		switch(typeName.toLowerCase()) {
@@ -9992,7 +10014,7 @@ bh_multianim_MacroManimParser.prototype = {
 			baseType = bh_multianim_DataValueType.DVTString;
 			break;
 		default:
-			baseType = bh_multianim_DataValueType.DVTRecord(typeName);
+			baseType = Object.prototype.hasOwnProperty.call(enums.h,typeName) ? bh_multianim_DataValueType.DVTEnum(typeName) : bh_multianim_DataValueType.DVTRecord(typeName);
 		}
 		if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TBracketOpen)) {
 			this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TBracketClosed);
@@ -10000,7 +10022,7 @@ bh_multianim_MacroManimParser.prototype = {
 		}
 		return baseType;
 	}
-	,parseDataField: function(fieldName,records) {
+	,parseDataField: function(fieldName,enums,records) {
 		var _g = this.tokens[this.tpos].type;
 		if(_g._hx_index == 31) {
 			var _g1 = _g.s;
@@ -10010,26 +10032,42 @@ bh_multianim_MacroManimParser.prototype = {
 				return { name : fieldName, type : bh_multianim_DataValueType.DVTBool, value : bh_multianim_DataValue.DVBool(boolVal)};
 			} else {
 				var s = _g1;
-				var saved = this.tpos;
-				this.advance();
-				switch(this.tokens[this.tpos].type._hx_index) {
-				case 3:
+				if(Object.prototype.hasOwnProperty.call(enums.h,s)) {
 					this.advance();
-					this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TBracketClosed);
-					this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TBracketOpen);
-					var elements = this.parseDataArrayElements(bh_multianim_DataValueType.DVTRecord(s),records);
-					return { name : fieldName, type : bh_multianim_DataValueType.DVTArray(bh_multianim_DataValueType.DVTRecord(s)), value : bh_multianim_DataValue.DVArray(elements)};
-				case 5:
-					this.advance();
-					var recordDef = records.h[s];
-					if(recordDef == null) {
-						this.error("unknown record type \"" + s + "\"");
-						return null;
+					if(this.tokens[this.tpos].type._hx_index == 3) {
+						this.advance();
+						this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TBracketClosed);
+						this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TBracketOpen);
+						var elements = this.parseDataArrayElements(bh_multianim_DataValueType.DVTEnum(s),enums,records);
+						return { name : fieldName, type : bh_multianim_DataValueType.DVTArray(bh_multianim_DataValueType.DVTEnum(s)), value : bh_multianim_DataValue.DVArray(elements)};
+					} else {
+						var valueStr = this.expectIdentifierOrString();
+						this.validateEnumValue(s,valueStr,enums);
+						return { name : fieldName, type : bh_multianim_DataValueType.DVTEnum(s), value : bh_multianim_DataValue.DVEnumValue(s,valueStr)};
 					}
-					var recordValue = this.parseDataRecordValue(s,recordDef,records);
-					return { name : fieldName, type : bh_multianim_DataValueType.DVTRecord(s), value : recordValue};
-				default:
-					this.tpos = saved;
+				} else {
+					var s = _g1;
+					var saved = this.tpos;
+					this.advance();
+					switch(this.tokens[this.tpos].type._hx_index) {
+					case 3:
+						this.advance();
+						this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TBracketClosed);
+						this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TBracketOpen);
+						var elements = this.parseDataArrayElements(bh_multianim_DataValueType.DVTRecord(s),enums,records);
+						return { name : fieldName, type : bh_multianim_DataValueType.DVTArray(bh_multianim_DataValueType.DVTRecord(s)), value : bh_multianim_DataValue.DVArray(elements)};
+					case 5:
+						this.advance();
+						var recordDef = records.h[s];
+						if(recordDef == null) {
+							this.error("unknown record type \"" + s + "\"");
+							return null;
+						}
+						var recordValue = this.parseDataRecordValue(s,recordDef,enums,records);
+						return { name : fieldName, type : bh_multianim_DataValueType.DVTRecord(s), value : recordValue};
+					default:
+						this.tpos = saved;
+					}
 				}
 			}
 		}
@@ -10072,7 +10110,7 @@ bh_multianim_MacroManimParser.prototype = {
 			return this.error("expected value in data field \"" + fieldName + "\"");
 		}
 	}
-	,parseDataRecordValue: function(recordName,recordDef,records) {
+	,parseDataRecordValue: function(recordName,recordDef,enums,records) {
 		var fieldValues = new haxe_ds_StringMap();
 		while(!this.match(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyClosed)) {
 			this.eatComma();
@@ -10096,7 +10134,7 @@ bh_multianim_MacroManimParser.prototype = {
 				this.error("unknown field \"" + name + "\" in record \"" + recordName + "\"");
 				return bh_multianim_DataValue.DVInt(0);
 			}
-			var value = this.parseDataValueOfType(expectedType,records);
+			var value = this.parseDataValueOfType(expectedType,enums,records);
 			if(Object.prototype.hasOwnProperty.call(fieldValues.h,name)) {
 				this.error("duplicate field \"" + name + "\" in record");
 			}
@@ -10113,7 +10151,7 @@ bh_multianim_MacroManimParser.prototype = {
 		}
 		return bh_multianim_DataValue.DVRecord(recordName,fieldValues);
 	}
-	,parseDataValueOfType: function(type,records) {
+	,parseDataValueOfType: function(type,enums,records) {
 		switch(type._hx_index) {
 		case 0:
 			return bh_multianim_DataValue.DVInt(this.parseInteger());
@@ -10133,6 +10171,11 @@ bh_multianim_MacroManimParser.prototype = {
 		case 3:
 			return bh_multianim_DataValue.DVBool(this.parseBool());
 		case 4:
+			var enumName = type.enumName;
+			var valueStr = this.expectIdentifierOrString();
+			this.validateEnumValue(enumName,valueStr,enums);
+			return bh_multianim_DataValue.DVEnumValue(enumName,valueStr);
+		case 5:
 			var recordName = type.recordName;
 			this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyOpen);
 			var recordDef = records.h[recordName];
@@ -10140,23 +10183,33 @@ bh_multianim_MacroManimParser.prototype = {
 				this.error("unknown record type \"" + recordName + "\"");
 				return bh_multianim_DataValue.DVInt(0);
 			}
-			return this.parseDataRecordValue(recordName,recordDef,records);
-		case 5:
+			return this.parseDataRecordValue(recordName,recordDef,enums,records);
+		case 6:
 			var elemType = type.elementType;
 			this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TBracketOpen);
-			return bh_multianim_DataValue.DVArray(this.parseDataArrayElements(elemType,records));
+			return bh_multianim_DataValue.DVArray(this.parseDataArrayElements(elemType,enums,records));
 		}
 	}
-	,parseDataArrayElements: function(elemType,records) {
+	,parseDataArrayElements: function(elemType,enums,records) {
 		var result = [];
 		while(!this.match(bh_multianim__$MacroManimParser_MacroTokenType.TBracketClosed)) {
 			this.eatComma();
 			if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TBracketClosed)) {
 				break;
 			}
-			result.push(this.parseDataValueOfType(elemType,records));
+			result.push(this.parseDataValueOfType(elemType,enums,records));
 		}
 		return result;
+	}
+	,validateEnumValue: function(enumName,value,enums) {
+		var def = enums.h[enumName];
+		if(def == null) {
+			this.error("unknown enum type \"" + enumName + "\"");
+			return;
+		}
+		if(def.values.indexOf(value) == -1) {
+			this.error("invalid value \"" + value + "\" for enum \"" + enumName + "\", expected one of: " + def.values.join(", "));
+		}
 	}
 	,parseDataArrayInferred: function(records) {
 		var result = [];
@@ -10235,6 +10288,10 @@ bh_multianim_MacroManimParser.prototype = {
 			var _g = value.fields;
 			var name = value.recordName;
 			return bh_multianim_DataValueType.DVTRecord(name);
+		case 6:
+			var _g = value.value;
+			var enumName = value.enumName;
+			return bh_multianim_DataValueType.DVTEnum(enumName);
 		}
 	}
 	,parseOptionalParams: function(defs,once) {
@@ -11412,10 +11469,11 @@ var bh_multianim_DataValueType = $hxEnums["bh.multianim.DataValueType"] = { __en
 	,DVTFloat: {_hx_name:"DVTFloat",_hx_index:1,__enum__:"bh.multianim.DataValueType",toString:$estr}
 	,DVTString: {_hx_name:"DVTString",_hx_index:2,__enum__:"bh.multianim.DataValueType",toString:$estr}
 	,DVTBool: {_hx_name:"DVTBool",_hx_index:3,__enum__:"bh.multianim.DataValueType",toString:$estr}
-	,DVTRecord: ($_=function(recordName) { return {_hx_index:4,recordName:recordName,__enum__:"bh.multianim.DataValueType",toString:$estr}; },$_._hx_name="DVTRecord",$_.__params__ = ["recordName"],$_)
-	,DVTArray: ($_=function(elementType) { return {_hx_index:5,elementType:elementType,__enum__:"bh.multianim.DataValueType",toString:$estr}; },$_._hx_name="DVTArray",$_.__params__ = ["elementType"],$_)
+	,DVTEnum: ($_=function(enumName) { return {_hx_index:4,enumName:enumName,__enum__:"bh.multianim.DataValueType",toString:$estr}; },$_._hx_name="DVTEnum",$_.__params__ = ["enumName"],$_)
+	,DVTRecord: ($_=function(recordName) { return {_hx_index:5,recordName:recordName,__enum__:"bh.multianim.DataValueType",toString:$estr}; },$_._hx_name="DVTRecord",$_.__params__ = ["recordName"],$_)
+	,DVTArray: ($_=function(elementType) { return {_hx_index:6,elementType:elementType,__enum__:"bh.multianim.DataValueType",toString:$estr}; },$_._hx_name="DVTArray",$_.__params__ = ["elementType"],$_)
 };
-bh_multianim_DataValueType.__constructs__ = [bh_multianim_DataValueType.DVTInt,bh_multianim_DataValueType.DVTFloat,bh_multianim_DataValueType.DVTString,bh_multianim_DataValueType.DVTBool,bh_multianim_DataValueType.DVTRecord,bh_multianim_DataValueType.DVTArray];
+bh_multianim_DataValueType.__constructs__ = [bh_multianim_DataValueType.DVTInt,bh_multianim_DataValueType.DVTFloat,bh_multianim_DataValueType.DVTString,bh_multianim_DataValueType.DVTBool,bh_multianim_DataValueType.DVTEnum,bh_multianim_DataValueType.DVTRecord,bh_multianim_DataValueType.DVTArray];
 var bh_multianim_DataValue = $hxEnums["bh.multianim.DataValue"] = { __ename__:true,__constructs__:null
 	,DVInt: ($_=function(v) { return {_hx_index:0,v:v,__enum__:"bh.multianim.DataValue",toString:$estr}; },$_._hx_name="DVInt",$_.__params__ = ["v"],$_)
 	,DVFloat: ($_=function(v) { return {_hx_index:1,v:v,__enum__:"bh.multianim.DataValue",toString:$estr}; },$_._hx_name="DVFloat",$_.__params__ = ["v"],$_)
@@ -11423,8 +11481,9 @@ var bh_multianim_DataValue = $hxEnums["bh.multianim.DataValue"] = { __ename__:tr
 	,DVBool: ($_=function(v) { return {_hx_index:3,v:v,__enum__:"bh.multianim.DataValue",toString:$estr}; },$_._hx_name="DVBool",$_.__params__ = ["v"],$_)
 	,DVArray: ($_=function(elements) { return {_hx_index:4,elements:elements,__enum__:"bh.multianim.DataValue",toString:$estr}; },$_._hx_name="DVArray",$_.__params__ = ["elements"],$_)
 	,DVRecord: ($_=function(recordName,fields) { return {_hx_index:5,recordName:recordName,fields:fields,__enum__:"bh.multianim.DataValue",toString:$estr}; },$_._hx_name="DVRecord",$_.__params__ = ["recordName","fields"],$_)
+	,DVEnumValue: ($_=function(enumName,value) { return {_hx_index:6,enumName:enumName,value:value,__enum__:"bh.multianim.DataValue",toString:$estr}; },$_._hx_name="DVEnumValue",$_.__params__ = ["enumName","value"],$_)
 };
-bh_multianim_DataValue.__constructs__ = [bh_multianim_DataValue.DVInt,bh_multianim_DataValue.DVFloat,bh_multianim_DataValue.DVString,bh_multianim_DataValue.DVBool,bh_multianim_DataValue.DVArray,bh_multianim_DataValue.DVRecord];
+bh_multianim_DataValue.__constructs__ = [bh_multianim_DataValue.DVInt,bh_multianim_DataValue.DVFloat,bh_multianim_DataValue.DVString,bh_multianim_DataValue.DVBool,bh_multianim_DataValue.DVArray,bh_multianim_DataValue.DVRecord,bh_multianim_DataValue.DVEnumValue];
 var bh_multianim_NodeType = $hxEnums["bh.multianim.NodeType"] = { __ename__:true,__constructs__:null
 	,FLOW: ($_=function(maxWidth,maxHeight,minWidth,minHeight,lineHeight,colWidth,layout,paddingTop,paddingBottom,paddingLeft,paddingRight,horizontalSpacing,verticalSpacing,debug,multiline,bgSheet,bgTile,overflow,fillWidth,fillHeight,reverse,hAlign,vAlign) { return {_hx_index:0,maxWidth:maxWidth,maxHeight:maxHeight,minWidth:minWidth,minHeight:minHeight,lineHeight:lineHeight,colWidth:colWidth,layout:layout,paddingTop:paddingTop,paddingBottom:paddingBottom,paddingLeft:paddingLeft,paddingRight:paddingRight,horizontalSpacing:horizontalSpacing,verticalSpacing:verticalSpacing,debug:debug,multiline:multiline,bgSheet:bgSheet,bgTile:bgTile,overflow:overflow,fillWidth:fillWidth,fillHeight:fillHeight,reverse:reverse,hAlign:hAlign,vAlign:vAlign,__enum__:"bh.multianim.NodeType",toString:$estr}; },$_._hx_name="FLOW",$_.__params__ = ["maxWidth","maxHeight","minWidth","minHeight","lineHeight","colWidth","layout","paddingTop","paddingBottom","paddingLeft","paddingRight","horizontalSpacing","verticalSpacing","debug","multiline","bgSheet","bgTile","overflow","fillWidth","fillHeight","reverse","hAlign","vAlign"],$_)
 	,SPACER: ($_=function(width,height) { return {_hx_index:1,width:width,height:height,__enum__:"bh.multianim.NodeType",toString:$estr}; },$_._hx_name="SPACER",$_.__params__ = ["width","height"],$_)
@@ -13416,7 +13475,7 @@ manim_lsp_CompletionProvider.getCompletions = function(ctx) {
 	case 11:
 		return manim_lsp_CompletionProvider.filterCompletions();
 	case 12:
-		return [];
+		return manim_lsp_CompletionProvider.dataCompletions();
 	case 1:case 13:
 		return manim_lsp_CompletionProvider.elementCompletions();
 	case 14:
@@ -13587,6 +13646,9 @@ manim_lsp_CompletionProvider.animatedPathCompletions = function() {
 		_g.push(manim_lsp_CompletionProvider.kw(key1,desc));
 	}
 	return _g;
+};
+manim_lsp_CompletionProvider.dataCompletions = function() {
+	return [manim_lsp_CompletionProvider.snippet("record","#${1:name} record(${2:field:type})","Define a named record type"),manim_lsp_CompletionProvider.snippet("enum","#${1:name} enum(${2:val1, val2})","Define a named enum type"),manim_lsp_CompletionProvider.kw("int","Integer field type"),manim_lsp_CompletionProvider.kw("float","Float field type"),manim_lsp_CompletionProvider.kw("string","String field type"),manim_lsp_CompletionProvider.kw("bool","Boolean field type")];
 };
 manim_lsp_CompletionProvider.settingsCompletions = function() {
 	var props_h = Object.create(null);
@@ -14139,6 +14201,8 @@ manim_lsp_HoverProvider.lookupKeyword = function(word) {
 		return "**@default** — Final fallback (always matches)";
 	case "@else":case "else":
 		return "**@else** — Matches when preceding @() didn't match";
+	case "enum":
+		return "**enum** — Named enum type in data block\n\n```manim\n#name enum(val1, val2, ...)\n```";
 	case "@final":case "final":
 		return "**@final** — Immutable named constant: `@final NAME = 42`";
 	case "grid":
@@ -14147,6 +14211,8 @@ manim_lsp_HoverProvider.lookupKeyword = function(word) {
 		return "**$hex** — Hexagonal coordinate system\n\n`$hex.cube(q, r, s)`, `$hex.corner(index, scale)`";
 	case "import":
 		return "**import** — Import external .manim file\n\n```manim\nimport \"file.manim\" as \"name\"\n```";
+	case "record":
+		return "**record** — Named record type in data block\n\n```manim\n#name record(field:type, ...)\n```";
 	case "settings":
 		return "**settings** — Component settings block\n\n```manim\nsettings {\n  key:type => value\n}\n```";
 	case "transition":
@@ -14329,11 +14395,11 @@ manim_lsp_ManimAnalyzer.getSymbols = function(text,uri) {
 				symbol = { name : name, kind : 3, range : range, selectionRange : range, detail : "curves"};
 				break;
 			case 29:
-				var _g8 = _g.dataDef;
-				symbol = { name : name, kind : 23, range : range, selectionRange : range};
+				var dataDef = _g.dataDef;
+				symbol = { name : name, kind : 23, range : range, selectionRange : range, children : manim_lsp_ManimAnalyzer.getDataChildren(dataDef,text)};
 				break;
 			case 33:
-				var _g9 = _g.value;
+				var _g8 = _g.value;
 				var n = _g.name;
 				symbol = { name : n, kind : 14, range : range, selectionRange : range, detail : "@final"};
 				break;
@@ -14494,6 +14560,83 @@ manim_lsp_ManimAnalyzer.getChildSymbols = function(node,text) {
 		return children;
 	} else {
 		return null;
+	}
+};
+manim_lsp_ManimAnalyzer.getDataChildren = function(dataDef,text) {
+	if(dataDef == null) {
+		return null;
+	}
+	var children = [];
+	var h = dataDef.enums.h;
+	var _g_h = h;
+	var _g_keys = Object.keys(h);
+	var _g_length = _g_keys.length;
+	var _g_current = 0;
+	while(_g_current < _g_length) {
+		var key = _g_keys[_g_current++];
+		var _g_key = key;
+		var _g_value = _g_h[key];
+		var name = _g_key;
+		var enumDef = _g_value;
+		var range = manim_lsp_ManimAnalyzer.findNameInText(text,"#" + name);
+		children.push({ name : "#" + name, kind : 10, range : range, selectionRange : range, detail : "enum(" + enumDef.values.join(", ") + ")"});
+	}
+	var h = dataDef.records.h;
+	var _g_h = h;
+	var _g_keys = Object.keys(h);
+	var _g_length = _g_keys.length;
+	var _g_current = 0;
+	while(_g_current < _g_length) {
+		var key = _g_keys[_g_current++];
+		var _g_key = key;
+		var _g_value = _g_h[key];
+		var name = _g_key;
+		var recordDef = _g_value;
+		var range = manim_lsp_ManimAnalyzer.findNameInText(text,"#" + name);
+		var _g = [];
+		var _g1 = 0;
+		var _g2 = recordDef.fields;
+		while(_g1 < _g2.length) {
+			var f = _g2[_g1];
+			++_g1;
+			_g.push(f.name);
+		}
+		var fieldNames = _g;
+		children.push({ name : "#" + name, kind : 23, range : range, selectionRange : range, detail : "record(" + fieldNames.join(", ") + ")"});
+	}
+	var _g = 0;
+	var _g1 = dataDef.fields;
+	while(_g < _g1.length) {
+		var field = _g1[_g];
+		++_g;
+		var range = manim_lsp_ManimAnalyzer.findNameInText(text,field.name);
+		children.push({ name : field.name, kind : 8, range : range, selectionRange : range, detail : manim_lsp_ManimAnalyzer.dataTypeName(field.type)});
+	}
+	if(children.length > 0) {
+		return children;
+	} else {
+		return null;
+	}
+};
+manim_lsp_ManimAnalyzer.dataTypeName = function(type) {
+	switch(type._hx_index) {
+	case 0:
+		return "int";
+	case 1:
+		return "float";
+	case 2:
+		return "string";
+	case 3:
+		return "bool";
+	case 4:
+		var name = type.enumName;
+		return name;
+	case 5:
+		var name = type.recordName;
+		return name;
+	case 6:
+		var elemType = type.elementType;
+		return "" + manim_lsp_ManimAnalyzer.dataTypeName(elemType) + "[]";
 	}
 };
 manim_lsp_ManimAnalyzer.nodeTypeName = function(type) {
@@ -14923,7 +15066,6 @@ var Bool = Boolean;
 var Class = { };
 var Enum = { };
 js_Boot.__toStr = ({ }).toString;
-bh_base__$GridDirection_Math.PI = 3.14159265358979323;
 bh_base_GridDirection.DIRECTION_RIGHT = 0;
 bh_base_GridDirection.DIRECTION_TOP_RIGHT = 1;
 bh_base_GridDirection.DIRECTION_TOP_LEFT = 2;
@@ -15105,6 +15247,7 @@ manim_lsp_SymbolKind.Property = 7;
 manim_lsp_SymbolKind.Field = 8;
 manim_lsp_SymbolKind.Function = 12;
 manim_lsp_SymbolKind.Variable = 13;
+manim_lsp_SymbolKind.Enum = 10;
 manim_lsp_SymbolKind.Constant = 14;
 manim_lsp_SymbolKind.Struct = 23;
 manim_lsp_InsertTextFormat.PlainText = 1;
