@@ -3,6 +3,7 @@
 ## [1.0.0-rc.3] - 2026-03-31
 
 ### Added
+- **Interactive event priority and bubbling** — `UIElementPriority` opt-in interface and `consumed` field on `UIElementEventWrapper`. `UIDefaultController` now collects all overlapping hit elements, sorts by `eventPriority` (higher first, registration order as tiebreaker), and iterates until an element consumes the event (`consumed = true`, the default). Elements that set `wrapper.consumed = false` in `onEvent()` pass the event through to the next element underneath. `UIInteractiveWrapper` implements `UIElementPriority` and reads `eventPriority:int` from interactive metadata (default 0). Hover remains single-element (topmost only). Click, release, key, and wheel events support bubbling.
 - **VS Code syntax: programmable parameter highlighting** — new `programmable-params` TextMate grammar rule highlights parameter declarations inside `programmable(...)` and `slot(...)` parentheses. Provides distinct scopes for type names, constants, named colors, operators (`=>`, `..`), and parameter names.
 - **Multi-profile extension installer** — `install-local.ps1` discovers VS Code profiles from `globalStorage/storage.json` and prompts the user to select which profile(s) to install into. Supports comma-separated selection or 'a' for all. Auto-skips prompt when only Default profile exists.
 

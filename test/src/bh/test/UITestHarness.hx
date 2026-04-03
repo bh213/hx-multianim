@@ -276,7 +276,8 @@ class UITestHarness {
 		return {
 			event: event,
 			eventPos: pos != null ? pos : new Point(0, 0),
-			control: control
+			control: control,
+			consumed: true
 		};
 	}
 

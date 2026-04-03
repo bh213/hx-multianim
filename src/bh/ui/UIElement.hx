@@ -182,6 +182,7 @@ typedef UIElementEventWrapper = {
 	var event:UIElementEvents;
 	var eventPos:h2d.col.Point;
 	var control:Controllable;
+	var consumed:Bool;
 }
 
 /**
@@ -251,6 +252,15 @@ interface UIElementCursor {
 	function getCursor():hxd.Cursor;
 }
 
+
+/**
+ * Opt-in interface for UI elements that declare an event priority.
+ * Higher priority elements receive events first when overlapping.
+ * Elements without this interface default to priority 0.
+ */
+interface UIElementPriority {
+	var eventPriority(default, null):Int;
+}
 
 /**
  * Interface for UI elements that can be selected (e.g., radio buttons, list items).

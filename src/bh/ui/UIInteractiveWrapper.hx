@@ -8,7 +8,7 @@ import bh.base.CursorManager;
 import bh.ui.UIElement;
 
 @:nullSafety
-class UIInteractiveWrapper implements UIElement implements StandardUIElementEvents implements UIElementIdentifiable implements UIElementDisablable implements UIElementCursor {
+class UIInteractiveWrapper implements UIElement implements StandardUIElementEvents implements UIElementIdentifiable implements UIElementDisablable implements UIElementCursor implements UIElementPriority {
 	public static inline final EVENT_HOVER = 1;
 	public static inline final EVENT_CLICK = 2;
 	public static inline final EVENT_PUSH = 4;
@@ -21,6 +21,7 @@ class UIInteractiveWrapper implements UIElement implements StandardUIElementEven
 	public final id:String;
 	public final metadata:BuilderResolvedSettings;
 	public final eventFlags:Int;
+	public var eventPriority(default, null):Int;
 	public var disabled(default, set):Bool = false;
 	public var hovered(default, null):Bool = false;
 
@@ -36,6 +37,7 @@ class UIInteractiveWrapper implements UIElement implements StandardUIElementEven
 		this.id = extracted.id;
 		this.metadata = extracted.metadata;
 		this.eventFlags = extracted.eventFlags;
+		this.eventPriority = metadata.getIntOrDefault("eventPriority", 0);
 		// Resolve cursors from metadata
 		final baseCursor = resolveCursorName(metadata.getStringOrDefault("cursor", ""), CursorManager.getDefaultInteractiveCursor());
 		this.cursorDefault = baseCursor;

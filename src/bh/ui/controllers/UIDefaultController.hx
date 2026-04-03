@@ -105,14 +105,16 @@ class UIDefaultController implements UIController {
 		return "default UI controller";
 	}
 
-	function handleEvent(element:UIElement, event, eventPos:Point) {
+	/** Returns true if the event was consumed (default), false if it should bubble. */
+	function handleEvent(element:UIElement, event, eventPos:Point):Bool {
 		if (element == null)
-			return;
+			return false;
 		if (Std.isOfType(element, StandardUIElementEvents)) {
 			final wrapper:UIElementEventWrapper = {
 				event: event,
 				eventPos: eventPos,
-				control: controllable
+				control: controllable,
+				consumed: true
 			};
 
 			final captureEvents = controllable.captureEvents;
@@ -125,60 +127,74 @@ class UIDefaultController implements UIController {
 			cast(element, StandardUIElementEvents).onEvent(wrapper);
 			controllable.clearContext();
 			if (captureEvents.start == false && captureEvents.stop == false)
-				return;
+				return wrapper.consumed;
 			if (captureEvents.start && captureEvents.target == null)
 				captureEvents.target = element;
 			if (captureEvents.stop && captureEvents.target != null)
 				captureEvents.target = null;
 			// else throw 'invalid drag state ${captureEvents}';
 			captureEvents.reset();
+			return wrapper.consumed;
 		}
+		return false;
 	}
 
 	public function handleClick(mousePoint:Point, button:Int, release:Bool, eventWrapper:EventWrapper) {
-		final element = getEventElement(mousePoint);
+		final elements = getEventElements(mousePoint);
+		final topElement = elements.length > 0 ? elements[0] : null;
 		if (integration.dispatchMouseClick(mousePoint, button, release) == false) {
 			// Consumed by a component (e.g. card hand drag release).
 			// Still process outside-click so panels/dropdowns close correctly.
 			if (release) {
-				final triggeredElements = controllable.triggerOutsideEvents(element);
+				final triggeredElements = controllable.triggerOutsideEvents(topElement);
 				for (value in triggeredElements)
 					handleEvent(value, OnReleaseOutside(button), mousePoint);
 			}
 			return;
 		}
 		if (release) {
-			final triggeredElements = controllable.triggerOutsideEvents(element);
+			final triggeredElements = controllable.triggerOutsideEvents(topElement);
 			for (value in triggeredElements) {
 				handleEvent(value, OnReleaseOutside(button), mousePoint);
 			}
 		}
-		if (element == null)
-			return;
-		handleEvent(element, release ? OnRelease(button) : OnPush(button), mousePoint);
+		for (element in elements) {
+			if (handleEvent(element, release ? OnRelease(button) : OnPush(button), mousePoint))
+				break;
+		}
 	}
 
 	public function handleMouseWheel(mousePoint:Point, wheelDelta:Float, eventWrapper:EventWrapper) {
 		if (integration.onMouseWheel(mousePoint, wheelDelta) == false) return;
-		final element = getEventElement(mousePoint);
-		if (element == null)
-			return;
-		handleEvent(element, OnWheel(wheelDelta), mousePoint);
+		for (element in getEventElements(mousePoint)) {
+			if (handleEvent(element, OnWheel(wheelDelta), mousePoint))
+				break;
+		}
 	}
 
-	function getEventElement(pos:Point):Null<UIElement> {
+	function getEventElements(pos:Point):Array<UIElement> {
 		if (controllable.captureEvents.target != null)
-			return controllable.captureEvents.target;
+			return [controllable.captureEvents.target];
+		var hits:Array<UIElement> = [];
 		for (element in integration.getElements(SETReceiveEvents)) {
 			if (element.containsPoint(pos))
-				return element;
+				hits.push(element);
 		}
-		return null;
+		if (hits.length > 1) {
+			// Stable sort: higher eventPriority first, registration order as tiebreaker
+			haxe.ds.ArraySort.sort(hits, (a, b) -> {
+				final pa = Std.isOfType(a, UIElementPriority) ? (cast(a, UIElementPriority)).eventPriority : 0;
+				final pb = Std.isOfType(b, UIElementPriority) ? (cast(b, UIElementPriority)).eventPriority : 0;
+				return pb - pa;
+			});
+		}
+		return hits;
 	}
 
 	public function handleMove(mousePoint:Point, eventWrapper:EventWrapper) {
 		if (integration.dispatchMouseMove(mousePoint) == false) return;
-		final element = getEventElement(mousePoint);
+		final elements = getEventElements(mousePoint);
+		final element = elements.length > 0 ? elements[0] : null;
 
 		if (element != null)
 			handleEvent(element, OnMouseMove, mousePoint);
@@ -244,11 +260,12 @@ class UIDefaultController implements UIController {
 
 	public function handleKey(keyCode:Int, release:Bool, mousePoint:Point, eventWrapper:EventWrapper) {
 		if (integration.onKey(keyCode, release) == false) return;
-		final element = getEventElement(mousePoint);
+		final elements = getEventElements(mousePoint);
 		onScreenEvent(UIKeyPress(keyCode, release), null);
-		if (element == null)
-			return;
-		handleEvent(element, OnKey(keyCode, release), mousePoint);
+		for (element in elements) {
+			if (handleEvent(element, OnKey(keyCode, release), mousePoint))
+				break;
+		}
 	}
 
 	public function otherEvent(sourceEvent:EventWrapper) {}

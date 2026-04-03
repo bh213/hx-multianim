@@ -1163,6 +1163,37 @@ interactive(200, 30, "dragArea", cursor => "move", cursor.hover => "move", curso
 
 Pre-registered cursor names: `default`, `pointer`/`button`, `move`, `text`, `hide`/`none`. Register custom cursors via `CursorManager.registerCursor("name", cursor)`.
 
+### Event Priority
+
+Control event dispatch order when interactives overlap via `eventPriority` metadata:
+
+```manim
+interactive(200, 30, "overlay", eventPriority:int => 10)
+interactive(200, 30, "background", eventPriority:int => 0)
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `eventPriority` | `int` | `0` | Higher values receive events first when overlapping |
+
+When multiple interactives overlap at the cursor position, `UIDefaultController` sorts by `eventPriority` (descending), with registration order as tiebreaker for equal priorities. By default, the first element consumes the event (no bubbling).
+
+### Event Bubbling
+
+Event handlers can pass events through to the next overlapping element by setting `wrapper.consumed = false` in `onEvent()`:
+
+```haxe
+public function onEvent(wrapper:UIElementEventWrapper):Void {
+    // Handle event...
+    wrapper.consumed = false; // pass through to element below
+}
+```
+
+- `consumed` defaults to `true` — existing elements consume events without code changes
+- Hover (enter/leave) is always single-element (topmost only, no bubbling)
+- Click, release, key, and wheel events support bubbling
+- `UIElementPriority` is an opt-in interface — elements without it default to priority 0
+
 ---
 
 ## Macro Code Generation
