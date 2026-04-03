@@ -3,6 +3,12 @@
 ## [1.0.0-rc.3] - 2026-03-31
 
 ### Added
+- **VS Code syntax: programmable parameter highlighting** — new `programmable-params` TextMate grammar rule highlights parameter declarations inside `programmable(...)` and `slot(...)` parentheses. Provides distinct scopes for type names, constants, named colors, operators (`=>`, `..`), and parameter names.
+- **Multi-profile extension installer** — `install-local.ps1` discovers VS Code profiles from `globalStorage/storage.json` and prompts the user to select which profile(s) to install into. Supports comma-separated selection or 'a' for all. Auto-skips prompt when only Default profile exists.
+
+### Changed
+- **VS Code extension version bump** — 2.0.4 → 2.0.14
+- **`@vscode/vsce` upgrade** — 2.22.0 → 3.7.1
 - **Data block enum types** — `#name enum(val1, val2, ...)` defines finite value sets in data blocks. Usable in record fields, standalone fields, and arrays. Validated at parse time. Codegen generates Haxe `enum` with PascalCase constructors. Runtime builder returns enum values as strings. Supports `mergeTypes` dedup across `@:data` fields.
 
 - **LSP server** — language server for `.manim` and `.anim` files with diagnostics (parse errors), context-aware completions, hover documentation, document symbols (outline), and go-to-definition ($parameter, #name). Built on `ManimKeywordInfo` and `AnimKeywordInfo` metadata classes that derive keyword names, descriptions, and snippets from parser enums via exhaustive switch matching. Compiles to JS via `-D noheaps`. Data block symbols include enum/record/field children.

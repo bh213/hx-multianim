@@ -35,10 +35,47 @@ try {
     npx @vscode/vsce package --allow-missing-repository
     if ($LASTEXITCODE -ne 0) { throw "Packaging failed" }
 
+    Write-Host "=== Discovering VS Code profiles ==="
+    $profiles = @("Default")
+    $storageJson = Join-Path $env:APPDATA "Code\User\globalStorage\storage.json"
+    if (Test-Path $storageJson) {
+        $storage = Get-Content $storageJson -Raw | ConvertFrom-Json
+        if ($storage.userDataProfiles) {
+            $profiles += $storage.userDataProfiles | ForEach-Object { $_.name }
+        }
+    }
+
+    if ($profiles.Count -eq 1) {
+        $selected = @("Default")
+    } else {
+        Write-Host ""
+        Write-Host "Available VS Code profiles:"
+        for ($i = 0; $i -lt $profiles.Count; $i++) {
+            Write-Host "  [$i] $($profiles[$i])"
+        }
+        Write-Host "  [a] All profiles"
+        Write-Host ""
+        $choice = Read-Host "Select profile(s) to install into (comma-separated numbers, or 'a' for all)"
+
+        if ($choice -eq 'a') {
+            $selected = $profiles
+        } else {
+            $indices = $choice -split ',' | ForEach-Object { [int]$_.Trim() }
+            $selected = $indices | ForEach-Object { $profiles[$_] }
+        }
+    }
+
     Write-Host "=== Installing to VS Code ==="
     Get-Item *.vsix | ForEach-Object {
-        Write-Host "Installing $_"
-        code --install-extension $_.FullName --force
+        $vsix = $_.FullName
+        foreach ($profile in $selected) {
+            Write-Host "Installing into profile: $profile"
+            if ($profile -eq "Default") {
+                code --install-extension $vsix --force
+            } else {
+                code --install-extension $vsix --force --profile $profile
+            }
+        }
     }
 } finally { Pop-Location }
 

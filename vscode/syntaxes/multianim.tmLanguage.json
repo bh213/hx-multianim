@@ -21,6 +21,9 @@
 			"include": "#at-directives"
 		},
 		{
+			"include": "#programmable-params"
+		},
+		{
 			"include": "#colors"
 		},
 		{
@@ -37,6 +40,73 @@
 		}
 	],
 	"repository": {
+		"programmable-params": {
+			"begin": "\\b(programmable|slot)\\s*\\(",
+			"beginCaptures": {
+				"1": {
+					"name": "entity.name.class.multianim"
+				}
+			},
+			"end": "\\)",
+			"name": "meta.parameter-list.multianim",
+			"patterns": [
+				{
+					"include": "#comments"
+				},
+				{
+					"include": "#strings"
+				},
+				{
+					"include": "#variables"
+				},
+				{
+					"include": "#colors"
+				},
+				{
+					"include": "#numbers"
+				},
+				{
+					"name": "entity.name.type.multianim",
+					"match": "\\b(int|uint|float|flags|string|hexDirection|hexdirection|gridDirection|griddirection|bool|color|array|record|tile)\\b"
+				},
+				{
+					"name": "constant.language.multianim",
+					"match": "\\b(true|false|yes|no|null|nothing)\\b"
+				},
+				{
+					"name": "support.constant.color.multianim",
+					"match": "\\b(white|black|red|green|blue|yellow|cyan|magenta|orange|purple|pink|gray|grey|transparent|maroon|olive|lime|fuchsia|teal|aqua|navy|silver|brown|coral|crimson|darkGray|darkgray|forestGreen|forestgreen|gold|indigo|lightGray|lightgray|skyBlue|skyblue|slate|tomato|wheat)\\b"
+				},
+				{
+					"name": "keyword.operator.arrow.multianim",
+					"match": "=>"
+				},
+				{
+					"name": "keyword.operator.range.multianim",
+					"match": "\\.\\."
+				},
+				{
+					"match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b",
+					"name": "variable.parameter.multianim"
+				},
+				{
+					"name": "punctuation.separator.comma.multianim",
+					"match": ","
+				},
+				{
+					"name": "punctuation.separator.colon.multianim",
+					"match": ":"
+				},
+				{
+					"name": "punctuation.definition.array.begin.multianim",
+					"match": "\\["
+				},
+				{
+					"name": "punctuation.definition.array.end.multianim",
+					"match": "\\]"
+				}
+			]
+		},
 		"comments": {
 			"patterns": [
 				{
