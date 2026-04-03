@@ -46,6 +46,13 @@ private class ActiveAnimation {
 	public var endRotation:Float;
 	public var onComplete:() -> Void;
 
+	/** When non-null, this is a tracking draw animation that re-stretches each frame
+	 *  from `trackingFrom` toward `entry.layoutPos`. The AnimatedPath is built with
+	 *  no normalization — `rawEndpoint` is the untransformed path endpoint used to
+	 *  compute the stretch transform. */
+	public var trackingFrom:Null<FPoint> = null;
+	public var rawEndpoint:Null<FPoint> = null;
+
 	public function new(entry:CardEntry, anim:AnimatedPath, startRotation:Float, endRotation:Float, onComplete:() -> Void) {
 		this.entry = entry;
 		this.anim = anim;
@@ -303,7 +310,9 @@ class UICardHandHelper implements UIHigherOrderComponent {
 		applyLayout(false);
 	}
 
-	/** Add a card to the hand with draw animation from the draw pile position. */
+	/** Add a card to the hand with draw animation from the draw pile position.
+	 *  The draw animation tracks the card's final layout position — if other cards
+	 *  are drawn/discarded during the animation, the endpoint updates dynamically. */
 	public function drawCard(descriptor:CardDescriptor, insertIndex:Int = -1):Void {
 		var entry = buildCardEntry(descriptor);
 		entry.state = Animating;
@@ -314,30 +323,31 @@ class UICardHandHelper implements UIHigherOrderComponent {
 			cards.insert(insertIndex, entry);
 		addToHandLayer(entry);
 
-		// Compute new layout positions
+		// Compute layout so entry.layoutPos is set for all cards (including the new one)
 		var positions = computeLayout(-1);
 		var targetIdx = cards.indexOf(entry);
-		// Position new card at draw pile (scale/alpha controlled by animatedPath curves)
+		for (i in 0...cards.length)
+			if (i < positions.length)
+				cards[i].layoutPos = positions[i];
+
+		// Position new card at draw pile
 		entry.container.setPosition(drawPilePosition.x, drawPilePosition.y);
 		entry.container.rotation = 0;
 
-		// Animate new card to hand position using .manim path
+		// Animate using a tracking draw animation that re-stretches toward layoutPos each frame
 		if (targetIdx >= 0 && targetIdx < positions.length) {
-			var targetPos = positions[targetIdx];
-			entry.layoutPos = targetPos;
-			animateCardTo(entry, new FPoint(drawPilePosition.x, drawPilePosition.y), new FPoint(targetPos.x, targetPos.y), 0,
-				targetPos.rotation, drawPathName, () -> {
+			animateCardToTracking(entry, new FPoint(drawPilePosition.x, drawPilePosition.y), 0,
+				positions[targetIdx].rotation, drawPathName, () -> {
 					resolveAnimationComplete(entry);
-					entry.container.scaleX = targetPos.scale;
-					entry.container.scaleY = targetPos.scale;
+					entry.container.scaleX = entry.layoutPos.scale;
+					entry.container.scaleY = entry.layoutPos.scale;
 					emitEvent(DrawAnimComplete(descriptor.id));
-					// Use animated layout so cards smoothly rearrange to correct positions
-					// (draw target may be stale if multiple cards were drawn simultaneously)
+					// Final layout pass to ensure position is exact
 					applyLayout(true);
 				});
 		}
 
-		// Rearrange existing cards
+		// Rearrange existing cards to make room
 		rearrangeCards(positions, targetIdx);
 	}
 
@@ -658,12 +668,43 @@ class UICardHandHelper implements UIHigherOrderComponent {
 				continue;
 			}
 			var state = anim.anim.update(dt);
-
-			anim.entry.container.setPosition(state.position.x, state.position.y);
-
-			// Interpolate rotation alongside path
 			var rate = state.rate;
-			anim.entry.container.rotation = anim.startRotation + (anim.endRotation - anim.startRotation) * rate + state.rotation;
+
+			if (anim.trackingFrom != null) {
+				// Tracking draw animation: re-stretch raw position toward current layoutPos each frame
+				var from = anim.trackingFrom;
+				var target = anim.entry.layoutPos;
+				var rawEp = anim.rawEndpoint;
+				var rawDist = Math.sqrt(rawEp.x * rawEp.x + rawEp.y * rawEp.y);
+				if (rawDist < 1e-10) {
+					// Degenerate path — lerp directly
+					anim.entry.container.setPosition(
+						from.x + (target.x - from.x) * rate,
+						from.y + (target.y - from.y) * rate
+					);
+				} else {
+					var targetDist = Math.sqrt((target.x - from.x) * (target.x - from.x) + (target.y - from.y) * (target.y - from.y));
+					var targetAngle = Math.atan2(target.y - from.y, target.x - from.x);
+					var rawAngle = Math.atan2(rawEp.y, rawEp.x);
+					var rotation = targetAngle - rawAngle;
+					var scale = targetDist / rawDist;
+					var cosR = Math.cos(rotation);
+					var sinR = Math.sin(rotation);
+					// Transform raw path point: rotate, scale, translate to from
+					var rx = state.position.x;
+					var ry = state.position.y;
+					anim.entry.container.setPosition(
+						from.x + (rx * cosR - ry * sinR) * scale,
+						from.y + (rx * sinR + ry * cosR) * scale
+					);
+				}
+			} else {
+				anim.entry.container.setPosition(state.position.x, state.position.y);
+			}
+
+			// Interpolate rotation alongside path (tracking anims use dynamic end rotation from layoutPos)
+			var effectiveEndRotation = if (anim.trackingFrom != null) anim.entry.layoutPos.rotation else anim.endRotation;
+			anim.entry.container.rotation = anim.startRotation + (effectiveEndRotation - anim.startRotation) * rate + state.rotation;
 
 			// Apply scale/alpha from animated path curves (defined in .manim)
 			anim.entry.container.scaleX = state.scale;
@@ -1277,6 +1318,32 @@ class UICardHandHelper implements UIHigherOrderComponent {
 		} else {
 			// No path defined — instant snap
 			entry.container.setPosition(to.x, to.y);
+			entry.container.rotation = endRotation;
+			onComplete();
+		}
+	}
+
+	/** Create a tracking draw animation: the path is NOT pre-stretched. Instead, each frame
+	 *  the stretch transform is recomputed from `from` toward `entry.layoutPos`, so the
+	 *  endpoint follows layout changes dynamically. */
+	function animateCardToTracking(entry:CardEntry, from:FPoint, startRotation:Float, endRotation:Float,
+			pathName:Null<String>, onComplete:() -> Void):Void {
+		activeAnimations = activeAnimations.filter(a -> a.entry != entry);
+
+		if (pathName != null) {
+			// Create AnimatedPath with NO normalization — raw path coordinates
+			var ap = builder.createAnimatedPath(pathName);
+			var durationOv = getDurationOverride(pathName);
+			if (durationOv > 0)
+				ap.durationOverride = durationOv;
+			var rawEndpoint = ap.path.getEndpoint();
+			var anim = new ActiveAnimation(entry, ap, startRotation, endRotation, onComplete);
+			anim.trackingFrom = from;
+			anim.rawEndpoint = rawEndpoint;
+			activeAnimations.push(anim);
+		} else {
+			// No path — snap to current layout position
+			entry.container.setPosition(entry.layoutPos.x, entry.layoutPos.y);
 			entry.container.rotation = endRotation;
 			onComplete();
 		}

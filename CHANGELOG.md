@@ -56,6 +56,8 @@
 - **Scrollable list `setItems()` force-applies selection visual** — `setItems()` now always applies the selected visual after rebuild, even when the selected index hasn't changed.
 - **Scrollable list `setItems()` preserve scroll** — `setItems(newItems, selectedIndex, preserveScroll: true)` keeps the current scroll position instead of resetting to top. Useful when refreshing list content without losing the user's scroll context.
 
+- **Tracking draw animation** — `drawCard()` now dynamically re-stretches the draw path toward the card's current layout position each frame. When multiple cards are drawn simultaneously or the hand layout changes during a draw animation, the animating card smoothly tracks its updated target instead of flying to a stale position. The `.manim` draw path shape, easing, scale/alpha curves are all preserved.
+
 ### Changed
 - **Removed deprecated `AnimatedPath.setColorRange()`** — use `addColorCurveSegment()` for per-segment color animation instead.
 - **Incremental conditionals use scene graph removal** — conditional elements (`@()`, `@if`, `@else`, `@default`) are now removed from the scene graph when their condition doesn't match, instead of toggling `visible = false`. A lightweight sentinel object marks each conditional's insertion point so elements re-add at the correct position. Reduces scene graph size for complex conditionals. Both builder and codegen paths updated. Flow properties (`@flow.halign`, `@flow.valign`, `@flow.offset`, `@flow.absolute`) are saved before removal and restored after re-add. Transition animations (`transition {}` block) use `addToGraph`/`removeFromGraph` instead of visibility toggling.

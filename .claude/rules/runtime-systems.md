@@ -66,7 +66,9 @@ paths {
 - `customPlayAnimation:(cardId, container, fromX, fromY, onDone) -> Bool` — overrides the default discard-path animation when a card is played via drag-release. Container is in `dragContainer` at `(fromX, fromY)`. Return `true` to handle (MUST call `onDone()` when done), `false` to fall through to default.
 - `customDiscardAnimation:(cardId, container, fromX, fromY, onDone) -> Bool` — overrides the default discard-path animation when `discardCard()` is called via API. Same convention.
 
-**Concurrent animations:** Multiple cards can animate simultaneously (draw, discard, rearrange all run in parallel). Cards in `Animating` state skip layout and reject drag, but do NOT block hover/drag of other `InHand` cards. Only one drag at a time (single mouse pointer). No global `HandState` lock — uses per-card `CardState` + `isDragging`/`isTargeting` flags.
+**Concurrent animations:** Multiple cards can animate simultaneously (draw, discard, rearrange all run in parallel). Cards in `Animating` state skip layout positioning and reject drag, but do NOT block hover/drag of other `InHand` cards. Only one drag at a time (single mouse pointer). No global `HandState` lock — uses per-card `CardState` + `isDragging`/`isTargeting` flags.
+
+**Tracking draw animation:** `drawCard()` uses a tracking animation that dynamically re-stretches the draw path toward the card's current `layoutPos` each frame. The `AnimatedPath` is created with no normalization (raw path coordinates); the stretch transform (`from` → `layoutPos`) is recomputed per frame in `update(dt)`. This means concurrent draws naturally handle shifting hand positions — no stale endpoints. Rotation also tracks `layoutPos.rotation`. Scale/alpha curves from the `.manim` `animatedPath` are applied normally.
 
 **Drag state machine:**
 1. `interactive()` emits `UIPush` → helper starts drag, reparents card to `dragContainer`

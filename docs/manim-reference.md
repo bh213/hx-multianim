@@ -1287,7 +1287,7 @@ All fields are optional. Used with `UICardHandHelper` / `addCardHand()`.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `drawPathName` | String | `animatedPath` name for draw animation (null = instant) |
+| `drawPathName` | String | `animatedPath` name for draw animation (null = instant). Uses tracking: endpoint dynamically follows the card's layout position each frame, handling concurrent draws gracefully |
 | `discardPathName` | String | `animatedPath` name for discard animation (null = instant) |
 | `returnPathName` | String | `animatedPath` name for return-to-hand animation (null = instant) |
 | `rearrangePathName` | String | `animatedPath` name for rearrange animation (null = instant) |
