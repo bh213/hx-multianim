@@ -180,7 +180,7 @@ The grammar must define scopes for the following .manim constructs:
 | Line comments | `comment.line.double-slash.manim` | `// comment` |
 | Block comments | `comment.block.manim` | `/* ... */` |
 | Element keywords | `keyword.control.manim` | `programmable`, `bitmap`, `text`, `richText`, `ninepatch`, `flow`, `layers`, `mask`, `tilegroup`, `interactive`, `repeatable`, `repeatable2d`, `slot`, `spacer`, `point`, `apply`, `graphics`, `pixels`, `particles`, `stateanim`, `staticRef`, `dynamicRef`, `placeholder`, `curves`, `paths`, `animatedPath`, `import`, `settings`, `transition` |
-| Directives | `keyword.other.directive.manim` | `@final`, `@if`, `@ifstrict`, `@else`, `@default`, `version:` |
+| Directives | `keyword.other.directive.manim` | `@final`, `@if`, `@any`, `@all`, `@else`, `@default`, `version:` |
 | Conditional blocks | `meta.conditional.manim` | `@(param=>value)` |
 | Parameter types | `storage.type.manim` | `int`, `uint`, `float`, `bool`, `string`, `color`, `tile` |
 | Named elements | `entity.name.tag.manim` | `#name` |

@@ -54,7 +54,8 @@
 ```manim
 @(param=>value)           # Match when param equals value
 @if(param=>value)         # Explicit @if (same as @())
-@ifstrict(param=>value)   # Strict matching (must match ALL params)
+@any(param=>value)        # Explicit @any (same as @() / @if())
+@all(param=>value)        # Strict matching (must match ALL params)
 @(param != value)         # Match when param NOT equals value
 @(param=>[v1,v2])         # Match multiple values
 @(param >= 30)            # Greater than or equal
@@ -70,6 +71,28 @@
 @else(param=>value)       # Else-if with conditions
 @default                  # Final fallback
 ```
+
+All conditionals support **block form**: `@(cond) { ... }`, `@else { ... }`, `@default { ... }`. Blocks can be nested.
+
+### @switch Block
+
+Groups conditions on a single parameter — avoids repeating parameter name:
+
+```manim
+@switch(param) {
+    value1: element(...);                    # Single enum value
+    value2 | value3: element(...);            # Multiple values (OR)
+    <= 10: element(...);                     # Comparison
+    0..100: element(...);                    # Range
+    default: element(...);                   # Fallback
+    valueName {                              # Block arm (multiple elements)
+        element1(...);
+        element2(...);
+    }
+}
+```
+
+Supports nested `@()` conditionals inside block arms. Cannot combine with other `@` modifiers.
 
 ## Expressions
 

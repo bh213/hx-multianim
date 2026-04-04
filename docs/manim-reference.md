@@ -282,7 +282,8 @@ Parse-time error when used outside a flow ancestor.
 |--------|-------------|
 | `@(param=>value)` | Match when parameter equals value |
 | `@if(param=>value)` | Explicit if (same as `@()`) |
-| `@ifstrict(param=>value)` | Strict match — ALL parameters in condition must match |
+| `@any(param=>value)` | Explicit any (same as `@()` / `@if()`) |
+| `@all(param=>value)` | Strict match — ALL parameters in condition must match |
 | `@(param != value)` | Match when parameter does NOT equal value |
 | `@(param=>[v1,v2])` | Match any of multiple values |
 | `@(param != [v1,v2])` | Exclude multiple values |
@@ -301,6 +302,93 @@ Conditionals also work with **repeatable loop variables** (e.g., `@($i => 0)`, `
 **Comparison and range values support `$param` references** — e.g., `@($i < $level)`, `@(hp >= $threshold)`, `@(param => $from..$to)`, `between $min..$max`. The reference is resolved at build time from current parameter values.
 
 Additional condition keywords: `greaterthanorequal`, `lessthanorequal`, `bit`, `between`.
+
+### Conditional Blocks
+
+Any conditional prefix supports a block body `{ ... }` to group multiple elements under one condition:
+
+```manim
+@(status=>active) {
+    bitmap(generated(color(60, 40, #060)));
+    text(m3x6, "ACTIVE", #8f8, center, 60):0,12;
+}
+@else(status=>hover) {
+    bitmap(generated(color(60, 40, #063)));
+    text(m3x6, "HOVER", #8ff, center, 60):0,12;
+}
+@default {
+    bitmap(generated(color(60, 40, #333)));
+    text(m3x6, "OTHER", #888, center, 60):0,12;
+}
+```
+
+Works with `@()`, `@if()`, `@any()`, `@all()`, `@else`, `@else(cond)`, `@default`. Blocks can be nested (block-in-block) and can contain inner conditionals.
+
+### @switch Block
+
+`@switch(param) { }` groups multiple conditions on a single parameter into a block, avoiding repetition:
+
+```manim
+@switch(status) {
+    normal: bitmap(generated(color(60, 30, #666)));
+    hover: bitmap(generated(color(60, 30, #060)));
+    pressed | disabled: bitmap(generated(color(60, 30, #600)));
+    default: bitmap(generated(color(60, 30, #333)));
+}
+```
+
+**Arm patterns:**
+
+| Pattern | Description |
+|---------|-------------|
+| `value` | Match single enum value |
+| `value1 \| value2` | Match any of multiple values |
+| `<= N` | Less than or equal |
+| `>= N` | Greater than or equal |
+| `< N` | Strictly less than |
+| `> N` | Strictly greater than |
+| `N..M` | Range match (inclusive) |
+| `default` | Fallback when no arm matches |
+
+**Block arms** for multiple elements per case:
+
+```manim
+@switch(mode) {
+    a {
+        bitmap(generated(color(60, 40, #600)));
+        text(m3x6, "AAA", #f88, center, 60):0,12;
+    }
+    b {
+        bitmap(generated(color(60, 40, #060)));
+        text(m3x6, "BBB", #8f8, center, 60):0,12;
+    }
+    default {
+        bitmap(generated(color(60, 40, #006)));
+        text(m3x6, "DEF", #88f, center, 60):0,12;
+    }
+}
+```
+
+**Nested conditionals** — regular `@()` conditions work inside switch arms:
+
+```manim
+@switch(status) {
+    normal {
+        @(enabled=>on) bitmap(generated(color(70, 30, #060)));
+        @(enabled=>off) bitmap(generated(color(70, 30, #333)));
+    }
+    hover {
+        @(enabled=>on) bitmap(generated(color(70, 30, #090)));
+        @(enabled=>off) bitmap(generated(color(70, 30, #444)));
+    }
+    default: bitmap(generated(color(70, 30, #600)));
+}
+```
+
+**Notes:**
+- `@switch` cannot be combined with other `@` modifiers (`@alpha`, `@scale`, etc.)
+- Cannot be used at root level (must be inside a programmable body)
+- Desugars to `@()`/`@else()`/`@default` internally — works with both builder and macro codegen
 
 ---
 

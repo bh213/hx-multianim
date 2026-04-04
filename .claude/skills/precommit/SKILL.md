@@ -92,7 +92,17 @@ After user confirms, create any agreed-upon new tests following the project conv
 
 Do not proceed to the summary until tests pass (or user explicitly accepts known failures).
 
-## 7. Check for Missing Items
+## 7. VS Code Extension Sync
+
+If changes affect the `.manim` parser (keywords, syntax, settings), LSP, or language tooling:
+
+- Run `node vscode/sync-check.js` to detect keyword mismatches between the parser and the VS Code grammar (`vscode/syntaxes/multianim.tmLanguage.json`)
+- If mismatches are found, update the grammar file to match the parser
+- Check if LSP source files (`lsp/src/manim/lsp/`) need updating — e.g. `CompletionProvider.hx` for new keywords/completions, `HoverProvider.hx` for hover docs
+- If LSP sources changed, rebuild: `haxe lsp/lsp-server.hxml` and verify `vscode/server/server.js` is updated
+- Check if `vscode/package.json` version or configuration needs updating
+
+## 8. Check for Missing Items
 
 Verify:
 - No sensitive files (.env, credentials) in the diff
@@ -100,7 +110,7 @@ Verify:
 - MEMORY.md is up to date with any new patterns or pitfalls discovered.
 - Check if anything can be removed from MEMORY.md because it is no longer relevant. Ask user if unsure.
 
-## 8. Suggest Commit Message
+## 9. Suggest Commit Message
 
 - Follow the project's commit message style (see recent commits)
 - Format: `area: short description` on first line
@@ -108,7 +118,7 @@ Verify:
 - Keep the first line under 72 characters
 - Do not include TODO file changes.
 
-## 9. Report Summary
+## 10. Report Summary
 
 Present a summary table:
 - Files changed (count)

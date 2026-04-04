@@ -182,10 +182,18 @@ class CompletionProvider {
 	static function conditionalCompletions():Array<LspCompletionItem> {
 		return [
 			snippet("@(", "@($1=>$2)", "Conditional: match when param equals value"),
+			snippet("@( {", "@($1=>$2) {\n\t$0\n}", "Conditional block: match with multiple elements"),
 			snippet("@if(", "@if($1=>$2)", "Explicit conditional"),
-			snippet("@ifstrict(", "@ifstrict($1=>$2)", "Strict conditional (must match ALL)"),
+			snippet("@all(", "@all($1=>$2)", "Strict conditional (must match ALL)"),
+			snippet("@all( {", "@all($1=>$2) {\n\t$0\n}", "Strict conditional block"),
+			snippet("@any(", "@any($1=>$2)", "Explicit conditional (match any)"),
+			snippet("@any( {", "@any($1=>$2) {\n\t$0\n}", "Conditional block (match any)"),
 			kw("@else", "Matches when preceding @() didn't match"),
+			snippet("@else {", "@else {\n\t$0\n}", "Else block with multiple elements"),
+			snippet("@else(", "@else($1=>$2) {\n\t$0\n}", "Else-if block with condition"),
 			kw("@default", "Final fallback"),
+			snippet("@default {", "@default {\n\t$0\n}", "Default block with multiple elements"),
+			snippet("@switch(", "@switch($1) {\n\t$2: $0\n\tdefault: $0\n}", "Switch block on parameter"),
 			snippet("@final", "@final $1 = $0", "Define a constant"),
 		];
 	}

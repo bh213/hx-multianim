@@ -313,4 +313,7 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/98-customFilter/customFilter.manim", "customFilter")
 	public var customFilter;
+
+	@:manim("test/examples/100-switchDemo/switchDemo.manim", "switchDemo")
+	public var switchDemo;
 }

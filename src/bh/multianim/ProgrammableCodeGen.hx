@@ -28,6 +28,7 @@ import bh.multianim.MultiAnimParser.DataValue;
 import bh.multianim.MultiAnimParser.DataValueType;
 import bh.multianim.MultiAnimParser.DataRecordDef;
 import bh.multianim.MultiAnimParser.DataFieldDef;
+import bh.multianim.MultiAnimParser.SwitchArm;
 import bh.multianim.CoordinateSystems;
 import bh.multianim.MacroCompatTypes.MacroFlowLayout;
 import bh.multianim.MacroCompatTypes.MacroFlowOverflow;
@@ -75,6 +76,7 @@ class ProgrammableCodeGen {
 	static var indexedNamedElements:Map<String, Array<{index:Int, fieldName:String}>> = new Map();
 	static var indexed2DNamedElements:Map<String, Array<{indexX:Int, indexY:Int, fieldName:String}>> = new Map();
 	static var slotEntries:Array<{key:MacroSlotKey, fieldName:String, hasParams:Bool, loopVars:Map<String, Int>}> = [];
+	static var switchUpdateEntries:Array<{paramName:String, updateExpr:Expr}> = [];
 	static var dynamicRefFields:Map<String, String> = new Map(); // component name -> BuilderResult field name
 	static var hexLayoutFieldMap:Map<String, String> = new Map(); // layout key → field name
 	static var hexLayoutFieldCount:Int = 0;
@@ -146,6 +148,7 @@ class ProgrammableCodeGen {
 		elementCounter = 0;
 		expressionUpdates = [];
 		visibilityEntries = [];
+		switchUpdateEntries = [];
 		namedElements = [];
 		indexedNamedElements = new Map();
 		indexed2DNamedElements = new Map();
@@ -590,6 +593,10 @@ class ProgrammableCodeGen {
 			final revertBlock = macro $b{entry.revertExprs};
 			visExprs.push(macro if ($cond) $applyBlock else $revertBlock);
 		}
+		// Switch updates: toggle arm container visibility
+		for (entry in switchUpdateEntries) {
+			visExprs.push(entry.updateExpr);
+		}
 		if (visExprs.length == 0)
 			visExprs.push(macro {});
 		// When transitions exist, _applyVisibility takes optional param name
@@ -945,6 +952,9 @@ class ProgrammableCodeGen {
 			case REPEAT2D(varNameX, varNameY, repeatTypeX, repeatTypeY):
 				processRepeat2D(node, varNameX, varNameY, repeatTypeX, repeatTypeY, parentField, fields, ctorExprs, siblings, pos);
 				return;
+			case SWITCH(paramName, arms):
+				processSwitch(node, paramName, arms, parentField, fields, ctorExprs, siblings, pos);
+				return;
 			case APPLY:
 				switch (node.conditionals) {
 					case NoConditional:
@@ -1275,6 +1285,162 @@ class ProgrammableCodeGen {
 			if (node.children != null && node.children.length > 0)
 				processChildren(node.children, fieldName, fields, ctorExprs, [], pos);
 		}
+	}
+
+	// ==================== Switch Processing ====================
+
+	static function processSwitch(node:Node, paramName:String, arms:Array<SwitchArm>, parentField:String,
+			fields:Array<Field>, ctorExprs:Array<Expr>, siblings:Array<{node:Node, fieldName:String}>, pos:Position):Void {
+		// Determine if we need a container for the SWITCH itself (only if it has position/scale/alpha/rotation/tint)
+		final needsSwitchContainer = node.pos != null || node.scale != null || node.alpha != null || node.rotation != null || node.tint != null;
+		final childParent:String = if (needsSwitchContainer) {
+			final switchField = "_sw" + (elementCounter++);
+			fields.push(makeField(switchField, FVar(macro :h2d.Object, null), [APrivate], pos));
+			ctorExprs.push(macro $p{["this", switchField]} = new h2d.Object());
+			final parentRef = parentField != null ? (macro $p{["this", parentField]}) : (macro this);
+			ctorExprs.push(macro $parentRef.addChild($p{["this", switchField]}));
+			ensureHexLayoutIfNeeded(node.pos, node, fields, ctorExprs, pos);
+			final posExpr = generatePositionExpr(node.pos, switchField, pos, node);
+			if (posExpr != null) ctorExprs.push(posExpr);
+			if (node.scale != null) {
+				final scaleExpr = rvToExpr(node.scale);
+				ctorExprs.push(macro { final _s = $scaleExpr; $p{["this", switchField]}.scaleX = _s; $p{["this", switchField]}.scaleY = _s; });
+			}
+			if (node.alpha != null) ctorExprs.push(macro $p{["this", switchField]}.alpha = ${rvToExpr(node.alpha)});
+			if (node.rotation != null) ctorExprs.push(macro $p{["this", switchField]}.rotation = hxd.Math.degToRad(${rvToExpr(node.rotation)}));
+			switchField;
+		} else {
+			parentField;
+		};
+
+		// Process each arm — use container only for multi-child arms
+		final armFields:Array<String> = [];
+		final armConditions:Array<Null<Expr>> = []; // null = default arm
+		for (i in 0...arms.length) {
+			final arm = arms[i];
+
+			// Generate condition expression for this arm
+			if (arm.pattern == null) {
+				armConditions.push(null); // default
+			} else {
+				armConditions.push(condValueToExpr(arm.pattern, paramFieldExpr(paramName), paramName));
+			}
+
+			if (arm.children.length == 1 && isSwitchSimpleNode(arm.children[0])) {
+				// Single simple child — no wrapper container, track the child's field directly
+				final childCountBefore = elementCounter;
+				processChildren(arm.children, childParent, fields, ctorExprs, [], pos);
+				armFields.push("_e" + childCountBefore);
+			} else if (arm.children.length > 0) {
+				// Multiple children — need a container
+				final armField = "_sw" + (elementCounter++) + "_a" + i;
+				armFields.push(armField);
+				fields.push(makeField(armField, FVar(macro :h2d.Object, null), [APrivate], pos));
+				ctorExprs.push(macro $p{["this", armField]} = new h2d.Object());
+				ctorExprs.push(macro $p{["this", childParent]}.addChild($p{["this", armField]}));
+				processChildren(arm.children, armField, fields, ctorExprs, [], pos);
+			} else {
+				// Empty arm (0 children or non-simple single child that was caught above)
+				armFields.push("");
+			}
+		}
+
+		// Generate visibility update
+		final paramRef = paramFieldExpr(paramName);
+		final updateStmts:Array<Expr> = [];
+
+		// Check if all non-default arms are pure enum (CoEnums) — can use switch statement
+		var allEnum = true;
+		for (arm in arms) {
+			if (arm.pattern != null) {
+				switch (arm.pattern) {
+					case CoEnums(_): // ok
+					default: allEnum = false;
+				}
+			}
+		}
+
+		if (allEnum) {
+			// O(1) dispatch: generate switch statement
+			// First, hide all arms
+			for (armField in armFields)
+				if (armField != "") updateStmts.push(macro $p{["this", armField]}.visible = false);
+			// Build switch cases
+			final cases:Array<haxe.macro.Expr.Case> = [];
+			var defaultArmField:Null<String> = null;
+			for (i in 0...arms.length) {
+				final arm = arms[i];
+				final armField = armFields[i];
+				if (armField == "") continue;
+				if (arm.pattern == null) {
+					defaultArmField = armField;
+				} else {
+					switch (arm.pattern) {
+						case CoEnums(values):
+							for (v in values) {
+								final paramDef = paramDefs.get(paramName);
+								final idx = paramDef != null ? findEnumIndex(paramDef, v) : null;
+								if (idx != null) {
+									cases.push({
+										values: [macro $v{idx}],
+										expr: macro $p{["this", armField]}.visible = true,
+									});
+								}
+							}
+						default:
+					}
+				}
+			}
+			final defaultExpr = if (defaultArmField != null) macro $p{["this", defaultArmField]}.visible = true else macro {};
+			updateStmts.push({expr: ESwitch(paramRef, cases, defaultExpr), pos: pos});
+		} else {
+			// Mixed arms: if/else chain
+			for (i in 0...arms.length) {
+				final armField = armFields[i];
+				if (armField == "") continue;
+				final cond = armConditions[i];
+				if (cond == null) {
+					var negation:Expr = macro true;
+					for (j in 0...arms.length) {
+						if (j != i && armConditions[j] != null) {
+							final otherCond = armConditions[j];
+							negation = macro($negation && !$otherCond);
+						}
+					}
+					updateStmts.push(macro $p{["this", armField]}.visible = $negation);
+				} else {
+					updateStmts.push(macro $p{["this", armField]}.visible = $cond);
+				}
+			}
+		}
+
+		// Register visibility update
+		final updateBlock:Expr = {expr: EBlock(updateStmts), pos: pos};
+		ctorExprs.push(updateBlock);
+		switchUpdateEntries.push({
+			paramName: paramName,
+			updateExpr: updateBlock,
+		});
+	}
+
+	/** Returns true if the node produces exactly one _e{N} field in processNode (not an early-return type). */
+	static function isSwitchSimpleNode(node:Node):Bool {
+		return switch (node.type) {
+			case REPEAT(_, _) | REPEAT2D(_, _, _, _) | APPLY | FINAL_VAR(_, _) | SWITCH(_, _): false;
+			default: true;
+		};
+	}
+
+	static function findEnumIndex(paramDef:Definition, value:String):Null<Int> {
+		return switch (paramDef.type) {
+			case PPTEnum(values): values.indexOf(value) >= 0 ? values.indexOf(value) : null;
+			case PPTBool: switch (value.toLowerCase()) { case "true" | "yes" | "1": 1; case "false" | "no" | "0": 0; default: null; };
+			default: Std.parseInt(value);
+		};
+	}
+
+	static function paramFieldExpr(paramName:String):Expr {
+		return macro $p{["this", "_p_" + paramName]};
 	}
 
 	// ==================== Repeat Processing ====================

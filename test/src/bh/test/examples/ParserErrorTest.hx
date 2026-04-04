@@ -3270,49 +3270,49 @@ class ParserErrorTest extends utest.Test {
 			'Error should mention the unknown method, got: $$error');
 	}
 
-	// ===== @ifstrict error cases =====
+	// ===== @all error cases =====
 
 	@Test
-	public function testIfstrictParseSuccess() {
+	public function testAllParseSuccess() {
 		var success = parseExpectingSuccess("
 			#test programmable(status:[idle,hover]=idle) {
-				@ifstrict(status=>hover) bitmap(generated(color(10, 10, #f00))): 0, 0
+				@all(status=>hover) bitmap(generated(color(10, 10, #f00))): 0, 0
 			}
 		");
-		Assert.isTrue(success, "@ifstrict should parse successfully");
+		Assert.isTrue(success, "@all should parse successfully");
 	}
 
 	@Test
-	public function testIfstrictWithElse() {
+	public function testAllWithElse() {
 		var success = parseExpectingSuccess("
 			#test programmable(status:[idle,hover]=idle) {
-				@ifstrict(status=>hover) bitmap(generated(color(10, 10, #f00))): 0, 0
+				@all(status=>hover) bitmap(generated(color(10, 10, #f00))): 0, 0
 				@else bitmap(generated(color(20, 20, #00f))): 0, 0
 			}
 		");
-		Assert.isTrue(success, "@ifstrict with @else should parse successfully");
+		Assert.isTrue(success, "@all with @else should parse successfully");
 	}
 
 	@Test
-	public function testIfstrictMissingParen() {
+	public function testAllMissingParen() {
 		var error = parseExpectingError("
 			#test programmable(status:[idle,hover]=idle) {
-				@ifstrict bitmap(generated(color(10, 10, #f00))): 0, 0
+				@all bitmap(generated(color(10, 10, #f00))): 0, 0
 			}
 		");
-		Assert.notNull(error, "Should throw error for @ifstrict without parens");
+		Assert.notNull(error, "Should throw error for @all without parens");
 		Assert.isTrue(error.indexOf("(") >= 0 || error.indexOf("expected") >= 0 || error.indexOf("paren") >= 0,
 			'Error should mention expected parenthesis, got: $$error');
 	}
 
 	@Test
-	public function testIfstrictUnknownParam() {
+	public function testAllUnknownParam() {
 		var error = parseExpectingError("
 			#test programmable(status:[idle,hover]=idle) {
-				@ifstrict(unknown=>value) bitmap(generated(color(10, 10, #f00))): 0, 0
+				@all(unknown=>value) bitmap(generated(color(10, 10, #f00))): 0, 0
 			}
 		");
-		Assert.notNull(error, "Should throw error for @ifstrict with undefined parameter");
+		Assert.notNull(error, "Should throw error for @all with undefined parameter");
 		Assert.isTrue(error.indexOf("unknown") >= 0 || error.indexOf("Unknown") >= 0 || error.indexOf("param") >= 0,
 			'Error should mention the unknown parameter, got: $$error');
 	}
@@ -3739,6 +3739,574 @@ class ParserErrorTest extends utest.Test {
 		Assert.stringContains("Unterminated block comment", error);
 	}
 
+	// ===== @switch positive tests =====
+
+	@Test
+	public function testSwitchBasicEnum() {
+		var result = parseExpectingResult('
+			#test programmable(state:[idle, active, error]=idle) {
+				@switch(state) {
+					idle: bitmap(generated(color(10, 10, #666)));
+					active: bitmap(generated(color(10, 10, #060)));
+					error: bitmap(generated(color(10, 10, #600)));
+				}
+			}
+		');
+		Assert.notNull(result, "Basic @switch should parse successfully");
+		var node = result.nodes.get("test");
+		Assert.notNull(node);
+		Assert.equals(1, node.children.length, "SWITCH is a single child");
+		Assert.isTrue(node.children[0].type.match(SWITCH(_, _)), "child should be SWITCH node");
+		switch (node.children[0].type) {
+			case SWITCH(paramName, arms):
+				Assert.equals("state", paramName);
+				Assert.equals(3, arms.length, "should have 3 arms");
+				Assert.isTrue(arms[0].pattern.match(CoEnums(_)), "first arm should be CoEnums");
+				Assert.isTrue(arms[1].pattern.match(CoEnums(_)), "second arm should be CoEnums");
+				Assert.isTrue(arms[2].pattern.match(CoEnums(_)), "third arm should be CoEnums");
+			default:
+		}
+	}
+
+	@Test
+	public function testSwitchWithDefault() {
+		var result = parseExpectingResult('
+			#test programmable(state:[idle, hover, pressed]=idle) {
+				@switch(state) {
+					idle: bitmap(generated(color(10, 10, #666)));
+					hover: bitmap(generated(color(10, 10, #060)));
+					default: bitmap(generated(color(10, 10, #600)));
+				}
+			}
+		');
+		Assert.notNull(result, "@switch with default should parse successfully");
+		var node = result.nodes.get("test");
+		Assert.notNull(node);
+		Assert.equals(1, node.children.length);
+		switch (node.children[0].type) {
+			case SWITCH(paramName, arms):
+				Assert.equals(3, arms.length);
+				Assert.notNull(arms[0].pattern, "first arm has pattern");
+				Assert.notNull(arms[1].pattern, "second arm has pattern");
+				Assert.isNull(arms[2].pattern, "third arm is default (null pattern)");
+			default: Assert.fail("expected SWITCH node");
+		}
+	}
+
+	@Test
+	public function testSwitchMultiValuePipe() {
+		var result = parseExpectingResult('
+			#test programmable(level:[low, medium, high, critical]=low) {
+				@switch(level) {
+					low | medium: bitmap(generated(color(10, 10, #036)));
+					high | critical: bitmap(generated(color(10, 10, #630)));
+				}
+			}
+		');
+		Assert.notNull(result, "@switch with pipe multi-value should parse successfully");
+		var node = result.nodes.get("test");
+		Assert.notNull(node);
+		Assert.equals(1, node.children.length);
+		switch (node.children[0].type) {
+			case SWITCH(_, arms): Assert.equals(2, arms.length);
+			default: Assert.fail("expected SWITCH node");
+		}
+	}
+
+	@Test
+	public function testSwitchBlockArms() {
+		var result = parseExpectingResult('
+			#test programmable(mode:[a, b]=a) {
+				@switch(mode) {
+					a {
+						bitmap(generated(color(10, 10, #600)));
+						text(m3x6, "A", white, center, 10):0,0;
+					}
+					b {
+						bitmap(generated(color(10, 10, #060)));
+						text(m3x6, "B", white, center, 10):0,0;
+					}
+				}
+			}
+		');
+		Assert.notNull(result, "@switch with block arms should parse successfully");
+		var node = result.nodes.get("test");
+		Assert.notNull(node);
+		Assert.equals(1, node.children.length);
+		switch (node.children[0].type) {
+			case SWITCH(_, arms):
+				Assert.equals(2, arms.length);
+				Assert.equals(2, arms[0].children.length, "arm a should have 2 children");
+				Assert.isTrue(arms[0].children[0].type.match(BITMAP(_, _, _)), "arm a first child should be BITMAP");
+				Assert.isTrue(arms[0].children[1].type.match(TEXT(_)), "arm a second child should be TEXT");
+				Assert.equals(2, arms[1].children.length, "arm b should have 2 children");
+				Assert.isTrue(arms[1].children[0].type.match(BITMAP(_, _, _)), "arm b first child should be BITMAP");
+				Assert.isTrue(arms[1].children[1].type.match(TEXT(_)), "arm b second child should be TEXT");
+			default: Assert.fail("expected SWITCH node");
+		}
+	}
+
+	@Test
+	public function testSwitchRangeArm() {
+		var result = parseExpectingResult('
+			#test programmable(temp:-50..150) {
+				@switch(temp) {
+					<= -1: bitmap(generated(color(10, 10, #48f)));
+					0..100: bitmap(generated(color(10, 10, #06a)));
+					>= 101: bitmap(generated(color(10, 10, #888)));
+				}
+			}
+		');
+		Assert.notNull(result, "@switch with range arms should parse successfully");
+		var node = result.nodes.get("test");
+		Assert.notNull(node);
+		switch (node.children[0].type) {
+			case SWITCH(_, arms): Assert.equals(3, arms.length);
+			default: Assert.fail("expected SWITCH node");
+		}
+	}
+
+	@Test
+	public function testSwitchStrictComparisons() {
+		var result = parseExpectingResult('
+			#test programmable(val:0..100) {
+				@switch(val) {
+					< 10: bitmap(generated(color(10, 10, #f00)));
+					> 90: bitmap(generated(color(10, 10, #0f0)));
+					default: bitmap(generated(color(10, 10, #888)));
+				}
+			}
+		');
+		Assert.notNull(result, "@switch with < and > should parse successfully");
+		var node = result.nodes.get("test");
+		Assert.notNull(node);
+		switch (node.children[0].type) {
+			case SWITCH(_, arms): Assert.equals(3, arms.length);
+			default: Assert.fail("expected SWITCH node");
+		}
+	}
+
+	@Test
+	public function testSwitchNestedConditionals() {
+		var result = parseExpectingResult('
+			#test programmable(status:[normal, hover]=normal, enabled:[on, off]=on) {
+				@switch(status) {
+					normal {
+						@(enabled=>on) bitmap(generated(color(10, 10, #060)));
+						@(enabled=>off) bitmap(generated(color(10, 10, #333)));
+					}
+					hover {
+						@(enabled=>on) bitmap(generated(color(10, 10, #090)));
+						@else bitmap(generated(color(10, 10, #444)));
+					}
+				}
+			}
+		');
+		Assert.notNull(result, "@switch with nested @() should parse successfully");
+		var node = result.nodes.get("test");
+		Assert.notNull(node);
+		switch (node.children[0].type) {
+			case SWITCH(_, arms):
+				Assert.equals(2, arms.length);
+				Assert.equals(2, arms[0].children.length, "normal arm should have 2 nested conditionals");
+				Assert.isTrue(arms[0].children[0].conditionals.match(Conditional(_, _)), "normal first should be Conditional");
+				Assert.isTrue(arms[0].children[0].type.match(BITMAP(_, _, _)), "normal first should be BITMAP");
+				Assert.isTrue(arms[0].children[1].conditionals.match(Conditional(_, _)), "normal second should be Conditional");
+				Assert.equals(2, arms[1].children.length, "hover arm should have 2 nested conditionals");
+				Assert.isTrue(arms[1].children[0].conditionals.match(Conditional(_, _)), "hover first should be Conditional");
+				Assert.isTrue(arms[1].children[1].conditionals.match(ConditionalElse(_)), "hover second should be ConditionalElse");
+			default: Assert.fail("expected SWITCH node");
+		}
+	}
+
+	@Test
+	public function testSwitchMixedArmStyles() {
+		var result = parseExpectingResult('
+			#test programmable(mode:[a, b, c]=a) {
+				@switch(mode) {
+					a: bitmap(generated(color(10, 10, #600)));
+					b {
+						bitmap(generated(color(10, 10, #060)));
+						text(m3x6, "B", white, center, 10):0,0;
+					}
+					default: bitmap(generated(color(10, 10, #006)));
+				}
+			}
+		');
+		Assert.notNull(result, "@switch with mixed : and {} arms should parse successfully");
+		var node = result.nodes.get("test");
+		Assert.notNull(node);
+		switch (node.children[0].type) {
+			case SWITCH(_, arms):
+				Assert.equals(3, arms.length);
+				Assert.equals(1, arms[0].children.length, "arm a should have 1 child");
+				Assert.isTrue(arms[0].children[0].type.match(BITMAP(_, _, _)), "arm a child should be BITMAP");
+				Assert.equals(2, arms[1].children.length, "arm b should have 2 children");
+				Assert.isTrue(arms[1].children[0].type.match(BITMAP(_, _, _)), "arm b first child should be BITMAP");
+				Assert.isTrue(arms[1].children[1].type.match(TEXT(_)), "arm b second child should be TEXT");
+				Assert.equals(1, arms[2].children.length, "default arm should have 1 child");
+				Assert.isNull(arms[2].pattern, "default arm should have null pattern");
+			default: Assert.fail("expected SWITCH node");
+		}
+	}
+
+	@Test
+	public function testSwitchNegativeIntegerArm() {
+		var result = parseExpectingResult('
+			#test programmable(temp:-50..50) {
+				@switch(temp) {
+					-10: bitmap(generated(color(10, 10, #00f)));
+					0: bitmap(generated(color(10, 10, #0f0)));
+					10: bitmap(generated(color(10, 10, #f00)));
+				}
+			}
+		');
+		Assert.notNull(result, "@switch with negative integer arm should parse successfully");
+		var node = result.nodes.get("test");
+		Assert.notNull(node);
+		switch (node.children[0].type) {
+			case SWITCH(_, arms): Assert.equals(3, arms.length);
+			default: Assert.fail("expected SWITCH node");
+		}
+	}
+
+	@Test
+	public function testSwitchMultipleSwitchBlocks() {
+		var result = parseExpectingResult('
+			#test programmable(state:[idle, active]=idle) {
+				@switch(state) {
+					idle: bitmap(generated(color(10, 10, #666)));
+					active: bitmap(generated(color(10, 10, #060)));
+				}
+				@switch(state) {
+					idle: text(m3x6, "IDLE", white, center, 60):0,8;
+					active: text(m3x6, "ACTIVE", white, center, 60):0,8;
+				}
+			}
+		');
+		Assert.notNull(result, "Multiple @switch blocks should parse successfully");
+		var node = result.nodes.get("test");
+		Assert.notNull(node);
+		// 2 SWITCH nodes
+		Assert.equals(2, node.children.length);
+		Assert.isTrue(node.children[0].type.match(SWITCH(_, _)));
+		Assert.isTrue(node.children[1].type.match(SWITCH(_, _)));
+	}
+
+	@Test
+	public function testSwitchThreeWayPipe() {
+		var result = parseExpectingResult('
+			#test programmable(state:[a, b, c, d, e]=a) {
+				@switch(state) {
+					a | b | c: bitmap(generated(color(10, 10, #060)));
+					d | e: bitmap(generated(color(10, 10, #600)));
+				}
+			}
+		');
+		Assert.notNull(result, "@switch with 3-way pipe should parse successfully");
+		var node = result.nodes.get("test");
+		Assert.notNull(node);
+		switch (node.children[0].type) {
+			case SWITCH(_, arms): Assert.equals(2, arms.length);
+			default: Assert.fail("expected SWITCH node");
+		}
+	}
+
+	// ===== Conditional block @(cond) { ... } tests =====
+
+	@Test
+	public function testConditionalBlock() {
+		var result = parseExpectingResult('
+			#test programmable(mode:[a, b, c]=a) {
+				@(mode=>a) {
+					bitmap(generated(color(10, 10, #600)));
+					text(m3x6, "A", white, center, 10):0,0;
+				}
+				@else {
+					bitmap(generated(color(10, 10, #060)));
+				}
+			}
+		');
+		Assert.notNull(result, "@(cond) { ... } block should parse successfully");
+		var node = result.nodes.get("test");
+		Assert.notNull(node);
+		Assert.equals(2, node.children.length);
+		// Block wraps in POINT
+		Assert.isTrue(node.children[0].type.match(POINT), "conditional block should be POINT wrapper");
+		Assert.isTrue(node.children[0].conditionals.match(Conditional(_, _)), "should have Conditional");
+		Assert.equals(2, node.children[0].children.length, "block should have 2 children");
+		Assert.isTrue(node.children[0].children[0].type.match(BITMAP(_, _, _)), "first child should be BITMAP");
+		Assert.isTrue(node.children[0].children[1].type.match(TEXT(_)), "second child should be TEXT");
+		Assert.isTrue(node.children[1].type.match(POINT), "else block should be POINT wrapper");
+		Assert.isTrue(node.children[1].conditionals.match(ConditionalElse(_)), "should have ConditionalElse");
+		Assert.equals(1, node.children[1].children.length, "else block should have 1 child");
+		Assert.isTrue(node.children[1].children[0].type.match(BITMAP(_, _, _)), "else child should be BITMAP");
+	}
+
+	@Test
+	public function testConditionalBlockDefault() {
+		var result = parseExpectingResult('
+			#test programmable(state:[idle, hover, pressed]=idle) {
+				@(state=>idle) bitmap(generated(color(10, 10, #666)));
+				@(state=>hover) bitmap(generated(color(10, 10, #060)));
+				@default {
+					bitmap(generated(color(10, 10, #600)));
+					text(m3x6, "DEF", white, center, 10):0,0;
+				}
+			}
+		');
+		Assert.notNull(result, "@default { ... } block should parse successfully");
+		var node = result.nodes.get("test");
+		Assert.notNull(node);
+		Assert.equals(3, node.children.length);
+		Assert.isTrue(node.children[2].type.match(POINT), "default block should be POINT wrapper");
+		Assert.isTrue(node.children[2].conditionals.match(ConditionalDefault), "should have ConditionalDefault");
+		Assert.equals(2, node.children[2].children.length, "default block should have 2 children");
+		Assert.isTrue(node.children[2].children[0].type.match(BITMAP(_, _, _)), "default first child should be BITMAP");
+		Assert.isTrue(node.children[2].children[1].type.match(TEXT(_)), "default second child should be TEXT");
+	}
+
+	@Test
+	public function testConditionalBlockElseIf() {
+		var result = parseExpectingResult('
+			#test programmable(mode:[a, b, c]=a) {
+				@(mode=>a) {
+					bitmap(generated(color(10, 10, #600)));
+				}
+				@else(mode=>b) {
+					bitmap(generated(color(10, 10, #060)));
+					text(m3x6, "B", white, center, 10):0,0;
+				}
+				@default {
+					bitmap(generated(color(10, 10, #006)));
+				}
+			}
+		');
+		Assert.notNull(result, "@else(cond) { ... } block should parse successfully");
+		var node = result.nodes.get("test");
+		Assert.notNull(node);
+		Assert.equals(3, node.children.length);
+		Assert.isTrue(node.children[0].conditionals.match(Conditional(_, _)), "first should be Conditional");
+		Assert.isTrue(node.children[0].type.match(POINT), "first block should be POINT wrapper");
+		Assert.equals(1, node.children[0].children.length, "first block should have 1 child");
+		Assert.isTrue(node.children[0].children[0].type.match(BITMAP(_, _, _)), "first block child should be BITMAP");
+		Assert.isTrue(node.children[1].type.match(POINT), "else-if block should be POINT wrapper");
+		Assert.isTrue(node.children[1].conditionals.match(ConditionalElse(_)), "should have ConditionalElse with condition");
+		Assert.equals(2, node.children[1].children.length, "else-if block should have 2 children");
+		Assert.isTrue(node.children[1].children[0].type.match(BITMAP(_, _, _)), "else-if first child should be BITMAP");
+		Assert.isTrue(node.children[1].children[1].type.match(TEXT(_)), "else-if second child should be TEXT");
+		Assert.isTrue(node.children[2].conditionals.match(ConditionalDefault), "third should be ConditionalDefault");
+		Assert.isTrue(node.children[2].type.match(POINT), "default block should be POINT wrapper");
+		Assert.equals(1, node.children[2].children.length, "default block should have 1 child");
+		Assert.isTrue(node.children[2].children[0].type.match(BITMAP(_, _, _)), "default child should be BITMAP");
+	}
+
+	@Test
+	public function testConditionalBlockWithNestedConditionals() {
+		var result = parseExpectingResult('
+			#test programmable(mode:[a, b]=a, style:[dark, light]=dark) {
+				@(mode=>a) {
+					@(style=>dark) bitmap(generated(color(10, 10, #400)));
+					@(style=>light) bitmap(generated(color(10, 10, #f66)));
+					text(m3x6, "A", white, center, 10):0,0;
+				}
+				@else {
+					bitmap(generated(color(10, 10, #060)));
+				}
+			}
+		');
+		Assert.notNull(result, "conditional block with inner @() should parse successfully");
+		var node = result.nodes.get("test");
+		Assert.notNull(node);
+		Assert.equals(2, node.children.length);
+		Assert.equals(3, node.children[0].children.length, "block should have 3 children (2 conditional + 1 unconditional)");
+		Assert.isTrue(node.children[0].children[0].conditionals.match(Conditional(_, _)), "first inner @() should be Conditional");
+		Assert.isTrue(node.children[0].children[0].type.match(BITMAP(_, _, _)), "first inner child should be BITMAP");
+		Assert.isTrue(node.children[0].children[1].conditionals.match(Conditional(_, _)), "second inner @() should be Conditional");
+		Assert.isTrue(node.children[0].children[1].type.match(BITMAP(_, _, _)), "second inner child should be BITMAP");
+		Assert.isTrue(node.children[0].children[2].conditionals.match(NoConditional), "text should be unconditional");
+		Assert.isTrue(node.children[0].children[2].type.match(TEXT(_)), "unconditional child should be TEXT");
+		Assert.isTrue(node.children[1].type.match(POINT), "else block should be POINT wrapper");
+		Assert.equals(1, node.children[1].children.length, "else block should have 1 child");
+		Assert.isTrue(node.children[1].children[0].type.match(BITMAP(_, _, _)), "else child should be BITMAP");
+	}
+
+	@Test
+	public function testConditionalBlockInBlock() {
+		var result = parseExpectingResult('
+			#test programmable(tier:[free, paid, vip]=free, enabled:[yes, no]=yes) {
+				@(tier=>free) {
+					bitmap(generated(color(10, 10, #333)));
+				}
+				@else {
+					@(enabled=>yes) {
+						bitmap(generated(color(10, 10, #060)));
+					}
+					@else {
+						bitmap(generated(color(10, 10, #600)));
+					}
+				}
+			}
+		');
+		Assert.notNull(result, "block-in-block should parse successfully");
+		var node = result.nodes.get("test");
+		Assert.notNull(node);
+		Assert.equals(2, node.children.length);
+		// Outer @else block contains inner conditional blocks
+		final elseBlock = node.children[1];
+		Assert.isTrue(elseBlock.type.match(POINT), "outer else should be POINT wrapper");
+		Assert.equals(2, elseBlock.children.length, "outer else should have 2 children (inner conditional blocks)");
+		Assert.isTrue(elseBlock.children[0].conditionals.match(Conditional(_, _)), "inner first should be Conditional");
+		Assert.isTrue(elseBlock.children[0].type.match(POINT), "inner conditional block should be POINT");
+		Assert.equals(1, elseBlock.children[0].children.length, "inner conditional block should have 1 child");
+		Assert.isTrue(elseBlock.children[0].children[0].type.match(BITMAP(_, _, _)), "inner conditional child should be BITMAP");
+		Assert.isTrue(elseBlock.children[1].conditionals.match(ConditionalElse(_)), "inner second should be ConditionalElse");
+		Assert.isTrue(elseBlock.children[1].type.match(POINT), "inner else block should be POINT");
+		Assert.equals(1, elseBlock.children[1].children.length, "inner else block should have 1 child");
+		Assert.isTrue(elseBlock.children[1].children[0].type.match(BITMAP(_, _, _)), "inner else child should be BITMAP");
+	}
+
+	@Test
+	public function testConditionalBlockMixedWithSingleElement() {
+		var result = parseExpectingResult('
+			#test programmable(state:[idle, hover, pressed]=idle) {
+				@(state=>idle) bitmap(generated(color(10, 10, #666)));
+				@else(state=>hover) {
+					bitmap(generated(color(10, 10, #060)));
+					text(m3x6, "HOVER", white, center, 10):0,0;
+				}
+				@default bitmap(generated(color(10, 10, #600)));
+			}
+		');
+		Assert.notNull(result, "mixed single-element and block conditionals should parse successfully");
+		var node = result.nodes.get("test");
+		Assert.notNull(node);
+		Assert.equals(3, node.children.length);
+		Assert.isTrue(node.children[0].conditionals.match(Conditional(_, _)), "first is single-element Conditional");
+		Assert.isTrue(node.children[0].type.match(BITMAP(_, _, _)), "first should be BITMAP directly");
+		Assert.isTrue(node.children[1].type.match(POINT), "second is block else-if");
+		Assert.isTrue(node.children[1].conditionals.match(ConditionalElse(_)), "second has ConditionalElse");
+		Assert.equals(2, node.children[1].children.length, "block should have 2 children");
+		Assert.isTrue(node.children[1].children[0].type.match(BITMAP(_, _, _)), "block first child should be BITMAP");
+		Assert.isTrue(node.children[1].children[1].type.match(TEXT(_)), "block second child should be TEXT");
+		Assert.isTrue(node.children[2].conditionals.match(ConditionalDefault), "third is single-element default");
+		Assert.isTrue(node.children[2].type.match(BITMAP(_, _, _)), "third should be BITMAP directly");
+	}
+
+	@Test
+	public function testBareBlockWithoutConditionalFails() {
+		var error = parseExpectingError('
+			#test programmable(mode:[a, b]=a) {
+				{
+					bitmap(generated(color(10, 10, #f00)));
+				}
+			}
+		');
+		Assert.notNull(error, "bare { ... } without conditional should fail");
+	}
+
+	// ===== @switch negative tests =====
+
+	@Test
+	public function testSwitchAtRootLevel() {
+		var error = parseExpectingError('
+			#test programmable() {
+				pos: 0, 0
+			}
+			@switch(x) {
+				a: bitmap(generated(color(10, 10, #f00)));
+			}
+		');
+		Assert.notNull(error, "@switch at root level should fail");
+		Assert.stringContains("root", error);
+	}
+
+	@Test
+	public function testSwitchEmptyBlock() {
+		var error = parseExpectingError('
+			#test programmable(state:[a, b]=a) {
+				@switch(state) {
+				}
+			}
+		');
+		Assert.notNull(error, "@switch with empty block should fail");
+		Assert.stringContains("at least one arm", error);
+	}
+
+	@Test
+	public function testSwitchMissingParentheses() {
+		var error = parseExpectingError('
+			#test programmable(state:[a, b]=a) {
+				@switch {
+					a: bitmap(generated(color(10, 10, #f00)));
+				}
+			}
+		');
+		Assert.notNull(error, "@switch without parentheses should fail");
+	}
+
+	@Test
+	public function testSwitchMissingBrace() {
+		var error = parseExpectingError('
+			#test programmable(state:[a, b]=a) {
+				@switch(state)
+					a: bitmap(generated(color(10, 10, #f00)));
+			}
+		');
+		Assert.notNull(error, "@switch without opening brace should fail");
+	}
+
+	@Test
+	public function testSwitchCombinedWithAlpha() {
+		var error = parseExpectingError('
+			#test programmable(state:[a, b]=a) {
+				@alpha(0.5) @switch(state) {
+					a: bitmap(generated(color(10, 10, #f00)));
+				}
+			}
+		');
+		Assert.notNull(error, "@switch combined with @alpha should fail");
+		Assert.stringContains("cannot be combined", error);
+	}
+
+	@Test
+	public function testSwitchCombinedWithScale() {
+		var error = parseExpectingError('
+			#test programmable(state:[a, b]=a) {
+				@scale(2) @switch(state) {
+					a: bitmap(generated(color(10, 10, #f00)));
+				}
+			}
+		');
+		Assert.notNull(error, "@switch combined with @scale should fail");
+		Assert.stringContains("cannot be combined", error);
+	}
+
+	@Test
+	public function testSwitchCombinedWithConditional() {
+		var error = parseExpectingError('
+			#test programmable(state:[a, b]=a, x:bool=true) {
+				@(x=>true) @switch(state) {
+					a: bitmap(generated(color(10, 10, #f00)));
+				}
+			}
+		');
+		Assert.notNull(error, "@switch combined with @() conditional should fail");
+		Assert.stringContains("cannot be combined", error);
+	}
+
+	@Test
+	public function testSwitchArmMissingBody() {
+		var error = parseExpectingError('
+			#test programmable(state:[a, b]=a) {
+				@switch(state) {
+					a
+				}
+			}
+		');
+		Assert.notNull(error, "@switch arm without : or { should fail");
+	}
+
 	@Test
 	public function testUnterminatedBlockCommentAtEof() {
 		var error = parseExpectingError('
@@ -3749,5 +4317,141 @@ class ParserErrorTest extends utest.Test {
 		');
 		Assert.notNull(error, "Should throw error for unterminated block comment at EOF");
 		Assert.stringContains("Unterminated block comment", error);
+	}
+
+	@Test
+	public function testStackedConditionalsThrowsError() {
+		var error = parseExpectingError('
+			#test programmable(paramA:uint=0, paramB:uint=0) {
+				@(paramA > 0) @(paramB > 0) bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		');
+		Assert.notNull(error, "stacked @() @() should throw error");
+		Assert.stringContains("stacked conditionals", error);
+	}
+
+	@Test
+	public function testStackedIfAndBareConditionalThrowsError() {
+		var error = parseExpectingError('
+			#test programmable(paramA:uint=0, paramB:uint=0) {
+				@if(paramA > 0) @(paramB > 0) bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		');
+		Assert.notNull(error, "stacked @if() @() should throw error");
+		Assert.stringContains("stacked conditionals", error);
+	}
+
+	@Test
+	public function testStackedAllAndAnyThrowsError() {
+		var error = parseExpectingError('
+			#test programmable(paramA:uint=0, paramB:uint=0) {
+				@all(paramA > 0) @any(paramB > 0) bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		');
+		Assert.notNull(error, "stacked @all() @any() should throw error");
+		Assert.stringContains("stacked conditionals", error);
+	}
+
+	@Test
+	public function testAnyParsesSuccessfully() {
+		var result = parseExpectingResult('
+			#test programmable(mode:[a, b]=a, style:[dark, light]=dark) {
+				@any(mode=>a, style=>dark) bitmap(generated(color(10, 10, #f00))): 0, 0
+				@else bitmap(generated(color(10, 10, #0f0))): 0, 0
+			}
+		');
+		Assert.notNull(result, "@any() should parse successfully");
+		var node = result.nodes.get("test");
+		Assert.notNull(node);
+		Assert.equals(2, node.children.length);
+		switch (node.children[0].conditionals) {
+			case Conditional(map, strict):
+				Assert.isTrue(map.exists("mode"), "@any should have mode param");
+				Assert.isTrue(map.exists("style"), "@any should have style param");
+				Assert.isFalse(strict, "@any should not be strict (OR semantics)");
+			default:
+				Assert.fail("expected Conditional");
+		}
+	}
+
+	@Test
+	public function testAllParsesSuccessfully() {
+		var result = parseExpectingResult('
+			#test programmable(mode:[a, b]=a, style:[dark, light]=dark) {
+				@all(mode=>a, style=>dark) bitmap(generated(color(10, 10, #f00))): 0, 0
+				@default bitmap(generated(color(10, 10, #0f0))): 0, 0
+			}
+		');
+		Assert.notNull(result, "@all() should parse successfully");
+		var node = result.nodes.get("test");
+		Assert.notNull(node);
+		Assert.equals(2, node.children.length);
+		switch (node.children[0].conditionals) {
+			case Conditional(map, strict):
+				Assert.isTrue(map.exists("mode"), "@all should have mode param");
+				Assert.isTrue(map.exists("style"), "@all should have style param");
+				Assert.isTrue(strict, "@all should be strict (AND semantics)");
+			default:
+				Assert.fail("expected Conditional");
+		}
+	}
+
+	@Test
+	public function testAnyWithOtherModifiers() {
+		var result = parseExpectingResult('
+			#test programmable(mode:[a, b]=a) {
+				@any(mode=>a) @alpha(0.5) bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		');
+		Assert.notNull(result, "@any() combined with @alpha() should parse");
+		var node = result.nodes.get("test");
+		Assert.notNull(node);
+		Assert.equals(1, node.children.length);
+		Assert.isTrue(node.children[0].conditionals.match(Conditional(_, _)), "should have Conditional");
+	}
+
+	@Test
+	public function testAnyMissingParen() {
+		var error = parseExpectingError("
+			#test programmable(status:[idle,hover]=idle) {
+				@any bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		");
+		Assert.notNull(error, "Should throw error for @any without parens");
+		Assert.isTrue(error.indexOf("(") >= 0 || error.indexOf("expected") >= 0 || error.indexOf("paren") >= 0,
+			'Error should mention expected parenthesis, got: $$error');
+	}
+
+	@Test
+	public function testAnyUnknownParam() {
+		var error = parseExpectingError("
+			#test programmable(status:[idle,hover]=idle) {
+				@any(unknown=>value) bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		");
+		Assert.notNull(error, "Should throw error for @any with undefined parameter");
+		Assert.isTrue(error.indexOf("unknown") >= 0 || error.indexOf("Unknown") >= 0 || error.indexOf("param") >= 0,
+			'Error should mention the unknown parameter, got: $$error');
+	}
+
+	@Test
+	public function testAnyWithElse() {
+		var success = parseExpectingSuccess("
+			#test programmable(status:[idle,hover]=idle) {
+				@any(status=>hover) bitmap(generated(color(10, 10, #f00))): 0, 0
+				@else bitmap(generated(color(20, 20, #00f))): 0, 0
+			}
+		");
+		Assert.isTrue(success, "@any with @else should parse successfully");
+	}
+
+	@Test
+	public function testIfstrictRemovedThrowsError() {
+		var error = parseExpectingError('
+			#test programmable(mode:[a, b]=a, style:[dark, light]=dark) {
+				@ifstrict(mode=>a, style=>dark) bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		');
+		Assert.notNull(error, "@ifstrict should no longer be recognized");
 	}
 }

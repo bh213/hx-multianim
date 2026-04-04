@@ -213,11 +213,13 @@ const PARSER_INTERNAL = new Set([
   "record",
   // Operator — handled in grammar as keyword.operator.div
   "div",
-  // Conditionals — handled in grammar via @if/@ifStrict/@else/@default patterns
+  // Conditionals — handled in grammar via @if/@any/@all/@else/@default/@switch patterns
   "if",
-  "ifstrict",
+  "any",
+  "all",
   "else",
   "default",
+  "switch",
   // Aliases — alternate spellings of keywords already in grammar
   "animated_path", // alias for animatedPath
   "animatedpath",  // alias for animatedPath
@@ -258,7 +260,7 @@ const GRAMMAR_DEDICATED = new Set([
   // Operators
   "div",
   // Conditionals — matched via @-prefix patterns, not \b...\b
-  "if", "ifstrict", "else", "default",
+  "if", "any", "all", "else", "default", "switch",
   // Regex artifacts — extracted from patterns but not real keywords
   "za", // from [A-Za-z] character class in regex
 ]);

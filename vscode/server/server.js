@@ -1113,15 +1113,16 @@ var bh_multianim__$MacroManimParser_MacroTokenType = $hxEnums["bh.multianim._Mac
 	,TGreaterEquals: {_hx_name:"TGreaterEquals",_hx_index:25,__enum__:"bh.multianim._MacroManimParser.MacroTokenType",toString:$estr}
 	,TNotEquals: {_hx_name:"TNotEquals",_hx_index:26,__enum__:"bh.multianim._MacroManimParser.MacroTokenType",toString:$estr}
 	,TDoubleEquals: {_hx_name:"TDoubleEquals",_hx_index:27,__enum__:"bh.multianim._MacroManimParser.MacroTokenType",toString:$estr}
-	,TInteger: ($_=function(s) { return {_hx_index:28,s:s,__enum__:"bh.multianim._MacroManimParser.MacroTokenType",toString:$estr}; },$_._hx_name="TInteger",$_.__params__ = ["s"],$_)
-	,TFloat: ($_=function(s) { return {_hx_index:29,s:s,__enum__:"bh.multianim._MacroManimParser.MacroTokenType",toString:$estr}; },$_._hx_name="TFloat",$_.__params__ = ["s"],$_)
-	,THexInteger: ($_=function(s) { return {_hx_index:30,s:s,__enum__:"bh.multianim._MacroManimParser.MacroTokenType",toString:$estr}; },$_._hx_name="THexInteger",$_.__params__ = ["s"],$_)
-	,TIdentifier: ($_=function(s) { return {_hx_index:31,s:s,__enum__:"bh.multianim._MacroManimParser.MacroTokenType",toString:$estr}; },$_._hx_name="TIdentifier",$_.__params__ = ["s"],$_)
-	,TName: ($_=function(s) { return {_hx_index:32,s:s,__enum__:"bh.multianim._MacroManimParser.MacroTokenType",toString:$estr}; },$_._hx_name="TName",$_.__params__ = ["s"],$_)
-	,TReference: ($_=function(s) { return {_hx_index:33,s:s,__enum__:"bh.multianim._MacroManimParser.MacroTokenType",toString:$estr}; },$_._hx_name="TReference",$_.__params__ = ["s"],$_)
-	,TQuotedString: ($_=function(s) { return {_hx_index:34,s:s,__enum__:"bh.multianim._MacroManimParser.MacroTokenType",toString:$estr}; },$_._hx_name="TQuotedString",$_.__params__ = ["s"],$_)
+	,TPipe: {_hx_name:"TPipe",_hx_index:28,__enum__:"bh.multianim._MacroManimParser.MacroTokenType",toString:$estr}
+	,TInteger: ($_=function(s) { return {_hx_index:29,s:s,__enum__:"bh.multianim._MacroManimParser.MacroTokenType",toString:$estr}; },$_._hx_name="TInteger",$_.__params__ = ["s"],$_)
+	,TFloat: ($_=function(s) { return {_hx_index:30,s:s,__enum__:"bh.multianim._MacroManimParser.MacroTokenType",toString:$estr}; },$_._hx_name="TFloat",$_.__params__ = ["s"],$_)
+	,THexInteger: ($_=function(s) { return {_hx_index:31,s:s,__enum__:"bh.multianim._MacroManimParser.MacroTokenType",toString:$estr}; },$_._hx_name="THexInteger",$_.__params__ = ["s"],$_)
+	,TIdentifier: ($_=function(s) { return {_hx_index:32,s:s,__enum__:"bh.multianim._MacroManimParser.MacroTokenType",toString:$estr}; },$_._hx_name="TIdentifier",$_.__params__ = ["s"],$_)
+	,TName: ($_=function(s) { return {_hx_index:33,s:s,__enum__:"bh.multianim._MacroManimParser.MacroTokenType",toString:$estr}; },$_._hx_name="TName",$_.__params__ = ["s"],$_)
+	,TReference: ($_=function(s) { return {_hx_index:34,s:s,__enum__:"bh.multianim._MacroManimParser.MacroTokenType",toString:$estr}; },$_._hx_name="TReference",$_.__params__ = ["s"],$_)
+	,TQuotedString: ($_=function(s) { return {_hx_index:35,s:s,__enum__:"bh.multianim._MacroManimParser.MacroTokenType",toString:$estr}; },$_._hx_name="TQuotedString",$_.__params__ = ["s"],$_)
 };
-bh_multianim__$MacroManimParser_MacroTokenType.__constructs__ = [bh_multianim__$MacroManimParser_MacroTokenType.TEof,bh_multianim__$MacroManimParser_MacroTokenType.TOpen,bh_multianim__$MacroManimParser_MacroTokenType.TClosed,bh_multianim__$MacroManimParser_MacroTokenType.TBracketOpen,bh_multianim__$MacroManimParser_MacroTokenType.TBracketClosed,bh_multianim__$MacroManimParser_MacroTokenType.TCurlyOpen,bh_multianim__$MacroManimParser_MacroTokenType.TCurlyClosed,bh_multianim__$MacroManimParser_MacroTokenType.TComma,bh_multianim__$MacroManimParser_MacroTokenType.TAt,bh_multianim__$MacroManimParser_MacroTokenType.TExclamation,bh_multianim__$MacroManimParser_MacroTokenType.TQuestion,bh_multianim__$MacroManimParser_MacroTokenType.TColon,bh_multianim__$MacroManimParser_MacroTokenType.TDot,bh_multianim__$MacroManimParser_MacroTokenType.TDoubleDot,bh_multianim__$MacroManimParser_MacroTokenType.TSemiColon,bh_multianim__$MacroManimParser_MacroTokenType.TArrow,bh_multianim__$MacroManimParser_MacroTokenType.TStar,bh_multianim__$MacroManimParser_MacroTokenType.TPercent,bh_multianim__$MacroManimParser_MacroTokenType.TPlus,bh_multianim__$MacroManimParser_MacroTokenType.TSlash,bh_multianim__$MacroManimParser_MacroTokenType.TMinus,bh_multianim__$MacroManimParser_MacroTokenType.TEquals,bh_multianim__$MacroManimParser_MacroTokenType.TLessThan,bh_multianim__$MacroManimParser_MacroTokenType.TGreaterThan,bh_multianim__$MacroManimParser_MacroTokenType.TLessEquals,bh_multianim__$MacroManimParser_MacroTokenType.TGreaterEquals,bh_multianim__$MacroManimParser_MacroTokenType.TNotEquals,bh_multianim__$MacroManimParser_MacroTokenType.TDoubleEquals,bh_multianim__$MacroManimParser_MacroTokenType.TInteger,bh_multianim__$MacroManimParser_MacroTokenType.TFloat,bh_multianim__$MacroManimParser_MacroTokenType.THexInteger,bh_multianim__$MacroManimParser_MacroTokenType.TIdentifier,bh_multianim__$MacroManimParser_MacroTokenType.TName,bh_multianim__$MacroManimParser_MacroTokenType.TReference,bh_multianim__$MacroManimParser_MacroTokenType.TQuotedString];
+bh_multianim__$MacroManimParser_MacroTokenType.__constructs__ = [bh_multianim__$MacroManimParser_MacroTokenType.TEof,bh_multianim__$MacroManimParser_MacroTokenType.TOpen,bh_multianim__$MacroManimParser_MacroTokenType.TClosed,bh_multianim__$MacroManimParser_MacroTokenType.TBracketOpen,bh_multianim__$MacroManimParser_MacroTokenType.TBracketClosed,bh_multianim__$MacroManimParser_MacroTokenType.TCurlyOpen,bh_multianim__$MacroManimParser_MacroTokenType.TCurlyClosed,bh_multianim__$MacroManimParser_MacroTokenType.TComma,bh_multianim__$MacroManimParser_MacroTokenType.TAt,bh_multianim__$MacroManimParser_MacroTokenType.TExclamation,bh_multianim__$MacroManimParser_MacroTokenType.TQuestion,bh_multianim__$MacroManimParser_MacroTokenType.TColon,bh_multianim__$MacroManimParser_MacroTokenType.TDot,bh_multianim__$MacroManimParser_MacroTokenType.TDoubleDot,bh_multianim__$MacroManimParser_MacroTokenType.TSemiColon,bh_multianim__$MacroManimParser_MacroTokenType.TArrow,bh_multianim__$MacroManimParser_MacroTokenType.TStar,bh_multianim__$MacroManimParser_MacroTokenType.TPercent,bh_multianim__$MacroManimParser_MacroTokenType.TPlus,bh_multianim__$MacroManimParser_MacroTokenType.TSlash,bh_multianim__$MacroManimParser_MacroTokenType.TMinus,bh_multianim__$MacroManimParser_MacroTokenType.TEquals,bh_multianim__$MacroManimParser_MacroTokenType.TLessThan,bh_multianim__$MacroManimParser_MacroTokenType.TGreaterThan,bh_multianim__$MacroManimParser_MacroTokenType.TLessEquals,bh_multianim__$MacroManimParser_MacroTokenType.TGreaterEquals,bh_multianim__$MacroManimParser_MacroTokenType.TNotEquals,bh_multianim__$MacroManimParser_MacroTokenType.TDoubleEquals,bh_multianim__$MacroManimParser_MacroTokenType.TPipe,bh_multianim__$MacroManimParser_MacroTokenType.TInteger,bh_multianim__$MacroManimParser_MacroTokenType.TFloat,bh_multianim__$MacroManimParser_MacroTokenType.THexInteger,bh_multianim__$MacroManimParser_MacroTokenType.TIdentifier,bh_multianim__$MacroManimParser_MacroTokenType.TName,bh_multianim__$MacroManimParser_MacroTokenType.TReference,bh_multianim__$MacroManimParser_MacroTokenType.TQuotedString];
 var bh_multianim__$MacroManimParser_Token = function(type,line,col) {
 	this.type = type;
 	this.line = line;
@@ -1298,6 +1299,9 @@ bh_multianim__$MacroManimParser_MacroLexer.prototype = {
 				case 123:
 					this.pos++;
 					return new bh_multianim__$MacroManimParser_Token(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyOpen,startLine,startCol);
+				case 124:
+					this.pos++;
+					return new bh_multianim__$MacroManimParser_Token(bh_multianim__$MacroManimParser_MacroTokenType.TPipe,startLine,startCol);
 				case 125:
 					this.pos++;
 					return new bh_multianim__$MacroManimParser_Token(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyClosed,startLine,startCol);
@@ -1493,7 +1497,7 @@ bh_multianim__$MacroManimParser_MacroLexer.prototype = {
 						while(_g2 < _g3) {
 							var i = _g2++;
 							var _g4 = codeTokens[i].type;
-							if(_g4._hx_index == 31) {
+							if(_g4._hx_index == 32) {
 								var s = _g4.s;
 								if(!bh_multianim__$MacroManimParser_MacroLexer.isInterpolationKeyword(s)) {
 									codeTokens[i] = new bh_multianim__$MacroManimParser_Token(bh_multianim__$MacroManimParser_MacroTokenType.TReference(s),codeTokens[i].line,codeTokens[i].col);
@@ -1835,7 +1839,7 @@ bh_multianim_MacroManimParser.prototype = {
 	}
 	,expectKeyword: function(keyword) {
 		var _g = this.tokens[this.tpos].type;
-		if(_g._hx_index == 31) {
+		if(_g._hx_index == 32) {
 			var s = _g.s;
 			if(bh_multianim_MacroManimParser.isKeyword(s,keyword)) {
 				this.advance();
@@ -2100,7 +2104,7 @@ bh_multianim_MacroManimParser.prototype = {
 				break;
 			}
 			return this.binop(e1,bh_multianim_RvOp.OpEq,tmp);
-		case 31:
+		case 32:
 			var s = _g.s;
 			if(bh_multianim_MacroManimParser.isKeyword(s,"div")) {
 				this.advance();
@@ -2237,15 +2241,15 @@ bh_multianim_MacroManimParser.prototype = {
 				var e = this.parseIntegerOrReference();
 				this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
 				return this.parseNextExpression(bh_multianim_ReferenceableValue.EUnaryOp(bh_multianim_RvUnaryOp.OpNeg,bh_multianim_ReferenceableValue.RVParenthesis(e)),bh_multianim__$MacroManimParser_ExprType.EInt);
-			case 28:
+			case 29:
 				var n = _g1.s;
 				this.advance();
 				return this.parseNextExpression(bh_multianim_ReferenceableValue.RVInteger(-this.stringToInt(n)),bh_multianim__$MacroManimParser_ExprType.EInt);
-			case 30:
+			case 31:
 				var n = _g1.s;
 				this.advance();
 				return this.parseNextExpression(bh_multianim_ReferenceableValue.RVInteger(-this.stringToInt("0x" + n)),bh_multianim__$MacroManimParser_ExprType.EInt);
-			case 33:
+			case 34:
 				var s = _g1.s;
 				this.advance();
 				return this.parseNextExpression(this.parseUnaryMinusRef(s,bh_multianim__$MacroManimParser_ExprType.EInt),bh_multianim__$MacroManimParser_ExprType.EInt);
@@ -2253,15 +2257,15 @@ bh_multianim_MacroManimParser.prototype = {
 				return this.error("expected value after unary minus");
 			}
 			break;
-		case 28:
+		case 29:
 			var n = _g.s;
 			this.advance();
 			return this.parseNextExpression(bh_multianim_ReferenceableValue.RVInteger(this.stringToInt(n)),bh_multianim__$MacroManimParser_ExprType.EInt);
-		case 30:
+		case 31:
 			var n = _g.s;
 			this.advance();
 			return this.parseNextExpression(bh_multianim_ReferenceableValue.RVInteger(this.stringToInt("0x" + n)),bh_multianim__$MacroManimParser_ExprType.EInt);
-		case 31:
+		case 32:
 			var s = _g.s;
 			if(bh_multianim_MacroManimParser.isKeyword(s,"callback")) {
 				this.advance();
@@ -2270,7 +2274,7 @@ bh_multianim_MacroManimParser.prototype = {
 				return this.error("expected integer or expression, got " + Std.string(this.tokens[this.tpos].type));
 			}
 			break;
-		case 33:
+		case 34:
 			var s = _g.s;
 			this.advance();
 			return this.parseNextExpression(this.parseRefExpr(s,bh_multianim__$MacroManimParser_ExprType.EInt),bh_multianim__$MacroManimParser_ExprType.EInt);
@@ -2298,15 +2302,15 @@ bh_multianim_MacroManimParser.prototype = {
 				var e = this.parseFloatOrReference();
 				this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
 				return this.parseNextExpression(bh_multianim_ReferenceableValue.EUnaryOp(bh_multianim_RvUnaryOp.OpNeg,bh_multianim_ReferenceableValue.RVParenthesis(e)),bh_multianim__$MacroManimParser_ExprType.EFloat);
-			case 28:
-				var n = _g1.s;
-				this.advance();
-				return this.parseNextExpression(bh_multianim_ReferenceableValue.RVFloat(-this.stringToFloat(n)),bh_multianim__$MacroManimParser_ExprType.EFloat);
 			case 29:
 				var n = _g1.s;
 				this.advance();
 				return this.parseNextExpression(bh_multianim_ReferenceableValue.RVFloat(-this.stringToFloat(n)),bh_multianim__$MacroManimParser_ExprType.EFloat);
-			case 33:
+			case 30:
+				var n = _g1.s;
+				this.advance();
+				return this.parseNextExpression(bh_multianim_ReferenceableValue.RVFloat(-this.stringToFloat(n)),bh_multianim__$MacroManimParser_ExprType.EFloat);
+			case 34:
 				var s = _g1.s;
 				this.advance();
 				return this.parseNextExpression(this.parseUnaryMinusRef(s,bh_multianim__$MacroManimParser_ExprType.EInt),bh_multianim__$MacroManimParser_ExprType.EFloat);
@@ -2314,15 +2318,15 @@ bh_multianim_MacroManimParser.prototype = {
 				return this.error("expected value after unary minus");
 			}
 			break;
-		case 28:
-			var n = _g.s;
-			this.advance();
-			return this.parseNextExpression(bh_multianim_ReferenceableValue.RVFloat(this.stringToFloat(n)),bh_multianim__$MacroManimParser_ExprType.EFloat);
 		case 29:
 			var n = _g.s;
 			this.advance();
 			return this.parseNextExpression(bh_multianim_ReferenceableValue.RVFloat(this.stringToFloat(n)),bh_multianim__$MacroManimParser_ExprType.EFloat);
-		case 31:
+		case 30:
+			var n = _g.s;
+			this.advance();
+			return this.parseNextExpression(bh_multianim_ReferenceableValue.RVFloat(this.stringToFloat(n)),bh_multianim__$MacroManimParser_ExprType.EFloat);
+		case 32:
 			var s = _g.s;
 			if(bh_multianim_MacroManimParser.isKeyword(s,"callback")) {
 				this.advance();
@@ -2331,7 +2335,7 @@ bh_multianim_MacroManimParser.prototype = {
 				return this.error("expected float or expression, got " + Std.string(this.tokens[this.tpos].type));
 			}
 			break;
-		case 33:
+		case 34:
 			var s = _g.s;
 			this.advance();
 			return this.parseNextExpression(this.parseRefExpr(s,bh_multianim__$MacroManimParser_ExprType.EInt),bh_multianim__$MacroManimParser_ExprType.EFloat);
@@ -2341,7 +2345,7 @@ bh_multianim_MacroManimParser.prototype = {
 	}
 	,parseAngleOrReference: function() {
 		var _g = this.tokens[this.tpos].type;
-		if(_g._hx_index == 31) {
+		if(_g._hx_index == 32) {
 			var s = _g.s;
 			var lower = s.toLowerCase();
 			switch(lower) {
@@ -2365,7 +2369,7 @@ bh_multianim_MacroManimParser.prototype = {
 	}
 	,applyAngleUnit: function(value) {
 		var _g = this.tokens[this.tpos].type;
-		if(_g._hx_index == 31) {
+		if(_g._hx_index == 32) {
 			var s = _g.s;
 			var lower = s.toLowerCase();
 			switch(lower) {
@@ -2414,11 +2418,11 @@ bh_multianim_MacroManimParser.prototype = {
 			this.advance();
 			var _g1 = this.tokens[this.tpos].type;
 			switch(_g1._hx_index) {
-			case 28:
+			case 29:
 				var n = _g1.s;
 				this.advance();
 				return this.parseNextExpression(bh_multianim_ReferenceableValue.RVString("-" + n),bh_multianim__$MacroManimParser_ExprType.EString);
-			case 29:
+			case 30:
 				var n = _g1.s;
 				this.advance();
 				return this.parseNextExpression(bh_multianim_ReferenceableValue.RVString("-" + n),bh_multianim__$MacroManimParser_ExprType.EString);
@@ -2426,23 +2430,11 @@ bh_multianim_MacroManimParser.prototype = {
 				return this.error("expected number after minus in string context");
 			}
 			break;
-		case 28:
-			var n = _g.s;
-			this.advance();
-			var _g1 = this.tokens[this.tpos].type;
-			if(_g1._hx_index == 31) {
-				var s2 = _g1.s;
-				this.advance();
-				return this.parseNextExpression(bh_multianim_ReferenceableValue.RVString(n + s2),bh_multianim__$MacroManimParser_ExprType.EString);
-			} else {
-				return this.parseNextExpression(bh_multianim_ReferenceableValue.RVString(n),bh_multianim__$MacroManimParser_ExprType.EString);
-			}
-			break;
 		case 29:
 			var n = _g.s;
 			this.advance();
 			var _g1 = this.tokens[this.tpos].type;
-			if(_g1._hx_index == 31) {
+			if(_g1._hx_index == 32) {
 				var s2 = _g1.s;
 				this.advance();
 				return this.parseNextExpression(bh_multianim_ReferenceableValue.RVString(n + s2),bh_multianim__$MacroManimParser_ExprType.EString);
@@ -2453,8 +2445,20 @@ bh_multianim_MacroManimParser.prototype = {
 		case 30:
 			var n = _g.s;
 			this.advance();
-			return this.parseNextExpression(bh_multianim_ReferenceableValue.RVString("0x" + n),bh_multianim__$MacroManimParser_ExprType.EString);
+			var _g1 = this.tokens[this.tpos].type;
+			if(_g1._hx_index == 32) {
+				var s2 = _g1.s;
+				this.advance();
+				return this.parseNextExpression(bh_multianim_ReferenceableValue.RVString(n + s2),bh_multianim__$MacroManimParser_ExprType.EString);
+			} else {
+				return this.parseNextExpression(bh_multianim_ReferenceableValue.RVString(n),bh_multianim__$MacroManimParser_ExprType.EString);
+			}
+			break;
 		case 31:
+			var n = _g.s;
+			this.advance();
+			return this.parseNextExpression(bh_multianim_ReferenceableValue.RVString("0x" + n),bh_multianim__$MacroManimParser_ExprType.EString);
+		case 32:
 			var _g1 = _g.s;
 			var s = _g1;
 			if(bh_multianim_MacroManimParser.isKeyword(s,"callback")) {
@@ -2466,11 +2470,11 @@ bh_multianim_MacroManimParser.prototype = {
 				return this.parseNextExpression(bh_multianim_ReferenceableValue.RVString(s),bh_multianim__$MacroManimParser_ExprType.EString);
 			}
 			break;
-		case 32:
+		case 33:
 			var s = _g.s;
 			this.advance();
 			return this.parseNextExpression(bh_multianim_ReferenceableValue.RVString(s),bh_multianim__$MacroManimParser_ExprType.EString);
-		case 33:
+		case 34:
 			var s = _g.s;
 			this.advance();
 			this.validateRef(s);
@@ -2480,7 +2484,7 @@ bh_multianim_MacroManimParser.prototype = {
 				return this.parseNextExpression(bh_multianim_ReferenceableValue.RVElementOfArray(s,idx),bh_multianim__$MacroManimParser_ExprType.EString);
 			}
 			return this.parseNextExpression(bh_multianim_ReferenceableValue.RVReference(s),bh_multianim__$MacroManimParser_ExprType.EString);
-		case 34:
+		case 35:
 			var s = _g.s;
 			this.advance();
 			return this.parseNextExpression(bh_multianim_ReferenceableValue.RVString(s),bh_multianim__$MacroManimParser_ExprType.EString);
@@ -2518,19 +2522,19 @@ bh_multianim_MacroManimParser.prototype = {
 				var e = this.parseAnything();
 				this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
 				return this.parseNextExpression(bh_multianim_ReferenceableValue.EUnaryOp(bh_multianim_RvUnaryOp.OpNeg,bh_multianim_ReferenceableValue.RVParenthesis(e)),bh_multianim__$MacroManimParser_ExprType.EAny);
-			case 28:
-				var n = _g1.s;
-				this.advance();
-				return this.parseNextExpression(bh_multianim_ReferenceableValue.RVInteger(-this.stringToInt(n)),bh_multianim__$MacroManimParser_ExprType.EAny);
 			case 29:
 				var n = _g1.s;
 				this.advance();
-				return this.parseNextExpression(bh_multianim_ReferenceableValue.RVFloat(-this.stringToFloat(n)),bh_multianim__$MacroManimParser_ExprType.EAny);
+				return this.parseNextExpression(bh_multianim_ReferenceableValue.RVInteger(-this.stringToInt(n)),bh_multianim__$MacroManimParser_ExprType.EAny);
 			case 30:
 				var n = _g1.s;
 				this.advance();
+				return this.parseNextExpression(bh_multianim_ReferenceableValue.RVFloat(-this.stringToFloat(n)),bh_multianim__$MacroManimParser_ExprType.EAny);
+			case 31:
+				var n = _g1.s;
+				this.advance();
 				return this.parseNextExpression(bh_multianim_ReferenceableValue.RVInteger(-this.stringToInt(n)),bh_multianim__$MacroManimParser_ExprType.EAny);
-			case 33:
+			case 34:
 				var s = _g1.s;
 				this.advance();
 				return this.parseNextExpression(this.parseUnaryMinusRef(s,bh_multianim__$MacroManimParser_ExprType.EAny),bh_multianim__$MacroManimParser_ExprType.EAny);
@@ -2538,19 +2542,19 @@ bh_multianim_MacroManimParser.prototype = {
 				return this.error("expected value after unary minus");
 			}
 			break;
-		case 28:
-			var n = _g.s;
-			this.advance();
-			return this.parseNextExpression(bh_multianim_ReferenceableValue.RVInteger(this.stringToInt(n)),bh_multianim__$MacroManimParser_ExprType.EAny);
 		case 29:
 			var n = _g.s;
 			this.advance();
-			return this.parseNextExpression(bh_multianim_ReferenceableValue.RVFloat(this.stringToFloat(n)),bh_multianim__$MacroManimParser_ExprType.EAny);
+			return this.parseNextExpression(bh_multianim_ReferenceableValue.RVInteger(this.stringToInt(n)),bh_multianim__$MacroManimParser_ExprType.EAny);
 		case 30:
 			var n = _g.s;
 			this.advance();
-			return this.parseNextExpression(bh_multianim_ReferenceableValue.RVInteger(this.stringToInt("0x" + n)),bh_multianim__$MacroManimParser_ExprType.EAny);
+			return this.parseNextExpression(bh_multianim_ReferenceableValue.RVFloat(this.stringToFloat(n)),bh_multianim__$MacroManimParser_ExprType.EAny);
 		case 31:
+			var n = _g.s;
+			this.advance();
+			return this.parseNextExpression(bh_multianim_ReferenceableValue.RVInteger(this.stringToInt("0x" + n)),bh_multianim__$MacroManimParser_ExprType.EAny);
+		case 32:
 			var _g1 = _g.s;
 			var s = _g1;
 			if(bh_multianim_MacroManimParser.isKeyword(s,"callback")) {
@@ -2562,7 +2566,7 @@ bh_multianim_MacroManimParser.prototype = {
 				return this.parseNextExpression(bh_multianim_ReferenceableValue.RVString(s),bh_multianim__$MacroManimParser_ExprType.EAny);
 			}
 			break;
-		case 32:
+		case 33:
 			var s = _g.s;
 			var c = bh_multianim_MacroManimParser.tryStringToColor("#" + s);
 			this.advance();
@@ -2570,11 +2574,11 @@ bh_multianim_MacroManimParser.prototype = {
 				return this.parseNextExpression(bh_multianim_ReferenceableValue.RVInteger(c),bh_multianim__$MacroManimParser_ExprType.EAny);
 			}
 			return this.parseNextExpression(bh_multianim_ReferenceableValue.RVString(s),bh_multianim__$MacroManimParser_ExprType.EAny);
-		case 33:
+		case 34:
 			var s = _g.s;
 			this.advance();
 			return this.parseNextExpression(this.parseRefExpr(s,bh_multianim__$MacroManimParser_ExprType.EAny),bh_multianim__$MacroManimParser_ExprType.EAny);
-		case 34:
+		case 35:
 			var s = _g.s;
 			this.advance();
 			return this.parseNextExpression(bh_multianim_ReferenceableValue.RVString(s),bh_multianim__$MacroManimParser_ExprType.EAny);
@@ -2685,14 +2689,14 @@ bh_multianim_MacroManimParser.prototype = {
 			this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
 			var ifFalse = this.parseColorOrReference();
 			return bh_multianim_ReferenceableValue.RVTernary(cond,ifTrue,ifFalse);
-		case 31:
+		case 32:
 			var s = _g.s;
 			if(bh_multianim_MacroManimParser.isKeyword(s,"palette")) {
 				this.advance();
 				this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
 				var externalReference = null;
 				var _g = this.tokens[this.tpos].type;
-				if(_g._hx_index == 31) {
+				if(_g._hx_index == 32) {
 					var s2 = _g.s;
 					if(bh_multianim_MacroManimParser.isKeyword(s2,"external")) {
 						this.advance();
@@ -2731,7 +2735,7 @@ bh_multianim_MacroManimParser.prototype = {
 	,tryParseColor: function() {
 		var _g = this.tokens[this.tpos].type;
 		switch(_g._hx_index) {
-		case 30:
+		case 31:
 			var n = _g.s;
 			var c = bh_multianim_MacroManimParser.tryStringToColor("0x" + n);
 			if(c != null) {
@@ -2739,7 +2743,7 @@ bh_multianim_MacroManimParser.prototype = {
 				return c;
 			}
 			return null;
-		case 31:
+		case 32:
 			var s = _g.s;
 			var c = bh_multianim_MacroManimParser.tryStringToColor(s);
 			if(c != null) {
@@ -2747,7 +2751,7 @@ bh_multianim_MacroManimParser.prototype = {
 				return c;
 			}
 			return null;
-		case 32:
+		case 33:
 			var s = _g.s;
 			var c = bh_multianim_MacroManimParser.tryStringToColor("#" + s);
 			if(c != null) {
@@ -2766,7 +2770,7 @@ bh_multianim_MacroManimParser.prototype = {
 		var coord;
 		var _g = this.tokens[this.tpos].type;
 		switch(_g._hx_index) {
-		case 31:
+		case 32:
 			var _g1 = _g.s;
 			var s = _g1;
 			if(bh_multianim_MacroManimParser.isKeyword(s,"extrapoint")) {
@@ -2794,7 +2798,7 @@ bh_multianim_MacroManimParser.prototype = {
 				}
 			}
 			break;
-		case 33:
+		case 34:
 			var s = _g.s;
 			this.advance();
 			if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TDot)) {
@@ -3002,7 +3006,7 @@ bh_multianim_MacroManimParser.prototype = {
 		var fallback = null;
 		while(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TComma)) {
 			var _g = this.tokens[this.tpos].type;
-			if(_g._hx_index == 31) {
+			if(_g._hx_index == 32) {
 				var s = _g.s;
 				if(bh_multianim_MacroManimParser.isKeyword(s,"fallback")) {
 					this.advance();
@@ -3042,7 +3046,7 @@ bh_multianim_MacroManimParser.prototype = {
 		case 20:
 			this.advance();
 			var _g1 = this.tokens[this.tpos].type;
-			if(_g1._hx_index == 28) {
+			if(_g1._hx_index == 29) {
 				var n = _g1.s;
 				this.advance();
 				return -this.stringToInt(n);
@@ -3050,11 +3054,11 @@ bh_multianim_MacroManimParser.prototype = {
 				return this.error("expected integer");
 			}
 			break;
-		case 28:
+		case 29:
 			var n = _g.s;
 			this.advance();
 			return this.stringToInt(n);
-		case 30:
+		case 31:
 			var n = _g.s;
 			this.advance();
 			return this.stringToInt("0x" + n);
@@ -3069,11 +3073,11 @@ bh_multianim_MacroManimParser.prototype = {
 		}
 		var _g = this.tokens[this.tpos].type;
 		switch(_g._hx_index) {
-		case 28:
+		case 29:
 			var n = _g.s;
 			this.advance();
 			return sign * this.stringToFloat(n);
-		case 29:
+		case 30:
 			var n = _g.s;
 			this.advance();
 			return sign * this.stringToFloat(n);
@@ -3084,7 +3088,7 @@ bh_multianim_MacroManimParser.prototype = {
 	,parseBool: function() {
 		var _g = this.tokens[this.tpos].type;
 		switch(_g._hx_index) {
-		case 28:
+		case 29:
 			var _g1 = _g.s;
 			var s = _g1;
 			if(s == "1") {
@@ -3100,7 +3104,7 @@ bh_multianim_MacroManimParser.prototype = {
 				}
 			}
 			break;
-		case 31:
+		case 32:
 			var _g1 = _g.s;
 			var s = _g1;
 			if(bh_multianim_MacroManimParser.isKeyword(s,"yes") || bh_multianim_MacroManimParser.isKeyword(s,"true")) {
@@ -3123,7 +3127,7 @@ bh_multianim_MacroManimParser.prototype = {
 	,parseBoolOrReference: function() {
 		var _g = this.tokens[this.tpos].type;
 		switch(_g._hx_index) {
-		case 28:
+		case 29:
 			var _g1 = _g.s;
 			var s = _g1;
 			if(s == "1") {
@@ -3139,7 +3143,7 @@ bh_multianim_MacroManimParser.prototype = {
 				}
 			}
 			break;
-		case 31:
+		case 32:
 			var _g1 = _g.s;
 			var s = _g1;
 			if(bh_multianim_MacroManimParser.isKeyword(s,"yes") || bh_multianim_MacroManimParser.isKeyword(s,"true")) {
@@ -3155,7 +3159,7 @@ bh_multianim_MacroManimParser.prototype = {
 				}
 			}
 			break;
-		case 33:
+		case 34:
 			var s = _g.s;
 			this.advance();
 			this.validateRef(s);
@@ -3167,15 +3171,15 @@ bh_multianim_MacroManimParser.prototype = {
 	,expectIdentifierOrString: function() {
 		var _g = this.tokens[this.tpos].type;
 		switch(_g._hx_index) {
-		case 31:
-			var s = _g.s;
-			this.advance();
-			return s;
-		case 33:
+		case 32:
 			var s = _g.s;
 			this.advance();
 			return s;
 		case 34:
+			var s = _g.s;
+			this.advance();
+			return s;
+		case 35:
 			var s = _g.s;
 			this.advance();
 			return s;
@@ -3185,7 +3189,7 @@ bh_multianim_MacroManimParser.prototype = {
 	}
 	,expectReference: function() {
 		var _g = this.tokens[this.tpos].type;
-		if(_g._hx_index == 33) {
+		if(_g._hx_index == 34) {
 			var s = _g.s;
 			this.advance();
 			return s;
@@ -3196,11 +3200,11 @@ bh_multianim_MacroManimParser.prototype = {
 	,expectReferenceOrIdentifier: function() {
 		var _g = this.tokens[this.tpos].type;
 		switch(_g._hx_index) {
-		case 31:
+		case 32:
 			var s = _g.s;
 			this.advance();
 			return s;
-		case 33:
+		case 34:
 			var s = _g.s;
 			this.advance();
 			return s;
@@ -3211,7 +3215,7 @@ bh_multianim_MacroManimParser.prototype = {
 	,parseTileSource: function() {
 		var _g = this.tokens[this.tpos].type;
 		switch(_g._hx_index) {
-		case 31:
+		case 32:
 			var _g1 = _g.s;
 			var s = _g1;
 			if(bh_multianim_MacroManimParser.isKeyword(s,"file")) {
@@ -3256,7 +3260,7 @@ bh_multianim_MacroManimParser.prototype = {
 				}
 			}
 			break;
-		case 33:
+		case 34:
 			var s = _g.s;
 			this.advance();
 			this.validateRef(s);
@@ -3274,7 +3278,7 @@ bh_multianim_MacroManimParser.prototype = {
 	}
 	,parseGeneratedTileType: function() {
 		var _g = this.tokens[this.tpos].type;
-		if(_g._hx_index == 31) {
+		if(_g._hx_index == 32) {
 			var _g1 = _g.s;
 			var s = _g1;
 			if(bh_multianim_MacroManimParser.isKeyword(s,"cross")) {
@@ -3387,7 +3391,7 @@ bh_multianim_MacroManimParser.prototype = {
 		}
 		if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TEquals)) {
 			var _g = this.tokens[this.tpos].type;
-			if(_g._hx_index == 34) {
+			if(_g._hx_index == 35) {
 				var s = _g.s;
 				this.advance();
 				return { name : paramName, type : bh_multianim_DefinitionType.PPTString, defaultValue : bh_multianim_ResolvedIndexParameters.StringValue(s)};
@@ -3416,7 +3420,7 @@ bh_multianim_MacroManimParser.prototype = {
 					this.advance();
 					lastWasComma = true;
 					break;
-				case 28:
+				case 29:
 					var s = _g1.s;
 					this.advance();
 					if(enumNames.indexOf(s) >= 0) {
@@ -3425,7 +3429,7 @@ bh_multianim_MacroManimParser.prototype = {
 					enumNames.push(s);
 					lastWasComma = false;
 					break;
-				case 29:
+				case 30:
 					var s1 = _g1.s;
 					this.advance();
 					if(enumNames.indexOf(s1) >= 0) {
@@ -3434,7 +3438,7 @@ bh_multianim_MacroManimParser.prototype = {
 					enumNames.push(s1);
 					lastWasComma = false;
 					break;
-				case 31:
+				case 32:
 					var s2 = _g1.s;
 					this.advance();
 					if(enumNames.indexOf(s2) >= 0) {
@@ -3443,7 +3447,7 @@ bh_multianim_MacroManimParser.prototype = {
 					enumNames.push(s2);
 					lastWasComma = false;
 					break;
-				case 34:
+				case 35:
 					var s3 = _g1.s;
 					this.advance();
 					if(enumNames.indexOf(s3) >= 0) {
@@ -3464,14 +3468,14 @@ bh_multianim_MacroManimParser.prototype = {
 			var to = this.parseInteger();
 			def.type = bh_multianim_DefinitionType.PPTRange(from,to);
 			break;
-		case 28:
+		case 29:
 			var _g1 = _g.s;
 			var from = this.parseInteger();
 			this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TDoubleDot);
 			var to = this.parseInteger();
 			def.type = bh_multianim_DefinitionType.PPTRange(from,to);
 			break;
-		case 31:
+		case 32:
 			var _g1 = _g.s;
 			var s = _g1;
 			if(bh_multianim_MacroManimParser.isKeyword(s,"hexdirection")) {
@@ -3578,12 +3582,12 @@ bh_multianim_MacroManimParser.prototype = {
 				this.advance();
 				var _g1 = this.tokens[this.tpos].type;
 				switch(_g1._hx_index) {
-				case 28:
+				case 29:
 					var n = _g1.s;
 					this.advance();
 					s = "-" + n;
 					break;
-				case 29:
+				case 30:
 					var n = _g1.s;
 					this.advance();
 					s = "-" + n;
@@ -3592,27 +3596,27 @@ bh_multianim_MacroManimParser.prototype = {
 					this.error("expected number after minus");
 				}
 				break;
-			case 28:
-				var n = _g.s;
-				this.advance();
-				s = n;
-				break;
 			case 29:
 				var n = _g.s;
 				this.advance();
 				s = n;
 				break;
 			case 30:
-				var str = _g.s;
+				var n = _g.s;
 				this.advance();
-				s = "0x" + str;
+				s = n;
 				break;
 			case 31:
 				var str = _g.s;
 				this.advance();
+				s = "0x" + str;
+				break;
+			case 32:
+				var str = _g.s;
+				this.advance();
 				s = str;
 				break;
-			case 34:
+			case 35:
 				var str = _g.s;
 				this.advance();
 				s = str;
@@ -3724,12 +3728,12 @@ bh_multianim_MacroManimParser.prototype = {
 			}
 			var _g = this.tokens[this.tpos].type;
 			switch(_g._hx_index) {
-			case 28:
+			case 29:
 				var n = _g.s;
 				this.advance();
 				arr.push(n);
 				break;
-			case 29:
+			case 30:
 				var n1 = _g.s;
 				this.advance();
 				arr.push(n1);
@@ -3756,7 +3760,7 @@ bh_multianim_MacroManimParser.prototype = {
 			}
 			var paramName;
 			var _g = this.tokens[this.tpos].type;
-			if(_g._hx_index == 33) {
+			if(_g._hx_index == 34) {
 				var s = _g.s;
 				this.advance();
 				paramName = s;
@@ -3797,7 +3801,7 @@ bh_multianim_MacroManimParser.prototype = {
 					break;
 				default:
 					var _g1 = this.tokens[this.tpos].type;
-					if(_g1._hx_index == 31) {
+					if(_g1._hx_index == 32) {
 						var _g2 = _g1.s;
 						var s1 = _g2;
 						if(bh_multianim_MacroManimParser.isKeyword(s1,"greaterthanorequal")) {
@@ -3916,11 +3920,11 @@ bh_multianim_MacroManimParser.prototype = {
 			this.advance();
 			var _g1 = this.tokens[this.tpos].type;
 			switch(_g1._hx_index) {
-			case 28:
+			case 29:
 				var n = _g1.s;
 				this.advance();
 				return "-" + n;
-			case 29:
+			case 30:
 				var n = _g1.s;
 				this.advance();
 				return "-" + n;
@@ -3928,10 +3932,6 @@ bh_multianim_MacroManimParser.prototype = {
 				return this.error("expected number after minus");
 			}
 			break;
-		case 28:
-			var n = _g.s;
-			this.advance();
-			return n;
 		case 29:
 			var n = _g.s;
 			this.advance();
@@ -3939,12 +3939,16 @@ bh_multianim_MacroManimParser.prototype = {
 		case 30:
 			var n = _g.s;
 			this.advance();
-			return "0x" + n;
+			return n;
 		case 31:
+			var n = _g.s;
+			this.advance();
+			return "0x" + n;
+		case 32:
 			var s = _g.s;
 			this.advance();
 			return s;
-		case 34:
+		case 35:
 			var s = _g.s;
 			this.advance();
 			return s;
@@ -4059,7 +4063,7 @@ bh_multianim_MacroManimParser.prototype = {
 	}
 	,tryParseBlendMode: function() {
 		var _g = this.tokens[this.tpos].type;
-		if(_g._hx_index == 31) {
+		if(_g._hx_index == 32) {
 			var s = _g.s;
 			var bm;
 			switch(s.toLowerCase()) {
@@ -4113,7 +4117,7 @@ bh_multianim_MacroManimParser.prototype = {
 	}
 	,parseHAlign: function() {
 		var _g = this.tokens[this.tpos].type;
-		if(_g._hx_index == 31) {
+		if(_g._hx_index == 32) {
 			var _g1 = _g.s;
 			var s = _g1;
 			if(bh_multianim_MacroManimParser.isKeyword(s,"left")) {
@@ -4140,7 +4144,7 @@ bh_multianim_MacroManimParser.prototype = {
 	}
 	,parseVAlign: function() {
 		var _g = this.tokens[this.tpos].type;
-		if(_g._hx_index == 31) {
+		if(_g._hx_index == 32) {
 			var _g1 = _g.s;
 			var s = _g1;
 			if(bh_multianim_MacroManimParser.isKeyword(s,"top")) {
@@ -4167,7 +4171,7 @@ bh_multianim_MacroManimParser.prototype = {
 	}
 	,parseFilter: function() {
 		var _g = this.tokens[this.tpos].type;
-		if(_g._hx_index == 31) {
+		if(_g._hx_index == 32) {
 			var _g1 = _g.s;
 			var s = _g1;
 			if(bh_multianim_MacroManimParser.isKeyword(s,"none")) {
@@ -4359,7 +4363,7 @@ bh_multianim_MacroManimParser.prototype = {
 														this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
 														var mode;
 														var _g = this.tokens[this.tpos].type;
-														if(_g._hx_index == 31) {
+														if(_g._hx_index == 32) {
 															var _g2 = _g.s;
 															var s2 = _g2;
 															if(bh_multianim_MacroManimParser.isKeyword(s2,"knockout")) {
@@ -4388,7 +4392,7 @@ bh_multianim_MacroManimParser.prototype = {
 														var smoothColor = false;
 														if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TComma)) {
 															var _g = this.tokens[this.tpos].type;
-															if(_g._hx_index == 31) {
+															if(_g._hx_index == 32) {
 																var s2 = _g.s;
 																if(bh_multianim_MacroManimParser.isKeyword(s2,"smoothcolor")) {
 																	this.advance();
@@ -4466,14 +4470,14 @@ bh_multianim_MacroManimParser.prototype = {
 	,parseCustomFilterArg: function() {
 		var _g = this.tokens[this.tpos].type;
 		switch(_g._hx_index) {
-		case 30:
+		case 31:
 			var _g1 = _g.s;
 			var color = this.tryParseColor();
 			if(color != null) {
 				return { value : bh_multianim_ReferenceableValue.RVInteger(color), type : bh_multianim_CustomFilterArgType.CFColor};
 			}
 			return { value : this.parseFloatOrReference(), type : bh_multianim_CustomFilterArgType.CFFloat};
-		case 31:
+		case 32:
 			var _g1 = _g.s;
 			var s = _g1;
 			if(bh_multianim_MacroManimParser.isKeyword(s,"true") || bh_multianim_MacroManimParser.isKeyword(s,"yes")) {
@@ -4489,7 +4493,7 @@ bh_multianim_MacroManimParser.prototype = {
 				}
 			}
 			break;
-		case 32:
+		case 33:
 			var _g1 = _g.s;
 			var color = this.tryParseColor();
 			if(color != null) {
@@ -4516,7 +4520,7 @@ bh_multianim_MacroManimParser.prototype = {
 	}
 	,isNamedParamNext: function() {
 		var _g = this.tokens[this.tpos].type;
-		if(_g._hx_index == 31) {
+		if(_g._hx_index == 32) {
 			var _g1 = _g.s;
 			var saved = this.tpos;
 			this.advance();
@@ -4535,7 +4539,7 @@ bh_multianim_MacroManimParser.prototype = {
 	}
 	,parseLayoutContent: function() {
 		var _g = this.tokens[this.tpos].type;
-		if(_g._hx_index == 31) {
+		if(_g._hx_index == 32) {
 			var s = _g.s;
 			if(bh_multianim_MacroManimParser.isKeyword(s,"point")) {
 				this.advance();
@@ -4560,7 +4564,7 @@ bh_multianim_MacroManimParser.prototype = {
 			case 6:
 				this.advance();
 				return layouts;
-			case 31:
+			case 32:
 				var _g1 = _g.s;
 				var s = _g1;
 				if(bh_multianim_MacroManimParser.isKeyword(s,"grid")) {
@@ -4611,7 +4615,7 @@ bh_multianim_MacroManimParser.prototype = {
 					}
 				}
 				break;
-			case 32:
+			case 33:
 				var _g2 = _g.s;
 				this.parseLayoutEntry(layouts,offsets,currentGrid,currentHex);
 				break;
@@ -4622,7 +4626,7 @@ bh_multianim_MacroManimParser.prototype = {
 	}
 	,parseHexOrientation: function() {
 		var _g = this.tokens[this.tpos].type;
-		if(_g._hx_index == 31) {
+		if(_g._hx_index == 32) {
 			var _g1 = _g.s;
 			var s = _g1;
 			if(bh_multianim_MacroManimParser.isKeyword(s,"flat")) {
@@ -4650,7 +4654,7 @@ bh_multianim_MacroManimParser.prototype = {
 			case 6:
 				this.advance();
 				return;
-			case 31:
+			case 32:
 				var _g1 = _g.s;
 				var s = _g1;
 				if(bh_multianim_MacroManimParser.isKeyword(s,"grid")) {
@@ -4697,7 +4701,7 @@ bh_multianim_MacroManimParser.prototype = {
 					}
 				}
 				break;
-			case 32:
+			case 33:
 				var _g2 = _g.s;
 				this.parseLayoutEntry(layouts,offsets,grid,hex);
 				break;
@@ -4708,7 +4712,7 @@ bh_multianim_MacroManimParser.prototype = {
 	}
 	,parseLayoutEntry: function(layouts,offsets,grid,hex) {
 		var _g = this.tokens[this.tpos].type;
-		if(_g._hx_index == 32) {
+		if(_g._hx_index == 33) {
 			var name = _g.s;
 			this.advance();
 			var layoutType = null;
@@ -4717,7 +4721,7 @@ bh_multianim_MacroManimParser.prototype = {
 				layoutType = bh_multianim_layouts_LayoutsType.Single(content);
 			} else {
 				var _g = this.tokens[this.tpos].type;
-				if(_g._hx_index == 31) {
+				if(_g._hx_index == 32) {
 					var _g1 = _g.s;
 					var s = _g1;
 					if(bh_multianim_MacroManimParser.isKeyword(s,"sequence")) {
@@ -4868,7 +4872,7 @@ bh_multianim_MacroManimParser.prototype = {
 		var alignX = bh_multianim_layouts_LayoutAlignX.Left;
 		var alignY = bh_multianim_layouts_LayoutAlignY.Top;
 		var _g = this.tokens[this.tpos].type;
-		if(_g._hx_index == 31) {
+		if(_g._hx_index == 32) {
 			var s = _g.s;
 			if(bh_multianim_MacroManimParser.isKeyword(s,"align")) {
 				this.advance();
@@ -4879,7 +4883,7 @@ bh_multianim_MacroManimParser.prototype = {
 				var count = 0;
 				while(!(count > 0 && !this.match(bh_multianim__$MacroManimParser_MacroTokenType.TComma))) {
 					var _g = this.tokens[this.tpos].type;
-					if(_g._hx_index == 31) {
+					if(_g._hx_index == 32) {
 						var _g1 = _g.s;
 						var v = _g1;
 						if(bh_multianim_MacroManimParser.isKeyword(v,"center")) {
@@ -5025,6 +5029,9 @@ bh_multianim_MacroManimParser.prototype = {
 				var _g = this.tokens[this.tpos].type;
 				switch(_g._hx_index) {
 				case 1:
+					if(conditional._hx_index != 3) {
+						this.error("stacked conditionals are not allowed — use @all() or @any() with comma-separated parameters");
+					}
 					this.advance();
 					conditional = bh_multianim_NodeConditionalValues.Conditional(this.parseConditionalParameters(currentDefs),false);
 					++atCount;
@@ -5032,17 +5039,23 @@ bh_multianim_MacroManimParser.prototype = {
 				case 8:
 					this.advance();
 					break;
-				case 31:
+				case 32:
 					var _g1 = _g.s;
 					var s = _g1;
-					if(bh_multianim_MacroManimParser.isKeyword(s,"if")) {
+					if(bh_multianim_MacroManimParser.isKeyword(s,"if") || bh_multianim_MacroManimParser.isKeyword(s,"any")) {
+						if(conditional._hx_index != 3) {
+							this.error("stacked conditionals are not allowed — use @all() or @any() with comma-separated parameters");
+						}
 						this.advance();
 						this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
 						conditional = bh_multianim_NodeConditionalValues.Conditional(this.parseConditionalParameters(currentDefs),false);
 						++atCount;
 					} else {
 						var s1 = _g1;
-						if(bh_multianim_MacroManimParser.isKeyword(s1,"ifstrict")) {
+						if(bh_multianim_MacroManimParser.isKeyword(s1,"all")) {
+							if(conditional._hx_index != 3) {
+								this.error("stacked conditionals are not allowed — use @all() or @any() with comma-separated parameters");
+							}
 							this.advance();
 							this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
 							conditional = bh_multianim_NodeConditionalValues.Conditional(this.parseConditionalParameters(currentDefs),true);
@@ -5105,49 +5118,66 @@ bh_multianim_MacroManimParser.prototype = {
 														++atCount;
 													} else {
 														var s9 = _g1;
-														if(bh_multianim_MacroManimParser.isKeyword(s9,"flow")) {
-															this.advance();
-															this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TDot);
-															var flowProp = this.expectIdentifierOrString();
-															switch(flowProp.toLowerCase()) {
-															case "absolute":
-																flowIsAbsolute = true;
-																break;
-															case "halign":
-																this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
-																flowHAlign = this.parseFlowAlign();
-																this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
-																break;
-															case "offset":
-																this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
-																flowOffsetX = this.parseIntegerOrReference();
-																this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
-																flowOffsetY = this.parseIntegerOrReference();
-																this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
-																break;
-															case "valign":
-																this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
-																flowVAlign = this.parseFlowAlign();
-																this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
-																break;
-															default:
-																this.error("unknown flow property: " + flowProp + " (expected halign, valign, offset, absolute)");
+														if(bh_multianim_MacroManimParser.isKeyword(s9,"switch")) {
+															if(atCount > 0) {
+																this.error("@switch cannot be combined with other @ modifiers");
 															}
-															hasFlowProps = true;
-															++atCount;
+															if(parent == null) {
+																this.error("@switch cannot be used at root level");
+															}
+															this.advance();
+															this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
+															var switchParam = this.expectIdentifierOrString();
+															this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
+															this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyOpen);
+															this.parseSwitchArms(parent,switchParam,currentDefs);
+															return null;
 														} else {
 															var s10 = _g1;
-															if(bh_multianim_MacroManimParser.isKeyword(s10,"final")) {
+															if(bh_multianim_MacroManimParser.isKeyword(s10,"flow")) {
 																this.advance();
-																var name = this.expectIdentifierOrString();
-																this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TEquals);
-																var expr = this.parseAnything();
-																if(this.scopeVars != null) {
-																	this.scopeVars.push(name);
+																this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TDot);
+																var flowProp = this.expectIdentifierOrString();
+																switch(flowProp.toLowerCase()) {
+																case "absolute":
+																	flowIsAbsolute = true;
+																	break;
+																case "halign":
+																	this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
+																	flowHAlign = this.parseFlowAlign();
+																	this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
+																	break;
+																case "offset":
+																	this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
+																	flowOffsetX = this.parseIntegerOrReference();
+																	this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
+																	flowOffsetY = this.parseIntegerOrReference();
+																	this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
+																	break;
+																case "valign":
+																	this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
+																	flowVAlign = this.parseFlowAlign();
+																	this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
+																	break;
+																default:
+																	this.error("unknown flow property: " + flowProp + " (expected halign, valign, offset, absolute)");
 																}
-																return this.createNode(bh_multianim_NodeType.FINAL_VAR(name,expr),parent,bh_multianim_NodeConditionalValues.NoConditional,null,null,null,null,-1,bh_multianim_UpdatableNameType.UNTObject(name));
+																hasFlowProps = true;
+																++atCount;
 															} else {
-																break _hx_loop1;
+																var s11 = _g1;
+																if(bh_multianim_MacroManimParser.isKeyword(s11,"final")) {
+																	this.advance();
+																	var name = this.expectIdentifierOrString();
+																	this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TEquals);
+																	var expr = this.parseAnything();
+																	if(this.scopeVars != null) {
+																		this.scopeVars.push(name);
+																	}
+																	return this.createNode(bh_multianim_NodeType.FINAL_VAR(name,expr),parent,bh_multianim_NodeConditionalValues.NoConditional,null,null,null,null,-1,bh_multianim_UpdatableNameType.UNTObject(name));
+																} else {
+																	break _hx_loop1;
+																}
 															}
 														}
 													}
@@ -5247,7 +5277,7 @@ bh_multianim_MacroManimParser.prototype = {
 			}
 		}
 		var _g = this.tokens[this.tpos].type;
-		if(_g._hx_index == 32) {
+		if(_g._hx_index == 33) {
 			var name = _g.s;
 			if(!(updatableName._hx_index == 0 && updatableName.name == null)) {
 				this.error("#" + name + ": element already has a name");
@@ -5256,7 +5286,7 @@ bh_multianim_MacroManimParser.prototype = {
 			updatableName = bh_multianim_UpdatableNameType.UNTObject(name);
 			if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TOpen)) {
 				var _g = this.tokens[this.tpos].type;
-				if(_g._hx_index == 31) {
+				if(_g._hx_index == 32) {
 					var s = _g.s;
 					if(bh_multianim_MacroManimParser.isKeyword(s,"updatable")) {
 						this.advance();
@@ -5266,12 +5296,12 @@ bh_multianim_MacroManimParser.prototype = {
 				this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
 			} else if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TBracketOpen)) {
 				var _g = this.tokens[this.tpos].type;
-				if(_g._hx_index == 33) {
+				if(_g._hx_index == 34) {
 					var indexVar1 = _g.s;
 					this.advance();
 					if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TComma)) {
 						var _g = this.tokens[this.tpos].type;
-						if(_g._hx_index == 33) {
+						if(_g._hx_index == 34) {
 							var indexVar2 = _g.s;
 							this.advance();
 							if(this.scopeVars == null || this.scopeVars.indexOf(indexVar1) == -1) {
@@ -5367,7 +5397,18 @@ bh_multianim_MacroManimParser.prototype = {
 		}
 		var node;
 		var _g = this.tokens[this.tpos].type;
-		if(_g._hx_index == 31) {
+		switch(_g._hx_index) {
+		case 5:
+			if(conditional._hx_index != 3) {
+				this.advance();
+				var wrapper = this.createNode(bh_multianim_NodeType.POINT,parent,conditional,scale,rotation,alpha,tint,layerIndex,updatableName);
+				this.parseNodes(wrapper,currentDefs);
+				return wrapper;
+			} else {
+				node = this.error("expected valid node type, got " + Std.string(this.tokens[this.tpos].type));
+			}
+			break;
+		case 32:
 			var _g1 = _g.s;
 			var s = _g1;
 			if(bh_multianim_MacroManimParser.isKeyword(s,"bitmap")) {
@@ -5434,22 +5475,22 @@ bh_multianim_MacroManimParser.prototype = {
 								case 10:case 20:
 									textAlignWidth = bh_multianim_TextAlignWidth.TAWValue(this.parseIntegerOrReference());
 									break;
-								case 28:
-									var _g2 = _g.s;
-									textAlignWidth = bh_multianim_TextAlignWidth.TAWValue(this.parseIntegerOrReference());
-									break;
-								case 30:
+								case 29:
 									var _g2 = _g.s;
 									textAlignWidth = bh_multianim_TextAlignWidth.TAWValue(this.parseIntegerOrReference());
 									break;
 								case 31:
+									var _g2 = _g.s;
+									textAlignWidth = bh_multianim_TextAlignWidth.TAWValue(this.parseIntegerOrReference());
+									break;
+								case 32:
 									var gs = _g.s;
 									if(bh_multianim_MacroManimParser.isKeyword(gs,"grid")) {
 										this.advance();
 										textAlignWidth = bh_multianim_TextAlignWidth.TAWGrid;
 									}
 									break;
-								case 33:
+								case 34:
 									var _g2 = _g.s;
 									textAlignWidth = bh_multianim_TextAlignWidth.TAWValue(this.parseIntegerOrReference());
 									break;
@@ -5552,22 +5593,22 @@ bh_multianim_MacroManimParser.prototype = {
 									case 10:case 20:
 										textAlignWidth = bh_multianim_TextAlignWidth.TAWValue(this.parseIntegerOrReference());
 										break;
-									case 28:
-										var _g2 = _g.s;
-										textAlignWidth = bh_multianim_TextAlignWidth.TAWValue(this.parseIntegerOrReference());
-										break;
-									case 30:
+									case 29:
 										var _g2 = _g.s;
 										textAlignWidth = bh_multianim_TextAlignWidth.TAWValue(this.parseIntegerOrReference());
 										break;
 									case 31:
+										var _g2 = _g.s;
+										textAlignWidth = bh_multianim_TextAlignWidth.TAWValue(this.parseIntegerOrReference());
+										break;
+									case 32:
 										var gs = _g.s;
 										if(bh_multianim_MacroManimParser.isKeyword(gs,"grid")) {
 											this.advance();
 											textAlignWidth = bh_multianim_TextAlignWidth.TAWGrid;
 										}
 										break;
-									case 33:
+									case 34:
 										var _g2 = _g.s;
 										textAlignWidth = bh_multianim_TextAlignWidth.TAWValue(this.parseIntegerOrReference());
 										break;
@@ -5764,7 +5805,7 @@ bh_multianim_MacroManimParser.prototype = {
 															var metadata = null;
 															if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TComma)) {
 																var _g = this.tokens[this.tpos].type;
-																if(_g._hx_index == 31) {
+																if(_g._hx_index == 32) {
 																	var d = _g.s;
 																	if(bh_multianim_MacroManimParser.isKeyword(d,"debug")) {
 																		this.advance();
@@ -5912,7 +5953,7 @@ bh_multianim_MacroManimParser.prototype = {
 																	this.advance();
 																	var isTileGroup = false;
 																	var _g = this.tokens[this.tpos].type;
-																	if(_g._hx_index == 31) {
+																	if(_g._hx_index == 32) {
 																		var s2 = _g.s;
 																		if(bh_multianim_MacroManimParser.isKeyword(s2,"tilegroup")) {
 																			this.advance();
@@ -5975,7 +6016,7 @@ bh_multianim_MacroManimParser.prototype = {
 																				this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
 																				var extRef = null;
 																				var _g = this.tokens[this.tpos].type;
-																				if(_g._hx_index == 31) {
+																				if(_g._hx_index == 32) {
 																					var s2 = _g.s;
 																					if(bh_multianim_MacroManimParser.isKeyword(s2,"external")) {
 																						this.advance();
@@ -5999,7 +6040,7 @@ bh_multianim_MacroManimParser.prototype = {
 																					this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
 																					var extRef = null;
 																					var _g = this.tokens[this.tpos].type;
-																					if(_g._hx_index == 31) {
+																					if(_g._hx_index == 32) {
 																						var s2 = _g.s;
 																						if(bh_multianim_MacroManimParser.isKeyword(s2,"external")) {
 																							this.advance();
@@ -6023,7 +6064,7 @@ bh_multianim_MacroManimParser.prototype = {
 																						this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
 																						var type;
 																						var _g = this.tokens[this.tpos].type;
-																						if(_g._hx_index == 31) {
+																						if(_g._hx_index == 32) {
 																							var _g2 = _g.s;
 																							var s2 = _g2;
 																							if(bh_multianim_MacroManimParser.isKeyword(s2,"error")) {
@@ -6044,7 +6085,7 @@ bh_multianim_MacroManimParser.prototype = {
 																						this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
 																						var source = null;
 																						var _g = this.tokens[this.tpos].type;
-																						if(_g._hx_index == 31) {
+																						if(_g._hx_index == 32) {
 																							var _g2 = _g.s;
 																							var s2 = _g2;
 																							if(bh_multianim_MacroManimParser.isKeyword(s2,"callback")) {
@@ -6105,7 +6146,7 @@ bh_multianim_MacroManimParser.prototype = {
 																								if(bh_multianim_MacroManimParser.isKeyword(s,"stateanim")) {
 																									this.advance();
 																									var _g = this.tokens[this.tpos].type;
-																									if(_g._hx_index == 31) {
+																									if(_g._hx_index == 32) {
 																										var s2 = _g.s;
 																										if(bh_multianim_MacroManimParser.isKeyword(s2,"construct")) {
 																											this.advance();
@@ -6114,7 +6155,7 @@ bh_multianim_MacroManimParser.prototype = {
 																											this.eatComma();
 																											var externallyDriven = false;
 																											var _g = this.tokens[this.tpos].type;
-																											if(_g._hx_index == 31) {
+																											if(_g._hx_index == 32) {
 																												var s3 = _g.s;
 																												if(bh_multianim_MacroManimParser.isKeyword(s3,"externallydriven")) {
 																													this.advance();
@@ -6181,7 +6222,7 @@ bh_multianim_MacroManimParser.prototype = {
 																												case 1:
 																													this.advance();
 																													var _g = this.tokens[this.tpos].type;
-																													if(_g._hx_index == 31) {
+																													if(_g._hx_index == 32) {
 																														var _g2 = _g.s;
 																														var s2 = _g2;
 																														if(bh_multianim_MacroManimParser.isKeyword(s2,"2d")) {
@@ -6542,7 +6583,8 @@ bh_multianim_MacroManimParser.prototype = {
 					}
 				}
 			}
-		} else {
+			break;
+		default:
 			node = this.error("expected valid node type, got " + Std.string(this.tokens[this.tpos].type));
 		}
 		if(hasFlowProps) {
@@ -6629,7 +6671,7 @@ bh_multianim_MacroManimParser.prototype = {
 	}
 	,parseRepeatIterator: function(defs) {
 		var _g = this.tokens[this.tpos].type;
-		if(_g._hx_index == 31) {
+		if(_g._hx_index == 32) {
 			var _g1 = _g.s;
 			var s = _g1;
 			if(bh_multianim_MacroManimParser.isKeyword(s,"step")) {
@@ -6684,7 +6726,7 @@ bh_multianim_MacroManimParser.prototype = {
 							this.advance();
 							this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
 							var _g = this.tokens[this.tpos].type;
-							if(_g._hx_index == 31) {
+							if(_g._hx_index == 32) {
 								var fromId = _g.s;
 								if(bh_multianim_MacroManimParser.isKeyword(fromId,"from")) {
 									this.advance();
@@ -6784,21 +6826,21 @@ bh_multianim_MacroManimParser.prototype = {
 	,parseTilesIteratorArgs: function(bitmapVar,defs) {
 		var _g = this.tokens[this.tpos].type;
 		switch(_g._hx_index) {
-		case 31:
+		case 32:
 			var s = _g.s;
 			this.advance();
 			this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
 			var sheetName = this.expectIdentifierOrString();
 			this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
 			return bh_multianim_RepeatType.TilesIterator(bitmapVar,s,sheetName,null);
-		case 33:
+		case 34:
 			var tilename = _g.s;
 			this.advance();
 			this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
 			var sheetName = this.expectIdentifierOrString();
 			this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
 			return bh_multianim_RepeatType.TilesIterator(bitmapVar,tilename,sheetName,null);
-		case 34:
+		case 35:
 			var sheetName = _g.s;
 			this.advance();
 			if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TComma)) {
@@ -6817,14 +6859,14 @@ bh_multianim_MacroManimParser.prototype = {
 		while(!this.match(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyClosed)) {
 			var _g = this.tokens[this.tpos].type;
 			switch(_g._hx_index) {
-			case 28:
+			case 29:
 				var _g1 = _g.s;
 				var rate = this.parseFloatOrReference();
 				this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
 				this.parseParticleRateAction(rate,p);
 				this.eatSemicolon();
 				continue;
-			case 29:
+			case 30:
 				var _g2 = _g.s;
 				var rate1 = this.parseFloatOrReference();
 				this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
@@ -7027,7 +7069,7 @@ bh_multianim_MacroManimParser.prototype = {
 			while(_g < 2) {
 				var _ = _g++;
 				var _g1 = this.tokens[this.tpos].type;
-				if(_g1._hx_index == 31) {
+				if(_g1._hx_index == 32) {
 					var _g2 = _g1.s;
 					var s = _g2;
 					if(bh_multianim_MacroManimParser.isKeyword(s,"color")) {
@@ -7038,7 +7080,7 @@ bh_multianim_MacroManimParser.prototype = {
 						case 10:
 							color = this.parseColorOrReference();
 							break;
-						case 33:
+						case 34:
 							var _g4 = _g3.s;
 							color = this.parseColorOrReference();
 							break;
@@ -7058,12 +7100,12 @@ bh_multianim_MacroManimParser.prototype = {
 							this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
 							var _g5 = this.tokens[this.tpos].type;
 							switch(_g5._hx_index) {
-							case 33:
+							case 34:
 								var r = _g5.s;
 								this.advance();
 								fontName = bh_multianim_ReferenceableValue.RVReference(r);
 								break;
-							case 34:
+							case 35:
 								var s2 = _g5.s;
 								this.advance();
 								fontName = bh_multianim_ReferenceableValue.RVString(s2);
@@ -7103,7 +7145,7 @@ bh_multianim_MacroManimParser.prototype = {
 			var valign = null;
 			var spacing = null;
 			var _g = this.tokens[this.tpos].type;
-			if(_g._hx_index == 31) {
+			if(_g._hx_index == 32) {
 				var s = _g.s;
 				if(s == "top" || s == "middle" || s == "bottom") {
 					this.advance();
@@ -7112,11 +7154,11 @@ bh_multianim_MacroManimParser.prototype = {
 			}
 			var _g1 = this.tokens[this.tpos].type;
 			switch(_g1._hx_index) {
-			case 28:
+			case 29:
 				var _g2 = _g1.s;
 				spacing = this.parseFloat_();
 				break;
-			case 29:
+			case 30:
 				var _g3 = _g1.s;
 				spacing = this.parseFloat_();
 				break;
@@ -7130,7 +7172,7 @@ bh_multianim_MacroManimParser.prototype = {
 		var fill = false;
 		var mode = bh_multianim_AutoFitMode.AFWidth;
 		var _g = this.tokens[this.tpos].type;
-		if(_g._hx_index == 31) {
+		if(_g._hx_index == 32) {
 			var s = _g.s;
 			if(bh_multianim_MacroManimParser.isKeyword(s,"fill")) {
 				this.advance();
@@ -7138,7 +7180,7 @@ bh_multianim_MacroManimParser.prototype = {
 			}
 		}
 		var _g = this.tokens[this.tpos].type;
-		if(_g._hx_index == 31) {
+		if(_g._hx_index == 32) {
 			var _g1 = _g.s;
 			var s = _g1;
 			if(bh_multianim_MacroManimParser.isKeyword(s,"width")) {
@@ -7189,7 +7231,7 @@ bh_multianim_MacroManimParser.prototype = {
 			var curveName = null;
 			var inlineEasing = null;
 			var _g = this.tokens[this.tpos].type;
-			if(_g._hx_index == 31) {
+			if(_g._hx_index == 32) {
 				var s = _g.s;
 				var easing = bh_multianim_MacroManimParser.tryMatchEasingName(s);
 				if(easing != null) {
@@ -7209,7 +7251,7 @@ bh_multianim_MacroManimParser.prototype = {
 		_hx_loop1: while(true) {
 			var _g = this.tokens[this.tpos].type;
 			switch(_g._hx_index) {
-			case 31:
+			case 32:
 				var s = _g.s;
 				if(bh_multianim_MacroManimParser.isKeyword(s,"file") || bh_multianim_MacroManimParser.isKeyword(s,"generated") || bh_multianim_MacroManimParser.isKeyword(s,"sheet")) {
 					tiles.push(this.parseTileSource());
@@ -7217,7 +7259,7 @@ bh_multianim_MacroManimParser.prototype = {
 					break _hx_loop1;
 				}
 				break;
-			case 33:
+			case 34:
 				var _g1 = _g.s;
 				tiles.push(this.parseTileSource());
 				break;
@@ -7229,7 +7271,7 @@ bh_multianim_MacroManimParser.prototype = {
 	}
 	,parseEmitMode: function() {
 		var _g = this.tokens[this.tpos].type;
-		if(_g._hx_index == 31) {
+		if(_g._hx_index == 32) {
 			var _g1 = _g.s;
 			var s = _g1;
 			if(bh_multianim_MacroManimParser.isKeyword(s,"point")) {
@@ -7372,7 +7414,7 @@ bh_multianim_MacroManimParser.prototype = {
 				this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
 			}
 			var _g = this.tokens[this.tpos].type;
-			if(_g._hx_index == 31) {
+			if(_g._hx_index == 32) {
 				var _g1 = _g.s;
 				var s = _g1;
 				if(bh_multianim_MacroManimParser.isKeyword(s,"turbulence")) {
@@ -7467,7 +7509,7 @@ bh_multianim_MacroManimParser.prototype = {
 	}
 	,parseBoundsMode: function() {
 		var _g = this.tokens[this.tpos].type;
-		if(_g._hx_index == 31) {
+		if(_g._hx_index == 32) {
 			var _g1 = _g.s;
 			var s = _g1;
 			if(bh_multianim_MacroManimParser.isKeyword(s,"kill")) {
@@ -7505,7 +7547,7 @@ bh_multianim_MacroManimParser.prototype = {
 		p.boundsMode = this.parseBoundsMode();
 		while(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TComma)) {
 			var _g = this.tokens[this.tpos].type;
-			if(_g._hx_index == 31) {
+			if(_g._hx_index == 32) {
 				var _g1 = _g.s;
 				var s = _g1;
 				if(bh_multianim_MacroManimParser.isKeyword(s,"box")) {
@@ -7648,7 +7690,7 @@ bh_multianim_MacroManimParser.prototype = {
 			switch(_g._hx_index) {
 			case 2:
 				return params;
-			case 31:
+			case 32:
 				var name = _g.s;
 				this.advance();
 				this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TArrow);
@@ -7673,7 +7715,7 @@ bh_multianim_MacroManimParser.prototype = {
 					return metadata;
 				}
 				break;
-			case 31:
+			case 32:
 				var name = _g.s;
 				this.advance();
 				if(bh_multianim_MacroManimParser.isKeyword(name,"events")) {
@@ -7688,7 +7730,7 @@ bh_multianim_MacroManimParser.prototype = {
 				}
 				this.eatComma();
 				break;
-			case 33:
+			case 34:
 				var name1 = _g.s;
 				this.advance();
 				metadata.push(this.parseMetadataValue(bh_multianim_ReferenceableValue.RVReference(name1)));
@@ -7780,7 +7822,7 @@ bh_multianim_MacroManimParser.prototype = {
 	}
 	,parseFlowOrientation: function() {
 		var _g = this.tokens[this.tpos].type;
-		if(_g._hx_index == 31) {
+		if(_g._hx_index == 32) {
 			var _g1 = _g.s;
 			var s = _g1;
 			if(bh_multianim_MacroManimParser.isKeyword(s,"horizontal")) {
@@ -7807,7 +7849,7 @@ bh_multianim_MacroManimParser.prototype = {
 	}
 	,parseFlowOverflow: function() {
 		var _g = this.tokens[this.tpos].type;
-		if(_g._hx_index == 31) {
+		if(_g._hx_index == 32) {
 			var _g1 = _g.s;
 			var s = _g1;
 			if(bh_multianim_MacroManimParser.isKeyword(s,"expand")) {
@@ -7840,7 +7882,7 @@ bh_multianim_MacroManimParser.prototype = {
 	}
 	,parseFlowAlign: function() {
 		var _g = this.tokens[this.tpos].type;
-		if(_g._hx_index == 31) {
+		if(_g._hx_index == 32) {
 			var _g1 = _g.s;
 			var s = _g1;
 			if(bh_multianim_MacroManimParser.isKeyword(s,"left")) {
@@ -7892,7 +7934,7 @@ bh_multianim_MacroManimParser.prototype = {
 			case 14:
 				this.advance();
 				continue;
-			case 31:
+			case 32:
 				var _g1 = _g.s;
 				var s = _g1;
 				if(bh_multianim_MacroManimParser.isKeyword(s,"pos") || bh_multianim_MacroManimParser.isKeyword(s,"position")) {
@@ -7913,7 +7955,7 @@ bh_multianim_MacroManimParser.prototype = {
 						}
 						var gridName = null;
 						var _g2 = this.tokens[this.tpos].type;
-						if(_g2._hx_index == 32) {
+						if(_g2._hx_index == 33) {
 							var n = _g2.s;
 							this.advance();
 							gridName = n;
@@ -7945,7 +7987,7 @@ bh_multianim_MacroManimParser.prototype = {
 								}
 								var hexName = null;
 								var _g3 = this.tokens[this.tpos].type;
-								if(_g3._hx_index == 32) {
+								if(_g3._hx_index == 33) {
 									var n1 = _g3.s;
 									this.advance();
 									hexName = n1;
@@ -8133,14 +8175,14 @@ bh_multianim_MacroManimParser.prototype = {
 					}
 				}
 				break;
-			case 32:
+			case 33:
 				var name = _g.s;
 				this.advance();
 				this.currentName = name;
 				var nameType = bh_multianim_UpdatableNameType.UNTObject(name);
 				if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TOpen)) {
 					var _g8 = this.tokens[this.tpos].type;
-					if(_g8._hx_index == 31) {
+					if(_g8._hx_index == 32) {
 						var s11 = _g8.s;
 						if(bh_multianim_MacroManimParser.isKeyword(s11,"updatable")) {
 							this.advance();
@@ -8150,12 +8192,12 @@ bh_multianim_MacroManimParser.prototype = {
 					this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
 				} else if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TBracketOpen)) {
 					var _g9 = this.tokens[this.tpos].type;
-					if(_g9._hx_index == 33) {
+					if(_g9._hx_index == 34) {
 						var indexVar1 = _g9.s;
 						this.advance();
 						if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TComma)) {
 							var _g10 = this.tokens[this.tpos].type;
-							if(_g10._hx_index == 33) {
+							if(_g10._hx_index == 34) {
 								var indexVar2 = _g10.s;
 								this.advance();
 								if(this.scopeVars == null || this.scopeVars.indexOf(indexVar1) == -1) {
@@ -8274,6 +8316,121 @@ bh_multianim_MacroManimParser.prototype = {
 			}
 		}
 	}
+	,parseSwitchArms: function(parent,paramName,defs) {
+		var arms = [];
+		while(!this.match(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyClosed)) {
+			if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TSemiColon)) {
+				continue;
+			}
+			var pattern = null;
+			var _g = this.tokens[this.tpos].type;
+			switch(_g._hx_index) {
+			case 22:
+				this.advance();
+				var val = this.parseIntegerOrReference();
+				pattern = bh_multianim_ConditionalValues.CoRange(null,val,false,true);
+				break;
+			case 23:
+				this.advance();
+				var val1 = this.parseIntegerOrReference();
+				pattern = bh_multianim_ConditionalValues.CoRange(val1,null,true,false);
+				break;
+			case 24:
+				this.advance();
+				var val2 = this.parseIntegerOrReference();
+				pattern = bh_multianim_ConditionalValues.CoRange(null,val2,false,false);
+				break;
+			case 25:
+				this.advance();
+				var val3 = this.parseIntegerOrReference();
+				pattern = bh_multianim_ConditionalValues.CoRange(val3,null,false,false);
+				break;
+			case 32:
+				var s = _g.s;
+				if(bh_multianim_MacroManimParser.isKeyword(s,"default")) {
+					this.advance();
+				} else {
+					var values = [];
+					values.push(this.parseSwitchArmValue());
+					if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TDoubleDot)) {
+						var toStr = this.parseSwitchArmValue();
+						pattern = bh_multianim_ConditionalValues.CoRange(this.parseRV(values[0]),this.parseRV(toStr),false,false);
+					} else {
+						while(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TPipe)) values.push(this.parseSwitchArmValue());
+						pattern = bh_multianim_ConditionalValues.CoEnums(values);
+					}
+				}
+				break;
+			default:
+				var values1 = [];
+				values1.push(this.parseSwitchArmValue());
+				if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TDoubleDot)) {
+					var toStr1 = this.parseSwitchArmValue();
+					pattern = bh_multianim_ConditionalValues.CoRange(this.parseRV(values1[0]),this.parseRV(toStr1),false,false);
+				} else {
+					while(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TPipe)) values1.push(this.parseSwitchArmValue());
+					pattern = bh_multianim_ConditionalValues.CoEnums(values1);
+				}
+			}
+			var tempContainer = this.createNode(bh_multianim_NodeType.POINT,parent,bh_multianim_NodeConditionalValues.NoConditional,null,null,null,null,-1,bh_multianim_UpdatableNameType.UNTObject(null));
+			switch(this.tokens[this.tpos].type._hx_index) {
+			case 5:
+				this.advance();
+				this.parseNodes(tempContainer,defs);
+				break;
+			case 11:
+				this.advance();
+				var armNode = this.parseNode(bh_multianim_UpdatableNameType.UNTObject(null),tempContainer,defs);
+				if(armNode != null) {
+					tempContainer.children.push(armNode);
+				}
+				break;
+			default:
+				this.error("expected : or { after switch arm pattern");
+			}
+			arms.push({ pattern : pattern, children : tempContainer.children});
+		}
+		if(arms.length == 0) {
+			this.error("@switch requires at least one arm");
+		}
+		var switchNode = this.createNode(bh_multianim_NodeType.SWITCH(paramName,arms),parent,bh_multianim_NodeConditionalValues.NoConditional,null,null,null,null,-1,bh_multianim_UpdatableNameType.UNTObject(null));
+		parent.children.push(switchNode);
+	}
+	,parseSwitchArmValue: function() {
+		var _g = this.tokens[this.tpos].type;
+		switch(_g._hx_index) {
+		case 20:
+			this.advance();
+			var _g1 = this.tokens[this.tpos].type;
+			if(_g1._hx_index == 29) {
+				var n = _g1.s;
+				this.advance();
+				return "-" + n;
+			} else {
+				this.error("expected integer after -");
+				return "";
+			}
+			break;
+		case 29:
+			var n = _g.s;
+			this.advance();
+			return n;
+		case 32:
+			var s = _g.s;
+			this.advance();
+			return s;
+		default:
+			this.error("expected value in switch arm, got " + Std.string(this.tokens[this.tpos].type));
+			return "";
+		}
+	}
+	,parseRV: function(s) {
+		var i = Std.parseInt(s);
+		if(i != null) {
+			return bh_multianim_ReferenceableValue.RVInteger(i);
+		}
+		return bh_multianim_ReferenceableValue.RVInteger(0);
+	}
 	,parseChildNode: function(node,defs) {
 		var newNode = this.parseNode(bh_multianim_UpdatableNameType.UNTObject(null),node,defs);
 		if(newNode != null) {
@@ -8302,7 +8459,7 @@ bh_multianim_MacroManimParser.prototype = {
 			var saved = this.tpos;
 			this.advance();
 			var _g1 = this.tokens[this.tpos].type;
-			if(_g1._hx_index == 28) {
+			if(_g1._hx_index == 29) {
 				var n = _g1.s;
 				this.advance();
 				return -this.stringToInt(n);
@@ -8311,7 +8468,7 @@ bh_multianim_MacroManimParser.prototype = {
 				return null;
 			}
 			break;
-		case 28:
+		case 29:
 			var n = _g.s;
 			this.advance();
 			return this.stringToInt(n);
@@ -8321,21 +8478,21 @@ bh_multianim_MacroManimParser.prototype = {
 	}
 	,parse: function() {
 		var _g = this.tokens[this.tpos].type;
-		if(_g._hx_index == 31) {
+		if(_g._hx_index == 32) {
 			var s = _g.s;
 			if(bh_multianim_MacroManimParser.isKeyword(s,"version")) {
 				this.advance();
 				this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
 				var _g = this.tokens[this.tpos].type;
 				switch(_g._hx_index) {
-				case 28:
+				case 29:
 					var v = _g.s;
 					this.advance();
 					if(v != "1") {
 						this.error("version 1.0 expected, got " + v);
 					}
 					break;
-				case 29:
+				case 30:
 					var v = _g.s;
 					this.advance();
 					if(v != "1.0") {
@@ -8369,7 +8526,7 @@ bh_multianim_MacroManimParser.prototype = {
 			case 14:
 				this.advance();
 				break;
-			case 31:
+			case 32:
 				var _g1 = _g.s;
 				var s = _g1;
 				if(bh_multianim_MacroManimParser.isKeyword(s,"rect")) {
@@ -8425,15 +8582,15 @@ bh_multianim_MacroManimParser.prototype = {
 	,parseGraphicsStyle: function() {
 		var _g = this.tokens[this.tpos].type;
 		switch(_g._hx_index) {
-		case 28:
-			var n = _g.s;
-			this.advance();
-			return bh_multianim_GraphicsStyle.GSLineWidth(bh_multianim_ReferenceableValue.RVInteger(this.stringToInt(n)));
 		case 29:
 			var n = _g.s;
 			this.advance();
+			return bh_multianim_GraphicsStyle.GSLineWidth(bh_multianim_ReferenceableValue.RVInteger(this.stringToInt(n)));
+		case 30:
+			var n = _g.s;
+			this.advance();
 			return bh_multianim_GraphicsStyle.GSLineWidth(bh_multianim_ReferenceableValue.RVFloat(this.stringToFloat(n)));
-		case 31:
+		case 32:
 			var s = _g.s;
 			if(bh_multianim_MacroManimParser.isKeyword(s,"filled")) {
 				this.advance();
@@ -8563,7 +8720,7 @@ bh_multianim_MacroManimParser.prototype = {
 				break;
 			}
 			var _g = this.tokens[this.tpos].type;
-			if(_g._hx_index == 31) {
+			if(_g._hx_index == 32) {
 				var _g1 = _g.s;
 				var s = _g1;
 				if(bh_multianim_MacroManimParser.isKeyword(s,"line")) {
@@ -8628,7 +8785,7 @@ bh_multianim_MacroManimParser.prototype = {
 			var stateName = this.expectIdentifierOrString();
 			this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TArrow);
 			var _g = this.tokens[this.tpos].type;
-			if(_g._hx_index == 31) {
+			if(_g._hx_index == 32) {
 				var s = _g.s;
 				if(bh_multianim_MacroManimParser.isKeyword(s,"sheet")) {
 					this.advance();
@@ -8648,7 +8805,7 @@ bh_multianim_MacroManimParser.prototype = {
 			var center = false;
 			while(true) {
 				var _g1 = this.tokens[this.tpos].type;
-				if(_g1._hx_index == 31) {
+				if(_g1._hx_index == 32) {
 					var _g2 = _g1.s;
 					var s1 = _g2;
 					if(bh_multianim_MacroManimParser.isKeyword(s1,"loop")) {
@@ -8678,7 +8835,7 @@ bh_multianim_MacroManimParser.prototype = {
 		while(!this.match(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyClosed)) {
 			var pathName;
 			var _g = this.tokens[this.tpos].type;
-			if(_g._hx_index == 32) {
+			if(_g._hx_index == 33) {
 				var s = _g.s;
 				this.advance();
 				pathName = s;
@@ -8686,7 +8843,7 @@ bh_multianim_MacroManimParser.prototype = {
 				pathName = this.expectIdentifierOrString();
 			}
 			var _g1 = this.tokens[this.tpos].type;
-			if(_g1._hx_index == 31) {
+			if(_g1._hx_index == 32) {
 				var s1 = _g1.s;
 				if(bh_multianim_MacroManimParser.isKeyword(s1,"path")) {
 					this.advance();
@@ -8704,7 +8861,7 @@ bh_multianim_MacroManimParser.prototype = {
 					break;
 				}
 				var _g2 = this.tokens[this.tpos].type;
-				if(_g2._hx_index == 31) {
+				if(_g2._hx_index == 32) {
 					var _g3 = _g2.s;
 					var s2 = _g3;
 					if(bh_multianim_MacroManimParser.isKeyword(s2,"forward")) {
@@ -8813,7 +8970,7 @@ bh_multianim_MacroManimParser.prototype = {
 																		pathElements.push(bh_multianim_ParsedPaths.Bezier2To(end2,control1,bh_multianim_PathCoordinateMode.PCMAbsolute,null));
 																	} else if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TComma)) {
 																		var _g4 = this.tokens[this.tpos].type;
-																		if(_g4._hx_index == 31) {
+																		if(_g4._hx_index == 32) {
 																			var s21 = _g4.s;
 																			if(bh_multianim_MacroManimParser.isKeyword(s21,"smoothing")) {
 																				var smoothing = this.parsePathSmoothing();
@@ -8855,7 +9012,7 @@ bh_multianim_MacroManimParser.prototype = {
 																			pathElements.push(bh_multianim_ParsedPaths.Bezier2To(end3,control11,bezierMode,null));
 																		} else if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TComma)) {
 																			var _g5 = this.tokens[this.tpos].type;
-																			if(_g5._hx_index == 31) {
+																			if(_g5._hx_index == 32) {
 																				var s22 = _g5.s;
 																				if(bh_multianim_MacroManimParser.isKeyword(s22,"smoothing")) {
 																					var smoothing3 = this.parsePathSmoothing();
@@ -8909,7 +9066,7 @@ bh_multianim_MacroManimParser.prototype = {
 	}
 	,parseCoordinateMode: function() {
 		var _g = this.tokens[this.tpos].type;
-		if(_g._hx_index == 31) {
+		if(_g._hx_index == 32) {
 			var _g1 = _g.s;
 			var s = _g1;
 			if(bh_multianim_MacroManimParser.isKeyword(s,"absolute")) {
@@ -8932,13 +9089,13 @@ bh_multianim_MacroManimParser.prototype = {
 	}
 	,parsePathSmoothing: function() {
 		var _g = this.tokens[this.tpos].type;
-		if(_g._hx_index == 31) {
+		if(_g._hx_index == 32) {
 			var s = _g.s;
 			if(bh_multianim_MacroManimParser.isKeyword(s,"smoothing")) {
 				this.advance();
 				this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
 				var _g = this.tokens[this.tpos].type;
-				if(_g._hx_index == 31) {
+				if(_g._hx_index == 32) {
 					var _g1 = _g.s;
 					var s2 = _g1;
 					if(bh_multianim_MacroManimParser.isKeyword(s2,"auto")) {
@@ -8974,7 +9131,7 @@ bh_multianim_MacroManimParser.prototype = {
 		var pingPong = false;
 		while(!this.match(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyClosed)) {
 			var _g = this.tokens[this.tpos].type;
-			if(_g._hx_index == 31) {
+			if(_g._hx_index == 32) {
 				var _g1 = _g.s;
 				var s = _g1;
 				if(bh_multianim_MacroManimParser.isKeyword(s,"type")) {
@@ -9032,22 +9189,22 @@ bh_multianim_MacroManimParser.prototype = {
 											var at;
 											var _g2 = this.tokens[this.tpos].type;
 											switch(_g2._hx_index) {
-											case 28:
+											case 29:
 												var _g3 = _g2.s;
 												var rate = this.parseFloatOrReference();
 												at = bh_multianim_AnimatedPathTime.Rate(rate);
 												break;
-											case 29:
+											case 30:
 												var _g4 = _g2.s;
 												var rate1 = this.parseFloatOrReference();
 												at = bh_multianim_AnimatedPathTime.Rate(rate1);
 												break;
-											case 31:
+											case 32:
 												var _g5 = _g2.s;
 												var cpName = this.expectIdentifierOrString();
 												at = bh_multianim_AnimatedPathTime.Checkpoint(cpName);
 												break;
-											case 34:
+											case 35:
 												var _g6 = _g2.s;
 												var cpName1 = this.expectIdentifierOrString();
 												at = bh_multianim_AnimatedPathTime.Checkpoint(cpName1);
@@ -9069,22 +9226,22 @@ bh_multianim_MacroManimParser.prototype = {
 				var at1;
 				var _g7 = this.tokens[this.tpos].type;
 				switch(_g7._hx_index) {
-				case 28:
+				case 29:
 					var _g8 = _g7.s;
 					var rate2 = this.parseFloatOrReference();
 					at1 = bh_multianim_AnimatedPathTime.Rate(rate2);
 					break;
-				case 29:
+				case 30:
 					var _g9 = _g7.s;
 					var rate3 = this.parseFloatOrReference();
 					at1 = bh_multianim_AnimatedPathTime.Rate(rate3);
 					break;
-				case 31:
+				case 32:
 					var _g10 = _g7.s;
 					var cpName2 = this.expectIdentifierOrString();
 					at1 = bh_multianim_AnimatedPathTime.Checkpoint(cpName2);
 					break;
-				case 34:
+				case 35:
 					var _g11 = _g7.s;
 					var cpName3 = this.expectIdentifierOrString();
 					at1 = bh_multianim_AnimatedPathTime.Checkpoint(cpName3);
@@ -9161,7 +9318,7 @@ bh_multianim_MacroManimParser.prototype = {
 	,parseAnimatedPathActions: function(at,curveAssignments,events) {
 		while(true) {
 			var _g = this.tokens[this.tpos].type;
-			if(_g._hx_index == 31) {
+			if(_g._hx_index == 32) {
 				var _g1 = _g.s;
 				var s = _g1;
 				if(bh_multianim_MacroManimParser.isKeyword(s,"event")) {
@@ -9248,7 +9405,7 @@ bh_multianim_MacroManimParser.prototype = {
 	}
 	,parseEasingType: function() {
 		var _g = this.tokens[this.tpos].type;
-		if(_g._hx_index == 31) {
+		if(_g._hx_index == 32) {
 			var _g1 = _g.s;
 			var s = _g1;
 			if(bh_multianim_MacroManimParser.isKeyword(s,"linear")) {
@@ -9344,7 +9501,7 @@ bh_multianim_MacroManimParser.prototype = {
 	}
 	,parseTransitionType: function() {
 		var _g = this.tokens[this.tpos].type;
-		if(_g._hx_index == 31) {
+		if(_g._hx_index == 32) {
 			var _g1 = _g.s;
 			var s = _g1;
 			if(bh_multianim_MacroManimParser.isKeyword(s,"none")) {
@@ -9397,14 +9554,14 @@ bh_multianim_MacroManimParser.prototype = {
 												eas = this.parseEasingType();
 											}
 											break;
-										case 28:
+										case 29:
 											var _g1 = _g.s;
 											dist = this.parseFloat_();
 											if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TComma)) {
 												eas = this.parseEasingType();
 											}
 											break;
-										case 29:
+										case 30:
 											var _g1 = _g.s;
 											dist = this.parseFloat_();
 											if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TComma)) {
@@ -9441,7 +9598,7 @@ bh_multianim_MacroManimParser.prototype = {
 	}
 	,parseTransitionDirection: function() {
 		var _g = this.tokens[this.tpos].type;
-		if(_g._hx_index == 31) {
+		if(_g._hx_index == 32) {
 			var _g1 = _g.s;
 			var s = _g1;
 			if(bh_multianim_MacroManimParser.isKeyword(s,"left")) {
@@ -9477,7 +9634,7 @@ bh_multianim_MacroManimParser.prototype = {
 		while(!this.match(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyClosed)) {
 			var curveName;
 			var _g = this.tokens[this.tpos].type;
-			if(_g._hx_index == 32) {
+			if(_g._hx_index == 33) {
 				var s = _g.s;
 				this.advance();
 				curveName = s;
@@ -9485,7 +9642,7 @@ bh_multianim_MacroManimParser.prototype = {
 				curveName = this.expectIdentifierOrString();
 			}
 			var _g1 = this.tokens[this.tpos].type;
-			if(_g1._hx_index == 31) {
+			if(_g1._hx_index == 32) {
 				var s1 = _g1.s;
 				if(bh_multianim_MacroManimParser.isKeyword(s1,"curve")) {
 					this.advance();
@@ -9516,7 +9673,7 @@ bh_multianim_MacroManimParser.prototype = {
 					segments.push(this.parseCurveSegment(explicit));
 					segExplicit.push(explicit[0]);
 					break;
-				case 31:
+				case 32:
 					var _g3 = _g2.s;
 					var s2 = _g3;
 					if(bh_multianim_MacroManimParser.isKeyword(s2,"easing")) {
@@ -9644,14 +9801,14 @@ bh_multianim_MacroManimParser.prototype = {
 		var allowPartialMapping = false;
 		while(!this.match(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyClosed)) {
 			var _g = this.tokens[this.tpos].type;
-			if(_g._hx_index == 31) {
+			if(_g._hx_index == 32) {
 				var _g1 = _g.s;
 				var s = _g1;
 				if(bh_multianim_MacroManimParser.isKeyword(s,"format")) {
 					this.advance();
 					this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
 					var _g2 = this.tokens[this.tpos].type;
-					if(_g2._hx_index == 31) {
+					if(_g2._hx_index == 32) {
 						var _g3 = _g2.s;
 						var s2 = _g3;
 						if(bh_multianim_MacroManimParser.isKeyword(s2,"cross")) {
@@ -9677,7 +9834,7 @@ bh_multianim_MacroManimParser.prototype = {
 						var sheet = this.parseStringOrReference();
 						this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
 						var _g4 = this.tokens[this.tpos].type;
-						if(_g4._hx_index == 31) {
+						if(_g4._hx_index == 32) {
 							var _g5 = _g4.s;
 							var s22 = _g5;
 							if(bh_multianim_MacroManimParser.isKeyword(s22,"prefix")) {
@@ -9822,7 +9979,7 @@ bh_multianim_MacroManimParser.prototype = {
 		this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
 		var source;
 		var _g = this.tokens[this.tpos].type;
-		if(_g._hx_index == 31) {
+		if(_g._hx_index == 32) {
 			var s = _g.s;
 			if(bh_multianim_MacroManimParser.isKeyword(s,"sheet")) {
 				this.advance();
@@ -9856,7 +10013,7 @@ bh_multianim_MacroManimParser.prototype = {
 			var entry = { name : name, x : x, y : y, w : w, h : h};
 			while(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TComma)) {
 				var _g = this.tokens[this.tpos].type;
-				if(_g._hx_index == 31) {
+				if(_g._hx_index == 32) {
 					var _g1 = _g.s;
 					var s = _g1;
 					if(bh_multianim_MacroManimParser.isKeyword(s,"offset")) {
@@ -9915,11 +10072,11 @@ bh_multianim_MacroManimParser.prototype = {
 				break;
 			}
 			var _g = this.tokens[this.tpos].type;
-			if(_g._hx_index == 32) {
+			if(_g._hx_index == 33) {
 				var name = _g.s;
 				this.advance();
 				var _g1 = this.tokens[this.tpos].type;
-				if(_g1._hx_index == 31) {
+				if(_g1._hx_index == 32) {
 					var _g2 = _g1.s;
 					var s = _g2;
 					if(bh_multianim_MacroManimParser.isKeyword(s,"record")) {
@@ -10024,7 +10181,7 @@ bh_multianim_MacroManimParser.prototype = {
 	}
 	,parseDataField: function(fieldName,enums,records) {
 		var _g = this.tokens[this.tpos].type;
-		if(_g._hx_index == 31) {
+		if(_g._hx_index == 32) {
 			var _g1 = _g.s;
 			var s = _g1;
 			if(bh_multianim_MacroManimParser.isKeyword(s,"true") || bh_multianim_MacroManimParser.isKeyword(s,"false")) {
@@ -10082,11 +10239,11 @@ bh_multianim_MacroManimParser.prototype = {
 			this.advance();
 			var _g1 = this.tokens[this.tpos].type;
 			switch(_g1._hx_index) {
-			case 28:
+			case 29:
 				var n = _g1.s;
 				this.advance();
 				return { name : fieldName, type : bh_multianim_DataValueType.DVTInt, value : bh_multianim_DataValue.DVInt(-this.stringToInt(n))};
-			case 29:
+			case 30:
 				var n = _g1.s;
 				this.advance();
 				return { name : fieldName, type : bh_multianim_DataValueType.DVTFloat, value : bh_multianim_DataValue.DVFloat(-this.stringToFloat(n))};
@@ -10094,15 +10251,15 @@ bh_multianim_MacroManimParser.prototype = {
 				return this.error("expected number after minus");
 			}
 			break;
-		case 28:
-			var n = _g.s;
-			this.advance();
-			return { name : fieldName, type : bh_multianim_DataValueType.DVTInt, value : bh_multianim_DataValue.DVInt(this.stringToInt(n))};
 		case 29:
 			var n = _g.s;
 			this.advance();
+			return { name : fieldName, type : bh_multianim_DataValueType.DVTInt, value : bh_multianim_DataValue.DVInt(this.stringToInt(n))};
+		case 30:
+			var n = _g.s;
+			this.advance();
 			return { name : fieldName, type : bh_multianim_DataValueType.DVTFloat, value : bh_multianim_DataValue.DVFloat(this.stringToFloat(n))};
-		case 34:
+		case 35:
 			var s = _g.s;
 			this.advance();
 			return { name : fieldName, type : bh_multianim_DataValueType.DVTString, value : bh_multianim_DataValue.DVString(s)};
@@ -10159,7 +10316,7 @@ bh_multianim_MacroManimParser.prototype = {
 			return bh_multianim_DataValue.DVFloat(this.parseFloat_());
 		case 2:
 			var _g = this.tokens[this.tpos].type;
-			if(_g._hx_index == 34) {
+			if(_g._hx_index == 35) {
 				var s = _g.s;
 				this.advance();
 				return bh_multianim_DataValue.DVString(s);
@@ -10224,12 +10381,12 @@ bh_multianim_MacroManimParser.prototype = {
 				this.advance();
 				var _g1 = this.tokens[this.tpos].type;
 				switch(_g1._hx_index) {
-				case 28:
+				case 29:
 					var n = _g1.s;
 					this.advance();
 					result.push(bh_multianim_DataValue.DVInt(-this.stringToInt(n)));
 					break;
-				case 29:
+				case 30:
 					var n1 = _g1.s;
 					this.advance();
 					result.push(bh_multianim_DataValue.DVFloat(-this.stringToFloat(n1)));
@@ -10238,17 +10395,17 @@ bh_multianim_MacroManimParser.prototype = {
 					this.error("expected number after minus");
 				}
 				break;
-			case 28:
+			case 29:
 				var n2 = _g.s;
 				this.advance();
 				result.push(bh_multianim_DataValue.DVInt(this.stringToInt(n2)));
 				break;
-			case 29:
+			case 30:
 				var n3 = _g.s;
 				this.advance();
 				result.push(bh_multianim_DataValue.DVFloat(this.stringToFloat(n3)));
 				break;
-			case 31:
+			case 32:
 				var s = _g.s;
 				if(bh_multianim_MacroManimParser.isKeyword(s,"true") || bh_multianim_MacroManimParser.isKeyword(s,"false")) {
 					result.push(bh_multianim_DataValue.DVBool(this.parseBool()));
@@ -10256,7 +10413,7 @@ bh_multianim_MacroManimParser.prototype = {
 					this.error("expected value in array literal");
 				}
 				break;
-			case 34:
+			case 35:
 				var s1 = _g.s;
 				this.advance();
 				result.push(bh_multianim_DataValue.DVString(s1));
@@ -11519,8 +11676,9 @@ var bh_multianim_NodeType = $hxEnums["bh.multianim.NodeType"] = { __ename__:true
 	,SLOT_CONTENT: {_hx_name:"SLOT_CONTENT",_hx_index:31,__enum__:"bh.multianim.NodeType",toString:$estr}
 	,DYNAMIC_REF: ($_=function(externalReference,programmableReference,parameters) { return {_hx_index:32,externalReference:externalReference,programmableReference:programmableReference,parameters:parameters,__enum__:"bh.multianim.NodeType",toString:$estr}; },$_._hx_name="DYNAMIC_REF",$_.__params__ = ["externalReference","programmableReference","parameters"],$_)
 	,FINAL_VAR: ($_=function(name,value) { return {_hx_index:33,name:name,value:value,__enum__:"bh.multianim.NodeType",toString:$estr}; },$_._hx_name="FINAL_VAR",$_.__params__ = ["name","value"],$_)
+	,SWITCH: ($_=function(paramName,arms) { return {_hx_index:34,paramName:paramName,arms:arms,__enum__:"bh.multianim.NodeType",toString:$estr}; },$_._hx_name="SWITCH",$_.__params__ = ["paramName","arms"],$_)
 };
-bh_multianim_NodeType.__constructs__ = [bh_multianim_NodeType.FLOW,bh_multianim_NodeType.SPACER,bh_multianim_NodeType.BITMAP,bh_multianim_NodeType.POINT,bh_multianim_NodeType.STATEANIM,bh_multianim_NodeType.STATEANIM_CONSTRUCT,bh_multianim_NodeType.PIXELS,bh_multianim_NodeType.TEXT,bh_multianim_NodeType.RICHTEXT,bh_multianim_NodeType.PROGRAMMABLE,bh_multianim_NodeType.TILEGROUP,bh_multianim_NodeType.RELATIVE_LAYOUTS,bh_multianim_NodeType.PATHS,bh_multianim_NodeType.ANIMATED_PATH,bh_multianim_NodeType.CURVES,bh_multianim_NodeType.PARTICLES,bh_multianim_NodeType.APPLY,bh_multianim_NodeType.LAYERS,bh_multianim_NodeType.MASK,bh_multianim_NodeType.REPEAT,bh_multianim_NodeType.REPEAT2D,bh_multianim_NodeType.STATIC_REF,bh_multianim_NodeType.PLACEHOLDER,bh_multianim_NodeType.NINEPATCH,bh_multianim_NodeType.INTERACTIVE,bh_multianim_NodeType.PALETTE,bh_multianim_NodeType.GRAPHICS,bh_multianim_NodeType.AUTOTILE,bh_multianim_NodeType.ATLAS2,bh_multianim_NodeType.DATA,bh_multianim_NodeType.SLOT,bh_multianim_NodeType.SLOT_CONTENT,bh_multianim_NodeType.DYNAMIC_REF,bh_multianim_NodeType.FINAL_VAR];
+bh_multianim_NodeType.__constructs__ = [bh_multianim_NodeType.FLOW,bh_multianim_NodeType.SPACER,bh_multianim_NodeType.BITMAP,bh_multianim_NodeType.POINT,bh_multianim_NodeType.STATEANIM,bh_multianim_NodeType.STATEANIM_CONSTRUCT,bh_multianim_NodeType.PIXELS,bh_multianim_NodeType.TEXT,bh_multianim_NodeType.RICHTEXT,bh_multianim_NodeType.PROGRAMMABLE,bh_multianim_NodeType.TILEGROUP,bh_multianim_NodeType.RELATIVE_LAYOUTS,bh_multianim_NodeType.PATHS,bh_multianim_NodeType.ANIMATED_PATH,bh_multianim_NodeType.CURVES,bh_multianim_NodeType.PARTICLES,bh_multianim_NodeType.APPLY,bh_multianim_NodeType.LAYERS,bh_multianim_NodeType.MASK,bh_multianim_NodeType.REPEAT,bh_multianim_NodeType.REPEAT2D,bh_multianim_NodeType.STATIC_REF,bh_multianim_NodeType.PLACEHOLDER,bh_multianim_NodeType.NINEPATCH,bh_multianim_NodeType.INTERACTIVE,bh_multianim_NodeType.PALETTE,bh_multianim_NodeType.GRAPHICS,bh_multianim_NodeType.AUTOTILE,bh_multianim_NodeType.ATLAS2,bh_multianim_NodeType.DATA,bh_multianim_NodeType.SLOT,bh_multianim_NodeType.SLOT_CONTENT,bh_multianim_NodeType.DYNAMIC_REF,bh_multianim_NodeType.FINAL_VAR,bh_multianim_NodeType.SWITCH];
 var bh_multianim_NodeConditionalValues = $hxEnums["bh.multianim.NodeConditionalValues"] = { __ename__:true,__constructs__:null
 	,Conditional: ($_=function(values,strict) { return {_hx_index:0,values:values,strict:strict,__enum__:"bh.multianim.NodeConditionalValues",toString:$estr}; },$_._hx_name="Conditional",$_.__params__ = ["values","strict"],$_)
 	,ConditionalElse: ($_=function(values) { return {_hx_index:1,values:values,__enum__:"bh.multianim.NodeConditionalValues",toString:$estr}; },$_._hx_name="ConditionalElse",$_.__params__ = ["values"],$_)
@@ -13729,7 +13887,7 @@ manim_lsp_CompletionProvider.referenceCompletions = function(paramNames,prefix) 
 	return items;
 };
 manim_lsp_CompletionProvider.conditionalCompletions = function() {
-	return [manim_lsp_CompletionProvider.snippet("@(","@($1=>$2)","Conditional: match when param equals value"),manim_lsp_CompletionProvider.snippet("@if(","@if($1=>$2)","Explicit conditional"),manim_lsp_CompletionProvider.snippet("@ifstrict(","@ifstrict($1=>$2)","Strict conditional (must match ALL)"),manim_lsp_CompletionProvider.kw("@else","Matches when preceding @() didn't match"),manim_lsp_CompletionProvider.kw("@default","Final fallback"),manim_lsp_CompletionProvider.snippet("@final","@final $1 = $0","Define a constant")];
+	return [manim_lsp_CompletionProvider.snippet("@(","@($1=>$2)","Conditional: match when param equals value"),manim_lsp_CompletionProvider.snippet("@( {","@($1=>$2) {\n\t$0\n}","Conditional block: match with multiple elements"),manim_lsp_CompletionProvider.snippet("@if(","@if($1=>$2)","Explicit conditional"),manim_lsp_CompletionProvider.snippet("@all(","@all($1=>$2)","Strict conditional (must match ALL)"),manim_lsp_CompletionProvider.snippet("@all( {","@all($1=>$2) {\n\t$0\n}","Strict conditional block"),manim_lsp_CompletionProvider.snippet("@any(","@any($1=>$2)","Explicit conditional (match any)"),manim_lsp_CompletionProvider.snippet("@any( {","@any($1=>$2) {\n\t$0\n}","Conditional block (match any)"),manim_lsp_CompletionProvider.kw("@else","Matches when preceding @() didn't match"),manim_lsp_CompletionProvider.snippet("@else {","@else {\n\t$0\n}","Else block with multiple elements"),manim_lsp_CompletionProvider.snippet("@else(","@else($1=>$2) {\n\t$0\n}","Else-if block with condition"),manim_lsp_CompletionProvider.kw("@default","Final fallback"),manim_lsp_CompletionProvider.snippet("@default {","@default {\n\t$0\n}","Default block with multiple elements"),manim_lsp_CompletionProvider.snippet("@switch(","@switch($1) {\n\t$2: $0\n\tdefault: $0\n}","Switch block on parameter"),manim_lsp_CompletionProvider.snippet("@final","@final $1 = $0","Define a constant")];
 };
 manim_lsp_CompletionProvider.paramNameCompletions = function(paramNames) {
 	var _g = [];
@@ -14191,16 +14349,18 @@ manim_lsp_HoverProvider.lookupKeyword = function(word) {
 		}
 	}
 	switch(word) {
+	case "@all":
+		return "**@all** — Strict matching (must match ALL specified params)\n\nBlock form: `@all(cond) { ... }`";
+	case "@any":
+		return "**@any** — Explicit conditional (same as `@()` / `@if()`)\n\nBlock form: `@any(cond) { ... }`";
 	case "@if":
-		return "**@if** — Explicit conditional (same as `@()`)";
-	case "@ifstrict":
-		return "**@ifstrict** — Strict matching (must match ALL specified params)";
+		return "**@if** — Explicit conditional (same as `@()`)\n\nBlock form: `@if(cond) { ... }`";
 	case "ctx":
 		return "**$ctx** — Context properties\n\n`$ctx.width`, `$ctx.height`, `$ctx.random(min, max)`";
 	case "@default":case "default":
-		return "**@default** — Final fallback (always matches)";
+		return "**@default** — Final fallback (always matches)\n\nBlock form: `@default { ... }`";
 	case "@else":case "else":
-		return "**@else** — Matches when preceding @() didn't match";
+		return "**@else** — Matches when preceding @() didn't match\n\nBlock form: `@else { ... }` or `@else(cond) { ... }`";
 	case "enum":
 		return "**enum** — Named enum type in data block\n\n```manim\n#name enum(val1, val2, ...)\n```";
 	case "@final":case "final":
@@ -14215,6 +14375,8 @@ manim_lsp_HoverProvider.lookupKeyword = function(word) {
 		return "**record** — Named record type in data block\n\n```manim\n#name record(field:type, ...)\n```";
 	case "settings":
 		return "**settings** — Component settings block\n\n```manim\nsettings {\n  key:type => value\n}\n```";
+	case "@switch":case "switch":
+		return "**@switch** — Switch block on parameter\n\n```manim\n@switch(param) {\n  value1: element(...);\n  value2 | value3: element(...);\n  <= 10: element(...);\n  0..100: element(...);\n  default: element(...);\n}\n```";
 	case "transition":
 		return "**transition** — Animated transitions for parameter changes\n\n```manim\ntransition {\n  param: crossfade(0.1, easeOutQuad)\n}\n```";
 	case "version":
@@ -15121,6 +15283,7 @@ bh_multianim_ManimKeywordInfo.elementNames = (function($this) {
 	_g.h["PALETTE"] = "palette";
 	_g.h["FINAL_VAR"] = "@final";
 	_g.h["NINEPATCH"] = "ninepatch";
+	_g.h["SWITCH"] = "@switch";
 	$r = _g;
 	return $r;
 }(this));
@@ -15161,6 +15324,7 @@ bh_multianim_ManimKeywordInfo.elementDescriptions = (function($this) {
 	_g.h["PALETTE"] = "Color palette definition";
 	_g.h["FINAL_VAR"] = "Immutable named constant";
 	_g.h["NINEPATCH"] = "9-patch scalable image: ninepatch(sheet, tile, w, h)";
+	_g.h["SWITCH"] = "Parameter switch with O(1) enum dispatch";
 	$r = _g;
 	return $r;
 }(this));

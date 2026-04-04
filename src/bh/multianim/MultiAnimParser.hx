@@ -1098,6 +1098,13 @@ enum NodeType {
 	SLOT_CONTENT;
 	DYNAMIC_REF(externalReference:Null<String>, programmableReference:String, parameters:Map<String, ReferenceableValue>);
 	FINAL_VAR(name:String, value:ReferenceableValue);
+	SWITCH(paramName:String, arms:Array<SwitchArm>);
+}
+
+@:nullSafety
+typedef SwitchArm = {
+	pattern:Null<ConditionalValues>, // null = default arm
+	children:Array<Node>,
 }
 
 @:nullSafety

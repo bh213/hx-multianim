@@ -27,6 +27,7 @@ import bh.base.Hex.DoubledCoord;
 import bh.base.PixelLine;
 import h2d.Object;
 import bh.multianim.MultiAnimParser;
+import bh.multianim.MultiAnimParser.SwitchArm;
 import bh.base.ResourceLoader;
 import bh.base.TweenManager;
 import bh.base.TweenManager.Tween;
@@ -2547,6 +2548,20 @@ class MultiAnimBuilder {
 		return true;
 	}
 
+	function resolveMatchedSwitchArm(paramName:String, arms:Array<SwitchArm>):Null<SwitchArm> {
+		final paramValue = indexedParams.get(paramName);
+		if (paramValue == null) return null;
+		var defaultArm:Null<SwitchArm> = null;
+		for (arm in arms) {
+			if (arm.pattern == null) {
+				defaultArm = arm;
+			} else if (matchSingleCondition(arm.pattern, paramValue)) {
+				return arm;
+			}
+		}
+		return defaultArm;
+	}
+
 	function isMatch(node:Node, indexedParams:Map<String, ResolvedIndexParameters>) {
 		return switch node.conditionals {
 			case Conditional(conditions, strict):
@@ -3546,6 +3561,15 @@ class MultiAnimBuilder {
 				tile;
 			case POINT:
 				null;
+			case SWITCH(paramName, arms):
+				final matchedArm = resolveMatchedSwitchArm(paramName, arms);
+				if (matchedArm != null) {
+					for (child in matchedArm.children) {
+						buildTileGroup(child, tileGroup, currentPos.clone(), gridCoordinateSystem, hexCoordinateSystem, builderParams);
+					}
+				}
+				skipChildren = true;
+				null;
 			case REPEAT(varName, repeatType):
 				final info = resolveTileGroupRepeatAxis(repeatType, node, true);
 				final iterator = info.layoutName == null ? null : getLayouts().getIterator(info.layoutName);
@@ -4178,6 +4202,17 @@ class MultiAnimBuilder {
 
 			case POINT:
 				HeapsObject(new h2d.Object());
+			case SWITCH(paramName, arms):
+				final container = new h2d.Object();
+				final matchedArm = resolveMatchedSwitchArm(paramName, arms);
+				if (matchedArm != null) {
+					for (child in matchedArm.children) {
+						final childObj = build(child, buildMode, gridCoordinateSystem, hexCoordinateSystem, internalResults, builderParams);
+						if (childObj != null) container.addChild(childObj);
+					}
+				}
+				skipChildren = true;
+				HeapsObject(container);
 			case STATEANIM(filename, initialState, selectorReferences):
 				var selector = [for (k => v in selectorReferences) k => resolveAsString(v)];
 				var animSM = resourceLoader.createAnimSM(filename, selector);

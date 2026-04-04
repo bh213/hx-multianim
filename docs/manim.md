@@ -628,10 +628,10 @@ Programmable elements can declare animated transitions for parameter changes. Wh
         checked: flipX(0.15, easeOutQuad)
         status: crossfade(0.1)
     }
-    @(status => normal) @(checked => true) bitmap(sheet("ui"), "check_on_normal"): 0, 0
-    @(status => hover)  @(checked => true) bitmap(sheet("ui"), "check_on_hover"): 0, 0
-    @(status => normal) @(checked => false) bitmap(sheet("ui"), "check_off_normal"): 0, 0
-    @(status => hover)  @(checked => false) bitmap(sheet("ui"), "check_off_hover"): 0, 0
+    @all(status => normal, checked => true) bitmap(sheet("ui"), "check_on_normal"): 0, 0
+    @all(status => hover, checked => true) bitmap(sheet("ui"), "check_on_hover"): 0, 0
+    @all(status => normal, checked => false) bitmap(sheet("ui"), "check_off_normal"): 0, 0
+    @all(status => hover, checked => false) bitmap(sheet("ui"), "check_off_hover"): 0, 0
 }
 ```
 
@@ -916,9 +916,9 @@ Validation: `FilterManager.validateCustomFilters(parseResult.customFilterRefs)` 
 
 Conditions are defined by `@(...)` and can be specified once per element.
 
-* `@()` or `@if(...)` - match all provided
+* `@()` or `@if(...)` or `@any(...)` - match when ANY condition matches (OR)
+* `@all(...)` - must match ALL provided parameters (AND)
 * `@(param != value)` - match when param is NOT value
-* `@ifstrict(...)` - must match all provided parameters
 
 **Comparison operators:**
 * `@(key >= 30)` - greater than or equal
@@ -973,6 +973,77 @@ Elements can use `@else` and `@default` to form conditional chains, similar to i
 ```
 
 `@else` and `@default` must follow a sibling that has a `@()` conditional. They cannot be used on root elements.
+
+### Conditional Blocks
+
+Any conditional can use a `{ ... }` body to group multiple elements:
+
+```manim
+@(status=>active) {
+    bitmap(generated(color(60, 40, #060)));
+    text(m3x6, "ACTIVE", #8f8, center, 60):0,12;
+}
+@else {
+    bitmap(generated(color(60, 40, #333)));
+}
+```
+
+Block-in-block nesting is supported:
+
+```manim
+@(tier=>free) {
+    bitmap(generated(color(70, 40, #333)));
+}
+@else {
+    @(enabled=>yes) {
+        bitmap(generated(color(70, 40, #060)));
+    }
+    @else {
+        bitmap(generated(color(70, 40, #600)));
+    }
+}
+```
+
+### @switch Block
+
+For cases with many values of the same parameter, `@switch` avoids repeating the parameter name:
+
+```manim
+@switch(status) {
+    idle: bitmap(generated(color(60, 30, #666)));
+    hover: bitmap(generated(color(60, 30, #060)));
+    pressed | disabled: bitmap(generated(color(60, 30, #600)));
+    default: bitmap(generated(color(60, 30, #333)));
+}
+```
+
+**Arm syntax:**
+- `value:` — single-element arm
+- `value1 | value2:` — multi-value arm
+- `<= N:`, `>= N:`, `< N:`, `> N:` — comparison arms
+- `N..M:` — range arm (inclusive)
+- `default:` — fallback arm
+- `value { ... }` or `default { ... }` — block arm with multiple elements
+
+Block arms can contain nested `@()` conditionals and any other elements:
+
+```manim
+@switch(status) {
+    normal {
+        @(enabled=>on) bitmap(generated(color(70, 30, #060)));
+        @(enabled=>off) bitmap(generated(color(70, 30, #333)));
+    }
+    hover {
+        @(enabled=>on) bitmap(generated(color(70, 30, #090)));
+        @(enabled=>off) bitmap(generated(color(70, 30, #444)));
+    }
+    default: bitmap(generated(color(70, 30, #600)));
+}
+```
+
+**Restrictions:** `@switch` cannot be combined with other `@` modifiers (e.g., `@alpha`, `@scale`). Cannot be used at root level.
+
+Internally, `@switch` desugars to `@()`/`@else()`/`@default` nodes, so it works identically with both builder and macro codegen.
 
 ### Inline Properties
 

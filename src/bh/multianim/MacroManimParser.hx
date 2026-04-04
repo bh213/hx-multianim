@@ -49,6 +49,7 @@ private enum MacroTokenType {
 	TGreaterEquals;
 	TNotEquals;     // !=
 	TDoubleEquals;  // ==
+	TPipe;          // |
 	TInteger(s:String);
 	TFloat(s:String);
 	THexInteger(s:String);
@@ -189,6 +190,7 @@ private class MacroLexer {
 				case '<'.code: pos++; return new Token(TLessThan, startLine, startCol);
 				case '>'.code: pos++; return new Token(TGreaterThan, startLine, startCol);
 				case '!'.code: pos++; return new Token(TExclamation, startLine, startCol);
+				case '|'.code: pos++; return new Token(TPipe, startLine, startCol);
 				default:
 			}
 
@@ -2743,17 +2745,20 @@ class MacroManimParser {
 			var atCount = 0;
 			while (true) {
 				switch (peek()) {
-					case TIdentifier(s) if (isKeyword(s, "if")):
+					case TIdentifier(s) if (isKeyword(s, "if") || isKeyword(s, "any")):
+						if (!conditional.match(NoConditional)) error("stacked conditionals are not allowed — use @all() or @any() with comma-separated parameters");
 						advance();
 						expect(TOpen);
 						conditional = Conditional(parseConditionalParameters(currentDefs), false);
 						atCount++;
-					case TIdentifier(s) if (isKeyword(s, "ifstrict")):
+					case TIdentifier(s) if (isKeyword(s, "all")):
+						if (!conditional.match(NoConditional)) error("stacked conditionals are not allowed — use @all() or @any() with comma-separated parameters");
 						advance();
 						expect(TOpen);
 						conditional = Conditional(parseConditionalParameters(currentDefs), true);
 						atCount++;
 					case TOpen:
+						if (!conditional.match(NoConditional)) error("stacked conditionals are not allowed — use @all() or @any() with comma-separated parameters");
 						advance();
 						conditional = Conditional(parseConditionalParameters(currentDefs), false);
 						atCount++;
@@ -2799,6 +2804,16 @@ class MacroManimParser {
 						advance();
 						conditional = ConditionalDefault;
 						atCount++;
+					case TIdentifier(s) if (isKeyword(s, "switch")):
+						if (atCount > 0) error("@switch cannot be combined with other @ modifiers");
+						if (parent == null) error("@switch cannot be used at root level");
+						advance();
+						expect(TOpen);
+						final switchParam = expectIdentifierOrString();
+						expect(TClosed);
+						expect(TCurlyOpen);
+						parseSwitchArms(parent, switchParam, currentDefs);
+						return null;
 					case TIdentifier(s) if (isKeyword(s, "flow")):
 						advance();
 						expect(TDot);
@@ -3710,6 +3725,13 @@ class MacroManimParser {
 					eatComma();
 				}
 				return null;
+
+			case TCurlyOpen if (!conditional.match(NoConditional)):
+				// Conditional block: @(cond) { ... }, @else { ... }, @default { ... }
+				advance();
+				final wrapper = createNode(POINT, parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
+				parseNodes(wrapper, currentDefs);
+				return wrapper;
 
 			default:
 				error('expected valid node type, got ${peek()}');
@@ -4911,6 +4933,104 @@ class MacroManimParser {
 					}
 			}
 		}
+	}
+
+	@:nullSafety(Off)
+	function parseSwitchArms(parent:Node, paramName:String, defs:ParametersDefinitions):Void {
+		final arms:Array<SwitchArm> = [];
+		while (!match(TCurlyClosed)) {
+			// Skip stray semicolons
+			if (match(TSemiColon)) continue;
+
+			// Parse arm pattern
+			var pattern:Null<ConditionalValues> = null; // null = default
+
+			switch (peek()) {
+				case TIdentifier(s) if (isKeyword(s, "default")):
+					advance();
+					// pattern stays null = default
+				case TLessEquals:
+					advance();
+					final val = parseIntegerOrReference();
+					pattern = CoRange(null, val, false, false);
+				case TGreaterEquals:
+					advance();
+					final val = parseIntegerOrReference();
+					pattern = CoRange(val, null, false, false);
+				case TLessThan:
+					advance();
+					final val = parseIntegerOrReference();
+					pattern = CoRange(null, val, false, true);
+				case TGreaterThan:
+					advance();
+					final val = parseIntegerOrReference();
+					pattern = CoRange(val, null, true, false);
+				default:
+					// Parse value(s): value1 | value2 | ...  or range: from..to
+					final values:Array<String> = [];
+					values.push(parseSwitchArmValue());
+					// Check for range: value..value
+					if (match(TDoubleDot)) {
+						final toStr = parseSwitchArmValue();
+						pattern = CoRange(parseRV(values[0]), parseRV(toStr), false, false);
+					} else {
+						// Pipe-separated values: value1 | value2 | value3
+						while (match(TPipe)) {
+							values.push(parseSwitchArmValue());
+						}
+						pattern = CoEnums(values);
+					}
+			}
+
+			// Parse arm body: either ':' for single element, or '{' for block
+			// Collect children into a temporary container
+			final tempContainer = createNode(POINT, parent, NoConditional, null, null, null, null, -1, UNTObject(null));
+			switch (peek()) {
+				case TColon:
+					advance();
+					final armNode = parseNode(UNTObject(null), tempContainer, defs);
+					if (armNode != null) tempContainer.children.push(armNode);
+				case TCurlyOpen:
+					advance();
+					parseNodes(tempContainer, defs);
+				default:
+					error('expected : or { after switch arm pattern');
+			}
+			arms.push({pattern: pattern, children: tempContainer.children});
+		}
+		if (arms.length == 0) error("@switch requires at least one arm");
+		final switchNode = createNode(SWITCH(paramName, arms), parent, NoConditional, null, null, null, null, -1, UNTObject(null));
+		parent.children.push(switchNode);
+	}
+
+	function parseSwitchArmValue():String {
+		switch (peek()) {
+			case TIdentifier(s):
+				advance();
+				return s;
+			case TInteger(n):
+				advance();
+				return n;
+			case TMinus:
+				advance();
+				switch (peek()) {
+					case TInteger(n):
+						advance();
+						return '-$n';
+					default:
+						error("expected integer after -");
+						return "";
+				}
+			default:
+				error('expected value in switch arm, got ${peek()}');
+				return "";
+		}
+	}
+
+	function parseRV(s:String):ReferenceableValue {
+		final i = Std.parseInt(s);
+		if (i != null) return RVInteger(i);
+		return RVInteger(0);
 	}
 
 	@:nullSafety(Off)

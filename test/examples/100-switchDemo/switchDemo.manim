@@ -1,0 +1,274 @@
+version: 1.0
+
+// Demo 1: Basic @switch with enum values
+#enumSwitch programmable(state:[idle, active, error]) {
+  pos: 0, 0
+  @switch(state) {
+    idle: bitmap(generated(color(60, 30, #666)));
+    active: bitmap(generated(color(60, 30, #060)));
+    error: bitmap(generated(color(60, 30, #600)));
+  }
+  text(m3x6, "STATE", white, center, 60):0,10;
+}
+
+// Demo 2: Multi-value arms
+#multiSwitch programmable(level:[low, medium, high, critical]) {
+  pos: 0, 0
+  @switch(level) {
+    low | medium: bitmap(generated(color(80, 30, #036)));
+    high | critical: bitmap(generated(color(80, 30, #630)));
+  }
+  @switch(level) {
+    low | medium: text(m3x6, "SAFE", #8ff, center, 80):0,8;
+    high | critical: text(m3x6, "WARN", #ff8, center, 80):0,8;
+  }
+}
+
+// Demo 3: Default arm
+#defaultSwitch programmable(state:[idle, hover, pressed, disabled]) {
+  pos: 0, 0
+  @switch(state) {
+    idle: bitmap(generated(color(70, 30, #333)));
+    hover: bitmap(generated(color(70, 30, #063)));
+    default: bitmap(generated(color(70, 30, #600)));
+  }
+  @switch(state) {
+    idle: text(m3x6, "IDLE", #888, center, 70):0,8;
+    hover: text(m3x6, "HOVER", #8f8, center, 70):0,8;
+    default: text(m3x6, "OTHER", #f88, center, 70):0,8;
+  }
+}
+
+// Demo 4: Range and comparison arms
+#rangeSwitch programmable(temp:-50..150) {
+  pos: 0, 0
+  @switch(temp) {
+    <= -1: bitmap(generated(color(70, 40, #48f)));
+    0..100: bitmap(generated(color(70, 40, #06a)));
+    >= 101: bitmap(generated(color(70, 40, #888)));
+  }
+  @switch(temp) {
+    <= -1: text(m3x6, "ICE", white, center, 70):0,12;
+    0..100: text(m3x6, "WATER", white, center, 70):0,12;
+    >= 101: text(m3x6, "STEAM", white, center, 70):0,12;
+  }
+}
+
+// Demo 5: Block arms with multiple elements
+#blockSwitch programmable(mode:[a, b, c]) {
+  pos: 0, 0
+  @switch(mode) {
+    a {
+      bitmap(generated(color(60, 40, #600)));
+      text(m3x6, "AAA", #f88, center, 60):0,12;
+    }
+    b {
+      bitmap(generated(color(60, 40, #060)));
+      text(m3x6, "BBB", #8f8, center, 60):0,12;
+    }
+    default {
+      bitmap(generated(color(60, 40, #006)));
+      text(m3x6, "DEF", #88f, center, 60):0,12;
+    }
+  }
+}
+
+// Demo 6: Nested conditionals inside switch arms
+#nestedSwitch programmable(status:[normal, hover, disabled], enabled:[on, off]=on) {
+  pos: 0, 0
+  @switch(status) {
+    normal {
+      @(enabled=>on) bitmap(generated(color(70, 30, #060)));
+      @(enabled=>off) bitmap(generated(color(70, 30, #333)));
+    }
+    hover {
+      @(enabled=>on) bitmap(generated(color(70, 30, #090)));
+      @(enabled=>off) bitmap(generated(color(70, 30, #444)));
+    }
+    default: bitmap(generated(color(70, 30, #600)));
+  }
+}
+
+// Demo 7: Conditional blocks @(cond) { ... }
+#condBlockDemo programmable(mode:[a, b, c]=a) {
+  pos: 0, 0
+  @(mode=>a) {
+    bitmap(generated(color(60, 40, #600)));
+    text(m3x6, "AAA", #f88, center, 60):0,12;
+  }
+  @else(mode=>b) {
+    bitmap(generated(color(60, 40, #060)));
+    text(m3x6, "BBB", #8f8, center, 60):0,12;
+  }
+  @default {
+    bitmap(generated(color(60, 40, #006)));
+    text(m3x6, "DEF", #88f, center, 60):0,12;
+  }
+}
+
+// Demo 8: Conditional blocks with inner conditionals
+#condNestedDemo programmable(mode:[a, b, c]=a, style:[dark, light]=dark) {
+  pos: 0, 0
+  @(mode=>a) {
+    @(style=>dark) bitmap(generated(color(60, 40, #400)));
+    @(style=>light) bitmap(generated(color(60, 40, #f66)));
+    text(m3x6, "A", white, center, 60):0,12;
+  }
+  @else(mode=>b) {
+    @(style=>dark) bitmap(generated(color(60, 40, #040)));
+    @(style=>light) bitmap(generated(color(60, 40, #6f6)));
+    text(m3x6, "B", white, center, 60):0,12;
+  }
+  @default {
+    bitmap(generated(color(60, 40, #333)));
+    text(m3x6, "DEF", #888, center, 60):0,12;
+  }
+}
+
+// Demo 9: Nested conditional blocks (block inside block)
+#condBlockInBlock programmable(tier:[free, paid, vip]=free, enabled:[yes, no]=yes) {
+  pos: 0, 0
+  @(tier=>free) {
+    bitmap(generated(color(70, 40, #333)));
+    text(m3x6, "FREE", #888, center, 70):0,12;
+  }
+  @else {
+    @(enabled=>yes) {
+      @(tier=>paid) {
+        bitmap(generated(color(70, 40, #063)));
+        text(m3x6, "PAID", #8f8, center, 70):0,12;
+      }
+      @else {
+        bitmap(generated(color(70, 40, #630)));
+        text(m3x6, "VIP", #ff8, center, 70):0,12;
+      }
+    }
+    @else {
+      bitmap(generated(color(70, 40, #600)));
+      text(m3x6, "OFF", #f88, center, 70):0,12;
+    }
+  }
+}
+
+// Main: Display all demos
+#switchDemo programmable() {
+  pos: 0, 0
+
+  // Row 1: Basic enum switch
+  point {
+    pos: 10, 10
+    text(m3x6, "@switch - enum", #888, left, 300):0,0;
+    staticRef($enumSwitch, state=>idle):0,14;
+    text(m3x6, "idle", #555, center, 60):0,48;
+    staticRef($enumSwitch, state=>active):70,14;
+    text(m3x6, "active", #555, center, 60):70,48;
+    staticRef($enumSwitch, state=>error):140,14;
+    text(m3x6, "error", #555, center, 60):140,48;
+  }
+
+  // Row 2: Multi-value switch
+  point {
+    pos: 10, 70
+    text(m3x6, "@switch - multi-value", #888, left, 300):0,0;
+    staticRef($multiSwitch, level=>low):0,14;
+    text(m3x6, "low", #555, center, 80):0,48;
+    staticRef($multiSwitch, level=>medium):90,14;
+    text(m3x6, "med", #555, center, 80):90,48;
+    staticRef($multiSwitch, level=>high):180,14;
+    text(m3x6, "high", #555, center, 80):180,48;
+    staticRef($multiSwitch, level=>critical):270,14;
+    text(m3x6, "crit", #555, center, 80):270,48;
+  }
+
+  // Row 3: Default
+  point {
+    pos: 10, 130
+    text(m3x6, "@switch - default", #888, left, 400):0,0;
+    staticRef($defaultSwitch, state=>idle):0,14;
+    text(m3x6, "idle", #555, center, 70):0,48;
+    staticRef($defaultSwitch, state=>hover):80,14;
+    text(m3x6, "hover", #555, center, 70):80,48;
+    staticRef($defaultSwitch, state=>pressed):160,14;
+    text(m3x6, "pressed", #555, center, 70):160,48;
+    staticRef($defaultSwitch, state=>disabled):240,14;
+    text(m3x6, "disabled", #555, center, 70):240,48;
+  }
+
+  // Row 4: Range/comparison
+  point {
+    pos: 10, 196
+    text(m3x6, "@switch - range/comparison", #888, left, 400):0,0;
+    staticRef($rangeSwitch, temp=>-20):0,14;
+    text(m3x6, "-20", #555, center, 70):0,58;
+    staticRef($rangeSwitch, temp=>50):80,14;
+    text(m3x6, "50", #555, center, 70):80,58;
+    staticRef($rangeSwitch, temp=>120):160,14;
+    text(m3x6, "120", #555, center, 70):160,58;
+  }
+
+  // Row 5: Block arms
+  point {
+    pos: 10, 272
+    text(m3x6, "@switch - block arms", #888, left, 400):0,0;
+    staticRef($blockSwitch, mode=>a):0,14;
+    text(m3x6, "a", #555, center, 60):0,58;
+    staticRef($blockSwitch, mode=>b):70,14;
+    text(m3x6, "b", #555, center, 60):70,58;
+    staticRef($blockSwitch, mode=>c):140,14;
+    text(m3x6, "c=>def", #555, center, 60):140,58;
+  }
+
+  // Row 6: Conditional blocks
+  point {
+    pos: 10, 342
+    text(m3x6, "@(cond) { ... } block", #888, left, 400):0,0;
+    staticRef($condBlockDemo, mode=>a):0,14;
+    text(m3x6, "a", #555, center, 60):0,58;
+    staticRef($condBlockDemo, mode=>b):70,14;
+    text(m3x6, "b", #555, center, 60):70,58;
+    staticRef($condBlockDemo, mode=>c):140,14;
+    text(m3x6, "c=>def", #555, center, 60):140,58;
+  }
+
+  // Row 7: Conditional blocks with inner conditionals
+  point {
+    pos: 10, 412
+    text(m3x6, "@(cond) { @(inner) ... }", #888, left, 400):0,0;
+    staticRef($condNestedDemo, mode=>a, style=>dark):0,14;
+    text(m3x6, "a+dk", #555, center, 60):0,58;
+    staticRef($condNestedDemo, mode=>a, style=>light):70,14;
+    text(m3x6, "a+lt", #555, center, 60):70,58;
+    staticRef($condNestedDemo, mode=>b, style=>dark):140,14;
+    text(m3x6, "b+dk", #555, center, 60):140,58;
+    staticRef($condNestedDemo, mode=>c, style=>dark):210,14;
+    text(m3x6, "c=>def", #555, center, 60):210,58;
+  }
+
+  // Row 8: Nested block-in-block
+  point {
+    pos: 10, 482
+    text(m3x6, "@(cond) { @(inner) { ... } }", #888, left, 400):0,0;
+    staticRef($condBlockInBlock, tier=>free, enabled=>yes):0,14;
+    text(m3x6, "free", #555, center, 70):0,58;
+    staticRef($condBlockInBlock, tier=>paid, enabled=>yes):80,14;
+    text(m3x6, "paid", #555, center, 70):80,58;
+    staticRef($condBlockInBlock, tier=>vip, enabled=>yes):160,14;
+    text(m3x6, "vip", #555, center, 70):160,58;
+    staticRef($condBlockInBlock, tier=>paid, enabled=>no):240,14;
+    text(m3x6, "off", #555, center, 70):240,58;
+  }
+
+  // Row 9: Nested switch conditionals
+  point {
+    pos: 10, 552
+    text(m3x6, "@switch + nested @()", #888, left, 400):0,0;
+    staticRef($nestedSwitch, status=>normal, enabled=>on):0,14;
+    text(m3x6, "n+en", #555, center, 70):0,48;
+    staticRef($nestedSwitch, status=>normal, enabled=>off):80,14;
+    text(m3x6, "n+dis", #555, center, 70):80,48;
+    staticRef($nestedSwitch, status=>hover, enabled=>on):160,14;
+    text(m3x6, "h+en", #555, center, 70):160,48;
+    staticRef($nestedSwitch, status=>disabled, enabled=>on):240,14;
+    text(m3x6, "dis", #555, center, 70):240,48;
+  }
+}

@@ -28,6 +28,7 @@ class ManimKeywordInfo {
 		"INTERACTIVE" => "interactive", "GRAPHICS" => "graphics",
 		"DATA" => "data", "AUTOTILE" => "autotile", "ATLAS2" => "atlas2",
 		"PALETTE" => "palette", "FINAL_VAR" => "@final", "NINEPATCH" => "ninepatch",
+		"SWITCH" => "@switch",
 	];
 
 	static final elementDescriptions:Map<String, String> = [
@@ -65,6 +66,7 @@ class ManimKeywordInfo {
 		"PALETTE" => "Color palette definition",
 		"FINAL_VAR" => "Immutable named constant",
 		"NINEPATCH" => "9-patch scalable image: ninepatch(sheet, tile, w, h)",
+		"SWITCH" => "Parameter switch with O(1) enum dispatch",
 	];
 
 	static final elementSnippets:Map<String, String> = [

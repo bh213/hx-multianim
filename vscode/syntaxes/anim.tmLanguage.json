@@ -41,7 +41,7 @@
 		"conditionals": {
 			"patterns": [
 				{
-					"begin": "(@if|@ifStrict|@)\\(",
+					"begin": "(@if|@any|@all|@)\\(",
 					"beginCaptures": {
 						"1": {
 							"name": "keyword.control.conditional.anim"

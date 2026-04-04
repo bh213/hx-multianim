@@ -139,7 +139,7 @@
 		"conditionals": {
 			"patterns": [
 				{
-					"begin": "(@if|@ifStrict|@else|@)\\(",
+					"begin": "(@if|@any|@all|@else|@)\\(",
 					"beginCaptures": {
 						"1": {
 							"name": "keyword.control.conditional.multianim"
@@ -199,6 +199,27 @@
 				{
 					"match": "@(else|default)\\b",
 					"name": "keyword.control.conditional.multianim"
+				},
+				{
+					"begin": "@switch\\(",
+					"beginCaptures": {
+						"0": {
+							"name": "keyword.control.conditional.multianim"
+						}
+					},
+					"end": "\\)",
+					"endCaptures": {
+						"0": {
+							"name": "keyword.control.conditional.multianim"
+						}
+					},
+					"name": "meta.switch-param.multianim",
+					"patterns": [
+						{
+							"match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b",
+							"name": "variable.parameter.multianim"
+						}
+					]
 				}
 			]
 		},
