@@ -54,8 +54,8 @@
 ```manim
 @(param=>value)           # Match when param equals value
 @if(param=>value)         # Explicit @if (same as @())
-@any(param=>value)        # Explicit @any (same as @() / @if())
-@all(param=>value)        # Strict matching (must match ALL params)
+@any(p1=>v1, p2=>v2)      # Match when ANY listed condition matches (OR)
+@all(p1=>v1, p2=>v2)      # Match when ALL listed conditions match (AND, same as @())
 @(param != value)         # Match when param NOT equals value
 @(param=>[v1,v2])         # Match multiple values
 @(param >= 30)            # Greater than or equal

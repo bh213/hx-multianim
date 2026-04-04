@@ -93,8 +93,8 @@ class HoverProvider {
 			case "@else" | "else": "**@else** — Matches when preceding @() didn't match\n\nBlock form: `@else { ... }` or `@else(cond) { ... }`";
 			case "@default" | "default": "**@default** — Final fallback (always matches)\n\nBlock form: `@default { ... }`";
 			case "@if": "**@if** — Explicit conditional (same as `@()`)\n\nBlock form: `@if(cond) { ... }`";
-			case "@all": "**@all** — Strict matching (must match ALL specified params)\n\nBlock form: `@all(cond) { ... }`";
-			case "@any": "**@any** — Explicit conditional (same as `@()` / `@if()`)\n\nBlock form: `@any(cond) { ... }`";
+			case "@all": "**@all** — Match when ALL listed conditions match (AND, same as `@()`)\n\nBlock form: `@all(cond) { ... }`";
+			case "@any": "**@any** — Match when ANY listed condition matches (OR)\n\nBlock form: `@any(cond) { ... }`";
 			case "@switch" | "switch": "**@switch** — Switch block on parameter\n\n```manim\n@switch(param) {\n  value1: element(...);\n  value2 | value3: element(...);\n  <= 10: element(...);\n  0..100: element(...);\n  default: element(...);\n}\n```";
 			case "grid": "**$grid** — Grid coordinate system\n\n`$grid.pos(x, y)`, `$grid.width`, `$grid.height`";
 			case "hex": "**$hex** — Hexagonal coordinate system\n\n`$hex.cube(q, r, s)`, `$hex.corner(index, scale)`";

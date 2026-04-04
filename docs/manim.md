@@ -916,8 +916,8 @@ Validation: `FilterManager.validateCustomFilters(parseResult.customFilterRefs)` 
 
 Conditions are defined by `@(...)` and can be specified once per element.
 
-* `@()` or `@if(...)` or `@any(...)` - match when ANY condition matches (OR)
-* `@all(...)` - must match ALL provided parameters (AND)
+* `@()` or `@if(...)` or `@all(...)` - match when ALL listed conditions match (AND)
+* `@any(...)` - match when ANY listed condition matches (OR)
 * `@(param != value)` - match when param is NOT value
 
 **Comparison operators:**

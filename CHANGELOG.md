@@ -5,10 +5,10 @@
 ### Added
 - **`@switch` block** — `@switch(param) { value: ...; default: ... }` groups multiple conditions on a single parameter. Supports single-value arms (`idle: ...`), multi-value with pipe (`hover | pressed: ...`), comparisons (`<= 10:`, `> 90:`), ranges (`0..100:`), `default:` fallback, and block arms (`value { ... }`) for multiple elements per case. Block arms can contain nested `@()` conditionals. Implemented as `SWITCH` NodeType with O(1) Haxe `switch` dispatch in codegen for pure-enum arms. No unnecessary scene graph wrappers — single-child arms toggle visibility directly on the child.
 - **Conditional blocks** — `@(cond) { ... }`, `@else { ... }`, `@else(cond) { ... }`, `@default { ... }` — group multiple elements under a single condition without repeating the `@` prefix on each element. Wraps children in a POINT node. Supports nesting (block-in-block).
-- **`@any`/`@all` conditional keywords** — `@any(p1=>v1, p2=>v2)` matches when ANY parameter matches (OR logic, same as `@()`/`@if()`). `@all(p1=>v1, p2=>v2)` matches only when ALL parameters match (AND logic, replaces `@ifstrict`). Stacked conditionals (`@(a=>1) @(b=>2)`) now produce a clear error directing users to `@all()` or `@any()`.
+- **`@any`/`@all` conditional keywords** — `@any(p1=>v1, p2=>v2)` matches when ANY listed condition matches (OR logic). `@all(p1=>v1, p2=>v2)` matches when ALL listed conditions match (AND logic, same as `@()`/`@if()`). Unlisted parameters are ignored in both modes. Stacked conditionals (`@(a=>1) @(b=>2)`) now produce a clear error directing users to `@all()` or `@any()`.
 
 ### Changed
-- **`@ifstrict` removed** — replaced by `@all()`. Existing `.manim` files using `@ifstrict` must be updated to use `@all`.
+- **`@ifstrict` removed** — replaced by `@all()` (AND on listed params, unlisted ignored). The old `@ifstrict` behavior (requiring ALL programmable params to be mentioned) is no longer available.
 
 ## [1.0.0-rc.3] - 2026-03-31
 

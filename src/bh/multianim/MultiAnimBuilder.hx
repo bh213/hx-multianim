@@ -2530,22 +2530,24 @@ class MultiAnimBuilder {
 		return true;
 	}
 
-	function matchConditions(conditions:Map<String, ConditionalValues>, strict:Bool, indexedParams:Map<String, ResolvedIndexParameters>):Bool {
-		for (key => value in conditions) {
-			if (indexedParams[key] == null)
-				return false;
+	function matchConditions(conditions:Map<String, ConditionalValues>, anyMode:Bool, indexedParams:Map<String, ResolvedIndexParameters>):Bool {
+		if (anyMode) {
+			// OR mode (@any): match if ANY listed condition matches
+			for (paramName => condValue in conditions) {
+				final paramValue = indexedParams[paramName];
+				if (paramValue != null && matchSingleCondition(condValue, paramValue))
+					return true;
+			}
+			return false;
+		} else {
+			// AND mode (@all / @() / @if): ALL listed conditions must match, unlisted ignored
+			for (paramName => condValue in conditions) {
+				final paramValue = indexedParams[paramName];
+				if (paramValue == null) return false;
+				if (!matchSingleCondition(condValue, paramValue)) return false;
+			}
+			return true;
 		}
-		for (currentName => currentValue in indexedParams) {
-			final condValue = conditions[currentName];
-			if (condValue == null)
-				if (strict)
-					return false
-				else
-					continue;
-			if (!matchSingleCondition(condValue, currentValue))
-				return false;
-		}
-		return true;
 	}
 
 	function resolveMatchedSwitchArm(paramName:String, arms:Array<SwitchArm>):Null<SwitchArm> {

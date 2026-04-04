@@ -282,8 +282,8 @@ Parse-time error when used outside a flow ancestor.
 |--------|-------------|
 | `@(param=>value)` | Match when parameter equals value |
 | `@if(param=>value)` | Explicit if (same as `@()`) |
-| `@any(param=>value)` | Explicit any (same as `@()` / `@if()`) |
-| `@all(param=>value)` | Strict match — ALL parameters in condition must match |
+| `@any(p1=>v1, p2=>v2)` | Match when ANY listed condition matches (OR) |
+| `@all(p1=>v1, p2=>v2)` | Match when ALL listed conditions match (AND, same as `@()`) |
 | `@(param != value)` | Match when parameter does NOT equal value |
 | `@(param=>[v1,v2])` | Match any of multiple values |
 | `@(param != [v1,v2])` | Exclude multiple values |

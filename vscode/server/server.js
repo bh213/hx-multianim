@@ -5042,7 +5042,7 @@ bh_multianim_MacroManimParser.prototype = {
 				case 32:
 					var _g1 = _g.s;
 					var s = _g1;
-					if(bh_multianim_MacroManimParser.isKeyword(s,"if") || bh_multianim_MacroManimParser.isKeyword(s,"any")) {
+					if(bh_multianim_MacroManimParser.isKeyword(s,"if") || bh_multianim_MacroManimParser.isKeyword(s,"all")) {
 						if(conditional._hx_index != 3) {
 							this.error("stacked conditionals are not allowed — use @all() or @any() with comma-separated parameters");
 						}
@@ -5052,7 +5052,7 @@ bh_multianim_MacroManimParser.prototype = {
 						++atCount;
 					} else {
 						var s1 = _g1;
-						if(bh_multianim_MacroManimParser.isKeyword(s1,"all")) {
+						if(bh_multianim_MacroManimParser.isKeyword(s1,"any")) {
 							if(conditional._hx_index != 3) {
 								this.error("stacked conditionals are not allowed — use @all() or @any() with comma-separated parameters");
 							}
@@ -13887,7 +13887,7 @@ manim_lsp_CompletionProvider.referenceCompletions = function(paramNames,prefix) 
 	return items;
 };
 manim_lsp_CompletionProvider.conditionalCompletions = function() {
-	return [manim_lsp_CompletionProvider.snippet("@(","@($1=>$2)","Conditional: match when param equals value"),manim_lsp_CompletionProvider.snippet("@( {","@($1=>$2) {\n\t$0\n}","Conditional block: match with multiple elements"),manim_lsp_CompletionProvider.snippet("@if(","@if($1=>$2)","Explicit conditional"),manim_lsp_CompletionProvider.snippet("@all(","@all($1=>$2)","Strict conditional (must match ALL)"),manim_lsp_CompletionProvider.snippet("@all( {","@all($1=>$2) {\n\t$0\n}","Strict conditional block"),manim_lsp_CompletionProvider.snippet("@any(","@any($1=>$2)","Explicit conditional (match any)"),manim_lsp_CompletionProvider.snippet("@any( {","@any($1=>$2) {\n\t$0\n}","Conditional block (match any)"),manim_lsp_CompletionProvider.kw("@else","Matches when preceding @() didn't match"),manim_lsp_CompletionProvider.snippet("@else {","@else {\n\t$0\n}","Else block with multiple elements"),manim_lsp_CompletionProvider.snippet("@else(","@else($1=>$2) {\n\t$0\n}","Else-if block with condition"),manim_lsp_CompletionProvider.kw("@default","Final fallback"),manim_lsp_CompletionProvider.snippet("@default {","@default {\n\t$0\n}","Default block with multiple elements"),manim_lsp_CompletionProvider.snippet("@switch(","@switch($1) {\n\t$2: $0\n\tdefault: $0\n}","Switch block on parameter"),manim_lsp_CompletionProvider.snippet("@final","@final $1 = $0","Define a constant")];
+	return [manim_lsp_CompletionProvider.snippet("@(","@($1=>$2)","Conditional: match when param equals value"),manim_lsp_CompletionProvider.snippet("@( {","@($1=>$2) {\n\t$0\n}","Conditional block: match with multiple elements"),manim_lsp_CompletionProvider.snippet("@if(","@if($1=>$2)","Explicit conditional"),manim_lsp_CompletionProvider.snippet("@all(","@all($1=>$2)","Match ALL listed conditions (AND)"),manim_lsp_CompletionProvider.snippet("@all( {","@all($1=>$2) {\n\t$0\n}","AND conditional block"),manim_lsp_CompletionProvider.snippet("@any(","@any($1=>$2)","Match ANY listed condition (OR)"),manim_lsp_CompletionProvider.snippet("@any( {","@any($1=>$2) {\n\t$0\n}","OR conditional block"),manim_lsp_CompletionProvider.kw("@else","Matches when preceding @() didn't match"),manim_lsp_CompletionProvider.snippet("@else {","@else {\n\t$0\n}","Else block with multiple elements"),manim_lsp_CompletionProvider.snippet("@else(","@else($1=>$2) {\n\t$0\n}","Else-if block with condition"),manim_lsp_CompletionProvider.kw("@default","Final fallback"),manim_lsp_CompletionProvider.snippet("@default {","@default {\n\t$0\n}","Default block with multiple elements"),manim_lsp_CompletionProvider.snippet("@switch(","@switch($1) {\n\t$2: $0\n\tdefault: $0\n}","Switch block on parameter"),manim_lsp_CompletionProvider.snippet("@final","@final $1 = $0","Define a constant")];
 };
 manim_lsp_CompletionProvider.paramNameCompletions = function(paramNames) {
 	var _g = [];
@@ -14350,9 +14350,9 @@ manim_lsp_HoverProvider.lookupKeyword = function(word) {
 	}
 	switch(word) {
 	case "@all":
-		return "**@all** — Strict matching (must match ALL specified params)\n\nBlock form: `@all(cond) { ... }`";
+		return "**@all** — Match when ALL listed conditions match (AND, same as `@()`)\n\nBlock form: `@all(cond) { ... }`";
 	case "@any":
-		return "**@any** — Explicit conditional (same as `@()` / `@if()`)\n\nBlock form: `@any(cond) { ... }`";
+		return "**@any** — Match when ANY listed condition matches (OR)\n\nBlock form: `@any(cond) { ... }`";
 	case "@if":
 		return "**@if** — Explicit conditional (same as `@()`)\n\nBlock form: `@if(cond) { ... }`";
 	case "ctx":

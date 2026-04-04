@@ -2745,13 +2745,13 @@ class MacroManimParser {
 			var atCount = 0;
 			while (true) {
 				switch (peek()) {
-					case TIdentifier(s) if (isKeyword(s, "if") || isKeyword(s, "any")):
+					case TIdentifier(s) if (isKeyword(s, "if") || isKeyword(s, "all")):
 						if (!conditional.match(NoConditional)) error("stacked conditionals are not allowed — use @all() or @any() with comma-separated parameters");
 						advance();
 						expect(TOpen);
 						conditional = Conditional(parseConditionalParameters(currentDefs), false);
 						atCount++;
-					case TIdentifier(s) if (isKeyword(s, "all")):
+					case TIdentifier(s) if (isKeyword(s, "any")):
 						if (!conditional.match(NoConditional)) error("stacked conditionals are not allowed — use @all() or @any() with comma-separated parameters");
 						advance();
 						expect(TOpen);

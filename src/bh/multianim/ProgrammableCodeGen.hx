@@ -5086,8 +5086,8 @@ class ProgrammableCodeGen {
 		return switch (node.conditionals) {
 			case NoConditional: null;
 
-			case Conditional(values, _strict):
-				condMapToExpr(values);
+			case Conditional(values, anyMode):
+				condMapToExpr(values, anyMode);
 
 			case ConditionalElse(values):
 				final priorNeg = negatePriorSiblings(siblings);
@@ -5149,8 +5149,8 @@ class ProgrammableCodeGen {
 		var result:Expr = macro true;
 		for (sib in siblings) {
 			switch (sib.node.conditionals) {
-				case Conditional(values, _):
-					final sibCond = condMapToExpr(values);
+				case Conditional(values, anyMode):
+					final sibCond = condMapToExpr(values, anyMode);
 					result = macro($result && !($sibCond));
 				case ConditionalElse(values):
 					if (values != null) {
@@ -5163,8 +5163,8 @@ class ProgrammableCodeGen {
 		return result;
 	}
 
-	static function condMapToExpr(values:Map<String, ConditionalValues>):Expr {
-		var result:Expr = macro true;
+	static function condMapToExpr(values:Map<String, ConditionalValues>, anyMode:Bool = false):Expr {
+		var result:Expr = anyMode ? macro false : macro true;
 		for (kv in values.keyValueIterator()) {
 			final paramName:String = kv.key;
 			final condVal:ConditionalValues = kv.value;
@@ -5178,7 +5178,10 @@ class ProgrammableCodeGen {
 				macro $p{["this", "_" + paramName]};
 			};
 			final cond = condValueToExpr(condVal, paramExpr, paramName);
-			result = macro($result && $cond);
+			if (anyMode)
+				result = macro($result || $cond)
+			else
+				result = macro($result && $cond);
 		}
 		return result;
 	}

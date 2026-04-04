@@ -4368,7 +4368,7 @@ class ParserErrorTest extends utest.Test {
 			case Conditional(map, strict):
 				Assert.isTrue(map.exists("mode"), "@any should have mode param");
 				Assert.isTrue(map.exists("style"), "@any should have style param");
-				Assert.isFalse(strict, "@any should not be strict (OR semantics)");
+				Assert.isTrue(strict, "@any should be anyMode=true (OR semantics)");
 			default:
 				Assert.fail("expected Conditional");
 		}
@@ -4390,7 +4390,7 @@ class ParserErrorTest extends utest.Test {
 			case Conditional(map, strict):
 				Assert.isTrue(map.exists("mode"), "@all should have mode param");
 				Assert.isTrue(map.exists("style"), "@all should have style param");
-				Assert.isTrue(strict, "@all should be strict (AND semantics)");
+				Assert.isFalse(strict, "@all should be anyMode=false (AND semantics)");
 			default:
 				Assert.fail("expected Conditional");
 		}
