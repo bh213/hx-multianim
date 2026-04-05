@@ -106,10 +106,10 @@ Supports nested `@()` conditionals inside block arms. Cannot combine with other 
 - Offset: `x,y`
 - Grid: `$grid.pos(x, y)` (requires `grid: spacingX, spacingY` in body)
 - Grid properties: `$grid.width`, `$grid.height`
-- Hex: `$hex.cube(q, r, s)`, `$hex.corner(index, scale)`, `$hex.edge(direction, scale)` (requires `hex: orientation(w, h)` in body)
+- Hex: `$hex.cube(q, r, s)`, `$hex.corner(index, scale)`, `$hex.edge(direction, scale)` (requires `hex: flat(w, h)` or `hex: pointy(w, h)` in body)
 - Hex offset/doubled: `$hex.offset(col, row, even|odd)`, `$hex.doubled(col, row)`
 - Hex properties: `$hex.width`, `$hex.height`
-- Named systems: `grid: #name spacingX, spacingY`, `hex: #name orientation(w, h)`
+- Named systems: `grid: #name spacingX, spacingY`, `hex: #name flat(w, h)` / `hex: #name pointy(w, h)`
 - Value extraction: `$grid.pos(x, y).x`, `$hex.corner(0, 1.0).y`
 - Offset suffix: `.offset(x, y)` on any coordinate expression adds a pixel offset (e.g., `layout(name).offset(5, 10)`, `$grid.pos(1, 2).offset(3, 4)`)
 - Context: `$ctx.width`, `$ctx.height`, `$ctx.random(min, max)`, `$ctx.font("name").lineHeight`, `$ctx.font("name").baseLine`

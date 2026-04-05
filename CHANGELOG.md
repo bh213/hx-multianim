@@ -87,6 +87,9 @@
 - **DevBridge `handleGetScreenState` refactored** — uses `ScreenManager.modeToString()` and extracted `resolveScreenName()`/`resolveScreenNames()` helpers instead of inline loops. `reloadReportToPayload()` extracted as reusable static helper with added `fileType` field.
 
 ### Fixed
+- **Parser: `@switch` range with non-integer values silently mapped to 0** — `parseRV()` now throws a parse error for non-numeric values (e.g., `foo..10`) instead of silently treating them as 0.
+- **Parser: `@switch` parameter name not validated** — `@switch(paramName)` now validates that `paramName` exists in the programmable's parameter definitions, matching the behavior of `@()` conditionals.
+- **Parser: data block forward-referenced types silently misclassified** — enum/record types referenced before their definition in a `data {}` block now produce a clear error instead of being silently treated as a different type.
 - **Draggable: disable during drag orphans state** — setting `enabled = false` while dragging now calls `cancelDrag()` via property setter, properly restoring capture, alpha, layer, origin, and source slot instead of leaving the drag orphaned.
 - **Draggable: zero-distance animation skip ignores visual effects** — `startAnimation()` no longer skips zero-distance paths when `animApplyScale`, `animApplyAlpha`, or `animApplyRotation` flags are set, allowing in-place fade/scale/rotation animations.
 - **Draggable: `swapMode = true` without `sourceSlot` silently degrades** — now throws with a clear error message via property setter validation.

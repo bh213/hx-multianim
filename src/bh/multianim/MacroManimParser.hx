@@ -2810,6 +2810,8 @@ class MacroManimParser {
 						advance();
 						expect(TOpen);
 						final switchParam = expectIdentifierOrString();
+						if (!currentDefs.exists(switchParam))
+							error('@switch parameter "$switchParam" does not have definition');
 						expect(TClosed);
 						expect(TCurlyOpen);
 						parseSwitchArms(parent, switchParam, currentDefs);
@@ -5030,6 +5032,7 @@ class MacroManimParser {
 	function parseRV(s:String):ReferenceableValue {
 		final i = Std.parseInt(s);
 		if (i != null) return RVInteger(i);
+		error('expected integer in range, got "$s"');
 		return RVInteger(0);
 	}
 
@@ -6214,7 +6217,7 @@ class MacroManimParser {
 							// #name record(...) — record type definition
 							advance();
 							expect(TOpen);
-							final recordFields = parseDataRecordFields(enums);
+							final recordFields = parseDataRecordFields(enums, records);
 							if (records.exists(name)) error('record type "$name" already defined');
 							if (enums.exists(name)) error('"$name" is already defined as an enum');
 							records.set(name, {name: name, fields: recordFields});
@@ -6255,14 +6258,14 @@ class MacroManimParser {
 		}
 	}
 
-	function parseDataRecordFields(enums:Map<String, DataEnumDef>):Array<{name:String, type:DataValueType, optional:Bool}> {
+	function parseDataRecordFields(enums:Map<String, DataEnumDef>, records:Map<String, DataRecordDef>):Array<{name:String, type:DataValueType, optional:Bool}> {
 		var result:Array<{name:String, type:DataValueType, optional:Bool}> = [];
 		if (match(TClosed)) return result;
 		while (true) {
 			final isOptional = match(TQuestion);
 			final fieldName = expectIdentifierOrString();
 			expect(TColon);
-			final fieldType = parseDataType(enums);
+			final fieldType = parseDataType(enums, records);
 			result.push({name: fieldName, type: fieldType, optional: isOptional});
 			if (match(TClosed)) return result;
 			expect(TComma);
@@ -6271,7 +6274,7 @@ class MacroManimParser {
 
 	/** Parse a type keyword: int, float, string, bool, enum name, or a record name.
 	 *  If followed by [], it becomes an array type. */
-	function parseDataType(enums:Map<String, DataEnumDef>):DataValueType {
+	function parseDataType(enums:Map<String, DataEnumDef>, records:Map<String, DataRecordDef>):DataValueType {
 		final typeName = expectIdentifierOrString();
 		var baseType:DataValueType = switch (typeName.toLowerCase()) {
 			case "int": DVTInt;
@@ -6280,7 +6283,8 @@ class MacroManimParser {
 			case "bool": DVTBool;
 			default:
 				if (enums.exists(typeName)) DVTEnum(typeName)
-				else DVTRecord(typeName);
+				else if (records.exists(typeName)) DVTRecord(typeName)
+				else error('unknown type "$typeName" (if this is an enum or record, it must be defined before use)');
 		};
 		// Check for [] suffix making it an array type
 		if (match(TBracketOpen)) {

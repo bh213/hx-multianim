@@ -503,8 +503,6 @@ bitmap(...): extraPoint("player.anim", "idle", "fire", direction=>"l", fallback:
 
 When a point is not found: throws if no `fallback:` specified, uses fallback coordinates otherwise. Fallback accepts any coordinate type (literal, layout, grid, etc.).
 
-When a point is not found: throws if no `fallback:` specified, uses fallback coordinates otherwise. Fallback accepts any coordinate type (literal, layout, grid, etc.).
-
 **`.x`/`.y` extraction in expressions:**
 ```manim
 text(font, '${$player.extraPoint("fire").x + $OFFSET_X}', #FF0000): 0, 0
@@ -533,7 +531,7 @@ Applied to any element via long-form body or inline syntax.
 |----------|-------------|
 | `pos: x, y` | Position offset |
 | `grid: spacingX, spacingY` | Grid coordinate system for children |
-| `hex: orientation(w, h)` | Hex coordinate system for children |
+| `hex: flat(w, h)` / `hex: pointy(w, h)` | Hex coordinate system for children |
 | `scale: value` | Scale factor |
 | `rotate: angle` | Rotation angle (supports `deg`, `rad`, `turn`, direction constants) |
 | `alpha: value` | Opacity (0.0-1.0) |

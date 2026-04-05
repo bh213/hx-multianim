@@ -887,6 +887,18 @@ class ParserErrorTest extends utest.Test {
 	}
 
 	@Test
+	public function testDataEnumForwardReference() {
+		var error = parseExpectingError('
+			#test data {
+				#item record(name: string, rarity: rarity)
+				#rarity enum(common, rare)
+			}
+		');
+		Assert.notNull(error, "Forward-referenced type in data block should fail");
+		Assert.stringContains("unknown type", error);
+	}
+
+	@Test
 	public function testDataEnumParseSuccess() {
 		var success = parseExpectingSuccess('
 			#test data {
@@ -4305,6 +4317,32 @@ class ParserErrorTest extends utest.Test {
 			}
 		');
 		Assert.notNull(error, "@switch arm without : or { should fail");
+	}
+
+	@Test
+	public function testSwitchUndefinedParameter() {
+		var error = parseExpectingError('
+			#test programmable(state:[a, b]=a) {
+				@switch(typo) {
+					a: bitmap(generated(color(10, 10, #f00)));
+				}
+			}
+		');
+		Assert.notNull(error, "@switch with undefined parameter should fail");
+		Assert.stringContains("does not have definition", error);
+	}
+
+	@Test
+	public function testSwitchRangeNonInteger() {
+		var error = parseExpectingError('
+			#test programmable(level:uint=0) {
+				@switch(level) {
+					foo..10: bitmap(generated(color(10, 10, #f00)));
+				}
+			}
+		');
+		Assert.notNull(error, "@switch range with non-integer boundary should fail");
+		Assert.stringContains("expected integer", error);
 	}
 
 	@Test
