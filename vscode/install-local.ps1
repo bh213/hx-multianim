@@ -71,9 +71,9 @@ try {
         foreach ($profile in $selected) {
             Write-Host "Installing into profile: $profile"
             if ($profile -eq "Default") {
-                code --install-extension $vsix --force
+                code.cmd --install-extension $vsix --force
             } else {
-                code --install-extension $vsix --force --profile $profile
+                code.cmd --install-extension $vsix --force --profile $profile
             }
         }
     }

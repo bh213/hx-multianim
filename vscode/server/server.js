@@ -5128,6 +5128,9 @@ bh_multianim_MacroManimParser.prototype = {
 															this.advance();
 															this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
 															var switchParam = this.expectIdentifierOrString();
+															if(!Object.prototype.hasOwnProperty.call(currentDefs.h,switchParam)) {
+																this.error("@switch parameter \"" + switchParam + "\" does not have definition");
+															}
 															this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
 															this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyOpen);
 															this.parseSwitchArms(parent,switchParam,currentDefs);
@@ -6855,7 +6858,7 @@ bh_multianim_MacroManimParser.prototype = {
 		}
 	}
 	,parseParticles: function() {
-		var p = { count : null, loop : null, relative : null, emitDelay : null, emitSync : null, maxLife : null, lifeRandom : null, size : null, sizeRandom : null, blendMode : null, speed : null, speedRandom : null, speedIncrease : null, gravity : null, gravityAngle : null, fadeIn : null, fadeOut : null, fadePower : null, tiles : [], emit : bh_multianim_ParticlesEmitMode.Point(bh_multianim_ReferenceableValue.RVFloat(0),bh_multianim_ReferenceableValue.RVFloat(0)), rotationInitial : null, rotationSpeed : null, rotationSpeedRandom : null, rotateAuto : null, forwardAngle : null, colorStops : null, forceFields : null, velocityCurve : null, sizeCurve : null, boundsMode : null, boundsMinX : null, boundsMaxX : null, boundsMinY : null, boundsMaxY : null, boundsLines : null, subEmitters : null, animationRepeat : null, attachTo : null, spawnCurve : null, animFile : null, animSelector : null, animStates : null, animEventOverrides : null};
+		var p = { count : null, loop : null, relative : null, emitDelay : null, emitSync : null, maxLife : null, lifeRandom : null, size : null, sizeRandom : null, blendMode : null, speed : null, speedRandom : null, speedIncrease : null, gravity : null, gravityAngle : null, fadeIn : null, fadeOut : null, fadePower : null, tiles : [], emit : bh_multianim_ParticlesEmitMode.Point(bh_multianim_ReferenceableValue.RVFloat(0),bh_multianim_ReferenceableValue.RVFloat(0)), rotationInitial : null, rotationSpeed : null, rotationSpeedRandom : null, rotateAuto : null, forwardAngle : null, colorStops : null, forceFields : null, velocityCurve : null, sizeCurve : null, boundsMode : null, boundsMinX : null, boundsMaxX : null, boundsMinY : null, boundsMaxY : null, boundsLines : null, subEmitters : null, animationRepeat : null, attachTo : null, spawnCurve : null, animFile : null, animSelector : null, animStates : null, animEventOverrides : null, shutdown : null};
 		while(!this.match(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyClosed)) {
 			var _g = this.tokens[this.tpos].type;
 			switch(_g._hx_index) {
@@ -7003,6 +7006,9 @@ bh_multianim_MacroManimParser.prototype = {
 			case "rotationspeed":case "rotspeed":
 				p.rotationSpeed = this.parseAngleOrReference();
 				break;
+			case "shutdown":
+				p.shutdown = this.parseParticleShutdown();
+				break;
 			case "size":
 				p.size = this.parseFloatOrReference();
 				break;
@@ -7036,6 +7042,41 @@ bh_multianim_MacroManimParser.prototype = {
 			this.eatSemicolon();
 		}
 		return p;
+	}
+	,parseParticleShutdown: function() {
+		var sd = { duration : null, curve : null, alphaCurve : null, sizeCurve : null, speedCurve : null};
+		this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyOpen);
+		while(!this.match(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyClosed)) {
+			if(!this.isNamedParamNext()) {
+				if(!this.match(bh_multianim__$MacroManimParser_MacroTokenType.TComma) && !this.match(bh_multianim__$MacroManimParser_MacroTokenType.TSemiColon)) {
+					this.error("unexpected token in shutdown block: " + Std.string(this.tokens[this.tpos].type));
+				}
+				continue;
+			}
+			var name = this.expectIdentifierOrString();
+			this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
+			switch(name.toLowerCase()) {
+			case "alphacurve":
+				sd.alphaCurve = this.parseCurveNameOrEasing();
+				break;
+			case "curve":
+				sd.curve = this.parseCurveNameOrEasing();
+				break;
+			case "duration":
+				sd.duration = this.parseFloatOrReference();
+				break;
+			case "sizecurve":
+				sd.sizeCurve = this.parseCurveNameOrEasing();
+				break;
+			case "speedcurve":
+				sd.speedCurve = this.parseCurveNameOrEasing();
+				break;
+			default:
+				this.error("unknown shutdown property: " + name);
+			}
+			this.eatSemicolon();
+		}
+		return sd;
 	}
 	,parseParticleRateAction: function(atRate,p) {
 		var actionName = this.expectIdentifierOrString();
@@ -8429,6 +8470,7 @@ bh_multianim_MacroManimParser.prototype = {
 		if(i != null) {
 			return bh_multianim_ReferenceableValue.RVInteger(i);
 		}
+		this.error("expected integer in range, got \"" + s + "\"");
 		return bh_multianim_ReferenceableValue.RVInteger(0);
 	}
 	,parseChildNode: function(node,defs) {
@@ -10082,7 +10124,7 @@ bh_multianim_MacroManimParser.prototype = {
 					if(bh_multianim_MacroManimParser.isKeyword(s,"record")) {
 						this.advance();
 						this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
-						var recordFields = this.parseDataRecordFields(enums);
+						var recordFields = this.parseDataRecordFields(enums,records);
 						if(Object.prototype.hasOwnProperty.call(records.h,name)) {
 							this.error("record type \"" + name + "\" already defined");
 						}
@@ -10137,7 +10179,7 @@ bh_multianim_MacroManimParser.prototype = {
 			this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
 		}
 	}
-	,parseDataRecordFields: function(enums) {
+	,parseDataRecordFields: function(enums,records) {
 		var result = [];
 		if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TClosed)) {
 			return result;
@@ -10146,7 +10188,7 @@ bh_multianim_MacroManimParser.prototype = {
 			var isOptional = this.match(bh_multianim__$MacroManimParser_MacroTokenType.TQuestion);
 			var fieldName = this.expectIdentifierOrString();
 			this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
-			var fieldType = this.parseDataType(enums);
+			var fieldType = this.parseDataType(enums,records);
 			result.push({ name : fieldName, type : fieldType, optional : isOptional});
 			if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TClosed)) {
 				return result;
@@ -10154,7 +10196,7 @@ bh_multianim_MacroManimParser.prototype = {
 			this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
 		}
 	}
-	,parseDataType: function(enums) {
+	,parseDataType: function(enums,records) {
 		var typeName = this.expectIdentifierOrString();
 		var baseType;
 		switch(typeName.toLowerCase()) {
@@ -10171,7 +10213,7 @@ bh_multianim_MacroManimParser.prototype = {
 			baseType = bh_multianim_DataValueType.DVTString;
 			break;
 		default:
-			baseType = Object.prototype.hasOwnProperty.call(enums.h,typeName) ? bh_multianim_DataValueType.DVTEnum(typeName) : bh_multianim_DataValueType.DVTRecord(typeName);
+			baseType = Object.prototype.hasOwnProperty.call(enums.h,typeName) ? bh_multianim_DataValueType.DVTEnum(typeName) : Object.prototype.hasOwnProperty.call(records.h,typeName) ? bh_multianim_DataValueType.DVTRecord(typeName) : this.error("unknown type \"" + typeName + "\" (if this is an enum or record, it must be defined before use)");
 		}
 		if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TBracketOpen)) {
 			this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TBracketClosed);
@@ -13733,6 +13775,7 @@ manim_lsp_CompletionProvider.particleCompletions = function() {
 	props_h["forwardAngle"] = "Forward direction";
 	props_h["animFile"] = "Animation file";
 	props_h["subEmitters"] = "Sub-emitter definitions";
+	props_h["shutdown"] = "Graceful shutdown config: { duration, curve, alphaCurve, sizeCurve, speedCurve }";
 	var _g = [];
 	var h = props_h;
 	var _g_h = h;
