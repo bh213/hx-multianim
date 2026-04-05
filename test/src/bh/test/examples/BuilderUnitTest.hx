@@ -9,6 +9,8 @@ import bh.test.BuilderTestBase.getDataFromSource;
 import bh.test.BuilderTestBase.findVisibleBitmapDescendants;
 import bh.test.BuilderTestBase.findAllTextDescendants;
 import bh.test.BuilderTestBase.countVisibleChildren;
+import bh.test.BuilderTestBase.parseExpectingSuccess;
+import bh.test.BuilderTestBase.parseExpectingError;
 import bh.multianim.MultiAnimParser.SettingValue;
 import bh.multianim.MultiAnimParser.CustomFilterArgType;
 import bh.base.FilterManager;
@@ -5473,5 +5475,73 @@ class BuilderUnitTest extends BuilderTestBase {
 		Assert.notNull(result, "Build should succeed with case-insensitive match");
 		Assert.notNull(result.object.filter, "Custom filter should be applied");
 		FilterManager.unregisterFilter("MyFilter");
+	}
+
+	// ==================== Particles shutdown block parsing ====================
+
+	@Test
+	public function testParticleShutdownParsesBasic():Void {
+		Assert.isTrue(parseExpectingSuccess("
+			#fx particles {
+				count: 10
+				loop: true
+				tiles: generated(color(4, 4, #ff0000))
+				shutdown: {
+					duration: 1.0
+				}
+			}
+		"));
+	}
+
+	@Test
+	public function testParticleShutdownParsesAllCurves():Void {
+		Assert.isTrue(parseExpectingSuccess("
+			#fx particles {
+				count: 10
+				loop: true
+				tiles: generated(color(4, 4, #ff0000))
+				shutdown: {
+					duration: 0.5
+					curve: easeOutQuad
+					alphaCurve: easeInQuad
+					sizeCurve: linear
+					speedCurve: easeInOutCubic
+				}
+			}
+		"));
+	}
+
+	@Test
+	public function testParticleShutdownParsesNamedCurves():Void {
+		Assert.isTrue(parseExpectingSuccess("
+			curves {
+				#fadeDown curve { easing: easeOutQuad }
+			}
+			#fx particles {
+				count: 10
+				loop: true
+				tiles: generated(color(4, 4, #ff0000))
+				shutdown: {
+					duration: 1.0
+					curve: fadeDown
+				}
+			}
+		"));
+	}
+
+	@Test
+	public function testParticleShutdownRejectsUnknownProperty():Void {
+		final err = parseExpectingError("
+			#fx particles {
+				count: 10
+				tiles: generated(color(4, 4, #ff0000))
+				shutdown: {
+					duration: 1.0
+					bogus: easeOutQuad
+				}
+			}
+		");
+		Assert.notNull(err, "Should reject unknown shutdown property");
+		Assert.isTrue(err.indexOf("unknown shutdown property") >= 0, 'Expected "unknown shutdown property" in error, got: $err');
 	}
 }

@@ -2162,6 +2162,68 @@ subEmitters: [
 | `offsetX` | float | — | Horizontal offset from parent |
 | `offsetY` | float | — | Vertical offset from parent |
 
+### Shutdown
+
+Graceful particle stop for looping emitters. Instead of removing particles instantly, `shutdown()` winds them down over a configurable duration.
+
+```
+#beam particles {
+    count: 50
+    loop: true
+    maxLife: 0.5
+    tiles: file("spark.png")
+    shutdown: {
+        duration: 0.8
+        curve: easeOutQuad
+        alphaCurve: easeInQuad
+        sizeCurve: linear
+    }
+}
+```
+
+**Shutdown properties:**
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `duration` | float | Default shutdown duration in seconds |
+| `curve` | curve ref | Count curve — shapes how particle density decreases |
+| `alphaCurve` | curve ref | Global alpha multiplier during shutdown |
+| `sizeCurve` | curve ref | Global size multiplier during shutdown |
+| `speedCurve` | curve ref | Global speed multiplier during shutdown |
+
+**Curve convention:** All curves use progress semantics: `multiplier = 1.0 - curve(t)` where `t` is 0..1 over the shutdown duration. Standard easings work intuitively — `easeOutQuad` means fast initial die-off, `easeInQuad` means slow start then rapid end.
+
+**How it works:** When `shutdown()` is called, particles that reach end-of-life are selectively not recycled based on the count curve. The density decreases following the curve shape. Alpha/size/speed multipliers are applied globally to all live particles. After the curve duration, remaining particles enter natural die-off (up to `maxLife` more seconds). The existing `onEnd()` callback fires when the last particle dies.
+
+**Runtime API:**
+```haxe
+// Create and use particles
+var sparks = builder.createParticles("beam");
+layer.addChild(sparks);
+
+// Later, graceful shutdown (uses .manim configured duration/curves)
+sparks.shutdown();
+
+// Override duration at call time
+sparks.shutdown(0.5);
+
+// Per-group control
+var group = sparks.getGroup("beam");
+group.shutdown(1.0, myCustomCurve);
+
+// Query state
+group.isShuttingDown();  // Bool
+group.getShutdownRate(); // 0..1 progress
+
+// Set curves via API before calling shutdown()
+group.shutdownAlphaCurve = myCurve;
+```
+
+**Notes:**
+- No-op on non-looping groups
+- `emitBurstAt()` still works during shutdown (for manual one-shot effects)
+- Default `onEnd()` is `this.remove()` — no change needed
+
 ### Multiple Tiles
 
 Use multiple tile sources for variety. Particles randomly select from available tiles.

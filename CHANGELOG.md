@@ -7,6 +7,8 @@
 - **Conditional blocks** — `@(cond) { ... }`, `@else { ... }`, `@else(cond) { ... }`, `@default { ... }` — group multiple elements under a single condition without repeating the `@` prefix on each element. Wraps children in a POINT node. Supports nesting (block-in-block).
 - **`@any`/`@all` conditional keywords** — `@any(p1=>v1, p2=>v2)` matches when ANY listed condition matches (OR logic). `@all(p1=>v1, p2=>v2)` matches when ALL listed conditions match (AND logic, same as `@()`/`@if()`). Unlisted parameters are ignored in both modes. Stacked conditionals (`@(a=>1) @(b=>2)`) now produce a clear error directing users to `@all()` or `@any()`.
 
+- **Particle `shutdown` block and API** — graceful particle stop for looping emitters. `shutdown: { duration: 1.0, curve: easeOutQuad, alphaCurve: ..., sizeCurve: ..., speedCurve: ... }` configures wind-down behavior in `.manim`. At runtime, `particles.shutdown()` or `group.shutdown(?duration, ?curve)` starts a timed shutdown that curves particle count (selectively stops recycling dead particles) and optionally applies global alpha/size/speed multipliers. All curves use progress convention (`mult = 1.0 - curve(t)`). Query state via `isShuttingDown()` and `getShutdownRate()`. `emitBurstAt()` still works during shutdown. Existing `onEnd()` fires when the last particle dies.
+
 ### Changed
 - **`@ifstrict` removed** — replaced by `@all()` (AND on listed params, unlisted ignored). The old `@ifstrict` behavior (requiring ALL programmable params to be mentioned) is no longer available.
 

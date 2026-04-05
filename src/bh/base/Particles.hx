@@ -170,9 +170,9 @@ private class Particle extends h2d.SpriteBatch.BatchElement {
 		// Apply force fields
 		group.applyForceFields(this, dt);
 
-		// Update position with velocity curve modifier
-		var effectiveVx = vx * velocityMult;
-		var effectiveVy = vy * velocityMult;
+		// Update position with velocity curve modifier + shutdown speed
+		var effectiveVx = vx * velocityMult * group.shutdownSpeedMult;
+		var effectiveVy = vy * velocityMult * group.shutdownSpeedMult;
 
 		x += effectiveVx * dt;
 		y += effectiveVy * dt;
@@ -184,8 +184,8 @@ private class Particle extends h2d.SpriteBatch.BatchElement {
 		else
 			rotation += vr * dt;
 
-		// Size with curve support
-		var sizeMult = group.getSizeCurveValue(timeNormalized);
+		// Size with curve support + shutdown size
+		var sizeMult = group.getSizeCurveValue(timeNormalized) * group.shutdownSizeMult;
 		if (group.incrX)
 			baseScaleX *= Math.pow(1 + vSize, dt);
 		if (group.incrY)
@@ -194,13 +194,14 @@ private class Particle extends h2d.SpriteBatch.BatchElement {
 		scaleX = baseScaleX * sizeMult;
 		scaleY = baseScaleY * sizeMult;
 
-		// Alpha fade
+		// Alpha fade + shutdown alpha
 		if( timeNormalized < group.fadeIn )
 			alpha = Math.pow(timeNormalized / group.fadeIn, group.fadePower);
 		else if( timeNormalized > group.fadeOut )
 			alpha = Math.pow((1 - timeNormalized) / (1 - group.fadeOut), group.fadePower);
 		else
 			alpha = 1;
+		alpha *= group.shutdownAlphaMult;
 
 		// Color interpolation
 		if (group.colorEnabled) {
@@ -239,9 +240,14 @@ private class Particle extends h2d.SpriteBatch.BatchElement {
 		if (group.boundsMode != None) {
 			if (!group.checkBounds(this)) {
 				if (group.emitLoop) {
+					if (group.shutdownActive && group.liveCount > group.shutdownTargetCount) {
+						group.liveCount--;
+						return false;
+					}
 					group.init(this);
 					delay = 0;
 				} else {
+					group.liveCount--;
 					return false;
 				}
 			}
@@ -256,10 +262,16 @@ private class Particle extends h2d.SpriteBatch.BatchElement {
 			group.triggerSubEmitters(this, OnDeath);
 
 			if( group.emitLoop ) {
+				if (group.shutdownActive && group.liveCount > group.shutdownTargetCount) {
+					group.liveCount--;
+					return false;
+				}
 				group.init(this);
 				delay = 0;
-			} else
+			} else {
+				group.liveCount--;
 				return false;
+			}
 		}
 		return true;
 	}
@@ -582,6 +594,46 @@ class ParticleGroup {
 	/** Accumulator for dynamic emission when spawnCurve is active. */
 	var emissionAccumulator : Float = 0;
 
+	// ----- Shutdown -----
+	/**
+		Configured shutdown duration (from .manim or API). Used as default when `shutdown()` is called without arguments.
+	**/
+	public var shutdownDuration(default, null) : Float = 0;
+	/**
+		Count curve for shutdown — maps shutdown progress (0..1) to "how much shutdown has progressed" (0..1).
+		The alive fraction is `1.0 - curve(t)`. Standard easings work intuitively:
+		easeOutQuad = fast initial die-off, easeInQuad = slow start then rapid.
+		null = linear (default).
+	**/
+	public var shutdownCountCurve : Null<bh.paths.Curve.ICurve> = null;
+	/**
+		Alpha multiplier curve for shutdown. Same convention: `mult = 1.0 - curve(t)`.
+	**/
+	public var shutdownAlphaCurve : Null<bh.paths.Curve.ICurve> = null;
+	/**
+		Size multiplier curve for shutdown. Same convention: `mult = 1.0 - curve(t)`.
+	**/
+	public var shutdownSizeCurve : Null<bh.paths.Curve.ICurve> = null;
+	/**
+		Speed multiplier curve for shutdown. Same convention: `mult = 1.0 - curve(t)`.
+	**/
+	public var shutdownSpeedCurve : Null<bh.paths.Curve.ICurve> = null;
+
+	/** Whether shutdown is currently active. */
+	var shutdownActive : Bool = false;
+	/** Elapsed time since shutdown started. */
+	var shutdownTime : Float = 0;
+	/** Active shutdown duration (from shutdown() call or configured default). */
+	var shutdownActiveDuration : Float = 0;
+	/** Number of particles currently alive in the batch. */
+	var liveCount : Int = 0;
+
+	// Precomputed per-frame shutdown values (updated in updateTime)
+	var shutdownTargetCount : Int = 0;
+	var shutdownAlphaMult : Float = 1.0;
+	var shutdownSizeMult : Float = 1.0;
+	var shutdownSpeedMult : Float = 1.0;
+
 	inline function set_blendMode(v) { batch.blendMode = v; return blendMode = v; }
 	
 	inline function set_gravityAngle(v : Float) {
@@ -608,6 +660,7 @@ class ParticleGroup {
 		batch.clear();
 		started = true;
 		globalTime = 0;
+		liveCount = nparts;
 		for( i in 0...nparts ) {
 			var p = new Particle(this);
 			p.delay = rand() * life * (1 - emitSync) + emitDelay;
@@ -639,6 +692,7 @@ class ParticleGroup {
 			p.vy += inheritVy;
 			p.visible = true;
 			batch.add(p);
+			liveCount++;
 		}
 	}
 
@@ -647,6 +701,49 @@ class ParticleGroup {
 	**/
 	public function emitBurst(count:Int):Void {
 		emitBurstAt(0, 0, 0, 0, count);
+	}
+
+	/**
+		Gracefully stop a looping emitter. Existing particles finish their lifecycle naturally.
+
+		Without duration: sets `emitLoop = false` — particles die at their natural rate.
+		With duration: activates a timed shutdown that curves particle count (and optionally alpha/size/speed)
+		over the specified duration. Particles that reach end-of-life during shutdown are selectively
+		not recycled based on the count curve. After the curve reaches zero, remaining particles
+		enter natural die-off.
+
+		No-op on non-looping groups. `emitBurstAt()` still works after shutdown.
+
+		@param duration Shutdown duration in seconds. null or 0 = instant (emitLoop = false).
+		@param curve Count curve override. null = use configured `shutdownCountCurve`, or linear default.
+	**/
+	public function shutdown(?duration:Float, ?curve:bh.paths.Curve.ICurve):Void {
+		if (!emitLoop) return;
+		final dur = duration != null ? duration : shutdownDuration;
+		if (dur <= 0) {
+			emitLoop = false;
+			return;
+		}
+		shutdownActive = true;
+		shutdownTime = 0;
+		shutdownActiveDuration = dur;
+		if (curve != null) shutdownCountCurve = curve;
+		// Precompute initial values
+		shutdownTargetCount = liveCount;
+		shutdownAlphaMult = 1.0;
+		shutdownSizeMult = 1.0;
+		shutdownSpeedMult = 1.0;
+	}
+
+	/** Whether this group is currently in the shutdown phase. */
+	public function isShuttingDown():Bool {
+		return shutdownActive;
+	}
+
+	/** Get shutdown progress as 0..1 (0 = just started, 1 = complete). Returns 0 if not shutting down. */
+	public function getShutdownRate():Float {
+		if (!shutdownActive) return 0;
+		return Math.min(shutdownTime / shutdownActiveDuration, 1.0);
 	}
 
 	function init( p : Particle ):Void {
@@ -1084,6 +1181,31 @@ class ParticleGroup {
 	public function updateTime(dt:Float):Void {
 		globalTime += dt;
 
+		// Update shutdown state
+		if (shutdownActive) {
+			shutdownTime += dt;
+			var rate = Math.min(shutdownTime / shutdownActiveDuration, 1.0);
+
+			// Count curve: alive fraction = 1.0 - curveValue(rate)
+			var countProgress = if (shutdownCountCurve != null) shutdownCountCurve.getValue(rate) else rate;
+			var aliveFraction = Math.max(0, 1.0 - countProgress);
+			shutdownTargetCount = Math.round(nparts * aliveFraction);
+
+			// Multiplier curves
+			if (shutdownAlphaCurve != null)
+				shutdownAlphaMult = Math.max(0, 1.0 - shutdownAlphaCurve.getValue(rate));
+			if (shutdownSizeCurve != null)
+				shutdownSizeMult = Math.max(0, 1.0 - shutdownSizeCurve.getValue(rate));
+			if (shutdownSpeedCurve != null)
+				shutdownSpeedMult = Math.max(0, 1.0 - shutdownSpeedCurve.getValue(rate));
+
+			// Once curve says 0 particles and duration elapsed, switch to natural die-off
+			if (rate >= 1.0 && shutdownTargetCount <= 0) {
+				emitLoop = false;
+				shutdownActive = false;
+			}
+		}
+
 		// Update attached animated path
 		if (attachedPath != null) {
 			var state = attachedPath.update(dt);
@@ -1167,6 +1289,18 @@ class Particles extends h2d.Drawable {
 	**/
 	public function setRandomFunc(func:() -> Float):Void {
 		for (g in groups) g.randomFunc = func;
+	}
+
+	/**
+		Gracefully stop all groups. See `ParticleGroup.shutdown()` for details.
+		The existing `onEnd()` callback fires automatically once the last particle
+		across all groups dies (via the existing `sync()` check).
+
+		@param duration Shutdown duration override. null = use each group's configured default.
+		@param curve Count curve override. null = use each group's configured curve.
+	**/
+	public function shutdown(?duration:Float, ?curve:bh.paths.Curve.ICurve):Void {
+		for (g in groups) g.shutdown(duration, curve);
 	}
 
 	override function sync(ctx:h2d.RenderContext):Void {

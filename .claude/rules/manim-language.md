@@ -190,6 +190,13 @@ Operations reference other named curves **or built-in easing names** (e.g. `mult
     0.8: anim("dying")
     onBounce: anim("impact")
     subEmitters: [{ groupId: "sparks", trigger: ondeath, probability: 0.8 }]
+    shutdown: {
+        duration: 1.0
+        curve: easeOutQuad
+        alphaCurve: easeInQuad
+        sizeCurve: myCustomCurve
+        speedCurve: linear
+    }
 }
 ```
 
@@ -203,7 +210,9 @@ Operations reference other named curves **or built-in easing names** (e.g. `mult
 
 **Property aliases:** `lifeRand`, `sizeRand`, `speedRand`, `speedIncr`/`acceleration`, `rotSpeed`, `rotSpeedRand`, `rotInitial`, `autoRotate`, `delay`, `animRepeat`.
 
-**Runtime API:** `group.emitBurst(count)`, `group.addForceField(ff)`, `group.removeForceFieldAt(i)`, `group.clearForceFields()`
+**Shutdown block:** Configures graceful particle stop. All curves use "progress" convention: `multiplier = 1.0 - curve(t)`. `curve` controls particle count (how many recycle vs die). `alphaCurve`/`sizeCurve`/`speedCurve` apply global multipliers during shutdown. `duration` is the default when `shutdown()` is called without arguments.
+
+**Runtime API:** `group.emitBurst(count)`, `group.addForceField(ff)`, `group.removeForceFieldAt(i)`, `group.clearForceFields()`, `group.shutdown(?duration, ?curve)`, `particles.shutdown(?duration, ?curve)`, `group.isShuttingDown()`, `group.getShutdownRate()`
 
 See `docs/manim.md` for full particles documentation.
 

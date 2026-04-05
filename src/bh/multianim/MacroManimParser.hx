@@ -3943,7 +3943,8 @@ class MacroManimParser {
 			boundsMode: null, boundsMinX: null, boundsMaxX: null, boundsMinY: null, boundsMaxY: null, boundsLines: null,
 			subEmitters: null, animationRepeat: null,
 			attachTo: null, spawnCurve: null,
-			animFile: null, animSelector: null, animStates: null, animEventOverrides: null
+			animFile: null, animSelector: null, animStates: null, animEventOverrides: null,
+			shutdown: null
 		};
 		while (!match(TCurlyClosed)) {
 			// Check for rate-based actions: 0.0: colorCurve: ...
@@ -4035,6 +4036,8 @@ class MacroManimParser {
 					parseBoundsCombined(p);
 				case "subemitters":
 					p.subEmitters = parseSubEmitters();
+				case "shutdown":
+					p.shutdown = parseParticleShutdown();
 				default:
 					// Skip unknown params
 					parseStringOrReference();
@@ -4042,6 +4045,33 @@ class MacroManimParser {
 			eatSemicolon();
 		}
 		return p;
+	}
+
+	function parseParticleShutdown():ParticleShutdownDef {
+		var sd:ParticleShutdownDef = {
+			duration: null, curve: null, alphaCurve: null, sizeCurve: null, speedCurve: null
+		};
+		expect(TCurlyOpen);
+		while (!match(TCurlyClosed)) {
+			if (!isNamedParamNext()) {
+				if (!match(TComma) && !match(TSemiColon)) {
+					error('unexpected token in shutdown block: ${peek()}');
+				}
+				continue;
+			}
+			final name = expectIdentifierOrString();
+			expect(TColon);
+			switch (name.toLowerCase()) {
+				case "duration": sd.duration = parseFloatOrReference();
+				case "curve": sd.curve = parseCurveNameOrEasing();
+				case "alphacurve": sd.alphaCurve = parseCurveNameOrEasing();
+				case "sizecurve": sd.sizeCurve = parseCurveNameOrEasing();
+				case "speedcurve": sd.speedCurve = parseCurveNameOrEasing();
+				default: error('unknown shutdown property: $name');
+			}
+			eatSemicolon();
+		}
+		return sd;
 	}
 
 	function parseParticleRateAction(atRate:ReferenceableValue, p:ParticlesDef):Void {

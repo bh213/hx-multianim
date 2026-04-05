@@ -91,6 +91,7 @@ class CompletionProvider {
 			"rotateAuto" => "Auto-rotate to velocity", "relative" => "Relative to emitter",
 			"spawnCurve" => "Spawn rate curve", "forwardAngle" => "Forward direction",
 			"animFile" => "Animation file", "subEmitters" => "Sub-emitter definitions",
+			"shutdown" => "Graceful shutdown config: { duration, curve, alphaCurve, sizeCurve, speedCurve }",
 		];
 		return [for (key => desc in props) kw(key, desc)];
 	}

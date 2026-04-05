@@ -926,6 +926,61 @@ bounds: bounce(0.6), box(x: -50, y: -50, w: 250, h: 250), line(0, 0, 100, 0)
 ### Path Integration
 `attachTo: pathName` — emitter follows animated path.
 
+### Shutdown
+
+Graceful particle stop — configures how a looping emitter winds down when `shutdown()` is called at runtime.
+
+```manim
+shutdown: {
+    duration: 1.0                    // wind-down time in seconds
+    curve: easeOutQuad               // count curve (how fast particles stop recycling)
+    alphaCurve: easeInQuad           // global alpha multiplier during shutdown
+    sizeCurve: myCustomCurve         // global size multiplier during shutdown
+    speedCurve: linear               // global speed multiplier during shutdown
+}
+```
+
+| Property | Description |
+|----------|-------------|
+| `duration` | Default shutdown duration (seconds). Used when `shutdown()` called without args |
+| `curve` | Count curve — shapes how particle density decreases. `easeOutQuad` = fast initial die-off |
+| `alphaCurve` | Alpha multiplier over shutdown. Applied on top of per-particle fadeIn/fadeOut |
+| `sizeCurve` | Size multiplier over shutdown. Applied on top of per-particle sizeCurve |
+| `speedCurve` | Speed multiplier over shutdown. Applied on top of per-particle velocityCurve |
+
+**Curve convention:** All curves use "progress" semantics: `multiplier = 1.0 - curve(t)` where `t` is shutdown progress (0..1). Standard easings work intuitively — `easeOutQuad` means fast start (rapid initial die-off / fade), `easeInQuad` means slow start (lingers then rapid end).
+
+**Runtime API:**
+```haxe
+// Graceful shutdown (uses .manim configured duration/curves)
+particles.shutdown();
+
+// Override duration
+particles.shutdown(0.5);
+
+// Override duration and count curve
+particles.shutdown(1.0, myCustomCurve);
+
+// Per-group control
+group.shutdown(1.0);
+
+// Query state
+group.isShuttingDown();  // Bool
+group.getShutdownRate(); // 0..1 progress
+
+// Set curves via API before calling shutdown()
+group.shutdownCountCurve = myCurve;
+group.shutdownAlphaCurve = myCurve;
+group.shutdownSizeCurve = myCurve;
+group.shutdownSpeedCurve = myCurve;
+```
+
+**Behavior:**
+- No-op on non-looping groups
+- After shutdown, `emitBurstAt()` still works (manual one-shot effects)
+- Existing `onEnd()` callback fires when last particle dies (default: `this.remove()`)
+- Total visual clear time: `duration` (curve phase) + up to `maxLife` (natural die-off of remaining particles)
+
 ---
 
 ## Layouts

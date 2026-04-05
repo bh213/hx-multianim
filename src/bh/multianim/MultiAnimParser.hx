@@ -858,6 +858,18 @@ typedef ParticlesDef = {
 	var animSelector:Null<Map<String, String>>;
 	var animStates:Null<Array<ParticleAnimStateDef>>;
 	var animEventOverrides:Null<Array<ParticleAnimEventOverride>>;
+	// Shutdown
+	var shutdown:Null<ParticleShutdownDef>;
+}
+
+// Shutdown configuration for graceful particle stop
+@:nullSafety
+typedef ParticleShutdownDef = {
+	var duration:Null<ReferenceableValue>;
+	var curve:Null<ParticleCurveRef>;
+	var alphaCurve:Null<ParticleCurveRef>;
+	var sizeCurve:Null<ParticleCurveRef>;
+	var speedCurve:Null<ParticleCurveRef>;
 }
 
 @:nullSafety

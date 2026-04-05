@@ -22,7 +22,7 @@ class ParticleRuntimeTest extends utest.Test {
 		return new Particles();
 	}
 
-	static function createGroup(id:String, p:Particles):ParticleGroup {
+	static function createGroup(id:String, p:Particles, loop:Bool = false):ParticleGroup {
 		var tiles = [h2d.Tile.fromColor(0xFF0000, 4, 4)];
 		var g = new ParticleGroup(id, p, tiles);
 		p.addGroup(g);
@@ -34,7 +34,7 @@ class ParticleRuntimeTest extends utest.Test {
 		dg.lifeRand = 0;
 		dg.sizeRand = 0;
 		dg.speedRand = 0;
-		dg.emitLoop = false;
+		dg.emitLoop = loop;
 		dg.emitSync = 1.0; // no delay — all particles visible immediately
 		dg.emitDelay = 0;
 		g.randomFunc = seededRandom(42);
@@ -414,5 +414,163 @@ class ParticleRuntimeTest extends utest.Test {
 		// Should not crash — silently skips missing group
 		advanceGroup(mainGroup, 0.5);
 		Assert.pass();
+	}
+
+	// ==================== Shutdown ====================
+
+	@Test
+	public function testShutdownInstant():Void {
+		var p = createParticles();
+		var g = createGroup("main", p, true); // looping
+
+		advanceGroup(g, 0.5); // let particles run
+		Assert.equals(20, countParticles(g)); // looping — always 20
+
+		g.shutdown(); // instant — sets emitLoop = false
+		Assert.isFalse(g.emitLoop);
+		Assert.isFalse(g.isShuttingDown());
+
+		// Particles should die off over time (life=1.0)
+		advanceGroup(g, 1.5);
+		Assert.equals(0, countParticles(g));
+	}
+
+	@Test
+	public function testShutdownNoopOnNonLooping():Void {
+		var p = createParticles();
+		var g = createGroup("main", p, false); // non-looping
+
+		g.shutdown(1.0);
+		Assert.isFalse(g.isShuttingDown()); // no-op
+	}
+
+	@Test
+	public function testShutdownWithDuration():Void {
+		var p = createParticles();
+		var g = createGroup("main", p, true);
+		// Short life so particles recycle frequently during shutdown
+		var dg:Dynamic = g;
+		dg.life = 0.2;
+
+		advanceGroup(g, 0.3); // let particles cycle a few times
+		var countBefore = countParticles(g);
+		Assert.equals(20, countBefore);
+
+		g.shutdown(0.5); // 0.5s shutdown with linear count curve
+		Assert.isTrue(g.isShuttingDown());
+
+		// Advance past a few particle lifetimes — shutdown thinning happens at recycle time
+		advanceGroup(g, 0.4);
+		var countMid = countParticles(g);
+		Assert.isTrue(countMid < 20, 'Expected fewer than 20 particles during shutdown, got $countMid');
+		Assert.isTrue(countMid > 0, 'Expected some particles still alive, got $countMid');
+
+		// After shutdown duration + full life — all should be dead
+		advanceGroup(g, 2.0);
+		Assert.equals(0, countParticles(g));
+	}
+
+	@Test
+	public function testShutdownConfiguredDuration():Void {
+		var p = createParticles();
+		var g = createGroup("main", p, true);
+		var dg:Dynamic = g;
+		dg.shutdownDuration = 0.5;
+
+		advanceGroup(g, 0.3);
+		g.shutdown(); // uses configured duration (0.5)
+		Assert.isTrue(g.isShuttingDown());
+	}
+
+	@Test
+	public function testShutdownRate():Void {
+		var p = createParticles();
+		var g = createGroup("main", p, true);
+
+		advanceGroup(g, 0.1);
+		g.shutdown(1.0);
+
+		Assert.floatEquals(0.0, g.getShutdownRate(), 0.01);
+		advanceGroup(g, 0.5);
+		Assert.floatEquals(0.5, g.getShutdownRate(), 0.05);
+	}
+
+	@Test
+	public function testShutdownBurstStillWorks():Void {
+		var p = createParticles();
+		var g = createGroup("main", p, true);
+
+		advanceGroup(g, 0.1);
+		g.shutdown(0.5);
+
+		// Burst should still add particles during shutdown
+		var countBefore = countParticles(g);
+		g.emitBurst(10);
+		var countAfter = countParticles(g);
+		Assert.equals(countBefore + 10, countAfter);
+	}
+
+	@Test
+	public function testShutdownWithAlphaCurve():Void {
+		var p = createParticles();
+		var g = createGroup("main", p, true);
+
+		// Linear alpha curve: alpha = 1.0 - t
+		g.shutdownAlphaCurve = new bh.paths.Curve(null, Linear, null);
+
+		advanceGroup(g, 0.1);
+		g.shutdown(1.0);
+
+		// After half the shutdown, alpha mult should be ~0.5
+		advanceGroup(g, 0.5);
+		Assert.floatEquals(0.5, g.shutdownAlphaMult, 0.1);
+
+		// Check a particle has reduced alpha
+		var e = g.batch.first;
+		if (e != null) {
+			Assert.isTrue(e.alpha < 0.9, 'Expected reduced alpha during shutdown, got ${e.alpha}');
+		}
+	}
+
+	@Test
+	public function testShutdownWithSizeCurve():Void {
+		var p = createParticles();
+		var g = createGroup("main", p, true);
+
+		g.shutdownSizeCurve = new bh.paths.Curve(null, Linear, null);
+
+		advanceGroup(g, 0.1);
+		g.shutdown(1.0);
+
+		advanceGroup(g, 0.5);
+		Assert.floatEquals(0.5, g.shutdownSizeMult, 0.1);
+	}
+
+	@Test
+	public function testShutdownWithSpeedCurve():Void {
+		var p = createParticles();
+		var g = createGroup("main", p, true);
+
+		g.shutdownSpeedCurve = new bh.paths.Curve(null, Linear, null);
+
+		advanceGroup(g, 0.1);
+		g.shutdown(1.0);
+
+		advanceGroup(g, 0.5);
+		Assert.floatEquals(0.5, g.shutdownSpeedMult, 0.1);
+	}
+
+	@Test
+	public function testShutdownOnParticlesForwardsToAllGroups():Void {
+		var p = createParticles();
+		var g1 = createGroup("group1", p, true);
+		var g2 = createGroup("group2", p, true);
+
+		advanceGroup(g1, 0.1);
+		advanceGroup(g2, 0.1);
+
+		p.shutdown(0.5);
+		Assert.isTrue(g1.isShuttingDown());
+		Assert.isTrue(g2.isShuttingDown());
 	}
 }

@@ -5411,6 +5411,21 @@ class MultiAnimBuilder {
 			}
 		}
 
+		// Shutdown configuration
+		if (particlesDef.shutdown != null) {
+			final sd = particlesDef.shutdown;
+			if (sd.duration != null)
+				group.shutdownDuration = resolveAsNumber(sd.duration);
+			if (sd.curve != null)
+				group.shutdownCountCurve = resolveParticleCurveRef(sd.curve);
+			if (sd.alphaCurve != null)
+				group.shutdownAlphaCurve = resolveParticleCurveRef(sd.alphaCurve);
+			if (sd.sizeCurve != null)
+				group.shutdownSizeCurve = resolveParticleCurveRef(sd.sizeCurve);
+			if (sd.speedCurve != null)
+				group.shutdownSpeedCurve = resolveParticleCurveRef(sd.speedCurve);
+		}
+
 		particles.addGroup(group);
 		return particles;
 	}
