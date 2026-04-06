@@ -2400,6 +2400,10 @@ class MultiAnimBuilder {
 					case TileSourceValue(ts): loadTileSource(ts);
 					case _: throw 'TileSource reference "$varName" is not a TileSourceValue, got: $param' + currentNodePos();
 				}
+			case TSPivot(px, py, inner):
+				var t = loadTileSource(inner);
+				t.setCenterRatio(px, py);
+				t;
 		}
 
 		if (tile == null)
@@ -2802,6 +2806,7 @@ class MultiAnimBuilder {
 					default:
 				}
 			case TSReference(varName): result.push(varName);
+			case TSPivot(_, _, inner): collectTileSourceParamRefs(inner, result);
 			#if !macro
 			case TSTile(_):
 			#end
@@ -3916,12 +3921,13 @@ class MultiAnimBuilder {
 
 				var height = tile.height;
 				var width = tile.width;
-				var dh = switch vAlign {
+				final hasPivot = tileSource.match(TSPivot(_, _, _));
+				var dh = if (hasPivot) tile.dy else switch vAlign {
 					case Top: 0.;
 					case Center: -(height * .5);
 					case Bottom: -height;
 				}
-				var wh = switch hAlign {
+				var wh = if (hasPivot) tile.dx else switch hAlign {
 					case Left: 0.;
 					case Right: -width;
 					case Center: -(width * .5);
@@ -3990,7 +3996,7 @@ class MultiAnimBuilder {
 				}
 				ht.onHyperlink = (url) -> {
 					if (builderParams != null && builderParams.callback != null) {
-						try builderParams.callback(Name("link:" + url)) catch(_:Dynamic) {};
+						try builderParams.callback(Name("link:" + url)) catch(e:Dynamic) { trace('Hyperlink callback error: $e'); };
 					}
 				};
 				ht.onOverHyperlink = (url) -> {

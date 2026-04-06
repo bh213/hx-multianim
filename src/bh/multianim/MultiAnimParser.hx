@@ -910,6 +910,7 @@ enum TileSource {
 	TSTile(tile:h2d.Tile); // Used for iterator-provided tiles (e.g., from stateanim iterator)
 	#end
 	TSReference(varName:String); // Reference to a TileSource variable (e.g., $bitmap from stateanim iterator)
+	TSPivot(pivotX:Float, pivotY:Float, inner:TileSource); // Wrapper that sets tile pivot via setCenterRatio
 }
 
 @:nullSafety

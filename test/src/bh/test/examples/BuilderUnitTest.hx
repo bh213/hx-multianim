@@ -5544,4 +5544,48 @@ class BuilderUnitTest extends BuilderTestBase {
 		Assert.notNull(err, "Should reject unknown shutdown property");
 		Assert.isTrue(err.indexOf("unknown shutdown property") >= 0, 'Expected "unknown shutdown property" in error, got: $err');
 	}
+
+	// ==================== Pivot / Center tile source ====================
+
+	@Test
+	public function testCenterTileSource():Void {
+		final result = buildFromSource("
+			#test programmable() {
+				bitmap(center(generated(color(40, 20, #ff0000)))): 100, 100
+			}
+		", "test");
+		Assert.notNull(result, "Build should succeed");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(-20, Std.int(bitmaps[0].tile.dx));
+		Assert.equals(-10, Std.int(bitmaps[0].tile.dy));
+	}
+
+	@Test
+	public function testPivotTileSource():Void {
+		final result = buildFromSource("
+			#test programmable() {
+				bitmap(pivot(0.0, 1.0, generated(color(40, 20, #ff0000)))): 100, 100
+			}
+		", "test");
+		Assert.notNull(result, "Build should succeed");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(0, Std.int(bitmaps[0].tile.dx));
+		Assert.equals(-20, Std.int(bitmaps[0].tile.dy));
+	}
+
+	@Test
+	public function testPivotHalfBottomCenter():Void {
+		final result = buildFromSource("
+			#test programmable() {
+				bitmap(pivot(0.5, 1.0, generated(color(40, 20, #ff0000)))): 100, 100
+			}
+		", "test");
+		Assert.notNull(result, "Build should succeed");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(-20, Std.int(bitmaps[0].tile.dx));
+		Assert.equals(-20, Std.int(bitmaps[0].tile.dy));
+	}
 }

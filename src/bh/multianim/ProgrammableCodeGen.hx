@@ -2102,12 +2102,13 @@ class ProgrammableCodeGen {
 				// Collect all statements into a single block so _rt_bmp is in scope
 				final stmts:Array<Expr> = [];
 				// Apply hAlign/vAlign via tile.sub() dx/dy, matching generateBitmapCreate
-				var dxExpr:Expr = switch (hAlign) {
+				final hasPivot = tileSource.match(TSPivot(_, _, _));
+				var dxExpr:Expr = if (hasPivot) macro _rt_tile.dx else switch (hAlign) {
 					case Center: macro -(_rt_tile.width * 0.5);
 					case Right: macro -_rt_tile.width;
 					default: macro 0.0;
 				};
-				var dyExpr:Expr = switch (vAlign) {
+				var dyExpr:Expr = if (hasPivot) macro _rt_tile.dy else switch (vAlign) {
 					case Center: macro -(_rt_tile.height * 0.5);
 					case Bottom: macro -_rt_tile.height;
 					default: macro 0.0;
@@ -4574,12 +4575,13 @@ class ProgrammableCodeGen {
 		// Always use tile.sub() to get an independent copy with correct dx/dy.
 		// Atlas tiles may have dx/dy mutated by AnimParser, so we must reset them.
 		// This matches the builder which always calls tile.sub() (MultiAnimBuilder line 1481).
-		var dxExpr:Expr = switch (hAlign) {
+		final hasPivot = tileSource.match(TSPivot(_, _, _));
+		var dxExpr:Expr = if (hasPivot) macro tile.dx else switch (hAlign) {
 			case Center: macro -(tile.width * 0.5);
 			case Right: macro -tile.width;
 			default: macro 0.0;
 		};
-		var dyExpr:Expr = switch (vAlign) {
+		var dyExpr:Expr = if (hasPivot) macro tile.dy else switch (vAlign) {
 			case Center: macro -(tile.height * 0.5);
 			case Bottom: macro -tile.height;
 			default: macro 0.0;
@@ -5515,6 +5517,9 @@ class ProgrammableCodeGen {
 			case TSReference(ref):
 				if (paramDefs != null && paramDefs.exists(ref) && !loopVarSubstitutions.exists(ref) && !refs.contains(ref))
 					refs.push(ref);
+			case TSPivot(_, _, inner):
+				final innerRefs = collectTileSourceParamRefs(inner);
+				for (r in innerRefs) if (!refs.contains(r)) refs.push(r);
 			default:
 		}
 		return refs;
@@ -5644,6 +5649,15 @@ class ProgrammableCodeGen {
 					macro $p{["this", "_" + ref]};
 				} else {
 					macro this._pb.loadTileFile("placeholder.png");
+				};
+			case TSPivot(px, py, inner):
+				final innerExpr = tileSourceToExpr(inner);
+				final pxExpr:Expr = macro $v{px};
+				final pyExpr:Expr = macro $v{py};
+				macro {
+					var _t = $innerExpr;
+					_t.setCenterRatio($pxExpr, $pyExpr);
+					_t;
 				};
 			default:
 				macro this._pb.loadTileFile("placeholder.png");

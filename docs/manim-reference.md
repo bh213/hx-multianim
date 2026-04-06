@@ -109,6 +109,8 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | `generated(autotile(name, selector))` | Tile from autotile definition |
 | `generated(autotileregionsheet(name, scale, font, color))` | Autotile debug visualization |
 | `$variable` | Tile from parameter or iterator variable |
+| `center(source)` | Set tile pivot to center (0.5, 0.5) — shorthand for `pivot(0.5, 0.5, source)` |
+| `pivot(x, y, source)` | Set tile pivot point (0–1 ratio). Overrides bitmap's hAlign/vAlign |
 
 ---
 
@@ -557,6 +559,33 @@ Applied to any element via long-form body or inline syntax.
 **Builder API:**
 - `result.getUpdatable("name")` / `result.getUpdatableByIndex("name", index)`
 - `result.hasName("name")` / `result.hasNameByIndex("name", index)` — check existence without throwing
+
+---
+
+## Parameterized Slots
+
+Slots with parameters support visual states via conditionals. `slotContent` marks the content insertion point (parser-validated: must be inside a slot body).
+
+```manim
+#statusSlot slot(status:[empty,active,warning]=empty, label:string="Slot") {
+    @(status=>empty) ninepatch(ui, slotBgEmpty, 64, 64): 0, 0
+    @(status=>active) ninepatch(ui, slotBgActive, 64, 64): 0, 0
+    @(status=>warning) ninepatch(ui, slotBgWarning, 64, 64): 0, 0
+    text(f3x5, $label, #ffffffff): 5, 50
+    slotContent: 8, 8
+}
+```
+
+**Parameter types:** Same as `programmable()` — `uint`, `int`, `float`, `bool`, `string`, `color`, enum (`[val1,val2]`), range, flags.
+
+**Body features:** Conditionals (`@()`, `@else`, `@default`), expressions (`$param`), all standard elements.
+
+**Runtime API:**
+- `slot.setParameter("status", "active")` — update visual state (incremental)
+- `slot.setContent(obj)` / `slot.clear()` — content independent of decorations
+- Codegen: `instance.getSlot_name().setParameter("status", "warning")`
+
+**Indexed:** `#name[$i] slot(params)` inside repeatable — combines indexed access with parameters.
 
 ---
 

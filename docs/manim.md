@@ -512,6 +512,58 @@ instance.getSlot("footer");
 * `getContent():Null<h2d.Object>` — returns current replacement or null
 * `container:h2d.Object` — the underlying container object
 
+### Parameterized Slots
+
+Slots can declare parameters (same syntax as `programmable()`) to support visual states via conditionals and expressions. The slot body contains decorations that respond to parameter changes, while `slotContent` marks where `setContent()` inserts runtime content.
+
+```
+#statusSlot slot(status:[empty,active,warning]=empty, label:string="Slot") {
+    @(status=>empty) ninepatch(ui, slotBgEmpty, 64, 64): 0, 0
+    @(status=>active) ninepatch(ui, slotBgActive, 64, 64): 0, 0
+    @(status=>warning) ninepatch(ui, slotBgWarning, 64, 64): 0, 0
+    text(f3x5, $label, #ffffffff): 5, 50
+    slotContent: 8, 8
+}
+```
+
+Parameter types: same as `programmable()` — `uint`, `int`, `float`, `bool`, `string`, `color`, enum (`[val1,val2]`), range, flags.
+
+Conditionals (`@()`, `@else`, `@default`) and expressions (`$param`) work inside the slot body. `slotContent` can only appear inside a slot body (parser-validated).
+
+**Runtime API:**
+```haxe
+var slot = result.getSlot("statusSlot");
+
+// Set content (same as basic slots)
+slot.setContent(itemIcon);
+
+// Update visual state via parameters
+slot.setParameter("status", "active");
+slot.setParameter("label", "Weapon");
+
+// Content and decorations are independent:
+// - setContent() controls the slotContent area
+// - setParameter() controls the surrounding decorations
+// - clear() only removes content, decorations remain
+```
+
+**Codegen access:**
+```haxe
+instance.getSlot_statusSlot().setContent(icon);
+instance.getSlot_statusSlot().setParameter("status", "warning");
+```
+
+**Indexed parameterized slots** combine `#name[$i]` with parameters:
+```
+repeatable($i, step(3, dx: 70)) {
+    #card[$i] slot(status:[empty,filled]=empty) {
+        @(status=>empty) bitmap(generated(color(60, 80, #333333))): 0, 0
+        @(status=>filled) bitmap(generated(color(60, 80, #336633))): 0, 0
+        slotContent: 4, 4
+    }
+}
+```
+
 ### ninepatch
 Draws 9-patch from atlas (requires `split` with 4 values in atlas).
 
@@ -681,10 +733,62 @@ interactive(200, 30, "toggle", enabled:bool => true, color:color => #FF0000)
 
 Supported types: `int`, `float`, `string` (default when no type specified), `bool`, `color`. Untyped `key => true`/`key => false` auto-infers as bool. Keys and values can be `$references`. Access via `BuilderResolvedSettings`: `has(key)`, `getStringOrDefault(key, default)`, `getIntOrDefault(key, default)`, `getBoolOrDefault(key, default)`, `getFloatOrDefault(key, default)`.
 
+**Event filtering:**
+
+Control which events an interactive emits via the `events:` metadata:
+
+```
+interactive(200, 30, "myBtn", events: [hover, click])
+interactive(200, 30, "tooltip-trigger", events: [hover])
+```
+
+| Flag | Events controlled |
+|------|-------------------|
+| `hover` | `UIEntering` + `UILeaving` |
+| `click` | `UIClick` |
+| `push` | `UIPush` + `UIClickOutside` + outside-click tracking |
+
+Default: all events enabled. Omitting `events:` emits all event types.
+
+**autoStatus (screen auto-wiring):**
+
+Auto-wire Normal/Hover/Pressed state management — no manual helper needed:
+
+```
+interactive(200, 30, "shopBtn", autoStatus => "status", events: [hover, click, push])
+```
+
+When `screen.addInteractives(result)` detects `autoStatus` metadata, it automatically creates an internal `UIRichInteractiveHelper` and wires hover/press/leave state transitions. Events still reach `onScreenEvent()` for game logic.
+
+**bind (manual wiring):**
+
+For custom state management (e.g., `UICardHandHelper`), use `bind` with a manually-created `UIRichInteractiveHelper`:
+
+```
+interactive(200, 30, "card", bind => "status", events: [hover, click, push])
+```
+
+An interactive cannot have both `autoStatus` and `bind`.
+
+**Cursor metadata:**
+
+```
+interactive(200, 30, "buyBtn", cursor => "pointer")
+interactive(200, 30, "dragArea", cursor.hover => "move", cursor.disabled => "default")
+```
+
+Pre-registered names: `default`, `pointer`/`button`, `move`, `text`, `hide`/`none`. Register custom cursors via `CursorManager.registerCursor("name", cursor)`.
+
 **UI integration:**
 * `UIInteractiveWrapper` wraps the interactive as a `UIElement` with `UIElementIdentifiable`
 * Screen methods: `addInteractive(obj, prefix)`, `addInteractives(result, prefix)`, `removeInteractives(prefix)`
-* Emits standard `UIClick`, `UIEntering`, `UILeaving` — check `source` for `UIElementIdentifiable` to access `id`/`metadata`
+* Emits `UIInteractiveEvent(event, id, metadata)` — pattern match in `onScreenEvent`:
+  ```haxe
+  case UIInteractiveEvent(UIClick, id, meta): // clicked
+  case UIInteractiveEvent(UIEntering(_), id, meta): // hover enter
+  case UIInteractiveEvent(UILeaving, id, meta): // hover leave
+  case UIInteractiveEvent(UIPush, id, meta): // mouse down
+  ```
 
 ### settings
 Emits setting values to the build.
@@ -2319,6 +2423,23 @@ updatable.setObject(particles);
   - Useful for debugging and identifying which tile index corresponds to which visual
   - `scale` - scale factor for tiles (font remains at original size for readability)
   - Requires autotile with `region` defined (file source or atlas region)
+
+### Tile Source Modifiers
+
+Any tile source can be wrapped with a pivot modifier to set the tile's origin point:
+
+* `center(source)` - set tile pivot to center (0.5, 0.5). Shorthand for `pivot(0.5, 0.5, source)`
+* `pivot(x, y, source)` - set tile pivot point using ratio coordinates (0.0–1.0)
+
+Examples:
+```
+bitmap(center(file("circle.png"))): 100, 100           // centered on position
+bitmap(pivot(0.5, 1.0, file("arrow.png"))): 100, 100   // bottom-center pivot
+tiles: center(file("spark.png"))                        // centered particle tile
+tiles: pivot(0.0, 0.5, sheet("fx", "beam"))             // left-center pivot
+```
+
+When used inside `bitmap()`, the pivot overrides the bitmap's own alignment parameters (center, left, right, top, bottom).
 
 ---
 

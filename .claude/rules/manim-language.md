@@ -19,7 +19,7 @@
 
 | Element | Description |
 |---------|-------------|
-| `bitmap(source, [center])` | Display image |
+| `bitmap(source, [center])` | Display image. Source can be wrapped: `center(source)` or `pivot(x, y, source)` |
 | `text(font, text, color, [align, maxWidth, options])` | Simple text element (plain `h2d.Text`). Options: `letterSpacing`, `lineSpacing`, `lineBreak`, `dropShadow*`, `autoFit` |
 | `richText(font, text, color, [align, maxWidth, options])` | Rich text with `[markup]`, `styles:`, `images:` (always `h2d.HtmlText`). Options: same as text + `styles:`, `images:`, `condenseWhite` |
 | `ninepatch(sheet, tile, w, h)` | 9-patch scalable |
@@ -161,7 +161,7 @@ Operations reference other named curves **or built-in easing names** (e.g. `mult
 #effectName particles {
     count: 100
     emit: point(dist: 0, distRand: 0) | cone(dist: N, distRand: N, angle: A, angleSpread: A) | box(w: N, h: N, angle: A, angleSpread: A) | circle(r: N, rRand: N, angle: A, angleSpread: A) | path(pathName [, tangent])
-    tiles: file("particle.png")
+    tiles: file("particle.png")                          # also: center(file(...)), pivot(0.5, 1.0, file(...))
     loop: true
     maxLife: 2.0
     speed: 50

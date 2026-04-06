@@ -1224,6 +1224,7 @@ class ScreenManager {
 			try {
 				content = fileEntry.resource.entry.getBytes().toString();
 			} catch (_) {
+				trace('[HotReload] Failed to read file: $path');
 				continue;
 			}
 

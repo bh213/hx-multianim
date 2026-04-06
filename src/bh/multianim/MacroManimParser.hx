@@ -1504,6 +1504,22 @@ class MacroManimParser {
 
 	function parseTileSource():TileSource {
 		switch (peek()) {
+			case TIdentifier(s) if (isKeyword(s, "center")):
+				advance();
+				expect(TOpen);
+				final inner = parseTileSource();
+				expect(TClosed);
+				return TSPivot(0.5, 0.5, inner);
+			case TIdentifier(s) if (isKeyword(s, "pivot")):
+				advance();
+				expect(TOpen);
+				final px = parseFloat_();
+				expect(TComma);
+				final py = parseFloat_();
+				expect(TComma);
+				final inner = parseTileSource();
+				expect(TClosed);
+				return TSPivot(px, py, inner);
 			case TIdentifier(s) if (isKeyword(s, "file")):
 				advance();
 				expect(TOpen);
@@ -4263,7 +4279,7 @@ class MacroManimParser {
 		var tiles:Array<TileSource> = [];
 		while (true) {
 			switch (peek()) {
-				case TIdentifier(s) if (isKeyword(s, "file") || isKeyword(s, "generated") || isKeyword(s, "sheet")):
+				case TIdentifier(s) if (isKeyword(s, "file") || isKeyword(s, "generated") || isKeyword(s, "sheet") || isKeyword(s, "center") || isKeyword(s, "pivot")):
 					tiles.push(parseTileSource());
 				case TReference(_):
 					tiles.push(parseTileSource());
