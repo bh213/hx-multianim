@@ -1097,7 +1097,7 @@ enum NodeType {
 	MASK(width:ReferenceableValue, height:ReferenceableValue);
 	REPEAT(varName:String, repeatType:RepeatType);
 	REPEAT2D(varNameX:String, varNameY:String, repeatTypeX:RepeatType, repeatTypeY:RepeatType);
-	STATIC_REF(externalReference:Null<String>, programmableReference:String, parameters:Map<String, ReferenceableValue>);
+	STATIC_REF(externalReference:Null<String>, programmableReference:ReferenceableValue, parameters:Map<String, ReferenceableValue>);
 	PLACEHOLDER(type:PlaceholderTypes, replacementSource:PlaceholderReplacementSource);
 	NINEPATCH(sheet:String, tilename:String, width:ReferenceableValue, height:ReferenceableValue);
 	INTERACTIVE(width:ReferenceableValue, height:ReferenceableValue, id:ReferenceableValue, debug:Bool,
@@ -1109,7 +1109,7 @@ enum NodeType {
 	DATA(dataDef:DataDef);
 	SLOT(parameters:Null<ParametersDefinitions>, paramOrder:Null<Array<String>>);
 	SLOT_CONTENT;
-	DYNAMIC_REF(externalReference:Null<String>, programmableReference:String, parameters:Map<String, ReferenceableValue>);
+	DYNAMIC_REF(externalReference:Null<String>, programmableReference:ReferenceableValue, parameters:Map<String, ReferenceableValue>);
 	FINAL_VAR(name:String, value:ReferenceableValue);
 	SWITCH(paramName:String, arms:Array<SwitchArm>);
 }

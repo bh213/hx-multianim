@@ -403,6 +403,7 @@ override public function onMouseClick(pos, button, release) {
 - Builder: `result.getDynamicRef("name").setParameter("param", value)`
 - Batch updates: `beginUpdate()` / `endUpdate()` defers re-evaluation
 - Codegen: generates runtime builder call, returns `BuilderResult`
+- **Dynamic programmable references**: `dynamicRef($paramName, params)` where `$paramName` is a string/enum parameter of the enclosing programmable. The parameter value names the target programmable. Template change triggers full rebuild; forwarded params propagate incrementally. `getDynamicRef()` returns the current result (name changes at runtime)
 
 **Flow improvements** — new optional params on `flow()`:
 - `overflow: expand|limit|scroll|hidden`, `fillWidth: true`, `fillHeight: true`, `reverse: true`

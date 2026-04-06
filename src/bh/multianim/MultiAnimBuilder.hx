@@ -274,6 +274,17 @@ private typedef SavedFlowProperties = {
 };
 
 @:nullSafety
+private typedef DynamicNameBinding = {
+	paramName:String,
+	container:h2d.Object,
+	currentName:String,
+	node:Node,
+	parameters:Map<String, ReferenceableValue>,
+	externalReference:Null<String>,
+	internalResults:InternalBuilderResults,
+};
+
+@:nullSafety
 class IncrementalUpdateContext {
 	var builder:MultiAnimBuilder;
 	var indexedParams:Map<String, ResolvedIndexParameters>;
@@ -293,6 +304,7 @@ class IncrementalUpdateContext {
 		internalResults:InternalBuilderResults, builderParams:BuilderParameters,
 	}> = [];
 	var dynamicRefBindings:Array<{childContext:IncrementalUpdateContext, childParam:String, resolveFn:Void->Dynamic, referencedParams:Array<String>}> = [];
+	var dynamicNameBindings:Array<DynamicNameBinding> = [];
 	var rootNode:Node;
 	var batchMode:Bool = false;
 	var changedParams:Map<String, Bool> = new Map();
@@ -385,6 +397,10 @@ class IncrementalUpdateContext {
 
 	public function trackDynamicRef(childContext:IncrementalUpdateContext, childParam:String, resolveFn:Void->Dynamic, referencedParams:Array<String>):Void {
 		dynamicRefBindings.push({childContext: childContext, childParam: childParam, resolveFn: resolveFn, referencedParams: referencedParams});
+	}
+
+	public function trackDynamicName(binding:DynamicNameBinding):Void {
+		dynamicNameBindings.push(binding);
 	}
 
 	public function trackConditionalApply(parent:h2d.Object, node:Node, applied:Bool,
@@ -822,6 +838,66 @@ class IncrementalUpdateContext {
 		builder.incrementalContext = null;
 	}
 
+	@:nullSafety(Off)
+	function rebuildDynamicNameRef(binding:DynamicNameBinding, newName:String):Void {
+		// Remove old dynamic ref bindings that belonged to the previous child
+		dynamicRefBindings = dynamicRefBindings.filter(b -> {
+			// Remove bindings whose child context belongs to the old dynamicRef result
+			final oldResult = binding.internalResults.dynamicRefs.get(binding.currentName);
+			return oldResult == null || b.childContext != oldResult.incrementalContext;
+		});
+
+		// Clear the container
+		binding.container.removeChildren();
+
+		// Remove old entry from internalResults.dynamicRefs
+		binding.internalResults.dynamicRefs.remove(binding.currentName);
+
+		// Resolve the builder (external or local)
+		var targetBuilder = if (binding.externalReference != null) {
+			var b = builder.multiParserResult.imports?.get(binding.externalReference);
+			if (b == null) throw 'could not find builder for external dynamicRef ${binding.externalReference}';
+			b;
+		} else builder;
+
+		// Pass ReferenceableValue entries as Dynamic — buildWithParameters/updateIndexedParamsFromDynamicMap handles both
+		final paramMap = new Map<String, Dynamic>();
+		for (key => value in binding.parameters) {
+			paramMap.set(key, cast value);
+		}
+
+		var result = targetBuilder.buildWithParameters(newName, paramMap, builderParams, indexedParams, true);
+		if (result?.object == null)
+			throw 'could not build dynamicRef "$newName"';
+
+		binding.container.addChild(result.object);
+		binding.currentName = newName;
+
+		// Store the new result
+		binding.internalResults.dynamicRefs.set(newName, result);
+
+		// Re-register parameter bindings for the new child
+		if (result.incrementalContext != null) {
+			final childNode = targetBuilder.multiParserResult.nodes?.get(newName);
+			final childDefs = childNode != null ? targetBuilder.getProgrammableParameterDefinitions(childNode) : new Map();
+			for (childParam => value in binding.parameters) {
+				final refs:Array<String> = [];
+				MultiAnimBuilder.collectParamRefs(value, refs);
+				if (refs.length > 0) {
+					final capturedValue = value;
+					final paramType = childDefs.get(childParam)?.type;
+					final resolveFn:Void->Dynamic = switch paramType {
+						case PPTString: () -> builder.resolveAsString(capturedValue);
+						case PPTColor: () -> builder.resolveAsColorInteger(capturedValue);
+						case PPTFloat: () -> builder.resolveAsNumber(capturedValue);
+						default: () -> builder.resolveAsInteger(capturedValue);
+					};
+					trackDynamicRef(result.incrementalContext, childParam, resolveFn, refs);
+				}
+			}
+		}
+	}
+
 	function setPresenceOrMaterialize(entry:{object:h2d.Object, node:Node, sentinel:h2d.Object, parent:h2d.Object, layer:Int,
 			?savedFlowProps:Null<SavedFlowProperties>}, newVisible:Bool):Void {
 		if (newVisible) {
@@ -888,6 +964,16 @@ class IncrementalUpdateContext {
 			}
 			if (relevant) {
 				binding.childContext.setParameter(binding.childParam, binding.resolveFn());
+			}
+		}
+
+		// Rebuild dynamic name refs (template parameter changed)
+		for (binding in dynamicNameBindings) {
+			if (changedParams.exists(binding.paramName)) {
+				final newName = builder.resolveAsString(RVReference(binding.paramName));
+				if (newName != binding.currentName) {
+					rebuildDynamicNameRef(binding, newName);
+				}
 			}
 		}
 
@@ -1918,6 +2004,23 @@ class MultiAnimBuilder {
 				switch op {
 					case OpNeg: -resolveAsNumber(e);
 				}
+		}
+	}
+
+	/** Resolve a programmable reference name from ReferenceableValue.
+	 *  RVString: literal programmable name. RVReference: check if it's a parameter
+	 *  of the current programmable — if yes, resolve its value as the name; if no,
+	 *  fall back to literal (backward compat with $progName syntax). */
+	function resolveRefName(rv:ReferenceableValue):String {
+		return switch rv {
+			case RVString(s): s;
+			case RVReference(paramName):
+				if (indexedParams.exists(paramName))
+					resolveAsString(rv);
+				else
+					paramName; // Fallback: treat as literal programmable name
+			default:
+				throw 'unexpected ReferenceableValue for programmable reference: $rv';
 		}
 	}
 
@@ -4135,7 +4238,8 @@ class MultiAnimBuilder {
 					HeapsObject(callbackResultH2dObject);
 				}
 
-			case STATIC_REF(externalReference, reference, parameters):
+			case STATIC_REF(externalReference, progRefRV, parameters):
+				final reference = resolveRefName(progRefRV);
 				var builder = if (externalReference != null) {
 					var builder = multiParserResult.imports?.get(externalReference);
 					if (builder == null)
@@ -4161,7 +4265,12 @@ class MultiAnimBuilder {
 
 				HeapsObject(object);
 
-			case DYNAMIC_REF(externalReference, reference, parameters):
+			case DYNAMIC_REF(externalReference, progRefRV, parameters):
+				final isDynamicName = progRefRV.match(RVReference(_)) && indexedParams.exists(switch progRefRV {
+					case RVReference(r): r;
+					default: "";
+				});
+				final reference = resolveRefName(progRefRV);
 				var builder = if (externalReference != null) {
 					var builder = multiParserResult.imports?.get(externalReference);
 					if (builder == null)
@@ -4174,6 +4283,13 @@ class MultiAnimBuilder {
 				var object = result?.object;
 				if (object == null)
 					throw 'could not build dynamicRef ${reference}' + MacroUtils.nodePos(node);
+
+				// For dynamic name refs, wrap in a container for easy rebuild
+				final container = if (isDynamicName) {
+					final c = new h2d.Object();
+					c.addChild(object);
+					c;
+				} else null;
 
 				// Store the sub-result for later access via getDynamicRef()
 				internalResults.dynamicRefs.set(reference, result);
@@ -4199,14 +4315,33 @@ class MultiAnimBuilder {
 					}
 				}
 
-				if (object.numChildren == 1) {
-					final inner = object.getChildAt(0);
+				// Track dynamic name for full rebuild when template param changes
+				if (isDynamicName && incrementalMode && incrementalContext != null && container != null) {
+					final paramName = switch progRefRV {
+						case RVReference(r): r;
+						default: "";
+					};
+					incrementalContext.trackDynamicName({
+						paramName: paramName,
+						container: container,
+						currentName: reference,
+						node: node,
+						parameters: parameters,
+						externalReference: externalReference,
+						internalResults: internalResults,
+					});
+				}
+
+				final outputObject = container != null ? container : object;
+
+				if (outputObject.numChildren == 1) {
+					final inner = outputObject.getChildAt(0);
 					if (inner.x != 0 || inner.y != 0) {
 						selectedBuildMode = ObjectMode(inner);
 					}
 				}
 
-				HeapsObject(object);
+				HeapsObject(outputObject);
 
 			case POINT:
 				HeapsObject(new h2d.Object());

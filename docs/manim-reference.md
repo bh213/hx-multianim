@@ -63,6 +63,7 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | `staticRef(external("importName"), $ref, params)` | Static embed from imported .manim file |
 | `dynamicRef($ref, params)` | Dynamic embed with runtime `setParameter()` support |
 | `dynamicRef(external("importName"), $ref, params)` | Dynamic embed from imported .manim file |
+| `dynamicRef($paramName, params)` | Dynamic embed where `$paramName` is a parameter naming the target programmable. Full rebuild on template change |
 | `#name slot` | Swappable content container |
 | `#name[$i] slot` | Indexed slot inside repeatable |
 | `#name slot(params)` | Parameterized slot with visual states and conditionals |

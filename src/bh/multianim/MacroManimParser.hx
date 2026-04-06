@@ -1500,6 +1500,19 @@ class MacroManimParser {
 		}
 	}
 
+	function expectReferenceOrIdentifierAsRV():ReferenceableValue {
+		switch (peek()) {
+			case TReference(s):
+				advance();
+				return RVReference(s);
+			case TIdentifier(s):
+				advance();
+				return RVString(s);
+			default:
+				return error('expected reference or identifier, got ${peek()}');
+		}
+	}
+
 	// ===================== Tile Source =====================
 
 	function parseTileSource():TileSource {
@@ -3414,7 +3427,7 @@ class MacroManimParser {
 						expect(TComma);
 					default:
 				}
-				final progRef = expectReferenceOrIdentifier();
+				final progRef = expectReferenceOrIdentifierAsRV();
 				var params:Map<String, ReferenceableValue> = new Map();
 				if (match(TComma)) {
 					params = parseReferenceParams();
@@ -3435,7 +3448,7 @@ class MacroManimParser {
 						expect(TComma);
 					default:
 				}
-				final progRef = expectReferenceOrIdentifier();
+				final progRef = expectReferenceOrIdentifierAsRV();
 				var params:Map<String, ReferenceableValue> = new Map();
 				if (match(TComma)) {
 					params = parseReferenceParams();

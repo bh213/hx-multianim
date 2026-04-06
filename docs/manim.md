@@ -631,6 +631,25 @@ hpBar.setParameter("value", 25);   // updates visuals
 
 Use for elements that need dynamic parameter changes after building (health bars, status displays, etc.).
 
+#### Dynamic programmable references
+
+The reference name itself can be a parameter, allowing the target programmable to be chosen at runtime:
+
+```manim
+#statusBar programmable(value:uint=50) { ... }
+#badge programmable(count:uint=0) { ... }
+
+#panel programmable(template:string="statusBar", hp:uint=50) {
+    dynamicRef($template, value=>$hp): 0, 0
+}
+```
+
+When `template` is a parameter of the enclosing programmable (string or enum type), changing it triggers a **full rebuild**: the old programmable is torn down and the new one is built from scratch. Forwarded parameters (`value=>$hp`) are propagated incrementally when the template doesn't change.
+
+- **Backward compatible**: `$progName` where `progName` is not a parameter falls back to literal name (existing behavior)
+- **Strict validation**: forwarded parameters must exist on the target programmable (runtime error if missing, allowed if target has a default)
+- Works in both builder (via `IncrementalUpdateContext`) and codegen paths
+
 **staticRef vs dynamicRef:**
 
 | | `staticRef` | `dynamicRef` |

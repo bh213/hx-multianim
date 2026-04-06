@@ -26,6 +26,7 @@
 | `placeholder(size, source)` | Dynamic placeholder |
 | `staticRef($ref)` | Static embed of another programmable |
 | `dynamicRef($ref, params)` | Dynamic embed with runtime `setParameter()` support |
+| `dynamicRef($paramName, params)` | Dynamic embed where `$paramName` is a parameter naming the target programmable. Full rebuild on template change |
 | `#name slot` / `#name[$i] slot` | Swappable container (indexed variant for repeatables) |
 | `#name slot(param:type=default, ...)` | Parameterized slot with visual states |
 | `spacer(w, h)` | Empty space inside `flow` containers |

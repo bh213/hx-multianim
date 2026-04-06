@@ -78,6 +78,7 @@ class ProgrammableCodeGen {
 	static var slotEntries:Array<{key:MacroSlotKey, fieldName:String, hasParams:Bool, loopVars:Map<String, Int>}> = [];
 	static var switchUpdateEntries:Array<{paramName:String, updateExpr:Expr}> = [];
 	static var dynamicRefFields:Map<String, String> = new Map(); // component name -> BuilderResult field name
+	static var dynamicNameRefFields:Array<String> = []; // fieldNames of dynamic-name dynamicRefs
 	static var hexLayoutFieldMap:Map<String, String> = new Map(); // layout key → field name
 	static var hexLayoutFieldCount:Int = 0;
 	static var needsLayoutAlign:Bool = false;
@@ -154,6 +155,7 @@ class ProgrammableCodeGen {
 		indexed2DNamedElements = new Map();
 		slotEntries = [];
 		dynamicRefFields = new Map();
+		dynamicNameRefFields = [];
 		hasBuilderParameterPlaceholders = false;
 		paramDefs = new Map();
 		paramNames = [];
@@ -884,19 +886,38 @@ class ProgrammableCodeGen {
 		for (refName => resultField in dynamicRefFields) {
 			instanceFields.push(makeField(resultField, FVar(macro :bh.multianim.MultiAnimBuilder.BuilderResult, null), [APrivate], pos));
 		}
-		if (Lambda.count(dynamicRefFields) > 0) {
-			final refCases:Array<Case> = [];
-			for (refName => resultField in dynamicRefFields) {
-				refCases.push({
-					values: [macro $v{refName}],
-					expr: macro return $p{["this", resultField]},
+		// Dynamic name ref fields: container, current name, and result
+		for (fn in dynamicNameRefFields) {
+			instanceFields.push(makeField("_dynref_" + fn, FVar(macro :bh.multianim.MultiAnimBuilder.BuilderResult, null), [APrivate], pos));
+			instanceFields.push(makeField("_dynref_container_" + fn, FVar(macro :h2d.Object, null), [APrivate], pos));
+			instanceFields.push(makeField("_dynref_name_" + fn, FVar(macro :String, null), [APrivate], pos));
+		}
+		final hasDynamicRefs = Lambda.count(dynamicRefFields) > 0 || dynamicNameRefFields.length > 0;
+		if (hasDynamicRefs) {
+			final getDynRefExprs:Array<Expr> = [];
+			// Static name refs: direct switch
+			if (Lambda.count(dynamicRefFields) > 0) {
+				final refCases:Array<Case> = [];
+				for (refName => resultField in dynamicRefFields) {
+					refCases.push({
+						values: [macro $v{refName}],
+						expr: macro return $p{["this", resultField]},
+					});
+				}
+				getDynRefExprs.push({
+					expr: ESwitch(macro name, refCases, null),
+					pos: pos,
 				});
 			}
-			final refSwitch:Expr = {
-				expr: ESwitch(macro name, refCases, macro return null),
-				pos: pos,
-			};
-			instanceFields.push(makeMethod("getDynamicRef", [refSwitch], [{name: "name", type: macro :String}],
+			// Dynamic name refs: runtime if-checks against current name
+			for (fn in dynamicNameRefFields) {
+				getDynRefExprs.push(macro {
+					if (name == $p{["this", "_dynref_name_" + fn]})
+						return $p{["this", "_dynref_" + fn]};
+				});
+			}
+			getDynRefExprs.push(macro return null);
+			instanceFields.push(makeMethod("getDynamicRef", getDynRefExprs, [{name: "name", type: macro :String}],
 				macro :bh.multianim.MultiAnimBuilder.BuilderResult, [APublic], pos));
 		}
 
@@ -1260,10 +1281,19 @@ class ProgrammableCodeGen {
 		// Track dynamicRef BuilderResult fields
 		switch (node.type) {
 			case DYNAMIC_REF(_, programmableRef, _):
-				final compName = programmableRef;
-				if (compName != null) {
-					final resultField = "_comp_" + compName;
-					dynamicRefFields.set(compName, resultField);
+				switch programmableRef {
+					case RVString(compName):
+						final resultField = "_comp_" + compName;
+						dynamicRefFields.set(compName, resultField);
+					case RVReference(name):
+						if (paramNames.contains(name))
+							dynamicNameRefFields.push(fieldName);
+						else {
+							// $progName backward compat — treat as literal
+							final resultField = "_comp_" + name;
+							dynamicRefFields.set(name, resultField);
+						}
+					default:
 				}
 			default:
 		}
@@ -2862,11 +2892,29 @@ class ProgrammableCodeGen {
 			case PLACEHOLDER(type, source):
 				generatePlaceholderCreate(node, fieldName, type, source, pos);
 
-			case STATIC_REF(externalReference, programmableRef, parameters):
+			case STATIC_REF(externalReference, programmableRefRV, parameters):
+				// staticRef doesn't support dynamic names — always resolve to literal string
+				final programmableRef = switch programmableRefRV {
+					case RVString(s): s;
+					case RVReference(s): s; // $progName backward compat: treat as literal
+					default: throw 'unexpected ReferenceableValue for staticRef reference';
+				};
 				generateStaticRefCreate(node, fieldName, externalReference, programmableRef, parameters, pos);
 
-			case DYNAMIC_REF(externalReference, programmableRef, parameters):
-				generateDynamicRefCreate(node, fieldName, externalReference, programmableRef, parameters, pos);
+			case DYNAMIC_REF(externalReference, programmableRefRV, parameters):
+				switch programmableRefRV {
+					case RVString(programmableRef):
+						generateDynamicRefCreate(node, fieldName, externalReference, programmableRef, parameters, pos);
+					case RVReference(name):
+						// If the name is a parameter of this programmable, it's a dynamic name ref.
+						// Otherwise, it's a literal programmable name ($progName backward compat).
+						if (paramNames.contains(name))
+							generateDynamicNameRefCreate(node, fieldName, externalReference, name, parameters, pos);
+						else
+							generateDynamicRefCreate(node, fieldName, externalReference, name, parameters, pos);
+					default:
+						throw 'unexpected ReferenceableValue for dynamicRef reference';
+				}
 
 			case REPEAT(_, _) | REPEAT2D(_, _, _, _):
 				// Should not be reached — processNode handles REPEAT/REPEAT2D directly
@@ -2962,6 +3010,153 @@ class ProgrammableCodeGen {
 			isContainer: false,
 			exprUpdates: [],
 		};
+	}
+
+	// ==================== DynamicRef with dynamic name ====================
+
+	static function generateDynamicNameRefCreate(node:Node, fieldName:String, externalReference:Null<String>,
+			paramName:String, parameters:Map<String, ReferenceableValue>, pos:Position):CreateResult {
+		final fieldRef = macro $p{["this", fieldName]};
+		final createExprs:Array<Expr> = [];
+		final resultField = "_dynref_" + fieldName;
+		final containerField = "_dynref_container_" + fieldName;
+		final nameField = "_dynref_name_" + fieldName;
+
+		// At construction time: resolve the parameter to get the initial programmable name,
+		// build it, wrap in a container for easy rebuild
+		final paramFieldExpr = macro $p{["this", "_" + paramName]};
+
+		// Generate inline enum→string resolution based on parameter type
+		final paramDef = paramDefs.get(paramName);
+		final resolveNameExpr:Expr = if (paramDef != null) {
+			switch paramDef.type {
+				case PPTEnum(values):
+					// Generate switch: 0 => "val0", 1 => "val1", ...
+					final cases:Array<Case> = [];
+					for (i in 0...values.length) {
+						cases.push({values: [macro $v{i}], expr: macro $v{values[i]}});
+					}
+					{expr: ESwitch(macro (cast $paramFieldExpr : Int), cases, macro ""), pos: pos};
+				case PPTString:
+					macro(cast $paramFieldExpr : String);
+				default:
+					macro Std.string($paramFieldExpr);
+			}
+		} else {
+			macro Std.string($paramFieldExpr);
+		}
+
+		// Build parameter map
+		final mapBuildExprs:Array<Expr> = [macro final _refParams = new Map<String, Dynamic>()];
+		if (parameters != null) {
+			for (key => val in parameters) {
+				final keyExpr:Expr = macro $v{key};
+				final valExpr = rvToExpr(val);
+				mapBuildExprs.push(macro _refParams.set($keyExpr, $valExpr));
+			}
+		}
+		final extRefExpr:Expr = externalReference != null ? macro $v{externalReference} : macro null;
+		mapBuildExprs.push(macro {
+			final _templateName:String = $resolveNameExpr;
+			$p{["this", nameField]} = _templateName;
+			final _result = this._pb.buildDynamicRef(_templateName, _refParams, $extRefExpr);
+			final _container = new h2d.Object();
+			if (_result != null && _result.object != null) _container.addChild(_result.object);
+			$fieldRef = _container;
+			$p{["this", containerField]} = _container;
+			$p{["this", resultField]} = _result;
+		});
+		createExprs.push(macro $b{mapBuildExprs});
+
+		// Generate rebuild expression for when the template param changes
+		final rebuildMapExprs:Array<Expr> = [macro final _refParams = new Map<String, Dynamic>()];
+		if (parameters != null) {
+			for (key => val in parameters) {
+				final keyExpr:Expr = macro $v{key};
+				final valExpr = rvToExpr(val);
+				rebuildMapExprs.push(macro _refParams.set($keyExpr, $valExpr));
+			}
+		}
+		rebuildMapExprs.push(macro {
+			final _newName:String = $resolveNameExpr;
+			if (_newName != $p{["this", nameField]}) {
+				$p{["this", containerField]}.removeChildren();
+				final _result = this._pb.buildDynamicRef(_newName, _refParams, $extRefExpr);
+				if (_result != null && _result.object != null) $p{["this", containerField]}.addChild(_result.object);
+				$p{["this", resultField]} = _result;
+				$p{["this", nameField]} = _newName;
+			}
+		});
+
+		// Register as expression update triggered by the template param
+		expressionUpdates.push({
+			fieldName: fieldName,
+			updateExpr: macro $b{rebuildMapExprs},
+			paramRefs: [paramName],
+		});
+
+		// Also register updates for forwarded parameter changes (non-template params)
+		if (parameters != null) {
+			final forwardedParamRefs:Array<String> = [];
+			for (_ => val in parameters) {
+				collectRVParamRefs(val, forwardedParamRefs);
+			}
+			if (forwardedParamRefs.length > 0) {
+				// When forwarded params change, update the child's parameters via its incremental context
+				final fwdUpdateExprs:Array<Expr> = [macro final _refParams = new Map<String, Dynamic>()];
+				if (parameters != null) {
+					for (key => val in parameters) {
+						final keyExpr:Expr = macro $v{key};
+						final valExpr = rvToExpr(val);
+						fwdUpdateExprs.push(macro _refParams.set($keyExpr, $valExpr));
+					}
+				}
+				fwdUpdateExprs.push(macro {
+					final _result = $p{["this", resultField]};
+					if (_result != null && _result.incrementalContext != null) {
+						_result.incrementalContext.beginUpdate();
+						for (_k => _v in _refParams) {
+							_result.incrementalContext.setParameter(_k, _v);
+						}
+						_result.incrementalContext.endUpdate();
+					}
+				});
+				expressionUpdates.push({
+					fieldName: fieldName + "_fwd",
+					updateExpr: macro $b{fwdUpdateExprs},
+					paramRefs: forwardedParamRefs,
+				});
+			}
+		}
+
+		return {
+			fieldType: macro :h2d.Object,
+			createExprs: createExprs,
+			isContainer: false,
+			exprUpdates: [],
+		};
+	}
+
+	static function collectRVParamRefs(rv:ReferenceableValue, result:Array<String>):Void {
+		if (rv == null) return;
+		switch rv {
+			case RVReference(ref):
+				if (!result.contains(ref)) result.push(ref);
+			case EBinop(_, e1, e2):
+				collectRVParamRefs(e1, result);
+				collectRVParamRefs(e2, result);
+			case RVParenthesis(e):
+				collectRVParamRefs(e, result);
+			case RVTernary(cond, t, f):
+				collectRVParamRefs(cond, result);
+				collectRVParamRefs(t, result);
+				collectRVParamRefs(f, result);
+			case EUnaryOp(_, e):
+				collectRVParamRefs(e, result);
+			case RVElementOfArray(_, idx):
+				collectRVParamRefs(idx, result);
+			default:
+		}
 	}
 
 	// ==================== Placeholder ====================
