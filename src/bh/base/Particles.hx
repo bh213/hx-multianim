@@ -867,6 +867,7 @@ class ParticleGroup {
 
 		if ( !isRelative ) {
 			var parts = this.parts;
+			parts.syncPos(); // Ensure absolute transform is current before using absX/absY/mat*
 			var px = p.x;
 			p.x = px * parts.matA + p.y * parts.matC + parts.absX;
 			p.y = px * parts.matB + p.y * parts.matD + parts.absY;
