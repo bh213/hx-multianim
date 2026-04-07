@@ -560,6 +560,82 @@ class ParticleRuntimeTest extends utest.Test {
 		Assert.floatEquals(0.5, g.shutdownSpeedMult, 0.1);
 	}
 
+	// ==================== Externally Driven ====================
+
+	@Test
+	public function testExternallyDrivenFrozenWithoutAdvance():Void {
+		var p = createParticles();
+		var g = createGroup("main", p, true);
+		g.externallyDriven = true;
+
+		// Simulate what sync+draw would do (without advanceTime call)
+		g.start();
+		// Particles exist but _externalDt is 0, so update() returns early
+		var e = g.batch.first;
+		Assert.notNull(e);
+		// Manually call update — should return true (alive) but not move
+		var startX = e.x;
+		var startY = e.y;
+		Assert.isTrue(e.update(0.1)); // SpriteBatch would pass dt, but should be ignored
+		Assert.floatEquals(startX, e.x, 0.001);
+		Assert.floatEquals(startY, e.y, 0.001);
+	}
+
+	@Test
+	public function testExternallyDrivenAdvanceTimeMovesParticles():Void {
+		var p = createParticles();
+		var g = createGroup("main", p, true);
+		g.externallyDriven = true;
+
+		g.advanceTime(0.0001); // start + tiny step to init
+		var e = g.batch.first;
+		Assert.notNull(e);
+		var startX = e.x;
+		var startY = e.y;
+
+		// Now advance with real dt
+		g.advanceTime(0.3);
+		// Simulate SpriteBatch calling update during draw
+		e.update(999.0); // incoming dt should be ignored, _externalDt used instead
+		Assert.isTrue(e.x != startX || e.y != startY, "Particle should have moved after advanceTime");
+
+		// After draw, reset _externalDt (simulating what Particles.draw does)
+		g._externalDt = 0;
+
+		// Next update without advanceTime should freeze again
+		var afterX = e.x;
+		var afterY = e.y;
+		Assert.isTrue(e.update(0.5)); // should be no-op
+		Assert.floatEquals(afterX, e.x, 0.001);
+		Assert.floatEquals(afterY, e.y, 0.001);
+	}
+
+	@Test
+	public function testExternallyDrivenParticlesConvenience():Void {
+		var p = createParticles();
+		var g1 = createGroup("ext", p, true);
+		var g2 = createGroup("auto", p, true);
+		g1.externallyDriven = true;
+		// g2 stays auto-driven
+
+		// Particles.advanceTime should only advance externally-driven groups
+		p.advanceTime(0.1);
+		Assert.isTrue(g1._externalDt > 0, "Externally driven group should have pending dt");
+		// g2 should not be touched by Particles.advanceTime
+		Assert.floatEquals(0, g2._externalDt, 0.001);
+	}
+
+	@Test
+	public function testExternallyDrivenGroupLevelUpdateTime():Void {
+		var p = createParticles();
+		var g = createGroup("main", p, true);
+		g.externallyDriven = true;
+
+		g.advanceTime(0.5);
+		// updateTime should have been called — globalTime should advance
+		Assert.floatEquals(0.5, g.globalTime, 0.01);
+	}
+
 	@Test
 	public function testShutdownOnParticlesForwardsToAllGroups():Void {
 		var p = createParticles();

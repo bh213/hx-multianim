@@ -862,6 +862,7 @@ emit: circle(r: 50, rRand: 10, angle: 0deg, angleSpread: 180deg)
 | `maxLife` | | Particle lifetime in seconds |
 | `lifeRandom` | `lifeRand` | Lifetime variance (0-1) |
 | `relative` | | Particles move with emitter |
+| `externallyDriven` | | Disable auto-update; use `advanceTime(dt)` |
 
 ### Movement
 
@@ -1011,6 +1012,18 @@ group.shutdownSpeedCurve = myCurve;
 - `group.emitFilter = (x:Float, y:Float) -> Bool` — filter particles by world-space spawn position (return `false` to discard). Works for both relative and non-relative groups
 - Existing `onEnd()` callback fires when last particle dies (default: `this.remove()`)
 - Total visual clear time: `duration` (curve phase) + up to `maxLife` (natural die-off of remaining particles)
+
+### Externally Driven
+
+When `externallyDriven: true`, particles do not auto-update from the render loop. Game code drives the simulation:
+
+```haxe
+// Drive all externally-driven groups:
+particles.advanceTime(dt);
+
+// Or per-group:
+group.advanceTime(dt);
+```
 
 ---
 

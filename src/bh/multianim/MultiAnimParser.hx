@@ -810,6 +810,7 @@ typedef ParticlesDef = {
 	var count:Null<ReferenceableValue>;
 	var loop:Null<Bool>;
 	var relative:Null<Bool>;
+	var externallyDriven:Null<Bool>;
 	var emitDelay:Null<ReferenceableValue>;
 	var emitSync:Null<ReferenceableValue>;
 	var maxLife:Null<ReferenceableValue>;

@@ -5324,6 +5324,8 @@ class MultiAnimBuilder {
 			group.emitLoop = particlesDef.loop;
 		if (particlesDef.relative != null)
 			group.isRelative = particlesDef.relative;
+		if (particlesDef.externallyDriven != null)
+			group.externallyDriven = particlesDef.externallyDriven;
 
 		if (particlesDef.rotationInitial != null)
 			group.rotInit = hxd.Math.degToRad(resolveAsNumber(particlesDef.rotationInitial));

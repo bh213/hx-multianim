@@ -183,6 +183,7 @@ Operations reference other named curves **or built-in easing names** (e.g. `mult
     rotationSpeed: 90deg
     rotateAuto: true
     relative: true
+    externallyDriven: true
     attachTo: animPathName
     spawnCurve: curveName
     animFile: "spark.anim"
@@ -213,7 +214,7 @@ Operations reference other named curves **or built-in easing names** (e.g. `mult
 
 **Shutdown block:** Configures graceful particle stop. All curves use "progress" convention: `multiplier = 1.0 - curve(t)`. `curve` controls particle count (how many recycle vs die). `alphaCurve`/`sizeCurve`/`speedCurve` apply global multipliers during shutdown. `duration` is the default when `shutdown()` is called without arguments.
 
-**Runtime API:** `group.emitBurst(count)`, `group.addForceField(ff)`, `group.removeForceFieldAt(i)`, `group.clearForceFields()`, `group.shutdown(?duration, ?curve)`, `particles.shutdown(?duration, ?curve)`, `group.isShuttingDown()`, `group.getShutdownRate()`, `group.emitFilter = (x, y) -> Bool`
+**Runtime API:** `group.emitBurst(count)`, `group.addForceField(ff)`, `group.removeForceFieldAt(i)`, `group.clearForceFields()`, `group.shutdown(?duration, ?curve)`, `particles.shutdown(?duration, ?curve)`, `group.isShuttingDown()`, `group.getShutdownRate()`, `group.emitFilter = (x, y) -> Bool`, `group.advanceTime(dt)`, `particles.advanceTime(dt)`
 
 See `docs/manim.md` for full particles documentation.
 

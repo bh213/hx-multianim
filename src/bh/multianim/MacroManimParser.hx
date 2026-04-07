@@ -3962,7 +3962,7 @@ class MacroManimParser {
 
 	function parseParticles():ParticlesDef {
 		var p:ParticlesDef = {
-			count: null, loop: null, relative: null, emitDelay: null, emitSync: null,
+			count: null, loop: null, relative: null, externallyDriven: null, emitDelay: null, emitSync: null,
 			maxLife: null, lifeRandom: null, size: null, sizeRandom: null, blendMode: null,
 			speed: null, speedRandom: null, speedIncrease: null, gravity: null, gravityAngle: null,
 			fadeIn: null, fadeOut: null, fadePower: null, tiles: [], emit: Point(RVFloat(0), RVFloat(0)),
@@ -3998,6 +3998,7 @@ class MacroManimParser {
 				case "count": p.count = parseIntegerOrReference();
 				case "loop": p.loop = parseBool();
 				case "relative": p.relative = parseBool();
+				case "externallydriven": p.externallyDriven = parseBool();
 				case "maxlife": p.maxLife = parseFloatOrReference();
 				case "liferandom" | "liferand": p.lifeRandom = parseFloatOrReference();
 				case "size": p.size = parseFloatOrReference();

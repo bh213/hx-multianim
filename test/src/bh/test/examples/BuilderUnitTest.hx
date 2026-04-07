@@ -5545,6 +5545,30 @@ class BuilderUnitTest extends BuilderTestBase {
 		Assert.isTrue(err.indexOf("unknown shutdown property") >= 0, 'Expected "unknown shutdown property" in error, got: $err');
 	}
 
+	// ==================== Particles externallyDriven ====================
+
+	@Test
+	public function testParticleExternallyDrivenParses():Void {
+		Assert.isTrue(parseExpectingSuccess("
+			#fx particles {
+				count: 10
+				externallyDriven: true
+				tiles: generated(color(4, 4, #ff0000))
+			}
+		"));
+	}
+
+	@Test
+	public function testParticleExternallyDrivenFalseParses():Void {
+		Assert.isTrue(parseExpectingSuccess("
+			#fx particles {
+				count: 10
+				externallyDriven: false
+				tiles: generated(color(4, 4, #ff0000))
+			}
+		"));
+	}
+
 	// ==================== Pivot / Center tile source ====================
 
 	@Test

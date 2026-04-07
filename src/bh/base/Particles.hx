@@ -139,6 +139,10 @@ private class Particle extends h2d.SpriteBatch.BatchElement {
 	}
 
 	override function update(dt:Float):Bool {
+		if (group.externallyDriven) {
+			if (group._externalDt <= 0) return true;
+			dt = group._externalDt;
+		}
 		if( delay > 0 ) {
 			delay -= dt;
 			if( delay <= 0 ){
@@ -320,6 +324,12 @@ class ParticleGroup {
 		Disabling the group immediately removes it from rendering and resets it's state.
 	**/
 	public var enabled(default, null) : Bool = true;
+	/**
+		When true, the group does not auto-update from the render loop.
+		Use `advanceTime(dt)` to drive the simulation manually.
+	**/
+	public var externallyDriven : Bool = false;
+	var _externalDt : Float = 0;
 	/**
 		Configures blending mode for this group.
 	**/
@@ -1250,6 +1260,16 @@ class ParticleGroup {
 		}
 	}
 
+	/**
+		Manually advance the simulation by `dt` seconds.
+		Use when `externallyDriven` is true.
+	**/
+	public function advanceTime(dt:Float):Void {
+		if (!started && enabled) start();
+		_externalDt = dt;
+		updateTime(dt);
+	}
+
 }
 
 /**
@@ -1329,13 +1349,23 @@ class Particles extends h2d.Drawable {
 		for (g in groups) g.shutdown(duration, curve);
 	}
 
+	/**
+		Manually advance all externally-driven groups by `dt` seconds.
+	**/
+	public function advanceTime(dt:Float):Void {
+		for (g in groups)
+			if (g.externallyDriven)
+				g.advanceTime(dt);
+	}
+
 	override function sync(ctx:h2d.RenderContext):Void {
 		super.sync(ctx);
 		var isDone = true;
 		var dt = ctx.elapsedTime;
 		for( g in groups ) {
 			if ( !g.started && g.enabled ) g.start();
-			g.updateTime(dt);
+			if (!g.externallyDriven)
+				g.updateTime(dt);
 			if (g.batch.first != null) isDone = false;
 		}
 		if (isDone) onEnd();
@@ -1376,6 +1406,8 @@ class Particles extends h2d.Drawable {
 				}
 			}
 		blendMode = old;
+		for (g in groups)
+			if (g.externallyDriven) g._externalDt = 0;
 	}
 
 	/**

@@ -89,6 +89,7 @@ class CompletionProvider {
 			"velocityCurve" => "Velocity curve", "forceFields" => "Force fields: [turbulence, wind, ...]",
 			"bounds" => "Particle bounds: kill, box(...)", "rotationSpeed" => "Rotation speed",
 			"rotateAuto" => "Auto-rotate to velocity", "relative" => "Relative to emitter",
+			"externallyDriven" => "Disable auto-update; use advanceTime(dt)",
 			"spawnCurve" => "Spawn rate curve", "forwardAngle" => "Forward direction",
 			"animFile" => "Animation file", "subEmitters" => "Sub-emitter definitions",
 			"shutdown" => "Graceful shutdown config: { duration, curve, alphaCurve, sizeCurve, speedCurve }",
