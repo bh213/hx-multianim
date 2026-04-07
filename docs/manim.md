@@ -2229,7 +2229,7 @@ With `tangent`, particle initial velocity follows the path tangent direction at 
 | `attachTo` | string | Emitter position tracks a named animated path |
 | `spawnCurve` | curve ref | Modulate emission rate over attached path's lifetime |
 
-**Runtime API:** `group.emitBurst(count)` forces N particles immediately.
+**Runtime API:** `group.emitBurst(count)` forces N particles immediately. `group.emitFilter = (x, y) -> Bool` filters particles by world-space spawn position (return `false` to discard).
 
 ### AnimSM Tile Source
 

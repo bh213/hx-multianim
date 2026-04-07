@@ -294,6 +294,13 @@ class ParticleGroup {
 	**/
 	public var randomFunc : () -> Float = () -> hxd.Math.random();
 
+	/**
+		Optional filter called after a particle's world position is computed.
+		Return true to keep the particle, false to discard it.
+		Works for both relative and non-relative groups (world position is computed for the check).
+	**/
+	public var emitFilter : Null<(x:Float, y:Float) -> Bool> = null;
+
 	inline function rand():Float return randomFunc();
 	inline function srand():Float return randomFunc() * 2.0 - 1.0;
 	inline function randInt(n:Int):Int return Std.int(randomFunc() * n);
@@ -885,6 +892,24 @@ class ParticleGroup {
 			px = p.vx;
 			p.vx = px * cos - p.vy * sin;
 			p.vy = px * sin + p.vy * cos;
+		}
+
+		// Apply emission filter — discard particles outside allowed regions
+		var filter = emitFilter;
+		if (filter != null) {
+			// For relative particles, compute world position for the check
+			var wx = p.x;
+			var wy = p.y;
+			if (isRelative) {
+				var parts = this.parts;
+				parts.syncPos();
+				wx = p.x * parts.matA + p.y * parts.matC + parts.absX;
+				wy = p.x * parts.matB + p.y * parts.matD + parts.absY;
+			}
+			if (!filter(wx, wy)) {
+				p.visible = false;
+				p.life = p.maxLife + 1;
+			}
 		}
 	}
 

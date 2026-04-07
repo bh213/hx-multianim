@@ -1008,6 +1008,7 @@ group.shutdownSpeedCurve = myCurve;
 **Behavior:**
 - No-op on non-looping groups
 - After shutdown, `emitBurstAt()` still works (manual one-shot effects)
+- `group.emitFilter = (x:Float, y:Float) -> Bool` — filter particles by world-space spawn position (return `false` to discard). Works for both relative and non-relative groups
 - Existing `onEnd()` callback fires when last particle dies (default: `this.remove()`)
 - Total visual clear time: `duration` (curve phase) + up to `maxLife` (natural die-off of remaining particles)
 
