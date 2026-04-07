@@ -3212,50 +3212,87 @@ bh_multianim_MacroManimParser.prototype = {
 			return this.error("expected reference or identifier, got " + Std.string(this.tokens[this.tpos].type));
 		}
 	}
+	,expectReferenceOrIdentifierAsRV: function() {
+		var _g = this.tokens[this.tpos].type;
+		switch(_g._hx_index) {
+		case 32:
+			var s = _g.s;
+			this.advance();
+			return bh_multianim_ReferenceableValue.RVString(s);
+		case 34:
+			var s = _g.s;
+			this.advance();
+			return bh_multianim_ReferenceableValue.RVReference(s);
+		default:
+			return this.error("expected reference or identifier, got " + Std.string(this.tokens[this.tpos].type));
+		}
+	}
 	,parseTileSource: function() {
 		var _g = this.tokens[this.tpos].type;
 		switch(_g._hx_index) {
 		case 32:
 			var _g1 = _g.s;
 			var s = _g1;
-			if(bh_multianim_MacroManimParser.isKeyword(s,"file")) {
+			if(bh_multianim_MacroManimParser.isKeyword(s,"center")) {
 				this.advance();
 				this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
-				var filename = this.parseStringOrReference();
+				var inner = this.parseTileSource();
 				this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
-				return bh_multianim_TileSource.TSFile(filename);
+				return bh_multianim_TileSource.TSPivot(0.5,0.5,inner);
 			} else {
 				var s = _g1;
-				if(bh_multianim_MacroManimParser.isKeyword(s,"generated")) {
+				if(bh_multianim_MacroManimParser.isKeyword(s,"pivot")) {
 					this.advance();
 					this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
-					var genType = this.parseGeneratedTileType();
+					var px = this.parseFloat_();
+					this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
+					var py = this.parseFloat_();
+					this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
+					var inner = this.parseTileSource();
 					this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
-					return bh_multianim_TileSource.TSGenerated(genType);
+					return bh_multianim_TileSource.TSPivot(px,py,inner);
 				} else {
 					var s = _g1;
-					if(bh_multianim_MacroManimParser.isKeyword(s,"sheet")) {
+					if(bh_multianim_MacroManimParser.isKeyword(s,"file")) {
 						this.advance();
 						this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
-						var sheet = this.parseStringOrReference();
-						this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
-						var name = this.parseStringOrReference();
-						if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TComma)) {
-							var index = this.parseIntegerOrReference();
-							this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
-							return bh_multianim_TileSource.TSSheetWithIndex(sheet,name,index);
-						}
+						var filename = this.parseStringOrReference();
 						this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
-						return bh_multianim_TileSource.TSSheet(sheet,name);
+						return bh_multianim_TileSource.TSFile(filename);
 					} else {
-						var sheet = this.parseStringOrReference();
-						this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
-						var name = this.parseStringOrReference();
-						if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TComma)) {
-							var index = this.parseIntegerOrReference();
-							return bh_multianim_TileSource.TSSheetWithIndex(sheet,name,index);
+						var s = _g1;
+						if(bh_multianim_MacroManimParser.isKeyword(s,"generated")) {
+							this.advance();
+							this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
+							var genType = this.parseGeneratedTileType();
+							this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
+							return bh_multianim_TileSource.TSGenerated(genType);
+						} else {
+							var s = _g1;
+							if(bh_multianim_MacroManimParser.isKeyword(s,"sheet")) {
+								this.advance();
+								this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
+								var sheet = this.parseStringOrReference();
+								this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
+								var name = this.parseStringOrReference();
+								if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TComma)) {
+									var index = this.parseIntegerOrReference();
+									this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
+									return bh_multianim_TileSource.TSSheetWithIndex(sheet,name,index);
+								}
+								this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
+								return bh_multianim_TileSource.TSSheet(sheet,name);
+							} else {
+								var sheet = this.parseStringOrReference();
+								this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
+								var name = this.parseStringOrReference();
+								if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TComma)) {
+									var index = this.parseIntegerOrReference();
+									return bh_multianim_TileSource.TSSheetWithIndex(sheet,name,index);
+								}
+								return bh_multianim_TileSource.TSSheet(sheet,name);
+							}
 						}
-						return bh_multianim_TileSource.TSSheet(sheet,name);
 					}
 				}
 			}
@@ -6029,7 +6066,7 @@ bh_multianim_MacroManimParser.prototype = {
 																						this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
 																					}
 																				}
-																				var progRef = this.expectReferenceOrIdentifier();
+																				var progRef = this.expectReferenceOrIdentifierAsRV();
 																				var params = new haxe_ds_StringMap();
 																				if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TComma)) {
 																					params = this.parseReferenceParams();
@@ -6053,7 +6090,7 @@ bh_multianim_MacroManimParser.prototype = {
 																							this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
 																						}
 																					}
-																					var progRef = this.expectReferenceOrIdentifier();
+																					var progRef = this.expectReferenceOrIdentifierAsRV();
 																					var params = new haxe_ds_StringMap();
 																					if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TComma)) {
 																						params = this.parseReferenceParams();
@@ -7294,7 +7331,7 @@ bh_multianim_MacroManimParser.prototype = {
 			switch(_g._hx_index) {
 			case 32:
 				var s = _g.s;
-				if(bh_multianim_MacroManimParser.isKeyword(s,"file") || bh_multianim_MacroManimParser.isKeyword(s,"generated") || bh_multianim_MacroManimParser.isKeyword(s,"sheet")) {
+				if(bh_multianim_MacroManimParser.isKeyword(s,"file") || bh_multianim_MacroManimParser.isKeyword(s,"generated") || bh_multianim_MacroManimParser.isKeyword(s,"sheet") || bh_multianim_MacroManimParser.isKeyword(s,"center") || bh_multianim_MacroManimParser.isKeyword(s,"pivot")) {
 					tiles.push(this.parseTileSource());
 				} else {
 					break _hx_loop1;
@@ -11633,8 +11670,9 @@ var bh_multianim_TileSource = $hxEnums["bh.multianim.TileSource"] = { __ename__:
 	,TSSheetWithIndex: ($_=function(sheet,name,index) { return {_hx_index:2,sheet:sheet,name:name,index:index,__enum__:"bh.multianim.TileSource",toString:$estr}; },$_._hx_name="TSSheetWithIndex",$_.__params__ = ["sheet","name","index"],$_)
 	,TSGenerated: ($_=function(type) { return {_hx_index:3,type:type,__enum__:"bh.multianim.TileSource",toString:$estr}; },$_._hx_name="TSGenerated",$_.__params__ = ["type"],$_)
 	,TSReference: ($_=function(varName) { return {_hx_index:4,varName:varName,__enum__:"bh.multianim.TileSource",toString:$estr}; },$_._hx_name="TSReference",$_.__params__ = ["varName"],$_)
+	,TSPivot: ($_=function(pivotX,pivotY,inner) { return {_hx_index:5,pivotX:pivotX,pivotY:pivotY,inner:inner,__enum__:"bh.multianim.TileSource",toString:$estr}; },$_._hx_name="TSPivot",$_.__params__ = ["pivotX","pivotY","inner"],$_)
 };
-bh_multianim_TileSource.__constructs__ = [bh_multianim_TileSource.TSFile,bh_multianim_TileSource.TSSheet,bh_multianim_TileSource.TSSheetWithIndex,bh_multianim_TileSource.TSGenerated,bh_multianim_TileSource.TSReference];
+bh_multianim_TileSource.__constructs__ = [bh_multianim_TileSource.TSFile,bh_multianim_TileSource.TSSheet,bh_multianim_TileSource.TSSheetWithIndex,bh_multianim_TileSource.TSGenerated,bh_multianim_TileSource.TSReference,bh_multianim_TileSource.TSPivot];
 var bh_multianim_PaletteType = $hxEnums["bh.multianim.PaletteType"] = { __ename__:true,__constructs__:null
 	,PaletteColors: ($_=function(colors) { return {_hx_index:0,colors:colors,__enum__:"bh.multianim.PaletteType",toString:$estr}; },$_._hx_name="PaletteColors",$_.__params__ = ["colors"],$_)
 	,PaletteColors2D: ($_=function(colors,width) { return {_hx_index:1,colors:colors,width:width,__enum__:"bh.multianim.PaletteType",toString:$estr}; },$_._hx_name="PaletteColors2D",$_.__params__ = ["colors","width"],$_)

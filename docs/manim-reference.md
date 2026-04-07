@@ -1186,7 +1186,7 @@ When `tabPanel.contentRoot` is set, tab content coordinates are relative to the 
 
 **Events** (`GridEvent` enum via `onGridEvent`): `CellClick`, `CellHoverEnter`, `CellHoverLeave`, `CellDrop(cell, draggable, sourceGrid, sourceCell, ctx)`, `CellSwap(source, target, draggable, ctx)`, `CellDragStart(cell, draggable)`, `CellDragEnd(cell)`, `CellCardPlayed`, `CellDataChanged`. `CellDrop` includes `DropContext`: `ctx.accept()` / `ctx.reject()` controls snap vs return animation; `ctx.onComplete(cb)` fires after animation; `ctx.acceptWithPath(name)` / `ctx.rejectWithPath(name)` for custom paths. `CellSwap` includes `SwapContext`: `ctx.accept()` / `ctx.reject()`, `ctx.acceptWithSwapPath(name)` / `ctx.acceptWithPaths(snap, swap)` for custom paths, `ctx.onComplete(cb)` / `ctx.onSnapComplete(cb)`, `ctx.programmatic` flag (true for `swapCells()`, false for drag-drop). `CellDragStart`/`CellDragEnd` emitted by built-in cell drag (`cellDragEnabled`).
 
-**Key API:** `addRectRegion(cols, rows)`, `addHexRegion(center, radius)`, `set(col, row, data, ?params)`, `get()`, `clear()`, `isOccupied()`, `forEach()`, `cellAtPoint(sceneX, sceneY)`, `cellPosition(col, row)`, `neighbors()`, `distance()`, `acceptDrops(draggable, ?filter)`, `registerAsCardTarget(cardHand, ?filter)`, `makeDraggableFromCell(col, row, ?visual)`, `linkDropTarget(target, ?accepts)`, `unlinkDropTarget(target)`, `UIMultiAnimGrid.linkGrids(a, b, ?accepts)`, `dispose()`.
+**Key API:** `addRectRegion(cols, rows)`, `addHexRegion(center, radius)`, `set(col, row, data, ?params)`, `get()`, `clear()`, `isOccupied()`, `forEach()`, `cellAtPoint(sceneX, sceneY)`, `sceneToHex(sceneX, sceneY)`, `cellPosition(col, row)`, `neighbors()`, `distance()`, `acceptDrops(draggable, ?filter)`, `registerAsCardTarget(cardHand, ?filter)`, `makeDraggableFromCell(col, row, ?visual)`, `linkDropTarget(target, ?accepts)`, `unlinkDropTarget(target)`, `UIMultiAnimGrid.linkGrids(a, b, ?accepts)`, `dispose()`.
 
 **Grid layers:** `addLayer(name, {buildName, zOrder})`, `setLayer(col, row, name, ?params)`, `clearLayer(col, row, name)`, `clearLayerAll(name)`, `clearAllLayers()`, `getLayerVisual(col, row, name)`, `hasLayer()`. Base cells at z-order 0; layers at configurable z-orders. `removeCell()` auto-clears layers. **External objects:** `addExternalObject(obj, zOrder)` / `removeExternalObject(obj)`.
 
@@ -1348,6 +1348,20 @@ interactive(200, 30, "background", eventPriority:int => 0)
 | `eventPriority` | `int` | `0` | Higher values receive events first when overlapping |
 
 When multiple interactives overlap at the cursor position, `UIDefaultController` sorts by `eventPriority` (descending), with registration order as tiebreaker for equal priorities. By default, the first element consumes the event (no bubbling).
+
+**Priority tier constants** (`UIEventPriority` class):
+
+| Constant | Value | Usage |
+|----------|-------|-------|
+| `Content` | 0 | Normal screen content — buttons, lists, interactives |
+| `Overlay` | 100 | Floating overlays — dropdown panels, tooltips, popovers |
+| `Modal` | 200 | Modal dialogs — above all other UI |
+
+Use arithmetic for fine-tuning: `UIEventPriority.Overlay + 2`. Built-in components automatically use appropriate tiers:
+- **Dropdown** sets `Overlay` when panel opens, `Content` when closed
+- **PanelHelper** sets `Overlay` on all panel interactives at registration time
+
+`UIInteractiveWrapper.eventPriority` is publicly writable for programmatic override after construction.
 
 ### Event Bubbling
 

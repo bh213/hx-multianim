@@ -11,10 +11,13 @@
 
 - **Dynamic programmable references in `dynamicRef`** — `dynamicRef($template, val=>$hp)` where `$template` is a `string` or enum parameter of the enclosing programmable. The resolved parameter value names the target programmable. When the template parameter changes, the old visual is torn down and the new programmable is fully rebuilt. Forwarded parameters (`val=>$hp`) propagate incrementally without rebuild. Backward compatible: `$progName` where `progName` is not a parameter falls back to literal name. Strict validation: forwarded parameters must exist on the target programmable (RTE if missing, allowed if target has a default). Works in both builder (via `IncrementalUpdateContext.trackDynamicName`) and codegen (via `generateDynamicNameRefCreate` with container/name/result fields).
 
+- **`UIEventPriority` constants and overlay priority** — `UIEventPriority` class with `Content` (0), `Overlay` (100), `Modal` (200) tiers for event priority. Dropdown (`UIStandardMultiAnimDropdown`) now implements `UIElementPriority` — sets `Overlay` when panel opens, `Content` when closed. `UIPanelHelper` sets `Overlay` priority on all panel interactives. `UIInteractiveWrapper.eventPriority` is now publicly writable for programmatic override. Fixes the dropdown click-through bug where background interactives received events through open overlays.
+- **Grid `sceneToHex()`** — convert scene coordinates to hex grid coordinates. Returns the nearest hex `CellCoord` regardless of whether a cell exists. Works for hex grids only (returns null for rect).
 - **Particle `shutdown` block and API** — graceful particle stop for looping emitters. `shutdown: { duration: 1.0, curve: easeOutQuad, alphaCurve: ..., sizeCurve: ..., speedCurve: ... }` configures wind-down behavior in `.manim`. At runtime, `particles.shutdown()` or `group.shutdown(?duration, ?curve)` starts a timed shutdown that curves particle count (selectively stops recycling dead particles) and optionally applies global alpha/size/speed multipliers. All curves use progress convention (`mult = 1.0 - curve(t)`). Query state via `isShuttingDown()` and `getShutdownRate()`. `emitBurstAt()` still works during shutdown. Existing `onEnd()` fires when the last particle dies.
 
 ### Changed
 - **`@ifstrict` removed** — replaced by `@all()` (AND on listed params, unlisted ignored). The old `@ifstrict` behavior (requiring ALL programmable params to be mentioned) is no longer available.
+- **Hyperlink callback error re-throw in DEV mode** — rich text hyperlink callback errors are now re-thrown after tracing when `MULTIANIM_DEV` is defined, making callback bugs visible during development.
 
 ## [1.0.0-rc.3] - 2026-03-31
 

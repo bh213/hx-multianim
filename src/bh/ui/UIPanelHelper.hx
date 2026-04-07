@@ -4,6 +4,7 @@ import bh.base.TweenManager;
 import bh.base.TweenManager.Tween;
 import bh.base.TweenManager.TweenProperty;
 import bh.ui.UITooltipHelper.TooltipPosition;
+import bh.ui.UIElement.UIEventPriority;
 import bh.ui.UIElement.UIScreenEvent;
 import bh.ui.screens.UIScreen;
 import bh.multianim.MultiAnimBuilder;
@@ -113,7 +114,8 @@ class UIPanelHelper {
 		// Register panel interactives with a prefix so the screen can identify them
 		final prefix = '${interactiveId}.$buildName';
 		if (result.interactives.length > 0)
-			screen.addInteractives(result, prefix);
+			for (w in screen.addInteractives(result, prefix))
+				w.eventPriority = UIEventPriority.Overlay;
 
 		// Apply fade-in
 		if (defaultFadeIn > 0 && tweens != null) {
@@ -141,7 +143,8 @@ class UIPanelHelper {
 		// Register panel interactives with a prefix so the screen can identify them
 		final prefix = 'pos.$buildName';
 		if (result.interactives.length > 0)
-			screen.addInteractives(result, prefix);
+			for (w in screen.addInteractives(result, prefix))
+				w.eventPriority = UIEventPriority.Overlay;
 
 		// Apply fade-in
 		if (defaultFadeIn > 0 && tweens != null) {
@@ -248,7 +251,8 @@ class UIPanelHelper {
 
 		final prefix = '${slot}.${interactiveId}.$buildName';
 		if (result.interactives.length > 0)
-			screen.addInteractives(result, prefix);
+			for (w in screen.addInteractives(result, prefix))
+				w.eventPriority = UIEventPriority.Overlay;
 
 		// Apply fade-in (tracked so closeNamed can cancel it)
 		var fadeInTween:Null<Tween> = null;

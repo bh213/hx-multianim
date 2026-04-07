@@ -893,6 +893,16 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 		};
 	}
 
+	/** Convert scene coordinates to hex grid coordinates (q, r).
+	 *  Works for hex grids only. Returns the nearest hex regardless of whether a cell exists. */
+	public function sceneToHex(sceneX:Float, sceneY:Float):Null<CellCoord> {
+		if (hexLayout == null) return null;
+		final local = root.globalToLocal(new Point(sceneX, sceneY));
+		final fractional = hexLayout.pixelToHex(new FPoint(local.x, local.y));
+		final hex = fractional.round();
+		return fromHex(hex);
+	}
+
 	/** Get the world (scene) position of a cell's origin.
 	 *  Converts from root-local coordinates to absolute scene coordinates. */
 	public function cellPosition(col:Int, row:Int):FPoint {

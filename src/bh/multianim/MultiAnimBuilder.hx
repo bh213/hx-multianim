@@ -4099,7 +4099,7 @@ class MultiAnimBuilder {
 				}
 				ht.onHyperlink = (url) -> {
 					if (builderParams != null && builderParams.callback != null) {
-						try builderParams.callback(Name("link:" + url)) catch(e:Dynamic) { trace('Hyperlink callback error: $e'); };
+						try builderParams.callback(Name("link:" + url)) catch(e:Dynamic) { trace('Hyperlink callback error: $e'); #if MULTIANIM_DEV throw e; #end };
 					}
 				};
 				ht.onOverHyperlink = (url) -> {

@@ -253,6 +253,18 @@ interface UIElementCursor {
 }
 
 
+/** Event priority tiers for overlapping UI elements. Use arithmetic for fine-tuning: Overlay + 2 */
+class UIEventPriority {
+	/** Normal screen content — buttons, lists, interactives (0) */
+	public static inline final Content = 0;
+
+	/** Floating overlays — dropdown panels, tooltips, popovers (100) */
+	public static inline final Overlay = 100;
+
+	/** Modal dialogs — above all other UI (200) */
+	public static inline final Modal = 200;
+}
+
 /**
  * Opt-in interface for UI elements that declare an event priority.
  * Higher priority elements receive events first when overlapping.

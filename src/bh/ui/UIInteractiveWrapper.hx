@@ -21,7 +21,7 @@ class UIInteractiveWrapper implements UIElement implements StandardUIElementEven
 	public final id:String;
 	public final metadata:BuilderResolvedSettings;
 	public final eventFlags:Int;
-	public var eventPriority(default, null):Int;
+	public var eventPriority:Int;
 	public var disabled(default, set):Bool = false;
 	public var hovered(default, null):Bool = false;
 
