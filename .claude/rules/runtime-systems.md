@@ -389,3 +389,66 @@ floatingText.spawn("-42", font, startPos.x, startPos.y, ap, 0xFF0000, true);
 ```
 
 **Instance lifecycle:** `onComplete` callback fires when AnimatedPath is done. Completed instances auto-removed from manager and object removed from scene.
+
+## ScreenShakeHelper
+
+Lightweight additive screen shake for impact feedback. Multiple concurrent shakes stack naturally.
+
+**File:** `src/bh/ui/ScreenShakeHelper.hx`
+
+**API:**
+```haxe
+var shake = new ScreenShakeHelper(target);
+
+// Basic shake with linear decay
+shake.shake(intensity, duration);
+
+// Directional (e.g. horizontal recoil, vertical landing)
+shake.shakeDirectional(intensity, duration, dirX, dirY);
+
+// Custom decay curve (receives 0..1 remaining ratio, returns factor)
+shake.shakeWithCurve(intensity, duration, (remaining) -> remaining * remaining);
+
+// Call from game loop
+shake.update(dt);
+
+// Immediate stop
+shake.stop();
+
+// Update rest position if target moved
+shake.setOrigin(x, y);
+
+// Query
+shake.isShaking;
+```
+
+**Usage in screen:**
+```haxe
+var shake:ScreenShakeHelper;
+
+override public function load() {
+    shake = new ScreenShakeHelper(root);
+}
+
+override public function update(dt:Float) {
+    super.update(dt);
+    shake.update(dt);
+}
+
+// On damage:
+shake.shake(8.0, 0.4);
+
+// Horizontal recoil:
+shake.shakeDirectional(6.0, 0.2, 1.0, 0.0);
+
+// With .manim curve:
+var curve = builder.getCurve("heavyImpact");
+shake.shakeWithCurve(10.0, 0.5, curve);
+```
+
+**Key behaviors:**
+- **Additive** — concurrent shakes stack (explosion + hit at same time)
+- **Decay** — linear by default, pluggable curve for custom feel
+- **Directional** — `dirX`/`dirY` mask axes (1.0 = full, 0.0 = none)
+- **Deterministic jitter** — time-seeded hash, not `Math.random()`, for consistent shake per frame
+- **No allocations per frame** — reuses array, swap-removes on completion

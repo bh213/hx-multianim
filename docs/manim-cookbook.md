@@ -1190,6 +1190,28 @@ floatingText.spawn("+15", font, worldX, worldY, ap, 0x44FF44, false);
 floatingText.update(dt);
 ```
 
+### Haxe ScreenShakeHelper
+
+```haxe
+var shake = new ScreenShakeHelper(root);
+
+// Basic shake (e.g. on taking damage)
+shake.shake(8.0, 0.4);
+
+// Horizontal recoil (e.g. gun kickback)
+shake.shakeDirectional(6.0, 0.2, 1.0, 0.0);
+
+// Vertical landing impact
+shake.shakeDirectional(4.0, 0.15, 0.0, 1.0);
+
+// With .manim curve for custom decay feel
+var curve = builder.getCurve("heavyImpact");
+shake.shakeWithCurve(10.0, 0.5, curve);
+
+// In update(dt):
+shake.update(dt);
+```
+
 ---
 
 ## Character Sheets
