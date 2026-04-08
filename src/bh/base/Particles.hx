@@ -710,6 +710,7 @@ class ParticleGroup {
 			p.visible = true;
 			batch.add(p);
 			liveCount++;
+			triggerSubEmitters(p, OnBirth);
 		}
 	}
 
