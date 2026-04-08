@@ -120,7 +120,8 @@ animation animationName {
 - `@final` named constants: `@final X = 42`, usable as `$X` in coordinates
 - Compact shorthand: `animation name { ... }` (name as keyword after `animation`)
 - `anim` one-liner: `anim name(fps:N, loop:yes): "sheetName"` for simple single-sheet animations
-- File-level defaults: `fps:`, `loop:`, `center:` can be set once at file level
+- `flipX: yes`/`flipY: yes` — flip all frames horizontally/vertically *in place*. Sprite stays in the same untrimmed screen footprint regardless of where the pivot sits within it. Trim offsets and extrapoints auto-mirror. Per-animation or file-level default. Works in `animation {}` blocks and `anim` shorthand
+- File-level defaults: `fps:`, `loop:`, `center:`, `flipX:`, `flipY:` can be set once at file level
 - Metadata types: int, float, string, color (`#RRGGBB`)
 - Event metadata: `event name { key:type => value, ... }` with typed payload (`TriggerData` event)
 - Typed filters: `filters { }` block with `tint`, `brightness`, `saturate`, `grayscale`, `hue`, `outline`, `pixelOutline`, `replaceColor`, `none`. Supports state conditionals (`@()`, `@else`, `@default`). Applied at runtime via `AnimationSM`.

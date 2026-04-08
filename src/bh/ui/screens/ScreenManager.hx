@@ -618,7 +618,9 @@ class ScreenManager {
 						if (single == oldMaster || master == oldSingle) throw 'MasterAndSingle -> MasterAndSingle: mismatching master/single';
 					case Dialog(dialog, caller, previousMode, dialogName):
 						addedScreens = [dialog => layerDialog];
-						overrideActiveScreenControllers = [dialog, oldMaster]; // TODO: optional?
+						// TODO: should the underlying screen still receive controller events while a modal dialog is open?
+						// Currently passes through to oldMaster; consider a per-dialog `blockUnderlying:Bool` flag for true modal behavior.
+						overrideActiveScreenControllers = [dialog, oldMaster];
 				}
 
 			case Dialog(oldDialog, caller, previousMode, dialogName):

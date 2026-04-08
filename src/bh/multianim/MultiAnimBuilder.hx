@@ -4204,9 +4204,7 @@ class MultiAnimBuilder {
 									#end
 									obj;
 								case PVFactory(factoryMethod):
-									var res = factoryMethod(settings);
-									// trace('FACTORY', settings, res, type, source);
-									res;
+									factoryMethod(settings);
 								case PVComponent(factoryMethod, _):
 									factoryMethod(settings);
 							}

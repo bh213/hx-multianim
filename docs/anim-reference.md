@@ -15,6 +15,8 @@ Free-form layout — newlines are whitespace. Comments: `//` line, `/* */` block
 | `center` | `center: x, y` | Default center point for all animations |
 | `fps` | `fps: N` | Default frames per second. Before animations |
 | `loop` | `loop: yes \| no \| N` | Default loop behavior. Before animations |
+| `flipX` | `flipX: yes \| no` | Default horizontal flip. Before animations |
+| `flipY` | `flipY: yes \| no` | Default vertical flip. Before animations |
 | `allowedExtraPoints` | `allowedExtraPoints: [name1, name2]` | Declare valid extra point names. Before animations |
 | `@final` | `@final NAME = expr` | Immutable named constant. Before animations |
 | `metadata` | `metadata { ... }` | Key-value metadata block. Before animations |
@@ -112,6 +114,8 @@ animation name @(direction=>l) {
 | `playlist` | Frame sequence (required, at least one) |
 | `extrapoints` | Named coordinate points |
 | `filters` | Typed filter declarations |
+| `flipX` | `yes`/`no` — horizontally flip all frames in place. Sprite keeps the same untrimmed screen footprint; trim offsets and extrapoints auto-mirror. Inherits file-level default |
+| `flipY` | `yes`/`no` — vertically flip all frames in place. Sprite keeps the same untrimmed screen footprint; trim offsets and extrapoints auto-mirror. Inherits file-level default |
 
 ### Compact Shorthand
 
@@ -120,9 +124,10 @@ anim name: "sheetName"
 anim name(fps: 10): "sheetName"
 anim name(fps: 10, loop: yes): "sheetName"
 anim name(loop: 3): "sheetName"
+anim name(fps: 10, flipX: yes): "sheetName"
 ```
 
-Creates a full animation with a single sheet playlist entry. `fps` and `loop` can be in parentheses or inherited from file-level defaults.
+Creates a full animation with a single sheet playlist entry. `fps`, `loop`, `flipX`, and `flipY` can be in parentheses or inherited from file-level defaults.
 
 ---
 

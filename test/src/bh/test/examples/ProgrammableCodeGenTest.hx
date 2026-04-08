@@ -4610,6 +4610,53 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		simpleMacroTest(100, "switchDemo", () -> createMp().switchDemo.create(), async);
 	}
 
+	// ==================== AnimFlip: flipX/flipY in .anim files (#13) ====================
+
+	@Test
+	public function test101_AnimFlip(async:utest.Async):Void {
+		setupTest(101, "animFlip");
+		VisualTestBase.pendingVisualTests++;
+		async.setTimeout(15000);
+
+		final animFilePath = "test/examples/101-animFlip/animFlip.manim";
+		final sizeX = 1280;
+		final sizeY = 720;
+
+		// Phase 1: builder — build, freeze AnimSMs, screenshot
+		clearScene();
+		var builderResult = buildAndAddToScene(animFilePath, "animFlip");
+		if (builderResult == null) {
+			Assert.fail("Failed to build animFlip from builder");
+			VisualTestBase.pendingVisualTests--;
+			async.done();
+			return;
+		}
+
+		for (a in findAllAnimSM(builderResult.object))
+			a.externallyDriven = true;
+
+		var orderIdx = HtmlReportGenerator.reserveOrderIndex();
+		var builderRaw = captureScreenshotRaw(sizeX, sizeY);
+
+		// Phase 2: macro — create, freeze AnimSMs, screenshot
+		clearScene();
+		var macroRoot = createMp().animFlip.create();
+		s2d.addChild(macroRoot);
+
+		for (a in findAllAnimSM(macroRoot))
+			a.externallyDriven = true;
+
+		if (testTitle != null && testTitle.length > 0)
+			addTitleOverlay();
+
+		var macroRaw = captureScreenshotRaw(sizeX, sizeY);
+		Assert.pass();
+		enqueueBuilderAndMacro(builderRaw, macroRaw, 1.0, 1.0, orderIdx);
+
+		VisualTestBase.pendingVisualTests--;
+		async.done();
+	}
+
 	static function addTransLabel(parent:h2d.Object, font:Null<h2d.Font>, label:String, x:Float, y:Float):Void {
 		if (font == null) return;
 		var text = new h2d.Text(font, parent);

@@ -126,7 +126,7 @@
 				},
 				{
 					"name": "keyword.other.anim",
-					"match": "\\b(sheet|states|allowedExtraPoints|center|name|fps|playlist|frames|duration|file|event|extrapoints|hit|random|trigger|anim|filters)\\b"
+					"match": "\\b(sheet|states|allowedExtraPoints|center|name|fps|playlist|frames|duration|file|event|extrapoints|hit|random|trigger|anim|filters|flipX|flipY)\\b"
 				},
 				{
 					"name": "constant.language.anim",

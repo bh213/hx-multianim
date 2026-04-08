@@ -2244,4 +2244,111 @@ animation idle {
 		Assert.notNull(error, "Should throw error for unterminated block comment at EOF");
 		Assert.stringContains("Unterminated block comment", error);
 	}
+
+	// ===== flipX / flipY tests (#13) =====
+
+	@Test
+	public function testParseFlipXInAnimation() {
+		var result = parseAnimExpectingSuccess('
+sheet: testSheet
+animation idle {
+    fps: 4
+    loop: yes
+    flipX: yes
+    playlist { sheet: "test_idle" }
+}
+');
+		Assert.notNull(result, "flipX in animation body should parse");
+	}
+
+	@Test
+	public function testParseFlipYInAnimation() {
+		var result = parseAnimExpectingSuccess('
+sheet: testSheet
+animation idle {
+    fps: 4
+    loop: yes
+    flipY: yes
+    playlist { sheet: "test_idle" }
+}
+');
+		Assert.notNull(result, "flipY in animation body should parse");
+	}
+
+	@Test
+	public function testParseFlipXFileLevelDefault() {
+		var result = parseAnimExpectingSuccess('
+sheet: testSheet
+flipX: yes
+animation idle {
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle" }
+}
+');
+		Assert.notNull(result, "file-level flipX default should parse");
+	}
+
+	@Test
+	public function testParseFlipYFileLevelDefault() {
+		var result = parseAnimExpectingSuccess('
+sheet: testSheet
+flipY: yes
+animation idle {
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle" }
+}
+');
+		Assert.notNull(result, "file-level flipY default should parse");
+	}
+
+	@Test
+	public function testParseFlipXInAnimShorthand() {
+		var result = parseAnimExpectingSuccess('
+sheet: testSheet
+anim idle(fps:4, flipX:yes): "test_idle"
+');
+		Assert.notNull(result, "flipX in anim shorthand should parse");
+	}
+
+	@Test
+	public function testParseFlipBothInAnimShorthand() {
+		var result = parseAnimExpectingSuccess('
+sheet: testSheet
+anim idle(fps:4, flipX:yes, flipY:no): "test_idle"
+');
+		Assert.notNull(result, "flipX+flipY in anim shorthand should parse");
+	}
+
+	@Test
+	public function testParseFlipXDuplicate() {
+		var error = parseAnimExpectingError('
+sheet: testSheet
+animation idle {
+    fps: 4
+    loop: yes
+    flipX: yes
+    flipX: no
+    playlist { sheet: "test_idle" }
+}
+');
+		Assert.notNull(error, "duplicate flipX should error");
+		Assert.stringContains("flipX already set", error);
+	}
+
+	@Test
+	public function testParseFlipXAfterAnimations() {
+		var error = parseAnimExpectingError('
+sheet: testSheet
+animation idle {
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle" }
+}
+flipX: yes
+');
+		Assert.notNull(error, "file-level flipX after animations should error");
+		Assert.stringContains("flipX", error);
+	}
 }

@@ -316,4 +316,7 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/100-switchDemo/switchDemo.manim", "switchDemo")
 	public var switchDemo;
+
+	@:manim("test/examples/101-animFlip/animFlip.manim", "animFlip")
+	public var animFlip;
 }

@@ -98,6 +98,8 @@ enum APKeywords {
 	APFilters; // (#12) filter declarations
 	APFilter; // (#12) per-frame filter in playlist
 	APNone; // (#12) filter none
+	APFlipX; // (#13) horizontal flip
+	APFlipY; // (#13) vertical flip
 }
 
 /**
@@ -136,6 +138,8 @@ class AnimKeywordInfo {
 		new AnimKeywordInfo("center", AKTopLevel, "Default center point: `center: x,y`", "center: "),
 		new AnimKeywordInfo("fps", AKTopLevel, "Default frames per second", "fps: "),
 		new AnimKeywordInfo("loop", AKTopLevel, "Default loop count. `yes` = forever, number = N times", "loop: "),
+		new AnimKeywordInfo("flipX", AKTopLevel, "Default horizontal flip (yes/no)", "flipX: yes"),
+		new AnimKeywordInfo("flipY", AKTopLevel, "Default vertical flip (yes/no)", "flipY: yes"),
 		new AnimKeywordInfo("allowedExtraPoints", AKTopLevel, "Declare valid extra point names for validation"),
 		new AnimKeywordInfo("animation", AKTopLevel, "Named animation definition with playlist, extrapoints, and filters",
 			"animation ${1:name} {\n\t$0\n}", true),
@@ -151,6 +155,8 @@ class AnimKeywordInfo {
 			"extrapoints {\n\t$0\n}", true),
 		new AnimKeywordInfo("filters", AKAnimationBody, "Per-animation filter block with state conditionals",
 			"filters {\n\t$0\n}", true),
+		new AnimKeywordInfo("flipX", AKAnimationBody, "Horizontal flip (yes/no)", "flipX: yes"),
+		new AnimKeywordInfo("flipY", AKAnimationBody, "Vertical flip (yes/no)", "flipY: yes"),
 		// Playlist body
 		new AnimKeywordInfo("sheet", AKPlaylistBody, "Sheet name. Supports `${stateName}` interpolation", "sheet: \""),
 		new AnimKeywordInfo("event", AKPlaylistBody, "Trigger event: `event <name> trigger | random x,y,radius | x,y`"),
@@ -230,6 +236,7 @@ private class AnimLexerHC {
 		"anim" => APAnim, "final" => APFinal,
 		"else" => APElse, "default" => APDefault, "filters" => APFilters,
 		"filter" => APFilter, "none" => APNone,
+		"flipx" => APFlipX, "flipy" => APFlipY,
 	];
 
 	inline function ch():Int {
@@ -660,6 +667,8 @@ typedef AnimationState = {
 	var playlist:Array<Playlist>;
 	var ?visited:Bool;
 	var ?filters:Array<AnimFilterEntry>; // (#12)
+	var ?flipX:Bool; // (#13) horizontal flip
+	var ?flipY:Bool; // (#13) vertical flip
 }
 
 #if (!macro && !noheaps)
@@ -734,6 +743,8 @@ class AnimParser implements AnimParserResult {
 	var constants:Map<String, Float> = []; // (#7) @final named constants
 	var defaultFps:Null<Int> = null; // (#3) file-level fps default
 	var defaultLoop:Null<Int> = null; // (#3) file-level loop default
+	var defaultFlipX:Bool = false; // (#13) file-level flipX default
+	var defaultFlipY:Bool = false; // (#13) file-level flipY default
 	var cache:Map<String, Array<{name:String, states:Array<AnimationFrameState>, loopCount:Int, extraPoints:Map<String, h2d.col.IPoint>, filter:Null<h2d.filter.Filter>, tintColor:Null<Int>}>> = [];
 	final resourceLoader:bh.base.ResourceLoader;
 
@@ -876,6 +887,16 @@ class AnimParser implements AnimParserResult {
 					expect(APColon);
 					if (animationParsingStarted) syntaxError("file-level loop default must be before animations");
 					defaultLoop = parseLoopValue();
+				case APIdentifier(_, APFlipX, AITString): // (#13) file-level flipX default
+					advance();
+					expect(APColon);
+					if (animationParsingStarted) syntaxError("file-level flipX default must be before animations");
+					defaultFlipX = parseBoolValue();
+				case APIdentifier(_, APFlipY, AITString): // (#13) file-level flipY default
+					advance();
+					expect(APColon);
+					if (animationParsingStarted) syntaxError("file-level flipY default must be before animations");
+					defaultFlipY = parseBoolValue();
 				case APAt: // (#7) @final constants, or other @ at top level
 					advance();
 					switch peek() {
@@ -920,6 +941,8 @@ class AnimParser implements AnimParserResult {
 						extraPoint: parsedAnim.extraPoints,
 						playlist: parsedAnim.playlist,
 						filters: parsedAnim.filters,
+						flipX: parsedAnim.flipX ?? defaultFlipX,
+						flipY: parsedAnim.flipY ?? defaultFlipY,
 					};
 					animations.push(anim);
 				case APIdentifier(_, APAnim, AITString): // (#5) compact shorthand: anim name(fps:N, loop:yes): "sheet"
@@ -1049,6 +1072,19 @@ class AnimParser implements AnimParserResult {
 				return cnt;
 			default:
 				return unexpectedError("expected loop value (yes/no/true/false/number)");
+		}
+	}
+
+	function parseBoolValue():Bool { // (#13) yes/no/true/false
+		switch peek() {
+			case APIdentifier("true" | "yes", _, _):
+				advance();
+				return true;
+			case APIdentifier("false" | "no", _, _):
+				advance();
+				return false;
+			default:
+				return unexpectedError("expected yes/no/true/false");
 		}
 	}
 
@@ -1246,6 +1282,8 @@ class AnimParser implements AnimParserResult {
 	function parseAnimation(statesDefinitions, animationStates, allowedExtraPointsList, ?headerName:String) {
 		var extraPoints:Map<String, Array<ExtraPoints>> = [];
 		var filters:Array<AnimFilterEntry> = []; // (#12)
+		var flipX:Null<Bool> = null; // (#13)
+		var flipY:Null<Bool> = null; // (#13)
 		var ret = {
 			loop: (null : Null<Int>),
 			name: headerName, // (#2) name may come from header
@@ -1253,6 +1291,8 @@ class AnimParser implements AnimParserResult {
 			extraPoints: extraPoints,
 			playlist: ([] : Array<Playlist>),
 			filters: filters,
+			flipX: flipX,
+			flipY: flipY,
 		};
 
 		while (true) {
@@ -1299,6 +1339,16 @@ class AnimParser implements AnimParserResult {
 					advance();
 					expect(APCurlyOpen);
 					ret.filters = parseFilterBlock(statesDefinitions, animationStates);
+				case APIdentifier(_, APFlipX, AITString): // (#13) horizontal flip
+					advance();
+					expect(APColon);
+					if (ret.flipX != null) syntaxError("flipX already set");
+					ret.flipX = parseBoolValue();
+				case APIdentifier(_, APFlipY, AITString): // (#13) vertical flip
+					advance();
+					expect(APColon);
+					if (ret.flipY != null) syntaxError("flipY already set");
+					ret.flipY = parseBoolValue();
 				default:
 					unexpectedError();
 			}
@@ -1310,12 +1360,14 @@ class AnimParser implements AnimParserResult {
 		return ret;
 	}
 
-	// (#5) Parse compact animation shorthand: anim name(fps:N, loop:yes): "sheet"
+	// (#5) Parse compact animation shorthand: anim name(fps:N, loop:yes, flipX:yes, flipY:yes): "sheet"
 	@:nullSafety(Off)
 	function parseAnimShorthand():Void {
 		final name = expectIdentifier();
 		var overrideFps:Null<Int> = null;
 		var overrideLoop:Null<Int> = null;
+		var overrideFlipX:Null<Bool> = null; // (#13)
+		var overrideFlipY:Null<Bool> = null; // (#13)
 
 		if (match(APOpen)) {
 			var first = true;
@@ -1333,8 +1385,16 @@ class AnimParser implements AnimParserResult {
 						advance();
 						expect(APColon);
 						overrideLoop = parseLoopValue();
+					case APIdentifier(_, APFlipX, _): // (#13)
+						advance();
+						expect(APColon);
+						overrideFlipX = parseBoolValue();
+					case APIdentifier(_, APFlipY, _): // (#13)
+						advance();
+						expect(APColon);
+						overrideFlipY = parseBoolValue();
 					default:
-						unexpectedError("expected fps or loop modifier in anim shorthand");
+						unexpectedError("expected fps, loop, flipX, or flipY modifier in anim shorthand");
 				}
 			}
 		}
@@ -1356,6 +1416,8 @@ class AnimParser implements AnimParserResult {
 			fps: animFps,
 			extraPoint: [],
 			playlist: [playlist],
+			flipX: overrideFlipX ?? defaultFlipX,
+			flipY: overrideFlipY ?? defaultFlipY,
 		};
 		if (!animationNames.contains(name)) animationNames.push(name);
 		animations.push(anim);
@@ -1840,6 +1902,8 @@ class AnimParser implements AnimParserResult {
 		if (_sheetName == null) throw 'sheet not set';
 		final _fps = anim.fps;
 		if (_fps == null) throw 'fps not set for animation ${anim.name}';
+		final _flipX = anim.flipX == true; // (#13)
+		final _flipY = anim.flipY == true; // (#13)
 
 		// (#4) Replace ${key} with state value
 		function replaceState(inputStr:String, stateSelector:AnimationStateSelector):String {
@@ -1851,18 +1915,44 @@ class AnimParser implements AnimParserResult {
 			return result;
 		}
 
+		// (#13) Clone tile before flipping to avoid mutating shared atlas tiles.
+		// Heaps' tile.flipX/Y mirrors around the pivot. We additionally shift by
+		// (orig - 2*center) so the sprite stays in the same untrimmed screen footprint
+		// regardless of where the pivot sits within the untrimmed area.
+		function maybeFlipClone(tile:h2d.Tile, origW:Float, origH:Float):h2d.Tile {
+			if (!_flipX && !_flipY) return tile;
+			var cloned = tile.clone();
+			final cx:Float = _center != null ? _center.x : 0;
+			final cy:Float = _center != null ? _center.y : 0;
+			if (_flipX) {
+				cloned.flipX();
+				cloned.dx += origW - 2 * cx;
+			}
+			if (_flipY) {
+				cloned.flipY();
+				cloned.dy += origH - 2 * cy;
+			}
+			return cloned;
+		}
+
 		function tileToFrame(tile:h2d.Tile, duration:Float):AnimationFrameState {
 			if (_center != null) {
 				tile.dx = -_center.x;
 				tile.dy = -_center.y;
 			}
-			return Frame(new AnimationFrame(tile, duration, 0, 0, tile.iwidth, tile.iheight));
+			// Raw single-frame tiles have no trim — orig dimensions == tile dimensions
+			final outTile = maybeFlipClone(tile, tile.width, tile.height);
+			return Frame(new AnimationFrame(outTile, duration, 0, 0, outTile.iwidth, outTile.iheight));
 		}
 
 		function AFtoFrame(f:AnimationFrame, duration:Float):AnimationFrameState {
 			if (_center != null) {
 				f.tile.dx = f.offsetx - _center.x;
 				f.tile.dy = (f.height - f.tile.height) - f.offsety - _center.y;
+			}
+			if (_flipX || _flipY) {
+				// f.width / f.height = untrimmed (orig) dimensions from atlas
+				return Frame(f.cloneWithNewTile(maybeFlipClone(f.tile, f.width, f.height)).cloneWithDuration(duration));
 			}
 			return Frame(f.cloneWithDuration(duration));
 		}
@@ -2027,9 +2117,36 @@ class AnimParser implements AnimParserResult {
 				if (playlist == null) throw 'null playlist for anim ${name}';
 				var states = createStates(playlist.anims, anim, stateSelector);
 				final extraPoints = new Map<String, h2d.col.IPoint>();
+				final _flipX = anim.flipX == true; // (#13)
+				final _flipY = anim.flipY == true; // (#13)
+				// (#13) For Option B "flip in place", mirror extrapoints around the untrimmed
+				// screen center, not the pivot. Need untrimmed dimensions from first frame.
+				var origW:Float = 0;
+				var origH:Float = 0;
+				if (_flipX || _flipY) {
+					var found = false;
+					for (s in states) {
+						if (found) continue;
+						switch s {
+							case Frame(f):
+								origW = f.width;
+								origH = f.height;
+								found = true;
+							default:
+						}
+					}
+				}
+				final cx:Float = center != null ? center.x : 0;
+				final cy:Float = center != null ? center.y : 0;
 				for (pointName in allowedExtraPoints) {
 					var pt = findExtraPoint(pointName, stateSelector, anim, definedStates);
-					if (pt != null) extraPoints.set(pointName, pt.toPoint());
+					if (pt != null) {
+						var p = pt.toPoint();
+						// (#13) Mirror around untrimmed screen center, matching Option B tile flip
+						if (_flipX) p.x = Std.int(origW - 2 * cx) - p.x;
+						if (_flipY) p.y = Std.int(origH - 2 * cy) - p.y;
+						extraPoints.set(pointName, p);
+					}
 				}
 				final loopCount:Int = anim.loop ?? 0;
 				final resolved = resolveAnimFilters(anim.filters, stateSelector);
@@ -2182,7 +2299,7 @@ class AnimParserLsp {
 									stateDeclarations.push({name: name, values: values});
 								default:
 							}
-						case APSheet | APCenter | APFps | APLoop | APAllowedExtraPoints:
+						case APSheet | APCenter | APFps | APLoop | APAllowedExtraPoints | APFlipX | APFlipY:
 							advance();
 							if (!match(APColon)) throw new InvalidSyntax("expected ':'", currentPos());
 							skipToNextTopLevel();
