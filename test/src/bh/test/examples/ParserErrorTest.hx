@@ -3773,9 +3773,10 @@ class ParserErrorTest extends utest.Test {
 			case SWITCH(paramName, arms):
 				Assert.equals("state", paramName);
 				Assert.equals(3, arms.length, "should have 3 arms");
-				Assert.isTrue(arms[0].pattern.match(CoEnums(_)), "first arm should be CoEnums");
-				Assert.isTrue(arms[1].pattern.match(CoEnums(_)), "second arm should be CoEnums");
-				Assert.isTrue(arms[2].pattern.match(CoEnums(_)), "third arm should be CoEnums");
+				// Single-value arms route through stringToConditional — PPTEnum → CoIndex
+				Assert.isTrue(arms[0].pattern.match(CoIndex(0, "idle")), "first arm should be CoIndex(0, idle)");
+				Assert.isTrue(arms[1].pattern.match(CoIndex(1, "active")), "second arm should be CoIndex(1, active)");
+				Assert.isTrue(arms[2].pattern.match(CoIndex(2, "error")), "third arm should be CoIndex(2, error)");
 			default:
 		}
 	}
@@ -4022,6 +4023,156 @@ class ParserErrorTest extends utest.Test {
 			case SWITCH(_, arms): Assert.equals(2, arms.length);
 			default: Assert.fail("expected SWITCH node");
 		}
+	}
+
+	@Test
+	public function testSwitchColorParam() {
+		// @switch on PPTColor with #RGB literal arms. Single-value arms route through
+		// stringToConditional which parses the hex color into CoValue(argb).
+		var result = parseExpectingResult('
+			#test programmable(tint:color=#FFFFFF) {
+				@switch(tint) {
+					#FF0000: bitmap(generated(color(10, 10, #600)));
+					#00FF00: bitmap(generated(color(10, 10, #060)));
+					default: bitmap(generated(color(10, 10, #666)));
+				}
+			}
+		');
+		Assert.notNull(result, "@switch on color param should parse");
+		var node = result.nodes.get("test");
+		Assert.notNull(node);
+		switch (node.children[0].type) {
+			case SWITCH(_, arms):
+				Assert.equals(3, arms.length);
+				// PPTColor single-value arms must produce CoValue so they actually match
+				// the runtime Value(argb) representation — not CoEnums of strings.
+				Assert.isTrue(arms[0].pattern.match(CoValue(_)), "color arm should be CoValue");
+				Assert.isTrue(arms[1].pattern.match(CoValue(_)), "color arm should be CoValue");
+				Assert.isNull(arms[2].pattern, "default arm");
+			default: Assert.fail("expected SWITCH node");
+		}
+	}
+
+	@Test
+	public function testSwitchStringParam() {
+		// @switch on PPTString with quoted-string arms.
+		var result = parseExpectingResult('
+			#test programmable(label:string="idle") {
+				@switch(label) {
+					"hello world": bitmap(generated(color(10, 10, #600)));
+					"other": bitmap(generated(color(10, 10, #060)));
+				}
+			}
+		');
+		Assert.notNull(result, "@switch on string param with quoted-string arms should parse");
+		var node = result.nodes.get("test");
+		Assert.notNull(node);
+		switch (node.children[0].type) {
+			case SWITCH(_, arms):
+				Assert.equals(2, arms.length);
+				Assert.isTrue(arms[0].pattern.match(CoStringValue("hello world")), "first arm should match quoted string");
+				Assert.isTrue(arms[1].pattern.match(CoStringValue("other")), "second arm should match quoted string");
+			default: Assert.fail("expected SWITCH node");
+		}
+	}
+
+	@Test
+	public function testSwitchBoolParam() {
+		// @switch on PPTBool — with the old CoEnums-based arms this would silently never match
+		// because Std.string(1) != "true". The fix routes through stringToConditional → CoValue.
+		var result = parseExpectingResult('
+			#test programmable(enabled:bool=true) {
+				@switch(enabled) {
+					true: bitmap(generated(color(10, 10, #060)));
+					false: bitmap(generated(color(10, 10, #600)));
+				}
+			}
+		');
+		Assert.notNull(result, "@switch on bool param should parse");
+		var node = result.nodes.get("test");
+		Assert.notNull(node);
+		switch (node.children[0].type) {
+			case SWITCH(_, arms):
+				Assert.equals(2, arms.length);
+				Assert.isTrue(arms[0].pattern.match(CoValue(1)), "true arm should match CoValue(1)");
+				Assert.isTrue(arms[1].pattern.match(CoValue(0)), "false arm should match CoValue(0)");
+			default: Assert.fail("expected SWITCH node");
+		}
+	}
+
+	@Test
+	public function testSwitchRejectsFloatParam() {
+		var error = parseExpectingError('
+			#test programmable(value:float=0.0) {
+				@switch(value) {
+					default: bitmap(generated(color(10, 10, #600)));
+				}
+			}
+		');
+		Assert.notNull(error, "Should throw error for @switch on float param");
+		Assert.isTrue(error.indexOf("non-discrete type Float") >= 0,
+			'Error should mention non-discrete Float, got: $error');
+	}
+
+	@Test
+	public function testSwitchRejectsTileParam() {
+		var error = parseExpectingError('
+			#test programmable(img:tile) {
+				@switch(img) {
+					default: bitmap(generated(color(10, 10, #600)));
+				}
+			}
+		');
+		Assert.notNull(error, "Should throw error for @switch on tile param");
+		Assert.isTrue(error.indexOf("type Tile") >= 0,
+			'Error should mention Tile type, got: $error');
+	}
+
+	@Test
+	public function testSwitchRejectsFlagsParam() {
+		// PPTFlags needs CoFlag matching; @switch arm grammar can't express flag tests.
+		var error = parseExpectingError('
+			#test programmable(perms:flags(3)) {
+				@switch(perms) {
+					default: bitmap(generated(color(10, 10, #600)));
+				}
+			}
+		');
+		Assert.notNull(error, "Should throw error for @switch on flags param");
+		Assert.isTrue(error.indexOf("Flags") >= 0,
+			'Error should mention Flags type, got: $error');
+	}
+
+	@Test
+	public function testSwitchRejectsRangeArmOnStringParam() {
+		// Range/comparison arms only make sense for numeric params. A string param
+		// with a `<= N` arm used to parse silently and produce a nonsensical pattern.
+		var error = parseExpectingError('
+			#test programmable(label:string="idle") {
+				@switch(label) {
+					<= 10: bitmap(generated(color(10, 10, #600)));
+					default: bitmap(generated(color(10, 10, #666)));
+				}
+			}
+		');
+		Assert.notNull(error, "Should throw error for numeric range arm on string param");
+		Assert.isTrue(error.indexOf("requires a numeric parameter") >= 0,
+			'Error should mention numeric requirement, got: $error');
+	}
+
+	@Test
+	public function testSwitchRejectsRangeArmOnColorParam() {
+		var error = parseExpectingError('
+			#test programmable(tint:color=#FFFFFF) {
+				@switch(tint) {
+					0..100: bitmap(generated(color(10, 10, #600)));
+					default: bitmap(generated(color(10, 10, #666)));
+				}
+			}
+		');
+		Assert.notNull(error, "Should throw error for a..b range arm on color param");
+		Assert.isTrue(error.indexOf("requires a numeric parameter") >= 0,
+			'Error should mention numeric requirement, got: $error');
 	}
 
 	// ===== Conditional block @(cond) { ... } tests =====

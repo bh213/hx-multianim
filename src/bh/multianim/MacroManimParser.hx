@@ -2839,8 +2839,18 @@ class MacroManimParser {
 						advance();
 						expect(TOpen);
 						final switchParam = expectIdentifierOrString();
-						if (!currentDefs.exists(switchParam))
+						final switchDef = currentDefs.get(switchParam);
+						if (switchDef == null)
 							error('@switch parameter "$switchParam" does not have definition');
+						switch (switchDef.type) {
+							case PPTFloat:
+								error('@switch parameter "$switchParam" has non-discrete type Float — @switch requires a discrete type (enum, int, string, color, bool, or range)');
+							case PPTTile:
+								error('@switch parameter "$switchParam" has type Tile which cannot be matched — @switch requires a discrete type');
+							case PPTFlags(_):
+								error('@switch parameter "$switchParam" has type Flags which is not supported by @switch — use @(param => bit[N]) instead');
+							default:
+						}
 						expect(TClosed);
 						expect(TCurlyOpen);
 						parseSwitchArms(parent, switchParam, currentDefs);
@@ -5000,6 +5010,11 @@ class MacroManimParser {
 	@:nullSafety(Off)
 	function parseSwitchArms(parent:Node, paramName:String, defs:ParametersDefinitions):Void {
 		final arms:Array<SwitchArm> = [];
+		final paramType = defs.get(paramName).type;
+		final isNumericParam = switch paramType {
+			case PPTInt | PPTUnsignedInt | PPTRange(_, _): true;
+			default: false;
+		};
 		while (!match(TCurlyClosed)) {
 			// Skip stray semicolons
 			if (match(TSemiColon)) continue;
@@ -5012,18 +5027,22 @@ class MacroManimParser {
 					advance();
 					// pattern stays null = default
 				case TLessEquals:
+					if (!isNumericParam) error('@switch range arm (<=) requires a numeric parameter; "$paramName" is not numeric');
 					advance();
 					final val = parseIntegerOrReference();
 					pattern = CoRange(null, val, false, false);
 				case TGreaterEquals:
+					if (!isNumericParam) error('@switch range arm (>=) requires a numeric parameter; "$paramName" is not numeric');
 					advance();
 					final val = parseIntegerOrReference();
 					pattern = CoRange(val, null, false, false);
 				case TLessThan:
+					if (!isNumericParam) error('@switch range arm (<) requires a numeric parameter; "$paramName" is not numeric');
 					advance();
 					final val = parseIntegerOrReference();
 					pattern = CoRange(null, val, false, true);
 				case TGreaterThan:
+					if (!isNumericParam) error('@switch range arm (>) requires a numeric parameter; "$paramName" is not numeric');
 					advance();
 					final val = parseIntegerOrReference();
 					pattern = CoRange(val, null, true, false);
@@ -5033,14 +5052,21 @@ class MacroManimParser {
 					values.push(parseSwitchArmValue());
 					// Check for range: value..value
 					if (match(TDoubleDot)) {
+						if (!isNumericParam) error('@switch range arm (..) requires a numeric parameter; "$paramName" is not numeric');
 						final toStr = parseSwitchArmValue();
 						pattern = CoRange(parseRV(values[0]), parseRV(toStr), false, false);
-					} else {
-						// Pipe-separated values: value1 | value2 | value3
+					} else if (Type.enumEq(peek(), TPipe)) {
+						// Pipe-separated values: value1 | value2 | value3 — keep CoEnums for consistency with @(p => [v1, v2])
 						while (match(TPipe)) {
 							values.push(parseSwitchArmValue());
 						}
 						pattern = CoEnums(values);
+					} else {
+						// Single value — route through stringToConditional for type-aware matching.
+						// This makes @switch on PPTColor/PPTBool/PPTEnum produce the same conditional
+						// as @(p => value), instead of a string-only CoEnums that fails to match
+						// integer-backed values (color, bool).
+						pattern = stringToConditional(values[0], paramType);
 					}
 			}
 
@@ -5073,6 +5099,17 @@ class MacroManimParser {
 			case TInteger(n):
 				advance();
 				return n;
+			case TQuotedString(s):
+				advance();
+				return s;
+			case THexInteger(n):
+				// Hex literal (e.g. 0xFF0000) — normalize for stringToConditional color parser
+				advance();
+				return '0x$n';
+			case TName(s):
+				// #RGB / #RRGGBB / #RRGGBBAA color literal
+				advance();
+				return '#$s';
 			case TMinus:
 				advance();
 				switch (peek()) {

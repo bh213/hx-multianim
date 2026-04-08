@@ -1141,12 +1141,14 @@ For cases with many values of the same parameter, `@switch` avoids repeating the
 ```
 
 **Arm syntax:**
-- `value:` — single-element arm
-- `value1 | value2:` — multi-value arm
-- `<= N:`, `>= N:`, `< N:`, `> N:` — comparison arms
-- `N..M:` — range arm (inclusive)
+- `value:` — single-element arm. `value` can be an enum name, integer, `"quoted string"`, `#RRGGBB` color, `0xAARRGGBB` hex, or `true`/`false`. Routed through the same type-aware converter as `@(param => value)`.
+- `value1 | value2:` — multi-value arm (enum/int only — pipe form produces string-based matching)
+- `<= N:`, `>= N:`, `< N:`, `> N:` — comparison arms (numeric parameters only)
+- `N..M:` — range arm, inclusive (numeric parameters only)
 - `default:` — fallback arm
 - `value { ... }` or `default { ... }` — block arm with multiple elements
+
+**Parameter type support:** `@switch` works on discrete parameter types — `enum`, `int`, `uint`, `range`, `string`, `color`, and `bool`. `float`, `tile`, and `flags` parameters are rejected at parse time. For flag tests, use `@(param => bit[N])` instead. Range/comparison arms are rejected on non-numeric parameters.
 
 Block arms can contain nested `@()` conditionals and any other elements:
 

@@ -22,6 +22,12 @@
 ### Changed
 - **`@ifstrict` removed** — replaced by `@all()` (AND on listed params, unlisted ignored). The old `@ifstrict` behavior (requiring ALL programmable params to be mentioned) is no longer available.
 - **Hyperlink callback error re-throw in DEV mode** — rich text hyperlink callback errors are now re-thrown after tracing when `MULTIANIM_DEV` is defined, making callback bugs visible during development.
+- **`@switch` parameter type support** — `@switch` single-value arms now route through the same type-aware converter as `@(param => value)`. `@switch` on `color` params accepts `#RRGGBB` literals, on `string` params accepts `"quoted string"` literals, on `bool` params accepts `true`/`false`, and on `int` params accepts bare/negative integers. Previously these either failed to tokenize (strings/colors) or silently produced `CoEnums` string-matches that never matched integer-backed values (bool, color) at runtime. Range/comparison arms (`<= N`, `N..M`, `> N`, etc.) are now rejected at parse time on non-numeric parameters with a clear error. `@switch` on `float`, `tile`, and `flags` parameters is rejected at parse time (use `@(p => bit[N])` for flag tests). Pipe-separated multi-value arms still produce string-based `CoEnums` (same semantics as `@(p => [v1, v2])`).
+
+### Fixed
+- **`@switch` on `color`/`string`/`bool`/`int` params** — see "Changed" above. The single-value-arm fix closes a latent bug where `@switch` on a `bool` parameter silently never matched any arm (`CoEnums(["true"])` vs runtime `Value(1)` → string compare `"1" != "true"`).
+- **`staticRef`/`dynamicRef` on `:bool` parameters** — `staticRef($prog, enabled=>true)` used to throw `expected integer, got "true"` at build time because `updateIndexedParamsFromDynamicMap` routed `PPTBool` through `resolveAsInteger`, which cannot parse the literal `true`/`false` string. Now routes through `resolveAsBool` (which handles `RVString` via `tryStringToBool`). Affected any code passing bool literals to `:bool` programmable params from `.manim`; the pre-existing `:[true,false]` enum workaround is no longer required.
+- **HTML visual test report sort order** — tests numbered 100+ were interleaved with tests 10/11/... in the report because `reserveOrderIndex()` reflected utest's string-sorted method discovery order (`"test100_*" < "test11_*"`). Sort now prefers the numeric test number extracted from the `#NNN: name` display format, falling back to `orderIndex` only as a stable-compare tiebreaker for un-numbered entries.
 
 ## [1.0.0-rc.3] - 2026-03-31
 

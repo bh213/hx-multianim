@@ -95,6 +95,8 @@ Groups conditions on a single parameter — avoids repeating parameter name:
 
 Supports nested `@()` conditionals inside block arms. Cannot combine with other `@` modifiers.
 
+Works on discrete param types — `enum`, `int`, `uint`, `range`, `string` (quoted), `color` (`#RRGGBB`), `bool` (`true`/`false`). Rejects `float`, `tile`, `flags` at parse time. Range/comparison arms (`<= N`, `N..M`, ...) are numeric-only. Single-value arms use the same type-aware conversion as `@(p => value)`; pipe-separated arms use string-based `CoEnums` (same limitation as `@(p => [v1, v2])`).
+
 ## Expressions
 
 - Operators: `+`, `-`, `*`, `/`, `%`, `div`

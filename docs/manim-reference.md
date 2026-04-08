@@ -344,14 +344,16 @@ Works with `@()`, `@if()`, `@any()`, `@all()`, `@else`, `@else(cond)`, `@default
 
 | Pattern | Description |
 |---------|-------------|
-| `value` | Match single enum value |
-| `value1 \| value2` | Match any of multiple values |
-| `<= N` | Less than or equal |
-| `>= N` | Greater than or equal |
-| `< N` | Strictly less than |
-| `> N` | Strictly greater than |
-| `N..M` | Range match (inclusive) |
+| `value` | Match single value (enum name, integer, `"quoted string"`, `#RRGGBB` color, `true`/`false`) |
+| `value1 \| value2` | Match any of multiple values (enum/int only — pipe form uses string-based `CoEnums`) |
+| `<= N` | Less than or equal (numeric params only) |
+| `>= N` | Greater than or equal (numeric params only) |
+| `< N` | Strictly less than (numeric params only) |
+| `> N` | Strictly greater than (numeric params only) |
+| `N..M` | Range match, inclusive (numeric params only) |
 | `default` | Fallback when no arm matches |
+
+**Parameter type support:** `@switch` works on discrete types — `enum`, `int`, `uint`, `range`, `string`, `color`, `bool`. Single-value arms route through the same type-aware converter as `@(param => value)`, so a color arm like `#FF0000` produces an integer match and `true`/`false` arms on a `bool` param work as expected. `@switch` rejects `float`, `tile`, and `flags` parameters at parse time (use `@(param => bit[N])` for flag tests). Range/comparison arms (`<= N`, `N..M`, etc.) are rejected on non-numeric parameters.
 
 **Block arms** for multiple elements per case:
 

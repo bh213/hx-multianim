@@ -6285,7 +6285,12 @@ class MultiAnimBuilder {
 				case PPTRange(_, _): resolveAsInteger(ref);
 				case PPTInt: resolveAsInteger(ref);
 				case PPTFloat: resolveAsNumber(ref);
-				case PPTBool: resolveAsInteger(ref);
+				// PPTBool must go through resolveAsBool — `staticRef(…, enabled=>true)` parses the
+				// literal as RVString("true"), and resolveAsInteger would then try Std.parseInt("true")
+				// and throw. resolveAsBool handles the string→bool conversion via tryStringToBool,
+				// then dynamicValueToIndex stringifies the bool back to "true"/"false" and maps it
+				// to Value(1)/Value(0).
+				case PPTBool: resolveAsBool(ref);
 				case PPTUnsignedInt: resolveAsInteger(ref);
 				case PPTString: resolveAsString(ref);
 				case PPTColor: resolveAsColorInteger(ref);

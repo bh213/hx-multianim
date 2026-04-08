@@ -150,6 +150,64 @@ version: 1.0
   }
 }
 
+// Demo 10: @switch on color param with #RGB literal arms
+#colorSwitch programmable(tint:color=#FFFFFF) {
+  pos: 0, 0
+  @switch(tint) {
+    #FF0000: bitmap(generated(color(70, 30, #600)));
+    #00FF00: bitmap(generated(color(70, 30, #060)));
+    #0000FF: bitmap(generated(color(70, 30, #006)));
+    default: bitmap(generated(color(70, 30, #444)));
+  }
+}
+
+// Demo 11: @switch on string param with quoted-string arms
+#stringSwitch programmable(label:string="idle") {
+  pos: 0, 0
+  @switch(label) {
+    "hello": bitmap(generated(color(80, 30, #063)));
+    "world": bitmap(generated(color(80, 30, #630)));
+    "other thing": bitmap(generated(color(80, 30, #336)));
+    default: bitmap(generated(color(80, 30, #333)));
+  }
+  @switch(label) {
+    "hello": text(m3x6, "HELLO", #8fa, center, 80):0,10;
+    "world": text(m3x6, "WORLD", #fa8, center, 80):0,10;
+    "other thing": text(m3x6, "OTHER", #aaf, center, 80):0,10;
+    default: text(m3x6, "---", #888, center, 80):0,10;
+  }
+}
+
+// Demo 12: @switch on bool param — regression test for the old silent non-match bug
+#boolSwitch programmable(enabled:bool=true) {
+  pos: 0, 0
+  @switch(enabled) {
+    true: bitmap(generated(color(60, 30, #060)));
+    false: bitmap(generated(color(60, 30, #600)));
+  }
+  @switch(enabled) {
+    true: text(m3x6, "ON", #8f8, center, 60):0,10;
+    false: text(m3x6, "OFF", #f88, center, 60):0,10;
+  }
+}
+
+// Demo 13: @switch on int param with bare integer and negative arms
+#intSwitch programmable(score:int=0) {
+  pos: 0, 0
+  @switch(score) {
+    -1: bitmap(generated(color(60, 30, #633)));
+    0: bitmap(generated(color(60, 30, #333)));
+    1: bitmap(generated(color(60, 30, #363)));
+    default: bitmap(generated(color(60, 30, #336)));
+  }
+  @switch(score) {
+    -1: text(m3x6, "-1", #f88, center, 60):0,10;
+    0: text(m3x6, "0", #888, center, 60):0,10;
+    1: text(m3x6, "+1", #8f8, center, 60):0,10;
+    default: text(m3x6, "?", #88f, center, 60):0,10;
+  }
+}
+
 // Main: Display all demos
 #switchDemo programmable() {
   pos: 0, 0
@@ -270,5 +328,58 @@ version: 1.0
     text(m3x6, "h+en", #555, center, 70):160,48;
     staticRef($nestedSwitch, status=>disabled, enabled=>on):240,14;
     text(m3x6, "dis", #555, center, 70):240,48;
+  }
+
+  // Second column — newly supported @switch parameter types
+  // Row 10: color param with #RGB literal arms
+  point {
+    pos: 380, 10
+    text(m3x6, "@switch - color #RGB", #888, left, 400):0,0;
+    staticRef($colorSwitch, tint=>#FF0000):0,14;
+    text(m3x6, "red", #555, center, 70):0,48;
+    staticRef($colorSwitch, tint=>#00FF00):80,14;
+    text(m3x6, "green", #555, center, 70):80,48;
+    staticRef($colorSwitch, tint=>#0000FF):160,14;
+    text(m3x6, "blue", #555, center, 70):160,48;
+    staticRef($colorSwitch, tint=>#888888):240,14;
+    text(m3x6, "default", #555, center, 70):240,48;
+  }
+
+  // Row 11: string param with quoted-string arms
+  point {
+    pos: 380, 74
+    text(m3x6, "@switch - string", #888, left, 400):0,0;
+    staticRef($stringSwitch, label=>"hello"):0,14;
+    text(m3x6, "hello", #555, center, 80):0,58;
+    staticRef($stringSwitch, label=>"world"):90,14;
+    text(m3x6, "world", #555, center, 80):90,58;
+    staticRef($stringSwitch, label=>"other thing"):180,14;
+    text(m3x6, "other", #555, center, 80):180,58;
+    staticRef($stringSwitch, label=>"??"):270,14;
+    text(m3x6, "default", #555, center, 80):270,58;
+  }
+
+  // Row 12: bool param — true/false arms (regression: old code silently never matched)
+  point {
+    pos: 380, 148
+    text(m3x6, "@switch - bool", #888, left, 400):0,0;
+    staticRef($boolSwitch, enabled=>true):0,14;
+    text(m3x6, "true", #555, center, 60):0,58;
+    staticRef($boolSwitch, enabled=>false):70,14;
+    text(m3x6, "false", #555, center, 60):70,58;
+  }
+
+  // Row 13: int param — bare ints + negative arm
+  point {
+    pos: 380, 222
+    text(m3x6, "@switch - int (incl. negative)", #888, left, 400):0,0;
+    staticRef($intSwitch, score=>-1):0,14;
+    text(m3x6, "-1", #555, center, 60):0,58;
+    staticRef($intSwitch, score=>0):70,14;
+    text(m3x6, "0", #555, center, 60):70,58;
+    staticRef($intSwitch, score=>1):140,14;
+    text(m3x6, "+1", #555, center, 60):140,58;
+    staticRef($intSwitch, score=>42):210,14;
+    text(m3x6, "default", #555, center, 60):210,58;
   }
 }
