@@ -327,15 +327,15 @@
 </head>
 <body>
     <h1>Visual Test Report</h1>
-    <div class="timestamp">Generated: 2026-04-08 08:50:15</div>
+    <div class="timestamp">Generated: 2026-04-09 07:38:16</div>
     <div class="summary">
         <strong>Summary:</strong> 98 tests,         <span style="color: #4CAF50;">98 passed</span>,         <span style="color: #f44336;">0 failed</span>
-        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1s, visual 24.3s)</span>
+        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1.1s, visual 22.5s)</span>
     </div>
     <div class="unit-tests-section">
         <h2>Unit Tests</h2>
         <div class="unit-tests-summary all-passed">
-            <strong>5083 assertions:</strong>             <span style="color: #4CAF50;">5083 passed</span>
+            <strong>5153 assertions:</strong>             <span style="color: #4CAF50;">5153 passed</span>
             <button class="expand-btn" id="unitToggleBtn" onclick="toggleUnitDetails()">Show Details</button>
         </div>
         <div class="unit-details" id="unitDetails">
@@ -1902,6 +1902,18 @@
                 <div class="unit-method pass">testRichTextWithImages: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testRichTextWithMarkup: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testRichTextWithStyles: OK <span class="dots">..</span></div>
+            </div>
+            <div class="unit-class">
+                <div class="unit-class-name">ScreenShakeHelperTest</div>
+                <div class="unit-method pass">testConcurrentShakesDoNotLeakOffsetOnExpiry: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testDirectionalShakeOnlyMovesOneAxis: OK <span class="dots">..........</span></div>
+                <div class="unit-method pass">testEmptyUpdateIsNoopOnPristineTarget: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testGameplayMotionDuringShakeIsPreserved: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testIsShakingFlag: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testNaturalExpiryRemovesResidualOffset: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testShakeOffsetBoundedByIntensity: OK <span class="dots">........................................</span></div>
+                <div class="unit-method pass">testStopRemovesOnlyShakeOffsetNotGameplayMotion: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testStopWithNoActiveShakeIsNoop: OK <span class="dots">..</span></div>
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">ScreenTransitionIntegrationTest</div>
