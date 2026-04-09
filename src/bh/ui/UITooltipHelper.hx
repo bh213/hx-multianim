@@ -219,7 +219,7 @@ class UITooltipHelper {
 		final position = positionOverrides.get(interactiveId) ?? defaultPosition;
 		final offset = offsetOverrides.get(interactiveId) ?? defaultOffset;
 
-		positionTooltip(result.object, wrapper.interactive, position, offset);
+		UIPositionHelper.position(result.object, wrapper.interactive, position, offset);
 		screen.addObjectToLayer(result.object, layer);
 
 		// Apply fade-in
@@ -248,23 +248,4 @@ class UITooltipHelper {
 		}
 	}
 
-	function positionTooltip(tooltip:h2d.Object, anchor:h2d.Object, position:TooltipPosition, offset:Int):Void {
-		final anchorBounds = anchor.getBounds();
-		final tooltipBounds = tooltip.getSize();
-
-		switch position {
-			case Above:
-				tooltip.x = anchorBounds.x + (anchorBounds.width - tooltipBounds.width) / 2;
-				tooltip.y = anchorBounds.y - tooltipBounds.height - offset;
-			case Below:
-				tooltip.x = anchorBounds.x + (anchorBounds.width - tooltipBounds.width) / 2;
-				tooltip.y = anchorBounds.y + anchorBounds.height + offset;
-			case Left:
-				tooltip.x = anchorBounds.x - tooltipBounds.width - offset;
-				tooltip.y = anchorBounds.y + (anchorBounds.height - tooltipBounds.height) / 2;
-			case Right:
-				tooltip.x = anchorBounds.x + anchorBounds.width + offset;
-				tooltip.y = anchorBounds.y + (anchorBounds.height - tooltipBounds.height) / 2;
-		}
-	}
 }

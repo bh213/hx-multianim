@@ -1962,7 +1962,7 @@ graphics (
 
 ## Particles
 
-Particle systems for visual effects like fire, smoke, explosions, and magic effects. **See [Particles Guide](particles.md) for a detailed tutorial with examples.**
+Particle systems for visual effects like fire, smoke, explosions, and magic effects. **Quick lookup: [manim-reference.md](manim-reference.md#particles).**
 
 ### Angle Units
 

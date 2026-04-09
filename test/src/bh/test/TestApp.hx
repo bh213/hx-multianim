@@ -84,6 +84,7 @@ class TestApp extends hxd.App {
 		testRunner.addCase(new bh.test.examples.AnimatedPathTest());
 		testRunner.addCase(new bh.test.examples.AnimatedPathBuilderTest());
 		testRunner.addCase(new bh.test.examples.FloatingTextHelperTest());
+		testRunner.addCase(new bh.test.examples.ScreenShakeHelperTest());
 		testRunner.addCase(new bh.test.examples.CardHandOrchestratorTest());
 		testRunner.addCase(new bh.test.examples.CardHandIntegrationTest());
 		testRunner.addCase(new bh.test.examples.CardHandTargetingTest());

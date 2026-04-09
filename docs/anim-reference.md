@@ -114,8 +114,8 @@ animation name @(direction=>l) {
 | `playlist` | Frame sequence (required, at least one) |
 | `extrapoints` | Named coordinate points |
 | `filters` | Typed filter declarations |
-| `flipX` | `yes`/`no` — horizontally flip all frames in place. Sprite keeps the same untrimmed screen footprint; trim offsets and extrapoints auto-mirror. Inherits file-level default |
-| `flipY` | `yes`/`no` — vertically flip all frames in place. Sprite keeps the same untrimmed screen footprint; trim offsets and extrapoints auto-mirror. Inherits file-level default |
+| `flipX` | `yes`/`no` — horizontally flip all frames in place. Sprite keeps the same untrimmed screen footprint; trim offsets and extrapoints auto-mirror. Inherits file-level default. All frames must share the same untrimmed size (parse-time error otherwise) |
+| `flipY` | `yes`/`no` — vertically flip all frames in place. Sprite keeps the same untrimmed screen footprint; trim offsets and extrapoints auto-mirror. Inherits file-level default. All frames must share the same untrimmed size (parse-time error otherwise) |
 
 ### Compact Shorthand
 

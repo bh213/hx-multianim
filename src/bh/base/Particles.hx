@@ -1264,10 +1264,15 @@ class ParticleGroup {
 	/**
 		Manually advance the simulation by `dt` seconds.
 		Use when `externallyDriven` is true.
+
+		Multiple calls between renders accumulate: emission runs per call
+		(each with its own `dt`), and the accumulated total is applied as
+		a single physics step to live particles at the next `sync()`.
+		The accumulator is zeroed in `Particles.draw()` once consumed.
 	**/
 	public function advanceTime(dt:Float):Void {
 		if (!started && enabled) start();
-		_externalDt = dt;
+		_externalDt += dt;
 		updateTime(dt);
 	}
 

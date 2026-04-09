@@ -1,5 +1,7 @@
 package bh.ui;
 
+import hxd.Rand;
+
 typedef ShakeInstance = {
 	var time:Float;
 	var duration:Float;
@@ -12,6 +14,10 @@ typedef ShakeInstance = {
 /**
  * Lightweight screen shake helper. Supports multiple concurrent shakes (additive),
  * directional shakes, and custom decay curves.
+ *
+ * Applies offsets as deltas relative to the previous frame so the target's position
+ * can be moved freely by gameplay (camera scroll, animation, layout) without the
+ * shake snapping it back to a captured baseline.
  *
  * Usage:
  * ```haxe
@@ -26,10 +32,12 @@ typedef ShakeInstance = {
 @:nullSafety
 class ScreenShakeHelper {
 	var target:h2d.Object;
-	var originalX:Float;
-	var originalY:Float;
 	var shakes:Array<ShakeInstance> = [];
-	var seed:Float = 0.0;
+	var rand:Rand;
+	// Last applied offset — we add (newDx - lastDx) each frame so gameplay motion
+	// of the target is preserved instead of overwritten.
+	var lastDx:Float = 0.0;
+	var lastDy:Float = 0.0;
 
 	public var isShaking(get, never):Bool;
 
@@ -39,8 +47,7 @@ class ScreenShakeHelper {
 
 	public function new(target:h2d.Object) {
 		this.target = target;
-		this.originalX = target.x;
-		this.originalY = target.y;
+		this.rand = new Rand(Std.int(haxe.Timer.stamp() * 1000.0));
 	}
 
 	/** Quick one-shot shake with linear decay. */
@@ -60,8 +67,16 @@ class ScreenShakeHelper {
 
 	/** Update all active shakes. Call from screen update(dt). */
 	public function update(dt:Float):Void {
-		if (shakes.length == 0)
+		if (shakes.length == 0) {
+			// No active shake — ensure any leftover offset has been cleared.
+			if (lastDx != 0.0 || lastDy != 0.0) {
+				target.x -= lastDx;
+				target.y -= lastDy;
+				lastDx = 0.0;
+				lastDy = 0.0;
+			}
 			return;
+		}
 
 		var totalX = 0.0;
 		var totalY = 0.0;
@@ -77,33 +92,26 @@ class ScreenShakeHelper {
 			}
 			var remaining = 1.0 - s.time / s.duration;
 			var factor = s.decayFn != null ? s.decayFn(remaining) : remaining;
-			// Use time-seeded pseudo-random for deterministic per-frame offsets
-			seed += dt * 1000.0 + i;
-			var angle = hashToAngle(seed);
+			var angle = rand.rand() * Math.PI * 2;
 			totalX += Math.cos(angle) * s.intensity * factor * s.dirX;
 			totalY += Math.sin(angle) * s.intensity * factor * s.dirY;
 		}
 
-		target.x = originalX + totalX;
-		target.y = originalY + totalY;
+		// Apply as delta so gameplay-driven motion of the target is preserved.
+		target.x += totalX - lastDx;
+		target.y += totalY - lastDy;
+		lastDx = totalX;
+		lastDy = totalY;
 	}
 
-	/** Stop all shakes and reset position immediately. */
+	/** Stop all shakes and remove any residual offset. */
 	public function stop():Void {
 		shakes.resize(0);
-		target.x = originalX;
-		target.y = originalY;
-	}
-
-	/** Update the original (rest) position if the target has moved. */
-	public function setOrigin(x:Float, y:Float):Void {
-		originalX = x;
-		originalY = y;
-	}
-
-	static inline function hashToAngle(v:Float):Float {
-		// Fast deterministic hash → angle
-		var n = Std.int(v * 12.9898) * 43758;
-		return ((n & 0xFFFF) / 65535.0) * Math.PI * 2;
+		if (lastDx != 0.0 || lastDy != 0.0) {
+			target.x -= lastDx;
+			target.y -= lastDy;
+			lastDx = 0.0;
+			lastDy = 0.0;
+		}
 	}
 }

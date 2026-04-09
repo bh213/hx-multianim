@@ -412,11 +412,8 @@ shake.shakeWithCurve(intensity, duration, (remaining) -> remaining * remaining);
 // Call from game loop
 shake.update(dt);
 
-// Immediate stop
+// Immediate stop (removes residual offset)
 shake.stop();
-
-// Update rest position if target moved
-shake.setOrigin(x, y);
 
 // Query
 shake.isShaking;
@@ -450,5 +447,6 @@ shake.shakeWithCurve(10.0, 0.5, curve);
 - **Additive** — concurrent shakes stack (explosion + hit at same time)
 - **Decay** — linear by default, pluggable curve for custom feel
 - **Directional** — `dirX`/`dirY` mask axes (1.0 = full, 0.0 = none)
-- **Deterministic jitter** — time-seeded hash, not `Math.random()`, for consistent shake per frame
+- **Non-destructive** — applies per-frame offsets as *deltas* relative to the previous frame, so gameplay can freely move the target (camera scroll, layout changes, animation) without the shake fighting it back to a captured baseline. `stop()` removes the residual offset
+- **Uniform jitter** — `hxd.Rand` (seeded from startup time) produces proper uniform angles
 - **No allocations per frame** — reuses array, swap-removes on completion

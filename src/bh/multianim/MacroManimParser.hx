@@ -1522,6 +1522,8 @@ class MacroManimParser {
 				expect(TOpen);
 				final inner = parseTileSource();
 				expect(TClosed);
+				if (inner.match(TSPivot(_, _, _)))
+					return error('center(...): nested pivot/center is not allowed (outer would override inner)');
 				return TSPivot(0.5, 0.5, inner);
 			case TIdentifier(s) if (isKeyword(s, "pivot")):
 				advance();
@@ -1532,6 +1534,10 @@ class MacroManimParser {
 				expect(TComma);
 				final inner = parseTileSource();
 				expect(TClosed);
+				if (px < 0.0 || px > 1.0 || py < 0.0 || py > 1.0)
+					return error('pivot($px, $py, ...): pivot ratios must be in range 0..1');
+				if (inner.match(TSPivot(_, _, _)))
+					return error('pivot(...): nested pivot/center is not allowed (outer pivot would override inner)');
 				return TSPivot(px, py, inner);
 			case TIdentifier(s) if (isKeyword(s, "file")):
 				advance();

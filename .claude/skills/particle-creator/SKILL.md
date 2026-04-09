@@ -469,9 +469,8 @@ If the syntax reference above isn't enough (e.g., for advanced features, edge ca
 
 | File | What it covers |
 |------|----------------|
-| `docs/particles.md` | Full particles guide with detailed explanations and examples |
-| `docs/manim.md` | Complete .manim language reference (search for "particles" section) |
-| `docs/manim-reference.md` | Quick-lookup reference for all .manim elements |
+| `docs/manim.md` | Complete .manim language reference (search for "particles" section) — canonical source |
+| `docs/manim-reference.md` | Quick-lookup reference for all .manim elements — includes `externallyDriven`, `emitFilter`, `shutdown{}` |
 | `src/bh/multianim/MacroManimParser.hx` | Parser source — search for `parseParticles()`, `parseEmitMode()`, `parseForceFields()`, `parseBoundsCombined()`, `parseSubEmitters()` |
 | `src/bh/multianim/MultiAnimBuilder.hx` | Builder source — search for `createParticleImpl()`, `resolveParticleCurveRef()` |
 | `src/bh/base/Particles.hx` | Runtime — `ParticleGroup` class with all runtime defaults and force field types |

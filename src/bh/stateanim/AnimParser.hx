@@ -2010,6 +2010,30 @@ class AnimParser implements AnimParserResult {
 					retVal.push(SetFilter(builtFilter, tint));
 			}
 		}
+		// (#13) When flipping in place, all frames must share the same untrimmed
+		// footprint — extrapoints are per-animation (not per-frame) and mirror
+		// around a single origW/origH, so mixed sizes would desync the points
+		// from the visuals as the animation plays.
+		if (_flipX || _flipY) {
+			var firstW:Int = -1;
+			var firstH:Int = -1;
+			for (s in retVal) {
+				switch s {
+					case Frame(f):
+						if (firstW < 0) {
+							firstW = f.width;
+							firstH = f.height;
+						} else if (f.width != firstW || f.height != firstH) {
+							throw 'anim ${anim.name}: flipX/flipY requires all frames to share untrimmed size '
+								+ '(got ${f.width}x${f.height}, expected ${firstW}x${firstH})';
+						}
+					default:
+				}
+			}
+			if (firstW < 0) {
+				throw 'anim ${anim.name}: flipX/flipY enabled but no Frame states found';
+			}
+		}
 		return retVal;
 	}
 
@@ -2120,7 +2144,8 @@ class AnimParser implements AnimParserResult {
 				final _flipX = anim.flipX == true; // (#13)
 				final _flipY = anim.flipY == true; // (#13)
 				// (#13) For Option B "flip in place", mirror extrapoints around the untrimmed
-				// screen center, not the pivot. Need untrimmed dimensions from first frame.
+				// screen center, not the pivot. createStates() validates that all frames share
+				// untrimmed size when flipping, so any Frame's dimensions are authoritative.
 				var origW:Float = 0;
 				var origH:Float = 0;
 				if (_flipX || _flipY) {
@@ -2135,6 +2160,7 @@ class AnimParser implements AnimParserResult {
 							default:
 						}
 					}
+					if (!found) throw 'anim ${name}: flipX/flipY enabled but no Frame states found';
 				}
 				final cx:Float = center != null ? center.x : 0;
 				final cy:Float = center != null ? center.y : 0;
@@ -2143,8 +2169,8 @@ class AnimParser implements AnimParserResult {
 					if (pt != null) {
 						var p = pt.toPoint();
 						// (#13) Mirror around untrimmed screen center, matching Option B tile flip
-						if (_flipX) p.x = Std.int(origW - 2 * cx) - p.x;
-						if (_flipY) p.y = Std.int(origH - 2 * cy) - p.y;
+						if (_flipX) p.x = Math.round(origW - 2 * cx - p.x);
+						if (_flipY) p.y = Math.round(origH - 2 * cy - p.y);
 						extraPoints.set(pointName, p);
 					}
 				}

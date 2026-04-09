@@ -23,7 +23,6 @@ class UIInteractionController extends UIDefaultController {
 	var pendingResult:Null<Dynamic> = null;
 	var pendingCancel:Bool = false;
 	var resultCallback:Null<(result:Null<Dynamic>) -> Void>;
-	var isActive:Bool = false;
 
 	public function new(integration:UIControllerScreenIntegration, resultCallback:(result:Null<Dynamic>) -> Void) {
 		super(integration);
@@ -54,10 +53,8 @@ class UIInteractionController extends UIDefaultController {
 	override public function lifecycleEvent(event:UIControllerLifecycleEvent):Void {
 		switch event {
 			case LifecycleControllerStarted:
-				isActive = true;
 				onActivate();
 			case LifecycleControllerFinished:
-				isActive = false;
 				onDeactivate();
 		}
 	}

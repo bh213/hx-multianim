@@ -110,8 +110,8 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | `generated(autotile(name, selector))` | Tile from autotile definition |
 | `generated(autotileregionsheet(name, scale, font, color))` | Autotile debug visualization |
 | `$variable` | Tile from parameter or iterator variable |
-| `center(source)` | Set tile pivot to center (0.5, 0.5) — shorthand for `pivot(0.5, 0.5, source)` |
-| `pivot(x, y, source)` | Set tile pivot point (0–1 ratio). Overrides bitmap's hAlign/vAlign |
+| `center(source)` | Set tile pivot to center (0.5, 0.5) — shorthand for `pivot(0.5, 0.5, source)`. Nested pivot/center rejected at parse time |
+| `pivot(x, y, source)` | Set tile pivot point (0–1 ratio, validated at parse time). Overrides bitmap's hAlign/vAlign. Nested pivot/center rejected at parse time |
 
 ---
 

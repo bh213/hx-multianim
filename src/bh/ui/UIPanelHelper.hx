@@ -108,7 +108,7 @@ class UIPanelHelper {
 		final position = positionOverrides.get(interactiveId) ?? defaultPosition;
 		final offset = offsetOverrides.get(interactiveId) ?? defaultOffset;
 
-		positionPanel(result.object, wrapper.interactive, position, offset);
+		UIPositionHelper.position(result.object, wrapper.interactive, position, offset);
 		screen.addObjectToLayer(result.object, layer);
 
 		// Register panel interactives with a prefix so the screen can identify them
@@ -246,7 +246,7 @@ class UIPanelHelper {
 		final position = positionOverrides.get(interactiveId) ?? defaultPosition;
 		final offset = offsetOverrides.get(interactiveId) ?? defaultOffset;
 
-		positionPanel(result.object, wrapper.interactive, position, offset);
+		UIPositionHelper.position(result.object, wrapper.interactive, position, offset);
 		screen.addObjectToLayer(result.object, layer);
 
 		final prefix = '${slot}.${interactiveId}.$buildName';
@@ -438,23 +438,4 @@ class UIPanelHelper {
 		return false;
 	}
 
-	function positionPanel(panel:h2d.Object, anchor:h2d.Object, position:TooltipPosition, offset:Int):Void {
-		final anchorBounds = anchor.getBounds();
-		final panelBounds = panel.getSize();
-
-		switch position {
-			case Above:
-				panel.x = anchorBounds.x + (anchorBounds.width - panelBounds.width) / 2;
-				panel.y = anchorBounds.y - panelBounds.height - offset;
-			case Below:
-				panel.x = anchorBounds.x + (anchorBounds.width - panelBounds.width) / 2;
-				panel.y = anchorBounds.y + anchorBounds.height + offset;
-			case Left:
-				panel.x = anchorBounds.x - panelBounds.width - offset;
-				panel.y = anchorBounds.y + (anchorBounds.height - panelBounds.height) / 2;
-			case Right:
-				panel.x = anchorBounds.x + anchorBounds.width + offset;
-				panel.y = anchorBounds.y + (anchorBounds.height - panelBounds.height) / 2;
-		}
-	}
 }
