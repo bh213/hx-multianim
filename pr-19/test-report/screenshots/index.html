@@ -327,15 +327,15 @@
 </head>
 <body>
     <h1>Visual Test Report</h1>
-    <div class="timestamp">Generated: 2026-04-09 07:38:16</div>
+    <div class="timestamp">Generated: 2026-04-10 11:49:54</div>
     <div class="summary">
         <strong>Summary:</strong> 98 tests,         <span style="color: #4CAF50;">98 passed</span>,         <span style="color: #f44336;">0 failed</span>
-        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1.1s, visual 22.5s)</span>
+        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1s, visual 23.8s)</span>
     </div>
     <div class="unit-tests-section">
         <h2>Unit Tests</h2>
         <div class="unit-tests-summary all-passed">
-            <strong>5153 assertions:</strong>             <span style="color: #4CAF50;">5153 passed</span>
+            <strong>5204 assertions:</strong>             <span style="color: #4CAF50;">5204 passed</span>
             <button class="expand-btn" id="unitToggleBtn" onclick="toggleUnitDetails()">Show Details</button>
         </div>
         <div class="unit-details" id="unitDetails">
@@ -648,6 +648,7 @@
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">BuilderUnitTest</div>
+                <div class="unit-method pass">testAllConditionWithSetParameter: OK <span class="dots">........</span></div>
                 <div class="unit-method pass">testAnimatedPathCheckpoints: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testAnimatedPathCustomAndBuiltinEventOrder: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testAnimatedPathCustomCurve: OK <span class="dots">.</span></div>
@@ -665,6 +666,8 @@
                 <div class="unit-method pass">testAnimatedPathScaleCurve: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testAnimatedPathSeek: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testAnimatedPathTimeMode: OK <span class="dots">.....</span></div>
+                <div class="unit-method pass">testAnyConditionWithComparison: OK <span class="dots">........</span></div>
+                <div class="unit-method pass">testAnyConditionWithSetParameter: OK <span class="dots">........</span></div>
                 <div class="unit-method pass">testBitFlagBit0Set: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testBitFlagBit1NotSet: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testBitFlagBit2Set: OK <span class="dots">..</span></div>
@@ -1108,6 +1111,8 @@
                 <div class="unit-method pass">testDynamicNameRefMissingParamOnTargetThrows: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testDynamicNameRefParamUpdateWithoutTemplateChange: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testDynamicNameRefSwitchesOnParamChange: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testDynamicNameRefTearDownRemovesOldVisuals: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testDynamicNameRefTearDownUpdatesInteractives: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testDynamicNameRefWithForwardedParams: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testDynamicRefChainedGetDynamicRef: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testDynamicRefConditionalBranch: OK <span class="dots">...</span></div>
@@ -1605,11 +1610,17 @@
                 <div class="unit-method pass">testClearThenAdd: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testEmitBurst: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testEmitBurstAt: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testEmitFilterAcceptsAll: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testEmitFilterDiscardsParticles: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testEmitFilterRejectsAll: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testEmitFilterSelectivelyAccepts: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testExternallyDrivenAdvanceTimeMovesParticles: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testExternallyDrivenFrozenWithoutAdvance: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testExternallyDrivenGroupLevelUpdateTime: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testExternallyDrivenParticlesConvenience: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testNoForceFieldsBaseline: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testNonRelativeGroupWithTranslatedParent: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testNonRelativeVsRelativeGroupPosition: OK <span class="dots">......</span></div>
                 <div class="unit-method pass">testRemoveForceFieldAtFirst: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testRemoveForceFieldAtMiddle: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testShutdownBurstStillWorks: OK <span class="dots">.</span></div>
@@ -1624,6 +1635,7 @@
                 <div class="unit-method pass">testShutdownWithSpeedCurve: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testSubEmitterGroupNotFound: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testSubEmitterOnBirth: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testSubEmitterOnBirthRecycled: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testSubEmitterOnDeath: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testSubEmitterProbabilityZero: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testWindAffectsParticles: OK <span class="dots">...</span></div>
