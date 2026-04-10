@@ -4554,10 +4554,10 @@ class ParserErrorTest extends utest.Test {
 		Assert.notNull(node);
 		Assert.equals(2, node.children.length);
 		switch (node.children[0].conditionals) {
-			case Conditional(map, strict):
+			case Conditional(map, anyMode):
 				Assert.isTrue(map.exists("mode"), "@any should have mode param");
 				Assert.isTrue(map.exists("style"), "@any should have style param");
-				Assert.isTrue(strict, "@any should be anyMode=true (OR semantics)");
+				Assert.isTrue(anyMode, "@any should be anyMode=true (OR semantics)");
 			default:
 				Assert.fail("expected Conditional");
 		}
@@ -4576,10 +4576,10 @@ class ParserErrorTest extends utest.Test {
 		Assert.notNull(node);
 		Assert.equals(2, node.children.length);
 		switch (node.children[0].conditionals) {
-			case Conditional(map, strict):
+			case Conditional(map, anyMode):
 				Assert.isTrue(map.exists("mode"), "@all should have mode param");
 				Assert.isTrue(map.exists("style"), "@all should have style param");
-				Assert.isFalse(strict, "@all should be anyMode=false (AND semantics)");
+				Assert.isFalse(anyMode, "@all should be anyMode=false (AND semantics)");
 			default:
 				Assert.fail("expected Conditional");
 		}

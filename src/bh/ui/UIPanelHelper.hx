@@ -411,6 +411,8 @@ class UIPanelHelper {
 		return closed;
 	}
 
+	// IMPORTANT: This relies on TweenManager.cancel() only setting a flag without firing onComplete.
+	// If cancel() ever fires onComplete, the remove() below would double-remove with the tween's callback.
 	function cancelActiveFadeOut():Void {
 		if (activeFadeOutTween != null) {
 			activeFadeOutTween.cancel();

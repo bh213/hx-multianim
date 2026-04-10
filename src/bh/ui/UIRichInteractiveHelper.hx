@@ -26,7 +26,10 @@ class UIRichInteractiveHelper {
 
 	/** Scan result.interactives for metadataKey metadata, auto-wire state machines.
 	 *  Optional prefix matches the one used in screen.addInteractives(result, prefix).
-	 *  metadataKey defaults to "bind". The key "autoStatus" is reserved for screen auto-wiring. */
+	 *  metadataKey defaults to "bind". The key "autoStatus" is reserved for screen auto-wiring.
+	 *  NOTE: Only one helper should bind a given interactive ID. The collision check only guards
+	 *  against conflicts with the screen's auto-helper (autoStatus). Two manual helpers binding
+	 *  the same interactive with different keys will both drive setParameter(), last-writer-wins. */
 	public function register(result:BuilderResult, ?prefix:String, metadataKey:String = "bind"):Void {
 		if (metadataKey == RESERVED_KEY)
 			throw '"$RESERVED_KEY" is reserved for screen auto-wiring — use "bind" or a custom key';

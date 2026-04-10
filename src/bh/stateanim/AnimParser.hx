@@ -1947,8 +1947,11 @@ class AnimParser implements AnimParserResult {
 
 		function AFtoFrame(f:AnimationFrame, duration:Float):AnimationFrameState {
 			if (_center != null) {
-				f.tile.dx = f.offsetx - _center.x;
-				f.tile.dy = (f.height - f.tile.height) - f.offsety - _center.y;
+				// Clone tile to avoid mutating the shared cached sheet tile
+				var tile = f.tile.clone();
+				tile.dx = f.offsetx - _center.x;
+				tile.dy = (f.height - tile.height) - f.offsety - _center.y;
+				f = f.cloneWithNewTile(tile);
 			}
 			if (_flipX || _flipY) {
 				// f.width / f.height = untrimmed (orig) dimensions from atlas
@@ -1965,9 +1968,8 @@ class AnimParser implements AnimParserResult {
 					final expandedName = replaceState(name, stateSelector);
 					final sheet = resourceLoader.loadSheet2(_sheetName);
 					if (sheet == null) throw 'sheet ${_sheetName} not found';
-					final loadedTiles = sheet.getAnim(expandedName);
-					if (loadedTiles == null) throw 'tiles ${name}->${expandedName} not found';
 					var tiles = sheet.getAnim(expandedName);
+					if (tiles == null) throw 'tiles ${name}->${expandedName} not found';
 					final _od = overrideDuration;
 					var d = _od == null ? duration : _od / 1000.0;
 					retVal = retVal.concat(Lambda.map(tiles, t -> AFtoFrame(t, d)));

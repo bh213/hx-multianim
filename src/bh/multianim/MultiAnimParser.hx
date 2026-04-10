@@ -168,7 +168,6 @@ enum MPKeywords {
 	MPStaticRef;
 	MPDynamicRef;
 	MPIf;
-	MPIfStrict;
 	MPInteractive;
 	MPPolygon;
 	MPGraphics;
@@ -1123,7 +1122,7 @@ typedef SwitchArm = {
 
 @:nullSafety
 enum NodeConditionalValues {
-	Conditional(values:Map<String, ConditionalValues>, strict:Bool);
+	Conditional(values:Map<String, ConditionalValues>, anyMode:Bool);
 	ConditionalElse(values:Null<Map<String, ConditionalValues>>);
 	ConditionalDefault;
 	NoConditional;

@@ -1019,8 +1019,8 @@ class IncrementalUpdateContext {
 			}
 
 			switch childNode.conditionals {
-				case Conditional(conditions, strict):
-					var matched = builder.matchConditions(conditions, strict, indexedParams);
+				case Conditional(conditions, anyMode):
+					var matched = builder.matchConditions(conditions, anyMode, indexedParams);
 					prevSiblingMatched = matched;
 					if (matched) anyConditionalSiblingMatched = true;
 					if (trackedEntry != null) setPresenceOrMaterialize(trackedEntry, matched);
@@ -2673,8 +2673,8 @@ class MultiAnimBuilder {
 
 	function isMatch(node:Node, indexedParams:Map<String, ResolvedIndexParameters>) {
 		return switch node.conditionals {
-			case Conditional(conditions, strict):
-				matchConditions(conditions, strict, indexedParams);
+			case Conditional(conditions, anyMode):
+				matchConditions(conditions, anyMode, indexedParams);
 			case ConditionalElse(_) | ConditionalDefault:
 				true; // Pre-filtered by resolveConditionalChildren
 			case NoConditional: return true;
@@ -2696,8 +2696,8 @@ class MultiAnimBuilder {
 
 		for (childNode in children) {
 			switch childNode.conditionals {
-				case Conditional(conditions, strict):
-					var matched = matchConditions(conditions, strict, indexedParams);
+				case Conditional(conditions, anyMode):
+					var matched = matchConditions(conditions, anyMode, indexedParams);
 					prevSiblingMatched = matched;
 					if (matched) anyConditionalSiblingMatched = true;
 					result.push(childNode);

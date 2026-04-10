@@ -5612,4 +5612,114 @@ class BuilderUnitTest extends BuilderTestBase {
 		Assert.equals(-20, Std.int(bitmaps[0].tile.dx));
 		Assert.equals(-20, Std.int(bitmaps[0].tile.dy));
 	}
+
+	// ==================== @any/@all with setParameter ====================
+
+	@Test
+	public function testAnyConditionWithSetParameter():Void {
+		// @any = OR semantics: match if either condition is true
+		final result = buildFromSource("
+			#test programmable(mode:[a,b,c]=a, style:[light,dark]=light) {
+				@any(mode=>b, style=>dark) bitmap(generated(color(10, 10, #00ff00))): 0, 0
+				@default bitmap(generated(color(20, 10, #ff0000))): 0, 0
+			}
+		", "test", null, Incremental);
+
+		// Initially mode=a, style=light → neither matches → default (20px)
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.isTrue(bitmaps.length > 0);
+		Assert.equals(20, Std.int(bitmaps[0].tile.width));
+
+		// Set mode=b → first condition matches → @any triggers (10px)
+		result.setParameter("mode", "b");
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.isTrue(bitmaps.length > 0);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+
+		// Set mode=a, style=dark → second condition matches → @any triggers
+		result.beginUpdate();
+		result.setParameter("mode", "a");
+		result.setParameter("style", "dark");
+		result.endUpdate();
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.isTrue(bitmaps.length > 0);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+
+		// Set style=light → neither matches → default
+		result.setParameter("style", "light");
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.isTrue(bitmaps.length > 0);
+		Assert.equals(20, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testAllConditionWithSetParameter():Void {
+		// @all = AND semantics: match only if ALL conditions are true
+		final result = buildFromSource("
+			#test programmable(mode:[a,b,c]=a, style:[light,dark]=light) {
+				@all(mode=>b, style=>dark) bitmap(generated(color(10, 10, #00ff00))): 0, 0
+				@default bitmap(generated(color(20, 10, #ff0000))): 0, 0
+			}
+		", "test", null, Incremental);
+
+		// Initially mode=a, style=light → default (20px)
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.isTrue(bitmaps.length > 0);
+		Assert.equals(20, Std.int(bitmaps[0].tile.width));
+
+		// Set mode=b only → only one condition matches → still default
+		result.setParameter("mode", "b");
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.isTrue(bitmaps.length > 0);
+		Assert.equals(20, Std.int(bitmaps[0].tile.width));
+
+		// Set style=dark → both match → @all triggers (10px)
+		result.setParameter("style", "dark");
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.isTrue(bitmaps.length > 0);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+
+		// Set mode=a → only style=dark matches → back to default
+		result.setParameter("mode", "a");
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.isTrue(bitmaps.length > 0);
+		Assert.equals(20, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testAnyConditionWithComparison():Void {
+		// @any with comparison operators mixed: one enum, one comparison
+		final result = buildFromSource("
+			#test programmable(mode:[a,b,c]=a, level:int=0) {
+				@any(mode=>b, level >= 5) bitmap(generated(color(10, 10, #00ff00))): 0, 0
+				@default bitmap(generated(color(20, 10, #ff0000))): 0, 0
+			}
+		", "test", null, Incremental);
+
+		// Initially mode=a, level=0 → neither matches → default (20px)
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.isTrue(bitmaps.length > 0);
+		Assert.equals(20, Std.int(bitmaps[0].tile.width));
+
+		// Set level=5 → comparison matches → @any triggers (10px)
+		result.setParameter("level", 5);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.isTrue(bitmaps.length > 0);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+
+		// Set level=0, mode=b → enum matches → @any triggers
+		result.beginUpdate();
+		result.setParameter("level", 0);
+		result.setParameter("mode", "b");
+		result.endUpdate();
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.isTrue(bitmaps.length > 0);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+
+		// Set mode=a → neither matches → default
+		result.setParameter("mode", "a");
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.isTrue(bitmaps.length > 0);
+		Assert.equals(20, Std.int(bitmaps[0].tile.width));
+	}
 }

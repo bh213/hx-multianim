@@ -727,6 +727,7 @@ class UICardHandHelper implements UIHigherOrderComponent {
 	/** Clean up all resources. */
 	public function dispose():Void {
 		clearHand();
+		chainedListeners.resize(0);
 		handContainer.remove();
 		dragContainer.remove();
 		targeting.clearTargets();
