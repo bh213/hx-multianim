@@ -5021,6 +5021,7 @@ class MacroManimParser {
 			case PPTInt | PPTUnsignedInt | PPTRange(_, _): true;
 			default: false;
 		};
+		var hasDefault = false;
 		while (!match(TCurlyClosed)) {
 			// Skip stray semicolons
 			if (match(TSemiColon)) continue;
@@ -5030,6 +5031,8 @@ class MacroManimParser {
 
 			switch (peek()) {
 				case TIdentifier(s) if (isKeyword(s, "default")):
+					if (hasDefault) error("@switch has multiple default arms");
+					hasDefault = true;
 					advance();
 					// pattern stays null = default
 				case TLessEquals:

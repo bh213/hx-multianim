@@ -131,6 +131,7 @@ class ProgrammableCodeGen {
 
 	// Counter for sentinel objects (position anchors for conditional elements)
 	static var sentinelCounter:Int = 0;
+	static var switchCounter:Int = 0;
 
 	// Cache parsed results to avoid re-running subprocess for same file
 	static var parsedCache:Map<String, Map<String, Node>> = new Map();
@@ -175,6 +176,7 @@ class ProgrammableCodeGen {
 		tileGroupCounter = 0;
 		particlesCounter = 0;
 		sentinelCounter = 0;
+		switchCounter = 0;
 		instanceClassName = "";
 		generatedStyleSetters = new Map();
 		generatedImageSetters = new Map();
@@ -1321,65 +1323,37 @@ class ProgrammableCodeGen {
 
 	static function processSwitch(node:Node, paramName:String, arms:Array<SwitchArm>, parentField:String,
 			fields:Array<Field>, ctorExprs:Array<Expr>, siblings:Array<{node:Node, fieldName:String}>, pos:Position):Void {
-		// Determine if we need a container for the SWITCH itself (only if it has position/scale/alpha/rotation/tint)
-		final needsSwitchContainer = node.pos != null || node.scale != null || node.alpha != null || node.rotation != null || node.tint != null;
-		final childParent:String = if (needsSwitchContainer) {
-			final switchField = "_sw" + (elementCounter++);
-			fields.push(makeField(switchField, FVar(macro :h2d.Object, null), [APrivate], pos));
-			ctorExprs.push(macro $p{["this", switchField]} = new h2d.Object());
-			final parentRef = parentField != null ? (macro $p{["this", parentField]}) : (macro this);
-			ctorExprs.push(macro $parentRef.addChild($p{["this", switchField]}));
-			ensureHexLayoutIfNeeded(node.pos, node, fields, ctorExprs, pos);
-			final posExpr = generatePositionExpr(node.pos, switchField, pos, node);
-			if (posExpr != null) ctorExprs.push(posExpr);
-			if (node.scale != null) {
-				final scaleExpr = rvToExpr(node.scale);
-				ctorExprs.push(macro { final _s = $scaleExpr; $p{["this", switchField]}.scaleX = _s; $p{["this", switchField]}.scaleY = _s; });
-			}
-			if (node.alpha != null) ctorExprs.push(macro $p{["this", switchField]}.alpha = ${rvToExpr(node.alpha)});
-			if (node.rotation != null) ctorExprs.push(macro $p{["this", switchField]}.rotation = hxd.Math.degToRad(${rvToExpr(node.rotation)}));
-			switchField;
-		} else {
-			parentField;
-		};
+		// Lazy switch: build only the active arm at runtime, rebuild on parameter change.
+		// Container field holds arm content; _swN_armIdx tracks which arm is currently built.
 
-		// Process each arm — use container only for multi-child arms
-		final armFields:Array<String> = [];
-		final armConditions:Array<Null<Expr>> = []; // null = default arm
-		for (i in 0...arms.length) {
-			final arm = arms[i];
+		// Always create a container for the switch content
+		final switchField = "_sw" + (elementCounter++);
+		fields.push(makeField(switchField, FVar(macro :h2d.Object, null), [APrivate], pos));
+		ctorExprs.push(macro $p{["this", switchField]} = new h2d.Object());
+		final parentRef = parentField != null ? (macro $p{["this", parentField]}) : (macro this);
+		ctorExprs.push(macro $parentRef.addChild($p{["this", switchField]}));
 
-			// Generate condition expression for this arm
-			if (arm.pattern == null) {
-				armConditions.push(null); // default
-			} else {
-				armConditions.push(condValueToExpr(arm.pattern, paramFieldExpr(paramName), paramName));
-			}
-
-			if (arm.children.length == 1 && isSwitchSimpleNode(arm.children[0])) {
-				// Single simple child — no wrapper container, track the child's field directly
-				final childCountBefore = elementCounter;
-				processChildren(arm.children, childParent, fields, ctorExprs, [], pos);
-				armFields.push("_e" + childCountBefore);
-			} else if (arm.children.length > 0) {
-				// Multiple children — need a container
-				final armField = "_sw" + (elementCounter++) + "_a" + i;
-				armFields.push(armField);
-				fields.push(makeField(armField, FVar(macro :h2d.Object, null), [APrivate], pos));
-				ctorExprs.push(macro $p{["this", armField]} = new h2d.Object());
-				ctorExprs.push(macro $p{["this", childParent]}.addChild($p{["this", armField]}));
-				processChildren(arm.children, armField, fields, ctorExprs, [], pos);
-			} else {
-				// Empty arm (0 children or non-simple single child that was caught above)
-				armFields.push("");
-			}
+		// Apply position/scale/alpha/rotation on the container if the SWITCH node has them
+		ensureHexLayoutIfNeeded(node.pos, node, fields, ctorExprs, pos);
+		final posExpr = generatePositionExpr(node.pos, switchField, pos, node);
+		if (posExpr != null) ctorExprs.push(posExpr);
+		if (node.scale != null) {
+			final scaleExpr = rvToExpr(node.scale);
+			ctorExprs.push(macro { final _s = $scaleExpr; $p{["this", switchField]}.scaleX = _s; $p{["this", switchField]}.scaleY = _s; });
 		}
+		if (node.alpha != null) ctorExprs.push(macro $p{["this", switchField]}.alpha = ${rvToExpr(node.alpha)});
+		if (node.rotation != null) ctorExprs.push(macro $p{["this", switchField]}.rotation = hxd.Math.degToRad(${rvToExpr(node.rotation)}));
 
-		// Generate visibility update
+		// Arm index field
+		final armIdxField = switchField + "_armIdx";
+		fields.push(makeField(armIdxField, FVar(macro :Int, macro -1), [APrivate], pos));
+
+		// Generate arm index computation expression: maps param value to arm index (0..N-1), -1 for no match
 		final paramRef = paramFieldExpr(paramName);
-		final updateStmts:Array<Expr> = [];
+		final progName = currentProgrammableName;
+		final switchOrdinal = switchCounter++;  // stable DFS ordinal, matches runtime tree walk
 
-		// Check if all non-default arms are pure enum (CoEnums) — can use switch statement
+		// Check if all non-default arms are pure enum (CoEnums)
 		var allEnum = true;
 		for (arm in arms) {
 			if (arm.pattern != null) {
@@ -1390,20 +1364,14 @@ class ProgrammableCodeGen {
 			}
 		}
 
-		if (allEnum) {
-			// O(1) dispatch: generate switch statement
-			// First, hide all arms
-			for (armField in armFields)
-				if (armField != "") updateStmts.push(macro $p{["this", armField]}.visible = false);
-			// Build switch cases
+		final armIndexExpr:Expr = if (allEnum) {
+			// O(1) dispatch: generate switch statement returning arm index
 			final cases:Array<haxe.macro.Expr.Case> = [];
-			var defaultArmField:Null<String> = null;
+			var defaultArmIdx:Int = -1;
 			for (i in 0...arms.length) {
 				final arm = arms[i];
-				final armField = armFields[i];
-				if (armField == "") continue;
 				if (arm.pattern == null) {
-					defaultArmField = armField;
+					defaultArmIdx = i;
 				} else {
 					switch (arm.pattern) {
 						case CoEnums(values):
@@ -1413,7 +1381,7 @@ class ProgrammableCodeGen {
 								if (idx != null) {
 									cases.push({
 										values: [macro $v{idx}],
-										expr: macro $p{["this", armField]}.visible = true,
+										expr: macro $v{i},
 									});
 								}
 							}
@@ -1421,44 +1389,53 @@ class ProgrammableCodeGen {
 					}
 				}
 			}
-			final defaultExpr = if (defaultArmField != null) macro $p{["this", defaultArmField]}.visible = true else macro {};
-			updateStmts.push({expr: ESwitch(paramRef, cases, defaultExpr), pos: pos});
+			final defaultExpr = macro $v{defaultArmIdx};
+			{expr: ESwitch(paramRef, cases, defaultExpr), pos: pos};
 		} else {
-			// Mixed arms: if/else chain
-			for (i in 0...arms.length) {
-				final armField = armFields[i];
-				if (armField == "") continue;
-				final cond = armConditions[i];
-				if (cond == null) {
-					var negation:Expr = macro true;
-					for (j in 0...arms.length) {
-						if (j != i && armConditions[j] != null) {
-							final otherCond = armConditions[j];
-							negation = macro($negation && !$otherCond);
-						}
-					}
-					updateStmts.push(macro $p{["this", armField]}.visible = $negation);
+			// Mixed arms: if/else chain returning arm index
+			var result:Expr = macro - 1;
+			// Build in reverse so first matching arm wins
+			var i = arms.length - 1;
+			while (i >= 0) {
+				final arm = arms[i];
+				final idx = i;
+				if (arm.pattern == null) {
+					// Default arm — used as the base fallback
+					result = macro $v{idx};
 				} else {
-					updateStmts.push(macro $p{["this", armField]}.visible = $cond);
+					final cond = condValueToExpr(arm.pattern, paramRef, paramName);
+					result = macro if ($cond) $v{idx} else $result;
 				}
+				i--;
 			}
-		}
+			result;
+		};
 
-		// Register visibility update
-		final updateBlock:Expr = {expr: EBlock(updateStmts), pos: pos};
-		ctorExprs.push(updateBlock);
+		// Generate expression to build a params map from current parameter fields
+		final paramsMapExprs:Array<Expr> = [macro final _swp = new Map<String, Dynamic>()];
+		for (pName in paramNames) {
+			final paramField = "_" + pName;
+			paramsMapExprs.push(macro _swp.set($v{pName}, $p{["this", paramField]}));
+		}
+		paramsMapExprs.push(macro _swp);
+		final paramsMapExpr:Expr = {expr: EBlock(paramsMapExprs), pos: pos};
+
+		// Constructor: compute initial arm index and build
+		ctorExprs.push(macro {
+			$p{["this", armIdxField]} = $armIndexExpr;
+			this._pb.rebuildSwitchArm($v{progName}, $v{switchOrdinal}, $p{["this", armIdxField]}, $p{["this", switchField]}, $paramsMapExpr);
+		});
+
+		// Register lazy switch update in _applyVisibility — always rebuild since
+		// arm content may depend on params other than the switch param itself
+		final updateBlock:Expr = macro {
+			$p{["this", armIdxField]} = $armIndexExpr;
+			this._pb.rebuildSwitchArm($v{progName}, $v{switchOrdinal}, $p{["this", armIdxField]}, $p{["this", switchField]}, $paramsMapExpr);
+		};
 		switchUpdateEntries.push({
 			paramName: paramName,
 			updateExpr: updateBlock,
 		});
-	}
-
-	/** Returns true if the node produces exactly one _e{N} field in processNode (not an early-return type). */
-	static function isSwitchSimpleNode(node:Node):Bool {
-		return switch (node.type) {
-			case REPEAT(_, _) | REPEAT2D(_, _, _, _) | APPLY | FINAL_VAR(_, _) | SWITCH(_, _): false;
-			default: true;
-		};
 	}
 
 	static function findEnumIndex(paramDef:Definition, value:String):Null<Int> {
@@ -1470,7 +1447,7 @@ class ProgrammableCodeGen {
 	}
 
 	static function paramFieldExpr(paramName:String):Expr {
-		return macro $p{["this", "_p_" + paramName]};
+		return macro $p{["this", "_" + paramName]};
 	}
 
 	// ==================== Repeat Processing ====================

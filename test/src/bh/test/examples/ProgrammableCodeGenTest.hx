@@ -4657,6 +4657,162 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		async.done();
 	}
 
+	// ==================== @switch + repeatable: codegen incremental ====================
+
+	@Test
+	public function testCodegenSwitchRepeatableSwitchArm():Void {
+		// Codegen: switch arm changes, repeatable count stays — element count and size should update
+		final mp = createMp();
+		final instance = mp.switchRepeat.create();
+		Assert.notNull(instance, "switchRepeat should be created");
+
+		// Initial: mode=items, count=3 → 3 green bitmaps (10px)
+		var bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(3, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+
+		// Switch to grid → 3 red bitmaps (20px)
+		instance.setMode(1); // grid
+		bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(3, bitmaps.length);
+		Assert.equals(20, Std.int(bitmaps[0].tile.width));
+
+		// Switch back to items → 3 green (10px)
+		instance.setMode(0); // items
+		bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(3, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testCodegenSwitchRepeatableCountChange():Void {
+		// Codegen: repeatable count changes within active switch arm
+		final mp = createMp();
+		final instance = mp.switchRepeat.create();
+
+		// Initial: mode=items, count=3
+		var bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(3, bitmaps.length);
+
+		// Increase count to 5
+		instance.setCount(5);
+		bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(5, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+
+		// Decrease count to 1
+		instance.setCount(1);
+		bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(1, bitmaps.length);
+	}
+
+	@Test
+	public function testCodegenSwitchFixedRepeatDifferentCounts():Void {
+		// Codegen: arms have different fixed repeatable counts
+		final mp = createMp();
+		final instance = mp.switchFixedRepeat.create();
+
+		// Initial: circles → 4 blue (10px)
+		var bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(4, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+
+		// Switch to squares → 2 yellow (30px)
+		instance.setStyle(1); // squares
+		bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(2, bitmaps.length);
+		Assert.equals(30, Std.int(bitmaps[0].tile.width));
+
+		// Switch back → 4 blue
+		instance.setStyle(0); // circles
+		bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(4, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testCodegenSwitchTextInterpolation():Void {
+		// Codegen: text with $param interpolation — changing inner param re-renders text
+		final mp = createMp();
+		final instance = mp.switchText.create();
+		var texts = findAllTextDescendants(instance);
+		Assert.equals(1, texts.length);
+		Assert.equals("HP: 42", texts[0].text);
+
+		// Change value only (stay in same arm)
+		instance.setValue(99);
+		texts = findAllTextDescendants(instance);
+		Assert.equals(1, texts.length);
+		Assert.equals("HP: 99", texts[0].text);
+
+		// Switch arm
+		instance.setMode(1); // mp
+		texts = findAllTextDescendants(instance);
+		Assert.equals(1, texts.length);
+		Assert.equals("MP: 99", texts[0].text);
+	}
+
+	@Test
+	public function testCodegenSwitchNested():Void {
+		// Codegen: nested @switch — outer on shape, inner on size
+		final mp = createMp();
+		final instance = mp.switchNested.create();
+
+		// Initial: circle+small → 10x10 green
+		var bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+
+		// Change inner param only
+		instance.setSize(1); // big
+		bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(20, Std.int(bitmaps[0].tile.width));
+
+		// Change outer param — inner should reflect current size=big
+		instance.setShape(1); // square
+		bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(20, Std.int(bitmaps[0].tile.width));
+
+		// Both back to initial
+		instance.setShape(0);
+		instance.setSize(0);
+		bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testCodegenSwitchExprInSize():Void {
+		// Codegen: $param expression in bitmap size — arm b uses $size * 2
+		final mp = createMp();
+		final instance = mp.switchExpr.create();
+
+		// Initial: mode=a, size=10 → 10x10
+		var bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+
+		// Change size (stay in arm a) → 20x20
+		instance.setSize(20);
+		bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(20, Std.int(bitmaps[0].tile.width));
+
+		// Switch to b with size=20 → 40x40
+		instance.setMode(1); // b
+		bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(40, Std.int(bitmaps[0].tile.width));
+
+		// Change size to 5 in arm b → 10x10
+		instance.setSize(5);
+		bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+	}
+
 	static function addTransLabel(parent:h2d.Object, font:Null<h2d.Font>, label:String, x:Float, y:Float):Void {
 		if (font == null) return;
 		var text = new h2d.Text(font, parent);

@@ -4497,6 +4497,21 @@ class ParserErrorTest extends utest.Test {
 	}
 
 	@Test
+	public function testSwitchDuplicateDefault() {
+		var error = parseExpectingError('
+			#test programmable(state:[idle, active]=idle) {
+				@switch(state) {
+					idle: bitmap(generated(color(10, 10, #666)));
+					default: bitmap(generated(color(10, 10, #060)));
+					default: bitmap(generated(color(10, 10, #600)));
+				}
+			}
+		');
+		Assert.notNull(error, "@switch with multiple default arms should fail");
+		Assert.stringContains("multiple default", error);
+	}
+
+	@Test
 	public function testUnterminatedBlockCommentAtEof() {
 		var error = parseExpectingError('
 			#test programmable() {

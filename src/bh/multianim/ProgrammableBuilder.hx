@@ -439,6 +439,14 @@ class ProgrammableBuilder {
 		return getBuilder().getCurve(name);
 	}
 
+	/** Rebuild a @switch arm by ordinal. Tears down the old arm and builds the new one.
+	 *  Used by codegen lazy switch — generated setters call this on parameter change.
+	 *  switchOrdinal is the N-th SWITCH node in DFS order of the programmable's tree. */
+	public function rebuildSwitchArm(programmableName:String, switchOrdinal:Int, armIndex:Int, container:h2d.Object,
+			params:Map<String, Dynamic>):Void {
+		getBuilder().rebuildSwitchArmByOrdinal(programmableName, switchOrdinal, armIndex, container, params);
+	}
+
 	/** Build an arbitrary node by its unique name, forwarding to the builder.
 	 *  Used by generated repeatable code for node types not handled inline. */
 	public function buildNodeByUniqueName(programmableName:String, uniqueNodeName:String):Null<h2d.Object> {
@@ -451,7 +459,7 @@ class ProgrammableBuilder {
 		return builder.buildSingleNode(targetNode);
 	}
 
-	private static function findNodeByUniqueName(node:MultiAnimParser.Node, name:String):Null<MultiAnimParser.Node> {
+	public static function findNodeByUniqueName(node:MultiAnimParser.Node, name:String):Null<MultiAnimParser.Node> {
 		if (node.uniqueNodeName == name) return node;
 		if (node.children != null) {
 			for (child in node.children) {

@@ -393,7 +393,9 @@ Works with `@()`, `@if()`, `@any()`, `@all()`, `@else`, `@else(cond)`, `@default
 **Notes:**
 - `@switch` cannot be combined with other `@` modifiers (`@alpha`, `@scale`, etc.)
 - Cannot be used at root level (must be inside a programmable body)
-- Desugars to `@()`/`@else()`/`@default` internally — works with both builder and macro codegen
+- Only one `default` arm per `@switch` block (duplicate rejected at parse time)
+- **Incremental mode:** `setParameter()` triggers full arm rebuild (teardown + rebuild of active arm). All param refs inside all arms are collected — changing any referenced param (not just the switch param) triggers rebuild. Supports nested `@switch`, `@()` conditionals, repeatables, and `$param` expressions inside arms
+- **Codegen:** lazy rebuild via ordinal-based arm lookup. Generated `_applyVisibility` always rebuilds on any parameter change, forwarding current param values to the builder
 
 ---
 

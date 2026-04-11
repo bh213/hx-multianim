@@ -985,38 +985,40 @@ class IncrementalUpdateContext {
 	public function applyConditionalChains():Void {
 		// Walk the root node's children to resolve @else/@default chains with new params
 		if (rootNode.children == null) return;
-		resolveVisibilityForChildren(rootNode.children);
+		// Build lookup maps keyed by uniqueNodeName for O(1) access in recursive walk
+		final entryMap = new haxe.ds.StringMap<{object:h2d.Object, node:Node, sentinel:h2d.Object, parent:h2d.Object, layer:Int,
+			savedFlowProps:Null<SavedFlowProperties>}>();
+		for (entry in conditionalEntries)
+			entryMap.set(entry.node.uniqueNodeName, entry);
+		final applyMap = new haxe.ds.StringMap<{
+			parent:h2d.Object, node:Node, applied:Bool,
+			savedFilter:Null<h2d.filter.Filter>, savedAlpha:Null<Float>,
+			savedScaleX:Null<Float>, savedScaleY:Null<Float>, savedRotation:Null<Float>,
+			appliedPosX:Float, appliedPosY:Float,
+		}>();
+		for (ae in conditionalApplyEntries)
+			applyMap.set(ae.node.uniqueNodeName, ae);
+		resolveVisibilityForChildren(rootNode.children, entryMap, applyMap);
 	}
 
-	function resolveVisibilityForChildren(children:Array<Node>):Void {
-		var prevSiblingMatched = false;
-		var anyConditionalSiblingMatched = false;
-
-		for (childNode in children) {
-			// Find the tracked entry for this node
-			var trackedEntry:Null<{object:h2d.Object, node:Node, sentinel:h2d.Object, parent:h2d.Object, layer:Int,
-				savedFlowProps:Null<SavedFlowProperties>}> = null;
-			for (entry in conditionalEntries) {
-				if (entry.node == childNode) {
-					trackedEntry = entry;
-					break;
-				}
-			}
-			// Find conditional apply entry for this node (APPLY nodes have no tracked object)
-			var trackedApply:Null<{
+	function resolveVisibilityForChildren(children:Array<Node>,
+			entryMap:haxe.ds.StringMap<{object:h2d.Object, node:Node, sentinel:h2d.Object, parent:h2d.Object, layer:Int,
+				savedFlowProps:Null<SavedFlowProperties>}>,
+			applyMap:haxe.ds.StringMap<{
 				parent:h2d.Object, node:Node, applied:Bool,
 				savedFilter:Null<h2d.filter.Filter>, savedAlpha:Null<Float>,
 				savedScaleX:Null<Float>, savedScaleY:Null<Float>, savedRotation:Null<Float>,
 				appliedPosX:Float, appliedPosY:Float,
-			}> = null;
-			if (trackedEntry == null) {
-				for (ae in conditionalApplyEntries) {
-					if (ae.node == childNode) {
-						trackedApply = ae;
-						break;
-					}
-				}
-			}
+			}>):Void {
+		var prevSiblingMatched = false;
+		var anyConditionalSiblingMatched = false;
+
+		for (childNode in children) {
+			// Find the tracked entry for this node via O(1) map lookup
+			final nodeKey = childNode.uniqueNodeName;
+			var trackedEntry = entryMap.get(nodeKey);
+			// Find conditional apply entry for this node (APPLY nodes have no tracked object)
+			var trackedApply = if (trackedEntry == null) applyMap.get(nodeKey) else null;
 
 			switch childNode.conditionals {
 				case Conditional(conditions, anyMode):
@@ -1067,7 +1069,7 @@ class IncrementalUpdateContext {
 
 			// Recurse into children
 			if (childNode.children != null && childNode.children.length > 0)
-				resolveVisibilityForChildren(childNode.children);
+				resolveVisibilityForChildren(childNode.children, entryMap, applyMap);
 		}
 	}
 }
@@ -3197,6 +3199,23 @@ class MultiAnimBuilder {
 				}
 			case PIXELS(shapes):
 				collectPixelShapesParamRefs(shapes, refs);
+			case REPEAT(_, repeatType):
+				switch repeatType {
+					case StepIterator(dirX, dirY, repeats):
+						collectParamRefs(repeats, refs);
+						if (dirX != null) collectParamRefs(dirX, refs);
+						if (dirY != null) collectParamRefs(dirY, refs);
+					case RangeIterator(start, end, step):
+						collectParamRefs(start, refs);
+						collectParamRefs(end, refs);
+						collectParamRefs(step, refs);
+					default:
+				}
+			case SWITCH(paramName, arms):
+				addRef(paramName);
+				for (arm in arms)
+					for (child in arm.children)
+						addRefs(collectNodeParamRefs(child));
 			default:
 		}
 		// Position refs
@@ -4346,12 +4365,46 @@ class MultiAnimBuilder {
 			case SWITCH(paramName, arms):
 				final container = new h2d.Object();
 				final matchedArm = resolveMatchedSwitchArm(paramName, arms);
+
+				// Build active arm with incremental=false (children are a rebuild unit)
+				final savedIncMode = incrementalMode;
+				final savedIncCtx = incrementalContext;
+				if (incrementalMode) incrementalMode = false;
+
 				if (matchedArm != null) {
-					for (child in matchedArm.children) {
-						final childObj = build(child, buildMode, gridCoordinateSystem, hexCoordinateSystem, internalResults, builderParams);
-						if (childObj != null) container.addChild(childObj);
-					}
+					for (child in matchedArm.children)
+						build(child, ObjectMode(container), gridCoordinateSystem, hexCoordinateSystem, internalResults, builderParams);
 				}
+
+				if (savedIncMode) {
+					incrementalMode = savedIncMode;
+					// Collect all param refs from all arms (any param change inside any arm triggers rebuild)
+					final switchParamRefs:Array<String> = [paramName];
+					for (arm in arms) {
+						collectChildConditionalParamRefs(arm.children, switchParamRefs);
+						for (child in arm.children) {
+							final childRefs = collectNodeParamRefs(child);
+							for (r in childRefs)
+								if (switchParamRefs.indexOf(r) < 0) switchParamRefs.push(r);
+						}
+					}
+					final capturedArms = arms;
+					final capturedParamName = paramName;
+					final capturedContainer = container;
+					final capturedBP = builderParams;
+					savedIncCtx.trackExpression(() -> {
+						final newArm = resolveMatchedSwitchArm(capturedParamName, capturedArms);
+						capturedContainer.removeChildren();
+						if (newArm != null) {
+							final gcs = MultiAnimParser.getGridCoordinateSystem(node);
+							final hcs = MultiAnimParser.getHexCoordinateSystem(node);
+							final ir:InternalBuilderResults = {names: [], interactives: [], slots: [], dynamicRefs: new Map(), htmlTextsWithLinks: []};
+							for (child in newArm.children)
+								build(child, ObjectMode(capturedContainer), gcs, hcs, ir, capturedBP);
+						}
+					}, switchParamRefs, container);
+				}
+
 				skipChildren = true;
 				HeapsObject(container);
 			case STATEANIM(filename, initialState, selectorReferences):
@@ -6546,6 +6599,67 @@ class MultiAnimBuilder {
 		if (Std.isOfType(value, Float)) return ValueF(cast value);
 		if (Std.isOfType(value, String)) return StringValue(cast value);
 		return Value(cast value);
+	}
+
+	/** Rebuild a @switch arm into its container. Tears down the old arm and builds the new one.
+	 *  Used by ProgrammableBuilder.rebuildSwitchArm for codegen lazy switch.
+	 *  switchOrdinal is the N-th SWITCH node in DFS order of the programmable's tree. */
+	function rebuildSwitchArmByOrdinal(programmableName:String, switchOrdinal:Int, armIndex:Int, container:h2d.Object,
+			parentParams:Map<String, Dynamic>):Void {
+		final progNode = multiParserResult.nodes.get(programmableName);
+		if (progNode == null) throw 'programmable "$programmableName" not found';
+		final switchNode = findNthSwitchNode(progNode, switchOrdinal);
+		if (switchNode == null) throw 'switch node #$switchOrdinal not found in "$programmableName"';
+		final arms = switch switchNode.type {
+			case SWITCH(_, a): a;
+			default: throw 'node #$switchOrdinal is not a SWITCH node';
+		};
+		container.removeChildren();
+		if (armIndex >= 0 && armIndex < arms.length) {
+			final arm = arms[armIndex];
+			pushBuilderState();
+			// Convert parent params to resolved index params
+			final resolvedParams:Map<String, ResolvedIndexParameters> = new Map();
+			final progDefs = getProgrammableParameterDefinitions(progNode, false);
+			for (key => value in parentParams) {
+				final def = progDefs.get(key);
+				if (def != null)
+					resolvedParams.set(key, dynamicToResolvedWithDef(def.type, value));
+				else
+					resolvedParams.set(key, dynamicToResolvedInferred(value));
+			}
+			this.indexedParams = resolvedParams;
+			this.incrementalMode = false;
+			this.incrementalContext = null;
+			final bp:BuilderParameters = {callback: defaultCallback};
+			this.builderParams = bp;
+			final ir:InternalBuilderResults = {names: [], interactives: [], slots: [], dynamicRefs: new Map(), htmlTextsWithLinks: []};
+			for (child in arm.children)
+				build(child, ObjectMode(container), cast null, cast null, ir, bp);
+			popBuilderState();
+		}
+	}
+
+	/** Find the N-th SWITCH node in DFS order within a node tree. */
+	private static function findNthSwitchNode(node:Node, ordinal:Int):Null<Node> {
+		var count = [0]; // boxed counter for recursion
+		return findNthSwitchNodeImpl(node, ordinal, count);
+	}
+
+	private static function findNthSwitchNodeImpl(node:Node, ordinal:Int, count:Array<Int>):Null<Node> {
+		switch node.type {
+			case SWITCH(_, _):
+				if (count[0] == ordinal) return node;
+				count[0]++;
+			default:
+		}
+		if (node.children != null) {
+			for (child in node.children) {
+				final found = findNthSwitchNodeImpl(child, ordinal, count);
+				if (found != null) return found;
+			}
+		}
+		return null;
 	}
 
 	/** Build a single node in isolation, returning the resulting h2d.Object.

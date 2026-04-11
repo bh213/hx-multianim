@@ -5722,4 +5722,632 @@ class BuilderUnitTest extends BuilderTestBase {
 		Assert.isTrue(bitmaps.length > 0);
 		Assert.equals(20, Std.int(bitmaps[0].tile.width));
 	}
+
+	// ==================== @switch incremental mode tests ====================
+
+	@Test
+	public function testIncrementalSwitchEnumBasic():Void {
+		// Basic @switch on enum param — setParameter should switch visible arm
+		final result = buildFromSource("
+			#test programmable(state:[idle, active, error]=idle) {
+				@switch(state) {
+					idle: bitmap(generated(color(10, 10, #f00)));
+					active: bitmap(generated(color(20, 10, #0f0)));
+					error: bitmap(generated(color(30, 10, #00f)));
+				}
+			}
+		", "test", null, Incremental);
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+
+		// Switch to active — should show 20px wide bitmap
+		result.setParameter("state", "active");
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(20, Std.int(bitmaps[0].tile.width));
+
+		// Switch to error — should show 30px wide bitmap
+		result.setParameter("state", "error");
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(30, Std.int(bitmaps[0].tile.width));
+
+		// Switch back to idle — should show 10px wide bitmap again
+		result.setParameter("state", "idle");
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testIncrementalSwitchDefault():Void {
+		// @switch with default arm — non-listed values should hit default
+		final result = buildFromSource("
+			#test programmable(state:[idle, hover, pressed, disabled]=idle) {
+				@switch(state) {
+					idle: bitmap(generated(color(10, 10, #f00)));
+					hover: bitmap(generated(color(20, 10, #0f0)));
+					default: bitmap(generated(color(30, 10, #00f)));
+				}
+			}
+		", "test", null, Incremental);
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+
+		// Switch to pressed — should hit default (30px)
+		result.setParameter("state", "pressed");
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(30, Std.int(bitmaps[0].tile.width));
+
+		// Switch to hover — should hit explicit arm (20px)
+		result.setParameter("state", "hover");
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(20, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testIncrementalSwitchMultiValue():Void {
+		// @switch with pipe-separated multi-value arms
+		final result = buildFromSource("
+			#test programmable(level:[low, medium, high, critical]=low) {
+				@switch(level) {
+					low | medium: bitmap(generated(color(10, 10, #0f0)));
+					high | critical: bitmap(generated(color(20, 10, #f00)));
+				}
+			}
+		", "test", null, Incremental);
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+
+		// medium — same arm as low (10px)
+		result.setParameter("level", "medium");
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+
+		// high — second arm (20px)
+		result.setParameter("level", "high");
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(20, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testIncrementalSwitchBlockArms():Void {
+		// @switch with block arms containing multiple elements
+		final result = buildFromSource("
+			#test programmable(mode:[a, b]=a) {
+				@switch(mode) {
+					a {
+						bitmap(generated(color(10, 10, #f00)));
+						bitmap(generated(color(15, 10, #0f0)));
+					}
+					b {
+						bitmap(generated(color(20, 10, #00f)));
+					}
+				}
+			}
+		", "test", null, Incremental);
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(2, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+		Assert.equals(15, Std.int(bitmaps[1].tile.width));
+
+		// Switch to b — should show single 20px bitmap, not the two from arm a
+		result.setParameter("mode", "b");
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(20, Std.int(bitmaps[0].tile.width));
+
+		// Switch back to a — should restore both bitmaps
+		result.setParameter("mode", "a");
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(2, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+		Assert.equals(15, Std.int(bitmaps[1].tile.width));
+	}
+
+	@Test
+	public function testIncrementalSwitchRange():Void {
+		// @switch with range and comparison arms
+		final params = new Map<String, Dynamic>();
+		params.set("temp", -20);
+		final result = buildFromSource("
+			#test programmable(temp:-50..150=0) {
+				@switch(temp) {
+					<= -1: bitmap(generated(color(10, 10, #00f)));
+					0..100: bitmap(generated(color(20, 10, #0f0)));
+					>= 101: bitmap(generated(color(30, 10, #f00)));
+				}
+			}
+		", "test", params, Incremental);
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+
+		// temp=50 → 0..100 arm (20px)
+		result.setParameter("temp", 50);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(20, Std.int(bitmaps[0].tile.width));
+
+		// temp=120 → >= 101 arm (30px)
+		result.setParameter("temp", 120);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(30, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testIncrementalSwitchBool():Void {
+		// @switch on bool param
+		final result = buildFromSource("
+			#test programmable(enabled:bool=true) {
+				@switch(enabled) {
+					true: bitmap(generated(color(10, 10, #0f0)));
+					false: bitmap(generated(color(20, 10, #f00)));
+				}
+			}
+		", "test", null, Incremental);
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+
+		// Switch to false
+		result.setParameter("enabled", false);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(20, Std.int(bitmaps[0].tile.width));
+
+		// Switch back to true
+		result.setParameter("enabled", true);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testIncrementalSwitchMultipleSwitchBlocks():Void {
+		// Two separate @switch blocks on same param — both should update
+		final result = buildFromSource("
+			#test programmable(state:[a, b]=a) {
+				@switch(state) {
+					a: bitmap(generated(color(10, 10, #f00)));
+					b: bitmap(generated(color(20, 10, #0f0)));
+				}
+				@switch(state) {
+					a: bitmap(generated(color(30, 10, #00f)));
+					b: bitmap(generated(color(40, 10, #ff0)));
+				}
+			}
+		", "test", null, Incremental);
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(2, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+		Assert.equals(30, Std.int(bitmaps[1].tile.width));
+
+		// Switch to b — both blocks should update
+		result.setParameter("state", "b");
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(2, bitmaps.length);
+		Assert.equals(20, Std.int(bitmaps[0].tile.width));
+		Assert.equals(40, Std.int(bitmaps[1].tile.width));
+	}
+
+	@Test
+	public function testIncrementalSwitchWithRepeatable():Void {
+		// @switch arms contain repeatables — switching arm should change element count and size
+		final result = buildFromSource("
+			#test programmable(mode:[items, grid]=items, count:uint=3) {
+				@switch(mode) {
+					items {
+						repeatable($i, step($count, dx: 12)) {
+							bitmap(generated(color(10, 10, #0f0))): 0, 0
+						}
+					}
+					grid {
+						repeatable($i, step($count, dx: 12)) {
+							bitmap(generated(color(20, 10, #f00))): 0, 0
+						}
+					}
+				}
+			}
+		", "test", null, Incremental);
+
+		// Initial: mode=items, count=3 → 3 green bitmaps (10px wide)
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(3, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+
+		// Switch to grid — should show 3 red bitmaps (20px wide)
+		result.setParameter("mode", "grid");
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(3, bitmaps.length);
+		Assert.equals(20, Std.int(bitmaps[0].tile.width));
+
+		// Switch back to items — 3 green bitmaps again
+		result.setParameter("mode", "items");
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(3, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testIncrementalSwitchRepeatableCountChange():Void {
+		// Change the repeatable count param while inside a @switch arm
+		final result = buildFromSource("
+			#test programmable(mode:[items, grid]=items, count:uint=3) {
+				@switch(mode) {
+					items {
+						repeatable($i, step($count, dx: 12)) {
+							bitmap(generated(color(10, 10, #0f0))): 0, 0
+						}
+					}
+					grid {
+						repeatable($i, step($count, dx: 12)) {
+							bitmap(generated(color(20, 10, #f00))): 0, 0
+						}
+					}
+				}
+			}
+		", "test", null, Incremental);
+
+		// Initial: mode=items, count=3
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(3, bitmaps.length);
+
+		// Increase count to 5 while staying in items arm
+		result.setParameter("count", 5);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(5, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+
+		// Decrease count to 2
+		result.setParameter("count", 2);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(2, bitmaps.length);
+	}
+
+	@Test
+	public function testIncrementalSwitchAndRepeatableBatchUpdate():Void {
+		// Change both switch param and repeatable count in one batch
+		final result = buildFromSource("
+			#test programmable(mode:[items, grid]=items, count:uint=3) {
+				@switch(mode) {
+					items {
+						repeatable($i, step($count, dx: 12)) {
+							bitmap(generated(color(10, 10, #0f0))): 0, 0
+						}
+					}
+					grid {
+						repeatable($i, step($count, dx: 12)) {
+							bitmap(generated(color(20, 10, #f00))): 0, 0
+						}
+					}
+				}
+			}
+		", "test", null, Incremental);
+
+		// Initial: mode=items, count=3 → 3 green (10px)
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(3, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+
+		// Batch: switch to grid AND change count to 5 → 5 red (20px)
+		result.beginUpdate();
+		result.setParameter("mode", "grid");
+		result.setParameter("count", 5);
+		result.endUpdate();
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(5, bitmaps.length);
+		Assert.equals(20, Std.int(bitmaps[0].tile.width));
+
+		// Batch: switch back to items AND count=1 → 1 green (10px)
+		result.beginUpdate();
+		result.setParameter("mode", "items");
+		result.setParameter("count", 1);
+		result.endUpdate();
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testIncrementalSwitchFixedRepeatableDifferentCounts():Void {
+		// Arms have different fixed repeatable counts — switching should change count
+		final result = buildFromSource("
+			#test programmable(style:[circles, squares]=circles) {
+				@switch(style) {
+					circles {
+						repeatable($i, step(4, dx: 15)) {
+							bitmap(generated(color(10, 10, #00f))): 0, 0
+						}
+					}
+					squares {
+						repeatable($i, step(2, dx: 15)) {
+							bitmap(generated(color(30, 10, #ff0))): 0, 0
+						}
+					}
+				}
+			}
+		", "test", null, Incremental);
+
+		// Initial: circles → 4 blue bitmaps (10px)
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(4, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+
+		// Switch to squares → 2 yellow bitmaps (30px)
+		result.setParameter("style", "squares");
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(2, bitmaps.length);
+		Assert.equals(30, Std.int(bitmaps[0].tile.width));
+
+		// Switch back to circles → 4 blue bitmaps again
+		result.setParameter("style", "circles");
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(4, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testIncrementalSwitchTextInterpolation():Void {
+		// $param interpolation inside @switch arm — rebuild must re-evaluate text
+		final params = new Map<String, Dynamic>();
+		params.set("mode", "hp");
+		params.set("value", 42);
+		final result = buildFromSource("
+			#test programmable(mode:[hp, mp]=hp, value:uint=0) {
+				@switch(mode) {
+					hp: text(dd, 'HP: ${value}', #f00): 0, 0;
+					mp: text(dd, 'MP: ${value}', #00f): 0, 0;
+				}
+			}
+		", "test", params, Incremental);
+		var texts = findAllTextDescendants(result.object);
+		Assert.equals(1, texts.length);
+		Assert.equals("HP: 42", texts[0].text);
+
+		// Change value only (stay in same arm) — text should update
+		result.setParameter("value", 99);
+		texts = findAllTextDescendants(result.object);
+		Assert.equals(1, texts.length);
+		Assert.equals("HP: 99", texts[0].text);
+
+		// Switch arm AND change value in batch
+		result.beginUpdate();
+		result.setParameter("mode", "mp");
+		result.setParameter("value", 7);
+		result.endUpdate();
+		texts = findAllTextDescendants(result.object);
+		Assert.equals(1, texts.length);
+		Assert.equals("MP: 7", texts[0].text);
+	}
+
+	@Test
+	public function testIncrementalSwitchNestedConditional():Void {
+		// @() conditionals inside @switch arms — switching arm AND toggling inner conditional
+		final result = buildFromSource("
+			#test programmable(mode:[a, b]=a, flag:bool=true) {
+				@switch(mode) {
+					a {
+						@(flag=>true) bitmap(generated(color(10, 10, #0f0))): 0, 0;
+						@(flag=>false) bitmap(generated(color(20, 10, #f00))): 0, 0;
+					}
+					b {
+						bitmap(generated(color(30, 10, #00f))): 0, 0;
+					}
+				}
+			}
+		", "test", null, Incremental);
+		// Initial: mode=a, flag=true → 10px green
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+
+		// Toggle flag → 20px red (still in arm a)
+		result.setParameter("flag", false);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(20, Std.int(bitmaps[0].tile.width));
+
+		// Switch to b → 30px blue (flag irrelevant)
+		result.setParameter("mode", "b");
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(30, Std.int(bitmaps[0].tile.width));
+
+		// Switch back to a with flag=false → 20px red
+		result.setParameter("mode", "a");
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(20, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testIncrementalSwitchParamInPosition():Void {
+		// $param used in position coordinates inside @switch arm
+		final result = buildFromSource("
+			#test programmable(mode:[left, right]=left, offset:uint=10) {
+				@switch(mode) {
+					left: bitmap(generated(color(10, 10, #f00))): $offset, 0;
+					right: bitmap(generated(color(10, 10, #0f0))): $offset + 100, 0;
+				}
+			}
+		", "test", null, Incremental);
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].x));
+
+		// Change offset (stay in same arm) — position should update
+		result.setParameter("offset", 50);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(50, Std.int(bitmaps[0].x));
+
+		// Switch arm — right arm uses offset+100
+		result.setParameter("mode", "right");
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(150, Std.int(bitmaps[0].x));
+	}
+
+	@Test
+	public function testIncrementalSwitchInsideConditional():Void {
+		// @switch nested inside @() conditional — outer conditional hides the switch
+		final result = buildFromSource("
+			#test programmable(enabled:bool=true, mode:[a, b]=a) {
+				@(enabled=>true) {
+					@switch(mode) {
+						a: bitmap(generated(color(10, 10, #0f0))): 0, 0;
+						b: bitmap(generated(color(20, 10, #f00))): 0, 0;
+					}
+				}
+				@(enabled=>false) bitmap(generated(color(5, 5, #888))): 0, 0;
+			}
+		", "test", null, Incremental);
+		// Initial: enabled=true, mode=a → 10px green
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+
+		// Disable → switch hidden, 5px gray shown
+		result.setParameter("enabled", false);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(5, Std.int(bitmaps[0].tile.width));
+
+		// Switch mode while disabled — should not affect visible output
+		result.setParameter("mode", "b");
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(5, Std.int(bitmaps[0].tile.width));
+
+		// Re-enable → should show mode=b arm (20px red)
+		result.setParameter("enabled", true);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(20, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testIncrementalSwitchNestedSwitch():Void {
+		// Nested @switch: outer on one param, inner on another
+		final result = buildFromSource("
+			#test programmable(shape:[circle, square]=circle, size:[small, big]=small) {
+				@switch(shape) {
+					circle {
+						@switch(size) {
+							small: bitmap(generated(color(10, 10, #0f0))): 0, 0;
+							big: bitmap(generated(color(20, 20, #0f0))): 0, 0;
+						}
+					}
+					square {
+						@switch(size) {
+							small: bitmap(generated(color(10, 10, #f00))): 0, 0;
+							big: bitmap(generated(color(20, 20, #f00))): 0, 0;
+						}
+					}
+				}
+			}
+		", "test", null, Incremental);
+		// Initial: circle+small → 10x10 green
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+		Assert.equals(10, Std.int(bitmaps[0].tile.height));
+
+		// Change inner param (size) only
+		result.setParameter("size", "big");
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(20, Std.int(bitmaps[0].tile.width));
+		Assert.equals(20, Std.int(bitmaps[0].tile.height));
+
+		// Change outer param (shape) — inner should reflect current size=big
+		result.setParameter("shape", "square");
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(20, Std.int(bitmaps[0].tile.width));
+
+		// Change both at once
+		result.beginUpdate();
+		result.setParameter("shape", "circle");
+		result.setParameter("size", "small");
+		result.endUpdate();
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testIncrementalSwitchNoArmMatches():Void {
+		// When no arm matches and there's no default — container should be empty
+		final params = new Map<String, Dynamic>();
+		params.set("value", 50);
+		final result = buildFromSource("
+			#test programmable(value:0..100=0) {
+				bitmap(generated(color(5, 5, #888))): 0, 0;
+				@switch(value) {
+					<= 10: bitmap(generated(color(10, 10, #0f0))): 0, 20;
+					>= 90: bitmap(generated(color(10, 10, #f00))): 0, 20;
+				}
+			}
+		", "test", params, Incremental);
+		// value=50 → no arm matches, only the unconditional bitmap shows
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(5, Std.int(bitmaps[0].tile.width));
+
+		// value=5 → <= 10 arm matches, two bitmaps visible
+		result.setParameter("value", 5);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(2, bitmaps.length);
+
+		// value=50 → back to no match, only unconditional bitmap
+		result.setParameter("value", 50);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(5, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testIncrementalSwitchParamExprInBitmapSize():Void {
+		// $param expression used in bitmap generated size inside @switch
+		final result = buildFromSource("
+			#test programmable(mode:[a, b]=a, size:uint=10) {
+				@switch(mode) {
+					a: bitmap(generated(color($size, $size, #0f0))): 0, 0;
+					b: bitmap(generated(color($size * 2, $size * 2, #f00))): 0, 0;
+				}
+			}
+		", "test", null, Incremental);
+		// Initial: mode=a, size=10 → 10x10
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+
+		// Change size to 20 (stay in arm a) → 20x20
+		result.setParameter("size", 20);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(20, Std.int(bitmaps[0].tile.width));
+
+		// Switch to b with size=20 → 40x40
+		result.setParameter("mode", "b");
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(40, Std.int(bitmaps[0].tile.width));
+
+		// Change size to 5 in arm b → 10x10
+		result.setParameter("size", 5);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+	}
 }
