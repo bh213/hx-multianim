@@ -491,4 +491,65 @@ class CardHandTargetingTest extends BuilderTestBase {
 		Assert.notNull(obj);
 		Assert.equals(t.arrowContainer, obj);
 	}
+
+	// ============== forceValid override (canPlayCard wiring) ==============
+
+	@Test
+	public function testForceValidFalseOverridesHoveredTarget():Void {
+		// Regression: UICardHandHelper.updateDrag() now sets forceValid from
+		// canPlayCard(cardId, target), so the player gets immediate red
+		// feedback when dragging an unplayable card over a registered target.
+		// Test the underlying mechanism: forceValid = false must show the
+		// invalid (red) head even while the cursor is over a registered target.
+		var t = createTargetingWithArrow();
+		t.registerTarget(createInteractive("t1", 60, 40, 100, 80));
+
+		// Cursor inside the target — without forceValid this would be valid.
+		t.forceValid = false;
+		var result = t.updateTargetingLine(0, 0, 130, 100, 130, 100, "card1");
+
+		// Target detection still works (active highlight is set) ...
+		Assert.equals("t1", result);
+		// ... but the arrow visual is forced into the invalid state.
+		if (t.headValid != null && t.headInvalid != null) {
+			Assert.isFalse(t.headValid.object.visible, "valid head must be hidden when forceValid=false");
+			Assert.isTrue(t.headInvalid.object.visible, "invalid head must be visible when forceValid=false");
+		}
+	}
+
+	@Test
+	public function testForceValidTrueOverridesNoTarget():Void {
+		// The mirror case: forceValid = true forces the valid (green) head
+		// even with no hovered target. Useful for previewing playability
+		// in zones that don't use registered target interactives.
+		var t = createTargetingWithArrow();
+		// No targets registered.
+
+		t.forceValid = true;
+		var result = t.updateTargetingLine(0, 0, 200, 100, 200, 100, "card1");
+		Assert.isNull(result, "no target should be reported when none registered");
+
+		if (t.headValid != null && t.headInvalid != null) {
+			Assert.isTrue(t.headValid.object.visible, "valid head must be visible when forceValid=true");
+			Assert.isFalse(t.headInvalid.object.visible, "invalid head must be hidden when forceValid=true");
+		}
+	}
+
+	@Test
+	public function testForceValidNullFallsBackToHoverDetection():Void {
+		// Default behavior: when forceValid is null, valid state mirrors
+		// hoveredWrapper != null. Verifies the helper's `forceValid = null`
+		// reset path doesn't break normal hover-driven valid color.
+		var t = createTargetingWithArrow();
+		t.registerTarget(createInteractive("t1", 60, 40, 100, 80));
+
+		t.forceValid = null;
+		var result = t.updateTargetingLine(0, 0, 130, 100, 130, 100, "card1");
+		Assert.equals("t1", result);
+
+		if (t.headValid != null && t.headInvalid != null) {
+			Assert.isTrue(t.headValid.object.visible, "valid head visible when hovering target with forceValid=null");
+			Assert.isFalse(t.headInvalid.object.visible);
+		}
+	}
 }

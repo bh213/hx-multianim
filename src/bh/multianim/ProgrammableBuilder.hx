@@ -507,6 +507,8 @@ class ProgrammableBuilder {
 				}
 			}
 		}
-		t.font = if (bestFont != null) bestFont else fonts[fonts.length - 1];
+		if (bestFont != null) t.font = bestFont;
+		else if (fonts.length > 0) t.font = fonts[fonts.length - 1];
+		else t.font = origFont;
 	}
 }

@@ -701,10 +701,19 @@ class IncrementalUpdateContext {
 				}
 
 			case TransCrossfade(duration, easing):
+				// Sequential: hide runs over `duration`, show waits `duration` then fades in.
+				// Total visible transition = 2 * duration. The new element stays at alpha 0
+				// until the old has finished hiding, producing a true cross-through-zero blend.
 				if (show) {
 					addToGraph(entry);
 					obj.alpha = 0.0;
-					final t = tm.tween(obj, duration, [Alpha(preAlpha)], easing);
+					final targetAlpha = preAlpha;
+					final capturedObj = obj;
+					final t = tm.tween(obj, duration * 2.0, [
+						Custom(() -> 0.0, (v) -> {
+							capturedObj.alpha = (v <= 0.5) ? 0.0 : (v - 0.5) * 2.0 * targetAlpha;
+						}, 1.0)
+					], easing);
 					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
 				} else {
 					final t = tm.tween(obj, duration, [Alpha(0.0)], easing);

@@ -2828,6 +2828,8 @@ class MacroManimParser {
 								error('@switch parameter "$switchParam" has type Tile which cannot be matched — @switch requires a discrete type');
 							case PPTFlags(_):
 								error('@switch parameter "$switchParam" has type Flags which is not supported by @switch — use @(param => bit[N]) instead');
+							case PPTArray:
+								error('@switch parameter "$switchParam" has type Array which cannot be matched — @switch requires a discrete type');
 							default:
 						}
 						expect(TClosed);
@@ -3913,7 +3915,7 @@ class MacroManimParser {
 				expect(TComma);
 				return parseTilesIteratorArgs(bitmapVar, defs);
 			default:
-				return error("expected iterator type: grid, layout, array, range, stateanim, tiles");
+				return error("expected iterator type: step, layout, array, range, stateanim, tiles");
 		}
 	}
 

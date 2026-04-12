@@ -481,4 +481,25 @@ class RichTextTest extends BuilderTestBase {
 		Assert.notNull(result);
 		Assert.isTrue(result.object.numChildren > 0);
 	}
+
+	// ==================== autoFitFill empty fonts fallback ====================
+
+	@Test
+	public function testAutoFitFillEmptyFontsKeepsOriginal():Void {
+		// Regression: ProgrammableBuilder.autoFitFill used to fall back to
+		// `fonts[fonts.length - 1]` when no candidate fit, which evaluated to
+		// `fonts[-1]` (null) on an empty fonts array — clobbering the text's
+		// original font with null and crashing downstream rendering.
+		// Empty fonts array must now leave the original font intact.
+		var origFont = hxd.res.DefaultFont.get();
+		var t = new h2d.Text(origFont);
+		t.text = "this is a long string that wont fit in 1px";
+
+		// fitWidth tiny so the original font does NOT satisfy the constraint,
+		// forcing the function past the early-return into the fallback branch.
+		bh.multianim.ProgrammableBuilder.autoFitFill(t, [], 1.0, null);
+
+		Assert.notNull(t.font, "font must not be null after empty-fonts fallback");
+		Assert.equals(origFont, t.font, "font must remain the original when fonts array is empty");
+	}
 }

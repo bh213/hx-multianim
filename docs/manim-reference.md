@@ -1267,7 +1267,7 @@ Declare animated transitions for parameter changes inside programmable elements.
 |------|-------------|
 | `none` | Instant visibility (default behavior) |
 | `fade(duration, ?easing)` | One-sided alpha fade (showing element fades in, hiding fades out independently) |
-| `crossfade(duration, ?easing)` | Both old and new states overlap with simultaneous alpha blend |
+| `crossfade(duration, ?easing)` | Sequential blend-through-zero: old fades out over `duration`, then new fades in over `duration` (total = 2 × `duration`) |
 | `flipX(duration, ?easing)` | Scale X to 0 then back to 1 (half-duration each) |
 | `flipY(duration, ?easing)` | Scale Y to 0 then back to 1 (half-duration each) |
 | `slide(direction, duration, ?distance, ?easing)` | Position + alpha offset animation (distance defaults to 50px) |

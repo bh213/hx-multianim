@@ -982,21 +982,21 @@ class AnimParser implements AnimParserResult {
 				}
 
 				var playlist = findPlaylist(state, anim, definedStates);
-				if (playlist == null) throw 'no playlist for ${state}, id ${anim.name}';
+				if (playlist == null) syntaxError('no playlist for ${state}, id ${anim.name}');
 			}
 		}
 
 		for (anim in animations) {
-			if (anim.visited == false) throw 'animation ${anim.name} not reachable';
+			if (anim.visited == false) syntaxError('animation ${anim.name} not reachable');
 			for (ek => ev in anim.extraPoint) {
 				for (ePoint in ev) {
 					if (ePoint.visited == false)
-						throw 'Extra point ${ek} in anim ${anim.name} not reachable ${ePoint.states}';
+						syntaxError('Extra point ${ek} in anim ${anim.name} not reachable ${ePoint.states}');
 				}
 			}
 			for (pl in anim.playlist) {
 				if (pl.visited == false)
-					throw 'Playlist in anim ${anim.name} not reachable ${pl.states}';
+					syntaxError('Playlist in anim ${anim.name} not reachable ${pl.states}');
 			}
 		}
 		this.metadata = metadataMap.count() > 0 ? new AnimMetadata(metadataMap) : null;
@@ -1201,22 +1201,31 @@ class AnimParser implements AnimParserResult {
 				condValue = ACVNot(innerVal);
 			case APGreaterEq: // >= (#8)
 				advance();
-				condValue = ACVCompare(ACmpGte, expectIdentifier());
+				condValue = ACVCompare(ACmpGte, expectSignedIdentifier());
 			case APLessEq: // <= (#8)
 				advance();
-				condValue = ACVCompare(ACmpLte, expectIdentifier());
+				condValue = ACVCompare(ACmpLte, expectSignedIdentifier());
 			case APGreater: // > (#8)
 				advance();
-				condValue = ACVCompare(ACmpGt, expectIdentifier());
+				condValue = ACVCompare(ACmpGt, expectSignedIdentifier());
 			case APLess: // < (#8)
 				advance();
-				condValue = ACVCompare(ACmpLt, expectIdentifier());
+				condValue = ACVCompare(ACmpLt, expectSignedIdentifier());
 			default:
 				condValue = syntaxError("Expected =>, !=, >=, <=, >, or < in conditional");
 		}
 
 		expect(APClosed);
+		if (states.exists(stateName))
+			syntaxError('duplicate state "$stateName" in conditional');
 		states.set(stateName, condValue);
+	}
+
+	// Accepts an optional leading minus so comparisons like @(level >= -1) parse.
+	function expectSignedIdentifier():String {
+		final negative = match(APMinus);
+		final s = expectIdentifier();
+		return negative ? "-" + s : s;
 	}
 
 	function parseConditionalValueList():Array<String> {

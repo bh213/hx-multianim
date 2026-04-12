@@ -709,7 +709,7 @@ Programmable elements can declare animated transitions for parameter changes. Wh
 **Transition types:**
 - `none` — instant (default behavior)
 - `fade(duration, ?easing)` — one-sided alpha animation (showing fades in, hiding fades out)
-- `crossfade(duration, ?easing)` — simultaneous alpha blend of old and new states
+- `crossfade(duration, ?easing)` — sequential blend-through-zero: old state fades out over `duration`, then new state fades in over `duration` (total wall-clock duration = 2 × `duration`)
 - `flipX(duration, ?easing)` — horizontal flip (scaleX to 0 then back to 1)
 - `flipY(duration, ?easing)` — vertical flip (scaleY to 0 then back to 1)
 - `slide(direction, duration, ?distance, ?easing)` — position + alpha offset (directions: `left`, `right`, `up`, `down`; distance defaults to 50px)

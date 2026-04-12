@@ -397,6 +397,62 @@ animation @(level < 3) {
 	}
 
 	@Test
+	public function testParseComparisonConditionalNegativeInteger() {
+		// Regression: comparison conditionals used expectIdentifier() which
+		// rejected a leading minus, so @(level >= -1) failed to parse.
+		// expectSignedIdentifier() now accepts an optional leading APMinus.
+		var result = parseAnimExpectingSuccess('
+sheet: testSheet
+states: level(-1, 0, 1, 2)
+animation @(level >= -1) {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist {
+        sheet: "test_high"
+    }
+}
+animation @(level < -1) {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist {
+        sheet: "test_neg"
+    }
+}
+');
+		Assert.notNull(result, "@(state >= -N) negative comparison should parse");
+		// Verify the comparison value is preserved with its sign — match runtime
+		// state "0" against the >= -1 selector and assert it succeeds.
+		Assert.isTrue(AnimParser.matchConditionalValue(ACVCompare(ACmpGte, "-1"), "0"));
+		Assert.isTrue(AnimParser.matchConditionalValue(ACVCompare(ACmpGte, "-1"), "-1"));
+		Assert.isFalse(AnimParser.matchConditionalValue(ACVCompare(ACmpGte, "-1"), "-2"));
+	}
+
+	@Test
+	public function testParseConditionalDuplicateStateKeyRejected() {
+		// Regression: stacking two conditionals on the same state key
+		// (`@(level >= 3) @(level <= 5)`) used to silently overwrite the first
+		// entry in the conditional map, so only the last comparison applied.
+		// Parser now rejects duplicate keys with a clear error.
+		var error = parseAnimExpectingError('
+sheet: testSheet
+states: level(1, 2, 3, 4, 5)
+animation @(level >= 3) @(level <= 5) {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist {
+        sheet: "test_mid"
+    }
+}
+');
+		Assert.notNull(error, "Should error on duplicate state key in stacked conditionals");
+		Assert.stringContains("level", error);
+		Assert.stringContains("duplicate", error);
+	}
+
+	@Test
 	public function testParseRangeConditional() {
 		var result = parseAnimExpectingSuccess('
 sheet: testSheet

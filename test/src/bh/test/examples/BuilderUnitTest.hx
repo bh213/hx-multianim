@@ -4992,6 +4992,63 @@ class BuilderUnitTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testTransitionCrossfadeSequentialTiming():Void {
+		// Regression: crossfade(D) used to run a single one-sided alpha tween
+		// over D so old + new states overlapped at ~0.5 alpha at the midpoint.
+		// New behavior is sequential blend-through-zero — old fades fully to 0
+		// over D, new waits at alpha 0 then fades from 0 to its target alpha
+		// over another D, total wall-clock = 2 * D.
+		final D = 0.4;
+		final tm = new bh.base.TweenManager();
+		final builder = builderFromSource('
+			#test programmable(status:[a,b]=a) {
+				transition {
+					status: crossfade($D)
+				}
+				@(status=>a) bitmap(generated(color(10, 10, #ff0000))): 0,0
+				@(status=>b) bitmap(generated(color(10, 10, #00ff00))): 0,0
+			}
+		');
+		builder.tweenManager = tm;
+		final result = builder.buildWithParameters("test", ["status" => "a"], null, null, true);
+		Assert.notNull(result);
+
+		// Initial: sentinel_a + wrapperA + sentinel_b = 3 children. wrapperA is
+		// the immediate child whose alpha is tweened (NOT the inner h2d.Bitmap).
+		final wrapperA = result.object.getChildAt(1);
+		Assert.notNull(wrapperA.parent, "A wrapper should be in graph at start");
+		Assert.floatEquals(1.0, wrapperA.alpha, 0.001);
+
+		// Trigger crossfade — wrapperB gets inserted right after sentinel_b.
+		result.setParameter("status", "b");
+		final wrapperB = result.object.getChildAt(3);
+		Assert.notNull(wrapperB, "B wrapper should be in graph during crossfade");
+
+		Assert.isTrue(tm.hasTweens(wrapperA), "A must have an outgoing tween");
+		Assert.isTrue(tm.hasTweens(wrapperB), "B must have an incoming tween");
+
+		// First update consumed by skipFirstDt.
+		tm.update(0.0);
+
+		// Sample inside the FIRST half (t < D) — this is the diagnostic
+		// difference between old and new behavior. With the old simultaneous
+		// crossfade, B would already be fading in at t=0.7*D. With the new
+		// sequential behavior B must still be completely invisible while A is
+		// most of the way through its hide tween.
+		tm.update(D * 0.7);
+		Assert.isTrue(wrapperA.alpha < 0.5,
+			'A should be well past half-faded at t=0.7*D, got ${wrapperA.alpha}');
+		Assert.floatEquals(0.0, wrapperB.alpha, 0.001,
+			'B must still be fully invisible during the first half, got ${wrapperB.alpha}');
+
+		// Advance past 2*D so both tweens complete: A removed from graph,
+		// B at its target alpha 1.0.
+		tm.update(D * 1.4);
+		Assert.floatEquals(1.0, wrapperB.alpha, 0.05, 'B alpha after 2*D expected ~1, got ${wrapperB.alpha}');
+		Assert.isNull(wrapperA.parent, "A should be removed from graph after crossfade completes");
+	}
+
+	@Test
 	public function testTransitionWithoutTransitionBlockIsInstant():Void {
 		final tm = new bh.base.TweenManager();
 		final builder = builderFromSource("

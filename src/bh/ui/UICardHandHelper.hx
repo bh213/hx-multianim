@@ -1055,6 +1055,15 @@ class UICardHandHelper implements UIHigherOrderComponent {
 			if (!targeting.arrowEnabled || !cardCanTarget)
 				currentTargetId = targeting.updateHighlight(sceneCursorX, sceneCursorY, entry.descriptor.id);
 		}
+		// Override the arrow's valid color via canPlayCard check, so the player
+		// gets immediate red feedback over invalid targets (e.g. unboardable
+		// tiles for shuttle cards). null = use default hover detection.
+		if (canPlayCard != null && draggedEntry != null) {
+			var result:TargetingResult = currentTargetId != null ? TargetZone(currentTargetId) : NoTarget;
+			targeting.forceValid = canPlayCard(draggedEntry.descriptor.id, result);
+		} else {
+			targeting.forceValid = null;
+		}
 	}
 
 	function enterTargetingMode(entry:CardEntry):Void {

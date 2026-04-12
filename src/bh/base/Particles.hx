@@ -119,6 +119,10 @@ private class Particle extends h2d.SpriteBatch.BatchElement {
 	public var life : Float = 0;
 	public var delay : Float = 0;
 
+	// Set by init() when emitFilter rejects the particle. Suppresses OnBirth/OnDeath
+	// sub-emitter triggers so rejections don't cascade into an explosive spawn loop.
+	public var rejected : Bool = false;
+
 	// For sub-emitter interval tracking
 	public var lastSubEmitTime : Float = 0;
 
@@ -147,9 +151,11 @@ private class Particle extends h2d.SpriteBatch.BatchElement {
 			delay -= dt;
 			if( delay <= 0 ){
 				group.init(this);
-				visible = true;
-				// Trigger OnBirth sub-emitters
-				group.triggerSubEmitters(this, OnBirth);
+				if (!rejected) {
+					visible = true;
+					// Trigger OnBirth sub-emitters
+					group.triggerSubEmitters(this, OnBirth);
+				}
 			}
 			else {
 				visible = false;
@@ -250,6 +256,10 @@ private class Particle extends h2d.SpriteBatch.BatchElement {
 					}
 					group.init(this);
 					delay = 0;
+					// Skip lifecycle check — local timeNormalized is now stale
+					// relative to the freshly reset life, and would otherwise
+					// double-init if the pre-update value was already > 1.
+					return true;
 				} else {
 					group.liveCount--;
 					return false;
@@ -262,8 +272,10 @@ private class Particle extends h2d.SpriteBatch.BatchElement {
 
 		// Lifecycle
 		if( timeNormalized > 1 ) {
-			// Trigger OnDeath sub-emitters
-			group.triggerSubEmitters(this, OnDeath);
+			// Trigger OnDeath sub-emitters (skip for filter-rejected particles
+			// to avoid an explosive spawn loop at the rejection boundary).
+			if (!rejected)
+				group.triggerSubEmitters(this, OnDeath);
 
 			if( group.emitLoop ) {
 				if (group.shutdownActive && group.liveCount > group.shutdownTargetCount) {
@@ -766,6 +778,7 @@ class ParticleGroup {
 
 	function init( p : Particle ):Void {
 		var g = this;
+		p.rejected = false;
 		var size = g.size * (1 + srand() * g.sizeRand);
 		srand(); // preserved to keep RNG determinism for reference snapshots
 		var vrot = g.rotSpeed * (1 + rand() * g.rotSpeedRand) * (srand() < 0 ? -1 : 1);
@@ -856,13 +869,13 @@ class ParticleGroup {
 		p.vr = vrot;
 
 		// Handle animation frame selection
-		if (tiles.length == 0)
-			return;
-		if (animationRepeat == 0 && tiles.length > 1) {
-			// Random frame when animation is disabled
-			p.t = tiles[randInt(tiles.length)];
-		} else {
-			p.t = tiles[0];
+		if (tiles.length > 0) {
+			if (animationRepeat == 0 && tiles.length > 1) {
+				// Random frame when animation is disabled
+				p.t = tiles[randInt(tiles.length)];
+			} else {
+				p.t = tiles[0];
+			}
 		}
 
 		p.vx *= speed;
@@ -919,6 +932,7 @@ class ParticleGroup {
 			if (!filter(wx, wy)) {
 				p.visible = false;
 				p.life = p.maxLife + 1;
+				p.rejected = true;
 			}
 		}
 	}
@@ -1235,10 +1249,15 @@ class ParticleGroup {
 			if (shutdownSpeedCurve != null)
 				shutdownSpeedMult = Math.max(0, 1.0 - shutdownSpeedCurve.getValue(rate));
 
-			// Once curve says 0 particles and duration elapsed, switch to natural die-off
+			// Once curve says 0 particles and duration elapsed, switch to natural die-off.
+			// Reset the shutdown multipliers so any remaining live particles finish
+			// their lifetime at full alpha/size/speed instead of inheriting terminal (~0) values.
 			if (rate >= 1.0 && shutdownTargetCount <= 0) {
 				emitLoop = false;
 				shutdownActive = false;
+				shutdownAlphaMult = 1.0;
+				shutdownSizeMult = 1.0;
+				shutdownSpeedMult = 1.0;
 			}
 		}
 
@@ -1324,6 +1343,11 @@ class Particles extends h2d.Drawable {
 		Removes the group from the Particles.
 	**/
 	public function removeGroup( id:String ):Void {
+		var g = groups.get(id);
+		if (g != null) {
+			g.batch.clear();
+			g.batch.remove();
+		}
 		groups.remove(id);
 	}
 

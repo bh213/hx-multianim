@@ -852,4 +852,105 @@ class ParticleRuntimeTest extends utest.Test {
 		Assert.isTrue(g1.isShuttingDown());
 		Assert.isTrue(g2.isShuttingDown());
 	}
+
+	// ==================== Regression: emitFilter rejection cascade ====================
+
+	@Test
+	public function testEmitFilterRejectsDoNotTriggerSubEmitters():Void {
+		// Regression: filter-rejected particles used to fire OnBirth in the
+		// delayed-spawn init step AND OnDeath when their forced-expired
+		// lifecycle tripped, turning every reject into an explosive sub-emitter
+		// cascade. Both triggers must check `rejected` first.
+		// Use emitDelay > 0 with emitSync = 1.0 so all particles route through
+		// the delayed-spawn path in update() (not the immediate start() spawn).
+		var p = createParticles();
+		var mainGroup = createGroup("main", p);
+		var sparks = createGroup("sparks", p);
+
+		// Sparks must have its own nparts = 0 so its start() (triggered by
+		// emitBurstAt's autostart) doesn't create baseline particles that
+		// would mask sub-emitter spawns.
+		var ds:Dynamic = sparks;
+		ds.nparts = 0;
+
+		var dm:Dynamic = mainGroup;
+		dm.nparts = 10;
+		dm.life = 0.5;
+		dm.emitSync = 1.0;
+		dm.emitDelay = 0.1;
+		dm.subEmitters = ([
+			{groupId: "sparks", trigger: OnBirth, probability: 1.0,
+				inheritVelocity: 0.0, offsetX: 0.0, offsetY: 0.0, burstCount: 5},
+			{groupId: "sparks", trigger: OnDeath, probability: 1.0,
+				inheritVelocity: 0.0, offsetX: 0.0, offsetY: 0.0, burstCount: 5},
+		] : Array<SubEmitter>);
+
+		// Reject every spawn (called inside init() during the delayed step)
+		mainGroup.emitFilter = (x:Float, y:Float) -> false;
+
+		// Advance past emitDelay (0.1) and through the forced expiry so the
+		// lifecycle branch runs OnDeath as well.
+		advanceGroup(mainGroup, 0.5);
+
+		Assert.equals(0, countParticles(sparks),
+			'Rejected particles must not trigger OnBirth/OnDeath sub-emitters (got ${countParticles(sparks)} sparks)');
+	}
+
+	// ==================== Regression: shutdown terminal multipliers reset ====================
+
+	@Test
+	public function testShutdownResetsMultipliersAfterNaturalDieOff():Void {
+		// Regression: when shutdown's count curve reached rate >= 1.0 the flag
+		// was cleared so any remaining live particles could finish naturally,
+		// but the alpha/size/speed multipliers were left at their terminal (~0)
+		// values, so leftover particles rendered invisible/zero-sized.
+		var p = createParticles();
+		var g = createGroup("main", p, true);
+		var dg:Dynamic = g;
+		dg.life = 5.0; // long enough that particles outlive the shutdown window
+
+		g.shutdownAlphaCurve = new bh.paths.Curve(null, Linear, null);
+		g.shutdownSizeCurve = new bh.paths.Curve(null, Linear, null);
+		g.shutdownSpeedCurve = new bh.paths.Curve(null, Linear, null);
+
+		advanceGroup(g, 0.1);
+		g.shutdown(0.2);
+		Assert.isTrue(g.isShuttingDown());
+
+		// Run past full shutdown duration so the curve clamps and the
+		// shutdownActive flag flips off.
+		advanceGroup(g, 0.5);
+
+		Assert.isFalse(g.isShuttingDown(),
+			"shutdown should have completed (flag cleared) after duration");
+		Assert.floatEquals(1.0, g.shutdownAlphaMult, 0.001,
+			"alphaMult must reset to 1 once shutdownActive clears");
+		Assert.floatEquals(1.0, g.shutdownSizeMult, 0.001,
+			"sizeMult must reset to 1 once shutdownActive clears");
+		Assert.floatEquals(1.0, g.shutdownSpeedMult, 0.001,
+			"speedMult must reset to 1 once shutdownActive clears");
+	}
+
+	// ==================== Regression: removeGroup clears its batch ====================
+
+	@Test
+	public function testRemoveGroupClearsBatch():Void {
+		// Regression: Particles.removeGroup(id) used to drop the entry from the
+		// map but leave the underlying SpriteBatch attached as a child of the
+		// Particles object, so its particles kept rendering until the parent
+		// was disposed. Now the batch is cleared and removed from the scene.
+		var p = createParticles();
+		var g = createGroup("main", p);
+		g.start();
+
+		final batch = g.batch;
+		Assert.notNull(batch.parent, "batch should be attached to scene before removeGroup");
+		Assert.isTrue(countParticles(g) > 0, "expected live particles before removeGroup");
+
+		p.removeGroup("main");
+
+		Assert.isNull(p.groups.get("main"), "group should be removed from map");
+		Assert.isNull(batch.parent, "batch must be detached from scene after removeGroup");
+		Assert.isNull(batch.first, "batch element list must be cleared after removeGroup");
+	}
 }

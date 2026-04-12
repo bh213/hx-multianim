@@ -4176,6 +4176,23 @@ class ParserErrorTest extends utest.Test {
 			'Error should mention numeric requirement, got: $error');
 	}
 
+	@Test
+	public function testSwitchRejectsArrayParam() {
+		// Regression: PPTArray hit the `default:` branch in @switch's type
+		// gate, so @switch on a `:array` param parsed silently and emitted
+		// arms that could never match. Now rejected at parse time.
+		var error = parseExpectingError('
+			#test programmable(items:array) {
+				@switch(items) {
+					default: bitmap(generated(color(10, 10, #600)));
+				}
+			}
+		');
+		Assert.notNull(error, "Should throw error for @switch on array param");
+		Assert.isTrue(error.indexOf("Array") >= 0,
+			'Error should mention Array type, got: $error');
+	}
+
 	// ===== Conditional block @(cond) { ... } tests =====
 
 	@Test

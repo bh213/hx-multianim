@@ -97,7 +97,7 @@ class ManimKeywordInfo {
 		"LAYERS", "MASK", "TILEGROUP", "INTERACTIVE", "SLOT", "SLOT_CONTENT", "SPACER",
 		"POINT", "APPLY", "GRAPHICS", "PIXELS", "PARTICLES", "REPEAT", "REPEAT2D",
 		"STATIC_REF", "DYNAMIC_REF", "PLACEHOLDER", "STATEANIM", "STATEANIM_CONSTRUCT",
-		"AUTOTILE", "FINAL_VAR",
+		"AUTOTILE", "FINAL_VAR", "SWITCH",
 	];
 
 	public static function elementName(ctor:String):Null<String> {
@@ -127,7 +127,7 @@ class ManimKeywordInfo {
 		"PATHS", "ANIMATED_PATH", "CURVES", "PARTICLES", "APPLY", "LAYERS", "MASK",
 		"REPEAT", "REPEAT2D", "STATIC_REF", "PLACEHOLDER", "DYNAMIC_REF",
 		"SLOT", "SLOT_CONTENT", "INTERACTIVE", "GRAPHICS", "DATA", "AUTOTILE",
-		"ATLAS2", "PALETTE", "FINAL_VAR", "NINEPATCH",
+		"ATLAS2", "PALETTE", "FINAL_VAR", "NINEPATCH", "SWITCH",
 	];
 
 	// ---- Parameter types (from DefinitionType — exhaustive switch) ----
