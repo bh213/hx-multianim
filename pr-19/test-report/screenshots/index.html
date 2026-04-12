@@ -327,15 +327,15 @@
 </head>
 <body>
     <h1>Visual Test Report</h1>
-    <div class="timestamp">Generated: 2026-04-12 14:05:48</div>
+    <div class="timestamp">Generated: 2026-04-12 20:19:13</div>
     <div class="summary">
         <strong>Summary:</strong> 98 tests,         <span style="color: #4CAF50;">98 passed</span>,         <span style="color: #f44336;">0 failed</span>
-        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1.2s, visual 24.4s)</span>
+        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1.2s, visual 22.6s)</span>
     </div>
     <div class="unit-tests-section">
         <h2>Unit Tests</h2>
         <div class="unit-tests-summary all-passed">
-            <strong>5397 assertions:</strong>             <span style="color: #4CAF50;">5397 passed</span>
+            <strong>5438 assertions:</strong>             <span style="color: #4CAF50;">5438 passed</span>
             <button class="expand-btn" id="unitToggleBtn" onclick="toggleUnitDetails()">Show Details</button>
         </div>
         <div class="unit-details" id="unitDetails">
@@ -501,6 +501,8 @@
                 <div class="unit-method pass">testParseBasicConditional: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testParseCenter: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testParseComparisonConditional: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testParseComparisonConditionalNegativeInteger: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testParseConditionalDuplicateStateKeyRejected: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testParseDuplicateFinalConstant: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testParseDuplicateSheet: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testParseDuplicateStates: OK <span class="dots">..</span></div>
@@ -972,6 +974,7 @@
                 <div class="unit-method pass">testTernaryStringGeFalse: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testTernaryStringGt: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testTextCreatesPlainText: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testTransitionCrossfadeSequentialTiming: OK <span class="dots">..........</span></div>
                 <div class="unit-method pass">testTransitionInterruptionCancelsOldAndStartsNew: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testTransitionNoTweenManagerFallsBackToInstant: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testTransitionWithTweenManagerCreatesTween: OK <span class="dots">...</span></div>
@@ -1099,6 +1102,9 @@
                 <div class="unit-method pass">testClearTargets: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testClearTargetsUnhighlightsActive: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testCustomArrowSnapProvider: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testForceValidFalseOverridesHoveredTarget: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testForceValidNullFallsBackToHoverDetection: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testForceValidTrueOverridesNoTarget: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testGetObjectReturnsArrowContainer: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testHitTestTargetsHit: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testHitTestTargetsMiss: OK <span class="dots">.</span></div>
@@ -1561,6 +1567,7 @@
                 <div class="unit-method pass">testSwitchNestedConditionals: OK <span class="dots">..........</span></div>
                 <div class="unit-method pass">testSwitchRangeArm: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testSwitchRangeNonInteger: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testSwitchRejectsArrayParam: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testSwitchRejectsFlagsParam: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testSwitchRejectsFloatParam: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testSwitchRejectsRangeArmOnColorParam: OK <span class="dots">..</span></div>
@@ -1640,6 +1647,7 @@
                 <div class="unit-method pass">testEmitFilterAcceptsAll: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testEmitFilterDiscardsParticles: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testEmitFilterRejectsAll: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testEmitFilterRejectsDoNotTriggerSubEmitters: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testEmitFilterSelectivelyAccepts: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testExternallyDrivenAdvanceTimeMovesParticles: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testExternallyDrivenFrozenWithoutAdvance: OK <span class="dots">....</span></div>
@@ -1650,12 +1658,14 @@
                 <div class="unit-method pass">testNonRelativeVsRelativeGroupPosition: OK <span class="dots">......</span></div>
                 <div class="unit-method pass">testRemoveForceFieldAtFirst: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testRemoveForceFieldAtMiddle: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testRemoveGroupClearsBatch: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testShutdownBurstStillWorks: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testShutdownConfiguredDuration: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testShutdownInstant: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testShutdownNoopOnNonLooping: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testShutdownOnParticlesForwardsToAllGroups: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testShutdownRate: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testShutdownResetsMultipliersAfterNaturalDieOff: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testShutdownWithAlphaCurve: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testShutdownWithDuration: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testShutdownWithSizeCurve: OK <span class="dots">.</span></div>
@@ -1883,6 +1893,7 @@
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">RichTextTest</div>
+                <div class="unit-method pass">testAutoFitFillEmptyFontsKeepsOriginal: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testConvertAlignTag: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testConvertBrTag: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testConvertBrTagMultiple: OK <span class="dots">.</span></div>
