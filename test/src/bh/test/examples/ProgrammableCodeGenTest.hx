@@ -4813,6 +4813,132 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		Assert.equals(10, Std.int(bitmaps[0].tile.width));
 	}
 
+	// ==================== @switch arm context propagation (B1, B2) ====================
+
+	// B1: @switch arm contains a graphics element with inner positions using
+	// $grid.pos(...). drawGraphicsElements reads the gridCoordinateSystem
+	// argument passed into build() — rebuildSwitchArmByOrdinal currently
+	// passes `cast null`, so calculatePosition throws 'gridCoordinateSystem
+	// is null' inside the arm. The failure surfaces both at initial construction
+	// (the default arm is built through the same rebuild path) and on every
+	// setter-driven switch flip.
+	@Test
+	public function testCodegenSwitchArmGridContext():Void {
+		final mp = createMp();
+		// Initial build: arm `a` has a graphics(rect..., rect...) using $grid.pos
+		// Must not null-deref on the grid coordinate system.
+		var threw = false;
+		var errMsg = "";
+		var instance:Dynamic = null;
+		try {
+			instance = mp.switchGridArm.create();
+		} catch (e:Dynamic) {
+			threw = true;
+			errMsg = Std.string(e);
+		}
+		Assert.isFalse(threw,
+			"switchGridArm.create() should not throw — arm build must inherit programmable's grid system (got: " + errMsg + ")");
+		Assert.notNull(instance, "switchGridArm should be constructed");
+
+		// Flip to arm b — same failure path at rebuild time.
+		threw = false;
+		errMsg = "";
+		try {
+			instance.setMode(1);
+		} catch (e:Dynamic) {
+			threw = true;
+			errMsg = Std.string(e);
+		}
+		Assert.isFalse(threw,
+			"switchGridArm.setMode(1) should not throw — arm rebuild must inherit programmable's grid system (got: " + errMsg + ")");
+	}
+
+	// B2: @switch arm with callback("name") placeholder — rebuild must inherit
+	// the parent BuilderParameters.callback so user callbacks still fire after
+	// a switch flip. Today rebuildSwitchArmByOrdinal constructs a fresh
+	// `{callback: defaultCallback}` and the user callback is dropped.
+	@Test
+	public function testCodegenSwitchArmCallbackInheritance():Void {
+		final mp = createMp();
+		final instance = mp.switchCallbackArm.create(); // mode=a, callback-free arm
+
+		// Reach into the underlying MultiAnimBuilder and install a custom
+		// callback before triggering the switch flip. The instance's setter
+		// will push/pop builder state around the rebuild; a correct
+		// implementation propagates this callback into the arm build.
+		final factory = mp.switchCallbackArm;
+		final builder:bh.multianim.MultiAnimBuilder = @:privateAccess cast factory._builder;
+		Assert.notNull(builder, "factory should have a builder after create()");
+
+		var callbackInvocations = 0;
+		final sentinel = new h2d.Object();
+		@:privateAccess {
+			builder.builderParams = {
+				callback: (request) -> {
+					return switch request {
+						case bh.multianim.MultiAnimBuilder.CallbackRequest.Placeholder(name) if (name == "armPh"):
+							callbackInvocations++;
+							bh.multianim.MultiAnimBuilder.CallbackResult.CBRObject(sentinel);
+						default:
+							bh.multianim.MultiAnimBuilder.CallbackResult.CBRNoResult;
+					};
+				},
+			};
+		}
+
+		instance.setMode(1); // flip to arm b, which has placeholder(nothing, callback("armPh"))
+
+		Assert.equals(1, callbackInvocations,
+			"arm b rebuild should invoke the parent's builderParams.callback for the placeholder");
+		// The sentinel object returned by the callback should be part of the instance tree.
+		Assert.isTrue(containsDescendant(instance, sentinel),
+			"arm b placeholder should host the sentinel object produced by the user callback");
+	}
+
+	// B3: parameterized slot body uses $grid.pos(...). buildSlotContent used to
+	// pass `cast null` for gridCS/hexCS, crashing on initial create and on every
+	// slot setParameter flip. Mirrors the @switch arm fix in rebuildSwitchArmByOrdinal.
+	@Test
+	public function testCodegenSlotParamGridContext():Void {
+		final mp = createMp();
+		var threw = false;
+		var errMsg = "";
+		var instance:Dynamic = null;
+		try {
+			instance = mp.slotParamContextHost.create();
+		} catch (e:Dynamic) {
+			threw = true;
+			errMsg = Std.string(e);
+		}
+		Assert.isFalse(threw,
+			"slotParamContextHost.create() should not throw — parameterized slot build must inherit programmable's grid system (got: " + errMsg + ")");
+		Assert.notNull(instance, "slotParamContextHost should be constructed");
+
+		// Flip slot state to `on` — same failure path at slot setParameter time.
+		// Use the typed getSlot_box() accessor (Dynamic dispatch of the generic
+		// getSlot(name, ?index, ?indexY) hits a HashLink arity mismatch).
+		final slot:bh.multianim.MultiAnimBuilder.SlotHandle = instance.getSlot_box();
+		Assert.notNull(slot, "box slot handle should exist");
+		threw = false;
+		errMsg = "";
+		try {
+			slot.setParameter("state", "on");
+		} catch (e:Dynamic) {
+			threw = true;
+			errMsg = Std.string(e);
+		}
+		Assert.isFalse(threw,
+			"slot.setParameter('state', 'on') should not throw — slot rebuild must use inherited grid system (got: " + errMsg + ")");
+	}
+
+	static function containsDescendant(root:h2d.Object, target:h2d.Object):Bool {
+		if (root == target) return true;
+		for (i in 0...root.numChildren) {
+			if (containsDescendant(root.getChildAt(i), target)) return true;
+		}
+		return false;
+	}
+
 	static function addTransLabel(parent:h2d.Object, font:Null<h2d.Font>, label:String, x:Float, y:Float):Void {
 		if (font == null) return;
 		var text = new h2d.Text(font, parent);

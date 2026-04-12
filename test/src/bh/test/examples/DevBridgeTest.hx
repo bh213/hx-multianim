@@ -101,39 +101,39 @@ class DevBridgeTest extends BuilderTestBase {
 
 	@Test
 	public function testResolvedParamToDynamic_value():Void {
-		Assert.equals(42, DevBridge.resolvedParamToDynamic(Value(42)));
+		Assert.equals(42, StateRestorer.resolvedToDynamic(Value(42)));
 	}
 
 	@Test
 	public function testResolvedParamToDynamic_valueF():Void {
-		Assert.floatEquals(3.14, DevBridge.resolvedParamToDynamic(ValueF(3.14)));
+		Assert.floatEquals(3.14, StateRestorer.resolvedToDynamic(ValueF(3.14)));
 	}
 
 	@Test
 	public function testResolvedParamToDynamic_string():Void {
-		Assert.equals("hello", DevBridge.resolvedParamToDynamic(StringValue("hello")));
+		Assert.equals("hello", StateRestorer.resolvedToDynamic(StringValue("hello")));
 	}
 
 	@Test
 	public function testResolvedParamToDynamic_flag():Void {
-		Assert.equals(7, DevBridge.resolvedParamToDynamic(Flag(7)));
+		Assert.equals(7, StateRestorer.resolvedToDynamic(Flag(7)));
 	}
 
 	@Test
 	public function testResolvedParamToDynamic_index():Void {
-		var result = DevBridge.resolvedParamToDynamic(Index(2, "active"));
+		var result = StateRestorer.resolvedToDynamic(Index(2, "active"));
 		Assert.isTrue(Std.isOfType(result, String));
 		Assert.equals("active", cast(result, String));
 	}
 
 	@Test
 	public function testResolvedParamToDynamic_expressionAlias():Void {
-		Assert.isNull(DevBridge.resolvedParamToDynamic(ExpressionAlias(RVString("x"))));
+		Assert.isNull(StateRestorer.resolvedToDynamic(ExpressionAlias(RVString("x"))));
 	}
 
 	@Test
 	public function testResolvedParamToDynamic_tileSource():Void {
-		Assert.isNull(DevBridge.resolvedParamToDynamic(TileSourceValue(TSFile(RVString("img.png")))));
+		Assert.isNull(StateRestorer.resolvedToDynamic(TileSourceValue(TSFile(RVString("img.png")))));
 	}
 
 	// ==================== Trace Capture ====================

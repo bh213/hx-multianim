@@ -156,32 +156,65 @@ class AnimAnalyzer {
 		final lines = text.split("\n");
 		var depth = 0;
 		var context = TopLevel;
+		var inBlockComment = false;
 
-		for (i in 0...Std.int(Math.min(cursorLine + 1, lines.length))) {
-			final line = lines[i].trim();
+		final lastLine = Std.int(Math.min(cursorLine + 1, lines.length));
+		for (i in 0...lastLine) {
+			final rawLine = lines[i];
+			final trimmed = rawLine.trim();
 
-			if (line.startsWith("animation ") || line.startsWith("anim ")) {
-				if (depth == 0) context = InAnimation;
-			} else if (line.startsWith("metadata")) {
-				if (depth == 0) context = InMetadata;
-			} else if (line.startsWith("playlist")) {
-				if (depth == 1) context = InPlaylist;
-			} else if (line.startsWith("extrapoints")) {
-				if (depth == 1) context = InExtrapoints;
-			} else if (line.startsWith("filters")) {
-				if (depth == 1) context = InFilters;
-			}
-
-			for (k in 0...lines[i].length) {
-				final c = lines[i].charCodeAt(k);
-				if (c == "{".code) depth++;
-				else if (c == "}".code) {
-					depth--;
-					if (depth <= 0) { context = TopLevel; depth = 0; } else if (depth <= 1) context = InAnimation;
+			// Keyword detection only outside block comments
+			if (!inBlockComment) {
+				if (trimmed.startsWith("animation ") || trimmed.startsWith("anim ")) {
+					if (depth == 0) context = InAnimation;
+				} else if (trimmed.startsWith("metadata")) {
+					if (depth == 0) context = InMetadata;
+				} else if (trimmed.startsWith("playlist")) {
+					if (depth == 1) context = InPlaylist;
+				} else if (trimmed.startsWith("extrapoints")) {
+					if (depth == 1) context = InExtrapoints;
+				} else if (trimmed.startsWith("filters")) {
+					if (depth == 1) context = InFilters;
 				}
 			}
 
-			if (i == cursorLine && lines[i].trim().startsWith("@") && !lines[i].trim().startsWith("@final"))
+			// Brace counting aware of //, /* */ and "..." strings
+			var inString = false;
+			var k = 0;
+			final len = rawLine.length;
+			while (k < len) {
+				final c = rawLine.charCodeAt(k);
+				if (inBlockComment) {
+					if (c == "*".code && k + 1 < len && rawLine.charCodeAt(k + 1) == "/".code) {
+						inBlockComment = false;
+						k += 2;
+						continue;
+					}
+					k++;
+					continue;
+				}
+				if (inString) {
+					if (c == "\\".code && k + 1 < len) { k += 2; continue; }
+					if (c == "\"".code) inString = false;
+					k++;
+					continue;
+				}
+				if (c == "/".code && k + 1 < len) {
+					final n = rawLine.charCodeAt(k + 1);
+					if (n == "/".code) break; // rest of line is a line comment
+					if (n == "*".code) { inBlockComment = true; k += 2; continue; }
+				}
+				if (c == "\"".code) { inString = true; k++; continue; }
+				if (c == "{".code) depth++;
+				else if (c == "}".code) {
+					depth--;
+					if (depth <= 0) { context = TopLevel; depth = 0; }
+					else if (depth <= 1) context = InAnimation;
+				}
+				k++;
+			}
+
+			if (i == cursorLine && trimmed.startsWith("@") && !trimmed.startsWith("@final"))
 				return AfterAt;
 		}
 		return context;

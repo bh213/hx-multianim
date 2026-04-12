@@ -6498,6 +6498,12 @@ class MultiAnimBuilder {
 		if (slotParams == null)
 			throw 'buildSlotContent: slot "$slotName" has no parameters';
 
+		// Capture parent context BEFORE pushBuilderState resets builderParams.
+		// Slot children inherit the caller's callback/placeholderObjects and the
+		// programmable's grid/hex coordinate systems (resolved via node parent chain).
+		final parentBP = this.builderParams;
+		final gridCS = MultiAnimParser.getGridCoordinateSystem(slotNode);
+		final hexCS = MultiAnimParser.getHexCoordinateSystem(slotNode);
 		pushBuilderState();
 
 		// Build merged params: parent params converted to resolved + slot defaults
@@ -6521,7 +6527,11 @@ class MultiAnimBuilder {
 		this.indexedParams = mergedParams;
 
 		// Create incremental context for the slot
-		final builderParams:BuilderParameters = {callback: defaultCallback};
+		final builderParams:BuilderParameters = {
+			callback: (parentBP != null && parentBP.callback != null) ? parentBP.callback : defaultCallback,
+			placeholderObjects: parentBP != null ? parentBP.placeholderObjects : null,
+			scene: parentBP != null ? parentBP.scene : null,
+		};
 		this.builderParams = builderParams;
 		final slotCtx = new IncrementalUpdateContext(this, mergedParams, builderParams, slotNode);
 		this.incrementalMode = true;
@@ -6530,7 +6540,7 @@ class MultiAnimBuilder {
 		// Build slot children into container
 		final internalResults:InternalBuilderResults = {names: [], interactives: [], slots: [], dynamicRefs: new Map(), htmlTextsWithLinks: []};
 		for (childNode in resolveConditionalChildren(slotNode.children)) {
-			build(childNode, ObjectMode(container), cast null, cast null, internalResults, builderParams);
+			build(childNode, ObjectMode(container), cast gridCS, cast hexCS, internalResults, builderParams);
 		}
 
 		popBuilderState();
@@ -6617,6 +6627,12 @@ class MultiAnimBuilder {
 		container.removeChildren();
 		if (armIndex >= 0 && armIndex < arms.length) {
 			final arm = arms[armIndex];
+			// Capture parent context BEFORE pushBuilderState resets builderParams.
+			// Arm children inherit the caller's callback/placeholderObjects and the
+			// programmable's grid/hex coordinate systems (resolved via node parent chain).
+			final parentBP = this.builderParams;
+			final gridCS = MultiAnimParser.getGridCoordinateSystem(switchNode);
+			final hexCS = MultiAnimParser.getHexCoordinateSystem(switchNode);
 			pushBuilderState();
 			// Convert parent params to resolved index params
 			final resolvedParams:Map<String, ResolvedIndexParameters> = new Map();
@@ -6631,11 +6647,15 @@ class MultiAnimBuilder {
 			this.indexedParams = resolvedParams;
 			this.incrementalMode = false;
 			this.incrementalContext = null;
-			final bp:BuilderParameters = {callback: defaultCallback};
+			final bp:BuilderParameters = {
+				callback: (parentBP != null && parentBP.callback != null) ? parentBP.callback : defaultCallback,
+				placeholderObjects: parentBP != null ? parentBP.placeholderObjects : null,
+				scene: parentBP != null ? parentBP.scene : null,
+			};
 			this.builderParams = bp;
 			final ir:InternalBuilderResults = {names: [], interactives: [], slots: [], dynamicRefs: new Map(), htmlTextsWithLinks: []};
 			for (child in arm.children)
-				build(child, ObjectMode(container), cast null, cast null, ir, bp);
+				build(child, ObjectMode(container), cast gridCS, cast hexCS, ir, bp);
 			popBuilderState();
 		}
 	}

@@ -967,7 +967,7 @@ class DevBridge {
 					if (currentParams != null) {
 						var resolved = currentParams.get(paramName);
 						if (resolved != null) {
-							entry.currentValue = resolvedParamToDynamic(resolved);
+							entry.currentValue = StateRestorer.resolvedToDynamic(resolved);
 						}
 					}
 					parameters.push(entry);
@@ -992,14 +992,7 @@ class DevBridge {
 		// Aggregate across all active screens
 		var allInteractives:Array<Dynamic> = [];
 		for (s in screenManager.activeScreens) {
-			var name = "unknown";
-			for (n => screen in screenManager.configuredScreens) {
-				if (screen == s) {
-					name = n;
-					break;
-				}
-			}
-			var screenInteractives = getScreenInteractives(s, name);
+			var screenInteractives = getScreenInteractives(s, resolveScreenName(s));
 			for (entry in screenInteractives)
 				allInteractives.push(entry);
 		}
@@ -1201,7 +1194,7 @@ class DevBridge {
 			var snapshot = found.incrementalContext.snapshotParams();
 			var paramValues:Dynamic = {};
 			for (paramName => resolved in snapshot) {
-				var val = resolvedParamToDynamic(resolved);
+				var val = StateRestorer.resolvedToDynamic(resolved);
 				if (val != null)
 					Reflect.setField(paramValues, paramName, val);
 			}
@@ -1380,16 +1373,8 @@ class DevBridge {
 					throw DevBridgeError.notFound('Screen not found: $screenName');
 				screensToCheck.push({screen: screen, name: screenName});
 			} else {
-				for (s in screenManager.activeScreens) {
-					var name = "unknown";
-					for (n => screen in screenManager.configuredScreens) {
-						if (screen == s) {
-							name = n;
-							break;
-						}
-					}
-					screensToCheck.push({screen: s, name: name});
-				}
+				for (s in screenManager.activeScreens)
+					screensToCheck.push({screen: s, name: resolveScreenName(s)});
 			}
 
 			for (entry in screensToCheck) {
@@ -1485,16 +1470,8 @@ class DevBridge {
 				throw DevBridgeError.notFound('Screen not found: $screenName');
 			screensToSearch.push({screen: screen, name: screenName});
 		} else {
-			for (s in screenManager.activeScreens) {
-				var name = "unknown";
-				for (n => screen in screenManager.configuredScreens) {
-					if (screen == s) {
-						name = n;
-						break;
-					}
-				}
-				screensToSearch.push({screen: s, name: name});
-			}
+			for (s in screenManager.activeScreens)
+				screensToSearch.push({screen: s, name: resolveScreenName(s)});
 		}
 
 		for (entry in screensToSearch) {
@@ -1704,7 +1681,7 @@ class DevBridge {
 				var paramValues:Dynamic = {};
 				var hasParams = false;
 				for (paramName => resolved in snapshot) {
-					var val = resolvedParamToDynamic(resolved);
+					var val = StateRestorer.resolvedToDynamic(resolved);
 					if (val != null) {
 						Reflect.setField(paramValues, paramName, val);
 						hasParams = true;
@@ -1903,19 +1880,6 @@ class DevBridge {
 			}
 		}
 		return null;
-	}
-
-	static function resolvedParamToDynamic(p:ResolvedIndexParameters):Null<Dynamic> {
-		return switch p {
-			case Value(val): val;
-			case ValueF(val): val;
-			case StringValue(s): s;
-			case Flag(f): f;
-			case Index(_, name): name;
-			case ArrayString(arr): arr;
-			case ExpressionAlias(_): null;
-			case TileSourceValue(_): null;
-		};
 	}
 
 	static function defTypeToString(t:DefinitionType):Dynamic {
