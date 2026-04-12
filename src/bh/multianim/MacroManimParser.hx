@@ -235,6 +235,7 @@ private class MacroLexer {
 			if (c == '"'.code) {
 				pos++;
 				var buf = new StringBuf();
+				var closed = false;
 				while (pos < len) {
 					final sc = src.charCodeAt(pos);
 					if (sc == '\\'.code && pos + 1 < len) {
@@ -248,11 +249,15 @@ private class MacroLexer {
 					}
 					if (sc == '"'.code) {
 						pos++;
+						closed = true;
 						break;
 					}
 					if (sc == '\n'.code) { line++; lineStart = pos + 1; }
 					buf.addChar(sc);
 					pos++;
+				}
+				if (!closed) {
+					throw '$sourceName:$startLine:$startCol: Unterminated string, missing closing double quote';
 				}
 				return new Token(TQuotedString(buf.toString()), startLine, startCol);
 			}
@@ -872,9 +877,12 @@ class MacroManimParser {
 			case TMinus:
 				advance();
 				switch (peek()) {
-					case TInteger(n) | THexInteger(n):
+					case TInteger(n):
 						advance();
 						return parseNextExpression(RVInteger(-stringToInt(n)), EAny);
+					case THexInteger(n):
+						advance();
+						return parseNextExpression(RVInteger(-stringToInt("0x" + n)), EAny);
 					case TFloat(n):
 						advance();
 						return parseNextExpression(RVFloat(-stringToFloat(n)), EAny);
@@ -1367,18 +1375,6 @@ class MacroManimParser {
 		}
 		expect(TClosed);
 		return EXTRA_POINT_ANIM(filename, animName, pointName, selector, fallback);
-	}
-
-	function isNamedGrid(name:String):Bool {
-		if (namedCoordSystems == null) return false;
-		// We can't easily distinguish grid vs hex by name at parse time.
-		// Named systems are tracked, and the builder will validate the type.
-		return namedCoordSystems.indexOf(name) >= 0;
-	}
-
-	function isNamedHex(name:String):Bool {
-		if (namedCoordSystems == null) return false;
-		return namedCoordSystems.indexOf(name) >= 0;
 	}
 
 	// ===================== Helpers =====================
@@ -2052,20 +2048,6 @@ class MacroManimParser {
 		return if (n != null) CoValue(n) else CoStringValue(val);
 	}
 
-	function resolveToFloat(rv:ReferenceableValue):Null<Float> {
-		return switch (rv) {
-			case RVInteger(i): i;
-			case RVFloat(f): f;
-			default: 0;
-		}
-	}
-
-	function resolveCondToFloat(s:String):Float {
-		final f = Std.parseFloat(s);
-		if (!Math.isNaN(f)) return f;
-		return 0;
-	}
-
 	/** Converts a simple ReferenceableValue back to a string for stringToConditional fallback. */
 	function rvToCondString(rv:ReferenceableValue):String {
 		return switch rv {
@@ -2431,15 +2413,6 @@ class MacroManimParser {
 				return isColon;
 			default: return false;
 		}
-	}
-
-	function parseNamedFloatParam(name:String, defaultVal:ReferenceableValue):ReferenceableValue {
-		// Try to parse named params in any order
-		return defaultVal; // Simplified - full impl would scan all named params
-	}
-
-	function parseNamedColorParam(name:String, defaultVal:ReferenceableValue):ReferenceableValue {
-		return defaultVal;
 	}
 
 	// ===================== Layout Content =====================
@@ -3862,9 +3835,9 @@ class MacroManimParser {
 			case TIdentifier(s) if (isKeyword(s, "layout")):
 				advance();
 				expect(TOpen);
-				final layoutGroup = expectIdentifierOrString();
-				expect(TComma);
 				final layoutName = expectIdentifierOrString();
+				if (match(TComma))
+					error('layout iterator takes a single argument: layout("$layoutName"). The two-argument form is no longer supported');
 				expect(TClosed);
 				return LayoutIterator(layoutName);
 			case TIdentifier(s) if (isKeyword(s, "array")):
@@ -5161,27 +5134,6 @@ class MacroManimParser {
 	function addNode(name:String, node:Node):Void {
 		if (nodes.exists(name)) error('duplicate node #$name');
 		nodes.set(name, node);
-	}
-
-	function tryParseIntValue():Null<Int> {
-		switch (peek()) {
-			case TInteger(n):
-				advance();
-				return stringToInt(n);
-			case TMinus:
-				final saved = tpos;
-				advance();
-				switch (peek()) {
-					case TInteger(n):
-						advance();
-						return -stringToInt(n);
-					default:
-						tpos = saved;
-						return null;
-				}
-			default:
-				return null;
-		}
 	}
 
 	// ===================== Main Entry Points =====================
@@ -6610,7 +6562,7 @@ class MacroManimParser {
 
 	// ===================== Optional Params (for filters) =====================
 
-	function parseOptionalParams(defs:Array<OptionalParametersParsing>, ?once:Bool):Map<String, Dynamic> {
+	function parseOptionalParams(defs:Array<OptionalParametersParsing>):Map<String, Dynamic> {
 		var results:Map<String, Dynamic> = new Map();
 		while (!match(TClosed)) {
 			eatComma();

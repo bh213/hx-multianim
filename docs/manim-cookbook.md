@@ -499,7 +499,7 @@ layouts {
 
 #inventoryDemo programmable() {
     // Grid slots
-    repeatable($i, layout("main", "invGrid")) {
+    repeatable($i, layout("invGrid")) {
         bitmap(generated(color(52, 52, #1a1a2e88))): 0, 0
         #inv[$i] slot(state:[normal,disabled,highlight]=normal) {
             @(state=>normal)    bitmap(generated(color(52, 52, #2a2a4400))): 0, 0
@@ -1000,7 +1000,7 @@ layouts {
 ### Two-Parameter Slots (state + hover)
 
 ```manim
-repeatable($n, layout("main", "warNodes")) {
+repeatable($n, layout("warNodes")) {
     #warNode[$n] slot(state:[upgraded,upgradable,hidden,notEnoughPoints]=hidden,
                       hover:[off,on]=off) {
         @(state=>upgraded)   bitmap(generated(color(36, 36, #ff7f50))): 0, 0

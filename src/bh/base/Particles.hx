@@ -767,7 +767,7 @@ class ParticleGroup {
 	function init( p : Particle ):Void {
 		var g = this;
 		var size = g.size * (1 + srand() * g.sizeRand);
-		var rot = srand() * Math.PI * g.rotInit;
+		srand(); // preserved to keep RNG determinism for reference snapshots
 		var vrot = g.rotSpeed * (1 + rand() * g.rotSpeedRand) * (srand() < 0 ? -1 : 1);
 		var life = g.life * (1 + srand() * g.lifeRand);
 
@@ -852,7 +852,6 @@ class ParticleGroup {
 		p.scale = size;
 		p.baseScaleX = size;
 		p.baseScaleY = size;
-		p.rotation = rot;
 		p.vSize = g.sizeIncr;
 		p.vr = vrot;
 
@@ -1315,7 +1314,7 @@ class Particles extends h2d.Drawable {
 
 		@returns Added ParticleGroup instance.
 	**/
-	public function addGroup( g : ParticleGroup, ?index:Int ):ParticleGroup {
+	public function addGroup( g : ParticleGroup ):ParticleGroup {
 		if (groups.exists(g.id)) throw 'group ${g.id} already exists';
 		groups.set(g.id, g);
 		return g;

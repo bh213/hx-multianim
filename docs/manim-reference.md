@@ -85,7 +85,7 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | Iterator | Description |
 |----------|-------------|
 | `step(count, dx: N, dy: N)` | Fixed step offset, repeated `count` times |
-| `layout("blockName", "entryName")` | Position from named relative layout (blockName is label only, entryName is the `#name` used in layout) |
+| `layout("entryName")` | Position from named relative layout (entryName is the `#name` used in the `layouts {}` block) |
 | `array($valueVar, $arrayName)` | Iterate over data array |
 | `range(start, end [, step])` | Numeric range (exclusive end), optional step |
 | `range(from: X, to: Y [, step: S])` | Named range (inclusive end: `to: 5` includes 5) |
@@ -1113,7 +1113,7 @@ layouts {
 #myComponent programmable() {
     bitmap(...): layout(pos1)                              // single point
     bitmap(...): layout(minimap).offset(-80, 0)            // with offset suffix
-    repeatable($i, layout("layouts", "slots")) {            // layout iterator
+    repeatable($i, layout("slots")) {                      // layout iterator
         bitmap(...): 0, 0                                  // children at 0,0 (iterator positions the wrapper)
     }
 }
@@ -1548,3 +1548,87 @@ case UIEntering(data):
         // use data...
     }
 ```
+
+## ScreenShakeHelper
+
+Additive screen shake for impact feedback. File: `src/bh/ui/ScreenShakeHelper.hx`. Construct with `new ScreenShakeHelper(target:h2d.Object)`.
+
+| Method | Description |
+|--------|-------------|
+| `shake(intensity, duration)` | Linear-decay shake |
+| `shakeDirectional(intensity, duration, dirX, dirY)` | Axis-masked shake (1.0 full / 0.0 none) |
+| `shakeWithCurve(intensity, duration, curve)` | Custom decay curve — curve receives `remaining` ratio 0..1, returns factor |
+| `update(dt)` | Drive decay; call from game loop |
+| `stop()` | Cancel and remove residual offset |
+| `isShaking` | Query active state |
+
+Concurrent shakes stack additively (explosion + hit). Applies per-frame offsets as *deltas* so gameplay movement (camera, layout, animation) is not fought back to a captured baseline. Uniform jitter via `hxd.Rand`. No per-frame allocations. Works with curves loaded from `.manim` `curves {}` via `builder.getCurve("name")`.
+
+## FloatingTextHelper
+
+AnimatedPath-driven floating text manager for damage numbers, heal text, status effects. File: `src/bh/ui/FloatingTextHelper.hx`. Construct with `new FloatingTextHelper(?parent:h2d.Object)`.
+
+| Method | Description |
+|--------|-------------|
+| `spawn(text, font, x, y, animPath, ?color, absolutePosition)` | Spawn text instance driven by an `AnimatedPath` |
+| `spawnObject(obj, x, y, animPath, absolutePosition)` | Spawn arbitrary `h2d.Object` |
+| `update(dt)` | Advance all active instances; auto-removes on completion |
+| `clear()` | Remove all instances immediately |
+| `count` | Active instance count |
+
+**Position modes:**
+- `absolutePosition = false` (default): AnimatedPath position is an offset from `(x, y)`. Use with `Anchor` normalization.
+- `absolutePosition = true`: AnimatedPath position IS world coordinates. Use with `Stretch(startPoint, endPoint)` normalization.
+
+**Applied state:** position, alpha, scale, rotation. Color applied to `h2d.Text` when a `colorCurve` is active on the path. `onComplete` callback on the path fires when done; completed instances auto-removed from manager and scene.
+
+## Interaction Controllers
+
+Modal interaction controllers for common targeting/selection flows. Extend `UIDefaultController` to inherit hover/cursor/outside-click while overriding specific interactions. Files in `src/bh/ui/controllers/`.
+
+**Base — `UIInteractionController`:**
+- `complete(result)` / `cancel()` — deferred to next `update()` frame
+- `onActivate()` / `onDeactivate()` — lifecycle hooks
+- Escape and right-click cancel built-in
+- Static `start()` methods on each subclass push the controller and wire result → `popController()`
+
+**`UISelectFromHandController`** — click cards to select/deselect.
+
+| Config field | Description |
+|--------------|-------------|
+| `minCount` / `maxCount` | Selection bounds |
+| `filter` | Per-card predicate (dims non-selectable) |
+| `selectedParam` | Card param name to toggle (e.g. `"selected"`) |
+| `selectedValue` / `deselectedValue` | Values to set on that param |
+| `autoConfirm` | Auto-confirm when `maxCount` reached |
+
+Suppresses drag during selection (`canDragCard = _ -> false`). Restores visual state + drag on deactivation. API: `confirm()`, `getSelectedCards()`, `getRemainingCount()`.
+
+```haxe
+UISelectFromHandController.start(this, cardHand, {maxCount: 2}, (result) -> {
+    if (result != null) discardCards(result.cards);
+});
+```
+
+**`UIPickTargetController`** — pick a target from interactives, grid cells, or cards.
+
+| Config field | Description |
+|--------------|-------------|
+| `validTargetIds` / `targetPrefix` / `filter` | Interactive targets |
+| `grid` / `cellFilter` | Grid cell targets (highlights valid cells) |
+| `cardHand` / `cardFilter` | Card targets |
+
+Intercepts `UIInteractiveEvent(UIClick, ...)` for interactives/cards and overrides `handleClick()` with `grid.cellAtPoint()` for grid cells. Routes mouse move to grid for hover feedback. Result: `PickTargetResult` enum — `TargetInteractive(id)`, `TargetCell(col, row)`, `TargetCard(cardId)`.
+
+```haxe
+UIPickTargetController.start(this, {grid: hexGrid, cellFilter: (c, r) -> hexGrid.isOccupied(c, r)}, (result) -> {
+    if (result != null) switch result {
+        case TargetCell(c, r): attack(c, r);
+        default:
+    }
+});
+```
+
+**Composable:** controllers can chain — `start()` one controller in the callback of another.
+
+**CardHandHelper additions for controllers:** `findCardIdByInteractiveId(id)`, `isCardInHand(cardId)`.

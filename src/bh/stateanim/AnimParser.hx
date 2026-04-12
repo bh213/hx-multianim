@@ -655,6 +655,11 @@ enum AnimFilterType { // (#12)
 typedef AnimFilterEntry = { // (#12)
 	var states:AnimConditionalSelector;
 	var filter:AnimFilterType;
+	// (#P3) Alternation group id. 0 = unconditional (always applies).
+	// Positive = member of an alternation chain — exactly one entry per group fires,
+	// chosen by best state match. A chain starts at an `@(cond)` entry and extends
+	// through subsequent `@else` / `@else(cond)` / `@default` siblings.
+	var ?group:Int;
 }
 
 @:nullSafety
@@ -1599,13 +1604,47 @@ class AnimParser implements AnimParserResult {
 	// (#12) Parse filter declarations block with typed filters and state conditionals
 	function parseFilterBlock(statesDefinitions, animationStates):Array<AnimFilterEntry> {
 		var filters:Array<AnimFilterEntry> = [];
+		// (#P3) Track alternation chains. A new `@(cond)` starts a new group; `@else` / `@default`
+		// continue the current group; unconditional entries are group 0 (always apply).
+		var currentGroup = 0;
+		var nextGroupId = 1;
 		while (!match(APCurlyClosed)) {
+			// Peek to classify the entry BEFORE parseStates consumes tokens.
+			var isElseOrDefault = false;
+			var isExplicitCondition = false;
+			if (Type.enumEq(peek(), APAt)) {
+				switch peekAt(1) {
+					case APIdentifier(_, APElse, _) | APIdentifier(_, APDefault, _):
+						isElseOrDefault = true;
+					case APOpen:
+						isExplicitCondition = true;
+					default:
+				}
+			}
 			final states = parseStates();
 			for (key => value in states)
 				parserValidateConditionalState(statesDefinitions, key, value);
 			checkForUnreachableState(animationStates, states);
 			final filter = parseFilterEntry();
-			filters.push({states: states, filter: filter});
+			var group:Int;
+			if (isElseOrDefault) {
+				// Continue current chain. If there's no preceding @(cond), start a standalone group
+				// so the entry still resolves as a single-member alternation (never stacks with
+				// subsequent unconditionals).
+				if (currentGroup == 0) {
+					currentGroup = nextGroupId++;
+				}
+				group = currentGroup;
+			} else if (isExplicitCondition) {
+				// New chain.
+				currentGroup = nextGroupId++;
+				group = currentGroup;
+			} else {
+				// Unconditional — breaks any in-progress chain and always applies.
+				currentGroup = 0;
+				group = 0;
+			}
+			filters.push({states: states, filter: filter, group: group});
 		}
 		return filters;
 	}
@@ -2103,22 +2142,49 @@ class AnimParser implements AnimParserResult {
 
 	// (#12) Resolve animation-level filters against state selector.
 	// Returns matching filters and optional tint color.
+	// (#P3) Entries tagged with a non-zero `group` form exclusive alternation chains —
+	// only the best-scoring entry per group fires. Untagged / group-0 entries are
+	// unconditional and always apply. Preserves original entry order in the output.
 	static function resolveAnimFilters(filters:Null<Array<AnimFilterEntry>>,
 			stateSelector:AnimationStateSelector):{filter:Null<h2d.filter.Filter>, tintColor:Null<Int>} {
 		if (filters == null || filters.length == 0) return {filter: null, tintColor: null};
 
+		// First pass: pick the winning entry index per alternation group.
+		var groupWinner:Map<Int, Int> = new Map();
+		var groupBestScore:Map<Int, Int> = new Map();
+		for (i in 0...filters.length) {
+			final entry = filters[i];
+			final g = entry.group != null ? entry.group : 0;
+			if (g == 0) continue;
+			final score = countStateMatch(entry.states, stateSelector);
+			if (score < 0) continue;
+			final prev = groupBestScore.get(g);
+			if (prev == null || score > prev) {
+				groupBestScore.set(g, score);
+				groupWinner.set(g, i);
+			}
+		}
+
 		var tintColor:Null<Int> = null;
 		var heapsFilters:Array<h2d.filter.Filter> = [];
-		for (entry in filters) {
-			if (countStateMatch(entry.states, stateSelector) >= 0) {
-				switch entry.filter {
-					case AFTint(color):
-						tintColor = color;
-					case AFNone: // skip
-					default:
-						final f = buildAnimFilter(entry.filter);
-						if (f != null) heapsFilters.push(f);
-				}
+		for (i in 0...filters.length) {
+			final entry = filters[i];
+			final g = entry.group != null ? entry.group : 0;
+			var shouldApply = false;
+			if (g == 0) {
+				// Unconditional — apply only if the (possibly empty) selector matches.
+				shouldApply = countStateMatch(entry.states, stateSelector) >= 0;
+			} else {
+				shouldApply = groupWinner.get(g) == i;
+			}
+			if (!shouldApply) continue;
+			switch entry.filter {
+				case AFTint(color):
+					tintColor = color;
+				case AFNone: // skip
+				default:
+					final f = buildAnimFilter(entry.filter);
+					if (f != null) heapsFilters.push(f);
 			}
 		}
 		var filter:Null<h2d.filter.Filter> = null;

@@ -5,7 +5,6 @@ import hxd.res.Resource;
 import bh.multianim.MultiAnimBuilder;
 import bh.multianim.MultiAnimParser.InvalidSyntax;
 import bh.multianim.MultiAnimParser.MultiAnimUnexpected;
-import bh.multianim.MultiAnimParser.MPToken;
 import bh.stateanim.AnimParser;
 import bh.ui.controllers.UIController;
 import bh.ui.screens.UIScreen;

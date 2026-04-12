@@ -25,15 +25,6 @@ class DocumentManager {
 		final doc = documents.get(uri);
 		return doc != null ? doc.text : null;
 	}
-
-	public function getVersion(uri:String):Int {
-		final doc = documents.get(uri);
-		return doc != null ? doc.version : 0;
-	}
-
-	public function allUris():Iterator<String> {
-		return documents.keys();
-	}
 }
 
 typedef DocumentState = {

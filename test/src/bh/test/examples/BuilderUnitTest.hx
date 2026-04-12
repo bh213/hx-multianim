@@ -2694,7 +2694,7 @@ class BuilderUnitTest extends BuilderTestBase {
 				}
 			}
 			#test programmable() {
-				repeatable($i, layout(\"main\", \"testLayout\")) {
+				repeatable($i, layout(\"testLayout\")) {
 					pos: 0, 0
 					bitmap(generated(color(40, 20, red))): 0, 0
 					bitmap(generated(color(30, 15, blue))): 5, 5
@@ -2740,7 +2740,7 @@ class BuilderUnitTest extends BuilderTestBase {
 				}
 			}
 			#test programmable() {
-				repeatable($i, layout(\"main\", \"testLayout\")) {
+				repeatable($i, layout(\"testLayout\")) {
 					pos: 0, 0
 					bitmap(generated(color(40, 20, red))): 0, 0
 				}

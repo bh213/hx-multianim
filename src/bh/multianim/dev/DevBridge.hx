@@ -16,7 +16,6 @@ import bh.multianim.MultiAnimParser.ParametersDefinitions;
 import bh.multianim.MultiAnimParser.ResolvedIndexParameters;
 import bh.multianim.dev.HotReload;
 import bh.base.TweenManager;
-import bh.ui.UIElement.UIScreenEvent;
 
 @:access(bh.ui.screens.ScreenManager)
 @:access(bh.ui.screens.UIScreen.UIScreenBase)
@@ -38,7 +37,6 @@ class DevBridge {
 	// ---- Pause state ----
 	var paused:Bool = false;
 	var savedLoopFunc:Null<Void -> Void> = null;
-	var stepRemaining:Int = 0;
 
 	// ---- Trace capture ----
 	static final TRACE_BUFFER_SIZE = 200;
@@ -1505,7 +1503,6 @@ class DevBridge {
 			if (wrapper != null) {
 				if (wrapper.disabled)
 					return {success: false, error: 'Interactive "$id" is disabled', id: id, screen: entry.name};
-				var emptyMeta = new bh.multianim.MultiAnimBuilder.BuilderResolvedSettings(null);
 				sb.dispatchScreenEvent(UIInteractiveEvent(UIClick, id, wrapper.metadata), wrapper);
 				return {success: true, id: id, screen: entry.name};
 			}

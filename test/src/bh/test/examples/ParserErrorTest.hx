@@ -4,6 +4,7 @@ import utest.Assert;
 import bh.multianim.MultiAnimParser;
 import bh.multianim.MultiAnimParser.MultiAnimResult;
 import bh.multianim.MultiAnimParser.NodeType;
+import bh.multianim.MultiAnimParser.ReferenceableValue;
 import bh.multianim.MultiAnimParser.NodeConditionalValues;
 import bh.multianim.MultiAnimParser.TransitionType;
 import bh.multianim.MultiAnimParser.TransitionDirection;
@@ -4657,5 +4658,66 @@ class ParserErrorTest extends utest.Test {
 			}
 		');
 		Assert.notNull(error, "@ifstrict should no longer be recognized");
+	}
+
+	// ===== Bug P1: Negative hex integer in EAny context =====
+	// parseAnything() (EAny) merges TInteger|THexInteger and calls stringToInt(n)
+	// without prepending "0x". Compare parseIntegerOrReference which splits the cases.
+	// So -0xFF resolves "FF".toInt() → null/0 instead of -255.
+	@Test
+	public function testNegativeHexInteractiveMetadata() {
+		var result = parseExpectingResult('
+			#test programmable() {
+				interactive(10, 10, "hit", threshold => -0xFF): 0, 0
+			}
+		');
+		Assert.notNull(result, "Parse should succeed");
+		var node = result.nodes.get("test");
+		Assert.notNull(node);
+		Assert.equals(1, node.children.length);
+		var interactive = node.children[0];
+		Assert.isTrue(interactive.type.match(INTERACTIVE(_, _, _, _, _)), "child should be INTERACTIVE");
+
+		switch interactive.type {
+			case INTERACTIVE(_, _, _, _, metadata):
+				Assert.notNull(metadata);
+				Assert.equals(1, metadata.length);
+				var entry = metadata[0];
+				switch entry.value {
+					case RVInteger(n):
+						Assert.equals(-255, n, 'Expected -0xFF to resolve to -255, got $n');
+					default:
+						Assert.fail('Expected RVInteger, got ${entry.value}');
+				}
+			default:
+				Assert.fail("Expected INTERACTIVE");
+		}
+	}
+
+	// ===== Bug P2: Unterminated double-quoted string silently succeeds =====
+	// Double-quoted string tokenizer has no EOF check — when closing " is missing,
+	// the loop exits at EOF and returns a TQuotedString with partial content,
+	// producing confusing downstream errors. Single-quoted path (line 319-321)
+	// correctly throws "Unterminated string".
+	@Test
+	public function testUnterminatedDoubleQuotedString() {
+		var error = parseExpectingError('
+			#test programmable() {
+				text(dd, "unterminated string here, #ffffffff): 0, 0
+			}
+		');
+		Assert.notNull(error, "Should throw error for unterminated double-quoted string");
+		Assert.isTrue(error.indexOf("Unterminated string") >= 0,
+			'Error should mention unterminated string, got: $error');
+	}
+
+	@Test
+	public function testUnterminatedDoubleQuotedStringAtEof() {
+		var error = parseExpectingError('
+			#test programmable() {
+				text(dd, "unterminated');
+		Assert.notNull(error, "Should throw error when EOF reached inside a double-quoted string");
+		Assert.isTrue(error.indexOf("Unterminated string") >= 0,
+			'Error should mention unterminated string, got: $error');
 	}
 }

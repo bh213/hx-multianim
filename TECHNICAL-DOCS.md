@@ -7,33 +7,31 @@ This document provides a high-level overview of the technical architecture and i
 
 The library has three main layers:
 
-1. **Parser** (`MultiAnimParser.hx`) — Parses `.manim` files into an AST of `Node` structures using hxparse
+1. **Parser** (`MacroManimParser.hx`) — Parses `.manim` files into an AST of `Node` structures using a hand-written recursive-descent parser
 2. **Builder** (`MultiAnimBuilder.hx`) — Resolves the AST: evaluates expressions, resolves references, builds the h2d scene graph at runtime
-3. **Macro CodeGen** (`ProgrammableCodeGen.hx` + `MacroManimParser.hx`) — Parses `.manim` at compile time and generates typed Haxe classes
+3. **Macro CodeGen** (`ProgrammableCodeGen.hx`) — Uses `MacroManimParser` at compile time and generates typed Haxe classes
 
 ```
 .manim file
     │
-    ├──► MultiAnimParser (hxparse) ──► Node AST ──► MultiAnimBuilder ──► h2d scene graph
-    │                                                                     (runtime)
+    ├──► MacroManimParser (runtime) ──► Node AST ──► MultiAnimBuilder ──► h2d scene graph
+    │                                                                      (runtime)
     └──► MacroManimParser (compile-time) ──► ProgrammableCodeGen ──► generated Haxe classes
                                                                       (compile-time)
 ```
 
 ## Parser
 
-`MultiAnimParser.parseFile()` is the main entry point. It uses a **modified fork** of hxparse (`github.com/bh213/hxparse`).
+`MultiAnimParser.parseFile()` is the public entry point — a thin facade that delegates to `MacroManimParser.parseFile()`. The parser is a **hand-written recursive-descent parser** using `peek()` / `advance()` / `match()` / `expect()`. The same parser runs at both compile time (via macros) and runtime. An earlier implementation used a modified fork of hxparse; that has been fully removed.
 
 **Key classes:**
-- `MultiAnimParser` — hxparse-based stream parser for `.manim` files
-- `AnimParser` — hxparse-based parser for `.anim` state animation files
-- `MacroManimParser` — Compile-time parser (NOT hxparse-based; uses `peek()`/`match()`/`advance()`)
+- `MacroManimParser` — hand-written parser for `.manim` files (runs compile-time and runtime)
+- `MultiAnimParser` — facade retained for API compatibility; delegates to `MacroManimParser`
+- `AnimParser` — separate hand-written parser for `.anim` state animation files
 
 **Error types:**
 - `InvalidSyntax` (extends `ParserError`) — Semantic errors (e.g., unknown variable, duplicate name)
 - `MultiAnimUnexpected` — Syntax errors (unexpected token)
-
-**hxparse caveat:** Pattern matching only works on the **first element** of a `case` pattern. See CLAUDE.md for details.
 
 ## Builder
 
@@ -250,7 +248,7 @@ Display-only component (`UIMultiAnimProgressBar`). Uses full rebuild (not increm
 
 Static cursor registry (like `FontManager`). Pre-registers Heaps cursors: `default`, `pointer`/`button`, `move`, `text`, `hide`/`none`. Custom cursors via `registerCursor(name, cursor)`. `setDefaultInteractiveCursor(cursor)` sets the global default for UI elements (defaults to pointer). `setDefaultCursor(cursor)` for the fallback when not hovering any element.
 
-Per-interactive state cursors via metadata: `cursor => "pointer"`, `cursor.hover => "move"`, `cursor.disabled => "default"`. All built-in UI components (Button, Checkbox, Slider, Dropdown, TabButton, ScrollableList) implement `UIElementCursor`. Controller plumbing in `UIControllerBase.handleMove()` calls `hxd.System.setCursor()`.
+Per-interactive state cursors via metadata: `cursor => "pointer"`, `cursor.hover => "move"`, `cursor.disabled => "default"`. All built-in UI components (Button, Checkbox, Slider, Dropdown, TabButton, ScrollableList) implement `UIElementCursor`. Controller plumbing in `UIDefaultController.handleMove()` calls `hxd.System.setCursor()`.
 
 ## Runtime Systems
 
@@ -297,6 +295,30 @@ AnimatedPath-driven floating text manager for damage numbers, heal text, status 
 
 Applies AnimatedPath state: position, alpha, scale, rotation. Color applied to `h2d.Text` when `colorCurve` is active. Completed instances auto-removed.
 
+### ScreenShakeHelper
+
+Additive screen shake for impact feedback. File: `src/bh/ui/ScreenShakeHelper.hx`.
+
+`shake(intensity, duration)` runs a linear-decay shake. `shakeDirectional(intensity, duration, dirX, dirY)` masks axes (horizontal recoil, vertical landing). `shakeWithCurve(intensity, duration, curve)` plugs in a custom decay curve (including curves loaded from `.manim`). Concurrent shakes stack additively; `update(dt)` drives decay; `stop()` removes the residual offset; `isShaking` queries state.
+
+**Non-destructive:** applies per-frame deltas relative to the previous frame, so gameplay can freely move the target (camera scroll, layout changes, animation) without the shake fighting it back to a captured baseline. Uniform jitter comes from `hxd.Rand`; no per-frame allocations.
+
+### Interaction Controllers
+
+Modal interaction controllers for common targeting/selection flows. Files in `src/bh/ui/controllers/`:
+- `UIInteractionController.hx` — base class with deferred completion, lifecycle hooks, Escape/right-click cancel
+- `UISelectFromHandController.hx` — "select N cards from hand" (suppresses drag, dims non-selectable cards, auto-confirms at maxCount)
+- `UIPickTargetController.hx` — "pick a target" (interactive, grid cell, or card)
+- `UIInteractionTypes.hx` — result types and config typedefs
+
+Controllers extend `UIDefaultController` and push onto the existing controller stack via static `start()` methods which wire the result callback to `popController()`. They intercept `onScreenEvent()` to consume relevant events while delegating everything else to the default controller for hover/cursor/outside-click behavior. Result delivery is deferred to `update()` so completion never fires mid-event-processing.
+
+### DevBridge
+
+Development-only JSON-RPC server exposing runtime inspection and manipulation (`-D MULTIANIM_DEV`). File: `src/bh/multianim/dev/DevBridge.hx`.
+
+Serves ~33 JSON-RPC tools over HTTP plus SSE streaming for lifecycle events (screen changes, hot reload, parameter changes, custom events). Default port 9001, configurable via `HX_DEV_PORT` env var. Consumed by the MCP server documented in `docs/devbridge.md`. Powers hot-reload triggers, runtime inspection (`scene_graph`, `inspect_element`, `list_interactives`, ...), input injection (`click_button`, `send_event`), and screenshot capture.
+
 ### Hot Reload
 
 Development-only live `.manim`/`.anim` file reloading (`-D MULTIANIM_DEV`). File: `src/bh/multianim/dev/HotReload.hx`.
@@ -304,6 +326,12 @@ Development-only live `.manim`/`.anim` file reloading (`-D MULTIANIM_DEV`). File
 Components: `FileChangeDetector` (FNV hash-based change detection), `ReloadableRegistry` (tracks live `BuilderResult` instances via `ReloadSentinel` weak references for auto-unregister), `SignatureChecker` (validates parameter compatibility between old/new versions), `StateSnapshotter`/`StateRestorer` (captures and restores parameter values, slot contents, dynamic ref state across reloads).
 
 **API:** `screenManager.addReloadListener(callback)`, `screenManager.hotReload()`, `screenManager.reload(?resource)`. Events: `ReloadStarted`, `ReloadSucceeded`, `ReloadFailed`, `ReloadNeedsRestart` (when parameter signature changes are incompatible).
+
+### UIScrollableScreen
+
+Abstract screen base class with whole-screen mousewheel scrolling. File: `src/bh/ui/screens/UIScrollableScreen.hx`.
+
+Uses a child `scrollContent:h2d.Layers` as the attach point (via `addObjectToLayer` override) and adjusts `scrollContent.y`, so `root.y` stays at 0 and transition animations can freely tween `root` without fighting the scroll. Content height auto-measured via `getBounds` each frame; scroll disabled when content fits viewport. `ScrollConfig`: `scrollSpeed`, `smoothing` (0 = instant). `UIScreenBase.clear()` calls `root.removeChildren()`, so `onClear()` re-attaches `scrollContent` and resets scroll state — subclasses MUST call `super.onClear()`. Standalone helper `UIScrollHelper` provides mask-based scroll for use outside the screen system.
 
 ## Macros
 
