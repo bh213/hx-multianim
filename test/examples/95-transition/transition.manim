@@ -12,6 +12,17 @@ version: 1.0
     @(mode => b) bitmap(generated(color(60, 40, #0088ff))): 0, 0
 }
 
+// Non-linear easing regression guard: with easeOutQuad and total=0.6s, the old
+// buggy code would fade the new element in starting at raw t ~0.176s — so at
+// the shared sample time t=0.25 the mid column would already show ~32% alpha
+// of the new color. The correct sequential behavior keeps it fully hidden
+// (pause phase lasts 0.3s).
+#transCrossfadeEased programmable(mode:[a,b]=a) {
+    transition { mode: crossfade(0.3, easeOutQuad) }
+    @(mode => a) bitmap(generated(color(60, 40, #cc00cc))): 0, 0
+    @(mode => b) bitmap(generated(color(60, 40, #00cc66))): 0, 0
+}
+
 #transFlipX programmable(mode:[a,b]=a) {
     transition { mode: flipX(1.0) }
     @(mode => a) bitmap(generated(color(60, 40, #44ff44))): 0, 0

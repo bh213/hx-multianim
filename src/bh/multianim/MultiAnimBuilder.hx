@@ -31,6 +31,7 @@ import bh.multianim.MultiAnimParser.SwitchArm;
 import bh.base.ResourceLoader;
 import bh.base.TweenManager;
 import bh.base.TweenManager.Tween;
+import bh.base.TweenManager.TweenSequence;
 import bh.base.TweenManager.TweenProperty;
 import bh.base.Particles.ForceField;
 import bh.base.Particles.BoundsMode;
@@ -311,7 +312,7 @@ class IncrementalUpdateContext {
 	var hasChanges:Bool = false;
 	var transitionsDef:Null<Map<String, TransitionType>>;
 	public var tweenManager:Null<TweenManager> = null;
-	var activeTransitionTweens:Array<{obj:h2d.Object, tween:Tween, savedAlpha:Float, savedScaleX:Float, savedScaleY:Float, savedX:Float, savedY:Float}> = [];
+	var activeTransitionTweens:Array<{obj:h2d.Object, tween:Null<Tween>, sequence:Null<TweenSequence>, savedAlpha:Float, savedScaleX:Float, savedScaleY:Float, savedX:Float, savedY:Float}> = [];
 
 	public function new(builder:MultiAnimBuilder, indexedParams:Map<String, ResolvedIndexParameters>,
 			builderParams:BuilderParameters, rootNode:Node) {
@@ -525,7 +526,11 @@ class IncrementalUpdateContext {
 		if (paramType != null && paramType.match(PPTFlags(_))) {
 			indexedParams.set(name, MultiAnimParser.dynamicValueToIndex(name, paramType, value, s -> throw s));
 		} else if (Std.isOfType(value, Int)) {
-			indexedParams.set(name, Value(value));
+			// PPTColor params store alpha-baked values when set via .manim literals (#RRGGBB → 0xFFRRGGBB).
+			// Bake here too so setParameter is equivalence-preserving with the parser default, and so
+			// @switch arms compare equal regardless of which side baked the alpha.
+			final v:Int = (paramType != null && paramType.match(PPTColor)) ? (value : Int).addAlphaIfNotPresent() : value;
+			indexedParams.set(name, Value(v));
 		} else if (Std.isOfType(value, Float)) {
 			indexedParams.set(name, ValueF(value));
 		} else if (Std.isOfType(value, String)) {
@@ -573,8 +578,14 @@ class IncrementalUpdateContext {
 
 	public function cancelAllTransitions():Void {
 		for (entry in activeTransitionTweens) {
-			entry.tween.onComplete = null;
-			entry.tween.cancel();
+			if (entry.tween != null) {
+				entry.tween.onComplete = null;
+				entry.tween.cancel();
+			}
+			if (entry.sequence != null) {
+				entry.sequence.onComplete = null;
+				entry.sequence.cancel();
+			}
 			entry.obj.alpha = entry.savedAlpha;
 			entry.obj.scaleX = entry.savedScaleX;
 			entry.obj.scaleY = entry.savedScaleY;
@@ -598,8 +609,14 @@ class IncrementalUpdateContext {
 		while (i < activeTransitionTweens.length) {
 			if (activeTransitionTweens[i].obj == obj) {
 				final entry = activeTransitionTweens[i];
-				entry.tween.onComplete = null; // Prevent delayed onComplete from TweenManager
-				entry.tween.cancel();
+				if (entry.tween != null) {
+					entry.tween.onComplete = null; // Prevent delayed onComplete from TweenManager
+					entry.tween.cancel();
+				}
+				if (entry.sequence != null) {
+					entry.sequence.onComplete = null;
+					entry.sequence.cancel();
+				}
 				// Restore pre-transition properties so the next transition starts from clean state
 				obj.alpha = entry.savedAlpha;
 				obj.scaleX = entry.savedScaleX;
@@ -614,12 +631,28 @@ class IncrementalUpdateContext {
 	}
 
 	function trackTransitionTween(obj:h2d.Object, tween:Tween, savedAlpha:Float, savedScaleX:Float, savedScaleY:Float, savedX:Float, savedY:Float):Void {
-		activeTransitionTweens.push({obj: obj, tween: tween, savedAlpha: savedAlpha, savedScaleX: savedScaleX, savedScaleY: savedScaleY, savedX: savedX, savedY: savedY});
+		activeTransitionTweens.push({obj: obj, tween: tween, sequence: null, savedAlpha: savedAlpha, savedScaleX: savedScaleX, savedScaleY: savedScaleY, savedX: savedX, savedY: savedY});
 		final origOnComplete = tween.onComplete;
 		tween.onComplete = () -> {
 			var i = 0;
 			while (i < activeTransitionTweens.length) {
 				if (activeTransitionTweens[i].tween == tween) {
+					activeTransitionTweens.splice(i, 1);
+					break;
+				}
+				i++;
+			}
+			if (origOnComplete != null) origOnComplete();
+		};
+	}
+
+	function trackTransitionSequence(obj:h2d.Object, seq:TweenSequence, savedAlpha:Float, savedScaleX:Float, savedScaleY:Float, savedX:Float, savedY:Float):Void {
+		activeTransitionTweens.push({obj: obj, tween: null, sequence: seq, savedAlpha: savedAlpha, savedScaleX: savedScaleX, savedScaleY: savedScaleY, savedX: savedX, savedY: savedY});
+		final origOnComplete = seq.onComplete;
+		seq.onComplete = () -> {
+			var i = 0;
+			while (i < activeTransitionTweens.length) {
+				if (activeTransitionTweens[i].sequence == seq) {
 					activeTransitionTweens.splice(i, 1);
 					break;
 				}
@@ -702,19 +735,16 @@ class IncrementalUpdateContext {
 
 			case TransCrossfade(duration, easing):
 				// Sequential: hide runs over `duration`, show waits `duration` then fades in.
-				// Total visible transition = 2 * duration. The new element stays at alpha 0
-				// until the old has finished hiding, producing a true cross-through-zero blend.
+				// Total visible transition = 2 * duration. The show branch uses a sequence
+				// of [pause, fadeIn] so easing only applies to the fade-in phase — otherwise
+				// non-linear easings skew the switchover point.
 				if (show) {
 					addToGraph(entry);
 					obj.alpha = 0.0;
-					final targetAlpha = preAlpha;
-					final capturedObj = obj;
-					final t = tm.tween(obj, duration * 2.0, [
-						Custom(() -> 0.0, (v) -> {
-							capturedObj.alpha = (v <= 0.5) ? 0.0 : (v - 0.5) * 2.0 * targetAlpha;
-						}, 1.0)
-					], easing);
-					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
+					final pause = tm.createTween(obj, duration, []);
+					final fadeIn = tm.createTween(obj, duration, [Alpha(preAlpha)], easing);
+					final seq = tm.sequence([pause, fadeIn]);
+					trackTransitionSequence(obj, seq, preAlpha, preScaleX, preScaleY, preX, preY);
 				} else {
 					final t = tm.tween(obj, duration, [Alpha(0.0)], easing);
 					final capturedEntry = entry;
@@ -726,12 +756,17 @@ class IncrementalUpdateContext {
 				}
 
 			case TransFlipX(duration, easing):
+				// Sequential: hide shrinks over halfDuration, then show grows over
+				// halfDuration. Total = duration. Show uses a [pause, grow] sequence so
+				// it doesn't overlap the hide on the sibling element.
 				final halfDuration = duration / 2.0;
 				if (show) {
 					addToGraph(entry);
 					obj.scaleX = 0.0;
-					final t = tm.tween(obj, halfDuration, [ScaleX(preScaleX)], easing);
-					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
+					final pause = tm.createTween(obj, halfDuration, []);
+					final grow = tm.createTween(obj, halfDuration, [ScaleX(preScaleX)], easing);
+					final seq = tm.sequence([pause, grow]);
+					trackTransitionSequence(obj, seq, preAlpha, preScaleX, preScaleY, preX, preY);
 				} else {
 					final t = tm.tween(obj, halfDuration, [ScaleX(0.0)], easing);
 					final capturedEntry = entry;
@@ -747,8 +782,10 @@ class IncrementalUpdateContext {
 				if (show) {
 					addToGraph(entry);
 					obj.scaleY = 0.0;
-					final t = tm.tween(obj, halfDuration, [ScaleY(preScaleY)], easing);
-					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
+					final pause = tm.createTween(obj, halfDuration, []);
+					final grow = tm.createTween(obj, halfDuration, [ScaleY(preScaleY)], easing);
+					final seq = tm.sequence([pause, grow]);
+					trackTransitionSequence(obj, seq, preAlpha, preScaleX, preScaleY, preX, preY);
 				} else {
 					final t = tm.tween(obj, halfDuration, [ScaleY(0.0)], easing);
 					final capturedEntry = entry;
@@ -2597,6 +2634,9 @@ class MultiAnimBuilder {
 		switch condValue {
 			case CoNot(inner):
 				return !matchSingleCondition(inner, currentValue);
+			case CoAnyOf(values):
+				for (cv in values) if (matchSingleCondition(cv, currentValue)) return true;
+				return false;
 			case CoEnums(a):
 				switch currentValue {
 					case Index(idx, v):
@@ -2771,6 +2811,8 @@ class MultiAnimBuilder {
 				if (to != null) collectParamRefs(to, result);
 			case CoNot(inner):
 				collectConditionalValueParamRefs(inner, result);
+			case CoAnyOf(values):
+				for (v in values) collectConditionalValueParamRefs(v, result);
 			default: // CoEnums, CoIndex, CoValue, CoFlag, CoAny, CoStringValue — no RV refs
 		}
 	}

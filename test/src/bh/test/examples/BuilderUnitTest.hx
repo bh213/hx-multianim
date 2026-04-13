@@ -5875,6 +5875,89 @@ class BuilderUnitTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testIncrementalSwitchPipeColor():Void {
+		// Regression: @switch pipe-separated arms on a color param.
+		// Pipe arms were stored as CoEnums(["#FF0000", ...]) (raw lexeme strings),
+		// while runtime values come through as Value(int). matchSingleCondition
+		// compared via a.contains(Std.string(val)) — Std.string(0xFF0000) == "16711680"
+		// which never matches "#FF0000", so no pipe arm ever fires for color params.
+		final result = buildFromSource("
+			#test programmable(tint:color=#FF0000) {
+				@switch(tint) {
+					#FF0000 | #00FF00: bitmap(generated(color(10, 10, #fff)));
+					#0000FF | #FFFF00: bitmap(generated(color(20, 10, #fff)));
+					default: bitmap(generated(color(99, 10, #fff)));
+				}
+			}
+		", "test", null, Incremental);
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width)); // #FF0000 → first arm
+
+		// Second value of first pipe arm
+		result.setParameter("tint", 0x00FF00);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+
+		// First value of second pipe arm
+		result.setParameter("tint", 0x0000FF);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(20, Std.int(bitmaps[0].tile.width));
+
+		// Second value of second pipe arm
+		result.setParameter("tint", 0xFFFF00);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(20, Std.int(bitmaps[0].tile.width));
+
+		// Value not in any pipe arm — fall through to default (99px)
+		result.setParameter("tint", 0x123456);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(99, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testIncrementalSwitchPipeHexInt():Void {
+		// Regression: @switch pipe-separated arms on int param using hex literals.
+		// parseSwitchArmValue normalizes 0xFF -> "0xff" but matchSingleCondition
+		// compares to Std.string(255) == "255". Decimal arms happen to round-trip,
+		// hex arms never match.
+		final result = buildFromSource("
+			#test programmable(level:int=255) {
+				@switch(level) {
+					0xFF | 0x10: bitmap(generated(color(10, 10, #fff)));
+					0x20 | 0x30: bitmap(generated(color(20, 10, #fff)));
+					default: bitmap(generated(color(99, 10, #fff)));
+				}
+			}
+		", "test", null, Incremental);
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width)); // 255 → first arm
+
+		// Second value of first pipe arm
+		result.setParameter("level", 0x10);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+
+		// First value of second pipe arm
+		result.setParameter("level", 0x20);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(20, Std.int(bitmaps[0].tile.width));
+
+		// Out of range — default arm
+		result.setParameter("level", 0x99);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(99, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
 	public function testIncrementalSwitchBlockArms():Void {
 		// @switch with block arms containing multiple elements
 		final result = buildFromSource("

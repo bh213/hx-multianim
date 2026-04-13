@@ -5040,11 +5040,23 @@ class MacroManimParser {
 						final toStr = parseSwitchArmValue();
 						pattern = CoRange(parseRV(values[0]), parseRV(toStr), false, false);
 					} else if (Type.enumEq(peek(), TPipe)) {
-						// Pipe-separated values: value1 | value2 | value3 — keep CoEnums for consistency with @(p => [v1, v2])
+						// Pipe-separated values: value1 | value2 | value3
 						while (match(TPipe)) {
 							values.push(parseSwitchArmValue());
 						}
-						pattern = CoEnums(values);
+						// PPTEnum / PPTString match correctly via raw-string CoEnums (Index/StringValue
+						// runtime parameters compare to the lexeme as-is). For other discrete types
+						// (color, int, uint, bool), the raw lexeme never matches Std.string(int), so we
+						// route each value through stringToConditional to get a typed inner conditional
+						// and OR them at match/codegen time via CoAnyOf.
+						switch (paramType) {
+							case PPTEnum(_) | PPTString:
+								pattern = CoEnums(values);
+							default:
+								final inner:Array<ConditionalValues> = [];
+								for (v in values) inner.push(stringToConditional(v, paramType));
+								pattern = CoAnyOf(inner);
+						}
 					} else {
 						// Single value — route through stringToConditional for type-aware matching.
 						// This makes @switch on PPTColor/PPTBool/PPTEnum produce the same conditional

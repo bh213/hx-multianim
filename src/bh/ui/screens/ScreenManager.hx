@@ -284,6 +284,9 @@ class ScreenManager {
 
 	public function update(dt:Float):Void {
 		tweens.update(dt);
+		#if MULTIANIM_DEV
+		if (devBridge != null) devBridge.tick();
+		#end
 		for (screen in activeScreens) {
 			final result = screen.getController().update(dt);
 			switch result {

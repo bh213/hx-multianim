@@ -293,6 +293,9 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 	@:manim("test/examples/95-transition/transition.manim", "transCrossfade")
 	public var transCrossfade;
 
+	@:manim("test/examples/95-transition/transition.manim", "transCrossfadeEased")
+	public var transCrossfadeEased;
+
 	@:manim("test/examples/95-transition/transition.manim", "transFlipX")
 	public var transFlipX;
 

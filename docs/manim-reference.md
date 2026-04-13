@@ -345,7 +345,7 @@ Works with `@()`, `@if()`, `@any()`, `@all()`, `@else`, `@else(cond)`, `@default
 | Pattern | Description |
 |---------|-------------|
 | `value` | Match single value (enum name, integer, `"quoted string"`, `#RRGGBB` color, `true`/`false`) |
-| `value1 \| value2` | Match any of multiple values (enum/int only — pipe form uses string-based `CoEnums`) |
+| `value1 \| value2` | Match any of multiple values. Enum/string use `CoEnums`; color/int/uint/bool use `CoAnyOf` of typed inner conditionals |
 | `<= N` | Less than or equal (numeric params only) |
 | `>= N` | Greater than or equal (numeric params only) |
 | `< N` | Strictly less than (numeric params only) |

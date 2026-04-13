@@ -2,6 +2,7 @@ package bh.multianim;
 
 import bh.base.TweenManager;
 import bh.base.TweenManager.Tween;
+import bh.base.TweenManager.TweenSequence;
 import bh.base.TweenManager.TweenProperty;
 import bh.multianim.MultiAnimParser.TransitionType;
 import bh.multianim.MultiAnimParser.TransitionDirection;
@@ -16,7 +17,7 @@ import bh.multianim.MultiAnimParser.EasingType;
 class CodegenTransitionHelper {
 	final transitionSpecs:Map<String, TransitionType>;
 	public var tweenManager:Null<TweenManager> = null;
-	var activeTransitionTweens:Array<{obj:h2d.Object, tween:Tween, savedAlpha:Float, savedScaleX:Float, savedScaleY:Float, savedX:Float, savedY:Float}> = [];
+	var activeTransitionTweens:Array<{obj:h2d.Object, tween:Null<Tween>, sequence:Null<TweenSequence>, savedAlpha:Float, savedScaleX:Float, savedScaleY:Float, savedX:Float, savedY:Float}> = [];
 
 	public function new(specs:Map<String, TransitionType>) {
 		this.transitionSpecs = specs;
@@ -64,8 +65,14 @@ class CodegenTransitionHelper {
 		while (i < activeTransitionTweens.length) {
 			if (activeTransitionTweens[i].obj == obj) {
 				final entry = activeTransitionTweens[i];
-				entry.tween.onComplete = null;
-				entry.tween.cancel();
+				if (entry.tween != null) {
+					entry.tween.onComplete = null;
+					entry.tween.cancel();
+				}
+				if (entry.sequence != null) {
+					entry.sequence.onComplete = null;
+					entry.sequence.cancel();
+				}
 				obj.alpha = entry.savedAlpha;
 				obj.scaleX = entry.savedScaleX;
 				obj.scaleY = entry.savedScaleY;
@@ -81,8 +88,14 @@ class CodegenTransitionHelper {
 	public function cancelAllTransitions():Void {
 		while (activeTransitionTweens.length > 0) {
 			final entry = activeTransitionTweens[0];
-			entry.tween.onComplete = null;
-			entry.tween.cancel();
+			if (entry.tween != null) {
+				entry.tween.onComplete = null;
+				entry.tween.cancel();
+			}
+			if (entry.sequence != null) {
+				entry.sequence.onComplete = null;
+				entry.sequence.cancel();
+			}
 			entry.obj.alpha = entry.savedAlpha;
 			entry.obj.scaleX = entry.savedScaleX;
 			entry.obj.scaleY = entry.savedScaleY;
@@ -99,12 +112,28 @@ class CodegenTransitionHelper {
 	}
 
 	function trackTransitionTween(obj:h2d.Object, tween:Tween, savedAlpha:Float, savedScaleX:Float, savedScaleY:Float, savedX:Float, savedY:Float):Void {
-		activeTransitionTweens.push({obj: obj, tween: tween, savedAlpha: savedAlpha, savedScaleX: savedScaleX, savedScaleY: savedScaleY, savedX: savedX, savedY: savedY});
+		activeTransitionTweens.push({obj: obj, tween: tween, sequence: null, savedAlpha: savedAlpha, savedScaleX: savedScaleX, savedScaleY: savedScaleY, savedX: savedX, savedY: savedY});
 		final origOnComplete = tween.onComplete;
 		tween.onComplete = () -> {
 			var i = 0;
 			while (i < activeTransitionTweens.length) {
 				if (activeTransitionTweens[i].tween == tween) {
+					activeTransitionTweens.splice(i, 1);
+					break;
+				}
+				i++;
+			}
+			if (origOnComplete != null) origOnComplete();
+		};
+	}
+
+	function trackTransitionSequence(obj:h2d.Object, seq:TweenSequence, savedAlpha:Float, savedScaleX:Float, savedScaleY:Float, savedX:Float, savedY:Float):Void {
+		activeTransitionTweens.push({obj: obj, tween: null, sequence: seq, savedAlpha: savedAlpha, savedScaleX: savedScaleX, savedScaleY: savedScaleY, savedX: savedX, savedY: savedY});
+		final origOnComplete = seq.onComplete;
+		seq.onComplete = () -> {
+			var i = 0;
+			while (i < activeTransitionTweens.length) {
+				if (activeTransitionTweens[i].sequence == seq) {
 					activeTransitionTweens.splice(i, 1);
 					break;
 				}
@@ -143,19 +172,16 @@ class CodegenTransitionHelper {
 
 			case TransCrossfade(duration, easing):
 				// Sequential: hide runs over `duration`, show waits `duration` then fades in.
-				// Total visible transition = 2 * duration. The new element stays at alpha 0
-				// until the old has finished hiding, producing a true cross-through-zero blend.
+				// Total visible transition = 2 * duration. The show branch uses a sequence
+				// of [pause, fadeIn] so easing only applies to the fade-in phase, not the
+				// pause — otherwise non-linear easings skew the switchover point.
 				if (show) {
 					obj.visible = true;
 					obj.alpha = 0.0;
-					final targetAlpha = preAlpha;
-					final capturedObj = obj;
-					final t = tm.tween(obj, duration * 2.0, [
-						Custom(() -> 0.0, (v) -> {
-							capturedObj.alpha = (v <= 0.5) ? 0.0 : (v - 0.5) * 2.0 * targetAlpha;
-						}, 1.0)
-					], easing);
-					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
+					final pause = tm.createTween(obj, duration, []);
+					final fadeIn = tm.createTween(obj, duration, [Alpha(preAlpha)], easing);
+					final seq = tm.sequence([pause, fadeIn]);
+					trackTransitionSequence(obj, seq, preAlpha, preScaleX, preScaleY, preX, preY);
 				} else {
 					final t = tm.tween(obj, duration, [Alpha(0.0)], easing);
 					final capturedObj = obj;
@@ -167,12 +193,17 @@ class CodegenTransitionHelper {
 				}
 
 			case TransFlipX(duration, easing):
+				// Sequential: hide shrinks over halfDuration, then show grows over
+				// halfDuration. Total = duration. Show uses a [pause, grow] sequence so
+				// it doesn't overlap the hide on the sibling element.
 				final halfDuration = duration / 2.0;
 				if (show) {
 					obj.visible = true;
 					obj.scaleX = 0.0;
-					final t = tm.tween(obj, halfDuration, [ScaleX(preScaleX)], easing);
-					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
+					final pause = tm.createTween(obj, halfDuration, []);
+					final grow = tm.createTween(obj, halfDuration, [ScaleX(preScaleX)], easing);
+					final seq = tm.sequence([pause, grow]);
+					trackTransitionSequence(obj, seq, preAlpha, preScaleX, preScaleY, preX, preY);
 				} else {
 					final t = tm.tween(obj, halfDuration, [ScaleX(0.0)], easing);
 					final capturedObj = obj;
@@ -188,8 +219,10 @@ class CodegenTransitionHelper {
 				if (show) {
 					obj.visible = true;
 					obj.scaleY = 0.0;
-					final t = tm.tween(obj, halfDuration, [ScaleY(preScaleY)], easing);
-					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
+					final pause = tm.createTween(obj, halfDuration, []);
+					final grow = tm.createTween(obj, halfDuration, [ScaleY(preScaleY)], easing);
+					final seq = tm.sequence([pause, grow]);
+					trackTransitionSequence(obj, seq, preAlpha, preScaleX, preScaleY, preX, preY);
 				} else {
 					final t = tm.tween(obj, halfDuration, [ScaleY(0.0)], easing);
 					final capturedObj = obj;
@@ -284,19 +317,15 @@ class CodegenTransitionHelper {
 
 			case TransCrossfade(duration, easing):
 				// Sequential: hide runs over `duration`, show waits `duration` then fades in.
-				// Total visible transition = 2 * duration. The new element stays at alpha 0
-				// until the old has finished hiding, producing a true cross-through-zero blend.
+				// Total visible transition = 2 * duration. The show branch uses a sequence
+				// of [pause, fadeIn] so easing only applies to the fade-in phase.
 				if (show) {
 					obj.alpha = 0.0;
 					addToGraph(obj, parent, sentinel);
-					final targetAlpha = preAlpha;
-					final capturedObj = obj;
-					final t = tm.tween(obj, duration * 2.0, [
-						Custom(() -> 0.0, (v) -> {
-							capturedObj.alpha = (v <= 0.5) ? 0.0 : (v - 0.5) * 2.0 * targetAlpha;
-						}, 1.0)
-					], easing);
-					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
+					final pause = tm.createTween(obj, duration, []);
+					final fadeIn = tm.createTween(obj, duration, [Alpha(preAlpha)], easing);
+					final seq = tm.sequence([pause, fadeIn]);
+					trackTransitionSequence(obj, seq, preAlpha, preScaleX, preScaleY, preX, preY);
 				} else {
 					final t = tm.tween(obj, duration, [Alpha(0.0)], easing);
 					final capturedObj = obj;
@@ -309,12 +338,16 @@ class CodegenTransitionHelper {
 				}
 
 			case TransFlipX(duration, easing):
+				// Sequential: hide shrinks over halfDuration, then show grows. Show uses a
+				// [pause, grow] sequence so it doesn't overlap the hide on the sibling.
 				final halfDuration = duration / 2.0;
 				if (show) {
 					obj.scaleX = 0.0;
 					addToGraph(obj, parent, sentinel);
-					final t = tm.tween(obj, halfDuration, [ScaleX(preScaleX)], easing);
-					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
+					final pause = tm.createTween(obj, halfDuration, []);
+					final grow = tm.createTween(obj, halfDuration, [ScaleX(preScaleX)], easing);
+					final seq = tm.sequence([pause, grow]);
+					trackTransitionSequence(obj, seq, preAlpha, preScaleX, preScaleY, preX, preY);
 				} else {
 					final t = tm.tween(obj, halfDuration, [ScaleX(0.0)], easing);
 					final capturedObj = obj;
@@ -331,8 +364,10 @@ class CodegenTransitionHelper {
 				if (show) {
 					obj.scaleY = 0.0;
 					addToGraph(obj, parent, sentinel);
-					final t = tm.tween(obj, halfDuration, [ScaleY(preScaleY)], easing);
-					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
+					final pause = tm.createTween(obj, halfDuration, []);
+					final grow = tm.createTween(obj, halfDuration, [ScaleY(preScaleY)], easing);
+					final seq = tm.sequence([pause, grow]);
+					trackTransitionSequence(obj, seq, preAlpha, preScaleX, preScaleY, preX, preY);
 				} else {
 					final t = tm.tween(obj, halfDuration, [ScaleY(0.0)], easing);
 					final capturedObj = obj;

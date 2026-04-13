@@ -4444,13 +4444,13 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		final sizeX = 1280;
 		final sizeY = 720;
 		final scale = 2.5;
-		final rowH = 48.0;
+		final rowH = 40.0;
 		final colLabel = 0.0;
 		final colA = 45.0; // "before" static state
 		final colMid = 120.0; // mid-transition
 		final colB = 195.0; // "after" static state
-		final names = ["transFade", "transCrossfade", "transFlipX", "transFlipY", "transSlideLeft", "transSlideDown"];
-		final labels = ["fade", "crossfade", "flipX", "flipY", "slideLeft", "slideDown"];
+		final names = ["transFade", "transCrossfade", "transCrossfadeEased", "transFlipX", "transFlipY", "transSlideLeft", "transSlideDown"];
+		final labels = ["fade", "crossfade", "xfadeEased", "flipX", "flipY", "slideLeft", "slideDown"];
 
 		// Phase 1: builder
 		clearScene();
@@ -4537,37 +4537,45 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 			mp.transCrossfade.tweenManager = null;
 			addAt(mc, mp.transCrossfade.create(1), colB, 1 * rowH);
 
-			// Row 2: flipX
-			addTransLabel(mc, font, "flipX", colLabel, 2 * rowH + 10);
-			addAt(mc, mp.transFlipX.create(), colA, 2 * rowH);
+			// Row 2: xfadeEased (non-linear easing regression guard)
+			addTransLabel(mc, font, "xfadeEased", colLabel, 2 * rowH + 10);
+			addAt(mc, mp.transCrossfadeEased.create(), colA, 2 * rowH);
+			mp.transCrossfadeEased.tweenManager = tm2;
+			var mE = mp.transCrossfadeEased.create(); mE.setPosition(colMid, 2 * rowH); mc.addChild(mE); mE.setMode(1);
+			mp.transCrossfadeEased.tweenManager = null;
+			addAt(mc, mp.transCrossfadeEased.create(1), colB, 2 * rowH);
+
+			// Row 3: flipX
+			addTransLabel(mc, font, "flipX", colLabel, 3 * rowH + 10);
+			addAt(mc, mp.transFlipX.create(), colA, 3 * rowH);
 			mp.transFlipX.tweenManager = tm2;
-			var m2 = mp.transFlipX.create(); m2.setPosition(colMid, 2 * rowH); mc.addChild(m2); m2.setMode(1);
+			var m2 = mp.transFlipX.create(); m2.setPosition(colMid, 3 * rowH); mc.addChild(m2); m2.setMode(1);
 			mp.transFlipX.tweenManager = null;
-			addAt(mc, mp.transFlipX.create(1), colB, 2 * rowH);
+			addAt(mc, mp.transFlipX.create(1), colB, 3 * rowH);
 
-			// Row 3: flipY
-			addTransLabel(mc, font, "flipY", colLabel, 3 * rowH + 10);
-			addAt(mc, mp.transFlipY.create(), colA, 3 * rowH);
+			// Row 4: flipY
+			addTransLabel(mc, font, "flipY", colLabel, 4 * rowH + 10);
+			addAt(mc, mp.transFlipY.create(), colA, 4 * rowH);
 			mp.transFlipY.tweenManager = tm2;
-			var m3 = mp.transFlipY.create(); m3.setPosition(colMid, 3 * rowH); mc.addChild(m3); m3.setMode(1);
+			var m3 = mp.transFlipY.create(); m3.setPosition(colMid, 4 * rowH); mc.addChild(m3); m3.setMode(1);
 			mp.transFlipY.tweenManager = null;
-			addAt(mc, mp.transFlipY.create(1), colB, 3 * rowH);
+			addAt(mc, mp.transFlipY.create(1), colB, 4 * rowH);
 
-			// Row 4: slideLeft
-			addTransLabel(mc, font, "slideLeft", colLabel, 4 * rowH + 10);
-			addAt(mc, mp.transSlideLeft.create(), colA, 4 * rowH);
+			// Row 5: slideLeft
+			addTransLabel(mc, font, "slideLeft", colLabel, 5 * rowH + 10);
+			addAt(mc, mp.transSlideLeft.create(), colA, 5 * rowH);
 			mp.transSlideLeft.tweenManager = tm2;
-			var m4 = mp.transSlideLeft.create(); m4.setPosition(colMid, 4 * rowH); mc.addChild(m4); m4.setMode(1);
+			var m4 = mp.transSlideLeft.create(); m4.setPosition(colMid, 5 * rowH); mc.addChild(m4); m4.setMode(1);
 			mp.transSlideLeft.tweenManager = null;
-			addAt(mc, mp.transSlideLeft.create(1), colB, 4 * rowH);
+			addAt(mc, mp.transSlideLeft.create(1), colB, 5 * rowH);
 
-			// Row 5: slideDown
-			addTransLabel(mc, font, "slideDown", colLabel, 5 * rowH + 10);
-			addAt(mc, mp.transSlideDown.create(), colA, 5 * rowH);
+			// Row 6: slideDown
+			addTransLabel(mc, font, "slideDown", colLabel, 6 * rowH + 10);
+			addAt(mc, mp.transSlideDown.create(), colA, 6 * rowH);
 			mp.transSlideDown.tweenManager = tm2;
-			var m5 = mp.transSlideDown.create(); m5.setPosition(colMid, 5 * rowH); mc.addChild(m5); m5.setMode(1);
+			var m5 = mp.transSlideDown.create(); m5.setPosition(colMid, 6 * rowH); mc.addChild(m5); m5.setMode(1);
 			mp.transSlideDown.tweenManager = null;
-			addAt(mc, mp.transSlideDown.create(1), colB, 5 * rowH);
+			addAt(mc, mp.transSlideDown.create(1), colB, 6 * rowH);
 		} catch (e:Dynamic) {
 			Assert.fail('Codegen threw: $e');
 			VisualTestBase.pendingVisualTests--;

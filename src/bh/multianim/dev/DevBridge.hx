@@ -51,6 +51,9 @@ class DevBridge {
 	var sseClients:Array<Socket> = [];
 	var sseBroadcasting:Bool = false;
 
+	// ---- Pending HTTP connections (still receiving headers/body) ----
+	var pendingConnections:Array<HttpConnection> = [];
+
 	public function new(screenManager:ScreenManager, port:Int = 0) {
 		this.screenManager = screenManager;
 		this.port = if (port != 0) port else resolvePort();
@@ -281,9 +284,19 @@ class DevBridge {
 
 	function onClientConnected(clientSocket:Socket):Void {
 		var conn = new HttpConnection(clientSocket);
+		pendingConnections.push(conn);
 		clientSocket.onData = () -> {
 			try {
 				if (conn.processIncoming()) {
+					pendingConnections.remove(conn);
+					if (conn.headerOversized) {
+						sendJsonResponse(clientSocket, 431, {ok: false, error: "Request header fields too large"});
+						return;
+					}
+					if (conn.bodyOversized) {
+						sendJsonResponse(clientSocket, 413, {ok: false, error: "Payload too large"});
+						return;
+					}
 					var httpMethod = conn.getHttpMethod();
 					if (httpMethod == "OPTIONS") {
 						sendResponse(clientSocket, 204, "");
@@ -296,12 +309,32 @@ class DevBridge {
 					}
 				}
 			} catch (e:Dynamic) {
+				pendingConnections.remove(conn);
 				sendJsonResponse(clientSocket, 400, {ok: false, error: 'Bad request: $e'});
 			}
 		};
 		clientSocket.onError = (msg) -> {
-			// Client disconnected or error — just ignore
+			pendingConnections.remove(conn);
 		};
+	}
+
+	/** Called from ScreenManager.update — closes pending connections that
+	 *  exceeded the idle deadline so half-open clients can't park sockets. */
+	public function tick():Void {
+		if (pendingConnections.length == 0) return;
+		var now = haxe.Timer.stamp();
+		var i = pendingConnections.length;
+		while (i-- > 0) {
+			var conn = pendingConnections[i];
+			if (conn.isExpired(now)) {
+				pendingConnections.splice(i, 1);
+				try {
+					sendJsonResponse(conn.socket, 408, {ok: false, error: "Request timeout"});
+				} catch (_:Dynamic) {
+					try conn.socket.close() catch (_:Dynamic) {};
+				}
+			}
+		}
 	}
 
 	function handleRequest(body:String, clientSocket:Socket):Void {
@@ -349,6 +382,9 @@ class DevBridge {
 			case 204: "No Content";
 			case 400: "Bad Request";
 			case 405: "Method Not Allowed";
+			case 408: "Request Timeout";
+			case 413: "Payload Too Large";
+			case 431: "Request Header Fields Too Large";
 			case 500: "Internal Server Error";
 			default: "Unknown";
 		};
@@ -1929,8 +1965,19 @@ private class DevBridgeError extends haxe.Exception {
 // ---- HTTP connection state ----
 
 private class HttpConnection {
-	var socket:Socket;
+	public static final MAX_HEADER_BYTES = 64 * 1024;
+	public static final MAX_BODY_BYTES = 16 * 1024 * 1024;
+	public static final IDLE_TIMEOUT_SEC = 30.0;
+
+	public final socket:Socket;
+	public final connectedAt:Float;
+	public var lastActivityAt:Float;
+	public var headerOversized(default, null):Bool = false;
+	public var bodyOversized(default, null):Bool = false;
+
 	var headerBuf:StringBuf;
+	var headerLength:Int = 0;
+	var headerSearchFrom:Int = 0;
 	var headersDone:Bool = false;
 	var contentLength:Int = 0;
 	var bodyBuf:StringBuf;
@@ -1942,39 +1989,72 @@ private class HttpConnection {
 		this.socket = socket;
 		this.headerBuf = new StringBuf();
 		this.bodyBuf = new StringBuf();
+		this.connectedAt = haxe.Timer.stamp();
+		this.lastActivityAt = this.connectedAt;
 	}
 
+	public inline function isExpired(now:Float):Bool {
+		return (now - lastActivityAt) > IDLE_TIMEOUT_SEC;
+	}
+
+	/** Returns true when the request is complete OR when an error flag
+	 *  (`headerOversized` / `bodyOversized`) is set — caller must inspect
+	 *  the flags and send the appropriate error response. */
 	public function processIncoming():Bool {
 		var input = socket.input;
-		while (input.available > 0) {
-			if (!headersDone) {
-				var b = input.readByte();
-				headerBuf.addChar(b);
-				var headers = headerBuf.toString();
-				var endIdx = headers.indexOf("\r\n\r\n");
-				if (endIdx >= 0) {
-					headersDone = true;
-					httpMethod = parseHttpMethod(headers);
-					httpPath = parseRequestPath(headers);
-					contentLength = parseContentLength(headers);
-					// Anything after \r\n\r\n is body
-					var bodyStart = headers.substr(endIdx + 4);
-					if (bodyStart.length > 0) {
-						bodyBuf.addSub(bodyStart, 0, bodyStart.length);
-						bodyReceived += bodyStart.length;
-					}
+		var avail = input.available;
+		if (avail <= 0) return headersDone && bodyReceived >= contentLength;
+		lastActivityAt = haxe.Timer.stamp();
+
+		if (!headersDone) {
+			var room = MAX_HEADER_BYTES - headerLength;
+			var toRead = avail < room ? avail : room;
+			if (toRead > 0) {
+				var buf = haxe.io.Bytes.alloc(toRead);
+				var read = input.readBytes(buf, 0, toRead);
+				headerBuf.addSub(buf.toString(), 0, read);
+				headerLength += read;
+			}
+
+			// Search only the unscanned tail (back up needle.length-1 to catch a straddling boundary).
+			var headers = headerBuf.toString();
+			var startSearch = headerSearchFrom - 3;
+			if (startSearch < 0) startSearch = 0;
+			var endIdx = headers.indexOf("\r\n\r\n", startSearch);
+			if (endIdx >= 0) {
+				headersDone = true;
+				httpMethod = parseHttpMethod(headers);
+				httpPath = parseRequestPath(headers);
+				contentLength = parseContentLength(headers);
+				if (contentLength < 0) contentLength = 0;
+				if (contentLength > MAX_BODY_BYTES) {
+					bodyOversized = true;
+					return true;
+				}
+				var bodyStart = headers.substr(endIdx + 4);
+				if (bodyStart.length > 0) {
+					bodyBuf.addSub(bodyStart, 0, bodyStart.length);
+					bodyReceived += bodyStart.length;
 				}
 			} else {
-				// Read body bytes
-				var available = input.available;
-				var remaining = contentLength - bodyReceived;
-				var toRead = available < remaining ? available : remaining;
-				if (toRead > 0) {
-					var buf = haxe.io.Bytes.alloc(toRead);
-					var read = input.readBytes(buf, 0, toRead);
-					bodyBuf.addSub(buf.toString(), 0, read);
-					bodyReceived += read;
+				headerSearchFrom = headerLength;
+				if (headerLength >= MAX_HEADER_BYTES) {
+					headerOversized = true;
+					return true;
 				}
+				return false;
+			}
+		}
+
+		if (headersDone) {
+			var available = input.available;
+			var remaining = contentLength - bodyReceived;
+			var toRead = available < remaining ? available : remaining;
+			if (toRead > 0) {
+				var buf = haxe.io.Bytes.alloc(toRead);
+				var read = input.readBytes(buf, 0, toRead);
+				bodyBuf.addSub(buf.toString(), 0, read);
+				bodyReceived += read;
 			}
 		}
 		return headersDone && bodyReceived >= contentLength;

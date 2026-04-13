@@ -314,6 +314,9 @@ enum ConditionalValues {
 	CoAny;
 	CoStringValue(s:String);
 	CoNot(value:ConditionalValues);
+	// OR of typed inner conditionals — used by @switch pipe arms on non-enum/string params
+	// (color, hex int, bool) where raw-string CoEnums comparison fails against integer-backed values.
+	CoAnyOf(values:Array<ConditionalValues>);
 
 }
 

@@ -2,23 +2,30 @@
 
 ## Adding a New Test
 
-Tests are visual screenshot comparisons. To add a new test:
+Visual tests live in [`test/src/bh/test/examples/ProgrammableCodeGenTest.hx`](../../test/src/bh/test/examples/ProgrammableCodeGenTest.hx) and produce 3-image comparisons (reference + builder + macro) via `simpleMacroTest()`. There is no `AllExamplesTest.hx` — `ProgrammableCodeGenTest` is the visual runner. Other files in `test/src/bh/test/examples/` (e.g. `UIMultiAnimGridTest`, `ScreenTransitionTest`) are subsystem-specific and follow the same pattern when they need visual comparison.
+
+To add a new visual test:
 
 1. **Create test directory**: `test/examples/<N>-<testName>/` (N = next number)
 
-2. **Create `.manim` file**: `test/examples/<N>-<testName>/<testName>.manim` with a programmable named after the test feature
+2. **Create `.manim` file**: `test/examples/<N>-<testName>/<testName>.manim` with a programmable named after the test feature.
 
-3. **Add test method** in `test/src/bh/test/examples/AllExamplesTest.hx`:
+3. **Register the programmable** in [`test/src/bh/test/MultiProgrammable.hx`](../../test/src/bh/test/MultiProgrammable.hx). The `@:build(ProgrammableCodeGen.buildAll())` macro generates a typed factory (`mp.<field>.create()`) from this declaration:
    ```haxe
-   @Test
-   public function test<N>_<TestName>(async:utest.Async) {
-       this.testName = "<testName>";
-       this.referenceDir = "test/examples/<N>-<testName>";
-       buildRenderScreenshotAndCompare("test/examples/<N>-<testName>/<testName>.manim", "<programmableName>", async, 1280, 720);
-   }
+   @:manim("test/examples/<N>-<testName>/<testName>.manim", "<programmableName>")
+   public var <fieldName>;
    ```
 
-4. **Generate reference image** (test.bat gen-refs uses dynamic loop — no manual entries needed):
+4. **Add test method** in `ProgrammableCodeGenTest.hx`:
+   ```haxe
+   @Test
+   public function test<N>_<TestName>(async:utest.Async):Void {
+       simpleMacroTest(<N>, "<testName>", () -> createMp().<fieldName>.create(), async);
+   }
+   ```
+   Optional trailing args on `simpleMacroTest`: `placeholderValues`, `extraSetup`, `scale`, `similarityThreshold`. For `.manim` files designed at native resolution, pass `4.0` scale (most existing tests) or `1.0` for screen-sized layouts. For tests that need custom builder vs macro phases (e.g. animation freezing, see `test101_AnimFlip`), don't use `simpleMacroTest` — call `buildRenderScreenshotAndCompare` / `clearScene` / `captureScreenshotRaw` directly and remember to call `addTitleOverlay()` after adding the macro root.
+
+5. **Generate reference image** (test.bat gen-refs uses a dynamic loop — no manual entries needed):
    - Run `test.bat run` to generate screenshot
    - Run `test.bat gen-refs` to copy as reference
    - Verify with `test.bat run` again (should pass)

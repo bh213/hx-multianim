@@ -5405,6 +5405,18 @@ class ProgrammableCodeGen {
 			case CoNot(inner):
 				final innerExpr = condValueToExpr(inner, paramExpr, paramName);
 				macro !($innerExpr);
+
+			case CoAnyOf(values):
+				if (values.length == 0) {
+					macro false;
+				} else {
+					var result:Expr = condValueToExpr(values[0], paramExpr, paramName);
+					for (i in 1...values.length) {
+						final next = condValueToExpr(values[i], paramExpr, paramName);
+						result = macro($result || $next);
+					}
+					result;
+				}
 		};
 	}
 
