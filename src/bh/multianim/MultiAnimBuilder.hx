@@ -27,9 +27,11 @@ import bh.base.Hex.DoubledCoord;
 import bh.base.PixelLine;
 import h2d.Object;
 import bh.multianim.MultiAnimParser;
+import bh.multianim.MultiAnimParser.SwitchArm;
 import bh.base.ResourceLoader;
 import bh.base.TweenManager;
 import bh.base.TweenManager.Tween;
+import bh.base.TweenManager.TweenSequence;
 import bh.base.TweenManager.TweenProperty;
 import bh.base.Particles.ForceField;
 import bh.base.Particles.BoundsMode;
@@ -166,7 +168,7 @@ class BuilderResolvedSettings {
 			throw 'settings not found, was looking for $settingName';
 		final r = settings[settingName];
 		if (r == null)
-			throw 'expected string setting ${settingName} to present but was not';
+			throw 'expected string setting ${settingName} to be present but was not';
 		return switch r {
 			case RSVString(s): s;
 			case RSVInt(i): '$i';
@@ -181,7 +183,7 @@ class BuilderResolvedSettings {
 			throw 'settings not found, was looking for $settingName';
 		var r = settings[settingName];
 		if (r == null)
-			throw 'expected int setting ${settingName} to present but was not';
+			throw 'expected int setting ${settingName} to be present but was not';
 		return switch r {
 			case RSVInt(i): i;
 			case RSVColor(c): c;
@@ -211,7 +213,7 @@ class BuilderResolvedSettings {
 			throw 'settings not found, was looking for $settingName';
 		var r = settings[settingName];
 		if (r == null)
-			throw 'expected float setting ${settingName} to present but was not';
+			throw 'expected float setting ${settingName} to be present but was not';
 		return switch r {
 			case RSVFloat(f): f;
 			case RSVInt(i): cast i;
@@ -263,26 +265,54 @@ class BuilderResolvedSettings {
 	}
 }
 
+private typedef SavedFlowProperties = {
+	horizontalAlign:Null<h2d.Flow.FlowAlign>,
+	verticalAlign:Null<h2d.Flow.FlowAlign>,
+	offsetX:Int, offsetY:Int,
+	isAbsolute:Bool,
+	minWidth:Null<Int>, minHeight:Null<Int>,
+	paddingLeft:Int, paddingTop:Int, paddingRight:Int, paddingBottom:Int,
+};
+
+@:nullSafety
+private typedef DynamicNameBinding = {
+	paramName:String,
+	container:h2d.Object,
+	currentName:String,
+	node:Node,
+	parameters:Map<String, ReferenceableValue>,
+	externalReference:Null<String>,
+	internalResults:InternalBuilderResults,
+};
+
 @:nullSafety
 class IncrementalUpdateContext {
 	var builder:MultiAnimBuilder;
 	var indexedParams:Map<String, ResolvedIndexParameters>;
 	var builderParams:BuilderParameters;
-	var conditionalEntries:Array<{object:h2d.Object, node:Node}> = [];
+	var conditionalEntries:Array<{object:h2d.Object, node:Node, sentinel:h2d.Object, parent:h2d.Object, layer:Int,
+		savedFlowProps:Null<SavedFlowProperties>}> = [];
 	var conditionalApplyEntries:Array<{
 		parent:h2d.Object, node:Node, applied:Bool,
 		savedFilter:Null<h2d.filter.Filter>, savedAlpha:Null<Float>,
 		savedScaleX:Null<Float>, savedScaleY:Null<Float>, savedRotation:Null<Float>,
 		appliedPosX:Float, appliedPosY:Float,
 	}> = [];
-	var trackedExpressions:Array<{updateFn:Void->Void, paramRefs:Array<String>}> = [];
+	var trackedExpressions:Array<{updateFn:Void->Void, paramRefs:Array<String>, object:Null<h2d.Object>}> = [];
+	var deferredEntries:Array<{
+		wrapper:h2d.Object, node:Node, sentinel:h2d.Object, parent:h2d.Object, layer:Int,
+		gridCS:GridCoordinateSystem, hexCS:HexCoordinateSystem,
+		internalResults:InternalBuilderResults, builderParams:BuilderParameters,
+	}> = [];
 	var dynamicRefBindings:Array<{childContext:IncrementalUpdateContext, childParam:String, resolveFn:Void->Dynamic, referencedParams:Array<String>}> = [];
+	var dynamicNameBindings:Array<DynamicNameBinding> = [];
 	var rootNode:Node;
 	var batchMode:Bool = false;
 	var changedParams:Map<String, Bool> = new Map();
+	var hasChanges:Bool = false;
 	var transitionsDef:Null<Map<String, TransitionType>>;
 	public var tweenManager:Null<TweenManager> = null;
-	var activeTransitionTweens:Array<{obj:h2d.Object, tween:Tween, savedAlpha:Float, savedScaleX:Float, savedScaleY:Float, savedX:Float, savedY:Float}> = [];
+	var activeTransitionTweens:Array<{obj:h2d.Object, tween:Null<Tween>, sequence:Null<TweenSequence>, savedAlpha:Float, savedScaleX:Float, savedScaleY:Float, savedX:Float, savedY:Float}> = [];
 
 	public function new(builder:MultiAnimBuilder, indexedParams:Map<String, ResolvedIndexParameters>,
 			builderParams:BuilderParameters, rootNode:Node) {
@@ -307,18 +337,71 @@ class IncrementalUpdateContext {
 	public function getBuilderParams():BuilderParameters {
 		return builderParams;
 	}
+
 	#end
 
-	public function trackConditional(object:h2d.Object, node:Node):Void {
-		conditionalEntries.push({object: object, node: node});
+	public function trackConditional(object:h2d.Object, node:Node, sentinel:h2d.Object, parent:h2d.Object, layer:Int):Void {
+		conditionalEntries.push({object: object, node: node, sentinel: sentinel, parent: parent, layer: layer,
+			savedFlowProps: saveFlowProperties(object, parent)});
 	}
 
-	public function trackExpression(updateFn:Void->Void, paramRefs:Array<String>):Void {
-		trackedExpressions.push({updateFn: updateFn, paramRefs: paramRefs});
+	public function trackDeferredConditional(wrapper:h2d.Object, node:Node, sentinel:h2d.Object, parent:h2d.Object, layer:Int,
+			gridCS:GridCoordinateSystem, hexCS:HexCoordinateSystem,
+			internalResults:InternalBuilderResults, builderParams:BuilderParameters):Void {
+		conditionalEntries.push({object: wrapper, node: node, sentinel: sentinel, parent: parent, layer: layer,
+			savedFlowProps: saveFlowProperties(wrapper, parent)});
+		deferredEntries.push({
+			wrapper: wrapper, node: node, sentinel: sentinel, parent: parent, layer: layer,
+			gridCS: gridCS, hexCS: hexCS,
+			internalResults: internalResults, builderParams: builderParams,
+		});
+	}
+
+	/** Save Flow layout properties of an object so they can be restored when re-adding to a Flow parent. */
+	function saveFlowProperties(object:h2d.Object, parent:h2d.Object):Null<SavedFlowProperties> {
+		if (!Std.isOfType(parent, h2d.Flow)) return null;
+		final flow:h2d.Flow = cast parent;
+		final props = flow.getProperties(object);
+		return {
+			horizontalAlign: props.horizontalAlign,
+			verticalAlign: props.verticalAlign,
+			offsetX: props.offsetX, offsetY: props.offsetY,
+			isAbsolute: props.isAbsolute,
+			minWidth: props.minWidth, minHeight: props.minHeight,
+			paddingLeft: props.paddingLeft, paddingTop: props.paddingTop,
+			paddingRight: props.paddingRight, paddingBottom: props.paddingBottom,
+		};
+	}
+
+	/** Restore saved Flow layout properties after re-adding a child to a Flow parent. */
+	function restoreFlowProperties(object:h2d.Object, parent:h2d.Object, saved:Null<SavedFlowProperties>):Void {
+		if (saved == null) return;
+		if (!Std.isOfType(parent, h2d.Flow)) return;
+		final flow:h2d.Flow = cast parent;
+		final props = flow.getProperties(object);
+		props.horizontalAlign = saved.horizontalAlign;
+		props.verticalAlign = saved.verticalAlign;
+		props.offsetX = saved.offsetX;
+		props.offsetY = saved.offsetY;
+		props.isAbsolute = saved.isAbsolute;
+		props.minWidth = saved.minWidth;
+		props.minHeight = saved.minHeight;
+		props.paddingLeft = saved.paddingLeft;
+		props.paddingTop = saved.paddingTop;
+		props.paddingRight = saved.paddingRight;
+		props.paddingBottom = saved.paddingBottom;
+	}
+
+	public function trackExpression(updateFn:Void->Void, paramRefs:Array<String>, ?object:h2d.Object):Void {
+		trackedExpressions.push({updateFn: updateFn, paramRefs: paramRefs, object: object});
 	}
 
 	public function trackDynamicRef(childContext:IncrementalUpdateContext, childParam:String, resolveFn:Void->Dynamic, referencedParams:Array<String>):Void {
 		dynamicRefBindings.push({childContext: childContext, childParam: childParam, resolveFn: resolveFn, referencedParams: referencedParams});
+	}
+
+	public function trackDynamicName(binding:DynamicNameBinding):Void {
+		dynamicNameBindings.push(binding);
 	}
 
 	public function trackConditionalApply(parent:h2d.Object, node:Node, applied:Bool,
@@ -331,6 +414,58 @@ class IncrementalUpdateContext {
 			savedScaleX: savedScaleX, savedScaleY: savedScaleY, savedRotation: savedRotation,
 			appliedPosX: appliedPosX, appliedPosY: appliedPosY,
 		});
+	}
+
+	/** Add a conditional element back into the scene graph, positioned right after its sentinel. */
+	function addToGraph(entry:{object:h2d.Object, sentinel:h2d.Object, parent:h2d.Object, layer:Int,
+			?savedFlowProps:Null<SavedFlowProperties>}):Void {
+		if (entry.object.parent != null) return; // already in graph
+		final sentinel = entry.sentinel;
+		final parent = entry.parent;
+		if (Std.isOfType(parent, h2d.Layers) && entry.layer != -1) {
+			final layersParent:h2d.Layers = cast parent;
+			// Layers.add index is relative to layer start
+			final sentinelIndex = layersParent.getChildIndexInLayer(sentinel);
+			layersParent.add(entry.object, entry.layer, sentinelIndex + 1);
+		} else {
+			final sentinelIndex = parent.getChildIndex(sentinel);
+			parent.addChildAt(entry.object, sentinelIndex + 1);
+		}
+		restoreFlowProperties(entry.object, parent, entry.savedFlowProps);
+		// Re-fire tracked expressions to restore content lost on removeChild.
+		// h2d.Graphics clears draw commands in onRemove(), so content must be re-drawn.
+		refreshTrackedExpressionsFor(entry.object);
+	}
+
+	/** Remove a conditional element from the scene graph. Its sentinel stays. */
+	function removeFromGraph(entry:{object:h2d.Object}):Void {
+		if (entry.object.parent == null) return; // already removed
+		entry.object.parent.removeChild(entry.object);
+	}
+
+	/** Check if a conditional element is currently in the scene graph. */
+	static inline function isInGraph(obj:h2d.Object):Bool {
+		return obj.parent != null;
+	}
+
+	/** Re-fire tracked expressions for elements within a subtree that was just re-added.
+	    h2d.Graphics clears draw commands in onRemove(), so content must be re-drawn on re-add. */
+	function refreshTrackedExpressionsFor(target:h2d.Object):Void {
+		for (tracked in trackedExpressions) {
+			final obj = tracked.object;
+			if (obj == null) continue;
+			if (obj == target || isDescendantOf(obj, target))
+				tracked.updateFn();
+		}
+	}
+
+	static function isDescendantOf(obj:h2d.Object, ancestor:h2d.Object):Bool {
+		var p = obj.parent;
+		while (p != null) {
+			if (p == ancestor) return true;
+			p = p.parent;
+		}
+		return false;
 	}
 
 	function applyConditionalApplyEntry(entry:{
@@ -383,13 +518,19 @@ class IncrementalUpdateContext {
 		entry.applied = false;
 	}
 
+	@:nullSafety(Off)
 	public function setParameter(name:String, value:Dynamic):Void {
-		// Look up the parameter type definition for type-aware conversion (flags only — other types handled below)
+		// Look up the parameter type definition for type-aware conversion (flags need special handling)
 		final paramDef = getParamDefinition(name);
-		if (paramDef != null && paramDef.type.match(PPTFlags(_))) {
-			indexedParams.set(name, MultiAnimParser.dynamicValueToIndex(name, paramDef.type, value, s -> throw s));
+		final paramType = paramDef?.type;
+		if (paramType != null && paramType.match(PPTFlags(_))) {
+			indexedParams.set(name, MultiAnimParser.dynamicValueToIndex(name, paramType, value, s -> throw s));
 		} else if (Std.isOfType(value, Int)) {
-			indexedParams.set(name, Value(value));
+			// PPTColor params store alpha-baked values when set via .manim literals (#RRGGBB → 0xFFRRGGBB).
+			// Bake here too so setParameter is equivalence-preserving with the parser default, and so
+			// @switch arms compare equal regardless of which side baked the alpha.
+			final v:Int = (paramType != null && paramType.match(PPTColor)) ? (value : Int).addAlphaIfNotPresent() : value;
+			indexedParams.set(name, Value(v));
 		} else if (Std.isOfType(value, Float)) {
 			indexedParams.set(name, ValueF(value));
 		} else if (Std.isOfType(value, String)) {
@@ -405,20 +546,23 @@ class IncrementalUpdateContext {
 		}
 		#end
 		changedParams.set(name, true);
+		hasChanges = true;
 		if (!batchMode)
 			applyUpdates();
 	}
 
 	public function beginUpdate():Void {
 		batchMode = true;
-		changedParams = new Map();
+		changedParams.clear();
+		hasChanges = false;
 	}
 
 	public function endUpdate():Void {
 		batchMode = false;
-		if (Lambda.count(changedParams) > 0)
+		if (hasChanges)
 			applyUpdates();
-		changedParams = new Map();
+		changedParams.clear();
+		hasChanges = false;
 	}
 
 	function getParamDefinition(name:String):Null<{type:MultiAnimParser.DefinitionType, defaultValue:Null<ResolvedIndexParameters>}> {
@@ -434,8 +578,14 @@ class IncrementalUpdateContext {
 
 	public function cancelAllTransitions():Void {
 		for (entry in activeTransitionTweens) {
-			entry.tween.onComplete = null;
-			entry.tween.cancel();
+			if (entry.tween != null) {
+				entry.tween.onComplete = null;
+				entry.tween.cancel();
+			}
+			if (entry.sequence != null) {
+				entry.sequence.onComplete = null;
+				entry.sequence.cancel();
+			}
 			entry.obj.alpha = entry.savedAlpha;
 			entry.obj.scaleX = entry.savedScaleX;
 			entry.obj.scaleY = entry.savedScaleY;
@@ -459,8 +609,14 @@ class IncrementalUpdateContext {
 		while (i < activeTransitionTweens.length) {
 			if (activeTransitionTweens[i].obj == obj) {
 				final entry = activeTransitionTweens[i];
-				entry.tween.onComplete = null; // Prevent delayed onComplete from TweenManager
-				entry.tween.cancel();
+				if (entry.tween != null) {
+					entry.tween.onComplete = null; // Prevent delayed onComplete from TweenManager
+					entry.tween.cancel();
+				}
+				if (entry.sequence != null) {
+					entry.sequence.onComplete = null;
+					entry.sequence.cancel();
+				}
 				// Restore pre-transition properties so the next transition starts from clean state
 				obj.alpha = entry.savedAlpha;
 				obj.scaleX = entry.savedScaleX;
@@ -475,12 +631,28 @@ class IncrementalUpdateContext {
 	}
 
 	function trackTransitionTween(obj:h2d.Object, tween:Tween, savedAlpha:Float, savedScaleX:Float, savedScaleY:Float, savedX:Float, savedY:Float):Void {
-		activeTransitionTweens.push({obj: obj, tween: tween, savedAlpha: savedAlpha, savedScaleX: savedScaleX, savedScaleY: savedScaleY, savedX: savedX, savedY: savedY});
+		activeTransitionTweens.push({obj: obj, tween: tween, sequence: null, savedAlpha: savedAlpha, savedScaleX: savedScaleX, savedScaleY: savedScaleY, savedX: savedX, savedY: savedY});
 		final origOnComplete = tween.onComplete;
 		tween.onComplete = () -> {
 			var i = 0;
 			while (i < activeTransitionTweens.length) {
 				if (activeTransitionTweens[i].tween == tween) {
+					activeTransitionTweens.splice(i, 1);
+					break;
+				}
+				i++;
+			}
+			if (origOnComplete != null) origOnComplete();
+		};
+	}
+
+	function trackTransitionSequence(obj:h2d.Object, seq:TweenSequence, savedAlpha:Float, savedScaleX:Float, savedScaleY:Float, savedX:Float, savedY:Float):Void {
+		activeTransitionTweens.push({obj: obj, tween: null, sequence: seq, savedAlpha: savedAlpha, savedScaleX: savedScaleX, savedScaleY: savedScaleY, savedX: savedX, savedY: savedY});
+		final origOnComplete = seq.onComplete;
+		seq.onComplete = () -> {
+			var i = 0;
+			while (i < activeTransitionTweens.length) {
+				if (activeTransitionTweens[i].sequence == seq) {
 					activeTransitionTweens.splice(i, 1);
 					break;
 				}
@@ -496,25 +668,46 @@ class IncrementalUpdateContext {
 		return false;
 	}
 
-	function setVisibilityWithTransition(obj:h2d.Object, newVisible:Bool):Void {
+	/** Check if an object is effectively visible: in the scene graph and all ancestors visible. */
+	static function isEffectivelyVisible(obj:h2d.Object):Bool {
+		if (obj.parent == null) return false; // Not in scene graph
+		var cur = obj;
+		while (cur != null) {
+			if (!cur.visible) return false;
+			cur = cur.parent;
+		}
+		return true;
+	}
+
+	function setPresenceWithTransition(entry:{object:h2d.Object, sentinel:h2d.Object, parent:h2d.Object, layer:Int,
+			?savedFlowProps:Null<SavedFlowProperties>}, newVisible:Bool):Void {
+		final obj = entry.object;
+		final inGraph = isInGraph(obj);
 		// Skip only if state matches AND no transition is in progress.
-		// A mid-hide element has visible=true but should accept show requests.
-		if (obj.visible == newVisible && !hasActiveTransition(obj)) return;
+		if (inGraph == newVisible && !hasActiveTransition(obj)) return;
 
 		final transSpec = findTransitionSpec();
 		if (transSpec == null || tweenManager == null || transSpec.match(TransNone)) {
-			cancelActiveTransition(obj); // Cancel any in-progress transition
-			obj.visible = newVisible;
+			cancelActiveTransition(obj);
+			if (newVisible)
+				addToGraph(entry);
+			else
+				removeFromGraph(entry);
 			return;
 		}
 
 		cancelActiveTransition(obj);
-		executeTransition(obj, newVisible, transSpec);
+		executePresenceTransition(entry, newVisible, transSpec);
 	}
 
-	function executeTransition(obj:h2d.Object, show:Bool, spec:TransitionType):Void {
+	function executePresenceTransition(entry:{object:h2d.Object, sentinel:h2d.Object, parent:h2d.Object, layer:Int,
+			?savedFlowProps:Null<SavedFlowProperties>}, show:Bool, spec:TransitionType):Void {
+		final obj = entry.object;
 		final tm = tweenManager;
-		if (tm == null) { obj.visible = show; return; }
+		if (tm == null) {
+			if (show) addToGraph(entry); else removeFromGraph(entry);
+			return;
+		}
 
 		// Capture pre-transition state for all properties (used by cancelActiveTransition to restore)
 		final preAlpha = obj.alpha;
@@ -526,49 +719,60 @@ class IncrementalUpdateContext {
 		switch (spec) {
 			case TransFade(duration, easing):
 				if (show) {
-					obj.visible = true;
+					addToGraph(entry);
 					obj.alpha = 0.0;
 					final t = tm.tween(obj, duration, [Alpha(preAlpha)], easing);
 					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
 				} else {
 					final t = tm.tween(obj, duration, [Alpha(0.0)], easing);
-					final capturedObj = obj;
+					final capturedEntry = entry;
 					t.onComplete = () -> {
-						capturedObj.visible = false;
-						capturedObj.alpha = preAlpha;
+						removeFromGraph(capturedEntry);
+						capturedEntry.object.alpha = preAlpha;
 					};
 					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
 				}
 
 			case TransCrossfade(duration, easing):
+				// Sequential: hide runs over `duration`, show waits `duration` then fades in.
+				// Total visible transition = 2 * duration. The show branch uses a sequence
+				// of [pause, fadeIn] so easing only applies to the fade-in phase — otherwise
+				// non-linear easings skew the switchover point.
 				if (show) {
-					obj.visible = true;
+					addToGraph(entry);
 					obj.alpha = 0.0;
-					final t = tm.tween(obj, duration, [Alpha(preAlpha)], easing);
-					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
+					final pause = tm.createTween(obj, duration, []);
+					final fadeIn = tm.createTween(obj, duration, [Alpha(preAlpha)], easing);
+					final seq = tm.sequence([pause, fadeIn]);
+					trackTransitionSequence(obj, seq, preAlpha, preScaleX, preScaleY, preX, preY);
 				} else {
 					final t = tm.tween(obj, duration, [Alpha(0.0)], easing);
-					final capturedObj = obj;
+					final capturedEntry = entry;
 					t.onComplete = () -> {
-						capturedObj.visible = false;
-						capturedObj.alpha = preAlpha;
+						removeFromGraph(capturedEntry);
+						capturedEntry.object.alpha = preAlpha;
 					};
 					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
 				}
 
 			case TransFlipX(duration, easing):
+				// Sequential: hide shrinks over halfDuration, then show grows over
+				// halfDuration. Total = duration. Show uses a [pause, grow] sequence so
+				// it doesn't overlap the hide on the sibling element.
 				final halfDuration = duration / 2.0;
 				if (show) {
-					obj.visible = true;
+					addToGraph(entry);
 					obj.scaleX = 0.0;
-					final t = tm.tween(obj, halfDuration, [ScaleX(preScaleX)], easing);
-					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
+					final pause = tm.createTween(obj, halfDuration, []);
+					final grow = tm.createTween(obj, halfDuration, [ScaleX(preScaleX)], easing);
+					final seq = tm.sequence([pause, grow]);
+					trackTransitionSequence(obj, seq, preAlpha, preScaleX, preScaleY, preX, preY);
 				} else {
 					final t = tm.tween(obj, halfDuration, [ScaleX(0.0)], easing);
-					final capturedObj = obj;
+					final capturedEntry = entry;
 					t.onComplete = () -> {
-						capturedObj.visible = false;
-						capturedObj.scaleX = preScaleX;
+						removeFromGraph(capturedEntry);
+						capturedEntry.object.scaleX = preScaleX;
 					};
 					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
 				}
@@ -576,16 +780,18 @@ class IncrementalUpdateContext {
 			case TransFlipY(duration, easing):
 				final halfDuration = duration / 2.0;
 				if (show) {
-					obj.visible = true;
+					addToGraph(entry);
 					obj.scaleY = 0.0;
-					final t = tm.tween(obj, halfDuration, [ScaleY(preScaleY)], easing);
-					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
+					final pause = tm.createTween(obj, halfDuration, []);
+					final grow = tm.createTween(obj, halfDuration, [ScaleY(preScaleY)], easing);
+					final seq = tm.sequence([pause, grow]);
+					trackTransitionSequence(obj, seq, preAlpha, preScaleX, preScaleY, preX, preY);
 				} else {
 					final t = tm.tween(obj, halfDuration, [ScaleY(0.0)], easing);
-					final capturedObj = obj;
+					final capturedEntry = entry;
 					t.onComplete = () -> {
-						capturedObj.visible = false;
-						capturedObj.scaleY = preScaleY;
+						removeFromGraph(capturedEntry);
+						capturedEntry.object.scaleY = preScaleY;
 					};
 					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
 				}
@@ -593,7 +799,7 @@ class IncrementalUpdateContext {
 			case TransSlide(dir, duration, distance, easing):
 				final slideOffset:Float = distance != null ? distance : 50.0;
 				if (show) {
-					obj.visible = true;
+					addToGraph(entry);
 					obj.alpha = 0.0;
 					switch (dir) {
 						case TDLeft: obj.x -= slideOffset;
@@ -613,19 +819,147 @@ class IncrementalUpdateContext {
 						case TDDown: targetY += slideOffset;
 					}
 					final t = tm.tween(obj, duration, [X(targetX), Y(targetY), Alpha(0.0)], easing);
-					final capturedObj = obj;
+					final capturedEntry = entry;
 					t.onComplete = () -> {
-						capturedObj.visible = false;
-						capturedObj.alpha = preAlpha;
-						capturedObj.x = preX;
-						capturedObj.y = preY;
+						removeFromGraph(capturedEntry);
+						capturedEntry.object.alpha = preAlpha;
+						capturedEntry.object.x = preX;
+						capturedEntry.object.y = preY;
 					};
 					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
 				}
 
 			case TransNone:
-				obj.visible = show;
+				if (show) addToGraph(entry); else removeFromGraph(entry);
 		}
+	}
+
+	function findDeferred(obj:h2d.Object):Null<{
+		wrapper:h2d.Object, node:Node, sentinel:h2d.Object, parent:h2d.Object, layer:Int,
+		gridCS:GridCoordinateSystem, hexCS:HexCoordinateSystem,
+		internalResults:InternalBuilderResults, builderParams:BuilderParameters,
+	}> {
+		for (entry in deferredEntries)
+			if (entry.wrapper == obj) return entry;
+		return null;
+	}
+
+	function materializeDeferred(entry:{
+		wrapper:h2d.Object, node:Node, sentinel:h2d.Object, parent:h2d.Object, layer:Int,
+		gridCS:GridCoordinateSystem, hexCS:HexCoordinateSystem,
+		internalResults:InternalBuilderResults, builderParams:BuilderParameters,
+	}):Void {
+		// Build the deferred node's content into the wrapper (non-incremental, like repeatable rebuild).
+		// Register a tracked expression to rebuild when referenced params change.
+		entry.wrapper.removeChildren(); // Clear stale children from previous materialization
+		rebuildDeferredContent(entry);
+		// Collect param refs from node expressions for future rebuild tracking
+		final paramRefs = builder.collectNodeParamRefs(entry.node);
+		if (paramRefs.length > 0) {
+			final capturedEntry = entry;
+			trackedExpressions.push({
+				updateFn: () -> {
+					capturedEntry.wrapper.removeChildren();
+					rebuildDeferredContent(capturedEntry);
+				},
+				paramRefs: paramRefs,
+				object: entry.wrapper,
+			});
+		// Remove from deferred list — tracked expression handles future rebuilds
+			deferredEntries.remove(entry);
+		}
+		// If no tracked expression, keep in deferredEntries so future show cycles re-materialize
+	}
+
+	function rebuildDeferredContent(entry:{
+		wrapper:h2d.Object, node:Node,
+		gridCS:GridCoordinateSystem, hexCS:HexCoordinateSystem,
+		internalResults:InternalBuilderResults, builderParams:BuilderParameters,
+	}):Void {
+		builder.incrementalMode = false;
+		builder.incrementalContext = null;
+		builder.builderParams = entry.builderParams;
+		builder.build(entry.node, ObjectMode(entry.wrapper), entry.gridCS, entry.hexCS, entry.internalResults, entry.builderParams);
+		builder.incrementalMode = false;
+		builder.incrementalContext = null;
+	}
+
+	@:nullSafety(Off)
+	function rebuildDynamicNameRef(binding:DynamicNameBinding, newName:String):Void {
+		// Remove old dynamic ref bindings that belonged to the previous child
+		dynamicRefBindings = dynamicRefBindings.filter(b -> {
+			// Remove bindings whose child context belongs to the old dynamicRef result
+			final oldResult = binding.internalResults.dynamicRefs.get(binding.currentName);
+			return oldResult == null || b.childContext != oldResult.incrementalContext;
+		});
+
+		// Clear the container
+		binding.container.removeChildren();
+
+		// Remove old entry from internalResults.dynamicRefs
+		binding.internalResults.dynamicRefs.remove(binding.currentName);
+
+		// Resolve the builder (external or local)
+		var targetBuilder = if (binding.externalReference != null) {
+			var b = builder.multiParserResult.imports?.get(binding.externalReference);
+			if (b == null) throw 'could not find builder for external dynamicRef ${binding.externalReference}';
+			b;
+		} else builder;
+
+		// Pass ReferenceableValue entries as Dynamic — buildWithParameters/updateIndexedParamsFromDynamicMap handles both
+		final paramMap = new Map<String, Dynamic>();
+		for (key => value in binding.parameters) {
+			paramMap.set(key, cast value);
+		}
+
+		var result = targetBuilder.buildWithParameters(newName, paramMap, builderParams, indexedParams, true);
+		if (result?.object == null)
+			throw 'could not build dynamicRef "$newName"';
+
+		binding.container.addChild(result.object);
+		binding.currentName = newName;
+
+		// Store the new result
+		binding.internalResults.dynamicRefs.set(newName, result);
+
+		// Re-register parameter bindings for the new child
+		if (result.incrementalContext != null) {
+			final childNode = targetBuilder.multiParserResult.nodes?.get(newName);
+			final childDefs = childNode != null ? targetBuilder.getProgrammableParameterDefinitions(childNode) : new Map();
+			for (childParam => value in binding.parameters) {
+				final refs:Array<String> = [];
+				MultiAnimBuilder.collectParamRefs(value, refs);
+				if (refs.length > 0) {
+					final capturedValue = value;
+					final paramType = childDefs.get(childParam)?.type;
+					final resolveFn:Void->Dynamic = switch paramType {
+						case PPTString: () -> builder.resolveAsString(capturedValue);
+						case PPTColor: () -> builder.resolveAsColorInteger(capturedValue);
+						case PPTFloat: () -> builder.resolveAsNumber(capturedValue);
+						default: () -> builder.resolveAsInteger(capturedValue);
+					};
+					trackDynamicRef(result.incrementalContext, childParam, resolveFn, refs);
+				}
+			}
+		}
+	}
+
+	function setPresenceOrMaterialize(entry:{object:h2d.Object, node:Node, sentinel:h2d.Object, parent:h2d.Object, layer:Int,
+			?savedFlowProps:Null<SavedFlowProperties>}, newVisible:Bool):Void {
+		if (newVisible) {
+			final deferred = findDeferred(entry.object);
+			if (deferred != null && !isInGraph(entry.object)) {
+				// First show or re-show after hide: materialize deferred content and add to graph
+				addToGraph(entry);
+				materializeDeferred(deferred);
+				// Apply transition animation if configured
+				final transSpec = findTransitionSpec();
+				if (transSpec != null && tweenManager != null && !transSpec.match(TransNone))
+					executePresenceTransition(entry, true, transSpec);
+				return;
+			}
+		}
+		setPresenceWithTransition(entry, newVisible);
 	}
 
 	function applyUpdates():Void {
@@ -633,10 +967,10 @@ class IncrementalUpdateContext {
 		builder.indexedParams = indexedParams;
 		builder.builderParams = builderParams;
 
-		// Re-evaluate visibility for all conditional elements
+		// Re-evaluate presence for all conditional elements
 		for (entry in conditionalEntries) {
 			final shouldBeVisible = builder.isMatch(entry.node, indexedParams);
-			setVisibilityWithTransition(entry.object, shouldBeVisible);
+			setPresenceOrMaterialize(entry, shouldBeVisible);
 		}
 		// Re-evaluate conditional apply entries
 		for (entry in conditionalApplyEntries) {
@@ -647,8 +981,12 @@ class IncrementalUpdateContext {
 		// Re-evaluate @else/@default chain visibility
 		applyConditionalChains();
 
-		// Re-evaluate tracked expressions
+		// Re-evaluate tracked expressions (skip for hidden objects)
 		for (tracked in trackedExpressions) {
+			// Skip expression evaluation for objects that are not effectively visible
+			final obj = tracked.object;
+			if (obj != null && !isEffectivelyVisible(obj))
+				continue;
 			var relevant = false;
 			for (ref in tracked.paramRefs) {
 				if (changedParams.exists(ref)) {
@@ -656,7 +994,7 @@ class IncrementalUpdateContext {
 					break;
 				}
 			}
-			if (relevant || Lambda.count(changedParams) == 0) {
+			if (relevant || !hasChanges) {
 				tracked.updateFn();
 			}
 		}
@@ -675,51 +1013,65 @@ class IncrementalUpdateContext {
 			}
 		}
 
+		// Rebuild dynamic name refs (template parameter changed)
+		for (binding in dynamicNameBindings) {
+			if (changedParams.exists(binding.paramName)) {
+				final newName = builder.resolveAsString(RVReference(binding.paramName));
+				if (newName != binding.currentName) {
+					rebuildDynamicNameRef(binding, newName);
+				}
+			}
+		}
+
 		builder.popBuilderState();
-		changedParams = new Map();
+		changedParams.clear();
+		hasChanges = false;
 	}
 
 	public function applyConditionalChains():Void {
 		// Walk the root node's children to resolve @else/@default chains with new params
 		if (rootNode.children == null) return;
-		resolveVisibilityForChildren(rootNode.children);
+		// Build lookup maps keyed by uniqueNodeName for O(1) access in recursive walk
+		final entryMap = new haxe.ds.StringMap<{object:h2d.Object, node:Node, sentinel:h2d.Object, parent:h2d.Object, layer:Int,
+			savedFlowProps:Null<SavedFlowProperties>}>();
+		for (entry in conditionalEntries)
+			entryMap.set(entry.node.uniqueNodeName, entry);
+		final applyMap = new haxe.ds.StringMap<{
+			parent:h2d.Object, node:Node, applied:Bool,
+			savedFilter:Null<h2d.filter.Filter>, savedAlpha:Null<Float>,
+			savedScaleX:Null<Float>, savedScaleY:Null<Float>, savedRotation:Null<Float>,
+			appliedPosX:Float, appliedPosY:Float,
+		}>();
+		for (ae in conditionalApplyEntries)
+			applyMap.set(ae.node.uniqueNodeName, ae);
+		resolveVisibilityForChildren(rootNode.children, entryMap, applyMap);
 	}
 
-	function resolveVisibilityForChildren(children:Array<Node>):Void {
-		var prevSiblingMatched = false;
-		var anyConditionalSiblingMatched = false;
-
-		for (childNode in children) {
-			// Find the tracked object for this node
-			var trackedObj:Null<h2d.Object> = null;
-			for (entry in conditionalEntries) {
-				if (entry.node == childNode) {
-					trackedObj = entry.object;
-					break;
-				}
-			}
-			// Find conditional apply entry for this node (APPLY nodes have no tracked object)
-			var trackedApply:Null<{
+	function resolveVisibilityForChildren(children:Array<Node>,
+			entryMap:haxe.ds.StringMap<{object:h2d.Object, node:Node, sentinel:h2d.Object, parent:h2d.Object, layer:Int,
+				savedFlowProps:Null<SavedFlowProperties>}>,
+			applyMap:haxe.ds.StringMap<{
 				parent:h2d.Object, node:Node, applied:Bool,
 				savedFilter:Null<h2d.filter.Filter>, savedAlpha:Null<Float>,
 				savedScaleX:Null<Float>, savedScaleY:Null<Float>, savedRotation:Null<Float>,
 				appliedPosX:Float, appliedPosY:Float,
-			}> = null;
-			if (trackedObj == null) {
-				for (ae in conditionalApplyEntries) {
-					if (ae.node == childNode) {
-						trackedApply = ae;
-						break;
-					}
-				}
-			}
+			}>):Void {
+		var prevSiblingMatched = false;
+		var anyConditionalSiblingMatched = false;
+
+		for (childNode in children) {
+			// Find the tracked entry for this node via O(1) map lookup
+			final nodeKey = childNode.uniqueNodeName;
+			var trackedEntry = entryMap.get(nodeKey);
+			// Find conditional apply entry for this node (APPLY nodes have no tracked object)
+			var trackedApply = if (trackedEntry == null) applyMap.get(nodeKey) else null;
 
 			switch childNode.conditionals {
-				case Conditional(conditions, strict):
-					var matched = builder.matchConditions(conditions, strict, indexedParams);
+				case Conditional(conditions, anyMode):
+					var matched = builder.matchConditions(conditions, anyMode, indexedParams);
 					prevSiblingMatched = matched;
 					if (matched) anyConditionalSiblingMatched = true;
-					if (trackedObj != null) setVisibilityWithTransition(trackedObj, matched);
+					if (trackedEntry != null) setPresenceOrMaterialize(trackedEntry, matched);
 					if (trackedApply != null) {
 						if (matched) applyConditionalApplyEntry(trackedApply);
 						else unapplyConditionalApplyEntry(trackedApply);
@@ -730,13 +1082,13 @@ class IncrementalUpdateContext {
 						if (extraConditions == null) {
 							prevSiblingMatched = true;
 							anyConditionalSiblingMatched = true;
-							if (trackedObj != null) setVisibilityWithTransition(trackedObj, true);
+							if (trackedEntry != null) setPresenceOrMaterialize(trackedEntry, true);
 							if (trackedApply != null) applyConditionalApplyEntry(trackedApply);
 						} else {
 							var matched = builder.matchConditions(extraConditions, false, indexedParams);
 							prevSiblingMatched = matched;
 							if (matched) anyConditionalSiblingMatched = true;
-							if (trackedObj != null) setVisibilityWithTransition(trackedObj, matched);
+							if (trackedEntry != null) setPresenceOrMaterialize(trackedEntry, matched);
 							if (trackedApply != null) {
 								if (matched) applyConditionalApplyEntry(trackedApply);
 								else unapplyConditionalApplyEntry(trackedApply);
@@ -744,12 +1096,12 @@ class IncrementalUpdateContext {
 						}
 					} else {
 						prevSiblingMatched = true;
-						if (trackedObj != null) setVisibilityWithTransition(trackedObj, false);
+						if (trackedEntry != null) setPresenceOrMaterialize(trackedEntry, false);
 						if (trackedApply != null) unapplyConditionalApplyEntry(trackedApply);
 					}
 
 				case ConditionalDefault:
-					if (trackedObj != null) setVisibilityWithTransition(trackedObj, !anyConditionalSiblingMatched);
+					if (trackedEntry != null) setPresenceOrMaterialize(trackedEntry, !anyConditionalSiblingMatched);
 					if (trackedApply != null) {
 						if (!anyConditionalSiblingMatched) applyConditionalApplyEntry(trackedApply);
 						else unapplyConditionalApplyEntry(trackedApply);
@@ -763,7 +1115,7 @@ class IncrementalUpdateContext {
 
 			// Recurse into children
 			if (childNode.children != null && childNode.children.length > 0)
-				resolveVisibilityForChildren(childNode.children);
+				resolveVisibilityForChildren(childNode.children, entryMap, applyMap);
 		}
 	}
 }
@@ -883,6 +1235,11 @@ class BuilderResult {
 	public var reloadable:Bool = true;
 	public var reloadHandle:Null<bh.multianim.dev.HotReload.ReloadableHandle> = null;
 	public var onReload:Null<(BuilderResult, bh.multianim.dev.HotReload.ReloadReport) -> Void> = null;
+	// Stored for hot reload: allows rebuilding with same callback/placeholderObjects
+	// even when original build was not incremental.
+	public var devBuilderParams:Null<BuilderParameters> = null;
+	// Captured placeholder objects for hot reload reuse
+	public var devCapturedPlaceholders:Array<{name:String, index:Null<Int>, object:h2d.Object}> = [];
 
 	// Adopt internals from another result, keeping this instance as the stable reference.
 	// The scene graph object is swapped via SceneSwapper (caller responsibility).
@@ -902,6 +1259,8 @@ class BuilderResult {
 		this.dynamicRefs = other.dynamicRefs;
 		this.incrementalContext = other.incrementalContext;
 		this.htmlTextsWithLinks = other.htmlTextsWithLinks;
+		this.devBuilderParams = other.devBuilderParams;
+		this.devCapturedPlaceholders = other.devCapturedPlaceholders;
 		// Re-inject TweenManager into new incremental context
 		if (prevTweenManager != null && this.incrementalContext != null)
 			this.incrementalContext.setTweenManager(prevTweenManager);
@@ -1054,6 +1413,8 @@ enum CallbackResult {
 enum PlaceholderValues {
 	PVObject(obj:h2d.Object);
 	PVFactory(factoryMethod:ResolvedSettings->h2d.Object);
+	/** Higher-order component (e.g. Grid). Factory returns scene graph object, component holds the typed reference. */
+	PVComponent(factoryMethod:ResolvedSettings->h2d.Object, component:Dynamic);
 }
 
 @:nullSafety
@@ -1090,6 +1451,7 @@ private typedef StoredBuilderState = {
 	currentNode:Null<Node>,
 	incrementalMode:Bool,
 	incrementalContext:Null<IncrementalUpdateContext>,
+	currentInternalResults:Null<InternalBuilderResults>,
 }
 
 @:nullSafety
@@ -1115,12 +1477,16 @@ class MultiAnimBuilder {
 	var inlineAtlases:Map<String, IAtlas2> = [];
 	var incrementalMode:Bool = false;
 	var incrementalContext:Null<IncrementalUpdateContext> = null;
+	var currentInternalResults:Null<InternalBuilderResults> = null;
 	/** When set, automatically injected into IncrementalUpdateContext for transition support. */
 	public var tweenManager:Null<TweenManager> = null;
+	#if MULTIANIM_DEV
+	var devPlaceholderCapture:Array<{name:String, index:Null<Int>, object:h2d.Object}> = [];
+	#end
 
-	/** Returns position string for error messages when MULTIANIM_TRACE is enabled */
+	/** Returns position string for error messages when MULTIANIM_DEV is enabled */
 	inline function currentNodePos():String {
-		#if MULTIANIM_TRACE
+		#if MULTIANIM_DEV
 		return if (currentNode != null) ' at ${currentNode.parserPos}' else '';
 		#else
 		return '';
@@ -1151,6 +1517,7 @@ class MultiAnimBuilder {
 		this.currentNode = state.currentNode;
 		this.incrementalMode = state.incrementalMode;
 		this.incrementalContext = state.incrementalContext;
+		this.currentInternalResults = state.currentInternalResults;
 	}
 
 	function pushBuilderState() {
@@ -1160,6 +1527,7 @@ class MultiAnimBuilder {
 			currentNode: this.currentNode,
 			incrementalMode: this.incrementalMode,
 			incrementalContext: this.incrementalContext,
+			currentInternalResults: this.currentInternalResults,
 		});
 		this.indexedParams = [];
 		this.builderParams = {};
@@ -1219,9 +1587,6 @@ class MultiAnimBuilder {
 				return [for (v in array) resolveAsString(v)];
 			case RVArrayReference(refArr):
 				final arrayVal = indexedParams.get(refArr);
-				#if MULTIANIM_TRACE
-				trace(indexedParams);
-				#end
 				switch arrayVal {
 					case ArrayString(strArray): return strArray;
 					case ExpressionAlias(expr): return resolveAsArray(expr);
@@ -1306,7 +1671,7 @@ class MultiAnimBuilder {
 			case "grid" | "ctx.grid":
 				final node = currentNode;
 				if (node == null) throw 'currentNode is null in resolveRVPropertyAccess' + currentNodePos();
-				final gcs = if (ref == "ctx.grid") MultiAnimParser.getGridCoordinateSystem(node) else MultiAnimParser.getGridCoordinateSystem(node);
+				final gcs = MultiAnimParser.getGridCoordinateSystem(node);
 				if (gcs == null) throw 'no grid coordinate system in scope for $ref.$property' + currentNodePos();
 				switch (property) {
 					case "width": return gcs.spacingX;
@@ -1366,10 +1731,17 @@ class MultiAnimBuilder {
 		}
 	}
 
-	/** Resolves a coordinate method call ($hex.corner(), $hex.edge(), $hex.cube(), $grid.pos(), etc.) to an FPoint. */
+	/** Resolves a coordinate method call ($hex.corner(), $hex.edge(), $hex.cube(), $grid.pos(), $ref.extraPoint(), etc.) to an FPoint. */
 	function resolveRVMethodCallToPoint(ref:String, method:String, args:Array<ReferenceableValue>):FPoint {
 		final node = currentNode;
 		if (node == null) throw 'currentNode is null in resolveRVMethodCallToPoint' + currentNodePos();
+		// $ref.extraPoint("pointName" [, fallbackX, fallbackY]) — resolve extra point from named stateanim element
+		if (method == "extraPoint") {
+			if (args.length < 1) throw '$$$ref.extraPoint() requires at least 1 argument (pointName)' + currentNodePos();
+			final pointName = resolveAsString(args[0]);
+			final fallback = if (args.length >= 3) OFFSET(args[1], args[2]) else null;
+			return resolveExtraPointRef(ref, pointName, fallback, null, null);
+		}
 		final namedCS = if (ref != "grid" && ref != "ctx.grid" && ref != "hex" && ref != "ctx.hex") MultiAnimParser.getNamedCoordinateSystem(ref, node) else null;
 		final isNamedGrid = switch (namedCS) { case NamedGrid(_): true; default: false; };
 		// Grid methods
@@ -1571,9 +1943,18 @@ class MultiAnimBuilder {
 					case OpAdd: resolveAsInteger(e1) + resolveAsInteger(e2);
 					case OpMul: resolveAsInteger(e1) * resolveAsInteger(e2);
 					case OpSub: resolveAsInteger(e1) - resolveAsInteger(e2);
-					case OpDiv: Std.int(resolveAsInteger(e1) / resolveAsInteger(e2));
-					case OpMod: Std.int(resolveAsInteger(e1) % resolveAsInteger(e2));
-					case OpIntegerDiv: Std.int(resolveAsInteger(e1) / resolveAsInteger(e2));
+					case OpDiv:
+						final d = resolveAsInteger(e2);
+						if (d == 0) throw 'Division by zero' + currentNodePos();
+						Std.int(resolveAsInteger(e1) / d);
+					case OpMod:
+						final d = resolveAsInteger(e2);
+						if (d == 0) throw 'Modulo by zero' + currentNodePos();
+						Std.int(resolveAsInteger(e1) % d);
+					case OpIntegerDiv:
+						final d = resolveAsInteger(e2);
+						if (d == 0) throw 'Division by zero' + currentNodePos();
+						Std.int(resolveAsInteger(e1) / d);
 					case OpEq: resolveAsInteger(e1) == resolveAsInteger(e2) ? 1 : 0;
 					case OpNotEq: resolveAsInteger(e1) != resolveAsInteger(e2) ? 1 : 0;
 					case OpLess: resolveAsInteger(e1) < resolveAsInteger(e2) ? 1 : 0;
@@ -1648,9 +2029,18 @@ class MultiAnimBuilder {
 					case OpAdd: resolveAsNumber(e1) + resolveAsNumber(e2);
 					case OpMul: resolveAsNumber(e1) * resolveAsNumber(e2);
 					case OpSub: resolveAsNumber(e1) - resolveAsNumber(e2);
-					case OpDiv: resolveAsNumber(e1) / resolveAsNumber(e2);
-					case OpMod: resolveAsNumber(e1) % resolveAsNumber(e2);
-					case OpIntegerDiv: Std.int(resolveAsInteger(e1) / resolveAsInteger(e2));
+					case OpDiv:
+						final d = resolveAsNumber(e2);
+						if (d == 0) throw 'Division by zero' + currentNodePos();
+						resolveAsNumber(e1) / d;
+					case OpMod:
+						final d = resolveAsNumber(e2);
+						if (d == 0) throw 'Modulo by zero' + currentNodePos();
+						resolveAsNumber(e1) % d;
+					case OpIntegerDiv:
+						final d = resolveAsInteger(e2);
+						if (d == 0) throw 'Division by zero' + currentNodePos();
+						Std.int(resolveAsInteger(e1) / d);
 					case OpEq: resolveAsNumber(e1) == resolveAsNumber(e2) ? 1 : 0;
 					case OpNotEq: resolveAsNumber(e1) != resolveAsNumber(e2) ? 1 : 0;
 					case OpLess: resolveAsNumber(e1) < resolveAsNumber(e2) ? 1 : 0;
@@ -1662,6 +2052,23 @@ class MultiAnimBuilder {
 				switch op {
 					case OpNeg: -resolveAsNumber(e);
 				}
+		}
+	}
+
+	/** Resolve a programmable reference name from ReferenceableValue.
+	 *  RVString: literal programmable name. RVReference: check if it's a parameter
+	 *  of the current programmable — if yes, resolve its value as the name; if no,
+	 *  fall back to literal (backward compat with $progName syntax). */
+	function resolveRefName(rv:ReferenceableValue):String {
+		return switch rv {
+			case RVString(s): s;
+			case RVReference(paramName):
+				if (indexedParams.exists(paramName))
+					resolveAsString(rv);
+				else
+					paramName; // Fallback: treat as literal programmable name
+			default:
+				throw 'unexpected ReferenceableValue for programmable reference: $rv';
 		}
 	}
 
@@ -2104,7 +2511,17 @@ class MultiAnimBuilder {
 
 	function loadTileSource(tileSource):h2d.Tile {
 		final tile = switch tileSource {
-			case TSFile(filename): resourceLoader.loadTile(resolveAsString(filename));
+			case TSFile(filename):
+				final resolved = resolveAsString(filename);
+				if (resolved == null || resolved.length == 0) {
+					if (incrementalMode) {
+						if (incrementalFallbackTile == null)
+							incrementalFallbackTile = h2d.Tile.fromColor(0x00000000, 1, 1, 0.0);
+						incrementalFallbackTile.clone();
+					} else
+						throw 'TSFile: empty filename' + currentNodePos();
+				} else
+					resourceLoader.loadTile(resolved);
 			case TSSheet(sheet, name): loadTileImpl(resolveAsString(sheet), resolveAsString(name)).tile;
 			case TSSheetWithIndex(sheet, name, index): loadTileImpl(resolveAsString(sheet), resolveAsString(name), resolveAsInteger(index)).tile;
 			case TSGenerated(type):
@@ -2134,6 +2551,10 @@ class MultiAnimBuilder {
 					case TileSourceValue(ts): loadTileSource(ts);
 					case _: throw 'TileSource reference "$varName" is not a TileSourceValue, got: $param' + currentNodePos();
 				}
+			case TSPivot(px, py, inner):
+				var t = loadTileSource(inner);
+				t.setCenterRatio(px, py);
+				t;
 		}
 
 		if (tile == null)
@@ -2147,10 +2568,75 @@ class MultiAnimBuilder {
 		return t;
 	}
 
+	function applyAutoFit(t:h2d.Text, textDef:TextDef, node:Node):Void {
+		final autoFitFonts = textDef.autoFitFonts;
+		final autoFitMode = textDef.autoFitMode;
+		if (autoFitFonts == null || autoFitMode == null) return;
+
+		final scaleAdjust = if (node.scale != null) resolveAsNumber(node.scale) else 1.0;
+
+		// Determine fit constraints
+		var fitWidth:Null<Float> = null;
+		var fitHeight:Null<Float> = null;
+		switch autoFitMode {
+			case AFWidth | AFFillWidth:
+				fitWidth = if (t.maxWidth != null) t.maxWidth else null;
+			case AFBox(w, h) | AFFillBox(w, h):
+				fitWidth = resolveAsNumber(w) / scaleAdjust;
+				fitHeight = resolveAsNumber(h) / scaleAdjust;
+		}
+		if (fitWidth == null) return;
+
+		final isFill = switch autoFitMode {
+			case AFFillWidth | AFFillBox(_, _): true;
+			default: false;
+		};
+
+		// Build full font candidate list: primary font + fallback fonts
+		var allFonts = new Array<h2d.Font>();
+		allFonts.push(t.font);
+		for (fontRef in autoFitFonts) {
+			allFonts.push(resourceLoader.loadFont(resolveAsString(fontRef)));
+		}
+
+		if (isFill) {
+			// Best-fit: try all fonts, pick largest that fits
+			var bestFont:Null<h2d.Font> = null;
+			var bestWidth:Float = -1;
+			for (font in allFonts) {
+				t.font = font;
+				if (textFits(t, fitWidth, fitHeight)) {
+					if (t.textWidth > bestWidth) {
+						bestWidth = t.textWidth;
+						bestFont = font;
+					}
+				}
+			}
+			t.font = if (bestFont != null) bestFont else allFonts[allFonts.length - 1];
+		} else {
+			// First-fit: use primary font if it fits, otherwise try fallbacks in order
+			if (!textFits(t, fitWidth, fitHeight)) {
+				for (fontRef in autoFitFonts) {
+					t.font = resourceLoader.loadFont(resolveAsString(fontRef));
+					if (textFits(t, fitWidth, fitHeight)) break;
+				}
+			}
+		}
+	}
+
+	static function textFits(t:h2d.Text, fitWidth:Null<Float>, fitHeight:Null<Float>):Bool {
+		if (fitWidth != null && t.textWidth > fitWidth) return false;
+		if (fitHeight != null && t.textHeight > fitHeight) return false;
+		return true;
+	}
+
 	function matchSingleCondition(condValue:ConditionalValues, currentValue:ResolvedIndexParameters):Bool {
 		switch condValue {
 			case CoNot(inner):
 				return !matchSingleCondition(inner, currentValue);
+			case CoAnyOf(values):
+				for (cv in values) if (matchSingleCondition(cv, currentValue)) return true;
+				return false;
 			case CoEnums(a):
 				switch currentValue {
 					case Index(idx, v):
@@ -2162,13 +2648,15 @@ class MultiAnimBuilder {
 					default: throw 'invalid param types ${currentValue}, ${condValue}' + currentNodePos();
 				}
 			case CoRange(from, to, fromExclusive, toExclusive):
+				final fromF:Null<Float> = from != null ? resolveAsNumber(from) : null;
+				final toF:Null<Float> = to != null ? resolveAsNumber(to) : null;
 				switch currentValue {
 					case Value(val):
-						if (from != null && (fromExclusive ? val <= from : val < from)) return false;
-						if (to != null && (toExclusive ? val >= to : val > to)) return false;
+						if (fromF != null && (fromExclusive ? val <= fromF : val < fromF)) return false;
+						if (toF != null && (toExclusive ? val >= toF : val > toF)) return false;
 					case ValueF(val):
-						if (from != null && (fromExclusive ? val <= from : val < from)) return false;
-						if (to != null && (toExclusive ? val >= to : val > to)) return false;
+						if (fromF != null && (fromExclusive ? val <= fromF : val < fromF)) return false;
+						if (toF != null && (toExclusive ? val >= toF : val > toF)) return false;
 					default: throw 'invalid param types ${currentValue}, ${condValue}' + currentNodePos();
 				}
 
@@ -2200,28 +2688,44 @@ class MultiAnimBuilder {
 		return true;
 	}
 
-	function matchConditions(conditions:Map<String, ConditionalValues>, strict:Bool, indexedParams:Map<String, ResolvedIndexParameters>):Bool {
-		for (key => value in conditions) {
-			if (indexedParams[key] == null)
-				return false;
+	function matchConditions(conditions:Map<String, ConditionalValues>, anyMode:Bool, indexedParams:Map<String, ResolvedIndexParameters>):Bool {
+		if (anyMode) {
+			// OR mode (@any): match if ANY listed condition matches
+			for (paramName => condValue in conditions) {
+				final paramValue = indexedParams[paramName];
+				if (paramValue != null && matchSingleCondition(condValue, paramValue))
+					return true;
+			}
+			return false;
+		} else {
+			// AND mode (@all / @() / @if): ALL listed conditions must match, unlisted ignored
+			for (paramName => condValue in conditions) {
+				final paramValue = indexedParams[paramName];
+				if (paramValue == null) return false;
+				if (!matchSingleCondition(condValue, paramValue)) return false;
+			}
+			return true;
 		}
-		for (currentName => currentValue in indexedParams) {
-			final condValue = conditions[currentName];
-			if (condValue == null)
-				if (strict)
-					return false
-				else
-					continue;
-			if (!matchSingleCondition(condValue, currentValue))
-				return false;
+	}
+
+	function resolveMatchedSwitchArm(paramName:String, arms:Array<SwitchArm>):Null<SwitchArm> {
+		final paramValue = indexedParams.get(paramName);
+		if (paramValue == null) return null;
+		var defaultArm:Null<SwitchArm> = null;
+		for (arm in arms) {
+			if (arm.pattern == null) {
+				defaultArm = arm;
+			} else if (matchSingleCondition(arm.pattern, paramValue)) {
+				return arm;
+			}
 		}
-		return true;
+		return defaultArm;
 	}
 
 	function isMatch(node:Node, indexedParams:Map<String, ResolvedIndexParameters>) {
 		return switch node.conditionals {
-			case Conditional(conditions, strict):
-				matchConditions(conditions, strict, indexedParams);
+			case Conditional(conditions, anyMode):
+				matchConditions(conditions, anyMode, indexedParams);
 			case ConditionalElse(_) | ConditionalDefault:
 				true; // Pre-filtered by resolveConditionalChildren
 			case NoConditional: return true;
@@ -2243,8 +2747,8 @@ class MultiAnimBuilder {
 
 		for (childNode in children) {
 			switch childNode.conditionals {
-				case Conditional(conditions, strict):
-					var matched = matchConditions(conditions, strict, indexedParams);
+				case Conditional(conditions, anyMode):
+					var matched = matchConditions(conditions, anyMode, indexedParams);
 					prevSiblingMatched = matched;
 					if (matched) anyConditionalSiblingMatched = true;
 					result.push(childNode);
@@ -2296,6 +2800,43 @@ class MultiAnimBuilder {
 			case EUnaryOp(_, e): collectParamRefs(e, result);
 			case RVElementOfArray(_, idx): collectParamRefs(idx, result);
 			default:
+		}
+	}
+
+	/** Collects parameter references from a ConditionalValues (e.g. $ref in CoRange bounds). */
+	static function collectConditionalValueParamRefs(cv:ConditionalValues, result:Array<String>):Void {
+		switch cv {
+			case CoRange(from, to, _, _):
+				if (from != null) collectParamRefs(from, result);
+				if (to != null) collectParamRefs(to, result);
+			case CoNot(inner):
+				collectConditionalValueParamRefs(inner, result);
+			case CoAnyOf(values):
+				for (v in values) collectConditionalValueParamRefs(v, result);
+			default: // CoEnums, CoIndex, CoValue, CoFlag, CoAny, CoStringValue — no RV refs
+		}
+	}
+
+	/** Recursively collects parameter names referenced in conditions of a node and its descendants.
+	    Includes both condition keys (param names) and value references (e.g. $level in CoRange bounds). */
+	static function collectChildConditionalParamRefs(nodes:Array<Node>, result:Array<String>):Void {
+		for (node in nodes) {
+			switch node.conditionals {
+				case Conditional(conditions, _):
+					for (paramName => condValue in conditions) {
+						if (result.indexOf(paramName) < 0) result.push(paramName);
+						collectConditionalValueParamRefs(condValue, result);
+					}
+				case ConditionalElse(values):
+					if (values != null)
+						for (paramName => condValue in values) {
+							if (result.indexOf(paramName) < 0) result.push(paramName);
+							collectConditionalValueParamRefs(condValue, result);
+						}
+				case ConditionalDefault | NoConditional:
+			}
+			if (node.children != null)
+				collectChildConditionalParamRefs(node.children, result);
 		}
 	}
 
@@ -2367,6 +2908,8 @@ class MultiAnimBuilder {
 			case FilterColorListReplace(sourceColors, replacementColors):
 				for (c in sourceColors) collectParamRefs(c, result);
 				for (c in replacementColors) collectParamRefs(c, result);
+			case FilterCustom(_, args):
+				for (a in args) collectParamRefs(a.value, result);
 		}
 	}
 
@@ -2419,6 +2962,7 @@ class MultiAnimBuilder {
 					default:
 				}
 			case TSReference(varName): result.push(varName);
+			case TSPivot(_, _, inner): collectTileSourceParamRefs(inner, result);
 			#if !macro
 			case TSTile(_):
 			#end
@@ -2458,10 +3002,13 @@ class MultiAnimBuilder {
 					final t = switch builtObject { case HeapsText(t): t; default: null; };
 					if (t != null) {
 						final textDefCapture = textDef;
+						final nodeCapture = node;
 						ctx.trackExpression(() -> {
 							t.text = resolveAsString(textDefCapture.text);
 							t.textColor = resolveAsColorInteger(textDefCapture.color);
-						}, textRefs);
+							if (textDefCapture.autoFitFonts != null)
+								applyAutoFit(t, textDefCapture, nodeCapture);
+						}, textRefs, object);
 					}
 				}
 			case RICHTEXT(textDef):
@@ -2486,6 +3033,7 @@ class MultiAnimBuilder {
 					final t = switch builtObject { case HeapsText(t): t; default: null; };
 					if (t != null) {
 						final textDefCapture = textDef;
+						final nodeCapture = node;
 						ctx.trackExpression(() -> {
 							final rawText = resolveAsString(textDefCapture.text);
 							t.text = TextMarkupConverter.convert(rawText);
@@ -2507,7 +3055,9 @@ class MultiAnimBuilder {
 								ht.loadImage = (url) -> cast imageMap.get(url);
 								ht.text = ht.text; // force re-render after image map change
 							}
-						}, textRefs);
+							if (textDefCapture.autoFitFonts != null)
+								applyAutoFit(t, textDefCapture, nodeCapture);
+						}, textRefs, object);
 					}
 				}
 			case NINEPATCH(_, _, width, height):
@@ -2522,7 +3072,7 @@ class MultiAnimBuilder {
 						ctx.trackExpression(() -> {
 							sg.width = resolveAsNumber(wCapture);
 							sg.height = resolveAsNumber(hCapture);
-						}, npRefs);
+						}, npRefs, object);
 					}
 				}
 			case BITMAP(tileSource, hAlign, vAlign):
@@ -2539,7 +3089,7 @@ class MultiAnimBuilder {
 								ctx.trackExpression(() -> {
 									bmp.tile = h2d.Tile.fromColor(resolveAsColorInteger(colorCapture),
 										resolveAsInteger(wCapture), resolveAsInteger(hCapture));
-								}, bmpRefs);
+								}, bmpRefs, object);
 							default:
 								final tileSourceCapture = tileSource;
 								final hAlignCapture = hAlign;
@@ -2557,27 +3107,28 @@ class MultiAnimBuilder {
 										case Center: -(tile.width * .5);
 									};
 									bmp.tile = tile.sub(0, 0, tile.width, tile.height, wh, dh);
-								}, bmpRefs);
+								}, bmpRefs, object);
 						}
 					}
 				}
 			case GRAPHICS(elements):
+				// Always register redraw for Graphics — h2d.Graphics clears content on
+				// onRemove(), so we need to re-draw after removeChild when a conditional
+				// element is re-added to the scene graph.
 				final gfxRefs:Array<String> = [];
 				for (item in elements) {
 					collectCoordinateParamRefs(item.pos, gfxRefs);
 					collectGraphicsElementParamRefs(item.element, gfxRefs);
 				}
-				if (gfxRefs.length > 0) {
-					final g:Null<h2d.Graphics> = switch builtObject { case HeapsObject(obj) if (Std.isOfType(obj, h2d.Graphics)): cast obj; default: null; };
-					if (g != null) {
-						final elementsCapture = elements;
-						final gridCapture = MultiAnimParser.getGridCoordinateSystem(node);
-						final hexCapture = MultiAnimParser.getHexCoordinateSystem(node);
-						ctx.trackExpression(() -> {
-							g.clear();
-							drawGraphicsElements(g, elementsCapture, gridCapture, hexCapture);
-						}, gfxRefs);
-					}
+				final g:Null<h2d.Graphics> = switch builtObject { case HeapsObject(obj) if (Std.isOfType(obj, h2d.Graphics)): cast obj; default: null; };
+				if (g != null) {
+					final elementsCapture = elements;
+					final gridCapture = MultiAnimParser.getGridCoordinateSystem(node);
+					final hexCapture = MultiAnimParser.getHexCoordinateSystem(node);
+					ctx.trackExpression(() -> {
+						g.clear();
+						drawGraphicsElements(g, elementsCapture, gridCapture, hexCapture);
+					}, gfxRefs, object);
 				}
 			case PIXELS(shapes):
 				final pxRefs:Array<String> = [];
@@ -2599,7 +3150,7 @@ class MultiAnimBuilder {
 							pl.height = result.pixelLines.tile.height;
 							// Update position for new bounds (minX/minY change when shapes have dynamic widths)
 							pl.setPosition(result.minX * pixelScaleCapture, result.minY * pixelScaleCapture);
-						}, pxRefs);
+						}, pxRefs, object);
 					}
 				}
 			default:
@@ -2655,7 +3206,7 @@ class MultiAnimBuilder {
 					final p = calculatePosition(posCapture, gcs, hcs);
 					object.x = p.x;
 					object.y = p.y;
-				}, posRefs);
+				}, posRefs, object);
 			}
 		}
 
@@ -2669,8 +3220,74 @@ class MultiAnimBuilder {
 		if (extRefs.length > 0) {
 			ctx.trackExpression(() -> {
 				applyExtendedFormProperties(object, node);
-			}, extRefs);
+			}, extRefs, object);
 		}
+	}
+
+	/** Collect all parameter references from a node's expressions (for deferred rebuild tracking). */
+	function collectNodeParamRefs(node:Node):Array<String> {
+		final refs:Array<String> = [];
+		inline function addRef(ref:String) {
+			if (refs.indexOf(ref) < 0) refs.push(ref);
+		}
+		inline function addRefs(arr:Array<String>) {
+			for (r in arr) addRef(r);
+		}
+		// Type-specific refs
+		switch node.type {
+			case TEXT(textDef) | RICHTEXT(textDef):
+				collectParamRefs(textDef.text, refs);
+				collectParamRefs(textDef.color, refs);
+			case NINEPATCH(_, _, width, height):
+				collectParamRefs(width, refs);
+				collectParamRefs(height, refs);
+			case BITMAP(tileSource, _, _):
+				collectTileSourceParamRefs(tileSource, refs);
+			case GRAPHICS(elements):
+				for (item in elements) {
+					collectCoordinateParamRefs(item.pos, refs);
+					collectGraphicsElementParamRefs(item.element, refs);
+				}
+			case PIXELS(shapes):
+				collectPixelShapesParamRefs(shapes, refs);
+			case REPEAT(_, repeatType):
+				switch repeatType {
+					case StepIterator(dirX, dirY, repeats):
+						collectParamRefs(repeats, refs);
+						if (dirX != null) collectParamRefs(dirX, refs);
+						if (dirY != null) collectParamRefs(dirY, refs);
+					case RangeIterator(start, end, step):
+						collectParamRefs(start, refs);
+						collectParamRefs(end, refs);
+						collectParamRefs(step, refs);
+					default:
+				}
+			case SWITCH(paramName, arms):
+				addRef(paramName);
+				for (arm in arms)
+					for (child in arm.children)
+						addRefs(collectNodeParamRefs(child));
+			default:
+		}
+		// Position refs
+		final _pos = node.pos;
+		if (_pos != null) {
+			final posRefs:Array<String> = [];
+			collectCoordinateParamRefs(_pos, posRefs);
+			addRefs(posRefs);
+		}
+		// Extended property refs
+		if (node.scale != null) collectParamRefs(node.scale, refs);
+		if (node.rotation != null) collectParamRefs(node.rotation, refs);
+		if (node.alpha != null) collectParamRefs(node.alpha, refs);
+		if (node.tint != null) collectParamRefs(node.tint, refs);
+		if (node.filter != null) collectFilterParamRefs(node.filter, refs);
+		// Recurse into children
+		if (node.children != null) {
+			for (child in node.children)
+				addRefs(collectNodeParamRefs(child));
+		}
+		return refs;
 	}
 
 	function addPosition(obj:h2d.Object, x, y) {
@@ -2747,8 +3364,47 @@ class MultiAnimBuilder {
 			case WITH_OFFSET(base, offsetX, offsetY):
 				final basePt = calculatePosition(base, gridCoordinateSystem, hexCoordinateSystem);
 				returnPosition(basePt.x + resolveAsNumber(offsetX), basePt.y + resolveAsNumber(offsetY));
+			case EXTRA_POINT_REF(elementName, pointName, fallback):
+				resolveExtraPointRef(elementName, pointName, fallback, gridCoordinateSystem, hexCoordinateSystem);
+			case EXTRA_POINT_ANIM(filename, animName, pointName, selectorRefs, fallback):
+				resolveExtraPointAnim(filename, animName, pointName, selectorRefs, fallback, gridCoordinateSystem, hexCoordinateSystem);
 		}
 		return pos;
+	}
+
+	function resolveExtraPointRef(elementName:String, pointName:String, fallback:Null<Coordinates>,
+			gridCoordinateSystem:Null<GridCoordinateSystem>, hexCoordinateSystem:Null<HexCoordinateSystem>):FPoint {
+		if (currentInternalResults == null)
+			throw 'extraPoint reference $$${elementName}.extraPoint("$pointName"): no build context available' + currentNodePos();
+		final named = currentInternalResults.names.get(elementName);
+		if (named == null || named.length == 0)
+			throw 'extraPoint reference $$${elementName}.extraPoint("$pointName"): element "$elementName" not found. '
+				+ 'Ensure it is defined before this element' + currentNodePos();
+		final animSM = switch named[0].object {
+			case StateAnim(a): a;
+			default: throw 'extraPoint reference $$${elementName}.extraPoint("$pointName"): "$elementName" is not a stateanim element' + currentNodePos();
+		}
+		final pt = animSM.getExtraPoint(pointName);
+		if (pt != null)
+			return new FPoint(pt.x, pt.y);
+		if (fallback != null)
+			return calculatePosition(fallback, gridCoordinateSystem, hexCoordinateSystem);
+		throw 'extraPoint $$${elementName}.extraPoint("$pointName"): point "$pointName" not found in current animation '
+			+ '"${animSM.current != null ? animSM.current.name : "(none)"}"' + currentNodePos();
+	}
+
+	function resolveExtraPointAnim(filename:String, animName:String, pointName:String,
+			selectorRefs:Map<String, ReferenceableValue>, fallback:Null<Coordinates>,
+			gridCoordinateSystem:Null<GridCoordinateSystem>, hexCoordinateSystem:Null<HexCoordinateSystem>):FPoint {
+		final selector:Map<String, String> = [for (k => v in selectorRefs) k => resolveAsString(v)];
+		final animSM = resourceLoader.createAnimSM(filename, selector);
+		animSM.play(animName);
+		final pt = animSM.getExtraPoint(pointName);
+		if (pt != null)
+			return new FPoint(pt.x, pt.y);
+		if (fallback != null)
+			return calculatePosition(fallback, gridCoordinateSystem, hexCoordinateSystem);
+		throw 'extraPoint("$filename", "$animName", "$pointName"): point "$pointName" not found' + currentNodePos();
 	}
 
 	function resolveToHex(cell:Coordinates, hexCoordinateSystem:HexCoordinateSystem):bh.base.Hex {
@@ -2767,7 +3423,7 @@ class MultiAnimBuilder {
 					case FLAT: DoubledCoord.rdoubledToCube(new DoubledCoord(resolveAsInteger(col), resolveAsInteger(row)));
 				};
 			case SELECTED_HEX_PIXEL(x, y):
-				hexCoordinateSystem.hexLayout.pixelToHex(new h2d.col.Point(resolveAsNumber(x), resolveAsNumber(y))).round();
+				hexCoordinateSystem.hexLayout.pixelToHex(new bh.base.FPoint(resolveAsNumber(x), resolveAsNumber(y))).round();
 			case NAMED_COORD(name, coord):
 				final node = currentNode;
 				if (node == null) throw 'currentNode is null in resolveToHex' + currentNodePos();
@@ -3085,6 +3741,15 @@ class MultiAnimBuilder {
 				tile;
 			case POINT:
 				null;
+			case SWITCH(paramName, arms):
+				final matchedArm = resolveMatchedSwitchArm(paramName, arms);
+				if (matchedArm != null) {
+					for (child in matchedArm.children) {
+						buildTileGroup(child, tileGroup, currentPos.clone(), gridCoordinateSystem, hexCoordinateSystem, builderParams);
+					}
+				}
+				skipChildren = true;
+				null;
 			case REPEAT(varName, repeatType):
 				final info = resolveTileGroupRepeatAxis(repeatType, node, true);
 				final iterator = info.layoutName == null ? null : getLayouts().getIterator(info.layoutName);
@@ -3292,6 +3957,7 @@ class MultiAnimBuilder {
 		if (!nodeVisible && !incrementalMode)
 			return null;
 		this.currentNode = node;
+		this.currentInternalResults = internalResults;
 		var skipChildren = false;
 		var layersParent:Null<h2d.Layers> = null;
 
@@ -3310,7 +3976,6 @@ class MultiAnimBuilder {
 		}
 
 		function addChild(toAdd:h2d.Object) {
-			// TODO: handle UIElementCustomAddToLayer
 			if (node.layer != -1) {
 				if (layersParent != null)
 					layersParent.add(toAdd, node.layer);
@@ -3319,6 +3984,24 @@ class MultiAnimBuilder {
 			} else if (current != null)
 				current.addChild(toAdd);
 			// else do not add as this is root node
+		}
+
+		// Deferred build: skip expression evaluation for non-visible conditional nodes (like repeatables).
+		// APPLY and FINAL_VAR are excluded — APPLY modifies the parent (handled via conditionalApplyEntries),
+		// FINAL_VAR defines constants with no visual output.
+		if (!nodeVisible && incrementalMode && node.conditionals != NoConditional && incrementalContext != null
+				&& !node.type.match(APPLY) && !node.type.match(FINAL_VAR(_, _))) {
+			final sentinel = new h2d.Object();
+			addChild(sentinel);
+			var wrapper = new h2d.Object();
+			addChild(wrapper);
+			wrapper.name = node.uniqueNodeName;
+			final deferParent = if (node.layer != -1 && layersParent != null) cast(layersParent, h2d.Object) else current;
+			incrementalContext.trackDeferredConditional(wrapper, node, sentinel, deferParent, node.layer,
+				gridCoordinateSystem, hexCoordinateSystem, internalResults, builderParams);
+			// Remove from graph — sentinel stays as position anchor
+			if (deferParent != null) deferParent.removeChild(wrapper);
+			return wrapper;
 		}
 
 		final builtObject:BuiltHeapsComponent = switch node.type {
@@ -3411,12 +4094,13 @@ class MultiAnimBuilder {
 
 				var height = tile.height;
 				var width = tile.width;
-				var dh = switch vAlign {
+				final hasPivot = tileSource.match(TSPivot(_, _, _));
+				var dh = if (hasPivot) tile.dy else switch vAlign {
 					case Top: 0.;
 					case Center: -(height * .5);
 					case Bottom: -height;
 				}
-				var wh = switch hAlign {
+				var wh = if (hasPivot) tile.dx else switch hAlign {
 					case Left: 0.;
 					case Right: -width;
 					case Center: -(width * .5);
@@ -3459,6 +4143,8 @@ class MultiAnimBuilder {
 				}
 				t.textColor = resolveAsColorInteger(textDef.color);
 				t.text = resolveAsString(textDef.text);
+				if (textDef.autoFitFonts != null)
+					applyAutoFit(t, textDef, node);
 				HeapsText(t);
 			case RICHTEXT(textDef):
 				final font = resourceLoader.loadFont(resolveAsString(textDef.fontName));
@@ -3483,7 +4169,7 @@ class MultiAnimBuilder {
 				}
 				ht.onHyperlink = (url) -> {
 					if (builderParams != null && builderParams.callback != null) {
-						try builderParams.callback(Name("link:" + url)) catch(_:Dynamic) {};
+						try builderParams.callback(Name("link:" + url)) catch(e:Dynamic) { trace('Hyperlink callback error: $e'); #if MULTIANIM_DEV throw e; #end };
 					}
 				};
 				ht.onOverHyperlink = (url) -> {
@@ -3527,6 +4213,8 @@ class MultiAnimBuilder {
 				ht.textColor = resolveAsColorInteger(textDef.color);
 				final rawText = resolveAsString(textDef.text);
 				ht.text = TextMarkupConverter.convert(rawText);
+				if (textDef.autoFitFonts != null)
+					applyAutoFit(ht, textDef, node);
 
 				HeapsText(ht);
 			// case HTMLTEXT(fontname, textRef, color, align, textAlignWidth):
@@ -3580,18 +4268,32 @@ class MultiAnimBuilder {
 							switch param {
 								case null: null;
 								case PVObject(obj):
-									#if MULTIANIM_TRACE
+									#if MULTIANIM_DEV
 									if (settings != null)
 										trace('Warning: PVObject placeholder "${resolveAsString(callbackName)}" ignores .manim settings — use PVFactory instead to receive settings');
 									#end
 									obj;
 								case PVFactory(factoryMethod):
-									var res = factoryMethod(settings);
-									// trace('FACTORY', settings, res, type, source);
-									res;
+									factoryMethod(settings);
+								case PVComponent(factoryMethod, _):
+									factoryMethod(settings);
 							}
 						}
 				}
+				#if MULTIANIM_DEV
+				// Track callback-provided objects for hot reload reuse
+				if (callbackResultH2dObject != null) {
+					switch source {
+						case PRSCallback(callbackName):
+							devPlaceholderCapture.push({name: resolveAsString(callbackName), index: null, object: callbackResultH2dObject});
+						case PRSCallbackWithIndex(callbackName, index):
+							devPlaceholderCapture.push({name: resolveAsString(callbackName), index: resolveAsInteger(index), object: callbackResultH2dObject});
+						case PRSBuilderParameterSource(callbackName):
+							devPlaceholderCapture.push({name: resolveAsString(callbackName), index: null, object: callbackResultH2dObject});
+					}
+				}
+				#end
+
 				if (callbackResultH2dObject == null) {
 					switch type {
 						case PHTileSource(source):
@@ -3604,17 +4306,14 @@ class MultiAnimBuilder {
 					HeapsObject(callbackResultH2dObject);
 				}
 
-			case STATIC_REF(externalReference, reference, parameters):
+			case STATIC_REF(externalReference, progRefRV, parameters):
+				final reference = resolveRefName(progRefRV);
 				var builder = if (externalReference != null) {
 					var builder = multiParserResult.imports?.get(externalReference);
 					if (builder == null)
 						throw 'could not find builder for external staticRef ${externalReference}' + MacroUtils.nodePos(node);
 					builder;
 				} else this;
-
-				#if MULTIANIM_TRACE
-				trace('build staticRef ${reference} with parameters ${parameters} and builderParams ${builderParams} and indexedParams ${indexedParams}');
-				#end
 
 				var result = builder.buildWithParameters(reference, parameters, builderParams, indexedParams);
 				var object = result?.object;
@@ -3634,7 +4333,12 @@ class MultiAnimBuilder {
 
 				HeapsObject(object);
 
-			case DYNAMIC_REF(externalReference, reference, parameters):
+			case DYNAMIC_REF(externalReference, progRefRV, parameters):
+				final isDynamicName = progRefRV.match(RVReference(_)) && indexedParams.exists(switch progRefRV {
+					case RVReference(r): r;
+					default: "";
+				});
+				final reference = resolveRefName(progRefRV);
 				var builder = if (externalReference != null) {
 					var builder = multiParserResult.imports?.get(externalReference);
 					if (builder == null)
@@ -3647,6 +4351,13 @@ class MultiAnimBuilder {
 				var object = result?.object;
 				if (object == null)
 					throw 'could not build dynamicRef ${reference}' + MacroUtils.nodePos(node);
+
+				// For dynamic name refs, wrap in a container for easy rebuild
+				final container = if (isDynamicName) {
+					final c = new h2d.Object();
+					c.addChild(object);
+					c;
+				} else null;
 
 				// Store the sub-result for later access via getDynamicRef()
 				internalResults.dynamicRefs.set(reference, result);
@@ -3672,17 +4383,81 @@ class MultiAnimBuilder {
 					}
 				}
 
-				if (object.numChildren == 1) {
-					final inner = object.getChildAt(0);
+				// Track dynamic name for full rebuild when template param changes
+				if (isDynamicName && incrementalMode && incrementalContext != null && container != null) {
+					final paramName = switch progRefRV {
+						case RVReference(r): r;
+						default: "";
+					};
+					incrementalContext.trackDynamicName({
+						paramName: paramName,
+						container: container,
+						currentName: reference,
+						node: node,
+						parameters: parameters,
+						externalReference: externalReference,
+						internalResults: internalResults,
+					});
+				}
+
+				final outputObject = container != null ? container : object;
+
+				if (outputObject.numChildren == 1) {
+					final inner = outputObject.getChildAt(0);
 					if (inner.x != 0 || inner.y != 0) {
 						selectedBuildMode = ObjectMode(inner);
 					}
 				}
 
-				HeapsObject(object);
+				HeapsObject(outputObject);
 
 			case POINT:
 				HeapsObject(new h2d.Object());
+			case SWITCH(paramName, arms):
+				final container = new h2d.Object();
+				final matchedArm = resolveMatchedSwitchArm(paramName, arms);
+
+				// Build active arm with incremental=false (children are a rebuild unit)
+				final savedIncMode = incrementalMode;
+				final savedIncCtx = incrementalContext;
+				if (incrementalMode) incrementalMode = false;
+
+				if (matchedArm != null) {
+					for (child in matchedArm.children)
+						build(child, ObjectMode(container), gridCoordinateSystem, hexCoordinateSystem, internalResults, builderParams);
+				}
+
+				if (savedIncMode) {
+					incrementalMode = savedIncMode;
+					// Collect all param refs from all arms (any param change inside any arm triggers rebuild)
+					final switchParamRefs:Array<String> = [paramName];
+					for (arm in arms) {
+						collectChildConditionalParamRefs(arm.children, switchParamRefs);
+						for (child in arm.children) {
+							final childRefs = collectNodeParamRefs(child);
+							for (r in childRefs)
+								if (switchParamRefs.indexOf(r) < 0) switchParamRefs.push(r);
+						}
+					}
+					final capturedArms = arms;
+					final capturedParamName = paramName;
+					final capturedContainer = container;
+					final capturedBP = builderParams;
+					savedIncCtx.trackExpression(() -> {
+						final newArm = resolveMatchedSwitchArm(capturedParamName, capturedArms);
+						capturedContainer.removeChildren();
+						if (newArm != null) {
+							final gcs = MultiAnimParser.getGridCoordinateSystem(node);
+							final hcs = MultiAnimParser.getHexCoordinateSystem(node);
+							final ir:InternalBuilderResults = {names: [], interactives: [], slots: [], dynamicRefs: new Map(), htmlTextsWithLinks: []};
+							for (child in newArm.children)
+								build(child, ObjectMode(capturedContainer), gcs, hcs, ir, capturedBP);
+						}
+					}, switchParamRefs, container);
+				}
+
+				skipChildren = true;
+				HeapsObject(container);
 			case STATEANIM(filename, initialState, selectorReferences):
 				var selector = [for (k => v in selectorReferences) k => resolveAsString(v)];
 				var animSM = resourceLoader.createAnimSM(filename, selector);
@@ -3786,6 +4561,12 @@ class MultiAnimBuilder {
 						collectParamRefs(end, repeatParamRefs);
 						collectParamRefs(step, repeatParamRefs);
 					default:
+				}
+				// Also collect param refs from conditions inside children (e.g. @($i < $level) references $level).
+				// This ensures changing those params triggers a repeatable rebuild even if the count is constant.
+				if (incrementalMode && incrementalContext != null) {
+					collectChildConditionalParamRefs(node.children, repeatParamRefs);
+					repeatParamRefs.remove(varName); // exclude loop variable — not a settable parameter
 				}
 				final hasIncrementalRepeat = incrementalMode && incrementalContext != null && repeatParamRefs.length > 0;
 
@@ -4133,16 +4914,16 @@ class MultiAnimBuilder {
 		final updatableName = node.updatableName;
 
 		final object = builtObject.toh2dObject();
+
+		// In incremental mode: insert sentinel before conditional elements for position tracking
+		var conditionalSentinel:Null<h2d.Object> = null;
+		if (incrementalMode && node.conditionals != NoConditional && incrementalContext != null && current != null) {
+			conditionalSentinel = new h2d.Object();
+			addChild(conditionalSentinel);
+		}
+
 		addChild(object);
 		object.name = node.uniqueNodeName;
-
-		// In incremental mode: set visibility and track conditional elements
-		if (incrementalMode) {
-			object.visible = nodeVisible;
-			if (node.conditionals != NoConditional && incrementalContext != null) {
-				incrementalContext.trackConditional(object, node);
-			}
-		}
 
 		// Set flow properties for spacer and per-element flow annotations after addChild
 		{
@@ -4226,6 +5007,14 @@ class MultiAnimBuilder {
 		// Track expressions for incremental updates
 		if (incrementalMode && incrementalContext != null) {
 			trackIncrementalExpressions(node, object, builtObject);
+		}
+
+		// In incremental mode: track conditional elements and remove non-visible ones from scene graph
+		if (conditionalSentinel != null && incrementalContext != null && current != null) {
+			final condParent = if (node.layer != -1 && layersParent != null) cast(layersParent, h2d.Object) else current;
+			incrementalContext.trackConditional(object, node, conditionalSentinel, condParent, node.layer);
+			if (!nodeVisible)
+				condParent.removeChild(object);
 		}
 
 		if (selectedBuildMode == null)
@@ -4423,6 +5212,26 @@ class MultiAnimBuilder {
 					case POInlineColor(color, inlineColor): InlineColor(resolveAsColorInteger(color), resolveAsColorInteger(inlineColor));
 				};
 				new PixelOutline(resolvedMode, smoothColor);
+			case FilterCustom(name, args):
+				final reg = bh.base.FilterManager.getFilter(name);
+				if (reg == null)
+					throw 'Unknown custom filter "$name". Register it via FilterManager.registerFilter().' + currentNodePos();
+				final resolved = new Map<String, Dynamic>();
+				for (i in 0...reg.params.length) {
+					final paramDef = reg.params[i];
+					if (i < args.length) {
+						switch paramDef.type {
+							case CFFloat: resolved[paramDef.name] = resolveAsNumber(args[i].value);
+							case CFColor: resolved[paramDef.name] = resolveAsColorInteger(args[i].value);
+							case CFBool: resolved[paramDef.name] = resolveAsNumber(args[i].value) != 0;
+						}
+					} else if (paramDef.defaultValue != null) {
+						resolved[paramDef.name] = paramDef.defaultValue;
+					} else {
+						throw 'Custom filter "$name" missing required argument "${paramDef.name}"' + currentNodePos();
+					}
+				}
+				reg.factory(resolved);
 		}
 	}
 
@@ -4617,6 +5426,8 @@ class MultiAnimBuilder {
 			group.emitLoop = particlesDef.loop;
 		if (particlesDef.relative != null)
 			group.isRelative = particlesDef.relative;
+		if (particlesDef.externallyDriven != null)
+			group.externallyDriven = particlesDef.externallyDriven;
 
 		if (particlesDef.rotationInitial != null)
 			group.rotInit = hxd.Math.degToRad(resolveAsNumber(particlesDef.rotationInitial));
@@ -4845,6 +5656,21 @@ class MultiAnimBuilder {
 			}
 		}
 
+		// Shutdown configuration
+		if (particlesDef.shutdown != null) {
+			final sd = particlesDef.shutdown;
+			if (sd.duration != null)
+				group.shutdownDuration = resolveAsNumber(sd.duration);
+			if (sd.curve != null)
+				group.shutdownCountCurve = resolveParticleCurveRef(sd.curve);
+			if (sd.alphaCurve != null)
+				group.shutdownAlphaCurve = resolveParticleCurveRef(sd.alphaCurve);
+			if (sd.sizeCurve != null)
+				group.shutdownSizeCurve = resolveParticleCurveRef(sd.sizeCurve);
+			if (sd.speedCurve != null)
+				group.shutdownSpeedCurve = resolveParticleCurveRef(sd.speedCurve);
+		}
+
 		particles.addGroup(group);
 		return particles;
 	}
@@ -4916,6 +5742,7 @@ class MultiAnimBuilder {
 					Reflect.setField(obj, key, resolveDataValue(val));
 				}
 				obj;
+			case DVEnumValue(_, value): value;
 		};
 	}
 
@@ -5562,7 +6389,12 @@ class MultiAnimBuilder {
 				case PPTRange(_, _): resolveAsInteger(ref);
 				case PPTInt: resolveAsInteger(ref);
 				case PPTFloat: resolveAsNumber(ref);
-				case PPTBool: resolveAsInteger(ref);
+				// PPTBool must go through resolveAsBool — `staticRef(…, enabled=>true)` parses the
+				// literal as RVString("true"), and resolveAsInteger would then try Std.parseInt("true")
+				// and throw. resolveAsBool handles the string→bool conversion via tryStringToBool,
+				// then dynamicValueToIndex stringifies the bool back to "true"/"false" and maps it
+				// to Value(1)/Value(0).
+				case PPTBool: resolveAsBool(ref);
 				case PPTUnsignedInt: resolveAsInteger(ref);
 				case PPTString: resolveAsString(ref);
 				case PPTColor: resolveAsColorInteger(ref);
@@ -5634,9 +6466,6 @@ class MultiAnimBuilder {
 		var node = multiParserResult.nodes.get(name);
 		if (node == null) {
 			final error = 'buildWithParameters ${inputParameters}: could find element "$name" to build';
-			#if MULTIANIM_TRACE
-			trace(error);
-			#end
 			popBuilderState();
 			throw error;
 		}
@@ -5667,7 +6496,11 @@ class MultiAnimBuilder {
 		}
 
 		#if MULTIANIM_DEV
-		if (incremental && retVal.incrementalContext != null && retVal.reloadable) {
+		// Store builderParams and captured placeholders for hot reload
+		retVal.devBuilderParams = builderParams;
+		retVal.devCapturedPlaceholders = devPlaceholderCapture;
+		devPlaceholderCapture = [];
+		if (retVal.reloadable) {
 			if (Std.isOfType(resourceLoader, bh.base.ResourceLoader.CachingResourceLoader)) {
 				final cachingLoader = cast(resourceLoader, bh.base.ResourceLoader.CachingResourceLoader);
 				if (cachingLoader.hotReloadRegistry != null) {
@@ -5683,6 +6516,13 @@ class MultiAnimBuilder {
 
 	public function hasNode(name:String) {
 		return multiParserResult.nodes?.get(name) != null;
+	}
+
+	/** Validate all custom filter references against registered FilterManager filters. */
+	public function validateCustomFilters():Void {
+		if (multiParserResult.customFilterRefs.length > 0) {
+			bh.base.FilterManager.validateCustomFilters(multiParserResult.customFilterRefs);
+		}
 	}
 
 	public function getParameterDefinitions(programmableName:String):ParametersDefinitions {
@@ -5709,6 +6549,12 @@ class MultiAnimBuilder {
 		if (slotParams == null)
 			throw 'buildSlotContent: slot "$slotName" has no parameters';
 
+		// Capture parent context BEFORE pushBuilderState resets builderParams.
+		// Slot children inherit the caller's callback/placeholderObjects and the
+		// programmable's grid/hex coordinate systems (resolved via node parent chain).
+		final parentBP = this.builderParams;
+		final gridCS = MultiAnimParser.getGridCoordinateSystem(slotNode);
+		final hexCS = MultiAnimParser.getHexCoordinateSystem(slotNode);
 		pushBuilderState();
 
 		// Build merged params: parent params converted to resolved + slot defaults
@@ -5732,7 +6578,11 @@ class MultiAnimBuilder {
 		this.indexedParams = mergedParams;
 
 		// Create incremental context for the slot
-		final builderParams:BuilderParameters = {callback: defaultCallback};
+		final builderParams:BuilderParameters = {
+			callback: (parentBP != null && parentBP.callback != null) ? parentBP.callback : defaultCallback,
+			placeholderObjects: parentBP != null ? parentBP.placeholderObjects : null,
+			scene: parentBP != null ? parentBP.scene : null,
+		};
 		this.builderParams = builderParams;
 		final slotCtx = new IncrementalUpdateContext(this, mergedParams, builderParams, slotNode);
 		this.incrementalMode = true;
@@ -5741,7 +6591,7 @@ class MultiAnimBuilder {
 		// Build slot children into container
 		final internalResults:InternalBuilderResults = {names: [], interactives: [], slots: [], dynamicRefs: new Map(), htmlTextsWithLinks: []};
 		for (childNode in resolveConditionalChildren(slotNode.children)) {
-			build(childNode, ObjectMode(container), cast null, cast null, internalResults, builderParams);
+			build(childNode, ObjectMode(container), cast gridCS, cast hexCS, internalResults, builderParams);
 		}
 
 		popBuilderState();
@@ -5810,6 +6660,77 @@ class MultiAnimBuilder {
 		if (Std.isOfType(value, Float)) return ValueF(cast value);
 		if (Std.isOfType(value, String)) return StringValue(cast value);
 		return Value(cast value);
+	}
+
+	/** Rebuild a @switch arm into its container. Tears down the old arm and builds the new one.
+	 *  Used by ProgrammableBuilder.rebuildSwitchArm for codegen lazy switch.
+	 *  switchOrdinal is the N-th SWITCH node in DFS order of the programmable's tree. */
+	function rebuildSwitchArmByOrdinal(programmableName:String, switchOrdinal:Int, armIndex:Int, container:h2d.Object,
+			parentParams:Map<String, Dynamic>):Void {
+		final progNode = multiParserResult.nodes.get(programmableName);
+		if (progNode == null) throw 'programmable "$programmableName" not found';
+		final switchNode = findNthSwitchNode(progNode, switchOrdinal);
+		if (switchNode == null) throw 'switch node #$switchOrdinal not found in "$programmableName"';
+		final arms = switch switchNode.type {
+			case SWITCH(_, a): a;
+			default: throw 'node #$switchOrdinal is not a SWITCH node';
+		};
+		container.removeChildren();
+		if (armIndex >= 0 && armIndex < arms.length) {
+			final arm = arms[armIndex];
+			// Capture parent context BEFORE pushBuilderState resets builderParams.
+			// Arm children inherit the caller's callback/placeholderObjects and the
+			// programmable's grid/hex coordinate systems (resolved via node parent chain).
+			final parentBP = this.builderParams;
+			final gridCS = MultiAnimParser.getGridCoordinateSystem(switchNode);
+			final hexCS = MultiAnimParser.getHexCoordinateSystem(switchNode);
+			pushBuilderState();
+			// Convert parent params to resolved index params
+			final resolvedParams:Map<String, ResolvedIndexParameters> = new Map();
+			final progDefs = getProgrammableParameterDefinitions(progNode, false);
+			for (key => value in parentParams) {
+				final def = progDefs.get(key);
+				if (def != null)
+					resolvedParams.set(key, dynamicToResolvedWithDef(def.type, value));
+				else
+					resolvedParams.set(key, dynamicToResolvedInferred(value));
+			}
+			this.indexedParams = resolvedParams;
+			this.incrementalMode = false;
+			this.incrementalContext = null;
+			final bp:BuilderParameters = {
+				callback: (parentBP != null && parentBP.callback != null) ? parentBP.callback : defaultCallback,
+				placeholderObjects: parentBP != null ? parentBP.placeholderObjects : null,
+				scene: parentBP != null ? parentBP.scene : null,
+			};
+			this.builderParams = bp;
+			final ir:InternalBuilderResults = {names: [], interactives: [], slots: [], dynamicRefs: new Map(), htmlTextsWithLinks: []};
+			for (child in arm.children)
+				build(child, ObjectMode(container), cast gridCS, cast hexCS, ir, bp);
+			popBuilderState();
+		}
+	}
+
+	/** Find the N-th SWITCH node in DFS order within a node tree. */
+	private static function findNthSwitchNode(node:Node, ordinal:Int):Null<Node> {
+		var count = [0]; // boxed counter for recursion
+		return findNthSwitchNodeImpl(node, ordinal, count);
+	}
+
+	private static function findNthSwitchNodeImpl(node:Node, ordinal:Int, count:Array<Int>):Null<Node> {
+		switch node.type {
+			case SWITCH(_, _):
+				if (count[0] == ordinal) return node;
+				count[0]++;
+			default:
+		}
+		if (node.children != null) {
+			for (child in node.children) {
+				final found = findNthSwitchNodeImpl(child, ordinal, count);
+				if (found != null) return found;
+			}
+		}
+		return null;
 	}
 
 	/** Build a single node in isolation, returning the resulting h2d.Object.

@@ -11,6 +11,7 @@ enum AnimatedPathMode {
 
 @:structInit
 class AnimatedPathState {
+	/** Mutated in-place on each update. Clone if you need to store across frames. */
 	public var position:FPoint;
 	public var angle:Float;
 	public var rate:Float;
@@ -112,6 +113,7 @@ class AnimatedPath {
 	}
 
 	public function addCurveSegment(slot:CurveSlot, startRate:Float, curve:ICurve):Void {
+		if (slot == Color) throw 'addCurveSegment() does not support Color slot — use addColorCurveSegment(startRate, curve, startColor, endColor) instead';
 		var segments = getSegmentsForSlot(slot);
 		insertSorted(segments, {startRate: startRate, curve: curve});
 	}
@@ -128,15 +130,6 @@ class AnimatedPath {
 				right = mid;
 		}
 		colorCurveSegments.insert(left, {startRate: startRate, curve: curve, startColor: startColor, endColor: endColor});
-	}
-
-	/** @deprecated Use addColorCurveSegment() for per-segment colors. */
-	public function setColorRange(startColor:Int, endColor:Int):Void {
-		// Backward compat: set colors on all existing color segments
-		for (seg in colorCurveSegments) {
-			seg.startColor = startColor;
-			seg.endColor = endColor;
-		}
 	}
 
 	public function addCustomCurveSegment(name:String, startRate:Float, curve:ICurve):Void {
@@ -289,7 +282,7 @@ class AnimatedPath {
 
 	function computeState(rate:Float):Void {
 		currentState.rate = rate;
-		currentState.position = path.getPoint(rate);
+		path.getPointInto(rate, currentState.position);
 		currentState.angle = path.getTangentAngle(rate);
 		currentState.scale = evaluateCurveSlot(scaleCurveSegments, rate);
 		currentState.alpha = evaluateCurveSlot(alphaCurveSegments, rate);

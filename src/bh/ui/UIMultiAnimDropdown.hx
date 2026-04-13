@@ -25,7 +25,7 @@ private enum AnimState {
 @:nullSafety
 class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisablable implements UIElementUpdatable implements StandardUIElementEvents
 		implements UIElementListValue implements UIElementSubElements implements UIElementCustomAddToLayer
-		implements UIElementCursor {
+		implements UIElementCursor implements UIElementPriority {
 	final result:BuilderResult;
 	var status(default, set):StandardUIElementStates = SUINormal;
 	var root:h2d.Object;
@@ -35,6 +35,8 @@ class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisab
 	var panelStatus:AnimState = Closed;
 	var timer:Float = 0;
 	var timerTotal:Float = 0;
+
+	public var eventPriority:Int = UIEventPriority.Content;
 
 	var transitionTimerBase = 1.0;
 	public var transitionTimerOverride:Null<Float> = null;
@@ -199,7 +201,7 @@ class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisab
 				if (autoOpen && !isOpen()) {
 					startOpen();
 					if (closeOnOutsideClick)
-						wrapper.control.outsideClick.trackOutsideClick(true);
+						wrapper.control.trackOutsideClick(true);
 				}
 				this.status = SUIHover;
 			case OnLeave:
@@ -237,6 +239,7 @@ class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisab
 		this.panelStatus = Opening;
 		this.timer = effectiveTimer;
 		this.timerTotal = this.timer;
+		this.eventPriority = UIEventPriority.Overlay;
 		result.setParameter("panel", "open");
 	}
 
@@ -248,6 +251,7 @@ class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisab
 		this.panelStatus = Closing;
 		this.timer = effectiveTimer;
 		this.timerTotal = this.timer;
+		this.eventPriority = UIEventPriority.Content;
 		result.setParameter("panel", "closed");
 	}
 

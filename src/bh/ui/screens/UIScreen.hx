@@ -13,6 +13,8 @@ import bh.ui.UITabGroup;
 import bh.ui.UITabGroup.TabWireMode;
 import bh.ui.UIMultiAnimTabs;
 import bh.ui.UIMultiAnimTabs.ContentTarget;
+import bh.ui.UIMultiAnimGrid;
+import bh.ui.UIMultiAnimGridTypes;
 import bh.multianim.MultiAnimParser.ResolvedSettings;
 import bh.multianim.MultiAnimParser.SettingValue;
 import bh.ui.UIElement;
@@ -24,6 +26,12 @@ import bh.ui.controllers.UIController;
 import bh.base.FPoint;
 import bh.base.TweenManager;
 import bh.multianim.MultiAnimBuilder.BuilderResolvedSettings;
+import bh.ui.UIRichInteractiveHelper;
+import bh.ui.UICardHandHelper;
+import bh.ui.UICardHandTypes;
+import bh.ui.UIHigherOrderComponent;
+import bh.ui.UIPanelHelper;
+import bh.ui.UIPanelHelper.PanelDefaults;
 
 typedef ModalOverlayConfig = {
 	var ?color:Int;
@@ -58,7 +66,7 @@ interface UIScreen {
 }
 
 @:nullSafety
-abstract class UIScreenBase implements UIScreen implements UIControllerScreenIntegration {
+abstract class UIScreenBase implements UIScreen implements UIControllerScreenIntegration implements bh.ui.UIComponentHost {
 	var elements:Array<UIElement> = [];
 	var subElementProviders:Array<UIElementSubElements> = [];
 	var controllersStack:Array<UIController> = [];
@@ -71,6 +79,9 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	var postCustomAddToLayer:Map<h2d.Object, UIElementCustomAddToLayer> = [];
 	var interactiveWrappers:Array<UIInteractiveWrapper> = [];
 	var interactiveMap:Map<String, UIInteractiveWrapper> = [];
+	var autoStatusHelper:Null<UIRichInteractiveHelper> = null;
+	var panelHelpers:Array<UIPanelHelper> = [];
+	var higherOrderComponents:Array<UIHigherOrderComponent> = [];
 	var tabGroup:Null<UITabGroup> = null;
 	var tabAutoWired:Bool = false;
 	/** When set, ScreenManager creates a darkening overlay behind this dialog. */
@@ -102,10 +113,15 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 				throw 'DefaultLayer not set';
 			if (layers.exists(ModalLayer) == false)
 				throw 'ModalLayer not set';
+			final bg = layers.get(BackgroundLayer) ?? 0;
+			final def = layers.get(DefaultLayer) ?? 0;
+			final modal = layers.get(ModalLayer) ?? 0;
+			if (!(bg < def && def < modal))
+				throw 'Screen layers: must satisfy BackgroundLayer($bg) < DefaultLayer($def) < ModalLayer($modal)';
 			this.layers = layers;
 		}
 
-		this.controllersStack = [new DefaultUIController(this)];
+		this.controllersStack = [new bh.ui.controllers.UIDefaultController(this)];
 	}
 
 	function get_tweens():TweenManager {
@@ -144,6 +160,13 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		subElementProviders = [];
 		interactiveWrappers = [];
 		interactiveMap.clear();
+		if (autoStatusHelper != null)
+			autoStatusHelper.unbindAll();
+		autoStatusHelper = null;
+		panelHelpers = [];
+		for (comp in higherOrderComponents)
+			comp.dispose();
+		higherOrderComponents = [];
 		postCustomAddToLayer.clear();
 		contentTarget = null;
 		contentTargetOwnership.clear();
@@ -177,6 +200,51 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 
 	public abstract function onScreenEvent(event:UIScreenEvent, source:Null<UIElement>):Void;
 
+	/** Dispatch event with auto-wiring handled before onScreenEvent. Called by controllers. */
+	public function dispatchScreenEvent(event:UIScreenEvent, source:Null<UIElement>):Void {
+		if (autoStatusHelper != null)
+			autoStatusHelper.handleEvent(event);
+		for (helper in panelHelpers)
+			helper.handleOutsideClick(event);
+		var consumed = false;
+		for (comp in higherOrderComponents)
+			if (comp.handleScreenEvent(event)) {
+				consumed = true;
+				break;
+			}
+		if (!consumed)
+			onScreenEvent(event, source);
+	}
+
+	/** Dispatch mouse move to higher-order components and screen override. Called by controllers.
+	 *  Components are notified but never block interactive processing — always returns true.
+	 *  Screen's onMouseMove is skipped when a component consumed the event. */
+	public function dispatchMouseMove(pos:h2d.col.Point):Bool {
+		var consumed = false;
+		for (comp in higherOrderComponents)
+			if (comp.onMouseMove(pos.x, pos.y))
+				consumed = true;
+		if (!consumed)
+			return onMouseMove(pos);
+		return true;
+	}
+
+	/** Dispatch mouse click/release to higher-order components. Called by controllers.
+	 *  Push (non-release): components are notified but never block interactive processing.
+	 *  Release: returns false if consumed (e.g. card hand drag end) to prevent spurious clicks.
+	 *  Outside-click tracking is preserved by the controller even when consumed. */
+	public function dispatchMouseClick(pos:h2d.col.Point, button:Int, release:Bool):Bool {
+		if (release) {
+			for (comp in higherOrderComponents)
+				if (comp.onMouseRelease(pos.x, pos.y))
+					return false;
+		} else {
+			for (comp in higherOrderComponents)
+				comp.onMouseClick(pos.x, pos.y, button);
+		}
+		return onMouseClick(pos, button, release);
+	}
+
 	public function onMouseMove(pos:h2d.col.Point):Bool { return true;}
 	public function onMouseClick(pos:h2d.col.Point, button:Int, release:Bool):Bool {return true;}
 	public function onMouseWheel(pos:h2d.col.Point, delta:Float):Bool { return true;}
@@ -199,6 +267,10 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 			for (el in elements)
 				syncInitialState(el);
 		}
+		for (helper in panelHelpers)
+			helper.checkPendingClose();
+		for (comp in higherOrderComponents)
+			comp.update(dt);
 		// controller.update(dt) is already called by ScreenManager.update() before screen.update()
 		for (obj => v in postCustomAddToLayer) {
 			var insertedLayer = findLayerFromObject(obj);
@@ -571,7 +643,150 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		return addObjectToLayer(textObj, layer);
 	}
 
+	/** Create a grid and register it for auto-wired lifecycle (update, mouse, events, dispose).
+	 *  Does NOT add to scene graph — use addGrid() for that, or let macroBuildWithParameters handle placement.
+	 *  Settings override config fields: originX, originY, swapPathName, swapEnabled. */
+	function createGrid<GT>(builder:MultiAnimBuilder, config:UIMultiAnimGridTypes.GridConfig<GT>, ?settings:ResolvedSettings):UIMultiAnimGrid<GT> {
+		applyGridSettings(config, settings);
+		final grid = new UIMultiAnimGrid(builder, config);
+		registerComponent(grid);
+		return grid;
+	}
 
+	/** Create a grid, add it to the scene layer, and register for auto-wired lifecycle. */
+	function addGrid<GT>(builder:MultiAnimBuilder, config:UIMultiAnimGridTypes.GridConfig<GT>, ?layer:LayersEnum, ?settings:ResolvedSettings):UIMultiAnimGrid<GT> {
+		final grid = createGrid(builder, config, settings);
+		addObjectToLayer(grid.getObject(), layer);
+		return grid;
+	}
+
+	/** Create a card hand and register it for auto-wired lifecycle (update, mouse, events, dispose).
+	 *  CardHand adds its own containers to the screen (handLayer + dragLayer from config).
+	 *  When no explicit handLayer is set, auto-registers a NamedLayer("cardHand") at layer 4
+	 *  (above DefaultLayer=3, below ModalLayer=5) so cards render above grid content.
+	 *  Settings override config fields: anchorX, anchorY, cardWidth, cardHeight, fanRadius, fanMaxAngle,
+	 *  hoverPopDistance, hoverScale, hoverNeighborSpread, linearSpacing, linearMaxWidth,
+	 *  targetingThresholdY, interactivePrefix, drawPathName, discardPathName, returnPathName, rearrangePathName,
+	 *  arrowSegmentName, arrowHeadName, arrowPathName. */
+	function addCardHand(builder:MultiAnimBuilder, ?config:UICardHandTypes.CardHandConfig, ?settings:ResolvedSettings):UICardHandHelper {
+		if (config == null) config = {};
+		applyCardHandSettings(config, settings);
+		// Auto-register card hand layer above DefaultLayer if no explicit handLayer set
+		if (config.handLayer == null) {
+			final cardHandLayer = NamedLayer("cardHand");
+			if (!layers.exists(cardHandLayer)) {
+				// Derive layer index midway between DefaultLayer and ModalLayer
+				final defaultVal = layers.get(DefaultLayer) ?? 3;
+				final modalVal = layers.get(ModalLayer) ?? 5;
+				layers.set(cardHandLayer, defaultVal + Std.int((modalVal - defaultVal) / 2));
+			}
+			config.handLayer = cardHandLayer;
+		}
+		final hand = new UICardHandHelper(this, builder, config);
+		registerComponent(hand);
+		return hand;
+	}
+
+	function applyGridSettings<GT>(config:UIMultiAnimGridTypes.GridConfig<GT>, settings:ResolvedSettings):Void {
+		if (settings == null) return;
+		if (settings.exists("originX")) config.originX = getFloatSettings(settings, "originX", 0);
+		if (settings.exists("originY")) config.originY = getFloatSettings(settings, "originY", 0);
+		if (settings.exists("swapPathName")) config.swapPathName = getSettings(settings, "swapPathName", "");
+		if (settings.exists("swapEnabled")) config.swapEnabled = getBoolSettings(settings, "swapEnabled", false);
+	}
+
+	function applyCardHandSettings(config:UICardHandTypes.CardHandConfig, settings:ResolvedSettings):Void {
+		if (settings == null) return;
+		if (settings.exists("anchorX")) config.anchorX = getFloatSettings(settings, "anchorX", 640);
+		if (settings.exists("anchorY")) config.anchorY = getFloatSettings(settings, "anchorY", 680);
+		if (settings.exists("cardWidth")) config.cardWidth = getFloatSettings(settings, "cardWidth", 80);
+		if (settings.exists("cardHeight")) config.cardHeight = getFloatSettings(settings, "cardHeight", 110);
+		if (settings.exists("fanRadius")) config.fanRadius = getFloatSettings(settings, "fanRadius", 800);
+		if (settings.exists("fanMaxAngle")) config.fanMaxAngle = getFloatSettings(settings, "fanMaxAngle", 40);
+		if (settings.exists("hoverPopDistance")) config.hoverPopDistance = getFloatSettings(settings, "hoverPopDistance", 30);
+		if (settings.exists("hoverScale")) config.hoverScale = getFloatSettings(settings, "hoverScale", 1.15);
+		if (settings.exists("hoverNeighborSpread")) config.hoverNeighborSpread = getFloatSettings(settings, "hoverNeighborSpread", 20);
+		if (settings.exists("linearSpacing")) config.linearSpacing = getFloatSettings(settings, "linearSpacing", 8);
+		if (settings.exists("linearMaxWidth")) config.linearMaxWidth = getFloatSettings(settings, "linearMaxWidth", 600);
+		if (settings.exists("targetingThresholdY")) config.targetingThresholdY = getFloatSettings(settings, "targetingThresholdY", 100);
+		if (settings.exists("interactivePrefix")) config.interactivePrefix = getSettings(settings, "interactivePrefix", "card");
+		if (settings.exists("drawPathName")) config.drawPathName = getSettings(settings, "drawPathName", "");
+		if (settings.exists("discardPathName")) config.discardPathName = getSettings(settings, "discardPathName", "");
+		if (settings.exists("returnPathName")) config.returnPathName = getSettings(settings, "returnPathName", "");
+		if (settings.exists("rearrangePathName")) config.rearrangePathName = getSettings(settings, "rearrangePathName", "");
+		if (settings.exists("arrowSegmentName")) config.arrowSegmentName = getSettings(settings, "arrowSegmentName", "");
+		if (settings.exists("arrowHeadName")) config.arrowHeadName = getSettings(settings, "arrowHeadName", "");
+		if (settings.exists("arrowPathName")) config.arrowPathName = getSettings(settings, "arrowPathName", "");
+		if (settings.exists("handLayerIndex")) {
+			final idx = getIntSettings(settings, "handLayerIndex", 4);
+			final cardHandLayer = NamedLayer("cardHand");
+			layers.set(cardHandLayer, idx);
+			config.handLayer = cardHandLayer;
+		}
+	}
+
+	/** Register a higher-order component for auto-wired lifecycle management.
+	 *  Components are tried in registration order for mouse/event consumption. */
+	function registerComponent(component:UIHigherOrderComponent):Void {
+		if (!higherOrderComponents.contains(component))
+			higherOrderComponents.push(component);
+	}
+
+	/** Unregister a higher-order component from auto-wired lifecycle management. */
+	function unregisterComponent(component:UIHigherOrderComponent):Void {
+		higherOrderComponents.remove(component);
+	}
+
+	#if MULTIANIM_DEV
+	/** Wire hot-reload settings re-application for a grid.
+	 *  When the parent BuilderResult reloads, reads new settings and calls grid.setOrigin(). */
+	function wireGridReload<GT>(parentResult:bh.multianim.MultiAnimBuilder.BuilderResult, grid:UIMultiAnimGrid<GT>, settingsPrefix:String = "grid"):Void {
+		final prevOnReload = parentResult.onReload;
+		parentResult.onReload = (result, report) -> {
+			if (prevOnReload != null) prevOnReload(result, report);
+			final s = result.rootSettings;
+			if (s == null) return;
+			final p = settingsPrefix.length > 0 ? settingsPrefix + "." : "";
+			if (s.has('${p}originX') || s.has('${p}originY'))
+				grid.setOrigin(s.getFloatOrDefault('${p}originX', 0), s.getFloatOrDefault('${p}originY', 0));
+		};
+	}
+
+	/** Wire hot-reload settings re-application for a card hand.
+	 *  When the parent BuilderResult reloads, reads new settings and calls cardHand.setAnchor(). */
+	function wireCardHandReload(parentResult:bh.multianim.MultiAnimBuilder.BuilderResult, cardHand:UICardHandHelper, settingsPrefix:String = "cardHand"):Void {
+		final prevOnReload = parentResult.onReload;
+		parentResult.onReload = (result, report) -> {
+			if (prevOnReload != null) prevOnReload(result, report);
+			cardHand.invalidateLayoutCache();
+			final s = result.rootSettings;
+			if (s == null) return;
+			final p = settingsPrefix.length > 0 ? settingsPrefix + "." : "";
+			if (s.has('${p}anchorX') || s.has('${p}anchorY'))
+				cardHand.setAnchor(s.getFloatOrDefault('${p}anchorX', 640), s.getFloatOrDefault('${p}anchorY', 680));
+		};
+	}
+	#end
+
+	/** Create a PanelHelper that is auto-wired for outside-click handling.
+	 *  handleOutsideClick() runs in dispatchScreenEvent(), checkPendingClose() runs in update(). */
+	function createPanelHelper(builder:MultiAnimBuilder, ?defaults:PanelDefaults, ?tweenManager:TweenManager):UIPanelHelper {
+		final tw = tweenManager != null ? tweenManager : (screenManager != null ? tweens : null);
+		final helper = new UIPanelHelper(this, builder, defaults, tw);
+		registerPanelHelper(helper);
+		return helper;
+	}
+
+	/** Register an existing PanelHelper for auto-wired outside-click handling. */
+	function registerPanelHelper(helper:UIPanelHelper):Void {
+		if (!panelHelpers.contains(helper))
+			panelHelpers.push(helper);
+	}
+
+	/** Unregister a PanelHelper from auto-wired outside-click handling. */
+	function unregisterPanelHelper(helper:UIPanelHelper):Void {
+		panelHelpers.remove(helper);
+	}
 
     function addScrollableListWithSingleBuilder(builder:MultiAnimBuilder, panelBuilderName:String, itemBuilderName:String, scrollbarBuilderName:String, scrollbarInPanelName:String, items, settings:ResolvedSettings, initialIndex:Int = 0, width:Int = 100, height:Int = 100):UIMultiAnimScrollableList {
         return addScrollableList(builder.createElementBuilder(panelBuilderName), builder.createElementBuilder(itemBuilderName), builder.createElementBuilder(scrollbarBuilderName), scrollbarInPanelName, items, settings, initialIndex, width, height);
@@ -751,11 +966,32 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		return wrapper;
 	}
 
-	/** Registers all `interactive()` elements from a builder result. Events arrive in `onScreenEvent` as `UIInteractiveEvent(event, id, metadata)`. */
+	/** Registers all `interactive()` elements from a builder result. Events arrive in `onScreenEvent` as `UIInteractiveEvent(event, id, metadata)`.
+	 *  Interactives with `autoStatus` metadata are automatically wired for Normal→Hover→Pressed state management. */
 	public function addInteractives(r:BuilderResult, ?prefix:String):Array<UIInteractiveWrapper> {
 		var wrappers:Array<UIInteractiveWrapper> = [];
 		for (obj in r.interactives) {
 			wrappers.push(addInteractive(obj, prefix));
+		}
+		// Auto-wire interactives with autoStatus metadata
+		var hasAutoStatus = false;
+		for (obj in r.interactives) {
+			switch obj.multiAnimType {
+				case MAInteractive(_, _, _, meta):
+					if (meta != null) {
+						final brs = new BuilderResolvedSettings(meta);
+						if (brs.getStringOrDefault(UIRichInteractiveHelper.RESERVED_KEY, "") != "") {
+							hasAutoStatus = true;
+							break;
+						}
+					}
+				default:
+			}
+		}
+		if (hasAutoStatus) {
+			if (autoStatusHelper == null)
+				autoStatusHelper = new UIRichInteractiveHelper(this);
+			autoStatusHelper.registerAutoStatus(r, prefix);
 		}
 		return wrappers;
 	}
@@ -778,7 +1014,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 			ht.onOverHyperlink = (url) -> {
 				if (prevOver != null) prevOver(url);
 				final id = prefix != null ? prefix + ".link:" + url : "link:" + url;
-				getController().onScreenEvent(UIInteractiveEvent(UIEntering, id, emptyMeta), null);
+				getController().onScreenEvent(UIInteractiveEvent(UIEntering(), id, emptyMeta), null);
 			};
 			final prevOut = ht.onOutHyperlink;
 			ht.onOutHyperlink = (url) -> {
@@ -800,6 +1036,13 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 			interactiveMap.remove(w.id);
 			removeElement(w);
 		}
+		// Auto-unregister from autoStatus helper
+		if (autoStatusHelper != null) {
+			if (prefix != null)
+				autoStatusHelper.unregisterByPrefix(prefix);
+			else
+				autoStatusHelper.unbindAll();
+		}
 	}
 
 	/** O(1) lookup of interactive wrapper by id. */
@@ -810,6 +1053,12 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	/** Returns all interactive wrappers with the given prefix. */
 	public function getInteractivesByPrefix(prefix:String):Array<UIInteractiveWrapper> {
 		return [for (w in interactiveWrappers) if (w.prefix == prefix) w];
+	}
+
+	/** Returns the screen's auto-wiring helper for `autoStatus` interactives, or null if none registered.
+	 *  Use for advanced operations like `setDisabled()` or `setParameter()` on auto-wired interactives. */
+	public function getAutoInteractiveHelper():Null<UIRichInteractiveHelper> {
+		return autoStatusHelper;
 	}
 
 	public function addElement(element:UIElement, layer:Null<LayersEnum>) {

@@ -38,6 +38,20 @@ class CachingResourceLoader implements ResourceLoader {
 	#if MULTIANIM_DEV
 	public var hotReloadRegistry:Null<bh.multianim.dev.HotReload.ReloadableRegistry> = null;
 	public var fileChangeDetector:Null<bh.multianim.dev.HotReload.FileChangeDetector> = null;
+
+	/** Returns cached resource names by category. Used by DevBridge. */
+	public function getCacheKeys():{sheets:Array<String>, fonts:Array<String>, manimFiles:Array<String>, animFiles:Array<String>} {
+		var sheets:Array<String> = [];
+		var fonts:Array<String> = [];
+		var manimFiles:Array<String> = [];
+		var animFiles:Array<String> = [];
+		for (name => _ in atlas2Cache) sheets.push(name);
+		for (name => _ in atlasCache) sheets.push(name);
+		for (name => _ in fontCache) fonts.push(name);
+		for (name => _ in multiAnimCache) manimFiles.push(name);
+		for (name => _ in animSMCache) animFiles.push(name);
+		return {sheets: sheets, fonts: fonts, manimFiles: manimFiles, animFiles: animFiles};
+	}
 	#end
 
     var animSMCache:Map<String, AnimParserResult> = [];

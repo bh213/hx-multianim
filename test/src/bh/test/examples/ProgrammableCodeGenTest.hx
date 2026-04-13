@@ -1911,7 +1911,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		while (totalTime < 5.0) {
 			var state = ap.update(dt);
 			states.push({
-				position: state.position,
+				position: state.position.clone(),
 				angle: state.angle,
 				rate: state.rate,
 				speed: state.speed,
@@ -2595,6 +2595,58 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		Assert.notNull(tier2, "merged2 tier should not be null");
 		Assert.equals("None", tier1.name);
 		Assert.equals("None", tier2.name);
+	}
+
+	// ==================== Data block enum codegen ====================
+
+	@Test
+	public function testDataEnumScalar():Void {
+		final mp = createMp();
+		final rarity:bh.test.GameDataRarity = mp.gameData.defaultRarity;
+		Assert.isTrue(rarity == Common);
+	}
+
+	@Test
+	public function testDataEnumArray():Void {
+		final mp = createMp();
+		final elements:Array<bh.test.GameDataElement> = mp.gameData.elements;
+		Assert.equals(3, elements.length);
+		Assert.isTrue(elements[0] == Fire);
+		Assert.isTrue(elements[1] == Water);
+		Assert.isTrue(elements[2] == Earth);
+	}
+
+	@Test
+	public function testDataEnumInRecord():Void {
+		final mp = createMp();
+		final sword:bh.test.GameDataItem = mp.gameData.sword;
+		Assert.equals("Flame Sword", sword.name);
+		Assert.isTrue(sword.rarity == Rare);
+		Assert.isTrue(sword.element == Fire);
+	}
+
+	@Test
+	public function testDataEnumOptionalInRecord():Void {
+		final mp = createMp();
+		final items:Array<bh.test.GameDataItem> = mp.gameData.items;
+		Assert.equals(2, items.length);
+		// Shield: no element (optional omitted)
+		Assert.equals("Shield", items[0].name);
+		Assert.isTrue(items[0].rarity == Common);
+		Assert.isNull(items[0].element, "element should be null when omitted");
+		// Staff: has element
+		Assert.equals("Staff", items[1].name);
+		Assert.isTrue(items[1].rarity == Epic);
+		Assert.isTrue(items[1].element == Air);
+	}
+
+	@Test
+	public function testDataEnumMergeTypes():Void {
+		// mergeTypes should reuse the same enum type for identical enum signatures
+		final mp = createMp();
+		final r1:bh.test.merged.GameDataRarity = mp.gameDataMerged1.defaultRarity;
+		final r2:bh.test.merged.GameDataRarity = mp.gameDataMerged2.defaultRarity;
+		Assert.isTrue(r1 == r2);
 	}
 
 	// ==================== @final variable declaration ====================
@@ -3304,6 +3356,79 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		Assert.notNull(result, "Build should succeed with PVObject");
 		// The object should be placed in the scene graph
 		Assert.notNull(directObj.parent, "PVObject should be added to scene despite ignoring settings");
+	}
+
+	// ==================== PVComponent: unit tests ====================
+
+	@Test
+	public function testPVComponentFactoryCalled():Void {
+		// PVComponent factory should be called and its returned object placed in scene graph
+		final fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/99-pvComponent/pvComponent.manim"));
+		final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+		final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "pvComponent.manim");
+
+		var factoryCalled = false;
+		final compObj = new h2d.Object();
+		final result = builder.buildWithParameters("pvComponent", new Map(), {
+			placeholderObjects: [
+				"compNoSettings" => PVComponent((settings) -> {
+					factoryCalled = true;
+					return compObj;
+				}, null),
+				"compWithSettings" => PVComponent((_) -> new h2d.Object(), null),
+			]
+		});
+
+		Assert.isTrue(factoryCalled, "PVComponent factory should be called");
+		Assert.notNull(compObj.parent, "PVComponent object should be placed in scene graph");
+	}
+
+	@Test
+	public function testPVComponentReceivesSettings():Void {
+		// PVComponent factory should receive .manim-defined settings when the placeholder has a settings{} block
+		final fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/99-pvComponent/pvComponent.manim"));
+		final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+		final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "pvComponent.manim");
+
+		var receivedSettings:bh.multianim.MultiAnimParser.ResolvedSettings = null;
+		final result = builder.buildWithParameters("pvComponent", new Map(), {
+			placeholderObjects: [
+				"compNoSettings" => PVComponent((_) -> new h2d.Object(), null),
+				"compWithSettings" => PVComponent((settings) -> {
+					receivedSettings = settings;
+					return new h2d.Object();
+				}, null),
+			]
+		});
+
+		Assert.notNull(receivedSettings, "PVComponent should receive non-null settings from .manim settings{} block");
+		Assert.notNull(receivedSettings.get("buildName"), "Settings should contain 'buildName'");
+		Assert.notNull(receivedSettings.get("originX"), "Settings should contain 'originX'");
+		Assert.notNull(receivedSettings.get("originY"), "Settings should contain 'originY'");
+	}
+
+	@Test
+	public function testPVComponentNoSettingsWhenNoneInManim():Void {
+		// PVComponent factory should receive null settings when the placeholder has no settings{} block
+		final fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/99-pvComponent/pvComponent.manim"));
+		final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+		final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "pvComponent.manim");
+
+		var receivedSettings:bh.multianim.MultiAnimParser.ResolvedSettings = null;
+		var factoryCalled = false;
+		final result = builder.buildWithParameters("pvComponent", new Map(), {
+			placeholderObjects: [
+				"compNoSettings" => PVComponent((settings) -> {
+					factoryCalled = true;
+					receivedSettings = settings;
+					return new h2d.Object();
+				}, null),
+				"compWithSettings" => PVComponent((_) -> new h2d.Object(), null),
+			]
+		});
+
+		Assert.isTrue(factoryCalled, "PVComponent factory for 'compNoSettings' should have been called");
+		Assert.isNull(receivedSettings, "PVComponent should receive null settings when placeholder has no settings{} block");
 	}
 
 	// ==================== Character Sheet Demo: dynamicRef + params + placeholder ====================
@@ -4319,13 +4444,13 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		final sizeX = 1280;
 		final sizeY = 720;
 		final scale = 2.5;
-		final rowH = 48.0;
+		final rowH = 40.0;
 		final colLabel = 0.0;
 		final colA = 45.0; // "before" static state
 		final colMid = 120.0; // mid-transition
 		final colB = 195.0; // "after" static state
-		final names = ["transFade", "transCrossfade", "transFlipX", "transFlipY", "transSlideLeft", "transSlideDown"];
-		final labels = ["fade", "crossfade", "flipX", "flipY", "slideLeft", "slideDown"];
+		final names = ["transFade", "transCrossfade", "transCrossfadeEased", "transFlipX", "transFlipY", "transSlideLeft", "transSlideDown"];
+		final labels = ["fade", "crossfade", "xfadeEased", "flipX", "flipY", "slideLeft", "slideDown"];
 
 		// Phase 1: builder
 		clearScene();
@@ -4412,37 +4537,45 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 			mp.transCrossfade.tweenManager = null;
 			addAt(mc, mp.transCrossfade.create(1), colB, 1 * rowH);
 
-			// Row 2: flipX
-			addTransLabel(mc, font, "flipX", colLabel, 2 * rowH + 10);
-			addAt(mc, mp.transFlipX.create(), colA, 2 * rowH);
+			// Row 2: xfadeEased (non-linear easing regression guard)
+			addTransLabel(mc, font, "xfadeEased", colLabel, 2 * rowH + 10);
+			addAt(mc, mp.transCrossfadeEased.create(), colA, 2 * rowH);
+			mp.transCrossfadeEased.tweenManager = tm2;
+			var mE = mp.transCrossfadeEased.create(); mE.setPosition(colMid, 2 * rowH); mc.addChild(mE); mE.setMode(1);
+			mp.transCrossfadeEased.tweenManager = null;
+			addAt(mc, mp.transCrossfadeEased.create(1), colB, 2 * rowH);
+
+			// Row 3: flipX
+			addTransLabel(mc, font, "flipX", colLabel, 3 * rowH + 10);
+			addAt(mc, mp.transFlipX.create(), colA, 3 * rowH);
 			mp.transFlipX.tweenManager = tm2;
-			var m2 = mp.transFlipX.create(); m2.setPosition(colMid, 2 * rowH); mc.addChild(m2); m2.setMode(1);
+			var m2 = mp.transFlipX.create(); m2.setPosition(colMid, 3 * rowH); mc.addChild(m2); m2.setMode(1);
 			mp.transFlipX.tweenManager = null;
-			addAt(mc, mp.transFlipX.create(1), colB, 2 * rowH);
+			addAt(mc, mp.transFlipX.create(1), colB, 3 * rowH);
 
-			// Row 3: flipY
-			addTransLabel(mc, font, "flipY", colLabel, 3 * rowH + 10);
-			addAt(mc, mp.transFlipY.create(), colA, 3 * rowH);
+			// Row 4: flipY
+			addTransLabel(mc, font, "flipY", colLabel, 4 * rowH + 10);
+			addAt(mc, mp.transFlipY.create(), colA, 4 * rowH);
 			mp.transFlipY.tweenManager = tm2;
-			var m3 = mp.transFlipY.create(); m3.setPosition(colMid, 3 * rowH); mc.addChild(m3); m3.setMode(1);
+			var m3 = mp.transFlipY.create(); m3.setPosition(colMid, 4 * rowH); mc.addChild(m3); m3.setMode(1);
 			mp.transFlipY.tweenManager = null;
-			addAt(mc, mp.transFlipY.create(1), colB, 3 * rowH);
+			addAt(mc, mp.transFlipY.create(1), colB, 4 * rowH);
 
-			// Row 4: slideLeft
-			addTransLabel(mc, font, "slideLeft", colLabel, 4 * rowH + 10);
-			addAt(mc, mp.transSlideLeft.create(), colA, 4 * rowH);
+			// Row 5: slideLeft
+			addTransLabel(mc, font, "slideLeft", colLabel, 5 * rowH + 10);
+			addAt(mc, mp.transSlideLeft.create(), colA, 5 * rowH);
 			mp.transSlideLeft.tweenManager = tm2;
-			var m4 = mp.transSlideLeft.create(); m4.setPosition(colMid, 4 * rowH); mc.addChild(m4); m4.setMode(1);
+			var m4 = mp.transSlideLeft.create(); m4.setPosition(colMid, 5 * rowH); mc.addChild(m4); m4.setMode(1);
 			mp.transSlideLeft.tweenManager = null;
-			addAt(mc, mp.transSlideLeft.create(1), colB, 4 * rowH);
+			addAt(mc, mp.transSlideLeft.create(1), colB, 5 * rowH);
 
-			// Row 5: slideDown
-			addTransLabel(mc, font, "slideDown", colLabel, 5 * rowH + 10);
-			addAt(mc, mp.transSlideDown.create(), colA, 5 * rowH);
+			// Row 6: slideDown
+			addTransLabel(mc, font, "slideDown", colLabel, 6 * rowH + 10);
+			addAt(mc, mp.transSlideDown.create(), colA, 6 * rowH);
 			mp.transSlideDown.tweenManager = tm2;
-			var m5 = mp.transSlideDown.create(); m5.setPosition(colMid, 5 * rowH); mc.addChild(m5); m5.setMode(1);
+			var m5 = mp.transSlideDown.create(); m5.setPosition(colMid, 6 * rowH); mc.addChild(m5); m5.setMode(1);
 			mp.transSlideDown.tweenManager = null;
-			addAt(mc, mp.transSlideDown.create(1), colB, 5 * rowH);
+			addAt(mc, mp.transSlideDown.create(1), colB, 6 * rowH);
 		} catch (e:Dynamic) {
 			Assert.fail('Codegen threw: $e');
 			VisualTestBase.pendingVisualTests--;
@@ -4461,6 +4594,357 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 		VisualTestBase.pendingVisualTests--;
 		async.done();
+	}
+
+	// ==================== Auto-fit text: visual ====================
+
+	@Test
+	public function test96_AutoFit(async:utest.Async):Void {
+		simpleMacroTest(96, "autoFit", () -> createMp().autoFit.create(), async, null, null, null, 0.99);
+	}
+
+	@Test
+	public function test97_FlowConditional(async:utest.Async):Void {
+		simpleMacroTest(97, "flowConditional", () -> createMp().flowConditional.create(), async, null, null, null, 0.999);
+	}
+
+	@Test
+	public function test98_CustomFilter(async:utest.Async):Void {
+		simpleMacroTest(98, "customFilter", () -> createMp().customFilter.create(), async, null, null, null, 0.97);
+	}
+
+	@Test
+	public function test100_SwitchDemo(async:utest.Async):Void {
+		simpleMacroTest(100, "switchDemo", () -> createMp().switchDemo.create(), async);
+	}
+
+	// ==================== AnimFlip: flipX/flipY in .anim files (#13) ====================
+
+	@Test
+	public function test101_AnimFlip(async:utest.Async):Void {
+		setupTest(101, "animFlip");
+		VisualTestBase.pendingVisualTests++;
+		async.setTimeout(15000);
+
+		final animFilePath = "test/examples/101-animFlip/animFlip.manim";
+		final sizeX = 1280;
+		final sizeY = 720;
+
+		// Phase 1: builder — build, freeze AnimSMs, screenshot
+		clearScene();
+		var builderResult = buildAndAddToScene(animFilePath, "animFlip");
+		if (builderResult == null) {
+			Assert.fail("Failed to build animFlip from builder");
+			VisualTestBase.pendingVisualTests--;
+			async.done();
+			return;
+		}
+
+		for (a in findAllAnimSM(builderResult.object))
+			a.externallyDriven = true;
+
+		var orderIdx = HtmlReportGenerator.reserveOrderIndex();
+		var builderRaw = captureScreenshotRaw(sizeX, sizeY);
+
+		// Phase 2: macro — create, freeze AnimSMs, screenshot
+		clearScene();
+		var macroRoot = createMp().animFlip.create();
+		s2d.addChild(macroRoot);
+
+		for (a in findAllAnimSM(macroRoot))
+			a.externallyDriven = true;
+
+		if (testTitle != null && testTitle.length > 0)
+			addTitleOverlay();
+
+		var macroRaw = captureScreenshotRaw(sizeX, sizeY);
+		Assert.pass();
+		enqueueBuilderAndMacro(builderRaw, macroRaw, 1.0, 1.0, orderIdx);
+
+		VisualTestBase.pendingVisualTests--;
+		async.done();
+	}
+
+	// ==================== @switch + repeatable: codegen incremental ====================
+
+	@Test
+	public function testCodegenSwitchRepeatableSwitchArm():Void {
+		// Codegen: switch arm changes, repeatable count stays — element count and size should update
+		final mp = createMp();
+		final instance = mp.switchRepeat.create();
+		Assert.notNull(instance, "switchRepeat should be created");
+
+		// Initial: mode=items, count=3 → 3 green bitmaps (10px)
+		var bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(3, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+
+		// Switch to grid → 3 red bitmaps (20px)
+		instance.setMode(1); // grid
+		bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(3, bitmaps.length);
+		Assert.equals(20, Std.int(bitmaps[0].tile.width));
+
+		// Switch back to items → 3 green (10px)
+		instance.setMode(0); // items
+		bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(3, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testCodegenSwitchRepeatableCountChange():Void {
+		// Codegen: repeatable count changes within active switch arm
+		final mp = createMp();
+		final instance = mp.switchRepeat.create();
+
+		// Initial: mode=items, count=3
+		var bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(3, bitmaps.length);
+
+		// Increase count to 5
+		instance.setCount(5);
+		bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(5, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+
+		// Decrease count to 1
+		instance.setCount(1);
+		bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(1, bitmaps.length);
+	}
+
+	@Test
+	public function testCodegenSwitchFixedRepeatDifferentCounts():Void {
+		// Codegen: arms have different fixed repeatable counts
+		final mp = createMp();
+		final instance = mp.switchFixedRepeat.create();
+
+		// Initial: circles → 4 blue (10px)
+		var bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(4, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+
+		// Switch to squares → 2 yellow (30px)
+		instance.setStyle(1); // squares
+		bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(2, bitmaps.length);
+		Assert.equals(30, Std.int(bitmaps[0].tile.width));
+
+		// Switch back → 4 blue
+		instance.setStyle(0); // circles
+		bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(4, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testCodegenSwitchTextInterpolation():Void {
+		// Codegen: text with $param interpolation — changing inner param re-renders text
+		final mp = createMp();
+		final instance = mp.switchText.create();
+		var texts = findAllTextDescendants(instance);
+		Assert.equals(1, texts.length);
+		Assert.equals("HP: 42", texts[0].text);
+
+		// Change value only (stay in same arm)
+		instance.setValue(99);
+		texts = findAllTextDescendants(instance);
+		Assert.equals(1, texts.length);
+		Assert.equals("HP: 99", texts[0].text);
+
+		// Switch arm
+		instance.setMode(1); // mp
+		texts = findAllTextDescendants(instance);
+		Assert.equals(1, texts.length);
+		Assert.equals("MP: 99", texts[0].text);
+	}
+
+	@Test
+	public function testCodegenSwitchNested():Void {
+		// Codegen: nested @switch — outer on shape, inner on size
+		final mp = createMp();
+		final instance = mp.switchNested.create();
+
+		// Initial: circle+small → 10x10 green
+		var bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+
+		// Change inner param only
+		instance.setSize(1); // big
+		bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(20, Std.int(bitmaps[0].tile.width));
+
+		// Change outer param — inner should reflect current size=big
+		instance.setShape(1); // square
+		bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(20, Std.int(bitmaps[0].tile.width));
+
+		// Both back to initial
+		instance.setShape(0);
+		instance.setSize(0);
+		bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testCodegenSwitchExprInSize():Void {
+		// Codegen: $param expression in bitmap size — arm b uses $size * 2
+		final mp = createMp();
+		final instance = mp.switchExpr.create();
+
+		// Initial: mode=a, size=10 → 10x10
+		var bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+
+		// Change size (stay in arm a) → 20x20
+		instance.setSize(20);
+		bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(20, Std.int(bitmaps[0].tile.width));
+
+		// Switch to b with size=20 → 40x40
+		instance.setMode(1); // b
+		bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(40, Std.int(bitmaps[0].tile.width));
+
+		// Change size to 5 in arm b → 10x10
+		instance.setSize(5);
+		bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+	}
+
+	// ==================== @switch arm context propagation (B1, B2) ====================
+
+	// B1: @switch arm contains a graphics element with inner positions using
+	// $grid.pos(...). drawGraphicsElements reads the gridCoordinateSystem
+	// argument passed into build() — rebuildSwitchArmByOrdinal currently
+	// passes `cast null`, so calculatePosition throws 'gridCoordinateSystem
+	// is null' inside the arm. The failure surfaces both at initial construction
+	// (the default arm is built through the same rebuild path) and on every
+	// setter-driven switch flip.
+	@Test
+	public function testCodegenSwitchArmGridContext():Void {
+		final mp = createMp();
+		// Initial build: arm `a` has a graphics(rect..., rect...) using $grid.pos
+		// Must not null-deref on the grid coordinate system.
+		var threw = false;
+		var errMsg = "";
+		var instance:Dynamic = null;
+		try {
+			instance = mp.switchGridArm.create();
+		} catch (e:Dynamic) {
+			threw = true;
+			errMsg = Std.string(e);
+		}
+		Assert.isFalse(threw,
+			"switchGridArm.create() should not throw — arm build must inherit programmable's grid system (got: " + errMsg + ")");
+		Assert.notNull(instance, "switchGridArm should be constructed");
+
+		// Flip to arm b — same failure path at rebuild time.
+		threw = false;
+		errMsg = "";
+		try {
+			instance.setMode(1);
+		} catch (e:Dynamic) {
+			threw = true;
+			errMsg = Std.string(e);
+		}
+		Assert.isFalse(threw,
+			"switchGridArm.setMode(1) should not throw — arm rebuild must inherit programmable's grid system (got: " + errMsg + ")");
+	}
+
+	// B2: @switch arm with callback("name") placeholder — rebuild must inherit
+	// the parent BuilderParameters.callback so user callbacks still fire after
+	// a switch flip. Today rebuildSwitchArmByOrdinal constructs a fresh
+	// `{callback: defaultCallback}` and the user callback is dropped.
+	@Test
+	public function testCodegenSwitchArmCallbackInheritance():Void {
+		final mp = createMp();
+		final instance = mp.switchCallbackArm.create(); // mode=a, callback-free arm
+
+		// Reach into the underlying MultiAnimBuilder and install a custom
+		// callback before triggering the switch flip. The instance's setter
+		// will push/pop builder state around the rebuild; a correct
+		// implementation propagates this callback into the arm build.
+		final factory = mp.switchCallbackArm;
+		final builder:bh.multianim.MultiAnimBuilder = @:privateAccess cast factory._builder;
+		Assert.notNull(builder, "factory should have a builder after create()");
+
+		var callbackInvocations = 0;
+		final sentinel = new h2d.Object();
+		@:privateAccess {
+			builder.builderParams = {
+				callback: (request) -> {
+					return switch request {
+						case bh.multianim.MultiAnimBuilder.CallbackRequest.Placeholder(name) if (name == "armPh"):
+							callbackInvocations++;
+							bh.multianim.MultiAnimBuilder.CallbackResult.CBRObject(sentinel);
+						default:
+							bh.multianim.MultiAnimBuilder.CallbackResult.CBRNoResult;
+					};
+				},
+			};
+		}
+
+		instance.setMode(1); // flip to arm b, which has placeholder(nothing, callback("armPh"))
+
+		Assert.equals(1, callbackInvocations,
+			"arm b rebuild should invoke the parent's builderParams.callback for the placeholder");
+		// The sentinel object returned by the callback should be part of the instance tree.
+		Assert.isTrue(containsDescendant(instance, sentinel),
+			"arm b placeholder should host the sentinel object produced by the user callback");
+	}
+
+	// B3: parameterized slot body uses $grid.pos(...). buildSlotContent used to
+	// pass `cast null` for gridCS/hexCS, crashing on initial create and on every
+	// slot setParameter flip. Mirrors the @switch arm fix in rebuildSwitchArmByOrdinal.
+	@Test
+	public function testCodegenSlotParamGridContext():Void {
+		final mp = createMp();
+		var threw = false;
+		var errMsg = "";
+		var instance:Dynamic = null;
+		try {
+			instance = mp.slotParamContextHost.create();
+		} catch (e:Dynamic) {
+			threw = true;
+			errMsg = Std.string(e);
+		}
+		Assert.isFalse(threw,
+			"slotParamContextHost.create() should not throw — parameterized slot build must inherit programmable's grid system (got: " + errMsg + ")");
+		Assert.notNull(instance, "slotParamContextHost should be constructed");
+
+		// Flip slot state to `on` — same failure path at slot setParameter time.
+		// Use the typed getSlot_box() accessor (Dynamic dispatch of the generic
+		// getSlot(name, ?index, ?indexY) hits a HashLink arity mismatch).
+		final slot:bh.multianim.MultiAnimBuilder.SlotHandle = instance.getSlot_box();
+		Assert.notNull(slot, "box slot handle should exist");
+		threw = false;
+		errMsg = "";
+		try {
+			slot.setParameter("state", "on");
+		} catch (e:Dynamic) {
+			threw = true;
+			errMsg = Std.string(e);
+		}
+		Assert.isFalse(threw,
+			"slot.setParameter('state', 'on') should not throw — slot rebuild must use inherited grid system (got: " + errMsg + ")");
+	}
+
+	static function containsDescendant(root:h2d.Object, target:h2d.Object):Bool {
+		if (root == target) return true;
+		for (i in 0...root.numChildren) {
+			if (containsDescendant(root.getChildAt(i), target)) return true;
+		}
+		return false;
 	}
 
 	static function addTransLabel(parent:h2d.Object, font:Null<h2d.Font>, label:String, x:Float, y:Float):Void {

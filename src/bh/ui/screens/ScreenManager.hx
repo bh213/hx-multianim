@@ -5,7 +5,6 @@ import hxd.res.Resource;
 import bh.multianim.MultiAnimBuilder;
 import bh.multianim.MultiAnimParser.InvalidSyntax;
 import bh.multianim.MultiAnimParser.MultiAnimUnexpected;
-import bh.multianim.MultiAnimParser.MPToken;
 import bh.stateanim.AnimParser;
 import bh.ui.controllers.UIController;
 import bh.ui.screens.UIScreen;
@@ -33,6 +32,18 @@ extern class FileLoader {
 }
 #end
 
+/** Global scene layer indices for ScreenManager. All values must satisfy content < master < overlay < dialog. */
+typedef SceneLayerConfig = {
+	/** Main game screen layer (default 2). */
+	var ?content:Int;
+	/** Persistent overlay screen layer, e.g. top bar (default 4). */
+	var ?master:Int;
+	/** Modal darkening overlay layer (default 5). */
+	var ?overlay:Int;
+	/** Modal dialog screen layer (default 6). */
+	var ?dialog:Int;
+}
+
 private enum ScreenManagerMode {
 	None;
 	Single(single:UIScreen);
@@ -40,9 +51,28 @@ private enum ScreenManagerMode {
 	Dialog(dialog:UIScreen, caller:UIScreen, previousMode:ScreenManagerMode, dialogName:String);
 }
 
+/** Event payload for screen mode changes. */
+typedef ScreenChangeEvent = {
+	/** "switch", "dialog_open", or "dialog_close" */
+	action:String,
+	/** New mode string ("none", "single", "masterAndSingle", "dialog:<name>") */
+	mode:String,
+	/** Previous mode string */
+	previousMode:String,
+	/** Screen names entering the scene */
+	entering:Array<String>,
+	/** Screen names leaving the scene */
+	leaving:Array<String>,
+	/** Dialog name (for dialog_open/dialog_close), null otherwise */
+	dialogName:Null<String>,
+}
+
+typedef ScreenChangeListener = (event:ScreenChangeEvent) -> Void;
+
 @:nullSafety
 @:allow(bh.ui.screens.UIScreen)
 @:allow(bh.ui.ControllerEventHandler)
+@:allow(bh.multianim.dev.DevBridge)
 class ScreenManager {
 	final loader:CachingResourceLoader;
 	final handler:ControllerEventHandler;
@@ -55,12 +85,13 @@ class ScreenManager {
 	final failedScreens:Map<String, String> = [];
 	var builders:Map<hxd.res.Resource, MultiAnimBuilder> = [];
 	public var tweens(default, null):TweenManager = new TweenManager();
+	var screenChangeListeners:Array<ScreenChangeListener> = [];
 	public var isTransitioning(default, null):Bool = false;
 	var transitionCleanup:Null<Void -> Void> = null;
 	var modalOverlay:Null<h2d.Bitmap> = null;
 	var modalOverlayTargetAlpha:Float = 0.0;
 	var modalOverlayBlurTargets:Array<{root:h2d.Object, saved:Null<h2d.filter.Filter>}> = [];
-	final layerOverlay:Int = 5;
+	final sceneLayers:{content:Int, master:Int, overlay:Int, dialog:Int};
 	#if MULTIANIM_DEV
 	var hotReloadRegistry:bh.multianim.dev.HotReload.ReloadableRegistry = new bh.multianim.dev.HotReload.ReloadableRegistry();
 	var fileChangeDetector:bh.multianim.dev.HotReload.FileChangeDetector = new bh.multianim.dev.HotReload.FileChangeDetector();
@@ -68,12 +99,21 @@ class ScreenManager {
 	var builderConsumers:Array<bh.multianim.dev.HotReload.IBuilderConsumer> = [];
 	var screenSourceMap:Map<String, Array<UIScreen>> = []; // resource path → screens that loaded it
 	var currentlyLoadingScreen:Null<UIScreen> = null;
+	public var devBridge(default, null):Null<bh.multianim.dev.DevBridge> = null;
 	#end
 
-	public function new(app:hxd.App, ?loader) {
+	public function new(app:hxd.App, ?loader, ?sceneLayerConfig:SceneLayerConfig) {
 		this.app = app;
 		this.loader = loader ?? createLoader();
 		this.window = hxd.Window.getInstance();
+		final sl = sceneLayerConfig;
+		final content = sl?.content ?? 2;
+		final master = sl?.master ?? 4;
+		final overlay = sl?.overlay ?? 5;
+		final dialog = sl?.dialog ?? 6;
+		if (!(content < master && master < overlay && overlay < dialog))
+			throw 'SceneLayerConfig: must satisfy content($content) < master($master) < overlay($overlay) < dialog($dialog)';
+		this.sceneLayers = {content: content, master: master, overlay: overlay, dialog: dialog};
 		this.handler = new ControllerEventHandler(app.s2d, window, this);
 		#if MULTIANIM_DEV
 		this.loader.hotReloadRegistry = hotReloadRegistry;
@@ -81,7 +121,69 @@ class ScreenManager {
 		this.onReload = (?resource) -> {
 			hotReload(resource);
 		};
+		this.devBridge = new bh.multianim.dev.DevBridge(this);
+		if (bh.multianim.dev.DevBridge.autoStart) this.devBridge.start();
 		#end
+	}
+
+	public var sceneWidth(get, never):Float;
+	public var sceneHeight(get, never):Float;
+
+	function get_sceneWidth():Float {
+		return app.s2d.width;
+	}
+
+	function get_sceneHeight():Float {
+		return app.s2d.height;
+	}
+
+	function modeToString(m:ScreenManagerMode):String {
+		return switch m {
+			case None: "none";
+			case Single(_): "single";
+			case MasterAndSingle(_, _): "masterAndSingle";
+			case Dialog(_, _, _, dialogName): 'dialog:$dialogName';
+		};
+	}
+
+	function resolveScreenName(s:UIScreen):String {
+		for (name => screen in configuredScreens) {
+			if (screen == s) return name;
+		}
+		return "unknown";
+	}
+
+	public function addScreenChangeListener(listener:ScreenChangeListener):Void {
+		screenChangeListeners.push(listener);
+	}
+
+	public function removeScreenChangeListener(listener:ScreenChangeListener):Void {
+		screenChangeListeners.remove(listener);
+	}
+
+	function notifyScreenChange(previousMode:ScreenManagerMode, newMode:ScreenManagerMode,
+			entering:Null<Array<UIScreen>>, leaving:Null<Array<UIScreen>>):Void {
+		if (screenChangeListeners.length == 0) return;
+		var action = switch newMode {
+			case Dialog(_, _, _, _): "dialog_open";
+			case _ if (previousMode.match(Dialog(_, _, _, _))): "dialog_close";
+			default: "switch";
+		};
+		var event:ScreenChangeEvent = {
+			action: action,
+			mode: modeToString(newMode),
+			previousMode: modeToString(previousMode),
+			entering: entering != null ? [for (s in entering) resolveScreenName(s)] : [],
+			leaving: leaving != null ? [for (s in leaving) resolveScreenName(s)] : [],
+			dialogName: switch newMode {
+				case Dialog(_, _, _, name): name;
+				default: switch previousMode {
+					case Dialog(_, _, _, name): name;
+					default: null;
+				};
+			},
+		};
+		for (listener in screenChangeListeners) listener(event);
 	}
 
 	static function createLoader() {
@@ -182,6 +284,9 @@ class ScreenManager {
 
 	public function update(dt:Float):Void {
 		tweens.update(dt);
+		#if MULTIANIM_DEV
+		if (devBridge != null) devBridge.tick();
+		#end
 		for (screen in activeScreens) {
 			final result = screen.getController().update(dt);
 			switch result {
@@ -256,11 +361,14 @@ class ScreenManager {
 				#if MULTIANIM_TRACE
 				trace('rebuild $key'); // don't trace $value, js gets stack overflow
 				#end
-				buildFromResource(key, true); // TODO: enable reload
+				buildFromResource(key, true);
 			}
 		} catch (e) {
-			#if MULTIANIM_TRACE
+			#if MULTIANIM_DEV
 			trace('ScreenManager.rebuildAll failed: $e');
+			#end
+			#if MULTIANIM_STRICT
+			strictFail('builder rebuild', e);
 			#end
 			loader.clearCache();
 			builders = oldBuilders;
@@ -318,8 +426,11 @@ class ScreenManager {
 				#if MULTIANIM_DEV
 				currentlyLoadingScreen = null;
 				#end
+				#if MULTIANIM_STRICT
+				strictFail('screen "$name" (reload)', e);
+				#end
 				failedScreens[name] = e.toString();
-				#if MULTIANIM_TRACE
+				#if MULTIANIM_DEV
 				trace('Failed to reload screen ${name}: ${e}');
 				#end
 				return {
@@ -333,7 +444,7 @@ class ScreenManager {
 			reloadedScreenNames.push(name);
 		}
 		updateScreenMode(this.mode);
-		#if MULTIANIM_TRACE
+		#if MULTIANIM_DEV
 		trace('reloaded ${reloadedScreenNames.join(",")}');
 		#end
 		return {
@@ -362,8 +473,11 @@ class ScreenManager {
 			#if MULTIANIM_DEV
 			currentlyLoadingScreen = null;
 			#end
+			#if MULTIANIM_STRICT
+			strictFail('screen "$name"', e);
+			#end
 			failedScreens[name] = e.toString();
-			#if MULTIANIM_TRACE
+			#if MULTIANIM_DEV
 			trace('Failed to load screen ${name}: ${e}');
 			#end
 		}
@@ -401,7 +515,7 @@ class ScreenManager {
 		}
 	}
 
-	public function modalDialog(dialog:UIScreen, caller:UIScreen, dialogName:String) {
+	public function modalDialog(dialog:UIScreen, caller:UIScreen, dialogName:String, ?data:Dynamic) {
 		dialog.load();
 		final overlayConfig = readOverlayConfig(dialog);
 		if (overlayConfig != null) {
@@ -410,10 +524,12 @@ class ScreenManager {
 				applyBlurToUnderlyingScreens(overlayConfig.blur);
 			modalOverlay.alpha = modalOverlayTargetAlpha; // no transition — show immediately
 		}
-		updateScreenMode(Dialog(dialog, caller, mode, dialogName));
+		updateScreenMode(Dialog(dialog, caller, mode, dialogName), data);
 	}
 
-	public function updateScreenMode(newScreenMode:ScreenManagerMode) {
+	public function updateScreenMode(newScreenMode:ScreenManagerMode, ?data:Dynamic) {
+		final previousMode = mode;
+
 		// Validate that no failed screens are being activated
 		switch newScreenMode {
 			case None:
@@ -440,13 +556,9 @@ class ScreenManager {
 		var removedScreens:Null<Array<UIScreen>> = null;
 		var overrideActiveScreenControllers:Null<Array<UIScreen>> = null;
 
-		// Global scene layer indices (added to app.s2d)
-		// layerContent: main game screen (e.g. CombatScreen) - bottom
-		// layerMaster: persistent overlay screen (e.g. top bar) - above content
-		// layerDialog: modal dialog screens - above everything
-		final layerContent = 2;
-		final layerMaster = 4;
-		final layerDialog = 6;
+		final layerContent = sceneLayers.content;
+		final layerMaster = sceneLayers.master;
+		final layerDialog = sceneLayers.dialog;
 		switch mode {
 			case None:
 				switch newScreenMode {
@@ -508,7 +620,9 @@ class ScreenManager {
 						if (single == oldMaster || master == oldSingle) throw 'MasterAndSingle -> MasterAndSingle: mismatching master/single';
 					case Dialog(dialog, caller, previousMode, dialogName):
 						addedScreens = [dialog => layerDialog];
-						overrideActiveScreenControllers = [dialog, oldMaster]; // TODO: optional?
+						// TODO: should the underlying screen still receive controller events while a modal dialog is open?
+						// Currently passes through to oldMaster; consider a per-dialog `blockUnderlying:Bool` flag for true modal behavior.
+						overrideActiveScreenControllers = [dialog, oldMaster];
 				}
 
 			case Dialog(oldDialog, caller, previousMode, dialogName):
@@ -516,21 +630,54 @@ class ScreenManager {
 				switch newScreenMode {
 					case None:
 						removedScreens = [oldDialog];
+						// Also remove underlying screens that were kept in scene while dialog was open
+						switch previousMode {
+							case Single(single): removedScreens.push(single);
+							case MasterAndSingle(master, single): removedScreens.push(master); removedScreens.push(single);
+							default:
+						}
 
 					case Single(single):
 						removedScreens = [oldDialog];
-						addedScreens = [single => layerContent];
+						if (!activeScreens.contains(single))
+							addedScreens = [single => layerContent];
+						else
+							overrideActiveScreenControllers = [single];
+						// Remove screens from previousMode that aren't part of newScreenMode
+						switch previousMode {
+							case MasterAndSingle(master, _oldSingle):
+								if (master != single) removedScreens.push(master);
+								if (_oldSingle != single) removedScreens.push(_oldSingle);
+							case Single(_oldSingle):
+								if (_oldSingle != single) removedScreens.push(_oldSingle);
+							default:
+						}
 					case MasterAndSingle(master, single):
 						removedScreens = [oldDialog];
-						addedScreens = [single => layerContent, master => layerMaster];
+						addedScreens = [];
+						if (!activeScreens.contains(single))
+							addedScreens.set(single, layerContent);
+						if (!activeScreens.contains(master))
+							addedScreens.set(master, layerMaster);
+						// Restore controllers for screens already in scene
+						overrideActiveScreenControllers = [single, master];
+						// Remove screens from previousMode that aren't part of newScreenMode
+						switch previousMode {
+							case MasterAndSingle(_oldMaster, _oldSingle):
+								if (_oldMaster != master && _oldMaster != single) removedScreens.push(_oldMaster);
+								if (_oldSingle != single && _oldSingle != master) removedScreens.push(_oldSingle);
+							case Single(_oldSingle):
+								if (_oldSingle != single && _oldSingle != master) removedScreens.push(_oldSingle);
+							default:
+						}
 
-					case Dialog(dialog, caller, previousMode, dialogName):
+					case Dialog(newDialog, newCaller, newPreviousMode, newDialogName):
 						removedScreens = [oldDialog];
-						addedScreens = [dialog => layerDialog];
-						overrideActiveScreenControllers = [dialog];
-						final result = dialog.getController().exitResponse;
+						addedScreens = [newDialog => layerDialog];
+						overrideActiveScreenControllers = [newDialog];
+						final result = oldDialog.getController().exitResponse;
 						caller.onScreenEvent(UIOnControllerEvent(OnDialogResult(dialogName, result)), null);
-						removeScreen(dialog);
+						removeScreen(oldDialog);
 				}
 		}
 		if (removedScreens != null)
@@ -545,7 +692,7 @@ class ScreenManager {
 			for (screen => layerIndex in addedScreens) {
 				final controller = screen.getController();
 				addScreen(screen, layerIndex);
-				screen.onScreenEvent(UIEntering, null);
+				screen.onScreenEvent(UIEntering(data), null);
 				screen.onScreenEvent(UIOnControllerEvent(Entering), null);
 				controller.lifecycleEvent(LifecycleControllerStarted);
 				if (overrideActiveScreenControllers == null) {
@@ -558,6 +705,8 @@ class ScreenManager {
 			activeScreenControllers = overrideActiveScreenControllers;
 
 		mode = newScreenMode;
+		notifyScreenChange(previousMode, newScreenMode,
+			addedScreens != null ? [for (s in addedScreens.keys()) s] : null, removedScreens);
 	}
 
 	/** Finalize any in-progress transition immediately (jump to end state). */
@@ -579,11 +728,12 @@ class ScreenManager {
 			cleanup();
 	}
 
-	/** Switch to a new screen mode with an optional visual transition. */
-	public function switchScreen(newScreenMode:ScreenManagerMode, ?transition:ScreenTransition):Void {
+	/** Switch to a new screen mode with an optional visual transition.
+	 *  Optional `data` is passed to entering screens via `UIEntering(data)` event. */
+	public function switchScreen(newScreenMode:ScreenManagerMode, ?transition:ScreenTransition, ?data:Dynamic):Void {
 		if (transition == null || transition.match(None)) {
 			finalizeTransition();
-			updateScreenMode(newScreenMode);
+			updateScreenMode(newScreenMode, data);
 			return;
 		}
 
@@ -611,14 +761,10 @@ class ScreenManager {
 		}
 
 		// Compute diff: what screens to add and remove
-		final layerContent = 2;
-		final layerMaster = 4;
-		final layerDialog = 6;
-
 		var screensToAdd:Map<UIScreen, Int> = [];
 		var screensToRemove:Array<UIScreen> = [];
 
-		computeScreenDiff(mode, newScreenMode, layerContent, layerMaster, layerDialog, screensToAdd, screensToRemove);
+		computeScreenDiff(mode, newScreenMode, sceneLayers.content, sceneLayers.master, sceneLayers.dialog, screensToAdd, screensToRemove);
 
 		if (screensToRemove.length == 0 && Lambda.count(screensToAdd) == 0) {
 			// No actual change
@@ -630,7 +776,7 @@ class ScreenManager {
 		for (screen => layerIndex in screensToAdd) {
 			app.s2d.add(screen.getSceneRoot(), layerIndex);
 			this.activeScreens.push(screen);
-			screen.onScreenEvent(UIEntering, null);
+			screen.onScreenEvent(UIEntering(data), null);
 			screen.onScreenEvent(UIOnControllerEvent(Entering), null);
 			screen.getController().lifecycleEvent(LifecycleControllerStarted);
 			this.activeScreenControllers.push(screen);
@@ -669,18 +815,21 @@ class ScreenManager {
 		};
 
 		mode = newScreenMode;
+		notifyScreenChange(oldMode, newScreenMode, [for (s in screensToAdd.keys()) s], screensToRemove);
 
 		// Execute the visual transition
 		executeTransition(transition, screensToRemove, screensToAdd);
 	}
 
-	/** Convenience: switch to a Single screen with optional transition. */
-	public function switchTo(screen:UIScreen, ?transition:ScreenTransition):Void {
-		switchScreen(Single(screen), transition);
+	/** Convenience: switch to a Single screen with optional transition.
+	 *  Optional `data` is passed to the screen via `UIEntering(data)` event. */
+	public function switchTo(screen:UIScreen, ?data:Dynamic, ?transition:ScreenTransition):Void {
+		switchScreen(Single(screen), transition, data);
 	}
 
 	/** Open a modal dialog with an optional transition. */
-	public function modalDialogWithTransition(dialog:UIScreen, caller:UIScreen, dialogName:String, ?transition:ScreenTransition):Void {
+	public function modalDialogWithTransition(dialog:UIScreen, caller:UIScreen, dialogName:String, ?data:Dynamic,
+			?transition:ScreenTransition):Void {
 		dialog.load();
 		final overlayConfig = readOverlayConfig(dialog);
 		if (overlayConfig != null) {
@@ -689,7 +838,7 @@ class ScreenManager {
 				applyBlurToUnderlyingScreens(overlayConfig.blur);
 			tweenOverlayIn(overlayConfig, transition);
 		}
-		switchScreen(Dialog(dialog, caller, mode, dialogName), transition);
+		switchScreen(Dialog(dialog, caller, mode, dialogName), transition, data);
 	}
 
 	/** Close the current dialog with an optional transition. Returns to previous mode. */
@@ -745,6 +894,7 @@ class ScreenManager {
 				};
 
 				mode = previousMode;
+				notifyScreenChange(Dialog(dialog, caller, previousMode, dialogName), previousMode, null, [dialog]);
 
 				// Animate only the dialog root out
 				executeExitTransition(transition, dialogRoot);
@@ -978,7 +1128,7 @@ class ScreenManager {
 		final color = config.color ?? 0x000000;
 		final overlay = new h2d.Bitmap(h2d.Tile.fromColor(color, 4096, 4096));
 		overlay.alpha = 0.0;
-		app.s2d.add(overlay, layerOverlay);
+		app.s2d.add(overlay, sceneLayers.overlay);
 		modalOverlayTargetAlpha = config.alpha ?? 0.5;
 		return overlay;
 	}
@@ -1078,6 +1228,7 @@ class ScreenManager {
 			try {
 				content = fileEntry.resource.entry.getBytes().toString();
 			} catch (_) {
+				trace('[HotReload] Failed to read file: $path');
 				continue;
 			}
 
@@ -1247,14 +1398,21 @@ class ScreenManager {
 				bh.multianim.dev.HotReload.ReloadableRegistry.removeSentinel(oldResult.object);
 				hotReloadRegistry.unregister(handle);
 
-				// Try rebuild with new builder, preserving original builderParams
+				// Try rebuild with new builder, preserving original builderParams.
+				// Wrap params to reuse captured placeholder objects instead of re-invoking callbacks.
+				// Use devBuilderParams (stored on result) — works even for non-incremental builds.
 				var newResult:BuilderResult;
-				final oldBuilderParams = oldResult.incrementalContext != null ? oldResult.incrementalContext.getBuilderParams() : null;
+				final oldBuilderParams = oldResult.devBuilderParams;
+				final capturedPlaceholders = oldResult.devCapturedPlaceholders;
+				final reloadBuilderParams = if (oldBuilderParams != null && capturedPlaceholders != null && capturedPlaceholders.length > 0)
+					bh.multianim.dev.HotReload.PlaceholderReuser.wrapBuilderParams(oldBuilderParams, capturedPlaceholders);
+				else
+					oldBuilderParams;
 				try {
 					newResult = newBuilder.buildWithParameters(
 						handle.programmableName,
 						bh.multianim.dev.HotReload.StateRestorer.snapshotToInputMap(snapshot.params),
-						oldBuilderParams,
+						reloadBuilderParams,
 						null,
 						true
 					);
@@ -1420,6 +1578,35 @@ class ScreenManager {
 			if (list.length == 0)
 				screenSourceMap.remove(path);
 		}
+	}
+	#end
+
+	#if MULTIANIM_STRICT
+	function strictFail(context:String, e:Dynamic):Void {
+		var msg = new StringBuf();
+		msg.add("=== MANIM STRICT ERROR ===\n");
+		msg.add('context: $context\n');
+
+		if (Std.isOfType(e, InvalidSyntax)) {
+			final err = cast(e, InvalidSyntax);
+			msg.add('file: ${err.pos.psource}\n');
+			msg.add('line: ${err.pos.line}\n');
+			msg.add('col: ${err.pos.col}\n');
+			msg.add('error: ${err.toString()}\n');
+		} else if (Std.isOfType(e, MultiAnimUnexpected)) {
+			final err:MultiAnimUnexpected<Dynamic> = cast e;
+			msg.add('file: ${err.pos.psource}\n');
+			msg.add('line: ${err.pos.line}\n');
+			msg.add('col: ${err.pos.col}\n');
+			msg.add('error: ${err.toString()}\n');
+		} else {
+			msg.add('error: $e\n');
+		}
+
+		msg.add("=== END MANIM STRICT ERROR ===\n");
+		Sys.stderr().writeString(msg.toString());
+		Sys.stderr().flush();
+		Sys.exit(1);
 	}
 	#end
 }

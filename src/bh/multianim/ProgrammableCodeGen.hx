@@ -23,10 +23,12 @@ import bh.multianim.MultiAnimParser.CurveSegmentDef;
 import bh.multianim.MultiAnimParser.CurvesDef;
 import bh.multianim.MultiAnimParser.PathsDef;
 import bh.multianim.MultiAnimParser.DataDef;
+import bh.multianim.MultiAnimParser.DataEnumDef;
 import bh.multianim.MultiAnimParser.DataValue;
 import bh.multianim.MultiAnimParser.DataValueType;
 import bh.multianim.MultiAnimParser.DataRecordDef;
 import bh.multianim.MultiAnimParser.DataFieldDef;
+import bh.multianim.MultiAnimParser.SwitchArm;
 import bh.multianim.CoordinateSystems;
 import bh.multianim.MacroCompatTypes.MacroFlowLayout;
 import bh.multianim.MacroCompatTypes.MacroFlowOverflow;
@@ -69,12 +71,14 @@ private enum MacroSlotKey {
 class ProgrammableCodeGen {
 	static var elementCounter:Int = 0;
 	static var expressionUpdates:Array<{fieldName:String, updateExpr:Expr, paramRefs:Array<String>}> = [];
-	static var visibilityEntries:Array<{fieldName:String, condition:Expr, paramRefs:Array<String>}> = [];
+	static var visibilityEntries:Array<{fieldName:String, condition:Expr, paramRefs:Array<String>, sentinelField:String, parentField:String, layer:Int, restoreFlowPropsExpr:Null<Expr>}> = [];
 	static var namedElements:Map<String, Array<String>> = [];
 	static var indexedNamedElements:Map<String, Array<{index:Int, fieldName:String}>> = new Map();
 	static var indexed2DNamedElements:Map<String, Array<{indexX:Int, indexY:Int, fieldName:String}>> = new Map();
 	static var slotEntries:Array<{key:MacroSlotKey, fieldName:String, hasParams:Bool, loopVars:Map<String, Int>}> = [];
+	static var switchUpdateEntries:Array<{paramName:String, updateExpr:Expr}> = [];
 	static var dynamicRefFields:Map<String, String> = new Map(); // component name -> BuilderResult field name
+	static var dynamicNameRefFields:Array<String> = []; // fieldNames of dynamic-name dynamicRefs
 	static var hexLayoutFieldMap:Map<String, String> = new Map(); // layout key → field name
 	static var hexLayoutFieldCount:Int = 0;
 	static var needsLayoutAlign:Bool = false;
@@ -125,6 +129,10 @@ class ProgrammableCodeGen {
 	// Counter for particles elements within a programmable (for multi-particles support)
 	static var particlesCounter:Int = 0;
 
+	// Counter for sentinel objects (position anchors for conditional elements)
+	static var sentinelCounter:Int = 0;
+	static var switchCounter:Int = 0;
+
 	// Cache parsed results to avoid re-running subprocess for same file
 	static var parsedCache:Map<String, Map<String, Node>> = new Map();
 
@@ -142,11 +150,13 @@ class ProgrammableCodeGen {
 		elementCounter = 0;
 		expressionUpdates = [];
 		visibilityEntries = [];
+		switchUpdateEntries = [];
 		namedElements = [];
 		indexedNamedElements = new Map();
 		indexed2DNamedElements = new Map();
 		slotEntries = [];
 		dynamicRefFields = new Map();
+		dynamicNameRefFields = [];
 		hasBuilderParameterPlaceholders = false;
 		paramDefs = new Map();
 		paramNames = [];
@@ -165,6 +175,8 @@ class ProgrammableCodeGen {
 		needsLayoutAlign = false;
 		tileGroupCounter = 0;
 		particlesCounter = 0;
+		sentinelCounter = 0;
+		switchCounter = 0;
 		instanceClassName = "";
 		generatedStyleSetters = new Map();
 		generatedImageSetters = new Map();
@@ -508,6 +520,8 @@ class ProgrammableCodeGen {
 		final visExprs:Array<Expr> = [];
 		for (entry in visibilityEntries) {
 			final fieldRef = macro $p{["this", entry.fieldName]};
+			final sentinelRef = entry.sentinelField != null ? macro $p{["this", entry.sentinelField]} : null;
+			final parentRef = entry.parentField != null ? macro $p{["this", entry.parentField]} : macro this;
 			// Check if this entry's paramRefs intersect with transition-declared params
 			var usesTransition = false;
 			if (hasTransitions) {
@@ -515,17 +529,61 @@ class ProgrammableCodeGen {
 					if (transParamNames.exists(ref)) { usesTransition = true; break; }
 				}
 			}
-			if (usesTransition) {
-				// Transition-aware: delegate to helper when changedParam is set and matches
-				visExprs.push(macro {
-					final _newVis = ${entry.condition};
-					if (this._transHelper != null && _changedParam != null && this._transHelper.tweenManager != null)
-						this._transHelper.setVisibilityWithTransition($fieldRef, _newVis, _changedParam)
-					else
-						$fieldRef.visible = _newVis;
-				});
+			if (sentinelRef != null) {
+				// Scene graph add/remove via sentinel
+				var addExpr = if (entry.layer != -1) {
+					final layerVal = entry.layer;
+					macro {
+						final _lp = cast($parentRef, h2d.Layers);
+						final _si = _lp.getChildIndexInLayer($sentinelRef);
+						_lp.add($fieldRef, $v{layerVal}, _si + 1);
+					};
+				} else {
+					macro $parentRef.addChildAt($fieldRef, $parentRef.getChildIndex($sentinelRef) + 1);
+				};
+				// Append flow property restore after re-add (Flow.removeChild discards FlowProperties)
+				if (entry.restoreFlowPropsExpr != null) {
+					final restoreExpr = entry.restoreFlowPropsExpr;
+					addExpr = macro { $addExpr; $restoreExpr; };
+				}
+				if (usesTransition) {
+					final transRestoreExpr = entry.restoreFlowPropsExpr;
+					visExprs.push(macro {
+						final _newVis = ${entry.condition};
+						if (this._transHelper != null && _changedParam != null && this._transHelper.tweenManager != null) {
+							this._transHelper.setPresenceWithTransition($fieldRef, _newVis, _changedParam, $parentRef, $sentinelRef);
+							${if (transRestoreExpr != null) macro { if ($fieldRef.parent != null) $transRestoreExpr; } else macro {}}
+						} else {
+							final _inGraph = $fieldRef.parent != null;
+							if (_newVis && !_inGraph)
+								$addExpr
+							else if (!_newVis && _inGraph)
+								$parentRef.removeChild($fieldRef);
+						}
+					});
+				} else {
+					visExprs.push(macro {
+						final _newVis = ${entry.condition};
+						final _inGraph = $fieldRef.parent != null;
+						if (_newVis && !_inGraph)
+							$addExpr
+						else if (!_newVis && _inGraph)
+							$parentRef.removeChild($fieldRef);
+					});
+				}
 			} else {
-				visExprs.push(macro $fieldRef.visible = ${entry.condition});
+				// Fallback: visibility toggle (no sentinel — shouldn't happen in practice)
+				if (usesTransition) {
+					visExprs.push(macro {
+						final _newVis = ${entry.condition};
+						if (this._transHelper != null && _changedParam != null && this._transHelper.tweenManager != null)
+							this._transHelper.setVisibilityWithTransition($fieldRef, _newVis, _changedParam)
+						else
+							$fieldRef.visible = _newVis;
+					});
+				} else {
+					visExprs.push(macro $fieldRef.visible = ${entry.condition});
+				}
 			}
 		}
 		// Repeat rebuild: call rebuild method when count param changes
@@ -538,6 +596,10 @@ class ProgrammableCodeGen {
 			final applyBlock = macro $b{entry.applyExprs};
 			final revertBlock = macro $b{entry.revertExprs};
 			visExprs.push(macro if ($cond) $applyBlock else $revertBlock);
+		}
+		// Switch updates: toggle arm container visibility
+		for (entry in switchUpdateEntries) {
+			visExprs.push(entry.updateExpr);
 		}
 		if (visExprs.length == 0)
 			visExprs.push(macro {});
@@ -826,19 +888,38 @@ class ProgrammableCodeGen {
 		for (refName => resultField in dynamicRefFields) {
 			instanceFields.push(makeField(resultField, FVar(macro :bh.multianim.MultiAnimBuilder.BuilderResult, null), [APrivate], pos));
 		}
-		if (Lambda.count(dynamicRefFields) > 0) {
-			final refCases:Array<Case> = [];
-			for (refName => resultField in dynamicRefFields) {
-				refCases.push({
-					values: [macro $v{refName}],
-					expr: macro return $p{["this", resultField]},
+		// Dynamic name ref fields: container, current name, and result
+		for (fn in dynamicNameRefFields) {
+			instanceFields.push(makeField("_dynref_" + fn, FVar(macro :bh.multianim.MultiAnimBuilder.BuilderResult, null), [APrivate], pos));
+			instanceFields.push(makeField("_dynref_container_" + fn, FVar(macro :h2d.Object, null), [APrivate], pos));
+			instanceFields.push(makeField("_dynref_name_" + fn, FVar(macro :String, null), [APrivate], pos));
+		}
+		final hasDynamicRefs = Lambda.count(dynamicRefFields) > 0 || dynamicNameRefFields.length > 0;
+		if (hasDynamicRefs) {
+			final getDynRefExprs:Array<Expr> = [];
+			// Static name refs: direct switch
+			if (Lambda.count(dynamicRefFields) > 0) {
+				final refCases:Array<Case> = [];
+				for (refName => resultField in dynamicRefFields) {
+					refCases.push({
+						values: [macro $v{refName}],
+						expr: macro return $p{["this", resultField]},
+					});
+				}
+				getDynRefExprs.push({
+					expr: ESwitch(macro name, refCases, null),
+					pos: pos,
 				});
 			}
-			final refSwitch:Expr = {
-				expr: ESwitch(macro name, refCases, macro return null),
-				pos: pos,
-			};
-			instanceFields.push(makeMethod("getDynamicRef", [refSwitch], [{name: "name", type: macro :String}],
+			// Dynamic name refs: runtime if-checks against current name
+			for (fn in dynamicNameRefFields) {
+				getDynRefExprs.push(macro {
+					if (name == $p{["this", "_dynref_name_" + fn]})
+						return $p{["this", "_dynref_" + fn]};
+				});
+			}
+			getDynRefExprs.push(macro return null);
+			instanceFields.push(makeMethod("getDynamicRef", getDynRefExprs, [{name: "name", type: macro :String}],
 				macro :bh.multianim.MultiAnimBuilder.BuilderResult, [APublic], pos));
 		}
 
@@ -893,6 +974,9 @@ class ProgrammableCodeGen {
 				return;
 			case REPEAT2D(varNameX, varNameY, repeatTypeX, repeatTypeY):
 				processRepeat2D(node, varNameX, varNameY, repeatTypeX, repeatTypeY, parentField, fields, ctorExprs, siblings, pos);
+				return;
+			case SWITCH(paramName, arms):
+				processSwitch(node, paramName, arms, parentField, fields, ctorExprs, siblings, pos);
 				return;
 			case APPLY:
 				switch (node.conditionals) {
@@ -1063,6 +1147,9 @@ class ProgrammableCodeGen {
 			}
 		}
 
+		// Create sentinel before adding conditional element to parent
+		final sentinelName = createSentinelIfConditional(node, parentField, fields, ctorExprs, pos);
+
 		// Add to parent (parentField == null means add to this directly)
 		final parentRef = parentField != null ? (macro $p{["this", parentField]}) : (macro this);
 		final fieldRef = macro $p{["this", fieldName]};
@@ -1077,6 +1164,7 @@ class ProgrammableCodeGen {
 		}
 
 		// Set flow properties for spacer and per-element flow annotations after addChild
+		var flowRestoreExpr:Null<Expr> = null;
 		{
 			final fp = node.flowProperties;
 			final isSpacer = node.type.match(SPACER(_, _));
@@ -1105,6 +1193,20 @@ class ProgrammableCodeGen {
 					if (fp.isAbsolute) propStmts.push(macro _props.isAbsolute = true);
 				}
 				ctorExprs.push({expr: EBlock(propStmts), pos: pos});
+				// Build restore expression for _applyVisibility (re-apply after addChildAt)
+				if (!isSpacer && fp != null && sentinelName != null) {
+					final restoreStmts:Array<Expr> = [];
+					restoreStmts.push(macro final _fp = Std.downcast($parentRef, h2d.Flow));
+					restoreStmts.push(macro if (_fp != null) {
+						final _props = _fp.getProperties($fieldRef);
+						${if (fp.hAlign != null) macro _props.horizontalAlign = ${flowAlignToExpr(fp.hAlign)} else macro {}}
+						${if (fp.vAlign != null) macro _props.verticalAlign = ${flowAlignToExpr(fp.vAlign)} else macro {}}
+						${if (fp.offsetX != null) macro _props.offsetX = ${rvToExpr(fp.offsetX)} else macro {}}
+						${if (fp.offsetY != null) macro _props.offsetY = ${rvToExpr(fp.offsetY)} else macro {}}
+						${if (fp.isAbsolute) macro _props.isAbsolute = true else macro {}}
+					});
+					flowRestoreExpr = {expr: EBlock(restoreStmts), pos: pos};
+				}
 			}
 		}
 
@@ -1181,10 +1283,19 @@ class ProgrammableCodeGen {
 		// Track dynamicRef BuilderResult fields
 		switch (node.type) {
 			case DYNAMIC_REF(_, programmableRef, _):
-				final compName = programmableRef;
-				if (compName != null) {
-					final resultField = "_comp_" + compName;
-					dynamicRefFields.set(compName, resultField);
+				switch programmableRef {
+					case RVString(compName):
+						final resultField = "_comp_" + compName;
+						dynamicRefFields.set(compName, resultField);
+					case RVReference(name):
+						if (paramNames.contains(name))
+							dynamicNameRefFields.push(fieldName);
+						else {
+							// $progName backward compat — treat as literal
+							final resultField = "_comp_" + name;
+							dynamicRefFields.set(name, resultField);
+						}
+					default:
 				}
 			default:
 		}
@@ -1192,7 +1303,8 @@ class ProgrammableCodeGen {
 		// Visibility
 		final visCond = generateVisibilityCondition(node, siblings, fieldName, pos);
 		if (visCond != null) {
-			visibilityEntries.push({fieldName: fieldName, condition: visCond, paramRefs: extractConditionalParamRefs(node, siblings)});
+			visibilityEntries.push({fieldName: fieldName, condition: visCond, paramRefs: extractConditionalParamRefs(node, siblings),
+				sentinelField: sentinelName, parentField: parentField, layer: node.layer, restoreFlowPropsExpr: flowRestoreExpr});
 		}
 
 		siblings.push({node: node, fieldName: fieldName});
@@ -1205,6 +1317,137 @@ class ProgrammableCodeGen {
 			if (node.children != null && node.children.length > 0)
 				processChildren(node.children, fieldName, fields, ctorExprs, [], pos);
 		}
+	}
+
+	// ==================== Switch Processing ====================
+
+	static function processSwitch(node:Node, paramName:String, arms:Array<SwitchArm>, parentField:String,
+			fields:Array<Field>, ctorExprs:Array<Expr>, siblings:Array<{node:Node, fieldName:String}>, pos:Position):Void {
+		// Lazy switch: build only the active arm at runtime, rebuild on parameter change.
+		// Container field holds arm content; _swN_armIdx tracks which arm is currently built.
+
+		// Always create a container for the switch content
+		final switchField = "_sw" + (elementCounter++);
+		fields.push(makeField(switchField, FVar(macro :h2d.Object, null), [APrivate], pos));
+		ctorExprs.push(macro $p{["this", switchField]} = new h2d.Object());
+		final parentRef = parentField != null ? (macro $p{["this", parentField]}) : (macro this);
+		ctorExprs.push(macro $parentRef.addChild($p{["this", switchField]}));
+
+		// Apply position/scale/alpha/rotation on the container if the SWITCH node has them
+		ensureHexLayoutIfNeeded(node.pos, node, fields, ctorExprs, pos);
+		final posExpr = generatePositionExpr(node.pos, switchField, pos, node);
+		if (posExpr != null) ctorExprs.push(posExpr);
+		if (node.scale != null) {
+			final scaleExpr = rvToExpr(node.scale);
+			ctorExprs.push(macro { final _s = $scaleExpr; $p{["this", switchField]}.scaleX = _s; $p{["this", switchField]}.scaleY = _s; });
+		}
+		if (node.alpha != null) ctorExprs.push(macro $p{["this", switchField]}.alpha = ${rvToExpr(node.alpha)});
+		if (node.rotation != null) ctorExprs.push(macro $p{["this", switchField]}.rotation = hxd.Math.degToRad(${rvToExpr(node.rotation)}));
+
+		// Arm index field
+		final armIdxField = switchField + "_armIdx";
+		fields.push(makeField(armIdxField, FVar(macro :Int, macro -1), [APrivate], pos));
+
+		// Generate arm index computation expression: maps param value to arm index (0..N-1), -1 for no match
+		final paramRef = paramFieldExpr(paramName);
+		final progName = currentProgrammableName;
+		final switchOrdinal = switchCounter++;  // stable DFS ordinal, matches runtime tree walk
+
+		// Check if all non-default arms are pure enum (CoEnums)
+		var allEnum = true;
+		for (arm in arms) {
+			if (arm.pattern != null) {
+				switch (arm.pattern) {
+					case CoEnums(_): // ok
+					default: allEnum = false;
+				}
+			}
+		}
+
+		final armIndexExpr:Expr = if (allEnum) {
+			// O(1) dispatch: generate switch statement returning arm index
+			final cases:Array<haxe.macro.Expr.Case> = [];
+			var defaultArmIdx:Int = -1;
+			for (i in 0...arms.length) {
+				final arm = arms[i];
+				if (arm.pattern == null) {
+					defaultArmIdx = i;
+				} else {
+					switch (arm.pattern) {
+						case CoEnums(values):
+							for (v in values) {
+								final paramDef = paramDefs.get(paramName);
+								final idx = paramDef != null ? findEnumIndex(paramDef, v) : null;
+								if (idx != null) {
+									cases.push({
+										values: [macro $v{idx}],
+										expr: macro $v{i},
+									});
+								}
+							}
+						default:
+					}
+				}
+			}
+			final defaultExpr = macro $v{defaultArmIdx};
+			{expr: ESwitch(paramRef, cases, defaultExpr), pos: pos};
+		} else {
+			// Mixed arms: if/else chain returning arm index
+			var result:Expr = macro - 1;
+			// Build in reverse so first matching arm wins
+			var i = arms.length - 1;
+			while (i >= 0) {
+				final arm = arms[i];
+				final idx = i;
+				if (arm.pattern == null) {
+					// Default arm — used as the base fallback
+					result = macro $v{idx};
+				} else {
+					final cond = condValueToExpr(arm.pattern, paramRef, paramName);
+					result = macro if ($cond) $v{idx} else $result;
+				}
+				i--;
+			}
+			result;
+		};
+
+		// Generate expression to build a params map from current parameter fields
+		final paramsMapExprs:Array<Expr> = [macro final _swp = new Map<String, Dynamic>()];
+		for (pName in paramNames) {
+			final paramField = "_" + pName;
+			paramsMapExprs.push(macro _swp.set($v{pName}, $p{["this", paramField]}));
+		}
+		paramsMapExprs.push(macro _swp);
+		final paramsMapExpr:Expr = {expr: EBlock(paramsMapExprs), pos: pos};
+
+		// Constructor: compute initial arm index and build
+		ctorExprs.push(macro {
+			$p{["this", armIdxField]} = $armIndexExpr;
+			this._pb.rebuildSwitchArm($v{progName}, $v{switchOrdinal}, $p{["this", armIdxField]}, $p{["this", switchField]}, $paramsMapExpr);
+		});
+
+		// Register lazy switch update in _applyVisibility — always rebuild since
+		// arm content may depend on params other than the switch param itself
+		final updateBlock:Expr = macro {
+			$p{["this", armIdxField]} = $armIndexExpr;
+			this._pb.rebuildSwitchArm($v{progName}, $v{switchOrdinal}, $p{["this", armIdxField]}, $p{["this", switchField]}, $paramsMapExpr);
+		};
+		switchUpdateEntries.push({
+			paramName: paramName,
+			updateExpr: updateBlock,
+		});
+	}
+
+	static function findEnumIndex(paramDef:Definition, value:String):Null<Int> {
+		return switch (paramDef.type) {
+			case PPTEnum(values): values.indexOf(value) >= 0 ? values.indexOf(value) : null;
+			case PPTBool: switch (value.toLowerCase()) { case "true" | "yes" | "1": 1; case "false" | "no" | "0": 0; default: null; };
+			default: Std.parseInt(value);
+		};
+	}
+
+	static function paramFieldExpr(paramName:String):Expr {
+		return macro $p{["this", "_" + paramName]};
 	}
 
 	// ==================== Repeat Processing ====================
@@ -1295,6 +1538,9 @@ class ProgrammableCodeGen {
 		if (posExpr != null)
 			ctorExprs.push(posExpr);
 
+		// Create sentinel before adding conditional container
+		final repeatSentinelName = createSentinelIfConditional(node, parentField, fields, ctorExprs, pos);
+
 		// Add to parent (parentField == null means add to this directly)
 		final parentRef = parentField != null ? (macro $p{["this", parentField]}) : (macro this);
 		ctorExprs.push(macro $parentRef.addChild($p{["this", containerName]}));
@@ -1302,7 +1548,8 @@ class ProgrammableCodeGen {
 		// Visibility for the container itself
 		final visCond = generateVisibilityCondition(node, siblings, containerName, pos);
 		if (visCond != null)
-			visibilityEntries.push({fieldName: containerName, condition: visCond, paramRefs: extractConditionalParamRefs(node, siblings)});
+			visibilityEntries.push({fieldName: containerName, condition: visCond, paramRefs: extractConditionalParamRefs(node, siblings),
+				sentinelField: repeatSentinelName, parentField: parentField, layer: node.layer, restoreFlowPropsExpr: null});
 		siblings.push({node: node, fieldName: containerName});
 
 		if (info.staticCount != null) {
@@ -1443,12 +1690,14 @@ class ProgrammableCodeGen {
 		if (posExpr != null)
 			ctorExprs.push(posExpr);
 
+		final layoutRepeatSentinel = createSentinelIfConditional(node, parentField, fields, ctorExprs, pos);
 		final parentRef = parentField != null ? (macro $p{["this", parentField]}) : (macro this);
 		ctorExprs.push(macro $parentRef.addChild($p{["this", containerName]}));
 
 		final visCond = generateVisibilityCondition(node, siblings, containerName, pos);
 		if (visCond != null)
-			visibilityEntries.push({fieldName: containerName, condition: visCond, paramRefs: extractConditionalParamRefs(node, siblings)});
+			visibilityEntries.push({fieldName: containerName, condition: visCond, paramRefs: extractConditionalParamRefs(node, siblings),
+				sentinelField: layoutRepeatSentinel, parentField: parentField, layer: node.layer, restoreFlowPropsExpr: null});
 		siblings.push({node: node, fieldName: containerName});
 
 		// Resolve layout points and unroll
@@ -1746,12 +1995,14 @@ class ProgrammableCodeGen {
 		if (posExpr != null)
 			ctorExprs.push(posExpr);
 
+		final runtimeRepeatSentinel = createSentinelIfConditional(node, parentField, fields, ctorExprs, pos);
 		final parentRef = parentField != null ? (macro $p{["this", parentField]}) : (macro this);
 		ctorExprs.push(macro $parentRef.addChild($p{["this", containerName]}));
 
 		final visCond = generateVisibilityCondition(node, siblings, containerName, pos);
 		if (visCond != null)
-			visibilityEntries.push({fieldName: containerName, condition: visCond, paramRefs: extractConditionalParamRefs(node, siblings)});
+			visibilityEntries.push({fieldName: containerName, condition: visCond, paramRefs: extractConditionalParamRefs(node, siblings),
+				sentinelField: runtimeRepeatSentinel, parentField: parentField, layer: node.layer, restoreFlowPropsExpr: null});
 		siblings.push({node: node, fieldName: containerName});
 
 		final containerRef = macro $p{["this", containerName]};
@@ -1858,12 +2109,13 @@ class ProgrammableCodeGen {
 				// Collect all statements into a single block so _rt_bmp is in scope
 				final stmts:Array<Expr> = [];
 				// Apply hAlign/vAlign via tile.sub() dx/dy, matching generateBitmapCreate
-				var dxExpr:Expr = switch (hAlign) {
+				final hasPivot = tileSource.match(TSPivot(_, _, _));
+				var dxExpr:Expr = if (hasPivot) macro _rt_tile.dx else switch (hAlign) {
 					case Center: macro -(_rt_tile.width * 0.5);
 					case Right: macro -_rt_tile.width;
 					default: macro 0.0;
 				};
-				var dyExpr:Expr = switch (vAlign) {
+				var dyExpr:Expr = if (hasPivot) macro _rt_tile.dy else switch (vAlign) {
 					case Center: macro -(_rt_tile.height * 0.5);
 					case Bottom: macro -_rt_tile.height;
 					default: macro 0.0;
@@ -2374,12 +2626,14 @@ class ProgrammableCodeGen {
 		if (posExpr != null)
 			ctorExprs.push(posExpr);
 
+		final repeat2dSentinel = createSentinelIfConditional(node, parentField, fields, ctorExprs, pos);
 		final parentRef = parentField != null ? (macro $p{["this", parentField]}) : (macro this);
 		ctorExprs.push(macro $parentRef.addChild($p{["this", containerName]}));
 
 		final visCond = generateVisibilityCondition(node, siblings, containerName, pos);
 		if (visCond != null)
-			visibilityEntries.push({fieldName: containerName, condition: visCond, paramRefs: extractConditionalParamRefs(node, siblings)});
+			visibilityEntries.push({fieldName: containerName, condition: visCond, paramRefs: extractConditionalParamRefs(node, siblings),
+				sentinelField: repeat2dSentinel, parentField: parentField, layer: node.layer, restoreFlowPropsExpr: null});
 		siblings.push({node: node, fieldName: containerName});
 
 		if (infoX.staticCount != null && infoY.staticCount != null) {
@@ -2615,11 +2869,29 @@ class ProgrammableCodeGen {
 			case PLACEHOLDER(type, source):
 				generatePlaceholderCreate(node, fieldName, type, source, pos);
 
-			case STATIC_REF(externalReference, programmableRef, parameters):
+			case STATIC_REF(externalReference, programmableRefRV, parameters):
+				// staticRef doesn't support dynamic names — always resolve to literal string
+				final programmableRef = switch programmableRefRV {
+					case RVString(s): s;
+					case RVReference(s): s; // $progName backward compat: treat as literal
+					default: throw 'unexpected ReferenceableValue for staticRef reference';
+				};
 				generateStaticRefCreate(node, fieldName, externalReference, programmableRef, parameters, pos);
 
-			case DYNAMIC_REF(externalReference, programmableRef, parameters):
-				generateDynamicRefCreate(node, fieldName, externalReference, programmableRef, parameters, pos);
+			case DYNAMIC_REF(externalReference, programmableRefRV, parameters):
+				switch programmableRefRV {
+					case RVString(programmableRef):
+						generateDynamicRefCreate(node, fieldName, externalReference, programmableRef, parameters, pos);
+					case RVReference(name):
+						// If the name is a parameter of this programmable, it's a dynamic name ref.
+						// Otherwise, it's a literal programmable name ($progName backward compat).
+						if (paramNames.contains(name))
+							generateDynamicNameRefCreate(node, fieldName, externalReference, name, parameters, pos);
+						else
+							generateDynamicRefCreate(node, fieldName, externalReference, name, parameters, pos);
+					default:
+						throw 'unexpected ReferenceableValue for dynamicRef reference';
+				}
 
 			case REPEAT(_, _) | REPEAT2D(_, _, _, _):
 				// Should not be reached — processNode handles REPEAT/REPEAT2D directly
@@ -2715,6 +2987,153 @@ class ProgrammableCodeGen {
 			isContainer: false,
 			exprUpdates: [],
 		};
+	}
+
+	// ==================== DynamicRef with dynamic name ====================
+
+	static function generateDynamicNameRefCreate(node:Node, fieldName:String, externalReference:Null<String>,
+			paramName:String, parameters:Map<String, ReferenceableValue>, pos:Position):CreateResult {
+		final fieldRef = macro $p{["this", fieldName]};
+		final createExprs:Array<Expr> = [];
+		final resultField = "_dynref_" + fieldName;
+		final containerField = "_dynref_container_" + fieldName;
+		final nameField = "_dynref_name_" + fieldName;
+
+		// At construction time: resolve the parameter to get the initial programmable name,
+		// build it, wrap in a container for easy rebuild
+		final paramFieldExpr = macro $p{["this", "_" + paramName]};
+
+		// Generate inline enum→string resolution based on parameter type
+		final paramDef = paramDefs.get(paramName);
+		final resolveNameExpr:Expr = if (paramDef != null) {
+			switch paramDef.type {
+				case PPTEnum(values):
+					// Generate switch: 0 => "val0", 1 => "val1", ...
+					final cases:Array<Case> = [];
+					for (i in 0...values.length) {
+						cases.push({values: [macro $v{i}], expr: macro $v{values[i]}});
+					}
+					{expr: ESwitch(macro (cast $paramFieldExpr : Int), cases, macro ""), pos: pos};
+				case PPTString:
+					macro(cast $paramFieldExpr : String);
+				default:
+					macro Std.string($paramFieldExpr);
+			}
+		} else {
+			macro Std.string($paramFieldExpr);
+		}
+
+		// Build parameter map
+		final mapBuildExprs:Array<Expr> = [macro final _refParams = new Map<String, Dynamic>()];
+		if (parameters != null) {
+			for (key => val in parameters) {
+				final keyExpr:Expr = macro $v{key};
+				final valExpr = rvToExpr(val);
+				mapBuildExprs.push(macro _refParams.set($keyExpr, $valExpr));
+			}
+		}
+		final extRefExpr:Expr = externalReference != null ? macro $v{externalReference} : macro null;
+		mapBuildExprs.push(macro {
+			final _templateName:String = $resolveNameExpr;
+			$p{["this", nameField]} = _templateName;
+			final _result = this._pb.buildDynamicRef(_templateName, _refParams, $extRefExpr);
+			final _container = new h2d.Object();
+			if (_result != null && _result.object != null) _container.addChild(_result.object);
+			$fieldRef = _container;
+			$p{["this", containerField]} = _container;
+			$p{["this", resultField]} = _result;
+		});
+		createExprs.push(macro $b{mapBuildExprs});
+
+		// Generate rebuild expression for when the template param changes
+		final rebuildMapExprs:Array<Expr> = [macro final _refParams = new Map<String, Dynamic>()];
+		if (parameters != null) {
+			for (key => val in parameters) {
+				final keyExpr:Expr = macro $v{key};
+				final valExpr = rvToExpr(val);
+				rebuildMapExprs.push(macro _refParams.set($keyExpr, $valExpr));
+			}
+		}
+		rebuildMapExprs.push(macro {
+			final _newName:String = $resolveNameExpr;
+			if (_newName != $p{["this", nameField]}) {
+				$p{["this", containerField]}.removeChildren();
+				final _result = this._pb.buildDynamicRef(_newName, _refParams, $extRefExpr);
+				if (_result != null && _result.object != null) $p{["this", containerField]}.addChild(_result.object);
+				$p{["this", resultField]} = _result;
+				$p{["this", nameField]} = _newName;
+			}
+		});
+
+		// Register as expression update triggered by the template param
+		expressionUpdates.push({
+			fieldName: fieldName,
+			updateExpr: macro $b{rebuildMapExprs},
+			paramRefs: [paramName],
+		});
+
+		// Also register updates for forwarded parameter changes (non-template params)
+		if (parameters != null) {
+			final forwardedParamRefs:Array<String> = [];
+			for (_ => val in parameters) {
+				collectRVParamRefs(val, forwardedParamRefs);
+			}
+			if (forwardedParamRefs.length > 0) {
+				// When forwarded params change, update the child's parameters via its incremental context
+				final fwdUpdateExprs:Array<Expr> = [macro final _refParams = new Map<String, Dynamic>()];
+				if (parameters != null) {
+					for (key => val in parameters) {
+						final keyExpr:Expr = macro $v{key};
+						final valExpr = rvToExpr(val);
+						fwdUpdateExprs.push(macro _refParams.set($keyExpr, $valExpr));
+					}
+				}
+				fwdUpdateExprs.push(macro {
+					final _result = $p{["this", resultField]};
+					if (_result != null && _result.incrementalContext != null) {
+						_result.incrementalContext.beginUpdate();
+						for (_k => _v in _refParams) {
+							_result.incrementalContext.setParameter(_k, _v);
+						}
+						_result.incrementalContext.endUpdate();
+					}
+				});
+				expressionUpdates.push({
+					fieldName: fieldName + "_fwd",
+					updateExpr: macro $b{fwdUpdateExprs},
+					paramRefs: forwardedParamRefs,
+				});
+			}
+		}
+
+		return {
+			fieldType: macro :h2d.Object,
+			createExprs: createExprs,
+			isContainer: false,
+			exprUpdates: [],
+		};
+	}
+
+	static function collectRVParamRefs(rv:ReferenceableValue, result:Array<String>):Void {
+		if (rv == null) return;
+		switch rv {
+			case RVReference(ref):
+				if (!result.contains(ref)) result.push(ref);
+			case EBinop(_, e1, e2):
+				collectRVParamRefs(e1, result);
+				collectRVParamRefs(e2, result);
+			case RVParenthesis(e):
+				collectRVParamRefs(e, result);
+			case RVTernary(cond, t, f):
+				collectRVParamRefs(cond, result);
+				collectRVParamRefs(t, result);
+				collectRVParamRefs(f, result);
+			case EUnaryOp(_, e):
+				collectRVParamRefs(e, result);
+			case RVElementOfArray(_, idx):
+				collectRVParamRefs(idx, result);
+			default:
+		}
 	}
 
 	// ==================== Placeholder ====================
@@ -3091,8 +3510,7 @@ class ProgrammableCodeGen {
 					} else null;
 				} else null;
 			case SELECTED_HEX_PIXEL(px, py):
-				// pixelToHex requires h2d.col.Point which is not available at macro time
-				// Fall through to runtime resolution
+				// pixelToHex can't be statically resolved at macro time
 				null;
 			case SELECTED_HEX_CELL_CORNER(cell, cornerIndex, factor):
 				final hexLayout = getHexLayoutForNode(node);
@@ -3149,6 +3567,8 @@ class ProgrammableCodeGen {
 				final ox = resolveRVStatic(offsetX);
 				final oy = resolveRVStatic(offsetY);
 				if (basePt != null && ox != null && oy != null) {x: basePt.x + ox, y: basePt.y + oy} else null;
+			case EXTRA_POINT_REF(_, _, _) | EXTRA_POINT_ANIM(_, _, _, _, _):
+				null; // requires runtime resolution — not available at macro time
 		};
 	}
 
@@ -3224,7 +3644,7 @@ class ProgrammableCodeGen {
 					};
 				} else null;
 			case SELECTED_HEX_PIXEL(_, _):
-				// pixelToHex requires h2d.col.Point — not available at macro time
+				// pixelToHex can't be statically resolved at macro time
 				null;
 			default: null;
 		};
@@ -3262,7 +3682,7 @@ class ProgrammableCodeGen {
 				final xExpr = rvToExpr(px);
 				final yExpr = rvToExpr(py);
 				final _hlRef = hexFieldRef(null, hexLayout);
-				macro $_hlRef.pixelToHex(new h2d.col.Point($xExpr, $yExpr)).round();
+				macro $_hlRef.pixelToHex(new bh.base.FPoint($xExpr, $yExpr)).round();
 			default: null;
 		};
 	}
@@ -3424,6 +3844,30 @@ class ProgrammableCodeGen {
 			}
 		}
 
+		// $ref.extraPoint("name" [, fallbackX, fallbackY]).x / .y — runtime resolution via named element
+		if (method == "extraPoint") {
+			final elementFields = namedElements.get(ref);
+			if (elementFields == null || elementFields.length == 0) {
+				Context.error('ProgrammableCodeGen: extraPoint reference: element "$ref" not found in named elements', Context.currentPos());
+				return macro 0;
+			}
+			final elemRef = macro $p{["this", elementFields[0]]};
+			final pointNameExpr = argExprs[0];
+			final hasFallback = argExprs.length >= 3;
+			final fbExpr = if (hasFallback) (component == "x" ? argExprs[1] : argExprs[2]) else null;
+			if (hasFallback) {
+				if (component == "x")
+					return macro { final _ep = (cast $elemRef : bh.stateanim.AnimationSM).getExtraPoint($pointNameExpr); if (_ep != null) (_ep.x : Float) else $fbExpr; };
+				else
+					return macro { final _ep = (cast $elemRef : bh.stateanim.AnimationSM).getExtraPoint($pointNameExpr); if (_ep != null) (_ep.y : Float) else $fbExpr; };
+			} else {
+				if (component == "x")
+					return macro { final _ep = (cast $elemRef : bh.stateanim.AnimationSM).getExtraPoint($pointNameExpr); if (_ep == null) throw "extraPoint not found"; (_ep.x : Float); };
+				else
+					return macro { final _ep = (cast $elemRef : bh.stateanim.AnimationSM).getExtraPoint($pointNameExpr); if (_ep == null) throw "extraPoint not found"; (_ep.y : Float); };
+			}
+		}
+
 		// Hex methods — need _hexLayout field
 		if (hexLayoutFieldCount == 0) {
 			Context.error('Runtime hex .$component extraction requires hex coordinate system with runtime parameters in scope', Context.currentPos());
@@ -3493,7 +3937,7 @@ class ProgrammableCodeGen {
 				if (argExprs.length != 2) Context.error('pixel() requires 2 arguments', Context.currentPos());
 				final xExpr = argExprs[0];
 				final yExpr = argExprs[1];
-				final ptExpr = macro $_hlRef.hexToPixel($_hlRef.pixelToHex(new h2d.col.Point($xExpr, $yExpr)).round());
+				final ptExpr = macro $_hlRef.hexToPixel($_hlRef.pixelToHex(new bh.base.FPoint($xExpr, $yExpr)).round());
 				if (component == "x")
 					return macro $ptExpr.x;
 				else
@@ -3575,8 +4019,8 @@ class ProgrammableCodeGen {
 				final xExpr = rvToExpr(px);
 				final yExpr = rvToExpr(py);
 				{
-					x: macro $_hlRef.hexToPixel($_hlRef.pixelToHex(new h2d.col.Point($xExpr, $yExpr)).round()).x,
-					y: macro $_hlRef.hexToPixel($_hlRef.pixelToHex(new h2d.col.Point($xExpr, $yExpr)).round()).y
+					x: macro $_hlRef.hexToPixel($_hlRef.pixelToHex(new bh.base.FPoint($xExpr, $yExpr)).round()).x,
+					y: macro $_hlRef.hexToPixel($_hlRef.pixelToHex(new bh.base.FPoint($xExpr, $yExpr)).round()).y
 				};
 			case ZERO:
 				{x: macro 0.0, y: macro 0.0};
@@ -3691,6 +4135,58 @@ class ProgrammableCodeGen {
 					Context.error('ProgrammableCodeGen: hex cell edge requires hex coordinate system', pos);
 					{x: macro 0.0, y: macro 0.0};
 				}
+			case EXTRA_POINT_REF(elementName, pointName, fallback):
+				final elementFields = namedElements.get(elementName);
+				if (elementFields == null || elementFields.length == 0) {
+					Context.error('ProgrammableCodeGen: extraPoint reference: element "$elementName" not found in named elements', pos);
+					{x: macro 0.0, y: macro 0.0};
+				} else {
+					final elemRef = macro $p{["this", elementFields[0]]};
+					final fallbackXY = fallback != null ? coordsToXYExprs(fallback, pos, node) : null;
+					final fbX = fallbackXY != null ? fallbackXY.x : null;
+					final fbY = fallbackXY != null ? fallbackXY.y : null;
+					{
+						x: if (fbX != null)
+							macro { final _ep = (cast $elemRef : bh.stateanim.AnimationSM).getExtraPoint($v{pointName}); if (_ep != null) (_ep.x : Float) else $fbX; }
+						else
+							macro { final _ep = (cast $elemRef : bh.stateanim.AnimationSM).getExtraPoint($v{pointName}); if (_ep == null) throw $v{'extraPoint: point "$pointName" not found'}; (_ep.x : Float); },
+						y: if (fbY != null)
+							macro { final _ep = (cast $elemRef : bh.stateanim.AnimationSM).getExtraPoint($v{pointName}); if (_ep != null) (_ep.y : Float) else $fbY; }
+						else
+							macro { final _ep = (cast $elemRef : bh.stateanim.AnimationSM).getExtraPoint($v{pointName}); if (_ep == null) throw $v{'extraPoint: point "$pointName" not found'}; (_ep.y : Float); }
+					};
+				}
+			case EXTRA_POINT_ANIM(filename, animName, pointName, selectorRefs, fallback):
+				final fallbackXY = fallback != null ? coordsToXYExprs(fallback, pos, node) : null;
+				final fbX = fallbackXY != null ? fallbackXY.x : null;
+				final fbY = fallbackXY != null ? fallbackXY.y : null;
+				// Build selector map expressions
+				final selExprs:Array<Expr> = [macro final _selMap = new Map<String, String>()];
+				for (k => v in selectorRefs) {
+					final keyExpr:Expr = macro $v{k};
+					final valExpr = rvToExpr(v);
+					selExprs.push(macro _selMap.set($keyExpr, Std.string($valExpr)));
+				}
+				selExprs.push(macro final _animSM = this._pb.resourceLoader.createAnimSM($v{filename}, _selMap));
+				selExprs.push(macro _animSM.play($v{animName}));
+				{
+					x: {
+						final block = selExprs.copy();
+						if (fbX != null)
+							block.push(macro { final _ep = _animSM.getExtraPoint($v{pointName}); if (_ep != null) (_ep.x : Float) else $fbX; })
+						else
+							block.push(macro { final _ep = _animSM.getExtraPoint($v{pointName}); if (_ep == null) throw $v{'extraPoint: point "$pointName" not found'}; (_ep.x : Float); });
+						macro $b{block};
+					},
+					y: {
+						final block = selExprs.copy();
+						if (fbY != null)
+							block.push(macro { final _ep = _animSM.getExtraPoint($v{pointName}); if (_ep != null) (_ep.y : Float) else $fbY; })
+						else
+							block.push(macro { final _ep = _animSM.getExtraPoint($v{pointName}); if (_ep == null) throw $v{'extraPoint: point "$pointName" not found'}; (_ep.y : Float); });
+						macro $b{block};
+					}
+				};
 		};
 	}
 
@@ -4251,12 +4747,13 @@ class ProgrammableCodeGen {
 		// Always use tile.sub() to get an independent copy with correct dx/dy.
 		// Atlas tiles may have dx/dy mutated by AnimParser, so we must reset them.
 		// This matches the builder which always calls tile.sub() (MultiAnimBuilder line 1481).
-		var dxExpr:Expr = switch (hAlign) {
+		final hasPivot = tileSource.match(TSPivot(_, _, _));
+		var dxExpr:Expr = if (hasPivot) macro tile.dx else switch (hAlign) {
 			case Center: macro -(tile.width * 0.5);
 			case Right: macro -tile.width;
 			default: macro 0.0;
 		};
-		var dyExpr:Expr = switch (vAlign) {
+		var dyExpr:Expr = if (hasPivot) macro tile.dy else switch (vAlign) {
 			case Center: macro -(tile.height * 0.5);
 			case Bottom: macro -tile.height;
 			default: macro 0.0;
@@ -4492,6 +4989,72 @@ class ProgrammableCodeGen {
 		}
 		createExprs.push(textAssign);
 
+		// Auto-fit: generate font fallback logic
+		if (textDef.autoFitFonts != null && textDef.autoFitMode != null) {
+			// Build array of fallback font load expressions
+			final fontLoadExprs:Array<Expr> = [];
+			for (fontRef in textDef.autoFitFonts) {
+				final fontNameExpr = rvToExpr(fontRef);
+				fontLoadExprs.push(macro this._pb.loadFont($fontNameExpr));
+			}
+			final fontsArrayExpr:Expr = {expr: EArrayDecl(fontLoadExprs), pos: pos};
+
+			// Determine fit dimensions
+			final scaleAdjust:Float = if (node.scale != null) {
+				final s = resolveRVStatic(node.scale);
+				if (s != null) s else 1.0;
+			} else 1.0;
+
+			var fitWidthExpr:Expr = macro null;
+			var fitHeightExpr:Expr = macro null;
+			switch (textDef.autoFitMode) {
+				case AFWidth | AFFillWidth:
+					switch (textDef.textAlignWidth) {
+						case TAWValue(value):
+							final staticVal = resolveRVStatic(value);
+							if (staticVal != null) {
+								final adj:Float = staticVal / scaleAdjust;
+								fitWidthExpr = macro $v{adj};
+							} else {
+								final valExpr = rvToExpr(value);
+								final scExpr = macro $v{scaleAdjust};
+								fitWidthExpr = macro $valExpr / $scExpr;
+							}
+						default:
+					}
+				case AFBox(w, h) | AFFillBox(w, h):
+					final wStatic = resolveRVStatic(w);
+					final hStatic = resolveRVStatic(h);
+					if (wStatic != null) {
+						final adj:Float = wStatic / scaleAdjust;
+						fitWidthExpr = macro $v{adj};
+					} else {
+						final wExpr2 = rvToExpr(w);
+						final scExpr = macro $v{scaleAdjust};
+						fitWidthExpr = macro $wExpr2 / $scExpr;
+					}
+					if (hStatic != null) {
+						final adj:Float = hStatic / scaleAdjust;
+						fitHeightExpr = macro $v{adj};
+					} else {
+						final hExpr2 = rvToExpr(h);
+						final scExpr = macro $v{scaleAdjust};
+						fitHeightExpr = macro $hExpr2 / $scExpr;
+					}
+			}
+
+			final isFill = switch (textDef.autoFitMode) {
+				case AFFillWidth | AFFillBox(_, _): true;
+				default: false;
+			};
+
+			if (isFill) {
+				createExprs.push(macro bh.multianim.ProgrammableBuilder.autoFitFill($fieldRef, $fontsArrayExpr, $fitWidthExpr, $fitHeightExpr));
+			} else {
+				createExprs.push(macro bh.multianim.ProgrammableBuilder.autoFitFirstFit($fieldRef, $fontsArrayExpr, $fitWidthExpr, $fitHeightExpr));
+			}
+		}
+
 		final textParamRefs = collectParamRefs(textDef.text);
 		if (textParamRefs.length > 0) {
 			// For incremental updates, always use runtime conversion for rich text
@@ -4676,12 +5239,29 @@ class ProgrammableCodeGen {
 
 	// ==================== Condition/Visibility ====================
 
+	/** Create a sentinel field and emit constructor code to add it before a conditional element. Returns sentinel field name, or null if not conditional. */
+	static function createSentinelIfConditional(node:Node, parentField:String, fields:Array<Field>, ctorExprs:Array<Expr>, pos:Position):Null<String> {
+		if (node.conditionals.match(NoConditional)) return null;
+		final sentinelName = '_sentinel_${sentinelCounter++}';
+		fields.push(makeField(sentinelName, FVar(macro :h2d.Object, null), [APrivate], pos));
+		final sentinelRef = macro $p{["this", sentinelName]};
+		final parentRef = if (parentField != null) macro $p{["this", parentField]} else macro this;
+		ctorExprs.push(macro $sentinelRef = new h2d.Object());
+		if (node.layer != -1) {
+			final layerVal:Int = node.layer;
+			ctorExprs.push(macro cast($parentRef, h2d.Layers).add($sentinelRef, $v{layerVal}));
+		} else {
+			ctorExprs.push(macro $parentRef.addChild($sentinelRef));
+		}
+		return sentinelName;
+	}
+
 	static function generateVisibilityCondition(node:Node, siblings:Array<{node:Node, fieldName:String}>, fieldName:String, pos:Position):Null<Expr> {
 		return switch (node.conditionals) {
 			case NoConditional: null;
 
-			case Conditional(values, _strict):
-				condMapToExpr(values);
+			case Conditional(values, anyMode):
+				condMapToExpr(values, anyMode);
 
 			case ConditionalElse(values):
 				final priorNeg = negatePriorSiblings(siblings);
@@ -4743,8 +5323,8 @@ class ProgrammableCodeGen {
 		var result:Expr = macro true;
 		for (sib in siblings) {
 			switch (sib.node.conditionals) {
-				case Conditional(values, _):
-					final sibCond = condMapToExpr(values);
+				case Conditional(values, anyMode):
+					final sibCond = condMapToExpr(values, anyMode);
 					result = macro($result && !($sibCond));
 				case ConditionalElse(values):
 					if (values != null) {
@@ -4757,8 +5337,8 @@ class ProgrammableCodeGen {
 		return result;
 	}
 
-	static function condMapToExpr(values:Map<String, ConditionalValues>):Expr {
-		var result:Expr = macro true;
+	static function condMapToExpr(values:Map<String, ConditionalValues>, anyMode:Bool = false):Expr {
+		var result:Expr = anyMode ? macro false : macro true;
 		for (kv in values.keyValueIterator()) {
 			final paramName:String = kv.key;
 			final condVal:ConditionalValues = kv.value;
@@ -4772,7 +5352,10 @@ class ProgrammableCodeGen {
 				macro $p{["this", "_" + paramName]};
 			};
 			final cond = condValueToExpr(condVal, paramExpr, paramName);
-			result = macro($result && $cond);
+			if (anyMode)
+				result = macro($result || $cond)
+			else
+				result = macro($result && $cond);
 		}
 		return result;
 	}
@@ -4806,12 +5389,12 @@ class ProgrammableCodeGen {
 			case CoRange(from, to, fromExclusive, toExclusive):
 				var result:Expr = macro true;
 				if (from != null) {
-					final fromVal:Float = from;
-					result = if (fromExclusive) macro($paramExpr > $v{fromVal}) else macro($paramExpr >= $v{fromVal});
+					final fromExpr = rvToExpr(from);
+					result = if (fromExclusive) macro($paramExpr > $fromExpr) else macro($paramExpr >= $fromExpr);
 				}
 				if (to != null) {
-					final toVal:Float = to;
-					final toCond = if (toExclusive) macro($paramExpr < $v{toVal}) else macro($paramExpr <= $v{toVal});
+					final toExpr = rvToExpr(to);
+					final toCond = if (toExclusive) macro($paramExpr < $toExpr) else macro($paramExpr <= $toExpr);
 					result = macro($result && $toCond);
 				}
 				result;
@@ -4822,6 +5405,18 @@ class ProgrammableCodeGen {
 			case CoNot(inner):
 				final innerExpr = condValueToExpr(inner, paramExpr, paramName);
 				macro !($innerExpr);
+
+			case CoAnyOf(values):
+				if (values.length == 0) {
+					macro false;
+				} else {
+					var result:Expr = condValueToExpr(values[0], paramExpr, paramName);
+					for (i in 1...values.length) {
+						final next = condValueToExpr(values[i], paramExpr, paramName);
+						result = macro($result || $next);
+					}
+					result;
+				}
 		};
 	}
 
@@ -5106,6 +5701,9 @@ class ProgrammableCodeGen {
 			case TSReference(ref):
 				if (paramDefs != null && paramDefs.exists(ref) && !loopVarSubstitutions.exists(ref) && !refs.contains(ref))
 					refs.push(ref);
+			case TSPivot(_, _, inner):
+				final innerRefs = collectTileSourceParamRefs(inner);
+				for (r in innerRefs) if (!refs.contains(r)) refs.push(r);
 			default:
 		}
 		return refs;
@@ -5236,6 +5834,15 @@ class ProgrammableCodeGen {
 				} else {
 					macro this._pb.loadTileFile("placeholder.png");
 				};
+			case TSPivot(px, py, inner):
+				final innerExpr = tileSourceToExpr(inner);
+				final pxExpr:Expr = macro $v{px};
+				final pyExpr:Expr = macro $v{py};
+				macro {
+					var _t = $innerExpr;
+					_t.setCenterRatio($pxExpr, $pyExpr);
+					_t;
+				};
 			default:
 				macro this._pb.loadTileFile("placeholder.png");
 		};
@@ -5357,7 +5964,7 @@ class ProgrammableCodeGen {
 					final yExpr = rvToExpr(py);
 					final _hlRef = hexFieldRef(node, pos);
 					macro {
-						final _hex = $_hlRef.pixelToHex(new h2d.col.Point($xExpr, $yExpr)).round();
+						final _hex = $_hlRef.pixelToHex(new bh.base.FPoint($xExpr, $yExpr)).round();
 						final _p = $_hlRef.hexToPixel(_hex);
 						$fieldRef.setPosition(_p.x, _p.y);
 					};
@@ -5508,13 +6115,63 @@ class ProgrammableCodeGen {
 							final basePt = coordsToStaticXY(base, pos, node);
 							if (basePt != null)
 								macro $fieldRef.setPosition($v{basePt.x + ox}, $v{basePt.y + oy})
-							else
-								null;
+							else {
+								// Base is non-static (e.g. EXTRA_POINT_REF) — resolve at runtime with static offset
+								final baseXY = coordsToXYExprs(base, pos, node);
+								final oxV = ox;
+								final oyV = oy;
+								macro $fieldRef.setPosition(${baseXY.x} + $v{oxV}, ${baseXY.y} + $v{oyV});
+							}
 					}
 				} else {
-					final baseExpr = generatePositionExpr(base, fieldName, pos, node);
-					if (baseExpr != null) baseExpr else null;
+					// Non-static offsets — resolve everything at runtime
+					final baseXY = coordsToXYExprs(base, pos, node);
+					final oxExpr = rvToExpr(offsetX);
+					final oyExpr = rvToExpr(offsetY);
+					macro $fieldRef.setPosition(${baseXY.x} + $oxExpr, ${baseXY.y} + $oyExpr);
 				};
+			case EXTRA_POINT_REF(elementName, pointName, fallback):
+				final elementFields = namedElements.get(elementName);
+				if (elementFields == null || elementFields.length == 0) {
+					Context.error('ProgrammableCodeGen: extraPoint reference: element "$elementName" not found in named elements', pos);
+					null;
+				} else {
+					final elemRef = macro $p{["this", elementFields[0]]};
+					final fallbackExpr = fallback != null ? generatePositionExpr(fallback, fieldName, pos, node) : null;
+					if (fallbackExpr != null)
+						macro {
+							final _ep = (cast $elemRef : bh.stateanim.AnimationSM).getExtraPoint($v{pointName});
+							if (_ep != null) $fieldRef.setPosition(_ep.x, _ep.y) else $fallbackExpr;
+						}
+					else
+						macro {
+							final _ep = (cast $elemRef : bh.stateanim.AnimationSM).getExtraPoint($v{pointName});
+							if (_ep == null) throw $v{'extraPoint: point "$pointName" not found'};
+							$fieldRef.setPosition(_ep.x, _ep.y);
+						};
+				}
+			case EXTRA_POINT_ANIM(filename, animName, pointName, selectorRefs, fallback):
+				final fallbackExpr = fallback != null ? generatePositionExpr(fallback, fieldName, pos, node) : null;
+				final selExprs:Array<Expr> = [macro final _selMap = new Map<String, String>()];
+				for (k => v in selectorRefs) {
+					final keyExpr:Expr = macro $v{k};
+					final valExpr = rvToExpr(v);
+					selExprs.push(macro _selMap.set($keyExpr, Std.string($valExpr)));
+				}
+				selExprs.push(macro final _animSM = this._pb.resourceLoader.createAnimSM($v{filename}, _selMap));
+				selExprs.push(macro _animSM.play($v{animName}));
+				if (fallbackExpr != null)
+					selExprs.push(macro {
+						final _ep = _animSM.getExtraPoint($v{pointName});
+						if (_ep != null) $fieldRef.setPosition(_ep.x, _ep.y) else $fallbackExpr;
+					})
+				else
+					selExprs.push(macro {
+						final _ep = _animSM.getExtraPoint($v{pointName});
+						if (_ep == null) throw $v{'extraPoint: point "$pointName" not found'};
+						$fieldRef.setPosition(_ep.x, _ep.y);
+					});
+				macro $b{selExprs};
 		};
 	}
 
@@ -5900,6 +6557,8 @@ class ProgrammableCodeGen {
 			case FilterColorListReplace(sourceColors, replacementColors):
 				for (c in sourceColors) collectParamRefsImpl(c, refs);
 				for (c in replacementColors) collectParamRefsImpl(c, refs);
+			case FilterCustom(_, args):
+				for (a in args) collectParamRefsImpl(a.value, refs);
 		}
 	}
 
@@ -6005,6 +6664,20 @@ class ProgrammableCodeGen {
 				final srcArr:Expr = {expr: EArrayDecl(srcExprs), pos: pos};
 				final dstArr:Expr = {expr: EArrayDecl(dstExprs), pos: pos};
 				macro bh.base.filters.ReplacePaletteShader.createAsColorsFilter($srcArr, $dstArr);
+			case FilterCustom(name, args):
+				// Generate runtime call to FilterManager — custom filters are resolved at runtime only
+				final argExprs:Array<Expr> = [];
+				for (a in args) {
+					final valExpr = rvToExpr(a.value);
+					final typeExpr = switch a.type {
+						case CFFloat: macro bh.multianim.MultiAnimParser.CustomFilterArgType.CFFloat;
+						case CFColor: macro bh.multianim.MultiAnimParser.CustomFilterArgType.CFColor;
+						case CFBool: macro bh.multianim.MultiAnimParser.CustomFilterArgType.CFBool;
+					};
+					argExprs.push(macro {value: $valExpr, type: $typeExpr});
+				}
+				final argsArr:Expr = {expr: EArrayDecl(argExprs), pos: pos};
+				macro bh.base.FilterManager.buildCustomFilter($v{name}, $argsArr);
 		};
 	}
 
@@ -6344,15 +7017,67 @@ class ProgrammableCodeGen {
 	// ==================== Data Block Codegen ====================
 
 	/** Generate fields for a data class from a DataDef.
-	 *  Record types become exposed classes, scalar/array fields become public final fields.
+	 *  Enum types become enum abstracts over Int, record types become exposed classes,
+	 *  scalar/array fields become public final fields.
 	 *  @param dataName The #name from the manim file (e.g., "gameData") — used for exposed type naming
 	 *  @param className The internal data class name (e.g., "MultiProgrammable_GameData")
-	 *  @param typePack Package for exposed record types
-	 *  @param mergeTypes Whether to deduplicate identical record types
+	 *  @param typePack Package for exposed record/enum types
+	 *  @param mergeTypes Whether to deduplicate identical record/enum types
 	 */
 	static function generateDataClass(dataDef:DataDef, dataName:String, className:String, typePack:Array<String>,
 			mergeTypes:Bool, pos:Position):Array<Field> {
 		var dataFields:Array<Field> = [];
+
+		// Map from enum name → exposed type {pack, name}
+		var enumTypeMap:Map<String, {pack:Array<String>, name:String}> = new Map();
+
+		// Generate enum abstract types (before records, since records may reference enums)
+		for (enumName => enumDef in dataDef.enums) {
+			final exposedName = toPascalCase(dataName) + toPascalCase(enumName);
+
+			// Check for mergeTypes dedup
+			if (mergeTypes) {
+				final sig = enumSignature(enumDef);
+				final existing = mergedTypeCache.get(sig);
+				if (existing != null) {
+					enumTypeMap.set(enumName, existing);
+					continue;
+				}
+			}
+
+			// Check for type collision
+			try {
+				Context.getType(typePack.join(".") + (typePack.length > 0 ? "." : "") + exposedName);
+				Context.fatalError('Type "$exposedName" already exists (collision with data enum "$enumName")', pos);
+			} catch (_:Dynamic) {
+				// Expected — type doesn't exist yet
+			}
+
+			final enumFields:Array<Field> = [];
+			for (i in 0...enumDef.values.length) {
+				enumFields.push({
+					name: toPascalCase(enumDef.values[i]),
+					kind: FVar(null),
+					pos: pos,
+				});
+			}
+
+			final typeInfo = {pack: typePack, name: exposedName};
+			enumTypeMap.set(enumName, typeInfo);
+
+			final enumTd:TypeDefinition = {
+				pack: typePack,
+				name: exposedName,
+				pos: pos,
+				kind: TDEnum,
+				fields: enumFields,
+			};
+			Context.defineType(enumTd);
+
+			if (mergeTypes) {
+				mergedTypeCache.set(enumSignature(enumDef), typeInfo);
+			}
+		}
 
 		// Map from record name → exposed type {pack, name}
 		var recordTypeMap:Map<String, {pack:Array<String>, name:String}> = new Map();
@@ -6383,7 +7108,7 @@ class ProgrammableCodeGen {
 
 			// Public final fields for each record field
 			for (rf in recordDef.fields) {
-				var ct = dataTypeToComplexType(rf.type, recordTypeMap);
+				var ct = dataTypeToComplexType(rf.type, enumTypeMap, recordTypeMap);
 				if (rf.optional) ct = TPath({pack: [], name: "Null", params: [TPType(ct)]});
 				recordFields.push({
 					name: rf.name,
@@ -6397,7 +7122,7 @@ class ProgrammableCodeGen {
 			final ctorArgs:Array<FunctionArg> = [];
 			final ctorAssigns:Array<Expr> = [];
 			for (rf in recordDef.fields) {
-				var ct = dataTypeToComplexType(rf.type, recordTypeMap);
+				var ct = dataTypeToComplexType(rf.type, enumTypeMap, recordTypeMap);
 				if (rf.optional) ct = TPath({pack: [], name: "Null", params: [TPType(ct)]});
 				ctorArgs.push({name: rf.name, type: ct, opt: rf.optional});
 				ctorAssigns.push(macro $p{["this", rf.name]} = $i{rf.name});
@@ -6428,10 +7153,10 @@ class ProgrammableCodeGen {
 
 		// Generate public final fields for each data entry
 		for (field in dataDef.fields) {
-			final initExpr = dataValueToExpr(field.value, recordTypeMap, dataDef.records, pos);
+			final initExpr = dataValueToExpr(field.value, enumTypeMap, recordTypeMap, dataDef.enums, dataDef.records, pos);
 			dataFields.push({
 				name: field.name,
-				kind: FVar(dataTypeToComplexType(field.type, recordTypeMap), initExpr),
+				kind: FVar(dataTypeToComplexType(field.type, enumTypeMap, recordTypeMap), initExpr),
 				access: [APublic, AFinal],
 				pos: pos,
 			});
@@ -6458,44 +7183,71 @@ class ProgrammableCodeGen {
 		return parts.join(",");
 	}
 
+	/** Build a signature string for an enum definition (for mergeTypes dedup) */
+	static function enumSignature(enumDef:DataEnumDef):String {
+		return 'Enum(${enumDef.values.join(",")})';
+	}
+
 	static function dataValueTypeSignature(type:DataValueType):String {
 		return switch (type) {
 			case DVTInt: "Int";
 			case DVTFloat: "Float";
 			case DVTString: "String";
 			case DVTBool: "Bool";
+			case DVTEnum(enumName): 'Enum($enumName)';
 			case DVTRecord(recordName): 'Record($recordName)';
 			case DVTArray(elemType): 'Array<${dataValueTypeSignature(elemType)}>';
 		};
 	}
 
 	/** Convert a DataValueType to a Haxe ComplexType */
-	static function dataTypeToComplexType(type:DataValueType, recordTypeMap:Map<String, {pack:Array<String>, name:String}>):ComplexType {
+	static function dataTypeToComplexType(type:DataValueType, enumTypeMap:Map<String, {pack:Array<String>, name:String}>,
+			recordTypeMap:Map<String, {pack:Array<String>, name:String}>):ComplexType {
 		return switch (type) {
 			case DVTInt: macro :Int;
 			case DVTFloat: macro :Float;
 			case DVTString: macro :String;
 			case DVTBool: macro :Bool;
+			case DVTEnum(enumName):
+				final info = enumTypeMap.get(enumName);
+				if (info == null) macro :Int;
+				else TPath({pack: info.pack, name: info.name});
 			case DVTRecord(recordName):
 				final info = recordTypeMap.get(recordName);
 				if (info == null) macro :Dynamic;
 				else TPath({pack: info.pack, name: info.name});
 			case DVTArray(elemType):
-				final elemCT = dataTypeToComplexType(elemType, recordTypeMap);
+				final elemCT = dataTypeToComplexType(elemType, enumTypeMap, recordTypeMap);
 				TPath({pack: [], name: "Array", params: [TPType(elemCT)]});
 		};
 	}
 
 	/** Convert a DataValue to a Haxe expression for field initialization */
-	static function dataValueToExpr(value:DataValue, recordTypeMap:Map<String, {pack:Array<String>, name:String}>,
-			records:Map<String, DataRecordDef>, pos:Position):Expr {
+	static function dataValueToExpr(value:DataValue, enumTypeMap:Map<String, {pack:Array<String>, name:String}>,
+			recordTypeMap:Map<String, {pack:Array<String>, name:String}>,
+			enums:Map<String, DataEnumDef>, records:Map<String, DataRecordDef>, pos:Position):Expr {
 		return switch (value) {
 			case DVInt(v): {expr: EConst(CInt('$v')), pos: pos};
 			case DVFloat(v): {expr: EConst(CFloat('$v')), pos: pos};
 			case DVString(v): {expr: EConst(CString(v)), pos: pos};
 			case DVBool(v): {expr: EConst(CIdent(v ? "true" : "false")), pos: pos};
+			case DVEnumValue(enumName, value):
+				final info = enumTypeMap.get(enumName);
+				if (info != null) {
+					// Build fully-qualified enum constructor: pack.EnumType.Constructor
+					var typeExpr:Expr = {expr: EConst(CIdent(info.pack.length > 0 ? info.pack[0] : info.name)), pos: pos};
+					if (info.pack.length > 0) {
+						for (i in 1...info.pack.length)
+							typeExpr = {expr: EField(typeExpr, info.pack[i]), pos: pos};
+						typeExpr = {expr: EField(typeExpr, info.name), pos: pos};
+					}
+					{expr: EField(typeExpr, toPascalCase(value)), pos: pos};
+				} else {
+					// Fallback: use string value
+					{expr: EConst(CString(value)), pos: pos};
+				}
 			case DVArray(elements):
-				final elemExprs = [for (e in elements) dataValueToExpr(e, recordTypeMap, records, pos)];
+				final elemExprs = [for (e in elements) dataValueToExpr(e, enumTypeMap, recordTypeMap, enums, records, pos)];
 				{expr: EArrayDecl(elemExprs), pos: pos};
 			case DVRecord(recordName, fields):
 				final info = recordTypeMap.get(recordName);
@@ -6505,7 +7257,7 @@ class ProgrammableCodeGen {
 					for (rf in recordDef.fields) {
 						final val = fields.get(rf.name);
 						if (val != null)
-							ctorArgs.push(dataValueToExpr(val, recordTypeMap, records, pos));
+							ctorArgs.push(dataValueToExpr(val, enumTypeMap, recordTypeMap, enums, records, pos));
 						else if (rf.optional)
 							ctorArgs.push(macro null);
 					}
@@ -6845,7 +7597,7 @@ class ProgrammableCodeGen {
 							ex = px + end.x;
 							ey = py + end.y;
 							c1x = px + c1.x;
-							c1y = px + c1.y;
+							c1y = py + c1.y;
 							c2x = px + c2.x;
 							c2y = py + c2.y;
 					}

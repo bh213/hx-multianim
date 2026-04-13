@@ -1,7 +1,10 @@
 version: 1.0
 
 #gameData data {
+    #rarity enum(common, uncommon, rare, epic, legendary)
+    #element enum(fire, water, earth, air)
     #tier record(name: string, cost: int, ?dmg: float)
+    #item record(name: string, rarity: rarity, ?element: element)
 
     maxLevel: 5
     name: "Warrior"
@@ -14,4 +17,11 @@ version: 1.0
     ]
     defaultTier: tier { name: "None", cost: 0, dmg: 0.0 }
     basicTier: tier { name: "Basic", cost: 5 }
+    defaultRarity: rarity common
+    elements: element[] [fire, water, earth]
+    sword: item { name: "Flame Sword", rarity: rare, element: fire }
+    items: item[] [
+        { name: "Shield", rarity: common }
+        { name: "Staff", rarity: epic, element: air }
+    ]
 }

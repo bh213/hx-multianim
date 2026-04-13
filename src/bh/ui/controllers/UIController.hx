@@ -15,12 +15,17 @@ enum UIControllerResult {
 }
 
 interface UIControllerScreenIntegration {
-	function onScreenEvent(event:UIScreenEvent, source:Null<UIElement>):Void;
+	/** Dispatch event with auto-wiring (autoStatus) handled before screen's onScreenEvent. */
+	function dispatchScreenEvent(event:UIScreenEvent, source:Null<UIElement>):Void;
 	function getElements(type:SubElementsType):Array<UIElement>;
 	function onKey(keyCode:Int, release:Bool):Bool;
-	function onMouseMove(pos:Point):Bool;
+	/** Dispatch mouse move to higher-order components and screen override.
+	 *  Always returns true — components are notified but never block interactive processing. */
+	function dispatchMouseMove(pos:Point):Bool;
 	function onMouseWheel(pos:Point, delta:Float):Bool;
-	function onMouseClick(pos:Point, button:Int, release:Bool):Bool;
+	/** Dispatch mouse click/release to higher-order components.
+	 *  Returns false only when a release is consumed (e.g. card hand drag end). */
+	function dispatchMouseClick(pos:Point, button:Int, release:Bool):Bool;
 }
 
 @:allow(bh.ui.screens.UIScreenBase)

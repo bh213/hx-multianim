@@ -192,6 +192,8 @@ class ProgrammableBuilder {
 		for (entry in constructData) {
 			final loadedSheet = getSheet(entry.sheet);
 			final anim = loadedSheet.getAnim(entry.animName);
+			if (anim == null)
+				throw 'Animation "${entry.animName}" not found in sheet "${entry.sheet}"';
 			if (entry.center) {
 				for (i in 0...anim.length) {
 					anim[i] = anim[i].cloneWithNewTile(anim[i].tile.center());
@@ -307,12 +309,13 @@ class ProgrammableBuilder {
 		return switch param {
 			case null: null;
 			case PVObject(obj):
-				#if MULTIANIM_TRACE
+				#if MULTIANIM_DEV
 				if (settings != null)
 					trace('Warning: PVObject placeholder "$name" ignores .manim settings — use PVFactory instead to receive settings');
 				#end
 				obj;
 			case PVFactory(factoryMethod): factoryMethod(settings);
+			case PVComponent(factoryMethod, _): factoryMethod(settings);
 		};
 	}
 
@@ -436,6 +439,14 @@ class ProgrammableBuilder {
 		return getBuilder().getCurve(name);
 	}
 
+	/** Rebuild a @switch arm by ordinal. Tears down the old arm and builds the new one.
+	 *  Used by codegen lazy switch — generated setters call this on parameter change.
+	 *  switchOrdinal is the N-th SWITCH node in DFS order of the programmable's tree. */
+	public function rebuildSwitchArm(programmableName:String, switchOrdinal:Int, armIndex:Int, container:h2d.Object,
+			params:Map<String, Dynamic>):Void {
+		getBuilder().rebuildSwitchArmByOrdinal(programmableName, switchOrdinal, armIndex, container, params);
+	}
+
 	/** Build an arbitrary node by its unique name, forwarding to the builder.
 	 *  Used by generated repeatable code for node types not handled inline. */
 	public function buildNodeByUniqueName(programmableName:String, uniqueNodeName:String):Null<h2d.Object> {
@@ -448,7 +459,7 @@ class ProgrammableBuilder {
 		return builder.buildSingleNode(targetNode);
 	}
 
-	private static function findNodeByUniqueName(node:MultiAnimParser.Node, name:String):Null<MultiAnimParser.Node> {
+	public static function findNodeByUniqueName(node:MultiAnimParser.Node, name:String):Null<MultiAnimParser.Node> {
 		if (node.uniqueNodeName == name) return node;
 		if (node.children != null) {
 			for (child in node.children) {
@@ -466,5 +477,38 @@ class ProgrammableBuilder {
 			case null: null;
 			default: null;
 		};
+	}
+
+	/** Auto-fit: first-fit mode — try fallback fonts in order, use first that fits. */
+	public static function autoFitFirstFit(t:h2d.Text, fonts:Array<Font>, fitWidth:Null<Float>, fitHeight:Null<Float>):Void {
+		if (fitWidth != null && t.textWidth <= fitWidth && (fitHeight == null || t.textHeight <= fitHeight)) return;
+		for (font in fonts) {
+			t.font = font;
+			if ((fitWidth == null || t.textWidth <= fitWidth) && (fitHeight == null || t.textHeight <= fitHeight)) return;
+		}
+	}
+
+	/** Auto-fit: fill mode — try all fonts (including current), pick largest that fits. */
+	public static function autoFitFill(t:h2d.Text, fonts:Array<Font>, fitWidth:Null<Float>, fitHeight:Null<Float>):Void {
+		var bestFont:Null<Font> = null;
+		var bestWidth:Float = -1;
+		final origFont = t.font;
+		// Try original font first
+		if ((fitWidth == null || t.textWidth <= fitWidth) && (fitHeight == null || t.textHeight <= fitHeight)) {
+			bestFont = origFont;
+			bestWidth = t.textWidth;
+		}
+		for (font in fonts) {
+			t.font = font;
+			if ((fitWidth == null || t.textWidth <= fitWidth) && (fitHeight == null || t.textHeight <= fitHeight)) {
+				if (t.textWidth > bestWidth) {
+					bestWidth = t.textWidth;
+					bestFont = font;
+				}
+			}
+		}
+		if (bestFont != null) t.font = bestFont;
+		else if (fonts.length > 0) t.font = fonts[fonts.length - 1];
+		else t.font = origFont;
 	}
 }

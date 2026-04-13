@@ -2,8 +2,13 @@ name: Release and Publish to Haxelib
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
+    paths:
+      - 'haxelib.json'
+
+permissions:
+  contents: write
 
 jobs:
   build-and-publish:
@@ -13,15 +18,37 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
+    - name: Extract version from haxelib.json
+      id: version
+      run: |
+        VERSION=$(python3 -c "import json; print(json.load(open('haxelib.json'))['version'])")
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+    - name: Check if version tag already exists
+      id: check
+      run: |
+        if git ls-remote --tags origin "refs/tags/v${{ steps.version.outputs.version }}" | grep -q .; then
+          echo "exists=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "exists=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Skip if version already published
+      if: steps.check.outputs.exists == 'true'
+      run: echo "Version ${{ steps.version.outputs.version }} already published. Skipping."
+
     - name: Setup Haxe
+      if: steps.check.outputs.exists == 'false'
       uses: krdlab/setup-haxe@v1
       with:
         haxe-version: '4.3.6'
 
     - name: Setup Lix
+      if: steps.check.outputs.exists == 'false'
       uses: lix-pm/setup-lix@5d98ddc5d00ee5ebf9bd3095dc36b1c9fb50a98f
 
     - name: Cache Lix dependencies
+      if: steps.check.outputs.exists == 'false'
       uses: actions/cache@v4
       with:
         path: ~/.lix
@@ -30,36 +57,38 @@ jobs:
           ${{ runner.os }}-lix-
 
     - name: Install dependencies
+      if: steps.check.outputs.exists == 'false'
       run: lix download
 
     - name: Create build directory
+      if: steps.check.outputs.exists == 'false'
       run: mkdir -p build
 
     - name: Build library (HashLink)
+      if: steps.check.outputs.exists == 'false'
       run: haxe hx-multianim.hxml -hl build/hl-manim.hl -D message.reporting=pretty -D resourcesPath=test/res
 
     - name: Build library (JavaScript)
+      if: steps.check.outputs.exists == 'false'
       run: haxe hx-multianim.hxml -js build/js-manim.js -D message.reporting=pretty -D resourcesPath=test/res
 
     - name: Verify build output
+      if: steps.check.outputs.exists == 'false'
       run: |
         test -f build/hl-manim.hl || (echo "ERROR: HL build failed" && exit 1)
         test -f build/js-manim.js || (echo "ERROR: JS build failed" && exit 1)
 
-    - name: Extract version from haxelib.json
-      id: version
+    - name: Create git tag
+      if: steps.check.outputs.exists == 'false'
       run: |
-        VERSION=$(python3 -c "import json; print(json.load(open('haxelib.json'))['version'])")
-        echo "version=$VERSION" >> $GITHUB_OUTPUT
-        TAG_VERSION=${GITHUB_REF#refs/tags/v}
-        if [ "$VERSION" != "$TAG_VERSION" ]; then
-          echo "ERROR: Tag version ($TAG_VERSION) does not match haxelib.json version ($VERSION)"
-          exit 1
-        fi
+        git tag "v${{ steps.version.outputs.version }}"
+        git push origin "v${{ steps.version.outputs.version }}"
 
     - name: Create GitHub Release
+      if: steps.check.outputs.exists == 'false'
       uses: softprops/action-gh-release@v2
       with:
+        tag_name: v${{ steps.version.outputs.version }}
         generate_release_notes: false
         body: |
           Release ${{ steps.version.outputs.version }}
@@ -67,7 +96,7 @@ jobs:
           See [CHANGELOG.md](CHANGELOG.md) for details.
 
     - name: Publish to Haxelib
-      if: ${{ !contains(steps.version.outputs.version, 'rc') }}
+      if: steps.check.outputs.exists == 'false'
       env:
         HAXELIB_PASSWORD: ${{ secrets.HAXELIB_PASSWORD }}
       run: |

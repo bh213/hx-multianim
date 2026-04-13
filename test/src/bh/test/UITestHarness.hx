@@ -13,6 +13,8 @@ import bh.multianim.MultiAnimParser.ResolvedSettings;
 import bh.multianim.MultiAnimParser.SettingValue;
 import bh.multianim.MultiAnimBuilder.BuilderResolvedSettings;
 import bh.ui.screens.UIScreen.ModalOverlayConfig;
+import bh.ui.UIPanelHelper;
+import bh.ui.UIPanelHelper.PanelDefaults;
 
 /**
  * Mock CaptureEventsControl for testing UI components.
@@ -36,29 +38,19 @@ class MockCaptureEvents implements CaptureEventsControl {
 }
 
 /**
- * Mock OutsideClickControl for testing UI components.
- */
-class MockOutsideClick implements OutsideClickControl {
-	public var tracking:Bool = false;
-
-	public function new() {}
-
-	public function trackOutsideClick(enabled:Bool):Void {
-		tracking = enabled;
-	}
-}
-
-/**
  * Mock Controllable that records pushed events for assertion.
  */
 class MockControllable implements Controllable {
 	public var captureEvents(default, null):CaptureEventsControl;
-	public var outsideClick(default, null):OutsideClickControl;
+	public var outsideClickTracking:Bool = false;
 	public var recordedEvents:Array<{event:UIScreenEvent, source:UIElement}> = [];
 
 	public function new() {
 		captureEvents = new MockCaptureEvents();
-		outsideClick = new MockOutsideClick();
+	}
+
+	public function trackOutsideClick(enabled:Bool):Void {
+		outsideClickTracking = enabled;
 	}
 
 	public function pushEvent(event:UIScreenEvent, source:UIElement):Void {
@@ -173,6 +165,21 @@ class UITestScreen extends UIScreenBase {
 	public function testParseOverlaySettings(rootSettings:BuilderResolvedSettings):Null<ModalOverlayConfig> {
 		return parseOverlaySettings(rootSettings);
 	}
+
+	/** Expose createPanelHelper for testing. */
+	public function testCreatePanelHelper(builder, ?defaults:PanelDefaults):UIPanelHelper {
+		return createPanelHelper(builder, defaults);
+	}
+
+	/** Expose registerPanelHelper for testing. */
+	public function testRegisterPanelHelper(helper:UIPanelHelper):Void {
+		registerPanelHelper(helper);
+	}
+
+	/** Expose unregisterPanelHelper for testing. */
+	public function testUnregisterPanelHelper(helper:UIPanelHelper):Void {
+		unregisterPanelHelper(helper);
+	}
 }
 
 /**
@@ -269,7 +276,8 @@ class UITestHarness {
 		return {
 			event: event,
 			eventPos: pos != null ? pos : new Point(0, 0),
-			control: control
+			control: control,
+			consumed: true
 		};
 	}
 

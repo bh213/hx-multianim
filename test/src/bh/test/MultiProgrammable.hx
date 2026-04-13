@@ -293,6 +293,9 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 	@:manim("test/examples/95-transition/transition.manim", "transCrossfade")
 	public var transCrossfade;
 
+	@:manim("test/examples/95-transition/transition.manim", "transCrossfadeEased")
+	public var transCrossfadeEased;
+
 	@:manim("test/examples/95-transition/transition.manim", "transFlipX")
 	public var transFlipX;
 
@@ -304,4 +307,46 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/95-transition/transition.manim", "transSlideDown")
 	public var transSlideDown;
+
+	@:manim("test/examples/96-autoFit/autoFit.manim", "autoFit")
+	public var autoFit;
+
+	@:manim("test/examples/97-flowConditional/flowConditional.manim", "flowConditional")
+	public var flowConditional;
+
+	@:manim("test/examples/98-customFilter/customFilter.manim", "customFilter")
+	public var customFilter;
+
+	@:manim("test/examples/100-switchDemo/switchDemo.manim", "switchDemo")
+	public var switchDemo;
+
+	@:manim("test/examples/101-animFlip/animFlip.manim", "animFlip")
+	public var animFlip;
+
+	@:manim("test/examples/102-switchRepeat/switchRepeat.manim", "switchRepeat")
+	public var switchRepeat;
+
+	@:manim("test/examples/102-switchRepeat/switchRepeat.manim", "switchFixedRepeat")
+	public var switchFixedRepeat;
+
+	@:manim("test/examples/102-switchRepeat/switchRepeat.manim", "switchText")
+	public var switchText;
+
+	@:manim("test/examples/102-switchRepeat/switchRepeat.manim", "switchNested")
+	public var switchNested;
+
+	@:manim("test/examples/102-switchRepeat/switchRepeat.manim", "switchExpr")
+	public var switchExpr;
+
+	@:manim("test/examples/102-switchRepeat/switchRepeat.manim", "switchRepeatDemo")
+	public var switchRepeatDemo;
+
+	@:manim("test/examples/103-switchArmContext/switchArmContext.manim", "switchGridArm")
+	public var switchGridArm;
+
+	@:manim("test/examples/103-switchArmContext/switchArmContext.manim", "switchCallbackArm")
+	public var switchCallbackArm;
+
+	@:manim("test/examples/103-switchArmContext/switchArmContext.manim", "slotParamContextHost")
+	public var slotParamContextHost;
 }

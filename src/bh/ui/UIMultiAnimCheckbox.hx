@@ -27,7 +27,10 @@ class UIStandardMultiCheckbox implements UIElement implements UIElementDisablabl
 	public function set_disabled(value:Bool):Bool {
 		if (this.disabled != value) {
 			this.disabled = value;
+			result.beginUpdate();
+			result.setParameter("status", value ? "disabled" : "normal");
 			result.setParameter("disabled", '${value}');
+			result.endUpdate();
 		}
 		return value;
 	}

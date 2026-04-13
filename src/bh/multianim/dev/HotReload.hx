@@ -8,6 +8,11 @@ import bh.multianim.MultiAnimBuilder;
 import bh.multianim.MultiAnimParser.ResolvedIndexParameters;
 import bh.multianim.MultiAnimParser.ParametersDefinitions;
 import bh.multianim.MultiAnimBuilder.SlotKey;
+import bh.multianim.MultiAnimBuilder.PlaceholderValues;
+import bh.multianim.MultiAnimBuilder.BuilderCallbackFunction;
+import bh.multianim.MultiAnimBuilder.CallbackRequest;
+import bh.multianim.MultiAnimBuilder.CallbackResult;
+import bh.multianim.MultiAnimBuilder.BuilderParameters;
 
 // ---- Enums ----
 
@@ -64,10 +69,13 @@ typedef ParamSnapshot = Map<String, ResolvedIndexParameters>;
 typedef SlotSnapshot = Array<{key:SlotKey, content:Null<h2d.Object>, data:Dynamic}>;
 typedef DynamicRefSnapshot = Map<String, ParamSnapshot>;
 
+typedef PlaceholderSnapshot = Array<{name:String, index:Null<Int>, object:h2d.Object}>;
+
 typedef BuilderResultSnapshot = {
 	params:ParamSnapshot,
 	slots:SlotSnapshot,
 	dynamicRefs:DynamicRefSnapshot,
+	placeholders:PlaceholderSnapshot,
 }
 
 // ---- IBuilderConsumer ----
@@ -176,6 +184,16 @@ class ReloadableRegistry {
 		return list != null && list.length > 0;
 	}
 
+	/** Returns all live handles across all source paths. Used by DevBridge. */
+	public function getAllHandles():Array<ReloadableHandle> {
+		var all:Array<ReloadableHandle> = [];
+		for (_ => handles in liveObjects) {
+			for (h in handles)
+				all.push(h);
+		}
+		return all;
+	}
+
 	// Remove the ReloadSentinel child from an object (used before scene swap
 	// to prevent stale auto-unregister when old root is removed).
 	public static function removeSentinel(obj:h2d.Object):Void {
@@ -228,6 +246,7 @@ class StateSnapshotter {
 			params: captureParams(result),
 			slots: captureSlots(result),
 			dynamicRefs: captureDynamicRefs(result),
+			placeholders: capturePlaceholders(result),
 		};
 	}
 
@@ -258,6 +277,10 @@ class StateSnapshotter {
 		for (name => dynRef in result.dynamicRefs)
 			snapshot.set(name, captureParams(dynRef));
 		return snapshot;
+	}
+
+	static function capturePlaceholders(result:BuilderResult):PlaceholderSnapshot {
+		return result.devCapturedPlaceholders;
 	}
 }
 
@@ -348,6 +371,92 @@ class StateRestorer {
 	}
 }
 
+// ---- PlaceholderReuser ----
+// Wraps BuilderParameters to reuse previously-captured placeholder objects
+// instead of re-invoking callbacks/factories during hot reload rebuild.
+
+class PlaceholderReuser {
+	// Delegate to shared HeapsUtils.safeDetach — detaches object from parent
+	// without triggering onRemove() cascade that destroys h2d.Graphics content.
+	static inline function safeDetach(obj:h2d.Object):Void {
+		bh.base.HeapsUtils.safeDetach(obj);
+	}
+
+	// Create wrapped BuilderParameters that returns captured objects for matching placeholders.
+	// Falls through to original callback/factory for unmatched names (e.g. new placeholders added).
+	public static function wrapBuilderParams(original:BuilderParameters, captured:PlaceholderSnapshot):BuilderParameters {
+		if (captured.length == 0)
+			return original;
+
+		// Build lookup maps from captured placeholders
+		final byName:Map<String, h2d.Object> = new Map();
+		final byNameIndex:Map<String, h2d.Object> = new Map();
+		for (entry in captured) {
+			if (entry.index != null)
+				byNameIndex.set('${entry.name}_${entry.index}', entry.object);
+			else
+				byName.set(entry.name, entry.object);
+		}
+
+		// Wrap placeholderObjects: convert PVFactory/PVComponent to PVObject for captured entries
+		var wrappedPlaceholderObjects:Null<Map<String, PlaceholderValues>> = original.placeholderObjects;
+		if (wrappedPlaceholderObjects != null) {
+			final newMap = new Map<String, PlaceholderValues>();
+			for (name => pv in wrappedPlaceholderObjects) {
+				final cached = byName.get(name);
+				if (cached != null) {
+					// Don't call cached.remove() — addChild in builder handles reparenting
+					// automatically, and remove() triggers onRemove() cascade that
+					// invalidates GPU resources on descendants (grids, tilegroups).
+					// Reset position: builder uses addPosition (+=), so stale x,y
+					// from previous build would accumulate.
+					safeDetach(cached);
+					cached.x = 0;
+					cached.y = 0;
+					newMap.set(name, PVObject(cached));
+				} else {
+					newMap.set(name, pv);
+				}
+			}
+			wrappedPlaceholderObjects = newMap;
+		}
+
+		// Wrap callback: return captured objects for Placeholder/PlaceholderWithIndex requests
+		final originalCallback = original.callback;
+		final wrappedCallback:BuilderCallbackFunction = (request) -> {
+			switch request {
+				case Placeholder(name):
+					final cached = byName.get(name);
+					if (cached != null) {
+						safeDetach(cached);
+						cached.x = 0;
+						cached.y = 0;
+						return CBRObject(cached);
+					}
+				case PlaceholderWithIndex(name, index):
+					final cached = byNameIndex.get('${name}_${index}');
+					if (cached != null) {
+						safeDetach(cached);
+						cached.x = 0;
+						cached.y = 0;
+						return CBRObject(cached);
+					}
+				default:
+			}
+			// Fall through to original callback
+			if (originalCallback != null)
+				return originalCallback(request);
+			return CBRNoResult;
+		};
+
+		return {
+			callback: wrappedCallback,
+			placeholderObjects: wrappedPlaceholderObjects,
+			scene: original.scene,
+		};
+	}
+}
+
 // ---- SceneSwapper ----
 
 class SceneSwapper {
@@ -358,12 +467,11 @@ class SceneSwapper {
 		while (oldRoot.numChildren > 0)
 			oldRoot.getChildAt(oldRoot.numChildren - 1).remove();
 
-		// Move all children from new root into old root
-		while (newRoot.numChildren > 0) {
-			final child = newRoot.getChildAt(0);
-			child.remove();
-			oldRoot.addChild(child);
-		}
+		// Move all children from new root into old root.
+		// Use addChild directly — it handles reparenting without triggering
+		// onRemove(), which would destroy h2d.Graphics content.
+		while (newRoot.numChildren > 0)
+			oldRoot.addChild(newRoot.getChildAt(0));
 
 		// Copy internal properties that the builder may have set on the root itself
 		// (e.g. filter from `apply()` nodes), but NOT game-applied transforms

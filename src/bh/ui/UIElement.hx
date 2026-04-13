@@ -71,6 +71,8 @@ typedef UIElementListItem = {
 	var ?tileName:String;
 	var ?tileRef:TileRef;
 	var ?data:Dynamic;
+	var ?params:Map<String, Dynamic>;
+	var ?baseStatus:String;
 }
 
 function getAllStandardUIElementStatuses() {
@@ -139,7 +141,7 @@ interface UIElementListValue {
  */
 interface Controllable {
 	public var captureEvents(default, null):CaptureEventsControl;
-	public var outsideClick(default, null):OutsideClickControl;
+	public function trackOutsideClick(enabled:Bool):Void;
 	public function pushEvent(event:UIScreenEvent, source:UIElement):Void;
 }
 
@@ -150,13 +152,6 @@ interface CaptureEventsControl {
 	function startCapture():Void;
 	function stopCapture():Void;
 	function isCapturing():Bool;
-}
-
-/**
- * Interface for tracking clicks outside a UI element (e.g., closing popups).
- */
-interface OutsideClickControl {
-	function trackOutsideClick(enabled:Bool):Void;
 }
 
 // ---- events ----
@@ -187,6 +182,7 @@ typedef UIElementEventWrapper = {
 	var event:UIElementEvents;
 	var eventPos:h2d.col.Point;
 	var control:Controllable;
+	var consumed:Bool;
 }
 
 /**
@@ -223,7 +219,7 @@ enum UIScreenEvent {
 	UIClickItem(index:Int, items:Array<UIElementListItem>);
 	UIKeyPress(keyCode:Int, release:Bool);
 	UIOnControllerEvent(event:ControllerEvents);
-	UIEntering;
+	UIEntering(?data:Dynamic);
 	UILeaving;
 	UIClickOutside;
 	UIInteractiveEvent(event:UIScreenEvent, id:String, metadata:BuilderResolvedSettings);
@@ -256,6 +252,27 @@ interface UIElementCursor {
 	function getCursor():hxd.Cursor;
 }
 
+
+/** Event priority tiers for overlapping UI elements. Use arithmetic for fine-tuning: Overlay + 2 */
+class UIEventPriority {
+	/** Normal screen content — buttons, lists, interactives (0) */
+	public static inline final Content = 0;
+
+	/** Floating overlays — dropdown panels, tooltips, popovers (100) */
+	public static inline final Overlay = 100;
+
+	/** Modal dialogs — above all other UI (200) */
+	public static inline final Modal = 200;
+}
+
+/**
+ * Opt-in interface for UI elements that declare an event priority.
+ * Higher priority elements receive events first when overlapping.
+ * Elements without this interface default to priority 0.
+ */
+interface UIElementPriority {
+	var eventPriority(default, null):Int;
+}
 
 /**
  * Interface for UI elements that can be selected (e.g., radio buttons, list items).

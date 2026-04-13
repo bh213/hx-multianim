@@ -5,6 +5,8 @@ import h2d.Scene;
 import utest.Runner;
 import bh.test.VisualTestBase;
 import bh.base.FontManager;
+import bh.base.FilterManager;
+import bh.multianim.MultiAnimParser.CustomFilterArgType;
 
 class TestApp extends hxd.App {
 	// Force compilation of @:build macro generated class
@@ -28,8 +30,15 @@ class TestApp extends hxd.App {
 	private var lastTracedDone:Int = -1;
 
 	override function init() {
+		#if MULTIANIM_DEV
+		bh.multianim.dev.DevBridge.autoStart = false;
+		#end
 		hxd.Res.initLocal();
-		
+
+		// Force window to 1280x720 — on hi-DPI displays, the OS may resize the window
+		// after creation, causing scene dimensions to differ from the -D windowSize define.
+		hxd.Window.getInstance().resize(1280, 720);
+
 		FontManager.registerFont("dd", hxd.Res.fonts.digitaldisco.toFont(), 0, -3);
 		FontManager.registerFont("pixeled6", hxd.Res.fonts.pixeled_6.toFont(), 0, -4);
 		FontManager.registerFont("m3x6", hxd.Res.fonts.m3x6.toFont(), 0, -5);
@@ -38,6 +47,15 @@ class TestApp extends hxd.App {
 		FontManager.registerFont("peaberry-white", hxd.Res.fonts.WhitePeaberry.toFont(), -2, -9);
 		FontManager.registerFont("peaberry-white-outline", hxd.Res.fonts.WhitePeaberryOutline.toFont(), -2, -10);
 		FontManager.registerFont("m6x11", hxd.Res.fonts.m6x11.toFont());
+
+		// Register custom filters for testing
+		FilterManager.registerFilter("perlinNoise", [
+			{name: "seed", type: CFFloat, defaultValue: 0.0},
+			{name: "scale", type: CFFloat, defaultValue: 10.0},
+			{name: "intensity", type: CFFloat, defaultValue: 0.5},
+		], (params) -> {
+			return new bh.base.filters.PerlinNoiseFilter(params["seed"], params["scale"], params["intensity"]);
+		});
 
 		VisualTestBase.appInstance = this;
 		VisualTestBase.imagePool = new ImageProcessingPool();
@@ -66,8 +84,10 @@ class TestApp extends hxd.App {
 		testRunner.addCase(new bh.test.examples.AnimatedPathTest());
 		testRunner.addCase(new bh.test.examples.AnimatedPathBuilderTest());
 		testRunner.addCase(new bh.test.examples.FloatingTextHelperTest());
+		testRunner.addCase(new bh.test.examples.ScreenShakeHelperTest());
 		testRunner.addCase(new bh.test.examples.CardHandOrchestratorTest());
 		testRunner.addCase(new bh.test.examples.CardHandIntegrationTest());
+		testRunner.addCase(new bh.test.examples.CardHandTargetingTest());
 		testRunner.addCase(new bh.test.examples.AnimFilterRuntimeTest());
 		testRunner.addCase(new bh.test.examples.AnimFilterStateConditionalTest());
 		testRunner.addCase(new bh.test.examples.RichTextTest());
@@ -76,8 +96,14 @@ class TestApp extends hxd.App {
 		testRunner.addCase(new bh.test.examples.FlowOverflowTest());
 		testRunner.addCase(new bh.test.examples.DynamicRefTest());
 		testRunner.addCase(new bh.test.examples.BitFlagTest());
+		testRunner.addCase(new bh.test.examples.UIMultiAnimGridTest());
+		testRunner.addCase(new bh.test.examples.UIDraggableTest());
+		testRunner.addCase(new bh.test.examples.UIScrollableScreenTest());
+		testRunner.addCase(new bh.test.examples.InteractionControllerTest());
+		testRunner.addCase(new bh.test.examples.EventPriorityTest());
 		#if MULTIANIM_DEV
 		testRunner.addCase(new bh.test.examples.HotReloadTest());
+		testRunner.addCase(new bh.test.examples.DevBridgeTest());
 		#end
 
 		// Capture unit test results in memory for HTML report

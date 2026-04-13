@@ -41,7 +41,7 @@ enum MacroFlowAlign {
 	MFABottom;
 }
 
-#if !macro
+#if (!macro && !noheaps)
 class MacroCompatConvert {
 	public static function toH2dBlendMode(m:MacroBlendMode):h2d.BlendMode {
 		return switch m {
