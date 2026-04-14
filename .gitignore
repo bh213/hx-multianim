@@ -11,3 +11,5 @@ lsp/bin/
 vscode/out/
 vscode/node_modules/
 vscode/*.vsix
+
+.claude/worktrees/agent-*/

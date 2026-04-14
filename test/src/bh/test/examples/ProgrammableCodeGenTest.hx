@@ -4821,6 +4821,164 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		Assert.equals(10, Std.int(bitmaps[0].tile.width));
 	}
 
+	@Test
+	public function testCodegenSetColorParamAlphaBaked():Void {
+		// Regression: codegen setter for PPTColor must alpha-bake the value.
+		// .manim literals like #FF0000 are parser-baked to 0xFFFF0000, so @switch
+		// arms compare against 0xFFFF0000. Without baking in the generated setter,
+		// instance.setTint(0xFF0000) stored 0xFF0000 and no arm matched — falling
+		// through to the default arm regardless of input.
+		final mp = createMp();
+		final instance = mp.colorSwitchWidths.create();
+
+		// Initial: tint=#FFFFFF → default arm (44px)
+		var bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(44, Std.int(bitmaps[0].tile.width));
+
+		// Un-baked 0xFF0000 → first arm (11px)
+		instance.setTint(0xFF0000);
+		bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(11, Std.int(bitmaps[0].tile.width));
+
+		// Un-baked 0x00FF00 → second arm (22px)
+		instance.setTint(0x00FF00);
+		bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(22, Std.int(bitmaps[0].tile.width));
+
+		// Already-baked 0xFF0000FF → third arm (33px) — addAlphaIfNotPresent is a no-op
+		instance.setTint(0xFF0000FF);
+		bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(33, Std.int(bitmaps[0].tile.width));
+
+		// Unknown value → default arm (44px)
+		instance.setTint(0x123456);
+		bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(44, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testCodegenCreateColorParamAlphaBaked():Void {
+		// Regression sibling: the generated constructor must also alpha-bake PPTColor
+		// params so factory.create(tint=0xFF0000) hits the #FF0000 arm.
+		final mp = createMp();
+		final instance = mp.colorSwitchWidths.create(0xFF0000);
+		final bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(11, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testCodegenCreateFromColorParam():Void {
+		// createFrom anon-struct path must alpha-bake PPTColor via the same ColorArg
+		// field type. The anon struct field is Int (publicParamType), null-coalesced to
+		// the local Int, then written into the ColorArg field via `from Int`.
+		final mp = createMp();
+		final instance = mp.colorSwitchWidths.createFrom({tint: 0x0000FF});
+		final bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(33, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testCodegenCreateFromColorParamEmpty():Void {
+		// createFrom with an empty struct falls back to the parser-baked default (#FFFFFF
+		// → 0xFFFFFFFF). Default arm fires (44px) because neither #FF0000/#00FF00/#0000FF
+		// matches. Guards against the default flowing through without baking (e.g. if a
+		// future change replaced the null-coalescing with direct field access).
+		final mp = createMp();
+		final instance = mp.colorSwitchWidths.createFrom({});
+		final bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(44, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testCodegenColorParamSemiTransparentAlphaPreserved():Void {
+		// Semi-transparent alpha (top byte != 0) must be preserved unchanged through
+		// the setter AND constructor — addAlphaIfNotPresent is a no-op when alpha is
+		// already set. Also verifies that `.manim` #RRGGBBAA 8-digit literals round-trip
+		// to AARRGGBB (Heaps) correctly so the arm compares against the same integer.
+		final mp = createMp();
+
+		// Constructor path: pass pre-baked AARRGGBB values directly.
+		// #FF000080 (CSS RRGGBBAA) → 0x80FF0000 (Heaps AARRGGBB) → first arm (55px)
+		final a = mp.colorSwitchAlpha.create(0x80FF0000);
+		var bitmaps = findVisibleBitmapDescendants(a);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(55, Std.int(bitmaps[0].tile.width));
+
+		// #00FF00A0 (CSS) → 0xA000FF00 (Heaps) → second arm (66px)
+		final b = mp.colorSwitchAlpha.create(0xA000FF00);
+		bitmaps = findVisibleBitmapDescendants(b);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(66, Std.int(bitmaps[0].tile.width));
+
+		// Setter path: same values via setTint after construction.
+		final c = mp.colorSwitchAlpha.create();
+		c.setTint(0x80FF0000);
+		bitmaps = findVisibleBitmapDescendants(c);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(55, Std.int(bitmaps[0].tile.width));
+
+		c.setTint(0xA000FF00);
+		bitmaps = findVisibleBitmapDescendants(c);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(66, Std.int(bitmaps[0].tile.width));
+
+		// createFrom path: same values via anon struct.
+		final d = mp.colorSwitchAlpha.createFrom({tint: 0x80FF0000});
+		bitmaps = findVisibleBitmapDescendants(d);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(55, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testCodegenColorParamTransparentFootgun():Void {
+		// Locks in the known limitation that `addAlphaIfNotPresent` (called by
+		// ColorArg.fromInt) is NOT idempotent on 0-alpha inputs: setTint(0) intends
+		// transparent but gets clobbered to 0xFF000000 and lands on the opaque-black
+		// arm (#000000 → 0xFF000000) instead of the transparent literal arm
+		// (#00000000 → 0x00000000). The transparent arm is therefore unreachable from
+		// runtime callers — ONLY a parser-side literal can land there.
+		//
+		// This test documents the contract: any future change that actually preserves
+		// 0-alpha inputs will flip these assertions, forcing the author to re-examine
+		// the trade-off rather than silently regressing it.
+		final mp = createMp();
+		final a = mp.colorSwitchAlpha.create();
+
+		// setTint(0): caller intends transparent → actually opaque black (88px).
+		a.setTint(0);
+		var bitmaps = findVisibleBitmapDescendants(a);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(88, Std.int(bitmaps[0].tile.width),
+			"setTint(0) is clobbered to 0xFF000000 (opaque black) by ColorArg.fromInt — if this fails, either the footgun was fixed (update to 77) or alpha handling regressed.");
+
+		// setTint(0xFF000000): explicit opaque black → same arm (88px) — the two
+		// runtime inputs are indistinguishable after baking, by design.
+		a.setTint(0xFF000000);
+		bitmaps = findVisibleBitmapDescendants(a);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(88, Std.int(bitmaps[0].tile.width));
+
+		// Constructor path: same footgun applies.
+		final b = mp.colorSwitchAlpha.create(0);
+		bitmaps = findVisibleBitmapDescendants(b);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(88, Std.int(bitmaps[0].tile.width));
+
+		// createFrom path: same footgun applies.
+		final c = mp.colorSwitchAlpha.createFrom({tint: 0});
+		bitmaps = findVisibleBitmapDescendants(c);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(88, Std.int(bitmaps[0].tile.width));
+	}
+
 	// ==================== @switch arm context propagation (B1, B2) ====================
 
 	// B1: @switch arm contains a graphics element with inner positions using

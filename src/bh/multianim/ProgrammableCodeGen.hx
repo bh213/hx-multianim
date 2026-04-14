@@ -679,6 +679,8 @@ class ProgrammableCodeGen {
 			if (paramEnumTypes.exists(name) && paramEnumTypes.get(name).typePath == "Bool") {
 				setterExprs.push(macro $p{["this", paramField]} = ($i{"v"} ? 1 : 0));
 			} else {
+				// For PPTColor: arg is ColorArg (boundary-baked via fromInt), `to Int` handles the
+				// write to the Int storage field. No explicit bake needed here.
 				setterExprs.push(macro $p{["this", paramField]} = $i{"v"});
 			}
 			// Pass param name to _applyVisibility when transitions exist for this param
@@ -6722,6 +6724,8 @@ class ProgrammableCodeGen {
 				final defaultArr = resolvedParamToExpr(def.defaultValue, def.type);
 				macro($i{pName} != null ? $i{pName} : $defaultArr);
 			} else {
+				// PPTColor: arg is ColorArg (boundary-baked via fromInt). The local is inferred
+				// as ColorArg; the subsequent `this._<name> = _<name>` write casts via `to Int`.
 				macro $i{pName};
 			};
 			ctorBody.push({
@@ -6937,6 +6941,12 @@ class ProgrammableCodeGen {
 			// Enum params use Int with static inline constants on the class
 			return macro :Int;
 		}
+		// PPTColor: public API type stays Int so that default argument values remain literal
+		// constants (Haxe forbids casts / abstracts as arg defaults). Alpha baking happens on
+		// the write side: paramFieldType returns ColorArg, and `_<name> = <int>` triggers
+		// `ColorArg.fromInt` — addAlphaIfNotPresent — at every assignment.
+		if (type == PPTColor)
+			return macro :Int;
 		return paramFieldType(type);
 	}
 
@@ -6980,7 +6990,12 @@ class ProgrammableCodeGen {
 		return switch (type) {
 			case PPTEnum(_): macro :Int;
 			case PPTBool: macro :Int;
-			case PPTInt | PPTUnsignedInt | PPTColor: macro :Int;
+			case PPTInt | PPTUnsignedInt: macro :Int;
+			// PPTColor storage uses ColorArg (`abstract ColorArg(Int) from Int to Int`) so that
+			// every `_<name> = <int>` assignment bakes 0xFF alpha via `fromInt`. `to Int` keeps
+			// reads (comparisons, expression uses) zero-cost. Makes the three alpha-baking call
+			// sites impossible to miss — the type system enforces it.
+			case PPTColor: macro :bh.base.ColorUtils.ColorArg;
 			case PPTFloat: macro :Float;
 			case PPTString: macro :String;
 			case PPTRange(_, _): macro :Int;

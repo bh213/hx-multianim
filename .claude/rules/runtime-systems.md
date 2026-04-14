@@ -284,6 +284,8 @@ if (overlayFromManim != null)
 
 **Overlay lifecycle:** ScreenManager reads `modalOverlayConfig` after `dialog.load()` → creates overlay bitmap → tweens alpha in sync with transition → tweens alpha out on close → removes overlay in cleanup.
 
+**Event routing while dialog is open** (known asymmetry): when a dialog opens over `MasterAndSingle`, `overrideActiveScreenControllers = [dialog, oldMaster]` — the dialog is first in the controller list but the underlying master still receives controller events. Opening a dialog over `Single` mode blocks instead (`overrideActiveScreenControllers = [dialog]`). There is no per-dialog `blockUnderlying:Bool` flag yet. If you need a fully input-blocking modal over a master/single layout, switch to `Single` before opening the dialog, or have the master screen gate its own input handlers. See the two `case Dialog(...)` branches under `Single(...)` vs `MasterAndSingle(...)` in `ScreenManager.updateScreenMode` for the asymmetry.
+
 ## Tooltip/Panel Fade Transitions
 
 Both `UITooltipHelper` and `UIPanelHelper` support optional fade-in/fade-out animations via TweenManager.

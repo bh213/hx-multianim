@@ -1975,20 +1975,20 @@ private class HttpConnection {
 	public var headerOversized(default, null):Bool = false;
 	public var bodyOversized(default, null):Bool = false;
 
-	var headerBuf:StringBuf;
+	var headerBytes:haxe.io.Bytes;
 	var headerLength:Int = 0;
 	var headerSearchFrom:Int = 0;
 	var headersDone:Bool = false;
 	var contentLength:Int = 0;
-	var bodyBuf:StringBuf;
+	var bodyBuf:haxe.io.BytesBuffer;
 	var bodyReceived:Int = 0;
 	var httpMethod:String = "";
 	var httpPath:String = "/";
 
 	public function new(socket:Socket) {
 		this.socket = socket;
-		this.headerBuf = new StringBuf();
-		this.bodyBuf = new StringBuf();
+		this.headerBytes = haxe.io.Bytes.alloc(MAX_HEADER_BYTES);
+		this.bodyBuf = new haxe.io.BytesBuffer();
 		this.connectedAt = haxe.Timer.stamp();
 		this.lastActivityAt = this.connectedAt;
 	}
@@ -2010,14 +2010,12 @@ private class HttpConnection {
 			var room = MAX_HEADER_BYTES - headerLength;
 			var toRead = avail < room ? avail : room;
 			if (toRead > 0) {
-				var buf = haxe.io.Bytes.alloc(toRead);
-				var read = input.readBytes(buf, 0, toRead);
-				headerBuf.addSub(buf.toString(), 0, read);
-				headerLength += read;
+				headerLength += input.readBytes(headerBytes, headerLength, toRead);
 			}
 
 			// Search only the unscanned tail (back up needle.length-1 to catch a straddling boundary).
-			var headers = headerBuf.toString();
+			// Headers are ASCII per RFC 7230, so byte offsets match string indices when decoded as UTF-8.
+			var headers = headerBytes.getString(0, headerLength);
 			var startSearch = headerSearchFrom - 3;
 			if (startSearch < 0) startSearch = 0;
 			var endIdx = headers.indexOf("\r\n\r\n", startSearch);
@@ -2031,10 +2029,11 @@ private class HttpConnection {
 					bodyOversized = true;
 					return true;
 				}
-				var bodyStart = headers.substr(endIdx + 4);
-				if (bodyStart.length > 0) {
-					bodyBuf.addSub(bodyStart, 0, bodyStart.length);
-					bodyReceived += bodyStart.length;
+				var bodyStartOffset = endIdx + 4;
+				var bodyStartLen = headerLength - bodyStartOffset;
+				if (bodyStartLen > 0) {
+					bodyBuf.addBytes(headerBytes, bodyStartOffset, bodyStartLen);
+					bodyReceived += bodyStartLen;
 				}
 			} else {
 				headerSearchFrom = headerLength;
@@ -2053,7 +2052,7 @@ private class HttpConnection {
 			if (toRead > 0) {
 				var buf = haxe.io.Bytes.alloc(toRead);
 				var read = input.readBytes(buf, 0, toRead);
-				bodyBuf.addSub(buf.toString(), 0, read);
+				bodyBuf.addBytes(buf, 0, read);
 				bodyReceived += read;
 			}
 		}
@@ -2069,7 +2068,7 @@ private class HttpConnection {
 	}
 
 	public function getBody():String {
-		return bodyBuf.toString();
+		return bodyBuf.getBytes().toString();
 	}
 
 	static function parseHttpMethod(headers:String):String {

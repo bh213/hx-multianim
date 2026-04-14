@@ -15,7 +15,7 @@
 
 | Path | Description |
 |------|-------------|
-| `src/bh/multianim/MultiAnimParser.hx` | Parser facade — delegates to MacroManimParser |
+| `src/bh/multianim/MultiAnimParser.hx` | Shared parser AST types + thin `parseFile` facade that delegates to `MacroManimParser`. Despite the name this is ~1200 lines of enum/typedef declarations (`NodeType`, `ReferenceableValue`, `TileSource`, `DefinitionType`, …), not parsing logic. Candidate for rename to `MultiAnimTypes.hx` / split. |
 | `src/bh/multianim/MultiAnimBuilder.hx` | Builder for resolving parsed structures |
 | `src/bh/multianim/MacroManimParser.hx` | Main parser for `.manim` files (used at both compile-time and runtime) |
 | `src/bh/multianim/ProgrammableCodeGen.hx` | Macro code generation for `@:manim`/`@:data` |

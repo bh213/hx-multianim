@@ -4,9 +4,9 @@
     "license": "BSD",
     "tags": ["animation", "ui", "heaps", "pixel-art", "sprite", "manim"],
     "description": "animations and pixel art UI for Heaps framework",
-    "version": "1.0.0-rc.1",
+    "version": "1.0.0-rc.4",
     "classPath": "src/",
-    "releasenote": "RC1: codegen transition support, dropdown z-ordering fix, 130+ integration tests, 93 visual + 3543 unit assertions",
+    "releasenote": "RC4: @switch block, conditional blocks, @any/@all, particle shutdown + externallyDriven, .anim flipX/flipY, tile pivot()/center(), dynamic programmable refs, hxparse removed, sequential crossfade, ScreenShakeHelper.",
     "contributors": ["bh213"],
     "dependencies": { 
         "heaps":""

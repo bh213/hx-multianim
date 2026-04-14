@@ -5920,6 +5920,140 @@ class BuilderUnitTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testIncrementalSetParameterColorSemiTransparent():Void {
+		// Semi-transparent alpha (top byte != 0) must be preserved unchanged by
+		// `IncrementalUpdateContext.setParameter` — addAlphaIfNotPresent is a no-op
+		// when alpha is already set. Arms use #RRGGBBAA 8-digit literals so the parser
+		// round-trips them to AARRGGBB (Heaps) and the runtime int compares directly.
+		final result = buildFromSource("
+			#test programmable(tint:color=#FFFFFFFF) {
+				@switch(tint) {
+					#FF000080: bitmap(generated(color(55, 10, #fff)));
+					#00FF00A0: bitmap(generated(color(66, 10, #fff)));
+					#000000:   bitmap(generated(color(88, 10, #fff)));
+					default:   bitmap(generated(color(99, 10, #fff)));
+				}
+			}
+		", "test", null, Incremental);
+
+		// Default #FFFFFFFF → default arm.
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(99, Std.int(bitmaps[0].tile.width));
+
+		// Already-baked 0x80FF0000 (CSS #FF000080) → semi-transparent red arm (55px).
+		result.setParameter("tint", 0x80FF0000);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(55, Std.int(bitmaps[0].tile.width));
+
+		// Already-baked 0xA000FF00 (CSS #00FF00A0) → semi-transparent green arm (66px).
+		result.setParameter("tint", 0xA000FF00);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(66, Std.int(bitmaps[0].tile.width));
+
+		// setParameter(0) footgun sibling: lands on the opaque black arm (88px), not
+		// a hypothetical transparent arm. Documents the non-idempotence of
+		// addAlphaIfNotPresent at the runtime builder boundary too.
+		result.setParameter("tint", 0);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(88, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testParser0xColorLiteralAlphaBaking():Void {
+		// Regression: `0xRRGGBB` literals in .manim source must bake 0xFF alpha so they
+		// match the equivalent `#RRGGBB` literal at arm-compare time. Previously they
+		// were stored un-baked and no arm matched. The fix must use
+		// addAlphaIfNotPresent — NOT an unconditional OR — so that explicit-alpha forms
+		// like `0x80FF0000` (Heaps AARRGGBB convention) are preserved.
+		//
+		// Arm literals use CSS #RRGGBBAA convention — `#FF000080` (RR=FF, GG=00, BB=00, AA=80)
+		// → Heaps 0x80FF0000.
+		final result = buildFromSource("
+			#test programmable(tint:color=0xFF0000) {
+				@switch(tint) {
+					#FF0000:   bitmap(generated(color(11, 10, #fff)));
+					#FF000080: bitmap(generated(color(22, 10, #fff))); // Heaps 0x80FF0000
+					default:   bitmap(generated(color(99, 10, #fff)));
+				}
+			}
+		", "test", null, Incremental);
+
+		// Default `0xFF0000` must bake to `0xFFFF0000` and hit the #FF0000 arm (11px).
+		// Without alpha baking on the 0x path, `_tint = 0xFF0000` and neither arm matches.
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(11, Std.int(bitmaps[0].tile.width));
+
+		// Explicit-alpha value: Heaps 0x80FF0000 (semi-transparent red) must hit the
+		// #FF000080 arm. Runtime setParameter also bakes via addAlphaIfNotPresent (no-op
+		// for non-zero alpha).
+		result.setParameter("tint", 0x80FF0000);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(22, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testParser0xColorLiteralExplicitAlphaPreserved():Void {
+		// Regression: `0xAARRGGBB` literals with explicit non-zero alpha must NOT be
+		// clobbered by the alpha-baking path. Guards against reverting to an
+		// unconditional `0xFF000000 | v`, which would silently convert every
+		// semi-transparent 0x literal into an opaque color.
+		//
+		// Default is `0x80FF0000` (Heaps: alpha 0x80, red 0xFF). Arm literals use CSS
+		// #RRGGBBAA: `#FF000080` → Heaps 0x80FF0000 (matches), `#FF0000` → 0xFFFF0000
+		// (the opaque-red arm — must NOT match).
+		final result = buildFromSource("
+			#test programmable(tint:color=0x80FF0000) {
+				@switch(tint) {
+					#FF000080: bitmap(generated(color(11, 10, #fff))); // semi-transparent red (target)
+					#FF0000:   bitmap(generated(color(22, 10, #fff))); // opaque red — must NOT match
+					default:   bitmap(generated(color(99, 10, #fff)));
+				}
+			}
+		", "test", null, Incremental);
+
+		// If the 0x path used `0xFF000000 | v`, the stored default would be 0xFFFF0000
+		// and the opaque-red arm (22px) would fire. The correct path preserves 0x80FF0000
+		// and hits the semi-transparent arm (11px).
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(11, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testParser0xColorLiteralExplicit8DigitZeroAlpha():Void {
+		// Regression: 8-hex-digit `0x` literals must preserve their value verbatim even
+		// when the alpha byte is zero. `0x00FF0000` means "fully transparent red" and
+		// must NOT be collapsed to opaque red (`0xFFFF0000`). The parser distinguishes
+		// this from the 6-digit shorthand `0xFF0000` by looking at the source string
+		// length before Std.parseInt collapses leading zeros.
+		//
+		// Arm literals use CSS #RRGGBBAA: `#FF000000` → Heaps 0x00FF0000 (matches),
+		// `#FF0000` → 0xFFFF0000 (opaque red — must NOT match).
+		final result = buildFromSource("
+			#test programmable(tint:color=0x00FF0000) {
+				@switch(tint) {
+					#FF000000: bitmap(generated(color(11, 10, #fff))); // Heaps 0x00FF0000 — transparent red
+					#FF0000:   bitmap(generated(color(22, 10, #fff))); // Heaps 0xFFFF0000 — opaque red
+					default:   bitmap(generated(color(99, 10, #fff)));
+				}
+			}
+		", "test", null, Incremental);
+
+		// Default `0x00FF0000` is 8 digits → stored verbatim (alpha 0) → transparent-red
+		// arm fires (11px). If the parser collapsed 0-alpha to opaque, the opaque-red
+		// arm would fire (22px) instead.
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(11, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
 	public function testIncrementalSwitchPipeHexInt():Void {
 		// Regression: @switch pipe-separated arms on int param using hex literals.
 		// parseSwitchArmValue normalizes 0xFF -> "0xff" but matchSingleCondition

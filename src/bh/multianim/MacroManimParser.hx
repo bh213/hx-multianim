@@ -1120,7 +1120,18 @@ class MacroManimParser {
 			default: null;
 		}
 		if (color != null) return color;
-		if (s.startsWith("0x")) return Std.parseInt(s);
+		if (s.startsWith("0x")) {
+			final v = Std.parseInt(s);
+			if (v == null) return null;
+			// 8 hex digits = explicit AARRGGBB, preserve as-is (user wrote the alpha,
+			// even if it's 0). 6 or fewer digits = RRGGBB shorthand, bake 0xFF alpha so
+			// `0xFF0000` matches `#FF0000`. Length check is on the source string, not
+			// the parsed int — Std.parseInt collapses leading zeros, so `0x00FF0000`
+			// and `0xFF0000` produce the same int but have different user intent.
+			final hexLen = s.length - 2;
+			if (hexLen == 8) return v;
+			return bh.base.ColorUtils.addAlphaIfNotPresent(v);
+		}
 		if (s.startsWith("#")) {
 			final colorStr = s.substring(1);
 			final colorVal = Std.parseInt("0x" + colorStr);

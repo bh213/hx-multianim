@@ -47,7 +47,6 @@ npm install -g lix
    ```hxml
    -lib hx-multianim
    -lib heaps
-   -lib hxparse
    ```
 
 2. **Create a UI element** (`.manim`):
