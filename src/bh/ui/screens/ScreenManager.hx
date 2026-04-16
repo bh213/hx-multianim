@@ -8,6 +8,7 @@ import bh.multianim.MultiAnimParser.MultiAnimUnexpected;
 import bh.stateanim.AnimParser;
 import bh.ui.controllers.UIController;
 import bh.ui.screens.UIScreen;
+import bh.base.HeapsUtils.solidBitmap;
 import bh.base.ResourceLoader;
 import bh.base.TweenManager;
 import bh.base.TweenManager.TweenProperty;
@@ -1127,7 +1128,8 @@ class ScreenManager {
 
 	function createModalOverlay(config:ModalOverlayConfig):h2d.Bitmap {
 		final color = config.color ?? 0x000000;
-		final overlay = new h2d.Bitmap(h2d.Tile.fromColor(color, 4096, 4096));
+		// config.color is documented as 0xRRGGBB; bake opaque alpha for the tile — bitmap.alpha is tweened.
+		final overlay = solidBitmap(color | 0xFF000000, 4096, 4096);
 		overlay.alpha = 0.0;
 		app.s2d.add(overlay, sceneLayers.overlay);
 		modalOverlayTargetAlpha = config.alpha ?? 0.5;

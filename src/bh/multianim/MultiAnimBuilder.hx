@@ -20,6 +20,8 @@ import bh.base.filters.PixelOutline;
 import h2d.Layers;
 import h2d.Mask;
 import bh.multianim.layouts.MultiAnimLayouts;
+import bh.base.HeapsUtils.solidTile;
+import bh.base.HeapsUtils.solidBitmap;
 import bh.base.MAObject;
 import bh.multianim.CoordinateSystems;
 import bh.base.Hex.OffsetCoord;
@@ -2458,7 +2460,7 @@ class MultiAnimBuilder {
 				pl.tile;
 
 			case SolidColor(w, h, color):
-				h2d.Tile.fromColor(color, w, h);
+				solidTile(color, w, h);
 
 			case SolidColorWithText(w, h, bgColor, text, textColor, fontName):
 				// Create a solid color tile with centered text using font rendering
@@ -2673,7 +2675,7 @@ class MultiAnimBuilder {
 		final container = new h2d.Object();
 
 		// Add background
-		final bg = new h2d.Bitmap(h2d.Tile.fromColor(bgColor, w, h), container);
+		final bg = solidBitmap(bgColor, w, h, container);
 
 		// Create and configure text
 		final textObj = new h2d.Text(font, container);
@@ -3369,7 +3371,7 @@ class MultiAnimBuilder {
 								final hCapture = h;
 								final colorCapture = color;
 								ctx.trackExpression(() -> {
-									bmp.tile = h2d.Tile.fromColor(resolveAsColorInteger(colorCapture),
+									bmp.tile = solidTile(resolveAsColorInteger(colorCapture),
 										resolveAsInteger(wCapture), resolveAsInteger(hCapture));
 								}, bmpRefs, object);
 							default:

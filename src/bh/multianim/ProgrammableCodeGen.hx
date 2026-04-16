@@ -6158,21 +6158,13 @@ class ProgrammableCodeGen {
 						final wExpr = rvToExpr(w);
 						final hExpr = rvToExpr(h);
 						final cExpr = rvToExpr(color);
-						macro {
-							var c:Int = $cExpr;
-							if (c >>> 24 == 0) c |= 0xFF000000;
-							h2d.Tile.fromColor(c, Std.int($wExpr), Std.int($hExpr));
-						};
+						macro bh.base.HeapsUtils.solidTile($cExpr, Std.int($wExpr), Std.int($hExpr));
 					case Cross(w, h, color, thickness):
 						// Cross: solid color with diagonal lines — approximate as solid color
 						final wExpr = rvToExpr(w);
 						final hExpr = rvToExpr(h);
 						final cExpr = rvToExpr(color);
-						macro {
-							var c:Int = $cExpr;
-							if (c >>> 24 == 0) c |= 0xFF000000;
-							h2d.Tile.fromColor(c, Std.int($wExpr), Std.int($hExpr));
-						};
+						macro bh.base.HeapsUtils.solidTile($cExpr, Std.int($wExpr), Std.int($hExpr));
 					case SolidColorWithText(w, h, color, text, textColor, font):
 						final wExpr = rvToExpr(w);
 						final hExpr = rvToExpr(h);
