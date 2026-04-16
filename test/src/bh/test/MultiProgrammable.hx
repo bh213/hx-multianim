@@ -355,4 +355,31 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/103-switchArmContext/switchArmContext.manim", "slotParamContextHost")
 	public var slotParamContextHost;
+
+	@:manim("test/examples/104-codegenInteractive/codegenInteractive.manim", "codegenBoundBtn")
+	public var codegenBoundBtn;
+
+	@:manim("test/examples/104-codegenInteractive/codegenInteractive.manim", "codegenAutoBtn")
+	public var codegenAutoBtn;
+
+	@:manim("test/examples/104-codegenInteractive/codegenInteractive.manim", "codegenSwitchBtn")
+	public var codegenSwitchBtn;
+
+	@:manim("test/examples/104-codegenInteractive/codegenInteractive.manim", "codegenLoopSlot")
+	public var codegenLoopSlot;
+
+	@:manim("test/examples/104-codegenInteractive/codegenInteractive.manim", "codegenTypedParams")
+	public var codegenTypedParams;
+
+	@:manim("test/examples/104-codegenInteractive/codegenInteractive.manim", "codegenIdExpr")
+	public var codegenIdExpr;
+
+	@:manim("test/examples/105-rootProperties/rootProperties.manim", "rootProperties")
+	public var rootProperties;
+
+	@:manim("test/examples/106-switchArmNames/switchArmNames.manim", "switchArmNames")
+	public var switchArmNames;
+
+	@:manim("test/examples/106-switchArmNames/switchArmNames.manim", "switchArmSlot")
+	public var switchArmSlot;
 }

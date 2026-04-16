@@ -77,6 +77,8 @@ class ProgrammableCodeGen {
 	static var indexed2DNamedElements:Map<String, Array<{indexX:Int, indexY:Int, fieldName:String}>> = new Map();
 	static var slotEntries:Array<{key:MacroSlotKey, fieldName:String, hasParams:Bool, loopVars:Map<String, Int>}> = [];
 	static var switchUpdateEntries:Array<{paramName:String, updateExpr:Expr}> = [];
+	// Sink fields allocated for each @switch, used for runtime lookup of names/slots declared inside arms
+	static var switchSinkFields:Array<String> = [];
 	static var dynamicRefFields:Map<String, String> = new Map(); // component name -> BuilderResult field name
 	static var dynamicNameRefFields:Array<String> = []; // fieldNames of dynamic-name dynamicRefs
 	static var hexLayoutFieldMap:Map<String, String> = new Map(); // layout key → field name
@@ -151,6 +153,7 @@ class ProgrammableCodeGen {
 		expressionUpdates = [];
 		visibilityEntries = [];
 		switchUpdateEntries = [];
+		switchSinkFields = [];
 		namedElements = [];
 		indexedNamedElements = new Map();
 		indexed2DNamedElements = new Map();
@@ -264,7 +267,9 @@ class ProgrammableCodeGen {
 					// Generate fields for both factory and instance classes
 					final result = generateFields(node);
 
-					// Define the instance type (extends h2d.Object — IS the root)
+					// Define the instance type (extends h2d.Object — IS the root).
+					// Implements UIInteractiveSource so that screen.addInteractives(instance) works,
+					// symmetric with the runtime BuilderResult path.
 					final instTd:TypeDefinition = {
 						pack: parentPack,
 						name: instName,
@@ -273,7 +278,7 @@ class ProgrammableCodeGen {
 							needsLayoutAlign
 								? {pack: ["bh", "multianim"], name: "LayoutAlignRoot"}
 								: {pack: ["h2d"], name: "Object"},
-							null, false, false, false
+							[{pack: ["bh", "ui"], name: "UIInteractiveSource"}], false, false, false
 						),
 						fields: result.instanceFields,
 						meta: [{name: ":allow", params: [macro bh.multianim.ProgrammableCodeGen], pos: pos}, {name: ":keep", params: null, pos: pos}],
@@ -494,9 +499,121 @@ class ProgrammableCodeGen {
 			constructorExprs.push(macro $p{["this", paramField]} = $i{paramField});
 		}
 
+		// Root pos: when the programmable declares non-zero `pos:`, runtime wraps the
+		// built tree in a holder so user setPosition stays compositional with the
+		// .manim offset (see MultiAnimBuilder.startBuild). Mirror that here by routing
+		// children through an inner _root layer when rootNode.pos != ZERO.
+		// h2d.Layers (not Object) so layered children's `cast(parent, h2d.Layers)` succeeds.
+		final hasRootOffset = rootNode.pos != null && !rootNode.pos.match(ZERO);
+		final rootParentField:Null<String> = if (hasRootOffset) {
+			instanceFields.push(makeField("_root", FVar(macro :h2d.Layers, null), [APrivate], pos));
+			constructorExprs.push(macro {
+				$p{["this", "_root"]} = new h2d.Layers();
+				this.addChild($p{["this", "_root"]});
+			});
+			ensureHexLayoutIfNeeded(rootNode.pos, rootNode, instanceFields, constructorExprs, pos);
+			final rootPosExpr = generatePositionExpr(rootNode.pos, "_root", pos, rootNode);
+			if (rootPosExpr != null) constructorExprs.push(rootPosExpr);
+			"_root";
+		} else null;
+
+		// Root scale/rotation/alpha/blendMode/tint/filter — mirror runtime's
+		// `applyExtendedFormProperties(root, rootNode)` in MultiAnimBuilder.startBuild.
+		// Target is the inner _root when wrapped (composes with user setScale/etc.),
+		// or this directly when not wrapped — matches runtime's holder/no-holder shape.
+		// $param refs are tracked through expressionUpdates so setParameter() re-fires them.
+		{
+			final rootTargetExpr:Expr = rootParentField != null
+				? macro $p{["this", rootParentField]}
+				: macro this;
+			// Sentinel field name used only for expressionUpdates bookkeeping (refsParam check
+			// in setters reads paramRefs, not fieldName).
+			final rootMetaField = rootParentField != null ? rootParentField : "_self";
+
+			if (rootNode.scale != null) {
+				final scaleExpr = rvToExpr(rootNode.scale);
+				final scaleUpdateExpr = macro {
+					final s = $scaleExpr;
+					$rootTargetExpr.scaleX = s;
+					$rootTargetExpr.scaleY = s;
+				};
+				constructorExprs.push(scaleUpdateExpr);
+				final scaleRefs = collectParamRefs(rootNode.scale);
+				if (scaleRefs.length > 0) {
+					expressionUpdates.push({fieldName: rootMetaField, updateExpr: scaleUpdateExpr, paramRefs: scaleRefs});
+				}
+			}
+
+			if (rootNode.rotation != null) {
+				final rotExpr = rvToExpr(rootNode.rotation);
+				final rotUpdateExpr = macro $rootTargetExpr.rotation = hxd.Math.degToRad($rotExpr);
+				constructorExprs.push(rotUpdateExpr);
+				final rotRefs = collectParamRefs(rootNode.rotation);
+				if (rotRefs.length > 0) {
+					expressionUpdates.push({fieldName: rootMetaField, updateExpr: rotUpdateExpr, paramRefs: rotRefs});
+				}
+			}
+
+			if (rootNode.alpha != null) {
+				final alphaExpr = rvToExpr(rootNode.alpha);
+				final alphaUpdateExpr = macro $rootTargetExpr.alpha = $alphaExpr;
+				constructorExprs.push(alphaUpdateExpr);
+				final alphaRefs = collectParamRefs(rootNode.alpha);
+				if (alphaRefs.length > 0) {
+					expressionUpdates.push({fieldName: rootMetaField, updateExpr: alphaUpdateExpr, paramRefs: alphaRefs});
+				}
+			}
+
+			if (rootNode.blendMode != null) {
+				final bmExpr:Expr = switch (rootNode.blendMode) {
+					case MBNone: macro h2d.BlendMode.None;
+					case MBAlpha: macro h2d.BlendMode.Alpha;
+					case MBAdd: macro h2d.BlendMode.Add;
+					case MBAlphaAdd: macro h2d.BlendMode.AlphaAdd;
+					case MBSoftAdd: macro h2d.BlendMode.SoftAdd;
+					case MBMultiply: macro h2d.BlendMode.Multiply;
+					case MBAlphaMultiply: macro h2d.BlendMode.AlphaMultiply;
+					case MBErase: macro h2d.BlendMode.Erase;
+					case MBScreen: macro h2d.BlendMode.Screen;
+					case MBSub: macro h2d.BlendMode.Sub;
+					case MBMax: macro h2d.BlendMode.Max;
+					case MBMin: macro h2d.BlendMode.Min;
+				};
+				constructorExprs.push(macro $rootTargetExpr.blendMode = $bmExpr);
+			}
+
+			if (rootNode.tint != null) {
+				final tintExpr = rvToExpr(rootNode.tint);
+				final tintUpdateExpr = macro {
+					final _obj:h2d.Object = $rootTargetExpr;
+					if (Std.isOfType(_obj, h2d.Drawable)) {
+						final d:h2d.Drawable = cast _obj;
+						d.color.setColor($tintExpr);
+					}
+				};
+				constructorExprs.push(tintUpdateExpr);
+				final tintRefs = collectParamRefs(rootNode.tint);
+				if (tintRefs.length > 0) {
+					expressionUpdates.push({fieldName: rootMetaField, updateExpr: tintUpdateExpr, paramRefs: tintRefs});
+				}
+			}
+
+			if (rootNode.filter != null) {
+				final filterExpr = generateFilterExpr(rootNode.filter, pos);
+				if (filterExpr != null) {
+					final filterUpdateExpr = macro $rootTargetExpr.filter = $filterExpr;
+					constructorExprs.push(filterUpdateExpr);
+					final filterRefs = collectFilterParamRefs(rootNode.filter);
+					if (filterRefs.length > 0) {
+						expressionUpdates.push({fieldName: rootMetaField, updateExpr: filterUpdateExpr, paramRefs: filterRefs});
+					}
+				}
+			}
+		}
+
 		// Process children — parentField=null means add directly to this (the h2d.Object root)
 		if (rootNode.children != null)
-			processChildren(rootNode.children, null, instanceFields, constructorExprs, null, pos);
+			processChildren(rootNode.children, rootParentField, instanceFields, constructorExprs, null, pos);
 
 		// 3b. Multi-element named: create ProgrammableUpdatable fields + init
 		for (name => elementFieldsList in namedElements) {
@@ -675,13 +792,24 @@ class ProgrammableCodeGen {
 			final paramField = "_" + name;
 			final setterExprs:Array<Expr> = [];
 
-			// For bool params, convert Bool -> Int (true=1, false=0 matching parser convention)
+			// No-op guard: skip rebuild work when the value is unchanged. Symmetric with the runtime
+			// path where IncrementalUpdateContext.applyUpdates() only fires listeners on actual
+			// rebuilds. Without this guard, repeated setParameter("status", "normal") calls thrash
+			// _fireRebuildListeners and force UIScreen.addInteractives rescans on every card hover.
+			// For Array/Tile the comparison is reference-equality (acceptable — callers pass fresh
+			// instances only when they mean to rebuild).
 			if (paramEnumTypes.exists(name) && paramEnumTypes.get(name).typePath == "Bool") {
-				setterExprs.push(macro $p{["this", paramField]} = ($i{"v"} ? 1 : 0));
+				// For bool params, convert Bool -> Int (true=1, false=0 matching parser convention)
+				setterExprs.push(macro {
+					final _iv = ($i{"v"} ? 1 : 0);
+					if ($p{["this", paramField]} == _iv) return;
+					$p{["this", paramField]} = _iv;
+				});
 			} else {
-				// For PPTColor: arg is ColorArg (boundary-baked via fromInt), `to Int` handles the
-				// write to the Int storage field. No explicit bake needed here.
-				setterExprs.push(macro $p{["this", paramField]} = $i{"v"});
+				setterExprs.push(macro {
+					if ($p{["this", paramField]} == $i{"v"}) return;
+					$p{["this", paramField]} = $i{"v"};
+				});
 			}
 			// Pass param name to _applyVisibility when transitions exist for this param
 			if (hasTransitions && transParamNames.exists(name)) {
@@ -701,8 +829,153 @@ class ProgrammableCodeGen {
 			if (refsParam)
 				setterExprs.push(macro this._updateExpressions());
 
+			// Fire rebuild listeners after visibility + expression updates complete. Symmetric with
+			// the runtime path where `IncrementalUpdateContext.applyUpdates()` fires listeners at
+			// the end of each parameter-driven rebuild cycle. Enables `UIScreen.addInteractives`
+			// auto-resync after `@switch` arm flips that change the interactive set.
+			setterExprs.push(macro this._fireRebuildListeners());
+
 			final setterParamType = publicParamType(name, def.type);
 			instanceFields.push(makeMethod("set" + toPascalCase(name), setterExprs, [{name: "v", type: setterParamType}], macro :Void, [APublic], pos));
+		}
+
+		// ==================== UIInteractiveSource implementation ====================
+		// Generated on every instance class so codegen instances can be wired to screens via
+		// screen.addInteractives(instance) / UIRichInteractiveHelper.register(instance) —
+		// symmetric with the runtime BuilderResult path.
+
+		// 8a1. _rebuildListeners field + addRebuildListener / removeRebuildListener / _fireRebuildListeners
+		instanceFields.push(makeField("_rebuildListeners",
+			FVar(macro :Array<() -> Void>, macro []), [APrivate], pos));
+
+		instanceFields.push(makeMethod("addRebuildListener", [
+			macro this._rebuildListeners.push(fn),
+		], [{name: "fn", type: macro :() -> Void}], macro :Void, [APublic], pos));
+
+		instanceFields.push(makeMethod("removeRebuildListener", [
+			macro this._rebuildListeners.remove(fn),
+		], [{name: "fn", type: macro :() -> Void}], macro :Void, [APublic], pos));
+
+		// Fired at end of every setter. Snapshot then iterate so listeners can mutate the array
+		// during dispatch (e.g. screen.removeInteractives from inside a listener).
+		instanceFields.push(makeMethod("_fireRebuildListeners", [
+			macro {
+				if (this._rebuildListeners.length == 0) return;
+				final _snap = this._rebuildListeners.copy();
+				for (_fn in _snap) _fn();
+			},
+		], [], macro :Void, [APrivate], pos));
+
+		// isIncremental getter — codegen instances always support rebuild listeners and
+		// setParameter, so this is unconditionally true. Matches UIInteractiveSource interface.
+		instanceFields.push(makeField("isIncremental",
+			FProp("get", "never", macro :Bool, null), [APublic], pos));
+		instanceFields.push(makeMethod("get_isIncremental",
+			[macro return true], [], macro :Bool, [APrivate, AInline], pos));
+
+		// 8a2. getInteractives() — walks the instance's scene graph (instance extends h2d.Object).
+		// Returns a fresh array each call so callers can iterate safely even if the scene graph
+		// mutates during iteration.
+		instanceFields.push(makeMethod("getInteractives", [
+			macro return bh.multianim.ProgrammableBuilder.collectInteractives(this),
+		], [], macro :Array<bh.base.MAObject>, [APublic], pos));
+
+		// 8a3. setParameter(name, value) — generic dispatcher to typed setters. Used by
+		// UIRichInteractiveHelper to drive state machines via setParameter("status", "hover") etc.
+		// For enum params, string values are looked up in the enum's value list at codegen time.
+		{
+			final dispatchCases:Array<Case> = [];
+			for (name in paramNames) {
+				final def = paramDefs.get(name);
+				final setterName = "set" + toPascalCase(name);
+				final callSetter:Expr = switch (def.type) {
+					case PPTEnum(values):
+						// Enum: accept either Int (direct index), String (enum value name), or
+						// UIRichInteractiveHelper-style string like "hover" for status params.
+						// Generate a nested switch over string values.
+						final strCases:Array<Case> = [];
+						for (i in 0...values.length) {
+							strCases.push({
+								values: [macro $v{values[i]}],
+								expr: macro $v{i},
+							});
+						}
+						final strSwitch:Expr = {
+							expr: ESwitch(macro (_value : String), strCases, macro throw 'unknown enum value "$_value" for parameter "' + $v{name} + '"'),
+							pos: pos,
+						};
+						macro {
+							final _idx:Int = if (Std.isOfType(_value, Int))
+								(cast _value : Int);
+							else if (Std.isOfType(_value, String))
+								$strSwitch;
+							else
+								throw 'setParameter("' + $v{name} + '", ...) requires Int or String, got ${_value}';
+							$p{["this", setterName]}(_idx);
+						};
+					case PPTBool:
+						macro {
+							final _b:Bool = if (Std.isOfType(_value, Bool))
+								(cast _value : Bool);
+							else if (Std.isOfType(_value, Int))
+								((cast _value : Int) != 0);
+							else if (Std.isOfType(_value, String)) {
+								switch ((cast _value : String).toLowerCase()) {
+									case "true" | "yes" | "1": true;
+									case "false" | "no" | "0": false;
+									default: throw 'setParameter("' + $v{name} + '", ...) got unknown string for Bool (expected true|yes|1|false|no|0): ' + _value;
+								};
+							} else
+								throw 'setParameter("' + $v{name} + '", ...) requires Bool, got ${_value}';
+							$p{["this", setterName]}(_b);
+						};
+					case PPTInt | PPTUnsignedInt | PPTColor | PPTHexDirection | PPTGridDirection | PPTRange(_, _) | PPTFlags(_):
+						macro {
+							final _i:Int = if (Std.isOfType(_value, Int))
+								(cast _value : Int);
+							else if (Std.isOfType(_value, Float))
+								Std.int((cast _value : Float));
+							else if (Std.isOfType(_value, String)) {
+								final _p = Std.parseInt((cast _value : String));
+								if (_p == null) throw 'setParameter("' + $v{name} + '", ...) could not parse String as Int: ' + _value;
+								_p;
+							} else
+								throw 'setParameter("' + $v{name} + '", ...) requires Int, got ${_value}';
+							$p{["this", setterName]}(_i);
+						};
+					case PPTFloat:
+						macro {
+							final _f:Float = if (Std.isOfType(_value, Float))
+								(cast _value : Float);
+							else if (Std.isOfType(_value, Int))
+								(cast _value : Int);
+							else
+								throw 'setParameter("' + $v{name} + '", ...) requires Float, got ${_value}';
+							$p{["this", setterName]}(_f);
+						};
+					case PPTString:
+						macro {
+							if (!Std.isOfType(_value, String))
+								throw 'setParameter("' + $v{name} + '", ...) requires String, got ${_value}';
+							$p{["this", setterName]}(cast _value);
+						};
+					case PPTTile:
+						macro $p{["this", setterName]}(cast _value);
+					case PPTArray:
+						macro $p{["this", setterName]}(cast _value);
+				};
+				dispatchCases.push({
+					values: [macro $v{name}],
+					expr: callSetter,
+				});
+			}
+			final dispatchSwitch:Expr = {
+				expr: ESwitch(macro _name, dispatchCases, macro throw 'unknown parameter "' + _name + '" on ' + $v{instanceClassName}),
+				pos: pos,
+			};
+			instanceFields.push(makeMethod("setParameter", [dispatchSwitch],
+				[{name: "_name", type: macro :String}, {name: "_value", type: macro :Dynamic}],
+				macro :Void, [APublic], pos));
 		}
 
 		// 8b. Transition control methods (on instance)
@@ -878,12 +1151,84 @@ class ProgrammableCodeGen {
 				});
 			}
 
+			// Before throwing, try runtime switch arm sinks (for slots declared inside @switch arms).
+			if (switchSinkFields.length > 0) {
+				for (sf in switchSinkFields) {
+					bodyExprs.push(macro {
+						final _r = $p{["this", sf]}.getSlot(name, index, indexY);
+						if (_r != null) return _r;
+					});
+				}
+			}
 			bodyExprs.push(macro throw 'Slot "' + name + '" not found');
 			instanceFields.push(makeMethod("getSlot", bodyExprs, [
 				{name: "name", type: macro :String},
 				{name: "index", opt: true, type: macro :Null<Int>},
 				{name: "indexY", opt: true, type: macro :Null<Int>},
 			], macro :bh.multianim.MultiAnimBuilder.SlotHandle, [APublic], pos));
+		} else if (switchSinkFields.length > 0) {
+			// No static slots but there are switches — generate a sink-only dispatcher.
+			final bodyExprs:Array<Expr> = [];
+			for (sf in switchSinkFields) {
+				bodyExprs.push(macro {
+					final _r = $p{["this", sf]}.getSlot(name, index, indexY);
+					if (_r != null) return _r;
+				});
+			}
+			bodyExprs.push(macro throw 'Slot "' + name + '" not found');
+			instanceFields.push(makeMethod("getSlot", bodyExprs, [
+				{name: "name", type: macro :String},
+				{name: "index", opt: true, type: macro :Null<Int>},
+				{name: "indexY", opt: true, type: macro :Null<Int>},
+			], macro :bh.multianim.MultiAnimBuilder.SlotHandle, [APublic], pos));
+		}
+
+		// 8b3. Runtime lookup for indexed names declared inside @switch arms.
+		// Generated when there is at least one @switch in the programmable. Falls back to
+		// iterating per-switch sinks since these names are not known at compile time.
+		if (switchSinkFields.length > 0) {
+			// getUpdatable(name:String):Null<h2d.Object>
+			{
+				final body:Array<Expr> = [];
+				for (sf in switchSinkFields) {
+					body.push(macro {
+						final _r = $p{["this", sf]}.getUpdatable(name);
+						if (_r != null) return _r;
+					});
+				}
+				body.push(macro return null);
+				instanceFields.push(makeMethod("getUpdatable", body,
+					[{name: "name", type: macro :String}],
+					macro :Null<h2d.Object>, [APublic], pos));
+			}
+			// getUpdatableByIndex(name:String, index:Int):Null<h2d.Object>
+			{
+				final body:Array<Expr> = [];
+				for (sf in switchSinkFields) {
+					body.push(macro {
+						final _r = $p{["this", sf]}.getUpdatableByIndex(name, index);
+						if (_r != null) return _r;
+					});
+				}
+				body.push(macro return null);
+				instanceFields.push(makeMethod("getUpdatableByIndex", body,
+					[{name: "name", type: macro :String}, {name: "index", type: macro :Int}],
+					macro :Null<h2d.Object>, [APublic], pos));
+			}
+			// getUpdatable2D(name:String, x:Int, y:Int):Null<h2d.Object>
+			{
+				final body:Array<Expr> = [];
+				for (sf in switchSinkFields) {
+					body.push(macro {
+						final _r = $p{["this", sf]}.getUpdatable2D(name, x, y);
+						if (_r != null) return _r;
+					});
+				}
+				body.push(macro return null);
+				instanceFields.push(makeMethod("getUpdatable2D", body,
+					[{name: "name", type: macro :String}, {name: "x", type: macro :Int}, {name: "y", type: macro :Int}],
+					macro :Null<h2d.Object>, [APublic], pos));
+			}
 		}
 
 		// 8d. DynamicRef accessors (on instance)
@@ -1355,6 +1700,13 @@ class ProgrammableCodeGen {
 		final progName = currentProgrammableName;
 		final switchOrdinal = switchCounter++;  // stable DFS ordinal, matches runtime tree walk
 
+		// Sink field — persistent SwitchArmResults holding indexed names/slots declared inside arms.
+		// Allocated once in the ctor, passed to every rebuildSwitchArm call so lookups survive arm swaps.
+		final sinkField = "_swSink" + switchOrdinal;
+		fields.push(makeField(sinkField, FVar(macro :bh.multianim.MultiAnimBuilder.SwitchArmResults, null), [APrivate], pos));
+		ctorExprs.push(macro $p{["this", sinkField]} = new bh.multianim.MultiAnimBuilder.SwitchArmResults());
+		switchSinkFields.push(sinkField);
+
 		// Check if all non-default arms are pure enum (CoEnums)
 		var allEnum = true;
 		for (arm in arms) {
@@ -1425,14 +1777,14 @@ class ProgrammableCodeGen {
 		// Constructor: compute initial arm index and build
 		ctorExprs.push(macro {
 			$p{["this", armIdxField]} = $armIndexExpr;
-			this._pb.rebuildSwitchArm($v{progName}, $v{switchOrdinal}, $p{["this", armIdxField]}, $p{["this", switchField]}, $paramsMapExpr);
+			this._pb.rebuildSwitchArm($v{progName}, $v{switchOrdinal}, $p{["this", armIdxField]}, $p{["this", switchField]}, $paramsMapExpr, $p{["this", sinkField]});
 		});
 
 		// Register lazy switch update in _applyVisibility — always rebuild since
 		// arm content may depend on params other than the switch param itself
 		final updateBlock:Expr = macro {
 			$p{["this", armIdxField]} = $armIndexExpr;
-			this._pb.rebuildSwitchArm($v{progName}, $v{switchOrdinal}, $p{["this", armIdxField]}, $p{["this", switchField]}, $paramsMapExpr);
+			this._pb.rebuildSwitchArm($v{progName}, $v{switchOrdinal}, $p{["this", armIdxField]}, $p{["this", switchField]}, $paramsMapExpr, $p{["this", sinkField]});
 		};
 		switchUpdateEntries.push({
 			paramName: paramName,
@@ -2834,7 +3186,10 @@ class ProgrammableCodeGen {
 			case INTERACTIVE(w, h, id, debug, metadata):
 				final wExpr = rvToExpr(w);
 				final hExpr = rvToExpr(h);
-				final idExpr = rvToExpr(id);
+				// forString: MAInteractive stores `identifier:String`, so loop-var
+				// substitutions (Int) and runtime loop-var references need to be
+				// stringified. Literal RVString flows through unchanged.
+				final idExpr = rvToExpr(id, true);
 				final debugExpr:Expr = debug ? macro true : macro false;
 				final metaExpr:Expr = if (metadata == null) {
 					macro null;
@@ -5447,52 +5802,79 @@ class ProgrammableCodeGen {
 
 		return switch (rv) {
 			case RVInteger(i):
-				macro $v{i};
+				forString ? macro $v{Std.string(i)} : macro $v{i};
 			case RVFloat(f):
-				macro $v{f};
+				forString ? macro $v{Std.string(f)} : macro $v{f};
 			case RVString(s):
 				macro $v{s};
 			case RVReference(ref):
 				// Check loop variable substitutions first (for repeat unrolling)
 				if (loopVarSubstitutions.exists(ref)) {
 					final val = loopVarSubstitutions.get(ref);
-					macro $v{val};
+					if (forString) macro $v{Std.string(val)} else macro $v{val};
 				} else if (runtimeLoopVars.exists(ref)) {
 					final rtName = runtimeLoopVars.get(ref);
-					macro $i{rtName};
+					if (forString) macro Std.string($i{rtName}) else macro $i{rtName};
 				} else if (finalVarExprs.exists(ref)) {
 					rvToExpr(finalVarExprs.get(ref), forString);
 				} else {
 					final fieldExpr = macro $p{["this", "_" + ref]};
 					if (forString) {
-						enumToStringExpr(ref, fieldExpr);
+						// enumToStringExpr only rewrites PPTEnum -> names[_field]; for every
+						// other param type it returns fieldExpr unchanged, so wrap with
+						// Std.string() when the call site expects a String.
+						final def = paramDefs.get(ref);
+						final isEnum = def != null && (switch (def.type) { case PPTEnum(_): true; default: false; });
+						if (isEnum) enumToStringExpr(ref, fieldExpr) else macro Std.string($fieldExpr);
 					} else {
 						fieldExpr;
 					}
 				}
 			case EBinop(op, e1, e2):
-				final left = rvToExpr(e1, forString);
-				final right = rvToExpr(e2, forString);
-				switch (op) {
-					case OpAdd: macro($left + $right);
-					case OpSub: macro($left - $right);
-					case OpMul: macro($left * $right);
-					case OpDiv: macro($left / $right);
-					case OpIntegerDiv: macro Std.int($left / $right);
-					case OpMod: macro($left % $right);
-					case OpEq: macro($left == $right ? 1 : 0);
-					case OpNotEq: macro($left != $right ? 1 : 0);
-					case OpLess: macro($left < $right ? 1 : 0);
-					case OpGreater: macro($left > $right ? 1 : 0);
-					case OpLessEq: macro($left <= $right ? 1 : 0);
-					case OpGreaterEq: macro($left >= $right ? 1 : 0);
-				};
+				// Arithmetic ops (OpSub/Mul/Div/Mod/IntegerDiv) must never propagate forString
+				// into operands — that would turn `$i * 2` into `Std.string(_rt_i) * 2` (type
+				// error) instead of `Std.string(_rt_i * 2)`. Compute numerically, then
+				// stringify the result.
+				//
+				// OpAdd is special: runtime `resolveAsString` defines bare `$a + $b` in string
+				// context as concatenation (matching runtime.MultiAnimBuilder.resolveAsString
+				// EBinop(OpAdd) case). For arithmetic addition, users wrap in parens: `($a + $b)`.
+				// Propagate forString into OpAdd operands so Haxe's String + String concatenates.
+				if (op == OpAdd) {
+					final left = rvToExpr(e1, forString);
+					final right = rvToExpr(e2, forString);
+					macro($left + $right);
+				} else {
+					final left = rvToExpr(e1, false);
+					final right = rvToExpr(e2, false);
+					final result = switch (op) {
+						case OpAdd: throw "unreachable"; // handled above
+						case OpSub: macro($left - $right);
+						case OpMul: macro($left * $right);
+						case OpDiv: macro($left / $right);
+						case OpIntegerDiv: macro Std.int($left / $right);
+						case OpMod: macro($left % $right);
+						case OpEq: macro($left == $right ? 1 : 0);
+						case OpNotEq: macro($left != $right ? 1 : 0);
+						case OpLess: macro($left < $right ? 1 : 0);
+						case OpGreater: macro($left > $right ? 1 : 0);
+						case OpLessEq: macro($left <= $right ? 1 : 0);
+						case OpGreaterEq: macro($left >= $right ? 1 : 0);
+					};
+					forString ? macro Std.string($result) : result;
+				}
 			case EUnaryOp(_op, inner):
-				final innerExpr = rvToExpr(inner, forString);
-				macro -($innerExpr);
+				// Unary minus is arithmetic — compute numerically, then stringify if needed.
+				final innerExpr = rvToExpr(inner, false);
+				final result = macro -($innerExpr);
+				forString ? macro Std.string($result) : result;
 			case RVParenthesis(e):
-				final inner = rvToExpr(e, forString);
-				macro($inner);
+				// Parentheses force arithmetic evaluation (mirrors runtime RVParenthesis case:
+				// "${value + 10} produces 87 not 7710"). Recurse with forString=false so inner
+				// EBinop/EUnaryOp use arithmetic, then stringify the final result.
+				final inner = rvToExpr(e, false);
+				final result = macro($inner);
+				forString ? macro Std.string($result) : result;
 			case RVTernary(condition, ifTrue, ifFalse):
 				final condE = rvToExpr(condition);
 				final trueE = rvToExpr(ifTrue, forString);
@@ -6724,8 +7106,6 @@ class ProgrammableCodeGen {
 				final defaultArr = resolvedParamToExpr(def.defaultValue, def.type);
 				macro($i{pName} != null ? $i{pName} : $defaultArr);
 			} else {
-				// PPTColor: arg is ColorArg (boundary-baked via fromInt). The local is inferred
-				// as ColorArg; the subsequent `this._<name> = _<name>` write casts via `to Int`.
 				macro $i{pName};
 			};
 			ctorBody.push({
@@ -6942,9 +7322,8 @@ class ProgrammableCodeGen {
 			return macro :Int;
 		}
 		// PPTColor: public API type stays Int so that default argument values remain literal
-		// constants (Haxe forbids casts / abstracts as arg defaults). Alpha baking happens on
-		// the write side: paramFieldType returns ColorArg, and `_<name> = <int>` triggers
-		// `ColorArg.fromInt` — addAlphaIfNotPresent — at every assignment.
+		// constants (Haxe forbids casts / abstracts as arg defaults). Int is the final form
+		// for color values — Heaps AARRGGBB convention, top byte is alpha.
 		if (type == PPTColor)
 			return macro :Int;
 		return paramFieldType(type);
@@ -6991,11 +7370,7 @@ class ProgrammableCodeGen {
 			case PPTEnum(_): macro :Int;
 			case PPTBool: macro :Int;
 			case PPTInt | PPTUnsignedInt: macro :Int;
-			// PPTColor storage uses ColorArg (`abstract ColorArg(Int) from Int to Int`) so that
-			// every `_<name> = <int>` assignment bakes 0xFF alpha via `fromInt`. `to Int` keeps
-			// reads (comparisons, expression uses) zero-cost. Makes the three alpha-baking call
-			// sites impossible to miss — the type system enforces it.
-			case PPTColor: macro :bh.base.ColorUtils.ColorArg;
+			case PPTColor: macro :Int;
 			case PPTFloat: macro :Float;
 			case PPTString: macro :String;
 			case PPTRange(_, _): macro :Int;

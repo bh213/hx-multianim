@@ -68,34 +68,22 @@ class ManimAnalyzer {
 				final symbol:LspSymbolInformation = switch (node.type) {
 					case PROGRAMMABLE(_, parameters, _):
 						final paramList = [for (pname => def in parameters) '$pname:${defTypeName(def.type)}'];
-						{
-							name: name,
-							kind: SymbolKind.Class,
-							range: range,
-							selectionRange: range,
-							detail: paramList.length > 0 ? '(${paramList.join(", ")})' : null,
-							children: getChildSymbols(node, text)
-						};
+						final detail = paramList.length > 0 ? '(${paramList.join(", ")})' : null;
+						makeSymbol(name, SymbolKind.Class, range, detail, getChildSymbols(node, text));
 					case DATA(dataDef):
-						{
-							name: name,
-							kind: SymbolKind.Struct,
-							range: range,
-							selectionRange: range,
-							children: getDataChildren(dataDef, text)
-						};
+						makeSymbol(name, SymbolKind.Struct, range, null, getDataChildren(dataDef, text));
 					case CURVES(_):
-						{name: name, kind: SymbolKind.Namespace, range: range, selectionRange: range, detail: "curves"};
+						makeSymbol(name, SymbolKind.Namespace, range, "curves");
 					case PATHS(_):
-						{name: name, kind: SymbolKind.Namespace, range: range, selectionRange: range, detail: "paths"};
+						makeSymbol(name, SymbolKind.Namespace, range, "paths");
 					case ANIMATED_PATH(_):
-						{name: name, kind: SymbolKind.Function, range: range, selectionRange: range, detail: "animatedPath"};
+						makeSymbol(name, SymbolKind.Function, range, "animatedPath");
 					case FINAL_VAR(n, _):
-						{name: n, kind: SymbolKind.Constant, range: range, selectionRange: range, detail: "@final"};
+						makeSymbol(n, SymbolKind.Constant, range, "@final");
 					case RELATIVE_LAYOUTS(_):
-						{name: name, kind: SymbolKind.Namespace, range: range, selectionRange: range, detail: "layout"};
+						makeSymbol(name, SymbolKind.Namespace, range, "layout");
 					default:
-						{name: name, kind: SymbolKind.Variable, range: range, selectionRange: range};
+						makeSymbol(name, SymbolKind.Variable, range);
 				};
 				symbols.push(symbol);
 			}
@@ -145,6 +133,22 @@ class ManimAnalyzer {
 	}
 
 	// ---- Helpers ----
+
+	/**
+	 * Build an LspSymbolInformation, omitting `detail`/`children` when null.
+	 * The VS Code language client's `DocumentSymbol.is()` predicate rejects
+	 * objects where these fields are explicitly `null` (it accepts `undefined`
+	 * or string/array, not `null`), and falls back to `SymbolInformation`
+	 * conversion which dereferences `item.location.range` and crashes.
+	 */
+	@:allow(manim.lsp.AnimAnalyzer)
+	static function makeSymbol(name:String, kind:Int, range:LspRange, ?detail:String,
+			?children:Array<LspSymbolInformation>):LspSymbolInformation {
+		final s:LspSymbolInformation = {name: name, kind: kind, range: range, selectionRange: range};
+		if (detail != null) Reflect.setField(s, "detail", detail);
+		if (children != null) Reflect.setField(s, "children", children);
+		return s;
+	}
 
 	static function getChildSymbols(node:Node, text:String):Null<Array<LspSymbolInformation>> {
 		final children:Array<LspSymbolInformation> = [];

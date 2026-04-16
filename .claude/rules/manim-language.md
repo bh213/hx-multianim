@@ -13,6 +13,8 @@
 
 **Parameter types**: `uint`, `int`, `float`, `bool`, `string`, `color`, `tile`, enum (`[val1,val2]`), range (`1..5`), flags
 
+**Color format (strict-D)**: Internal storage is Heaps `0xAARRGGBB`. CSS `#` forms bake `0xFF` alpha on 3/6-digit shorthand (`#FF0000` → `0xFFFF0000`), alpha preserved on 8-digit `#RRGGBBAA`. Heaps `0x` forms preserve every byte verbatim — `0xFF0000` is transparent red (top byte = 0), not opaque. `transparent` / `0x00000000` is reachable from runtime code (`setColor(0)` no longer gets clobbered to opaque black). Migration from pre-strict-D: any `0xRRGGBB` literal meant for opaque → use `#RRGGBB` or `0xFFRRGGBB`.
+
 **Transition types**: `none`, `fade(duration, ?easing)`, `crossfade(duration, ?easing)`, `flipX(duration, ?easing)`, `flipY(duration, ?easing)`, `slide(direction, duration, ?distance, ?easing)` (directions: `left`, `right`, `up`, `down`; distance defaults to 50px). Requires TweenManager (auto-injected via ScreenManager). Falls back to instant without TweenManager.
 
 ## Common Elements

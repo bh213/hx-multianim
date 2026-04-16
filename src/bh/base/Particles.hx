@@ -150,10 +150,8 @@ private class Particle extends h2d.SpriteBatch.BatchElement {
 		if( delay > 0 ) {
 			delay -= dt;
 			if( delay <= 0 ){
-				group.init(this);
-				if (!rejected) {
+				if (group.init(this)) {
 					visible = true;
-					// Trigger OnBirth sub-emitters
 					group.triggerSubEmitters(this, OnBirth);
 				}
 			}
@@ -694,9 +692,10 @@ class ParticleGroup {
 			var p = new Particle(this);
 			p.delay = rand() * life * (1 - emitSync) + emitDelay;
 			if (p.delay <= 0) {
-				init(p);
-				p.visible = true;
-				triggerSubEmitters(p, OnBirth);
+				if (init(p)) {
+					p.visible = true;
+					triggerSubEmitters(p, OnBirth);
+				}
 			}
 			batch.add(p);
 		}
@@ -714,15 +713,17 @@ class ParticleGroup {
 		}
 		for (i in 0...count) {
 			var p = new Particle(this);
-			init(p);
+			var accepted = init(p);
 			p.x += atX;
 			p.y += atY;
 			p.vx += inheritVx;
 			p.vy += inheritVy;
-			p.visible = true;
 			batch.add(p);
-			liveCount++;
-			triggerSubEmitters(p, OnBirth);
+			if (accepted) {
+				liveCount++;
+				p.visible = true;
+				triggerSubEmitters(p, OnBirth);
+			}
 		}
 	}
 
@@ -776,7 +777,10 @@ class ParticleGroup {
 		return Math.min(shutdownTime / shutdownActiveDuration, 1.0);
 	}
 
-	function init( p : Particle ):Void {
+	// Returns true if the particle was accepted, false if the emitFilter rejected it.
+	// Callers must gate OnBirth sub-emitter triggers on the return value, otherwise
+	// rejections cascade into an explosive spawn loop at the rejection boundary.
+	function init( p : Particle ):Bool {
 		var g = this;
 		p.rejected = false;
 		var size = g.size * (1 + srand() * g.sizeRand);
@@ -933,8 +937,10 @@ class ParticleGroup {
 				p.visible = false;
 				p.life = p.maxLife + 1;
 				p.rejected = true;
+				return false;
 			}
 		}
+		return true;
 	}
 
 	// ========== Helper Functions ==========

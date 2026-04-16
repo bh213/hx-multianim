@@ -821,11 +821,11 @@ Values can be typed, similar to interactive metadata:
 settings{action => "buy", price:int => 100, weight:float => 1.5, fontColor:color => white}
 ```
 
-Supported types: `int`, `float`, `string` (default when no type specified), `color` (accepts named colors like `white`, `red`, hex `#ff7f50`, `0xFF0000` — stored as int).
+Supported types: `int`, `float`, `string` (default when no type specified), `color` (accepts named colors like `white`, `red`, hex `#ff7f50`, or `0xAARRGGBB` Heaps literal — stored as int). See [Color Format](#color-format) for the `#` vs `0x` semantics.
 
 **Dotted keys** target sub-components in multi-builder UI elements (dropdown, scrollable list):
 ```
-settings{item.fontColor:int => 0xff0000, scrollbar.thickness:int => 6}
+settings{item.fontColor:int => 0xFFff0000, scrollbar.thickness:int => 6}
 ```
 The prefix (`item`, `scrollbar`, `dropdown`) routes the setting to the corresponding sub-builder. Unprefixed settings go to the main builder. See the [UI Components](#ui-components) section for valid prefixes per component.
 
@@ -1030,8 +1030,35 @@ Validation: `FilterManager.validateCustomFilters(parseResult.customFilterRefs)` 
 * `hexdirection`: `dir:hexdirection` (0..5)
 * `griddirection`: `dir:griddirection` (0..7)
 * `bool`: `true`/`false`, `yes`/`no`, or `0`/`1`
-* `color`: `color:<color>`, e.g., `color:#f0f` or `red`
+* `color`: `color:<color>`, e.g., `color:#f0f` or `red` — see [Color Format](#color-format) for literal syntax
 * `tile`: `name:tile` — a tile source passed at runtime (no default allowed). Used with `bitmap($name)` to display caller-provided tiles. In generated code, maps to `Dynamic` (accepts `h2d.Tile`). For the builder, pass via `TileHelper.sheet("atlas", "tile")` or `TileHelper.file("img.png")`.
+
+---
+
+## Color Format
+
+Colors are stored internally as Heaps `0xAARRGGBB` ints. Two literal syntaxes are supported:
+
+**CSS `#` forms** — 3/6-digit shorthand assumes opacity:
+```
+#F00       // → 0xFFFF0000  (baked opaque)
+#FF0000    // → 0xFFFF0000  (baked opaque)
+#FF000080  // → 0x80FF0000  (CSS RGBA with alpha last, converted to Heaps AARRGGBB)
+```
+
+**Heaps `0x` forms** — preserved **verbatim**, top byte IS alpha:
+```
+0xFFFF0000  // opaque red       (alpha=0xFF, red=0xFF)
+0x80FF0000  // 50% red
+0xFF0000    // TRANSPARENT red  (alpha=0x00) — usually not what you want
+0x00000000  // fully transparent
+```
+
+Named colors (`red`, `blue`, `transparent`, ...) are baked at parse time — all opaque except `transparent` which is `0x00000000`.
+
+**Runtime semantics (strict-D):** nothing in the runtime rewrites alpha. `instance.setColor(0)` stores `0` (fully transparent), not `0xFF000000`. `setParameter("c", 0xFF0000)` stores `0x00FF0000` (transparent red), not `0xFFFF0000`. If you want opaque red from code, pass `0xFFFF0000`. This makes `0` distinguishable from "opaque black" everywhere — previously the two collapsed onto the same arm in `@switch` comparisons and the same tint at render time.
+
+**Guideline:** prefer `#RRGGBB` / `#RRGGBBAA` in `.manim` sources (CSS convention reads naturally). Reserve `0x...` for cases where you're already thinking in Heaps AARRGGBB, or for runtime `Int` constants. Migrating from pre-strict-D code? Any `0xRRGGBB` literal meant "opaque RRGGBB" — replace with `#RRGGBB` or `0xFFRRGGBB`.
 
 ---
 

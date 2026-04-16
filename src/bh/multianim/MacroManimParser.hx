@@ -1083,8 +1083,11 @@ class MacroManimParser {
 
 	public static function tryStringToColor(s:String):Null<Int> {
 		if (s == null) return null;
-		// Named colors return AARRGGBB with 0xFF alpha baked in (except transparent).
-		// This makes addAlphaIfNotPresent() a no-op for all named colors.
+		// Named colors and `#` CSS-shorthand forms bake 0xFF alpha here (except
+		// `transparent`), since a 3/6-digit web color literal implies opacity.
+		// `0x` literals follow Heaps' AARRGGBB convention and are preserved as
+		// typed — the top byte IS alpha, even if it's zero. To write opaque red,
+		// use `#FF0000` or `0xFFFF0000`; `0xFF0000` is transparent red.
 		var color = switch (s.toLowerCase()) {
 			case "transparent": 0x00000000;
 			case "maroon": 0xFF800000;
@@ -1121,16 +1124,9 @@ class MacroManimParser {
 		}
 		if (color != null) return color;
 		if (s.startsWith("0x")) {
-			final v = Std.parseInt(s);
-			if (v == null) return null;
-			// 8 hex digits = explicit AARRGGBB, preserve as-is (user wrote the alpha,
-			// even if it's 0). 6 or fewer digits = RRGGBB shorthand, bake 0xFF alpha so
-			// `0xFF0000` matches `#FF0000`. Length check is on the source string, not
-			// the parsed int — Std.parseInt collapses leading zeros, so `0x00FF0000`
-			// and `0xFF0000` produce the same int but have different user intent.
-			final hexLen = s.length - 2;
-			if (hexLen == 8) return v;
-			return bh.base.ColorUtils.addAlphaIfNotPresent(v);
+			// `0x` literals are Heaps AARRGGBB — preserved exactly. `0xFF0000` is
+			// transparent red (top byte = 0); use `#FF0000` or `0xFFFF0000` for opaque.
+			return Std.parseInt(s);
 		}
 		if (s.startsWith("#")) {
 			final colorStr = s.substring(1);
@@ -2759,6 +2755,14 @@ class MacroManimParser {
 		var flowIsAbsolute = false;
 		var hasFlowProps = false;
 
+		// Parameterized-slot scope save (set by the slot case, consumed after
+		// parseNodes() parses the slot body). See the slot case for rationale.
+		var slotScopeSaved = false;
+		var slotSavedCurrentDefs:ParametersDefinitions = null;
+		var slotSavedActiveDefs:Null<ParametersDefinitions> = null;
+		var slotSavedScopeVars:Null<Array<String>> = null;
+		var slotSavedNamedElements:Null<Array<String>> = null;
+
 		// Parse @ prefix (conditionals, layer, alpha, scale, tint, flow properties)
 		if (match(TAt)) {
 			var atCount = 0;
@@ -3250,6 +3254,19 @@ class MacroManimParser {
 					error("slot requires a #name prefix");
 				if (match(TOpen)) {
 					final parsed = parseDefines();
+					// Parameterized slots are an isolated scope: save the outer
+					// scope state (activeDefs/scopeVars/namedElements are parser
+					// instance fields, currentDefs is this function's local),
+					// install the slot's scope, then restore after parseNodes()
+					// consumes the body. Without this push/pop, the slot's param
+					// list replaces the outer scope and nothing following the
+					// slot inside the same block can see the enclosing
+					// programmable's params, repeatable loop vars, or @final vars.
+					slotSavedCurrentDefs = currentDefs;
+					slotSavedActiveDefs = activeDefs;
+					slotSavedScopeVars = scopeVars;
+					slotSavedNamedElements = namedElements;
+					slotScopeSaved = true;
 					currentDefs = parsed.defs;
 					activeDefs = parsed.defs;
 					scopeVars = [];
@@ -3812,6 +3829,13 @@ class MacroManimParser {
 				}
 				parseNodes(node, currentDefs);
 				for (_ in 0...loopVarsToPop) scopeVars.pop();
+				if (slotScopeSaved) {
+					currentDefs = slotSavedCurrentDefs;
+					activeDefs = slotSavedActiveDefs;
+					scopeVars = slotSavedScopeVars;
+					namedElements = slotSavedNamedElements;
+					slotScopeSaved = false;
+				}
 			case TEof:
 				error("unexpected end of file");
 			default:

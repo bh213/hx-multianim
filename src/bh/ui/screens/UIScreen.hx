@@ -79,6 +79,9 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	var postCustomAddToLayer:Map<h2d.Object, UIElementCustomAddToLayer> = [];
 	var interactiveWrappers:Array<UIInteractiveWrapper> = [];
 	var interactiveMap:Map<String, UIInteractiveWrapper> = [];
+	/** Tracks (source, prefix) pairs registered via addInteractives so we can resync wrappers
+	 *  when a SWITCH arm flips or REPEAT count changes the underlying interactives list. */
+	var interactiveSubscriptions:Array<{source:bh.ui.UIInteractiveSource, prefix:Null<String>, listener:Void->Void}> = [];
 	var autoStatusHelper:Null<UIRichInteractiveHelper> = null;
 	var panelHelpers:Array<UIPanelHelper> = [];
 	var higherOrderComponents:Array<UIHigherOrderComponent> = [];
@@ -160,6 +163,10 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		subElementProviders = [];
 		interactiveWrappers = [];
 		interactiveMap.clear();
+		// Drop all rebuild listener subscriptions before tearing down the screen
+		for (sub in interactiveSubscriptions)
+			sub.source.removeRebuildListener(sub.listener);
+		interactiveSubscriptions = [];
 		if (autoStatusHelper != null)
 			autoStatusHelper.unbindAll();
 		autoStatusHelper = null;
@@ -966,16 +973,25 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		return wrapper;
 	}
 
-	/** Registers all `interactive()` elements from a builder result. Events arrive in `onScreenEvent` as `UIInteractiveEvent(event, id, metadata)`.
-	 *  Interactives with `autoStatus` metadata are automatically wired for Normal→Hover→Pressed state management. */
-	public function addInteractives(r:BuilderResult, ?prefix:String):Array<UIInteractiveWrapper> {
+	/** Registers all `interactive()` elements from a source for event dispatch. Events arrive in
+	 *  `onScreenEvent` as `UIInteractiveEvent(event, id, metadata)`. Accepts either a runtime
+	 *  `BuilderResult` or a codegen programmable instance — both implement `UIInteractiveSource`.
+	 *
+	 *  Interactives with `autoStatus` metadata are automatically wired for Normal→Hover→Pressed
+	 *  state management.
+	 *
+	 *  Also installs a rebuild listener on the source so that `@switch` arm flips and param-
+	 *  dependent `repeatable` rebuilds automatically resync the screen's interactive map (and
+	 *  autoStatus bindings) to match the new arm/iteration set. */
+	public function addInteractives(source:bh.ui.UIInteractiveSource, ?prefix:String):Array<UIInteractiveWrapper> {
+		final interactives = source.getInteractives();
 		var wrappers:Array<UIInteractiveWrapper> = [];
-		for (obj in r.interactives) {
+		for (obj in interactives) {
 			wrappers.push(addInteractive(obj, prefix));
 		}
 		// Auto-wire interactives with autoStatus metadata
 		var hasAutoStatus = false;
-		for (obj in r.interactives) {
+		for (obj in interactives) {
 			switch obj.multiAnimType {
 				case MAInteractive(_, _, _, meta):
 					if (meta != null) {
@@ -991,9 +1007,67 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		if (hasAutoStatus) {
 			if (autoStatusHelper == null)
 				autoStatusHelper = new UIRichInteractiveHelper(this);
-			autoStatusHelper.registerAutoStatus(r, prefix);
+			autoStatusHelper.registerAutoStatus(source, prefix);
 		}
+
+		// Install rebuild listener for resync after switch/repeat structural changes.
+		// Non-incremental sources (static BuilderResult snapshots) can't rebuild, so skip — the
+		// wrapper set captured above is final for the lifetime of the source.
+		if (source.isIncremental) {
+			final capturedSource = source;
+			final capturedPrefix = prefix;
+			final listener = () -> syncInteractivesFrom(capturedSource, capturedPrefix);
+			source.addRebuildListener(listener);
+			interactiveSubscriptions.push({source: source, prefix: prefix, listener: listener});
+		}
+
 		return wrappers;
+	}
+
+	/** Diff the screen's interactive wrappers against the source's current `getInteractives()`
+	 *  list and bring them back in sync: remove stale wrappers (whose ids no longer exist), add
+	 *  new ones, and resync the autoStatus helper's bindings. Called automatically by the rebuild
+	 *  listener installed by `addInteractives`. */
+	function syncInteractivesFrom(source:bh.ui.UIInteractiveSource, prefix:Null<String>):Void {
+		final interactives = source.getInteractives();
+
+		// 1. Build expected fully-qualified id set from current interactives
+		final expectedIds = new Map<String, Bool>();
+		for (obj in interactives) {
+			switch obj.multiAnimType {
+				case MAInteractive(_, _, identifier, _):
+					final fullId = prefix != null ? '$prefix.$identifier' : identifier;
+					expectedIds.set(fullId, true);
+				default:
+			}
+		}
+
+		// 2. Remove wrappers with matching prefix whose id is no longer in the expected set
+		final toRemove:Array<UIInteractiveWrapper> = [];
+		for (w in interactiveWrappers) {
+			if (w.prefix != prefix) continue;
+			if (!expectedIds.exists(w.id)) toRemove.push(w);
+		}
+		for (w in toRemove) {
+			interactiveWrappers.remove(w);
+			interactiveMap.remove(w.id);
+			removeElement(w);
+		}
+
+		// 3. Add wrappers for newly-appearing ids
+		for (obj in interactives) {
+			switch obj.multiAnimType {
+				case MAInteractive(_, _, identifier, _):
+					final fullId = prefix != null ? '$prefix.$identifier' : identifier;
+					if (!interactiveMap.exists(fullId))
+						addInteractive(obj, prefix);
+				default:
+			}
+		}
+
+		// 4. Resync autoStatus helper bindings (handles arm flip with `autoStatus` metadata)
+		if (autoStatusHelper != null)
+			autoStatusHelper.resyncAutoStatus(source, prefix);
 	}
 
 	/** Wires hyperlink events from rich text `[link:id]` markup to UIInteractiveEvent.
@@ -1042,6 +1116,15 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 				autoStatusHelper.unregisterByPrefix(prefix);
 			else
 				autoStatusHelper.unbindAll();
+		}
+		// Drop rebuild listener subscriptions matching the prefix
+		var i = 0;
+		while (i < interactiveSubscriptions.length) {
+			final sub = interactiveSubscriptions[i];
+			if (prefix == null || sub.prefix == prefix) {
+				sub.source.removeRebuildListener(sub.listener);
+				interactiveSubscriptions.splice(i, 1);
+			} else i++;
 		}
 	}
 

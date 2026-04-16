@@ -14,6 +14,8 @@ import bh.test.BuilderTestBase.parseExpectingError;
 import bh.multianim.MultiAnimParser.SettingValue;
 import bh.multianim.MultiAnimParser.CustomFilterArgType;
 import bh.base.FilterManager;
+import bh.base.MAObject;
+import bh.base.MAObject.MultiAnimObjectData;
 import bh.ui.UIElement.TileHelper;
 
 /**
@@ -5894,26 +5896,26 @@ class BuilderUnitTest extends BuilderTestBase {
 		Assert.equals(1, bitmaps.length);
 		Assert.equals(10, Std.int(bitmaps[0].tile.width)); // #FF0000 → first arm
 
-		// Second value of first pipe arm
-		result.setParameter("tint", 0x00FF00);
+		// Second value of first pipe arm (pass the already-baked AARRGGBB form)
+		result.setParameter("tint", 0xFF00FF00);
 		bitmaps = findVisibleBitmapDescendants(result.object);
 		Assert.equals(1, bitmaps.length);
 		Assert.equals(10, Std.int(bitmaps[0].tile.width));
 
 		// First value of second pipe arm
-		result.setParameter("tint", 0x0000FF);
+		result.setParameter("tint", 0xFF0000FF);
 		bitmaps = findVisibleBitmapDescendants(result.object);
 		Assert.equals(1, bitmaps.length);
 		Assert.equals(20, Std.int(bitmaps[0].tile.width));
 
 		// Second value of second pipe arm
-		result.setParameter("tint", 0xFFFF00);
+		result.setParameter("tint", 0xFFFFFF00);
 		bitmaps = findVisibleBitmapDescendants(result.object);
 		Assert.equals(1, bitmaps.length);
 		Assert.equals(20, Std.int(bitmaps[0].tile.width));
 
 		// Value not in any pipe arm — fall through to default (99px)
-		result.setParameter("tint", 0x123456);
+		result.setParameter("tint", 0xFF123456);
 		bitmaps = findVisibleBitmapDescendants(result.object);
 		Assert.equals(1, bitmaps.length);
 		Assert.equals(99, Std.int(bitmaps[0].tile.width));
@@ -5953,27 +5955,22 @@ class BuilderUnitTest extends BuilderTestBase {
 		Assert.equals(1, bitmaps.length);
 		Assert.equals(66, Std.int(bitmaps[0].tile.width));
 
-		// setParameter(0) footgun sibling: lands on the opaque black arm (88px), not
-		// a hypothetical transparent arm. Documents the non-idempotence of
-		// addAlphaIfNotPresent at the runtime builder boundary too.
+		// Strict-D: `setParameter("tint", 0)` is preserved verbatim. There's no
+		// transparent arm in this programmable, so it falls through to default (99px).
 		result.setParameter("tint", 0);
 		bitmaps = findVisibleBitmapDescendants(result.object);
 		Assert.equals(1, bitmaps.length);
-		Assert.equals(88, Std.int(bitmaps[0].tile.width));
+		Assert.equals(99, Std.int(bitmaps[0].tile.width));
 	}
 
 	@Test
-	public function testParser0xColorLiteralAlphaBaking():Void {
-		// Regression: `0xRRGGBB` literals in .manim source must bake 0xFF alpha so they
-		// match the equivalent `#RRGGBB` literal at arm-compare time. Previously they
-		// were stored un-baked and no arm matched. The fix must use
-		// addAlphaIfNotPresent — NOT an unconditional OR — so that explicit-alpha forms
-		// like `0x80FF0000` (Heaps AARRGGBB convention) are preserved.
-		//
-		// Arm literals use CSS #RRGGBBAA convention — `#FF000080` (RR=FF, GG=00, BB=00, AA=80)
-		// → Heaps 0x80FF0000.
+	public function testParser0xColorLiteralPreserved():Void {
+		// Strict-D: `0x...` literals in .manim are Heaps AARRGGBB and preserved
+		// verbatim — no alpha baking. `0xFF0000` means transparent red (top byte
+		// = 0), so the default tint below does NOT match `#FF0000` (which bakes
+		// to `0xFFFF0000`). Use `0xFFFF0000` or `#FF0000` for opaque red.
 		final result = buildFromSource("
-			#test programmable(tint:color=0xFF0000) {
+			#test programmable(tint:color=0xFFFF0000) {
 				@switch(tint) {
 					#FF0000:   bitmap(generated(color(11, 10, #fff)));
 					#FF000080: bitmap(generated(color(22, 10, #fff))); // Heaps 0x80FF0000
@@ -5982,19 +5979,22 @@ class BuilderUnitTest extends BuilderTestBase {
 			}
 		", "test", null, Incremental);
 
-		// Default `0xFF0000` must bake to `0xFFFF0000` and hit the #FF0000 arm (11px).
-		// Without alpha baking on the 0x path, `_tint = 0xFF0000` and neither arm matches.
+		// Default `0xFFFF0000` is identical to the baked `#FF0000` arm → 11px.
 		var bitmaps = findVisibleBitmapDescendants(result.object);
 		Assert.equals(1, bitmaps.length);
 		Assert.equals(11, Std.int(bitmaps[0].tile.width));
 
-		// Explicit-alpha value: Heaps 0x80FF0000 (semi-transparent red) must hit the
-		// #FF000080 arm. Runtime setParameter also bakes via addAlphaIfNotPresent (no-op
-		// for non-zero alpha).
+		// Explicit-alpha value: `0x80FF0000` (semi-transparent red) → `#FF000080` arm.
 		result.setParameter("tint", 0x80FF0000);
 		bitmaps = findVisibleBitmapDescendants(result.object);
 		Assert.equals(1, bitmaps.length);
 		Assert.equals(22, Std.int(bitmaps[0].tile.width));
+
+		// Un-baked 0xFF0000 (transparent red) does NOT match #FF0000 → default (99px).
+		result.setParameter("tint", 0xFF0000);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(99, Std.int(bitmaps[0].tile.width));
 	}
 
 	@Test
@@ -6027,11 +6027,10 @@ class BuilderUnitTest extends BuilderTestBase {
 
 	@Test
 	public function testParser0xColorLiteralExplicit8DigitZeroAlpha():Void {
-		// Regression: 8-hex-digit `0x` literals must preserve their value verbatim even
-		// when the alpha byte is zero. `0x00FF0000` means "fully transparent red" and
-		// must NOT be collapsed to opaque red (`0xFFFF0000`). The parser distinguishes
-		// this from the 6-digit shorthand `0xFF0000` by looking at the source string
-		// length before Std.parseInt collapses leading zeros.
+		// Regression: `0x` color literals preserve their value verbatim, including
+		// 0-alpha cases. `0x00FF0000` is fully transparent red and must NOT be
+		// collapsed to opaque red (`0xFFFF0000`). Strict-D: the top byte IS alpha
+		// in Heaps convention, regardless of literal length.
 		//
 		// Arm literals use CSS #RRGGBBAA: `#FF000000` → Heaps 0x00FF0000 (matches),
 		// `#FF0000` → 0xFFFF0000 (opaque red — must NOT match).
@@ -6329,6 +6328,547 @@ class BuilderUnitTest extends BuilderTestBase {
 		bitmaps = findVisibleBitmapDescendants(result.object);
 		Assert.equals(1, bitmaps.length);
 		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+	}
+
+	// ==================== Switch/Repeat rebuild registration retention ====================
+	// Regression coverage for a bug where SWITCH arm rebuilds and param-dependent REPEAT
+	// rebuilds passed a throwaway InternalBuilderResults to the recursive build(), so any
+	// interactives / slots / dynamicRefs / named elements registered inside the new arm or
+	// new iterations were orphaned and never visible via the parent BuilderResult.
+	// See MultiAnimBuilder.hx:4452 (SWITCH) and :4675 (REPEAT) rebuild closures.
+
+	static function findInteractiveById(result:bh.multianim.MultiAnimBuilder.BuilderResult, id:String):Null<MAObject> {
+		for (obj in result.interactives) {
+			switch obj.multiAnimType {
+				case MAInteractive(_, _, identifier, _) if (identifier == id): return obj;
+				case _:
+			}
+		}
+		return null;
+	}
+
+	static function countInteractives(result:bh.multianim.MultiAnimBuilder.BuilderResult):Int {
+		var n = 0;
+		for (obj in result.interactives) {
+			switch obj.multiAnimType {
+				case MAInteractive(_, _, _, _): n++;
+				case _:
+			}
+		}
+		return n;
+	}
+
+	@Test
+	public function testIncrementalSwitchInteractiveVisibleAfterArmSwitch():Void {
+		// Each arm registers its own interactive id. After flipping arms the new arm's
+		// interactive must be findable in result.interactives.
+		final result = buildFromSource("
+			#test programmable(mode:[a, b]=a) {
+				@switch(mode) {
+					a: interactive(40, 40, \"hitA\"): 0, 0;
+					b: interactive(60, 60, \"hitB\"): 0, 0;
+				}
+			}
+		", "test", null, Incremental);
+
+		Assert.notNull(findInteractiveById(result, "hitA"), "hitA should be present in initial arm a");
+
+		result.setParameter("mode", "b");
+		Assert.notNull(findInteractiveById(result, "hitB"),
+			"hitB should be present after switching to arm b — currently orphaned by throwaway InternalBuilderResults");
+
+		result.setParameter("mode", "a");
+		Assert.notNull(findInteractiveById(result, "hitA"),
+			"hitA should be present after switching back to arm a");
+	}
+
+	@Test
+	public function testIncrementalSwitchSlotVisibleAfterArmSwitch():Void {
+		// A named slot inside a switch arm must be retrievable via getSlot() after rebuild.
+		final result = buildFromSource("
+			#test programmable(mode:[a, b]=a) {
+				@switch(mode) {
+					a {
+						#slotA slot {
+							bitmap(generated(color(10, 10, #f00))): 0, 0
+						}
+					}
+					b {
+						#slotB slot {
+							bitmap(generated(color(20, 20, #0f0))): 0, 0
+						}
+					}
+				}
+			}
+		", "test", null, Incremental);
+
+		Assert.notNull(result.getSlot("slotA"), "slotA should exist in initial arm a");
+
+		result.setParameter("mode", "b");
+		// getSlot throws when missing — capture as Null via try/catch for a clearer assert message.
+		var slotB:Dynamic = null;
+		try { slotB = result.getSlot("slotB"); } catch (_:Dynamic) {}
+		Assert.notNull(slotB,
+			"slotB should be retrievable after switching to arm b — currently orphaned by throwaway InternalBuilderResults");
+	}
+
+	@Test
+	public function testIncrementalSwitchDynamicRefVisibleAfterArmSwitch():Void {
+		// dynamicRef registered inside a switch arm must be retrievable after rebuild.
+		final result = buildFromSource("
+			#leafA programmable() {
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+			#leafB programmable() {
+				bitmap(generated(color(20, 20, #0f0))): 0, 0
+			}
+			#test programmable(mode:[a, b]=a) {
+				@switch(mode) {
+					a: dynamicRef($leafA): 0, 0;
+					b: dynamicRef($leafB): 0, 0;
+				}
+			}
+		", "test", null, Incremental);
+
+		Assert.notNull(result.getDynamicRef("leafA"), "leafA dynamicRef should exist in initial arm a");
+
+		result.setParameter("mode", "b");
+		var refB:Dynamic = null;
+		try { refB = result.getDynamicRef("leafB"); } catch (_:Dynamic) {}
+		Assert.notNull(refB,
+			"leafB dynamicRef should be retrievable after switching to arm b — currently orphaned by throwaway InternalBuilderResults");
+	}
+
+	@Test
+	public function testIncrementalSwitchNamedElementVisibleAfterArmSwitch():Void {
+		// A named element registered inside a switch arm must be retrievable via hasName/getUpdatable after rebuild.
+		final result = buildFromSource("
+			#test programmable(mode:[a, b]=a) {
+				@switch(mode) {
+					a {
+						#namedA bitmap(generated(color(10, 10, #f00))): 0, 0
+					}
+					b {
+						#namedB bitmap(generated(color(20, 20, #0f0))): 0, 0
+					}
+				}
+			}
+		", "test", null, Incremental);
+
+		Assert.isTrue(result.hasName("namedA"), "namedA should be in result.names for initial arm a");
+
+		result.setParameter("mode", "b");
+		Assert.isTrue(result.hasName("namedB"),
+			"namedB should be in result.names after switching to arm b — currently orphaned by throwaway InternalBuilderResults");
+	}
+
+	@Test
+	public function testIncrementalSwitchNoStaleAccumulation():Void {
+		// Stale-entry regression: switching arms back-and-forth must not accumulate dead entries
+		// in the parent internalResults. After N flips, counts must match what only the active arm registers.
+		final result = buildFromSource("
+			#test programmable(mode:[a, b]=a) {
+				@switch(mode) {
+					a {
+						interactive(40, 40, \"hitA\"): 0, 0
+						#slotA slot {
+							bitmap(generated(color(10, 10, #f00))): 0, 0
+						}
+					}
+					b {
+						interactive(60, 60, \"hitB\"): 0, 0
+						#slotB slot {
+							bitmap(generated(color(20, 20, #0f0))): 0, 0
+						}
+					}
+				}
+			}
+		", "test", null, Incremental);
+
+		// Initial: arm a → 1 interactive (hitA), 1 slot (slotA)
+		Assert.equals(1, countInteractives(result), "initial: 1 interactive in arm a");
+		Assert.equals(1, result.slots.length, "initial: 1 slot in arm a");
+
+		// Flip back and forth several times — collections must not grow.
+		for (i in 0...3) {
+			result.setParameter("mode", "b");
+			Assert.equals(1, countInteractives(result), 'after switch to b (iter $i): exactly 1 interactive, no stale');
+			Assert.equals(1, result.slots.length, 'after switch to b (iter $i): exactly 1 slot, no stale');
+			Assert.notNull(findInteractiveById(result, "hitB"));
+			Assert.isNull(findInteractiveById(result, "hitA"), 'hitA must not survive switch to b (iter $i)');
+
+			result.setParameter("mode", "a");
+			Assert.equals(1, countInteractives(result), 'after switch to a (iter $i): exactly 1 interactive, no stale');
+			Assert.equals(1, result.slots.length, 'after switch to a (iter $i): exactly 1 slot, no stale');
+			Assert.notNull(findInteractiveById(result, "hitA"));
+			Assert.isNull(findInteractiveById(result, "hitB"), 'hitB must not survive switch to a (iter $i)');
+		}
+	}
+
+	@Test
+	public function testIncrementalRepeatableInteractiveShrinkNoStale():Void {
+		// When the repeat count shrinks, removed iterations' interactives must be dropped from
+		// internalResults (not just from the scene graph).
+		final result = buildFromSource("
+			#test programmable(count:uint=4) {
+				repeatable($i, step($count, dx: 30)) {
+					interactive(20, 20, $i): 0, 0
+				}
+			}
+		", "test", null, Incremental);
+
+		Assert.equals(4, countInteractives(result));
+
+		result.setParameter("count", 2);
+		Assert.equals(2, countInteractives(result), "shrinking count must remove old entries, not just hide them");
+		Assert.notNull(findInteractiveById(result, "0"));
+		Assert.notNull(findInteractiveById(result, "1"));
+		Assert.isNull(findInteractiveById(result, "2"), "iteration 2 must be removed when count shrinks to 2");
+		Assert.isNull(findInteractiveById(result, "3"), "iteration 3 must be removed when count shrinks to 2");
+	}
+
+	@Test
+	public function testIncrementalRepeatableInteractiveCountChange():Void {
+		// Param-dependent repeat count: increasing $count must register interactives for the new iterations.
+		final result = buildFromSource("
+			#test programmable(count:uint=2) {
+				repeatable($i, step($count, dx: 30)) {
+					interactive(20, 20, $i): 0, 0
+				}
+			}
+		", "test", null, Incremental);
+
+		Assert.equals(2, countInteractives(result), "should have 2 interactives initially");
+		Assert.notNull(findInteractiveById(result, "0"));
+		Assert.notNull(findInteractiveById(result, "1"));
+
+		// Increase count — new iterations rebuild via param-dependent repeat closure.
+		result.setParameter("count", 4);
+		Assert.equals(4, countInteractives(result),
+			"should have 4 interactives after count increase — new iterations currently orphan their registrations");
+		Assert.notNull(findInteractiveById(result, "2"));
+		Assert.notNull(findInteractiveById(result, "3"));
+	}
+
+	#if MULTIANIM_DEV
+	// ==================== Per-element bookkeeping cleanup on rebuild (dev-only) ====================
+	// Verifies that SWITCH/REPEAT rebuild closures clean up nested per-element bookkeeping (tracked
+	// expressions, conditional entries, dynamicRefBindings, dynamicNameBindings, transition tweens)
+	// when an arm/iteration is destroyed. Without cleanup, repeated arm flips would leak memory.
+
+	@Test
+	public function testIncrementalSwitchTrackedExpressionsCleanedUp():Void {
+		// Arm B contains an inner repeatable with text interpolation, which registers a tracked
+		// expression per iteration. Flipping arms should reclaim those tracked expressions.
+		final result = buildFromSource("
+			#test programmable(mode:[a, b]=a, label:string=\"hi\") {
+				@switch(mode) {
+					a {
+						bitmap(generated(color(10, 10, #f00))): 0, 0
+					}
+					b {
+						repeatable($i, step(3, dx: 20)) {
+							text(dd, '${label}', #fff): 0, 0
+						}
+					}
+				}
+			}
+		", "test", null, Incremental);
+
+		final ctx = result.incrementalContext;
+		Assert.notNull(ctx);
+		final initialCount = ctx.getTrackedExpressionsCount();
+
+		// Flip back and forth — count must not grow unboundedly.
+		for (i in 0...5) {
+			result.setParameter("mode", "b");
+			result.setParameter("mode", "a");
+		}
+
+		final finalCount = ctx.getTrackedExpressionsCount();
+		Assert.equals(initialCount, finalCount,
+			'tracked expressions leaked: $initialCount initial vs $finalCount after 10 flips');
+	}
+
+	@Test
+	public function testIncrementalSwitchConditionalEntriesCleanedUp():Void {
+		// Each arm contains @() conditional elements that register conditionalEntries. Flipping
+		// arms should reclaim conditional entries from the destroyed arm.
+		final result = buildFromSource("
+			#test programmable(mode:[a, b]=a, flag:bool=true) {
+				@switch(mode) {
+					a {
+						@(flag=>true) bitmap(generated(color(10, 10, #f00))): 0, 0
+						@(flag=>false) bitmap(generated(color(20, 20, #00f))): 0, 0
+					}
+					b {
+						@(flag=>true) bitmap(generated(color(30, 30, #0f0))): 0, 0
+						@(flag=>false) bitmap(generated(color(40, 40, #ff0))): 0, 0
+					}
+				}
+			}
+		", "test", null, Incremental);
+
+		final ctx = result.incrementalContext;
+		Assert.notNull(ctx);
+		final initialCount = ctx.getConditionalEntriesCount();
+
+		for (i in 0...5) {
+			result.setParameter("mode", "b");
+			result.setParameter("mode", "a");
+		}
+
+		final finalCount = ctx.getConditionalEntriesCount();
+		Assert.equals(initialCount, finalCount,
+			'conditional entries leaked: $initialCount initial vs $finalCount after 10 flips');
+	}
+
+	@Test
+	public function testIncrementalSwitchDynamicRefBindingsCleanedUp():Void {
+		// Each arm contains a dynamicRef with parameter forwarding, which registers a
+		// dynamicRefBinding. Flipping arms must drop bindings for the orphaned child contexts.
+		final result = buildFromSource("
+			#leaf programmable(val:uint=0) {
+				bitmap(generated(color($val + 1, 10, #f00))): 0, 0
+			}
+			#test programmable(mode:[a, b]=a, value:uint=10) {
+				@switch(mode) {
+					a: dynamicRef($leaf, val=>$value): 0, 0;
+					b: dynamicRef($leaf, val=>$value): 0, 0;
+				}
+			}
+		", "test", null, Incremental);
+
+		final ctx = result.incrementalContext;
+		Assert.notNull(ctx);
+		final initialCount = ctx.getDynamicRefBindingsCount();
+
+		for (i in 0...5) {
+			result.setParameter("mode", "b");
+			result.setParameter("mode", "a");
+		}
+
+		final finalCount = ctx.getDynamicRefBindingsCount();
+		Assert.equals(initialCount, finalCount,
+			'dynamic ref bindings leaked: $initialCount initial vs $finalCount after 10 flips');
+
+		// Sanity: parameter forwarding still works after flips
+		result.setParameter("value", 25);
+		Assert.equals(1, findVisibleBitmapDescendants(result.object).length);
+	}
+
+	@Test
+	public function testIncrementalRepeatTrackedExpressionsCleanedUp():Void {
+		// Param-dependent repeat with text interpolation: each iteration's text(...) registers a
+		// tracked expression. Flipping the iteration count must reclaim tracked expressions from
+		// destroyed iterations and not leak bookkeeping into the parent ctx (incrementalMode must
+		// be reset to false during the rebuild closure, mirroring the initial build).
+		final result = buildFromSource("
+			#test programmable(count:uint=2, label:string=\"hi\") {
+				repeatable($i, step($count, dx: 20)) {
+					text(dd, '${label}', #fff): 0, 0
+				}
+			}
+		", "test", null, Incremental);
+
+		final ctx = result.incrementalContext;
+		Assert.notNull(ctx);
+		final initialCount = ctx.getTrackedExpressionsCount();
+
+		for (i in 0...5) {
+			result.setParameter("count", 4);
+			result.setParameter("count", 2);
+		}
+
+		final finalCount = ctx.getTrackedExpressionsCount();
+		Assert.equals(initialCount, finalCount,
+			'tracked expressions leaked: $initialCount initial vs $finalCount after 10 flips');
+	}
+
+	@Test
+	public function testIncrementalRepeatDynamicRefBindingsCleanedUp():Void {
+		// Param-dependent repeat with dynamicRef in each iteration: every iteration registers a
+		// dynamicRefBinding. Shrinking/growing the count must reclaim bindings for destroyed
+		// iterations.
+		final result = buildFromSource("
+			#leaf programmable(val:uint=0) {
+				bitmap(generated(color($val + 1, 10, #f00))): 0, 0
+			}
+			#test programmable(count:uint=2, value:uint=10) {
+				repeatable($i, step($count, dx: 20)) {
+					dynamicRef($leaf, val=>$value): 0, 0
+				}
+			}
+		", "test", null, Incremental);
+
+		final ctx = result.incrementalContext;
+		Assert.notNull(ctx);
+		final initialCount = ctx.getDynamicRefBindingsCount();
+
+		for (i in 0...5) {
+			result.setParameter("count", 4);
+			result.setParameter("count", 2);
+		}
+
+		final finalCount = ctx.getDynamicRefBindingsCount();
+		Assert.equals(initialCount, finalCount,
+			'dynamic ref bindings leaked: $initialCount initial vs $finalCount after 10 flips');
+
+		// Sanity: parameter forwarding still propagates to iteration children after flips
+		result.setParameter("value", 25);
+		Assert.equals(2, findVisibleBitmapDescendants(result.object).length);
+	}
+
+	@Test
+	public function testIncrementalRepeatRebuildSurvivesManyFlips():Void {
+		// Rebuild closure is tied to the wrapper object (3rd arg to trackExpression). Even after
+		// many flips that repeatedly cleanupDestroyedSubtree the wrapper's descendants, the
+		// rebuild closure itself must not be reaped — subsequent flips must still update the
+		// iteration count correctly. Guards against future cleanup tightening.
+		final result = buildFromSource("
+			#test programmable(count:uint=2) {
+				repeatable($i, step($count, dx: 20)) {
+					interactive(10, 10, $i): 0, 0
+				}
+			}
+		", "test", null, Incremental);
+
+		Assert.equals(2, countInteractives(result), "initial count mismatch");
+
+		for (i in 0...10) {
+			result.setParameter("count", 5);
+			Assert.equals(5, countInteractives(result), 'flip $i to 5: rebuild closure lost?');
+			result.setParameter("count", 3);
+			Assert.equals(3, countInteractives(result), 'flip $i to 3: rebuild closure lost?');
+		}
+	}
+	#end
+
+	// ==================== Rebuild listener API ====================
+	// addRebuildListener fires once per applyUpdates cycle when any parameter changed. Used by
+	// screen-side helpers to resync interactive wrappers after a @switch arm flip.
+
+	@Test
+	public function testRebuildListenerFiresOnSetParameter():Void {
+		final result = buildFromSource("
+			#test programmable(x:uint=10) {
+				bitmap(generated(color($x, 10, #f00))): 0, 0
+			}
+		", "test", null, Incremental);
+
+		var fireCount = 0;
+		result.addRebuildListener(() -> fireCount++);
+
+		Assert.equals(0, fireCount, "listener should not fire on initial build");
+
+		result.setParameter("x", 20);
+		Assert.equals(1, fireCount, "listener should fire once per setParameter");
+
+		result.setParameter("x", 30);
+		Assert.equals(2, fireCount, "listener should fire on subsequent setParameter calls");
+	}
+
+	@Test
+	public function testRebuildListenerFiresOncePerBatch():Void {
+		final result = buildFromSource("
+			#test programmable(x:uint=10, y:uint=10) {
+				bitmap(generated(color($x, $y, #f00))): 0, 0
+			}
+		", "test", null, Incremental);
+
+		var fireCount = 0;
+		result.addRebuildListener(() -> fireCount++);
+
+		// Single batched update should fire listener exactly once
+		result.beginUpdate();
+		result.setParameter("x", 20);
+		result.setParameter("y", 30);
+		result.endUpdate();
+
+		Assert.equals(1, fireCount, "batched setParameter calls should fire listener once");
+	}
+
+	@Test
+	public function testRebuildListenerSeesPostRebuildState():Void {
+		// Listener fires AFTER rebuild closures complete, so result.interactives reflects the new arm.
+		final result = buildFromSource("
+			#test programmable(mode:[a, b]=a) {
+				@switch(mode) {
+					a: interactive(40, 40, \"hitA\"): 0, 0;
+					b: interactive(60, 60, \"hitB\"): 0, 0;
+				}
+			}
+		", "test", null, Incremental);
+
+		var observedIds:Array<String> = [];
+		result.addRebuildListener(() -> {
+			observedIds = [];
+			for (obj in result.interactives) {
+				switch obj.multiAnimType {
+					case MAInteractive(_, _, id, _): observedIds.push(id);
+					case _:
+				}
+			}
+		});
+
+		result.setParameter("mode", "b");
+		Assert.equals(1, observedIds.length, "listener should observe exactly 1 interactive after switch");
+		Assert.equals("hitB", observedIds[0], "listener should observe new arm's interactive id");
+
+		result.setParameter("mode", "a");
+		Assert.equals(1, observedIds.length);
+		Assert.equals("hitA", observedIds[0]);
+	}
+
+	@Test
+	public function testRebuildListenerRemove():Void {
+		final result = buildFromSource("
+			#test programmable(x:uint=10) {
+				bitmap(generated(color($x, 10, #f00))): 0, 0
+			}
+		", "test", null, Incremental);
+
+		var fireCount = 0;
+		final listener = () -> fireCount++;
+		result.addRebuildListener(listener);
+
+		result.setParameter("x", 20);
+		Assert.equals(1, fireCount);
+
+		result.removeRebuildListener(listener);
+		result.setParameter("x", 30);
+		Assert.equals(1, fireCount, "removed listener should not fire");
+	}
+
+	@Test
+	public function testRebuildListenerThrowsInNonIncrementalMode():Void {
+		// Non-incremental BuilderResult is a static snapshot — addRebuildListener/removeRebuildListener
+		// throw so the mismatch surfaces at wiring time rather than letting dependent setParameter
+		// calls blow up later. Callers (e.g. UIScreen.addInteractives, UICardHandHelper) must gate
+		// on `isIncremental` before subscribing.
+		final result = buildFromSource("
+			#test programmable() {
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		", "test"); // no Incremental flag
+
+		Assert.isFalse(result.isIncremental, "static snapshot should report isIncremental=false");
+
+		var threw = false;
+		try {
+			result.addRebuildListener(() -> {});
+		} catch (e:Dynamic) {
+			threw = true;
+		}
+		Assert.isTrue(threw, "addRebuildListener should throw on non-incremental result");
+
+		threw = false;
+		try {
+			result.removeRebuildListener(() -> {});
+		} catch (e:Dynamic) {
+			threw = true;
+		}
+		Assert.isTrue(threw, "removeRebuildListener should throw on non-incremental result");
 	}
 
 	@Test

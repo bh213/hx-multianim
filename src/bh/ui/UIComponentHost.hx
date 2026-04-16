@@ -1,7 +1,7 @@
 package bh.ui;
 
 import bh.ui.screens.UIScreen.LayersEnum;
-import bh.multianim.MultiAnimBuilder.BuilderResult;
+import bh.ui.UIInteractiveSource;
 
 /**
  * Interface for services that higher-order components (CardHand, etc.) need from their host.
@@ -13,8 +13,9 @@ interface UIComponentHost {
 	/** Add an h2d.Object to a named scene layer. */
 	function addObjectToLayer(object:h2d.Object, ?layer:LayersEnum):h2d.Object;
 
-	/** Register all interactives from a BuilderResult for event dispatch. */
-	function addInteractives(r:BuilderResult, ?prefix:String):Array<UIInteractiveWrapper>;
+	/** Register all interactives from a source for event dispatch. Accepts either a
+	 *  `BuilderResult` (runtime path) or a codegen instance — both implement `UIInteractiveSource`. */
+	function addInteractives(source:UIInteractiveSource, ?prefix:String):Array<UIInteractiveWrapper>;
 
 	/** Unregister interactives by prefix. */
 	function removeInteractives(?prefix:String):Void;

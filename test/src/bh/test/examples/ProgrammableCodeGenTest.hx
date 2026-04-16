@@ -3494,9 +3494,6 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 				xp: 60, xpMax: 100, level: 3
 			}, ["levelUpButton" => PVObject(buttonObj)]);
 
-			// Root pos: 50, 80 from .manim is not applied in codegen (caller sets position)
-			instance.x = 50;
-			instance.y = 80;
 			s2d.addChild(instance);
 			addTitleOverlay();
 		} catch (e:Dynamic) {
@@ -4618,6 +4615,13 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		simpleMacroTest(100, "switchDemo", () -> createMp().switchDemo.create(), async);
 	}
 
+	// ==================== Root Properties: pos+scale+rotation+alpha+filter on programmable root ====================
+
+	@Test
+	public function test105_RootProperties(async:utest.Async):Void {
+		simpleMacroTest(105, "rootProperties", () -> createMp().rootProperties.create(), async, null, null, 1.0);
+	}
+
 	// ==================== AnimFlip: flipX/flipY in .anim files (#13) ====================
 
 	@Test
@@ -4836,25 +4840,27 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		Assert.equals(1, bitmaps.length);
 		Assert.equals(44, Std.int(bitmaps[0].tile.width));
 
-		// Un-baked 0xFF0000 → first arm (11px)
-		instance.setTint(0xFF0000);
+		// Opaque red 0xFFFF0000 → first arm (11px). `setTint(0xFF0000)` no longer
+		// works — under strict-D semantics it is transparent red (top byte = 0)
+		// and misses every arm.
+		instance.setTint(0xFFFF0000);
 		bitmaps = findVisibleBitmapDescendants(instance);
 		Assert.equals(1, bitmaps.length);
 		Assert.equals(11, Std.int(bitmaps[0].tile.width));
 
-		// Un-baked 0x00FF00 → second arm (22px)
-		instance.setTint(0x00FF00);
+		// Opaque green 0xFF00FF00 → second arm (22px)
+		instance.setTint(0xFF00FF00);
 		bitmaps = findVisibleBitmapDescendants(instance);
 		Assert.equals(1, bitmaps.length);
 		Assert.equals(22, Std.int(bitmaps[0].tile.width));
 
-		// Already-baked 0xFF0000FF → third arm (33px) — addAlphaIfNotPresent is a no-op
+		// Opaque blue 0xFF0000FF → third arm (33px)
 		instance.setTint(0xFF0000FF);
 		bitmaps = findVisibleBitmapDescendants(instance);
 		Assert.equals(1, bitmaps.length);
 		Assert.equals(33, Std.int(bitmaps[0].tile.width));
 
-		// Unknown value → default arm (44px)
+		// Transparent 0x123456 → no arm matches → default arm (44px).
 		instance.setTint(0x123456);
 		bitmaps = findVisibleBitmapDescendants(instance);
 		Assert.equals(1, bitmaps.length);
@@ -4862,11 +4868,11 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	}
 
 	@Test
-	public function testCodegenCreateColorParamAlphaBaked():Void {
-		// Regression sibling: the generated constructor must also alpha-bake PPTColor
-		// params so factory.create(tint=0xFF0000) hits the #FF0000 arm.
+	public function testCodegenCreateColorParamPreserved():Void {
+		// The generated constructor writes PPTColor params through unchanged
+		// (strict-D: Int is final). `create(0xFFFF0000)` lands on the #FF0000 arm.
 		final mp = createMp();
-		final instance = mp.colorSwitchWidths.create(0xFF0000);
+		final instance = mp.colorSwitchWidths.create(0xFFFF0000);
 		final bitmaps = findVisibleBitmapDescendants(instance);
 		Assert.equals(1, bitmaps.length);
 		Assert.equals(11, Std.int(bitmaps[0].tile.width));
@@ -4874,11 +4880,9 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	@Test
 	public function testCodegenCreateFromColorParam():Void {
-		// createFrom anon-struct path must alpha-bake PPTColor via the same ColorArg
-		// field type. The anon struct field is Int (publicParamType), null-coalesced to
-		// the local Int, then written into the ColorArg field via `from Int`.
+		// createFrom anon-struct path preserves PPTColor ints verbatim.
 		final mp = createMp();
-		final instance = mp.colorSwitchWidths.createFrom({tint: 0x0000FF});
+		final instance = mp.colorSwitchWidths.createFrom({tint: 0xFF0000FF});
 		final bitmaps = findVisibleBitmapDescendants(instance);
 		Assert.equals(1, bitmaps.length);
 		Assert.equals(33, Std.int(bitmaps[0].tile.width));
@@ -4938,45 +4942,35 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	}
 
 	@Test
-	public function testCodegenColorParamTransparentFootgun():Void {
-		// Locks in the known limitation that `addAlphaIfNotPresent` (called by
-		// ColorArg.fromInt) is NOT idempotent on 0-alpha inputs: setTint(0) intends
-		// transparent but gets clobbered to 0xFF000000 and lands on the opaque-black
-		// arm (#000000 → 0xFF000000) instead of the transparent literal arm
-		// (#00000000 → 0x00000000). The transparent arm is therefore unreachable from
-		// runtime callers — ONLY a parser-side literal can land there.
-		//
-		// This test documents the contract: any future change that actually preserves
-		// 0-alpha inputs will flip these assertions, forcing the author to re-examine
-		// the trade-off rather than silently regressing it.
+	public function testCodegenColorParamTransparentPreserved():Void {
+		// Strict-D: `setTint(0)` means "fully transparent" and is preserved
+		// verbatim, landing on the `#00000000` arm (77px). `setTint(0xFF000000)`
+		// is opaque black, landing on the `#000000` arm (88px). The two are now
+		// distinguishable at runtime — previously the Int-boundary bake clobbered
+		// 0 → 0xFF000000 so the transparent arm was unreachable.
 		final mp = createMp();
 		final a = mp.colorSwitchAlpha.create();
 
-		// setTint(0): caller intends transparent → actually opaque black (88px).
 		a.setTint(0);
 		var bitmaps = findVisibleBitmapDescendants(a);
 		Assert.equals(1, bitmaps.length);
-		Assert.equals(88, Std.int(bitmaps[0].tile.width),
-			"setTint(0) is clobbered to 0xFF000000 (opaque black) by ColorArg.fromInt — if this fails, either the footgun was fixed (update to 77) or alpha handling regressed.");
+		Assert.equals(77, Std.int(bitmaps[0].tile.width),
+			"setTint(0) must land on the transparent arm (#00000000) — if this fails, alpha baking has been reintroduced somewhere in the Int pipeline.");
 
-		// setTint(0xFF000000): explicit opaque black → same arm (88px) — the two
-		// runtime inputs are indistinguishable after baking, by design.
 		a.setTint(0xFF000000);
 		bitmaps = findVisibleBitmapDescendants(a);
 		Assert.equals(1, bitmaps.length);
 		Assert.equals(88, Std.int(bitmaps[0].tile.width));
 
-		// Constructor path: same footgun applies.
 		final b = mp.colorSwitchAlpha.create(0);
 		bitmaps = findVisibleBitmapDescendants(b);
 		Assert.equals(1, bitmaps.length);
-		Assert.equals(88, Std.int(bitmaps[0].tile.width));
+		Assert.equals(77, Std.int(bitmaps[0].tile.width));
 
-		// createFrom path: same footgun applies.
 		final c = mp.colorSwitchAlpha.createFrom({tint: 0});
 		bitmaps = findVisibleBitmapDescendants(c);
 		Assert.equals(1, bitmaps.length);
-		Assert.equals(88, Std.int(bitmaps[0].tile.width));
+		Assert.equals(77, Std.int(bitmaps[0].tile.width));
 	}
 
 	// ==================== @switch arm context propagation (B1, B2) ====================
@@ -5095,6 +5089,74 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		}
 		Assert.isFalse(threw,
 			"slot.setParameter('state', 'on') should not throw — slot rebuild must use inherited grid system (got: " + errMsg + ")");
+	}
+
+	// Regression: indexed names and slots declared inside @switch arms must be addressable
+	// from codegen instances via getUpdatable2D / getSlot, and arm swaps must evict old
+	// entries (single sink per switch ordinal).
+	@Test
+	public function testCodegenSwitchArmIndexedNames():Void {
+		final mp = createMp();
+		final instance:Dynamic = mp.switchArmNames.create(); // default layout=grid
+
+		// Arm `grid` declares #gridCell[$x, $y] inside a repeatable2d(3, 2).
+		// After initial build, getUpdatable2D should find cells at all (x, y) in the grid.
+		final gridCell00:Null<h2d.Object> = instance.getUpdatable2D("gridCell", 0, 0);
+		Assert.notNull(gridCell00, "gridCell[0,0] should be addressable after initial build");
+		final gridCell21:Null<h2d.Object> = instance.getUpdatable2D("gridCell", 2, 1);
+		Assert.notNull(gridCell21, "gridCell[2,1] should be addressable after initial build");
+
+		// listItem belongs to the other arm — should not be present now.
+		Assert.isNull(instance.getUpdatableByIndex("listItem", 0),
+			"listItem[0] must be null before arm swap — only grid arm is active");
+
+		// Flip to arm `list`. Old gridCell entries must be evicted; listItem entries present.
+		instance.setLayout(1);
+
+		Assert.isNull(instance.getUpdatable2D("gridCell", 0, 0),
+			"gridCell[0,0] should be evicted after swap to list arm");
+		Assert.isNull(instance.getUpdatable2D("gridCell", 2, 1),
+			"gridCell[2,1] should be evicted after swap to list arm");
+		final listItem0:Null<h2d.Object> = instance.getUpdatableByIndex("listItem", 0);
+		Assert.notNull(listItem0, "listItem[0] should be addressable after arm swap to list");
+		final listItem3:Null<h2d.Object> = instance.getUpdatableByIndex("listItem", 3);
+		Assert.notNull(listItem3, "listItem[3] should be addressable after arm swap to list");
+
+		// Swap back to grid — new gridCell entries should be fresh instances (old ones were evicted).
+		instance.setLayout(0);
+		final gridCell00again:Null<h2d.Object> = instance.getUpdatable2D("gridCell", 0, 0);
+		Assert.notNull(gridCell00again, "gridCell[0,0] should reappear after swap back to grid arm");
+		Assert.isNull(instance.getUpdatableByIndex("listItem", 0),
+			"listItem[0] should be evicted after swap back to grid");
+	}
+
+	// Regression: #name slot declared inside a @switch arm must be reachable via
+	// getSlot("name") — the dispatcher falls through to runtime sink lookup when
+	// no static slot with that name was generated at compile time.
+	@Test
+	public function testCodegenSwitchArmSlot():Void {
+		final mp = createMp();
+		final instance:Dynamic = mp.switchArmSlot.create(); // default mode=active
+
+		// Active arm declares #panel slot — should be reachable via getSlot("panel").
+		// Pass explicit nulls for index/indexY — HashLink Dynamic dispatch needs full arity.
+		final panelSlot:Null<bh.multianim.MultiAnimBuilder.SlotHandle> = instance.getSlot("panel", null, null);
+		Assert.notNull(panelSlot, "panel slot should be addressable after initial build (declared in active arm)");
+
+		// Flip to dormant arm — panel slot is not declared there. getSlot should throw.
+		instance.setMode(1);
+		var threw = false;
+		try {
+			instance.getSlot("panel", null, null);
+		} catch (e:Dynamic) {
+			threw = true;
+		}
+		Assert.isTrue(threw, "getSlot('panel') should throw after swap to dormant arm — slot was evicted");
+
+		// Flip back — slot should reappear.
+		instance.setMode(0);
+		final panelAgain:Null<bh.multianim.MultiAnimBuilder.SlotHandle> = instance.getSlot("panel", null, null);
+		Assert.notNull(panelAgain, "panel slot should reappear after swap back to active arm");
 	}
 
 	static function containsDescendant(root:h2d.Object, target:h2d.Object):Bool {

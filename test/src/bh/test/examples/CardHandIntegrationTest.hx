@@ -684,4 +684,84 @@ class CardHandIntegrationTest extends BuilderTestBase {
 		Assert.isNull(h.helper.customPlayAnimation);
 		Assert.notNull(h.helper.customDiscardAnimation);
 	}
+
+	// ==================== Card with @switch arms — interactiveHelper auto-resync ====================
+	// Verifies that the private `interactiveHelper` inside UICardHandHelper auto-resyncs its
+	// bindings when a card's BuilderResult rebuilds (e.g. `@switch` arm flip inside the card).
+	// Regression guard for the previously-known limitation where cards with internal switch arms
+	// would have stale bindings after a parameter change.
+
+	static final SWITCH_CARD_MANIM = "
+		#switchCard programmable(mode:[armA, armB]=armA, status:[normal,hover,pressed,disabled]=normal) {
+			@switch(mode) {
+				armA: interactive(80, 110, \"hitA\", bind => \"status\"): 0, 0;
+				armB: interactive(80, 110, \"hitB\", bind => \"status\"): 0, 0;
+			}
+		}
+	";
+
+	static function createSwitchHelper():{helper:UICardHandHelper, screen:UITestScreen} {
+		var builder = BuilderTestBase.builderFromSource(SWITCH_CARD_MANIM);
+		var screen = new UITestScreen();
+		var helper = new UICardHandHelper(screen, builder);
+		return {helper: helper, screen: screen};
+	}
+
+	@Test
+	public function testCardHandRebuildListenerResyncOnSwitchArmFlip():Void {
+		var h = createSwitchHelper();
+		h.helper.setHand([{id: "c1", buildName: "switchCard"}]);
+
+		final entry = h.helper.cards[0];
+		final cardInteractiveId = entry.interactiveId;
+
+		// Initial arm: hitA wrapped + bound via the card hand's private helper
+		Assert.notNull(h.screen.getInteractive('$cardInteractiveId.hitA'),
+			"initial: hitA screen wrapper should exist");
+		Assert.isTrue(h.helper.interactiveHelper.hasBinding('$cardInteractiveId.hitA'),
+			"initial: hitA should be bound in interactiveHelper");
+		Assert.isFalse(h.helper.interactiveHelper.hasBinding('$cardInteractiveId.hitB'));
+
+		// Flip the card's internal switch arm via setParameter
+		entry.result.setParameter("mode", "armB");
+
+		// After rebuild, screen wrappers AND interactiveHelper bindings must both resync
+		Assert.isNull(h.screen.getInteractive('$cardInteractiveId.hitA'),
+			"after flip: hitA screen wrapper should be gone");
+		Assert.notNull(h.screen.getInteractive('$cardInteractiveId.hitB'),
+			"after flip: hitB screen wrapper should appear");
+		Assert.isFalse(h.helper.interactiveHelper.hasBinding('$cardInteractiveId.hitA'),
+			"after flip: hitA binding should be removed from interactiveHelper");
+		Assert.isTrue(h.helper.interactiveHelper.hasBinding('$cardInteractiveId.hitB'),
+			"after flip: hitB binding should be added to interactiveHelper");
+
+		// Flip back — hitA returns, hitB gone
+		entry.result.setParameter("mode", "armA");
+		Assert.notNull(h.screen.getInteractive('$cardInteractiveId.hitA'));
+		Assert.isNull(h.screen.getInteractive('$cardInteractiveId.hitB'));
+		Assert.isTrue(h.helper.interactiveHelper.hasBinding('$cardInteractiveId.hitA'));
+		Assert.isFalse(h.helper.interactiveHelper.hasBinding('$cardInteractiveId.hitB'));
+	}
+
+	@Test
+	public function testCardHandRebuildListenerRemovedOnDiscard():Void {
+		var h = createSwitchHelper();
+		h.helper.setHand([{id: "c1", buildName: "switchCard"}]);
+		final entry = h.helper.cards[0];
+		final savedResult = entry.result;
+
+		// Listener should be installed
+		Assert.notNull(entry.rebuildListener, "rebuildListener should be installed on buildCardEntry");
+
+		// Discard the card
+		h.helper.discardCard("c1");
+
+		// Listener should be removed — subsequent setParameter should NOT attempt to resync bindings
+		// on a disposed card. We can't easily inspect the internal listener array, but we can
+		// verify the entry's own field was cleared.
+		Assert.isNull(entry.rebuildListener, "rebuildListener should be cleared after discard");
+
+		// Sanity: calling setParameter on the stale result must not throw — no listener runs.
+		savedResult.setParameter("mode", "armB");
+	}
 }

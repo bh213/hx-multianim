@@ -1,0 +1,86 @@
+version: 1.0
+
+// Programmable with a single interactive + bind metadata — used to verify codegen exposes
+// interactives via getInteractives() and drives state via setParameter("status", ...).
+#codegenBoundBtn programmable(status:[normal,hover,pressed,disabled]=normal) {
+  @(status=>normal) bitmap(generated(color(100, 30, #666666))): 0, 0
+  @(status=>hover) bitmap(generated(color(100, 30, #888888))): 0, 0
+  @(status=>pressed) bitmap(generated(color(100, 30, #AAAAAA))): 0, 0
+  @(status=>disabled) bitmap(generated(color(100, 30, #333333))): 0, 0
+  interactive(100, 30, "btnBound", bind => "status"): 0, 0
+}
+
+// Programmable with autoStatus metadata — screen auto-wires Normal→Hover→Pressed state.
+#codegenAutoBtn programmable(status:[normal,hover,pressed,disabled]=normal) {
+  @(status=>normal) bitmap(generated(color(100, 30, #444444))): 0, 0
+  @(status=>hover) bitmap(generated(color(100, 30, #888800))): 0, 0
+  @(status=>pressed) bitmap(generated(color(100, 30, #AA0000))): 0, 0
+  interactive(100, 30, "btnAuto", autoStatus => "status"): 0, 0
+}
+
+// Regression: parameterized slot inside repeatable, followed by an interactive that
+// uses the outer loop var `$n` in its id. Exercises two bugs:
+//   1) Parser: parameterized slot must push/pop scope so `$n` is still visible after
+//      the slot body closes (otherwise "unknown variable $n. Available: state").
+//   2) Codegen: loop-var interactive id must be emitted as String (otherwise Int).
+#codegenLoopSlot programmable() {
+  repeatable($n, step(3, dx: 50)) {
+    #cell[$n] slot(state:[empty, filled] = empty) {
+      @(state => empty)  bitmap(generated(color(40, 40, #333333))): 0, 0
+      @(state => filled) bitmap(generated(color(40, 40, #4caf50))): 0, 0
+    }
+    interactive(40, 40, $n, type => "cell"): 0, 0
+  }
+}
+
+// Typed parameters of every kind the setParameter() dispatcher has to coerce into.
+// Exercises Int-family coercion (Float→Int, String→Int), PPTString type check,
+// PPTBool multi-form string parsing, and the no-op guard on repeated sets.
+#codegenTypedParams programmable(
+    count:int=3,
+    offset:float=1.5,
+    tint:color=#FF0000,
+    enabled:bool=true,
+    label:string="hello"
+) {
+  bitmap(generated(color(40, 40, #333333))): $count, 0
+}
+
+// Regression for rvToExpr forString handling in leaf + binop cases:
+//   - `$FIXED_ID` goes through finalVarExprs -> RVInteger leaf with forString=true
+//     (leaf case must stringify; previously emitted raw Int -> compile error).
+//   - `$offset` is an int-typed parameter used directly as id (non-enum RVReference
+//     with forString=true; previously returned bare Int field -> compile error).
+//   - `($offset + 1)` exercises the RVParenthesis arithmetic path: inner EBinop
+//     must recurse with forString=false so we get Int+Int arithmetic, then the
+//     parens layer stringifies (mirrors runtime RVParenthesis semantics).
+//   - `$n + $base` (bare OpAdd in string context) is concatenation by design —
+//     matches runtime resolveAsString OpAdd semantics. Codegen must propagate
+//     forString into OpAdd operands for consistent concat behavior.
+#codegenIdExpr programmable(base:int=100, offset:int=7) {
+  @final FIXED_ID = 42
+  interactive(30, 30, $FIXED_ID, kind => "fixed"): 0, 0
+  interactive(30, 30, $offset, kind => "param"): 40, 0
+  interactive(30, 30, ($offset + 1), kind => "arith"): 80, 0
+  repeatable($n, step(3, dx: 40)) {
+    interactive(30, 30, $n + $base, kind => "concat"): 0, 40
+  }
+}
+
+// Programmable with @switch arms containing DIFFERENT interactive ids per arm — used to
+// verify that getInteractives() walks the scene graph and finds the current arm's interactive,
+// and that the rebuild listener fires on arm flip so screen wrappers resync.
+#codegenSwitchBtn programmable(mode:[a,b]=a, status:[normal,hover,pressed,disabled]=normal) {
+  @switch(mode) {
+    a {
+      @(status=>normal) bitmap(generated(color(40, 40, #005500))): 0, 0
+      @(status=>hover) bitmap(generated(color(40, 40, #00AA00))): 0, 0
+      interactive(40, 40, "armHitA", autoStatus => "status"): 0, 0
+    }
+    b {
+      @(status=>normal) bitmap(generated(color(60, 60, #000055))): 0, 0
+      @(status=>hover) bitmap(generated(color(60, 60, #0000AA))): 0, 0
+      interactive(60, 60, "armHitB", autoStatus => "status"): 0, 0
+    }
+  }
+}

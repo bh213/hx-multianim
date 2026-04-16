@@ -45,6 +45,28 @@ class ProgrammableBuilder {
 		return cast _builder;
 	}
 
+	/** Walk an h2d.Object tree and collect all MAObject children. Used by codegen-generated
+	 *  `getInteractives()` methods on programmable instance classes to expose their interactives
+	 *  to `UIScreen.addInteractives` / `UIRichInteractiveHelper.register` without requiring a
+	 *  BuilderResult. Each invocation returns a fresh array so callers can iterate/mutate safely.
+	 *
+	 *  Complexity: O(scene graph size). Typical instance trees have tens to hundreds of nodes,
+	 *  which is fine even for per-frame calls. Not recommended inside tight inner loops. */
+	public static function collectInteractives(obj:h2d.Object):Array<bh.base.MAObject> {
+		final out:Array<bh.base.MAObject> = [];
+		collectInteractivesInto(obj, out);
+		return out;
+	}
+
+	static function collectInteractivesInto(obj:h2d.Object, out:Array<bh.base.MAObject>):Void {
+		if (Std.isOfType(obj, bh.base.MAObject)) {
+			out.push(cast obj);
+		}
+		for (i in 0...obj.numChildren) {
+			collectInteractivesInto(obj.getChildAt(i), out);
+		}
+	}
+
 	/** Load a tile from a sprite sheet by name.
 	 *  Returns a copy so callers never mutate the cached atlas tile. */
 	public function loadTile(sheet:String, name:String):Tile {
@@ -441,10 +463,12 @@ class ProgrammableBuilder {
 
 	/** Rebuild a @switch arm by ordinal. Tears down the old arm and builds the new one.
 	 *  Used by codegen lazy switch — generated setters call this on parameter change.
-	 *  switchOrdinal is the N-th SWITCH node in DFS order of the programmable's tree. */
+	 *  switchOrdinal is the N-th SWITCH node in DFS order of the programmable's tree.
+	 *  When `sink` is provided, results are stored there so the instance can look up
+	 *  indexed names / slots declared inside the arm. */
 	public function rebuildSwitchArm(programmableName:String, switchOrdinal:Int, armIndex:Int, container:h2d.Object,
-			params:Map<String, Dynamic>):Void {
-		getBuilder().rebuildSwitchArmByOrdinal(programmableName, switchOrdinal, armIndex, container, params);
+			params:Map<String, Dynamic>, ?sink:bh.multianim.MultiAnimBuilder.SwitchArmResults):Void {
+		getBuilder().rebuildSwitchArmByOrdinal(programmableName, switchOrdinal, armIndex, container, params, sink);
 	}
 
 	/** Build an arbitrary node by its unique name, forwarding to the builder.

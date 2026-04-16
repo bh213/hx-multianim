@@ -7,53 +7,54 @@ version: 1.0
 
   @alpha(0.3) bitmap(generated(color(1280, 720, yellow)));
 
-  // Row 1: scaled marines (original demo)
-  @scale(6) stateanim("marine.anim", "idle", "direction"=>"l"):200,80
+  // Row 1: scaled marines (original demo). At scale 6, marine pivot (32,48)
+  // means 288px above pivot — y must be >= 290 for top to clear viewport.
+  @scale(6) stateanim("marine.anim", "idle", "direction"=>"l"):200,300
   stateanim("marine.anim", "idle", direction=>"l") {
     scale: 6
     alpha: 0.5
-    pos: 550, 80
+    pos: 550, 300
   }
   @scale(6) stateanim("marine.anim", "idle", direction=>r){
-    pos: 900, 80
+    pos: 900, 300
     filter:replacePalette(file, 0, 1)
   }
 
   // Row 2: direction=l with extra point marker (Mode 1: $ref.extraPoint)
   @final ML_X = 150
-  @final ML_Y = 200
+  @final ML_Y = 470
   #marL stateanim("marine.anim", "idle", "direction"=>"l"): $ML_X, $ML_Y
   // Red triangle at targeting extra point via named element ref
   polygon(#FF0000, filled, -4,-4, 4,-4, 0,4): $marL.extraPoint("targeting").offset($ML_X, $ML_Y)
-  text(m3x6, '${$marL.extraPoint("targeting").x + $ML_X},${$marL.extraPoint("targeting").y + $ML_Y}', #FF0000): 149, 170
+  text(m3x6, '${$marL.extraPoint("targeting").x + $ML_X},${$marL.extraPoint("targeting").y + $ML_Y}', #FF0000): 149, 440
 
   // Row 2: direction=r with extra point marker (Mode 2: extraPoint from file)
   @final MR_X = 450
-  @final MR_Y = 200
+  @final MR_Y = 470
   #marR stateanim("marine.anim", "idle", "direction"=>"r"): $MR_X, $MR_Y
   // Green triangle at targeting extra point via direct .anim file reference
   polygon(#00FF00, filled, -4,-4, 4,-4, 0,4): extraPoint("marine.anim", "idle", "targeting", "direction"=>"r").offset($MR_X, $MR_Y)
-  text(m3x6, '${$marR.extraPoint("targeting").x + $MR_X},${$marR.extraPoint("targeting").y + $MR_Y}', #00FF00): 455, 170
+  text(m3x6, '${$marR.extraPoint("targeting").x + $MR_X},${$marR.extraPoint("targeting").y + $MR_Y}', #00FF00): 455, 440
 
   // Row 3: fire animation extra points
-  @final MF_Y = 400
+  @final MF_Y = 620
   #marFireUp stateanim("marine.anim", "fire-up", "direction"=>"r"): $ML_X, $MF_Y
   // Blue triangle at fire extra point via named ref
   polygon(#0000FF, filled, -4,-4, 4,-4, 0,4): $marFireUp.extraPoint("fire").offset($ML_X, $MF_Y)
-  text(m3x6, '${$marFireUp.extraPoint("fire").x + $ML_X},${$marFireUp.extraPoint("fire").y + $MF_Y}', #0000FF): 155, 363
+  text(m3x6, '${$marFireUp.extraPoint("fire").x + $ML_X},${$marFireUp.extraPoint("fire").y + $MF_Y}', #0000FF): 155, 583
 
   #marFireLeft stateanim("marine.anim", "fire-left", "direction"=>"l"): $MR_X, $MF_Y
   // Cyan triangle at fire extra point via direct anim ref
   polygon(#00FFFF, filled, -4,-4, 4,-4, 0,4): extraPoint("marine.anim", "fire-left", "fire", "direction"=>"l").offset($MR_X, $MF_Y)
-  text(m3x6, '${$marFireLeft.extraPoint("fire").x + $MR_X},${$marFireLeft.extraPoint("fire").y + $MF_Y}', #00FFFF): 440, 374
+  text(m3x6, '${$marFireLeft.extraPoint("fire").x + $MR_X},${$marFireLeft.extraPoint("fire").y + $MF_Y}', #00FFFF): 440, 594
 
   // Fallback test - nonexistent extra point with fallback
   @final FB_X = 99999
   @final FB_Y = 99999
-  #marFB stateanim("marine.anim", "idle", "direction"=>"l"): 700, 200
+  #marFB stateanim("marine.anim", "idle", "direction"=>"l"): 700, 470
   // Magenta triangle at fallback position (off-screen = fallback exercised)
   polygon(#FF00FF, filled, -4,-4, 4,-4, 0,4): extraPoint("marine.anim", "idle", "nonexistent", "direction"=>"l", fallback: $FB_X, $FB_Y)
-  text(m3x6, '${$marFB.extraPoint("nonexistent", $FB_X, $FB_Y).x},${$marFB.extraPoint("nonexistent", $FB_X, $FB_Y).y}', #FF00FF): 720, 162
+  text(m3x6, '${$marFB.extraPoint("nonexistent", $FB_X, $FB_Y).x},${$marFB.extraPoint("nonexistent", $FB_X, $FB_Y).y}', #FF00FF): 720, 432
 }
 
 #main point {

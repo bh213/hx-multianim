@@ -199,12 +199,6 @@ Type.enumEq = function(a,b) {
 };
 var bh_base_ColorUtils = function() { };
 bh_base_ColorUtils.__name__ = true;
-bh_base_ColorUtils.addAlphaIfNotPresent = function(color) {
-	if(color >>> 24 == 0) {
-		color |= -16777216;
-	}
-	return color;
-};
 bh_base_ColorUtils.getAlpha = function(color) {
 	return (color >>> 24) / 255.0;
 };
@@ -1345,6 +1339,7 @@ bh_multianim__$MacroManimParser_MacroLexer.prototype = {
 			if(c == 34) {
 				this.pos++;
 				var buf_b = "";
+				var closed = false;
 				while(this.pos < this.len) {
 					var sc = HxOverrides.cca(this.src,this.pos);
 					if(sc == 92 && this.pos + 1 < this.len) {
@@ -1370,6 +1365,7 @@ bh_multianim__$MacroManimParser_MacroLexer.prototype = {
 					}
 					if(sc == 34) {
 						this.pos++;
+						closed = true;
 						break;
 					}
 					if(sc == 10) {
@@ -1379,6 +1375,9 @@ bh_multianim__$MacroManimParser_MacroLexer.prototype = {
 					buf_b += String.fromCodePoint(sc);
 					this.pos++;
 				}
+				if(!closed) {
+					throw haxe_Exception.thrown("" + this.sourceName + ":" + startLine + ":" + startCol + ": Unterminated string, missing closing double quote");
+				}
 				return new bh_multianim__$MacroManimParser_Token(bh_multianim__$MacroManimParser_MacroTokenType.TQuotedString(buf_b),startLine,startCol);
 			}
 			if(c == 39) {
@@ -1386,7 +1385,7 @@ bh_multianim__$MacroManimParser_MacroLexer.prototype = {
 				var buf = new StringBuf();
 				var parts = [];
 				var hasInterpolation = false;
-				var closed = false;
+				var closed1 = false;
 				while(this.pos < this.len) {
 					var sc1 = HxOverrides.cca(this.src,this.pos);
 					if(sc1 == 92 && this.pos + 1 < this.len) {
@@ -1412,7 +1411,7 @@ bh_multianim__$MacroManimParser_MacroLexer.prototype = {
 					}
 					if(sc1 == 39) {
 						this.pos++;
-						closed = true;
+						closed1 = true;
 						break;
 					}
 					if(sc1 == 36 && this.pos + 1 < this.len && HxOverrides.cca(this.src,this.pos + 1) == 123) {
@@ -1457,7 +1456,7 @@ bh_multianim__$MacroManimParser_MacroLexer.prototype = {
 					buf.b += String.fromCodePoint(sc1);
 					this.pos++;
 				}
-				if(!closed) {
+				if(!closed1) {
 					throw haxe_Exception.thrown("" + this.sourceName + ":" + startLine + ":" + startCol + ": Unterminated string, missing closing single quote");
 				}
 				if(!hasInterpolation) {
@@ -2533,7 +2532,7 @@ bh_multianim_MacroManimParser.prototype = {
 			case 31:
 				var n = _g1.s;
 				this.advance();
-				return this.parseNextExpression(bh_multianim_ReferenceableValue.RVInteger(-this.stringToInt(n)),bh_multianim__$MacroManimParser_ExprType.EAny);
+				return this.parseNextExpression(bh_multianim_ReferenceableValue.RVInteger(-this.stringToInt("0x" + n)),bh_multianim__$MacroManimParser_ExprType.EAny);
 			case 34:
 				var s = _g1.s;
 				this.advance();
@@ -3028,18 +3027,6 @@ bh_multianim_MacroManimParser.prototype = {
 		this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
 		return bh_multianim_Coordinates.EXTRA_POINT_ANIM(filename,animName,pointName,selector,fallback);
 	}
-	,isNamedGrid: function(name) {
-		if(this.namedCoordSystems == null) {
-			return false;
-		}
-		return this.namedCoordSystems.indexOf(name) >= 0;
-	}
-	,isNamedHex: function(name) {
-		if(this.namedCoordSystems == null) {
-			return false;
-		}
-		return this.namedCoordSystems.indexOf(name) >= 0;
-	}
 	,parseInteger: function() {
 		var _g = this.tokens[this.tpos].type;
 		switch(_g._hx_index) {
@@ -3238,6 +3225,18 @@ bh_multianim_MacroManimParser.prototype = {
 				this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
 				var inner = this.parseTileSource();
 				this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
+				var tmp;
+				if(inner._hx_index == 5) {
+					var _g2 = inner.pivotX;
+					var _g2 = inner.pivotY;
+					var _g2 = inner.inner;
+					tmp = true;
+				} else {
+					tmp = false;
+				}
+				if(tmp) {
+					return this.error("center(...): nested pivot/center is not allowed (outer would override inner)");
+				}
 				return bh_multianim_TileSource.TSPivot(0.5,0.5,inner);
 			} else {
 				var s = _g1;
@@ -3250,6 +3249,21 @@ bh_multianim_MacroManimParser.prototype = {
 					this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
 					var inner = this.parseTileSource();
 					this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
+					if(px < 0.0 || px > 1.0 || py < 0.0 || py > 1.0) {
+						return this.error("pivot(" + px + ", " + py + ", ...): pivot ratios must be in range 0..1");
+					}
+					var tmp;
+					if(inner._hx_index == 5) {
+						var _g2 = inner.pivotX;
+						var _g2 = inner.pivotY;
+						var _g2 = inner.inner;
+						tmp = true;
+					} else {
+						tmp = false;
+					}
+					if(tmp) {
+						return this.error("pivot(...): nested pivot/center is not allowed (outer pivot would override inner)");
+					}
 					return bh_multianim_TileSource.TSPivot(px,py,inner);
 				} else {
 					var s = _g1;
@@ -4054,25 +4068,6 @@ bh_multianim_MacroManimParser.prototype = {
 			return bh_multianim_ConditionalValues.CoStringValue(val);
 		}
 	}
-	,resolveToFloat: function(rv) {
-		switch(rv._hx_index) {
-		case 2:
-			var i = rv.i;
-			return i;
-		case 5:
-			var f = rv.f;
-			return f;
-		default:
-			return 0;
-		}
-	}
-	,resolveCondToFloat: function(s) {
-		var f = parseFloat(s);
-		if(!isNaN(f)) {
-			return f;
-		}
-		return 0;
-	}
 	,rvToCondString: function(rv) {
 		switch(rv._hx_index) {
 		case 1:
@@ -4568,12 +4563,6 @@ bh_multianim_MacroManimParser.prototype = {
 			return false;
 		}
 	}
-	,parseNamedFloatParam: function(name,defaultVal) {
-		return defaultVal;
-	}
-	,parseNamedColorParam: function(name,defaultVal) {
-		return defaultVal;
-	}
 	,parseLayoutContent: function() {
 		var _g = this.tokens[this.tpos].type;
 		if(_g._hx_index == 32) {
@@ -5060,6 +5049,11 @@ bh_multianim_MacroManimParser.prototype = {
 		var flowOffsetY = null;
 		var flowIsAbsolute = false;
 		var hasFlowProps = false;
+		var slotScopeSaved = false;
+		var slotSavedCurrentDefs = null;
+		var slotSavedActiveDefs = null;
+		var slotSavedScopeVars = null;
+		var slotSavedNamedElements = null;
 		if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TAt)) {
 			var atCount = 0;
 			_hx_loop1: while(true) {
@@ -5165,8 +5159,26 @@ bh_multianim_MacroManimParser.prototype = {
 															this.advance();
 															this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
 															var switchParam = this.expectIdentifierOrString();
-															if(!Object.prototype.hasOwnProperty.call(currentDefs.h,switchParam)) {
+															var switchDef = currentDefs.h[switchParam];
+															if(switchDef == null) {
 																this.error("@switch parameter \"" + switchParam + "\" does not have definition");
+															}
+															var _g2 = switchDef.type;
+															switch(_g2._hx_index) {
+															case 2:
+																var _g3 = _g2.bits;
+																this.error("@switch parameter \"" + switchParam + "\" has type Flags which is not supported by @switch — use @(param => bit[N]) instead");
+																break;
+															case 6:
+																this.error("@switch parameter \"" + switchParam + "\" has non-discrete type Float — @switch requires a discrete type (enum, int, string, color, bool, or range)");
+																break;
+															case 11:
+																this.error("@switch parameter \"" + switchParam + "\" has type Array which cannot be matched — @switch requires a discrete type");
+																break;
+															case 12:
+																this.error("@switch parameter \"" + switchParam + "\" has type Tile which cannot be matched — @switch requires a discrete type");
+																break;
+															default:
 															}
 															this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
 															this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyOpen);
@@ -5803,6 +5815,11 @@ bh_multianim_MacroManimParser.prototype = {
 													}
 													if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TOpen)) {
 														var parsed = this.parseDefines();
+														slotSavedCurrentDefs = currentDefs;
+														slotSavedActiveDefs = this.activeDefs;
+														slotSavedScopeVars = this.scopeVars;
+														slotSavedNamedElements = this.namedElements;
+														slotScopeSaved = true;
 														currentDefs = parsed.defs;
 														this.activeDefs = parsed.defs;
 														this.scopeVars = [];
@@ -6694,6 +6711,13 @@ bh_multianim_MacroManimParser.prototype = {
 				var _ = _g++;
 				this.scopeVars.pop();
 			}
+			if(slotScopeSaved) {
+				currentDefs = slotSavedCurrentDefs;
+				this.activeDefs = slotSavedActiveDefs;
+				this.scopeVars = slotSavedScopeVars;
+				this.namedElements = slotSavedNamedElements;
+				slotScopeSaved = false;
+			}
 			break;
 		case 11:
 			this.advance();
@@ -6745,9 +6769,10 @@ bh_multianim_MacroManimParser.prototype = {
 				if(bh_multianim_MacroManimParser.isKeyword(s,"layout")) {
 					this.advance();
 					this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
-					var layoutGroup = this.expectIdentifierOrString();
-					this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
 					var layoutName = this.expectIdentifierOrString();
+					if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TComma)) {
+						this.error("layout iterator takes a single argument: layout(\"" + layoutName + "\"). The two-argument form is no longer supported");
+					}
 					this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
 					return bh_multianim_RepeatType.LayoutIterator(layoutName);
 				} else {
@@ -6852,7 +6877,7 @@ bh_multianim_MacroManimParser.prototype = {
 									this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
 									return this.parseTilesIteratorArgs(bitmapVar,defs);
 								} else {
-									return this.error("expected iterator type: grid, layout, array, range, stateanim, tiles");
+									return this.error("expected iterator type: step, layout, array, range, stateanim, tiles");
 								}
 							}
 						}
@@ -6860,7 +6885,7 @@ bh_multianim_MacroManimParser.prototype = {
 				}
 			}
 		} else {
-			return this.error("expected iterator type: grid, layout, array, range, stateanim, tiles");
+			return this.error("expected iterator type: step, layout, array, range, stateanim, tiles");
 		}
 	}
 	,parseTilesIteratorArgs: function(bitmapVar,defs) {
@@ -8399,6 +8424,21 @@ bh_multianim_MacroManimParser.prototype = {
 	}
 	,parseSwitchArms: function(parent,paramName,defs) {
 		var arms = [];
+		var paramType = defs.h[paramName].type;
+		var isNumericParam;
+		switch(paramType._hx_index) {
+		case 4:
+			var _g = paramType.from;
+			var _g = paramType.to;
+			isNumericParam = true;
+			break;
+		case 5:case 8:
+			isNumericParam = true;
+			break;
+		default:
+			isNumericParam = false;
+		}
+		var hasDefault = false;
 		while(!this.match(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyClosed)) {
 			if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TSemiColon)) {
 				continue;
@@ -8407,21 +8447,33 @@ bh_multianim_MacroManimParser.prototype = {
 			var _g = this.tokens[this.tpos].type;
 			switch(_g._hx_index) {
 			case 22:
+				if(!isNumericParam) {
+					this.error("@switch range arm (<) requires a numeric parameter; \"" + paramName + "\" is not numeric");
+				}
 				this.advance();
 				var val = this.parseIntegerOrReference();
 				pattern = bh_multianim_ConditionalValues.CoRange(null,val,false,true);
 				break;
 			case 23:
+				if(!isNumericParam) {
+					this.error("@switch range arm (>) requires a numeric parameter; \"" + paramName + "\" is not numeric");
+				}
 				this.advance();
 				var val1 = this.parseIntegerOrReference();
 				pattern = bh_multianim_ConditionalValues.CoRange(val1,null,true,false);
 				break;
 			case 24:
+				if(!isNumericParam) {
+					this.error("@switch range arm (<=) requires a numeric parameter; \"" + paramName + "\" is not numeric");
+				}
 				this.advance();
 				var val2 = this.parseIntegerOrReference();
 				pattern = bh_multianim_ConditionalValues.CoRange(null,val2,false,false);
 				break;
 			case 25:
+				if(!isNumericParam) {
+					this.error("@switch range arm (>=) requires a numeric parameter; \"" + paramName + "\" is not numeric");
+				}
 				this.advance();
 				var val3 = this.parseIntegerOrReference();
 				pattern = bh_multianim_ConditionalValues.CoRange(val3,null,false,false);
@@ -8429,16 +8481,42 @@ bh_multianim_MacroManimParser.prototype = {
 			case 32:
 				var s = _g.s;
 				if(bh_multianim_MacroManimParser.isKeyword(s,"default")) {
+					if(hasDefault) {
+						this.error("@switch has multiple default arms");
+					}
+					hasDefault = true;
 					this.advance();
 				} else {
 					var values = [];
 					values.push(this.parseSwitchArmValue());
 					if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TDoubleDot)) {
+						if(!isNumericParam) {
+							this.error("@switch range arm (..) requires a numeric parameter; \"" + paramName + "\" is not numeric");
+						}
 						var toStr = this.parseSwitchArmValue();
 						pattern = bh_multianim_ConditionalValues.CoRange(this.parseRV(values[0]),this.parseRV(toStr),false,false);
-					} else {
+					} else if(Type.enumEq(this.tokens[this.tpos].type,bh_multianim__$MacroManimParser_MacroTokenType.TPipe)) {
 						while(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TPipe)) values.push(this.parseSwitchArmValue());
-						pattern = bh_multianim_ConditionalValues.CoEnums(values);
+						switch(paramType._hx_index) {
+						case 3:
+							var _g1 = paramType.values;
+							pattern = bh_multianim_ConditionalValues.CoEnums(values);
+							break;
+						case 9:
+							pattern = bh_multianim_ConditionalValues.CoEnums(values);
+							break;
+						default:
+							var inner = [];
+							var _g2 = 0;
+							while(_g2 < values.length) {
+								var v = values[_g2];
+								++_g2;
+								inner.push(this.stringToConditional(v,paramType));
+							}
+							pattern = bh_multianim_ConditionalValues.CoAnyOf(inner);
+						}
+					} else {
+						pattern = this.stringToConditional(values[0],paramType);
 					}
 				}
 				break;
@@ -8446,11 +8524,33 @@ bh_multianim_MacroManimParser.prototype = {
 				var values1 = [];
 				values1.push(this.parseSwitchArmValue());
 				if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TDoubleDot)) {
+					if(!isNumericParam) {
+						this.error("@switch range arm (..) requires a numeric parameter; \"" + paramName + "\" is not numeric");
+					}
 					var toStr1 = this.parseSwitchArmValue();
 					pattern = bh_multianim_ConditionalValues.CoRange(this.parseRV(values1[0]),this.parseRV(toStr1),false,false);
-				} else {
+				} else if(Type.enumEq(this.tokens[this.tpos].type,bh_multianim__$MacroManimParser_MacroTokenType.TPipe)) {
 					while(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TPipe)) values1.push(this.parseSwitchArmValue());
-					pattern = bh_multianim_ConditionalValues.CoEnums(values1);
+					switch(paramType._hx_index) {
+					case 3:
+						var _g3 = paramType.values;
+						pattern = bh_multianim_ConditionalValues.CoEnums(values1);
+						break;
+					case 9:
+						pattern = bh_multianim_ConditionalValues.CoEnums(values1);
+						break;
+					default:
+						var inner1 = [];
+						var _g4 = 0;
+						while(_g4 < values1.length) {
+							var v1 = values1[_g4];
+							++_g4;
+							inner1.push(this.stringToConditional(v1,paramType));
+						}
+						pattern = bh_multianim_ConditionalValues.CoAnyOf(inner1);
+					}
+				} else {
+					pattern = this.stringToConditional(values1[0],paramType);
 				}
 			}
 			var tempContainer = this.createNode(bh_multianim_NodeType.POINT,parent,bh_multianim_NodeConditionalValues.NoConditional,null,null,null,null,-1,bh_multianim_UpdatableNameType.UNTObject(null));
@@ -8496,7 +8596,19 @@ bh_multianim_MacroManimParser.prototype = {
 			var n = _g.s;
 			this.advance();
 			return n;
+		case 31:
+			var n = _g.s;
+			this.advance();
+			return "0x" + n;
 		case 32:
+			var s = _g.s;
+			this.advance();
+			return s;
+		case 33:
+			var s = _g.s;
+			this.advance();
+			return "#" + s;
+		case 35:
 			var s = _g.s;
 			this.advance();
 			return s;
@@ -8533,30 +8645,6 @@ bh_multianim_MacroManimParser.prototype = {
 			this.error("duplicate node #" + name);
 		}
 		this.nodes.h[name] = node;
-	}
-	,tryParseIntValue: function() {
-		var _g = this.tokens[this.tpos].type;
-		switch(_g._hx_index) {
-		case 20:
-			var saved = this.tpos;
-			this.advance();
-			var _g1 = this.tokens[this.tpos].type;
-			if(_g1._hx_index == 29) {
-				var n = _g1.s;
-				this.advance();
-				return -this.stringToInt(n);
-			} else {
-				this.tpos = saved;
-				return null;
-			}
-			break;
-		case 29:
-			var n = _g.s;
-			this.advance();
-			return this.stringToInt(n);
-		default:
-			return null;
-		}
 	}
 	,parse: function() {
 		var _g = this.tokens[this.tpos].type;
@@ -10533,7 +10621,7 @@ bh_multianim_MacroManimParser.prototype = {
 			return bh_multianim_DataValueType.DVTEnum(enumName);
 		}
 	}
-	,parseOptionalParams: function(defs,once) {
+	,parseOptionalParams: function(defs) {
 		var results = new haxe_ds_StringMap();
 		while(!this.match(bh_multianim__$MacroManimParser_MacroTokenType.TClosed)) {
 			this.eatComma();
@@ -11202,178 +11290,6 @@ var bh_multianim_OptionalParametersParsing = $hxEnums["bh.multianim.OptionalPara
 	,ParseColor: ($_=function(name) { return {_hx_index:6,name:name,__enum__:"bh.multianim.OptionalParametersParsing",toString:$estr}; },$_._hx_name="ParseColor",$_.__params__ = ["name"],$_)
 };
 bh_multianim_OptionalParametersParsing.__constructs__ = [bh_multianim_OptionalParametersParsing.ParseInteger,bh_multianim_OptionalParametersParsing.ParseIntegerOrReference,bh_multianim_OptionalParametersParsing.ParseFloat,bh_multianim_OptionalParametersParsing.ParseFloatOrReference,bh_multianim_OptionalParametersParsing.ParseBool,bh_multianim_OptionalParametersParsing.ParseCustom,bh_multianim_OptionalParametersParsing.ParseColor];
-var bh_multianim_IdentifierType = $hxEnums["bh.multianim.IdentifierType"] = { __ename__:true,__constructs__:null
-	,ITString: {_hx_name:"ITString",_hx_index:0,__enum__:"bh.multianim.IdentifierType",toString:$estr}
-	,ITReference: {_hx_name:"ITReference",_hx_index:1,__enum__:"bh.multianim.IdentifierType",toString:$estr}
-	,ITName: {_hx_name:"ITName",_hx_index:2,__enum__:"bh.multianim.IdentifierType",toString:$estr}
-	,ITQuotedString: {_hx_name:"ITQuotedString",_hx_index:3,__enum__:"bh.multianim.IdentifierType",toString:$estr}
-};
-bh_multianim_IdentifierType.__constructs__ = [bh_multianim_IdentifierType.ITString,bh_multianim_IdentifierType.ITReference,bh_multianim_IdentifierType.ITName,bh_multianim_IdentifierType.ITQuotedString];
-var bh_multianim_MPInterpolationEnum = $hxEnums["bh.multianim.MPInterpolationEnum"] = { __ename__:true,__constructs__:null
-	,MPIStart: {_hx_name:"MPIStart",_hx_index:0,__enum__:"bh.multianim.MPInterpolationEnum",toString:$estr}
-	,MPIEnd: ($_=function(stringValue) { return {_hx_index:1,stringValue:stringValue,__enum__:"bh.multianim.MPInterpolationEnum",toString:$estr}; },$_._hx_name="MPIEnd",$_.__params__ = ["stringValue"],$_)
-	,MPICode: ($_=function(prefix) { return {_hx_index:2,prefix:prefix,__enum__:"bh.multianim.MPInterpolationEnum",toString:$estr}; },$_._hx_name="MPICode",$_.__params__ = ["prefix"],$_)
-};
-bh_multianim_MPInterpolationEnum.__constructs__ = [bh_multianim_MPInterpolationEnum.MPIStart,bh_multianim_MPInterpolationEnum.MPIEnd,bh_multianim_MPInterpolationEnum.MPICode];
-var bh_multianim_NumberType = $hxEnums["bh.multianim.NumberType"] = { __ename__:true,__constructs__:null
-	,NTInteger: {_hx_name:"NTInteger",_hx_index:0,__enum__:"bh.multianim.NumberType",toString:$estr}
-	,NTFloat: {_hx_name:"NTFloat",_hx_index:1,__enum__:"bh.multianim.NumberType",toString:$estr}
-	,NTHexInteger: {_hx_name:"NTHexInteger",_hx_index:2,__enum__:"bh.multianim.NumberType",toString:$estr}
-};
-bh_multianim_NumberType.__constructs__ = [bh_multianim_NumberType.NTInteger,bh_multianim_NumberType.NTFloat,bh_multianim_NumberType.NTHexInteger];
-var bh_multianim_ValueType = $hxEnums["bh.multianim.ValueType"] = { __ename__:true,__constructs__:null
-	,VTInt: {_hx_name:"VTInt",_hx_index:0,__enum__:"bh.multianim.ValueType",toString:$estr}
-	,VTFloat: {_hx_name:"VTFloat",_hx_index:1,__enum__:"bh.multianim.ValueType",toString:$estr}
-	,VTString: {_hx_name:"VTString",_hx_index:2,__enum__:"bh.multianim.ValueType",toString:$estr}
-};
-bh_multianim_ValueType.__constructs__ = [bh_multianim_ValueType.VTInt,bh_multianim_ValueType.VTFloat,bh_multianim_ValueType.VTString];
-var bh_multianim_MPToken = $hxEnums["bh.multianim.MPToken"] = { __ename__:true,__constructs__:null
-	,MPEof: {_hx_name:"MPEof",_hx_index:0,__enum__:"bh.multianim.MPToken",toString:$estr}
-	,MPOpen: {_hx_name:"MPOpen",_hx_index:1,__enum__:"bh.multianim.MPToken",toString:$estr}
-	,MPClosed: {_hx_name:"MPClosed",_hx_index:2,__enum__:"bh.multianim.MPToken",toString:$estr}
-	,MPBracketOpen: {_hx_name:"MPBracketOpen",_hx_index:3,__enum__:"bh.multianim.MPToken",toString:$estr}
-	,MPBracketClosed: {_hx_name:"MPBracketClosed",_hx_index:4,__enum__:"bh.multianim.MPToken",toString:$estr}
-	,MPCurlyOpen: {_hx_name:"MPCurlyOpen",_hx_index:5,__enum__:"bh.multianim.MPToken",toString:$estr}
-	,MPCurlyClosed: {_hx_name:"MPCurlyClosed",_hx_index:6,__enum__:"bh.multianim.MPToken",toString:$estr}
-	,MPComma: {_hx_name:"MPComma",_hx_index:7,__enum__:"bh.multianim.MPToken",toString:$estr}
-	,MPAt: {_hx_name:"MPAt",_hx_index:8,__enum__:"bh.multianim.MPToken",toString:$estr}
-	,MPExclamation: {_hx_name:"MPExclamation",_hx_index:9,__enum__:"bh.multianim.MPToken",toString:$estr}
-	,MPQuestion: {_hx_name:"MPQuestion",_hx_index:10,__enum__:"bh.multianim.MPToken",toString:$estr}
-	,MPColon: {_hx_name:"MPColon",_hx_index:11,__enum__:"bh.multianim.MPToken",toString:$estr}
-	,MPDoubleDot: {_hx_name:"MPDoubleDot",_hx_index:12,__enum__:"bh.multianim.MPToken",toString:$estr}
-	,MPSemiColon: {_hx_name:"MPSemiColon",_hx_index:13,__enum__:"bh.multianim.MPToken",toString:$estr}
-	,MPNumber: ($_=function(s,numberType) { return {_hx_index:14,s:s,numberType:numberType,__enum__:"bh.multianim.MPToken",toString:$estr}; },$_._hx_name="MPNumber",$_.__params__ = ["s","numberType"],$_)
-	,MPIdentifier: ($_=function(s,keyword,identType) { return {_hx_index:15,s:s,keyword:keyword,identType:identType,__enum__:"bh.multianim.MPToken",toString:$estr}; },$_._hx_name="MPIdentifier",$_.__params__ = ["s","keyword","identType"],$_)
-	,MPWhitespace: {_hx_name:"MPWhitespace",_hx_index:16,__enum__:"bh.multianim.MPToken",toString:$estr}
-	,MPNewLine: {_hx_name:"MPNewLine",_hx_index:17,__enum__:"bh.multianim.MPToken",toString:$estr}
-	,MPArrow: {_hx_name:"MPArrow",_hx_index:18,__enum__:"bh.multianim.MPToken",toString:$estr}
-	,MPStar: {_hx_name:"MPStar",_hx_index:19,__enum__:"bh.multianim.MPToken",toString:$estr}
-	,MPPercent: {_hx_name:"MPPercent",_hx_index:20,__enum__:"bh.multianim.MPToken",toString:$estr}
-	,MPPlus: {_hx_name:"MPPlus",_hx_index:21,__enum__:"bh.multianim.MPToken",toString:$estr}
-	,MPSlash: {_hx_name:"MPSlash",_hx_index:22,__enum__:"bh.multianim.MPToken",toString:$estr}
-	,MPMinus: {_hx_name:"MPMinus",_hx_index:23,__enum__:"bh.multianim.MPToken",toString:$estr}
-	,MPEquals: {_hx_name:"MPEquals",_hx_index:24,__enum__:"bh.multianim.MPToken",toString:$estr}
-	,MPLessThan: {_hx_name:"MPLessThan",_hx_index:25,__enum__:"bh.multianim.MPToken",toString:$estr}
-	,MPGreaterThan: {_hx_name:"MPGreaterThan",_hx_index:26,__enum__:"bh.multianim.MPToken",toString:$estr}
-	,MPLessEquals: {_hx_name:"MPLessEquals",_hx_index:27,__enum__:"bh.multianim.MPToken",toString:$estr}
-	,MPGreaterEquals: {_hx_name:"MPGreaterEquals",_hx_index:28,__enum__:"bh.multianim.MPToken",toString:$estr}
-	,MPNotEquals: {_hx_name:"MPNotEquals",_hx_index:29,__enum__:"bh.multianim.MPToken",toString:$estr}
-	,MPDoubleEquals: {_hx_name:"MPDoubleEquals",_hx_index:30,__enum__:"bh.multianim.MPToken",toString:$estr}
-	,MPInterpolation: ($_=function(type) { return {_hx_index:31,type:type,__enum__:"bh.multianim.MPToken",toString:$estr}; },$_._hx_name="MPInterpolation",$_.__params__ = ["type"],$_)
-};
-bh_multianim_MPToken.__constructs__ = [bh_multianim_MPToken.MPEof,bh_multianim_MPToken.MPOpen,bh_multianim_MPToken.MPClosed,bh_multianim_MPToken.MPBracketOpen,bh_multianim_MPToken.MPBracketClosed,bh_multianim_MPToken.MPCurlyOpen,bh_multianim_MPToken.MPCurlyClosed,bh_multianim_MPToken.MPComma,bh_multianim_MPToken.MPAt,bh_multianim_MPToken.MPExclamation,bh_multianim_MPToken.MPQuestion,bh_multianim_MPToken.MPColon,bh_multianim_MPToken.MPDoubleDot,bh_multianim_MPToken.MPSemiColon,bh_multianim_MPToken.MPNumber,bh_multianim_MPToken.MPIdentifier,bh_multianim_MPToken.MPWhitespace,bh_multianim_MPToken.MPNewLine,bh_multianim_MPToken.MPArrow,bh_multianim_MPToken.MPStar,bh_multianim_MPToken.MPPercent,bh_multianim_MPToken.MPPlus,bh_multianim_MPToken.MPSlash,bh_multianim_MPToken.MPMinus,bh_multianim_MPToken.MPEquals,bh_multianim_MPToken.MPLessThan,bh_multianim_MPToken.MPGreaterThan,bh_multianim_MPToken.MPLessEquals,bh_multianim_MPToken.MPGreaterEquals,bh_multianim_MPToken.MPNotEquals,bh_multianim_MPToken.MPDoubleEquals,bh_multianim_MPToken.MPInterpolation];
-var bh_multianim_MPKeywords = $hxEnums["bh.multianim.MPKeywords"] = { __ename__:true,__constructs__:null
-	,MPTile: {_hx_name:"MPTile",_hx_index:0,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPBit: {_hx_name:"MPBit",_hx_index:1,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPCallback: {_hx_name:"MPCallback",_hx_index:2,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPFunction: {_hx_name:"MPFunction",_hx_index:3,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPBuilderParameter: {_hx_name:"MPBuilderParameter",_hx_index:4,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPNinePatch: {_hx_name:"MPNinePatch",_hx_index:5,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPApply: {_hx_name:"MPApply",_hx_index:6,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPCenter: {_hx_name:"MPCenter",_hx_index:7,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPLeft: {_hx_name:"MPLeft",_hx_index:8,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPRight: {_hx_name:"MPRight",_hx_index:9,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPTop: {_hx_name:"MPTop",_hx_index:10,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPBottom: {_hx_name:"MPBottom",_hx_index:11,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPBitmap: {_hx_name:"MPBitmap",_hx_index:12,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPHexDirection: {_hx_name:"MPHexDirection",_hx_index:13,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPGridDirection: {_hx_name:"MPGridDirection",_hx_index:14,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPRepeatable: {_hx_name:"MPRepeatable",_hx_index:15,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPRepeatable2D: {_hx_name:"MPRepeatable2D",_hx_index:16,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPHexGrid: {_hx_name:"MPHexGrid",_hx_index:17,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPOffset: {_hx_name:"MPOffset",_hx_index:18,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPGrid: {_hx_name:"MPGrid",_hx_index:19,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPHex: {_hx_name:"MPHex",_hx_index:20,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPPoint: {_hx_name:"MPPoint",_hx_index:21,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPFlow: {_hx_name:"MPFlow",_hx_index:22,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPStateanim: {_hx_name:"MPStateanim",_hx_index:23,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPConstruct: {_hx_name:"MPConstruct",_hx_index:24,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPPixels: {_hx_name:"MPPixels",_hx_index:25,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPTileGroup: {_hx_name:"MPTileGroup",_hx_index:26,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPProgrammable: {_hx_name:"MPProgrammable",_hx_index:27,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPRelativeLayouts: {_hx_name:"MPRelativeLayouts",_hx_index:28,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPLayout: {_hx_name:"MPLayout",_hx_index:29,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPLayers: {_hx_name:"MPLayers",_hx_index:30,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPMask: {_hx_name:"MPMask",_hx_index:31,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPPalette: {_hx_name:"MPPalette",_hx_index:32,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPLayer: {_hx_name:"MPLayer",_hx_index:33,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPSettings: {_hx_name:"MPSettings",_hx_index:34,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPPosition: {_hx_name:"MPPosition",_hx_index:35,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPImport: {_hx_name:"MPImport",_hx_index:36,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPScale: {_hx_name:"MPScale",_hx_index:37,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPFilter: {_hx_name:"MPFilter",_hx_index:38,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPFile: {_hx_name:"MPFile",_hx_index:39,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPSheet: {_hx_name:"MPSheet",_hx_index:40,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPLoop: {_hx_name:"MPLoop",_hx_index:41,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPGenerated: {_hx_name:"MPGenerated",_hx_index:42,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPAlpha: {_hx_name:"MPAlpha",_hx_index:43,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPPos: {_hx_name:"MPPos",_hx_index:44,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPFlat: {_hx_name:"MPFlat",_hx_index:45,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPPointy: {_hx_name:"MPPointy",_hx_index:46,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPHexEdge: {_hx_name:"MPHexEdge",_hx_index:47,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPHexCorner: {_hx_name:"MPHexCorner",_hx_index:48,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPLine: {_hx_name:"MPLine",_hx_index:49,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPForward: {_hx_name:"MPForward",_hx_index:50,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPTurn: {_hx_name:"MPTurn",_hx_index:51,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPArc: {_hx_name:"MPArc",_hx_index:52,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPBezier: {_hx_name:"MPBezier",_hx_index:53,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPCheckpoint: {_hx_name:"MPCheckpoint",_hx_index:54,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPList: {_hx_name:"MPList",_hx_index:55,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPSequence: {_hx_name:"MPSequence",_hx_index:56,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPRect: {_hx_name:"MPRect",_hx_index:57,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPFilledRect: {_hx_name:"MPFilledRect",_hx_index:58,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPPixel: {_hx_name:"MPPixel",_hx_index:59,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPFlags: {_hx_name:"MPFlags",_hx_index:60,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPError: {_hx_name:"MPError",_hx_index:61,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPNothing: {_hx_name:"MPNothing",_hx_index:62,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPText: {_hx_name:"MPText",_hx_index:63,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPRichText: {_hx_name:"MPRichText",_hx_index:64,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPVersion: {_hx_name:"MPVersion",_hx_index:65,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPPlaceholder: {_hx_name:"MPPlaceholder",_hx_index:66,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPDebug: {_hx_name:"MPDebug",_hx_index:67,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPStaticRef: {_hx_name:"MPStaticRef",_hx_index:68,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPDynamicRef: {_hx_name:"MPDynamicRef",_hx_index:69,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPIf: {_hx_name:"MPIf",_hx_index:70,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPIfStrict: {_hx_name:"MPIfStrict",_hx_index:71,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPInteractive: {_hx_name:"MPInteractive",_hx_index:72,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPPolygon: {_hx_name:"MPPolygon",_hx_index:73,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPGraphics: {_hx_name:"MPGraphics",_hx_index:74,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPCircle: {_hx_name:"MPCircle",_hx_index:75,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPEllipse: {_hx_name:"MPEllipse",_hx_index:76,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPRoundRect: {_hx_name:"MPRoundRect",_hx_index:77,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPInt: {_hx_name:"MPInt",_hx_index:78,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPFloat: {_hx_name:"MPFloat",_hx_index:79,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPString: {_hx_name:"MPString",_hx_index:80,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPColor: {_hx_name:"MPColor",_hx_index:81,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPUInt: {_hx_name:"MPUInt",_hx_index:82,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPBool: {_hx_name:"MPBool",_hx_index:83,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPBlendMode: {_hx_name:"MPBlendMode",_hx_index:84,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPUpdatable: {_hx_name:"MPUpdatable",_hx_index:85,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPPaths: {_hx_name:"MPPaths",_hx_index:86,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPPath: {_hx_name:"MPPath",_hx_index:87,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPParticles: {_hx_name:"MPParticles",_hx_index:88,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPAnimatedPath: {_hx_name:"MPAnimatedPath",_hx_index:89,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPDiv: {_hx_name:"MPDiv",_hx_index:90,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPExternal: {_hx_name:"MPExternal",_hx_index:91,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPArray: {_hx_name:"MPArray",_hx_index:92,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPRange: {_hx_name:"MPRange",_hx_index:93,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPSmoothing: {_hx_name:"MPSmoothing",_hx_index:94,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPTiles: {_hx_name:"MPTiles",_hx_index:95,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPAutotile: {_hx_name:"MPAutotile",_hx_index:96,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPFormat: {_hx_name:"MPFormat",_hx_index:97,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPPrefix: {_hx_name:"MPPrefix",_hx_index:98,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPRegion: {_hx_name:"MPRegion",_hx_index:99,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPDepth: {_hx_name:"MPDepth",_hx_index:100,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPMapping: {_hx_name:"MPMapping",_hx_index:101,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPCross: {_hx_name:"MPCross",_hx_index:102,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPBlob47: {_hx_name:"MPBlob47",_hx_index:103,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPDemo: {_hx_name:"MPDemo",_hx_index:104,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPAtlas2: {_hx_name:"MPAtlas2",_hx_index:105,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPElse: {_hx_name:"MPElse",_hx_index:106,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPDefault: {_hx_name:"MPDefault",_hx_index:107,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-	,MPTint: {_hx_name:"MPTint",_hx_index:108,__enum__:"bh.multianim.MPKeywords",toString:$estr}
-};
-bh_multianim_MPKeywords.__constructs__ = [bh_multianim_MPKeywords.MPTile,bh_multianim_MPKeywords.MPBit,bh_multianim_MPKeywords.MPCallback,bh_multianim_MPKeywords.MPFunction,bh_multianim_MPKeywords.MPBuilderParameter,bh_multianim_MPKeywords.MPNinePatch,bh_multianim_MPKeywords.MPApply,bh_multianim_MPKeywords.MPCenter,bh_multianim_MPKeywords.MPLeft,bh_multianim_MPKeywords.MPRight,bh_multianim_MPKeywords.MPTop,bh_multianim_MPKeywords.MPBottom,bh_multianim_MPKeywords.MPBitmap,bh_multianim_MPKeywords.MPHexDirection,bh_multianim_MPKeywords.MPGridDirection,bh_multianim_MPKeywords.MPRepeatable,bh_multianim_MPKeywords.MPRepeatable2D,bh_multianim_MPKeywords.MPHexGrid,bh_multianim_MPKeywords.MPOffset,bh_multianim_MPKeywords.MPGrid,bh_multianim_MPKeywords.MPHex,bh_multianim_MPKeywords.MPPoint,bh_multianim_MPKeywords.MPFlow,bh_multianim_MPKeywords.MPStateanim,bh_multianim_MPKeywords.MPConstruct,bh_multianim_MPKeywords.MPPixels,bh_multianim_MPKeywords.MPTileGroup,bh_multianim_MPKeywords.MPProgrammable,bh_multianim_MPKeywords.MPRelativeLayouts,bh_multianim_MPKeywords.MPLayout,bh_multianim_MPKeywords.MPLayers,bh_multianim_MPKeywords.MPMask,bh_multianim_MPKeywords.MPPalette,bh_multianim_MPKeywords.MPLayer,bh_multianim_MPKeywords.MPSettings,bh_multianim_MPKeywords.MPPosition,bh_multianim_MPKeywords.MPImport,bh_multianim_MPKeywords.MPScale,bh_multianim_MPKeywords.MPFilter,bh_multianim_MPKeywords.MPFile,bh_multianim_MPKeywords.MPSheet,bh_multianim_MPKeywords.MPLoop,bh_multianim_MPKeywords.MPGenerated,bh_multianim_MPKeywords.MPAlpha,bh_multianim_MPKeywords.MPPos,bh_multianim_MPKeywords.MPFlat,bh_multianim_MPKeywords.MPPointy,bh_multianim_MPKeywords.MPHexEdge,bh_multianim_MPKeywords.MPHexCorner,bh_multianim_MPKeywords.MPLine,bh_multianim_MPKeywords.MPForward,bh_multianim_MPKeywords.MPTurn,bh_multianim_MPKeywords.MPArc,bh_multianim_MPKeywords.MPBezier,bh_multianim_MPKeywords.MPCheckpoint,bh_multianim_MPKeywords.MPList,bh_multianim_MPKeywords.MPSequence,bh_multianim_MPKeywords.MPRect,bh_multianim_MPKeywords.MPFilledRect,bh_multianim_MPKeywords.MPPixel,bh_multianim_MPKeywords.MPFlags,bh_multianim_MPKeywords.MPError,bh_multianim_MPKeywords.MPNothing,bh_multianim_MPKeywords.MPText,bh_multianim_MPKeywords.MPRichText,bh_multianim_MPKeywords.MPVersion,bh_multianim_MPKeywords.MPPlaceholder,bh_multianim_MPKeywords.MPDebug,bh_multianim_MPKeywords.MPStaticRef,bh_multianim_MPKeywords.MPDynamicRef,bh_multianim_MPKeywords.MPIf,bh_multianim_MPKeywords.MPIfStrict,bh_multianim_MPKeywords.MPInteractive,bh_multianim_MPKeywords.MPPolygon,bh_multianim_MPKeywords.MPGraphics,bh_multianim_MPKeywords.MPCircle,bh_multianim_MPKeywords.MPEllipse,bh_multianim_MPKeywords.MPRoundRect,bh_multianim_MPKeywords.MPInt,bh_multianim_MPKeywords.MPFloat,bh_multianim_MPKeywords.MPString,bh_multianim_MPKeywords.MPColor,bh_multianim_MPKeywords.MPUInt,bh_multianim_MPKeywords.MPBool,bh_multianim_MPKeywords.MPBlendMode,bh_multianim_MPKeywords.MPUpdatable,bh_multianim_MPKeywords.MPPaths,bh_multianim_MPKeywords.MPPath,bh_multianim_MPKeywords.MPParticles,bh_multianim_MPKeywords.MPAnimatedPath,bh_multianim_MPKeywords.MPDiv,bh_multianim_MPKeywords.MPExternal,bh_multianim_MPKeywords.MPArray,bh_multianim_MPKeywords.MPRange,bh_multianim_MPKeywords.MPSmoothing,bh_multianim_MPKeywords.MPTiles,bh_multianim_MPKeywords.MPAutotile,bh_multianim_MPKeywords.MPFormat,bh_multianim_MPKeywords.MPPrefix,bh_multianim_MPKeywords.MPRegion,bh_multianim_MPKeywords.MPDepth,bh_multianim_MPKeywords.MPMapping,bh_multianim_MPKeywords.MPCross,bh_multianim_MPKeywords.MPBlob47,bh_multianim_MPKeywords.MPDemo,bh_multianim_MPKeywords.MPAtlas2,bh_multianim_MPKeywords.MPElse,bh_multianim_MPKeywords.MPDefault,bh_multianim_MPKeywords.MPTint];
 var bh_multianim_PlaceholderTypes = $hxEnums["bh.multianim.PlaceholderTypes"] = { __ename__:true,__constructs__:null
 	,PHTileSource: ($_=function(source) { return {_hx_index:0,source:source,__enum__:"bh.multianim.PlaceholderTypes",toString:$estr}; },$_._hx_name="PHTileSource",$_.__params__ = ["source"],$_)
 	,PHError: {_hx_name:"PHError",_hx_index:1,__enum__:"bh.multianim.PlaceholderTypes",toString:$estr}
@@ -11509,8 +11425,9 @@ var bh_multianim_ConditionalValues = $hxEnums["bh.multianim.ConditionalValues"] 
 	,CoAny: {_hx_name:"CoAny",_hx_index:5,__enum__:"bh.multianim.ConditionalValues",toString:$estr}
 	,CoStringValue: ($_=function(s) { return {_hx_index:6,s:s,__enum__:"bh.multianim.ConditionalValues",toString:$estr}; },$_._hx_name="CoStringValue",$_.__params__ = ["s"],$_)
 	,CoNot: ($_=function(value) { return {_hx_index:7,value:value,__enum__:"bh.multianim.ConditionalValues",toString:$estr}; },$_._hx_name="CoNot",$_.__params__ = ["value"],$_)
+	,CoAnyOf: ($_=function(values) { return {_hx_index:8,values:values,__enum__:"bh.multianim.ConditionalValues",toString:$estr}; },$_._hx_name="CoAnyOf",$_.__params__ = ["values"],$_)
 };
-bh_multianim_ConditionalValues.__constructs__ = [bh_multianim_ConditionalValues.CoEnums,bh_multianim_ConditionalValues.CoRange,bh_multianim_ConditionalValues.CoIndex,bh_multianim_ConditionalValues.CoValue,bh_multianim_ConditionalValues.CoFlag,bh_multianim_ConditionalValues.CoAny,bh_multianim_ConditionalValues.CoStringValue,bh_multianim_ConditionalValues.CoNot];
+bh_multianim_ConditionalValues.__constructs__ = [bh_multianim_ConditionalValues.CoEnums,bh_multianim_ConditionalValues.CoRange,bh_multianim_ConditionalValues.CoIndex,bh_multianim_ConditionalValues.CoValue,bh_multianim_ConditionalValues.CoFlag,bh_multianim_ConditionalValues.CoAny,bh_multianim_ConditionalValues.CoStringValue,bh_multianim_ConditionalValues.CoNot,bh_multianim_ConditionalValues.CoAnyOf];
 var bh_multianim_ReferenceableValue = $hxEnums["bh.multianim.ReferenceableValue"] = { __ename__:true,__constructs__:null
 	,RVElementOfArray: ($_=function(arrayRef,index) { return {_hx_index:0,arrayRef:arrayRef,index:index,__enum__:"bh.multianim.ReferenceableValue",toString:$estr}; },$_._hx_name="RVElementOfArray",$_.__params__ = ["arrayRef","index"],$_)
 	,RVString: ($_=function(s) { return {_hx_index:1,s:s,__enum__:"bh.multianim.ReferenceableValue",toString:$estr}; },$_._hx_name="RVString",$_.__params__ = ["s"],$_)
@@ -11557,13 +11474,6 @@ var bh_multianim_VerticalAlign = $hxEnums["bh.multianim.VerticalAlign"] = { __en
 	,Bottom: {_hx_name:"Bottom",_hx_index:2,__enum__:"bh.multianim.VerticalAlign",toString:$estr}
 };
 bh_multianim_VerticalAlign.__constructs__ = [bh_multianim_VerticalAlign.Top,bh_multianim_VerticalAlign.Center,bh_multianim_VerticalAlign.Bottom];
-var bh_multianim__$MultiAnimParser_LayoutsParsingState = $hxEnums["bh.multianim._MultiAnimParser.LayoutsParsingState"] = { __ename__:true,__constructs__:null
-	,LPSGrid: {_hx_name:"LPSGrid",_hx_index:0,__enum__:"bh.multianim._MultiAnimParser.LayoutsParsingState",toString:$estr}
-	,LPSHex: {_hx_name:"LPSHex",_hx_index:1,__enum__:"bh.multianim._MultiAnimParser.LayoutsParsingState",toString:$estr}
-	,LPSOffset: {_hx_name:"LPSOffset",_hx_index:2,__enum__:"bh.multianim._MultiAnimParser.LayoutsParsingState",toString:$estr}
-	,LPSEnd: {_hx_name:"LPSEnd",_hx_index:3,__enum__:"bh.multianim._MultiAnimParser.LayoutsParsingState",toString:$estr}
-};
-bh_multianim__$MultiAnimParser_LayoutsParsingState.__constructs__ = [bh_multianim__$MultiAnimParser_LayoutsParsingState.LPSGrid,bh_multianim__$MultiAnimParser_LayoutsParsingState.LPSHex,bh_multianim__$MultiAnimParser_LayoutsParsingState.LPSOffset,bh_multianim__$MultiAnimParser_LayoutsParsingState.LPSEnd];
 var bh_multianim_AnimatedPathTime = $hxEnums["bh.multianim.AnimatedPathTime"] = { __ename__:true,__constructs__:null
 	,Rate: ($_=function(float) { return {_hx_index:0,float:float,__enum__:"bh.multianim.AnimatedPathTime",toString:$estr}; },$_._hx_name="Rate",$_.__params__ = ["float"],$_)
 	,Checkpoint: ($_=function(checkpointName) { return {_hx_index:1,checkpointName:checkpointName,__enum__:"bh.multianim.AnimatedPathTime",toString:$estr}; },$_._hx_name="Checkpoint",$_.__params__ = ["checkpointName"],$_)
@@ -11763,7 +11673,7 @@ var bh_multianim_NodeType = $hxEnums["bh.multianim.NodeType"] = { __ename__:true
 };
 bh_multianim_NodeType.__constructs__ = [bh_multianim_NodeType.FLOW,bh_multianim_NodeType.SPACER,bh_multianim_NodeType.BITMAP,bh_multianim_NodeType.POINT,bh_multianim_NodeType.STATEANIM,bh_multianim_NodeType.STATEANIM_CONSTRUCT,bh_multianim_NodeType.PIXELS,bh_multianim_NodeType.TEXT,bh_multianim_NodeType.RICHTEXT,bh_multianim_NodeType.PROGRAMMABLE,bh_multianim_NodeType.TILEGROUP,bh_multianim_NodeType.RELATIVE_LAYOUTS,bh_multianim_NodeType.PATHS,bh_multianim_NodeType.ANIMATED_PATH,bh_multianim_NodeType.CURVES,bh_multianim_NodeType.PARTICLES,bh_multianim_NodeType.APPLY,bh_multianim_NodeType.LAYERS,bh_multianim_NodeType.MASK,bh_multianim_NodeType.REPEAT,bh_multianim_NodeType.REPEAT2D,bh_multianim_NodeType.STATIC_REF,bh_multianim_NodeType.PLACEHOLDER,bh_multianim_NodeType.NINEPATCH,bh_multianim_NodeType.INTERACTIVE,bh_multianim_NodeType.PALETTE,bh_multianim_NodeType.GRAPHICS,bh_multianim_NodeType.AUTOTILE,bh_multianim_NodeType.ATLAS2,bh_multianim_NodeType.DATA,bh_multianim_NodeType.SLOT,bh_multianim_NodeType.SLOT_CONTENT,bh_multianim_NodeType.DYNAMIC_REF,bh_multianim_NodeType.FINAL_VAR,bh_multianim_NodeType.SWITCH];
 var bh_multianim_NodeConditionalValues = $hxEnums["bh.multianim.NodeConditionalValues"] = { __ename__:true,__constructs__:null
-	,Conditional: ($_=function(values,strict) { return {_hx_index:0,values:values,strict:strict,__enum__:"bh.multianim.NodeConditionalValues",toString:$estr}; },$_._hx_name="Conditional",$_.__params__ = ["values","strict"],$_)
+	,Conditional: ($_=function(values,anyMode) { return {_hx_index:0,values:values,anyMode:anyMode,__enum__:"bh.multianim.NodeConditionalValues",toString:$estr}; },$_._hx_name="Conditional",$_.__params__ = ["values","anyMode"],$_)
 	,ConditionalElse: ($_=function(values) { return {_hx_index:1,values:values,__enum__:"bh.multianim.NodeConditionalValues",toString:$estr}; },$_._hx_name="ConditionalElse",$_.__params__ = ["values"],$_)
 	,ConditionalDefault: {_hx_name:"ConditionalDefault",_hx_index:2,__enum__:"bh.multianim.NodeConditionalValues",toString:$estr}
 	,NoConditional: {_hx_name:"NoConditional",_hx_index:3,__enum__:"bh.multianim.NodeConditionalValues",toString:$estr}
@@ -13631,37 +13541,78 @@ manim_lsp_AnimAnalyzer.getAnimContext = function(text,cursorLine) {
 	var lines = text.split("\n");
 	var depth = 0;
 	var context = manim_lsp_AnimContext.TopLevel;
+	var inBlockComment = false;
+	var lastLine = Math.min(cursorLine + 1,lines.length) | 0;
 	var _g = 0;
-	var _g1 = Math.min(cursorLine + 1,lines.length) | 0;
+	var _g1 = lastLine;
 	while(_g < _g1) {
 		var i = _g++;
-		var line = StringTools.trim(lines[i]);
-		if(StringTools.startsWith(line,"animation ") || StringTools.startsWith(line,"anim ")) {
-			if(depth == 0) {
-				context = manim_lsp_AnimContext.InAnimation;
-			}
-		} else if(StringTools.startsWith(line,"metadata")) {
-			if(depth == 0) {
-				context = manim_lsp_AnimContext.InMetadata;
-			}
-		} else if(StringTools.startsWith(line,"playlist")) {
-			if(depth == 1) {
-				context = manim_lsp_AnimContext.InPlaylist;
-			}
-		} else if(StringTools.startsWith(line,"extrapoints")) {
-			if(depth == 1) {
-				context = manim_lsp_AnimContext.InExtrapoints;
-			}
-		} else if(StringTools.startsWith(line,"filters")) {
-			if(depth == 1) {
-				context = manim_lsp_AnimContext.InFilters;
+		var rawLine = lines[i];
+		var trimmed = StringTools.trim(rawLine);
+		if(!inBlockComment) {
+			if(StringTools.startsWith(trimmed,"animation ") || StringTools.startsWith(trimmed,"anim ")) {
+				if(depth == 0) {
+					context = manim_lsp_AnimContext.InAnimation;
+				}
+			} else if(StringTools.startsWith(trimmed,"metadata")) {
+				if(depth == 0) {
+					context = manim_lsp_AnimContext.InMetadata;
+				}
+			} else if(StringTools.startsWith(trimmed,"playlist")) {
+				if(depth == 1) {
+					context = manim_lsp_AnimContext.InPlaylist;
+				}
+			} else if(StringTools.startsWith(trimmed,"extrapoints")) {
+				if(depth == 1) {
+					context = manim_lsp_AnimContext.InExtrapoints;
+				}
+			} else if(StringTools.startsWith(trimmed,"filters")) {
+				if(depth == 1) {
+					context = manim_lsp_AnimContext.InFilters;
+				}
 			}
 		}
-		var _g2 = 0;
-		var _g3 = lines[i].length;
-		while(_g2 < _g3) {
-			var k = _g2++;
-			var c = HxOverrides.cca(lines[i],k);
+		var inString = false;
+		var k = 0;
+		var len = rawLine.length;
+		while(k < len) {
+			var c = HxOverrides.cca(rawLine,k);
+			if(inBlockComment) {
+				if(c == 42 && k + 1 < len && HxOverrides.cca(rawLine,k + 1) == 47) {
+					inBlockComment = false;
+					k += 2;
+					continue;
+				}
+				++k;
+				continue;
+			}
+			if(inString) {
+				if(c == 92 && k + 1 < len) {
+					k += 2;
+					continue;
+				}
+				if(c == 34) {
+					inString = false;
+				}
+				++k;
+				continue;
+			}
+			if(c == 47 && k + 1 < len) {
+				var n = HxOverrides.cca(rawLine,k + 1);
+				if(n == 47) {
+					break;
+				}
+				if(n == 42) {
+					inBlockComment = true;
+					k += 2;
+					continue;
+				}
+			}
+			if(c == 34) {
+				inString = true;
+				++k;
+				continue;
+			}
 			if(c == 123) {
 				++depth;
 			} else if(c == 125) {
@@ -13673,8 +13624,9 @@ manim_lsp_AnimAnalyzer.getAnimContext = function(text,cursorLine) {
 					context = manim_lsp_AnimContext.InAnimation;
 				}
 			}
+			++k;
 		}
-		if(i == cursorLine && StringTools.startsWith(StringTools.trim(lines[i]),"@") && !StringTools.startsWith(StringTools.trim(lines[i]),"@final")) {
+		if(i == cursorLine && StringTools.startsWith(trimmed,"@") && !StringTools.startsWith(trimmed,"@final")) {
 			return manim_lsp_AnimContext.AfterAt;
 		}
 	}
@@ -14345,17 +14297,6 @@ manim_lsp_DocumentManager.prototype = {
 			return null;
 		}
 	}
-	,getVersion: function(uri) {
-		var doc = this.documents.h[uri];
-		if(doc != null) {
-			return doc.version;
-		} else {
-			return 0;
-		}
-	}
-	,allUris: function() {
-		return new haxe_ds__$StringMap_StringMapKeyIterator(this.documents.h);
-	}
 	,__class__: manim_lsp_DocumentManager
 };
 var manim_lsp_HoverProvider = function() { };
@@ -14625,35 +14566,36 @@ manim_lsp_ManimAnalyzer.getSymbols = function(text,uri) {
 					_g3.push("" + pname + ":" + manim_lsp_ManimAnalyzer.defTypeName(def.type));
 				}
 				var paramList = _g3;
-				symbol = { name : name, kind : 5, range : range, selectionRange : range, detail : paramList.length > 0 ? "(" + paramList.join(", ") + ")" : null, children : manim_lsp_ManimAnalyzer.getChildSymbols(node,text)};
+				var detail = paramList.length > 0 ? "(" + paramList.join(", ") + ")" : null;
+				symbol = manim_lsp_ManimAnalyzer.makeSymbol(name,5,range,detail,manim_lsp_ManimAnalyzer.getChildSymbols(node,text));
 				break;
 			case 11:
 				var _g4 = _g.layoutsDef;
-				symbol = { name : name, kind : 3, range : range, selectionRange : range, detail : "layout"};
+				symbol = manim_lsp_ManimAnalyzer.makeSymbol(name,3,range,"layout");
 				break;
 			case 12:
 				var _g5 = _g.paths;
-				symbol = { name : name, kind : 3, range : range, selectionRange : range, detail : "paths"};
+				symbol = manim_lsp_ManimAnalyzer.makeSymbol(name,3,range,"paths");
 				break;
 			case 13:
 				var _g6 = _g.animatedPathDef;
-				symbol = { name : name, kind : 12, range : range, selectionRange : range, detail : "animatedPath"};
+				symbol = manim_lsp_ManimAnalyzer.makeSymbol(name,12,range,"animatedPath");
 				break;
 			case 14:
 				var _g7 = _g.curves;
-				symbol = { name : name, kind : 3, range : range, selectionRange : range, detail : "curves"};
+				symbol = manim_lsp_ManimAnalyzer.makeSymbol(name,3,range,"curves");
 				break;
 			case 29:
 				var dataDef = _g.dataDef;
-				symbol = { name : name, kind : 23, range : range, selectionRange : range, children : manim_lsp_ManimAnalyzer.getDataChildren(dataDef,text)};
+				symbol = manim_lsp_ManimAnalyzer.makeSymbol(name,23,range,null,manim_lsp_ManimAnalyzer.getDataChildren(dataDef,text));
 				break;
 			case 33:
 				var _g8 = _g.value;
 				var n = _g.name;
-				symbol = { name : n, kind : 14, range : range, selectionRange : range, detail : "@final"};
+				symbol = manim_lsp_ManimAnalyzer.makeSymbol(n,14,range,"@final");
 				break;
 			default:
-				symbol = { name : name, kind : 13, range : range, selectionRange : range};
+				symbol = manim_lsp_ManimAnalyzer.makeSymbol(name,13,range);
 			}
 			symbols.push(symbol);
 		}
@@ -14685,6 +14627,16 @@ manim_lsp_ManimAnalyzer.getDefinition = function(text,uri,line,character) {
 		return manim_lsp_ManimAnalyzer.findNamedElement(text,uri,word);
 	}
 	return null;
+};
+manim_lsp_ManimAnalyzer.makeSymbol = function(name,kind,range,detail,children) {
+	var s = { name : name, kind : kind, range : range, selectionRange : range};
+	if(detail != null) {
+		s["detail"] = detail;
+	}
+	if(children != null) {
+		s["children"] = children;
+	}
+	return s;
 };
 manim_lsp_ManimAnalyzer.getChildSymbols = function(node,text) {
 	var children = [];
@@ -15437,8 +15389,8 @@ bh_multianim_ManimKeywordInfo.elementSnippets = (function($this) {
 	return $r;
 }(this));
 bh_multianim_ManimKeywordInfo.topLevelElements = ["PROGRAMMABLE","DATA","CURVES","PATHS","ANIMATED_PATH","ATLAS2","PALETTE","FINAL_VAR","RELATIVE_LAYOUTS"];
-bh_multianim_ManimKeywordInfo.childElements = ["BITMAP","TEXT","RICHTEXT","NINEPATCH","FLOW","LAYERS","MASK","TILEGROUP","INTERACTIVE","SLOT","SLOT_CONTENT","SPACER","POINT","APPLY","GRAPHICS","PIXELS","PARTICLES","REPEAT","REPEAT2D","STATIC_REF","DYNAMIC_REF","PLACEHOLDER","STATEANIM","STATEANIM_CONSTRUCT","AUTOTILE","FINAL_VAR"];
-bh_multianim_ManimKeywordInfo.allElementCtors = ["FLOW","SPACER","BITMAP","POINT","STATEANIM","STATEANIM_CONSTRUCT","PIXELS","TEXT","RICHTEXT","PROGRAMMABLE","TILEGROUP","RELATIVE_LAYOUTS","PATHS","ANIMATED_PATH","CURVES","PARTICLES","APPLY","LAYERS","MASK","REPEAT","REPEAT2D","STATIC_REF","PLACEHOLDER","DYNAMIC_REF","SLOT","SLOT_CONTENT","INTERACTIVE","GRAPHICS","DATA","AUTOTILE","ATLAS2","PALETTE","FINAL_VAR","NINEPATCH"];
+bh_multianim_ManimKeywordInfo.childElements = ["BITMAP","TEXT","RICHTEXT","NINEPATCH","FLOW","LAYERS","MASK","TILEGROUP","INTERACTIVE","SLOT","SLOT_CONTENT","SPACER","POINT","APPLY","GRAPHICS","PIXELS","PARTICLES","REPEAT","REPEAT2D","STATIC_REF","DYNAMIC_REF","PLACEHOLDER","STATEANIM","STATEANIM_CONSTRUCT","AUTOTILE","FINAL_VAR","SWITCH"];
+bh_multianim_ManimKeywordInfo.allElementCtors = ["FLOW","SPACER","BITMAP","POINT","STATEANIM","STATEANIM_CONSTRUCT","PIXELS","TEXT","RICHTEXT","PROGRAMMABLE","TILEGROUP","RELATIVE_LAYOUTS","PATHS","ANIMATED_PATH","CURVES","PARTICLES","APPLY","LAYERS","MASK","REPEAT","REPEAT2D","STATIC_REF","PLACEHOLDER","DYNAMIC_REF","SLOT","SLOT_CONTENT","INTERACTIVE","GRAPHICS","DATA","AUTOTILE","ATLAS2","PALETTE","FINAL_VAR","NINEPATCH","SWITCH"];
 bh_multianim_ManimKeywordInfo.simpleParamTypes = [bh_multianim_DefinitionType.PPTInt,bh_multianim_DefinitionType.PPTUnsignedInt,bh_multianim_DefinitionType.PPTFloat,bh_multianim_DefinitionType.PPTBool,bh_multianim_DefinitionType.PPTString,bh_multianim_DefinitionType.PPTColor,bh_multianim_DefinitionType.PPTTile,bh_multianim_DefinitionType.PPTArray,bh_multianim_DefinitionType.PPTHexDirection,bh_multianim_DefinitionType.PPTGridDirection];
 bh_multianim_ManimKeywordInfo.completableFilters = [bh_multianim_FilterType.FilterOutline(null,null),bh_multianim_FilterType.FilterGlow(null,null,null,null,null,false,false),bh_multianim_FilterType.FilterBlur(null,null,null,null),bh_multianim_FilterType.FilterSaturate(null),bh_multianim_FilterType.FilterBrightness(null),bh_multianim_FilterType.FilterGrayscale(null),bh_multianim_FilterType.FilterHue(null),bh_multianim_FilterType.FilterDropShadow(null,null,null,null,null,null,null,false),bh_multianim_FilterType.FilterPixelOutline(null,false),bh_multianim_FilterType.FilterPaletteReplace("",null,null),bh_multianim_FilterType.FilterColorListReplace(null,null),bh_multianim_FilterType.FilterGroup(null),bh_multianim_FilterType.FilterNone];
 bh_multianim_ManimKeywordInfo.allTransitions = [bh_multianim_TransitionType.TransNone,bh_multianim_TransitionType.TransFade(0,null),bh_multianim_TransitionType.TransCrossfade(0,null),bh_multianim_TransitionType.TransFlipX(0,null),bh_multianim_TransitionType.TransFlipY(0,null),bh_multianim_TransitionType.TransSlide(bh_multianim_TransitionDirection.TDLeft,0,null,null)];

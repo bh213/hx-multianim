@@ -29,6 +29,11 @@ private class CardEntry {
 	/** Deferred enable: if card is disabled during animation and re-enabled before it completes,
 	 *  this flag causes the onComplete handler to restore InHand instead of staying Disabled. */
 	public var enableAfterAnimation:Bool = false;
+	/** Rebuild listener installed on the card's BuilderResult so that any `@switch` arm flip
+	 *  or other structural rebuild inside the card resyncs `interactiveHelper`'s bindings.
+	 *  Stored here so it can be removed when the card is discarded. Null if the card's result
+	 *  is not in incremental mode. */
+	public var rebuildListener:Null<Void -> Void> = null;
 
 	public function new(descriptor:CardDescriptor, result:BuilderResult, container:h2d.Object, interactiveId:String) {
 		this.descriptor = descriptor;
@@ -373,9 +378,8 @@ class UICardHandHelper implements UIHigherOrderComponent {
 
 		entry.state = Animating;
 
-		// Unregister interactive
-		interactiveHelper.unbind(entry.interactiveId);
-		screen.removeInteractives(entry.interactiveId);
+		// Unregister interactive + screen wrapper + rebuild listener
+		unregisterCardEntry(entry);
 
 		cards.splice(idx, 1);
 
@@ -761,6 +765,17 @@ class UICardHandHelper implements UIHigherOrderComponent {
 
 		var entry = new CardEntry(descriptor, result, container, interactiveId);
 
+		// Install rebuild listener so the card hand's private `interactiveHelper` resyncs its
+		// bindings when the card's BuilderResult rebuilds (e.g. `@switch` arm flip inside the
+		// card's programmable). The screen's own resync listener is separately installed by
+		// `screen.addInteractives` above. Skip on non-incremental results — those can't rebuild.
+		if (result.isIncremental) {
+			final capturedEntry = entry;
+			final listener = () -> interactiveHelper.resync(capturedEntry.result, capturedEntry.interactiveId);
+			result.addRebuildListener(listener);
+			entry.rebuildListener = listener;
+		}
+
 		// Apply disabled state
 		var enabled = descriptor.enabled != null ? descriptor.enabled : true;
 		if (!enabled) {
@@ -775,12 +790,23 @@ class UICardHandHelper implements UIHigherOrderComponent {
 		return entry;
 	}
 
+	/** Tear down all screen / helper / rebuild-listener bookkeeping for a card. Used by every
+	 *  removal site (discard, hand clear, play). Does NOT remove the card from `cards` or touch
+	 *  the scene graph — callers handle those site-specific steps around this call. */
+	function unregisterCardEntry(entry:CardEntry):Void {
+		interactiveHelper.unbind(entry.interactiveId);
+		screen.removeInteractives(entry.interactiveId);
+		if (entry.rebuildListener != null) {
+			entry.result.removeRebuildListener(entry.rebuildListener);
+			entry.rebuildListener = null;
+		}
+	}
+
 	function clearHand():Void {
 		if (isTargeting && hideCursorWhileTargeting)
 			hxd.System.setCursor(Default);
 		for (entry in cards) {
-			interactiveHelper.unbind(entry.interactiveId);
-			screen.removeInteractives(entry.interactiveId);
+			unregisterCardEntry(entry);
 			entry.container.remove();
 		}
 		cards = [];
@@ -1152,8 +1178,7 @@ class UICardHandHelper implements UIHigherOrderComponent {
 
 		if (cardPlayed) {
 			entry.state = Animating;
-			interactiveHelper.unbind(entry.interactiveId);
-			screen.removeInteractives(entry.interactiveId);
+			unregisterCardEntry(entry);
 			var spliceIdx = cards.indexOf(entry);
 			if (spliceIdx >= 0)
 				cards.splice(spliceIdx, 1);

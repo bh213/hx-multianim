@@ -648,13 +648,34 @@ filter: group(perlinNoise(42.0, 12.0, 0.8), outline(1, #000000))
 
 ## Color Formats
 
-| Format | Example | Description |
-|--------|---------|-------------|
-| `#RGB` | `#f00` | Shorthand — expands `#RGB` → `#RRGGBB` (opaque) |
-| `#RRGGBB` | `#FF0000` | 6-digit hex RGB (opaque) |
-| `#RRGGBBAA` | `#FF000080` | 8-digit hex RGBA — CSS convention, alpha last (red @ 50%) |
-| `0xAARRGGBB` | `0xFFFF0000` | Native Heaps format — alpha first (for power users) |
-| Named | `red` | Named color (see list below) |
+Two conventions coexist. **CSS `#` forms** assume opacity (3/6 hex digits bake `0xFF` alpha). **Heaps `0x` forms** are the internal AARRGGBB representation and are preserved **verbatim** — the top byte IS alpha. If you write `0xFF0000`, that's transparent red (alpha = 0), not opaque red.
+
+| Format | Example | Stored as | Notes |
+|--------|---------|-----------|-------|
+| `#RGB` | `#f00` | `0xFFFF0000` | CSS shorthand, expanded to `#RRGGBB` then baked opaque |
+| `#RRGGBB` | `#FF0000` | `0xFFFF0000` | CSS RGB, baked opaque |
+| `#RRGGBBAA` | `#FF000080` | `0x80FF0000` | CSS RGBA, alpha last — converted to Heaps AARRGGBB |
+| `0xAARRGGBB` | `0xFFFF0000` | `0xFFFF0000` | Heaps literal, preserved exactly — alpha first |
+| `0xRRGGBB` | `0xFF0000` | `0x00FF0000` | Heaps literal with top byte 0 — **transparent** red |
+| Named | `red` | `0xFFFF0000` | Baked opaque at parser (except `transparent`) |
+
+**Rule of thumb:** use `#RRGGBB` for opaque colors, `#RRGGBBAA` for CSS-style with alpha, and reserve `0x...` for cases where you're thinking in Heaps AARRGGBB and want byte-exact control (including fully transparent values).
+
+### Runtime Color Semantics (Strict-D)
+
+Color values are plain `Int`s in Heaps `0xAARRGGBB` form at every API boundary. **Nothing in the runtime rewrites alpha** — not `setColor(v)`, not `setParameter("c", v)`, not `createFrom({c: v})`, not hot-reload. If you want opaque red at runtime, pass `0xFFFF0000`. If you pass `0xFF0000`, you get transparent red; if you pass `0`, you get fully transparent.
+
+This means `@switch` arms match against already-baked values:
+```manim
+#widget programmable(tint:color=#FFFFFF) {
+  @switch(tint) {
+    #FF0000: bitmap(...);  // matches 0xFFFF0000
+    #00000000: bitmap(...); // matches 0 / 0x00000000 (fully transparent)
+    #000000: bitmap(...);  // matches 0xFF000000 (opaque black)
+  }
+}
+```
+`widget.setTint(0)` lands on the `#00000000` arm. `widget.setTint(0xFF000000)` lands on `#000000`. The two are now distinguishable — previously, 0-alpha inputs were silently clobbered to opaque black on the way into the field.
 
 ### Named Colors
 
@@ -673,8 +694,9 @@ fontColor:color => #FF000080
 
 Untyped settings also accept `#hex` and `0xhex` values:
 ```
-fontColor => #FF0000
-fontColor => 0xFF0000
+fontColor => #FF0000       // → 0xFFFF0000 (opaque red)
+fontColor => 0xFFFF0000    // → 0xFFFF0000 (opaque red, explicit)
+fontColor => 0xFF0000      // → 0x00FF0000 (transparent red — usually a bug)
 ```
 
 ---

@@ -192,9 +192,9 @@ version: 1.0
 }
 
 // Regression-only (not rendered): distinct tile widths per color arm so codegen
-// setter tests can detect which arm fired after setTint(0xFF0000 / 0x00FF00 / ...).
-// Without alpha baking in the generated setter, the @switch arms never match
-// because the parser bakes #RRGGBB literals to 0xFFRRGGBB at compile time.
+// setter tests can detect which arm fired. `#RRGGBB` arms bake to `0xFFRRGGBB`
+// at compile time, so callers must pass the baked Heaps AARRGGBB form
+// (`0xFFFF0000` for opaque red, not `0xFF0000`).
 #colorSwitchWidths programmable(tint:color=#FFFFFF) {
   pos: 0, 0
   @switch(tint) {
@@ -205,18 +205,17 @@ version: 1.0
   }
 }
 
-// Regression-only (not rendered): explicit-alpha arm coverage. #RRGGBBAA parses
-// to Heaps AARRGGBB so a runtime caller passing an already-AARRGGBB int should
-// land on the matching arm. The #00000000 arm is deliberately unreachable from
-// the codegen path — setTint(0) is baked to 0xFF000000 by ColorArg.fromInt and
-// lands on the #000000 arm instead (documented footgun).
+// Regression-only (not rendered): explicit-alpha arm coverage. `#RRGGBBAA`
+// parses to Heaps AARRGGBB so runtime callers pass already-AARRGGBB ints.
+// Under strict-D color semantics, `setTint(0)` is preserved and lands on the
+// `#00000000` arm (77px); `setTint(0xFF000000)` lands on `#000000` (88px).
 #colorSwitchAlpha programmable(tint:color=#FFFFFFFF) {
   pos: 0, 0
   @switch(tint) {
     #FF000080: bitmap(generated(color(55, 10, #fff))); // 0x80FF0000 — semi-transparent red
     #00FF00A0: bitmap(generated(color(66, 10, #fff))); // 0xA000FF00 — semi-transparent green
-    #00000000: bitmap(generated(color(77, 10, #fff))); // 0x00000000 — literal transparent (unreachable via setTint)
-    #000000:   bitmap(generated(color(88, 10, #fff))); // 0xFF000000 — opaque black (where setTint(0) lands)
+    #00000000: bitmap(generated(color(77, 10, #fff))); // 0x00000000 — fully transparent (setTint(0) lands here)
+    #000000:   bitmap(generated(color(88, 10, #fff))); // 0xFF000000 — opaque black (setTint(0xFF000000) lands here)
     default:   bitmap(generated(color(99, 10, #fff)));
   }
 }

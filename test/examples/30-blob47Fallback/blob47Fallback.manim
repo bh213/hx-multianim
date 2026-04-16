@@ -11,7 +11,7 @@ version: 1.0
 #blob47Demo autotile {
     format: blob47
     tileSize: 8
-    demo: 0x66AA44, 0x886644    // green edges (grass border), brown fill (dirt center)
+    demo: #66AA44, #886644    // green edges (grass border), brown fill (dirt center)
 }
 
 // Blob47 autotile using Forgotten Plains tileset
@@ -64,12 +64,12 @@ version: 1.0
 
     // Show all 47 tiles: demo shape (top) vs tileset with fallback (bottom)
     // 8x8 tiles scaled 2x = 16x16 display, 20 tiles per row, 36px spacing (16+2+16+2)
-    text(f3x5, "Top: demo shape, Bottom: tileset (fallback for 22-46)", 0x888888, left):10,10
+    text(f3x5, "Top: demo shape, Bottom: tileset (fallback for 22-46)", #888888, left):10,10
 
     // Row labels
-    text(f3x5, "0-19:", 0x666666, right):28,24
-    text(f3x5, "20-39:", 0x666666, right):28,62
-    text(f3x5, "40-46:", 0x666666, right):28,100
+    text(f3x5, "0-19:", #666666, right):28,24
+    text(f3x5, "20-39:", #666666, right):28,62
+    text(f3x5, "40-46:", #666666, right):28,100
 
     // Display all 47 tiles in rows of 20, scaled 2x
     repeatable($i, range(0, 47)) {
@@ -83,7 +83,7 @@ version: 1.0
     }
 
     // Map section
-    text(f3x5, "Terrain Map - Demo (left) vs Tileset with fallback (right)", 0x888888, left):10,142
+    text(f3x5, "Terrain Map - Demo (left) vs Tileset with fallback (right)", #888888, left):10,142
 
     // Map backgrounds positioned for test code
     bitmap(generated(color(136, 104, black))):10,152
@@ -91,6 +91,6 @@ version: 1.0
 
     // Region sheet visualization - shows the tileset region with numbered grid
     // autotileRegionSheet(autotileName, scale, font, fontColor) - scale tiles but not font
-    text(f3x5, "Region Sheet (blob47Grass):", 0x888888, left):320,142
+    text(f3x5, "Region Sheet (blob47Grass):", #888888, left):320,142
     bitmap(generated(autotileRegionSheet("blob47Grass", 4, "f3x5", white))):320,152
 }

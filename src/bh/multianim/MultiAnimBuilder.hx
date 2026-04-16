@@ -313,6 +313,7 @@ class IncrementalUpdateContext {
 	var transitionsDef:Null<Map<String, TransitionType>>;
 	public var tweenManager:Null<TweenManager> = null;
 	var activeTransitionTweens:Array<{obj:h2d.Object, tween:Null<Tween>, sequence:Null<TweenSequence>, savedAlpha:Float, savedScaleX:Float, savedScaleY:Float, savedX:Float, savedY:Float}> = [];
+	var rebuildListeners:Array<Void -> Void> = [];
 
 	public function new(builder:MultiAnimBuilder, indexedParams:Map<String, ResolvedIndexParameters>,
 			builderParams:BuilderParameters, rootNode:Node) {
@@ -403,6 +404,139 @@ class IncrementalUpdateContext {
 	public function trackDynamicName(binding:DynamicNameBinding):Void {
 		dynamicNameBindings.push(binding);
 	}
+
+	/** Register a listener to be invoked once after each applyUpdates() cycle in which any structural
+	 *  rebuild fired (i.e. parameter changes processed). Use this to resync external state — for
+	 *  example, screen-side UIInteractiveWrapper maps that need to track new arms appearing after a
+	 *  @switch flip. The listener fires AFTER all conditional/tracked updates and dynamic ref
+	 *  propagation, so the BuilderResult collections are coherent when it runs. */
+	public function addRebuildListener(fn:Void -> Void):Void {
+		rebuildListeners.push(fn);
+	}
+
+	/** Remove a previously-added rebuild listener. No-op if not present. */
+	public function removeRebuildListener(fn:Void -> Void):Void {
+		rebuildListeners.remove(fn);
+	}
+
+	/** Drop all per-element bookkeeping for entries whose underlying h2d.Object is `container` itself
+	 *  or a descendant of it. Called by SWITCH/REPEAT rebuild closures BEFORE container.removeChildren()
+	 *  so parent links are still intact for the descendant walk.
+	 *
+	 *  Cleans:
+	 *  - InternalBuilderResults (interactives/slots/dynamicRefs/names/htmlTextsWithLinks) via removeRegistrationsUnder
+	 *  - dynamicRefBindings whose child context belongs to a removed dynamicRef (avoids forwarding to dead context)
+	 *  - dynamicNameBindings whose container is under the destroyed subtree
+	 *  - trackedExpressions whose object is a STRICT descendant of container (does not remove the rebuild
+	 *    closure's own entry, which has object == container)
+	 *  - conditionalEntries / conditionalApplyEntries / deferredEntries whose objects are under container
+	 *  - activeTransitionTweens on objects under container (cancelled to avoid completion callbacks on dead objs)
+	 */
+	public function cleanupDestroyedSubtree(ir:InternalBuilderResults, container:h2d.Object):Void {
+		// 1. Capture dynamicRef child contexts that will be removed, so we can drop their bindings afterwards.
+		final removedChildContexts:Array<IncrementalUpdateContext> = [];
+		for (_ => result in ir.dynamicRefs) {
+			final obj = result.object;
+			final isUnder = obj == container || (obj.parent != null && isDescendantOf(obj, container));
+			if (isUnder && result.incrementalContext != null)
+				removedChildContexts.push(result.incrementalContext);
+		}
+
+		// 2. Clean IR collections via the existing helper.
+		MultiAnimBuilder.removeRegistrationsUnder(ir, container);
+
+		// 3. Drop dynamicRefBindings whose childContext was just orphaned.
+		if (removedChildContexts.length > 0) {
+			var i = 0;
+			while (i < dynamicRefBindings.length) {
+				if (removedChildContexts.indexOf(dynamicRefBindings[i].childContext) >= 0)
+					dynamicRefBindings.splice(i, 1);
+				else i++;
+			}
+		}
+
+		// 4. Drop dynamicNameBindings whose container is under the destroyed subtree.
+		var ni = 0;
+		while (ni < dynamicNameBindings.length) {
+			final dnbContainer = dynamicNameBindings[ni].container;
+			final isUnder = dnbContainer == container || isDescendantOf(dnbContainer, container);
+			if (isUnder) dynamicNameBindings.splice(ni, 1);
+			else ni++;
+		}
+
+		// 5. Drop trackedExpressions whose object is a STRICT descendant of container.
+		//    The rebuild closure's own entry has object == container — keep it.
+		var ti = 0;
+		while (ti < trackedExpressions.length) {
+			final obj = trackedExpressions[ti].object;
+			if (obj != null && obj != container && isDescendantOf(obj, container))
+				trackedExpressions.splice(ti, 1);
+			else ti++;
+		}
+
+		// 6. Drop conditionalEntries whose object is under container.
+		var ci = 0;
+		while (ci < conditionalEntries.length) {
+			final obj = conditionalEntries[ci].object;
+			final isUnder = obj == container || (obj.parent != null && isDescendantOf(obj, container));
+			if (isUnder) conditionalEntries.splice(ci, 1);
+			else ci++;
+		}
+
+		// 7. Drop conditionalApplyEntries whose parent is under container.
+		var ai = 0;
+		while (ai < conditionalApplyEntries.length) {
+			final parent = conditionalApplyEntries[ai].parent;
+			final isUnder = parent == container || (parent.parent != null && isDescendantOf(parent, container));
+			if (isUnder) conditionalApplyEntries.splice(ai, 1);
+			else ai++;
+		}
+
+		// 8. Drop deferredEntries whose wrapper is under container.
+		var di = 0;
+		while (di < deferredEntries.length) {
+			final wrapper = deferredEntries[di].wrapper;
+			final isUnder = wrapper == container || (wrapper.parent != null && isDescendantOf(wrapper, container));
+			if (isUnder) deferredEntries.splice(di, 1);
+			else di++;
+		}
+
+		// 9. Cancel + drop active transition tweens on objects under container.
+		var twi = 0;
+		while (twi < activeTransitionTweens.length) {
+			final obj = activeTransitionTweens[twi].obj;
+			final isUnder = obj == container || (obj.parent != null && isDescendantOf(obj, container));
+			if (isUnder) {
+				final entry = activeTransitionTweens[twi];
+				if (entry.tween != null) {
+					entry.tween.onComplete = null;
+					entry.tween.cancel();
+				}
+				if (entry.sequence != null) {
+					entry.sequence.onComplete = null;
+					entry.sequence.cancel();
+				}
+				activeTransitionTweens.splice(twi, 1);
+			} else twi++;
+		}
+	}
+
+	#if MULTIANIM_DEV
+	/** Dev-only inspection: number of tracked expression closures currently registered. */
+	public function getTrackedExpressionsCount():Int return trackedExpressions.length;
+
+	/** Dev-only inspection: number of conditional entries currently registered. */
+	public function getConditionalEntriesCount():Int return conditionalEntries.length;
+
+	/** Dev-only inspection: number of conditional apply entries currently registered. */
+	public function getConditionalApplyEntriesCount():Int return conditionalApplyEntries.length;
+
+	/** Dev-only inspection: number of dynamic ref param-forwarding bindings. */
+	public function getDynamicRefBindingsCount():Int return dynamicRefBindings.length;
+
+	/** Dev-only inspection: number of dynamic name (template-name) bindings. */
+	public function getDynamicNameBindingsCount():Int return dynamicNameBindings.length;
+	#end
 
 	public function trackConditionalApply(parent:h2d.Object, node:Node, applied:Bool,
 			savedFilter:Null<h2d.filter.Filter>, savedAlpha:Null<Float>,
@@ -526,11 +660,9 @@ class IncrementalUpdateContext {
 		if (paramType != null && paramType.match(PPTFlags(_))) {
 			indexedParams.set(name, MultiAnimParser.dynamicValueToIndex(name, paramType, value, s -> throw s));
 		} else if (Std.isOfType(value, Int)) {
-			// PPTColor params store alpha-baked values when set via .manim literals (#RRGGBB → 0xFFRRGGBB).
-			// Bake here too so setParameter is equivalence-preserving with the parser default, and so
-			// @switch arms compare equal regardless of which side baked the alpha.
-			final v:Int = (paramType != null && paramType.match(PPTColor)) ? (value : Int).addAlphaIfNotPresent() : value;
-			indexedParams.set(name, Value(v));
+			// Int is the final form for color params — Heaps AARRGGBB convention.
+			// Use `0xFFRRGGBB` for opaque, `0x00RRGGBB`/`0` for transparent.
+			indexedParams.set(name, Value((value : Int)));
 		} else if (Std.isOfType(value, Float)) {
 			indexedParams.set(name, ValueF(value));
 		} else if (Std.isOfType(value, String)) {
@@ -1024,8 +1156,17 @@ class IncrementalUpdateContext {
 		}
 
 		builder.popBuilderState();
+		final firedRebuild = hasChanges;
 		changedParams.clear();
 		hasChanges = false;
+
+		// Fire rebuild listeners AFTER state cleanup so listeners can safely call setParameter()
+		// (re-entrancy enters a fresh applyUpdates cycle). Iterate over a snapshot in case a
+		// listener removes itself or others during the callback.
+		if (firedRebuild && rebuildListeners.length > 0) {
+			final snapshot = rebuildListeners.copy();
+			for (fn in snapshot) fn();
+		}
 	}
 
 	public function applyConditionalChains():Void {
@@ -1217,7 +1358,7 @@ class SlotHandle {
 
 @:nullSafety
 @:structInit
-class BuilderResult {
+class BuilderResult implements bh.ui.UIInteractiveSource {
 	public var object:Object;
 	public var name:String;
 	public var names:Map<String, Array<NamedBuildResult>>;
@@ -1271,6 +1412,36 @@ class BuilderResult {
 		if (incrementalContext == null)
 			throw 'setTweenManager requires incremental mode';
 		incrementalContext.setTweenManager(tm);
+	}
+
+	/** `UIInteractiveSource` implementation — returns a copy of the tracked interactives list.
+	 *  The copy protects callers from mutations that may happen during structural rebuilds. */
+	public function getInteractives():Array<bh.base.MAObject> {
+		return interactives.copy();
+	}
+
+	/** `UIInteractiveSource` — true when this BuilderResult was built with `incremental: true`.
+	 *  Static snapshots return false and cannot service rebuild listeners or `setParameter`. */
+	public var isIncremental(get, never):Bool;
+	inline function get_isIncremental():Bool return incrementalContext != null;
+
+	/** `UIInteractiveSource` — register a listener fired after each rebuild cycle (parameter change
+	 *  processed). Use to resync external state — e.g. screen-side wrapper maps after a `@switch`
+	 *  arm flip. Throws on non-incremental results: callers must gate with `isIncremental` so that
+	 *  the mismatch surfaces at wiring time instead of letting dependent `setParameter` calls blow
+	 *  up later. */
+	public function addRebuildListener(fn:Void -> Void):Void {
+		if (incrementalContext == null)
+			throw 'addRebuildListener requires incremental mode — gate on `isIncremental` or pass incremental:true to buildWithParameters';
+		incrementalContext.addRebuildListener(fn);
+	}
+
+	/** Remove a previously-added rebuild listener. Throws on non-incremental (symmetric with
+	 *  `addRebuildListener`). */
+	public function removeRebuildListener(fn:Void -> Void):Void {
+		if (incrementalContext == null)
+			throw 'removeRebuildListener requires incremental mode';
+		incrementalContext.removeRebuildListener(fn);
 	}
 
 	public function setParameter(name:String, value:Dynamic):Void {
@@ -1444,6 +1615,45 @@ private typedef InternalBuilderResults = {
 	htmlTextsWithLinks:Array<h2d.HtmlText>
 }
 
+/** Persistent sink for results produced inside a @switch arm. One instance per switch ordinal in a codegen
+ *  programmable instance; passed to rebuildSwitchArmByOrdinal so indexed names, slots, interactives, and
+ *  dynamicRefs declared inside arms remain addressable after the initial build and after arm swaps. */
+@:nullSafety
+class SwitchArmResults {
+	@:allow(bh.multianim.MultiAnimBuilder)
+	var ir:InternalBuilderResults;
+
+	public function new() {
+		ir = {names: new Map(), interactives: [], slots: [], dynamicRefs: new Map(), htmlTextsWithLinks: []};
+	}
+
+	public function getUpdatable(name:String):Null<h2d.Object> {
+		final arr = ir.names.get(name);
+		if (arr == null || arr.length == 0) return null;
+		return MultiAnimParser.toh2dObject(arr[0].object);
+	}
+
+	public function getUpdatableByIndex(name:String, index:Int):Null<h2d.Object> {
+		return getUpdatable('${name} ${index}');
+	}
+
+	public function getUpdatable2D(name:String, x:Int, y:Int):Null<h2d.Object> {
+		return getUpdatable('${name} ${x} ${y}');
+	}
+
+	public function getSlot(name:String, ?index:Null<Int>, ?indexY:Null<Int>):Null<SlotHandle> {
+		for (entry in ir.slots) {
+			final match = switch entry.key {
+				case Named(n): index == null && indexY == null && n == name;
+				case Indexed(n, i): index != null && indexY == null && n == name && i == index;
+				case Indexed2D(n, ix, iy): index != null && indexY != null && n == name && ix == index && iy == indexY;
+			};
+			if (match) return entry.handle;
+		}
+		return null;
+	}
+}
+
 @:nullSafety
 private typedef StoredBuilderState = {
 	indexedParams:Map<String, ResolvedIndexParameters>,
@@ -1532,6 +1742,64 @@ class MultiAnimBuilder {
 		this.indexedParams = [];
 		this.builderParams = {};
 		this.currentNode = null;
+	}
+
+	/** Remove from `ir` any registration whose underlying h2d.Object is `container` itself or a descendant of it.
+	 *  Used by SWITCH/REPEAT rebuild closures to drop stale entries from the previous arm/iteration before
+	 *  rebuilding into the same container. Must be called BEFORE container.removeChildren() so parent links
+	 *  are still intact for the descendant walk. */
+	private static function removeRegistrationsUnder(ir:InternalBuilderResults, container:h2d.Object):Void {
+		function isUnder(obj:Null<h2d.Object>):Bool {
+			if (obj == null) return false;
+			if (obj == container) return true;
+			var p = obj.parent;
+			while (p != null) {
+				if (p == container) return true;
+				p = p.parent;
+			}
+			return false;
+		}
+
+		// interactives: MAObject extends h2d.Object directly
+		var i = 0;
+		while (i < ir.interactives.length) {
+			if (isUnder(ir.interactives[i])) ir.interactives.splice(i, 1);
+			else i++;
+		}
+
+		// slots: handle.container is the slot's h2d.Object
+		var s = 0;
+		while (s < ir.slots.length) {
+			if (isUnder(ir.slots[s].handle.container)) ir.slots.splice(s, 1);
+			else s++;
+		}
+
+		// dynamicRefs: each value's .object is the embedded result's h2d.Object
+		final keysToRemove:Array<String> = [];
+		for (key => result in ir.dynamicRefs) {
+			if (isUnder(result.object)) keysToRemove.push(key);
+		}
+		for (k in keysToRemove) ir.dynamicRefs.remove(k);
+
+		// names: each NamedBuildResult.object is a BuiltHeapsComponent enum wrapping an h2d.Object
+		final namesToRemove:Array<String> = [];
+		for (name => arr in ir.names) {
+			var ni = 0;
+			while (ni < arr.length) {
+				final entryObj = MultiAnimParser.toh2dObject(arr[ni].object);
+				if (isUnder(entryObj)) arr.splice(ni, 1);
+				else ni++;
+			}
+			if (arr.length == 0) namesToRemove.push(name);
+		}
+		for (n in namesToRemove) ir.names.remove(n);
+
+		// htmlTextsWithLinks: each is h2d.HtmlText extends h2d.Object
+		var h = 0;
+		while (h < ir.htmlTextsWithLinks.length) {
+			if (isUnder(ir.htmlTextsWithLinks[h])) ir.htmlTextsWithLinks.splice(h, 1);
+			else h++;
+		}
 	}
 
 	public static function load(byteData, resourceLoader, sourceName) {
@@ -2162,8 +2430,7 @@ class MultiAnimBuilder {
 	function generatePlaceholderBitmap(type:ResolvedGeneratedTileType):h2d.Tile {
 		return switch type {
 			case Cross(w, h, color, thickness):
-				// PixelLines writes raw pixel data — alpha byte must be set
-				final c = color.addAlphaIfNotPresent();
+				final c = color;
 				final pl = new PixelLines(w, h);
 				for (t in 0...thickness) {
 					pl.rect(t, t, w - 1 - t * 2, h - 1 - t * 2, c);
@@ -3449,8 +3716,7 @@ class MultiAnimBuilder {
 					var y1 = Math.round(startPos.y);
 					var x2 = Math.round(endPos.x);
 					var y2 = Math.round(endPos.y);
-					// PixelLines writes raw pixel data — alpha byte must be set
-				computedShapes.push(ComputedShape.Line(x1, y1, x2, y2, resolveAsColorInteger(line.color).addAlphaIfNotPresent()));
+				computedShapes.push(ComputedShape.Line(x1, y1, x2, y2, resolveAsColorInteger(line.color)));
 					bounds.addPos(x1, y1);
 					bounds.addPos(x2, y2);
 				case RECT(rect) | FILLED_RECT(rect):
@@ -3460,14 +3726,14 @@ class MultiAnimBuilder {
 					var y = Math.round(start.y);
 					var w = resolveAsInteger(rect.width);
 					var h = resolveAsInteger(rect.height);
-					computedShapes.push(ComputedShape.Rect(x, y, w, h, resolveAsColorInteger(rect.color).addAlphaIfNotPresent(), filled));
+					computedShapes.push(ComputedShape.Rect(x, y, w, h, resolveAsColorInteger(rect.color), filled));
 					bounds.addPos(x, y);
 					bounds.addPos(x + w+1, y + h+1);
 				case PIXEL(pixel):
 					var pos = calculatePosition(pixel.pos, gridCoordinateSystem, hexCoordinateSystem);
 					var x = Math.round(pos.x);
 					var y = Math.round(pos.y);
-					computedShapes.push(ComputedShape.Pixel(x, y, resolveAsColorInteger(pixel.color).addAlphaIfNotPresent()));
+					computedShapes.push(ComputedShape.Pixel(x, y, resolveAsColorInteger(pixel.color)));
 					bounds.addPos(x, y);
 			}
 		}
@@ -4443,15 +4709,28 @@ class MultiAnimBuilder {
 					final capturedParamName = paramName;
 					final capturedContainer = container;
 					final capturedBP = builderParams;
+					final capturedIR = internalResults;
+					final capturedCtx = savedIncCtx;
 					savedIncCtx.trackExpression(() -> {
 						final newArm = resolveMatchedSwitchArm(capturedParamName, capturedArms);
+						// Drop registrations + per-element bookkeeping from the previous arm before tearing
+						// down its scene graph, then build the new arm into the parent internalResults so
+						// its registrations are visible via the parent BuilderResult.
+						capturedCtx.cleanupDestroyedSubtree(capturedIR, capturedContainer);
 						capturedContainer.removeChildren();
 						if (newArm != null) {
+							// Mirror initial arm build: disable incremental tracking so arm children
+							// don't register tracked expressions / dynamicRef bindings on the parent ctx.
+							final savedMode = incrementalMode;
+							final savedCtx = incrementalContext;
+							incrementalMode = false;
+							incrementalContext = null;
 							final gcs = MultiAnimParser.getGridCoordinateSystem(node);
 							final hcs = MultiAnimParser.getHexCoordinateSystem(node);
-							final ir:InternalBuilderResults = {names: [], interactives: [], slots: [], dynamicRefs: new Map(), htmlTextsWithLinks: []};
 							for (child in newArm.children)
-								build(child, ObjectMode(capturedContainer), gcs, hcs, ir, capturedBP);
+								build(child, ObjectMode(capturedContainer), gcs, hcs, capturedIR, capturedBP);
+							incrementalMode = savedMode;
+							incrementalContext = savedCtx;
 						}
 					}, switchParamRefs, container);
 				}
@@ -4651,6 +4930,8 @@ class MultiAnimBuilder {
 					final capturedVarName = varName;
 					final capturedRepeatType = repeatType;
 					final capturedBP = builderParams;
+					final capturedIR = internalResults;
+					final capturedCtx = savedIncrementalCtx;
 					savedIncrementalCtx.trackExpression(() -> {
 						var newDx = 0;
 						var newDy = 0;
@@ -4669,10 +4950,19 @@ class MultiAnimBuilder {
 								newCount = Math.ceil((rangeEnd - newRangeStart) / newRangeStep);
 							default:
 						}
+						// Drop registrations + per-element bookkeeping from the previous iterations before
+						// tearing down their scene graph, then build the new iterations into the parent
+						// internalResults so their registrations are visible via the parent BuilderResult.
+						capturedCtx.cleanupDestroyedSubtree(capturedIR, capturedObject);
 						capturedObject.removeChildren();
+						// Mirror initial repeat build: disable incremental tracking so iteration children
+						// don't register tracked expressions / dynamicRef bindings on the parent ctx.
+						final savedMode = incrementalMode;
+						final savedCtx = incrementalContext;
+						incrementalMode = false;
+						incrementalContext = null;
 						final gcs = MultiAnimParser.getGridCoordinateSystem(capturedNode);
 						final hcs = MultiAnimParser.getHexCoordinateSystem(capturedNode);
-						final ir:InternalBuilderResults = {names: [], interactives: [], slots: [], dynamicRefs: new Map(), htmlTextsWithLinks: []};
 						for (count in 0...newCount) {
 							final resolvedIndex = switch capturedRepeatType {
 								case RangeIterator(_, _, _): newRangeStart + count * newRangeStep;
@@ -4681,7 +4971,7 @@ class MultiAnimBuilder {
 							indexedParams.set(capturedVarName, Value(resolvedIndex));
 							final resolvedChildren = resolveConditionalChildren(capturedNode.children);
 							for (childNode in resolvedChildren) {
-								var obj = build(childNode, ObjectMode(capturedObject), gcs, hcs, ir, capturedBP);
+								var obj = build(childNode, ObjectMode(capturedObject), gcs, hcs, capturedIR, capturedBP);
 								if (obj == null)
 									continue;
 								if (newDx != 0 || newDy != 0) {
@@ -4691,7 +4981,9 @@ class MultiAnimBuilder {
 							cleanupFinalVars(resolvedChildren, indexedParams);
 						}
 						indexedParams.remove(capturedVarName);
-					}, repeatParamRefs);
+						incrementalMode = savedMode;
+						incrementalContext = savedCtx;
+					}, repeatParamRefs, capturedObject);
 				}
 
 				skipChildren = true;
@@ -5149,7 +5441,7 @@ class MultiAnimBuilder {
 		if (node.tint != null) {
 			if (Std.isOfType(object, h2d.Drawable)) {
 				final d:h2d.Drawable = cast object;
-				d.color.setColor(resolveAsColorInteger(node.tint).addAlphaIfNotPresent());
+				d.color.setColor(resolveAsColorInteger(node.tint));
 			}
 		}
 	}
@@ -6160,9 +6452,8 @@ class MultiAnimBuilder {
 
 			case ATSDemo(edgeColor, fillColor):
 				// Auto-generated demo tiles based on format
-				// PixelLines writes raw pixel data — alpha byte must be set
-				final edge = resolveAsColorInteger(edgeColor).addAlphaIfNotPresent();
-				final fill = resolveAsColorInteger(fillColor).addAlphaIfNotPresent();
+				final edge = resolveAsColorInteger(edgeColor);
+				final fill = resolveAsColorInteger(fillColor);
 				final tileCount = switch autotileDef.format {
 					case Cross: 13;
 					case Blob47: 47;
@@ -6179,9 +6470,6 @@ class MultiAnimBuilder {
 	private function generateAutotileDemoTile(format:AutotileFormat, tileIndex:Int, tileSize:Int, edgeColor:Int, fillColor:Int):h2d.Tile {
 		final borderWidth = Std.int(Math.max(1, tileSize / 8));
 		final cornerSize = Std.int(Math.max(2, tileSize / 2)); // Size of diagonal corner cut
-		// PixelLines writes raw pixel data — alpha byte must be set
-		edgeColor = edgeColor.addAlphaIfNotPresent();
-		fillColor = fillColor.addAlphaIfNotPresent();
 		final pl = new PixelLines(tileSize, tileSize);
 
 		// Fill entire tile with fill color
@@ -6664,9 +6952,13 @@ class MultiAnimBuilder {
 
 	/** Rebuild a @switch arm into its container. Tears down the old arm and builds the new one.
 	 *  Used by ProgrammableBuilder.rebuildSwitchArm for codegen lazy switch.
-	 *  switchOrdinal is the N-th SWITCH node in DFS order of the programmable's tree. */
+	 *  switchOrdinal is the N-th SWITCH node in DFS order of the programmable's tree.
+	 *  When `sink` is provided, the arm's InternalBuilderResults are stored there instead of being
+	 *  discarded — letting callers look up indexed names / slots / interactives declared inside arms.
+	 *  On arm swap, the sink is cleaned up (removeRegistrationsUnder must run BEFORE removeChildren
+	 *  so parent links are still intact). */
 	function rebuildSwitchArmByOrdinal(programmableName:String, switchOrdinal:Int, armIndex:Int, container:h2d.Object,
-			parentParams:Map<String, Dynamic>):Void {
+			parentParams:Map<String, Dynamic>, ?sink:SwitchArmResults):Void {
 		final progNode = multiParserResult.nodes.get(programmableName);
 		if (progNode == null) throw 'programmable "$programmableName" not found';
 		final switchNode = findNthSwitchNode(progNode, switchOrdinal);
@@ -6675,6 +6967,11 @@ class MultiAnimBuilder {
 			case SWITCH(_, a): a;
 			default: throw 'node #$switchOrdinal is not a SWITCH node';
 		};
+		// Drop registrations from the previous arm BEFORE removeChildren (needs intact parent chain).
+		// Only IR collections are cleaned here — the arm build path runs with incrementalMode=false,
+		// so there are no trackedExpressions or dynamicRefBindings to reap.
+		if (sink != null)
+			MultiAnimBuilder.removeRegistrationsUnder(sink.ir, container);
 		container.removeChildren();
 		if (armIndex >= 0 && armIndex < arms.length) {
 			final arm = arms[armIndex];
@@ -6704,7 +7001,9 @@ class MultiAnimBuilder {
 				scene: parentBP != null ? parentBP.scene : null,
 			};
 			this.builderParams = bp;
-			final ir:InternalBuilderResults = {names: [], interactives: [], slots: [], dynamicRefs: new Map(), htmlTextsWithLinks: []};
+			final ir:InternalBuilderResults = sink != null
+				? sink.ir
+				: {names: new Map(), interactives: [], slots: [], dynamicRefs: new Map(), htmlTextsWithLinks: []};
 			for (child in arm.children)
 				build(child, ObjectMode(container), cast gridCS, cast hexCS, ir, bp);
 			popBuilderState();

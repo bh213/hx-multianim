@@ -7,14 +7,14 @@ version: 1.0
       @(style=>disabled) ninepatch("ui", "Window_3x3_disabled", $w, $h): 10, 20
 
       // Title bar text
-      text(dd, $title, 0xFFDD44, center, 280): 20, 28
+      text(dd, $title, #FFDD44, center, 280): 20, 28
 
       // Separator line (thin ninepatch)
       @final innerW = $w - 20
       ninepatch("ui", "Sliderbar_H_3x1", $innerW, 4): 20, 45
 
       // Body text
-      text(dd, $body, 0xCCCCCC, center, 280): 20, 55
+      text(dd, $body, #CCCCCC, center, 280): 20, 55
 
       // OK button at bottom
       @final btnX = $w - 60
