@@ -1,0 +1,185 @@
+version: 1.0
+
+import "test/examples/107-rubeGoldberg/imported.manim" as "ext"
+
+#rgInfo data {
+    hp: 100
+    speed: 1.5
+    title: "GO"
+    costs: [10, 20, 40]
+}
+
+curves {
+    #easeRising curve { easing: easeoutcubic }
+    #threePoint curve { points: [(0, 0), (0.5, 1.0), (1.0, 0.2)] }
+    #piecewise curve {
+        [0.0 .. 0.5] easeinquad
+        [0.5 .. 1.0] easeoutquad
+    }
+    #multiplied curve { multiply: [easeRising, threePoint] }
+    #applied curve { apply: easeRising, piecewise }
+    #inverted curve { invert: easeRising }
+    #scaled curve { scale: easeRising, 1.5 }
+}
+
+#rgCardA programmable(tint:color=#FFFFFF, foo:string="A") {
+    bitmap(generated(color(30, 20, $tint))): 0, 0
+    text(f3x5, $foo, #000000): 2, 7
+}
+
+#rgCardB programmable(tint:color=#FFFFFF, foo:string="B") {
+    bitmap(generated(color(30, 20, $tint))): 0, 0
+    text(f3x5, $foo, #000000): 2, 7
+}
+
+#rgCardC programmable(tint:color=#FFFFFF, foo:string="C") {
+    bitmap(generated(color(30, 20, #222222))): 0, 0
+    text(f3x5, $foo, $tint): 2, 7
+}
+
+#rubeGoldberg programmable(
+    mode:[idle, hover, active, danger] = hover,
+    count:uint = 3,
+    temperature:int = 42,
+    zoom:float = 1.0,
+    enabled:bool = true,
+    label:string = "GO",
+    accent:color = #FF8800,
+    level:1..10 = 5,
+    flags:flags(4) = 3,
+    template:[rgCardA, rgCardB, rgCardC] = rgCardB
+) {
+    pos: 0, 0
+    grid: #ui 40, 25
+
+    // @final constants at programmable-body scope — exercises all six color parse paths
+    // plus numeric @finals used as dimensions. These must survive incremental rebuilds
+    // (setParameter triggers re-resolution of references) via syncFinalsFromBuilder.
+    @final SW = 30
+    @final SH = 20
+    @final RGB3 = #F0A
+    @final RGB6 = #FF8800
+    @final RGBA8 = #FF880080
+    @final HEX_FULL = 0x80FF0000
+    @final HEX_SHORT = 0xFF0000
+    @final TRANSPARENT = 0x00000000
+
+    transition {
+        mode: crossfade(0.2, easeoutquad)
+    }
+
+    // Top banner
+    bitmap(generated(color(900, 20, #222222))): 0, 0
+    text(f3x5, "Rube Goldberg", #FFFFFF): 5, 7
+
+    // Row 1: color literal forms — all six parse paths via @final refs
+    bitmap(generated(color($SW, $SH, $RGB3))):          0, 30
+    bitmap(generated(color($SW, $SH, $RGB6))):         35, 30
+    bitmap(generated(color($SW, $SH, $RGBA8))):        70, 30
+    bitmap(generated(color($SW, $SH, $HEX_FULL))):    105, 30
+    bitmap(generated(color($SW, $SH, $HEX_SHORT))):   140, 30
+    bitmap(generated(color($SW, $SH, $TRANSPARENT))): 175, 30
+    text(f3x5, "color literal forms", #AAAAAA): 0, 55
+
+    // Row 2: @switch on mode
+    @switch(mode) {
+        idle: bitmap(generated(color(60, 20, #666666))): 0, 70;
+        hover | active: bitmap(generated(color(60, 20, $accent))): 0, 70;
+        danger {
+            bitmap(generated(color(60, 20, #FF0000))): 0, 70
+            text(f3x5, "!!", #FFFFFF): 25, 77
+        }
+        default: bitmap(generated(color(60, 20, #444444))): 0, 70;
+    }
+
+    // Every conditional form
+    @(enabled => true)          text(f3x5, "enabled", #00FF00): 70, 70
+    @(temperature >= 30)        text(f3x5, "hot",     #FF6600): 115, 70
+    @(level => 3..7)            text(f3x5, "mid",     $accent): 150, 70
+    @(flags => bit[0])          text(f3x5, "bit0",    #FFFF00): 180, 70
+    @any(mode => hover, enabled => false) text(f3x5, "act-ish", #FF00AA): 215, 70
+    @all(enabled => true, count >= 2)   text(f3x5, "gated",  #00FFFF): 265, 70
+    @(mode != idle)             text(f3x5, "stirred", #FFFFFF): 310, 70
+
+    // @else chain
+    @(count => 1)     text(f3x5, "one",  #FFFFFF): 365, 70
+    @else(count => 2) text(f3x5, "two",  #FFFF00): 365, 70
+    @else             text(f3x5, "more", $accent): 365, 70
+    @default          text(f3x5, "???",  #888888): 410, 70
+
+    text(f3x5, "conditionals zoo", #AAAAAA): 0, 95
+
+    // Row 3: Interactive with typed metadata
+    bitmap(generated(color(100, 20, #333355))): 0, 105
+    interactive(100, 20, "hit", autoStatus => "mode", eventPriority:int => 10, cursor.hover => "move", price:int => 100, weight:float => 2.5, shiny:bool => true): 0, 105
+    text(f3x5, "interactive+meta", #AAAAAA): 0, 130
+
+    // Row 4: flow with per-child decorators
+    bitmap(generated(color(200, 20, #113311))): 200, 105
+    point {
+        pos: 205, 112
+        flow(layout: horizontal, horizontalSpacing: 4) {
+            text(f3x5, $label, #FFFFFF);
+            spacer(8, 8);
+            @flow.offset(0, 3) text(f3x5, "+", $accent);
+            @flow.halign(right) text(f3x5, "end", #CCCCCC);
+        }
+    }
+    text(f3x5, "flow", #AAAAAA): 200, 130
+
+    // Row 5: repeatable with $loopVar conditionals
+    repeatable($i, step($count, dx: 35)) {
+        @($i => 0) bitmap(generated(color(20, 20, $accent))): 0, 150
+        @($i >= 1) bitmap(generated(color(20, 20, #00FFFF))): 0, 150
+    }
+    text(f3x5, "repeatable", #AAAAAA): 0, 175
+
+    // Second @switch on template — TEST
+    @switch(template) {
+        rgCardA: text(f3x5, "tmpA", #88FFFF): 460, 155;
+        rgCardB: text(f3x5, "tmpB", #FFFFFF): 460, 155;
+        rgCardC: text(f3x5, "tmpC", #FF88FF): 460, 155;
+    }
+
+    // Slots
+    text(f3x5, "slots:", #AAAAAA): 0, 195
+    #mainSlot slot: 0, 205
+    repeatable($r, step(3, dx: 35)) {
+        #row[$r] slot: 60, 205
+    }
+
+    // Static/dynamic refs
+    text(f3x5, "refs:", #AAAAAA): 0, 240
+    staticRef(external(ext), $extWidget, label => "ext-S"): 0, 250
+    dynamicRef(external(ext), $extWidget, label => $label, bg => $accent): 70, 250
+    // Template-switched dynamicRef — $template names the target programmable
+    dynamicRef($template, tint => $accent, foo => $label): 140, 250
+
+    // Graphics primitives
+    text(f3x5, "graphics:", #AAAAAA): 0, 280
+    graphics(
+        rect($accent, filled, 20, 10): 0, 290
+        circle(#FFFF00, filled, 8): 40, 295
+        rect(#FFFFFF, 1, 60, 10): 60, 290
+    ): 0, 0
+
+    // Pixels primitives
+    text(f3x5, "pixels:", #AAAAAA): 150, 280
+    pixels(
+        rect 150, 290, 5, 5, #F0A
+        rect 160, 290, 5, 5, #FF8800
+        rect 170, 290, 5, 5, #FF880080
+        rect 180, 290, 5, 5, 0x80FF0000
+    ): 0, 0
+
+    // Custom filter (rgTint) + built-in outline via group
+    text(f3x5, "filter:", #AAAAAA): 260, 280
+    bitmap(generated(color(30, 20, $accent))) {
+        filter: group(rgTint($accent, 0.4), outline(1, #000000))
+        pos: 260, 290
+    }
+
+    // Grid coordinate system usage
+    text(f3x5, "grid:", #AAAAAA): 0, 320
+    bitmap(generated(color(6, 6, $accent))): $ui.pos($level, 13).offset(0, 0)
+}

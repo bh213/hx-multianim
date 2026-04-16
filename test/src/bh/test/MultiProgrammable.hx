@@ -382,4 +382,19 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/106-switchArmNames/switchArmNames.manim", "switchArmSlot")
 	public var switchArmSlot;
+
+	@:manim("test/examples/107-rubeGoldberg/rubeGoldberg.manim", "rubeGoldberg")
+	public var rubeGoldberg;
+
+	@:manim("test/examples/107-rubeGoldberg/rubeGoldberg.manim", "rgCardA")
+	public var rgCardA;
+
+	@:manim("test/examples/107-rubeGoldberg/rubeGoldberg.manim", "rgCardB")
+	public var rgCardB;
+
+	@:manim("test/examples/107-rubeGoldberg/rubeGoldberg.manim", "rgCardC")
+	public var rgCardC;
+
+	@:data("test/examples/107-rubeGoldberg/rubeGoldberg.manim", "rgInfo")
+	public var rgInfo;
 }

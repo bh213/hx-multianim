@@ -2728,7 +2728,13 @@ class MacroManimParser {
 			type: type,
 			children: [],
 			conditionals: conditional,
-			uniqueNodeName: generateUniqueName(uniqueCounter, nameStr, Std.string(type)),
+			// Use the short enum-constructor name for SWITCH (its arms carry full
+			// subtrees with parent back-pointers — Std.string recurses unbounded → AV).
+			// Other types keep full Std.string() form for backwards compatibility with
+			// consumers that rely on the detailed name (ProgrammableBuilder.buildNodeByUniqueName,
+			// findNodeByUniqueName for REPEAT-child runtime forwarding).
+			uniqueNodeName: generateUniqueName(uniqueCounter, nameStr,
+				switch type { case SWITCH(_, _): Type.enumConstructor(type); default: Std.string(type); }),
 			settings: null,
 			transitions: null,
 			flowProperties: null,

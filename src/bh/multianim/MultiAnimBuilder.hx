@@ -341,6 +341,21 @@ class IncrementalUpdateContext {
 
 	#end
 
+	/** Sync surviving @final constants (ExpressionAlias entries) from the live builder state
+	 *  into the context's persistent indexedParams. Called after initial build so that
+	 *  setParameter-triggered rebuilds can resolve references like `$RGB3` to their @final
+	 *  expressions. @finals cleaned up at nested-scope exit (via cleanupFinalVars) are not
+	 *  present in `live` and therefore not synced — matching their lexical scope. */
+	public function syncFinalsFromBuilder(live:Map<String, ResolvedIndexParameters>):Void {
+		for (name => v in live) {
+			switch v {
+				case ExpressionAlias(_):
+					indexedParams.set(name, v);
+				default:
+			}
+		}
+	}
+
 	public function trackConditional(object:h2d.Object, node:Node, sentinel:h2d.Object, parent:h2d.Object, layer:Int):Void {
 		conditionalEntries.push({object: object, node: node, sentinel: sentinel, parent: parent, layer: layer,
 			savedFlowProps: saveFlowProperties(object, parent)});
@@ -6778,7 +6793,15 @@ class MultiAnimBuilder {
 		if (incremental) {
 			final ctx = this.incrementalContext;
 			retVal.incrementalContext = ctx;
-			if (ctx != null) ctx.applyConditionalChains();
+			if (ctx != null) {
+				// @final constants at the programmable body scope survive the build and
+				// must be persisted in the context so setParameter-triggered rebuilds can
+				// re-resolve references like `$MY_CONST`. Nested @finals (inside point{},
+				// repeatable, etc.) are already cleaned up by cleanupFinalVars and won't
+				// appear in indexedParams here — so they're correctly excluded.
+				ctx.syncFinalsFromBuilder(indexedParams);
+				ctx.applyConditionalChains();
+			}
 			this.incrementalMode = false;
 			this.incrementalContext = null;
 		}

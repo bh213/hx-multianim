@@ -5159,6 +5159,17 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		Assert.notNull(panelAgain, "panel slot should reappear after swap back to active arm");
 	}
 
+	// Test 107 — Rube Goldberg: exercise a broad slice of .manim features in a single
+	// programmable. Visual reference uses default params (mode=hover, template=rgCardB,
+	// flags=3, level=5). A matching tile is passed for the `icon` param via TileHelper.
+	// Unit-level incremental / slot / dynamicRef coverage lives in RubeGoldbergIncrementalTest.
+	@Test
+	public function test107_RubeGoldberg(async:utest.Async):Void {
+		simpleMacroTest(107, "rubeGoldberg",
+			() -> createMp().rubeGoldberg.create(),
+			async, null, null, 1.0, 0.97);
+	}
+
 	static function containsDescendant(root:h2d.Object, target:h2d.Object):Bool {
 		if (root == target) return true;
 		for (i in 0...root.numChildren) {

@@ -57,6 +57,15 @@ class TestApp extends hxd.App {
 			return new bh.base.filters.PerlinNoiseFilter(params["seed"], params["scale"], params["intensity"]);
 		});
 
+		// Test 107 Rube Goldberg — used by rubeGoldberg.manim via `filter: rgTint(...)`
+		FilterManager.registerFilter("rgTint", [
+			{name: "color", type: CFColor, defaultValue: 0xFFFFFFFF},
+			{name: "intensity", type: CFFloat, defaultValue: 0.5},
+		], (params) -> {
+			var intensity:Float = params["intensity"];
+			return new h2d.filter.Blur(intensity * 2.0);
+		});
+
 		VisualTestBase.appInstance = this;
 		VisualTestBase.imagePool = new ImageProcessingPool();
 
@@ -101,6 +110,7 @@ class TestApp extends hxd.App {
 		testRunner.addCase(new bh.test.examples.UIScrollableScreenTest());
 		testRunner.addCase(new bh.test.examples.InteractionControllerTest());
 		testRunner.addCase(new bh.test.examples.EventPriorityTest());
+		testRunner.addCase(new bh.test.examples.RubeGoldbergIncrementalTest());
 		#if MULTIANIM_DEV
 		testRunner.addCase(new bh.test.examples.HotReloadTest());
 		testRunner.addCase(new bh.test.examples.DevBridgeTest());
