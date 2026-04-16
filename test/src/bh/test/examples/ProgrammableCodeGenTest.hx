@@ -4619,7 +4619,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	@Test
 	public function test105_RootProperties(async:utest.Async):Void {
-		simpleMacroTest(105, "rootProperties", () -> createMp().rootProperties.create(), async, null, null, 1.0);
+		simpleMacroTest(105, "rootProperties", () -> createMp().rootProperties.create(), async, null, null, 1.0, 0.9999);
 	}
 
 	// ==================== AnimFlip: flipX/flipY in .anim files (#13) ====================

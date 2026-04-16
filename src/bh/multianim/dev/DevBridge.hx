@@ -47,6 +47,12 @@ class DevBridge {
 	// ---- Error capture ----
 	var errorBuffer:Array<{message:String, stack:String, timestamp:Float}> = [];
 
+	// ---- Debugger hits capture ----
+	static final DEBUGGER_BUFFER_SIZE = 100;
+	var debuggerBuffer:Array<Dynamic> = [];
+	var debuggerDropped:Int = 0;
+	var nextDebuggerId:Int = 1;
+
 	// ---- SSE clients ----
 	var sseClients:Array<Socket> = [];
 	var sseBroadcasting:Bool = false;
@@ -280,6 +286,29 @@ class DevBridge {
 		broadcastSseEvent("custom", {name: name, data: data, timestamp: haxe.Timer.stamp()});
 	}
 
+	/** JS-`debugger;`-style breakpoint: snapshot `data`, optionally pause the game loop,
+	 *  push an SSE `debugger` event, and store the hit in a ring buffer for polling via get_debugger_hits.
+	 *  File/line/method are auto-captured from the call site.
+	 *  Resume with the `pause` RPC ({paused:false}). */
+	public function debugger(data:Dynamic, pause:Bool = true, ?pos:haxe.PosInfos):Void {
+		var entry:Dynamic = {
+			id: nextDebuggerId++,
+			data: data,
+			paused: pause,
+			file: pos != null ? pos.fileName : null,
+			line: pos != null ? pos.lineNumber : 0,
+			method: pos != null ? (pos.className + "." + pos.methodName) : null,
+			timestamp: haxe.Timer.stamp(),
+		};
+		if (debuggerBuffer.length >= DEBUGGER_BUFFER_SIZE) {
+			debuggerBuffer.shift();
+			debuggerDropped++;
+		}
+		debuggerBuffer.push(entry);
+		broadcastSseEvent("debugger", entry);
+		if (pause) setPaused(true);
+	}
+
 	// ---- HTTP handling ----
 
 	function onClientConnected(clientSocket:Socket):Void {
@@ -432,6 +461,7 @@ class DevBridge {
 			// v2: trace & error capture
 			case "get_traces": handleGetTraces(params);
 			case "get_errors": handleGetErrors(params);
+			case "get_debugger_hits": handleGetDebuggerHits(params);
 			// v2: deep inspection
 			case "get_parameters": handleGetParameters(params);
 			case "list_interactives": handleListInteractives(params);
@@ -870,7 +900,11 @@ class DevBridge {
 
 	function handlePause(params:Dynamic):Dynamic {
 		var shouldPause:Bool = params.paused != null ? params.paused : true;
+		setPaused(shouldPause);
+		return {paused: paused};
+	}
 
+	function setPaused(shouldPause:Bool):Void {
 		if (shouldPause && !paused) {
 			// Save current loop and replace with no-op (rendering continues via engine.present)
 			savedLoopFunc = @:privateAccess hxd.System.loopFunc;
@@ -885,8 +919,6 @@ class DevBridge {
 			paused = false;
 			trace("[DevBridge] Game resumed");
 		}
-
-		return {paused: paused};
 	}
 
 	function handleStep(params:Dynamic):Dynamic {
@@ -953,6 +985,33 @@ class DevBridge {
 		var count = errorBuffer.length;
 		if (clear) errorBuffer = [];
 		return {errors: errors, count: count};
+	}
+
+	function handleGetDebuggerHits(params:Dynamic):Dynamic {
+		var clear:Bool = params.clear != null ? params.clear : false;
+		var limit:Int = params.limit != null ? Std.int(params.limit) : 50;
+		if (limit < 1) limit = 1;
+		if (limit > DEBUGGER_BUFFER_SIZE) limit = DEBUGGER_BUFFER_SIZE;
+		var sinceId:Int = params.since_id != null ? Std.int(params.since_id) : -1;
+
+		var filtered:Array<Dynamic> = sinceId >= 0
+			? [for (h in debuggerBuffer) if ((h.id : Int) > sinceId) h]
+			: debuggerBuffer.copy();
+
+		var hits:Array<Dynamic> = filtered.length > limit
+			? filtered.slice(filtered.length - limit)
+			: filtered;
+
+		var total = debuggerBuffer.length;
+		var dropped = debuggerDropped;
+		var lastId = debuggerBuffer.length > 0 ? (debuggerBuffer[debuggerBuffer.length - 1].id : Int) : 0;
+
+		if (clear) {
+			debuggerBuffer = [];
+			debuggerDropped = 0;
+		}
+
+		return {hits: hits, total: total, dropped: dropped, lastId: lastId};
 	}
 
 	/** Called externally to report a caught runtime error. */

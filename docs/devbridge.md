@@ -82,6 +82,7 @@ Real-time Server-Sent Events stream for game lifecycle events. Connect with any 
 | `reload` | `status`, `file`, `fileType`, `programmablesRebuilt[]`, `rebuiltCount`, `elapsedMs`, `errors[]`, `timestamp` | Hot reload lifecycle (`started`, `succeeded`, `failed`, `needs_restart`) |
 | `parameter_change` | `programmable`, `param`, `value`, `timestamp` | Parameter changed via DevBridge `set_parameter` tool |
 | `custom` | `name`, `data`, `timestamp` | Custom game event via `broadcastCustomEvent()` |
+| `debugger` | `id`, `data`, `paused`, `file`, `line`, `method`, `timestamp` | `debugger()` breakpoint hit (see `get_debugger_hits`) |
 
 **MCP logging levels:** `trace`→info, `error`→error, `screen_change`→info, `reload`→info/error/warning, `parameter_change`→debug, `custom`→info.
 
@@ -384,6 +385,28 @@ Accumulated runtime errors/exceptions.
 | `clear` | bool | true | Clear buffer after reading |
 
 Returns: `errors[]` (each with `message`, `stack`, `timestamp`), `count`.
+
+#### `get_debugger_hits`
+Recent `devBridge.debugger()` hits (ring buffer, last 100 entries).
+
+Pairs with the `debugger` SSE event for push-based notification. Game code calls `devBridge.debugger(data, pause=true)` at a point of interest — file/line/method are auto-captured from `haxe.PosInfos`, `data` is snapshotted, the hit is appended to the ring buffer, an SSE `debugger` event is broadcast, and (if `pause=true`) the game loop is paused. Resume with the `pause` RPC (`{paused:false}`).
+
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `clear` | bool | false | Clear buffer after reading |
+| `limit` | int | 50 | Max hits to return (clamped to 1..100) |
+| `since_id` | int | -1 | Return only hits with `id > since_id` (cursor for polling) |
+
+Returns: `hits[]` (each with `id`, `data`, `paused`, `file`, `line`, `method`, `timestamp`), `total`, `dropped`, `lastId`.
+
+**Game-side usage:**
+```haxe
+#if MULTIANIM_DEV
+screenManager.devBridge.debugger({hp: player.hp, state: currentState});
+// or without pause
+screenManager.devBridge.debugger({hp: player.hp}, false);
+#end
+```
 
 #### `get_tween_state`
 All active tweens with targets, duration, progress.

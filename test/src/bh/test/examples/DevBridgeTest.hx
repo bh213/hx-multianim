@@ -246,6 +246,133 @@ class DevBridgeTest extends BuilderTestBase {
 		Assert.equals("error 5", bridge.errorBuffer[0].message);
 	}
 
+	// ==================== debugger() / get_debugger_hits ====================
+
+	@Test
+	public function testGetDebuggerHits_emptyBuffer():Void {
+		var bridge = createTestBridge();
+		var result:Dynamic = bridge.dispatch("get_debugger_hits", {});
+		Assert.equals(0, (result.hits : Array<Dynamic>).length);
+		Assert.equals(0, result.total);
+		Assert.equals(0, result.dropped);
+		Assert.equals(0, result.lastId);
+	}
+
+	@Test
+	public function testDebugger_capturesHitWithoutPause():Void {
+		var bridge = createTestBridge();
+		bridge.debugger({hp: 42, name: "hero"}, false);
+		var result:Dynamic = bridge.dispatch("get_debugger_hits", {});
+		var hits:Array<Dynamic> = result.hits;
+		Assert.equals(1, hits.length);
+		Assert.equals(1, hits[0].id);
+		Assert.isFalse(hits[0].paused);
+		Assert.equals(42, hits[0].data.hp);
+		Assert.equals("hero", hits[0].data.name);
+		// PosInfos auto-capture
+		Assert.notNull(hits[0].file);
+		Assert.isTrue((hits[0].line : Int) > 0);
+		Assert.notNull(hits[0].method);
+		// Game must NOT be paused
+		Assert.isFalse(bridge.paused);
+	}
+
+	@Test
+	public function testDebugger_idsIncrement():Void {
+		var bridge = createTestBridge();
+		bridge.debugger({a: 1}, false);
+		bridge.debugger({a: 2}, false);
+		bridge.debugger({a: 3}, false);
+		var result:Dynamic = bridge.dispatch("get_debugger_hits", {});
+		var hits:Array<Dynamic> = result.hits;
+		Assert.equals(3, hits.length);
+		Assert.equals(1, hits[0].id);
+		Assert.equals(2, hits[1].id);
+		Assert.equals(3, hits[2].id);
+		Assert.equals(3, result.lastId);
+	}
+
+	@Test
+	public function testDebugger_sinceIdCursor():Void {
+		var bridge = createTestBridge();
+		bridge.debugger({a: 1}, false);
+		bridge.debugger({a: 2}, false);
+		bridge.debugger({a: 3}, false);
+		var result:Dynamic = bridge.dispatch("get_debugger_hits", {since_id: 1});
+		var hits:Array<Dynamic> = result.hits;
+		Assert.equals(2, hits.length);
+		Assert.equals(2, hits[0].id);
+		Assert.equals(3, hits[1].id);
+	}
+
+	@Test
+	public function testDebugger_sinceIdPastLatest():Void {
+		var bridge = createTestBridge();
+		bridge.debugger({a: 1}, false);
+		var result:Dynamic = bridge.dispatch("get_debugger_hits", {since_id: 99});
+		Assert.equals(0, (result.hits : Array<Dynamic>).length);
+		// total still reflects buffer contents
+		Assert.equals(1, result.total);
+	}
+
+	@Test
+	public function testDebugger_limitParam():Void {
+		var bridge = createTestBridge();
+		for (i in 0...5) bridge.debugger({i: i}, false);
+		var result:Dynamic = bridge.dispatch("get_debugger_hits", {limit: 2});
+		var hits:Array<Dynamic> = result.hits;
+		Assert.equals(2, hits.length);
+		// Latest two
+		Assert.equals(4, hits[0].id);
+		Assert.equals(5, hits[1].id);
+	}
+
+	@Test
+	public function testDebugger_clearParam():Void {
+		var bridge = createTestBridge();
+		bridge.debugger({a: 1}, false);
+		bridge.debugger({a: 2}, false);
+		bridge.dispatch("get_debugger_hits", {clear: true});
+		Assert.equals(0, bridge.debuggerBuffer.length);
+		Assert.equals(0, bridge.debuggerDropped);
+	}
+
+	@Test
+	public function testDebugger_ringBufferDrops():Void {
+		var bridge = createTestBridge();
+		// Fill past capacity (DEBUGGER_BUFFER_SIZE = 100)
+		for (i in 0...105) bridge.debugger({i: i}, false);
+		var result:Dynamic = bridge.dispatch("get_debugger_hits", {limit: 100});
+		Assert.equals(100, result.total);
+		Assert.equals(5, result.dropped);
+		var hits:Array<Dynamic> = result.hits;
+		// Oldest retained is id=6 (first 5 dropped), newest is id=105
+		Assert.equals(6, hits[0].id);
+		Assert.equals(105, hits[hits.length - 1].id);
+		Assert.equals(105, result.lastId);
+	}
+
+	@Test
+	public function testDebugger_pauseTrueSetsPausedFlag():Void {
+		var bridge = createTestBridge();
+		Assert.isFalse(bridge.paused);
+		// Default pause=true; setPaused requires hxd.System.loopFunc — catch if it's unavailable in test env
+		try {
+			bridge.debugger({snapshot: "state"});
+			Assert.isTrue(bridge.paused);
+			// Resume for subsequent tests
+			bridge.setPaused(false);
+			Assert.isFalse(bridge.paused);
+		} catch (_:Dynamic) {
+			// setPaused accesses hxd.System.loopFunc which may not be available in headless utest;
+			// the hit itself must still be recorded with paused:true on the entry.
+			var result:Dynamic = bridge.dispatch("get_debugger_hits", {});
+			var hits:Array<Dynamic> = result.hits;
+			Assert.equals(1, hits.length);
+			Assert.isTrue(hits[0].paused);
+		}
+	}
+
 	// ==================== eval_manim ====================
 
 	@Test
