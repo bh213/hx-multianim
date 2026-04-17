@@ -55,6 +55,30 @@ Fail-fast on `.manim`/`.anim` errors — prints structured error to stderr and `
 -D MULTIANIM_STRICT
 ```
 
+## Builder Errors
+
+Runtime errors in `MultiAnimBuilder` (and related builder code) throw `BuilderError`. Three call shapes depending on what node context is available:
+
+```haxe
+// Inside MultiAnimBuilder methods — currentNode auto-attached
+throw builderError('reference $ref does not exist', "missing_ref");
+throw builderError('invalid tile format');  // code optional
+
+// Inside MultiAnimBuilder methods, explicit-node sites (e.g. macro-codegen
+// helpers walking a passed-in subtree). Was: 'msg' + MacroUtils.nodePos(node)
+throw builderErrorAt(node, 'invalid param types ${a}, ${b}');
+
+// Inside helper classes that don't have a Node (BuilderResult, SlotHandle,
+// BuilderResolvedSettings) — use the static factory
+throw BuilderError.of('Slot "$name" not found in BuilderResult');
+```
+
+- `MultiAnimBuilder.hx` is fully migrated — all 256 string throws converted (the only remaining `throw '...'` strings are inside docstring comments showing the OLD pattern).
+- `code:String` is for programmatic filtering at catch sites (e.g. `resolveAsString` RVParenthesis catches `"not_a_number"` to fall back to string concat). Leave null when no catcher filters. Established codes: `"not_a_number"`, `"missing_ref"`.
+- Catch sites that surface builder errors structurally (file/line/col) all branch on `BuilderError` and call `err.parsedPos()`: `ScreenManager.rebuildAll()`, `ScreenManager.makeHotReloadFailError()` (powers DevBridge `hot_reload` + SSE notifications), `ScreenManager.strictFail()` (under `MULTIANIM_STRICT`), and `DevBridge.handleEvalManim()` (powers MCP `eval_manim`). Any new builder-error catch site that emits structured diagnostics should follow the same pattern. `parsedPos()` returns null in non-DEV builds (Node has no parserPos field), so callers must handle null.
+- Consumer catches (`catch (e)`, `catch (e:Dynamic)`, `catch (e:haxe.Exception)`) all continue to match. `'$e'` formatting preserved via `toString()` override.
+- Sibling builder files (`ProgrammableBuilder.hx`, `MultiAnimLayouts.hx`, `MultiAnimPaths.hx`) still use plain string throws — convert opportunistically when editing.
+
 ## Haxe Language Pitfalls
 
 - **`@:access` does NOT bypass `(default, null)` property setters.** It only bypasses visibility (private/public), not property access restrictions. To write `(default, null)` properties from outside the class, cast to `Dynamic`: `var dg:Dynamic = group; dg.speed = value;`

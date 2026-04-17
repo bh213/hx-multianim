@@ -13,6 +13,8 @@
 
 **Parameter types**: `uint`, `int`, `float`, `bool`, `string`, `color`, `tile`, enum (`[val1,val2]`), range (`1..5`), flags
 
+**Root-level properties on `programmable()`**: `pos:`, `scale:`, `rotate:`, `alpha:`, `tint:`, `filter:`, `blendMode:` may appear at the programmable body root (not just on child elements). Honoured identically in builder and codegen paths (prior to strict-D fix, codegen ignored them — see CHANGELOG). `$param`-dependent values re-fire on `setParameter()`. `pos:` composes additively with runtime `setPosition(x, y)` — the `.manim` offset stays as the origin.
+
 **Color format (strict-D)**: Internal storage is Heaps `0xAARRGGBB`. CSS `#` forms bake `0xFF` alpha on 3/6-digit shorthand (`#FF0000` → `0xFFFF0000`), alpha preserved on 8-digit `#RRGGBBAA`. Heaps `0x` forms preserve every byte verbatim — `0xFF0000` is transparent red (top byte = 0), not opaque. `transparent` / `0x00000000` is reachable from runtime code (`setColor(0)` no longer gets clobbered to opaque black). Migration from pre-strict-D: any `0xRRGGBB` literal meant for opaque → use `#RRGGBB` or `0xFFRRGGBB`.
 
 **Transition types**: `none`, `fade(duration, ?easing)`, `crossfade(duration, ?easing)`, `flipX(duration, ?easing)`, `flipY(duration, ?easing)`, `slide(direction, duration, ?distance, ?easing)` (directions: `left`, `right`, `up`, `down`; distance defaults to 50px). Requires TweenManager (auto-injected via ScreenManager). Falls back to instant without TweenManager.
@@ -118,7 +120,7 @@ Works on discrete param types — `enum`, `int`, `uint`, `range`, `string` (quot
 - Value extraction: `$grid.pos(x, y).x`, `$hex.corner(0, 1.0).y`
 - Offset suffix: `.offset(x, y)` on any coordinate expression adds a pixel offset (e.g., `layout(name).offset(5, 10)`, `$grid.pos(1, 2).offset(3, 4)`)
 - Context: `$ctx.width`, `$ctx.height`, `$ctx.random(min, max)`, `$ctx.font("name").lineHeight`, `$ctx.font("name").baseLine`
-- Layout: `layout(layoutName [, index])`
+- Layout: `layout(layoutName [, index])` — legacy two-arg `layout("group", "name")` is rejected at parse time; the group identifier was removed
 - Extra point (from named stateanim): `$ref.extraPoint("pointName")`, `$ref.extraPoint("pointName", fallback: x, y)`
 - Extra point (from .anim file): `extraPoint("file.anim", "animName", "pointName", "key"=>"value"...)`, with optional `fallback: x, y`
 

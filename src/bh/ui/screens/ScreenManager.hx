@@ -5,6 +5,7 @@ import hxd.res.Resource;
 import bh.multianim.MultiAnimBuilder;
 import bh.multianim.MultiAnimParser.InvalidSyntax;
 import bh.multianim.MultiAnimParser.MultiAnimUnexpected;
+import bh.multianim.BuilderError;
 import bh.stateanim.AnimParser;
 import bh.ui.controllers.UIController;
 import bh.ui.screens.UIScreen;
@@ -395,6 +396,18 @@ class ScreenManager {
 					file: multiAnimUnexpected.pos.psource,
 					line: multiAnimUnexpected.pos.line,
 					col: multiAnimUnexpected.pos.col,
+				}
+			}
+
+			if (Std.isOfType(e, BuilderError)) {
+				final builderErr = cast(e, BuilderError);
+				final pos = builderErr.parsedPos();
+				return {
+					success: false,
+					error: builderErr.toString(),
+					file: pos != null ? pos.file : null,
+					line: pos != null ? pos.line : null,
+					col: pos != null ? pos.col : null,
 				}
 			}
 
@@ -1207,7 +1220,6 @@ class ScreenManager {
 	}
 
 	#if MULTIANIM_DEV
-	@:nullSafety(Off)
 	public function hotReload(?resource:hxd.res.Resource):bh.multianim.dev.HotReload.ReloadReport {
 		finalizeTransition();
 		final startTime = haxe.Timer.stamp();
@@ -1313,9 +1325,8 @@ class ScreenManager {
 
 			// 9. Determine reload strategy: per-file nuclear for screens, in-place for non-screen handles
 			final screensForFile = screenSourceMap.get(path);
-			final hasScreens = screensForFile != null && screensForFile.length > 0;
 
-			if (hasScreens) {
+			if (screensForFile != null && screensForFile.length > 0) {
 				// Per-file nuclear: clear + reload only affected screens
 				trace('[HotReload] Reloading ${screensForFile.length} screen(s) for ${path}');
 
@@ -1524,7 +1535,6 @@ class ScreenManager {
 			l(event);
 	}
 
-	@:nullSafety(Off)
 	function makeHotReloadFailError(path:String, context:String, e:Dynamic):bh.multianim.dev.HotReload.ReloadError {
 		if (Std.isOfType(e, InvalidSyntax)) {
 			final ex = cast(e, InvalidSyntax);
@@ -1546,6 +1556,17 @@ class ScreenManager {
 				errorType: bh.multianim.dev.HotReload.ReloadErrorType.ParseError,
 				context: context,
 			};
+		} else if (Std.isOfType(e, BuilderError)) {
+			final ex = cast(e, BuilderError);
+			final pos = ex.parsedPos();
+			return {
+				message: ex.toString(),
+				file: pos != null ? pos.file : path,
+				line: pos != null ? pos.line : 0,
+				col: pos != null ? pos.col : 0,
+				errorType: bh.multianim.dev.HotReload.ReloadErrorType.BuildError,
+				context: context,
+			};
 		} else {
 			final ex = Std.downcast(e, haxe.Exception);
 			final msg = ex != null ? '${ex.message}\n${ex.stack}' : Std.string(e);
@@ -1560,7 +1581,6 @@ class ScreenManager {
 		}
 	}
 
-	@:nullSafety(Off)
 	function makeHotReloadFailReport(path:String, e:Dynamic):bh.multianim.dev.HotReload.ReloadReport {
 		return {
 			success: false,
@@ -1601,6 +1621,16 @@ class ScreenManager {
 			msg.add('file: ${err.pos.psource}\n');
 			msg.add('line: ${err.pos.line}\n');
 			msg.add('col: ${err.pos.col}\n');
+			msg.add('error: ${err.toString()}\n');
+		} else if (Std.isOfType(e, BuilderError)) {
+			final err = cast(e, BuilderError);
+			final pos = err.parsedPos();
+			if (pos != null) {
+				msg.add('file: ${pos.file}\n');
+				msg.add('line: ${pos.line}\n');
+				msg.add('col: ${pos.col}\n');
+			}
+			if (err.code != null) msg.add('code: ${err.code}\n');
 			msg.add('error: ${err.toString()}\n');
 		} else {
 			msg.add('error: $e\n');

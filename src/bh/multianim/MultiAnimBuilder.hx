@@ -30,6 +30,7 @@ import bh.base.PixelLine;
 import h2d.Object;
 import bh.multianim.MultiAnimParser;
 import bh.multianim.MultiAnimParser.SwitchArm;
+import bh.multianim.BuilderError;
 import bh.base.ResourceLoader;
 import bh.base.TweenManager;
 import bh.base.TweenManager.Tween;
@@ -56,6 +57,7 @@ private enum ComputedShape {
 	Pixel(x:Int, y:Int, color:Int);
 }
 
+
 @:nullSafety
 @:allow(bh.multianim.BuilderResult)
 class Updatable implements IUpdatable {
@@ -64,7 +66,7 @@ class Updatable implements IUpdatable {
 
 	function new(updatables:Array<NamedBuildResult>) {
 		if (updatables == null || updatables.length == 0)
-			throw 'empty updatable';
+			throw BuilderError.of('empty updatable');
 		this.updatables = updatables;
 	}
 
@@ -81,7 +83,7 @@ class Updatable implements IUpdatable {
 					t.text = newText;
 				default:
 					if (throwIfAnyFails)
-						throw 'invalid updateText: expected HeapsText but got ${v.object}';
+						throw BuilderError.of('invalid updateText: expected HeapsText but got ${v.object}');
 			}
 		}
 	}
@@ -93,14 +95,14 @@ class Updatable implements IUpdatable {
 					b.tile = newTile;
 				default:
 					if (throwIfAnyFails)
-						throw 'invalid updateTile: expected HeapsBitmap but got ${v.object}';
+						throw BuilderError.of('invalid updateTile: expected HeapsBitmap but got ${v.object}');
 			}
 		}
 	}
 
 	public function setObject(newObject:h2d.Object) {
 		if (updatables.length != 1)
-			throw 'setObject needs exactly one updatable';
+			throw BuilderError.of('setObject needs exactly one updatable');
 		if (lastObject == newObject)
 			return; // nothing to do
 
@@ -116,7 +118,7 @@ class Updatable implements IUpdatable {
 
 	public function addObject(newObject:h2d.Object) {
 		if (updatables.length != 1)
-			throw 'addObject needs exactly one updatable';
+			throw BuilderError.of('addObject needs exactly one updatable');
 
 		final parent = updatables[0].object.toh2dObject();
 		parent.addChild(newObject);
@@ -167,10 +169,10 @@ class BuilderResolvedSettings {
 
 	public function getStringOrException(settingName:String):String {
 		if (settings == null)
-			throw 'settings not found, was looking for $settingName';
+			throw BuilderError.of('settings not found, was looking for $settingName');
 		final r = settings[settingName];
 		if (r == null)
-			throw 'expected string setting ${settingName} to be present but was not';
+			throw BuilderError.of('expected string setting ${settingName} to be present but was not');
 		return switch r {
 			case RSVString(s): s;
 			case RSVInt(i): '$i';
@@ -182,15 +184,15 @@ class BuilderResolvedSettings {
 
 	public function getIntOrException(settingName:String):Int {
 		if (settings == null)
-			throw 'settings not found, was looking for $settingName';
+			throw BuilderError.of('settings not found, was looking for $settingName');
 		var r = settings[settingName];
 		if (r == null)
-			throw 'expected int setting ${settingName} to be present but was not';
+			throw BuilderError.of('expected int setting ${settingName} to be present but was not');
 		return switch r {
 			case RSVInt(i): i;
 			case RSVColor(c): c;
-			case RSVFloat(f): throw 'expected int setting ${settingName} to valid int number but was float $f';
-			case RSVString(s): throw 'expected int setting ${settingName} to valid int number but was string $s';
+			case RSVFloat(f): throw BuilderError.of('expected int setting ${settingName} to valid int number but was float $f');
+			case RSVString(s): throw BuilderError.of('expected int setting ${settingName} to valid int number but was string $s');
 			case RSVBool(b): b ? 1 : 0;
 		};
 	}
@@ -204,23 +206,23 @@ class BuilderResolvedSettings {
 		return switch r {
 			case RSVInt(i): i;
 			case RSVColor(c): c;
-			case RSVFloat(f): throw 'expected int setting ${settingName} to valid int number but was float $f';
-			case RSVString(s): throw 'expected int setting ${settingName} to valid int number but was string $s';
+			case RSVFloat(f): throw BuilderError.of('expected int setting ${settingName} to valid int number but was float $f');
+			case RSVString(s): throw BuilderError.of('expected int setting ${settingName} to valid int number but was string $s');
 			case RSVBool(b): b ? 1 : 0;
 		};
 	}
 
 	public function getFloatOrException(settingName:String):Float {
 		if (settings == null)
-			throw 'settings not found, was looking for $settingName';
+			throw BuilderError.of('settings not found, was looking for $settingName');
 		var r = settings[settingName];
 		if (r == null)
-			throw 'expected float setting ${settingName} to be present but was not';
+			throw BuilderError.of('expected float setting ${settingName} to be present but was not');
 		return switch r {
 			case RSVFloat(f): f;
 			case RSVInt(i): cast i;
 			case RSVColor(c): cast c;
-			case RSVString(s): throw 'expected float setting ${settingName} to valid float number but was string $s';
+			case RSVString(s): throw BuilderError.of('expected float setting ${settingName} to valid float number but was string $s');
 			case RSVBool(b): b ? 1.0 : 0.0;
 		};
 	}
@@ -235,7 +237,7 @@ class BuilderResolvedSettings {
 			case RSVFloat(f): f;
 			case RSVInt(i): cast i;
 			case RSVColor(c): cast c;
-			case RSVString(s): throw 'expected float setting ${settingName} to valid float number but was string $s';
+			case RSVString(s): throw BuilderError.of('expected float setting ${settingName} to valid float number but was string $s');
 			case RSVBool(b): b ? 1.0 : 0.0;
 		};
 	}
@@ -261,7 +263,7 @@ class BuilderResolvedSettings {
 				switch (s.toLowerCase()) {
 					case "true" | "1" | "yes": true;
 					case "false" | "0" | "no": false;
-					default: throw 'could not parse setting "$s" as bool';
+					default: throw BuilderError.of('could not parse setting "$s" as bool');
 				};
 		};
 	}
@@ -1051,7 +1053,7 @@ class IncrementalUpdateContext {
 		// Resolve the builder (external or local)
 		var targetBuilder = if (binding.externalReference != null) {
 			var b = builder.multiParserResult.imports?.get(binding.externalReference);
-			if (b == null) throw 'could not find builder for external dynamicRef ${binding.externalReference}';
+			if (b == null) throw BuilderError.of('could not find builder for external dynamicRef ${binding.externalReference}');
 			b;
 		} else builder;
 
@@ -1063,7 +1065,7 @@ class IncrementalUpdateContext {
 
 		var result = targetBuilder.buildWithParameters(newName, paramMap, builderParams, indexedParams, true);
 		if (result?.object == null)
-			throw 'could not build dynamicRef "$newName"';
+			throw BuilderError.of('could not build dynamicRef "$newName"');
 
 		binding.container.addChild(result.object);
 		binding.currentName = newName;
@@ -1364,7 +1366,7 @@ class SlotHandle {
 
 	public function setParameter(name:String, value:Dynamic):Void {
 		if (incrementalContext == null)
-			throw 'Slot has no parameters';
+			throw BuilderError.of('Slot has no parameters');
 		incrementalContext.setParameter(name, value);
 	}
 
@@ -1427,7 +1429,7 @@ class BuilderResult implements bh.ui.UIInteractiveSource {
 
 	public function setTweenManager(tm:TweenManager):Void {
 		if (incrementalContext == null)
-			throw 'setTweenManager requires incremental mode';
+			throw BuilderError.of('setTweenManager requires incremental mode');
 		incrementalContext.setTweenManager(tm);
 	}
 
@@ -1449,7 +1451,7 @@ class BuilderResult implements bh.ui.UIInteractiveSource {
 	 *  up later. */
 	public function addRebuildListener(fn:Void -> Void):Void {
 		if (incrementalContext == null)
-			throw 'addRebuildListener requires incremental mode — gate on `isIncremental` or pass incremental:true to buildWithParameters';
+			throw BuilderError.of('addRebuildListener requires incremental mode — gate on `isIncremental` or pass incremental:true to buildWithParameters');
 		incrementalContext.addRebuildListener(fn);
 	}
 
@@ -1457,51 +1459,51 @@ class BuilderResult implements bh.ui.UIInteractiveSource {
 	 *  `addRebuildListener`). */
 	public function removeRebuildListener(fn:Void -> Void):Void {
 		if (incrementalContext == null)
-			throw 'removeRebuildListener requires incremental mode';
+			throw BuilderError.of('removeRebuildListener requires incremental mode');
 		incrementalContext.removeRebuildListener(fn);
 	}
 
 	public function setParameter(name:String, value:Dynamic):Void {
 		if (incrementalContext == null)
-			throw 'setParameter requires incremental mode — pass incremental:true to buildWithParameters';
+			throw BuilderError.of('setParameter requires incremental mode — pass incremental:true to buildWithParameters');
 		incrementalContext.setParameter(name, value);
 	}
 
 	public function beginUpdate():Void {
 		if (incrementalContext == null)
-			throw 'beginUpdate requires incremental mode';
+			throw BuilderError.of('beginUpdate requires incremental mode');
 		incrementalContext.beginUpdate();
 	}
 
 	public function endUpdate():Void {
 		if (incrementalContext == null)
-			throw 'endUpdate requires incremental mode';
+			throw BuilderError.of('endUpdate requires incremental mode');
 		incrementalContext.endUpdate();
 	}
 
 	public function getNodeSettings(elementName:String):ResolvedSettings {
 		final results = names[elementName];
 		if (results == null || results.length != 1)
-			throw 'Could not get single node for name $elementName';
+			throw BuilderError.of('Could not get single node for name $elementName');
 		final settings = results[0].settings;
 		if (settings == null)
-			throw 'no settings specified for $elementName';
+			throw BuilderError.of('no settings specified for $elementName');
 		return settings;
 	}
 
 	public function getSingleItemByName(name:String):NamedBuildResult {
 		var items = this.names[name];
 		if (items == null)
-			throw 'builder result name ${name} not found';
+			throw BuilderError.of('builder result name ${name} not found');
 		if (items.length != 1)
-			throw 'builder result name ${name} expected single item but got ${items.length}';
+			throw BuilderError.of('builder result name ${name} expected single item but got ${items.length}');
 		return items[0];
 	}
 
 	public function getUpdatable(name) {
 		final namesArray = names[name];
 		if (namesArray == null)
-			throw 'Name ${name} not found in BuilderResult';
+			throw BuilderError.of('Name ${name} not found in BuilderResult');
 		return new Updatable(namesArray);
 	}
 
@@ -1519,16 +1521,16 @@ class BuilderResult implements bh.ui.UIInteractiveSource {
 
 	public function getDynamicRef(name:String):BuilderResult {
 		if (dynamicRefs == null)
-			throw 'No dynamicRefs in BuilderResult';
+			throw BuilderError.of('No dynamicRefs in BuilderResult');
 		final ref = dynamicRefs.get(name);
 		if (ref == null)
-			throw 'DynamicRef "$name" not found in BuilderResult';
+			throw BuilderError.of('DynamicRef "$name" not found in BuilderResult');
 		return ref;
 	}
 
 	public function getSlot(name:String, ?index:Null<Int>, ?indexY:Null<Int>):SlotHandle {
 		if (slots == null)
-			throw 'No slots in BuilderResult';
+			throw BuilderError.of('No slots in BuilderResult');
 		// Determine what kind of slot this is
 		var is1DIndexed = false;
 		var is2DIndexed = false;
@@ -1545,7 +1547,7 @@ class BuilderResult implements bh.ui.UIInteractiveSource {
 		}
 		if (is2DIndexed) {
 			if (index == null || indexY == null)
-				throw 'Slot "$name" is 2D-indexed — use getSlot("$name", x, y)';
+				throw BuilderError.of('Slot "$name" is 2D-indexed — use getSlot("$name", x, y)');
 			for (entry in slots) {
 				switch entry.key {
 					case Indexed2D(n, ix, iy) if (n == name && ix == index && iy == indexY):
@@ -1553,10 +1555,10 @@ class BuilderResult implements bh.ui.UIInteractiveSource {
 					default:
 				}
 			}
-			throw 'Slot "$name" index ($index, $indexY) not found';
+			throw BuilderError.of('Slot "$name" index ($index, $indexY) not found');
 		} else if (is1DIndexed) {
 			if (index == null)
-				throw 'Slot "$name" is indexed — use getSlot("$name", index)';
+				throw BuilderError.of('Slot "$name" is indexed — use getSlot("$name", index)');
 			for (entry in slots) {
 				switch entry.key {
 					case Indexed(n, i) if (n == name && i == index):
@@ -1564,10 +1566,10 @@ class BuilderResult implements bh.ui.UIInteractiveSource {
 					default:
 				}
 			}
-			throw 'Slot "$name" index $index not found';
+			throw BuilderError.of('Slot "$name" index $index not found');
 		} else {
 			if (index != null)
-				throw 'Slot "$name" is not indexed — use getSlot("$name") without index';
+				throw BuilderError.of('Slot "$name" is not indexed — use getSlot("$name") without index');
 			for (entry in slots) {
 				switch entry.key {
 					case Named(n) if (n == name):
@@ -1575,7 +1577,7 @@ class BuilderResult implements bh.ui.UIInteractiveSource {
 					default:
 				}
 			}
-			throw 'Slot "$name" not found in BuilderResult';
+			throw BuilderError.of('Slot "$name" not found in BuilderResult');
 		}
 	}
 }
@@ -1720,6 +1722,19 @@ class MultiAnimBuilder {
 		#end
 	}
 
+	/** Constructs a `BuilderError` tagged with the current node (for source
+	 *  position) and an optional `code` for programmatic filtering. Prefer
+	 *  this over raw `throw 'message' + currentNodePos()` in new code. */
+	inline function builderError(message:String, ?code:String):BuilderError
+		return new BuilderError(message, currentNode, code);
+
+	/** Like `builderError` but tags an explicit node — use at sites that
+	 *  previously did `throw 'msg' + MacroUtils.nodePos(node)` where the node
+	 *  in scope is not `currentNode` (e.g. macro-codegen helpers walking a
+	 *  passed-in subtree). */
+	inline function builderErrorAt(node:Null<Node>, message:String, ?code:String):BuilderError
+		return new BuilderError(message, node, code);
+
 	public function toString():String {
 		return 'MultiAnimBuilder( multiParserResult: ${multiParserResult.nodes.keys()}, indexedParams: ${indexedParams}, builderParams: ${builderParams}, currentNode: ${currentNode}, stateStack: ${stateStack.length} items)';
 	}
@@ -1737,7 +1752,7 @@ class MultiAnimBuilder {
 	function popBuilderState() {
 		final state = stateStack.pop();
 		if (state == null)
-			throw 'builder state stack is empty, sourceName: ${sourceName}';
+			throw builderError('builder state stack is empty, sourceName: ${sourceName}');
 
 		this.indexedParams = state.indexedParams;
 		this.builderParams = state.builderParams;
@@ -1830,7 +1845,7 @@ class MultiAnimBuilder {
 			switch existing {
 				case ExpressionAlias(_): // Allow overwrite (repeatable re-iteration of same @final)
 				default:
-					throw '@final: \'$name\' shadows an existing parameter' + MacroUtils.nodePos(node);
+					throw builderErrorAt(node, '@final: \'$name\' shadows an existing parameter');
 			}
 		}
 		indexedParams.set(name, ExpressionAlias(expr));
@@ -1854,15 +1869,15 @@ class MultiAnimBuilder {
 					case ArrayString(arrayVal):
 						var index = resolveAsInteger(indexRef);
 						if (index < 0 || index >= arrayVal.length)
-							throw 'index out of bounds ${index} for array ${arrayVal.toString()}' + currentNodePos();
+							throw builderError('index out of bounds ${index} for array ${arrayVal.toString()}');
 						return arrayVal[index];
-					case null: throw 'array reference ${arrayRef}[$indexRef] does not exist' + currentNodePos();
-					default: throw 'element of array reference ${arrayRef}[$indexRef] is not an array but ${arrayRef}' + currentNodePos();
+					case null: throw builderError('array reference ${arrayRef}[$indexRef] does not exist', "missing_ref");
+					default: throw builderError('element of array reference ${arrayRef}[$indexRef] is not an array but ${arrayRef}');
 				}
 				case RVTernary(condition, ifTrue, ifFalse):
 					return if (resolveAsBool(condition)) resolveAsArrayElement(ifTrue) else resolveAsArrayElement(ifFalse);
 			default:
-				throw 'expected array element but got ${v}' + currentNodePos();
+				throw builderError('expected array element but got ${v}');
 		}
 	}
 
@@ -1875,12 +1890,12 @@ class MultiAnimBuilder {
 				switch arrayVal {
 					case ArrayString(strArray): return strArray;
 					case ExpressionAlias(expr): return resolveAsArray(expr);
-					default: throw 'array reference ${refArr} is not an array but ${arrayVal}' + currentNodePos();
+					default: throw builderError('array reference ${refArr} is not an array but ${arrayVal}');
 				}
 			case RVTernary(condition, ifTrue, ifFalse):
 				return if (resolveAsBool(condition)) resolveAsArray(ifTrue) else resolveAsArray(ifFalse);
 			default:
-				throw 'expected array but got ${v}' + currentNodePos();
+				throw builderError('expected array but got ${v}');
 		}
 	}
 
@@ -1889,7 +1904,7 @@ class MultiAnimBuilder {
 		final animSM = animParser.createAnimSM(selector);
 		final descriptor = animSM.animationStates.get(animationName);
 		if (descriptor == null) {
-			throw 'animation "${animationName}" not found in "${animFilename}"' + currentNodePos();
+			throw builderError('animation "${animationName}" not found in "${animFilename}"', "missing_ref");
 		}
 		var result:Array<TileSource> = [];
 		for (state in descriptor.states) {
@@ -1910,7 +1925,7 @@ class MultiAnimBuilder {
 				return this;
 			var builder = multiParserResult.imports.get(externalReference);
 			if (builder == null)
-				throw 'could not find builder for external reference ${externalReference}' + currentNodePos();
+				throw builderError('could not find builder for external reference ${externalReference}', "missing_ref");
 			return builder;
 		}
 
@@ -1921,7 +1936,7 @@ class MultiAnimBuilder {
 				if (c != null) return c;
 				final parsed = Std.parseInt(s);
 				if (parsed != null) return parsed;
-				throw 'cannot resolve color from string "$s"' + currentNodePos();
+				throw builderError('cannot resolve color from string "$s"');
 			case RVColorXY(externalReference, name, x, y):
 				var builder = getBuilderWithExternal(externalReference);
 				var palette = builder.getPalette(name);
@@ -1935,7 +1950,7 @@ class MultiAnimBuilder {
 			case RVTernary(condition, ifTrue, ifFalse):
 				return if (resolveAsBool(condition)) resolveAsColorInteger(ifTrue) else resolveAsColorInteger(ifFalse);
 
-			default: throw 'expected color to resolve, got $v' + currentNodePos();
+			default: throw builderError('expected color to resolve, got $v');
 		}
 	}
 
@@ -1945,38 +1960,38 @@ class MultiAnimBuilder {
 				switch (property) {
 					case "width":
 						final scene = builderParams.scene;
-						if (scene == null) throw '$$ctx.width requires scene in BuilderParameters' + currentNodePos();
+						if (scene == null) throw builderError('$$ctx.width requires scene in BuilderParameters');
 						return scene.width;
 					case "height":
 						final scene = builderParams.scene;
-						if (scene == null) throw '$$ctx.height requires scene in BuilderParameters' + currentNodePos();
+						if (scene == null) throw builderError('$$ctx.height requires scene in BuilderParameters');
 						return scene.height;
-					default: throw '$ref.$property is not a known context property' + currentNodePos();
+					default: throw builderError('$ref.$property is not a known context property');
 				}
 			case "grid" | "ctx.grid":
 				final node = currentNode;
-				if (node == null) throw 'currentNode is null in resolveRVPropertyAccess' + currentNodePos();
+				if (node == null) throw builderError('currentNode is null in resolveRVPropertyAccess');
 				final gcs = MultiAnimParser.getGridCoordinateSystem(node);
-				if (gcs == null) throw 'no grid coordinate system in scope for $ref.$property' + currentNodePos();
+				if (gcs == null) throw builderError('no grid coordinate system in scope for $ref.$property');
 				switch (property) {
 					case "width": return gcs.spacingX;
 					case "height": return gcs.spacingY;
-					default: throw '$ref.$property is not a known grid property' + currentNodePos();
+					default: throw builderError('$ref.$property is not a known grid property');
 				}
 			case "hex" | "ctx.hex":
 				final node = currentNode;
-				if (node == null) throw 'currentNode is null in resolveRVPropertyAccess' + currentNodePos();
+				if (node == null) throw builderError('currentNode is null in resolveRVPropertyAccess');
 				final hcs = MultiAnimParser.getHexCoordinateSystem(node);
-				if (hcs == null) throw 'no hex coordinate system in scope for $ref.$property' + currentNodePos();
+				if (hcs == null) throw builderError('no hex coordinate system in scope for $ref.$property');
 				switch (property) {
 					case "width": return hcs.hexLayout.size.x;
 					case "height": return hcs.hexLayout.size.y;
-					default: throw '$ref.$property is not a known hex property' + currentNodePos();
+					default: throw builderError('$ref.$property is not a known hex property');
 				}
 			default:
 				// Check named coordinate systems
 				final node = currentNode;
-				if (node == null) throw 'currentNode is null in resolveRVPropertyAccess' + currentNodePos();
+				if (node == null) throw builderError('currentNode is null in resolveRVPropertyAccess');
 				final namedCS = MultiAnimParser.getNamedCoordinateSystem(ref, node);
 				if (namedCS != null) {
 					switch (namedCS) {
@@ -1984,17 +1999,17 @@ class MultiAnimBuilder {
 							switch (property) {
 								case "width": return system.spacingX;
 								case "height": return system.spacingY;
-								default: throw '$ref.$property is not a known grid property' + currentNodePos();
+								default: throw builderError('$ref.$property is not a known grid property');
 							}
 						case NamedHex(system):
 							switch (property) {
 								case "width": return system.hexLayout.size.x;
 								case "height": return system.hexLayout.size.y;
-								default: throw '$ref.$property is not a known hex property' + currentNodePos();
+								default: throw builderError('$ref.$property is not a known hex property');
 							}
 					}
 				}
-				throw 'unknown reference $ref for property access .$property' + currentNodePos();
+				throw builderError('unknown reference $ref for property access .$property');
 		}
 	}
 
@@ -2003,26 +2018,26 @@ class MultiAnimBuilder {
 			case "ctx":
 				switch (method) {
 					case "random":
-						if (args.length != 2) throw '$ref.$method() requires 2 arguments (min, max)' + currentNodePos();
+						if (args.length != 2) throw builderError('$ref.$method() requires 2 arguments (min, max)');
 						final min = resolveAsInteger(args[0]);
 						final max = resolveAsInteger(args[1]);
 						return min + Std.random(max - min);
 					case "font":
-						throw '$$ctx.font() must be followed by .lineHeight or .baseLine' + currentNodePos();
-					default: throw '$ref.$method() is not a known context method' + currentNodePos();
+						throw builderError('$$ctx.font() must be followed by .lineHeight or .baseLine');
+					default: throw builderError('$ref.$method() is not a known context method');
 				}
 			default:
-				throw 'unknown reference $ref for method call .$method()' + currentNodePos();
+				throw builderError('unknown reference $ref for method call .$method()');
 		}
 	}
 
 	/** Resolves a coordinate method call ($hex.corner(), $hex.edge(), $hex.cube(), $grid.pos(), $ref.extraPoint(), etc.) to an FPoint. */
 	function resolveRVMethodCallToPoint(ref:String, method:String, args:Array<ReferenceableValue>):FPoint {
 		final node = currentNode;
-		if (node == null) throw 'currentNode is null in resolveRVMethodCallToPoint' + currentNodePos();
+		if (node == null) throw builderError('currentNode is null in resolveRVMethodCallToPoint');
 		// $ref.extraPoint("pointName" [, fallbackX, fallbackY]) — resolve extra point from named stateanim element
 		if (method == "extraPoint") {
-			if (args.length < 1) throw '$$$ref.extraPoint() requires at least 1 argument (pointName)' + currentNodePos();
+			if (args.length < 1) throw builderError('$$$ref.extraPoint() requires at least 1 argument (pointName)');
 			final pointName = resolveAsString(args[0]);
 			final fallback = if (args.length >= 3) OFFSET(args[1], args[2]) else null;
 			return resolveExtraPointRef(ref, pointName, fallback, null, null);
@@ -2039,10 +2054,10 @@ class MultiAnimBuilder {
 					default: null;
 				}
 			};
-			if (gcs == null) throw 'no grid coordinate system in scope for $$$ref.$method()' + currentNodePos();
+			if (gcs == null) throw builderError('no grid coordinate system in scope for $$$ref.$method()');
 			switch (method) {
 				case "pos":
-					if (args.length < 2) throw '$$$ref.pos() requires at least 2 arguments (x, y)' + currentNodePos();
+					if (args.length < 2) throw builderError('$$$ref.pos() requires at least 2 arguments (x, y)');
 					final x = resolveAsInteger(args[0]);
 					final y = resolveAsInteger(args[1]);
 					if (args.length >= 4) {
@@ -2051,7 +2066,7 @@ class MultiAnimBuilder {
 						return gcs.resolveAsGrid(x, y, ox, oy);
 					}
 					return gcs.resolveAsGrid(x, y);
-				default: throw '$$$ref.$method() is not a known grid method' + currentNodePos();
+				default: throw builderError('$$$ref.$method() is not a known grid method');
 			}
 		}
 
@@ -2064,36 +2079,36 @@ class MultiAnimBuilder {
 				default: null;
 			}
 		};
-		if (hcs == null) throw 'no hex coordinate system in scope for $$$ref.$method()' + currentNodePos();
+		if (hcs == null) throw builderError('no hex coordinate system in scope for $$$ref.$method()');
 
 		switch (method) {
 			case "corner":
-				if (args.length < 1) throw '$$$ref.corner() requires at least 1 argument (index)' + currentNodePos();
+				if (args.length < 1) throw builderError('$$$ref.corner() requires at least 1 argument (index)');
 				final idx = resolveAsInteger(args[0]);
 				final factor = if (args.length >= 2) resolveAsNumber(args[1]) else 1.0;
 				return hcs.resolveAsHexCorner(idx, factor);
 			case "edge":
-				if (args.length < 1) throw '$$$ref.edge() requires at least 1 argument (direction)' + currentNodePos();
+				if (args.length < 1) throw builderError('$$$ref.edge() requires at least 1 argument (direction)');
 				final dir = resolveAsInteger(args[0]);
 				final factor = if (args.length >= 2) resolveAsNumber(args[1]) else 1.0;
 				return hcs.resolveAsHexEdge(dir, factor);
 			case "cube":
-				if (args.length != 3) throw '$$$ref.cube() requires 3 arguments (q, r, s)' + currentNodePos();
+				if (args.length != 3) throw builderError('$$$ref.cube() requires 3 arguments (q, r, s)');
 				return hcs.resolveHexCube(resolveAsNumber(args[0]), resolveAsNumber(args[1]), resolveAsNumber(args[2]));
 			case "offset":
-				if (args.length < 2) throw '$$$ref.offset() requires at least 2 arguments (col, row)' + currentNodePos();
+				if (args.length < 2) throw builderError('$$$ref.offset() requires at least 2 arguments (col, row)');
 				final parity:OffsetParity = if (args.length >= 3) {
 					final p = resolveAsString(args[2]);
-					switch (p) { case "even": EVEN; case "odd": ODD; default: throw 'Expected "even" or "odd", got: $p' + currentNodePos(); }
+					switch (p) { case "even": EVEN; case "odd": ODD; default: throw builderError('Expected "even" or "odd", got: $p'); }
 				} else EVEN;
 				return hcs.resolveHexOffset(resolveAsInteger(args[0]), resolveAsInteger(args[1]), parity);
 			case "doubled":
-				if (args.length != 2) throw '$$$ref.doubled() requires 2 arguments (col, row)' + currentNodePos();
+				if (args.length != 2) throw builderError('$$$ref.doubled() requires 2 arguments (col, row)');
 				return hcs.resolveHexDoubled(resolveAsInteger(args[0]), resolveAsInteger(args[1]));
 			case "pixel":
-				if (args.length != 2) throw '$$$ref.pixel() requires 2 arguments (x, y)' + currentNodePos();
+				if (args.length != 2) throw builderError('$$$ref.pixel() requires 2 arguments (x, y)');
 				return hcs.resolveHexPixel(resolveAsNumber(args[0]), resolveAsNumber(args[1]));
-			default: throw '$$$ref.$method() is not a known hex method' + currentNodePos();
+			default: throw builderError('$$$ref.$method() is not a known hex method');
 		}
 	}
 
@@ -2104,62 +2119,56 @@ class MultiAnimBuilder {
 			switch (base) {
 				case RVMethodCall(ref, method, args):
 					if (ref == "ctx" && method == "font") {
-						if (args.length != 1) throw '$$ctx.font() requires 1 argument (font name)' + currentNodePos();
+						if (args.length != 1) throw builderError('$$ctx.font() requires 1 argument (font name)');
 						final fontName = resolveAsString(args[0]);
 						final font = resourceLoader.loadFont(fontName);
 						return if (property == "lineHeight") font.lineHeight else font.baseLine;
 					}
 				default:
 			}
-			throw 'unsupported base expression for .$property — use $$ctx.font("name").$property' + currentNodePos();
+			throw builderError('unsupported base expression for .$property — use $$ctx.font("name").$property');
 		}
 
 		if (property != "x" && property != "y")
-			throw 'unsupported chained property .$property — only .x, .y, .lineHeight, .baseLine are supported' + currentNodePos();
+			throw builderError('unsupported chained property .$property — only .x, .y, .lineHeight, .baseLine are supported');
 
 		switch (base) {
 			case RVMethodCall(ref, method, args):
 				final pt = resolveRVMethodCallToPoint(ref, method, args);
 				return if (property == "x") pt.x else pt.y;
 			default:
-				throw 'unsupported base expression for .$property extraction' + currentNodePos();
+				throw builderError('unsupported base expression for .$property extraction');
 		}
 	}
 
 	function resolveAsBool(v:ReferenceableValue):Bool {
+		// Narrow the comparison fallback to "operands aren't numeric" — real
+		// errors (missing refs, division by zero) re-throw instead of being
+		// swallowed by an unrelated string comparison.
+		inline function compareNumericOrString(e1, e2, numCmp:(Float, Float) -> Bool, strCmp:(String, String) -> Bool):Bool {
+			try {
+				return numCmp(resolveAsNumber(e1), resolveAsNumber(e2));
+			} catch (err:BuilderError) {
+				if (err.code != "not_a_number") throw err;
+				return strCmp(resolveAsString(e1), resolveAsString(e2));
+			}
+		}
+
 		return switch v {
 			case EBinop(op, e1, e2):
 				switch op {
-					case OpEq: 
+					case OpEq:
 						resolveAsString(e1) == resolveAsString(e2);
 					case OpNotEq:
 						resolveAsString(e1) != resolveAsString(e2);
 					case OpLess:
-						// Try numeric comparison first, fall back to string
-						try {
-							resolveAsNumber(e1) < resolveAsNumber(e2);
-						} catch (e) {
-							resolveAsString(e1) < resolveAsString(e2);
-						}
+						compareNumericOrString(e1, e2, (a, b) -> a < b, (a, b) -> a < b);
 					case OpGreater:
-						// Try numeric comparison first, fall back to string
-						try {
-							resolveAsNumber(e1) > resolveAsNumber(e2);
-						} catch (e) {
-							resolveAsString(e1) > resolveAsString(e2);
-						}
+						compareNumericOrString(e1, e2, (a, b) -> a > b, (a, b) -> a > b);
 					case OpLessEq:
-						try {
-							resolveAsNumber(e1) <= resolveAsNumber(e2);
-						} catch (e) {
-							resolveAsString(e1) <= resolveAsString(e2);
-						}
+						compareNumericOrString(e1, e2, (a, b) -> a <= b, (a, b) -> a <= b);
 					case OpGreaterEq:
-						try {
-							resolveAsNumber(e1) >= resolveAsNumber(e2);
-						} catch (e) {
-							resolveAsString(e1) >= resolveAsString(e2);
-						}
+						compareNumericOrString(e1, e2, (a, b) -> a >= b, (a, b) -> a >= b);
 					case _: resolveAsInteger(v) != 0;
 				}
 			case RVTernary(condition, ifTrue, ifFalse):
@@ -2178,23 +2187,23 @@ class MultiAnimBuilder {
 			return switch result {
 				case CBRInteger(val): val;
 				case CBRNoResult:
-					if (defaultValue != null) resolveAsInteger(defaultValue); else throw 'no default value for $input' + currentNodePos();
+					if (defaultValue != null) resolveAsInteger(defaultValue); else throw builderError('no default value for $input');
 
-				case _: throw 'callback should return int but was ${result} for $input' + currentNodePos();
+				case _: throw builderError('callback should return int but was ${result} for $input');
 			}
 		}
 
 		return switch v {
 			case RVElementOfArray(array, index): resolveAsArrayElement(v);
-			case RVArray(refArray): throw 'RVArray not supported' + currentNodePos();
-			case RVArrayReference(refArray): throw 'RVArrayReference not supported' + currentNodePos();
+			case RVArray(refArray): throw builderError('RVArray not supported');
+			case RVArrayReference(refArray): throw builderError('RVArrayReference not supported');
 			case RVInteger(i): return i;
 			case RVFloat(f): return Std.int(f);
 			case RVString(s): return stringToInt(s);
 			case RVColorXY(_, _, _) | RVColor(_, _): resolveAsColorInteger(v);
 			case RVReference(ref):
 				if (!indexedParams.exists(ref)) {
-					throw 'reference ${ref} does not exist, available ${indexedParams}' + currentNodePos();
+					throw builderError('reference ${ref} does not exist, available ${indexedParams}', "missing_ref");
 				}
 
 				final val = indexedParams.get(ref);
@@ -2203,8 +2212,8 @@ class MultiAnimBuilder {
 					case ValueF(val): return Std.int(val);
 					case StringValue(s): stringToInt(s);
 					case ExpressionAlias(expr): resolveAsInteger(expr);
-					case null: throw 'reference ${ref} is null' + currentNodePos();
-					default: throw 'reference ${ref} is not a value but ${val}' + currentNodePos();
+					case null: throw builderError('reference ${ref} is null');
+					default: throw builderError('reference ${ref} is not a value but ${val}');
 				}
 			case RVParenthesis(e): resolveAsInteger(e);
 			case RVPropertyAccess(ref, property): Std.int(resolveRVPropertyAccess(ref, property));
@@ -2230,15 +2239,15 @@ class MultiAnimBuilder {
 					case OpSub: resolveAsInteger(e1) - resolveAsInteger(e2);
 					case OpDiv:
 						final d = resolveAsInteger(e2);
-						if (d == 0) throw 'Division by zero' + currentNodePos();
+						if (d == 0) throw builderError('Division by zero');
 						Std.int(resolveAsInteger(e1) / d);
 					case OpMod:
 						final d = resolveAsInteger(e2);
-						if (d == 0) throw 'Modulo by zero' + currentNodePos();
+						if (d == 0) throw builderError('Modulo by zero');
 						Std.int(resolveAsInteger(e1) % d);
 					case OpIntegerDiv:
 						final d = resolveAsInteger(e2);
-						if (d == 0) throw 'Division by zero' + currentNodePos();
+						if (d == 0) throw builderError('Division by zero');
 						Std.int(resolveAsInteger(e1) / d);
 					case OpEq: resolveAsInteger(e1) == resolveAsInteger(e2) ? 1 : 0;
 					case OpNotEq: resolveAsInteger(e1) != resolveAsInteger(e2) ? 1 : 0;
@@ -2258,26 +2267,26 @@ class MultiAnimBuilder {
 	function resolveAsNumber(v:ReferenceableValue):Float {
 		return switch v {
 			case RVElementOfArray(array, index): resolveAsArrayElement(v);
-			case RVArray(refArray): throw 'RVArray not supported' + currentNodePos();
-			case RVArrayReference(refArray): throw 'RVArrayReference not supported' + currentNodePos();
+			case RVArray(refArray): throw builderError('RVArray not supported');
+			case RVArrayReference(refArray): throw builderError('RVArrayReference not supported');
 			case RVInteger(i): i;
 			case RVFloat(f): f;
 			case RVString(s):
 				final f = Std.parseFloat(s);
-				if (Math.isNaN(f)) throw 'expected number, got ${s}' + currentNodePos();
+				if (Math.isNaN(f)) throw builderError('expected number, got ${s}', "not_a_number");
 				f;
-			case RVColorXY(_, _, _) | RVColor(_, _): throw 'reference is a color but needs to be float' + currentNodePos();
+			case RVColorXY(_, _, _) | RVColor(_, _): throw builderError('reference is a color but needs to be float', "not_a_number");
 			case RVReference(ref):
 				if (!indexedParams.exists(ref))
-					throw 'reference ${ref} does not exist (resolveAsNumber), available ${indexedParams}' + currentNodePos();
+					throw builderError('reference ${ref} does not exist (resolveAsNumber), available ${indexedParams}', "missing_ref");
 
 				final val = indexedParams.get(ref);
 				switch val {
 					case Value(val): return val;
 					case ValueF(val): return val;
 					case ExpressionAlias(expr): resolveAsNumber(expr);
-					case null: throw 'reference ${ref} is null' + currentNodePos();
-					default: throw 'reference ${ref} is not a value but ${val}' + currentNodePos();
+					case null: throw builderError('reference ${ref} is null');
+					default: throw builderError('reference ${ref} is not a value but ${val}');
 				}
 			case RVParenthesis(e): resolveAsNumber(e);
 			case RVPropertyAccess(ref, property): resolveRVPropertyAccess(ref, property);
@@ -2291,22 +2300,22 @@ class MultiAnimBuilder {
 
 				switch result {
 					case CBRInteger(val): cast(val, Float);
-					case CBRString(val): throw 'callback should return number but was ${val}' + currentNodePos();
+					case CBRString(val): throw builderError('callback should return number but was ${val}', "not_a_number");
 					case CBRFloat(val): val;
-					case CBRObject(_): throw 'callback should return number but was CBRObject for $input' + currentNodePos();
+					case CBRObject(_): throw builderError('callback should return number but was CBRObject for $input');
 					case CBRNoResult: resolveAsNumber(defaultValue);
-					case null: throw 'callback should return number but was null for $input' + currentNodePos();
+					case null: throw builderError('callback should return number but was null for $input');
 				}
 			case RVCallbacksWithIndex(name, idx, defaultValue):
 				final input = NameWithIndex(resolveAsString(name), resolveAsInteger(idx));
 				final result = builderParams.callback(input);
 				switch result {
 					case CBRInteger(val): cast(val, Float);
-					case CBRString(val): throw 'callback should return number but was ${result} for $input' + currentNodePos();
+					case CBRString(val): throw builderError('callback should return number but was ${result} for $input', "not_a_number");
 					case CBRFloat(val): val;
 					case CBRNoResult: resolveAsNumber(defaultValue);
-					case CBRObject(_): throw 'callback should return number but was CBRObject $result for $input' + currentNodePos();
-					case null: throw 'callback should return number but was null' + currentNodePos();
+					case CBRObject(_): throw builderError('callback should return number but was CBRObject $result for $input');
+					case null: throw builderError('callback should return number but was null');
 				}
 
 			case EBinop(op, e1, e2):
@@ -2316,15 +2325,15 @@ class MultiAnimBuilder {
 					case OpSub: resolveAsNumber(e1) - resolveAsNumber(e2);
 					case OpDiv:
 						final d = resolveAsNumber(e2);
-						if (d == 0) throw 'Division by zero' + currentNodePos();
+						if (d == 0) throw builderError('Division by zero');
 						resolveAsNumber(e1) / d;
 					case OpMod:
 						final d = resolveAsNumber(e2);
-						if (d == 0) throw 'Modulo by zero' + currentNodePos();
+						if (d == 0) throw builderError('Modulo by zero');
 						resolveAsNumber(e1) % d;
 					case OpIntegerDiv:
 						final d = resolveAsInteger(e2);
-						if (d == 0) throw 'Division by zero' + currentNodePos();
+						if (d == 0) throw builderError('Division by zero');
 						Std.int(resolveAsInteger(e1) / d);
 					case OpEq: resolveAsNumber(e1) == resolveAsNumber(e2) ? 1 : 0;
 					case OpNotEq: resolveAsNumber(e1) != resolveAsNumber(e2) ? 1 : 0;
@@ -2353,7 +2362,7 @@ class MultiAnimBuilder {
 				else
 					paramName; // Fallback: treat as literal programmable name
 			default:
-				throw 'unexpected ReferenceableValue for programmable reference: $rv';
+				throw builderError('unexpected ReferenceableValue for programmable reference: $rv');
 		}
 	}
 
@@ -2364,18 +2373,18 @@ class MultiAnimBuilder {
 				case CBRInteger(val): '${val}';
 				case CBRFloat(val): '${val}';
 				case CBRString(val): val;
-				case CBRObject(_): throw 'callback should return string but was CBRObject for $input' + currentNodePos();
+				case CBRObject(_): throw builderError('callback should return string but was CBRObject for $input');
 				case CBRNoResult:
-					if (defaultValue != null) resolveAsString(defaultValue); else throw 'no default value for $input' + currentNodePos();
-				case null: throw 'callback should return string but was null for $input' + currentNodePos();
+					if (defaultValue != null) resolveAsString(defaultValue); else throw builderError('no default value for $input');
+				case null: throw builderError('callback should return string but was null for $input');
 			}
 		}
 
 		return switch v {
 			case RVElementOfArray(array, index):
 				resolveAsArrayElement(v);
-			case RVArray(refArray): throw 'RVArray not supported' + currentNodePos();
-			case RVArrayReference(refArray): throw 'RVArrayReference not supported' + currentNodePos();
+			case RVArray(refArray): throw builderError('RVArray not supported');
+			case RVArrayReference(refArray): throw builderError('RVArrayReference not supported');
 			case RVInteger(i): return '${i}';
 			case RVFloat(f): return '${f}';
 			case RVString(s): return s;
@@ -2385,7 +2394,7 @@ class MultiAnimBuilder {
 
 			case RVReference(ref):
 				if (!indexedParams.exists(ref))
-					throw 'reference ${ref} does not exist (resolveAsString), available ${indexedParams}' + currentNodePos();
+					throw builderError('reference ${ref} does not exist (resolveAsString), available ${indexedParams}', "missing_ref");
 
 				final val:ResolvedIndexParameters = indexedParams.get(ref);
 				switch val {
@@ -2394,17 +2403,20 @@ class MultiAnimBuilder {
 					case StringValue(s): return s;
 					case Index(_, value): return value;
 					case ExpressionAlias(expr): return resolveAsString(expr);
-					default: throw 'invalid reference value ${ref}, expected string got ${val}' + currentNodePos();
+					default: throw builderError('invalid reference value ${ref}, expected string got ${val}');
 				}
 			case RVParenthesis(e):
 				// Parenthesized expressions (from ${...} interpolation) should evaluate
 				// arithmetically first, then convert to string. This ensures ${value + 10}
-				// produces "87" not "7710".
+				// produces "87" not "7710". Only the "not_a_number" tag falls back to
+				// string; real errors (missing refs, division by zero, unsupported ops)
+				// re-throw.
 				try {
 					final n = resolveAsNumber(e);
 					return n == Math.ffloor(n) ? Std.string(Std.int(n)) : Std.string(n);
-				} catch (_:Dynamic) {
-					return resolveAsString(e);
+				} catch (err:BuilderError) {
+					if (err.code == "not_a_number") return resolveAsString(e);
+					throw err;
 				}
 			case RVPropertyAccess(_, _) | RVMethodCall(_, _, _): '${resolveAsNumber(v)}';
 			case RVChainedMethodCall(base, property, _): '${resolveRVChainedMethodCall(base, property)}';
@@ -2490,11 +2502,11 @@ class MultiAnimBuilder {
 		final name = resolveAsString(autotileName);
 		final node = multiParserResult.nodes.get(name);
 		if (node == null)
-			throw 'autotile reference: could not find autotile "$name"' + currentNodePos();
+			throw builderError('autotile reference: could not find autotile "$name"');
 
 		final autotileDef:AutotileDef = switch node.type {
 			case AUTOTILE(def): def;
-			default: throw 'autotile reference: "$name" is not an autotile definition' + MacroUtils.nodePos(node);
+			default: throw builderErrorAt(node, 'autotile reference: "$name" is not an autotile definition');
 		};
 
 		final format = autotileDef.format;
@@ -2527,7 +2539,7 @@ class MultiAnimBuilder {
 					actualIndex = bh.base.Autotile.applyBlob47Fallback(tileIndex, tiles.length);
 				}
 				if (actualIndex < 0 || actualIndex >= tiles.length)
-					throw 'autotile reference: tile index $tileIndex out of bounds for "$name" (has ${tiles.length} tiles)' + MacroUtils.nodePos(node);
+					throw builderErrorAt(node, 'autotile reference: tile index $tileIndex out of bounds for "$name" (has ${tiles.length} tiles)');
 				final tile = loadTileSource(tiles[actualIndex]);
 				PreloadedTile(tile);
 
@@ -2559,7 +2571,7 @@ class MultiAnimBuilder {
 						actualIndex = bh.base.Autotile.applyBlob47FallbackWithMap(tileIndex, mapping);
 					}
 					if (!mapping.exists(actualIndex))
-						throw 'autotile reference: tile index $tileIndex not found in mapping' + MacroUtils.nodePos(node);
+						throw builderErrorAt(node, 'autotile reference: tile index $tileIndex not found in mapping');
 					mappedIndex = cast mapping.get(actualIndex);
 				}
 
@@ -2588,7 +2600,7 @@ class MultiAnimBuilder {
 						actualIndex = bh.base.Autotile.applyBlob47FallbackWithMap(tileIndex, mapping2);
 					}
 					if (!mapping2.exists(actualIndex))
-						throw 'autotile reference: tile index $tileIndex not found in mapping' + MacroUtils.nodePos(node);
+						throw builderErrorAt(node, 'autotile reference: tile index $tileIndex not found in mapping');
 					mappedIndex = cast mapping2.get(actualIndex);
 				}
 
@@ -2599,7 +2611,7 @@ class MultiAnimBuilder {
 
 			case ATSAtlasRegion(sheet, region):
 				// Atlas region-based autotiles not yet supported for generated(autotile(...)) syntax
-				throw 'autotile reference: "$name" uses sheet region - use tiles: or demo: syntax instead' + MacroUtils.nodePos(node);
+				throw builderErrorAt(node, 'autotile reference: "$name" uses sheet region - use tiles: or demo: syntax instead');
 		};
 	}
 
@@ -2618,11 +2630,11 @@ class MultiAnimBuilder {
 
 		final node = multiParserResult.nodes.get(name);
 		if (node == null)
-			throw 'autotileRegionSheet: could not find autotile "$name"' + currentNodePos();
+			throw builderError('autotileRegionSheet: could not find autotile "$name"');
 
 		final autotileDef:AutotileDef = switch node.type {
 			case AUTOTILE(def): def;
-			default: throw 'autotileRegionSheet: "$name" is not an autotile definition' + MacroUtils.nodePos(node);
+			default: throw builderErrorAt(node, 'autotileRegionSheet: "$name" is not an autotile definition');
 		};
 
 		final tileSize = resolveAsInteger(autotileDef.tileSize);
@@ -2636,7 +2648,7 @@ class MultiAnimBuilder {
 			case ATSFile(filename):
 				final baseTile = resourceLoader.loadTile(resolveAsString(filename));
 				if (autotileDef.region == null)
-					throw 'autotileRegionSheet: autotile "$name" has no region defined' + MacroUtils.nodePos(node);
+					throw builderErrorAt(node, 'autotileRegionSheet: autotile "$name" has no region defined');
 				final r = autotileDef.region;
 				final regionX = resolveAsInteger(r[0]);
 				final regionY = resolveAsInteger(r[1]);
@@ -2653,13 +2665,13 @@ class MultiAnimBuilder {
 				AutotileRegionSheet(baseTile, regionX, regionY, regionW, regionH, tileSize, tileCount, scaleVal, fontName, fontColorVal);
 
 			case ATSDemo(_, _):
-				throw 'autotileRegionSheet: autotile "$name" uses demo source - no region to display' + MacroUtils.nodePos(node);
+				throw builderErrorAt(node, 'autotileRegionSheet: autotile "$name" uses demo source - no region to display');
 
 			case ATSTiles(_):
-				throw 'autotileRegionSheet: autotile "$name" uses explicit tiles - no region to display' + MacroUtils.nodePos(node);
+				throw builderErrorAt(node, 'autotileRegionSheet: autotile "$name" uses explicit tiles - no region to display');
 
 			case ATSAtlas(_, _):
-				throw 'autotileRegionSheet: autotile "$name" uses atlas prefix - no region to display' + MacroUtils.nodePos(node);
+				throw builderErrorAt(node, 'autotileRegionSheet: autotile "$name" uses atlas prefix - no region to display');
 		};
 	}
 
@@ -2803,7 +2815,7 @@ class MultiAnimBuilder {
 							incrementalFallbackTile = h2d.Tile.fromColor(0x00000000, 1, 1, 0.0);
 						incrementalFallbackTile.clone();
 					} else
-						throw 'TSFile: empty filename' + currentNodePos();
+						throw builderError('TSFile: empty filename');
 				} else
 					resourceLoader.loadTile(resolved);
 			case TSSheet(sheet, name): loadTileImpl(resolveAsString(sheet), resolveAsString(name)).tile;
@@ -2830,10 +2842,10 @@ class MultiAnimBuilder {
 							incrementalFallbackTile = h2d.Tile.fromColor(0x00000000, 1, 1, 0.0);
 						incrementalFallbackTile.clone();
 					} else
-						throw 'TileSource reference "$varName" not found in indexed params' + currentNodePos();
+						throw builderError('TileSource reference "$varName" not found in indexed params');
 				} else switch param {
 					case TileSourceValue(ts): loadTileSource(ts);
-					case _: throw 'TileSource reference "$varName" is not a TileSourceValue, got: $param' + currentNodePos();
+					case _: throw builderError('TileSource reference "$varName" is not a TileSourceValue, got: $param');
 				}
 			case TSPivot(px, py, inner):
 				var t = loadTileSource(inner);
@@ -2842,7 +2854,7 @@ class MultiAnimBuilder {
 		}
 
 		if (tile == null)
-			throw 'could not load tile $tileSource' + currentNodePos();
+			throw builderError('could not load tile $tileSource');
 		return tile;
 	}
 
@@ -2929,7 +2941,7 @@ class MultiAnimBuilder {
 						if (!a.contains(Std.string(val))) return false;
 					case StringValue(s):
 						if (!a.contains(s)) return false;
-					default: throw 'invalid param types ${currentValue}, ${condValue}' + currentNodePos();
+					default: throw builderError('invalid param types ${currentValue}, ${condValue}');
 				}
 			case CoRange(from, to, fromExclusive, toExclusive):
 				final fromF:Null<Float> = from != null ? resolveAsNumber(from) : null;
@@ -2941,24 +2953,24 @@ class MultiAnimBuilder {
 					case ValueF(val):
 						if (fromF != null && (fromExclusive ? val <= fromF : val < fromF)) return false;
 						if (toF != null && (toExclusive ? val >= toF : val > toF)) return false;
-					default: throw 'invalid param types ${currentValue}, ${condValue}' + currentNodePos();
+					default: throw builderError('invalid param types ${currentValue}, ${condValue}');
 				}
 
 			case CoIndex(idx, value):
 				switch currentValue {
 					case Index(i, value): if (idx != i) return false;
 					case StringValue(s): if (s != value) return false;
-					default: throw 'invalid param types ${currentValue}, ${condValue}' + currentNodePos();
+					default: throw builderError('invalid param types ${currentValue}, ${condValue}');
 				}
 			case CoValue(val):
 				switch currentValue {
 					case Value(iVal): if (val != iVal) return false;
-					default: throw 'invalid param types ${currentValue}, ${condValue}' + currentNodePos();
+					default: throw builderError('invalid param types ${currentValue}, ${condValue}');
 				}
 			case CoFlag(f):
 				switch currentValue {
 					case Flag(i): if (f & i != f) return false;
-					default: throw 'invalid param types ${currentValue}, ${condValue}' + currentNodePos();
+					default: throw builderError('invalid param types ${currentValue}, ${condValue}');
 				}
 			case CoAny:
 			case CoStringValue(s):
@@ -2966,7 +2978,7 @@ class MultiAnimBuilder {
 					case Index(idx, value): if (value != s) return false;
 					case StringValue(sv): if (s != sv) return false;
 					case Value(val): if (Std.string(val) != s) return false;
-					default: throw 'invalid param types ${currentValue}, ${condValue}' + currentNodePos();
+					default: throw builderError('invalid param types ${currentValue}, ${condValue}');
 				}
 		}
 		return true;
@@ -3596,40 +3608,40 @@ class MultiAnimBuilder {
 				returnPosition(resolveAsNumber(x), resolveAsNumber(y));
 			case SELECTED_GRID_POSITION(gridX, gridY):
 				if (gridCoordinateSystem == null)
-					throw 'gridCoordinateSystem is null' + currentNodePos();
+					throw builderError('gridCoordinateSystem is null');
 				gridCoordinateSystem.resolveAsGrid(resolveAsInteger(gridX), resolveAsInteger(gridY));
 			case SELECTED_HEX_EDGE(direction, factor):
 				if (hexCoordinateSystem == null)
-					throw 'hexCoordinateSystem is null' + currentNodePos();
+					throw builderError('hexCoordinateSystem is null');
 				hexCoordinateSystem.resolveAsHexEdge(resolveAsInteger(direction), resolveAsNumber(factor));
 			case SELECTED_HEX_CORNER(count, factor):
 				if (hexCoordinateSystem == null)
-					throw 'hexCoordinateSystem is null' + currentNodePos();
+					throw builderError('hexCoordinateSystem is null');
 				hexCoordinateSystem.resolveAsHexCorner(resolveAsInteger(count), resolveAsNumber(factor));
 			case SELECTED_HEX_CUBE(q, r, s):
 				if (hexCoordinateSystem == null)
-					throw 'hexCoordinateSystem is null' + currentNodePos();
+					throw builderError('hexCoordinateSystem is null');
 				hexCoordinateSystem.resolveHexCube(resolveAsNumber(q), resolveAsNumber(r), resolveAsNumber(s));
 			case SELECTED_HEX_OFFSET(col, row, parity):
 				if (hexCoordinateSystem == null)
-					throw 'hexCoordinateSystem is null' + currentNodePos();
+					throw builderError('hexCoordinateSystem is null');
 				hexCoordinateSystem.resolveHexOffset(resolveAsInteger(col), resolveAsInteger(row), parity);
 			case SELECTED_HEX_DOUBLED(col, row):
 				if (hexCoordinateSystem == null)
-					throw 'hexCoordinateSystem is null' + currentNodePos();
+					throw builderError('hexCoordinateSystem is null');
 				hexCoordinateSystem.resolveHexDoubled(resolveAsInteger(col), resolveAsInteger(row));
 			case SELECTED_HEX_PIXEL(x, y):
 				if (hexCoordinateSystem == null)
-					throw 'hexCoordinateSystem is null' + currentNodePos();
+					throw builderError('hexCoordinateSystem is null');
 				hexCoordinateSystem.resolveHexPixel(resolveAsNumber(x), resolveAsNumber(y));
 			case SELECTED_HEX_CELL_CORNER(cell, cornerIndex, factor):
 				if (hexCoordinateSystem == null)
-					throw 'hexCoordinateSystem is null' + currentNodePos();
+					throw builderError('hexCoordinateSystem is null');
 				final hex = resolveToHex(cell, hexCoordinateSystem);
 				hexCoordinateSystem.resolveAsHexCellCorner(hex, resolveAsInteger(cornerIndex), resolveAsNumber(factor));
 			case SELECTED_HEX_CELL_EDGE(cell, direction, factor):
 				if (hexCoordinateSystem == null)
-					throw 'hexCoordinateSystem is null' + currentNodePos();
+					throw builderError('hexCoordinateSystem is null');
 				final hex = resolveToHex(cell, hexCoordinateSystem);
 				hexCoordinateSystem.resolveAsHexCellEdge(hex, resolveAsInteger(direction), resolveAsNumber(factor));
 			case LAYOUT(layoutName, index):
@@ -3640,7 +3652,7 @@ class MultiAnimBuilder {
 				returnPosition(pt.x, pt.y);
 			case NAMED_COORD(name, coord):
 				final namedCS = MultiAnimParser.getNamedCoordinateSystem(name, currentNode);
-				if (namedCS == null) throw 'unknown named coordinate system: $name' + currentNodePos();
+				if (namedCS == null) throw builderError('unknown named coordinate system: $name');
 				switch (namedCS) {
 					case NamedGrid(system): calculatePosition(coord, system, hexCoordinateSystem);
 					case NamedHex(system): calculatePosition(coord, gridCoordinateSystem, system);
@@ -3659,22 +3671,22 @@ class MultiAnimBuilder {
 	function resolveExtraPointRef(elementName:String, pointName:String, fallback:Null<Coordinates>,
 			gridCoordinateSystem:Null<GridCoordinateSystem>, hexCoordinateSystem:Null<HexCoordinateSystem>):FPoint {
 		if (currentInternalResults == null)
-			throw 'extraPoint reference $$${elementName}.extraPoint("$pointName"): no build context available' + currentNodePos();
+			throw builderError('extraPoint reference $$${elementName}.extraPoint("$pointName"): no build context available');
 		final named = currentInternalResults.names.get(elementName);
 		if (named == null || named.length == 0)
-			throw 'extraPoint reference $$${elementName}.extraPoint("$pointName"): element "$elementName" not found. '
-				+ 'Ensure it is defined before this element' + currentNodePos();
+			throw builderError('extraPoint reference $$${elementName}.extraPoint("$pointName"): element "$elementName" not found. '
+				+ 'Ensure it is defined before this element');
 		final animSM = switch named[0].object {
 			case StateAnim(a): a;
-			default: throw 'extraPoint reference $$${elementName}.extraPoint("$pointName"): "$elementName" is not a stateanim element' + currentNodePos();
+			default: throw builderError('extraPoint reference $$${elementName}.extraPoint("$pointName"): "$elementName" is not a stateanim element');
 		}
 		final pt = animSM.getExtraPoint(pointName);
 		if (pt != null)
 			return new FPoint(pt.x, pt.y);
 		if (fallback != null)
 			return calculatePosition(fallback, gridCoordinateSystem, hexCoordinateSystem);
-		throw 'extraPoint $$${elementName}.extraPoint("$pointName"): point "$pointName" not found in current animation '
-			+ '"${animSM.current != null ? animSM.current.name : "(none)"}"' + currentNodePos();
+		throw builderError('extraPoint $$${elementName}.extraPoint("$pointName"): point "$pointName" not found in current animation '
+			+ '"${animSM.current != null ? animSM.current.name : "(none)"}"');
 	}
 
 	function resolveExtraPointAnim(filename:String, animName:String, pointName:String,
@@ -3688,7 +3700,7 @@ class MultiAnimBuilder {
 			return new FPoint(pt.x, pt.y);
 		if (fallback != null)
 			return calculatePosition(fallback, gridCoordinateSystem, hexCoordinateSystem);
-		throw 'extraPoint("$filename", "$animName", "$pointName"): point "$pointName" not found' + currentNodePos();
+		throw builderError('extraPoint("$filename", "$animName", "$pointName"): point "$pointName" not found');
 	}
 
 	function resolveToHex(cell:Coordinates, hexCoordinateSystem:HexCoordinateSystem):bh.base.Hex {
@@ -3710,14 +3722,14 @@ class MultiAnimBuilder {
 				hexCoordinateSystem.hexLayout.pixelToHex(new bh.base.FPoint(resolveAsNumber(x), resolveAsNumber(y))).round();
 			case NAMED_COORD(name, coord):
 				final node = currentNode;
-				if (node == null) throw 'currentNode is null in resolveToHex' + currentNodePos();
+				if (node == null) throw builderError('currentNode is null in resolveToHex');
 				final namedCS = MultiAnimParser.getNamedCoordinateSystem(name, node);
 				switch (namedCS) {
 					case NamedHex(system): resolveToHex(coord, system);
-					default: throw 'Named system $name is not a hex coordinate system' + currentNodePos();
+					default: throw builderError('Named system $name is not a hex coordinate system');
 				}
 			default:
-				throw 'Cannot resolve cell coordinates to hex: $cell' + currentNodePos();
+				throw builderError('Cannot resolve cell coordinates to hex: $cell');
 		};
 	}
 
@@ -3921,7 +3933,7 @@ class MultiAnimBuilder {
 				repeatCount = Math.ceil((rangeEnd - rangeStart) / rangeStep);
 			case StateAnimIterator(bmpVarName, animFilename, animationName, selectorRefs):
 				if (!allowTileIterators)
-					throw 'StateAnimIterator not supported in REPEAT2D' + MacroUtils.nodePos(node);
+					throw builderErrorAt(node, 'StateAnimIterator not supported in REPEAT2D');
 				final selector = [for (k => v in selectorRefs) k => resolveAsString(v)];
 				final animName = resolveAsString(animationName);
 				tileSourceIterator = collectStateAnimFrames(animFilename, animName, selector);
@@ -3929,15 +3941,14 @@ class MultiAnimBuilder {
 				bitmapVarName = bmpVarName;
 			case TilesIterator(bmpVarName, tnVarName, sheetName, tileFilter):
 				if (!allowTileIterators)
-					throw 'TilesIterator not supported in REPEAT2D' + MacroUtils.nodePos(node);
+					throw builderErrorAt(node, 'TilesIterator not supported in REPEAT2D');
 				bitmapVarName = bmpVarName;
 				tilenameVarName = tnVarName;
 				final sheet = getOrLoadSheet(sheetName);
 				if (tileFilter != null) {
 					final frames = sheet.getAnim(tileFilter);
 					if (frames == null) {
-						throw 'Tile "${tileFilter}" not found in sheet "${sheetName}". The tile filter must be an exact tile name (key) in the atlas.'
-							+ MacroUtils.nodePos(node);
+						throw builderErrorAt(node, 'Tile "${tileFilter}" not found in sheet "${sheetName}". The tile filter must be an exact tile name (key) in the atlas.');
 					}
 					for (frame in frames) {
 						if (frame != null && frame.tile != null) {
@@ -4038,7 +4049,7 @@ class MultiAnimBuilder {
 				final iterator = info.layoutName == null ? null : getLayouts().getIterator(info.layoutName);
 
 				if (indexedParams.exists(node.updatableName.getNameString()))
-					throw 'cannot use repeatable index param "$varName" as it is already defined' + MacroUtils.nodePos(node);
+					throw builderErrorAt(node, 'cannot use repeatable index param "$varName" as it is already defined');
 				for (count in 0...info.repeatCount) {
 					final gridCoordinateSystem = MultiAnimParser.getGridCoordinateSystem(node);
 					final hexCoordinateSystem = MultiAnimParser.getHexCoordinateSystem(node);
@@ -4068,7 +4079,7 @@ class MultiAnimBuilder {
 				final yInfo = resolveTileGroupRepeatAxis(repeatTypeY, node, false);
 
 				if (indexedParams.exists(varNameX) || indexedParams.exists(varNameY))
-					throw 'cannot use repeatable2d index param "$varNameX" or "$varNameY" as it is already defined' + MacroUtils.nodePos(node);
+					throw builderErrorAt(node, 'cannot use repeatable2d index param "$varNameX" or "$varNameY" as it is already defined');
 				var yIterator = yInfo.layoutName == null ? null : getLayouts().getIterator(yInfo.layoutName);
 				for (yCount in 0...yInfo.repeatCount) {
 					var yOffsetX = 0;
@@ -4118,7 +4129,7 @@ class MultiAnimBuilder {
 			case FINAL_VAR(name, expr):
 				evaluateAndStoreFinal(name, expr, node);
 				null;
-			default: throw 'unsupported node ${node.uniqueNodeName} ${node.type} in tileGroup mode' + MacroUtils.nodePos(node);
+			default: throw builderErrorAt(node, 'unsupported node ${node.uniqueNodeName} ${node.type} in tileGroup mode');
 		}
 
 		addToTileGroup(node, currentPos, tileGroupTile, tileGroup);
@@ -4138,9 +4149,9 @@ class MultiAnimBuilder {
 			final scale = node.scale == null ? 1.0 : resolveAsNumber(node.scale);
 			tileGroup.setDefaultColor(0xFFFFFF, node.alpha != null ? resolveAsNumber(node.alpha) : 1.0);
 			if (node.filter != null && node.filter != FilterNone)
-				throw 'tileGroup does not support filters for ${node.type}' + MacroUtils.nodePos(node);
+				throw builderErrorAt(node, 'tileGroup does not support filters for ${node.type}');
 			if (node.blendMode != null && node.blendMode != MBAlpha)
-				throw 'tileGroup does not support blendMode other than Alpha for ${node.type}' + MacroUtils.nodePos(node);
+				throw builderErrorAt(node, 'tileGroup does not support blendMode other than Alpha for ${node.type}');
 			tileGroup.addTransform(currentPos.x, currentPos.y, scale, scale, 0, tileGroupTile);
 		}
 	}
@@ -4149,14 +4160,14 @@ class MultiAnimBuilder {
 			currentPos:Point, tileGroup:h2d.TileGroup):Void {
 		final atlasSheet = getOrLoadSheet(sheet);
 		if (atlasSheet == null)
-			throw 'sheet ${sheet} could not be loaded' + currentNodePos();
+			throw builderError('sheet ${sheet} could not be loaded');
 		final entries = atlasSheet.getContents().get(tilename);
 		if (entries == null || entries.length == 0 || entries[0] == null)
-			throw 'tile ${tilename} in sheet ${sheet} could not be loaded' + currentNodePos();
+			throw builderError('tile ${tilename} in sheet ${sheet} could not be loaded');
 		final entry = entries[0];
 		final srcTile = entry.t;
 		if (entry.split == null || entry.split.length != 4)
-			throw 'tile ${tilename} in sheet ${sheet} is not a valid 9-patch (needs split with 4 values)' + currentNodePos();
+			throw builderError('tile ${tilename} in sheet ${sheet} is not a valid 9-patch (needs split with 4 values)');
 
 		final bl:Float = entry.split[0]; // border left
 		final br:Float = entry.split[1]; // border right
@@ -4168,9 +4179,9 @@ class MultiAnimBuilder {
 		final scale:Float = node.scale == null ? 1.0 : resolveAsNumber(node.scale);
 
 		if (node.filter != null && node.filter != FilterNone)
-			throw 'tileGroup does not support filters for ${node.type}' + MacroUtils.nodePos(node);
+			throw builderErrorAt(node, 'tileGroup does not support filters for ${node.type}');
 		if (node.blendMode != null && node.blendMode != MBAlpha)
-			throw 'tileGroup does not support blendMode other than Alpha for ${node.type}' + MacroUtils.nodePos(node);
+			throw builderErrorAt(node, 'tileGroup does not support blendMode other than Alpha for ${node.type}');
 
 		tileGroup.setDefaultColor(0xFFFFFF, node.alpha != null ? resolveAsNumber(node.alpha) : 1.0);
 
@@ -4263,7 +4274,7 @@ class MultiAnimBuilder {
 				if (layersParent != null)
 					layersParent.add(toAdd, node.layer);
 				else
-					throw 'No layers parent for ${node.uniqueNodeName}-${node.type}' + MacroUtils.nodePos(node);
+					throw builderErrorAt(node, 'No layers parent for ${node.uniqueNodeName}-${node.type}');
 			} else if (current != null)
 				current.addChild(toAdd);
 			// else do not add as this is root node
@@ -4518,16 +4529,16 @@ class MultiAnimBuilder {
 			// 	if (textAlignWidth != null) t.maxWidth = textAlignWidth;
 			// 	HeapsText(t);
 
-			case RELATIVE_LAYOUTS(_): throw 'layouts not allowed as non-root node' + MacroUtils.nodePos(node);
-			case ANIMATED_PATH(_): throw 'animatedPath not allowed as non-root node' + MacroUtils.nodePos(node);
-			case PATHS(_): throw 'paths not allowed as non-root node' + MacroUtils.nodePos(node);
-			case CURVES(_): throw 'curves not allowed as non-root node' + MacroUtils.nodePos(node);
+			case RELATIVE_LAYOUTS(_): throw builderErrorAt(node, 'layouts not allowed as non-root node');
+			case ANIMATED_PATH(_): throw builderErrorAt(node, 'animatedPath not allowed as non-root node');
+			case PATHS(_): throw builderErrorAt(node, 'paths not allowed as non-root node');
+			case CURVES(_): throw builderErrorAt(node, 'curves not allowed as non-root node');
 			case PARTICLES(particlesDef):
 				Particles(createParticleImpl(particlesDef, node.uniqueNodeName));
-			case PALETTE(_): throw 'palette not allowed as non-root node' + MacroUtils.nodePos(node);
-			case AUTOTILE(_): throw 'autotile not allowed as non-root node' + MacroUtils.nodePos(node);
-			case ATLAS2(_): throw 'atlas2 is a definition node, not a renderable element' + MacroUtils.nodePos(node);
-			case DATA(_): throw 'data is a definition node, not a renderable element' + MacroUtils.nodePos(node);
+			case PALETTE(_): throw builderErrorAt(node, 'palette not allowed as non-root node');
+			case AUTOTILE(_): throw builderErrorAt(node, 'autotile not allowed as non-root node');
+			case ATLAS2(_): throw builderErrorAt(node, 'atlas2 is a definition node, not a renderable element');
+			case DATA(_): throw builderErrorAt(node, 'data is a definition node, not a renderable element');
 
 			case PLACEHOLDER(type, source):
 				var settings = resolveSettings(node);
@@ -4537,7 +4548,7 @@ class MultiAnimBuilder {
 						case CBRObject(val): val;
 						case CBRNoResult: null;
 						case null: null;
-						default: throw 'expected h2d.object but got $result' + currentNodePos();
+						default: throw builderError('expected h2d.object but got $result');
 					}
 				}
 				var callbackResultH2dObject:Null<h2d.Object> = switch source {
@@ -4583,7 +4594,7 @@ class MultiAnimBuilder {
 							final tile = loadTileSource(source);
 							HeapsBitmap(new h2d.Bitmap(tile));
 						case PHNothing: HeapsObject(new h2d.Object());
-						case PHError: throw 'placeholder ${node.updatableName}, type ${node.type} configured in error mode, no input from $source' + MacroUtils.nodePos(node);
+						case PHError: throw builderErrorAt(node, 'placeholder ${node.updatableName}, type ${node.type} configured in error mode, no input from $source');
 					}
 				} else {
 					HeapsObject(callbackResultH2dObject);
@@ -4594,14 +4605,14 @@ class MultiAnimBuilder {
 				var builder = if (externalReference != null) {
 					var builder = multiParserResult.imports?.get(externalReference);
 					if (builder == null)
-						throw 'could not find builder for external staticRef ${externalReference}' + MacroUtils.nodePos(node);
+						throw builderErrorAt(node, 'could not find builder for external staticRef ${externalReference}');
 					builder;
 				} else this;
 
 				var result = builder.buildWithParameters(reference, parameters, builderParams, indexedParams);
 				var object = result?.object;
 				if (object == null)
-					throw 'could not build staticRef ${reference}' + MacroUtils.nodePos(node);
+					throw builderErrorAt(node, 'could not build staticRef ${reference}');
 
 				// When the referenced programmable has a non-zero pos, buildWithParameters wraps it:
 				// holder(0,0) → retRoot(posX,posY) → children
@@ -4625,7 +4636,7 @@ class MultiAnimBuilder {
 				var builder = if (externalReference != null) {
 					var builder = multiParserResult.imports?.get(externalReference);
 					if (builder == null)
-						throw 'could not find builder for external dynamicRef ${externalReference}' + MacroUtils.nodePos(node);
+						throw builderErrorAt(node, 'could not find builder for external dynamicRef ${externalReference}');
 					builder;
 				} else this;
 
@@ -4633,7 +4644,7 @@ class MultiAnimBuilder {
 				var result = builder.buildWithParameters(reference, parameters, builderParams, indexedParams, true);
 				var object = result?.object;
 				if (object == null)
-					throw 'could not build dynamicRef ${reference}' + MacroUtils.nodePos(node);
+					throw builderErrorAt(node, 'could not build dynamicRef ${reference}');
 
 				// For dynamic name refs, wrap in a container for easy rebuild
 				final container = if (isDynamicName) {
@@ -4781,7 +4792,7 @@ class MultiAnimBuilder {
 				}
 				final initialStateResolved = resolveAsString(initialState);
 				if (animSM.animationStates.exists(initialStateResolved) == false)
-					throw 'initialState ${initialStateResolved} does not exist in constructed stateanim' + MacroUtils.nodePos(node);
+					throw builderErrorAt(node, 'initialState ${initialStateResolved} does not exist in constructed stateanim');
 
 				animSM.play(initialStateResolved);
 				if (externallyDriven) animSM.externallyDriven = true;
@@ -4825,7 +4836,7 @@ class MultiAnimBuilder {
 						if (tileFilter != null) {
 							final frames = sheet.getAnim(tileFilter);
 							if (frames == null) {
-								throw 'Tile "${tileFilter}" not found in sheet "${sheetName}". The tile filter must be an exact tile name (key) in the atlas.' + MacroUtils.nodePos(node);
+								throw builderErrorAt(node, 'Tile "${tileFilter}" not found in sheet "${sheetName}". The tile filter must be an exact tile name (key) in the atlas.');
 							}
 							for (frame in frames) {
 								if (frame != null && frame.tile != null) {
@@ -4875,7 +4886,7 @@ class MultiAnimBuilder {
 				final ownPos = needsWrapper ? null : calculatePosition(node.pos, MultiAnimParser.getGridCoordinateSystem(node), MultiAnimParser.getHexCoordinateSystem(node));
 
 				if (indexedParams.exists(node.updatableName.getNameString()))
-					throw 'cannot use repeatable index param "$varName" as it is already defined' + MacroUtils.nodePos(node);
+					throw builderErrorAt(node, 'cannot use repeatable index param "$varName" as it is already defined');
 
 				// Disable incremental tracking for children of param-dependent repeats
 				// (they will be fully rebuilt when the tracked params change)
@@ -5055,9 +5066,9 @@ class MultiAnimBuilder {
 						xDx = 0;
 						xDy = 0;
 					case StateAnimIterator(_, _, _, _):
-						throw 'StateAnimIterator not supported in REPEAT2D' + MacroUtils.nodePos(node);
+						throw builderErrorAt(node, 'StateAnimIterator not supported in REPEAT2D');
 					case TilesIterator(_, _, _, _):
-						throw 'TilesIterator not supported in REPEAT2D' + MacroUtils.nodePos(node);
+						throw builderErrorAt(node, 'TilesIterator not supported in REPEAT2D');
 				}
 
 				switch repeatTypeY {
@@ -5081,13 +5092,13 @@ class MultiAnimBuilder {
 						yDx = 0;
 						yDy = 0;
 					case StateAnimIterator(_, _, _, _):
-						throw 'StateAnimIterator not supported in REPEAT2D' + MacroUtils.nodePos(node);
+						throw builderErrorAt(node, 'StateAnimIterator not supported in REPEAT2D');
 					case TilesIterator(_, _, _, _):
-						throw 'TilesIterator not supported in REPEAT2D' + MacroUtils.nodePos(node);
+						throw builderErrorAt(node, 'TilesIterator not supported in REPEAT2D');
 				}
 
 				if (indexedParams.exists(varNameX) || indexedParams.exists(varNameY))
-					throw 'cannot use repeatable2d index param "$varNameX" or "$varNameY" as it is already defined' + MacroUtils.nodePos(node);
+					throw builderErrorAt(node, 'cannot use repeatable2d index param "$varNameX" or "$varNameY" as it is already defined');
 				var yIterator = yLayoutName == null ? null : getLayoutsIfNeeded().getIterator(yLayoutName);
 				for (yCount in 0...yRepeatCount) {
 					final resolvedY = switch repeatTypeY {
@@ -5155,7 +5166,7 @@ class MultiAnimBuilder {
 
 			case APPLY:
 				if (current == null)
-					throw 'apply not allowed as root node' + MacroUtils.nodePos(node);
+					throw builderErrorAt(node, 'apply not allowed as root node');
 				if (incrementalMode && node.conditionals != NoConditional && incrementalContext != null) {
 					// In incremental mode with conditional: track for toggling on parameter changes
 					if (nodeVisible) {
@@ -5180,7 +5191,7 @@ class MultiAnimBuilder {
 				return null;
 
 			case PROGRAMMABLE(_, _, _):
-				throw 'invalid state, programmable should not be built' + MacroUtils.nodePos(node);
+				throw builderErrorAt(node, 'invalid state, programmable should not be built');
 
 			case PIXELS(shapes):
 				final pixelsResult = drawPixels(shapes, gridCoordinateSystem, hexCoordinateSystem);
@@ -5243,9 +5254,9 @@ class MultiAnimBuilder {
 				final flowParent = Std.downcast(current, h2d.Flow);
 				if (flowParent == null) {
 					if (isSpacer)
-						throw 'spacer used outside of flow' + MacroUtils.nodePos(node);
+						throw builderErrorAt(node, 'spacer used outside of flow');
 					else
-						throw 'per-element flow properties (@halign/@valign/@flowOffset/@absolute) used outside of flow' + MacroUtils.nodePos(node);
+						throw builderErrorAt(node, 'per-element flow properties (@halign/@valign/@flowOffset/@absolute) used outside of flow');
 				}
 				final props = flowParent.getProperties(object);
 				switch node.type {
@@ -5524,7 +5535,7 @@ class MultiAnimBuilder {
 			case FilterCustom(name, args):
 				final reg = bh.base.FilterManager.getFilter(name);
 				if (reg == null)
-					throw 'Unknown custom filter "$name". Register it via FilterManager.registerFilter().' + currentNodePos();
+					throw builderError('Unknown custom filter "$name". Register it via FilterManager.registerFilter().');
 				final resolved = new Map<String, Dynamic>();
 				for (i in 0...reg.params.length) {
 					final paramDef = reg.params[i];
@@ -5537,7 +5548,7 @@ class MultiAnimBuilder {
 					} else if (paramDef.defaultValue != null) {
 						resolved[paramDef.name] = paramDef.defaultValue;
 					} else {
-						throw 'Custom filter "$name" missing required argument "${paramDef.name}"' + currentNodePos();
+						throw builderError('Custom filter "$name" missing required argument "${paramDef.name}"');
 					}
 				}
 				reg.factory(resolved);
@@ -5562,7 +5573,7 @@ class MultiAnimBuilder {
 				return d;
 			default:
 				if (throwIfNotProgrammable)
-					throw 'buildWithParameters require programmable node, was ${node.type}' + MacroUtils.nodePos(node);
+					throw builderErrorAt(node, 'buildWithParameters require programmable node, was ${node.type}');
 				else
 					return [];
 		}
@@ -5666,7 +5677,7 @@ class MultiAnimBuilder {
 	function buildPalettes(name:String):Palette {
 		var node = multiParserResult.nodes.get(name);
 		if (node == null)
-			throw 'could not get palette node #${name}' + currentNodePos();
+			throw builderError('could not get palette node #${name}');
 		return switch node.type {
 			case PALETTE(paletteType):
 				return switch paletteType {
@@ -5676,12 +5687,12 @@ class MultiAnimBuilder {
 						var filenameResolved = resolveAsString(filename);
 						var res = resourceLoader.loadHXDResource(filenameResolved);
 						if (res == null)
-							throw 'could not load palette image $filename' + MacroUtils.nodePos(node);
+							throw builderErrorAt(node, 'could not load palette image $filename');
 						var pixels = res.toImage().getPixels();
 						var pixelArray = pixels.toVector().toArray();
 						new Palette(pixelArray, pixels.width);
 				}
-			default: throw '$name has to be palette' + MacroUtils.nodePos(node);
+			default: throw builderErrorAt(node, '$name has to be palette');
 		}
 	}
 
@@ -5718,13 +5729,13 @@ class MultiAnimBuilder {
 		if (particlesDef.fadeIn != null) {
 			final f = resolveAsNumber(particlesDef.fadeIn);
 			if (f < 0 || f > 1.0)
-				throw 'fadeIn must be between 0 and 1' + currentNodePos();
+				throw builderError('fadeIn must be between 0 and 1');
 			group.fadeIn = f;
 		}
 		if (particlesDef.fadeOut != null) {
 			final f = resolveAsNumber(particlesDef.fadeOut);
 			if (f < 0 || f > 1.0)
-				throw 'fadeOut must be between 0 and 1' + currentNodePos();
+				throw builderError('fadeOut must be between 0 and 1');
 			group.fadeOut = resolveAsNumber(particlesDef.fadeOut);
 		}
 		if (particlesDef.fadePower != null)
@@ -5758,7 +5769,7 @@ class MultiAnimBuilder {
 			group.colorEnabled = true;
 			var stops:Array<ParticleColorStop> = particlesDef.colorStops;
 			if (stops.length < 2)
-				throw 'colorStops requires at least 2 stops' + currentNodePos();
+				throw builderError('colorStops requires at least 2 stops');
 			for (i in 0...stops.length - 1) {
 				final s = stops[i];
 				final next = stops[i + 1];
@@ -5771,7 +5782,7 @@ class MultiAnimBuilder {
 					if (found == null) {
 						var easing = MacroManimParser.tryMatchEasingName(s.curveName);
 						if (easing == null)
-							throw 'color curve not found: ${s.curveName}' + currentNodePos();
+							throw builderError('color curve not found: ${s.curveName}');
 						found = new bh.paths.Curve(null, easing, null);
 						curves.set(s.curveName, found);
 					}
@@ -5902,7 +5913,7 @@ class MultiAnimBuilder {
 				var animName = asDef.animName;
 				var descriptor = animSM.animationStates.get(animName);
 				if (descriptor == null)
-					throw 'particle animation "${animName}" not found in "${particlesDef.animFile}"' + currentNodePos();
+					throw builderError('particle animation "${animName}" not found in "${particlesDef.animFile}"');
 
 				// Extract tiles from animation frames
 				var frameTiles:Array<h2d.Tile> = [];
@@ -5941,7 +5952,7 @@ class MultiAnimBuilder {
 						// The event override references an anim that wasn't added as a lifetime state — add it
 						var descriptor = animSM.animationStates.get(eo.animName);
 						if (descriptor == null)
-							throw 'particle event animation "${eo.animName}" not found in "${particlesDef.animFile}"' + currentNodePos();
+							throw builderError('particle event animation "${eo.animName}" not found in "${particlesDef.animFile}"');
 
 						var frameTiles:Array<h2d.Tile> = [];
 						for (state in descriptor.states) {
@@ -5987,13 +5998,13 @@ class MultiAnimBuilder {
 	public function createParticles(name:String, ?builderParams:BuilderParameters):bh.base.Particles {
 		var node = multiParserResult.nodes.get(name);
 		if (node == null)
-			throw 'could not get particles node #${name}' + currentNodePos();
+			throw builderError('could not get particles node #${name}');
 		switch node.type {
 			case PARTICLES(particlesDef):
 				return createParticleImpl(particlesDef, name);
 
 			default:
-				throw '$name has to be particles' + MacroUtils.nodePos(node);
+				throw builderErrorAt(node, '$name has to be particles');
 		}
 	}
 
@@ -6001,12 +6012,12 @@ class MultiAnimBuilder {
 	public function addParticleGroupTo(name:String, particles:bh.base.Particles):Void {
 		var node = multiParserResult.nodes.get(name);
 		if (node == null)
-			throw 'could not get particles node #${name}' + currentNodePos();
+			throw builderError('could not get particles node #${name}');
 		switch node.type {
 			case PARTICLES(particlesDef):
 				createParticleImpl(particlesDef, name, particles);
 			default:
-				throw '$name has to be particles' + MacroUtils.nodePos(node);
+				throw builderErrorAt(node, '$name has to be particles');
 		}
 	}
 
@@ -6019,12 +6030,12 @@ class MultiAnimBuilder {
 	public function getData(name:String):Dynamic {
 		var node = multiParserResult.nodes.get(name);
 		if (node == null)
-			throw 'could not get data node #${name}' + currentNodePos();
+			throw builderError('could not get data node #${name}');
 		switch node.type {
 			case DATA(dataDef):
 				return resolveDataDef(dataDef);
 			default:
-				throw '$name has to be data' + MacroUtils.nodePos(node);
+				throw builderErrorAt(node, '$name has to be data');
 		}
 	}
 
@@ -6060,7 +6071,7 @@ class MultiAnimBuilder {
 	public function createAnimatedPath(name:String, ?normalization:bh.paths.MultiAnimPaths.PathNormalization):bh.paths.AnimatedPath {
 		var node = multiParserResult.nodes.get(name);
 		if (node == null)
-			throw 'could not get animatedPath node #${name}' + currentNodePos();
+			throw builderError('could not get animatedPath node #${name}');
 		switch node.type {
 			case ANIMATED_PATH(pathDef):
 				// Resolve path from paths block, apply optional transforms
@@ -6074,11 +6085,11 @@ class MultiAnimBuilder {
 					case APDistance | null if (pathDef.speed != null):
 						Distance(resolveAsNumber(pathDef.speed));
 					case APTime:
-						throw 'time mode requires duration' + MacroUtils.nodePos(node);
+						throw builderErrorAt(node, 'time mode requires duration');
 					case APDistance:
-						throw 'distance mode requires speed' + MacroUtils.nodePos(node);
+						throw builderErrorAt(node, 'distance mode requires speed');
 					case null:
-						throw 'animatedPath requires either speed or duration' + MacroUtils.nodePos(node);
+						throw builderErrorAt(node, 'animatedPath requires either speed or duration');
 				};
 
 				var retVal = new bh.paths.AnimatedPath(path, mode);
@@ -6102,13 +6113,13 @@ class MultiAnimBuilder {
 						if (resolved == null) {
 							var easing = MacroManimParser.tryMatchEasingName(ca.curveName);
 							if (easing == null)
-								throw 'curve not found: ${ca.curveName}' + MacroUtils.nodePos(node);
+								throw builderErrorAt(node, 'curve not found: ${ca.curveName}');
 							resolved = new bh.paths.Curve(null, easing, null);
 							allCurves.set(ca.curveName, resolved);
 						}
 						curve = resolved;
 					} else {
-						throw 'curve assignment must have either curveName or inlineEasing' + MacroUtils.nodePos(node);
+						throw builderErrorAt(node, 'curve assignment must have either curveName or inlineEasing');
 					}
 					switch ca.slot {
 						case APSpeed: retVal.addCurveSegment(Speed, atRate, curve);
@@ -6134,7 +6145,7 @@ class MultiAnimBuilder {
 				return retVal;
 
 			default:
-				throw '$name has to be animatedPath' + MacroUtils.nodePos(node);
+				throw builderErrorAt(node, '$name has to be animatedPath');
 		}
 	}
 
@@ -6147,31 +6158,31 @@ class MultiAnimBuilder {
 	public function getLayouts(?builderParams:BuilderParameters):MultiAnimLayouts {
 		var node = multiParserResult.nodes.get(MultiAnimParser.defaultLayoutNodeName);
 		if (node == null)
-			throw 'layouts block does not exist' + currentNodePos();
+			throw builderError('layouts block does not exist');
 		switch node.type {
 			case RELATIVE_LAYOUTS(layoutsDef):
 				return new MultiAnimLayouts(layoutsDef, this);
 			default:
-				throw 'layouts block is of unexpected type ${node.type}' + MacroUtils.nodePos(node);
+				throw builderErrorAt(node, 'layouts block is of unexpected type ${node.type}');
 		}
 	}
 
 	public function getPaths(?builderParams:BuilderParameters):bh.paths.MultiAnimPaths {
 		var node = multiParserResult.nodes.get(MultiAnimParser.defaultPathNodeName);
 		if (node == null)
-			throw 'paths does not exist';
+			throw builderError('paths does not exist');
 		switch node.type {
 			case PATHS(pathsDef):
 				return new bh.paths.MultiAnimPaths(pathsDef, this);
 			default:
-				throw 'paths is of unexpected type ${node.type}' + MacroUtils.nodePos(node);
+				throw builderErrorAt(node, 'paths is of unexpected type ${node.type}');
 		}
 	}
 
 	public function getCurves():Map<String, bh.paths.Curve.ICurve> {
 		var node = multiParserResult.nodes.get(MultiAnimParser.defaultCurveNodeName);
 		if (node == null)
-			throw 'curves does not exist';
+			throw builderError('curves does not exist');
 		switch node.type {
 			case CURVES(curvesDef):
 				var result = new Map<String, bh.paths.Curve.ICurve>();
@@ -6183,13 +6194,13 @@ class MultiAnimBuilder {
 					if (existing != null) return existing;
 
 					if (resolving.exists(name))
-						throw 'circular curve reference: $name';
+						throw builderError('circular curve reference: $name');
 					var def = curvesDef.get(name);
 					if (def == null) {
 						// Auto-resolve easing names as built-in curves
 						var easing = MacroManimParser.tryMatchEasingName(name);
 						if (easing == null)
-							throw 'unknown curve reference: $name';
+							throw builderError('unknown curve reference: $name');
 						var curve = new bh.paths.Curve(null, easing, null);
 						result.set(name, curve);
 						return curve;
@@ -6241,7 +6252,7 @@ class MultiAnimBuilder {
 				for (name => _ in curvesDef) resolveCurve(name);
 				return result;
 			default:
-				throw 'curves is of unexpected type ${node.type}' + MacroUtils.nodePos(node);
+				throw builderErrorAt(node, 'curves is of unexpected type ${node.type}');
 		}
 	}
 
@@ -6251,7 +6262,7 @@ class MultiAnimBuilder {
 		if (curve == null) {
 			var easing = MacroManimParser.tryMatchEasingName(name);
 			if (easing == null)
-				throw 'curve not found: $name';
+				throw builderError('curve not found: $name');
 			curve = new bh.paths.Curve(null, easing, null);
 			curves.set(name, curve);
 		}
@@ -6267,13 +6278,13 @@ class MultiAnimBuilder {
 			if (curve == null) {
 				var easing = MacroManimParser.tryMatchEasingName(ref.curveName);
 				if (easing == null)
-					throw 'curve not found: ${ref.curveName}' + currentNodePos();
+					throw builderError('curve not found: ${ref.curveName}');
 				curve = new bh.paths.Curve(null, easing, null);
 				curves.set(ref.curveName, curve);
 			}
 			return curve;
 		}
-		throw 'curve reference must have either curveName or inlineEasing' + currentNodePos();
+		throw builderError('curve reference must have either curveName or inlineEasing');
 	}
 
 	/**
@@ -6285,12 +6296,12 @@ class MultiAnimBuilder {
 	public function buildAutotile(name:String, grid:Array<Array<Int>>):h2d.TileGroup {
 		var node = multiParserResult.nodes.get(name);
 		if (node == null)
-			throw 'could not get autotile node #${name}' + currentNodePos();
+			throw builderError('could not get autotile node #${name}');
 		switch node.type {
 			case AUTOTILE(autotileDef):
 				return buildAutotileImpl(autotileDef, grid, null);
 			default:
-				throw '$name has to be autotile' + MacroUtils.nodePos(node);
+				throw builderErrorAt(node, '$name has to be autotile');
 		}
 	}
 
@@ -6304,12 +6315,12 @@ class MultiAnimBuilder {
 	public function buildAutotileElevation(name:String, grid:Array<Array<Int>>, baseY:Float):h2d.TileGroup {
 		var node = multiParserResult.nodes.get(name);
 		if (node == null)
-			throw 'could not get autotile node #${name}' + currentNodePos();
+			throw builderError('could not get autotile node #${name}');
 		switch node.type {
 			case AUTOTILE(autotileDef):
 				return buildAutotileImpl(autotileDef, grid, baseY);
 			default:
-				throw '$name has to be autotile' + MacroUtils.nodePos(node);
+				throw builderErrorAt(node, '$name has to be autotile');
 		}
 	}
 
@@ -6444,7 +6455,7 @@ class MultiAnimBuilder {
 							final fv = _mapping.get(fallbackIdx);
 							mappedIdx = fv != null ? fv : 0;
 						} else {
-							throw 'autotile: tile index $i not found in mapping' + currentNodePos();
+							throw builderError('autotile: tile index $i not found in mapping');
 						}
 						result.push(baseTile.sub(
 							regionX + (mappedIdx % tilesPerRow) * tileSize,
@@ -6679,14 +6690,14 @@ class MultiAnimBuilder {
 			final type = definitions.get(key)?.type;
 			if (type == null) {
 				final availableParams = [for (k in definitions.keys()) k];
-				throw 'Setting "$key" does not match any parameter of programmable "#${node.uniqueNodeName}". Available parameters: ${availableParams.join(", ")}' + MacroUtils.nodePos(node);
+				throw builderErrorAt(node, 'Setting "$key" does not match any parameter of programmable "#${node.uniqueNodeName}". Available parameters: ${availableParams.join(", ")}');
 			}
 			return type;
 		}
 
 		function resolveReferenceableValue(ref:ReferenceableValue, type):Dynamic {
 			return switch type {
-				case null: throw 'type is null' + MacroUtils.nodePos(node);
+				case null: throw builderErrorAt(node, 'type is null');
 				case PPTHexDirection: resolveAsInteger(ref);
 				case PPTGridDirection: resolveAsInteger(ref);
 				case PPTFlags(_): resolveAsInteger(ref);
@@ -6723,7 +6734,7 @@ class MultiAnimBuilder {
 		if (resolveExtraInput && extraInput != null) {
 			for (key => value in extraInput) {
 				if (retVal.exists(key))
-					throw 'extra input "$key=>$value" already exists in input' + MacroUtils.nodePos(node);
+					throw builderErrorAt(node, 'extra input "$key=>$value" already exists in input');
 				if (Std.isOfType(value, ResolvedIndexParameters)) {
 					retVal.set(key, value);
 				} else if (Std.isOfType(value, ReferenceableValue)) {
@@ -6851,16 +6862,16 @@ class MultiAnimBuilder {
 			parentParams:Map<String, Dynamic>, container:h2d.Object):SlotHandle {
 		final progNode = multiParserResult.nodes.get(programmableName);
 		if (progNode == null)
-			throw 'buildSlotContent: programmable "$programmableName" not found';
+			throw builderError('buildSlotContent: programmable "$programmableName" not found');
 		final slotNode = findSlotNode(progNode, slotName);
 		if (slotNode == null)
-			throw 'buildSlotContent: slot "$slotName" not found in "$programmableName"';
+			throw builderError('buildSlotContent: slot "$slotName" not found in "$programmableName"');
 		final slotParams = switch slotNode.type {
 			case SLOT(params, _): params;
 			default: null;
 		};
 		if (slotParams == null)
-			throw 'buildSlotContent: slot "$slotName" has no parameters';
+			throw builderError('buildSlotContent: slot "$slotName" has no parameters');
 
 		// Capture parent context BEFORE pushBuilderState resets builderParams.
 		// Slot children inherit the caller's callback/placeholderObjects and the
@@ -6985,12 +6996,12 @@ class MultiAnimBuilder {
 	function rebuildSwitchArmByOrdinal(programmableName:String, switchOrdinal:Int, armIndex:Int, container:h2d.Object,
 			parentParams:Map<String, Dynamic>, ?sink:SwitchArmResults):Void {
 		final progNode = multiParserResult.nodes.get(programmableName);
-		if (progNode == null) throw 'programmable "$programmableName" not found';
+		if (progNode == null) throw builderError('programmable "$programmableName" not found');
 		final switchNode = findNthSwitchNode(progNode, switchOrdinal);
-		if (switchNode == null) throw 'switch node #$switchOrdinal not found in "$programmableName"';
+		if (switchNode == null) throw builderError('switch node #$switchOrdinal not found in "$programmableName"');
 		final arms = switch switchNode.type {
 			case SWITCH(_, a): a;
-			default: throw 'node #$switchOrdinal is not a SWITCH node';
+			default: throw builderError('node #$switchOrdinal is not a SWITCH node');
 		};
 		// Drop registrations from the previous arm BEFORE removeChildren (needs intact parent chain).
 		// Only IR collections are cleaned here — the arm build path runs with incrementalMode=false,
@@ -7070,19 +7081,19 @@ class MultiAnimBuilder {
 	function loadTileImpl(sheetName:String, tilename:String, ?index:Int) {
 		final sheet = getOrLoadSheet(sheetName);
 		if (sheet == null)
-			throw 'sheet ${sheetName} could not be loaded' + currentNodePos();
+			throw builderError('sheet ${sheetName} could not be loaded');
 
 		final tile = if (index != null) {
 			final arr = sheet.getAnim(tilename);
 			if (arr == null)
-				throw 'tile ${tilename}, index $index sheet ${sheetName} could not be loaded' + currentNodePos();
+				throw builderError('tile ${tilename}, index $index sheet ${sheetName} could not be loaded');
 			if (index < 0 || index >= arr.length)
-				throw 'tile $tilename from sheet $sheetName does not have tile index $index, should be [0, ${arr.length - 1}]' + currentNodePos();
+				throw builderError('tile $tilename from sheet $sheetName does not have tile index $index, should be [0, ${arr.length - 1}]');
 			arr[index];
 		} else {
 			final t = sheet.get(tilename);
 			if (t == null)
-				throw 'tile ${tilename} in sheet ${sheetName} could not be loaded' + currentNodePos();
+				throw builderError('tile ${tilename} in sheet ${sheetName} could not be loaded');
 			t;
 		}
 
@@ -7092,11 +7103,11 @@ class MultiAnimBuilder {
 	function load9Patch(sheet, tilename) {
 		final sheet = getOrLoadSheet(sheet);
 		if (sheet == null)
-			throw 'sheet ${sheet} could not be loaded' + currentNodePos();
+			throw builderError('sheet ${sheet} could not be loaded');
 
 		final ninePatch = sheet.getNinePatch(tilename);
 		if (ninePatch == null)
-			throw 'tile ${tilename} in sheet ${sheet} could not be loaded' + currentNodePos();
+			throw builderError('tile ${tilename} in sheet ${sheet} could not be loaded');
 		return ninePatch;
 	}
 
@@ -7128,12 +7139,12 @@ class MultiAnimBuilder {
 					case A2SSheet(sheetName):
 						final sheet = resourceLoader.loadSheet2(resolveAsString(sheetName));
 						if (sheet == null)
-							throw 'atlas2: could not load sheet "${resolveAsString(sheetName)}"' + currentNodePos();
+							throw builderError('atlas2: could not load sheet "${resolveAsString(sheetName)}"');
 						sheet.getSourceTile();
 				}
 
 				if (sourceTile == null)
-					throw 'atlas2 "$name": could not load source tile' + currentNodePos();
+					throw builderError('atlas2 "$name": could not load source tile');
 
 				// Build contents map from entries
 				final contents:Map<String, Array<AtlasEntry>> = [];

@@ -452,3 +452,16 @@ shake.shakeWithCurve(10.0, 0.5, curve);
 - **Non-destructive** — applies per-frame offsets as *deltas* relative to the previous frame, so gameplay can freely move the target (camera scroll, layout changes, animation) without the shake fighting it back to a captured baseline. `stop()` removes the residual offset
 - **Uniform jitter** — `hxd.Rand` (seeded from startup time) produces proper uniform angles
 - **No allocations per frame** — reuses array, swap-removes on completion
+
+## HeapsUtils
+
+Small Haxe helpers on top of Heaps.
+
+**File:** `src/bh/base/HeapsUtils.hx`
+
+- `solidTile(color:Int, w:Int, h:Int):h2d.Tile` — pixel-perfect solid-color tile, strict-D semantics (top byte of `color` = alpha). Top-byte=0 is treated as opaque to keep bare `0xRRGGBB` callers (e.g. `TileHelper.generatedRectColor(16, 16, 0x00FFFF)`) rendering as before. For fully transparent, use `h2d.Tile.fromColor` directly. Backed by a shared 1×1 GPU texture stretched to `(w, h)`.
+- `solidBitmap(color:Int, w:Int, h:Int, ?parent:h2d.Object):h2d.Bitmap` — thin `h2d.Bitmap` wrapper around `solidTile`. Same alpha handling.
+- `safeDetach(obj)` — detach from parent without triggering Heaps' `onRemove()` cascade (which destroys `h2d.Graphics` content). Use when reparenting live scene objects.
+- `traceH2dObjectTreeString(obj)` / `getH2dObjectTreeString(obj)` — debug dump of an h2d subtree.
+
+Both `solidTile` and `solidBitmap` are the same primitive the builder (`generatePlaceholderBitmap`) and codegen (`SolidColor` / `Cross`) use for `generated(color(...))` — use them in game code when you need a tinted rect and want strict-D alpha to Just Work.

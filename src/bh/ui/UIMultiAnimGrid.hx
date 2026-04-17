@@ -92,7 +92,7 @@ private typedef DraggableBinding = {
 /** Internal binding for a linked grid (drop target for cell drag). */
 private typedef LinkedGridBinding<T> = {
 	var target:UIMultiAnimGrid<T>;
-	var accepts:Null<(targetCell:CellCoord, sourceCell:CellCoord, data:Dynamic) -> Bool>;
+	var accepts:Null<(targetCell:CellCoord, sourceCell:CellCoord, data:Null<T>) -> Bool>;
 }
 
 /** Internal binding for a registered card hand. */
@@ -176,7 +176,7 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 	var cellDragOffsetY:Float = 0;
 	var cellDragSourceCoord:Null<CellCoord> = null;
 	var cellDragSourceData:Null<T> = null;
-	var cellDragHoverGrid:Null<Dynamic> = null;
+	var cellDragHoverGrid:Null<UIMultiAnimGrid<T>> = null;
 	var cellDragHoverCoord:Null<CellCoord> = null;
 
 	// --- Linked grids (cross-grid cell drag) ---
@@ -1083,14 +1083,14 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 
 		// Find which cell is under cursor (self + linked grids)
 		final hit = cellDragFindTarget(sceneX, sceneY);
-		final hitGrid:Null<Dynamic> = hit != null ? hit.grid : null;
+		final hitGrid = hit != null ? hit.grid : null;
 		final hitCoord = hit != null ? hit.coord : null;
 
 		// Update hover visual
 		if (!cellCoordsEqual(hitCoord, cellDragHoverCoord) || hitGrid != cellDragHoverGrid) {
 			// Leave old hover
 			if (cellDragHoverCoord != null && cellDragHoverGrid != null) {
-				final g:UIMultiAnimGrid<T> = cast cellDragHoverGrid;
+				final g = cellDragHoverGrid;
 				final e = g.cells.get(g.cellKey(cellDragHoverCoord.col, cellDragHoverCoord.row));
 				if (e != null)
 					e.visual.setStatus("normal");
@@ -1099,7 +1099,7 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 			cellDragHoverCoord = hitCoord;
 			// Enter new hover
 			if (cellDragHoverCoord != null && cellDragHoverGrid != null) {
-				final g:UIMultiAnimGrid<T> = cast cellDragHoverGrid;
+				final g = cellDragHoverGrid;
 				final e = g.cells.get(g.cellKey(cellDragHoverCoord.col, cellDragHoverCoord.row));
 				if (e != null)
 					e.visual.setStatus("hover");
@@ -1108,7 +1108,7 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 	}
 
 	/** Find the target cell under cursor: check self (excluding source), then linked grids. */
-	function cellDragFindTarget(sceneX:Float, sceneY:Float):Null<{grid:Dynamic, coord:CellCoord}> {
+	function cellDragFindTarget(sceneX:Float, sceneY:Float):Null<{grid:UIMultiAnimGrid<T>, coord:CellCoord}> {
 		// Check self first
 		final selfHit = cellAtPoint(sceneX, sceneY);
 		if (selfHit != null && cellDragSourceCoord != null
@@ -1137,7 +1137,7 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 
 		// Clear hover visual
 		if (cellDragHoverCoord != null && cellDragHoverGrid != null) {
-			final g:UIMultiAnimGrid<T> = cast cellDragHoverGrid;
+			final g = cellDragHoverGrid;
 			final e = g.cells.get(g.cellKey(cellDragHoverCoord.col, cellDragHoverCoord.row));
 			if (e != null)
 				e.visual.setStatus("normal");
@@ -1152,7 +1152,7 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 		final hit = cellDragFindTarget(sceneX, sceneY);
 
 		if (hit != null) {
-			final targetGrid:UIMultiAnimGrid<T> = cast hit.grid;
+			final targetGrid = hit.grid;
 			final targetCoord = hit.coord;
 			final srcCoord = cellDragSourceCoord;
 
@@ -1363,7 +1363,7 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 	 *  When a cell is dragged from this grid, the target grid's cells become valid drop zones.
 	 *  @param accepts Optional filter: (targetCell, sourceCell, sourceData) -> Bool */
 	public function linkDropTarget(target:UIMultiAnimGrid<T>,
-			?accepts:(targetCell:CellCoord, sourceCell:CellCoord, data:Dynamic) -> Bool):Void {
+			?accepts:(targetCell:CellCoord, sourceCell:CellCoord, data:Null<T>) -> Bool):Void {
 		// Guard against duplicates
 		for (link in linkedGrids)
 			if (link.target == target)
@@ -1384,7 +1384,7 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 	/** Convenience: bidirectionally link two grids so cells can be dragged between them.
 	 *  @param accepts Optional filter applied in both directions. */
 	public static function linkGrids<T>(a:UIMultiAnimGrid<T>, b:UIMultiAnimGrid<T>,
-			?accepts:(targetCell:CellCoord, sourceCell:CellCoord, data:Dynamic) -> Bool):Void {
+			?accepts:(targetCell:CellCoord, sourceCell:CellCoord, data:Null<T>) -> Bool):Void {
 		a.linkDropTarget(b, accepts);
 		b.linkDropTarget(a, accepts);
 	}

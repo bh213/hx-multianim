@@ -9,6 +9,7 @@ import hxd.net.Socket;
 import haxe.Json;
 import bh.ui.screens.ScreenManager;
 import bh.multianim.MultiAnimBuilder;
+import bh.multianim.BuilderError;
 import bh.multianim.MultiAnimParser;
 import bh.multianim.MultiAnimParser.DefinitionType;
 import bh.multianim.MultiAnimParser.Definition;
@@ -204,7 +205,9 @@ class DevBridge {
 				sseClients.remove(d);
 				try d.close() catch (_:Dynamic) {};
 			}
-		} catch (_:Dynamic) {}
+		} catch (e:Dynamic) {
+			trace('[DevBridge] SSE broadcast failed ($event): $e');
+		}
 		sseBroadcasting = false;
 	}
 
@@ -766,7 +769,7 @@ class DevBridge {
 			try {
 				bh.base.FilterManager.validateCustomFilters(parseResult.customFilterRefs);
 			} catch (e:Dynamic) {
-				buildErrors.push({node: "<filters>", error: '$e'});
+				buildErrors.push(buildErrorPayload("<filters>", e));
 			}
 		}
 
@@ -777,10 +780,7 @@ class DevBridge {
 				if (result != null && result.object != null)
 					result.object.remove();
 			} catch (e:Dynamic) {
-				buildErrors.push({
-					node: nodeName,
-					error: '$e',
-				});
+				buildErrors.push(buildErrorPayload(nodeName, e));
 			}
 		}
 
@@ -788,6 +788,28 @@ class DevBridge {
 			success: buildErrors.length == 0,
 			nodes: nodeNames,
 			buildErrors: buildErrors,
+		};
+	}
+
+	/** Builds a structured error payload for `eval_manim` build errors. When
+	 *  the error is a `BuilderError`, file/line/col/code are extracted so MCP
+	 *  clients can present clickable diagnostics. */
+	static function buildErrorPayload(nodeName:String, e:Dynamic):Dynamic {
+		if (Std.isOfType(e, BuilderError)) {
+			final err = cast(e, BuilderError);
+			final pos = err.parsedPos();
+			return {
+				node: nodeName,
+				error: err.toString(),
+				file: pos != null ? pos.file : null,
+				line: pos != null ? pos.line : null,
+				col: pos != null ? pos.col : null,
+				code: err.code,
+			};
+		}
+		return {
+			node: nodeName,
+			error: '$e',
 		};
 	}
 

@@ -1073,11 +1073,11 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	/** Wires hyperlink events from rich text `[link:id]` markup to UIInteractiveEvent.
 	 *  Events arrive in `onScreenEvent` as `UIInteractiveEvent(UIClick/UIEntering/UILeaving, "link:<id>", emptyMeta)`.
 	 *  Cursor is already handled at builder level; this method adds UIInteractiveEvent emission for screen integration. */
-	@:nullSafety(Off)
 	public function enableLinkEvents(r:BuilderResult, ?prefix:String):Void {
-		if (r.htmlTextsWithLinks == null) return;
+		final links = r.htmlTextsWithLinks;
+		if (links == null) return;
 		final emptyMeta = new BuilderResolvedSettings(null);
-		for (ht in r.htmlTextsWithLinks) {
+		for (ht in links) {
 			final prevClick = ht.onHyperlink;
 			ht.onHyperlink = (url) -> {
 				if (prevClick != null) prevClick(url);

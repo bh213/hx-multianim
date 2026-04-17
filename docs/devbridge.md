@@ -292,7 +292,7 @@ Parse and validate a `.manim` source snippet.
 |-------|------|----------|-------------|
 | `source` | string | yes | `.manim` source code |
 
-Returns: `success`, `nodes[]`, optional `parseError`, `buildErrors[]`.
+Returns: `success`, `nodes[]`, optional `parseError`, `buildErrors[]`. Each `buildErrors[]` entry has `node` (programmable name or `<filters>`) and `error` (message). When the underlying error is a `BuilderError` (runtime builder failure with source-position context), the entry additionally carries `file`, `line`, `col`, and optional `code` (e.g. `"missing_ref"`, `"not_a_number"`) — use these for clickable diagnostics.
 
 ### Input Events
 
