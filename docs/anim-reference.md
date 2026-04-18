@@ -81,7 +81,7 @@ metadata {
 | `getFloatOrException(key, ?stateSelector)` | `Float` | Float value, throws if missing |
 | `getStringOrDefault(key, default, ?stateSelector)` | `String` | String value (coerces int/float/color) |
 | `getStringOrException(key, ?stateSelector)` | `String` | String value, throws if missing |
-| `getColorOrDefault(key, default, ?stateSelector)` | `Int` | Color as `0xRRGGBB` or `0xAARRGGBB` (also accepts int) |
+| `getColorOrDefault(key, default, ?stateSelector)` | `Int` | Heaps `0xAARRGGBB` (alpha first); runtime preserves alpha verbatim |
 | `getColorOrException(key, ?stateSelector)` | `Int` | Color value, throws if missing |
 
 Access via `parsed.metadata` where `parsed` is an `AnimParserResult`.

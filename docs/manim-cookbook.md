@@ -73,7 +73,7 @@ A pattern-based guide for building UIs and game elements. Always start with `.ma
 #myScreen programmable() {
     placeholder(generated(cross(200, 30, #FF0000)), builderParameter("startBtn")) {
         pos: 100, 400
-        settings{width:int=>200, height:int=>30, font=>"dd", fontColor=>0xffffff}
+        settings{width:int=>200, height:int=>30, font=>"dd", fontColor=>#FFFFFF}
     }
 }
 ```
@@ -264,7 +264,7 @@ case UIChangeItem(index, items):
 
 ```manim
 placeholder(generated(cross(200, 24, #FF0000)), builderParameter("nameInput")) {
-    settings{buildName=>textInput, font=>"dd", fontColor=>0xffffff,
+    settings{buildName=>textInput, font=>"dd", fontColor=>#FFFFFF,
              placeholder=>"Enter name...", maxLength:int=>20, tabIndex:int=>1}
 }
 ```
@@ -1180,11 +1180,11 @@ var floatingText = new FloatingTextHelper(overlayRoot);
 
 // Damage number
 var ap = builder.createAnimatedPath("dmgAnim");
-floatingText.spawn("-42", font, worldX, worldY, ap, 0xFF0000, false);
+floatingText.spawn("-42", font, worldX, worldY, ap, 0xFFFF0000, false);
 
 // Heal number with wave path
 var ap = builder.createAnimatedPath("healAnim");
-floatingText.spawn("+15", font, worldX, worldY, ap, 0x44FF44, false);
+floatingText.spawn("+15", font, worldX, worldY, ap, 0xFF44FF44, false);
 
 // In update(dt):
 floatingText.update(dt);

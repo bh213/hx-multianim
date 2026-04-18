@@ -94,6 +94,6 @@ throw BuilderError.of('Slot "$name" not found in BuilderResult');
 
 ## Parser Notes
 
-- `MultiAnimParser.parseFile` is the main entry point. Throws `InvalidSyntax` (extends `ParserError`) for semantic errors, `MultiAnimUnexpected` for syntax errors.
+- `MultiAnimParser.parseFile` is the main entry point. Throws `InvalidSyntax` (extends `bh.base.ParseError`) for semantic errors, `MultiAnimUnexpected` for syntax errors.
 - `syntaxError()` traces before throwing — traces appear in test output when parser error tests run.
 - `invalidType` as parameter type causes uncatchable HashLink crash — avoid testing this.
