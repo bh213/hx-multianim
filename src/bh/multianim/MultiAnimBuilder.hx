@@ -296,12 +296,19 @@ class IncrementalUpdateContext {
 	var builderParams:BuilderParameters;
 	var conditionalEntries:Array<{object:h2d.Object, node:Node, sentinel:h2d.Object, parent:h2d.Object, layer:Int,
 		savedFlowProps:Null<SavedFlowProperties>}> = [];
-	var conditionalApplyEntries:Array<{
-		parent:h2d.Object, node:Node, applied:Bool,
-		savedFilter:Null<h2d.filter.Filter>, savedAlpha:Null<Float>,
-		savedScaleX:Null<Float>, savedScaleY:Null<Float>, savedRotation:Null<Float>,
-		appliedPosX:Float, appliedPosY:Float,
-	}> = [];
+	// Per-entry state is just the matched-flag. The parent's pre-apply baseline is
+	// stored once per parent in `conditionalApplyBaselines` (captured lazily by the
+	// first apply entry on that parent, before any inline apply runs). On any
+	// apply/unapply the parent is reset to baseline and all currently-matched
+	// entries for that parent are replayed in declaration order. This is what
+	// lets overlapping applies (two `@(cond) apply { alpha: ... }` on the same
+	// parent) compose correctly — per-entry save/restore can't, because the save
+	// includes sibling applies' effects.
+	var conditionalApplyEntries:Array<{parent:h2d.Object, node:Node, applied:Bool}> = [];
+	var conditionalApplyBaselines:haxe.ds.ObjectMap<h2d.Object, {
+		filter:Null<h2d.filter.Filter>, alpha:Float,
+		scaleX:Float, scaleY:Float, rotation:Float, x:Float, y:Float,
+	}> = new haxe.ds.ObjectMap();
 	var trackedExpressions:Array<{updateFn:Void->Void, paramRefs:Array<String>, object:Null<h2d.Object>}> = [];
 	var deferredEntries:Array<{
 		wrapper:h2d.Object, node:Node, sentinel:h2d.Object, parent:h2d.Object, layer:Int,
@@ -502,13 +509,20 @@ class IncrementalUpdateContext {
 			else ci++;
 		}
 
-		// 7. Drop conditionalApplyEntries whose parent is under container.
+		// 7. Drop conditionalApplyEntries whose parent is under container, and drop
+		//    the matching baseline entries (parent object is gone, map key dangles).
 		var ai = 0;
 		while (ai < conditionalApplyEntries.length) {
 			final parent = conditionalApplyEntries[ai].parent;
 			final isUnder = parent == container || (parent.parent != null && isDescendantOf(parent, container));
 			if (isUnder) conditionalApplyEntries.splice(ai, 1);
 			else ai++;
+		}
+		final baselineParents:Array<h2d.Object> = [];
+		for (parent in conditionalApplyBaselines.keys()) baselineParents.push(parent);
+		for (parent in baselineParents) {
+			final isUnder = parent == container || (parent.parent != null && isDescendantOf(parent, container));
+			if (isUnder) conditionalApplyBaselines.remove(parent);
 		}
 
 		// 8. Drop deferredEntries whose wrapper is under container.
@@ -557,16 +571,45 @@ class IncrementalUpdateContext {
 	public function getDynamicNameBindingsCount():Int return dynamicNameBindings.length;
 	#end
 
-	public function trackConditionalApply(parent:h2d.Object, node:Node, applied:Bool,
-			savedFilter:Null<h2d.filter.Filter>, savedAlpha:Null<Float>,
-			savedScaleX:Null<Float>, savedScaleY:Null<Float>, savedRotation:Null<Float>,
-			appliedPosX:Float, appliedPosY:Float):Void {
-		conditionalApplyEntries.push({
-			parent: parent, node: node, applied: applied,
-			savedFilter: savedFilter, savedAlpha: savedAlpha,
-			savedScaleX: savedScaleX, savedScaleY: savedScaleY, savedRotation: savedRotation,
-			appliedPosX: appliedPosX, appliedPosY: appliedPosY,
+	public function trackConditionalApply(parent:h2d.Object, node:Node, applied:Bool):Void {
+		conditionalApplyEntries.push({parent: parent, node: node, applied: applied});
+	}
+
+	/** Capture a parent's pre-apply baseline. Must be called before the first inline
+	 *  conditional apply touches the parent; subsequent calls on the same parent are
+	 *  no-ops so the baseline keeps the state as it was before ANY apply. */
+	public function captureApplyBaseline(parent:h2d.Object):Void {
+		if (conditionalApplyBaselines.exists(parent)) return;
+		conditionalApplyBaselines.set(parent, {
+			filter: parent.filter, alpha: parent.alpha,
+			scaleX: parent.scaleX, scaleY: parent.scaleY, rotation: parent.rotation,
+			x: parent.x, y: parent.y,
 		});
+	}
+
+	/** Reset a parent to its captured baseline and replay every currently-matched
+	 *  apply entry for that parent in declaration (push) order. Safe to call
+	 *  whenever an entry's match state flips; composes overlapping applies correctly. */
+	function reconcileApplyParent(parent:h2d.Object):Void {
+		final baseline = conditionalApplyBaselines.get(parent);
+		if (baseline == null) return;
+		parent.filter = cast baseline.filter;
+		parent.alpha = baseline.alpha;
+		parent.scaleX = baseline.scaleX;
+		parent.scaleY = baseline.scaleY;
+		parent.rotation = baseline.rotation;
+		parent.x = baseline.x;
+		parent.y = baseline.y;
+		for (entry in conditionalApplyEntries) {
+			if (entry.parent != parent) continue;
+			if (!entry.applied) continue;
+			final node = entry.node;
+			final pos = builder.calculatePosition(node.pos,
+				MultiAnimParser.getGridCoordinateSystem(node),
+				MultiAnimParser.getHexCoordinateSystem(node));
+			builder.addPosition(parent, pos.x, pos.y);
+			builder.applyExtendedFormProperties(parent, node);
+		}
 	}
 
 	/** Add a conditional element back into the scene graph, positioned right after its sentinel. */
@@ -621,54 +664,16 @@ class IncrementalUpdateContext {
 		return false;
 	}
 
-	function applyConditionalApplyEntry(entry:{
-		parent:h2d.Object, node:Node, applied:Bool,
-		savedFilter:Null<h2d.filter.Filter>, savedAlpha:Null<Float>,
-		savedScaleX:Null<Float>, savedScaleY:Null<Float>, savedRotation:Null<Float>,
-		appliedPosX:Float, appliedPosY:Float,
-	}):Void {
+	function applyConditionalApplyEntry(entry:{parent:h2d.Object, node:Node, applied:Bool}):Void {
 		if (entry.applied) return;
-		final parent = entry.parent;
-		final node = entry.node;
-		// Save current state before applying
-		if (node.filter != null) entry.savedFilter = parent.filter;
-		if (node.alpha != null) entry.savedAlpha = parent.alpha;
-		if (node.scale != null) { entry.savedScaleX = parent.scaleX; entry.savedScaleY = parent.scaleY; }
-		if (node.rotation != null) entry.savedRotation = parent.rotation;
-		// Apply position
-		final pos = builder.calculatePosition(node.pos, MultiAnimParser.getGridCoordinateSystem(node), MultiAnimParser.getHexCoordinateSystem(node));
-		entry.appliedPosX = pos.x;
-		entry.appliedPosY = pos.y;
-		builder.addPosition(parent, pos.x, pos.y);
-		// Apply properties
-		builder.applyExtendedFormProperties(parent, node);
 		entry.applied = true;
+		reconcileApplyParent(entry.parent);
 	}
 
-	function unapplyConditionalApplyEntry(entry:{
-		parent:h2d.Object, node:Node, applied:Bool,
-		savedFilter:Null<h2d.filter.Filter>, savedAlpha:Null<Float>,
-		savedScaleX:Null<Float>, savedScaleY:Null<Float>, savedRotation:Null<Float>,
-		appliedPosX:Float, appliedPosY:Float,
-	}):Void {
+	function unapplyConditionalApplyEntry(entry:{parent:h2d.Object, node:Node, applied:Bool}):Void {
 		if (!entry.applied) return;
-		final parent = entry.parent;
-		final node = entry.node;
-		// Restore saved state
-		if (node.filter != null) parent.filter = cast entry.savedFilter;
-		final _alpha = entry.savedAlpha;
-		if (node.alpha != null && _alpha != null) parent.alpha = _alpha;
-		final _scaleX = entry.savedScaleX; final _scaleY = entry.savedScaleY;
-		if (node.scale != null && _scaleX != null && _scaleY != null) {
-			parent.scaleX = _scaleX;
-			parent.scaleY = _scaleY;
-		}
-		final _rotation = entry.savedRotation;
-		if (node.rotation != null && _rotation != null) parent.rotation = _rotation;
-		// Remove position offset
-		parent.x -= entry.appliedPosX;
-		parent.y -= entry.appliedPosY;
 		entry.applied = false;
+		reconcileApplyParent(entry.parent);
 	}
 
 	@:nullSafety(Off)
@@ -1264,12 +1269,7 @@ class IncrementalUpdateContext {
 			savedFlowProps:Null<SavedFlowProperties>}>();
 		for (entry in conditionalEntries)
 			entryMap.set(entry.node.uniqueNodeName, entry);
-		final applyMap = new haxe.ds.StringMap<{
-			parent:h2d.Object, node:Node, applied:Bool,
-			savedFilter:Null<h2d.filter.Filter>, savedAlpha:Null<Float>,
-			savedScaleX:Null<Float>, savedScaleY:Null<Float>, savedRotation:Null<Float>,
-			appliedPosX:Float, appliedPosY:Float,
-		}>();
+		final applyMap = new haxe.ds.StringMap<{parent:h2d.Object, node:Node, applied:Bool}>();
 		for (ae in conditionalApplyEntries)
 			applyMap.set(ae.node.uniqueNodeName, ae);
 		resolveVisibilityForChildren(rootNode.children, entryMap, applyMap);
@@ -1278,12 +1278,7 @@ class IncrementalUpdateContext {
 	function resolveVisibilityForChildren(children:Array<Node>,
 			entryMap:haxe.ds.StringMap<{object:h2d.Object, node:Node, sentinel:h2d.Object, parent:h2d.Object, layer:Int,
 				savedFlowProps:Null<SavedFlowProperties>}>,
-			applyMap:haxe.ds.StringMap<{
-				parent:h2d.Object, node:Node, applied:Bool,
-				savedFilter:Null<h2d.filter.Filter>, savedAlpha:Null<Float>,
-				savedScaleX:Null<Float>, savedScaleY:Null<Float>, savedRotation:Null<Float>,
-				appliedPosX:Float, appliedPosY:Float,
-			}>):Void {
+			applyMap:haxe.ds.StringMap<{parent:h2d.Object, node:Node, applied:Bool}>):Void {
 		var prevSiblingMatched = false;
 		var anyConditionalSiblingMatched = false;
 
@@ -1339,6 +1334,10 @@ class IncrementalUpdateContext {
 				case NoConditional:
 					prevSiblingMatched = false;
 					anyConditionalSiblingMatched = false;
+					// Unconditional apply entries are always applied; reconcile so
+					// param-dependent expressions inside `apply { ... }` re-evaluate.
+					if (trackedApply != null)
+						reconcileApplyParent(trackedApply.parent);
 			}
 
 			// Recurse into children
@@ -5235,22 +5234,19 @@ class MultiAnimBuilder {
 			case APPLY:
 				if (current == null)
 					throw builderErrorAt(node, 'apply not allowed as root node');
-				if (incrementalMode && node.conditionals != NoConditional && incrementalContext != null) {
-					// In incremental mode with conditional: track for toggling on parameter changes
+				if (incrementalMode && incrementalContext != null) {
+					// Capture the parent's pre-apply baseline the first time an apply
+					// entry is registered for it. Must happen before any inline apply
+					// so later reconciles can reset to the true pre-apply state.
+					// Unconditional applies also need tracking so param-dependent
+					// expressions (e.g. `scale: $k`) re-apply on setParameter.
+					incrementalContext.captureApplyBaseline(current);
 					if (nodeVisible) {
-						// Save state before applying
-						final savedFilter = node.filter != null ? current.filter : null;
-						final savedAlpha = node.alpha != null ? current.alpha : null;
-						final savedScaleX = node.scale != null ? current.scaleX : null;
-						final savedScaleY = node.scale != null ? current.scaleY : null;
-						final savedRotation = node.rotation != null ? current.rotation : null;
 						final pos = calculatePosition(node.pos, MultiAnimParser.getGridCoordinateSystem(node), MultiAnimParser.getHexCoordinateSystem(node));
 						addPosition(current, pos.x, pos.y);
 						applyExtendedFormProperties(current, node);
-						incrementalContext.trackConditionalApply(current, node, true, savedFilter, savedAlpha, savedScaleX, savedScaleY, savedRotation, pos.x, pos.y);
-					} else {
-						incrementalContext.trackConditionalApply(current, node, false, null, null, null, null, null, 0, 0);
 					}
+					incrementalContext.trackConditionalApply(current, node, nodeVisible);
 				} else {
 					var pos = calculatePosition(node.pos, MultiAnimParser.getGridCoordinateSystem(node), MultiAnimParser.getHexCoordinateSystem(node));
 					addPosition(current, pos.x, pos.y);

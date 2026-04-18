@@ -397,4 +397,7 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:data("test/examples/107-rubeGoldberg/rubeGoldberg.manim", "rgInfo")
 	public var rgInfo;
+
+	@:manim("test/examples/108-applyParamUpdate/applyParamUpdate.manim", "applyParamUpdate")
+	public var applyParamUpdate;
 }

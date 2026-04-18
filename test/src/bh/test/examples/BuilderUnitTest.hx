@@ -2827,6 +2827,95 @@ class BuilderUnitTest extends BuilderTestBase {
 		Assert.floatEquals(1.0, result.object.alpha);
 	}
 
+	// Two @(cond) apply blocks touch the same property on the same parent.
+	// Per-entry save/restore can't handle overlapping mutations — each entry's
+	// saved value depends on when it was applied, not on what the current
+	// baseline is. Expected behavior: unapplying an outer while an inner is
+	// still matched should leave the inner's value on the parent.
+	@Test
+	public function testIncrementalApplyAlphaInterleavedSameProperty():Void {
+		final result = buildFromSource("
+			#test programmable(a:uint=0, b:uint=0) {
+				bitmap(generated(color(50, 50, #ff0000))): 0, 0
+				@(a => 1) apply {
+					alpha: 0.5
+				}
+				@(b => 1) apply {
+					alpha: 0.3
+				}
+			}
+		", "test", null, Incremental);
+		Assert.floatEquals(1.0, result.object.alpha, "baseline");
+
+		result.setParameter("a", 1);
+		Assert.floatEquals(0.5, result.object.alpha, "after a=1");
+
+		result.setParameter("b", 1);
+		Assert.floatEquals(0.3, result.object.alpha, "after b=1 (later apply wins)");
+
+		// Unapply outer while inner is still matched — should reapply b=0.3.
+		result.setParameter("a", 0);
+		Assert.floatEquals(0.3, result.object.alpha, "after a=0 with b=1 still matched");
+
+		result.setParameter("b", 0);
+		Assert.floatEquals(1.0, result.object.alpha, "back to baseline");
+	}
+
+	@Test
+	public function testIncrementalApplyScaleInterleavedSameProperty():Void {
+		final result = buildFromSource("
+			#test programmable(a:uint=0, b:uint=0) {
+				bitmap(generated(color(50, 50, #ff0000))): 0, 0
+				@(a => 1) apply {
+					scale: 0.5
+				}
+				@(b => 1) apply {
+					scale: 0.25
+				}
+			}
+		", "test", null, Incremental);
+		Assert.floatEquals(1.0, result.object.scaleX, "baseline scaleX");
+		Assert.floatEquals(1.0, result.object.scaleY, "baseline scaleY");
+
+		result.setParameter("a", 1);
+		result.setParameter("b", 1);
+		Assert.floatEquals(0.25, result.object.scaleX, "both matched → later wins");
+
+		result.setParameter("a", 0);
+		Assert.floatEquals(0.25, result.object.scaleX, "a=0, b=1 → b's scale");
+
+		result.setParameter("b", 0);
+		Assert.floatEquals(1.0, result.object.scaleX, "back to baseline");
+	}
+
+	@Test
+	public function testIncrementalApplyAlphaInterleavedStartHidden():Void {
+		// Start with both conditions false — entries are tracked with null saved values.
+		// Cycle through a=true, b=true, a=false, b=false and verify parent returns to baseline.
+		final result = buildFromSource("
+			#test programmable(a:uint=0, b:uint=0) {
+				bitmap(generated(color(50, 50, #ff0000))): 0, 0
+				@(a => 1) apply {
+					alpha: 0.5
+				}
+				@(b => 1) apply {
+					alpha: 0.3
+				}
+			}
+		", "test", null, Incremental);
+		Assert.floatEquals(1.0, result.object.alpha);
+
+		// Full cycle
+		result.setParameter("a", 1); Assert.floatEquals(0.5, result.object.alpha);
+		result.setParameter("b", 1); Assert.floatEquals(0.3, result.object.alpha);
+		result.setParameter("b", 0); Assert.floatEquals(0.5, result.object.alpha);
+		result.setParameter("a", 0); Assert.floatEquals(1.0, result.object.alpha);
+
+		// Second cycle — saved state must not have been corrupted.
+		result.setParameter("a", 1); Assert.floatEquals(0.5, result.object.alpha);
+		result.setParameter("a", 0); Assert.floatEquals(1.0, result.object.alpha);
+	}
+
 	// ==================== Incremental graphics expression tracking ====================
 
 	@Test

@@ -4883,36 +4883,56 @@ class ProgrammableCodeGen {
 	 *  It doesn't create a new element. */
 	static function processApply(node:Node, parentField:String, fields:Array<Field>, ctorExprs:Array<Expr>, pos:Position):Void {
 		final parentRef = parentField != null ? (macro $p{["this", parentField]}) : (macro this);
+		final metaField = parentField != null ? parentField : "_self";
 
-		// Position offset
+		// Position offset — re-apply on param change (position is additive via
+		// generatePositionExpr; rebuild semantics match the element path).
 		ensureHexLayoutIfNeeded(node.pos, node, fields, ctorExprs, pos);
 		final posExpr = generatePositionExpr(node.pos, parentField, pos, node);
-		if (posExpr != null)
+		if (posExpr != null) {
 			ctorExprs.push(posExpr);
+			if (node.pos != null) {
+				final posRefs = collectPositionParamRefs(node.pos);
+				if (posRefs.length > 0)
+					expressionUpdates.push({fieldName: metaField, updateExpr: posExpr, paramRefs: posRefs});
+			}
+		}
 
 		// Scale
 		if (node.scale != null) {
 			final scaleExpr = rvToExpr(node.scale);
-			ctorExprs.push(macro {
+			final scaleUpdateExpr = macro {
 				final s = $scaleExpr;
 				$parentRef.scaleX = s;
 				$parentRef.scaleY = s;
-			});
+			};
+			ctorExprs.push(scaleUpdateExpr);
+			final scaleRefs = collectParamRefs(node.scale);
+			if (scaleRefs.length > 0)
+				expressionUpdates.push({fieldName: metaField, updateExpr: scaleUpdateExpr, paramRefs: scaleRefs});
 		}
 
 		// Rotation
 		if (node.rotation != null) {
 			final rotExpr = rvToExpr(node.rotation);
-			ctorExprs.push(macro $parentRef.rotation = hxd.Math.degToRad($rotExpr));
+			final rotUpdateExpr = macro $parentRef.rotation = hxd.Math.degToRad($rotExpr);
+			ctorExprs.push(rotUpdateExpr);
+			final rotRefs = collectParamRefs(node.rotation);
+			if (rotRefs.length > 0)
+				expressionUpdates.push({fieldName: metaField, updateExpr: rotUpdateExpr, paramRefs: rotRefs});
 		}
 
 		// Alpha
 		if (node.alpha != null) {
 			final alphaExpr = rvToExpr(node.alpha);
-			ctorExprs.push(macro $parentRef.alpha = $alphaExpr);
+			final alphaUpdateExpr = macro $parentRef.alpha = $alphaExpr;
+			ctorExprs.push(alphaUpdateExpr);
+			final alphaRefs = collectParamRefs(node.alpha);
+			if (alphaRefs.length > 0)
+				expressionUpdates.push({fieldName: metaField, updateExpr: alphaUpdateExpr, paramRefs: alphaRefs});
 		}
 
-		// BlendMode
+		// BlendMode — no param refs possible (literal enum only)
 		if (node.blendMode != null) {
 			final bmExpr:Expr = switch (node.blendMode) {
 				case MBNone: macro h2d.BlendMode.None;
@@ -4934,7 +4954,7 @@ class ProgrammableCodeGen {
 		// Tint
 		if (node.tint != null) {
 			final tintExpr = rvToExpr(node.tint);
-			ctorExprs.push(macro {
+			final tintUpdateExpr = macro {
 				final _obj = $parentRef;
 				if (Std.isOfType(_obj, h2d.Drawable)) {
 					final d:h2d.Drawable = cast _obj;
@@ -4942,14 +4962,22 @@ class ProgrammableCodeGen {
 					if (c >>> 24 == 0) c |= 0xFF000000;
 					d.color.setColor(c);
 				}
-			});
+			};
+			ctorExprs.push(tintUpdateExpr);
+			final tintRefs = collectParamRefs(node.tint);
+			if (tintRefs.length > 0)
+				expressionUpdates.push({fieldName: metaField, updateExpr: tintUpdateExpr, paramRefs: tintRefs});
 		}
 
 		// Filter
 		if (node.filter != null) {
 			final filterExpr = generateFilterExpr(node.filter, pos);
 			if (filterExpr != null) {
-				ctorExprs.push(macro $parentRef.filter = $filterExpr);
+				final filterUpdateExpr = macro $parentRef.filter = $filterExpr;
+				ctorExprs.push(filterUpdateExpr);
+				final filterRefs = collectFilterParamRefs(node.filter);
+				if (filterRefs.length > 0)
+					expressionUpdates.push({fieldName: metaField, updateExpr: filterUpdateExpr, paramRefs: filterRefs});
 			}
 		}
 	}

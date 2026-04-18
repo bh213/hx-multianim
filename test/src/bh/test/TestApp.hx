@@ -112,6 +112,7 @@ class TestApp extends hxd.App {
 		testRunner.addCase(new bh.test.examples.InteractionControllerTest());
 		testRunner.addCase(new bh.test.examples.EventPriorityTest());
 		testRunner.addCase(new bh.test.examples.RubeGoldbergIncrementalTest());
+		testRunner.addCase(new bh.test.examples.ApplyParamUpdateTest());
 		#if MULTIANIM_DEV
 		testRunner.addCase(new bh.test.examples.HotReloadTest());
 		testRunner.addCase(new bh.test.examples.DevBridgeTest());
