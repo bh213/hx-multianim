@@ -5,6 +5,7 @@ import h2d.Tile;
 import h2d.Font;
 import bh.base.ResourceLoader;
 import bh.base.Atlas2.IAtlas2;
+import bh.multianim.BuilderError;
 import bh.multianim.MultiAnimBuilder.BuilderResult;
 import bh.multianim.MultiAnimBuilder.SlotHandle;
 import bh.multianim.MultiAnimBuilder.CallbackRequest;
@@ -73,7 +74,7 @@ class ProgrammableBuilder {
 		final atlas = getSheet(sheet);
 		final frame = atlas.get(name);
 		if (frame == null)
-			throw 'tile "$name" not found in sheet "$sheet"';
+			throw BuilderError.of('tile "$name" not found in sheet "$sheet"');
 		return copyTile(frame.tile);
 	}
 
@@ -83,9 +84,9 @@ class ProgrammableBuilder {
 		final atlas = getSheet(sheet);
 		final anim = atlas.getAnim(name);
 		if (anim == null)
-			throw 'tile "$name" not found in sheet "$sheet"';
+			throw BuilderError.of('tile "$name" not found in sheet "$sheet"');
 		if (index < 0 || index >= anim.length)
-			throw 'tile "$name" in sheet "$sheet" does not have index $index';
+			throw BuilderError.of('tile "$name" in sheet "$sheet" does not have index $index');
 		return copyTile(anim[index].tile);
 	}
 
@@ -105,7 +106,7 @@ class ProgrammableBuilder {
 		final atlas = getSheet(sheet);
 		final ninePatch = atlas.getNinePatch(name);
 		if (ninePatch == null)
-			throw '9-patch "$name" not found in sheet "$sheet"';
+			throw BuilderError.of('9-patch "$name" not found in sheet "$sheet"');
 		return ninePatch;
 	}
 
@@ -144,7 +145,7 @@ class ProgrammableBuilder {
 		var builder:MultiAnimBuilder = getBuilder();
 		if (externalRef != null) {
 			var extBuilder = builder.multiParserResult?.imports?.get(externalRef);
-			if (extBuilder == null) throw 'buildStaticRef: external reference "$externalRef" not found';
+			if (extBuilder == null) throw BuilderError.of('buildStaticRef: external reference "$externalRef" not found');
 			builder = extBuilder;
 		}
 		return builder.buildWithParameters(name, parameters);
@@ -155,7 +156,7 @@ class ProgrammableBuilder {
 		var builder:MultiAnimBuilder = getBuilder();
 		if (externalRef != null) {
 			var extBuilder = builder.multiParserResult?.imports?.get(externalRef);
-			if (extBuilder == null) throw 'buildDynamicRef: external reference "$externalRef" not found';
+			if (extBuilder == null) throw BuilderError.of('buildDynamicRef: external reference "$externalRef" not found');
 			builder = extBuilder;
 		}
 		return builder.buildWithParameters(name, parameters, null, null, true);
@@ -174,19 +175,19 @@ class ProgrammableBuilder {
 		final builder = getBuilder();
 		final progNode = builder.multiParserResult.nodes.get(programmableName);
 		if (progNode == null)
-			throw 'could not find programmable node: $programmableName';
+			throw BuilderError.of('could not find programmable node: $programmableName');
 		final allParticles:Array<MultiAnimParser.Node> = [];
 		findAllParticlesChildren(progNode, allParticles);
 		if (allParticles.length == 0)
-			throw 'no particles found in programmable: $programmableName';
+			throw new BuilderError('no particles found in programmable: $programmableName', progNode);
 		if (index >= allParticles.length)
-			throw 'particles index $index out of range (found ${allParticles.length}) in programmable: $programmableName';
+			throw new BuilderError('particles index $index out of range (found ${allParticles.length}) in programmable: $programmableName', progNode);
 		final particlesNode = allParticles[index];
 		return switch particlesNode.type {
 			case PARTICLES(particlesDef):
 				builder.createParticleFromDef(particlesDef, particlesNode.uniqueNodeName);
 			default:
-				throw 'unexpected node type in $programmableName';
+				throw new BuilderError('unexpected node type in $programmableName', particlesNode);
 		};
 	}
 
@@ -215,7 +216,7 @@ class ProgrammableBuilder {
 			final loadedSheet = getSheet(entry.sheet);
 			final anim = loadedSheet.getAnim(entry.animName);
 			if (anim == null)
-				throw 'Animation "${entry.animName}" not found in sheet "${entry.sheet}"';
+				throw BuilderError.of('Animation "${entry.animName}" not found in sheet "${entry.sheet}"');
 			if (entry.center) {
 				for (i in 0...anim.length) {
 					anim[i] = anim[i].cloneWithNewTile(anim[i].tile.center());
@@ -237,14 +238,14 @@ class ProgrammableBuilder {
 		final builder = getBuilder();
 		final progNode = builder.multiParserResult.nodes.get(programmableName);
 		if (progNode == null)
-			throw 'could not find programmable node: $programmableName';
+			throw BuilderError.of('could not find programmable node: $programmableName');
 		// Build the tilegroup via the builder — it handles TileGroupMode for children
 		final result = builder.buildWithParameters(programmableName, new Map());
 		// Find all TileGroups in the result's object tree
 		final tileGroups:Array<h2d.Object> = [];
 		findAllTileGroupsInTree(result.object, tileGroups);
 		if (index >= tileGroups.length)
-			throw 'tileGroup index $index out of range (found ${tileGroups.length}) in programmable: $programmableName';
+			throw new BuilderError('tileGroup index $index out of range (found ${tileGroups.length}) in programmable: $programmableName', progNode);
 		return tileGroups[index];
 	}
 

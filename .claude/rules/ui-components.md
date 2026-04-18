@@ -135,7 +135,7 @@ Metadata supports typed values matching the settings system: `key => val` (strin
 - `dispatchMouseClick()` — push (non-release) notifies components but never blocks; only release can block (returns false when consumed, e.g. card hand drag end). Controller preserves outside-click tracking even when consumed.
 - `dispatchScreenEvent()` — runs autoStatus + panelHelpers first, then tries components. Skips `onScreenEvent()` when a component consumed the event.
 
-**UIComponentHost interface** (`src/bh/ui/UIComponentHost.hx`): Decouples CardHand and UIRichInteractiveHelper from concrete UIScreenBase. Methods: `addObjectToLayer`, `addInteractives`, `removeInteractives`, `getInteractive`, `getAutoInteractiveHelper`. UIScreenBase implements it.
+**UIComponentHost interface** (`src/bh/ui/UIComponentHost.hx`): Decouples CardHand, UIRichInteractiveHelper, UIPanelHelper, and UITooltipHelper from concrete UIScreenBase. Methods: `addObjectToLayer`, `addInteractives`, `removeInteractives`, `getInteractive`, `getAutoInteractiveHelper`, `onScreenEvent`. UIScreenBase implements it. `onScreenEvent` on the interface is used by `UIPanelHelper` to push its `EVENT_PANEL_CLOSE` notification back into the host.
 
 **Hot reload** (`#if MULTIANIM_DEV`):
 - `wireGridReload(parentResult, grid, ?prefix)` — hooks `onReload` to re-apply `originX`/`originY` from settings

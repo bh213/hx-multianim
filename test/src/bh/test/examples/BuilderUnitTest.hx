@@ -7164,4 +7164,47 @@ class BuilderUnitTest extends BuilderTestBase {
 		Assert.equals(1, bitmaps.length);
 		Assert.equals(10, Std.int(bitmaps[0].tile.width));
 	}
+
+	// ==================== BuilderError sibling-file migration ====================
+
+	/** Regression: errors raised from `MultiAnimLayouts` — one of the sibling builder
+	 *  files previously throwing plain strings — now throw `BuilderError` so they
+	 *  reach the same structured-diagnostic surface as `MultiAnimBuilder.hx` errors.
+	 *  Guards against someone regressing a `BuilderError.of(...)` back to a plain
+	 *  `throw '...'` in that file. Also asserts `catch (e:Dynamic)` still matches
+	 *  for backward compat with consumers that don't know about BuilderError. */
+	@Test
+	public function testSiblingBuilderErrorIsTyped():Void {
+		final source = "
+			layouts {
+				#realLayout list {
+					point: 0, 0
+					point: 10, 0
+				}
+			}
+			#test programmable() {
+				repeatable($i, layout(\"nonexistentLayout\")) {
+					bitmap(generated(color(8, 8, red))): 0, 0
+				}
+			}
+		";
+		var caughtTyped = false;
+		var caughtDynamic = false;
+		var message:String = null;
+		try {
+			buildFromSource(source, "test");
+		} catch (e:bh.multianim.BuilderError) {
+			caughtTyped = true;
+			message = e.message;
+		} catch (e:Dynamic) {
+			caughtDynamic = true;
+		}
+		Assert.isTrue(caughtTyped, "MultiAnimLayouts error should be a BuilderError");
+		Assert.isFalse(caughtDynamic, "Typed catch should run before fallback");
+		Assert.notNull(message);
+		Assert.isTrue(message.indexOf("nonexistentLayout") >= 0,
+			'Message should mention the missing layout name, got: $message');
+		Assert.isTrue(message.indexOf("not found") >= 0,
+			'Message should preserve original "not found" text, got: $message');
+	}
 }

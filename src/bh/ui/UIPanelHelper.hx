@@ -41,7 +41,7 @@ private typedef PanelState = {
 class UIPanelHelper {
 	/** Event name used with UICustomEvent when a panel closes. Data is the interactiveId (String). */
 	public static inline final EVENT_PANEL_CLOSE = "panelClose";
-	final screen:UIScreenBase;
+	final screen:UIComponentHost;
 	final builder:MultiAnimBuilder;
 	final defaultPosition:TooltipPosition;
 	final defaultOffset:Int;
@@ -71,7 +71,7 @@ class UIPanelHelper {
 	// In-flight fade-out tweens for named panels (keyed by slot, survives panel removal from namedPanels)
 	var namedFadeOutTweens:Map<String, Tween> = [];
 
-	public function new(screen:UIScreenBase, builder:MultiAnimBuilder, ?defaults:PanelDefaults, ?tweens:TweenManager) {
+	public function new(screen:UIComponentHost, builder:MultiAnimBuilder, ?defaults:PanelDefaults, ?tweens:TweenManager) {
 		this.screen = screen;
 		this.builder = builder;
 		this.defaultPosition = defaults?.position ?? Below;

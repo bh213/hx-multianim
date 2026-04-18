@@ -1,6 +1,7 @@
 package bh.ui;
 
 import bh.ui.screens.UIScreen.LayersEnum;
+import bh.ui.UIElement.UIScreenEvent;
 import bh.ui.UIInteractiveSource;
 
 /**
@@ -25,4 +26,7 @@ interface UIComponentHost {
 
 	/** Get the screen's auto-wiring helper for `autoStatus` interactives, or null. */
 	function getAutoInteractiveHelper():Null<UIRichInteractiveHelper>;
+
+	/** Push an event into the host (e.g. panel close notifications). */
+	function onScreenEvent(event:UIScreenEvent, source:Null<UIElement>):Void;
 }

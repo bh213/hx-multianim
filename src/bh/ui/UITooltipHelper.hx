@@ -27,7 +27,7 @@ typedef TooltipDefaults = {
 
 @:nullSafety
 class UITooltipHelper {
-	final screen:UIScreenBase;
+	final screen:UIComponentHost;
 	final builder:MultiAnimBuilder;
 	final defaultDelay:Float;
 	final defaultPosition:TooltipPosition;
@@ -59,7 +59,7 @@ class UITooltipHelper {
 	var fadingOutObj:Null<h2d.Object> = null;
 	var fadeOutTween:Null<Tween> = null;
 
-	public function new(screen:UIScreenBase, builder:MultiAnimBuilder, ?defaults:TooltipDefaults, ?tweens:TweenManager) {
+	public function new(screen:UIComponentHost, builder:MultiAnimBuilder, ?defaults:TooltipDefaults, ?tweens:TweenManager) {
 		this.screen = screen;
 		this.builder = builder;
 		this.defaultDelay = defaults?.delay ?? 0.3;

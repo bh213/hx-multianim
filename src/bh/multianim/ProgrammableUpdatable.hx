@@ -1,5 +1,7 @@
 package bh.multianim;
 
+import bh.multianim.BuilderError;
+
 /**
  * Wrapper for multiple named h2d.Object elements in macro-generated code.
  * Implements `IUpdatable` — the same interface as the runtime `Updatable`,
@@ -25,7 +27,7 @@ class ProgrammableUpdatable implements IUpdatable {
 			if (Std.isOfType(obj, h2d.Text)) {
 				(cast obj : h2d.Text).text = newText;
 			} else if (throwIfAnyFails) {
-				throw 'invalid updateText: expected h2d.Text but got ${Type.getClassName(Type.getClass(obj))}';
+				throw BuilderError.of('invalid updateText: expected h2d.Text but got ${Type.getClassName(Type.getClass(obj))}');
 			}
 		}
 	}
@@ -35,14 +37,14 @@ class ProgrammableUpdatable implements IUpdatable {
 			if (Std.isOfType(obj, h2d.Bitmap)) {
 				(cast obj : h2d.Bitmap).tile = newTile;
 			} else if (throwIfAnyFails) {
-				throw 'invalid updateTile: expected h2d.Bitmap but got ${Type.getClassName(Type.getClass(obj))}';
+				throw BuilderError.of('invalid updateTile: expected h2d.Bitmap but got ${Type.getClassName(Type.getClass(obj))}');
 			}
 		}
 	}
 
 	public function setObject(newObject:h2d.Object) {
 		if (objects.length != 1)
-			throw 'setObject needs exactly one element';
+			throw BuilderError.of('setObject needs exactly one element');
 		if (lastObject == newObject)
 			return;
 
@@ -57,7 +59,7 @@ class ProgrammableUpdatable implements IUpdatable {
 
 	public function addObject(newObject:h2d.Object) {
 		if (objects.length != 1)
-			throw 'addObject needs exactly one element';
+			throw BuilderError.of('addObject needs exactly one element');
 
 		objects[0].addChild(newObject);
 		lastObject = newObject;

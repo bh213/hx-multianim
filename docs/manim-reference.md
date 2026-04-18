@@ -665,6 +665,8 @@ Two conventions coexist. **CSS `#` forms** assume opacity (3/6 hex digits bake `
 
 Color values are plain `Int`s in Heaps `0xAARRGGBB` form at every API boundary. **Nothing in the runtime rewrites alpha** — not `setColor(v)`, not `setParameter("c", v)`, not `createFrom({c: v})`, not hot-reload. If you want opaque red at runtime, pass `0xFFFF0000`. If you pass `0xFF0000`, you get transparent red; if you pass `0`, you get fully transparent.
 
+**One documented exception:** `bh.base.HeapsUtils.solidTile(color, w, h)` / `solidBitmap(color, w, h)` treat `top-byte == 0` as opaque (alpha 1.0). This is a deliberate compat shim for legacy Haxe callers that pass bare `0xRRGGBB` (notably `TileHelper.generatedRectColor(w, h, 0xRRGGBB)` and the builder/codegen `generated(color(...))` path). For fully transparent, call `h2d.Tile.fromColor` directly with an explicit alpha argument. This exception does **not** apply to parameter/setter/color-literal paths — those are strict.
+
 This means `@switch` arms match against already-baked values:
 ```manim
 #widget programmable(tint:color=#FFFFFF) {
