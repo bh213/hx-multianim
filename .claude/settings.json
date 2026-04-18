@@ -43,5 +43,18 @@
     "additionalDirectories": [
       "../"
     ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"let i='';process.stdin.on('data',c=>i+=c);process.stdin.on('end',()=>{try{const j=JSON.parse(i);const c=(j.tool_input&&j.tool_input.command)||'';if(/\\bgit\\s+(stash|commit|push)\\b/.test(c)){process.stderr.write('BLOCKED: git stash/commit/push disallowed by project policy (.claude/settings.json PreToolUse hook)\\n');process.exit(2);}}catch(e){}});\""
+          }
+        ]
+      }
+    ]
   }
 }

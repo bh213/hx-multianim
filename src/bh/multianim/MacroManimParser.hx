@@ -493,6 +493,27 @@ class MacroManimParser {
 		error('unknown variable $$' + name + '. Available: ' + available);
 	}
 
+	// Rejects loop-variable / iterator-output names that collide with a
+	// programmable parameter or an outer loop/@final name already in scope.
+	// Collisions used to silently shadow the parameter and, after the loop
+	// body, `indexedParams.remove(varName)` would erase it from the builder.
+	function validateLoopVarName(name:String, currentDefs:ParametersDefinitions, kind:String):Void {
+		if (currentDefs != null && currentDefs.exists(name))
+			error('$kind loop variable $$' + name + ' shadows parameter $$' + name + ' of the enclosing programmable — pick a different name');
+		if (scopeVars != null && scopeVars.indexOf(name) >= 0)
+			error('$kind loop variable $$' + name + ' shadows an outer $$' + name + ' already in scope — pick a different name');
+	}
+
+	function iteratorOutputVars(rt:RepeatType):Array<String> {
+		return switch rt {
+			case ArrayIterator(valueVar, _): [valueVar];
+			case StateAnimIterator(bitmapVar, _, _, _): [bitmapVar];
+			case TilesIterator(bitmapVar, tilenameVar, _, _):
+				tilenameVar != null ? [bitmapVar, tilenameVar] : [bitmapVar];
+			case _: [];
+		};
+	}
+
 	// ---- Token access ----
 
 	inline function peek():MacroTokenType {
@@ -2906,6 +2927,8 @@ class MacroManimParser {
 				if (parent.children.length == 0) error("@else/@default requires a preceding sibling with a @() conditional");
 				switch (parent.children[parent.children.length - 1].conditionals) {
 					case NoConditional: error("@else/@default: previous sibling has no conditional");
+					case ConditionalElse(null) | ConditionalDefault:
+						error("@else/@default cannot follow a terminal @else or @default — the preceding arm is unconditional");
 					default:
 				}
 			default:
@@ -3527,6 +3550,28 @@ class MacroManimParser {
 				expect(TComma);
 				final repeatTypeY = parseRepeatIterator(currentDefs);
 				expect(TClosed);
+				validateLoopVarName(varNameX, currentDefs, "repeatable2d");
+				validateLoopVarName(varNameY, currentDefs, "repeatable2d");
+				if (varNameX == varNameY)
+					error('repeatable2d loop variables must be distinct, got $$' + varNameX + ' twice');
+				final iterVarsX = iteratorOutputVars(repeatTypeX);
+				final iterVarsY = iteratorOutputVars(repeatTypeY);
+				for (v in iterVarsX) {
+					validateLoopVarName(v, currentDefs, "repeatable2d iterator");
+					if (v == varNameX || v == varNameY)
+						error('repeatable2d iterator output $$' + v + ' collides with loop variable $$' + v);
+				}
+				for (v in iterVarsY) {
+					validateLoopVarName(v, currentDefs, "repeatable2d iterator");
+					if (v == varNameX || v == varNameY)
+						error('repeatable2d iterator output $$' + v + ' collides with loop variable $$' + v);
+					if (iterVarsX.indexOf(v) >= 0)
+						error('repeatable2d iterator outputs collide on $$' + v);
+				}
+				if (iterVarsX.length == 2 && iterVarsX[0] == iterVarsX[1])
+					error('repeatable2d X iterator outputs collide on $$' + iterVarsX[0]);
+				if (iterVarsY.length == 2 && iterVarsY[0] == iterVarsY[1])
+					error('repeatable2d Y iterator outputs collide on $$' + iterVarsY[0]);
 				createNode(REPEAT2D(varNameX, varNameY, repeatTypeX, repeatTypeY), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 
 			case TIdentifier(s) if (isKeyword(s, "repeatable")):
@@ -3536,6 +3581,15 @@ class MacroManimParser {
 				expect(TComma);
 				final repeatType = parseRepeatIterator(currentDefs);
 				expect(TClosed);
+				validateLoopVarName(varName, currentDefs, "repeatable");
+				final iterVars = iteratorOutputVars(repeatType);
+				for (v in iterVars) {
+					validateLoopVarName(v, currentDefs, "repeatable iterator");
+					if (v == varName)
+						error('repeatable iterator output $$' + v + ' collides with loop variable $$' + varName);
+				}
+				if (iterVars.length == 2 && iterVars[0] == iterVars[1])
+					error('repeatable iterator outputs collide on $$' + iterVars[0]);
 				createNode(REPEAT(varName, repeatType), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 
 			case TIdentifier(s) if (isKeyword(s, "stateanim")):

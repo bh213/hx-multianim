@@ -80,6 +80,8 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | `repeatable($var, iterator)` | Repeat child elements over an iterator |
 | `repeatable2d($x, $y, iterX, iterY)` | 2D grid repetition with two iterators |
 
+**Loop variable naming** — loop vars and iterator-output vars (`$v` in `array($v, …)`, `$b`/`$t` in `tiles(...)`, `$b` in `stateanim(...)`) must not share a name with a programmable parameter, an outer loop var, or any `@final` constant in scope. `repeatable2d`'s two loop vars must be distinct, and `tiles($b, $t, …)`'s two outputs must be distinct. Violations are parse errors.
+
 ### Iterator Types
 
 | Iterator | Description |
@@ -299,6 +301,8 @@ Parse-time error when used outside a flow ancestor.
 | `@else` | Matches when preceding sibling `@()` did not match |
 | `@else(conditions)` | Else-if with additional conditions |
 | `@default` | Final fallback when nothing above matched |
+
+A bare `@else` or `@default` is **terminal** — it closes the chain. Any `@else` / `@default` that follows one is unreachable and rejected at parse time. To start a fresh chain, open a new `@(...)` sibling first.
 
 Conditionals also work with **repeatable loop variables** (e.g., `@($i => 0)`, `@($i >= 3)`, `@($i != 1)`) inside `repeatable` bodies.
 

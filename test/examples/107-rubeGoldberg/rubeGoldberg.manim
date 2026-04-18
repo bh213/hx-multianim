@@ -105,6 +105,9 @@ curves {
     @(count => 1)     text(f3x5, "one",  #FFFFFF): 365, 70
     @else(count => 2) text(f3x5, "two",  #FFFF00): 365, 70
     @else             text(f3x5, "more", $accent): 365, 70
+
+    // @default fallback (separate chain — @default cannot follow bare @else)
+    @(count >= 5)     text(f3x5, "many", #FFAAFF): 410, 70
     @default          text(f3x5, "???",  #888888): 410, 70
 
     text(f3x5, "conditionals zoo", #AAAAAA): 0, 95

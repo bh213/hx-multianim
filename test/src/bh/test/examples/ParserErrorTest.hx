@@ -141,6 +141,125 @@ class ParserErrorTest extends utest.Test {
 	}
 
 	@Test
+	public function testElseAfterBareElse() {
+		var error = parseExpectingError('
+			#test programmable(mode:[a,b,c]=a) {
+				@(mode=>a) bitmap(generated(color(10, 10, #f00))): 0,0
+				@else bitmap(generated(color(10, 10, #f00))): 0,10
+				@else bitmap(generated(color(10, 10, #f00))): 0,20
+			}
+		');
+		Assert.notNull(error, "Should throw error for @else after terminal (bare) @else");
+		Assert.stringContains("cannot follow", error);
+	}
+
+	@Test
+	public function testDefaultAfterBareElse() {
+		var error = parseExpectingError('
+			#test programmable(mode:[a,b,c]=a) {
+				@(mode=>a) bitmap(generated(color(10, 10, #f00))): 0,0
+				@else bitmap(generated(color(10, 10, #f00))): 0,10
+				@default bitmap(generated(color(10, 10, #f00))): 0,20
+			}
+		');
+		Assert.notNull(error, "Should throw error for @default after terminal (bare) @else");
+		Assert.stringContains("cannot follow", error);
+	}
+
+	@Test
+	public function testElseAfterDefault() {
+		var error = parseExpectingError('
+			#test programmable(mode:[a,b,c]=a) {
+				@(mode=>a) bitmap(generated(color(10, 10, #f00))): 0,0
+				@default bitmap(generated(color(10, 10, #f00))): 0,10
+				@else bitmap(generated(color(10, 10, #f00))): 0,20
+			}
+		');
+		Assert.notNull(error, "Should throw error for @else after @default");
+		Assert.stringContains("cannot follow", error);
+	}
+
+	@Test
+	public function testDefaultAfterDefault() {
+		var error = parseExpectingError('
+			#test programmable(mode:[a,b,c]=a) {
+				@(mode=>a) bitmap(generated(color(10, 10, #f00))): 0,0
+				@default bitmap(generated(color(10, 10, #f00))): 0,10
+				@default bitmap(generated(color(10, 10, #f00))): 0,20
+			}
+		');
+		Assert.notNull(error, "Should throw error for @default after @default");
+		Assert.stringContains("cannot follow", error);
+	}
+
+	@Test
+	public function testRepeatableLoopVarShadowsParameter() {
+		var error = parseExpectingError("
+			#test programmable(cost:0..5=3) {
+				repeatable($cost, step($cost, dx:-12)) {
+					pos: 0, 0
+					bitmap(generated(color(10, 10, #f00)))
+				}
+			}
+		");
+		Assert.notNull(error, "Should throw when repeatable loop var matches a parameter");
+		Assert.stringContains("shadows parameter", error);
+		Assert.stringContains("cost", error);
+	}
+
+	@Test
+	public function testRepeatable2dLoopVarShadowsParameter() {
+		var error = parseExpectingError("
+			#test programmable(col:int=0) {
+				repeatable2d($col, $row, range(0, 3), range(0, 3)) {
+					bitmap(generated(color(10, 10, #f00))): 0, 0
+				}
+			}
+		");
+		Assert.notNull(error, "Should throw when repeatable2d loop var matches a parameter");
+		Assert.stringContains("shadows parameter", error);
+	}
+
+	@Test
+	public function testRepeatable2dLoopVarsMustBeDistinct() {
+		var error = parseExpectingError("
+			#test programmable() {
+				repeatable2d($i, $i, range(0, 3), range(0, 3)) {
+					bitmap(generated(color(10, 10, #f00))): 0, 0
+				}
+			}
+		");
+		Assert.notNull(error, "Should throw when repeatable2d X and Y loop vars are identical");
+		Assert.stringContains("distinct", error);
+	}
+
+	@Test
+	public function testRepeatableIteratorOutputShadowsParameter() {
+		var error = parseExpectingError("
+			#test programmable(entry:string=\"x\", names:array=[a,b,c]) {
+				repeatable($i, array($entry, $names)) {
+					bitmap(generated(color(10, 10, #f00))): 0, 0
+				}
+			}
+		");
+		Assert.notNull(error, "Should throw when iterator value var matches a parameter");
+		Assert.stringContains("shadows parameter", error);
+	}
+
+	@Test
+	public function testRepeatableIteratorOutputCollidesWithLoopVar() {
+		var error = parseExpectingError("
+			#test programmable(names:array=[a,b,c]) {
+				repeatable($i, array($i, $names)) {
+					bitmap(generated(color(10, 10, #f00))): 0, 0
+				}
+			}
+		");
+		Assert.notNull(error, "Should throw when iterator output shares name with loop var");
+		Assert.stringContains("collides", error);
+	}
+
+	@Test
 	public function testValidElseAfterConditional() {
 		var result = parseExpectingResult('
 			#test programmable(mode:[on,off]=on) {
