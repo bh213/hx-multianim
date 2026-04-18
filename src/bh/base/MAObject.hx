@@ -15,7 +15,10 @@ enum MultiAnimObjectData {
 
 @:nullSafety
 class MAObject extends h2d.Object {
-	public final multiAnimType:MultiAnimObjectData;
+	// Mutable so incremental updates (builder trackExpression / codegen exprUpdate) can rewrite
+	// MAInteractive(w, h, ...) when a $param-driven size changes. Hit tests, getBoundsRec, and
+	// wrapper w/h consumers re-read this on every call, so reassignment propagates naturally.
+	public var multiAnimType:MultiAnimObjectData;
 
     
 	public function new(maType, debug:Bool, ?parent) {

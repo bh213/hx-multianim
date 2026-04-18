@@ -325,6 +325,12 @@ class IncrementalUpdateContext {
 	public var tweenManager:Null<TweenManager> = null;
 	var activeTransitionTweens:Array<{obj:h2d.Object, tween:Null<Tween>, sequence:Null<TweenSequence>, savedAlpha:Float, savedScaleX:Float, savedScaleY:Float, savedX:Float, savedY:Float}> = [];
 	var rebuildListeners:Array<Void -> Void> = [];
+	// Params that appear in slots whose incremental updates are intentionally unsupported
+	// (interactive id/metadata, stateanim selectors, ...). setParameter on one of these
+	// throws — silent no-ops would leave the rendered state inconsistent with the param map.
+	// Populated during trackIncrementalExpressions; keyed by param name, values are human-
+	// readable reasons like `interactive id` or `stateanim selector "direction"`.
+	var untrackedParams:Map<String, Array<String>> = new Map();
 
 	public function new(builder:MultiAnimBuilder, indexedParams:Map<String, ResolvedIndexParameters>,
 			builderParams:BuilderParameters, rootNode:Node) {
@@ -676,8 +682,22 @@ class IncrementalUpdateContext {
 		reconcileApplyParent(entry.parent);
 	}
 
+	public function markParamUntracked(paramName:String, reason:String):Void {
+		var existing = untrackedParams.get(paramName);
+		if (existing == null) {
+			existing = [];
+			untrackedParams.set(paramName, existing);
+		}
+		if (existing.indexOf(reason) < 0) existing.push(reason);
+	}
+
 	@:nullSafety(Off)
 	public function setParameter(name:String, value:Dynamic):Void {
+		final untrackedReasons = untrackedParams.get(name);
+		if (untrackedReasons != null) {
+			throw BuilderError.of('setParameter("$name", ...) rejected: this param is referenced in incremental-unsupported slot(s) [${untrackedReasons.join(", ")}]. Changing it would leave the rendered state inconsistent. Either rebuild the programmable or avoid runtime mutation of this param.',
+				"untracked_param");
+		}
 		// Look up the parameter type definition for type-aware conversion (flags need special handling)
 		final paramDef = getParamDefinition(name);
 		final paramType = paramDef?.type;
@@ -3514,6 +3534,131 @@ class MultiAnimBuilder {
 							// Update position for new bounds (minX/minY change when shapes have dynamic widths)
 							pl.setPosition(result.minX * pixelScaleCapture, result.minY * pixelScaleCapture);
 						}, pxRefs, object);
+					}
+				}
+			case MASK(width, height):
+				final mRefs:Array<String> = [];
+				collectParamRefs(width, mRefs);
+				collectParamRefs(height, mRefs);
+				if (mRefs.length > 0) {
+					final m = switch builtObject { case HeapsMask(mm): mm; default: null; };
+					if (m != null) {
+						final wCapture = width;
+						final hCapture = height;
+						ctx.trackExpression(() -> {
+							m.width = Math.round(resolveAsNumber(wCapture));
+							m.height = Math.round(resolveAsNumber(hCapture));
+						}, mRefs, object);
+					}
+				}
+			case FLOW(maxWidth, maxHeight, minWidth, minHeight, lineHeight, colWidth, _, paddingTop, paddingBottom, paddingLeft, paddingRight,
+				horizontalSpacing, verticalSpacing, _, _, _, _, _, _, _, _, _, _):
+				final f = switch builtObject { case HeapsFlow(ff): ff; default: null; };
+				if (f != null) {
+					inline function trackInt(rv:ReferenceableValue, apply:Int -> Void):Void {
+						if (rv == null) return;
+						final refs:Array<String> = [];
+						collectParamRefs(rv, refs);
+						if (refs.length == 0) return;
+						final rvCapture = rv;
+						ctx.trackExpression(() -> apply(resolveAsInteger(rvCapture)), refs, object);
+					}
+					trackInt(maxWidth,          v -> f.maxWidth = v);
+					trackInt(maxHeight,         v -> f.maxHeight = v);
+					trackInt(minWidth,          v -> f.minWidth = v);
+					trackInt(minHeight,         v -> f.minHeight = v);
+					trackInt(lineHeight,        v -> f.lineHeight = v);
+					trackInt(colWidth,          v -> f.colWidth = v);
+					trackInt(paddingTop,        v -> f.paddingTop = v);
+					trackInt(paddingBottom,     v -> f.paddingBottom = v);
+					trackInt(paddingLeft,       v -> f.paddingLeft = v);
+					trackInt(paddingRight,      v -> f.paddingRight = v);
+					trackInt(horizontalSpacing, v -> f.horizontalSpacing = v);
+					trackInt(verticalSpacing,   v -> f.verticalSpacing = v);
+				}
+			case INTERACTIVE(width, height, id, _, metadata):
+				// Track w/h only — id + metadata stay frozen at construction because
+				// UIInteractiveWrapper caches them at registration time. Hit-test path
+				// re-reads w/h from multiAnimType on every containsPoint() call, so
+				// reassigning the enum with new dims propagates without wrapper rewiring.
+				final iRefs:Array<String> = [];
+				collectParamRefs(width, iRefs);
+				collectParamRefs(height, iRefs);
+				if (iRefs.length > 0) {
+					final mao = switch builtObject { case HeapsObject(o) if (Std.isOfType(o, MAObject)): (cast o : MAObject); default: null; };
+					if (mao != null) {
+						final wCapture = width;
+						final hCapture = height;
+						ctx.trackExpression(() -> {
+							final newW = resolveAsInteger(wCapture);
+							final newH = resolveAsInteger(hCapture);
+							switch mao.multiAnimType {
+								case MAInteractive(_, _, keepId, keepMeta):
+									mao.multiAnimType = MAInteractive(newW, newH, keepId, keepMeta);
+								default:
+							}
+						}, iRefs, object);
+					}
+				}
+				// Mark id + metadata value refs as incremental-unsupported.
+				final idRefs:Array<String> = [];
+				collectParamRefs(id, idRefs);
+				for (r in idRefs) ctx.markParamUntracked(r, "interactive id");
+				if (metadata != null) {
+					for (entry in metadata) {
+						final kRefs:Array<String> = [];
+						collectParamRefs(entry.key, kRefs);
+						for (r in kRefs) ctx.markParamUntracked(r, "interactive metadata key");
+						final vRefs:Array<String> = [];
+						collectParamRefs(entry.value, vRefs);
+						for (r in vRefs) ctx.markParamUntracked(r, "interactive metadata value");
+					}
+				}
+			case STATEANIM(_, initialState, selectorReferences):
+				// Track initialState only. Selectors (which pick animation variants at load time)
+				// and the filename itself stay frozen — changing them would require a full
+				// detach/rebuild which is out of scope.
+				final sRefs:Array<String> = [];
+				collectParamRefs(initialState, sRefs);
+				if (sRefs.length > 0) {
+					final sm = switch builtObject { case StateAnim(a): a; default: null; };
+					if (sm != null) {
+						final initCapture = initialState;
+						ctx.trackExpression(() -> {
+							sm.play(resolveAsString(initCapture));
+						}, sRefs, object);
+					}
+				}
+				if (selectorReferences != null) {
+					for (k => v in selectorReferences) {
+						final selRefs:Array<String> = [];
+						collectParamRefs(v, selRefs);
+						for (r in selRefs) ctx.markParamUntracked(r, 'stateanim selector "$k"');
+					}
+				}
+			case STATEANIM_CONSTRUCT(initialState, construct, _):
+				final sRefs:Array<String> = [];
+				collectParamRefs(initialState, sRefs);
+				if (sRefs.length > 0) {
+					final sm = switch builtObject { case StateAnim(a): a; default: null; };
+					if (sm != null) {
+						final initCapture = initialState;
+						ctx.trackExpression(() -> {
+							sm.play(resolveAsString(initCapture));
+						}, sRefs, object);
+					}
+				}
+				if (construct != null) {
+					for (key => value in construct) {
+						switch value {
+							case IndexedSheet(_, animName, fps, _, _):
+								final aRefs:Array<String> = [];
+								collectParamRefs(animName, aRefs);
+								for (r in aRefs) ctx.markParamUntracked(r, 'stateanim_construct animName "$key"');
+								final fRefs:Array<String> = [];
+								collectParamRefs(fps, fRefs);
+								for (r in fRefs) ctx.markParamUntracked(r, 'stateanim_construct fps "$key"');
+						}
 					}
 				}
 			default:

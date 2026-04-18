@@ -1272,6 +1272,37 @@ When enabled, elements support efficient runtime updates without full rebuild:
 
 Used by: dynamic refs, slider, scrollbar, parameterized slots, button, checkbox, tab button.
 
+### Per-element tracked properties
+
+The builder (incremental mode) and codegen paths both re-fire the listed properties on `setParameter`. Properties not listed are resolved once at construction.
+
+| Element | Tracked on `$param` change | Frozen at construction |
+|---------|----------------------------|-------------------------|
+| `text` / `richText` | `text`, `color`, richText styles (`color`/`font`) and image tiles | font name, align, maxWidth, options |
+| `bitmap` | `tileSource` (including `generated(color(w, h, color))`) | hAlign, vAlign |
+| `ninepatch` | `width`, `height` | sheet name, tile name |
+| `graphics` | every element's color/size/radius/coords + element position | — |
+| `pixels` | every shape's color/size/coords | — |
+| `mask` | `width`, `height` | — |
+| `flow` | `maxWidth`, `maxHeight`, `minWidth`, `minHeight`, `lineHeight`, `colWidth`, `padding*` (×4), `horizontalSpacing`, `verticalSpacing` | `layout`, `overflow`, `horizontalAlign`, `verticalAlign`, `debug`, `multiline`, `fillWidth`, `fillHeight`, `reverse`, 9-patch background |
+| `interactive` | `width`, `height` | `id`, metadata keys and values |
+| `stateanim` | `initialState` (fires `AnimationSM.play(newState)`) | filename, selectors |
+| `stateanim(construct)` | `initialState` | sheet, animName, fps, loop, center |
+| Common to every element | `pos`, `scale`, `rotate`, `alpha`, `tint`, `filter`, `blendMode` | — |
+
+### Rejection of untracked-only params
+
+If a `$param` is referenced **only** in a frozen slot (e.g. `interactive($w, $h, $myId)` and you call `setMyId`), both paths throw at the setter / dispatcher entry:
+
+```
+setParameter("<name>", ...) rejected: this param is referenced in
+incremental-unsupported slot(s) [<reasons>]. Changing it would leave the
+rendered state inconsistent. Either rebuild the programmable or avoid
+runtime mutation of this param.
+```
+
+Builder throws `BuilderError` with `code == "untracked_param"`; codegen throws a plain `String` from the generated setter. Params that appear in both tracked and frozen slots are also rejected (the tracked effect would apply while the frozen one would silently drift). Reasons surface the slot kind so the message is greppable: `interactive id`, `interactive metadata key`, `interactive metadata value`, `stateanim selector "<name>"`, `stateanim_construct animName "<key>"`, `stateanim_construct fps "<key>"`.
+
 ---
 
 ## Transition Declarations

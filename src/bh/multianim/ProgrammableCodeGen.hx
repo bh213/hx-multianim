@@ -87,6 +87,13 @@ class ProgrammableCodeGen {
 
 	static var hasBuilderParameterPlaceholders:Bool = false;
 
+	// Param names with refs in incremental-unsupported slots (interactive id/metadata,
+	// stateanim selectors, stateanim_construct animName/fps). Mirrors the builder's
+	// IncrementalUpdateContext.untrackedParams. Keyed by param name, values are reasons.
+	// Populated during generateCreateExpr; consumed by setter + setParameter emission to
+	// throw instead of silently dropping the incremental update.
+	static var untrackedParamRefs:Map<String, Array<String>> = new Map();
+
 	static var paramDefs:ParametersDefinitions;
 	static var paramNames:Array<String> = [];
 
@@ -161,6 +168,7 @@ class ProgrammableCodeGen {
 		dynamicRefFields = new Map();
 		dynamicNameRefFields = [];
 		hasBuilderParameterPlaceholders = false;
+		untrackedParamRefs = new Map();
 		paramDefs = new Map();
 		paramNames = [];
 		paramEnumTypes = new Map();
@@ -791,6 +799,16 @@ class ProgrammableCodeGen {
 			final def = paramDefs.get(name);
 			final paramField = "_" + name;
 			final setterExprs:Array<Expr> = [];
+
+			// Reject up-front when this param is referenced in incremental-unsupported slots
+			// (interactive id/metadata, stateanim selectors). A silent no-op would leave the
+			// internal `_field` updated but the scene graph stale — instead, fail loudly so the
+			// caller learns that this property is frozen at construction.
+			if (untrackedParamRefs.exists(name)) {
+				final reasons = untrackedParamRefs.get(name).join(", ");
+				final nameLit = name;
+				setterExprs.push(macro throw 'setParameter("' + $v{nameLit} + '", ...) rejected: this param is referenced in incremental-unsupported slot(s) [' + $v{reasons} + ']. Changing it would leave the rendered state inconsistent. Either rebuild the programmable or avoid runtime mutation of this param.');
+			}
 
 			// No-op guard: skip rebuild work when the value is unchanged. Symmetric with the runtime
 			// path where IncrementalUpdateContext.applyUpdates() only fires listeners on actual
@@ -3150,11 +3168,29 @@ class ProgrammableCodeGen {
 			case MASK(w, h):
 				final wExpr = rvToExpr(w);
 				final hExpr = rvToExpr(h);
+				final fieldRef = macro $p{["this", fieldName]};
+				final updates:Array<{fieldName:String, updateExpr:Expr, paramRefs:Array<String>}> = [];
+				final wRefs = collectParamRefs(w);
+				if (wRefs.length > 0) {
+					updates.push({
+						fieldName: fieldName,
+						updateExpr: macro $fieldRef.width = Math.round($wExpr),
+						paramRefs: wRefs,
+					});
+				}
+				final hRefs = collectParamRefs(h);
+				if (hRefs.length > 0) {
+					updates.push({
+						fieldName: fieldName,
+						updateExpr: macro $fieldRef.height = Math.round($hExpr),
+						paramRefs: hRefs,
+					});
+				}
 				{
 					fieldType: macro :h2d.Mask,
-					createExprs: [macro $p{["this", fieldName]} = new h2d.Mask(Math.round($wExpr), Math.round($hExpr))],
+					createExprs: [macro $fieldRef = new h2d.Mask(Math.round($wExpr), Math.round($hExpr))],
 					isContainer: true,
-					exprUpdates: [],
+					exprUpdates: updates,
 				};
 
 			case FLOW(maxWidth, maxHeight, minWidth, minHeight, lineHeight, colWidth, layout, paddingTop, paddingBottom, paddingLeft, paddingRight, horizontalSpacing, verticalSpacing, debug, multiline, bgSheet, bgTile, overflow, fillWidth, fillHeight, reverse, hAlign, vAlign):
@@ -3214,13 +3250,44 @@ class ProgrammableCodeGen {
 					};
 				};
 				{
-					fieldType: macro :bh.base.MAObject,
-					createExprs: [
-						macro $p{["this", fieldName]} = new bh.base.MAObject(
-							bh.base.MAObject.MultiAnimObjectData.MAInteractive($wExpr, $hExpr, $idExpr, $metaExpr), $debugExpr)
-					],
-					isContainer: false,
-					exprUpdates: [],
+					// Track w/h updates. id + metadata stay frozen because UIInteractiveWrapper
+					// caches them at registration — mirrors builder behaviour.
+					final fieldRef = macro $p{["this", fieldName]};
+					final wRefsI = collectParamRefs(w);
+					final hRefsI = collectParamRefs(h);
+					final whRefs = wRefsI.copy();
+					for (r in hRefsI) if (!whRefs.contains(r)) whRefs.push(r);
+					final updatesI:Array<{fieldName:String, updateExpr:Expr, paramRefs:Array<String>}> = [];
+					if (whRefs.length > 0) {
+						updatesI.push({
+							fieldName: fieldName,
+							updateExpr: macro {
+								switch $fieldRef.multiAnimType {
+									case MAInteractive(_, _, _keepId, _keepMeta):
+										$fieldRef.multiAnimType = bh.base.MAObject.MultiAnimObjectData.MAInteractive($wExpr, $hExpr, _keepId, _keepMeta);
+									case MADraggable(_, _):
+								}
+							},
+							paramRefs: whRefs,
+						});
+					}
+					// Record id + metadata param refs as incremental-unsupported.
+					recordUntrackedParams(collectParamRefs(id), "interactive id");
+					if (metadata != null) {
+						for (entry in metadata) {
+							recordUntrackedParams(collectParamRefs(entry.key), "interactive metadata key");
+							recordUntrackedParams(collectParamRefs(entry.value), "interactive metadata value");
+						}
+					}
+					{
+						fieldType: macro :bh.base.MAObject,
+						createExprs: [
+							macro $fieldRef = new bh.base.MAObject(
+								bh.base.MAObject.MultiAnimObjectData.MAInteractive($wExpr, $hExpr, $idExpr, $metaExpr), $debugExpr)
+						],
+						isContainer: false,
+						exprUpdates: updatesI,
+					}
 				};
 
 			case PLACEHOLDER(type, source):
@@ -3544,20 +3611,54 @@ class ProgrammableCodeGen {
 
 	static function generateGraphicsCreate(node:Node, fieldName:String, elements:Array<PositionedGraphicsElement>, pos:Position):CreateResult {
 		final fieldRef = macro $p{["this", fieldName]};
-		final createExprs:Array<Expr> = [macro $fieldRef = new h2d.Graphics()];
 
-		// Generate draw calls for each element
+		// Build draw calls once — reused for initial construction and for per-param redraw.
+		final drawExprs:Array<Expr> = [];
 		for (item in elements) {
-			final drawExprs = generateGraphicsElementExprs(fieldRef, item.element, item.pos, node, pos);
-			for (de in drawExprs)
-				createExprs.push(de);
+			final itemExprs = generateGraphicsElementExprs(fieldRef, item.element, item.pos, node, pos);
+			for (de in itemExprs) drawExprs.push(de);
+		}
+
+		// Collect all param refs from element positions + element bodies.
+		final allRefs:Array<String> = [];
+		for (item in elements) {
+			collectCoordinateParamRefs(item.pos, allRefs);
+			collectGraphicsElementParamRefs(item.element, allRefs);
+		}
+
+		final createExprs:Array<Expr> = [macro $fieldRef = new h2d.Graphics()];
+		final exprUpdatesLocal:Array<{fieldName:String, updateExpr:Expr, paramRefs:Array<String>}> = [];
+		final extraFieldsLocal:Array<Field> = [];
+
+		if (allRefs.length > 0) {
+			// Emit private _redraw_<fieldName>() method so setParameter() can re-fire the draw block
+			// without duplicating the element expressions into two call sites.
+			final redrawName = "_redraw_" + fieldName;
+			final redrawBody:Array<Expr> = [
+				macro {
+					final _g:h2d.Graphics = cast $fieldRef;
+					_g.clear();
+				}
+			];
+			for (de in drawExprs) redrawBody.push(de);
+			extraFieldsLocal.push(makeMethod(redrawName, redrawBody, [], macro :Void, [APrivate], pos));
+
+			createExprs.push(macro $i{redrawName}());
+			exprUpdatesLocal.push({
+				fieldName: fieldName,
+				updateExpr: macro $i{redrawName}(),
+				paramRefs: allRefs,
+			});
+		} else {
+			for (de in drawExprs) createExprs.push(de);
 		}
 
 		return {
 			fieldType: macro :h2d.Graphics,
 			createExprs: createExprs,
 			isContainer: false,
-			exprUpdates: [],
+			exprUpdates: exprUpdatesLocal,
+			extraFields: extraFieldsLocal.length > 0 ? extraFieldsLocal : null,
 		};
 	}
 
@@ -4672,8 +4773,20 @@ class ProgrammableCodeGen {
 				_pl.updateBitmap();
 				_pl.setPosition($v{minX}, $v{minY});
 			});
+
+			return {
+				fieldType: macro :bh.base.PixelLine.PixelLines,
+				createExprs: createExprs,
+				isContainer: false,
+				exprUpdates: [],
+			};
 		} else {
-			// Param-dependent: generate runtime bounds calculation + draw
+			// Param-dependent: emit a shared _redraw_<field> method that recomputes bounds and shape
+			// draw calls into a fresh PixelLines, then either assigns it (first call / ctor) or mutates
+			// the existing $fieldRef (later calls). Called from ctor once and on every setParameter()
+			// whose param is referenced.
+			//
+			// build once — shared between ctor call and redraw method body
 			final boundsExprs:Array<Expr> = [
 				macro var _minX:Int = 0x7FFFFFFF
 			];
@@ -4681,7 +4794,6 @@ class ProgrammableCodeGen {
 			boundsExprs.push(macro var _maxX:Int = -0x80000000);
 			boundsExprs.push(macro var _maxY:Int = -0x80000000);
 
-			// Track shapes for second pass
 			var shapeIdx = 0;
 			final shapeVarExprs:Array<Expr> = [];
 			for (s in shapes) {
@@ -4751,26 +4863,57 @@ class ProgrammableCodeGen {
 				}
 			}
 
-			// Create PixelLines and draw
-			final drawExprs:Array<Expr> = [
-				macro var _pl = new bh.base.PixelLine.PixelLines(_maxX - _minX + 1, _maxY - _minY + 1)
+			// Shared draw block: declares bounds, allocates a fresh _pl, draws into it, updates bitmap.
+			// After this block, `_pl`, `_minX`, `_minY` are in scope; the caller then either assigns
+			// _pl to the field (ctor) or mutates the existing field (redraw).
+			final drawBlock:Array<Expr> = boundsExprs.copy();
+			drawBlock.push(macro var _pl = new bh.base.PixelLine.PixelLines(_maxX - _minX + 1, _maxY - _minY + 1));
+			for (e in shapeVarExprs) drawBlock.push(e);
+			drawBlock.push(macro _pl.updateBitmap());
+
+			// Redraw body — emitted as private method so setParameter() can re-fire.
+			// Mirrors builder behaviour (MultiAnimBuilder trackExpression for PIXELS): copies fresh
+			// tile/data/size into the existing PixelLines so the scene-graph attachment is preserved.
+			final redrawName = "_redraw_" + fieldName;
+			final redrawBody:Array<Expr> = drawBlock.copy();
+			redrawBody.push(macro {
+				$fieldRef.tile = _pl.tile;
+				$fieldRef.data = _pl.data;
+				$fieldRef.width = _pl.tile.width;
+				$fieldRef.height = _pl.tile.height;
+				$fieldRef.setPosition(_minX, _minY);
+			});
+
+			// Ctor body — same draw block, then assigns the fresh _pl to $fieldRef (first-time init).
+			final ctorBlock:Array<Expr> = drawBlock.copy();
+			ctorBlock.push(macro $fieldRef = _pl);
+			ctorBlock.push(macro _pl.setPosition(_minX, _minY));
+			createExprs.push(macro $b{ctorBlock});
+
+			// Collect all param refs across every shape for exprUpdate dependencies.
+			final allRefs:Array<String> = [];
+			collectPixelShapesParamRefs(shapes, allRefs);
+
+			final extraFieldsLocal:Array<Field> = [
+				makeMethod(redrawName, redrawBody, [], macro :Void, [APrivate], pos),
 			];
-			for (e in shapeVarExprs)
-				drawExprs.push(e);
-			drawExprs.push(macro _pl.updateBitmap());
-			drawExprs.push(macro $fieldRef = _pl);
-			drawExprs.push(macro _pl.setPosition(_minX, _minY));
+			final exprUpdatesLocal:Array<{fieldName:String, updateExpr:Expr, paramRefs:Array<String>}> = [];
+			if (allRefs.length > 0) {
+				exprUpdatesLocal.push({
+					fieldName: fieldName,
+					updateExpr: macro $i{redrawName}(),
+					paramRefs: allRefs,
+				});
+			}
 
-			final allExprs = boundsExprs.concat(drawExprs);
-			createExprs.push(macro $b{allExprs});
+			return {
+				fieldType: macro :bh.base.PixelLine.PixelLines,
+				createExprs: createExprs,
+				isContainer: false,
+				exprUpdates: exprUpdatesLocal,
+				extraFields: extraFieldsLocal,
+			};
 		}
-
-		return {
-			fieldType: macro :bh.base.PixelLine.PixelLines,
-			createExprs: createExprs,
-			isContainer: false,
-			exprUpdates: [],
-		};
 	}
 
 	// ==================== Particles ====================
@@ -4808,11 +4951,26 @@ class ProgrammableCodeGen {
 		}
 		mapBuildExprs.push(macro $fieldRef = this._pb.buildStateAnim($filenameExpr, _selMap, Std.string($initialStateExpr)));
 
+		// Track initialState only — selectors + filename stay frozen (would require full rebuild).
+		// Mirrors builder STATEANIM handling in MultiAnimBuilder.trackIncrementalExpressions.
+		final updatesSA:Array<{fieldName:String, updateExpr:Expr, paramRefs:Array<String>}> = [];
+		final initRefs = collectParamRefs(initialState);
+		if (initRefs.length > 0) {
+			updatesSA.push({
+				fieldName: fieldName,
+				updateExpr: macro (cast $fieldRef : bh.stateanim.AnimationSM).play(Std.string($initialStateExpr)),
+				paramRefs: initRefs,
+			});
+		}
+		for (k => v in selectorReferences) {
+			recordUntrackedParams(collectParamRefs(v), 'stateanim selector "$k"');
+		}
+
 		return {
 			fieldType: macro :h2d.Object,
 			createExprs: [macro $b{mapBuildExprs}],
 			isContainer: false,
-			exprUpdates: [],
+			exprUpdates: updatesSA,
 		};
 	}
 
@@ -4851,11 +5009,29 @@ class ProgrammableCodeGen {
 			macro $fieldRef = this._pb.buildStateAnimConstruct(Std.string($initialStateExpr), $constructArrayExpr, $externallyDrivenExpr),
 		];
 
+		// Track initialState only — parallels generateStateAnimCreate.
+		final updatesSC:Array<{fieldName:String, updateExpr:Expr, paramRefs:Array<String>}> = [];
+		final initRefsSC = collectParamRefs(initialState);
+		if (initRefsSC.length > 0) {
+			updatesSC.push({
+				fieldName: fieldName,
+				updateExpr: macro (cast $fieldRef : bh.stateanim.AnimationSM).play(Std.string($initialStateExpr)),
+				paramRefs: initRefsSC,
+			});
+		}
+		for (key => value in construct) {
+			switch value {
+				case IndexedSheet(_, animName, fps, _, _):
+					recordUntrackedParams(collectParamRefs(animName), 'stateanim_construct animName "$key"');
+					recordUntrackedParams(collectParamRefs(fps), 'stateanim_construct fps "$key"');
+			}
+		}
+
 		return {
 			fieldType: macro :h2d.Object,
 			createExprs: createExprs,
 			isContainer: false,
-			exprUpdates: [],
+			exprUpdates: updatesSC,
 		};
 	}
 
@@ -5551,13 +5727,31 @@ class ProgrammableCodeGen {
 	static function generateFlowCreate(node:Node, fieldName:String, maxWidth:Null<ReferenceableValue>, maxHeight:Null<ReferenceableValue>, minWidth:Null<ReferenceableValue>, minHeight:Null<ReferenceableValue>, lineHeight:Null<ReferenceableValue>, colWidth:Null<ReferenceableValue>, layout:Null<MacroFlowLayout>, paddingTop:Null<ReferenceableValue>, paddingBottom:Null<ReferenceableValue>, paddingLeft:Null<ReferenceableValue>, paddingRight:Null<ReferenceableValue>, horizontalSpacing:Null<ReferenceableValue>, verticalSpacing:Null<ReferenceableValue>, debug:Bool, multiline:Bool, bgSheet:Null<ReferenceableValue>, bgTile:Null<ReferenceableValue>, overflow:Null<MacroFlowOverflow>, fillWidth:Bool, fillHeight:Bool, reverse:Bool, hAlign:Null<MacroFlowAlign>, vAlign:Null<MacroFlowAlign>, pos:Position):CreateResult {
 		final fieldRef = macro $p{["this", fieldName]};
 		final createExprs:Array<Expr> = [macro $fieldRef = new h2d.Flow()];
+		final exprUpdatesLocal:Array<{fieldName:String, updateExpr:Expr, paramRefs:Array<String>}> = [];
 
-		if (maxWidth != null) createExprs.push(macro $fieldRef.maxWidth = ${rvToExpr(maxWidth)});
-		if (maxHeight != null) createExprs.push(macro $fieldRef.maxHeight = ${rvToExpr(maxHeight)});
-		if (minWidth != null) createExprs.push(macro $fieldRef.minWidth = ${rvToExpr(minWidth)});
-		if (minHeight != null) createExprs.push(macro $fieldRef.minHeight = ${rvToExpr(minHeight)});
-		if (lineHeight != null) createExprs.push(macro $fieldRef.lineHeight = ${rvToExpr(lineHeight)});
-		if (colWidth != null) createExprs.push(macro $fieldRef.colWidth = ${rvToExpr(colWidth)});
+		// Helper: emit ctor assignment for a scalar int prop, plus an exprUpdate entry when the
+		// value references any programmable param. Mirrors the builder's per-scalar tracking in
+		// MultiAnimBuilder.trackIncrementalExpressions case FLOW(...).
+		inline function trackScalar(rv:Null<ReferenceableValue>, assign:Expr -> Expr):Void {
+			if (rv == null) return;
+			final valueExpr = rvToExpr(rv);
+			createExprs.push(assign(valueExpr));
+			final refs = collectParamRefs(rv);
+			if (refs.length > 0) {
+				exprUpdatesLocal.push({
+					fieldName: fieldName,
+					updateExpr: assign(valueExpr),
+					paramRefs: refs,
+				});
+			}
+		}
+
+		trackScalar(maxWidth,   v -> macro $fieldRef.maxWidth = $v);
+		trackScalar(maxHeight,  v -> macro $fieldRef.maxHeight = $v);
+		trackScalar(minWidth,   v -> macro $fieldRef.minWidth = $v);
+		trackScalar(minHeight,  v -> macro $fieldRef.minHeight = $v);
+		trackScalar(lineHeight, v -> macro $fieldRef.lineHeight = $v);
+		trackScalar(colWidth,   v -> macro $fieldRef.colWidth = $v);
 		if (layout != null) {
 			switch (layout) {
 				case MFLHorizontal: createExprs.push(macro $fieldRef.layout = h2d.Flow.FlowLayout.Horizontal);
@@ -5565,12 +5759,12 @@ class ProgrammableCodeGen {
 				case MFLStack: createExprs.push(macro $fieldRef.layout = h2d.Flow.FlowLayout.Stack);
 			}
 		}
-		if (paddingTop != null) createExprs.push(macro $fieldRef.paddingTop = ${rvToExpr(paddingTop)});
-		if (paddingBottom != null) createExprs.push(macro $fieldRef.paddingBottom = ${rvToExpr(paddingBottom)});
-		if (paddingLeft != null) createExprs.push(macro $fieldRef.paddingLeft = ${rvToExpr(paddingLeft)});
-		if (paddingRight != null) createExprs.push(macro $fieldRef.paddingRight = ${rvToExpr(paddingRight)});
-		if (horizontalSpacing != null) createExprs.push(macro $fieldRef.horizontalSpacing = ${rvToExpr(horizontalSpacing)});
-		if (verticalSpacing != null) createExprs.push(macro $fieldRef.verticalSpacing = ${rvToExpr(verticalSpacing)});
+		trackScalar(paddingTop,        v -> macro $fieldRef.paddingTop = $v);
+		trackScalar(paddingBottom,     v -> macro $fieldRef.paddingBottom = $v);
+		trackScalar(paddingLeft,       v -> macro $fieldRef.paddingLeft = $v);
+		trackScalar(paddingRight,      v -> macro $fieldRef.paddingRight = $v);
+		trackScalar(horizontalSpacing, v -> macro $fieldRef.horizontalSpacing = $v);
+		trackScalar(verticalSpacing,   v -> macro $fieldRef.verticalSpacing = $v);
 		if (debug) createExprs.push(macro $fieldRef.debug = true);
 		if (multiline) createExprs.push(macro $fieldRef.multiline = true);
 		if (overflow != null) {
@@ -5605,7 +5799,7 @@ class ProgrammableCodeGen {
 			fieldType: macro :h2d.Flow,
 			createExprs: createExprs,
 			isContainer: true,
-			exprUpdates: [],
+			exprUpdates: exprUpdatesLocal,
 		};
 	}
 
@@ -6119,6 +6313,88 @@ class ProgrammableCodeGen {
 			default:
 		}
 		return refs;
+	}
+
+	static function collectCoordinateParamRefs(coord:Coordinates, refs:Array<String>):Void {
+		if (coord == null) return;
+		switch coord {
+			case OFFSET(x, y): collectParamRefsImpl(x, refs); collectParamRefsImpl(y, refs);
+			case SELECTED_GRID_POSITION(x, y): collectParamRefsImpl(x, refs); collectParamRefsImpl(y, refs);
+			case SELECTED_HEX_CUBE(q, r, s): collectParamRefsImpl(q, refs); collectParamRefsImpl(r, refs); collectParamRefsImpl(s, refs);
+			case SELECTED_HEX_OFFSET(col, row, _): collectParamRefsImpl(col, refs); collectParamRefsImpl(row, refs);
+			case SELECTED_HEX_DOUBLED(col, row): collectParamRefsImpl(col, refs); collectParamRefsImpl(row, refs);
+			case SELECTED_HEX_PIXEL(x, y): collectParamRefsImpl(x, refs); collectParamRefsImpl(y, refs);
+			case SELECTED_HEX_CORNER(count, factor): collectParamRefsImpl(count, refs); collectParamRefsImpl(factor, refs);
+			case SELECTED_HEX_EDGE(dir, factor): collectParamRefsImpl(dir, refs); collectParamRefsImpl(factor, refs);
+			case NAMED_COORD(_, c): collectCoordinateParamRefs(c, refs);
+			case WITH_OFFSET(base, offX, offY): collectCoordinateParamRefs(base, refs); collectParamRefsImpl(offX, refs); collectParamRefsImpl(offY, refs);
+			default:
+		}
+	}
+
+	static function collectGraphicsStyleParamRefs(style:GraphicsStyle, refs:Array<String>):Void {
+		switch style {
+			case GSLineWidth(lw): collectParamRefsImpl(lw, refs);
+			case GSFilled:
+		}
+	}
+
+	static function collectGraphicsElementParamRefs(element:GraphicsElement, refs:Array<String>):Void {
+		switch element {
+			case GERect(color, style, width, height):
+				collectParamRefsImpl(color, refs); collectParamRefsImpl(width, refs); collectParamRefsImpl(height, refs);
+				collectGraphicsStyleParamRefs(style, refs);
+			case GEPolygon(color, style, points):
+				collectParamRefsImpl(color, refs); collectGraphicsStyleParamRefs(style, refs);
+				for (p in points) collectCoordinateParamRefs(p, refs);
+			case GECircle(color, style, radius):
+				collectParamRefsImpl(color, refs); collectParamRefsImpl(radius, refs);
+				collectGraphicsStyleParamRefs(style, refs);
+			case GEEllipse(color, style, width, height):
+				collectParamRefsImpl(color, refs); collectParamRefsImpl(width, refs); collectParamRefsImpl(height, refs);
+				collectGraphicsStyleParamRefs(style, refs);
+			case GEArc(color, style, radius, startAngle, arcAngle):
+				collectParamRefsImpl(color, refs); collectParamRefsImpl(radius, refs);
+				collectParamRefsImpl(startAngle, refs); collectParamRefsImpl(arcAngle, refs);
+				collectGraphicsStyleParamRefs(style, refs);
+			case GERoundRect(color, style, width, height, radius):
+				collectParamRefsImpl(color, refs); collectParamRefsImpl(width, refs); collectParamRefsImpl(height, refs);
+				collectParamRefsImpl(radius, refs); collectGraphicsStyleParamRefs(style, refs);
+			case GELine(color, lineWidth, start, end):
+				collectParamRefsImpl(color, refs); collectParamRefsImpl(lineWidth, refs);
+				collectCoordinateParamRefs(start, refs); collectCoordinateParamRefs(end, refs);
+		}
+	}
+
+	/** Record refs as incremental-unsupported so setter/dispatcher can throw at runtime. */
+	static function recordUntrackedParams(refs:Array<String>, reason:String):Void {
+		for (r in refs) {
+			var list = untrackedParamRefs.get(r);
+			if (list == null) {
+				list = [];
+				untrackedParamRefs.set(r, list);
+			}
+			if (list.indexOf(reason) < 0) list.push(reason);
+		}
+	}
+
+	static function collectPixelShapesParamRefs(shapes:Array<PixelShapes>, refs:Array<String>):Void {
+		for (s in shapes) {
+			switch s {
+				case LINE(line):
+					collectCoordinateParamRefs(line.start, refs);
+					collectCoordinateParamRefs(line.end, refs);
+					collectParamRefsImpl(line.color, refs);
+				case RECT(rect) | FILLED_RECT(rect):
+					collectCoordinateParamRefs(rect.start, refs);
+					collectParamRefsImpl(rect.width, refs);
+					collectParamRefsImpl(rect.height, refs);
+					collectParamRefsImpl(rect.color, refs);
+				case PIXEL(pixel):
+					collectCoordinateParamRefs(pixel.pos, refs);
+					collectParamRefsImpl(pixel.color, refs);
+			}
+		}
 	}
 
 	// ==================== Node Settings ====================

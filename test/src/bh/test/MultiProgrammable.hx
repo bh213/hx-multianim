@@ -400,4 +400,31 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/108-applyParamUpdate/applyParamUpdate.manim", "applyParamUpdate")
 	public var applyParamUpdate;
+
+	@:manim("test/examples/109-codegenIncrementalGfxPx/codegenIncrementalGfxPx.manim", "codegenIncGraphics")
+	public var codegenIncGraphics;
+
+	@:manim("test/examples/109-codegenIncrementalGfxPx/codegenIncrementalGfxPx.manim", "codegenIncPixels")
+	public var codegenIncPixels;
+
+	@:manim("test/examples/110-codegenIncrementalMaskFlow/codegenIncrementalMaskFlow.manim", "codegenIncMask")
+	public var codegenIncMask;
+
+	@:manim("test/examples/110-codegenIncrementalMaskFlow/codegenIncrementalMaskFlow.manim", "codegenIncFlow")
+	public var codegenIncFlow;
+
+	@:manim("test/examples/111-codegenIncrementalInteractiveStateanim/codegenIncrementalInteractiveStateanim.manim", "codegenIncInteractive")
+	public var codegenIncInteractive;
+
+	@:manim("test/examples/111-codegenIncrementalInteractiveStateanim/codegenIncrementalInteractiveStateanim.manim", "codegenIncStateanim")
+	public var codegenIncStateanim;
+
+	@:manim("test/examples/111-codegenIncrementalInteractiveStateanim/codegenIncrementalInteractiveStateanim.manim", "codegenIncUntrackedId")
+	public var codegenIncUntrackedId;
+
+	@:manim("test/examples/111-codegenIncrementalInteractiveStateanim/codegenIncrementalInteractiveStateanim.manim", "codegenIncUntrackedMeta")
+	public var codegenIncUntrackedMeta;
+
+	@:manim("test/examples/111-codegenIncrementalInteractiveStateanim/codegenIncrementalInteractiveStateanim.manim", "codegenIncUntrackedSelector")
+	public var codegenIncUntrackedSelector;
 }
