@@ -5071,6 +5071,176 @@ class BuilderUnitTest extends BuilderTestBase {
 		Assert.equals(1, visibleBitmaps.length, "Only B bitmap should be in graph");
 	}
 
+	@Test
+	public function testTransitionBatchedUpdatesScopedToParamRefs():Void {
+		// Bug guard: findTransitionSpec() must pick the transition declared for the
+		// param(s) that actually drive the visibility change of THIS element. With
+		// the old implementation it scanned changedParams in StringMap iteration
+		// order and returned the first param with any spec — so a batched update
+		// could animate an element whose own controlling param has no transition.
+		//
+		// Setup:
+		//   - paramA has fade(0.5) transition
+		//   - paramB has NO transition declared (instant)
+		//   - elementA is conditioned on paramA (should fade)
+		//   - elementB is conditioned on paramB (should toggle instantly)
+		//
+		// In a batched setParameter for both params, elementB must NOT inherit
+		// paramA's fade — its controlling param has no spec.
+		final tm = new bh.base.TweenManager();
+		final builder = builderFromSource("
+			#test programmable(paramA:[a1,a2]=a1, paramB:[b1,b2]=b1) {
+				transition {
+					paramA: fade(0.5)
+				}
+				@(paramA=>a1) bitmap(generated(color(10, 10, #ff0000))): 0,0
+				@(paramA=>a2) bitmap(generated(color(10, 10, #00ff00))): 0,0
+				@(paramB=>b1) bitmap(generated(color(10, 10, #0000ff))): 20,0
+				@(paramB=>b2) bitmap(generated(color(10, 10, #ffff00))): 20,0
+			}
+		");
+		builder.tweenManager = tm;
+		final result = builder.buildWithParameters("test",
+			["paramA" => "a1", "paramB" => "b1"], null, null, true);
+		Assert.notNull(result);
+
+		// Batch: change both. Only paramA has a transition.
+		result.beginUpdate();
+		result.setParameter("paramA", "a2");
+		result.setParameter("paramB", "b2");
+		result.endUpdate();
+
+		// Each direct child's x position identifies which param controls it (paramA at x=0,
+		// paramB at x=20). The paramB-controlled wrappers must be free of tweens — paramB
+		// has no transition spec, so toggling it must be instant even when batched with a
+		// paramA change. The buggy implementation leaks paramA's fade onto paramB elements.
+		var paramAFading = 0;
+		var paramBFading = 0;
+		for (i in 0...result.object.numChildren) {
+			final child = result.object.getChildAt(i);
+			if (!tm.hasTweens(child)) continue;
+			if (Math.abs(child.x - 0.0) < 0.5) paramAFading++;
+			else if (Math.abs(child.x - 20.0) < 0.5) paramBFading++;
+		}
+		Assert.isTrue(paramAFading > 0, "paramA-controlled elements should be fading (transition spec exists)");
+		Assert.equals(0, paramBFading,
+			'paramB-controlled elements must toggle instantly (no transition spec); got $paramBFading tween-bearing wrappers at x=20');
+
+		// Sanity: after enough wall-clock to finish the fade, exactly the two new
+		// elements (paramA=a2, paramB=b2) are in graph.
+		tm.update(0.0); // skipFirstDt
+		tm.update(1.0);
+		final visible = findVisibleBitmapDescendants(result.object);
+		Assert.equals(2, visible.length, "Two elements visible after batched param swap");
+	}
+
+	@Test
+	public function testTransitionDoesNotFlashInactiveElseBranch():Void {
+		// Regression guard for double-pass visibility evaluation in applyUpdates:
+		// pass 1 uses isMatch() which returns `true` unconditionally for
+		// ConditionalElse/ConditionalDefault; pass 2 (applyConditionalChains)
+		// correctly accounts for sibling-matched state. With a transition active
+		// for the changed param, pass 1 adds the @else branch to the graph and
+		// starts a fade-in, then pass 2 cancels and starts a fade-out — leaving
+		// the element in graph at alpha=savedAlpha (1.0), visibly flashing through
+		// a full fade-out when it should have stayed hidden.
+		//
+		// Setup: cond1 drives the @(cond1) / @else chain; cond2 carries the
+		// transition. Changing cond2 must NOT alter chain visibility.
+		final tm = new bh.base.TweenManager();
+		final builder = builderFromSource("
+			#test programmable(cond1:bool=true, cond2:bool=true) {
+				transition {
+					cond2: fade(0.5)
+				}
+				@(cond1=>true) bitmap(generated(color(10, 10, #ff0000))): 0,0
+				@else bitmap(generated(color(10, 10, #00ff00))): 0,0
+			}
+		");
+		builder.tweenManager = tm;
+		final result = builder.buildWithParameters("test",
+			["cond1" => true, "cond2" => true], null, null, true);
+		Assert.notNull(result);
+
+		// Initial: @(cond1=>true) matches → A visible. @else hidden (not in graph).
+		// Children layout: sentinel_A, wrapperA, sentinel_B (B's wrapper built but
+		// not attached because the initial chain decided @else inactive).
+		final initialChildCount = result.object.numChildren;
+		final initialVisible = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, initialVisible.length, "Only A should be visible initially");
+
+		// Trigger the bug: change cond2 (the transition-carrying param). Chain
+		// semantics are unchanged — cond1 still matches, @else still inactive.
+		result.setParameter("cond2", false);
+
+		// Assertion 1: the number of children in graph must not grow. Pass 1
+		// incorrectly calls addToGraph on B's wrapper (isMatch returns true for
+		// ConditionalElse unconditionally); pass 2 leaves it attached mid-fade.
+		Assert.equals(initialChildCount, result.object.numChildren,
+			'Child count in graph must not change when chain visibility is unchanged');
+
+		// Assertion 2: B's bitmap must not appear as visible. If the bug fires,
+		// B's wrapper is in graph with alpha=1.0 (restored by pass 2's cancel)
+		// and its fade-out tween hasn't stepped yet — so findVisibleBitmapDescendants
+		// would return 2 bitmaps.
+		final postChangeVisible = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, postChangeVisible.length,
+			'Only A bitmap should be visible; @else must stay hidden when its chain decision is unchanged');
+
+		// Assertion 3: No child should have a tween. The @else branch's visibility
+		// decision did not change, so the transition machinery must not fire.
+		var tweenBearingCount = 0;
+		for (i in 0...result.object.numChildren) {
+			final child = result.object.getChildAt(i);
+			if (tm.hasTweens(child)) tweenBearingCount++;
+		}
+		Assert.equals(0, tweenBearingCount,
+			'No element should have tweens when chain visibility is unchanged; got $tweenBearingCount');
+	}
+
+	@Test
+	public function testDynamicRefPropagationSkipsHiddenSubtree():Void {
+		// When a dynamicRef sits inside a hidden conditional branch, parent
+		// setParameter() changes to forwarded params must NOT cascade into the
+		// child's applyUpdates cycle — the child subtree is detached from the
+		// scene graph, so re-evaluating its expressions and firing its rebuild
+		// listeners is wasted work (and, for listeners that touch external state,
+		// a spurious notification).
+		//
+		// Compare with the trackedExpressions loop in applyUpdates, which already
+		// gates on isEffectivelyVisible(obj). The dynamicRefBindings loop
+		// immediately below it does not — this test asserts parity.
+		final result = buildFromSource("
+			#child programmable(v:uint=0) {
+				bitmap(generated(color($v + 1, 10, #ff0000))): 0, 0
+			}
+			#parent programmable(show:bool=true, val:uint=5) {
+				@(show=>true) dynamicRef($child, v=>$val): 0, 0
+			}
+		", "parent", null, Incremental);
+		Assert.notNull(result);
+
+		final childRef = result.getDynamicRef("child");
+		Assert.notNull(childRef);
+
+		var childRebuildCount = 0;
+		childRef.addRebuildListener(() -> childRebuildCount++);
+
+		// Hide the subtree. The forwarded-param refs for this binding are ["val"],
+		// so toggling `show` alone is not "relevant" and the propagation loop
+		// skips it regardless of the fix — baseline for the next assertion.
+		result.setParameter("show", false);
+		final hideRebuildCount = childRebuildCount;
+
+		// Change the forwarded param while the dynamicRef is hidden. Today, the
+		// propagation loop has no visibility gate — childContext.setParameter
+		// fires, the child's applyUpdates runs, and the rebuild listener ticks.
+		// After the fix, the hidden subtree must be skipped.
+		result.setParameter("val", 7);
+		Assert.equals(hideRebuildCount, childRebuildCount,
+			'Hidden dynamicRef must not receive propagated param updates; child rebuilt ${childRebuildCount - hideRebuildCount} extra times while detached from scene graph');
+	}
+
 	// ==================== extraPoint coordinates ====================
 
 	@Test

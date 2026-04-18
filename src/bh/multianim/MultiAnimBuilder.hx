@@ -308,7 +308,7 @@ class IncrementalUpdateContext {
 		gridCS:GridCoordinateSystem, hexCS:HexCoordinateSystem,
 		internalResults:InternalBuilderResults, builderParams:BuilderParameters,
 	}> = [];
-	var dynamicRefBindings:Array<{childContext:IncrementalUpdateContext, childParam:String, resolveFn:Void->Dynamic, referencedParams:Array<String>}> = [];
+	var dynamicRefBindings:Array<{childContext:IncrementalUpdateContext, childParam:String, resolveFn:Void->Dynamic, referencedParams:Array<String>, object:Null<h2d.Object>}> = [];
 	var dynamicNameBindings:Array<DynamicNameBinding> = [];
 	var rootNode:Node;
 	var batchMode:Bool = false;
@@ -416,8 +416,8 @@ class IncrementalUpdateContext {
 		trackedExpressions.push({updateFn: updateFn, paramRefs: paramRefs, object: object});
 	}
 
-	public function trackDynamicRef(childContext:IncrementalUpdateContext, childParam:String, resolveFn:Void->Dynamic, referencedParams:Array<String>):Void {
-		dynamicRefBindings.push({childContext: childContext, childParam: childParam, resolveFn: resolveFn, referencedParams: referencedParams});
+	public function trackDynamicRef(childContext:IncrementalUpdateContext, childParam:String, resolveFn:Void->Dynamic, referencedParams:Array<String>, ?object:h2d.Object):Void {
+		dynamicRefBindings.push({childContext: childContext, childParam: childParam, resolveFn: resolveFn, referencedParams: referencedParams, object: object});
 	}
 
 	public function trackDynamicName(binding:DynamicNameBinding):Void {
@@ -746,13 +746,74 @@ class IncrementalUpdateContext {
 		activeTransitionTweens = [];
 	}
 
-	function findTransitionSpec():Null<TransitionType> {
+	/** Pick the transition spec to apply when toggling `node`'s presence.
+	 *
+	 *  Restricted to the params that actually drive `node`'s visibility — without this filter
+	 *  a batched setParameter() over multiple unrelated params would let any param's transition
+	 *  spec leak onto an element it doesn't control (the old version returned the first hit in
+	 *  StringMap iteration order). When several relevant params are changed together AND each
+	 *  has its own spec, the alphabetically first param wins so the choice is stable across
+	 *  runs/platforms. */
+	function findTransitionSpec(node:Node):Null<TransitionType> {
 		if (transitionsDef == null) return null;
-		for (paramName => _ in changedParams) {
-			final spec = transitionsDef.get(paramName);
-			if (spec != null) return spec;
+		final relevant = getRelevantParamRefsForNode(node);
+		if (relevant.length == 0) return null;
+		var winnerName:Null<String> = null;
+		for (paramName in relevant) {
+			if (!changedParams.exists(paramName)) continue;
+			if (!transitionsDef.exists(paramName)) continue;
+			if (winnerName == null || paramName < winnerName) winnerName = paramName;
 		}
-		return null;
+		return winnerName == null ? null : transitionsDef.get(winnerName);
+	}
+
+	function getRelevantParamRefsForNode(node:Node):Array<String> {
+		final refs = new haxe.ds.StringMap<Bool>();
+		collectParamRefsFromNode(node, refs);
+		return [for (k in refs.keys()) k];
+	}
+
+	function collectParamRefsFromNode(node:Node, refs:haxe.ds.StringMap<Bool>):Void {
+		switch node.conditionals {
+			case Conditional(values, _):
+				for (k in values.keys()) refs.set(k, true);
+			case ConditionalElse(extraConditions):
+				if (extraConditions != null)
+					for (k in extraConditions.keys()) refs.set(k, true);
+				collectChainParamRefs(node, refs);
+			case ConditionalDefault:
+				collectChainParamRefs(node, refs);
+			case NoConditional:
+				// Always visible — no controlling params.
+		}
+	}
+
+	/** Walk preceding siblings of `node` to collect param refs from the @() / @else chain
+	 *  it belongs to. Stops at NoConditional (chain break) or at a ConditionalDefault from
+	 *  an earlier chain. Mirrors the chain-resolution logic in resolveVisibilityForChildren. */
+	function collectChainParamRefs(node:Node, refs:haxe.ds.StringMap<Bool>):Void {
+		final p = node.parent;
+		if (p == null || p.children == null) return;
+		final siblings = p.children;
+		var idx = -1;
+		for (i in 0...siblings.length) if (siblings[i] == node) { idx = i; break; }
+		if (idx <= 0) return;
+		var i = idx - 1;
+		while (i >= 0) {
+			final sib = siblings[i];
+			switch sib.conditionals {
+				case Conditional(values, _):
+					for (k in values.keys()) refs.set(k, true);
+				case ConditionalElse(extraConditions):
+					if (extraConditions != null)
+						for (k in extraConditions.keys()) refs.set(k, true);
+				case ConditionalDefault:
+					return;
+				case NoConditional:
+					return;
+			}
+			i--;
+		}
 	}
 
 	function cancelActiveTransition(obj:h2d.Object):Void {
@@ -831,13 +892,13 @@ class IncrementalUpdateContext {
 	}
 
 	function setPresenceWithTransition(entry:{object:h2d.Object, sentinel:h2d.Object, parent:h2d.Object, layer:Int,
-			?savedFlowProps:Null<SavedFlowProperties>}, newVisible:Bool):Void {
+			?savedFlowProps:Null<SavedFlowProperties>}, newVisible:Bool, node:Node):Void {
 		final obj = entry.object;
 		final inGraph = isInGraph(obj);
 		// Skip only if state matches AND no transition is in progress.
 		if (inGraph == newVisible && !hasActiveTransition(obj)) return;
 
-		final transSpec = findTransitionSpec();
+		final transSpec = findTransitionSpec(node);
 		if (transSpec == null || tweenManager == null || transSpec.match(TransNone)) {
 			cancelActiveTransition(obj);
 			if (newVisible)
@@ -1089,7 +1150,7 @@ class IncrementalUpdateContext {
 						case PPTFloat: () -> builder.resolveAsNumber(capturedValue);
 						default: () -> builder.resolveAsInteger(capturedValue);
 					};
-					trackDynamicRef(result.incrementalContext, childParam, resolveFn, refs);
+					trackDynamicRef(result.incrementalContext, childParam, resolveFn, refs, result.object);
 				}
 			}
 		}
@@ -1104,13 +1165,13 @@ class IncrementalUpdateContext {
 				addToGraph(entry);
 				materializeDeferred(deferred);
 				// Apply transition animation if configured
-				final transSpec = findTransitionSpec();
+				final transSpec = findTransitionSpec(entry.node);
 				if (transSpec != null && tweenManager != null && !transSpec.match(TransNone))
 					executePresenceTransition(entry, true, transSpec);
 				return;
 			}
 		}
-		setPresenceWithTransition(entry, newVisible);
+		setPresenceWithTransition(entry, newVisible, entry.node);
 	}
 
 	function applyUpdates():Void {
@@ -1118,18 +1179,21 @@ class IncrementalUpdateContext {
 		builder.indexedParams = indexedParams;
 		builder.builderParams = builderParams;
 
-		// Re-evaluate presence for all conditional elements
-		for (entry in conditionalEntries) {
-			final shouldBeVisible = builder.isMatch(entry.node, indexedParams);
-			setPresenceOrMaterialize(entry, shouldBeVisible);
-		}
-		// Re-evaluate conditional apply entries
-		for (entry in conditionalApplyEntries) {
-			final shouldApply = builder.isMatch(entry.node, indexedParams);
-			if (shouldApply) applyConditionalApplyEntry(entry);
-			else unapplyConditionalApplyEntry(entry);
-		}
-		// Re-evaluate @else/@default chain visibility
+		// Re-evaluate presence for all conditional elements, including @else/@default
+		// chain semantics. applyConditionalChains walks the full tree from rootNode
+		// and handles Conditional, ConditionalElse, and ConditionalDefault for both
+		// `conditionalEntries` (tracked objects) and `conditionalApplyEntries`
+		// (sibling-scoped APPLY nodes) via uniqueNodeName lookup.
+		//
+		// A prior implementation ran a flat isMatch() pass over conditionalEntries
+		// and conditionalApplyEntries before this call. That was (a) redundant —
+		// applyConditionalChains covers the same entries — and (b) wrong for
+		// ConditionalElse/ConditionalDefault, since isMatch() returns true for them
+		// unconditionally (chain resolution happens only here). With a transition
+		// spec active, the redundant pass could addToGraph an @else wrapper and
+		// start a fade-in, then this pass would cancel it and start a fade-out,
+		// leaving the wrapper in graph at alpha=savedAlpha for the fade duration
+		// — a visible flash of an element whose chain decision never changed.
 		applyConditionalChains();
 
 		// Re-evaluate tracked expressions (skip for hidden objects)
@@ -1150,7 +1214,10 @@ class IncrementalUpdateContext {
 			}
 		}
 
-		// Propagate to dynamic ref children
+		// Propagate to dynamic ref children. Skip bindings whose child subtree is not
+		// effectively visible — same policy as trackedExpressions above. Propagating
+		// into a detached subtree re-runs the child's applyUpdates (expression eval,
+		// rebuild listeners) for something the user can't see.
 		for (binding in dynamicRefBindings) {
 			var relevant = false;
 			for (ref in binding.referencedParams) {
@@ -1159,9 +1226,10 @@ class IncrementalUpdateContext {
 					break;
 				}
 			}
-			if (relevant) {
-				binding.childContext.setParameter(binding.childParam, binding.resolveFn());
-			}
+			if (!relevant) continue;
+			final obj = binding.object;
+			if (obj != null && !isEffectivelyVisible(obj)) continue;
+			binding.childContext.setParameter(binding.childParam, binding.resolveFn());
 		}
 
 		// Rebuild dynamic name refs (template parameter changed)
@@ -4672,7 +4740,7 @@ class MultiAnimBuilder {
 								case PPTFloat: () -> resolveAsNumber(capturedValue);
 								default: () -> resolveAsInteger(capturedValue);
 							};
-							incrementalContext.trackDynamicRef(result.incrementalContext, childParam, resolveFn, refs);
+							incrementalContext.trackDynamicRef(result.incrementalContext, childParam, resolveFn, refs, result.object);
 						}
 					}
 				}
