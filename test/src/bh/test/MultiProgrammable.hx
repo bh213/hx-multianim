@@ -427,4 +427,7 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/111-codegenIncrementalInteractiveStateanim/codegenIncrementalInteractiveStateanim.manim", "codegenIncUntrackedSelector")
 	public var codegenIncUntrackedSelector;
+
+	@:manim("test/examples/112-chainBoundary/chainBoundary.manim", "chainBoundary")
+	public var chainBoundary;
 }

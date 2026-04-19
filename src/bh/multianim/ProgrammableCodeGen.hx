@@ -5843,7 +5843,10 @@ class ProgrammableCodeGen {
 				condMapToExpr(values, anyMode);
 
 			case ConditionalElse(values):
-				final priorNeg = negatePriorSiblings(siblings);
+				// @else fires when the current chain's prior arms all missed — i.e. !prevSiblingMatched.
+				// prev is reset by a fresh Conditional arm, so chain boundaries are respected naturally.
+				final state = computeChainStateBefore(siblings);
+				final priorNeg = macro !($e{state.prev});
 				if (values != null) {
 					final ownCond = condMapToExpr(values);
 					macro($priorNeg && $ownCond);
@@ -5852,7 +5855,10 @@ class ProgrammableCodeGen {
 				}
 
 			case ConditionalDefault:
-				negatePriorSiblings(siblings);
+				// @default fires when no Conditional/ConditionalElse arm across all preceding
+				// chains matched — i.e. !anyConditionalSiblingMatched. Mirrors the builder.
+				final state = computeChainStateBefore(siblings);
+				macro !($e{state.any});
 		};
 	}
 
@@ -5898,22 +5904,49 @@ class ProgrammableCodeGen {
 		return refs;
 	}
 
-	static function negatePriorSiblings(siblings:Array<{node:Node, fieldName:String}>):Expr {
-		var result:Expr = macro true;
+	/** Symbolically replay the builder's chain state machine across prior siblings,
+	 *  returning expressions for `prevSiblingMatched` and `anyConditionalSiblingMatched`
+	 *  AFTER the last sibling has been processed (i.e. the state seen by the next arm).
+	 *
+	 *  Mirrors `MultiAnimBuilder.resolveVisibilityForChildren`:
+	 *    - Conditional(c):              prev = c,              any = any || c
+	 *    - ConditionalElse(extras != null): prev = prev || extras, any = any || (!prev_before && extras)
+	 *    - ConditionalElse(null) [bare]:    prev = true,        any = true
+	 *    - ConditionalDefault:              prev = false,       any = false  (chain reset)
+	 *    - NoConditional:                   prev = false,       any = false  (chain break)
+	 *
+	 *  Note: per the parser (commit that added terminal-chain rejection), bare @else and
+	 *  @default are terminal — the next sibling must be Conditional or NoConditional, both
+	 *  of which overwrite or reset state. So post-terminal state only needs to be safe as
+	 *  a starting point for a fresh chain. */
+	static function computeChainStateBefore(siblings:Array<{node:Node, fieldName:String}>):{prev:Expr, any:Expr} {
+		var prev:Expr = macro false;
+		var any:Expr = macro false;
 		for (sib in siblings) {
 			switch (sib.node.conditionals) {
+				case NoConditional:
+					prev = macro false;
+					any = macro false;
 				case Conditional(values, anyMode):
-					final sibCond = condMapToExpr(values, anyMode);
-					result = macro($result && !($sibCond));
+					final c = condMapToExpr(values, anyMode);
+					any = macro($any || $c);
+					prev = c;
 				case ConditionalElse(values):
-					if (values != null) {
-						final sibCond = condMapToExpr(values);
-						result = macro($result && !($sibCond));
+					if (values == null) {
+						prev = macro true;
+						any = macro true;
+					} else {
+						final c = condMapToExpr(values);
+						final prevBefore = prev;
+						any = macro($any || (!$prevBefore && $c));
+						prev = macro($prevBefore || $c);
 					}
-				default:
+				case ConditionalDefault:
+					prev = macro false;
+					any = macro false;
 			}
 		}
-		return result;
+		return {prev: prev, any: any};
 	}
 
 	static function condMapToExpr(values:Map<String, ConditionalValues>, anyMode:Bool = false):Expr {

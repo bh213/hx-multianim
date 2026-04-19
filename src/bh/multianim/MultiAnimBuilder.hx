@@ -1210,11 +1210,11 @@ class IncrementalUpdateContext {
 		// `conditionalEntries` (tracked objects) and `conditionalApplyEntries`
 		// (sibling-scoped APPLY nodes) via uniqueNodeName lookup.
 		//
-		// A prior implementation ran a flat isMatch() pass over conditionalEntries
+		// A prior implementation ran a flat shouldBuildInFullMode() pass over conditionalEntries
 		// and conditionalApplyEntries before this call. That was (a) redundant —
 		// applyConditionalChains covers the same entries — and (b) wrong for
-		// ConditionalElse/ConditionalDefault, since isMatch() returns true for them
-		// unconditionally (chain resolution happens only here). With a transition
+		// ConditionalElse/ConditionalDefault, since shouldBuildInFullMode() returns true for
+		// them unconditionally (chain resolution happens only here). With a transition
 		// spec active, the redundant pass could addToGraph an @else wrapper and
 		// start a fade-in, then this pass would cancel it and start a fade-out,
 		// leaving the wrapper in graph at alpha=savedAlpha for the fade duration
@@ -3105,19 +3105,26 @@ class MultiAnimBuilder {
 		return defaultArm;
 	}
 
-	function isMatch(node:Node, indexedParams:Map<String, ResolvedIndexParameters>) {
+	// Build-time predicate: "should this node be built?" Intentionally trivial for chain nodes.
+	// Full-build callers rely on resolveConditionalChildren having already dropped losing chain
+	// nodes, so any @else/@default reaching here is a survivor → return true.
+	// Incremental callers get the same passthrough; real chain resolution happens later in
+	// applyConditionalChains, which walks siblings and sets visibility per chain position.
+	// Do NOT treat the return value as "does this node's own @() condition match" — for chain
+	// nodes it does not, and there is no single-node answer.
+	function shouldBuildInFullMode(node:Node, indexedParams:Map<String, ResolvedIndexParameters>) {
 		return switch node.conditionals {
 			case Conditional(conditions, anyMode):
 				matchConditions(conditions, anyMode, indexedParams);
 			case ConditionalElse(_) | ConditionalDefault:
-				true; // Pre-filtered by resolveConditionalChildren
+				true; // chain survivor (full mode) / passthrough — applyConditionalChains decides actual visibility (incremental)
 			case NoConditional: return true;
 		}
 	}
 
 	// Resolves @else/@default chains: returns only the children that should be built
 	// given the current indexedParams state. Regular Conditional and NoConditional nodes
-	// are always included (their isMatch check happens later in build/buildTileGroup).
+	// are always included (their shouldBuildInFullMode check happens later in build/buildTileGroup).
 	// ConditionalElse and ConditionalDefault are filtered here based on chain logic.
 	function resolveConditionalChildren(children:Array<Node>):Array<Node> {
 		// In incremental mode, return ALL children so they're all built (visibility handled later)
@@ -3170,6 +3177,45 @@ class MultiAnimBuilder {
 			}
 		}
 		return result;
+	}
+
+	/** Validate tileGroup descendants up front: reject any conditional whose predicate
+	 *  references a programmable parameter (anything not in `loopVarScope`). `buildTileGroup`
+	 *  bakes the subtree into a single drawable and is never re-entered by the
+	 *  incremental-update path, so a conditional on a mutable param would silently freeze
+	 *  on first build. `@switch(param)` has the same problem — the arm is resolved once
+	 *  via `resolveMatchedSwitchArm` and never re-evaluated. `loopVarScope` carries the
+	 *  repeatable/repeatable2d loop-var names that ARE safe because they iterate at
+	 *  build time. Throws `BuilderError` with `code="tilegroup_conditional"`. */
+	function validateTileGroupSubtree(node:Node, loopVarScope:Array<String>):Void {
+		inline function requireLoopVar(paramName:String, source:String):Void {
+			if (loopVarScope.indexOf(paramName) < 0)
+				throw builderErrorAt(node, '$source inside tileGroup references parameter "$paramName"; tileGroup descendants are baked at build time and never re-evaluated, so changes to "$paramName" would be silently ignored. Move the conditional outside the tileGroup, or key it on a repeatable loop variable.', "tilegroup_conditional");
+		}
+
+		switch node.conditionals {
+			case Conditional(conds, _):
+				for (name => _ in conds) requireLoopVar(name, '@($name => ...)');
+			case ConditionalElse(extraConds) if (extraConds != null):
+				for (name => _ in extraConds) requireLoopVar(name, '@else($name => ...)');
+			case ConditionalElse(_) | ConditionalDefault | NoConditional:
+		}
+
+		switch node.type {
+			case SWITCH(paramName, arms):
+				requireLoopVar(paramName, '@switch($paramName)');
+				for (arm in arms)
+					for (child in arm.children)
+						validateTileGroupSubtree(child, loopVarScope);
+			case REPEAT(varName, _):
+				final innerScope = loopVarScope.concat([varName]);
+				for (child in node.children) validateTileGroupSubtree(child, innerScope);
+			case REPEAT2D(varNameX, varNameY, _, _):
+				final innerScope = loopVarScope.concat([varNameX, varNameY]);
+				for (child in node.children) validateTileGroupSubtree(child, innerScope);
+			default:
+				for (child in node.children) validateTileGroupSubtree(child, loopVarScope);
+		}
 	}
 
 	/** Collect parameter references from a ReferenceableValue tree */
@@ -4217,7 +4263,7 @@ class MultiAnimBuilder {
 	@:nullSafety(Off)
 	function buildTileGroup(node:Node, tileGroup:h2d.TileGroup, currentPos:Point, gridCoordinateSystem:GridCoordinateSystem,
 			hexCoordinateSystem:HexCoordinateSystem, builderParams:BuilderParameters):Void {
-		if (isMatch(node, indexedParams) == false)
+		if (shouldBuildInFullMode(node, indexedParams) == false)
 			return;
 		this.currentNode = node;
 
@@ -4459,7 +4505,7 @@ class MultiAnimBuilder {
 	@:nullSafety(Off)
 	function build(node:Node, buildMode:InternalBuildMode, gridCoordinateSystem:GridCoordinateSystem, hexCoordinateSystem:HexCoordinateSystem,
 			internalResults:InternalBuilderResults, builderParams:BuilderParameters):h2d.Object {
-		final nodeVisible = isMatch(node, indexedParams);
+		final nodeVisible = shouldBuildInFullMode(node, indexedParams);
 		if (!nodeVisible && !incrementalMode)
 			return null;
 		this.currentNode = node;
@@ -5433,6 +5479,16 @@ class MultiAnimBuilder {
 				HeapsObject(g);
 
 			case TILEGROUP:
+				// tileGroup bakes children into a single drawable at build time.
+				// buildTileGroup() does NOT register with IncrementalUpdateContext,
+				// so conditionals whose predicate references a programmable parameter
+				// would silently freeze on first build (and in incremental mode they'd
+				// also double-bake because resolveConditionalChildren returns all
+				// @else/@default arms alongside the matching @() arm). Reject such
+				// configurations up front. Loop vars introduced by a repeatable
+				// INSIDE the tileGroup iterate at build time and are allowed.
+				for (child in node.children)
+					validateTileGroupSubtree(child, []);
 				final tg = new TileGroup();
 				selectedBuildMode = TileGroupMode(tg);
 				HeapsObject(tg);

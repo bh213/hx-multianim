@@ -5226,7 +5226,7 @@ class BuilderUnitTest extends BuilderTestBase {
 	@Test
 	public function testTransitionDoesNotFlashInactiveElseBranch():Void {
 		// Regression guard for double-pass visibility evaluation in applyUpdates:
-		// pass 1 uses isMatch() which returns `true` unconditionally for
+		// pass 1 uses shouldBuildInFullMode() which returns `true` unconditionally for
 		// ConditionalElse/ConditionalDefault; pass 2 (applyConditionalChains)
 		// correctly accounts for sibling-matched state. With a transition active
 		// for the changed param, pass 1 adds the @else branch to the graph and
@@ -5263,7 +5263,7 @@ class BuilderUnitTest extends BuilderTestBase {
 		result.setParameter("cond2", false);
 
 		// Assertion 1: the number of children in graph must not grow. Pass 1
-		// incorrectly calls addToGraph on B's wrapper (isMatch returns true for
+		// incorrectly calls addToGraph on B's wrapper (shouldBuildInFullMode returns true for
 		// ConditionalElse unconditionally); pass 2 leaves it attached mid-fade.
 		Assert.equals(initialChildCount, result.object.numChildren,
 			'Child count in graph must not change when chain visibility is unchanged');
@@ -7465,5 +7465,137 @@ class BuilderUnitTest extends BuilderTestBase {
 			'Message should mention the missing layout name, got: $message');
 		Assert.isTrue(message.indexOf("not found") >= 0,
 			'Message should preserve original "not found" text, got: $message');
+	}
+
+	// ==================== TileGroup + mutable-conditional rejection ====================
+
+	// tileGroup bakes children into a single drawable at build time and is never re-entered
+	// by the incremental-update path (buildTileGroup has no trackConditional hook). A
+	// conditional whose predicate references a programmable parameter therefore silently
+	// freezes on first build, and in incremental mode @else/@default arms bake alongside
+	// the matching @() arm because resolveConditionalChildren returns all children when
+	// incrementalMode=true (expecting the main build() path to re-filter later).
+	//
+	// Fix: reject these configurations at build time with a structured BuilderError
+	// (code="tilegroup_conditional"). Loop vars introduced by repeatable/repeatable2d
+	// INSIDE the tileGroup are still fine — those iterate at build time.
+
+	static function buildExpectingTileGroupConditional(source:String):String {
+		try {
+			buildFromSource(source, "test");
+			return null;
+		} catch (e:bh.multianim.BuilderError) {
+			Assert.equals("tilegroup_conditional", e.code,
+				'Expected BuilderError code="tilegroup_conditional", got "${e.code}" with message: ${e.message}');
+			return e.message;
+		} catch (e:Dynamic) {
+			Assert.fail('Expected BuilderError, got: ${Std.string(e)}');
+			return null;
+		}
+	}
+
+	@Test
+	public function testTileGroupConditionalOnParam_Builder_Throws():Void {
+		final msg = buildExpectingTileGroupConditional("
+			#test programmable(mode:[a,b]=a) {
+				tileGroup {
+					@(mode=>a) bitmap(generated(color(20, 20, red))): 0, 0
+					@(mode=>b) bitmap(generated(color(20, 20, blue))): 0, 0
+				}
+			}
+		");
+		Assert.notNull(msg);
+		Assert.isTrue(msg.indexOf("tileGroup") >= 0 || msg.indexOf("tilegroup") >= 0,
+			'Message should mention tileGroup, got: $msg');
+		Assert.isTrue(msg.indexOf("mode") >= 0,
+			'Message should name the offending parameter "mode", got: $msg');
+	}
+
+	@Test
+	public function testTileGroupConditionalOnParam_Incremental_Throws():Void {
+		// Incremental mode is where the @else double-bake also manifests — same rejection path
+		var msg:String = null;
+		try {
+			buildFromSource("
+				#test programmable(mode:[a,b]=a) {
+					tileGroup {
+						@(mode=>a) bitmap(generated(color(20, 20, red))): 0, 0
+						@else bitmap(generated(color(20, 20, blue))): 0, 0
+					}
+				}
+			", "test", null, Incremental);
+		} catch (e:bh.multianim.BuilderError) {
+			Assert.equals("tilegroup_conditional", e.code, 'code should be tilegroup_conditional, got "${e.code}"');
+			msg = e.message;
+		} catch (e:Dynamic) {
+			Assert.fail('Expected BuilderError, got: ${Std.string(e)}');
+		}
+		Assert.notNull(msg, "Incremental build of tileGroup + @()/@else on a param must throw");
+	}
+
+	@Test
+	public function testTileGroupElseOnParam_Throws():Void {
+		// Bare @else following a mutable-param @() is equally broken — the @() site throws first.
+		final msg = buildExpectingTileGroupConditional("
+			#test programmable(mode:[a,b]=a) {
+				tileGroup {
+					@(mode=>a) bitmap(generated(color(20, 20, red))): 0, 0
+					@default bitmap(generated(color(20, 20, blue))): 0, 0
+				}
+			}
+		");
+		Assert.notNull(msg);
+	}
+
+	@Test
+	public function testTileGroupSwitchOnParam_Throws():Void {
+		// @switch(param) on a mutable param inside tileGroup — same problem, the arm is
+		// resolved once at build time via resolveMatchedSwitchArm and never re-evaluated.
+		final msg = buildExpectingTileGroupConditional("
+			#test programmable(kind:[a,b,c]=a) {
+				tileGroup {
+					@switch(kind) {
+						a: bitmap(generated(color(20, 20, red))): 0, 0;
+						b: bitmap(generated(color(20, 20, green))): 0, 0;
+						default: bitmap(generated(color(20, 20, blue))): 0, 0;
+					}
+				}
+			}
+		");
+		Assert.notNull(msg);
+		Assert.isTrue(msg.indexOf("kind") >= 0, 'Should name the offending parameter "kind", got: $msg');
+	}
+
+	@Test
+	public function testTileGroupConditionalOnRepeatableLoopVar_Allowed():Void {
+		// Loop vars introduced by a repeatable INSIDE the tileGroup iterate at build time —
+		// conditionals referencing them are safe and must still be accepted.
+		final result = buildFromSource("
+			#test programmable() {
+				tileGroup {
+					repeatable($i, step(3, dx: 20, dy: 0)) {
+						@($i => 0) bitmap(generated(color(20, 20, red))): 0, 0
+						@($i => 1) bitmap(generated(color(20, 20, green))): 0, 0
+						@($i => 2) bitmap(generated(color(20, 20, blue))): 0, 0
+					}
+				}
+			}
+		", "test");
+		Assert.notNull(result, "Loop-var conditionals inside tileGroup must still build");
+	}
+
+	@Test
+	public function testTileGroupOuterConditionalOnParam_NotFlagged():Void {
+		// Conditionals on the tileGroup NODE ITSELF (outside the baked subtree) are re-entered
+		// by the main build() path on incremental rebuild and handled the normal way. Only
+		// conditionals on tileGroup's DESCENDANTS are the silent-no-op trap.
+		final result = buildFromSource("
+			#test programmable(show:bool=true) {
+				@(show=>true) tileGroup {
+					bitmap(generated(color(20, 20, red))): 0, 0
+				}
+			}
+		", "test");
+		Assert.notNull(result, "A conditional on the tileGroup itself is fine — only its descendants are baked");
 	}
 }

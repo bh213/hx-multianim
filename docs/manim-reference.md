@@ -47,7 +47,7 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | `flow(params)` | Layout container (horizontal, vertical, stack) with padding, spacing, overflow |
 | `layers()` | Z-ordering container for explicit depth stacking |
 | `mask(w, h)` | Clipping rectangle that hides overflow |
-| `tilegroup` | Optimized tile grouping (GPU batching for bitmaps, ninepatch, pixels, point) |
+| `tilegroup` | Optimized tile grouping (GPU batching for bitmaps, ninepatch, pixels, point). Children are baked once at build time, so conditionals on programmable parameters are **rejected at build time** (`BuilderError code="tilegroup_conditional"`) — use conditionals outside the tileGroup, or key them on a `repeatable` loop variable inside it |
 | `spacer(w, h)` | Empty spacing element inside flow containers |
 | `point` | Positioning anchor/marker point |
 | `apply(...)` | Apply properties to parent element |
