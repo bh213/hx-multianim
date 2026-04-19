@@ -17,6 +17,7 @@ import bh.base.FilterManager;
 import bh.base.MAObject;
 import bh.base.MAObject.MultiAnimObjectData;
 import bh.ui.UIElement.TileHelper;
+import bh.base.ColorUtils;
 
 /**
  * Non-visual builder tests.
@@ -4618,7 +4619,7 @@ class BuilderUnitTest extends BuilderTestBase {
 	public function testRichTextDynamicStyleColor():Void {
 		// Dynamic style color via $param reference with incremental update
 		final params = new Map<String, Dynamic>();
-		params.set("hlColor", 0xFFFF0000); // red
+		params.set("hlColor", ColorUtils.rgb(0xFF0000)); // red
 		final result = buildFromSource("
 			#test programmable(hlColor:color=blue) {
 				richText(dd, \"[hl]highlighted[/]\", white, left, 200,
@@ -4630,7 +4631,7 @@ class BuilderUnitTest extends BuilderTestBase {
 		Assert.isTrue(Std.isOfType(texts[0], h2d.HtmlText), "Dynamic style color should create HtmlText");
 
 		// Verify setParameter updates without error and HtmlText still exists
-		result.setParameter("hlColor", 0xFF00FF00); // green
+		result.setParameter("hlColor", ColorUtils.rgb(0x00FF00)); // green
 		final textsAfter = findAllTextDescendants(result.object);
 		Assert.equals(1, textsAfter.length);
 		Assert.isTrue(Std.isOfType(textsAfter[0], h2d.HtmlText), "Should still be HtmlText after color update");

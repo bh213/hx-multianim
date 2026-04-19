@@ -5474,7 +5474,7 @@ class MultiAnimBuilder {
 				HeapsObject(obj);
 
 			case GRAPHICS(elements):
-				var g = new h2d.Graphics();
+				var g = new KeepGraphics();
 				drawGraphicsElements(g, elements, gridCoordinateSystem, hexCoordinateSystem);
 				HeapsObject(g);
 

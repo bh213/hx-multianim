@@ -10,6 +10,7 @@ import bh.multianim.MultiAnimBuilder.PlaceholderValues;
 import bh.multianim.MultiAnimParser.SettingValue;
 import bh.paths.MultiAnimPaths.PathNormalization;
 import bh.ui.UIElement.TileHelper;
+import bh.base.ColorUtils;
 
 /**
  * Tests for the @:build(ProgrammableCodeGen.buildAll()) generated classes.
@@ -377,7 +378,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		final firstChild = fp.getChildAt(0);
 		Assert.notNull(firstChild.filter, "First child should have an outline filter");
 
-		fp.setOutlineColor(0x00FF00);
+		fp.setOutlineColor(ColorUtils.rgb(0x00FF00));
 		Assert.notNull(firstChild.filter, "Filter should still exist after color change");
 	}
 
@@ -386,7 +387,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		final mp = createMp();
 		final fp = mp.filterParam.create();
 
-		fp.setTintColor(0xFF0000);
+		fp.setTintColor(ColorUtils.rgb(0xFF0000));
 		Assert.isTrue(fp.numChildren > 0, "Should still have children after tint change");
 	}
 
@@ -394,7 +395,18 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	@Test
 	public function test45_CodegenFilterParam(async:utest.Async):Void {
-		simpleMacroTest(45, "codegenFilterParam", () -> createMp().filterParam.create(), async, null, null, 4.0);
+		// Exercise ColorUtils via setters on the macro path. The .manim defaults
+		// (outlineColor=#FF0000, tintColor=#00FF00) bake to 0xFFFF0000 / 0xFF00FF00 —
+		// ColorUtils.rgb() of the same RGB bytes must produce identical ints, so
+		// rendering through the setter path must match the reference image pixel-
+		// for-pixel. A naive `setOutlineColor(0xFF0000)` (no helper) would store
+		// 0x00FF0000 (α=0) under strict-D and render the outline invisible.
+		simpleMacroTest(45, "codegenFilterParam", () -> {
+			final fp = createMp().filterParam.create();
+			fp.setOutlineColor(ColorUtils.rgb(0xFF0000));
+			fp.setTintColor(ColorUtils.rgb(0x00FF00));
+			return fp;
+		}, async, null, null, 4.0);
 	}
 
 	// ==================== GridPos: unit tests ====================

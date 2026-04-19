@@ -671,6 +671,20 @@ Color values are plain `Int`s in Heaps `0xAARRGGBB` form at every API boundary. 
 
 **One documented exception:** `bh.base.HeapsUtils.solidTile(color, w, h)` / `solidBitmap(color, w, h)` treat `top-byte == 0` as opaque (alpha 1.0). This is a deliberate compat shim for legacy Haxe callers that pass bare `0xRRGGBB` (notably `TileHelper.generatedRectColor(w, h, 0xRRGGBB)` and the builder/codegen `generated(color(...))` path). For fully transparent, call `h2d.Tile.fromColor` directly with an explicit alpha argument. This exception does **not** apply to parameter/setter/color-literal paths — those are strict.
 
+### `ColorUtils` Helpers (Haxe-side)
+
+`bh.base.ColorUtils` provides inline helpers for constructing ARGB ints from game code, so callers don't have to hand-write `0xFF000000 | rgb`:
+
+| Helper | Example | Returns |
+|--------|---------|---------|
+| `rgb(rgb:Int)` | `ColorUtils.rgb(0x55AA88)` | `0xFF55AA88` (opaque; any input α byte discarded) |
+| `rgba(rgb:Int, alpha:Float)` | `ColorUtils.rgba(0x55AA88, 0.5)` | `0x8055AA88` (alpha clamped 0..1, rounded to nearest byte) |
+| `withAlpha(argb:Int, alpha:Float)` | `ColorUtils.withAlpha(0xFF55AA88, 0.3)` | `0x4D55AA88` (swap α byte on an existing ARGB) |
+| `getAlpha(color:Int)` | `ColorUtils.getAlpha(0x8055AA88)` | `~0.502` (α byte as 0..1 float) |
+| `getRgb(color:Int)` | `ColorUtils.getRgb(0xFF55AA88)` | `0x55AA88` (bottom 24 bits) |
+
+Intended for the `extraParams` / `setParameter` boundary where Haxe ints enter the builder/codegen — nothing rewrites alpha behind your back, so `setParameter("tint", 0x55AA88)` is silently invisible under strict-D unless you wrap it in `ColorUtils.rgb(...)`. Parser literal `#RRGGBB` semantics are unchanged.
+
 This means `@switch` arms match against already-baked values:
 ```manim
 #widget programmable(tint:color=#FFFFFF) {

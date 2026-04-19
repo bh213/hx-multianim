@@ -9,6 +9,7 @@ import bh.ui.UIRichInteractiveHelper.InteractiveState;
 import bh.ui.UIElement.UIScreenEvent;
 import bh.multianim.MultiAnimBuilder.BuilderResult;
 import bh.ui.UIInteractiveWrapper;
+import bh.base.ColorUtils;
 
 /**
  * Unit tests for UIRichInteractiveHelper.
@@ -1421,7 +1422,7 @@ class UIRichInteractiveHelperTest extends BuilderTestBase {
 		inst.setParameter("count", "42"); // String → Int parse
 		Assert.equals(42, @:privateAccess inst._count);
 
-		inst.setParameter("tint", 0xFF00FF00); // Color as Int
+		inst.setParameter("tint", ColorUtils.rgb(0x00FF00)); // Color via ColorUtils.rgb → 0xFF00FF00
 		Assert.equals(0xFF00FF00, @:privateAccess inst._tint);
 	}
 
