@@ -54,6 +54,15 @@ class DevBridge {
 	var debuggerDropped:Int = 0;
 	var nextDebuggerId:Int = 1;
 
+	// ---- Custom game ops registry (queries, commands, events) ----
+	static final GAME_EVENT_BUFFER_SIZE = 200;
+	var queryRegistry:Map<String, RegisteredOp> = new Map();
+	var commandRegistry:Map<String, RegisteredOp> = new Map();
+	var eventRegistry:Map<String, RegisteredEvent> = new Map();
+	var gameEventBuffer:Array<Dynamic> = [];
+	var gameEventDropped:Int = 0;
+	var nextGameEventId:Int = 1;
+
 	// ---- SSE clients ----
 	var sseClients:Array<Socket> = [];
 	var sseBroadcasting:Bool = false;
@@ -289,6 +298,55 @@ class DevBridge {
 		broadcastSseEvent("custom", {name: name, data: data, timestamp: haxe.Timer.stamp()});
 	}
 
+	// ---- Custom game ops: registration API ----
+
+	/** Register a read-only game query op, callable via the MCP `game_op` tool.
+	 *  `params` is a schema-lite metadata hint (e.g. `{team: "string?"}`) surfaced to the MCP client.
+	 *  `handler(params)` must return a JSON-serializable value; throw `haxe.Exception` on failure. */
+	public function registerQuery(op:String, description:String, params:Dynamic, handler:Dynamic->Dynamic):Void {
+		assertOpNameFree(op);
+		queryRegistry.set(op, {description: description, params: params, handler: handler});
+	}
+
+	/** Register a mutating/trigger game command op, callable via the MCP `game_op` tool.
+	 *  See `registerQuery` for param/handler semantics. */
+	public function registerCommand(op:String, description:String, params:Dynamic, handler:Dynamic->Dynamic):Void {
+		assertOpNameFree(op);
+		commandRegistry.set(op, {description: description, params: params, handler: handler});
+	}
+
+	/** Declare a game-emitted event type. Registration is metadata-only (for discovery via `list_game_ops`);
+	 *  `emitEvent` does not require pre-registration but will warn if the name is unknown. */
+	public function registerEvent(name:String, description:String, payload:Dynamic):Void {
+		if (eventRegistry.exists(name))
+			throw new haxe.Exception('DevBridge: event "$name" already registered');
+		eventRegistry.set(name, {description: description, payload: payload});
+	}
+
+	/** Emit a custom game event: pushes into the ring buffer for polling via `get_game_events` and
+	 *  broadcasts as SSE `game_event`. Safe to call without prior `registerEvent`. */
+	public function emitEvent(name:String, data:Dynamic):Void {
+		if (!eventRegistry.exists(name))
+			trace('[DevBridge] emitEvent: unregistered event name "$name" (call registerEvent for discovery)');
+		var entry:Dynamic = {
+			id: nextGameEventId++,
+			name: name,
+			data: data,
+			timestamp: haxe.Timer.stamp(),
+		};
+		if (gameEventBuffer.length >= GAME_EVENT_BUFFER_SIZE) {
+			gameEventBuffer.shift();
+			gameEventDropped++;
+		}
+		gameEventBuffer.push(entry);
+		broadcastSseEvent("game_event", entry);
+	}
+
+	function assertOpNameFree(op:String):Void {
+		if (queryRegistry.exists(op) || commandRegistry.exists(op))
+			throw new haxe.Exception('DevBridge: op "$op" already registered');
+	}
+
 	/** JS-`debugger;`-style breakpoint: snapshot `data`, optionally pause the game loop,
 	 *  push an SSE `debugger` event, and store the hit in a ring buffer for polling via get_debugger_hits.
 	 *  File/line/method are auto-captured from the call site.
@@ -487,6 +545,10 @@ class DevBridge {
 			case "send_events": handleSendEvents(params);
 			// v7: active programmables listing
 			case "list_active_programmables": handleListActiveProgrammables(params);
+			// v8: custom game ops (query/command/event)
+			case "list_game_ops": handleListGameOps(params);
+			case "game_op": handleGameOp(params);
+			case "get_game_events": handleGetGameEvents(params);
 			default: throw DevBridgeError.unknownMethod('Unknown method: $method');
 		};
 	}
@@ -1034,6 +1096,77 @@ class DevBridge {
 		}
 
 		return {hits: hits, total: total, dropped: dropped, lastId: lastId};
+	}
+
+	// ---- v8: Custom game ops handlers ----
+
+	function handleListGameOps(params:Dynamic):Dynamic {
+		var queries:Array<Dynamic> = [];
+		for (op => spec in queryRegistry)
+			queries.push({op: op, description: spec.description, params: spec.params});
+		var commands:Array<Dynamic> = [];
+		for (op => spec in commandRegistry)
+			commands.push({op: op, description: spec.description, params: spec.params});
+		var events:Array<Dynamic> = [];
+		for (name => spec in eventRegistry)
+			events.push({name: name, description: spec.description, payload: spec.payload});
+		return {queries: queries, commands: commands, events: events};
+	}
+
+	function handleGameOp(params:Dynamic):Dynamic {
+		var op:String = params.op;
+		if (op == null) throw DevBridgeError.invalidParams("Required param: op");
+		var handlerParams:Dynamic = params.params != null ? params.params : {};
+
+		var spec:Null<RegisteredOp> = queryRegistry.get(op);
+		var kind = "query";
+		if (spec == null) {
+			spec = commandRegistry.get(op);
+			kind = "command";
+		}
+		if (spec == null)
+			throw DevBridgeError.notFound('Unknown game op: $op. Call list_game_ops to discover registered ops.');
+
+		try {
+			return {kind: kind, op: op, result: spec.handler(handlerParams)};
+		} catch (e:DevBridgeError) {
+			throw e;
+		} catch (e:haxe.Exception) {
+			throw new DevBridgeError("internal", 'Handler for "$op" threw: ${e.message}', 500);
+		}
+	}
+
+	function handleGetGameEvents(params:Dynamic):Dynamic {
+		var clear:Bool = params.clear != null ? params.clear : false;
+		var limit:Int = params.limit != null ? Std.int(params.limit) : 50;
+		if (limit < 1) limit = 1;
+		if (limit > GAME_EVENT_BUFFER_SIZE) limit = GAME_EVENT_BUFFER_SIZE;
+		var sinceId:Int = params.since_id != null ? Std.int(params.since_id) : -1;
+		var typesFilter:Null<Array<String>> = null;
+		if (params.types != null) {
+			var raw:Array<Dynamic> = params.types;
+			typesFilter = [for (t in raw) Std.string(t)];
+		}
+
+		var filtered:Array<Dynamic> = [
+			for (e in gameEventBuffer)
+				if ((sinceId < 0 || (e.id : Int) > sinceId) && (typesFilter == null || typesFilter.indexOf(e.name) >= 0)) e
+		];
+
+		var events:Array<Dynamic> = filtered.length > limit
+			? filtered.slice(filtered.length - limit)
+			: filtered;
+
+		var total = gameEventBuffer.length;
+		var dropped = gameEventDropped;
+		var lastId = gameEventBuffer.length > 0 ? (gameEventBuffer[gameEventBuffer.length - 1].id : Int) : 0;
+
+		if (clear) {
+			gameEventBuffer = [];
+			gameEventDropped = 0;
+		}
+
+		return {events: events, total: total, dropped: dropped, lastId: lastId};
 	}
 
 	/** Called externally to report a caught runtime error. */
@@ -2017,6 +2150,19 @@ class DevBridge {
 		};
 	}
 }
+
+// ---- Custom game op registry shapes ----
+
+private typedef RegisteredOp = {
+	description:String,
+	params:Dynamic,
+	handler:Dynamic->Dynamic,
+};
+
+private typedef RegisteredEvent = {
+	description:String,
+	payload:Dynamic,
+};
 
 // ---- Structured error for MCP error categorization ----
 

@@ -83,6 +83,7 @@ Real-time Server-Sent Events stream for game lifecycle events. Connect with any 
 | `parameter_change` | `programmable`, `param`, `value`, `timestamp` | Parameter changed via DevBridge `set_parameter` tool |
 | `custom` | `name`, `data`, `timestamp` | Custom game event via `broadcastCustomEvent()` |
 | `debugger` | `id`, `data`, `paused`, `file`, `line`, `method`, `timestamp` | `debugger()` breakpoint hit (see `get_debugger_hits`) |
+| `game_event` | `id`, `name`, `data`, `timestamp` | Game event emitted via `emitEvent()` (see `get_game_events`) |
 
 **MCP logging levels:** `trace`→info, `error`→error, `screen_change`→info, `reload`→info/error/warning, `parameter_change`→debug, `custom`→info.
 
@@ -441,6 +442,71 @@ Transform coordinates between local and global space.
 | `screen` | string | no | Scope element search to specific screen |
 
 Returns: `element`, `direction`, `inputX`, `inputY`, `resultX`, `resultY`.
+
+### Custom Game Ops
+
+Game-specific queries, commands, and events registered from game code. MCP clients discover registered ops via `list_game_ops`, invoke them via `game_op`, and poll emitted events via `get_game_events` (or subscribe to the `game_event` SSE stream).
+
+**Game-side registration:**
+```haxe
+#if MULTIANIM_DEV
+var bridge = screenManager.devBridge;
+
+// Read-only: returns unit positions
+bridge.registerQuery("global_map", "All unit positions", {team: "string?"},
+    params -> [for (u in world.units) if (params.team == null || u.team == params.team) {id: u.id, x: u.x, y: u.y}]);
+
+// Mutating: spawn a wave
+bridge.registerCommand("spawn_wave", "Spawn N enemies in a lane", {lane: "int", count: "int"},
+    params -> {world.spawnWave(params.lane, params.count); return {ok: true};});
+
+// Declare event type (metadata-only; emitEvent does not require registration)
+bridge.registerEvent("unit_died", "Fired when a unit dies", {id: "string", killer: "string?"});
+
+// Emit event at runtime
+bridge.emitEvent("unit_died", {id: "hero-1", killer: "orc-7"});
+#end
+```
+
+`params` is a schema-lite metadata hint (JSON-serializable) surfaced to MCP clients via `list_game_ops`. Suffix `?` denotes optional. Handler receives the raw params object and must return a JSON-serializable value; throwing `haxe.Exception` surfaces as MCP `internal` error with the thrown message preserved.
+
+**Registration rules:**
+- Query and command names share a namespace — re-registering an existing op name throws.
+- Event names have a separate namespace — duplicate event registration throws.
+- `emitEvent()` warns (DEV trace) when called with an unregistered name but still buffers + broadcasts.
+
+#### `list_game_ops`
+Discover all registered queries, commands, and event types.
+
+No parameters.
+
+Returns: `queries[]` (each `{op, description, params}`), `commands[]` (same shape), `events[]` (each `{name, description, payload}`).
+
+#### `game_op`
+Invoke a registered query or command by name. Looks up queries first, then commands.
+
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| `op` | string | yes | Registered op name |
+| `params` | object | no | Passed through to the handler (default `{}`) |
+
+Returns: `kind` (`"query"` or `"command"`), `op`, `result` (handler's return value).
+
+Errors: `not_found` for unknown op, `invalid_params` when `op` missing, `internal` when handler throws.
+
+#### `get_game_events`
+Poll the game-event ring buffer (capacity 200).
+
+Pairs with the `game_event` SSE stream for push-based delivery — use `get_game_events` when SSE is unavailable or for catch-up after a gap.
+
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `clear` | bool | false | Clear buffer after reading |
+| `limit` | int | 50 | Max events to return (clamped to 1..200) |
+| `since_id` | int | -1 | Return only events with `id > since_id` (cursor for polling) |
+| `types` | string[] | — | Filter by event name (omit for all) |
+
+Returns: `events[]` (each `{id, name, data, timestamp}`), `total`, `dropped`, `lastId`.
 
 ---
 

@@ -1093,6 +1093,239 @@ class DevBridgeTest extends BuilderTestBase {
 		var slots:Array<Dynamic> = entry.slots;
 		Assert.equals(2, slots.length);
 	}
+
+	// ==================== Custom game ops: list_game_ops ====================
+
+	@Test
+	public function testListGameOps_emptyRegistry():Void {
+		var bridge = createTestBridge();
+		var result:Dynamic = bridge.dispatch("list_game_ops", {});
+		Assert.equals(0, (result.queries : Array<Dynamic>).length);
+		Assert.equals(0, (result.commands : Array<Dynamic>).length);
+		Assert.equals(0, (result.events : Array<Dynamic>).length);
+	}
+
+	@Test
+	public function testListGameOps_afterRegistration():Void {
+		var bridge = createTestBridge();
+		bridge.registerQuery("global_map", "Unit positions", {team: "string?"}, p -> []);
+		bridge.registerCommand("spawn_wave", "Spawn a wave", {lane: "int", count: "int"}, p -> ({ok: true}));
+		bridge.registerEvent("unit_died", "Fired when a unit dies", {id: "string", x: "number", y: "number"});
+
+		var result:Dynamic = bridge.dispatch("list_game_ops", {});
+		var queries:Array<Dynamic> = result.queries;
+		var commands:Array<Dynamic> = result.commands;
+		var events:Array<Dynamic> = result.events;
+		Assert.equals(1, queries.length);
+		Assert.equals("global_map", queries[0].op);
+		Assert.equals("Unit positions", queries[0].description);
+		Assert.equals(1, commands.length);
+		Assert.equals("spawn_wave", commands[0].op);
+		Assert.equals(1, events.length);
+		Assert.equals("unit_died", events[0].name);
+	}
+
+	@Test
+	public function testRegisterQuery_duplicateThrows():Void {
+		var bridge = createTestBridge();
+		bridge.registerQuery("foo", "first", {}, p -> 1);
+		var threw = false;
+		try {
+			bridge.registerQuery("foo", "second", {}, p -> 2);
+		} catch (e:haxe.Exception) {
+			threw = true;
+			Assert.isTrue(e.message.indexOf("already registered") >= 0);
+		}
+		Assert.isTrue(threw);
+	}
+
+	@Test
+	public function testRegisterCommand_rejectsQueryCollision():Void {
+		var bridge = createTestBridge();
+		bridge.registerQuery("shared_name", "q", {}, p -> 1);
+		var threw = false;
+		try {
+			bridge.registerCommand("shared_name", "c", {}, p -> 2);
+		} catch (e:haxe.Exception) {
+			threw = true;
+		}
+		Assert.isTrue(threw, "Command must not collide with an existing query name");
+	}
+
+	// ==================== Custom game ops: game_op ====================
+
+	@Test
+	public function testGameOp_queryDispatch():Void {
+		var bridge = createTestBridge();
+		bridge.registerQuery("ping_count", "test", {}, p -> ({count: 7}));
+		var result:Dynamic = bridge.dispatch("game_op", {op: "ping_count"});
+		Assert.equals("query", result.kind);
+		Assert.equals("ping_count", result.op);
+		Assert.equals(7, result.result.count);
+	}
+
+	@Test
+	public function testGameOp_commandDispatchWithParams():Void {
+		var bridge = createTestBridge();
+		var captured:Dynamic = null;
+		bridge.registerCommand("spawn", "test", {lane: "int"}, function(p) {
+			captured = p;
+			return {spawned: p.lane};
+		});
+		var result:Dynamic = bridge.dispatch("game_op", {op: "spawn", params: {lane: 3}});
+		Assert.equals("command", result.kind);
+		Assert.equals(3, result.result.spawned);
+		Assert.equals(3, captured.lane);
+	}
+
+	@Test
+	public function testGameOp_unknownOpThrowsNotFound():Void {
+		var bridge = createTestBridge();
+		var threw = false;
+		try {
+			bridge.dispatch("game_op", {op: "missing"});
+		} catch (e:haxe.Exception) {
+			threw = true;
+			Assert.isTrue(e.message.indexOf("Unknown game op") >= 0);
+		}
+		Assert.isTrue(threw);
+	}
+
+	@Test
+	public function testGameOp_missingOpParamThrowsInvalidParams():Void {
+		var bridge = createTestBridge();
+		var threw = false;
+		try {
+			bridge.dispatch("game_op", {});
+		} catch (e:haxe.Exception) {
+			threw = true;
+			Assert.isTrue(e.message.indexOf("op") >= 0);
+		}
+		Assert.isTrue(threw);
+	}
+
+	@Test
+	public function testGameOp_handlerExceptionWrappedAsInternal():Void {
+		var bridge = createTestBridge();
+		bridge.registerCommand("boom", "test", {}, p -> {
+			throw new haxe.Exception("handler failed");
+		});
+		var threw = false;
+		try {
+			bridge.dispatch("game_op", {op: "boom"});
+		} catch (e:haxe.Exception) {
+			threw = true;
+			Assert.isTrue(e.message.indexOf("handler failed") >= 0);
+		}
+		Assert.isTrue(threw);
+	}
+
+	@Test
+	public function testGameOp_queryCheckedBeforeCommand():Void {
+		// Safety — registry collision is prevented, but verify lookup order semantics
+		// by registering only a query and confirming kind is "query".
+		var bridge = createTestBridge();
+		bridge.registerQuery("only_query", "q", {}, p -> "q-result");
+		var result:Dynamic = bridge.dispatch("game_op", {op: "only_query"});
+		Assert.equals("query", result.kind);
+	}
+
+	// ==================== Custom game ops: get_game_events ====================
+
+	@Test
+	public function testEmitEvent_bufferedAndPollable():Void {
+		var bridge = createTestBridge();
+		bridge.registerEvent("unit_died", "test", {id: "string"});
+		bridge.emitEvent("unit_died", {id: "hero"});
+		bridge.emitEvent("unit_died", {id: "grunt"});
+
+		var result:Dynamic = bridge.dispatch("get_game_events", {});
+		var events:Array<Dynamic> = result.events;
+		Assert.equals(2, events.length);
+		Assert.equals("unit_died", events[0].name);
+		Assert.equals("hero", events[0].data.id);
+		Assert.equals("grunt", events[1].data.id);
+		Assert.equals(2, result.lastId);
+	}
+
+	@Test
+	public function testEmitEvent_unregisteredNameStillWorks():Void {
+		var bridge = createTestBridge();
+		bridge.emitEvent("ad_hoc_event", {x: 1});
+		var result:Dynamic = bridge.dispatch("get_game_events", {});
+		Assert.equals(1, (result.events : Array<Dynamic>).length);
+	}
+
+	@Test
+	public function testGetGameEvents_sinceIdCursor():Void {
+		var bridge = createTestBridge();
+		bridge.emitEvent("tick", {n: 1});
+		bridge.emitEvent("tick", {n: 2});
+		bridge.emitEvent("tick", {n: 3});
+		var result:Dynamic = bridge.dispatch("get_game_events", {since_id: 1});
+		var events:Array<Dynamic> = result.events;
+		Assert.equals(2, events.length);
+		Assert.equals(2, events[0].id);
+		Assert.equals(3, events[1].id);
+	}
+
+	@Test
+	public function testGetGameEvents_typesFilter():Void {
+		var bridge = createTestBridge();
+		bridge.emitEvent("unit_died", {id: "a"});
+		bridge.emitEvent("wave_done", {wave: 1});
+		bridge.emitEvent("unit_died", {id: "b"});
+		var result:Dynamic = bridge.dispatch("get_game_events", {types: ["unit_died"]});
+		var events:Array<Dynamic> = result.events;
+		Assert.equals(2, events.length);
+		Assert.equals("unit_died", events[0].name);
+		Assert.equals("unit_died", events[1].name);
+	}
+
+	@Test
+	public function testGetGameEvents_limitReturnsLatest():Void {
+		var bridge = createTestBridge();
+		for (i in 0...5) bridge.emitEvent("tick", {n: i});
+		var result:Dynamic = bridge.dispatch("get_game_events", {limit: 2});
+		var events:Array<Dynamic> = result.events;
+		Assert.equals(2, events.length);
+		Assert.equals(4, events[0].id);
+		Assert.equals(5, events[1].id);
+	}
+
+	@Test
+	public function testGetGameEvents_clearResetsBuffer():Void {
+		var bridge = createTestBridge();
+		bridge.emitEvent("e", {n: 1});
+		bridge.emitEvent("e", {n: 2});
+		bridge.dispatch("get_game_events", {clear: true});
+		Assert.equals(0, bridge.gameEventBuffer.length);
+		Assert.equals(0, bridge.gameEventDropped);
+	}
+
+	@Test
+	public function testGetGameEvents_ringBufferDrops():Void {
+		var bridge = createTestBridge();
+		// GAME_EVENT_BUFFER_SIZE = 200
+		for (i in 0...205) bridge.emitEvent("tick", {n: i});
+		var result:Dynamic = bridge.dispatch("get_game_events", {limit: 200});
+		Assert.equals(200, result.total);
+		Assert.equals(5, result.dropped);
+		var events:Array<Dynamic> = result.events;
+		// First 5 ids dropped — oldest retained is id 6, newest is 205
+		Assert.equals(6, events[0].id);
+		Assert.equals(205, events[events.length - 1].id);
+	}
+
+	@Test
+	public function testGetGameEvents_emptyBuffer():Void {
+		var bridge = createTestBridge();
+		var result:Dynamic = bridge.dispatch("get_game_events", {});
+		Assert.equals(0, (result.events : Array<Dynamic>).length);
+		Assert.equals(0, result.total);
+		Assert.equals(0, result.dropped);
+		Assert.equals(0, result.lastId);
+	}
 }
 
 // ---- Private inner class for test screens ----
