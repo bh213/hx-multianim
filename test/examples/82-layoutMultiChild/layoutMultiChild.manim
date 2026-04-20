@@ -14,7 +14,7 @@ layouts {
 #layoutMultiChild programmable() {
   // Each iteration has multiple children: all should be at the SAME layout point.
   // Before the fix, the second child consumed the next layout point.
-  repeatable($i, layout("main", "posLayout")) {
+  repeatable($i, layout("posLayout")) {
     pos: 0, 0
     bitmap(generated(color(80, 50, #FF44AA))): 0, 0
     bitmap(generated(color(60, 30, #44FFDD))): 10, 10

@@ -397,6 +397,62 @@ animation @(level < 3) {
 	}
 
 	@Test
+	public function testParseComparisonConditionalNegativeInteger() {
+		// Regression: comparison conditionals used expectIdentifier() which
+		// rejected a leading minus, so @(level >= -1) failed to parse.
+		// expectSignedIdentifier() now accepts an optional leading APMinus.
+		var result = parseAnimExpectingSuccess('
+sheet: testSheet
+states: level(-1, 0, 1, 2)
+animation @(level >= -1) {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist {
+        sheet: "test_high"
+    }
+}
+animation @(level < -1) {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist {
+        sheet: "test_neg"
+    }
+}
+');
+		Assert.notNull(result, "@(state >= -N) negative comparison should parse");
+		// Verify the comparison value is preserved with its sign — match runtime
+		// state "0" against the >= -1 selector and assert it succeeds.
+		Assert.isTrue(AnimParser.matchConditionalValue(ACVCompare(ACmpGte, "-1"), "0"));
+		Assert.isTrue(AnimParser.matchConditionalValue(ACVCompare(ACmpGte, "-1"), "-1"));
+		Assert.isFalse(AnimParser.matchConditionalValue(ACVCompare(ACmpGte, "-1"), "-2"));
+	}
+
+	@Test
+	public function testParseConditionalDuplicateStateKeyRejected() {
+		// Regression: stacking two conditionals on the same state key
+		// (`@(level >= 3) @(level <= 5)`) used to silently overwrite the first
+		// entry in the conditional map, so only the last comparison applied.
+		// Parser now rejects duplicate keys with a clear error.
+		var error = parseAnimExpectingError('
+sheet: testSheet
+states: level(1, 2, 3, 4, 5)
+animation @(level >= 3) @(level <= 5) {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist {
+        sheet: "test_mid"
+    }
+}
+');
+		Assert.notNull(error, "Should error on duplicate state key in stacked conditionals");
+		Assert.stringContains("level", error);
+		Assert.stringContains("duplicate", error);
+	}
+
+	@Test
 	public function testParseRangeConditional() {
 		var result = parseAnimExpectingSuccess('
 sheet: testSheet
@@ -2161,5 +2217,194 @@ animation {
 		Assert.notNull(result, "random point event with metadata should parse");
 		var d:Dynamic = result;
 		Assert.equals("explode", d.animations[0].name);
+	}
+
+	// ===== Playlist reachability validation (bug 1.1) =====
+
+	@Test
+	public function testUnreachablePlaylistWithNoExtraPointsDetected() {
+		// Bug: playlist validation is nested inside the extraPoint loop.
+		// When an animation has 0 extra points, the playlist validation is
+		// skipped entirely. This test has an unreachable playlist @(direction=>up)
+		// but no extra points — should still be caught.
+		var error = parseAnimExpectingError('
+sheet: testSheet
+states: direction(l, r)
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist @(direction=>l) {
+        sheet: "test_idle_l"
+    }
+    playlist @(direction=>r) {
+        sheet: "test_idle_r"
+    }
+    playlist @(direction=>up) {
+        sheet: "test_idle_up"
+    }
+}
+');
+		Assert.notNull(error, "Unreachable playlist with no extra points should be detected");
+	}
+
+	@Test
+	public function testReachablePlaylistWithNoExtraPointsStillPasses() {
+		// Verify that the fix doesn't break valid animations with no extra points.
+		var result = parseAnimExpectingSuccess('
+sheet: testSheet
+states: direction(l, r)
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist @(direction=>l) {
+        sheet: "test_idle_l"
+    }
+    playlist @(direction=>r) {
+        sheet: "test_idle_r"
+    }
+}
+');
+		Assert.notNull(result, "Valid animation with no extra points should parse");
+	}
+
+	// ===== Unterminated block comment tests =====
+
+	@Test
+	public function testUnterminatedBlockComment() {
+		var error = parseAnimExpectingError('
+sheet: testSheet
+/* this comment is never closed
+animation idle {
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle" }
+}
+');
+		Assert.notNull(error, "Should throw error for unterminated block comment");
+		Assert.stringContains("Unterminated block comment", error);
+	}
+
+	@Test
+	public function testUnterminatedBlockCommentAtEof() {
+		var error = parseAnimExpectingError('
+sheet: testSheet
+animation idle {
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle" }
+}
+/*
+');
+		Assert.notNull(error, "Should throw error for unterminated block comment at EOF");
+		Assert.stringContains("Unterminated block comment", error);
+	}
+
+	// ===== flipX / flipY tests (#13) =====
+
+	@Test
+	public function testParseFlipXInAnimation() {
+		var result = parseAnimExpectingSuccess('
+sheet: testSheet
+animation idle {
+    fps: 4
+    loop: yes
+    flipX: yes
+    playlist { sheet: "test_idle" }
+}
+');
+		Assert.notNull(result, "flipX in animation body should parse");
+	}
+
+	@Test
+	public function testParseFlipYInAnimation() {
+		var result = parseAnimExpectingSuccess('
+sheet: testSheet
+animation idle {
+    fps: 4
+    loop: yes
+    flipY: yes
+    playlist { sheet: "test_idle" }
+}
+');
+		Assert.notNull(result, "flipY in animation body should parse");
+	}
+
+	@Test
+	public function testParseFlipXFileLevelDefault() {
+		var result = parseAnimExpectingSuccess('
+sheet: testSheet
+flipX: yes
+animation idle {
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle" }
+}
+');
+		Assert.notNull(result, "file-level flipX default should parse");
+	}
+
+	@Test
+	public function testParseFlipYFileLevelDefault() {
+		var result = parseAnimExpectingSuccess('
+sheet: testSheet
+flipY: yes
+animation idle {
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle" }
+}
+');
+		Assert.notNull(result, "file-level flipY default should parse");
+	}
+
+	@Test
+	public function testParseFlipXInAnimShorthand() {
+		var result = parseAnimExpectingSuccess('
+sheet: testSheet
+anim idle(fps:4, flipX:yes): "test_idle"
+');
+		Assert.notNull(result, "flipX in anim shorthand should parse");
+	}
+
+	@Test
+	public function testParseFlipBothInAnimShorthand() {
+		var result = parseAnimExpectingSuccess('
+sheet: testSheet
+anim idle(fps:4, flipX:yes, flipY:no): "test_idle"
+');
+		Assert.notNull(result, "flipX+flipY in anim shorthand should parse");
+	}
+
+	@Test
+	public function testParseFlipXDuplicate() {
+		var error = parseAnimExpectingError('
+sheet: testSheet
+animation idle {
+    fps: 4
+    loop: yes
+    flipX: yes
+    flipX: no
+    playlist { sheet: "test_idle" }
+}
+');
+		Assert.notNull(error, "duplicate flipX should error");
+		Assert.stringContains("flipX already set", error);
+	}
+
+	@Test
+	public function testParseFlipXAfterAnimations() {
+		var error = parseAnimExpectingError('
+sheet: testSheet
+animation idle {
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle" }
+}
+flipX: yes
+');
+		Assert.notNull(error, "file-level flipX after animations should error");
+		Assert.stringContains("flipX", error);
 	}
 }

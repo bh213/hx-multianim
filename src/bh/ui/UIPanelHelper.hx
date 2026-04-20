@@ -4,6 +4,7 @@ import bh.base.TweenManager;
 import bh.base.TweenManager.Tween;
 import bh.base.TweenManager.TweenProperty;
 import bh.ui.UITooltipHelper.TooltipPosition;
+import bh.ui.UIElement.UIEventPriority;
 import bh.ui.UIElement.UIScreenEvent;
 import bh.ui.screens.UIScreen;
 import bh.multianim.MultiAnimBuilder;
@@ -32,13 +33,15 @@ private typedef PanelState = {
 	var prefix:String;
 	var closeMode:PanelCloseMode;
 	var pendingClose:Bool;
+	var fadeInTween:Null<Tween>;
+	var fadeOutTween:Null<Tween>;
 }
 
 @:nullSafety
 class UIPanelHelper {
 	/** Event name used with UICustomEvent when a panel closes. Data is the interactiveId (String). */
 	public static inline final EVENT_PANEL_CLOSE = "panelClose";
-	final screen:UIScreenBase;
+	final screen:UIComponentHost;
 	final builder:MultiAnimBuilder;
 	final defaultPosition:TooltipPosition;
 	final defaultOffset:Int;
@@ -65,8 +68,10 @@ class UIPanelHelper {
 
 	// Named panel slots for multi-panel support
 	var namedPanels:Map<String, PanelState> = [];
+	// In-flight fade-out tweens for named panels (keyed by slot, survives panel removal from namedPanels)
+	var namedFadeOutTweens:Map<String, Tween> = [];
 
-	public function new(screen:UIScreenBase, builder:MultiAnimBuilder, ?defaults:PanelDefaults, ?tweens:TweenManager) {
+	public function new(screen:UIComponentHost, builder:MultiAnimBuilder, ?defaults:PanelDefaults, ?tweens:TweenManager) {
 		this.screen = screen;
 		this.builder = builder;
 		this.defaultPosition = defaults?.position ?? Below;
@@ -103,13 +108,14 @@ class UIPanelHelper {
 		final position = positionOverrides.get(interactiveId) ?? defaultPosition;
 		final offset = offsetOverrides.get(interactiveId) ?? defaultOffset;
 
-		positionPanel(result.object, wrapper.interactive, position, offset);
+		UIPositionHelper.position(result.object, wrapper.interactive, position, offset);
 		screen.addObjectToLayer(result.object, layer);
 
 		// Register panel interactives with a prefix so the screen can identify them
 		final prefix = '${interactiveId}.$buildName';
 		if (result.interactives.length > 0)
-			screen.addInteractives(result, prefix);
+			for (w in screen.addInteractives(result, prefix))
+				w.eventPriority = UIEventPriority.Overlay;
 
 		// Apply fade-in
 		if (defaultFadeIn > 0 && tweens != null) {
@@ -121,6 +127,35 @@ class UIPanelHelper {
 		}
 
 		activeInteractiveId = interactiveId;
+		activeResult = result;
+		activePanelPrefix = prefix;
+		activeCloseMode = closeMode ?? defaultCloseMode;
+	}
+
+	/** Open a panel at an explicit position. Closes any existing panel first. */
+	public function openAt(x:Float, y:Float, buildName:String, ?params:Map<String, Dynamic>, ?closeMode:PanelCloseMode):Void {
+		close();
+
+		final result = builder.buildWithParameters(buildName, params ?? [], null, null, true);
+		result.object.setPosition(x, y);
+		screen.addObjectToLayer(result.object, layer);
+
+		// Register panel interactives with a prefix so the screen can identify them
+		final prefix = 'pos.$buildName';
+		if (result.interactives.length > 0)
+			for (w in screen.addInteractives(result, prefix))
+				w.eventPriority = UIEventPriority.Overlay;
+
+		// Apply fade-in
+		if (defaultFadeIn > 0 && tweens != null) {
+			result.object.alpha = 0;
+			activeFadeInTween = tweens.tween(result.object, defaultFadeIn, [Alpha(1.0)]);
+			activeFadeInTween.setOnComplete(() -> {
+				activeFadeInTween = null;
+			});
+		}
+
+		activeInteractiveId = null;
 		activeResult = result;
 		activePanelPrefix = prefix;
 		activeCloseMode = closeMode ?? defaultCloseMode;
@@ -211,17 +246,25 @@ class UIPanelHelper {
 		final position = positionOverrides.get(interactiveId) ?? defaultPosition;
 		final offset = offsetOverrides.get(interactiveId) ?? defaultOffset;
 
-		positionPanel(result.object, wrapper.interactive, position, offset);
+		UIPositionHelper.position(result.object, wrapper.interactive, position, offset);
 		screen.addObjectToLayer(result.object, layer);
 
 		final prefix = '${slot}.${interactiveId}.$buildName';
 		if (result.interactives.length > 0)
-			screen.addInteractives(result, prefix);
+			for (w in screen.addInteractives(result, prefix))
+				w.eventPriority = UIEventPriority.Overlay;
 
-		// Apply fade-in
+		// Apply fade-in (tracked so closeNamed can cancel it)
+		var fadeInTween:Null<Tween> = null;
 		if (defaultFadeIn > 0 && tweens != null) {
 			result.object.alpha = 0;
-			tweens.tween(result.object, defaultFadeIn, [Alpha(1.0)]);
+			fadeInTween = tweens.tween(result.object, defaultFadeIn, [Alpha(1.0)]);
+			fadeInTween.setOnComplete(() -> {
+				// Clear reference once complete so closeNamed doesn't cancel a finished tween
+				final panel = namedPanels.get(slot);
+				if (panel != null)
+					panel.fadeInTween = null;
+			});
 		}
 
 		namedPanels.set(slot, {
@@ -230,22 +273,44 @@ class UIPanelHelper {
 			prefix: prefix,
 			closeMode: closeMode ?? defaultCloseMode,
 			pendingClose: false,
+			fadeInTween: fadeInTween,
+			fadeOutTween: null,
 		});
 	}
 
 	/** Close a specific named panel slot. */
 	public function closeNamed(slot:String):Void {
+		// Cancel any in-flight fade-out from a previous close of this slot
+		final prevFadeOut = namedFadeOutTweens.get(slot);
+		if (prevFadeOut != null) {
+			prevFadeOut.finish();
+			namedFadeOutTweens.remove(slot);
+		}
 		final panel = namedPanels.get(slot);
 		if (panel == null)
 			return;
+		// Cancel any in-progress fade-in before starting fade-out
+		if (panel.fadeInTween != null) {
+			panel.fadeInTween.cancel();
+			panel.fadeInTween = null;
+		}
+		// Cancel any in-progress fade-out from a previous close
+		if (panel.fadeOutTween != null) {
+			panel.fadeOutTween.cancel();
+			panel.fadeOutTween = null;
+		}
 		screen.removeInteractives(panel.prefix);
 		namedPanels.remove(slot);
 		screen.onScreenEvent(UICustomEvent(EVENT_PANEL_CLOSE, panel.interactiveId), null);
 
 		final obj = panel.result.object;
 		if (defaultFadeOut > 0 && tweens != null) {
-			final t = tweens.tween(obj, defaultFadeOut, [Alpha(0.0)]);
-			t.setOnComplete(() -> obj.remove());
+			final fadeOut = tweens.tween(obj, defaultFadeOut, [Alpha(0.0)]);
+			namedFadeOutTweens.set(slot, fadeOut);
+			fadeOut.setOnComplete(() -> {
+				obj.remove();
+				namedFadeOutTweens.remove(slot);
+			});
 		} else {
 			obj.remove();
 		}
@@ -272,11 +337,11 @@ class UIPanelHelper {
 	// ---- Outside-click handling ----
 
 	/**
-	 * Call from onScreenEvent for every UIInteractiveEvent to handle outside-click close.
-	 * Uses OutsideClickControl: the trigger interactive subscribes on push, so clicking
-	 * elsewhere fires UIClickOutside. Because the controller sends OnReleaseOutside before
-	 * OnRelease, we defer the close to allow panel's own interactives to cancel it.
-	 * Call `checkPendingClose()` from the screen's update().
+	 * Handle outside-click close for UIInteractiveEvents.
+	 * The trigger interactive subscribes on push, so clicking elsewhere fires UIClickOutside.
+	 * Because the controller sends OnReleaseOutside before OnRelease, we defer the close
+	 * to allow panel's own interactives to cancel it.
+	 * Auto-wired when created via `createPanelHelper()`, or call manually from onScreenEvent.
 	 * Returns true if any panel was closed immediately (click on unrelated interactive).
 	 */
 	var _pendingClose:Bool = false;
@@ -346,6 +411,8 @@ class UIPanelHelper {
 		return closed;
 	}
 
+	// IMPORTANT: This relies on TweenManager.cancel() only setting a flag without firing onComplete.
+	// If cancel() ever fires onComplete, the remove() below would double-remove with the tween's callback.
 	function cancelActiveFadeOut():Void {
 		if (activeFadeOutTween != null) {
 			activeFadeOutTween.cancel();
@@ -373,23 +440,4 @@ class UIPanelHelper {
 		return false;
 	}
 
-	function positionPanel(panel:h2d.Object, anchor:h2d.Object, position:TooltipPosition, offset:Int):Void {
-		final anchorBounds = anchor.getBounds();
-		final panelBounds = panel.getSize();
-
-		switch position {
-			case Above:
-				panel.x = anchorBounds.x + (anchorBounds.width - panelBounds.width) / 2;
-				panel.y = anchorBounds.y - panelBounds.height - offset;
-			case Below:
-				panel.x = anchorBounds.x + (anchorBounds.width - panelBounds.width) / 2;
-				panel.y = anchorBounds.y + anchorBounds.height + offset;
-			case Left:
-				panel.x = anchorBounds.x - panelBounds.width - offset;
-				panel.y = anchorBounds.y + (anchorBounds.height - panelBounds.height) / 2;
-			case Right:
-				panel.x = anchorBounds.x + anchorBounds.width + offset;
-				panel.y = anchorBounds.y + (anchorBounds.height - panelBounds.height) / 2;
-		}
-	}
 }

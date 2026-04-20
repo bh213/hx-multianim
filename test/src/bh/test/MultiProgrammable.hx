@@ -293,6 +293,9 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 	@:manim("test/examples/95-transition/transition.manim", "transCrossfade")
 	public var transCrossfade;
 
+	@:manim("test/examples/95-transition/transition.manim", "transCrossfadeEased")
+	public var transCrossfadeEased;
+
 	@:manim("test/examples/95-transition/transition.manim", "transFlipX")
 	public var transFlipX;
 
@@ -304,4 +307,130 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/95-transition/transition.manim", "transSlideDown")
 	public var transSlideDown;
+
+	@:manim("test/examples/96-autoFit/autoFit.manim", "autoFit")
+	public var autoFit;
+
+	@:manim("test/examples/97-flowConditional/flowConditional.manim", "flowConditional")
+	public var flowConditional;
+
+	@:manim("test/examples/98-customFilter/customFilter.manim", "customFilter")
+	public var customFilter;
+
+	@:manim("test/examples/100-switchDemo/switchDemo.manim", "switchDemo")
+	public var switchDemo;
+
+	@:manim("test/examples/100-switchDemo/switchDemo.manim", "colorSwitchWidths")
+	public var colorSwitchWidths;
+
+	@:manim("test/examples/100-switchDemo/switchDemo.manim", "colorSwitchAlpha")
+	public var colorSwitchAlpha;
+
+	@:manim("test/examples/101-animFlip/animFlip.manim", "animFlip")
+	public var animFlip;
+
+	@:manim("test/examples/102-switchRepeat/switchRepeat.manim", "switchRepeat")
+	public var switchRepeat;
+
+	@:manim("test/examples/102-switchRepeat/switchRepeat.manim", "switchFixedRepeat")
+	public var switchFixedRepeat;
+
+	@:manim("test/examples/102-switchRepeat/switchRepeat.manim", "switchText")
+	public var switchText;
+
+	@:manim("test/examples/102-switchRepeat/switchRepeat.manim", "switchNested")
+	public var switchNested;
+
+	@:manim("test/examples/102-switchRepeat/switchRepeat.manim", "switchExpr")
+	public var switchExpr;
+
+	@:manim("test/examples/102-switchRepeat/switchRepeat.manim", "switchRepeatDemo")
+	public var switchRepeatDemo;
+
+	@:manim("test/examples/103-switchArmContext/switchArmContext.manim", "switchGridArm")
+	public var switchGridArm;
+
+	@:manim("test/examples/103-switchArmContext/switchArmContext.manim", "switchCallbackArm")
+	public var switchCallbackArm;
+
+	@:manim("test/examples/103-switchArmContext/switchArmContext.manim", "slotParamContextHost")
+	public var slotParamContextHost;
+
+	@:manim("test/examples/104-codegenInteractive/codegenInteractive.manim", "codegenBoundBtn")
+	public var codegenBoundBtn;
+
+	@:manim("test/examples/104-codegenInteractive/codegenInteractive.manim", "codegenAutoBtn")
+	public var codegenAutoBtn;
+
+	@:manim("test/examples/104-codegenInteractive/codegenInteractive.manim", "codegenSwitchBtn")
+	public var codegenSwitchBtn;
+
+	@:manim("test/examples/104-codegenInteractive/codegenInteractive.manim", "codegenLoopSlot")
+	public var codegenLoopSlot;
+
+	@:manim("test/examples/104-codegenInteractive/codegenInteractive.manim", "codegenTypedParams")
+	public var codegenTypedParams;
+
+	@:manim("test/examples/104-codegenInteractive/codegenInteractive.manim", "codegenIdExpr")
+	public var codegenIdExpr;
+
+	@:manim("test/examples/105-rootProperties/rootProperties.manim", "rootProperties")
+	public var rootProperties;
+
+	@:manim("test/examples/106-switchArmNames/switchArmNames.manim", "switchArmNames")
+	public var switchArmNames;
+
+	@:manim("test/examples/106-switchArmNames/switchArmNames.manim", "switchArmSlot")
+	public var switchArmSlot;
+
+	@:manim("test/examples/107-rubeGoldberg/rubeGoldberg.manim", "rubeGoldberg")
+	public var rubeGoldberg;
+
+	@:manim("test/examples/107-rubeGoldberg/rubeGoldberg.manim", "rgCardA")
+	public var rgCardA;
+
+	@:manim("test/examples/107-rubeGoldberg/rubeGoldberg.manim", "rgCardB")
+	public var rgCardB;
+
+	@:manim("test/examples/107-rubeGoldberg/rubeGoldberg.manim", "rgCardC")
+	public var rgCardC;
+
+	@:data("test/examples/107-rubeGoldberg/rubeGoldberg.manim", "rgInfo")
+	public var rgInfo;
+
+	@:manim("test/examples/108-applyParamUpdate/applyParamUpdate.manim", "applyParamUpdate")
+	public var applyParamUpdate;
+
+	@:manim("test/examples/109-codegenIncrementalGfxPx/codegenIncrementalGfxPx.manim", "codegenIncGraphics")
+	public var codegenIncGraphics;
+
+	@:manim("test/examples/109-codegenIncrementalGfxPx/codegenIncrementalGfxPx.manim", "codegenIncPixels")
+	public var codegenIncPixels;
+
+	@:manim("test/examples/110-codegenIncrementalMaskFlow/codegenIncrementalMaskFlow.manim", "codegenIncMask")
+	public var codegenIncMask;
+
+	@:manim("test/examples/110-codegenIncrementalMaskFlow/codegenIncrementalMaskFlow.manim", "codegenIncFlow")
+	public var codegenIncFlow;
+
+	@:manim("test/examples/111-codegenIncrementalInteractiveStateanim/codegenIncrementalInteractiveStateanim.manim", "codegenIncInteractive")
+	public var codegenIncInteractive;
+
+	@:manim("test/examples/111-codegenIncrementalInteractiveStateanim/codegenIncrementalInteractiveStateanim.manim", "codegenIncStateanim")
+	public var codegenIncStateanim;
+
+	@:manim("test/examples/111-codegenIncrementalInteractiveStateanim/codegenIncrementalInteractiveStateanim.manim", "codegenIncUntrackedId")
+	public var codegenIncUntrackedId;
+
+	@:manim("test/examples/111-codegenIncrementalInteractiveStateanim/codegenIncrementalInteractiveStateanim.manim", "codegenIncUntrackedMeta")
+	public var codegenIncUntrackedMeta;
+
+	@:manim("test/examples/111-codegenIncrementalInteractiveStateanim/codegenIncrementalInteractiveStateanim.manim", "codegenIncUntrackedSelector")
+	public var codegenIncUntrackedSelector;
+
+	@:manim("test/examples/112-chainBoundary/chainBoundary.manim", "chainBoundary")
+	public var chainBoundary;
+
+	@:manim("test/examples/113-codegenGraphicsReattach/codegenGraphicsReattach.manim", "codegenGraphicsReattach")
+	public var codegenGraphicsReattach;
 }

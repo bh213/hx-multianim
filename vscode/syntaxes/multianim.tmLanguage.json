@@ -1,0 +1,398 @@
+{
+	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+	"name": "MultiAnim",
+	"patterns": [
+		{
+			"include": "#comments"
+		},
+		{
+			"include": "#strings"
+		},
+		{
+			"include": "#variables"
+		},
+		{
+			"include": "#tags"
+		},
+		{
+			"include": "#conditionals"
+		},
+		{
+			"include": "#at-directives"
+		},
+		{
+			"include": "#programmable-params"
+		},
+		{
+			"include": "#colors"
+		},
+		{
+			"include": "#numbers"
+		},
+		{
+			"include": "#operators"
+		},
+		{
+			"include": "#keywords"
+		},
+		{
+			"include": "#brackets"
+		}
+	],
+	"repository": {
+		"programmable-params": {
+			"begin": "\\b(programmable|slot)\\s*\\(",
+			"beginCaptures": {
+				"1": {
+					"name": "entity.name.class.multianim"
+				}
+			},
+			"end": "\\)",
+			"name": "meta.parameter-list.multianim",
+			"patterns": [
+				{
+					"include": "#comments"
+				},
+				{
+					"include": "#strings"
+				},
+				{
+					"include": "#variables"
+				},
+				{
+					"include": "#colors"
+				},
+				{
+					"include": "#numbers"
+				},
+				{
+					"name": "entity.name.type.multianim",
+					"match": "\\b(int|uint|float|flags|string|hexDirection|hexdirection|gridDirection|griddirection|bool|color|array|record|tile)\\b"
+				},
+				{
+					"name": "constant.language.multianim",
+					"match": "\\b(true|false|yes|no|null|nothing)\\b"
+				},
+				{
+					"name": "support.constant.color.multianim",
+					"match": "\\b(white|black|red|green|blue|yellow|cyan|magenta|orange|purple|pink|gray|grey|transparent|maroon|olive|lime|fuchsia|teal|aqua|navy|silver|brown|coral|crimson|darkGray|darkgray|forestGreen|forestgreen|gold|indigo|lightGray|lightgray|skyBlue|skyblue|slate|tomato|wheat)\\b"
+				},
+				{
+					"name": "keyword.operator.arrow.multianim",
+					"match": "=>"
+				},
+				{
+					"name": "keyword.operator.range.multianim",
+					"match": "\\.\\."
+				},
+				{
+					"match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b",
+					"name": "variable.parameter.multianim"
+				},
+				{
+					"name": "punctuation.separator.comma.multianim",
+					"match": ","
+				},
+				{
+					"name": "punctuation.separator.colon.multianim",
+					"match": ":"
+				},
+				{
+					"name": "punctuation.definition.array.begin.multianim",
+					"match": "\\["
+				},
+				{
+					"name": "punctuation.definition.array.end.multianim",
+					"match": "\\]"
+				}
+			]
+		},
+		"comments": {
+			"patterns": [
+				{
+					"name": "comment.line.double-slash.multianim",
+					"match": "//.*$"
+				},
+				{
+					"name": "comment.block.multianim",
+					"begin": "/\\*",
+					"end": "\\*/"
+				}
+			]
+		},
+		"variables": {
+			"patterns": [
+				{
+					"name": "variable.other.interpolated.multianim",
+					"match": "\\$\\$[A-Za-z_][A-Za-z0-9_]*\\$\\$"
+				},
+				{
+					"name": "variable.other.multianim",
+					"match": "\\$[A-Za-z_][A-Za-z0-9_]*"
+				}
+			]
+		},
+		"tags": {
+			"name": "entity.name.tag.multianim",
+			"match": "#[A-Za-z_][A-Za-z0-9_\\-]*\\b"
+		},
+		"conditionals": {
+			"patterns": [
+				{
+					"begin": "(@if|@any|@all|@else|@)\\(",
+					"beginCaptures": {
+						"1": {
+							"name": "keyword.control.conditional.multianim"
+						}
+					},
+					"end": "\\)",
+					"endCaptures": {
+						"0": {
+							"name": "keyword.control.conditional.multianim"
+						}
+					},
+					"name": "meta.condition-block.multianim",
+					"patterns": [
+						{
+							"match": "=>",
+							"name": "keyword.operator.arrow.multianim"
+						},
+						{
+							"match": "(==|!=|<=|>=|<|>)",
+							"name": "keyword.operator.comparison.multianim"
+						},
+						{
+							"match": "\\*",
+							"name": "keyword.operator.wildcard.multianim"
+						},
+						{
+							"match": "!",
+							"name": "keyword.operator.negation.multianim"
+						},
+						{
+							"match": "\\.\\.",
+							"name": "keyword.operator.range.multianim"
+						},
+						{
+							"match": "\\b(between)\\b",
+							"name": "keyword.operator.range.multianim"
+						},
+						{
+							"include": "#colors"
+						},
+						{
+							"include": "#variables"
+						},
+						{
+							"match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b",
+							"name": "variable.parameter.multianim"
+						},
+						{
+							"include": "#numbers"
+						},
+						{
+							"match": ",",
+							"name": "punctuation.separator.comma.multianim"
+						}
+					]
+				},
+				{
+					"match": "@(else|default)\\b",
+					"name": "keyword.control.conditional.multianim"
+				},
+				{
+					"begin": "@switch\\(",
+					"beginCaptures": {
+						"0": {
+							"name": "keyword.control.conditional.multianim"
+						}
+					},
+					"end": "\\)",
+					"endCaptures": {
+						"0": {
+							"name": "keyword.control.conditional.multianim"
+						}
+					},
+					"name": "meta.switch-param.multianim",
+					"patterns": [
+						{
+							"match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b",
+							"name": "variable.parameter.multianim"
+						}
+					]
+				}
+			]
+		},
+		"at-directives": {
+			"name": "keyword.other.directive.multianim",
+			"match": "@(layer|scale|alpha|debug|tint|pos|filter|blendMode|final)\\b"
+		},
+		"colors": {
+			"name": "constant.other.color.hex.multianim",
+			"match": "#[0-9A-Fa-f]{6,8}\\b"
+		},
+		"numbers": {
+			"patterns": [
+				{
+					"name": "constant.numeric.hex.multianim",
+					"match": "0x[0-9A-Fa-f]+"
+				},
+				{
+					"name": "constant.numeric.float.multianim",
+					"match": "-?\\d*\\.\\d+"
+				},
+				{
+					"name": "constant.numeric.integer.multianim",
+					"match": "-?\\d+"
+				}
+			]
+		},
+		"operators": {
+			"patterns": [
+				{
+					"name": "keyword.operator.ternary.multianim",
+					"match": "\\?\\("
+				},
+				{
+					"name": "keyword.operator.arrow.multianim",
+					"match": "=>"
+				},
+				{
+					"name": "keyword.operator.range.multianim",
+					"match": "\\.\\."
+				},
+				{
+					"name": "keyword.operator.arithmetic.multianim",
+					"match": "[+\\-*/%]"
+				},
+				{
+					"name": "keyword.operator.comparison.multianim",
+					"match": "(==|!=|<=|>=|<|>)"
+				}
+			]
+		},
+		"keywords": {
+			"patterns": [
+				{
+					"name": "entity.name.class.multianim",
+					"match": "\\b(programmable|stateanim|stateAnim|flow|apply|text|richText|tileGroup|tilegroup|repeatable|repeatable2D|ninepatch|layers|placeholder|bitmap|point|interactive|pixels|palette|paths|particles|animatedPath|graphics|polygon|circle|ellipse|roundRect|roundrect|autotile|curves|data|mask|atlas2|slot|spacer|dynamicRef|staticRef|slotContent|slotcontent)\\b"
+				},
+				{
+					"name": "keyword.control.multianim",
+					"match": "\\b(version|import|debug|settings|construct|loop|bit|event|inlinecolor|greaterthanorequal|lessthanorequal)\\b"
+				},
+				{
+					"name": "keyword.other.multianim",
+					"match": "\\b(external|path|nothing|list|line|forward|turn|arc|bezier|bezierAbs|checkpoint|close|flat|pointy|layer|layout|callback|builderParameter|sheet|file|generated|hex|hexCorner|hexEdge|hexGrid|grid|step|pos|position|alpha|blendMode|scale|updatable|cross|center|left|right|top|bottom|offset|filter|tiles|smoothing|array|range|sequence|rect|filledRect|pixel|emit|emitDelay|count|maxLife|speed|speedRandom|speedIncrease|gravity|gravityAngle|size|sizeRandom|sizeCurve|velocityCurve|forceFields|turbulence|wind|vortex|attractor|repulsor|pathguide|rotationSpeed|rotationInitial|rotationSpeedRandom|rotateAuto|fadeIn|fadeOut|fadePower|emitSync|animationRepeat|lifeRandom|relative|absolute|cone|box|tileSize|depth|mapping|region|allowPartialMapping|prefix|demo|color|colorWithText|autotileRegionSheet|filled|maxWidth|maxHeight|minWidth|minHeight|lineHeight|colWidth|paddingTop|paddingBottom|paddingLeft|paddingRight|padding|horizontalSpacing|verticalSpacing|horizontal|vertical|stack|letterSpacing|lineSpacing|lineBreak|dropShadowXY|dropShadowColor|dropShadowAlpha|kill|bounce|wrap|easing|duration|points|type|lineTo|lineAbs|moveTo|moveAbs|spiral|wave|subEmitters|groupId|probability|inheritVelocity|offsetX|offsetY|speedCurve|scaleCurve|alphaCurve|rotationCurve|progressCurve|custom|dx|dy|multiline|tint|blob47|distance|time|onBirth|onDeath|onCollision|onInterval|record|knockout|smoothColor|corner|cube|doubled|edge|error|even|odd|pingPong|pingpong|pivot|autofit|colorcurve|crossfade|enum|extrapoint|fade|fallback|fill|flipx|flipy|invert|slide|transition|width|2d|auto|background|curve|expand|fillheight|fillwidth|format|hidden|index|limit|orig|overflow|reverse|scroll|shutdown|split|trigger|align|angle|angleSpread|anim|animFile|animSelector|attachTo|bounds|burstCount|cellHeight|cells|cellWidth|centerX|centerY|click|colorStops|cols|condenseWhite|deg|dist|distRand|down|events|externallyDriven|font|forwardAngle|from|halign|horizontalAlign|hover|images|layouts|middle|onBounce|push|rad|rotate|rows|rRand|spawnCurve|styles|tangent|to|until|up|valign|verticalAlign)\\b"
+				},
+				{
+					"name": "entity.name.type.multianim",
+					"match": "\\b(int|uint|float|flags|string|hexDirection|hexdirection|gridDirection|griddirection|bool|color|array|record|tile)\\b"
+				},
+				{
+					"name": "constant.language.multianim",
+					"match": "\\b(true|false|yes|no|null|nothing)\\b"
+				},
+				{
+					"name": "support.constant.color.multianim",
+					"match": "\\b(white|black|red|green|blue|yellow|cyan|magenta|orange|purple|pink|gray|grey|transparent|maroon|olive|lime|fuchsia|teal|aqua|navy|silver|brown|coral|crimson|darkGray|darkgray|forestGreen|forestgreen|gold|indigo|lightGray|lightgray|skyBlue|skyblue|slate|tomato|wheat)\\b"
+				},
+				{
+					"name": "keyword.other.blendmode.multianim",
+					"match": "\\b(none|alpha|add|alphaAdd|softAdd|multiply|alphaMultiply|erase|screen|sub|max|min|normal)\\b"
+				},
+				{
+					"name": "support.function.filter.multianim",
+					"match": "\\b(outline|glow|blur|saturate|brightness|grayscale|hue|dropShadow|replacePalette|replaceColor|pixelOutline|group)\\b"
+				},
+				{
+					"name": "support.constant.easing.multianim",
+					"match": "\\b(linear|easeInQuad|easeOutQuad|easeInOutQuad|easeInCubic|easeOutCubic|easeInOutCubic|easeInBack|easeOutBack|easeInOutBack|easeOutBounce|easeOutElastic|cubicBezier)\\b"
+				},
+				{
+					"name": "keyword.operator.div.multianim",
+					"match": "\\bdiv\\b"
+				}
+			]
+		},
+		"strings": {
+			"patterns": [
+				{
+					"name": "string.quoted.double.multianim",
+					"begin": "\"",
+					"end": "\"",
+					"patterns": [
+						{
+							"name": "constant.character.escape.multianim",
+							"match": "\\\\."
+						},
+						{
+							"name": "variable.other.interpolated.multianim",
+							"match": "\\$\\$[A-Za-z_][A-Za-z0-9_]*\\$\\$"
+						},
+						{
+							"name": "variable.other.multianim",
+							"match": "\\$[A-Za-z_][A-Za-z0-9_]*"
+						}
+					]
+				},
+				{
+					"name": "string.quoted.single.multianim",
+					"begin": "'",
+					"end": "'",
+					"patterns": [
+						{
+							"name": "constant.character.escape.multianim",
+							"match": "\\\\."
+						},
+						{
+							"name": "variable.other.interpolated.multianim",
+							"match": "\\$\\{[^}]+\\}"
+						}
+					]
+				}
+			]
+		},
+		"brackets": {
+			"patterns": [
+				{
+					"name": "punctuation.definition.block.begin.multianim",
+					"match": "\\{"
+				},
+				{
+					"name": "punctuation.definition.block.end.multianim",
+					"match": "\\}"
+				},
+				{
+					"name": "punctuation.definition.parameters.begin.multianim",
+					"match": "\\("
+				},
+				{
+					"name": "punctuation.definition.parameters.end.multianim",
+					"match": "\\)"
+				},
+				{
+					"name": "punctuation.definition.array.begin.multianim",
+					"match": "\\["
+				},
+				{
+					"name": "punctuation.definition.array.end.multianim",
+					"match": "\\]"
+				},
+				{
+					"name": "punctuation.separator.comma.multianim",
+					"match": ","
+				},
+				{
+					"name": "punctuation.separator.colon.multianim",
+					"match": ":"
+				},
+				{
+					"name": "punctuation.terminator.semicolon.multianim",
+					"match": ";"
+				}
+			]
+		}
+	},
+	"scopeName": "source.multianim"
+}

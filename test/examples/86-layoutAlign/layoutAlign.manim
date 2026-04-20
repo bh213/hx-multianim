@@ -155,17 +155,17 @@ layouts {
     bitmap(generated(colorwithtext(80, 30, teal, "cX+btm", white, m3x6))): layout(bottomCenter).offset(0, -30)
 
     // Cells grid - orange boxes
-    repeatable($i, layout("layouts", "cellGrid")) {
+    repeatable($i, layout("cellGrid")) {
         bitmap(generated(colorwithtext(16, 16, orange, "cell", black, m3x6))): 0, 0
     }
 
     // Hex ring - lime hexagonal pattern (top-right, align: right)
-    repeatable($i, layout("layouts", "hexRing")) {
+    repeatable($i, layout("hexRing")) {
         bitmap(generated(color(20, 20, lime))): 0, 0
     }
 
     // Grid dots - navy small rects (bottom-left, align: bottom)
-    repeatable($i, layout("layouts", "gridDots")) {
+    repeatable($i, layout("gridDots")) {
         bitmap(generated(color(10, 10, navy))): 0, 0
     }
 

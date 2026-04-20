@@ -339,4 +339,206 @@ class DynamicRefTest extends BuilderTestBase {
 		var bitmaps = findVisibleBitmapDescendants(leafRef.object);
 		Assert.isTrue(bitmaps.length > 0);
 	}
+
+	// ==================== Dynamic Name Refs ====================
+
+	@Test
+	public function testDynamicNameRefBuilds():Void {
+		// $template is a string param that names a programmable
+		final result = buildFromSource("
+			#widgetA programmable() {
+				bitmap(generated(color(10, 10, #ff0000))): 0, 0
+			}
+			#widgetB programmable() {
+				bitmap(generated(color(20, 20, #00ff00))): 0, 0
+			}
+			#test programmable(template:string=\"widgetA\") {
+				dynamicRef($template): 0, 0
+			}
+		", "test", null, Incremental);
+		Assert.notNull(result);
+		Assert.isTrue(result.object.numChildren > 0);
+		// Should build widgetA initially
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.isTrue(bitmaps.length > 0);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testDynamicNameRefSwitchesOnParamChange():Void {
+		final result = buildFromSource("
+			#widgetA programmable() {
+				bitmap(generated(color(10, 10, #ff0000))): 0, 0
+			}
+			#widgetB programmable() {
+				bitmap(generated(color(20, 20, #00ff00))): 0, 0
+			}
+			#test programmable(template:string=\"widgetA\") {
+				dynamicRef($template): 0, 0
+			}
+		", "test", null, Incremental);
+		// Initially widgetA (10x10)
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+
+		// Switch to widgetB
+		result.setParameter("template", "widgetB");
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.isTrue(bitmaps.length > 0);
+		Assert.equals(20, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testDynamicNameRefWithForwardedParams():Void {
+		final result = buildFromSource("
+			#bar programmable(val:uint=10) {
+				bitmap(generated(color($val, 5, #ff0000))): 0, 0
+			}
+			#baz programmable(val:uint=10) {
+				bitmap(generated(color($val, 8, #00ff00))): 0, 0
+			}
+			#test programmable(template:string=\"bar\", size:uint=15) {
+				dynamicRef($template, val=>$size): 0, 0
+			}
+		", "test", null, Incremental);
+		// Initially bar with val=15
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(15, Std.int(bitmaps[0].tile.width));
+
+		// Switch template to baz — should rebuild with val=15
+		result.setParameter("template", "baz");
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.isTrue(bitmaps.length > 0);
+		Assert.equals(15, Std.int(bitmaps[0].tile.width));
+		Assert.equals(8, Std.int(bitmaps[0].tile.height));
+	}
+
+	@Test
+	public function testDynamicNameRefParamUpdateWithoutTemplateChange():Void {
+		final result = buildFromSource("
+			#bar programmable(val:uint=10) {
+				bitmap(generated(color($val, 5, #ff0000))): 0, 0
+			}
+			#test programmable(template:string=\"bar\", size:uint=10) {
+				dynamicRef($template, val=>$size): 0, 0
+			}
+		", "test", null, Incremental);
+		// Initially bar with val=10
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+
+		// Change size without changing template — should propagate to child
+		result.setParameter("size", 25);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(25, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testDynamicNameRefFallbackToLiteral():Void {
+		// When $name is NOT a parameter, it should fall back to literal programmable name
+		// (backward compatibility)
+		final result = buildFromSource("
+			#myWidget programmable() {
+				bitmap(generated(color(7, 7, #0000ff))): 0, 0
+			}
+			#test programmable() {
+				dynamicRef($myWidget): 0, 0
+			}
+		", "test");
+		Assert.notNull(result);
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.isTrue(bitmaps.length > 0);
+		Assert.equals(7, Std.int(bitmaps[0].tile.width));
+	}
+
+	// ==================== Dynamic Name Ref Tear-Down ====================
+
+	@Test
+	public function testDynamicNameRefTearDownRemovesOldVisuals():Void {
+		// When template changes, old visual's scene graph should be fully removed
+		final result = buildFromSource("
+			#widgetA programmable() {
+				bitmap(generated(color(10, 10, #ff0000))): 0, 0
+				bitmap(generated(color(5, 5, #00ff00))): 15, 0
+			}
+			#widgetB programmable() {
+				bitmap(generated(color(20, 20, #0000ff))): 0, 0
+			}
+			#test programmable(template:string=\"widgetA\") {
+				dynamicRef($template): 0, 0
+			}
+		", "test", null, Incremental);
+
+		// Initially widgetA: 2 bitmaps
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(2, bitmaps.length);
+
+		// Switch to widgetB: should have exactly 1 bitmap, old ones gone
+		result.setParameter("template", "widgetB");
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(20, Std.int(bitmaps[0].tile.width));
+
+		// Switch back to widgetA: should rebuild 2 bitmaps
+		result.setParameter("template", "widgetA");
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(2, bitmaps.length);
+	}
+
+	@Test
+	public function testDynamicNameRefTearDownUpdatesInteractives():Void {
+		// When template changes, old result's interactives should not appear in new result
+		final result = buildFromSource("
+			#widgetA programmable() {
+				bitmap(generated(color(10, 10, #ff0000))): 0, 0
+				interactive(50, 50, \"btnA\"): 0, 0
+			}
+			#widgetB programmable() {
+				bitmap(generated(color(20, 20, #0000ff))): 0, 0
+				interactive(50, 50, \"btnB\"): 0, 0
+			}
+			#test programmable(template:string=\"widgetA\") {
+				dynamicRef($template): 0, 0
+			}
+		", "test", null, Incremental);
+
+		// Initially widgetA — getDynamicRef should return its result
+		var dynRef = result.getDynamicRef("widgetA");
+		Assert.notNull(dynRef);
+		Assert.isTrue(dynRef.interactives.length > 0, "widgetA should have interactives");
+
+		// Switch to widgetB
+		result.setParameter("template", "widgetB");
+		dynRef = result.getDynamicRef("widgetB");
+		Assert.notNull(dynRef);
+		Assert.isTrue(dynRef.interactives.length > 0, "widgetB should have interactives");
+
+		// Old widgetA result should no longer be accessible via getDynamicRef
+		var err:String = null;
+		try {
+			result.getDynamicRef("widgetA");
+		} catch (e:Dynamic) {
+			err = Std.string(e);
+		}
+		Assert.notNull(err, "Old template widgetA should not be accessible after switch");
+	}
+
+	@Test
+	public function testDynamicNameRefMissingParamOnTargetThrows():Void {
+		// Target programmable doesn't have the forwarded param — should throw (strict)
+		var err:String = null;
+		try {
+			buildFromSource("
+				#widgetA programmable() {
+					bitmap(generated(color(10, 10, #ff0000))): 0, 0
+				}
+				#test programmable(template:string=\"widgetA\") {
+					dynamicRef($template, nonexistent=>42): 0, 0
+				}
+			", "test", null, Incremental);
+		} catch (e:Dynamic) {
+			err = Std.string(e);
+		}
+		Assert.notNull(err);
+	}
 }

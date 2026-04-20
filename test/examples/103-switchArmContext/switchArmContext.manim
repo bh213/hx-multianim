@@ -1,0 +1,53 @@
+version: 1.0
+
+// B1: @switch arm contains a graphics element whose inner position uses
+// $grid.pos(...). drawGraphicsElements reads the gridCoordinateSystem argument
+// passed into build() — rebuildSwitchArmByOrdinal currently passes `cast null`,
+// so calculatePosition throws 'gridCoordinateSystem is null' inside the arm.
+#switchGridArm programmable(mode:[a, b]=a) {
+  pos: 0, 0
+  grid: 20, 20
+
+  @switch(mode) {
+    a {
+      graphics(
+        rect(#0f0, filled, 10, 10): $grid.pos(0, 0),
+        rect(#0f0, filled, 10, 10): $grid.pos(1, 0)
+      );
+    }
+    b {
+      graphics(
+        rect(#f00, filled, 10, 10): $grid.pos(2, 1),
+        rect(#f00, filled, 10, 10): $grid.pos(3, 1)
+      );
+    }
+  }
+}
+
+// B2: @switch arm contains callback("name") placeholder. Rebuild must inherit
+// the parent's builderParams.callback so user-supplied callbacks still fire
+// after a switch flip. Arm `a` is callback-free so a default create() works;
+// arm `b` has a callback placeholder that's only invoked after setMode(b).
+#switchCallbackArm programmable(mode:[a, b]=a) {
+  pos: 0, 0
+
+  @switch(mode) {
+    a: bitmap(generated(color(10, 10, #0f0))): 0, 0;
+    b: placeholder(nothing, callback("armPh")): 0, 0;
+  }
+}
+
+// B3: parameterized slot body uses $grid.pos(...) in both states. `buildSlotContent`
+// previously built slot children with `cast null` for grid/hex, so `calculatePosition`
+// threw 'gridCoordinateSystem is null' on initial create and on every setParameter
+// flip. The fix resolves gridCS/hexCS from the slot node's parent chain and threads
+// them into the build, matching the @switch arm rebuild treatment.
+#slotParamContextHost programmable() {
+  pos: 0, 0
+  grid: 15, 15
+
+  #box slot(state:[off, on]=off) {
+    @(state => off) graphics(rect(#f00, filled, 10, 10): $grid.pos(0, 0));
+    @(state => on)  graphics(rect(#0f0, filled, 10, 10): $grid.pos(1, 0));
+  }
+}

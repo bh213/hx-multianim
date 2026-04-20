@@ -119,6 +119,10 @@ private class Particle extends h2d.SpriteBatch.BatchElement {
 	public var life : Float = 0;
 	public var delay : Float = 0;
 
+	// Set by init() when emitFilter rejects the particle. Suppresses OnBirth/OnDeath
+	// sub-emitter triggers so rejections don't cascade into an explosive spawn loop.
+	public var rejected : Bool = false;
+
 	// For sub-emitter interval tracking
 	public var lastSubEmitTime : Float = 0;
 
@@ -139,13 +143,17 @@ private class Particle extends h2d.SpriteBatch.BatchElement {
 	}
 
 	override function update(dt:Float):Bool {
+		if (group.externallyDriven) {
+			if (group._externalDt <= 0) return true;
+			dt = group._externalDt;
+		}
 		if( delay > 0 ) {
 			delay -= dt;
 			if( delay <= 0 ){
-				group.init(this);
-				visible = true;
-				// Trigger OnBirth sub-emitters
-				group.triggerSubEmitters(this, OnBirth);
+				if (group.init(this)) {
+					visible = true;
+					group.triggerSubEmitters(this, OnBirth);
+				}
 			}
 			else {
 				visible = false;
@@ -170,9 +178,9 @@ private class Particle extends h2d.SpriteBatch.BatchElement {
 		// Apply force fields
 		group.applyForceFields(this, dt);
 
-		// Update position with velocity curve modifier
-		var effectiveVx = vx * velocityMult;
-		var effectiveVy = vy * velocityMult;
+		// Update position with velocity curve modifier + shutdown speed
+		var effectiveVx = vx * velocityMult * group.shutdownSpeedMult;
+		var effectiveVy = vy * velocityMult * group.shutdownSpeedMult;
 
 		x += effectiveVx * dt;
 		y += effectiveVy * dt;
@@ -184,8 +192,8 @@ private class Particle extends h2d.SpriteBatch.BatchElement {
 		else
 			rotation += vr * dt;
 
-		// Size with curve support
-		var sizeMult = group.getSizeCurveValue(timeNormalized);
+		// Size with curve support + shutdown size
+		var sizeMult = group.getSizeCurveValue(timeNormalized) * group.shutdownSizeMult;
 		if (group.incrX)
 			baseScaleX *= Math.pow(1 + vSize, dt);
 		if (group.incrY)
@@ -194,13 +202,14 @@ private class Particle extends h2d.SpriteBatch.BatchElement {
 		scaleX = baseScaleX * sizeMult;
 		scaleY = baseScaleY * sizeMult;
 
-		// Alpha fade
+		// Alpha fade + shutdown alpha
 		if( timeNormalized < group.fadeIn )
 			alpha = Math.pow(timeNormalized / group.fadeIn, group.fadePower);
 		else if( timeNormalized > group.fadeOut )
 			alpha = Math.pow((1 - timeNormalized) / (1 - group.fadeOut), group.fadePower);
 		else
 			alpha = 1;
+		alpha *= group.shutdownAlphaMult;
 
 		// Color interpolation
 		if (group.colorEnabled) {
@@ -239,9 +248,18 @@ private class Particle extends h2d.SpriteBatch.BatchElement {
 		if (group.boundsMode != None) {
 			if (!group.checkBounds(this)) {
 				if (group.emitLoop) {
+					if (group.shutdownActive && group.liveCount > group.shutdownTargetCount) {
+						group.liveCount--;
+						return false;
+					}
 					group.init(this);
 					delay = 0;
+					// Skip lifecycle check — local timeNormalized is now stale
+					// relative to the freshly reset life, and would otherwise
+					// double-init if the pre-update value was already > 1.
+					return true;
 				} else {
+					group.liveCount--;
 					return false;
 				}
 			}
@@ -252,14 +270,22 @@ private class Particle extends h2d.SpriteBatch.BatchElement {
 
 		// Lifecycle
 		if( timeNormalized > 1 ) {
-			// Trigger OnDeath sub-emitters
-			group.triggerSubEmitters(this, OnDeath);
+			// Trigger OnDeath sub-emitters (skip for filter-rejected particles
+			// to avoid an explosive spawn loop at the rejection boundary).
+			if (!rejected)
+				group.triggerSubEmitters(this, OnDeath);
 
 			if( group.emitLoop ) {
+				if (group.shutdownActive && group.liveCount > group.shutdownTargetCount) {
+					group.liveCount--;
+					return false;
+				}
 				group.init(this);
 				delay = 0;
-			} else
+			} else {
+				group.liveCount--;
 				return false;
+			}
 		}
 		return true;
 	}
@@ -282,6 +308,13 @@ class ParticleGroup {
 	**/
 	public var randomFunc : () -> Float = () -> hxd.Math.random();
 
+	/**
+		Optional filter called after a particle's world position is computed.
+		Return true to keep the particle, false to discard it.
+		Works for both relative and non-relative groups (world position is computed for the check).
+	**/
+	public var emitFilter : Null<(x:Float, y:Float) -> Bool> = null;
+
 	inline function rand():Float return randomFunc();
 	inline function srand():Float return randomFunc() * 2.0 - 1.0;
 	inline function randInt(n:Int):Int return Std.int(randomFunc() * n);
@@ -292,6 +325,7 @@ class ParticleGroup {
 
 	var started = false;
 	var globalTime : Float = 0;
+	var _scratch : FPoint = new FPoint(0, 0);
 	/**
 		The group name.
 	**/
@@ -300,6 +334,12 @@ class ParticleGroup {
 		Disabling the group immediately removes it from rendering and resets it's state.
 	**/
 	public var enabled(default, null) : Bool = true;
+	/**
+		When true, the group does not auto-update from the render loop.
+		Use `advanceTime(dt)` to drive the simulation manually.
+	**/
+	public var externallyDriven : Bool = false;
+	var _externalDt : Float = 0;
 	/**
 		Configures blending mode for this group.
 	**/
@@ -581,6 +621,46 @@ class ParticleGroup {
 	/** Accumulator for dynamic emission when spawnCurve is active. */
 	var emissionAccumulator : Float = 0;
 
+	// ----- Shutdown -----
+	/**
+		Configured shutdown duration (from .manim or API). Used as default when `shutdown()` is called without arguments.
+	**/
+	public var shutdownDuration(default, null) : Float = 0;
+	/**
+		Count curve for shutdown — maps shutdown progress (0..1) to "how much shutdown has progressed" (0..1).
+		The alive fraction is `1.0 - curve(t)`. Standard easings work intuitively:
+		easeOutQuad = fast initial die-off, easeInQuad = slow start then rapid.
+		null = linear (default).
+	**/
+	public var shutdownCountCurve : Null<bh.paths.Curve.ICurve> = null;
+	/**
+		Alpha multiplier curve for shutdown. Same convention: `mult = 1.0 - curve(t)`.
+	**/
+	public var shutdownAlphaCurve : Null<bh.paths.Curve.ICurve> = null;
+	/**
+		Size multiplier curve for shutdown. Same convention: `mult = 1.0 - curve(t)`.
+	**/
+	public var shutdownSizeCurve : Null<bh.paths.Curve.ICurve> = null;
+	/**
+		Speed multiplier curve for shutdown. Same convention: `mult = 1.0 - curve(t)`.
+	**/
+	public var shutdownSpeedCurve : Null<bh.paths.Curve.ICurve> = null;
+
+	/** Whether shutdown is currently active. */
+	var shutdownActive : Bool = false;
+	/** Elapsed time since shutdown started. */
+	var shutdownTime : Float = 0;
+	/** Active shutdown duration (from shutdown() call or configured default). */
+	var shutdownActiveDuration : Float = 0;
+	/** Number of particles currently alive in the batch. */
+	var liveCount : Int = 0;
+
+	// Precomputed per-frame shutdown values (updated in updateTime)
+	var shutdownTargetCount : Int = 0;
+	var shutdownAlphaMult : Float = 1.0;
+	var shutdownSizeMult : Float = 1.0;
+	var shutdownSpeedMult : Float = 1.0;
+
 	inline function set_blendMode(v) { batch.blendMode = v; return blendMode = v; }
 	
 	inline function set_gravityAngle(v : Float) {
@@ -607,13 +687,15 @@ class ParticleGroup {
 		batch.clear();
 		started = true;
 		globalTime = 0;
+		liveCount = nparts;
 		for( i in 0...nparts ) {
 			var p = new Particle(this);
 			p.delay = rand() * life * (1 - emitSync) + emitDelay;
 			if (p.delay <= 0) {
-				init(p);
-				p.visible = true;
-				triggerSubEmitters(p, OnBirth);
+				if (init(p)) {
+					p.visible = true;
+					triggerSubEmitters(p, OnBirth);
+				}
 			}
 			batch.add(p);
 		}
@@ -631,13 +713,17 @@ class ParticleGroup {
 		}
 		for (i in 0...count) {
 			var p = new Particle(this);
-			init(p);
+			var accepted = init(p);
 			p.x += atX;
 			p.y += atY;
 			p.vx += inheritVx;
 			p.vy += inheritVy;
-			p.visible = true;
 			batch.add(p);
+			if (accepted) {
+				liveCount++;
+				p.visible = true;
+				triggerSubEmitters(p, OnBirth);
+			}
 		}
 	}
 
@@ -648,10 +734,57 @@ class ParticleGroup {
 		emitBurstAt(0, 0, 0, 0, count);
 	}
 
-	function init( p : Particle ):Void {
+	/**
+		Gracefully stop a looping emitter. Existing particles finish their lifecycle naturally.
+
+		Without duration: sets `emitLoop = false` — particles die at their natural rate.
+		With duration: activates a timed shutdown that curves particle count (and optionally alpha/size/speed)
+		over the specified duration. Particles that reach end-of-life during shutdown are selectively
+		not recycled based on the count curve. After the curve reaches zero, remaining particles
+		enter natural die-off.
+
+		No-op on non-looping groups. `emitBurstAt()` still works after shutdown.
+
+		@param duration Shutdown duration in seconds. null or 0 = instant (emitLoop = false).
+		@param curve Count curve override. null = use configured `shutdownCountCurve`, or linear default.
+	**/
+	public function shutdown(?duration:Float, ?curve:bh.paths.Curve.ICurve):Void {
+		if (!emitLoop) return;
+		final dur = duration != null ? duration : shutdownDuration;
+		if (dur <= 0) {
+			emitLoop = false;
+			return;
+		}
+		shutdownActive = true;
+		shutdownTime = 0;
+		shutdownActiveDuration = dur;
+		if (curve != null) shutdownCountCurve = curve;
+		// Precompute initial values
+		shutdownTargetCount = liveCount;
+		shutdownAlphaMult = 1.0;
+		shutdownSizeMult = 1.0;
+		shutdownSpeedMult = 1.0;
+	}
+
+	/** Whether this group is currently in the shutdown phase. */
+	public function isShuttingDown():Bool {
+		return shutdownActive;
+	}
+
+	/** Get shutdown progress as 0..1 (0 = just started, 1 = complete). Returns 0 if not shutting down. */
+	public function getShutdownRate():Float {
+		if (!shutdownActive) return 0;
+		return Math.min(shutdownTime / shutdownActiveDuration, 1.0);
+	}
+
+	// Returns true if the particle was accepted, false if the emitFilter rejected it.
+	// Callers must gate OnBirth sub-emitter triggers on the return value, otherwise
+	// rejections cascade into an explosive spawn loop at the rejection boundary.
+	function init( p : Particle ):Bool {
 		var g = this;
+		p.rejected = false;
 		var size = g.size * (1 + srand() * g.sizeRand);
-		var rot = srand() * Math.PI * g.rotInit;
+		srand(); // preserved to keep RNG determinism for reference snapshots
 		var vrot = g.rotSpeed * (1 + rand() * g.rotSpeedRand) * (srand() < 0 ? -1 : 1);
 		var life = g.life * (1 + srand() * g.lifeRand);
 
@@ -697,9 +830,9 @@ class ParticleGroup {
 
 			case ManimPath(path):
 				var rate = rand();
-				var pt = path.getPoint(rate);
-				p.x += pt.x;
-				p.y += pt.y;
+				path.getPointInto(rate, _scratch);
+				p.x += _scratch.x;
+				p.y += _scratch.y;
 				// Random velocity direction
 				p.vx = srand();
 				p.vy = srand();
@@ -708,9 +841,9 @@ class ParticleGroup {
 
 			case ManimPathTangent(path):
 				var rate = rand();
-				var pt = path.getPoint(rate);
-				p.x += pt.x;
-				p.y += pt.y;
+				path.getPointInto(rate, _scratch);
+				p.x += _scratch.x;
+				p.y += _scratch.y;
 				// Velocity follows path tangent
 				var tangent = path.getTangentAngle(rate);
 				p.vx = Math.cos(tangent);
@@ -736,18 +869,17 @@ class ParticleGroup {
 		p.scale = size;
 		p.baseScaleX = size;
 		p.baseScaleY = size;
-		p.rotation = rot;
 		p.vSize = g.sizeIncr;
 		p.vr = vrot;
 
 		// Handle animation frame selection
-		if (tiles.length == 0)
-			return;
-		if (animationRepeat == 0 && tiles.length > 1) {
-			// Random frame when animation is disabled
-			p.t = tiles[randInt(tiles.length)];
-		} else {
-			p.t = tiles[0];
+		if (tiles.length > 0) {
+			if (animationRepeat == 0 && tiles.length > 1) {
+				// Random frame when animation is disabled
+				p.t = tiles[randInt(tiles.length)];
+			} else {
+				p.t = tiles[0];
+			}
 		}
 
 		p.vx *= speed;
@@ -769,6 +901,7 @@ class ParticleGroup {
 
 		if ( !isRelative ) {
 			var parts = this.parts;
+			parts.syncPos(); // Ensure absolute transform is current before using absX/absY/mat*
 			var px = p.x;
 			p.x = px * parts.matA + p.y * parts.matC + parts.absX;
 			p.y = px * parts.matB + p.y * parts.matD + parts.absY;
@@ -787,6 +920,27 @@ class ParticleGroup {
 			p.vx = px * cos - p.vy * sin;
 			p.vy = px * sin + p.vy * cos;
 		}
+
+		// Apply emission filter — discard particles outside allowed regions
+		var filter = emitFilter;
+		if (filter != null) {
+			// For relative particles, compute world position for the check
+			var wx = p.x;
+			var wy = p.y;
+			if (isRelative) {
+				var parts = this.parts;
+				parts.syncPos();
+				wx = p.x * parts.matA + p.y * parts.matC + parts.absX;
+				wy = p.x * parts.matB + p.y * parts.matD + parts.absY;
+			}
+			if (!filter(wx, wy)) {
+				p.visible = false;
+				p.life = p.maxLife + 1;
+				p.rejected = true;
+				return false;
+			}
+		}
+		return true;
 	}
 
 	// ========== Helper Functions ==========
@@ -883,10 +1037,10 @@ class ParticleGroup {
 					p.vy += noiseY * strength * dt;
 
 				case PathGuide(path, attractStrength, flowStrength, radius):
-					var closestRate = path.getClosestRate(new bh.base.FPoint(p.x, p.y));
-					var closestPt = path.getPoint(closestRate);
-					var dx = closestPt.x - p.x;
-					var dy = closestPt.y - p.y;
+					var closestRate = path.getClosestRateXY(p.x, p.y);
+					path.getPointInto(closestRate, _scratch);
+					var dx = _scratch.x - p.x;
+					var dy = _scratch.y - p.y;
 					var dist = Math.sqrt(dx * dx + dy * dy);
 					if (dist < radius) {
 						var falloff = (1.0 - dist / radius);
@@ -1083,6 +1237,36 @@ class ParticleGroup {
 	public function updateTime(dt:Float):Void {
 		globalTime += dt;
 
+		// Update shutdown state
+		if (shutdownActive) {
+			shutdownTime += dt;
+			var rate = Math.min(shutdownTime / shutdownActiveDuration, 1.0);
+
+			// Count curve: alive fraction = 1.0 - curveValue(rate)
+			var countProgress = if (shutdownCountCurve != null) shutdownCountCurve.getValue(rate) else rate;
+			var aliveFraction = Math.max(0, 1.0 - countProgress);
+			shutdownTargetCount = Math.round(nparts * aliveFraction);
+
+			// Multiplier curves
+			if (shutdownAlphaCurve != null)
+				shutdownAlphaMult = Math.max(0, 1.0 - shutdownAlphaCurve.getValue(rate));
+			if (shutdownSizeCurve != null)
+				shutdownSizeMult = Math.max(0, 1.0 - shutdownSizeCurve.getValue(rate));
+			if (shutdownSpeedCurve != null)
+				shutdownSpeedMult = Math.max(0, 1.0 - shutdownSpeedCurve.getValue(rate));
+
+			// Once curve says 0 particles and duration elapsed, switch to natural die-off.
+			// Reset the shutdown multipliers so any remaining live particles finish
+			// their lifetime at full alpha/size/speed instead of inheriting terminal (~0) values.
+			if (rate >= 1.0 && shutdownTargetCount <= 0) {
+				emitLoop = false;
+				shutdownActive = false;
+				shutdownAlphaMult = 1.0;
+				shutdownSizeMult = 1.0;
+				shutdownSpeedMult = 1.0;
+			}
+		}
+
 		// Update attached animated path
 		if (attachedPath != null) {
 			var state = attachedPath.update(dt);
@@ -1099,6 +1283,21 @@ class ParticleGroup {
 				}
 			}
 		}
+	}
+
+	/**
+		Manually advance the simulation by `dt` seconds.
+		Use when `externallyDriven` is true.
+
+		Multiple calls between renders accumulate: emission runs per call
+		(each with its own `dt`), and the accumulated total is applied as
+		a single physics step to live particles at the next `sync()`.
+		The accumulator is zeroed in `Particles.draw()` once consumed.
+	**/
+	public function advanceTime(dt:Float):Void {
+		if (!started && enabled) start();
+		_externalDt += dt;
+		updateTime(dt);
 	}
 
 }
@@ -1140,7 +1339,7 @@ class Particles extends h2d.Drawable {
 
 		@returns Added ParticleGroup instance.
 	**/
-	public function addGroup( g : ParticleGroup, ?index:Int ):ParticleGroup {
+	public function addGroup( g : ParticleGroup ):ParticleGroup {
 		if (groups.exists(g.id)) throw 'group ${g.id} already exists';
 		groups.set(g.id, g);
 		return g;
@@ -1150,6 +1349,11 @@ class Particles extends h2d.Drawable {
 		Removes the group from the Particles.
 	**/
 	public function removeGroup( id:String ):Void {
+		var g = groups.get(id);
+		if (g != null) {
+			g.batch.clear();
+			g.batch.remove();
+		}
 		groups.remove(id);
 	}
 
@@ -1168,13 +1372,35 @@ class Particles extends h2d.Drawable {
 		for (g in groups) g.randomFunc = func;
 	}
 
+	/**
+		Gracefully stop all groups. See `ParticleGroup.shutdown()` for details.
+		The existing `onEnd()` callback fires automatically once the last particle
+		across all groups dies (via the existing `sync()` check).
+
+		@param duration Shutdown duration override. null = use each group's configured default.
+		@param curve Count curve override. null = use each group's configured curve.
+	**/
+	public function shutdown(?duration:Float, ?curve:bh.paths.Curve.ICurve):Void {
+		for (g in groups) g.shutdown(duration, curve);
+	}
+
+	/**
+		Manually advance all externally-driven groups by `dt` seconds.
+	**/
+	public function advanceTime(dt:Float):Void {
+		for (g in groups)
+			if (g.externallyDriven)
+				g.advanceTime(dt);
+	}
+
 	override function sync(ctx:h2d.RenderContext):Void {
 		super.sync(ctx);
 		var isDone = true;
 		var dt = ctx.elapsedTime;
 		for( g in groups ) {
 			if ( !g.started && g.enabled ) g.start();
-			g.updateTime(dt);
+			if (!g.externallyDriven)
+				g.updateTime(dt);
 			if (g.batch.first != null) isDone = false;
 		}
 		if (isDone) onEnd();
@@ -1215,6 +1441,8 @@ class Particles extends h2d.Drawable {
 				}
 			}
 		blendMode = old;
+		for (g in groups)
+			if (g.externallyDriven) g._externalDt = 0;
 	}
 
 	/**

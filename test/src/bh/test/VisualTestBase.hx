@@ -90,11 +90,34 @@ class VisualTestBase extends utest.Test {
 	}
 
 	public function simpleMacroTest(num:Int, name:String, createMacroRoot:() -> h2d.Object,
-			async:utest.Async, ?programmableName:String, ?title:String, ?scale:Float, ?threshold:Float):Void {
+			async:utest.Async, ?programmableName:String, ?title:String, ?scale:Float, ?threshold:Float,
+			?lifecycle:LifecycleMode):Void {
 		setupTest(num, name, title);
 		var progName = programmableName != null ? programmableName : name;
 		var s = scale != null ? scale : 1.0;
-		builderAndMacroScreenshotAndCompare(manimPath(num, name), progName, createMacroRoot, async, 1280, 720, s, threshold);
+		builderAndMacroScreenshotAndCompare(manimPath(num, name), progName, createMacroRoot, async, 1280, 720, s, threshold, lifecycle);
+	}
+
+	/** Applies a `LifecycleMode` to a root that is already attached to the scene.
+		Called before `captureScreenshotRaw` so the reference image reflects the
+		post-lifecycle state. No-op for `None` (or null).
+
+		`DetachReattach` re-inserts at the original child index so title overlays
+		and other siblings keep their z-order. */
+	private function applyLifecycle(root:h2d.Object, mode:LifecycleMode):Void {
+		if (mode == null) return;
+		switch (mode) {
+			case None:
+			case DetachReattach:
+				var parent = root.parent;
+				if (parent == null) return;
+				var originalIdx = parent.getChildIndex(root);
+				root.remove();
+				if (originalIdx >= 0) parent.addChildAt(root, originalIdx);
+				else parent.addChild(root);
+			case Custom(fn):
+				if (fn != null) fn(root);
+		}
 	}
 
 	// ==================== Build and render ====================
@@ -338,7 +361,7 @@ class VisualTestBase extends utest.Test {
 	 * Both captures use off-screen render (no frame waits needed).
 	 */
 	public function builderAndMacroScreenshotAndCompare(animFilePath:String, elementName:String, createMacroRoot:() -> h2d.Object,
-			async:utest.Async, ?sizeX:Int, ?sizeY:Int, ?scale:Float, ?threshold:Float):Void {
+			async:utest.Async, ?sizeX:Int, ?sizeY:Int, ?scale:Float, ?threshold:Float, ?lifecycle:LifecycleMode):Void {
 		var orderIdx = HtmlReportGenerator.reserveOrderIndex();
 		pendingVisualTests++;
 		async.setTimeout(15000);
@@ -371,6 +394,7 @@ class VisualTestBase extends utest.Test {
 		}
 
 		var builderPath = 'test/screenshots/${testName}_actual.png';
+		applyLifecycle(result.object, lifecycle);
 		var builderRaw = captureScreenshotRaw(sizeX, sizeY);
 
 		// Phase 2: macro
@@ -411,6 +435,8 @@ class VisualTestBase extends utest.Test {
 		if (testTitle != null && testTitle.length > 0) {
 			addTitleOverlay();
 		}
+
+		applyLifecycle(macroRoot, lifecycle);
 
 		var macroPath = 'test/screenshots/${testName}_macro.png';
 		var referencePath = getReferenceImagePath();

@@ -168,6 +168,38 @@ class FloatingTextHelperTest extends BuilderTestBase {
 		Assert.isNull(inst.object.parent);
 	}
 
+	// ============== Reentrant mutation from onComplete ==============
+
+	@Test
+	public function testOnCompleteCanCallClear():Void {
+		var helper = new FloatingTextHelper(new h2d.Object());
+		var font = hxd.res.DefaultFont.get();
+		var a = helper.spawn("A", font, 0, 0, createAnimPath());
+		helper.spawn("B", font, 0, 0, createAnimPath());
+		helper.spawn("C", font, 0, 0, createAnimPath());
+		a.onComplete = () -> helper.clear();
+		// Advance past duration — A's onComplete will clear B and C.
+		// Must not crash from reentrant array mutation during swap-remove.
+		helper.update(1.1);
+		Assert.equals(0, helper.count);
+	}
+
+	@Test
+	public function testOnCompleteCanSpawn():Void {
+		var helper = new FloatingTextHelper(new h2d.Object());
+		var font = hxd.res.DefaultFont.get();
+		var a = helper.spawn("A", font, 0, 0, createAnimPath());
+		var respawned = false;
+		a.onComplete = () -> {
+			helper.spawn("A2", font, 0, 0, createAnimPath());
+			respawned = true;
+		};
+		helper.update(1.1);
+		Assert.isTrue(respawned);
+		// A is gone; A2 was spawned inside onComplete — should be in the list.
+		Assert.equals(1, helper.count);
+	}
+
 	// ============== Alpha from path ==============
 
 	@Test

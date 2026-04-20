@@ -5,14 +5,15 @@
       "Bash(haxe *)",
       "Bash(where *)",
       "WebFetch(domain:heaps.io)",
+      "WebFetch(domain:github.com)",
       "Bash(dir *)",
       "Bash(ls *)",
       "Bash(cmd.exe /c \"test.bat run\")",
       "Bash(cmd.exe /c \"test.bat rr\")",
       "Bash(cmd.exe /c \"test.bat gen-refs\")",
       "Bash(find:*)",
-      "Bash(hl:*)",
-      "Bash(grep:*)",
+      "Bash(hl *)",
+      "Bash(grep *)",
       "Bash(git fetch *)",
       "Bash(git merge *)",
       "Bash(git diff *)",
@@ -21,8 +22,6 @@
       "Bash(lix env *)",
       "Bash(node -e *)",
       "Bash(git mv *)",
-      "WebFetch(domain:github.com)",
-      "Bash(popd *)",
       "Bash(git show *)",
       "Bash(sort *)",
       "Bash(find *)",
@@ -37,16 +36,25 @@
       "mcp__playwright__browser_close",
       "mcp__playwright__browser_click",
       "mcp__playwright__browser_snapshot",
-      "Read(//^/s*/ {if \\(++count >= 3\\) { if \\(count == 3\\) print FILENAME; count=0; getline; if \\(/^/s*/**)",
-      "Read(//c/Users/goraz/work/github/dotabota/hx-multianim/**)",
-      "Bash(/tmp/report.txt:*)",
-      "Bash(./test.bat run *)",
-      "Bash(./test.bat gen-refs *)",
-      "Read(//c/Users/goraz/work/github/dotabota/hx-multianim/.claude/worktrees/**)"
+      "mcp__hx-multianim__get_errors",
+      "mcp__hx-multianim__get_screen_state",
+      "mcp__hx-multianim__get_traces"
     ],
     "additionalDirectories": [
-      "c:\\Users\\goraz\\work\\github\\dotabota\\hx-easy-game\\src\\game\\cards",
-      "c:\\Users\\goraz\\work\\github\\dotabota\\hx-easy-game\\src\\screens"
+      "../"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"let i='';process.stdin.on('data',c=>i+=c);process.stdin.on('end',()=>{try{const j=JSON.parse(i);const c=(j.tool_input&&j.tool_input.command)||'';if(/\\bgit\\s+(stash|commit|push)\\b/.test(c)){process.stderr.write('BLOCKED: git stash/commit/push disallowed by project policy (.claude/settings.json PreToolUse hook)\\n');process.exit(2);}}catch(e){}});\""
+          }
+        ]
+      }
     ]
   }
 }

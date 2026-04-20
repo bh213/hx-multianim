@@ -1,7 +1,6 @@
 # hx-multianim
 
-[![Build](https://github.com/bh213/hx-multianim/actions/workflows/build.yml/badge.svg)](https://github.com/bh213/hx-multianim/actions/workflows/build.yml)
-[![Visual Tests](https://github.com/bh213/hx-multianim/actions/workflows/visual-tests.yml/badge.svg)](https://github.com/bh213/hx-multianim/actions/workflows/visual-tests.yml)
+[![Tests](https://github.com/bh213/hx-multianim/actions/workflows/tests.yml/badge.svg)](https://github.com/bh213/hx-multianim/actions/workflows/tests.yml)
 [![Haxelib](https://img.shields.io/badge/haxelib-hx--multianim-orange)](https://lib.haxe.org/p/hx-multianim/)
 [![License](https://img.shields.io/badge/license-BSD--3--Clause-blue)](LICENSE)
 
@@ -22,10 +21,12 @@ Browse all rendered examples: **[Visual Test Report](https://bh213.github.io/hx-
 ## Documentation
 
 - **[.manim Format Reference](docs/manim.md)** — UI elements, programmables, layouts, graphics, particles, and data blocks
+- **[.manim Quick Reference](docs/manim-reference.md)** — Table-based lookup of all `.manim` elements, properties, and operations
 - **[Animated Paths Guide](docs/animpaths.md)** — Paths, curves, easing, animated path traversal, projectiles, and examples
 - **[Programmable Macros](docs/manim.md#programmable-macros-compile-time-code-generation)** — Compile-time code generation tutorial and reference
 - **[Data Blocks](docs/manim.md#data)** — Static typed data definitions with macro codegen
 - **[.anim Format Reference](docs/anim.md)** — State animations with playlists and extra points
+- **[.anim Quick Reference](docs/anim-reference.md)** — Table-based lookup of all `.anim` declarations, filters, conditionals, and Haxe API
 
 ## Getting Started
 
@@ -46,7 +47,6 @@ npm install -g lix
    ```hxml
    -lib hx-multianim
    -lib heaps
-   -lib hxparse
    ```
 
 2. **Create a UI element** (`.manim`):
@@ -185,7 +185,7 @@ addObjectToLayer(sprite, BackgroundLayer);
 
 ```haxe
 // Buttons
-var btn = addButtonWithSingleBuilder(builder, "button", "Click Me");
+var btn = addButtonWithSingleBuilder(builder, "button", settings, "Click Me");
 // or with explicit builder
 var btn = addButton(builder.createElementBuilder("button"), "Click Me", settings);
 

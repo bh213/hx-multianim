@@ -3,6 +3,7 @@ package bh.test.examples;
 import utest.Assert;
 import h2d.Scene;
 import bh.test.VisualTestBase;
+import bh.test.LifecycleMode;
 import bh.test.HtmlReportGenerator;
 import bh.test.ImageProcessingPool;
 import bh.test.examples.AutotileTestHelper;
@@ -10,6 +11,7 @@ import bh.multianim.MultiAnimBuilder.PlaceholderValues;
 import bh.multianim.MultiAnimParser.SettingValue;
 import bh.paths.MultiAnimPaths.PathNormalization;
 import bh.ui.UIElement.TileHelper;
+import bh.base.ColorUtils;
 
 /**
  * Tests for the @:build(ProgrammableCodeGen.buildAll()) generated classes.
@@ -377,7 +379,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		final firstChild = fp.getChildAt(0);
 		Assert.notNull(firstChild.filter, "First child should have an outline filter");
 
-		fp.setOutlineColor(0x00FF00);
+		fp.setOutlineColor(ColorUtils.rgb(0x00FF00));
 		Assert.notNull(firstChild.filter, "Filter should still exist after color change");
 	}
 
@@ -386,7 +388,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		final mp = createMp();
 		final fp = mp.filterParam.create();
 
-		fp.setTintColor(0xFF0000);
+		fp.setTintColor(ColorUtils.rgb(0xFF0000));
 		Assert.isTrue(fp.numChildren > 0, "Should still have children after tint change");
 	}
 
@@ -394,7 +396,18 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	@Test
 	public function test45_CodegenFilterParam(async:utest.Async):Void {
-		simpleMacroTest(45, "codegenFilterParam", () -> createMp().filterParam.create(), async, null, null, 4.0);
+		// Exercise ColorUtils via setters on the macro path. The .manim defaults
+		// (outlineColor=#FF0000, tintColor=#00FF00) bake to 0xFFFF0000 / 0xFF00FF00 —
+		// ColorUtils.rgb() of the same RGB bytes must produce identical ints, so
+		// rendering through the setter path must match the reference image pixel-
+		// for-pixel. A naive `setOutlineColor(0xFF0000)` (no helper) would store
+		// 0x00FF0000 (α=0) under strict-D and render the outline invisible.
+		simpleMacroTest(45, "codegenFilterParam", () -> {
+			final fp = createMp().filterParam.create();
+			fp.setOutlineColor(ColorUtils.rgb(0xFF0000));
+			fp.setTintColor(ColorUtils.rgb(0x00FF00));
+			return fp;
+		}, async, null, null, 4.0);
 	}
 
 	// ==================== GridPos: unit tests ====================
@@ -1911,7 +1924,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		while (totalTime < 5.0) {
 			var state = ap.update(dt);
 			states.push({
-				position: state.position,
+				position: state.position.clone(),
 				angle: state.angle,
 				rate: state.rate,
 				speed: state.speed,
@@ -2595,6 +2608,58 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		Assert.notNull(tier2, "merged2 tier should not be null");
 		Assert.equals("None", tier1.name);
 		Assert.equals("None", tier2.name);
+	}
+
+	// ==================== Data block enum codegen ====================
+
+	@Test
+	public function testDataEnumScalar():Void {
+		final mp = createMp();
+		final rarity:bh.test.GameDataRarity = mp.gameData.defaultRarity;
+		Assert.isTrue(rarity == Common);
+	}
+
+	@Test
+	public function testDataEnumArray():Void {
+		final mp = createMp();
+		final elements:Array<bh.test.GameDataElement> = mp.gameData.elements;
+		Assert.equals(3, elements.length);
+		Assert.isTrue(elements[0] == Fire);
+		Assert.isTrue(elements[1] == Water);
+		Assert.isTrue(elements[2] == Earth);
+	}
+
+	@Test
+	public function testDataEnumInRecord():Void {
+		final mp = createMp();
+		final sword:bh.test.GameDataItem = mp.gameData.sword;
+		Assert.equals("Flame Sword", sword.name);
+		Assert.isTrue(sword.rarity == Rare);
+		Assert.isTrue(sword.element == Fire);
+	}
+
+	@Test
+	public function testDataEnumOptionalInRecord():Void {
+		final mp = createMp();
+		final items:Array<bh.test.GameDataItem> = mp.gameData.items;
+		Assert.equals(2, items.length);
+		// Shield: no element (optional omitted)
+		Assert.equals("Shield", items[0].name);
+		Assert.isTrue(items[0].rarity == Common);
+		Assert.isNull(items[0].element, "element should be null when omitted");
+		// Staff: has element
+		Assert.equals("Staff", items[1].name);
+		Assert.isTrue(items[1].rarity == Epic);
+		Assert.isTrue(items[1].element == Air);
+	}
+
+	@Test
+	public function testDataEnumMergeTypes():Void {
+		// mergeTypes should reuse the same enum type for identical enum signatures
+		final mp = createMp();
+		final r1:bh.test.merged.GameDataRarity = mp.gameDataMerged1.defaultRarity;
+		final r2:bh.test.merged.GameDataRarity = mp.gameDataMerged2.defaultRarity;
+		Assert.isTrue(r1 == r2);
 	}
 
 	// ==================== @final variable declaration ====================
@@ -3306,6 +3371,79 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		Assert.notNull(directObj.parent, "PVObject should be added to scene despite ignoring settings");
 	}
 
+	// ==================== PVComponent: unit tests ====================
+
+	@Test
+	public function testPVComponentFactoryCalled():Void {
+		// PVComponent factory should be called and its returned object placed in scene graph
+		final fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/99-pvComponent/pvComponent.manim"));
+		final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+		final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "pvComponent.manim");
+
+		var factoryCalled = false;
+		final compObj = new h2d.Object();
+		final result = builder.buildWithParameters("pvComponent", new Map(), {
+			placeholderObjects: [
+				"compNoSettings" => PVComponent((settings) -> {
+					factoryCalled = true;
+					return compObj;
+				}, null),
+				"compWithSettings" => PVComponent((_) -> new h2d.Object(), null),
+			]
+		});
+
+		Assert.isTrue(factoryCalled, "PVComponent factory should be called");
+		Assert.notNull(compObj.parent, "PVComponent object should be placed in scene graph");
+	}
+
+	@Test
+	public function testPVComponentReceivesSettings():Void {
+		// PVComponent factory should receive .manim-defined settings when the placeholder has a settings{} block
+		final fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/99-pvComponent/pvComponent.manim"));
+		final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+		final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "pvComponent.manim");
+
+		var receivedSettings:bh.multianim.MultiAnimParser.ResolvedSettings = null;
+		final result = builder.buildWithParameters("pvComponent", new Map(), {
+			placeholderObjects: [
+				"compNoSettings" => PVComponent((_) -> new h2d.Object(), null),
+				"compWithSettings" => PVComponent((settings) -> {
+					receivedSettings = settings;
+					return new h2d.Object();
+				}, null),
+			]
+		});
+
+		Assert.notNull(receivedSettings, "PVComponent should receive non-null settings from .manim settings{} block");
+		Assert.notNull(receivedSettings.get("buildName"), "Settings should contain 'buildName'");
+		Assert.notNull(receivedSettings.get("originX"), "Settings should contain 'originX'");
+		Assert.notNull(receivedSettings.get("originY"), "Settings should contain 'originY'");
+	}
+
+	@Test
+	public function testPVComponentNoSettingsWhenNoneInManim():Void {
+		// PVComponent factory should receive null settings when the placeholder has no settings{} block
+		final fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/99-pvComponent/pvComponent.manim"));
+		final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+		final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "pvComponent.manim");
+
+		var receivedSettings:bh.multianim.MultiAnimParser.ResolvedSettings = null;
+		var factoryCalled = false;
+		final result = builder.buildWithParameters("pvComponent", new Map(), {
+			placeholderObjects: [
+				"compNoSettings" => PVComponent((settings) -> {
+					factoryCalled = true;
+					receivedSettings = settings;
+					return new h2d.Object();
+				}, null),
+				"compWithSettings" => PVComponent((_) -> new h2d.Object(), null),
+			]
+		});
+
+		Assert.isTrue(factoryCalled, "PVComponent factory for 'compNoSettings' should have been called");
+		Assert.isNull(receivedSettings, "PVComponent should receive null settings when placeholder has no settings{} block");
+	}
+
 	// ==================== Character Sheet Demo: dynamicRef + params + placeholder ====================
 
 	@Test
@@ -3369,9 +3507,6 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 				xp: 60, xpMax: 100, level: 3
 			}, ["levelUpButton" => PVObject(buttonObj)]);
 
-			// Root pos: 50, 80 from .manim is not applied in codegen (caller sets position)
-			instance.x = 50;
-			instance.y = 80;
 			s2d.addChild(instance);
 			addTitleOverlay();
 		} catch (e:Dynamic) {
@@ -4319,13 +4454,13 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		final sizeX = 1280;
 		final sizeY = 720;
 		final scale = 2.5;
-		final rowH = 48.0;
+		final rowH = 40.0;
 		final colLabel = 0.0;
 		final colA = 45.0; // "before" static state
 		final colMid = 120.0; // mid-transition
 		final colB = 195.0; // "after" static state
-		final names = ["transFade", "transCrossfade", "transFlipX", "transFlipY", "transSlideLeft", "transSlideDown"];
-		final labels = ["fade", "crossfade", "flipX", "flipY", "slideLeft", "slideDown"];
+		final names = ["transFade", "transCrossfade", "transCrossfadeEased", "transFlipX", "transFlipY", "transSlideLeft", "transSlideDown"];
+		final labels = ["fade", "crossfade", "xfadeEased", "flipX", "flipY", "slideLeft", "slideDown"];
 
 		// Phase 1: builder
 		clearScene();
@@ -4412,37 +4547,45 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 			mp.transCrossfade.tweenManager = null;
 			addAt(mc, mp.transCrossfade.create(1), colB, 1 * rowH);
 
-			// Row 2: flipX
-			addTransLabel(mc, font, "flipX", colLabel, 2 * rowH + 10);
-			addAt(mc, mp.transFlipX.create(), colA, 2 * rowH);
+			// Row 2: xfadeEased (non-linear easing regression guard)
+			addTransLabel(mc, font, "xfadeEased", colLabel, 2 * rowH + 10);
+			addAt(mc, mp.transCrossfadeEased.create(), colA, 2 * rowH);
+			mp.transCrossfadeEased.tweenManager = tm2;
+			var mE = mp.transCrossfadeEased.create(); mE.setPosition(colMid, 2 * rowH); mc.addChild(mE); mE.setMode(1);
+			mp.transCrossfadeEased.tweenManager = null;
+			addAt(mc, mp.transCrossfadeEased.create(1), colB, 2 * rowH);
+
+			// Row 3: flipX
+			addTransLabel(mc, font, "flipX", colLabel, 3 * rowH + 10);
+			addAt(mc, mp.transFlipX.create(), colA, 3 * rowH);
 			mp.transFlipX.tweenManager = tm2;
-			var m2 = mp.transFlipX.create(); m2.setPosition(colMid, 2 * rowH); mc.addChild(m2); m2.setMode(1);
+			var m2 = mp.transFlipX.create(); m2.setPosition(colMid, 3 * rowH); mc.addChild(m2); m2.setMode(1);
 			mp.transFlipX.tweenManager = null;
-			addAt(mc, mp.transFlipX.create(1), colB, 2 * rowH);
+			addAt(mc, mp.transFlipX.create(1), colB, 3 * rowH);
 
-			// Row 3: flipY
-			addTransLabel(mc, font, "flipY", colLabel, 3 * rowH + 10);
-			addAt(mc, mp.transFlipY.create(), colA, 3 * rowH);
+			// Row 4: flipY
+			addTransLabel(mc, font, "flipY", colLabel, 4 * rowH + 10);
+			addAt(mc, mp.transFlipY.create(), colA, 4 * rowH);
 			mp.transFlipY.tweenManager = tm2;
-			var m3 = mp.transFlipY.create(); m3.setPosition(colMid, 3 * rowH); mc.addChild(m3); m3.setMode(1);
+			var m3 = mp.transFlipY.create(); m3.setPosition(colMid, 4 * rowH); mc.addChild(m3); m3.setMode(1);
 			mp.transFlipY.tweenManager = null;
-			addAt(mc, mp.transFlipY.create(1), colB, 3 * rowH);
+			addAt(mc, mp.transFlipY.create(1), colB, 4 * rowH);
 
-			// Row 4: slideLeft
-			addTransLabel(mc, font, "slideLeft", colLabel, 4 * rowH + 10);
-			addAt(mc, mp.transSlideLeft.create(), colA, 4 * rowH);
+			// Row 5: slideLeft
+			addTransLabel(mc, font, "slideLeft", colLabel, 5 * rowH + 10);
+			addAt(mc, mp.transSlideLeft.create(), colA, 5 * rowH);
 			mp.transSlideLeft.tweenManager = tm2;
-			var m4 = mp.transSlideLeft.create(); m4.setPosition(colMid, 4 * rowH); mc.addChild(m4); m4.setMode(1);
+			var m4 = mp.transSlideLeft.create(); m4.setPosition(colMid, 5 * rowH); mc.addChild(m4); m4.setMode(1);
 			mp.transSlideLeft.tweenManager = null;
-			addAt(mc, mp.transSlideLeft.create(1), colB, 4 * rowH);
+			addAt(mc, mp.transSlideLeft.create(1), colB, 5 * rowH);
 
-			// Row 5: slideDown
-			addTransLabel(mc, font, "slideDown", colLabel, 5 * rowH + 10);
-			addAt(mc, mp.transSlideDown.create(), colA, 5 * rowH);
+			// Row 6: slideDown
+			addTransLabel(mc, font, "slideDown", colLabel, 6 * rowH + 10);
+			addAt(mc, mp.transSlideDown.create(), colA, 6 * rowH);
 			mp.transSlideDown.tweenManager = tm2;
-			var m5 = mp.transSlideDown.create(); m5.setPosition(colMid, 5 * rowH); mc.addChild(m5); m5.setMode(1);
+			var m5 = mp.transSlideDown.create(); m5.setPosition(colMid, 6 * rowH); mc.addChild(m5); m5.setMode(1);
 			mp.transSlideDown.tweenManager = null;
-			addAt(mc, mp.transSlideDown.create(1), colB, 5 * rowH);
+			addAt(mc, mp.transSlideDown.create(1), colB, 6 * rowH);
 		} catch (e:Dynamic) {
 			Assert.fail('Codegen threw: $e');
 			VisualTestBase.pendingVisualTests--;
@@ -4461,6 +4604,607 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 		VisualTestBase.pendingVisualTests--;
 		async.done();
+	}
+
+	// ==================== Auto-fit text: visual ====================
+
+	@Test
+	public function test96_AutoFit(async:utest.Async):Void {
+		simpleMacroTest(96, "autoFit", () -> createMp().autoFit.create(), async, null, null, null, 0.99);
+	}
+
+	@Test
+	public function test97_FlowConditional(async:utest.Async):Void {
+		simpleMacroTest(97, "flowConditional", () -> createMp().flowConditional.create(), async, null, null, null, 0.999);
+	}
+
+	@Test
+	public function test98_CustomFilter(async:utest.Async):Void {
+		simpleMacroTest(98, "customFilter", () -> createMp().customFilter.create(), async, null, null, null, 0.97);
+	}
+
+	@Test
+	public function test100_SwitchDemo(async:utest.Async):Void {
+		simpleMacroTest(100, "switchDemo", () -> createMp().switchDemo.create(), async);
+	}
+
+	// ==================== Root Properties: pos+scale+rotation+alpha+filter on programmable root ====================
+
+	@Test
+	public function test105_RootProperties(async:utest.Async):Void {
+		simpleMacroTest(105, "rootProperties", () -> createMp().rootProperties.create(), async, null, null, 1.0, 0.9999);
+	}
+
+	// ==================== AnimFlip: flipX/flipY in .anim files (#13) ====================
+
+	@Test
+	public function test101_AnimFlip(async:utest.Async):Void {
+		setupTest(101, "animFlip");
+		VisualTestBase.pendingVisualTests++;
+		async.setTimeout(15000);
+
+		final animFilePath = "test/examples/101-animFlip/animFlip.manim";
+		final sizeX = 1280;
+		final sizeY = 720;
+
+		// Phase 1: builder — build, freeze AnimSMs, screenshot
+		clearScene();
+		var builderResult = buildAndAddToScene(animFilePath, "animFlip");
+		if (builderResult == null) {
+			Assert.fail("Failed to build animFlip from builder");
+			VisualTestBase.pendingVisualTests--;
+			async.done();
+			return;
+		}
+
+		for (a in findAllAnimSM(builderResult.object))
+			a.externallyDriven = true;
+
+		var orderIdx = HtmlReportGenerator.reserveOrderIndex();
+		var builderRaw = captureScreenshotRaw(sizeX, sizeY);
+
+		// Phase 2: macro — create, freeze AnimSMs, screenshot
+		clearScene();
+		var macroRoot = createMp().animFlip.create();
+		s2d.addChild(macroRoot);
+
+		for (a in findAllAnimSM(macroRoot))
+			a.externallyDriven = true;
+
+		if (testTitle != null && testTitle.length > 0)
+			addTitleOverlay();
+
+		var macroRaw = captureScreenshotRaw(sizeX, sizeY);
+		Assert.pass();
+		enqueueBuilderAndMacro(builderRaw, macroRaw, 1.0, 1.0, orderIdx);
+
+		VisualTestBase.pendingVisualTests--;
+		async.done();
+	}
+
+	// ==================== @switch + repeatable: codegen incremental ====================
+
+	@Test
+	public function testCodegenSwitchRepeatableSwitchArm():Void {
+		// Codegen: switch arm changes, repeatable count stays — element count and size should update
+		final mp = createMp();
+		final instance = mp.switchRepeat.create();
+		Assert.notNull(instance, "switchRepeat should be created");
+
+		// Initial: mode=items, count=3 → 3 green bitmaps (10px)
+		var bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(3, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+
+		// Switch to grid → 3 red bitmaps (20px)
+		instance.setMode(1); // grid
+		bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(3, bitmaps.length);
+		Assert.equals(20, Std.int(bitmaps[0].tile.width));
+
+		// Switch back to items → 3 green (10px)
+		instance.setMode(0); // items
+		bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(3, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testCodegenSwitchRepeatableCountChange():Void {
+		// Codegen: repeatable count changes within active switch arm
+		final mp = createMp();
+		final instance = mp.switchRepeat.create();
+
+		// Initial: mode=items, count=3
+		var bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(3, bitmaps.length);
+
+		// Increase count to 5
+		instance.setCount(5);
+		bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(5, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+
+		// Decrease count to 1
+		instance.setCount(1);
+		bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(1, bitmaps.length);
+	}
+
+	@Test
+	public function testCodegenSwitchFixedRepeatDifferentCounts():Void {
+		// Codegen: arms have different fixed repeatable counts
+		final mp = createMp();
+		final instance = mp.switchFixedRepeat.create();
+
+		// Initial: circles → 4 blue (10px)
+		var bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(4, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+
+		// Switch to squares → 2 yellow (30px)
+		instance.setStyle(1); // squares
+		bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(2, bitmaps.length);
+		Assert.equals(30, Std.int(bitmaps[0].tile.width));
+
+		// Switch back → 4 blue
+		instance.setStyle(0); // circles
+		bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(4, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testCodegenSwitchTextInterpolation():Void {
+		// Codegen: text with $param interpolation — changing inner param re-renders text
+		final mp = createMp();
+		final instance = mp.switchText.create();
+		var texts = findAllTextDescendants(instance);
+		Assert.equals(1, texts.length);
+		Assert.equals("HP: 42", texts[0].text);
+
+		// Change value only (stay in same arm)
+		instance.setValue(99);
+		texts = findAllTextDescendants(instance);
+		Assert.equals(1, texts.length);
+		Assert.equals("HP: 99", texts[0].text);
+
+		// Switch arm
+		instance.setMode(1); // mp
+		texts = findAllTextDescendants(instance);
+		Assert.equals(1, texts.length);
+		Assert.equals("MP: 99", texts[0].text);
+	}
+
+	@Test
+	public function testCodegenSwitchNested():Void {
+		// Codegen: nested @switch — outer on shape, inner on size
+		final mp = createMp();
+		final instance = mp.switchNested.create();
+
+		// Initial: circle+small → 10x10 green
+		var bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+
+		// Change inner param only
+		instance.setSize(1); // big
+		bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(20, Std.int(bitmaps[0].tile.width));
+
+		// Change outer param — inner should reflect current size=big
+		instance.setShape(1); // square
+		bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(20, Std.int(bitmaps[0].tile.width));
+
+		// Both back to initial
+		instance.setShape(0);
+		instance.setSize(0);
+		bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testCodegenSwitchExprInSize():Void {
+		// Codegen: $param expression in bitmap size — arm b uses $size * 2
+		final mp = createMp();
+		final instance = mp.switchExpr.create();
+
+		// Initial: mode=a, size=10 → 10x10
+		var bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+
+		// Change size (stay in arm a) → 20x20
+		instance.setSize(20);
+		bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(20, Std.int(bitmaps[0].tile.width));
+
+		// Switch to b with size=20 → 40x40
+		instance.setMode(1); // b
+		bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(40, Std.int(bitmaps[0].tile.width));
+
+		// Change size to 5 in arm b → 10x10
+		instance.setSize(5);
+		bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testCodegenSetColorParamAlphaBaked():Void {
+		// Regression: codegen setter for PPTColor must alpha-bake the value.
+		// .manim literals like #FF0000 are parser-baked to 0xFFFF0000, so @switch
+		// arms compare against 0xFFFF0000. Without baking in the generated setter,
+		// instance.setTint(0xFF0000) stored 0xFF0000 and no arm matched — falling
+		// through to the default arm regardless of input.
+		final mp = createMp();
+		final instance = mp.colorSwitchWidths.create();
+
+		// Initial: tint=#FFFFFF → default arm (44px)
+		var bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(44, Std.int(bitmaps[0].tile.width));
+
+		// Opaque red 0xFFFF0000 → first arm (11px). `setTint(0xFF0000)` no longer
+		// works — under strict-D semantics it is transparent red (top byte = 0)
+		// and misses every arm.
+		instance.setTint(0xFFFF0000);
+		bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(11, Std.int(bitmaps[0].tile.width));
+
+		// Opaque green 0xFF00FF00 → second arm (22px)
+		instance.setTint(0xFF00FF00);
+		bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(22, Std.int(bitmaps[0].tile.width));
+
+		// Opaque blue 0xFF0000FF → third arm (33px)
+		instance.setTint(0xFF0000FF);
+		bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(33, Std.int(bitmaps[0].tile.width));
+
+		// Transparent 0x123456 → no arm matches → default arm (44px).
+		instance.setTint(0x123456);
+		bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(44, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testCodegenCreateColorParamPreserved():Void {
+		// The generated constructor writes PPTColor params through unchanged
+		// (strict-D: Int is final). `create(0xFFFF0000)` lands on the #FF0000 arm.
+		final mp = createMp();
+		final instance = mp.colorSwitchWidths.create(0xFFFF0000);
+		final bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(11, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testCodegenCreateFromColorParam():Void {
+		// createFrom anon-struct path preserves PPTColor ints verbatim.
+		final mp = createMp();
+		final instance = mp.colorSwitchWidths.createFrom({tint: 0xFF0000FF});
+		final bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(33, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testCodegenCreateFromColorParamEmpty():Void {
+		// createFrom with an empty struct falls back to the parser-baked default (#FFFFFF
+		// → 0xFFFFFFFF). Default arm fires (44px) because neither #FF0000/#00FF00/#0000FF
+		// matches. Guards against the default flowing through without baking (e.g. if a
+		// future change replaced the null-coalescing with direct field access).
+		final mp = createMp();
+		final instance = mp.colorSwitchWidths.createFrom({});
+		final bitmaps = findVisibleBitmapDescendants(instance);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(44, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testCodegenColorParamSemiTransparentAlphaPreserved():Void {
+		// Semi-transparent alpha (top byte != 0) must be preserved unchanged through
+		// the setter AND constructor — addAlphaIfNotPresent is a no-op when alpha is
+		// already set. Also verifies that `.manim` #RRGGBBAA 8-digit literals round-trip
+		// to AARRGGBB (Heaps) correctly so the arm compares against the same integer.
+		final mp = createMp();
+
+		// Constructor path: pass pre-baked AARRGGBB values directly.
+		// #FF000080 (CSS RRGGBBAA) → 0x80FF0000 (Heaps AARRGGBB) → first arm (55px)
+		final a = mp.colorSwitchAlpha.create(0x80FF0000);
+		var bitmaps = findVisibleBitmapDescendants(a);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(55, Std.int(bitmaps[0].tile.width));
+
+		// #00FF00A0 (CSS) → 0xA000FF00 (Heaps) → second arm (66px)
+		final b = mp.colorSwitchAlpha.create(0xA000FF00);
+		bitmaps = findVisibleBitmapDescendants(b);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(66, Std.int(bitmaps[0].tile.width));
+
+		// Setter path: same values via setTint after construction.
+		final c = mp.colorSwitchAlpha.create();
+		c.setTint(0x80FF0000);
+		bitmaps = findVisibleBitmapDescendants(c);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(55, Std.int(bitmaps[0].tile.width));
+
+		c.setTint(0xA000FF00);
+		bitmaps = findVisibleBitmapDescendants(c);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(66, Std.int(bitmaps[0].tile.width));
+
+		// createFrom path: same values via anon struct.
+		final d = mp.colorSwitchAlpha.createFrom({tint: 0x80FF0000});
+		bitmaps = findVisibleBitmapDescendants(d);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(55, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testCodegenColorParamTransparentPreserved():Void {
+		// Strict-D: `setTint(0)` means "fully transparent" and is preserved
+		// verbatim, landing on the `#00000000` arm (77px). `setTint(0xFF000000)`
+		// is opaque black, landing on the `#000000` arm (88px). The two are now
+		// distinguishable at runtime — previously the Int-boundary bake clobbered
+		// 0 → 0xFF000000 so the transparent arm was unreachable.
+		final mp = createMp();
+		final a = mp.colorSwitchAlpha.create();
+
+		a.setTint(0);
+		var bitmaps = findVisibleBitmapDescendants(a);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(77, Std.int(bitmaps[0].tile.width),
+			"setTint(0) must land on the transparent arm (#00000000) — if this fails, alpha baking has been reintroduced somewhere in the Int pipeline.");
+
+		a.setTint(0xFF000000);
+		bitmaps = findVisibleBitmapDescendants(a);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(88, Std.int(bitmaps[0].tile.width));
+
+		final b = mp.colorSwitchAlpha.create(0);
+		bitmaps = findVisibleBitmapDescendants(b);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(77, Std.int(bitmaps[0].tile.width));
+
+		final c = mp.colorSwitchAlpha.createFrom({tint: 0});
+		bitmaps = findVisibleBitmapDescendants(c);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(77, Std.int(bitmaps[0].tile.width));
+	}
+
+	// ==================== @switch arm context propagation (B1, B2) ====================
+
+	// B1: @switch arm contains a graphics element with inner positions using
+	// $grid.pos(...). drawGraphicsElements reads the gridCoordinateSystem
+	// argument passed into build() — rebuildSwitchArmByOrdinal currently
+	// passes `cast null`, so calculatePosition throws 'gridCoordinateSystem
+	// is null' inside the arm. The failure surfaces both at initial construction
+	// (the default arm is built through the same rebuild path) and on every
+	// setter-driven switch flip.
+	@Test
+	public function testCodegenSwitchArmGridContext():Void {
+		final mp = createMp();
+		// Initial build: arm `a` has a graphics(rect..., rect...) using $grid.pos
+		// Must not null-deref on the grid coordinate system.
+		var threw = false;
+		var errMsg = "";
+		var instance:Dynamic = null;
+		try {
+			instance = mp.switchGridArm.create();
+		} catch (e:Dynamic) {
+			threw = true;
+			errMsg = Std.string(e);
+		}
+		Assert.isFalse(threw,
+			"switchGridArm.create() should not throw — arm build must inherit programmable's grid system (got: " + errMsg + ")");
+		Assert.notNull(instance, "switchGridArm should be constructed");
+
+		// Flip to arm b — same failure path at rebuild time.
+		threw = false;
+		errMsg = "";
+		try {
+			instance.setMode(1);
+		} catch (e:Dynamic) {
+			threw = true;
+			errMsg = Std.string(e);
+		}
+		Assert.isFalse(threw,
+			"switchGridArm.setMode(1) should not throw — arm rebuild must inherit programmable's grid system (got: " + errMsg + ")");
+	}
+
+	// B2: @switch arm with callback("name") placeholder — rebuild must inherit
+	// the parent BuilderParameters.callback so user callbacks still fire after
+	// a switch flip. Today rebuildSwitchArmByOrdinal constructs a fresh
+	// `{callback: defaultCallback}` and the user callback is dropped.
+	@Test
+	public function testCodegenSwitchArmCallbackInheritance():Void {
+		final mp = createMp();
+		final instance = mp.switchCallbackArm.create(); // mode=a, callback-free arm
+
+		// Reach into the underlying MultiAnimBuilder and install a custom
+		// callback before triggering the switch flip. The instance's setter
+		// will push/pop builder state around the rebuild; a correct
+		// implementation propagates this callback into the arm build.
+		final factory = mp.switchCallbackArm;
+		final builder:bh.multianim.MultiAnimBuilder = @:privateAccess cast factory._builder;
+		Assert.notNull(builder, "factory should have a builder after create()");
+
+		var callbackInvocations = 0;
+		final sentinel = new h2d.Object();
+		@:privateAccess {
+			builder.builderParams = {
+				callback: (request) -> {
+					return switch request {
+						case bh.multianim.MultiAnimBuilder.CallbackRequest.Placeholder(name) if (name == "armPh"):
+							callbackInvocations++;
+							bh.multianim.MultiAnimBuilder.CallbackResult.CBRObject(sentinel);
+						default:
+							bh.multianim.MultiAnimBuilder.CallbackResult.CBRNoResult;
+					};
+				},
+			};
+		}
+
+		instance.setMode(1); // flip to arm b, which has placeholder(nothing, callback("armPh"))
+
+		Assert.equals(1, callbackInvocations,
+			"arm b rebuild should invoke the parent's builderParams.callback for the placeholder");
+		// The sentinel object returned by the callback should be part of the instance tree.
+		Assert.isTrue(containsDescendant(instance, sentinel),
+			"arm b placeholder should host the sentinel object produced by the user callback");
+	}
+
+	// B3: parameterized slot body uses $grid.pos(...). buildSlotContent used to
+	// pass `cast null` for gridCS/hexCS, crashing on initial create and on every
+	// slot setParameter flip. Mirrors the @switch arm fix in rebuildSwitchArmByOrdinal.
+	@Test
+	public function testCodegenSlotParamGridContext():Void {
+		final mp = createMp();
+		var threw = false;
+		var errMsg = "";
+		var instance:Dynamic = null;
+		try {
+			instance = mp.slotParamContextHost.create();
+		} catch (e:Dynamic) {
+			threw = true;
+			errMsg = Std.string(e);
+		}
+		Assert.isFalse(threw,
+			"slotParamContextHost.create() should not throw — parameterized slot build must inherit programmable's grid system (got: " + errMsg + ")");
+		Assert.notNull(instance, "slotParamContextHost should be constructed");
+
+		// Flip slot state to `on` — same failure path at slot setParameter time.
+		// Use the typed getSlot_box() accessor (Dynamic dispatch of the generic
+		// getSlot(name, ?index, ?indexY) hits a HashLink arity mismatch).
+		final slot:bh.multianim.MultiAnimBuilder.SlotHandle = instance.getSlot_box();
+		Assert.notNull(slot, "box slot handle should exist");
+		threw = false;
+		errMsg = "";
+		try {
+			slot.setParameter("state", "on");
+		} catch (e:Dynamic) {
+			threw = true;
+			errMsg = Std.string(e);
+		}
+		Assert.isFalse(threw,
+			"slot.setParameter('state', 'on') should not throw — slot rebuild must use inherited grid system (got: " + errMsg + ")");
+	}
+
+	// Regression: indexed names and slots declared inside @switch arms must be addressable
+	// from codegen instances via getUpdatable2D / getSlot, and arm swaps must evict old
+	// entries (single sink per switch ordinal).
+	@Test
+	public function testCodegenSwitchArmIndexedNames():Void {
+		final mp = createMp();
+		final instance:Dynamic = mp.switchArmNames.create(); // default layout=grid
+
+		// Arm `grid` declares #gridCell[$x, $y] inside a repeatable2d(3, 2).
+		// After initial build, getUpdatable2D should find cells at all (x, y) in the grid.
+		final gridCell00:Null<h2d.Object> = instance.getUpdatable2D("gridCell", 0, 0);
+		Assert.notNull(gridCell00, "gridCell[0,0] should be addressable after initial build");
+		final gridCell21:Null<h2d.Object> = instance.getUpdatable2D("gridCell", 2, 1);
+		Assert.notNull(gridCell21, "gridCell[2,1] should be addressable after initial build");
+
+		// listItem belongs to the other arm — should not be present now.
+		Assert.isNull(instance.getUpdatableByIndex("listItem", 0),
+			"listItem[0] must be null before arm swap — only grid arm is active");
+
+		// Flip to arm `list`. Old gridCell entries must be evicted; listItem entries present.
+		instance.setLayout(1);
+
+		Assert.isNull(instance.getUpdatable2D("gridCell", 0, 0),
+			"gridCell[0,0] should be evicted after swap to list arm");
+		Assert.isNull(instance.getUpdatable2D("gridCell", 2, 1),
+			"gridCell[2,1] should be evicted after swap to list arm");
+		final listItem0:Null<h2d.Object> = instance.getUpdatableByIndex("listItem", 0);
+		Assert.notNull(listItem0, "listItem[0] should be addressable after arm swap to list");
+		final listItem3:Null<h2d.Object> = instance.getUpdatableByIndex("listItem", 3);
+		Assert.notNull(listItem3, "listItem[3] should be addressable after arm swap to list");
+
+		// Swap back to grid — new gridCell entries should be fresh instances (old ones were evicted).
+		instance.setLayout(0);
+		final gridCell00again:Null<h2d.Object> = instance.getUpdatable2D("gridCell", 0, 0);
+		Assert.notNull(gridCell00again, "gridCell[0,0] should reappear after swap back to grid arm");
+		Assert.isNull(instance.getUpdatableByIndex("listItem", 0),
+			"listItem[0] should be evicted after swap back to grid");
+	}
+
+	// Regression: #name slot declared inside a @switch arm must be reachable via
+	// getSlot("name") — the dispatcher falls through to runtime sink lookup when
+	// no static slot with that name was generated at compile time.
+	@Test
+	public function testCodegenSwitchArmSlot():Void {
+		final mp = createMp();
+		final instance:Dynamic = mp.switchArmSlot.create(); // default mode=active
+
+		// Active arm declares #panel slot — should be reachable via getSlot("panel").
+		// Pass explicit nulls for index/indexY — HashLink Dynamic dispatch needs full arity.
+		final panelSlot:Null<bh.multianim.MultiAnimBuilder.SlotHandle> = instance.getSlot("panel", null, null);
+		Assert.notNull(panelSlot, "panel slot should be addressable after initial build (declared in active arm)");
+
+		// Flip to dormant arm — panel slot is not declared there. getSlot should throw.
+		instance.setMode(1);
+		var threw = false;
+		try {
+			instance.getSlot("panel", null, null);
+		} catch (e:Dynamic) {
+			threw = true;
+		}
+		Assert.isTrue(threw, "getSlot('panel') should throw after swap to dormant arm — slot was evicted");
+
+		// Flip back — slot should reappear.
+		instance.setMode(0);
+		final panelAgain:Null<bh.multianim.MultiAnimBuilder.SlotHandle> = instance.getSlot("panel", null, null);
+		Assert.notNull(panelAgain, "panel slot should reappear after swap back to active arm");
+	}
+
+	// Test 107 — Rube Goldberg: exercise a broad slice of .manim features in a single
+	// programmable. Visual reference uses default params (mode=hover, template=rgCardB,
+	// flags=3, level=5). A matching tile is passed for the `icon` param via TileHelper.
+	// Unit-level incremental / slot / dynamicRef coverage lives in RubeGoldbergIncrementalTest.
+	@Test
+	public function test107_RubeGoldberg(async:utest.Async):Void {
+		simpleMacroTest(107, "rubeGoldberg",
+			() -> createMp().rubeGoldberg.create(),
+			async, null, null, 1.0, 0.97);
+	}
+
+	// Exercises BOTH codegen graphics() code paths under an onRemove/onAdd cycle:
+	//   - top-level graphics(...)          → field path  (ProgrammableCodeGen L3629)
+	//   - repeatable { graphics(...) }     → runtime path (ProgrammableCodeGen L2685)
+	// Without KeepGraphics the vanilla h2d.Graphics.clear() on onRemove wipes the
+	// vertex buffer, so the post-reattach screenshot would render blank. Reference
+	// image captured with KeepGraphics in place; a regression shows as a macro-side
+	// similarity mismatch. The builder phase also runs the cycle symmetrically so
+	// a builder-side regression (e.g. accidental revert of MultiAnimBuilder:5477)
+	// also surfaces.
+	@Test
+	public function test113_CodegenGraphicsReattach(async:utest.Async):Void {
+		simpleMacroTest(113, "codegenGraphicsReattach",
+			() -> createMp().codegenGraphicsReattach.create(),
+			async, null, null, 4.0, null, DetachReattach);
+	}
+
+	static function containsDescendant(root:h2d.Object, target:h2d.Object):Bool {
+		if (root == target) return true;
+		for (i in 0...root.numChildren) {
+			if (containsDescendant(root.getChildAt(i), target)) return true;
+		}
+		return false;
 	}
 
 	static function addTransLabel(parent:h2d.Object, font:Null<h2d.Font>, label:String, x:Float, y:Float):Void {

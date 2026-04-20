@@ -1,0 +1,9 @@
+version: 1.0
+
+#applyParamUpdate programmable(k:float=0.5, a:float=1.0) {
+  apply {
+    scale: $k
+    alpha: $a
+  }
+  bitmap(generated(color(50, 50, #f00)));
+}

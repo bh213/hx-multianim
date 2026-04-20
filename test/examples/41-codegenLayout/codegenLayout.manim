@@ -14,13 +14,13 @@ layouts {
 
 #codegenLayout programmable() {
   // List layout: 5 points
-  repeatable($index, layout("main", "testLayout")) {
+  repeatable($index, layout("testLayout")) {
     pos: 0, 0
     ninepatch("ui", "button-idle", 40, 20): 0, 0
   }
 
   // Sequence layout: 4 points (0, 1, 2, 3)
-  repeatable($j, layout("main", "seqLayout")) {
+  repeatable($j, layout("seqLayout")) {
     pos: 0, 0
     ninepatch("ui", "button-pressed", 40, 20): 0, 0
   }

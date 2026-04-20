@@ -42,10 +42,15 @@ class UIElementBuilder {
 			"itemWidth" => itemWidth,
 			"index" => index,
 			"title" => item.name,
-			"status" => "normal",
+			"status" => item.baseStatus != null ? item.baseStatus : "normal",
 			"selected" => "false",
 			"disabled" => item.disabled == true ? "true" : "false",
 		];
+
+		if (item.params != null) {
+			for (key => value in item.params)
+				params.set(key, value);
+		}
 
 		var tileSource:Null<TileSource> = null;
 		if (item.tileRef != null) {

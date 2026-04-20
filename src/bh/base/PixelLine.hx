@@ -27,7 +27,7 @@ class PixelLines extends h2d.Bitmap {
 	}
 
 	public function rect(x:Int, y:Int, width:Int, height:Int, colorARGB:Int) {
-        // TODO: handle overlap in case of alpha?
+        // TODO: handle overlap of corner pixels in case of alpha?
 		data.lock();
 		data.line(x, y, x + width - 1, y, colorARGB);
 		data.line(x, y, x, y + height - 1, colorARGB);

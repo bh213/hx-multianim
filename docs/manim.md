@@ -230,6 +230,7 @@ text(fontname, text, textcolor[, align, maxWidth], options)
 * `dropShadowXY` - float, float
 * `dropShadowColor` - color
 * `dropShadowAlpha` - float
+* `autoFit: <mode> [font1, font2, ...]` — automatic font fallback (see below)
 
 Does not support markup, `styles:`, `images:`, or `condenseWhite:`. Use `richText()` for rich text features.
 
@@ -257,9 +258,11 @@ richText(fontname, text, textcolor[, align, maxWidth], options)
 * `images: {name: tileSource, ...}` — named inline images for `[img:name]` markup
 * `condenseWhite: true` — collapse whitespace
 * `maxHeight`, `minWidth`, `minHeight`, `lineHeight`, `colWidth` — additional sizing options
+* `autoFit: <mode> [font1, font2, ...]` — automatic font fallback (see below)
 
 **Rich text markup:** Text strings support `[tag]...[/]` BBCode-style markup. Markup is always processed via `TextMarkupConverter`.
 * `[styleName]...[/]` — apply named style (defined in `styles:`)
+* `[br]` — line break (self-closing)
 * `[img:name]` — inline image (self-closing, defined in `images:`)
 * `[align:center]...[/]` — paragraph alignment (`left`, `center`, `right`)
 * `[link:id]...[/]` — hyperlink (fires `callback("link:id")`)
@@ -282,6 +285,35 @@ images: {coin: generated(color(14, 14, #FFD700)), sword: sheet("items", "sword_1
 ```
 richText(dd, "Deal [damage]50[/] for [gold]100g[/]", white, left, 600,
     styles: {damage: color(#FF0000), gold: color(#FFD700) font("dd")}): 4, 4
+```
+
+### autoFit (text and richText)
+
+Automatic font fallback when text exceeds available space. Works with both `text()` and `richText()`.
+
+**Modes:**
+* `autoFit: width [font1, font2]` — try primary font, then fallbacks in order; use first that fits `maxWidth`
+* `autoFit: box(w, h) [font1, font2]` — try fonts in order; use first that fits width AND height
+* `autoFit: fill [font1, font2, ...]` — try ALL fonts (including primary); pick the largest that fits `maxWidth`
+* `autoFit: fill box(w, h) [font1, font2, ...]` — try ALL fonts; pick the largest that fits both dimensions
+
+Width/fill modes require `maxWidth` to be set. Box dimensions are absolute pixels (divided by `@scale` internally). For `width`/`box` modes, the font list contains fallback fonts only. For `fill` modes, the primary font is also a candidate.
+
+Supports incremental updates — re-runs font selection when `$param` text changes at runtime. Full codegen/macro parity.
+
+```
+// Width mode: dd first, fall back to m3x6, then f3x5
+text(dd, "Hello", #44FF44, left, 100, lineBreak: false,
+    autoFit: width [m3x6, f3x5]): 1, 1;
+
+// Fill mode: pick largest fitting font
+text(f3x5, "Fill this", #44BBFF, left, 150, lineBreak: false,
+    autoFit: fill [pixellari, dd, m6x11, m3x6, f3x5]): 1, 1;
+
+// Box mode with richText
+richText(dd, "Deal [dmg]50[/] fire", white, left, 150, lineBreak: false,
+    autoFit: width [m3x6, f3x5],
+    styles: {dmg: color(#FF4444)}): 1, 1;
 ```
 
 ### tilegroup
@@ -480,6 +512,58 @@ instance.getSlot("footer");
 * `getContent():Null<h2d.Object>` — returns current replacement or null
 * `container:h2d.Object` — the underlying container object
 
+### Parameterized Slots
+
+Slots can declare parameters (same syntax as `programmable()`) to support visual states via conditionals and expressions. The slot body contains decorations that respond to parameter changes, while `slotContent` marks where `setContent()` inserts runtime content.
+
+```
+#statusSlot slot(status:[empty,active,warning]=empty, label:string="Slot") {
+    @(status=>empty) ninepatch(ui, slotBgEmpty, 64, 64): 0, 0
+    @(status=>active) ninepatch(ui, slotBgActive, 64, 64): 0, 0
+    @(status=>warning) ninepatch(ui, slotBgWarning, 64, 64): 0, 0
+    text(f3x5, $label, #ffffffff): 5, 50
+    slotContent: 8, 8
+}
+```
+
+Parameter types: same as `programmable()` — `uint`, `int`, `float`, `bool`, `string`, `color`, enum (`[val1,val2]`), range, flags.
+
+Conditionals (`@()`, `@else`, `@default`) and expressions (`$param`) work inside the slot body. `slotContent` can only appear inside a slot body (parser-validated).
+
+**Runtime API:**
+```haxe
+var slot = result.getSlot("statusSlot");
+
+// Set content (same as basic slots)
+slot.setContent(itemIcon);
+
+// Update visual state via parameters
+slot.setParameter("status", "active");
+slot.setParameter("label", "Weapon");
+
+// Content and decorations are independent:
+// - setContent() controls the slotContent area
+// - setParameter() controls the surrounding decorations
+// - clear() only removes content, decorations remain
+```
+
+**Codegen access:**
+```haxe
+instance.getSlot_statusSlot().setContent(icon);
+instance.getSlot_statusSlot().setParameter("status", "warning");
+```
+
+**Indexed parameterized slots** combine `#name[$i]` with parameters:
+```
+repeatable($i, step(3, dx: 70)) {
+    #card[$i] slot(status:[empty,filled]=empty) {
+        @(status=>empty) bitmap(generated(color(60, 80, #333333))): 0, 0
+        @(status=>filled) bitmap(generated(color(60, 80, #336633))): 0, 0
+        slotContent: 4, 4
+    }
+}
+```
+
 ### ninepatch
 Draws 9-patch from atlas (requires `split` with 4 values in atlas).
 
@@ -547,6 +631,25 @@ hpBar.setParameter("value", 25);   // updates visuals
 
 Use for elements that need dynamic parameter changes after building (health bars, status displays, etc.).
 
+#### Dynamic programmable references
+
+The reference name itself can be a parameter, allowing the target programmable to be chosen at runtime:
+
+```manim
+#statusBar programmable(value:uint=50) { ... }
+#badge programmable(count:uint=0) { ... }
+
+#panel programmable(template:string="statusBar", hp:uint=50) {
+    dynamicRef($template, value=>$hp): 0, 0
+}
+```
+
+When `template` is a parameter of the enclosing programmable (string or enum type), changing it triggers a **full rebuild**: the old programmable is torn down and the new one is built from scratch. Forwarded parameters (`value=>$hp`) are propagated incrementally when the template doesn't change.
+
+- **Backward compatible**: `$progName` where `progName` is not a parameter falls back to literal name (existing behavior)
+- **Strict validation**: forwarded parameters must exist on the target programmable (runtime error if missing, allowed if target has a default)
+- Works in both builder (via `IncrementalUpdateContext`) and codegen paths
+
 **staticRef vs dynamicRef:**
 
 | | `staticRef` | `dynamicRef` |
@@ -596,17 +699,17 @@ Programmable elements can declare animated transitions for parameter changes. Wh
         checked: flipX(0.15, easeOutQuad)
         status: crossfade(0.1)
     }
-    @(status => normal) @(checked => true) bitmap(sheet("ui"), "check_on_normal"): 0, 0
-    @(status => hover)  @(checked => true) bitmap(sheet("ui"), "check_on_hover"): 0, 0
-    @(status => normal) @(checked => false) bitmap(sheet("ui"), "check_off_normal"): 0, 0
-    @(status => hover)  @(checked => false) bitmap(sheet("ui"), "check_off_hover"): 0, 0
+    @all(status => normal, checked => true) bitmap(sheet("ui"), "check_on_normal"): 0, 0
+    @all(status => hover, checked => true) bitmap(sheet("ui"), "check_on_hover"): 0, 0
+    @all(status => normal, checked => false) bitmap(sheet("ui"), "check_off_normal"): 0, 0
+    @all(status => hover, checked => false) bitmap(sheet("ui"), "check_off_hover"): 0, 0
 }
 ```
 
 **Transition types:**
 - `none` — instant (default behavior)
 - `fade(duration, ?easing)` — one-sided alpha animation (showing fades in, hiding fades out)
-- `crossfade(duration, ?easing)` — simultaneous alpha blend of old and new states
+- `crossfade(duration, ?easing)` — sequential blend-through-zero: old state fades out over `duration`, then new state fades in over `duration` (total wall-clock duration = 2 × `duration`)
 - `flipX(duration, ?easing)` — horizontal flip (scaleX to 0 then back to 1)
 - `flipY(duration, ?easing)` — vertical flip (scaleY to 0 then back to 1)
 - `slide(direction, duration, ?distance, ?easing)` — position + alpha offset (directions: `left`, `right`, `up`, `down`; distance defaults to 50px)
@@ -649,10 +752,62 @@ interactive(200, 30, "toggle", enabled:bool => true, color:color => #FF0000)
 
 Supported types: `int`, `float`, `string` (default when no type specified), `bool`, `color`. Untyped `key => true`/`key => false` auto-infers as bool. Keys and values can be `$references`. Access via `BuilderResolvedSettings`: `has(key)`, `getStringOrDefault(key, default)`, `getIntOrDefault(key, default)`, `getBoolOrDefault(key, default)`, `getFloatOrDefault(key, default)`.
 
+**Event filtering:**
+
+Control which events an interactive emits via the `events:` metadata:
+
+```
+interactive(200, 30, "myBtn", events: [hover, click])
+interactive(200, 30, "tooltip-trigger", events: [hover])
+```
+
+| Flag | Events controlled |
+|------|-------------------|
+| `hover` | `UIEntering` + `UILeaving` |
+| `click` | `UIClick` |
+| `push` | `UIPush` + `UIClickOutside` + outside-click tracking |
+
+Default: all events enabled. Omitting `events:` emits all event types.
+
+**autoStatus (screen auto-wiring):**
+
+Auto-wire Normal/Hover/Pressed state management — no manual helper needed:
+
+```
+interactive(200, 30, "shopBtn", autoStatus => "status", events: [hover, click, push])
+```
+
+When `screen.addInteractives(result)` detects `autoStatus` metadata, it automatically creates an internal `UIRichInteractiveHelper` and wires hover/press/leave state transitions. Events still reach `onScreenEvent()` for game logic.
+
+**bind (manual wiring):**
+
+For custom state management (e.g., `UICardHandHelper`), use `bind` with a manually-created `UIRichInteractiveHelper`:
+
+```
+interactive(200, 30, "card", bind => "status", events: [hover, click, push])
+```
+
+An interactive cannot have both `autoStatus` and `bind`.
+
+**Cursor metadata:**
+
+```
+interactive(200, 30, "buyBtn", cursor => "pointer")
+interactive(200, 30, "dragArea", cursor.hover => "move", cursor.disabled => "default")
+```
+
+Pre-registered names: `default`, `pointer`/`button`, `move`, `text`, `hide`/`none`. Register custom cursors via `CursorManager.registerCursor("name", cursor)`.
+
 **UI integration:**
 * `UIInteractiveWrapper` wraps the interactive as a `UIElement` with `UIElementIdentifiable`
 * Screen methods: `addInteractive(obj, prefix)`, `addInteractives(result, prefix)`, `removeInteractives(prefix)`
-* Emits standard `UIClick`, `UIEntering`, `UILeaving` — check `source` for `UIElementIdentifiable` to access `id`/`metadata`
+* Emits `UIInteractiveEvent(event, id, metadata)` — pattern match in `onScreenEvent`:
+  ```haxe
+  case UIInteractiveEvent(UIClick, id, meta): // clicked
+  case UIInteractiveEvent(UIEntering(_), id, meta): // hover enter
+  case UIInteractiveEvent(UILeaving, id, meta): // hover leave
+  case UIInteractiveEvent(UIPush, id, meta): // mouse down
+  ```
 
 ### settings
 Emits setting values to the build.
@@ -666,11 +821,11 @@ Values can be typed, similar to interactive metadata:
 settings{action => "buy", price:int => 100, weight:float => 1.5, fontColor:color => white}
 ```
 
-Supported types: `int`, `float`, `string` (default when no type specified), `color` (accepts named colors like `white`, `red`, hex `#ff7f50`, `0xFF0000` — stored as int).
+Supported types: `int`, `float`, `string` (default when no type specified), `color` (accepts named colors like `white`, `red`, hex `#ff7f50`, or `0xAARRGGBB` Heaps literal — stored as int). See [Color Format](#color-format) for the `#` vs `0x` semantics.
 
 **Dotted keys** target sub-components in multi-builder UI elements (dropdown, scrollable list):
 ```
-settings{item.fontColor:int => 0xff0000, scrollbar.thickness:int => 6}
+settings{item.fontColor:int => 0xFFff0000, scrollbar.thickness:int => 6}
 ```
 The prefix (`item`, `scrollbar`, `dropdown`) routes the setting to the corresponding sub-builder. Unprefixed settings go to the main builder. See the [UI Components](#ui-components) section for valid prefixes per component.
 
@@ -748,6 +903,48 @@ Any coordinate method call can have `.x` or `.y` appended to extract a single co
 }
 ```
 
+### Extra Point Coordinates
+
+Query extra points from `.anim` state animations as positioning coordinates. Resolved at build time from the animation's initial state.
+
+**From a named stateanim element** (Mode 1):
+
+```manim
+#player stateanim("player.anim", "idle", direction=>"l"): 100, 100
+bitmap(...): $player.extraPoint("bulletSpawn")
+bitmap(...): $player.extraPoint("bulletSpawn", fallback: 50, 50)
+bitmap(...): $player.extraPoint("bulletSpawn").offset(10, 0)
+```
+
+* `$ref.extraPoint("pointName")` - position from current animation's extra point
+* `$ref.extraPoint("pointName", fallback: coords)` - with fallback if point not found
+
+**Directly from an .anim file** (Mode 2):
+
+```manim
+bitmap(...): extraPoint("player.anim", "fire-up", "fire", direction=>"r")
+bitmap(...): extraPoint("player.anim", "idle", "fire", direction=>"l", fallback: 0, 0)
+```
+
+* `extraPoint("file", "animName", "pointName", selectors...)` - load anim, play animation, query point
+* Optional `fallback: coords` as last argument
+
+When a point is not found: throws if no `fallback:` specified, uses fallback coordinates otherwise. Fallback accepts any coordinate type. `.offset()` suffix supported on both modes. Works in both builder and codegen.
+
+**`.x`/`.y` extraction in expressions:**
+
+Extra point coordinates can be extracted as scalar values for use in text interpolation and arithmetic:
+
+```manim
+#player stateanim("player.anim", "idle", direction=>"l"): $PX, $PY
+text(font, '${$player.extraPoint("fire").x + $PX},${$player.extraPoint("fire").y + $PY}', #FF0000): 0, 0
+```
+
+With fallback (positional args instead of `fallback:` keyword):
+```manim
+text(font, '${$ref.extraPoint("missing", 99, 88).x}', #00FF00): 0, 0
+```
+
 ### Context Properties
 
 * `$ctx.width` - width of the programmable element
@@ -785,6 +982,7 @@ Filters can be applied to any visual element. Most parameters support expression
 * `dropShadow(distance, angle, color, alpha, radius, gain, quality)`
 * `glow(color, alpha, [radius], [gain], [quality], [smoothColor], [knockout])`
 * `group(filter1, filter2, ...)`
+* Custom filters registered via `FilterManager.registerFilter(name, paramDefs, factory)` — see below
 
 **Examples:**
 ```
@@ -792,6 +990,31 @@ filter: outline(2, red)
 filter: pixelOutline(knockout, ?($owner == "Player") #0f0 : #f00, 0.9)
 filter: group(outline(?($selected) 2 : 0, yellow), brightness(?($active) 1.2 : 0.8))
 ```
+
+### Custom Filters
+
+Register custom filters from game code via `FilterManager`, then use them by name in `.manim`:
+
+```haxe
+// Registration (game init)
+FilterManager.registerFilter("perlinNoise", [
+    {name: "seed", type: CFFloat, defaultValue: 0.0},
+    {name: "scale", type: CFFloat, defaultValue: 10.0},
+    {name: "intensity", type: CFFloat, defaultValue: 0.5},
+], (params) -> {
+    return new PerlinNoiseFilter(params["seed"], params["scale"], params["intensity"]);
+});
+```
+
+```manim
+// Usage in .manim
+filter: perlinNoise(42.0, 8.0, 0.6)
+filter: group(perlinNoise(42.0, 12.0, 0.8), outline(1, #000000))
+```
+
+Parameter types: `CFFloat`, `CFColor` (hex colors), `CFBool` (true/false). `$param` references work in arguments. Missing args use defaults; no default = required. Names are case-insensitive and cannot shadow built-in filters.
+
+Validation: `FilterManager.validateCustomFilters(parseResult.customFilterRefs)` or `builder.validateCustomFilters()`.
 
 ---
 
@@ -807,8 +1030,35 @@ filter: group(outline(?($selected) 2 : 0, yellow), brightness(?($active) 1.2 : 0
 * `hexdirection`: `dir:hexdirection` (0..5)
 * `griddirection`: `dir:griddirection` (0..7)
 * `bool`: `true`/`false`, `yes`/`no`, or `0`/`1`
-* `color`: `color:<color>`, e.g., `color:#f0f` or `red`
+* `color`: `color:<color>`, e.g., `color:#f0f` or `red` — see [Color Format](#color-format) for literal syntax
 * `tile`: `name:tile` — a tile source passed at runtime (no default allowed). Used with `bitmap($name)` to display caller-provided tiles. In generated code, maps to `Dynamic` (accepts `h2d.Tile`). For the builder, pass via `TileHelper.sheet("atlas", "tile")` or `TileHelper.file("img.png")`.
+
+---
+
+## Color Format
+
+Colors are stored internally as Heaps `0xAARRGGBB` ints. Two literal syntaxes are supported:
+
+**CSS `#` forms** — 3/6-digit shorthand assumes opacity:
+```
+#F00       // → 0xFFFF0000  (baked opaque)
+#FF0000    // → 0xFFFF0000  (baked opaque)
+#FF000080  // → 0x80FF0000  (CSS RGBA with alpha last, converted to Heaps AARRGGBB)
+```
+
+**Heaps `0x` forms** — preserved **verbatim**, top byte IS alpha:
+```
+0xFFFF0000  // opaque red       (alpha=0xFF, red=0xFF)
+0x80FF0000  // 50% red
+0xFF0000    // TRANSPARENT red  (alpha=0x00) — usually not what you want
+0x00000000  // fully transparent
+```
+
+Named colors (`red`, `blue`, `transparent`, ...) are baked at parse time — all opaque except `transparent` which is `0x00000000`.
+
+**Runtime semantics (strict-D):** nothing in the runtime rewrites alpha. `instance.setColor(0)` stores `0` (fully transparent), not `0xFF000000`. `setParameter("c", 0xFF0000)` stores `0x00FF0000` (transparent red), not `0xFFFF0000`. If you want opaque red from code, pass `0xFFFF0000`. This makes `0` distinguishable from "opaque black" everywhere — previously the two collapsed onto the same arm in `@switch` comparisons and the same tint at render time.
+
+**Guideline:** prefer `#RRGGBB` / `#RRGGBBAA` in `.manim` sources (CSS convention reads naturally). Reserve `0x...` for cases where you're already thinking in Heaps AARRGGBB, or for runtime `Int` constants. Migrating from pre-strict-D code? Any `0xRRGGBB` literal meant "opaque RRGGBB" — replace with `#RRGGBB` or `0xFFRRGGBB`.
 
 ---
 
@@ -816,9 +1066,9 @@ filter: group(outline(?($selected) 2 : 0, yellow), brightness(?($active) 1.2 : 0
 
 Conditions are defined by `@(...)` and can be specified once per element.
 
-* `@()` or `@if(...)` - match all provided
+* `@()` or `@if(...)` or `@all(...)` - match when ALL listed conditions match (AND)
+* `@any(...)` - match when ANY listed condition matches (OR)
 * `@(param != value)` - match when param is NOT value
-* `@ifstrict(...)` - must match all provided parameters
 
 **Comparison operators:**
 * `@(key >= 30)` - greater than or equal
@@ -873,6 +1123,79 @@ Elements can use `@else` and `@default` to form conditional chains, similar to i
 ```
 
 `@else` and `@default` must follow a sibling that has a `@()` conditional. They cannot be used on root elements.
+
+### Conditional Blocks
+
+Any conditional can use a `{ ... }` body to group multiple elements:
+
+```manim
+@(status=>active) {
+    bitmap(generated(color(60, 40, #060)));
+    text(m3x6, "ACTIVE", #8f8, center, 60):0,12;
+}
+@else {
+    bitmap(generated(color(60, 40, #333)));
+}
+```
+
+Block-in-block nesting is supported:
+
+```manim
+@(tier=>free) {
+    bitmap(generated(color(70, 40, #333)));
+}
+@else {
+    @(enabled=>yes) {
+        bitmap(generated(color(70, 40, #060)));
+    }
+    @else {
+        bitmap(generated(color(70, 40, #600)));
+    }
+}
+```
+
+### @switch Block
+
+For cases with many values of the same parameter, `@switch` avoids repeating the parameter name:
+
+```manim
+@switch(status) {
+    idle: bitmap(generated(color(60, 30, #666)));
+    hover: bitmap(generated(color(60, 30, #060)));
+    pressed | disabled: bitmap(generated(color(60, 30, #600)));
+    default: bitmap(generated(color(60, 30, #333)));
+}
+```
+
+**Arm syntax:**
+- `value:` — single-element arm. `value` can be an enum name, integer, `"quoted string"`, `#RRGGBB` color, `0xAARRGGBB` hex, or `true`/`false`. Routed through the same type-aware converter as `@(param => value)`.
+- `value1 | value2:` — multi-value arm (enum/int only — pipe form produces string-based matching)
+- `<= N:`, `>= N:`, `< N:`, `> N:` — comparison arms (numeric parameters only)
+- `N..M:` — range arm, inclusive (numeric parameters only)
+- `default:` — fallback arm
+- `value { ... }` or `default { ... }` — block arm with multiple elements
+
+**Parameter type support:** `@switch` works on discrete parameter types — `enum`, `int`, `uint`, `range`, `string`, `color`, and `bool`. `float`, `tile`, and `flags` parameters are rejected at parse time. For flag tests, use `@(param => bit[N])` instead. Range/comparison arms are rejected on non-numeric parameters.
+
+Block arms can contain nested `@()` conditionals and any other elements:
+
+```manim
+@switch(status) {
+    normal {
+        @(enabled=>on) bitmap(generated(color(70, 30, #060)));
+        @(enabled=>off) bitmap(generated(color(70, 30, #333)));
+    }
+    hover {
+        @(enabled=>on) bitmap(generated(color(70, 30, #090)));
+        @(enabled=>off) bitmap(generated(color(70, 30, #444)));
+    }
+    default: bitmap(generated(color(70, 30, #600)));
+}
+```
+
+**Restrictions:** `@switch` cannot be combined with other `@` modifiers (e.g., `@alpha`, `@scale`). Cannot be used at root level.
+
+Internally, `@switch` desugars to `@()`/`@else()`/`@default` nodes, so it works identically with both builder and macro codegen.
 
 ### Inline Properties
 
@@ -1458,13 +1781,35 @@ Field types are inferred from values:
 - `true` / `false` → bool
 - `[1, 2, 3]` → array (element type inferred from first element)
 
+### Enum Types
+
+Named enum types define finite sets of values. Declare them with `#name enum(val1, val2, ...)` inside a data block:
+
+```
+#gameData data {
+    #rarity enum(common, uncommon, rare, epic, legendary)
+    #element enum(fire, water, earth, air)
+
+    defaultRarity: rarity common
+    elements: element[] [fire, water, earth]
+}
+```
+
+Enum values are bare identifiers (not quoted strings). Values are validated at parse time — using a value not in the enum definition produces an error.
+
+**Enum-typed fields** require an explicit type prefix:
+- Single value: `fieldName: enumName value`
+- Array: `fieldName: enumName[] [val1, val2, ...]`
+
 ### Record Types
 
-Named record types define schemas for structured data. Declare them with `#name record(field: type, ...)` inside a data block:
+Named record types define schemas for structured data. Declare them with `#name record(field: type, ...)` inside a data block. Record fields can reference enum types:
 
 ```
 #upgrades data {
+    #rarity enum(common, uncommon, rare, epic)
     #tier record(name: string, cost: int, ?dmg: float)
+    #item record(name: string, rarity: rarity, ?element: string)
 
     maxLevel: 5
     name: "Warrior"
@@ -1477,10 +1822,11 @@ Named record types define schemas for structured data. Declare them with `#name 
     ]
     defaultTier: tier { name: "None", cost: 0, dmg: 0.0 }
     basicTier: tier { name: "Basic", cost: 5 }
+    sword: item { name: "Flame Sword", rarity: rare }
 }
 ```
 
-**Supported field types in records:** `int`, `float`, `string`, `bool`
+**Supported field types in records:** `int`, `float`, `string`, `bool`, enum names
 
 **Optional fields:** Prefix a field name with `?` to make it optional. Optional fields can be omitted from record values and default to `null`:
 ```
@@ -1517,9 +1863,17 @@ class MyScreen extends bh.multianim.ProgrammableBuilder {
 }
 ```
 
-The macro generates typed classes. Record types are exposed as top-level classes named `PascalCase(dataName) + PascalCase(recordName)`:
+The macro generates typed classes and enums. Enum types become Haxe `enum`, record types become classes. Both are named `PascalCase(dataName) + PascalCase(typeName)`:
 
 ```haxe
+// Generated enum: "upgrades" data + "rarity" enum → UpgradesRarity
+enum UpgradesRarity {
+    Common;
+    Uncommon;
+    Rare;
+    Epic;
+}
+
 // Generated record class: "upgrades" data + "tier" record → UpgradesTier
 class UpgradesTier {
     public final name:String;
@@ -1572,15 +1926,17 @@ public var mages;
 // If both have #tier record(name: string, cost: int) → single game.units.WarriorsTier is reused
 ```
 
-Records are considered identical when they have the same fields (name, type, optional flag) in the same order. A fatal error occurs if the generated type name collides with an existing type.
+Records are considered identical when they have the same fields (name, type, optional flag) in the same order. Enums are considered identical when they have the same values in the same order. A fatal error occurs if the generated type name collides with an existing type.
 
 ### Rules
 
 - Data blocks must be root-level (not nested inside programmables)
 - Data blocks require a `#name`
-- Record names must be unique within a data block
+- Enum and record names must be unique within a data block
+- Enums must be defined before records or fields that reference them
 - Commas between array elements and record fields are optional
 - Optional fields (`?name: type`) default to `null` when omitted from record values
+- Runtime builder returns enum values as strings; macro codegen returns typed Haxe `enum` values
 
 ---
 
@@ -1633,7 +1989,7 @@ graphics (
 
 ## Particles
 
-Particle systems for visual effects like fire, smoke, explosions, and magic effects. **See [Particles Guide](particles.md) for a detailed tutorial with examples.**
+Particle systems for visual effects like fire, smoke, explosions, and magic effects. **Quick lookup: [manim-reference.md](manim-reference.md#particles).**
 
 ### Angle Units
 
@@ -1902,7 +2258,7 @@ With `tangent`, particle initial velocity follows the path tangent direction at 
 | `attachTo` | string | Emitter position tracks a named animated path |
 | `spawnCurve` | curve ref | Modulate emission rate over attached path's lifetime |
 
-**Runtime API:** `group.emitBurst(count)` forces N particles immediately.
+**Runtime API:** `group.emitBurst(count)` forces N particles immediately. `group.emitFilter = (x, y) -> Bool` filters particles by world-space spawn position (return `false` to discard).
 
 ### AnimSM Tile Source
 
@@ -1957,6 +2313,68 @@ subEmitters: [
 | `inheritVelocity` | float | — | Fraction of parent velocity inherited |
 | `offsetX` | float | — | Horizontal offset from parent |
 | `offsetY` | float | — | Vertical offset from parent |
+
+### Shutdown
+
+Graceful particle stop for looping emitters. Instead of removing particles instantly, `shutdown()` winds them down over a configurable duration.
+
+```
+#beam particles {
+    count: 50
+    loop: true
+    maxLife: 0.5
+    tiles: file("spark.png")
+    shutdown: {
+        duration: 0.8
+        curve: easeOutQuad
+        alphaCurve: easeInQuad
+        sizeCurve: linear
+    }
+}
+```
+
+**Shutdown properties:**
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `duration` | float | Default shutdown duration in seconds |
+| `curve` | curve ref | Count curve — shapes how particle density decreases |
+| `alphaCurve` | curve ref | Global alpha multiplier during shutdown |
+| `sizeCurve` | curve ref | Global size multiplier during shutdown |
+| `speedCurve` | curve ref | Global speed multiplier during shutdown |
+
+**Curve convention:** All curves use progress semantics: `multiplier = 1.0 - curve(t)` where `t` is 0..1 over the shutdown duration. Standard easings work intuitively — `easeOutQuad` means fast initial die-off, `easeInQuad` means slow start then rapid end.
+
+**How it works:** When `shutdown()` is called, particles that reach end-of-life are selectively not recycled based on the count curve. The density decreases following the curve shape. Alpha/size/speed multipliers are applied globally to all live particles. After the curve duration, remaining particles enter natural die-off (up to `maxLife` more seconds). The existing `onEnd()` callback fires when the last particle dies.
+
+**Runtime API:**
+```haxe
+// Create and use particles
+var sparks = builder.createParticles("beam");
+layer.addChild(sparks);
+
+// Later, graceful shutdown (uses .manim configured duration/curves)
+sparks.shutdown();
+
+// Override duration at call time
+sparks.shutdown(0.5);
+
+// Per-group control
+var group = sparks.getGroup("beam");
+group.shutdown(1.0, myCustomCurve);
+
+// Query state
+group.isShuttingDown();  // Bool
+group.getShutdownRate(); // 0..1 progress
+
+// Set curves via API before calling shutdown()
+group.shutdownAlphaCurve = myCurve;
+```
+
+**Notes:**
+- No-op on non-looping groups
+- `emitBurstAt()` still works during shutdown (for manual one-shot effects)
+- Default `onEnd()` is `this.remove()` — no change needed
 
 ### Multiple Tiles
 
@@ -2054,6 +2472,23 @@ updatable.setObject(particles);
   - `scale` - scale factor for tiles (font remains at original size for readability)
   - Requires autotile with `region` defined (file source or atlas region)
 
+### Tile Source Modifiers
+
+Any tile source can be wrapped with a pivot modifier to set the tile's origin point:
+
+* `center(source)` - set tile pivot to center (0.5, 0.5). Shorthand for `pivot(0.5, 0.5, source)`
+* `pivot(x, y, source)` - set tile pivot point using ratio coordinates (0.0–1.0)
+
+Examples:
+```
+bitmap(center(file("circle.png"))): 100, 100           // centered on position
+bitmap(pivot(0.5, 1.0, file("arrow.png"))): 100, 100   // bottom-center pivot
+tiles: center(file("spark.png"))                        // centered particle tile
+tiles: pivot(0.0, 0.5, sheet("fx", "beam"))             // left-center pivot
+```
+
+When used inside `bitmap()`, the pivot overrides the bitmap's own alignment parameters (center, left, right, top, bottom).
+
 ---
 
 ## Updatable Elements
@@ -2075,10 +2510,25 @@ Supported fonts: `f3x5`, `m3x6`, `pixeled6`, `pikzel`, `cnc_inet_12`, `m5x7`, `f
 
 ## Debug Tracing
 
-Enable debug traces by adding to your HXML file:
+Debug traces are included with `-D MULTIANIM_DEV` (same flag that enables hot reload and DevBridge).
+
+## Strict Mode
+
+Fail-fast on `.manim`/`.anim` errors — prints a structured error to stderr and exits with code 1 instead of silently storing errors. Useful for CI pipelines and AI agent workflows.
 
 ```hxml
--D MULTIANIM_TRACE
+-D MULTIANIM_STRICT
+```
+
+Error output format:
+```
+=== MANIM STRICT ERROR ===
+context: screen "myScreen"
+file: res/ui/menu.manim
+line: 42
+col: 15
+error: Unknown font "missing"
+=== END MANIM STRICT ERROR ===
 ```
 
 ---
@@ -2331,7 +2781,7 @@ var v:Int = bar.getIntValue();
 | `index` | int | Item index |
 | `title` | string | Item display text |
 | `tile` | tile | Item icon (if available) |
-| `status` | enum: `normal`, `hover`, `pressed` | Interaction state |
+| `status` | enum: `normal`, `hover`, `pressed`, + custom | Interaction state (initial value from `baseStatus` or `"normal"`) |
 | `selected` | enum: `true`, `false` | Selection state |
 | `disabled` | enum: `true`, `false` | Disabled state |
 
@@ -2353,6 +2803,25 @@ var items:Array<UIElementListItem> = [
 `TileRef` variants: `TRFile`, `TRSheet`, `TRSheetIndex`, `TRGeneratedRect`, `TRGeneratedRectColor`, `TRTile` (pass pre-loaded `h2d.Tile`).
 
 The legacy `tileName` field (plain string file path) is still supported but deprecated in favor of `tileRef`.
+
+**Custom item parameters:** `UIElementListItem.params` passes arbitrary parameters to the item `.manim` template. The item programmable must declare matching parameters:
+
+```haxe
+var items:Array<UIElementListItem> = [
+    {name: "Solar Power", params: ["cost" => "5cr/yr", "years" => "3", "desc" => "Clean energy"]},
+    {name: "Wind Farm", params: ["cost" => "3cr/yr", "years" => "2", "desc" => "Turbines"]},
+];
+```
+
+**Per-item base status:** `UIElementListItem.baseStatus` sets the resting visual state. Items return to this status after hover/press ends (instead of always `"normal"`). Also used as the initial `status` parameter in `buildItem()`:
+
+```haxe
+var items:Array<UIElementListItem> = [
+    {name: "Active project", baseStatus: "active"},
+    {name: "Completed", baseStatus: "completed"},
+    {name: "Normal item"},  // defaults to "normal"
+];
+```
 
 **Required `.manim` parameters (scrollbar):**
 
@@ -2406,9 +2875,11 @@ list.clickMode = SingleClick; // single-click fires UIClickItem
 
 // Replace items at runtime
 list.setItems(newItems, 0); // replaces content, selects first item
+list.setItems(newItems, 0, true); // preserveScroll: keep current scroll position
 
 // Programmatic scroll
 list.scrollToIndex(5); // scrolls to make item 5 visible
+list.scrollToAndSelect(5); // scroll + select in one call
 
 // Disabled state — dims list (alpha 0.5), blocks interaction, shows selected in disabled variant
 list.disabled = true;

@@ -2,23 +2,30 @@
 
 ## Adding a New Test
 
-Tests are visual screenshot comparisons. To add a new test:
+Visual tests live in [`test/src/bh/test/examples/ProgrammableCodeGenTest.hx`](../../test/src/bh/test/examples/ProgrammableCodeGenTest.hx) and produce 3-image comparisons (reference + builder + macro) via `simpleMacroTest()`. There is no `AllExamplesTest.hx` — `ProgrammableCodeGenTest` is the visual runner. Other files in `test/src/bh/test/examples/` (e.g. `UIMultiAnimGridTest`, `ScreenTransitionTest`) are subsystem-specific and follow the same pattern when they need visual comparison.
+
+To add a new visual test:
 
 1. **Create test directory**: `test/examples/<N>-<testName>/` (N = next number)
 
-2. **Create `.manim` file**: `test/examples/<N>-<testName>/<testName>.manim` with a programmable named after the test feature
+2. **Create `.manim` file**: `test/examples/<N>-<testName>/<testName>.manim` with a programmable named after the test feature.
 
-3. **Add test method** in `test/src/bh/test/examples/AllExamplesTest.hx`:
+3. **Register the programmable** in [`test/src/bh/test/MultiProgrammable.hx`](../../test/src/bh/test/MultiProgrammable.hx). The `@:build(ProgrammableCodeGen.buildAll())` macro generates a typed factory (`mp.<field>.create()`) from this declaration:
    ```haxe
-   @Test
-   public function test<N>_<TestName>(async:utest.Async) {
-       this.testName = "<testName>";
-       this.referenceDir = "test/examples/<N>-<testName>";
-       buildRenderScreenshotAndCompare("test/examples/<N>-<testName>/<testName>.manim", "<programmableName>", async, 1280, 720);
-   }
+   @:manim("test/examples/<N>-<testName>/<testName>.manim", "<programmableName>")
+   public var <fieldName>;
    ```
 
-4. **Generate reference image** (test.bat gen-refs uses dynamic loop — no manual entries needed):
+4. **Add test method** in `ProgrammableCodeGenTest.hx`:
+   ```haxe
+   @Test
+   public function test<N>_<TestName>(async:utest.Async):Void {
+       simpleMacroTest(<N>, "<testName>", () -> createMp().<fieldName>.create(), async);
+   }
+   ```
+   Optional trailing args on `simpleMacroTest`: `placeholderValues`, `extraSetup`, `scale`, `similarityThreshold`. For `.manim` files designed at native resolution, pass `4.0` scale (most existing tests) or `1.0` for screen-sized layouts. For tests that need custom builder vs macro phases (e.g. animation freezing, see `test101_AnimFlip`), don't use `simpleMacroTest` — call `buildRenderScreenshotAndCompare` / `clearScene` / `captureScreenshotRaw` directly and remember to call `addTitleOverlay()` after adding the macro root.
+
+5. **Generate reference image** (test.bat gen-refs uses a dynamic loop — no manual entries needed):
    - Run `test.bat run` to generate screenshot
    - Run `test.bat gen-refs` to copy as reference
    - Verify with `test.bat run` again (should pass)
@@ -39,10 +46,38 @@ Tests are visual screenshot comparisons. To add a new test:
 
 ## Debug Tracing
 
-Enable debug traces by adding to HXML:
+Debug traces are included with `-D MULTIANIM_DEV` (same flag that enables hot reload and DevBridge).
+
+## Strict Mode
+
+Fail-fast on `.manim`/`.anim` errors — prints structured error to stderr and `Sys.exit(1)`. For CI/AI workflows:
 ```hxml
--D MULTIANIM_TRACE
+-D MULTIANIM_STRICT
 ```
+
+## Builder Errors
+
+Runtime errors in `MultiAnimBuilder` (and related builder code) throw `BuilderError`. Three call shapes depending on what node context is available:
+
+```haxe
+// Inside MultiAnimBuilder methods — currentNode auto-attached
+throw builderError('reference $ref does not exist', "missing_ref");
+throw builderError('invalid tile format');  // code optional
+
+// Inside MultiAnimBuilder methods, explicit-node sites (e.g. macro-codegen
+// helpers walking a passed-in subtree). Was: 'msg' + MacroUtils.nodePos(node)
+throw builderErrorAt(node, 'invalid param types ${a}, ${b}');
+
+// Inside helper classes that don't have a Node (BuilderResult, SlotHandle,
+// BuilderResolvedSettings) — use the static factory
+throw BuilderError.of('Slot "$name" not found in BuilderResult');
+```
+
+- `MultiAnimBuilder.hx` is fully migrated — all 256 string throws converted (the only remaining `throw '...'` strings are inside docstring comments showing the OLD pattern).
+- `code:String` is for programmatic filtering at catch sites (e.g. `resolveAsString` RVParenthesis catches `"not_a_number"` to fall back to string concat). Leave null when no catcher filters. Established codes: `"not_a_number"`, `"missing_ref"`.
+- Catch sites that surface builder errors structurally (file/line/col) all branch on `BuilderError` and call `err.parsedPos()`: `ScreenManager.rebuildAll()`, `ScreenManager.makeHotReloadFailError()` (powers DevBridge `hot_reload` + SSE notifications), `ScreenManager.strictFail()` (under `MULTIANIM_STRICT`), and `DevBridge.handleEvalManim()` (powers MCP `eval_manim`). Any new builder-error catch site that emits structured diagnostics should follow the same pattern. `parsedPos()` returns null in non-DEV builds (Node has no parserPos field), so callers must handle null.
+- Consumer catches (`catch (e)`, `catch (e:Dynamic)`, `catch (e:haxe.Exception)`) all continue to match. `'$e'` formatting preserved via `toString()` override.
+- Sibling builder files (`ProgrammableBuilder.hx`, `MultiAnimLayouts.hx`, `MultiAnimPaths.hx`) still use plain string throws — convert opportunistically when editing.
 
 ## Haxe Language Pitfalls
 
@@ -59,6 +94,6 @@ Enable debug traces by adding to HXML:
 
 ## Parser Notes
 
-- `MultiAnimParser.parseFile` is the main entry point. Throws `InvalidSyntax` (extends `ParserError`) for semantic errors, `MultiAnimUnexpected` for syntax errors.
+- `MultiAnimParser.parseFile` is the main entry point. Throws `InvalidSyntax` (extends `bh.base.ParseError`) for semantic errors, `MultiAnimUnexpected` for syntax errors.
 - `syntaxError()` traces before throwing — traces appear in test output when parser error tests run.
 - `invalidType` as parameter type causes uncatchable HashLink crash — avoid testing this.
