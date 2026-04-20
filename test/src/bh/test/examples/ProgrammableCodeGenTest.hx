@@ -1033,7 +1033,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	public function test14_TileGroupDemo(async:utest.Async):Void {
 		setupTest(14, "tileGroupDemo");
 		builderAndMacroScreenshotAndCompare("test/examples/14-tileGroupDemo/tileGroupDemo.manim", "tileGroupDemo",
-			() -> createMp().tileGroupDemo.create(), async, null, null, null, null, DetachReattach);
+			() -> createMp().tileGroupDemo.create(), async);
 	}
 
 	// ==================== ConditionalsDemo: macro comparison ====================
@@ -2754,7 +2754,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	@Test
 	public function test68_FiltersAdvanced(async:utest.Async):Void {
-		simpleMacroTest(68, "filtersAdvanced", () -> createMp().filtersAdvanced.create(), async, null, null, null, 0.99, DetachReattach);
+		simpleMacroTest(68, "filtersAdvanced", () -> createMp().filtersAdvanced.create(), async, null, null, null, 0.99);
 	}
 
 	// ==================== Manim import: external reference ====================
