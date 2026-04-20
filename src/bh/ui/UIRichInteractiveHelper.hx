@@ -149,6 +149,7 @@ class UIRichInteractiveHelper {
 			prefix: prefix,
 			stateParam: stateParam,
 			currentState: Normal,
+			enteredPressedViaHover: false,
 		});
 	}
 
@@ -232,14 +233,16 @@ class UIRichInteractiveHelper {
 						}
 					case UIPush:
 						if (binding.currentState == Hover || binding.currentState == Normal) {
+							binding.enteredPressedViaHover = binding.currentState == Hover;
 							binding.currentState = Pressed;
 							binding.source.setParameter(binding.stateParam, "pressed");
 						}
 					case UIClick:
 						if (binding.currentState == Pressed) {
 							// Touch: no prior hover, return to Normal. Mouse: return to Hover.
-							binding.currentState = Hover;
-							binding.source.setParameter(binding.stateParam, "hover");
+							final target = binding.enteredPressedViaHover ? Hover : Normal;
+							binding.currentState = target;
+							binding.source.setParameter(binding.stateParam, target == Hover ? "hover" : "normal");
 						}
 					case UILeaving:
 						if (binding.currentState == Hover || binding.currentState == Pressed) {
@@ -260,4 +263,5 @@ private typedef InteractiveBinding = {
 	prefix:Null<String>,
 	stateParam:String,
 	currentState:InteractiveState,
+	enteredPressedViaHover:Bool,
 }

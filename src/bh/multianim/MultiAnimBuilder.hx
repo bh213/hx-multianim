@@ -3180,17 +3180,26 @@ class MultiAnimBuilder {
 	}
 
 	/** Validate tileGroup descendants up front: reject any conditional whose predicate
-	 *  references a programmable parameter (anything not in `loopVarScope`). `buildTileGroup`
-	 *  bakes the subtree into a single drawable and is never re-entered by the
-	 *  incremental-update path, so a conditional on a mutable param would silently freeze
-	 *  on first build. `@switch(param)` has the same problem — the arm is resolved once
-	 *  via `resolveMatchedSwitchArm` and never re-evaluated. `loopVarScope` carries the
-	 *  repeatable/repeatable2d loop-var names that ARE safe because they iterate at
-	 *  build time. Throws `BuilderError` with `code="tilegroup_conditional"`. */
+	 *  key isn't in `loopVarScope`. `buildTileGroup` bakes the subtree into a single
+	 *  drawable and is never re-entered by the incremental-update path, so a conditional
+	 *  on a mutable param would silently freeze on first build. `@switch(param)` has the
+	 *  same problem — the arm is resolved once via `resolveMatchedSwitchArm` and never
+	 *  re-evaluated. `loopVarScope` carries the repeatable/repeatable2d loop-var names
+	 *  that ARE safe because they iterate at build time. Note: @finals are also rejected
+	 *  as conditional keys — `matchSingleCondition` has no `ExpressionAlias` case, so
+	 *  keying a conditional on a @final is broken everywhere (not just inside tileGroup);
+	 *  catching it here with a clear message is a better diagnostic than the generic
+	 *  "invalid param types" later. Throws `BuilderError` with `code="tilegroup_conditional"`. */
 	function validateTileGroupSubtree(node:Node, loopVarScope:Array<String>):Void {
 		inline function requireLoopVar(paramName:String, source:String):Void {
-			if (loopVarScope.indexOf(paramName) < 0)
-				throw builderErrorAt(node, '$source inside tileGroup references parameter "$paramName"; tileGroup descendants are baked at build time and never re-evaluated, so changes to "$paramName" would be silently ignored. Move the conditional outside the tileGroup, or key it on a repeatable loop variable.', "tilegroup_conditional");
+			if (loopVarScope.indexOf(paramName) < 0) {
+				final kind = switch (indexedParams.get(paramName)) {
+					case ExpressionAlias(_): '@final';
+					case null: 'name';
+					default: 'parameter';
+				};
+				throw builderErrorAt(node, '$source inside tileGroup references $kind "$paramName"; tileGroup descendants are baked at build time and never re-evaluated. Only repeatable/repeatable2d loop variables (which iterate at build time) are safe as conditional keys here — move the conditional outside the tileGroup, or key it on a loop variable.', "tilegroup_conditional");
+			}
 		}
 
 		switch node.conditionals {

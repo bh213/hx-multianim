@@ -430,4 +430,7 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/112-chainBoundary/chainBoundary.manim", "chainBoundary")
 	public var chainBoundary;
+
+	@:manim("test/examples/113-codegenGraphicsReattach/codegenGraphicsReattach.manim", "codegenGraphicsReattach")
+	public var codegenGraphicsReattach;
 }

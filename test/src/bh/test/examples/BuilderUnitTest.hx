@@ -7586,6 +7586,28 @@ class BuilderUnitTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testTileGroupConditionalOnFinal_Throws():Void {
+		// @final as conditional key is broken system-wide (matchSingleCondition has no
+		// ExpressionAlias case), but the tileGroup validator catches it early and labels
+		// the name as "@final" rather than the generic "parameter" — better diagnostic.
+		final msg = buildExpectingTileGroupConditional("
+			#test programmable() {
+				@final MODE = 1
+				tileGroup {
+					@(MODE => 1) bitmap(generated(color(20, 20, red))): 0, 0
+				}
+			}
+		");
+		Assert.notNull(msg);
+		Assert.isTrue(msg.indexOf("@final") >= 0,
+			'Message should label "MODE" as @final (not parameter), got: $msg');
+		Assert.isTrue(msg.indexOf("MODE") >= 0,
+			'Message should name the offending @final "MODE", got: $msg');
+		Assert.isTrue(msg.indexOf("parameter") < 0,
+			'Message should NOT misclassify an @final as parameter, got: $msg');
+	}
+
+	@Test
 	public function testTileGroupOuterConditionalOnParam_NotFlagged():Void {
 		// Conditionals on the tileGroup NODE ITSELF (outside the baked subtree) are re-entered
 		// by the main build() path on incremental rebuild and handled the normal way. Only

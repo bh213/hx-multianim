@@ -2682,7 +2682,7 @@ class ProgrammableCodeGen {
 
 			case GRAPHICS(elements):
 				final stmts:Array<Expr> = [];
-				stmts.push(macro final _rt_g = new h2d.Graphics());
+				stmts.push(macro final _rt_g = new bh.multianim.KeepGraphics());
 				stmts.push(macro $containerRef.addChild(_rt_g));
 				for (item in elements) {
 					final drawExprs = generateGraphicsElementExprs(macro _rt_g, item.element, item.pos, child, pos);
@@ -3626,7 +3626,7 @@ class ProgrammableCodeGen {
 			collectGraphicsElementParamRefs(item.element, allRefs);
 		}
 
-		final createExprs:Array<Expr> = [macro $fieldRef = new h2d.Graphics()];
+		final createExprs:Array<Expr> = [macro $fieldRef = new bh.multianim.KeepGraphics()];
 		final exprUpdatesLocal:Array<{fieldName:String, updateExpr:Expr, paramRefs:Array<String>}> = [];
 		final extraFieldsLocal:Array<Field> = [];
 

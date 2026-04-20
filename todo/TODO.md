@@ -3,7 +3,6 @@
 | # | Item | Summary | Priority |
 |---|------|---------|----------|
 | 15 | Text input codegen | `@:manim` factory with `createTextInput()` | Low |
-| 16 | Codegen `graphics(...)` detach/reattach | Builder path now uses `KeepGraphics` (suppresses `onRemove`-triggered `clear()`), so re-entering a screen preserves vertex content. Codegen `ProgrammableCodeGen.hx` still constructs raw `h2d.Graphics` at two sites (`new h2d.Graphics()` at L2685 + L3629) — migrate to `KeepGraphics` + add a regression test covering detach→reattach in the `@:manim` path. | Medium |
 
 ## Main Goals
 

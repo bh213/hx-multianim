@@ -39,7 +39,7 @@
 | `mask(w, h)` | Clipping mask rectangle |
 | `flow(...)` | Layout flow container |
 | `repeatable($var, iterator)` | Loop elements |
-| `tilegroup` | Optimized tile grouping (supports `bitmap`, `ninepatch`, `repeatable`, `repeatable2d`, `pixels`, `point`) |
+| `tilegroup` | Optimized tile grouping (supports `bitmap`, `ninepatch`, `repeatable`, `repeatable2d`, `pixels`, `point`). Children are baked once at build time, so conditionals on programmable parameters are **rejected at build time** (`BuilderError code="tilegroup_conditional"`) — use conditionals outside the tileGroup, or key them on a `repeatable` loop variable inside it |
 | `stateanim construct(...)` | Inline state animation |
 | `point` | Positioning point |
 | `apply(...)` | Apply properties to parent |
@@ -76,6 +76,8 @@
 @else(param=>value)       # Else-if with conditions
 @default                  # Final fallback
 ```
+
+A bare `@else` or `@default` is **terminal** — it closes the chain. Any `@else` / `@default` that follows one is unreachable and rejected at parse time. To start a fresh chain, open a new `@(...)` sibling first.
 
 All conditionals support **block form**: `@(cond) { ... }`, `@else { ... }`, `@default { ... }`. Blocks can be nested.
 

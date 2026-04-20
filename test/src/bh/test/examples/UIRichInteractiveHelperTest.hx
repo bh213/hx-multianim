@@ -247,6 +247,19 @@ class UIRichInteractiveHelperTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testTouchCycleClickReturnsToNormal():Void {
+		var ctx = createHelper(BOUND_MANIM, "bound");
+		// Touch tap: no prior hover. Push from Normal → Pressed, Click → Normal.
+		// (Mouse path returns to Hover; touch path must not leave element stuck "hovered".)
+		assertState(ctx.helper, "btn1", Normal);
+		ctx.helper.handleEvent(UIInteractiveEvent(UIPush, "btn1", null));
+		assertState(ctx.helper, "btn1", Pressed);
+		ctx.helper.handleEvent(UIInteractiveEvent(UIClick, "btn1", null));
+		assertState(ctx.helper, "btn1", Normal,
+			"Click from touch-initiated Pressed (no prior Hover) should return to Normal, not Hover");
+	}
+
+	@Test
 	public function testClickWithoutPushIsIgnored():Void {
 		var ctx = createHelper(BOUND_MANIM, "bound");
 		ctx.helper.handleEvent(UIInteractiveEvent(UIEntering(), "btn1", null));

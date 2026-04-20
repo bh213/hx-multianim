@@ -3,6 +3,7 @@ package bh.test.examples;
 import utest.Assert;
 import h2d.Scene;
 import bh.test.VisualTestBase;
+import bh.test.LifecycleMode;
 import bh.test.HtmlReportGenerator;
 import bh.test.ImageProcessingPool;
 import bh.test.examples.AutotileTestHelper;
@@ -1032,7 +1033,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	public function test14_TileGroupDemo(async:utest.Async):Void {
 		setupTest(14, "tileGroupDemo");
 		builderAndMacroScreenshotAndCompare("test/examples/14-tileGroupDemo/tileGroupDemo.manim", "tileGroupDemo",
-			() -> createMp().tileGroupDemo.create(), async);
+			() -> createMp().tileGroupDemo.create(), async, null, null, null, null, DetachReattach);
 	}
 
 	// ==================== ConditionalsDemo: macro comparison ====================
@@ -2753,7 +2754,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 	@Test
 	public function test68_FiltersAdvanced(async:utest.Async):Void {
-		simpleMacroTest(68, "filtersAdvanced", () -> createMp().filtersAdvanced.create(), async, null, null, null, 0.99);
+		simpleMacroTest(68, "filtersAdvanced", () -> createMp().filtersAdvanced.create(), async, null, null, null, 0.99, DetachReattach);
 	}
 
 	// ==================== Manim import: external reference ====================
@@ -5180,6 +5181,22 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		simpleMacroTest(107, "rubeGoldberg",
 			() -> createMp().rubeGoldberg.create(),
 			async, null, null, 1.0, 0.97);
+	}
+
+	// Exercises BOTH codegen graphics() code paths under an onRemove/onAdd cycle:
+	//   - top-level graphics(...)          → field path  (ProgrammableCodeGen L3629)
+	//   - repeatable { graphics(...) }     → runtime path (ProgrammableCodeGen L2685)
+	// Without KeepGraphics the vanilla h2d.Graphics.clear() on onRemove wipes the
+	// vertex buffer, so the post-reattach screenshot would render blank. Reference
+	// image captured with KeepGraphics in place; a regression shows as a macro-side
+	// similarity mismatch. The builder phase also runs the cycle symmetrically so
+	// a builder-side regression (e.g. accidental revert of MultiAnimBuilder:5477)
+	// also surfaces.
+	@Test
+	public function test113_CodegenGraphicsReattach(async:utest.Async):Void {
+		simpleMacroTest(113, "codegenGraphicsReattach",
+			() -> createMp().codegenGraphicsReattach.create(),
+			async, null, null, 4.0, null, DetachReattach);
 	}
 
 	static function containsDescendant(root:h2d.Object, target:h2d.Object):Bool {
