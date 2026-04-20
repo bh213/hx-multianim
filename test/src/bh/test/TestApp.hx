@@ -90,6 +90,8 @@ class TestApp extends hxd.App {
 		testRunner.addCase(new bh.test.examples.ProgrammableCodeGenTest(s2d));
 		testRunner.addCase(new bh.test.examples.ScreenTransitionTest());
 		testRunner.addCase(new bh.test.examples.ScreenTransitionIntegrationTest());
+		testRunner.addCase(new bh.test.examples.ScreenManagerDialogTransitionTest());
+		testRunner.addCase(new bh.test.examples.ScreenManagerModalOverlayTest());
 		testRunner.addCase(new bh.test.examples.AnimatedPathTest());
 		testRunner.addCase(new bh.test.examples.AnimatedPathBuilderTest());
 		testRunner.addCase(new bh.test.examples.FloatingTextHelperTest());

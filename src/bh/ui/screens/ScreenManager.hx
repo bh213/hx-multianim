@@ -531,14 +531,17 @@ class ScreenManager {
 
 	public function modalDialog(dialog:UIScreen, caller:UIScreen, dialogName:String, ?data:Dynamic) {
 		dialog.load();
+		// Run the mode transition first so Dialog→Dialog's removeModalOverlay() at line 644
+		// tears down the previous overlay before we create a new one. Also means the new
+		// dialog is already in activeScreens when we apply blur, so pass it to exclude.
+		updateScreenMode(Dialog(dialog, caller, mode, dialogName), data);
 		final overlayConfig = readOverlayConfig(dialog);
 		if (overlayConfig != null) {
 			modalOverlay = createModalOverlay(overlayConfig);
 			if (overlayConfig.blur != null && overlayConfig.blur > 0)
-				applyBlurToUnderlyingScreens(overlayConfig.blur);
+				applyBlurToUnderlyingScreens(overlayConfig.blur, dialog);
 			modalOverlay.alpha = modalOverlayTargetAlpha; // no transition — show immediately
 		}
-		updateScreenMode(Dialog(dialog, caller, mode, dialogName), data);
 	}
 
 	public function updateScreenMode(newScreenMode:ScreenManagerMode, ?data:Dynamic) {
@@ -692,7 +695,6 @@ class ScreenManager {
 						overrideActiveScreenControllers = [newDialog];
 						final result = oldDialog.getController().exitResponse;
 						caller.onScreenEvent(UIOnControllerEvent(OnDialogResult(dialogName, result)), null);
-						removeScreen(oldDialog);
 				}
 		}
 		if (removedScreens != null)
@@ -846,14 +848,17 @@ class ScreenManager {
 	public function modalDialogWithTransition(dialog:UIScreen, caller:UIScreen, dialogName:String, ?data:Dynamic,
 			?transition:ScreenTransition):Void {
 		dialog.load();
+		// Run the screen transition first so Dialog→Dialog's auto-close
+		// (switchScreen → closeDialogWithTransition(None)) tears down the previous overlay
+		// before we create a new one.
+		switchScreen(Dialog(dialog, caller, mode, dialogName), transition, data);
 		final overlayConfig = readOverlayConfig(dialog);
 		if (overlayConfig != null) {
 			modalOverlay = createModalOverlay(overlayConfig);
 			if (overlayConfig.blur != null && overlayConfig.blur > 0)
-				applyBlurToUnderlyingScreens(overlayConfig.blur);
+				applyBlurToUnderlyingScreens(overlayConfig.blur, dialog);
 			tweenOverlayIn(overlayConfig, transition);
 		}
-		switchScreen(Dialog(dialog, caller, mode, dialogName), transition, data);
 	}
 
 	/** Close the current dialog with an optional transition. Returns to previous mode. */
@@ -1163,8 +1168,9 @@ class ScreenManager {
 		modalOverlayBlurTargets = [];
 	}
 
-	function applyBlurToUnderlyingScreens(blurRadius:Float):Void {
+	function applyBlurToUnderlyingScreens(blurRadius:Float, ?exclude:UIScreen):Void {
 		for (screen in activeScreens) {
+			if (exclude != null && screen == exclude) continue;
 			final root = screen.getSceneRoot();
 			modalOverlayBlurTargets.push({root: root, saved: root.filter});
 			root.filter = new h2d.filter.Blur(blurRadius, 1.0, 1.0);
