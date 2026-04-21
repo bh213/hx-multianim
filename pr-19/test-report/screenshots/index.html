@@ -327,15 +327,15 @@
 </head>
 <body>
     <h1>Visual Test Report</h1>
-    <div class="timestamp">Generated: 2026-04-21 06:36:31</div>
+    <div class="timestamp">Generated: 2026-04-21 08:08:14</div>
     <div class="summary">
         <strong>Summary:</strong> 101 tests,         <span style="color: #4CAF50;">101 passed</span>,         <span style="color: #f44336;">0 failed</span>
-        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 0.9s, visual 19.5s)</span>
+        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1.2s, visual 23.2s)</span>
     </div>
     <div class="unit-tests-section">
         <h2>Unit Tests</h2>
         <div class="unit-tests-summary all-passed">
-            <strong>6050 assertions:</strong>             <span style="color: #4CAF50;">6050 passed</span>
+            <strong>6089 assertions:</strong>             <span style="color: #4CAF50;">6089 passed</span>
             <button class="expand-btn" id="unitToggleBtn" onclick="toggleUnitDetails()">Show Details</button>
         </div>
         <div class="unit-details" id="unitDetails">
@@ -680,6 +680,9 @@
                 <div class="unit-method pass">testAnimatedPathTimeMode: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testAnyConditionWithComparison: OK <span class="dots">........</span></div>
                 <div class="unit-method pass">testAnyConditionWithSetParameter: OK <span class="dots">........</span></div>
+                <div class="unit-method pass">testBatchEndUpdateWithoutBeginThrows: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testBatchFlatPairStillWorks: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testBatchNestedBeginUpdateThrows: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testBitFlagBit0Set: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testBitFlagBit1NotSet: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testBitFlagBit2Set: OK <span class="dots">..</span></div>
@@ -967,6 +970,8 @@
                 <div class="unit-method pass">testRebuildListenerRemove: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testRebuildListenerSeesPostRebuildState: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testRebuildListenerThrowsInNonIncrementalMode: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testReentrantSetParameterDuringSwitchRebuild: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testReentrantSetParameterInRebuildListener: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testRepeatableCount: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testRepeatableCountOverride: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testRepeatableExpressionCount: OK <span class="dots">.</span></div>
@@ -990,6 +995,10 @@
                 <div class="unit-method pass">testRichTextMarkupWithInterpolation: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testRichTextNestingConverted: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testRichTextStylesCreatesHtmlText: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testSetParameterInvalidValueDoesNotFireRebuildListeners: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testSetParameterInvalidValueTypeThrows: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testSetParameterNullValueThrows: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testSetParameterUnknownParamIsSilentNoOp: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testSettingsPassThroughParam: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testSettingsPassThroughWithDefaultOverride: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testSettingsUnknownParamThrowsWithMessage: OK <span class="dots">.....</span></div>
@@ -1183,6 +1192,8 @@
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">CodegenIncrementalInteractiveStateanimTest</div>
+                <div class="unit-method pass">testInteractiveMetadata_TypedIntFromEnum_RejectedAtParseTime: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testInteractiveMetadata_TypedIntFromInt_StillParses: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testInteractive_Builder_SizeUpdate: OK <span class="dots">.......</span></div>
                 <div class="unit-method pass">testInteractive_Codegen_SizeUpdate: OK <span class="dots">.......</span></div>
                 <div class="unit-method pass">testStateanim_Builder_InitialStateUpdate: OK <span class="dots">....</span></div>
@@ -1200,6 +1211,11 @@
                 <div class="unit-method pass">testFlow_Codegen_ParamUpdate: OK <span class="dots">.........</span></div>
                 <div class="unit-method pass">testMask_Builder_ParamUpdate: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testMask_Codegen_ParamUpdate: OK <span class="dots">.....</span></div>
+            </div>
+            <div class="unit-class">
+                <div class="unit-class-name">CodegenRepeatFallbackUntrackedTest</div>
+                <div class="unit-method pass">testParamDepRepeat_InteractiveId_Builder_Throws: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testParamDepRepeat_InteractiveId_Codegen_Throws: OK <span class="dots">......</span></div>
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">ColorUtilsTest</div>
@@ -1383,6 +1399,7 @@
                 <div class="unit-method pass">testParameterizedSlotBuilds: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testParameterizedSlotSetContent: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testParameterizedSlotSetParameter: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testParameterizedSlotSetParameterThrowsAfterArmSwap: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testParameterizedSlotWithBoolParam: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testSlotClear: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testSlotData: OK <span class="dots">..</span></div>
