@@ -433,4 +433,7 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/113-codegenGraphicsReattach/codegenGraphicsReattach.manim", "codegenGraphicsReattach")
 	public var codegenGraphicsReattach;
+
+	@:manim("test/examples/114-codegenRepeatFallbackUntracked/codegenRepeatFallbackUntracked.manim", "paramDepRepeatUntrackedId")
+	public var paramDepRepeatUntrackedId;
 }

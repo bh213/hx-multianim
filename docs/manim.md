@@ -768,6 +768,8 @@ interactive(200, 30, "toggle", enabled:bool => true, color:color => #FF0000)
 
 Supported types: `int`, `float`, `string` (default when no type specified), `bool`, `color`. Untyped `key => true`/`key => false` auto-infers as bool. Keys and values can be `$references`. Access via `BuilderResolvedSettings`: `has(key)`, `getStringOrDefault(key, default)`, `getIntOrDefault(key, default)`, `getBoolOrDefault(key, default)`, `getFloatOrDefault(key, default)`.
 
+When a typed metadata value is a `$param` reference, the parser validates at parse time that the meta type is compatible with the param's declared type. `:int` / `:color` accept int-backed params (`int`, `uint`, `range`, `color`, `bool`, `hexDirection`, `gridDirection`); `:float` accepts any numeric param; `:bool` accepts `bool`/`int`/`uint`/`range`/direction; `:string` accepts anything except `flags`, `array`, and `tile`. Mismatches throw a parse error naming the key, declared meta type, referenced param, and its type — the runtime builder's lenient `resolveAs*()` and the codegen's strict `RSV<Type>` emitters would otherwise resolve the same source incompatibly. Literals (`price:int => 100`) and `@final` refs are unaffected.
+
 **Event filtering:**
 
 Control which events an interactive emits via the `events:` metadata:

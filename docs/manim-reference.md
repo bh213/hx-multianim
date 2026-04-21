@@ -1315,7 +1315,17 @@ rendered state inconsistent. Either rebuild the programmable or avoid
 runtime mutation of this param.
 ```
 
-Builder throws `BuilderError` with `code == "untracked_param"`; codegen throws a plain `String` from the generated setter. Params that appear in both tracked and frozen slots are also rejected (the tracked effect would apply while the frozen one would silently drift). Reasons surface the slot kind so the message is greppable: `interactive id`, `interactive metadata key`, `interactive metadata value`, `stateanim selector "<name>"`, `stateanim_construct animName "<key>"`, `stateanim_construct fps "<key>"`.
+Builder throws `BuilderError` with `code == "untracked_param"`; codegen throws a plain `String` from the generated setter. Params that appear in both tracked and frozen slots are also rejected (the tracked effect would apply while the frozen one would silently drift). Reasons surface the slot kind so the message is greppable: `interactive id`, `interactive metadata key`, `interactive metadata value`, `stateanim selector "<name>"`, `stateanim_construct animName "<key>"`, `stateanim_construct fps "<key>"`. Applies to param-dependent `repeatable` / `repeatable2d` bodies as well — the walker `markUntrackedParamsInSubtree` (builder) / `recordUntrackedParamsInSubtree` (codegen) seeds `untrackedParamRefs` before the repeat body is built non-incrementally, so the param-dep case is identical to the static-count case.
+
+### Other `BuilderError` codes from `setParameter` / `beginUpdate` / `endUpdate`
+
+| Code | When thrown |
+|------|-------------|
+| `"invalid_param_value"` | `setParameter(name, value)` on a declared param whose value is not `Int`/`Float`/`String`/`Bool`/`ResolvedIndexParameters`/`h2d.Tile` (covers `null`, arrays, arbitrary objects, unresolved enum values). Message names the param and rejected type. Unknown param names are still a silent no-op — UI widgets (Button/Checkbox/Slider/Tabs/TextInput) rely on `setParameter("disabled", ...)` being a no-op for templates that don't opt in |
+| `"nested_begin_update"` | `beginUpdate()` called while already in batch — nested batching is not supported |
+| `"unbalanced_end_update"` | `endUpdate()` called without a matching `beginUpdate()` |
+
+`SlotHandle.setParameter` additionally throws `BuilderError "Slot disposed — enclosing subtree was rebuilt"` when the enclosing subtree has been torn down (SWITCH arm swap, repeatable shrinkage) and the handle is still being retained externally. External code holding long-lived `SlotHandle` references across arm flips should re-fetch via `result.getSlot(name)` after each rebuild, or listen for the rebuild via `result.addRebuildListener`.
 
 ---
 

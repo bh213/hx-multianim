@@ -484,6 +484,20 @@ class ProgrammableBuilder {
 		return builder.buildSingleNode(targetNode);
 	}
 
+	/** Params-aware variant: pushes builder state with resolved params before building so that
+	 *  `$param` and loop-var refs inside the subtree resolve correctly. Used by the codegen
+	 *  runtime-rebuild fallback for param-dependent repeatable bodies. */
+	public function buildNodeByUniqueNameWithParams(programmableName:String, uniqueNodeName:String,
+			parentParams:Map<String, Dynamic>):Null<h2d.Object> {
+		final builder = getBuilder();
+		if (builder == null) return null;
+		final progNode = builder.multiParserResult.nodes.get(programmableName);
+		if (progNode == null) return null;
+		final targetNode = findNodeByUniqueName(progNode, uniqueNodeName);
+		if (targetNode == null) return null;
+		return builder.buildSingleNodeWithParams(targetNode, progNode, parentParams);
+	}
+
 	public static function findNodeByUniqueName(node:MultiAnimParser.Node, name:String):Null<MultiAnimParser.Node> {
 		if (node.uniqueNodeName == name) return node;
 		if (node.children != null) {

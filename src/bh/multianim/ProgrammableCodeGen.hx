@@ -1988,6 +1988,15 @@ class ProgrammableCodeGen {
 		// Use runtimeLoopVars so rvToExpr generates runtime references for the loop variable
 		runtimeLoopVars.set(varName, loopVarIdent);
 
+		// Record untracked param refs in the repeat body before emitting the runtime walk.
+		// generateRuntimeChildExprs forwards unsupported kinds (INTERACTIVE, SLOT, etc.) via
+		// buildNodeByUniqueNameWithParams, which skips the inline recordUntrackedParams calls
+		// that processChildren does in the static-unroll path.
+		if (node.children != null) {
+			for (child in node.children)
+				recordUntrackedParamsInSubtree(child);
+		}
+
 		// Build loop body expressions from child nodes
 		final containerRef = macro _rt_cont;
 		final loopBodyExprs:Array<Expr> = [];
@@ -2959,13 +2968,66 @@ class ProgrammableCodeGen {
 				bodyExprs.push({expr: EBlock(stmts), pos: pos});
 
 			default:
-				// Forward unsupported node types to the builder at runtime
+				// Forward unsupported node types (INTERACTIVE, STATIC_REF, DYNAMIC_REF, PARTICLES,
+				// STATEANIM, TILEGROUP, PLACEHOLDER, SWITCH, nested REPEAT, SLOT, APPLY, SPACER, ...)
+				// to the builder at runtime. Pass a params map so `$param` and loop-var refs inside
+				// the subtree resolve correctly — the bare buildNodeByUniqueName path doesn't set
+				// up builder state and errors with "reference X does not exist".
 				final progName = currentProgrammableName;
 				final nodeName = child.uniqueNodeName;
-				bodyExprs.push(macro {
-					final _rt_obj = this._pb.buildNodeByUniqueName($v{progName}, $v{nodeName});
+				final mapExprs:Array<Expr> = [macro final _rt_pp = new Map<String, Dynamic>()];
+				for (pn in paramNames) {
+					mapExprs.push(macro _rt_pp.set($v{pn}, $p{["this", "_" + pn]}));
+				}
+				for (loopVar => loopIdent in runtimeLoopVars) {
+					mapExprs.push(macro _rt_pp.set($v{loopVar}, $i{loopIdent}));
+				}
+				mapExprs.push(macro {
+					final _rt_obj = this._pb.buildNodeByUniqueNameWithParams($v{progName}, $v{nodeName}, _rt_pp);
 					if (_rt_obj != null) $containerRef.addChild(_rt_obj);
 				});
+				bodyExprs.push({expr: EBlock(mapExprs), pos: pos});
+		}
+	}
+
+	/** Walk a subtree and record any `$param` refs inside incremental-unsupported slots
+	 *  (INTERACTIVE id/metadata, STATEANIM/STATEANIM_CONSTRUCT selectors + animName/fps) into
+	 *  untrackedParamRefs. The normal processChildren walk calls recordUntrackedParams inline
+	 *  for each kind, but generateRuntimeChildExprs (the param-dependent-repeat fallback) emits
+	 *  the subtree via buildNodeByUniqueNameWithParams and skips that pass — so without this
+	 *  helper, setParameter on a param that flows into an interactive id inside a param-dep
+	 *  repeat would silently no-op instead of throwing "untracked_param". */
+	static function recordUntrackedParamsInSubtree(node:Node):Void {
+		if (node == null) return;
+		switch (node.type) {
+			case INTERACTIVE(_, _, id, _, metadata):
+				recordUntrackedParams(collectParamRefs(id), "interactive id");
+				if (metadata != null) {
+					for (entry in metadata) {
+						recordUntrackedParams(collectParamRefs(entry.key), "interactive metadata key");
+						recordUntrackedParams(collectParamRefs(entry.value), "interactive metadata value");
+					}
+				}
+			case STATEANIM(_, _, selectorReferences):
+				if (selectorReferences != null) {
+					for (k => v in selectorReferences)
+						recordUntrackedParams(collectParamRefs(v), 'stateanim selector "$k"');
+				}
+			case STATEANIM_CONSTRUCT(_, construct, _):
+				if (construct != null) {
+					for (key => value in construct) {
+						switch value {
+							case IndexedSheet(_, animName, fps, _, _):
+								recordUntrackedParams(collectParamRefs(animName), 'stateanim_construct animName "$key"');
+								recordUntrackedParams(collectParamRefs(fps), 'stateanim_construct fps "$key"');
+						}
+					}
+				}
+			default:
+		}
+		if (node.children != null) {
+			for (child in node.children)
+				recordUntrackedParamsInSubtree(child);
 		}
 	}
 
@@ -3076,6 +3138,12 @@ class ProgrammableCodeGen {
 		// Use runtimeLoopVars so rvToExpr generates runtime references
 		runtimeLoopVars.set(varNameX, "_rt_ix");
 		runtimeLoopVars.set(varNameY, "_rt_iy");
+
+		// Record untracked param refs in the repeat body (see rebuildRepeatChildren for rationale).
+		if (node.children != null) {
+			for (child in node.children)
+				recordUntrackedParamsInSubtree(child);
+		}
 
 		// Build loop body expressions from child nodes
 		final containerRef = macro _rt_cont;

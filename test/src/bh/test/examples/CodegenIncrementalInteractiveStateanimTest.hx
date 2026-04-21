@@ -208,4 +208,46 @@ class CodegenIncrementalInteractiveStateanimTest extends BuilderTestBase {
 		assertUntrackedReject(runAndCatch(() -> inst.setDir("r")),
 			"dir", "stateanim selector \"direction\"", "codegen selector");
 	}
+
+	// ==================== Metadata type compat (parse-time validation) ====================
+	// Typed :int / :float / :color / :bool / :string metadata on an interactive(...) element
+	// must reject param refs whose declared param type would cause runtime vs codegen to
+	// diverge. The existing behavior was: runtime resolveAs*() leniently coerces across
+	// Value/ValueF/StringValue/Index/Flag; codegen emits raw `RSV<Type>(this._p)` based on
+	// the metadata's declared type, which either (a) compile-errors on non-int params used
+	// in :int meta, or (b) silently returns the enum index / flag bits while runtime throws.
+	// Parser now rejects mismatches so both paths fail at parse time with the same error.
+	//
+	// Compatibility policy (implemented in MacroManimParser.validateMetadataTypeCompat):
+	//   :int / :color → param must be int-backed (int, uint, range, color, bool, hex/grid dir)
+	//   :float        → param must be numeric (float, int, uint, range, color, bool, dir)
+	//   :bool         → param must be bool, int, uint, range, or direction
+	//   :string       → param must stringify without runtime default-throw (rejects flags, array, tile)
+
+	@Test
+	public function testInteractiveMetadata_TypedIntFromEnum_RejectedAtParseTime():Void {
+		final err = BuilderTestBase.parseExpectingError(
+			"#p programmable(status:[a,b,c]=b) {
+			  interactive(100, 50, \"btn\", statusIdx:int => $status): 0, 0
+			}"
+		);
+		Assert.notNull(err, "expected parse error for enum → :int metadata");
+		if (err != null) {
+			Assert.isTrue(err.indexOf("statusIdx") >= 0 || err.indexOf("status") >= 0,
+				'error should name the key or param — got: $err');
+			Assert.isTrue(err.indexOf("enum") >= 0 || err.indexOf(":int") >= 0,
+				'error should mention the incompatible types — got: $err');
+		}
+	}
+
+	@Test
+	public function testInteractiveMetadata_TypedIntFromInt_StillParses():Void {
+		// Regression guard: int → :int is the matching case and must continue to parse.
+		final ok = BuilderTestBase.parseExpectingSuccess(
+			"#p programmable(price:int=10) {
+			  interactive(100, 50, \"btn\", price:int => $price): 0, 0
+			}"
+		);
+		Assert.isTrue(ok, "int param with :int typed metadata must still parse");
+	}
 }

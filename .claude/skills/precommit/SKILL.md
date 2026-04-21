@@ -35,6 +35,40 @@ Perform the following pre-commit workflow. Report findings concisely.
 
 ## 5. Test Review
 
+### 5a. Warn on Reference Image & Existing Test Changes
+
+Before analyzing impact, scan the diff for modifications to existing tests and reference images. These are high-risk changes that can silently mask regressions.
+
+Run each check and list every hit:
+
+- **Reference images changed:** `git diff --stat HEAD -- 'test/examples/*/reference*.png' 'test/examples/*/ref*.png' 'test/examples/*/*.png'` — any modified (not added) `.png` under `test/examples/`
+- **Existing visual test `.manim` files changed:** `git diff --stat HEAD -- 'test/examples/*/*.manim'` filtered to files present before this change (not newly added directories)
+- **Existing test methods changed:** `git diff HEAD -- 'test/src/**/*.hx'` — flag any modifications to existing `@Test`/`test*` methods (vs. pure additions of new methods)
+
+For every hit, report:
+- **File link:** `[path/to/file.ext:LINE](path/to/file.ext#LLINE)` pointing to the changed region (use the first changed hunk's line number)
+- **Reason (if known):** derive from diff context + git history + recent conversation. If the reason is not obvious, say "reason unclear — verify with user".
+
+Format:
+
+```
+⚠ Visual test reference images changed (N):
+- [test/examples/42-foo/reference.png:1](test/examples/42-foo/reference.png#L1) — reason: <why>
+...
+
+⚠ Existing visual tests modified (N):
+- [test/examples/42-foo/foo.manim:15](test/examples/42-foo/foo.manim#L15) — reason: <why>
+...
+
+⚠ Existing test methods modified (N):
+- [test/src/bh/test/examples/BuilderUnitTest.hx:123](test/src/bh/test/examples/BuilderUnitTest.hx#L123) — reason: <why>
+...
+```
+
+**Never hide these warnings in the summary** — they belong in both section 5 output and the final summary (section 10). Do not regenerate reference images to "fix" a failing test without confirming with the user that the visual change is intentional (see section 6).
+
+### 5b. Test Impact Analysis
+
 The test suite covers **three categories**:
 
 1. **Visual tests** (numbered 1–95) — screenshot comparison of `.manim` rendering (builder vs. macro). Located in `test/examples/<N>-<name>/` dirs with `.manim` files. Run via `ProgrammableCodeGenTest.hx` and other `*Test.hx` visual test classes.
@@ -126,6 +160,8 @@ Present a summary table:
 - Docs updated
 - TODOs cleaned
 - Tests added / updated / removed
+- **Reference images changed** (count + links from 5a — do not omit)
+- **Existing tests modified** (count + links from 5a — do not omit)
 - Test run result (pass/fail)
 - Any issues found
 - Suggested commit message

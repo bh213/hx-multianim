@@ -119,6 +119,7 @@ class TestApp extends hxd.App {
 		testRunner.addCase(new bh.test.examples.CodegenIncrementalGfxPxTest());
 		testRunner.addCase(new bh.test.examples.CodegenIncrementalMaskFlowTest());
 		testRunner.addCase(new bh.test.examples.CodegenIncrementalInteractiveStateanimTest());
+		testRunner.addCase(new bh.test.examples.CodegenRepeatFallbackUntrackedTest());
 		testRunner.addCase(new bh.test.examples.ChainBoundaryConditionalTest());
 		#if MULTIANIM_DEV
 		testRunner.addCase(new bh.test.examples.HotReloadTest());

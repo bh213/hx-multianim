@@ -698,29 +698,54 @@ class IncrementalUpdateContext {
 			throw BuilderError.of('setParameter("$name", ...) rejected: this param is referenced in incremental-unsupported slot(s) [${untrackedReasons.join(", ")}]. Changing it would leave the rendered state inconsistent. Either rebuild the programmable or avoid runtime mutation of this param.',
 				"untracked_param");
 		}
-		// Look up the parameter type definition for type-aware conversion (flags need special handling)
+		// Look up the parameter type definition for type-aware conversion (flags need special handling).
+		// Unknown param names are silently skipped (not a throw): UI widgets (Button, Checkbox,
+		// Slider, Tabs, TextInput) intentionally setParameter("disabled", ...) on every client
+		// template, relying on a no-op when the template doesn't opt into that param. Throwing
+		// here would break that contract. The stale-listener bug that H1 described was specific
+		// to the case where we DID have declared tracking for the param but stored no value —
+		// skipping `changedParams`/`hasChanges` for an unknown param avoids firing listeners
+		// that have nothing to read anyway.
 		final paramDef = getParamDefinition(name);
-		final paramType = paramDef?.type;
+		if (paramDef == null)
+			return;
+		final paramType = paramDef.type;
+		// Resolve the value shape first, THEN commit. If no branch matches we throw
+		// instead of silently flagging `changedParams` — the old code fell through and
+		// re-fired dependent listeners against a stale indexedParams entry.
+		// Int-before-Float is load-bearing: Std.isOfType(42, Float) is true in Haxe.
+		var converted:Null<ResolvedIndexParameters> = null;
 		if (paramType != null && paramType.match(PPTFlags(_))) {
-			indexedParams.set(name, MultiAnimParser.dynamicValueToIndex(name, paramType, value, s -> throw s));
+			converted = MultiAnimParser.dynamicValueToIndex(name, paramType, value, s -> throw s);
 		} else if (Std.isOfType(value, Int)) {
 			// Int is the final form for color params — Heaps AARRGGBB convention.
 			// Use `0xFFRRGGBB` for opaque, `0x00RRGGBB`/`0` for transparent.
-			indexedParams.set(name, Value((value : Int)));
+			converted = Value((value : Int));
 		} else if (Std.isOfType(value, Float)) {
-			indexedParams.set(name, ValueF(value));
+			converted = ValueF(value);
 		} else if (Std.isOfType(value, String)) {
-			indexedParams.set(name, StringValue(cast value));
+			converted = StringValue(cast value);
 		} else if (Std.isOfType(value, Bool)) {
-			indexedParams.set(name, Value(cast(value, Bool) ? 1 : 0));
+			converted = Value(cast(value, Bool) ? 1 : 0);
 		} else if (Std.isOfType(value, ResolvedIndexParameters)) {
-			indexedParams.set(name, value);
+			converted = value;
 		}
 		#if !macro
 		else if (Std.isOfType(value, h2d.Tile)) {
-			indexedParams.set(name, TileSourceValue(TSTile(value)));
+			converted = TileSourceValue(TSTile(value));
 		}
 		#end
+		if (converted == null) {
+			final typeDesc = value == null ? "null" : Type.getClassName(Type.getClass(value));
+			if (typeDesc == null) {
+				// Enum values and other non-class types land here — Type.getClass returns null.
+				throw BuilderError.of('setParameter("$name", ...) rejected: value type not convertible to a parameter shape (got ${Std.string(value)}). Accepted: Int, Float, String, Bool, ResolvedIndexParameters, h2d.Tile.',
+					"invalid_param_value");
+			}
+			throw BuilderError.of('setParameter("$name", ...) rejected: value type not convertible to a parameter shape (got $typeDesc). Accepted: Int, Float, String, Bool, ResolvedIndexParameters, h2d.Tile.',
+				"invalid_param_value");
+		}
+		indexedParams.set(name, converted);
 		changedParams.set(name, true);
 		hasChanges = true;
 		if (!batchMode)
@@ -728,12 +753,14 @@ class IncrementalUpdateContext {
 	}
 
 	public function beginUpdate():Void {
+		if (batchMode) throw BuilderError.of("beginUpdate: already in batch; nesting is not supported", "nested_begin_update");
 		batchMode = true;
 		changedParams.clear();
 		hasChanges = false;
 	}
 
 	public function endUpdate():Void {
+		if (!batchMode) throw BuilderError.of("endUpdate: no matching beginUpdate", "unbalanced_end_update");
 		batchMode = false;
 		if (hasChanges)
 			applyUpdates();
@@ -744,6 +771,10 @@ class IncrementalUpdateContext {
 	function getParamDefinition(name:String):Null<{type:MultiAnimParser.DefinitionType, defaultValue:Null<ResolvedIndexParameters>}> {
 		return switch rootNode.type {
 			case PROGRAMMABLE(_, defs, _): defs.get(name);
+			// Parameterized slots also own their own IncrementalUpdateContext. Non-parameterized
+			// slots have `defs == null` — treated as "no declared params", matches PROGRAMMABLE
+			// behavior for unknown names.
+			case SLOT(defs, _): defs == null ? null : defs.get(name);
 			default: null;
 		};
 	}
@@ -1382,6 +1413,13 @@ class SlotHandle {
 	public var container:h2d.Object;
 	public var data:Dynamic = null;
 	public var incrementalContext:Null<IncrementalUpdateContext> = null;
+	// Flipped to true by removeRegistrationsUnder when the slot's enclosing subtree
+	// is torn down (SWITCH arm swap, repeatable shrinkage, ...). The IR entry is
+	// evicted from ir.slots at the same site, but callers may still hold the
+	// handle. setParameter checks this flag and throws — silently mutating the
+	// now-stale incrementalContext would flip visibility on detached h2d.Objects
+	// and leave the rendered state inconsistent with the logical param map.
+	public var disposed:Bool = false;
 
 	var defaultChildren:Array<h2d.Object>;
 	var currentContent:Null<h2d.Object>;
@@ -1452,6 +1490,8 @@ class SlotHandle {
 	}
 
 	public function setParameter(name:String, value:Dynamic):Void {
+		if (disposed)
+			throw BuilderError.of('Slot disposed — enclosing subtree was rebuilt');
 		if (incrementalContext == null)
 			throw BuilderError.of('Slot has no parameters');
 		incrementalContext.setParameter(name, value);
@@ -1886,11 +1926,17 @@ class MultiAnimBuilder {
 			else i++;
 		}
 
-		// slots: handle.container is the slot's h2d.Object
+		// slots: handle.container is the slot's h2d.Object. Mark the handle
+		// disposed before evicting — external callers still holding the
+		// SlotHandle reference will get a loud BuilderError on setParameter
+		// instead of silently mutating orphaned h2d.Objects via a stale
+		// incrementalContext.
 		var s = 0;
 		while (s < ir.slots.length) {
-			if (isUnder(ir.slots[s].handle.container)) ir.slots.splice(s, 1);
-			else s++;
+			if (isUnder(ir.slots[s].handle.container)) {
+				ir.slots[s].handle.disposed = true;
+				ir.slots.splice(s, 1);
+			} else s++;
 		}
 
 		// dynamicRefs: each value's .object is the embedded result's h2d.Object
@@ -5160,6 +5206,13 @@ class MultiAnimBuilder {
 				final savedIncrementalMode = incrementalMode;
 				final savedIncrementalCtx = incrementalContext;
 				if (hasIncrementalRepeat) {
+					// trackIncrementalExpressions is what normally calls markParamUntracked for
+					// INTERACTIVE id/metadata + STATEANIM selectors; with incrementalMode=false it
+					// won't fire. Mark untracked params up-front so setParameter on a param that
+					// flows into (say) an interactive id inside a param-dep repeat throws
+					// "untracked_param" instead of silently no-oping. Loop vars are excluded.
+					for (childNode in node.children)
+						markUntrackedParamsInSubtree(childNode, savedIncrementalCtx, varName);
 					incrementalMode = false;
 				}
 
@@ -7342,6 +7395,52 @@ class MultiAnimBuilder {
 		return null;
 	}
 
+	/** Walk a subtree and mark `$param` refs inside incremental-unsupported slots (INTERACTIVE
+	 *  id/metadata, STATEANIM / STATEANIM_CONSTRUCT selectors + animName/fps) as untracked on
+	 *  the given context. Used when the main build walk runs with `incrementalMode=false` — e.g.
+	 *  children of a param-dependent repeat — so `trackIncrementalExpressions` (the normal
+	 *  caller of ctx.markParamUntracked) is skipped. Without this pass, setParameter on a param
+	 *  that flows into an interactive id inside a param-dep repeat silently no-ops. `excludeVar`
+	 *  is the repeat's loop-var name, which is never a user-settable parameter. */
+	function markUntrackedParamsInSubtree(node:Null<Node>, ctx:IncrementalUpdateContext, excludeVar:Null<String>):Void {
+		if (node == null || ctx == null) return;
+		inline function markRefs(rv:ReferenceableValue, reason:String):Void {
+			final refs:Array<String> = [];
+			collectParamRefs(rv, refs);
+			for (r in refs) if (r != excludeVar) ctx.markParamUntracked(r, reason);
+		}
+		switch node.type {
+			case INTERACTIVE(_, _, id, _, metadata):
+				markRefs(id, "interactive id");
+				if (metadata != null) {
+					for (entry in metadata) {
+						markRefs(entry.key, "interactive metadata key");
+						markRefs(entry.value, "interactive metadata value");
+					}
+				}
+			case STATEANIM(_, _, selectorReferences):
+				if (selectorReferences != null) {
+					for (k => v in selectorReferences)
+						markRefs(v, 'stateanim selector "$k"');
+				}
+			case STATEANIM_CONSTRUCT(_, construct, _):
+				if (construct != null) {
+					for (key => value in construct) {
+						switch value {
+							case IndexedSheet(_, animName, fps, _, _):
+								markRefs(animName, 'stateanim_construct animName "$key"');
+								markRefs(fps, 'stateanim_construct fps "$key"');
+						}
+					}
+				}
+			default:
+		}
+		if (node.children != null) {
+			for (child in node.children)
+				markUntrackedParamsInSubtree(child, ctx, excludeVar);
+		}
+	}
+
 	/** Build a single node in isolation, returning the resulting h2d.Object.
 	 *  Used by ProgrammableBuilder.buildNodeByUniqueName for forwarding unsupported
 	 *  repeatable node types to the builder at runtime. */
@@ -7349,6 +7448,43 @@ class MultiAnimBuilder {
 		final parent = new h2d.Object();
 		final ir:InternalBuilderResults = {names: [], interactives: [], slots: [], dynamicRefs: new Map(), htmlTextsWithLinks: []};
 		build(node, ObjectMode(parent), cast null, cast null, ir, builderParams);
+		return if (parent.numChildren > 0) parent.getChildAt(0) else null;
+	}
+
+	/** Build a single node with an explicit parent params map. Mirrors rebuildSwitchArmByOrdinal's
+	 *  state setup so `$param` and loop-var refs inside the subtree resolve correctly. Used by the
+	 *  codegen runtime-rebuild fallback in param-dependent repeatable bodies (INTERACTIVE, SLOT,
+	 *  SWITCH, nested REPEAT, etc. — any kind that generateRuntimeChildExprs can't handle inline).
+	 *
+	 *  progNode carries the parameter type definitions; parentParams supplies the runtime values
+	 *  (programmable params + current loop-var iteration). */
+	public function buildSingleNodeWithParams(node:Node, progNode:Node, parentParams:Map<String, Dynamic>):Null<h2d.Object> {
+		final parentBP = this.builderParams;
+		final gridCS = MultiAnimParser.getGridCoordinateSystem(node);
+		final hexCS = MultiAnimParser.getHexCoordinateSystem(node);
+		pushBuilderState();
+		final resolvedParams:Map<String, ResolvedIndexParameters> = new Map();
+		final progDefs = getProgrammableParameterDefinitions(progNode, false);
+		for (key => value in parentParams) {
+			final def = progDefs.get(key);
+			if (def != null)
+				resolvedParams.set(key, dynamicToResolvedWithDef(def.type, value));
+			else
+				resolvedParams.set(key, dynamicToResolvedInferred(value));
+		}
+		this.indexedParams = resolvedParams;
+		this.incrementalMode = false;
+		this.incrementalContext = null;
+		final bp:BuilderParameters = {
+			callback: (parentBP != null && parentBP.callback != null) ? parentBP.callback : defaultCallback,
+			placeholderObjects: parentBP != null ? parentBP.placeholderObjects : null,
+			scene: parentBP != null ? parentBP.scene : null,
+		};
+		this.builderParams = bp;
+		final parent = new h2d.Object();
+		final ir:InternalBuilderResults = {names: [], interactives: [], slots: [], dynamicRefs: new Map(), htmlTextsWithLinks: []};
+		build(node, ObjectMode(parent), cast gridCS, cast hexCS, ir, bp);
+		popBuilderState();
 		return if (parent.numChildren > 0) parent.getChildAt(0) else null;
 	}
 

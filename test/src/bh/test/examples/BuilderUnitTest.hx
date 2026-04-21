@@ -7132,6 +7132,80 @@ class BuilderUnitTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testReentrantSetParameterInRebuildListener():Void {
+		// Re-entrancy contract (MultiAnimBuilder.hx:1302-1312): rebuild listeners fire
+		// AFTER popBuilderState/changedParams.clear/hasChanges=false, so a listener that
+		// calls setParameter() on the same context enters a fresh applyUpdates cycle.
+		// Verify: the re-entrant setParameter propagates to the bitmap size, no crash,
+		// no infinite recursion, and both params end up applied.
+		final result = buildFromSource("
+			#test programmable(x:uint=10, y:uint=10) {
+				bitmap(generated(color($x, $y, #f00))): 0, 0
+			}
+		", "test", null, Incremental);
+
+		var fireCount = 0;
+		var reentrantSetDone = false;
+		result.addRebuildListener(() -> {
+			fireCount++;
+			// On the first rebuild (triggered by setParameter("x", 20) below),
+			// call setParameter("y", 50) re-entrantly. This enters a fresh applyUpdates
+			// cycle that must complete cleanly — producing a second listener tick.
+			if (!reentrantSetDone) {
+				reentrantSetDone = true;
+				result.setParameter("y", 50);
+			}
+		});
+
+		result.setParameter("x", 20);
+
+		// Expect exactly two fires: outer (x=20) + re-entrant (y=50). An infinite
+		// recursion would blow the stack; a swallowed re-entry would leave fireCount=1.
+		Assert.equals(2, fireCount, "listener should fire twice: outer + re-entrant");
+
+		// Final render must reflect BOTH params — the re-entrant setParameter must
+		// have propagated through the bitmap expression.
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(20, Std.int(bitmaps[0].tile.width), "x=20 applied");
+		Assert.equals(50, Std.int(bitmaps[0].tile.height), "y=50 applied via re-entrant setParameter");
+	}
+
+	@Test
+	public function testReentrantSetParameterDuringSwitchRebuild():Void {
+		// Card-hand-style reproducer: listener fires when a @switch arm flips, and the
+		// listener reacts by pushing a param change on the same context. Must not crash,
+		// must apply the re-entrant change, and bindings on the new arm must be coherent.
+		final result = buildFromSource("
+			#test programmable(mode:[a, b]=a, label:uint=1) {
+				@switch(mode) {
+					a: bitmap(generated(color($label * 5, 10, #f00))): 0, 0;
+					b: bitmap(generated(color($label * 7, 10, #0f0))): 0, 0;
+				}
+			}
+		", "test", null, Incremental);
+
+		var fireCount = 0;
+		var reentrantDone = false;
+		result.addRebuildListener(() -> {
+			fireCount++;
+			// When switching to arm b, re-entrantly push a new label value. The fresh
+			// applyUpdates cycle must re-evaluate the new arm's bitmap expression.
+			if (!reentrantDone) {
+				reentrantDone = true;
+				result.setParameter("label", 4);
+			}
+		});
+
+		result.setParameter("mode", "b");
+
+		Assert.equals(2, fireCount, "listener should fire twice: switch flip + re-entrant label change");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length, "only the new arm's bitmap should be visible");
+		Assert.equals(28, Std.int(bitmaps[0].tile.width), "arm b with label=4 => width=4*7=28");
+	}
+
+	@Test
 	public function testIncrementalSwitchFixedRepeatableDifferentCounts():Void {
 		// Arms have different fixed repeatable counts — switching should change count
 		final result = buildFromSource("
@@ -7621,4 +7695,161 @@ class BuilderUnitTest extends BuilderTestBase {
 		", "test");
 		Assert.notNull(result, "A conditional on the tileGroup itself is fine — only its descendants are baked");
 	}
+
+	// ==================== Batch update contract ====================
+
+	// Batching is designed as single-level: one outer beginUpdate, one matching endUpdate.
+	// Nested begin or dangling end used to silently corrupt state (inner begin cleared the
+	// outer's pending diffs; inner end flipped batchMode off mid-scope). Both now throw a
+	// structured BuilderError so the misuse surfaces immediately.
+
+	@Test
+	public function testBatchNestedBeginUpdateThrows():Void {
+		final result = buildFromSource("
+			#test programmable(x:uint=1) {
+				bitmap(generated(color($x * 10, 10, #f00))): 0, 0
+			}
+		", "test", null, Incremental);
+		result.beginUpdate();
+		var caught:Null<bh.multianim.BuilderError> = null;
+		try {
+			result.beginUpdate();
+		} catch (e:bh.multianim.BuilderError) {
+			caught = e;
+		}
+		Assert.notNull(caught, "Nested beginUpdate must throw");
+		Assert.equals("nested_begin_update", caught.code);
+		// Restore state so the outer batch can still end cleanly.
+		result.endUpdate();
+	}
+
+	@Test
+	public function testBatchEndUpdateWithoutBeginThrows():Void {
+		final result = buildFromSource("
+			#test programmable(x:uint=1) {
+				bitmap(generated(color($x * 10, 10, #f00))): 0, 0
+			}
+		", "test", null, Incremental);
+		var caught:Null<bh.multianim.BuilderError> = null;
+		try {
+			result.endUpdate();
+		} catch (e:bh.multianim.BuilderError) {
+			caught = e;
+		}
+		Assert.notNull(caught, "endUpdate without matching beginUpdate must throw");
+		Assert.equals("unbalanced_end_update", caught.code);
+	}
+
+	@Test
+	public function testBatchFlatPairStillWorks():Void {
+		// Regression guard: the non-reentrancy assertions must not break the single-level
+		// happy path — a flat begin/setParameter*/end cycle still batches and applies once.
+		final result = buildFromSource("
+			#test programmable(w:uint=10, h:uint=10) {
+				bitmap(generated(color($w, $h, #f00))): 0, 0
+			}
+		", "test", null, Incremental);
+		result.beginUpdate();
+		result.setParameter("w", 30);
+		result.setParameter("h", 20);
+		result.endUpdate();
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(30, Std.int(bitmaps[0].tile.width));
+		Assert.equals(20, Std.int(bitmaps[0].tile.height));
+
+		// And a second cycle on the same result — end cleared state, begin works again.
+		result.beginUpdate();
+		result.setParameter("w", 5);
+		result.endUpdate();
+		final bitmaps2 = findVisibleBitmapDescendants(result.object);
+		Assert.equals(5, Std.int(bitmaps2[0].tile.width));
+	}
+
+	// ==================== setParameter value-type validation ====================
+
+	// Pre-fix, setParameter walked an isOfType cascade and silently fell through when
+	// no branch matched — but still flipped changedParams/hasChanges, so dependent
+	// listeners re-ran against a stale indexedParams entry. Now: known param + no
+	// matching conversion branch = structured BuilderError with "invalid_param_value".
+	// Unknown param names stay silent (UI widgets rely on optional `disabled` param).
+
+	@Test
+	public function testSetParameterInvalidValueTypeThrows():Void {
+		final result = buildFromSource("
+			#test programmable(x:uint=1) {
+				bitmap(generated(color($x * 10, 10, #f00))): 0, 0
+			}
+		", "test", null, Incremental);
+		// Pass an array — doesn't match Int/Float/String/Bool/ResolvedIndexParameters/h2d.Tile.
+		var caught:Null<bh.multianim.BuilderError> = null;
+		try {
+			result.setParameter("x", [1, 2, 3]);
+		} catch (e:bh.multianim.BuilderError) {
+			caught = e;
+		}
+		Assert.notNull(caught, "Array value on declared param must throw");
+		Assert.equals("invalid_param_value", caught.code);
+		Assert.isTrue(caught.message.indexOf("\"x\"") >= 0, 'Message should name the param, got: ${caught.message}');
+	}
+
+	@Test
+	public function testSetParameterNullValueThrows():Void {
+		// null is the classic silent-skip trigger: isOfType(null, T) is false for every T.
+		// Pre-fix this corrupted `changedParams` without touching `indexedParams`.
+		final result = buildFromSource("
+			#test programmable(x:uint=1) {
+				bitmap(generated(color($x * 10, 10, #f00))): 0, 0
+			}
+		", "test", null, Incremental);
+		var caught:Null<bh.multianim.BuilderError> = null;
+		try {
+			result.setParameter("x", null);
+		} catch (e:bh.multianim.BuilderError) {
+			caught = e;
+		}
+		Assert.notNull(caught, "null value on declared param must throw");
+		Assert.equals("invalid_param_value", caught.code);
+	}
+
+	@Test
+	public function testSetParameterInvalidValueDoesNotFireRebuildListeners():Void {
+		// The exact bug H1 described: even when no branch matched, the old code
+		// set changedParams/hasChanges, which meant listeners re-fired on the
+		// unchanged indexedParams. Now: the throw happens before that flag flip,
+		// so listeners stay silent.
+		final result = buildFromSource("
+			#test programmable(x:uint=1) {
+				bitmap(generated(color($x * 10, 10, #f00))): 0, 0
+			}
+		", "test", null, Incremental);
+		var listenerFireCount = 0;
+		result.addRebuildListener(() -> listenerFireCount++);
+		try { result.setParameter("x", [1, 2, 3]); } catch (_) {}
+		Assert.equals(0, listenerFireCount,
+			"Rebuild listeners must not fire when setParameter rejected the value type");
+	}
+
+	@Test
+	public function testSetParameterUnknownParamIsSilentNoOp():Void {
+		// UI widgets (Button, Checkbox, Slider, Tabs, TextInput) call
+		// setParameter("disabled", ...) on every instance — templates that don't
+		// opt into a `disabled` param rely on a no-op. Assert that contract.
+		final result = buildFromSource("
+			#test programmable(x:uint=10) {
+				bitmap(generated(color($x, 10, #f00))): 0, 0
+			}
+		", "test", null, Incremental);
+		var listenerFireCount = 0;
+		result.addRebuildListener(() -> listenerFireCount++);
+		// No throw, no listener fire — param just isn't there.
+		result.setParameter("notDeclared", "whatever");
+		Assert.equals(0, listenerFireCount,
+			"Unknown param must not fire rebuild listeners (no dependent expressions)");
+		// Declared param still works afterward — the silent skip didn't corrupt state.
+		result.setParameter("x", 20);
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(20, Std.int(bitmaps[0].tile.width));
+	}
+
 }

@@ -4795,6 +4795,7 @@ class MacroManimParser {
 			case TColon:
 				advance();
 				final tv = parseTypedSettingValue();
+				validateTypedMetadataRef(key, tv.type, tv.value);
 				return {key: key, type: tv.type, value: tv.value};
 			case TArrow:
 				advance();
@@ -4803,6 +4804,91 @@ class MacroManimParser {
 			default:
 				return error("expected :type=> or => after metadata key");
 		}
+	}
+
+	// Rejects typed metadata `key:type => $param` when the param's declared type cannot be
+	// represented as the metadata type without a coercion that would diverge between the
+	// runtime builder (lenient resolveAs*()) and the macro codegen (strict RSV<Type>(_field)).
+	// Skipped for non-RVReference values (literals, binops, loop vars, @finals, $ctx — those
+	// resolve consistently on both paths).
+	function validateTypedMetadataRef(key:ReferenceableValue, metaType:SettingValueType, value:ReferenceableValue):Void {
+		switch (value) {
+			case RVReference(name):
+				if (activeDefs == null) return; // outside programmable scope — skip
+				if (!activeDefs.exists(name)) return; // loop var / @final / ctx — handled elsewhere
+				final def = activeDefs.get(name);
+				if (def == null) return;
+				if (isMetaTypeCompatibleWithParam(metaType, def.type)) return;
+				final metaName = settingValueTypeName(metaType);
+				final paramName = definitionTypeName(def.type);
+				final keyName = switch (key) {
+					case RVString(s): s;
+					case RVReference(r): "$" + r;
+					default: Std.string(key);
+				};
+				error('metadata "$keyName" declared as :$metaName cannot reference param "$name" of type :$paramName — '
+					+ 'runtime and codegen resolve this incompatibly. Use an untyped "$keyName => $$$name" or match the param type.');
+			default:
+		}
+	}
+
+	static function isMetaTypeCompatibleWithParam(metaType:SettingValueType, paramType:DefinitionType):Bool {
+		return switch (metaType) {
+			case SVTInt | SVTColor:
+				switch (paramType) {
+					case PPTInt | PPTUnsignedInt | PPTRange(_, _) | PPTColor | PPTBool
+						| PPTHexDirection | PPTGridDirection: true;
+					default: false;
+				}
+			case SVTFloat:
+				switch (paramType) {
+					case PPTFloat | PPTInt | PPTUnsignedInt | PPTRange(_, _) | PPTColor | PPTBool
+						| PPTHexDirection | PPTGridDirection: true;
+					default: false;
+				}
+			case SVTBool:
+				switch (paramType) {
+					case PPTBool | PPTInt | PPTUnsignedInt | PPTRange(_, _)
+						| PPTHexDirection | PPTGridDirection: true;
+					default: false;
+				}
+			case SVTString:
+				// Anything that runtime's resolveAsString can stringify without hitting its
+				// `default: throw` branch. Excludes PPTFlags (Flag storage), PPTArray
+				// (ArrayString storage), PPTTile (TileSourceValue storage).
+				switch (paramType) {
+					case PPTFlags(_) | PPTArray | PPTTile: false;
+					default: true;
+				}
+		};
+	}
+
+	static function settingValueTypeName(t:SettingValueType):String {
+		return switch (t) {
+			case SVTInt: "int";
+			case SVTFloat: "float";
+			case SVTString: "string";
+			case SVTColor: "color";
+			case SVTBool: "bool";
+		};
+	}
+
+	static function definitionTypeName(t:DefinitionType):String {
+		return switch (t) {
+			case PPTInt: "int";
+			case PPTUnsignedInt: "uint";
+			case PPTFloat: "float";
+			case PPTString: "string";
+			case PPTColor: "color";
+			case PPTBool: "bool";
+			case PPTEnum(_): "enum";
+			case PPTRange(_, _): "range";
+			case PPTFlags(_): "flags";
+			case PPTArray: "array";
+			case PPTTile: "tile";
+			case PPTHexDirection: "hexDirection";
+			case PPTGridDirection: "gridDirection";
+		};
 	}
 
 	// ===================== Flow Orientation =====================
