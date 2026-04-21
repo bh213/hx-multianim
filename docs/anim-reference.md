@@ -303,7 +303,7 @@ scene.addChild(animSM);
 | `getExtraPointNames()` | `Array<String>` | All extra point names |
 | `update(dt)` | `Void` | Manual update (when `externallyDriven = true`) |
 | `paused` | `Bool` | Pause/resume playback |
-| `externallyDriven` | `Bool` | If true, must call `update(dt)` manually |
+| `externallyDriven` | `Bool` | If true, must call `update(dt)` manually. Also settable from `.manim` via the `stateanim construct("state", externallyDriven, ...)` flag — see `docs/manim.md` "stateanim construct" |
 | `playWhenHidden` | `Bool` | Continue animating when not visible |
 | `onFinished` | `() -> Void` | Callback when animation finishes |
 | `onAnimationEvent` | `(AnimationEvent) -> Void` | Callback for playlist events |

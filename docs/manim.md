@@ -119,7 +119,7 @@ stateanim("filename", "initialState", "direction"=>"l")
 Creates a state animation inline without requiring a separate `.anim` file. Each state maps to a sheet animation with FPS and optional flags.
 
 ```
-stateAnim construct("initialState",
+stateanim construct("initialState",
   "state1" => sheet "sheetName", tileName, fps, loop
   "state2" => sheet "sheetName", tileName, fps
 )
@@ -134,9 +134,25 @@ stateAnim construct("initialState",
 
 The first argument is the initial state to play on creation.
 
+**Optional `externallyDriven` flag:** A second positional argument before the state map disables the internal timer. The animation advances only when game code calls `sm.update(dt)`, which is useful for syncing animation progress to gameplay variables (e.g. charge level, movement distance) instead of wall-clock time.
+
+```
+stateanim construct("idle", externallyDriven,
+  "idle" => sheet "hero", idle, 10, loop
+  "charge" => sheet "hero", charge, 10
+)
+```
+
+```haxe
+// game code — drive the AnimationSM manually
+animSM.update(dt * customSpeed);
+```
+
+Note: unlike particles (which use `advanceTime(dt)`), `AnimationSM` exposes `update(dt)` for manual advancement. See `docs/anim-reference.md` for the full `AnimationSM` API.
+
 **Example:**
 ```
-@scale(4) stateAnim construct("state2",
+@scale(4) stateanim construct("state2",
   "state1" => sheet "demo", indexed-tile, 10, loop
   "state2" => sheet "demo", tile-center, 10
 ): 200, 300

@@ -1,23 +1,13 @@
 # TODO
 
-| # | Item | Summary | Priority |
-|---|------|---------|----------|
-| 15 | Text input codegen | `@:manim` factory with `createTextInput()` | Low |
-
 ## Main Goals
 
 - Code generation: programmable elements should always work via `builder.buildWithParameters` or via macro system (`@:manim(...)`)
 
-
-v1.0
-
 ## Known Issues
 
-
-- ~~Haxelib release~~ — DONE (1.0.0-rc.1, see [release.md](release.md))
 - More hot reload integration tests — see [docs/hot-reload.md "Missing Tests"](../docs/hot-reload.md#missing-tests-needed)
 - Add blob47 utils for easier testing/dev/selection
-- ~~MCP server~~ — DONE (DevBridge 37 tools)
 
 
 ## After 1.0
