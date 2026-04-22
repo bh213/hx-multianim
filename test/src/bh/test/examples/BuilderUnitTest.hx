@@ -5289,17 +5289,13 @@ class BuilderUnitTest extends BuilderTestBase {
 	}
 
 	@Test
-	public function testDynamicRefPropagationSkipsHiddenSubtree():Void {
-		// When a dynamicRef sits inside a hidden conditional branch, parent
-		// setParameter() changes to forwarded params must NOT cascade into the
-		// child's applyUpdates cycle — the child subtree is detached from the
-		// scene graph, so re-evaluating its expressions and firing its rebuild
-		// listeners is wasted work (and, for listeners that touch external state,
-		// a spurious notification).
-		//
-		// Compare with the trackedExpressions loop in applyUpdates, which already
-		// gates on isEffectivelyVisible(obj). The dynamicRefBindings loop
-		// immediately below it does not — this test asserts parity.
+	public function testDynamicRefPropagationReachesHiddenSubtree():Void {
+		// A dynamicRef inside a hidden conditional branch MUST still receive parameter updates from
+		// the parent. This replaces the earlier visibility-skip behavior which caused stale state on
+		// flip-back (H2): the previously-hidden sibling surfaced with pre-flip parameter values.
+		// The optimization was cheap in CPU but wrong in semantics — forwarding into a detached
+		// incremental context is just a setParameter (no rendering), and keeps the hidden child
+		// coherent for the next time it becomes visible.
 		final result = buildFromSource("
 			#child programmable(v:uint=0) {
 				bitmap(generated(color($v + 1, 10, #ff0000))): 0, 0
@@ -5316,19 +5312,17 @@ class BuilderUnitTest extends BuilderTestBase {
 		var childRebuildCount = 0;
 		childRef.addRebuildListener(() -> childRebuildCount++);
 
-		// Hide the subtree. The forwarded-param refs for this binding are ["val"],
-		// so toggling `show` alone is not "relevant" and the propagation loop
-		// skips it regardless of the fix — baseline for the next assertion.
+		// Hide the subtree. `show` isn't in the binding's referencedParams, so the propagation loop
+		// doesn't even consider the binding — baseline.
 		result.setParameter("show", false);
 		final hideRebuildCount = childRebuildCount;
 
-		// Change the forwarded param while the dynamicRef is hidden. Today, the
-		// propagation loop has no visibility gate — childContext.setParameter
-		// fires, the child's applyUpdates runs, and the rebuild listener ticks.
-		// After the fix, the hidden subtree must be skipped.
+		// Change the forwarded param while hidden. After the fix, childContext.setParameter fires
+		// unconditionally so the child's applyUpdates runs and the rebuild listener ticks — this is
+		// how the child stays fresh for the flip-back.
 		result.setParameter("val", 7);
-		Assert.equals(hideRebuildCount, childRebuildCount,
-			'Hidden dynamicRef must not receive propagated param updates; child rebuilt ${childRebuildCount - hideRebuildCount} extra times while detached from scene graph');
+		Assert.isTrue(childRebuildCount > hideRebuildCount,
+			'Hidden dynamicRef must still receive propagated param updates to avoid stale state on flip-back; got ${childRebuildCount - hideRebuildCount} extra rebuilds');
 	}
 
 	// ==================== extraPoint coordinates ====================
@@ -7869,8 +7863,8 @@ class BuilderUnitTest extends BuilderTestBase {
 		// of matchSingleCondition.
 		final result = buildFromSource("
 			#test programmable(flag:bool=true) {
-				@(flag=>true)  bitmap(generated(color(11, 10, #fff)))
-				@(flag=>false) bitmap(generated(color(22, 10, #fff)))
+				@(flag=>true)  bitmap(generated(color(11, 10, #fff))): 0, 0
+				@(flag=>false) bitmap(generated(color(22, 10, #fff))): 0, 0
 			}
 		", "test", null, Incremental);
 		// Default: flag=true → 11px arm visible
@@ -7891,20 +7885,22 @@ class BuilderUnitTest extends BuilderTestBase {
 	}
 
 	@Test
-	public function testSetParameterFloatOnIntParamMatchesConditional():Void {
-		// setParameter("n", 5.0) on a PPTInt param stored ValueF(5.0); CoValue(5)
-		// only matches Value(_) and threw "invalid param types ValueF(5), CoValue(5)".
+	public function testSetParameterStringFloatOnFloatParamMatchesRange():Void {
+		// String digits on PPTFloat used to store StringValue; range checks (CoRange)
+		// only accept Value/ValueF and threw "invalid param types StringValue(3.5), CoRange(...)".
+		// (Note: Float → PPTInt is not reproducible on HashLink because
+		// Std.isOfType(5.0, Int) returns true for whole-number floats.)
 		final result = buildFromSource("
-			#test programmable(n:int=0) {
-				@(n=>0) bitmap(generated(color(11, 10, #fff)))
-				@(n=>5) bitmap(generated(color(22, 10, #fff)))
+			#test programmable(x:float=0.0) {
+				@(x <= 1.0) bitmap(generated(color(11, 10, #fff))): 0, 0
+				@(x >= 3.0) bitmap(generated(color(22, 10, #fff))): 0, 0
 			}
 		", "test", null, Incremental);
 		var bitmaps = findVisibleBitmapDescendants(result.object);
 		Assert.equals(11, Std.int(bitmaps[0].tile.width));
 
-		// Float input for an int param must coerce to Value(5).
-		result.setParameter("n", 5.0);
+		// String float on PPTFloat must coerce to ValueF, not StringValue.
+		result.setParameter("x", "3.5");
 		bitmaps = findVisibleBitmapDescendants(result.object);
 		Assert.equals(1, bitmaps.length);
 		Assert.equals(22, Std.int(bitmaps[0].tile.width));
@@ -7915,8 +7911,8 @@ class BuilderUnitTest extends BuilderTestBase {
 		// String digits on PPTInt must coerce to Value(int), not StringValue.
 		final result = buildFromSource("
 			#test programmable(n:int=0) {
-				@(n=>0) bitmap(generated(color(11, 10, #fff)))
-				@(n=>7) bitmap(generated(color(22, 10, #fff)))
+				@(n=>0) bitmap(generated(color(11, 10, #fff))): 0, 0
+				@(n=>7) bitmap(generated(color(22, 10, #fff))): 0, 0
 			}
 		", "test", null, Incremental);
 		result.setParameter("n", "7");
@@ -7934,8 +7930,8 @@ class BuilderUnitTest extends BuilderTestBase {
 		// NOTE: Int inputs to PPTColor keep strict-D semantics (top byte = alpha).
 		final result = buildFromSource("
 			#test programmable(tint:color=#00FF00) {
-				@(tint=>#FF0000) bitmap(generated(color(22, 10, #fff)))
-				@(tint=>#00FF00) bitmap(generated(color(11, 10, #fff)))
+				@(tint=>#FF0000) bitmap(generated(color(22, 10, #fff))): 0, 0
+				@(tint=>#00FF00) bitmap(generated(color(11, 10, #fff))): 0, 0
 			}
 		", "test", null, Incremental);
 		var bitmaps = findVisibleBitmapDescendants(result.object);

@@ -541,4 +541,190 @@ class DynamicRefTest extends BuilderTestBase {
 		}
 		Assert.notNull(err);
 	}
+
+	// ==================== Sibling Collisions on Same Programmable Name (H2) ====================
+
+	// Bug H2: `internalResults.dynamicRefs` is keyed by the referenced programmable name, so two
+	// `dynamicRef($X)` siblings under @(..)/@else collapse onto one map entry (last-writer-wins).
+	// `getDynamicRef("X")` then returns whichever was BUILT last, independent of which sibling is
+	// currently VISIBLE. This silently hands the caller the wrong handle when visibility flips.
+
+	@Test
+	public function testDynamicRefColocatedSiblingsThrowOnGet():Void {
+		// Two unnamed dynamicRef($X) siblings under @(..)/@else collapse onto one map entry
+		// (the referenced programmable's name "X"). Pre-fix, `getDynamicRef("X")` silently returned
+		// whichever was built last — which could be detached after a visibility flip. Post-fix,
+		// calling getDynamicRef on an ambiguous key throws with a hint to use #name.
+		final result = buildFromSource("
+			#X programmable() {
+				bitmap(generated(color(10, 10, #ff0000))): 0, 0
+			}
+			#host programmable(a:int=0) {
+				@(a=>1) dynamicRef($X): 0, 0
+				@else   dynamicRef($X): 0, 0
+			}
+		", "host", null, Incremental);
+
+		// Only @else built initially (@(a=>1) is deferred) — only one site, so get is fine.
+		result.getDynamicRef("X");
+
+		// Flip once to materialise @(a=>1). Now both sites have written to dynamicRefs["X"].
+		result.setParameter("a", 1);
+		var err:String = null;
+		try {
+			result.getDynamicRef("X");
+		} catch (e:Dynamic) {
+			err = Std.string(e);
+		}
+		Assert.notNull(err, "getDynamicRef must throw on ambiguous unnamed sibling collision");
+		Assert.isTrue(err.indexOf("#name") >= 0, 'error must hint at #name disambiguation; got: $err');
+	}
+
+	@Test
+	public function testDynamicRefNamedSiblingsAreIndependentlyAddressable():Void {
+		// With #name-labelled dynamicRef sites, each sibling stores under its explicit name — no
+		// collision, and getDynamicRef returns the right one regardless of visibility.
+		final result = buildFromSource("
+			#X programmable(v:uint=1) {
+				bitmap(generated(color(10, $v, #ff0000))): 0, 0
+			}
+			#host programmable(a:int=0, v:uint=5) {
+				@(a=>1) #armOn  dynamicRef($X, v=>$v): 0, 0
+				@else   #armOff dynamicRef($X, v=>$v): 0, 0
+			}
+		", "host", null, Incremental);
+
+		final rootObj = result.object;
+
+		// a=0 → armOff visible, armOn deferred (not yet built).
+		Assert.isTrue(isDescendantOfRoot(result.getDynamicRef("armOff").object, rootObj),
+			"armOff must be attached when a=0");
+
+		// Flip to a=1. Both arms are now tracked by name; each independently addressable.
+		result.setParameter("a", 1);
+		Assert.isTrue(isDescendantOfRoot(result.getDynamicRef("armOn").object, rootObj),
+			"armOn must be attached after flipping to a=1");
+		Assert.isFalse(isDescendantOfRoot(result.getDynamicRef("armOff").object, rootObj),
+			"armOff must be detached after flipping to a=1");
+
+		// Flip back to a=0. armOff attached again, armOn detached. No ambiguity, no stale handle.
+		result.setParameter("a", 0);
+		Assert.isTrue(isDescendantOfRoot(result.getDynamicRef("armOff").object, rootObj),
+			"armOff must be attached after flipping back to a=0");
+		Assert.isFalse(isDescendantOfRoot(result.getDynamicRef("armOn").object, rootObj),
+			"armOn must be detached after flipping back to a=0");
+	}
+
+	@Test
+	public function testDynamicRefIndexedInRepeatableIsIndependentlyAddressable():Void {
+		// Inside a repeatable, each iteration of an unnamed dynamicRef($X) would collide. The
+		// `#name[$i] dynamicRef(...)` form makes each iteration a distinct map entry keyed as
+		// `"name idx"` — addressable with the underlying `dynamicRefs.get("name 0")` etc.
+		final result = buildFromSource("
+			#leaf programmable(v:uint=3) {
+				bitmap(generated(color($v, 5, #00ff00))): 0, 0
+			}
+			#host programmable() {
+				repeatable($i, step(3, dx: 30)) {
+					#item[$i] dynamicRef($leaf, v=>$i + 10): 0, 0
+				}
+			}
+		", "host", null, Incremental);
+
+		// Three iterations, three distinct entries under keys "item 0", "item 1", "item 2".
+		Assert.isTrue(result.dynamicRefs.exists("item 0"), "indexed key 'item 0' should exist");
+		Assert.isTrue(result.dynamicRefs.exists("item 1"), "indexed key 'item 1' should exist");
+		Assert.isTrue(result.dynamicRefs.exists("item 2"), "indexed key 'item 2' should exist");
+
+		// Each iteration got a different forwarded $v (10, 11, 12) via the $i + 10 expression —
+		// check that each per-iteration sub-result's bitmap reflects the right width.
+		final widths = [0, 0, 0];
+		for (i in 0...3) {
+			final sub = result.dynamicRefs.get("item " + i);
+			Assert.notNull(sub);
+			final bitmaps = findVisibleBitmapDescendants(sub.object);
+			Assert.equals(1, bitmaps.length);
+			widths[i] = Std.int(bitmaps[0].tile.width);
+		}
+		Assert.equals(10, widths[0]);
+		Assert.equals(11, widths[1]);
+		Assert.equals(12, widths[2]);
+	}
+
+	@Test
+	public function testDynamicRefExplicitNameCollisionThrowsAtBuild():Void {
+		// Two #name dynamicRef sites with the same explicit name are a hard error — there is no
+		// sensible resolution. Fails at build time, not at getDynamicRef.
+		var err:String = null;
+		try {
+			buildFromSource("
+				#X programmable() {
+					bitmap(generated(color(10, 10, #ff0000))): 0, 0
+				}
+				#host programmable() {
+					#widget dynamicRef($X): 0, 0
+					#widget dynamicRef($X): 0, 20
+				}
+			", "host", null, Incremental);
+		} catch (e:Dynamic) {
+			err = Std.string(e);
+		}
+		Assert.notNull(err);
+		Assert.isTrue(err.indexOf("widget") >= 0, 'error must mention duplicate name; got: $err');
+	}
+
+	static function isDescendantOfRoot(obj:h2d.Object, root:h2d.Object):Bool {
+		var cur:h2d.Object = obj;
+		while (cur != null) {
+			if (cur == root) return true;
+			cur = cur.parent;
+		}
+		return false;
+	}
+
+	@Test
+	public function testDynamicRefConditionalSiblingsPropagateAcrossVisibilityFlip():Void {
+		// Bug H2 secondary symptom: before the fix, parameter updates to the parent were applied
+		// only to the VISIBLE sibling (the applyUpdates loop filtered dynamicRefBindings via
+		// `isEffectivelyVisible`). When visibility flipped, the previously-hidden sibling surfaced
+		// with STALE parameter state. After the fix, the propagation loop fires regardless of
+		// visibility, so both siblings stay in sync.
+		final result = buildFromSource("
+			#X programmable(v:uint=1) {
+				bitmap(generated(color(10, $v, #ff0000))): 0, 0
+			}
+			#host programmable(a:int=0, v:uint=5) {
+				@(a=>1) #armOn  dynamicRef($X, v=>$v): 0, 0
+				@else   #armOff dynamicRef($X, v=>$v): 0, 0
+			}
+		", "host", null, Incremental);
+
+		// a=0 → armOff visible, v=5. Bitmap height should be 5.
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(5, Std.int(bitmaps[0].tile.height));
+
+		// Update v while armOff is visible. Must reach armOff (visible).
+		result.setParameter("v", 10);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(10, Std.int(bitmaps[0].tile.height),
+			"visible armOff must reflect v=10 after setParameter on parent");
+
+		// Flip to armOn. Its dynamicRef was hidden when v changed, but with the fix it received the
+		// v=10 update through the propagation loop. After flipping it renders v=10, not the stale
+		// default.
+		result.setParameter("a", 1);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.height),
+			"armOn must reflect v=10 after becoming visible (no stale state)");
+
+		// Update v while armOn is visible. armOff (now hidden) must still receive the update.
+		result.setParameter("v", 15);
+		result.setParameter("a", 0);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(15, Std.int(bitmaps[0].tile.height),
+			"armOff must reflect v=15 after becoming visible again (no stale state)");
+	}
 }

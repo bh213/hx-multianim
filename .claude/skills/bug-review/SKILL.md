@@ -111,6 +111,7 @@ Concise summary:
 - **Files changed** (bullet list)
 - **New test(s)** (file + method name)
 - **Test run result**: new test now passes; pre-existing failures = N (unchanged)
+- **Performance & allocation impact** (one line): improvement / neutral / regression + a short reason. Call out removed or added per-frame work and allocations.
 - **Foreign compilation issues encountered**, if any
 - **Docs/changelog touched**, if any (usually defer this to `/precommit`)
 

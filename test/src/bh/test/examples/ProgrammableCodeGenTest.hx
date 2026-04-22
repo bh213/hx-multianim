@@ -3225,8 +3225,10 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "dynamicRefs.manim");
 		final result = builder.buildWithParameters("dynamicRefs", new Map());
 
-		final dynRef = result.getDynamicRef("statusBar");
-		Assert.notNull(dynRef, "Should have statusBar dynamicRef");
+		// Use the #probe-named site — the other statusBar siblings collide on the unnamed key and
+		// would throw on getDynamicRef("statusBar") (H2 ambiguity check).
+		final dynRef = result.getDynamicRef("probe");
+		Assert.notNull(dynRef, "Should have probe dynamicRef");
 		Assert.notNull(dynRef.object, "DynamicRef should have an object");
 		Assert.notNull(dynRef.incrementalContext, "DynamicRef should be built incrementally");
 	}
@@ -3246,8 +3248,10 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		Assert.notNull(result, "Should build without throwing");
 		Assert.notNull(result.object, "Should have root object");
 
-		final dynRef = result.getDynamicRef("scopeChild");
-		Assert.notNull(dynRef, "Should have scopeChild dynamicRef");
+		// Use the #probe-named site — the other scopeChild siblings collide on the unnamed key and
+		// would throw on getDynamicRef("scopeChild") (H2 ambiguity check).
+		final dynRef = result.getDynamicRef("probe");
+		Assert.notNull(dynRef, "Should have probe dynamicRef");
 		Assert.notNull(dynRef.incrementalContext, "DynamicRef should be incremental");
 	}
 

@@ -283,6 +283,10 @@ private typedef DynamicNameBinding = {
 	paramName:String,
 	container:h2d.Object,
 	currentName:String,
+	// Stable map key for internalResults.dynamicRefs. For `#name dynamicRef($template)` this is the
+	// explicit name and stays the same across template swaps. For unnamed sites this equals the
+	// current template name — it moves with each rebuild (preserves legacy behavior).
+	stableKey:String,
 	node:Node,
 	parameters:Map<String, ReferenceableValue>,
 	externalReference:Null<String>,
@@ -713,21 +717,9 @@ class IncrementalUpdateContext {
 		// Resolve the value shape first, THEN commit. If no branch matches we throw
 		// instead of silently flagging `changedParams` — the old code fell through and
 		// re-fired dependent listeners against a stale indexedParams entry.
-		// Int-before-Float is load-bearing: Std.isOfType(42, Float) is true in Haxe.
 		var converted:Null<ResolvedIndexParameters> = null;
-		if (paramType != null && paramType.match(PPTFlags(_))) {
-			converted = MultiAnimParser.dynamicValueToIndex(name, paramType, value, s -> throw s);
-		} else if (Std.isOfType(value, Int)) {
-			// Int is the final form for color params — Heaps AARRGGBB convention.
-			// Use `0xFFRRGGBB` for opaque, `0x00RRGGBB`/`0` for transparent.
-			converted = Value((value : Int));
-		} else if (Std.isOfType(value, Float)) {
-			converted = ValueF(value);
-		} else if (Std.isOfType(value, String)) {
-			converted = StringValue(cast value);
-		} else if (Std.isOfType(value, Bool)) {
-			converted = Value(cast(value, Bool) ? 1 : 0);
-		} else if (Std.isOfType(value, ResolvedIndexParameters)) {
+		// Pass-through shapes: caller supplied the final enum, or a live Tile.
+		if (Std.isOfType(value, ResolvedIndexParameters)) {
 			converted = value;
 		}
 		#if !macro
@@ -735,10 +727,59 @@ class IncrementalUpdateContext {
 			converted = TileSourceValue(TSTile(value));
 		}
 		#end
+		else {
+			// Fast path: Haxe runtime type already matches the shape paramType expects
+			// → produce the final enum directly (no string alloc). Slow path routes
+			// through `dynamicValueToIndex` which stringifies + re-parses — needed for
+			// String→Bool/Int/Float/Color/Enum, Float→Int, Bool→non-bool, CSS/named
+			// colors, and Array→PPTArray. Routing matching-shape inputs through the
+			// slow path would allocate a string per call (Std.string on Int/Float/Bool),
+			// regressing hot paths like `setParameter("hp", 80)`.
+			// Int-before-Float is load-bearing: Std.isOfType(42, Float) is true in Haxe.
+			converted = switch (paramType) {
+				case PPTInt | PPTUnsignedInt | PPTRange(_, _) | PPTHexDirection | PPTGridDirection | PPTColor
+					if (Std.isOfType(value, Int)):
+					// PPTColor Int inputs stored verbatim (strict-D: top byte = alpha).
+					// Use `0xFFRRGGBB` for opaque, `0x00RRGGBB`/`0` for transparent.
+					Value((value : Int));
+				case PPTFloat if (Std.isOfType(value, Float)):
+					ValueF(value);
+				case PPTBool if (Std.isOfType(value, Bool)):
+					Value(cast(value, Bool) ? 1 : 0);
+				case PPTString if (Std.isOfType(value, String)):
+					StringValue(cast value);
+				case PPTEnum(values) if (Std.isOfType(value, String)):
+					// String → PPTEnum: intentionally tolerant of values not in the enum.
+					// UI widgets (`UIMultiAnimButton`, `UIMultiAnimCheckbox`, `UIMultiAnimTabs`)
+					// call `setParameter("status", "disabled")` on templates whose `status`
+					// enum doesn't declare "disabled", expecting all `@(status=>…)` arms to
+					// fail to match and the parallel `disabled:bool` param to drive visuals.
+					// Known values produce `Index(i, s)` so they match `CoIndex` directly;
+					// unknown values stay as `StringValue(s)` — still matches `CoIndex` via
+					// name comparison in `matchSingleCondition`, just never positively.
+					{
+						final s:String = cast value;
+						final idx = values.indexOf(s);
+						idx >= 0 ? Index(idx, s) : StringValue(s);
+					};
+				default: null;
+			};
+			if (converted == null) {
+				// Slow path: type-aware coercion. Throws if value can't match paramType
+				// (e.g. `setParameter("hp", "not-a-number")` on a uint param).
+				try {
+					converted = MultiAnimParser.dynamicValueToIndex(name, paramType, value, s -> throw s);
+				} catch (e:String) {
+					throw BuilderError.of('setParameter("$name", ...) rejected: $e',
+						"invalid_param_value");
+				}
+			}
+		}
 		if (converted == null) {
+			// Unreachable under normal flow — fast path falls through to slow path,
+			// which always returns or throws. Defensive net for future edits.
 			final typeDesc = value == null ? "null" : Type.getClassName(Type.getClass(value));
 			if (typeDesc == null) {
-				// Enum values and other non-class types land here — Type.getClass returns null.
 				throw BuilderError.of('setParameter("$name", ...) rejected: value type not convertible to a parameter shape (got ${Std.string(value)}). Accepted: Int, Float, String, Bool, ResolvedIndexParameters, h2d.Tile.',
 					"invalid_param_value");
 			}
@@ -1157,7 +1198,7 @@ class IncrementalUpdateContext {
 		// Remove old dynamic ref bindings that belonged to the previous child
 		dynamicRefBindings = dynamicRefBindings.filter(b -> {
 			// Remove bindings whose child context belongs to the old dynamicRef result
-			final oldResult = binding.internalResults.dynamicRefs.get(binding.currentName);
+			final oldResult = binding.internalResults.dynamicRefs.get(binding.stableKey);
 			return oldResult == null || b.childContext != oldResult.incrementalContext;
 		});
 
@@ -1165,7 +1206,7 @@ class IncrementalUpdateContext {
 		binding.container.removeChildren();
 
 		// Remove old entry from internalResults.dynamicRefs
-		binding.internalResults.dynamicRefs.remove(binding.currentName);
+		binding.internalResults.dynamicRefs.remove(binding.stableKey);
 
 		// Resolve the builder (external or local)
 		var targetBuilder = if (binding.externalReference != null) {
@@ -1186,9 +1227,16 @@ class IncrementalUpdateContext {
 
 		binding.container.addChild(result.object);
 		binding.currentName = newName;
+		// For unnamed sites, stableKey tracks currentName so the next rebuild removes the right
+		// entry. For #name-labeled sites, stableKey is fixed and is what user code fetches by.
+		final nodeHasExplicitName = switch binding.node.updatableName {
+			case UNTObject(null): false;
+			default: true;
+		};
+		if (!nodeHasExplicitName) binding.stableKey = newName;
 
-		// Store the new result
-		binding.internalResults.dynamicRefs.set(newName, result);
+		// Store the new result under the stable key
+		binding.internalResults.dynamicRefs.set(binding.stableKey, result);
 
 		// Re-register parameter bindings for the new child
 		if (result.incrementalContext != null) {
@@ -1270,10 +1318,12 @@ class IncrementalUpdateContext {
 			}
 		}
 
-		// Propagate to dynamic ref children. Skip bindings whose child subtree is not
-		// effectively visible — same policy as trackedExpressions above. Propagating
-		// into a detached subtree re-runs the child's applyUpdates (expression eval,
-		// rebuild listeners) for something the user can't see.
+		// Propagate to dynamic ref children — unconditionally. Forwarding into a currently-detached
+		// child is cheap (just setParameter on its incremental context; no rendering) and it keeps
+		// the child's state fresh so it surfaces with the latest values when visibility flips back
+		// (e.g. `@(a=>1) #foo dynamicRef($X) / @else #bar dynamicRef($X)`, update $X's params while
+		// one arm is hidden — both must be current). Skipping detached children here was the
+		// staleness side of bug H2.
 		for (binding in dynamicRefBindings) {
 			var relevant = false;
 			for (ref in binding.referencedParams) {
@@ -1283,8 +1333,6 @@ class IncrementalUpdateContext {
 				}
 			}
 			if (!relevant) continue;
-			final obj = binding.object;
-			if (obj != null && !isEffectivelyVisible(obj)) continue;
 			binding.childContext.setParameter(binding.childParam, binding.resolveFn());
 		}
 
@@ -1516,6 +1564,10 @@ class BuilderResult implements bh.ui.UIInteractiveSource {
 	public var hexCoordinateSystem:Null<HexCoordinateSystem>;
 	public var slots:Array<{key:SlotKey, handle:SlotHandle}>;
 	public var dynamicRefs:Map<String, BuilderResult>;
+	/** Per-key collision counter for unnamed dynamicRef sites. `getDynamicRef(name)` throws when
+	 *  count > 1 — the result returned by the map lookup is arbitrary (last writer) in that case,
+	 *  so surfacing the ambiguity at the call site is the only sound option. */
+	public var dynamicRefCollisions:Null<Map<String, Int>>;
 	public var incrementalContext:Null<IncrementalUpdateContext>;
 	public var htmlTextsWithLinks:Null<Array<h2d.HtmlText>>;
 	#if MULTIANIM_DEV
@@ -1544,6 +1596,7 @@ class BuilderResult implements bh.ui.UIInteractiveSource {
 		this.hexCoordinateSystem = other.hexCoordinateSystem;
 		this.slots = other.slots;
 		this.dynamicRefs = other.dynamicRefs;
+		this.dynamicRefCollisions = other.dynamicRefCollisions;
 		this.incrementalContext = other.incrementalContext;
 		this.htmlTextsWithLinks = other.htmlTextsWithLinks;
 		this.devBuilderParams = other.devBuilderParams;
@@ -1649,6 +1702,9 @@ class BuilderResult implements bh.ui.UIInteractiveSource {
 	public function getDynamicRef(name:String):BuilderResult {
 		if (dynamicRefs == null)
 			throw BuilderError.of('No dynamicRefs in BuilderResult');
+		final count = dynamicRefCollisions != null ? dynamicRefCollisions.get(name) : null;
+		if (count != null && count > 1)
+			throw BuilderError.of("getDynamicRef(\"" + name + "\"): " + count + " unnamed dynamicRef sites collide on this key — use #name dynamicRef(...) or #name[$i] dynamicRef(...) to disambiguate, then fetch each by its explicit name.");
 		final ref = dynamicRefs.get(name);
 		if (ref == null)
 			throw BuilderError.of('DynamicRef "$name" not found in BuilderResult');
@@ -1758,6 +1814,9 @@ private typedef InternalBuilderResults = {
 	interactives:Array<MAObject>,
 	slots:Array<{key:SlotKey, handle:SlotHandle}>,
 	dynamicRefs:Map<String, BuilderResult>,
+	/** Count of dynamicRef writes per key; >1 means multiple unnamed sites collide on that key and
+	 *  `getDynamicRef(key)` must throw at the call site. Explicit `#name` collisions throw at build. */
+	dynamicRefCollisions:Map<String, Int>,
 	htmlTextsWithLinks:Array<h2d.HtmlText>
 }
 
@@ -1770,7 +1829,7 @@ class SwitchArmResults {
 	var ir:InternalBuilderResults;
 
 	public function new() {
-		ir = {names: new Map(), interactives: [], slots: [], dynamicRefs: new Map(), htmlTextsWithLinks: []};
+		ir = {names: new Map(), interactives: [], slots: [], dynamicRefs: new Map(), dynamicRefCollisions: new Map(), htmlTextsWithLinks: []};
 	}
 
 	public function getUpdatable(name:String):Null<h2d.Object> {
@@ -2497,6 +2556,30 @@ class MultiAnimBuilder {
 			default:
 				throw builderError('unexpected ReferenceableValue for programmable reference: $rv');
 		}
+	}
+
+	/** Compute the dynamicRefs map key for a DYNAMIC_REF node. Explicit `#name` wins; `#name[$i]`
+	 *  resolves the index from `indexedParams` and produces `"name idx"`; `#name[$x,$y]` produces
+	 *  `"name x y"`. Unnamed sites fall back to the referenced programmable name. See BuilderResult
+	 *  `getDynamicRef()` / `getDynamicRefByIndex()`. */
+	function resolveDynamicRefKey(node:Node, fallback:String):String {
+		return switch node.updatableName {
+			case UNTObject(null): fallback;
+			case UNTObject(name) | UNTUpdatable(name): name;
+			case UNTIndexed(name, indexVar):
+				final idx = indexValueFor(indexVar);
+				'${name} ${idx}';
+			case UNTIndexed2D(name, indexVarX, indexVarY):
+				'${name} ${indexValueFor(indexVarX)} ${indexValueFor(indexVarY)}';
+		};
+	}
+
+	inline function indexValueFor(indexVar:String):Int {
+		final iv = indexedParams.get(indexVar);
+		return if (iv != null) switch iv {
+			case Value(v): v;
+			default: 0;
+		} else 0;
 	}
 
 	@:nullSafety(Off)
@@ -4966,8 +5049,21 @@ class MultiAnimBuilder {
 					c;
 				} else null;
 
-				// Store the sub-result for later access via getDynamicRef()
-				internalResults.dynamicRefs.set(reference, result);
+				// Key for dynamicRefs map: explicit #name if present, else referenced programmable
+				// name. Indexed forms (#name[$i] / #name[$x,$y]) include the current index so each
+				// repeatable iteration gets a distinct entry. Collisions are tracked so
+				// getDynamicRef(name) throws at the user-visible call — previously the last writer
+				// silently won and stale handles caused visual drift (H2 bug). Users disambiguate
+				// with `#name dynamicRef(...)` / `#name[$i] dynamicRef(...)`.
+				final dynRefKey = resolveDynamicRefKey(node, reference);
+				final hasExplicitName = !node.updatableName.match(UNTObject(null));
+				if (internalResults.dynamicRefs.exists(dynRefKey)) {
+					if (hasExplicitName)
+						throw builderErrorAt(node, "duplicate dynamicRef name \"" + dynRefKey + "\" — two #name dynamicRef sites share the same name. Names must be unique within a programmable.");
+					final counts = internalResults.dynamicRefCollisions;
+					counts.set(dynRefKey, (counts.exists(dynRefKey) ? counts.get(dynRefKey) : 1) + 1);
+				}
+				internalResults.dynamicRefs.set(dynRefKey, result);
 
 				// Register parameter bindings for incremental propagation
 				if (incrementalMode && incrementalContext != null && result.incrementalContext != null) {
@@ -5000,6 +5096,7 @@ class MultiAnimBuilder {
 						paramName: paramName,
 						container: container,
 						currentName: reference,
+						stableKey: dynRefKey,
 						node: node,
 						parameters: parameters,
 						externalReference: externalReference,
@@ -5924,6 +6021,7 @@ class MultiAnimBuilder {
 			interactives: [],
 			slots: [],
 			dynamicRefs: new Map(),
+			dynamicRefCollisions: new Map(),
 			htmlTextsWithLinks: [],
 		}
 
@@ -5992,6 +6090,7 @@ class MultiAnimBuilder {
 			gridCoordinateSystem: gridCoordinateSystem,
 			slots: internalResults.slots,
 			dynamicRefs: internalResults.dynamicRefs,
+			dynamicRefCollisions: internalResults.dynamicRefCollisions,
 			incrementalContext: null,
 			htmlTextsWithLinks: if (internalResults.htmlTextsWithLinks.length > 0) internalResults.htmlTextsWithLinks else null,
 		};
@@ -7240,7 +7339,7 @@ class MultiAnimBuilder {
 		this.incrementalContext = slotCtx;
 
 		// Build slot children into container
-		final internalResults:InternalBuilderResults = {names: [], interactives: [], slots: [], dynamicRefs: new Map(), htmlTextsWithLinks: []};
+		final internalResults:InternalBuilderResults = {names: [], interactives: [], slots: [], dynamicRefs: new Map(), dynamicRefCollisions: new Map(), htmlTextsWithLinks: []};
 		for (childNode in resolveConditionalChildren(slotNode.children)) {
 			build(childNode, ObjectMode(container), cast gridCS, cast hexCS, internalResults, builderParams);
 		}
@@ -7366,7 +7465,7 @@ class MultiAnimBuilder {
 			this.builderParams = bp;
 			final ir:InternalBuilderResults = sink != null
 				? sink.ir
-				: {names: new Map(), interactives: [], slots: [], dynamicRefs: new Map(), htmlTextsWithLinks: []};
+				: {names: new Map(), interactives: [], slots: [], dynamicRefs: new Map(), dynamicRefCollisions: new Map(), htmlTextsWithLinks: []};
 			for (child in arm.children)
 				build(child, ObjectMode(container), cast gridCS, cast hexCS, ir, bp);
 			popBuilderState();
@@ -7446,7 +7545,7 @@ class MultiAnimBuilder {
 	 *  repeatable node types to the builder at runtime. */
 	function buildSingleNode(node:Node):Null<h2d.Object> {
 		final parent = new h2d.Object();
-		final ir:InternalBuilderResults = {names: [], interactives: [], slots: [], dynamicRefs: new Map(), htmlTextsWithLinks: []};
+		final ir:InternalBuilderResults = {names: [], interactives: [], slots: [], dynamicRefs: new Map(), dynamicRefCollisions: new Map(), htmlTextsWithLinks: []};
 		build(node, ObjectMode(parent), cast null, cast null, ir, builderParams);
 		return if (parent.numChildren > 0) parent.getChildAt(0) else null;
 	}
@@ -7482,7 +7581,7 @@ class MultiAnimBuilder {
 		};
 		this.builderParams = bp;
 		final parent = new h2d.Object();
-		final ir:InternalBuilderResults = {names: [], interactives: [], slots: [], dynamicRefs: new Map(), htmlTextsWithLinks: []};
+		final ir:InternalBuilderResults = {names: [], interactives: [], slots: [], dynamicRefs: new Map(), dynamicRefCollisions: new Map(), htmlTextsWithLinks: []};
 		build(node, ObjectMode(parent), cast gridCS, cast hexCS, ir, bp);
 		popBuilderState();
 		return if (parent.numChildren > 0) parent.getChildAt(0) else null;

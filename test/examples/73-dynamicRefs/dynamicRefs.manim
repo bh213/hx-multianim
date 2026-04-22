@@ -41,7 +41,9 @@ version: 1.0
   dynamicRef($statusBar, value=>50, label=>"XP"): 60, 52
 
   text(m3x6, "default", #888888): 10, 68
-  dynamicRef($statusBar): 60, 68
+  // #probe: test handle — lets getDynamicRef("probe") target this specific site while the other
+  // siblings on this file collide on the unnamed "statusBar" key.
+  #probe dynamicRef($statusBar): 60, 68
 
   text(m3x6, "low=10", #888888): 10, 84
   dynamicRef($statusBar, value=>10, label=>"STA"): 60, 84
