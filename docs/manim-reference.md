@@ -47,7 +47,7 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | `flow(params)` | Layout container (horizontal, vertical, stack) with padding, spacing, overflow |
 | `layers()` | Z-ordering container for explicit depth stacking |
 | `mask(w, h)` | Clipping rectangle that hides overflow |
-| `tilegroup` | Optimized tile grouping (GPU batching for bitmaps, ninepatch, pixels, point). Children are baked once at build time, so conditionals on programmable parameters are **rejected at build time** (`BuilderError code="tilegroup_conditional"`) — use conditionals outside the tileGroup, or key them on a `repeatable` loop variable inside it |
+| `tilegroup` | Optimized tile grouping (GPU batching for bitmaps, ninepatch, pixels, point). Children are baked once at build time, so conditionals on programmable parameters are **rejected up front** — both at runtime (`BuilderError code="tilegroup_conditional"`) and at `@:manim` macro compile time (same message, raised at the `@:manim` field position). Use conditionals outside the tileGroup, or key them on a `repeatable` loop variable inside it |
 | `spacer(w, h)` | Empty spacing element inside flow containers |
 | `point` | Positioning anchor/marker point |
 | `apply(...)` | Apply properties to parent element |
@@ -68,6 +68,8 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | `dynamicRef($paramName, params)` | Dynamic embed where `$paramName` is a parameter naming the target programmable. Full rebuild on template change |
 
 **Disambiguating sibling dynamicRef sites** — `dynamicRefs` is a map keyed by the site's name. Unnamed sites fall back to the referenced programmable name, so two unnamed `dynamicRef($X)` siblings (e.g. `@(cond) dynamicRef($X)` + `@else dynamicRef($X)`, or N iterations of `repeatable { dynamicRef($X) }`) collide on key `"X"`. In that case `getDynamicRef("X")` throws with a hint to add `#name` — the last-writer-wins result is arbitrary with respect to which sibling is attached to the scene graph. Prefix each site with a distinct `#name`, or use `#name[$i]` inside a `repeatable` to key by iteration. Two explicit `#name` sites sharing the same name throw at build time.
+
+**Circular references** — a `staticRef`/`dynamicRef` chain that re-enters a programmable already being resolved (`A → A`, `A → B → A`, …) is rejected with `BuilderError code="circular_reference"` instead of recursing to a native stack overflow. The message names the offending programmable. The guard is maintained across nested builds even if an inner `startBuild` throws, so callers that catch a build error and retry are not falsely rejected.
 | `#name slot` | Swappable content container |
 | `#name[$i] slot` | Indexed slot inside repeatable |
 | `#name slot(params)` | Parameterized slot with visual states and conditionals |
@@ -307,6 +309,8 @@ Parse-time error when used outside a flow ancestor.
 | `@default` | Final fallback when nothing above matched |
 
 A bare `@else` or `@default` is **terminal** — it closes the chain. Any `@else` / `@default` that follows one is unreachable and rejected at parse time. To start a fresh chain, open a new `@(...)` sibling first.
+
+**`@final` constants cannot be conditional or `@switch` keys.** `@final` is a compile-time-only alias with no runtime value slot, so both the runtime matcher and codegen's condition emitter would fail on a reference to its name. Using a `@final` as a key in `@(MY_CONST=>…)`, `@if(…)`, `@any(…)`, `@all(…)`, `@else(…)`, or `@switch(MY_CONST)` is rejected at parse time with a message naming the offending `@final`. Use a programmable parameter (`param:type=default`) as the conditional key instead. The rule applies regardless of whether the `@final`'s RHS is a literal or a derived expression.
 
 Conditionals also work with **repeatable loop variables** (e.g., `@($i => 0)`, `@($i >= 3)`, `@($i != 1)`) inside `repeatable` bodies.
 

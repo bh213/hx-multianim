@@ -7655,24 +7655,23 @@ class BuilderUnitTest extends BuilderTestBase {
 
 	@Test
 	public function testTileGroupConditionalOnFinal_Throws():Void {
-		// @final as conditional key is broken system-wide (matchSingleCondition has no
-		// ExpressionAlias case), but the tileGroup validator catches it early and labels
-		// the name as "@final" rather than the generic "parameter" — better diagnostic.
-		final msg = buildExpectingTileGroupConditional("
+		// @final as conditional key is rejected at parse time (everywhere, not just inside
+		// tileGroup) because matchSingleCondition has no ExpressionAlias case and codegen's
+		// condMapToExpr emits a reference to a non-existent field. The tileGroup validator's
+		// @final branch is therefore unreachable from source — parsing fails first.
+		final err = expectError(() -> buildFromSource("
 			#test programmable() {
 				@final MODE = 1
 				tileGroup {
 					@(MODE => 1) bitmap(generated(color(20, 20, red))): 0, 0
 				}
 			}
-		");
-		Assert.notNull(msg);
-		Assert.isTrue(msg.indexOf("@final") >= 0,
-			'Message should label "MODE" as @final (not parameter), got: $msg');
-		Assert.isTrue(msg.indexOf("MODE") >= 0,
-			'Message should name the offending @final "MODE", got: $msg');
-		Assert.isTrue(msg.indexOf("parameter") < 0,
-			'Message should NOT misclassify an @final as parameter, got: $msg');
+		", "test"));
+		Assert.notNull(err, "Should reject @final as conditional key at parse time");
+		Assert.isTrue(err.indexOf("@final") >= 0,
+			'Error should label "MODE" as @final, got: $err');
+		Assert.isTrue(err.indexOf("MODE") >= 0,
+			'Error should name the offending @final "MODE", got: $err');
 	}
 
 	@Test
@@ -7942,6 +7941,93 @@ class BuilderUnitTest extends BuilderTestBase {
 		bitmaps = findVisibleBitmapDescendants(result.object);
 		Assert.equals(1, bitmaps.length);
 		Assert.equals(22, Std.int(bitmaps[0].tile.width));
+	}
+
+	// ==================== Circular programmable references (staticRef / dynamicRef) ====================
+
+	// staticRef/dynamicRef resolve by calling builder.buildWithParameters recursively. Without a
+	// "currently resolving" guard, a reference chain that re-enters a name already being built
+	// (A→A, or A→B→A) infinitely recurses until the Haxe stack overflows. Users see a native
+	// crash with no file/line context instead of a structured BuilderError they can act on.
+	// Curves already handle this (getCurves throws 'circular curve reference'); programmables
+	// should parity with code "circular_reference" so callers (strict-D, DevBridge, hot reload)
+	// can report it the same way.
+
+	@Test
+	public function testStaticRefSelfReferenceThrowsCircular():Void {
+		var caught:Null<bh.multianim.BuilderError> = null;
+		try {
+			buildFromSource("
+				#a programmable() {
+					staticRef($a): 0, 0
+				}
+			", "a");
+		} catch (e:bh.multianim.BuilderError) {
+			caught = e;
+		} catch (e:Dynamic) {
+			Assert.fail('Expected BuilderError, got: ${Std.string(e)}');
+		}
+		Assert.notNull(caught, "Self-referencing staticRef (A→A) must throw a structured BuilderError, not stack-overflow");
+		if (caught != null) {
+			Assert.equals("circular_reference", caught.code,
+				'Expected code="circular_reference", got "${caught.code}" with message: ${caught.message}');
+			Assert.isTrue(caught.message.toLowerCase().indexOf("circular") >= 0,
+				'Expected "circular" in error message, got: ${caught.message}');
+			Assert.isTrue(caught.message.indexOf("a") >= 0,
+				'Expected the offending programmable name "a" in the message, got: ${caught.message}');
+		}
+	}
+
+	@Test
+	public function testStaticRefMutualCircularReferenceThrows():Void {
+		var caught:Null<bh.multianim.BuilderError> = null;
+		try {
+			buildFromSource("
+				#a programmable() {
+					staticRef($b): 0, 0
+				}
+				#b programmable() {
+					staticRef($a): 0, 0
+				}
+			", "a");
+		} catch (e:bh.multianim.BuilderError) {
+			caught = e;
+		} catch (e:Dynamic) {
+			Assert.fail('Expected BuilderError, got: ${Std.string(e)}');
+		}
+		Assert.notNull(caught, "Mutual staticRef cycle (A→B→A) must throw a structured BuilderError, not stack-overflow");
+		if (caught != null) {
+			Assert.equals("circular_reference", caught.code,
+				'Expected code="circular_reference", got "${caught.code}" with message: ${caught.message}');
+			Assert.isTrue(caught.message.toLowerCase().indexOf("circular") >= 0,
+				'Expected "circular" in error message, got: ${caught.message}');
+		}
+	}
+
+	@Test
+	public function testDynamicRefMutualCircularReferenceThrows():Void {
+		var caught:Null<bh.multianim.BuilderError> = null;
+		try {
+			buildFromSource("
+				#a programmable() {
+					dynamicRef($b): 0, 0
+				}
+				#b programmable() {
+					dynamicRef($a): 0, 0
+				}
+			", "a");
+		} catch (e:bh.multianim.BuilderError) {
+			caught = e;
+		} catch (e:Dynamic) {
+			Assert.fail('Expected BuilderError, got: ${Std.string(e)}');
+		}
+		Assert.notNull(caught, "Mutual dynamicRef cycle (A→B→A) must throw a structured BuilderError, not stack-overflow");
+		if (caught != null) {
+			Assert.equals("circular_reference", caught.code,
+				'Expected code="circular_reference", got "${caught.code}" with message: ${caught.message}');
+			Assert.isTrue(caught.message.toLowerCase().indexOf("circular") >= 0,
+				'Expected "circular" in error message, got: ${caught.message}');
+		}
 	}
 
 }

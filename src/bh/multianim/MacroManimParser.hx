@@ -458,6 +458,7 @@ class MacroManimParser {
 	var activeDefs:Null<ParametersDefinitions>; // null = not inside programmable, set to currentDefs when entering programmable scope
 	var scopeVars:Null<Array<String>>; // loop vars, iterator output vars, @final vars (not in activeDefs)
 	var activeFinals:Null<Map<String, SettingValueType>>; // @final names whose RHS is a direct literal, mapped to inferred SettingValueType — used by validateTypedMetadataRef
+	var activeFinalNames:Null<Array<String>>; // every @final name in scope (literal and non-literal RHS) — used to reject @finals as conditional/@switch keys
 	var namedCoordSystems:Null<Array<String>>; // names registered via hex: #name or grid: #name
 	var namedElements:Null<Array<String>>; // names registered via #name element(...)
 	var customFilterRefs:Array<CustomFilterRef>; // accumulated custom filter references for post-parse validation
@@ -477,6 +478,7 @@ class MacroManimParser {
 		this.activeDefs = null;
 		this.scopeVars = null;
 		this.activeFinals = null;
+		this.activeFinalNames = null;
 		this.customFilterRefs = [];
 	}
 
@@ -1907,6 +1909,11 @@ class MacroManimParser {
 			// Validate parameter — accept both programmable params and repeatable loop vars
 			if (!defs.exists(paramName) && (scopeVars == null || !scopeVars.contains(paramName)))
 				error('conditional parameter "$paramName" does not have definition');
+			// @final constants have no runtime value slot — matchSingleCondition (runtime) has
+			// no ExpressionAlias case and codegen's condMapToExpr emits a reference to a
+			// non-existent field. Reject at parse time with a clear, actionable message.
+			if (activeFinalNames != null && activeFinalNames.contains(paramName))
+				error('conditional key "$paramName" is a @final constant — @final cannot be used as a conditional key (no runtime value slot). Use a programmable parameter instead.');
 			if (result.exists(paramName)) error('conditional parameter "$paramName" already defined');
 
 			// Check for comparison operators
@@ -2770,7 +2777,7 @@ class MacroManimParser {
 	@:nullSafety(Off)
 	function parseNode(updatableName:UpdatableNameType, parent:Null<Node>, currentDefs:ParametersDefinitions):Node {
 		// Reset reference validation scope for each root-level node
-		if (parent == null) { activeDefs = null; scopeVars = null; activeFinals = null; namedElements = null; namedCoordSystems = null; }
+		if (parent == null) { activeDefs = null; scopeVars = null; activeFinals = null; activeFinalNames = null; namedElements = null; namedCoordSystems = null; }
 		var layerIndex = -1;
 		var alpha:Null<ReferenceableValue> = null;
 		var scale:Null<ReferenceableValue> = null;
@@ -2791,6 +2798,7 @@ class MacroManimParser {
 		var slotSavedActiveDefs:Null<ParametersDefinitions> = null;
 		var slotSavedScopeVars:Null<Array<String>> = null;
 		var slotSavedActiveFinals:Null<Map<String, SettingValueType>> = null;
+		var slotSavedActiveFinalNames:Null<Array<String>> = null;
 		var slotSavedNamedElements:Null<Array<String>> = null;
 
 		// Parse @ prefix (conditionals, layer, alpha, scale, tint, flow properties)
@@ -2863,6 +2871,12 @@ class MacroManimParser {
 						advance();
 						expect(TOpen);
 						final switchParam = expectIdentifierOrString();
+						// @final constants have no runtime value slot — matchSingleCondition has
+						// no ExpressionAlias case and codegen's condMapToExpr emits a reference
+						// to a non-existent field. Reject at parse time with a clear message
+						// instead of the generic "does not have definition".
+						if (activeFinalNames != null && activeFinalNames.contains(switchParam))
+							error('@switch key "$switchParam" is a @final constant — @final cannot be used as a @switch key (no runtime value slot). Use a programmable parameter instead.');
 						final switchDef = currentDefs.get(switchParam);
 						if (switchDef == null)
 							error('@switch parameter "$switchParam" does not have definition');
@@ -2913,6 +2927,7 @@ class MacroManimParser {
 						expect(TEquals);
 						final expr = parseAnything();
 						if (scopeVars != null) scopeVars.push(name);
+						if (activeFinalNames != null) activeFinalNames.push(name);
 						final finalLiteralType = inferFinalLiteralType(expr);
 						if (finalLiteralType != null && activeFinals != null) activeFinals.set(name, finalLiteralType);
 						return createNode(FINAL_VAR(name, expr), parent, NoConditional, null, null, null, null, -1, UNTObject(name));
@@ -3300,12 +3315,14 @@ class MacroManimParser {
 					slotSavedActiveDefs = activeDefs;
 					slotSavedScopeVars = scopeVars;
 					slotSavedActiveFinals = activeFinals;
+					slotSavedActiveFinalNames = activeFinalNames;
 					slotSavedNamedElements = namedElements;
 					slotScopeSaved = true;
 					currentDefs = parsed.defs;
 					activeDefs = parsed.defs;
 					scopeVars = [];
 					activeFinals = new Map();
+					activeFinalNames = [];
 					namedElements = [];
 					createNode(SLOT(parsed.defs, parsed.order), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 				} else {
@@ -3448,6 +3465,7 @@ class MacroManimParser {
 				activeDefs = parsed.defs;
 				scopeVars = [];
 				activeFinals = new Map();
+				activeFinalNames = [];
 				namedElements = [];
 				createNode(PROGRAMMABLE(isTileGroup, parsed.defs, parsed.order), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 
@@ -3902,6 +3920,7 @@ class MacroManimParser {
 					activeDefs = slotSavedActiveDefs;
 					scopeVars = slotSavedScopeVars;
 					activeFinals = slotSavedActiveFinals;
+					activeFinalNames = slotSavedActiveFinalNames;
 					namedElements = slotSavedNamedElements;
 					slotScopeSaved = false;
 				}

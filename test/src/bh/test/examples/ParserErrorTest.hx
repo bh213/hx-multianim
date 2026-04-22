@@ -4856,4 +4856,121 @@ class ParserErrorTest extends utest.Test {
 		Assert.isTrue(error.indexOf("Unterminated string") >= 0,
 			'Error should mention unterminated string, got: $error');
 	}
+
+	// ===== @final as conditional key — rejected at parse time =====
+	// @final constants have no runtime value slot — matchSingleCondition (runtime) has no
+	// ExpressionAlias case and codegen's condMapToExpr generates a reference to a non-existent
+	// field. Must be rejected at parse time with a clear, actionable message naming the @final.
+
+	@Test
+	public function testFinalAsConditionalKeyRejected() {
+		var error = parseExpectingError('
+			#test programmable(mode:[on,off]=on) {
+				@final MY_FINAL = 3
+				@(MY_FINAL => 3) bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		');
+		Assert.notNull(error, "Should reject @final as conditional key");
+		Assert.isTrue(error.indexOf("MY_FINAL") >= 0,
+			'Error should name the offending @final "MY_FINAL", got: $error');
+		Assert.isTrue(error.indexOf("@final") >= 0,
+			'Error should mention "@final" to explain what is wrong, got: $error');
+	}
+
+	@Test
+	public function testFinalAsIfConditionalKeyRejected() {
+		var error = parseExpectingError('
+			#test programmable(mode:[on,off]=on) {
+				@final MY_FINAL = 3
+				@if(MY_FINAL => 3) bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		');
+		Assert.notNull(error, "Should reject @final as @if conditional key");
+		Assert.isTrue(error.indexOf("MY_FINAL") >= 0,
+			'Error should name the offending @final "MY_FINAL", got: $error');
+		Assert.isTrue(error.indexOf("@final") >= 0,
+			'Error should mention "@final", got: $error');
+	}
+
+	@Test
+	public function testFinalAsAnyConditionalKeyRejected() {
+		var error = parseExpectingError('
+			#test programmable(mode:[on,off]=on) {
+				@final MY_FINAL = 3
+				@any(MY_FINAL => 3, mode => on) bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		');
+		Assert.notNull(error, "Should reject @final used as key inside @any(...)");
+		Assert.isTrue(error.indexOf("MY_FINAL") >= 0,
+			'Error should name the offending @final "MY_FINAL", got: $error');
+		Assert.isTrue(error.indexOf("@final") >= 0,
+			'Error should mention "@final", got: $error');
+	}
+
+	@Test
+	public function testFinalAsAllConditionalKeyRejected() {
+		var error = parseExpectingError('
+			#test programmable(mode:[on,off]=on) {
+				@final MY_FINAL = 3
+				@all(MY_FINAL => 3, mode => on) bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		');
+		Assert.notNull(error, "Should reject @final used as key inside @all(...)");
+		Assert.isTrue(error.indexOf("MY_FINAL") >= 0,
+			'Error should name the offending @final "MY_FINAL", got: $error');
+		Assert.isTrue(error.indexOf("@final") >= 0,
+			'Error should mention "@final", got: $error');
+	}
+
+	@Test
+	public function testFinalAsElseConditionalKeyRejected() {
+		var error = parseExpectingError('
+			#test programmable(mode:[on,off]=on) {
+				@final MY_FINAL = 3
+				@(mode => on) bitmap(generated(color(10, 10, #f00))): 0, 0
+				@else(MY_FINAL => 3) bitmap(generated(color(20, 20, #00f))): 0, 20
+			}
+		');
+		Assert.notNull(error, "Should reject @final used as key inside @else(...)");
+		Assert.isTrue(error.indexOf("MY_FINAL") >= 0,
+			'Error should name the offending @final "MY_FINAL", got: $error');
+		Assert.isTrue(error.indexOf("@final") >= 0,
+			'Error should mention "@final", got: $error');
+	}
+
+	@Test
+	public function testFinalAsSwitchKeyRejected() {
+		var error = parseExpectingError('
+			#test programmable(mode:[on,off]=on) {
+				@final MY_FINAL = 3
+				@switch(MY_FINAL) {
+					3: bitmap(generated(color(10, 10, #f00))): 0, 0
+					default: bitmap(generated(color(20, 20, #00f))): 0, 0
+				}
+			}
+		');
+		Assert.notNull(error, "Should reject @final as @switch key");
+		Assert.isTrue(error.indexOf("MY_FINAL") >= 0,
+			'Error should name the offending @final "MY_FINAL", got: $error');
+		Assert.isTrue(error.indexOf("@final") >= 0,
+			'Error should mention "@final", got: $error');
+	}
+
+	@Test
+	public function testFinalWithNonLiteralRhsAsConditionalKeyRejected() {
+		// @final with non-literal RHS (e.g. referencing another param) is NOT tracked in
+		// activeFinals (only literal-RHS @finals are). The rejection must still apply — the
+		// parser must reject ALL @finals as conditional keys regardless of RHS literalness.
+		var error = parseExpectingError("
+			#test programmable(x:uint=10, mode:[on,off]=on) {
+				@final DERIVED = $x * 2
+				@(DERIVED => 20) bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		");
+		Assert.notNull(error, "Should reject @final with non-literal RHS as conditional key");
+		Assert.isTrue(error.indexOf("DERIVED") >= 0,
+			'Error should name the offending @final "DERIVED", got: $error');
+		Assert.isTrue(error.indexOf("@final") >= 0,
+			'Error should mention "@final", got: $error');
+	}
 }

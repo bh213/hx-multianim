@@ -1889,6 +1889,11 @@ class MultiAnimBuilder {
 	var builderParams:BuilderParameters = {};
 	var currentNode:Null<Node> = null;
 	var stateStack:Array<StoredBuilderState> = [];
+	/** Names of programmables currently being resolved by `buildWithParameters`. Used to
+	 *  detect circular staticRef/dynamicRef chains (A→A, A→B→A, …) and surface them as a
+	 *  structured BuilderError instead of recursing to stack-overflow. Mirrors the
+	 *  `resolving` map used by `getCurves()` for the same purpose. */
+	var buildingRefs:Array<String> = [];
 	var inlineAtlases:Map<String, IAtlas2> = [];
 	var incrementalMode:Bool = false;
 	var incrementalContext:Null<IncrementalUpdateContext> = null;
@@ -7200,68 +7205,87 @@ class MultiAnimBuilder {
 
 	public function buildWithParameters(name:String, inputParameters:Map<String, Dynamic>, ?builderParams:BuilderParameters,
 			?inheritedParameters:Map<String, ResolvedIndexParameters>, incremental:Bool = false):BuilderResult {
+		// Circular reference guard: staticRef/dynamicRef resolve by recursing back into
+		// buildWithParameters, so a chain that re-enters a name already on the stack
+		// (A→A, A→B→A, …) would otherwise recurse until the native stack overflows.
+		for (inFlight in buildingRefs) {
+			if (inFlight == name)
+				throw builderError('circular programmable reference: $name', "circular_reference");
+		}
+		buildingRefs.push(name);
+
 		pushBuilderState();
-		if (builderParams == null)
-			builderParams = {callback: defaultCallback};
-		else if (builderParams.callback == null)
-			builderParams.callback = defaultCallback;
-		var node = multiParserResult.nodes.get(name);
-		if (node == null) {
-			final error = 'buildWithParameters ${inputParameters}: could find element "$name" to build';
-			popBuilderState();
-			throw error;
-		}
-
-		final hasParams = inputParameters != null && inputParameters.count() > 0;
-		var definitions:ParametersDefinitions = getProgrammableParameterDefinitions(node, hasParams);
-
-		updateIndexedParamsFromDynamicMap(node, inputParameters, definitions, inheritedParameters);
-		this.builderParams = builderParams;
-
-		// Enable incremental mode during build
-		if (incremental) {
-			this.incrementalMode = true;
-			this.incrementalContext = new IncrementalUpdateContext(this, indexedParams, builderParams, node);
-			// Auto-inject TweenManager for transition support
-			if (tweenManager != null)
-				this.incrementalContext.setTweenManager(tweenManager);
-		}
-
-		var retVal = startBuild(name, node, cast MultiAnimParser.getGridCoordinateSystem(node), cast MultiAnimParser.getHexCoordinateSystem(node), builderParams);
-
-		if (incremental) {
-			final ctx = this.incrementalContext;
-			retVal.incrementalContext = ctx;
-			if (ctx != null) {
-				// @final constants at the programmable body scope survive the build and
-				// must be persisted in the context so setParameter-triggered rebuilds can
-				// re-resolve references like `$MY_CONST`. Nested @finals (inside point{},
-				// repeatable, etc.) are already cleaned up by cleanupFinalVars and won't
-				// appear in indexedParams here — so they're correctly excluded.
-				ctx.syncFinalsFromBuilder(indexedParams);
-				ctx.applyConditionalChains();
+		try {
+			if (builderParams == null)
+				builderParams = {callback: defaultCallback};
+			else if (builderParams.callback == null)
+				builderParams.callback = defaultCallback;
+			var node = multiParserResult.nodes.get(name);
+			if (node == null) {
+				final error = 'buildWithParameters ${inputParameters}: could find element "$name" to build';
+				popBuilderState();
+				buildingRefs.pop();
+				throw error;
 			}
-			this.incrementalMode = false;
-			this.incrementalContext = null;
-		}
 
-		#if MULTIANIM_DEV
-		// Store builderParams and captured placeholders for hot reload
-		retVal.devBuilderParams = builderParams;
-		retVal.devCapturedPlaceholders = devPlaceholderCapture;
-		devPlaceholderCapture = [];
-		if (retVal.reloadable) {
-			if (Std.isOfType(resourceLoader, bh.base.ResourceLoader.CachingResourceLoader)) {
-				final cachingLoader = cast(resourceLoader, bh.base.ResourceLoader.CachingResourceLoader);
-				if (cachingLoader.hotReloadRegistry != null) {
-					retVal.reloadHandle = cachingLoader.hotReloadRegistry.register(sourceName, retVal, name);
+			final hasParams = inputParameters != null && inputParameters.count() > 0;
+			var definitions:ParametersDefinitions = getProgrammableParameterDefinitions(node, hasParams);
+
+			updateIndexedParamsFromDynamicMap(node, inputParameters, definitions, inheritedParameters);
+			this.builderParams = builderParams;
+
+			// Enable incremental mode during build
+			if (incremental) {
+				this.incrementalMode = true;
+				this.incrementalContext = new IncrementalUpdateContext(this, indexedParams, builderParams, node);
+				// Auto-inject TweenManager for transition support
+				if (tweenManager != null)
+					this.incrementalContext.setTweenManager(tweenManager);
+			}
+
+			var retVal = startBuild(name, node, cast MultiAnimParser.getGridCoordinateSystem(node), cast MultiAnimParser.getHexCoordinateSystem(node), builderParams);
+
+			if (incremental) {
+				final ctx = this.incrementalContext;
+				retVal.incrementalContext = ctx;
+				if (ctx != null) {
+					// @final constants at the programmable body scope survive the build and
+					// must be persisted in the context so setParameter-triggered rebuilds can
+					// re-resolve references like `$MY_CONST`. Nested @finals (inside point{},
+					// repeatable, etc.) are already cleaned up by cleanupFinalVars and won't
+					// appear in indexedParams here — so they're correctly excluded.
+					ctx.syncFinalsFromBuilder(indexedParams);
+					ctx.applyConditionalChains();
+				}
+				this.incrementalMode = false;
+				this.incrementalContext = null;
+			}
+
+			#if MULTIANIM_DEV
+			// Store builderParams and captured placeholders for hot reload
+			retVal.devBuilderParams = builderParams;
+			retVal.devCapturedPlaceholders = devPlaceholderCapture;
+			devPlaceholderCapture = [];
+			if (retVal.reloadable) {
+				if (Std.isOfType(resourceLoader, bh.base.ResourceLoader.CachingResourceLoader)) {
+					final cachingLoader = cast(resourceLoader, bh.base.ResourceLoader.CachingResourceLoader);
+					if (cachingLoader.hotReloadRegistry != null) {
+						retVal.reloadHandle = cachingLoader.hotReloadRegistry.register(sourceName, retVal, name);
+					}
 				}
 			}
-		}
-		#end
+			#end
 
-		popBuilderState();
-		return retVal;
+			popBuilderState();
+			buildingRefs.pop();
+			return retVal;
+		} catch (e:Dynamic) {
+			// Keep buildingRefs balanced even if startBuild (or any nested builder) throws,
+			// so a caller that catches the error and retries is not falsely rejected.
+			if (buildingRefs.length > 0 && buildingRefs[buildingRefs.length - 1] == name)
+				buildingRefs.pop();
+			throw e;
+		}
 	}
 
 	public function hasNode(name:String) {

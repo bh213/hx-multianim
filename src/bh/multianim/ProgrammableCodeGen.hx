@@ -5105,7 +5105,49 @@ class ProgrammableCodeGen {
 
 	// ==================== TileGroup ====================
 
+	/** Macro-time mirror of `MultiAnimBuilder.validateTileGroupSubtree`. tileGroup bakes
+	 *  descendants once and is never re-entered by the incremental-update path, so a
+	 *  conditional whose predicate names a programmable parameter (or @final, or anything
+	 *  other than an enclosing repeatable loop var) would silently freeze on first build.
+	 *  The runtime builder already rejects this configuration with BuilderError
+	 *  code="tilegroup_conditional"; without this check, `@:manim` compiled clean and only
+	 *  surfaced the error on first `create()`. Raising at macro time makes the failure
+	 *  match `buildFromResource`'s feedback latency. */
+	static function validateTileGroupSubtreeMacro(node:Node, loopVarScope:Array<String>, pos:Position):Void {
+		inline function requireLoopVar(paramName:String, source:String):Void {
+			if (loopVarScope.indexOf(paramName) < 0) {
+				Context.fatalError('$source inside tileGroup references "$paramName"; tileGroup descendants are baked at build time and never re-evaluated. Only repeatable/repeatable2d loop variables (which iterate at build time) are safe as conditional keys here — move the conditional outside the tileGroup, or key it on a loop variable. [tilegroup_conditional, programmable="$currentProgrammableName"]', pos);
+			}
+		}
+
+		switch node.conditionals {
+			case Conditional(conds, _):
+				for (name => _ in conds) requireLoopVar(name, '@($name => ...)');
+			case ConditionalElse(extraConds) if (extraConds != null):
+				for (name => _ in extraConds) requireLoopVar(name, '@else($name => ...)');
+			case ConditionalElse(_) | ConditionalDefault | NoConditional:
+		}
+
+		switch node.type {
+			case SWITCH(paramName, arms):
+				requireLoopVar(paramName, '@switch($paramName)');
+				for (arm in arms)
+					for (child in arm.children)
+						validateTileGroupSubtreeMacro(child, loopVarScope, pos);
+			case REPEAT(varName, _):
+				final innerScope = loopVarScope.concat([varName]);
+				for (child in node.children) validateTileGroupSubtreeMacro(child, innerScope, pos);
+			case REPEAT2D(varNameX, varNameY, _, _):
+				final innerScope = loopVarScope.concat([varNameX, varNameY]);
+				for (child in node.children) validateTileGroupSubtreeMacro(child, innerScope, pos);
+			default:
+				for (child in node.children) validateTileGroupSubtreeMacro(child, loopVarScope, pos);
+		}
+	}
+
 	static function generateTileGroupCreate(node:Node, fieldName:String, pos:Position):CreateResult {
+		for (child in node.children)
+			validateTileGroupSubtreeMacro(child, [], pos);
 		final fieldRef = macro $p{["this", fieldName]};
 		final nameExpr:Expr = macro $v{currentProgrammableName};
 		final indexExpr:Expr = macro $v{tileGroupCounter++};
