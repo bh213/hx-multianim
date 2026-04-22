@@ -37,7 +37,12 @@ Once valid:
 1. Name the **root cause** in one sentence. Not the symptom — the underlying cause.
 2. List the minimal code change to fix it (file paths + what changes). No code yet.
 3. Note any ripple: docs to update (`docs/manim-reference.md`, `docs/anim-reference.md`, `docs/manim.md`), `CHANGELOG.md` entries, related subsystems.
-4. Identify which existing test file new tests belong in (see the test-file reference in `.claude/skills/precommit/SKILL.md` step 5 for the authoritative mapping). New `.manim` syntax → visual test under `test/examples/<N>-<name>/`. Everything else → a method on an existing `*Test.hx`.
+4. **Performance & allocation impact.** Evaluate the proposed fix against the code it replaces:
+   - **Performance** — does the fix add work on a hot path (per-frame `update`, builder re-evaluation, parser, tween tick, interactive hit test)? Call out loss (e.g. extra `globalToLocal` per frame, added iteration over all cells, redundant rebuild) or improvement (e.g. removed redundant work, cached lookup, early-out added).
+   - **Allocations** — does the fix introduce new per-call/per-frame allocations (`new Array`, `new Map`, closures captured inside a loop, `StringTools.format`, anonymous structs inside `update`, boxing of enum params)? Call out additions (bad) or removals (good). Builder/codegen paths that fire on every rebuild or every `setParameter` are especially sensitive.
+   - If the fix is neutral on both axes, say so explicitly (one line). Do not skip this section.
+   - If the fix **worsens** either axis, propose a mitigation or flag the tradeoff for the user before writing tests.
+5. Identify which existing test file new tests belong in (see the test-file reference in `.claude/skills/precommit/SKILL.md` step 5 for the authoritative mapping). New `.manim` syntax → visual test under `test/examples/<N>-<name>/`. Everything else → a method on an existing `*Test.hx`.
 
 Present this plan to the user and proceed to Step 3 on the same turn — do not wait for a separate "go ahead" before writing the failing test. The user's confirmation gate is **after** the test fails, not before you write it.
 
