@@ -327,15 +327,15 @@
 </head>
 <body>
     <h1>Visual Test Report</h1>
-    <div class="timestamp">Generated: 2026-04-22 07:49:32</div>
+    <div class="timestamp">Generated: 2026-04-22 10:40:56</div>
     <div class="summary">
         <strong>Summary:</strong> 101 tests,         <span style="color: #4CAF50;">101 passed</span>,         <span style="color: #f44336;">0 failed</span>
-        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1.3s, visual 25.3s)</span>
+        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1.2s, visual 25.1s)</span>
     </div>
     <div class="unit-tests-section">
         <h2>Unit Tests</h2>
         <div class="unit-tests-summary all-passed">
-            <strong>6143 assertions:</strong>             <span style="color: #4CAF50;">6143 passed</span>
+            <strong>6172 assertions:</strong>             <span style="color: #4CAF50;">6172 passed</span>
             <button class="expand-btn" id="unitToggleBtn" onclick="toggleUnitDetails()">Show Details</button>
         </div>
         <div class="unit-details" id="unitDetails">
@@ -744,6 +744,7 @@
                 <div class="unit-method pass">testDataRecord: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testDataScalars: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testDataSingleRecord: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testDynamicRefMutualCircularReferenceThrows: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testDynamicRefPropagationReachesHiddenSubtree: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testErrorBeginUpdateWithoutIncrementalMode: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testErrorDivisionByZeroFloat: OK <span class="dots">..</span></div>
@@ -1007,6 +1008,8 @@
                 <div class="unit-method pass">testSettingsPassThroughWithDefaultOverride: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testSettingsUnknownParamThrowsWithMessage: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testSiblingBuilderErrorIsTyped: OK <span class="dots">.....</span></div>
+                <div class="unit-method pass">testStaticRefMutualCircularReferenceThrows: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testStaticRefSelfReferenceThrowsCircular: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testTernaryNumericBitmapWidth: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testTernaryNumericBitmapWidthFalse: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testTernaryStringEq: OK <span class="dots">.</span></div>
@@ -1015,7 +1018,7 @@
                 <div class="unit-method pass">testTernaryStringGeFalse: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testTernaryStringGt: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testTextCreatesPlainText: OK <span class="dots">..</span></div>
-                <div class="unit-method pass">testTileGroupConditionalOnFinal_Throws: OK <span class="dots">.....</span></div>
+                <div class="unit-method pass">testTileGroupConditionalOnFinal_Throws: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testTileGroupConditionalOnParam_Builder_Throws: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testTileGroupConditionalOnParam_Incremental_Throws: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testTileGroupConditionalOnRepeatableLoopVar_Allowed: OK <span class="dots">.</span></div>
@@ -1508,6 +1511,12 @@
                 <div class="unit-method pass">testEmitNamedParams: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testEmptyProgrammable: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testEnumDefaultNotInValues: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testFinalAsAllConditionalKeyRejected: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testFinalAsAnyConditionalKeyRejected: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testFinalAsConditionalKeyRejected: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testFinalAsElseConditionalKeyRejected: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testFinalAsIfConditionalKeyRejected: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testFinalAsSwitchKeyRejected: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testFinalBasicInteger: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testFinalChaining: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testFinalForwardReference: OK <span class="dots">..</span></div>
@@ -1518,6 +1527,7 @@
                 <div class="unit-method pass">testFinalVarNotValidBeforeDeclaration: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testFinalWithArray: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testFinalWithColor: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testFinalWithNonLiteralRhsAsConditionalKeyRejected: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testFinalWithString: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testFinalWithTernary: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testFlowUnexpectedTokenError: OK <span class="dots">..</span></div>
