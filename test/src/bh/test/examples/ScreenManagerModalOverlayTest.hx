@@ -76,4 +76,33 @@ class ScreenManagerModalOverlayTest extends utest.Test {
 		if (overlay1 != null)
 			Assert.isNull(overlay1.parent, "previous overlay must be removed from the scene graph");
 	}
+
+	/**
+	 * The `exclude` parameter of `applyBlurToUnderlyingScreens` silently degrades to
+	 * a no-op if the excluded screen isn't in `activeScreens` at call time. That
+	 * makes the contract between `modalDialog` (which flips the ordering so the
+	 * new dialog is in `activeScreens` before blur applies) and this helper
+	 * fragile — a future refactor could restore the natural "prepare overlay
+	 * before mode switch" ordering and silently blur the new dialog.
+	 *
+	 * The helper must reject an `exclude` that is not currently active.
+	 */
+	@Test
+	public function testApplyBlurExcludeMustBeInActiveScreens():Void {
+		var stranger = new BgScreen(sm);
+		// `stranger` was never activated via switchTo/modalDialog, so it is not in activeScreens.
+		Assert.isFalse(sm.activeScreens.contains(stranger),
+			"precondition: stranger must not be in activeScreens");
+
+		var threw = false;
+		try {
+			sm.applyBlurToUnderlyingScreens(4.0, stranger);
+		} catch (_:Dynamic) {
+			threw = true;
+		}
+		Assert.isTrue(threw,
+			"applyBlurToUnderlyingScreens must throw when `exclude` is not in activeScreens — "
+			+ "otherwise the exclude silently becomes a no-op and a future caller re-ordering "
+			+ "would apply blur to the wrong screens");
+	}
 }

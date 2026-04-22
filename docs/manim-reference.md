@@ -1324,8 +1324,8 @@ Builder throws `BuilderError` with `code == "untracked_param"`; codegen throws a
 | `"invalid_param_value"` | `setParameter(name, value)` on a declared param whose value is not `Int`/`Float`/`String`/`Bool`/`ResolvedIndexParameters`/`h2d.Tile` (covers `null`, arrays, arbitrary objects, unresolved enum values). Message names the param and rejected type. Unknown param names are still a silent no-op — UI widgets (Button/Checkbox/Slider/Tabs/TextInput) rely on `setParameter("disabled", ...)` being a no-op for templates that don't opt in |
 | `"nested_begin_update"` | `beginUpdate()` called while already in batch — nested batching is not supported |
 | `"unbalanced_end_update"` | `endUpdate()` called without a matching `beginUpdate()` |
-
-`SlotHandle.setParameter` additionally throws `BuilderError "Slot disposed — enclosing subtree was rebuilt"` when the enclosing subtree has been torn down (SWITCH arm swap, repeatable shrinkage) and the handle is still being retained externally. External code holding long-lived `SlotHandle` references across arm flips should re-fetch via `result.getSlot(name)` after each rebuild, or listen for the rebuild via `result.addRebuildListener`.
+| `"slot_disposed"` | `SlotHandle.setParameter` called on a handle whose enclosing subtree has been torn down (SWITCH arm swap, repeatable shrinkage). External code holding long-lived `SlotHandle` references across arm flips should re-fetch via `result.getSlot(name)` after each rebuild, or listen for the rebuild via `result.addRebuildListener` |
+| `"slot_no_parameters"` | `SlotHandle.setParameter` called on a non-parameterized slot (declared as `#name slot { ... }` without a parameter list). Non-parameterized slots have no `IncrementalUpdateContext` to drive |
 
 ---
 

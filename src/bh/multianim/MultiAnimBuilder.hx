@@ -1491,9 +1491,9 @@ class SlotHandle {
 
 	public function setParameter(name:String, value:Dynamic):Void {
 		if (disposed)
-			throw BuilderError.of('Slot disposed — enclosing subtree was rebuilt');
+			throw BuilderError.of('Slot disposed — enclosing subtree was rebuilt', "slot_disposed");
 		if (incrementalContext == null)
-			throw BuilderError.of('Slot has no parameters');
+			throw BuilderError.of('Slot has no parameters', "slot_no_parameters");
 		incrementalContext.setParameter(name, value);
 	}
 

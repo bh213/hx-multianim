@@ -250,4 +250,78 @@ class CodegenIncrementalInteractiveStateanimTest extends BuilderTestBase {
 		);
 		Assert.isTrue(ok, "int param with :int typed metadata must still parse");
 	}
+
+	// ===== @final constant refs in typed metadata =====
+	// The parser must reject typed metadata `key:type => $FINAL` when the @final's
+	// literal type is known at parse time and is incompatible with the declared
+	// metadata type. Mirrors the param-ref validation added in commit f5d96e8; prior
+	// to this fix @final refs skipped the check entirely and diverged at runtime
+	// vs codegen (runtime lenient resolveAs*, codegen strict RSV<Type>).
+
+	@Test
+	public function testInteractiveMetadata_TypedIntFromStringFinal_RejectedAtParseTime():Void {
+		final err = BuilderTestBase.parseExpectingError(
+			"#p programmable() {
+			  @final HIGH_SCORE_STR = \"max\"
+			  interactive(100, 50, \"btn\", score:int => $HIGH_SCORE_STR): 0, 0
+			}"
+		);
+		Assert.notNull(err, "expected parse error for :int metadata referencing string @final");
+		if (err != null) {
+			Assert.isTrue(err.indexOf("score") >= 0 || err.indexOf("HIGH_SCORE_STR") >= 0,
+				'error should name the key or @final — got: $err');
+			Assert.isTrue(err.indexOf(":int") >= 0 || err.indexOf("string") >= 0,
+				'error should mention the incompatible types — got: $err');
+		}
+	}
+
+	@Test
+	public function testInteractiveMetadata_TypedBoolFromStringFinal_RejectedAtParseTime():Void {
+		// Non-bool string literal used as :bool — "max" is not "true"/"false".
+		final err = BuilderTestBase.parseExpectingError(
+			"#p programmable() {
+			  @final TAG = \"max\"
+			  interactive(100, 50, \"btn\", flag:bool => $TAG): 0, 0
+			}"
+		);
+		Assert.notNull(err, "expected parse error for :bool metadata referencing string @final");
+	}
+
+	@Test
+	public function testInteractiveMetadata_TypedIntFromIntFinal_StillParses():Void {
+		// Regression guard: int-literal @final is compatible with :int.
+		final ok = BuilderTestBase.parseExpectingSuccess(
+			"#p programmable() {
+			  @final FIXED_ID = 42
+			  interactive(100, 50, \"btn\", score:int => $FIXED_ID): 0, 0
+			}"
+		);
+		Assert.isTrue(ok, "int-literal @final with :int typed metadata must still parse");
+	}
+
+	@Test
+	public function testInteractiveMetadata_TypedStringFromStringFinal_StillParses():Void {
+		// Regression guard: string → :string is always fine.
+		final ok = BuilderTestBase.parseExpectingSuccess(
+			"#p programmable() {
+			  @final LABEL = \"buy\"
+			  interactive(100, 50, \"btn\", action:string => $LABEL): 0, 0
+			}"
+		);
+		Assert.isTrue(ok, "string-literal @final with :string typed metadata must still parse");
+	}
+
+	@Test
+	public function testInteractiveMetadata_TypedIntFromExprFinal_StillParses():Void {
+		// Regression guard: @final with a non-literal RHS has unknown type at parse
+		// time; the parser must stay silent (same as today — the check is opt-in,
+		// gated on literal type being inferrable).
+		final ok = BuilderTestBase.parseExpectingSuccess(
+			"#p programmable(base:int=10) {
+			  @final DOUBLED = $base * 2
+			  interactive(100, 50, \"btn\", val:int => $DOUBLED): 0, 0
+			}"
+		);
+		Assert.isTrue(ok, "non-literal @final must not be validated (type unknown at parse time)");
+	}
 }

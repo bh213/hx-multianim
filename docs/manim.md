@@ -2820,7 +2820,7 @@ var items:Array<UIElementListItem> = [
 
 `TileRef` variants: `TRFile`, `TRSheet`, `TRSheetIndex`, `TRGeneratedRect`, `TRGeneratedRectColor`, `TRTile` (pass pre-loaded `h2d.Tile`).
 
-The legacy `tileName` field (plain string file path) is still supported but deprecated in favor of `tileRef`.
+The legacy `tileName` field (plain string file path) is still supported for backwards compatibility; `tileRef` is the preferred API for new code.
 
 **Custom item parameters:** `UIElementListItem.params` passes arbitrary parameters to the item `.manim` template. The item programmable must declare matching parameters:
 

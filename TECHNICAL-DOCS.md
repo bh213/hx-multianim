@@ -317,7 +317,7 @@ Controllers extend `UIDefaultController` and push onto the existing controller s
 
 Development-only JSON-RPC server exposing runtime inspection and manipulation (`-D MULTIANIM_DEV`). File: `src/bh/multianim/dev/DevBridge.hx`.
 
-Serves ~33 JSON-RPC tools over HTTP plus SSE streaming for lifecycle events (screen changes, hot reload, parameter changes, custom events). Default port 9001, configurable via `HX_DEV_PORT` env var. Consumed by the MCP server documented in `docs/devbridge.md`. Powers hot-reload triggers, runtime inspection (`scene_graph`, `inspect_element`, `list_interactives`, ...), input injection (`click_button`, `send_event`), and screenshot capture.
+Serves 37 JSON-RPC tools over HTTP plus SSE streaming for lifecycle events (screen changes, hot reload, parameter changes, custom events, debugger hits, game events). Default port 9001, configurable via `HX_DEV_PORT` env var. Consumed by the MCP server documented in `docs/devbridge.md`. Powers hot-reload triggers, runtime inspection (`scene_graph`, `inspect_element`, `list_interactives`, ...), input injection (`click_button`, `send_event`), and screenshot capture.
 
 ### Hot Reload
 

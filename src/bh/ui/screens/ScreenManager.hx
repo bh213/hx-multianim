@@ -1168,7 +1168,21 @@ class ScreenManager {
 		modalOverlayBlurTargets = [];
 	}
 
+	/**
+	 * Apply a blur filter to every currently active screen, optionally skipping one.
+	 *
+	 * `exclude` is intended for the dialog being opened: callers (`modalDialog`,
+	 * `modalDialogWithTransition`) commit the mode transition FIRST so the new
+	 * dialog is already in `activeScreens` by the time this runs, and then pass
+	 * it here to skip blurring itself. If the ordering is ever reversed, an
+	 * `exclude` that isn't yet in `activeScreens` would silently become a no-op
+	 * and the wrong screens would get blurred — so we assert the membership
+	 * invariant to fail loudly on a bad refactor.
+	 */
 	function applyBlurToUnderlyingScreens(blurRadius:Float, ?exclude:UIScreen):Void {
+		if (exclude != null && !activeScreens.contains(exclude))
+			throw 'applyBlurToUnderlyingScreens: exclude screen is not in activeScreens — '
+				+ 'caller must commit the mode transition before applying blur';
 		for (screen in activeScreens) {
 			if (exclude != null && screen == exclude) continue;
 			final root = screen.getSceneRoot();

@@ -258,12 +258,17 @@ class ParameterizedSlotTest extends BuilderTestBase {
 		", "test");
 		var slot = result.getSlot("mySlot");
 		var err:String = null;
+		var builderErr:Null<bh.multianim.BuilderError> = null;
 		try {
 			slot.setParameter("anything", "value");
 		} catch (e:Dynamic) {
 			err = Std.string(e);
+			if (Std.isOfType(e, bh.multianim.BuilderError)) builderErr = cast e;
 		}
 		Assert.notNull(err);
+		Assert.notNull(builderErr, "throw must be a BuilderError");
+		if (builderErr != null)
+			Assert.equals("slot_no_parameters", builderErr.code, "BuilderError.code for non-parameterized slot");
 	}
 
 	// Retained SlotHandle whose enclosing subtree was torn down (SWITCH arm swap,
@@ -302,14 +307,19 @@ class ParameterizedSlotTest extends BuilderTestBase {
 		result.setParameter("mode", "dormant");
 
 		var err:String = null;
+		var builderErr:Null<bh.multianim.BuilderError> = null;
 		try {
 			slot.setParameter("color", "green");
 		} catch (e:Dynamic) {
 			err = Std.string(e);
+			if (Std.isOfType(e, bh.multianim.BuilderError)) builderErr = cast e;
 		}
 		Assert.notNull(err, "setParameter on disposed SlotHandle should throw");
 		if (err != null)
 			Assert.isTrue(err.indexOf("disposed") >= 0,
 				'error message should mention "disposed", got: $err');
+		Assert.notNull(builderErr, "throw must be a BuilderError");
+		if (builderErr != null)
+			Assert.equals("slot_disposed", builderErr.code, "BuilderError.code for disposed slot");
 	}
 }

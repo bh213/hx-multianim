@@ -457,6 +457,7 @@ class MacroManimParser {
 	var currentName:Null<String>;
 	var activeDefs:Null<ParametersDefinitions>; // null = not inside programmable, set to currentDefs when entering programmable scope
 	var scopeVars:Null<Array<String>>; // loop vars, iterator output vars, @final vars (not in activeDefs)
+	var activeFinals:Null<Map<String, SettingValueType>>; // @final names whose RHS is a direct literal, mapped to inferred SettingValueType — used by validateTypedMetadataRef
 	var namedCoordSystems:Null<Array<String>>; // names registered via hex: #name or grid: #name
 	var namedElements:Null<Array<String>>; // names registered via #name element(...)
 	var customFilterRefs:Array<CustomFilterRef>; // accumulated custom filter references for post-parse validation
@@ -475,6 +476,7 @@ class MacroManimParser {
 		this.uniqueCounter = 654321;
 		this.activeDefs = null;
 		this.scopeVars = null;
+		this.activeFinals = null;
 		this.customFilterRefs = [];
 	}
 
@@ -2768,7 +2770,7 @@ class MacroManimParser {
 	@:nullSafety(Off)
 	function parseNode(updatableName:UpdatableNameType, parent:Null<Node>, currentDefs:ParametersDefinitions):Node {
 		// Reset reference validation scope for each root-level node
-		if (parent == null) { activeDefs = null; scopeVars = null; namedElements = null; namedCoordSystems = null; }
+		if (parent == null) { activeDefs = null; scopeVars = null; activeFinals = null; namedElements = null; namedCoordSystems = null; }
 		var layerIndex = -1;
 		var alpha:Null<ReferenceableValue> = null;
 		var scale:Null<ReferenceableValue> = null;
@@ -2788,6 +2790,7 @@ class MacroManimParser {
 		var slotSavedCurrentDefs:ParametersDefinitions = null;
 		var slotSavedActiveDefs:Null<ParametersDefinitions> = null;
 		var slotSavedScopeVars:Null<Array<String>> = null;
+		var slotSavedActiveFinals:Null<Map<String, SettingValueType>> = null;
 		var slotSavedNamedElements:Null<Array<String>> = null;
 
 		// Parse @ prefix (conditionals, layer, alpha, scale, tint, flow properties)
@@ -2910,6 +2913,8 @@ class MacroManimParser {
 						expect(TEquals);
 						final expr = parseAnything();
 						if (scopeVars != null) scopeVars.push(name);
+						final finalLiteralType = inferFinalLiteralType(expr);
+						if (finalLiteralType != null && activeFinals != null) activeFinals.set(name, finalLiteralType);
 						return createNode(FINAL_VAR(name, expr), parent, NoConditional, null, null, null, null, -1, UNTObject(name));
 					case TAt:
 						advance(); // allow @alpha(0.5) @scale(0.25) chaining
@@ -3294,11 +3299,13 @@ class MacroManimParser {
 					slotSavedCurrentDefs = currentDefs;
 					slotSavedActiveDefs = activeDefs;
 					slotSavedScopeVars = scopeVars;
+					slotSavedActiveFinals = activeFinals;
 					slotSavedNamedElements = namedElements;
 					slotScopeSaved = true;
 					currentDefs = parsed.defs;
 					activeDefs = parsed.defs;
 					scopeVars = [];
+					activeFinals = new Map();
 					namedElements = [];
 					createNode(SLOT(parsed.defs, parsed.order), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 				} else {
@@ -3440,6 +3447,7 @@ class MacroManimParser {
 				currentDefs = parsed.defs;
 				activeDefs = parsed.defs;
 				scopeVars = [];
+				activeFinals = new Map();
 				namedElements = [];
 				createNode(PROGRAMMABLE(isTileGroup, parsed.defs, parsed.order), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 
@@ -3893,6 +3901,7 @@ class MacroManimParser {
 					currentDefs = slotSavedCurrentDefs;
 					activeDefs = slotSavedActiveDefs;
 					scopeVars = slotSavedScopeVars;
+					activeFinals = slotSavedActiveFinals;
 					namedElements = slotSavedNamedElements;
 					slotScopeSaved = false;
 				}
@@ -4809,27 +4818,77 @@ class MacroManimParser {
 	// Rejects typed metadata `key:type => $param` when the param's declared type cannot be
 	// represented as the metadata type without a coercion that would diverge between the
 	// runtime builder (lenient resolveAs*()) and the macro codegen (strict RSV<Type>(_field)).
-	// Skipped for non-RVReference values (literals, binops, loop vars, @finals, $ctx — those
-	// resolve consistently on both paths).
+	// Also validates `@final` refs when the @final's RHS is a direct literal (SettingValueType
+	// inferred at parse time via inferFinalLiteralType). Skipped for loop vars, $ctx, and
+	// @finals with non-literal RHS (inferred type unknown → no check, matches prior behavior).
 	function validateTypedMetadataRef(key:ReferenceableValue, metaType:SettingValueType, value:ReferenceableValue):Void {
 		switch (value) {
 			case RVReference(name):
 				if (activeDefs == null) return; // outside programmable scope — skip
-				if (!activeDefs.exists(name)) return; // loop var / @final / ctx — handled elsewhere
-				final def = activeDefs.get(name);
-				if (def == null) return;
-				if (isMetaTypeCompatibleWithParam(metaType, def.type)) return;
-				final metaName = settingValueTypeName(metaType);
-				final paramName = definitionTypeName(def.type);
 				final keyName = switch (key) {
 					case RVString(s): s;
 					case RVReference(r): "$" + r;
 					default: Std.string(key);
 				};
-				error('metadata "$keyName" declared as :$metaName cannot reference param "$name" of type :$paramName — '
-					+ 'runtime and codegen resolve this incompatibly. Use an untyped "$keyName => $$$name" or match the param type.');
+				if (activeDefs.exists(name)) {
+					final def = activeDefs.get(name);
+					if (def == null) return;
+					if (isMetaTypeCompatibleWithParam(metaType, def.type)) return;
+					final metaName = settingValueTypeName(metaType);
+					final paramName = definitionTypeName(def.type);
+					error('metadata "$keyName" declared as :$metaName cannot reference param "$name" of type :$paramName — '
+						+ 'runtime and codegen resolve this incompatibly. Use an untyped "$keyName => $$$name" or match the param type.');
+				}
+				if (activeFinals != null) {
+					final finalType = activeFinals.get(name);
+					if (finalType != null) {
+						if (isMetaTypeCompatibleWithFinalType(metaType, finalType)) return;
+						final metaName = settingValueTypeName(metaType);
+						final finalName = settingValueTypeName(finalType);
+						error('metadata "$keyName" declared as :$metaName cannot reference @final "$name" of type :$finalName — '
+							+ 'runtime and codegen resolve this incompatibly. Use an untyped "$keyName => $$$name" or match the @final literal type.');
+					}
+				}
+				// loop var / non-literal @final / $ctx — unchecked (type unknown at parse time)
 			default:
 		}
+	}
+
+	// Infer a SettingValueType from a literal RHS of `@final NAME = <expr>`. Returns null
+	// when the expression is not a direct literal (binops, refs, ternaries, etc.) — those
+	// remain unchecked, as today.
+	static function inferFinalLiteralType(expr:ReferenceableValue):Null<SettingValueType> {
+		return switch (expr) {
+			case RVInteger(_): SVTInt;
+			case RVFloat(_): SVTFloat;
+			case RVString(s) if (s.toLowerCase() == "true" || s.toLowerCase() == "false"): SVTBool;
+			case RVString(_): SVTString;
+			default: null;
+		};
+	}
+
+	// Mirrors isMetaTypeCompatibleWithParam for @final literals. SettingValueType vs
+	// SettingValueType — SVTColor never appears here (color literals parse as RVInteger
+	// → SVTInt), so its arm is omitted but the matrix structure matches the param one.
+	static function isMetaTypeCompatibleWithFinalType(metaType:SettingValueType, finalType:SettingValueType):Bool {
+		return switch (metaType) {
+			case SVTInt | SVTColor:
+				switch (finalType) {
+					case SVTInt | SVTColor | SVTBool: true;
+					default: false;
+				}
+			case SVTFloat:
+				switch (finalType) {
+					case SVTInt | SVTFloat | SVTColor | SVTBool: true;
+					default: false;
+				}
+			case SVTBool:
+				switch (finalType) {
+					case SVTBool | SVTInt | SVTColor: true;
+					default: false;
+				}
+			case SVTString: true; // any literal stringifies cleanly
+		};
 	}
 
 	static function isMetaTypeCompatibleWithParam(metaType:SettingValueType, paramType:DefinitionType):Bool {
