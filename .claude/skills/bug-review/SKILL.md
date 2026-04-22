@@ -118,3 +118,4 @@ Do **not** commit. Leave the commit to the user (or to a follow-up `/precommit` 
 - Never fix more than the bug. Cleanup, drive-by renames, and "while I'm here" refactors belong in a separate task.
 - Never regenerate visual reference images to "make the test pass" — that defeats the point of TDD. References are regenerated only after a human has approved the new expected visual.
 - Never proceed past a foreign compilation error. Waiting is cheaper than stepping on another agent's toes.
+- Never include the bug's identifier from the report (e.g. `L1`, `h2`, `#3`) in code comments, test names, or commit messages. These labels are only ordinal within a single report — they are not stable, not unique across reports, and meaningless to anyone reading the code later. Describe the bug by its behavior instead.

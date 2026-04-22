@@ -7852,4 +7852,100 @@ class BuilderUnitTest extends BuilderTestBase {
 		Assert.equals(20, Std.int(bitmaps[0].tile.width));
 	}
 
+	// setParameter must coerce primitive values to the ResolvedIndexParameters shape
+	// that paramDef.type expects — not pick a shape from the Haxe runtime type of
+	// value alone. Pre-fix, only PPTFlags routed through dynamicValueToIndex; every
+	// other typed param silently stored the wrong shape (StringValue on PPTBool,
+	// ValueF on PPTInt, StringValue on PPTColor, ...), and the mismatch only
+	// surfaced on the next matchSingleCondition call with a confusing
+	// "invalid param types" throw nowhere near the offending setParameter.
+
+	@Test
+	public function testSetParameterStringBoolOnBoolParamMatchesConditional():Void {
+		// Internal callers (UIMultiAnimTextInput.syncPlaceholder,
+		// UIMultiAnimScrollableList) pass "true"/"false" strings to PPTBool params.
+		// Parser bakes @(flag=>true) to CoValue(1) and @(flag=>false) to CoValue(0).
+		// Pre-fix, StringValue("false") hit the default throw in the CoValue arm
+		// of matchSingleCondition.
+		final result = buildFromSource("
+			#test programmable(flag:bool=true) {
+				@(flag=>true)  bitmap(generated(color(11, 10, #fff)))
+				@(flag=>false) bitmap(generated(color(22, 10, #fff)))
+			}
+		", "test", null, Incremental);
+		// Default: flag=true → 11px arm visible
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(11, Std.int(bitmaps[0].tile.width));
+
+		// Switch to "false" via string — must coerce to Value(0) so CoValue(0) matches.
+		result.setParameter("flag", "false");
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(22, Std.int(bitmaps[0].tile.width));
+
+		// And back to "true".
+		result.setParameter("flag", "true");
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(11, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testSetParameterFloatOnIntParamMatchesConditional():Void {
+		// setParameter("n", 5.0) on a PPTInt param stored ValueF(5.0); CoValue(5)
+		// only matches Value(_) and threw "invalid param types ValueF(5), CoValue(5)".
+		final result = buildFromSource("
+			#test programmable(n:int=0) {
+				@(n=>0) bitmap(generated(color(11, 10, #fff)))
+				@(n=>5) bitmap(generated(color(22, 10, #fff)))
+			}
+		", "test", null, Incremental);
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(11, Std.int(bitmaps[0].tile.width));
+
+		// Float input for an int param must coerce to Value(5).
+		result.setParameter("n", 5.0);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(22, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testSetParameterStringIntOnIntParamMatchesConditional():Void {
+		// String digits on PPTInt must coerce to Value(int), not StringValue.
+		final result = buildFromSource("
+			#test programmable(n:int=0) {
+				@(n=>0) bitmap(generated(color(11, 10, #fff)))
+				@(n=>7) bitmap(generated(color(22, 10, #fff)))
+			}
+		", "test", null, Incremental);
+		result.setParameter("n", "7");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(22, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testSetParameterCssHexStringOnColorParamBakesAlpha():Void {
+		// CSS-form color strings passed via setParameter must alpha-bake the same
+		// way the parser does for `#RRGGBB` literals in conditionals, otherwise
+		// @(tint=>#FF0000) (baked to CoValue(0xFFFF0000)) can never match a
+		// setParameter("tint", "#FF0000") that stores StringValue("#FF0000").
+		// NOTE: Int inputs to PPTColor keep strict-D semantics (top byte = alpha).
+		final result = buildFromSource("
+			#test programmable(tint:color=#00FF00) {
+				@(tint=>#FF0000) bitmap(generated(color(22, 10, #fff)))
+				@(tint=>#00FF00) bitmap(generated(color(11, 10, #fff)))
+			}
+		", "test", null, Incremental);
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(11, Std.int(bitmaps[0].tile.width));
+
+		// CSS shorthand input → alpha-baked Value(0xFFFF0000).
+		result.setParameter("tint", "#FF0000");
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(22, Std.int(bitmaps[0].tile.width));
+	}
+
 }
