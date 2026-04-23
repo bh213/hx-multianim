@@ -683,6 +683,58 @@ class DynamicRefTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testDynamicRefInSwitchArmPropagatesForwardedParam():Void {
+		// dynamicRef inside a @switch arm forwards a parent param (`hp => $hp`). Changing $hp
+		// on the parent must visibly update the child — either by propagating into the existing
+		// dynamicRef instance or by rebuilding the arm. Before the fix, `collectNodeParamRefs`
+		// did not walk DYNAMIC_REF's parameters map, so "hp" was missing from the switch's
+		// tracked refs and `trackDynamicRef` was skipped (incrementalMode=false inside the arm)
+		// → setParameter("hp", N) was a silent no-op until the switch arm flipped for some
+		// other reason.
+		final result = buildFromSource("
+			#hpBar programmable(hp:uint=100) {
+				bitmap(generated(color($hp, 5, #ff0000))): 0, 0
+			}
+			#host programmable(mode:[normal, critical]=normal, hp:uint=100) {
+				@switch(mode) {
+					normal {
+						#tpl dynamicRef($hpBar, hp => $hp): 0, 0
+					}
+					critical {
+						#tpl dynamicRef($hpBar, hp => $hp): 0, 0
+					}
+				}
+			}
+		", "host", null, Incremental);
+
+		// Initial state: arm=normal, hp=100. Bitmap width = 100.
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(100, Std.int(bitmaps[0].tile.width));
+
+		// Change only the forwarded param while staying in the same arm. The child must reflect it.
+		result.setParameter("hp", 42);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(42, Std.int(bitmaps[0].tile.width),
+			"child dynamicRef inside @switch arm must reflect new $hp after setParameter");
+
+		// Flip arms. hp is still 42, so the newly-built arm must also carry the current value.
+		result.setParameter("mode", "critical");
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(42, Std.int(bitmaps[0].tile.width),
+			"after arm flip, the new arm's dynamicRef must reflect current $hp (not default)");
+
+		// Update hp in the new arm too.
+		result.setParameter("hp", 7);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(7, Std.int(bitmaps[0].tile.width),
+			"child dynamicRef inside @switch arm 'critical' must reflect new $hp after setParameter");
+	}
+
+	@Test
 	public function testDynamicRefConditionalSiblingsPropagateAcrossVisibilityFlip():Void {
 		// Bug H2 secondary symptom: before the fix, parameter updates to the parent were applied
 		// only to the VISIBLE sibling (the applyUpdates loop filtered dynamicRefBindings via

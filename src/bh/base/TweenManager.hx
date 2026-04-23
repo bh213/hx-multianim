@@ -208,27 +208,23 @@ class TweenSequence {
 	public function step(dt:Float):Bool {
 		if (cancelled)
 			return true;
-		if (currentIndex >= tweens.length)
-			return true;
-
-		var current = tweens[currentIndex];
-		current.init();
-
-		if (current.step(dt)) {
-			// Fire individual tween's onComplete
+		// Loop instead of recursing so that a huge dt spanning many short tweens
+		// (debugger pause, paused tab) doesn't grow the native stack per tween.
+		var remainingDt = dt;
+		while (currentIndex < tweens.length) {
+			var current = tweens[currentIndex];
+			current.init();
+			if (!current.step(remainingDt))
+				return false;
 			var cb = current.onComplete;
 			if (cb != null)
 				cb();
-
 			currentIndex++;
-			// Pass remaining dt to the next tween
-			var remaining = current.elapsed - current.duration;
-			if (remaining > 0 && currentIndex < tweens.length) {
-				return step(remaining);
-			}
-			return currentIndex >= tweens.length;
+			remainingDt = current.elapsed - current.duration;
+			if (remainingDt <= 0)
+				break;
 		}
-		return false;
+		return currentIndex >= tweens.length;
 	}
 
 	/** Jump all remaining tweens to their final state. */
@@ -393,14 +389,14 @@ class TweenManager {
 						if (tween.target == target)
 							tween.cancel();
 					}
-					if (seq.getTargets().length == 0 || Lambda.foreach(seq.tweens, t -> t.cancelled))
+					if (seq.getTargets().length == 0 || allCancelled(seq.tweens))
 						seq.cancel();
 				case HGroup(group):
 					for (tween in group.tweens) {
 						if (tween.target == target)
 							tween.cancel();
 					}
-					if (group.getTargets().length == 0 || Lambda.foreach(group.tweens, t -> t.cancelled))
+					if (group.getTargets().length == 0 || allCancelled(group.tweens))
 						group.cancel();
 			}
 		}
@@ -418,14 +414,14 @@ class TweenManager {
 						if (isChildOf(tween.target, root))
 							tween.cancel();
 					}
-					if (Lambda.foreach(seq.tweens, t -> t.cancelled))
+					if (allCancelled(seq.tweens))
 						seq.cancel();
 				case HGroup(group):
 					for (tween in group.tweens) {
 						if (isChildOf(tween.target, root))
 							tween.cancel();
 					}
-					if (Lambda.foreach(group.tweens, t -> t.cancelled))
+					if (allCancelled(group.tweens))
 						group.cancel();
 			}
 		}
@@ -513,6 +509,12 @@ class TweenManager {
 	}
 
 	// ==================== Internal ====================
+
+	static function allCancelled(tweens:Array<Tween>):Bool {
+		for (tween in tweens)
+			if (!tween.cancelled) return false;
+		return true;
+	}
 
 	static function isChildOf(obj:h2d.Object, root:h2d.Object):Bool {
 		var current:Null<h2d.Object> = obj;

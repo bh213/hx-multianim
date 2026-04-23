@@ -136,6 +136,9 @@ private class Particle extends h2d.SpriteBatch.BatchElement {
 	// Current AnimSM state index (for lifetime-driven animation states)
 	public var currentAnimStateIndex : Int = 0;
 
+	// Current color curve segment index (monotonic advance; avoids O(N) rescan per frame)
+	public var currentColorSegmentIndex : Int = 0;
+
 	public function new(group:ParticleGroup) {
 		super(null);
 		this.group = group;
@@ -211,12 +214,29 @@ private class Particle extends h2d.SpriteBatch.BatchElement {
 			alpha = 1;
 		alpha *= group.shutdownAlphaMult;
 
-		// Color interpolation
+		// Color interpolation — advance the cached segment index forward as rate crosses
+		// each segment's startRate. Rate is monotonic during a particle's lifetime, so the
+		// index never moves backwards; init() resets it to 0 on spawn/recycle.
 		if (group.colorEnabled) {
-			var col = group.evaluateColorCurve(timeNormalized);
-			r = ((col >> 16) & 0xFF) / 255.0;
-			g = ((col >> 8) & 0xFF) / 255.0;
-			b = (col & 0xFF) / 255.0;
+			var segs = group.colorCurveSegments;
+			var segCount = segs.length;
+			if (segCount > 0) {
+				var segIdx = currentColorSegmentIndex;
+				while (segIdx + 1 < segCount && segs[segIdx + 1].startRate <= timeNormalized)
+					segIdx++;
+				currentColorSegmentIndex = segIdx;
+				var segment = segs[segIdx];
+				var segStart = segment.startRate;
+				var segEnd = if (segIdx + 1 < segCount) segs[segIdx + 1].startRate else 1.0;
+				var localT = if (segEnd <= segStart) 0. else (timeNormalized - segStart) / (segEnd - segStart);
+				if (localT < 0) localT = 0;
+				else if (localT > 1) localT = 1;
+				var curveValue = segment.curve.getValue(localT);
+				var col = group.lerpColor(segment.startColor, segment.endColor, curveValue);
+				r = ((col >> 16) & 0xFF) / 255.0;
+				g = ((col >> 8) & 0xFF) / 255.0;
+				b = (col & 0xFF) / 255.0;
+			}
 		}
 
 		// Sprite animation
@@ -898,6 +918,11 @@ class ParticleGroup {
 			p.g = ((initColor >> 8) & 0xFF) / 255.0;
 			p.b = (initColor & 0xFF) / 255.0;
 		}
+
+		// Reset per-particle monotonic caches so recycled particles restart at the
+		// first segment / first anim state instead of getting stuck on the last one.
+		p.currentColorSegmentIndex = 0;
+		p.currentAnimStateIndex = 0;
 
 		if ( !isRelative ) {
 			var parts = this.parts;

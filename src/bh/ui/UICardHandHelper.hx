@@ -741,9 +741,7 @@ class UICardHandHelper implements UIHigherOrderComponent {
 	// === Internal: Card building ===
 
 	function buildCardEntry(descriptor:CardDescriptor):CardEntry {
-		var params:Map<String, Dynamic> = descriptor.params != null ? descriptor.params.copy() : [];
-
-		var result = builder.buildWithParameters(descriptor.buildName, params, null, null, true);
+		var result = builder.buildWithParameters(descriptor.buildName, descriptor.params, null, null, true);
 
 		// Container is not parented here — caller adds it to handContainer (h2d.Layers)
 		// at the correct layer index to maintain proper z-ordering
@@ -803,8 +801,13 @@ class UICardHandHelper implements UIHigherOrderComponent {
 	}
 
 	function clearHand():Void {
-		if (isTargeting && hideCursorWhileTargeting)
-			hxd.System.setCursor(Default);
+		if (isTargeting) {
+			if (hideCursorWhileTargeting)
+				hxd.System.setCursor(Default);
+			// Hide the arrow visual and clear any lingering target highlight — otherwise
+			// the arrow stays visible and `activeTargetId` outlives the cards it tracked.
+			targeting.clearLine();
+		}
 		for (entry in cards) {
 			unregisterCardEntry(entry);
 			entry.container.remove();
@@ -871,7 +874,7 @@ class UICardHandHelper implements UIHigherOrderComponent {
 					pos.rotation, rearrangePathName, () -> {});
 			} else if (entry.state != Animating) {
 				// Cancel any lingering rearrange animation so it doesn't override this instant position
-				activeAnimations = activeAnimations.filter(a -> a.entry != entry);
+				removeAnimationsForEntry(entry);
 				entry.container.setPosition(pos.x, pos.y);
 				entry.container.rotation = pos.rotation;
 				entry.container.scaleX = pos.scale;
@@ -1329,7 +1332,7 @@ class UICardHandHelper implements UIHigherOrderComponent {
 	function animateCardTo(entry:CardEntry, from:FPoint, to:FPoint, startRotation:Float, endRotation:Float, pathName:Null<String>,
 			onComplete:() -> Void):Void {
 		// Remove any existing animation for this entry
-		activeAnimations = activeAnimations.filter(a -> a.entry != entry);
+		removeAnimationsForEntry(entry);
 
 		var dx = to.x - from.x;
 		var dy = to.y - from.y;
@@ -1363,7 +1366,7 @@ class UICardHandHelper implements UIHigherOrderComponent {
 	 *  endpoint follows layout changes dynamically. */
 	function animateCardToTracking(entry:CardEntry, from:FPoint, startRotation:Float, endRotation:Float,
 			pathName:Null<String>, onComplete:() -> Void):Void {
-		activeAnimations = activeAnimations.filter(a -> a.entry != entry);
+		removeAnimationsForEntry(entry);
 
 		if (pathName != null) {
 			// Create AnimatedPath with NO normalization — raw path coordinates
@@ -1418,6 +1421,16 @@ class UICardHandHelper implements UIHigherOrderComponent {
 			if (anim.entry == entry)
 				return true;
 		return false;
+	}
+
+	/** Remove all active animations for this entry in place (no array reallocation). */
+	function removeAnimationsForEntry(entry:CardEntry):Void {
+		var i = activeAnimations.length - 1;
+		while (i >= 0) {
+			if (activeAnimations[i].entry == entry)
+				activeAnimations.splice(i, 1);
+			i--;
+		}
 	}
 
 	// === Internal: Targeting zone check ===

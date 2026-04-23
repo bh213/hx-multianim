@@ -1385,6 +1385,41 @@ class BuilderUnitTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testIncrementalRepeatableArrayIteratorChildConditions():Void {
+		// repeatable($v, array($val, $items)) with a child conditional on an unrelated programmable
+		// param ($level). Changing $level must trigger a rebuild that preserves the array-driven
+		// iteration count and re-evaluates the child condition — not wipe the container.
+		final result = buildFromSource("
+			#test programmable(level:int=0, items:array=[one, two, three]) {
+				repeatable($v, array($val, $items)) {
+					@($level => 1) bitmap(generated(color(15, 10, #ff0000))): 0, 0
+					@else bitmap(generated(color(25, 10, #00ff00))): 0, 0
+				}
+			}
+		", "test", null, Incremental);
+
+		// level=0: 3 green (25px wide)
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(3, bitmaps.length);
+		for (b in bitmaps)
+			Assert.equals(25, Std.int(b.tile.width));
+
+		// level=1: 3 red (15px wide) — the rebuild must keep the array-driven count
+		result.setParameter("level", 1);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(3, bitmaps.length);
+		for (b in bitmaps)
+			Assert.equals(15, Std.int(b.tile.width));
+
+		// level=0 again: back to 3 green
+		result.setParameter("level", 0);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(3, bitmaps.length);
+		for (b in bitmaps)
+			Assert.equals(25, Std.int(b.tile.width));
+	}
+
+	@Test
 	public function testIncrementalMultiVariable():Void {
 		final params = new Map<String, Dynamic>();
 		params.set("hp", 60);
@@ -1520,6 +1555,51 @@ class BuilderUnitTest extends BuilderTestBase {
 		bitmaps = findVisibleBitmapDescendants(result.object);
 		Assert.equals(30, Std.int(bitmaps[0].tile.width));
 		Assert.equals(25, Std.int(bitmaps[0].tile.height));
+	}
+
+	// buildWithParameters routes non-ResolvedIndexParameters/non-ReferenceableValue
+	// inputs through MultiAnimParser.dynamicValueToIndex. The PPTTile branch must
+	// recognize raw h2d.Tile (the documented runtime shape for tile params) and
+	// produce TileSourceValue(TSTile(...)) — same shape later setParameter and
+	// the resolver in loadTileSource expect. Stringifying it as a file path
+	// silently breaks the bitmap.
+	@Test
+	public function testInitialBuildAcceptsRawTileForTileParam():Void {
+		final tile = h2d.Tile.fromColor(0xFFFF00FF, 18, 22);
+		final params = new Map<String, Dynamic>();
+		params.set("icon", tile);
+		final result = buildFromSource("
+			#test programmable(icon:tile) {
+				bitmap($icon): 0, 0
+			}
+		", "test", params);
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length, "bitmap should render with the raw tile passed at initial build");
+		if (bitmaps.length >= 1) {
+			Assert.equals(18, Std.int(bitmaps[0].tile.width), "bitmap should use the raw tile (width)");
+			Assert.equals(22, Std.int(bitmaps[0].tile.height), "bitmap should use the raw tile (height)");
+		}
+	}
+
+	// dynamicToResolvedWithDef is the codegen-side initial conversion path used by
+	// buildSlotContent (parameterized slots), rebuildSwitchArmByOrdinal (@switch arms),
+	// and buildSingleNodeWithParams (param-dependent repeatable bodies). The PPTTile
+	// branch must produce TileSourceValue(TSTile(...)) so the resolver in
+	// loadTileSource(TSReference(...)) can handle it. SlotHandle.setParameter and the
+	// parser's PPTTile default path both already use TileSourceValue — initial
+	// conversion must agree.
+	@Test
+	public function testDynamicToResolvedWithDefForRawTile():Void {
+		final tile = h2d.Tile.fromColor(0xFFFF0000, 16, 24);
+		final converted:bh.multianim.MultiAnimParser.ResolvedIndexParameters =
+			@:privateAccess bh.multianim.MultiAnimBuilder.dynamicToResolvedWithDef(
+				bh.multianim.MultiAnimParser.DefinitionType.PPTTile, tile);
+		switch converted {
+			case TileSourceValue(TSTile(t)):
+				Assert.equals(tile, t, "tile should be wrapped as TileSourceValue(TSTile(...))");
+			default:
+				Assert.fail('expected TileSourceValue(TSTile(...)), got: ${converted}');
+		}
 	}
 
 	// ==================== Grid coordinate system tests ====================
@@ -7491,6 +7571,99 @@ class BuilderUnitTest extends BuilderTestBase {
 		bitmaps = findVisibleBitmapDescendants(result.object);
 		Assert.equals(1, bitmaps.length);
 		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+	}
+
+	// ==================== Outer-param refs inside @switch arms ====================
+	// collectNodeParamRefs must include DYNAMIC_REF / STATIC_REF / INTERACTIVE param refs
+	// so outer-param changes trigger the enclosing switch arm to rebuild. Without this,
+	// arm children are stuck at their initial values (their own incremental tracking is
+	// skipped because arm children are built with incrementalMode=false).
+
+	@Test
+	public function testIncrementalSwitchDynamicRefOuterParamRef():Void {
+		// A dynamicRef inside a switch arm whose params reference an outer param must
+		// update when the outer param changes. Currently fails: collectNodeParamRefs
+		// ignores DYNAMIC_REF, so setParameter on charName does not rebuild the arm.
+		final result = buildFromSource("
+			#leaf programmable(name:string=\"default\") {
+				text(dd, $name, #ffffff): 0, 0
+			}
+			#test programmable(mode:[a, b]=a, charName:string=\"hero\") {
+				@switch(mode) {
+					a: dynamicRef($leaf, name => $charName): 0, 0;
+					b: bitmap(generated(color(10, 10, #0f0))): 0, 0;
+				}
+			}
+		", "test", null, Incremental);
+
+		var texts = findAllTextDescendants(result.object);
+		Assert.equals(1, texts.length);
+		Assert.equals("hero", texts[0].text);
+
+		result.setParameter("charName", "world");
+		texts = findAllTextDescendants(result.object);
+		Assert.equals(1, texts.length);
+		Assert.equals("world", texts[0].text,
+			"dynamicRef inside switch arm should update when outer param changes — currently stuck because collectNodeParamRefs ignores DYNAMIC_REF parameter RVs");
+	}
+
+	@Test
+	public function testIncrementalSwitchStaticRefOuterParamRef():Void {
+		// A staticRef inside a switch arm whose params reference an outer param must
+		// update when the outer param changes. staticRef has no runtime tracking, so
+		// the only update route is an arm rebuild via collectNodeParamRefs.
+		final result = buildFromSource("
+			#leaf programmable(label:string=\"default\") {
+				text(dd, $label, #ffffff): 0, 0
+			}
+			#test programmable(mode:[a, b]=a, myLabel:string=\"hello\") {
+				@switch(mode) {
+					a: staticRef($leaf, label => $myLabel): 0, 0;
+					b: bitmap(generated(color(10, 10, #0f0))): 0, 0;
+				}
+			}
+		", "test", null, Incremental);
+
+		var texts = findAllTextDescendants(result.object);
+		Assert.equals(1, texts.length);
+		Assert.equals("hello", texts[0].text);
+
+		result.setParameter("myLabel", "goodbye");
+		texts = findAllTextDescendants(result.object);
+		Assert.equals(1, texts.length);
+		Assert.equals("goodbye", texts[0].text,
+			"staticRef inside switch arm should update when outer param changes — currently stuck because collectNodeParamRefs ignores STATIC_REF parameter RVs");
+	}
+
+	@Test
+	public function testIncrementalSwitchInteractiveOuterParamRefInWidth():Void {
+		// An interactive inside a switch arm whose width references an outer param must
+		// update when the outer param changes. Arm children are built with
+		// incrementalMode=false so trackIncrementalExpressions does not install the
+		// width-tracking expression — the only update route is an arm rebuild.
+		final result = buildFromSource("
+			#test programmable(mode:[a, b]=a, w:uint=20) {
+				@switch(mode) {
+					a: interactive($w, 10, \"hit\"): 0, 0;
+					b: bitmap(generated(color(10, 10, #0f0))): 0, 0;
+				}
+			}
+		", "test", null, Incremental);
+
+		inline function widthOf(id:String):Int {
+			final obj = findInteractiveById(result, id);
+			if (obj == null) return -1;
+			return switch obj.multiAnimType {
+				case MAInteractive(w, _, _, _): w;
+				default: -1;
+			};
+		}
+
+		Assert.equals(20, widthOf("hit"));
+
+		result.setParameter("w", 50);
+		Assert.equals(50, widthOf("hit"),
+			"interactive width inside switch arm should update when outer param changes — currently stuck because collectNodeParamRefs ignores INTERACTIVE width/height RVs");
 	}
 
 	// ==================== BuilderError sibling-file migration ====================

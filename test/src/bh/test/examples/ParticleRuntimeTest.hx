@@ -7,6 +7,7 @@ import bh.base.Particles.ForceField;
 import bh.base.Particles.SubEmitTrigger;
 import bh.base.Particles.SubEmitter;
 import bh.base.Particles.PartEmitMode;
+import bh.paths.Curve;
 
 /**
  * Non-visual unit tests for the particle runtime API:
@@ -952,5 +953,151 @@ class ParticleRuntimeTest extends utest.Test {
 		Assert.isNull(p.groups.get("main"), "group should be removed from map");
 		Assert.isNull(batch.parent, "batch must be detached from scene after removeGroup");
 		Assert.isNull(batch.first, "batch element list must be cleared after removeGroup");
+	}
+
+	// ==================== Color curve: per-particle segment cache ====================
+
+	static function createLinearCurve():ICurve {
+		return new Curve(null, Linear);
+	}
+
+	/**
+		Drive a single particle's `update(dt)` calls directly (no emission, no group retick).
+		The group must already have a spawned particle via `emitBurst(1)` or `start()`.
+	**/
+	static function tickParticles(g:ParticleGroup, dt:Float):Void {
+		var e = g.batch.first;
+		while (e != null) {
+			var next = e.next;
+			if (!e.update(dt)) e.remove();
+			e = next;
+		}
+	}
+
+	static function setupColorCurveGroup(name:String):{p:Particles, g:ParticleGroup} {
+		var p = createParticles();
+		var g = createGroup(name, p);
+		var dg:Dynamic = g;
+		dg.nparts = 1;
+		dg.life = 1.0;
+		dg.lifeRand = 0;
+		dg.speed = 0;
+		dg.emitMode = PartEmitMode.Point(0, 0);
+		return {p: p, g: g};
+	}
+
+	/**
+		Sanity regression: color values across a multi-segment curve must remain
+		correct at segment boundaries and mid-segment after the scan is replaced
+		with a cached-index advance.
+	**/
+	@Test
+	public function testColorCurveSegments_ColorCorrectAcrossLifetime():Void {
+		var h = setupColorCurveGroup("colorCorrect");
+		var g = h.g;
+		// Override life = 2.0 so each 0.5s step moves the rate in clean 0.25 increments.
+		var dg:Dynamic = g;
+		dg.life = 2.0;
+		// Two linear segments: red->green (0.0..0.5), green->blue (0.5..1.0).
+		g.addColorCurveSegment(0.0, createLinearCurve(), 0xFF0000, 0x00FF00);
+		g.addColorCurveSegment(0.5, createLinearCurve(), 0x00FF00, 0x0000FF);
+
+		g.emitBurst(1);
+		var p = g.batch.first;
+		Assert.notNull(p, "expected one particle to be emitted");
+
+		// Particle.update() evaluates color from CURRENT life then advances life,
+		// so after N ticks of step s the color reflects rate = (N-1)*s / maxLife.
+		// life=2.0, step=0.5 => after 2 ticks the color reflects rate 0.25 (mid seg 0).
+		tickParticles(g, 0.5);
+		tickParticles(g, 0.5);
+		Assert.floatEquals(0.5, p.r, 0.02, "mid seg 0: red channel should be ~0.5");
+		Assert.floatEquals(0.5, p.g, 0.02, "mid seg 0: green channel should be ~0.5");
+		Assert.floatEquals(0.0, p.b, 0.02, "mid seg 0: blue should be ~0");
+
+		// Two more ticks bring last-evaluated rate to 0.75 (mid seg 1).
+		tickParticles(g, 0.5);
+		tickParticles(g, 0.5);
+		Assert.floatEquals(0.0, p.r, 0.02, "mid seg 1: red should be ~0");
+		Assert.floatEquals(0.5, p.g, 0.02, "mid seg 1: green channel should be ~0.5");
+		Assert.floatEquals(0.5, p.b, 0.02, "mid seg 1: blue channel should be ~0.5");
+	}
+
+	/**
+		When a looping particle is recycled via `init()`, the next lifetime must
+		start back at segment 0 (red), not remain stuck on the last segment.
+
+		Passes on HEAD because `evaluateColorCurve` is stateless; exists to pin
+		that the cached-index optimization does not regress this when it resets
+		per-particle state on init.
+	**/
+	@Test
+	public function testColorCurveSegments_ResetsOnEmitLoopRecycle():Void {
+		var p = createParticles();
+		var g = createGroup("colorLoop", p, /* loop */ true);
+		var dg:Dynamic = g;
+		dg.nparts = 1;
+		dg.life = 1.0;
+		dg.lifeRand = 0;
+		dg.speed = 0;
+		dg.emitMode = PartEmitMode.Point(0, 0);
+		g.addColorCurveSegment(0.0, createLinearCurve(), 0xFF0000, 0x00FF00);
+		g.addColorCurveSegment(0.5, createLinearCurve(), 0x00FF00, 0x0000FF);
+
+		g.emitBurst(1);
+		var particle = g.batch.first;
+		Assert.notNull(particle);
+
+		// Drive past end-of-life so the particle recycles back to life=0.
+		tickParticles(g, 0.6); // -> rate ~0.6 (seg 1)
+		tickParticles(g, 0.6); // -> rate > 1.0, triggers init() recycle
+
+		// One tiny step after recycle — rate should be ~0.05 (seg 0, nearly pure red).
+		tickParticles(g, 0.05);
+		Assert.floatEquals(1.0, particle.r, 0.15,
+			"after emitLoop recycle, particle's color must restart at segment 0 (red); got r=" + particle.r);
+		Assert.floatEquals(0.0, particle.b, 0.15,
+			"after emitLoop recycle, blue must be ~0 (we're back at the start, not stuck at last segment); got b=" + particle.b);
+	}
+
+	/**
+		Landmark test for the optimization: particles must carry a cached
+		`currentColorSegmentIndex` (same shape as `currentAnimStateIndex`) and it
+		must advance monotonically as the particle's rate crosses segment
+		boundaries. This fails on HEAD because no such cache exists — the fix
+		is expected to add one and feed `Particle.update()` from it.
+	**/
+	@Test
+	public function testColorCurveSegments_CacheAdvancesMonotonically():Void {
+		var h = setupColorCurveGroup("colorCache");
+		var g = h.g;
+		// Four segments — a full scan would be noticeably more expensive than a cached advance.
+		g.addColorCurveSegment(0.0,  createLinearCurve(), 0xFF0000, 0x00FF00);
+		g.addColorCurveSegment(0.25, createLinearCurve(), 0x00FF00, 0x0000FF);
+		g.addColorCurveSegment(0.5,  createLinearCurve(), 0x0000FF, 0xFFFF00);
+		g.addColorCurveSegment(0.75, createLinearCurve(), 0xFFFF00, 0xFF00FF);
+
+		g.emitBurst(1);
+		var particle = g.batch.first;
+		Assert.notNull(particle);
+
+		Assert.isTrue(Reflect.hasField(particle, "currentColorSegmentIndex"),
+			"Particle must carry a cached currentColorSegmentIndex field (mirrors currentAnimStateIndex) to avoid an O(segments) scan every frame");
+
+		var observed:Array<Int> = [];
+		// 9 steps of 0.1s brings rate to ~0.9, crossing all four segment starts.
+		for (i in 0...9) {
+			tickParticles(g, 0.1);
+			var raw:Dynamic = Reflect.field(particle, "currentColorSegmentIndex");
+			Assert.notNull(raw, "cached index must be readable via Reflect on step " + i);
+			observed.push(Std.int(raw));
+		}
+
+		Assert.isTrue(observed[observed.length - 1] > observed[0],
+			"cached index must advance as rate crosses segment boundaries; observed sequence: " + observed.join(","));
+		for (i in 1...observed.length) {
+			Assert.isTrue(observed[i] >= observed[i - 1],
+				"cached index must never move backwards within a single lifetime; step " + i + ": " + observed[i - 1] + " -> " + observed[i]);
+		}
 	}
 }

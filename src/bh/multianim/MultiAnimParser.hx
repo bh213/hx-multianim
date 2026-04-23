@@ -1170,7 +1170,14 @@ class MultiAnimParser {
 				else
 					throw err('array default not supported in this context');
 			case PPTTile:
+				#if !macro
+				if (Std.isOfType(value, h2d.Tile))
+					TileSourceValue(TSTile(value));
+				else
+					TileSourceValue(TSFile(RVString(s)));
+				#else
 				TileSourceValue(TSFile(RVString(s)));
+				#end
 		}
 	}
 

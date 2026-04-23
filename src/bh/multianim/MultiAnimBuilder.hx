@@ -3921,6 +3921,59 @@ class MultiAnimBuilder {
 		}
 	}
 
+	/** Collect param refs from node types whose ReferenceableValues live in the enum payload
+	 *  rather than in children (DYNAMIC_REF, STATIC_REF, INTERACTIVE, STATEANIM,
+	 *  STATEANIM_CONSTRUCT). Used only by the @switch arm to feed `switchParamRefs` so
+	 *  setParameter on a param flowing into one of those nodes triggers the arm rebuild
+	 *  (incrementalMode is forced false inside an arm, so trackDynamicRef / markParamUntracked
+	 *  do not fire there; without this pass, setParameter would silently no-op). Not merged
+	 *  into `collectNodeParamRefs` because its other caller (materializeDeferred) relies on
+	 *  DYNAMIC_REF refs being absent — adding them would register a tracked-rebuild expression
+	 *  whose updateFn hits a "duplicate dynamicRef name" throw on second fire. */
+	function collectSwitchArmExtraParamRefs(node:Node, out:Array<String>):Void {
+		inline function add(r:String) if (out.indexOf(r) < 0) out.push(r);
+		inline function gatherInto(rv:ReferenceableValue):Void {
+			final tmp:Array<String> = [];
+			collectParamRefs(rv, tmp);
+			for (r in tmp) add(r);
+		}
+		switch node.type {
+			case DYNAMIC_REF(_, programmableRef, parameters) | STATIC_REF(_, programmableRef, parameters):
+				// Keys are plain Strings (param names on the target programmable); values carry refs.
+				gatherInto(programmableRef);
+				for (value in parameters) gatherInto(value);
+			case INTERACTIVE(width, height, id, _, metadata):
+				gatherInto(width);
+				gatherInto(height);
+				gatherInto(id);
+				if (metadata != null) {
+					for (entry in metadata) {
+						gatherInto(entry.key);
+						gatherInto(entry.value);
+					}
+				}
+			case STATEANIM(_, initialState, selector):
+				gatherInto(initialState);
+				if (selector != null) for (_ => v in selector) gatherInto(v);
+			case STATEANIM_CONSTRUCT(initialState, construct, _):
+				gatherInto(initialState);
+				if (construct != null) {
+					for (_ => value in construct) {
+						switch value {
+							case IndexedSheet(_, animName, fps, _, _):
+								gatherInto(animName);
+								gatherInto(fps);
+						}
+					}
+				}
+			default:
+		}
+		if (node.children != null) {
+			for (child in node.children)
+				collectSwitchArmExtraParamRefs(child, out);
+		}
+	}
+
 	/** Collect all parameter references from a node's expressions (for deferred rebuild tracking). */
 	function collectNodeParamRefs(node:Node):Array<String> {
 		final refs:Array<String> = [];
@@ -5146,6 +5199,14 @@ class MultiAnimBuilder {
 							final childRefs = collectNodeParamRefs(child);
 							for (r in childRefs)
 								if (switchParamRefs.indexOf(r) < 0) switchParamRefs.push(r);
+							// Also collect refs that live in node-type payloads (DYNAMIC_REF params,
+							// INTERACTIVE id/metadata, STATEANIM selectors, STATEANIM_CONSTRUCT
+							// animName/fps). collectNodeParamRefs omits them because the deferred
+							// materialization caller would register tracked-rebuild expressions that
+							// don't handle repeat fire for dynamicRefs; the switch arm's rebuild path
+							// does clean up (cleanupDestroyedSubtree + removeChildren), so including
+							// these refs here is safe and correct.
+							collectSwitchArmExtraParamRefs(child, switchParamRefs);
 						}
 					}
 					final capturedArms = arms;
@@ -5388,6 +5449,10 @@ class MultiAnimBuilder {
 						var newCount = 0;
 						var newRangeStart = 0;
 						var newRangeStep = 1;
+						var newArrayIterator:Array<String> = [];
+						var newTileSourceIterator:Array<TileSource> = [];
+						var newTilenameIterator:Array<String> = [];
+						var newLayoutIterator:Null<Iterator<FPoint>> = null;
 						switch capturedRepeatType {
 							case StepIterator(dirX, dirY, repeats):
 								newCount = resolveAsInteger(repeats);
@@ -5398,7 +5463,41 @@ class MultiAnimBuilder {
 								final rangeEnd = resolveAsInteger(end);
 								newRangeStep = resolveAsInteger(step);
 								newCount = Math.ceil((rangeEnd - newRangeStart) / newRangeStep);
-							default:
+							case LayoutIterator(layoutName):
+								final l = getLayouts();
+								newCount = l.getLayoutSequenceLengthByLayoutName(layoutName);
+								newLayoutIterator = l.getIterator(layoutName);
+							case ArrayIterator(_, arrayName):
+								newArrayIterator = resolveAsArray(RVArrayReference(arrayName));
+								newCount = newArrayIterator.length;
+							case StateAnimIterator(_, animFilename, animationName, selectorRefs):
+								final selector = [for (k => v in selectorRefs) k => resolveAsString(v)];
+								final animName = resolveAsString(animationName);
+								newTileSourceIterator = collectStateAnimFrames(animFilename, animName, selector);
+								newCount = newTileSourceIterator.length;
+							case TilesIterator(_, _, sheetName, tileFilter):
+								final sheet = getOrLoadSheet(sheetName);
+								if (tileFilter != null) {
+									final frames = sheet.getAnim(tileFilter);
+									if (frames == null) {
+										throw builderErrorAt(capturedNode, 'Tile "${tileFilter}" not found in sheet "${sheetName}". The tile filter must be an exact tile name (key) in the atlas.');
+									}
+									for (frame in frames) {
+										if (frame != null && frame.tile != null) {
+											newTileSourceIterator.push(TSTile(frame.tile));
+										}
+									}
+								} else {
+									for (tileName => entries in sheet.getContents()) {
+										for (entry in entries) {
+											if (entry != null) {
+												newTileSourceIterator.push(TSTile(entry.t));
+												newTilenameIterator.push(tileName);
+											}
+										}
+									}
+								}
+								newCount = newTileSourceIterator.length;
 						}
 						// Drop registrations + per-element bookkeeping from the previous iterations before
 						// tearing down their scene graph, then build the new iterations into the parent
@@ -5419,18 +5518,46 @@ class MultiAnimBuilder {
 								case _: count;
 							};
 							indexedParams.set(capturedVarName, Value(resolvedIndex));
+							switch capturedRepeatType {
+								case ArrayIterator(valueVariableName, _):
+									indexedParams.set(valueVariableName, StringValue(newArrayIterator[count]));
+								case StateAnimIterator(bitmapVarName, _, _, _):
+									indexedParams.set(bitmapVarName, TileSourceValue(newTileSourceIterator[count]));
+								case TilesIterator(bitmapVarName, tilenameVarName, _, _):
+									indexedParams.set(bitmapVarName, TileSourceValue(newTileSourceIterator[count]));
+									if (tilenameVarName != null && count < newTilenameIterator.length)
+										indexedParams.set(tilenameVarName, StringValue(newTilenameIterator[count]));
+								default:
+							}
 							final resolvedChildren = resolveConditionalChildren(capturedNode.children);
+							final layoutPt:Null<FPoint> = switch capturedRepeatType {
+								case LayoutIterator(_): newLayoutIterator.next();
+								default: null;
+							};
 							for (childNode in resolvedChildren) {
 								var obj = build(childNode, ObjectMode(capturedObject), gcs, hcs, capturedIR, capturedBP);
 								if (obj == null)
 									continue;
-								if (newDx != 0 || newDy != 0) {
-									addPosition(obj, newDx * count, newDy * count);
+								switch capturedRepeatType {
+									case StepIterator(_, _, _):
+										if (newDx != 0 || newDy != 0)
+											addPosition(obj, newDx * count, newDy * count);
+									case LayoutIterator(_):
+										addPosition(obj, layoutPt.x, layoutPt.y);
+									default:
 								}
 							}
 							cleanupFinalVars(resolvedChildren, indexedParams);
 						}
 						indexedParams.remove(capturedVarName);
+						switch capturedRepeatType {
+							case StateAnimIterator(bitmapVarName, _, _, _):
+								indexedParams.remove(bitmapVarName);
+							case TilesIterator(bitmapVarName, tilenameVarName, _, _):
+								indexedParams.remove(bitmapVarName);
+								if (tilenameVarName != null) indexedParams.remove(tilenameVarName);
+							case _:
+						}
 						incrementalMode = savedMode;
 						incrementalContext = savedCtx;
 					}, repeatParamRefs, capturedObject);
@@ -7425,7 +7552,16 @@ class MultiAnimBuilder {
 			case PPTArray:
 				ArrayString(cast value);
 			case PPTTile:
+				#if !macro
+				if (Std.isOfType(value, h2d.Tile))
+					TileSourceValue(TSTile(value));
+				else if (Std.isOfType(value, ResolvedIndexParameters))
+					cast value;
+				else
+					throw BuilderError.of('PPTTile parameter requires h2d.Tile, got: ${value}');
+				#else
 				StringValue(Std.string(value));
+				#end
 		};
 	}
 
