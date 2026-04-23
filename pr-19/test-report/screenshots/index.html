@@ -327,15 +327,15 @@
 </head>
 <body>
     <h1>Visual Test Report</h1>
-    <div class="timestamp">Generated: 2026-04-22 10:40:56</div>
+    <div class="timestamp">Generated: 2026-04-23 08:55:22</div>
     <div class="summary">
         <strong>Summary:</strong> 101 tests,         <span style="color: #4CAF50;">101 passed</span>,         <span style="color: #f44336;">0 failed</span>
-        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1.2s, visual 25.1s)</span>
+        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1.2s, visual 23.2s)</span>
     </div>
     <div class="unit-tests-section">
         <h2>Unit Tests</h2>
         <div class="unit-tests-summary all-passed">
-            <strong>6172 assertions:</strong>             <span style="color: #4CAF50;">6172 passed</span>
+            <strong>6236 assertions:</strong>             <span style="color: #4CAF50;">6236 passed</span>
             <button class="expand-btn" id="unitToggleBtn" onclick="toggleUnitDetails()">Show Details</button>
         </div>
         <div class="unit-details" id="unitDetails">
@@ -746,6 +746,7 @@
                 <div class="unit-method pass">testDataSingleRecord: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testDynamicRefMutualCircularReferenceThrows: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testDynamicRefPropagationReachesHiddenSubtree: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testDynamicToResolvedWithDefForRawTile: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testErrorBeginUpdateWithoutIncrementalMode: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testErrorDivisionByZeroFloat: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testErrorDivisionByZeroInt: OK <span class="dots">..</span></div>
@@ -869,6 +870,7 @@
                 <div class="unit-method pass">testIncrementalPixelsSweep100to0: OK <span class="dots">......................</span></div>
                 <div class="unit-method pass">testIncrementalPixelsWithConditionalAndExpression: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testIncrementalRepeatable: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testIncrementalRepeatableArrayIteratorChildConditions: OK <span class="dots">............</span></div>
                 <div class="unit-method pass">testIncrementalRepeatableChildConditions: OK <span class="dots">.........</span></div>
                 <div class="unit-method pass">testIncrementalRepeatableConstantCountChildConditions: OK <span class="dots">.............</span></div>
                 <div class="unit-method pass">testIncrementalRepeatableInteractiveCountChange: OK <span class="dots">......</span></div>
@@ -881,10 +883,12 @@
                 <div class="unit-method pass">testIncrementalSwitchBlockArms: OK <span class="dots">........</span></div>
                 <div class="unit-method pass">testIncrementalSwitchBool: OK <span class="dots">......</span></div>
                 <div class="unit-method pass">testIncrementalSwitchDefault: OK <span class="dots">......</span></div>
+                <div class="unit-method pass">testIncrementalSwitchDynamicRefOuterParamRef: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testIncrementalSwitchDynamicRefVisibleAfterArmSwitch: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testIncrementalSwitchEnumBasic: OK <span class="dots">........</span></div>
                 <div class="unit-method pass">testIncrementalSwitchFixedRepeatableDifferentCounts: OK <span class="dots">......</span></div>
                 <div class="unit-method pass">testIncrementalSwitchInsideConditional: OK <span class="dots">........</span></div>
+                <div class="unit-method pass">testIncrementalSwitchInteractiveOuterParamRefInWidth: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testIncrementalSwitchInteractiveVisibleAfterArmSwitch: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testIncrementalSwitchMultiValue: OK <span class="dots">......</span></div>
                 <div class="unit-method pass">testIncrementalSwitchMultipleSwitchBlocks: OK <span class="dots">......</span></div>
@@ -900,9 +904,11 @@
                 <div class="unit-method pass">testIncrementalSwitchRange: OK <span class="dots">......</span></div>
                 <div class="unit-method pass">testIncrementalSwitchRepeatableCountChange: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testIncrementalSwitchSlotVisibleAfterArmSwitch: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testIncrementalSwitchStaticRefOuterParamRef: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testIncrementalSwitchTextInterpolation: OK <span class="dots">......</span></div>
                 <div class="unit-method pass">testIncrementalSwitchWithRepeatable: OK <span class="dots">......</span></div>
                 <div class="unit-method pass">testIncrementalTernary: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testInitialBuildAcceptsRawTileForTileParam: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testInterpolAddition: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testInterpolArithInString: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testInterpolCombinedMultiplyAdd: OK <span class="dots">.</span></div>
@@ -1261,6 +1267,7 @@
                 <div class="unit-method pass">testDynamicRefConditionalSiblingsPropagateAcrossVisibilityFlip: OK <span class="dots">.......</span></div>
                 <div class="unit-method pass">testDynamicRefExplicitNameCollisionThrowsAtBuild: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testDynamicRefInRepeatable: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testDynamicRefInSwitchArmPropagatesForwardedParam: OK <span class="dots">........</span></div>
                 <div class="unit-method pass">testDynamicRefIndexedInRepeatableIsIndependentlyAddressable: OK <span class="dots">............</span></div>
                 <div class="unit-method pass">testDynamicRefNamedSiblingsAreIndependentlyAddressable: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testDynamicRefSetParamUpdatesChild: OK <span class="dots">..</span></div>
@@ -1788,6 +1795,9 @@
                 <div class="unit-method pass">testAttractorPullsParticles: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testClearForceFields: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testClearThenAdd: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testColorCurveSegments_CacheAdvancesMonotonically: OK <span class="dots">....................</span></div>
+                <div class="unit-method pass">testColorCurveSegments_ColorCorrectAcrossLifetime: OK <span class="dots">.......</span></div>
+                <div class="unit-method pass">testColorCurveSegments_ResetsOnEmitLoopRecycle: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testEmitBurst: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testEmitBurstAt: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testEmitFilterAcceptsAll: OK <span class="dots">.</span></div>
