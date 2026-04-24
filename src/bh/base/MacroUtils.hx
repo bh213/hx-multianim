@@ -65,10 +65,12 @@ class MacroUtils {
 
         var factoryFunctionsUIElements:Map<String, Expr> = [];
         var factoryFunctionsH2dObjects:Map<String, Expr> = [];
+        var factoryFunctionsComponents:Map<String, Expr> = [];
         var providedValues:Map<String, Expr> = [];
         var newValues:Map<String, Expr> = [];
         final h2dObjectType = haxe.macro.ComplexTypeTools.toType(macro:h2d.Object);
         final uiElementType = haxe.macro.ComplexTypeTools.toType(macro:bh.ui.UIElement);
+        final componentType = haxe.macro.ComplexTypeTools.toType(macro:bh.ui.UIHigherOrderComponent);
 
 
         switch builderParams.expr {
@@ -90,12 +92,15 @@ class MacroUtils {
                                                             if (TypeTools.unify(ret, uiElementType)) {
                                                                 factoryFunctionsUIElements.set(getString(name), funcExpr);
                                                             }
+                                                            else if (TypeTools.unify(ret, componentType)) {
+                                                                factoryFunctionsComponents.set(getString(name), funcExpr);
+                                                            }
                                                             else if (TypeTools.unify(ret, h2dObjectType)) {
                                                                 factoryFunctionsH2dObjects.set(getString(name), funcExpr);
                                                             }
-                                                            else throw '${ExprTools.toString(e)} should have UIElement or h2d.Object return value';
-                                                            
-                                                        default: throw '${ExprTools.toString(e)} should have UIElement or h2d.Object return value';
+                                                            else throw '${ExprTools.toString(e)} should have UIElement, UIHigherOrderComponent, or h2d.Object return value';
+
+                                                        default: throw '${ExprTools.toString(e)} should have UIElement, UIHigherOrderComponent, or h2d.Object return value';
                                                     }
                                                     for (index => value in args) {
                                                         switch value.t {
@@ -191,31 +196,19 @@ class MacroUtils {
             inputFields.set(key, macro PVFactory($updated));
         }
 
+        for (key => value in factoryFunctionsComponents) {
+            localVars.push(macro var $key);
+            retValFields.push({field: key, expr: macro $i{key}});
+            checkIfNullBlock.push(macro if (retVal.$key == null) {throw 'macroBuildWithParameters component ' + $v{key} + ' is null (check if placeholder object is named correctly)';});
+            final updated = macro (settings:bh.multianim.MultiAnimParser.ResolvedSettings)->{
+                final _comp = $value;
+                $i{key} = _comp;
+                return _comp.getObject();
+            }
 
+            inputFields.set(key, macro PVComponent($updated, null));
+        }
 
-        // for (key => value in factoryFunctions) {
-        //     localVars.push(macro var $key);
-        //     retValFields.push({field: key, expr: macro $i{key}});
-
-            
-        //     final isUIElement = TypeTools.unify(Context.typeof(value), uiElementType);
-        //     final isH2dObject = TypeTools.unify(Context.typeof(value), h2dObjectType);
-        //     trace(isUIElement, isH2dObject);
-            
-        //     if (isUIElement) {
-        //         final updated = macro (settings:bh.multianim.MultiAnimParser.ResolvedSettings)->{
-        //             final element = $value;
-        //             addElement(element, false);
-        //             $i{key} = element;
-        //             return element.getObject();
-        //         }
-
-        //         inputFields.set(key, macro PVFactory($updated));
-        //     }
-        //     // else {
-        //     //     inputFields.set(key, macro PVFactory($value));
-        //     // }
-        // }
         function buildBuildWithParams() {
             var map : Array<Expr> = [];
             for (name => expr in inputFields) {
@@ -275,13 +268,13 @@ return null;
     }
 
     /**
-     * Returns a string with the node's parser position when MULTIANIM_TRACE is defined.
-     * Returns empty string when MULTIANIM_TRACE is not set.
+     * Returns a string with the node's parser position when MULTIANIM_DEV is defined.
+     * Returns empty string when MULTIANIM_DEV is not set.
      * Usage: throw 'error message' + MacroUtils.nodePos(node);
      */
     public static macro function nodePos(node:Expr):Expr {
         #if macro
-        if (Context.defined("MULTIANIM_TRACE")) {
+        if (Context.defined("MULTIANIM_DEV")) {
             return macro ' at ' + $node.parserPos;
         } else {
             return macro '';
@@ -292,13 +285,13 @@ return null;
     }
 
     /**
-     * Returns a string with the node's parser position prefixed by custom text when MULTIANIM_TRACE is defined.
-     * Returns empty string when MULTIANIM_TRACE is not set.
+     * Returns a string with the node's parser position prefixed by custom text when MULTIANIM_DEV is defined.
+     * Returns empty string when MULTIANIM_DEV is not set.
      * Usage: throw 'error message' + MacroUtils.nodePosWithPrefix(node, " (defined at ");
      */
     public static macro function nodePosWithPrefix(node:Expr, prefix:ExprOf<String>):Expr {
         #if macro
-        if (Context.defined("MULTIANIM_TRACE")) {
+        if (Context.defined("MULTIANIM_DEV")) {
             return macro $prefix + $node.parserPos + ')';
         } else {
             return macro '';

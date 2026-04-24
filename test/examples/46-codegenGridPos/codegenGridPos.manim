@@ -34,25 +34,25 @@ layouts {
 
 #codegenGridPos programmable() {
   // Row: horizontal
-  repeatable($i, layout("main", "rowPos")) {
+  repeatable($i, layout("rowPos")) {
     bitmap(generated(color(80, 36, #4488FF))): 0, 0
     text(f3x5, $i, #ffffff): 35, 14
   }
 
   // Column: vertical
-  repeatable($j, layout("main", "colPos")) {
+  repeatable($j, layout("colPos")) {
     bitmap(generated(color(80, 36, #FF4488))): 0, 0
     text(f3x5, $j, #ffffff): 35, 14
   }
 
   // Diagonal
-  repeatable($k, layout("main", "diagPos")) {
+  repeatable($k, layout("diagPos")) {
     bitmap(generated(color(60, 32, #44FF88))): 0, 0
     text(f3x5, $k, #ffffff): 25, 12
   }
 
   // Zigzag
-  repeatable($z, layout("main", "zigzagPos")) {
+  repeatable($z, layout("zigzagPos")) {
     bitmap(generated(color(60, 32, #FFAA44))): 0, 0
     text(f3x5, $z, #ffffff): 25, 12
   }

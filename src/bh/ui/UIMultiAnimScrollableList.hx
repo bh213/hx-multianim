@@ -112,10 +112,12 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 		return CursorManager.getDefaultInteractiveCursor();
 	}
 
-	public function setItems(newItems:Array<UIElementListItem>, selectedIndex:Int = 0) {
+	public function setItems(newItems:Array<UIElementListItem>, selectedIndex:Int = 0, preserveScroll:Bool = false) {
 		// Reset interaction state before changing items (setter validates bounds)
 		this.currentHoverIndex = -1;
 		this.currentPressedIndex = -1;
+
+		final savedScrollY = this.mask.scrollY;
 
 		// Clear and repopulate (items is final, can't reassign)
 		this.items.resize(0);
@@ -129,14 +131,21 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 			this.panelResults = buildPanel();
 		}
 
-		// Reset scroll position
-		this.mask.scrollY = 0;
-
 		// Rebuild items and scrollbar
 		buildItems();
 
-		// Set selection
-		this.currentItemIndex = if (newItems.length > 0) selectedIndex else -1;
+		// Restore or reset scroll position
+		if (preserveScroll) {
+			this.mask.scrollY = savedScrollY;
+			repositionScrollbar();
+		} else {
+			this.mask.scrollY = 0;
+		}
+
+		// Set selection — force-apply visual even if index hasn't changed (items were rebuilt)
+		final idx = if (newItems.length > 0) selectedIndex else -1;
+		this.currentItemIndex = -1;
+		this.currentItemIndex = idx;
 	}
 
 	public static function createWithSingleBuilder(builder:MultiAnimBuilder, panelBuilderName:String, itemBuilderName:String, scrollbarBuilderName:String, scrollbarInPanelName:String, width:Int, height:Int, items, topClearance, initialIndex, ?panelSizeMode:PanelSizeMode) {
@@ -231,6 +240,11 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 		repositionScrollbar();
 	}
 
+	public function scrollToAndSelect(idx:Int) {
+		scrollToIndex(idx);
+		this.currentItemIndex = idx;
+	}
+
 	public function getObject():Object {
 		return root;
 	}
@@ -259,6 +273,14 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 				// Since scrollable lists typically don't use draggable objects, we'll throw an error
 				throw 'Draggable objects are not supported in scrollable lists';
 		}
+	}
+
+	function getBaseStatus(index:Int):String {
+		if (index < 0 || index >= items.length) return "normal";
+		final item = items[index];
+		if (item.baseStatus != null) return item.baseStatus;
+		if (item.disabled == true) return "disabled";
+		return "normal";
 	}
 
 	function setItemStatus(index:Int, status:String) {
@@ -327,7 +349,7 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 				this.hoverMode = true;
 
 			case OnEnter:
-				wrapper.control.outsideClick.trackOutsideClick(true);
+				wrapper.control.trackOutsideClick(true);
 
 			case OnLeave:
 				this.currentHoverIndex = -1;
@@ -365,7 +387,7 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 			throw 'currentPressedIndex ${value} is out of bounds [-1..${items.length}].';
 		if (this.currentPressedIndex != value) {
 			if (this.currentPressedIndex != -1)
-				setItemStatus(this.currentPressedIndex, "normal");
+				setItemStatus(this.currentPressedIndex, getBaseStatus(this.currentPressedIndex));
 			this.currentPressedIndex = value;
 			if (value != -1)
 				setItemStatus(value, "pressed");
@@ -379,7 +401,7 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 			throw 'currentHoverIndex ${value} is out of bounds [-1..${items.length}].';
 		if (this.currentHoverIndex != value) {
 			if (this.currentHoverIndex != -1)
-				setItemStatus(this.currentHoverIndex, "normal");
+				setItemStatus(this.currentHoverIndex, getBaseStatus(this.currentHoverIndex));
 			this.currentHoverIndex = value;
 			if (value != -1)
 				setItemStatus(value, "hover");
@@ -390,7 +412,7 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 
 	function set_currentItemIndex(value:Int):Int {
 		if (value < -1 || value >= items.length)
-			throw 'currentItemIndex ${value} is out of bounds [0..${items.length}].';
+			throw 'currentItemIndex ${value} is out of bounds [-1..${items.length - 1}].';
 		if (this.currentItemIndex != value) {
 			if (this.currentItemIndex != -1)
 				setItemSelected(this.currentItemIndex, false);

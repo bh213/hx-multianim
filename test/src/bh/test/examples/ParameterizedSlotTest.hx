@@ -258,11 +258,68 @@ class ParameterizedSlotTest extends BuilderTestBase {
 		", "test");
 		var slot = result.getSlot("mySlot");
 		var err:String = null;
+		var builderErr:Null<bh.multianim.BuilderError> = null;
 		try {
 			slot.setParameter("anything", "value");
 		} catch (e:Dynamic) {
 			err = Std.string(e);
+			if (Std.isOfType(e, bh.multianim.BuilderError)) builderErr = cast e;
 		}
 		Assert.notNull(err);
+		Assert.notNull(builderErr, "throw must be a BuilderError");
+		if (builderErr != null)
+			Assert.equals("slot_no_parameters", builderErr.code, "BuilderError.code for non-parameterized slot");
+	}
+
+	// Retained SlotHandle whose enclosing subtree was torn down (SWITCH arm swap,
+	// repeatable shrinkage, ...) must reject setParameter instead of silently
+	// mutating orphaned h2d.Objects. The entry is evicted from ir.slots by
+	// removeRegistrationsUnder, but the external handle's incrementalContext is
+	// still live — without a disposed flag, the call cascades into stale
+	// conditionalEntries / trackedExpressions pointing at detached objects.
+	@Test
+	public function testParameterizedSlotSetParameterThrowsAfterArmSwap():Void {
+		final result = buildFromSource("
+			#test programmable(mode:[active, dormant]=active) {
+				@switch(mode) {
+					active {
+						#panel slot(color:[red, green]=green) {
+							@(color => green) bitmap(generated(color(20, 20, #00ff00))): 0, 0
+							@(color => red)   bitmap(generated(color(20, 20, #ff0000))): 0, 0
+						}
+					}
+					dormant {
+						bitmap(generated(color(20, 20, #222222))): 0, 0
+					}
+				}
+			}
+		", "test", null, Incremental);
+		final slot = result.getSlot("panel");
+		Assert.notNull(slot);
+		if (slot == null) return;
+
+		// Sanity: slot is live before the arm swap.
+		slot.setParameter("color", "red");
+
+		// Swap SWITCH arm — active arm (which owns the slot subtree) is torn down.
+		// cleanupDestroyedSubtree -> removeRegistrationsUnder evicts the slot
+		// from ir.slots. The retained `slot` reference above is now stale.
+		result.setParameter("mode", "dormant");
+
+		var err:String = null;
+		var builderErr:Null<bh.multianim.BuilderError> = null;
+		try {
+			slot.setParameter("color", "green");
+		} catch (e:Dynamic) {
+			err = Std.string(e);
+			if (Std.isOfType(e, bh.multianim.BuilderError)) builderErr = cast e;
+		}
+		Assert.notNull(err, "setParameter on disposed SlotHandle should throw");
+		if (err != null)
+			Assert.isTrue(err.indexOf("disposed") >= 0,
+				'error message should mention "disposed", got: $err');
+		Assert.notNull(builderErr, "throw must be a BuilderError");
+		if (builderErr != null)
+			Assert.equals("slot_disposed", builderErr.code, "BuilderError.code for disposed slot");
 	}
 }

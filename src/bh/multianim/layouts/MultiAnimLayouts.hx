@@ -1,5 +1,6 @@
 package bh.multianim.layouts;
 
+import bh.multianim.BuilderError;
 import bh.multianim.MultiAnimBuilder.BuilderParameters;
 import bh.multianim.MultiAnimParser.LayoutsDef;
 import bh.base.FPoint;
@@ -47,7 +48,7 @@ class MultiAnimLayouts {
 
     inline function getLayout(name:String) {
         var l = layoutsDef.get(name);
-        if (l == null) throw 'layout $name not found';
+        if (l == null) throw BuilderError.of('layout $name not found');
         return l;
     }
 
@@ -87,18 +88,18 @@ class MultiAnimLayouts {
     }
 
     public function getPointFromLayout(l:Layout, index:Int, ?builderParams:BuilderParameters):FPoint {
-        if (index < 0) throw 'index < 0 for layout ${l.name}';
+        if (index < 0) throw BuilderError.of('index < 0 for layout ${l.name}');
         var pt = switch l.type {
             case Single(content):
                 resolve(l.grid, l.hex, l.offset, content, "i", index, builderParams);
             case List(list):
-                if (list.length <= index) throw 'cannot get layout "${l.name}" point at $index because list is only ${list.length} long';
+                if (list.length <= index) throw BuilderError.of('cannot get layout "${l.name}" point at $index because list is only ${list.length} long');
                 resolve(l.grid, l.hex, l.offset,list[index], "i", 0, builderParams);
             case Sequence(variable, from, to, content):
-                if (index > to - from) throw 'index > to - from for layout ${l.name}';
+                if (index > to - from) throw BuilderError.of('index > to - from for layout ${l.name}');
                 resolve(l.grid, l.hex, l.offset, content, variable, from + index, builderParams);
             case Grid(cols, rows, cellW, cellH):
-                if (index >= cols * rows) throw 'index $index out of bounds for grid layout ${l.name} (${cols}x${rows})';
+                if (index >= cols * rows) throw BuilderError.of('index $index out of bounds for grid layout ${l.name} (${cols}x${rows})');
                 var col = index % cols;
                 var row = Std.int(index / cols);
                 new FPoint(l.offset.x + col * cellW, l.offset.y + row * cellH);
@@ -109,7 +110,7 @@ class MultiAnimLayouts {
     function applyAlignment(pt:FPoint, l:Layout):FPoint {
         if (l.alignX == Left && l.alignY == Top) return pt;
         final scene = builder.builderParams.scene;
-        if (scene == null) throw 'layout "${l.name}" uses align but no scene is available';
+        if (scene == null) throw BuilderError.of('layout "${l.name}" uses align but no scene is available');
         if (l.alignX != Left) {
             pt.x = switch l.alignX {
                 case Left: pt.x;

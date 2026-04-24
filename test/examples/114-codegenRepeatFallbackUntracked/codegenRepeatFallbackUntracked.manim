@@ -1,0 +1,22 @@
+version: 1.0
+
+// H6 regression: param-dependent repeat count forces codegen into the runtime-
+// rebuild branch (ProgrammableCodeGen.rebuildRepeatChildren ->
+// generateRuntimeChildExprs). INTERACTIVE is not handled inline — it falls into
+// the `default:` arm at ProgrammableCodeGen.hx:2961-2968, which forwards to
+// ProgrammableBuilder.buildNodeByUniqueName(...). That fallback skips
+// recordUntrackedParams, so setParameter("myId", ...) silently updates the
+// internal field with no throw and no visual effect.
+//
+// The static-count baseline lives in codegenIncUntrackedId
+// (111-codegenIncrementalInteractiveStateanim.manim) and correctly throws
+// "untracked_param". This fixture pins the same behavior inside a param-dep
+// repeat body.
+//
+// `n` drives the repeat count. `myId` is the param that should be flagged as
+// untracked because it flows through the interactive id.
+#paramDepRepeatUntrackedId programmable(n:uint=2, myId:string="btn") {
+  repeatable($i, step($n, dx: 60)) {
+    interactive(100, 50, $myId): 0, 0
+  }
+}

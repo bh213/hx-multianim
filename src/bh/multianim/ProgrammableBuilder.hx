@@ -5,6 +5,7 @@ import h2d.Tile;
 import h2d.Font;
 import bh.base.ResourceLoader;
 import bh.base.Atlas2.IAtlas2;
+import bh.multianim.BuilderError;
 import bh.multianim.MultiAnimBuilder.BuilderResult;
 import bh.multianim.MultiAnimBuilder.SlotHandle;
 import bh.multianim.MultiAnimBuilder.CallbackRequest;
@@ -45,13 +46,35 @@ class ProgrammableBuilder {
 		return cast _builder;
 	}
 
+	/** Walk an h2d.Object tree and collect all MAObject children. Used by codegen-generated
+	 *  `getInteractives()` methods on programmable instance classes to expose their interactives
+	 *  to `UIScreen.addInteractives` / `UIRichInteractiveHelper.register` without requiring a
+	 *  BuilderResult. Each invocation returns a fresh array so callers can iterate/mutate safely.
+	 *
+	 *  Complexity: O(scene graph size). Typical instance trees have tens to hundreds of nodes,
+	 *  which is fine even for per-frame calls. Not recommended inside tight inner loops. */
+	public static function collectInteractives(obj:h2d.Object):Array<bh.base.MAObject> {
+		final out:Array<bh.base.MAObject> = [];
+		collectInteractivesInto(obj, out);
+		return out;
+	}
+
+	static function collectInteractivesInto(obj:h2d.Object, out:Array<bh.base.MAObject>):Void {
+		if (Std.isOfType(obj, bh.base.MAObject)) {
+			out.push(cast obj);
+		}
+		for (i in 0...obj.numChildren) {
+			collectInteractivesInto(obj.getChildAt(i), out);
+		}
+	}
+
 	/** Load a tile from a sprite sheet by name.
 	 *  Returns a copy so callers never mutate the cached atlas tile. */
 	public function loadTile(sheet:String, name:String):Tile {
 		final atlas = getSheet(sheet);
 		final frame = atlas.get(name);
 		if (frame == null)
-			throw 'tile "$name" not found in sheet "$sheet"';
+			throw BuilderError.of('tile "$name" not found in sheet "$sheet"');
 		return copyTile(frame.tile);
 	}
 
@@ -61,9 +84,9 @@ class ProgrammableBuilder {
 		final atlas = getSheet(sheet);
 		final anim = atlas.getAnim(name);
 		if (anim == null)
-			throw 'tile "$name" not found in sheet "$sheet"';
+			throw BuilderError.of('tile "$name" not found in sheet "$sheet"');
 		if (index < 0 || index >= anim.length)
-			throw 'tile "$name" in sheet "$sheet" does not have index $index';
+			throw BuilderError.of('tile "$name" in sheet "$sheet" does not have index $index');
 		return copyTile(anim[index].tile);
 	}
 
@@ -83,7 +106,7 @@ class ProgrammableBuilder {
 		final atlas = getSheet(sheet);
 		final ninePatch = atlas.getNinePatch(name);
 		if (ninePatch == null)
-			throw '9-patch "$name" not found in sheet "$sheet"';
+			throw BuilderError.of('9-patch "$name" not found in sheet "$sheet"');
 		return ninePatch;
 	}
 
@@ -122,7 +145,7 @@ class ProgrammableBuilder {
 		var builder:MultiAnimBuilder = getBuilder();
 		if (externalRef != null) {
 			var extBuilder = builder.multiParserResult?.imports?.get(externalRef);
-			if (extBuilder == null) throw 'buildStaticRef: external reference "$externalRef" not found';
+			if (extBuilder == null) throw BuilderError.of('buildStaticRef: external reference "$externalRef" not found');
 			builder = extBuilder;
 		}
 		return builder.buildWithParameters(name, parameters);
@@ -133,7 +156,7 @@ class ProgrammableBuilder {
 		var builder:MultiAnimBuilder = getBuilder();
 		if (externalRef != null) {
 			var extBuilder = builder.multiParserResult?.imports?.get(externalRef);
-			if (extBuilder == null) throw 'buildDynamicRef: external reference "$externalRef" not found';
+			if (extBuilder == null) throw BuilderError.of('buildDynamicRef: external reference "$externalRef" not found');
 			builder = extBuilder;
 		}
 		return builder.buildWithParameters(name, parameters, null, null, true);
@@ -152,19 +175,19 @@ class ProgrammableBuilder {
 		final builder = getBuilder();
 		final progNode = builder.multiParserResult.nodes.get(programmableName);
 		if (progNode == null)
-			throw 'could not find programmable node: $programmableName';
+			throw BuilderError.of('could not find programmable node: $programmableName');
 		final allParticles:Array<MultiAnimParser.Node> = [];
 		findAllParticlesChildren(progNode, allParticles);
 		if (allParticles.length == 0)
-			throw 'no particles found in programmable: $programmableName';
+			throw new BuilderError('no particles found in programmable: $programmableName', progNode);
 		if (index >= allParticles.length)
-			throw 'particles index $index out of range (found ${allParticles.length}) in programmable: $programmableName';
+			throw new BuilderError('particles index $index out of range (found ${allParticles.length}) in programmable: $programmableName', progNode);
 		final particlesNode = allParticles[index];
 		return switch particlesNode.type {
 			case PARTICLES(particlesDef):
 				builder.createParticleFromDef(particlesDef, particlesNode.uniqueNodeName);
 			default:
-				throw 'unexpected node type in $programmableName';
+				throw new BuilderError('unexpected node type in $programmableName', particlesNode);
 		};
 	}
 
@@ -192,6 +215,8 @@ class ProgrammableBuilder {
 		for (entry in constructData) {
 			final loadedSheet = getSheet(entry.sheet);
 			final anim = loadedSheet.getAnim(entry.animName);
+			if (anim == null)
+				throw BuilderError.of('Animation "${entry.animName}" not found in sheet "${entry.sheet}"');
 			if (entry.center) {
 				for (i in 0...anim.length) {
 					anim[i] = anim[i].cloneWithNewTile(anim[i].tile.center());
@@ -213,14 +238,14 @@ class ProgrammableBuilder {
 		final builder = getBuilder();
 		final progNode = builder.multiParserResult.nodes.get(programmableName);
 		if (progNode == null)
-			throw 'could not find programmable node: $programmableName';
+			throw BuilderError.of('could not find programmable node: $programmableName');
 		// Build the tilegroup via the builder — it handles TileGroupMode for children
 		final result = builder.buildWithParameters(programmableName, new Map());
 		// Find all TileGroups in the result's object tree
 		final tileGroups:Array<h2d.Object> = [];
 		findAllTileGroupsInTree(result.object, tileGroups);
 		if (index >= tileGroups.length)
-			throw 'tileGroup index $index out of range (found ${tileGroups.length}) in programmable: $programmableName';
+			throw new BuilderError('tileGroup index $index out of range (found ${tileGroups.length}) in programmable: $programmableName', progNode);
 		return tileGroups[index];
 	}
 
@@ -307,12 +332,13 @@ class ProgrammableBuilder {
 		return switch param {
 			case null: null;
 			case PVObject(obj):
-				#if MULTIANIM_TRACE
+				#if MULTIANIM_DEV
 				if (settings != null)
 					trace('Warning: PVObject placeholder "$name" ignores .manim settings — use PVFactory instead to receive settings');
 				#end
 				obj;
 			case PVFactory(factoryMethod): factoryMethod(settings);
+			case PVComponent(factoryMethod, _): factoryMethod(settings);
 		};
 	}
 
@@ -436,6 +462,16 @@ class ProgrammableBuilder {
 		return getBuilder().getCurve(name);
 	}
 
+	/** Rebuild a @switch arm by ordinal. Tears down the old arm and builds the new one.
+	 *  Used by codegen lazy switch — generated setters call this on parameter change.
+	 *  switchOrdinal is the N-th SWITCH node in DFS order of the programmable's tree.
+	 *  When `sink` is provided, results are stored there so the instance can look up
+	 *  indexed names / slots declared inside the arm. */
+	public function rebuildSwitchArm(programmableName:String, switchOrdinal:Int, armIndex:Int, container:h2d.Object,
+			params:Map<String, Dynamic>, ?sink:bh.multianim.MultiAnimBuilder.SwitchArmResults):Void {
+		getBuilder().rebuildSwitchArmByOrdinal(programmableName, switchOrdinal, armIndex, container, params, sink);
+	}
+
 	/** Build an arbitrary node by its unique name, forwarding to the builder.
 	 *  Used by generated repeatable code for node types not handled inline. */
 	public function buildNodeByUniqueName(programmableName:String, uniqueNodeName:String):Null<h2d.Object> {
@@ -448,7 +484,21 @@ class ProgrammableBuilder {
 		return builder.buildSingleNode(targetNode);
 	}
 
-	private static function findNodeByUniqueName(node:MultiAnimParser.Node, name:String):Null<MultiAnimParser.Node> {
+	/** Params-aware variant: pushes builder state with resolved params before building so that
+	 *  `$param` and loop-var refs inside the subtree resolve correctly. Used by the codegen
+	 *  runtime-rebuild fallback for param-dependent repeatable bodies. */
+	public function buildNodeByUniqueNameWithParams(programmableName:String, uniqueNodeName:String,
+			parentParams:Map<String, Dynamic>):Null<h2d.Object> {
+		final builder = getBuilder();
+		if (builder == null) return null;
+		final progNode = builder.multiParserResult.nodes.get(programmableName);
+		if (progNode == null) return null;
+		final targetNode = findNodeByUniqueName(progNode, uniqueNodeName);
+		if (targetNode == null) return null;
+		return builder.buildSingleNodeWithParams(targetNode, progNode, parentParams);
+	}
+
+	public static function findNodeByUniqueName(node:MultiAnimParser.Node, name:String):Null<MultiAnimParser.Node> {
 		if (node.uniqueNodeName == name) return node;
 		if (node.children != null) {
 			for (child in node.children) {
@@ -466,5 +516,38 @@ class ProgrammableBuilder {
 			case null: null;
 			default: null;
 		};
+	}
+
+	/** Auto-fit: first-fit mode — try fallback fonts in order, use first that fits. */
+	public static function autoFitFirstFit(t:h2d.Text, fonts:Array<Font>, fitWidth:Null<Float>, fitHeight:Null<Float>):Void {
+		if (fitWidth != null && t.textWidth <= fitWidth && (fitHeight == null || t.textHeight <= fitHeight)) return;
+		for (font in fonts) {
+			t.font = font;
+			if ((fitWidth == null || t.textWidth <= fitWidth) && (fitHeight == null || t.textHeight <= fitHeight)) return;
+		}
+	}
+
+	/** Auto-fit: fill mode — try all fonts (including current), pick largest that fits. */
+	public static function autoFitFill(t:h2d.Text, fonts:Array<Font>, fitWidth:Null<Float>, fitHeight:Null<Float>):Void {
+		var bestFont:Null<Font> = null;
+		var bestWidth:Float = -1;
+		final origFont = t.font;
+		// Try original font first
+		if ((fitWidth == null || t.textWidth <= fitWidth) && (fitHeight == null || t.textHeight <= fitHeight)) {
+			bestFont = origFont;
+			bestWidth = t.textWidth;
+		}
+		for (font in fonts) {
+			t.font = font;
+			if ((fitWidth == null || t.textWidth <= fitWidth) && (fitHeight == null || t.textHeight <= fitHeight)) {
+				if (t.textWidth > bestWidth) {
+					bestWidth = t.textWidth;
+					bestFont = font;
+				}
+			}
+		}
+		if (bestFont != null) t.font = bestFont;
+		else if (fonts.length > 0) t.font = fonts[fonts.length - 1];
+		else t.font = origFont;
 	}
 }

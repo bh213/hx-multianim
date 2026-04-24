@@ -1,0 +1,35 @@
+version: 1.0
+
+// Regression: indexed names and slots declared inside @switch arms must be
+// addressable from codegen instances via getUpdatable2D / getSlot, and remain
+// coherent after an arm swap. Arm-swapped entries are evicted; new arm's entries
+// populate the same sink.
+#switchArmNames programmable(layout:[grid, list]=grid) {
+  @switch(layout) {
+    grid {
+      repeatable2d($x, $y, step(3, dx: 20), step(2, dy: 20)) {
+        #gridCell[$x, $y] bitmap(generated(color(15, 15, #0f0))): 0, 0
+      }
+    }
+    list {
+      repeatable($i, step(4, dx: 20)) {
+        #listItem[$i] bitmap(generated(color(15, 15, #f00))): 0, 0
+      }
+    }
+  }
+}
+
+// Parameterized slot inside a switch arm — verifies that slot lookup via
+// getSlot("name") falls through to the sink when the slot lives in an arm.
+#switchArmSlot programmable(mode:[active, dormant]=active) {
+  @switch(mode) {
+    active {
+      #panel slot {
+        bitmap(generated(color(30, 30, #00f))): 0, 0
+      }
+    }
+    dormant {
+      bitmap(generated(color(30, 30, #222))): 0, 0
+    }
+  }
+}

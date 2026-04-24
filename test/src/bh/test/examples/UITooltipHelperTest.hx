@@ -37,6 +37,13 @@ class UITooltipHelperTest extends BuilderTestBase {
 		}
 	';
 
+	// A second tooltip programmable with a different name.
+	static final TOOLTIP2_MANIM = '
+		#tip2 programmable(label:string=hello) {
+			bitmap(generated(color(60, 15, #00AAFF))): 0, 0
+		}
+	';
+
 	// ============== Helper ==============
 
 	function createHelper(?delay:Float, ?position:TooltipPosition, ?offset:Int):{
@@ -44,7 +51,7 @@ class UITooltipHelperTest extends BuilderTestBase {
 		screen:UITestScreen
 	} {
 		var screen = new UITestScreen();
-		var builder = BuilderTestBase.builderFromSource('$ANCHOR_MANIM\n$ANCHOR2_MANIM\n$TOOLTIP_MANIM');
+		var builder = BuilderTestBase.builderFromSource('$ANCHOR_MANIM\n$ANCHOR2_MANIM\n$TOOLTIP_MANIM\n$TOOLTIP2_MANIM');
 
 		// Build anchor and register its interactive on the screen
 		var anchorResult = builder.buildWithParameters("anchor", []);
@@ -335,6 +342,27 @@ class UITooltipHelperTest extends BuilderTestBase {
 		Assert.isTrue(ctx.helper.isActive());
 	}
 
+	@Test
+	public function testStartHoverWithChangedBuildNameUpdatesTooltip():Void {
+		// Bug 1.3: startHover returns early if activeTooltipId matches,
+		// even if the buildName is different. The tooltip stays as the old buildName.
+		var ctx = createHelper(0.0);
+		ctx.helper.show("btn1", "tip");
+		Assert.isTrue(ctx.helper.isActive());
+		@:privateAccess Assert.equals("tip", ctx.helper.activeBuildName);
+
+		// startHover with same ID but DIFFERENT buildName should not return early —
+		// it should hide the old tooltip and start a new hover timer for the new buildName.
+		ctx.helper.startHover("btn1", "tip2");
+		// The old tooltip should be hidden (startHover calls hide())
+		// and hover timer should be pending for tip2
+		ctx.helper.update(0.01);
+		// After delay, tooltip should show with new buildName
+		Assert.isTrue(ctx.helper.isActive());
+		Assert.equals("btn1", ctx.helper.getActiveId());
+		@:privateAccess Assert.equals("tip2", ctx.helper.activeBuildName);
+	}
+
 	// ============== Zero delay ==============
 
 	@Test
@@ -380,7 +408,7 @@ class UITooltipHelperTest extends BuilderTestBase {
 		tweens:TweenManager
 	} {
 		var screen = new UITestScreen();
-		var builder = BuilderTestBase.builderFromSource('$ANCHOR_MANIM\n$ANCHOR2_MANIM\n$TOOLTIP_MANIM');
+		var builder = BuilderTestBase.builderFromSource('$ANCHOR_MANIM\n$ANCHOR2_MANIM\n$TOOLTIP_MANIM\n$TOOLTIP2_MANIM');
 
 		var anchorResult = builder.buildWithParameters("anchor", []);
 		screen.addInteractives(anchorResult);
@@ -492,6 +520,43 @@ class UITooltipHelperTest extends BuilderTestBase {
 		Assert.isFalse(ctx.helper.isActive());
 	}
 
+	// ============== Bug: hide() does not reset hover timer ==============
+
+	@Test
+	public function testHideResetsHoverTimer():Void {
+		// Bug: hide() does not reset hoverTimer or clear pending hover state.
+		// After hide(), the next update() should NOT re-show the tooltip.
+		var ctx = createHelper(0.3);
+		ctx.helper.startHover("btn1", "tip");
+
+		// Advance partially (not enough to show)
+		ctx.helper.update(0.2);
+		Assert.isFalse(ctx.helper.isActive());
+
+		// Call hide() directly — should cancel pending hover
+		ctx.helper.hide();
+
+		// Now update past the original delay — tooltip should NOT appear
+		ctx.helper.update(0.2);
+		Assert.isFalse(ctx.helper.isActive(), "Tooltip should not appear after hide() cancelled pending hover");
+	}
+
+	@Test
+	public function testHideAfterShowDoesNotReshow():Void {
+		// After show() + hide(), a subsequent update() should NOT re-show the tooltip
+		var ctx = createHelper(0.1);
+		ctx.helper.startHover("btn1", "tip");
+		ctx.helper.update(0.2); // tooltip shows
+		Assert.isTrue(ctx.helper.isActive());
+
+		ctx.helper.hide(); // direct hide
+		Assert.isFalse(ctx.helper.isActive());
+
+		// update should not re-trigger
+		ctx.helper.update(0.5);
+		Assert.isFalse(ctx.helper.isActive(), "Tooltip should not reappear after hide()");
+	}
+
 	@Test
 	public function testRebuildWithFade():Void {
 		var ctx = createHelperWithTweens(0.2, 0.1);
@@ -507,5 +572,47 @@ class UITooltipHelperTest extends BuilderTestBase {
 		// Advance to complete all fades
 		ctx.tweens.update(0.5);
 		Assert.isTrue(ctx.helper.isActive());
+	}
+
+	// ============== dispose ==============
+
+	@Test
+	public function testDisposeCancelsInFlightFadeTweens():Void {
+		// Teardown contract: if the helper's owner (a screen being cleared on
+		// hot-reload or full rebuild) tears down while a fade-in or fade-out
+		// tween is still running, those tween closures hold strong refs to
+		// the tooltip h2d.Object. dispose() must cancel them immediately so
+		// the scene object can be garbage collected.
+		var ctx = createHelperWithTweens(0.5, 0.4);
+
+		// Start fade-in (in-flight)
+		ctx.helper.show("btn1", "tip");
+		@:privateAccess var fadingInObj = ctx.helper.activeResult.object;
+		Assert.isTrue(ctx.tweens.hasTweens(fadingInObj), "fade-in tween should be live after show()");
+
+		// Start fade-out by hiding (active fade-in gets cancelled,
+		// fade-out starts on the same object).
+		ctx.helper.hide();
+		Assert.isTrue(ctx.tweens.hasTweens(fadingInObj), "fade-out tween should be live after hide()");
+
+		// Now spin up a second tooltip so the fading-out obj AND a fresh
+		// fade-in are both in flight at the time of dispose.
+		ctx.helper.show("btn2", "tip");
+		@:privateAccess var fadingInObj2 = ctx.helper.activeResult.object;
+		Assert.isTrue(ctx.tweens.hasTweens(fadingInObj2), "second fade-in tween should be live");
+
+		// Teardown — all helper-owned tweens must be cancelled.
+		ctx.helper.dispose();
+
+		Assert.isFalse(ctx.tweens.hasTweens(fadingInObj), "fade-out tween on first tooltip must be cancelled by dispose()");
+		Assert.isFalse(ctx.tweens.hasTweens(fadingInObj2), "fade-in tween on second tooltip must be cancelled by dispose()");
+
+		// Advance time — cancelled tweens must not mutate the objects further
+		// and must not fire onComplete callbacks.
+		final firstAlphaAtDispose = fadingInObj.alpha;
+		final secondAlphaAtDispose = fadingInObj2.alpha;
+		ctx.tweens.update(1.0);
+		Assert.floatEquals(firstAlphaAtDispose, fadingInObj.alpha, "alpha must not change after dispose");
+		Assert.floatEquals(secondAlphaAtDispose, fadingInObj2.alpha, "alpha must not change after dispose");
 	}
 }

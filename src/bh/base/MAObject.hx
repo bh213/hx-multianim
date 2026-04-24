@@ -1,9 +1,9 @@
 package bh.base;
 
 import bh.base.FontManager;
+import bh.base.HeapsUtils.solidBitmap;
 import bh.multianim.MultiAnimParser.ResolvedSettings;
 import h2d.Font;
-import h2d.Tile;
 import h2d.Object;
 import h2d.col.Bounds;
 
@@ -15,7 +15,10 @@ enum MultiAnimObjectData {
 
 @:nullSafety
 class MAObject extends h2d.Object {
-	public final multiAnimType:MultiAnimObjectData;
+	// Mutable so incremental updates (builder trackExpression / codegen exprUpdate) can rewrite
+	// MAInteractive(w, h, ...) when a $param-driven size changes. Hit tests, getBoundsRec, and
+	// wrapper w/h consumers re-read this on every call, so reassignment propagates naturally.
+	public var multiAnimType:MultiAnimObjectData;
 
     
 	public function new(maType, debug:Bool, ?parent) {
@@ -25,7 +28,7 @@ class MAObject extends h2d.Object {
         switch maType {
             case MAInteractive(width, height, identifier, _):
                 if (debug) {
-                    var bitmap = new h2d.Bitmap(Tile.fromColor(0xFFFF8000, width, height, 0.5), this);
+                    var bitmap = solidBitmap(0x80FF8000, width, height, this);
                     var font = hxd.res.DefaultFont.get();
                     var text = new h2d.Text(font, bitmap);
                     text.text = 'interactive ${identifier}';
@@ -35,7 +38,7 @@ class MAObject extends h2d.Object {
                 }
             case MADraggable(width, height):
                 if (debug) {
-                    var bitmap = new h2d.Bitmap(Tile.fromColor(0xFFFF8000, width, height, 0.5), this);
+                    var bitmap = solidBitmap(0x80FF8000, width, height, this);
                     var font = hxd.res.DefaultFont.get();
                     var text = new h2d.Text(font, bitmap);
                     text.text = 'draggable';

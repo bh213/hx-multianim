@@ -1,6 +1,11 @@
 package bh.multianim;
 
 import bh.multianim.MultiAnimParser;
+import bh.multianim.MultiAnimParser.CustomFilterArg;
+import bh.multianim.MultiAnimParser.CustomFilterArgType;
+import bh.multianim.MultiAnimParser.CustomFilterRef;
+import bh.multianim.MultiAnimParser.InvalidSyntax;
+import bh.base.ParsePosition;
 import bh.multianim.CoordinateSystems;
 import bh.multianim.MacroCompatTypes.MacroBlendMode;
 import bh.multianim.MacroCompatTypes.MacroFlowLayout;
@@ -44,6 +49,7 @@ private enum MacroTokenType {
 	TGreaterEquals;
 	TNotEquals;     // !=
 	TDoubleEquals;  // ==
+	TPipe;          // |
 	TInteger(s:String);
 	TFloat(s:String);
 	THexInteger(s:String);
@@ -132,9 +138,11 @@ private class MacroLexer {
 				if (c2 == '*'.code) {
 					// Block comment
 					pos += 2;
+					var blockClosed = false;
 					while (pos + 1 < len) {
 						if (src.charCodeAt(pos) == '*'.code && src.charCodeAt(pos + 1) == '/'.code) {
 							pos += 2;
+							blockClosed = true;
 							break;
 						}
 						if (src.charCodeAt(pos) == '\n'.code) {
@@ -143,6 +151,8 @@ private class MacroLexer {
 						}
 						pos++;
 					}
+					if (!blockClosed)
+						throw '$sourceName:$startLine:$startCol: Unterminated block comment, missing closing */';
 					continue;
 				}
 			}
@@ -180,6 +190,7 @@ private class MacroLexer {
 				case '<'.code: pos++; return new Token(TLessThan, startLine, startCol);
 				case '>'.code: pos++; return new Token(TGreaterThan, startLine, startCol);
 				case '!'.code: pos++; return new Token(TExclamation, startLine, startCol);
+				case '|'.code: pos++; return new Token(TPipe, startLine, startCol);
 				default:
 			}
 
@@ -224,6 +235,7 @@ private class MacroLexer {
 			if (c == '"'.code) {
 				pos++;
 				var buf = new StringBuf();
+				var closed = false;
 				while (pos < len) {
 					final sc = src.charCodeAt(pos);
 					if (sc == '\\'.code && pos + 1 < len) {
@@ -237,11 +249,15 @@ private class MacroLexer {
 					}
 					if (sc == '"'.code) {
 						pos++;
+						closed = true;
 						break;
 					}
 					if (sc == '\n'.code) { line++; lineStart = pos + 1; }
 					buf.addChar(sc);
 					pos++;
+				}
+				if (!closed) {
+					throw '$sourceName:$startLine:$startCol: Unterminated string, missing closing double quote';
 				}
 				return new Token(TQuotedString(buf.toString()), startLine, startCol);
 			}
@@ -441,7 +457,11 @@ class MacroManimParser {
 	var currentName:Null<String>;
 	var activeDefs:Null<ParametersDefinitions>; // null = not inside programmable, set to currentDefs when entering programmable scope
 	var scopeVars:Null<Array<String>>; // loop vars, iterator output vars, @final vars (not in activeDefs)
+	var activeFinals:Null<Map<String, SettingValueType>>; // @final names whose RHS is a direct literal, mapped to inferred SettingValueType — used by validateTypedMetadataRef
+	var activeFinalNames:Null<Array<String>>; // every @final name in scope (literal and non-literal RHS) — used to reject @finals as conditional/@switch keys
 	var namedCoordSystems:Null<Array<String>>; // names registered via hex: #name or grid: #name
+	var namedElements:Null<Array<String>>; // names registered via #name element(...)
+	var customFilterRefs:Array<CustomFilterRef>; // accumulated custom filter references for post-parse validation
 
 	static final defaultLayoutNodeName = "#defaultLayout";
 	static final defaultPathNodeName = "#defaultPaths";
@@ -457,6 +477,9 @@ class MacroManimParser {
 		this.uniqueCounter = 654321;
 		this.activeDefs = null;
 		this.scopeVars = null;
+		this.activeFinals = null;
+		this.activeFinalNames = null;
+		this.customFilterRefs = [];
 	}
 
 	static final implicitRefs = ["ctx", "grid", "hex"];
@@ -467,10 +490,32 @@ class MacroManimParser {
 		if (scopeVars != null && scopeVars.indexOf(name) >= 0) return;
 		if (implicitRefs.indexOf(name) >= 0) return;
 		if (namedCoordSystems != null && namedCoordSystems.indexOf(name) >= 0) return;
+		if (namedElements != null && namedElements.indexOf(name) >= 0) return;
 		final paramNames = [for (k in activeDefs.keys()) k];
 		final allVars = scopeVars != null ? paramNames.concat(scopeVars) : paramNames;
 		final available = allVars.length > 0 ? allVars.join(", ") : "(none)";
 		error('unknown variable $$' + name + '. Available: ' + available);
+	}
+
+	// Rejects loop-variable / iterator-output names that collide with a
+	// programmable parameter or an outer loop/@final name already in scope.
+	// Collisions used to silently shadow the parameter and, after the loop
+	// body, `indexedParams.remove(varName)` would erase it from the builder.
+	function validateLoopVarName(name:String, currentDefs:ParametersDefinitions, kind:String):Void {
+		if (currentDefs != null && currentDefs.exists(name))
+			error('$kind loop variable $$' + name + ' shadows parameter $$' + name + ' of the enclosing programmable — pick a different name');
+		if (scopeVars != null && scopeVars.indexOf(name) >= 0)
+			error('$kind loop variable $$' + name + ' shadows an outer $$' + name + ' already in scope — pick a different name');
+	}
+
+	function iteratorOutputVars(rt:RepeatType):Array<String> {
+		return switch rt {
+			case ArrayIterator(valueVar, _): [valueVar];
+			case StateAnimIterator(bitmapVar, _, _, _): [bitmapVar];
+			case TilesIterator(bitmapVar, tilenameVar, _, _):
+				tilenameVar != null ? [bitmapVar, tilenameVar] : [bitmapVar];
+			case _: [];
+		};
 	}
 
 	// ---- Token access ----
@@ -515,7 +560,7 @@ class MacroManimParser {
 
 	function error(msg:String):Dynamic {
 		final t = peekToken();
-		throw '$sourceName:${t.line}:${t.col}: $msg';
+		throw new InvalidSyntax('$sourceName: $msg', new ParsePosition(sourceName, t.line, t.col));
 	}
 
 	function posString():String {
@@ -857,9 +902,12 @@ class MacroManimParser {
 			case TMinus:
 				advance();
 				switch (peek()) {
-					case TInteger(n) | THexInteger(n):
+					case TInteger(n):
 						advance();
 						return parseNextExpression(RVInteger(-stringToInt(n)), EAny);
+					case THexInteger(n):
+						advance();
+						return parseNextExpression(RVInteger(-stringToInt("0x" + n)), EAny);
 					case TFloat(n):
 						advance();
 						return parseNextExpression(RVFloat(-stringToFloat(n)), EAny);
@@ -1060,8 +1108,11 @@ class MacroManimParser {
 
 	public static function tryStringToColor(s:String):Null<Int> {
 		if (s == null) return null;
-		// Named colors return AARRGGBB with 0xFF alpha baked in (except transparent).
-		// This makes addAlphaIfNotPresent() a no-op for all named colors.
+		// Named colors and `#` CSS-shorthand forms bake 0xFF alpha here (except
+		// `transparent`), since a 3/6-digit web color literal implies opacity.
+		// `0x` literals follow Heaps' AARRGGBB convention and are preserved as
+		// typed — the top byte IS alpha, even if it's zero. To write opaque red,
+		// use `#FF0000` or `0xFFFF0000`; `0xFF0000` is transparent red.
 		var color = switch (s.toLowerCase()) {
 			case "transparent": 0x00000000;
 			case "maroon": 0xFF800000;
@@ -1097,7 +1148,11 @@ class MacroManimParser {
 			default: null;
 		}
 		if (color != null) return color;
-		if (s.startsWith("0x")) return Std.parseInt(s);
+		if (s.startsWith("0x")) {
+			// `0x` literals are Heaps AARRGGBB — preserved exactly. `0xFF0000` is
+			// transparent red (top byte = 0); use `#FF0000` or `0xFFFF0000` for opaque.
+			return Std.parseInt(s);
+		}
 		if (s.startsWith("#")) {
 			final colorStr = s.substring(1);
 			final colorVal = Std.parseInt("0x" + colorStr);
@@ -1132,10 +1187,11 @@ class MacroManimParser {
 				// Check if this is $ref.method() (coordinate method chain) or just $ref as part of OFFSET
 				// We need to peek ahead: if the token after $ref is TDot, it's a coordinate method chain
 				advance();
-				validateRef(s);
 				if (match(TDot)) {
+					validateRef(s);
 					parseCoordinateMethodChain(s);
 				} else {
+					validateRef(s);
 					// Not a dot — this is a plain reference used in OFFSET(x, y) position
 					// Put back as an expression and parse as OFFSET
 					final x = parseNextExpression(RVReference(s), EInt);
@@ -1143,6 +1199,9 @@ class MacroManimParser {
 					final y = parseIntegerOrReference();
 					OFFSET(x, y);
 				}
+			case TIdentifier(s) if (isKeyword(s, "extrapoint")):
+				advance();
+				parseExtraPointFromAnim();
 			case TIdentifier(s) if (isKeyword(s, "layout")):
 				advance();
 				expect(TOpen);
@@ -1190,6 +1249,21 @@ class MacroManimParser {
 		}
 
 		final method = expectIdentifierOrString();
+
+		// Extra point method — $ref.extraPoint("pointName" [, fallback: coords])
+		if (isKeyword(method, "extrapoint")) {
+			expect(TOpen);
+			final pointName = expectIdentifierOrString();
+			var fallback:Null<Coordinates> = null;
+			if (match(TComma)) {
+				expectKeyword("fallback");
+				expect(TColon);
+				fallback = parseXY();
+			}
+			expect(TClosed);
+			return EXTRA_POINT_REF(ref, pointName, fallback);
+		}
+
 		expect(TOpen);
 
 		// Grid methods
@@ -1307,16 +1381,32 @@ class MacroManimParser {
 		}
 	}
 
-	function isNamedGrid(name:String):Bool {
-		if (namedCoordSystems == null) return false;
-		// We can't easily distinguish grid vs hex by name at parse time.
-		// Named systems are tracked, and the builder will validate the type.
-		return namedCoordSystems.indexOf(name) >= 0;
-	}
-
-	function isNamedHex(name:String):Bool {
-		if (namedCoordSystems == null) return false;
-		return namedCoordSystems.indexOf(name) >= 0;
+	// extraPoint("file.anim", "animName", "pointName", "key"=>"value"..., [fallback: coords])
+	function parseExtraPointFromAnim():Coordinates {
+		expect(TOpen);
+		final filename = expectIdentifierOrString();
+		expect(TComma);
+		final animName = expectIdentifierOrString();
+		expect(TComma);
+		final pointName = expectIdentifierOrString();
+		var selector:Map<String, ReferenceableValue> = new Map();
+		var fallback:Null<Coordinates> = null;
+		while (match(TComma)) {
+			// Check for "fallback:" keyword
+			switch (peek()) {
+				case TIdentifier(s) if (isKeyword(s, "fallback")):
+					advance();
+					expect(TColon);
+					fallback = parseXY();
+				default:
+					final key = expectIdentifierOrString();
+					expect(TArrow);
+					final val = parseStringOrReference();
+					selector.set(key, val);
+			}
+		}
+		expect(TClosed);
+		return EXTRA_POINT_ANIM(filename, animName, pointName, selector, fallback);
 	}
 
 	// ===================== Helpers =====================
@@ -1405,6 +1495,11 @@ class MacroManimParser {
 			case TQuotedString(s):
 				advance();
 				return s;
+			case TReference(s):
+				// Inside ${} interpolation, bare identifiers are converted to TReference
+				// by the lexer. Accept them here so method/property names work in interpolated expressions.
+				advance();
+				return s;
 			default:
 				return error('expected identifier or string, got ${peek()}');
 		}
@@ -1433,10 +1528,45 @@ class MacroManimParser {
 		}
 	}
 
+	function expectReferenceOrIdentifierAsRV():ReferenceableValue {
+		switch (peek()) {
+			case TReference(s):
+				advance();
+				return RVReference(s);
+			case TIdentifier(s):
+				advance();
+				return RVString(s);
+			default:
+				return error('expected reference or identifier, got ${peek()}');
+		}
+	}
+
 	// ===================== Tile Source =====================
 
 	function parseTileSource():TileSource {
 		switch (peek()) {
+			case TIdentifier(s) if (isKeyword(s, "center")):
+				advance();
+				expect(TOpen);
+				final inner = parseTileSource();
+				expect(TClosed);
+				if (inner.match(TSPivot(_, _, _)))
+					return error('center(...): nested pivot/center is not allowed (outer would override inner)');
+				return TSPivot(0.5, 0.5, inner);
+			case TIdentifier(s) if (isKeyword(s, "pivot")):
+				advance();
+				expect(TOpen);
+				final px = parseFloat_();
+				expect(TComma);
+				final py = parseFloat_();
+				expect(TComma);
+				final inner = parseTileSource();
+				expect(TClosed);
+				if (px < 0.0 || px > 1.0 || py < 0.0 || py > 1.0)
+					return error('pivot($px, $py, ...): pivot ratios must be in range 0..1');
+				if (inner.match(TSPivot(_, _, _)))
+					return error('pivot(...): nested pivot/center is not allowed (outer pivot would override inner)');
+				return TSPivot(px, py, inner);
 			case TIdentifier(s) if (isKeyword(s, "file")):
 				advance();
 				expect(TOpen);
@@ -1545,14 +1675,7 @@ class MacroManimParser {
 	}
 
 	function parseAutotileTileSelector():AutotileTileSelector {
-		// Try integer index first
-		switch (peek()) {
-			case TInteger(_), TReference(_):
-				return ByIndex(parseIntegerOrReference());
-			default:
-				// TODO: ByEdges parsing if needed
-				return ByIndex(parseIntegerOrReference());
-		}
+		return ByIndex(parseIntegerOrReference());
 	}
 
 	// ===================== Parameter Definitions =====================
@@ -1786,6 +1909,11 @@ class MacroManimParser {
 			// Validate parameter — accept both programmable params and repeatable loop vars
 			if (!defs.exists(paramName) && (scopeVars == null || !scopeVars.contains(paramName)))
 				error('conditional parameter "$paramName" does not have definition');
+			// @final constants have no runtime value slot — matchSingleCondition (runtime) has
+			// no ExpressionAlias case and codegen's condMapToExpr emits a reference to a
+			// non-existent field. Reject at parse time with a clear, actionable message.
+			if (activeFinalNames != null && activeFinalNames.contains(paramName))
+				error('conditional key "$paramName" is a @final constant — @final cannot be used as a conditional key (no runtime value slot). Use a programmable parameter instead.');
 			if (result.exists(paramName)) error('conditional parameter "$paramName" already defined');
 
 			// Check for comparison operators
@@ -1793,19 +1921,19 @@ class MacroManimParser {
 				case TGreaterEquals:
 					advance();
 					final val = parseAnything();
-					result.set(paramName, CoRange(resolveToFloat(val), null, false, false));
+					result.set(paramName, CoRange(val, null, false, false));
 				case TLessEquals:
 					advance();
 					final val = parseAnything();
-					result.set(paramName, CoRange(null, resolveToFloat(val), false, false));
+					result.set(paramName, CoRange(null, val, false, false));
 				case TGreaterThan:
 					advance();
 					final val = parseAnything();
-					result.set(paramName, CoRange(resolveToFloat(val), null, true, false));
+					result.set(paramName, CoRange(val, null, true, false));
 				case TLessThan:
 					advance();
 					final val = parseAnything();
-					result.set(paramName, CoRange(null, resolveToFloat(val), false, true));
+					result.set(paramName, CoRange(null, val, false, true));
 				case TNotEquals:
 					advance();
 					// Negated match
@@ -1852,11 +1980,11 @@ class MacroManimParser {
 								case TIdentifier(s) if (isKeyword(s, "greaterthanorequal")):
 									advance();
 									final val = parseAnything();
-									result.set(paramName, CoRange(resolveToFloat(val), null, false, false));
+									result.set(paramName, CoRange(val, null, false, false));
 								case TIdentifier(s) if (isKeyword(s, "lessthanorequal")):
 									advance();
 									final val = parseAnything();
-									result.set(paramName, CoRange(null, resolveToFloat(val), false, false));
+									result.set(paramName, CoRange(null, val, false, false));
 								case TIdentifier(s) if (isKeyword(s, "bit")):
 									advance();
 									expect(TBracketOpen);
@@ -1865,28 +1993,25 @@ class MacroManimParser {
 									result.set(paramName, CoFlag(1 << bitIndex));
 								case TIdentifier(s) if (isKeyword(s, "between")):
 									advance();
-									final from = parseConditionalValue();
+									final from = parseAnything();
 									expect(TDoubleDot);
-									final to = parseConditionalValue();
-									final fromF = resolveCondToFloat(from);
-									final toF = resolveCondToFloat(to);
-									result.set(paramName, CoRange(fromF, toF, false, false));
+									final to = parseAnything();
+									result.set(paramName, CoRange(from, to, false, false));
 								default:
 									// Could be a range: from..to
-									final val = parseConditionalValue();
+									final val = parseAnything();
 									// Check for range
 									if (match(TDoubleDot)) {
-										final to = parseConditionalValue();
-										final fromF = resolveCondToFloat(val);
-										final toF = resolveCondToFloat(to);
-										result.set(paramName, CoRange(fromF, toF, false, false));
+										final to = parseAnything();
+										result.set(paramName, CoRange(val, to, false, false));
 									} else {
+										final valStr = rvToCondString(val);
 										final paramDef = defs.get(paramName);
 										if (paramDef != null) {
-											final cv = stringToConditional(val, paramDef.type);
+											final cv = stringToConditional(valStr, paramDef.type);
 											result.set(paramName, cv);
 										} else {
-											final cv2 = stringToConditionalGeneric(val);
+											final cv2 = stringToConditionalGeneric(valStr);
 											result.set(paramName, cv2);
 										}
 									}
@@ -1960,18 +2085,14 @@ class MacroManimParser {
 		return if (n != null) CoValue(n) else CoStringValue(val);
 	}
 
-	function resolveToFloat(rv:ReferenceableValue):Null<Float> {
-		return switch (rv) {
-			case RVInteger(i): i;
-			case RVFloat(f): f;
-			default: 0;
+	/** Converts a simple ReferenceableValue back to a string for stringToConditional fallback. */
+	function rvToCondString(rv:ReferenceableValue):String {
+		return switch rv {
+			case RVInteger(i): Std.string(i);
+			case RVFloat(f): Std.string(f);
+			case RVString(s): s;
+			default: error('expected simple value for conditional, got ${rv}');
 		}
-	}
-
-	function resolveCondToFloat(s:String):Null<Float> {
-		final f = Std.parseFloat(s);
-		if (!Math.isNaN(f)) return f;
-		return 0;
 	}
 
 	// ===================== Blend Mode =====================
@@ -2261,8 +2382,47 @@ class MacroManimParser {
 				final replacements = parseColorsList(TBracketClosed);
 				expect(TClosed);
 				return FilterColorListReplace(sources, replacements);
+			case TIdentifier(s):
+				// Unknown identifier — treat as custom filter
+				final filterName = s.toLowerCase();
+				final filterPos = posString();
+				advance();
+				expect(TOpen);
+				var args:Array<CustomFilterArg> = [];
+				while (!match(TClosed)) {
+					if (args.length > 0) eatComma();
+					args.push(parseCustomFilterArg());
+				}
+				customFilterRefs.push({
+					name: filterName,
+					argCount: args.length,
+					argTypes: [for (a in args) a.type],
+					args: args,
+					pos: filterPos,
+				});
+				return FilterCustom(filterName, args);
 			default:
 				return error('unknown filter type: ${peek()}');
+		}
+	}
+
+	function parseCustomFilterArg():CustomFilterArg {
+		// Detect type from token: color (#hex), bool (true/false/yes/no), or float (everything else including $ref)
+		switch (peek()) {
+			case THexInteger(_) | TName(_):
+				// Try color first
+				final color = tryParseColor();
+				if (color != null) return {value: RVInteger(color), type: CFColor};
+				// Not a color — fall through to float
+				return {value: parseFloatOrReference(), type: CFFloat};
+			case TIdentifier(s) if (isKeyword(s, "true") || isKeyword(s, "yes")):
+				advance();
+				return {value: RVFloat(1.0), type: CFBool};
+			case TIdentifier(s) if (isKeyword(s, "false") || isKeyword(s, "no")):
+				advance();
+				return {value: RVFloat(0.0), type: CFBool};
+			default:
+				return {value: parseFloatOrReference(), type: CFFloat};
 		}
 	}
 
@@ -2290,15 +2450,6 @@ class MacroManimParser {
 				return isColon;
 			default: return false;
 		}
-	}
-
-	function parseNamedFloatParam(name:String, defaultVal:ReferenceableValue):ReferenceableValue {
-		// Try to parse named params in any order
-		return defaultVal; // Simplified - full impl would scan all named params
-	}
-
-	function parseNamedColorParam(name:String, defaultVal:ReferenceableValue):ReferenceableValue {
-		return defaultVal;
 	}
 
 	// ===================== Layout Content =====================
@@ -2607,11 +2758,17 @@ class MacroManimParser {
 			type: type,
 			children: [],
 			conditionals: conditional,
-			uniqueNodeName: generateUniqueName(uniqueCounter, nameStr, Std.string(type)),
+			// Use the short enum-constructor name for SWITCH (its arms carry full
+			// subtrees with parent back-pointers — Std.string recurses unbounded → AV).
+			// Other types keep full Std.string() form for backwards compatibility with
+			// consumers that rely on the detailed name (ProgrammableBuilder.buildNodeByUniqueName,
+			// findNodeByUniqueName for REPEAT-child runtime forwarding).
+			uniqueNodeName: generateUniqueName(uniqueCounter, nameStr,
+				switch type { case SWITCH(_, _): Type.enumConstructor(type); default: Std.string(type); }),
 			settings: null,
 			transitions: null,
 			flowProperties: null,
-			#if MULTIANIM_TRACE
+			#if MULTIANIM_DEV
 			parserPos: posString()
 			#end
 		};
@@ -2620,7 +2777,7 @@ class MacroManimParser {
 	@:nullSafety(Off)
 	function parseNode(updatableName:UpdatableNameType, parent:Null<Node>, currentDefs:ParametersDefinitions):Node {
 		// Reset reference validation scope for each root-level node
-		if (parent == null) { activeDefs = null; scopeVars = null; }
+		if (parent == null) { activeDefs = null; scopeVars = null; activeFinals = null; activeFinalNames = null; namedElements = null; namedCoordSystems = null; }
 		var layerIndex = -1;
 		var alpha:Null<ReferenceableValue> = null;
 		var scale:Null<ReferenceableValue> = null;
@@ -2634,22 +2791,35 @@ class MacroManimParser {
 		var flowIsAbsolute = false;
 		var hasFlowProps = false;
 
+		// Parameterized-slot scope save (set by the slot case, consumed after
+		// parseNodes() parses the slot body). See the slot case for rationale.
+		var slotScopeSaved = false;
+		var slotSavedCurrentDefs:ParametersDefinitions = null;
+		var slotSavedActiveDefs:Null<ParametersDefinitions> = null;
+		var slotSavedScopeVars:Null<Array<String>> = null;
+		var slotSavedActiveFinals:Null<Map<String, SettingValueType>> = null;
+		var slotSavedActiveFinalNames:Null<Array<String>> = null;
+		var slotSavedNamedElements:Null<Array<String>> = null;
+
 		// Parse @ prefix (conditionals, layer, alpha, scale, tint, flow properties)
 		if (match(TAt)) {
 			var atCount = 0;
 			while (true) {
 				switch (peek()) {
-					case TIdentifier(s) if (isKeyword(s, "if")):
+					case TIdentifier(s) if (isKeyword(s, "if") || isKeyword(s, "all")):
+						if (!conditional.match(NoConditional)) error("stacked conditionals are not allowed — use @all() or @any() with comma-separated parameters");
 						advance();
 						expect(TOpen);
 						conditional = Conditional(parseConditionalParameters(currentDefs), false);
 						atCount++;
-					case TIdentifier(s) if (isKeyword(s, "ifstrict")):
+					case TIdentifier(s) if (isKeyword(s, "any")):
+						if (!conditional.match(NoConditional)) error("stacked conditionals are not allowed — use @all() or @any() with comma-separated parameters");
 						advance();
 						expect(TOpen);
 						conditional = Conditional(parseConditionalParameters(currentDefs), true);
 						atCount++;
 					case TOpen:
+						if (!conditional.match(NoConditional)) error("stacked conditionals are not allowed — use @all() or @any() with comma-separated parameters");
 						advance();
 						conditional = Conditional(parseConditionalParameters(currentDefs), false);
 						atCount++;
@@ -2695,6 +2865,36 @@ class MacroManimParser {
 						advance();
 						conditional = ConditionalDefault;
 						atCount++;
+					case TIdentifier(s) if (isKeyword(s, "switch")):
+						if (atCount > 0) error("@switch cannot be combined with other @ modifiers");
+						if (parent == null) error("@switch cannot be used at root level");
+						advance();
+						expect(TOpen);
+						final switchParam = expectIdentifierOrString();
+						// @final constants have no runtime value slot — matchSingleCondition has
+						// no ExpressionAlias case and codegen's condMapToExpr emits a reference
+						// to a non-existent field. Reject at parse time with a clear message
+						// instead of the generic "does not have definition".
+						if (activeFinalNames != null && activeFinalNames.contains(switchParam))
+							error('@switch key "$switchParam" is a @final constant — @final cannot be used as a @switch key (no runtime value slot). Use a programmable parameter instead.');
+						final switchDef = currentDefs.get(switchParam);
+						if (switchDef == null)
+							error('@switch parameter "$switchParam" does not have definition');
+						switch (switchDef.type) {
+							case PPTFloat:
+								error('@switch parameter "$switchParam" has non-discrete type Float — @switch requires a discrete type (enum, int, string, color, bool, or range)');
+							case PPTTile:
+								error('@switch parameter "$switchParam" has type Tile which cannot be matched — @switch requires a discrete type');
+							case PPTFlags(_):
+								error('@switch parameter "$switchParam" has type Flags which is not supported by @switch — use @(param => bit[N]) instead');
+							case PPTArray:
+								error('@switch parameter "$switchParam" has type Array which cannot be matched — @switch requires a discrete type');
+							default:
+						}
+						expect(TClosed);
+						expect(TCurlyOpen);
+						parseSwitchArms(parent, switchParam, currentDefs);
+						return null;
 					case TIdentifier(s) if (isKeyword(s, "flow")):
 						advance();
 						expect(TDot);
@@ -2727,6 +2927,9 @@ class MacroManimParser {
 						expect(TEquals);
 						final expr = parseAnything();
 						if (scopeVars != null) scopeVars.push(name);
+						if (activeFinalNames != null) activeFinalNames.push(name);
+						final finalLiteralType = inferFinalLiteralType(expr);
+						if (finalLiteralType != null && activeFinals != null) activeFinals.set(name, finalLiteralType);
 						return createNode(FINAL_VAR(name, expr), parent, NoConditional, null, null, null, null, -1, UNTObject(name));
 					case TAt:
 						advance(); // allow @alpha(0.5) @scale(0.25) chaining
@@ -2744,6 +2947,8 @@ class MacroManimParser {
 				if (parent.children.length == 0) error("@else/@default requires a preceding sibling with a @() conditional");
 				switch (parent.children[parent.children.length - 1].conditionals) {
 					case NoConditional: error("@else/@default: previous sibling has no conditional");
+					case ConditionalElse(null) | ConditionalDefault:
+						error("@else/@default cannot follow a terminal @else or @default — the preceding arm is unconditional");
 					default:
 				}
 			default:
@@ -2791,7 +2996,7 @@ class MacroManimParser {
 										advance();
 										if (scopeVars == null || !scopeVars.contains(indexVar1))
 											error('#name[$$$indexVar1, $$$indexVar2]: index variable $$$indexVar1 is not a known loop variable in this scope');
-										if (!scopeVars.contains(indexVar2))
+										if (scopeVars == null || !scopeVars.contains(indexVar2))
 											error('#name[$$$indexVar1, $$$indexVar2]: index variable $$$indexVar2 is not a known loop variable in this scope');
 										expect(TBracketClosed);
 										updatableName = UNTIndexed2D(name, indexVar1, indexVar2);
@@ -2824,6 +3029,14 @@ class MacroManimParser {
 						}
 					default:
 				}
+			default:
+		}
+
+		// Track named elements for reference validation (e.g. $name.extraPoint())
+		switch (updatableName) {
+			case UNTObject(name) | UNTUpdatable(name) if (name != null):
+				if (namedElements != null && namedElements.indexOf(name) < 0)
+					namedElements.push(name);
 			default:
 		}
 
@@ -2877,6 +3090,8 @@ class MacroManimParser {
 				var dropShadowXY:Null<bh.base.FPoint> = null;
 				var dropShadowColor:Int = 0;
 				var dropShadowAlpha:Float = 0.5;
+				var autoFitFonts:Null<Array<ReferenceableValue>> = null;
+				var autoFitMode:Null<AutoFitMode> = null;
 				if (match(TComma)) {
 					halign = parseHAlign();
 					if (halign != null && match(TComma)) {
@@ -2905,6 +3120,10 @@ class MacroManimParser {
 							case "linebreak": lineBreak = parseBool();
 							case "styles", "images", "condensewhite":
 								error('text() does not support rich text features. Use richText() instead.');
+							case "autofit":
+								final af = parseAutoFit();
+								autoFitFonts = af.fonts;
+								autoFitMode = af.mode;
 							case "dropshadowxy":
 								final dx = parseFloat_();
 								expect(TComma);
@@ -2920,11 +3139,21 @@ class MacroManimParser {
 					} else break;
 				}
 
+				if (autoFitFonts != null) {
+					switch autoFitMode {
+						case AFWidth, AFFillWidth:
+							if (textAlignWidth == TAWAuto)
+								error("autoFit: width mode requires maxWidth to be set");
+						default:
+					}
+				}
+
 				final textDef:TextDef = {
 					fontName: fontname, text: text, color: color, halign: halign,
 					textAlignWidth: textAlignWidth, letterSpacing: letterSpacing, lineSpacing: lineSpacing,
 					lineBreak: lineBreak, dropShadowXY: dropShadowXY, dropShadowColor: dropShadowColor, dropShadowAlpha: dropShadowAlpha,
-					styles: null, images: null, condenseWhite: null, hasMarkup: false
+					styles: null, images: null, condenseWhite: null, hasMarkup: false,
+					autoFitFonts: autoFitFonts, autoFitMode: autoFitMode
 				};
 				createNode(TEXT(textDef), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 
@@ -2947,6 +3176,8 @@ class MacroManimParser {
 				var dropShadowXY:Null<bh.base.FPoint> = null;
 				var dropShadowColor:Int = 0;
 				var dropShadowAlpha:Float = 0.5;
+				var autoFitFonts:Null<Array<ReferenceableValue>> = null;
+				var autoFitMode:Null<AutoFitMode> = null;
 				if (match(TComma)) {
 					halign = parseHAlign();
 					if (halign != null && match(TComma)) {
@@ -2976,6 +3207,10 @@ class MacroManimParser {
 							case "styles": styles = parseTextStyles();
 							case "images": images = parseTextImages();
 							case "condensewhite": condenseWhite = parseBool();
+							case "autofit":
+								final af = parseAutoFit();
+								autoFitFonts = af.fonts;
+								autoFitMode = af.mode;
 							case "dropshadowxy":
 								final dx = parseFloat_();
 								expect(TComma);
@@ -2990,6 +3225,16 @@ class MacroManimParser {
 						}
 					} else break;
 				}
+
+				if (autoFitFonts != null) {
+					switch autoFitMode {
+						case AFWidth, AFFillWidth:
+							if (textAlignWidth == TAWAuto)
+								error("autoFit: width mode requires maxWidth to be set");
+						default:
+					}
+				}
+
 				// Auto-detect markup in literal text
 				var hasMarkup = false;
 				switch (text) {
@@ -3015,7 +3260,8 @@ class MacroManimParser {
 					fontName: fontname, text: text, color: color, halign: halign,
 					textAlignWidth: textAlignWidth, letterSpacing: letterSpacing, lineSpacing: lineSpacing,
 					lineBreak: lineBreak, dropShadowXY: dropShadowXY, dropShadowColor: dropShadowColor, dropShadowAlpha: dropShadowAlpha,
-					styles: styles, images: images, condenseWhite: condenseWhite, hasMarkup: hasMarkup
+					styles: styles, images: images, condenseWhite: condenseWhite, hasMarkup: hasMarkup,
+					autoFitFonts: autoFitFonts, autoFitMode: autoFitMode
 				};
 				createNode(RICHTEXT(richTextDef), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 
@@ -3057,9 +3303,27 @@ class MacroManimParser {
 					error("slot requires a #name prefix");
 				if (match(TOpen)) {
 					final parsed = parseDefines();
+					// Parameterized slots are an isolated scope: save the outer
+					// scope state (activeDefs/scopeVars/namedElements are parser
+					// instance fields, currentDefs is this function's local),
+					// install the slot's scope, then restore after parseNodes()
+					// consumes the body. Without this push/pop, the slot's param
+					// list replaces the outer scope and nothing following the
+					// slot inside the same block can see the enclosing
+					// programmable's params, repeatable loop vars, or @final vars.
+					slotSavedCurrentDefs = currentDefs;
+					slotSavedActiveDefs = activeDefs;
+					slotSavedScopeVars = scopeVars;
+					slotSavedActiveFinals = activeFinals;
+					slotSavedActiveFinalNames = activeFinalNames;
+					slotSavedNamedElements = namedElements;
+					slotScopeSaved = true;
 					currentDefs = parsed.defs;
 					activeDefs = parsed.defs;
 					scopeVars = [];
+					activeFinals = new Map();
+					activeFinalNames = [];
+					namedElements = [];
 					createNode(SLOT(parsed.defs, parsed.order), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 				} else {
 					createNode(SLOT(null, null), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
@@ -3200,6 +3464,9 @@ class MacroManimParser {
 				currentDefs = parsed.defs;
 				activeDefs = parsed.defs;
 				scopeVars = [];
+				activeFinals = new Map();
+				activeFinalNames = [];
+				namedElements = [];
 				createNode(PROGRAMMABLE(isTileGroup, parsed.defs, parsed.order), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 
 			case TIdentifier(s) if (isKeyword(s, "layouts")):
@@ -3234,7 +3501,7 @@ class MacroManimParser {
 						expect(TComma);
 					default:
 				}
-				final progRef = expectReferenceOrIdentifier();
+				final progRef = expectReferenceOrIdentifierAsRV();
 				var params:Map<String, ReferenceableValue> = new Map();
 				if (match(TComma)) {
 					params = parseReferenceParams();
@@ -3255,7 +3522,7 @@ class MacroManimParser {
 						expect(TComma);
 					default:
 				}
-				final progRef = expectReferenceOrIdentifier();
+				final progRef = expectReferenceOrIdentifierAsRV();
 				var params:Map<String, ReferenceableValue> = new Map();
 				if (match(TComma)) {
 					params = parseReferenceParams();
@@ -3309,6 +3576,28 @@ class MacroManimParser {
 				expect(TComma);
 				final repeatTypeY = parseRepeatIterator(currentDefs);
 				expect(TClosed);
+				validateLoopVarName(varNameX, currentDefs, "repeatable2d");
+				validateLoopVarName(varNameY, currentDefs, "repeatable2d");
+				if (varNameX == varNameY)
+					error('repeatable2d loop variables must be distinct, got $$' + varNameX + ' twice');
+				final iterVarsX = iteratorOutputVars(repeatTypeX);
+				final iterVarsY = iteratorOutputVars(repeatTypeY);
+				for (v in iterVarsX) {
+					validateLoopVarName(v, currentDefs, "repeatable2d iterator");
+					if (v == varNameX || v == varNameY)
+						error('repeatable2d iterator output $$' + v + ' collides with loop variable $$' + v);
+				}
+				for (v in iterVarsY) {
+					validateLoopVarName(v, currentDefs, "repeatable2d iterator");
+					if (v == varNameX || v == varNameY)
+						error('repeatable2d iterator output $$' + v + ' collides with loop variable $$' + v);
+					if (iterVarsX.indexOf(v) >= 0)
+						error('repeatable2d iterator outputs collide on $$' + v);
+				}
+				if (iterVarsX.length == 2 && iterVarsX[0] == iterVarsX[1])
+					error('repeatable2d X iterator outputs collide on $$' + iterVarsX[0]);
+				if (iterVarsY.length == 2 && iterVarsY[0] == iterVarsY[1])
+					error('repeatable2d Y iterator outputs collide on $$' + iterVarsY[0]);
 				createNode(REPEAT2D(varNameX, varNameY, repeatTypeX, repeatTypeY), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 
 			case TIdentifier(s) if (isKeyword(s, "repeatable")):
@@ -3318,6 +3607,15 @@ class MacroManimParser {
 				expect(TComma);
 				final repeatType = parseRepeatIterator(currentDefs);
 				expect(TClosed);
+				validateLoopVarName(varName, currentDefs, "repeatable");
+				final iterVars = iteratorOutputVars(repeatType);
+				for (v in iterVars) {
+					validateLoopVarName(v, currentDefs, "repeatable iterator");
+					if (v == varName)
+						error('repeatable iterator output $$' + v + ' collides with loop variable $$' + varName);
+				}
+				if (iterVars.length == 2 && iterVars[0] == iterVars[1])
+					error('repeatable iterator outputs collide on $$' + iterVars[0]);
 				createNode(REPEAT(varName, repeatType), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 
 			case TIdentifier(s) if (isKeyword(s, "stateanim")):
@@ -3520,7 +3818,7 @@ class MacroManimParser {
 							while (p != null) {
 								switch (p.type) {
 									case FLOW(_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _):
-										#if MULTIANIM_TRACE
+										#if MULTIANIM_DEV
 										trace('Warning: $sourceName: slide() transition inside flow() may not work as expected — flow recalculates child positions each frame');
 										#end
 										break;
@@ -3563,6 +3861,13 @@ class MacroManimParser {
 					eatComma();
 				}
 				return null;
+
+			case TCurlyOpen if (!conditional.match(NoConditional)):
+				// Conditional block: @(cond) { ... }, @else { ... }, @default { ... }
+				advance();
+				final wrapper = createNode(POINT, parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
+				parseNodes(wrapper, currentDefs);
+				return wrapper;
 
 			default:
 				error('expected valid node type, got ${peek()}');
@@ -3610,6 +3915,15 @@ class MacroManimParser {
 				}
 				parseNodes(node, currentDefs);
 				for (_ in 0...loopVarsToPop) scopeVars.pop();
+				if (slotScopeSaved) {
+					currentDefs = slotSavedCurrentDefs;
+					activeDefs = slotSavedActiveDefs;
+					scopeVars = slotSavedScopeVars;
+					activeFinals = slotSavedActiveFinals;
+					activeFinalNames = slotSavedActiveFinalNames;
+					namedElements = slotSavedNamedElements;
+					slotScopeSaved = false;
+				}
 			case TEof:
 				error("unexpected end of file");
 			default:
@@ -3646,9 +3960,9 @@ class MacroManimParser {
 			case TIdentifier(s) if (isKeyword(s, "layout")):
 				advance();
 				expect(TOpen);
-				final layoutGroup = expectIdentifierOrString();
-				expect(TComma);
 				final layoutName = expectIdentifierOrString();
+				if (match(TComma))
+					error('layout iterator takes a single argument: layout("$layoutName"). The two-argument form is no longer supported');
 				expect(TClosed);
 				return LayoutIterator(layoutName);
 			case TIdentifier(s) if (isKeyword(s, "array")):
@@ -3724,7 +4038,7 @@ class MacroManimParser {
 				expect(TComma);
 				return parseTilesIteratorArgs(bitmapVar, defs);
 			default:
-				return error("expected iterator type: grid, layout, array, range, stateanim, tiles");
+				return error("expected iterator type: step, layout, array, range, stateanim, tiles");
 		}
 	}
 
@@ -3762,7 +4076,7 @@ class MacroManimParser {
 
 	function parseParticles():ParticlesDef {
 		var p:ParticlesDef = {
-			count: null, loop: null, relative: null, emitDelay: null, emitSync: null,
+			count: null, loop: null, relative: null, externallyDriven: null, emitDelay: null, emitSync: null,
 			maxLife: null, lifeRandom: null, size: null, sizeRandom: null, blendMode: null,
 			speed: null, speedRandom: null, speedIncrease: null, gravity: null, gravityAngle: null,
 			fadeIn: null, fadeOut: null, fadePower: null, tiles: [], emit: Point(RVFloat(0), RVFloat(0)),
@@ -3772,7 +4086,8 @@ class MacroManimParser {
 			boundsMode: null, boundsMinX: null, boundsMaxX: null, boundsMinY: null, boundsMaxY: null, boundsLines: null,
 			subEmitters: null, animationRepeat: null,
 			attachTo: null, spawnCurve: null,
-			animFile: null, animSelector: null, animStates: null, animEventOverrides: null
+			animFile: null, animSelector: null, animStates: null, animEventOverrides: null,
+			shutdown: null
 		};
 		while (!match(TCurlyClosed)) {
 			// Check for rate-based actions: 0.0: colorCurve: ...
@@ -3797,6 +4112,7 @@ class MacroManimParser {
 				case "count": p.count = parseIntegerOrReference();
 				case "loop": p.loop = parseBool();
 				case "relative": p.relative = parseBool();
+				case "externallydriven": p.externallyDriven = parseBool();
 				case "maxlife": p.maxLife = parseFloatOrReference();
 				case "liferandom" | "liferand": p.lifeRandom = parseFloatOrReference();
 				case "size": p.size = parseFloatOrReference();
@@ -3864,6 +4180,8 @@ class MacroManimParser {
 					parseBoundsCombined(p);
 				case "subemitters":
 					p.subEmitters = parseSubEmitters();
+				case "shutdown":
+					p.shutdown = parseParticleShutdown();
 				default:
 					// Skip unknown params
 					parseStringOrReference();
@@ -3871,6 +4189,33 @@ class MacroManimParser {
 			eatSemicolon();
 		}
 		return p;
+	}
+
+	function parseParticleShutdown():ParticleShutdownDef {
+		var sd:ParticleShutdownDef = {
+			duration: null, curve: null, alphaCurve: null, sizeCurve: null, speedCurve: null
+		};
+		expect(TCurlyOpen);
+		while (!match(TCurlyClosed)) {
+			if (!isNamedParamNext()) {
+				if (!match(TComma) && !match(TSemiColon)) {
+					error('unexpected token in shutdown block: ${peek()}');
+				}
+				continue;
+			}
+			final name = expectIdentifierOrString();
+			expect(TColon);
+			switch (name.toLowerCase()) {
+				case "duration": sd.duration = parseFloatOrReference();
+				case "curve": sd.curve = parseCurveNameOrEasing();
+				case "alphacurve": sd.alphaCurve = parseCurveNameOrEasing();
+				case "sizecurve": sd.sizeCurve = parseCurveNameOrEasing();
+				case "speedcurve": sd.speedCurve = parseCurveNameOrEasing();
+				default: error('unknown shutdown property: $name');
+			}
+			eatSemicolon();
+		}
+		return sd;
 	}
 
 	function parseParticleRateAction(atRate:ReferenceableValue, p:ParticlesDef):Void {
@@ -3978,6 +4323,57 @@ class MacroManimParser {
 		return images;
 	}
 
+	// autoFit: width [dd_small, dd_tiny]
+	// autoFit: box(200, 60) [dd_small, dd_tiny]
+	// autoFit: fill [dd_large, dd, dd_small]
+	// autoFit: fill box(200, 80) [dd_large, dd, dd_small]
+	function parseAutoFit():{fonts:Array<ReferenceableValue>, mode:AutoFitMode} {
+		var fill = false;
+		var mode:AutoFitMode = AFWidth;
+
+		// Parse mode keywords: fill, width, box(w, h)
+		switch (peek()) {
+			case TIdentifier(s) if (isKeyword(s, "fill")):
+				advance();
+				fill = true;
+			default:
+		}
+
+		switch (peek()) {
+			case TIdentifier(s) if (isKeyword(s, "width")):
+				advance();
+				mode = if (fill) AFFillWidth else AFWidth;
+			case TIdentifier(s) if (isKeyword(s, "box")):
+				advance();
+				expect(TOpen);
+				final w = parseIntegerOrReference();
+				expect(TComma);
+				final h = parseIntegerOrReference();
+				expect(TClosed);
+				mode = if (fill) AFFillBox(w, h) else AFBox(w, h);
+			default:
+				if (fill) {
+					mode = AFFillWidth;
+				} else {
+					error('autoFit: expected "width", "box(w, h)", or "fill"');
+				}
+		}
+
+		// Parse font list: [font1, font2, ...]
+		expect(TBracketOpen);
+		var fonts:Array<ReferenceableValue> = [];
+		while (!match(TBracketClosed)) {
+			if (fonts.length > 0) {
+				eatComma();
+				if (match(TBracketClosed)) break;
+			}
+			fonts.push(parseStringOrReference());
+		}
+		if (fonts.length == 0) error("autoFit: font list must not be empty");
+
+		return {fonts: fonts, mode: mode};
+	}
+
 	// colorStops: 0.0 #FF0000, 0.5 #00FF00 easeInQuad, 1.0 #0000FF
 	function parseColorStops():Array<ParticleColorStop> {
 		var stops:Array<ParticleColorStop> = [];
@@ -4011,7 +4407,7 @@ class MacroManimParser {
 		var tiles:Array<TileSource> = [];
 		while (true) {
 			switch (peek()) {
-				case TIdentifier(s) if (isKeyword(s, "file") || isKeyword(s, "generated") || isKeyword(s, "sheet")):
+				case TIdentifier(s) if (isKeyword(s, "file") || isKeyword(s, "generated") || isKeyword(s, "sheet") || isKeyword(s, "center") || isKeyword(s, "pivot")):
 					tiles.push(parseTileSource());
 				case TReference(_):
 					tiles.push(parseTileSource());
@@ -4427,6 +4823,7 @@ class MacroManimParser {
 			case TColon:
 				advance();
 				final tv = parseTypedSettingValue();
+				validateTypedMetadataRef(key, tv.type, tv.value);
 				return {key: key, type: tv.type, value: tv.value};
 			case TArrow:
 				advance();
@@ -4435,6 +4832,141 @@ class MacroManimParser {
 			default:
 				return error("expected :type=> or => after metadata key");
 		}
+	}
+
+	// Rejects typed metadata `key:type => $param` when the param's declared type cannot be
+	// represented as the metadata type without a coercion that would diverge between the
+	// runtime builder (lenient resolveAs*()) and the macro codegen (strict RSV<Type>(_field)).
+	// Also validates `@final` refs when the @final's RHS is a direct literal (SettingValueType
+	// inferred at parse time via inferFinalLiteralType). Skipped for loop vars, $ctx, and
+	// @finals with non-literal RHS (inferred type unknown → no check, matches prior behavior).
+	function validateTypedMetadataRef(key:ReferenceableValue, metaType:SettingValueType, value:ReferenceableValue):Void {
+		switch (value) {
+			case RVReference(name):
+				if (activeDefs == null) return; // outside programmable scope — skip
+				final keyName = switch (key) {
+					case RVString(s): s;
+					case RVReference(r): "$" + r;
+					default: Std.string(key);
+				};
+				if (activeDefs.exists(name)) {
+					final def = activeDefs.get(name);
+					if (def == null) return;
+					if (isMetaTypeCompatibleWithParam(metaType, def.type)) return;
+					final metaName = settingValueTypeName(metaType);
+					final paramName = definitionTypeName(def.type);
+					error('metadata "$keyName" declared as :$metaName cannot reference param "$name" of type :$paramName — '
+						+ 'runtime and codegen resolve this incompatibly. Use an untyped "$keyName => $$$name" or match the param type.');
+				}
+				if (activeFinals != null) {
+					final finalType = activeFinals.get(name);
+					if (finalType != null) {
+						if (isMetaTypeCompatibleWithFinalType(metaType, finalType)) return;
+						final metaName = settingValueTypeName(metaType);
+						final finalName = settingValueTypeName(finalType);
+						error('metadata "$keyName" declared as :$metaName cannot reference @final "$name" of type :$finalName — '
+							+ 'runtime and codegen resolve this incompatibly. Use an untyped "$keyName => $$$name" or match the @final literal type.');
+					}
+				}
+				// loop var / non-literal @final / $ctx — unchecked (type unknown at parse time)
+			default:
+		}
+	}
+
+	// Infer a SettingValueType from a literal RHS of `@final NAME = <expr>`. Returns null
+	// when the expression is not a direct literal (binops, refs, ternaries, etc.) — those
+	// remain unchecked, as today.
+	static function inferFinalLiteralType(expr:ReferenceableValue):Null<SettingValueType> {
+		return switch (expr) {
+			case RVInteger(_): SVTInt;
+			case RVFloat(_): SVTFloat;
+			case RVString(s) if (s.toLowerCase() == "true" || s.toLowerCase() == "false"): SVTBool;
+			case RVString(_): SVTString;
+			default: null;
+		};
+	}
+
+	// Mirrors isMetaTypeCompatibleWithParam for @final literals. SettingValueType vs
+	// SettingValueType — SVTColor never appears here (color literals parse as RVInteger
+	// → SVTInt), so its arm is omitted but the matrix structure matches the param one.
+	static function isMetaTypeCompatibleWithFinalType(metaType:SettingValueType, finalType:SettingValueType):Bool {
+		return switch (metaType) {
+			case SVTInt | SVTColor:
+				switch (finalType) {
+					case SVTInt | SVTColor | SVTBool: true;
+					default: false;
+				}
+			case SVTFloat:
+				switch (finalType) {
+					case SVTInt | SVTFloat | SVTColor | SVTBool: true;
+					default: false;
+				}
+			case SVTBool:
+				switch (finalType) {
+					case SVTBool | SVTInt | SVTColor: true;
+					default: false;
+				}
+			case SVTString: true; // any literal stringifies cleanly
+		};
+	}
+
+	static function isMetaTypeCompatibleWithParam(metaType:SettingValueType, paramType:DefinitionType):Bool {
+		return switch (metaType) {
+			case SVTInt | SVTColor:
+				switch (paramType) {
+					case PPTInt | PPTUnsignedInt | PPTRange(_, _) | PPTColor | PPTBool
+						| PPTHexDirection | PPTGridDirection: true;
+					default: false;
+				}
+			case SVTFloat:
+				switch (paramType) {
+					case PPTFloat | PPTInt | PPTUnsignedInt | PPTRange(_, _) | PPTColor | PPTBool
+						| PPTHexDirection | PPTGridDirection: true;
+					default: false;
+				}
+			case SVTBool:
+				switch (paramType) {
+					case PPTBool | PPTInt | PPTUnsignedInt | PPTRange(_, _)
+						| PPTHexDirection | PPTGridDirection: true;
+					default: false;
+				}
+			case SVTString:
+				// Anything that runtime's resolveAsString can stringify without hitting its
+				// `default: throw` branch. Excludes PPTFlags (Flag storage), PPTArray
+				// (ArrayString storage), PPTTile (TileSourceValue storage).
+				switch (paramType) {
+					case PPTFlags(_) | PPTArray | PPTTile: false;
+					default: true;
+				}
+		};
+	}
+
+	static function settingValueTypeName(t:SettingValueType):String {
+		return switch (t) {
+			case SVTInt: "int";
+			case SVTFloat: "float";
+			case SVTString: "string";
+			case SVTColor: "color";
+			case SVTBool: "bool";
+		};
+	}
+
+	static function definitionTypeName(t:DefinitionType):String {
+		return switch (t) {
+			case PPTInt: "int";
+			case PPTUnsignedInt: "uint";
+			case PPTFloat: "float";
+			case PPTString: "string";
+			case PPTColor: "color";
+			case PPTBool: "bool";
+			case PPTEnum(_): "enum";
+			case PPTRange(_, _): "range";
+			case PPTFlags(_): "flags";
+			case PPTArray: "array";
+			case PPTTile: "tile";
+			case PPTHexDirection: "hexDirection";
+			case PPTGridDirection: "gridDirection";
+		};
 	}
 
 	// ===================== Flow Orientation =====================
@@ -4655,7 +5187,7 @@ class MacroManimParser {
 											advance();
 											if (scopeVars == null || !scopeVars.contains(indexVar1))
 												error('#name[$$$indexVar1, $$$indexVar2]: index variable $$$indexVar1 is not a known loop variable in this scope');
-											if (!scopeVars.contains(indexVar2))
+											if (scopeVars == null || !scopeVars.contains(indexVar2))
 												error('#name[$$$indexVar1, $$$indexVar2]: index variable $$$indexVar2 is not a known loop variable in this scope');
 											expect(TBracketClosed);
 											nameType = UNTIndexed2D(name, indexVar1, indexVar2);
@@ -4716,6 +5248,147 @@ class MacroManimParser {
 	}
 
 	@:nullSafety(Off)
+	function parseSwitchArms(parent:Node, paramName:String, defs:ParametersDefinitions):Void {
+		final arms:Array<SwitchArm> = [];
+		final paramType = defs.get(paramName).type;
+		final isNumericParam = switch paramType {
+			case PPTInt | PPTUnsignedInt | PPTRange(_, _): true;
+			default: false;
+		};
+		var hasDefault = false;
+		while (!match(TCurlyClosed)) {
+			// Skip stray semicolons
+			if (match(TSemiColon)) continue;
+
+			// Parse arm pattern
+			var pattern:Null<ConditionalValues> = null; // null = default
+
+			switch (peek()) {
+				case TIdentifier(s) if (isKeyword(s, "default")):
+					if (hasDefault) error("@switch has multiple default arms");
+					hasDefault = true;
+					advance();
+					// pattern stays null = default
+				case TLessEquals:
+					if (!isNumericParam) error('@switch range arm (<=) requires a numeric parameter; "$paramName" is not numeric');
+					advance();
+					final val = parseIntegerOrReference();
+					pattern = CoRange(null, val, false, false);
+				case TGreaterEquals:
+					if (!isNumericParam) error('@switch range arm (>=) requires a numeric parameter; "$paramName" is not numeric');
+					advance();
+					final val = parseIntegerOrReference();
+					pattern = CoRange(val, null, false, false);
+				case TLessThan:
+					if (!isNumericParam) error('@switch range arm (<) requires a numeric parameter; "$paramName" is not numeric');
+					advance();
+					final val = parseIntegerOrReference();
+					pattern = CoRange(null, val, false, true);
+				case TGreaterThan:
+					if (!isNumericParam) error('@switch range arm (>) requires a numeric parameter; "$paramName" is not numeric');
+					advance();
+					final val = parseIntegerOrReference();
+					pattern = CoRange(val, null, true, false);
+				default:
+					// Parse value(s): value1 | value2 | ...  or range: from..to
+					final values:Array<String> = [];
+					values.push(parseSwitchArmValue());
+					// Check for range: value..value
+					if (match(TDoubleDot)) {
+						if (!isNumericParam) error('@switch range arm (..) requires a numeric parameter; "$paramName" is not numeric');
+						final toStr = parseSwitchArmValue();
+						pattern = CoRange(parseRV(values[0]), parseRV(toStr), false, false);
+					} else if (Type.enumEq(peek(), TPipe)) {
+						// Pipe-separated values: value1 | value2 | value3
+						while (match(TPipe)) {
+							values.push(parseSwitchArmValue());
+						}
+						// PPTEnum / PPTString match correctly via raw-string CoEnums (Index/StringValue
+						// runtime parameters compare to the lexeme as-is). For other discrete types
+						// (color, int, uint, bool), the raw lexeme never matches Std.string(int), so we
+						// route each value through stringToConditional to get a typed inner conditional
+						// and OR them at match/codegen time via CoAnyOf.
+						switch (paramType) {
+							case PPTEnum(_) | PPTString:
+								pattern = CoEnums(values);
+							default:
+								final inner:Array<ConditionalValues> = [];
+								for (v in values) inner.push(stringToConditional(v, paramType));
+								pattern = CoAnyOf(inner);
+						}
+					} else {
+						// Single value — route through stringToConditional for type-aware matching.
+						// This makes @switch on PPTColor/PPTBool/PPTEnum produce the same conditional
+						// as @(p => value), instead of a string-only CoEnums that fails to match
+						// integer-backed values (color, bool).
+						pattern = stringToConditional(values[0], paramType);
+					}
+			}
+
+			// Parse arm body: either ':' for single element, or '{' for block
+			// Collect children into a temporary container
+			final tempContainer = createNode(POINT, parent, NoConditional, null, null, null, null, -1, UNTObject(null));
+			switch (peek()) {
+				case TColon:
+					advance();
+					final armNode = parseNode(UNTObject(null), tempContainer, defs);
+					if (armNode != null) tempContainer.children.push(armNode);
+				case TCurlyOpen:
+					advance();
+					parseNodes(tempContainer, defs);
+				default:
+					error('expected : or { after switch arm pattern');
+			}
+			arms.push({pattern: pattern, children: tempContainer.children});
+		}
+		if (arms.length == 0) error("@switch requires at least one arm");
+		final switchNode = createNode(SWITCH(paramName, arms), parent, NoConditional, null, null, null, null, -1, UNTObject(null));
+		parent.children.push(switchNode);
+	}
+
+	function parseSwitchArmValue():String {
+		switch (peek()) {
+			case TIdentifier(s):
+				advance();
+				return s;
+			case TInteger(n):
+				advance();
+				return n;
+			case TQuotedString(s):
+				advance();
+				return s;
+			case THexInteger(n):
+				// Hex literal (e.g. 0xFF0000) — normalize for stringToConditional color parser
+				advance();
+				return '0x$n';
+			case TName(s):
+				// #RGB / #RRGGBB / #RRGGBBAA color literal
+				advance();
+				return '#$s';
+			case TMinus:
+				advance();
+				switch (peek()) {
+					case TInteger(n):
+						advance();
+						return '-$n';
+					default:
+						error("expected integer after -");
+						return "";
+				}
+			default:
+				error('expected value in switch arm, got ${peek()}');
+				return "";
+		}
+	}
+
+	function parseRV(s:String):ReferenceableValue {
+		final i = Std.parseInt(s);
+		if (i != null) return RVInteger(i);
+		error('expected integer in range, got "$s"');
+		return RVInteger(0);
+	}
+
+	@:nullSafety(Off)
 	function parseChildNode(node:Null<Node>, defs:ParametersDefinitions):Void {
 		final newNode = parseNode(UNTObject(null), node, defs);
 		if (newNode != null) {
@@ -4734,27 +5407,6 @@ class MacroManimParser {
 	function addNode(name:String, node:Node):Void {
 		if (nodes.exists(name)) error('duplicate node #$name');
 		nodes.set(name, node);
-	}
-
-	function tryParseIntValue():Null<Int> {
-		switch (peek()) {
-			case TInteger(n):
-				advance();
-				return stringToInt(n);
-			case TMinus:
-				final saved = tpos;
-				advance();
-				switch (peek()) {
-					case TInteger(n):
-						advance();
-						return -stringToInt(n);
-					default:
-						tpos = saved;
-						return null;
-				}
-			default:
-				return null;
-		}
 	}
 
 	// ===================== Main Entry Points =====================
@@ -4789,7 +5441,7 @@ class MacroManimParser {
 				error('unexpected content after main body: ${peek()}');
 		}
 
-		return {nodes: nodes, imports: imports};
+		return {nodes: nodes, imports: imports, customFilterRefs: customFilterRefs};
 	}
 
 	// ===================== Graphics =====================
@@ -5879,6 +6531,7 @@ class MacroManimParser {
 	// ===================== Data =====================
 
 	function parseData():DataDef {
+		var enums:Map<String, DataEnumDef> = new Map();
 		var records:Map<String, DataRecordDef> = new Map();
 		var fields:Array<DataFieldDef> = [];
 
@@ -5888,51 +6541,81 @@ class MacroManimParser {
 
 			switch (peek()) {
 				case TName(name):
-					// #name record(...) — record type definition
 					advance();
-					expectKeyword("record");
-					expect(TOpen);
-					final recordFields = parseDataRecordFields();
-					if (records.exists(name)) error('record type "$name" already defined');
-					records.set(name, {name: name, fields: recordFields});
+					// Peek next keyword to dispatch between record and enum
+					switch (peek()) {
+						case TIdentifier(s) if (isKeyword(s, "record")):
+							// #name record(...) — record type definition
+							advance();
+							expect(TOpen);
+							final recordFields = parseDataRecordFields(enums, records);
+							if (records.exists(name)) error('record type "$name" already defined');
+							if (enums.exists(name)) error('"$name" is already defined as an enum');
+							records.set(name, {name: name, fields: recordFields});
+						case TIdentifier(s) if (isKeyword(s, "enum")):
+							// #name enum(...) — enum type definition
+							advance();
+							expect(TOpen);
+							final enumValues = parseDataEnumValues();
+							if (enums.exists(name)) error('enum type "$name" already defined');
+							if (records.exists(name)) error('"$name" is already defined as a record');
+							enums.set(name, {name: name, values: enumValues});
+						default:
+							error('expected "record" or "enum" after #$name');
+					}
 
 				default:
 					// Regular field: name: [type] value
 					final fieldName = expectIdentifierOrString();
 					expect(TColon);
-					final field = parseDataField(fieldName, records);
+					final field = parseDataField(fieldName, enums, records);
 					fields.push(field);
 			}
 			eatSemicolon();
 		}
 
-		return {records: records, fields: fields};
+		return {enums: enums, records: records, fields: fields};
 	}
 
-	function parseDataRecordFields():Array<{name:String, type:DataValueType, optional:Bool}> {
+	function parseDataEnumValues():Array<String> {
+		var result:Array<String> = [];
+		if (match(TClosed)) return result;
+		while (true) {
+			final value = expectIdentifierOrString();
+			if (result.contains(value)) error('duplicate enum value "$value"');
+			result.push(value);
+			if (match(TClosed)) return result;
+			expect(TComma);
+		}
+	}
+
+	function parseDataRecordFields(enums:Map<String, DataEnumDef>, records:Map<String, DataRecordDef>):Array<{name:String, type:DataValueType, optional:Bool}> {
 		var result:Array<{name:String, type:DataValueType, optional:Bool}> = [];
 		if (match(TClosed)) return result;
 		while (true) {
 			final isOptional = match(TQuestion);
 			final fieldName = expectIdentifierOrString();
 			expect(TColon);
-			final fieldType = parseDataType();
+			final fieldType = parseDataType(enums, records);
 			result.push({name: fieldName, type: fieldType, optional: isOptional});
 			if (match(TClosed)) return result;
 			expect(TComma);
 		}
 	}
 
-	/** Parse a type keyword: int, float, string, bool, or a record name.
+	/** Parse a type keyword: int, float, string, bool, enum name, or a record name.
 	 *  If followed by [], it becomes an array type. */
-	function parseDataType():DataValueType {
+	function parseDataType(enums:Map<String, DataEnumDef>, records:Map<String, DataRecordDef>):DataValueType {
 		final typeName = expectIdentifierOrString();
 		var baseType:DataValueType = switch (typeName.toLowerCase()) {
 			case "int": DVTInt;
 			case "float": DVTFloat;
 			case "string": DVTString;
 			case "bool": DVTBool;
-			default: DVTRecord(typeName);
+			default:
+				if (enums.exists(typeName)) DVTEnum(typeName)
+				else if (records.exists(typeName)) DVTRecord(typeName)
+				else error('unknown type "$typeName" (if this is an enum or record, it must be defined before use)');
 		};
 		// Check for [] suffix making it an array type
 		if (match(TBracketOpen)) {
@@ -5942,14 +6625,32 @@ class MacroManimParser {
 		return baseType;
 	}
 
-	/** Parse a data field value, inferring type from value or using explicit type prefix for records. */
-	function parseDataField(fieldName:String, records:Map<String, DataRecordDef>):DataFieldDef {
-		// Check if next token is an identifier that could be a type prefix (record name)
+	/** Parse a data field value, inferring type from value or using explicit type prefix for records/enums. */
+	function parseDataField(fieldName:String, enums:Map<String, DataEnumDef>, records:Map<String, DataRecordDef>):DataFieldDef {
+		// Check if next token is an identifier that could be a type prefix (record/enum name)
 		switch (peek()) {
 			case TIdentifier(s) if (isKeyword(s, "true") || isKeyword(s, "false")):
 				// Bool value
 				final boolVal = parseBool();
 				return {name: fieldName, type: DVTBool, value: DVBool(boolVal)};
+
+			case TIdentifier(s) if (enums.exists(s)):
+				// Enum type prefix: enumName value or enumName[] [...]
+				advance();
+				switch (peek()) {
+					case TBracketOpen:
+						// enumName[] [ ... ]
+						advance();
+						expect(TBracketClosed);
+						expect(TBracketOpen);
+						final elements = parseDataArrayElements(DVTEnum(s), enums, records);
+						return {name: fieldName, type: DVTArray(DVTEnum(s)), value: DVArray(elements)};
+					default:
+						// enumName value
+						final valueStr = expectIdentifierOrString();
+						validateEnumValue(s, valueStr, enums);
+						return {name: fieldName, type: DVTEnum(s), value: DVEnumValue(s, valueStr)};
+				}
 
 			case TIdentifier(s):
 				// Could be: recordName { ... } or recordName[] [ ... ]
@@ -5961,14 +6662,14 @@ class MacroManimParser {
 						advance();
 						final recordDef = records.get(s);
 						if (recordDef == null) { error('unknown record type "$s"'); return cast null; }
-						final recordValue = parseDataRecordValue(s, recordDef, records);
+						final recordValue = parseDataRecordValue(s, recordDef, enums, records);
 						return {name: fieldName, type: DVTRecord(s), value: recordValue};
 					case TBracketOpen:
 						// recordName[] [ ... ]
 						advance();
 						expect(TBracketClosed);
 						expect(TBracketOpen);
-						final elements = parseDataArrayElements(DVTRecord(s), records);
+						final elements = parseDataArrayElements(DVTRecord(s), enums, records);
 						return {name: fieldName, type: DVTArray(DVTRecord(s)), value: DVArray(elements)};
 					default:
 						// Not a type prefix, restore position
@@ -6012,7 +6713,8 @@ class MacroManimParser {
 		}
 	}
 
-	function parseDataRecordValue(recordName:String, recordDef:DataRecordDef, records:Map<String, DataRecordDef>):DataValue {
+	function parseDataRecordValue(recordName:String, recordDef:DataRecordDef, enums:Map<String, DataEnumDef>,
+			records:Map<String, DataRecordDef>):DataValue {
 		var fieldValues:Map<String, DataValue> = new Map();
 		while (!match(TCurlyClosed)) {
 			eatComma();
@@ -6028,7 +6730,7 @@ class MacroManimParser {
 				}
 			}
 			if (expectedType == null) { error('unknown field "$name" in record "$recordName"'); return DVInt(0); }
-			final value = parseDataValueOfType(expectedType, records);
+			final value = parseDataValueOfType(expectedType, enums, records);
 			if (fieldValues.exists(name)) error('duplicate field "$name" in record');
 			fieldValues.set(name, value);
 		}
@@ -6040,7 +6742,7 @@ class MacroManimParser {
 		return DVRecord(recordName, fieldValues);
 	}
 
-	function parseDataValueOfType(type:DataValueType, records:Map<String, DataRecordDef>):DataValue {
+	function parseDataValueOfType(type:DataValueType, enums:Map<String, DataEnumDef>, records:Map<String, DataRecordDef>):DataValue {
 		return switch (type) {
 			case DVTInt: DVInt(parseInteger());
 			case DVTFloat: DVFloat(parseFloat_());
@@ -6050,25 +6752,37 @@ class MacroManimParser {
 					default: error('expected string value'); DVString("");
 				}
 			case DVTBool: DVBool(parseBool());
+			case DVTEnum(enumName):
+				final valueStr = expectIdentifierOrString();
+				validateEnumValue(enumName, valueStr, enums);
+				DVEnumValue(enumName, valueStr);
 			case DVTRecord(recordName):
 				expect(TCurlyOpen);
 				final recordDef = records.get(recordName);
 				if (recordDef == null) { error('unknown record type "$recordName"'); return DVInt(0); }
-				parseDataRecordValue(recordName, recordDef, records);
+				parseDataRecordValue(recordName, recordDef, enums, records);
 			case DVTArray(elemType):
 				expect(TBracketOpen);
-				DVArray(parseDataArrayElements(elemType, records));
+				DVArray(parseDataArrayElements(elemType, enums, records));
 		};
 	}
 
-	function parseDataArrayElements(elemType:DataValueType, records:Map<String, DataRecordDef>):Array<DataValue> {
+	function parseDataArrayElements(elemType:DataValueType, enums:Map<String, DataEnumDef>,
+			records:Map<String, DataRecordDef>):Array<DataValue> {
 		var result:Array<DataValue> = [];
 		while (!match(TBracketClosed)) {
 			eatComma();
 			if (match(TBracketClosed)) break;
-			result.push(parseDataValueOfType(elemType, records));
+			result.push(parseDataValueOfType(elemType, enums, records));
 		}
 		return result;
+	}
+
+	function validateEnumValue(enumName:String, value:String, enums:Map<String, DataEnumDef>):Void {
+		final def = enums.get(enumName);
+		if (def == null) { error('unknown enum type "$enumName"'); return; }
+		if (!def.values.contains(value))
+			error('invalid value "$value" for enum "$enumName", expected one of: ${def.values.join(", ")}');
 	}
 
 	function parseDataArrayInferred(records:Map<String, DataRecordDef>):Array<DataValue> {
@@ -6113,6 +6827,7 @@ class MacroManimParser {
 			case DVFloat(_): DVTFloat;
 			case DVString(_): DVTString;
 			case DVBool(_): DVTBool;
+			case DVEnumValue(enumName, _): DVTEnum(enumName);
 			case DVRecord(name, _): DVTRecord(name);
 			case DVArray(elements): DVTArray(if (elements.length > 0) inferDataValueType(elements[0]) else DVTInt);
 		};
@@ -6120,7 +6835,7 @@ class MacroManimParser {
 
 	// ===================== Optional Params (for filters) =====================
 
-	function parseOptionalParams(defs:Array<OptionalParametersParsing>, ?once:Bool):Map<String, Dynamic> {
+	function parseOptionalParams(defs:Array<OptionalParametersParsing>):Map<String, Dynamic> {
 		var results:Map<String, Dynamic> = new Map();
 		while (!match(TClosed)) {
 			eatComma();

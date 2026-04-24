@@ -399,4 +399,164 @@ class AnimFilterStateConditionalTest extends utest.Test {
 			Assert.isTrue(sm.clip.color.g > 0.9, "Frame tint green should override anim tint");
 		}
 	}
+
+	// ==================== Bug P3: @else filter alternatives stack ====================
+	// resolveAnimFilters uses countStateMatch(...) >= 0 which accepts ALL filters that
+	// don't actively contradict the state — including @else/@default fallbacks that
+	// parse to empty selectors (always matching). Exclusive alternatives therefore stack
+	// rather than select the best match. Expected: a filter reached via @else should only
+	// apply when the preceding @(cond) did not match.
+
+	static function parseAnimFilters(animSource:String):Array<AnimFilterEntry> {
+		var input = byte.ByteData.ofString(animSource);
+		var loader = new bh.base.ResourceLoader.CachingResourceLoader();
+		var result = AnimParser.parseFile(input, "test-input", loader);
+		var d:Dynamic = result;
+		return d.animations[0].filters;
+	}
+
+	@Test
+	public function testFilterElseDoesNotStackWithMatchingConditional():Void {
+		// @(level >= 3) outline + @else pixelOutline are mutually exclusive.
+		// When level=5, only outline should apply. Bug: both apply (grouped).
+		final filters = parseAnimFilters('
+sheet: testSheet
+states: level(1, 2, 3, 4, 5)
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle" }
+    filters {
+        @(level >= 3) outline: 2.0, #FFFF00
+        @else pixelOutline: #00FF00
+    }
+}
+');
+		Assert.notNull(filters);
+		Assert.equals(2, filters.length);
+
+		final runtime = makeStateSelector([{key: "level", value: "5"}]);
+		final result = AnimParser.resolveAnimFilters(filters, runtime);
+
+		Assert.notNull(result.filter, "Expected outline filter to apply");
+		Assert.isFalse(Std.isOfType(result.filter, h2d.filter.Group),
+			"Expected a single filter, not a Group — @else should not stack with a matching @(cond)");
+		Assert.isTrue(Std.isOfType(result.filter, h2d.filter.Outline),
+			"Expected the matching @(cond) filter (Outline) to be the active one");
+	}
+
+	@Test
+	public function testFilterElseAppliesWhenConditionalDoesNotMatch():Void {
+		// Symmetric case: when level=1, @(level >= 3) doesn't match, so @else fires.
+		// Only pixelOutline should apply.
+		final filters = parseAnimFilters('
+sheet: testSheet
+states: level(1, 2, 3, 4, 5)
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle" }
+    filters {
+        @(level >= 3) outline: 2.0, #FFFF00
+        @else pixelOutline: #00FF00
+    }
+}
+');
+		final runtime = makeStateSelector([{key: "level", value: "1"}]);
+		final result = AnimParser.resolveAnimFilters(filters, runtime);
+
+		Assert.notNull(result.filter, "Expected @else pixelOutline to apply when @(cond) doesn't match");
+		Assert.isFalse(Std.isOfType(result.filter, h2d.filter.Group),
+			"Expected a single filter, not a Group");
+	}
+
+	@Test
+	public function testFilterDefaultDoesNotStackWithMatchingConditional():Void {
+		// @default should be exclusive with a matching @(cond) in the same alternation chain.
+		// `@(team=>red) + @else(team=>blue) + @default` is an if / else-if / else chain.
+		// When team=red, only the red tint should fire; the @default must NOT also apply
+		// and overwrite red via iteration order.
+		final filters = parseAnimFilters('
+sheet: testSheet
+states: team(red, blue)
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle" }
+    filters {
+        @(team=>red) tint: #FF0000
+        @else(team=>blue) tint: #0000FF
+        @default tint: #FFFFFF
+    }
+}
+');
+		final runtime = makeStateSelector([{key: "team", value: "red"}]);
+		final result = AnimParser.resolveAnimFilters(filters, runtime);
+
+		Assert.equals(0xFF0000, result.tintColor,
+			"Matching @(team=>red) must win — @default must not overwrite it via iteration order");
+	}
+
+	@Test
+	public function testFilterDefaultFiresWhenNoConditionMatches():Void {
+		// Symmetric: if no @() / @else() in the chain matches, @default should fire.
+		final filters = parseAnimFilters('
+sheet: testSheet
+states: team(red, blue, green)
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle" }
+    filters {
+        @(team=>red) tint: #FF0000
+        @else(team=>blue) tint: #0000FF
+        @default tint: #FFFFFF
+    }
+}
+');
+		final runtime = makeStateSelector([{key: "team", value: "green"}]);
+		final result = AnimParser.resolveAnimFilters(filters, runtime);
+		Assert.equals(0xFFFFFF, result.tintColor,
+			"@default should fire when no @(cond) in the chain matches");
+	}
+
+	@Test
+	public function testFilterUnconditionalAndConditionalAlternationCoexist():Void {
+		// Regression guard: the fix must preserve stacking of plain unconditional filters.
+		// Here `brightness` is unconditional (always applies), while outline/pixelOutline
+		// are exclusive alternatives. At level=5 we expect brightness + outline = Group of 2.
+		// Buggy: Group of 3 (brightness + outline + pixelOutline).
+		// A naive `findBestStateMatch` fix would return only 1 filter here — breaking the stacking
+		// of the unconditional `brightness` — so this test guards against that wrong fix.
+		final filters = parseAnimFilters('
+sheet: testSheet
+states: level(1, 2, 3, 4, 5)
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle" }
+    filters {
+        brightness: 0.5
+        @(level >= 3) outline: 2.0, #FFFF00
+        @else pixelOutline: #00FF00
+    }
+}
+');
+		final runtime = makeStateSelector([{key: "level", value: "5"}]);
+		final result = AnimParser.resolveAnimFilters(filters, runtime);
+
+		Assert.notNull(result.filter);
+		Assert.isTrue(Std.isOfType(result.filter, h2d.filter.Group),
+			"Expected a Group (brightness + outline), got a single filter");
+		final group:h2d.filter.Group = cast result.filter;
+		@:privateAccess {
+			Assert.equals(2, group.filters.length,
+				'Expected Group of 2 (brightness + outline), got ${group.filters.length} — @else pixelOutline must not stack');
+		}
+	}
 }

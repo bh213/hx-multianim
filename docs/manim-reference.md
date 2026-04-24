@@ -47,7 +47,7 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | `flow(params)` | Layout container (horizontal, vertical, stack) with padding, spacing, overflow |
 | `layers()` | Z-ordering container for explicit depth stacking |
 | `mask(w, h)` | Clipping rectangle that hides overflow |
-| `tilegroup` | Optimized tile grouping (GPU batching for bitmaps, ninepatch, pixels, point) |
+| `tilegroup` | Optimized tile grouping (GPU batching for bitmaps, ninepatch, pixels, point). Children are baked once at build time, so conditionals on programmable parameters are **rejected up front** — both at runtime (`BuilderError code="tilegroup_conditional"`) and at `@:manim` macro compile time (same message, raised at the `@:manim` field position). Use conditionals outside the tileGroup, or key them on a `repeatable` loop variable inside it |
 | `spacer(w, h)` | Empty spacing element inside flow containers |
 | `point` | Positioning anchor/marker point |
 | `apply(...)` | Apply properties to parent element |
@@ -62,7 +62,14 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | `staticRef($ref, params)` | Static embed of another programmable |
 | `staticRef(external("importName"), $ref, params)` | Static embed from imported .manim file |
 | `dynamicRef($ref, params)` | Dynamic embed with runtime `setParameter()` support |
+| `#name dynamicRef($ref, params)` | Named dynamic embed — `BuilderResult.getDynamicRef("name")` returns this specific site |
+| `#name[$i] dynamicRef($ref, params)` | Indexed dynamic embed inside a `repeatable` — keys each iteration under `"name idx"` (e.g. `"name 0"`, `"name 1"`) |
 | `dynamicRef(external("importName"), $ref, params)` | Dynamic embed from imported .manim file |
+| `dynamicRef($paramName, params)` | Dynamic embed where `$paramName` is a parameter naming the target programmable. Full rebuild on template change |
+
+**Disambiguating sibling dynamicRef sites** — `dynamicRefs` is a map keyed by the site's name. Unnamed sites fall back to the referenced programmable name, so two unnamed `dynamicRef($X)` siblings (e.g. `@(cond) dynamicRef($X)` + `@else dynamicRef($X)`, or N iterations of `repeatable { dynamicRef($X) }`) collide on key `"X"`. In that case `getDynamicRef("X")` throws with a hint to add `#name` — the last-writer-wins result is arbitrary with respect to which sibling is attached to the scene graph. Prefix each site with a distinct `#name`, or use `#name[$i]` inside a `repeatable` to key by iteration. Two explicit `#name` sites sharing the same name throw at build time.
+
+**Circular references** — a `staticRef`/`dynamicRef` chain that re-enters a programmable already being resolved (`A → A`, `A → B → A`, …) is rejected with `BuilderError code="circular_reference"` instead of recursing to a native stack overflow. The message names the offending programmable. The guard is maintained across nested builds even if an inner `startBuild` throws, so callers that catch a build error and retry are not falsely rejected.
 | `#name slot` | Swappable content container |
 | `#name[$i] slot` | Indexed slot inside repeatable |
 | `#name slot(params)` | Parameterized slot with visual states and conditionals |
@@ -79,12 +86,14 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | `repeatable($var, iterator)` | Repeat child elements over an iterator |
 | `repeatable2d($x, $y, iterX, iterY)` | 2D grid repetition with two iterators |
 
+**Loop variable naming** — loop vars and iterator-output vars (`$v` in `array($v, …)`, `$b`/`$t` in `tiles(...)`, `$b` in `stateanim(...)`) must not share a name with a programmable parameter, an outer loop var, or any `@final` constant in scope. `repeatable2d`'s two loop vars must be distinct, and `tiles($b, $t, …)`'s two outputs must be distinct. Violations are parse errors.
+
 ### Iterator Types
 
 | Iterator | Description |
 |----------|-------------|
 | `step(count, dx: N, dy: N)` | Fixed step offset, repeated `count` times |
-| `layout("blockName", "entryName")` | Position from named relative layout (blockName is label only, entryName is the `#name` used in layout) |
+| `layout("entryName")` | Position from named relative layout (entryName is the `#name` used in the `layouts {}` block) |
 | `array($valueVar, $arrayName)` | Iterate over data array |
 | `range(start, end [, step])` | Numeric range (exclusive end), optional step |
 | `range(from: X, to: Y [, step: S])` | Named range (inclusive end: `to: 5` includes 5) |
@@ -109,6 +118,8 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | `generated(autotile(name, selector))` | Tile from autotile definition |
 | `generated(autotileregionsheet(name, scale, font, color))` | Autotile debug visualization |
 | `$variable` | Tile from parameter or iterator variable |
+| `center(source)` | Set tile pivot to center (0.5, 0.5) — shorthand for `pivot(0.5, 0.5, source)`. Nested pivot/center rejected at parse time |
+| `pivot(x, y, source)` | Set tile pivot point (0–1 ratio, validated at parse time). Overrides bitmap's hAlign/vAlign. Nested pivot/center rejected at parse time |
 
 ---
 
@@ -122,8 +133,35 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | `dropShadowXY` | Shadow offset (x, y) |
 | `dropShadowColor` | Shadow color |
 | `dropShadowAlpha` | Shadow opacity |
+| `autoFit: <mode> [font1, font2, ...]` | Automatic font fallback when text exceeds available space |
 
 `text()` creates plain `h2d.Text`. Does not support markup, styles, images, or condenseWhite.
+
+### autoFit Modes
+
+| Mode | Description |
+|------|-------------|
+| `autoFit: width [f1, f2]` | Try primary font, then f1, f2 — use first that fits `maxWidth` |
+| `autoFit: box(w, h) [f1, f2]` | Try fonts in order — use first that fits width AND height |
+| `autoFit: fill [f1, f2, ...]` | Try ALL fonts (including primary) — pick the largest that fits `maxWidth` |
+| `autoFit: fill box(w, h) [f1, f2, ...]` | Try ALL fonts — pick the largest that fits both dimensions |
+
+**Width/fill modes require `maxWidth` to be set.** Box dimensions are absolute pixels (divided by `@scale` internally). The font list is fallback-only for `width`/`box` modes; for `fill` modes, the primary font is also a candidate.
+
+```manim
+// Width mode: try dd first, fall back to m3x6, then f3x5
+text(dd, "Hello", #44FF44, left, 100, lineBreak: false,
+    autoFit: width [m3x6, f3x5]): 1, 1;
+
+// Fill mode: pick largest font that fits 150px
+text(f3x5, "Fill this", #44BBFF, left, 150, lineBreak: false,
+    autoFit: fill [pixellari, dd, m6x11, m3x6, f3x5]): 1, 1;
+
+// Box mode with richText
+richText(dd, "Deal [dmg]50[/] fire damage", white, left, 150, lineBreak: false,
+    autoFit: width [m3x6, f3x5],
+    styles: {dmg: color(#FF4444)}): 1, 1;
+```
 
 ---
 
@@ -140,8 +178,9 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | `dropShadowXY` | Shadow offset (x, y) |
 | `dropShadowColor` | Shadow color |
 | `dropShadowAlpha` | Shadow opacity |
+| `autoFit: <mode> [font1, font2, ...]` | Automatic font fallback (see [autoFit Modes](#autofit-modes) above) |
 
-`richText()` always creates `h2d.HtmlText`. Markup is always processed via `TextMarkupConverter`.
+`richText()` always creates `h2d.HtmlText`. Markup is always processed via `TextMarkupConverter`. XML special characters (`<`, `>`, `&`) in text content are automatically escaped before conversion, so literal text like `"Hull<25%"` or `"fire & ice"` works safely.
 
 ### Rich Text Markup
 
@@ -150,6 +189,7 @@ Text strings support `[tag]...[/]` BBCode-style markup. Unlike `${expr}` interpo
 | Markup | Description |
 |--------|-------------|
 | `[styleName]...[/]` | Apply named style (defined in `styles:`) |
+| `[br]` | Line break (self-closing) |
 | `[img:name]` | Inline image (self-closing, defined in `images:`) |
 | `[align:center]...[/]` | Paragraph alignment (`left`, `center`, `right`) |
 | `[link:id]...[/]` | Hyperlink (fires `callback("link:id")`) |
@@ -253,7 +293,8 @@ Parse-time error when used outside a flow ancestor.
 |--------|-------------|
 | `@(param=>value)` | Match when parameter equals value |
 | `@if(param=>value)` | Explicit if (same as `@()`) |
-| `@ifstrict(param=>value)` | Strict match — ALL parameters in condition must match |
+| `@any(p1=>v1, p2=>v2)` | Match when ANY listed condition matches (OR) |
+| `@all(p1=>v1, p2=>v2)` | Match when ALL listed conditions match (AND, same as `@()`) |
 | `@(param != value)` | Match when parameter does NOT equal value |
 | `@(param=>[v1,v2])` | Match any of multiple values |
 | `@(param != [v1,v2])` | Exclude multiple values |
@@ -267,9 +308,106 @@ Parse-time error when used outside a flow ancestor.
 | `@else(conditions)` | Else-if with additional conditions |
 | `@default` | Final fallback when nothing above matched |
 
+A bare `@else` or `@default` is **terminal** — it closes the chain. Any `@else` / `@default` that follows one is unreachable and rejected at parse time. To start a fresh chain, open a new `@(...)` sibling first.
+
+**`@final` constants cannot be conditional or `@switch` keys.** `@final` is a compile-time-only alias with no runtime value slot, so both the runtime matcher and codegen's condition emitter would fail on a reference to its name. Using a `@final` as a key in `@(MY_CONST=>…)`, `@if(…)`, `@any(…)`, `@all(…)`, `@else(…)`, or `@switch(MY_CONST)` is rejected at parse time with a message naming the offending `@final`. Use a programmable parameter (`param:type=default`) as the conditional key instead. The rule applies regardless of whether the `@final`'s RHS is a literal or a derived expression.
+
 Conditionals also work with **repeatable loop variables** (e.g., `@($i => 0)`, `@($i >= 3)`, `@($i != 1)`) inside `repeatable` bodies.
 
+**Comparison and range values support `$param` references** — e.g., `@($i < $level)`, `@(hp >= $threshold)`, `@(param => $from..$to)`, `between $min..$max`. The reference is resolved at build time from current parameter values.
+
 Additional condition keywords: `greaterthanorequal`, `lessthanorequal`, `bit`, `between`.
+
+### Conditional Blocks
+
+Any conditional prefix supports a block body `{ ... }` to group multiple elements under one condition:
+
+```manim
+@(status=>active) {
+    bitmap(generated(color(60, 40, #060)));
+    text(m3x6, "ACTIVE", #8f8, center, 60):0,12;
+}
+@else(status=>hover) {
+    bitmap(generated(color(60, 40, #063)));
+    text(m3x6, "HOVER", #8ff, center, 60):0,12;
+}
+@default {
+    bitmap(generated(color(60, 40, #333)));
+    text(m3x6, "OTHER", #888, center, 60):0,12;
+}
+```
+
+Works with `@()`, `@if()`, `@any()`, `@all()`, `@else`, `@else(cond)`, `@default`. Blocks can be nested (block-in-block) and can contain inner conditionals.
+
+### @switch Block
+
+`@switch(param) { }` groups multiple conditions on a single parameter into a block, avoiding repetition:
+
+```manim
+@switch(status) {
+    normal: bitmap(generated(color(60, 30, #666)));
+    hover: bitmap(generated(color(60, 30, #060)));
+    pressed | disabled: bitmap(generated(color(60, 30, #600)));
+    default: bitmap(generated(color(60, 30, #333)));
+}
+```
+
+**Arm patterns:**
+
+| Pattern | Description |
+|---------|-------------|
+| `value` | Match single value (enum name, integer, `"quoted string"`, `#RRGGBB` color, `true`/`false`) |
+| `value1 \| value2` | Match any of multiple values. Enum/string use `CoEnums`; color/int/uint/bool use `CoAnyOf` of typed inner conditionals |
+| `<= N` | Less than or equal (numeric params only) |
+| `>= N` | Greater than or equal (numeric params only) |
+| `< N` | Strictly less than (numeric params only) |
+| `> N` | Strictly greater than (numeric params only) |
+| `N..M` | Range match, inclusive (numeric params only) |
+| `default` | Fallback when no arm matches |
+
+**Parameter type support:** `@switch` works on discrete types — `enum`, `int`, `uint`, `range`, `string`, `color`, `bool`. Single-value arms route through the same type-aware converter as `@(param => value)`, so a color arm like `#FF0000` produces an integer match and `true`/`false` arms on a `bool` param work as expected. `@switch` rejects `float`, `tile`, and `flags` parameters at parse time (use `@(param => bit[N])` for flag tests). Range/comparison arms (`<= N`, `N..M`, etc.) are rejected on non-numeric parameters.
+
+**Block arms** for multiple elements per case:
+
+```manim
+@switch(mode) {
+    a {
+        bitmap(generated(color(60, 40, #600)));
+        text(m3x6, "AAA", #f88, center, 60):0,12;
+    }
+    b {
+        bitmap(generated(color(60, 40, #060)));
+        text(m3x6, "BBB", #8f8, center, 60):0,12;
+    }
+    default {
+        bitmap(generated(color(60, 40, #006)));
+        text(m3x6, "DEF", #88f, center, 60):0,12;
+    }
+}
+```
+
+**Nested conditionals** — regular `@()` conditions work inside switch arms:
+
+```manim
+@switch(status) {
+    normal {
+        @(enabled=>on) bitmap(generated(color(70, 30, #060)));
+        @(enabled=>off) bitmap(generated(color(70, 30, #333)));
+    }
+    hover {
+        @(enabled=>on) bitmap(generated(color(70, 30, #090)));
+        @(enabled=>off) bitmap(generated(color(70, 30, #444)));
+    }
+    default: bitmap(generated(color(70, 30, #600)));
+}
+```
+
+**Notes:**
+- `@switch` cannot be combined with other `@` modifiers (`@alpha`, `@scale`, etc.)
+- Cannot be used at root level (must be inside a programmable body)
+- Only one `default` arm per `@switch` block (duplicate rejected at parse time)
+- **Incremental mode:** `setParameter()` triggers full arm rebuild (teardown + rebuild of active arm). All param refs inside all arms are collected — changing any referenced param (not just the switch param) triggers rebuild. Supports nested `@switch`, `@()` conditionals, repeatables, and `$param` expressions inside arms
+- **Codegen:** lazy rebuild via ordinal-based arm lookup. Generated `_applyVisibility` always rebuilds on any parameter change, forwarding current param values to the builder
 
 ---
 
@@ -365,6 +503,34 @@ Works with all coordinate types: `layout(name).offset(5, 10)`, `$grid.pos(1, 2).
 ### Value Extraction
 `.x` or `.y` suffix on any coordinate method extracts a single component for use in expressions.
 
+### Extra Point Coordinates
+Query extra points from `.anim` state animations as positioning coordinates (resolved at build time).
+
+**From a named stateanim element:**
+```manim
+#player stateanim("player.anim", "idle", direction=>"l"): 100, 100
+bitmap(...): $player.extraPoint("bulletSpawn")
+bitmap(...): $player.extraPoint("bulletSpawn", fallback: 50, 50)
+bitmap(...): $player.extraPoint("bulletSpawn").offset(10, 0)
+```
+
+**Directly from a .anim file:**
+```manim
+bitmap(...): extraPoint("player.anim", "fire-up", "fire", direction=>"r")
+bitmap(...): extraPoint("player.anim", "idle", "fire", direction=>"l", fallback: 0, 0)
+```
+
+When a point is not found: throws if no `fallback:` specified, uses fallback coordinates otherwise. Fallback accepts any coordinate type (literal, layout, grid, etc.).
+
+**`.x`/`.y` extraction in expressions:**
+```manim
+text(font, '${$player.extraPoint("fire").x + $OFFSET_X}', #FF0000): 0, 0
+text(font, '${$ref.extraPoint("name", 99, 88).y}', #00FF00): 0, 0
+```
+Use `$ref.extraPoint("name").x` / `.y` to extract a single coordinate component for use in text interpolation and arithmetic expressions. Fallback via positional args: `$ref.extraPoint("name", fallbackX, fallbackY).x`.
+
+Note: coordinates are static — resolved from the initial animation state at build time.
+
 ### Context Properties
 | Property | Description |
 |----------|-------------|
@@ -384,7 +550,7 @@ Applied to any element via long-form body or inline syntax.
 |----------|-------------|
 | `pos: x, y` | Position offset |
 | `grid: spacingX, spacingY` | Grid coordinate system for children |
-| `hex: orientation(w, h)` | Hex coordinate system for children |
+| `hex: flat(w, h)` / `hex: pointy(w, h)` | Hex coordinate system for children |
 | `scale: value` | Scale factor |
 | `rotate: angle` | Rotation angle (supports `deg`, `rad`, `turn`, direction constants) |
 | `alpha: value` | Opacity (0.0-1.0) |
@@ -413,6 +579,33 @@ Applied to any element via long-form body or inline syntax.
 
 ---
 
+## Parameterized Slots
+
+Slots with parameters support visual states via conditionals. `slotContent` marks the content insertion point (parser-validated: must be inside a slot body).
+
+```manim
+#statusSlot slot(status:[empty,active,warning]=empty, label:string="Slot") {
+    @(status=>empty) ninepatch(ui, slotBgEmpty, 64, 64): 0, 0
+    @(status=>active) ninepatch(ui, slotBgActive, 64, 64): 0, 0
+    @(status=>warning) ninepatch(ui, slotBgWarning, 64, 64): 0, 0
+    text(f3x5, $label, #ffffffff): 5, 50
+    slotContent: 8, 8
+}
+```
+
+**Parameter types:** Same as `programmable()` — `uint`, `int`, `float`, `bool`, `string`, `color`, enum (`[val1,val2]`), range, flags.
+
+**Body features:** Conditionals (`@()`, `@else`, `@default`), expressions (`$param`), all standard elements.
+
+**Runtime API:**
+- `slot.setParameter("status", "active")` — update visual state (incremental)
+- `slot.setContent(obj)` / `slot.clear()` — content independent of decorations
+- Codegen: `instance.getSlot_name().setParameter("status", "warning")`
+
+**Indexed:** `#name[$i] slot(params)` inside repeatable — combines indexed access with parameters.
+
+---
+
 ## Filters
 
 | Filter | Description |
@@ -430,6 +623,32 @@ Applied to any element via long-form body or inline syntax.
 | `replaceColor(sourceColors[], replacementColors[])` | Replace specific colors |
 | `group(filter1, filter2, ...)` | Combine multiple filters |
 | `none` | No filter / remove inherited filter |
+| `customName(args...)` | Custom filter registered via `FilterManager` |
+
+### Custom Filters
+
+Game code can register custom filters via `FilterManager.registerFilter()`. Custom filters are parsed as opaque (unknown filter names are accepted) and validated at build time against registered filters.
+
+**Registration (Haxe):**
+```haxe
+FilterManager.registerFilter("perlinNoise", [
+    {name: "seed", type: CFFloat, defaultValue: 0.0},
+    {name: "scale", type: CFFloat, defaultValue: 10.0},
+    {name: "intensity", type: CFFloat, defaultValue: 0.5},
+], (params) -> {
+    return new PerlinNoiseFilter(params["seed"], params["scale"], params["intensity"]);
+});
+```
+
+**Usage in `.manim`:**
+```manim
+filter: perlinNoise(42.0, 8.0, 0.6)
+filter: group(perlinNoise(42.0, 12.0, 0.8), outline(1, #000000))
+```
+
+**Parameter types:** `CFFloat`, `CFColor` (hex colors), `CFBool` (true/false). Parameters support `$param` references. Extra args beyond the schema are ignored; missing args use defaults (or throw if no default). Filter names are case-insensitive and cannot shadow built-in filter names.
+
+**Validation:** `FilterManager.validateCustomFilters(parseResult.customFilterRefs)` checks all custom filter references against the registry. Called automatically by `MultiAnimBuilder` and `DevBridge.eval_manim`.
 
 ---
 
@@ -441,13 +660,50 @@ Applied to any element via long-form body or inline syntax.
 
 ## Color Formats
 
-| Format | Example | Description |
-|--------|---------|-------------|
-| `#RGB` | `#f00` | Shorthand — expands `#RGB` → `#RRGGBB` (opaque) |
-| `#RRGGBB` | `#FF0000` | 6-digit hex RGB (opaque) |
-| `#RRGGBBAA` | `#FF000080` | 8-digit hex RGBA — CSS convention, alpha last (red @ 50%) |
-| `0xAARRGGBB` | `0xFFFF0000` | Native Heaps format — alpha first (for power users) |
-| Named | `red` | Named color (see list below) |
+Two conventions coexist. **CSS `#` forms** assume opacity (3/6 hex digits bake `0xFF` alpha). **Heaps `0x` forms** are the internal AARRGGBB representation and are preserved **verbatim** — the top byte IS alpha. If you write `0xFF0000`, that's transparent red (alpha = 0), not opaque red.
+
+| Format | Example | Stored as | Notes |
+|--------|---------|-----------|-------|
+| `#RGB` | `#f00` | `0xFFFF0000` | CSS shorthand, expanded to `#RRGGBB` then baked opaque |
+| `#RRGGBB` | `#FF0000` | `0xFFFF0000` | CSS RGB, baked opaque |
+| `#RRGGBBAA` | `#FF000080` | `0x80FF0000` | CSS RGBA, alpha last — converted to Heaps AARRGGBB |
+| `0xAARRGGBB` | `0xFFFF0000` | `0xFFFF0000` | Heaps literal, preserved exactly — alpha first |
+| `0xRRGGBB` | `0xFF0000` | `0x00FF0000` | Heaps literal with top byte 0 — **transparent** red |
+| Named | `red` | `0xFFFF0000` | Baked opaque at parser (except `transparent`) |
+
+**Rule of thumb:** use `#RRGGBB` for opaque colors, `#RRGGBBAA` for CSS-style with alpha, and reserve `0x...` for cases where you're thinking in Heaps AARRGGBB and want byte-exact control (including fully transparent values).
+
+### Runtime Color Semantics (Strict-D)
+
+Color values are plain `Int`s in Heaps `0xAARRGGBB` form at every API boundary. **Nothing in the runtime rewrites alpha** — not `setColor(v)`, not `setParameter("c", v)`, not `createFrom({c: v})`, not hot-reload. If you want opaque red at runtime, pass `0xFFFF0000`. If you pass `0xFF0000`, you get transparent red; if you pass `0`, you get fully transparent.
+
+**One documented exception:** `bh.base.HeapsUtils.solidTile(color, w, h)` / `solidBitmap(color, w, h)` treat `top-byte == 0` as opaque (alpha 1.0). This is a deliberate compat shim for legacy Haxe callers that pass bare `0xRRGGBB` (notably `TileHelper.generatedRectColor(w, h, 0xRRGGBB)` and the builder/codegen `generated(color(...))` path). For fully transparent, call `h2d.Tile.fromColor` directly with an explicit alpha argument. This exception does **not** apply to parameter/setter/color-literal paths — those are strict.
+
+### `ColorUtils` Helpers (Haxe-side)
+
+`bh.base.ColorUtils` provides inline helpers for constructing ARGB ints from game code, so callers don't have to hand-write `0xFF000000 | rgb`:
+
+| Helper | Example | Returns |
+|--------|---------|---------|
+| `rgb(rgb:Int)` | `ColorUtils.rgb(0x55AA88)` | `0xFF55AA88` (opaque; any input α byte discarded) |
+| `rgba(rgb:Int, alpha:Float)` | `ColorUtils.rgba(0x55AA88, 0.5)` | `0x8055AA88` (alpha clamped 0..1, rounded to nearest byte) |
+| `withAlpha(argb:Int, alpha:Float)` | `ColorUtils.withAlpha(0xFF55AA88, 0.3)` | `0x4D55AA88` (swap α byte on an existing ARGB) |
+| `getAlpha(color:Int)` | `ColorUtils.getAlpha(0x8055AA88)` | `~0.502` (α byte as 0..1 float) |
+| `getRgb(color:Int)` | `ColorUtils.getRgb(0xFF55AA88)` | `0x55AA88` (bottom 24 bits) |
+
+Intended for the `extraParams` / `setParameter` boundary where Haxe ints enter the builder/codegen — nothing rewrites alpha behind your back, so `setParameter("tint", 0x55AA88)` is silently invisible under strict-D unless you wrap it in `ColorUtils.rgb(...)`. Parser literal `#RRGGBB` semantics are unchanged.
+
+This means `@switch` arms match against already-baked values:
+```manim
+#widget programmable(tint:color=#FFFFFF) {
+  @switch(tint) {
+    #FF0000: bitmap(...);  // matches 0xFFFF0000
+    #00000000: bitmap(...); // matches 0 / 0x00000000 (fully transparent)
+    #000000: bitmap(...);  // matches 0xFF000000 (opaque black)
+  }
+}
+```
+`widget.setTint(0)` lands on the `#00000000` arm. `widget.setTint(0xFF000000)` lands on `#000000`. The two are now distinguishable — previously, 0-alpha inputs were silently clobbered to opaque black on the way into the field.
 
 ### Named Colors
 
@@ -466,8 +722,9 @@ fontColor:color => #FF000080
 
 Untyped settings also accept `#hex` and `0xhex` values:
 ```
-fontColor => #FF0000
-fontColor => 0xFF0000
+fontColor => #FF0000       // → 0xFFFF0000 (opaque red)
+fontColor => 0xFFFF0000    // → 0xFFFF0000 (opaque red, explicit)
+fontColor => 0xFF0000      // → 0x00FF0000 (transparent red — usually a bug)
 ```
 
 ---
@@ -510,12 +767,16 @@ Tile entry properties: `x, y, w, h`, plus optional `offset: ox, oy`, `orig: ow, 
 
 | Construct | Description |
 |-----------|-------------|
-| `record RecordName { field: type, ... }` | Define record schema |
-| `fieldName: RecordName { ... }` | Record instance |
+| `#name enum(val1, val2, ...)` | Define enum type with named values |
+| `#name record(field: type, ...)` | Define record schema |
+| `fieldName: enumName value` | Enum value |
+| `fieldName: recordName { ... }` | Record instance |
 | `fieldName: type[] [values]` | Typed array |
 | Optional fields with `?` prefix | Field not required |
 
-Types: `int`, `float`, `string`, `bool`, record names, `Type[]` arrays.
+Types: `int`, `float`, `string`, `bool`, enum names, record names, `type[]` arrays.
+
+Enums generate Haxe `enum` types at compile time (via `@:data`). Runtime builder returns enum values as strings.
 
 ---
 
@@ -655,6 +916,7 @@ emit: circle(r: 50, rRand: 10, angle: 0deg, angleSpread: 180deg)
 | `maxLife` | | Particle lifetime in seconds |
 | `lifeRandom` | `lifeRand` | Lifetime variance (0-1) |
 | `relative` | | Particles move with emitter |
+| `externallyDriven` | | Disable auto-update; use `advanceTime(dt)` |
 
 ### Movement
 
@@ -749,6 +1011,74 @@ bounds: bounce(0.6), box(x: -50, y: -50, w: 250, h: 250), line(0, 0, 100, 0)
 ### Path Integration
 `attachTo: pathName` — emitter follows animated path.
 
+### Shutdown
+
+Graceful particle stop — configures how a looping emitter winds down when `shutdown()` is called at runtime.
+
+```manim
+shutdown: {
+    duration: 1.0                    // wind-down time in seconds
+    curve: easeOutQuad               // count curve (how fast particles stop recycling)
+    alphaCurve: easeInQuad           // global alpha multiplier during shutdown
+    sizeCurve: myCustomCurve         // global size multiplier during shutdown
+    speedCurve: linear               // global speed multiplier during shutdown
+}
+```
+
+| Property | Description |
+|----------|-------------|
+| `duration` | Default shutdown duration (seconds). Used when `shutdown()` called without args |
+| `curve` | Count curve — shapes how particle density decreases. `easeOutQuad` = fast initial die-off |
+| `alphaCurve` | Alpha multiplier over shutdown. Applied on top of per-particle fadeIn/fadeOut |
+| `sizeCurve` | Size multiplier over shutdown. Applied on top of per-particle sizeCurve |
+| `speedCurve` | Speed multiplier over shutdown. Applied on top of per-particle velocityCurve |
+
+**Curve convention:** All curves use "progress" semantics: `multiplier = 1.0 - curve(t)` where `t` is shutdown progress (0..1). Standard easings work intuitively — `easeOutQuad` means fast start (rapid initial die-off / fade), `easeInQuad` means slow start (lingers then rapid end).
+
+**Runtime API:**
+```haxe
+// Graceful shutdown (uses .manim configured duration/curves)
+particles.shutdown();
+
+// Override duration
+particles.shutdown(0.5);
+
+// Override duration and count curve
+particles.shutdown(1.0, myCustomCurve);
+
+// Per-group control
+group.shutdown(1.0);
+
+// Query state
+group.isShuttingDown();  // Bool
+group.getShutdownRate(); // 0..1 progress
+
+// Set curves via API before calling shutdown()
+group.shutdownCountCurve = myCurve;
+group.shutdownAlphaCurve = myCurve;
+group.shutdownSizeCurve = myCurve;
+group.shutdownSpeedCurve = myCurve;
+```
+
+**Behavior:**
+- No-op on non-looping groups
+- After shutdown, `emitBurstAt()` still works (manual one-shot effects)
+- `group.emitFilter = (x:Float, y:Float) -> Bool` — filter particles by world-space spawn position (return `false` to discard). Works for both relative and non-relative groups
+- Existing `onEnd()` callback fires when last particle dies (default: `this.remove()`)
+- Total visual clear time: `duration` (curve phase) + up to `maxLife` (natural die-off of remaining particles)
+
+### Externally Driven
+
+When `externallyDriven: true`, particles do not auto-update from the render loop. Game code drives the simulation:
+
+```haxe
+// Drive all externally-driven groups:
+particles.advanceTime(dt);
+
+// Or per-group:
+group.advanceTime(dt);
+```
+
 ---
 
 ## Layouts
@@ -833,7 +1163,7 @@ layouts {
 #myComponent programmable() {
     bitmap(...): layout(pos1)                              // single point
     bitmap(...): layout(minimap).offset(-80, 0)            // with offset suffix
-    repeatable($i, layout("layouts", "slots")) {            // layout iterator
+    repeatable($i, layout("slots")) {                      // layout iterator
         bitmap(...): 0, 0                                  // children at 0,0 (iterator positions the wrapper)
     }
 }
@@ -865,10 +1195,11 @@ These are pre-built UI components used through the builder/screen system.
 | **Slider** | Draggable value selector with custom range (int or float) |
 | **Radio buttons** | Mutually exclusive selection group |
 | **Dropdown** | Collapsible selection list with scrollable panel |
-| **Scrollable list** | Scrollable list of selectable items with scrollbar. `setItems()`, `scrollToIndex()`, `clickMode`, disabled state |
+| **Scrollable list** | Scrollable list of selectable items with scrollbar. `setItems(?preserveScroll)`, `scrollToIndex()`, `clickMode`, disabled state |
 | **Progress bar** | Display-only value indicator (0-100) |
 | **Interactive** | Hit-test region with ID and optional typed metadata |
 | **Draggable** | Drag-and-drop with drop zones, slot integration, swap mode |
+| **Grid** | 2D grid (rect or hex) with cell state, drag-drop zones, card targeting |
 | **Tabs** | Tab bar with per-tab content management, relative coordinates mode |
 
 ### Tabs Settings
@@ -883,6 +1214,53 @@ These are pre-built UI components used through the builder/screen system.
 | `tabPanel.contentRoot` | behavioral | Named element for relative coordinates (e.g. `contentArea`) |
 
 When `tabPanel.contentRoot` is set, tab content coordinates are relative to the named element's position. Each tab gets its own `h2d.Layers` for proper layer support within the panel.
+
+### Grid Component (`UIMultiAnimGrid`)
+
+2D grid (rectangular or hexagonal) managing cell state, rendering, drag-drop, and card targeting.
+
+| Config field | Description |
+|-------------|-------------|
+| `gridType` | `Rect(cellW, cellH, ?gap)` or `Hex(orientation, sizeX, sizeY)` |
+| `cellVisualFactory` | `CellVisualFactory<T>` — factory for building cell visuals (required) |
+| `originX`, `originY` | Grid root position |
+| `snapPathName` | AnimatedPath for drop snap (null = instant) |
+| `returnPathName` | AnimatedPath for drag cancel return (null = instant) |
+| `swapPathName` | AnimatedPath for displaced item during swap (null = falls back to `returnPathName`, then instant) |
+| `swapEnabled` | Enable swap semantics on occupied cell drops (default: false) |
+| `swapAccepts` | `(cell, draggable) -> Bool` delegate for swap decision. When null, defaults to `isOccupied()` |
+| `swapAnimContainer` | Parent container for in-flight swap visuals (null = grid root at high z-order) |
+| `swapVisualProvider` | `(cell, data) -> Null<h2d.Object>` delegate for custom displaced-item visuals |
+| `tweenManager` | Optional `TweenManager` for cell lifecycle animations (null = instant) |
+| `rectOrigin` | Cell origin for Rect grids: `TopLeft` (default) or `Centered` (hit area centered on cell position) |
+| `cellDragEnabled` | Cells with data become draggable on press (default: false) |
+| `cellDragFilter` | `(col, row, data) -> Bool` filter for which cells can be dragged (null = all with data) |
+| `cellDragContainer` | Parent container for drag visual (null = grid root at high z-order) |
+
+**`DefaultCellVisualFactory` config** (`CellVisualFactoryConfig`): `cellBuildName` (programmable name), `?cellBuildDelegate`, `?highlightParam` (default `"highlight"`), `?statusParam` (default `"status"`), `?highlightDelegate`.
+
+**`CellVisual<T>` interface** — wraps the visual representation of a grid cell:
+
+| Method | Description |
+|--------|-------------|
+| `object:h2d.Object` | Scene graph object |
+| `setHighlight(value)` | Set highlight state (e.g. `"none"`, `"accept"`, `"reject"`) |
+| `setStatus(value)` | Set status state (e.g. `"normal"`, `"hover"`) |
+| `beginUpdate(?data:T)` | Begin batch update — defers re-evaluation. Optional `data` for typed payload |
+| `endUpdate()` | End batch update — applies all deferred changes |
+| `getResult():Null<BuilderResult>` | Escape hatch for game-specific parameter access |
+
+**Cell programmable contract:** Must have `col:int`, `row:int`, plus matching `highlightParam` (enum with "none"/"accept"/"reject") and `statusParam` (enum with `normal`/`hover`). Custom highlight values supported via `highlightDelegate` on factory config.
+
+**Events** (`GridEvent` enum via `onGridEvent`): `CellClick`, `CellHoverEnter`, `CellHoverLeave`, `CellDrop(cell, draggable, sourceGrid, sourceCell, ctx)`, `CellSwap(source, target, draggable, ctx)`, `CellDragStart(cell, draggable)`, `CellDragEnd(cell)`, `CellCardPlayed`, `CellDataChanged`. `CellDrop` includes `DropContext`: `ctx.accept()` / `ctx.reject()` controls snap vs return animation; `ctx.onComplete(cb)` fires after animation; `ctx.acceptWithPath(name)` / `ctx.rejectWithPath(name)` for custom paths. `CellSwap` includes `SwapContext`: `ctx.accept()` / `ctx.reject()`, `ctx.acceptWithSwapPath(name)` / `ctx.acceptWithPaths(snap, swap)` for custom paths, `ctx.onComplete(cb)` / `ctx.onSnapComplete(cb)`, `ctx.programmatic` flag (true for `swapCells()`, false for drag-drop). `CellDragStart`/`CellDragEnd` emitted by built-in cell drag (`cellDragEnabled`).
+
+**Key API:** `addRectRegion(cols, rows)`, `addHexRegion(center, radius)`, `set(col, row, data, ?params)`, `get()`, `clear()`, `isOccupied()`, `forEach()`, `cellAtPoint(sceneX, sceneY)`, `sceneToHex(sceneX, sceneY)`, `cellPosition(col, row)`, `neighbors()`, `distance()`, `acceptDrops(draggable, ?filter)`, `registerAsCardTarget(cardHand, ?filter)`, `makeDraggableFromCell(col, row, ?visual)`, `linkDropTarget(target, ?accepts)`, `unlinkDropTarget(target)`, `UIMultiAnimGrid.linkGrids(a, b, ?accepts)`, `dispose()`.
+
+**Grid layers:** `addLayer(name, {buildName, zOrder})`, `setLayer(col, row, name, ?params)`, `clearLayer(col, row, name)`, `clearLayerAll(name)`, `clearAllLayers()`, `getLayerVisual(col, row, name)`, `hasLayer()`. Base cells at z-order 0; layers at configurable z-orders. `removeCell()` auto-clears layers. **External objects:** `addExternalObject(obj, zOrder)` / `removeExternalObject(obj)`.
+
+**Cell swap:** `swapCells(col1, row1, col2, row2, ?animated)` — swap data and visuals between two cells. Animated mode uses `swapPathName` (fallback: `returnPathName`) for both items. Emits `CellSwap` with `ctx.programmatic=true`. Drag-drop swap: when `swapEnabled=true` and a draggable drops on a cell with a source cell, the `swapAccepts` delegate (or `isOccupied()` by default) decides whether to emit `CellSwap` or fall through to `CellDrop`.
+
+**Cell animations** (require `tweenManager`): `tweenCell(col, row, duration, props, ?easing)`, `addCellAnimated(col, row, ?data, ?params, duration, initProps, ?easing)`, `removeCellAnimated(col, row, duration, props, ?easing, ?onComplete)`. **Detach/reattach**: `detachCellVisual(col, row)` → `{object, data, sceneX, sceneY}`, `reattachCellVisual(col, row, ?obj)`.
 
 ### Common UI Settings
 
@@ -916,6 +1294,47 @@ When enabled, elements support efficient runtime updates without full rebuild:
 
 Used by: dynamic refs, slider, scrollbar, parameterized slots, button, checkbox, tab button.
 
+### Per-element tracked properties
+
+The builder (incremental mode) and codegen paths both re-fire the listed properties on `setParameter`. Properties not listed are resolved once at construction.
+
+| Element | Tracked on `$param` change | Frozen at construction |
+|---------|----------------------------|-------------------------|
+| `text` / `richText` | `text`, `color`, richText styles (`color`/`font`) and image tiles | font name, align, maxWidth, options |
+| `bitmap` | `tileSource` (including `generated(color(w, h, color))`) | hAlign, vAlign |
+| `ninepatch` | `width`, `height` | sheet name, tile name |
+| `graphics` | every element's color/size/radius/coords + element position | — |
+| `pixels` | every shape's color/size/coords | — |
+| `mask` | `width`, `height` | — |
+| `flow` | `maxWidth`, `maxHeight`, `minWidth`, `minHeight`, `lineHeight`, `colWidth`, `padding*` (×4), `horizontalSpacing`, `verticalSpacing` | `layout`, `overflow`, `horizontalAlign`, `verticalAlign`, `debug`, `multiline`, `fillWidth`, `fillHeight`, `reverse`, 9-patch background |
+| `interactive` | `width`, `height` | `id`, metadata keys and values |
+| `stateanim` | `initialState` (fires `AnimationSM.play(newState)`) | filename, selectors |
+| `stateanim(construct)` | `initialState` | sheet, animName, fps, loop, center |
+| Common to every element | `pos`, `scale`, `rotate`, `alpha`, `tint`, `filter`, `blendMode` | — |
+
+### Rejection of untracked-only params
+
+If a `$param` is referenced **only** in a frozen slot (e.g. `interactive($w, $h, $myId)` and you call `setMyId`), both paths throw at the setter / dispatcher entry:
+
+```
+setParameter("<name>", ...) rejected: this param is referenced in
+incremental-unsupported slot(s) [<reasons>]. Changing it would leave the
+rendered state inconsistent. Either rebuild the programmable or avoid
+runtime mutation of this param.
+```
+
+Builder throws `BuilderError` with `code == "untracked_param"`; codegen throws a plain `String` from the generated setter. Params that appear in both tracked and frozen slots are also rejected (the tracked effect would apply while the frozen one would silently drift). Reasons surface the slot kind so the message is greppable: `interactive id`, `interactive metadata key`, `interactive metadata value`, `stateanim selector "<name>"`, `stateanim_construct animName "<key>"`, `stateanim_construct fps "<key>"`. Applies to param-dependent `repeatable` / `repeatable2d` bodies as well — the walker `markUntrackedParamsInSubtree` (builder) / `recordUntrackedParamsInSubtree` (codegen) seeds `untrackedParamRefs` before the repeat body is built non-incrementally, so the param-dep case is identical to the static-count case.
+
+### Other `BuilderError` codes from `setParameter` / `beginUpdate` / `endUpdate`
+
+| Code | When thrown |
+|------|-------------|
+| `"invalid_param_value"` | `setParameter(name, value)` on a declared param whose value is not `Int`/`Float`/`String`/`Bool`/`ResolvedIndexParameters`/`h2d.Tile` (covers `null`, arrays, arbitrary objects, unresolved enum values). Message names the param and rejected type. Unknown param names are still a silent no-op — UI widgets (Button/Checkbox/Slider/Tabs/TextInput) rely on `setParameter("disabled", ...)` being a no-op for templates that don't opt in |
+| `"nested_begin_update"` | `beginUpdate()` called while already in batch — nested batching is not supported |
+| `"unbalanced_end_update"` | `endUpdate()` called without a matching `beginUpdate()` |
+| `"slot_disposed"` | `SlotHandle.setParameter` called on a handle whose enclosing subtree has been torn down (SWITCH arm swap, repeatable shrinkage). External code holding long-lived `SlotHandle` references across arm flips should re-fetch via `result.getSlot(name)` after each rebuild, or listen for the rebuild via `result.addRebuildListener` |
+| `"slot_no_parameters"` | `SlotHandle.setParameter` called on a non-parameterized slot (declared as `#name slot { ... }` without a parameter list). Non-parameterized slots have no `IncrementalUpdateContext` to drive |
+
 ---
 
 ## Transition Declarations
@@ -939,7 +1358,7 @@ Declare animated transitions for parameter changes inside programmable elements.
 |------|-------------|
 | `none` | Instant visibility (default behavior) |
 | `fade(duration, ?easing)` | One-sided alpha fade (showing element fades in, hiding fades out independently) |
-| `crossfade(duration, ?easing)` | Both old and new states overlap with simultaneous alpha blend |
+| `crossfade(duration, ?easing)` | Sequential blend-through-zero: old fades out over `duration`, then new fades in over `duration` (total = 2 × `duration`) |
 | `flipX(duration, ?easing)` | Scale X to 0 then back to 1 (half-duration each) |
 | `flipY(duration, ?easing)` | Scale Y to 0 then back to 1 (half-duration each) |
 | `slide(direction, duration, ?distance, ?easing)` | Position + alpha offset animation (distance defaults to 50px) |
@@ -977,21 +1396,35 @@ interactive(200, 30, "tooltip-trigger", events: [hover])
 
 | Flag | Events controlled |
 |------|-------------------|
-| `hover` | `UIEntering` + `UILeaving` |
+| `hover` | `UIEntering(?data)` + `UILeaving` |
 | `click` | `UIClick` |
 | `push` | `UIPush` + `UIClickOutside` + outside-click tracking |
 
 Default: all events enabled. Omitting `events:` emits all event types.
 
-### Bind Metadata
+### autoStatus Metadata (Screen Auto-Wiring)
 
-Declare which programmable parameter an interactive drives for `UIRichInteractiveHelper` auto-wiring:
+Auto-wire Normal→Hover→Pressed state management at screen level — no manual `UIRichInteractiveHelper` needed:
+
+```manim
+interactive(200, 30, "shopBtn", autoStatus => "status", events: [hover, click, push])
+```
+
+When `screen.addInteractives(result)` detects `autoStatus` metadata, it automatically creates an internal `UIRichInteractiveHelper` and wires hover/press/leave state transitions. Events still reach `onScreenEvent()` for game logic.
+
+Advanced: `screen.getAutoInteractiveHelper()` returns the internal helper for `setDisabled()`, `setParameter()`, etc.
+
+### Bind Metadata (Manual Wiring)
+
+For custom state management (e.g., `UICardHandHelper`), use `bind` with a manually-created `UIRichInteractiveHelper`:
 
 ```manim
 interactive(200, 30, "shopBtn", bind => "status", events: [hover, click, push])
 ```
 
-`UIRichInteractiveHelper.register(result)` scans interactives for `bind` metadata and auto-wires hover/press/leave state transitions to `setParameter()` calls on the bound `BuilderResult`.
+`UIRichInteractiveHelper.register(result, ?prefix, metadataKey)` scans interactives for the given metadata key (default: `"bind"`) and auto-wires state transitions. The key `"autoStatus"` is reserved and throws if used manually.
+
+**Important:** An interactive cannot have both `autoStatus` and `bind` — `register()` throws if the screen already manages the interactive via `autoStatus`.
 
 ### Cursor Metadata
 
@@ -1010,6 +1443,51 @@ interactive(200, 30, "dragArea", cursor => "move", cursor.hover => "move", curso
 
 Pre-registered cursor names: `default`, `pointer`/`button`, `move`, `text`, `hide`/`none`. Register custom cursors via `CursorManager.registerCursor("name", cursor)`.
 
+### Event Priority
+
+Control event dispatch order when interactives overlap via `eventPriority` metadata:
+
+```manim
+interactive(200, 30, "overlay", eventPriority:int => 10)
+interactive(200, 30, "background", eventPriority:int => 0)
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `eventPriority` | `int` | `0` | Higher values receive events first when overlapping |
+
+When multiple interactives overlap at the cursor position, `UIDefaultController` sorts by `eventPriority` (descending), with registration order as tiebreaker for equal priorities. By default, the first element consumes the event (no bubbling).
+
+**Priority tier constants** (`UIEventPriority` class):
+
+| Constant | Value | Usage |
+|----------|-------|-------|
+| `Content` | 0 | Normal screen content — buttons, lists, interactives |
+| `Overlay` | 100 | Floating overlays — dropdown panels, tooltips, popovers |
+| `Modal` | 200 | Modal dialogs — above all other UI |
+
+Use arithmetic for fine-tuning: `UIEventPriority.Overlay + 2`. Built-in components automatically use appropriate tiers:
+- **Dropdown** sets `Overlay` when panel opens, `Content` when closed
+- **PanelHelper** sets `Overlay` on all panel interactives at registration time
+
+`UIInteractiveWrapper.eventPriority` is publicly writable for programmatic override after construction.
+
+### Event Bubbling
+
+Event handlers can pass events through to the next overlapping element by setting `wrapper.consumed = false` in `onEvent()`:
+
+```haxe
+public function onEvent(wrapper:UIElementEventWrapper):Void {
+    // Handle event...
+    wrapper.consumed = false; // pass through to element below
+}
+```
+
+- `consumed` defaults to `true` — existing elements consume events without code changes
+- Hover (enter/leave) is always single-element (topmost only, no bubbling)
+- Click, release, key, and wheel events support bubbling
+- `UIElementPriority` is an opt-in interface — elements without it default to priority 0
+
 ---
 
 ## Macro Code Generation
@@ -1021,3 +1499,227 @@ Pre-registered cursor names: `default`, `pointer`/`button`, `move`, `text`, `hid
 | `@:build(ProgrammableCodeGen.buildAll())` | Trigger code generation on class |
 
 Generated factories provide type-safe `create()`, `createFrom()`, parameter setters, and element accessors.
+
+---
+
+## Card Hand Config (`CardHandConfig`)
+
+All fields are optional. Used with `UICardHandHelper` / `addCardHand()`.
+
+### Layout
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `layoutMode` | `HandLayoutMode` | `Fan`, `Linear`, or `PathLayout` |
+| `anchorX` | Float | Hand anchor X position |
+| `anchorY` | Float | Hand anchor Y position |
+| `cardWidth` | Float | Card width for layout calculations |
+| `cardHeight` | Float | Card height for layout calculations |
+
+### Fan Layout
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `fanRadius` | Float | Arc radius for fan spread |
+| `fanMaxAngle` | Float | Maximum total angle of fan arc |
+
+### Linear Layout
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `linearSpacing` | Float | Horizontal spacing between cards |
+| `linearMaxWidth` | Float | Maximum total width — cards compress spacing to fit |
+
+### Path Layout
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `layoutPathName` | String | Name of path in `paths{}` block |
+| `pathDistribution` | `PathDistribution` | `EvenArcLength` (uniform visual spacing) or `EvenRate` (equal rate increments) |
+| `pathOrientation` | `PathOrientation` | `Tangent`, `Straight`, or `TangentClamped(maxDeg)` |
+
+### Hover
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `hoverPopDistance` | Float | Vertical pop distance on hover |
+| `hoverScale` | Float | Scale multiplier on hover |
+| `hoverNeighborSpread` | Float | Extra spacing pushed to neighbor cards during hover |
+
+### Targeting
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `targetingThresholdY` | Float | Legacy: auto-creates full-width zone above `anchorY - threshold` (default: 100) |
+| `targetingZones` | `Array<TargetingZone>` | Explicit zones — `{id, x, y, w, h}` rects in handContainer local space. Replaces threshold when set |
+
+### Card-to-Card
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `allowCardToCard` | Bool | Enable card-to-card combining interactions |
+| `cardToCardHighlightScale` | Float | Scale applied to target card during card-to-card hover |
+| `cardToCardHoverPop` | Bool | Pop the target card upward during card-to-card hover |
+| `cardToCardHoverScale` | Bool | Scale the target card during card-to-card hover |
+| `cardToCardSpread` | Bool | Spread neighbor cards when hovering over a card-to-card target |
+
+### Pile Positions
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `drawPilePosition` | `FPoint` | Off-screen origin for draw animations |
+| `discardPilePosition` | `FPoint` | Off-screen destination for discard animations |
+
+### Layers
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `handLayer` | `LayersEnum` | Scene layer for the hand container |
+| `dragLayer` | `LayersEnum` | Scene layer for dragged cards and targeting arrow |
+
+### Animation Paths
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `drawPathName` | String | `animatedPath` name for draw animation (null = instant). Uses tracking: endpoint dynamically follows the card's layout position each frame, handling concurrent draws gracefully |
+| `discardPathName` | String | `animatedPath` name for discard animation (null = instant) |
+| `returnPathName` | String | `animatedPath` name for return-to-hand animation (null = instant) |
+| `rearrangePathName` | String | `animatedPath` name for rearrange animation (null = instant) |
+
+### Targeting Arrow (Segmented Chain)
+
+The targeting arrow renders as a **chain of `.manim` programmable instances** placed evenly along a Stretch-normalized path from the card's origin to the cursor (or snapped target).
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `arrowSegmentName` | String | null | Programmable name for arrow body segments (receives `valid:bool`) |
+| `arrowHeadName` | String | null | Programmable name for arrow tip (receives `valid:bool`) |
+| `arrowPathName` | String | null | Path name for arrow curve shape |
+| `arrowSegmentSpacing` | Float | 25.0 | Pixel spacing between segments |
+
+Segments are placed at evenly-spaced rates along the path, rotated to follow the tangent. The head is placed at the endpoint. Max 30 segments. When `arrowSegmentName` is null, no arrow visual is drawn (target detection still works). Both segment and head programmables must accept a `valid:bool` parameter for valid/invalid target state.
+
+### Other
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `interactivePrefix` | String | Prefix for card interactive IDs (default: `"card"`) |
+| `onCardBuilt` | `(CardId, BuilderResult, h2d.Object) -> Void` | Callback after each card is built — customize via `result.getSlot()`, `result.setParameter()` |
+
+---
+
+## Screen Manager
+
+### `SceneLayerConfig`
+
+Configures scene layer ordering for `ScreenManager`. All fields optional. Passed to `new ScreenManager(s2d, ?sceneLayerConfig)`.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `content` | Int | 2 | Main game screen layer |
+| `master` | Int | 4 | Persistent overlay screen layer (e.g. top bar) |
+| `overlay` | Int | 5 | Modal darkening overlay layer |
+| `dialog` | Int | 6 | Modal dialog screen layer |
+
+**Validation:** Must satisfy strict ordering `content < master < overlay < dialog`. Throws at construction if violated.
+
+### Screen Data Passing
+
+`switchTo()` and `modalDialogWithTransition()` accept an optional `data:Dynamic` parameter that is delivered to the target screen via the `UIEntering(?data)` event:
+
+```haxe
+// Sending data:
+screenManager.switchTo(shopScreen, {itemId: 42, category: "weapons"}, Fade(0.3));
+screenManager.modalDialogWithTransition(confirmDialog, this, "confirm", {action: "delete"}, SlideUp(0.3));
+
+// Receiving data in target screen's onScreenEvent:
+case UIEntering(data):
+    if (data != null) {
+        var itemId:Int = data.itemId;
+        // use data...
+    }
+```
+
+## ScreenShakeHelper
+
+Additive screen shake for impact feedback. File: `src/bh/ui/ScreenShakeHelper.hx`. Construct with `new ScreenShakeHelper(target:h2d.Object)`.
+
+| Method | Description |
+|--------|-------------|
+| `shake(intensity, duration)` | Linear-decay shake |
+| `shakeDirectional(intensity, duration, dirX, dirY)` | Axis-masked shake (1.0 full / 0.0 none) |
+| `shakeWithCurve(intensity, duration, curve)` | Custom decay curve — curve receives `remaining` ratio 0..1, returns factor |
+| `update(dt)` | Drive decay; call from game loop |
+| `stop()` | Cancel and remove residual offset |
+| `isShaking` | Query active state |
+
+Concurrent shakes stack additively (explosion + hit). Applies per-frame offsets as *deltas* so gameplay movement (camera, layout, animation) is not fought back to a captured baseline. Uniform jitter via `hxd.Rand`. No per-frame allocations. Works with curves loaded from `.manim` `curves {}` via `builder.getCurve("name")`.
+
+## FloatingTextHelper
+
+AnimatedPath-driven floating text manager for damage numbers, heal text, status effects. File: `src/bh/ui/FloatingTextHelper.hx`. Construct with `new FloatingTextHelper(?parent:h2d.Object)`.
+
+| Method | Description |
+|--------|-------------|
+| `spawn(text, font, x, y, animPath, ?color, absolutePosition)` | Spawn text instance driven by an `AnimatedPath` |
+| `spawnObject(obj, x, y, animPath, absolutePosition)` | Spawn arbitrary `h2d.Object` |
+| `update(dt)` | Advance all active instances; auto-removes on completion |
+| `clear()` | Remove all instances immediately |
+| `count` | Active instance count |
+
+**Position modes:**
+- `absolutePosition = false` (default): AnimatedPath position is an offset from `(x, y)`. Use with `Anchor` normalization.
+- `absolutePosition = true`: AnimatedPath position IS world coordinates. Use with `Stretch(startPoint, endPoint)` normalization.
+
+**Applied state:** position, alpha, scale, rotation. Color applied to `h2d.Text` when a `colorCurve` is active on the path. `onComplete` callback on the path fires when done; completed instances auto-removed from manager and scene.
+
+## Interaction Controllers
+
+Modal interaction controllers for common targeting/selection flows. Extend `UIDefaultController` to inherit hover/cursor/outside-click while overriding specific interactions. Files in `src/bh/ui/controllers/`.
+
+**Base — `UIInteractionController`:**
+- `complete(result)` / `cancel()` — deferred to next `update()` frame
+- `onActivate()` / `onDeactivate()` — lifecycle hooks
+- Escape and right-click cancel built-in
+- Static `start()` methods on each subclass push the controller and wire result → `popController()`
+
+**`UISelectFromHandController`** — click cards to select/deselect.
+
+| Config field | Description |
+|--------------|-------------|
+| `minCount` / `maxCount` | Selection bounds |
+| `filter` | Per-card predicate (dims non-selectable) |
+| `selectedParam` | Card param name to toggle (e.g. `"selected"`) |
+| `selectedValue` / `deselectedValue` | Values to set on that param |
+| `autoConfirm` | Auto-confirm when `maxCount` reached |
+
+Suppresses drag during selection (`canDragCard = _ -> false`). Restores visual state + drag on deactivation. API: `confirm()`, `getSelectedCards()`, `getRemainingCount()`.
+
+```haxe
+UISelectFromHandController.start(this, cardHand, {maxCount: 2}, (result) -> {
+    if (result != null) discardCards(result.cards);
+});
+```
+
+**`UIPickTargetController`** — pick a target from interactives, grid cells, or cards.
+
+| Config field | Description |
+|--------------|-------------|
+| `validTargetIds` / `targetPrefix` / `filter` | Interactive targets |
+| `grid` / `cellFilter` | Grid cell targets (highlights valid cells) |
+| `cardHand` / `cardFilter` | Card targets |
+
+Intercepts `UIInteractiveEvent(UIClick, ...)` for interactives/cards and overrides `handleClick()` with `grid.cellAtPoint()` for grid cells. Routes mouse move to grid for hover feedback. Result: `PickTargetResult` enum — `TargetInteractive(id)`, `TargetCell(col, row)`, `TargetCard(cardId)`.
+
+```haxe
+UIPickTargetController.start(this, {grid: hexGrid, cellFilter: (c, r) -> hexGrid.isOccupied(c, r)}, (result) -> {
+    if (result != null) switch result {
+        case TargetCell(c, r): attack(c, r);
+        default:
+    }
+});
+```
+
+**Composable:** controllers can chain — `start()` one controller in the callback of another.
+
+**CardHandHelper additions for controllers:** `findCardIdByInteractiveId(id)`, `isCardInHand(cardId)`.

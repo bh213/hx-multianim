@@ -3,14 +3,16 @@ package bh.stateanim;
 import bh.base.ParseError;
 import bh.base.ParseError.ParseUnexpected;
 import bh.base.ParsePosition;
+import bh.base.Point;
+#if (!macro && !noheaps)
 import bh.base.Atlas2;
 import bh.base.ResourceLoader;
 import haxe.io.Bytes;
 import bh.stateanim.AnimationSM;
-import bh.base.Point;
 import bh.base.filters.PixelOutline;
 import bh.base.filters.PixelOutline.PixelOutlineFilterMode;
 import bh.base.filters.ReplacePaletteShader;
+#end
 
 using StringTools;
 using bh.base.MapTools;
@@ -96,6 +98,98 @@ enum APKeywords {
 	APFilters; // (#12) filter declarations
 	APFilter; // (#12) per-frame filter in playlist
 	APNone; // (#12) filter none
+	APFlipX; // (#13) horizontal flip
+	APFlipY; // (#13) vertical flip
+}
+
+/**
+ * Keyword metadata for LSP/tooling use.
+ * Single source of truth for .anim keyword names, contexts, and descriptions.
+ */
+enum AnimKeywordContext {
+	AKTopLevel;
+	AKAnimationBody;
+	AKPlaylistBody;
+	AKFilterBody;
+	AKConditional;
+}
+
+@:nullSafety
+class AnimKeywordInfo {
+	public final name:String;
+	public final context:AnimKeywordContext;
+	public final description:String;
+	public final snippet:Null<String>;
+	public final isBlock:Bool;
+
+	public function new(name:String, context:AnimKeywordContext, description:String, ?snippet:String, isBlock:Bool = false) {
+		this.name = name;
+		this.context = context;
+		this.description = description;
+		this.snippet = snippet;
+		this.isBlock = isBlock;
+	}
+
+	// All .anim keywords with metadata — add new keywords here
+	public static final all:Array<AnimKeywordInfo> = [
+		// Top-level declarations
+		new AnimKeywordInfo("sheet", AKTopLevel, "Sprite sheet name", "sheet: "),
+		new AnimKeywordInfo("states", AKTopLevel, "State variable declaration: `states: stateName(value1, value2)`", "states: "),
+		new AnimKeywordInfo("center", AKTopLevel, "Default center point: `center: x,y`", "center: "),
+		new AnimKeywordInfo("fps", AKTopLevel, "Default frames per second", "fps: "),
+		new AnimKeywordInfo("loop", AKTopLevel, "Default loop count. `yes` = forever, number = N times", "loop: "),
+		new AnimKeywordInfo("flipX", AKTopLevel, "Default horizontal flip (yes/no)", "flipX: yes"),
+		new AnimKeywordInfo("flipY", AKTopLevel, "Default vertical flip (yes/no)", "flipY: yes"),
+		new AnimKeywordInfo("allowedExtraPoints", AKTopLevel, "Declare valid extra point names for validation"),
+		new AnimKeywordInfo("animation", AKTopLevel, "Named animation definition with playlist, extrapoints, and filters",
+			"animation ${1:name} {\n\t$0\n}", true),
+		new AnimKeywordInfo("anim", AKTopLevel, "One-liner animation shorthand: `anim name(fps:N, loop:yes): \"sheetName\"`",
+			"anim ${1:name}(fps:${2:20}): \"${3:sheetName}\""),
+		new AnimKeywordInfo("metadata", AKTopLevel, "Typed key-value pairs (int, float, string, color). Supports state conditionals",
+			"metadata {\n\t$0\n}", true),
+		// Animation body
+		new AnimKeywordInfo("fps", AKAnimationBody, "Frames per second", "fps: "),
+		new AnimKeywordInfo("loop", AKAnimationBody, "Loop count (yes = forever)", "loop: "),
+		new AnimKeywordInfo("playlist", AKAnimationBody, "Frame playlist", "playlist {\n\tsheet: \"${1:name}\"\n\t$0\n}", true),
+		new AnimKeywordInfo("extrapoints", AKAnimationBody, "Named points for effects/interactions. Supports state conditionals",
+			"extrapoints {\n\t$0\n}", true),
+		new AnimKeywordInfo("filters", AKAnimationBody, "Per-animation filter block with state conditionals",
+			"filters {\n\t$0\n}", true),
+		new AnimKeywordInfo("flipX", AKAnimationBody, "Horizontal flip (yes/no)", "flipX: yes"),
+		new AnimKeywordInfo("flipY", AKAnimationBody, "Vertical flip (yes/no)", "flipY: yes"),
+		// Playlist body
+		new AnimKeywordInfo("sheet", AKPlaylistBody, "Sheet name. Supports `${stateName}` interpolation", "sheet: \""),
+		new AnimKeywordInfo("event", AKPlaylistBody, "Trigger event: `event <name> trigger | random x,y,radius | x,y`"),
+		new AnimKeywordInfo("filter", AKPlaylistBody, "Per-frame filter change"),
+		// Filter body
+		new AnimKeywordInfo("tint", AKFilterBody, "Tint filter: `tint: #RRGGBB`", "tint: "),
+		new AnimKeywordInfo("brightness", AKFilterBody, "Brightness filter: `brightness: 0.0-1.0`", "brightness: "),
+		new AnimKeywordInfo("saturate", AKFilterBody, "Saturation filter", "saturate: "),
+		new AnimKeywordInfo("grayscale", AKFilterBody, "Grayscale filter", "grayscale: "),
+		new AnimKeywordInfo("hue", AKFilterBody, "Hue rotation filter", "hue: "),
+		new AnimKeywordInfo("outline", AKFilterBody, "Outline filter: `outline: size, #color`", "outline: "),
+		new AnimKeywordInfo("pixelOutline", AKFilterBody, "Pixel outline filter: `pixelOutline: #color`", "pixelOutline: "),
+		new AnimKeywordInfo("replaceColor", AKFilterBody, "Color replacement: `replaceColor: [#src] => [#dst]`", "replaceColor: "),
+		new AnimKeywordInfo("none", AKFilterBody, "Clear filters"),
+		// Conditionals (usable in multiple contexts)
+		new AnimKeywordInfo("@(", AKConditional, "Conditional: `@(state=>value)`", "@(${1:state}=>${2:value}) "),
+		new AnimKeywordInfo("@else", AKConditional, "Else branch"),
+		new AnimKeywordInfo("@else(", AKConditional, "Else-if with condition", "@else(${1:state}=>${2:value}) "),
+		new AnimKeywordInfo("@default", AKConditional, "Default fallback"),
+		new AnimKeywordInfo("@final", AKConditional, "Named constant", "@final ${1:NAME} = ${2:value}"),
+	];
+
+	public static function forContext(ctx:AnimKeywordContext):Array<AnimKeywordInfo> {
+		return [for (k in all) if (k.context == ctx) k];
+	}
+
+	public static function findByName(name:String):Null<AnimKeywordInfo> {
+		final lower = name.toLowerCase();
+		for (k in all) {
+			if (k.name.toLowerCase() == lower) return k;
+		}
+		return null;
+	}
 }
 
 // ===================== Hand-coded Lexer =====================
@@ -142,6 +236,7 @@ private class AnimLexerHC {
 		"anim" => APAnim, "final" => APFinal,
 		"else" => APElse, "default" => APDefault, "filters" => APFilters,
 		"filter" => APFilter, "none" => APNone,
+		"flipx" => APFlipX, "flipy" => APFlipY,
 	];
 
 	inline function ch():Int {
@@ -183,15 +278,19 @@ private class AnimLexerHC {
 		// Block comment
 		if (c == '/'.code && pos + 1 < len && src.charCodeAt(pos + 1) == '*'.code) {
 			pos += 2; col += 2;
+			var blockClosed = false;
 			while (pos < len) {
 				if (ch() == '*'.code && pos + 1 < len && src.charCodeAt(pos + 1) == '/'.code) {
 					pos += 2; col += 2;
+					blockClosed = true;
 					break;
 				}
 				if (ch() == '\n'.code) { line++; col = 1; lineStart = pos + 1; }
 				else { col++; }
 				pos++;
 			}
+			if (!blockClosed)
+				throw '$sourceName:$startLine:$startCol: Unterminated block comment, missing closing */';
 			return nextToken();
 		}
 
@@ -342,6 +441,50 @@ typedef LoadedAnimation = {
 	var animations:Array<AnimationState>;
 }
 
+/**
+ * Conditional matching logic, extracted so it's available in both
+ * full parser (heaps) and LSP (noheaps) modes.
+ */
+class AnimConditionalMatcher {
+	public static function matchConditionalValue(condValue:AnimConditionalValue, runtimeValue:String):Bool {
+		return switch condValue {
+			case ACVSingle(v): v == runtimeValue;
+			case ACVMulti(vs): vs.contains(runtimeValue);
+			case ACVNot(inner): !matchConditionalValue(inner, runtimeValue);
+			case ACVCompare(op, cmpVal):
+				final numRuntime = Std.parseFloat(runtimeValue);
+				final numCmp = Std.parseFloat(cmpVal);
+				if (Math.isNaN(numRuntime) || Math.isNaN(numCmp)) false;
+				else switch op {
+					case ACmpGte: numRuntime >= numCmp;
+					case ACmpLte: numRuntime <= numCmp;
+					case ACmpGt: numRuntime > numCmp;
+					case ACmpLt: numRuntime < numCmp;
+				};
+			case ACVRange(minVal, maxVal):
+				final numRuntime = Std.parseFloat(runtimeValue);
+				final numMin = Std.parseFloat(minVal);
+				final numMax = Std.parseFloat(maxVal);
+				if (Math.isNaN(numRuntime) || Math.isNaN(numMin) || Math.isNaN(numMax)) false;
+				else numRuntime >= numMin && numRuntime <= numMax;
+		};
+	}
+
+	public static function countStateMatch(match:AnimConditionalSelector, selector:AnimationStateSelector):Int {
+		var retVal = 0;
+		for (key => value in selector) {
+			final condVal = match.get(key);
+			if (condVal != null) {
+				if (matchConditionalValue(condVal, value))
+					retVal++;
+				else
+					retVal -= 10000;
+			}
+		}
+		return retVal;
+	}
+}
+
 @:nullSafety
 class AnimMetadata {
 	final metadata:Map<String, Array<MetadataEntry>>;
@@ -360,7 +503,7 @@ class AnimMetadata {
 		var bestScore = -1;
 		var best:Null<MetadataEntry> = null;
 		for (entry in entries) {
-			final score = stateSelector != null ? AnimParser.countStateMatch(entry.states, stateSelector) : 0;
+			final score = stateSelector != null ? AnimConditionalMatcher.countStateMatch(entry.states, stateSelector) : 0;
 			if (score > bestScore) {
 				best = entry;
 				bestScore = score;
@@ -467,7 +610,9 @@ class AnimMetadata {
 }
 
 @:nullSafety
+#if (!macro && !noheaps)
 @:using(AnimParser.ExtraPointsHelper)
+#end
 typedef ExtraPoints = {
 	var states:AnimConditionalSelector;
 	var point:Point;
@@ -479,7 +624,9 @@ enum AnimPlaylistFrames {
 	SheetFrameAnim(name:String, durationMilliseconds:Null<Int>);
 	SheetFrameAnimWithIndex(name:String, from:Null<Int>, to:Null<Int>, durationMilliseconds:Null<Int>);
 	FileSingleFrame(filename:String, durationMilliseconds:Null<Int>);
+	#if (!macro && !noheaps)
 	PlaylistEvent(playlistEvent:AnimationPlaylistEvent);
+	#end
 	PlaylistEventData(name:String, meta:Map<String, MetadataValue>); // (#9) event with typed metadata
 	PlaylistFilter(filter:AnimFilterType); // (#12) per-frame filter change
 }
@@ -508,6 +655,11 @@ enum AnimFilterType { // (#12)
 typedef AnimFilterEntry = { // (#12)
 	var states:AnimConditionalSelector;
 	var filter:AnimFilterType;
+	// (#P3) Alternation group id. 0 = unconditional (always applies).
+	// Positive = member of an alternation chain — exactly one entry per group fires,
+	// chosen by best state match. A chain starts at an `@(cond)` entry and extends
+	// through subsequent `@else` / `@else(cond)` / `@default` siblings.
+	var ?group:Int;
 }
 
 @:nullSafety
@@ -520,14 +672,18 @@ typedef AnimationState = {
 	var playlist:Array<Playlist>;
 	var ?visited:Bool;
 	var ?filters:Array<AnimFilterEntry>; // (#12)
+	var ?flipX:Bool; // (#13) horizontal flip
+	var ?flipY:Bool; // (#13) vertical flip
 }
 
+#if (!macro && !noheaps)
 @:nullSafety
 class ExtraPointsHelper {
 	public static function toPoint(pt:ExtraPoints) {
 		return new h2d.col.IPoint(pt.point.x, pt.point.y);
 	}
 }
+#end
 
 @:nullSafety
 class AnimUnexpected<Token> extends ParseUnexpected<Token> {
@@ -561,6 +717,7 @@ class InvalidSyntax extends ParseError {
 @:nullSafety
 typedef AnimationStateSelector = Map<String, String>;
 
+#if (!macro && !noheaps)
 @:nullSafety
 interface AnimParserResult {
 	var definedStates(default, never):Map<String, Array<String>>;
@@ -568,9 +725,11 @@ interface AnimParserResult {
 
 	function createAnimSM(stateSelector:AnimationStateSelector):AnimationSM;
 }
+#end
 
 // ===================== Parser =====================
 
+#if (!macro && !noheaps)
 @:nullSafety
 class AnimParser implements AnimParserResult {
 	var tokens:Array<AnimToken>;
@@ -589,6 +748,8 @@ class AnimParser implements AnimParserResult {
 	var constants:Map<String, Float> = []; // (#7) @final named constants
 	var defaultFps:Null<Int> = null; // (#3) file-level fps default
 	var defaultLoop:Null<Int> = null; // (#3) file-level loop default
+	var defaultFlipX:Bool = false; // (#13) file-level flipX default
+	var defaultFlipY:Bool = false; // (#13) file-level flipY default
 	var cache:Map<String, Array<{name:String, states:Array<AnimationFrameState>, loopCount:Int, extraPoints:Map<String, h2d.col.IPoint>, filter:Null<h2d.filter.Filter>, tintColor:Null<Int>}>> = [];
 	final resourceLoader:bh.base.ResourceLoader;
 
@@ -631,7 +792,7 @@ class AnimParser implements AnimParserResult {
 	function syntaxError(error:String, ?pos:ParsePosition):Dynamic {
 		final p = pos != null ? pos : curPos();
 		final err = new InvalidSyntax(error, p);
-		#if MULTIANIM_TRACE
+		#if MULTIANIM_DEV
 		trace('AnimParser syntax error in $sourceName: $err');
 		#end
 		throw err;
@@ -639,7 +800,7 @@ class AnimParser implements AnimParserResult {
 
 	function unexpectedError(?message:String):Dynamic {
 		final err = new AnimUnexpected(peek(), curPos(), message ?? "unexpected");
-		#if MULTIANIM_TRACE
+		#if MULTIANIM_DEV
 		trace('AnimParser unexpected token in $sourceName: $err');
 		#end
 		throw err;
@@ -664,7 +825,7 @@ class AnimParser implements AnimParserResult {
 			p.parse();
 			return p;
 		} catch (e) {
-			#if MULTIANIM_TRACE
+			#if MULTIANIM_DEV
 			trace('AnimParser.parseString failed for $sourceName: $e');
 			#end
 			throw e;
@@ -731,6 +892,16 @@ class AnimParser implements AnimParserResult {
 					expect(APColon);
 					if (animationParsingStarted) syntaxError("file-level loop default must be before animations");
 					defaultLoop = parseLoopValue();
+				case APIdentifier(_, APFlipX, AITString): // (#13) file-level flipX default
+					advance();
+					expect(APColon);
+					if (animationParsingStarted) syntaxError("file-level flipX default must be before animations");
+					defaultFlipX = parseBoolValue();
+				case APIdentifier(_, APFlipY, AITString): // (#13) file-level flipY default
+					advance();
+					expect(APColon);
+					if (animationParsingStarted) syntaxError("file-level flipY default must be before animations");
+					defaultFlipY = parseBoolValue();
 				case APAt: // (#7) @final constants, or other @ at top level
 					advance();
 					switch peek() {
@@ -775,6 +946,8 @@ class AnimParser implements AnimParserResult {
 						extraPoint: parsedAnim.extraPoints,
 						playlist: parsedAnim.playlist,
 						filters: parsedAnim.filters,
+						flipX: parsedAnim.flipX ?? defaultFlipX,
+						flipY: parsedAnim.flipY ?? defaultFlipY,
 					};
 					animations.push(anim);
 				case APIdentifier(_, APAnim, AITString): // (#5) compact shorthand: anim name(fps:N, loop:yes): "sheet"
@@ -791,7 +964,7 @@ class AnimParser implements AnimParserResult {
 			definedStatesIndexes.push(key);
 		}
 		final allStates = createAllStates(definedStates);
-		#if MULTIANIM_TRACE
+		#if MULTIANIM_DEV
 		if (allStates.length > 50) {
 			trace('Warning: large number of states in AnimParser: ${allStates.length}}');
 		}
@@ -809,21 +982,21 @@ class AnimParser implements AnimParserResult {
 				}
 
 				var playlist = findPlaylist(state, anim, definedStates);
-				if (playlist == null) throw 'no playlist for ${state}, id ${anim.name}';
+				if (playlist == null) syntaxError('no playlist for ${state}, id ${anim.name}');
 			}
 		}
 
 		for (anim in animations) {
-			if (anim.visited == false) throw 'animation ${anim.name} not reachable';
+			if (anim.visited == false) syntaxError('animation ${anim.name} not reachable');
 			for (ek => ev in anim.extraPoint) {
 				for (ePoint in ev) {
 					if (ePoint.visited == false)
-						throw 'Extra point ${ek} in anim ${anim.name} not reachable ${ePoint.states}';
+						syntaxError('Extra point ${ek} in anim ${anim.name} not reachable ${ePoint.states}');
 				}
-				for (pl in anim.playlist) {
-					if (pl.visited == false)
-						throw 'Playlist in anim ${anim.name} not reachable ${pl.states}';
-				}
+			}
+			for (pl in anim.playlist) {
+				if (pl.visited == false)
+					syntaxError('Playlist in anim ${anim.name} not reachable ${pl.states}');
 			}
 		}
 		this.metadata = metadataMap.count() > 0 ? new AnimMetadata(metadataMap) : null;
@@ -904,6 +1077,19 @@ class AnimParser implements AnimParserResult {
 				return cnt;
 			default:
 				return unexpectedError("expected loop value (yes/no/true/false/number)");
+		}
+	}
+
+	function parseBoolValue():Bool { // (#13) yes/no/true/false
+		switch peek() {
+			case APIdentifier("true" | "yes", _, _):
+				advance();
+				return true;
+			case APIdentifier("false" | "no", _, _):
+				advance();
+				return false;
+			default:
+				return unexpectedError("expected yes/no/true/false");
 		}
 	}
 
@@ -1015,27 +1201,32 @@ class AnimParser implements AnimParserResult {
 				condValue = ACVNot(innerVal);
 			case APGreaterEq: // >= (#8)
 				advance();
-				condValue = ACVCompare(ACmpGte, expectIdentifier());
+				condValue = ACVCompare(ACmpGte, expectSignedIdentifier());
 			case APLessEq: // <= (#8)
 				advance();
-				condValue = ACVCompare(ACmpLte, expectIdentifier());
+				condValue = ACVCompare(ACmpLte, expectSignedIdentifier());
 			case APGreater: // > (#8)
 				advance();
-				condValue = ACVCompare(ACmpGt, expectIdentifier());
+				condValue = ACVCompare(ACmpGt, expectSignedIdentifier());
 			case APLess: // < (#8)
 				advance();
-				condValue = ACVCompare(ACmpLt, expectIdentifier());
+				condValue = ACVCompare(ACmpLt, expectSignedIdentifier());
 			default:
 				condValue = syntaxError("Expected =>, !=, >=, <=, >, or < in conditional");
 		}
 
 		expect(APClosed);
+		if (states.exists(stateName))
+			syntaxError('duplicate state "$stateName" in conditional');
 		states.set(stateName, condValue);
 	}
 
-	// Fix: properly handle @(state=>[a,b]) multi-value case
-	// The above parseConditionalState has a bug for =>[a,b] - let me rewrite cleanly:
-	// Actually the fix is: after advancing past =>, check if next is [ before reading val
+	// Accepts an optional leading minus so comparisons like @(level >= -1) parse.
+	function expectSignedIdentifier():String {
+		final negative = match(APMinus);
+		final s = expectIdentifier();
+		return negative ? "-" + s : s;
+	}
 
 	function parseConditionalValueList():Array<String> {
 		var values:Array<String> = [];
@@ -1105,6 +1296,8 @@ class AnimParser implements AnimParserResult {
 	function parseAnimation(statesDefinitions, animationStates, allowedExtraPointsList, ?headerName:String) {
 		var extraPoints:Map<String, Array<ExtraPoints>> = [];
 		var filters:Array<AnimFilterEntry> = []; // (#12)
+		var flipX:Null<Bool> = null; // (#13)
+		var flipY:Null<Bool> = null; // (#13)
 		var ret = {
 			loop: (null : Null<Int>),
 			name: headerName, // (#2) name may come from header
@@ -1112,6 +1305,8 @@ class AnimParser implements AnimParserResult {
 			extraPoints: extraPoints,
 			playlist: ([] : Array<Playlist>),
 			filters: filters,
+			flipX: flipX,
+			flipY: flipY,
 		};
 
 		while (true) {
@@ -1158,6 +1353,16 @@ class AnimParser implements AnimParserResult {
 					advance();
 					expect(APCurlyOpen);
 					ret.filters = parseFilterBlock(statesDefinitions, animationStates);
+				case APIdentifier(_, APFlipX, AITString): // (#13) horizontal flip
+					advance();
+					expect(APColon);
+					if (ret.flipX != null) syntaxError("flipX already set");
+					ret.flipX = parseBoolValue();
+				case APIdentifier(_, APFlipY, AITString): // (#13) vertical flip
+					advance();
+					expect(APColon);
+					if (ret.flipY != null) syntaxError("flipY already set");
+					ret.flipY = parseBoolValue();
 				default:
 					unexpectedError();
 			}
@@ -1169,12 +1374,14 @@ class AnimParser implements AnimParserResult {
 		return ret;
 	}
 
-	// (#5) Parse compact animation shorthand: anim name(fps:N, loop:yes): "sheet"
+	// (#5) Parse compact animation shorthand: anim name(fps:N, loop:yes, flipX:yes, flipY:yes): "sheet"
 	@:nullSafety(Off)
 	function parseAnimShorthand():Void {
 		final name = expectIdentifier();
 		var overrideFps:Null<Int> = null;
 		var overrideLoop:Null<Int> = null;
+		var overrideFlipX:Null<Bool> = null; // (#13)
+		var overrideFlipY:Null<Bool> = null; // (#13)
 
 		if (match(APOpen)) {
 			var first = true;
@@ -1192,8 +1399,16 @@ class AnimParser implements AnimParserResult {
 						advance();
 						expect(APColon);
 						overrideLoop = parseLoopValue();
+					case APIdentifier(_, APFlipX, _): // (#13)
+						advance();
+						expect(APColon);
+						overrideFlipX = parseBoolValue();
+					case APIdentifier(_, APFlipY, _): // (#13)
+						advance();
+						expect(APColon);
+						overrideFlipY = parseBoolValue();
 					default:
-						unexpectedError("expected fps or loop modifier in anim shorthand");
+						unexpectedError("expected fps, loop, flipX, or flipY modifier in anim shorthand");
 				}
 			}
 		}
@@ -1215,6 +1430,8 @@ class AnimParser implements AnimParserResult {
 			fps: animFps,
 			extraPoint: [],
 			playlist: [playlist],
+			flipX: overrideFlipX ?? defaultFlipX,
+			flipY: overrideFlipY ?? defaultFlipY,
 		};
 		if (!animationNames.contains(name)) animationNames.push(name);
 		animations.push(anim);
@@ -1396,13 +1613,47 @@ class AnimParser implements AnimParserResult {
 	// (#12) Parse filter declarations block with typed filters and state conditionals
 	function parseFilterBlock(statesDefinitions, animationStates):Array<AnimFilterEntry> {
 		var filters:Array<AnimFilterEntry> = [];
+		// (#P3) Track alternation chains. A new `@(cond)` starts a new group; `@else` / `@default`
+		// continue the current group; unconditional entries are group 0 (always apply).
+		var currentGroup = 0;
+		var nextGroupId = 1;
 		while (!match(APCurlyClosed)) {
+			// Peek to classify the entry BEFORE parseStates consumes tokens.
+			var isElseOrDefault = false;
+			var isExplicitCondition = false;
+			if (Type.enumEq(peek(), APAt)) {
+				switch peekAt(1) {
+					case APIdentifier(_, APElse, _) | APIdentifier(_, APDefault, _):
+						isElseOrDefault = true;
+					case APOpen:
+						isExplicitCondition = true;
+					default:
+				}
+			}
 			final states = parseStates();
 			for (key => value in states)
 				parserValidateConditionalState(statesDefinitions, key, value);
 			checkForUnreachableState(animationStates, states);
 			final filter = parseFilterEntry();
-			filters.push({states: states, filter: filter});
+			var group:Int;
+			if (isElseOrDefault) {
+				// Continue current chain. If there's no preceding @(cond), start a standalone group
+				// so the entry still resolves as a single-member alternation (never stacks with
+				// subsequent unconditionals).
+				if (currentGroup == 0) {
+					currentGroup = nextGroupId++;
+				}
+				group = currentGroup;
+			} else if (isExplicitCondition) {
+				// New chain.
+				currentGroup = nextGroupId++;
+				group = currentGroup;
+			} else {
+				// Unconditional — breaks any in-progress chain and always applies.
+				currentGroup = 0;
+				group = 0;
+			}
+			filters.push({states: states, filter: filter, group: group});
 		}
 		return filters;
 	}
@@ -1612,42 +1863,12 @@ class AnimParser implements AnimParserResult {
 
 	// ===================== Static Utility Methods =====================
 
-	public static function matchConditionalValue(condValue:AnimConditionalValue, runtimeValue:String):Bool {
-		return switch condValue {
-			case ACVSingle(v): v == runtimeValue;
-			case ACVMulti(vs): vs.contains(runtimeValue);
-			case ACVNot(inner): !matchConditionalValue(inner, runtimeValue);
-			case ACVCompare(op, cmpVal): // (#8)
-				final numRuntime = Std.parseFloat(runtimeValue);
-				final numCmp = Std.parseFloat(cmpVal);
-				if (Math.isNaN(numRuntime) || Math.isNaN(numCmp)) false;
-				else switch op {
-					case ACmpGte: numRuntime >= numCmp;
-					case ACmpLte: numRuntime <= numCmp;
-					case ACmpGt: numRuntime > numCmp;
-					case ACmpLt: numRuntime < numCmp;
-				};
-			case ACVRange(minVal, maxVal): // (#8)
-				final numRuntime = Std.parseFloat(runtimeValue);
-				final numMin = Std.parseFloat(minVal);
-				final numMax = Std.parseFloat(maxVal);
-				if (Math.isNaN(numRuntime) || Math.isNaN(numMin) || Math.isNaN(numMax)) false;
-				else numRuntime >= numMin && numRuntime <= numMax;
-		};
+	public static inline function matchConditionalValue(condValue:AnimConditionalValue, runtimeValue:String):Bool {
+		return AnimConditionalMatcher.matchConditionalValue(condValue, runtimeValue);
 	}
 
-	public static function countStateMatch(match:AnimConditionalSelector, selector:AnimationStateSelector):Int {
-		var retVal = 0;
-		for (key => value in selector) {
-			final condVal = match.get(key);
-			if (condVal != null) {
-				if (matchConditionalValue(condVal, value))
-					retVal++;
-				else
-					retVal -= 10000;
-			}
-		}
-		return retVal;
+	public static inline function countStateMatch(match:AnimConditionalSelector, selector:AnimationStateSelector):Int {
+		return AnimConditionalMatcher.countStateMatch(match, selector);
 	}
 
 	public static function findPlaylist(stateSelector:AnimationStateSelector, animation:AnimationState, definedStates:Map<String, Array<String>>) {
@@ -1729,6 +1950,8 @@ class AnimParser implements AnimParserResult {
 		if (_sheetName == null) throw 'sheet not set';
 		final _fps = anim.fps;
 		if (_fps == null) throw 'fps not set for animation ${anim.name}';
+		final _flipX = anim.flipX == true; // (#13)
+		final _flipY = anim.flipY == true; // (#13)
 
 		// (#4) Replace ${key} with state value
 		function replaceState(inputStr:String, stateSelector:AnimationStateSelector):String {
@@ -1740,18 +1963,47 @@ class AnimParser implements AnimParserResult {
 			return result;
 		}
 
+		// (#13) Clone tile before flipping to avoid mutating shared atlas tiles.
+		// Heaps' tile.flipX/Y mirrors around the pivot. We additionally shift by
+		// (orig - 2*center) so the sprite stays in the same untrimmed screen footprint
+		// regardless of where the pivot sits within the untrimmed area.
+		function maybeFlipClone(tile:h2d.Tile, origW:Float, origH:Float):h2d.Tile {
+			if (!_flipX && !_flipY) return tile;
+			var cloned = tile.clone();
+			final cx:Float = _center != null ? _center.x : 0;
+			final cy:Float = _center != null ? _center.y : 0;
+			if (_flipX) {
+				cloned.flipX();
+				cloned.dx += origW - 2 * cx;
+			}
+			if (_flipY) {
+				cloned.flipY();
+				cloned.dy += origH - 2 * cy;
+			}
+			return cloned;
+		}
+
 		function tileToFrame(tile:h2d.Tile, duration:Float):AnimationFrameState {
 			if (_center != null) {
 				tile.dx = -_center.x;
 				tile.dy = -_center.y;
 			}
-			return Frame(new AnimationFrame(tile, duration, 0, 0, tile.iwidth, tile.iheight));
+			// Raw single-frame tiles have no trim — orig dimensions == tile dimensions
+			final outTile = maybeFlipClone(tile, tile.width, tile.height);
+			return Frame(new AnimationFrame(outTile, duration, 0, 0, outTile.iwidth, outTile.iheight));
 		}
 
 		function AFtoFrame(f:AnimationFrame, duration:Float):AnimationFrameState {
 			if (_center != null) {
-				f.tile.dx = f.offsetx - _center.x;
-				f.tile.dy = (f.height - f.tile.height) - f.offsety - _center.y;
+				// Clone tile to avoid mutating the shared cached sheet tile
+				var tile = f.tile.clone();
+				tile.dx = f.offsetx - _center.x;
+				tile.dy = (f.height - tile.height) - f.offsety - _center.y;
+				f = f.cloneWithNewTile(tile);
+			}
+			if (_flipX || _flipY) {
+				// f.width / f.height = untrimmed (orig) dimensions from atlas
+				return Frame(f.cloneWithNewTile(maybeFlipClone(f.tile, f.width, f.height)).cloneWithDuration(duration));
 			}
 			return Frame(f.cloneWithDuration(duration));
 		}
@@ -1764,9 +2016,8 @@ class AnimParser implements AnimParserResult {
 					final expandedName = replaceState(name, stateSelector);
 					final sheet = resourceLoader.loadSheet2(_sheetName);
 					if (sheet == null) throw 'sheet ${_sheetName} not found';
-					final loadedTiles = sheet.getAnim(expandedName);
-					if (loadedTiles == null) throw 'tiles ${name}->${expandedName} not found';
 					var tiles = sheet.getAnim(expandedName);
+					if (tiles == null) throw 'tiles ${name}->${expandedName} not found';
 					final _od = overrideDuration;
 					var d = _od == null ? duration : _od / 1000.0;
 					retVal = retVal.concat(Lambda.map(tiles, t -> AFtoFrame(t, d)));
@@ -1807,6 +2058,30 @@ class AnimParser implements AnimParserResult {
 						default: null;
 					};
 					retVal.push(SetFilter(builtFilter, tint));
+			}
+		}
+		// (#13) When flipping in place, all frames must share the same untrimmed
+		// footprint — extrapoints are per-animation (not per-frame) and mirror
+		// around a single origW/origH, so mixed sizes would desync the points
+		// from the visuals as the animation plays.
+		if (_flipX || _flipY) {
+			var firstW:Int = -1;
+			var firstH:Int = -1;
+			for (s in retVal) {
+				switch s {
+					case Frame(f):
+						if (firstW < 0) {
+							firstW = f.width;
+							firstH = f.height;
+						} else if (f.width != firstW || f.height != firstH) {
+							throw 'anim ${anim.name}: flipX/flipY requires all frames to share untrimmed size '
+								+ '(got ${f.width}x${f.height}, expected ${firstW}x${firstH})';
+						}
+					default:
+				}
+			}
+			if (firstW < 0) {
+				throw 'anim ${anim.name}: flipX/flipY enabled but no Frame states found';
 			}
 		}
 		return retVal;
@@ -1876,22 +2151,49 @@ class AnimParser implements AnimParserResult {
 
 	// (#12) Resolve animation-level filters against state selector.
 	// Returns matching filters and optional tint color.
+	// (#P3) Entries tagged with a non-zero `group` form exclusive alternation chains —
+	// only the best-scoring entry per group fires. Untagged / group-0 entries are
+	// unconditional and always apply. Preserves original entry order in the output.
 	static function resolveAnimFilters(filters:Null<Array<AnimFilterEntry>>,
 			stateSelector:AnimationStateSelector):{filter:Null<h2d.filter.Filter>, tintColor:Null<Int>} {
 		if (filters == null || filters.length == 0) return {filter: null, tintColor: null};
 
+		// First pass: pick the winning entry index per alternation group.
+		var groupWinner:Map<Int, Int> = new Map();
+		var groupBestScore:Map<Int, Int> = new Map();
+		for (i in 0...filters.length) {
+			final entry = filters[i];
+			final g = entry.group != null ? entry.group : 0;
+			if (g == 0) continue;
+			final score = countStateMatch(entry.states, stateSelector);
+			if (score < 0) continue;
+			final prev = groupBestScore.get(g);
+			if (prev == null || score > prev) {
+				groupBestScore.set(g, score);
+				groupWinner.set(g, i);
+			}
+		}
+
 		var tintColor:Null<Int> = null;
 		var heapsFilters:Array<h2d.filter.Filter> = [];
-		for (entry in filters) {
-			if (countStateMatch(entry.states, stateSelector) >= 0) {
-				switch entry.filter {
-					case AFTint(color):
-						tintColor = color;
-					case AFNone: // skip
-					default:
-						final f = buildAnimFilter(entry.filter);
-						if (f != null) heapsFilters.push(f);
-				}
+		for (i in 0...filters.length) {
+			final entry = filters[i];
+			final g = entry.group != null ? entry.group : 0;
+			var shouldApply = false;
+			if (g == 0) {
+				// Unconditional — apply only if the (possibly empty) selector matches.
+				shouldApply = countStateMatch(entry.states, stateSelector) >= 0;
+			} else {
+				shouldApply = groupWinner.get(g) == i;
+			}
+			if (!shouldApply) continue;
+			switch entry.filter {
+				case AFTint(color):
+					tintColor = color;
+				case AFNone: // skip
+				default:
+					final f = buildAnimFilter(entry.filter);
+					if (f != null) heapsFilters.push(f);
 			}
 		}
 		var filter:Null<h2d.filter.Filter> = null;
@@ -1916,9 +2218,38 @@ class AnimParser implements AnimParserResult {
 				if (playlist == null) throw 'null playlist for anim ${name}';
 				var states = createStates(playlist.anims, anim, stateSelector);
 				final extraPoints = new Map<String, h2d.col.IPoint>();
+				final _flipX = anim.flipX == true; // (#13)
+				final _flipY = anim.flipY == true; // (#13)
+				// (#13) For Option B "flip in place", mirror extrapoints around the untrimmed
+				// screen center, not the pivot. createStates() validates that all frames share
+				// untrimmed size when flipping, so any Frame's dimensions are authoritative.
+				var origW:Float = 0;
+				var origH:Float = 0;
+				if (_flipX || _flipY) {
+					var found = false;
+					for (s in states) {
+						if (found) continue;
+						switch s {
+							case Frame(f):
+								origW = f.width;
+								origH = f.height;
+								found = true;
+							default:
+						}
+					}
+					if (!found) throw 'anim ${name}: flipX/flipY enabled but no Frame states found';
+				}
+				final cx:Float = center != null ? center.x : 0;
+				final cy:Float = center != null ? center.y : 0;
 				for (pointName in allowedExtraPoints) {
 					var pt = findExtraPoint(pointName, stateSelector, anim, definedStates);
-					if (pt != null) extraPoints.set(pointName, pt.toPoint());
+					if (pt != null) {
+						var p = pt.toPoint();
+						// (#13) Mirror around untrimmed screen center, matching Option B tile flip
+						if (_flipX) p.x = Math.round(origW - 2 * cx - p.x);
+						if (_flipY) p.y = Math.round(origH - 2 * cy - p.y);
+						extraPoints.set(pointName, p);
+					}
 				}
 				final loopCount:Int = anim.loop ?? 0;
 				final resolved = resolveAnimFilters(anim.filters, stateSelector);
@@ -1938,5 +2269,164 @@ class AnimParser implements AnimParserResult {
 		var animSM = new AnimationSM(stateSelector);
 		load(stateSelector, animSM);
 		return animSM;
+	}
+}
+#end
+
+/**
+ * Lightweight .anim validator for LSP/noheaps mode.
+ * Tokenizes via AnimLexerHC, validates structure (matching braces,
+ * known top-level keywords), and extracts symbols.
+ * Does NOT build runtime objects — just checks syntax.
+ */
+class AnimParserLsp {
+	var tokens:Array<AnimToken>;
+	var tpos:Int;
+	var sourceName:String;
+
+	public var animationNames(default, null):Array<String> = [];
+	public var stateDeclarations(default, null):Array<{name:String, values:Array<String>}> = [];
+	public var hasMetadata(default, null):Bool = false;
+	public var constants(default, null):Array<String> = [];
+
+	public function new(src:String, sourceName:String) {
+		this.sourceName = sourceName;
+		final lexer = new AnimLexerHC(src, sourceName);
+		tokens = [];
+		while (true) {
+			final t = lexer.nextToken();
+			tokens.push(t);
+			if (t.type == APEof) break;
+		}
+		tpos = 0;
+	}
+
+	inline function peek():APToken {
+		return tokens[tpos].type;
+	}
+
+	function advance():Void {
+		if (tpos < tokens.length - 1) tpos++;
+	}
+
+	function currentPos():ParsePosition {
+		return new ParsePosition(sourceName, tokens[tpos].line, tokens[tpos].col);
+	}
+
+	function match(expected:APToken):Bool {
+		if (peek() == expected) {
+			advance();
+			return true;
+		}
+		return false;
+	}
+
+	function skipBlock():Void {
+		var depth = 1;
+		while (depth > 0 && peek() != APEof) {
+			switch (peek()) {
+				case APCurlyOpen: depth++;
+				case APCurlyClosed: depth--;
+				default:
+			}
+			if (depth > 0) advance();
+		}
+		if (peek() == APCurlyClosed) advance();
+	}
+
+	function skipToNextTopLevel():Void {
+		while (peek() != APEof) {
+			switch (peek()) {
+				case APIdentifier(_, kw, _) if (kw != null): return;
+				case APAt: return;
+				default: advance();
+			}
+		}
+	}
+
+	/**
+	 * Validate the .anim file structure. Throws InvalidSyntax or AnimUnexpected on errors.
+	 */
+	public function validate():Void {
+		while (peek() != APEof) {
+			switch (peek()) {
+				case APIdentifier(_, keyword, _):
+					switch (keyword) {
+						case APAnimation:
+							advance();
+							switch (peek()) {
+								case APIdentifier(name, _, _):
+									animationNames.push(name);
+									advance();
+								default:
+									throw new InvalidSyntax("expected animation name", currentPos());
+							}
+							if (!match(APCurlyOpen)) throw new InvalidSyntax("expected '{' after animation name", currentPos());
+							skipBlock();
+						case APAnim:
+							advance();
+							switch (peek()) {
+								case APIdentifier(name, _, _):
+									animationNames.push(name);
+									advance();
+								default:
+									throw new InvalidSyntax("expected anim name", currentPos());
+							}
+							skipToNextTopLevel();
+						case APMetadata:
+							advance();
+							hasMetadata = true;
+							if (!match(APCurlyOpen)) throw new InvalidSyntax("expected '{' after metadata", currentPos());
+							skipBlock();
+						case APStates:
+							advance();
+							if (!match(APColon)) throw new InvalidSyntax("expected ':' after states", currentPos());
+							switch (peek()) {
+								case APIdentifier(name, _, _):
+									advance();
+									final values:Array<String> = [];
+									if (match(APOpen)) {
+										while (peek() != APClosed && peek() != APEof) {
+											switch (peek()) {
+												case APIdentifier(v, _, _):
+													values.push(v);
+													advance();
+												case APComma:
+													advance();
+												default:
+													advance();
+											}
+										}
+										match(APClosed);
+									}
+									stateDeclarations.push({name: name, values: values});
+								default:
+							}
+						case APSheet | APCenter | APFps | APLoop | APAllowedExtraPoints | APFlipX | APFlipY:
+							advance();
+							if (!match(APColon)) throw new InvalidSyntax("expected ':'", currentPos());
+							skipToNextTopLevel();
+						default:
+							advance();
+					}
+				case APAt:
+					advance();
+					switch (peek()) {
+						case APIdentifier(_, APFinal, _):
+							advance();
+							switch (peek()) {
+								case APIdentifier(name, _, _):
+									constants.push(name);
+									advance();
+								default:
+							}
+							skipToNextTopLevel();
+						default:
+							advance();
+					}
+				default:
+					advance();
+			}
+		}
 	}
 }

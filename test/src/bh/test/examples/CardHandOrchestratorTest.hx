@@ -234,6 +234,34 @@ class CardHandOrchestratorTest extends BuilderTestBase {
 		Assert.floatEquals(1.0, result[0].scale);
 	}
 
+	@Test
+	public function testPathLayoutUsesAllocationFreePointLookup():Void {
+		var path = new CountingPath([new SinglePath(new FPoint(0, 0), new FPoint(400, 0), Line)]);
+		CountingPath.getPointCalls = 0;
+		CountingPath.getPointIntoCalls = 0;
+
+		UICardHandLayout.computePathLayout(10, path, EvenRate, Straight, -1, 20.0, 1.2, 0.05);
+
+		Assert.equals(0, CountingPath.getPointCalls,
+			"computePathLayout (EvenRate) must use getPointInto (scratch) instead of getPoint (allocates FPoint per call)");
+		Assert.isTrue(CountingPath.getPointIntoCalls > 0,
+			"computePathLayout should have invoked getPointInto at least once");
+	}
+
+	@Test
+	public function testPathLayoutEvenArcLengthUsesAllocationFreePointLookup():Void {
+		var path = new CountingPath([new SinglePath(new FPoint(0, 0), new FPoint(400, 0), Line)]);
+		CountingPath.getPointCalls = 0;
+		CountingPath.getPointIntoCalls = 0;
+
+		UICardHandLayout.computePathLayout(10, path, EvenArcLength, Straight, -1, 20.0, 1.2, 0.05);
+
+		Assert.equals(0, CountingPath.getPointCalls,
+			"computePathLayout (EvenArcLength) must use getPointInto in the arc-length sampling loop (was allocating ~101 FPoints per call)");
+		Assert.isTrue(CountingPath.getPointIntoCalls > 0,
+			"computePathLayout should have invoked getPointInto at least once");
+	}
+
 	// ==================== CardHandTypes Enums ====================
 
 	@Test
@@ -257,18 +285,13 @@ class CardHandOrchestratorTest extends BuilderTestBase {
 	@Test
 	public function testTargetingResultEnum():Void {
 		var t1 = TargetZone("zone1");
-		var t2 = TargetCard("card1");
-		var t3 = NoTarget;
+		var t2 = NoTarget;
 
 		switch (t1) {
 			case TargetZone(id): Assert.equals("zone1", id);
 			default: Assert.fail("Expected TargetZone");
 		}
 		switch (t2) {
-			case TargetCard(id): Assert.equals("card1", id);
-			default: Assert.fail("Expected TargetCard");
-		}
-		switch (t3) {
 			case NoTarget: Assert.isTrue(true);
 			default: Assert.fail("Expected NoTarget");
 		}
@@ -507,5 +530,104 @@ class CardHandOrchestratorTest extends BuilderTestBase {
 		Assert.equals("a", ids[0]);
 		Assert.equals("b", ids[1]);
 		Assert.equals("c", ids[2]);
+	}
+
+	// ==================== Path name validation at construction ====================
+
+	@Test
+	public function testInvalidDrawPathNameThrows():Void {
+		Assert.exception(() -> createHelper({drawPathName: "nonExistentPath"}), String,
+			e -> e == 'CardHandHelper: drawPathName "nonExistentPath" not found in .manim');
+	}
+
+	@Test
+	public function testInvalidDiscardPathNameThrows():Void {
+		Assert.exception(() -> createHelper({discardPathName: "nonExistentPath"}), String,
+			e -> e == 'CardHandHelper: discardPathName "nonExistentPath" not found in .manim');
+	}
+
+	@Test
+	public function testInvalidReturnPathNameThrows():Void {
+		Assert.exception(() -> createHelper({returnPathName: "nonExistentPath"}), String,
+			e -> e == 'CardHandHelper: returnPathName "nonExistentPath" not found in .manim');
+	}
+
+	@Test
+	public function testInvalidRearrangePathNameThrows():Void {
+		Assert.exception(() -> createHelper({rearrangePathName: "nonExistentPath"}), String,
+			e -> e == 'CardHandHelper: rearrangePathName "nonExistentPath" not found in .manim');
+	}
+
+	@Test
+	public function testNullPathNamesAllowed():Void {
+		// null path names should not throw (instant snap behavior)
+		var h = createHelper({drawPathName: null, discardPathName: null, returnPathName: null, rearrangePathName: null});
+		Assert.notNull(h.helper);
+	}
+
+	// ==================== Bug: discardCard missing CardHoverEnd ====================
+
+	@Test
+	public function testDiscardHoveredCardEmitsHoverEnd():Void {
+		// Bug: When a hovered card is discarded, CardHoverEnd is never emitted.
+		// The hoveredEntry is cleared before the event fires.
+		var h = createHelper();
+		h.helper.setHand([desc("a"), desc("b"), desc("c")]);
+
+		var events:Array<CardHandEvent> = [];
+		h.helper.onCardEvent = function(e) { events.push(e); };
+
+		// Simulate hover by using @:privateAccess to set hoveredEntry
+		@:privateAccess {
+			var entry = h.helper.cards[1]; // card "b"
+			h.helper.setHoveredEntry(entry);
+		}
+
+		// Verify hover started
+		var hasHoverStart = false;
+		for (e in events) {
+			switch (e) {
+				case CardHoverStart(id):
+					if (id == "b") hasHoverStart = true;
+				default:
+			}
+		}
+		Assert.isTrue(hasHoverStart, "CardHoverStart should have been emitted");
+		events.resize(0);
+
+		// Discard the hovered card
+		h.helper.discardCard("b");
+
+		// Check that CardHoverEnd was emitted
+		var hasHoverEnd = false;
+		for (e in events) {
+			switch (e) {
+				case CardHoverEnd(id):
+					if (id == "b") hasHoverEnd = true;
+				default:
+			}
+		}
+		Assert.isTrue(hasHoverEnd, "CardHoverEnd should be emitted when discarding a hovered card");
+	}
+}
+
+/** Test subclass that counts getPoint vs getPointInto calls, used to verify that
+ *  hot paths (card layout, targeting) avoid per-call FPoint allocation. */
+class CountingPath extends Path {
+	public static var getPointCalls:Int = 0;
+	public static var getPointIntoCalls:Int = 0;
+
+	public function new(singlePaths:Array<SinglePath>) {
+		super(singlePaths);
+	}
+
+	override public function getPoint(rate:Float):FPoint {
+		getPointCalls++;
+		return super.getPoint(rate);
+	}
+
+	override public function getPointInto(rate:Float, out:FPoint):Void {
+		getPointIntoCalls++;
+		super.getPointInto(rate, out);
 	}
 }

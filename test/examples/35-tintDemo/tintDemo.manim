@@ -18,4 +18,14 @@ version: 1.0
   @scale(4) tint(#00FF00) bitmap(sheet("crew2", "marine_r_idle")): 220, 240
   @scale(4) tint(#0000FF) bitmap(sheet("crew2", "marine_r_idle")): 320, 240
   @scale(4) tint(#FFFF00) bitmap(sheet("crew2", "marine_r_idle")): 420, 240
+
+  // Row 4: #RRGGBBAA 8-digit literals (semi-transparent white tint over red
+  // background). Guards end-to-end alpha-blended rendering: parser round-trip
+  // from CSS RRGGBBAA → Heaps AARRGGBB → tint color → Heaps alpha-blend.
+  bitmap(generated(color(480, 80, #FF0000))): 20, 340
+  @tint(#FFFFFF20) bitmap(generated(color(60, 60, #FFFFFF))): 30, 350
+  @tint(#FFFFFF60) bitmap(generated(color(60, 60, #FFFFFF))): 120, 350
+  @tint(#FFFFFFA0) bitmap(generated(color(60, 60, #FFFFFF))): 220, 350
+  @tint(#FFFFFFE0) bitmap(generated(color(60, 60, #FFFFFF))): 320, 350
+  @tint(#FFFFFFFF) bitmap(generated(color(60, 60, #FFFFFF))): 420, 350
 }

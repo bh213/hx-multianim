@@ -100,8 +100,11 @@ class FloatingTextHelper {
 
 	/** Update all active instances. Completed instances are removed automatically. Call from game loop. */
 	public function update(dt:Float):Void {
+		// Snapshot: instances spawned reentrantly from onComplete land beyond
+		// `count` and start fresh next frame instead of consuming this frame's dt.
+		var count = instances.length;
 		var i = 0;
-		while (i < instances.length) {
+		while (i < count) {
 			var inst = instances[i];
 			var state = inst.animPath.update(dt);
 
@@ -125,10 +128,16 @@ class FloatingTextHelper {
 
 			if (state.done) {
 				inst.object.remove();
-				inst.onComplete();
-				// Swap-remove for O(1)
-				instances[i] = instances[instances.length - 1];
+				// Swap within the active range [0..count); spawned tail untouched.
+				count--;
+				if (i < count) {
+					instances[i] = instances[count];
+				}
 				instances.pop();
+				// Callback fires AFTER removal — safe to clear()/spawn() reentrantly.
+				inst.onComplete();
+				// Callback may have shrunk the array below `count` (e.g. clear()).
+				if (count > instances.length) count = instances.length;
 			} else {
 				i++;
 			}

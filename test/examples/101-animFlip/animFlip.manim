@@ -1,0 +1,91 @@
+version: 1.0
+
+// Marine sprite metrics (from crew2.atlas2):
+//   Untrimmed:  64 x 64
+//   Center:     32, 48  (pivot at horizontal middle, near feet)
+// At scale 3 the untrimmed box is 192 x 192 with pivot at (96, 144) within the box.
+// Bounding rects below mark where the FULL untrimmed sprite should sit relative
+// to each pivot position. A correctly-flipped sprite must stay inside its box.
+
+#animFlip programmable() {
+  pos: 0, 0
+
+  @alpha(0.3) bitmap(generated(color(1280, 720, #202030)));
+
+  // Bounding boxes for every sprite slot — yellow outline = expected untrimmed bounds
+  // Box size 192 x 192, top-left = (px - 96, py - 144)
+  graphics(
+    // Row 1 — reference (pivot y = 160)
+    rect(#FFFF00, 1, 192, 192):  120 - 96, 160 - 144;
+    rect(#FFFF00, 1, 192, 192):  340 - 96, 160 - 144;
+
+    // Row 2 — flip variants (pivot y = 380)
+    rect(#FFFF00, 1, 192, 192):  120 - 96, 380 - 144;
+    rect(#FFFF00, 1, 192, 192):  340 - 96, 380 - 144;
+    rect(#FFFF00, 1, 192, 192):  560 - 96, 380 - 144;
+    rect(#FFFF00, 1, 192, 192):  780 - 96, 380 - 144;
+    rect(#FFFF00, 1, 192, 192): 1000 - 96, 380 - 144;
+
+    // Row 3 — fire/extrapoint at scale 1 (pivot y = 600), 64x64 boxes
+    rect(#FFFF00, 1, 64, 64):  220 - 32, 600 - 48;
+    rect(#FFFF00, 1, 64, 64):  780 - 32, 600 - 48;
+
+    // Pivot crosshairs (red dots) for visual reference
+    rect(#FF0000, 1, 2, 2):  120 - 1, 160 - 1;
+    rect(#FF0000, 1, 2, 2):  340 - 1, 160 - 1;
+    rect(#FF0000, 1, 2, 2):  120 - 1, 380 - 1;
+    rect(#FF0000, 1, 2, 2):  340 - 1, 380 - 1;
+    rect(#FF0000, 1, 2, 2):  560 - 1, 380 - 1;
+    rect(#FF0000, 1, 2, 2):  780 - 1, 380 - 1;
+    rect(#FF0000, 1, 2, 2): 1000 - 1, 380 - 1;
+    rect(#FF0000, 1, 2, 2):  220 - 1, 600 - 1;
+    rect(#FF0000, 1, 2, 2):  780 - 1, 600 - 1;
+  );
+
+  // ============================================================
+  // Row 1: Reference — original l/r idle from marine.anim
+  // ============================================================
+  text(m3x6, "Row 1: Reference (marine.anim)", #FFFFFF): 50, 20
+  text(m3x6, "l idle", #AAAAAA):  90, 40
+  text(m3x6, "r idle", #AAAAAA): 310, 40
+  @scale(3) stateanim("marine.anim", "idle", "direction"=>"l"): 120, 160
+  @scale(3) stateanim("marine.anim", "idle", "direction"=>"r"): 340, 160
+
+  // ============================================================
+  // Row 2: marineFlip.anim — base sprite (l_idle) + flipX/flipY
+  // ============================================================
+  text(m3x6, "Row 2: marineFlip.anim — l_idle base, flipped via flipX/flipY", #FFFFFF): 50, 230
+  text(m3x6, "normal",          #AAAAAA):  90, 250
+  text(m3x6, "flipX",           #FFFF00): 310, 250
+  text(m3x6, "flipY",           #FFFF00): 530, 250
+  text(m3x6, "flipX+Y",         #FFFF00): 750, 250
+  text(m3x6, "shorthand flipX", #FFFF00): 970, 250
+  @scale(3) stateanim("marineFlip.anim", "idle_normal"):     120, 380
+  @scale(3) stateanim("marineFlip.anim", "idle_flipx"):      340, 380
+  @scale(3) stateanim("marineFlip.anim", "idle_flipy"):      560, 380
+  @scale(3) stateanim("marineFlip.anim", "idle_flipboth"):   780, 380
+  @scale(3) stateanim("marineFlip.anim", "shorthand_flipx"):1000, 380
+
+  // ============================================================
+  // Row 3: Extrapoint mirroring — fire point auto-flips with flipX
+  // marine.anim "fire-left" has fire extrapoint on marine_l_shooting_u.
+  // marineFlip.anim "fire_flipx" uses the same sheet with flipX:yes — the fire
+  // point should auto-mirror around center.x and align with the visible muzzle.
+  // ============================================================
+  text(m3x6, "Row 3: Extrapoint mirroring — fire point auto-flips with flipX", #FFFFFF): 50, 450
+  text(m3x6, "fire-left (red = fire point)",      #FF8888): 130, 470
+  text(m3x6, "fire_flipx (green = mirrored)",     #88FF88): 700, 470
+
+  // Reference: original left-firing animation (scale 1 so extrapoint markers align)
+  #fireRefL stateanim("marine.anim", "fire-left", direction=>"l"): 220, 600
+  polygon(#FF0000, filled, -4,-4, 4,-4, 0,4): $fireRefL.extraPoint("fire").offset(220, 600)
+
+  // Flipped: same sprite with flipX, fire point should mirror
+  #fireFlipped stateanim("marineFlip.anim", "fire_flipx"): 780, 600
+  polygon(#00FF00, filled, -4,-4, 4,-4, 0,4): $fireFlipped.extraPoint("fire").offset(780, 600)
+}
+
+#main point {
+  pos: 0, 0
+  staticRef($animFlip): 0, 0
+}

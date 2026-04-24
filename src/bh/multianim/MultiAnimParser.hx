@@ -11,7 +11,7 @@ import bh.multianim.layouts.LayoutTypes;
 using StringTools;
 using bh.base.ColorUtils;
 using bh.multianim.ParseUtils;
-#if !macro
+#if (!macro && !noheaps)
 import bh.base.Particles;
 import bh.base.PixelLine;
 import bh.stateanim.AnimationSM;
@@ -28,187 +28,6 @@ enum OptionalParametersParsing {
 	ParseCustom(name:String, parse:()->Dynamic);
 	ParseColor(name:String);
 	
-}
-
-@:nullSafety
-enum IdentifierType {
-	ITString;
-	ITReference;
-	ITName;
-	ITQuotedString;
-}
-
-@:nullSafety
-enum MPInterpolationEnum {
-	MPIStart;
-	MPIEnd(stringValue:String);
-	MPICode(prefix:String);
-}
-
-@:nullSafety
-enum NumberType {
-	NTInteger;
-	NTFloat;
-	NTHexInteger;
-}
-
-@:nullSafety
-enum ValueType {
-	VTInt;
-	VTFloat;
-	VTString;
-}
-
-@:nullSafety
-enum MPToken {
-	MPEof;
-	MPOpen;
-	MPClosed;
-	MPBracketOpen;
-	MPBracketClosed;
-	MPCurlyOpen;
-	MPCurlyClosed;
-	MPComma;
-	MPAt;
-	MPExclamation;
-	MPQuestion;
-	MPColon;
-	MPDoubleDot;
-	MPSemiColon;
-	MPNumber(s:String, numberType:NumberType);
-	MPIdentifier(s:String, keyword:Null<MPKeywords>, identType:IdentifierType);
-	MPWhitespace;
-	MPNewLine;
-	MPArrow;
-	MPStar;
-	MPPercent;
-	MPPlus;
-	MPSlash;
-	MPMinus;
-	MPEquals;
-	MPLessThan;
-	MPGreaterThan;
-	MPLessEquals;
-	MPGreaterEquals;
-	MPNotEquals;
-	MPDoubleEquals;
-	MPInterpolation(type:MPInterpolationEnum);
-}
-
-@:nullSafety
-enum MPKeywords {
-	MPTile;
-	MPBit;
-	MPCallback;
-	MPFunction;
-	MPBuilderParameter;
-	MPNinePatch;
-	MPApply;
-	MPCenter;
-	MPLeft;
-	MPRight;
-	MPTop;
-	MPBottom;
-	MPBitmap;
-	MPHexDirection;
-	MPGridDirection;
-	MPRepeatable;
-	MPRepeatable2D;
-	MPHexGrid;
-	MPOffset;
-	MPGrid;
-	MPHex;
-	MPPoint;
-	MPFlow;
-	MPStateanim;
-	MPConstruct;
-	MPPixels;
-	MPTileGroup;
-	MPProgrammable;
-	MPRelativeLayouts;
-	MPLayout;
-	MPLayers;
-	MPMask;
-	MPPalette;
-	MPLayer;
-	MPSettings;
-	MPPosition;
-	MPImport;
-	MPScale;
-	MPFilter;
-	MPFile;
-	MPSheet;
-	MPLoop;
-	MPGenerated;
-	MPAlpha;
-	MPPos;
-	MPFlat;
-	MPPointy;
-	MPHexEdge;
-	MPHexCorner;
-	MPLine;
-	MPForward;
-	MPTurn;
-	MPArc;
-	MPBezier;
-	MPCheckpoint;
-	MPList;
-	MPSequence;
-	MPRect;
-	MPFilledRect;
-	MPPixel;
-	MPFlags;
-	MPError;
-	MPNothing;
-	MPText;
-	MPRichText;
-	MPVersion;
-	MPPlaceholder;
-	MPDebug;
-	MPStaticRef;
-	MPDynamicRef;
-	MPIf;
-	MPIfStrict;
-	MPInteractive;
-	MPPolygon;
-	MPGraphics;
-	MPCircle;
-	MPEllipse;
-	MPRoundRect;
-	MPInt;
-	MPFloat;
-	MPString;
-	MPColor;
-	MPUInt;
-	MPBool;
-	MPBlendMode;
-	MPUpdatable;
-	MPPaths;
-	MPPath;
-	MPParticles;
-	MPAnimatedPath;
-	MPDiv;
-	MPExternal;
-	MPArray;
-	MPRange;
-	MPSmoothing;
-	MPTiles;
-	// Autotile keywords
-	MPAutotile;
-	MPFormat;
-	MPPrefix;
-	MPRegion;
-	MPDepth;
-	MPMapping;
-	MPCross;
-	MPBlob47;
-	MPDemo;
-	// Atlas2 inline
-	MPAtlas2;
-	// Conditional keywords
-	MPElse;
-	MPDefault;
-	MPTint;
 }
 
 @:nullSafety
@@ -282,7 +101,7 @@ function getNameString(updatableNameType:UpdatableNameType) {
 	}
 }
 
-#if !macro
+#if (!macro && !noheaps)
 @:nullSafety
 @:using(bh.multianim.MultiAnimParser)
 typedef NamedBuildResult = {
@@ -321,7 +140,7 @@ function toh2dObject(builtHeapsComponent:BuiltHeapsComponent):h2d.Object {
 }
 #end
 
-#if !macro
+#if (!macro && !noheaps)
 @:nullSafety
 @:using(bh.multianim.MultiAnimParser)
 enum BuiltHeapsComponent {
@@ -488,13 +307,16 @@ enum ResolvedIndexParameters {
 @:nullSafety
 enum ConditionalValues {
 	CoEnums(a:Array<String>);
-	CoRange(from:Null<Float>, to:Null<Float>, fromExclusive:Bool, toExclusive:Bool);
+	CoRange(from:Null<ReferenceableValue>, to:Null<ReferenceableValue>, fromExclusive:Bool, toExclusive:Bool);
 	CoIndex(idx:Int, value:String);
 	CoValue(val:Int);
 	CoFlag(f:Int);
 	CoAny;
 	CoStringValue(s:String);
 	CoNot(value:ConditionalValues);
+	// OR of typed inner conditionals — used by @switch pipe arms on non-enum/string params
+	// (color, hex int, bool) where raw-string CoEnums comparison fails against integer-backed values.
+	CoAnyOf(values:Array<ConditionalValues>);
 
 }
 
@@ -528,6 +350,14 @@ enum TextAlignWidth {
 }
 
 @:nullSafety
+enum AutoFitMode {
+	AFWidth;
+	AFBox(w:ReferenceableValue, h:ReferenceableValue);
+	AFFillWidth;
+	AFFillBox(w:ReferenceableValue, h:ReferenceableValue);
+}
+
+@:nullSafety
 enum HorizontalAlign {
 	Left;
 	Right;
@@ -544,13 +374,6 @@ enum VerticalAlign {
 @:nullSafety
 typedef ParametersDefinitions = Map<String, Definition>;
 
-@:nullSafety
-private enum LayoutsParsingState {
-	LPSGrid;
-	LPSHex;
-	LPSOffset;
-	LPSEnd;
-}
 @:nullSafety
 typedef LayoutsDef = Map<String, Layout>;
 
@@ -802,6 +625,7 @@ typedef ParticlesDef = {
 	var count:Null<ReferenceableValue>;
 	var loop:Null<Bool>;
 	var relative:Null<Bool>;
+	var externallyDriven:Null<Bool>;
 	var emitDelay:Null<ReferenceableValue>;
 	var emitSync:Null<ReferenceableValue>;
 	var maxLife:Null<ReferenceableValue>;
@@ -850,6 +674,18 @@ typedef ParticlesDef = {
 	var animSelector:Null<Map<String, String>>;
 	var animStates:Null<Array<ParticleAnimStateDef>>;
 	var animEventOverrides:Null<Array<ParticleAnimEventOverride>>;
+	// Shutdown
+	var shutdown:Null<ParticleShutdownDef>;
+}
+
+// Shutdown configuration for graceful particle stop
+@:nullSafety
+typedef ParticleShutdownDef = {
+	var duration:Null<ReferenceableValue>;
+	var curve:Null<ParticleCurveRef>;
+	var alphaCurve:Null<ParticleCurveRef>;
+	var sizeCurve:Null<ParticleCurveRef>;
+	var speedCurve:Null<ParticleCurveRef>;
 }
 
 @:nullSafety
@@ -886,10 +722,11 @@ enum TileSource {
 	TSSheet(sheet:ReferenceableValue, name:ReferenceableValue);
 	TSSheetWithIndex(sheet:ReferenceableValue, name:ReferenceableValue, index:ReferenceableValue);
 	TSGenerated(type:GeneratedTileType);
-	#if !macro
+	#if (!macro && !noheaps)
 	TSTile(tile:h2d.Tile); // Used for iterator-provided tiles (e.g., from stateanim iterator)
 	#end
 	TSReference(varName:String); // Reference to a TileSource variable (e.g., $bitmap from stateanim iterator)
+	TSPivot(pivotX:Float, pivotY:Float, inner:TileSource); // Wrapper that sets tile pivot via setCenterRatio
 }
 
 @:nullSafety
@@ -991,6 +828,9 @@ typedef TextDef = {
 	var images:Null<Array<TextImageDef>>;
 	var condenseWhite:Null<Bool>;
 	var hasMarkup:Bool; // auto-detected from text literal
+	// Auto-fit: try fallback fonts when text overflows
+	var autoFitFonts:Null<Array<ReferenceableValue>>;
+	var autoFitMode:Null<AutoFitMode>;
 }
 
 // ========== Data block types ==========
@@ -1001,6 +841,7 @@ enum DataValueType {
 	DVTFloat;
 	DVTString;
 	DVTBool;
+	DVTEnum(enumName:String);
 	DVTRecord(recordName:String);
 	DVTArray(elementType:DataValueType);
 }
@@ -1013,6 +854,13 @@ enum DataValue {
 	DVBool(v:Bool);
 	DVArray(elements:Array<DataValue>);
 	DVRecord(recordName:String, fields:Map<String, DataValue>);
+	DVEnumValue(enumName:String, value:String);
+}
+
+@:nullSafety
+typedef DataEnumDef = {
+	var name:String;
+	var values:Array<String>;
 }
 
 @:nullSafety
@@ -1030,6 +878,7 @@ typedef DataFieldDef = {
 
 @:nullSafety
 typedef DataDef = {
+	var enums:Map<String, DataEnumDef>;
 	var records:Map<String, DataRecordDef>;
 	var fields:Array<DataFieldDef>;
 }
@@ -1064,7 +913,7 @@ enum NodeType {
 	MASK(width:ReferenceableValue, height:ReferenceableValue);
 	REPEAT(varName:String, repeatType:RepeatType);
 	REPEAT2D(varNameX:String, varNameY:String, repeatTypeX:RepeatType, repeatTypeY:RepeatType);
-	STATIC_REF(externalReference:Null<String>, programmableReference:String, parameters:Map<String, ReferenceableValue>);
+	STATIC_REF(externalReference:Null<String>, programmableReference:ReferenceableValue, parameters:Map<String, ReferenceableValue>);
 	PLACEHOLDER(type:PlaceholderTypes, replacementSource:PlaceholderReplacementSource);
 	NINEPATCH(sheet:String, tilename:String, width:ReferenceableValue, height:ReferenceableValue);
 	INTERACTIVE(width:ReferenceableValue, height:ReferenceableValue, id:ReferenceableValue, debug:Bool,
@@ -1076,17 +925,46 @@ enum NodeType {
 	DATA(dataDef:DataDef);
 	SLOT(parameters:Null<ParametersDefinitions>, paramOrder:Null<Array<String>>);
 	SLOT_CONTENT;
-	DYNAMIC_REF(externalReference:Null<String>, programmableReference:String, parameters:Map<String, ReferenceableValue>);
+	DYNAMIC_REF(externalReference:Null<String>, programmableReference:ReferenceableValue, parameters:Map<String, ReferenceableValue>);
 	FINAL_VAR(name:String, value:ReferenceableValue);
+	SWITCH(paramName:String, arms:Array<SwitchArm>);
+}
+
+@:nullSafety
+typedef SwitchArm = {
+	pattern:Null<ConditionalValues>, // null = default arm
+	children:Array<Node>,
 }
 
 @:nullSafety
 enum NodeConditionalValues {
-	Conditional(values:Map<String, ConditionalValues>, strict:Bool);
+	Conditional(values:Map<String, ConditionalValues>, anyMode:Bool);
 	ConditionalElse(values:Null<Map<String, ConditionalValues>>);
 	ConditionalDefault;
 	NoConditional;
 }
+
+@:nullSafety
+enum CustomFilterArgType {
+	CFFloat;
+	CFColor;
+	CFBool;
+}
+
+@:nullSafety
+typedef CustomFilterArg = {
+	value:ReferenceableValue,
+	type:CustomFilterArgType,
+};
+
+@:nullSafety
+typedef CustomFilterRef = {
+	name:String,
+	argCount:Int,
+	argTypes:Array<CustomFilterArgType>,
+	args:Array<CustomFilterArg>,
+	pos:String,
+};
 
 @:nullSafety
 enum FilterType {
@@ -1103,7 +981,7 @@ enum FilterType {
 	FilterPixelOutline(mode:PixelOutlineModeDef, smoothColor:Bool);
 	FilterPaletteReplace(paletteName:String, sourceRow:ReferenceableValue, replacementRow:ReferenceableValue);
 	FilterColorListReplace(sourceColors:Array<ReferenceableValue>, replacementColors:Array<ReferenceableValue>);
-
+	FilterCustom(name:String, args:Array<CustomFilterArg>);
 }
 
 // Used to keep pixelOutline parameters referenceable until build time
@@ -1152,7 +1030,7 @@ typedef Node = {
 	settings:Null<Map<String, ParsedSettingValue>>,
 	transitions:Null<Map<String, TransitionType>>,
 	flowProperties:Null<NodeFlowProperties>,
-	#if MULTIANIM_TRACE
+	#if MULTIANIM_DEV
 	parserPos:String
 	#end
 }
@@ -1161,9 +1039,10 @@ typedef Node = {
 typedef MultiAnimResult = {
 	var nodes: Map<String, Node>;
 	var imports:Map<String, Dynamic>;
+	var customFilterRefs:Array<CustomFilterRef>;
 }
 
-#if !macro
+#if (!macro && !noheaps)
 @:nullSafety
 class MultiAnimParser {
 	public static final defaultLayoutNodeName = "#defaultLayout";
@@ -1291,7 +1170,14 @@ class MultiAnimParser {
 				else
 					throw err('array default not supported in this context');
 			case PPTTile:
+				#if !macro
+				if (Std.isOfType(value, h2d.Tile))
+					TileSourceValue(TSTile(value));
+				else
+					TileSourceValue(TSFile(RVString(s)));
+				#else
 				TileSourceValue(TSFile(RVString(s)));
+				#end
 		}
 	}
 

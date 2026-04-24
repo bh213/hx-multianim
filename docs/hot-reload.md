@@ -99,7 +99,8 @@ hotReload("sidebar.manim")
   │   │   ├─ params: incrementalContext.snapshotParams()
   │   │   │   → Map<String, ResolvedIndexParameters>
   │   │   ├─ slots: each slot's content object + data
-  │   │   └─ dynamicRefs: recursively capture sub-result params
+  │   │   ├─ dynamicRefs: recursively capture sub-result params
+  │   │   └─ placeholders: devCapturedPlaceholders (h2d.Objects from callbacks/factories)
   │   │
   │   ├─ 2. DETACH slot contents
   │   │   └─ slot.clear() on each slot (releases h2d.Objects for reparenting)
@@ -109,11 +110,20 @@ hotReload("sidebar.manim")
   │   │   └─ hotReloadRegistry.unregister(handle)
   │   │   (prevents stale auto-unregister during scene swap)
   │   │
+  │   ├─ 3b. WRAP BuilderParameters for placeholder reuse
+  │   │   └─ PlaceholderReuser.wrapBuilderParams(devBuilderParams, placeholders)
+  │   │       ├─ Builds lookup maps from captured placeholders (by name, by name+index)
+  │   │       ├─ Wraps placeholderObjects: PVFactory/PVComponent → PVObject for captured entries
+  │   │       ├─ Wraps callback: returns cached object for Placeholder/PlaceholderWithIndex requests
+  │   │       ├─ safeDetach(): sets allocated=false, removeChild without onRemove()
+  │   │       ├─ Resets position (x=0, y=0) to prevent accumulation from builder's addPosition
+  │   │       └─ Falls through to original callback/factory for unmatched names (new placeholders)
+  │   │
   │   ├─ 4. REBUILD with new builder
   │   │   └─ newBuilder.buildWithParameters(
   │   │         programmableName,
   │   │         snapshotToInputMap(snapshot.params),  ← restored values
-  │   │         oldBuilderParams,                     ← original build config
+  │   │         wrappedBuilderParams,                 ← reuses captured placeholders
   │   │         null,
   │   │         incremental: true
   │   │       )
@@ -142,7 +152,8 @@ hotReload("sidebar.manim")
   │   │   ├─ oldResult.adoptFrom(newResult)   ← copies all internals:
   │   │   │     name, names, interactives, layouts, palettes,
   │   │   │     rootSettings, gridCoordinateSystem, hexCoordinateSystem,
-  │   │   │     slots, dynamicRefs, incrementalContext
+  │   │   │     slots, dynamicRefs, incrementalContext,
+  │   │   │     devBuilderParams, devCapturedPlaceholders
   │   │   └─ oldResult.object = stableObject  ← restore stable reference
   │   │
   │   ├─ 9. RE-REGISTER stable result
@@ -161,6 +172,7 @@ hotReload("sidebar.manim")
 - Parameter values (uint, int, float, bool, string, enum, flags)
 - Slot contents (h2d.Objects reparented to new slots)
 - Slot data (arbitrary payload)
+- Placeholder objects (grids, card hands, etc. — reused via PlaceholderReuser)
 - Dynamic ref parameter values (recursively)
 - Scene graph position (stable root stays in parent's child list)
 - Game-applied transforms (x, y, scale, alpha, rotation, visible)
@@ -353,15 +365,30 @@ Captures and restores `BuilderResult` state across rebuilds:
 | Slot contents | `reparent to matching new slot` | Matched by `SlotKey` |
 | Slot data | `newHandle.data = saved.data` | Arbitrary payload |
 | DynamicRef params | Recursive `restoreParams()` | Matched by name |
+| Placeholder objects | `PlaceholderReuser.wrapBuilderParams()` | Reused via wrapped BuilderParameters |
 
 **Unsnappable types** (return null, skipped during restore):
 - `ExpressionAlias` — expressions not pre-evaluated
 - `TileSourceValue` — tile sources are references, not values
 
+### PlaceholderReuser
+Wraps `BuilderParameters` to reuse previously-captured placeholder objects during reload:
+
+| Step | What it does |
+|------|-------------|
+| Build lookup maps | `byName` and `byNameIndex` maps from captured placeholders |
+| Wrap `placeholderObjects` | PVFactory/PVComponent entries with cached objects become PVObject |
+| Wrap callback | Placeholder/PlaceholderWithIndex requests return cached objects |
+| `safeDetach()` | Sets `allocated=false` then `removeChild` — bypasses `onRemove()` cascade |
+| Position reset | `x=0, y=0` to prevent accumulation from builder's `addPosition` (+=) |
+| Fall through | Unmatched names (new placeholders) use original callback/factory |
+
+**Why `safeDetach()`**: Heaps' `onRemove()` cascades to all descendants, destroying `h2d.Graphics` content and invalidating GPU resources. During hot-reload, we're reparenting live objects — not actually removing them — so `onRemove()` must be bypassed. The `allocated` flag is restored to `true` when `SceneSwapper` moves children into the allocated `oldRoot` via `addChild`.
+
 ### SceneSwapper
 Replaces children of a stable root with children from a new root:
 1. Remove all old children from `oldRoot`
-2. Move all new children from `newRoot` → `oldRoot`
+2. Move all new children from `newRoot` → `oldRoot` via `addChild` (auto-reparents without triggering `onRemove()`)
 3. Copy `filter` property if set (from `apply()` nodes)
 4. Does NOT touch game-applied transforms (x, y, scale, alpha, rotation, visible)
 
@@ -422,7 +449,7 @@ The file watcher stays active through errors. Every save triggers a new parse at
 - [x] `ReloadReport` with errors, timing, rebuilt list
 - [x] Screen source tracking via `screenSourceMap`
 - [x] `UIController.clearState()` — prevents stale hover/capture state
-- [x] HotReloadTest — 25 unit tests
+- [x] HotReloadTest — 40+ unit tests (including placeholder reuse)
 - [x] Dev build config — `test-hx-multianim-dev.hxml`
 
 ### Not Implemented (Phase 2 — Planned)
@@ -469,6 +496,7 @@ haxe test-hx-multianim-dev.hxml
 | Unsnappable types | 3 | ExpressionAlias→null, TileSource→null, skipped in inputMap |
 | Error resilience | 1 | Parse error keeps old state functional |
 | Dynamic refs | 1 | Dynamic ref params captured and present in snapshot |
+| Placeholder reuse | 15 | PVObject, PVFactory, PVComponent, callback, indexed callback, position change, new placeholder fallthrough, removed placeholder, mixed callback+builderParameter, position not doubled, params+placeholder combined, snapshot capture, empty snapshot passthrough, scene field preserved, value callback re-invoked |
 
 ### Missing Tests (Needed)
 
@@ -519,6 +547,11 @@ haxe test-hx-multianim-dev.hxml
 - [ ] `apply(alpha: 0.5)` on root — filter copied via SceneSwapper
 - [ ] Game-applied filter on root — NOT overwritten by reload
 
+**Placeholder reuse edge cases:**
+- [ ] Placeholder inside conditional branch — condition changes between reloads
+- [ ] Multiple reloads with placeholder — object reused across 3+ cycles
+- [ ] Placeholder with h2d.Graphics children — GPU resources survive reload
+
 **Integration with UI components:**
 - [ ] Button with incremental mode — state preserved across reload
 - [ ] Scrollable list — item content preserved (or correctly rebuilt)
@@ -533,5 +566,5 @@ haxe test-hx-multianim-dev.hxml
 | [MultiAnimBuilder.hx](../src/bh/multianim/MultiAnimBuilder.hx) | `adoptFrom()`, `reloadHandle`, auto-registration |
 | [ResourceLoader.hx](../src/bh/base/ResourceLoader.hx) | `replaceMultiAnim()`, registry/detector fields |
 | [UIScreen.hx](../src/bh/ui/screens/UIScreen.hx) | `clear()` with `clearState()` |
-| [HotReloadTest.hx](../test/src/bh/test/examples/HotReloadTest.hx) | 25 unit tests |
+| [HotReloadTest.hx](../test/src/bh/test/examples/HotReloadTest.hx) | 40+ unit tests (including placeholder reuse) |
 | [test-hx-multianim-dev.hxml](../test-hx-multianim-dev.hxml) | Dev mode build config |
