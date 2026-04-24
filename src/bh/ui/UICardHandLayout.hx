@@ -1,5 +1,6 @@
 package bh.ui;
 
+import bh.base.FPoint;
 import bh.paths.MultiAnimPaths.Path;
 import bh.ui.UICardHandTypes.CardLayoutPosition;
 import bh.ui.UICardHandTypes.PathDistribution;
@@ -7,6 +8,9 @@ import bh.ui.UICardHandTypes.PathOrientation;
 
 /** Pure math for card hand layout calculation. No scene graph dependency. */
 class UICardHandLayout {
+	/** Shared scratch point for path sampling; HL is single-threaded so sharing is safe. */
+	static final _scratch:FPoint = new FPoint(0, 0);
+
 	/** Compute layout positions for N cards in fan arc arrangement.
 	 *  Arc center is at (anchorX, anchorY + radius), cards sit on the arc above it.
 	 *  @param cardCount Number of cards
@@ -208,15 +212,15 @@ class UICardHandLayout {
 		// Compute positions
 		for (i in 0...cardCount) {
 			var rate = rates[i];
-			var pt = path.getPoint(rate);
+			path.getPointInto(rate, _scratch);
 			var tangent = path.getTangentAngle(rate);
 
 			// Normal perpendicular to tangent (pointing "outward" — left-hand normal)
 			var nrmX = -Math.sin(tangent);
 			var nrmY = Math.cos(tangent);
 
-			var x = pt.x;
-			var y = pt.y;
+			var x = _scratch.x;
+			var y = _scratch.y;
 			var scale = 1.0;
 
 			if (i == hoverIndex) {
@@ -253,20 +257,23 @@ class UICardHandLayout {
 		var sampleRates:Array<Float> = [];
 		var sampleLengths:Array<Float> = [];
 		var cumLength:Float = 0.0;
-		var prevPt = path.getPoint(0.0);
+		path.getPointInto(0.0, _scratch);
+		var prevX:Float = _scratch.x;
+		var prevY:Float = _scratch.y;
 
 		sampleRates.push(0.0);
 		sampleLengths.push(0.0);
 
 		for (s in 1...sampleCount + 1) {
 			var r = s / sampleCount;
-			var pt = path.getPoint(r);
-			var dx = pt.x - prevPt.x;
-			var dy = pt.y - prevPt.y;
+			path.getPointInto(r, _scratch);
+			var dx = _scratch.x - prevX;
+			var dy = _scratch.y - prevY;
 			cumLength += Math.sqrt(dx * dx + dy * dy);
 			sampleRates.push(r);
 			sampleLengths.push(cumLength);
-			prevPt = pt;
+			prevX = _scratch.x;
+			prevY = _scratch.y;
 		}
 
 		var totalArcLength = cumLength;

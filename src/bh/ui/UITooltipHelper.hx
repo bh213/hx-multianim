@@ -248,4 +248,36 @@ class UITooltipHelper {
 		}
 	}
 
+	/** Release all tween and scene resources. Call when the owning screen is torn down
+	    (e.g. during hot reload or full rebuild) to prevent in-flight fade tween closures
+	    from holding h2d.Object references past the screen's lifetime. */
+	public function dispose():Void {
+		if (fadeInTween != null) {
+			fadeInTween.cancel();
+			fadeInTween = null;
+		}
+		if (fadeOutTween != null) {
+			fadeOutTween.cancel();
+			fadeOutTween = null;
+		}
+		if (fadingOutObj != null) {
+			fadingOutObj.remove();
+			fadingOutObj = null;
+		}
+		if (activeResult != null) {
+			activeResult.object.remove();
+			activeResult = null;
+		}
+		activeTooltipId = null;
+		activeBuildName = null;
+		activeParams = null;
+		hoverInteractiveId = null;
+		hoverBuildName = null;
+		hoverParams = null;
+		hoverTimer = 0;
+		delayOverrides.clear();
+		positionOverrides.clear();
+		offsetOverrides.clear();
+	}
+
 }

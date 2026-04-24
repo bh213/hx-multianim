@@ -234,6 +234,34 @@ class CardHandOrchestratorTest extends BuilderTestBase {
 		Assert.floatEquals(1.0, result[0].scale);
 	}
 
+	@Test
+	public function testPathLayoutUsesAllocationFreePointLookup():Void {
+		var path = new CountingPath([new SinglePath(new FPoint(0, 0), new FPoint(400, 0), Line)]);
+		CountingPath.getPointCalls = 0;
+		CountingPath.getPointIntoCalls = 0;
+
+		UICardHandLayout.computePathLayout(10, path, EvenRate, Straight, -1, 20.0, 1.2, 0.05);
+
+		Assert.equals(0, CountingPath.getPointCalls,
+			"computePathLayout (EvenRate) must use getPointInto (scratch) instead of getPoint (allocates FPoint per call)");
+		Assert.isTrue(CountingPath.getPointIntoCalls > 0,
+			"computePathLayout should have invoked getPointInto at least once");
+	}
+
+	@Test
+	public function testPathLayoutEvenArcLengthUsesAllocationFreePointLookup():Void {
+		var path = new CountingPath([new SinglePath(new FPoint(0, 0), new FPoint(400, 0), Line)]);
+		CountingPath.getPointCalls = 0;
+		CountingPath.getPointIntoCalls = 0;
+
+		UICardHandLayout.computePathLayout(10, path, EvenArcLength, Straight, -1, 20.0, 1.2, 0.05);
+
+		Assert.equals(0, CountingPath.getPointCalls,
+			"computePathLayout (EvenArcLength) must use getPointInto in the arc-length sampling loop (was allocating ~101 FPoints per call)");
+		Assert.isTrue(CountingPath.getPointIntoCalls > 0,
+			"computePathLayout should have invoked getPointInto at least once");
+	}
+
 	// ==================== CardHandTypes Enums ====================
 
 	@Test
@@ -580,5 +608,26 @@ class CardHandOrchestratorTest extends BuilderTestBase {
 			}
 		}
 		Assert.isTrue(hasHoverEnd, "CardHoverEnd should be emitted when discarding a hovered card");
+	}
+}
+
+/** Test subclass that counts getPoint vs getPointInto calls, used to verify that
+ *  hot paths (card layout, targeting) avoid per-call FPoint allocation. */
+class CountingPath extends Path {
+	public static var getPointCalls:Int = 0;
+	public static var getPointIntoCalls:Int = 0;
+
+	public function new(singlePaths:Array<SinglePath>) {
+		super(singlePaths);
+	}
+
+	override public function getPoint(rate:Float):FPoint {
+		getPointCalls++;
+		return super.getPoint(rate);
+	}
+
+	override public function getPointInto(rate:Float, out:FPoint):Void {
+		getPointIntoCalls++;
+		super.getPointInto(rate, out);
 	}
 }

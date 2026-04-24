@@ -170,6 +170,8 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		if (autoStatusHelper != null)
 			autoStatusHelper.unbindAll();
 		autoStatusHelper = null;
+		for (helper in panelHelpers)
+			helper.dispose();
 		panelHelpers = [];
 		for (comp in higherOrderComponents)
 			comp.dispose();

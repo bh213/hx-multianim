@@ -62,7 +62,7 @@ private enum ComputedShape {
 @:allow(bh.multianim.BuilderResult)
 class Updatable implements IUpdatable {
 	final updatables:Array<NamedBuildResult>;
-	var lastObject:Null<h2d.Object> = null;
+	final addedObjects:Array<h2d.Object> = [];
 
 	function new(updatables:Array<NamedBuildResult>) {
 		if (updatables == null || updatables.length == 0)
@@ -103,17 +103,16 @@ class Updatable implements IUpdatable {
 	public function setObject(newObject:h2d.Object) {
 		if (updatables.length != 1)
 			throw BuilderError.of('setObject needs exactly one updatable');
-		if (lastObject == newObject)
+		if (addedObjects.length == 1 && addedObjects[0] == newObject)
 			return; // nothing to do
 
-		if (lastObject != null) {
-			lastObject.remove();
-			lastObject = null;
-		}
+		for (o in addedObjects)
+			o.remove();
+		addedObjects.resize(0);
 
 		final parent = updatables[0].object.toh2dObject();
 		parent.addChild(newObject);
-		lastObject = newObject;
+		addedObjects.push(newObject);
 	}
 
 	public function addObject(newObject:h2d.Object) {
@@ -122,14 +121,14 @@ class Updatable implements IUpdatable {
 
 		final parent = updatables[0].object.toh2dObject();
 		parent.addChild(newObject);
-		lastObject = newObject;
+		addedObjects.push(newObject);
 	}
 
 	public function clearObjects() {
 		for (v in updatables) {
 			v.object.toh2dObject().removeChildren();
 		}
-		lastObject = null;
+		addedObjects.resize(0);
 	}
 }
 

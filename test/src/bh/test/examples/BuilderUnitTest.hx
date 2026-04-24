@@ -8203,4 +8203,27 @@ class BuilderUnitTest extends BuilderTestBase {
 		}
 	}
 
+	@Test
+	public function testUpdatableSetObjectAfterAddObjectsDetachesAllPriorChildren():Void {
+		final result = buildFromSource("
+			#test programmable() {
+				#slot point: 0, 0
+			}
+		", "test");
+		Assert.notNull(result);
+		final updatable = result.getUpdatable("slot");
+
+		final a = new h2d.Object();
+		final b = new h2d.Object();
+		final c = new h2d.Object();
+
+		updatable.addObject(a);
+		updatable.addObject(b);
+		updatable.setObject(c);
+
+		Assert.isNull(a.parent, "After setObject, the first addObject child must be detached");
+		Assert.isNull(b.parent, "After setObject, the second addObject child must be detached");
+		Assert.notNull(c.parent, "After setObject, the new object must be parented");
+	}
+
 }

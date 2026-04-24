@@ -1209,4 +1209,75 @@ class UIPanelHelperTest extends BuilderTestBase {
 		ctx.tweens.update(0.5);
 		Assert.isNull(obj.parent);
 	}
+
+	// ============== dispose ==============
+
+	@Test
+	public function testDisposeCancelsInFlightFadeTweens():Void {
+		// Teardown contract: if the helper's owner (a screen being cleared on
+		// hot-reload or full rebuild) tears down while a fade-in or fade-out
+		// tween is still running, those tween closures hold strong refs to
+		// panel h2d.Objects (especially the fade-out onComplete closures that
+		// capture `obj` for `obj.remove()`). dispose() must cancel them
+		// immediately so the scene objects can be garbage collected.
+		var ctx = createHelperWithTweens(0.5, 0.4);
+
+		// 1. Single-panel fade-in in flight
+		ctx.helper.open("btn1", "panel");
+		var singleFadingInObj = ctx.helper.getPanelResult().object;
+		Assert.isTrue(ctx.tweens.hasTweens(singleFadingInObj), "single-panel fade-in should be live after open()");
+
+		// 2. Named-panel fade-in in flight
+		ctx.helper.openNamed("slot1", "btn2", "panel");
+		var namedFadingInObj = ctx.helper.getNamedPanelResult("slot1").object;
+		Assert.isTrue(ctx.tweens.hasTweens(namedFadingInObj), "named-panel fade-in should be live after openNamed()");
+
+		// 3. Named-panel fade-out in flight (closeNamed starts fade-out on a separate slot)
+		ctx.helper.openNamed("slot2", "btn3", "panel");
+		var namedFadingOutObj = ctx.helper.getNamedPanelResult("slot2").object;
+		ctx.tweens.update(1.0); // complete slot2's fade-in first
+		ctx.helper.closeNamed("slot2");
+		Assert.isTrue(ctx.tweens.hasTweens(namedFadingOutObj), "named-panel fade-out should be live after closeNamed()");
+
+		// Teardown — all helper-owned tweens across both APIs must be cancelled.
+		ctx.helper.dispose();
+
+		Assert.isFalse(ctx.tweens.hasTweens(singleFadingInObj), "single-panel fade-in must be cancelled by dispose()");
+		Assert.isFalse(ctx.tweens.hasTweens(namedFadingInObj), "named-panel fade-in must be cancelled by dispose()");
+		Assert.isFalse(ctx.tweens.hasTweens(namedFadingOutObj), "named-panel fade-out must be cancelled by dispose()");
+
+		// Advance time — cancelled tweens must not mutate alpha further.
+		final singleAlpha = singleFadingInObj.alpha;
+		final namedInAlpha = namedFadingInObj.alpha;
+		ctx.tweens.update(2.0);
+		Assert.floatEquals(singleAlpha, singleFadingInObj.alpha, "single-panel alpha must not change after dispose");
+		Assert.floatEquals(namedInAlpha, namedFadingInObj.alpha, "named-panel alpha must not change after dispose");
+	}
+
+	@Test
+	public function testScreenClearDisposesOpenPanelHelpers():Void {
+		// UIScreenBase.clear() currently drops `panelHelpers = []` without
+		// closing or disposing registered panel helpers, so fade tweens
+		// outlive the screen teardown (hit on hot-reload + full rebuild).
+		// After the fix, clear() must dispose each registered panel helper
+		// so in-flight tween closures release their h2d.Object refs.
+		var screen = new UITestScreen();
+		var builder = BuilderTestBase.builderFromSource('$ANCHOR_MANIM\n$PANEL_MANIM');
+		var anchorResult = builder.buildWithParameters("anchor", []);
+		screen.addInteractives(anchorResult);
+
+		var tweens = new TweenManager();
+		var helper = new UIPanelHelper(screen, builder, {fadeIn: 0.5, fadeOut: 0.3}, tweens);
+		screen.testRegisterPanelHelper(helper);
+
+		helper.open("btn1", "panel");
+		var panelObj = helper.getPanelResult().object;
+		Assert.isTrue(tweens.hasTweens(panelObj), "panel fade-in should be live after open()");
+
+		// Tear the screen down. All panel helpers registered via
+		// createPanelHelper / registerPanelHelper must be disposed.
+		screen.clear();
+
+		Assert.isFalse(tweens.hasTweens(panelObj), "panel fade tween must be cancelled when screen clears");
+	}
 }

@@ -573,4 +573,46 @@ class UITooltipHelperTest extends BuilderTestBase {
 		ctx.tweens.update(0.5);
 		Assert.isTrue(ctx.helper.isActive());
 	}
+
+	// ============== dispose ==============
+
+	@Test
+	public function testDisposeCancelsInFlightFadeTweens():Void {
+		// Teardown contract: if the helper's owner (a screen being cleared on
+		// hot-reload or full rebuild) tears down while a fade-in or fade-out
+		// tween is still running, those tween closures hold strong refs to
+		// the tooltip h2d.Object. dispose() must cancel them immediately so
+		// the scene object can be garbage collected.
+		var ctx = createHelperWithTweens(0.5, 0.4);
+
+		// Start fade-in (in-flight)
+		ctx.helper.show("btn1", "tip");
+		@:privateAccess var fadingInObj = ctx.helper.activeResult.object;
+		Assert.isTrue(ctx.tweens.hasTweens(fadingInObj), "fade-in tween should be live after show()");
+
+		// Start fade-out by hiding (active fade-in gets cancelled,
+		// fade-out starts on the same object).
+		ctx.helper.hide();
+		Assert.isTrue(ctx.tweens.hasTweens(fadingInObj), "fade-out tween should be live after hide()");
+
+		// Now spin up a second tooltip so the fading-out obj AND a fresh
+		// fade-in are both in flight at the time of dispose.
+		ctx.helper.show("btn2", "tip");
+		@:privateAccess var fadingInObj2 = ctx.helper.activeResult.object;
+		Assert.isTrue(ctx.tweens.hasTweens(fadingInObj2), "second fade-in tween should be live");
+
+		// Teardown — all helper-owned tweens must be cancelled.
+		ctx.helper.dispose();
+
+		Assert.isFalse(ctx.tweens.hasTweens(fadingInObj), "fade-out tween on first tooltip must be cancelled by dispose()");
+		Assert.isFalse(ctx.tweens.hasTweens(fadingInObj2), "fade-in tween on second tooltip must be cancelled by dispose()");
+
+		// Advance time — cancelled tweens must not mutate the objects further
+		// and must not fire onComplete callbacks.
+		final firstAlphaAtDispose = fadingInObj.alpha;
+		final secondAlphaAtDispose = fadingInObj2.alpha;
+		ctx.tweens.update(1.0);
+		Assert.floatEquals(firstAlphaAtDispose, fadingInObj.alpha, "alpha must not change after dispose");
+		Assert.floatEquals(secondAlphaAtDispose, fadingInObj2.alpha, "alpha must not change after dispose");
+	}
 }

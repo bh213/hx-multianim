@@ -41,6 +41,9 @@ class UICardHandTargeting {
 	var activeTargetId:Null<String> = null;
 	var currentValid:Bool = false;
 
+	/** Scratch point reused by path sampling in updateTargetingLine to avoid per-frame FPoint allocation. */
+	final _scratch:FPoint = new FPoint(0, 0);
+
 	static inline final MAX_SEGMENTS = 30;
 
 	/** When false, the targeting visual is suppressed (target detection still works). */
@@ -272,16 +275,16 @@ class UICardHandTargeting {
 			// Place segments along path
 			for (i in 0...count) {
 				var rate = (i + 0.5) / (count + 1); // evenly spaced, leaving room for head
-				var pt2 = path.getPoint(rate);
+				path.getPointInto(rate, _scratch);
 				var angle = path.getTangentAngle(rate);
 
 				var inv = segmentPoolInvalid[i];
 				var val = segmentPoolValid[i];
 				inv.object.visible = !currentValid;
 				val.object.visible = currentValid;
-				inv.object.setPosition(pt2.x, pt2.y);
+				inv.object.setPosition(_scratch.x, _scratch.y);
 				inv.object.rotation = angle;
-				val.object.setPosition(pt2.x, pt2.y);
+				val.object.setPosition(_scratch.x, _scratch.y);
 				val.object.rotation = angle;
 			}
 
@@ -293,16 +296,16 @@ class UICardHandTargeting {
 			activeSegmentCount = count;
 
 			// Place arrowhead at end
-			var endPt = path.getPoint(1.0);
+			path.getPointInto(1.0, _scratch);
 			var endAngle = path.getTangentAngle(1.0);
 			if (headInvalid != null) {
 				headInvalid.object.visible = !currentValid;
-				headInvalid.object.setPosition(endPt.x, endPt.y);
+				headInvalid.object.setPosition(_scratch.x, _scratch.y);
 				headInvalid.object.rotation = endAngle;
 			}
 			if (headValid != null) {
 				headValid.object.visible = currentValid;
-				headValid.object.setPosition(endPt.x, endPt.y);
+				headValid.object.setPosition(_scratch.x, _scratch.y);
 				headValid.object.rotation = endAngle;
 			}
 		}

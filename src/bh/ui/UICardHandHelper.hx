@@ -197,6 +197,9 @@ class UICardHandHelper implements UIHigherOrderComponent {
 	var cursorY:Float = 0;
 	var sceneCursorX:Float = 0; // scene space — for interactive containsPoint
 	var sceneCursorY:Float = 0;
+	// Reused scratch buffer for scene->local conversions on mouse events. globalToLocal mutates
+	// its input in place, so a single Point is safe to reuse across calls — avoids per-event GC.
+	var scratchPoint:h2d.col.Point = new h2d.col.Point();
 	var cardToCardTarget:Null<CardEntry> = null;
 	var currentTargetId:Null<String> = null;
 	var nextCardSeq:Int = 0;
@@ -454,7 +457,9 @@ class UICardHandHelper implements UIHigherOrderComponent {
 	/** Hit-test hand cards at scene coordinates. Returns the card ID under the point, or null.
 	 *  Uses base layout positions (no hover pop) for consistent detection. */
 	public function getCardIdAtPosition(sceneX:Float, sceneY:Float):Null<CardId> {
-		var local = handContainer.globalToLocal(new h2d.col.Point(sceneX, sceneY));
+		scratchPoint.x = sceneX;
+		scratchPoint.y = sceneY;
+		var local = handContainer.globalToLocal(scratchPoint);
 		var entry = getCardAtBasePosition(local.x, local.y);
 		return entry != null ? entry.descriptor.id : null;
 	}
@@ -623,7 +628,9 @@ class UICardHandHelper implements UIHigherOrderComponent {
 	public function onMouseMove(screenX:Float, screenY:Float):Bool {
 		sceneCursorX = screenX;
 		sceneCursorY = screenY;
-		var local = handContainer.globalToLocal(new h2d.col.Point(screenX, screenY));
+		scratchPoint.x = screenX;
+		scratchPoint.y = screenY;
+		var local = handContainer.globalToLocal(scratchPoint);
 		cursorX = local.x;
 		cursorY = local.y;
 
@@ -645,7 +652,9 @@ class UICardHandHelper implements UIHigherOrderComponent {
 	public function onMouseRelease(screenX:Float, screenY:Float):Bool {
 		sceneCursorX = screenX;
 		sceneCursorY = screenY;
-		var local = handContainer.globalToLocal(new h2d.col.Point(screenX, screenY));
+		scratchPoint.x = screenX;
+		scratchPoint.y = screenY;
+		var local = handContainer.globalToLocal(scratchPoint);
 		cursorX = local.x;
 		cursorY = local.y;
 

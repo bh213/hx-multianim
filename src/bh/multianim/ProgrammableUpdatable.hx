@@ -11,7 +11,7 @@ import bh.multianim.BuilderError;
  */
 class ProgrammableUpdatable implements IUpdatable {
 	public final objects:Array<h2d.Object>;
-	var lastObject:Null<h2d.Object> = null;
+	final addedObjects:Array<h2d.Object> = [];
 
 	public function new(objects:Array<h2d.Object>) {
 		this.objects = objects;
@@ -45,16 +45,15 @@ class ProgrammableUpdatable implements IUpdatable {
 	public function setObject(newObject:h2d.Object) {
 		if (objects.length != 1)
 			throw BuilderError.of('setObject needs exactly one element');
-		if (lastObject == newObject)
+		if (addedObjects.length == 1 && addedObjects[0] == newObject)
 			return;
 
-		if (lastObject != null) {
-			lastObject.remove();
-			lastObject = null;
-		}
+		for (o in addedObjects)
+			o.remove();
+		addedObjects.resize(0);
 
 		objects[0].addChild(newObject);
-		lastObject = newObject;
+		addedObjects.push(newObject);
 	}
 
 	public function addObject(newObject:h2d.Object) {
@@ -62,13 +61,13 @@ class ProgrammableUpdatable implements IUpdatable {
 			throw BuilderError.of('addObject needs exactly one element');
 
 		objects[0].addChild(newObject);
-		lastObject = newObject;
+		addedObjects.push(newObject);
 	}
 
 	public function clearObjects() {
 		for (obj in objects) {
 			obj.removeChildren();
 		}
-		lastObject = null;
+		addedObjects.resize(0);
 	}
 }

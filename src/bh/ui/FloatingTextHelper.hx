@@ -133,7 +133,7 @@ class FloatingTextHelper {
 				if (i < count) {
 					instances[i] = instances[count];
 				}
-				instances.splice(count, 1);
+				instances.pop();
 				// Callback fires AFTER removal — safe to clear()/spawn() reentrantly.
 				inst.onComplete();
 				// Callback may have shrunk the array below `count` (e.g. clear()).

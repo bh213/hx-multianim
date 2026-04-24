@@ -440,4 +440,54 @@ class UIPanelHelper {
 		return false;
 	}
 
+	/** Release all tween and scene resources. Call when the owning screen is torn down
+	    (e.g. during hot reload or full rebuild) to prevent in-flight fade tween closures
+	    from holding h2d.Object references past the screen's lifetime. */
+	public function dispose():Void {
+		// Single-panel fade tweens
+		if (activeFadeInTween != null) {
+			activeFadeInTween.cancel();
+			activeFadeInTween = null;
+		}
+		if (activeFadeOutTween != null) {
+			activeFadeOutTween.cancel();
+			activeFadeOutTween = null;
+		}
+		if (fadingOutObj != null) {
+			fadingOutObj.remove();
+			fadingOutObj = null;
+		}
+		if (activeResult != null) {
+			if (activePanelPrefix != null)
+				screen.removeInteractives(activePanelPrefix);
+			activeResult.object.remove();
+			activeResult = null;
+		}
+		activeInteractiveId = null;
+		activePanelPrefix = null;
+		_pendingClose = false;
+
+		// Named-panel fades — both in-flight fade-in on open panels and
+		// orphaned fade-out tweens tracked in namedFadeOutTweens.
+		for (_ => panel in namedPanels) {
+			if (panel.fadeInTween != null) {
+				panel.fadeInTween.cancel();
+				panel.fadeInTween = null;
+			}
+			if (panel.fadeOutTween != null) {
+				panel.fadeOutTween.cancel();
+				panel.fadeOutTween = null;
+			}
+			screen.removeInteractives(panel.prefix);
+			panel.result.object.remove();
+		}
+		namedPanels.clear();
+		for (_ => tween in namedFadeOutTweens)
+			tween.cancel();
+		namedFadeOutTweens.clear();
+
+		positionOverrides.clear();
+		offsetOverrides.clear();
+	}
+
 }

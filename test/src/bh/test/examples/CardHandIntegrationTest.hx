@@ -764,4 +764,45 @@ class CardHandIntegrationTest extends BuilderTestBase {
 		// Sanity: calling setParameter on the stale result must not throw — no listener runs.
 		savedResult.setParameter("mode", "armB");
 	}
+
+	// ==================== Mouse handler allocation hygiene ====================
+
+	@Test
+	public function testMouseHandlersReuseCachedScratchPoint():Void {
+		// onMouseMove, onMouseRelease, and getCardIdAtPosition are called on every mouse event.
+		// They must convert scene coords -> handContainer local coords via globalToLocal, which
+		// requires an h2d.col.Point. That Point must be cached on the helper and reused across
+		// calls — allocating a fresh Point per event produces per-frame GC pressure on the hot path.
+		var h = createHelper();
+		h.helper.setHand([desc("c1"), desc("c2")]);
+
+		// Prime the cache and capture the identity of the cached Point.
+		h.helper.onMouseMove(100, 100);
+		var cached:Dynamic = Reflect.field(h.helper, "scratchPoint");
+		Assert.notNull(cached,
+			"UICardHandHelper should expose a cached scratchPoint field after a mouse event — got null");
+
+		// Subsequent mouse events must reuse the same Point instance, not allocate a new one.
+		h.helper.onMouseMove(200, 150);
+		Assert.equals(cached, Reflect.field(h.helper, "scratchPoint"),
+			"onMouseMove must reuse the cached scratchPoint (no allocation)");
+
+		h.helper.onMouseRelease(300, 400);
+		Assert.equals(cached, Reflect.field(h.helper, "scratchPoint"),
+			"onMouseRelease must reuse the cached scratchPoint (no allocation)");
+
+		h.helper.getCardIdAtPosition(50, 50);
+		Assert.equals(cached, Reflect.field(h.helper, "scratchPoint"),
+			"getCardIdAtPosition must reuse the cached scratchPoint (no allocation)");
+
+		// Sanity: the cached Point's coords should reflect the last globalToLocal call, proving
+		// the helper is actually using it (not just holding it unused while allocating elsewhere).
+		h.helper.onMouseMove(777, 555);
+		final pt:Dynamic = Reflect.field(h.helper, "scratchPoint");
+		Assert.notNull(pt);
+		// globalToLocal mutates pt in place; with identity transform on handContainer the local
+		// coords equal the scene coords passed in.
+		Assert.floatEquals(777.0, pt.x, 0.001, "scratchPoint.x should reflect last onMouseMove input");
+		Assert.floatEquals(555.0, pt.y, 0.001, "scratchPoint.y should reflect last onMouseMove input");
+	}
 }
