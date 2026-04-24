@@ -327,15 +327,15 @@
 </head>
 <body>
     <h1>Visual Test Report</h1>
-    <div class="timestamp">Generated: 2026-04-23 08:55:22</div>
+    <div class="timestamp">Generated: 2026-04-24 06:35:42</div>
     <div class="summary">
         <strong>Summary:</strong> 101 tests,         <span style="color: #4CAF50;">101 passed</span>,         <span style="color: #f44336;">0 failed</span>
-        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1.2s, visual 23.2s)</span>
+        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1.2s, visual 24.5s)</span>
     </div>
     <div class="unit-tests-section">
         <h2>Unit Tests</h2>
         <div class="unit-tests-summary all-passed">
-            <strong>6236 assertions:</strong>             <span style="color: #4CAF50;">6236 passed</span>
+            <strong>6268 assertions:</strong>             <span style="color: #4CAF50;">6268 passed</span>
             <button class="expand-btn" id="unitToggleBtn" onclick="toggleUnitDetails()">Show Details</button>
         </div>
         <div class="unit-details" id="unitDetails">
@@ -1039,6 +1039,7 @@
                 <div class="unit-method pass">testTransitionWithTweenManagerCreatesTween: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testTransitionWithoutTransitionBlockIsInstant: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testTwoGridSystems: OK <span class="dots">.....</span></div>
+                <div class="unit-method pass">testUpdatableSetObjectAfterAddObjectsDetachesAllPriorChildren: OK <span class="dots">....</span></div>
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">CardHandIntegrationTest</div>
@@ -1080,6 +1081,7 @@
                 <div class="unit-method pass">testGetTargetingObject: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testIsDraggingInitiallyFalse: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testIsTargetingInitiallyFalse: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testMouseHandlersReuseCachedScratchPoint: OK <span class="dots">.......</span></div>
                 <div class="unit-method pass">testMultipleDrawsPreserveOrder: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testNewCardsStartInHandState: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testOnCardBuiltFiresOnDrawCard: OK <span class="dots">.</span></div>
@@ -1137,12 +1139,14 @@
                 <div class="unit-method pass">testOnCardBuiltCallback: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testPathDistributionEnum: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testPathLayoutEvenArcLength: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testPathLayoutEvenArcLengthUsesAllocationFreePointLookup: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testPathLayoutEvenRate: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testPathLayoutHoverPop: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testPathLayoutSingleCard: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testPathLayoutStraightOrientation: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testPathLayoutTangentClamped: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testPathLayoutTangentOrientation: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testPathLayoutUsesAllocationFreePointLookup: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testPathLayoutZeroCards: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testPathOrientationEnum: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testSetCardEnabledFalse: OK <span class="dots">..</span></div>
@@ -2720,6 +2724,7 @@
                 <div class="unit-method pass">testClosePanel: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testCloseWhenNothingOpen: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testDefaultCloseModeIsOutsideClick: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testDisposeCancelsInFlightFadeTweens: OK <span class="dots">........</span></div>
                 <div class="unit-method pass">testDoubleRegisterDoesNotDuplicate: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testFadeInPanelReachesFullAlpha: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testFadeInPanelStartsAtZeroAlpha: OK <span class="dots">..</span></div>
@@ -2776,6 +2781,7 @@
                 <div class="unit-method pass">testOutsideClickDeferredClose: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testPerOpenCloseModeOverride: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testRegisterExistingHelper: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testScreenClearDisposesOpenPanelHelpers: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testSetOffsetOverride: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testSetPositionOverride: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testSingleAndNamedPanelsCoexist: OK <span class="dots">....</span></div>
@@ -2925,6 +2931,7 @@
                 <div class="unit-method pass">testCancelHoverHidesActiveTooltip: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testCancelHoverWrongIdDoesNothing: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testDefaultDelayIsPointThree: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testDisposeCancelsInFlightFadeTweens: OK <span class="dots">.......</span></div>
                 <div class="unit-method pass">testFadeInReachesFullAlpha: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testFadeInStartsAtZeroAlpha: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testFadeOutRemovesOnComplete: OK <span class="dots">...</span></div>
