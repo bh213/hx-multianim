@@ -262,6 +262,31 @@ class CardHandOrchestratorTest extends BuilderTestBase {
 			"computePathLayout should have invoked getPointInto at least once");
 	}
 
+	// computePathLayout fires every layout pass — hover, drag, draw, discard. The
+	// internal scratch arrays (sampleRates/sampleLengths in computeEvenArcLengthRates;
+	// rates and adjustedRates in computePathLayout) are pure work buffers that callers
+	// never see. HL is single-threaded, so they should be reused across calls — same
+	// pattern as `_scratch:FPoint`. Allocating fresh arrays per call wastes 4 array
+	// allocations (~200 Float entries) every layout pass.
+	@Test
+	public function testPathLayoutReusesScratchArraysAcrossCalls():Void {
+		var path = createHorizontalPath();
+
+		// Warm-up call: lazily populates the scratches if implementation does that.
+		UICardHandLayout.computePathLayout(5, path, EvenArcLength, Straight, 2, 20.0, 1.2, 0.05);
+		final allocatedAfterWarmup = UICardHandLayout.scratchArrayAllocationCount;
+
+		// Subsequent calls must not allocate fresh internal scratch arrays.
+		for (i in 0...4)
+			UICardHandLayout.computePathLayout(5, path, EvenArcLength, Straight, i % 5, 20.0, 1.2, 0.05);
+
+		final delta = UICardHandLayout.scratchArrayAllocationCount - allocatedAfterWarmup;
+		Assert.equals(0, delta,
+			"computePathLayout must reuse internal scratch arrays (sampleRates, sampleLengths, rates, adjustedRates) "
+			+ "across calls — they fire every hover/drag/layout pass and allocate ~200 Float entries each. "
+			+ "Allocated " + delta + " new scratches across 4 follow-up calls.");
+	}
+
 	// ==================== CardHandTypes Enums ====================
 
 	@Test

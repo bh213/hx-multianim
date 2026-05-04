@@ -129,11 +129,14 @@ class FloatingTextHelper {
 			if (state.done) {
 				inst.object.remove();
 				// Swap within the active range [0..count); spawned tail untouched.
+				// splice(count, 1) — not pop() — because onComplete (called below)
+				// may grow the array, breaking the `length == count + 1` invariant
+				// that pop() requires.
 				count--;
 				if (i < count) {
 					instances[i] = instances[count];
 				}
-				instances.pop();
+				instances.splice(count, 1);
 				// Callback fires AFTER removal — safe to clear()/spawn() reentrantly.
 				inst.onComplete();
 				// Callback may have shrunk the array below `count` (e.g. clear()).

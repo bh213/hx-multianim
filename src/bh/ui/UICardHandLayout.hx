@@ -11,6 +11,19 @@ class UICardHandLayout {
 	/** Shared scratch point for path sampling; HL is single-threaded so sharing is safe. */
 	static final _scratch:FPoint = new FPoint(0, 0);
 
+	/** Counts internal scratch-array allocations performed by the path-layout hot path.
+	 *  Pure instrumentation — does not affect behavior. Should remain unchanged across
+	 *  repeated computePathLayout calls (scratch arrays must be reused). */
+	public static var scratchArrayAllocationCount:Int = 0;
+
+	// Reusable work buffers for computePathLayout / computeEvenArcLengthRates. HL is
+	// single-threaded so static sharing is safe — same pattern as `_scratch:FPoint`.
+	// Cleared with resize(0) on entry; capacity is retained across calls.
+	static final _scratchSampleRates:Array<Float> = [];
+	static final _scratchSampleLengths:Array<Float> = [];
+	static final _scratchRates:Array<Float> = [];
+	static final _scratchAdjustedRates:Array<Float> = [];
+
 	/** Compute layout positions for N cards in fan arc arrangement.
 	 *  Arc center is at (anchorX, anchorY + radius), cards sit on the arc above it.
 	 *  @param cardCount Number of cards
@@ -177,8 +190,10 @@ class UICardHandLayout {
 
 		var result:Array<CardLayoutPosition> = [];
 
-		// Compute base rates for each card
-		var rates:Array<Float> = [];
+		// Compute base rates for each card. Reuses _scratchRates; computeEvenArcLengthRates
+		// also returns the same buffer (same scratch field), so the assignment below is a no-op
+		// reference rebind in the EvenArcLength branch.
+		var rates = _scratchRates; rates.resize(0);
 		if (cardCount == 1) {
 			rates.push(0.5); // center single card
 		} else {
@@ -191,9 +206,13 @@ class UICardHandLayout {
 			}
 		}
 
-		// Shift neighbors apart when hovering
+		// Shift neighbors apart when hovering. Reuses _scratchAdjustedRates as the working buffer;
+		// `rates` is then re-pointed to it and the original _scratchRates contents are discarded
+		// on the next call's resize(0).
 		if (hoverIndex >= 0 && hoverIndex < cardCount) {
-			var adjustedRates = rates.copy();
+			final adjustedRates = _scratchAdjustedRates; adjustedRates.resize(0);
+			for (i in 0...cardCount)
+				adjustedRates.push(rates[i]);
 			for (i in 0...cardCount) {
 				if (i == hoverIndex)
 					continue;
@@ -250,12 +269,14 @@ class UICardHandLayout {
 		return result;
 	}
 
-	/** Compute evenly arc-length spaced rates along a path using lookup table + binary search. */
+	/** Compute evenly arc-length spaced rates along a path using lookup table + binary search.
+	 *  Returns a reused static scratch array — caller must consume it before the next
+	 *  computePathLayout call. */
 	static function computeEvenArcLengthRates(path:Path, cardCount:Int):Array<Float> {
 		// Build cumulative arc-length lookup table
 		final sampleCount = 100;
-		var sampleRates:Array<Float> = [];
-		var sampleLengths:Array<Float> = [];
+		final sampleRates = _scratchSampleRates; sampleRates.resize(0);
+		final sampleLengths = _scratchSampleLengths; sampleLengths.resize(0);
 		var cumLength:Float = 0.0;
 		path.getPointInto(0.0, _scratch);
 		var prevX:Float = _scratch.x;
@@ -277,7 +298,7 @@ class UICardHandLayout {
 		}
 
 		var totalArcLength = cumLength;
-		var rates:Array<Float> = [];
+		final rates = _scratchRates; rates.resize(0);
 
 		for (i in 0...cardCount) {
 			var targetLength = if (cardCount == 1) totalArcLength * 0.5 else i * totalArcLength / (cardCount - 1);

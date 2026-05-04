@@ -6884,6 +6884,90 @@ class BuilderUnitTest extends BuilderTestBase {
 		Assert.notNull(findInteractiveById(result, "3"));
 	}
 
+	// ==================== Deferred conditional rebuild registration cleanup ====================
+	// A conditional element initially evaluating to false in incremental mode goes through the
+	// deferred-build path (MultiAnimBuilder.hx:4739-4751). Its body is built by materializeDeferred
+	// on first show, and rebuilt either (Path 1) by a tracked-expression closure when body params
+	// change while visible, or (Path 2) by re-running materializeDeferred on each visibility flip
+	// when the body has no tracked params. Both rebuilds must drop IR registrations from the
+	// previous build before tearing down the wrapper's children — otherwise BuilderResult collections
+	// (interactives / slots / dynamicRefs / names / htmlTextsWithLinks) accumulate stale entries.
+
+	@Test
+	public function testIncrementalDeferredConditionalInteractiveCleanedUpOnReshow():Void {
+		// Path 2: body has no param refs, so materializeDeferred re-runs on every hide→show flip.
+		// Each re-materialize must reap the previous interactive registration.
+		final result = buildFromSource("
+			#test programmable(visible:bool=false) {
+				@(visible=>true) interactive(40, 30, \"hit\"): 0, 0
+			}
+		", "test", null, Incremental);
+
+		Assert.equals(0, countInteractives(result), "no interactives initially (deferred path)");
+
+		result.setParameter("visible", true);
+		Assert.equals(1, countInteractives(result), "one interactive after first materialize");
+
+		for (i in 0...5) {
+			result.setParameter("visible", false);
+			result.setParameter("visible", true);
+		}
+		Assert.equals(1, countInteractives(result),
+			'interactive registrations leaked across deferred re-materialize: expected 1, got ${countInteractives(result)}');
+	}
+
+	@Test
+	public function testIncrementalDeferredConditionalTrackedRebuildInteractiveCleanedUp():Void {
+		// Path 1: deferred body contains a text that interpolates $label, so collectNodeParamRefs
+		// returns ["label"] and materializeDeferred installs a tracked-expression closure. While the
+		// conditional is visible, setParameter("label", ...) fires the closure, which removes
+		// children and rebuilds the body. The previous interactive registration must be reaped.
+		final result = buildFromSource("
+			#test programmable(visible:bool=false, label:string=\"hi\") {
+				@(visible=>true) {
+					interactive(40, 30, \"hit\"): 0, 0
+					text(dd, '${label}', #fff): 0, 0
+				}
+			}
+		", "test", null, Incremental);
+
+		result.setParameter("visible", true);
+		Assert.equals(1, countInteractives(result), "one interactive after first materialize");
+
+		for (i in 0...5) {
+			result.setParameter("label", "n" + i);
+		}
+		Assert.equals(1, countInteractives(result),
+			'interactive registrations leaked across tracked-expression rebuild: expected 1, got ${countInteractives(result)}');
+	}
+
+	@Test
+	public function testIncrementalDeferredConditionalSlotCleanedUpOnReshow():Void {
+		// Same Path 2 cycle, but with a named slot in the deferred body. result.slots must hold
+		// exactly one entry across cycles — re-materialize must drop the previous slot registration.
+		final result = buildFromSource("
+			#test programmable(visible:bool=false) {
+				@(visible=>true) {
+					#mySlot slot {
+						bitmap(generated(color(10, 10, #f00))): 0, 0
+					}
+				}
+			}
+		", "test", null, Incremental);
+
+		Assert.equals(0, result.slots.length, "no slots initially (deferred path)");
+
+		result.setParameter("visible", true);
+		Assert.equals(1, result.slots.length, "one slot after first materialize");
+
+		for (i in 0...5) {
+			result.setParameter("visible", false);
+			result.setParameter("visible", true);
+		}
+		Assert.equals(1, result.slots.length,
+			'slot registrations leaked across deferred re-materialize: expected 1, got ${result.slots.length}');
+	}
+
 	#if MULTIANIM_DEV
 	// ==================== Per-element bookkeeping cleanup on rebuild (dev-only) ====================
 	// Verifies that SWITCH/REPEAT rebuild closures clean up nested per-element bookkeeping (tracked
@@ -8226,4 +8310,39 @@ class BuilderUnitTest extends BuilderTestBase {
 		Assert.notNull(c.parent, "After setObject, the new object must be parented");
 	}
 
+	// ==================== applyConditionalChains map caching ====================
+
+	// Steady-state setParameter (no structural change) must not rebuild the entry/apply
+	// lookup maps every call. The maps key conditional/apply entries by uniqueNodeName
+	// for O(1) lookup during the recursive walk; the source arrays only mutate during
+	// build or structural rebuild (track*, cleanupDestroyedSubtree). Rebuilding them on
+	// every applyUpdates() pass allocates 2 StringMap + N inserts per setParameter,
+	// which fires on every slider drag, hover tracker, etc.
+	@Test
+	public function testIncrementalApplyConditionalChainsCachesMaps():Void {
+		final result = buildFromSource("
+			#test programmable(level:int=0) {
+				@(level => 0) bitmap(generated(color(10, 10, #ff0000))): 0, 0
+				@(level => 1) bitmap(generated(color(10, 10, #00ff00))): 0, 0
+				@else          bitmap(generated(color(10, 10, #0000ff))): 0, 0
+			}
+		", "test", null, Incremental);
+
+		final ctx = result.incrementalContext;
+		Assert.notNull(ctx);
+
+		// Warm up: first setParameter fires applyConditionalChains, which builds the maps once.
+		result.setParameter("level", 1);
+		final afterFirst = ctx.conditionalMapRebuildCount;
+		Assert.isTrue(afterFirst >= 1, "First setParameter should build the lookup maps at least once");
+
+		// Subsequent setParameter calls do not change structure — they should reuse the
+		// cached maps. Without caching, this counter grows by 1 per call.
+		for (i in 0...5)
+			result.setParameter("level", i);
+
+		Assert.equals(afterFirst, ctx.conditionalMapRebuildCount,
+			"applyConditionalChains must cache entryMap/applyMap across steady-state setParameter calls; "
+			+ "rebuilding them per call allocates 2 StringMap + N inserts on every parameter change");
+	}
 }

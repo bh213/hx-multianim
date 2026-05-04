@@ -779,4 +779,84 @@ class DynamicRefTest extends BuilderTestBase {
 		Assert.equals(15, Std.int(bitmaps[0].tile.height),
 			"armOff must reflect v=15 after becoming visible again (no stale state)");
 	}
+
+	@Test
+	public function testDynamicRefForwardingBatchesAcrossMultipleParams():Void {
+		// When a parent batches multiple parameter changes that all forward into the SAME
+		// dynamicRef child, the child should re-evaluate once for the combined update — not
+		// once per forwarded binding. Per-binding forwarding outside any batch makes the child
+		// see partial state (e.g. new p1, stale p2) on every intermediate pass, which breaks
+		// strict conditionals like @(p1=>X, p2=>Y) and multiplies rebuild work. The codegen
+		// path wraps forwarding in beginUpdate/endUpdate; the runtime builder path must do
+		// the same.
+		final result = buildFromSource("
+			#child programmable(p1:uint=0, p2:uint=0) {
+				bitmap(generated(color($p1 + 1, $p2 + 1, #ff0000))): 0, 0
+			}
+			#host programmable(a:uint=0, b:uint=0) {
+				#ref dynamicRef($child, p1=>$a, p2=>$b): 0, 0
+			}
+		", "host", null, Incremental);
+
+		final childResult = result.getDynamicRef("ref");
+		Assert.notNull(childResult);
+		var childRebuilds = 0;
+		childResult.addRebuildListener(() -> childRebuilds++);
+
+		// Single parent batch updating two forwarded parameters. The child has one
+		// IncrementalUpdateContext but two registered bindings (one per child param).
+		result.beginUpdate();
+		result.setParameter("a", 7);
+		result.setParameter("b", 9);
+		result.endUpdate();
+
+		Assert.equals(1, childRebuilds,
+			'child should rebuild once per batched parent update (got $childRebuilds): forwarding loop must group bindings by childContext and wrap in beginUpdate/endUpdate');
+	}
+
+	@Test
+	public function testDynamicRefForwardingPreservesStrictConditionalEndState():Void {
+		// A child with a strict @(p1=>X, p2=>Y) conditional must end up in the correct arm
+		// after a batched parent update. With per-binding forwarding outside a batch, the
+		// child re-evaluates conditionals after each individual setParameter on partial state.
+		// The end state reaches correctness when the chain settles, but the intermediate
+		// pass can fire spurious arm flips (and, with transitions, visible flashes).
+		// This test pins down both observable consequences of correct batching: end state
+		// matches new (p1, p2), AND the child rebuild count equals the parent batch count.
+		final result = buildFromSource("
+			#child programmable(p1:uint=0, p2:uint=0) {
+				@(p1=>1, p2=>2) bitmap(generated(color(11, 11, #ff0000))): 0, 0
+				@else           bitmap(generated(color(22, 22, #00ff00))): 0, 0
+			}
+			#host programmable(a:uint=1, b:uint=2) {
+				#ref dynamicRef($child, p1=>$a, p2=>$b): 0, 0
+			}
+		", "host", null, Incremental);
+
+		final childResult = result.getDynamicRef("ref");
+		Assert.notNull(childResult);
+
+		// Initial: a=1, b=2 → child p1=1, p2=2 → strict arm (red, 11x11).
+		var bitmaps = findVisibleBitmapDescendants(childResult.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(11, Std.int(bitmaps[0].tile.width));
+
+		var childRebuilds = 0;
+		childResult.addRebuildListener(() -> childRebuilds++);
+
+		// Batched flip of both forwarded params to a configuration that should land on the
+		// @else arm (green, 22x22). With unbatched forwarding the child evaluates twice;
+		// with batched forwarding it evaluates once.
+		result.beginUpdate();
+		result.setParameter("a", 5);
+		result.setParameter("b", 7);
+		result.endUpdate();
+
+		bitmaps = findVisibleBitmapDescendants(childResult.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(22, Std.int(bitmaps[0].tile.width),
+			"child should land on @else arm after batched parent update");
+		Assert.equals(1, childRebuilds,
+			'child should rebuild once per batched parent update (got $childRebuilds)');
+	}
 }

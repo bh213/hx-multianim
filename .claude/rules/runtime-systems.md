@@ -318,7 +318,7 @@ Manual wiring via `new UIPanelHelper(...)` still works. Auto-wiring only activat
 - If TweenManager is null or fade duration is 0, instant behavior is preserved (backward compatible)
 - Edge cases handled: hide during fade-in cancels tween; show during fade-out cancels previous and removes immediately
 
-**Teardown:** both helpers expose `dispose()` that cancels in-flight fade tweens (single-panel and named-panel), removes any fading-out object, detaches active results, and unregisters interactives. `UIScreenBase.clear()` calls `dispose()` on every registered panel helper automatically — auto-wired helpers (`createPanelHelper`) and manually-registered ones (`registerPanelHelper`) are both covered. Call `dispose()` directly if you build one of these helpers outside a screen.
+**Teardown:** both helpers expose `dispose()` that cancels in-flight fade tweens (single-panel and named-panel), removes any fading-out object, detaches active results, and unregisters interactives. `UIScreenBase.clear()` calls `dispose()` on every registered panel AND tooltip helper automatically. Panel helpers register via `createPanelHelper` (auto-wired) or explicit `registerPanelHelper(helper)` / `unregisterPanelHelper(helper)`. Tooltip helpers auto-register from the constructor when their `host` is a `UIScreenBase` (no call-site change required); explicit `registerTooltipHelper(helper)` / `unregisterTooltipHelper(helper)` available for hosts that aren't a `UIScreenBase`. Call `dispose()` directly only if you build one of these helpers outside a screen.
 
 ## Scrollable Screen
 

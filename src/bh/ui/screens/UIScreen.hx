@@ -32,6 +32,7 @@ import bh.ui.UICardHandTypes;
 import bh.ui.UIHigherOrderComponent;
 import bh.ui.UIPanelHelper;
 import bh.ui.UIPanelHelper.PanelDefaults;
+import bh.ui.UITooltipHelper;
 
 typedef ModalOverlayConfig = {
 	var ?color:Int;
@@ -84,6 +85,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	var interactiveSubscriptions:Array<{source:bh.ui.UIInteractiveSource, prefix:Null<String>, listener:Void->Void}> = [];
 	var autoStatusHelper:Null<UIRichInteractiveHelper> = null;
 	var panelHelpers:Array<UIPanelHelper> = [];
+	var tooltipHelpers:Array<UITooltipHelper> = [];
 	var higherOrderComponents:Array<UIHigherOrderComponent> = [];
 	var tabGroup:Null<UITabGroup> = null;
 	var tabAutoWired:Bool = false;
@@ -173,6 +175,9 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		for (helper in panelHelpers)
 			helper.dispose();
 		panelHelpers = [];
+		for (helper in tooltipHelpers)
+			helper.dispose();
+		tooltipHelpers = [];
 		for (comp in higherOrderComponents)
 			comp.dispose();
 		higherOrderComponents = [];
@@ -795,6 +800,19 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	/** Unregister a PanelHelper from auto-wired outside-click handling. */
 	function unregisterPanelHelper(helper:UIPanelHelper):Void {
 		panelHelpers.remove(helper);
+	}
+
+	/** Register a TooltipHelper so its in-flight fade tweens are cancelled when
+	 *  the screen is cleared (mirror of panelHelpers). UITooltipHelper auto-calls
+	 *  this from its constructor when its host is a UIScreenBase. */
+	public function registerTooltipHelper(helper:UITooltipHelper):Void {
+		if (!tooltipHelpers.contains(helper))
+			tooltipHelpers.push(helper);
+	}
+
+	/** Unregister a TooltipHelper. */
+	public function unregisterTooltipHelper(helper:UITooltipHelper):Void {
+		tooltipHelpers.remove(helper);
 	}
 
     function addScrollableListWithSingleBuilder(builder:MultiAnimBuilder, panelBuilderName:String, itemBuilderName:String, scrollbarBuilderName:String, scrollbarInPanelName:String, items, settings:ResolvedSettings, initialIndex:Int = 0, width:Int = 100, height:Int = 100):UIMultiAnimScrollableList {

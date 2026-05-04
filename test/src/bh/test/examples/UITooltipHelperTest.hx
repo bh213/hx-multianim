@@ -577,6 +577,28 @@ class UITooltipHelperTest extends BuilderTestBase {
 	// ============== dispose ==============
 
 	@Test
+	public function testScreenClearDisposesActiveTooltip():Void {
+		// Symmetric to UIPanelHelper's testScreenClearDisposesOpenPanelHelpers:
+		// when the owning screen is torn down (clear()), any in-flight tooltip
+		// fade tween must be cancelled so its closure releases the captured
+		// h2d.Object. Currently UIScreenBase.clear() only disposes panelHelpers,
+		// leaving tooltip fade closures alive past the screen lifetime.
+		var ctx = createHelperWithTweens(0.5, 0.4);
+		ctx.helper.show("btn1", "tip");
+
+		@:privateAccess var fadingInObj = ctx.helper.activeResult.object;
+		Assert.isTrue(ctx.tweens.hasTweens(fadingInObj),
+			"tooltip fade-in should be live after show()");
+
+		// Tear the screen down. All tooltip helpers bound to the screen must
+		// be disposed (mirror of panel-helper semantics).
+		ctx.screen.clear();
+
+		Assert.isFalse(ctx.tweens.hasTweens(fadingInObj),
+			"tooltip fade tween must be cancelled when screen clears");
+	}
+
+	@Test
 	public function testDisposeCancelsInFlightFadeTweens():Void {
 		// Teardown contract: if the helper's owner (a screen being cleared on
 		// hot-reload or full rebuild) tears down while a fade-in or fade-out

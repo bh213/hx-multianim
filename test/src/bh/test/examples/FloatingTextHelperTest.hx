@@ -200,6 +200,50 @@ class FloatingTextHelperTest extends BuilderTestBase {
 		Assert.equals(1, helper.count);
 	}
 
+	@Test
+	public function testReentrantSpawnSurvivesAdjacentCompletion():Void {
+		// Bug: when two instances complete in the same update() and the first
+		// one's onComplete spawns a new instance, the swap-remove must keep
+		// the second instance addressable at index 0. With pop() (removes
+		// last element), the spawned A2 gets dropped instead of B at idx 0.
+		// Trace: [A, B] count=2; A done → swap [B,B] → pop → [B] count=1;
+		//   onComplete spawns A2 → [B, A2] count=1; B done → no swap (i==count==0)
+		//   → pop should remove B at idx 0, NOT A2 at idx 1.
+		var parent = new h2d.Object();
+		var helper = new FloatingTextHelper(parent);
+		var font = hxd.res.DefaultFont.get();
+
+		var a = helper.spawn("A", font, 0, 0, createAnimPath());
+		var b = helper.spawn("B", font, 0, 0, createAnimPath());
+		var bObj = b.object;
+
+		var spawnedA2:Array<h2d.Object> = [];
+		a.onComplete = () -> {
+			var a2 = helper.spawn("A2", font, 0, 0, createAnimPath());
+			spawnedA2.push(a2.object);
+		};
+
+		// Both A and B complete in this single update; A's onComplete grows
+		// the array between the two swap-removes.
+		helper.update(1.1);
+
+		// One instance survives — must be A2 (the reentrant spawn), not B.
+		Assert.equals(1, helper.count);
+		Assert.equals(1, spawnedA2.length);
+
+		// B's scene object must have been removed from the parent.
+		Assert.isNull(bObj.parent, "B's object should be detached after its completion");
+
+		// Probe with a short follow-up update: A2 still has ~1s of life so it
+		// must remain. With the bug, the helper is actually tracking B (already
+		// done) at index 0 — the next update finds it done again and removes
+		// it, dropping count to 0 while A2's untracked object stays orphaned
+		// on the parent.
+		helper.update(0.05);
+		Assert.equals(1, helper.count, "A2 must still be tracked by helper after follow-up update");
+		Assert.equals(parent, spawnedA2[0].parent, "A2's object must still be parented (not orphaned)");
+	}
+
 	// ============== Alpha from path ==============
 
 	@Test

@@ -4,6 +4,7 @@ import bh.base.TweenManager;
 import bh.base.TweenManager.Tween;
 import bh.base.TweenManager.TweenProperty;
 import bh.ui.screens.UIScreen;
+import bh.ui.screens.UIScreen.UIScreenBase;
 import bh.multianim.MultiAnimBuilder;
 import bh.multianim.MultiAnimBuilder.BuilderResult;
 
@@ -69,6 +70,10 @@ class UITooltipHelper {
 		this.defaultFadeIn = defaults?.fadeIn ?? 0.15;
 		this.defaultFadeOut = defaults?.fadeOut ?? 0.1;
 		this.tweens = tweens;
+		// Auto-register with the owning screen so in-flight fade tweens get
+		// cancelled on screen.clear() (symmetric with UIPanelHelper auto-wiring).
+		if (Std.isOfType(screen, UIScreenBase))
+			(cast screen : UIScreenBase).registerTooltipHelper(this);
 	}
 
 	/** Start hover timer for an interactive. Call from UIInteractiveEvent(UIEntering, ...) handler. */

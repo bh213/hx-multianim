@@ -334,6 +334,16 @@ class IncrementalUpdateContext {
 	// Populated during trackIncrementalExpressions; keyed by param name, values are human-
 	// readable reasons like `interactive id` or `stateanim selector "direction"`.
 	var untrackedParams:Map<String, Array<String>> = new Map();
+	/** Counts how many times applyConditionalChains has built fresh entry/apply lookup maps.
+	 *  A pure counter — does not affect behavior. setParameter calls in steady state
+	 *  (no structural change) should not increment this. */
+	public var conditionalMapRebuildCount:Int = 0;
+	// Cached uniqueNodeName → entry lookups for applyConditionalChains. Source arrays
+	// only mutate during build and structural rebuild (track* / cleanupDestroyedSubtree);
+	// those sites null these out so the next applyConditionalChains rebuilds them.
+	var cachedEntryMap:Null<haxe.ds.StringMap<{object:h2d.Object, node:Node, sentinel:h2d.Object, parent:h2d.Object, layer:Int,
+		savedFlowProps:Null<SavedFlowProperties>}>> = null;
+	var cachedApplyMap:Null<haxe.ds.StringMap<{parent:h2d.Object, node:Node, applied:Bool}>> = null;
 
 	public function new(builder:MultiAnimBuilder, indexedParams:Map<String, ResolvedIndexParameters>,
 			builderParams:BuilderParameters, rootNode:Node) {
@@ -379,6 +389,7 @@ class IncrementalUpdateContext {
 	public function trackConditional(object:h2d.Object, node:Node, sentinel:h2d.Object, parent:h2d.Object, layer:Int):Void {
 		conditionalEntries.push({object: object, node: node, sentinel: sentinel, parent: parent, layer: layer,
 			savedFlowProps: saveFlowProperties(object, parent)});
+		cachedEntryMap = null;
 	}
 
 	public function trackDeferredConditional(wrapper:h2d.Object, node:Node, sentinel:h2d.Object, parent:h2d.Object, layer:Int,
@@ -386,6 +397,7 @@ class IncrementalUpdateContext {
 			internalResults:InternalBuilderResults, builderParams:BuilderParameters):Void {
 		conditionalEntries.push({object: wrapper, node: node, sentinel: sentinel, parent: parent, layer: layer,
 			savedFlowProps: saveFlowProperties(wrapper, parent)});
+		cachedEntryMap = null;
 		deferredEntries.push({
 			wrapper: wrapper, node: node, sentinel: sentinel, parent: parent, layer: layer,
 			gridCS: gridCS, hexCS: hexCS,
@@ -511,22 +523,26 @@ class IncrementalUpdateContext {
 
 		// 6. Drop conditionalEntries whose object is under container.
 		var ci = 0;
+		var entriesChanged = false;
 		while (ci < conditionalEntries.length) {
 			final obj = conditionalEntries[ci].object;
 			final isUnder = obj == container || (obj.parent != null && isDescendantOf(obj, container));
-			if (isUnder) conditionalEntries.splice(ci, 1);
+			if (isUnder) { conditionalEntries.splice(ci, 1); entriesChanged = true; }
 			else ci++;
 		}
+		if (entriesChanged) cachedEntryMap = null;
 
 		// 7. Drop conditionalApplyEntries whose parent is under container, and drop
 		//    the matching baseline entries (parent object is gone, map key dangles).
 		var ai = 0;
+		var applyChanged = false;
 		while (ai < conditionalApplyEntries.length) {
 			final parent = conditionalApplyEntries[ai].parent;
 			final isUnder = parent == container || (parent.parent != null && isDescendantOf(parent, container));
-			if (isUnder) conditionalApplyEntries.splice(ai, 1);
+			if (isUnder) { conditionalApplyEntries.splice(ai, 1); applyChanged = true; }
 			else ai++;
 		}
+		if (applyChanged) cachedApplyMap = null;
 		final baselineParents:Array<h2d.Object> = [];
 		for (parent in conditionalApplyBaselines.keys()) baselineParents.push(parent);
 		for (parent in baselineParents) {
@@ -582,6 +598,7 @@ class IncrementalUpdateContext {
 
 	public function trackConditionalApply(parent:h2d.Object, node:Node, applied:Bool):Void {
 		conditionalApplyEntries.push({parent: parent, node: node, applied: applied});
+		cachedApplyMap = null;
 	}
 
 	/** Capture a parent's pre-apply baseline. Must be called before the first inline
@@ -1159,6 +1176,10 @@ class IncrementalUpdateContext {
 	}):Void {
 		// Build the deferred node's content into the wrapper (non-incremental, like repeatable rebuild).
 		// Register a tracked expression to rebuild when referenced params change.
+		// Reap IR registrations under the wrapper before tearing down children — otherwise each
+		// hide→show cycle leaks the previous materialization's interactives/slots/dynamicRefs/
+		// names/htmlTextsWithLinks into the parent BuilderResult.
+		MultiAnimBuilder.removeRegistrationsUnder(entry.internalResults, entry.wrapper);
 		entry.wrapper.removeChildren(); // Clear stale children from previous materialization
 		rebuildDeferredContent(entry);
 		// Collect param refs from node expressions for future rebuild tracking
@@ -1167,6 +1188,9 @@ class IncrementalUpdateContext {
 			final capturedEntry = entry;
 			trackedExpressions.push({
 				updateFn: () -> {
+					// Same cleanup as above — each tracked-expression rebuild must reap the previous
+					// build's IR registrations.
+					MultiAnimBuilder.removeRegistrationsUnder(capturedEntry.internalResults, capturedEntry.wrapper);
 					capturedEntry.wrapper.removeChildren();
 					rebuildDeferredContent(capturedEntry);
 				},
@@ -1323,6 +1347,14 @@ class IncrementalUpdateContext {
 		// (e.g. `@(a=>1) #foo dynamicRef($X) / @else #bar dynamicRef($X)`, update $X's params while
 		// one arm is hidden — both must be current). Skipping detached children here was the
 		// staleness side of bug H2.
+		//
+		// Group bindings by childContext so a child receiving N forwarded params from this parent
+		// re-evaluates once (one applyUpdates with all new values) instead of N times on partial
+		// state. Without batching, a strict child conditional like `@(p1=>X, p2=>Y)` would see new
+		// p1 against stale p2 on the first pass and could fire a spurious arm flip / transition.
+		// Mirrors the codegen path in ProgrammableCodeGen (forwarded-param update wraps in
+		// beginUpdate/endUpdate). Allocation is lazy: no per-update cost when nothing forwards.
+		var forwardGroups:Null<Array<{ctx:IncrementalUpdateContext, items:Array<{param:String, value:Dynamic}>}>> = null;
 		for (binding in dynamicRefBindings) {
 			var relevant = false;
 			for (ref in binding.referencedParams) {
@@ -1332,7 +1364,29 @@ class IncrementalUpdateContext {
 				}
 			}
 			if (!relevant) continue;
-			binding.childContext.setParameter(binding.childParam, binding.resolveFn());
+			final value = binding.resolveFn();
+			if (forwardGroups == null) forwardGroups = [];
+			var group:Null<{ctx:IncrementalUpdateContext, items:Array<{param:String, value:Dynamic}>}> = null;
+			for (g in forwardGroups) {
+				if (g.ctx == binding.childContext) {
+					group = g;
+					break;
+				}
+			}
+			if (group == null) {
+				group = {ctx: binding.childContext, items: []};
+				forwardGroups.push(group);
+			}
+			group.items.push({param: binding.childParam, value: value});
+		}
+		if (forwardGroups != null) {
+			for (group in forwardGroups) {
+				group.ctx.beginUpdate();
+				for (item in group.items) {
+					group.ctx.setParameter(item.param, item.value);
+				}
+				group.ctx.endUpdate();
+			}
 		}
 
 		// Rebuild dynamic name refs (template parameter changed)
@@ -1362,15 +1416,21 @@ class IncrementalUpdateContext {
 	public function applyConditionalChains():Void {
 		// Walk the root node's children to resolve @else/@default chains with new params
 		if (rootNode.children == null) return;
-		// Build lookup maps keyed by uniqueNodeName for O(1) access in recursive walk
-		final entryMap = new haxe.ds.StringMap<{object:h2d.Object, node:Node, sentinel:h2d.Object, parent:h2d.Object, layer:Int,
-			savedFlowProps:Null<SavedFlowProperties>}>();
-		for (entry in conditionalEntries)
-			entryMap.set(entry.node.uniqueNodeName, entry);
-		final applyMap = new haxe.ds.StringMap<{parent:h2d.Object, node:Node, applied:Bool}>();
-		for (ae in conditionalApplyEntries)
-			applyMap.set(ae.node.uniqueNodeName, ae);
-		resolveVisibilityForChildren(rootNode.children, entryMap, applyMap);
+		// Build lookup maps keyed by uniqueNodeName for O(1) access in recursive walk.
+		// Cached across calls; track*/cleanupDestroyedSubtree invalidate by nulling the fields.
+		if (cachedEntryMap == null || cachedApplyMap == null) {
+			conditionalMapRebuildCount++;
+			final fresh = new haxe.ds.StringMap<{object:h2d.Object, node:Node, sentinel:h2d.Object, parent:h2d.Object, layer:Int,
+				savedFlowProps:Null<SavedFlowProperties>}>();
+			for (entry in conditionalEntries)
+				fresh.set(entry.node.uniqueNodeName, entry);
+			cachedEntryMap = fresh;
+			final freshApply = new haxe.ds.StringMap<{parent:h2d.Object, node:Node, applied:Bool}>();
+			for (ae in conditionalApplyEntries)
+				freshApply.set(ae.node.uniqueNodeName, ae);
+			cachedApplyMap = freshApply;
+		}
+		resolveVisibilityForChildren(rootNode.children, cast cachedEntryMap, cast cachedApplyMap);
 	}
 
 	function resolveVisibilityForChildren(children:Array<Node>,
