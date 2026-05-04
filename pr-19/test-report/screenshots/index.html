@@ -327,15 +327,15 @@
 </head>
 <body>
     <h1>Visual Test Report</h1>
-    <div class="timestamp">Generated: 2026-04-24 06:35:42</div>
+    <div class="timestamp">Generated: 2026-05-04 11:33:38</div>
     <div class="summary">
         <strong>Summary:</strong> 101 tests,         <span style="color: #4CAF50;">101 passed</span>,         <span style="color: #f44336;">0 failed</span>
-        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1.2s, visual 24.5s)</span>
+        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1.3s, visual 24.8s)</span>
     </div>
     <div class="unit-tests-section">
         <h2>Unit Tests</h2>
         <div class="unit-tests-summary all-passed">
-            <strong>6268 assertions:</strong>             <span style="color: #4CAF50;">6268 passed</span>
+            <strong>6295 assertions:</strong>             <span style="color: #4CAF50;">6295 passed</span>
             <button class="expand-btn" id="unitToggleBtn" onclick="toggleUnitDetails()">Show Details</button>
         </div>
         <div class="unit-details" id="unitDetails">
@@ -839,6 +839,7 @@
                 <div class="unit-method pass">testIncrementalApplyAlphaInterleavedSameProperty: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testIncrementalApplyAlphaInterleavedStartHidden: OK <span class="dots">.......</span></div>
                 <div class="unit-method pass">testIncrementalApplyAlphaTogglesWithSetParameter: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testIncrementalApplyConditionalChainsCachesMaps: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testIncrementalApplyFilterAppliedWhenConditionTrue: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testIncrementalApplyFilterNotAppliedWhenConditionFalse: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testIncrementalApplyFilterTogglesWithSetParameter: OK <span class="dots">...</span></div>
@@ -854,6 +855,9 @@
                 <div class="unit-method pass">testIncrementalConditionalGraphicsWithDynamicContent: OK <span class="dots">........</span></div>
                 <div class="unit-method pass">testIncrementalConditionalRange: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testIncrementalDefaultGraphicsHasContent: OK <span class="dots">..........</span></div>
+                <div class="unit-method pass">testIncrementalDeferredConditionalInteractiveCleanedUpOnReshow: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testIncrementalDeferredConditionalSlotCleanedUpOnReshow: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testIncrementalDeferredConditionalTrackedRebuildInteractiveCleanedUp: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testIncrementalDynamicRefWithGraphics: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testIncrementalElseGraphicsHasContent: OK <span class="dots">..........</span></div>
                 <div class="unit-method pass">testIncrementalExprCombined: OK <span class="dots">....</span></div>
@@ -1142,6 +1146,7 @@
                 <div class="unit-method pass">testPathLayoutEvenArcLengthUsesAllocationFreePointLookup: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testPathLayoutEvenRate: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testPathLayoutHoverPop: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testPathLayoutReusesScratchArraysAcrossCalls: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testPathLayoutSingleCard: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testPathLayoutStraightOrientation: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testPathLayoutTangentClamped: OK <span class="dots">...</span></div>
@@ -1270,6 +1275,8 @@
                 <div class="unit-method pass">testDynamicRefConditionalBranch: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testDynamicRefConditionalSiblingsPropagateAcrossVisibilityFlip: OK <span class="dots">.......</span></div>
                 <div class="unit-method pass">testDynamicRefExplicitNameCollisionThrowsAtBuild: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testDynamicRefForwardingBatchesAcrossMultipleParams: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testDynamicRefForwardingPreservesStrictConditionalEndState: OK <span class="dots">......</span></div>
                 <div class="unit-method pass">testDynamicRefInRepeatable: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testDynamicRefInSwitchArmPropagatesForwardedParam: OK <span class="dots">........</span></div>
                 <div class="unit-method pass">testDynamicRefIndexedInRepeatableIsIndependentlyAddressable: OK <span class="dots">............</span></div>
@@ -1321,6 +1328,7 @@
                 <div class="unit-method pass">testOnCompleteCallback: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testOnCompleteCanCallClear: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testOnCompleteCanSpawn: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testReentrantSpawnSurvivesAdjacentCompletion: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testRelativePositionMode: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testSpawnCreatesInstance: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testSpawnObjectCreatesInstance: OK <span class="dots">..</span></div>
@@ -2947,6 +2955,7 @@
                 <div class="unit-method pass">testRebuildWhenActive: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testRebuildWhenNotActive: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testRebuildWithFade: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testScreenClearDisposesActiveTooltip: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testSetDelayOverride: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testSetDelayOverrideOnlyAffectsTargetInteractive: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testSetOffsetOverride: OK <span class="dots">.</span></div>
