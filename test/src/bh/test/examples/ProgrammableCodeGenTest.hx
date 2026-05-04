@@ -5203,6 +5203,41 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 			async, null, null, 4.0, null, DetachReattach);
 	}
 
+	// Codegen setParameter on a `status:[normal,hover,pressed,...]` enum receives the string
+	// value via the generic dispatcher (8a3 in ProgrammableCodeGen). The dispatcher's
+	// string→index switch must tolerate values that are not declared in the enum, mirroring
+	// the runtime contract documented at MultiAnimBuilder.hx where UI widgets (Button,
+	// Checkbox, Tabs) call setParameter("status", "disabled") on every client template,
+	// expecting all `@(status=>…)` arms to fail to match while a parallel `disabled:bool`
+	// param drives visuals. Codegen currently emits `throw` on unknown values — a card or
+	// button built via @:manim will crash the first time a state machine attempts a value
+	// the template doesn't enumerate.
+	@Test
+	public function testCodegenSetParameterUnknownEnumValueDoesNotThrow():Void {
+		final mp = createMp();
+		final btn = mp.button.create();
+		// codegenButton declares `status:[hover, pressed, normal]=normal` — "disabled" is NOT
+		// in the enum (the template uses a separate `disabled:[true,false]` param).
+		var thrown:Null<String> = null;
+		try {
+			btn.setParameter("status", "disabled");
+		} catch (e:Dynamic) {
+			thrown = Std.string(e);
+		}
+		Assert.isNull(thrown,
+			'codegen setParameter must tolerate unknown enum strings (matches runtime contract); threw: $thrown');
+
+		// Sanity: known values still work after the unknown call.
+		var thrownAfter:Null<String> = null;
+		try {
+			btn.setParameter("status", "hover");
+		} catch (e:Dynamic) {
+			thrownAfter = Std.string(e);
+		}
+		Assert.isNull(thrownAfter,
+			'follow-up setParameter with a known value must still work; threw: $thrownAfter');
+	}
+
 	static function containsDescendant(root:h2d.Object, target:h2d.Object):Bool {
 		if (root == target) return true;
 		for (i in 0...root.numChildren) {

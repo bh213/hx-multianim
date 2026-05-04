@@ -910,7 +910,11 @@ class ProgrammableCodeGen {
 					case PPTEnum(values):
 						// Enum: accept either Int (direct index), String (enum value name), or
 						// UIRichInteractiveHelper-style string like "hover" for status params.
-						// Generate a nested switch over string values.
+						// Generate a nested switch over string values. Unknown strings resolve to
+						// -1 (no @(p=>v) arm matches), mirroring the runtime contract documented
+						// at MultiAnimBuilder.setParameter — UI widgets (Button/Checkbox/Tabs)
+						// call setParameter("status", "disabled") on every client template,
+						// expecting a no-op match when the template's enum doesn't list "disabled".
 						final strCases:Array<Case> = [];
 						for (i in 0...values.length) {
 							strCases.push({
@@ -919,7 +923,7 @@ class ProgrammableCodeGen {
 							});
 						}
 						final strSwitch:Expr = {
-							expr: ESwitch(macro (_value : String), strCases, macro throw 'unknown enum value "$_value" for parameter "' + $v{name} + '"'),
+							expr: ESwitch(macro (_value : String), strCases, macro -1),
 							pos: pos,
 						};
 						macro {
@@ -6268,11 +6272,13 @@ class ProgrammableCodeGen {
 				final nameExpr = macro $v{name};
 				final xExpr = rvToExpr(x);
 				final yExpr = rvToExpr(y);
-				macro this._pb.getPaletteColor2D($nameExpr, $xExpr, $yExpr);
+				final extExpr:Expr = externalReference != null ? macro $v{externalReference} : macro null;
+				macro this._pb.getPaletteColor2D($nameExpr, $xExpr, $yExpr, $extExpr);
 			case RVColor(externalReference, name, index):
 				final nameExpr = macro $v{name};
 				final indexExpr = rvToExpr(index);
-				macro this._pb.getPaletteColorByIndex($nameExpr, $indexExpr);
+				final extExpr:Expr = externalReference != null ? macro $v{externalReference} : macro null;
+				macro this._pb.getPaletteColorByIndex($nameExpr, $indexExpr, $extExpr);
 			case RVElementOfArray(arrayRef, index):
 				final indexExpr = rvToExpr(index);
 				if (runtimeLoopVars.exists(arrayRef)) {

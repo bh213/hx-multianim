@@ -322,4 +322,57 @@ class ParameterizedSlotTest extends BuilderTestBase {
 		if (builderErr != null)
 			Assert.equals("slot_disposed", builderErr.code, "BuilderError.code for disposed slot");
 	}
+
+	// Hygiene test: when the host MultiAnimBuilder has a TweenManager wired,
+	// the parameterized slot's IncrementalUpdateContext must inherit it,
+	// matching the buildWithParameters injection pattern. Without this,
+	// future parser support for `transition {}` inside SLOT bodies — or any
+	// other future use of slot.incrementalContext.tweenManager — silently
+	// no-ops. The non-slot path (buildWithParameters) already injects.
+	@Test
+	public function testParameterizedSlotInheritsTweenManagerFromBuilder():Void {
+		final builder = bh.test.BuilderTestBase.builderFromSource("
+			#test programmable() {
+				#mySlot slot(color:[red,green]=green) {
+					@(color => green) bitmap(generated(color(20, 20, #00ff00))): 0, 0
+					@(color => red)   bitmap(generated(color(20, 20, #ff0000))): 0, 0
+				}
+			}
+		");
+		final tm = new bh.base.TweenManager();
+		builder.tweenManager = tm;
+		final result = builder.buildWithParameters("test", new Map(), null, null, true);
+		final slot = result.getSlot("mySlot");
+		Assert.notNull(slot);
+		if (slot == null) return;
+		Assert.notNull(slot.incrementalContext,
+			"parameterized slot must have an IncrementalUpdateContext");
+		if (slot.incrementalContext == null) return;
+		Assert.equals(tm, slot.incrementalContext.tweenManager,
+			"slot context should inherit builder.tweenManager (mirrors buildWithParameters)");
+	}
+
+	// Same hygiene contract for the codegen path: `buildSlotContent` constructs
+	// its own IncrementalUpdateContext for parameterized slots and must inject
+	// the builder's TweenManager. Currently does not — same divergence.
+	@Test
+	public function testCodegenBuildSlotContentInheritsTweenManagerFromBuilder():Void {
+		final builder = bh.test.BuilderTestBase.builderFromSource("
+			#test programmable() {
+				#mySlot slot(color:[red,green]=green) {
+					@(color => green) bitmap(generated(color(20, 20, #00ff00))): 0, 0
+					@(color => red)   bitmap(generated(color(20, 20, #ff0000))): 0, 0
+				}
+			}
+		");
+		final tm = new bh.base.TweenManager();
+		builder.tweenManager = tm;
+		final container = new h2d.Object();
+		final slot = builder.buildSlotContent("test", "mySlot", new Map(), container);
+		Assert.notNull(slot);
+		Assert.notNull(slot.incrementalContext, "buildSlotContent should produce an incremental context");
+		if (slot.incrementalContext == null) return;
+		Assert.equals(tm, slot.incrementalContext.tweenManager,
+			"buildSlotContent should inject builder.tweenManager");
+	}
 }

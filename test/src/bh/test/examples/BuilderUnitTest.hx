@@ -8345,4 +8345,62 @@ class BuilderUnitTest extends BuilderTestBase {
 			"applyConditionalChains must cache entryMap/applyMap across steady-state setParameter calls; "
 			+ "rebuilding them per call allocates 2 StringMap + N inserts on every parameter change");
 	}
+
+	// Symmetric with the codegen no-op gate (ProgrammableCodeGen.hx setter short-circuits when
+	// the new value equals the cached field). Runtime IncrementalUpdateContext.setParameter
+	// currently sets hasChanges = true unconditionally, so applyUpdates fires rebuild listeners
+	// and re-evaluates tracked expressions on every call — even when the value didn't change.
+	// Naive callers (UI helpers that don't track their own state) thrash listeners on hot paths.
+	@Test
+	public function testSetParameterNoOpDoesNotFireRebuildListener():Void {
+		final result = buildFromSource("
+			#test programmable(level:int=0) {
+				bitmap(generated(color(10, 10, #fff))): $level, 0
+			}
+		", "test", null, Incremental);
+
+		var fires = 0;
+		result.addRebuildListener(() -> fires++);
+
+		// First call: real change 0 -> 5. Listener should fire.
+		result.setParameter("level", 5);
+		Assert.equals(1, fires, "listener must fire on actual value change");
+
+		// Subsequent calls with the SAME value are no-ops semantically. The runtime should
+		// short-circuit (mirrors the codegen behavior) and NOT re-fire the listener.
+		final firesAfterFirst = fires;
+		for (i in 0...5)
+			result.setParameter("level", 5);
+		Assert.equals(firesAfterFirst, fires,
+			'no-op setParameter must not fire rebuild listeners (codegen-symmetric); fired ${fires - firesAfterFirst} extra times');
+
+		// Sanity: a real change still fires.
+		result.setParameter("level", 7);
+		Assert.equals(firesAfterFirst + 1, fires, "post-no-op real change must still fire");
+	}
+
+	// Same no-op gate applied to tracked expressions: an inert setParameter must not re-evaluate
+	// expressions that depend on the unchanged param.
+	@Test
+	public function testSetParameterNoOpDoesNotReEvaluateTrackedExpressions():Void {
+		final result = buildFromSource("
+			#test programmable(level:int=0) {
+				bitmap(generated(color($level + 1, 10, #fff))): 0, 0
+			}
+		", "test", null, Incremental);
+
+		var fires = 0;
+		result.addRebuildListener(() -> fires++);
+
+		// Prime: real change. Tracked expression on $level + 1 reruns once.
+		result.setParameter("level", 3);
+		Assert.equals(1, fires, "first real change fires");
+
+		// 5 no-op calls: tracked expression should NOT rerun.
+		final baseline = fires;
+		for (i in 0...5)
+			result.setParameter("level", 3);
+		Assert.equals(baseline, fires,
+			'tracked-expression re-eval must short-circuit on no-op setParameter; ${fires - baseline} extra fires');
+	}
 }

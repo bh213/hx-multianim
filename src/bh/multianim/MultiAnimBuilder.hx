@@ -802,6 +802,19 @@ class IncrementalUpdateContext {
 			throw BuilderError.of('setParameter("$name", ...) rejected: value type not convertible to a parameter shape (got $typeDesc). Accepted: Int, Float, String, Bool, ResolvedIndexParameters, h2d.Tile.',
 				"invalid_param_value");
 		}
+		// No-op gate: if the new value equals the cached one, skip applyUpdates entirely.
+		// Mirrors the codegen setter's short-circuit (ProgrammableCodeGen typed setter).
+		// Without this, naive callers that re-assert the same value on every tick (UI helpers,
+		// state machines that don't track their own state) thrash applyConditionalChains,
+		// trackedExpressions, dynamicRef forwarding, and rebuild listeners. Type.enumEq is
+		// cheap (no allocation) and works across all ResolvedIndexParameters variants.
+		final existing = indexedParams.get(name);
+		if (existing != null && Type.enumEq(existing, converted)) {
+			// In batch mode, we still skip — endUpdate guards on hasChanges, so a no-op
+			// inside a batch correctly remains a no-op for that name without disturbing
+			// other params already flagged in the batch.
+			return;
+		}
 		indexedParams.set(name, converted);
 		changedParams.set(name, true);
 		hasChanges = true;
@@ -5975,6 +5988,8 @@ class MultiAnimBuilder {
 				}
 				this.indexedParams = mergedParams;
 				slotIncrementalCtx = new IncrementalUpdateContext(this, mergedParams, builderParams, node);
+				if (tweenManager != null)
+					slotIncrementalCtx.setTweenManager(tweenManager);
 				this.incrementalMode = true;
 				this.incrementalContext = slotIncrementalCtx;
 			default:
@@ -7545,6 +7560,8 @@ class MultiAnimBuilder {
 		};
 		this.builderParams = builderParams;
 		final slotCtx = new IncrementalUpdateContext(this, mergedParams, builderParams, slotNode);
+		if (tweenManager != null)
+			slotCtx.setTweenManager(tweenManager);
 		this.incrementalMode = true;
 		this.incrementalContext = slotCtx;
 

@@ -124,14 +124,27 @@ class ProgrammableBuilder {
 		return resourceLoader.loadSheet2(sheetName);
 	}
 
-	/** Look up a 2D palette color by name and x,y coordinates */
-	public function getPaletteColor2D(paletteName:String, x:Int, y:Int):Int {
-		return getBuilder().getPalette(paletteName).getColor2D(x, y);
+	/** Look up a 2D palette color by name and x,y coordinates.
+	 *  When `externalRef` is non-null, resolves the palette against the imported builder
+	 *  registered under that name (mirrors the runtime path's `getBuilderWithExternal`). */
+	public function getPaletteColor2D(paletteName:String, x:Int, y:Int, ?externalRef:String):Int {
+		return resolvePaletteBuilder(externalRef).getPalette(paletteName).getColor2D(x, y);
 	}
 
-	/** Look up a palette color by name and index */
-	public function getPaletteColorByIndex(paletteName:String, index:Int):Int {
-		return getBuilder().getPalette(paletteName).getColorByIndex(index);
+	/** Look up a palette color by name and index.
+	 *  When `externalRef` is non-null, resolves the palette against the imported builder. */
+	public function getPaletteColorByIndex(paletteName:String, index:Int, ?externalRef:String):Int {
+		return resolvePaletteBuilder(externalRef).getPalette(paletteName).getColorByIndex(index);
+	}
+
+	function resolvePaletteBuilder(externalRef:Null<String>):MultiAnimBuilder {
+		final base = getBuilder();
+		if (externalRef == null)
+			return base;
+		final ext = base.multiParserResult?.imports?.get(externalRef);
+		if (ext == null)
+			throw BuilderError.of('could not find builder for external palette reference "$externalRef"');
+		return ext;
 	}
 
 	/** Build a palette replace filter via the builder (for FilterPaletteReplace) */
