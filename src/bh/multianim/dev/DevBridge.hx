@@ -990,9 +990,18 @@ class DevBridge {
 
 	function setPaused(shouldPause:Bool):Void {
 		if (shouldPause && !paused) {
-			// Save current loop and replace with no-op (rendering continues via engine.present)
+			// Save the real mainLoop and replace with a render-only loop. Skipping render
+			// entirely lets the swap chain surface stale buffers (DXGI flip-model in particular
+			// leaves buffer contents undefined after Present), causing visible flicker between
+			// old frames whenever the OS invalidates the window.
 			savedLoopFunc = @:privateAccess hxd.System.loopFunc;
-			@:privateAccess hxd.System.loopFunc = () -> {};
+			var app = screenManager.app;
+			@:privateAccess hxd.System.loopFunc = () -> {
+				hxd.Timer.update();
+				if (app.s2d != null) app.s2d.setElapsedTime(0);
+				if (app.s3d != null) app.s3d.setElapsedTime(0);
+				app.engine.render(app);
+			};
 			paused = true;
 			trace("[DevBridge] Game paused");
 		} else if (!shouldPause && paused) {
@@ -1771,9 +1780,7 @@ class DevBridge {
 
 		// Auto-pause if requested and not already paused
 		if (autoPause && !paused) {
-			savedLoopFunc = @:privateAccess hxd.System.loopFunc;
-			@:privateAccess hxd.System.loopFunc = () -> {};
-			paused = true;
+			setPaused(true);
 		}
 
 		var window = hxd.Window.getInstance();
@@ -1809,22 +1816,14 @@ class DevBridge {
 		} catch (e:haxe.Exception) {
 			// Resume if we auto-paused, even on error
 			if (autoPause && !wasAlreadyPaused && paused) {
-				if (savedLoopFunc != null) {
-					@:privateAccess hxd.System.loopFunc = savedLoopFunc;
-					savedLoopFunc = null;
-				}
-				paused = false;
+				setPaused(false);
 			}
 			throw e;
 		}
 
 		// Auto-resume if we auto-paused
 		if (autoPause && !wasAlreadyPaused && paused) {
-			if (savedLoopFunc != null) {
-				@:privateAccess hxd.System.loopFunc = savedLoopFunc;
-				savedLoopFunc = null;
-			}
-			paused = false;
+			setPaused(false);
 		}
 
 		return {

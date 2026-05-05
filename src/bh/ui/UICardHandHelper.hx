@@ -200,6 +200,10 @@ class UICardHandHelper implements UIHigherOrderComponent {
 	// Reused scratch buffer for scene->local conversions on mouse events. globalToLocal mutates
 	// its input in place, so a single Point is safe to reuse across calls — avoids per-event GC.
 	var scratchPoint:h2d.col.Point = new h2d.col.Point();
+	// Reused scratch FPoints for animateCardTo's createProjectilePath call. applyStretch reads
+	// x/y and forgets, so a single pair is safe across calls. Helper is single-threaded.
+	var scratchFromFPoint:FPoint = new FPoint(0, 0);
+	var scratchToFPoint:FPoint = new FPoint(0, 0);
 	var cardToCardTarget:Null<CardEntry> = null;
 	var currentTargetId:Null<String> = null;
 	var nextCardSeq:Int = 0;
@@ -386,14 +390,15 @@ class UICardHandHelper implements UIHigherOrderComponent {
 
 		cards.splice(idx, 1);
 
-		var fromPos = new FPoint(entry.container.x, entry.container.y);
-		if (customDiscardAnimation != null && customDiscardAnimation(cardId, entry.container, fromPos.x, fromPos.y, () -> {
+		var fromX = entry.container.x;
+		var fromY = entry.container.y;
+		if (customDiscardAnimation != null && customDiscardAnimation(cardId, entry.container, fromX, fromY, () -> {
 			entry.container.remove();
 			emitEvent(DiscardAnimComplete(cardId));
 		})) {
 			// Custom discard animation took over
 		} else {
-			animateCardTo(entry, fromPos, discardPilePosition, entry.container.rotation, 0, discardPathName, () -> {
+			animateCardTo(entry, fromX, fromY, discardPilePosition.x, discardPilePosition.y, entry.container.rotation, 0, discardPathName, () -> {
 				entry.container.remove();
 				emitEvent(DiscardAnimComplete(cardId));
 			});
@@ -817,11 +822,29 @@ class UICardHandHelper implements UIHigherOrderComponent {
 			// the arrow stays visible and `activeTargetId` outlives the cards it tracked.
 			targeting.clearLine();
 		}
+		// Drain in-flight animations and invoke each stored onComplete so listeners
+		// awaiting DrawAnimComplete / DiscardAnimComplete don't get stranded when the
+		// hand is reset mid-animation. Snapshot first so closures that re-enter (e.g.
+		// draw's applyLayout) don't mutate the iteration.
+		var pendingAnims = activeAnimations;
+		activeAnimations = [];
+		for (anim in pendingAnims)
+			anim.onComplete();
+		// Cancel transition tweens on card subtrees and the targeting arrow before
+		// detaching containers — cancelAllChildren walks the parent chain to identify
+		// descendants, so it must run while cards are still parented to handContainer.
+		final tm = builder.tweenManager;
+		if (tm != null) {
+			tm.cancelAllChildren(handContainer);
+			tm.cancelAllChildren(dragContainer);
+		}
 		for (entry in cards) {
 			unregisterCardEntry(entry);
 			entry.container.remove();
 		}
 		cards = [];
+		// Clear again in case an onComplete (e.g. draw's applyLayout(true)) queued
+		// new rearrange animations on cards we just tore down.
 		activeAnimations = [];
 		hoveredEntry = null;
 		draggedEntry = null;
@@ -879,7 +902,7 @@ class UICardHandHelper implements UIHigherOrderComponent {
 				continue;
 
 			if (animated && entry.state == InHand) {
-				animateCardTo(entry, new FPoint(entry.container.x, entry.container.y), new FPoint(pos.x, pos.y), entry.container.rotation,
+				animateCardTo(entry, entry.container.x, entry.container.y, pos.x, pos.y, entry.container.rotation,
 					pos.rotation, rearrangePathName, () -> {});
 			} else if (entry.state != Animating) {
 				// Cancel any lingering rearrange animation so it doesn't override this instant position
@@ -902,7 +925,7 @@ class UICardHandHelper implements UIHigherOrderComponent {
 
 			var pos = positions[i];
 			entry.layoutPos = pos;
-			animateCardTo(entry, new FPoint(entry.container.x, entry.container.y), new FPoint(pos.x, pos.y), entry.container.rotation,
+			animateCardTo(entry, entry.container.x, entry.container.y, pos.x, pos.y, entry.container.rotation,
 				pos.rotation, rearrangePathName, () -> {
 					resolveAnimationComplete(entry);
 					entry.container.scaleX = pos.scale;
@@ -1198,13 +1221,14 @@ class UICardHandHelper implements UIHigherOrderComponent {
 			// Move card to drag container for discard animation (same local space)
 			dragContainer.addChild(entry.container);
 
-			var fromPos = new FPoint(entry.container.x, entry.container.y);
-			if (customPlayAnimation != null && customPlayAnimation(cardId, entry.container, fromPos.x, fromPos.y, () -> {
+			var fromX = entry.container.x;
+			var fromY = entry.container.y;
+			if (customPlayAnimation != null && customPlayAnimation(cardId, entry.container, fromX, fromY, () -> {
 				entry.container.remove();
 			})) {
 				// Custom play animation took over
 			} else {
-				animateCardTo(entry, fromPos, discardPilePosition, 0, 0, discardPathName, () -> {
+				animateCardTo(entry, fromX, fromY, discardPilePosition.x, discardPilePosition.y, 0, 0, discardPathName, () -> {
 					entry.container.remove();
 				});
 			}
@@ -1219,7 +1243,7 @@ class UICardHandHelper implements UIHigherOrderComponent {
 			// If wasTargeting, card is already in handContainer from enterTargetingMode
 
 			var targetPos = entry.layoutPos;
-			animateCardTo(entry, new FPoint(entry.container.x, entry.container.y), new FPoint(targetPos.x, targetPos.y),
+			animateCardTo(entry, entry.container.x, entry.container.y, targetPos.x, targetPos.y,
 				entry.container.rotation, targetPos.rotation, returnPathName, () -> {
 					resolveAnimationComplete(entry);
 					entry.container.scaleX = targetPos.scale;
@@ -1338,25 +1362,31 @@ class UICardHandHelper implements UIHigherOrderComponent {
 
 	// === Internal: Animation via .manim paths ===
 
-	function animateCardTo(entry:CardEntry, from:FPoint, to:FPoint, startRotation:Float, endRotation:Float, pathName:Null<String>,
-			onComplete:() -> Void):Void {
+	function animateCardTo(entry:CardEntry, fromX:Float, fromY:Float, toX:Float, toY:Float, startRotation:Float, endRotation:Float,
+			pathName:Null<String>, onComplete:() -> Void):Void {
 		// Remove any existing animation for this entry
 		removeAnimationsForEntry(entry);
 
-		var dx = to.x - from.x;
-		var dy = to.y - from.y;
+		var dx = toX - fromX;
+		var dy = toY - fromY;
 		// Snap if positions are close — avoids degenerate Stretch-normalized paths
 		// that produce NaN when from≈to (e.g. quick click-release)
 		if (dx * dx + dy * dy < 1.0) {
-			entry.container.setPosition(to.x, to.y);
+			entry.container.setPosition(toX, toY);
 			entry.container.rotation = endRotation;
 			onComplete();
 			return;
 		}
 
 		if (pathName != null) {
-			// Use .manim animatedPath with Stretch normalization
-			var ap = builder.createProjectilePath(pathName, from, to);
+			// Use .manim animatedPath with Stretch normalization. applyStretch reads
+			// x/y from these FPoints and does not retain them, so the per-instance
+			// scratch pair is safe to reuse across calls.
+			scratchFromFPoint.x = fromX;
+			scratchFromFPoint.y = fromY;
+			scratchToFPoint.x = toX;
+			scratchToFPoint.y = toY;
+			var ap = builder.createProjectilePath(pathName, scratchFromFPoint, scratchToFPoint);
 			// Apply duration override if set
 			var durationOv = getDurationOverride(pathName);
 			if (durationOv > 0)
@@ -1364,7 +1394,7 @@ class UICardHandHelper implements UIHigherOrderComponent {
 			activeAnimations.push(new ActiveAnimation(entry, ap, startRotation, endRotation, onComplete));
 		} else {
 			// No path defined — instant snap
-			entry.container.setPosition(to.x, to.y);
+			entry.container.setPosition(toX, toY);
 			entry.container.rotation = endRotation;
 			onComplete();
 		}
@@ -1432,12 +1462,20 @@ class UICardHandHelper implements UIHigherOrderComponent {
 		return false;
 	}
 
-	/** Remove all active animations for this entry in place (no array reallocation). */
+	/** Remove all active animations for this entry in place (no array reallocation).
+	 *  Each displaced animation's onComplete fires so that draw/discard cleanup
+	 *  (state reset, scene-graph removal, *AnimComplete event) still runs when a
+	 *  later animateCardTo / animateCardToTracking call lands on the same entry.
+	 *  Without this, listeners awaiting DrawAnimComplete / DiscardAnimComplete stall
+	 *  and discarded card containers leak into the scene graph. */
 	function removeAnimationsForEntry(entry:CardEntry):Void {
 		var i = activeAnimations.length - 1;
 		while (i >= 0) {
-			if (activeAnimations[i].entry == entry)
+			if (activeAnimations[i].entry == entry) {
+				var displaced = activeAnimations[i];
 				activeAnimations.splice(i, 1);
+				displaced.onComplete();
+			}
 			i--;
 		}
 	}

@@ -270,6 +270,7 @@ private class Particle extends h2d.SpriteBatch.BatchElement {
 				if (group.emitLoop) {
 					if (group.shutdownActive && group.liveCount > group.shutdownTargetCount) {
 						group.liveCount--;
+						group.freeParticles.push(this);
 						return false;
 					}
 					group.init(this);
@@ -280,6 +281,7 @@ private class Particle extends h2d.SpriteBatch.BatchElement {
 					return true;
 				} else {
 					group.liveCount--;
+					group.freeParticles.push(this);
 					return false;
 				}
 			}
@@ -298,12 +300,14 @@ private class Particle extends h2d.SpriteBatch.BatchElement {
 			if( group.emitLoop ) {
 				if (group.shutdownActive && group.liveCount > group.shutdownTargetCount) {
 					group.liveCount--;
+					group.freeParticles.push(this);
 					return false;
 				}
 				group.init(this);
 				delay = 0;
 			} else {
 				group.liveCount--;
+				group.freeParticles.push(this);
 				return false;
 			}
 		}
@@ -675,6 +679,31 @@ class ParticleGroup {
 	/** Number of particles currently alive in the batch. */
 	var liveCount : Int = 0;
 
+	/**
+		Pool of dead Particle instances available for reuse.
+		Populated when a particle returns false from update() (non-loop death, bounds kill,
+		or shutdown trim); drained by `allocParticle()` on the next emit. Looping particles
+		that recycle in-place via `init(this)` never enter this list.
+
+		Safe to reuse: when `update()` returns false, `SpriteBatch.sync()` calls `e.remove()`
+		which delinks the element via `batch.delete(this)` and clears `e.batch` — so by the
+		time `allocParticle()` pops a recycled particle, it is no longer in the batch's
+		linked list and can be re-added cleanly via `batch.add(p)`.
+	**/
+	var freeParticles : Array<Particle> = [];
+
+	/** Pop a recycled Particle from the free list, or allocate a fresh one.
+		The pool is drained by every `start()` / `emitBurstAt()`; `init(p)` resets the
+		bulk of per-particle state (life, position, velocity, color, anim/segment indices)
+		so recycled particles start each lifetime cleanly. */
+	function allocParticle():Particle {
+		if (freeParticles.length > 0) {
+			var p = freeParticles.pop();
+			if (p != null) return p;
+		}
+		return new Particle(this);
+	}
+
 	// Precomputed per-frame shutdown values (updated in updateTime)
 	var shutdownTargetCount : Int = 0;
 	var shutdownAlphaMult : Float = 1.0;
@@ -709,7 +738,7 @@ class ParticleGroup {
 		globalTime = 0;
 		liveCount = nparts;
 		for( i in 0...nparts ) {
-			var p = new Particle(this);
+			var p = allocParticle();
 			p.delay = rand() * life * (1 - emitSync) + emitDelay;
 			if (p.delay <= 0) {
 				if (init(p)) {
@@ -732,7 +761,7 @@ class ParticleGroup {
 			globalTime = 0;
 		}
 		for (i in 0...count) {
-			var p = new Particle(this);
+			var p = allocParticle();
 			var accepted = init(p);
 			p.x += atX;
 			p.y += atY;

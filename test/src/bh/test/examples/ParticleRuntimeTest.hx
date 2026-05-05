@@ -227,6 +227,87 @@ class ParticleRuntimeTest extends utest.Test {
 		Assert.floatEquals(200.0, e.y, 0.01);
 	}
 
+	// ==================== Particle Pooling (free list) ====================
+
+	/** Collect Particle instance references from the batch as a typed Array. */
+	static function collectParticleRefs(g:ParticleGroup):Array<Dynamic> {
+		var refs:Array<Dynamic> = [];
+		var e = g.batch.first;
+		while (e != null) {
+			refs.push(e);
+			e = e.next;
+		}
+		return refs;
+	}
+
+	@Test
+	public function testEmitBurstReusesParticleInstancesAfterDeath():Void {
+		// Sustained burst emission (sub-emitters, spawnCurve, manual emitBurst) should not
+		// allocate a fresh Particle instance for every spawn. After particles die naturally,
+		// a subsequent burst is expected to recycle the dead Particle objects from a pool.
+		var p = createParticles();
+		var g = createGroup("main", p);
+		var dg:Dynamic = g;
+		dg.life = 0.1; // short life so particles die quickly
+
+		g.emitBurstAt(0, 0, 0, 0, 3);
+		var firstBatch = collectParticleRefs(g);
+		Assert.equals(3, firstBatch.length);
+
+		// Advance well past life — non-looping particles return false from update() and
+		// SpriteBatch detaches them. With pooling they should land on a free list.
+		advanceGroup(g, 0.5);
+		Assert.equals(0, countParticles(g));
+
+		g.emitBurstAt(0, 0, 0, 0, 3);
+		var secondBatch = collectParticleRefs(g);
+		Assert.equals(3, secondBatch.length);
+
+		var reused = 0;
+		for (q in secondBatch) {
+			for (r in firstBatch) {
+				if (q == r) {
+					reused++;
+					break;
+				}
+			}
+		}
+		Assert.equals(3, reused, 'All 3 emitted particles should be recycled from the free list, only $reused were');
+	}
+
+	@Test
+	public function testSustainedBurstHasBoundedParticleAllocations():Void {
+		// Steady-state churn: emit-die-emit repeatedly. With a free list, the total set of
+		// Particle instances ever observed should stay near peak-concurrent (3 here), not
+		// grow linearly with burst count. Without pooling the unique instance count grows
+		// to ~burstCount * cycles.
+		var p = createParticles();
+		var g = createGroup("main", p);
+		var dg:Dynamic = g;
+		dg.life = 0.1;
+
+		var seen = new haxe.ds.ObjectMap<Dynamic, Bool>();
+		final cycles = 10;
+		final burst = 3;
+		for (i in 0...cycles) {
+			g.emitBurstAt(0, 0, 0, 0, burst);
+			var e = g.batch.first;
+			while (e != null) {
+				seen.set(e, true);
+				e = e.next;
+			}
+			advanceGroup(g, 0.5); // let them all die
+			Assert.equals(0, countParticles(g));
+		}
+
+		var unique = 0;
+		for (_ in seen.keys()) unique++;
+		// Steady state: at most ~burst unique Particle instances are needed.
+		// Allow a small slack for first-cycle warm-up.
+		Assert.isTrue(unique <= burst + 1,
+			'Expected pooled allocation (~$burst unique Particles), saw $unique distinct instances over $cycles burst cycles');
+	}
+
 	// ==================== Force Field Physics ====================
 
 	@Test

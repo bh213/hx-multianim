@@ -377,6 +377,50 @@ class CardHandIntegrationTest extends BuilderTestBase {
 		Assert.equals(0, h.helper.getCardCount());
 	}
 
+	@Test
+	public function testDisposeCancelsCardTransitionTweens():Void {
+		// Card with a transition block — changing `status` spawns transition tweens via
+		// builder.tweenManager. dispose() must cancel those tweens so they don't keep
+		// ticking onComplete callbacks against detached scene graph objects.
+		var manim = "
+			#card programmable(status:[normal,hover,pressed,disabled]=normal) {
+				transition { status: fade(0.5) }
+				@(status=>normal) bitmap(generated(color(80, 110, #444444))): 0, 0
+				@(status=>hover) bitmap(generated(color(80, 110, #888888))): 0, 0
+				interactive(80, 110, \"card\", bind => \"status\"): 0, 0
+			}
+		";
+		var builder = BuilderTestBase.builderFromSource(manim);
+		var tm = new bh.base.TweenManager();
+		builder.tweenManager = tm;
+
+		var screen = new UITestScreen();
+		var helper = new UICardHandHelper(screen, builder);
+		helper.setHand([desc("a")]);
+
+		// Trigger transition by changing status — spawns tweens on the card subtree.
+		var entry = helper.cards[0];
+		entry.result.setParameter("status", "hover");
+
+		// Collect tween-bearing children — proves a transition tween is in flight.
+		var bearers:Array<h2d.Object> = [];
+		for (i in 0...entry.result.object.numChildren) {
+			var child = entry.result.object.getChildAt(i);
+			if (tm.hasTweens(child)) bearers.push(child);
+		}
+		Assert.isTrue(bearers.length > 0, "Expected transition tweens after status change (test precondition)");
+
+		helper.dispose();
+
+		// After dispose, none of the previously tracked targets should have live tweens.
+		// `hasTweens` filters cancelled handles, so passing this asserts the tweens were
+		// cancelled (not just orphaned).
+		var stillTweening = 0;
+		for (b in bearers)
+			if (tm.hasTweens(b)) stillTweening++;
+		Assert.equals(0, stillTweening, 'Expected 0 live tweens on disposed card subtree, got $stillTweening');
+	}
+
 	// ==================== Config Defaults ====================
 
 	@Test
@@ -765,6 +809,168 @@ class CardHandIntegrationTest extends BuilderTestBase {
 		savedResult.setParameter("mode", "armB");
 	}
 
+	// ==================== clearHand cancels in-flight animations ====================
+
+	// Card .manim with paths so draw/discard go through `activeAnimations`
+	// instead of falling through to the instant-snap branch in `animateCardTo`.
+	static final CARD_WITH_PATHS_MANIM = "
+		paths {
+			#cardArc path { lineTo(0, -300) }
+		}
+		#drawPath animatedPath {
+			path: cardArc
+			type: time
+			duration: 1.0
+		}
+		#discardPath animatedPath {
+			path: cardArc
+			type: time
+			duration: 1.0
+		}
+		#card programmable(status:[normal,hover,pressed,disabled]=normal) {
+			bitmap(generated(color(80, 110, #444444))): 0, 0
+			interactive(80, 110, \"card\", bind => \"status\"): 0, 0
+		}
+	";
+
+	static function createHelperWithPaths():{helper:UICardHandHelper, screen:UITestScreen} {
+		var builder = BuilderTestBase.builderFromSource(CARD_WITH_PATHS_MANIM);
+		var screen = new UITestScreen();
+		var helper = new UICardHandHelper(screen, builder, {
+			anchorX: 400, anchorY: 600,
+			drawPathName: "drawPath",
+			discardPathName: "discardPath",
+			drawPilePosition: new FPoint(50, 600),
+			discardPilePosition: new FPoint(750, 600),
+		});
+		return {helper: helper, screen: screen};
+	}
+
+	static function findEvent(events:Array<CardHandEvent>, predicate:(CardHandEvent) -> Bool):Bool {
+		for (e in events)
+			if (predicate(e))
+				return true;
+		return false;
+	}
+
+	@Test
+	public function testClearingHandMidDiscardAnimationStillEmitsDiscardAnimComplete():Void {
+		var h = createHelperWithPaths();
+		var events:Array<CardHandEvent> = [];
+		h.helper.onCardEvent = (event) -> events.push(event);
+		h.helper.setHand([desc("a"), desc("b")]);
+
+		h.helper.discardCard("a");
+		// Path-driven animation queues; without update(dt) it stays in flight.
+		Assert.isFalse(findEvent(events, e -> switch (e) { case DiscardAnimComplete("a"): true; default: false; }),
+			"DiscardAnimComplete should be deferred while path animation is in flight");
+		Assert.equals(1, h.helper.activeAnimations.length,
+			"discardCard with discardPathName should queue exactly one active animation");
+
+		// Cancel the in-flight animation by resetting the hand.
+		h.helper.setHand([]);
+
+		Assert.isTrue(findEvent(events, e -> switch (e) { case DiscardAnimComplete("a"): true; default: false; }),
+			"DiscardAnimComplete must fire for the cancelled card so awaiting state machines can advance");
+	}
+
+	@Test
+	public function testClearingHandMidDrawAnimationStillEmitsDrawAnimComplete():Void {
+		var h = createHelperWithPaths();
+		var events:Array<CardHandEvent> = [];
+		h.helper.onCardEvent = (event) -> events.push(event);
+
+		h.helper.drawCard(desc("incoming"));
+		Assert.isFalse(findEvent(events, e -> switch (e) { case DrawAnimComplete("incoming"): true; default: false; }),
+			"DrawAnimComplete should be deferred while path animation is in flight");
+		Assert.isTrue(h.helper.activeAnimations.length >= 1,
+			"drawCard with drawPathName should queue at least one active animation");
+
+		h.helper.setHand([]);
+
+		Assert.isTrue(findEvent(events, e -> switch (e) { case DrawAnimComplete("incoming"): true; default: false; }),
+			"DrawAnimComplete must fire for the cancelled card so awaiting state machines can advance");
+	}
+
+	@Test
+	public function testDisposeMidDiscardAnimationStillEmitsDiscardAnimComplete():Void {
+		var h = createHelperWithPaths();
+		var events:Array<CardHandEvent> = [];
+		h.helper.onCardEvent = (event) -> events.push(event);
+		h.helper.setHand([desc("a")]);
+
+		h.helper.discardCard("a");
+		Assert.isFalse(findEvent(events, e -> switch (e) { case DiscardAnimComplete("a"): true; default: false; }));
+
+		h.helper.dispose();
+
+		Assert.isTrue(findEvent(events, e -> switch (e) { case DiscardAnimComplete("a"): true; default: false; }),
+			"dispose() routes through clearHand() — must also fire pending *AnimComplete events");
+	}
+
+	// ==================== Per-entry animation replacement preserves prior onComplete ====================
+	// When `animateCardTo` / `animateCardToTracking` is called for an entry that already has
+	// an animation in flight, the helper internally drops the previous animation. The previous
+	// animation's onComplete owns scene-graph cleanup (container removal on discard) and event
+	// emission (DrawAnimComplete / DiscardAnimComplete). It must still run when displaced —
+	// otherwise consumers awaiting completion stall, and discarded card containers leak.
+
+	@Test
+	public function testDrawAnimCompleteFiresWhenInterruptedByDiscardOnSameCard():Void {
+		var h = createHelperWithPaths();
+		var events:Array<CardHandEvent> = [];
+		h.helper.onCardEvent = (event) -> events.push(event);
+
+		h.helper.setHand([desc("a")]);
+		h.helper.drawCard(desc("b"));
+
+		// Sanity: draw is queued, hasn't completed yet.
+		Assert.isFalse(findEvent(events, e -> switch (e) { case DrawAnimComplete("b"): true; default: false; }),
+			"DrawAnimComplete should be deferred while the draw animation is in flight");
+		Assert.isTrue(h.helper.activeAnimations.length >= 1,
+			"drawCard with drawPathName should queue an active animation");
+
+		// Interrupt the in-flight draw with a discard on the same card. discardCard
+		// calls animateCardTo, which calls removeAnimationsForEntry on b's entry —
+		// dropping the draw animation along with its onComplete.
+		h.helper.discardCard("b");
+
+		Assert.isTrue(findEvent(events, e -> switch (e) { case DrawAnimComplete("b"): true; default: false; }),
+			"DrawAnimComplete must fire even when discardCard cancels the in-flight draw on the same card");
+	}
+
+	@Test
+	public function testDiscardCleanupRunsWhenAnimateCardToReplacesInFlightDiscard():Void {
+		// Drive the bug at its narrowest: an entry has a discard animation queued, and
+		// another animateCardTo() call lands on the same entry. The discard's onComplete
+		// — which removes the container from the scene graph and emits DiscardAnimComplete —
+		// must still run when displaced.
+		var h = createHelperWithPaths();
+		var events:Array<CardHandEvent> = [];
+		h.helper.onCardEvent = (event) -> events.push(event);
+		h.helper.setHand([desc("a")]);
+
+		// Capture the entry before discardCard splices it from cards[].
+		var aEntry = h.helper.cards[0];
+		var aContainer = aEntry.container;
+
+		h.helper.discardCard("a");
+		Assert.equals(1, h.helper.activeAnimations.length,
+			"discard animation should be queued before interruption");
+		Assert.notNull(aContainer.parent,
+			"card container should still be in the scene graph mid-discard");
+
+		// Interrupt: schedule another animation on the same (already spliced) entry.
+		// Triggers removeAnimationsForEntry on the in-flight discard.
+		h.helper.animateCardTo(aEntry, 0, 0, 50, 50, 0, 0, "discardPath",
+			() -> {});
+
+		Assert.isTrue(findEvent(events, e -> switch (e) { case DiscardAnimComplete("a"): true; default: false; }),
+			"DiscardAnimComplete must fire when the discard animation is replaced on its own entry");
+		Assert.isNull(aContainer.parent,
+			"container removal lives in the discard's onComplete — it must run on cancel to avoid scene-graph leak");
+	}
+
 	// ==================== Mouse handler allocation hygiene ====================
 
 	@Test
@@ -804,5 +1010,24 @@ class CardHandIntegrationTest extends BuilderTestBase {
 		// coords equal the scene coords passed in.
 		Assert.floatEquals(777.0, pt.x, 0.001, "scratchPoint.x should reflect last onMouseMove input");
 		Assert.floatEquals(555.0, pt.y, 0.001, "scratchPoint.y should reflect last onMouseMove input");
+	}
+
+	// applyLayout(true) and rearrangeCards run on every hover/drag/draw. animateCardTo's
+	// `from`/`to` FPoints are read for x/y only and forwarded to createProjectilePath →
+	// applyStretch, which also reads-and-forgets. Allocating fresh FPoints per card per
+	// layout pass is pure waste — primitives + an instance scratch pair give identical
+	// behavior with zero per-call allocation.
+	@Test
+	public function testApplyLayoutAnimatedDoesNotAllocateFPointsPerCard():Void {
+		var h = createHelper();
+		h.helper.setHand([desc("a"), desc("b"), desc("c"), desc("d"), desc("e")]);
+
+		FPoint.creationCount = 0;
+		@:privateAccess h.helper.applyLayout(true);
+
+		Assert.equals(0, FPoint.creationCount,
+			"applyLayout(true) must not allocate FPoints per InHand card — animateCardTo should "
+			+ "accept primitives (or reuse instance scratch FPoints internally). Allocated "
+			+ FPoint.creationCount + " FPoints across 5 cards on a single layout pass.");
 	}
 }
