@@ -327,15 +327,15 @@
 </head>
 <body>
     <h1>Visual Test Report</h1>
-    <div class="timestamp">Generated: 2026-05-04 14:45:26</div>
+    <div class="timestamp">Generated: 2026-05-05 15:06:58</div>
     <div class="summary">
         <strong>Summary:</strong> 101 tests,         <span style="color: #4CAF50;">101 passed</span>,         <span style="color: #f44336;">0 failed</span>
-        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1.1s, visual 23s)</span>
+        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1.3s, visual 23.5s)</span>
     </div>
     <div class="unit-tests-section">
         <h2>Unit Tests</h2>
         <div class="unit-tests-summary all-passed">
-            <strong>6314 assertions:</strong>             <span style="color: #4CAF50;">6314 passed</span>
+            <strong>6347 assertions:</strong>             <span style="color: #4CAF50;">6347 passed</span>
             <button class="expand-btn" id="unitToggleBtn" onclick="toggleUnitDetails()">Show Details</button>
         </div>
         <div class="unit-details" id="unitDetails">
@@ -1049,12 +1049,15 @@
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">CardHandIntegrationTest</div>
+                <div class="unit-method pass">testApplyLayoutAnimatedDoesNotAllocateFPointsPerCard: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testBothCustomAnimationsCanBeSetIndependently: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testCanDragCardCallbackSelectiveVeto: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testCanPlayCardCallbackAssignment: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testCanPlayCardCallbackIsNullByDefault: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testCardHandRebuildListenerRemovedOnDiscard: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testCardHandRebuildListenerResyncOnSwitchArmFlip: OK <span class="dots">...........</span></div>
+                <div class="unit-method pass">testClearingHandMidDiscardAnimationStillEmitsDiscardAnimComplete: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testClearingHandMidDrawAnimationStillEmitsDrawAnimComplete: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testCustomAnchorInConfig: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testCustomConfigPersists: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testCustomDiscardAnimationAssignment: OK <span class="dots">.</span></div>
@@ -1075,11 +1078,15 @@
                 <div class="unit-method pass">testDefaultConfigValues: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testDisabledCardState: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testDiscardAllCards: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testDiscardCleanupRunsWhenAnimateCardToReplacesInFlightDiscard: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testDiscardMiddleCardPreservesOrder: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testDisposeCancelsCardTransitionTweens: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testDisposeMidDiscardAnimationStillEmitsDiscardAnimComplete: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testDisposeResetsCardCount: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testDisposeResetsInternalState: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testDoubleDisposeSafe: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testDrawAfterDiscardAll: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testDrawAnimCompleteFiresWhenInterruptedByDiscardOnSameCard: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testDrawAtBeginningAndEnd: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testGetCardResultAfterDiscard: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testGetCardResultAfterDraw: OK <span class="dots">..</span></div>
@@ -1821,6 +1828,7 @@
                 <div class="unit-method pass">testColorCurveSegments_ResetsOnEmitLoopRecycle: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testEmitBurst: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testEmitBurstAt: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testEmitBurstReusesParticleInstancesAfterDeath: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testEmitFilterAcceptsAll: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testEmitFilterDiscardsParticles: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testEmitFilterRejectsAll: OK <span class="dots">.</span></div>
@@ -1852,6 +1860,7 @@
                 <div class="unit-method pass">testSubEmitterOnBirthRecycled: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testSubEmitterOnDeath: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testSubEmitterProbabilityZero: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testSustainedBurstHasBoundedParticleAllocations: OK <span class="dots">...........</span></div>
                 <div class="unit-method pass">testWindAffectsParticles: OK <span class="dots">...</span></div>
             </div>
             <div class="unit-class">
