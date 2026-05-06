@@ -6,6 +6,8 @@ import bh.test.UITestHarness.UITestScreen;
 import bh.ui.UICardHandHelper;
 import bh.ui.UICardHandTypes;
 import bh.base.FPoint;
+import bh.multianim.MultiAnimBuilder.BuilderResolvedSettings;
+import bh.ui.UIElement.UIScreenEvent;
 
 /**
  * Integration tests for UICardHandHelper orchestration beyond basic CRUD.
@@ -1114,6 +1116,66 @@ class CardHandIntegrationTest extends BuilderTestBase {
 			"applyLayout(true) must not allocate FPoints per InHand card — animateCardTo should "
 			+ "accept primitives (or reuse instance scratch FPoints internally). Allocated "
 			+ FPoint.creationCount + " FPoints across 5 cards on a single layout pass.");
+	}
+
+	// ==================== UIPush hit-test consistency with hover ====================
+	// Hover detection (onMouseMove → getCardAtBasePosition) intentionally uses the base
+	// layout, ignoring the hover pop, so the popped card doesn't block neighbor detection.
+	// But UIPush is routed by Heaps to whichever Interactive physically contains the
+	// cursor — i.e. post-pop positions. When the hand overlaps and the hovered card has
+	// popped up out from under the cursor, the cursor sits in the popped card's old
+	// shadow — over a neighbor's Interactive. Heaps fires UIPush on the neighbor; if the
+	// helper trusts that id, drag starts on the wrong card while the visually-highlighted
+	// card stays hovered. Click must follow the same hit-test as hover.
+
+	@Test
+	public function testUIPushOnNeighborInteractiveStartsDragOnHoveredCard():Void {
+		var h = createHelper();
+		h.helper.setHand([desc("a"), desc("b"), desc("c")]);
+
+		final entryA = h.helper.cards[0];
+		final entryB = h.helper.cards[1];
+
+		// Force hover on A — mimics what onMouseMove would do via the base-layout
+		// hit-test. A becomes the visually-highlighted card.
+		h.helper.setHoveredEntry(entryA);
+		Assert.equals(entryA, h.helper.hoveredEntry,
+			"precondition: A must be the hovered entry before UIPush arrives");
+
+		// UIPush fires on B's interactive: Heaps' physical hit-test on actual
+		// post-pop positions disagrees with the base-layout hover hit-test.
+		final emptyMeta = new BuilderResolvedSettings(null);
+		final consumed = h.helper.handleScreenEvent(
+			UIInteractiveEvent(UIPush, entryB.interactiveId, emptyMeta));
+
+		Assert.isTrue(consumed,
+			"UIPush on a card interactive must be consumed (drag started)");
+		Assert.equals(entryA, h.helper.draggedEntry,
+			"Drag must follow the visually-hovered card (A), not the card whose "
+			+ "interactive Heaps happened to route UIPush to (B). Click hit-test "
+			+ "must agree with hover hit-test.");
+		Assert.isTrue(h.helper.isDragging,
+			"isDragging must be true after UIPush on a hovered card's neighbor");
+	}
+
+	@Test
+	public function testUIPushFallsBackToInteractiveEntryWhenNothingHovered():Void {
+		// Fallback path: when nothing is hovered (cursor outside the hand), UIPush
+		// must still drag the card whose interactive fired — same as before the fix.
+		var h = createHelper();
+		h.helper.setHand([desc("a"), desc("b")]);
+
+		final entryB = h.helper.cards[1];
+		Assert.isNull(h.helper.hoveredEntry,
+			"precondition: no card is hovered");
+
+		final emptyMeta = new BuilderResolvedSettings(null);
+		final consumed = h.helper.handleScreenEvent(
+			UIInteractiveEvent(UIPush, entryB.interactiveId, emptyMeta));
+
+		Assert.isTrue(consumed);
+		Assert.equals(entryB, h.helper.draggedEntry,
+			"With nothing hovered, drag must follow the interactive that fired");
 	}
 
 	// Allocation watchdog counters (FPoint.creationCount,

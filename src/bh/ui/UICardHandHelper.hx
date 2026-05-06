@@ -621,8 +621,19 @@ class UICardHandHelper implements UIHigherOrderComponent {
 
 				switch innerEvent {
 					case UIPush:
-						if (!isDragging)
-							return startDragFromInteractive(entry);
+						if (!isDragging) {
+							// Hover hit-test (getCardAtBasePosition) uses the base layout to
+							// avoid the popped card masking neighbors. Heaps routes UIPush to
+							// whichever Interactive physically contains the cursor — i.e.
+							// post-pop positions. When the hand overlaps and the hovered
+							// card has popped up out from under the cursor, the cursor sits
+							// in the popped card's old shadow over a neighbor's Interactive.
+							// Re-anchor to hoveredEntry so click follows the same hit-test
+							// as hover; fall back to the routed entry when nothing is
+							// hovered.
+							var dragEntry = hoveredEntry != null ? hoveredEntry : entry;
+							return startDragFromInteractive(dragEntry);
+						}
 					default:
 				}
 				return false;
