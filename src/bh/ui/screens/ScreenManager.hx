@@ -1161,9 +1161,13 @@ class ScreenManager {
 		overlay.remove();
 		modalOverlay = null;
 		modalOverlayTargetAlpha = 0.0;
-		// Restore blur filters
-		@:nullSafety(Off) for (entry in modalOverlayBlurTargets) {
-			entry.root.filter = entry.saved;
+		// Restore blur filters. `filter` is typed non-null but accepts
+		// null at runtime to clear the filter — `@:nullSafety(Off)` block
+		// covers the analyser's complaint without changing behaviour.
+		@:nullSafety(Off) {
+			for (entry in modalOverlayBlurTargets) {
+				entry.root.filter = entry.saved;
+			}
 		}
 		modalOverlayBlurTargets = [];
 	}
