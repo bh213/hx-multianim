@@ -327,15 +327,15 @@
 </head>
 <body>
     <h1>Visual Test Report</h1>
-    <div class="timestamp">Generated: 2026-05-06 10:28:04</div>
+    <div class="timestamp">Generated: 2026-05-06 13:33:04</div>
     <div class="summary">
         <strong>Summary:</strong> 101 tests,         <span style="color: #4CAF50;">101 passed</span>,         <span style="color: #f44336;">0 failed</span>
-        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1.3s, visual 23.3s)</span>
+        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 0.9s, visual 19.7s)</span>
     </div>
     <div class="unit-tests-section">
         <h2>Unit Tests</h2>
         <div class="unit-tests-summary all-passed">
-            <strong>6347 assertions:</strong>             <span style="color: #4CAF50;">6347 passed</span>
+            <strong>6407 assertions:</strong>             <span style="color: #4CAF50;">6407 passed</span>
             <button class="expand-btn" id="unitToggleBtn" onclick="toggleUnitDetails()">Show Details</button>
         </div>
         <div class="unit-details" id="unitDetails">
@@ -698,6 +698,8 @@
                 <div class="unit-method pass">testBoolSettingNumeric: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testBoolSettingTrue: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testBoolSettingYesNo: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testBuildWithParametersRestoresStateStackOnInnerThrow: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testBuildWithParametersStateStackBalancedAfterCaughtErrorThenSecondBuild: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testCenterTileSource: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testConditionalDefault: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testConditionalGreaterThan: OK <span class="dots">..</span></div>
@@ -849,6 +851,7 @@
                 <div class="unit-method pass">testIncrementalBitmapSizeSetParameter: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testIncrementalBitmapTileParamSetParameter: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testIncrementalBitmapTileParamWithRawTile: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testIncrementalCachesParamRefsForTransitions: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testIncrementalConditionalDivisionByZeroDeferred: OK <span class="dots">........</span></div>
                 <div class="unit-method pass">testIncrementalConditionalGraphicsHasContent: OK <span class="dots">..........</span></div>
                 <div class="unit-method pass">testIncrementalConditionalGraphicsReShowPreservesContent: OK <span class="dots">......</span></div>
@@ -1015,7 +1018,7 @@
                 <div class="unit-method pass">testSetParameterStringBoolOnBoolParamMatchesConditional: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testSetParameterStringFloatOnFloatParamMatchesRange: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testSetParameterStringIntOnIntParamMatchesConditional: OK <span class="dots">..</span></div>
-                <div class="unit-method pass">testSetParameterUnknownParamIsSilentNoOp: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testSetParameterUnknownParamThrows: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testSettingsPassThroughParam: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testSettingsPassThroughWithDefaultOverride: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testSettingsUnknownParamThrowsWithMessage: OK <span class="dots">.....</span></div>
@@ -1049,6 +1052,7 @@
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">CardHandIntegrationTest</div>
+                <div class="unit-method pass">testAllocationTrackingFlagIsDefinedInTestBuilds: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testApplyLayoutAnimatedDoesNotAllocateFPointsPerCard: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testBothCustomAnimationsCanBeSetIndependently: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testCanDragCardCallbackSelectiveVeto: OK <span class="dots">...</span></div>
@@ -1088,6 +1092,7 @@
                 <div class="unit-method pass">testDrawAfterDiscardAll: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testDrawAnimCompleteFiresWhenInterruptedByDiscardOnSameCard: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testDrawAtBeginningAndEnd: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testGetCardIdAtPositionReusesLayoutPositionBufferAcrossCalls: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testGetCardResultAfterDiscard: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testGetCardResultAfterDraw: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testGetCardResultAfterSetHand: OK <span class="dots">...</span></div>
@@ -1103,6 +1108,7 @@
                 <div class="unit-method pass">testOnCardEventCallbackAssignment: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testOnCardEventCallbackIsNullByDefault: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testReenabledCardState: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testRemoveAnimationsForEntryHandlesHandResetFromOnComplete: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testSetAnchorUpdatesPosition: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testSetArrowSnapPointProvider: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testSetArrowSnapPointProviderNull: OK <span class="dots">.</span></div>
@@ -1280,6 +1286,8 @@
                 <div class="unit-method pass">testDynamicNameRefFallbackToLiteral: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testDynamicNameRefMissingParamOnTargetThrows: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testDynamicNameRefParamUpdateWithoutTemplateChange: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testDynamicNameRefRenameIntoCollisionIncrementsCount: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testDynamicNameRefRenameOutOfCollisionDecrementsCount: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testDynamicNameRefSwitchesOnParamChange: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testDynamicNameRefTearDownRemovesOldVisuals: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testDynamicNameRefTearDownUpdatesInteractives: OK <span class="dots">.....</span></div>
@@ -1456,6 +1464,7 @@
                 <div class="unit-method pass">testSlotClear: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testSlotData: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testSlotIsEmptyInitially: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testSlotMethodsThrowAfterArmSwap: OK <span class="dots">................</span></div>
                 <div class="unit-method pass">testSlotNonexistentThrows: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testSlotSetContent: OK <span class="dots">...</span></div>
             </div>
@@ -1694,6 +1703,8 @@
                 <div class="unit-method pass">testPlainTextParses: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testPositionalFilterParamsStillWork: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testPositionalRangeWithStepParsesOk: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testRepeatable2dIteratorOutputVarFromYIsValid: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testRepeatable2dIteratorOutputVarIsValid: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testRepeatable2dLoopVarShadowsParameter: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testRepeatable2dLoopVarsMustBeDistinct: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testRepeatable2dVarsValid: OK <span class="dots">.</span></div>
@@ -1844,6 +1855,7 @@
                 <div class="unit-method pass">testRemoveForceFieldAtFirst: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testRemoveForceFieldAtMiddle: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testRemoveGroupClearsBatch: OK <span class="dots">.....</span></div>
+                <div class="unit-method pass">testRemoveGroupDrainsFreeParticlePool: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testShutdownBurstStillWorks: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testShutdownConfiguredDuration: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testShutdownInstant: OK <span class="dots">....</span></div>
@@ -1982,11 +1994,13 @@
                 <div class="unit-method pass">testCodegenCreateFromColorParam: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testCodegenCreateFromColorParamEmpty: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testCodegenSetColorParamAlphaBaked: OK <span class="dots">..........</span></div>
+                <div class="unit-method pass">testCodegenSetParameterAcceptsColorStringFormats: OK <span class="dots">.......</span></div>
                 <div class="unit-method pass">testCodegenSetParameterUnknownEnumValueDoesNotThrow: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testCodegenSlotParamGridContext: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testCodegenSwitchArmCallbackInheritance: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testCodegenSwitchArmGridContext: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testCodegenSwitchArmIndexedNames: OK <span class="dots">.........</span></div>
+                <div class="unit-method pass">testCodegenSwitchArmNotRebuiltOnUnrelatedParam: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testCodegenSwitchArmSlot: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testCodegenSwitchExprInSize: OK <span class="dots">........</span></div>
                 <div class="unit-method pass">testCodegenSwitchFixedRepeatDifferentCounts: OK <span class="dots">......</span></div>
