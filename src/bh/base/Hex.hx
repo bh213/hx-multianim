@@ -87,14 +87,26 @@ abstract RelativeHex(Hex) {
 }
 
 
-class Hex 
+class Hex
 {
+    // Allocation watchdog for tests. Gated behind MULTIANIM_ALLOC_TRACK so the
+    // per-construction increment vanishes from production builds; Hex is
+    // allocated by every neighbor query, every add/subtract/scale/rotate, and
+    // every FractionalHex.round() — i.e. multiple times per cell per layout pass
+    // for hex grids.
+    #if MULTIANIM_ALLOC_TRACK
+    public static var creationCount:Int = 0;
+    #end
+
     inline public function new(q:Int, r:Int, s:Int)
     {
         this.q = q;
         this.r = r;
         this.s = s;
         if (q + r + s != 0) throw "q + r + s must be 0";
+        #if MULTIANIM_ALLOC_TRACK
+        creationCount++;
+        #end
     }
     public var q(default, null):Int;
     public var r(default, null):Int;
@@ -212,12 +224,23 @@ class Hex
 
 class FractionalHex
 {
+    // Allocation watchdog for tests. Gated behind MULTIANIM_ALLOC_TRACK so the
+    // per-construction increment vanishes from production builds; FractionalHex
+    // is allocated by every HexLayout.pixelToHex() call (one per hex hit-test)
+    // and per hexLerp/hexLinedraw step.
+    #if MULTIANIM_ALLOC_TRACK
+    public static var creationCount:Int = 0;
+    #end
+
     public function new(q:Float, r:Float, s:Float)
     {
         this.q = q;
         this.r = r;
         this.s = s;
         if (Math.round(q + r + s) != 0) throw "q + r + s must be 0";
+        #if MULTIANIM_ALLOC_TRACK
+        creationCount++;
+        #end
     }
     public var q:Float;
     public var r:Float;

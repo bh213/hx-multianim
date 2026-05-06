@@ -3,6 +3,7 @@ package bh.test.examples;
 import utest.Assert;
 import bh.test.BuilderTestBase;
 import bh.paths.AnimatedPath;
+import bh.paths.AnimatedPath.AnimatedPathState;
 import bh.paths.MultiAnimPaths.Path;
 import bh.paths.MultiAnimPaths.SinglePath;
 import bh.paths.Curve;
@@ -660,5 +661,55 @@ class AnimatedPathTest extends BuilderTestBase {
 		var path = createLinePath(); // (0,0) to (100,0)
 		var rate = path.getClosestRate(new FPoint(50, 0));
 		Assert.isTrue(Math.abs(rate - 0.5) < 0.05);
+	}
+
+	// ==================== Allocation watchdog ====================
+
+	// AnimatedPath is documented to mutate currentState in place — `update()` and
+	// `seek()` both return `currentState` rather than constructing a new one.
+	// This pins the contract: per-update allocation of AnimatedPathState must be
+	// exactly 0. Multiple AnimatedPath instances run concurrently (particles,
+	// floating text, projectiles, card-hand animations) so a regression here
+	// would burn GC pressure on every frame.
+	@Test
+	public function testUpdateDoesNotAllocateAnimatedPathState():Void {
+		var path = createLinePath();
+		var ap = new AnimatedPath(path, Time(1.0));
+
+		ap.update(0.05); // warm-up — fires "pathStart" through computeState
+		final stateBaseline = AnimatedPathState.creationCount;
+		final fpointBaseline = FPoint.creationCount;
+
+		for (i in 0...50)
+			ap.update(0.01);
+
+		final stateDelta = AnimatedPathState.creationCount - stateBaseline;
+		final fpointDelta = FPoint.creationCount - fpointBaseline;
+		Assert.equals(0, stateDelta,
+			"AnimatedPath.update must mutate currentState in place — got " + stateDelta
+			+ " fresh AnimatedPathState allocations across 50 update() calls.");
+		Assert.equals(0, fpointDelta,
+			"AnimatedPath.update must use getPointInto for the position field — got "
+			+ fpointDelta + " fresh FPoint allocations across 50 updates.");
+	}
+
+	@Test
+	public function testSeekDoesNotAllocateAnimatedPathState():Void {
+		var path = createLinePath();
+		var ap = new AnimatedPath(path, Time(1.0));
+
+		ap.seek(0.5); // warm-up
+		final stateBaseline = AnimatedPathState.creationCount;
+		final fpointBaseline = FPoint.creationCount;
+
+		for (i in 0...20)
+			ap.seek(i / 20.0);
+
+		final stateDelta = AnimatedPathState.creationCount - stateBaseline;
+		final fpointDelta = FPoint.creationCount - fpointBaseline;
+		Assert.equals(0, stateDelta,
+			"AnimatedPath.seek must mutate currentState in place. Got " + stateDelta + " fresh allocations.");
+		Assert.equals(0, fpointDelta,
+			"AnimatedPath.seek must use getPointInto. Got " + fpointDelta + " fresh FPoint allocations.");
 	}
 }

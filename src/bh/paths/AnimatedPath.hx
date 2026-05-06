@@ -11,6 +11,14 @@ enum AnimatedPathMode {
 
 @:structInit
 class AnimatedPathState {
+	// Allocation watchdog for tests. Gated behind MULTIANIM_ALLOC_TRACK so the
+	// per-construction increment vanishes from production builds. Each AnimatedPath
+	// constructs ONE state and then mutates it in place across all updates — this
+	// counter exists to verify that contract holds (per-frame allocation == 0).
+	#if MULTIANIM_ALLOC_TRACK
+	public static var creationCount:Int = 0;
+	#end
+
 	/** Mutated in-place on each update. Clone if you need to store across frames. */
 	public var position:FPoint;
 	public var angle:Float;
@@ -23,6 +31,24 @@ class AnimatedPathState {
 	public var done:Bool;
 	public var cycle:Int;
 	public var custom:Map<String, Float>;
+
+	public function new(position:FPoint, angle:Float, rate:Float, speed:Float, scale:Float, alpha:Float, rotation:Float, color:Int, done:Bool, cycle:Int,
+			custom:Map<String, Float>) {
+		this.position = position;
+		this.angle = angle;
+		this.rate = rate;
+		this.speed = speed;
+		this.scale = scale;
+		this.alpha = alpha;
+		this.rotation = rotation;
+		this.color = color;
+		this.done = done;
+		this.cycle = cycle;
+		this.custom = custom;
+		#if MULTIANIM_ALLOC_TRACK
+		creationCount++;
+		#end
+	}
 }
 
 enum CurveSlot {

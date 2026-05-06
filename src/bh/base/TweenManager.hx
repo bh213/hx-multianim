@@ -32,7 +32,18 @@ private enum TweenPropertyKind {
 	KCustom(getter:Void -> Float, setter:Float -> Void);
 }
 
-private class TweenPropertyEntry {
+// Public so tests can read `TweenPropertyEntry.creationCount`. Otherwise still an
+// implementation detail of the Tween class — fields are not consumed externally.
+class TweenPropertyEntry {
+	// Allocation watchdog for tests. Gated behind MULTIANIM_ALLOC_TRACK so the
+	// per-construction increment vanishes from production builds; entries are
+	// allocated 1-7× per Tween construction, and Tweens are created continuously
+	// (UI fades, card moves, transitions). A future pool would drop this to ~0
+	// across stable scenes.
+	#if MULTIANIM_ALLOC_TRACK
+	public static var creationCount:Int = 0;
+	#end
+
 	public var kind:TweenPropertyKind;
 	public var from:Float;
 	public var to:Float;
@@ -41,6 +52,9 @@ private class TweenPropertyEntry {
 		this.kind = kind;
 		this.to = to;
 		this.from = 0.0;
+		#if MULTIANIM_ALLOC_TRACK
+		creationCount++;
+		#end
 	}
 }
 

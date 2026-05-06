@@ -7,6 +7,7 @@ import bh.base.Particles.ForceField;
 import bh.base.Particles.SubEmitTrigger;
 import bh.base.Particles.SubEmitter;
 import bh.base.Particles.PartEmitMode;
+import bh.base.FPoint;
 import bh.paths.Curve;
 
 /**
@@ -1204,5 +1205,36 @@ class ParticleRuntimeTest extends utest.Test {
 			Assert.isTrue(observed[i] >= observed[i - 1],
 				"cached index must never move backwards within a single lifetime; step " + i + ": " + observed[i - 1] + " -> " + observed[i]);
 		}
+	}
+
+	// ==================== Allocation watchdog ====================
+
+	// Particle update is on the deepest hot loop in the engine: each frame loops
+	// over every live particle, applies force fields, advances velocity/position,
+	// and color-curve interpolation. Force fields are stored as enum cases
+	// (immutable, allocated once at config time). PathGuide uses `_scratch:FPoint`
+	// to avoid per-particle FPoint allocation. This test pins those contracts.
+	@Test
+	public function testParticleStepDoesNotAllocateFPoint():Void {
+		var p = createParticles();
+		var g = createGroup("alloc", p, true);
+		// Force-field-heavy config: every per-particle path through applyForceFields fires.
+		g.addForceField(Wind(5.0, 0.0));
+		g.addForceField(Vortex(0, 0, 50.0, 200.0));
+		g.addForceField(Attractor(50.0, 50.0, 30.0, 100.0));
+
+		// Warm-up: spawn the group and run one step so any first-time allocations
+		// (e.g. SpriteBatch internals) settle.
+		advanceGroup(g, 0.05);
+		final fpointBaseline = FPoint.creationCount;
+
+		// 30 ticks * 20 particles = 600 particle steps with 3 force fields each.
+		advanceGroup(g, 0.5);
+
+		final delta = FPoint.creationCount - fpointBaseline;
+		Assert.equals(0, delta,
+			"Particle step (Particle.update + applyForceFields) must be FPoint-allocation-free. "
+			+ "Got " + delta + " fresh FPoints across ~30 ticks * 20 particles. PathGuide and "
+			+ "computeState already use scratch FPoints; if this fires, someone added an allocation.");
 	}
 }

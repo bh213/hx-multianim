@@ -44,6 +44,63 @@ To add a new visual test:
 - **TestApp frame count**: Currently set to 50 frames. Increase if adding many more visual tests.
 - **Pre-existing**: test32_Blob47Fallback has a reference image mismatch (not a regression).
 
+## Allocation Watchdog (`-D MULTIANIM_ALLOC_TRACK`)
+
+Hot-path classes carry static `creationCount` counters (incremented in their constructors) that tests assert against. The flag is in `test-common.hxml` so all test builds have it. Production builds skip the increments entirely — the field declaration and the `count++` line both vanish.
+
+**Counters today:**
+
+| Class | File | Hot path |
+|-------|------|----------|
+| `bh.base.FPoint` | `src/bh/base/FPoint.hx` | every particle/path/hex/layout |
+| `bh.base.Hex` | `src/bh/base/Hex.hx` | hex grid neighbors / arithmetic / `FractionalHex.round()` |
+| `bh.base.FractionalHex` | `src/bh/base/Hex.hx` | `HexLayout.pixelToHex()` (every hex hit-test) |
+| `bh.base.TweenPropertyEntry` | `src/bh/base/TweenManager.hx` | per Tween construction (1-7 entries) |
+| `bh.paths.AnimatedPathState` | `src/bh/paths/AnimatedPath.hx` | should be 0 per update — pinned by test |
+| `bh.ui.UICardHandTypes.CardLayoutPosition` | `src/bh/ui/UICardHandTypes.hx` | hover hit-test on hand |
+| `bh.ui.UICardHandLayout.scratchArrayAllocationCount` | `src/bh/ui/UICardHandLayout.hx` | path-layout sample buffers |
+
+**Convention for adding a new counter:**
+
+```haxe
+class Foo {
+    // Allocation watchdog for tests. Gated behind MULTIANIM_ALLOC_TRACK so the
+    // per-construction increment vanishes from production builds; <one sentence
+    // describing the hot path that justifies tracking>.
+    #if MULTIANIM_ALLOC_TRACK
+    public static var creationCount:Int = 0;
+    #end
+
+    public inline function new(...) {
+        ...
+        #if MULTIANIM_ALLOC_TRACK
+        creationCount++;
+        #end
+    }
+}
+```
+
+**Test pattern:**
+
+```haxe
+@Test
+public function testFooDoesNotAllocateInHotPath():Void {
+    var subject = setUp();
+    subject.hotPath();              // warm-up — soaks up first-time allocs
+    final baseline = Foo.creationCount;
+    for (i in 0...N) subject.hotPath();
+    Assert.equals(0, Foo.creationCount - baseline,
+        "<one-line reason>. Got " + (Foo.creationCount - baseline) + " across N calls.");
+}
+```
+
+- Always **warm up** before snapshotting the baseline. First-time allocations (lazy init, scratch grows, batch internals) are unavoidable.
+- Test the *delta*, not the absolute count. Tests are not guaranteed to run in isolation.
+- For hot paths that *currently* allocate but should be pooled later, assert the **current** value (e.g. `Assert.equals(70, ...)`) and add a comment: "Drops to 0 once X is pooled — flip the assertion at that point." A failing aspirational test is just noise.
+- For `@:structInit` classes, you must add an explicit constructor (the synthetic one cannot run extra code). Match the field declaration order and re-declare default values.
+- Keep the gated counter type **public** — tests need to read it. The fields it counts can stay implementation-private.
+- The smoke test `AllocationSmokeTest` runs a representative scene for ~60 ticks and asserts a total budget across counters. New per-frame allocations will trip it even without a dedicated test.
+
 ## Debug Tracing
 
 Debug traces are included with `-D MULTIANIM_DEV` (same flag that enables hot reload and DevBridge).

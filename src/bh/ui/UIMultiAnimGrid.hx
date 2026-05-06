@@ -125,6 +125,12 @@ private typedef CardHandBinding = {
  * ```
  */
 class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
+	// Static scratches for the hover/hit-test hot path. HL is single-threaded so
+	// sharing across instances is safe — same pattern as UICardHandLayout._scratch.
+	// `globalToLocal` mutates its argument in place, which is what makes this safe.
+	static final _scratchPoint:h2d.col.Point = new h2d.col.Point(0, 0);
+	static final _scratchFPoint:FPoint = new FPoint(0, 0);
+
 	// --- Config ---
 	final builder:MultiAnimBuilder;
 	final gridType:GridType;
@@ -886,7 +892,9 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 
 	/** Find which cell is at the given scene coordinates. Returns null if no cell. */
 	public function cellAtPoint(sceneX:Float, sceneY:Float):Null<CellCoord> {
-		final local = root.globalToLocal(new Point(sceneX, sceneY));
+		_scratchPoint.x = sceneX;
+		_scratchPoint.y = sceneY;
+		final local = root.globalToLocal(_scratchPoint);
 		return switch gridType {
 			case Rect(_, _, _): hitTestRect(local.x, local.y);
 			case Hex(_, _, _): hitTestHex(local.x, local.y);
@@ -897,8 +905,12 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 	 *  Works for hex grids only. Returns the nearest hex regardless of whether a cell exists. */
 	public function sceneToHex(sceneX:Float, sceneY:Float):Null<CellCoord> {
 		if (hexLayout == null) return null;
-		final local = root.globalToLocal(new Point(sceneX, sceneY));
-		final fractional = hexLayout.pixelToHex(new FPoint(local.x, local.y));
+		_scratchPoint.x = sceneX;
+		_scratchPoint.y = sceneY;
+		final local = root.globalToLocal(_scratchPoint);
+		_scratchFPoint.x = local.x;
+		_scratchFPoint.y = local.y;
+		final fractional = hexLayout.pixelToHex(_scratchFPoint);
 		final hex = fractional.round();
 		return fromHex(hex);
 	}
@@ -1647,7 +1659,9 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 	}
 
 	function hitTestHex(localX:Float, localY:Float):Null<CellCoord> {
-		final fractional = hexLayout.pixelToHex(new FPoint(localX, localY));
+		_scratchFPoint.x = localX;
+		_scratchFPoint.y = localY;
+		final fractional = hexLayout.pixelToHex(_scratchFPoint);
 		final hex = fractional.round();
 		final coord = fromHex(hex);
 		final key = cellKey(coord.col, coord.row);

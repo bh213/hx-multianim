@@ -2,6 +2,7 @@ package bh.test.examples;
 
 import utest.Assert;
 import bh.base.TweenManager;
+import bh.base.TweenManager.TweenPropertyEntry;
 
 /**
  * Non-visual unit tests for TweenManager:
@@ -598,5 +599,56 @@ class TweenManagerTest extends utest.Test {
 		// Verify the tween was created properly
 		Assert.notNull(t);
 		Assert.equals(obj, t.target);
+	}
+
+	// ==================== Allocation watchdog ====================
+
+	// TweenPropertyEntry is allocated 1-7× per Tween construction (one per
+	// TweenProperty in the array, with `Scale(v)` expanding to two entries).
+	// Tweens are created continuously by UI fades, card animations, and screen
+	// transitions, so this is a real per-frame churn vector even though each
+	// individual entry is small. The counter exists to (a) catch a regression
+	// where someone double-allocates per property, and (b) give a future pool
+	// implementation a clear assertion to flip from "current churn" to "0".
+	@Test
+	public function testTweenPropertyEntryAllocationsScaleWithPropertyCount():Void {
+		var mgr = new TweenManager();
+		var obj = createObject();
+
+		// Warm-up — first tween may amortize lazy init in TweenManager.
+		mgr.tween(obj, 1.0, [Alpha(0.0)]);
+		final baseline = TweenPropertyEntry.creationCount;
+
+		// 5 tweens × 3 properties (X, Y, Alpha) = 15 entries today; Scale expands
+		// to 2 entries internally so we avoid it here for a clean N×K assertion.
+		for (i in 0...5) {
+			mgr.tween(obj, 1.0, [X(100.0 + i), Y(100.0 + i), Alpha(0.5)]);
+		}
+
+		final delta = TweenPropertyEntry.creationCount - baseline;
+		Assert.equals(15, delta,
+			"5 tweens × 3 properties should produce exactly 15 TweenPropertyEntry allocations. "
+			+ "Got " + delta + ". A larger value indicates per-property double-allocation; "
+			+ "a smaller value (specifically 0) means a pool was implemented — flip this "
+			+ "assertion to Assert.equals(0, delta) at that point.");
+	}
+
+	@Test
+	public function testTweenScaleExpandsToTwoEntries():Void {
+		var mgr = new TweenManager();
+		var obj = createObject();
+
+		// Warm-up.
+		mgr.tween(obj, 1.0, [Alpha(0.0)]);
+		final baseline = TweenPropertyEntry.creationCount;
+
+		// `Scale(v)` is documented to expand to ScaleX + ScaleY internally.
+		mgr.tween(obj, 1.0, [Scale(2.0)]);
+
+		final delta = TweenPropertyEntry.creationCount - baseline;
+		Assert.equals(2, delta,
+			"Scale(v) must expand to two TweenPropertyEntry instances (ScaleX + ScaleY). "
+			+ "Got " + delta + " — if this drops to 0, a pool was added; flip the assertion. "
+			+ "If it grows beyond 2, the Scale handler regressed.");
 	}
 }

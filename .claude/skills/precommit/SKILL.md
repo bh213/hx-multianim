@@ -144,6 +144,35 @@ Verify:
 - MEMORY.md is up to date with any new patterns or pitfalls discovered.
 - Check if anything can be removed from MEMORY.md because it is no longer relevant. Ask user if unsure.
 
+### 8a. Allocation Watchdog Hygiene
+
+The hot-path allocation counters (`creationCount`) and their increments must be gated behind `#if MULTIANIM_ALLOC_TRACK` so production builds carry zero overhead. Commit `ab7e4f2` shows what happens when the gate is forgotten — every constructor call paid for a static int increment in production.
+
+Run this check from the repo root and report any hits:
+
+```sh
+# Find every `creationCount` reference in src/ and verify each one is inside an
+# MULTIANIM_ALLOC_TRACK gate. The grep returns file:line for visual inspection.
+grep -rn "creationCount" src/ --include="*.hx"
+```
+
+For each hit, open the file and confirm the surrounding code looks like:
+
+```haxe
+#if MULTIANIM_ALLOC_TRACK
+public static var creationCount:Int = 0;
+#end
+
+// ... constructor ...
+#if MULTIANIM_ALLOC_TRACK
+creationCount++;
+#end
+```
+
+If a `creationCount` declaration or `creationCount++` line appears outside an `#if MULTIANIM_ALLOC_TRACK ... #end` block, it must be gated before commit. Test files (`test/src/`) are exempt — they read counters directly under the test build's `-D MULTIANIM_ALLOC_TRACK` flag.
+
+A failing `testAllocationTrackingFlagIsDefinedInTestBuilds` test indicates the flag was dropped from `test-common.hxml`; restore it.
+
 ## 9. Suggest Commit Message
 
 - Follow the project's commit message style (see recent commits)

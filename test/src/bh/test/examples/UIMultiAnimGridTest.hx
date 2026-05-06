@@ -14,6 +14,11 @@ import bh.ui.UICardHandTypes.CardState;
 import bh.ui.UICardHandTypes.TargetingResult;
 import bh.ui.UIMultiAnimDraggable;
 import bh.base.Hex.HexOrientation;
+import bh.base.Hex.FractionalHex;
+import bh.base.FPoint;
+// `Hex` is also the name of a GridType enum constructor in scope, so we
+// access the Hex class via its fully qualified path (bh.base.Hex.Hex).
+private typedef HexClass = bh.base.Hex.Hex;
 
 /**
  * Unit tests for UIMultiAnimGrid.
@@ -2485,5 +2490,92 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 		Assert.isTrue(completeFired);
 
 		grid.dispose();
+	}
+
+	// onMouseMove → cellAtPoint runs every frame the cursor is over a grid. It used to
+	// allocate `new h2d.col.Point(sceneX, sceneY)` and (for hex grids) a fresh `FPoint`
+	// inside hitTestHex on every call. Same shape as the cardhand hover regression —
+	// `globalToLocal` mutates its argument in place, so a static scratch is safe on HL.
+	@Test
+	public function testCellAtPointRectReusesScratchPointAcrossCalls():Void {
+		var grid = createRectGrid(3, 3);
+
+		// Warm-up call: triggers any first-time allocations (matrix sync, etc.).
+		grid.cellAtPoint(25, 25);
+		final fpointBaseline = FPoint.creationCount;
+
+		for (i in 0...10)
+			grid.cellAtPoint(25.0 + i, 25.0 + i);
+
+		final delta = FPoint.creationCount - fpointBaseline;
+		Assert.equals(0, delta,
+			"cellAtPoint must reuse a static scratch h2d.col.Point/FPoint — every onMouseMove "
+			+ "runs through this path. Allocated " + delta + " fresh FPoints across 10 calls.");
+		grid.dispose();
+	}
+
+	@Test
+	public function testCellAtPointHexReusesScratchPointAcrossCalls():Void {
+		var grid = createHexGrid(2);
+
+		// Warm-up call: triggers any first-time allocations.
+		grid.cellAtPoint(0, 0);
+		final fpointBaseline = FPoint.creationCount;
+
+		for (i in 0...10)
+			grid.cellAtPoint(0.0 + i, 0.0 + i);
+
+		final delta = FPoint.creationCount - fpointBaseline;
+		Assert.equals(0, delta,
+			"cellAtPoint (hex) must reuse a static scratch FPoint inside hitTestHex. "
+			+ "Allocated " + delta + " fresh FPoints across 10 hex hit-tests.");
+		grid.dispose();
+	}
+
+	// hexLayout.pixelToHex still allocates a fresh FractionalHex every call, and
+	// .round() then allocates a fresh Hex. Per mouse move on a hex grid that's
+	// 1 FractionalHex + 1 Hex churn — instrumented but not yet fixed (would
+	// require *Into() variants on pixelToHex/round, which are widely used by
+	// codegen). Test pins current behavior so regression is visible.
+	@Test
+	public function testCellAtPointHexAllocatesOneFractionalHexAndOneHexPerCall():Void {
+		var grid = createHexGrid(2);
+
+		grid.cellAtPoint(0, 0); // warm-up
+		final fhBaseline = FractionalHex.creationCount;
+		final hexBaseline = HexClass.creationCount;
+
+		for (i in 0...10)
+			grid.cellAtPoint(0.0 + i, 0.0 + i);
+
+		final fhDelta = FractionalHex.creationCount - fhBaseline;
+		final hexDelta = HexClass.creationCount - hexBaseline;
+		Assert.equals(10, fhDelta,
+			"cellAtPoint (hex) currently allocates 1 FractionalHex per call (pixelToHex). "
+			+ "Got " + fhDelta + " across 10 calls. If this drops to 0, a pixelToHexInto() "
+			+ "variant was added — flip to Assert.equals(0, fhDelta).");
+		Assert.equals(10, hexDelta,
+			"cellAtPoint (hex) currently allocates 1 Hex per call (FractionalHex.round()). "
+			+ "Got " + hexDelta + " across 10 calls. Drops to 0 once a roundInto() variant exists.");
+		grid.dispose();
+	}
+
+	// neighbors() on a hex grid does toHex + 6× HexUtil.neighbor (which is Hex.add).
+	// Each step allocates a fresh Hex. 7 Hex allocations per neighbors() call is
+	// the current baseline; pooling Hex would drop this to 0 across stable scenes.
+	@Test
+	public function testHexNeighborsAllocatesSevenHexesPerCall():Void {
+		var grid = createHexGrid(2);
+
+		grid.neighbors(0, 0); // warm-up
+		final hexBaseline = HexClass.creationCount;
+
+		for (i in 0...10)
+			grid.neighbors(0, 0);
+
+		final delta = HexClass.creationCount - hexBaseline;
+		Assert.equals(70, delta,
+			"hex neighbors() currently allocates 7 Hexes per call (1 toHex + 6 neighbor lookups). "
+			+ "Got " + delta + " across 10 calls. Drops to 0 if Hex math switches to a pool/scratch.");
 	}
 }
