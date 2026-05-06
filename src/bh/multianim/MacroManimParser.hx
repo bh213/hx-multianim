@@ -2768,6 +2768,7 @@ class MacroManimParser {
 			settings: null,
 			transitions: null,
 			flowProperties: null,
+			cachedRelevantParamRefs: null,
 			#if MULTIANIM_DEV
 			parserPos: posString()
 			#end
@@ -3906,10 +3907,12 @@ class MacroManimParser {
 									scopeVars.push(valueVar); loopVarsToPop++;
 								default:
 							}
-						case REPEAT2D(varNameX, varNameY, _, _):
+						case REPEAT2D(varNameX, varNameY, repeatTypeX, repeatTypeY):
 							scopeVars.push(varNameX);
 							scopeVars.push(varNameY);
 							loopVarsToPop = 2;
+							for (v in iteratorOutputVars(repeatTypeX)) { scopeVars.push(v); loopVarsToPop++; }
+							for (v in iteratorOutputVars(repeatTypeY)) { scopeVars.push(v); loopVarsToPop++; }
 						default:
 					}
 				}

@@ -673,6 +673,96 @@ class DynamicRefTest extends BuilderTestBase {
 		Assert.isTrue(err.indexOf("widget") >= 0, 'error must mention duplicate name; got: $err');
 	}
 
+	@Test
+	public function testDynamicNameRefRenameOutOfCollisionDecrementsCount():Void {
+		// Two unnamed dynamicRef($t1) / dynamicRef($t2) siblings both initially resolve to the same
+		// template "templateA" → collision count for "templateA" = 2, getDynamicRef throws with the
+		// "collide" hint. After setParameter renames site 1 to "templateB", only site 2 still
+		// references "templateA" — collision must be cleared so getDynamicRef("templateA") no longer
+		// trips the collision throw. Without rebuildDynamicNameRef updating dynamicRefCollisions,
+		// the count stays stuck at 2 and the collision throw fires forever.
+		final result = buildFromSource("
+			#templateA programmable() {
+				bitmap(generated(color(10, 10, #ff0000))): 0, 0
+			}
+			#templateB programmable() {
+				bitmap(generated(color(20, 20, #00ff00))): 0, 0
+			}
+			#host programmable(t1:string=\"templateA\", t2:string=\"templateA\") {
+				dynamicRef($t1): 0, 0
+				dynamicRef($t2): 0, 20
+			}
+		", "host", null, Incremental);
+
+		// Initial state: both sites collide on "templateA" → collision throw on get.
+		var beforeErr:String = null;
+		try { result.getDynamicRef("templateA"); }
+		catch (e:Dynamic) { beforeErr = Std.string(e); }
+		Assert.notNull(beforeErr, "two unnamed sites on same template must collide initially");
+		Assert.isTrue(beforeErr.indexOf("collide") >= 0,
+			'before rename: must throw collision error; got: $beforeErr');
+
+		// Rename site 1 to a non-colliding template. Only site 2 still targets "templateA".
+		result.setParameter("t1", "templateB");
+
+		// Collision count for "templateA" must reflect that only one writer remains.
+		final countAfter = result.dynamicRefCollisions != null
+			? result.dynamicRefCollisions.get("templateA") : null;
+		Assert.isTrue(countAfter == null || countAfter <= 1,
+			'count for "templateA" must be <=1 after rename; got: $countAfter');
+
+		// And getDynamicRef("templateA") must no longer throw the collision error.
+		var afterErr:String = null;
+		try { result.getDynamicRef("templateA"); }
+		catch (e:Dynamic) { afterErr = Std.string(e); }
+		if (afterErr != null) {
+			Assert.isFalse(afterErr.indexOf("collide") >= 0,
+				'after rename: collision throw must be gone; got: $afterErr');
+		}
+	}
+
+	@Test
+	public function testDynamicNameRefRenameIntoCollisionIncrementsCount():Void {
+		// Initially two unnamed sites resolve to different templates — no collision. After
+		// setParameter renames site 1 to point at the same template as site 2, both writers
+		// now target the same key → getDynamicRef must throw the collision error so the caller
+		// is forced to disambiguate with #name. Symmetric counterpart of the decrement test:
+		// rebuildDynamicNameRef must also INCREMENT the collision count for the new key when
+		// it already has a writer.
+		final result = buildFromSource("
+			#templateA programmable() {
+				bitmap(generated(color(10, 10, #ff0000))): 0, 0
+			}
+			#templateB programmable() {
+				bitmap(generated(color(20, 20, #00ff00))): 0, 0
+			}
+			#host programmable(t1:string=\"templateA\", t2:string=\"templateB\") {
+				dynamicRef($t1): 0, 0
+				dynamicRef($t2): 0, 20
+			}
+		", "host", null, Incremental);
+
+		// Initial state: no collision on either key.
+		Assert.notNull(result.getDynamicRef("templateA"));
+		Assert.notNull(result.getDynamicRef("templateB"));
+
+		// Rename site 1 to templateB → both sites now write to "templateB".
+		result.setParameter("t1", "templateB");
+
+		// Collision count for "templateB" must reflect two writers.
+		final countAfter = result.dynamicRefCollisions != null
+			? result.dynamicRefCollisions.get("templateB") : null;
+		Assert.isTrue(countAfter != null && countAfter >= 2,
+			'count for "templateB" must be >=2 after rename; got: $countAfter');
+
+		// And getDynamicRef("templateB") must throw the collision error.
+		var err:String = null;
+		try { result.getDynamicRef("templateB"); }
+		catch (e:Dynamic) { err = Std.string(e); }
+		Assert.isTrue(err != null && err.indexOf("collide") >= 0,
+			'after rename creating collision, getDynamicRef must throw collision error; got: $err');
+	}
+
 	static function isDescendantOfRoot(obj:h2d.Object, root:h2d.Object):Bool {
 		var cur:h2d.Object = obj;
 		while (cur != null) {

@@ -254,9 +254,9 @@ See `docs/manim.md` for full particles documentation.
 **State fields:** `position`, `angle`, `rate`, `speed`, `scale`, `alpha`, `rotation`, `color`, `cycle`, `done`, `custom`
 
 **Runtime API:**
-- Builder: `builder.createAnimatedPath("name", ?startPoint, ?endPoint)`
-- Projectile helper: `builder.createProjectilePath("name", startPoint, endPoint)` (Stretch normalization)
-- Codegen: `factory.createAnimatedPath_name(?startPoint, ?endPoint)`
+- Builder: `builder.createAnimatedPath("name", ?normalization:PathNormalization)` — pass `Stretch(startPt, endPt)` (or another `PathNormalization` variant) to position/scale the path
+- Projectile helper: `builder.createProjectilePath("name", startPoint, endPoint)` — shorthand for Stretch normalization
+- Codegen: `factory.createAnimatedPath_name(?normalization:PathNormalization)` — same convention
 - `ap.update(dt)` → `AnimatedPathState`, `ap.seek(rate)` → state without side effects, `ap.reset()` for reuse
 - Reverse lookup: `path.getClosestRate(worldPoint)` → closest rate (0..1)
 

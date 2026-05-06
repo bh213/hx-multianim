@@ -1407,6 +1407,7 @@ class Particles extends h2d.Drawable {
 		if (g != null) {
 			g.batch.clear();
 			g.batch.remove();
+			g.freeParticles.resize(0);
 		}
 		groups.remove(id);
 	}

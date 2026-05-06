@@ -125,6 +125,11 @@ private class ActiveAnimation {
  *  cardHand.drawCard({ id: "card1", buildName: "card", params: [...] });
  *  ``` */
 class UICardHandHelper implements UIHigherOrderComponent {
+	// Static scratch buffer reused by getCardAtBasePosition. HL is single-threaded so
+	// sharing across all helper instances is safe — the buffer is overwritten on entry
+	// and consumed before any other call. Mirrors UICardHandLayout._scratchRates.
+	static final _scratchPositions:Array<CardLayoutPosition> = [];
+
 	final screen:UIComponentHost;
 	final builder:MultiAnimBuilder;
 	final interactiveHelper:UIRichInteractiveHelper;
@@ -674,17 +679,20 @@ class UICardHandHelper implements UIHigherOrderComponent {
 		return false;
 	}
 
-	/** Update animations. Call from screen's update(dt). */
+	/** Update animations. Call from screen's update(dt).
+	 *
+	 *  Two-phase: step-and-collect, then fire onCompletes after the iteration.
+	 *  See removeAnimationsForEntry — same re-entrancy hazard (drawCard's onComplete
+	 *  calls applyLayout(true) -> animateCardTo -> removeAnimationsForEntry, which
+	 *  splices entries; user onCardEvent handlers can also splice or replace
+	 *  activeAnimations). Firing inside the iteration would corrupt the outer index. */
 	public function update(dt:Float):Void {
 		if (activeAnimations.length == 0)
 			return;
+		var completed:Array<ActiveAnimation> = null;
 		var i = activeAnimations.length - 1;
 		while (i >= 0) {
 			var anim = activeAnimations[i];
-			if (anim == null) {
-				i--;
-				continue;
-			}
 			var state = anim.anim.update(dt);
 			var rate = state.rate;
 
@@ -730,10 +738,16 @@ class UICardHandHelper implements UIHigherOrderComponent {
 			anim.entry.container.alpha = state.alpha;
 
 			if (state.done) {
+				if (completed == null)
+					completed = [];
+				completed.push(anim);
 				activeAnimations.splice(i, 1);
-				anim.onComplete();
 			}
 			i--;
+		}
+		if (completed != null) {
+			for (anim in completed)
+				anim.onComplete();
 		}
 	}
 
@@ -875,6 +889,30 @@ class UICardHandHelper implements UIHigherOrderComponent {
 					pos.y += anchorY;
 				}
 				return positions;
+		}
+	}
+
+	/** Buffer-filling variant of computeLayout for hot-path callers (hover hit-test).
+	 *  Resizes `out` to cards.length and mutates entries in place — no allocation after
+	 *  the buffer warms up to the maximum hand size seen so far. */
+	function computeLayoutInto(hoverIdx:Int, out:Array<CardLayoutPosition>):Void {
+		switch (layoutMode) {
+			case Fan:
+				var spreadDeg = if (fanRadius > 0) hoverNeighborSpread / fanRadius * (180.0 / Math.PI) else hoverNeighborSpread;
+				UICardHandLayout.computeFanLayoutInto(out, cards.length, anchorX, anchorY, fanRadius, fanMaxAngle, hoverIdx, hoverPopDistance,
+					hoverScale, spreadDeg);
+			case Linear:
+				UICardHandLayout.computeLinearLayoutInto(out, cards.length, anchorX, anchorY, cardWidth, linearSpacing, linearMaxWidth, hoverIdx,
+					hoverPopDistance, hoverScale, hoverNeighborSpread);
+			case PathLayout:
+				var spreadRate = hoverNeighborSpread * 0.0025;
+				UICardHandLayout.computePathLayoutInto(out, cards.length, getLayoutPath(), pathDistribution, pathOrientation, hoverIdx,
+					hoverPopDistance, hoverScale, spreadRate);
+				// Offset path-local coordinates by anchor so path (0,0) maps to (anchorX, anchorY)
+				for (i in 0...out.length) {
+					out[i].x += anchorX;
+					out[i].y += anchorY;
+				}
 		}
 	}
 
@@ -1290,7 +1328,10 @@ class UICardHandHelper implements UIHigherOrderComponent {
 	 *  card from blocking neighbors and handles tightly stacked/overlapping cards
 	 *  where multiple bounding boxes cover the same point. */
 	function getCardAtBasePosition(x:Float, y:Float):Null<CardEntry> {
-		var basePositions = computeLayout(-1);
+		// Hot path — runs every mouse-move. Use the static scratch buffer so we don't
+		// allocate Array<CardLayoutPosition> + N CardLayoutPosition instances per call.
+		final basePositions = _scratchPositions;
+		computeLayoutInto(-1, basePositions);
 		var bestEntry:Null<CardEntry> = null;
 		var bestDistSq = Math.POSITIVE_INFINITY;
 
@@ -1467,16 +1508,30 @@ class UICardHandHelper implements UIHigherOrderComponent {
 	 *  (state reset, scene-graph removal, *AnimComplete event) still runs when a
 	 *  later animateCardTo / animateCardToTracking call lands on the same entry.
 	 *  Without this, listeners awaiting DrawAnimComplete / DiscardAnimComplete stall
-	 *  and discarded card containers leak into the scene graph. */
+	 *  and discarded card containers leak into the scene graph.
+	 *
+	 *  Two-phase: collect-then-fire. displaced.onComplete() is synchronous and
+	 *  may re-enter via applyLayout(true) -> animateCardTo -> removeAnimationsForEntry,
+	 *  via game-supplied onCardEvent handlers triggered by emitEvent (e.g. another
+	 *  discardCard or setHand([]), the latter reassigning activeAnimations). Firing
+	 *  inside the iteration would let the re-entrant call splice (or replace) the
+	 *  array under the outer `i--`, producing a null deref on the next read.
+	 *  clearHand uses the same snapshot-then-fire pattern for the same reason. */
 	function removeAnimationsForEntry(entry:CardEntry):Void {
+		var displaced:Array<ActiveAnimation> = null;
 		var i = activeAnimations.length - 1;
 		while (i >= 0) {
 			if (activeAnimations[i].entry == entry) {
-				var displaced = activeAnimations[i];
+				if (displaced == null)
+					displaced = [];
+				displaced.push(activeAnimations[i]);
 				activeAnimations.splice(i, 1);
-				displaced.onComplete();
 			}
 			i--;
+		}
+		if (displaced != null) {
+			for (anim in displaced)
+				anim.onComplete();
 		}
 	}
 

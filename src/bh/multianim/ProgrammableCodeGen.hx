@@ -76,7 +76,7 @@ class ProgrammableCodeGen {
 	static var indexedNamedElements:Map<String, Array<{index:Int, fieldName:String}>> = new Map();
 	static var indexed2DNamedElements:Map<String, Array<{indexX:Int, indexY:Int, fieldName:String}>> = new Map();
 	static var slotEntries:Array<{key:MacroSlotKey, fieldName:String, hasParams:Bool, loopVars:Map<String, Int>}> = [];
-	static var switchUpdateEntries:Array<{paramName:String, updateExpr:Expr}> = [];
+	static var switchUpdateEntries:Array<{paramName:String, paramRefs:Array<String>, updateExpr:Expr}> = [];
 	// Sink fields allocated for each @switch, used for runtime lookup of names/slots declared inside arms
 	static var switchSinkFields:Array<String> = [];
 	static var dynamicRefFields:Map<String, String> = new Map(); // component name -> BuilderResult field name
@@ -642,6 +642,19 @@ class ProgrammableCodeGen {
 				transParamNames.set(pName, true);
 		}
 
+		// When transitions exist, build a compile-time test "is _changedParam a transition param?"
+		// This guards transition-helper calls so non-transition setters (now that switches make
+		// every setter pass _changedParam) cannot cancel in-flight transitions by accidentally
+		// invoking setPresenceWithTransition with a non-transition param name.
+		final isTransParamExpr:Expr = if (hasTransitions) {
+			var result:Expr = macro false;
+			for (tp in transParamNames.keys()) {
+				final tpLit = tp;
+				result = macro $result || _changedParam == $v{tpLit};
+			}
+			result;
+		} else macro false;
+
 		final visExprs:Array<Expr> = [];
 		for (entry in visibilityEntries) {
 			final fieldRef = macro $p{["this", entry.fieldName]};
@@ -675,7 +688,7 @@ class ProgrammableCodeGen {
 					final transRestoreExpr = entry.restoreFlowPropsExpr;
 					visExprs.push(macro {
 						final _newVis = ${entry.condition};
-						if (this._transHelper != null && _changedParam != null && this._transHelper.tweenManager != null) {
+						if (this._transHelper != null && _changedParam != null && this._transHelper.tweenManager != null && ${isTransParamExpr}) {
 							this._transHelper.setPresenceWithTransition($fieldRef, _newVis, _changedParam, $parentRef, $sentinelRef);
 							${if (transRestoreExpr != null) macro { if ($fieldRef.parent != null) $transRestoreExpr; } else macro {}}
 						} else {
@@ -701,7 +714,7 @@ class ProgrammableCodeGen {
 				if (usesTransition) {
 					visExprs.push(macro {
 						final _newVis = ${entry.condition};
-						if (this._transHelper != null && _changedParam != null && this._transHelper.tweenManager != null)
+						if (this._transHelper != null && _changedParam != null && this._transHelper.tweenManager != null && ${isTransParamExpr})
 							this._transHelper.setVisibilityWithTransition($fieldRef, _newVis, _changedParam)
 						else
 							$fieldRef.visible = _newVis;
@@ -722,15 +735,29 @@ class ProgrammableCodeGen {
 			final revertBlock = macro $b{entry.revertExprs};
 			visExprs.push(macro if ($cond) $applyBlock else $revertBlock);
 		}
-		// Switch updates: toggle arm container visibility
+		// Switch updates: gate arm rebuild on the changed param being in the arm's union of
+		// param refs. _changedParam == null is the constructor's initial-build path — rebuild
+		// all switches. Symmetric with the runtime trackExpression+paramRefs gate.
+		final hasSwitches = switchUpdateEntries.length > 0;
 		for (entry in switchUpdateEntries) {
-			visExprs.push(entry.updateExpr);
+			final updateBody = entry.updateExpr;
+			if (entry.paramRefs == null || entry.paramRefs.length == 0) {
+				visExprs.push(macro if (_changedParam == null) $updateBody);
+			} else {
+				var orChain:Expr = macro _changedParam == null;
+				for (ref in entry.paramRefs) {
+					final refLit = ref;
+					orChain = macro $orChain || _changedParam == $v{refLit};
+				}
+				visExprs.push(macro if ($orChain) $updateBody);
+			}
 		}
 		if (visExprs.length == 0)
 			visExprs.push(macro {});
-		// When transitions exist, _applyVisibility takes optional param name
+		// _applyVisibility takes the optional changed-param name when transitions OR switches
+		// need it. Constructor calls with no arg → null → all gates pass (full initial build).
 		final visArgs:Array<FunctionArg> = [];
-		if (hasTransitions)
+		if (hasTransitions || hasSwitches)
 			visArgs.push({name: "_changedParam", type: macro :String, opt: true, value: null});
 		instanceFields.push(makeMethod("_applyVisibility", visExprs, visArgs, macro :Void, [APrivate], pos));
 
@@ -829,8 +856,10 @@ class ProgrammableCodeGen {
 					$p{["this", paramField]} = $i{"v"};
 				});
 			}
-			// Pass param name to _applyVisibility when transitions exist for this param
-			if (hasTransitions && transParamNames.exists(name)) {
+			// Pass param name to _applyVisibility when transitions or switches exist — the
+			// switch gate uses it to skip rebuilds whose arms don't reference this param.
+			final hasSwitchEntries = switchUpdateEntries.length > 0;
+			if ((hasTransitions && transParamNames.exists(name)) || hasSwitchEntries) {
 				final nameStr = name;
 				setterExprs.push(macro this._applyVisibility($v{nameStr}));
 			} else {
@@ -951,7 +980,7 @@ class ProgrammableCodeGen {
 								throw 'setParameter("' + $v{name} + '", ...) requires Bool, got ${_value}';
 							$p{["this", setterName]}(_b);
 						};
-					case PPTInt | PPTUnsignedInt | PPTColor | PPTHexDirection | PPTGridDirection | PPTRange(_, _) | PPTFlags(_):
+					case PPTInt | PPTUnsignedInt | PPTHexDirection | PPTGridDirection | PPTRange(_, _) | PPTFlags(_):
 						macro {
 							final _i:Int = if (Std.isOfType(_value, Int))
 								(cast _value : Int);
@@ -963,6 +992,30 @@ class ProgrammableCodeGen {
 								_p;
 							} else
 								throw 'setParameter("' + $v{name} + '", ...) requires Int, got ${_value}';
+							$p{["this", setterName]}(_i);
+						};
+					case PPTColor:
+						// Color params accept the same String formats as the runtime path
+						// (MultiAnimParser.dynamicValueToIndex → tryStringToColor): named
+						// colors ("red", "transparent"), CSS shorthand (#RGB, #RRGGBB,
+						// #RRGGBBAA), and Heaps native (0xAARRGGBB). Falling back to
+						// Std.parseInt covers plain decimal strings.
+						macro {
+							final _i:Int = if (Std.isOfType(_value, Int))
+								(cast _value : Int);
+							else if (Std.isOfType(_value, Float))
+								Std.int((cast _value : Float));
+							else if (Std.isOfType(_value, String)) {
+								final _s:String = cast _value;
+								final _c = bh.multianim.MultiAnimParser.tryStringToColor(_s);
+								if (_c != null) _c
+								else {
+									final _p = Std.parseInt(_s);
+									if (_p == null) throw 'setParameter("' + $v{name} + '", ...) could not parse String as color: ' + _value;
+									_p;
+								}
+							} else
+								throw 'setParameter("' + $v{name} + '", ...) requires Int or color String, got ${_value}';
 							$p{["this", setterName]}(_i);
 						};
 					case PPTFloat:
@@ -998,6 +1051,20 @@ class ProgrammableCodeGen {
 			instanceFields.push(makeMethod("setParameter", [dispatchSwitch],
 				[{name: "_name", type: macro :String}, {name: "_value", type: macro :Dynamic}],
 				macro :Void, [APublic], pos));
+
+			// hasParameter(name) — UIInteractiveSource. Emit a switch over the same param-name
+			// set as setParameter; widget call sites use this to gate opportunistic
+			// setParameter("disabled", ...) for templates that may not declare a `disabled` param.
+			final hasCases:Array<Case> = [];
+			for (name => _ in paramDefs) {
+				hasCases.push({values: [macro $v{name}], expr: macro true});
+			}
+			final hasSwitch:Expr = {
+				expr: ESwitch(macro _name, hasCases, macro false),
+				pos: pos,
+			};
+			instanceFields.push(makeMethod("hasParameter", [macro return $hasSwitch],
+				[{name: "_name", type: macro :String}], macro :Bool, [APublic], pos));
 		}
 
 		// 8b. Transition control methods (on instance)
@@ -1802,14 +1869,21 @@ class ProgrammableCodeGen {
 			this._pb.rebuildSwitchArm($v{progName}, $v{switchOrdinal}, $p{["this", armIdxField]}, $p{["this", switchField]}, $paramsMapExpr, $p{["this", sinkField]});
 		});
 
-		// Register lazy switch update in _applyVisibility — always rebuild since
-		// arm content may depend on params other than the switch param itself
+		// Register lazy switch update in _applyVisibility, gated on the union of param refs
+		// across all arms (switch param + arm conditional refs + RV refs in arm children +
+		// DYNAMIC_REF / INTERACTIVE / STATEANIM payload refs). The runtime path computes the
+		// same set inline at MultiAnimBuilder SWITCH build to gate trackExpression. Without
+		// this gate every setParameter on an unrelated param would tear down all switch arm
+		// subtrees and re-seed any stateanim / particle / interactive state inside them.
+		final armParamRefs:Array<String> = [paramName];
+		for (arm in arms) collectArmParamRefs(arm.children, armParamRefs);
 		final updateBlock:Expr = macro {
 			$p{["this", armIdxField]} = $armIndexExpr;
 			this._pb.rebuildSwitchArm($v{progName}, $v{switchOrdinal}, $p{["this", armIdxField]}, $p{["this", switchField]}, $paramsMapExpr, $p{["this", sinkField]});
 		};
 		switchUpdateEntries.push({
 			paramName: paramName,
+			paramRefs: armParamRefs,
 			updateExpr: updateBlock,
 		});
 	}
@@ -7388,6 +7462,142 @@ class ProgrammableCodeGen {
 				for (c in replacementColors) collectParamRefsImpl(c, refs);
 			case FilterCustom(_, args):
 				for (a in args) collectParamRefsImpl(a.value, refs);
+		}
+	}
+
+	// ==================== @switch arm param refs (compile-time) ====================
+
+	/** Collect param refs in a single ConditionalValues — covers RV-bearing variants
+	 *  (CoRange bounds, CoNot inner, CoAnyOf members). String/enum/index/flag/value
+	 *  variants don't carry RVs. Mirror of MultiAnimBuilder.collectConditionalValueParamRefs. */
+	static function collectConditionalValueParamRefs(cv:ConditionalValues, refs:Array<String>):Void {
+		if (cv == null) return;
+		switch (cv) {
+			case CoRange(from, to, _, _):
+				if (from != null) collectParamRefsImpl(from, refs);
+				if (to != null) collectParamRefsImpl(to, refs);
+			case CoNot(inner):
+				collectConditionalValueParamRefs(inner, refs);
+			case CoAnyOf(values):
+				for (v in values) collectConditionalValueParamRefs(v, refs);
+			default:
+		}
+	}
+
+	/** Recursively collect every param ref reachable from an arm subtree — used at codegen
+	 *  time to gate the per-switch rebuild block in _applyVisibility. Walks: conditional
+	 *  keys & values, RVs in node payloads (BITMAP/TEXT/NINEPATCH/GRAPHICS/PIXELS/REPEAT/
+	 *  INTERACTIVE/DYNAMIC_REF/STATIC_REF/STATEANIM[_CONSTRUCT]), pos/scale/rotation/alpha/
+	 *  tint/filter, and recurses into node.children. Mirrors the runtime
+	 *  MultiAnimBuilder.collectChildConditionalParamRefs + collectNodeParamRefs +
+	 *  collectSwitchArmExtraParamRefs union. Over-collection is safe (just causes a few
+	 *  no-op rebuilds); under-collection is the bug we're avoiding. */
+	static function collectArmParamRefs(nodes:Array<Node>, refs:Array<String>):Void {
+		if (nodes == null) return;
+		inline function addAll(arr:Array<String>):Void {
+			for (r in arr) if (refs.indexOf(r) < 0) refs.push(r);
+		}
+		inline function addRef(r:String):Void {
+			if (paramDefs != null && paramDefs.exists(r) && !loopVarSubstitutions.exists(r) && refs.indexOf(r) < 0)
+				refs.push(r);
+		}
+		for (node in nodes) {
+			// Conditional keys + value RVs
+			switch (node.conditionals) {
+				case Conditional(conditions, _):
+					for (k => v in conditions) {
+						addRef(k);
+						collectConditionalValueParamRefs(v, refs);
+					}
+				case ConditionalElse(values):
+					if (values != null)
+						for (k => v in values) {
+							addRef(k);
+							collectConditionalValueParamRefs(v, refs);
+						}
+				case ConditionalDefault | NoConditional:
+			}
+
+			// Type-specific payload RVs
+			switch (node.type) {
+				case TEXT(td) | RICHTEXT(td):
+					if (td != null) {
+						collectParamRefsImpl(td.text, refs);
+						collectParamRefsImpl(td.color, refs);
+					}
+				case BITMAP(tileSource, _, _):
+					addAll(collectTileSourceParamRefs(tileSource));
+				case NINEPATCH(_, _, w, h):
+					collectParamRefsImpl(w, refs);
+					collectParamRefsImpl(h, refs);
+				case GRAPHICS(elements):
+					for (item in elements) {
+						collectCoordinateParamRefs(item.pos, refs);
+						collectGraphicsElementParamRefs(item.element, refs);
+					}
+				case PIXELS(shapes):
+					collectPixelShapesParamRefs(shapes, refs);
+				case REPEAT(_, repeatType):
+					switch (repeatType) {
+						case StepIterator(dirX, dirY, repeats):
+							collectParamRefsImpl(repeats, refs);
+							if (dirX != null) collectParamRefsImpl(dirX, refs);
+							if (dirY != null) collectParamRefsImpl(dirY, refs);
+						case RangeIterator(start, end, step):
+							collectParamRefsImpl(start, refs);
+							collectParamRefsImpl(end, refs);
+							collectParamRefsImpl(step, refs);
+						default:
+					}
+				case INTERACTIVE(width, height, id, _, metadata):
+					collectParamRefsImpl(width, refs);
+					collectParamRefsImpl(height, refs);
+					collectParamRefsImpl(id, refs);
+					if (metadata != null) {
+						for (entry in metadata) {
+							collectParamRefsImpl(entry.key, refs);
+							collectParamRefsImpl(entry.value, refs);
+						}
+					}
+				case DYNAMIC_REF(_, programmableRef, parameters) | STATIC_REF(_, programmableRef, parameters):
+					collectParamRefsImpl(programmableRef, refs);
+					if (parameters != null) for (_ => v in parameters) collectParamRefsImpl(v, refs);
+				case STATEANIM(_, initialState, selector):
+					collectParamRefsImpl(initialState, refs);
+					if (selector != null) for (_ => v in selector) collectParamRefsImpl(v, refs);
+				case STATEANIM_CONSTRUCT(initialState, construct, _):
+					collectParamRefsImpl(initialState, refs);
+					if (construct != null) {
+						for (_ => value in construct) {
+							switch (value) {
+								case IndexedSheet(_, animName, fps, _, _):
+									collectParamRefsImpl(animName, refs);
+									collectParamRefsImpl(fps, refs);
+							}
+						}
+					}
+				case SWITCH(switchParamName, switchArms):
+					// Nested @switch — arm children live in the enum payload, not node.children.
+					// Add the inner switch's controlling param and recurse so an outer arm's
+					// gate also fires when the inner switch's params change.
+					addRef(switchParamName);
+					if (switchArms != null)
+						for (innerArm in switchArms)
+							collectArmParamRefs(innerArm.children, refs);
+				default:
+			}
+
+			// Standard properties
+			if (node.pos != null) collectCoordinateParamRefs(node.pos, refs);
+			if (node.scale != null) collectParamRefsImpl(node.scale, refs);
+			if (node.rotation != null) collectParamRefsImpl(node.rotation, refs);
+			if (node.alpha != null) collectParamRefsImpl(node.alpha, refs);
+			if (node.tint != null) collectParamRefsImpl(node.tint, refs);
+			if (node.filter != null) collectFilterParamRefsImpl(node.filter, refs);
+
+			// Recurse into children — captures @switch nested in arm content too
+			if (node.children != null)
+				collectArmParamRefs(node.children, refs);
 		}
 	}
 

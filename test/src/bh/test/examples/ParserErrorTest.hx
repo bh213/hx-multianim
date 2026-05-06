@@ -1667,6 +1667,30 @@ class ParserErrorTest extends utest.Test {
 	}
 
 	@Test
+	public function testRepeatable2dIteratorOutputVarIsValid() {
+		var success = parseExpectingSuccess("
+			#test programmable() {
+				repeatable2d($x, $y, tiles($bmp, \"crew2\", \"Arrow_dir0\"), range(0, 3)) {
+					bitmap($bmp): $x * 40, $y * 40;
+				}
+			}
+		");
+		Assert.isTrue(success, "Iterator output variable $bmp from X iterator should be valid inside repeatable2d body");
+	}
+
+	@Test
+	public function testRepeatable2dIteratorOutputVarFromYIsValid() {
+		var success = parseExpectingSuccess("
+			#test programmable(items:array=[a,b,c]) {
+				repeatable2d($x, $y, range(0, 3), array($val, $items)) {
+					text(dd, $val, #ffffffff): $x * 40, $y * 20;
+				}
+			}
+		");
+		Assert.isTrue(success, "Iterator output variable $val from Y array iterator should be valid inside repeatable2d body");
+	}
+
+	@Test
 	public function testNestedRepeatableScope() {
 		var success = parseExpectingSuccess("
 			#test programmable(n:uint=3) {

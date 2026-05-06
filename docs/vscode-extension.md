@@ -243,7 +243,7 @@ The grammar must define scopes for the following .manim constructs:
 
 ### Full list of element keywords
 
-`programmable`, `bitmap`, `text`, `richText`, `ninepatch`, `flow`, `layers`, `mask`, `tilegroup`, `interactive`, `repeatable`, `repeatable2d`, `slot`, `spacer`, `point`, `apply`, `graphics`, `pixels`, `particles`, `stateanim`, `staticRef`, `dynamicRef`, `placeholder`, `curves`, `paths`, `animatedPath`, `import`, `settings`, `transition`, `data`, `atlas2`, `palette`, `autotile`
+`programmable`, `bitmap`, `text`, `richText`, `ninepatch`, `flow`, `layers`, `mask`, `tilegroup`, `interactive`, `repeatable`, `repeatable2d`, `slot`, `spacer`, `point`, `apply`, `graphics`, `pixels`, `particles`, `stateanim`, `staticRef`, `dynamicRef`, `placeholder`, `curves`, `paths`, `animatedPath`, `import`, `settings`, `transition`, `data`, `atlas2`, `palette`, `autotile`, `layouts`
 
 ## LSP Server Features
 

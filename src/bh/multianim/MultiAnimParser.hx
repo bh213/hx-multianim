@@ -1030,6 +1030,11 @@ typedef Node = {
 	settings:Null<Map<String, ParsedSettingValue>>,
 	transitions:Null<Map<String, TransitionType>>,
 	flowProperties:Null<NodeFlowProperties>,
+	/** Cache for IncrementalUpdateContext.getRelevantParamRefsForNode. Lazily populated
+	 *  on first lookup. Param refs are derived from the node's conditional + the @() / @else chain
+	 *  among preceding siblings, both fixed post-parse, so the cache is valid for the lifetime of
+	 *  the parsed tree (a re-parse on hot reload produces a fresh tree with a fresh empty cache). */
+	cachedRelevantParamRefs:Null<Array<String>>,
 	#if MULTIANIM_DEV
 	parserPos:String
 	#end

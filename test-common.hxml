@@ -10,4 +10,8 @@
 -debug
 -D resourcesPath=test/res
 -D windowSize=1280x720
+# Enables hot-path allocation watchdog counters (FPoint.creationCount,
+# CardLayoutPosition.creationCount, UICardHandLayout.scratchArrayAllocationCount).
+# Gated so production builds skip the per-construction increments.
+-D MULTIANIM_ALLOC_TRACK
 

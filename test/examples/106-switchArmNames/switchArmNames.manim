@@ -33,3 +33,18 @@ version: 1.0
     }
   }
 }
+
+// Two params: `rarity` drives the @switch, `disabled` is unrelated and is
+// not referenced anywhere inside the switch arms. Setting `disabled` must
+// not tear down and rebuild the switch arm — the named #core element inside
+// the active arm should retain its identity across the unrelated setter.
+#switchUnrelatedParam programmable(rarity:[common, rare]=common, disabled:bool=false) {
+  @switch(rarity) {
+    common {
+      #core bitmap(generated(color(20, 20, #888888))): 0, 0
+    }
+    rare {
+      #core bitmap(generated(color(20, 20, #ffff00))): 0, 0
+    }
+  }
+}

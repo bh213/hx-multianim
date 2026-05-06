@@ -5176,6 +5176,40 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		Assert.notNull(panelAgain, "panel slot should reappear after swap back to active arm");
 	}
 
+	// Setting a parameter that is not referenced anywhere inside any @switch arm must NOT
+	// tear down and rebuild the arm. The runtime path gates rebuilds on a paramRefs union
+	// (see MultiAnimBuilder.rebuildSwitchArmByOrdinal trackExpression registration); the
+	// codegen path must do the same. Without the gate, every setter call destroys the
+	// arm subtree — re-seeding any stateanim/particle state inside arms and wiping
+	// interactive registrations.
+	@Test
+	public function testCodegenSwitchArmNotRebuiltOnUnrelatedParam():Void {
+		final mp = createMp();
+		final instance:Dynamic = mp.switchUnrelatedParam.create(); // rarity=common, disabled=false
+
+		// Capture the named element inside the active arm before mutating an unrelated param.
+		final coreBefore:Null<h2d.Object> = instance.getUpdatable("core");
+		Assert.notNull(coreBefore, "core element should be addressable inside the common arm");
+
+		// Toggle `disabled` — referenced nowhere inside any switch arm. The arm must not rebuild.
+		instance.setDisabled(true);
+
+		final coreAfterDisabled:Null<h2d.Object> = instance.getUpdatable("core");
+		Assert.notNull(coreAfterDisabled, "core element still addressable after unrelated setter");
+		Assert.isTrue(coreBefore == coreAfterDisabled,
+			"setDisabled(true) on a programmable with @switch(rarity) must not rebuild the rarity arm — "
+			+ "the named element inside the arm should retain reference identity. "
+			+ "If this fails, every setParameter is tearing down all switch arm subtrees, "
+			+ "wiping interactive registrations and re-seeding stateanim/particle state inside arms.");
+
+		// Sanity: changing the switch's controlling param SHOULD rebuild the arm.
+		instance.setRarity(1);
+		final coreAfterRarity:Null<h2d.Object> = instance.getUpdatable("core");
+		Assert.notNull(coreAfterRarity, "core element should be addressable inside the rare arm");
+		Assert.isFalse(coreBefore == coreAfterRarity,
+			"setRarity must rebuild the arm — new arm's #core is a different h2d.Object");
+	}
+
 	// Test 107 — Rube Goldberg: exercise a broad slice of .manim features in a single
 	// programmable. Visual reference uses default params (mode=hover, template=rgCardB,
 	// flags=3, level=5). A matching tile is passed for the `icon` param via TileHelper.
@@ -5236,6 +5270,41 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		}
 		Assert.isNull(thrownAfter,
 			'follow-up setParameter with a known value must still work; threw: $thrownAfter');
+	}
+
+	// Codegen setParameter on a `:color` parameter must accept the same String
+	// formats the runtime path accepts via MultiAnimParser.dynamicValueToIndex →
+	// tryStringToColor: named colors ("red", "transparent"), CSS shorthand
+	// ("#FF0000", "#f00", "#FF0000FF"), and Heaps native ("0xFFFF0000"). The
+	// codegen dispatcher previously routed PPTColor through Std.parseInt only,
+	// which returns null for everything except plain numeric strings — so a
+	// codegen factory crashed on calls that BuilderResult.setParameter accepted.
+	@Test
+	public function testCodegenSetParameterAcceptsColorStringFormats():Void {
+		final mp = createMp();
+		// codegenFilterParam declares `outlineColor:color=#FF0000` and
+		// `tintColor:color=#00FF00` at the top of the programmable.
+		final inst = mp.filterParam.create();
+
+		final inputs:Array<Dynamic> = [
+			"red",
+			"transparent",
+			"#FF0000",
+			"#f00",
+			"#FF0000FF",
+			"0xFFFF0000",
+			0xFFFF0000,
+		];
+		for (input in inputs) {
+			var thrown:Null<String> = null;
+			try {
+				inst.setParameter("outlineColor", input);
+			} catch (e:Dynamic) {
+				thrown = Std.string(e);
+			}
+			Assert.isNull(thrown,
+				'codegen setParameter("outlineColor", ${Std.string(input)}) must not throw (runtime path accepts it); threw: $thrown');
+		}
 	}
 
 	static function containsDescendant(root:h2d.Object, target:h2d.Object):Bool {

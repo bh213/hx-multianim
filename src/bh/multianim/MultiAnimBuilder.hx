@@ -338,6 +338,11 @@ class IncrementalUpdateContext {
 	 *  A pure counter — does not affect behavior. setParameter calls in steady state
 	 *  (no structural change) should not increment this. */
 	public var conditionalMapRebuildCount:Int = 0;
+	/** Counts how many times getRelevantParamRefsForNode computed a fresh param-ref set
+	 *  (cache miss). Param refs are deterministic per parsed Node, so steady-state
+	 *  setParameter calls on a transition-bearing programmable must reuse the cache and
+	 *  leave this counter unchanged. Pure instrumentation. */
+	public var paramRefsRebuildCount:Int = 0;
 	// Cached uniqueNodeName → entry lookups for applyConditionalChains. Source arrays
 	// only mutate during build and structural rebuild (track* / cleanupDestroyedSubtree);
 	// those sites null these out so the next applyConditionalChains rebuilds them.
@@ -719,16 +724,16 @@ class IncrementalUpdateContext {
 				"untracked_param");
 		}
 		// Look up the parameter type definition for type-aware conversion (flags need special handling).
-		// Unknown param names are silently skipped (not a throw): UI widgets (Button, Checkbox,
-		// Slider, Tabs, TextInput) intentionally setParameter("disabled", ...) on every client
-		// template, relying on a no-op when the template doesn't opt into that param. Throwing
-		// here would break that contract. The stale-listener bug that H1 described was specific
-		// to the case where we DID have declared tracking for the param but stored no value —
-		// skipping `changedParams`/`hasChanges` for an unknown param avoids firing listeners
-		// that have nothing to read anyway.
+		// Unknown param names throw, symmetric with the initial-build path (updateIndexedParamsFromDynamicMap)
+		// and the codegen typed-setter dispatcher. Silent no-op masks user errors — UI widgets and
+		// helpers that drive setParameter("status"|"disabled", ...) must declare the corresponding
+		// params on the underlying programmable.
 		final paramDef = getParamDefinition(name);
-		if (paramDef == null)
-			return;
+		if (paramDef == null) {
+			final available = getAvailableParamNames();
+			throw BuilderError.of('setParameter("$name", ...) rejected: unknown parameter. Available: ${available.join(", ")}',
+				"unknown_param");
+		}
 		final paramType = paramDef.type;
 		// Resolve the value shape first, THEN commit. If no branch matches we throw
 		// instead of silently flagging `changedParams` — the old code fell through and
@@ -838,6 +843,10 @@ class IncrementalUpdateContext {
 		hasChanges = false;
 	}
 
+	public function hasParameter(name:String):Bool {
+		return getParamDefinition(name) != null;
+	}
+
 	function getParamDefinition(name:String):Null<{type:MultiAnimParser.DefinitionType, defaultValue:Null<ResolvedIndexParameters>}> {
 		return switch rootNode.type {
 			case PROGRAMMABLE(_, defs, _): defs.get(name);
@@ -846,6 +855,14 @@ class IncrementalUpdateContext {
 			// behavior for unknown names.
 			case SLOT(defs, _): defs == null ? null : defs.get(name);
 			default: null;
+		};
+	}
+
+	function getAvailableParamNames():Array<String> {
+		return switch rootNode.type {
+			case PROGRAMMABLE(_, defs, _): [for (k in defs.keys()) k];
+			case SLOT(defs, _): defs == null ? [] : [for (k in defs.keys()) k];
+			default: [];
 		};
 	}
 
@@ -894,9 +911,14 @@ class IncrementalUpdateContext {
 	}
 
 	function getRelevantParamRefsForNode(node:Node):Array<String> {
+		final cached = node.cachedRelevantParamRefs;
+		if (cached != null) return cached;
+		paramRefsRebuildCount++;
 		final refs = new haxe.ds.StringMap<Bool>();
 		collectParamRefsFromNode(node, refs);
-		return [for (k in refs.keys()) k];
+		final computed = [for (k in refs.keys()) k];
+		node.cachedRelevantParamRefs = computed;
+		return computed;
 	}
 
 	function collectParamRefsFromNode(node:Node, refs:haxe.ds.StringMap<Bool>):Void {
@@ -1196,7 +1218,7 @@ class IncrementalUpdateContext {
 		entry.wrapper.removeChildren(); // Clear stale children from previous materialization
 		rebuildDeferredContent(entry);
 		// Collect param refs from node expressions for future rebuild tracking
-		final paramRefs = builder.collectNodeParamRefs(entry.node);
+		final paramRefs = MultiAnimBuilder.collectNodeParamRefs(entry.node);
 		if (paramRefs.length > 0) {
 			final capturedEntry = entry;
 			trackedExpressions.push({
@@ -1231,18 +1253,46 @@ class IncrementalUpdateContext {
 
 	@:nullSafety(Off)
 	function rebuildDynamicNameRef(binding:DynamicNameBinding, newName:String):Void {
-		// Remove old dynamic ref bindings that belonged to the previous child
-		dynamicRefBindings = dynamicRefBindings.filter(b -> {
-			// Remove bindings whose child context belongs to the old dynamicRef result
-			final oldResult = binding.internalResults.dynamicRefs.get(binding.stableKey);
-			return oldResult == null || b.childContext != oldResult.incrementalContext;
-		});
+		// Named sites cannot collide (build-time throw at the DYNAMIC_REF case), so
+		// dynamicRefCollisions never carries their key. Only unnamed sites need the
+		// collision-count maintenance below.
+		final nodeHasExplicitName = switch binding.node.updatableName {
+			case UNTObject(null): false;
+			default: true;
+		};
+
+		// Decrement collision count for the old key — this site no longer writes there.
+		// dynamicRefCollisions is only populated when count >= 2 (build path seeds at 2),
+		// so dropping the entry once it would fall to 1 keeps the invariant: "key present" ↔
+		// "currently colliding". Without this, a rename out of a colliding key leaves the count
+		// stuck and getDynamicRef(oldKey) trips the collision throw forever.
+		if (!nodeHasExplicitName) {
+			final counts = binding.internalResults.dynamicRefCollisions;
+			final prev = counts.get(binding.stableKey);
+			if (prev != null) {
+				if (prev <= 2) counts.remove(binding.stableKey);
+				else counts.set(binding.stableKey, prev - 1);
+			}
+		}
+
+		// Drop bookkeeping (conditionalEntries, conditionalApplyEntries, deferredEntries,
+		// trackedExpressions, dynamicRefBindings, dynamicNameBindings, activeTransitionTweens)
+		// and IR registrations (interactives, slots, names, dynamicRefs, htmlTextsWithLinks)
+		// for the OLD child subtree before tearing down its scene graph. Mirrors the cleanup
+		// pattern used by REPEAT/SWITCH/materializeDeferred. The previous manual-filter approach
+		// caught the dynamicRefBindings for the directly-tracked child, but skipped the rest of
+		// the bookkeeping arrays — leaving the rebuild path inconsistent with its siblings and
+		// fragile under future code changes.
+		//
+		// Target the OLD result.object (the only child of binding.container), NOT the container
+		// itself: passing the container would also reap THIS dynamicNameBinding (its own
+		// container == the cleanup target — see step 4 in cleanupDestroyedSubtree), wiping the
+		// rebuild we're about to do.
+		if (binding.container.numChildren > 0)
+			cleanupDestroyedSubtree(binding.internalResults, binding.container.getChildAt(0));
 
 		// Clear the container
 		binding.container.removeChildren();
-
-		// Remove old entry from internalResults.dynamicRefs
-		binding.internalResults.dynamicRefs.remove(binding.stableKey);
 
 		// Resolve the builder (external or local)
 		var targetBuilder = if (binding.externalReference != null) {
@@ -1265,11 +1315,15 @@ class IncrementalUpdateContext {
 		binding.currentName = newName;
 		// For unnamed sites, stableKey tracks currentName so the next rebuild removes the right
 		// entry. For #name-labeled sites, stableKey is fixed and is what user code fetches by.
-		final nodeHasExplicitName = switch binding.node.updatableName {
-			case UNTObject(null): false;
-			default: true;
-		};
 		if (!nodeHasExplicitName) binding.stableKey = newName;
+
+		// Mirror the build-time collision check (DYNAMIC_REF case): if the new key already has
+		// a writer and this site is unnamed, bump the collision count so getDynamicRef(newKey)
+		// throws with the disambiguation hint instead of silently last-writer-wins.
+		if (!nodeHasExplicitName && binding.internalResults.dynamicRefs.exists(binding.stableKey)) {
+			final counts = binding.internalResults.dynamicRefCollisions;
+			counts.set(binding.stableKey, (counts.exists(binding.stableKey) ? counts.get(binding.stableKey) : 1) + 1);
+		}
 
 		// Store the new result under the stable key
 		binding.internalResults.dynamicRefs.set(binding.stableKey, result);
@@ -1565,6 +1619,8 @@ class SlotHandle {
 	}
 
 	public function setContent(obj:h2d.Object):Void {
+		if (disposed)
+			throw BuilderError.of('Slot disposed — enclosing subtree was rebuilt', "slot_disposed");
 		clear();
 		if (contentTarget != null) {
 			currentContent = obj;
@@ -1581,6 +1637,8 @@ class SlotHandle {
 	}
 
 	public function clear():Void {
+		if (disposed)
+			throw BuilderError.of('Slot disposed — enclosing subtree was rebuilt', "slot_disposed");
 		if (currentContent != null) {
 			if (contentTarget != null) {
 				contentTarget.removeChild(currentContent);
@@ -1598,14 +1656,20 @@ class SlotHandle {
 	}
 
 	public function getContent():Null<h2d.Object> {
+		if (disposed)
+			throw BuilderError.of('Slot disposed — enclosing subtree was rebuilt', "slot_disposed");
 		return currentContent;
 	}
 
 	public function isEmpty():Bool {
+		if (disposed)
+			throw BuilderError.of('Slot disposed — enclosing subtree was rebuilt', "slot_disposed");
 		return currentContent == null;
 	}
 
 	public function isOccupied():Bool {
+		if (disposed)
+			throw BuilderError.of('Slot disposed — enclosing subtree was rebuilt', "slot_disposed");
 		return currentContent != null;
 	}
 
@@ -1719,6 +1783,15 @@ class BuilderResult implements bh.ui.UIInteractiveSource {
 		if (incrementalContext == null)
 			throw BuilderError.of('setParameter requires incremental mode — pass incremental:true to buildWithParameters');
 		incrementalContext.setParameter(name, value);
+	}
+
+	/** True when the underlying programmable declares a parameter named `name`. Used by
+	 *  UI widgets that opportunistically drive a `disabled:bool` companion of `status` —
+	 *  templates that only model `status` (with a `disabled` enum value) should not crash
+	 *  on `setParameter("disabled", ...)`. Returns false for non-incremental results. */
+	public function hasParameter(name:String):Bool {
+		if (incrementalContext == null) return false;
+		return incrementalContext.hasParameter(name);
 	}
 
 	public function beginUpdate():Void {
@@ -4002,7 +4075,7 @@ class MultiAnimBuilder {
 	 *  into `collectNodeParamRefs` because its other caller (materializeDeferred) relies on
 	 *  DYNAMIC_REF refs being absent — adding them would register a tracked-rebuild expression
 	 *  whose updateFn hits a "duplicate dynamicRef name" throw on second fire. */
-	function collectSwitchArmExtraParamRefs(node:Node, out:Array<String>):Void {
+	static function collectSwitchArmExtraParamRefs(node:Node, out:Array<String>):Void {
 		inline function add(r:String) if (out.indexOf(r) < 0) out.push(r);
 		inline function gatherInto(rv:ReferenceableValue):Void {
 			final tmp:Array<String> = [];
@@ -4047,7 +4120,7 @@ class MultiAnimBuilder {
 	}
 
 	/** Collect all parameter references from a node's expressions (for deferred rebuild tracking). */
-	function collectNodeParamRefs(node:Node):Array<String> {
+	static function collectNodeParamRefs(node:Node):Array<String> {
 		final refs:Array<String> = [];
 		inline function addRef(ref:String) {
 			if (refs.indexOf(ref) < 0) refs.push(ref);
@@ -7423,10 +7496,7 @@ class MultiAnimBuilder {
 				builderParams.callback = defaultCallback;
 			var node = multiParserResult.nodes.get(name);
 			if (node == null) {
-				final error = 'buildWithParameters ${inputParameters}: could find element "$name" to build';
-				popBuilderState();
-				buildingRefs.pop();
-				throw error;
+				throw 'buildWithParameters ${inputParameters}: could find element "$name" to build';
 			}
 
 			final hasParams = inputParameters != null && inputParameters.count() > 0;
@@ -7481,10 +7551,13 @@ class MultiAnimBuilder {
 			buildingRefs.pop();
 			return retVal;
 		} catch (e:Dynamic) {
-			// Keep buildingRefs balanced even if startBuild (or any nested builder) throws,
-			// so a caller that catches the error and retries is not falsely rejected.
-			if (buildingRefs.length > 0 && buildingRefs[buildingRefs.length - 1] == name)
-				buildingRefs.pop();
+			// Keep both stacks balanced if anything inside (startBuild, nested builds, registry,
+			// the missing-node early throw, …) throws. Callers like DevBridge.eval_manim and
+			// ScreenManager hot-reload swallow per-node errors and continue using the same
+			// builder; without this unwind, stateStack and the live indexedParams/currentNode
+			// would stay pinned to the failed call's transient state and corrupt every later build.
+			popBuilderState();
+			buildingRefs.pop();
 			throw e;
 		}
 	}

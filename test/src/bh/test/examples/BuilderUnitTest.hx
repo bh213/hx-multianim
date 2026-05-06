@@ -7160,6 +7160,77 @@ class BuilderUnitTest extends BuilderTestBase {
 			Assert.equals(3, countInteractives(result), 'flip $i to 3: rebuild closure lost?');
 		}
 	}
+
+	@Test
+	public function testIncrementalDynamicNameRefBookkeepingCleanedUp():Void {
+		// dynamicRef($template) where $template names a programmable. Each template targets a
+		// child whose tree includes content that registers per-element bookkeeping on the parent
+		// context — specifically, dynamicRefBindings (one per forwarded param). When the template
+		// param flips, the rebuild path must reap those bindings before swapping the subtree, so
+		// the parent's bookkeeping arrays don't grow with every cycle. Mirrors the existing
+		// SWITCH/REPEAT cleanup tests above. Templates carry inner conditionals + text interpolation
+		// + nested dynamicRefs to exercise every per-element bookkeeping array; templates are
+		// cycled through three distinct names so the unnamed stableKey rotates on each rebuild.
+		final result = buildFromSource("
+			#leaf programmable(label:string=\"x\") {
+				text(dd, '${label}', #fff): 0, 0
+			}
+			#widgetA programmable(val:uint=10, flag:bool=true, label:string=\"a\") {
+				@(flag => true) bitmap(generated(color($val + 1, 5, #ff0000))): 0, 0
+				@(flag => false) bitmap(generated(color($val + 1, 6, #ffffff))): 0, 0
+				text(dd, '${label}-A', #fff): 0, 10
+				dynamicRef($leaf, label=>$label): 0, 20
+			}
+			#widgetB programmable(val:uint=10, flag:bool=true, label:string=\"b\") {
+				@(flag => true) bitmap(generated(color($val + 1, 7, #00ff00))): 0, 0
+				@(flag => false) bitmap(generated(color($val + 1, 8, #ffffff))): 0, 0
+				text(dd, '${label}-B', #fff): 0, 10
+				dynamicRef($leaf, label=>$label): 0, 20
+			}
+			#widgetC programmable(val:uint=10, flag:bool=true, label:string=\"c\") {
+				@(flag => true) bitmap(generated(color($val + 1, 9, #0000ff))): 0, 0
+				@(flag => false) bitmap(generated(color($val + 1, 10, #ffffff))): 0, 0
+				text(dd, '${label}-C', #fff): 0, 10
+				dynamicRef($leaf, label=>$label): 0, 20
+			}
+			#test programmable(template:string=\"widgetA\", v:uint=10, lbl:string=\"hi\") {
+				dynamicRef($template, val=>$v, label=>$lbl): 0, 0
+			}
+		", "test", null, Incremental);
+
+		final ctx = result.incrementalContext;
+		Assert.notNull(ctx);
+		final initialBindings = ctx.getDynamicRefBindingsCount();
+		final initialNameBindings = ctx.getDynamicNameBindingsCount();
+		final initialConditionals = ctx.getConditionalEntriesCount();
+		final initialTracked = ctx.getTrackedExpressionsCount();
+
+		for (i in 0...5) {
+			result.setParameter("template", "widgetB");
+			result.setParameter("template", "widgetC");
+			result.setParameter("template", "widgetA");
+		}
+
+		final finalBindings = ctx.getDynamicRefBindingsCount();
+		final finalNameBindings = ctx.getDynamicNameBindingsCount();
+		final finalConditionals = ctx.getConditionalEntriesCount();
+		final finalTracked = ctx.getTrackedExpressionsCount();
+		Assert.equals(initialBindings, finalBindings,
+			'dynamic ref bindings leaked across template swaps: $initialBindings initial vs $finalBindings after 15 swaps');
+		Assert.equals(initialNameBindings, finalNameBindings,
+			'dynamic name bindings leaked across template swaps: $initialNameBindings initial vs $finalNameBindings after 15 swaps');
+		Assert.equals(initialConditionals, finalConditionals,
+			'conditional entries leaked across template swaps: $initialConditionals initial vs $finalConditionals after 15 swaps');
+		Assert.equals(initialTracked, finalTracked,
+			'tracked expressions leaked across template swaps: $initialTracked initial vs $finalTracked after 15 swaps');
+
+		// Sanity: parameter forwarding still propagates after all the swaps.
+		result.setParameter("v", 42);
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(43, Std.int(bitmaps[0].tile.width),
+			"forwarded $v must still propagate after repeated template swaps");
+	}
 	#end
 
 	// ==================== Rebuild listener API ====================
@@ -8081,10 +8152,11 @@ class BuilderUnitTest extends BuilderTestBase {
 	}
 
 	@Test
-	public function testSetParameterUnknownParamIsSilentNoOp():Void {
-		// UI widgets (Button, Checkbox, Slider, Tabs, TextInput) call
-		// setParameter("disabled", ...) on every instance — templates that don't
-		// opt into a `disabled` param rely on a no-op. Assert that contract.
+	public function testSetParameterUnknownParamThrows():Void {
+		// Unknown param names throw on the incremental setParameter path, symmetric with
+		// the initial-build path (updateIndexedParamsFromDynamicMap) and the codegen typed
+		// dispatcher. Silent no-op masks user errors — UI helpers that drive setParameter
+		// must declare the corresponding params on the underlying programmable.
 		final result = buildFromSource("
 			#test programmable(x:uint=10) {
 				bitmap(generated(color($x, 10, #f00))): 0, 0
@@ -8092,11 +8164,17 @@ class BuilderUnitTest extends BuilderTestBase {
 		", "test", null, Incremental);
 		var listenerFireCount = 0;
 		result.addRebuildListener(() -> listenerFireCount++);
-		// No throw, no listener fire — param just isn't there.
-		result.setParameter("notDeclared", "whatever");
+
+		var caught:Null<bh.multianim.BuilderError> = null;
+		try { result.setParameter("notDeclared", "whatever"); }
+		catch (e:bh.multianim.BuilderError) { caught = e; }
+		Assert.notNull(caught, "Unknown param must throw BuilderError");
+		if (caught != null)
+			Assert.equals("unknown_param", caught.code, 'BuilderError.code must be "unknown_param"');
 		Assert.equals(0, listenerFireCount,
-			"Unknown param must not fire rebuild listeners (no dependent expressions)");
-		// Declared param still works afterward — the silent skip didn't corrupt state.
+			"Unknown param must not fire rebuild listeners");
+
+		// Declared param still works afterward — the throw didn't corrupt state.
 		result.setParameter("x", 20);
 		final bitmaps = findVisibleBitmapDescendants(result.object);
 		Assert.equals(20, Std.int(bitmaps[0].tile.width));
@@ -8287,6 +8365,77 @@ class BuilderUnitTest extends BuilderTestBase {
 		}
 	}
 
+	// buildWithParameters() pushes both `buildingRefs` and a new entry onto `stateStack` before
+	// entering its try block. When a nested build (staticRef/dynamicRef → recursive
+	// buildWithParameters) throws and the outer caller swallows the error — as DevBridge.eval_manim
+	// and ScreenManager hot-reload both do, looping per node and continuing on failure — the catch
+	// must restore BOTH stacks. Otherwise stateStack accumulates leaked frames and the live
+	// indexedParams/builderParams/currentNode/incrementalContext stay pinned to the failed call's
+	// transient state, corrupting every subsequent build on the same builder.
+
+	@Test
+	public function testBuildWithParametersRestoresStateStackOnInnerThrow():Void {
+		final builder = builderFromSource("
+			#outer programmable() {
+				staticRef($missingTarget): 0, 0
+			}
+		");
+
+		var caught:Null<Dynamic> = null;
+		try {
+			builder.buildWithParameters("outer", new Map(), null, null, false);
+		} catch (e:Dynamic) {
+			caught = e;
+		}
+
+		Assert.notNull(caught, "Expected build to throw — staticRef targets a programmable that does not exist");
+
+		@:privateAccess
+		final stackLen = builder.stateStack.length;
+		Assert.equals(0, stackLen,
+			'Builder stateStack must be empty after a thrown buildWithParameters; leaked entries = $stackLen');
+
+		@:privateAccess
+		final inFlightLen = builder.buildingRefs.length;
+		Assert.equals(0, inFlightLen,
+			'Builder buildingRefs must be empty after a thrown buildWithParameters; leaked entries = $inFlightLen');
+	}
+
+	@Test
+	public function testBuildWithParametersStateStackBalancedAfterCaughtErrorThenSecondBuild():Void {
+		// Mirrors the DevBridge.eval_manim / ScreenManager hot-reload pattern: per-node loop that
+		// catches and continues. The second build must succeed against an unleaked builder state.
+		final builder = builderFromSource("
+			#bad programmable() {
+				staticRef($nonExistent): 0, 0
+			}
+			#good programmable() {
+				point: 10, 20
+			}
+		");
+
+		try {
+			builder.buildWithParameters("bad", new Map(), null, null, false);
+			Assert.fail("Expected first build to throw");
+		} catch (e:Dynamic) {
+			// swallow, like eval_manim / hot-reload do
+		}
+
+		@:privateAccess
+		final stackAfterFail = builder.stateStack.length;
+		Assert.equals(0, stackAfterFail,
+			'stateStack leaked after caught error: $stackAfterFail entries (should be 0)');
+
+		final result = builder.buildWithParameters("good", new Map(), null, null, false);
+		Assert.notNull(result, "Second build on the same builder must succeed");
+		Assert.notNull(result.object, "Second build must produce a valid object");
+
+		@:privateAccess
+		final stackAfterSuccess = builder.stateStack.length;
+		Assert.equals(0, stackAfterSuccess,
+			'stateStack must be empty after successful follow-up build: $stackAfterSuccess entries');
+	}
+
 	@Test
 	public function testUpdatableSetObjectAfterAddObjectsDetachesAllPriorChildren():Void {
 		final result = buildFromSource("
@@ -8344,6 +8493,53 @@ class BuilderUnitTest extends BuilderTestBase {
 		Assert.equals(afterFirst, ctx.conditionalMapRebuildCount,
 			"applyConditionalChains must cache entryMap/applyMap across steady-state setParameter calls; "
 			+ "rebuilding them per call allocates 2 StringMap + N inserts on every parameter change");
+	}
+
+	// Steady-state setParameter on a transition-bearing programmable must not recompute
+	// per-Node param refs every call. findTransitionSpec asks getRelevantParamRefsForNode
+	// for the set of params that drive a node's visibility, and that set is fully
+	// determined by node.conditionals + the @() / @else chain among preceding siblings —
+	// both fixed once parsing is done. Without a cache, every visibility re-evaluation
+	// allocates a fresh StringMap<Bool> + an Array<String> from `[for (k in refs.keys())
+	// k]`, fired per conditional element on every setParameter (UI hover/press hot path).
+	@Test
+	public function testIncrementalCachesParamRefsForTransitions():Void {
+		final tm = new bh.base.TweenManager();
+		final builder = builderFromSource("
+			#test programmable(level:int=0) {
+				transition {
+					level: fade(0.3)
+				}
+				@(level => 0) bitmap(generated(color(10, 10, #ff0000))): 0,0
+				@(level => 1) bitmap(generated(color(10, 10, #00ff00))): 0,0
+				@(level => 2) bitmap(generated(color(10, 10, #0000ff))): 0,0
+				@else          bitmap(generated(color(10, 10, #ffff00))): 0,0
+			}
+		");
+		builder.tweenManager = tm;
+		final result = builder.buildWithParameters("test", ["level" => 0], null, null, true);
+		Assert.notNull(result);
+
+		final ctx = result.incrementalContext;
+		Assert.notNull(ctx);
+
+		// Warm up: cycle every level once so findTransitionSpec touches every conditional
+		// node at least once, fully populating the per-Node cache. (A single setParameter
+		// only hits the from- and to-level nodes, not the others.)
+		for (i in 0...4) result.setParameter("level", i);
+		final afterWarmUp = ctx.paramRefsRebuildCount;
+		Assert.isTrue(afterWarmUp >= 4,
+			"Warm-up should compute the param-ref set for every conditional node");
+
+		// Steady state: cycling values again toggles visibility but the parsed node tree
+		// (and therefore the param-ref set per node) is unchanged. The cache must serve
+		// every call.
+		for (i in 0...12) result.setParameter("level", i % 4);
+
+		Assert.equals(afterWarmUp, ctx.paramRefsRebuildCount,
+			"getRelevantParamRefsForNode must cache its result on the Node across steady-state "
+			+ "setParameter calls; recomputing allocates StringMap+Array on every visibility "
+			+ "re-evaluation in transition-bearing programmables (UI hover/press hot path).");
 	}
 
 	// Symmetric with the codegen no-op gate (ProgrammableCodeGen.hx setter short-circuits when

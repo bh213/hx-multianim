@@ -5,10 +5,12 @@ class FPoint {
 	public var x:Float;
 	public var y:Float;
 
-	// Lightweight allocation counter for hot-path instrumentation in tests
-	// (mirrors UICardHandLayout.scratchArrayAllocationCount). One int increment
-	// per FPoint construction.
+	// Allocation watchdog for tests. Gated behind MULTIANIM_ALLOC_TRACK so the
+	// per-construction increment vanishes from production builds; FPoint is on
+	// every particle/path/hex/layout hot path.
+	#if MULTIANIM_ALLOC_TRACK
 	public static var creationCount:Int = 0;
+	#end
 
 	inline public static function zero() {
 		return new FPoint(0, 0);
@@ -21,7 +23,9 @@ class FPoint {
 	public inline function new(x, y) {
 		this.x = x;
 		this.y = y;
+		#if MULTIANIM_ALLOC_TRACK
 		creationCount++;
+		#end
 	}
 
 

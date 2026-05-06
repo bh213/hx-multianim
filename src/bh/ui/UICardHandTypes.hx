@@ -45,12 +45,31 @@ enum PathOrientation {
 
 @:structInit
 class CardLayoutPosition {
+	// Allocation watchdog for tests. Gated behind MULTIANIM_ALLOC_TRACK so the
+	// per-construction increment vanishes from production builds; layout positions
+	// are constructed inside hover/drag hit-test paths.
+	#if MULTIANIM_ALLOC_TRACK
+	public static var creationCount:Int = 0;
+	#end
+
 	public var x:Float;
 	public var y:Float;
 	public var rotation:Float;
 	public var scale:Float;
 	public var normalX:Float;
 	public var normalY:Float;
+
+	public inline function new(x:Float = 0, y:Float = 0, rotation:Float = 0, scale:Float = 1, normalX:Float = 0, normalY:Float = -1) {
+		this.x = x;
+		this.y = y;
+		this.rotation = rotation;
+		this.scale = scale;
+		this.normalX = normalX;
+		this.normalY = normalY;
+		#if MULTIANIM_ALLOC_TRACK
+		creationCount++;
+		#end
+	}
 }
 
 enum TargetingResult {

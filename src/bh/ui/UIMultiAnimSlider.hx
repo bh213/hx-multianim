@@ -101,7 +101,8 @@ class UIStandardMultiAnimSlider implements UIElement implements UIElementDisabla
 			currentResult.beginUpdate();
 			currentResult.setParameter("status", standardUIElementStatusToString(status));
 			currentResult.setParameter("value", externalToInternal(currentValue));
-			currentResult.setParameter("disabled", '$disabled');
+			if (currentResult.hasParameter("disabled"))
+				currentResult.setParameter("disabled", '$disabled');
 			currentResult.endUpdate();
 		}
 	}

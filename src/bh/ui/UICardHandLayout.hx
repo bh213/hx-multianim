@@ -13,8 +13,11 @@ class UICardHandLayout {
 
 	/** Counts internal scratch-array allocations performed by the path-layout hot path.
 	 *  Pure instrumentation — does not affect behavior. Should remain unchanged across
-	 *  repeated computePathLayout calls (scratch arrays must be reused). */
+	 *  repeated computePathLayout calls (scratch arrays must be reused).
+	 *  Gated behind MULTIANIM_ALLOC_TRACK so the field disappears from production builds. */
+	#if MULTIANIM_ALLOC_TRACK
 	public static var scratchArrayAllocationCount:Int = 0;
+	#end
 
 	// Reusable work buffers for computePathLayout / computeEvenArcLengthRates. HL is
 	// single-threaded so static sharing is safe — same pattern as `_scratch:FPoint`.
@@ -23,6 +26,27 @@ class UICardHandLayout {
 	static final _scratchSampleLengths:Array<Float> = [];
 	static final _scratchRates:Array<Float> = [];
 	static final _scratchAdjustedRates:Array<Float> = [];
+
+	// Grows `out` to length `n`, allocating fresh CardLayoutPosition instances only
+	// when the buffer hasn't seen this size before. Existing entries are reused in
+	// place; the layout `Into` callers fully overwrite every field of each entry.
+	static inline function ensureSize(out:Array<CardLayoutPosition>, n:Int):Void {
+		if (out.length < n) {
+			while (out.length < n)
+				out.push(new CardLayoutPosition());
+		} else if (out.length > n) {
+			out.resize(n);
+		}
+	}
+
+	static inline function writePos(p:CardLayoutPosition, x:Float, y:Float, rotation:Float, scale:Float, normalX:Float, normalY:Float):Void {
+		p.x = x;
+		p.y = y;
+		p.rotation = rotation;
+		p.scale = scale;
+		p.normalX = normalX;
+		p.normalY = normalY;
+	}
 
 	/** Compute layout positions for N cards in fan arc arrangement.
 	 *  Arc center is at (anchorX, anchorY + radius), cards sit on the arc above it.
@@ -38,21 +62,30 @@ class UICardHandLayout {
 	 *  @return Array of CardLayoutPosition, one per card */
 	public static function computeFanLayout(cardCount:Int, anchorX:Float, anchorY:Float, radius:Float, maxAngleDeg:Float,
 			hoverIndex:Int, hoverPopDistance:Float, hoverScale:Float, neighborSpreadDeg:Float):Array<CardLayoutPosition> {
-		if (cardCount <= 0)
-			return [];
-
 		var result:Array<CardLayoutPosition> = [];
+		computeFanLayoutInto(result, cardCount, anchorX, anchorY, radius, maxAngleDeg, hoverIndex, hoverPopDistance, hoverScale, neighborSpreadDeg);
+		return result;
+	}
+
+	/** Buffer-filling variant of computeFanLayout for hot-path callers (hover hit-test).
+	 *  Resizes `out` to cardCount and mutates entries in place; existing CardLayoutPosition
+	 *  instances are reused, only the tail is allocated when the buffer grows. */
+	public static function computeFanLayoutInto(out:Array<CardLayoutPosition>, cardCount:Int, anchorX:Float, anchorY:Float, radius:Float,
+			maxAngleDeg:Float, hoverIndex:Int, hoverPopDistance:Float, hoverScale:Float, neighborSpreadDeg:Float):Void {
+		if (cardCount <= 0) {
+			out.resize(0);
+			return;
+		}
+		ensureSize(out, cardCount);
 
 		if (cardCount == 1) {
-			// Single card centered, no rotation
 			var pop = if (hoverIndex == 0) hoverPopDistance else 0.0;
 			var s = if (hoverIndex == 0) hoverScale else 1.0;
-			result.push({x: anchorX, y: anchorY - pop, rotation: 0.0, scale: s, normalX: 0.0, normalY: -1.0});
-			return result;
+			writePos(out[0], anchorX, anchorY - pop, 0.0, s, 0.0, -1.0);
+			return;
 		}
 
 		var maxAngleRad = maxAngleDeg * Math.PI / 180.0;
-		// Limit per-card angle to prevent wide spread with few cards
 		var maxPerCardDeg = 8.0;
 		var maxPerCardRad = maxPerCardDeg * Math.PI / 180.0;
 		var angleStep = Math.min(maxAngleRad / (cardCount - 1), maxPerCardRad);
@@ -64,23 +97,19 @@ class UICardHandLayout {
 		for (i in 0...cardCount) {
 			var baseAngle = -halfArc + i * angleStep;
 
-			// Push neighbors apart if hovering
 			var angle = baseAngle;
 			if (hoverIndex >= 0 && i != hoverIndex) {
 				if (i < hoverIndex) {
-					// Cards to the left get pushed left
 					var dist = hoverIndex - i;
 					var spread = neighborSpreadRad / dist;
 					angle -= spread;
 				} else {
-					// Cards to the right get pushed right
 					var dist = i - hoverIndex;
 					var spread = neighborSpreadRad / dist;
 					angle += spread;
 				}
 			}
 
-			// Position on arc: center of arc is at (anchorX, anchorY + radius)
 			var x = anchorX + radius * Math.sin(angle);
 			var y = anchorY + radius - radius * Math.cos(angle);
 
@@ -92,22 +121,12 @@ class UICardHandLayout {
 				scale = hoverScale;
 			}
 
-			// Pop direction is along the normal toward arc center (straight up for small angles)
 			var normalAngle = angle;
 			x -= pop * Math.sin(normalAngle);
 			y -= pop * Math.cos(normalAngle);
 
-			result.push({
-				x: x,
-				y: y,
-				rotation: angle,
-				scale: scale,
-				normalX: -Math.sin(angle),
-				normalY: -Math.cos(angle)
-			});
+			writePos(out[i], x, y, angle, scale, -Math.sin(angle), -Math.cos(angle));
 		}
-
-		return result;
 	}
 
 	/** Compute layout positions for N cards in horizontal linear arrangement.
@@ -125,12 +144,21 @@ class UICardHandLayout {
 	 *  @return Array of CardLayoutPosition, one per card */
 	public static function computeLinearLayout(cardCount:Int, anchorX:Float, anchorY:Float, cardWidth:Float, spacing:Float,
 			maxWidth:Float, hoverIndex:Int, hoverPopDistance:Float, hoverScale:Float, neighborSpread:Float):Array<CardLayoutPosition> {
-		if (cardCount <= 0)
-			return [];
-
 		var result:Array<CardLayoutPosition> = [];
+		computeLinearLayoutInto(result, cardCount, anchorX, anchorY, cardWidth, spacing, maxWidth, hoverIndex, hoverPopDistance, hoverScale,
+			neighborSpread);
+		return result;
+	}
 
-		// Calculate effective spacing: compress if total width exceeds maxWidth
+	/** Buffer-filling variant of computeLinearLayout for hot-path callers. */
+	public static function computeLinearLayoutInto(out:Array<CardLayoutPosition>, cardCount:Int, anchorX:Float, anchorY:Float, cardWidth:Float,
+			spacing:Float, maxWidth:Float, hoverIndex:Int, hoverPopDistance:Float, hoverScale:Float, neighborSpread:Float):Void {
+		if (cardCount <= 0) {
+			out.resize(0);
+			return;
+		}
+		ensureSize(out, cardCount);
+
 		var totalWidth = cardCount * cardWidth + (cardCount - 1) * spacing;
 		var effectiveStep = cardWidth + spacing;
 		if (totalWidth > maxWidth && cardCount > 1) {
@@ -143,7 +171,6 @@ class UICardHandLayout {
 			var x = startX + i * effectiveStep;
 			var y = anchorY;
 
-			// Push neighbors apart if hovering
 			if (hoverIndex >= 0 && i != hoverIndex) {
 				if (i < hoverIndex) {
 					var dist = hoverIndex - i;
@@ -160,17 +187,8 @@ class UICardHandLayout {
 				scale = hoverScale;
 			}
 
-			result.push({
-				x: x,
-				y: y,
-				rotation: 0.0,
-				scale: scale,
-				normalX: 0.0,
-				normalY: -1.0
-			});
+			writePos(out[i], x, y, 0.0, scale, 0.0, -1.0);
 		}
-
-		return result;
 	}
 
 	/** Compute layout positions for N cards distributed along a path.
@@ -185,17 +203,23 @@ class UICardHandLayout {
 	 *  @return Array of CardLayoutPosition, one per card */
 	public static function computePathLayout(cardCount:Int, path:Path, distribution:PathDistribution, orientation:PathOrientation,
 			hoverIndex:Int, hoverPopDistance:Float, hoverScale:Float, neighborSpreadRate:Float):Array<CardLayoutPosition> {
-		if (cardCount <= 0)
-			return [];
-
 		var result:Array<CardLayoutPosition> = [];
+		computePathLayoutInto(result, cardCount, path, distribution, orientation, hoverIndex, hoverPopDistance, hoverScale, neighborSpreadRate);
+		return result;
+	}
 
-		// Compute base rates for each card. Reuses _scratchRates; computeEvenArcLengthRates
-		// also returns the same buffer (same scratch field), so the assignment below is a no-op
-		// reference rebind in the EvenArcLength branch.
+	/** Buffer-filling variant of computePathLayout for hot-path callers. */
+	public static function computePathLayoutInto(out:Array<CardLayoutPosition>, cardCount:Int, path:Path, distribution:PathDistribution,
+			orientation:PathOrientation, hoverIndex:Int, hoverPopDistance:Float, hoverScale:Float, neighborSpreadRate:Float):Void {
+		if (cardCount <= 0) {
+			out.resize(0);
+			return;
+		}
+		ensureSize(out, cardCount);
+
 		var rates = _scratchRates; rates.resize(0);
 		if (cardCount == 1) {
-			rates.push(0.5); // center single card
+			rates.push(0.5);
 		} else {
 			switch (distribution) {
 				case EvenRate:
@@ -206,9 +230,6 @@ class UICardHandLayout {
 			}
 		}
 
-		// Shift neighbors apart when hovering. Reuses _scratchAdjustedRates as the working buffer;
-		// `rates` is then re-pointed to it and the original _scratchRates contents are discarded
-		// on the next call's resize(0).
 		if (hoverIndex >= 0 && hoverIndex < cardCount) {
 			final adjustedRates = _scratchAdjustedRates; adjustedRates.resize(0);
 			for (i in 0...cardCount)
@@ -228,13 +249,11 @@ class UICardHandLayout {
 			rates = adjustedRates;
 		}
 
-		// Compute positions
 		for (i in 0...cardCount) {
 			var rate = rates[i];
 			path.getPointInto(rate, _scratch);
 			var tangent = path.getTangentAngle(rate);
 
-			// Normal perpendicular to tangent (pointing "outward" — left-hand normal)
 			var nrmX = -Math.sin(tangent);
 			var nrmY = Math.cos(tangent);
 
@@ -256,17 +275,8 @@ class UICardHandLayout {
 					Math.max(-maxRad, Math.min(maxRad, tangent));
 			};
 
-			result.push({
-				x: x,
-				y: y,
-				rotation: rotation,
-				scale: scale,
-				normalX: nrmX,
-				normalY: nrmY
-			});
+			writePos(out[i], x, y, rotation, scale, nrmX, nrmY);
 		}
-
-		return result;
 	}
 
 	/** Compute evenly arc-length spaced rates along a path using lookup table + binary search.

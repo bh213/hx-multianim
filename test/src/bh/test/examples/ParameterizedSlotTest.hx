@@ -323,6 +323,60 @@ class ParameterizedSlotTest extends BuilderTestBase {
 			Assert.equals("slot_disposed", builderErr.code, "BuilderError.code for disposed slot");
 	}
 
+	// Same disposal contract for setContent / clear / getContent / isEmpty / isOccupied.
+	// Without the guard, setContent(obj) on a disposed handle silently attaches obj to
+	// an orphaned container (no scene parent) — the node never renders, no error fires.
+	// The read methods would return stale state from the torn-down subtree, hiding the
+	// fact that the caller's handle is no longer authoritative.
+	@Test
+	public function testSlotMethodsThrowAfterArmSwap():Void {
+		final result = buildFromSource("
+			#test programmable(mode:[active, dormant]=active) {
+				@switch(mode) {
+					active {
+						#panel slot {
+							bitmap(generated(color(20, 20, #00ff00))): 0, 0
+						}
+					}
+					dormant {
+						bitmap(generated(color(20, 20, #222222))): 0, 0
+					}
+				}
+			}
+		", "test", null, Incremental);
+		final slot = result.getSlot("panel");
+		Assert.notNull(slot);
+		if (slot == null) return;
+
+		// Sanity: slot is live before the arm swap.
+		slot.setContent(new h2d.Object());
+		slot.clear();
+
+		// Tear down the active arm — slot is now disposed.
+		result.setParameter("mode", "dormant");
+
+		function expectDisposed(label:String, action:Void -> Void):Void {
+			var err:String = null;
+			var builderErr:Null<bh.multianim.BuilderError> = null;
+			try {
+				action();
+			} catch (e:Dynamic) {
+				err = Std.string(e);
+				if (Std.isOfType(e, bh.multianim.BuilderError)) builderErr = cast e;
+			}
+			Assert.notNull(err, '$label on disposed SlotHandle should throw');
+			Assert.notNull(builderErr, '$label throw must be a BuilderError');
+			if (builderErr != null)
+				Assert.equals("slot_disposed", builderErr.code, '$label BuilderError.code');
+		}
+
+		expectDisposed("setContent", () -> slot.setContent(new h2d.Object()));
+		expectDisposed("clear", () -> slot.clear());
+		expectDisposed("getContent", () -> slot.getContent());
+		expectDisposed("isEmpty", () -> slot.isEmpty());
+		expectDisposed("isOccupied", () -> slot.isOccupied());
+	}
+
 	// Hygiene test: when the host MultiAnimBuilder has a TweenManager wired,
 	// the parameterized slot's IncrementalUpdateContext must inherit it,
 	// matching the buildWithParameters injection pattern. Without this,

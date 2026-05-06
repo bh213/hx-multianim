@@ -44,4 +44,9 @@ interface UIInteractiveSource {
 	 *  `IncrementalUpdateContext.setParameter`; for codegen instances this dispatches to the
 	 *  typed setter for that param name (throws if the name is unknown). */
 	function setParameter(name:String, value:Dynamic):Void;
+
+	/** True when the underlying programmable declares a parameter named `name`. Use this to
+	 *  guard `setParameter` for opportunistic params (e.g. `disabled:bool` companion to a
+	 *  `status` enum) that may or may not exist on a given client template. */
+	function hasParameter(name:String):Bool;
 }

@@ -1036,6 +1036,30 @@ class ParticleRuntimeTest extends utest.Test {
 		Assert.isNull(batch.first, "batch element list must be cleared after removeGroup");
 	}
 
+	@Test
+	public function testRemoveGroupDrainsFreeParticlePool():Void {
+		// removeGroup must release every Particle instance the free-list pool
+		// is holding onto. Without this, callers who captured the ParticleGroup
+		// reference before removeGroup (sub-emitter chains, game-side handles)
+		// keep N dead Particle objects pinned through that reference for the
+		// lifetime of that capture.
+		var p = createParticles();
+		var g = createGroup("main", p);
+		var dg:Dynamic = g;
+		dg.life = 0.1; // short life so particles die quickly
+
+		g.emitBurstAt(0, 0, 0, 0, 5);
+		advanceGroup(g, 0.5);
+		Assert.equals(0, countParticles(g), "all particles should have died");
+		Assert.isTrue(g.freeParticles.length > 0,
+			"expected dead particles in the free-list pool before removeGroup");
+
+		p.removeGroup("main");
+
+		Assert.equals(0, g.freeParticles.length,
+			"removeGroup must drain the free-list pool so captured group references no longer pin dead Particle instances");
+	}
+
 	// ==================== Color curve: per-particle segment cache ====================
 
 	static function createLinearCurve():ICurve {

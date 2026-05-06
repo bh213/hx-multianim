@@ -971,6 +971,65 @@ class CardHandIntegrationTest extends BuilderTestBase {
 			"container removal lives in the discard's onComplete — it must run on cancel to avoid scene-graph leak");
 	}
 
+	// ==================== Re-entrant mutation of activeAnimations ====================
+	// removeAnimationsForEntry iterates activeAnimations backward with splice(i, 1) and
+	// fires displaced.onComplete() synchronously. The onComplete can re-enter via
+	// applyLayout(true) -> animateCardTo -> removeAnimationsForEntry, or via user-supplied
+	// onCardEvent handlers triggered by emitEvent. When the re-entrant call mutates
+	// activeAnimations (splices entries at indices < i, or replaces the array via
+	// clearHand), the outer iteration's `i--` either dereferences a now-out-of-bounds
+	// index (null-deref crash) or skips an unprocessed entry. The same hazard exists in
+	// update(dt). clearHand already snapshots-then-fires for this exact reason — that
+	// guarantee must apply to removeAnimationsForEntry too.
+
+	@Test
+	public function testRemoveAnimationsForEntryHandlesHandResetFromOnComplete():Void {
+		var h = createHelperWithPaths();
+		h.helper.setHand([desc("a"), desc("b"), desc("c")]);
+		var events:Array<CardHandEvent> = [];
+
+		h.helper.discardCard("a");
+		h.helper.discardCard("b");
+		h.helper.discardCard("c");
+		Assert.equals(3, h.helper.activeAnimations.length,
+			"three discards should queue three active animations before the iteration starts");
+
+		// Capture C's entry — discardCard already spliced it from cards[] but its animation
+		// is still in activeAnimations[2].
+		var entryC = h.helper.activeAnimations[2].entry;
+
+		// Hook the event handler so DiscardAnimComplete("c") triggers a hand reset.
+		// setHand([]) routes through clearHand() which reassigns
+		// activeAnimations = []. The outer removeAnimationsForEntry loop continues
+		// with i-- and reads activeAnimations[1] on the now-empty array -> null deref.
+		h.helper.onCardEvent = (event) -> {
+			events.push(event);
+			switch (event) {
+				case DiscardAnimComplete("c"):
+					h.helper.setHand([]);
+				default:
+			}
+		};
+
+		// Trigger cancellation of C's in-flight discard. Inside animateCardTo,
+		// removeAnimationsForEntry(C) starts at i = 2, splices C, calls C.onComplete
+		// which fires the user handler which resets the hand. After the handler returns,
+		// the outer loop must not crash and must not skip A or B's onCompletes
+		// (which are draining via clearHand's snapshot path).
+		h.helper.animateCardTo(entryC, 0, 0, 200, 200, 0, 0, "discardPath", () -> {});
+
+		Assert.isTrue(findEvent(events, e -> switch (e) { case DiscardAnimComplete("c"): true; default: false; }),
+			"DiscardAnimComplete('c') must fire — its onComplete triggered the reset");
+		Assert.isTrue(findEvent(events, e -> switch (e) { case DiscardAnimComplete("a"): true; default: false; }),
+			"DiscardAnimComplete('a') must fire — it was drained by the cascading clearHand call");
+		Assert.isTrue(findEvent(events, e -> switch (e) { case DiscardAnimComplete("b"): true; default: false; }),
+			"DiscardAnimComplete('b') must fire — it was drained by the cascading clearHand call");
+		// After the re-entrant clearHand drains A and B, animateCardTo proceeds to push
+		// a fresh animation for C — so exactly one animation should remain.
+		Assert.equals(1, h.helper.activeAnimations.length,
+			"only the freshly-pushed C animation should remain after the re-entrant reset; the outer iteration must finish cleanly without leaving stale entries");
+	}
+
 	// ==================== Mouse handler allocation hygiene ====================
 
 	@Test
@@ -1012,6 +1071,32 @@ class CardHandIntegrationTest extends BuilderTestBase {
 		Assert.floatEquals(555.0, pt.y, 0.001, "scratchPoint.y should reflect last onMouseMove input");
 	}
 
+	// onMouseMove fires hover detection through getCardAtBasePosition, which goes through
+	// computeLayout → UICardHandLayout.computeFan/Linear/PathLayout. Those return a freshly
+	// allocated Array<CardLayoutPosition> with N freshly-allocated CardLayoutPosition class
+	// instances (it's @:structInit). For mouse-move (and the public getCardIdAtPosition) the
+	// positions are read once for hit-test math and discarded — the static-buffer pattern
+	// already used by _scratchRates in UICardHandLayout fits perfectly.
+	@Test
+	public function testGetCardIdAtPositionReusesLayoutPositionBufferAcrossCalls():Void {
+		var h = createHelper();
+		h.helper.setHand([desc("a"), desc("b"), desc("c"), desc("d"), desc("e")]);
+
+		// Warm-up call: lazily populates the scratch buffer if implementation does that.
+		h.helper.getCardIdAtPosition(50, 50);
+		final allocatedAfterWarmup = CardLayoutPosition.creationCount;
+
+		// Subsequent hit-test calls must not allocate fresh CardLayoutPosition instances.
+		for (i in 0...10)
+			h.helper.getCardIdAtPosition(50.0 + i, 50.0 + i);
+
+		final delta = CardLayoutPosition.creationCount - allocatedAfterWarmup;
+		Assert.equals(0, delta,
+			"getCardIdAtPosition / getCardAtBasePosition must reuse a static Array<CardLayoutPosition> buffer "
+			+ "across calls — every mouse-move runs hover detection on this path. Allocated " + delta
+			+ " fresh CardLayoutPosition instances across 10 follow-up calls (5 cards each).");
+	}
+
 	// applyLayout(true) and rearrangeCards run on every hover/drag/draw. animateCardTo's
 	// `from`/`to` FPoints are read for x/y only and forwarded to createProjectilePath →
 	// applyStretch, which also reads-and-forgets. Allocating fresh FPoints per card per
@@ -1029,5 +1114,23 @@ class CardHandIntegrationTest extends BuilderTestBase {
 			"applyLayout(true) must not allocate FPoints per InHand card — animateCardTo should "
 			+ "accept primitives (or reuse instance scratch FPoints internally). Allocated "
 			+ FPoint.creationCount + " FPoints across 5 cards on a single layout pass.");
+	}
+
+	// Allocation watchdog counters (FPoint.creationCount,
+	// UICardHandLayout.scratchArrayAllocationCount, CardLayoutPosition.creationCount)
+	// must be gated behind MULTIANIM_ALLOC_TRACK so they vanish from production builds.
+	// Test builds need the flag defined in test-common.hxml or the watchdog tests fail
+	// to compile (counters become unreachable identifiers).
+	@Test
+	public function testAllocationTrackingFlagIsDefinedInTestBuilds():Void {
+		#if MULTIANIM_ALLOC_TRACK
+		Assert.pass();
+		#else
+		Assert.fail("MULTIANIM_ALLOC_TRACK must be defined in test builds. It gates the static "
+			+ "counters FPoint.creationCount, UICardHandLayout.scratchArrayAllocationCount, "
+			+ "and CardLayoutPosition.creationCount, which are read by allocation watchdog "
+			+ "tests in CardHandIntegrationTest and CardHandOrchestratorTest. "
+			+ "Add `-D MULTIANIM_ALLOC_TRACK` to test-common.hxml.");
+		#end
 	}
 }
