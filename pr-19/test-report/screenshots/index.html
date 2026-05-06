@@ -327,15 +327,15 @@
 </head>
 <body>
     <h1>Visual Test Report</h1>
-    <div class="timestamp">Generated: 2026-05-06 13:33:04</div>
+    <div class="timestamp">Generated: 2026-05-06 15:07:48</div>
     <div class="summary">
         <strong>Summary:</strong> 101 tests,         <span style="color: #4CAF50;">101 passed</span>,         <span style="color: #f44336;">0 failed</span>
-        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 0.9s, visual 19.7s)</span>
+        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1.3s, visual 23.6s)</span>
     </div>
     <div class="unit-tests-section">
         <h2>Unit Tests</h2>
         <div class="unit-tests-summary all-passed">
-            <strong>6407 assertions:</strong>             <span style="color: #4CAF50;">6407 passed</span>
+            <strong>6419 assertions:</strong>             <span style="color: #4CAF50;">6419 passed</span>
             <button class="expand-btn" id="unitToggleBtn" onclick="toggleUnitDetails()">Show Details</button>
         </div>
         <div class="unit-details" id="unitDetails">
@@ -622,6 +622,7 @@
                 <div class="unit-method pass">testSeekAtEnd: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testSeekAtMidpoint: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testSeekAtStart: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testSeekDoesNotAllocateAnimatedPathState: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testSeekDoesNotFireEvents: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testSpeedCurveInDistanceMode: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testTimeModeCompletion: OK <span class="dots">...</span></div>
@@ -629,6 +630,7 @@
                 <div class="unit-method pass">testTimeModeProgressionLinear: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testTimeModeZeroDtIgnored: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testUpdateAfterDoneIsNoop: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testUpdateDoesNotAllocateAnimatedPathState: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testZeroLengthPathThrows: OK <span class="dots">.</span></div>
             </div>
             <div class="unit-class">
@@ -1852,6 +1854,7 @@
                 <div class="unit-method pass">testNoForceFieldsBaseline: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testNonRelativeGroupWithTranslatedParent: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testNonRelativeVsRelativeGroupPosition: OK <span class="dots">......</span></div>
+                <div class="unit-method pass">testParticleStepDoesNotAllocateFPoint: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testRemoveForceFieldAtFirst: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testRemoveForceFieldAtMiddle: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testRemoveGroupClearsBatch: OK <span class="dots">.....</span></div>
@@ -2312,7 +2315,9 @@
                 <div class="unit-method pass">testSequenceIndividualCallbacks: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testSequenceOnComplete: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testSequencePassesOverflowDt: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testTweenPropertyEntryAllocationsScaleWithPropertyCount: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testTweenRemovedAfterCompletion: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testTweenScaleExpandsToTwoEntries: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testZeroDuration: OK <span class="dots">..</span></div>
             </div>
             <div class="unit-class">
@@ -2613,10 +2618,13 @@
                 <div class="unit-method pass">testCardTargetPositionHex: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testCardTargetPositionRect: OK <span class="dots">.........</span></div>
                 <div class="unit-method pass">testCellAtPointHex: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testCellAtPointHexAllocatesOneFractionalHexAndOneHexPerCall: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testCellAtPointHexReusesScratchPointAcrossCalls: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testCellAtPointNegativeCoordinates: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testCellAtPointRect: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testCellAtPointRectGap: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testCellAtPointRectOutside: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testCellAtPointRectReusesScratchPointAcrossCalls: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testCellAtPointRectSecondCell: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testCellCardPlayedEventEmitted: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testCellCardPlayedListenerRemovedOnUnregister: OK <span class="dots">..</span></div>
@@ -2675,6 +2683,7 @@
                 <div class="unit-method pass">testGetCellVisualNonexistent: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testGetEmptyCell: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testHasLayerFalseWhenNotSet: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testHexNeighborsAllocatesSevenHexesPerCall: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testHitTestNonSquareCellYGap: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testIsOccupied: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testLinkDropTargetDuplicateIgnored: OK <span class="dots">.</span></div>
