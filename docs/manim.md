@@ -2278,6 +2278,12 @@ With `tangent`, particle initial velocity follows the path tangent direction at 
 
 **Runtime API:** `group.emitBurst(count)` forces N particles immediately. `group.emitFilter = (x, y) -> Bool` filters particles by world-space spawn position (return `false` to discard).
 
+**`particles.worldAnchor:Null<h2d.Object>`** — designated world-space anchor for non-relative groups. When set on a `Particles` container, groups with `relative: false` bake their emit positions/velocity/scale/rotation into `worldAnchor`'s local frame (instead of full scene-space) and render through `worldAnchor`'s transform. Use case: a per-shot trail emitter parented to a moving sprite — set `worldAnchor` to the scene's world-root (the object below the camera), and trail particles will stay glued to the world points where they were emitted instead of sliding against the world during camera pan/zoom. Null (default) preserves legacy screen-space baking. No DSL surface — set in runtime code:
+```haxe
+trailEmitter = createTrackedParticles(visuals.trailParticles);
+trailEmitter.worldAnchor = worldRoot;
+```
+
 ### AnimSM Tile Source
 
 Use state animation frames as particle tile source, with lifetime-driven and event-driven state transitions.

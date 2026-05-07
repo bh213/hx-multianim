@@ -4,9 +4,9 @@
     "license": "BSD",
     "tags": ["animation", "ui", "heaps", "pixel-art", "sprite", "manim"],
     "description": "animations and pixel art UI for Heaps framework",
-    "version": "1.0.0-rc.4",
+    "version": "1.0.0-rc.5",
     "classPath": "src/",
-    "releasenote": "RC4: @switch block, conditional blocks, @any/@all, particle shutdown + externallyDriven, .anim flipX/flipY, tile pivot()/center(), dynamic programmable refs, hxparse removed, sequential crossfade, ScreenShakeHelper.",
+    "releasenote": "RC5: zero per-frame allocs on hot paths (particles, grid, card hand, incremental rebuild), Particles.worldAnchor for world-space trails, allocation watchdog gated for production, plus codegen/lifecycle bug fixes.",
     "contributors": ["bh213"],
     "dependencies": { 
         "heaps":""

@@ -885,6 +885,149 @@ class ParticleRuntimeTest extends utest.Test {
 		Assert.floatEquals(200.0, eAbs.y, 1.0);
 	}
 
+	// ==================== worldAnchor: non-relative bake into anchor-local frame ====================
+
+	@Test
+	public function testWorldAnchorBakesParticlesIntoAnchorLocalFrame():Void {
+		// Scene: worldRoot at (50, 60) with a Particles child at (10, 20).
+		// Without an anchor, a non-relative emit at local (0, 0) bakes to scene-space (60, 80).
+		// With worldAnchor = worldRoot, the same emit must bake to (10, 20) — the parts container's
+		// position relative to worldRoot — i.e. the worldRoot's local frame, with worldRoot's own
+		// translation removed.
+		var worldRoot = new h2d.Object();
+		worldRoot.x = 50;
+		worldRoot.y = 60;
+
+		var p = new Particles(worldRoot);
+		p.x = 10;
+		p.y = 20;
+
+		var g = createGroup("trail", p);
+		var dg:Dynamic = g;
+		dg.speed = 0;
+		dg.nparts = 1;
+		dg.emitSync = 1.0;
+		dg.isRelative = false;
+		dg.emitMode = Point(0.0, 0.0);
+
+		p.worldAnchor = worldRoot;
+		g.start();
+
+		var e = g.batch.first;
+		Assert.notNull(e);
+		Assert.floatEquals(10.0, e.x, 0.01);
+		Assert.floatEquals(20.0, e.y, 0.01);
+	}
+
+	@Test
+	public function testWorldAnchorTrailStaysAnchoredAcrossAnchorTranslation():Void {
+		// The point of worldAnchor is that a trail emitted before and after a camera/world pan
+		// should land at the same anchor-local coordinates — particles do not slide against the
+		// world when worldRoot moves between emits.
+		var worldRoot = new h2d.Object();
+		worldRoot.x = 0;
+		worldRoot.y = 0;
+
+		var p = new Particles(worldRoot);
+		p.x = 100;
+		p.y = 200;
+
+		var g = createGroup("trail", p);
+		var dg:Dynamic = g;
+		dg.speed = 0;
+		dg.emitMode = Point(0.0, 0.0);
+		dg.isRelative = false;
+
+		p.worldAnchor = worldRoot;
+
+		g.emitBurst(1);
+		var first = g.batch.first;
+		Assert.notNull(first);
+		var firstX = first.x;
+		var firstY = first.y;
+
+		// The world pans — worldRoot translates. The Particles container moves with it,
+		// so the emitter is at a different scene-space point now.
+		worldRoot.x = 500;
+		worldRoot.y = 600;
+
+		g.emitBurst(1);
+
+		// Find the newly-emitted particle (the one that is not `first`).
+		var second:Dynamic = g.batch.first;
+		while (second != null && second == first) second = second.next;
+		Assert.notNull(second);
+
+		// Both particles must have the same anchor-local baked position — that is what
+		// keeps the trail glued to the world while the world pans.
+		Assert.floatEquals(firstX, second.x, 0.01);
+		Assert.floatEquals(firstY, second.y, 0.01);
+	}
+
+	@Test
+	public function testNullWorldAnchorPreservesScreenSpaceBaking():Void {
+		// Regression guard: with worldAnchor explicitly null (the default), a non-relative
+		// emit must still bake into scene space — i.e. include worldRoot's translation.
+		var worldRoot = new h2d.Object();
+		worldRoot.x = 50;
+		worldRoot.y = 60;
+
+		var p = new Particles(worldRoot);
+		p.x = 10;
+		p.y = 20;
+
+		var g = createGroup("trail", p);
+		var dg:Dynamic = g;
+		dg.speed = 0;
+		dg.nparts = 1;
+		dg.emitSync = 1.0;
+		dg.isRelative = false;
+		dg.emitMode = Point(0.0, 0.0);
+
+		// p.worldAnchor remains null — legacy path.
+		g.start();
+
+		var e = g.batch.first;
+		Assert.notNull(e);
+		Assert.floatEquals(60.0, e.x, 0.01);
+		Assert.floatEquals(80.0, e.y, 0.01);
+	}
+
+	// ==================== Non-uniform container scale: column norms, not row norms ====================
+
+	@Test
+	public function testNonRelativeBakedScaleAndRotationUseContainerAxisLengths():Void {
+		// For a Particles container with scaleX=2, scaleY=0.5, rotation=π/3:
+		//   matA = 2·cos(π/3) = 1.0       matC = 0.5·-sin(π/3) ≈ -0.433
+		//   matB = 2·sin(π/3) ≈ 1.732     matD = 0.5·cos(π/3)  =  0.25
+		// The world length of the container's local x-axis is |column 1| = √(matA² + matB²) = 2,
+		// and of the y-axis is |column 2| = √(matC² + matD²) = 0.5. A non-relative emit must
+		// stamp those axis lengths and the container's rotation onto the particle's
+		// baseScaleX/Y/rotation — so a particle authored at size=1 renders at the container's
+		// effective size, which is what `relative: false` means visually.
+		var p = createParticles();
+		p.scaleX = 2.0;
+		p.scaleY = 0.5;
+		p.rotation = Math.PI / 3;
+
+		var g = createGroup("main", p);
+		var dg:Dynamic = g;
+		dg.speed = 0;
+		dg.nparts = 1;
+		dg.emitSync = 1.0;
+		dg.isRelative = false;
+		dg.emitMode = Point(0.0, 0.0);
+
+		g.start();
+
+		var e = g.batch.first;
+		Assert.notNull(e);
+		// e.scaleX/scaleY mirror baseScaleX/baseScaleY at emit; both are set in init().
+		Assert.floatEquals(2.0, e.scaleX, 0.01);
+		Assert.floatEquals(0.5, e.scaleY, 0.01);
+		Assert.floatEquals(Math.PI / 3, e.rotation, 0.01);
+	}
+
 	// ==================== Sub-emitter OnBirth on recycled particles ====================
 
 	@Test

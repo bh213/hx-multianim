@@ -956,16 +956,47 @@ class ParticleGroup {
 		if ( !isRelative ) {
 			var parts = this.parts;
 			parts.syncPos(); // Ensure absolute transform is current before using absX/absY/mat*
+
+			// Effective transform applied at emit. Without an anchor this is the parts
+			// container's full absolute transform (legacy screen-space bake). With an
+			// anchor it is R = worldAnchor⁻¹ ∘ parts.abs — i.e. parts' transform expressed
+			// in worldAnchor's local frame, so emit positions, velocity, scale, and
+			// rotation land in that frame and render-through-anchor recovers world-space.
+			var rA = parts.matA;
+			var rB = parts.matB;
+			var rC = parts.matC;
+			var rD = parts.matD;
+			var rX = parts.absX;
+			var rY = parts.absY;
+			var anchor = this.parts.worldAnchor;
+			if (anchor != null) {
+				anchor.syncPos();
+				var wa = anchor.matA, wb = anchor.matB, wc = anchor.matC, wd = anchor.matD;
+				var det = wa * wd - wb * wc;
+				var invDet = det != 0 ? 1.0 / det : 0.0;
+				rA = (wd * parts.matA - wc * parts.matB) * invDet;
+				rB = (wa * parts.matB - wb * parts.matA) * invDet;
+				rC = (wd * parts.matC - wc * parts.matD) * invDet;
+				rD = (wa * parts.matD - wb * parts.matC) * invDet;
+				var dx = parts.absX - anchor.absX;
+				var dy = parts.absY - anchor.absY;
+				rX = (wd * dx - wc * dy) * invDet;
+				rY = (wa * dy - wb * dx) * invDet;
+			}
+
 			var px = p.x;
-			p.x = px * parts.matA + p.y * parts.matC + parts.absX;
-			p.y = px * parts.matB + p.y * parts.matD + parts.absY;
-			var scX = Math.sqrt((parts.matA * parts.matA) + (parts.matC * parts.matC)) * size;
-			var scY = Math.sqrt((parts.matB * parts.matB) + (parts.matD * parts.matD)) * size;
+			p.x = px * rA + p.y * rC + rX;
+			p.y = px * rB + p.y * rD + rY;
+			// Column norms = world lengths of the local x- and y-axes after the
+			// effective transform. (Row norms only happen to coincide for pure
+			// rotation or uniform scale.)
+			var scX = Math.sqrt((rA * rA) + (rB * rB)) * size;
+			var scY = Math.sqrt((rC * rC) + (rD * rD)) * size;
 			p.scaleX = scX;
 			p.scaleY = scY;
 			p.baseScaleX = scX;
 			p.baseScaleY = scY;
-			var absRot = Math.atan2(parts.matB / scY, parts.matA / scX);
+			var absRot = Math.atan2(rB / scX, rA / scX);
 			p.rotation += absRot;
 
 			var cos = Math.cos(absRot);
@@ -1384,6 +1415,21 @@ class Particles extends h2d.Drawable {
 	final groupList : Array<ParticleGroup> = [];
 
 	/**
+		Designated world-space anchor for non-relative groups. When non-null, groups
+		with `isRelative = false` bake emit positions into `worldAnchor`'s local frame
+		(instead of full scene space) and render through `worldAnchor`'s transform.
+
+		Use case: a per-emitter trail parented to a moving sprite. Set `worldAnchor`
+		to the scene's world-root (the object below the camera). Trail particles spawn
+		at the emitter's current world position, stay where spawned in world space,
+		and follow camera pan/zoom correctly — instead of sliding against the world
+		when the camera moves.
+
+		Null (default) preserves legacy screen-space baking and identity draw.
+	**/
+	public var worldAnchor : Null<h2d.Object> = null;
+
+	/**
 		Create a new Particles instance.
 		@param parent An optional parent `h2d.Object` instance to which Particles adds itself if set.
 	**/
@@ -1489,12 +1535,23 @@ class Particles extends h2d.Drawable {
 				if ( g.isRelative ) {
 					g.batch.drawWith(ctx, this);
 				} else {
-					matA = 1;
-					matB = 0;
-					matC = 0;
-					matD = 1;
-					absX = 0;
-					absY = 0;
+					var anchor = worldAnchor;
+					if (anchor != null) {
+						anchor.syncPos();
+						matA = anchor.matA;
+						matB = anchor.matB;
+						matC = anchor.matC;
+						matD = anchor.matD;
+						absX = anchor.absX;
+						absY = anchor.absY;
+					} else {
+						matA = 1;
+						matB = 0;
+						matC = 0;
+						matD = 1;
+						absX = 0;
+						absY = 0;
+					}
 					g.batch.drawWith(ctx, this);
 					matA = realA;
 					matB = realB;

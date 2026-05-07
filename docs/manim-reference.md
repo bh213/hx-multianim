@@ -1064,6 +1064,7 @@ group.shutdownSpeedCurve = myCurve;
 - No-op on non-looping groups
 - After shutdown, `emitBurstAt()` still works (manual one-shot effects)
 - `group.emitFilter = (x:Float, y:Float) -> Bool` — filter particles by world-space spawn position (return `false` to discard). Works for both relative and non-relative groups
+- `particles.worldAnchor : Null<h2d.Object>` — designated world-space anchor for `relative: false` groups. When non-null, non-relative emit position/velocity/scale/rotation bake into `worldAnchor`'s local frame (not full scene space) and the draw branch renders through `worldAnchor`'s transform. Set this on a per-emitter trail's `Particles` container with the scene's world-root so the trail stays anchored to the world during camera pan/zoom. Null (default) preserves legacy screen-space baking. Runtime-only — no DSL surface
 - Existing `onEnd()` callback fires when last particle dies (default: `this.remove()`)
 - Total visual clear time: `duration` (curve phase) + up to `maxLife` (natural die-off of remaining particles)
 
