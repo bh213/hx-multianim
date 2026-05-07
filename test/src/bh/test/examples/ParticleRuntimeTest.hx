@@ -1241,6 +1241,49 @@ class ParticleRuntimeTest extends utest.Test {
 			+ "computeState already use scratch FPoints; if this fires, someone added an allocation.");
 	}
 
+	// ==================== Group iteration must not allocate Map iterators ====================
+
+	// Particles.sync runs once and Particles.draw runs twice per frame, each iterating
+	// the groups Map directly. On HL each `for (g in groups)` allocates a fresh
+	// hashmap iterator (backing array + struct + iterator object) — ~9 allocs/frame
+	// per Particles instance even when nothing is happening. The fix keeps a parallel
+	// Array<ParticleGroup> in registration order and iterates THAT in hot paths.
+	// These two tests pin the contract that the parallel list mirrors the Map.
+
+	@Test
+	public function testAddGroupAppendsToGroupList():Void {
+		var p = createParticles();
+		var ga = createGroup("a", p);
+		var gb = createGroup("b", p);
+		var gc = createGroup("c", p);
+
+		Assert.equals(3, p.groupList.length,
+			"groupList must contain every group present in the groups Map. "
+			+ "If this fires, addGroup forgot to push onto the parallel list.");
+		Assert.equals(ga, p.groupList[0], "groupList must preserve insertion order — slot 0 should be the first added group.");
+		Assert.equals(gb, p.groupList[1], "groupList must preserve insertion order — slot 1 should be the second added group.");
+		Assert.equals(gc, p.groupList[2], "groupList must preserve insertion order — slot 2 should be the third added group.");
+	}
+
+	@Test
+	public function testRemoveGroupRemovesFromGroupListPreservingOrder():Void {
+		var p = createParticles();
+		var ga = createGroup("a", p);
+		createGroup("b", p);
+		var gc = createGroup("c", p);
+		createGroup("d", p);
+
+		p.removeGroup("b");
+		p.removeGroup("d");
+
+		Assert.equals(2, p.groupList.length,
+			"removeGroup must drop the group from the parallel list. "
+			+ "If this fires, removeGroup updated the Map but not groupList — hot-path iteration "
+			+ "would still walk over removed groups.");
+		Assert.equals(ga, p.groupList[0], "remaining groups must keep their original relative order — 'a' is still first.");
+		Assert.equals(gc, p.groupList[1], "remaining groups must keep their original relative order — 'c' is still second.");
+	}
+
 	// ==================== Disabled group should freeze attached path ====================
 
 	@Test

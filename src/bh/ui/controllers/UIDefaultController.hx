@@ -96,8 +96,21 @@ class UIDefaultController implements UIController {
 
 	public var exitResponse:Null<Dynamic> = null;
 
+	// State threaded into the cached update callback so update() doesn't
+	// allocate a fresh closure per frame on HL. The callback below reads
+	// _updateDt and forwards to redrawAndUpdate.
+	var _updateDt:Float = 0;
+	final _updateCallback:UIElement->Void;
+
 	public function new(integration) {
 		this.integration = integration;
+		// Initialise _updateCallback before passing `this` to ControllableImpl —
+		// null-safety requires all final fields assigned before `this` leaks.
+		// The closure body runs later (every frame), so the analyzer's
+		// "this not fully initialised" complaint is a false positive here.
+		this._updateCallback = function(element:UIElement):Void {
+			@:nullSafety(Off) redrawAndUpdate(element, _updateDt);
+		};
 		this.controllable = new ControllableImpl(this);
 	}
 
@@ -176,10 +189,10 @@ class UIDefaultController implements UIController {
 		if (controllable.captureEvents.target != null)
 			return [controllable.captureEvents.target];
 		var hits:Array<UIElement> = [];
-		for (element in integration.getElements(SETReceiveEvents)) {
+		integration.forEachElement(SETReceiveEvents, function(element:UIElement):Void {
 			if (element.containsPoint(pos))
 				hits.push(element);
-		}
+		});
 		if (hits.length > 1) {
 			// Stable sort: higher eventPriority first, registration order as tiebreaker
 			haxe.ds.ArraySort.sort(hits, (a, b) -> {
@@ -233,9 +246,8 @@ class UIDefaultController implements UIController {
 	}
 
 	public function update(dt:Float) {
-		for (element in integration.getElements(SETReceiveUpdates)) {
-			redrawAndUpdate(element, dt);
-		}
+		_updateDt = dt;
+		integration.forEachElement(SETReceiveUpdates, _updateCallback);
 
 		if (exitResponse != null) {
 			final retVal = exitResponse;

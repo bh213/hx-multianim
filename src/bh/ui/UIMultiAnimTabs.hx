@@ -379,6 +379,20 @@ class UIMultiAnimTabs implements UIElement implements UIElementDisablable implem
 		return result;
 	}
 
+	public function forEachSubElement(type:SubElementsType, fn:UIElement->Void):Void {
+		for (btn in tabButtons)
+			fn(cast btn);
+		var activeContent = tabContent.get(selectedIndex);
+		if (activeContent != null) {
+			for (element in activeContent) {
+				fn(element);
+				if (Std.isOfType(element, UIElementSubElements)) {
+					cast(element, UIElementSubElements).forEachSubElement(type, fn);
+				}
+			}
+		}
+	}
+
 	// --- UIElement ---
 
 	public function getObject():Object {

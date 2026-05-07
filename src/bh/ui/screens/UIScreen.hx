@@ -51,6 +51,7 @@ enum LayersEnum {
 
 interface UIScreen {
 	function getElements(type:SubElementsType):Array<UIElement>;
+	function forEachElement(type:SubElementsType, fn:UIElement->Void):Void;
 	function update(dt:Float):Void;
 	function addElement(element:UIElement, layer:Null<LayersEnum>):UIElement;
 	function removeElement(element:UIElement):UIElement;
@@ -301,6 +302,12 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 			retVal = retVal.concat(provider.getSubElements(type));
 		}
 		return retVal;
+	}
+
+	public function forEachElement(type:SubElementsType, fn:UIElement->Void):Void {
+		for (e in elements) fn(e);
+		for (provider in subElementProviders)
+			provider.forEachSubElement(type, fn);
 	}
 
     function hasSettings(settings:ResolvedSettings, settingName:String) {

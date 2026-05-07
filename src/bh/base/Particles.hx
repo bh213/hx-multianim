@@ -1377,6 +1377,11 @@ class Particles extends h2d.Drawable {
 	static inline var VERSION = 1;
 
 	final groups : Map<String, ParticleGroup>;
+	// Parallel insertion-ordered list iterated in sync()/draw(). Iterating a Map
+	// on HL allocates a fresh hashmap iterator per for-in (~3 allocs); iterating
+	// an Array compiles to an indexed loop with no per-call allocation. The Map
+	// stays for O(1) id lookup in getGroup()/addGroup()/removeGroup().
+	final groupList : Array<ParticleGroup> = [];
 
 	/**
 		Create a new Particles instance.
@@ -1398,6 +1403,7 @@ class Particles extends h2d.Drawable {
 	public function addGroup( g : ParticleGroup ):ParticleGroup {
 		if (groups.exists(g.id)) throw 'group ${g.id} already exists';
 		groups.set(g.id, g);
+		groupList.push(g);
 		return g;
 	}
 
@@ -1410,6 +1416,7 @@ class Particles extends h2d.Drawable {
 			g.batch.clear();
 			g.batch.remove();
 			g.freeParticles.resize(0);
+			groupList.remove(g);
 		}
 		groups.remove(id);
 	}
@@ -1426,7 +1433,7 @@ class Particles extends h2d.Drawable {
 		The function should return values in [0, 1) range.
 	**/
 	public function setRandomFunc(func:() -> Float):Void {
-		for (g in groups) g.randomFunc = func;
+		for (g in groupList) g.randomFunc = func;
 	}
 
 	/**
@@ -1438,14 +1445,14 @@ class Particles extends h2d.Drawable {
 		@param curve Count curve override. null = use each group's configured curve.
 	**/
 	public function shutdown(?duration:Float, ?curve:bh.paths.Curve.ICurve):Void {
-		for (g in groups) g.shutdown(duration, curve);
+		for (g in groupList) g.shutdown(duration, curve);
 	}
 
 	/**
 		Manually advance all externally-driven groups by `dt` seconds.
 	**/
 	public function advanceTime(dt:Float):Void {
-		for (g in groups)
+		for (g in groupList)
 			if (g.externallyDriven)
 				g.advanceTime(dt);
 	}
@@ -1454,7 +1461,7 @@ class Particles extends h2d.Drawable {
 		super.sync(ctx);
 		var isDone = true;
 		var dt = ctx.elapsedTime;
-		for( g in groups ) {
+		for( g in groupList ) {
 			if ( !g.started && g.enabled ) g.start();
 			if (!g.externallyDriven)
 				g.updateTime(dt);
@@ -1476,7 +1483,7 @@ class Particles extends h2d.Drawable {
 		var realC : Float = matC;
 		var realD : Float = matD;
 
-		for( g in groups )
+		for( g in groupList )
 			if( g.enabled ) {
 				blendMode = g.batch.blendMode;
 				if ( g.isRelative ) {
@@ -1498,7 +1505,7 @@ class Particles extends h2d.Drawable {
 				}
 			}
 		blendMode = old;
-		for (g in groups)
+		for (g in groupList)
 			if (g.externallyDriven) g._externalDt = 0;
 	}
 
@@ -1506,7 +1513,7 @@ class Particles extends h2d.Drawable {
 		Returns an Iterator of particle groups within Particles.
 	**/
 	public inline function getGroups():Iterator<ParticleGroup> {
-		return groups.iterator();
+		return groupList.iterator();
 	}
 
 }

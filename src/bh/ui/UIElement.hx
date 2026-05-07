@@ -330,4 +330,8 @@ enum SubElementsType {
  */
 interface UIElementSubElements {
 	function getSubElements(type:SubElementsType):Array<UIElement>;
+	// Alloc-free streaming variant. Hot-path callers (per-frame controller
+	// update, per-event hit test) must use this — getSubElements builds a
+	// fresh Array every call.
+	function forEachSubElement(type:SubElementsType, fn:UIElement->Void):Void;
 }

@@ -105,6 +105,10 @@ private class MockIntegration implements UIControllerScreenIntegration {
 		return elements;
 	}
 
+	public function forEachElement(type:SubElementsType, fn:UIElement->Void):Void {
+		for (e in elements) fn(e);
+	}
+
 	public function onKey(keyCode:Int, release:Bool):Bool return true;
 	public function dispatchMouseMove(pos:Point):Bool return true;
 	public function onMouseWheel(pos:Point, delta:Float):Bool return true;
@@ -392,6 +396,31 @@ class EventPriorityTest extends utest.Test {
 		', "test");
 		var wrapper = new bh.ui.UIInteractiveWrapper(result.interactives[0], null);
 		Assert.equals(42, wrapper.eventPriority);
+	}
+
+	// UIDefaultController.update / getEventElements call integration.getElements()
+	// every frame / every event, which allocates a defensive copy + concat. The fix
+	// adds a callback variant `forEachElement(type, fn)` that streams elements
+	// (and provider sub-elements) without building an array. This test pins the
+	// contract: the new method visits the same elements in the same order.
+	@Test
+	public function testIntegrationForEachElementVisitsAllElementsInOrder():Void {
+		var a = new MockInteractive("a", 0, 0, 10, 10);
+		var b = new MockInteractive("b", 0, 0, 10, 10);
+		var c = new MockInteractive("c", 0, 0, 10, 10);
+		integration.elements = [a, b, c];
+
+		var visited:Array<UIElement> = [];
+		integration.forEachElement(SETReceiveUpdates, function(e:UIElement):Void {
+			visited.push(e);
+		});
+
+		Assert.equals(3, visited.length,
+			"forEachElement must visit every element registered on the integration. "
+			+ "If this fires, the callback variant is dropping elements that getElements() returns.");
+		Assert.equals(cast a, visited[0], "forEachElement must preserve registration order.");
+		Assert.equals(cast b, visited[1], "forEachElement must preserve registration order.");
+		Assert.equals(cast c, visited[2], "forEachElement must preserve registration order.");
 	}
 
 	@Test

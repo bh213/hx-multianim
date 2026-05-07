@@ -113,4 +113,8 @@ class UIMultiAnimRadioButtons implements UIElement implements UIElementDisablabl
 			case SETReceiveEvents: cast checkboxes;
 		}
 	}
+
+	public function forEachSubElement(type:SubElementsType, fn:UIElement->Void):Void {
+		for (cb in checkboxes) fn(cast cb);
+	}
 }

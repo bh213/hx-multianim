@@ -308,6 +308,13 @@ class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisab
 		}
 	}
 
+	public function forEachSubElement(type:SubElementsType, fn:UIElement->Void):Void {
+		switch type {
+			case SETReceiveUpdates: fn(this.panel);
+			case SETReceiveEvents:
+		}
+	}
+
 	public function customAddToLayer(requestedLayer:Null<LayersEnum>, screen:UIScreen, updateMode:Bool) {
 		if (requestedLayer == null) {
 			if (updateMode)
