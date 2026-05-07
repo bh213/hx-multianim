@@ -214,8 +214,8 @@ class TweenSequence {
 
 	public function cancel():Void {
 		cancelled = true;
-		if (currentIndex < tweens.length)
-			tweens[currentIndex].cancel();
+		for (tween in tweens)
+			tween.cancel();
 	}
 
 	/** Advance the sequence. Returns true when all tweens are complete. */
@@ -243,8 +243,14 @@ class TweenSequence {
 
 	/** Jump all remaining tweens to their final state. */
 	public function finish():Void {
+		if (cancelled)
+			return;
 		while (currentIndex < tweens.length) {
 			var current = tweens[currentIndex];
+			if (current.cancelled) {
+				currentIndex++;
+				continue;
+			}
 			current.init();
 			current.finish();
 			var cb = current.onComplete;
@@ -304,7 +310,11 @@ class TweenGroup {
 
 	/** Jump all tweens to their final state. */
 	public function finish():Void {
+		if (cancelled)
+			return;
 		for (tween in tweens) {
+			if (tween.cancelled)
+				continue;
 			tween.init();
 			tween.finish();
 			var cb = tween.onComplete;

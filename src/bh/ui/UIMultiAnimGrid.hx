@@ -726,9 +726,7 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 		}
 
 		// Build the layer programmable (only user-supplied params — no auto col/row injection)
-		final buildParams:Map<String, Dynamic> = if (params != null) params else new Map();
-
-		final result = builder.buildWithParameters(config.buildName, buildParams, null, null, true);
+		final result = builder.buildWithParameters(config.buildName, params, null, null, true);
 		final visual = new DefaultCellVisual<T>(result, "", "");
 
 		// Position at cell coordinates

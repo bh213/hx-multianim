@@ -343,6 +343,13 @@ class IncrementalUpdateContext {
 	 *  setParameter calls on a transition-bearing programmable must reuse the cache and
 	 *  leave this counter unchanged. Pure instrumentation. */
 	public var paramRefsRebuildCount:Int = 0;
+	/** Counts how many times applyUpdates allocated a defensive snapshot of rebuildListeners
+	 *  before dispatch. The snapshot exists to tolerate listeners that add/remove other
+	 *  listeners during dispatch — but the common steady-state shape on the UI hover/press
+	 *  hot path is exactly one listener (one per UIInteractiveSource from addInteractives,
+	 *  one per card from UICardHandHelper), where no defensive copy is needed. Pure
+	 *  instrumentation. */
+	public var rebuildListenerSnapshotCount:Int = 0;
 	// Cached uniqueNodeName → entry lookups for applyConditionalChains. Source arrays
 	// only mutate during build and structural rebuild (track* / cleanupDestroyedSubtree);
 	// those sites null these out so the next applyConditionalChains rebuilds them.
@@ -486,12 +493,16 @@ class IncrementalUpdateContext {
 	 */
 	public function cleanupDestroyedSubtree(ir:InternalBuilderResults, container:h2d.Object):Void {
 		// 1. Capture dynamicRef child contexts that will be removed, so we can drop their bindings afterwards.
+		//    Each per-key array may hold multiple writers (unnamed sites colliding on the same key);
+		//    walk every writer so a multi-writer arm cleanup drops all dependent dynamicRefBindings.
 		final removedChildContexts:Array<IncrementalUpdateContext> = [];
-		for (_ => result in ir.dynamicRefs) {
-			final obj = result.object;
-			final isUnder = obj == container || (obj.parent != null && isDescendantOf(obj, container));
-			if (isUnder && result.incrementalContext != null)
-				removedChildContexts.push(result.incrementalContext);
+		for (_ => arr in ir.dynamicRefs) {
+			for (result in arr) {
+				final obj = result.object;
+				final isUnder = obj == container || (obj.parent != null && isDescendantOf(obj, container));
+				if (isUnder && result.incrementalContext != null)
+					removedChildContexts.push(result.incrementalContext);
+			}
 		}
 
 		// 2. Clean IR collections via the existing helper.
@@ -1253,36 +1264,13 @@ class IncrementalUpdateContext {
 
 	@:nullSafety(Off)
 	function rebuildDynamicNameRef(binding:DynamicNameBinding, newName:String):Void {
-		// Named sites cannot collide (build-time throw at the DYNAMIC_REF case), so
-		// dynamicRefCollisions never carries their key. Only unnamed sites need the
-		// collision-count maintenance below.
-		final nodeHasExplicitName = switch binding.node.updatableName {
-			case UNTObject(null): false;
-			default: true;
-		};
-
-		// Decrement collision count for the old key — this site no longer writes there.
-		// dynamicRefCollisions is only populated when count >= 2 (build path seeds at 2),
-		// so dropping the entry once it would fall to 1 keeps the invariant: "key present" ↔
-		// "currently colliding". Without this, a rename out of a colliding key leaves the count
-		// stuck and getDynamicRef(oldKey) trips the collision throw forever.
-		if (!nodeHasExplicitName) {
-			final counts = binding.internalResults.dynamicRefCollisions;
-			final prev = counts.get(binding.stableKey);
-			if (prev != null) {
-				if (prev <= 2) counts.remove(binding.stableKey);
-				else counts.set(binding.stableKey, prev - 1);
-			}
-		}
-
 		// Drop bookkeeping (conditionalEntries, conditionalApplyEntries, deferredEntries,
 		// trackedExpressions, dynamicRefBindings, dynamicNameBindings, activeTransitionTweens)
 		// and IR registrations (interactives, slots, names, dynamicRefs, htmlTextsWithLinks)
 		// for the OLD child subtree before tearing down its scene graph. Mirrors the cleanup
-		// pattern used by REPEAT/SWITCH/materializeDeferred. The previous manual-filter approach
-		// caught the dynamicRefBindings for the directly-tracked child, but skipped the rest of
-		// the bookkeeping arrays — leaving the rebuild path inconsistent with its siblings and
-		// fragile under future code changes.
+		// pattern used by REPEAT/SWITCH/materializeDeferred. removeRegistrationsUnder splices
+		// this writer out of dynamicRefs[oldKey] so the per-key array stays in sync with the
+		// live scene graph — no separate collision counter to maintain.
 		//
 		// Target the OLD result.object (the only child of binding.container), NOT the container
 		// itself: passing the container would also reap THIS dynamicNameBinding (its own
@@ -1315,18 +1303,17 @@ class IncrementalUpdateContext {
 		binding.currentName = newName;
 		// For unnamed sites, stableKey tracks currentName so the next rebuild removes the right
 		// entry. For #name-labeled sites, stableKey is fixed and is what user code fetches by.
+		final nodeHasExplicitName = switch binding.node.updatableName {
+			case UNTObject(null): false;
+			default: true;
+		};
 		if (!nodeHasExplicitName) binding.stableKey = newName;
 
-		// Mirror the build-time collision check (DYNAMIC_REF case): if the new key already has
-		// a writer and this site is unnamed, bump the collision count so getDynamicRef(newKey)
-		// throws with the disambiguation hint instead of silently last-writer-wins.
-		if (!nodeHasExplicitName && binding.internalResults.dynamicRefs.exists(binding.stableKey)) {
-			final counts = binding.internalResults.dynamicRefCollisions;
-			counts.set(binding.stableKey, (counts.exists(binding.stableKey) ? counts.get(binding.stableKey) : 1) + 1);
-		}
-
-		// Store the new result under the stable key
-		binding.internalResults.dynamicRefs.set(binding.stableKey, result);
+		// Append the new writer under the (possibly renamed) key. Collision detection at
+		// getDynamicRef now reads `arr.length > 1` directly — no parallel counter to maintain.
+		final arr = binding.internalResults.dynamicRefs.get(binding.stableKey);
+		if (arr == null) binding.internalResults.dynamicRefs.set(binding.stableKey, [result]);
+		else arr.push(result);
 
 		// Re-register parameter bindings for the new child
 		if (result.incrementalContext != null) {
@@ -1472,11 +1459,20 @@ class IncrementalUpdateContext {
 		hasChanges = false;
 
 		// Fire rebuild listeners AFTER state cleanup so listeners can safely call setParameter()
-		// (re-entrancy enters a fresh applyUpdates cycle). Iterate over a snapshot in case a
-		// listener removes itself or others during the callback.
-		if (firedRebuild && rebuildListeners.length > 0) {
-			final snapshot = rebuildListeners.copy();
-			for (fn in snapshot) fn();
+		// (re-entrancy enters a fresh applyUpdates cycle). The single-listener case — the
+		// steady state on the UI hover/press hot path — needs no defensive copy: self-removal
+		// during dispatch is safe because we never iterate further, and re-entrant
+		// addRebuildListener targets a future cycle. Snapshot only when a listener could
+		// mutate the array out from under us (length >= 2).
+		if (firedRebuild) {
+			final n = rebuildListeners.length;
+			if (n == 1) {
+				rebuildListeners[0]();
+			} else if (n > 1) {
+				rebuildListenerSnapshotCount++;
+				final snapshot = rebuildListeners.copy();
+				for (fn in snapshot) fn();
+			}
 		}
 	}
 
@@ -1699,11 +1695,12 @@ class BuilderResult implements bh.ui.UIInteractiveSource {
 	public var gridCoordinateSystem:Null<GridCoordinateSystem>;
 	public var hexCoordinateSystem:Null<HexCoordinateSystem>;
 	public var slots:Array<{key:SlotKey, handle:SlotHandle}>;
-	public var dynamicRefs:Map<String, BuilderResult>;
-	/** Per-key collision counter for unnamed dynamicRef sites. `getDynamicRef(name)` throws when
-	 *  count > 1 — the result returned by the map lookup is arbitrary (last writer) in that case,
-	 *  so surfacing the ambiguity at the call site is the only sound option. */
-	public var dynamicRefCollisions:Null<Map<String, Int>>;
+	/** Per-writer dynamicRef storage. Each unnamed `dynamicRef($X)` site appends to the array under
+	 *  key X; each `#name dynamicRef(...)` site is the sole writer under its explicit key. Collision
+	 *  = `arr.length > 1` for unnamed keys — `getDynamicRef(key)` throws to force `#name`
+	 *  disambiguation. Cleanup paths (SWITCH/REPEAT arm flips, $param-driven name renames) splice
+	 *  the destroyed writer's entry so cardinality stays in sync with the live scene graph. */
+	public var dynamicRefs:Map<String, Array<BuilderResult>>;
 	public var incrementalContext:Null<IncrementalUpdateContext>;
 	public var htmlTextsWithLinks:Null<Array<h2d.HtmlText>>;
 	#if MULTIANIM_DEV
@@ -1732,7 +1729,6 @@ class BuilderResult implements bh.ui.UIInteractiveSource {
 		this.hexCoordinateSystem = other.hexCoordinateSystem;
 		this.slots = other.slots;
 		this.dynamicRefs = other.dynamicRefs;
-		this.dynamicRefCollisions = other.dynamicRefCollisions;
 		this.incrementalContext = other.incrementalContext;
 		this.htmlTextsWithLinks = other.htmlTextsWithLinks;
 		this.devBuilderParams = other.devBuilderParams;
@@ -1844,16 +1840,43 @@ class BuilderResult implements bh.ui.UIInteractiveSource {
 		return getUpdatable('${name} ${index}');
 	}
 
+	/** Existence check companion to `getSlot`. Returns false (never throws) when no slots
+	 *  block exists, when the name is unknown, or when the requested kind/index doesn't
+	 *  match a present slot. Lets callers query indexed slots whose iteration may have
+	 *  been dropped by a `repeatable` shrinking under `setParameter` without wrapping
+	 *  `getSlot` in try/catch. */
+	public function hasSlot(name:String, ?index:Null<Int>, ?indexY:Null<Int>):Bool {
+		if (slots == null) return false;
+		for (entry in slots) {
+			final match = switch entry.key {
+				case Named(n): index == null && indexY == null && n == name;
+				case Indexed(n, i): index != null && indexY == null && n == name && i == index;
+				case Indexed2D(n, ix, iy): index != null && indexY != null && n == name && ix == index && iy == indexY;
+			};
+			if (match) return true;
+		}
+		return false;
+	}
+
+	/** Existence check companion to `getDynamicRef`. Returns false (never throws) when
+	 *  the result has no dynamicRefs at all or when the name is unknown. Reports presence
+	 *  in the dynamicRefs map only — `getDynamicRef` may still throw at the call site if
+	 *  multiple unnamed sites collide on the same key (i.e. `arr.length > 1`). */
+	public function hasDynamicRef(name:String):Bool {
+		if (dynamicRefs == null) return false;
+		final arr = dynamicRefs.get(name);
+		return arr != null && arr.length > 0;
+	}
+
 	public function getDynamicRef(name:String):BuilderResult {
 		if (dynamicRefs == null)
 			throw BuilderError.of('No dynamicRefs in BuilderResult');
-		final count = dynamicRefCollisions != null ? dynamicRefCollisions.get(name) : null;
-		if (count != null && count > 1)
-			throw BuilderError.of("getDynamicRef(\"" + name + "\"): " + count + " unnamed dynamicRef sites collide on this key — use #name dynamicRef(...) or #name[$i] dynamicRef(...) to disambiguate, then fetch each by its explicit name.");
-		final ref = dynamicRefs.get(name);
-		if (ref == null)
+		final arr = dynamicRefs.get(name);
+		if (arr == null || arr.length == 0)
 			throw BuilderError.of('DynamicRef "$name" not found in BuilderResult');
-		return ref;
+		if (arr.length > 1)
+			throw BuilderError.of("getDynamicRef(\"" + name + "\"): " + arr.length + " unnamed dynamicRef sites collide on this key — use #name dynamicRef(...) or #name[$i] dynamicRef(...) to disambiguate, then fetch each by its explicit name.");
+		return arr[0];
 	}
 
 	public function getSlot(name:String, ?index:Null<Int>, ?indexY:Null<Int>):SlotHandle {
@@ -1958,10 +1981,12 @@ private typedef InternalBuilderResults = {
 	names:Map<String, Array<NamedBuildResult>>,
 	interactives:Array<MAObject>,
 	slots:Array<{key:SlotKey, handle:SlotHandle}>,
-	dynamicRefs:Map<String, BuilderResult>,
-	/** Count of dynamicRef writes per key; >1 means multiple unnamed sites collide on that key and
-	 *  `getDynamicRef(key)` must throw at the call site. Explicit `#name` collisions throw at build. */
-	dynamicRefCollisions:Map<String, Int>,
+	/** Per-writer dynamicRef storage. Each unnamed `dynamicRef($X)` site appends to the array under
+	 *  key X; each `#name dynamicRef(...)` site is the sole writer under its explicit key (build
+	 *  rejects duplicate explicit names). Collision = `arr.length > 1` — `getDynamicRef(key)` then
+	 *  throws to force `#name` disambiguation. Cleanup paths (SWITCH/REPEAT arm flips) splice
+	 *  destroyed entries so the cardinality stays in sync with the live scene graph. */
+	dynamicRefs:Map<String, Array<BuilderResult>>,
 	htmlTextsWithLinks:Array<h2d.HtmlText>
 }
 
@@ -1974,7 +1999,7 @@ class SwitchArmResults {
 	var ir:InternalBuilderResults;
 
 	public function new() {
-		ir = {names: new Map(), interactives: [], slots: [], dynamicRefs: new Map(), dynamicRefCollisions: new Map(), htmlTextsWithLinks: []};
+		ir = {names: new Map(), interactives: [], slots: [], dynamicRefs: new Map(), htmlTextsWithLinks: []};
 	}
 
 	public function getUpdatable(name:String):Null<h2d.Object> {
@@ -2148,12 +2173,21 @@ class MultiAnimBuilder {
 			} else s++;
 		}
 
-		// dynamicRefs: each value's .object is the embedded result's h2d.Object
-		final keysToRemove:Array<String> = [];
-		for (key => result in ir.dynamicRefs) {
-			if (isUnder(result.object)) keysToRemove.push(key);
+		// dynamicRefs: each entry's .object is the embedded result's h2d.Object. Splice writers
+		// whose object is under the destroyed container — preserves cardinality for surviving
+		// writers under the same key (e.g. @switch arm flips where one arm had multiple unnamed
+		// sites collapsed onto a single key, and the new arm has fewer). Drop the key entirely
+		// once its array empties.
+		final emptyKeys:Array<String> = [];
+		for (key => arr in ir.dynamicRefs) {
+			var i = 0;
+			while (i < arr.length) {
+				if (isUnder(arr[i].object)) arr.splice(i, 1);
+				else i++;
+			}
+			if (arr.length == 0) emptyKeys.push(key);
 		}
-		for (k in keysToRemove) ir.dynamicRefs.remove(k);
+		for (k in emptyKeys) ir.dynamicRefs.remove(k);
 
 		// names: each NamedBuildResult.object is a BuiltHeapsComponent enum wrapping an h2d.Object
 		final namesToRemove:Array<String> = [];
@@ -5254,19 +5288,17 @@ class MultiAnimBuilder {
 
 				// Key for dynamicRefs map: explicit #name if present, else referenced programmable
 				// name. Indexed forms (#name[$i] / #name[$x,$y]) include the current index so each
-				// repeatable iteration gets a distinct entry. Collisions are tracked so
-				// getDynamicRef(name) throws at the user-visible call — previously the last writer
-				// silently won and stale handles caused visual drift (H2 bug). Users disambiguate
-				// with `#name dynamicRef(...)` / `#name[$i] dynamicRef(...)`.
+				// repeatable iteration gets a distinct entry. Each writer appends to the per-key
+				// array — collision = arr.length > 1 for unnamed sites, surfaced at getDynamicRef.
+				// Explicit `#name` collisions (two sites sharing the same explicit name) are a hard
+				// build error: there is no sensible fetch behavior for ambiguous explicit names.
 				final dynRefKey = resolveDynamicRefKey(node, reference);
 				final hasExplicitName = !node.updatableName.match(UNTObject(null));
-				if (internalResults.dynamicRefs.exists(dynRefKey)) {
-					if (hasExplicitName)
-						throw builderErrorAt(node, "duplicate dynamicRef name \"" + dynRefKey + "\" — two #name dynamicRef sites share the same name. Names must be unique within a programmable.");
-					final counts = internalResults.dynamicRefCollisions;
-					counts.set(dynRefKey, (counts.exists(dynRefKey) ? counts.get(dynRefKey) : 1) + 1);
-				}
-				internalResults.dynamicRefs.set(dynRefKey, result);
+				final existingArr = internalResults.dynamicRefs.get(dynRefKey);
+				if (hasExplicitName && existingArr != null && existingArr.length > 0)
+					throw builderErrorAt(node, "duplicate dynamicRef name \"" + dynRefKey + "\" — two #name dynamicRef sites share the same name. Names must be unique within a programmable.");
+				if (existingArr == null) internalResults.dynamicRefs.set(dynRefKey, [result]);
+				else existingArr.push(result);
 
 				// Register parameter bindings for incremental propagation
 				if (incrementalMode && incrementalContext != null && result.incrementalContext != null) {
@@ -6300,7 +6332,6 @@ class MultiAnimBuilder {
 			interactives: [],
 			slots: [],
 			dynamicRefs: new Map(),
-			dynamicRefCollisions: new Map(),
 			htmlTextsWithLinks: [],
 		}
 
@@ -6369,7 +6400,6 @@ class MultiAnimBuilder {
 			gridCoordinateSystem: gridCoordinateSystem,
 			slots: internalResults.slots,
 			dynamicRefs: internalResults.dynamicRefs,
-			dynamicRefCollisions: internalResults.dynamicRefCollisions,
 			incrementalContext: null,
 			htmlTextsWithLinks: if (internalResults.htmlTextsWithLinks.length > 0) internalResults.htmlTextsWithLinks else null,
 		};
@@ -7639,7 +7669,7 @@ class MultiAnimBuilder {
 		this.incrementalContext = slotCtx;
 
 		// Build slot children into container
-		final internalResults:InternalBuilderResults = {names: [], interactives: [], slots: [], dynamicRefs: new Map(), dynamicRefCollisions: new Map(), htmlTextsWithLinks: []};
+		final internalResults:InternalBuilderResults = {names: [], interactives: [], slots: [], dynamicRefs: new Map(), htmlTextsWithLinks: []};
 		for (childNode in resolveConditionalChildren(slotNode.children)) {
 			build(childNode, ObjectMode(container), cast gridCS, cast hexCS, internalResults, builderParams);
 		}
@@ -7774,7 +7804,7 @@ class MultiAnimBuilder {
 			this.builderParams = bp;
 			final ir:InternalBuilderResults = sink != null
 				? sink.ir
-				: {names: new Map(), interactives: [], slots: [], dynamicRefs: new Map(), dynamicRefCollisions: new Map(), htmlTextsWithLinks: []};
+				: {names: new Map(), interactives: [], slots: [], dynamicRefs: new Map(), htmlTextsWithLinks: []};
 			for (child in arm.children)
 				build(child, ObjectMode(container), cast gridCS, cast hexCS, ir, bp);
 			popBuilderState();
@@ -7854,7 +7884,7 @@ class MultiAnimBuilder {
 	 *  repeatable node types to the builder at runtime. */
 	function buildSingleNode(node:Node):Null<h2d.Object> {
 		final parent = new h2d.Object();
-		final ir:InternalBuilderResults = {names: [], interactives: [], slots: [], dynamicRefs: new Map(), dynamicRefCollisions: new Map(), htmlTextsWithLinks: []};
+		final ir:InternalBuilderResults = {names: [], interactives: [], slots: [], dynamicRefs: new Map(), htmlTextsWithLinks: []};
 		build(node, ObjectMode(parent), cast null, cast null, ir, builderParams);
 		return if (parent.numChildren > 0) parent.getChildAt(0) else null;
 	}
@@ -7890,7 +7920,7 @@ class MultiAnimBuilder {
 		};
 		this.builderParams = bp;
 		final parent = new h2d.Object();
-		final ir:InternalBuilderResults = {names: [], interactives: [], slots: [], dynamicRefs: new Map(), dynamicRefCollisions: new Map(), htmlTextsWithLinks: []};
+		final ir:InternalBuilderResults = {names: [], interactives: [], slots: [], dynamicRefs: new Map(), htmlTextsWithLinks: []};
 		build(node, ObjectMode(parent), cast gridCS, cast hexCS, ir, bp);
 		popBuilderState();
 		return if (parent.numChildren > 0) parent.getChildAt(0) else null;

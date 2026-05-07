@@ -1321,8 +1321,10 @@ class ParticleGroup {
 			}
 		}
 
-		// Update attached animated path
-		if (attachedPath != null) {
+		// Update attached animated path. Gated on `enabled` so a disabled group does
+		// not fire path events or trigger spawn-curve emission — matches start() and
+		// draw(), which already skip disabled groups.
+		if (attachedPath != null && enabled) {
 			var state = attachedPath.update(dt);
 			dx = Std.int(state.position.x);
 			dy = Std.int(state.position.y);

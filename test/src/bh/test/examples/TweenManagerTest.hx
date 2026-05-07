@@ -264,6 +264,129 @@ class TweenManagerTest extends utest.Test {
 		Assert.floatEquals(1.0, obj.alpha);
 	}
 
+	// ==================== Finish on cancelled ====================
+
+	@Test
+	public function testCancelledSequenceFinishDoesNotFireSequenceOnComplete():Void {
+		var mgr = new TweenManager();
+		var obj = createObject();
+		var seqCompleted = false;
+
+		var t1 = mgr.createTween(obj, 0.5, [X(100.0)]);
+		var t2 = mgr.createTween(obj, 0.5, [X(200.0)]);
+		var seq = mgr.sequence([t1, t2]).setOnComplete(() -> seqCompleted = true);
+
+		seq.cancel();
+		seq.finish();
+
+		Assert.isFalse(seqCompleted,
+			"Cancelled sequence's onComplete must not fire on finish(); contract: cancelled tweens do not fire onComplete.");
+	}
+
+	@Test
+	public function testCancelledSequenceFinishDoesNotFirePerTweenOnComplete():Void {
+		var mgr = new TweenManager();
+		var obj = createObject();
+		var t1Completed = false;
+		var t2Completed = false;
+
+		var t1 = mgr.createTween(obj, 0.5, [X(100.0)]).setOnComplete(() -> t1Completed = true);
+		var t2 = mgr.createTween(obj, 0.5, [X(200.0)]).setOnComplete(() -> t2Completed = true);
+		var seq = mgr.sequence([t1, t2]);
+
+		seq.cancel();
+		seq.finish();
+
+		Assert.isFalse(t1Completed,
+			"Cancelled sequence must not fire onComplete on its current tween via finish().");
+		Assert.isFalse(t2Completed,
+			"Cancelled sequence must not fire onComplete on later tweens via finish().");
+	}
+
+	@Test
+	public function testSequenceFinishSkipsIndividuallyCancelledCurrentTween():Void {
+		var mgr = new TweenManager();
+		var objA = createObject();
+		var objB = createObject();
+		var t1Completed = false;
+		var t2Completed = false;
+
+		// Sequence stays alive; only the first (current) tween is cancelled.
+		// Mirrors cancelAll(target=objA) selectively cancelling just t1.
+		var t1 = mgr.createTween(objA, 0.5, [X(100.0)]).setOnComplete(() -> t1Completed = true);
+		var t2 = mgr.createTween(objB, 0.5, [X(200.0)]).setOnComplete(() -> t2Completed = true);
+		var seq = mgr.sequence([t1, t2]);
+
+		t1.cancel();
+		seq.finish();
+
+		Assert.isFalse(t1Completed,
+			"Individually cancelled tween in a still-alive sequence must not fire onComplete on sequence.finish().");
+		Assert.isTrue(t2Completed,
+			"Non-cancelled later tween in a still-alive sequence should fire onComplete on sequence.finish().");
+	}
+
+	@Test
+	public function testCancelledGroupFinishDoesNotFireGroupOnComplete():Void {
+		var mgr = new TweenManager();
+		var obj = createObject();
+		var grpCompleted = false;
+
+		var t1 = mgr.createTween(obj, 0.5, [Alpha(0.0)]);
+		var t2 = mgr.createTween(obj, 1.0, [X(100.0)]);
+		var group = mgr.group([t1, t2]).setOnComplete(() -> grpCompleted = true);
+
+		group.cancel();
+		group.finish();
+
+		Assert.isFalse(grpCompleted,
+			"Cancelled group's onComplete must not fire on finish(); contract: cancelled tweens do not fire onComplete.");
+	}
+
+	@Test
+	public function testCancelledGroupFinishDoesNotFirePerTweenOnComplete():Void {
+		var mgr = new TweenManager();
+		var obj = createObject();
+		var t1Completed = false;
+		var t2Completed = false;
+
+		var t1 = mgr.createTween(obj, 0.5, [Alpha(0.0)]).setOnComplete(() -> t1Completed = true);
+		var t2 = mgr.createTween(obj, 1.0, [X(100.0)]).setOnComplete(() -> t2Completed = true);
+		var group = mgr.group([t1, t2]);
+
+		group.cancel();
+		group.finish();
+
+		Assert.isFalse(t1Completed,
+			"Cancelled group must not fire per-tween onComplete via finish().");
+		Assert.isFalse(t2Completed,
+			"Cancelled group must not fire per-tween onComplete via finish().");
+	}
+
+	@Test
+	public function testGroupFinishSkipsIndividuallyCancelledTween():Void {
+		var mgr = new TweenManager();
+		var objA = createObject();
+		var objB = createObject();
+		var t1Completed = false;
+		var t2Completed = false;
+
+		// Group stays alive; only one child tween is cancelled. Mirrors
+		// cancelAll(target=objA) cancelling just t1 — group.cancel() is not
+		// invoked because not all child tweens share the cancelled target.
+		var t1 = mgr.createTween(objA, 0.5, [Alpha(0.0)]).setOnComplete(() -> t1Completed = true);
+		var t2 = mgr.createTween(objB, 1.0, [X(100.0)]).setOnComplete(() -> t2Completed = true);
+		var group = mgr.group([t1, t2]);
+
+		t1.cancel();
+		group.finish();
+
+		Assert.isFalse(t1Completed,
+			"Individually cancelled tween in a still-alive group must not fire onComplete on group.finish().");
+		Assert.isTrue(t2Completed,
+			"Non-cancelled tween in a still-alive group should fire onComplete on group.finish().");
+	}
+
 	// ==================== Sequence ====================
 
 	@Test
@@ -340,6 +463,79 @@ class TweenManagerTest extends utest.Test {
 		mgr.update(0.5);
 		// Second tween: from=100, to=200. t = 0.2/0.3 = 0.667 → value ≈ 166.7
 		Assert.isTrue(obj.x > 160.0 && obj.x < 170.0);
+	}
+
+	@Test
+	public function testSequenceCancelMarksAllQueuedTweensAsCancelled():Void {
+		var mgr = new TweenManager();
+		var obj = createObject();
+
+		var t1 = mgr.createTween(obj, 0.5, [X(50.0)]);
+		var t2 = mgr.createTween(obj, 0.5, [X(100.0)]);
+		var t3 = mgr.createTween(obj, 0.5, [X(150.0)]);
+		var seq = mgr.sequence([t1, t2, t3]);
+
+		// Advance partway into t1 so currentIndex stays at 0.
+		mgr.update(0.25);
+
+		seq.cancel();
+
+		Assert.isTrue(seq.cancelled);
+		Assert.isTrue(t1.cancelled);
+		Assert.isTrue(t2.cancelled, "queued t2 must be cancelled when sequence is cancelled");
+		Assert.isTrue(t3.cancelled, "queued t3 must be cancelled when sequence is cancelled");
+	}
+
+	@Test
+	public function testSequenceFinishAfterCancelDoesNotFirePerTweenCallbacks():Void {
+		var mgr = new TweenManager();
+		var obj = createObject();
+
+		var t1Done = false;
+		var t2Done = false;
+		var t3Done = false;
+		var seqDone = false;
+
+		var t1 = mgr.createTween(obj, 0.5, [X(50.0)]);
+		t1.setOnComplete(() -> t1Done = true);
+		var t2 = mgr.createTween(obj, 0.5, [X(100.0)]);
+		t2.setOnComplete(() -> t2Done = true);
+		var t3 = mgr.createTween(obj, 0.5, [X(150.0)]);
+		t3.setOnComplete(() -> t3Done = true);
+		var seq = mgr.sequence([t1, t2, t3]).setOnComplete(() -> seqDone = true);
+
+		mgr.update(0.25);
+
+		seq.cancel();
+		seq.finish();
+
+		// Contract: cancelled tweens do not fire onComplete (matches manager loop semantics).
+		Assert.isFalse(t1Done, "current tween onComplete must not fire after cancel");
+		Assert.isFalse(t2Done, "queued tween onComplete must not fire after cancel");
+		Assert.isFalse(t3Done, "queued tween onComplete must not fire after cancel");
+		Assert.isFalse(seqDone, "sequence onComplete must not fire after cancel");
+	}
+
+	@Test
+	public function testSequenceFinishAfterCancelDoesNotResumeQueuedTweenSideEffects():Void {
+		var mgr = new TweenManager();
+		var obj = createObject();
+		obj.x = 0;
+
+		var t1 = mgr.createTween(obj, 0.5, [X(100.0)]);
+		var t2 = mgr.createTween(obj, 0.5, [X(200.0)]);
+		var seq = mgr.sequence([t1, t2]);
+
+		// Run t1 partway so it has a captured "from".
+		mgr.update(0.25);
+		final xAtCancel = obj.x;
+
+		seq.cancel();
+		seq.finish();
+
+		// After cancel, neither t1 nor t2 should jump to their final state — the
+		// sequence is dead. (Pre-fix: finish() called t2.finish() → obj.x = 200.)
+		Assert.floatEquals(xAtCancel, obj.x);
 	}
 
 	// ==================== Group ====================

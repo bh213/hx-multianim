@@ -4496,6 +4496,77 @@ class BuilderUnitTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testHasSlotReportsExistenceWithoutThrowing():Void {
+		// Non-indexed slot present
+		final r1 = buildFromSource("
+			#test programmable() {
+				#mySlot slot {
+					bitmap(generated(color(10, 10, #555))): 0, 0
+				}
+			}
+		", "test");
+		Assert.notNull(r1);
+		Assert.isTrue(r1.hasSlot("mySlot"), "hasSlot('mySlot') must be true when the slot is present");
+		Assert.isFalse(r1.hasSlot("missing"), "hasSlot('missing') must be false (not throw) when the name is unknown");
+		Assert.isFalse(r1.hasSlot("mySlot", 0), "hasSlot('mySlot', 0) must be false (not throw) — 'mySlot' is not indexed");
+
+		// Result with no slots at all — must report false rather than throwing
+		final r2 = buildFromSource("
+			#test programmable() {
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		", "test");
+		Assert.notNull(r2);
+		Assert.isFalse(r2.hasSlot("anything"), "hasSlot must return false (not throw) when result has no slots block at all");
+
+		// Indexed slot whose iteration count shrinks via setParameter — the previously valid index
+		// disappears from ir.slots. This is the user-reported scenario.
+		final r3 = buildFromSource("
+			#test programmable(count:uint=5) {
+				repeatable($i, step($count, dx: 20)) {
+					#button[$i] slot {
+						bitmap(generated(color(10, 10, #555))): 0, 0
+					}
+				}
+			}
+		", "test", null, Incremental);
+		Assert.notNull(r3);
+		Assert.isTrue(r3.hasSlot("button", 0), "hasSlot('button', 0) must be true at count=5");
+		Assert.isTrue(r3.hasSlot("button", 4), "hasSlot('button', 4) must be true at count=5");
+		Assert.isFalse(r3.hasSlot("button", 99), "hasSlot('button', 99) must be false (not throw) — index out of range");
+		Assert.isFalse(r3.hasSlot("button"), "hasSlot('button') without index must be false (not throw) for an indexed slot");
+
+		r3.setParameter("count", 3);
+		Assert.isTrue(r3.hasSlot("button", 0), "hasSlot('button', 0) must still be true after shrinking to count=3");
+		Assert.isFalse(r3.hasSlot("button", 4), "hasSlot('button', 4) must be false (not throw) after the iteration was dropped");
+	}
+
+	@Test
+	public function testHasDynamicRefReportsExistenceWithoutThrowing():Void {
+		// DynamicRef present
+		final r1 = buildFromSource("
+			#inner programmable() {
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+			#test programmable() {
+				#child dynamicRef($inner): 0, 0
+			}
+		", "test");
+		Assert.notNull(r1);
+		Assert.isTrue(r1.hasDynamicRef("child"), "hasDynamicRef('child') must be true when the ref is present");
+		Assert.isFalse(r1.hasDynamicRef("missing"), "hasDynamicRef('missing') must be false (not throw) when the name is unknown");
+
+		// Result with no dynamicRefs at all — must report false rather than throwing
+		final r2 = buildFromSource("
+			#test programmable() {
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		", "test");
+		Assert.notNull(r2);
+		Assert.isFalse(r2.hasDynamicRef("anything"), "hasDynamicRef must return false (not throw) when result has no dynamicRefs at all");
+	}
+
+	@Test
 	public function testErrorSpacerOutsideFlow():Void {
 		final err = expectError(() -> buildFromSource("
 			#test programmable() {
@@ -7432,6 +7503,104 @@ class BuilderUnitTest extends BuilderTestBase {
 		final bitmaps = findVisibleBitmapDescendants(result.object);
 		Assert.equals(1, bitmaps.length, "only the new arm's bitmap should be visible");
 		Assert.equals(28, Std.int(bitmaps[0].tile.width), "arm b with label=4 => width=4*7=28");
+	}
+
+	// Listener dispatch in applyUpdates is on the UI hover/press hot path: every
+	// setParameter("status", ...) on a card or auto-wired interactive enters this
+	// branch. The defensive snapshot via rebuildListeners.copy() is only needed
+	// when a listener can mutate the array mid-iteration — which requires at
+	// least two listeners. The steady-state shape is exactly one listener per
+	// BuilderResult (UIScreen.addInteractives + UICardHandHelper each install
+	// one), so the snapshot allocation is wasted on every hover/press cycle.
+	// rebuildListenerSnapshotCount tracks every snapshot allocation; tests pin
+	// it at zero for the empty and single-listener cases.
+	@Test
+	public function testRebuildListenerEmptyCaseDoesNotSnapshot():Void {
+		final result = buildFromSource("
+			#test programmable(x:uint=10) {
+				bitmap(generated(color($x, 10, #f00))): 0, 0
+			}
+		", "test", null, Incremental);
+
+		final ctx = result.incrementalContext;
+		Assert.notNull(ctx);
+
+		// No listeners attached — applyUpdates must not enter the snapshot branch.
+		result.setParameter("x", 20);
+		final baseline = ctx.rebuildListenerSnapshotCount;
+
+		for (i in 0...10)
+			result.setParameter("x", 30 + i);
+
+		Assert.equals(0, ctx.rebuildListenerSnapshotCount - baseline,
+			"applyUpdates must not allocate a listener snapshot when there are no listeners; "
+			+ "got " + (ctx.rebuildListenerSnapshotCount - baseline) + " snapshots across 10 setParameter calls");
+	}
+
+	@Test
+	public function testRebuildListenerSingleListenerDoesNotSnapshot():Void {
+		final result = buildFromSource("
+			#test programmable(x:uint=10) {
+				bitmap(generated(color($x, 10, #f00))): 0, 0
+			}
+		", "test", null, Incremental);
+
+		final ctx = result.incrementalContext;
+		Assert.notNull(ctx);
+
+		var fireCount = 0;
+		result.addRebuildListener(() -> fireCount++);
+
+		// Warm up: first setParameter sees the listener and fires it.
+		result.setParameter("x", 20);
+		Assert.equals(1, fireCount, "warm-up: listener should have fired once");
+
+		final baseline = ctx.rebuildListenerSnapshotCount;
+
+		// Hot-path simulation: 10 status flips like Normal->Hover->Pressed->Normal.
+		// A single listener cannot mutate the array in a way that requires defensive
+		// copying — self-removal during dispatch is safe (we never iterate further);
+		// re-entrant addRebuildListener targets the next applyUpdates cycle. So the
+		// snapshot must NOT be allocated for length == 1.
+		for (i in 0...10)
+			result.setParameter("x", 30 + i);
+
+		Assert.equals(10, fireCount - 1,
+			"listener should fire once per setParameter regardless of optimization");
+		Assert.equals(0, ctx.rebuildListenerSnapshotCount - baseline,
+			"single-listener case must not allocate a snapshot per setParameter; "
+			+ "got " + (ctx.rebuildListenerSnapshotCount - baseline) + " snapshots across 10 setParameter calls. "
+			+ "This is the UI hover/press hot path — one listener per UIInteractiveSource and "
+			+ "one per card from UICardHandHelper.");
+	}
+
+	@Test
+	public function testRebuildListenerMultiListenerStillSnapshots():Void {
+		// With two or more listeners, a listener could mutate the array (remove a peer,
+		// add a new entry) during dispatch, so the defensive snapshot is required and
+		// the counter is expected to grow. Pinning this here so a future "skip the
+		// copy when length >= 2 too" optimization doesn't silently break correctness
+		// without an explicit alternative (index walk + bail-on-mutate).
+		final result = buildFromSource("
+			#test programmable(x:uint=10) {
+				bitmap(generated(color($x, 10, #f00))): 0, 0
+			}
+		", "test", null, Incremental);
+
+		final ctx = result.incrementalContext;
+		Assert.notNull(ctx);
+
+		result.addRebuildListener(() -> {});
+		result.addRebuildListener(() -> {});
+
+		result.setParameter("x", 20); // warm up
+		final baseline = ctx.rebuildListenerSnapshotCount;
+
+		for (i in 0...5)
+			result.setParameter("x", 30 + i);
+
+		Assert.equals(5, ctx.rebuildListenerSnapshotCount - baseline,
+			"multi-listener case must continue to snapshot once per applyUpdates dispatch");
 	}
 
 	@Test

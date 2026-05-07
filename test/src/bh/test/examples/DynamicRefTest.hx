@@ -619,7 +619,7 @@ class DynamicRefTest extends BuilderTestBase {
 	public function testDynamicRefIndexedInRepeatableIsIndependentlyAddressable():Void {
 		// Inside a repeatable, each iteration of an unnamed dynamicRef($X) would collide. The
 		// `#name[$i] dynamicRef(...)` form makes each iteration a distinct map entry keyed as
-		// `"name idx"` — addressable with the underlying `dynamicRefs.get("name 0")` etc.
+		// `"name idx"` — addressable via `result.getDynamicRef("name 0")` etc.
 		final result = buildFromSource("
 			#leaf programmable(v:uint=3) {
 				bitmap(generated(color($v, 5, #00ff00))): 0, 0
@@ -632,15 +632,15 @@ class DynamicRefTest extends BuilderTestBase {
 		", "host", null, Incremental);
 
 		// Three iterations, three distinct entries under keys "item 0", "item 1", "item 2".
-		Assert.isTrue(result.dynamicRefs.exists("item 0"), "indexed key 'item 0' should exist");
-		Assert.isTrue(result.dynamicRefs.exists("item 1"), "indexed key 'item 1' should exist");
-		Assert.isTrue(result.dynamicRefs.exists("item 2"), "indexed key 'item 2' should exist");
+		Assert.isTrue(result.hasDynamicRef("item 0"), "indexed key 'item 0' should exist");
+		Assert.isTrue(result.hasDynamicRef("item 1"), "indexed key 'item 1' should exist");
+		Assert.isTrue(result.hasDynamicRef("item 2"), "indexed key 'item 2' should exist");
 
 		// Each iteration got a different forwarded $v (10, 11, 12) via the $i + 10 expression —
 		// check that each per-iteration sub-result's bitmap reflects the right width.
 		final widths = [0, 0, 0];
 		for (i in 0...3) {
-			final sub = result.dynamicRefs.get("item " + i);
+			final sub = result.getDynamicRef("item " + i);
 			Assert.notNull(sub);
 			final bitmaps = findVisibleBitmapDescendants(sub.object);
 			Assert.equals(1, bitmaps.length);
@@ -675,12 +675,11 @@ class DynamicRefTest extends BuilderTestBase {
 
 	@Test
 	public function testDynamicNameRefRenameOutOfCollisionDecrementsCount():Void {
-		// Two unnamed dynamicRef($t1) / dynamicRef($t2) siblings both initially resolve to the same
-		// template "templateA" → collision count for "templateA" = 2, getDynamicRef throws with the
-		// "collide" hint. After setParameter renames site 1 to "templateB", only site 2 still
-		// references "templateA" — collision must be cleared so getDynamicRef("templateA") no longer
-		// trips the collision throw. Without rebuildDynamicNameRef updating dynamicRefCollisions,
-		// the count stays stuck at 2 and the collision throw fires forever.
+		// Two unnamed dynamicRef($t1) / dynamicRef($t2) siblings both initially resolve to the
+		// same template "templateA" → two writers under key "templateA", getDynamicRef throws
+		// with the "collide" hint. After setParameter renames site 1 to "templateB", only site 2
+		// still references "templateA" — the splice in cleanupDestroyedSubtree must drop the
+		// renamed writer so getDynamicRef("templateA") no longer trips the collision throw.
 		final result = buildFromSource("
 			#templateA programmable() {
 				bitmap(generated(color(10, 10, #ff0000))): 0, 0
@@ -705,11 +704,10 @@ class DynamicRefTest extends BuilderTestBase {
 		// Rename site 1 to a non-colliding template. Only site 2 still targets "templateA".
 		result.setParameter("t1", "templateB");
 
-		// Collision count for "templateA" must reflect that only one writer remains.
-		final countAfter = result.dynamicRefCollisions != null
-			? result.dynamicRefCollisions.get("templateA") : null;
-		Assert.isTrue(countAfter == null || countAfter <= 1,
-			'count for "templateA" must be <=1 after rename; got: $countAfter');
+		// Per-key writer array for "templateA" must reflect that only one writer remains.
+		final arrAfter = result.dynamicRefs.get("templateA");
+		Assert.isTrue(arrAfter == null || arrAfter.length <= 1,
+			'writer count for "templateA" must be <=1 after rename; got: ${arrAfter == null ? null : arrAfter.length}');
 
 		// And getDynamicRef("templateA") must no longer throw the collision error.
 		var afterErr:String = null;
@@ -749,11 +747,10 @@ class DynamicRefTest extends BuilderTestBase {
 		// Rename site 1 to templateB → both sites now write to "templateB".
 		result.setParameter("t1", "templateB");
 
-		// Collision count for "templateB" must reflect two writers.
-		final countAfter = result.dynamicRefCollisions != null
-			? result.dynamicRefCollisions.get("templateB") : null;
-		Assert.isTrue(countAfter != null && countAfter >= 2,
-			'count for "templateB" must be >=2 after rename; got: $countAfter');
+		// Per-key writer array for "templateB" must reflect two writers.
+		final arrAfter = result.dynamicRefs.get("templateB");
+		Assert.isTrue(arrAfter != null && arrAfter.length >= 2,
+			'writer count for "templateB" must be >=2 after rename; got: ${arrAfter == null ? null : arrAfter.length}');
 
 		// And getDynamicRef("templateB") must throw the collision error.
 		var err:String = null;
@@ -761,6 +758,58 @@ class DynamicRefTest extends BuilderTestBase {
 		catch (e:Dynamic) { err = Std.string(e); }
 		Assert.isTrue(err != null && err.indexOf("collide") >= 0,
 			'after rename creating collision, getDynamicRef must throw collision error; got: $err');
+	}
+
+	@Test
+	public function testSwitchArmFlipFromMultiToSingleClearsDynamicRefCollision():Void {
+		// arm 'multi' has two unnamed dynamicRef siblings on the same key "X" → collision throws.
+		// arm 'single' has one unnamed dynamicRef on "X" → no collision.
+		// Flipping from 'multi' to 'single' destroys both writers from arm 'multi' and registers
+		// one new writer in arm 'single'. After the flip, only ONE writer for "X" remains, so
+		// getDynamicRef("X") MUST NOT throw the collision error.
+		//
+		// Pre-fix the @switch cleanup path (removeRegistrationsUnder) cleared dynamicRefs entries
+		// but never decremented the parallel dynamicRefCollisions counter, leaking arm 'multi's
+		// count of 2 across the flip and making getDynamicRef("X") falsely report a collision on
+		// the surviving single-site arm.
+		final result = buildFromSource("
+			#X programmable() {
+				bitmap(generated(color(10, 10, #ff0000))): 0, 0
+			}
+			#host programmable(a:[multi,single]=multi) {
+				@switch(a) {
+					multi {
+						dynamicRef($X): 0, 0
+						dynamicRef($X): 0, 20
+					}
+					single {
+						dynamicRef($X): 0, 0
+					}
+				}
+			}
+		", "host", null, Incremental);
+
+		// arm=multi: two writers collide → must throw on get.
+		var beforeErr:String = null;
+		try { result.getDynamicRef("X"); }
+		catch (e:Dynamic) { beforeErr = Std.string(e); }
+		Assert.notNull(beforeErr, "two unnamed sites in 'multi' arm must collide");
+		Assert.isTrue(beforeErr.indexOf("collide") >= 0,
+			'before flip: must throw collision error; got: $beforeErr');
+
+		// Flip to 'single' arm — both writers from 'multi' are destroyed, one new writer registers.
+		result.setParameter("a", "single");
+
+		// Surviving arm has only one writer for "X" → must NOT throw the collision error.
+		var afterErr:String = null;
+		try { result.getDynamicRef("X"); }
+		catch (e:Dynamic) { afterErr = Std.string(e); }
+		if (afterErr != null) {
+			Assert.isFalse(afterErr.indexOf("collide") >= 0,
+				'after flip to single-site arm: collision throw must be gone; got: $afterErr');
+		}
+		Assert.notNull(result.getDynamicRef("X"),
+			"after flip to single-site arm, getDynamicRef must return the surviving writer");
 	}
 
 	static function isDescendantOfRoot(obj:h2d.Object, root:h2d.Object):Bool {

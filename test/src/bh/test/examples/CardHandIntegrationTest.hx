@@ -1118,6 +1118,47 @@ class CardHandIntegrationTest extends BuilderTestBase {
 			+ FPoint.creationCount + " FPoints across 5 cards on a single layout pass.");
 	}
 
+	// applyLayout(true) is a hot path — fires on every hover change, drag start/end, draw,
+	// and discard. The rearrange call site has no completion work to do, but the current
+	// API forces it to pass a closure. `() -> {}` still allocates a fresh closure per
+	// iteration (Haxe lambdas allocate on evaluation), wasting one allocation per InHand
+	// card per layout pass. The fix: let `animateCardTo`'s onComplete be Null<() -> Void>
+	// and pass `null` from the rearrange site. Asserting via the stored ActiveAnimation
+	// is the most direct observable signal.
+	@Test
+	public function testApplyLayoutRearrangeStoresNullOnCompleteInsteadOfEmptyClosure():Void {
+		var builder = BuilderTestBase.builderFromSource(CARD_WITH_PATHS_MANIM);
+		var screen = new UITestScreen();
+		// Reuse discardPath as the rearrange path — animateCardTo only needs a valid
+		// animatedPath name; the test never advances time so the path content is irrelevant.
+		var helper = new UICardHandHelper(screen, builder, {
+			anchorX: 400, anchorY: 600,
+			rearrangePathName: "discardPath",
+		});
+		helper.setHand([desc("a"), desc("b"), desc("c")]);
+
+		// Perturb container positions so animateCardTo's snap-if-close fast path
+		// (dx²+dy² < 1) does NOT fire — that would early-return without pushing an
+		// ActiveAnimation, and we need ActiveAnimations to inspect onComplete.
+		for (entry in helper.cards) {
+			entry.container.x += 100;
+			entry.container.y += 100;
+		}
+
+		helper.applyLayout(true);
+
+		Assert.equals(3, helper.activeAnimations.length,
+			"precondition: applyLayout(true) on 3 perturbed InHand cards should queue 3 animations");
+
+		for (i in 0...helper.activeAnimations.length) {
+			Assert.isNull(helper.activeAnimations[i].onComplete,
+				"applyLayout(true)'s rearrange call site must pass null instead of `() -> {}` — "
+				+ "an empty closure still allocates per card per layout pass on a hot path. "
+				+ "ActiveAnimation[" + i + "].onComplete is non-null, meaning the call site is "
+				+ "still constructing a throwaway closure.");
+		}
+	}
+
 	// ==================== UIPush hit-test consistency with hover ====================
 	// Hover detection (onMouseMove → getCardAtBasePosition) intentionally uses the base
 	// layout, ignoring the hover pop, so the popped card doesn't block neighbor detection.

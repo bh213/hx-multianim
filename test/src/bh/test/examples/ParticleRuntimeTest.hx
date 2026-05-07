@@ -9,6 +9,9 @@ import bh.base.Particles.SubEmitter;
 import bh.base.Particles.PartEmitMode;
 import bh.base.FPoint;
 import bh.paths.Curve;
+import bh.paths.AnimatedPath;
+import bh.paths.MultiAnimPaths.Path;
+import bh.paths.MultiAnimPaths.SinglePath;
 
 /**
  * Non-visual unit tests for the particle runtime API:
@@ -1236,5 +1239,40 @@ class ParticleRuntimeTest extends utest.Test {
 			"Particle step (Particle.update + applyForceFields) must be FPoint-allocation-free. "
 			+ "Got " + delta + " fresh FPoints across ~30 ticks * 20 particles. PathGuide and "
 			+ "computeState already use scratch FPoints; if this fires, someone added an allocation.");
+	}
+
+	// ==================== Disabled group should freeze attached path ====================
+
+	@Test
+	public function testAttachedPathDoesNotAdvanceWhenGroupDisabled():Void {
+		var p = createParticles();
+		var g = createGroup("main", p);
+
+		// Attach a 1-second linear time-mode path with a mid-rate event.
+		var sp = new SinglePath(new FPoint(0, 0), new FPoint(100, 0), Line);
+		var ap = new AnimatedPath(new Path([sp]), Time(1.0));
+		var firedEvents:Array<String> = [];
+		ap.onEvent = (name, _) -> firedEvents.push(name);
+		ap.addEvent(0.3, "halfwayish");
+		g.attachedPath = ap;
+
+		// Disable the group. enabled is (default, null), so use Dynamic to bypass
+		// the property restriction — same approach createGroup() uses for nparts/etc.
+		var dg:Dynamic = g;
+		dg.enabled = false;
+
+		// Tick well past the event rate. updateTime() is what Particles.sync() calls
+		// every frame regardless of visibility (Heaps 2.1.0 sync() does not check
+		// visible) and regardless of enabled.
+		g.updateTime(0.5);
+
+		// Path must stay at rate 0 — no events, no progress, no spawn-curve emission.
+		Assert.floatEquals(0.0, ap.getState().rate, 0.0001,
+			"AttachedPath rate advanced while group was disabled. updateTime() should not "
+			+ "tick attachedPath when enabled is false — rendering and start() are gated on "
+			+ "enabled, the path tick should match.");
+		Assert.equals(0, firedEvents.length,
+			"AttachedPath fired " + firedEvents.length + " event(s) while group was disabled. "
+			+ "Expected zero — pathStart and timed events must not fire on a disabled group.");
 	}
 }

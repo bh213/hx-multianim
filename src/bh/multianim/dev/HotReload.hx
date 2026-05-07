@@ -274,8 +274,15 @@ class StateSnapshotter {
 		final snapshot:DynamicRefSnapshot = new Map();
 		if (result.dynamicRefs == null)
 			return snapshot;
-		for (name => dynRef in result.dynamicRefs)
-			snapshot.set(name, captureParams(dynRef));
+		// Per-key arrays hold one writer per `dynamicRef` site. For the non-collision case
+		// (the common one — collisions are a build-time error users see immediately) the array
+		// has length 1. For collision cases, snapshot the first writer's params: hot reload is
+		// best-effort across pathological dev states, and `restoreDynamicRefs` reapplies the
+		// same snapshot to every writer under the key on the way back.
+		for (name => arr in result.dynamicRefs) {
+			if (arr.length > 0)
+				snapshot.set(name, captureParams(arr[0]));
+		}
 		return snapshot;
 	}
 
@@ -353,9 +360,10 @@ class StateRestorer {
 		if (drSnapshot == null || newResult.dynamicRefs == null)
 			return;
 		for (name => paramSnap in drSnapshot) {
-			final dynRef = newResult.dynamicRefs.get(name);
-			if (dynRef != null)
-				restoreParams(dynRef, paramSnap);
+			final arr = newResult.dynamicRefs.get(name);
+			if (arr != null) {
+				for (dynRef in arr) restoreParams(dynRef, paramSnap);
+			}
 		}
 	}
 
