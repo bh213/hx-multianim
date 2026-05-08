@@ -1467,6 +1467,43 @@ class BuilderUnitTest extends BuilderTestBase {
 		Assert.equals(10, Std.int(bitmaps[0].tile.height));
 	}
 
+	@Test
+	public function testIncrementalLayoutWithParamIndex():Void {
+		// Position uses LAYOUT(name, $idx). setParameter("idx", N) must reposition
+		// the bitmap to layout point N. Regression: param-ref discovery for the
+		// LAYOUT coordinate variant was missing, so trackExpression was never
+		// installed for the position and setParameter silently no-op'd.
+		final result = buildFromSource("
+			layouts {
+				#base list {
+					point: 100, 200
+					point: 300, 200
+					point: 500, 200
+				}
+			}
+			#test programmable(idx:int=0) {
+				bitmap(generated(color(10, 10, #f00))): layout(base, $idx)
+			}
+		", "test", null, Incremental);
+
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.floatEquals(100, bitmaps[0].x);
+		Assert.floatEquals(200, bitmaps[0].y);
+
+		result.setParameter("idx", 1);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.floatEquals(300, bitmaps[0].x);
+		Assert.floatEquals(200, bitmaps[0].y);
+
+		result.setParameter("idx", 2);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.floatEquals(500, bitmaps[0].x);
+		Assert.floatEquals(200, bitmaps[0].y);
+	}
+
 	// ==================== Incremental bitmap tile expression tracking ====================
 
 	@Test
@@ -5440,6 +5477,127 @@ class BuilderUnitTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testTransitionCancellationPreservesUserSetTransform():Void {
+		// BuilderResult exposes the live h2d.Object for each conditional wrapper. Game code
+		// routinely mutates obj.x / obj.y / obj.alpha / obj.scale on those wrappers — e.g.
+		// a dialog that follows a target during its slide-in, or per-frame layout adjustment.
+		// Mid-transition cancellation (real visibility flip, or explicit cancel) must NOT
+		// overwrite those user-set values with the pre-transition snapshot captured at the
+		// transition's start.
+		//
+		// This test pins X/Y under a fade(0.5) transition. Fade only animates alpha — it
+		// never touches X/Y in either direction. The cancellation path was restoring all
+		// five tracked fields unconditionally, so X/Y were clobbered too even though the
+		// fade tween had never written to them.
+		final tm = new bh.base.TweenManager();
+		final builder = builderFromSource("
+			#test programmable(visible:bool=true) {
+				transition {
+					visible: fade(0.5)
+				}
+				@(visible=>true) bitmap(generated(color(10, 10, #ff0000))): 0,0
+			}
+		");
+		builder.tweenManager = tm;
+		final result = builder.buildWithParameters("test", ["visible" => true], null, null, true);
+		Assert.notNull(result);
+
+		// The wrapper at index 1 (after the conditional sentinel at index 0) is the
+		// h2d.Object whose alpha/transform the transition machinery animates.
+		final wrapper = result.object.getChildAt(1);
+		Assert.notNull(wrapper.parent, "wrapper should be in graph initially");
+
+		// Start fade-out: captures preAlpha/preX/preY/preScaleX/preScaleY internally.
+		result.setParameter("visible", false);
+		Assert.isTrue(tm.hasTweens(wrapper), "fade tween should be active mid-transition");
+
+		// Step the tween partway so the in-flight state is observable (irrelevant for
+		// the assertion, but rules out the "tween hasn't started yet" edge).
+		tm.update(0.0); // skipFirstDt
+		tm.update(0.1); // 0.1s of 0.5s
+
+		// Game code repositions the wrapper while the fade is in flight. Legal: the
+		// h2d.Object is exposed via BuilderResult and the fade does not write X/Y.
+		final userX = 123.4;
+		final userY = 67.8;
+		wrapper.x = userX;
+		wrapper.y = userY;
+
+		// Flip back. setPresenceWithTransition calls cancelActiveTransition before
+		// re-capturing pre-transition state for the new fade-in. Fade's show-side does
+		// not touch X/Y, so wrapper.x / wrapper.y must reflect the user-set values
+		// after the call returns.
+		result.setParameter("visible", true);
+
+		Assert.floatEquals(userX, wrapper.x, 0.001,
+			'wrapper.x must retain user-set value after transition cancellation, got ${wrapper.x} (expected $userX)');
+		Assert.floatEquals(userY, wrapper.y, 0.001,
+			'wrapper.y must retain user-set value after transition cancellation, got ${wrapper.y} (expected $userY)');
+	}
+
+	@Test
+	public function testInFlightTransitionContinuesAcrossUnrelatedSetParameter():Void {
+		// applyConditionalChains() runs for every setParameter and walks all conditional
+		// entries unconditionally; it calls setPresenceOrMaterialize(entry, matched)
+		// even when `matched` did not change. setPresenceWithTransition's early-return
+		// guard `inGraph == newVisible && !hasActiveTransition(obj)` then mistakes
+		// "transition active" for "transition needs replacing": with no transition spec
+		// applicable to the unrelated changed param, it falls into the "instant" branch
+		// and cancels the in-flight tween (killing the fade entirely). The user sees the
+		// in-flight fade frozen mid-state on every unrelated setParameter.
+		//
+		// The guard must be direction-aware: an in-flight transition whose target
+		// equals the requested newVisible already converges to the right state, so it
+		// must not be replaced or cancelled.
+		final D = 0.5;
+		final tm = new bh.base.TweenManager();
+		final builder = builderFromSource('
+			#test programmable(paramA:bool=false, paramB:int=0) {
+				transition {
+					paramA: fade($D)
+				}
+				@(paramA=>true) bitmap(generated(color(10, 10, #ff0000))): 0,0
+			}
+		');
+		builder.tweenManager = tm;
+		final result = builder.buildWithParameters("test",
+			["paramA" => false, "paramB" => 0], null, null, true);
+		Assert.notNull(result);
+
+		// Trigger fade-in of the paramA=true bitmap.
+		result.setParameter("paramA", true);
+
+		// Locate the bitmap that's fading in (it's the child with tweens).
+		var fadingIn:h2d.Object = null;
+		for (i in 0...result.object.numChildren) {
+			final c = result.object.getChildAt(i);
+			if (tm.hasTweens(c)) { fadingIn = c; break; }
+		}
+		Assert.notNull(fadingIn, "fade-in target should be tweening");
+
+		// Advance partway through the fade. skipFirstDt eats the first update.
+		tm.update(0.0);
+		tm.update(D * 0.4); // ~40% through; linear default → alpha ≈ 0.4
+		final midAlpha = fadingIn.alpha;
+		Assert.isTrue(midAlpha > 0.1 && midAlpha < 0.9,
+			'expected mid-fade alpha in (0.1, 0.9), got $midAlpha');
+
+		// Fire an UNRELATED setParameter — paramB has no transition spec and the
+		// chain decision for paramA is unchanged. The fade-in MUST continue.
+		result.setParameter("paramB", 42);
+
+		// The tween must still be active on the same target — the unrelated
+		// setParameter must not cancel it.
+		Assert.isTrue(tm.hasTweens(fadingIn),
+			'in-flight transition was cancelled by unrelated setParameter (no tweens after paramB change; midAlpha=$midAlpha, post-alpha=${fadingIn.alpha})');
+
+		// Finish the fade — alpha must reach ~1.0 within the remaining duration.
+		tm.update(D * 0.7); // ~0.6*D remaining + margin
+		Assert.floatEquals(1.0, fadingIn.alpha, 0.05,
+			'fade-in should complete on its original schedule, got alpha=${fadingIn.alpha}');
+	}
+
+	@Test
 	public function testDynamicRefPropagationReachesHiddenSubtree():Void {
 		// A dynamicRef inside a hidden conditional branch MUST still receive parameter updates from
 		// the parent. This replaces the earlier visibility-skip behavior which caused stale state on
@@ -5474,6 +5632,42 @@ class BuilderUnitTest extends BuilderTestBase {
 		result.setParameter("val", 7);
 		Assert.isTrue(childRebuildCount > hideRebuildCount,
 			'Hidden dynamicRef must still receive propagated param updates to avoid stale state on flip-back; got ${childRebuildCount - hideRebuildCount} extra rebuilds');
+	}
+
+	@Test
+	public function testTrackedExpressionTextResolvesLatestParamAfterHideChangeReveal():Void {
+		// Hide a conditional element, change a param its tracked expression depends on,
+		// then reveal it via an unrelated param. The element must surface with the
+		// latest param value, not the construction-time value.
+		//
+		// applyUpdates' two gates would skip the expression in both batches (hidden
+		// during the msg change; the show batch's changedParams contains only "show",
+		// not "msg"). refreshTrackedExpressionsFor — called from addToGraph when the
+		// conditional flips visible — must re-fire tracked expressions so they pick
+		// up the latest parameter values regardless of which params were in this
+		// batch's changedParams.
+		final result = buildFromSource("
+			#test programmable(show:bool=true, msg:string=\"v1\") {
+				@(show=>true) text(dd, '${msg}', white): 0, 0
+			}
+		", "test", null, Incremental);
+		Assert.notNull(result);
+
+		final initialTexts = findAllTextDescendants(result.object);
+		Assert.equals(1, initialTexts.length, "text element should be visible initially");
+		Assert.equals("v1", initialTexts[0].text, "initial text reads construction value");
+
+		result.setParameter("show", false);
+		Assert.equals(0, findAllTextDescendants(result.object).length,
+			"text element should be removed from graph while hidden");
+
+		result.setParameter("msg", "v2");
+		result.setParameter("show", true);
+
+		final afterTexts = findAllTextDescendants(result.object);
+		Assert.equals(1, afterTexts.length, "text element should be back in graph after reveal");
+		Assert.equals("v2", afterTexts[0].text,
+			'Text must reflect latest $$msg value after hide/change/reveal cycle; got "${afterTexts[0].text}"');
 	}
 
 	// ==================== extraPoint coordinates ====================

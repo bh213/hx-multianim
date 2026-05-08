@@ -17,7 +17,7 @@ import bh.multianim.MultiAnimParser.EasingType;
 class CodegenTransitionHelper {
 	final transitionSpecs:Map<String, TransitionType>;
 	public var tweenManager:Null<TweenManager> = null;
-	var activeTransitionTweens:Array<{obj:h2d.Object, tween:Null<Tween>, sequence:Null<TweenSequence>, savedAlpha:Float, savedScaleX:Float, savedScaleY:Float, savedX:Float, savedY:Float}> = [];
+	var activeTransitionTweens:Array<{obj:h2d.Object, tween:Null<Tween>, sequence:Null<TweenSequence>, target:Bool, savedAlpha:Float, savedScaleX:Float, savedScaleY:Float, savedX:Float, savedY:Float}> = [];
 
 	public function new(specs:Map<String, TransitionType>) {
 		this.transitionSpecs = specs;
@@ -26,7 +26,14 @@ class CodegenTransitionHelper {
 	/** Set visibility with optional transition animation.
 	 *  changedParam identifies which parameter triggered the change. */
 	public function setVisibilityWithTransition(obj:h2d.Object, newVisible:Bool, changedParam:String):Void {
-		if (obj.visible == newVisible && !hasActiveTransition(obj)) return;
+		// Skip when the requested state matches what's already in flight: either no
+		// transition active and visibility already matches, or a transition active
+		// whose target equals newVisible (it converges on its own — replacing it
+		// would jump alpha/scale to 0 and restart). Mirrors IncrementalUpdateContext.
+		if (obj.visible == newVisible) {
+			final activeTarget = getActiveTransitionTarget(obj);
+			if (activeTarget == null || activeTarget == newVisible) return;
+		}
 
 		final spec = transitionSpecs.get(changedParam);
 		if (spec == null || tweenManager == null || spec.match(TransNone)) {
@@ -44,7 +51,11 @@ class CodegenTransitionHelper {
 	 *  parent and sentinel define the insertion point. */
 	public function setPresenceWithTransition(obj:h2d.Object, newVisible:Bool, changedParam:String, parent:h2d.Object, sentinel:h2d.Object):Void {
 		final inGraph = obj.parent != null;
-		if (newVisible == inGraph && !hasActiveTransition(obj)) return;
+		// See setVisibilityWithTransition above for the direction-aware skip rationale.
+		if (newVisible == inGraph) {
+			final activeTarget = getActiveTransitionTarget(obj);
+			if (activeTarget == null || activeTarget == newVisible) return;
+		}
 
 		final spec = transitionSpecs.get(changedParam);
 		if (spec == null || tweenManager == null || spec.match(TransNone)) {
@@ -73,11 +84,11 @@ class CodegenTransitionHelper {
 					entry.sequence.onComplete = null;
 					entry.sequence.cancel();
 				}
-				obj.alpha = entry.savedAlpha;
-				obj.scaleX = entry.savedScaleX;
-				obj.scaleY = entry.savedScaleY;
-				obj.x = entry.savedX;
-				obj.y = entry.savedY;
+				// Don't restore savedAlpha/savedX/...: game code may have mutated obj
+				// mid-transition. The next transition recaptures preX/preAlpha/... from
+				// the live obj, so user mutations propagate into the new baseline.
+				// Restoring would also produce a visible jump on reverse-direction
+				// transitions. Mirrors IncrementalUpdateContext.cancelActiveTransition.
 				activeTransitionTweens.splice(i, 1);
 			} else {
 				i++;
@@ -96,11 +107,7 @@ class CodegenTransitionHelper {
 				entry.sequence.onComplete = null;
 				entry.sequence.cancel();
 			}
-			entry.obj.alpha = entry.savedAlpha;
-			entry.obj.scaleX = entry.savedScaleX;
-			entry.obj.scaleY = entry.savedScaleY;
-			entry.obj.x = entry.savedX;
-			entry.obj.y = entry.savedY;
+			// See cancelActiveTransition above for why saved* are not restored.
 			activeTransitionTweens.splice(0, 1);
 		}
 	}
@@ -111,8 +118,16 @@ class CodegenTransitionHelper {
 		return false;
 	}
 
-	function trackTransitionTween(obj:h2d.Object, tween:Tween, savedAlpha:Float, savedScaleX:Float, savedScaleY:Float, savedX:Float, savedY:Float):Void {
-		activeTransitionTweens.push({obj: obj, tween: tween, sequence: null, savedAlpha: savedAlpha, savedScaleX: savedScaleX, savedScaleY: savedScaleY, savedX: savedX, savedY: savedY});
+	/** Visibility target of the active transition for `obj`, or null if none. Used by
+	 *  set*WithTransition to skip same-direction re-entries instead of cancel-and-restart. */
+	function getActiveTransitionTarget(obj:h2d.Object):Null<Bool> {
+		for (entry in activeTransitionTweens)
+			if (entry.obj == obj) return entry.target;
+		return null;
+	}
+
+	function trackTransitionTween(obj:h2d.Object, tween:Tween, target:Bool, savedAlpha:Float, savedScaleX:Float, savedScaleY:Float, savedX:Float, savedY:Float):Void {
+		activeTransitionTweens.push({obj: obj, tween: tween, sequence: null, target: target, savedAlpha: savedAlpha, savedScaleX: savedScaleX, savedScaleY: savedScaleY, savedX: savedX, savedY: savedY});
 		final origOnComplete = tween.onComplete;
 		tween.onComplete = () -> {
 			var i = 0;
@@ -127,8 +142,8 @@ class CodegenTransitionHelper {
 		};
 	}
 
-	function trackTransitionSequence(obj:h2d.Object, seq:TweenSequence, savedAlpha:Float, savedScaleX:Float, savedScaleY:Float, savedX:Float, savedY:Float):Void {
-		activeTransitionTweens.push({obj: obj, tween: null, sequence: seq, savedAlpha: savedAlpha, savedScaleX: savedScaleX, savedScaleY: savedScaleY, savedX: savedX, savedY: savedY});
+	function trackTransitionSequence(obj:h2d.Object, seq:TweenSequence, target:Bool, savedAlpha:Float, savedScaleX:Float, savedScaleY:Float, savedX:Float, savedY:Float):Void {
+		activeTransitionTweens.push({obj: obj, tween: null, sequence: seq, target: target, savedAlpha: savedAlpha, savedScaleX: savedScaleX, savedScaleY: savedScaleY, savedX: savedX, savedY: savedY});
 		final origOnComplete = seq.onComplete;
 		seq.onComplete = () -> {
 			var i = 0;
@@ -159,7 +174,7 @@ class CodegenTransitionHelper {
 					obj.visible = true;
 					obj.alpha = 0.0;
 					final t = tm.tween(obj, duration, [Alpha(preAlpha)], easing);
-					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
+					trackTransitionTween(obj, t, show, preAlpha, preScaleX, preScaleY, preX, preY);
 				} else {
 					final t = tm.tween(obj, duration, [Alpha(0.0)], easing);
 					final capturedObj = obj;
@@ -167,7 +182,7 @@ class CodegenTransitionHelper {
 						capturedObj.visible = false;
 						capturedObj.alpha = preAlpha;
 					};
-					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
+					trackTransitionTween(obj, t, show, preAlpha, preScaleX, preScaleY, preX, preY);
 				}
 
 			case TransCrossfade(duration, easing):
@@ -181,7 +196,7 @@ class CodegenTransitionHelper {
 					final pause = tm.createTween(obj, duration, []);
 					final fadeIn = tm.createTween(obj, duration, [Alpha(preAlpha)], easing);
 					final seq = tm.sequence([pause, fadeIn]);
-					trackTransitionSequence(obj, seq, preAlpha, preScaleX, preScaleY, preX, preY);
+					trackTransitionSequence(obj, seq, show, preAlpha, preScaleX, preScaleY, preX, preY);
 				} else {
 					final t = tm.tween(obj, duration, [Alpha(0.0)], easing);
 					final capturedObj = obj;
@@ -189,7 +204,7 @@ class CodegenTransitionHelper {
 						capturedObj.visible = false;
 						capturedObj.alpha = preAlpha;
 					};
-					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
+					trackTransitionTween(obj, t, show, preAlpha, preScaleX, preScaleY, preX, preY);
 				}
 
 			case TransFlipX(duration, easing):
@@ -203,7 +218,7 @@ class CodegenTransitionHelper {
 					final pause = tm.createTween(obj, halfDuration, []);
 					final grow = tm.createTween(obj, halfDuration, [ScaleX(preScaleX)], easing);
 					final seq = tm.sequence([pause, grow]);
-					trackTransitionSequence(obj, seq, preAlpha, preScaleX, preScaleY, preX, preY);
+					trackTransitionSequence(obj, seq, show, preAlpha, preScaleX, preScaleY, preX, preY);
 				} else {
 					final t = tm.tween(obj, halfDuration, [ScaleX(0.0)], easing);
 					final capturedObj = obj;
@@ -211,7 +226,7 @@ class CodegenTransitionHelper {
 						capturedObj.visible = false;
 						capturedObj.scaleX = preScaleX;
 					};
-					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
+					trackTransitionTween(obj, t, show, preAlpha, preScaleX, preScaleY, preX, preY);
 				}
 
 			case TransFlipY(duration, easing):
@@ -222,7 +237,7 @@ class CodegenTransitionHelper {
 					final pause = tm.createTween(obj, halfDuration, []);
 					final grow = tm.createTween(obj, halfDuration, [ScaleY(preScaleY)], easing);
 					final seq = tm.sequence([pause, grow]);
-					trackTransitionSequence(obj, seq, preAlpha, preScaleX, preScaleY, preX, preY);
+					trackTransitionSequence(obj, seq, show, preAlpha, preScaleX, preScaleY, preX, preY);
 				} else {
 					final t = tm.tween(obj, halfDuration, [ScaleY(0.0)], easing);
 					final capturedObj = obj;
@@ -230,7 +245,7 @@ class CodegenTransitionHelper {
 						capturedObj.visible = false;
 						capturedObj.scaleY = preScaleY;
 					};
-					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
+					trackTransitionTween(obj, t, show, preAlpha, preScaleX, preScaleY, preX, preY);
 				}
 
 			case TransSlide(dir, duration, distance, easing):
@@ -245,7 +260,7 @@ class CodegenTransitionHelper {
 						case TDDown: obj.y += slideOffset;
 					}
 					final t = tm.tween(obj, duration, [X(preX), Y(preY), Alpha(preAlpha)], easing);
-					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
+					trackTransitionTween(obj, t, show, preAlpha, preScaleX, preScaleY, preX, preY);
 				} else {
 					var targetX = obj.x;
 					var targetY = obj.y;
@@ -263,7 +278,7 @@ class CodegenTransitionHelper {
 						capturedObj.x = preX;
 						capturedObj.y = preY;
 					};
-					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
+					trackTransitionTween(obj, t, show, preAlpha, preScaleX, preScaleY, preX, preY);
 				}
 
 			case TransNone:
@@ -303,7 +318,7 @@ class CodegenTransitionHelper {
 					obj.alpha = 0.0;
 					addToGraph(obj, parent, sentinel);
 					final t = tm.tween(obj, duration, [Alpha(preAlpha)], easing);
-					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
+					trackTransitionTween(obj, t, show, preAlpha, preScaleX, preScaleY, preX, preY);
 				} else {
 					final t = tm.tween(obj, duration, [Alpha(0.0)], easing);
 					final capturedObj = obj;
@@ -312,7 +327,7 @@ class CodegenTransitionHelper {
 						capturedParent.removeChild(capturedObj);
 						capturedObj.alpha = preAlpha;
 					};
-					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
+					trackTransitionTween(obj, t, show, preAlpha, preScaleX, preScaleY, preX, preY);
 				}
 
 			case TransCrossfade(duration, easing):
@@ -325,7 +340,7 @@ class CodegenTransitionHelper {
 					final pause = tm.createTween(obj, duration, []);
 					final fadeIn = tm.createTween(obj, duration, [Alpha(preAlpha)], easing);
 					final seq = tm.sequence([pause, fadeIn]);
-					trackTransitionSequence(obj, seq, preAlpha, preScaleX, preScaleY, preX, preY);
+					trackTransitionSequence(obj, seq, show, preAlpha, preScaleX, preScaleY, preX, preY);
 				} else {
 					final t = tm.tween(obj, duration, [Alpha(0.0)], easing);
 					final capturedObj = obj;
@@ -334,7 +349,7 @@ class CodegenTransitionHelper {
 						capturedParent.removeChild(capturedObj);
 						capturedObj.alpha = preAlpha;
 					};
-					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
+					trackTransitionTween(obj, t, show, preAlpha, preScaleX, preScaleY, preX, preY);
 				}
 
 			case TransFlipX(duration, easing):
@@ -347,7 +362,7 @@ class CodegenTransitionHelper {
 					final pause = tm.createTween(obj, halfDuration, []);
 					final grow = tm.createTween(obj, halfDuration, [ScaleX(preScaleX)], easing);
 					final seq = tm.sequence([pause, grow]);
-					trackTransitionSequence(obj, seq, preAlpha, preScaleX, preScaleY, preX, preY);
+					trackTransitionSequence(obj, seq, show, preAlpha, preScaleX, preScaleY, preX, preY);
 				} else {
 					final t = tm.tween(obj, halfDuration, [ScaleX(0.0)], easing);
 					final capturedObj = obj;
@@ -356,7 +371,7 @@ class CodegenTransitionHelper {
 						capturedParent.removeChild(capturedObj);
 						capturedObj.scaleX = preScaleX;
 					};
-					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
+					trackTransitionTween(obj, t, show, preAlpha, preScaleX, preScaleY, preX, preY);
 				}
 
 			case TransFlipY(duration, easing):
@@ -367,7 +382,7 @@ class CodegenTransitionHelper {
 					final pause = tm.createTween(obj, halfDuration, []);
 					final grow = tm.createTween(obj, halfDuration, [ScaleY(preScaleY)], easing);
 					final seq = tm.sequence([pause, grow]);
-					trackTransitionSequence(obj, seq, preAlpha, preScaleX, preScaleY, preX, preY);
+					trackTransitionSequence(obj, seq, show, preAlpha, preScaleX, preScaleY, preX, preY);
 				} else {
 					final t = tm.tween(obj, halfDuration, [ScaleY(0.0)], easing);
 					final capturedObj = obj;
@@ -376,7 +391,7 @@ class CodegenTransitionHelper {
 						capturedParent.removeChild(capturedObj);
 						capturedObj.scaleY = preScaleY;
 					};
-					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
+					trackTransitionTween(obj, t, show, preAlpha, preScaleX, preScaleY, preX, preY);
 				}
 
 			case TransSlide(dir, duration, distance, easing):
@@ -391,7 +406,7 @@ class CodegenTransitionHelper {
 					}
 					addToGraph(obj, parent, sentinel);
 					final t = tm.tween(obj, duration, [X(preX), Y(preY), Alpha(preAlpha)], easing);
-					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
+					trackTransitionTween(obj, t, show, preAlpha, preScaleX, preScaleY, preX, preY);
 				} else {
 					var targetX = obj.x;
 					var targetY = obj.y;
@@ -410,7 +425,7 @@ class CodegenTransitionHelper {
 						capturedObj.x = preX;
 						capturedObj.y = preY;
 					};
-					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
+					trackTransitionTween(obj, t, show, preAlpha, preScaleX, preScaleY, preX, preY);
 				}
 
 			case TransNone:

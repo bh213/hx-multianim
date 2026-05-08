@@ -429,4 +429,49 @@ class ParameterizedSlotTest extends BuilderTestBase {
 		Assert.equals(tm, slot.incrementalContext.tweenManager,
 			"buildSlotContent should inject builder.tweenManager");
 	}
+
+	// Decoration of a parameterized slot may declare interactives, named elements,
+	// sub-slots, and dynamicRefs. `buildSlotContent` builds these into the slot's
+	// container but discarded the per-build InternalBuilderResults — the SlotHandle
+	// returned to the caller carried no reference to them, so codegen-side lookup
+	// dispatchers and screen wiring/teardown could not reach them by API. Mirrors
+	// the SwitchArmResults sink that already solves the same problem for @switch arms.
+	@Test
+	public function testSlotHandleExposesDecorationInteractives():Void {
+		final builder = bh.test.BuilderTestBase.builderFromSource("
+			#test programmable() {
+				#mySlot slot(highlighted:bool=false) {
+					interactive(80, 80, \"card_drop\", role => \"drop\"): 0, 0
+					@(highlighted => true) interactive(80, 80, \"card_glow\"): 0, 0
+				}
+			}
+		");
+		final container = new h2d.Object();
+		final slot = builder.buildSlotContent("test", "mySlot", new Map(), container);
+
+		final initial = slot.getInteractives();
+		Assert.equals(1, initial.length,
+			'expected 1 interactive (card_drop) initially with highlighted=false, got ${initial.length}');
+
+		slot.setParameter("highlighted", true);
+		final afterFlip = slot.getInteractives();
+		Assert.equals(2, afterFlip.length,
+			'expected 2 interactives after highlighted=true (card_drop + card_glow), got ${afterFlip.length}');
+	}
+
+	@Test
+	public function testSlotHandleExposesDecorationNamedElement():Void {
+		final builder = bh.test.BuilderTestBase.builderFromSource("
+			#test programmable() {
+				#mySlot slot(highlighted:bool=false) {
+					#frame bitmap(generated(color(20, 20, #555555))): 0, 0
+				}
+			}
+		");
+		final container = new h2d.Object();
+		final slot = builder.buildSlotContent("test", "mySlot", new Map(), container);
+
+		final frame = slot.getUpdatable("frame");
+		Assert.notNull(frame, "expected #frame named element from slot decoration to be reachable via SlotHandle");
+	}
 }

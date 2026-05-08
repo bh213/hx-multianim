@@ -326,7 +326,7 @@ class IncrementalUpdateContext {
 	var hasChanges:Bool = false;
 	var transitionsDef:Null<Map<String, TransitionType>>;
 	public var tweenManager:Null<TweenManager> = null;
-	var activeTransitionTweens:Array<{obj:h2d.Object, tween:Null<Tween>, sequence:Null<TweenSequence>, savedAlpha:Float, savedScaleX:Float, savedScaleY:Float, savedX:Float, savedY:Float}> = [];
+	var activeTransitionTweens:Array<{obj:h2d.Object, tween:Null<Tween>, sequence:Null<TweenSequence>, target:Bool, savedAlpha:Float, savedScaleX:Float, savedScaleY:Float, savedX:Float, savedY:Float}> = [];
 	var rebuildListeners:Array<Void -> Void> = [];
 	// Params that appear in slots whose incremental updates are intentionally unsupported
 	// (interactive id/metadata, stateanim selectors, ...). setParameter on one of these
@@ -854,6 +854,20 @@ class IncrementalUpdateContext {
 		hasChanges = false;
 	}
 
+	/** Discard a batch in progress without firing applyUpdates. Used by callers (forwarding
+	 *  loop in applyUpdates) that opened a batch on this context and must abandon it on a
+	 *  mid-batch throw — leaving the partial state pending would re-evaluate conditional
+	 *  chains and downstream forwardings against half-applied values, while leaking
+	 *  batchMode=true would wedge the next beginUpdate() with nested_begin_update. The
+	 *  committed indexedParams entries from the failed batch stay put; the next clean
+	 *  setParameter call resyncs. */
+	public function cancelUpdate():Void {
+		if (!batchMode) return;
+		batchMode = false;
+		changedParams.clear();
+		hasChanges = false;
+	}
+
 	public function hasParameter(name:String):Bool {
 		return getParamDefinition(name) != null;
 	}
@@ -891,11 +905,10 @@ class IncrementalUpdateContext {
 				entry.sequence.onComplete = null;
 				entry.sequence.cancel();
 			}
-			entry.obj.alpha = entry.savedAlpha;
-			entry.obj.scaleX = entry.savedScaleX;
-			entry.obj.scaleY = entry.savedScaleY;
-			entry.obj.x = entry.savedX;
-			entry.obj.y = entry.savedY;
+			// Don't restore savedAlpha/savedX/...: game code may have mutated obj
+			// mid-transition (BuilderResult exposes the live h2d.Object). Leaving
+			// properties at the tween's last write also produces smooth reverse-
+			// direction blends instead of a jump back to the captured baseline.
 		}
 		activeTransitionTweens = [];
 	}
@@ -988,12 +1001,13 @@ class IncrementalUpdateContext {
 					entry.sequence.onComplete = null;
 					entry.sequence.cancel();
 				}
-				// Restore pre-transition properties so the next transition starts from clean state
-				obj.alpha = entry.savedAlpha;
-				obj.scaleX = entry.savedScaleX;
-				obj.scaleY = entry.savedScaleY;
-				obj.x = entry.savedX;
-				obj.y = entry.savedY;
+				// Don't restore savedAlpha/savedX/...: game code may have mutated obj
+				// mid-transition (BuilderResult exposes the live h2d.Object). The next
+				// transition's executePresenceTransition recaptures preX/preAlpha/... from
+				// the live obj, so any user mutations propagate into the new transition's
+				// baseline. Restoring would also produce a visible jump on reverse-
+				// direction transitions (e.g. show→hide mid-fade jumping alpha back to 1
+				// before the new fade-out starts).
 				activeTransitionTweens.splice(i, 1);
 			} else {
 				i++;
@@ -1001,8 +1015,8 @@ class IncrementalUpdateContext {
 		}
 	}
 
-	function trackTransitionTween(obj:h2d.Object, tween:Tween, savedAlpha:Float, savedScaleX:Float, savedScaleY:Float, savedX:Float, savedY:Float):Void {
-		activeTransitionTweens.push({obj: obj, tween: tween, sequence: null, savedAlpha: savedAlpha, savedScaleX: savedScaleX, savedScaleY: savedScaleY, savedX: savedX, savedY: savedY});
+	function trackTransitionTween(obj:h2d.Object, tween:Tween, target:Bool, savedAlpha:Float, savedScaleX:Float, savedScaleY:Float, savedX:Float, savedY:Float):Void {
+		activeTransitionTweens.push({obj: obj, tween: tween, sequence: null, target: target, savedAlpha: savedAlpha, savedScaleX: savedScaleX, savedScaleY: savedScaleY, savedX: savedX, savedY: savedY});
 		final origOnComplete = tween.onComplete;
 		tween.onComplete = () -> {
 			var i = 0;
@@ -1017,8 +1031,8 @@ class IncrementalUpdateContext {
 		};
 	}
 
-	function trackTransitionSequence(obj:h2d.Object, seq:TweenSequence, savedAlpha:Float, savedScaleX:Float, savedScaleY:Float, savedX:Float, savedY:Float):Void {
-		activeTransitionTweens.push({obj: obj, tween: null, sequence: seq, savedAlpha: savedAlpha, savedScaleX: savedScaleX, savedScaleY: savedScaleY, savedX: savedX, savedY: savedY});
+	function trackTransitionSequence(obj:h2d.Object, seq:TweenSequence, target:Bool, savedAlpha:Float, savedScaleX:Float, savedScaleY:Float, savedX:Float, savedY:Float):Void {
+		activeTransitionTweens.push({obj: obj, tween: null, sequence: seq, target: target, savedAlpha: savedAlpha, savedScaleX: savedScaleX, savedScaleY: savedScaleY, savedX: savedX, savedY: savedY});
 		final origOnComplete = seq.onComplete;
 		seq.onComplete = () -> {
 			var i = 0;
@@ -1039,6 +1053,19 @@ class IncrementalUpdateContext {
 		return false;
 	}
 
+	/** Returns the visibility target of the active transition for `obj`, or null if none.
+	 *  A direction-aware check: an in-flight transition whose target equals the requested
+	 *  newVisible already converges to the right state, so it must not be cancelled or
+	 *  replaced. Without this, every unrelated `setParameter` during a fade-in would walk
+	 *  applyConditionalChains, hit setPresenceOrMaterialize → setPresenceWithTransition,
+	 *  and tear down the live tween (since findTransitionSpec returns null when the
+	 *  changed param has no transition spec, the cancel-only branch fires). */
+	function getActiveTransitionTarget(obj:h2d.Object):Null<Bool> {
+		for (entry in activeTransitionTweens)
+			if (entry.obj == obj) return entry.target;
+		return null;
+	}
+
 	/** Check if an object is effectively visible: in the scene graph and all ancestors visible. */
 	static function isEffectivelyVisible(obj:h2d.Object):Bool {
 		if (obj.parent == null) return false; // Not in scene graph
@@ -1054,8 +1081,15 @@ class IncrementalUpdateContext {
 			?savedFlowProps:Null<SavedFlowProperties>}, newVisible:Bool, node:Node):Void {
 		final obj = entry.object;
 		final inGraph = isInGraph(obj);
-		// Skip only if state matches AND no transition is in progress.
-		if (inGraph == newVisible && !hasActiveTransition(obj)) return;
+		// Skip when the requested state matches what's already in flight: either no
+		// transition active and presence already matches, or a transition active whose
+		// target equals newVisible (it will converge on its own — replacing it would
+		// either cancel the live tween for nothing, or jump alpha/scale to 0 and start
+		// a fresh fade from zero, both of which are user-visible glitches).
+		if (inGraph == newVisible) {
+			final activeTarget = getActiveTransitionTarget(obj);
+			if (activeTarget == null || activeTarget == newVisible) return;
+		}
 
 		final transSpec = findTransitionSpec(node);
 		if (transSpec == null || tweenManager == null || transSpec.match(TransNone)) {
@@ -1093,7 +1127,7 @@ class IncrementalUpdateContext {
 					addToGraph(entry);
 					obj.alpha = 0.0;
 					final t = tm.tween(obj, duration, [Alpha(preAlpha)], easing);
-					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
+					trackTransitionTween(obj, t, show, preAlpha, preScaleX, preScaleY, preX, preY);
 				} else {
 					final t = tm.tween(obj, duration, [Alpha(0.0)], easing);
 					final capturedEntry = entry;
@@ -1101,7 +1135,7 @@ class IncrementalUpdateContext {
 						removeFromGraph(capturedEntry);
 						capturedEntry.object.alpha = preAlpha;
 					};
-					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
+					trackTransitionTween(obj, t, show, preAlpha, preScaleX, preScaleY, preX, preY);
 				}
 
 			case TransCrossfade(duration, easing):
@@ -1115,7 +1149,7 @@ class IncrementalUpdateContext {
 					final pause = tm.createTween(obj, duration, []);
 					final fadeIn = tm.createTween(obj, duration, [Alpha(preAlpha)], easing);
 					final seq = tm.sequence([pause, fadeIn]);
-					trackTransitionSequence(obj, seq, preAlpha, preScaleX, preScaleY, preX, preY);
+					trackTransitionSequence(obj, seq, show, preAlpha, preScaleX, preScaleY, preX, preY);
 				} else {
 					final t = tm.tween(obj, duration, [Alpha(0.0)], easing);
 					final capturedEntry = entry;
@@ -1123,7 +1157,7 @@ class IncrementalUpdateContext {
 						removeFromGraph(capturedEntry);
 						capturedEntry.object.alpha = preAlpha;
 					};
-					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
+					trackTransitionTween(obj, t, show, preAlpha, preScaleX, preScaleY, preX, preY);
 				}
 
 			case TransFlipX(duration, easing):
@@ -1137,7 +1171,7 @@ class IncrementalUpdateContext {
 					final pause = tm.createTween(obj, halfDuration, []);
 					final grow = tm.createTween(obj, halfDuration, [ScaleX(preScaleX)], easing);
 					final seq = tm.sequence([pause, grow]);
-					trackTransitionSequence(obj, seq, preAlpha, preScaleX, preScaleY, preX, preY);
+					trackTransitionSequence(obj, seq, show, preAlpha, preScaleX, preScaleY, preX, preY);
 				} else {
 					final t = tm.tween(obj, halfDuration, [ScaleX(0.0)], easing);
 					final capturedEntry = entry;
@@ -1145,7 +1179,7 @@ class IncrementalUpdateContext {
 						removeFromGraph(capturedEntry);
 						capturedEntry.object.scaleX = preScaleX;
 					};
-					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
+					trackTransitionTween(obj, t, show, preAlpha, preScaleX, preScaleY, preX, preY);
 				}
 
 			case TransFlipY(duration, easing):
@@ -1156,7 +1190,7 @@ class IncrementalUpdateContext {
 					final pause = tm.createTween(obj, halfDuration, []);
 					final grow = tm.createTween(obj, halfDuration, [ScaleY(preScaleY)], easing);
 					final seq = tm.sequence([pause, grow]);
-					trackTransitionSequence(obj, seq, preAlpha, preScaleX, preScaleY, preX, preY);
+					trackTransitionSequence(obj, seq, show, preAlpha, preScaleX, preScaleY, preX, preY);
 				} else {
 					final t = tm.tween(obj, halfDuration, [ScaleY(0.0)], easing);
 					final capturedEntry = entry;
@@ -1164,7 +1198,7 @@ class IncrementalUpdateContext {
 						removeFromGraph(capturedEntry);
 						capturedEntry.object.scaleY = preScaleY;
 					};
-					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
+					trackTransitionTween(obj, t, show, preAlpha, preScaleX, preScaleY, preX, preY);
 				}
 
 			case TransSlide(dir, duration, distance, easing):
@@ -1179,7 +1213,7 @@ class IncrementalUpdateContext {
 						case TDDown: obj.y += slideOffset;
 					}
 					final t = tm.tween(obj, duration, [X(preX), Y(preY), Alpha(preAlpha)], easing);
-					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
+					trackTransitionTween(obj, t, show, preAlpha, preScaleX, preScaleY, preX, preY);
 				} else {
 					var targetX = obj.x;
 					var targetY = obj.y;
@@ -1197,7 +1231,7 @@ class IncrementalUpdateContext {
 						capturedEntry.object.x = preX;
 						capturedEntry.object.y = preY;
 					};
-					trackTransitionTween(obj, t, preAlpha, preScaleX, preScaleY, preX, preY);
+					trackTransitionTween(obj, t, show, preAlpha, preScaleX, preScaleY, preX, preY);
 				}
 
 			case TransNone:
@@ -1436,10 +1470,19 @@ class IncrementalUpdateContext {
 		if (forwardGroups != null) {
 			for (group in forwardGroups) {
 				group.ctx.beginUpdate();
-				for (item in group.items) {
-					group.ctx.setParameter(item.param, item.value);
+				try {
+					for (item in group.items) {
+						group.ctx.setParameter(item.param, item.value);
+					}
+					group.ctx.endUpdate();
+				} catch (e:Dynamic) {
+					// A mid-batch throw (unknown_param / invalid_param_value, e.g. a child
+					// param vocabulary that diverged from this resolveFn after hot reload)
+					// must not leak batchMode=true into the child — the next caller of
+					// child.beginUpdate would otherwise hit nested_begin_update.
+					group.ctx.cancelUpdate();
+					throw e;
 				}
-				group.ctx.endUpdate();
 			}
 		}
 
@@ -1597,6 +1640,16 @@ class SlotHandle {
 	var contentTarget:Null<h2d.Object> = null;
 	var hasParameters:Bool = false;
 
+	/** Per-slot InternalBuilderResults populated by `buildSlotContent` (codegen path) so the
+	 *  SlotHandle exposes interactives, named elements, sub-slots, dynamicRefs and
+	 *  htmlTextsWithLinks declared inside the parameterized slot's decoration body. Mirrors
+	 *  the SwitchArmResults sink used by `@switch` arms — without this, codegen instances
+	 *  built via `buildParameterizedSlot` could not reach those registrations through any
+	 *  handle. Null on slots built via the runtime BuilderResult path (line 6082-6139),
+	 *  whose decoration registrations live in the parent BuilderResult's IR instead. */
+	@:allow(bh.multianim.MultiAnimBuilder)
+	var ir:Null<InternalBuilderResults> = null;
+
 	public function new(container:h2d.Object, ?incrementalContext:IncrementalUpdateContext, ?contentTarget:h2d.Object) {
 		this.container = container;
 		this.contentTarget = contentTarget;
@@ -1679,6 +1732,28 @@ class SlotHandle {
 
 	public function getScreenBounds():h2d.col.Bounds {
 		return container.getBounds();
+	}
+
+	/** Interactives declared inside the parameterized slot's decoration body. Returns a fresh
+	 *  copy each call so callers can iterate safely while the slot rebuilds. Empty for slots
+	 *  built via the runtime BuilderResult path (decoration registrations live on the parent
+	 *  BuilderResult there). */
+	public function getInteractives():Array<bh.base.MAObject> {
+		if (ir == null) return [];
+		return ir.interactives.copy();
+	}
+
+	/** Named element declared inside the parameterized slot's decoration body — symmetric with
+	 *  `BuilderResult.getUpdatable` and `SwitchArmResults.getUpdatable`. Returns null when the
+	 *  name is absent or when the slot has no per-slot IR (runtime BuilderResult path). */
+	public function getUpdatable(name:String, ?index:Null<Int>, ?indexY:Null<Int>):Null<h2d.Object> {
+		if (ir == null) return null;
+		final key = if (indexY != null) '${name} ${index} ${indexY}'
+			else if (index != null) '${name} ${index}'
+			else name;
+		final arr = ir.names.get(key);
+		if (arr == null || arr.length == 0) return null;
+		return MultiAnimParser.toh2dObject(arr[0].object);
 	}
 }
 
@@ -3353,6 +3428,19 @@ class MultiAnimBuilder {
 					case ValueF(val):
 						if (fromF != null && (fromExclusive ? val <= fromF : val < fromF)) return false;
 						if (toF != null && (toExclusive ? val >= toF : val > toF)) return false;
+					case Index(idx, _):
+						// Templates that mix `status:[normal,hover,...]` enum arms with
+						// numeric arms on the same param (e.g. `@(status >= 0)`) need the
+						// enum index to act as the integer comparand — symmetric with the
+						// codegen path which compares the underlying `_status` field.
+						if (fromF != null && (fromExclusive ? idx <= fromF : idx < fromF)) return false;
+						if (toF != null && (toExclusive ? idx >= toF : idx > toF)) return false;
+					case StringValue(_):
+						// Unknown enum string set via `setParameter("status", "disabled")`
+						// on a template whose enum doesn't list "disabled". Numeric
+						// comparison against a non-number silently does not match,
+						// symmetric with the no-match contract for `@(status=>v)` arms.
+						return false;
 					default: throw builderError('invalid param types ${currentValue}, ${condValue}');
 				}
 
@@ -3594,7 +3682,9 @@ class MultiAnimBuilder {
 	static function collectCoordinateParamRefs(coord:Coordinates, result:Array<String>):Void {
 		if (coord == null) return;
 		switch coord {
+			case ZERO:
 			case OFFSET(x, y): collectParamRefs(x, result); collectParamRefs(y, result);
+			case LAYOUT(_, index): if (index != null) collectParamRefs(index, result);
 			case SELECTED_GRID_POSITION(x, y): collectParamRefs(x, result); collectParamRefs(y, result);
 			case SELECTED_HEX_CUBE(q, r, s): collectParamRefs(q, result); collectParamRefs(r, result); collectParamRefs(s, result);
 			case SELECTED_HEX_OFFSET(col, row, _): collectParamRefs(col, result); collectParamRefs(row, result);
@@ -3602,9 +3692,18 @@ class MultiAnimBuilder {
 			case SELECTED_HEX_PIXEL(x, y): collectParamRefs(x, result); collectParamRefs(y, result);
 			case SELECTED_HEX_CORNER(count, factor): collectParamRefs(count, result); collectParamRefs(factor, result);
 			case SELECTED_HEX_EDGE(dir, factor): collectParamRefs(dir, result); collectParamRefs(factor, result);
+			case SELECTED_HEX_CELL_CORNER(cell, cornerIndex, factor):
+				collectCoordinateParamRefs(cell, result); collectParamRefs(cornerIndex, result); collectParamRefs(factor, result);
+			case SELECTED_HEX_CELL_EDGE(cell, direction, factor):
+				collectCoordinateParamRefs(cell, result); collectParamRefs(direction, result); collectParamRefs(factor, result);
 			case NAMED_COORD(_, coord): collectCoordinateParamRefs(coord, result);
-			case WITH_OFFSET(base, offsetX, offsetY): collectCoordinateParamRefs(base, result); collectParamRefs(offsetX, result); collectParamRefs(offsetY, result);
-			default:
+			case WITH_OFFSET(base, offsetX, offsetY):
+				collectCoordinateParamRefs(base, result); collectParamRefs(offsetX, result); collectParamRefs(offsetY, result);
+			case EXTRA_POINT_REF(_, _, fallback):
+				if (fallback != null) collectCoordinateParamRefs(fallback, result);
+			case EXTRA_POINT_ANIM(_, _, _, selector, fallback):
+				if (selector != null) for (_ => v in selector) collectParamRefs(v, result);
+				if (fallback != null) collectCoordinateParamRefs(fallback, result);
 		}
 	}
 
@@ -4036,52 +4135,27 @@ class MultiAnimBuilder {
 		final _pos = node.pos;
 		if (_pos != null) {
 			final posRefs:Array<String> = [];
-			switch _pos {
-				case OFFSET(x, y):
-					collectParamRefs(x, posRefs);
-					collectParamRefs(y, posRefs);
-				case SELECTED_GRID_POSITION(gridX, gridY):
-					collectParamRefs(gridX, posRefs);
-					collectParamRefs(gridY, posRefs);
-				case SELECTED_HEX_CORNER(count, factor):
-					collectParamRefs(count, posRefs);
-					collectParamRefs(factor, posRefs);
-				case SELECTED_HEX_EDGE(direction, factor):
-					collectParamRefs(direction, posRefs);
-					collectParamRefs(factor, posRefs);
-				case SELECTED_HEX_CUBE(q, r, s):
-					collectParamRefs(q, posRefs);
-					collectParamRefs(r, posRefs);
-					collectParamRefs(s, posRefs);
-				case SELECTED_HEX_OFFSET(col, row, _):
-					collectParamRefs(col, posRefs);
-					collectParamRefs(row, posRefs);
-				case SELECTED_HEX_DOUBLED(col, row):
-					collectParamRefs(col, posRefs);
-					collectParamRefs(row, posRefs);
-				case SELECTED_HEX_PIXEL(x, y):
-					collectParamRefs(x, posRefs);
-					collectParamRefs(y, posRefs);
-				case SELECTED_HEX_CELL_CORNER(cell, cornerIndex, factor):
-					collectCoordinateParamRefs(cell, posRefs);
-					collectParamRefs(cornerIndex, posRefs);
-					collectParamRefs(factor, posRefs);
-				case SELECTED_HEX_CELL_EDGE(cell, direction, factor):
-					collectCoordinateParamRefs(cell, posRefs);
-					collectParamRefs(direction, posRefs);
-					collectParamRefs(factor, posRefs);
-				case NAMED_COORD(_, coord):
-					collectCoordinateParamRefs(coord, posRefs);
-				default:
-			}
+			collectCoordinateParamRefs(_pos, posRefs);
 			if (posRefs.length > 0) {
 				final posCapture = _pos;
+				final nodeCapture = node;
 				final gcs = MultiAnimParser.getGridCoordinateSystem(node);
 				final hcs = MultiAnimParser.getHexCoordinateSystem(node);
 				ctx.trackExpression(() -> {
-					final p = calculatePosition(posCapture, gcs, hcs);
-					object.x = p.x;
-					object.y = p.y;
+					// NAMED_COORD / EXTRA_POINT_REF resolution walks `currentNode`'s parent
+					// chain. Restore it for the closure so re-resolution finds the same
+					// coordinate systems and named refs as the original build.
+					final prev = currentNode;
+					currentNode = nodeCapture;
+					try {
+						final p = calculatePosition(posCapture, gcs, hcs);
+						object.x = p.x;
+						object.y = p.y;
+					} catch (e:Dynamic) {
+						currentNode = prev;
+						throw e;
+					}
+					currentNode = prev;
 				}, posRefs, object);
 			}
 		}
@@ -7669,7 +7743,7 @@ class MultiAnimBuilder {
 		this.incrementalContext = slotCtx;
 
 		// Build slot children into container
-		final internalResults:InternalBuilderResults = {names: [], interactives: [], slots: [], dynamicRefs: new Map(), htmlTextsWithLinks: []};
+		final internalResults:InternalBuilderResults = {names: new Map(), interactives: [], slots: [], dynamicRefs: new Map(), htmlTextsWithLinks: []};
 		for (childNode in resolveConditionalChildren(slotNode.children)) {
 			build(childNode, ObjectMode(container), cast gridCS, cast hexCS, internalResults, builderParams);
 		}
@@ -7684,7 +7758,13 @@ class MultiAnimBuilder {
 				break;
 			}
 		}
-		return new SlotHandle(container, slotCtx, slotContentTarget);
+		final handle = new SlotHandle(container, slotCtx, slotContentTarget);
+		// Persist the per-slot IR so getInteractives / getUpdatable / etc. can reach decoration
+		// registrations. Without this, codegen instances built via buildParameterizedSlot
+		// would have no API path to interactives, names, sub-slots, dynamicRefs or
+		// htmlTextsWithLinks declared inside the slot decoration body.
+		handle.ir = internalResults;
+		return handle;
 	}
 
 	private static function findSlotNode(node:Node, slotName:String):Null<Node> {

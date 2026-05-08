@@ -940,10 +940,12 @@ class ProgrammableCodeGen {
 						// Enum: accept either Int (direct index), String (enum value name), or
 						// UIRichInteractiveHelper-style string like "hover" for status params.
 						// Generate a nested switch over string values. Unknown strings resolve to
-						// -1 (no @(p=>v) arm matches), mirroring the runtime contract documented
-						// at MultiAnimBuilder.setParameter — UI widgets (Button/Checkbox/Tabs)
-						// call setParameter("status", "disabled") on every client template,
-						// expecting a no-op match when the template's enum doesn't list "disabled".
+						// the UNKNOWN_ENUM_INDEX sentinel (-2147483648) so no @(p=>v) arm matches
+						// AND no @(p < N)/@(p => N..M) numeric arm matches. Mirrors the runtime
+						// contract — UI widgets (Button/Checkbox/Tabs) call
+						// setParameter("status", "disabled") on every client template, expecting
+						// a no-op match when the template's enum doesn't list "disabled".
+						// Pre-fix sentinel was -1, which silently lit `@(p < 0)` arms.
 						final strCases:Array<Case> = [];
 						for (i in 0...values.length) {
 							strCases.push({
@@ -952,7 +954,7 @@ class ProgrammableCodeGen {
 							});
 						}
 						final strSwitch:Expr = {
-							expr: ESwitch(macro (_value : String), strCases, macro -1),
+							expr: ESwitch(macro (_value : String), strCases, macro -2147483648),
 							pos: pos,
 						};
 						macro {
@@ -6197,6 +6199,17 @@ class ProgrammableCodeGen {
 					final toCond = if (toExclusive) macro($paramExpr < $toExpr) else macro($paramExpr <= $toExpr);
 					result = macro($result && $toCond);
 				}
+				// Guard against the UNKNOWN_ENUM_INDEX sentinel for enum-typed params.
+				// `setParameter("status", "disabled")` on a `status:[normal,hover,...]` enum
+				// stores -2147483648 in `_status`; without this guard `@(status < 0)` would
+				// silently fire because the sentinel is numerically less than 0. Symmetric
+				// with the runtime path which now treats StringValue×CoRange as no-match.
+				// Loop variables ($i in repeatable) are not in paramDefs — guard skipped.
+				final pdef = paramDefs.get(paramName);
+				if (pdef != null) switch pdef.type {
+					case PPTEnum(_): result = macro($paramExpr != -2147483648 && $result);
+					default:
+				}
 				result;
 
 			case CoFlag(f):
@@ -6541,7 +6554,9 @@ class ProgrammableCodeGen {
 	static function collectCoordinateParamRefs(coord:Coordinates, refs:Array<String>):Void {
 		if (coord == null) return;
 		switch coord {
+			case ZERO:
 			case OFFSET(x, y): collectParamRefsImpl(x, refs); collectParamRefsImpl(y, refs);
+			case LAYOUT(_, index): if (index != null) collectParamRefsImpl(index, refs);
 			case SELECTED_GRID_POSITION(x, y): collectParamRefsImpl(x, refs); collectParamRefsImpl(y, refs);
 			case SELECTED_HEX_CUBE(q, r, s): collectParamRefsImpl(q, refs); collectParamRefsImpl(r, refs); collectParamRefsImpl(s, refs);
 			case SELECTED_HEX_OFFSET(col, row, _): collectParamRefsImpl(col, refs); collectParamRefsImpl(row, refs);
@@ -6549,9 +6564,18 @@ class ProgrammableCodeGen {
 			case SELECTED_HEX_PIXEL(x, y): collectParamRefsImpl(x, refs); collectParamRefsImpl(y, refs);
 			case SELECTED_HEX_CORNER(count, factor): collectParamRefsImpl(count, refs); collectParamRefsImpl(factor, refs);
 			case SELECTED_HEX_EDGE(dir, factor): collectParamRefsImpl(dir, refs); collectParamRefsImpl(factor, refs);
+			case SELECTED_HEX_CELL_CORNER(cell, cornerIndex, factor):
+				collectCoordinateParamRefs(cell, refs); collectParamRefsImpl(cornerIndex, refs); collectParamRefsImpl(factor, refs);
+			case SELECTED_HEX_CELL_EDGE(cell, direction, factor):
+				collectCoordinateParamRefs(cell, refs); collectParamRefsImpl(direction, refs); collectParamRefsImpl(factor, refs);
 			case NAMED_COORD(_, c): collectCoordinateParamRefs(c, refs);
-			case WITH_OFFSET(base, offX, offY): collectCoordinateParamRefs(base, refs); collectParamRefsImpl(offX, refs); collectParamRefsImpl(offY, refs);
-			default:
+			case WITH_OFFSET(base, offX, offY):
+				collectCoordinateParamRefs(base, refs); collectParamRefsImpl(offX, refs); collectParamRefsImpl(offY, refs);
+			case EXTRA_POINT_REF(_, _, fallback):
+				if (fallback != null) collectCoordinateParamRefs(fallback, refs);
+			case EXTRA_POINT_ANIM(_, _, _, selector, fallback):
+				if (selector != null) for (_ => v in selector) collectParamRefsImpl(v, refs);
+				if (fallback != null) collectCoordinateParamRefs(fallback, refs);
 		}
 	}
 
@@ -7081,7 +7105,9 @@ class ProgrammableCodeGen {
 	static function collectCoordParamRefs(coord:Coordinates, refs:Array<String>):Void {
 		if (coord == null) return;
 		switch (coord) {
+			case ZERO:
 			case OFFSET(x, y): collectParamRefsImpl(x, refs); collectParamRefsImpl(y, refs);
+			case LAYOUT(_, index): if (index != null) collectParamRefsImpl(index, refs);
 			case SELECTED_GRID_POSITION(x, y): collectParamRefsImpl(x, refs); collectParamRefsImpl(y, refs);
 			case SELECTED_HEX_CUBE(q, r, s): collectParamRefsImpl(q, refs); collectParamRefsImpl(r, refs); collectParamRefsImpl(s, refs);
 			case SELECTED_HEX_OFFSET(col, row, _): collectParamRefsImpl(col, refs); collectParamRefsImpl(row, refs);
@@ -7093,7 +7119,11 @@ class ProgrammableCodeGen {
 			case SELECTED_HEX_CELL_EDGE(cell, direction, factor): collectCoordParamRefs(cell, refs); collectParamRefsImpl(direction, refs); collectParamRefsImpl(factor, refs);
 			case NAMED_COORD(_, coord): collectCoordParamRefs(coord, refs);
 			case WITH_OFFSET(base, offsetX, offsetY): collectCoordParamRefs(base, refs); collectParamRefsImpl(offsetX, refs); collectParamRefsImpl(offsetY, refs);
-			default:
+			case EXTRA_POINT_REF(_, _, fallback):
+				if (fallback != null) collectCoordParamRefs(fallback, refs);
+			case EXTRA_POINT_ANIM(_, _, _, selector, fallback):
+				if (selector != null) for (_ => v in selector) collectParamRefsImpl(v, refs);
+				if (fallback != null) collectCoordParamRefs(fallback, refs);
 		}
 	}
 
@@ -7156,7 +7186,7 @@ class ProgrammableCodeGen {
 				refs;
 			case LAYOUT(_, index):
 				final refs:Array<String> = [];
-				collectParamRefsImpl(index, refs);
+				if (index != null) collectParamRefsImpl(index, refs);
 				refs;
 			case NAMED_COORD(_, coord):
 				collectPositionParamRefs(coord);
@@ -7164,6 +7194,12 @@ class ProgrammableCodeGen {
 				final refs:Array<String> = collectPositionParamRefs(base);
 				collectParamRefsImpl(offsetX, refs);
 				collectParamRefsImpl(offsetY, refs);
+				refs;
+			case EXTRA_POINT_REF(_, _, fallback):
+				if (fallback != null) collectPositionParamRefs(fallback) else [];
+			case EXTRA_POINT_ANIM(_, _, _, selector, fallback):
+				final refs:Array<String> = fallback != null ? collectPositionParamRefs(fallback) : [];
+				if (selector != null) for (_ => v in selector) collectParamRefsImpl(v, refs);
 				refs;
 			default: [];
 		};

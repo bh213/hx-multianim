@@ -600,6 +600,8 @@ Slots with parameters support visual states via conditionals. `slotContent` mark
 **Runtime API:**
 - `slot.setParameter("status", "active")` — update visual state (incremental)
 - `slot.setContent(obj)` / `slot.clear()` — content independent of decorations
+- `slot.getInteractives()` — interactives declared inside the slot decoration body (returns a fresh copy each call). Empty for slots built via the runtime `BuilderResult` path
+- `slot.getUpdatable(name, ?index, ?indexY)` — named element declared inside the slot decoration body. Returns null when the name is absent or the slot has no per-slot IR
 - Codegen: `instance.getSlot_name().setParameter("status", "warning")`
 
 **Indexed:** `#name[$i] slot(params)` inside repeatable — combines indexed access with parameters.

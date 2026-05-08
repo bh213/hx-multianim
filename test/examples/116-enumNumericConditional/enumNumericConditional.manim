@@ -1,0 +1,19 @@
+version: 1.0
+
+// Mixes an enum-typed param with sibling numeric-comparison conditionals on the
+// SAME param. Used by EnumNumericConditionalTest to verify runtime and codegen
+// behave identically when setParameter receives an enum value the template does
+// not enumerate (e.g. UI widgets calling setParameter("status", "disabled") on a
+// template whose status enum has no "disabled" member).
+#enumNumericConditional programmable(status:[normal,hover,pressed]=normal) {
+    @(status=>normal)  bitmap(generated(color(10, 10, #00ff00))):  0, 0
+    @(status=>hover)   bitmap(generated(color(10, 10, #ffff00))):  0, 0
+    @(status=>pressed) bitmap(generated(color(10, 10, #ff8800))):  0, 0
+
+    // Sibling chain numerically compares the same enum-typed param. Width 20
+    // distinguishes these arms from the enum arms (width 10) so a visibility
+    // count by tile width can tell which arm matched.
+    @(status >= 0)     bitmap(generated(color(20, 10, #ff0000))): 30, 0
+    @(status < 0)      bitmap(generated(color(20, 10, #aa00ff))): 30, 0
+    @(status => 0..2)  bitmap(generated(color(20, 10, #0000ff))): 60, 0
+}

@@ -998,4 +998,52 @@ class DynamicRefTest extends BuilderTestBase {
 		Assert.equals(1, childRebuilds,
 			'child should rebuild once per batched parent update (got $childRebuilds)');
 	}
+
+	@Test
+	public function testForwardingFailureLeavesChildUsable():Void {
+		// When a forwarded setParameter throws mid-batch, the parent's applyUpdates must
+		// not leave the child stuck inside an open beginUpdate/endUpdate pair. Pre-fix,
+		// the child's batchMode stayed true and the next child.beginUpdate() tripped
+		// nested_begin_update.
+		//
+		// Repro: parent uint param forwards to a child bool param. The binding's resolveFn
+		// is resolveAsInteger (PPTBool routes to the default branch in the binding switch,
+		// MultiAnimBuilder.hx:1328-1332), so resolution succeeds and produces an Int. The
+		// child's setParameter("c2", 42) then falls to the slow path because the PPTBool
+		// fast path requires Bool, and dynamicValueToIndex rejects "42" as a bool string.
+		// Initial build uses resolveAsBool(Value(1)) → true → accepted, so build succeeds.
+		final result = buildFromSource("
+			#child programmable(c2:bool=true) {
+				bitmap(generated(color(10, 10, #ff0000))): 0, 0
+			}
+			#parent programmable(p2:uint=1) {
+				dynamicRef($child, c2=>$p2): 0, 0
+			}
+		", "parent", null, Incremental);
+
+		final child = result.getDynamicRef("child");
+		Assert.notNull(child);
+		if (child == null) return;
+
+		var parentErr:String = null;
+		try {
+			result.setParameter("p2", 42);
+		} catch (e:Dynamic) {
+			parentErr = Std.string(e);
+		}
+		Assert.notNull(parentErr, "expected forwarded setParameter to throw on bool coercion");
+
+		// The child must still accept fresh updates. Pre-fix this throws nested_begin_update
+		// because the forwarding loop never reached endUpdate.
+		var childErr:String = null;
+		try {
+			child.beginUpdate();
+			child.setParameter("c2", true);
+			child.endUpdate();
+		} catch (e:Dynamic) {
+			childErr = Std.string(e);
+		}
+		Assert.isNull(childErr,
+			'child must remain usable after a forwarding batch failure; got: $childErr');
+	}
 }
