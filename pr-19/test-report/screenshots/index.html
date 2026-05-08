@@ -327,15 +327,15 @@
 </head>
 <body>
     <h1>Visual Test Report</h1>
-    <div class="timestamp">Generated: 2026-05-07 12:09:01</div>
+    <div class="timestamp">Generated: 2026-05-08 18:18:05</div>
     <div class="summary">
         <strong>Summary:</strong> 101 tests,         <span style="color: #4CAF50;">101 passed</span>,         <span style="color: #f44336;">0 failed</span>
-        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1.3s, visual 23.3s)</span>
+        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1.2s, visual 24.3s)</span>
     </div>
     <div class="unit-tests-section">
         <h2>Unit Tests</h2>
         <div class="unit-tests-summary all-passed">
-            <strong>6505 assertions:</strong>             <span style="color: #4CAF50;">6505 passed</span>
+            <strong>6550 assertions:</strong>             <span style="color: #4CAF50;">6550 passed</span>
             <button class="expand-btn" id="unitToggleBtn" onclick="toggleUnitDetails()">Show Details</button>
         </div>
         <div class="unit-details" id="unitDetails">
@@ -841,6 +841,7 @@
                 <div class="unit-method pass">testHexOffsetOdd: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testHexOffsetXYExtraction: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testHexWidthHeightValues: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testInFlightTransitionContinuesAcrossUnrelatedSetParameter: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testIncrementalAlphaTrackedOnSetParameter: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testIncrementalApplyAlphaInterleavedSameProperty: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testIncrementalApplyAlphaInterleavedStartHidden: OK <span class="dots">.......</span></div>
@@ -875,6 +876,7 @@
                 <div class="unit-method pass">testIncrementalGraphicsRedrawsOnSetParameter: OK <span class="dots">.......</span></div>
                 <div class="unit-method pass">testIncrementalGraphicsWithConditionalAndExpression: OK <span class="dots">........</span></div>
                 <div class="unit-method pass">testIncrementalInterpolation: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testIncrementalLayoutWithParamIndex: OK <span class="dots">.........</span></div>
                 <div class="unit-method pass">testIncrementalMultiVariable: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testIncrementalPixelsActualDataAfterSetParameter: OK <span class="dots">......</span></div>
                 <div class="unit-method pass">testIncrementalPixelsRedrawsOnSetParameter: OK <span class="dots">.....</span></div>
@@ -1047,7 +1049,9 @@
                 <div class="unit-method pass">testTileGroupElseOnParam_Throws: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testTileGroupOuterConditionalOnParam_NotFlagged: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testTileGroupSwitchOnParam_Throws: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testTrackedExpressionTextResolvesLatestParamAfterHideChangeReveal: OK <span class="dots">......</span></div>
                 <div class="unit-method pass">testTransitionBatchedUpdatesScopedToParamRefs: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testTransitionCancellationPreservesUserSetTransform: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testTransitionCrossfadeSequentialTiming: OK <span class="dots">..........</span></div>
                 <div class="unit-method pass">testTransitionDoesNotFlashInactiveElseBranch: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testTransitionInterruptionCancelsOldAndStartsNew: OK <span class="dots">.....</span></div>
@@ -1320,11 +1324,20 @@
                 <div class="unit-method pass">testDynamicRefWithEnumParam: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testDynamicRefWithParams: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testDynamicRefWithStaticValues: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testForwardingFailureLeavesChildUsable: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testGetDynamicRefNotFoundThrows: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testGetDynamicRefReturnsSubResult: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testMultipleDynamicRefs: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testNestedDynamicRef: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testSwitchArmFlipFromMultiToSingleClearsDynamicRefCollision: OK <span class="dots">...</span></div>
+            </div>
+            <div class="unit-class">
+                <div class="unit-class-name">EnumNumericConditionalTest</div>
+                <div class="unit-method pass">testCodegen_KnownValueAfterUnknownStillWorks: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testCodegen_UnknownEnumValueDoesNotMatchNumericArms: OK <span class="dots">.....</span></div>
+                <div class="unit-method pass">testRuntime_KnownValueAfterUnknownStillWorks: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testRuntime_UnknownEnumValueDoesNotMatchNumericArms: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testRuntime_UnknownEnumValueDoesNotThrowOnNumericConditional: OK <span class="dots">...</span></div>
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">EventPriorityTest</div>
@@ -1475,6 +1488,8 @@
                 <div class="unit-method pass">testParameterizedSlotWithBoolParam: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testSlotClear: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testSlotData: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testSlotHandleExposesDecorationInteractives: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testSlotHandleExposesDecorationNamedElement: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testSlotIsEmptyInitially: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testSlotMethodsThrowAfterArmSwap: OK <span class="dots">................</span></div>
                 <div class="unit-method pass">testSlotNonexistentThrows: OK <span class="dots">.</span></div>
