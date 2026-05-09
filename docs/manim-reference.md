@@ -620,7 +620,7 @@ Slots with parameters support visual states via conditionals. `slotContent` mark
 | `grayscale(value)` | Grayscale conversion (0=none, 1=full) |
 | `hue(value)` | Hue rotation in degrees |
 | `dropShadow(distance, angle, color, alpha, radius, gain, quality, smoothColor)` | Drop shadow |
-| `pixelOutline(mode)` | Pixel-level outline — modes: `knockout(color, knockoutColor)` or `inlineColor(outlineColor, inlineColor)` |
+| `pixelOutline(mode [, smoothColor])` | Pixel-level outline — modes: `knockout(color, knockoutStrength)` or `inlineColor(outlineColor, fillColor)`. Optional trailing `smoothColor` keyword enables smoothed edge blending. |
 | `replacePalette(palette, sourceRow, replacementRow)` | Swap palette rows |
 | `replaceColor(sourceColors[], replacementColors[])` | Replace specific colors |
 | `group(filter1, filter2, ...)` | Combine multiple filters |
@@ -728,6 +728,8 @@ fontColor => #FF0000       // → 0xFFFF0000 (opaque red)
 fontColor => 0xFFFF0000    // → 0xFFFF0000 (opaque red, explicit)
 fontColor => 0xFF0000      // → 0x00FF0000 (transparent red — usually a bug)
 ```
+
+Read color settings with `BuilderResolvedSettings.getColorOrDefault(key, default)` / `getColorOrException(key)` — `getIntOr*` and `getFloatOr*` throw on a `:color` setting (the previous int/float fallthrough silently masked type mismatches). `int` settings can still be read with `getColorOr*` (e.g. for raw `0xAARRGGBB` written as `:int`).
 
 ---
 

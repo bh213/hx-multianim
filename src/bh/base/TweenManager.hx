@@ -36,25 +36,47 @@ private enum TweenPropertyKind {
 // implementation detail of the Tween class — fields are not consumed externally.
 class TweenPropertyEntry {
 	// Allocation watchdog for tests. Gated behind MULTIANIM_ALLOC_TRACK so the
-	// per-construction increment vanishes from production builds; entries are
-	// allocated 1-7× per Tween construction, and Tweens are created continuously
-	// (UI fades, card moves, transitions). A future pool would drop this to ~0
-	// across stable scenes.
+	// per-construction increment vanishes from production builds. With pooling,
+	// `creationCount` only grows when the free-list is empty (initial fill or
+	// burst beyond the high-water mark); steady-state UI churn produces 0.
 	#if MULTIANIM_ALLOC_TRACK
 	public static var creationCount:Int = 0;
 	#end
+
+	static var _pool:Array<TweenPropertyEntry> = [];
 
 	public var kind:TweenPropertyKind;
 	public var from:Float;
 	public var to:Float;
 
-	public function new(kind:TweenPropertyKind, to:Float) {
+	function new(kind:TweenPropertyKind, to:Float) {
 		this.kind = kind;
 		this.to = to;
 		this.from = 0.0;
 		#if MULTIANIM_ALLOC_TRACK
 		creationCount++;
 		#end
+	}
+
+	public static inline function acquire(kind:TweenPropertyKind, to:Float):TweenPropertyEntry {
+		// pop() is Null<T>; narrow via explicit check rather than relying on length.
+		var e = _pool.pop();
+		if (e != null) {
+			e.kind = kind;
+			e.to = to;
+			e.from = 0.0;
+			return e;
+		}
+		return new TweenPropertyEntry(kind, to);
+	}
+
+	public static inline function release(entry:TweenPropertyEntry):Void {
+		// KCustom holds two closures that may capture game state — reset to a
+		// closure-free variant so released entries don't pin objects in memory.
+		entry.kind = KAlpha;
+		entry.from = 0.0;
+		entry.to = 0.0;
+		_pool.push(entry);
 	}
 }
 
@@ -87,24 +109,34 @@ class Tween {
 		for (prop in properties) {
 			switch prop {
 				case Alpha(to):
-					entries.push(new TweenPropertyEntry(KAlpha, to));
+					entries.push(TweenPropertyEntry.acquire(KAlpha, to));
 				case X(to):
-					entries.push(new TweenPropertyEntry(KX, to));
+					entries.push(TweenPropertyEntry.acquire(KX, to));
 				case Y(to):
-					entries.push(new TweenPropertyEntry(KY, to));
+					entries.push(TweenPropertyEntry.acquire(KY, to));
 				case ScaleX(to):
-					entries.push(new TweenPropertyEntry(KScaleX, to));
+					entries.push(TweenPropertyEntry.acquire(KScaleX, to));
 				case ScaleY(to):
-					entries.push(new TweenPropertyEntry(KScaleY, to));
+					entries.push(TweenPropertyEntry.acquire(KScaleY, to));
 				case Scale(to):
-					entries.push(new TweenPropertyEntry(KScaleX, to));
-					entries.push(new TweenPropertyEntry(KScaleY, to));
+					entries.push(TweenPropertyEntry.acquire(KScaleX, to));
+					entries.push(TweenPropertyEntry.acquire(KScaleY, to));
 				case Rotation(to):
-					entries.push(new TweenPropertyEntry(KRotation, to));
+					entries.push(TweenPropertyEntry.acquire(KRotation, to));
 				case Custom(getter, setter, to):
-					entries.push(new TweenPropertyEntry(KCustom(getter, setter), to));
+					entries.push(TweenPropertyEntry.acquire(KCustom(getter, setter), to));
 			}
 		}
+	}
+
+	/** Return all entries to the shared pool. Idempotent — safe to call twice. */
+	public function recycleEntries():Void {
+		for (entry in entries) {
+			TweenPropertyEntry.release(entry);
+		}
+		// Empty in place rather than reallocating; subsequent step() calls will
+		// see no entries and become no-ops, matching cancelled-tween semantics.
+		entries.resize(0);
 	}
 
 	public function setOnComplete(cb:Void -> Void):Tween {
@@ -201,6 +233,12 @@ class TweenSequence {
 	public var onComplete:Null<Void -> Void> = null;
 	public var cancelled(default, null):Bool = false;
 
+	// Allocation watchdog. getTargets() allocates a fresh Array<h2d.Object>
+	// with O(n²) dedup; tests pin that hot paths (cancelAll) do not invoke it.
+	#if MULTIANIM_ALLOC_TRACK
+	public static var getTargetsCallCount:Int = 0;
+	#end
+
 	var currentIndex:Int = 0;
 
 	public function new(tweens:Array<Tween>) {
@@ -261,6 +299,9 @@ class TweenSequence {
 	}
 
 	public function getTargets():Array<h2d.Object> {
+		#if MULTIANIM_ALLOC_TRACK
+		getTargetsCallCount++;
+		#end
 		var targets:Array<h2d.Object> = [];
 		for (tween in tweens) {
 			if (!targets.contains(tween.target))
@@ -275,6 +316,12 @@ class TweenGroup {
 	public var tweens(default, null):Array<Tween>;
 	public var onComplete:Null<Void -> Void> = null;
 	public var cancelled(default, null):Bool = false;
+
+	// Allocation watchdog. getTargets() allocates a fresh Array<h2d.Object>
+	// with O(n²) dedup; tests pin that hot paths (cancelAll) do not invoke it.
+	#if MULTIANIM_ALLOC_TRACK
+	public static var getTargetsCallCount:Int = 0;
+	#end
 
 	public function new(tweens:Array<Tween>) {
 		this.tweens = tweens;
@@ -324,6 +371,9 @@ class TweenGroup {
 	}
 
 	public function getTargets():Array<h2d.Object> {
+		#if MULTIANIM_ALLOC_TRACK
+		getTargetsCallCount++;
+		#end
 		var targets:Array<h2d.Object> = [];
 		for (tween in tweens) {
 			if (!targets.contains(tween.target))
@@ -375,11 +425,25 @@ class TweenManager {
 					}
 			}
 			if (done) {
+				recycleHandle(handle);
 				handles[i] = handles[handles.length - 1];
 				handles.pop();
 			} else {
 				i++;
 			}
+		}
+	}
+
+	static function recycleHandle(handle:TweenHandle):Void {
+		switch handle {
+			case HTween(tween):
+				tween.recycleEntries();
+			case HSequence(seq):
+				for (tween in seq.tweens)
+					tween.recycleEntries();
+			case HGroup(group):
+				for (tween in group.tweens)
+					tween.recycleEntries();
 		}
 	}
 
@@ -413,14 +477,14 @@ class TweenManager {
 						if (tween.target == target)
 							tween.cancel();
 					}
-					if (seq.getTargets().length == 0 || allCancelled(seq.tweens))
+					if (allCancelled(seq.tweens))
 						seq.cancel();
 				case HGroup(group):
 					for (tween in group.tweens) {
 						if (tween.target == target)
 							tween.cancel();
 					}
-					if (group.getTargets().length == 0 || allCancelled(group.tweens))
+					if (allCancelled(group.tweens))
 						group.cancel();
 			}
 		}
@@ -462,6 +526,7 @@ class TweenManager {
 				case HGroup(group):
 					group.cancel();
 			}
+			recycleHandle(handle);
 		}
 		handles = [];
 	}

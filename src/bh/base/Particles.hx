@@ -996,7 +996,7 @@ class ParticleGroup {
 			p.scaleY = scY;
 			p.baseScaleX = scX;
 			p.baseScaleY = scY;
-			var absRot = Math.atan2(rB / scX, rA / scX);
+			var absRot = Math.atan2(rB, rA);
 			p.rotation += absRot;
 
 			var cos = Math.cos(absRot);
@@ -1029,32 +1029,6 @@ class ParticleGroup {
 	}
 
 	// ========== Helper Functions ==========
-
-	/**
-		Evaluate per-segment color curve at normalized lifetime.
-	**/
-	public function evaluateColorCurve(rate:Float):Int {
-		// Find active segment: largest startRate <= rate
-		var activeIndex = -1;
-		for (i in 0...colorCurveSegments.length) {
-			if (colorCurveSegments[i].startRate <= rate)
-				activeIndex = i;
-			else
-				break;
-		}
-
-		if (activeIndex < 0) return 0xFFFFFF;
-
-		var segment = colorCurveSegments[activeIndex];
-		var segStart = segment.startRate;
-		var segEnd = if (activeIndex + 1 < colorCurveSegments.length) colorCurveSegments[activeIndex + 1].startRate else 1.0;
-
-		var localT = if (segEnd <= segStart) 0. else (rate - segStart) / (segEnd - segStart);
-		localT = Math.min(Math.max(localT, 0.), 1.);
-
-		var curveValue = segment.curve.getValue(localT);
-		return lerpColor(segment.startColor, segment.endColor, curveValue);
-	}
 
 	inline function lerpColor(c1:Int, c2:Int, t:Float):Int {
 		var r1 = (c1 >> 16) & 0xFF;

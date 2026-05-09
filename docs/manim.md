@@ -766,7 +766,7 @@ interactive(120, 40, $idx, type:string => "slot", slot:int => $i)
 interactive(200, 30, "toggle", enabled:bool => true, color:color => #FF0000)
 ```
 
-Supported types: `int`, `float`, `string` (default when no type specified), `bool`, `color`. Untyped `key => true`/`key => false` auto-infers as bool. Keys and values can be `$references`. Access via `BuilderResolvedSettings`: `has(key)`, `getStringOrDefault(key, default)`, `getIntOrDefault(key, default)`, `getBoolOrDefault(key, default)`, `getFloatOrDefault(key, default)`.
+Supported types: `int`, `float`, `string` (default when no type specified), `bool`, `color`. Untyped `key => true`/`key => false` auto-infers as bool. Keys and values can be `$references`. Access via `BuilderResolvedSettings`: `has(key)`, `getStringOrDefault(key, default)`, `getIntOrDefault(key, default)`, `getFloatOrDefault(key, default)`, `getBoolOrDefault(key, default)`, `getColorOrDefault(key, default)` (and matching `*OrException` variants). Color settings must be read with `getColorOrDefault` / `getColorOrException` — `getIntOr*` / `getFloatOr*` throw on a color setting (use the dedicated color accessor for `0xAARRGGBB` values).
 
 When a typed metadata value is a `$param` reference, the parser validates at parse time that the meta type is compatible with the param's declared type. `:int` / `:color` accept int-backed params (`int`, `uint`, `range`, `color`, `bool`, `hexDirection`, `gridDirection`); `:float` accepts any numeric param; `:bool` accepts `bool`/`int`/`uint`/`range`/direction; `:string` accepts anything except `flags`, `array`, and `tile`. Mismatches throw a parse error naming the key, declared meta type, referenced param, and its type — the runtime builder's lenient `resolveAs*()` and the codegen's strict `RSV<Type>` emitters would otherwise resolve the same source incompatibly. Literals (`price:int => 100`) and `@final` refs are unaffected.
 
@@ -995,8 +995,9 @@ Filters can be applied to any visual element. Most parameters support expression
 * `grayscale(value)` - 0.0=no effect, 1.0=full grayscale
 * `hue(value)` - hue rotation angle
 * `blur(radius, gain, [quality], [linear])`
-* `pixelOutline(knockout, color, knockoutStrength)`
-* `pixelOutline(inlineColor, outlineColor, inlineColor)`
+* `pixelOutline(knockout, color, knockoutStrength [, smoothColor])`
+* `pixelOutline(inlineColor, outlineColor, fillColor [, smoothColor])`
+  * The first `inlineColor` is the mode keyword; the third positional argument is the inner fill color drawn on top of the source. Trailing `, smoothColor` keyword enables smoothed edge blending (defaults to off).
 * `dropShadow(distance, angle, color, alpha, radius, gain, quality)`
 * `glow(color, alpha, [radius], [gain], [quality], [smoothColor], [knockout])`
 * `group(filter1, filter2, ...)`

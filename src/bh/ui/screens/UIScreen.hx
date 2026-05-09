@@ -296,8 +296,19 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		postCustomAddToLayer.clear();
 	}
 
+	static inline function elementMatchesType(e:UIElement, type:SubElementsType):Bool {
+		return switch type {
+			case SETReceiveEvents:
+				Std.isOfType(e, StandardUIElementEvents);
+			case SETReceiveUpdates:
+				Std.isOfType(e, UIElementUpdatable) || Std.isOfType(e, UIElementSyncRedraw);
+		}
+	}
+
 	public function getElements(type:SubElementsType):Array<UIElement> {
-		var retVal = elements.copy();
+		var retVal:Array<UIElement> = [];
+		for (e in elements)
+			if (elementMatchesType(e, type)) retVal.push(e);
 		for (provider in subElementProviders) {
 			retVal = retVal.concat(provider.getSubElements(type));
 		}
@@ -305,7 +316,8 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	}
 
 	public function forEachElement(type:SubElementsType, fn:UIElement->Void):Void {
-		for (e in elements) fn(e);
+		for (e in elements)
+			if (elementMatchesType(e, type)) fn(e);
 		for (provider in subElementProviders)
 			provider.forEachSubElement(type, fn);
 	}
@@ -407,7 +419,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		var hasAny = false;
 		var config:ModalOverlayConfig = {};
 		if (rootSettings.has("overlay.color")) {
-			config.color = rootSettings.getIntOrDefault("overlay.color", 0x000000);
+			config.color = rootSettings.getColorOrDefault("overlay.color", 0x000000);
 			hasAny = true;
 		}
 		if (rootSettings.has("overlay.alpha")) {

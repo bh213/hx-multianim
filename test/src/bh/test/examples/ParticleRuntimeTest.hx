@@ -1028,6 +1028,75 @@ class ParticleRuntimeTest extends utest.Test {
 		Assert.floatEquals(Math.PI / 3, e.rotation, 0.01);
 	}
 
+	@Test
+	public function testNonRelativeBakeWithZeroSizeKeepsVelocityAndRotationFinite():Void {
+		// When size=0 collapses scX/scY to zero, the column-axis-angle extraction
+		// must still produce a finite rotation. The buggy form computes
+		// atan2(rB / scX, rA / scX) — when scX = 0 and one of rA/rB is exactly
+		// zero (identity / axis-aligned container), one operand becomes 0/0 = NaN,
+		// atan2 returns NaN, and cos/sin poison p.vx/p.vy/p.rotation. atan2 is
+		// magnitude-invariant for positive scaling, so dividing by scX is
+		// unnecessary; atan2(rB, rA) is the correct formulation.
+		var p = createParticles();
+		// Identity matrix is enough: matA=1, matB=0 — exactly the 0/0 + 1/0 case.
+
+		var g = createGroup("main", p);
+		var dg:Dynamic = g;
+		dg.size = 0; // the trigger
+		dg.nparts = 1;
+		dg.emitSync = 1.0;
+		dg.isRelative = false;
+		dg.emitMode = Point(0.0, 0.0);
+
+		g.start();
+
+		var e:Dynamic = g.batch.first;
+		Assert.notNull(e);
+		var vx:Float = e.vx;
+		var vy:Float = e.vy;
+		var rotation:Float = e.rotation;
+		Assert.isFalse(Math.isNaN(vx), 'vx must be finite after non-relative emit at size=0; got $vx');
+		Assert.isFalse(Math.isNaN(vy), 'vy must be finite after non-relative emit at size=0; got $vy');
+		Assert.isFalse(Math.isNaN(rotation), 'rotation must be finite after non-relative emit at size=0; got $rotation');
+		Assert.isTrue(Math.isFinite(vx), 'vx must not be infinite after non-relative emit at size=0; got $vx');
+		Assert.isTrue(Math.isFinite(vy), 'vy must not be infinite after non-relative emit at size=0; got $vy');
+		Assert.isTrue(Math.isFinite(rotation), 'rotation must not be infinite after non-relative emit at size=0; got $rotation');
+	}
+
+	@Test
+	public function testNonRelativeBakeWithZeroSizeAndWorldAnchorKeepsVelocityFinite():Void {
+		// Same NaN hazard on the worldAnchor path — after lines 977-980 overwrite
+		// rA..rD with the anchor-composed transform, the same atan2(rB / scX, rA / scX)
+		// at line 999 still divides by zero when size=0. With identity transforms
+		// on both objects, the composed rA=1, rB=0 reproduces the 0/0 NaN case.
+		var worldRoot = new h2d.Object();
+
+		var p = new Particles(worldRoot);
+
+		var g = createGroup("trail", p);
+		var dg:Dynamic = g;
+		dg.size = 0;
+		dg.nparts = 1;
+		dg.emitSync = 1.0;
+		dg.isRelative = false;
+		dg.emitMode = Point(0.0, 0.0);
+
+		p.worldAnchor = worldRoot;
+		g.start();
+
+		var e:Dynamic = g.batch.first;
+		Assert.notNull(e);
+		var vx:Float = e.vx;
+		var vy:Float = e.vy;
+		var rotation:Float = e.rotation;
+		Assert.isFalse(Math.isNaN(vx), 'vx must be finite under worldAnchor + size=0; got $vx');
+		Assert.isFalse(Math.isNaN(vy), 'vy must be finite under worldAnchor + size=0; got $vy');
+		Assert.isFalse(Math.isNaN(rotation), 'rotation must be finite under worldAnchor + size=0; got $rotation');
+		Assert.isTrue(Math.isFinite(vx), 'vx must not be infinite under worldAnchor + size=0; got $vx');
+		Assert.isTrue(Math.isFinite(vy), 'vy must not be infinite under worldAnchor + size=0; got $vy');
+		Assert.isTrue(Math.isFinite(rotation), 'rotation must not be infinite under worldAnchor + size=0; got $rotation');
+	}
+
 	// ==================== Sub-emitter OnBirth on recycled particles ====================
 
 	@Test
@@ -1278,10 +1347,8 @@ class ParticleRuntimeTest extends utest.Test {
 	/**
 		When a looping particle is recycled via `init()`, the next lifetime must
 		start back at segment 0 (red), not remain stuck on the last segment.
-
-		Passes on HEAD because `evaluateColorCurve` is stateless; exists to pin
-		that the cached-index optimization does not regress this when it resets
-		per-particle state on init.
+		Pins that `init(p)` resets `currentColorSegmentIndex` so the cached
+		monotonic-advance scheme rewinds across an emit-loop cycle.
 	**/
 	@Test
 	public function testColorCurveSegments_ResetsOnEmitLoopRecycle():Void {
@@ -1351,6 +1418,23 @@ class ParticleRuntimeTest extends utest.Test {
 			Assert.isTrue(observed[i] >= observed[i - 1],
 				"cached index must never move backwards within a single lifetime; step " + i + ": " + observed[i - 1] + " -> " + observed[i]);
 		}
+	}
+
+	/**
+		Color-curve evaluation must live in exactly one place — the cached, monotonic
+		path inside `Particle.update()`. The previous public `ParticleGroup.evaluateColorCurve`
+		helper duplicates that math with an O(segments) full scan from index 0 and is no longer
+		called by any production path. Keeping it around is a footgun: any caller wiring it up
+		silently reverts the cached-index optimization. This test pins the API surface.
+	**/
+	@Test
+	public function testParticleGroup_HasNoStandaloneColorCurveEvaluator():Void {
+		var fields = Type.getInstanceFields(ParticleGroup);
+		Assert.isFalse(fields.indexOf("evaluateColorCurve") != -1,
+			"ParticleGroup must not expose evaluateColorCurve — the per-particle hot path in Particle.update() "
+			+ "is the single source of truth and uses a cached currentColorSegmentIndex. A standalone helper would "
+			+ "reintroduce the O(segments) scan it replaced. Found field on instance: "
+			+ fields.filter(f -> f == "evaluateColorCurve").join(","));
 	}
 
 	// ==================== Allocation watchdog ====================

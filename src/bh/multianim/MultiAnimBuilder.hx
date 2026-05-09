@@ -189,7 +189,7 @@ class BuilderResolvedSettings {
 			throw BuilderError.of('expected int setting ${settingName} to be present but was not');
 		return switch r {
 			case RSVInt(i): i;
-			case RSVColor(c): c;
+			case RSVColor(c): throw BuilderError.of('expected int setting ${settingName} but was color $c — use getColorOrException for color settings');
 			case RSVFloat(f): throw BuilderError.of('expected int setting ${settingName} to valid int number but was float $f');
 			case RSVString(s): throw BuilderError.of('expected int setting ${settingName} to valid int number but was string $s');
 			case RSVBool(b): b ? 1 : 0;
@@ -204,7 +204,7 @@ class BuilderResolvedSettings {
 			return defaultValue;
 		return switch r {
 			case RSVInt(i): i;
-			case RSVColor(c): c;
+			case RSVColor(c): throw BuilderError.of('expected int setting ${settingName} but was color $c — use getColorOrDefault for color settings');
 			case RSVFloat(f): throw BuilderError.of('expected int setting ${settingName} to valid int number but was float $f');
 			case RSVString(s): throw BuilderError.of('expected int setting ${settingName} to valid int number but was string $s');
 			case RSVBool(b): b ? 1 : 0;
@@ -220,7 +220,7 @@ class BuilderResolvedSettings {
 		return switch r {
 			case RSVFloat(f): f;
 			case RSVInt(i): cast i;
-			case RSVColor(c): cast c;
+			case RSVColor(c): throw BuilderError.of('expected float setting ${settingName} but was color $c — use getColorOrException for color settings');
 			case RSVString(s): throw BuilderError.of('expected float setting ${settingName} to valid float number but was string $s');
 			case RSVBool(b): b ? 1.0 : 0.0;
 		};
@@ -235,9 +235,39 @@ class BuilderResolvedSettings {
 		return switch r {
 			case RSVFloat(f): f;
 			case RSVInt(i): cast i;
-			case RSVColor(c): cast c;
+			case RSVColor(c): throw BuilderError.of('expected float setting ${settingName} but was color $c — use getColorOrDefault for color settings');
 			case RSVString(s): throw BuilderError.of('expected float setting ${settingName} to valid float number but was string $s');
 			case RSVBool(b): b ? 1.0 : 0.0;
+		};
+	}
+
+	public function getColorOrException(settingName:String):Int {
+		if (settings == null)
+			throw BuilderError.of('settings not found, was looking for $settingName');
+		var r = settings[settingName];
+		if (r == null)
+			throw BuilderError.of('expected color setting ${settingName} to be present but was not');
+		return switch r {
+			case RSVColor(c): c;
+			case RSVInt(i): i;
+			case RSVFloat(f): throw BuilderError.of('expected color setting ${settingName} but was float $f');
+			case RSVString(s): throw BuilderError.of('expected color setting ${settingName} but was string $s');
+			case RSVBool(b): throw BuilderError.of('expected color setting ${settingName} but was bool $b');
+		};
+	}
+
+	public function getColorOrDefault(settingName:String, defaultValue:Int):Int {
+		if (settings == null)
+			return defaultValue;
+		var r = settings[settingName];
+		if (r == null)
+			return defaultValue;
+		return switch r {
+			case RSVColor(c): c;
+			case RSVInt(i): i;
+			case RSVFloat(f): throw BuilderError.of('expected color setting ${settingName} but was float $f');
+			case RSVString(s): throw BuilderError.of('expected color setting ${settingName} but was string $s');
+			case RSVBool(b): throw BuilderError.of('expected color setting ${settingName} but was bool $b');
 		};
 	}
 

@@ -44,6 +44,14 @@ class UICardHandTargeting {
 	/** Scratch point reused by path sampling in updateTargetingLine to avoid per-frame FPoint allocation. */
 	final _scratch:FPoint = new FPoint(0, 0);
 
+	// Scratches for the targeting hot path (every mouse-move during a card drag).
+	// HL is single-threaded; globalToLocal/localToGlobal mutate in place; applyStretch
+	// reads x/y and forgets — so a single instance per slot is safe across calls.
+	// Same pattern as UIMultiAnimGrid._scratchPoint and UICardHandHelper.scratchPoint.
+	final _scratchPt:h2d.col.Point = new h2d.col.Point(0, 0);
+	final _scratchOrigin:FPoint = new FPoint(0, 0);
+	final _scratchCursor:FPoint = new FPoint(0, 0);
+
 	static inline final MAX_SEGMENTS = 30;
 
 	/** When false, the targeting visual is suppressed (target detection still works). */
@@ -154,9 +162,9 @@ class UICardHandTargeting {
 	 *  @return The ID of the target under cursor, or null if none. */
 	public function updateHighlight(sceneX:Float, sceneY:Float, cardId:CardId):Null<String> {
 		var hoveredWrapper:Null<UIInteractiveWrapper> = null;
-		var pt = new h2d.col.Point(sceneX, sceneY);
+		_scratchPt.set(sceneX, sceneY);
 		for (wrapper in targets) {
-			if (wrapper.containsPoint(pt)) {
+			if (wrapper.containsPoint(_scratchPt)) {
 				if (acceptsFilter == null || acceptsFilter(cardId, wrapper.id, wrapper.metadata)) {
 					hoveredWrapper = wrapper;
 					break;
@@ -182,9 +190,9 @@ class UICardHandTargeting {
 	/** Hit-test targets at a scene-space position without updating any visuals or highlight state.
 	 *  Used for final drop check in direct-drag mode. */
 	public function hitTestTargets(sceneX:Float, sceneY:Float, cardId:CardId):Null<String> {
-		var pt = new h2d.col.Point(sceneX, sceneY);
+		_scratchPt.set(sceneX, sceneY);
 		for (wrapper in targets) {
-			if (wrapper.containsPoint(pt)) {
+			if (wrapper.containsPoint(_scratchPt)) {
 				if (acceptsFilter == null || acceptsFilter(cardId, wrapper.id, wrapper.metadata))
 					return wrapper.id;
 			}
@@ -204,9 +212,9 @@ class UICardHandTargeting {
 
 		// Find target under cursor (scene-space coords for containsPoint)
 		var hoveredWrapper:Null<UIInteractiveWrapper> = null;
-		var pt = new h2d.col.Point(sceneX, sceneY);
+		_scratchPt.set(sceneX, sceneY);
 		for (wrapper in targets) {
-			if (wrapper.containsPoint(pt)) {
+			if (wrapper.containsPoint(_scratchPt)) {
 				if (acceptsFilter == null || acceptsFilter(cardId, wrapper.id, wrapper.metadata)) {
 					hoveredWrapper = wrapper;
 					break;
@@ -234,32 +242,37 @@ class UICardHandTargeting {
 		var endY = cursorY;
 		if (snapToTarget && valid && hoveredWrapper != null) {
 			// Get snap point in target's local space (default: interactive center)
-			var localPoint:Null<h2d.col.Point> = null;
+			var hasLocalPoint = false;
 			if (arrowSnapPointProvider != null) {
 				final fp = arrowSnapPointProvider(hoveredWrapper);
-				localPoint = new h2d.col.Point(fp.x, fp.y);
+				_scratchPt.set(fp.x, fp.y);
+				hasLocalPoint = true;
 			} else {
 				switch hoveredWrapper.interactive.multiAnimType {
 					case MAInteractive(width, height, _, _):
-						localPoint = new h2d.col.Point(width * 0.5, height * 0.5);
+						_scratchPt.set(width * 0.5, height * 0.5);
+						hasLocalPoint = true;
 					default:
 				}
 			}
-			if (localPoint != null) {
-				// Convert from target local space to arrow local space
-				var centerScene = hoveredWrapper.interactive.localToGlobal(localPoint);
-				var centerLocal = arrowContainer.globalToLocal(centerScene);
-				endX = centerLocal.x;
-				endY = centerLocal.y;
+			if (hasLocalPoint) {
+				// Convert from target local space to arrow local space — both calls
+				// mutate _scratchPt in place and return it.
+				hoveredWrapper.interactive.localToGlobal(_scratchPt);
+				arrowContainer.globalToLocal(_scratchPt);
+				endX = _scratchPt.x;
+				endY = _scratchPt.y;
 			}
 		}
 
 		// Update arrow visuals (uses local-space coords for positioning)
 		if (hasArrowVisual && arrowEnabled && arrowPathName != null) {
 			var paths = builder.getPaths();
-			var origin = new FPoint(originX, originY);
-			var cursor = new FPoint(endX, endY);
-			var path = paths.getPath(arrowPathName, Stretch(origin, cursor));
+			_scratchOrigin.x = originX;
+			_scratchOrigin.y = originY;
+			_scratchCursor.x = endX;
+			_scratchCursor.y = endY;
+			var path = paths.getPath(arrowPathName, Stretch(_scratchOrigin, _scratchCursor));
 
 			// Calculate how many segments fit
 			var totalLen = path.totalLength;

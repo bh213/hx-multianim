@@ -36,6 +36,7 @@ import bh.multianim.MultiAnimBuilder.BuilderResolvedSettings;
 import bh.ui.UIElement;
 import bh.ui.UIElement.UIScreenEvent;
 import bh.ui.UIElement.UIElementEvents;
+import bh.ui.UIElement.UIElementEventWrapper;
 import bh.ui.UIElement.UIElementListItem;
 import bh.ui.UIElement.TileRef;
 import bh.ui.UIElement.SubElementsType;
@@ -45,6 +46,22 @@ import bh.multianim.MultiAnimParser.ResolvedIndexParameters;
 import bh.paths.MultiAnimPaths.PathType;
 import bh.ui.UICardHandTypes.PathDistribution;
 import bh.ui.UICardHandTypes.PathOrientation;
+
+private class EventsOnlyElement implements UIElement implements StandardUIElementEvents {
+	public function new() {}
+	public function getObject():h2d.Object return new h2d.Object();
+	public function containsPoint(pos:Point):Bool return false;
+	public function clear():Void {}
+	public function onEvent(wrapper:UIElementEventWrapper):Void {}
+}
+
+private class UpdateOnlyElement implements UIElement implements UIElementUpdatable {
+	public function new() {}
+	public function getObject():h2d.Object return new h2d.Object();
+	public function containsPoint(pos:Point):Bool return false;
+	public function clear():Void {}
+	public function update(dt:Float):Void {}
+}
 
 /**
  * Non-visual unit tests for UI components.
@@ -315,6 +332,42 @@ class UIComponentTest extends BuilderTestBase {
 		screen.testRemoveElement(button);
 		elements = screen.getElements(SETReceiveEvents);
 		Assert.equals(0, elements.length);
+	}
+
+	@Test
+	public function testGetElementsFiltersLocalElementsByType():Void {
+		var screen = new UITestScreen();
+		var eventsOnly = new EventsOnlyElement();
+		var updateOnly = new UpdateOnlyElement();
+		screen.testAddElement(eventsOnly);
+		screen.testAddElement(updateOnly);
+
+		final eventList = screen.getElements(SETReceiveEvents);
+		Assert.equals(1, eventList.length);
+		Assert.equals(cast eventsOnly, eventList[0]);
+
+		final updateList = screen.getElements(SETReceiveUpdates);
+		Assert.equals(1, updateList.length);
+		Assert.equals(cast updateOnly, updateList[0]);
+	}
+
+	@Test
+	public function testForEachElementFiltersLocalElementsByType():Void {
+		var screen = new UITestScreen();
+		var eventsOnly = new EventsOnlyElement();
+		var updateOnly = new UpdateOnlyElement();
+		screen.testAddElement(eventsOnly);
+		screen.testAddElement(updateOnly);
+
+		var visitedForEvents:Array<UIElement> = [];
+		screen.forEachElement(SETReceiveEvents, e -> visitedForEvents.push(e));
+		Assert.equals(1, visitedForEvents.length);
+		Assert.equals(cast eventsOnly, visitedForEvents[0]);
+
+		var visitedForUpdates:Array<UIElement> = [];
+		screen.forEachElement(SETReceiveUpdates, e -> visitedForUpdates.push(e));
+		Assert.equals(1, visitedForUpdates.length);
+		Assert.equals(cast updateOnly, visitedForUpdates[0]);
 	}
 
 	@Test

@@ -9,6 +9,9 @@ import bh.multianim.MultiAnimParser.NodeConditionalValues;
 import bh.multianim.MultiAnimParser.TransitionType;
 import bh.multianim.MultiAnimParser.TransitionDirection;
 import bh.multianim.MultiAnimParser.EasingType;
+import bh.multianim.MultiAnimParser.FilterType;
+import bh.multianim.MultiAnimParser.PixelOutlineModeDef;
+import bh.multianim.MultiAnimParser.Node;
 
 /**
  * Non-visual tests that parse invalid .manim files and assert on parser errors.
@@ -4996,5 +4999,85 @@ class ParserErrorTest extends utest.Test {
 			'Error should name the offending @final "DERIVED", got: $error');
 		Assert.isTrue(error.indexOf("@final") >= 0,
 			'Error should mention "@final", got: $error');
+	}
+
+	// ===== pixelOutline smoothColor flag parser tests =====
+
+	static function findFirstPixelOutlineFilter(node:Null<Node>):Null<FilterType> {
+		if (node == null) return null;
+		if (node.filter != null) {
+			switch node.filter {
+				case FilterPixelOutline(_, _): return node.filter;
+				default:
+			}
+		}
+		for (child in node.children) {
+			final hit = findFirstPixelOutlineFilter(child);
+			if (hit != null) return hit;
+		}
+		return null;
+	}
+
+	@Test
+	public function testPixelOutlineKnockoutWithoutSmoothColor() {
+		final result = parseExpectingResult('
+			#test programmable() {
+				bitmap(generated(color(10, 10, #f00))) {
+					filter: pixelOutline(knockout, #ff0000, 0.5)
+					pos: 0,0
+				}
+			}
+		');
+		Assert.notNull(result, "parse should succeed");
+		final filter = findFirstPixelOutlineFilter(result.nodes.get("test"));
+		Assert.notNull(filter, "expected a FilterPixelOutline node");
+		switch filter {
+			case FilterPixelOutline(POKnockout(_, _), smoothColor):
+				Assert.isFalse(smoothColor, "smoothColor must default to false when keyword is absent");
+			default:
+				Assert.fail('expected FilterPixelOutline(POKnockout(...), false), got $filter');
+		}
+	}
+
+	@Test
+	public function testPixelOutlineKnockoutWithSmoothColor() {
+		final result = parseExpectingResult('
+			#test programmable() {
+				bitmap(generated(color(10, 10, #f00))) {
+					filter: pixelOutline(knockout, #ff0000, 0.5, smoothColor)
+					pos: 0,0
+				}
+			}
+		');
+		Assert.notNull(result, "parse should succeed");
+		final filter = findFirstPixelOutlineFilter(result.nodes.get("test"));
+		Assert.notNull(filter, "expected a FilterPixelOutline node");
+		switch filter {
+			case FilterPixelOutline(POKnockout(_, _), smoothColor):
+				Assert.isTrue(smoothColor, "trailing smoothColor keyword must set the flag to true");
+			default:
+				Assert.fail('expected FilterPixelOutline(POKnockout(...), true), got $filter');
+		}
+	}
+
+	@Test
+	public function testPixelOutlineInlineColorWithSmoothColor() {
+		final result = parseExpectingResult('
+			#test programmable() {
+				bitmap(generated(color(10, 10, #f00))) {
+					filter: pixelOutline(inlineColor, #ff0000, #00ff00, smoothColor)
+					pos: 0,0
+				}
+			}
+		');
+		Assert.notNull(result, "parse should succeed");
+		final filter = findFirstPixelOutlineFilter(result.nodes.get("test"));
+		Assert.notNull(filter, "expected a FilterPixelOutline node");
+		switch filter {
+			case FilterPixelOutline(POInlineColor(_, _), smoothColor):
+				Assert.isTrue(smoothColor, "trailing smoothColor keyword must set the flag for inlineColor mode too");
+			default:
+				Assert.fail('expected FilterPixelOutline(POInlineColor(...), true), got $filter');
+		}
 	}
 }

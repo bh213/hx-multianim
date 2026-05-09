@@ -3610,6 +3610,137 @@ class BuilderUnitTest extends BuilderTestBase {
 		Assert.isTrue(result.rootSettings.getBoolOrDefault("active", false));
 	}
 
+	@Test
+	public function testColorSettingRejectedByGetIntOrException():Void {
+		final result = buildFromSource("
+			#test programmable() {
+				settings{tint:color=>#FF0000}
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		", "test");
+		Assert.notNull(result);
+		var threw = false;
+		try {
+			result.rootSettings.getIntOrException("tint");
+		} catch (e:Dynamic) {
+			threw = true;
+		}
+		Assert.isTrue(threw, "getIntOrException should throw for color setting (use getColorOrException instead)");
+	}
+
+	@Test
+	public function testColorSettingRejectedByGetIntOrDefault():Void {
+		final result = buildFromSource("
+			#test programmable() {
+				settings{tint:color=>#FF0000}
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		", "test");
+		Assert.notNull(result);
+		var threw = false;
+		try {
+			result.rootSettings.getIntOrDefault("tint", 0);
+		} catch (e:Dynamic) {
+			threw = true;
+		}
+		Assert.isTrue(threw, "getIntOrDefault should throw for color setting (use getColorOrDefault instead)");
+	}
+
+	@Test
+	public function testColorSettingRejectedByGetFloatOrException():Void {
+		final result = buildFromSource("
+			#test programmable() {
+				settings{tint:color=>#FF0000}
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		", "test");
+		Assert.notNull(result);
+		var threw = false;
+		try {
+			result.rootSettings.getFloatOrException("tint");
+		} catch (e:Dynamic) {
+			threw = true;
+		}
+		Assert.isTrue(threw, "getFloatOrException should throw for color setting");
+	}
+
+	@Test
+	public function testColorSettingRejectedByGetFloatOrDefault():Void {
+		final result = buildFromSource("
+			#test programmable() {
+				settings{tint:color=>#FF0000}
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		", "test");
+		Assert.notNull(result);
+		var threw = false;
+		try {
+			result.rootSettings.getFloatOrDefault("tint", 0.0);
+		} catch (e:Dynamic) {
+			threw = true;
+		}
+		Assert.isTrue(threw, "getFloatOrDefault should throw for color setting");
+	}
+
+	@Test
+	public function testGetColorOrDefaultAcceptsColorAndInt():Void {
+		final result = buildFromSource("
+			#test programmable() {
+				settings{tint:color=>#FF0000, raw:int=>16711680}
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		", "test");
+		Assert.notNull(result);
+		Assert.equals(0xFFFF0000, result.rootSettings.getColorOrDefault("tint", 0));
+		Assert.equals(16711680, result.rootSettings.getColorOrDefault("raw", 0));
+		Assert.equals(0xABCDEF, result.rootSettings.getColorOrDefault("missing", 0xABCDEF));
+	}
+
+	@Test
+	public function testGetColorOrExceptionAcceptsColorAndInt():Void {
+		final result = buildFromSource("
+			#test programmable() {
+				settings{tint:color=>#FF0000, raw:int=>16711680}
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		", "test");
+		Assert.notNull(result);
+		Assert.equals(0xFFFF0000, result.rootSettings.getColorOrException("tint"));
+		Assert.equals(16711680, result.rootSettings.getColorOrException("raw"));
+		var threw = false;
+		try {
+			result.rootSettings.getColorOrException("missing");
+		} catch (e:Dynamic) {
+			threw = true;
+		}
+		Assert.isTrue(threw, "getColorOrException should throw for missing key");
+	}
+
+	@Test
+	public function testGetColorOrDefaultRejectsStringAndFloat():Void {
+		final result = buildFromSource("
+			#test programmable() {
+				settings{name=>hello, ratio:float=>1.5}
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		", "test");
+		Assert.notNull(result);
+		var threwString = false;
+		try {
+			result.rootSettings.getColorOrDefault("name", 0);
+		} catch (e:Dynamic) {
+			threwString = true;
+		}
+		Assert.isTrue(threwString, "getColorOrDefault should throw for string setting");
+		var threwFloat = false;
+		try {
+			result.rootSettings.getColorOrDefault("ratio", 0);
+		} catch (e:Dynamic) {
+			threwFloat = true;
+		}
+		Assert.isTrue(threwFloat, "getColorOrDefault should throw for float setting");
+	}
+
 	// ==================== getNodeSettings ====================
 
 	@Test

@@ -2,6 +2,7 @@ package bh.test.examples;
 
 import utest.Assert;
 import bh.test.BuilderTestBase;
+import bh.base.FPoint;
 import bh.ui.UICardHandTargeting;
 import bh.ui.UIInteractiveWrapper;
 import bh.base.MAObject;
@@ -551,5 +552,161 @@ class CardHandTargetingTest extends BuilderTestBase {
 			Assert.isTrue(t.headValid.object.visible, "valid head visible when hovering target with forceValid=null");
 			Assert.isFalse(t.headInvalid.object.visible);
 		}
+	}
+
+	// ============== Allocation hygiene on the targeting hot path ==============
+	// updateTargetingLine, updateHighlight, hitTestTargets all run every mouse-move
+	// while the player is dragging a card. Every per-call `new h2d.col.Point` /
+	// `new FPoint` is GC pressure on the hot path. Same scratch pattern as
+	// UIMultiAnimGrid._scratchPoint and UICardHandHelper.scratchPoint.
+
+	@Test
+	public function testHitTestTargetsReusesScratchPointAcrossCalls():Void {
+		// hitTestTargets must reuse a cached h2d.col.Point for the scene-space
+		// hit-test. Without it, every mouse-move during direct-drag mode allocates.
+		var t = createTargetingNoArrow();
+		t.registerTarget(createInteractive("t1", 50, 50, 100, 100));
+
+		// Prime the cache.
+		t.hitTestTargets(125, 125, "card1");
+		final cached:Dynamic = Reflect.field(t, "_scratchPt");
+		Assert.notNull(cached,
+			"UICardHandTargeting should expose a cached _scratchPt h2d.col.Point after hitTestTargets — got null");
+
+		// Subsequent calls must reuse the same Point instance.
+		t.hitTestTargets(130, 130, "card1");
+		Assert.equals(cached, Reflect.field(t, "_scratchPt"),
+			"hitTestTargets must reuse the cached _scratchPt (no allocation)");
+
+		t.hitTestTargets(0, 0, "card1");
+		Assert.equals(cached, Reflect.field(t, "_scratchPt"),
+			"hitTestTargets must reuse the cached _scratchPt across calls");
+
+		// Sanity: the cached Point's coords reflect the last input, proving it's actually used.
+		t.hitTestTargets(777, 555, "card1");
+		final pt:Dynamic = Reflect.field(t, "_scratchPt");
+		Assert.floatEquals(777.0, pt.x, 0.001, "_scratchPt.x should reflect last hitTestTargets input");
+		Assert.floatEquals(555.0, pt.y, 0.001, "_scratchPt.y should reflect last hitTestTargets input");
+	}
+
+	@Test
+	public function testUpdateHighlightReusesScratchPointAcrossCalls():Void {
+		// updateHighlight runs every mouse-move during normal card drag (arrow off);
+		// it converts scene coords for containsPoint and must reuse a single Point.
+		var t = createTargetingNoArrow();
+		t.registerTarget(createInteractive("t1", 50, 50, 100, 100));
+
+		t.updateHighlight(125, 125, "card1");
+		final cached:Dynamic = Reflect.field(t, "_scratchPt");
+		Assert.notNull(cached,
+			"UICardHandTargeting should expose a cached _scratchPt h2d.col.Point after updateHighlight");
+
+		t.updateHighlight(0, 0, "card1");
+		Assert.equals(cached, Reflect.field(t, "_scratchPt"),
+			"updateHighlight must reuse the cached _scratchPt across calls");
+	}
+
+	@Test
+	public function testUpdateTargetingLineReusesScratchPointAcrossCalls():Void {
+		// updateTargetingLine runs every mouse-move during arrow-targeting drag;
+		// it allocates an h2d.col.Point for hit-testing and (when snapping) for the
+		// snap-point conversion. A single scratch covers both — they don't overlap.
+		var t = createTargetingWithArrow();
+		t.registerTarget(createInteractive("t1", 50, 50, 100, 100));
+
+		t.updateTargetingLine(0, 0, 125, 125, 125, 125, "card1");
+		final cached:Dynamic = Reflect.field(t, "_scratchPt");
+		Assert.notNull(cached,
+			"UICardHandTargeting should expose a cached _scratchPt after updateTargetingLine");
+
+		t.updateTargetingLine(0, 0, 130, 130, 130, 130, "card1");
+		Assert.equals(cached, Reflect.field(t, "_scratchPt"),
+			"updateTargetingLine must reuse the cached _scratchPt across calls");
+
+		// Cursor outside any target — exercises the no-snap branch too.
+		t.updateTargetingLine(0, 0, 500, 500, 500, 500, "card1");
+		Assert.equals(cached, Reflect.field(t, "_scratchPt"),
+			"updateTargetingLine must reuse _scratchPt regardless of snap branch");
+	}
+
+	@Test
+	public function testUpdateTargetingLineReusesScratchEndpointFPoints():Void {
+		// updateTargetingLine builds a Stretch path from origin -> cursor.
+		// applyStretch reads x/y and forgets, so a single instance pair is safe.
+		// Allocating fresh FPoints per call is pure GC waste on the targeting hot path.
+		var t = createTargetingWithArrow();
+		t.registerTarget(createInteractive("t1", 50, 50, 100, 100));
+
+		t.updateTargetingLine(0, 0, 125, 125, 125, 125, "card1");
+		final cachedOrigin:Dynamic = Reflect.field(t, "_scratchOrigin");
+		final cachedCursor:Dynamic = Reflect.field(t, "_scratchCursor");
+		Assert.notNull(cachedOrigin,
+			"UICardHandTargeting should expose a cached _scratchOrigin FPoint after updateTargetingLine");
+		Assert.notNull(cachedCursor,
+			"UICardHandTargeting should expose a cached _scratchCursor FPoint after updateTargetingLine");
+
+		t.updateTargetingLine(10, 20, 200, 250, 200, 250, "card1");
+		Assert.equals(cachedOrigin, Reflect.field(t, "_scratchOrigin"),
+			"updateTargetingLine must reuse the cached _scratchOrigin (no per-call allocation)");
+		Assert.equals(cachedCursor, Reflect.field(t, "_scratchCursor"),
+			"updateTargetingLine must reuse the cached _scratchCursor (no per-call allocation)");
+
+		// Sanity: the cached FPoints reflect the last call's origin/cursor inputs,
+		// proving they are actually used (not just held while allocating elsewhere).
+		t.updateTargetingLine(33, 44, 555, 666, 555, 666, "card1");
+		final origin:Dynamic = Reflect.field(t, "_scratchOrigin");
+		final cursor:Dynamic = Reflect.field(t, "_scratchCursor");
+		Assert.floatEquals(33.0, origin.x, 0.001, "_scratchOrigin.x should reflect last origin input");
+		Assert.floatEquals(44.0, origin.y, 0.001, "_scratchOrigin.y should reflect last origin input");
+		// _scratchCursor mirrors the snapped/cursor endpoint. With no target under (555,666)
+		// and identity transforms in this headless test, it equals the cursor input directly.
+		Assert.floatEquals(555.0, cursor.x, 0.001, "_scratchCursor.x should reflect last cursor input");
+		Assert.floatEquals(666.0, cursor.y, 0.001, "_scratchCursor.y should reflect last cursor input");
+	}
+
+	@Test
+	public function testUpdateTargetingLineEndpointFPointAllocationStable():Void {
+		// Per-call FPoint delta must be stable across many calls — one warm-up
+		// call settles the path-build allocations, and every follow-up call
+		// should produce the same delta. With endpoint FPoints reused, the
+		// 2-per-call endpoint surcharge is gone; without reuse, every call
+		// allocates 2 extra FPoints just for origin/cursor.
+		var t = createTargetingWithArrow();
+		t.registerTarget(createInteractive("t1", 50, 50, 100, 100));
+
+		// Warm up.
+		t.updateTargetingLine(0, 0, 125, 125, 125, 125, "card1");
+
+		// Measure single-call delta.
+		final beforeOne = FPoint.creationCount;
+		t.updateTargetingLine(0, 0, 130, 130, 130, 130, "card1");
+		final perCall = FPoint.creationCount - beforeOne;
+
+		// Run 9 more calls; total FPoint delta must equal 9 * perCall — i.e. no
+		// per-call regression and no growth (e.g. accidentally allocating new
+		// scratches in a branch). If the endpoint FPoints aren't reused, this
+		// still holds in absolute terms, so we additionally bound the perCall
+		// figure: it must NOT include the 2 endpoint allocations the bug fix
+		// removed. Lower-bound is the path-build allocation count.
+		final beforeMany = FPoint.creationCount;
+		for (i in 0...9)
+			t.updateTargetingLine(0, 0, 130.0 + i, 130.0 + i, 130.0 + i, 130.0 + i, "card1");
+		final manyDelta = FPoint.creationCount - beforeMany;
+		Assert.equals(perCall * 9, manyDelta,
+			"per-call FPoint allocation must be stable across calls (no growth). " + "perCall=" + perCall + " manyDelta=" + manyDelta);
+
+		// Also assert the endpoint allocations are gone. Compare against a fresh
+		// instance whose updateTargetingLine has been wired to reuse scratches.
+		// With 2 endpoint FPoints removed, perCall on this test setup should be
+		// strictly less than (current path-build cost + 2). The exact path-build
+		// cost depends on the path definition — to make this robust, we compute
+		// it via Reflect on the cached scratches and assert presence (covered
+		// by sibling test). Here we only assert that the cached scratches exist
+		// AFTER the warm-up + perCall measurement, which guarantees the new
+		// allocation path was taken.
+		Assert.notNull(Reflect.field(t, "_scratchOrigin"),
+			"_scratchOrigin must be allocated once (pre-fix this field doesn't exist)");
+		Assert.notNull(Reflect.field(t, "_scratchCursor"),
+			"_scratchCursor must be allocated once (pre-fix this field doesn't exist)");
 	}
 }

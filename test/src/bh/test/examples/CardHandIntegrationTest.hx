@@ -5,7 +5,10 @@ import bh.test.BuilderTestBase;
 import bh.test.UITestHarness.UITestScreen;
 import bh.ui.UICardHandHelper;
 import bh.ui.UICardHandTypes;
+import bh.ui.UIInteractiveWrapper;
 import bh.base.FPoint;
+import bh.base.MAObject;
+import bh.base.MAObject.MultiAnimObjectData;
 import bh.multianim.MultiAnimBuilder.BuilderResolvedSettings;
 import bh.ui.UIElement.UIScreenEvent;
 
@@ -1217,6 +1220,80 @@ class CardHandIntegrationTest extends BuilderTestBase {
 		Assert.isTrue(consumed);
 		Assert.equals(entryB, h.helper.draggedEntry,
 			"With nothing hovered, drag must follow the interactive that fired");
+	}
+
+	// ==================== Rotated interactive hit-test ====================
+	// Fan layout sets non-zero rotation on each card's container. The interactive child
+	// inherits that rotation through the parent chain. UIInteractiveWrapper.containsPoint
+	// hit-tests via globalToLocal, which must invert every transform up the chain — including
+	// rotation — for click and hover to land on the right card. A regression that silently
+	// drops rotation (e.g. axis-aligned rect check on world coords, or skipping the parent
+	// transform walk) would still pass simple cases where rotation is zero, but break the
+	// outer fan cards. Lock this in with a direct probe on a rotated parent: the only point
+	// that distinguishes a correct globalToLocal-based check from a rotation-dropping one is
+	// a global coordinate whose preimage flips sides of the rect when rotation is honored.
+
+	@Test
+	public function testInteractiveContainsPointHonorsParentRotation():Void {
+		// Build an MAInteractive (80x110) at parent local origin under a rotated container.
+		// Parent at (100, 100), rotation = π/2 (90° CCW).
+		final interactive = new MAObject(MAInteractive(80, 110, "card", null), false);
+		final wrapper = new UIInteractiveWrapper(interactive, null);
+
+		final parent = new h2d.Object();
+		parent.setPosition(100, 100);
+		parent.rotation = Math.PI / 2;
+		parent.addChild(interactive);
+
+		// 90° CCW: child local (lx, ly) projects to global (-ly + 100, lx + 100).
+		// Local (40, 55) (rect center) → global (45, 140).
+		Assert.isTrue(wrapper.containsPoint(new h2d.col.Point(45, 140)),
+			"global (45, 140) is the projection of local center (40, 55) through 90° rotation; "
+			+ "containsPoint must hit it via globalToLocal");
+
+		// Local (200, 55) is well outside the 80x110 rect. Projects to global (45, 300).
+		Assert.isFalse(wrapper.containsPoint(new h2d.col.Point(45, 300)),
+			"global (45, 300) projects from local (200, 55), outside the rect");
+
+		// Discriminator: global (140, 155) maps to local (40, 55) WITHOUT rotation (would hit),
+		// but to local (55, -40) WITH 90° rotation (y outside [0..110], must miss). This is the
+		// regression guard — a rotation-dropping implementation would return true here.
+		Assert.isFalse(wrapper.containsPoint(new h2d.col.Point(140, 155)),
+			"global (140, 155) is inside the unrotated rect but outside the 90°-rotated rect; "
+			+ "containsPoint must honor parent rotation and miss");
+	}
+
+	@Test
+	public function testInteractiveContainsPointHonorsCardHandFanRotation():Void {
+		// End-to-end check: drive the interactive through the actual card hand fan layout
+		// (rather than a hand-rolled rotated parent) so the test fails if anything in the
+		// pivotWrapper/result.object chain ever drops rotation. Pick the leftmost card —
+		// fan layout gives outer cards the largest rotation in absolute value.
+		var h = createHelper();
+		h.helper.setHand([desc("a"), desc("b"), desc("c"), desc("d"), desc("e")]);
+
+		final entry = h.helper.cards[0];
+		Assert.notEquals(0.0, entry.container.rotation,
+			"precondition: outer fan card should have non-zero rotation after setHand");
+
+		final wrapper = h.screen.getInteractive(entry.interactiveId + ".card");
+		Assert.notNull(wrapper, "screen wrapper for outer fan card should be registered");
+
+		// Project a known-inside local point (rect center) through the live transform chain
+		// to a global coordinate, then assert containsPoint hits it. Round-trip via
+		// localToGlobal/globalToLocal proves the transform stack — including the fan rotation
+		// on entry.container — is being inverted on hit-test.
+		final intr:h2d.Object = cast wrapper.interactive;
+		final globalCenter = intr.localToGlobal(new h2d.col.Point(40, 55));
+		Assert.isTrue(wrapper.containsPoint(new h2d.col.Point(globalCenter.x, globalCenter.y)),
+			"containsPoint must hit the global projection of the rect center under the live "
+			+ "fan rotation; missing here means rotation is being dropped on the hit-test path");
+
+		// Project a local point well outside the rect and assert it misses. This guards
+		// against a regression that returns true unconditionally.
+		final globalOutside = intr.localToGlobal(new h2d.col.Point(500, 55));
+		Assert.isFalse(wrapper.containsPoint(new h2d.col.Point(globalOutside.x, globalOutside.y)),
+			"containsPoint must miss a global point whose preimage is outside the rect");
 	}
 
 	// Allocation watchdog counters (FPoint.creationCount,

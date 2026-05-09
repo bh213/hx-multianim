@@ -3,6 +3,8 @@ package bh.test.examples;
 import utest.Assert;
 import bh.base.TweenManager;
 import bh.base.TweenManager.TweenPropertyEntry;
+import bh.base.TweenManager.TweenSequence;
+import bh.base.TweenManager.TweenGroup;
 
 /**
  * Non-visual unit tests for TweenManager:
@@ -190,6 +192,101 @@ class TweenManagerTest extends utest.Test {
 		mgr.update(0.1); // clean up cancelled
 
 		Assert.isFalse(mgr.hasTweens(obj));
+	}
+
+	@Test
+	public function testCancelAllPropagatesToSequenceWhenAllTweensShareTarget():Void {
+		var mgr = new TweenManager();
+		var obj = createObject();
+
+		var t1 = mgr.createTween(obj, 1.0, [X(100.0)]);
+		var t2 = mgr.createTween(obj, 1.0, [Y(200.0)]);
+		var seq = mgr.sequence([t1, t2]);
+
+		mgr.cancelAll(obj);
+
+		Assert.isTrue(seq.cancelled,
+			"sequence whose tweens all target obj must be cancelled by cancelAll(obj)");
+		Assert.isTrue(t1.cancelled);
+		Assert.isTrue(t2.cancelled);
+	}
+
+	@Test
+	public function testCancelAllPropagatesToGroupWhenAllTweensShareTarget():Void {
+		var mgr = new TweenManager();
+		var obj = createObject();
+
+		var t1 = mgr.createTween(obj, 1.0, [X(100.0)]);
+		var t2 = mgr.createTween(obj, 1.0, [Y(200.0)]);
+		var grp = mgr.group([t1, t2]);
+
+		mgr.cancelAll(obj);
+
+		Assert.isTrue(grp.cancelled,
+			"group whose tweens all target obj must be cancelled by cancelAll(obj)");
+		Assert.isTrue(t1.cancelled);
+		Assert.isTrue(t2.cancelled);
+	}
+
+	@Test
+	public function testCancelAllLeavesSequenceAliveWhenSomeTweensSurvive():Void {
+		var mgr = new TweenManager();
+		var objA = createObject();
+		var objB = createObject();
+
+		var t1 = mgr.createTween(objA, 1.0, [X(100.0)]);
+		var t2 = mgr.createTween(objB, 1.0, [Y(200.0)]);
+		var seq = mgr.sequence([t1, t2]);
+
+		mgr.cancelAll(objA);
+
+		Assert.isTrue(t1.cancelled);
+		Assert.isFalse(t2.cancelled);
+		Assert.isFalse(seq.cancelled,
+			"sequence with surviving non-cancelled tween must not be cancelled");
+	}
+
+	@Test
+	public function testCancelAllDoesNotInvokeGetTargetsOnSequencesOrGroups():Void {
+		// cancelAll() previously probed `seq.getTargets().length == 0` as a "is the
+		// sequence empty" guard. That clause is dead — getTargets() includes
+		// already-cancelled tweens, so its length is non-zero whenever tweens is
+		// non-empty, and the companion allCancelled() check already covers the
+		// empty case via vacuous truth. The probe just allocates a fresh
+		// Array<h2d.Object> with O(n²) dedup on every cancelAll event.
+		var mgr = new TweenManager();
+		var objA = createObject();
+		var objB = createObject();
+
+		var t1 = mgr.createTween(objA, 1.0, [X(100.0)]);
+		var t2 = mgr.createTween(objB, 1.0, [Y(200.0)]);
+		mgr.sequence([t1, t2]);
+
+		var t3 = mgr.createTween(objA, 1.0, [Alpha(0.5)]);
+		var t4 = mgr.createTween(objB, 1.0, [Alpha(0.0)]);
+		mgr.group([t3, t4]);
+
+		#if MULTIANIM_ALLOC_TRACK
+		final seqBaseline = TweenSequence.getTargetsCallCount;
+		final grpBaseline = TweenGroup.getTargetsCallCount;
+		#end
+
+		mgr.cancelAll(objA);
+
+		#if MULTIANIM_ALLOC_TRACK
+		final seqDelta = TweenSequence.getTargetsCallCount - seqBaseline;
+		final grpDelta = TweenGroup.getTargetsCallCount - grpBaseline;
+		Assert.equals(0, seqDelta,
+			"cancelAll must not invoke TweenSequence.getTargets() — the length-zero check "
+			+ "is dead code (allCancelled handles every meaningful case). Got "
+			+ seqDelta + " call(s).");
+		Assert.equals(0, grpDelta,
+			"cancelAll must not invoke TweenGroup.getTargets() — the length-zero check "
+			+ "is dead code (allCancelled handles every meaningful case). Got "
+			+ grpDelta + " call(s).");
+		#else
+		Assert.fail("MULTIANIM_ALLOC_TRACK must be enabled for this test (set in test-common.hxml).");
+		#end
 	}
 
 	@Test
@@ -799,34 +896,33 @@ class TweenManagerTest extends utest.Test {
 
 	// ==================== Allocation watchdog ====================
 
-	// TweenPropertyEntry is allocated 1-7× per Tween construction (one per
+	// TweenPropertyEntry is acquired 1-7× per Tween construction (one per
 	// TweenProperty in the array, with `Scale(v)` expanding to two entries).
-	// Tweens are created continuously by UI fades, card animations, and screen
-	// transitions, so this is a real per-frame churn vector even though each
-	// individual entry is small. The counter exists to (a) catch a regression
-	// where someone double-allocates per property, and (b) give a future pool
-	// implementation a clear assertion to flip from "current churn" to "0".
+	// With pooling, completed tweens return their entries to a shared free-list
+	// so subsequent tweens of the same shape allocate 0. Pre-warm makes the
+	// assertion deterministic regardless of test execution order.
 	@Test
 	public function testTweenPropertyEntryAllocationsScaleWithPropertyCount():Void {
 		var mgr = new TweenManager();
 		var obj = createObject();
 
-		// Warm-up — first tween may amortize lazy init in TweenManager.
-		mgr.tween(obj, 1.0, [Alpha(0.0)]);
+		// Pre-warm: run 5 × 3-property tweens to completion so the pool holds
+		// at least 15 reusable entries.
+		for (i in 0...5)
+			mgr.tween(obj, 0.1, [X(i + 0.0), Y(i + 0.0), Alpha(0.5)]);
+		mgr.update(0.2);
 		final baseline = TweenPropertyEntry.creationCount;
 
-		// 5 tweens × 3 properties (X, Y, Alpha) = 15 entries today; Scale expands
-		// to 2 entries internally so we avoid it here for a clean N×K assertion.
+		// 5 tweens × 3 properties = 15 entries acquired; all should come from pool.
 		for (i in 0...5) {
 			mgr.tween(obj, 1.0, [X(100.0 + i), Y(100.0 + i), Alpha(0.5)]);
 		}
 
 		final delta = TweenPropertyEntry.creationCount - baseline;
-		Assert.equals(15, delta,
-			"5 tweens × 3 properties should produce exactly 15 TweenPropertyEntry allocations. "
-			+ "Got " + delta + ". A larger value indicates per-property double-allocation; "
-			+ "a smaller value (specifically 0) means a pool was implemented — flip this "
-			+ "assertion to Assert.equals(0, delta) at that point.");
+		Assert.equals(0, delta,
+			"With a warm pool, 5 tweens × 3 properties should produce 0 fresh "
+			+ "TweenPropertyEntry allocations. Got " + delta
+			+ " — either the pool regressed or someone double-allocates per property.");
 	}
 
 	@Test
@@ -834,17 +930,75 @@ class TweenManagerTest extends utest.Test {
 		var mgr = new TweenManager();
 		var obj = createObject();
 
-		// Warm-up.
-		mgr.tween(obj, 1.0, [Alpha(0.0)]);
+		// Pre-warm: complete a Scale tween so the pool holds at least 2 entries.
+		mgr.tween(obj, 0.1, [Scale(1.0)]);
+		mgr.update(0.2);
 		final baseline = TweenPropertyEntry.creationCount;
 
-		// `Scale(v)` is documented to expand to ScaleX + ScaleY internally.
+		// `Scale(v)` expands to ScaleX + ScaleY internally — both must come
+		// from the pool, so creation delta is 0. Behavioral expansion is
+		// covered separately by `testScaleProperty`.
 		mgr.tween(obj, 1.0, [Scale(2.0)]);
 
 		final delta = TweenPropertyEntry.creationCount - baseline;
-		Assert.equals(2, delta,
-			"Scale(v) must expand to two TweenPropertyEntry instances (ScaleX + ScaleY). "
-			+ "Got " + delta + " — if this drops to 0, a pool was added; flip the assertion. "
-			+ "If it grows beyond 2, the Scale handler regressed.");
+		Assert.equals(0, delta,
+			"Scale(v) must reuse two pooled entries (ScaleX + ScaleY) rather than "
+			+ "allocating fresh. Got " + delta + " — if 1, the pool is shorting one "
+			+ "side of the Scale expansion; if 2, the pool is being bypassed entirely.");
+	}
+
+	// Real-world UI churn: tweens complete continuously (card fades, draw/discard,
+	// screen transitions) and new ones replace them. Without a pool, every new
+	// tween allocates fresh TweenPropertyEntry instances even though identical
+	// shapes were just discarded. After pooling, completed tweens return their
+	// entries to a free-list so subsequent tweens reuse them with zero allocs.
+	@Test
+	public function testTweenPropertyEntriesAreReusedAfterTweenCompletes():Void {
+		var mgr = new TweenManager();
+		var obj = createObject();
+
+		// Prime the pool: run a tween to completion so its 3 entries are released.
+		mgr.tween(obj, 0.1, [X(50.0), Y(60.0), Alpha(0.5)]);
+		mgr.update(0.2); // exceeds duration → tween completes → entries recycled
+
+		final baseline = TweenPropertyEntry.creationCount;
+
+		// A second tween with the same property shape should fully reuse the pool.
+		mgr.tween(obj, 0.1, [X(70.0), Y(80.0), Alpha(0.7)]);
+
+		final delta = TweenPropertyEntry.creationCount - baseline;
+		Assert.equals(0, delta,
+			"After a tween completes, its TweenPropertyEntries must return to a pool so "
+			+ "the next tween of the same shape reuses them. Got " + delta + " fresh "
+			+ "allocations — this is the per-frame churn vector hit by UI fades and "
+			+ "card animations.");
+	}
+
+	// Sequences and groups own multiple Tweens; their entries must also recycle
+	// when the wrapper completes. Without per-child release in HSequence/HGroup
+	// teardown, sequence/group churn would dominate even after HTween is fixed
+	// (transitions and modal overlays are sequence- and group-driven).
+	@Test
+	public function testSequenceTweenEntriesAreReusedAfterCompletion():Void {
+		var mgr = new TweenManager();
+		var obj = createObject();
+
+		// Prime: a sequence of two tweens, run to completion.
+		var t1 = mgr.createTween(obj, 0.1, [X(10.0), Alpha(0.5)]);
+		var t2 = mgr.createTween(obj, 0.1, [Y(20.0)]);
+		mgr.sequence([t1, t2]);
+		mgr.update(0.5); // both tweens finish → 3 entries released
+
+		final baseline = TweenPropertyEntry.creationCount;
+
+		// Fresh sequence with the same shape should pull entries from the pool.
+		var t3 = mgr.createTween(obj, 0.1, [X(11.0), Alpha(0.6)]);
+		var t4 = mgr.createTween(obj, 0.1, [Y(21.0)]);
+		mgr.sequence([t3, t4]);
+
+		final delta = TweenPropertyEntry.creationCount - baseline;
+		Assert.equals(0, delta,
+			"Sequence child tweens must release their TweenPropertyEntries to the pool "
+			+ "when the sequence completes. Got " + delta + " fresh allocations.");
 	}
 }
