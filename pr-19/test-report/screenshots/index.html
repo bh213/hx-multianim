@@ -327,7 +327,7 @@
 </head>
 <body>
     <h1>Visual Test Report</h1>
-    <div class="timestamp">Generated: 2026-05-09 11:40:07</div>
+    <div class="timestamp">Generated: 2026-05-10 07:18:06</div>
     <div class="summary">
         <strong>Summary:</strong> 101 tests,         <span style="color: #4CAF50;">101 passed</span>,         <span style="color: #f44336;">0 failed</span>
         <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1.2s, visual 23.3s)</span>
@@ -335,7 +335,7 @@
     <div class="unit-tests-section">
         <h2>Unit Tests</h2>
         <div class="unit-tests-summary all-passed">
-            <strong>6642 assertions:</strong>             <span style="color: #4CAF50;">6642 passed</span>
+            <strong>6671 assertions:</strong>             <span style="color: #4CAF50;">6671 passed</span>
             <button class="expand-btn" id="unitToggleBtn" onclick="toggleUnitDetails()">Show Details</button>
         </div>
         <div class="unit-details" id="unitDetails">
@@ -755,6 +755,7 @@
                 <div class="unit-method pass">testDynamicRefMutualCircularReferenceThrows: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testDynamicRefPropagationReachesHiddenSubtree: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testDynamicToResolvedWithDefForRawTile: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testDynamicToResolvedWithDefRejectsNonArrayForPPTArray: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testErrorBeginUpdateWithoutIncrementalMode: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testErrorDivisionByZeroFloat: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testErrorDivisionByZeroInt: OK <span class="dots">..</span></div>
@@ -1883,9 +1884,11 @@
                 <div class="unit-method pass">testColorCurveSegments_CacheAdvancesMonotonically: OK <span class="dots">....................</span></div>
                 <div class="unit-method pass">testColorCurveSegments_ColorCorrectAcrossLifetime: OK <span class="dots">.......</span></div>
                 <div class="unit-method pass">testColorCurveSegments_ResetsOnEmitLoopRecycle: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testDelayedInitRejectionSkipsSameFramePhysics: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testEmitBurst: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testEmitBurstAt: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testEmitBurstReusesParticleInstancesAfterDeath: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testEmitBurstWithRejectionKeepsLiveCountFromDriftingNegative: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testEmitFilterAcceptsAll: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testEmitFilterDiscardsParticles: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testEmitFilterRejectsAll: OK <span class="dots">.</span></div>
@@ -1904,6 +1907,8 @@
                 <div class="unit-method pass">testNullWorldAnchorPreservesScreenSpaceBaking: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testParticleGroup_HasNoStandaloneColorCurveEvaluator: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testParticleStepDoesNotAllocateFPoint: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testRejectedParticleDoesNotFireIntervalSubEmitters: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testRejectedRecycleInLoopGroupFreesParticles: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testRemoveForceFieldAtFirst: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testRemoveForceFieldAtMiddle: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testRemoveGroupClearsBatch: OK <span class="dots">.....</span></div>
@@ -1911,6 +1916,8 @@
                 <div class="unit-method pass">testRemoveGroupRemovesFromGroupListPreservingOrder: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testShutdownBurstStillWorks: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testShutdownConfiguredDuration: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testShutdownDurationShapesBurstOnlyGroupWithZeroNparts: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testShutdownDurationShapesGroupWithBurstOverflow: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testShutdownInstant: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testShutdownNoopOnNonLooping: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testShutdownOnParticlesForwardsToAllGroups: OK <span class="dots">..</span></div>
@@ -2043,6 +2050,7 @@
                 <div class="unit-method pass">testButtonCreate: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testButtonSetStatus: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testButtonSetText: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testCodegenArrayParamSetParameterRejectsNonArray: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testCodegenColorParamSemiTransparentAlphaPreserved: OK <span class="dots">..........</span></div>
                 <div class="unit-method pass">testCodegenColorParamTransparentPreserved: OK <span class="dots">........</span></div>
                 <div class="unit-method pass">testCodegenCreateColorParamPreserved: OK <span class="dots">..</span></div>
@@ -2064,6 +2072,8 @@
                 <div class="unit-method pass">testCodegenSwitchRepeatableSwitchArm: OK <span class="dots">.......</span></div>
                 <div class="unit-method pass">testCodegenSwitchTextInterpolation: OK <span class="dots">......</span></div>
                 <div class="unit-method pass">testCodegenTileParamSetParameter: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testCodegenTileParamSetParameterRejectsNonTile: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testCodegenTileTypedSetterRejectsNonTile: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testColorDivCreate: OK <span class="dots">......</span></div>
                 <div class="unit-method pass">testColorDivDynamicAccess: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testColorDivSetterUpdates: OK <span class="dots">.</span></div>
@@ -2211,6 +2221,7 @@
                 <div class="unit-method pass">testHasMarkupWithCloseTag: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testHasMarkupWithImgTag: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testHasMarkupWithLinkTag: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testHyperlinkCallbackErrorGatingMatchesBuildFlags: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testPlainTextBuilds: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testPlainTextRejectsStyles: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testResolveColorEmptyString: OK <span class="dots">.</span></div>
