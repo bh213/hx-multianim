@@ -3,6 +3,9 @@ package bh.test.examples;
 import utest.Assert;
 import bh.test.BuilderTestBase;
 import bh.multianim.TextMarkupConverter;
+import bh.multianim.MultiAnimBuilder.BuilderParameters;
+import bh.multianim.MultiAnimBuilder.CallbackRequest;
+import bh.multianim.MultiAnimBuilder.CallbackResult;
 
 /**
  * Unit tests for TextMarkupConverter (convert, hasMarkup, extractStyleReferences, etc.)
@@ -501,5 +504,54 @@ class RichTextTest extends BuilderTestBase {
 
 		Assert.notNull(t.font, "font must not be null after empty-fonts fallback");
 		Assert.equals(origFont, t.font, "font must remain the original when fonts array is empty");
+	}
+
+	// ==================== Hyperlink callback error gating ====================
+
+	@Test
+	public function testHyperlinkCallbackErrorGatingMatchesBuildFlags():Void {
+		// Hyperlink callback exception policy (matches the rest of the codebase —
+		// see ScreenManager.rebuildAll/loadScreen, MacroManimParser flow warning):
+		//   production (no flags)        : silent best-effort — no trace, exception swallowed
+		//   -D MULTIANIM_DEV             : trace the error, exception swallowed
+		//   -D MULTIANIM_STRICT          : rethrow
+		// Previous behaviour traced unconditionally and rethrew under MULTIANIM_DEV
+		// (the wrong flag), out of step with the codebase convention.
+		var builder = BuilderTestBase.builderFromSource("
+			#test programmable() {
+				richText(\"m3x6\", \"[link:foo]click[/]\", #FFFFFF): 0, 0
+			}
+		");
+		var bp:BuilderParameters = {
+			callback: (req) -> {
+				return switch req {
+					case Name(name) if (name == "link:foo"): throw "callback boom";
+					default: CBRNoResult;
+				}
+			}
+		};
+		var result = builder.buildWithParameters("test", new Map(), bp, null, false);
+		Assert.notNull(result.htmlTextsWithLinks);
+		Assert.equals(1, result.htmlTextsWithLinks.length);
+		var ht = result.htmlTextsWithLinks[0];
+
+		var captured:Array<String> = [];
+		var originalTrace = haxe.Log.trace;
+		haxe.Log.trace = (v, ?infos) -> captured.push(Std.string(v));
+		var threw = false;
+		try {
+			ht.onHyperlink("foo");
+		} catch (_:Dynamic) {
+			threw = true;
+		}
+		haxe.Log.trace = originalTrace;
+
+		Assert.isFalse(threw, "hyperlink callback errors must not propagate without -D MULTIANIM_STRICT");
+		#if MULTIANIM_DEV
+		Assert.equals(1, captured.length, "MULTIANIM_DEV build should trace the hyperlink callback error exactly once");
+		Assert.isTrue(captured[0].indexOf("Hyperlink callback error") >= 0, "trace should mention the hyperlink callback error");
+		#else
+		Assert.equals(0, captured.length, "production build (no MULTIANIM_DEV) must not emit a trace for hyperlink callback errors");
+		#end
 	}
 }

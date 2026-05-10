@@ -5200,7 +5200,16 @@ class MultiAnimBuilder {
 				}
 				ht.onHyperlink = (url) -> {
 					if (builderParams != null && builderParams.callback != null) {
-						try builderParams.callback(Name("link:" + url)) catch(e:Dynamic) { trace('Hyperlink callback error: $e'); #if MULTIANIM_DEV throw e; #end };
+						try {
+							builderParams.callback(Name("link:" + url));
+						} catch (e:Dynamic) {
+							#if MULTIANIM_DEV
+							trace('Hyperlink callback error: $e');
+							#end
+							#if MULTIANIM_STRICT
+							throw e;
+							#end
+						}
 					}
 				};
 				ht.onOverHyperlink = (url) -> {
@@ -7839,6 +7848,10 @@ class MultiAnimBuilder {
 			case PPTFlags(_):
 				Flag(cast value);
 			case PPTArray:
+				#if !macro
+				if (value != null && !Std.isOfType(value, Array))
+					throw BuilderError.of('PPTArray parameter requires Array, got: ${value}');
+				#end
 				ArrayString(cast value);
 			case PPTTile:
 				#if !macro

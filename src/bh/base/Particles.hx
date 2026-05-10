@@ -156,6 +156,11 @@ private class Particle extends h2d.SpriteBatch.BatchElement {
 				if (group.init(this)) {
 					visible = true;
 					group.triggerSubEmitters(this, OnBirth);
+				} else {
+					// Mirror burst path: rejected particles skip same-frame physics.
+					// init() left visible=false / life=maxLife+1 / rejected=true; the
+					// next update will free this particle through the lifecycle branch.
+					return true;
 				}
 			}
 			else {
@@ -273,7 +278,13 @@ private class Particle extends h2d.SpriteBatch.BatchElement {
 						group.freeParticles.push(this);
 						return false;
 					}
-					group.init(this);
+					if (!group.init(this)) {
+						// Recycle rejected by emitFilter — free instead of cycling
+						// the rejected particle through init() forever.
+						group.liveCount--;
+						group.freeParticles.push(this);
+						return false;
+					}
 					delay = 0;
 					// Skip lifecycle check — local timeNormalized is now stale
 					// relative to the freshly reset life, and would otherwise
@@ -287,8 +298,11 @@ private class Particle extends h2d.SpriteBatch.BatchElement {
 			}
 		}
 
-		// Sub-emitter interval check
-		group.checkIntervalSubEmitters(this, timeNormalized);
+		// Sub-emitter interval check (skip rejected — they're dead pending cleanup;
+		// life=maxLife+1 would otherwise trip every reasonable interval since
+		// lastSubEmitTime starts at 0). Mirrors the !rejected guard on OnDeath below.
+		if (!rejected)
+			group.checkIntervalSubEmitters(this, timeNormalized);
 
 		// Lifecycle
 		if( timeNormalized > 1 ) {
@@ -303,7 +317,15 @@ private class Particle extends h2d.SpriteBatch.BatchElement {
 					group.freeParticles.push(this);
 					return false;
 				}
-				group.init(this);
+				if (!group.init(this)) {
+					// Recycle rejected by emitFilter — free instead of cycling
+					// the rejected particle through init() forever (init resets
+					// rejected=false on entry then sets it back to true on
+					// reject, so the rejected flag never sticks across cycles).
+					group.liveCount--;
+					group.freeParticles.push(this);
+					return false;
+				}
 				delay = 0;
 			} else {
 				group.liveCount--;
@@ -706,6 +728,11 @@ class ParticleGroup {
 
 	// Precomputed per-frame shutdown values (updated in updateTime)
 	var shutdownTargetCount : Int = 0;
+	// Population baseline captured at shutdown() time. Uses max(nparts, liveCount) so
+	// burst-only groups (nparts == 0) and burst-overflowed groups (liveCount > nparts)
+	// shape correctly — using nparts alone would collapse shutdownTargetCount to 0
+	// (or to nparts) on the first updateTime, ignoring the configured curve.
+	var shutdownInitialCount : Int = 0;
 	var shutdownAlphaMult : Float = 1.0;
 	var shutdownSizeMult : Float = 1.0;
 	var shutdownSpeedMult : Float = 1.0;
@@ -768,8 +795,13 @@ class ParticleGroup {
 			p.vx += inheritVx;
 			p.vy += inheritVy;
 			batch.add(p);
+			// Count every batched particle so the death-branch decrement balances out.
+			// Stillborn (filter-rejected) particles still hit update()'s death branch
+			// via life=maxLife+1; gating the increment on `accepted` would drift
+			// liveCount negative across rejection-heavy bursts and poison
+			// shutdownTargetCount (= liveCount at shutdown()).
+			liveCount++;
 			if (accepted) {
-				liveCount++;
 				p.visible = true;
 				triggerSubEmitters(p, OnBirth);
 			}
@@ -810,6 +842,7 @@ class ParticleGroup {
 		if (curve != null) shutdownCountCurve = curve;
 		// Precompute initial values
 		shutdownTargetCount = liveCount;
+		shutdownInitialCount = liveCount > nparts ? liveCount : nparts;
 		shutdownAlphaMult = 1.0;
 		shutdownSizeMult = 1.0;
 		shutdownSpeedMult = 1.0;
@@ -1304,7 +1337,7 @@ class ParticleGroup {
 			// Count curve: alive fraction = 1.0 - curveValue(rate)
 			var countProgress = if (shutdownCountCurve != null) shutdownCountCurve.getValue(rate) else rate;
 			var aliveFraction = Math.max(0, 1.0 - countProgress);
-			shutdownTargetCount = Math.round(nparts * aliveFraction);
+			shutdownTargetCount = Math.round(shutdownInitialCount * aliveFraction);
 
 			// Multiplier curves
 			if (shutdownAlphaCurve != null)

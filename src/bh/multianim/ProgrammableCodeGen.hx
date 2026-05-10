@@ -837,6 +837,19 @@ class ProgrammableCodeGen {
 				setterExprs.push(macro throw 'setParameter("' + $v{nameLit} + '", ...) rejected: this param is referenced in incremental-unsupported slot(s) [' + $v{reasons} + ']. Changing it would leave the rendered state inconsistent. Either rebuild the programmable or avoid runtime mutation of this param.');
 			}
 
+			// PPTTile typed setter accepts Dynamic (publicParamType pins it to :Dynamic so
+			// initial-construction sites stay flexible — no constexpr literal form for tiles).
+			// Without an up-front type check, a non-Tile slips into _icon and the failure
+			// surfaces deep inside the rebuild as a confusing "Null access" / no-such-field
+			// from `tile.sub(...)`. Mirror the dispatcher's validation here so the typed and
+			// dispatcher routes throw with the same shape, sourced from the setter call itself.
+			if (def.type == PPTTile) {
+				final setterNameLit = "set" + toPascalCase(name);
+				setterExprs.push(macro {
+					if ($i{"v"} != null && !Std.isOfType($i{"v"}, h2d.Tile))
+						throw $v{setterNameLit} + '(...) requires h2d.Tile, got ' + Std.string($i{"v"});
+				});
+			}
 			// No-op guard: skip rebuild work when the value is unchanged. Symmetric with the runtime
 			// path where IncrementalUpdateContext.applyUpdates() only fires listeners on actual
 			// rebuilds. Without this guard, repeated setParameter("status", "normal") calls thrash
@@ -1037,9 +1050,17 @@ class ProgrammableCodeGen {
 							$p{["this", setterName]}(cast _value);
 						};
 					case PPTTile:
-						macro $p{["this", setterName]}(cast _value);
+						macro {
+							if (_value != null && !Std.isOfType(_value, h2d.Tile))
+								throw 'setParameter("' + $v{name} + '", ...) requires h2d.Tile, got ' + Std.string(_value);
+							$p{["this", setterName]}(cast _value);
+						};
 					case PPTArray:
-						macro $p{["this", setterName]}(cast _value);
+						macro {
+							if (_value != null && !Std.isOfType(_value, Array))
+								throw 'setParameter("' + $v{name} + '", ...) requires Array, got ' + Std.string(_value);
+							$p{["this", setterName]}(cast _value);
+						};
 				};
 				dispatchCases.push({
 					values: [macro $v{name}],

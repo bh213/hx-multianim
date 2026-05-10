@@ -3584,6 +3584,114 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		Assert.equals(20, Std.int(bitmapsAfter[0].tile.height));
 	}
 
+	// Codegen setParameter must validate `tile`-typed params against h2d.Tile *up-front*,
+	// mirroring every other primitive arm (Bool/Int/Color/Float/String all call
+	// Std.isOfType and throw with `setParameter("<name>", ...) requires <Type>, got <value>`
+	// before the field is mutated and before any rebuild fires). The runtime builder path
+	// (MultiAnimBuilder.dynamicToResolvedWithDef → PPTTile) already throws a structured
+	// BuilderError on the same input.
+	//
+	// Today the codegen PPTTile arm just does `cast _value`. A bad value still eventually
+	// throws — but only later, from inside the bitmap rebuild expression `tile.sub(...)`
+	// when HashLink fails to resolve `.sub` on a String. By that point _icon has already
+	// been clobbered with the bad value. The diagnostic also looks nothing like the other
+	// arms' messages, so callers can't tell `setParameter` was the source. This test
+	// asserts the error text matches the dispatcher's documented format and that the
+	// internal field was never overwritten with the rejected value (the next valid
+	// setParameter must not be a no-op against the rejected string).
+	@Test
+	public function testCodegenTileParamSetParameterRejectsNonTile():Void {
+		final mp = createMp();
+		final tile = h2d.Tile.fromColor(0xFF0000, 10, 10);
+		final inst = mp.tileParamDemo.create(tile, "test");
+
+		var caught:Null<String> = null;
+		try {
+			inst.setParameter("icon", "oops");
+		} catch (e:Dynamic) {
+			caught = Std.string(e);
+		}
+		Assert.notNull(caught,
+			'setParameter("icon", String) on a tile param must throw');
+		// Match the other primitive arms' message shape — explicit, sourced from setParameter.
+		Assert.isTrue(caught != null && caught.indexOf("setParameter") >= 0,
+			'thrown error must come from the setParameter dispatcher; got: ${caught}');
+		Assert.isTrue(caught != null && caught.indexOf("h2d.Tile") >= 0,
+			'thrown error must mention the required type (h2d.Tile); got: ${caught}');
+
+		// Field-corruption probe: re-applying the *original* tile must be a no-op (which
+		// the setter's identity guard short-circuits with no _applyVisibility call). If
+		// the rejected "oops" had clobbered _icon, the field would no longer equal `tile`
+		// and a real rebuild would fire — bitmap.tile would change to a fresh sub() of the
+		// same tile (different reference). We assert the bitmap reference is preserved.
+		final bitmapsBefore = findVisibleBitmapDescendants(inst);
+		final tileRefBefore = bitmapsBefore[0].tile;
+		inst.setParameter("icon", tile);
+		final bitmapsAfter = findVisibleBitmapDescendants(inst);
+		Assert.equals(tileRefBefore, bitmapsAfter[0].tile,
+			"rejected setParameter must not corrupt the backing field — re-applying the original tile should hit the identity-guard no-op path");
+	}
+
+	// The typed setter (e.g. setIcon) generated for a PPTTile param has its public arg type
+	// pinned to Dynamic by publicParamType (so default-arg/initial-construction sites stay
+	// flexible — Tile params have no constexpr literal form). That means callers can pass
+	// arbitrary garbage through the typed path too — `inst.setIcon("oops")` compiles and
+	// silently writes a String into _icon. The setter body must validate at runtime, with
+	// the same diagnostic shape as setParameter, otherwise the typed path is the looser
+	// of the two routes and undermines the dispatcher fix.
+	@Test
+	public function testCodegenTileTypedSetterRejectsNonTile():Void {
+		final mp = createMp();
+		final tile = h2d.Tile.fromColor(0xFF0000, 10, 10);
+		final inst = mp.tileParamDemo.create(tile, "test");
+
+		var caught:Null<String> = null;
+		try {
+			(cast inst).setIcon("oops");
+		} catch (e:Dynamic) {
+			caught = Std.string(e);
+		}
+		Assert.notNull(caught, "setIcon(String) on a tile param must throw");
+		Assert.isTrue(caught != null && caught.indexOf("setIcon") >= 0,
+			'thrown error must come from the typed setter; got: ${caught}');
+		Assert.isTrue(caught != null && caught.indexOf("h2d.Tile") >= 0,
+			'thrown error must mention the required type (h2d.Tile); got: ${caught}');
+
+		// Same field-corruption probe as the setParameter test.
+		final bitmapsBefore = findVisibleBitmapDescendants(inst);
+		final tileRefBefore = bitmapsBefore[0].tile;
+		inst.setIcon(tile);
+		final bitmapsAfter = findVisibleBitmapDescendants(inst);
+		Assert.equals(tileRefBefore, bitmapsAfter[0].tile,
+			"rejected setIcon must not corrupt _icon — re-applying the original tile should be an identity no-op");
+	}
+
+	// PPTArray has the same raw-cast shape as PPTTile in the codegen setParameter dispatcher
+	// — `case PPTArray: macro $p{["this", setterName]}(cast _value);`. A non-Array value
+	// silently slips into the Dynamic dispatcher, the unchecked cast becomes a no-op at
+	// runtime in HashLink, and the typed setter (signature `Array<String>`) accepts the
+	// foreign value. The first iteration over `items` then throws a confusing "field length"
+	// or "field iterator" not-found error from deep inside the rebuild. setParameter must
+	// validate up-front like every other primitive arm.
+	@Test
+	public function testCodegenArrayParamSetParameterRejectsNonArray():Void {
+		final mp = createMp();
+		final inst = mp.array.create(["one", "two", "three"]);
+
+		var caught:Null<String> = null;
+		try {
+			inst.setParameter("items", "oops");
+		} catch (e:Dynamic) {
+			caught = Std.string(e);
+		}
+		Assert.notNull(caught,
+			'setParameter("items", String) on an array param must throw');
+		Assert.isTrue(caught != null && caught.indexOf("setParameter") >= 0,
+			'thrown error must come from the setParameter dispatcher; got: ${caught}');
+		Assert.isTrue(caught != null && caught.indexOf("Array") >= 0,
+			'thrown error must mention the required type (Array); got: ${caught}');
+	}
+
 	// ==================== ColorDiv: generated(color()) with / division ====================
 
 	@Test

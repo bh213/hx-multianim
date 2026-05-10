@@ -1639,6 +1639,49 @@ class BuilderUnitTest extends BuilderTestBase {
 		}
 	}
 
+	// Symmetric coverage for PPTArray on the same conversion path. Without the guard
+	// the arm does `ArrayString(cast value)` and any non-Array slips into ArrayString
+	// at the type level — the failure surfaces later when the resolver iterates the
+	// "array" and HashLink hits a missing-field on a String/Int/etc. The PPTTile arm
+	// already validates with isOfType(h2d.Tile) and throws BuilderError; PPTArray must
+	// match that contract so codegen-fed slot/switch/repeatable rebuilds fail at the
+	// boundary where the type confusion is introduced, not deep inside the resolver.
+	@Test
+	public function testDynamicToResolvedWithDefRejectsNonArrayForPPTArray():Void {
+		var threw = false;
+		var msg:String = "";
+		try {
+			@:privateAccess bh.multianim.MultiAnimBuilder.dynamicToResolvedWithDef(
+				bh.multianim.MultiAnimParser.DefinitionType.PPTArray, "oops");
+		} catch (e:Dynamic) {
+			threw = true;
+			msg = Std.string(e);
+		}
+		Assert.isTrue(threw,
+			"dynamicToResolvedWithDef must throw when a String is passed for an array param");
+		// Match the PPTTile sibling's diagnostic shape: 'PPTArray parameter requires Array, got: <value>'.
+		// Today the unsafe `cast value` falls through to HashLink's runtime cast and throws
+		// 'Can't cast String to hl.types.ArrayObj' — opaque, no mention of the param type or
+		// the source. The fix should produce a structured BuilderError matching the PPTTile arm.
+		Assert.isTrue(msg.indexOf("PPTArray") >= 0,
+			'thrown error must come from the dynamicToResolvedWithDef PPTArray arm (mention "PPTArray"); got: ${msg}');
+		Assert.isTrue(msg.indexOf("requires") >= 0,
+			'thrown error must mention "requires" (matching PPTTile sibling shape); got: ${msg}');
+
+		// Sanity: a real Array still round-trips through the conversion.
+		final arr:Array<String> = ["a", "b", "c"];
+		final converted:bh.multianim.MultiAnimParser.ResolvedIndexParameters =
+			@:privateAccess bh.multianim.MultiAnimBuilder.dynamicToResolvedWithDef(
+				bh.multianim.MultiAnimParser.DefinitionType.PPTArray, arr);
+		switch converted {
+			case ArrayString(a):
+				Assert.equals(3, a.length, "array length preserved");
+				Assert.equals("a", a[0]);
+			default:
+				Assert.fail('expected ArrayString(...), got: ${converted}');
+		}
+	}
+
 	// ==================== Grid coordinate system tests ====================
 
 	@Test

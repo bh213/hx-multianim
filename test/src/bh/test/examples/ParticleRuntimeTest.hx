@@ -583,6 +583,63 @@ class ParticleRuntimeTest extends utest.Test {
 	}
 
 	@Test
+	public function testShutdownDurationShapesBurstOnlyGroupWithZeroNparts():Void {
+		// Looping group with nparts=0 — particles only come from emitBurst.
+		// shutdown(duration) must shape the count down gradually over the configured
+		// duration; without that, particles fail to recycle as soon as updateTime fires
+		// and the burst dies in roughly one particle lifetime regardless of duration.
+		var p = createParticles();
+		var g = createGroup("burst", p, true); // looping
+		var dg:Dynamic = g;
+		dg.nparts = 0;
+		dg.life = 0.2; // short — without the fix, all particles would expire well before mid-shutdown
+
+		g.emitBurst(20);
+		Assert.equals(20, countParticles(g));
+
+		// Stabilize: with emitLoop=true particles recycle in place even with nparts=0.
+		advanceGroup(g, 0.3);
+		Assert.equals(20, countParticles(g),
+			"burst particles should keep recycling with emitLoop=true before shutdown");
+
+		g.shutdown(2.0); // 2s shutdown — should shape gradually, not collapse in 1 lifetime
+
+		// At ~25% through shutdown, linear curve says ~75% should still be alive.
+		// Without the fix, shutdownTargetCount=0 from frame 1 and after 0.5s
+		// (>= 2 particle lifetimes) every particle has expired without recycle.
+		advanceGroup(g, 0.5);
+		var countMid = countParticles(g);
+		Assert.isTrue(countMid > 5,
+			'Expected substantial particles still alive 0.5s into a 2s shutdown of a burst-only group, got $countMid');
+	}
+
+	@Test
+	public function testShutdownDurationShapesGroupWithBurstOverflow():Void {
+		// Same hazard when liveCount > nparts at shutdown time: bursts pushed the
+		// group above its steady-state cap, and the curve must shape from the actual
+		// population (not the cap). Otherwise overflow particles are killed in the
+		// first lifetime instead of decaying over `duration`.
+		var p = createParticles();
+		var g = createGroup("overflow", p, true);
+		var dg:Dynamic = g;
+		dg.nparts = 5;
+		dg.life = 0.2;
+
+		advanceGroup(g, 0.1); // start emits nparts=5
+		g.emitBurst(15);       // push to 20 live
+		Assert.equals(20, countParticles(g));
+
+		g.shutdown(2.0);
+
+		// 25% through, linear curve over 20-particle baseline → ~15 expected.
+		// Without the fix, baseline=5 → target ~3 → 17 die in one lifetime.
+		advanceGroup(g, 0.5);
+		var countMid = countParticles(g);
+		Assert.isTrue(countMid > 8,
+			'Expected gradual decay from burst-overflow population, got $countMid');
+	}
+
+	@Test
 	public function testShutdownBurstStillWorks():Void {
 		var p = createParticles();
 		var g = createGroup("main", p, true);
@@ -1192,6 +1249,139 @@ class ParticleRuntimeTest extends utest.Test {
 
 		Assert.equals(0, countParticles(sparks),
 			'Rejected particles must not trigger OnBirth/OnDeath sub-emitters (got ${countParticles(sparks)} sparks)');
+	}
+
+	@Test
+	public function testEmitBurstWithRejectionKeepsLiveCountFromDriftingNegative():Void {
+		// emitBurstAt only increments liveCount when init() accepts, but the death
+		// branches in Particle.update decrement unconditionally — including the
+		// stillborn particles whose life was forced past maxLife by filter rejection.
+		// Repeated rejected bursts therefore drive liveCount negative, which then
+		// poisons shutdown's comparison against shutdownTargetCount.
+		var p = createParticles();
+		var g = createGroup("main", p);
+		var dg:Dynamic = g;
+		dg.nparts = 0; // burst-only path — bypass start()'s baseline
+		dg.speed = 0;
+		dg.life = 0.5;
+
+		g.emitFilter = (x:Float, y:Float) -> false;
+
+		// Three rejected bursts. Without start(), liveCount baseline is 0; the only
+		// changes come from emitBurstAt (none — all rejected) and update's death
+		// branch (one decrement per stillborn particle).
+		g.emitBurst(10);
+		advanceGroup(g, 0.05);
+		g.emitBurst(10);
+		advanceGroup(g, 0.05);
+		g.emitBurst(10);
+		advanceGroup(g, 0.05);
+
+		Assert.equals(0, g.liveCount,
+			'Rejected bursts must not drift liveCount; expected 0 after all stillborn particles freed, got ${g.liveCount}');
+	}
+
+	@Test
+	public function testDelayedInitRejectionSkipsSameFramePhysics():Void {
+		// When emitFilter rejects a particle whose init was deferred past emitDelay,
+		// Particle.update must mirror the burst path and return immediately —
+		// rejected particles must NOT continue into the physics block (gravity,
+		// force fields, position update) and the lifecycle branch (which would
+		// free them in the same update tick) inside the rejection frame.
+		// The burst path adds rejected particles to the batch and skips the
+		// post-init setup; the delayed-init path was falling through.
+		var p = createParticles();
+		var g = createGroup("main", p);
+		var dg:Dynamic = g;
+		dg.nparts = 5;
+		dg.emitSync = 1.0;
+		dg.emitDelay = 0.05;
+		dg.life = 1.0;
+
+		// Reject every spawn — init() flips life=maxLife+1, sets rejected=true,
+		// and returns false. The delayed-init branch has no else for that.
+		g.emitFilter = (x:Float, y:Float) -> false;
+
+		// Drive past emitDelay so init() runs and rejects in update(). Each
+		// 0.016s tick is < emitDelay, so the delay branch counts down across
+		// several ticks and crosses zero on the final tick — that final tick
+		// is where the rejection happens.
+		advanceGroup(g, 0.06);
+
+		// Mirror burst behavior: rejected particles stay in the batch with
+		// life=maxLife+1, rejected=true, freed by the lifecycle branch on the
+		// NEXT update — not in the same tick that rejected them.
+		Assert.equals(5, countParticles(g),
+			"Rejected delayed-init particles must mirror the burst path — they "
+			+ "should remain in the batch in the rejection frame, not be carried "
+			+ "through physics + lifecycle in the same update tick. Got "
+			+ countParticles(g) + " (current bug: physics runs, lifecycle frees).");
+	}
+
+	@Test
+	public function testRejectedRecycleInLoopGroupFreesParticles():Void {
+		// In a looping group, the lifecycle branch (and the bounds-out-of-bounds
+		// branch) recycles a particle by calling init() but ignores its return
+		// value. When init() is rejected by the filter, init() reset rejected to
+		// false at entry then set it back to true on filter reject — the particle
+		// stays in the batch with rejected=true, life=maxLife+1, ready to cycle
+		// again next frame, forever. Fix: when recycle init returns false, free
+		// the particle the same way the non-loop branch does.
+		var p = createParticles();
+		var g = createGroup("main", p, true); // looping
+		var dg:Dynamic = g;
+		dg.nparts = 5;
+		dg.emitDelay = 0;
+		dg.emitSync = 1.0;
+		dg.life = 0.05; // short — first lifecycle hits within a couple of frames
+
+		g.emitFilter = (x:Float, y:Float) -> false;
+
+		// Run for many particle lifetimes — each cycle should NOT keep rejected
+		// particles alive. With the fix, all 5 are freed on first recycle reject.
+		advanceGroup(g, 0.5);
+
+		Assert.equals(0, countParticles(g),
+			"Looping group with all-rejecting filter must free particles when "
+			+ "recycle init() rejects, not cycle them indefinitely. Got "
+			+ countParticles(g) + " (current bug: lifecycle re-init at line 306 "
+			+ "ignores init() return value).");
+	}
+
+	@Test
+	public function testRejectedParticleDoesNotFireIntervalSubEmitters():Void {
+		// checkIntervalSubEmitters at line 291 has no `rejected` guard. A
+		// rejected particle has life=maxLife+1 and lastSubEmitTime=0, so the
+		// `life - lastSubEmitTime >= interval` test fires for any reasonable
+		// interval. The OnBirth/OnDeath triggers at line 297 already gate on
+		// !rejected; the interval trigger must too. Reachable on burst-rejected
+		// particles' next-frame update (the delayed-init rejection now returns
+		// early before reaching line 291).
+		var p = createParticles();
+		var mainGroup = createGroup("main", p);
+		var sparks = createGroup("sparks", p);
+		var ds:Dynamic = sparks;
+		ds.nparts = 0; // no baseline particles, sparks counts only sub-emits
+
+		var dm:Dynamic = mainGroup;
+		dm.nparts = 0; // burst-only, avoid start() spawning anything
+		dm.life = 1.0;
+		dm.subEmitters = ([
+			{groupId: "sparks", trigger: OnInterval(0.05), probability: 1.0,
+				inheritVelocity: 0.0, offsetX: 0.0, offsetY: 0.0, burstCount: 3},
+		] : Array<SubEmitter>);
+
+		mainGroup.emitFilter = (x:Float, y:Float) -> false;
+		mainGroup.emitBurst(5);
+
+		// Advance one frame so rejected particles' next-frame update runs and
+		// reaches the interval-check site before lifecycle frees them.
+		advanceGroup(mainGroup, 0.016);
+
+		Assert.equals(0, countParticles(sparks),
+			"Rejected particles must not fire OnInterval sub-emitters — got "
+			+ countParticles(sparks) + " sparks. Mirrors the existing !rejected "
+			+ "guard around OnDeath at line 297.");
 	}
 
 	// ==================== Regression: shutdown terminal multipliers reset ====================
