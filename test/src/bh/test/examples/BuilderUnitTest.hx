@@ -94,6 +94,61 @@ class BuilderUnitTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testExprLeftAssocSubtraction():Void {
+		// (x - 3) - 2 = 5; right-associated would give x - (3 - 2) = 9
+		final result = buildFromSource("
+			#test programmable(x:uint=10) {
+				bitmap(generated(color($x - 3 - 2, 10, #f00))): 0, 0
+			}
+		", "test");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(5, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testExprLeftAssocDivMul():Void {
+		// (24 / 4) * 3 = 18; right-associated would give 24 / (4 * 3) = 2
+		final result = buildFromSource("
+			#test programmable(x:uint=24) {
+				bitmap(generated(color($x / 4 * 3, 10, #f00))): 0, 0
+			}
+		", "test");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(18, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testExprParensOverridePrecedence():Void {
+		// ($a + $b) * $c = (2 + 3) * 4 = 20; without parens: 2 + 3 * 4 = 14
+		final result = buildFromSource("
+			#test programmable(a:uint=2, b:uint=3, c:uint=4) {
+				bitmap(generated(color(($a + $b) * $c, $a + $b * $c, #f00))): 0, 0
+			}
+		", "test");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(20, Std.int(bitmaps[0].tile.width));
+		Assert.equals(14, Std.int(bitmaps[0].tile.height));
+	}
+
+	@Test
+	public function testExprComparisonBelowAdditive():Void {
+		// ?($a + $b < $c) takes the true branch when (a + b) < c.
+		// With proper C-like precedence (a+b)<c: (1+2)<10 → true → 100.
+		// With the legacy quirk a+(b<c): 1+(2<10)=1+1=2 (truthy as ternary cond), still 100,
+		// so we use a case where the two interpretations diverge:
+		//   $a + $b < $c with a=5, b=10, c=12:
+		//     standard: (5+10) < 12 → 15<12 → false → 0 → false-branch (50)
+		//     legacy:   5 + (10<12) = 5 + 1 = 6 → truthy → true-branch (100)
+		final result = buildFromSource("
+			#test programmable(a:uint=5, b:uint=10, c:uint=12) {
+				bitmap(generated(color(?($a + $b < $c) 100 : 50, 10, #f00))): 0, 0
+			}
+		", "test");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(50, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
 	public function testExprWithParamOverride():Void {
 		final params = new Map<String, Dynamic>();
 		params.set("x", 15);

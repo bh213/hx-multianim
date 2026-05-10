@@ -1235,20 +1235,17 @@ Multiple inline properties can be combined:
 
 ## Expressions
 
-**Operators:**
-* `+` - addition
-* `-` - subtraction
-* `*` - multiplication
-* `/` - division
-* `%` - modulo (integer only)
-* `div` - integer division
+**Operators (highest binding first, all left-associative):**
+* `*`, `/`, `%`, `div` — multiplication, division, modulo, integer division
+* `+`, `-` — addition (or string concatenation in string contexts) / subtraction
+* `==`, `!=`, `<`, `>`, `<=`, `>=` — equality and ordering comparison
+
+Comparisons sit below additive operators, so `$a + $b < $c` parses as `($a + $b) < $c`. Use parentheses to override.
 
 **Ternary Operator:**
 ```
 ?(condition) trueValue : falseValue
 ```
-
-**Comparison Operators:** `==`, `!=`, `<`, `>`
 
 **Examples:**
 ```

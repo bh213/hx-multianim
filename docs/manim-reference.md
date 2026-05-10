@@ -434,16 +434,13 @@ Works with `@()`, `@if()`, `@any()`, `@all()`, `@else`, `@else(cond)`, `@default
 ## Expressions
 
 ### Operators
-| Operator | Description |
-|----------|-------------|
-| `+` | Addition / string concatenation |
-| `-` | Subtraction |
-| `*` | Multiplication |
-| `/` | Division |
-| `%` | Modulo |
-| `div` | Integer division |
-| `==`, `!=` | Equality comparison |
-| `<`, `>`, `<=`, `>=` | Ordering comparison |
+| Precedence | Operators | Description |
+|------------|-----------|-------------|
+| 30 (highest) | `*` `/` `%` `div` | Multiplication, division, modulo, integer division |
+| 20 | `+` `-` | Addition (or string concatenation in string contexts) / subtraction |
+| 10 (lowest) | `==` `!=` `<` `>` `<=` `>=` | Equality and ordering comparison |
+
+All binary operators are **left-associative** (`a - b - c` parses as `(a - b) - c`). Comparisons sit below additive, so `$a + $b < $c` parses as `($a + $b) < $c`. Unary `-` binds at the atom level, before any infix operator.
 
 ### Ternary
 `?(condition) trueValue : falseValue`

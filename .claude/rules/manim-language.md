@@ -106,7 +106,10 @@ Works on discrete param types — `enum`, `int`, `uint`, `range`, `string` (quot
 
 ## Expressions
 
-- Operators: `+`, `-`, `*`, `/`, `%`, `div`
+- Operators (highest binding first, all left-associative):
+  - `*`, `/`, `%`, `div` (lbp 30)
+  - `+`, `-` (lbp 20)
+  - `==`, `!=`, `<`, `>`, `<=`, `>=` (lbp 10) — comparisons sit *below* additive, so `$a + $b < $c` parses as `($a + $b) < $c`
 - References: `$paramName`
 - Ternary: `?(condition) trueValue : falseValue`
 - Callbacks: `callback("name")`, `callback("name", $index)`

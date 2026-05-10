@@ -602,35 +602,67 @@ class MacroManimParser {
 		return f;
 	}
 
-	// ===================== Expression Parsing =====================
+	// ===================== Expression Parsing (Pratt) =====================
+	//
+	// Pratt-style precedence climbing:
+	//   parseAtom(t)              — type-dispatched primary parser (literals,
+	//                                ternary, unary minus, parens, callbacks,
+	//                                $ref + index/method chains, arrays for EAny).
+	//   parseExpression(minBp,t)  — operator loop driven by infixBp().
+	//
+	// Precedence (highest binding first):
+	//   *  /  %  div                 lbp 30
+	//   +  -                         lbp 20
+	//   == != <  >  <= >=            lbp 10
+	// All operators are left-associative (rbp = lbp + 1).
+	// Unary minus is parsed as part of the atom, not in the operator loop.
 
-	// Dispatch to the correct expression parser based on type
-	inline function parseExpr(t:ExprType):ReferenceableValue {
-		return switch (t) {
-			case EInt: parseIntegerOrReference();
-			case EFloat: parseFloatOrReference();
-			case EString: parseStringOrReference();
-			case EAny: parseAnything();
+	inline function infixBp(token:MacroTokenType):Null<{lbp:Int, rbp:Int, op:RvOp}> {
+		return switch (token) {
+			case TStar:          {lbp: 30, rbp: 31, op: OpMul};
+			case TSlash:         {lbp: 30, rbp: 31, op: OpDiv};
+			case TPercent:       {lbp: 30, rbp: 31, op: OpMod};
+			case TIdentifier(s) if (isKeyword(s, "div")): {lbp: 30, rbp: 31, op: OpIntegerDiv};
+			case TPlus:          {lbp: 20, rbp: 21, op: OpAdd};
+			case TMinus:         {lbp: 20, rbp: 21, op: OpSub};
+			case TDoubleEquals:  {lbp: 10, rbp: 11, op: OpEq};
+			case TNotEquals:     {lbp: 10, rbp: 11, op: OpNotEq};
+			case TLessThan:      {lbp: 10, rbp: 11, op: OpLess};
+			case TGreaterThan:   {lbp: 10, rbp: 11, op: OpGreater};
+			case TLessEquals:    {lbp: 10, rbp: 11, op: OpLessEq};
+			case TGreaterEquals: {lbp: 10, rbp: 11, op: OpGreaterEq};
+			default: null;
 		};
 	}
 
-	// Shared: parse operator chain after an atom expression
-	function parseNextExpression(e1:ReferenceableValue, t:ExprType):ReferenceableValue {
-		switch (peek()) {
-			case TPlus: advance(); return binop(e1, OpAdd, parseExpr(t));
-			case TMinus: advance(); return binop(e1, OpSub, parseExpr(t));
-			case TStar: advance(); return binop(e1, OpMul, parseExpr(t));
-			case TSlash: advance(); return binop(e1, OpDiv, parseExpr(t));
-			case TPercent: advance(); return binop(e1, OpMod, parseExpr(t));
-			case TIdentifier(s) if (isKeyword(s, "div")): advance(); return binop(e1, OpIntegerDiv, parseExpr(t));
-			case TDoubleEquals: advance(); return binop(e1, OpEq, parseExpr(t));
-			case TNotEquals: advance(); return binop(e1, OpNotEq, parseExpr(t));
-			case TLessThan: advance(); return binop(e1, OpLess, parseExpr(t));
-			case TGreaterThan: advance(); return binop(e1, OpGreater, parseExpr(t));
-			case TLessEquals: advance(); return binop(e1, OpLessEq, parseExpr(t));
-			case TGreaterEquals: advance(); return binop(e1, OpGreaterEq, parseExpr(t));
-			default: return e1;
+	// Public entry point used inside ternary / bracket-index / unary-minus paren contexts.
+	inline function parseExpr(t:ExprType):ReferenceableValue {
+		return parseExpression(0, t);
+	}
+
+	function parseExpression(minBp:Int, t:ExprType):ReferenceableValue {
+		return parseExpressionFromAtom(parseAtom(t), minBp, t);
+	}
+
+	// Run the Pratt operator loop with a pre-built lhs atom. Used by call sites
+	// that have already consumed an atom-shaped token (e.g. parseXY peeking at $ref).
+	function parseExpressionFromAtom(lhs:ReferenceableValue, minBp:Int, t:ExprType):ReferenceableValue {
+		while (true) {
+			final bp = infixBp(peek());
+			if (bp == null || bp.lbp < minBp) return lhs;
+			advance();
+			final rhs = parseExpression(bp.rbp, t);
+			lhs = EBinop(bp.op, lhs, rhs);
 		}
+	}
+
+	inline function parseAtom(t:ExprType):ReferenceableValue {
+		return switch (t) {
+			case EInt: parseAtomInt();
+			case EFloat: parseAtomFloat();
+			case EString: parseAtomString();
+			case EAny: parseAtomAny();
+		};
 	}
 
 	// Shared: ternary ?(cond) ifTrue : ifFalse — caller already consumed TQuestion
@@ -672,11 +704,11 @@ class MacroManimParser {
 		return EUnaryOp(OpNeg, RVReference(s));
 	}
 
-	function parseIntegerOrReference():ReferenceableValue {
+	function parseAtomInt():ReferenceableValue {
 		switch (peek()) {
 			case TQuestion:
 				advance();
-				return parseNextExpression(parseTernaryExpr(EInt), EInt);
+				return parseTernaryExpr(EInt);
 			case TIdentifier(s) if (isKeyword(s, "callback")):
 				advance();
 				return parseCallback();
@@ -685,46 +717,46 @@ class MacroManimParser {
 				switch (peek()) {
 					case TInteger(n):
 						advance();
-						return parseNextExpression(RVInteger(-stringToInt(n)), EInt);
+						return RVInteger(-stringToInt(n));
 					case THexInteger(n):
 						advance();
-						return parseNextExpression(RVInteger(-stringToInt("0x" + n)), EInt);
+						return RVInteger(-stringToInt("0x" + n));
 					case TReference(s):
 						advance();
-						return parseNextExpression(parseUnaryMinusRef(s, EInt), EInt);
+						return parseUnaryMinusRef(s, EInt);
 					case TOpen:
 						advance();
-						final e = parseIntegerOrReference();
+						final e = parseExpression(0, EInt);
 						expect(TClosed);
-						return parseNextExpression(EUnaryOp(OpNeg, RVParenthesis(e)), EInt);
+						return EUnaryOp(OpNeg, RVParenthesis(e));
 					default:
 						return error('expected value after unary minus');
 				}
 			case TInteger(n):
 				advance();
-				return parseNextExpression(RVInteger(stringToInt(n)), EInt);
+				return RVInteger(stringToInt(n));
 			case THexInteger(n):
 				advance();
-				return parseNextExpression(RVInteger(stringToInt("0x" + n)), EInt);
+				return RVInteger(stringToInt("0x" + n));
 			case TReference(s):
 				advance();
-				return parseNextExpression(parseRefExpr(s, EInt), EInt);
+				return parseRefExpr(s, EInt);
 			case TOpen:
 				advance();
-				final e = parseIntegerOrReference();
+				final e = parseExpression(0, EInt);
 				expect(TClosed);
-				return parseNextExpression(RVParenthesis(e), EInt);
+				return RVParenthesis(e);
 			default:
 				return error('expected integer or expression, got ${peek()}');
 		}
 	}
 
 
-	function parseFloatOrReference():ReferenceableValue {
+	function parseAtomFloat():ReferenceableValue {
 		switch (peek()) {
 			case TQuestion:
 				advance();
-				return parseNextExpression(parseTernaryExpr(EFloat), EFloat);
+				return parseTernaryExpr(EFloat);
 			case TIdentifier(s) if (isKeyword(s, "callback")):
 				advance();
 				return parseCallback();
@@ -733,29 +765,29 @@ class MacroManimParser {
 				switch (peek()) {
 					case TInteger(n) | TFloat(n):
 						advance();
-						return parseNextExpression(RVFloat(-stringToFloat(n)), EFloat);
+						return RVFloat(-stringToFloat(n));
 					case TReference(s):
 						advance();
-						return parseNextExpression(parseUnaryMinusRef(s, EInt), EFloat);
+						return parseUnaryMinusRef(s, EInt);
 					case TOpen:
 						advance();
-						final e = parseFloatOrReference();
+						final e = parseExpression(0, EFloat);
 						expect(TClosed);
-						return parseNextExpression(EUnaryOp(OpNeg, RVParenthesis(e)), EFloat);
+						return EUnaryOp(OpNeg, RVParenthesis(e));
 					default:
 						return error('expected value after unary minus');
 				}
 			case TInteger(n) | TFloat(n):
 				advance();
-				return parseNextExpression(RVFloat(stringToFloat(n)), EFloat);
+				return RVFloat(stringToFloat(n));
 			case TReference(s):
 				advance();
-				return parseNextExpression(parseRefExpr(s, EInt), EFloat);
+				return parseRefExpr(s, EInt);
 			case TOpen:
 				advance();
-				final e = parseFloatOrReference();
+				final e = parseExpression(0, EFloat);
 				expect(TClosed);
-				return parseNextExpression(RVParenthesis(e), EFloat);
+				return RVParenthesis(e);
 			default:
 				return error('expected float or expression, got ${peek()}');
 		}
@@ -832,11 +864,11 @@ class MacroManimParser {
 		}
 	}
 
-	function parseStringOrReference():ReferenceableValue {
+	function parseAtomString():ReferenceableValue {
 		switch (peek()) {
 			case TQuestion:
 				advance();
-				return parseNextExpression(parseTernaryExpr(EString), EString);
+				return parseTernaryExpr(EString);
 			case TIdentifier(s) if (isKeyword(s, "callback")):
 				advance();
 				return parseCallback();
@@ -845,7 +877,7 @@ class MacroManimParser {
 				switch (peek()) {
 					case TInteger(n) | TFloat(n):
 						advance();
-						return parseNextExpression(RVString('-' + n), EString);
+						return RVString('-' + n);
 					default:
 						return error('expected number after minus in string context');
 				}
@@ -855,47 +887,47 @@ class MacroManimParser {
 				switch (peek()) {
 					case TIdentifier(s2):
 						advance();
-						return parseNextExpression(RVString(n + s2), EString);
+						return RVString(n + s2);
 					default:
-						return parseNextExpression(RVString(n), EString);
+						return RVString(n);
 				}
 			case THexInteger(n):
 				advance();
-				return parseNextExpression(RVString("0x" + n), EString);
+				return RVString("0x" + n);
 			case TQuotedString(s):
 				advance();
-				return parseNextExpression(RVString(s), EString);
+				return RVString(s);
 			case TIdentifier(s):
 				advance();
-				return parseNextExpression(RVString(s), EString);
+				return RVString(s);
 			case TName(s):
 				advance();
-				return parseNextExpression(RVString(s), EString);
+				return RVString(s);
 			case TReference(s):
 				advance();
 				validateRef(s);
 				if (match(TBracketOpen)) {
 					final idx = parseIntegerOrReference();
 					expect(TBracketClosed);
-					return parseNextExpression(RVElementOfArray(s, idx), EString);
+					return RVElementOfArray(s, idx);
 				}
-				return parseNextExpression(RVReference(s), EString);
+				return RVReference(s);
 			case TOpen:
 				advance();
 				final e = parseAnything();
 				expect(TClosed);
-				return parseNextExpression(RVParenthesis(e), EString);
+				return RVParenthesis(e);
 			default:
 				return error('expected string or reference, got ${peek()}');
 		}
 	}
 
 
-	function parseAnything():ReferenceableValue {
+	function parseAtomAny():ReferenceableValue {
 		switch (peek()) {
 			case TQuestion:
 				advance();
-				return parseNextExpression(parseTernaryExpr(EAny), EAny);
+				return parseTernaryExpr(EAny);
 			case TIdentifier(s) if (isKeyword(s, "callback")):
 				advance();
 				return parseCallback();
@@ -904,53 +936,53 @@ class MacroManimParser {
 				switch (peek()) {
 					case TInteger(n):
 						advance();
-						return parseNextExpression(RVInteger(-stringToInt(n)), EAny);
+						return RVInteger(-stringToInt(n));
 					case THexInteger(n):
 						advance();
-						return parseNextExpression(RVInteger(-stringToInt("0x" + n)), EAny);
+						return RVInteger(-stringToInt("0x" + n));
 					case TFloat(n):
 						advance();
-						return parseNextExpression(RVFloat(-stringToFloat(n)), EAny);
+						return RVFloat(-stringToFloat(n));
 					case TReference(s):
 						advance();
-						return parseNextExpression(parseUnaryMinusRef(s, EAny), EAny);
+						return parseUnaryMinusRef(s, EAny);
 					case TOpen:
 						advance();
 						final e = parseAnything();
 						expect(TClosed);
-						return parseNextExpression(EUnaryOp(OpNeg, RVParenthesis(e)), EAny);
+						return EUnaryOp(OpNeg, RVParenthesis(e));
 					default:
 						return error('expected value after unary minus');
 				}
 			case TInteger(n):
 				advance();
-				return parseNextExpression(RVInteger(stringToInt(n)), EAny);
+				return RVInteger(stringToInt(n));
 			case THexInteger(n):
 				advance();
-				return parseNextExpression(RVInteger(stringToInt("0x" + n)), EAny);
+				return RVInteger(stringToInt("0x" + n));
 			case TFloat(n):
 				advance();
-				return parseNextExpression(RVFloat(stringToFloat(n)), EAny);
+				return RVFloat(stringToFloat(n));
 			case TReference(s):
 				advance();
-				return parseNextExpression(parseRefExpr(s, EAny), EAny);
+				return parseRefExpr(s, EAny);
 			case TQuotedString(s):
 				advance();
-				return parseNextExpression(RVString(s), EAny);
+				return RVString(s);
 			case TIdentifier(s):
 				advance();
-				return parseNextExpression(RVString(s), EAny);
+				return RVString(s);
 			case TName(s):
 				// TName is #xxx - try as color first (#f00, #FF0000, etc.)
 				final c = tryStringToColor("#" + s);
 				advance();
-				if (c != null) return parseNextExpression(RVInteger(c), EAny);
-				return parseNextExpression(RVString(s), EAny);
+				if (c != null) return RVInteger(c);
+				return RVString(s);
 			case TOpen:
 				advance();
 				final e = parseAnything();
 				expect(TClosed);
-				return parseNextExpression(RVParenthesis(e), EAny);
+				return RVParenthesis(e);
 			case TBracketOpen:
 				advance();
 				final arr:Array<ReferenceableValue> = [];
@@ -964,21 +996,20 @@ class MacroManimParser {
 		}
 	}
 
+	function parseIntegerOrReference():ReferenceableValue {
+		return parseExpression(0, EInt);
+	}
 
-	function binop(e1:ReferenceableValue, op:RvOp, e2:ReferenceableValue):ReferenceableValue {
-		// Precedence: mul/div bind tighter than add/sub.
-		// Same-precedence operators are left-associative: a * b / c => (a * b) / c
-		// Use recursive binop() for the left subtree to handle chains like a * b / c + d
-		return switch [e2, op] {
-			case [EBinop(op2 = OpAdd | OpSub, e3, e4), OpMul | OpDiv | OpMod | OpIntegerDiv]:
-				EBinop(op2, binop(e1, op, e3), e4);
-			case [EBinop(op2 = OpMul | OpDiv | OpMod | OpIntegerDiv, e3, e4), OpMul | OpDiv | OpMod | OpIntegerDiv]:
-				EBinop(op2, binop(e1, op, e3), e4);
-			case [EBinop(op2 = OpAdd | OpSub, e3, e4), OpAdd | OpSub]:
-				EBinop(op2, binop(e1, op, e3), e4);
-			default:
-				EBinop(op, e1, e2);
-		}
+	function parseFloatOrReference():ReferenceableValue {
+		return parseExpression(0, EFloat);
+	}
+
+	function parseStringOrReference():ReferenceableValue {
+		return parseExpression(0, EString);
+	}
+
+	function parseAnything():ReferenceableValue {
+		return parseExpression(0, EAny);
 	}
 
 	function parseCallback():ReferenceableValue {
@@ -1194,7 +1225,7 @@ class MacroManimParser {
 					validateRef(s);
 					// Not a dot — this is a plain reference used in OFFSET(x, y) position
 					// Put back as an expression and parse as OFFSET
-					final x = parseNextExpression(RVReference(s), EInt);
+					final x = parseExpressionFromAtom(RVReference(s), 0, EInt);
 					expect(TComma);
 					final y = parseIntegerOrReference();
 					OFFSET(x, y);
