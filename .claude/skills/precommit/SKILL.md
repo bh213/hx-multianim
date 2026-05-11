@@ -144,7 +144,44 @@ Verify:
 - MEMORY.md is up to date with any new patterns or pitfalls discovered.
 - Check if anything can be removed from MEMORY.md because it is no longer relevant. Ask user if unsure.
 
-### 8a. Allocation Watchdog Hygiene
+### 8a. Identify Temporary Files
+
+Scan both tracked and untracked files for scratch/debug/temp artifacts that should not be committed. Do not rely on a fixed extension or filename list — judge each file in context at the time precommit is running.
+
+**Gather the candidate set:**
+
+```sh
+# Tracked changes in this commit
+git diff --name-only HEAD
+# Untracked files (excluding gitignored)
+git ls-files --others --exclude-standard
+```
+
+**For each candidate, judge whether it looks temporary** using all of the following signals together (not any one in isolation):
+
+- **Name shape:** does the filename or path *read* as scratch/debug/dump/diff/output/wip/backup output rather than a deliberately named source artifact? Look at prefixes, suffixes, and middle tokens.
+- **Location:** is it under a directory that exists for transient work, sitting at repo root with no obvious owner, or otherwise outside the project's normal source/test/docs layout?
+- **Content:** open the file if its purpose is not clear from the name. A short scratch dump, a captured diff, a one-off log, or pasted command output is suspicious; a deliberately authored source/asset/config is not.
+- **History:** brand-new untracked files with no companion changes are more suspicious than files that fit into a coherent diff.
+- **Hardcoded transient paths inside committed source:** scan the diff itself for absolute paths into OS temp/scratch locations (Windows `tmp` roots, Unix tmp roots, per-user temp dirs). These are portability hazards even when the containing file is legitimate.
+
+**Do not flag** files that are clearly part of the change being committed, tracked test fixtures, gitignored generated output, or items in `todo/`. When unsure, ask the user instead of guessing.
+
+**Report format:**
+
+```
+⚠ Temporary files detected (N):
+- [path/to/file](path/to/file) — tracked|untracked — reason: <why this looks temporary in this repo, right now>
+- [src/Bar.hx:42](src/Bar.hx#L42) — hardcoded transient path inside committed source
+...
+
+Suggested action: `rm <files>` (or `git rm --cached <files>` if tracked). Confirm with user before deleting.
+```
+
+- Do NOT delete files automatically — list them and ask the user. A "tmp-looking" file may be an in-progress experiment the user wants to keep locally.
+- If a tmp file is *tracked* (showed up in `git diff --name-only HEAD`), flag it with extra emphasis — committing it would persist scratch state. Suggest `git rm` (or `git rm --cached` if it should stay on disk).
+
+### 8b. Allocation Watchdog Hygiene
 
 The hot-path allocation counters (`creationCount`) and their increments must be gated behind `#if MULTIANIM_ALLOC_TRACK` so production builds carry zero overhead. Commit `ab7e4f2` shows what happens when the gate is forgotten — every constructor call paid for a static int increment in production.
 
@@ -191,6 +228,7 @@ Present a summary table:
 - Tests added / updated / removed
 - **Reference images changed** (count + links from 5a — do not omit)
 - **Existing tests modified** (count + links from 5a — do not omit)
+- **Temporary files detected** (count + links from 8a — do not omit; flag tracked vs untracked)
 - Test run result (pass/fail)
 - Any issues found
 - Suggested commit message
