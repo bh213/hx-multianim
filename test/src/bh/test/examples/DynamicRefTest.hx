@@ -1046,4 +1046,52 @@ class DynamicRefTest extends BuilderTestBase {
 		Assert.isNull(childErr,
 			'child must remain usable after a forwarding batch failure; got: $childErr');
 	}
+
+	@Test
+	public function testForwardingFailureRestoresParentBuilderStateAndIncrementalState():Void {
+		// Sibling check to testForwardingFailureLeavesChildUsable: when a forwarded
+		// setParameter throws, applyUpdates must also restore the PARENT's invariants
+		// before rethrowing — specifically:
+		//   1. The builder's stateStack must not leak the push from the start of
+		//      applyUpdates. A leak accumulates one frame per failure and keeps
+		//      builder.indexedParams/builderParams pinned to the failed call,
+		//      corrupting any other build/applyUpdates on the same builder.
+		//   2. The parent context's changedParams must be cleared and hasChanges
+		//      reset, otherwise the next setParameter re-evaluates tracked
+		//      expressions and re-fires dynamicRef forwarding for the stale param
+		//      that "changed" in the failed call.
+		final result = buildFromSource("
+			#child programmable(c2:bool=true) {
+				bitmap(generated(color(10, 10, #ff0000))): 0, 0
+			}
+			#parent programmable(p2:uint=1) {
+				dynamicRef($child, c2=>$p2): 0, 0
+			}
+		", "parent", null, Incremental);
+
+		@:privateAccess final builder = result.incrementalContext.builder;
+		@:privateAccess final stackBefore = builder.stateStack.length;
+
+		try {
+			result.setParameter("p2", 42);
+			Assert.fail("expected forwarded setParameter to throw on bool coercion");
+		} catch (e:Dynamic) {
+			// expected
+		}
+
+		@:privateAccess final stackAfter = builder.stateStack.length;
+		Assert.equals(stackBefore, stackAfter,
+			'Parent builder.stateStack leaked a frame after forwarding throw: was $stackBefore, now $stackAfter');
+
+		@:privateAccess final ctx = result.incrementalContext;
+		@:privateAccess final hasChangesAfter = ctx.hasChanges;
+		Assert.isFalse(hasChangesAfter,
+			"Parent IncrementalUpdateContext.hasChanges must be reset to false after a mid-update throw");
+
+		@:privateAccess final changedParamsAfter = ctx.changedParams;
+		var staleKeys = 0;
+		for (k in changedParamsAfter.keys()) staleKeys++;
+		Assert.equals(0, staleKeys,
+			'Parent IncrementalUpdateContext.changedParams must be empty after a mid-update throw; leaked keys = $staleKeys');
+	}
 }

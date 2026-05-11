@@ -2092,10 +2092,11 @@ class ProgrammableCodeGen {
 		// Record untracked param refs in the repeat body before emitting the runtime walk.
 		// generateRuntimeChildExprs forwards unsupported kinds (INTERACTIVE, SLOT, etc.) via
 		// buildNodeByUniqueNameWithParams, which skips the inline recordUntrackedParams calls
-		// that processChildren does in the static-unroll path.
+		// that processChildren does in the static-unroll path. Count refs trigger rebuild via
+		// _rebuildRepeat_X so they must be excluded from the untracked-marking pass.
 		if (node.children != null) {
 			for (child in node.children)
-				recordUntrackedParamsInSubtree(child);
+				recordUntrackedParamsInSubtree(child, countParamRefs);
 		}
 
 		// Build loop body expressions from child nodes
@@ -3091,44 +3092,102 @@ class ProgrammableCodeGen {
 		}
 	}
 
-	/** Walk a subtree and record any `$param` refs inside incremental-unsupported slots
-	 *  (INTERACTIVE id/metadata, STATEANIM/STATEANIM_CONSTRUCT selectors + animName/fps) into
-	 *  untrackedParamRefs. The normal processChildren walk calls recordUntrackedParams inline
-	 *  for each kind, but generateRuntimeChildExprs (the param-dependent-repeat fallback) emits
-	 *  the subtree via buildNodeByUniqueNameWithParams and skips that pass — so without this
-	 *  helper, setParameter on a param that flows into an interactive id inside a param-dep
-	 *  repeat would silently no-op instead of throwing "untracked_param". */
-	static function recordUntrackedParamsInSubtree(node:Node):Void {
+	/** Walk a subtree and record `$param` refs inside slots that the param-dep-repeat fallback
+	 *  leaves unwired (INTERACTIVE id/metadata, STATEANIM/STATEANIM_CONSTRUCT selectors +
+	 *  animName/fps, DYNAMIC_REF/STATIC_REF target + parameters, per-node pos / scale / rotation
+	 *  / alpha / tint / filter, and child conditional refs — codegen's rebuildRepeatEntries
+	 *  only re-fires when the count itself changes). The normal processChildren walk calls
+	 *  recordUntrackedParams inline for each kind, but generateRuntimeChildExprs (the param-
+	 *  dependent-repeat fallback) emits the subtree via buildNodeByUniqueNameWithParams and
+	 *  skips that pass — so without this helper, setParameter on a param that flows into one of
+	 *  those slots inside a param-dep repeat would silently no-op instead of throwing
+	 *  "untracked_param".
+	 *
+	 *  `countParamRefs` lists refs that ARE wired to fire a rebuild via _rebuildRepeat_X
+	 *  (the iterator-spec count expression). Those refs must NOT be marked untracked —
+	 *  setParameter on the count successfully rebuilds the body. */
+	static function recordUntrackedParamsInSubtree(node:Node, countParamRefs:Null<Array<String>>):Void {
 		if (node == null) return;
+		inline function filterAndRecord(refs:Array<String>, reason:String):Void {
+			if (countParamRefs == null || countParamRefs.length == 0) {
+				recordUntrackedParams(refs, reason);
+				return;
+			}
+			final kept:Array<String> = [];
+			for (r in refs) if (countParamRefs.indexOf(r) < 0) kept.push(r);
+			if (kept.length > 0) recordUntrackedParams(kept, reason);
+		}
 		switch (node.type) {
 			case INTERACTIVE(_, _, id, _, metadata):
-				recordUntrackedParams(collectParamRefs(id), "interactive id");
+				filterAndRecord(collectParamRefs(id), "interactive id");
 				if (metadata != null) {
 					for (entry in metadata) {
-						recordUntrackedParams(collectParamRefs(entry.key), "interactive metadata key");
-						recordUntrackedParams(collectParamRefs(entry.value), "interactive metadata value");
+						filterAndRecord(collectParamRefs(entry.key), "interactive metadata key");
+						filterAndRecord(collectParamRefs(entry.value), "interactive metadata value");
 					}
 				}
 			case STATEANIM(_, _, selectorReferences):
 				if (selectorReferences != null) {
 					for (k => v in selectorReferences)
-						recordUntrackedParams(collectParamRefs(v), 'stateanim selector "$k"');
+						filterAndRecord(collectParamRefs(v), 'stateanim selector "$k"');
 				}
 			case STATEANIM_CONSTRUCT(_, construct, _):
 				if (construct != null) {
 					for (key => value in construct) {
 						switch value {
 							case IndexedSheet(_, animName, fps, _, _):
-								recordUntrackedParams(collectParamRefs(animName), 'stateanim_construct animName "$key"');
-								recordUntrackedParams(collectParamRefs(fps), 'stateanim_construct fps "$key"');
+								filterAndRecord(collectParamRefs(animName), 'stateanim_construct animName "$key"');
+								filterAndRecord(collectParamRefs(fps), 'stateanim_construct fps "$key"');
 						}
 					}
 				}
+			case DYNAMIC_REF(_, programmableRef, parameters):
+				filterAndRecord(collectParamRefs(programmableRef), "param-dep repeat: dynamicRef target");
+				if (parameters != null)
+					for (_ => value in parameters)
+						filterAndRecord(collectParamRefs(value), "param-dep repeat: dynamicRef parameter");
+			case STATIC_REF(_, programmableRef, parameters):
+				filterAndRecord(collectParamRefs(programmableRef), "param-dep repeat: staticRef target");
+				if (parameters != null)
+					for (_ => value in parameters)
+						filterAndRecord(collectParamRefs(value), "param-dep repeat: staticRef parameter");
 			default:
 		}
+		// Conditional refs: codegen rebuilds only on count change, so conditional gates inside
+		// a runtime-rebuilt body are silent no-op unless marked.
+		switch (node.conditionals) {
+			case Conditional(values, _):
+				final cRefs:Array<String> = [];
+				for (paramName => condValue in values) {
+					if (cRefs.indexOf(paramName) < 0) cRefs.push(paramName);
+					collectConditionalValueParamRefs(condValue, cRefs);
+				}
+				filterAndRecord(cRefs, "param-dep repeat: conditional gate");
+			case ConditionalElse(values):
+				if (values != null) {
+					final cRefs:Array<String> = [];
+					for (paramName => condValue in values) {
+						if (cRefs.indexOf(paramName) < 0) cRefs.push(paramName);
+						collectConditionalValueParamRefs(condValue, cRefs);
+					}
+					filterAndRecord(cRefs, "param-dep repeat: conditional gate");
+				}
+			case ConditionalDefault | NoConditional:
+		}
+		// Per-node pos + extended-form refs: body-only props have no rebuild trigger.
+		if (node.pos != null) {
+			final posRefs:Array<String> = [];
+			collectCoordinateParamRefs(node.pos, posRefs);
+			filterAndRecord(posRefs, "param-dep repeat: child position");
+		}
+		if (node.scale != null) filterAndRecord(collectParamRefs(node.scale), "param-dep repeat: child scale");
+		if (node.rotation != null) filterAndRecord(collectParamRefs(node.rotation), "param-dep repeat: child rotation");
+		if (node.alpha != null) filterAndRecord(collectParamRefs(node.alpha), "param-dep repeat: child alpha");
+		if (node.tint != null) filterAndRecord(collectParamRefs(node.tint), "param-dep repeat: child tint");
+		if (node.filter != null) filterAndRecord(collectFilterParamRefs(node.filter), "param-dep repeat: child filter");
 		if (node.children != null) {
 			for (child in node.children)
-				recordUntrackedParamsInSubtree(child);
+				recordUntrackedParamsInSubtree(child, countParamRefs);
 		}
 	}
 
@@ -3241,9 +3300,19 @@ class ProgrammableCodeGen {
 		runtimeLoopVars.set(varNameY, "_rt_iy");
 
 		// Record untracked param refs in the repeat body (see rebuildRepeatChildren for rationale).
+		// Collect count refs from both axes — they trigger rebuild via _rebuildRepeat2D_X.
+		final countParamRefs2D:Array<String> = [];
+		if (infoX.countRV != null) {
+			final tmp = collectParamRefs(infoX.countRV);
+			for (r in tmp) if (countParamRefs2D.indexOf(r) < 0) countParamRefs2D.push(r);
+		}
+		if (infoY.countRV != null) {
+			final tmp = collectParamRefs(infoY.countRV);
+			for (r in tmp) if (countParamRefs2D.indexOf(r) < 0) countParamRefs2D.push(r);
+		}
 		if (node.children != null) {
 			for (child in node.children)
-				recordUntrackedParamsInSubtree(child);
+				recordUntrackedParamsInSubtree(child, countParamRefs2D);
 		}
 
 		// Build loop body expressions from child nodes
@@ -3685,10 +3754,15 @@ class ProgrammableCodeGen {
 					final _result = $p{["this", resultField]};
 					if (_result != null && _result.incrementalContext != null) {
 						_result.incrementalContext.beginUpdate();
-						for (_k => _v in _refParams) {
-							_result.incrementalContext.setParameter(_k, _v);
+						try {
+							for (_k => _v in _refParams) {
+								_result.incrementalContext.setParameter(_k, _v);
+							}
+							_result.incrementalContext.endUpdate();
+						} catch (_e:Dynamic) {
+							_result.incrementalContext.cancelUpdate();
+							throw _e;
 						}
-						_result.incrementalContext.endUpdate();
 					}
 				});
 				expressionUpdates.push({

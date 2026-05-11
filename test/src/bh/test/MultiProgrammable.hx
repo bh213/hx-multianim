@@ -440,9 +440,21 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 	@:manim("test/examples/114-codegenRepeatFallbackUntracked/codegenRepeatFallbackUntracked.manim", "paramDepRepeatUntrackedId")
 	public var paramDepRepeatUntrackedId;
 
+	@:manim("test/examples/114-codegenRepeatFallbackUntracked/codegenRepeatFallbackUntracked.manim", "paramDepRepeatUntrackedDynRefTarget")
+	public var paramDepRepeatUntrackedDynRefTarget;
+
+	@:manim("test/examples/114-codegenRepeatFallbackUntracked/codegenRepeatFallbackUntracked.manim", "paramDepRepeatUntrackedCondition")
+	public var paramDepRepeatUntrackedCondition;
+
+	@:manim("test/examples/114-codegenRepeatFallbackUntracked/codegenRepeatFallbackUntracked.manim", "paramDepRepeatUntrackedChildPos")
+	public var paramDepRepeatUntrackedChildPos;
+
 	@:manim("test/examples/115-codegenExternalPalette/codegenExternalPalette.manim", "codegenExternalPalette")
 	public var codegenExternalPalette;
 
 	@:manim("test/examples/116-enumNumericConditional/enumNumericConditional.manim", "enumNumericConditional")
 	public var enumNumericConditional;
+
+	@:manim("test/examples/117-codegenForwardingFailure/codegenForwardingFailure.manim", "codegenForwardingFailure")
+	public var codegenForwardingFailure;
 }

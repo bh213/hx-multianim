@@ -134,6 +134,14 @@ class Hex
         return this.q == a.q && this.r == a.r && this.s == a.s;
     }
 
+    public inline function setCoords(q:Int, r:Int, s:Int):Void
+    {
+        this.q = q;
+        this.r = r;
+        this.s = s;
+        if (q + r + s != 0) throw "q + r + s must be 0";
+    }
+
     static inline public function add(a:Hex, b:Hex):Hex
     {
         return new Hex(a.q + b.q, a.r + b.r, a.s + b.s);
@@ -160,6 +168,31 @@ class Hex
     static inline public function rotateRight(a:Hex):Hex
     {
         return new Hex(-a.r, -a.s, -a.q);
+    }
+
+    static inline public function addInto(a:Hex, b:Hex, out:Hex):Void
+    {
+        out.setCoords(a.q + b.q, a.r + b.r, a.s + b.s);
+    }
+
+    static inline public function subtractInto(a:Hex, b:Hex, out:Hex):Void
+    {
+        out.setCoords(a.q - b.q, a.r - b.r, a.s - b.s);
+    }
+
+    static inline public function scaleInto(a:Hex, k:Int, out:Hex):Void
+    {
+        out.setCoords(a.q * k, a.r * k, a.s * k);
+    }
+
+    static inline public function rotateLeftInto(a:Hex, out:Hex):Void
+    {
+        out.setCoords(-a.s, -a.q, -a.r);
+    }
+
+    static inline public function rotateRightInto(a:Hex, out:Hex):Void
+    {
+        out.setCoords(-a.r, -a.s, -a.q);
     }
 
     
@@ -268,6 +301,30 @@ class FractionalHex
                 si = -qi - ri;
             }
         return new Hex(qi, ri, si);
+    }
+
+    public function roundInto(out:Hex):Void
+    {
+        var qi:Int = Math.round(this.q);
+        var ri:Int = Math.round(this.r);
+        var si:Int = Math.round(this.s);
+        var q_diff:Float = Math.abs(qi - this.q);
+        var r_diff:Float = Math.abs(ri - this.r);
+        var s_diff:Float = Math.abs(si - this.s);
+        if (q_diff > r_diff && q_diff > s_diff)
+        {
+            qi = -ri - si;
+        }
+        else
+            if (r_diff > s_diff)
+            {
+                ri = -qi - si;
+            }
+            else
+            {
+                si = -qi - ri;
+            }
+        out.setCoords(qi, ri, si);
     }
 
 
@@ -476,6 +533,17 @@ class HexLayout
         var q:Float = orientationData.b0 * ptX + orientationData.b1 * ptY;
         var r:Float = orientationData.b2 * ptX + orientationData.b3 * ptY;
         return new FractionalHex(q, r, -q - r);
+    }
+
+    public function pixelToHexInto(p:FPoint, out:FractionalHex):Void
+    {
+        var ptX:Float = (p.x - origin.x) / size.x;
+        var ptY:Float = (p.y - origin.y) / size.y;
+        var q:Float = orientationData.b0 * ptX + orientationData.b1 * ptY;
+        var r:Float = orientationData.b2 * ptX + orientationData.b3 * ptY;
+        out.q = q;
+        out.r = r;
+        out.s = -q - r;
     }
 
 

@@ -966,7 +966,7 @@ class AnimParser implements AnimParserResult {
 		final allStates = createAllStates(definedStates);
 		#if MULTIANIM_DEV
 		if (allStates.length > 50) {
-			trace('Warning: large number of states in AnimParser: ${allStates.length}}');
+			trace('Warning: large number of states in AnimParser: ${allStates.length}');
 		}
 		#end
 

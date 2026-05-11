@@ -3,6 +3,7 @@ package bh.ui;
 import bh.base.FPoint;
 import bh.base.GridDirection;
 import bh.base.Hex;
+import bh.base.Hex.FractionalHex;
 import bh.base.Hex.HexLayout;
 import bh.base.Hex.HexOrientation;
 import bh.base.MAObject;
@@ -130,6 +131,9 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 	// `globalToLocal` mutates its argument in place, which is what makes this safe.
 	static final _scratchPoint:h2d.col.Point = new h2d.col.Point(0, 0);
 	static final _scratchFPoint:FPoint = new FPoint(0, 0);
+	static final _scratchFractionalHex:FractionalHex = new FractionalHex(0, 0, 0);
+	static final _scratchHex:HexUtil = new HexUtil(0, 0, 0);
+	static final _scratchHex2:HexUtil = new HexUtil(0, 0, 0);
 
 	// --- Config ---
 	final builder:MultiAnimBuilder;
@@ -908,9 +912,9 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 		final local = root.globalToLocal(_scratchPoint);
 		_scratchFPoint.x = local.x;
 		_scratchFPoint.y = local.y;
-		final fractional = hexLayout.pixelToHex(_scratchFPoint);
-		final hex = fractional.round();
-		return fromHex(hex);
+		hexLayout.pixelToHexInto(_scratchFPoint, _scratchFractionalHex);
+		_scratchFractionalHex.roundInto(_scratchHex);
+		return fromHex(_scratchHex);
 	}
 
 	/** Get the world (scene) position of a cell's origin.
@@ -933,10 +937,10 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 						result.push({col: nc, row: nr});
 				}
 			case Hex(_, _, _):
-				final hex = toHex(col, row);
+				_scratchHex.setCoords(col, row, -col - row);
 				for (dir in GridDirection.allDirections()) {
-					final neighbor = HexUtil.neighbor(hex, dir);
-					final nc:CellCoord = fromHex(neighbor);
+					HexUtil.addInto(_scratchHex, dir.hexDirection(dir), _scratchHex2);
+					final nc:CellCoord = fromHex(_scratchHex2);
 					if (cells.exists(cellKey(nc.col, nc.row)))
 						result.push(nc);
 				}
@@ -1659,9 +1663,9 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 	function hitTestHex(localX:Float, localY:Float):Null<CellCoord> {
 		_scratchFPoint.x = localX;
 		_scratchFPoint.y = localY;
-		final fractional = hexLayout.pixelToHex(_scratchFPoint);
-		final hex = fractional.round();
-		final coord = fromHex(hex);
+		hexLayout.pixelToHexInto(_scratchFPoint, _scratchFractionalHex);
+		_scratchFractionalHex.roundInto(_scratchHex);
+		final coord = fromHex(_scratchHex);
 		final key = cellKey(coord.col, coord.row);
 		return cells.exists(key) ? coord : null;
 	}

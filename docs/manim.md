@@ -509,7 +509,13 @@ result.getSlot("icon", 2).clear();
 // Mismatches throw errors:
 result.getSlot("icon");        // Error: indexed slot requires index
 result.getSlot("footer", 0);  // Error: non-indexed slot rejects index
+
+// Existence check — never throws
+if (result.hasSlot("footer")) { ... }
+if (result.hasSlot("icon", 5)) { ... }   // indexed slot whose iteration may have shrunk
 ```
+
+`hasSlot(name, ?index, ?indexY)` returns `false` when the result has no slots, when the name is unknown, or when the requested kind/index doesn't match a present slot. Useful when an indexed slot's iteration count can shrink at runtime (e.g. `repeatable` driven by a `setParameter()`-updated count) — callers can query each index without wrapping `getSlot` in try/catch.
 
 **Codegen access:**
 ```haxe
@@ -643,7 +649,12 @@ The dynamic ref's `BuilderResult` is stored and accessible via `result.getDynami
 var result = builder.buildWithParameters("myScreen", []);
 var hpBar = result.getDynamicRef("statusBar");
 hpBar.setParameter("value", 25);   // updates visuals
+
+// Existence check — never throws
+if (result.hasDynamicRef("statusBar")) { ... }
 ```
+
+`hasDynamicRef(name)` returns `false` when the result has no dynamicRefs at all or when the name is unknown. Reports presence only — a subsequent `getDynamicRef` may still throw at the call site if multiple unnamed sibling sites collide on the same key. Disambiguate by prefixing each site with a distinct `#name` (or `#name[$i]` inside a `repeatable`).
 
 Use for elements that need dynamic parameter changes after building (health bars, status displays, etc.).
 

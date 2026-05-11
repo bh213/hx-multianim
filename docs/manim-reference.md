@@ -67,6 +67,10 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | `dynamicRef(external("importName"), $ref, params)` | Dynamic embed from imported .manim file |
 | `dynamicRef($paramName, params)` | Dynamic embed where `$paramName` is a parameter naming the target programmable. Full rebuild on template change |
 
+**Builder API:**
+- `result.getDynamicRef("name")` — returns the `BuilderResult` for the named site; throws if the name is unknown or multiple unnamed sites collide on the key
+- `result.hasDynamicRef("name")` — existence check that never throws; returns true when at least one site is registered under the key. Reports presence only — does not detect colliding unnamed sites (a subsequent `getDynamicRef` may still throw)
+
 **Disambiguating sibling dynamicRef sites** — `dynamicRefs` is a map keyed by the site's name. Unnamed sites fall back to the referenced programmable name, so two unnamed `dynamicRef($X)` siblings (e.g. `@(cond) dynamicRef($X)` + `@else dynamicRef($X)`, or N iterations of `repeatable { dynamicRef($X) }`) collide on key `"X"`. In that case `getDynamicRef("X")` throws with a hint to add `#name` — the last-writer-wins result is arbitrary with respect to which sibling is attached to the scene graph. Prefix each site with a distinct `#name`, or use `#name[$i]` inside a `repeatable` to key by iteration. Two explicit `#name` sites sharing the same name throw at build time.
 
 **Circular references** — a `staticRef`/`dynamicRef` chain that re-enters a programmable already being resolved (`A → A`, `A → B → A`, …) is rejected with `BuilderError code="circular_reference"` instead of recursing to a native stack overflow. The message names the offending programmable. The guard is maintained across nested builds even if an inner `startBuild` throws, so callers that catch a build error and retry are not falsely rejected.
@@ -595,6 +599,8 @@ Slots with parameters support visual states via conditionals. `slotContent` mark
 **Body features:** Conditionals (`@()`, `@else`, `@default`), expressions (`$param`), all standard elements.
 
 **Runtime API:**
+- `result.getSlot("name", ?index, ?indexY)` — returns a `SlotHandle`; throws when the slot is not registered or kind/index doesn't match
+- `result.hasSlot("name", ?index, ?indexY)` — existence check that never throws. Useful when an indexed slot's iteration may shrink (`repeatable` count dropping under `setParameter`) and the caller wants to skip absent indices instead of wrapping `getSlot` in try/catch
 - `slot.setParameter("status", "active")` — update visual state (incremental)
 - `slot.setContent(obj)` / `slot.clear()` — content independent of decorations
 - `slot.getInteractives()` — interactives declared inside the slot decoration body (returns a fresh copy each call). Empty for slots built via the runtime `BuilderResult` path
@@ -617,7 +623,8 @@ Slots with parameters support visual states via conditionals. `slotContent` mark
 | `grayscale(value)` | Grayscale conversion (0=none, 1=full) |
 | `hue(value)` | Hue rotation in degrees |
 | `dropShadow(distance, angle, color, alpha, radius, gain, quality, smoothColor)` | Drop shadow |
-| `pixelOutline(mode [, smoothColor])` | Pixel-level outline — modes: `knockout(color, knockoutStrength)` or `inlineColor(outlineColor, fillColor)`. Optional trailing `smoothColor` keyword enables smoothed edge blending. |
+| `pixelOutline(knockout, color, knockoutStrength [, smoothColor])` | Pixel-level knockout outline. Mode keyword `knockout` is followed by the outline color and a float strength. Optional trailing `smoothColor` keyword enables smoothed edge blending. |
+| `pixelOutline(inlineColor, outlineColor, fillColor [, smoothColor])` | Pixel-level inline-color outline. Mode keyword `inlineColor` is followed by the outline color and the inner fill color drawn over the source. Optional trailing `smoothColor` keyword enables smoothed edge blending. |
 | `replacePalette(palette, sourceRow, replacementRow)` | Swap palette rows |
 | `replaceColor(sourceColors[], replacementColors[])` | Replace specific colors |
 | `group(filter1, filter2, ...)` | Combine multiple filters |

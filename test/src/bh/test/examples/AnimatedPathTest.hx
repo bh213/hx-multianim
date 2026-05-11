@@ -4,6 +4,7 @@ import utest.Assert;
 import bh.test.BuilderTestBase;
 import bh.paths.AnimatedPath;
 import bh.paths.AnimatedPath.AnimatedPathState;
+import bh.paths.AnimatedPath.CustomCurveBinding;
 import bh.paths.MultiAnimPaths.Path;
 import bh.paths.MultiAnimPaths.SinglePath;
 import bh.paths.Curve;
@@ -711,5 +712,81 @@ class AnimatedPathTest extends BuilderTestBase {
 			"AnimatedPath.seek must mutate currentState in place. Got " + stateDelta + " fresh allocations.");
 		Assert.equals(0, fpointDelta,
 			"AnimatedPath.seek must use getPointInto. Got " + fpointDelta + " fresh FPoint allocations.");
+	}
+
+	// computeState() is called from both update() and seek(), potentially multiple
+	// times per update() (start, per timed event, cycle end, cycle restart, path end,
+	// normal frame). On HL, iterating a Map via `for (k => v in map)` allocates a
+	// fresh keyValueIterator on every call — even when the map is empty. With
+	// dozens of active AnimatedPaths (particles trails, floating text, projectiles,
+	// card animations) this is meaningful GC pressure. The fix mirrors
+	// Particles.groupList: a parallel insertion-ordered Array<CustomCurveBinding>
+	// iterated via indexed loop. Pinning the new binding's creationCount to 0
+	// over the hot path enforces "no per-frame allocation in the custom-curve
+	// path", paralleling the existing AnimatedPathState/FPoint watchdogs.
+	@Test
+	public function testUpdateDoesNotAllocateCustomCurveBindings():Void {
+		var path = createLinePath();
+		var ap = new AnimatedPath(path, Time(1.0));
+		ap.addCustomCurveSegment("alpha", 0.0, createLinearCurve());
+		ap.addCustomCurveSegment("beta", 0.0, createLinearCurve());
+		ap.addCustomCurveSegment("gamma", 0.0, createLinearCurve());
+
+		ap.update(0.01); // warm-up — fires pathStart through computeState
+		final bindingBaseline = CustomCurveBinding.creationCount;
+
+		for (i in 0...60)
+			ap.update(0.005);
+
+		final delta = CustomCurveBinding.creationCount - bindingBaseline;
+		Assert.equals(0, delta,
+			"AnimatedPath.update must iterate custom curves via the parallel array — "
+			+ "no per-frame CustomCurveBinding allocation. Got " + delta
+			+ " fresh allocations across 60 update() calls.");
+	}
+
+	@Test
+	public function testSeekDoesNotAllocateCustomCurveBindings():Void {
+		var path = createLinePath();
+		var ap = new AnimatedPath(path, Time(1.0));
+		ap.addCustomCurveSegment("alpha", 0.0, createLinearCurve());
+		ap.addCustomCurveSegment("beta", 0.0, createLinearCurve());
+
+		ap.seek(0.5); // warm-up
+		final bindingBaseline = CustomCurveBinding.creationCount;
+
+		for (i in 0...60)
+			ap.seek(i / 60.0);
+
+		final delta = CustomCurveBinding.creationCount - bindingBaseline;
+		Assert.equals(0, delta,
+			"AnimatedPath.seek must iterate custom curves via the parallel array — "
+			+ "no per-frame CustomCurveBinding allocation. Got " + delta
+			+ " fresh allocations across 60 seek() calls.");
+	}
+
+	// Re-adding to an existing curve name must not grow the parallel binding
+	// list. Mirrors the Particles.groupList invariant — Map and Array stay in
+	// sync, so dedup by name must hit the existing binding's segments array.
+	@Test
+	public function testAddCustomCurveSegmentDeduplicatesBindingByName():Void {
+		var path = createLinePath();
+		var ap = new AnimatedPath(path, Time(1.0));
+
+		ap.addCustomCurveSegment("shared", 0.0, createLinearCurve());
+		final afterFirstAdd = CustomCurveBinding.creationCount;
+
+		// Second segment under the same name must reuse the existing binding.
+		ap.addCustomCurveSegment("shared", 0.5, createLinearCurve());
+		final afterSecondAdd = CustomCurveBinding.creationCount;
+
+		Assert.equals(0, afterSecondAdd - afterFirstAdd,
+			"Re-adding to an existing custom curve name must reuse the existing "
+			+ "binding rather than allocate a new one. Got "
+			+ (afterSecondAdd - afterFirstAdd) + " new bindings.");
+
+		// And the seek still returns a value driven by both segments.
+		var state = ap.seek(0.75);
+		Assert.notNull(state.custom.get("shared"));
 	}
 }

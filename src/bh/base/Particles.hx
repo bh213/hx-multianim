@@ -413,22 +413,6 @@ class ParticleGroup {
 	**/
 	public var emitMode(default, null):PartEmitMode = Point(0., 50.);
 	/**
-		Initial particle position distance from emission point.
-	**/
-	// public var emitStartDist(default, null) : Float = 0.;
-	/**
-		Additional random particle position distance from emission point.
-	**/
-	// public var emitDist(default, null) : Float	= 50.;
-	/**
-		Secondary random position distance modifier (used by `Box` emitMode)
-	**/
-	// public var emitDistY(default, null) : Float	= 50.;
-	/**
-		Normalized particle emission direction angle.
-	**/
-	// public var emitAngle(default, null) : Float 	= -0.5;
-	/**
 		When enabled, particle rotation will match the particle movement direction angle.
 	**/
 	public var emitDirectionAsAngle(default, null) : Bool = false;

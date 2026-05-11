@@ -80,6 +80,29 @@ private class TimedEvent {
 	public var eventName:String;
 }
 
+// Parallel insertion-ordered binding for custom curves. Iterating a Map via
+// `for (k => v in map)` on HL allocates a fresh keyValueIterator on every call
+// (even for empty maps); iterating an Array compiles to an indexed loop with
+// no per-call allocation. Public so the allocation watchdog tests can read
+// creationCount — matches the AnimatedPathState pattern in this file.
+@:structInit
+class CustomCurveBinding {
+	#if MULTIANIM_ALLOC_TRACK
+	public static var creationCount:Int = 0;
+	#end
+
+	public var name:String;
+	public var segments:Array<CurveSegment>;
+
+	public function new(name:String, segments:Array<CurveSegment>) {
+		this.name = name;
+		this.segments = segments;
+		#if MULTIANIM_ALLOC_TRACK
+		creationCount++;
+		#end
+	}
+}
+
 @:nullSafety
 class AnimatedPath {
 	public final path:Path;
@@ -105,7 +128,7 @@ class AnimatedPath {
 	var rotationCurveSegments:Array<CurveSegment> = [];
 	var progressCurveSegments:Array<CurveSegment> = [];
 	var colorCurveSegments:Array<ColorCurveSegment> = [];
-	var customCurveSegments:Map<String, Array<CurveSegment>> = [];
+	var customCurves:Array<CustomCurveBinding> = [];
 
 	// Timed events (sorted by atRate)
 	var timedEvents:Array<TimedEvent> = [];
@@ -159,12 +182,18 @@ class AnimatedPath {
 	}
 
 	public function addCustomCurveSegment(name:String, startRate:Float, curve:ICurve):Void {
-		if (!customCurveSegments.exists(name)) {
-			customCurveSegments.set(name, []);
+		var segments:Null<Array<CurveSegment>> = null;
+		for (i in 0...customCurves.length) {
+			if (customCurves[i].name == name) {
+				segments = customCurves[i].segments;
+				break;
+			}
 		}
-		var segments = customCurveSegments.get(name);
-		if (segments != null)
-			insertSorted(segments, {startRate: startRate, curve: curve});
+		if (segments == null) {
+			segments = [];
+			customCurves.push(new CustomCurveBinding(name, segments));
+		}
+		insertSorted(segments, {startRate: startRate, curve: curve});
 	}
 
 	public function addEvent(atRate:Float, eventName:String):Void {
@@ -317,9 +346,11 @@ class AnimatedPath {
 			currentState.color = evaluateColorCurve(rate);
 		currentState.done = false;
 
-		// Custom curves
-		for (name => segments in customCurveSegments) {
-			currentState.custom.set(name, evaluateCurveSlot(segments, rate));
+		// Custom curves — indexed loop over parallel array; `for (k => v in map)`
+		// allocates a fresh keyValueIterator per call on HL.
+		for (i in 0...customCurves.length) {
+			final binding = customCurves[i];
+			currentState.custom.set(binding.name, evaluateCurveSlot(binding.segments, rate));
 		}
 	}
 

@@ -2922,6 +2922,51 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		Assert.isNull(dynRef, "getDynamicRef with unknown name should return null");
 	}
 
+	@Test
+	public function testCodegenDynamicRefForwardingFailureLeavesChildUsable():Void {
+		// The codegen forwarded-param update block opens beginUpdate on the child's incremental
+		// context, loops setParameter, then calls endUpdate. If any forwarded setParameter throws
+		// (e.g. invalid_param_value when a uint forwards into a bool child param), endUpdate is
+		// skipped and the child's batchMode stays true — the next child.beginUpdate() then throws
+		// nested_begin_update, wedging the child until reload. The runtime forwarding loop in
+		// MultiAnimBuilder.applyUpdates() guards this with try/catch + cancelUpdate; the codegen
+		// path must do the same.
+		//
+		// Repro: parent uint param `p=1` forwards into child bool param `c`. Initial build via
+		// resolveAsBool(Value(1)) -> true succeeds. setP(42) hits the codegen forwarded-update
+		// path which calls child.incrementalContext.setParameter("c", 42). The bool slow path
+		// rejects 42 -> throw mid-batch.
+		final mp = createMp();
+		final instance = mp.codegenForwardingFailure.create();
+		Assert.notNull(instance);
+		if (instance == null) return;
+
+		final child = instance.getDynamicRef("cgFwdFailureChild");
+		Assert.notNull(child, "default template 'cgFwdFailureChild' must be resolvable via getDynamicRef");
+		if (child == null) return;
+		Assert.notNull(child.incrementalContext, "child must be built incrementally");
+
+		var parentErr:String = null;
+		try {
+			instance.setP(42);
+		} catch (e:Dynamic) {
+			parentErr = Std.string(e);
+		}
+		Assert.notNull(parentErr,
+			"expected forwarded setParameter to throw on bool coercion of Int 42");
+
+		var childErr:String = null;
+		try {
+			child.beginUpdate();
+			child.setParameter("c", true);
+			child.endUpdate();
+		} catch (e:Dynamic) {
+			childErr = Std.string(e);
+		}
+		Assert.isNull(childErr,
+			'child must remain usable after a codegen forwarding batch failure (no nested_begin_update); got: $childErr');
+	}
+
 	// ==================== Indexed named: unit tests ====================
 
 	@Test

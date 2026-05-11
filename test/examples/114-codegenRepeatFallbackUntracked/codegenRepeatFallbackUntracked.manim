@@ -20,3 +20,39 @@ version: 1.0
     interactive(100, 50, $myId): 0, 0
   }
 }
+
+// Leaf programmables referenced by the dynamicRef/staticRef regression tests below.
+#leafA programmable() {
+  bitmap(generated(color(10, 10, #FF0000))): 0, 0
+}
+#leafB programmable() {
+  bitmap(generated(color(10, 10, #00FF00))): 0, 0
+}
+
+// Param `template` flows into a dynamicRef target inside a param-dep repeat body.
+// The fallback build path (incrementalMode=false) does not call trackDynamicName,
+// so changing it must throw untracked_param, not silently no-op.
+#paramDepRepeatUntrackedDynRefTarget programmable(n:uint=2, template:string="leafA") {
+  repeatable($i, step($n, dx: 60)) {
+    dynamicRef($template): 0, 0
+  }
+}
+
+// Param `mode` flows into conditional visibility on children inside a param-dep
+// repeat body. Conditional refs are not collected by the current helpers; the body
+// is only rebuilt on count change, so setParameter("mode", ...) must throw.
+#paramDepRepeatUntrackedCondition programmable(n:uint=2, mode:[a,b]=a) {
+  repeatable($i, step($n, dx: 60)) {
+    @($mode=>a) bitmap(generated(color(10, 10, #FF0000))): 0, 0
+    @else bitmap(generated(color(10, 10, #00FF00))): 0, 0
+  }
+}
+
+// Param `offX` flows into a child position inside a param-dep repeat body. The
+// fallback path does not register a tracked position expression, so updating it
+// must throw rather than leaving stale coordinates.
+#paramDepRepeatUntrackedChildPos programmable(n:uint=2, offX:int=5) {
+  repeatable($i, step($n, dx: 60)) {
+    bitmap(generated(color(10, 10, #FF0000))): $offX, 0
+  }
+}

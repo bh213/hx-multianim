@@ -2,6 +2,7 @@ package bh.test.examples;
 
 import utest.Assert;
 import bh.base.TweenManager;
+import bh.base.TweenManager.Tween;
 import bh.base.TweenManager.TweenPropertyEntry;
 import bh.base.TweenManager.TweenSequence;
 import bh.base.TweenManager.TweenGroup;
@@ -246,47 +247,29 @@ class TweenManagerTest extends utest.Test {
 			"sequence with surviving non-cancelled tween must not be cancelled");
 	}
 
+	// `TweenSequence.getTargets()` / `TweenGroup.getTargets()` were the lookup
+	// used by the removed `TweenManager.cancelAll` "is the sequence empty" probe.
+	// Each call allocates a fresh `Array<h2d.Object>` and does O(n²) `contains`-
+	// based dedup. With the probe gone there are zero callers anywhere across
+	// the dotabota tree (sibling repos included). Keeping the methods around is
+	// an attractive nuisance — anyone wiring up `mgr.handles[i] match HSequence ->
+	// seq.getTargets()` reintroduces the same per-event allocation cliff the
+	// rc.5 fix removed. This test pins both surfaces as deliberately absent.
 	@Test
-	public function testCancelAllDoesNotInvokeGetTargetsOnSequencesOrGroups():Void {
-		// cancelAll() previously probed `seq.getTargets().length == 0` as a "is the
-		// sequence empty" guard. That clause is dead — getTargets() includes
-		// already-cancelled tweens, so its length is non-zero whenever tweens is
-		// non-empty, and the companion allCancelled() check already covers the
-		// empty case via vacuous truth. The probe just allocates a fresh
-		// Array<h2d.Object> with O(n²) dedup on every cancelAll event.
-		var mgr = new TweenManager();
-		var objA = createObject();
-		var objB = createObject();
+	public function testTweenSequenceAndGroupHaveNoGetTargetsMethod():Void {
+		var seqFields = Type.getInstanceFields(TweenSequence);
+		Assert.isFalse(seqFields.indexOf("getTargets") != -1,
+			"TweenSequence must not expose getTargets() — it allocates a fresh Array<h2d.Object> "
+			+ "with O(n²) dedup and has no callers anywhere. The previous internal caller in "
+			+ "TweenManager.cancelAll was removed in rc.5. Found field on instance: "
+			+ seqFields.filter(f -> f == "getTargets").join(","));
 
-		var t1 = mgr.createTween(objA, 1.0, [X(100.0)]);
-		var t2 = mgr.createTween(objB, 1.0, [Y(200.0)]);
-		mgr.sequence([t1, t2]);
-
-		var t3 = mgr.createTween(objA, 1.0, [Alpha(0.5)]);
-		var t4 = mgr.createTween(objB, 1.0, [Alpha(0.0)]);
-		mgr.group([t3, t4]);
-
-		#if MULTIANIM_ALLOC_TRACK
-		final seqBaseline = TweenSequence.getTargetsCallCount;
-		final grpBaseline = TweenGroup.getTargetsCallCount;
-		#end
-
-		mgr.cancelAll(objA);
-
-		#if MULTIANIM_ALLOC_TRACK
-		final seqDelta = TweenSequence.getTargetsCallCount - seqBaseline;
-		final grpDelta = TweenGroup.getTargetsCallCount - grpBaseline;
-		Assert.equals(0, seqDelta,
-			"cancelAll must not invoke TweenSequence.getTargets() — the length-zero check "
-			+ "is dead code (allCancelled handles every meaningful case). Got "
-			+ seqDelta + " call(s).");
-		Assert.equals(0, grpDelta,
-			"cancelAll must not invoke TweenGroup.getTargets() — the length-zero check "
-			+ "is dead code (allCancelled handles every meaningful case). Got "
-			+ grpDelta + " call(s).");
-		#else
-		Assert.fail("MULTIANIM_ALLOC_TRACK must be enabled for this test (set in test-common.hxml).");
-		#end
+		var groupFields = Type.getInstanceFields(TweenGroup);
+		Assert.isFalse(groupFields.indexOf("getTargets") != -1,
+			"TweenGroup must not expose getTargets() — it allocates a fresh Array<h2d.Object> "
+			+ "with O(n²) dedup and has no callers anywhere. The previous internal caller in "
+			+ "TweenManager.cancelAll was removed in rc.5. Found field on instance: "
+			+ groupFields.filter(f -> f == "getTargets").join(","));
 	}
 
 	@Test
@@ -421,6 +404,31 @@ class TweenManagerTest extends utest.Test {
 			"Individually cancelled tween in a still-alive sequence must not fire onComplete on sequence.finish().");
 		Assert.isTrue(t2Completed,
 			"Non-cancelled later tween in a still-alive sequence should fire onComplete on sequence.finish().");
+	}
+
+	@Test
+	public function testSequenceStepSkipsIndividuallyCancelledCurrentTween():Void {
+		var mgr = new TweenManager();
+		var objA = createObject();
+		var objB = createObject();
+		var t1Completed = false;
+		var t2Completed = false;
+
+		// Sequence stays alive; only the first (current) tween is cancelled.
+		// Mirrors cancelAll(target=objA) selectively cancelling just t1, then
+		// the natural TweenManager.update(dt) → TweenSequence.step(dt) tick.
+		var t1 = mgr.createTween(objA, 0.5, [X(100.0)]).setOnComplete(() -> t1Completed = true);
+		var t2 = mgr.createTween(objB, 0.5, [X(200.0)]).setOnComplete(() -> t2Completed = true);
+		mgr.sequence([t1, t2]);
+
+		t1.cancel();
+		mgr.update(0.5);
+
+		Assert.isFalse(t1Completed,
+			"Individually cancelled current tween must not fire onComplete via sequence.step().");
+		mgr.update(0.5);
+		Assert.isTrue(t2Completed,
+			"Non-cancelled later tween should still complete and fire onComplete after the sequence advances past the cancelled one.");
 	}
 
 	@Test
@@ -1000,5 +1008,78 @@ class TweenManagerTest extends utest.Test {
 		Assert.equals(0, delta,
 			"Sequence child tweens must release their TweenPropertyEntries to the pool "
 			+ "when the sequence completes. Got " + delta + " fresh allocations.");
+	}
+
+	// After a tween completes, the Tween instance itself should return to a
+	// pool so that the next tween() / createTween() / fadeIn() / fadeOut() /
+	// moveTo() / scaleTo() call reuses it instead of allocating fresh. This is
+	// the next layer of churn after TweenPropertyEntry pooling: every tween
+	// constructed today also allocates an `entries` array and an `easingFn`
+	// closure. Pooling Tween eliminates all three at steady state.
+	@Test
+	public function testTweenInstancesAreReusedAfterCompletion():Void {
+		var mgr = new TweenManager();
+		var obj = createObject();
+
+		// Prime: complete a tween so its instance returns to the free list.
+		mgr.tween(obj, 0.1, [Alpha(0.5)]);
+		mgr.update(0.2);
+
+		final baseline = Tween.creationCount;
+
+		// Five sequential complete-then-recreate cycles: pool size never needs
+		// to exceed 1, every iteration after the prime should reuse the slot.
+		for (i in 0...5) {
+			mgr.tween(obj, 0.1, [Alpha(0.5)]);
+			mgr.update(0.2);
+		}
+
+		final delta = Tween.creationCount - baseline;
+		Assert.equals(0, delta,
+			"After a tween completes, the Tween instance itself must return to a pool so "
+			+ "the next tween of the same shape reuses it. Got " + delta + " fresh "
+			+ "allocations across 5 complete-then-recreate cycles — this is the per-frame "
+			+ "churn vector hit by panel/tooltip fades, screen transitions, codegen "
+			+ "transition{} blocks, and grid cell animations.");
+	}
+
+	// fadeOut(removeOnComplete=true) currently allocates a `() -> target.remove()`
+	// closure per call to wire up the post-fade detach. That closure should be
+	// replaced by a flag on Tween (checked by TweenManager.update after the
+	// regular onComplete fires) so the pool is fully exercised — closure
+	// allocation otherwise pins a fresh object per fadeOut even with Tween
+	// pooling in place.
+	@Test
+	public function testFadeOutRemoveOnCompleteReusesTweenAfterCompletion():Void {
+		var mgr = new TweenManager();
+		var parent = createObject();
+
+		// Prime: one fadeOut(removeOnComplete=true) cycle to populate pool.
+		var primeObj = createObject();
+		parent.addChild(primeObj);
+		mgr.fadeOut(primeObj, 0.1, null, true);
+		mgr.update(0.2);
+		Assert.isNull(primeObj.parent,
+			"fadeOut(removeOnComplete=true) prime must remove the object from its parent.");
+
+		final baseline = Tween.creationCount;
+
+		// Five sequential fadeOuts. Each completes before the next, so a
+		// single pooled Tween should service all of them.
+		for (i in 0...5) {
+			var obj = createObject();
+			parent.addChild(obj);
+			mgr.fadeOut(obj, 0.1, null, true);
+			mgr.update(0.2);
+			Assert.isNull(obj.parent,
+				"fadeOut(removeOnComplete=true) must still remove obj from parent on completion.");
+		}
+
+		final delta = Tween.creationCount - baseline;
+		Assert.equals(0, delta,
+			"fadeOut(removeOnComplete=true) must reuse Tween instances from the pool. "
+			+ "Got " + delta + " fresh allocations across 5 cycles — likely the "
+			+ "`() -> target.remove()` closure path is bypassing the pool by allocating "
+			+ "a new Tween per call.");
 	}
 }

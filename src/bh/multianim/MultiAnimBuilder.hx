@@ -567,12 +567,19 @@ class IncrementalUpdateContext {
 			else ti++;
 		}
 
-		// 6. Drop conditionalEntries whose object is under container.
+		// 6. Drop conditionalEntries whose object is under container. An entry hidden by
+		//    setPresenceWithTransition has object.parent == null (sentinel is still anchored
+		//    under entry.parent); initially-unmatched conditionals enter the deferred path
+		//    in build() detached the same way. Walk the sentinel as a second probe so those
+		//    entries are still reclaimed when their enclosing subtree is destroyed.
 		var ci = 0;
 		var entriesChanged = false;
 		while (ci < conditionalEntries.length) {
-			final obj = conditionalEntries[ci].object;
-			final isUnder = obj == container || (obj.parent != null && isDescendantOf(obj, container));
+			final entry = conditionalEntries[ci];
+			final obj = entry.object;
+			final sentinel = entry.sentinel;
+			final isUnder = obj == container || isDescendantOf(obj, container)
+				|| sentinel == container || isDescendantOf(sentinel, container);
 			if (isUnder) { conditionalEntries.splice(ci, 1); entriesChanged = true; }
 			else ci++;
 		}
@@ -580,11 +587,14 @@ class IncrementalUpdateContext {
 
 		// 7. Drop conditionalApplyEntries whose parent is under container, and drop
 		//    the matching baseline entries (parent object is gone, map key dangles).
+		//    Apply parents have no anchored sentinel; drop the live-parent short-circuit so
+		//    a detached parent that originally lived under container is still reclaimed via
+		//    parent == container or its surviving ancestor chain.
 		var ai = 0;
 		var applyChanged = false;
 		while (ai < conditionalApplyEntries.length) {
 			final parent = conditionalApplyEntries[ai].parent;
-			final isUnder = parent == container || (parent.parent != null && isDescendantOf(parent, container));
+			final isUnder = parent == container || isDescendantOf(parent, container);
 			if (isUnder) { conditionalApplyEntries.splice(ai, 1); applyChanged = true; }
 			else ai++;
 		}
@@ -592,24 +602,30 @@ class IncrementalUpdateContext {
 		final baselineParents:Array<h2d.Object> = [];
 		for (parent in conditionalApplyBaselines.keys()) baselineParents.push(parent);
 		for (parent in baselineParents) {
-			final isUnder = parent == container || (parent.parent != null && isDescendantOf(parent, container));
+			final isUnder = parent == container || isDescendantOf(parent, container);
 			if (isUnder) conditionalApplyBaselines.remove(parent);
 		}
 
-		// 8. Drop deferredEntries whose wrapper is under container.
+		// 8. Drop deferredEntries whose wrapper is under container. Same detached-wrapper
+		//    concern as step 6: probe the anchored sentinel in addition to the wrapper.
 		var di = 0;
 		while (di < deferredEntries.length) {
-			final wrapper = deferredEntries[di].wrapper;
-			final isUnder = wrapper == container || (wrapper.parent != null && isDescendantOf(wrapper, container));
+			final entry = deferredEntries[di];
+			final wrapper = entry.wrapper;
+			final sentinel = entry.sentinel;
+			final isUnder = wrapper == container || isDescendantOf(wrapper, container)
+				|| sentinel == container || isDescendantOf(sentinel, container);
 			if (isUnder) deferredEntries.splice(di, 1);
 			else di++;
 		}
 
-		// 9. Cancel + drop active transition tweens on objects under container.
+		// 9. Cancel + drop active transition tweens on objects under container. A fade-out
+		//    completion detaches obj before this point is reachable, so drop the live-parent
+		//    short-circuit to catch tweens whose target has already finished detaching.
 		var twi = 0;
 		while (twi < activeTransitionTweens.length) {
 			final obj = activeTransitionTweens[twi].obj;
-			final isUnder = obj == container || (obj.parent != null && isDescendantOf(obj, container));
+			final isUnder = obj == container || isDescendantOf(obj, container);
 			if (isUnder) {
 				final entry = activeTransitionTweens[twi];
 				if (entry.tween != null) {
@@ -759,6 +775,21 @@ class IncrementalUpdateContext {
 
 	@:nullSafety(Off)
 	public function setParameter(name:String, value:Dynamic):Void {
+		try {
+			setParameterImpl(name, value);
+		} catch (e:Dynamic) {
+			// Any throw inside a batch (untracked_param, unknown_param, invalid_param_value,
+			// or the typeDesc fallback) must unwind batchMode so the caller can catch the
+			// BuilderError and reuse this context. Without this, batchMode=true leaks and the
+			// next beginUpdate() wedges with nested_begin_update — symmetric with the
+			// forwarding loop in applyUpdates() that calls cancelUpdate() on child contexts.
+			if (batchMode) cancelUpdate();
+			throw e;
+		}
+	}
+
+	@:nullSafety(Off)
+	function setParameterImpl(name:String, value:Dynamic):Void {
 		final untrackedReasons = untrackedParams.get(name);
 		if (untrackedReasons != null) {
 			throw BuilderError.of('setParameter("$name", ...) rejected: this param is referenced in incremental-unsupported slot(s) [${untrackedReasons.join(", ")}]. Changing it would leave the rendered state inconsistent. Either rebuild the programmable or avoid runtime mutation of this param.',
@@ -890,7 +921,9 @@ class IncrementalUpdateContext {
 	 *  chains and downstream forwardings against half-applied values, while leaking
 	 *  batchMode=true would wedge the next beginUpdate() with nested_begin_update. The
 	 *  committed indexedParams entries from the failed batch stay put; the next clean
-	 *  setParameter call resyncs. */
+	 *  setParameter call resyncs. Also invoked automatically by setParameter's catch
+	 *  wrapper on any rejection path (untracked/unknown/invalid param), so user batches
+	 *  wrapped in try/catch recover without needing to call cancelUpdate explicitly. */
 	public function cancelUpdate():Void {
 		if (!batchMode) return;
 		batchMode = false;
@@ -1420,116 +1453,138 @@ class IncrementalUpdateContext {
 	}
 
 	function applyUpdates():Void {
+		// Body wrapped in try/catch so a throw from applyConditionalChains, a
+		// tracked.updateFn callback, the dynamicRef forwarding rethrow, or
+		// rebuildDynamicNameRef cannot leak the builder.stateStack push or leave
+		// changedParams/hasChanges dirty on the parent context. Without this, every
+		// subsequent setParameter on this context inherits stale flags — tracked
+		// expressions and dynamicRef forwarding re-fire for params that did not
+		// actually change in the new call, and the builder's working state stays
+		// pinned to the failed call so unrelated builds/updates pick up the wrong
+		// indexedParams/builderParams.
 		builder.pushBuilderState();
-		builder.indexedParams = indexedParams;
-		builder.builderParams = builderParams;
+		var firedRebuild = false;
+		var caught:Null<Dynamic> = null;
+		try {
+			builder.indexedParams = indexedParams;
+			builder.builderParams = builderParams;
 
-		// Re-evaluate presence for all conditional elements, including @else/@default
-		// chain semantics. applyConditionalChains walks the full tree from rootNode
-		// and handles Conditional, ConditionalElse, and ConditionalDefault for both
-		// `conditionalEntries` (tracked objects) and `conditionalApplyEntries`
-		// (sibling-scoped APPLY nodes) via uniqueNodeName lookup.
-		//
-		// A prior implementation ran a flat shouldBuildInFullMode() pass over conditionalEntries
-		// and conditionalApplyEntries before this call. That was (a) redundant —
-		// applyConditionalChains covers the same entries — and (b) wrong for
-		// ConditionalElse/ConditionalDefault, since shouldBuildInFullMode() returns true for
-		// them unconditionally (chain resolution happens only here). With a transition
-		// spec active, the redundant pass could addToGraph an @else wrapper and
-		// start a fade-in, then this pass would cancel it and start a fade-out,
-		// leaving the wrapper in graph at alpha=savedAlpha for the fade duration
-		// — a visible flash of an element whose chain decision never changed.
-		applyConditionalChains();
+			// Re-evaluate presence for all conditional elements, including @else/@default
+			// chain semantics. applyConditionalChains walks the full tree from rootNode
+			// and handles Conditional, ConditionalElse, and ConditionalDefault for both
+			// `conditionalEntries` (tracked objects) and `conditionalApplyEntries`
+			// (sibling-scoped APPLY nodes) via uniqueNodeName lookup.
+			//
+			// A prior implementation ran a flat shouldBuildInFullMode() pass over conditionalEntries
+			// and conditionalApplyEntries before this call. That was (a) redundant —
+			// applyConditionalChains covers the same entries — and (b) wrong for
+			// ConditionalElse/ConditionalDefault, since shouldBuildInFullMode() returns true for
+			// them unconditionally (chain resolution happens only here). With a transition
+			// spec active, the redundant pass could addToGraph an @else wrapper and
+			// start a fade-in, then this pass would cancel it and start a fade-out,
+			// leaving the wrapper in graph at alpha=savedAlpha for the fade duration
+			// — a visible flash of an element whose chain decision never changed.
+			applyConditionalChains();
 
-		// Re-evaluate tracked expressions (skip for hidden objects)
-		for (tracked in trackedExpressions) {
-			// Skip expression evaluation for objects that are not effectively visible
-			final obj = tracked.object;
-			if (obj != null && !isEffectivelyVisible(obj))
-				continue;
-			var relevant = false;
-			for (ref in tracked.paramRefs) {
-				if (changedParams.exists(ref)) {
-					relevant = true;
-					break;
-				}
-			}
-			if (relevant || !hasChanges) {
-				tracked.updateFn();
-			}
-		}
-
-		// Propagate to dynamic ref children — unconditionally. Forwarding into a currently-detached
-		// child is cheap (just setParameter on its incremental context; no rendering) and it keeps
-		// the child's state fresh so it surfaces with the latest values when visibility flips back
-		// (e.g. `@(a=>1) #foo dynamicRef($X) / @else #bar dynamicRef($X)`, update $X's params while
-		// one arm is hidden — both must be current). Skipping detached children here was the
-		// staleness side of bug H2.
-		//
-		// Group bindings by childContext so a child receiving N forwarded params from this parent
-		// re-evaluates once (one applyUpdates with all new values) instead of N times on partial
-		// state. Without batching, a strict child conditional like `@(p1=>X, p2=>Y)` would see new
-		// p1 against stale p2 on the first pass and could fire a spurious arm flip / transition.
-		// Mirrors the codegen path in ProgrammableCodeGen (forwarded-param update wraps in
-		// beginUpdate/endUpdate). Allocation is lazy: no per-update cost when nothing forwards.
-		var forwardGroups:Null<Array<{ctx:IncrementalUpdateContext, items:Array<{param:String, value:Dynamic}>}>> = null;
-		for (binding in dynamicRefBindings) {
-			var relevant = false;
-			for (ref in binding.referencedParams) {
-				if (changedParams.exists(ref)) {
-					relevant = true;
-					break;
-				}
-			}
-			if (!relevant) continue;
-			final value = binding.resolveFn();
-			if (forwardGroups == null) forwardGroups = [];
-			var group:Null<{ctx:IncrementalUpdateContext, items:Array<{param:String, value:Dynamic}>}> = null;
-			for (g in forwardGroups) {
-				if (g.ctx == binding.childContext) {
-					group = g;
-					break;
-				}
-			}
-			if (group == null) {
-				group = {ctx: binding.childContext, items: []};
-				forwardGroups.push(group);
-			}
-			group.items.push({param: binding.childParam, value: value});
-		}
-		if (forwardGroups != null) {
-			for (group in forwardGroups) {
-				group.ctx.beginUpdate();
-				try {
-					for (item in group.items) {
-						group.ctx.setParameter(item.param, item.value);
+			// Re-evaluate tracked expressions (skip for hidden objects)
+			for (tracked in trackedExpressions) {
+				// Skip expression evaluation for objects that are not effectively visible
+				final obj = tracked.object;
+				if (obj != null && !isEffectivelyVisible(obj))
+					continue;
+				var relevant = false;
+				for (ref in tracked.paramRefs) {
+					if (changedParams.exists(ref)) {
+						relevant = true;
+						break;
 					}
-					group.ctx.endUpdate();
-				} catch (e:Dynamic) {
-					// A mid-batch throw (unknown_param / invalid_param_value, e.g. a child
-					// param vocabulary that diverged from this resolveFn after hot reload)
-					// must not leak batchMode=true into the child — the next caller of
-					// child.beginUpdate would otherwise hit nested_begin_update.
-					group.ctx.cancelUpdate();
-					throw e;
+				}
+				if (relevant || !hasChanges) {
+					tracked.updateFn();
 				}
 			}
-		}
 
-		// Rebuild dynamic name refs (template parameter changed)
-		for (binding in dynamicNameBindings) {
-			if (changedParams.exists(binding.paramName)) {
-				final newName = builder.resolveAsString(RVReference(binding.paramName));
-				if (newName != binding.currentName) {
-					rebuildDynamicNameRef(binding, newName);
+			// Propagate to dynamic ref children — unconditionally. Forwarding into a currently-detached
+			// child is cheap (just setParameter on its incremental context; no rendering) and it keeps
+			// the child's state fresh so it surfaces with the latest values when visibility flips back
+			// (e.g. `@(a=>1) #foo dynamicRef($X) / @else #bar dynamicRef($X)`, update $X's params while
+			// one arm is hidden — both must be current). Skipping detached children here was the
+			// staleness side of bug H2.
+			//
+			// Group bindings by childContext so a child receiving N forwarded params from this parent
+			// re-evaluates once (one applyUpdates with all new values) instead of N times on partial
+			// state. Without batching, a strict child conditional like `@(p1=>X, p2=>Y)` would see new
+			// p1 against stale p2 on the first pass and could fire a spurious arm flip / transition.
+			// Mirrors the codegen path in ProgrammableCodeGen (forwarded-param update wraps in
+			// beginUpdate/endUpdate). Allocation is lazy: no per-update cost when nothing forwards.
+			var forwardGroups:Null<Array<{ctx:IncrementalUpdateContext, items:Array<{param:String, value:Dynamic}>}>> = null;
+			for (binding in dynamicRefBindings) {
+				var relevant = false;
+				for (ref in binding.referencedParams) {
+					if (changedParams.exists(ref)) {
+						relevant = true;
+						break;
+					}
+				}
+				if (!relevant) continue;
+				final value = binding.resolveFn();
+				if (forwardGroups == null) forwardGroups = [];
+				var group:Null<{ctx:IncrementalUpdateContext, items:Array<{param:String, value:Dynamic}>}> = null;
+				for (g in forwardGroups) {
+					if (g.ctx == binding.childContext) {
+						group = g;
+						break;
+					}
+				}
+				if (group == null) {
+					group = {ctx: binding.childContext, items: []};
+					forwardGroups.push(group);
+				}
+				group.items.push({param: binding.childParam, value: value});
+			}
+			if (forwardGroups != null) {
+				for (group in forwardGroups) {
+					group.ctx.beginUpdate();
+					try {
+						for (item in group.items) {
+							group.ctx.setParameter(item.param, item.value);
+						}
+						group.ctx.endUpdate();
+					} catch (e:Dynamic) {
+						// A mid-batch throw (unknown_param / invalid_param_value, e.g. a child
+						// param vocabulary that diverged from this resolveFn after hot reload)
+						// must not leak batchMode=true into the child — the next caller of
+						// child.beginUpdate would otherwise hit nested_begin_update.
+						group.ctx.cancelUpdate();
+						throw e;
+					}
 				}
 			}
+
+			// Rebuild dynamic name refs (template parameter changed)
+			for (binding in dynamicNameBindings) {
+				if (changedParams.exists(binding.paramName)) {
+					final newName = builder.resolveAsString(RVReference(binding.paramName));
+					if (newName != binding.currentName) {
+						rebuildDynamicNameRef(binding, newName);
+					}
+				}
+			}
+
+			firedRebuild = hasChanges;
+		} catch (e:Dynamic) {
+			caught = e;
 		}
 
 		builder.popBuilderState();
-		final firedRebuild = hasChanges;
 		changedParams.clear();
 		hasChanges = false;
+
+		// Rethrow after cleanup. Rebuild listeners are suppressed on the throw path:
+		// a partially-applied update is not a rebuild, and firing listeners in that
+		// state would invite re-entrant setParameter calls on top of inconsistent
+		// visibility/expression state.
+		if (caught != null) throw caught;
 
 		// Fire rebuild listeners AFTER state cleanup so listeners can safely call setParameter()
 		// (re-entrancy enters a fresh applyUpdates cycle). The single-listener case — the
@@ -5663,9 +5718,11 @@ class MultiAnimBuilder {
 					// INTERACTIVE id/metadata + STATEANIM selectors; with incrementalMode=false it
 					// won't fire. Mark untracked params up-front so setParameter on a param that
 					// flows into (say) an interactive id inside a param-dep repeat throws
-					// "untracked_param" instead of silently no-oping. Loop vars are excluded.
+					// "untracked_param" instead of silently no-oping. Refs already wired to trigger
+					// rebuild (iterator-spec count/range bounds, child conditionals collected into
+					// repeatParamRefs above) MUST be excluded — they are not stale.
 					for (childNode in node.children)
-						markUntrackedParamsInSubtree(childNode, savedIncrementalCtx, varName);
+						markUntrackedParamsInSubtree(childNode, savedIncrementalCtx, varName, repeatParamRefs);
 					incrementalMode = false;
 				}
 
@@ -7956,19 +8013,43 @@ class MultiAnimBuilder {
 		return null;
 	}
 
-	/** Walk a subtree and mark `$param` refs inside incremental-unsupported slots (INTERACTIVE
-	 *  id/metadata, STATEANIM / STATEANIM_CONSTRUCT selectors + animName/fps) as untracked on
-	 *  the given context. Used when the main build walk runs with `incrementalMode=false` — e.g.
-	 *  children of a param-dependent repeat — so `trackIncrementalExpressions` (the normal
-	 *  caller of ctx.markParamUntracked) is skipped. Without this pass, setParameter on a param
-	 *  that flows into an interactive id inside a param-dep repeat silently no-ops. `excludeVar`
-	 *  is the repeat's loop-var name, which is never a user-settable parameter. */
-	function markUntrackedParamsInSubtree(node:Null<Node>, ctx:IncrementalUpdateContext, excludeVar:Null<String>):Void {
+	/** Walk a subtree and mark `$param` refs inside slots that the fallback-build path leaves
+	 *  unwired (INTERACTIVE id/metadata, STATEANIM/STATEANIM_CONSTRUCT selectors + animName/fps,
+	 *  DYNAMIC_REF/STATIC_REF target + parameters, plus per-node pos / scale / rotation / alpha
+	 *  / tint / filter and the other body type-specific RVs) as untracked on `ctx`. Used when
+	 *  the main build walk runs with `incrementalMode=false` — e.g. children of a param-dependent
+	 *  repeat — so `trackIncrementalExpressions` (the normal caller of ctx.markParamUntracked)
+	 *  is skipped AND no incremental wiring (trackDynamicRef, trackDynamicName, trackConditional,
+	 *  trackExpression for pos/scale/...) is established. The body is only rebuilt when refs in
+	 *  the repeat's `repeatParamRefs` change; any other body-only ref is silently stale. Marking
+	 *  them untracked here turns setParameter into a clean rejection rather than a silent no-op.
+	 *
+	 *  `excludeVar` is the repeat's loop-var name (never a user-settable parameter).
+	 *  `rebuildRefs` lists refs that ARE already wired to fire a rebuild (iterator-spec count /
+	 *  range bounds, plus child conditional refs collected via collectChildConditionalParamRefs).
+	 *  Those refs trigger a full body rebuild on change and must NOT be marked untracked.
+	 *
+	 *  Conditional refs on body children are intentionally NOT marked here — the caller folds
+	 *  them into `rebuildRefs` via collectChildConditionalParamRefs, so a setParameter on a
+	 *  conditional gate triggers the body rebuild rather than throwing. */
+	function markUntrackedParamsInSubtree(node:Null<Node>, ctx:IncrementalUpdateContext, excludeVar:Null<String>, rebuildRefs:Array<String>):Void {
 		if (node == null || ctx == null) return;
 		inline function markRefs(rv:ReferenceableValue, reason:String):Void {
+			if (rv == null) return;
 			final refs:Array<String> = [];
 			collectParamRefs(rv, refs);
-			for (r in refs) if (r != excludeVar) ctx.markParamUntracked(r, reason);
+			for (r in refs) {
+				if (r == excludeVar) continue;
+				if (rebuildRefs != null && rebuildRefs.indexOf(r) >= 0) continue;
+				ctx.markParamUntracked(r, reason);
+			}
+		}
+		inline function markRefList(refs:Array<String>, reason:String):Void {
+			for (r in refs) {
+				if (r == excludeVar) continue;
+				if (rebuildRefs != null && rebuildRefs.indexOf(r) >= 0) continue;
+				ctx.markParamUntracked(r, reason);
+			}
 		}
 		switch node.type {
 			case INTERACTIVE(_, _, id, _, metadata):
@@ -7994,11 +8075,37 @@ class MultiAnimBuilder {
 						}
 					}
 				}
+			case DYNAMIC_REF(_, programmableRef, parameters):
+				markRefs(programmableRef, "param-dep repeat: dynamicRef target");
+				if (parameters != null)
+					for (_ => value in parameters)
+						markRefs(value, "param-dep repeat: dynamicRef parameter");
+			case STATIC_REF(_, programmableRef, parameters):
+				markRefs(programmableRef, "param-dep repeat: staticRef target");
+				if (parameters != null)
+					for (_ => value in parameters)
+						markRefs(value, "param-dep repeat: staticRef parameter");
 			default:
+		}
+		// Position + extended-form refs on the node itself — body-only props have no rebuild
+		// trigger unless folded into rebuildRefs by the caller.
+		if (node.pos != null) {
+			final posRefs:Array<String> = [];
+			collectCoordinateParamRefs(node.pos, posRefs);
+			markRefList(posRefs, "param-dep repeat: child position");
+		}
+		if (node.scale != null) markRefs(node.scale, "param-dep repeat: child scale");
+		if (node.rotation != null) markRefs(node.rotation, "param-dep repeat: child rotation");
+		if (node.alpha != null) markRefs(node.alpha, "param-dep repeat: child alpha");
+		if (node.tint != null) markRefs(node.tint, "param-dep repeat: child tint");
+		if (node.filter != null) {
+			final filterRefs:Array<String> = [];
+			collectFilterParamRefs(node.filter, filterRefs);
+			markRefList(filterRefs, "param-dep repeat: child filter");
 		}
 		if (node.children != null) {
 			for (child in node.children)
-				markUntrackedParamsInSubtree(child, ctx, excludeVar);
+				markUntrackedParamsInSubtree(child, ctx, excludeVar, rebuildRefs);
 		}
 	}
 

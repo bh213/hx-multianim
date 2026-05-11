@@ -7536,6 +7536,45 @@ class BuilderUnitTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testCleanupDestroyedSubtreeReclaimsDetachedConditionalEntries():Void {
+		// Top-level @() conditionals in an incremental programmable: the initially-unmatched arm
+		// goes through the deferred path (build.hx:5040), which registers a conditionalEntry whose
+		// wrapper is detached (parent == null) and an anchored sentinel under the programmable
+		// root. When the enclosing subtree is destroyed (SWITCH arm flip, repeatable shrink, dynamic
+		// name ref rebuild — here we drive cleanupDestroyedSubtree directly with the programmable
+		// root as the destroyed container), the bookkeeping must reclaim BOTH the visible entry and
+		// the detached entry. Today the cleanup short-circuits on `obj.parent != null` and leaks the
+		// detached one; the fix must reach the entry through its anchored sentinel.
+		final result = buildFromSource("
+			#test programmable(flag:bool=true) {
+				@(flag=>true) bitmap(generated(color(10, 10, #f00))): 0, 0
+				@(flag=>false) bitmap(generated(color(20, 20, #00f))): 0, 0
+			}
+		", "test", null, Incremental);
+		final ctx = result.incrementalContext;
+		Assert.notNull(ctx);
+
+		// After initial build with flag=true: one visible entry + one detached (deferred) entry.
+		Assert.equals(2, ctx.getConditionalEntriesCount(),
+			"expected 2 conditional entries after initial build (visible + deferred-hidden)");
+
+		// Reconstruct an InternalBuilderResults-shaped value from the public BuilderResult fields.
+		// The typedef itself is module-private; Haxe duck-types this anonymous struct against the
+		// declared parameter type.
+		final ir:Dynamic = {
+			names: result.names,
+			interactives: result.interactives,
+			slots: result.slots,
+			dynamicRefs: result.dynamicRefs,
+			htmlTextsWithLinks: result.htmlTextsWithLinks != null ? result.htmlTextsWithLinks : new Array<h2d.HtmlText>(),
+		};
+		ctx.cleanupDestroyedSubtree(ir, result.object);
+
+		Assert.equals(0, ctx.getConditionalEntriesCount(),
+			'conditional entries leaked after subtree cleanup: ${ctx.getConditionalEntriesCount()} survived. The detached deferred wrapper has obj.parent == null, so the isDescendantOf check is short-circuited; cleanup must also walk the entry\'s anchored sentinel.');
+	}
+
+	@Test
 	public function testIncrementalSwitchDynamicRefBindingsCleanedUp():Void {
 		// Each arm contains a dynamicRef with parameter forwarding, which registers a
 		// dynamicRefBinding. Flipping arms must drop bindings for the orphaned child contexts.
@@ -7626,8 +7665,17 @@ class BuilderUnitTest extends BuilderTestBase {
 		Assert.equals(initialCount, finalCount,
 			'dynamic ref bindings leaked: $initialCount initial vs $finalCount after 10 flips');
 
-		// Sanity: parameter forwarding still propagates to iteration children after flips
-		result.setParameter("value", 25);
+		// DynamicRef parameters threaded through a param-dep repeat body are NOT wired via
+		// trackDynamicRef (the outer build runs with incrementalMode=false). setParameter on
+		// such a ref must reject with untracked_param rather than silently no-op.
+		var caught:String = null;
+		try { result.setParameter("value", 25); }
+		catch (e:Dynamic) caught = Std.string(e);
+		Assert.notNull(caught, "setParameter(value) must throw — dynamicRef params inside param-dep repeat aren't wired");
+		if (caught != null)
+			Assert.isTrue(caught.indexOf("dynamicRef parameter") >= 0,
+				'rejection must name the slot: $caught');
+		// Structure still intact after the rejected update.
 		Assert.equals(2, findVisibleBitmapDescendants(result.object).length);
 	}
 
@@ -8677,6 +8725,59 @@ class BuilderUnitTest extends BuilderTestBase {
 		result.endUpdate();
 		final bitmaps2 = findVisibleBitmapDescendants(result.object);
 		Assert.equals(5, Std.int(bitmaps2[0].tile.width));
+	}
+
+	@Test
+	public function testSetParameterThrowInsideBatchDoesNotWedgeBatchMode():Void {
+		// A setParameter rejection (unknown_param, invalid_param_value, untracked_param,
+		// typeDesc fallback) inside a beginUpdate batch must unwind batchMode so the
+		// caller can catch the BuilderError and reuse the result. Pre-fix, batchMode
+		// stayed true on every throw path and the next beginUpdate() wedged with
+		// nested_begin_update — a user batch wrapped in their own try/catch couldn't
+		// recover without knowing to call cancelUpdate() explicitly.
+		final result = buildFromSource("
+			#test programmable(x:uint=1) {
+				bitmap(generated(color($x * 10, 10, #f00))): 0, 0
+			}
+		", "test", null, Incremental);
+
+		// Case 1: unknown_param throw inside a batch
+		result.beginUpdate();
+		var caught:Null<bh.multianim.BuilderError> = null;
+		try { result.setParameter("notDeclared", 5); }
+		catch (e:bh.multianim.BuilderError) { caught = e; }
+		Assert.notNull(caught, "Unknown param must still throw");
+		Assert.equals("unknown_param", caught.code);
+
+		// The wedge: next beginUpdate must succeed, not throw nested_begin_update.
+		var wedge:Null<bh.multianim.BuilderError> = null;
+		try { result.beginUpdate(); }
+		catch (e:bh.multianim.BuilderError) { wedge = e; }
+		Assert.isNull(wedge,
+			"beginUpdate after a caught setParameter throw must not wedge with nested_begin_update; "
+			+ "setParameter must unwind batchMode on its own error paths");
+
+		// The reopened batch should function normally and apply on endUpdate.
+		result.setParameter("x", 7);
+		result.endUpdate();
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(70, Std.int(bitmaps[0].tile.width),
+			"Reopened batch after recovery must still apply parameter changes");
+
+		// Case 2: invalid_param_value throw inside a batch — symmetric recovery.
+		result.beginUpdate();
+		var caught2:Null<bh.multianim.BuilderError> = null;
+		try { result.setParameter("x", [1, 2, 3]); }
+		catch (e:bh.multianim.BuilderError) { caught2 = e; }
+		Assert.notNull(caught2);
+		Assert.equals("invalid_param_value", caught2.code);
+
+		var wedge2:Null<bh.multianim.BuilderError> = null;
+		try { result.beginUpdate(); }
+		catch (e:bh.multianim.BuilderError) { wedge2 = e; }
+		Assert.isNull(wedge2,
+			"Same recovery contract applies to invalid_param_value throws");
+		result.endUpdate();
 	}
 
 	// ==================== setParameter value-type validation ====================

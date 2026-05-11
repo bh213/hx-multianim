@@ -141,6 +141,14 @@ Declares valid extra point names that can be used in animations.
 allowedExtraPoints: [fire, targeting, impact]
 ```
 
+### flipX / flipY (file-level defaults)
+Optional default horizontal/vertical flip for all animations. Frames flip *in place* — the sprite keeps the same untrimmed screen footprint regardless of where the pivot sits within it. Trim offsets and extrapoints auto-mirror. All frames within an animation must share the same untrimmed size (parse-time error otherwise). Individual animations can override.
+
+```anim
+flipX: yes
+flipY: yes
+```
+
 ### @final (named constants)
 Declares immutable named constants that can be referenced as `$NAME` in coordinate values. Must be defined before animations.
 
@@ -253,6 +261,7 @@ Both forms are equivalent. If both are provided, they must match.
 * `center` - Center point for this specific animation
 * `extrapoints` - Points of interest (e.g., particle effects, bullets)
 * `filters` - Filter declarations for the animation
+* `flipX` / `flipY` - `yes`/`no` — flip all frames horizontally/vertically in place. Sprite keeps the same untrimmed screen footprint; trim offsets and extrapoints auto-mirror. Inherits file-level default
 
 ### Compact Shorthand (`anim`)
 
@@ -263,9 +272,10 @@ anim name: "sheetName"
 anim name(fps: 10): "sheetName"
 anim name(fps: 10, loop: yes): "sheetName"
 anim name(loop: 3): "sheetName"
+anim name(fps: 10, flipX: yes): "sheetName"
 ```
 
-This creates a full animation with a single sheet playlist entry. `fps` and `loop` can be specified as modifiers in parentheses, or inherited from file-level defaults.
+This creates a full animation with a single sheet playlist entry. `fps`, `loop`, `flipX`, and `flipY` can be specified as modifiers in parentheses, or inherited from file-level defaults.
 
 ---
 

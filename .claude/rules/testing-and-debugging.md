@@ -42,7 +42,6 @@ To add a new visual test:
 - **Custom test macro phase**: When using custom `waitForUpdate` logic instead of `builderAndMacroScreenshotAndCompare`, must call `addTitleOverlay()` after `clearScene()` + adding macro root to scene. Otherwise macro screenshot lacks the title.
 - **Macro mismatch vs visual pass**: test output reports `macro_mismatches` for tests where builder OR macro similarity != 1.0 exactly. Both can individually "pass" their threshold but still be flagged as a mismatch.
 - **TestApp frame count**: Currently set to 50 frames. Increase if adding many more visual tests.
-- **Pre-existing**: test32_Blob47Fallback has a reference image mismatch (not a regression).
 
 ## Allocation Watchdog (`-D MULTIANIM_ALLOC_TRACK`)
 

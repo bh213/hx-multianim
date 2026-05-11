@@ -1,0 +1,15 @@
+version: 1.0
+
+// Minimal fixture: a parent with a dynamic-name dynamicRef that forwards a uint
+// param into a child bool param. Initial build accepts Int 1 via resolveAsBool
+// (1 -> true). A later setter on `p` with a value the bool slow path rejects
+// (e.g. 42) goes through the codegen forwarded-param update block — exercising
+// the path where setParameter throws mid-batch.
+
+#cgFwdFailureChild programmable(c:bool=true) {
+  bitmap(generated(color(10, 10, #ff0000))): 0, 0
+}
+
+#codegenForwardingFailure programmable(tpl:string="cgFwdFailureChild", p:uint=1) {
+  dynamicRef($tpl, c=>$p): 0, 0
+}

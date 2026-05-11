@@ -143,10 +143,8 @@ class AllocationSmokeTest extends BuilderTestBase {
 
 		// Budget rationale (per 60-tick run):
 		//   FPoint: 0 — grid scratch, cardhand scratch, animated-path scratch all reuse.
-		//   FractionalHex: 60 — one per cellAtPoint on the hex grid (1× pixelToHex).
-		//                       Drops to 0 once pixelToHexInto() exists.
-		//   Hex: 60 — one per cellAtPoint via FractionalHex.round().
-		//             Drops to 0 once roundInto() exists.
+		//   FractionalHex: 0 — pixelToHexInto reuses a scratch FractionalHex.
+		//   Hex: 0 — FractionalHex.roundInto reuses a scratch Hex.
 		//   CardLayoutPosition: 0 — getCardIdAtPosition reuses _scratchPositions.
 		//   TweenPropertyEntry: 0 — no new tweens created in the loop (tween durations
 		//                            are 100s, never complete during 60 × 0.016s = 0.96s).
@@ -155,12 +153,10 @@ class AllocationSmokeTest extends BuilderTestBase {
 		Assert.equals(0, cardLayoutPosDelta, "CardLayoutPosition per-frame budget exceeded: " + cardLayoutPosDelta);
 		Assert.equals(0, tweenEntryDelta, "TweenPropertyEntry per-frame budget exceeded: " + tweenEntryDelta);
 		Assert.equals(0, animStateDelta, "AnimatedPathState per-frame budget exceeded: " + animStateDelta);
-		// FractionalHex / Hex still allocate per cellAtPoint on hex grids — pinned
-		// at known counts. If these drop, an Into-variant was added; flip to ==0.
-		Assert.equals(tickCount, fractionalHexDelta,
-			"FractionalHex per-frame budget exceeded: " + fractionalHexDelta + " (expected " + tickCount + ")");
-		Assert.equals(tickCount, hexDelta,
-			"Hex per-frame budget exceeded: " + hexDelta + " (expected " + tickCount + ")");
+		Assert.equals(0, fractionalHexDelta,
+			"FractionalHex per-frame budget exceeded: " + fractionalHexDelta);
+		Assert.equals(0, hexDelta,
+			"Hex per-frame budget exceeded: " + hexDelta);
 
 		grid.dispose();
 	}

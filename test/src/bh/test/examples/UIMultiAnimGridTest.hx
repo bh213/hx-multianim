@@ -2532,13 +2532,10 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 		grid.dispose();
 	}
 
-	// hexLayout.pixelToHex still allocates a fresh FractionalHex every call, and
-	// .round() then allocates a fresh Hex. Per mouse move on a hex grid that's
-	// 1 FractionalHex + 1 Hex churn — instrumented but not yet fixed (would
-	// require *Into() variants on pixelToHex/round, which are widely used by
-	// codegen). Test pins current behavior so regression is visible.
+	// cellAtPoint on a hex grid must reuse scratch FractionalHex + Hex via
+	// pixelToHexInto + roundInto — every onMouseMove runs through this path.
 	@Test
-	public function testCellAtPointHexAllocatesOneFractionalHexAndOneHexPerCall():Void {
+	public function testCellAtPointHexAllocatesNoFractionalHexOrHexPerCall():Void {
 		var grid = createHexGrid(2);
 
 		grid.cellAtPoint(0, 0); // warm-up
@@ -2550,21 +2547,19 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 
 		final fhDelta = FractionalHex.creationCount - fhBaseline;
 		final hexDelta = HexClass.creationCount - hexBaseline;
-		Assert.equals(10, fhDelta,
-			"cellAtPoint (hex) currently allocates 1 FractionalHex per call (pixelToHex). "
-			+ "Got " + fhDelta + " across 10 calls. If this drops to 0, a pixelToHexInto() "
-			+ "variant was added — flip to Assert.equals(0, fhDelta).");
-		Assert.equals(10, hexDelta,
-			"cellAtPoint (hex) currently allocates 1 Hex per call (FractionalHex.round()). "
-			+ "Got " + hexDelta + " across 10 calls. Drops to 0 once a roundInto() variant exists.");
+		Assert.equals(0, fhDelta,
+			"cellAtPoint (hex) must reuse a scratch FractionalHex via pixelToHexInto. "
+			+ "Allocated " + fhDelta + " fresh FractionalHexes across 10 calls.");
+		Assert.equals(0, hexDelta,
+			"cellAtPoint (hex) must reuse a scratch Hex via FractionalHex.roundInto. "
+			+ "Allocated " + hexDelta + " fresh Hexes across 10 calls.");
 		grid.dispose();
 	}
 
-	// neighbors() on a hex grid does toHex + 6× HexUtil.neighbor (which is Hex.add).
-	// Each step allocates a fresh Hex. 7 Hex allocations per neighbors() call is
-	// the current baseline; pooling Hex would drop this to 0 across stable scenes.
+	// neighbors() on a hex grid must reuse scratch Hexes via addInto rather
+	// than allocating per direction.
 	@Test
-	public function testHexNeighborsAllocatesSevenHexesPerCall():Void {
+	public function testHexNeighborsAllocatesNoHexesPerCall():Void {
 		var grid = createHexGrid(2);
 
 		grid.neighbors(0, 0); // warm-up
@@ -2574,8 +2569,8 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 			grid.neighbors(0, 0);
 
 		final delta = HexClass.creationCount - hexBaseline;
-		Assert.equals(70, delta,
-			"hex neighbors() currently allocates 7 Hexes per call (1 toHex + 6 neighbor lookups). "
-			+ "Got " + delta + " across 10 calls. Drops to 0 if Hex math switches to a pool/scratch.");
+		Assert.equals(0, delta,
+			"hex neighbors() must reuse scratch Hexes via addInto (1 base + 6 directions). "
+			+ "Allocated " + delta + " fresh Hexes across 10 calls.");
 	}
 }
