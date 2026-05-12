@@ -520,6 +520,20 @@ class UIComponentTest extends BuilderTestBase {
 		Assert.equals(0, mock.eventCount());
 	}
 
+	@Test
+	public function testSliderUsesScratchPointForGlobalToLocal():Void {
+		var builder = BuilderTestBase.builderFromSource(BUTTON_MANIM);
+		var slider = UIStandardMultiAnimSlider.create(builder, "button", 200, 50.0);
+
+		// The slider must keep a single scratch Point and reuse it inside
+		// calculatePos(). Per-event Point.clone() generated GC pressure during
+		// slider drags. The scratch must exist immediately after construction.
+		// Reflect is used so the test compiles against pre-fix code that has
+		// no scratch field; the assertion fails (null) before fix, passes after.
+		var scratch:Dynamic = Reflect.field(slider, "tmpPoint");
+		Assert.notNull(scratch);
+	}
+
 	// ============== Interactive Wrapper Tests ==============
 
 	@Test

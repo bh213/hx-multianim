@@ -457,4 +457,7 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/117-codegenForwardingFailure/codegenForwardingFailure.manim", "codegenForwardingFailure")
 	public var codegenForwardingFailure;
+
+	@:manim("test/examples/118-codegenDynamicRefForwarding/codegenDynamicRefForwarding.manim", "codegenDynamicRefForwarding")
+	public var codegenDynamicRefForwarding;
 }

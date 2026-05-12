@@ -81,6 +81,7 @@ class ProgrammableCodeGen {
 	static var switchSinkFields:Array<String> = [];
 	static var dynamicRefFields:Map<String, String> = new Map(); // component name -> BuilderResult field name
 	static var dynamicNameRefFields:Array<String> = []; // fieldNames of dynamic-name dynamicRefs
+	static var literalDynamicRefSiteFields:Array<String> = []; // fieldNames of literal-name dynamicRefs with forwarded $param values
 	static var hexLayoutFieldMap:Map<String, String> = new Map(); // layout key → field name
 	static var hexLayoutFieldCount:Int = 0;
 	static var needsLayoutAlign:Bool = false;
@@ -167,6 +168,7 @@ class ProgrammableCodeGen {
 		slotEntries = [];
 		dynamicRefFields = new Map();
 		dynamicNameRefFields = [];
+		literalDynamicRefSiteFields = [];
 		hasBuilderParameterPlaceholders = false;
 		untrackedParamRefs = new Map();
 		paramDefs = new Map();
@@ -1352,6 +1354,12 @@ class ProgrammableCodeGen {
 			instanceFields.push(makeField("_dynref_" + fn, FVar(macro :bh.multianim.MultiAnimBuilder.BuilderResult, null), [APrivate], pos));
 			instanceFields.push(makeField("_dynref_container_" + fn, FVar(macro :h2d.Object, null), [APrivate], pos));
 			instanceFields.push(makeField("_dynref_name_" + fn, FVar(macro :String, null), [APrivate], pos));
+		}
+		// Literal-name dynamicRef per-site BuilderResult fields. Needed so the forwarded-param
+		// updater targets THIS site's child, not whichever sibling happened to be built last
+		// into the shared `_comp_<programmableRef>` lookup field.
+		for (fn in literalDynamicRefSiteFields) {
+			instanceFields.push(makeField("_dynref_lit_" + fn, FVar(macro :bh.multianim.MultiAnimBuilder.BuilderResult, null), [APrivate], pos));
 		}
 		final hasDynamicRefs = Lambda.count(dynamicRefFields) > 0 || dynamicNameRefFields.length > 0;
 		if (hasDynamicRefs) {
@@ -3624,6 +3632,21 @@ class ProgrammableCodeGen {
 
 		final resultField = "_comp_" + programmableRef;
 
+		// Collect forwarded param refs first so we know whether to allocate a per-site result field.
+		final forwardedParamRefs:Array<String> = [];
+		if (parameters != null) {
+			for (_ => val in parameters) {
+				collectRVParamRefs(val, forwardedParamRefs);
+			}
+		}
+		final hasForwardedRefs = forwardedParamRefs.length > 0;
+
+		// Per-site result field. `_comp_<programmableRef>` is shared by all sibling sites that
+		// reference the same programmable (last-writer-wins for getDynamicRef lookup), so the
+		// forwarded-param updater needs its own per-site slot to know which child to update.
+		final siteResultField = hasForwardedRefs ? "_dynref_lit_" + fieldName : null;
+		if (hasForwardedRefs) literalDynamicRefSiteFields.push(fieldName);
+
 		// Build parameter map at runtime
 		final mapBuildExprs:Array<Expr> = [macro final _refParams = new Map<String, Dynamic>()];
 		if (parameters != null) {
@@ -3635,13 +3658,55 @@ class ProgrammableCodeGen {
 		}
 		// Build with incremental: true
 		final dynExtRefExpr:Expr = externalReference != null ? macro $v{externalReference} : macro null;
-		mapBuildExprs.push(macro {
-			final _result = this._pb.buildDynamicRef($refNameExpr, _refParams, $dynExtRefExpr);
-			$fieldRef = _result != null ? _result.object : new h2d.Object();
-			$p{["this", resultField]} = _result;
-		});
+		if (siteResultField != null) {
+			mapBuildExprs.push(macro {
+				final _result = this._pb.buildDynamicRef($refNameExpr, _refParams, $dynExtRefExpr);
+				$fieldRef = _result != null ? _result.object : new h2d.Object();
+				$p{["this", resultField]} = _result;
+				$p{["this", siteResultField]} = _result;
+			});
+		} else {
+			mapBuildExprs.push(macro {
+				final _result = this._pb.buildDynamicRef($refNameExpr, _refParams, $dynExtRefExpr);
+				$fieldRef = _result != null ? _result.object : new h2d.Object();
+				$p{["this", resultField]} = _result;
+			});
+		}
 
 		createExprs.push(macro $b{mapBuildExprs});
+
+		// Register updates for forwarded parameter changes. Without this the codegen path
+		// silently freezes child params at construction while the runtime builder forwards
+		// them via incrementalContext.trackDynamicRef (MultiAnimBuilder.hx). Mirrors the
+		// dynamic-name variant below.
+		if (hasForwardedRefs) {
+			final fwdUpdateExprs:Array<Expr> = [macro final _refParams = new Map<String, Dynamic>()];
+			for (key => val in parameters) {
+				final keyExpr:Expr = macro $v{key};
+				final valExpr = rvToExpr(val);
+				fwdUpdateExprs.push(macro _refParams.set($keyExpr, $valExpr));
+			}
+			fwdUpdateExprs.push(macro {
+				final _result = $p{["this", siteResultField]};
+				if (_result != null && _result.incrementalContext != null) {
+					_result.incrementalContext.beginUpdate();
+					try {
+						for (_k => _v in _refParams) {
+							_result.incrementalContext.setParameter(_k, _v);
+						}
+						_result.incrementalContext.endUpdate();
+					} catch (_e:Dynamic) {
+						_result.incrementalContext.cancelUpdate();
+						throw _e;
+					}
+				}
+			});
+			expressionUpdates.push({
+				fieldName: fieldName + "_fwd",
+				updateExpr: macro $b{fwdUpdateExprs},
+				paramRefs: forwardedParamRefs,
+			});
+		}
 
 		return {
 			fieldType: macro :h2d.Object,

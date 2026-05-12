@@ -1082,4 +1082,93 @@ class TweenManagerTest extends utest.Test {
 			+ "`() -> target.remove()` closure path is bypassing the pool by allocating "
 			+ "a new Tween per call.");
 	}
+
+	// removeTargetOnComplete is a public field on Tween, so callers can set it on
+	// a tween obtained via createTween() and feed that tween into sequence([...])
+	// or group([...]). The flag must still cause the target to be removed when the
+	// tween completes inside the sequence/group — otherwise the contract diverges
+	// silently between bare tweens and wrapped tweens.
+
+	@Test
+	public function testRemoveTargetOnCompleteFiresForTweenInsideSequence():Void {
+		var mgr = new TweenManager();
+		var parent = createObject();
+		var obj = createObject();
+		parent.addChild(obj);
+
+		var t = mgr.createTween(obj, 0.1, [Alpha(0.0)]);
+		t.removeTargetOnComplete = true;
+		mgr.sequence([t]);
+		mgr.update(0.2);
+
+		Assert.isNull(obj.parent,
+			"Tween.removeTargetOnComplete must remove the target from its parent when the tween completes inside a sequence; "
+			+ "currently the sequence arm of TweenManager.update only fires the sequence's outer onComplete and never honors per-tween removeTargetOnComplete.");
+	}
+
+	@Test
+	public function testRemoveTargetOnCompleteFiresForTweenInsideGroup():Void {
+		var mgr = new TweenManager();
+		var parent = createObject();
+		var obj = createObject();
+		parent.addChild(obj);
+
+		var t = mgr.createTween(obj, 0.1, [Alpha(0.0)]);
+		t.removeTargetOnComplete = true;
+		mgr.group([t]);
+		mgr.update(0.2);
+
+		Assert.isNull(obj.parent,
+			"Tween.removeTargetOnComplete must remove the target from its parent when the tween completes inside a group; "
+			+ "currently the group arm of TweenManager.update only fires the group's outer onComplete and never honors per-tween removeTargetOnComplete.");
+	}
+
+	// A zero-duration tween represents a "skip" intent (e.g. `crossfade(0)` /
+	// `slide(left, 0)` in a .manim transition). step() must not divide by zero —
+	// 0/0 = NaN, FloatTools.clamp is not NaN-aware (all NaN comparisons are false),
+	// and lerp(NaN, from, to) propagates NaN into the target's alpha/x/y/scale/
+	// rotation, silently breaking the object.
+
+	@Test
+	public function testZeroDurationTweenDoesNotProduceNaN():Void {
+		var mgr = new TweenManager();
+		var obj = createObject();
+		obj.alpha = 0.5;
+		obj.x = 10.0;
+		obj.y = 20.0;
+		obj.scaleX = 1.5;
+		obj.scaleY = 1.5;
+		obj.rotation = 0.25;
+
+		mgr.tween(obj, 0.0, [Alpha(1.0), X(100.0), Y(200.0), ScaleX(2.0), ScaleY(2.0), Rotation(1.0)]);
+
+		// First step with dt=0 — elapsed stays 0, so elapsed / duration = 0 / 0 = NaN.
+		mgr.update(0.0);
+
+		Assert.isFalse(Math.isNaN(obj.alpha),    "zero-duration tween must not write NaN to alpha");
+		Assert.isFalse(Math.isNaN(obj.x),        "zero-duration tween must not write NaN to x");
+		Assert.isFalse(Math.isNaN(obj.y),        "zero-duration tween must not write NaN to y");
+		Assert.isFalse(Math.isNaN(obj.scaleX),   "zero-duration tween must not write NaN to scaleX");
+		Assert.isFalse(Math.isNaN(obj.scaleY),   "zero-duration tween must not write NaN to scaleY");
+		Assert.isFalse(Math.isNaN(obj.rotation), "zero-duration tween must not write NaN to rotation");
+	}
+
+	@Test
+	public function testZeroDurationTweenSnapsToFinalValue():Void {
+		var mgr = new TweenManager();
+		var obj = createObject();
+		obj.alpha = 0.0;
+		obj.x = 0.0;
+		obj.y = 0.0;
+
+		var completed = false;
+		mgr.tween(obj, 0.0, [Alpha(1.0), X(100.0), Y(200.0)]).setOnComplete(() -> completed = true);
+
+		mgr.update(0.0);
+
+		Assert.floatEquals(1.0,   obj.alpha, "zero-duration tween must snap alpha to target on first step");
+		Assert.floatEquals(100.0, obj.x,     "zero-duration tween must snap x to target on first step");
+		Assert.floatEquals(200.0, obj.y,     "zero-duration tween must snap y to target on first step");
+		Assert.isTrue(completed, "zero-duration tween must complete (fire onComplete) on first step");
+	}
 }

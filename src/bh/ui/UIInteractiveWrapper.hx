@@ -16,6 +16,12 @@ class UIInteractiveWrapper implements UIElement implements StandardUIElementEven
 
 	static final VALID_CURSOR_SUFFIXES = ["hover", "disabled"];
 
+	// Shared scratch for containsPoint: globalToLocal mutates its argument, but callers
+	// (UICardHandTargeting, UIDefaultController.getEventElements) iterate multiple
+	// wrappers with the same caller-owned Point, so we can't mutate pos directly.
+	// Hit-testing is single-threaded — one static instance is enough.
+	static var _scratchPt:Null<Point> = null;
+
 	public final interactive:MAObject;
 	public final prefix:Null<String>;
 	public final id:String;
@@ -91,7 +97,9 @@ class UIInteractiveWrapper implements UIElement implements StandardUIElementEven
 		if (disabled) return false;
 		switch interactive.multiAnimType {
 			case MAInteractive(width, height, _, _):
-				var local = interactive.globalToLocal(new Point(pos.x, pos.y));
+				if (_scratchPt == null) _scratchPt = new Point();
+				_scratchPt.set(pos.x, pos.y);
+				var local = interactive.globalToLocal(_scratchPt);
 				return local.x >= 0 && local.x <= width && local.y >= 0 && local.y <= height;
 			default:
 				return false;

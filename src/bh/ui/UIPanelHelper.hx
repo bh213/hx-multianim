@@ -34,7 +34,6 @@ private typedef PanelState = {
 	var closeMode:PanelCloseMode;
 	var pendingClose:Bool;
 	var fadeInTween:Null<Tween>;
-	var fadeOutTween:Null<Tween>;
 }
 
 @:nullSafety
@@ -70,6 +69,11 @@ class UIPanelHelper {
 	var namedPanels:Map<String, PanelState> = [];
 	// In-flight fade-out tweens for named panels (keyed by slot, survives panel removal from namedPanels)
 	var namedFadeOutTweens:Map<String, Tween> = [];
+	// h2d.Object paired with each in-flight named fade-out — kept so dispose()
+	// can detach the object directly. TweenManager.cancel() suppresses
+	// onComplete (which is the only path that normally calls obj.remove()),
+	// so without this tracking dispose() would leak the panel into the scene.
+	var namedFadeOutObjs:Map<String, h2d.Object> = [];
 
 	public function new(screen:UIComponentHost, builder:MultiAnimBuilder, ?defaults:PanelDefaults, ?tweens:TweenManager) {
 		this.screen = screen;
@@ -274,7 +278,6 @@ class UIPanelHelper {
 			closeMode: closeMode ?? defaultCloseMode,
 			pendingClose: false,
 			fadeInTween: fadeInTween,
-			fadeOutTween: null,
 		});
 	}
 
@@ -285,6 +288,7 @@ class UIPanelHelper {
 		if (prevFadeOut != null) {
 			prevFadeOut.finish();
 			namedFadeOutTweens.remove(slot);
+			namedFadeOutObjs.remove(slot);
 		}
 		final panel = namedPanels.get(slot);
 		if (panel == null)
@@ -294,11 +298,6 @@ class UIPanelHelper {
 			panel.fadeInTween.cancel();
 			panel.fadeInTween = null;
 		}
-		// Cancel any in-progress fade-out from a previous close
-		if (panel.fadeOutTween != null) {
-			panel.fadeOutTween.cancel();
-			panel.fadeOutTween = null;
-		}
 		screen.removeInteractives(panel.prefix);
 		namedPanels.remove(slot);
 		screen.onScreenEvent(UICustomEvent(EVENT_PANEL_CLOSE, panel.interactiveId), null);
@@ -307,9 +306,11 @@ class UIPanelHelper {
 		if (defaultFadeOut > 0 && tweens != null) {
 			final fadeOut = tweens.tween(obj, defaultFadeOut, [Alpha(0.0)]);
 			namedFadeOutTweens.set(slot, fadeOut);
+			namedFadeOutObjs.set(slot, obj);
 			fadeOut.setOnComplete(() -> {
 				obj.remove();
 				namedFadeOutTweens.remove(slot);
+				namedFadeOutObjs.remove(slot);
 			});
 		} else {
 			obj.remove();
@@ -474,14 +475,16 @@ class UIPanelHelper {
 				panel.fadeInTween.cancel();
 				panel.fadeInTween = null;
 			}
-			if (panel.fadeOutTween != null) {
-				panel.fadeOutTween.cancel();
-				panel.fadeOutTween = null;
-			}
 			screen.removeInteractives(panel.prefix);
 			panel.result.object.remove();
 		}
 		namedPanels.clear();
+		// Detach fading-out objects BEFORE cancelling the tweens. Cancel
+		// suppresses the onComplete that owns obj.remove(), so without this
+		// the panel's h2d.Object would stay parented to the scene.
+		for (_ => obj in namedFadeOutObjs)
+			obj.remove();
+		namedFadeOutObjs.clear();
 		for (_ => tween in namedFadeOutTweens)
 			tween.cancel();
 		namedFadeOutTweens.clear();

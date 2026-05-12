@@ -1403,4 +1403,55 @@ class UIDraggableTest extends BuilderTestBase {
 		drag.removeDropZone(SlotZone("items", 3));
 		Assert.equals(0, drag.dropZones.length);
 	}
+
+	// ============== Scratch-Point reuse (no per-event Point allocation) ==============
+
+	@Test
+	public function testDragOffsetIsPreAllocatedAndReusedAcrossDrags():Void {
+		var drag = createDraggable();
+
+		// dragOffset is a scratch Point that must be allocated once at
+		// construction and mutated in place on each drag start. Allocating it
+		// per-event puts pressure on GC during user interaction.
+		@:privateAccess var initialOffset = drag.dragOffset;
+		Assert.notNull(initialOffset);
+
+		var control = new bh.test.UITestHarness.MockControllable();
+
+		bh.test.UITestHarness.simulatePush(drag, control, new Point(10, 10));
+		@:privateAccess Assert.equals(initialOffset, drag.dragOffset);
+		@:privateAccess Assert.floatEquals(-10.0, drag.dragOffset.x);
+		@:privateAccess Assert.floatEquals(-10.0, drag.dragOffset.y);
+
+		// Start another drag — same Point instance, freshly mutated values.
+		drag.cancelDrag();
+		bh.test.UITestHarness.simulatePush(drag, control, new Point(25, 40));
+		@:privateAccess Assert.equals(initialOffset, drag.dragOffset);
+		@:privateAccess Assert.floatEquals(-25.0, drag.dragOffset.x);
+		@:privateAccess Assert.floatEquals(-40.0, drag.dragOffset.y);
+	}
+
+	@Test
+	public function testDragMoveDoesNotAllocateScratchPoint():Void {
+		var drag = createDraggable();
+		var control = new bh.test.UITestHarness.MockControllable();
+
+		// Begin drag, then capture the draggable's scratch Point. Reflect is
+		// used so the test compiles against pre-fix code that has no scratch
+		// field; the assertion fails (null) before fix, passes after.
+		bh.test.UITestHarness.simulatePush(drag, control, new Point(0, 0));
+		var scratch:Dynamic = Reflect.field(drag, "tmpPos");
+		Assert.notNull(scratch);
+
+		// Multiple mousemoves during drag must reuse the same scratch instance —
+		// the OnMouseMove branch should mutate, not allocate.
+		for (i in 0...5) {
+			drag.onEvent(bh.test.UITestHarness.createEventWrapper(OnMouseMove, control, new Point(i * 10.0, i * 10.0)));
+			Assert.equals(scratch, Reflect.field(drag, "tmpPos"));
+		}
+
+		// Position should reflect the final mousemove (offset is (0,0)).
+		Assert.floatEquals(40.0, drag.getObject().x);
+		Assert.floatEquals(40.0, drag.getObject().y);
+	}
 }

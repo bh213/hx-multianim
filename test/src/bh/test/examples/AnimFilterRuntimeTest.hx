@@ -3,6 +3,7 @@ package bh.test.examples;
 import utest.Assert;
 import bh.stateanim.AnimationSM;
 import bh.stateanim.AnimationFrame;
+import bh.stateanim.AnimationClip;
 
 /**
  * Unit tests for AnimationSM:
@@ -555,4 +556,28 @@ class AnimFilterRuntimeTest extends utest.Test {
 			Assert.isTrue(b > 0.9);
 		}
 	}
+
+	// ==================== Allocation Watchdog ====================
+
+	#if MULTIANIM_ALLOC_TRACK
+	@Test
+	public function testFrameAdvanceDoesNotAllocateArrayPerFrame():Void {
+		var sm = createSM();
+		// Many short frames so update(dt) walks across several Frame() advances.
+		var states:Array<AnimationFrameState> = [];
+		for (_ in 0...20) states.push(Frame(createFrame(0.01)));
+		sm.addAnimationState("loop", states, -1, new Map());
+		sm.play("loop"); // first setFrames bookkeeping happens here — soak it up
+
+		final baseline = AnimationClip.setFramesCallCount;
+		// 100 ticks × 0.05s ≈ 500 frame advances across the looping playlist.
+		for (_ in 0...100) sm.update(0.05);
+
+		final delta = AnimationClip.setFramesCallCount - baseline;
+		Assert.equals(0, delta,
+			"AnimationSM.setCurrentFrame should swap the active frame in place; "
+			+ "saw " + delta + " AnimationClip.setFrames() calls during steady-state playback "
+			+ "(each one allocates an Array<AnimationFrame>).");
+	}
+	#end
 }

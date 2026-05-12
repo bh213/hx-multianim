@@ -1755,6 +1755,8 @@ class SlotHandle {
 	public function setContent(obj:h2d.Object):Void {
 		if (disposed)
 			throw BuilderError.of('Slot disposed — enclosing subtree was rebuilt', "slot_disposed");
+		if (obj == null)
+			throw BuilderError.of('SlotHandle.setContent received null — use clear() to empty the slot', "slot_null_content");
 		clear();
 		if (contentTarget != null) {
 			currentContent = obj;

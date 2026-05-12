@@ -90,6 +90,44 @@ class ParameterizedSlotTest extends BuilderTestBase {
 		Assert.equals("myPayload", slot.data);
 	}
 
+	// SlotHandle.setContent declares a non-null h2d.Object parameter, but Haxe does not
+	// enforce that at runtime. Without an explicit guard, setContent(null) reaches
+	// container.addChild(null) and fails confusingly inside h2d. setContent(null) is not
+	// a synonym for clear() — callers that mean "empty the slot" should call clear().
+	@Test
+	public function testSlotSetContentRejectsNullWithBuilderError():Void {
+		final result = buildFromSource("
+			#test programmable() {
+				#mySlot slot {
+					bitmap(generated(color(10, 10, #555555))): 0, 0
+				}
+			}
+		", "test");
+		final slot = result.getSlot("mySlot");
+		Assert.notNull(slot);
+		if (slot == null) return;
+
+		var err:String = null;
+		var builderErr:Null<bh.multianim.BuilderError> = null;
+		try {
+			slot.setContent(null);
+		} catch (e:Dynamic) {
+			err = Std.string(e);
+			if (Std.isOfType(e, bh.multianim.BuilderError)) builderErr = cast e;
+		}
+		Assert.notNull(err, "setContent(null) should throw");
+		Assert.notNull(builderErr, "throw must be a BuilderError, not a raw h2d failure");
+		if (builderErr != null)
+			Assert.equals("slot_null_content", builderErr.code,
+				"BuilderError.code should identify the null-content rejection");
+
+		// Slot must remain usable after the rejected call — no partial mutation.
+		Assert.isTrue(slot.isEmpty(), "slot should still be empty after rejected setContent(null)");
+		final obj = new h2d.Object();
+		slot.setContent(obj);
+		Assert.equals(obj, slot.getContent(), "slot should accept a valid object after the rejection");
+	}
+
 	// ==================== Parameterized Slot ====================
 
 	@Test

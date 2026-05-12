@@ -229,6 +229,10 @@ class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisab
 	function startOpen() {
 		if (this.panelObject == null)
 			return;
+		// If the dropdown was reparented into a host programmable after
+		// initial layer assignment, lift the panel above that host's layer
+		// so it doesn't render behind the host's later siblings.
+		ensurePanelAboveHostLayer();
 		panel.currentHoverIndex = -1;
 		panel.currentItemIndex = this.currentItemIndex;
 		panel.currentPressedIndex = -1;
@@ -329,5 +333,39 @@ class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisab
 		var higherLayer = screen.getHigherLayer(requestedLayer);
 		screen.addObjectToLayer(this.panel.getObject(), higherLayer);
 		return Added;
+	}
+
+	/** Re-place the panel on the layer above wherever our root currently
+		sits in the scene graph. Called from `startOpen` because the
+		dropdown may have been embedded inside a host programmable AFTER
+		`customAddToLayer` ran — in which case the panel landed on a layer
+		that's lower than the host's actual layer. Walks up the parent
+		chain to find the first ancestor that's a direct child of a
+		registered screen layer, then re-parents the panel one layer up
+		from there. */
+	function ensurePanelAboveHostLayer():Void {
+		if (panelScreen == null) return;
+		final layers = panelScreen.getLayers();
+		final sceneRoot = panelScreen.getSceneRoot();
+		var current:h2d.Object = this.root;
+		var hostLayer:Null<LayersEnum> = null;
+		while (current != null) {
+			final parent = current.parent;
+			if (parent == sceneRoot) {
+				final idx = sceneRoot.getChildLayer(current);
+				if (idx != -1) {
+					for (enumLayer => index in layers) {
+						if (index == idx) { hostLayer = enumLayer; break; }
+					}
+				}
+				break;
+			}
+			current = parent;
+		}
+		if (hostLayer == null) return;
+		final higher = panelScreen.getHigherLayer(hostLayer);
+		if (higher == panelLayer) return;
+		panelLayer = higher;
+		panelScreen.addObjectToLayer(this.panel.getObject(), higher);
 	}
 }

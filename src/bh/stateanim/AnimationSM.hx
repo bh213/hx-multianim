@@ -183,7 +183,7 @@ class AnimationSM extends h2d.Object {
 	}
 
 	function setCurrentFrame(frame:AnimationFrame):Void {
-		clip.setFrames([frame]);
+		clip.setSingleFrame(frame);
 	}
 
 	function handleCurrent(delta:Float):Void {

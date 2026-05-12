@@ -1255,6 +1255,34 @@ class UIPanelHelperTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testDisposeRemovesFadingOutNamedPanelFromScene():Void {
+		// dispose() during a named-panel fade-out cancels the fade-out tween,
+		// which makes TweenManager.update skip its onComplete callback. The
+		// onComplete is the only code path that detaches the panel's
+		// h2d.Object from the scene, so without an explicit obj.remove() in
+		// dispose() the object stays parented to the scene root. The
+		// single-panel branch already handles this via `fadingOutObj`; the
+		// named-panel branch must mirror that.
+		var ctx = createHelperWithTweens(0.0, 0.5);
+		ctx.helper.openNamed("slot1", "btn1", "panel");
+		var fadingOutObj = ctx.helper.getNamedPanelResult("slot1").object;
+		Assert.notNull(fadingOutObj.parent, "panel must be attached to scene after openNamed");
+
+		// closeNamed starts a fade-out; obj stays attached until onComplete fires.
+		ctx.helper.closeNamed("slot1");
+		ctx.tweens.update(0.1); // partially into fade-out — obj still in scene
+		Assert.notNull(fadingOutObj.parent, "panel must still be in scene mid fade-out");
+
+		// Teardown mid-fade must detach the object from the scene.
+		ctx.helper.dispose();
+		Assert.isNull(fadingOutObj.parent, "dispose() must remove fading-out named panel from scene");
+
+		// Advance further — cancelled tween must not resurrect the panel.
+		ctx.tweens.update(2.0);
+		Assert.isNull(fadingOutObj.parent, "panel must stay detached after dispose");
+	}
+
+	@Test
 	public function testScreenClearDisposesOpenPanelHelpers():Void {
 		// UIScreenBase.clear() currently drops `panelHelpers = []` without
 		// closing or disposing registered panel helpers, so fade tweens

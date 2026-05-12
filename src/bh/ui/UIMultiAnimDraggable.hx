@@ -127,7 +127,10 @@ enum DraggableState {
 class UIMultiAnimDraggable implements UIElement implements StandardUIElementEvents implements UIElementUpdatable implements UIElementCustomAddToLayer {
 	var root:h2d.Object;
 	var target:h2d.Object;
-	var dragOffset:Point;
+	// Reused on every OnPush — mutated in place to avoid per-event allocation.
+	final dragOffset:Point = new Point();
+	// Scratch used for OnRelease drop pos and per-frame OnMouseMove pos.
+	final tmpPos:Point = new Point();
 
 	public var draggableButtons:Array<Int> = [0];
 
@@ -555,7 +558,7 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 					originX = root.x;
 					originY = root.y;
 
-					dragOffset = new Point(root.x - wrapper.eventPos.x, root.y - wrapper.eventPos.y);
+					dragOffset.set(root.x - wrapper.eventPos.x, root.y - wrapper.eventPos.y);
 					wrapper.control.captureEvents.startCapture();
 
 					// Apply drag alpha
@@ -619,7 +622,8 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 					// Restore alpha
 					target.alpha = savedAlpha;
 
-					var dropPos = new Point(wrapper.eventPos.x + dragOffset.x, wrapper.eventPos.y + dragOffset.y);
+					tmpPos.set(wrapper.eventPos.x + dragOffset.x, wrapper.eventPos.y + dragOffset.y);
+					var dropPos = tmpPos;
 					var zone = findDropZone(wrapper.eventPos);
 					var dropResult:DragDropResult = {zone: zone, pos: dropPos};
 
@@ -692,10 +696,8 @@ class UIMultiAnimDraggable implements UIElement implements StandardUIElementEven
 
 			case OnMouseMove:
 				if (state == Dragging) {
-					var newPos = new Point(wrapper.eventPos.x + dragOffset.x, wrapper.eventPos.y + dragOffset.y);
-					if (dragConstraint != null) {
-						newPos = dragConstraint(newPos);
-					}
+					tmpPos.set(wrapper.eventPos.x + dragOffset.x, wrapper.eventPos.y + dragOffset.y);
+					var newPos = dragConstraint != null ? dragConstraint(tmpPos) : tmpPos;
 					root.setPosition(newPos.x, newPos.y);
 
 					// Zone hover tracking (accepted + rejected)

@@ -203,6 +203,19 @@ class Tween {
 		cancelled = true;
 	}
 
+	/** Fire onComplete and apply removeTargetOnComplete in that order. Called at
+	    every per-tween completion site (HTween arm, sequence step/finish, group
+	    step/finish) so the flag is honored uniformly whether the tween runs bare
+	    or wrapped in a sequence/group. Not invoked on cancel — matches the prior
+	    closure-on-onComplete behavior. */
+	public function runCompletionHooks():Void {
+		var cb = onComplete;
+		if (cb != null)
+			cb();
+		if (removeTargetOnComplete)
+			target.remove();
+	}
+
 	/** Captures current property values as "from". Called when the tween starts running. */
 	public function init():Void {
 		if (initialized)
@@ -219,6 +232,18 @@ class Tween {
 			return true;
 		if (!initialized)
 			init();
+
+		// Zero (or negative) duration is a "skip" intent — snap to the final
+		// state and complete immediately. Without this, elapsed/duration is
+		// 0/0=NaN (or Infinity for dt>0), clamp is not NaN-aware, and lerp
+		// propagates NaN into target.alpha/x/y/scale/rotation.
+		if (duration <= 0) {
+			for (entry in entries) {
+				setPropertyValue(entry.kind, entry.to);
+			}
+			elapsed = duration;
+			return true;
+		}
 
 		// When skipFirstDt is set, discard the first step's dt to avoid a
 		// large initial jump (e.g. the frame that added new scene roots may
@@ -326,9 +351,7 @@ class TweenSequence {
 			current.init();
 			if (!current.step(remainingDt))
 				return false;
-			var cb = current.onComplete;
-			if (cb != null)
-				cb();
+			current.runCompletionHooks();
 			currentIndex++;
 			remainingDt = current.elapsed - current.duration;
 			if (remainingDt <= 0)
@@ -349,9 +372,7 @@ class TweenSequence {
 			}
 			current.init();
 			current.finish();
-			var cb = current.onComplete;
-			if (cb != null)
-				cb();
+			current.runCompletionHooks();
 			currentIndex++;
 		}
 	}
@@ -388,8 +409,17 @@ class TweenGroup {
 		var allDone = true;
 		for (tween in tweens) {
 			if (!tween.cancelled && tween.elapsed < tween.duration) {
-				if (!tween.step(dt))
+				if (tween.step(dt)) {
+					// Per-tween onComplete is fired only in finish() for groups
+					// (intentional pre-existing asymmetry with TweenSequence);
+					// removeTargetOnComplete still has to fire wherever the tween
+					// actually completes, otherwise the flag is silently dropped
+					// for tweens wrapped in a group.
+					if (tween.removeTargetOnComplete)
+						tween.target.remove();
+				} else {
 					allDone = false;
+				}
 			}
 		}
 		return allDone;
@@ -404,9 +434,7 @@ class TweenGroup {
 				continue;
 			tween.init();
 			tween.finish();
-			var cb = tween.onComplete;
-			if (cb != null)
-				cb();
+			tween.runCompletionHooks();
 		}
 	}
 }
@@ -429,15 +457,7 @@ class TweenManager {
 						done = true;
 					} else if (tween.step(dt)) {
 						done = true;
-						var cb = tween.onComplete;
-						if (cb != null)
-							cb();
-						// Replaces the per-call `() -> target.remove()` closure
-						// previously wired by fadeOut(removeOnComplete=true).
-						// Skipped on cancel (cancel branch above), matching the
-						// prior closure-on-onComplete behavior.
-						if (tween.removeTargetOnComplete)
-							tween.target.remove();
+						tween.runCompletionHooks();
 					}
 				case HSequence(seq):
 					if (seq.cancelled) {
