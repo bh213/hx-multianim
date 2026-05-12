@@ -327,15 +327,15 @@
 </head>
 <body>
     <h1>Visual Test Report</h1>
-    <div class="timestamp">Generated: 2026-05-11 07:07:17</div>
+    <div class="timestamp">Generated: 2026-05-12 19:19:22</div>
     <div class="summary">
         <strong>Summary:</strong> 101 tests,         <span style="color: #4CAF50;">101 passed</span>,         <span style="color: #f44336;">0 failed</span>
-        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1.2s, visual 24.6s)</span>
+        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1.2s, visual 23.4s)</span>
     </div>
     <div class="unit-tests-section">
         <h2>Unit Tests</h2>
         <div class="unit-tests-summary all-passed">
-            <strong>6730 assertions:</strong>             <span style="color: #4CAF50;">6730 passed</span>
+            <strong>6784 assertions:</strong>             <span style="color: #4CAF50;">6784 passed</span>
             <button class="expand-btn" id="unitToggleBtn" onclick="toggleUnitDetails()">Show Details</button>
         </div>
         <div class="unit-details" id="unitDetails">
@@ -349,6 +349,7 @@
                 <div class="unit-method pass">testExternallyDrivenFlag: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testExtraPointMissing: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testExtraPointRetrieval: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testFrameAdvanceDoesNotAllocateArrayPerFrame: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testGetCurrentAnimNameBeforePlay: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testGetExtraPointForAnim: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testGetExtraPointForAnimUnknownThrows: OK <span class="dots">.</span></div>
@@ -1260,6 +1261,12 @@
                 <div class="unit-method pass">testCodegen_DefaultParams_OnlyBareElseVisible: OK <span class="dots">.</span></div>
             </div>
             <div class="unit-class">
+                <div class="unit-class-name">CodegenDynamicRefForwardingTest</div>
+                <div class="unit-method pass">testLiteralNameDynamicRef_Builder_ForwardsParentParamToChild: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testLiteralNameDynamicRef_Codegen_SetParameterForwardsParentParamToChild: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testLiteralNameDynamicRef_Codegen_TypedSetterForwardsParentParamToChild: OK <span class="dots">....</span></div>
+            </div>
+            <div class="unit-class">
                 <div class="unit-class-name">CodegenExternalPaletteTest</div>
                 <div class="unit-method pass">testCodegenBuildExternalPalette: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testRuntimeBuildExternalPalette: OK <span class="dots">...</span></div>
@@ -1477,6 +1484,8 @@
                 <div class="unit-class-name">InteractiveEventTest</div>
                 <div class="unit-method pass">testAllEventsExplicit: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testClickOnlyEventFlags: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testContainsPointDoesNotMutateCallerPoint: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testContainsPointReusesStaticScratchAcrossCalls: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testCursorDefaultPointer: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testCursorDisabledFallback: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testCursorExplicitDisabledState: OK <span class="dots">..</span></div>
@@ -1524,6 +1533,7 @@
                 <div class="unit-method pass">testSlotMethodsThrowAfterArmSwap: OK <span class="dots">................</span></div>
                 <div class="unit-method pass">testSlotNonexistentThrows: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testSlotSetContent: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testSlotSetContentRejectsNullWithBuilderError: OK <span class="dots">......</span></div>
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">ParserErrorTest</div>
@@ -2395,6 +2405,8 @@
                 <div class="unit-method pass">testMultipleTweensOnSameObject: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testOnComplete: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testOnCompleteExactDuration: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testRemoveTargetOnCompleteFiresForTweenInsideGroup: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testRemoveTargetOnCompleteFiresForTweenInsideSequence: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testRotationProperty: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testScaleProperty: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testScaleTo: OK <span class="dots">..</span></div>
@@ -2416,6 +2428,8 @@
                 <div class="unit-method pass">testTweenScaleExpandsToTwoEntries: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testTweenSequenceAndGroupHaveNoGetTargetsMethod: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testZeroDuration: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testZeroDurationTweenDoesNotProduceNaN: OK <span class="dots">......</span></div>
+                <div class="unit-method pass">testZeroDurationTweenSnapsToFinalValue: OK <span class="dots">....</span></div>
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">UIComponentTest</div>
@@ -2578,6 +2592,7 @@
                 <div class="unit-method pass">testSliderMinEqualsMax: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testSliderSetValueRedraw: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testSliderStepSnapping: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testSliderUsesScratchPointForGlobalToLocal: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testSplitSettingsControlExcluded: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testSplitSettingsMultiForward: OK <span class="dots">......</span></div>
                 <div class="unit-method pass">testSplitSettingsPrefixed: OK <span class="dots">..</span></div>
@@ -2646,8 +2661,10 @@
                 <div class="unit-method pass">testDragAlphaAppliedOnDragStart: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testDragAlphaRestoredOnRelease: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testDragConstraintApplied: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testDragMoveDoesNotAllocateScratchPoint: OK <span class="dots">........</span></div>
                 <div class="unit-method pass">testDragMoveFiresDragMoveEvent: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testDragMoveUpdatesPosition: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testDragOffsetIsPreAllocatedAndReusedAcrossDrags: OK <span class="dots">.......</span></div>
                 <div class="unit-method pass">testDragStartCapturesEvents: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testDragStartFiresDragStartEvent: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testDragStartPushesCustomEvent: OK <span class="dots">.</span></div>
@@ -2874,6 +2891,7 @@
                 <div class="unit-method pass">testCloseWhenNothingOpen: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testDefaultCloseModeIsOutsideClick: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testDisposeCancelsInFlightFadeTweens: OK <span class="dots">........</span></div>
+                <div class="unit-method pass">testDisposeRemovesFadingOutNamedPanelFromScene: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testDoubleRegisterDoesNotDuplicate: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testFadeInPanelReachesFullAlpha: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testFadeInPanelStartsAtZeroAlpha: OK <span class="dots">..</span></div>
