@@ -53,7 +53,20 @@ class AnimationClip extends Drawable {
 		`setFrames([frame])` once per state change.
 	**/
 	public function setSingleFrame(frame:AnimationFrame):Void {
+		// _singleFrameBuf may have length 0 after a prior clearFrames() call;
+		// Haxe's arr[0] = v auto-extends the array length in that case.
 		_singleFrameBuf[0] = frame;
+		this.frames = _singleFrameBuf;
+		reset();
+	}
+
+	/**
+		Empties the playlist without allocating a wrapper array.
+		Use this in place of `setFrames([])` on callers that just want to reset the
+		clip (e.g. AnimationSM.play / loadState).
+	**/
+	public function clearFrames():Void {
+		_singleFrameBuf.resize(0);
 		this.frames = _singleFrameBuf;
 		reset();
 	}

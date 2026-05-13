@@ -579,5 +579,26 @@ class AnimFilterRuntimeTest extends utest.Test {
 			+ "saw " + delta + " AnimationClip.setFrames() calls during steady-state playback "
 			+ "(each one allocates an Array<AnimationFrame>).");
 	}
+
+	@Test
+	public function testPlayDoesNotAllocateEmptyArray():Void {
+		var sm = createSM();
+		var frame = createFrame(0.1);
+		sm.addAnimationState("idle", [Frame(frame)], -1, new Map());
+		// First play soaks up any one-time bookkeeping.
+		sm.play("idle");
+
+		final baseline = AnimationClip.setFramesCallCount;
+		// Repeatedly restart the animation. Each play() resets the playlist to empty
+		// before handleCurrent re-populates via setSingleFrame; the empty-clear step
+		// must reuse an internal buffer instead of allocating Array<AnimationFrame>.
+		for (_ in 0...50) sm.play("idle");
+
+		final delta = AnimationClip.setFramesCallCount - baseline;
+		Assert.equals(0, delta,
+			"AnimationSM.play should clear the playlist via clip.clearFrames() rather "
+			+ "than clip.setFrames([]); saw " + delta + " setFrames() calls across 50 play() "
+			+ "invocations (each one allocates a throwaway Array<AnimationFrame>).");
+	}
 	#end
 }

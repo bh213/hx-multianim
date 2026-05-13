@@ -9292,4 +9292,31 @@ class BuilderUnitTest extends BuilderTestBase {
 		Assert.equals(baseline, fires,
 			'tracked-expression re-eval must short-circuit on no-op setParameter; ${fires - baseline} extra fires');
 	}
+
+	// applyUpdates wraps the parameter-change pass in pushBuilderState/popBuilderState;
+	// the immediately-following lines overwrite indexedParams and builderParams with
+	// the context's own values, so the empty Map and anonymous struct that the
+	// resetting variant allocates are dead-on-arrival. setParameter is the hover/drag
+	// hot path — it must not pay that allocation per call.
+	@Test
+	public function testSetParameterDoesNotAllocateEmptyParamContainersInApplyUpdates():Void {
+		final result = buildFromSource("
+			#test programmable(x:uint=10) {
+				bitmap(generated(color($x * 2, $x * 2, #fff))): 0, 0
+			}
+		", "test", null, Incremental);
+
+		// Warm up — first setParameter may touch lazy init paths unrelated to the hot path.
+		result.setParameter("x", 11);
+		result.setParameter("x", 12);
+
+		final baseline = bh.multianim.MultiAnimBuilder.pushBuilderStateResetCount;
+		final iterations = 10;
+		for (i in 0...iterations) {
+			result.setParameter("x", 20 + i);
+		}
+		final delta = bh.multianim.MultiAnimBuilder.pushBuilderStateResetCount - baseline;
+		Assert.equals(0, delta,
+			'setParameter must not invoke the resetting pushBuilderState (its empty Map + anonymous struct are immediately overwritten); got ${delta} reset allocations across ${iterations} setParameter calls');
+	}
 }

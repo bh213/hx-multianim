@@ -1162,6 +1162,57 @@ class CardHandIntegrationTest extends BuilderTestBase {
 		}
 	}
 
+	// rearrangeCards fires on every drawCard / discardCard for every non-skipped card in
+	// the hand. Its onComplete closure captures `entry` and `pos` purely to (a) call
+	// resolveAnimationComplete and (b) write pos.scale onto the container. Both are
+	// expressible as ActiveAnimation state — pos.scale is always 1.0 for rearrange call
+	// sites (positions come from computeLayout(-1)) and state.scale from the path settles
+	// to 1.0 anyway; resolveAnimationComplete only matters for Disabled cards with a
+	// pending re-enable, which can be driven by a flag on ActiveAnimation instead of a
+	// per-card closure. Leaving the closure in place wastes one allocation per non-skipped
+	// card per draw/discard.
+	@Test
+	public function testRearrangeCardsStoresNullOnCompleteInsteadOfPerCardClosure():Void {
+		var builder = BuilderTestBase.builderFromSource(CARD_WITH_PATHS_MANIM);
+		var screen = new UITestScreen();
+		// discardPath is reused as the rearrange path here — the test never advances time,
+		// so the path's contents don't matter as long as animateCardTo queues an animation.
+		var helper = new UICardHandHelper(screen, builder, {
+			anchorX: 400, anchorY: 600,
+			rearrangePathName: "discardPath",
+		});
+		helper.setHand([desc("a"), desc("b"), desc("c"), desc("d")]);
+
+		// Perturb container positions so animateCardTo's snap-if-close fast path
+		// (dx²+dy² < 1) does NOT fire — that would early-return without pushing an
+		// ActiveAnimation.
+		for (entry in helper.cards) {
+			entry.container.x += 100;
+			entry.container.y += 100;
+		}
+
+		// Drain any animations queued by setHand → applyLayout so we observe only the
+		// rearrangeCards-queued ones below.
+		helper.activeAnimations.resize(0);
+
+		// skipIndex=0 mimics drawCard's "skip the newly-drawn card" semantics. The
+		// remaining 3 cards should all queue rearrange animations.
+		var positions = helper.computeLayout(-1);
+		helper.rearrangeCards(positions, 0);
+
+		Assert.equals(3, helper.activeAnimations.length,
+			"precondition: rearrangeCards on 4 perturbed cards with skipIndex=0 should queue 3 animations");
+
+		for (i in 0...helper.activeAnimations.length) {
+			Assert.isNull(helper.activeAnimations[i].onComplete,
+				"rearrangeCards must pass null onComplete instead of a per-card closure — "
+				+ "the closure captures `entry` and `pos` only to call resolveAnimationComplete "
+				+ "and write a redundant pos.scale, both of which can be driven from ActiveAnimation "
+				+ "state. ActiveAnimation[" + i + "].onComplete is non-null, meaning the call site "
+				+ "is still constructing a throwaway closure per card per rearrange.");
+		}
+	}
+
 	// ==================== UIPush hit-test consistency with hover ====================
 	// Hover detection (onMouseMove → getCardAtBasePosition) intentionally uses the base
 	// layout, ignoring the hover pop, so the popped card doesn't block neighbor detection.

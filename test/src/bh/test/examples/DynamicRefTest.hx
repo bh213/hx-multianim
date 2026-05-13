@@ -79,6 +79,55 @@ class DynamicRefTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testApplyUpdatesDoesNotAllocatePerForwardingCall():Void {
+		// Parent with two dynamicRef children, each forwarding a uint param from the
+		// parent into the child. Mirrors the UI hot-path shape: a parent param (here
+		// `hp`) changes via setParameter, applyUpdates walks dynamicRefBindings, finds
+		// the two relevant entries (val=>$hp into widgetA, val=>$hp into widgetB), and
+		// dispatches forwarded updates to two distinct child contexts. Steady-state
+		// setParameter must NOT allocate per call — the forwarding loop should reuse
+		// pre-allocated scratch.
+		final result = buildFromSource("
+			#widgetA programmable(val:uint=100) {
+				bitmap(generated(color($val, 10, #ff0000))): 0, 0
+			}
+			#widgetB programmable(val:uint=100) {
+				bitmap(generated(color($val, 10, #00ff00))): 0, 0
+			}
+			#parent programmable(hp:uint=100) {
+				dynamicRef($widgetA, val=>$hp): 0, 0
+				dynamicRef($widgetB, val=>$hp): 0, 20
+			}
+		", "parent", null, Incremental);
+
+		Assert.notNull(result.incrementalContext);
+		final ctx = result.incrementalContext;
+		if (ctx == null) return;
+
+		// Warm up — first call may grow lazy structures.
+		result.setParameter("hp", 90);
+		result.setParameter("hp", 80);
+
+		final baseline = ctx.dynamicRefForwardAllocCount;
+
+		// Many real-world parameter ticks (e.g. health changing as a unit takes damage,
+		// or a hover-driven value forwarded into multiple decorations).
+		for (i in 0...20) {
+			result.setParameter("hp", 50 + (i % 10));
+		}
+
+		final delta = ctx.dynamicRefForwardAllocCount - baseline;
+		// Expected: zero. The forwarding loop must reuse pre-allocated scratch instead
+		// of building a fresh forwardGroups Array + per-context {ctx, items} structs +
+		// per-binding {param, value} structs on every fire. With two forwarded bindings
+		// to two distinct child contexts, the pre-fix code allocates 1 outer + 2*(group
+		// struct + items array) + 2 entries = 7 allocations per call, so 20 calls leak
+		// ~140 transient anon-struct allocations on the UI hot path.
+		Assert.equals(0, delta,
+			"applyUpdates dynamicRef forwarding allocates per call (got " + delta + " across 20 calls)");
+	}
+
+	@Test
 	public function testDynamicRefSetParameterOnSubResult():Void {
 		final result = buildFromSource("
 			#inner programmable(color:[red,green]=red) {

@@ -86,7 +86,7 @@ class AnimationSM extends h2d.Object {
 	function loadState(stateSelector:AnimationStateSelector, parser:AnimParser) {
 		this.animationStates.clear();
 		parser.load(stateSelector, this);
-		clip.setFrames([]);
+		clip.clearFrames();
 	}
 
 	public function getExtraPointForAnim(extraPointName:String, animState:String):Null<h2d.col.IPoint> {
@@ -138,7 +138,7 @@ class AnimationSM extends h2d.Object {
 		paused = false;
 		currentStateIndex = 0;
 		loopsRemaining = state.loopCount;
-		clip.setFrames([]);
+		clip.clearFrames();
 		// (#12) Apply animation-level filters
 		@:nullSafety(Off) {
 			clip.filter = state.filter;

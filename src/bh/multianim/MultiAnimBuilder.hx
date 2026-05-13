@@ -356,7 +356,7 @@ class IncrementalUpdateContext {
 	var hasChanges:Bool = false;
 	var transitionsDef:Null<Map<String, TransitionType>>;
 	public var tweenManager:Null<TweenManager> = null;
-	var activeTransitionTweens:Array<{obj:h2d.Object, tween:Null<Tween>, sequence:Null<TweenSequence>, target:Bool, savedAlpha:Float, savedScaleX:Float, savedScaleY:Float, savedX:Float, savedY:Float}> = [];
+	var activeTransitionTweens:Array<{obj:h2d.Object, tween:Null<Tween>, sequence:Null<TweenSequence>, target:Bool}> = [];
 	var rebuildListeners:Array<Void -> Void> = [];
 	// Params that appear in slots whose incremental updates are intentionally unsupported
 	// (interactive id/metadata, stateanim selectors, ...). setParameter on one of these
@@ -380,6 +380,21 @@ class IncrementalUpdateContext {
 	 *  one per card from UICardHandHelper), where no defensive copy is needed. Pure
 	 *  instrumentation. */
 	public var rebuildListenerSnapshotCount:Int = 0;
+	/** Counts heap allocations the dynamicRef forwarding loop in applyUpdates() makes per
+	 *  call: the outer forwardGroups array, per-context group structs/items arrays, and
+	 *  per-binding {param, value} entry structs. Steady-state setParameter calls on a
+	 *  parent that forwards into dynamicRef children must reuse pre-allocated scratch and
+	 *  leave this counter unchanged — forwarding can fire on every hover/press transition
+	 *  via UI helpers, and per-fire allocations add up to per-mouse-move GC churn. Pure
+	 *  instrumentation, gated so production builds skip the increments. */
+	#if MULTIANIM_ALLOC_TRACK
+	public var dynamicRefForwardAllocCount:Int = 0;
+	#end
+	// Reusable scratch for dynamicRef forwarding dispatch in applyUpdates(). Holds unique
+	// child contexts of relevant bindings so dispatch can batch sibling params on the
+	// same child under a single beginUpdate/endUpdate. Resized to 0 on entry; capacity
+	// persists across calls. Keeps the forwarding loop zero-alloc in steady state.
+	var fwdCtxScratch:Array<IncrementalUpdateContext> = [];
 	// Cached uniqueNodeName → entry lookups for applyConditionalChains. Source arrays
 	// only mutate during build and structural rebuild (track* / cleanupDestroyedSubtree);
 	// those sites null these out so the next applyConditionalChains rebuilds them.
@@ -997,6 +1012,13 @@ class IncrementalUpdateContext {
 		return winnerName == null ? null : transitionsDef.get(winnerName);
 	}
 
+	// Cache lives on the Node and is shared across every IncrementalUpdateContext that
+	// visits it (one context per programmable instantiation — each factory.create(),
+	// dynamicRef, and repeatable iteration). Safe only because the result depends solely
+	// on Node.conditionals + the preceding-sibling chain, both fixed post-parse. If this
+	// ever becomes context-aware (e.g. depends on indexedParams or builderParams), move
+	// the cache off the Node or key it by context — otherwise the first context's view
+	// silently freezes for all later ones.
 	function getRelevantParamRefsForNode(node:Node):Array<String> {
 		final cached = node.cachedRelevantParamRefs;
 		if (cached != null) return cached;
@@ -1078,8 +1100,8 @@ class IncrementalUpdateContext {
 		}
 	}
 
-	function trackTransitionTween(obj:h2d.Object, tween:Tween, target:Bool, savedAlpha:Float, savedScaleX:Float, savedScaleY:Float, savedX:Float, savedY:Float):Void {
-		activeTransitionTweens.push({obj: obj, tween: tween, sequence: null, target: target, savedAlpha: savedAlpha, savedScaleX: savedScaleX, savedScaleY: savedScaleY, savedX: savedX, savedY: savedY});
+	function trackTransitionTween(obj:h2d.Object, tween:Tween, target:Bool):Void {
+		activeTransitionTweens.push({obj: obj, tween: tween, sequence: null, target: target});
 		final origOnComplete = tween.onComplete;
 		tween.onComplete = () -> {
 			var i = 0;
@@ -1094,8 +1116,8 @@ class IncrementalUpdateContext {
 		};
 	}
 
-	function trackTransitionSequence(obj:h2d.Object, seq:TweenSequence, target:Bool, savedAlpha:Float, savedScaleX:Float, savedScaleY:Float, savedX:Float, savedY:Float):Void {
-		activeTransitionTweens.push({obj: obj, tween: null, sequence: seq, target: target, savedAlpha: savedAlpha, savedScaleX: savedScaleX, savedScaleY: savedScaleY, savedX: savedX, savedY: savedY});
+	function trackTransitionSequence(obj:h2d.Object, seq:TweenSequence, target:Bool):Void {
+		activeTransitionTweens.push({obj: obj, tween: null, sequence: seq, target: target});
 		final origOnComplete = seq.onComplete;
 		seq.onComplete = () -> {
 			var i = 0;
@@ -1190,7 +1212,7 @@ class IncrementalUpdateContext {
 					addToGraph(entry);
 					obj.alpha = 0.0;
 					final t = tm.tween(obj, duration, [Alpha(preAlpha)], easing);
-					trackTransitionTween(obj, t, show, preAlpha, preScaleX, preScaleY, preX, preY);
+					trackTransitionTween(obj, t, show);
 				} else {
 					final t = tm.tween(obj, duration, [Alpha(0.0)], easing);
 					final capturedEntry = entry;
@@ -1198,7 +1220,7 @@ class IncrementalUpdateContext {
 						removeFromGraph(capturedEntry);
 						capturedEntry.object.alpha = preAlpha;
 					};
-					trackTransitionTween(obj, t, show, preAlpha, preScaleX, preScaleY, preX, preY);
+					trackTransitionTween(obj, t, show);
 				}
 
 			case TransCrossfade(duration, easing):
@@ -1212,7 +1234,7 @@ class IncrementalUpdateContext {
 					final pause = tm.createTween(obj, duration, []);
 					final fadeIn = tm.createTween(obj, duration, [Alpha(preAlpha)], easing);
 					final seq = tm.sequence([pause, fadeIn]);
-					trackTransitionSequence(obj, seq, show, preAlpha, preScaleX, preScaleY, preX, preY);
+					trackTransitionSequence(obj, seq, show);
 				} else {
 					final t = tm.tween(obj, duration, [Alpha(0.0)], easing);
 					final capturedEntry = entry;
@@ -1220,7 +1242,7 @@ class IncrementalUpdateContext {
 						removeFromGraph(capturedEntry);
 						capturedEntry.object.alpha = preAlpha;
 					};
-					trackTransitionTween(obj, t, show, preAlpha, preScaleX, preScaleY, preX, preY);
+					trackTransitionTween(obj, t, show);
 				}
 
 			case TransFlipX(duration, easing):
@@ -1234,7 +1256,7 @@ class IncrementalUpdateContext {
 					final pause = tm.createTween(obj, halfDuration, []);
 					final grow = tm.createTween(obj, halfDuration, [ScaleX(preScaleX)], easing);
 					final seq = tm.sequence([pause, grow]);
-					trackTransitionSequence(obj, seq, show, preAlpha, preScaleX, preScaleY, preX, preY);
+					trackTransitionSequence(obj, seq, show);
 				} else {
 					final t = tm.tween(obj, halfDuration, [ScaleX(0.0)], easing);
 					final capturedEntry = entry;
@@ -1242,7 +1264,7 @@ class IncrementalUpdateContext {
 						removeFromGraph(capturedEntry);
 						capturedEntry.object.scaleX = preScaleX;
 					};
-					trackTransitionTween(obj, t, show, preAlpha, preScaleX, preScaleY, preX, preY);
+					trackTransitionTween(obj, t, show);
 				}
 
 			case TransFlipY(duration, easing):
@@ -1253,7 +1275,7 @@ class IncrementalUpdateContext {
 					final pause = tm.createTween(obj, halfDuration, []);
 					final grow = tm.createTween(obj, halfDuration, [ScaleY(preScaleY)], easing);
 					final seq = tm.sequence([pause, grow]);
-					trackTransitionSequence(obj, seq, show, preAlpha, preScaleX, preScaleY, preX, preY);
+					trackTransitionSequence(obj, seq, show);
 				} else {
 					final t = tm.tween(obj, halfDuration, [ScaleY(0.0)], easing);
 					final capturedEntry = entry;
@@ -1261,7 +1283,7 @@ class IncrementalUpdateContext {
 						removeFromGraph(capturedEntry);
 						capturedEntry.object.scaleY = preScaleY;
 					};
-					trackTransitionTween(obj, t, show, preAlpha, preScaleX, preScaleY, preX, preY);
+					trackTransitionTween(obj, t, show);
 				}
 
 			case TransSlide(dir, duration, distance, easing):
@@ -1276,7 +1298,7 @@ class IncrementalUpdateContext {
 						case TDDown: obj.y += slideOffset;
 					}
 					final t = tm.tween(obj, duration, [X(preX), Y(preY), Alpha(preAlpha)], easing);
-					trackTransitionTween(obj, t, show, preAlpha, preScaleX, preScaleY, preX, preY);
+					trackTransitionTween(obj, t, show);
 				} else {
 					var targetX = obj.x;
 					var targetY = obj.y;
@@ -1294,7 +1316,7 @@ class IncrementalUpdateContext {
 						capturedEntry.object.x = preX;
 						capturedEntry.object.y = preY;
 					};
-					trackTransitionTween(obj, t, show, preAlpha, preScaleX, preScaleY, preX, preY);
+					trackTransitionTween(obj, t, show);
 				}
 
 			case TransNone:
@@ -1462,7 +1484,7 @@ class IncrementalUpdateContext {
 		// actually change in the new call, and the builder's working state stays
 		// pinned to the failed call so unrelated builds/updates pick up the wrong
 		// indexedParams/builderParams.
-		builder.pushBuilderState();
+		builder.pushBuilderStateNoReset();
 		var firedRebuild = false;
 		var caught:Null<Dynamic> = null;
 		try {
@@ -1516,8 +1538,17 @@ class IncrementalUpdateContext {
 			// state. Without batching, a strict child conditional like `@(p1=>X, p2=>Y)` would see new
 			// p1 against stale p2 on the first pass and could fire a spurious arm flip / transition.
 			// Mirrors the codegen path in ProgrammableCodeGen (forwarded-param update wraps in
-			// beginUpdate/endUpdate). Allocation is lazy: no per-update cost when nothing forwards.
-			var forwardGroups:Null<Array<{ctx:IncrementalUpdateContext, items:Array<{param:String, value:Dynamic}>}>> = null;
+			// beginUpdate/endUpdate).
+			//
+			// Two-pass dispatch over a reusable scratch (`fwdCtxScratch`) instead of a per-call
+			// Array of anon-struct groups: pass 1 collects unique child contexts that have at
+			// least one relevant binding; pass 2 dispatches per-context, re-walking bindings to
+			// find peers and applying them under a single beginUpdate/endUpdate. K (unique child
+			// contexts) is typically 1-2 and N (relevant bindings) is small, so the O(N*K) shape
+			// costs a handful of pointer compares — vastly preferable to the per-fire allocation
+			// churn the prior shape produced on UI hot paths (setParameter on a parent that
+			// forwards into dynamicRef decorations fires here per mouse move).
+			fwdCtxScratch.resize(0);
 			for (binding in dynamicRefBindings) {
 				var relevant = false;
 				for (ref in binding.referencedParams) {
@@ -1527,37 +1558,32 @@ class IncrementalUpdateContext {
 					}
 				}
 				if (!relevant) continue;
-				final value = binding.resolveFn();
-				if (forwardGroups == null) forwardGroups = [];
-				var group:Null<{ctx:IncrementalUpdateContext, items:Array<{param:String, value:Dynamic}>}> = null;
-				for (g in forwardGroups) {
-					if (g.ctx == binding.childContext) {
-						group = g;
-						break;
-					}
-				}
-				if (group == null) {
-					group = {ctx: binding.childContext, items: []};
-					forwardGroups.push(group);
-				}
-				group.items.push({param: binding.childParam, value: value});
+				if (fwdCtxScratch.indexOf(binding.childContext) < 0)
+					fwdCtxScratch.push(binding.childContext);
 			}
-			if (forwardGroups != null) {
-				for (group in forwardGroups) {
-					group.ctx.beginUpdate();
-					try {
-						for (item in group.items) {
-							group.ctx.setParameter(item.param, item.value);
+			for (ctx in fwdCtxScratch) {
+				ctx.beginUpdate();
+				try {
+					for (binding in dynamicRefBindings) {
+						if (binding.childContext != ctx) continue;
+						var relevant = false;
+						for (ref in binding.referencedParams) {
+							if (changedParams.exists(ref)) {
+								relevant = true;
+								break;
+							}
 						}
-						group.ctx.endUpdate();
-					} catch (e:Dynamic) {
-						// A mid-batch throw (unknown_param / invalid_param_value, e.g. a child
-						// param vocabulary that diverged from this resolveFn after hot reload)
-						// must not leak batchMode=true into the child — the next caller of
-						// child.beginUpdate would otherwise hit nested_begin_update.
-						group.ctx.cancelUpdate();
-						throw e;
+						if (!relevant) continue;
+						ctx.setParameter(binding.childParam, binding.resolveFn());
 					}
+					ctx.endUpdate();
+				} catch (e:Dynamic) {
+					// A mid-batch throw (unknown_param / invalid_param_value, e.g. a child
+					// param vocabulary that diverged from this resolveFn after hot reload)
+					// must not leak batchMode=true into the child — the next caller of
+					// child.beginUpdate would otherwise hit nested_begin_update.
+					ctx.cancelUpdate();
+					throw e;
 				}
 			}
 
@@ -2285,6 +2311,14 @@ class MultiAnimBuilder {
 		this.currentInternalResults = state.currentInternalResults;
 	}
 
+	// Allocation watchdog for tests. Gated behind MULTIANIM_ALLOC_TRACK so the
+	// per-call increment vanishes from production builds; the resetting variant
+	// allocates an empty Map + anonymous struct on every call, so the setParameter
+	// hot path (one applyUpdates per non-batched UI event) must not invoke it.
+	#if MULTIANIM_ALLOC_TRACK
+	public static var pushBuilderStateResetCount:Int = 0;
+	#end
+
 	function pushBuilderState() {
 		stateStack.push({
 			indexedParams: this.indexedParams,
@@ -2294,9 +2328,28 @@ class MultiAnimBuilder {
 			incrementalContext: this.incrementalContext,
 			currentInternalResults: this.currentInternalResults,
 		});
+		#if MULTIANIM_ALLOC_TRACK
+		pushBuilderStateResetCount++;
+		#end
 		this.indexedParams = [];
 		this.builderParams = {};
 		this.currentNode = null;
+	}
+
+	/** Snapshot builder state onto the stack without allocating fresh empty
+	 *  indexedParams/builderParams or clearing currentNode. Use when the caller
+	 *  immediately overwrites all three fields — saves an empty Map plus
+	 *  anonymous-struct allocation per call. The setParameter hot path
+	 *  (applyUpdates, fired per non-batched UI event) goes through here. */
+	function pushBuilderStateNoReset() {
+		stateStack.push({
+			indexedParams: this.indexedParams,
+			builderParams: this.builderParams,
+			currentNode: this.currentNode,
+			incrementalMode: this.incrementalMode,
+			incrementalContext: this.incrementalContext,
+			currentInternalResults: this.currentInternalResults,
+		});
 	}
 
 	/** Remove from `ir` any registration whose underlying h2d.Object is `container` itself or a descendant of it.

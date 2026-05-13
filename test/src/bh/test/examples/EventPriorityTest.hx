@@ -434,4 +434,57 @@ class EventPriorityTest extends utest.Test {
 		var wrapper = new bh.ui.UIInteractiveWrapper(result.interactives[0], null);
 		Assert.equals(0, wrapper.eventPriority);
 	}
+
+	// ==================== Allocation Watchdog ====================
+
+	// getEventElements is called from handleMove / handleClick / handleMouseWheel /
+	// handleKey — i.e. once per input event. Each call must reuse the same scratch
+	// buffer instead of allocating a new Array<UIElement>. The capture-target
+	// short-circuit must also reuse scratch rather than returning a fresh single-
+	// element array.
+	#if MULTIANIM_ALLOC_TRACK
+	@Test
+	public function testGetEventElementsReusesScratchAcrossMouseMoves():Void {
+		var a = new MockInteractive("a", 0, 0, 100, 100, 0);
+		var b = new MockInteractive("b", 0, 0, 100, 100, 5);
+		integration.elements = [a, b];
+
+		// Warm-up — settles any first-call allocation that's not on the hot path.
+		controller.handleMove(new Point(50, 50), eventWrapper());
+
+		final baseline = UIDefaultController.hitsCreationCount;
+		for (i in 0...50) {
+			controller.handleMove(new Point(50 + (i % 10), 50), eventWrapper());
+		}
+		final delta = UIDefaultController.hitsCreationCount - baseline;
+		Assert.equals(0, delta,
+			"getEventElements must reuse instance scratch instead of allocating a new "
+			+ "Array<UIElement> per call (and per sort comparator). Got " + delta
+			+ " extra allocations across 50 handleMove calls.");
+	}
+
+	@Test
+	public function testGetEventElementsCaptureTargetShortCircuitReusesScratch():Void {
+		var a = new MockInteractive("a", 0, 0, 100, 100, 0);
+		integration.elements = [a];
+
+		// Force the capture-target short-circuit path inside getEventElements.
+		// Simulate a drag-like sequence: push, then move with target captured.
+		controller.handleClick(new Point(50, 50), 0, false, eventWrapper());
+		// Manually set capture target so the short-circuit branch is exercised.
+		@:privateAccess controller.controllable.captureEvents.target = a;
+
+		controller.handleMove(new Point(60, 50), eventWrapper());
+
+		final baseline = UIDefaultController.hitsCreationCount;
+		for (i in 0...50) {
+			controller.handleMove(new Point(60 + (i % 10), 50), eventWrapper());
+		}
+		final delta = UIDefaultController.hitsCreationCount - baseline;
+		Assert.equals(0, delta,
+			"getEventElements capture-target short-circuit must reuse scratch instead of "
+			+ "returning a fresh [target] array per call. Got " + delta
+			+ " extra allocations across 50 handleMove calls with capture target set.");
+	}
+	#end
 }

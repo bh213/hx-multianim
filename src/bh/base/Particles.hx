@@ -1403,6 +1403,13 @@ class Particles extends h2d.Drawable {
 	// on HL allocates a fresh hashmap iterator per for-in (~3 allocs); iterating
 	// an Array compiles to an indexed loop with no per-call allocation. The Map
 	// stays for O(1) id lookup in getGroup()/addGroup()/removeGroup().
+	//
+	// removeGroup() does an O(n) groupList.remove(g). Acceptable because: group
+	// counts are tiny (<10 typical), remove is per-effect-cleanup not per-frame,
+	// and draw() depends on stable insertion order for z-layering between groups
+	// (swap-remove would visibly reshuffle). O(1) remove would require a doubly-
+	// linked list, which costs cache locality on the per-frame draw/sync loop —
+	// a worse trade than the linear scan it replaces.
 	final groupList : Array<ParticleGroup> = [];
 
 	/**

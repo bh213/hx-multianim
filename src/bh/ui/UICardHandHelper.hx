@@ -53,6 +53,12 @@ private class ActiveAnimation {
 	// closure on hot paths (e.g. applyLayout(true)'s per-card rearrange).
 	public var onComplete:Null<() -> Void>;
 
+	// When true, completion (and removeAnimationsForEntry displacement) calls
+	// resolveAnimationComplete on the entry. Lets rearrangeCards drop its per-card
+	// closure: the closure only existed to drive the Disabled+enableAfterAnimation
+	// transition, which is otherwise a no-op for InHand/Hovered cards.
+	public var resolveOnComplete:Bool = false;
+
 	/** When non-null, this is a tracking draw animation that re-stretches each frame
 	 *  from `trackingFrom` toward `entry.layoutPos`. The AnimatedPath is built with
 	 *  no normalization — `rawEndpoint` is the untransformed path endpoint used to
@@ -759,8 +765,10 @@ class UICardHandHelper implements UIHigherOrderComponent {
 			i--;
 		}
 		if (completed != null) {
-			for (anim in completed)
+			for (anim in completed) {
+				if (anim.resolveOnComplete) resolveAnimationComplete(anim.entry);
 				if (anim.onComplete != null) anim.onComplete();
+			}
 		}
 	}
 
@@ -855,8 +863,10 @@ class UICardHandHelper implements UIHigherOrderComponent {
 		// draw's applyLayout) don't mutate the iteration.
 		var pendingAnims = activeAnimations;
 		activeAnimations = [];
-		for (anim in pendingAnims)
+		for (anim in pendingAnims) {
+			if (anim.resolveOnComplete) resolveAnimationComplete(anim.entry);
 			if (anim.onComplete != null) anim.onComplete();
+		}
 		// Cancel transition tweens on card subtrees and the targeting arrow before
 		// detaching containers — cancelAllChildren walks the parent chain to identify
 		// descendants, so it must run while cards are still parented to handContainer.
@@ -976,12 +986,14 @@ class UICardHandHelper implements UIHigherOrderComponent {
 
 			var pos = positions[i];
 			entry.layoutPos = pos;
+			// Null onComplete to skip allocating a closure per card per rearrange. The
+			// closure used to set scale (redundant — pos.scale is always 1.0 here since
+			// callers pass computeLayout(-1), and state.scale settles to 1.0 from the
+			// path on the final tick) and call resolveAnimationComplete (load-bearing
+			// for Disabled cards with a pending re-enable — now driven by the
+			// resolveOnComplete flag below).
 			animateCardTo(entry, entry.container.x, entry.container.y, pos.x, pos.y, entry.container.rotation,
-				pos.rotation, rearrangePathName, () -> {
-					resolveAnimationComplete(entry);
-					entry.container.scaleX = pos.scale;
-					entry.container.scaleY = pos.scale;
-				});
+				pos.rotation, rearrangePathName, null, true);
 		}
 	}
 
@@ -1417,7 +1429,7 @@ class UICardHandHelper implements UIHigherOrderComponent {
 	// === Internal: Animation via .manim paths ===
 
 	function animateCardTo(entry:CardEntry, fromX:Float, fromY:Float, toX:Float, toY:Float, startRotation:Float, endRotation:Float,
-			pathName:Null<String>, onComplete:Null<() -> Void>):Void {
+			pathName:Null<String>, onComplete:Null<() -> Void>, resolveOnComplete:Bool = false):Void {
 		// Remove any existing animation for this entry
 		removeAnimationsForEntry(entry);
 
@@ -1428,6 +1440,7 @@ class UICardHandHelper implements UIHigherOrderComponent {
 		if (dx * dx + dy * dy < 1.0) {
 			entry.container.setPosition(toX, toY);
 			entry.container.rotation = endRotation;
+			if (resolveOnComplete) resolveAnimationComplete(entry);
 			if (onComplete != null) onComplete();
 			return;
 		}
@@ -1445,11 +1458,14 @@ class UICardHandHelper implements UIHigherOrderComponent {
 			var durationOv = getDurationOverride(pathName);
 			if (durationOv > 0)
 				ap.durationOverride = durationOv;
-			activeAnimations.push(new ActiveAnimation(entry, ap, startRotation, endRotation, onComplete));
+			var queued = new ActiveAnimation(entry, ap, startRotation, endRotation, onComplete);
+			queued.resolveOnComplete = resolveOnComplete;
+			activeAnimations.push(queued);
 		} else {
 			// No path defined — instant snap
 			entry.container.setPosition(toX, toY);
 			entry.container.rotation = endRotation;
+			if (resolveOnComplete) resolveAnimationComplete(entry);
 			if (onComplete != null) onComplete();
 		}
 	}
@@ -1543,8 +1559,10 @@ class UICardHandHelper implements UIHigherOrderComponent {
 			i--;
 		}
 		if (displaced != null) {
-			for (anim in displaced)
+			for (anim in displaced) {
+				if (anim.resolveOnComplete) resolveAnimationComplete(anim.entry);
 				if (anim.onComplete != null) anim.onComplete();
+			}
 		}
 	}
 

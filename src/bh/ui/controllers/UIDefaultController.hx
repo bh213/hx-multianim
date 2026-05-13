@@ -90,6 +90,14 @@ private class ControllableImpl implements Controllable {
 
 @:nullSafety
 class UIDefaultController implements UIController {
+	#if MULTIANIM_ALLOC_TRACK
+	// Allocation watchdog for tests. Gated behind MULTIANIM_ALLOC_TRACK so the
+	// per-construction increment vanishes from production builds; getEventElements
+	// fires on every mouse move / click / wheel / key, so its scratch must not
+	// reallocate per call.
+	public static var hitsCreationCount:Int = 0;
+	#end
+
 	var currentOver:Null<UIElement> = null;
 	final controllable:ControllableImpl;
 	final integration:bh.ui.controllers.UIController.UIControllerScreenIntegration;
@@ -102,6 +110,19 @@ class UIDefaultController implements UIController {
 	var _updateDt:Float = 0;
 	final _updateCallback:UIElement->Void;
 
+	// Scratch buffer reused across getEventElements calls — avoids per-event
+	// Array allocation on every mouse move/click/wheel/key.
+	final _hits:Array<UIElement> = [];
+
+	// Stable sort comparator: higher eventPriority first, registration order as
+	// tiebreaker. Hoisted to a static field so it's allocated once per program
+	// rather than per getEventElements call.
+	static final _priorityComparator:(UIElement, UIElement) -> Int = (a, b) -> {
+		final pa = Std.isOfType(a, UIElementPriority) ? (cast(a, UIElementPriority)).eventPriority : 0;
+		final pb = Std.isOfType(b, UIElementPriority) ? (cast(b, UIElementPriority)).eventPriority : 0;
+		return pb - pa;
+	};
+
 	public function new(integration) {
 		this.integration = integration;
 		// Initialise _updateCallback before passing `this` to ControllableImpl —
@@ -112,6 +133,9 @@ class UIDefaultController implements UIController {
 			@:nullSafety(Off) redrawAndUpdate(element, _updateDt);
 		};
 		this.controllable = new ControllableImpl(this);
+		#if MULTIANIM_ALLOC_TRACK
+		hitsCreationCount++;
+		#end
 	}
 
 	public function getDebugName():String {
@@ -186,22 +210,19 @@ class UIDefaultController implements UIController {
 	}
 
 	function getEventElements(pos:Point):Array<UIElement> {
-		if (controllable.captureEvents.target != null)
-			return [controllable.captureEvents.target];
-		var hits:Array<UIElement> = [];
+		_hits.resize(0);
+		if (controllable.captureEvents.target != null) {
+			_hits.push(controllable.captureEvents.target);
+			return _hits;
+		}
 		integration.forEachElement(SETReceiveEvents, function(element:UIElement):Void {
 			if (element.containsPoint(pos))
-				hits.push(element);
+				_hits.push(element);
 		});
-		if (hits.length > 1) {
-			// Stable sort: higher eventPriority first, registration order as tiebreaker
-			haxe.ds.ArraySort.sort(hits, (a, b) -> {
-				final pa = Std.isOfType(a, UIElementPriority) ? (cast(a, UIElementPriority)).eventPriority : 0;
-				final pb = Std.isOfType(b, UIElementPriority) ? (cast(b, UIElementPriority)).eventPriority : 0;
-				return pb - pa;
-			});
+		if (_hits.length > 1) {
+			haxe.ds.ArraySort.sort(_hits, _priorityComparator);
 		}
-		return hits;
+		return _hits;
 	}
 
 	public function handleMove(mousePoint:Point, eventWrapper:EventWrapper) {
