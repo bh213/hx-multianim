@@ -312,13 +312,20 @@ class StateRestorer {
 	static function restoreParams(result:BuilderResult, params:ParamSnapshot):Void {
 		if (result.incrementalContext == null || params == null)
 			return;
-		result.beginUpdate();
+		// If the result is already in a batch (e.g. a dev callback triggered hot
+		// reload from inside a beginUpdate/endUpdate window on this same result),
+		// piggyback on the existing batch instead of opening a nested one — a
+		// nested beginUpdate would throw `nested_begin_update` and crash the dev
+		// session. The outer batch's endUpdate flushes our setParameter calls in
+		// its own applyUpdates cycle.
+		final opened = !result.batchMode;
+		if (opened) result.beginUpdate();
 		for (name => value in params) {
 			final dynVal = resolvedToDynamic(value);
 			if (dynVal != null)
 				result.setParameter(name, dynVal);
 		}
-		result.endUpdate();
+		if (opened) result.endUpdate();
 	}
 
 	public static function resolvedToDynamic(p:ResolvedIndexParameters):Null<Dynamic> {

@@ -2573,4 +2573,36 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 			"hex neighbors() must reuse scratch Hexes via addInto (1 base + 6 directions). "
 			+ "Allocated " + delta + " fresh Hexes across 10 calls.");
 	}
+
+	// onMouseMove during a cell drag runs sceneToLocal on every cursor event.
+	// It used to allocate `new h2d.col.Point(...)` + `new FPoint(...)` per call;
+	// same shape as cellAtPoint's hot path. Must reuse a class-level scratch
+	// FPoint via the `sceneToLocalInto` variant so a drag tick is zero-alloc.
+	@Test
+	public function testCellDragMoveDoesNotAllocateFPoint():Void {
+		var grid = createCellDragGrid(3, 1);
+		grid.set(1, 0, "item");
+
+		// Press to start the drag — exercises the cellDragStartFromPress path
+		// (which also calls sceneToLocal twice).
+		grid.onMouseClick(52 + 25, 25, 0);
+		@:privateAccess Assert.notNull(grid.cellDragObj);
+
+		// Warm-up move — soaks up any first-time allocations (matrix sync,
+		// scratch lazy-init in cellAtPoint via cellDragFindTarget, etc.).
+		grid.onMouseMove(80, 30);
+
+		final fpointBaseline = FPoint.creationCount;
+
+		for (i in 0...20)
+			grid.onMouseMove(80.0 + i, 30.0 + i);
+
+		final delta = FPoint.creationCount - fpointBaseline;
+		Assert.equals(0, delta,
+			"onMouseMove during a cell drag must not allocate FPoints — sceneToLocal "
+			+ "should write into a scratch FPoint on the hot path. Allocated "
+			+ delta + " fresh FPoints across 20 drag-move events.");
+
+		grid.dispose();
+	}
 }

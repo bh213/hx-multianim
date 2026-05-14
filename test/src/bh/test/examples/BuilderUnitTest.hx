@@ -13,6 +13,10 @@ import bh.test.BuilderTestBase.parseExpectingSuccess;
 import bh.test.BuilderTestBase.parseExpectingError;
 import bh.multianim.MultiAnimParser.SettingValue;
 import bh.multianim.MultiAnimParser.CustomFilterArgType;
+import bh.multianim.MultiAnimParser.TransitionType;
+import bh.multianim.MultiAnimParser.TransitionDirection;
+import bh.multianim.MultiAnimParser.EasingType;
+import bh.multianim.CodegenTransitionHelper;
 import bh.base.FilterManager;
 import bh.base.MAObject;
 import bh.base.MAObject.MultiAnimObjectData;
@@ -5824,6 +5828,167 @@ class BuilderUnitTest extends BuilderTestBase {
 		tm.update(D * 0.7); // ~0.6*D remaining + margin
 		Assert.floatEquals(1.0, fadingIn.alpha, 0.05,
 			'fade-in should complete on its original schedule, got alpha=${fadingIn.alpha}');
+	}
+
+	@Test
+	public function testIncrementalTransitionFadeRecoversAlphaBaselineAfterMidFlightCancel():Void {
+		// Mirror of the codegen-side test below, but exercises IncrementalUpdateContext
+		// via the runtime builder path. Same baseline-poisoning bug pattern: hide tween
+		// moves alpha 1.0 → 0.0; cancel mid-flight currently leaves alpha at the
+		// interpolated value, the next show captures it as preAlpha and tweens 0 → mid,
+		// permanently dimming the wrapper.
+		final D = 0.5;
+		final tm = new bh.base.TweenManager();
+		final builder = builderFromSource("
+			#test programmable(visible:bool=true) {
+				transition {
+					visible: fade(0.5)
+				}
+				@(visible=>true) bitmap(generated(color(10, 10, #ff0000))): 0,0
+			}
+		");
+		builder.tweenManager = tm;
+		final result = builder.buildWithParameters("test", ["visible" => true], null, null, true);
+		Assert.notNull(result);
+		final wrapper = result.object.getChildAt(1);
+		Assert.notNull(wrapper.parent, "wrapper should be in graph initially");
+		Assert.floatEquals(1.0, wrapper.alpha, 0.001);
+
+		// Hide → fades alpha 1.0 → 0.0 over 0.5s.
+		result.setParameter("visible", false);
+		tm.update(0.0); // skipFirstDt
+		tm.update(D * 0.4); // ~40% through, alpha ≈ 0.6
+		Assert.isTrue(wrapper.alpha < 0.9 && wrapper.alpha > 0.1,
+			'expected mid-fade alpha in (0.1, 0.9), got ${wrapper.alpha}');
+
+		// Reverse mid-fade. cancelActiveTransition runs before the new fade-in starts.
+		result.setParameter("visible", true);
+
+		// Complete the new show.
+		tm.update(0.0);
+		tm.update(D * 1.2);
+
+		Assert.floatEquals(1.0, wrapper.alpha, 0.01,
+			'alpha must recover to original 1.0 after mid-fade cancel; got ${wrapper.alpha}');
+	}
+
+	@Test
+	public function testCodegenTransitionFadeRecoversAlphaBaselineAfterMidFlightCancel():Void {
+		// Show → Hide → mid-flight cancel → Show must leave the element at its original alpha.
+		// The hide tween moves alpha 1.0 → 0.0; cancelActiveTransition currently nulls
+		// onComplete (which would have restored alpha = preAlpha), so alpha is left at the
+		// interpolated value (e.g. 0.6). The next show then captures preAlpha = 0.6 and
+		// tweens 0 → 0.6, leaving the element permanently dim.
+		final tm = new bh.base.TweenManager();
+		final transitions:Map<String, TransitionType> = ["v" => TransFade(0.5, Linear)];
+		final helper = new CodegenTransitionHelper(transitions);
+		helper.tweenManager = tm;
+
+		final parent = new h2d.Object();
+		final sentinel = new h2d.Object();
+		parent.addChild(sentinel);
+		final obj = new h2d.Object();
+		parent.addChild(obj);
+		obj.alpha = 1.0;
+
+		// Hide — captures preAlpha=1.0 internally, tweens alpha 1.0 → 0.0.
+		helper.setPresenceWithTransition(obj, false, "v", parent, sentinel);
+
+		// Step partway — should be observably mid-fade.
+		tm.update(0.0); // skipFirstDt
+		tm.update(0.2); // 40% of 0.5s
+		Assert.isTrue(obj.alpha < 0.9 && obj.alpha > 0.1,
+			'expected mid-fade alpha in (0.1, 0.9), got ${obj.alpha}');
+
+		// Reverse mid-fade — internally calls cancelActiveTransition before starting
+		// the show. Without restoration of the captured pre-state, the show's preAlpha
+		// is taken from the live (interpolated) value.
+		helper.setPresenceWithTransition(obj, true, "v", parent, sentinel);
+
+		// Complete the new show.
+		tm.update(0.0); // skipFirstDt
+		tm.update(0.6); // past full duration
+
+		Assert.floatEquals(1.0, obj.alpha, 0.01,
+			'alpha must recover to original 1.0 after mid-fade cancel; got ${obj.alpha}');
+	}
+
+	@Test
+	public function testCodegenTransitionFlipXRecoversScaleBaselineAfterMidFlightCancel():Void {
+		// Same baseline-poisoning story as fade, but for scaleX under flipX. The hide
+		// tween shrinks scaleX 1.0 → 0.0; cancel mid-flight leaves scaleX at the
+		// interpolated value, and the next show captures it as the new baseline.
+		final tm = new bh.base.TweenManager();
+		final transitions:Map<String, TransitionType> = ["v" => TransFlipX(0.4, Linear)];
+		final helper = new CodegenTransitionHelper(transitions);
+		helper.tweenManager = tm;
+
+		final parent = new h2d.Object();
+		final sentinel = new h2d.Object();
+		parent.addChild(sentinel);
+		final obj = new h2d.Object();
+		parent.addChild(obj);
+		obj.scaleX = 1.0;
+
+		helper.setPresenceWithTransition(obj, false, "v", parent, sentinel);
+
+		// FlipX hide uses halfDuration = 0.2; step ~halfway through it.
+		tm.update(0.0);
+		tm.update(0.1);
+		Assert.isTrue(obj.scaleX < 0.9 && obj.scaleX > 0.1,
+			'expected mid-shrink scaleX in (0.1, 0.9), got ${obj.scaleX}');
+
+		helper.setPresenceWithTransition(obj, true, "v", parent, sentinel);
+
+		// Show is sequential [pause halfDuration, grow halfDuration] — total 0.4s.
+		tm.update(0.0);
+		tm.update(0.5); // past full duration
+
+		Assert.floatEquals(1.0, obj.scaleX, 0.01,
+			'scaleX must recover to original 1.0 after mid-flipX cancel; got ${obj.scaleX}');
+	}
+
+	@Test
+	public function testCodegenTransitionSlideRecoversPositionBaselineAfterMidFlightCancel():Void {
+		// Slide animates {x, y, alpha}. Cancel mid-flight currently leaves all three at
+		// interpolated values; the next show captures them as new baselines, leaving
+		// the element offset from its original position AND permanently dim.
+		final tm = new bh.base.TweenManager();
+		final transitions:Map<String, TransitionType> =
+			["v" => TransSlide(TDLeft, 0.5, 50.0, Linear)];
+		final helper = new CodegenTransitionHelper(transitions);
+		helper.tweenManager = tm;
+
+		final parent = new h2d.Object();
+		final sentinel = new h2d.Object();
+		parent.addChild(sentinel);
+		final obj = new h2d.Object();
+		parent.addChild(obj);
+		obj.x = 100.0;
+		obj.y = 50.0;
+		obj.alpha = 1.0;
+
+		// Hide — slide-left animates x to (100 - 50) = 50, alpha to 0.
+		helper.setPresenceWithTransition(obj, false, "v", parent, sentinel);
+
+		tm.update(0.0);
+		tm.update(0.2); // 40% of 0.5s, x ≈ 80, alpha ≈ 0.6
+		Assert.isTrue(obj.x < 95.0 && obj.x > 55.0,
+			'expected mid-slide x in (55, 95), got ${obj.x}');
+		Assert.isTrue(obj.alpha < 0.9 && obj.alpha > 0.1,
+			'expected mid-slide alpha in (0.1, 0.9), got ${obj.alpha}');
+
+		helper.setPresenceWithTransition(obj, true, "v", parent, sentinel);
+
+		tm.update(0.0);
+		tm.update(0.6);
+
+		Assert.floatEquals(100.0, obj.x, 0.5,
+			'x must recover to original 100.0 after mid-slide cancel; got ${obj.x}');
+		Assert.floatEquals(50.0, obj.y, 0.5,
+			'y must recover to original 50.0 after mid-slide cancel; got ${obj.y}');
+		Assert.floatEquals(1.0, obj.alpha, 0.01,
+			'alpha must recover to 1.0 after mid-slide cancel; got ${obj.alpha}');
 	}
 
 	@Test

@@ -210,6 +210,39 @@ If a `creationCount` declaration or `creationCount++` line appears outside an `#
 
 A failing `testAllocationTrackingFlagIsDefinedInTestBuilds` test indicates the flag was dropped from `test-common.hxml`; restore it.
 
+### 8c. Shared Mutable Scratch State
+
+The codebase uses static/instance scratch objects (`_scratchPt`, `_pool`, scratch arrays) to dodge per-frame allocations — see `UIInteractiveWrapper._scratchPt`, `UICardHandTargeting._scratchPt`, `TweenManager._pool`, `UICardHandLayout` sample buffers. The codebase is single-threaded (Heaps main loop), so the hazard is **re-entrancy**, not concurrency: same scratch reached twice on the same callstack silently corrupts state.
+
+Scan the diff for these patterns and flag any hit:
+
+```sh
+# New or modified scratch / pool declarations
+git diff HEAD -- 'src/**/*.hx' | grep -E '^\+\s*(static\s+)?(var|final)\s+_?(scratch|pool|tmp|shared|buffer)'
+# New uses of existing scratch instances
+git diff HEAD -- 'src/**/*.hx' | grep -E '^\+.*_scratch|_pool\.(pop|push)'
+```
+
+**1. Re-entrancy.** A function holding a scratch must not dispatch events, run user callbacks, fire tween `onComplete`, or call into helpers that themselves use the same scratch, between the point it writes and the point it reads. Flag any new code that grabs a scratch *and* in the same scope: emits a `UI*Event`, invokes a callback field (`onCardEvent`, `onGridEvent`, `onComplete`, etc.), iterates a user-supplied collection with a transform, or calls into a sibling helper known to use the same scratch.
+
+**2. Escape.** A scratch reference must never outlive the function call that owns it. Flag new occurrences of: `return _scratch…`, `this.x = _scratch…`, `array.push(_scratch…)`, `map.set(_, _scratch…)`, or any closure capturing a scratch that's stored as a field, returned, or queued (tween, deferred, listener).
+
+**3. Aliasing with mutating Heaps APIs.** `h2d` methods like `globalToLocal` / `localToGlobal` / `Matrix.transform` mutate their argument and return it. If the same scratch is passed *and* still expected to hold its pre-call value afterward, you have a silent bug. Flag new call sites where a scratch is passed to a known-mutating API while the same scratch is read on a later line in the same function.
+
+**4. Justification comment on new static scratch.** Any *new* `static var _scratch…` declaration must carry a one-line comment explaining why a single shared instance is safe (the existing `UIInteractiveWrapper._scratchPt` is the model: identifies the call path as single-threaded and non-re-entrant). Flag new static scratch without this comment.
+
+**Report format:**
+
+```
+⚠ Shared scratch hazards (N):
+- [src/bh/ui/Foo.hx:120](src/bh/ui/Foo.hx#L120) — re-entrancy: fires onGridEvent while holding _scratchPt
+- [src/bh/ui/Bar.hx:42](src/bh/ui/Bar.hx#L42) — escape: returns _scratchPt to caller
+- [src/bh/ui/Baz.hx:88](src/bh/ui/Baz.hx#L88) — aliasing: globalToLocal(_scratchPt) then reads _scratchPt.x
+- [src/bh/ui/Quux.hx:15](src/bh/ui/Quux.hx#L15) — new static scratch without single-threaded/non-reentrant comment
+```
+
+Do NOT auto-fix. List hits and ask the user — some are intentional (a scratch deliberately handed to a mutating API where the caller wants the mutated value).
+
 ## 9. Suggest Commit Message
 
 - Follow the project's commit message style (see recent commits)
@@ -229,6 +262,7 @@ Present a summary table:
 - **Reference images changed** (count + links from 5a — do not omit)
 - **Existing tests modified** (count + links from 5a — do not omit)
 - **Temporary files detected** (count + links from 8a — do not omit; flag tracked vs untracked)
+- **Shared scratch hazards** (count + links from 8c — do not omit)
 - Test run result (pass/fail)
 - Any issues found
 - Suggested commit message

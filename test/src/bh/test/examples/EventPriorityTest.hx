@@ -101,8 +101,33 @@ private class MockIntegration implements UIControllerScreenIntegration {
 		dispatchedEvents.push(event);
 	}
 
+	public function forEachElement(type:SubElementsType, fn:UIElement->Void):Void {
+		for (e in elements) fn(e);
+	}
+
+	public function onKey(keyCode:Int, release:Bool):Bool return true;
+	public function dispatchMouseMove(pos:Point):Bool return true;
+	public function onMouseWheel(pos:Point, delta:Float):Bool return true;
+	public function dispatchMouseClick(pos:Point, button:Int, release:Bool):Bool return true;
+}
+
+/**
+ * Mock integration that throws when its allocating getElements() is called.
+ * UIDefaultController must drive its hot path entirely through forEachElement —
+ * any caller that reaches for getElements re-introduces the Array + concat
+ * allocation shape this contract removes.
+ */
+private class ThrowingGetElementsIntegration implements UIControllerScreenIntegration {
+	public var elements:Array<UIElement> = [];
+	public var getElementsCallCount:Int = 0;
+
+	public function new() {}
+
+	public function dispatchScreenEvent(event:UIScreenEvent, source:Null<UIElement>):Void {}
+
 	public function getElements(type:SubElementsType):Array<UIElement> {
-		return elements;
+		getElementsCallCount++;
+		throw "Production code must not call getElements() — use forEachElement";
 	}
 
 	public function forEachElement(type:SubElementsType, fn:UIElement->Void):Void {
@@ -487,4 +512,27 @@ class EventPriorityTest extends utest.Test {
 			+ " extra allocations across 50 handleMove calls with capture target set.");
 	}
 	#end
+
+	// UIDefaultController's full input hot path — handleMove, handleClick (push +
+	// release), handleMouseWheel, handleKey — must drive element discovery through
+	// the streaming forEachElement API only. Reaching for the allocating
+	// getElements() Array + concat shape is the regression this pins against.
+	@Test
+	public function testUIDefaultControllerHotPathNeverCallsGetElements():Void {
+		var integ = new ThrowingGetElementsIntegration();
+		integ.elements = [new MockInteractive("a", 0, 0, 100, 100, 0)];
+		var ctrl = new UIDefaultController(integ);
+
+		ctrl.handleMove(new Point(50, 50), eventWrapper());
+		ctrl.handleClick(new Point(50, 50), 0, false, eventWrapper());
+		ctrl.handleClick(new Point(50, 50), 0, true, eventWrapper());
+		ctrl.handleMouseWheel(new Point(50, 50), 1.0, eventWrapper());
+		ctrl.handleKey(32, false, new Point(50, 50), eventWrapper());
+		ctrl.handleKey(32, true, new Point(50, 50), eventWrapper());
+
+		Assert.equals(0, integ.getElementsCallCount,
+			"UIDefaultController must not call integration.getElements() on any input "
+			+ "handler — production code path must stream via forEachElement to avoid "
+			+ "per-event Array allocation. Got " + integ.getElementsCallCount + " calls.");
+	}
 }

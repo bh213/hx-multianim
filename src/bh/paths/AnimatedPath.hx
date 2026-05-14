@@ -219,17 +219,32 @@ class AnimatedPath {
 		reversed = false;
 	}
 
+	/** Returns the same `AnimatedPathState` instance held by this path. The state
+	 *  is mutated in-place by `update()` / `seek()` / `computeState()` — do not
+	 *  cache the returned reference across frames or across other calls on this
+	 *  path. Read field values into locals (or copy into a caller-owned state)
+	 *  before any further call into this AnimatedPath. See `AnimatedPathState`
+	 *  class doc for the in-place-mutation contract. */
 	public function getState():AnimatedPathState {
 		return currentState;
 	}
 
 	/** Compute and return the path state at an arbitrary rate (0..1) without
-	 *  advancing internal time/distance or firing events. */
+	 *  advancing internal time/distance or firing events. The returned reference
+	 *  IS the path's `currentState` — the same instance returned by `getState()`
+	 *  / `update()`. The next call to any of those methods overwrites these
+	 *  fields in place; copy values out before the next call if you need them.
+	 *  See `AnimatedPathState` class doc. */
 	public function seek(rate:Float):AnimatedPathState {
 		computeState(rate);
 		return currentState;
 	}
 
+	/** Advance the path by `dt` and return the path's `currentState`. The returned
+	 *  reference IS the path's `currentState` — the same instance returned by
+	 *  `getState()` / `seek()`. The next call to any of those methods overwrites
+	 *  these fields in place; copy values out before the next call if you need
+	 *  them. See `AnimatedPathState` class doc. */
 	public function update(dt:Float):AnimatedPathState {
 		if (isDone) return currentState;
 		if (dt <= 0) return currentState;

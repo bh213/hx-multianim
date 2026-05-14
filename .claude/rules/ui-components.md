@@ -83,6 +83,7 @@ Metadata supports typed values matching the settings system: `key => val` (strin
 **Slots** — `#name slot` or `#name[$i] slot` for swappable containers:
 - Builder: `result.getSlot("name")` or `result.getSlot("name", index)` returns `SlotHandle`
 - Codegen: `instance.getSlot("name")` or `instance.getSlot("name", index)`
+- Existence check: `result.hasSlot("name")` / `result.hasSlot("name", index)` — never throws, returns `false` when unknown or when the requested kind/index doesn't match (useful for indexed slots whose iteration count can shrink at runtime)
 - `SlotHandle` API: `setContent(obj)`, `clear()`, `getContent()`, `isEmpty()`, `isOccupied()`, `data` (arbitrary payload)
 - Mismatched access (index on non-indexed or vice versa) throws
 
@@ -404,6 +405,7 @@ override public function onMouseClick(pos, button, release) {
 
 **Dynamic refs** — `dynamicRef($ref, params)` embeds with incremental mode for runtime parameter updates:
 - Builder: `result.getDynamicRef("name").setParameter("param", value)`
+- Existence check: `result.hasDynamicRef("name")` — never throws, returns `false` when unknown. Reports presence only; a subsequent `getDynamicRef` may still throw if multiple unnamed sibling sites collide on the same key (disambiguate with `#name` / `#name[$i]`)
 - Batch updates: `beginUpdate()` / `endUpdate()` defers re-evaluation
 - Codegen: generates runtime builder call, returns `BuilderResult`
 - **Dynamic programmable references**: `dynamicRef($paramName, params)` where `$paramName` is a string/enum parameter of the enclosing programmable. The parameter value names the target programmable. Template change triggers full rebuild; forwarded params propagate incrementally. `getDynamicRef()` returns the current result (name changes at runtime)

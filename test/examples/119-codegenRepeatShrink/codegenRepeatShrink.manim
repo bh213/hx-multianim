@@ -1,0 +1,11 @@
+version: 1.0
+
+#codegenRepeatShrink programmable(count:uint=5, cols:uint=3, rows:uint=3) {
+  repeatable($i, range(0, 5)) {
+    @($i < $count) #cell[$i] bitmap(generated(color(8, 8, #ff0000))): $i * 10, 0
+  }
+
+  repeatable2d($x, $y, step(3, dx: 10), step(3, dy: 10)) {
+    @all($x < $cols, $y < $rows) #tile[$x, $y] bitmap(generated(color(8, 8, #00ff00))): $x * 10, 20 + $y * 10
+  }
+}

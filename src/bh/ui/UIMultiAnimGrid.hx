@@ -134,6 +134,11 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 	static final _scratchFractionalHex:FractionalHex = new FractionalHex(0, 0, 0);
 	static final _scratchHex:HexUtil = new HexUtil(0, 0, 0);
 	static final _scratchHex2:HexUtil = new HexUtil(0, 0, 0);
+	// Separate from `_scratchFPoint` because the per-drag-tick path
+	// (cellDragUpdateMove → sceneToLocalInto) also calls cellAtPoint via
+	// cellDragFindTarget, which writes through `_scratchFPoint`. Aliasing
+	// those two would let cellAtPoint clobber the drag-target local point.
+	static final _scratchSceneToLocalFP:FPoint = new FPoint(0, 0);
 
 	// --- Config ---
 	final builder:MultiAnimBuilder;
@@ -1061,13 +1066,17 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 			root.add(cellDragObj, 999);
 		}
 
-		// Position in parent-local coordinates and compute offset
-		final parentPos = sceneToLocal(cellDragParent, detached.sceneX, detached.sceneY);
-		cellDragObj.setPosition(parentPos.x, parentPos.y);
+		// Position in parent-local coordinates and compute offset. Two sceneToLocal
+		// results are alive simultaneously here — capture parentPos as locals so
+		// the second `Into` call may reuse the same scratch FPoint.
+		sceneToLocalInto(cellDragParent, detached.sceneX, detached.sceneY, _scratchSceneToLocalFP);
+		final parentPosX = _scratchSceneToLocalFP.x;
+		final parentPosY = _scratchSceneToLocalFP.y;
+		cellDragObj.setPosition(parentPosX, parentPosY);
 
-		final cursorLocal = sceneToLocal(cellDragParent, sceneX, sceneY);
-		cellDragOffsetX = parentPos.x - cursorLocal.x;
-		cellDragOffsetY = parentPos.y - cursorLocal.y;
+		sceneToLocalInto(cellDragParent, sceneX, sceneY, _scratchSceneToLocalFP);
+		cellDragOffsetX = parentPosX - _scratchSceneToLocalFP.x;
+		cellDragOffsetY = parentPosY - _scratchSceneToLocalFP.y;
 
 		// Apply highlights on self (source cell excluded)
 		applyDragHighlights((c) -> !(c.col == coord.col && c.row == coord.row));
@@ -1092,8 +1101,8 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 			return;
 
 		// Update position in parent-local space
-		final cursorLocal = sceneToLocal(cellDragParent, sceneX, sceneY);
-		cellDragObj.setPosition(cursorLocal.x + cellDragOffsetX, cursorLocal.y + cellDragOffsetY);
+		sceneToLocalInto(cellDragParent, sceneX, sceneY, _scratchSceneToLocalFP);
+		cellDragObj.setPosition(_scratchSceneToLocalFP.x + cellDragOffsetX, _scratchSceneToLocalFP.y + cellDragOffsetY);
 
 		// Find which cell is under cursor (self + linked grids)
 		final hit = cellDragFindTarget(sceneX, sceneY);
@@ -1285,9 +1294,9 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 		}
 
 		if (pathName == null) {
-			// Instant snap
-			final localTo = sceneToLocal(cellDragParent, targetScenePos.x, targetScenePos.y);
-			cellDragObj.setPosition(localTo.x, localTo.y);
+			// Instant snap — local point consumed immediately, no need to retain.
+			sceneToLocalInto(cellDragParent, targetScenePos.x, targetScenePos.y, _scratchSceneToLocalFP);
+			cellDragObj.setPosition(_scratchSceneToLocalFP.x, _scratchSceneToLocalFP.y);
 			onDone();
 			return;
 		}
@@ -2084,10 +2093,26 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 		}
 	}
 
-	/** Convert a scene-space point into a parent object's local coordinate space. */
+	/** Convert a scene-space point into a parent object's local coordinate space.
+	 *  Allocates a fresh FPoint — use when the caller retains the reference
+	 *  (e.g. handing it to `Stretch(...)` for an AnimatedPath). For hot-path
+	 *  callers that just read x/y, use `sceneToLocalInto`. */
 	function sceneToLocal(parent:h2d.Object, sceneX:Float, sceneY:Float):FPoint {
-		final local = parent.globalToLocal(new h2d.col.Point(sceneX, sceneY));
+		_scratchPoint.x = sceneX;
+		_scratchPoint.y = sceneY;
+		final local = parent.globalToLocal(_scratchPoint);
 		return new FPoint(local.x, local.y);
+	}
+
+	/** Zero-alloc variant of `sceneToLocal`: writes the local coordinates into
+	 *  `out`. Caller must NOT retain `out` past the next sceneToLocalInto/
+	 *  globalToLocal call on the same scratch. */
+	inline function sceneToLocalInto(parent:h2d.Object, sceneX:Float, sceneY:Float, out:FPoint):Void {
+		_scratchPoint.x = sceneX;
+		_scratchPoint.y = sceneY;
+		final local = parent.globalToLocal(_scratchPoint);
+		out.x = local.x;
+		out.y = local.y;
 	}
 
 

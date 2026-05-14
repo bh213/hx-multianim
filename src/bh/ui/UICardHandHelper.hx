@@ -133,10 +133,14 @@ private class ActiveAnimation {
  *  cardHand.drawCard({ id: "card1", buildName: "card", params: [...] });
  *  ``` */
 class UICardHandHelper implements UIHigherOrderComponent {
-	// Static scratch buffer reused by getCardAtBasePosition. HL is single-threaded so
-	// sharing across all helper instances is safe — the buffer is overwritten on entry
-	// and consumed before any other call. Mirrors UICardHandLayout._scratchRates.
-	static final _scratchPositions:Array<CardLayoutPosition> = [];
+	// Per-helper scratch buffer reused by getCardAtBasePosition. Overwritten on
+	// entry and consumed (read out into a local result) before any other call on
+	// this helper — no reentrancy hazard because the consumer loop is pure float
+	// math with no callbacks. Was previously `static final` (shared across all
+	// helper instances); split per-instance so a second card-hand in the scene
+	// can't clobber another helper's mid-iteration buffer if any future code
+	// path ever interleaves their hit-tests.
+	final _scratchPositions:Array<CardLayoutPosition> = [];
 
 	final screen:UIComponentHost;
 	final builder:MultiAnimBuilder;

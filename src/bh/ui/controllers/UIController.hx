@@ -17,7 +17,6 @@ enum UIControllerResult {
 interface UIControllerScreenIntegration {
 	/** Dispatch event with auto-wiring (autoStatus) handled before screen's onScreenEvent. */
 	function dispatchScreenEvent(event:UIScreenEvent, source:Null<UIElement>):Void;
-	function getElements(type:SubElementsType):Array<UIElement>;
 	function forEachElement(type:SubElementsType, fn:UIElement->Void):Void;
 	function onKey(keyCode:Int, release:Bool):Bool;
 	/** Dispatch mouse move to higher-order components and screen override.

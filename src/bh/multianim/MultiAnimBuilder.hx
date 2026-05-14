@@ -351,12 +351,25 @@ class IncrementalUpdateContext {
 	var dynamicRefBindings:Array<{childContext:IncrementalUpdateContext, childParam:String, resolveFn:Void->Dynamic, referencedParams:Array<String>, object:Null<h2d.Object>}> = [];
 	var dynamicNameBindings:Array<DynamicNameBinding> = [];
 	var rootNode:Node;
-	var batchMode:Bool = false;
+	// Public read (via `(default, null)`) so callers like HotReload.restoreParams
+	// can detect a batch is already in progress and avoid an unconditional
+	// beginUpdate that would throw `nested_begin_update`. Internal assignments in
+	// beginUpdate/endUpdate/cancelUpdate continue to work — `(default, null)`
+	// exposes a public getter but does not generate a setter, so direct field
+	// writes from within this class are still allowed.
+	public var batchMode(default, null):Bool = false;
 	var changedParams:Map<String, Bool> = new Map();
 	var hasChanges:Bool = false;
 	var transitionsDef:Null<Map<String, TransitionType>>;
 	public var tweenManager:Null<TweenManager> = null;
-	var activeTransitionTweens:Array<{obj:h2d.Object, tween:Null<Tween>, sequence:Null<TweenSequence>, target:Bool}> = [];
+	// `restore` snaps the properties this transition was animating back to their captured
+	// pre-transition values, then performs the natural endpoint visibility/graph op. Called
+	// from cancelActiveTransition / cancelAllTransitions before nulling onComplete, so
+	// reverse-direction cancellation doesn't leave a mid-flight interpolated value in place
+	// — that value would otherwise be re-captured as the next transition's baseline,
+	// permanently shifting the element away from its natural state. Mirrors
+	// CodegenTransitionHelper.activeTransitionTweens.
+	var activeTransitionTweens:Array<{obj:h2d.Object, tween:Null<Tween>, sequence:Null<TweenSequence>, target:Bool, restore:Null<Void -> Void>}> = [];
 	var rebuildListeners:Array<Void -> Void> = [];
 	// Params that appear in slots whose incremental updates are intentionally unsupported
 	// (interactive id/metadata, stateanim selectors, ...). setParameter on one of these
@@ -395,6 +408,19 @@ class IncrementalUpdateContext {
 	// same child under a single beginUpdate/endUpdate. Resized to 0 on entry; capacity
 	// persists across calls. Keeps the forwarding loop zero-alloc in steady state.
 	var fwdCtxScratch:Array<IncrementalUpdateContext> = [];
+	// Re-entry guard for applyUpdates(). The pass-2 forwarding loop (lines ~1573) calls
+	// `ctx.endUpdate()` on a child context, which fires that child's rebuild listeners.
+	// If any such listener calls `setParameter` BACK INTO this parent context, the parent
+	// would re-enter its own applyUpdates() and `fwdCtxScratch.resize(0)` would clobber
+	// the outer loop's iteration state — silently dropping forwardings to later children.
+	// No listener does this today, but it is a plausible cross-programmable wire-up.
+	// We THROW on re-entry so the bug surfaces loudly (with a clear message pointing at
+	// the culprit) instead of corrupting state. The post-cleanup rebuild-listener
+	// dispatch at the bottom of applyUpdates() is by-design re-entry-safe (see comment
+	// near "Fire rebuild listeners AFTER state cleanup"), so the flag is unset BEFORE
+	// that dispatch — a listener fired there can safely call setParameter and trigger a
+	// fresh applyUpdates cycle on this same context.
+	var applyingUpdates:Bool = false;
 	// Cached uniqueNodeName → entry lookups for applyConditionalChains. Source arrays
 	// only mutate during build and structural rebuild (track* / cleanupDestroyedSubtree);
 	// those sites null these out so the next applyConditionalChains rebuilds them.
@@ -975,6 +1001,10 @@ class IncrementalUpdateContext {
 
 	public function cancelAllTransitions():Void {
 		for (entry in activeTransitionTweens) {
+			// Snap animated properties to natural endpoint. Property-scoped per transition
+			// kind so user-set values on properties this transition wasn't writing are
+			// preserved (e.g. user-set X under fade survives — fade only restores alpha).
+			if (entry.restore != null) entry.restore();
 			if (entry.tween != null) {
 				entry.tween.onComplete = null;
 				entry.tween.cancel();
@@ -983,10 +1013,6 @@ class IncrementalUpdateContext {
 				entry.sequence.onComplete = null;
 				entry.sequence.cancel();
 			}
-			// Don't restore savedAlpha/savedX/...: game code may have mutated obj
-			// mid-transition (BuilderResult exposes the live h2d.Object). Leaving
-			// properties at the tween's last write also produces smooth reverse-
-			// direction blends instead of a jump back to the captured baseline.
 		}
 		activeTransitionTweens = [];
 	}
@@ -1078,6 +1104,11 @@ class IncrementalUpdateContext {
 		while (i < activeTransitionTweens.length) {
 			if (activeTransitionTweens[i].obj == obj) {
 				final entry = activeTransitionTweens[i];
+				// Snap the animated properties to their captured pre-transition values
+				// before tearing down. The closure is property-scoped per transition kind
+				// (TransFade restores only alpha; TransSlide restores {x,y,alpha}; etc.) so
+				// user mutations on properties this transition wasn't writing are preserved.
+				if (entry.restore != null) entry.restore();
 				if (entry.tween != null) {
 					entry.tween.onComplete = null; // Prevent delayed onComplete from TweenManager
 					entry.tween.cancel();
@@ -1086,13 +1117,6 @@ class IncrementalUpdateContext {
 					entry.sequence.onComplete = null;
 					entry.sequence.cancel();
 				}
-				// Don't restore savedAlpha/savedX/...: game code may have mutated obj
-				// mid-transition (BuilderResult exposes the live h2d.Object). The next
-				// transition's executePresenceTransition recaptures preX/preAlpha/... from
-				// the live obj, so any user mutations propagate into the new transition's
-				// baseline. Restoring would also produce a visible jump on reverse-
-				// direction transitions (e.g. show→hide mid-fade jumping alpha back to 1
-				// before the new fade-out starts).
 				activeTransitionTweens.splice(i, 1);
 			} else {
 				i++;
@@ -1100,9 +1124,8 @@ class IncrementalUpdateContext {
 		}
 	}
 
-	function trackTransitionTween(obj:h2d.Object, tween:Tween, target:Bool):Void {
-		activeTransitionTweens.push({obj: obj, tween: tween, sequence: null, target: target});
-		final origOnComplete = tween.onComplete;
+	function trackTransitionTween(obj:h2d.Object, tween:Tween, target:Bool, restore:Null<Void -> Void>):Void {
+		activeTransitionTweens.push({obj: obj, tween: tween, sequence: null, target: target, restore: restore});
 		tween.onComplete = () -> {
 			var i = 0;
 			while (i < activeTransitionTweens.length) {
@@ -1112,13 +1135,13 @@ class IncrementalUpdateContext {
 				}
 				i++;
 			}
-			if (origOnComplete != null) origOnComplete();
+			// Natural completion: same property snap + visibility/graph endpoint as cancel.
+			if (restore != null) restore();
 		};
 	}
 
-	function trackTransitionSequence(obj:h2d.Object, seq:TweenSequence, target:Bool):Void {
-		activeTransitionTweens.push({obj: obj, tween: null, sequence: seq, target: target});
-		final origOnComplete = seq.onComplete;
+	function trackTransitionSequence(obj:h2d.Object, seq:TweenSequence, target:Bool, restore:Null<Void -> Void>):Void {
+		activeTransitionTweens.push({obj: obj, tween: null, sequence: seq, target: target, restore: restore});
 		seq.onComplete = () -> {
 			var i = 0;
 			while (i < activeTransitionTweens.length) {
@@ -1128,7 +1151,7 @@ class IncrementalUpdateContext {
 				}
 				i++;
 			}
-			if (origOnComplete != null) origOnComplete();
+			if (restore != null) restore();
 		};
 	}
 
@@ -1206,21 +1229,22 @@ class IncrementalUpdateContext {
 		final preX = obj.x;
 		final preY = obj.y;
 
+		final capturedEntry = entry;
 		switch (spec) {
 			case TransFade(duration, easing):
 				if (show) {
 					addToGraph(entry);
 					obj.alpha = 0.0;
 					final t = tm.tween(obj, duration, [Alpha(preAlpha)], easing);
-					trackTransitionTween(obj, t, show);
+					final restore = () -> { capturedEntry.object.alpha = preAlpha; };
+					trackTransitionTween(obj, t, show, restore);
 				} else {
 					final t = tm.tween(obj, duration, [Alpha(0.0)], easing);
-					final capturedEntry = entry;
-					t.onComplete = () -> {
+					final restore = () -> {
 						removeFromGraph(capturedEntry);
 						capturedEntry.object.alpha = preAlpha;
 					};
-					trackTransitionTween(obj, t, show);
+					trackTransitionTween(obj, t, show, restore);
 				}
 
 			case TransCrossfade(duration, easing):
@@ -1234,15 +1258,15 @@ class IncrementalUpdateContext {
 					final pause = tm.createTween(obj, duration, []);
 					final fadeIn = tm.createTween(obj, duration, [Alpha(preAlpha)], easing);
 					final seq = tm.sequence([pause, fadeIn]);
-					trackTransitionSequence(obj, seq, show);
+					final restore = () -> { capturedEntry.object.alpha = preAlpha; };
+					trackTransitionSequence(obj, seq, show, restore);
 				} else {
 					final t = tm.tween(obj, duration, [Alpha(0.0)], easing);
-					final capturedEntry = entry;
-					t.onComplete = () -> {
+					final restore = () -> {
 						removeFromGraph(capturedEntry);
 						capturedEntry.object.alpha = preAlpha;
 					};
-					trackTransitionTween(obj, t, show);
+					trackTransitionTween(obj, t, show, restore);
 				}
 
 			case TransFlipX(duration, easing):
@@ -1256,15 +1280,15 @@ class IncrementalUpdateContext {
 					final pause = tm.createTween(obj, halfDuration, []);
 					final grow = tm.createTween(obj, halfDuration, [ScaleX(preScaleX)], easing);
 					final seq = tm.sequence([pause, grow]);
-					trackTransitionSequence(obj, seq, show);
+					final restore = () -> { capturedEntry.object.scaleX = preScaleX; };
+					trackTransitionSequence(obj, seq, show, restore);
 				} else {
 					final t = tm.tween(obj, halfDuration, [ScaleX(0.0)], easing);
-					final capturedEntry = entry;
-					t.onComplete = () -> {
+					final restore = () -> {
 						removeFromGraph(capturedEntry);
 						capturedEntry.object.scaleX = preScaleX;
 					};
-					trackTransitionTween(obj, t, show);
+					trackTransitionTween(obj, t, show, restore);
 				}
 
 			case TransFlipY(duration, easing):
@@ -1275,15 +1299,15 @@ class IncrementalUpdateContext {
 					final pause = tm.createTween(obj, halfDuration, []);
 					final grow = tm.createTween(obj, halfDuration, [ScaleY(preScaleY)], easing);
 					final seq = tm.sequence([pause, grow]);
-					trackTransitionSequence(obj, seq, show);
+					final restore = () -> { capturedEntry.object.scaleY = preScaleY; };
+					trackTransitionSequence(obj, seq, show, restore);
 				} else {
 					final t = tm.tween(obj, halfDuration, [ScaleY(0.0)], easing);
-					final capturedEntry = entry;
-					t.onComplete = () -> {
+					final restore = () -> {
 						removeFromGraph(capturedEntry);
 						capturedEntry.object.scaleY = preScaleY;
 					};
-					trackTransitionTween(obj, t, show);
+					trackTransitionTween(obj, t, show, restore);
 				}
 
 			case TransSlide(dir, duration, distance, easing):
@@ -1298,7 +1322,12 @@ class IncrementalUpdateContext {
 						case TDDown: obj.y += slideOffset;
 					}
 					final t = tm.tween(obj, duration, [X(preX), Y(preY), Alpha(preAlpha)], easing);
-					trackTransitionTween(obj, t, show);
+					final restore = () -> {
+						capturedEntry.object.x = preX;
+						capturedEntry.object.y = preY;
+						capturedEntry.object.alpha = preAlpha;
+					};
+					trackTransitionTween(obj, t, show, restore);
 				} else {
 					var targetX = obj.x;
 					var targetY = obj.y;
@@ -1309,14 +1338,13 @@ class IncrementalUpdateContext {
 						case TDDown: targetY += slideOffset;
 					}
 					final t = tm.tween(obj, duration, [X(targetX), Y(targetY), Alpha(0.0)], easing);
-					final capturedEntry = entry;
-					t.onComplete = () -> {
+					final restore = () -> {
 						removeFromGraph(capturedEntry);
 						capturedEntry.object.alpha = preAlpha;
 						capturedEntry.object.x = preX;
 						capturedEntry.object.y = preY;
 					};
-					trackTransitionTween(obj, t, show);
+					trackTransitionTween(obj, t, show, restore);
 				}
 
 			case TransNone:
@@ -1475,6 +1503,16 @@ class IncrementalUpdateContext {
 	}
 
 	function applyUpdates():Void {
+		// Re-entry guard. See the comment on `applyingUpdates` for the failure
+		// mode this catches. The guard MUST cover the pass-2 forwarding loop
+		// (lines below); it is unset before the rebuild-listener dispatch at
+		// the bottom of this function so listeners can safely re-enter via
+		// setParameter for a fresh cycle.
+		if (applyingUpdates) {
+			throw BuilderError.of("applyUpdates: re-entrant call detected. A rebuild listener on a forwarded dynamicRef child called setParameter back into the parent context during the parent's pass-2 dispatch. Defer the call (queue it for the next tick or fire it from outside the listener) — the parent's per-call scratch (fwdCtxScratch, changedParams) cannot be safely re-used mid-iteration.",
+				"reentrant_apply_updates");
+		}
+		applyingUpdates = true;
 		// Body wrapped in try/catch so a throw from applyConditionalChains, a
 		// tracked.updateFn callback, the dynamicRef forwarding rethrow, or
 		// rebuildDynamicNameRef cannot leak the builder.stateStack push or leave
@@ -1605,6 +1643,13 @@ class IncrementalUpdateContext {
 		builder.popBuilderState();
 		changedParams.clear();
 		hasChanges = false;
+		// Unset the re-entry guard BEFORE both (a) rethrowing a caught exception and
+		// (b) dispatching rebuild listeners. Rethrow path: a future setParameter on
+		// this context must not falsely trip the guard because a prior call threw.
+		// Listener path: the comment on the dispatch below explicitly allows
+		// listeners to call setParameter — that re-entry is a fresh top-level cycle
+		// and is the intended architecture.
+		applyingUpdates = false;
 
 		// Rethrow after cleanup. Rebuild listeners are suppressed on the throw path:
 		// a partially-applied update is not a rebuild, and firing listeners in that
@@ -1988,6 +2033,17 @@ class BuilderResult implements bh.ui.UIInteractiveSource {
 		if (incrementalContext == null)
 			throw BuilderError.of('endUpdate requires incremental mode');
 		incrementalContext.endUpdate();
+	}
+
+	/** True when a batch is currently open on this result's incremental context
+	 *  (between `beginUpdate()` and `endUpdate()`). Returns false for non-
+	 *  incremental results. Callers like `HotReload.restoreParams` use this to
+	 *  decide whether to open their own batch or piggyback on an in-progress one
+	 *  — opening a nested batch throws `nested_begin_update`. */
+	public var batchMode(get, never):Bool;
+
+	inline function get_batchMode():Bool {
+		return incrementalContext != null && incrementalContext.batchMode;
 	}
 
 	public function getNodeSettings(elementName:String):ResolvedSettings {

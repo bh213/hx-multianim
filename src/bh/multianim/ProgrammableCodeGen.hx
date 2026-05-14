@@ -1118,13 +1118,18 @@ class ProgrammableCodeGen {
 		}
 
 		// 8b. Indexed named element accessors: get_name(index:Int):h2d.Object
+		// Unrolled iterations always allocate the backing _eN field, but visibility
+		// conditionals (`@($i < $count) #name[$i] ...`) can detach _eN from the scene
+		// graph via _applyVisibility. Returning a detached ref lets callers silently
+		// mutate dead state, so each case gates on parent != null to match the runtime
+		// path, which only registers names for materialized entries.
 		for (name => indexedList in indexedNamedElements) {
-			// Build switch cases: case 0: return this._e5; case 1: return this._e8; ...
 			final switchCases:Array<Case> = [];
 			for (entry in indexedList) {
+				final fieldRef = macro $p{["this", entry.fieldName]};
 				switchCases.push({
 					values: [macro $v{entry.index}],
-					expr: macro return $p{["this", entry.fieldName]},
+					expr: macro return $fieldRef.parent != null ? $fieldRef : null,
 				});
 			}
 			final switchExpr:Expr = {
@@ -1138,7 +1143,8 @@ class ProgrammableCodeGen {
 		for (name => indexedList in indexed2DNamedElements) {
 			final ifExprs:Array<Expr> = [];
 			for (entry in indexedList) {
-				ifExprs.push(macro if (x == $v{entry.indexX} && y == $v{entry.indexY}) return $p{["this", entry.fieldName]});
+				final fieldRef = macro $p{["this", entry.fieldName]};
+				ifExprs.push(macro if (x == $v{entry.indexX} && y == $v{entry.indexY}) return $fieldRef.parent != null ? $fieldRef : null);
 			}
 			ifExprs.push(macro return null);
 			instanceFields.push(makeMethod("get_" + name, ifExprs, [

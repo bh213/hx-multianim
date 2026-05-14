@@ -50,7 +50,6 @@ enum LayersEnum {
 }
 
 interface UIScreen {
-	function getElements(type:SubElementsType):Array<UIElement>;
 	function forEachElement(type:SubElementsType, fn:UIElement->Void):Void;
 	function update(dt:Float):Void;
 	function addElement(element:UIElement, layer:Null<LayersEnum>):UIElement;
@@ -305,6 +304,12 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		}
 	}
 
+	// Test-only inspection helper. Production code paths must use forEachElement —
+	// this allocates a fresh Array (plus one concat per sub-element provider) on
+	// every call. Kept on the concrete class for utest assertions only; not
+	// declared on the UIScreen / UIControllerScreenIntegration interfaces to
+	// keep production callers off the allocating shape.
+	@:noCompletion
 	public function getElements(type:SubElementsType):Array<UIElement> {
 		var retVal:Array<UIElement> = [];
 		for (e in elements)

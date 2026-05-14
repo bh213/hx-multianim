@@ -4839,6 +4839,57 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		async.done();
 	}
 
+	// ==================== Transition declarations: codegen unit ====================
+
+	@Test
+	public function testCodegenSlidePresenceTransitionLeavesReparentedObjectAlone():Void {
+		// CodegenTransitionHelper.executePresenceTransition's hide branches close over
+		// `parent` and the pre-transition x/y/alpha, then on tween completion call
+		// capturedParent.removeChild(capturedObj) and restore those properties. If user
+		// code reparents the conditional element mid-transition, the removeChild silently
+		// no-ops on the wrong parent, but the property restores still fire — clobbering
+		// the user's state on an object that has left the helper's ownership. The slide
+		// hide branch makes this most visible: x and y get snapped back to preX/preY.
+		// Correct behavior is to leave the object untouched once its parent has changed.
+		final tm = new bh.base.TweenManager();
+		final mp = createMp();
+		mp.transSlideLeft.tweenManager = tm;
+		final instTyped = mp.transSlideLeft.create();
+		final inst:h2d.Object = instTyped;
+
+		// The conditional element is a direct child of `inst`; walk up from the visible
+		// bitmap so the test does not depend on whether codegen wraps the bitmap.
+		final visibleBitmaps = findVisibleBitmapDescendants(inst);
+		Assert.equals(1, visibleBitmaps.length, "expected exactly one visible bitmap at start");
+		var conditional:h2d.Object = visibleBitmaps[0];
+		while (conditional.parent != null && conditional.parent != inst) conditional = conditional.parent;
+		Assert.equals(inst, conditional.parent, "conditional element should be a direct child of inst");
+		final preX = conditional.x;
+
+		// Trigger the slide-left hide transition (slide(left, 1.0, 80)).
+		instTyped.setMode(1);
+		Assert.isTrue(tm.hasTweens(conditional), "slide hide tween should be active after setMode");
+
+		// Advance partway through the 1.0s tween.
+		tm.update(0.0); // consumed by skipFirstDt
+		tm.update(0.4);
+
+		// User code takes ownership of the conditional element mid-transition.
+		final userContainer = new h2d.Object();
+		userContainer.addChild(conditional);
+		Assert.equals(userContainer, conditional.parent, "user reparent should stick before completion");
+
+		// Drive the tween to completion. With the bug, onComplete still restores
+		// alpha=preAlpha and x=preX/y=preY on the user-owned object. With the fix,
+		// the ownership check skips the restore and x stays at the tween's end value
+		// (preX - 80 for slide-left).
+		tm.update(1.0);
+
+		Assert.equals(userContainer, conditional.parent, "user reparent must be preserved past completion");
+		Assert.isTrue(conditional.x < preX - 10.0,
+			'x should reflect slide tween end state (preX - slideOffset), not be restored to preX. preX=$preX got x=${conditional.x}');
+	}
+
 	// ==================== @switch + repeatable: codegen incremental ====================
 
 	@Test
@@ -5298,6 +5349,89 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		Assert.notNull(gridCell00again, "gridCell[0,0] should reappear after swap back to grid arm");
 		Assert.isNull(instance.getUpdatableByIndex("listItem", 0),
 			"listItem[0] should be evicted after swap back to grid");
+	}
+
+	// Indexed-name accessor on a static-unroll repeatable must report current visibility:
+	// `get_name(idx)` returns null when the inner conditional hides that index, and the
+	// live `h2d.Object` when the conditional shows it. Otherwise callers can mutate
+	// alpha/transform/children on a detached object — silent dead state until/unless the
+	// conditional flips back to visible.
+	@Test
+	public function testCodegenIndexedNamedHiddenReturnsNull():Void {
+		final mp = createMp();
+		final instance:Dynamic = mp.codegenRepeatShrink.create(); // count defaults to 5 — all 5 visible
+
+		// Baseline: all five visible after construction.
+		for (i in 0...5) {
+			final cell:Null<h2d.Object> = instance.get_cell(i);
+			Assert.notNull(cell, 'cell[$i] should exist with count=5');
+			Assert.notNull(cell.parent, 'cell[$i] should be in scene graph with count=5');
+		}
+
+		// Shrink visibility to first two cells.
+		instance.setCount(2);
+		for (i in 0...2) {
+			final cell:Null<h2d.Object> = instance.get_cell(i);
+			Assert.notNull(cell, 'cell[$i] should still exist with count=2');
+			Assert.notNull(cell.parent, 'cell[$i] should remain in scene graph with count=2');
+		}
+		for (i in 2...5) {
+			Assert.isNull(instance.get_cell(i),
+				'cell[$i] should be null after shrink to count=2 (currently invisible)');
+		}
+
+		// Grow back — previously-hidden indices reappear.
+		instance.setCount(5);
+		for (i in 0...5) {
+			final cell:Null<h2d.Object> = instance.get_cell(i);
+			Assert.notNull(cell, 'cell[$i] should reappear after regrow to count=5');
+			Assert.notNull(cell.parent, 'cell[$i] should be re-attached after regrow to count=5');
+		}
+	}
+
+	// 2D variant of the same visibility contract: get_name(x, y) returns null when the
+	// inner conditional hides that (x, y) cell. The 2D accessor is an if/else chain
+	// rather than a switch, but it has the same dangling-ref bug shape.
+	@Test
+	public function testCodegenIndexed2DNamedHiddenReturnsNull():Void {
+		final mp = createMp();
+		final instance:Dynamic = mp.codegenRepeatShrink.create(); // cols=3, rows=3
+
+		// Baseline: full 3x3 visible.
+		for (x in 0...3) for (y in 0...3) {
+			final tile:Null<h2d.Object> = instance.get_tile(x, y);
+			Assert.notNull(tile, 'tile[$x,$y] should exist with cols=3, rows=3');
+			Assert.notNull(tile.parent, 'tile[$x,$y] should be in scene graph with cols=3, rows=3');
+		}
+
+		// Shrink visible region to 2 columns. Column 2 should disappear.
+		instance.setCols(2);
+		for (y in 0...3) {
+			Assert.isNull(instance.get_tile(2, y),
+				'tile[2,$y] should be null after shrink to cols=2');
+		}
+		for (x in 0...2) for (y in 0...3) {
+			Assert.notNull(instance.get_tile(x, y), 'tile[$x,$y] should remain visible with cols=2');
+		}
+
+		// Also shrink rows. Now only a 2x2 block should be visible.
+		instance.setRows(2);
+		for (x in 0...2) for (y in 0...2) {
+			Assert.notNull(instance.get_tile(x, y), 'tile[$x,$y] should remain visible at 2x2');
+		}
+		for (x in 0...3) {
+			Assert.isNull(instance.get_tile(x, 2),
+				'tile[$x,2] should be null after shrink to rows=2');
+		}
+
+		// Regrow — the full 3x3 reappears.
+		instance.setCols(3);
+		instance.setRows(3);
+		for (x in 0...3) for (y in 0...3) {
+			final tile:Null<h2d.Object> = instance.get_tile(x, y);
+			Assert.notNull(tile, 'tile[$x,$y] should reappear after regrow to 3x3');
+			Assert.notNull(tile.parent, 'tile[$x,$y] should be re-attached after regrow to 3x3');
+		}
 	}
 
 	// Regression: #name slot declared inside a @switch arm must be reachable via
