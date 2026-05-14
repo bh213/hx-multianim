@@ -327,15 +327,15 @@
 </head>
 <body>
     <h1>Visual Test Report</h1>
-    <div class="timestamp">Generated: 2026-05-13 17:58:19</div>
+    <div class="timestamp">Generated: 2026-05-14 14:56:00</div>
     <div class="summary">
         <strong>Summary:</strong> 101 tests,         <span style="color: #4CAF50;">101 passed</span>,         <span style="color: #f44336;">0 failed</span>
-        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1.2s, visual 23.2s)</span>
+        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1.2s, visual 23.1s)</span>
     </div>
     <div class="unit-tests-section">
         <h2>Unit Tests</h2>
         <div class="unit-tests-summary all-passed">
-            <strong>6794 assertions:</strong>             <span style="color: #4CAF50;">6794 passed</span>
+            <strong>6896 assertions:</strong>             <span style="color: #4CAF50;">6896 passed</span>
             <button class="expand-btn" id="unitToggleBtn" onclick="toggleUnitDetails()">Show Details</button>
         </div>
         <div class="unit-details" id="unitDetails">
@@ -708,6 +708,9 @@
                 <div class="unit-method pass">testBuildWithParametersRestoresStateStackOnInnerThrow: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testBuildWithParametersStateStackBalancedAfterCaughtErrorThenSecondBuild: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testCenterTileSource: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testCodegenTransitionFadeRecoversAlphaBaselineAfterMidFlightCancel: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testCodegenTransitionFlipXRecoversScaleBaselineAfterMidFlightCancel: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testCodegenTransitionSlideRecoversPositionBaselineAfterMidFlightCancel: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testColorSettingRejectedByGetFloatOrDefault: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testColorSettingRejectedByGetFloatOrException: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testColorSettingRejectedByGetIntOrDefault: OK <span class="dots">..</span></div>
@@ -938,6 +941,7 @@
                 <div class="unit-method pass">testIncrementalSwitchTextInterpolation: OK <span class="dots">......</span></div>
                 <div class="unit-method pass">testIncrementalSwitchWithRepeatable: OK <span class="dots">......</span></div>
                 <div class="unit-method pass">testIncrementalTernary: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testIncrementalTransitionFadeRecoversAlphaBaselineAfterMidFlightCancel: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testInitialBuildAcceptsRawTileForTileParam: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testInterpolAddition: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testInterpolArithInString: OK <span class="dots">.</span></div>
@@ -1403,6 +1407,7 @@
                 <div class="unit-method pass">testNoPriorityElementDefaultsToZero: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testNonOverlappingOnlyHitsTarget: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testReleaseEventBubbles: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testUIDefaultControllerHotPathNeverCallsGetElements: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testWheelEventRespectsConsumed: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testWheelEventStopsWhenConsumed: OK <span class="dots">..</span></div>
             </div>
@@ -2088,9 +2093,12 @@
                 <div class="unit-method pass">testCodegenCreateFromColorParam: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testCodegenCreateFromColorParamEmpty: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testCodegenDynamicRefForwardingFailureLeavesChildUsable: OK <span class="dots">.....</span></div>
+                <div class="unit-method pass">testCodegenIndexed2DNamedHiddenReturnsNull: OK <span class="dots">....................................................</span></div>
+                <div class="unit-method pass">testCodegenIndexedNamedHiddenReturnsNull: OK <span class="dots">...........................</span></div>
                 <div class="unit-method pass">testCodegenSetColorParamAlphaBaked: OK <span class="dots">..........</span></div>
                 <div class="unit-method pass">testCodegenSetParameterAcceptsColorStringFormats: OK <span class="dots">.......</span></div>
                 <div class="unit-method pass">testCodegenSetParameterUnknownEnumValueDoesNotThrow: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testCodegenSlidePresenceTransitionLeavesReparentedObjectAlone: OK <span class="dots">......</span></div>
                 <div class="unit-method pass">testCodegenSlotParamGridContext: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testCodegenSwitchArmCallbackInheritance: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testCodegenSwitchArmGridContext: OK <span class="dots">...</span></div>
@@ -2766,6 +2774,7 @@
                 <div class="unit-method pass">testCellDragEnabledDefaultFalse: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testCellDragFilterConfigStored: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testCellDragFilterPreventsStart: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testCellDragMoveDoesNotAllocateFPoint: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testCellDragNoStartOnEmptyCell: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testCellDragNoStartWhenDisabled: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testCellDragOnlyLeftButton: OK <span class="dots">.</span></div>
